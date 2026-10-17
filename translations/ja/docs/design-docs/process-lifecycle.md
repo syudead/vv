@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/process-lifecycle.md
-sourceHash: b2025ac4216855fb934a94286da3aac9f75f146c2cbf11c80d50da9e67479b85
+sourceHash: 3a01a3baf593cf219a5b99d352a1dc525381058b4c13184ffb25072e4fa9c78d
 ---
 
 # プロセスのライフサイクル: 起動と停止の順序 {#process-lifecycle-startup-and-shutdown-order}
@@ -55,8 +55,8 @@ flowchart LR
 | 手順 | 失敗したとき |
 | --- | --- |
 | 設定、`PATH` 上の `ffmpeg`/`ffprobe`、SQLite、マイグレーション | 起動が止まる |
-| 場所とタグ名の検索キー | 起動が止まる。そのため、検索が古い規則で作ったキーで動くことはない ([013 data-model、キーを作る時期と `search_version`](../../specs/013-library-search/data-model.md#when-keys-are-built-and-search_version)) |
-| フォルダ索引 | ログに記録する。次の再構築まで前の索引が残る ([017 data-model、索引を再構築する時期](../../specs/017-folder-groups/data-model.md#when-the-index-is-rebuilt)) |
+| 場所とタグ名の検索キー | 起動が止まる。そのため、検索が古い規則で作ったキーで動くことはない  |
+| フォルダ索引 | ログに記録する。次の再構築まで前の索引が残る  |
 | 活動項目への中断の記録 | ログに記録する。次の起動まで項目は `running` のまま残る ([activity.md](activity.md)) |
 | `.tmp` 以下の未完成の生成物 | ログに記録する |
 | 中断したスキャンの再開 | ログに記録する。ユーザーはスキャンを開始できる |
@@ -67,7 +67,7 @@ flowchart LR
 
 ## 中断した実行の後の回復 {#recovery-after-an-interrupted-run}
 
-作業の途中で止まった実行は実行中の行を残し、起動はそれらを次の実行が続きから進められる状態に戻す。中断したスキャンは理由 `interrupted` で `failed` として閉じ、実行中のジョブは `queued` に戻し、ワーカーが取得した活動項目 (理由が `processing` の `running`) は `attention`/`interrupted` になり、`waiting` の項目はそのまま残り、ワーカーが動き出すと新しい手動スキャンを 1 つ開始する。中断した監視スキャンは閉じるだけで再開しないので、起動時にそのためにディレクトリを読むことはない ([folder-watching.md](folder-watching.md)、[037 research R-9](../../specs/037-windows-app/research.md#r-9-an-interrupted-last-scan-restarts-automatically-at-startup-for-every-way-of-starting))。
+作業の途中で止まった実行は実行中の行を残し、起動はそれらを次の実行が続きから進められる状態に戻す。中断したスキャンは理由 `interrupted` で `failed` として閉じ、実行中のジョブは `queued` に戻し、ワーカーが取得した活動項目 (理由が `processing` の `running`) は `attention`/`interrupted` になり、`waiting` の項目はそのまま残り、ワーカーが動き出すと新しい手動スキャンを 1 つ開始する。中断した監視スキャンは閉じるだけで再開しないので、起動時にそのためにディレクトリを読むことはない。
 
 ## 停止の順序 {#shutdown-order}
 

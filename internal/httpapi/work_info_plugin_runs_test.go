@@ -12,7 +12,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 直近の実行の標準エラーの経路（specs/056-plugin-tooling/contracts/screen-api.md）。実行の行は保存先に直接書く。
+// 直近の実行の標準エラーの経路。実行の行は保存先に直接書く。
 
 func TestWorkInfoPluginLastRunRoute(t *testing.T) {
 	e := newPluginEnv(t)

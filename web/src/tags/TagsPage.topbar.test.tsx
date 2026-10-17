@@ -20,7 +20,7 @@ import { stubRowHeights } from "../testing/virtualRows";
 
 setUpTagsPageServer();
 
-describe("TagsPage トップバー・見出し・タブ（specs/036-tag-admin-scale/ui-design.md）", () => {
+describe("TagsPage トップバー・見出し・タブ", () => {
   function rowOf(name: string): HTMLElement {
     return screen.getByTitle(name).closest("[data-tag-id]")!;
   }

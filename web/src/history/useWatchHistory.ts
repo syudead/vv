@@ -4,7 +4,7 @@ import { isAborted } from "../api/client";
 import { listWatchHistory, type WatchHistoryEntry } from "../api/history";
 import { type HistoryCriteria, historyCriteriaKey } from "./historyCriteria";
 
-// 視聴履歴の一覧の読み込み（specs/043-watch-history/ui-design.md「Paging」「States」）。
+// 視聴履歴の一覧の読み込み。
 
 export type MoreState =
   { kind: "idle" } | { kind: "loading" } | { kind: "failed"; error: unknown };

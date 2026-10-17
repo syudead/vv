@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// タグの種類の MCP のツール（specs/051-tag-kinds/contracts/external-api.md「MCP tools」）。他のツールと
+// タグの種類の MCP のツール。他のツールと
 // 同じく、外部連携 API の同じ操作を call で呼ぶ。本文を取るツールは入力をそのまま REST へ渡す
 // （mcp_work_info.go の post と同じ。id の null と省略を REST と同じく見分ける）。
 

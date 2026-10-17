@@ -3,7 +3,7 @@ import { formatDuration } from "../lib/format";
 import { orderedItemDurationMs, orderedItemTitle } from "../videoList/ItemRowCells";
 import { itemStepPath } from "./playlistPlayback";
 
-// プレイリストの画面が項目から決める規則（specs/044-playlists/ui-design.md「Playlist screen」）。
+// プレイリストの画面が項目から決める規則。
 // 画面の部品から外し、ロジックのテストで確かめる（docs/design-docs/web-testing.md）。
 
 /** playlistPath はプレイリストの画面の場所である。 */
@@ -23,7 +23,7 @@ export const itemDurationMs: (item: PlaylistItem) => number | undefined =
 
 /**
  * playlistDuration は見せる項目の長さの合計を「1:32:10」の形で返す。項目が無いか、長さの
- * 分からない項目が 1 つでもあれば空にし、見出しは件数だけを出す（ui-design.md「Words」）。
+ * 分からない項目が 1 つでもあれば空にし、見出しは件数だけを出す。
  */
 export function playlistDuration(items: readonly PlaylistItem[]): string {
   if (items.length === 0) return "";
@@ -45,7 +45,7 @@ export interface PlayTarget {
 /**
  * playTarget は項目 `item` から再生を始める動画ページの行き先である。動画はその動画、
  * グループとスマートフォルダは `openVideoId` を開き（フォルダは `smartFolder` も付ける）、
- * `state.from` はプレイリストの画面にする（contracts/screen-api.md「Client use」）。始める動画の
+ * `state.from` はプレイリストの画面にする。始める動画の
  * 無い項目（動画の無いフォルダ）は null。
  */
 export function playTarget(playlistId: number, item: PlaylistItem): PlayTarget | null {
@@ -70,7 +70,7 @@ export function firstPlayTarget(
 
 /**
  * moveItem は `itemId` を `afterItemId` のすぐ後ろ（null なら先頭）へ移した並びを返す。
- * サーバーの move と同じ動き（research.md R-3）で、どちらかが並びに無ければ元の並びを返す。
+ * サーバーの move と同じ動きで、どちらかが並びに無ければ元の並びを返す。
  */
 export function moveItem<T extends { id: number }>(
   items: readonly T[],
@@ -113,7 +113,7 @@ export function dropItem<T extends { id: number }>(
 
 /**
  * focusAfterRemove は外した行の後にフォーカスを移す行である。次の行、無ければ前の行、
- * どちらも無ければ null（見出しへ移す。ui-design.md「Removing an item」）。
+ * どちらも無ければ null（見出しへ移す）。
  */
 export function focusAfterRemove<T extends { id: number }>(
   items: readonly T[],

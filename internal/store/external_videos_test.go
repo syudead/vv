@@ -9,8 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 外部連携 API の動画の読み出し（specs/026-external-api/contracts/external-api.md §2、
-// research.md R-6）。
+// 外部連携 API の動画の読み出し。
 
 // readAllExternal は nextCursor が空になるまでたどり、動画の id を順に返す。
 func readAllExternal(t *testing.T, db *DB, limit int) []int64 {

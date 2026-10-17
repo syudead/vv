@@ -8,7 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// アクティビティの記録の一覧・やり直し・取り消し（specs/055-activity/plan.md「How it works」）。記録の
+// アクティビティの記録の一覧・やり直し・取り消し。記録の
 // 書き込みは保存層が変える内容と同じ取引で行い、ここは一覧を渡し、やり直しと取り消しを種類ごとに既存の
 // use case へ振り分ける。activity.go は取り込み中の今の処理（domain.ScanActivity）で、別物である。
 
@@ -26,15 +26,13 @@ type ActivityLogStore interface {
 	RecoverInterruptedActivity(ctx context.Context) (int, error)
 }
 
-// ActivityRetrier は 1 つの種類の記録の処理を始め直す（contracts/screen-api.md
-// 「POST /api/activity/{id}/retry」）。種類ごとの既存の use case（読み取りのやり直し・手動の走査・
+// ActivityRetrier は 1 つの種類の記録の処理を始め直す。種類ごとの既存の use case（読み取りのやり直し・手動の走査・
 // 自動タグ付けの待ち行列・判定の再試行）がこれを満たす。
 type ActivityRetrier interface {
 	RetryActivity(ctx context.Context, entry domain.ActivityEntry) error
 }
 
-// ActivityUndoer は 1 つの種類の自動の判断を取り消し、所有者の undo の記録を返す（contracts/screen-api.md
-// 「POST /api/activity/{id}/undo」）。tagID は auto_tag のタグで、ほかの種類では 0。
+// ActivityUndoer は 1 つの種類の自動の判断を取り消し、所有者の undo の記録を返す。tagID は auto_tag のタグで、ほかの種類では 0。
 type ActivityUndoer interface {
 	UndoActivity(ctx context.Context, entry domain.ActivityEntry, tagID int64) (domain.ActivityEntry, error)
 }

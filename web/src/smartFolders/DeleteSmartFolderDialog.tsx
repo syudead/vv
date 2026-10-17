@@ -34,8 +34,7 @@ function useDescendantCount(id: number) {
 }
 
 /**
- * DeleteSmartFolderDialog はスマートフォルダを消す確認の窓である
- * （specs/052-smart-folders/ui-design.md「Deleting」）。説明は動画がライブラリに残ることを言い、
+ * DeleteSmartFolderDialog はスマートフォルダを消す確認の窓である。説明は動画がライブラリに残ることを言い、
  * 子孫があればその数（どの深さも、`GET /api/smart-folders` の木から数える）を 2 文目に足す。
  * 数え終わるまで「Delete」を押せない — 子孫の警告の無いまま子孫ごと消さないため。数えられ
  * なければ窓の中の `Alert` に理由と「Retry」を出し、数え直せるまで押せないままにする。

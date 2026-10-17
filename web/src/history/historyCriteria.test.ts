@@ -7,7 +7,7 @@ import {
   serializeHistoryCriteria,
 } from "./historyCriteria";
 
-// 視聴履歴の画面の URL（specs/043-watch-history/contracts/screen-api.md「Client use」、R-12）。
+// 視聴履歴の画面の URL。
 
 function parse(search: string) {
   return parseHistoryCriteria(new URLSearchParams(search));

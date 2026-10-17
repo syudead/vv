@@ -9,7 +9,7 @@ import (
 )
 
 // 動画の追加の情報を、動画 1 件の詳細（GET /api/videos/{id}）に載せる部分
-// （specs/056-media-info/contracts/screen-api.md「GET /api/videos/{id}: mediaInfo」）。
+//
 
 // MediaInfoReader は動画の追加の情報の読み出し先である。
 type MediaInfoReader interface {
@@ -18,7 +18,7 @@ type MediaInfoReader interface {
 }
 
 // mediaInfoForDetail は動画 1 件の詳細に載せる追加の情報を video に埋める。所有者とゲストを
-// 分けない（specs/056-media-info/research.md R-6）。一覧・関連動画・ライブラリの項目・所有者の
+// 分けない。一覧・関連動画・ライブラリの項目・所有者の
 // PUT の応答は呼ばないので、そこには載らない。
 func (s *server) mediaInfoForDetail(ctx context.Context, video domain.Video) (domain.Video, error) {
 	if s.mediaInfo == nil {

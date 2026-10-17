@@ -8,8 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 人物と団体による一覧の絞り込み（specs/047-video-work-info/data-model.md の Lists、
-// contracts/screen-api.md の List parameters person and organization、research.md R-7、#1025）。
+// 人物と団体による一覧の絞り込み。
 // fixture のグループ show のメンバーは ep1・ep2・ep10、pair のメンバーは p1・p2 である。
 
 // sortedLibraryNames は所有者の ListLibrary を最後まで読み、項目の名前を並べて返す。

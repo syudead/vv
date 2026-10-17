@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 仮のタグの確定・却下と、却下した名前（specs/031-tentative-tags/data-model.md §3・§5）。
+// 仮のタグの確定・却下と、却下した名前。
 // 仮のタグを作るのは tentative が真の一括操作（external_video_tags.go の resolveTagNames）で、
 // 名前を tag_names に書く入口（insertTagName・RenameTag）が却下した名前から外す。
 
@@ -42,7 +42,6 @@ func (s *TagStore) ConfirmTag(ctx context.Context, id int64) (domain.Tag, error)
 // RejectTag は仮のタグ id を消し、その元の名前を却下した名前として覚え、その名前を返す。
 // tag_names と video_tags は外部キーの ON DELETE CASCADE で連鎖して消える。id が無ければ
 // domain.ErrTagNotFound、仮でなければ domain.ErrTagNotTentative を返し、何も変えない
-// （specs/031-tentative-tags/research.md R-5）。
 func (s *TagStore) RejectTag(ctx context.Context, id int64) (string, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -77,7 +76,7 @@ func (s *TagStore) RejectTag(ctx context.Context, id int64) (string, error) {
 const rejectedTagNameCursorSort = "rejectedTagName"
 
 // ListRejectedTagNames は却下した名前を名前の自然順（sort_key、同じなら name のバイト順）で、
-// cursor より後ろから limit 件返す（specs/036-tag-admin-scale/data-model.md §2）。limit が 0 以下なら
+// cursor より後ろから limit 件返す。limit が 0 以下なら
 // cursor より後ろをすべて返し、NextCursor は空にする。Total は却下した名前の全部の数。
 // 解釈できないカーソルや別の一覧のカーソルは domain.ErrInvalidCursor を返す。
 func (s *TagStore) ListRejectedTagNames(ctx context.Context, cursor string, limit int) (domain.RejectedTagNamePage, error) {
@@ -158,7 +157,7 @@ func decodeRejectedTagNameCursor(cursor string) (sortKey, name string, err error
 }
 
 // ForgetRejectedTagName は name を却下した名前から外し、外したかどうかを返す（外部連携 API が
-// 応答の removed に載せる。specs/039-external-tag-admin/research.md R-5）。無ければ何も変えずに
+// 応答の removed に載せる。docs/design-docs/catalog-organization.md）。無ければ何も変えずに
 // false を返す。name は domain.NormalizeTagName で整えてから照合し、整えられない入力はそのまま
 // 照合する（RemoveSynonym と同じ扱い）。
 func (s *TagStore) ForgetRejectedTagName(ctx context.Context, name string) (bool, error) {

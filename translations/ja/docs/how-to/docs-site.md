@@ -1,11 +1,11 @@
 ---
 source: docs/how-to/docs-site.md
-sourceHash: a7a5b5497f2affdd6b63bd8ade583d9d9dee123a529b064434f16a0c58f3280c
+sourceHash: 5624ce4487aab824367cd48369dc11a6d40346af7c0cfceaa01f8658c3332d01
 ---
 
 # 文書サイトを扱う {#work-with-the-documentation-site}
 
-`docs/`、`specs/`、`ARCHITECTURE.md` の文書は、`main` へのマージのたびに GitHub Pages に公開される。英語版は <https://syudead.github.io/vv/>、日本語版は <https://syudead.github.io/vv/ja/> 以下にある。エージェントへの指示（`.agents/`、`.claude/`）、`AGENTS.md`、ルートの `README.md` は公開されない。日本語のページの設計は [japanese-translation.md](../design-docs/japanese-translation.md) にある。
+`docs/` と `ARCHITECTURE.md` の文書は、`main` へのマージのたびに GitHub Pages に公開される。英語版は <https://syudead.github.io/vv/>、日本語版は <https://syudead.github.io/vv/ja/> 以下にある。エージェントへの指示（`.agents/`、`.claude/`）、`AGENTS.md`、ルートの `README.md` は公開されない。日本語のページの設計は [japanese-translation.md](../design-docs/japanese-translation.md) にある。
 
 どちらの言語も、リポジトリから次のようにビルドされる。
 

@@ -8,7 +8,7 @@ import { useToast } from "../ui/Toast";
 import { useGroupChanged } from "./groupChanges";
 
 /**
- * NewGroupDialog は選択バーの「New group」の窓である（specs/048-groups/ui-design.md「New group」）。
+ * NewGroupDialog は選択バーの「New group」の窓である。
  * 名前を 1 つ聞き、前後を削った名前と `videoIds`・`groupIds` を `POST /api/groups` で送る。
  * 呼び出し元は開いている間だけ描く。形と名前の規則は NameDialog が持つ。
  *

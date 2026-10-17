@@ -18,7 +18,7 @@ import {
 } from "../testing/smartFolderPage";
 
 // スマートフォルダのページの所有者の操作と、読み直しの間の振る舞い
-// （specs/052-smart-folders/ui-design.md「Header」「Editing」「New child」「Deleting」「Body」「States」）。
+//
 
 setUpSmartFolderServer();
 

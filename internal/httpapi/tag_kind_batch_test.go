@@ -8,7 +8,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 種類のまとめての付け外しと、タグの一覧の kind（specs/051-tag-kinds/contracts/screen-api.md）。
+// 種類のまとめての付け外しと、タグの一覧の kind。
 
 func TestBatchTagsPassesKindActionsToStore(t *testing.T) {
 	cases := []struct {

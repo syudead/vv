@@ -17,7 +17,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// /mcp の MCP サーバー（specs/026-external-api/contracts/mcp.md、research.md R-8）。
+// /mcp の MCP サーバー。
 //
 // 転送は Streamable HTTP の stateless で、POST /mcp だけを受けて application/json で返す
 // （GET・DELETE は SDK が 405 にする）。認証は境界（auth.go の Bearer の扱い）が済ませていて、
@@ -44,7 +44,7 @@ func newMCPHandler(srv *server) http.Handler {
 		// なければ 403 にする。同じ PC のリバースプロキシ越しの公開（Host は公開名）を断って
 		// しまう。/mcp は Authorization: Bearer がなければ境界が 401 にし、ブラウザは
 		// Authorization を自動では付けないので、rebinding で所有者の権限は得られない
-		// （同一オリジンの検査をかけないのと同じ理由、research.md R-4）。
+		// （同一オリジンの検査をかけないのと同じ理由）。
 		DisableLocalhostProtection: true,
 		// 本文の上限は外部連携 API の本文（externalBodyLimit）に JSON-RPC の包みの分を足す。
 		// update_video_tags に REST と同じ件数を渡せるようにする。
@@ -62,7 +62,7 @@ func newMCPHandler(srv *server) http.Handler {
 
 // mcpRequestWatch は /mcp の HTTP 要求が打ち切られたときに cancel を呼ぶよう登録し、登録を
 // 外す関数を返す。SDK はツールの context を要求の取り消しから切り離す（値は引き継ぐ）ので、
-// 失効・資格情報の変更で境界が要求を打ち切ったとき（research.md R-9）にツールも止まるよう、
+// 失効・資格情報の変更で境界が要求を打ち切ったときにツールも止まるよう、
 // call がこれで取り消しをつなぐ。
 type mcpRequestWatch func(cancel func(error)) (stop func() bool)
 
@@ -161,7 +161,7 @@ func (t *mcpTools) register(server *mcp.Server) {
 			query.Set("cursor", *in.Cursor)
 		}
 		// REST の既定（省けば全件）は変えず、ツールだけが 1 ページを既定にする
-		// （specs/039-external-tag-admin/research.md R-1）。
+		//
 		limit := mcpListTagsDefaultLimit
 		if in.Limit != nil {
 			limit = *in.Limit

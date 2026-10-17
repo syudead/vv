@@ -19,8 +19,7 @@ export interface GroupNameFieldProps {
 }
 
 /**
- * GroupNameField は「Make a group」の後に新しいグループのカードの名前の位置に出す欄である
- * （specs/050-drag-organize/ui-design.md「The new group's name」）。仮の名前を選んだ状態で
+ * GroupNameField は「Make a group」の後に新しいグループのカードの名前の位置に出す欄である。仮の名前を選んだ状態で
  * フォーカスを受け、変えた名前の Enter で `onRename`、変えない Enter・空・Esc・フォーカスが
  * 離れたら何も送らずに閉じる。100 文字を超えると規則を出し、Enter では閉じない。
  */
@@ -85,8 +84,7 @@ export function GroupNameField({
 
 /**
  * GroupNamePopover は名前の欄を、落とした先のカードの下の Popover に出す。フォルダ画面は
- * グループのカードを描かないので、こちらを使う（ui-design.md「The new group's name」の
- * Folder screen）。カードの箱（`relative`）の中に置く。
+ * グループのカードを描かないので、こちらを使う。カードの箱（`relative`）の中に置く。
  */
 export function GroupNamePopover(props: GroupNameFieldProps) {
   return (

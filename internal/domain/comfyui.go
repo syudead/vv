@@ -9,7 +9,7 @@ import (
 
 // 画像編集の提供元 ComfyUI の接続先の設定である。提供元のアダプタ（internal/comfyui）が
 // 読み、サムネイルの編集の機能とは別に持つ（docs/design-docs/ai-layer.md、
-// specs/045-comfyui-thumbnails/research.md R-1・R-9）。
+// docs/design-docs/thumbnail-editing.md）。
 
 // ComfyUIProvider は ComfyUI の提供元の種類である。
 type ComfyUIProvider string
@@ -131,7 +131,6 @@ const (
 
 // ComfyUIMissingItem は接続先に足りないノードかモデルファイルの 1 つである。Folder と Source は
 // モデルファイルだけが持ち、ComfyUI の models の下の置き場所と入手先のページである
-// （specs/045-comfyui-thumbnails/research.md R-13）。
 type ComfyUIMissingItem struct {
 	Kind   ComfyUIMissingKind
 	Name   string

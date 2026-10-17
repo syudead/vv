@@ -10,8 +10,7 @@ import { ToastProvider } from "../../ui/Toast";
 import { TooltipProvider } from "../../ui/shadcn/tooltip";
 import VideoDetailsEditor from "./VideoDetailsEditor";
 
-// URL で開いた編集画面と、選び手・離れ方（specs/047-video-work-info/ui-design.md「Editor」の
-// Picker・Leaving・States）。ページから開く流れは player/VideoPage.workInfo.test.tsx。
+// URL で開いた編集画面と、選び手・離れ方。ページから開く流れは player/VideoPage.workInfo.test.tsx。
 
 const video: Video = {
   id: 7,

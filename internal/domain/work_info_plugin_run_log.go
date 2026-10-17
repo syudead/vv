@@ -8,7 +8,7 @@ import (
 )
 
 // 作品情報プラグインの実行が残した標準エラーと、その秘密の値の伏せ方
-// （specs/056-plugin-tooling/research.md R-6、data-model.md の work_info_plugin_runs・Rules）。
+//
 // 実行は internal/wasmplugin、伏せて保存するのは internal/app、保存は internal/store が行う。
 
 // WorkInfoSecretMask は標準エラーの中の秘密の設定の値と置き換える文字列である。
@@ -52,7 +52,6 @@ func SecretWorkInfoPluginValues(settings []WorkInfoPluginSetting, values map[str
 // 同じ値の自己重複）はまとめて 1 つの WorkInfoSecretMask にするので、どの一致も一部も残らない。空の値は
 // どこにも一致しない。log が切り詰められていれば、末尾に残った秘密の値の先頭にあたる部分も伏せ、64 KiB で
 // 切れた値を一部も残さない。プラグインが符号化してから書いた値は見つけられない
-// （contracts/plugin-contract.md の Standard error）。
 func MaskWorkInfoRunLog(log WorkInfoRunLog, secrets []string) WorkInfoRunLog {
 	secrets = slices.DeleteFunc(slices.Clone(secrets), func(s string) bool { return s == "" })
 	if len(secrets) == 0 {

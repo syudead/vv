@@ -12,7 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 所在のファイルの作成日時（specs/033-video-dates/data-model.md §1・§2・§4・§5、research.md R-4）。
+// 所在のファイルの作成日時。
 
 // upsertCreated は作成日時 created（ゼロ値は取れなかった）の動画を1件取り込み、動画の id を返す。
 func upsertCreated(t *testing.T, db *DB, path, key string, mtime, created time.Time) int64 {

@@ -2,7 +2,7 @@ package domain
 
 import "testing"
 
-// 視聴状態の定義は data-model.md §6 と一覧画面の watchState に揃える。
+// 視聴状態の定義は 一覧画面の watchState に揃える。
 func TestClassifyWatch(t *testing.T) {
 	tests := []struct {
 		name     string

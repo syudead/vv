@@ -9,7 +9,7 @@ import type {
 import { t, type UiText } from "../../i18n";
 import { creditKind, detailRow, isDateRow, videoWorkInfo } from "./detailRows";
 
-// 取得のダイアログの決まり（specs/049-work-info-plugins/ui-design.md「Fetch dialog」）。画面に
+// 取得のダイアログの決まり。画面に
 // 依らない判断をここに集め、ダイアログの部品は描くことだけにする。
 
 /** RunOperation はプラグインに走らせる操作である。 */
@@ -104,8 +104,7 @@ export function videoTagNames(video: Video): Set<string> {
 
 /**
  * selectableTags は取得したタグのうち動画にまだ無い名前を、結果の順に重複なく返す。比較の段で
- * 1 つずつ選べるのはこの名前で、動画にある名前は選べない
- * （specs/056-plugin-tooling/research.md R-7）。
+ * 1 つずつ選べるのはこの名前で、動画にある名前は選べない。
  */
 export function selectableTags(video: Video, fetched: WorkInfoFetch): string[] {
   const names = videoTagNames(video);
@@ -114,8 +113,7 @@ export function selectableTags(video: Video, fetched: WorkInfoFetch): string[] {
 
 /**
  * tagsRowChecked はタグの行のチェックボックスの状態で、選べるタグが全部選ばれていれば真、
- * 一部なら `indeterminate`、1 つも無ければ偽である（specs/056-plugin-tooling/ui-design.md
- * 「Compare: tags row」）。
+ * 一部なら `indeterminate`、1 つも無ければ偽である。
  */
 export function tagsRowChecked(
   selectable: readonly string[],
@@ -157,8 +155,7 @@ export function rowState(
 }
 
 /**
- * FIELDS は比較の行の順で、contracts/screen-api.md の `WorkInfoField` の順である
- * （specs/052-plugin-work-info-fields/ui-design.md「Compare」）。
+ * FIELDS は比較の行の順で、api/openapi.yaml の `WorkInfoField` の順である。
  */
 export const FIELDS: readonly WorkInfoField[] = [
   "title",

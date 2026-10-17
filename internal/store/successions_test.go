@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 同じパスの中身の引き継ぎ（specs/030-video-versions/data-model.md §5、research.md R-5）。
+// 同じパスの中身の引き継ぎ。
 
 func probeDuration(t *testing.T, db *DB, videoID, durationMs int64) {
 	t.Helper()
@@ -257,7 +257,7 @@ func TestSuccessionKeepsTheBundlePosition(t *testing.T) {
 	}
 }
 
-// 新しい中身の参照が無くなると、判定前の記録も消える（data-model.md §1）。
+// 新しい中身の参照が無くなると、判定前の記録も消える。
 func TestSuccessionReleasedWithTheNewContent(t *testing.T) {
 	db, _ := taggedVideoFixture(t)
 	b := upsertOne(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-b", 2))

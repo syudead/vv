@@ -1,5 +1,5 @@
 -- +goose Up
--- 所有者が付けた表示名と代表サムネイルの位置（specs/029-video-overrides/research.md R-1）。
+-- 所有者が付けた表示名と代表サムネイルの位置。
 -- 作り直せない利用者データで、playback_progress・video_tags・public_videos と同じく
 -- 内容の識別子に結び、videos への外部キーを張らない。
 create table video_overrides (

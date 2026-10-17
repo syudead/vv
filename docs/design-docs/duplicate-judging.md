@@ -8,8 +8,6 @@ frame rule is
 [`internal/domain/version_frames.go`](../../internal/domain/version_frames.go),
 and the queue and the results are
 [`internal/store/version_judgements.go`](../../internal/store/version_judgements.go).
-The reasons for each rule are in
-[054 research](../../specs/054-auto-dup/research.md).
 
 The diagram shows one candidate from the claim to its result.
 
@@ -32,8 +30,7 @@ flowchart LR
 Frames are paired by time and flat frames are skipped, as the candidate check
 pairs them, and a pair differs when its distance is over 12
 (`FingerprintMatchMaxDistance`). The median the candidate check uses hides a
-replaced section; the per-frame list shows it
-([R-1](../../specs/054-auto-dup/research.md#r-1-the-fingerprints-decide-first-the-model-is-asked-only-when-a-section-differs)).
+replaced section; the per-frame list shows it.
 
 | Frames | Result | Frames shown to the model |
 | --- | --- | --- |
@@ -51,12 +48,9 @@ Each image is frame A on the left and the paired frame B on the right, cut
 from the two seek previews by
 [`internal/artifacts`](../../internal/artifacts/seek_frames.go), with B scaled
 to A's frame size. The request carries no facts: no file name, folder or
-duration
-([R-2](../../specs/054-auto-dup/research.md#r-2-the-model-sees-the-frames-where-the-two-files-differ),
-[R-11](../../specs/054-auto-dup/research.md#r-11-the-request-carries-no-file-names)).
+duration.
 The question and the thresholds 0.8 and 0.2 are fixed in
-`internal/domain`
-([R-3](../../specs/054-auto-dup/research.md#r-3-the-question-wording-and-two-fixed-thresholds)).
+`internal/domain`.
 
 | Rejected | Why |
 | --- | --- |
@@ -76,11 +70,10 @@ One goroutine, like `AutoTagger`, claims one pair at a time while
 | Saving the setting | Turning it on judges every waiting pair |
 | Saving the Ollama connection | `no_connection` pairs return to waiting |
 | A retry or undo from the activity log | A retried pair is claimable now |
-| The earliest `retry_at` of a failed pair | Retries need nothing from the owner ([R-5](../../specs/054-auto-dup/research.md#r-5-a-failed-judgement-retries-on-a-backoff-that-never-ends)) |
+| The earliest `retry_at` of a failed pair | Retries need nothing from the owner  |
 
 The worker asks the store whether an `ollama.endpoint` row exists before a
-request, so a pair is never sent to the default address the owner never set
-([R-13](../../specs/054-auto-dup/research.md#r-13-the-model-is-asked-only-once-the-owner-has-saved-a-connection)).
+request, so a pair is never sent to the default address the owner never set.
 Each pair's frame-rule outcome, frame counts, verdict and probability go to
 the log under `component=duplicate-judging`.
 
@@ -90,8 +83,7 @@ Every judgeable candidate has one `version_judgement` entry in the activity
 log ([activity.md](activity.md)), opened when the candidate appears while
 judging is on, or when judging is turned on. The candidate row's
 `activity_id` points to it, and its status follows the row's `judgement`, so
-the same entry turns from `no_connection` or `failed` into the result
-([055 R-4](../../specs/055-activity/research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem)).
+the same entry turns from `no_connection` or `failed` into the result.
 The code is
 [`internal/store/activity_judgements.go`](../../internal/store/activity_judgements.go).
 
@@ -109,8 +101,7 @@ The code is
 | Swept into one bundle by another pair's automatic bundle, or dropped by a rebuild while both keys stay in the library | `done`/`superseded` |
 
 The decider is `ai` with the probability when the model's answer decided, and
-`rule` otherwise
-([055 R-5](../../specs/055-activity/research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run)).
+`rule` otherwise.
 An automatic bundle keeps the joined side's member keys and its former
 representative in `undo_keys`, the side whose representative did not become
 the bundle's.
@@ -118,8 +109,7 @@ the bundle's.
 ## Undo of an automatic decision is held
 
 The owner undoes an automatic `same` or `different` from the activity log in
-one `ActivityStore` transaction that re-reads the state first
-([055 R-7](../../specs/055-activity/research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)).
+one `ActivityStore` transaction that re-reads the state first.
 When the state has changed, nothing else changes and the `undo` entry says
 `already_reverted`. Whether the owner changed it since is read from the log,
 not from the rows' timestamps: entry ids are monotonic, so an owner entry on

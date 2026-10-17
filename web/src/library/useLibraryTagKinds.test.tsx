@@ -6,7 +6,7 @@ import { __resetTagKindsForTest, refreshTagKinds } from "../api/tagKinds";
 import { ToastProvider } from "../ui/Toast";
 import { useLibraryTagKinds } from "./useLibraryTagKinds";
 
-// URL の `tagKind` の種類が無いときの確かめ（specs/051-tag-kinds/ui-design.md「Library」）。
+// URL の `tagKind` の種類が無いときの確かめ。
 // 種類の一覧は URL が書き換わる前にも届き直すが、URL から外すのは 1 度だけにする。
 
 function json(body: unknown, status = 200): Response {

@@ -2,8 +2,7 @@ package main
 
 // Windows 版の zip（VVMDM-<版>-windows-amd64.zip）を組み立てる。task build-windows-app の
 // 実体で、.github/workflows/windows-app.yml も同じ入口を呼ぶ。中身は
-// specs/037-windows-app/contracts/windows-app.md §1、FFmpeg の固定は research.md R-12、
-// 組み立ての形は R-13 による。
+// docs/design-docs/windows-app.md に記す。
 
 import (
 	"archive/zip"

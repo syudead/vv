@@ -4,8 +4,7 @@ The owner chooses the video encoder for live transcoding
 (`GET /api/videos/{id}/transcode.mp4`); a startup check decides which hardware
 encoders work, and a failing one falls back to software within the request
 ([`internal/app/transcode_settings.go`](../../internal/app/transcode_settings.go)).
-Background: [specs/025-hardware-encoding/](../../specs/025-hardware-encoding/plan.md)
-(parent Issue #370). Starting a live transcode is in
+Starting a live transcode is in
 [live-transcode-seek.md](live-transcode-seek.md), and the MOV inputs are in
 [mov-live-transcoding.md](mov-live-transcoding.md).
 
@@ -163,8 +162,7 @@ quality arguments.
 `GET` and `PUT /api/settings/transcoding` (body `{"videoEncoder": …}`) are
 owner-only and both return the current `TranscodingSettings` with
 `Cache-Control: no-store`
-([contract](../../specs/025-hardware-encoding/contracts/transcoding-settings-api.md);
-source of truth [api/openapi.yaml](../../api/openapi.yaml)).
+([api/openapi.yaml](../../api/openapi.yaml)).
 
 The response carries the choice, the encoder in use, `fallbackReason`,
 `checking`, and the check result with its reason for `nvenc`, `qsv`, `vaapi`

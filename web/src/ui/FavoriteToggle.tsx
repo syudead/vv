@@ -9,8 +9,7 @@ import { useToast } from "./Toast";
 
 /**
  * FavoriteToggle はカードと行のお気に入りの付け外しである。vv 固有の部品で、使い方は
- * web/registry/rules/components.md「FavoriteToggle」
- * （specs/035-favorites/ui-design.md「Mark」「Card」）。印を兼ね、塗りのハートがお気に入り、
+ * web/registry/rules/components.md「FavoriteToggle」。印を兼ね、塗りのハートがお気に入り、
  * 線のハートがお気に入りでない。所有者の画面でだけ描く（呼び出し側が決める）。
  *
  * - `card` は格子のカードのサムネイルの右上に重ねる形で、面も枠も付けず、押せる範囲
@@ -23,7 +22,7 @@ import { useToast } from "./Toast";
  *   決着するまでは `aria-disabled` で回る印に替え、重ねて送らない。印は応答の通知で
  *   一覧が差し替える（api/favorites.ts）。失敗はトーストで伝え、印は変えない。
  * - `page` は再生画面の情報の行の右端の一群に置く形で、`Toggle`（`sm`）にツールチップを
- *   添える（ui-design.md「Video page」）。オフは一群の他の操作と同じ `text-muted-foreground`、
+ *   添える。オフは一群の他の操作と同じ `text-muted-foreground`、
  *   オンは押した状態の面（`bg-primary-soft`）のまま、ハートの色だけを `text-favorite` にする。
  *   常に見える。失敗は `onFailed` へ渡し、
  *   呼び出し側が情報の行の直下の 1 行に出す（トーストは出さない）。

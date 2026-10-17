@@ -119,7 +119,7 @@ func TestRebuildFolderIndexAfterScan(t *testing.T) {
 		t.Fatalf("folder names = %v (loose=%d)", names, loose)
 	}
 
-	// 次のスキャンで子フォルダができても、一度できた自動グループは残る（specs/048-groups/research.md R-3）。
+	// 次のスキャンで子フォルダができても、一度できた自動グループは残る。
 	nested := upsertFolderVideo(t, db, fixturePath("/media/Show/Extra/a.mp4"), "extra")
 	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
 		t.Fatal(err)
@@ -159,7 +159,7 @@ func TestRebuildFolderIndexOnMediaFolderChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 共有する動画の代表の所在は /aaa/c/1.mp4 に移り、/aaa/c のグループができる。一度できた
-	// /media/b の自動グループは残る（specs/048-groups/research.md R-3）。
+	// /media/b の自動グループは残る。
 	assertGroups(t, db, []storedGroup{
 		{Path: fixturePath("/aaa/c"), Name: "c", Members: []int64{shared, onlyAAA}},
 		{Path: fixturePath("/media/b"), Name: "b", Members: []int64{shared, onlyMedia}},
@@ -220,7 +220,7 @@ func TestFolderGroupOverrides(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertGroups(t, db, []storedGroup{root, show})
-	// 例外を外しても、一度できた自動グループは残る（specs/048-groups/research.md R-3）。
+	// 例外を外しても、一度できた自動グループは残る。
 	if err := groups.ClearOverride(ctx, fixturePath("/media")); err != nil {
 		t.Fatal(err)
 	}
@@ -396,7 +396,6 @@ func BenchmarkRebuildFolderIndex(b *testing.B) {
 }
 
 // まとめ方の読み出しは、例外と、そのフォルダの自動グループの id を返す
-// （specs/048-groups/contracts/screen-api.md「Routes and schemas changed」の FolderGrouping）。
 func TestFolderGroupings(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {
@@ -445,7 +444,7 @@ func TestFolderGroupings(t *testing.T) {
 }
 
 // 移行 00045 はフォルダの索引のグループの表を落とす。Down は空の表を戻し、前の版が次の起動で
-// 索引を作り直すよう、索引を古いと記録する（specs/048-groups/data-model.md「Migration」）。
+// 索引を作り直すよう、索引を古いと記録する。
 func TestDropFolderGroupsMigration(t *testing.T) {
 	db, provider := migrateTo(t, 44)
 	ctx := context.Background()

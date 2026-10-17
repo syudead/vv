@@ -23,7 +23,7 @@ import {
 } from "../lib/seekSprite";
 
 // 一覧のカードと関連動画のサムネイルの下端に置く、スクラブの帯である
-// （specs/032-card-scrub-preview/research.md R-3〜R-5、ui-design.md「Band」「Frame」）。
+//
 
 export interface ScrubPreviewOptions {
   video: Video;

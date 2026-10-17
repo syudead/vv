@@ -18,9 +18,8 @@ import { Spinner } from "../ui/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 
 // 順に並ぶ項目（動画かグループ）を持ち上げて並べ替え、`×` で外す行の共通の部品である。
-// プレイリストの画面（specs/044-playlists/ui-design.md「Reordering」「Removing an item」）と
-// グループのページのリスト表示（specs/048-groups/ui-design.md「Reordering」「Removing one
-// item」）が同じ持ち上げ方・読み上げ・ハンドル・`×` を使う。
+// プレイリストの画面と
+// グループのページのリスト表示が同じ持ち上げ方・読み上げ・ハンドル・`×` を使う。
 
 /** verticalOnly は持ち上げた行を縦にだけ動かす。 */
 export const verticalOnly: Modifier = ({ transform }) => ({ ...transform, x: 0 });

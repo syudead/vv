@@ -28,7 +28,7 @@ func TestGroupNameFromTitle(t *testing.T) {
 	}
 }
 
-// マージの計画（research.md R-5）: X を持つ親とプレイリストは X の位置で Y に置き換える。すでに Y を
+// マージの計画: X を持つ親とプレイリストは X の位置で Y に置き換える。すでに Y を
 // 持つ親とプレイリスト、Y 自身と Y の子孫の親では、X の項目を消す。
 func TestPlanGroupMerge(t *testing.T) {
 	// Y(1) ── 2 ── 3、10 は独立。X(9) は 1・2・3・10・11 の子で、11 は Y も持つ。

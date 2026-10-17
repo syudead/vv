@@ -11,7 +11,6 @@ import (
 )
 
 // 解析の失敗は、状況に応じた理由のコードで包まれる
-// （specs/023-english-i18n/data-model.md §1）。
 func TestProbeFailureCodes(t *testing.T) {
 	dir := t.TempDir()
 	missing := filepath.Join(dir, "missing.mp4")

@@ -1,5 +1,5 @@
 -- +goose Up
--- 取り込みの解析で読む動画の追加の情報（specs/056-media-info/data-model.md「video_media_info」）。
+-- 取り込みの解析で読む動画の追加の情報。
 -- 索引であり、消えても走査とそれが積む仕事で埋まる。
 create table video_media_info (
     video_id   integer primary key references videos (id) on delete cascade,

@@ -23,11 +23,10 @@ import (
 const thumbnailLongSide = 640
 
 // thumbnailSourceLongSide は適用した画像の元の画像の長辺の上限（px）である
-// （specs/046-thumbnail-image-upload/research.md R-3）。
 const thumbnailSourceLongSide = 2048
 
 // FitThumbnailImage は、所有者が適用する画像 data を動画の表示上の縦横比 aspect（横÷縦）に
-// 合わせ、代表サムネイルの JPEG を返す（specs/045-comfyui-thumbnails/research.md R-7）。
+// 合わせ、代表サムネイルの JPEG を返す。
 //
 // aspect が正なら、長辺 640px のその比率の枠を覆うまで拡大縮小し、はみ出した分を中央で
 // 切り抜く。帯を足すと、カードの object-contain の枠の中に2つ目の縁が出る。aspect が 0 なら
@@ -50,7 +49,7 @@ func FitThumbnailImage(ctx context.Context, data []byte, aspect float64) ([]byte
 
 // FitThumbnailSource は、所有者が適用する画像 data を FitThumbnailImage と同じく動画の表示上の
 // 縦横比 aspect（横÷縦、0 は画像自身の比率）に中央で切り抜き、長辺を最大 2048px にした JPEG を
-// 返す（specs/046-thumbnail-image-upload/research.md R-3）。今のサムネイルからの編集の元になる。
+// 返す。今のサムネイルからの編集の元になる。
 //
 // 切り抜いた大きさが 2048px 以下なら拡大しない。品質は -q:v 2 である。読めない画像は
 // domain.ErrThumbnailImageInvalid を返す。

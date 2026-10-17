@@ -5,7 +5,7 @@ import (
 	"net/netip"
 )
 
-// refusedPrefixes はプラグインの要求が届いてはならない範囲の表である（research.md R-5）。
+// refusedPrefixes はプラグインの要求が届いてはならない範囲の表である。
 // IANA の IPv4 と IPv6 の Special-Purpose Address Registry のうち「Globally Reachable」が True で
 // ない範囲と、それに加えて vv が拒む範囲を並べる。テストはどの行からも 1 つのアドレスを確かめる。
 var refusedPrefixes = []netip.Prefix{

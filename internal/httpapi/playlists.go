@@ -11,11 +11,11 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// プレイリストの管理（specs/044-playlists/contracts/screen-api.md）。どの経路も /api/* の既定どおり
-// 所有者だけで、accessRoutes には入れない（research.md R-8）。
+// プレイリストの管理。どの経路も /api/* の既定どおり
+// 所有者だけで、accessRoutes には入れない。
 
 // Playlists はプレイリストの保存先である。internal/store の *PlaylistStore がこれを満たす。
-// どの操作も 1 つの取引で済むので、internal/app は通さない（plan.md の Constitution Check）。
+// どの操作も 1 つの取引で済むので、internal/app は通さない。
 type Playlists interface {
 	// ListPlaylists はプレイリストを更新日時の新しい順（同じなら id の大きい順）に cursor の次から
 	// limit 件返す。Covers は返したページの分だけ埋まる。読めない cursor は domain.ErrInvalidCursor。
@@ -207,7 +207,7 @@ func (s *server) GetPlaylist(w http.ResponseWriter, r *http.Request, id gen.Play
 }
 
 // AddPlaylistItems はプレイリストの末尾に動画・グループ・スマートフォルダを足す
-// （POST /api/playlists/{id}/items、research.md R-5、specs/052-smart-folders/contracts/screen-api.md）。本文の形と件数の上限は PUT /api/favorites と同じで、合計が 0 なら
+// （POST /api/playlists/{id}/items、docs/design-docs/catalog-organization.md）。本文の形と件数の上限は PUT /api/favorites と同じで、合計が 0 なら
 // invalid_request、20000 を超えれば too_many_videos にする。
 func (s *server) AddPlaylistItems(w http.ResponseWriter, r *http.Request, id gen.PlaylistId) {
 	if !s.validPlaylistID(w, id) {
@@ -253,7 +253,7 @@ func (s *server) AddPlaylistItems(w http.ResponseWriter, r *http.Request, id gen
 }
 
 // MovePlaylistItem はプレイリストの項目 1 つを afterItemId のすぐ後ろへ移す
-// （POST /api/playlists/{id}/items/{itemId}/move、research.md R-3）。null なら先頭へ移す。
+// （POST /api/playlists/{id}/items/{itemId}/move）。null なら先頭へ移す。
 func (s *server) MovePlaylistItem(w http.ResponseWriter, r *http.Request, id gen.PlaylistId, itemID gen.PlaylistItemId) {
 	if !s.validPlaylistID(w, id) || !s.validPlaylistItemID(w, itemID) {
 		return

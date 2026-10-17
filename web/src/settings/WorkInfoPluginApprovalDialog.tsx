@@ -68,8 +68,7 @@ function SettingsItReceives({ plugin }: { plugin: WorkInfoPlugin }) {
 
 /**
  * WorkInfoPluginApprovalDialog は「Review and approve」が開く承認の確認である。一覧が返した
- * `WorkInfoPlugin` から作り、「Approve」はここに出している digest を送る
- * （specs/049-work-info-plugins/ui-design.md「Approval prompt」、research.md R-7）。
+ * `WorkInfoPlugin` から作り、「Approve」はここに出している digest を送る。
  * changed のあいだは差し替えの知らせを出し、「Approve」を押せなくする。
  */
 export default function WorkInfoPluginApprovalDialog({

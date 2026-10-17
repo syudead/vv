@@ -9,21 +9,19 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// プレイリストから再生しているときの位置と次の動画（specs/044-playlists/contracts/screen-api.md
-// 「GET /api/playlists/{id}/playback」、research.md R-6）。
+// プレイリストから再生しているときの位置と次の動画。
 
 // PlaylistPlaybackReader はプレイリストの連続再生の読み出し先である。internal/store の
 // *PlaylistStore がこれを満たす。1 つの読み取りで済むので、internal/app は通さない。
 type PlaylistPlaybackReader interface {
 	// PlaylistPlayback はプレイリスト id を項目 itemID の動画 videoID から再生しているときの
-	// 位置と次に開く動画を返す（data-model.md「Playback order」）。プレイリストが無ければ
+	// 位置と次に開く動画を返す。プレイリストが無ければ
 	// domain.ErrPlaylistNotFound、項目が無ければ domain.ErrPlaylistItemNotFound を返す。
 	PlaylistPlayback(ctx context.Context, id, itemID, videoID int64) (domain.PlaylistPlayback, error)
 }
 
 // GetPlaylistPlayback はプレイリストから再生しているときの位置と次の動画を返す
-// （GET /api/playlists/{id}/playback）。所有者だけで、ゲストは /api/* の既定で 401 になる
-// （research.md R-8）。item か video が無いか整数でなければ、生成された経路が 400 を返す。
+// （GET /api/playlists/{id}/playback）。所有者だけで、ゲストは /api/* の既定で 401 になる。item か video が無いか整数でなければ、生成された経路が 400 を返す。
 func (s *server) GetPlaylistPlayback(w http.ResponseWriter, r *http.Request, id gen.PlaylistId, params gen.GetPlaylistPlaybackParams) {
 	if s.playlistPlayback == nil {
 		s.internalError(w, "Playlist storage is not configured.", nil)

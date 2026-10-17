@@ -5,9 +5,9 @@
 //
 // 測るのは本番の生成コードそのもの（動くプレビューは media.GeneratePreview、
 // シーク用は media.GenerateSeekThumbnailSet）である。ffmpeg の引数をここへ写すと
-// 本番とずれるので写さない（specs/019-preview-input-seek/research.md R-4）。
+// 本番とずれるので写さない。
 // シーク用の生成方式を変えるときは GenerateSeekThumbnailSet の中身だけを変え、
-// ここには触れない（specs/021-seek-thumbnail-sprite/plan.md）。
+// ここには触れない。
 //
 // ピークメモリは終了した子プロセス全体の最大（RUSAGE_CHILDREN の maxrss）なので、
 // 複数の入力を1回の実行に渡すと前の入力の値を引き継ぐ。比べるときは入力ごとに

@@ -1,7 +1,6 @@
 package store
 
-// ライブラリの一番上のスマートフォルダ（specs/052-smart-folders/data-model.md「Library items」、
-// research.md R-7・R-14）。絞り込みの無いライブラリには親の無いフォルダを、お気に入りのみにはお気に入りに
+// ライブラリの一番上のスマートフォルダ。絞り込みの無いライブラリには親の無いフォルダを、お気に入りのみにはお気に入りに
 // したフォルダを深さによらず、グループのカードや動画と混ぜて並べる。項目はフォルダの要約だけを持ち、
 // 並べ替えの値はフォルダの一致する動画（smart_folder_matches.go）から 1 つの問い合わせで求める。
 
@@ -42,8 +41,7 @@ func librarySmartFolderIDs(ctx context.Context, tx *sql.Tx, q domain.VideoQuery)
 }
 
 // librarySmartFolders は、一覧の条件 q でライブラリの一番上に出すスマートフォルダを、見る人
-// （audience）に見せるものだけ、並べ替えの値とともに返す。ゲストには再生順の空のフォルダを出さない
-// （research.md R-8）。now は追加日の絞り込みの基準時刻で、一覧と同じ値を使う。
+// （audience）に見せるものだけ、並べ替えの値とともに返す。ゲストには再生順の空のフォルダを出さない。now は追加日の絞り込みの基準時刻で、一覧と同じ値を使う。
 func librarySmartFolders(ctx context.Context, tx *sql.Tx, audience domain.Audience, q domain.VideoQuery, now int64) ([]librarySmartFolder, error) {
 	ids, err := librarySmartFolderIDs(ctx, tx, q)
 	if err != nil || len(ids) == 0 {
@@ -103,8 +101,7 @@ func readSmartFolderSortValues(ctx context.Context, tx *sql.Tx, audience domain.
 // smartFolderItemsSQL は、ライブラリの一番上に並べるスマートフォルダ folders（spec.smartFolders）を
 // 項目にする、items に足す union の句とその引数を返す。フォルダが無ければどちらも空である。項目の
 // id はフォルダの id を負にした値で、動画とグループの項目の id（正）と重ならない（カーソルは種類を
-// 運ぶ）。題名とお気に入りにした日時はフォルダのもので、ほかの値は一致する動画から求めた値である
-// （data-model.md「Library items」）。視聴状態は持たない（視聴状態の絞り込みではフォルダを出さない）。
+// 運ぶ）。題名とお気に入りにした日時はフォルダのもので、ほかの値は一致する動画から求めた値である。視聴状態は持たない（視聴状態の絞り込みではフォルダを出さない）。
 func smartFolderItemsSQL(folders []librarySmartFolder) (string, []any) {
 	if len(folders) == 0 {
 		return "", nil

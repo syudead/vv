@@ -1,5 +1,5 @@
 // Package plugintest はテストの作品情報プラグインを Go のソースから組み立てる。.wasm のファイルは
-// リポジトリに置かず、テストのたびに GOOS=wasip1 GOARCH=wasm でビルドする（specs/049-work-info-plugins/research.md R-12）。
+// リポジトリに置かず、テストのたびに GOOS=wasip1 GOARCH=wasm でビルドする。
 // vv.plugin のセクションは、mdm plugin pack と同じ wasmplugin.WithManifest で足す。テストだけが使う。
 package plugintest
 

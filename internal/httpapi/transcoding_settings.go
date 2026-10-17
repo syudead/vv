@@ -9,7 +9,6 @@ import (
 )
 
 // GetTranscodingSettings はライブ変換の映像エンコード方式の設定と、各方式が使えるかを返す
-// （specs/025-hardware-encoding/contracts/transcoding-settings-api.md §2）。
 func (s *server) GetTranscodingSettings(w http.ResponseWriter, _ *http.Request) {
 	if s.transcodeSettings == nil {
 		s.internalError(w, "Transcoding settings are not configured.", nil)

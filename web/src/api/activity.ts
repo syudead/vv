@@ -2,7 +2,7 @@ import { apiFetch, request, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
 import { clearListSnapshot } from "./listSnapshot";
 
-// アクティビティの記録の画面 API（specs/055-activity/contracts/screen-api.md）。型は
+// アクティビティの記録の画面 API。型は
 // api/openapi.yaml からの生成物を使う。
 
 export type ActivityPage = components["schemas"]["ActivityPage"];

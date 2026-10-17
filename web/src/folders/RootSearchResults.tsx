@@ -31,7 +31,7 @@ export const ROOT_SEARCH_KEY = "root-search";
 /**
  * RootSearchResults は最上位（`/folders`）で検索語があるときの検索結果である。
  * ライブラリ全体を `listVideos` で検索し、置き場所は登録フォルダの表示名から
- * 始める（ui-design.md「Search results」）。
+ * 始める。
  */
 export default function RootSearchResults({
   criteria,

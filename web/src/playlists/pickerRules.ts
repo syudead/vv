@@ -1,10 +1,9 @@
 import type { PlaylistItemsAdded } from "../api/playlists";
 import { t, type UiText } from "../i18n";
 
-// 「Add to playlist」と「Add to group」のピッカーの規則（specs/044-playlists/ui-design.md
-// 「Add to playlist」、specs/048-groups/ui-design.md「Add to group」）。
+// 「Add to playlist」と「Add to group」のピッカーの規則。
 
-/** maxNameLength はプレイリストの名前の上限（トリム後の符号位置の数、research.md R-11）。 */
+/** maxNameLength はプレイリストの名前の上限（トリム後の符号位置の数）。 */
 const maxNameLength = 100;
 
 /** nameTooLong はトリムした名前が上限を超えるか（サーバーと同じく符号位置で数える）。 */

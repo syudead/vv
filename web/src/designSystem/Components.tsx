@@ -36,7 +36,7 @@ import { Textarea } from "../ui/shadcn/textarea";
 import { Toggle } from "../ui/shadcn/toggle";
 import { ToggleGroup, ToggleGroupItem } from "../ui/shadcn/toggle-group";
 
-// 見本の部品の節（specs/038-design-system/ui-design.md「Review criteria」4）。部品ごとに
+// 見本の部品の節。部品ごとに
 // variant を行、状態を列に並べる。hover と押下は index.css の data-demo-state で、
 // キーボードのフォーカスは同じ輪を最初の子に描いて、触らずに見せる。
 
@@ -488,8 +488,7 @@ function CommandDemo() {
 
 /**
  * Components は見本の部品の節である。操作と入力の部品を、通常・hover・キーボードの
- * フォーカス・押下・選択・無効の状態で並べ、メンテナーが確かめる
- * （specs/038-design-system/research.md R-1、R-2）。
+ * フォーカス・押下・選択・無効の状態で並べ、メンテナーが確かめる。
  */
 export default function Components() {
   return (

@@ -143,7 +143,7 @@ function itemGroup(item: LibraryItem): LibraryGroup | undefined {
 
 /**
  * withSmartFolderCards は一覧をスマートフォルダのカードの値の持ち主で包む。カードの値は
- * 画面に入ったカードだけを読む（specs/052-smart-folders/research.md R-14）。
+ * 画面に入ったカードだけを読む。
  */
 function withSmartFolderCards(content: ReactNode) {
   return <SmartFolderCardsProvider>{content}</SmartFolderCardsProvider>;
@@ -162,7 +162,7 @@ function libraryConditioned(filter: LibraryFilter): boolean {
 
 /**
  * saveSmartFolderAction は見出しの「Save as smart folder」である。所有者が条件で絞っている間だけ
- * 出す（specs/052-smart-folders/ui-design.md「Save as smart folder」、要件 10）。
+ * 出す。
  */
 function saveSmartFolderAction(
   owner: boolean,
@@ -188,16 +188,15 @@ export default function LibraryPage() {
   const location = useLocation();
   const toast = useToast();
   // ゲストには所有者のデータに依る操作（選択・タグの絞り込み・選択バー）を出さない
-  // （specs/016-single-account-auth/ui-design.md「Guest degradation」）。
+  //
   const owner = useAudience() === "owner";
   const [preferences, setPreferences] = useState(readViewPreferences);
-  // 一覧の条件は URL が持つ（contracts/list-url.md）。端末に保存するのは sort だけ。
+  // 一覧の条件は URL が持つ。端末に保存するのは sort だけ。
   // タグ絞り込み（`tag`）はライブラリだけが持つ条件で、共有の ListCriteria には
   // 含めない。useListCriteria の画面固有の
   // パラメータの口へ渡し、URL のすべての書き換え経路でその値を残す。
-  // 人物・団体（`person`・`organization`）も同じ口で運ぶ（specs/047-video-work-info/
-  // ui-design.md「Library: filter by a person or organization」）。
-  // 追加日と長さはゲストも使える（specs/052-smart-folders/research.md R-4）。
+  // 人物・団体（`person`・`organization`）も同じ口で運ぶ。
+  // 追加日と長さはゲストも使える。
   const { criteria, apply } = useListCriteria(
     preferences.sort,
     libraryParams,
@@ -282,7 +281,7 @@ export default function LibraryPage() {
     });
   }, [apply, criteria, resetPreview]);
 
-  // --- タグ絞り込み（list-url.md §2） ---
+  // --- タグ絞り込み ---
   // criteria は描画ごとに新しいオブジェクトになる。カードへ渡す pressTag は、
   // 最新の条件を ref から読んで参照を保ち、無関係な描画でカードを描き直させない。
   const latestConditions = useRef({ criteria, tagIds });
@@ -293,7 +292,7 @@ export default function LibraryPage() {
     [apply],
   );
 
-  // --- 人物・団体の絞り込み（047 ui-design.md「Library: filter by a person or organization」） ---
+  // --- 人物・団体の絞り込み ---
   // チップを押すとそのパラメータだけを外す。タグともう一方の種類は残る。
   const removeCredit = useCallback(
     (kind: CreditKind) => {
@@ -315,7 +314,7 @@ export default function LibraryPage() {
     },
     [apply, toast],
   );
-  // --- タグの種類の絞り込み（051 ui-design.md「Library」） ---
+  // --- タグの種類の絞り込み ---
   // 選ぶ・チップで外す・もう無い種類を外すのは `tagKind` だけで、ほかの条件は残る。
   const applyTagKind = useCallback<ApplyTagKind>(
     (extra, mode) => {
@@ -325,7 +324,7 @@ export default function LibraryPage() {
     [apply, resetPreview],
   );
   const tagKinds = useLibraryTagKinds(credits.tagKind, applyTagKind);
-  // --- 追加日と長さ（052 ui-design.md「Added and length」） ---
+  // --- 追加日と長さ ---
   const { changeAdded, changeLength } = useAddedLengthControls(
     parsedAddedLength,
     applyTagKind,
@@ -392,15 +391,13 @@ export default function LibraryPage() {
   }, [favorite, items, playable, query, resetPreview, sort, view, watch, zoom]);
 
   // --- 選択 ---
-  // 選択は動画の id の集合と、グループとして選んだグループ（フォルダとメンバー）を持つ
-  // （specs/035-favorites/research.md R-7）。タグ・公開・束ねる操作は id の集合を送り、
+  // 選択は動画の id の集合と、グループとして選んだグループ（フォルダとメンバー）を持つ。タグ・公開・束ねる操作は id の集合を送り、
   // 一括のお気に入りだけが選んだグループを `folders` として送る。
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
   const selectedIds = selection.ids;
   // selectAllSelection は直前の「すべて選択」（GET /api/library/ids）の応答の ids と groups
   // である。選択がこれと同じ（id の集合も選んだグループも）間だけ「すべて選択」を押せなく
-  // する（ui-design.md「Pressing and selection」、035 ui-design.md「Selection bar」。選んだ
-  // 本数と total は数えるものが違うので比べない）。
+  // する。
   const [selectAllSelection, setSelectAllSelection] = useState<LibrarySelection | null>(
     null,
   );
@@ -439,8 +436,7 @@ export default function LibraryPage() {
     [invalidateSelectAll],
   );
   // グループのカードのチェックは、全メンバー（videoIds）を選択に入れる・外し、
-  // グループとして覚える（specs/017-folder-groups/ui-design.md「Pressing and selection」、
-  // 035 research.md R-7）。
+  // グループとして覚える。
   const changeGroupSelection = useCallback(
     (group: LibraryGroup, selected: boolean) => {
       invalidateSelectAll();
@@ -462,11 +458,11 @@ export default function LibraryPage() {
     setSelection(emptySelection);
     // 選択が消えたら、前の「すべて選択」の応答はもう比べない。条件が変わった後に
     // 同じ id を手で選び直しても、読んでいない項目が残りうるので押せるままにする
-    // （ui-design.md「Pressing and selection」）。
+    //
     setSelectAllSelection(null);
   }, [invalidateSelectAll]);
 
-  // --- ドラッグ（specs/050-drag-organize/ui-design.md「Library」） ---
+  // --- ドラッグ ---
   // グループへ落として移すかマージした項目はすぐ隠し、動画を動画に落とした結果はすぐ見せる。
   // 取り消しの通知は画面を離れると閉じる。
   const moves = useLibraryMoves(items, refreshInPlace, clearSelection);
@@ -486,7 +482,7 @@ export default function LibraryPage() {
 
   // --- 「すべて選択」 ---
   // 読み込んでいないページを含む、今の条件の全件の id を選ぶ。応答の `groups` は
-  // 選んだグループにする（035 research.md R-7）。
+  // 選んだグループにする。
   const selectAll = useCallback(() => {
     const seq = (selectAllSeq.current += 1);
     setSelectingAll(true);
@@ -524,7 +520,7 @@ export default function LibraryPage() {
   }, [applyTags, libraryFilter, favorite, playable, query, tagIds, toast, watch]);
 
   // 選択バーで一括して外したタグが、今の絞り込み（tagIds）に含まれているとき
-  // の方針（Devin の指摘4、docs/design-docs/library-ui.md §6）。外した動画は
+  // の方針（Devin の指摘4、docs/design-docs/library-ui.md）。外した動画は
   // その絞り込みにもう合わなくなるかもしれないので、選択を解除し一覧を取り
   // 直して、件数と一覧を条件に合わせ直す。タグの絞り込み自体は外さない
   // （そのタグはまだ有効な絞り込み条件であり続ける）。
@@ -553,8 +549,7 @@ export default function LibraryPage() {
     setSelection((current) => reconcileGroups(current, items));
   }, [items]);
 
-  // 検索語・視聴状態・再生可否・タグのどれかを変えると選択を解除する
-  // （ui-design.md「Active tag filters」）。条件の違う一覧で選んだ動画が、見えない
+  // 検索語・視聴状態・再生可否・タグのどれかを変えると選択を解除する。条件の違う一覧で選んだ動画が、見えない
   // まま選択に残らないようにするため。同じ動画がたまたま両方の条件に一致しても
   // 解除する。
   const conditionsSignature = [
@@ -593,8 +588,7 @@ export default function LibraryPage() {
   }, [items.length]);
 
   // 選択バーの「Bundle as versions」で束ね終えたら、選択を解除して一覧を取り直す。代表以外の
-  // バージョンが一覧から消える（specs/030-video-versions/ui-design.md「Bundle dialog」、
-  // 受け入れ条件 6）。取り直しても格子の位置は保つ（下のスクロールの復元に今の位置を渡す）。
+  // バージョンが一覧から消える。取り直しても格子の位置は保つ（下のスクロールの復元に今の位置を渡す）。
   // バーは消えるので、取り直した後のフォーカスは見えている最初の項目へ移す。
   // 取り直しを待つ間は "requested"、読み込みが始まったら "loading" にし、読み終えたら移す。
   const focusFirstItem = useRef<"idle" | "requested" | "loading">("idle");
@@ -684,7 +678,7 @@ export default function LibraryPage() {
     return () => observer.disconnect();
   }, [hasMore, loadMore, resetPreview]);
 
-  // --- もう無いタグ（list-url.md §1、ui-design.md「Stale tags in other screens」） ---
+  // --- もう無いタグ ---
   // 一覧の応答の missingTagIds を受けたら、もう無いことを伝え、タグの一覧を取り直し、
   // 履歴を増やさずに URL から取り除く。URL を書き換えて新しい一覧を取りに行くまでの
   // 数フレームは、同じ missingTagIds を持つ再描画が起きうるので、内容が変わらない
@@ -821,8 +815,7 @@ export default function LibraryPage() {
   });
 
   // 所有者のカードと行はドラッグの層に加わる。ゲストは今のまま。スマートフォルダのカードは
-  // 持ち上げず、上に落とすと拒否する（specs/052-smart-folders/ui-design.md「Smart folder card
-  // and row」）。
+  // 持ち上げず、上に落とすと拒否する。
   const card = (item: LibraryItem) => {
     if (item.kind === "smartFolder") {
       return (
@@ -904,11 +897,11 @@ export default function LibraryPage() {
       {withSmartFolderCards(
         withDrag(
           view === "grid" ? (
-            // タグの行の幅の見張りは一覧に1つだけ（B2、ui-design.md「Overflow」）。
+            // タグの行の幅の見張りは一覧に1つだけ（B2）。
             <TagRowMeasureProvider>
               <Grid zoom={zoom}>
                 {/* グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
-                見出しは設けない（ui-design.md「Screen boundary」、要件 15）。 */}
+                見出しは設けない。 */}
                 {shown.map(card)}
               </Grid>
             </TagRowMeasureProvider>
@@ -925,7 +918,7 @@ export default function LibraryPage() {
 
   return (
     // 「New group」「Add to group」で足したものはいちばん上から外れるので、一覧をその場で
-    // 読み直す（specs/048-groups/ui-design.md「Add to group」の Result）。
+    // 読み直す。
     <GroupChangedContext value={refreshInPlace}>
       <ListPage
         header={

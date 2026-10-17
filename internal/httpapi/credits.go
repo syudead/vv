@@ -14,8 +14,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 人物と団体の管理 API（specs/047-video-work-info/contracts/screen-api.md「People and organizations」、
-// research.md R-3・R-4・R-8・R-10）。/api/people と /api/organizations の 6 つずつの経路は、生成された
+// 人物と団体の管理 API。/api/people と /api/organizations の 6 つずつの経路は、生成された
 // 操作から種類（creditKindAPI）を添えて同じハンドラを呼ぶ。どの経路も所有者だけ（accessRoutes の既定）。
 // internal/app は通さず、internal/store の CreditStore の 1 つの取引で済ませる。
 

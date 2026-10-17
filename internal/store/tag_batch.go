@@ -12,7 +12,7 @@ import (
 )
 
 // タグ管理画面のまとめての確定・却下・削除と、確認に出す数
-// （specs/036-tag-admin-scale/data-model.md §2、research.md R-4・R-6）。
+//
 //
 // どちらも ids を json_each に 1 つの引数で渡し、id の数によらず決まった数の文で行う
 // （external_video_tags.go の applyManualTags と同じ）。確定後に domain.SmartFoldersChanged だけを発行する。
@@ -20,9 +20,9 @@ import (
 // BatchTags は ids のタグに action を 1 つの取引で行う。ids の重複は 1 つとして扱い、無い id は
 // NotFoundIDs、domain.TagBatchApplies が偽の id は何も変えずに NotApplicableIDs、処理した id は
 // AppliedIDs に、それぞれ ids に現れた順で入れる。確定は仮のタグを確定にし
-// （specs/031-tentative-tags/data-model.md §3）、却下は元の名前を却下した名前に入れてから消し、
+// 、却下は元の名前を却下した名前に入れてから消し、
 // 削除は消す（tag_names と video_tags は ON DELETE CASCADE で消える）。種類を付ける・外すのは
-// tags.kind_id だけを書き、仮かどうかは変えない（specs/051-tag-kinds/data-model.md「Rules」）。
+// tags.kind_id だけを書き、仮かどうかは変えない。
 // 種類を付けるときは同じ取引で先に種類を読み、無ければ domain.ErrTagKindNotFound で何も
 // 変えない。取引が失敗したら何も変えない。
 func (s *TagStore) BatchTags(ctx context.Context, req domain.TagBatchRequest, ids []int64) (domain.TagBatchOutcome, error) {
@@ -130,7 +130,7 @@ func requireTagKind(ctx context.Context, tx *sql.Tx, id int64) error {
 
 // TagImpact は、ids のうち今あり domain.TagImpactApplies が真のタグの数と、そのどれかが付いた
 // いまライブラリにある動画の本数を返す。動画は手で付けた分とフォルダ名から付いている分の
-// どちらでも 1 本で、id で重複を除いて数える（specs/014-video-tags/data-model.md §5）。
+// どちらでも 1 本で、id で重複を除いて数える。
 // 何も変えない。
 func (s *TagStore) TagImpact(ctx context.Context, action domain.TagImpactAction, ids []int64) (domain.TagImpact, error) {
 	if !action.Valid() {
@@ -230,8 +230,7 @@ func deleteTagsByIDs(ctx context.Context, tx *sql.Tx, encodedIDs string) error {
 }
 
 // rememberRejectedNames は encodedIDs（JSON の id の配列）のタグの元の名前を、名前の自然順の鍵
-// （domain.NaturalSortKey）と現在の版を添えて却下した名前に insert or ignore する
-// （specs/036-tag-admin-scale/data-model.md §0・§2）。鍵は SQL で作れないので、名前を 1 回で読んで
+// （domain.NaturalSortKey）と現在の版を添えて却下した名前に insert or ignore する。鍵は SQL で作れないので、名前を 1 回で読んで
 // Go で鍵を作り、名前と鍵の組を json_each に 1 つの引数で渡して 1 つの文で書く。
 func rememberRejectedNames(ctx context.Context, tx *sql.Tx, encodedIDs string) error {
 	pairs, err := rejectedNamePairs(ctx, tx, encodedIDs)

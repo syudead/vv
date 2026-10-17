@@ -12,7 +12,7 @@ import (
 
 // 00052 が積んだ metadata の仕事と metadata_failed の問題は、00053 が消す。00052 を適用済みの
 // データベースでは、対応するワーカーの無い仕事が直近の走査の残りに数えられ続けていたが、
-// 移行のあとの起動時の積み直しで直近の走査が完了する（research.md R-5）。
+// 移行のあとの起動時の積み直しで直近の走査が完了する。
 func TestDropMetadataJobsMigrationSettlesLatestScan(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {

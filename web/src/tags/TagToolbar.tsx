@@ -33,8 +33,7 @@ import TagKindSelect from "./TagKindSelect";
 import type { TagKindFilter } from "./tagListUrl";
 
 /**
- * tagSortIcons は種類ごとのアイコンである（specs/036-tag-admin-scale/ui-design.md
- * 「Top bar」）。「Date created」はライブラリのファイルの作成日（`FileClock`）と
+ * tagSortIcons は種類ごとのアイコンである。「Date created」はライブラリのファイルの作成日（`FileClock`）と
  * 別のものなので、同じ絵にしない。
  */
 const tagSortIcons: Record<TagSortKind, LucideIcon> = {
@@ -67,7 +66,7 @@ export interface TagToolbarProps {
   onTentativeOnlyChange: (value: boolean) => void;
   unusedOnly: boolean;
   onUnusedOnlyChange: (value: boolean) => void;
-  /** 種類の絞り込み（specs/051-tag-kinds/ui-design.md「Kind filter」）。 */
+  /** 種類の絞り込み。 */
   kind: TagKindFilter;
   /** 名前の自然順の種類。読み込み前は undefined。 */
   kinds: readonly TagKind[] | undefined;
@@ -87,8 +86,7 @@ export interface TagToolbarProps {
  * web/registry/rules/patterns.md の Sections）。並びはライブラリの `LibraryToolbar` と同じで、
  * 検索欄 → 絞り込み → 並び順（と向き）。検索欄・絞り込み・並び順の部品はライブラリと共有する
  * `web/src/videoList/` のもので、並び順は `md` から並べ、それより狭いとアイコンだけの
- * 「Sort」のまとめ（ライブラリの `CompactSortControls` と同じ形）に入れる
- * （specs/036-tag-admin-scale/ui-design.md「Top bar」）。
+ * 「Sort」のまとめ（ライブラリの `CompactSortControls` と同じ形）に入れる。
  */
 export default function TagToolbar({
   query,
@@ -171,8 +169,7 @@ export interface AdminListToolbarProps {
 /**
  * AdminListToolbar は管理表の画面の、共通トップバーの中央に置く検索欄と並び順である。
  * タグの画面（`TagToolbar`、「Filter」を足す）と人物・団体の画面（`web/src/credits/`）が
- * 使う。並び順の種類（Name・Video count・Date created）と向きは両方の画面で同じである
- * （specs/047-video-work-info/ui-design.md「People and organizations screens」）。
+ * 使う。並び順の種類（Name・Video count・Date created）と向きは両方の画面で同じである。
  */
 export function AdminListToolbar({
   query,
@@ -202,7 +199,7 @@ export function AdminListToolbar({
           label={searchLabel}
           placeholder={searchPlaceholder}
           syntaxHelp={false}
-          // 打鍵ごとに引き直す（前の要求は打ち切る。specs/036-tag-admin-scale/research.md R-1）。
+          // 打鍵ごとに引き直す（前の要求は打ち切る。docs/design-docs/catalog-organization.md）。
           debounceMs={0}
           disabled={searchDisabled}
         />

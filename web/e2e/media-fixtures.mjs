@@ -207,7 +207,7 @@ export function generateMediaFixtures(mediaDir) {
     "-shortest",
     file("long-gop.mkv"),
   ]);
-  // コピーで途中から始める変換の確かめ（specs/018-live-transcode-seek、#380）。
+  // コピーで途中から始める変換の確かめ。
   // キーフレームは 0・8・16 秒だけで、その区間ごとに赤・緑・青にする。途中へシークすると
   // 変換は直前のキーフレームから映像をコピーして始まり、映っている色で場面がわかる。
   ffmpeg([
@@ -248,7 +248,7 @@ export function generateMediaFixtures(mediaDir) {
     file("sparse-keyframes.mkv"),
   ]);
 
-  // 覚えた画質で直接再生できる動画を変換で始めることの確かめ（specs/027-playback-quality）。
+  // 覚えた画質で直接再生できる動画を変換で始めることの確かめ。
   // 画質の選択肢は短辺で決まるので、480p を選べる 1080p の直接再生できる動画にする。
   ffmpeg([
     "-f",
@@ -288,7 +288,7 @@ export function generateMediaFixtures(mediaDir) {
     assertFixture(file(name), codecs);
   }
 
-  // 隣に置いた字幕（specs/028-sidecar-subtitles）。ラベルの無い字幕と `ja` の字幕で、
+  // 隣に置いた字幕。ラベルの無い字幕と `ja` の字幕で、
   // どちらも 0.5 秒から動画の終わりまで 1 つの cue を出す。
   writeFileSync(
     file("direct.srt"),
@@ -312,7 +312,7 @@ export function generateMediaFixtures(mediaDir) {
 
 /**
  * generateFolderFixtures はフォルダ画面の検証用のフォルダ構成を作る
- * （specs/011-folder-browser/quickstart.md）。動画はどれも内容を変えた数秒の
+ * 。動画はどれも内容を変えた数秒の
  * H.264 で、同じ内容の複製だけが同じ動画になる。
  */
 export function generateFolderFixtures(root) {
@@ -368,7 +368,7 @@ export function generateFolderFixtures(root) {
  *
  * 残りの「タグ埋め」の動画は、1280×800 でライブラリの格子の最後の行が画面の
  * 下端に来るよう本数を足すためだけのもので、どの試験も名指しでは使わない
- * （specs/041-tag-overflow-list、下端の近くのカードの「+N」の一覧を確かめる）。
+ * 。
  * 全部の本数は TAGS_FIXTURE_VIDEO_COUNT である。
  */
 export function generateTagsFixtures(root) {
@@ -398,7 +398,7 @@ export function generateTagsFixtures(root) {
 
 /**
  * WORK_INFO_VIDEOS は generateWorkInfoFixtures が作る動画の題名で、作品情報の流れ
- * （specs/047-video-work-info、子 #1030）を web/e2e/work-info.e2e.ts で確かめる。
+ * を web/e2e/work-info.e2e.ts で確かめる。
  * 作品情報は中身を見ないので、色合いだけを変えた短い無音のクリップで足りる。
  */
 export const WORK_INFO_VIDEOS = ["作品動画A", "作品動画B", "作品動画C", "作品動画D"];
@@ -505,7 +505,7 @@ export function generateSearchFixtures(root) {
 }
 
 /**
- * generateHistoryFixtures は、視聴履歴の流れ（specs/043-watch-history、子 #864）を
+ * generateHistoryFixtures は、視聴履歴の流れを
  * 確かめるための動画を2本作る（web/e2e/history.e2e.ts）。数秒の再生と一時停止の後も
  * 見終わったことにならず進捗バーが残るよう、末尾とみなす 15 秒（internal/domain/progress.go
  * の CompletionTailMs）より十分長い 40 秒にし、中身で同じ動画とみなされないよう色合いを変える。
@@ -532,7 +532,7 @@ export function generateHistoryFixtures(root) {
 }
 
 /**
- * DRAG_ORGANIZE_VIDEOS は、ドラッグでの整理（specs/050-drag-organize、子 #1109）を確かめる
+ * DRAG_ORGANIZE_VIDEOS は、ドラッグでの整理を確かめる
  * 動画の題名である（web/e2e/drag-organize.e2e.ts）。e2e に残る並べ替え・「Make a group」・
  * タッチの長押しの 3 組の分だけを作る。どれも登録フォルダの直下に置くので、
  * 自動グループにはならない。テストの組ごとに題名の頭を変え、ライブラリの検索でその組だけを

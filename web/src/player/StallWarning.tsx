@@ -6,7 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 
 /**
  * StallWarning は、回線の遅さで再生が途切れているときにプレイヤーの左上に出す、知らせる
- * だけの帯である（specs/027-playback-quality/ui-design.md「Stall warning」、research.md R-7）。
+ * だけの帯である。
  *
  * 状態表示の入れ物（`data-overlay-layer`）とは別の層で、映像より上・状態表示と操作バーより
  * 下に置く。× 以外は下の操作（再生バー・映像・中央の操作）へ通す。画質を変える操作は

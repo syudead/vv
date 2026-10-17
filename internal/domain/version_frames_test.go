@@ -26,7 +26,7 @@ func shownFramesA(rule VersionFrameRule) []int {
 	return indexes
 }
 
-// 距離がすべて 12 以内なら、モデルに聞かずに同じ動画（specs/054-auto-dup/research.md R-1）。
+// 距離がすべて 12 以内なら、モデルに聞かずに同じ動画。
 func TestJudgeVersionFramesAllWithinCutOff(t *testing.T) {
 	distances := make([]int, 20)
 	for i := range distances {
@@ -50,7 +50,7 @@ func TestJudgeVersionFramesOneIsolatedDifference(t *testing.T) {
 	}
 }
 
-// 4 つ連続で食い違えば、その連なりのコマをモデルに見せる（research.md R-1・R-2 の D）。
+// 4 つ連続で食い違えば、その連なりのコマをモデルに見せる。
 func TestJudgeVersionFramesRunOfFour(t *testing.T) {
 	distances := make([]int, 20)
 	for i := 8; i < 12; i++ {
@@ -171,7 +171,7 @@ func TestJudgeVersionFramesIncomparable(t *testing.T) {
 	}
 }
 
-// 0.8 以上は同じ、0.2 以下は違う、間は決められない（research.md R-3）。
+// 0.8 以上は同じ、0.2 以下は違う、間は決められない。
 func TestVersionVerdictFor(t *testing.T) {
 	for _, c := range []struct {
 		probability float64

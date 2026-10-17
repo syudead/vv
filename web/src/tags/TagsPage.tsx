@@ -168,26 +168,24 @@ interface RowHandlers {
 }
 
 /**
- * TagsPage はサイドバーの「タグ」から開く管理画面である（ui-design.md「Tag
- * management page」）。一覧・検索・作成・改名・削除・統合・シノニムの登録と
+ * TagsPage はサイドバーの「タグ」から開く管理画面である。一覧・検索・作成・改名・削除・統合・シノニムの登録と
  * 解除を持つ。
  *
  * タグの一覧は共有の保持（`web/src/api/tags.ts` の `getTags`）を使わず、検索・
  * 絞り込み・並び順の条件ごとに `GET /api/tags` から 100 件ずつ受け、スクロールに
- * 合わせて続きを読む（specs/036-tag-admin-scale/data-model.md §4、research.md
- * R-1・R-11）。1 件とまとめての操作の直後は一覧を取り直さず、読み込んだ行の中で
+ * 合わせて続きを読む。1 件とまとめての操作の直後は一覧を取り直さず、読み込んだ行の中で
  * 書き換える（R-12、`tagPageRows.ts`）。タグがもう無いとき（`tag_not_found`、
  * `notFoundIds`）だけ、ほかのタグも変わっているかもしれないので先頭から取り直す。
  *
- * 仮のタグ（specs/031-tentative-tags/ui-design.md「Tag management page」）:
+ * 仮のタグ:
  * 「Tentative only」の絞り込み、仮の行の確定・却下、「Rejected names」のタブの
  * 却下した名前の一覧と取り外しも持つ。却下した名前の一覧はこの画面だけが読むので、
- * 共有の保持ではなくここで取る（research.md R-8）。
+ * 共有の保持ではなくここで取る。
  *
- * タグの種類（specs/051-tag-kinds/ui-design.md「Kinds tab」）: 「Kinds」のタブで種類の作成・
+ * タグの種類: 「Kinds」のタブで種類の作成・
  * 改名・削除を持つ（`useTagKindsTab`、`TagKindsPanel`）。
  *
- * 見た目の置き場（specs/036-tag-admin-scale/ui-design.md「Top bar」「Band」）: 検索・
+ * 見た目の置き場: 検索・
  * 絞り込み・並び順はライブラリと同じく共通トップバー（`TagToolbar`）、本文の先頭は
  * 見出しの行（選んでいる間は選択の行）・タブ・絞り込みのチップ・列の見出しの帯。
  * 検索語・絞り込み・並び順・タブは URL に載せる（`tagListUrl.ts`）。
@@ -210,16 +208,15 @@ export default function TagsPage() {
   } = useTagPage(() => scrollListToTop());
   /**
    * 検索語・絞り込み・並び順・タブは URL に載せる（ライブラリの一覧の条件と同じ。
-   * specs/036-tag-admin-scale/ui-design.md「URL state」）。URL に sort が無いときは
-   * 端末に残した並び順（research.md R-7）を使う。
+   * docs/design-docs/catalog-organization.md「URL state」）。URL に sort が無いときは
+   * 端末に残した並び順を使う。
    */
   const [preferredSort] = useState<TagListSort>(() => readTagListPreferences().sort);
   const { criteria, apply: applyCriteria } = useTagListCriteria(preferredSort);
   const { query: search, tentativeOnly, unusedOnly, kind, sort, tab: urlTab } = criteria;
   /**
    * tab は描いているタブである。ふだんは URL の `tab` に従うが、作成・改名の送信中は
-   * 「Tags」のまま保つ（ui-design.md「Tabs」の「作成・改名の送信中は切り替えない」を、
-   * 戻る・進むで URL が変わったときにも当てる）。下の `useLayoutEffect` が追わせる。
+   * 「Tags」のまま保つ。下の `useLayoutEffect` が追わせる。
    */
   const [tab, setTab] = useState<TagListTab>(urlTab);
   /** newKindButtonRef は「Kinds」のタブの見出しの行の「New kind」である。 */
@@ -231,7 +228,7 @@ export default function TagsPage() {
 
   /**
    * renaming は改名中のタグ（始めた時点の状態）である。条件を変えて読み直した行に
-   * 無くても、これを並び順の位置に差し込んで残す（ui-design.md「Row checkbox」）。
+   * 無くても、これを並び順の位置に差し込んで残す。
    */
   const [renaming, setRenaming] = useState<Tag | null>(null);
   const renamingId = renaming?.id ?? null;
@@ -268,8 +265,7 @@ export default function TagsPage() {
 
   /**
    * selected は選んだ行の id である。見えている行の部分集合で、検索・絞り込みを
-   * 変えて見えなくなった行と改名中の行は外す（specs/036-tag-admin-scale/data-model.md
-   * §4「選択」）。
+   * 変えて見えなくなった行と改名中の行は外す。
    */
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
   /**
@@ -328,8 +324,8 @@ export default function TagsPage() {
   /**
    * fallbackFocus は、行へ移せないときの最後の行き先である。ふだんは
    * 「新しいタグ」、「Tentative only」「Unused only」が効いている間はトップバーの
-   * 「Filter」（次の操作が「絞り込みを外す」だから。specs/031-tentative-tags/ui-design.md
-   * 「Toolbar」、specs/036-tag-admin-scale/ui-design.md「Active filters」）。選択の行が見出しと
+   * 「Filter」（次の操作が「絞り込みを外す」だから。docs/design-docs/catalog-organization.md
+   * 「Toolbar」、docs/design-docs/catalog-organization.md「Active filters」）。選択の行が見出しと
    * 入れ替わっていて「新しいタグ」が無いときは、列の見出しの先頭のチェックへ。
    */
   function fallbackFocus() {
@@ -355,16 +351,14 @@ export default function TagsPage() {
   }
 
   /**
-   * scrollListToTop は、一覧の先頭が帯の下に隠れていれば先頭まで戻す（ui-design.md
-   * 「Band」）。条件を変えて先頭のページが届いたときと「新しいタグ」で使う。
+   * scrollListToTop は、一覧の先頭が帯の下に隠れていれば先頭まで戻す。条件を変えて先頭のページが届いたときと「新しいタグ」で使う。
    */
   function scrollListToTop() {
     scrollBoxToTop(listBoxRef.current);
   }
 
   /**
-   * reloadList は「一覧が変わった」の「Reload」で、選択を空にして先頭から読み直す
-   * （ui-design.md「Loading more」）。
+   * reloadList は「一覧が変わった」の「Reload」で、選択を空にして先頭から読み直す。
    */
   function reloadList() {
     setSelected(new Set());
@@ -397,7 +391,7 @@ export default function TagsPage() {
     return true;
   }
 
-  // 検索はサーバーが全部のタグに掛ける（research.md R-1）。照合形は、空白だけの検索を
+  // 検索はサーバーが全部のタグに掛ける。照合形は、空白だけの検索を
   // 絞り込み中と数えないためと、同じ照合形になる打ち直しで読み直さないために使う。
   const normalizedQuery = foldForMatch(search).trim();
   const searchRef = useRef(search);
@@ -406,7 +400,7 @@ export default function TagsPage() {
   });
 
   // 検索・絞り込み・並び順のどれかが変わるたびに、選択を空にして先頭のページを読み
-  // 直す（data-model.md §4「条件」、ui-design.md「Top bar」）。開いたときもここで読む。
+  // 直す。開いたときもここで読む。
   useEffect(() => {
     setSelected((current) => (current.size === 0 ? current : new Set()));
     void load({
@@ -424,7 +418,7 @@ export default function TagsPage() {
   }, [tentativeOnly, unusedOnly, kind]);
 
   /**
-   * 種類の絞り込み（specs/051-tag-kinds/ui-design.md「Kind filter」）。URL の `kind` の種類が
+   * 種類の絞り込み。URL の `kind` の種類が
    * 読めた種類の一覧に無ければ、`replace` で URL から外してトーストを出す（ほかの条件は
    * 残り、一覧は条件の変更で読み直される）。
    */
@@ -516,7 +510,7 @@ export default function TagsPage() {
   }, [rows, page, renaming]);
 
   // 選択は読み込んだ行の部分集合に保つ。操作や取り直しで行から消えた id と、
-  // 改名中の行を外す（specs/036-tag-admin-scale/data-model.md §4「選択」）。条件の
+  // 改名中の行を外す。条件の
   // 変更では、読み直しを始めるときに空にする。
   useLayoutEffect(() => {
     setSelected((current) => keepLoaded(current, rows, renamingId));
@@ -524,9 +518,8 @@ export default function TagsPage() {
 
   const selectableCount = countSelectable(rows, renamingId);
   /**
-   * 上限 `maxTagBatch` は送る id の数に掛かる（research.md R-4）。先頭のチェックは
-   * 読み込んだ行の数で、まとめての操作は選んだ数で止める（ui-design.md「Column header」
-   * 「Enabled and disabled」）。
+   * 上限 `maxTagBatch` は送る id の数に掛かる。先頭のチェックは
+   * 読み込んだ行の数で、まとめての操作は選んだ数で止める。
    */
   const selectAllOverLimit = rows.length > maxTagBatch;
   const selectionOverLimit = selected.size > maxTagBatch;
@@ -556,8 +549,7 @@ export default function TagsPage() {
 
   // 続きを読むきっかけ: 仮想化が描く最後の行が読み込んだ行の末尾から overscan 行
   // 以内に入ったら、続きを 1 回要求する。操作で行が 1 つも残らなかったとき（描く行が
-  // 無い）も、ここで要求する（data-model.md §4「続きを読むきっかけ」、ui-design.md
-  // 「Loading more」）。読んでいる間・失敗・食い違いの間は `loadMore` が読まない。
+  // 無い）も、ここで要求する。読んでいる間・失敗・食い違いの間は `loadMore` が読まない。
   const lastRendered = virtualItems.at(-1)?.index ?? -1;
   const nextCursor = page?.nextCursor;
   // 「Rejected names」のタブの間は一覧を描かないので、続きも読まない。
@@ -597,7 +589,7 @@ export default function TagsPage() {
     // キーボード操作などボタンを介さない呼び出しへの保険である）。
     if (renamePending) return;
     // 作成の行はいつも一覧の先頭に入るので、一覧の先頭が帯の下に隠れていれば
-    // 先に先頭まで戻す（見えない位置に入力を作らない。ui-design.md「Band」）。
+    // 先に先頭まで戻す（見えない位置に入力を作らない）。
     scrollListToTop();
     setCreating(true);
     setCreateError(null);
@@ -611,8 +603,7 @@ export default function TagsPage() {
 
   /**
    * changeTentativeOnly は「Filter」の吹き出しの「Tentative only」を押す・外す。
-   * フォーカスは吹き出しの中に残る（specs/036-tag-admin-scale/ui-design.md
-   * 「Top bar」）。
+   * フォーカスは吹き出しの中に残る。
    */
   function changeTentativeOnly(value: boolean) {
     applyCriteria({ tentativeOnly: value }, "push");
@@ -624,8 +615,7 @@ export default function TagsPage() {
   }
 
   /**
-   * changeKind は「Filter」の吹き出しの「Kind」の `Select` である。吹き出しは開いたまま
-   * （specs/051-tag-kinds/ui-design.md「Kind filter」）。
+   * changeKind は「Filter」の吹き出しの「Kind」の `Select` である。吹き出しは開いたまま。
    */
   function changeKind(next: TagKindFilter) {
     applyCriteria({ kind: next }, "push");
@@ -633,8 +623,7 @@ export default function TagsPage() {
 
   /**
    * removeFilterChip は見出しの下のチップの × である。その絞り込みを外し、残る
-   * チップ（後ろ、無ければ前）へ、無ければ「Filter」へフォーカスを移す（タグが 0 なら
-   * 「新しいタグ」へ。ui-design.md「Active filters」）。
+   * チップ（後ろ、無ければ前）へ、無ければ「Filter」へフォーカスを移す（タグが 0 なら 「新しいタグ」へ）。
    */
   function removeFilterChip(which: TagFilter) {
     const next = nextChip(which, {
@@ -664,7 +653,7 @@ export default function TagsPage() {
   /**
    * showAllFromFilter は「No unused tags」「No tentative tags」などの
    * 「Show all tags」である。絞り込みを外し、「Filter」へ（タグが 0 なら
-   * 「新しいタグ」へ）移す（ui-design.md「States」）。
+   * 「新しいタグ」へ）移す。
    */
   function showAllFromFilter() {
     applyCriteria(noFilters, "push");
@@ -689,7 +678,7 @@ export default function TagsPage() {
   /**
    * replaceRow は書き換わったタグ 1 件を読み込んだ行へ反映する。書き換わる前の状態は
    * 読み込んだ行（無ければ `before`）から取り、前後を今の条件に照らして件数を
-   * 数え直し、並び順の位置へ置き直すか取り除く（data-model.md §4「操作のあとの反映」）。
+   * 数え直し、並び順の位置へ置き直すか取り除く。
    */
   function replaceRow(updated: Tag, before?: Tag) {
     applyLocal((current) => {
@@ -719,8 +708,7 @@ export default function TagsPage() {
     setCreatePending(true);
     try {
       const created = await createTag(name);
-      // 今の条件に合えば並び順の位置へ置き、件数を数え直す（data-model.md §4
-      // 「操作のあとの反映」）。一覧は取り直さない。
+      // 今の条件に合えば並び順の位置へ置き、件数を数え直す。一覧は取り直さない。
       applyLocal((current) =>
         current === undefined ? current : addTag(current, created),
       );
@@ -746,8 +734,7 @@ export default function TagsPage() {
       replaceRow(updated, tag);
       setRenaming(null);
       rejected.reload();
-      // 改名で確定になった仮のタグは「Tentative only」から外れる（031 の
-      // ui-design.md「Toolbar」）。検索に一致しなくなったときも同じ扱い。
+      // 改名で確定になった仮のタグは「Tentative only」から外れる（031 の）。検索に一致しなくなったときも同じ扱い。
       if (shown(updated)) focusRow(tag.id, "rename");
       else focusAfterRemoval(order, tag.id);
     } catch (failure) {
@@ -792,7 +779,7 @@ export default function TagsPage() {
   }
 
   /**
-   * submitConfirm は仮の行の「確定する」を扱う（031 の ui-design.md「Confirm」）。
+   * submitConfirm は仮の行の「確定する」を扱う。
    * 送信中の行は二度押しを無視する（`confirmingRef` は同じ呼吸の連打も
    * 止める）。成功したら行を差し替え、同じ行の「改名」へ、絞り込みから
    * 外れたら次の行の「改名」へフォーカスを移す。
@@ -823,7 +810,7 @@ export default function TagsPage() {
     }
   }
 
-  /** performReject は却下の窓の「Reject」である（031 の ui-design.md「Reject」）。 */
+  /** performReject は却下の窓の「Reject」である。 */
   async function performReject() {
     if (rejectingTag === null) return;
     const target = rejectingTag;
@@ -900,8 +887,7 @@ export default function TagsPage() {
    * performMerge は統合が成功したときに呼ぶ。統合元は一覧から消え、統合先は
    * サーバーが返した最新の状態（シノニムに統合元の名前を含み、本数が合算）に差し
    * 替わる。選択から開いたときは選択を空にする。トーストの数は実際に統合した数で、
-   * もう無かった統合元があれば一覧を取り直す（specs/036-tag-admin-scale/ui-design.md
-   * 「Confirmation」、014 の受け入れ条件 12）。
+   * もう無かった統合元があれば一覧を取り直す。
    */
   function performMerge(
     merged: Tag,
@@ -915,7 +901,7 @@ export default function TagsPage() {
     const removed = new Set(sourceIds);
     // 統合元を取り除き、統合先を応答の tag で書き換える。読み込んでいない統合先は、
     // 位置が読み込んだ範囲の中なら差し込む。統合の前の統合先（窓の候補）と応答を
-    // それぞれ今の条件に照らして件数を数え直す（data-model.md §4「操作のあとの反映」）。
+    // それぞれ今の条件に照らして件数を数え直す。
     removeRows(sources.filter((item) => removed.has(item.id)));
     replaceRow(merged, target);
     tagKindCountsChanged();
@@ -932,7 +918,7 @@ export default function TagsPage() {
     afterStale(notFoundIds);
     // 統合先は確定になるので、「Tentative only」を押している間は統合元・
     // 統合先のどちらも一覧に無い。そのときは最初の統合元の位置から次の行へ
-    // （031 の ui-design.md「Merge」）。
+    // 。
     if (shown(merged)) {
       focusRow(merged.id, "name");
       return;
@@ -945,7 +931,7 @@ export default function TagsPage() {
   /**
    * staleMerge は統合先がもう無かった（tag_not_found）か、統合元がすべてもう無かった
    * （応答の notFoundIds）ときに呼ぶ。ほかの操作の tag_not_found と同じく、窓を閉じて
-   * トーストを出し、一覧を取り直す（ui-design.md「States」「Confirmation」）。
+   * トーストを出し、一覧を取り直す。
    */
   function staleMerge() {
     if (merging === null) return;
@@ -977,8 +963,7 @@ export default function TagsPage() {
    * cancelSynonyms はシノニムの窓を閉じる。「シノニム」はその行に直接置いた
    * ボタンなので（メニューの項目ではない）、その行の「シノニム」へ明示的に
    * 戻す。シノニムの追加で確定になり「Tentative only」から外れていれば、
-   * 窓を開いたときの並びから次の行の「改名」へ移す（031 の ui-design.md
-   * 「Toolbar」。窓を開いている間はフォーカスを窓の中に残す）。
+   * 窓を開いたときの並びから次の行の「改名」へ移す（「Toolbar」。窓を開いている間はフォーカスを窓の中に残す）。
    */
   function cancelSynonyms() {
     if (synonymsTagId === null) return;
@@ -1028,7 +1013,7 @@ export default function TagsPage() {
     });
     setSynonymsTag((current) => (current?.id === updated.id ? updated : current));
     // 統合元のタグは消え、その種類を持っていけば種類ごとのタグの数が変わる
-    // （specs/051-tag-kinds/ui-design.md「Kind filter」）。
+    //
     if (removed !== undefined) tagKindCountsChanged();
     // シノニムに足した名前が却下した名前だったなら、一覧から外れる（要件 15）。
     rejected.reload();
@@ -1070,7 +1055,7 @@ export default function TagsPage() {
   /**
    * toggleSelectAll は件数の行の先頭のチェックである。空・中間なら読み込んだ行の
    * うち選べる行をすべて選び、全部なら選択を解く。読み込んでいないタグは選ばない
-   * （要件 10、ui-design.md「Column header」）。
+   * （要件 10）。
    */
   function toggleSelectAll() {
     if (selectAllState === true) {
@@ -1093,8 +1078,7 @@ export default function TagsPage() {
   }
 
   /**
-   * afterStale は、まとめての操作の対象の一部がもう無かったときに一覧を取り直す
-   * （data-model.md §4「まとめての操作の結果」）。
+   * afterStale は、まとめての操作の対象の一部がもう無かったときに一覧を取り直す。
    */
   function afterStale(notFoundIds: readonly number[]) {
     if (notFoundIds.length === 0) return;
@@ -1105,7 +1089,7 @@ export default function TagsPage() {
   /**
    * submitBulkConfirm はバーの「Confirm」である。確認なしで選んだ id 全部を 1 回
    * 送り、確定した行を差し替えて選択から外す。既に確定していた行は選んだまま
-   * 残す。失敗したら何も変えない（ui-design.md「Bulk confirm」）。
+   * 残す。失敗したら何も変えない。
    */
   async function submitBulkConfirm() {
     if (bulkPending !== null || selected.size === 0) return;
@@ -1132,7 +1116,7 @@ export default function TagsPage() {
    * focusAfterBulkConfirm はまとめての確定のあとのフォーカス先である。「Tentative
    * only」中に一覧が空になれば「Filter」、選択の行が残れば「Confirm」、仮のタグが
    * 残っていなければ「Merge into one tag…」、選択が無くなれば列の見出しの先頭の
-   * チェックへ（ui-design.md「Bulk confirm」）。押せないボタンへは置かない。
+   * チェックへ。押せないボタンへは置かない。
    */
   function focusAfterBulkConfirm() {
     focusAfterBulkAction(filtersRef.current.tentativeOnly, barConfirmRef);
@@ -1162,8 +1146,7 @@ export default function TagsPage() {
   }
 
   /**
-   * submitSetKind はバーの「Set kind…」のメニューで種類か「No kind」を選んだときである
-   * （specs/051-tag-kinds/ui-design.md「Set kind」）。確認なしで選んだ id 全部を 1 回
+   * submitSetKind はバーの「Set kind…」のメニューで種類か「No kind」を選んだときである。確認なしで選んだ id 全部を 1 回
    * 送り、種類を付け外しした行をその場で書き換えて選択から外す。既にその状態だった行は
    * 選んだまま残す。種類がもう無ければ何も変えずに種類の一覧を取り直し、失敗したら
    * 何も変えない。
@@ -1221,7 +1204,7 @@ export default function TagsPage() {
   /**
    * performBulk は確認の窓の「Reject」「Delete」である。処理した行を一覧から消して
    * 選択から外し、働かない種類だった行は選んだまま残す。失敗は窓の中に出し、窓と
-   * 選択を残す（ui-design.md「Bulk reject and delete」）。
+   * 選択を残す。
    */
   async function performBulk() {
     if (bulkDialog === null || bulkPending !== null) return;
@@ -1285,8 +1268,7 @@ export default function TagsPage() {
         setCreating(false);
         setRenameError(null);
         setRenaming(target);
-        // 選んでいる行の改名を始めると、その行を選択から外す（ui-design.md
-        // 「Row checkbox」）。
+        // 選んでいる行の改名を始めると、その行を選択から外す。
         setSelected((current) => withoutIds(current, new Set([target.id])));
       },
       onCancelRename: (target) => {
@@ -1356,7 +1338,7 @@ export default function TagsPage() {
 
   /**
    * kindHref は「Kinds」のタブの種類の名前のリンクの先である。その種類で絞った「Tags」の
-   * タブで、ほかの条件は残す（specs/051-tag-kinds/ui-design.md「Rows」）。
+   * タブで、ほかの条件は残す。
    */
   function kindHref(kind: TagKind): string {
     const next = { ...criteria, tab: "tags" as const, kind: String(kind.id) };
@@ -1491,7 +1473,7 @@ export default function TagsPage() {
         )
       }
       header={
-        // 選んでいる間は、見出しの行の代わりに選択バーを出す（ui-design.md「Selection bar」）。
+        // 選んでいる間は、見出しの行の代わりに選択バーを出す。
         selecting ? (
           <TagSelectionBar
             count={selected.size}
@@ -1516,7 +1498,7 @@ export default function TagsPage() {
             deleteRef={barDeleteRef}
           />
         ) : (
-          // 見出しの行（ui-design.md「Header」）。件数はライブラリの「N items」と同じ形で、
+          // 見出しの行。件数はライブラリの「N items」と同じ形で、
           // 読み込んだ行の数やページの区切りは出さない。
           <PageHeader
             title={t.tags.title}
@@ -1628,8 +1610,7 @@ export default function TagsPage() {
               )}
               {/*
                 行は文書の中の位置に並べ、描かない行の分は空の行で高さを保つ。フォーカスと
-                Tab の受け渡しはこの tbody が持つ（ui-design.md「Keyboard across virtualized
-                rows」）。
+                Tab の受け渡しはこの tbody が持つ。
               */}
               <TableBody
                 ref={listRef}

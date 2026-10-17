@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 組の記録の状態は候補の判定に従う（specs/055-activity/data-model.md「Reasons」）。
+// 組の記録の状態は候補の判定に従う。
 func TestVersionJudgementActivityState(t *testing.T) {
 	for judgement, want := range map[VersionJudgement]ActivityState{
 		"":                           {Status: ActivityRunning, Reason: ActivityWaiting},

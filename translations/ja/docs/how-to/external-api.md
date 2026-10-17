@@ -1,11 +1,11 @@
 ---
 source: docs/how-to/external-api.md
-sourceHash: 242c08587699279dcfe29434bc2b1cba71ff233f21c2d91150b2d3151a4cf311
+sourceHash: 5c4a25e65de455cdd7db1deb50f7039a9d5afebfd27847d9f11ff986b265d107
 ---
 
 # 外部 API を使う {#use-the-external-api}
 
-API トークンがあれば、スクレイパーなどの外部ツールは `/api/v1` または `/mcp` の MCP サーバーを通じて、動画一覧を読み、スキャンを開始し、タグ、表示名、カバーサムネイル、作品情報を設定できる。判断の理由は [specs/026-external-api/research.md](../../specs/026-external-api/research.md) にある。
+API トークンがあれば、スクレイパーなどの外部ツールは `/api/v1` または `/mcp` の MCP サーバーを通じて、動画一覧を読み、スキャンを開始し、タグ、表示名、カバーサムネイル、作品情報を設定できる。認証と公開範囲は[認証の設計](../design-docs/authentication.md)に従う。
 
 外部ツールは `/api/v1` と `/mcp` だけを使う。画面用の `/api/*` は予告なく変わる。
 
@@ -201,7 +201,7 @@ flowchart LR
 
 ### タグを一覧する {#list-tags}
 
-`GET /api/v1/tags` は、タグ管理画面と同じ検索、絞り込み、並べ替え、ページでタグを一覧する（[specs/039-external-tag-admin/contracts/external-api.md、`GET /api/v1/tags`](../../specs/039-external-tag-admin/contracts/external-api.md#get-apiv1tags)）。
+`GET /api/v1/tags` は、タグ管理画面と同じ検索、絞り込み、並べ替え、ページでタグを一覧する。
 
 ```sh
 curl -H "Authorization: Bearer $TOKEN" \
@@ -225,7 +225,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ### タグを統合する {#merge-tags}
 
-`POST /api/v1/tags/merge` は、1 つのトランザクションで統合元のタグを統合先のタグへ統合する（[契約、`POST /api/v1/tags/merge`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagsmerge)）。
+`POST /api/v1/tags/merge` は、1 つのトランザクションで統合元のタグを統合先のタグへ統合する。
 
 ```json
 { "targetId": 12, "sourceIds": [31, 45] }
@@ -237,7 +237,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ### タグの名前を変える {#rename-a-tag}
 
-`{ "id": 12, "name": "自撮り" }` を付けた `POST /api/v1/tags/rename` は、タグの元の名前を変え、タグを返す（[契約、`POST /api/v1/tags/rename`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagsrename)）。
+`{ "id": 12, "name": "自撮り" }` を付けた `POST /api/v1/tags/rename` は、タグの元の名前を変え、タグを返す。
 
 - 仮のタグは名前が変わると確定タグになる。今と同じ名前は何も変えない。
 - 名前の規則に反する名前は `400` `tag_name_empty`、`tag_name_control_characters` または `tag_name_too_long` を返す。存在しない `id` は `404` `tag_not_found` を返す。
@@ -245,7 +245,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ### 同義語を編集する {#edit-synonyms}
 
-`POST /api/v1/tags/synonyms` は、タグの同義語に名前を 1 つ追加または削除し、変更後のタグを返す（[契約、`POST /api/v1/tags/synonyms`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagssynonyms)）。
+`POST /api/v1/tags/synonyms` は、タグの同義語に名前を 1 つ追加または削除し、変更後のタグを返す。
 
 ```json
 { "id": 12, "action": "add", "name": "自己撮影" }
@@ -265,7 +265,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ### タグを確定、却下、削除する {#confirm-reject-and-delete-tags}
 
-`POST /api/v1/tags/batch` は、1 つのトランザクションでタグを確定、却下、または削除する（[契約、`POST /api/v1/tags/batch`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagsbatch)）。1 つのタグだけを対象とする操作はない。1 つのタグには `"ids": [id]` を送る。
+`POST /api/v1/tags/batch` は、1 つのトランザクションでタグを確定、却下、または削除する。1 つのタグだけを対象とする操作はない。1 つのタグには `"ids": [id]` を送る。
 
 ```json
 { "action": "reject", "ids": [31, 45, 9999] }
@@ -286,12 +286,12 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 仮のタグとしての付与は、却下済みの名前を飛ばす（[タグを仮のタグとして付ける](#add-tags-as-tentative-tags)）。
 
-- `GET /api/v1/tags/rejected-names` は名前の自然順で `{ items, total, nextCursor? }` を返す（[契約、`GET /api/v1/tags/rejected-names`](../../specs/039-external-tag-admin/contracts/external-api.md#get-apiv1tagsrejected-names)）。`limit` は 1 から 200 で、既定は 100 である。`nextCursor` がなくなるまでそれを `cursor` として渡し返す。`total` はすべての却下済みの名前の数である。範囲外の `limit` は `400` `invalid_request` を返し、読めないカーソルは `reason: invalid_cursor` を加える。
-- `DELETE /api/v1/tags/rejected-names?name=…` は名前を 1 つ除き、次にその名前を仮のタグとして付けるとタグが再び作成される（[契約、`DELETE /api/v1/tags/rejected-names?name=…`](../../specs/039-external-tag-admin/contracts/external-api.md#delete-apiv1tagsrejected-namesname)）。応答は `{ name, removed }` で、照合した正規化後の名前と、名前がリストになく何も変わらなかったときの `false` である。`name` がないと `400` `invalid_request` を返す。
+- `GET /api/v1/tags/rejected-names` は名前の自然順で `{ items, total, nextCursor? }` を返す。`limit` は 1 から 200 で、既定は 100 である。`nextCursor` がなくなるまでそれを `cursor` として渡し返す。`total` はすべての却下済みの名前の数である。範囲外の `limit` は `400` `invalid_request` を返し、読めないカーソルは `reason: invalid_cursor` を加える。
+- `DELETE /api/v1/tags/rejected-names?name=…` は名前を 1 つ除き、次にその名前を仮のタグとして付けるとタグが再び作成される。応答は `{ name, removed }` で、照合した正規化後の名前と、名前がリストになく何も変わらなかったときの `false` である。`name` がないと `400` `invalid_request` を返す。
 
 ### タグの種類 {#tag-kinds}
 
-`Genre` や `Work` のような種類はタグをまとめる。タグが持つ種類は最大 1 つである（[契約](../../specs/051-tag-kinds/contracts/external-api.md)）。種類は、人物と同じく本文の `id` で指定する。
+`Genre` や `Work` のような種類はタグをまとめる。タグが持つ種類は最大 1 つである。種類は、人物と同じく本文の `id` で指定する。
 
 | 操作 | リクエスト | 応答 |
 | --- | --- | --- |
@@ -408,7 +408,7 @@ flowchart LR
 
 ## 作品情報を設定する {#set-work-information}
 
-動画の作品情報は、そのコード、説明、日付、人物、組織、URL、外部 ID である。人物と組織はそれ自体がエンティティであり、動画はそれを id で参照する。正本は [specs/047-video-work-info/contracts/external-api.md](../../specs/047-video-work-info/contracts/external-api.md) である。
+動画の作品情報は、そのコード、説明、日付、人物、組織、URL、外部 ID である。人物と組織はそれ自体がエンティティであり、動画はそれを id で参照する。正本は [api/external-v1.yaml](../../api/external-v1.yaml) である。
 
 ### 動画に書き込む {#write-videos}
 
@@ -430,7 +430,7 @@ flowchart LR
 - 応答は `items` の順の `{ items: [{ video: { id, contentKey }, workInfo }] }` である。同じリクエストを繰り返すと `200` を返し、`updatedAt` も含めて何も変えない。
 - 動画のどの読み取り（`GET /api/v1/videos`、`GET /api/v1/videos/lookup`）も `workInfo` を持つ。この API では、設定していない `code` や `description` は `null` であり、空の一覧は `[]` である。
 
-フィールドは次の規則に従う。全体の一覧は [data-model.md、フィールド](../../specs/047-video-work-info/data-model.md#fields) にある。
+フィールドは次の規則に従う。全体の一覧は [api/external-v1.yaml](../../api/external-v1.yaml) にある。
 
 | フィールド | 規則 |
 | --- | --- |

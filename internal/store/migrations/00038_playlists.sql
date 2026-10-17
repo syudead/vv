@@ -1,5 +1,5 @@
 -- +goose Up
--- プレイリスト（specs/044-playlists/data-model.md「Migration」、research.md R-1）。作り直せない利用者データで、
+-- プレイリスト。作り直せない利用者データで、
 -- 項目は動画の利用者データの鍵（集まりのメンバーなら 'bundle:<id>'）かグループのフォルダの鍵
 -- （domain.FolderKey）で持ち、videos・folder_groups への外部キーを張らない。生成物の片付け・
 -- releaseContentIndex・rebuildFolderIndex・メディアフォルダの削除はどちらの表にも触れない。

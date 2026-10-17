@@ -7,7 +7,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 名前の自然順の鍵 sort_key（specs/036-tag-admin-scale/data-model.md §0・§2、research.md R-10）。
+// 名前の自然順の鍵 sort_key。
 
 // sortKeyRow は table の name の行の sort_key と search_version を返す。
 func sortKeyRow(t *testing.T, db *DB, table, name string) (sortKey string, searchVersion int64) {

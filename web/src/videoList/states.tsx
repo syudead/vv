@@ -49,8 +49,7 @@ export function EmptyState({
 
 /**
  * GuestEmpty はゲストに公開の動画が1本も無いときの状態である。取り込みや設定の
- * 代わりに、ログインへの入口を置く（specs/016-single-account-auth/ui-design.md
- * 「Guest degradation」）。ライブラリとフォルダ画面の最上位で同じ文言を使う。
+ * 代わりに、ログインへの入口を置く。ライブラリとフォルダ画面の最上位で同じ文言を使う。
  */
 export function GuestEmpty() {
   const location = useLocation();

@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// 指定の位置の場面を書く（specs/029-video-overrides/research.md R-4）。時刻を明るさで
+// 指定の位置の場面を書く。時刻を明るさで
 // 描いた動画から 2 つの位置で取り出し、それぞれの明るさがその秒の場面のものであること。
 func TestThumbnailAtWritesFrameAtPosition(t *testing.T) {
 	requireFFmpeg(t)

@@ -8,7 +8,7 @@ import { Alert, AlertTitle } from "../ui/shadcn/alert";
 /**
  * WorkInfoPluginDialog は「Work-info plugins」節の承認の確認と設定のダイアログが共有する
  * `FormDialog` である。開いたまま描き、送っている間は閉じず、失敗を本文の最後の
- * `destructive` の `Alert` に出す（specs/049-work-info-plugins/ui-design.md）。
+ * `destructive` の `Alert` に出す。
  */
 export default function WorkInfoPluginDialog({
   title,

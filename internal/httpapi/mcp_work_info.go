@@ -13,7 +13,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// 作品情報と人物・団体の MCP のツール（specs/047-video-work-info/contracts/external-api.md「MCP tools」）。
+// 作品情報と人物・団体の MCP のツール。
 // 他のツールと同じく、外部連携 API の同じ操作を call で呼ぶ。
 //
 // 本文を取るツールは入力を json.RawMessage のまま REST へ渡す。生成型に読み直すと null と省略の区別が

@@ -32,8 +32,7 @@ import type { PlaylistPanelState } from "./usePlaylistContext";
 const headingId = "playlist-panel-heading";
 
 /**
- * PlaylistPanel は動画ページの aside の先頭に置く、プレイリストの項目の並びである
- * （specs/044-playlists/ui-design.md「Playlist panel」）。項目は続けて再生と同じカードで、
+ * PlaylistPanel は動画ページの aside の先頭に置く、プレイリストの項目の並びである。項目は続けて再生と同じカードで、
  * 何本目かをサムネイルの左上に重ね、再生中の項目はリンクにせず枠と面で示す。広い画面では
  * 続けて再生・関連動画と同じ入れ物でスクロールし、狭い画面では一覧の高さを区切って中だけ
  * スクロールする。再生中のカードは `scrollTop` で見える位置に置く（ページと aside の列は動かさない）。
@@ -364,7 +363,7 @@ function ItemThumbnail({ item, position }: { item: PlaylistItem; position: numbe
 /**
  * ItemText は題名（グループとスマートフォルダは名前と本数）、視聴の印と再生できない理由である。
  * 動画の無いスマートフォルダの項目は名前を従の色にし、今の項目なら進み具合の欄に「0 videos」を
- * 出す（specs/052-smart-folders/ui-design.md「States」）。
+ * 出す。
  */
 function ItemText({ item, current = false }: { item: PlaylistItem; current?: boolean }) {
   const title = itemTitle(item);
@@ -373,7 +372,7 @@ function ItemText({ item, current = false }: { item: PlaylistItem; current?: boo
     group !== undefined
       ? group.watchState === "watched"
       : item.video?.progress?.completed === true;
-  // 今の項目が動画の無いフォルダなら、進み具合の欄に「0 videos」を出す（ui-design.md「States」）。
+  // 今の項目が動画の無いフォルダなら、進み具合の欄に「0 videos」を出す。
   const groupProgress =
     group !== undefined && group.watchState === "inProgress"
       ? t.library.group.progress(group.watchedCount ?? 0, group.videoCount)

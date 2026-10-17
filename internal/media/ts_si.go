@@ -13,7 +13,7 @@ import (
 )
 
 // TS の録画の SI（PAT・SDT・EIT present/following・TOT/TDT）から放送局名と番組名を読む
-// 部分（specs/056-media-info/research.md R-4）。ffprobe の後に、ファイルの先頭
+// 部分。ffprobe の後に、ファイルの先頭
 // siReadLimit までを自分の siTimeout の期限で読む。読めなかったものは省くだけで、
 // プローブを失敗にしない。
 

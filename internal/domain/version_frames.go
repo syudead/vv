@@ -1,21 +1,20 @@
 package domain
 
-// 候補の 1 組を、保存した 2 本の指紋のコマごとの距離でまず判定する規則と、モデルに聞く問い
-// （specs/054-auto-dup/research.md R-1〜R-3）。コマがすべて一致すればモデルに聞かずに「同じ動画」、
+// 候補の 1 組を、保存した 2 本の指紋のコマごとの距離でまず判定する規則と、モデルに聞く問い。コマがすべて一致すればモデルに聞かずに「同じ動画」、
 // コマの連なりが食い違えば、その区間のコマを左右に並べてモデルに聞く。
 
 const (
 	// VersionJudgeQuestionKey はモデルに聞く問いの答えを引き当てる名前である。
 	VersionJudgeQuestionKey = "same_picture"
-	// VersionJudgeQuestion はモデルに聞く問いの文である（research.md R-3）。
+	// VersionJudgeQuestion はモデルに聞く問いの文である。
 	VersionJudgeQuestion = "Each image puts two frames side by side, taken at the same moment from two video files. " +
 		"In every image, do the left half and the right half show the same picture " +
 		"(ignoring differences in sharpness, resolution or compression)?"
-	// VersionSameProbability 以上の答えは「同じ動画」である（research.md R-3）。
+	// VersionSameProbability 以上の答えは「同じ動画」である。
 	VersionSameProbability = 0.8
-	// VersionDifferentProbability 以下の答えは「違う動画」である（research.md R-3）。
+	// VersionDifferentProbability 以下の答えは「違う動画」である。
 	VersionDifferentProbability = 0.2
-	// VersionJudgeMaxImages はモデルに見せる画像の数の上限である（research.md R-2）。
+	// VersionJudgeMaxImages はモデルに見せる画像の数の上限である。
 	VersionJudgeMaxImages = 4
 	// versionFramesDifferingDivisor は「同じ動画」とみなす食い違いの割合の上限（1/20 = 5%）の分母である。
 	versionFramesDifferingDivisor = 20
@@ -57,7 +56,7 @@ type VersionFrameRule struct {
 	Shown     []FramePair
 }
 
-// JudgeVersionFrames は 2 本の指紋をコマごとに比べる（research.md R-1）。コマは
+// JudgeVersionFrames は 2 本の指紋をコマごとに比べる。コマは
 // ComparableFramePairs で時刻で組にし（単色のコマは飛ばす）、距離が FingerprintMatchMaxDistance を
 // 超える組を食い違いとする。連なりは時刻で隣り合う組の食い違いで、飛ばしたコマを挟めば切れる
 // （framePairsAdjacent）。
@@ -112,7 +111,7 @@ func framePairsAdjacent(a, b Fingerprint, p, q FramePair) bool {
 	return int64(q.A-p.A)*a.IntervalMs <= step && int64(q.B-p.B)*b.IntervalMs <= step
 }
 
-// VersionVerdictFor はモデルの答えの確率を判定の結果の種類にする（research.md R-3）。
+// VersionVerdictFor はモデルの答えの確率を判定の結果の種類にする。
 // VersionSameProbability 以上は同じ、VersionDifferentProbability 以下は違う、間は決められない。
 func VersionVerdictFor(probability float64) VersionVerdict {
 	switch {

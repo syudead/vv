@@ -1,11 +1,10 @@
 -- +goose Up
--- アクティビティの記録（specs/055-activity/data-model.md）。利用者データで、作り直さず、間引かない
--- （research.md R-1）。videos への外部キーは持たず、対象は内容の鍵と書いた時点の表示名で残す（R-10）。
+-- アクティビティの記録。利用者データで、作り直さず、間引かない。videos への外部キーは持たず、対象は内容の鍵と書いた時点の表示名で残す（R-10）。
 -- この移行より前に起きたことの記録は書かない。
 create table activity_entries (
     id              integer primary key,
     kind            text    not null,
-    -- 種類の機能（contracts/screen-api.md「Features」）。undo は取り消した記録のものを写す。
+    -- 種類の機能。undo は取り消した記録のものを写す。
     feature         text    not null,
     subject_kind    text    not null check (subject_kind in ('video', 'pair', 'scan', 'folder')),
     -- 内容の鍵、組の小さい方の鍵、走査の id、外したメディアフォルダのパス。

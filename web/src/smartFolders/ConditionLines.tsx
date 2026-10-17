@@ -19,8 +19,7 @@ import { type ConditionChip, conditionChips, refText } from "./conditions";
 import type { AncestorRule } from "./pageRules";
 import { smartFolderPagePath } from "./smartFolderPaths";
 
-// スマートフォルダのページの条件の行（specs/052-smart-folders/ui-design.md「Conditions
-// lines」）。所有者だけに出す（条件は所有者の応答の `settings` にだけ入る）。
+// スマートフォルダのページの条件の行。所有者だけに出す（条件は所有者の応答の `settings` にだけ入る）。
 
 const ignoreGone = () => undefined;
 

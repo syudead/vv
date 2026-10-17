@@ -2,19 +2,18 @@ import { request } from "./client";
 import type { components } from "./gen/openapi";
 import { applyFavoritesToListSnapshot, holdListSnapshot } from "./listSnapshot";
 
-// 型は api/openapi.yaml からの生成物を使う（specs/035-favorites/contracts/screen-api.md §1・§5）。
+// 型は api/openapi.yaml からの生成物を使う。
 export type FavoritesResponse = components["schemas"]["FavoritesResponse"];
 
 /**
  * お気に入りの付け外しの結果を、公開の切り替え（api/visibility.ts）と同じ形で画面へ
- * 知らせる（specs/035-favorites/research.md R-6）。サーバーからの `/api/events` の知らせは無い。
+ * 知らせる。サーバーからの `/api/events` の知らせは無い。
  *
  * - `videoIds` は付け外しが確かに反映された動画で、一覧の項目と控えの `favorite` を
  *   取り直さずに差し替える。
  * - `groupIds` は要求に含めたグループの id で、一覧はそのグループの項目を
  *   `GET /api/groups/{id}` で取り直す（404 なら外す。017「Refresh and removal」）。
- *   グループの値はサーバーが持つので、反映の数にかかわらず取り直す
- *   （specs/048-groups/research.md R-10）。
+ *   グループの値はサーバーが持つので、反映の数にかかわらず取り直す。
  */
 export interface FavoritesChange {
   videoIds: readonly number[];
@@ -121,8 +120,7 @@ export function subscribeFavoritesStale(listener: StaleListener): () => void {
  * noteFavoriteOf は、サーバーから読んだ `favorite` を、要求を送らずに `videoIds` の動画へ
  * 反映した付け外しとして知らせる（一覧の項目・控え・取得中の補正）。
  *
- * お気に入りは利用者データの鍵に結ぶので、同じ集まりのバージョンは値を共有する
- * （specs/035-favorites/research.md R-1）。一方、一覧に出るのは代表だけで、代表以外の
+ * お気に入りは利用者データの鍵に結ぶので、同じ集まりのバージョンは値を共有する。一方、一覧に出るのは代表だけで、代表以外の
  * バージョンを再生画面で付け外しても、知らせる id は一覧に無い。再生画面は付け外しの後に
  * 取り直した動画の `versions.representativeId` と `favorite` でこれを呼び、一覧の代表を
  * 揃える。
@@ -179,7 +177,7 @@ export function withGroupFavoriteSince<T extends { id: number; favorite?: boolea
 /** UpdateFavoritesOptions は updateFavorites の省ける引数である。 */
 export interface UpdateFavoritesOptions {
   /**
-   * お気に入りをそろえるスマートフォルダの id（specs/052-smart-folders/contracts/screen-api.md）。
+   * お気に入りをそろえるスマートフォルダの id。
    * 空なら本文に載せない。フォルダの付け外しは画面へ知らせない（フォルダのカードは
    * `smartFolder` のイベントか読み直しで値を取る）。
    */
@@ -190,7 +188,7 @@ export interface UpdateFavoritesOptions {
 /**
  * updateFavorites は `videoIds` の動画と `groupIds` のグループ（と `smartFolderIds` の
  * スマートフォルダ）のお気に入りを `favorite` にそろえる（PUT /api/favorites、
- * specs/035-favorites/contracts/screen-api.md §1、specs/048-groups/research.md R-10）。カード・行の
+ * docs/design-docs/catalog-organization.md、docs/design-docs/catalog-organization.md）。カード・行の
  * 1 件も、選択バーの一括も、これを使う。前の付け外しが決着するまで送るのを待ち、成功したら
  * 結果を画面へ知らせる。
  */

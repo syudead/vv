@@ -13,8 +13,7 @@ import (
 )
 
 // update_video_work_info と list_people はルートと同じ構造の内容を返し、list_people の limit は既定で 100、
-// update_person の null は REST と同じく一覧を空にする（specs/047-video-work-info/contracts/external-api.md
-// 「MCP tools」）。
+// update_person の null は REST と同じく一覧を空にする。
 func TestMCPWorkInfoTools(t *testing.T) {
 	f := newMCPFixture(t, Options{})
 	session := f.connect(t)

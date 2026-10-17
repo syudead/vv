@@ -1,6 +1,6 @@
 package store
 
-// スマートフォルダの知らせ（specs/052-smart-folders/data-model.md「Notices」、research.md R-12）。
+// スマートフォルダの知らせ。
 // 一致が変わりうる書き込みは、確定の前に同じ取引ですべてのフォルダの id を読み、確定後に
 // domain.SmartFoldersChanged を 1 つ発行する。フォルダが 1 つも無ければ何も発行しない。どの
 // フォルダの一致が変わったかは求めない（求めると書き込みごとにすべての条件を前後で評価する、R-2）。
@@ -30,8 +30,7 @@ func allSmartFolderIDs(ctx context.Context, tx *sql.Tx) ([]int64, error) {
 	return ids, nil
 }
 
-// changesMatches は、知らせのうちスマートフォルダの一致を変えうるものがあるかを返す
-// （data-model.md「Notices」）。グループの変化、束ねと外し（後継の引き継ぎを含む）、自動タグ付けの
+// changesMatches は、知らせのうちスマートフォルダの一致を変えうるものがあるかを返す。グループの変化、束ねと外し（後継の引き継ぎを含む）、自動タグ付けの
 // 結果、動画の作品情報（人物・団体の付け外し）がそれにあたる。
 func changesMatches(events []domain.Event) bool {
 	for _, event := range events {

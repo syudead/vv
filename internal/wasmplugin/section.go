@@ -9,8 +9,7 @@ import (
 const sectionCustom = 0
 
 // WithManifest は module の vv.plugin のカスタムセクションをすべて外し、manifest を中身とする
-// vv.plugin のセクションを末尾に足した新しいバイト列を返す。何度かけてもセクションは 1 つである
-// （specs/056-plugin-tooling/research.md R-2）。マニフェストの中身は確かめない。セクションの並びとして
+// vv.plugin のセクションを末尾に足した新しいバイト列を返す。何度かけてもセクションは 1 つである。マニフェストの中身は確かめない。セクションの並びとして
 // 読めないバイト列には errMalformed を包んだ誤りを返す。
 func WithManifest(module, manifest []byte) ([]byte, error) {
 	if len(module) < 8 || string(module[:4]) != "\x00asm" {

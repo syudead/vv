@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 監視の走査（specs/042-folder-watch-import/data-model.md の Rules）。
+// 監視の走査。
 
 func startTestWatchScan(t *testing.T, db *DB, dirs ...domain.DirtyDirectory) domain.Scan {
 	t.Helper()
@@ -108,7 +108,7 @@ func TestWatchScanCarriesIssuesOutsideItsScope(t *testing.T) {
 }
 
 // done で閉じた監視の走査は、保留中の後継の記録を判定してよい状態にしない。次に done で閉じる
-// 手動の走査が判定する（research.md R-9）。
+// 手動の走査が判定する。
 func TestDoneWatchScanLeavesSuccessionsUnready(t *testing.T) {
 	db, _ := taggedVideoFixture(t)
 	watch := startTestWatchScan(t, db, domain.DirtyDirectory{Path: fixturePath("/media")})

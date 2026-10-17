@@ -368,7 +368,7 @@ func (e WorkPersonRole) Valid() bool {
 	}
 }
 
-// Alias 人物か団体の別名 1 件（specs/047-video-work-info/data-model.md「Fields」）
+// Alias 人物か団体の別名 1 件
 type Alias struct {
 	// Language BCP 47 の構文の言語タグ。無ければ省く
 	Language *string `json:"language,omitempty"`
@@ -437,15 +437,15 @@ type CreditUpdateRequest struct {
 	ParentId *int64 `json:"parentId,omitempty"`
 }
 
-// Error 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+// Error 誤りの形は画面の API と同じで、index はこの API だけの項目である。
 type Error struct {
 	// Code 機械可読なエラー種別。
 	Code ErrorCode `json:"code"`
 
-	// Field reason が指すプロパティの経路。JSON のプロパティ名を . でつなぎ、一覧の位置を [] で書く （people[0].person.id・aliases[2].language・externalIds[1]・parentId）。作品情報の一括操作では その項目の workInfo の中の経路である。work_info_*・person_not_found・organization_not_found・ external_id_taken のときだけ入る（specs/047-video-work-info/contracts/screen-api.md 「Added reason values and field」）
+	// Field reason が指すプロパティの経路。JSON のプロパティ名を . でつなぎ、一覧の位置を [] で書く （people[0].person.id・aliases[2].language・externalIds[1]・parentId）。作品情報の一括操作では その項目の workInfo の中の経路である。work_info_*・person_not_found・organization_not_found・ external_id_taken のときだけ入る
 	Field *string `json:"field,omitempty"`
 
-	// Index 原因になった要素の位置（0 から）。タグ名の誤りでは tags の、表示名・サムネイル・作品情報の 操作では items の、それ以外では videos の位置を指す（contracts/external-api.md §4）
+	// Index 原因になった要素の位置（0 から）。タグ名の誤りでは tags の、表示名・サムネイル・作品情報の 操作では items の、それ以外では videos の位置を指す
 	Index *int `json:"index,omitempty"`
 
 	// Limit reason の上限値。上限を持つ reason のときだけ入る
@@ -457,7 +457,7 @@ type Error struct {
 	// Reason 同じ code の中で状況を区別する下位の理由。
 	Reason *ErrorReason `json:"reason,omitempty"`
 
-	// TagId 名前がぶつかったタグの id。`tag_name_taken`・`tag_merge_required` のときだけ入る （specs/039-external-tag-admin/contracts/external-api.md §0）
+	// TagId 名前がぶつかったタグの id。`tag_name_taken`・`tag_merge_required` のときだけ入る
 	TagId *int64 `json:"tagId,omitempty"`
 
 	// TagName 名前がぶつかったタグの元の名前（翻訳しない）。`tag_name_taken`・`tag_merge_required` の ときだけ入る。`tag_kind_name_taken` では、名前がぶつかった種類の名前が入る
@@ -535,7 +535,7 @@ type ExternalVideo struct {
 	// video-work-info も進める
 	UpdatedAt time.Time `json:"updatedAt"`
 
-	// WorkInfo 動画の作品情報（specs/047-video-work-info/contracts/external-api.md「ExternalVideo changes」）。
+	// WorkInfo 動画の作品情報。
 	// 画面の API と同じ 7 つのプロパティで、この API では未設定の code・description は null、空の一覧は []
 	WorkInfo WorkInfo `json:"workInfo"`
 }
@@ -615,7 +615,7 @@ type OrganizationMergeResponse struct {
 	Organization Organization `json:"organization"`
 }
 
-// Person 人物 1 件（specs/047-video-work-info/contracts/screen-api.md「People and organizations」）
+// Person 人物 1 件
 type Person struct {
 	// Aliases 名前の自然順。無ければ []
 	Aliases   []Alias   `json:"aliases"`
@@ -649,7 +649,7 @@ type PersonMergeResponse struct {
 	// NotFoundIds 無かったので飛ばした統合元。無ければ []
 	NotFoundIds []int64 `json:"notFoundIds"`
 
-	// Person 人物 1 件（specs/047-video-work-info/contracts/screen-api.md「People and organizations」）
+	// Person 人物 1 件
 	Person Person `json:"person"`
 }
 
@@ -680,7 +680,7 @@ type Tag struct {
 	CreatedAt time.Time `json:"createdAt"`
 	Id        int64     `json:"id"`
 
-	// Kind タグの種類。null は種類の無いタグ（specs/051-tag-kinds/contracts/external-api.md）
+	// Kind タグの種類。null は種類の無いタグ
 	Kind *TagKindRef `json:"kind"`
 	Name string      `json:"name"`
 
@@ -721,7 +721,7 @@ type TagBatchResponse struct {
 	NotFoundIds []int64 `json:"notFoundIds"`
 }
 
-// TagKind 種類の一覧の 1 件（specs/051-tag-kinds/contracts/external-api.md）
+// TagKind 種類の一覧の 1 件
 type TagKind struct {
 	// CreatedAt 種類を作った時刻（秒の精度）
 	CreatedAt time.Time `json:"createdAt"`
@@ -813,7 +813,6 @@ type TagRenameRequest struct {
 
 // TagSort タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、
 // createdDesc・createdAsc は作った日。値が同じタグは名前の自然順、それも同じなら id
-// （specs/036-tag-admin-scale/data-model.md §0・§2）
 type TagSort string
 
 // TagSynonymsRequest defines model for TagSynonymsRequest.
@@ -948,8 +947,7 @@ type VideoWorkInfoChange struct {
 	// Video 動画の指定。id・contentKey・path のちょうど 1 つを持つ。path は正規化せず、登録フォルダの下の 今の所在の path とバイト列で比べる
 	Video VideoRef `json:"video"`
 
-	// WorkInfo 作品情報の書き込み 1 件。画面の API の WorkInfoInput と同じ形で、項目の規則も同じ
-	// （specs/047-video-work-info/contracts/screen-api.md「WorkInfoInput schema」、data-model.md「Fields」）。
+	// WorkInfo 作品情報の書き込み 1 件。画面の API の WorkInfoInput と同じ形で、項目の規則も同じ。
 	// どのプロパティも省いてよく null も受け付ける。省いたものと null は解除で、全体を置き換える
 	WorkInfo WorkInfoInput `json:"workInfo"`
 }
@@ -958,7 +956,7 @@ type VideoWorkInfoChange struct {
 type VideoWorkInfoItem struct {
 	Video VideoTagsVideo `json:"video"`
 
-	// WorkInfo 動画の作品情報（specs/047-video-work-info/contracts/external-api.md「ExternalVideo changes」）。
+	// WorkInfo 動画の作品情報。
 	// 画面の API と同じ 7 つのプロパティで、この API では未設定の code・description は null、空の一覧は []
 	WorkInfo WorkInfo `json:"workInfo"`
 }
@@ -982,14 +980,14 @@ type WorkDate struct {
 	// Examples: 2024, 2024-02, 2024-02-29
 	Date string `json:"date"`
 
-	// Kind 日付の種類（specs/047-video-work-info/data-model.md「Fields」）
+	// Kind 日付の種類
 	Kind WorkDateKind `json:"kind"`
 }
 
-// WorkDateKind 日付の種類（specs/047-video-work-info/data-model.md「Fields」）
+// WorkDateKind 日付の種類
 type WorkDateKind string
 
-// WorkInfo 動画の作品情報（specs/047-video-work-info/contracts/external-api.md「ExternalVideo changes」）。
+// WorkInfo 動画の作品情報。
 // 画面の API と同じ 7 つのプロパティで、この API では未設定の code・description は null、空の一覧は []
 type WorkInfo struct {
 	// Code 品番
@@ -1014,8 +1012,7 @@ type WorkInfo struct {
 	Urls []string `json:"urls"`
 }
 
-// WorkInfoInput 作品情報の書き込み 1 件。画面の API の WorkInfoInput と同じ形で、項目の規則も同じ
-// （specs/047-video-work-info/contracts/screen-api.md「WorkInfoInput schema」、data-model.md「Fields」）。
+// WorkInfoInput 作品情報の書き込み 1 件。画面の API の WorkInfoInput と同じ形で、項目の規則も同じ。
 // どのプロパティも省いてよく null も受け付ける。省いたものと null は解除で、全体を置き換える
 type WorkInfoInput struct {
 	Code          *string                  `json:"code,omitempty"`
@@ -1084,34 +1081,34 @@ type CreditQuery = string
 // CreditSource defines model for CreditSource.
 type CreditSource = string
 
-// CreditDeleteInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+// CreditDeleteInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である。
 type CreditDeleteInvalid = Error
 
-// CreditExternalIdTaken 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+// CreditExternalIdTaken 誤りの形は画面の API と同じで、index はこの API だけの項目である。
 type CreditExternalIdTaken = Error
 
-// CreditInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+// CreditInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である。
 type CreditInvalid = Error
 
-// CreditListInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+// CreditListInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である。
 type CreditListInvalid = Error
 
-// CreditMergeInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+// CreditMergeInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である。
 type CreditMergeInvalid = Error
 
-// CreditNotFound 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+// CreditNotFound 誤りの形は画面の API と同じで、index はこの API だけの項目である。
 type CreditNotFound = Error
 
-// Internal 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+// Internal 誤りの形は画面の API と同じで、index はこの API だけの項目である。
 type Internal = Error
 
-// TagKindNameConflict 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+// TagKindNameConflict 誤りの形は画面の API と同じで、index はこの API だけの項目である。
 type TagKindNameConflict = Error
 
-// TagKindNameInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+// TagKindNameInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である。
 type TagKindNameInvalid = Error
 
-// Unauthenticated 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+// Unauthenticated 誤りの形は画面の API と同じで、index はこの API だけの項目である。
 type Unauthenticated = Error
 
 // ListOrganizationsParams defines parameters for ListOrganizations.
@@ -1171,7 +1168,6 @@ type ListTagsParams struct {
 
 	// Kind 種類の id（正の整数）ならその種類のタグだけ、`none` なら種類の無いタグだけにする。
 	// 無い id は空の一覧。`total` はこれも掛けて数え、`totalAll` は掛けない
-	// （specs/051-tag-kinds/contracts/external-api.md）
 	Kind *string `form:"kind,omitempty" json:"kind,omitempty"`
 
 	// Sort 並び順

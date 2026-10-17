@@ -134,8 +134,7 @@ function mediaRequests(page: Page): Request[] {
 }
 
 /**
- * reportedStart は変換の要求に付いた attempt の、実際の開始位置の報告を待って返す
- * （specs/018-live-transcode-seek/contracts/transcode-start-api.md）。
+ * reportedStart は変換の要求に付いた attempt の、実際の開始位置の報告を待って返す。
  */
 async function reportedStart(page: Page, transcode: Request): Promise<number> {
   const attempt = new URL(transcode.url()).searchParams.get("attempt");

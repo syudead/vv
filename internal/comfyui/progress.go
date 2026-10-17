@@ -18,7 +18,7 @@ import (
 
 // ステップの進み具合は ComfyUI の WebSocket の progress のメッセージから取る。状態は HTTP の
 // 問い合わせで決め、WebSocket は進み具合だけに使う。つながらなければ進み具合は無いままで、
-// 実行は失敗させない（specs/045-comfyui-thumbnails/research.md R-5）。
+// 実行は失敗させない。
 
 // progressDialTimeout は WebSocket の接続の上限時間である。
 const progressDialTimeout = 30 * time.Second
@@ -30,7 +30,7 @@ const progressDialTimeout = 30 * time.Second
 const progressReadyTimeout = 3 * time.Second
 
 // progressLifetime は 1 つの実行の WebSocket を開いておく上限時間である。編集のセッションが
-// 実行を止める 10 分（research.md R-11）より長くし、終わりを知らされなかった接続も閉じる。
+// 実行を止める 10 分より長くし、終わりを知らされなかった接続も閉じる。
 const progressLifetime = 15 * time.Minute
 
 // maxProgressMessageBytes は読む文字のメッセージの上限である。プレビューの画像などのバイナリの
@@ -181,7 +181,7 @@ func (c *Client) dropProgress(id string, w *progressWatch) {
 }
 
 // Progress は実行の最新のステップの進み具合を返す。WebSocket がつながらないか、まだ progress が
-// 届いていないか、実行が終わっていれば nil である（contracts/workflow.md の Run states）。
+// 届いていないか、実行が終わっていれば nil である。
 func (c *Client) Progress(job domain.ImageEditJob) *domain.ImageEditProgress {
 	c.progressMu.Lock()
 	w, ok := c.progress[job.ID]
@@ -198,7 +198,6 @@ func (c *Client) Progress(job domain.ImageEditJob) *domain.ImageEditProgress {
 
 // wsURL は clientID で接続する WebSocket の URL である。自前の ComfyUI は保存した URL の /ws、
 // Comfy Cloud は API の基底から /api を除いた /ws で、キーを token の問い合わせに付ける
-// （research.md R-5）。
 func (t *target) wsURL(clientID string) string {
 	base := t.base
 	query := url.Values{"clientId": {clientID}}

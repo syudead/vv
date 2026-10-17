@@ -8,7 +8,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// フォルダ由来のタグ（specs/017-folder-groups/contracts/folder-groups-api.md §4）を、
+// フォルダ由来のタグを、
 // 本物の保存層と経路をつないで確かめる。所有者には出所つきで出て、ゲストの
 // Video.tags は空のまま、ゲストの検索はフォルダ名のタグに当たらない。
 func TestFolderTagsForOwnerAndGuest(t *testing.T) {

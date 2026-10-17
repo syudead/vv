@@ -18,7 +18,7 @@ import { stubRowHeights } from "../testing/virtualRows";
 
 setUpTagsPageServer();
 
-describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale/research.md R-1・R-11・R-12）", () => {
+describe("TagsPage サーバーのページで読む", () => {
   /** jsdom には表示域の高さと要素の高さが無いので、試験用の高さ（行 40px、表示域 200px）を置く。 */
   let restoreHeights = () => {};
 

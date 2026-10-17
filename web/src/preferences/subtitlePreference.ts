@@ -1,6 +1,5 @@
 /**
- * SubtitlePreference は、このブラウザで最後に選んだ字幕である（specs/028-sidecar-subtitles
- * research.md R-9）。label はラベルの無い字幕なら `""`。
+ * SubtitlePreference は、このブラウザで最後に選んだ字幕である。label はラベルの無い字幕なら `""`。
  */
 export interface SubtitlePreference {
   enabled: boolean;

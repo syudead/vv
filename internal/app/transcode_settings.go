@@ -13,7 +13,6 @@ import (
 )
 
 // encoderCheckTimeout は起動時の確認の、エンコーダーごとの上限時間である
-// （specs/025-hardware-encoding/research.md R-2）。
 const encoderCheckTimeout = 10 * time.Second
 
 // TranscodeSettingsStore はライブ変換の映像エンコード方式の保存先である。値は解釈せずに
@@ -43,7 +42,7 @@ type TranscodeSettingsOptions struct {
 }
 
 // TranscodeSettings はライブ変換の映像エンコード方式の選択と、起動時の確認の結果を
-// メモリに持ち、実際に使う方式を決める（research.md R-3）。確認の結果は保存しない。
+// メモリに持ち、実際に使う方式を決める。確認の結果は保存しない。
 type TranscodeSettings struct {
 	store        TranscodeSettingsStore
 	checker      EncoderChecker
@@ -220,7 +219,7 @@ func (t *TranscodeSettings) isAvailable(encoder domain.VideoEncoder) bool {
 }
 
 // logCheckDetails は確認に失敗したエンコーダーの補足（FFmpeg の標準エラーの末尾）を
-// 1 件ずつ記録する（research.md R-2）。補足はログ用で、API には出さない。
+// 1 件ずつ記録する。補足はログ用で、API には出さない。
 func (t *TranscodeSettings) logCheckDetails(encoding domain.TranscodeEncoding) {
 	for _, a := range encoding.Encoders {
 		if a.State != domain.EncoderUnavailable || a.Detail == "" {

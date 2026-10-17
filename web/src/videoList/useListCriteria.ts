@@ -31,8 +31,7 @@ export interface ListCriteriaState {
 const noExtraParams: readonly string[] = [];
 
 /**
- * useListCriteria は今の URL を一覧の条件として読み、書き換える口を返す
- * （specs/013-library-search/contracts/list-url.md）。パスはそのまま残すので、
+ * useListCriteria は今の URL を一覧の条件として読み、書き換える口を返す。パスはそのまま残すので、
  * フォルダ画面でも同じように使える。
  *
  * preferredSort は URL に sort が無いときの並び順（端末に保存した値）である。
@@ -47,11 +46,10 @@ const noExtraParams: readonly string[] = [];
  * 最近再生した順・お気に入りにした日時・`extraParams` のタグ・人物・団体）を既定に
  * 丸めて返す。URL に残っていたら履歴を増やさずに URL も直す。端末に保存した並び順
  * （preferredSort）が所有者だけの並び順のときも丸めるが、
- * 保存値そのものは書き換えない（specs/016-single-account-auth/ui-design.md
- * 「Guest degradation」、contracts/guest-api.md §3）。
+ * 保存値そのものは書き換えない。
  *
  * `guestParams` は `extraParams` のうち、所有者のデータに依らないのでゲストにも残すもの
- * （ライブラリの追加日と長さ。specs/052-smart-folders/research.md R-4）である。呼び手は
+ * （ライブラリの追加日と長さ。docs/design-docs/catalog-organization.md）である。呼び手は
  * 参照の変わらない配列を渡す。
  */
 export function useListCriteria(
@@ -134,7 +132,7 @@ export function useListCriteria(
       const { criteria: current, hasExplicitSort } = latest.current;
       // sort の無い URL は「端末に保存した並び順」を指す。並べ替えを変えると保存も
       // 変わり、戻ったときに前の並びにならない。履歴を増やす前に、今の項目へ今の
-      // 並び順を書いておく（list-url.md §3 の戻る/進む）。今の extra の値も残す。
+      // 並び順を書いておく（の戻る/進む）。今の extra の値も残す。
       if (mode === "push" && !hasExplicitSort) write(current, "replace");
       write(next, mode, extraValues);
     },

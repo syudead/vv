@@ -126,7 +126,6 @@ func readEvent(t *testing.T, reader *bufio.Reader) string {
 
 // ループバックから全てのアドレスへ開き直すと、ループバックでない自分のアドレスから
 // 接続でき、戻すと拒まれる。そのあいだ、確立済みの SSE の接続は切れない
-// （specs/037-windows-app/research.md R-14）。
 func TestReopenableListenerSwitchesAddressAndKeepsConnections(t *testing.T) {
 	lanIP := ownNonLoopbackIPv4(t)
 	port := freePort(t)

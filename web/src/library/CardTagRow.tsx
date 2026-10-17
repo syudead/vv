@@ -20,8 +20,7 @@ export interface CardTagRowProps {
   tags: readonly VideoTag[];
   /**
    * 選択中（1件以上選んでいる）ときは、チップをボタンとして描かず Tab の順からも
-   * 外し、押すとカードの選択を切り替える（ui-design.md「Card structure and
-   * pressing」、Edge Case「選択中にタグを押したとき」）。
+   * 外し、押すとカードの選択を切り替える。
    */
   selectionMode: boolean;
   /** チップを押したとき、そのタグで絞り込む。 */
@@ -38,8 +37,7 @@ export interface CardTagRowProps {
  * 余地の無い唯一の可視タグ（B4）以外は `shrink-0` にし、計測した幅のまま出す。
  *
  * folderOnly のチップは面を持たず（Badge の outline）、破線の枠と Folder の目印で区別する。
- * hover では枠を実線にする（017 の ui-design.md「Folder-derived tag chip」
- * 「Interaction states」）。
+ * hover では枠を実線にする（「Interaction states」）。
  */
 function chipClassName(pressable: boolean, shrink = false, folderOnly = false): string {
   return cn(
@@ -56,8 +54,7 @@ function chipClassName(pressable: boolean, shrink = false, folderOnly = false): 
 }
 
 /**
- * chipLabel は押せるチップの読み上げ名である。仮のタグは「(tentative)」を添える
- * （specs/031-tentative-tags/ui-design.md「Tentative mark」「Words」）。
+ * chipLabel は押せるチップの読み上げ名である。仮のタグは「(tentative)」を添える。
  */
 function chipLabel(tag: VideoTag, folderOnly: boolean): string {
   const row = t.library.tagRow;
@@ -70,8 +67,7 @@ function chipLabel(tag: VideoTag, folderOnly: boolean): string {
 }
 
 /**
- * listChipClassName は「+N」の一覧のチップに足す形である（specs/041-tag-overflow-list/
- * ui-design.md「List chip」、research.md R-3）。一覧では名前を省略せず、一覧の内幅
+ * listChipClassName は「+N」の一覧のチップに足す形である。一覧では名前を省略せず、一覧の内幅
  * より広い名前はチップの中で左揃えに折り返し、その行の分だけ高くなる。1行に
  * 収まる名前は h-6 と同じ高さ（py-1 と text-xs の1行）で、行のチップと変わらない。
  * 目印は items-start で1行目に置き、mt-0.5 で1行目の文字の中央に揃える。
@@ -131,10 +127,9 @@ function TagChip({
 }
 
 /**
- * CardTagRow はライブラリの格子カードの題名の下に出すタグの行である
- * （specs/014-video-tags/ui-design.md「Tag row」「Overflow」）。1行に収まらない
+ * CardTagRow はライブラリの格子カードの題名の下に出すタグの行である。1行に収まらない
  * 分は末尾の「+N」にまとめ、マウスを留めるか押すと Popover で残りを折り返すチップの
- * 並びで見せる（specs/041-tag-overflow-list/ui-design.md「The list」「Interaction」）。
+ * 並びで見せる。
  */
 export default function CardTagRow({
   tags,
@@ -161,15 +156,14 @@ export default function CardTagRow({
   }, []);
 
   // 描画の前（layout effect）に決める。測る前の1フレームで行が伸び縮みしない
-  // ようにするためである（ui-design.md「Overflow」）。
+  // ようにするためである。
   // tags の中身が変わったときも測り直す（依存に含めるだけで、効果の中では
   // 直接参照しない。measure 用の子要素を再描画させる役目は React の再描画が担う）。
   useLayoutEffect(() => {
     recompute();
   }, [recompute, tags]);
 
-  // カードごとに見張りを作らず、一覧に1つの ResizeObserver へ登録する
-  // （ui-design.md「Overflow」、B2）。Provider の外（単体テストなど）では
+  // カードごとに見張りを作らず、一覧に1つの ResizeObserver へ登録する。Provider の外（単体テストなど）では
   // useTagRowMeasure が null を返し、初回の layout effect の計測だけになる。
   const observeRow = useTagRowMeasure();
   useLayoutEffect(() => {
@@ -182,12 +176,11 @@ export default function CardTagRow({
   const clampedVisible = Math.min(visibleCount, tags.length);
   const hidden = tags.slice(clampedVisible);
   const visible = tags.slice(0, clampedVisible);
-  // 一覧は開いたときに写さず、行と同じ tags と測った数から毎回導く（041 の
-  // research.md R-4）。隠れるタグが無くなったとき、または選択が始まったときは
+  // 一覧は開いたときに写さず、行と同じ tags と測った数から毎回導く（041 の）。隠れるタグが無くなったとき、または選択が始まったときは
   // 「+N」と一覧が一緒に消える。開いた状態も落とし、あとで隠れるタグが戻っても
   // 勝手に開かないようにする。
   const hasList = pressable && hidden.length > 0;
-  // 一覧はマウスを「+N」に留めても、押しても開く（041 の research.md R-1）。
+  // 一覧はマウスを「+N」に留めても、押しても開く。
   const { open, setOpen, triggerHandlers, contentHandlers, lastOpenedByHover } =
     useHoverOpen(hasList);
   // 先頭の1つすら自然な幅では収まらないのに1つは出しているとき（B4）は、
@@ -223,7 +216,7 @@ export default function CardTagRow({
               <Popover open={open} onOpenChange={setOpen}>
                 <PopoverTrigger asChild>
                   {/* 一覧が開いている間（留めても押しても）は hover の見た目を保つ
-                      （041 の ui-design.md「The `+N` chip」）。 */}
+                      。 */}
                   <Button
                     variant="ghost"
                     aria-label={t.library.tagRow.showMore(hidden.length)}
@@ -240,10 +233,10 @@ export default function CardTagRow({
                 </PopoverTrigger>
                 {/* 幅はチップに合わせて max-w-popover まで、高さは PopoverContent が
                     画面に残る高さで抑える。余白 p-2 はスクロールする並びの外に置く
-                    （041 の ui-design.md「The list」）。 */}
+                    。 */}
                 {/* 留めたマウスで開いた一覧はフォーカスを動かさず、閉じても返さない。
                     押して開いた一覧は最初のチップへフォーカスし、閉じると「+N」へ返す
-                    （041 の ui-design.md「Interaction」）。 */}
+                    。 */}
                 <PopoverContent
                   align="start"
                   className="w-auto max-w-popover p-2"
@@ -284,7 +277,7 @@ export default function CardTagRow({
           ))}
       </ul>
 
-      {/* 測るためだけの、見えない全タグの並び（Overflow の算出。ui-design.md「Overflow」）。 */}
+      {/* 測るためだけの、見えない全タグの並び（Overflow の算出）。 */}
       <div
         aria-hidden="true"
         // 幅 0 で切り、測る並びがカードの外（ページの右端の外）へはみ出して横スクロールを

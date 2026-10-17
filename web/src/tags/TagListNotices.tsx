@@ -6,8 +6,7 @@ import { Alert, AlertAction, AlertTitle } from "../ui/shadcn/alert";
 import { Button } from "../ui/shadcn/button";
 
 /**
- * TagLoadingMore は一覧の末尾の続きの読み込み中である（specs/036-tag-admin-scale/
- * ui-design.md「Loading more」）。表の後ろに状態の部品 `LoadMoreRow` の Spinner の行を
+ * TagLoadingMore は一覧の末尾の続きの読み込み中である。表の後ろに状態の部品 `LoadMoreRow` の Spinner の行を
  * 置く（web/registry/rules/patterns.md の States）。
  *
  * この組の知らせは人物・団体の管理画面（`web/src/credits/`）も使い、文言だけを渡す。
@@ -19,7 +18,7 @@ export function TagLoadingMore({ label = t.tags.loadingMore }: { label?: UiText 
 
 /**
  * TagLoadMoreFailed は続きの読み込みの失敗である。読み込んだ行は残り、「Retry」が
- * 同じカーソルで読み直す（ui-design.md「Loading more」）。
+ * 同じカーソルで読み直す。
  */
 export function TagLoadMoreFailed({
   reason,
@@ -40,8 +39,7 @@ export function TagLoadMoreFailed({
 
 /**
  * TagListChanged は、続きの応答の `totalAll` が画面の値と違ったときの知らせである。
- * 失敗ではないので destructive にせず既定の `Alert` にする。「Reload」で先頭から読み直す
- * （ui-design.md「Loading more」、research.md R-11）。
+ * 失敗ではないので destructive にせず既定の `Alert` にする。「Reload」で先頭から読み直す。
  */
 export function TagListChanged({
   onReload,
@@ -95,8 +93,7 @@ export function TagLoadFailed({
 
 /**
  * TagStaleList は、一覧を持っている間に先頭のページを読めなかったときに表の上に
- * 出す失敗である。残した行は今の条件と合わないかもしれないことを伝える
- * （ui-design.md「Stale list」）。
+ * 出す失敗である。残した行は今の条件と合わないかもしれないことを伝える。
  */
 export function TagStaleList({
   reason,

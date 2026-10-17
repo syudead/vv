@@ -43,8 +43,7 @@ export interface SmartFolderMenuProps {
 }
 
 /**
- * SmartFolderMenu は所有者のスマートフォルダのページの見出しの「More」である
- * （specs/052-smart-folders/ui-design.md「Header」）。「Edit…」「New child smart folder…」、区切り、
+ * SmartFolderMenu は所有者のスマートフォルダのページの見出しの「More」である。「Edit…」「New child smart folder…」、区切り、
  * 「Delete…」を開き、それぞれの窓を持つ。直せたら `Saved "{name}"`、子を作れたら
  * `Created "{name}"` のトーストを出す。消えた後の移動とトーストは呼び手が持つ。
  */

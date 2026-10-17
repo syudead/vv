@@ -11,7 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 人物と団体の一覧と 1 件の読み出し（specs/047-video-work-info/data-model.md「Entities」・「Lists」）。
+// 人物と団体の一覧と 1 件の読み出し。
 // 一覧はタグの一覧と同じ並び順とカーソル（admin_list_order.go）で、1 件の読み出しも同じ listed を
 // id で絞って読む。
 
@@ -108,7 +108,7 @@ const creditListedColumns = `id, name, created_at, sort_key, video_count, parent
 // する実体だけ、onlyID が正ならその実体だけにする。
 //
 // video_count は表示中の動画（所有者として見える代表）の利用者データの鍵のうち、どれかの役割の
-// 結び付きの行がこの実体を指すものの数である（data-model.md「Lists」の最後の段落）。束ねの代表だけが
+// 結び付きの行がこの実体を指すものの数である。束ねの代表だけが
 // 表示中なので、1 つの鍵は 1 本の動画として数える。
 func listedCreditsCTE(t creditTables, search string, onlyID int64) (string, []any) {
 	var countFilter, where string

@@ -14,7 +14,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// 外部連携 API の作品情報と人物・団体（specs/047-video-work-info/contracts/external-api.md）を、本物の
+// 外部連携 API の作品情報と人物・団体を、本物の
 // 認証・保存層と Bearer の境界で確かめる。
 
 // assertExternalField は誤りの応答の field が want であることを確かめる。

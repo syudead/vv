@@ -216,7 +216,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("DuplicatesPage（specs/030-video-versions/ui-design.md「Duplicates page」）", () => {
+describe("DuplicatesPage", () => {
   it("候補の組を 2 本の違い（解像度・コーデック・サイズ・場所）と共に並べる", async () => {
     renderPage();
     expect(
@@ -493,7 +493,7 @@ describe("DuplicatesPage（specs/030-video-versions/ui-design.md「Duplicates pa
     ).toBeNull();
   });
 
-  it("candidates の知らせで取り直し、判定で消えた組を一覧から落とす（specs/054-auto-dup/research.md R-10）", async () => {
+  it("candidates の知らせで取り直し、判定で消えた組を一覧から落とす", async () => {
     renderPage();
     await screen.findByText("2 pairs");
     server.candidates = [server.candidates[1]!];

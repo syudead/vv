@@ -16,8 +16,7 @@ import { foldForMatch } from "../../lib/foldForMatch";
 import { withoutScheme } from "../WorkInfo";
 import type { RowState } from "./fetchRules";
 
-// 比較の段の作品の詳細の行（specs/052-plugin-work-info-fields/ui-design.md「Compare」
-// 「States」）。今の値はページの workInfo から、取得した値は取得の結果と照合の答えから作る。
+// 比較の段の作品の詳細の行。今の値はページの workInfo から、取得した値は取得の結果と照合の答えから作る。
 
 /** DetailField は題名とタグ以外の、作品の詳細の行の項目である。 */
 export type DetailField = Exclude<WorkInfoField, "title" | "tags" | "cover">;

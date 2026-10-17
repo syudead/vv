@@ -25,7 +25,7 @@ function cardNames(): string[] {
     );
 }
 
-describe("スマートフォルダのページ（specs/052-smart-folders/ui-design.md「Smart folder page」）", () => {
+describe("スマートフォルダのページ", () => {
   it("子フォルダ、続けて応答の順の動画を並べ、見出しに本数と Play を出す", async () => {
     seed();
     renderPage("/smart-folders/1");

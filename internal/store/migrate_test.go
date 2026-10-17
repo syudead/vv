@@ -726,7 +726,7 @@ func tableColumns(t *testing.T, db *DB, table string) map[string]bool {
 }
 
 // 失敗理由のコードの移行（00016）は、移行前に入れた日本語の理由をそのまま残し、
-// コードは null のままにする（specs/023-english-i18n/data-model.md）。コードの列を持つ
+// コードは null のままにする。コードの列を持つ
 // 読み出しでも、その行は理由だけを返す。Down は列だけを外し、理由は残す。
 func TestFailureCodesMigrationKeepsExistingReasons(t *testing.T) {
 	db, err := Open(t.TempDir())

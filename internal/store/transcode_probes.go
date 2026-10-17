@@ -13,8 +13,7 @@ import (
 )
 
 // TranscodeProbe は動画 1 件分の保存済みの解析情報を、解釈せずにそのまま返す。行が
-// 無ければ nil。使ってよいかは domain.TranscodeProbeUsable が決める
-// （specs/018-live-transcode-seek/data-model.md §3）。videos の一覧・詳細には載せない。
+// 無ければ nil。使ってよいかは domain.TranscodeProbeUsable が決める。videos の一覧・詳細には載せない。
 func (s *LibraryStore) TranscodeProbe(ctx context.Context, videoID int64) (*domain.StoredTranscodeProbe, error) {
 	var stored domain.StoredTranscodeProbe
 	err := s.db.sql.QueryRowContext(ctx, `

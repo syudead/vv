@@ -1,11 +1,11 @@
 ---
 source: docs/design-docs/activity.md
-sourceHash: 57c8581fb0109c63ee419c827e85f334aaabf536ba17c87bad207d6e7470b093
+sourceHash: 71ac28c740e3078f12ad12bc58ab7ce19a87ee743abbdf090dd5845027d3c571
 ---
 
 # 活動ログ {#activity-log}
 
-VVMDM は、動画または組に対して実行する処理と、所有者のタグとバージョンの操作を、実行と対象ごとに 1 つの活動項目として永続的なログに残し、新しい順に所有者へ一覧表示する。項目とその規則は [`internal/domain/activity_entry.go`](../../internal/domain/activity_entry.go)、テーブルと一覧は [`internal/store/activity.go`](../../internal/store/activity.go) で、再試行と取り消しは [`internal/app/activity_log.go`](../../internal/app/activity_log.go) が振り分ける。各規則の理由は [055 research](../../specs/055-activity/research.md) にあり、スキーマは [055 data-model](../../specs/055-activity/data-model.md) だ。活動項目は、取り込みがいま実行している内容を示すメモリ上の行であるスキャンの活動とは別物だ ([R-1](../../specs/055-activity/research.md#r-1-a-persistent-activity-log-named-apart-from-the-scan-activity))。
+VVMDM は、動画または組に対して実行する処理と、所有者のタグとバージョンの操作を、実行と対象ごとに 1 つの活動項目として永続的なログに残し、新しい順に所有者へ一覧表示する。項目とその規則は [`internal/domain/activity_entry.go`](../../internal/domain/activity_entry.go)、テーブルと一覧は [`internal/store/activity.go`](../../internal/store/activity.go) で、再試行と取り消しは [`internal/app/activity_log.go`](../../internal/app/activity_log.go) が振り分ける。活動項目は、取り込みがいま実行している内容を示すメモリ上の行であるスキャンの活動とは別物だ。
 
 図は、項目を書く場所と、所有者がそれを読む方法を示す。
 
@@ -22,13 +22,13 @@ flowchart LR
 
 ## 項目はその変更のトランザクションで書く {#an-entry-is-written-in-the-transaction-of-its-change}
 
-記録対象を実行、完了、または決定するストアの役割は、自身のトランザクションの中で 1 つのパッケージ非公開のヘルパーを通して項目を書くか更新し、コミットが `ActivityChanged` を発行する。そのため項目とそれが記録する変更は常に一致し、どの役割も他の役割のメソッドを呼ばない ([R-2](../../specs/055-activity/research.md#r-2-an-entry-is-written-in-the-transaction-of-the-change-it-records))。`ActivityStore` がするのは、一覧、1 つの項目の読み取り、起動時の回復だけだ。
+記録対象を実行、完了、または決定するストアの役割は、自身のトランザクションの中で 1 つのパッケージ非公開のヘルパーを通して項目を書くか更新し、コミットが `ActivityChanged` を発行する。そのため項目とそれが記録する変更は常に一致し、どの役割も他の役割のメソッドを呼ばない。`ActivityStore` がするのは、一覧、1 つの項目の読み取り、起動時の回復だけだ。
 
-テーブルはユーザーデータだ。決して再構築も間引きもせず、対象を内容の鍵と書いた時点のラベルで示すので、項目はその動画より長く残る ([R-10](../../specs/055-activity/research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time))。
+テーブルはユーザーデータだ。決して再構築も間引きもせず、対象を内容の鍵と書いた時点のラベルで示すので、項目はその動画より長く残る。
 
 ## 状態、理由、結果 {#status-reason-and-outcome}
 
-項目は理由を伴う `running` か `attention`、または結果を伴う `done` だ。項目を書くと、同じ種類と対象の古い `attention` 項目を `done`/`superseded` として閉じるので、attention の数はまだ解決していない問題の数になる。`version_judgement` は組ごとに 1 つの項目を持ち、この方法で閉じることは決してない ([R-4](../../specs/055-activity/research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem))。
+項目は理由を伴う `running` か `attention`、または結果を伴う `done` だ。項目を書くと、同じ種類と対象の古い `attention` 項目を `done`/`superseded` として閉じるので、attention の数はまだ解決していない問題の数になる。`version_judgement` は組ごとに 1 つの項目を持ち、この方法で閉じることは決してない。
 
 ```mermaid
 stateDiagram-v2
@@ -41,7 +41,7 @@ stateDiagram-v2
 
 ## 取り込みと失敗したスキャン {#imports-and-failed-scans}
 
-動画の取り込みは、その 5 つの取り込み段階に対する 1 つの `import` 項目だ ([R-3](../../specs/055-activity/research.md#r-3-one-entry-per-run-and-subject-an-import-is-one-entry-for-all-its-stages))。各ジョブの行は、それが属する項目の id を保持する ([`internal/store/activity_import.go`](../../internal/store/activity_import.go))。
+動画の取り込みは、その 5 つの取り込み段階に対する 1 つの `import` 項目だ。各ジョブの行は、それが属する項目の id を保持する ([`internal/store/activity_import.go`](../../internal/store/activity_import.go))。
 
 | 出来事 | 項目 |
 | --- | --- |
@@ -53,7 +53,7 @@ stateDiagram-v2
 
 集約 (`ImportActivityState`) は、項目のジョブのいずれかが保留中の間は `running` (いずれかが取得されるまでは `waiting`)、段階が諦めたときは `attention`/`failed` で、その段階を `stage` に、そのメッセージを `detail` に持ち、それ以外は `done`/`completed` だ。完了した項目は決して `running` に戻らないので、ジョブを再び積む再スキャン、再プローブ、再試行は新しい項目を開く。スキャンは動画に必要なすべてのジョブを 1 つのトランザクションで積むので、その間に完了した段階が、後の段階が加わる前に項目を閉じることはない。`processing` 項目の進捗は、動画のすべてのジョブにわたって完了した段階を数える。再試行の項目は、それが再び積んだジョブだけを持つからだ。
 
-決定者は実行を開始した者だ ([R-5](../../specs/055-activity/research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run))。
+決定者は実行を開始した者だ。
 
 | 実行 | 決定者 |
 | --- | --- |
@@ -66,7 +66,7 @@ stateDiagram-v2
 
 ## 所有者の操作は動画ごとに done 項目を書く {#owner-operations-write-a-done-entry-per-video}
 
-動画のタグまたはバージョンのまとまりを変える、メディアフォルダを削除する、または作品情報を取得するか適用する所有者の操作は、`owner` が決定した `done` 項目をその操作のトランザクションで書く ([R-6](../../specs/055-activity/research.md#r-6-the-owner-operations-recorded)、[`internal/store/owner_activity.go`](../../internal/store/owner_activity.go))。
+動画のタグまたはバージョンのまとまりを変える、メディアフォルダを削除する、または作品情報を取得するか適用する所有者の操作は、`owner` が決定した `done` 項目をその操作のトランザクションで書く。
 
 | 操作 | 項目 |
 | --- | --- |
@@ -76,7 +76,7 @@ stateDiagram-v2
 | タグを付ける、外す (動画ページ、ライブラリの選択、グループをタグにする操作、`/api/v1`) | 手動のタグの行が変わった動画とタグごとに 1 つ。`detail` はタグの名前 |
 | 提案したタグを残す、却下する | 1 つの `tag_keep` または `tag_reject`。`detail` はタグの名前 |
 | 取得した作品情報を適用する | 1 つの `work_info_apply`。そのタグはタグの項目を書かない |
-| 作品情報を取得する | プラグインの実行ごとに 1 つの `work_info_fetch`。実行が失敗したときはプラグインのメッセージ (なければ失敗のコード) を伴う `done`/`failed` で、決して再試行しない ([R-11](../../specs/055-activity/research.md#r-11-a-failed-work-information-fetch-is-a-finished-entry-not-a-problem)) |
+| 作品情報を取得する | プラグインの実行ごとに 1 つの `work_info_fetch`。実行が失敗したときはプラグインのメッセージ (なければ失敗のコード) を伴う `done`/`failed` で、決して再試行しない  |
 | メディアフォルダを削除する | フォルダのパスについて 1 つの `media_folder_remove`。`detail` は、それが取り除いた動画の数 |
 | ドラッグでの整理の取り消し | それがまとまりを元に戻した動画ごとに 1 つの `organize_undo` |
 
@@ -88,7 +88,7 @@ stateDiagram-v2
 
 ## 一覧は id でページ分けし、同じ読み取りで数える {#the-list-pages-by-id-and-counts-in-the-same-read}
 
-`GET /api/activity` は不透明なカーソルとともに項目を id の降順で返すので、所有者がスクロールする間に書かれた項目で次のページがずれることはない ([R-9](../../specs/055-activity/research.md#r-9-keyset-paging-by-id-newest-first-filtered-by-status))。ページ、状態ごとの数、機能ごとの数は 1 つの読み取り専用スナップショットから得る。
+`GET /api/activity` は不透明なカーソルとともに項目を id の降順で返すので、所有者がスクロールする間に書かれた項目で次のページがずれることはない。ページ、状態ごとの数、機能ごとの数は 1 つの読み取り専用スナップショットから得る。
 
 | 絞り込み | 状態ごとの数 | 機能ごとの数 |
 | --- | --- | --- |
@@ -96,7 +96,7 @@ stateDiagram-v2
 | `feature` | 適用する | 無視する |
 | `decider`、`since`、`q` | 適用する | 適用する |
 
-`q` は大文字と小文字を区別せずに対象のラベルに一致する。`undo` 項目は、それが取り消した項目の機能を持つ。契約は [055 screen-api.md](../../specs/055-activity/contracts/screen-api.md) だ。
+`q` は大文字と小文字を区別せずに対象のラベルに一致する。`undo` 項目は、それが取り消した項目の機能を持つ。契約は[画面 API スキーマ](../../api/openapi.yaml)にある。
 
 ## 再試行と取り消しは種類ごとに振り分ける {#retry-and-undo-are-dispatched-by-kind}
 
@@ -110,9 +110,9 @@ stateDiagram-v2
 
 ## 画面は activity 通知で更新する {#the-screen-refreshes-on-an-activity-notification}
 
-`ActivityChanged` は `/api/events` 上のペイロードのない `activity` イベントになり、所有者のストリームにだけ送られ、`candidates` と同じように接続ごとにまとめられる ([R-8](../../specs/055-activity/research.md#r-8-the-screen-refreshes-on-an-activity-notification))。
+`ActivityChanged` は `/api/events` 上のペイロードのない `activity` イベントになり、所有者のストリームにだけ送られ、`candidates` と同じように接続ごとにまとめられる。
 
-Web クライアントでは、Activity 画面 (`web/src/activity`) は、そのイベントと再接続のときに、数と読み込んだすべてのページを取得し直し、カードをその場で置き換える。取得し直しは一度に 1 つだけ実行し、その間または最初のページの読み込み中に届いた通知は、もう 1 回の取得し直しを求める。シェルのサイドバーのメニュー項目と画面のフッターは、絞り込みのない要求 (`web/src/api/useActivityTotals.ts`) からログ全体の `counts` を読むので、そこでの `running` はキューに積まれた項目を含む。絞り込みはページの URL (`status`、`feature`、`decider`、`period`、`q`) にある。`period` は最初のページまたは取得し直しの開始時に `since` に変わり、続くページはその `since` を保つ ([055 UI design, Activity page](../../specs/055-activity/ui-design.md#activity-page))。カードの `Retry`、`Undo`、`Undo tags…` は確認なしで要求を送り (`web/src/activity/useActivityOperations.ts`)、成功すると通知を待たずに同じ取得し直しを始める。失敗するとカードはそのまま残り、トーストを表示する。
+Web クライアントでは、Activity 画面 (`web/src/activity`) は、そのイベントと再接続のときに、数と読み込んだすべてのページを取得し直し、カードをその場で置き換える。取得し直しは一度に 1 つだけ実行し、その間または最初のページの読み込み中に届いた通知は、もう 1 回の取得し直しを求める。シェルのサイドバーのメニュー項目と画面のフッターは、絞り込みのない要求 (`web/src/api/useActivityTotals.ts`) からログ全体の `counts` を読むので、そこでの `running` はキューに積まれた項目を含む。絞り込みはページの URL (`status`、`feature`、`decider`、`period`、`q`) にある。`period` は最初のページまたは取得し直しの開始時に `since` に変わり、続くページはその `since` を保つ。カードの `Retry`、`Undo`、`Undo tags…` は確認なしで要求を送り (`web/src/activity/useActivityOperations.ts`)、成功すると通知を待たずに同じ取得し直しを始める。失敗するとカードはそのまま残り、トーストを表示する。
 
 | 採用しなかった案 | 理由 |
 | --- | --- |

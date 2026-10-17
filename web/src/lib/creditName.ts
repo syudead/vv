@@ -1,7 +1,6 @@
 import { t, type UiText } from "../i18n";
 
-// 人物と団体の名前の規則（specs/047-video-work-info/data-model.md「Fields」、
-// ui-design.md「Picker」）。前後の空白を除いて 1〜200 符号位置で、制御文字を含まない。
+// 人物と団体の名前の規則。前後の空白を除いて 1〜200 符号位置で、制御文字を含まない。
 
 const controlCharPattern = /\p{Cc}/u;
 

@@ -1,7 +1,8 @@
 # Design documents
 
 Design documents explain consequential technical decisions and their context.
-Add each new document to this index.
+Add each new document to this index. Completed SDD artifacts are not
+reference documents; retain lasting decisions here before deleting them.
 
 ## Design document policy
 
@@ -13,10 +14,6 @@ Add each new document to this index.
   Z"; write how things are now and why.
 
 ## Documents
-
-The `ui-design.md` documents below quote Japanese screen text. After the English
-conversion, the English catalog (`web/src/i18n/en.ts`) is the source of truth
-for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 
 - [Core beliefs](core-beliefs.md)
 - [Writing quality: typed technical English](writing-quality.md)
@@ -46,38 +43,6 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Web test levels](web-testing.md)
 - [Test and CI quality monitoring](test-quality-monitoring.md)
 - [Complexity and duplication](complexity-and-duplication.md)
-- [VVMDM brand and screen UI design](../../specs/022-vvmdm-brand/ui-design.md)
-- [Thumbnail preview while seeking: UI](../../specs/009-seek-thumbnail-preview/ui-design.md)
-- [Hover video preview in lists: UI](../../specs/010-hover-video-preview/ui-design.md)
-- [Folder browsing screens: UI](../../specs/011-folder-browser/ui-design.md)
-- [Video page: UI](../../specs/012-video-detail-ia/ui-design.md)
-- [Video import progress: UI](../../specs/012-scan-progress/ui-design.md) (placement and controls only; what it shows is in 024)
-- [Import progress and results: UI](../../specs/024-import-progress/ui-design.md)
-- [Search on the library and folder screens: UI](../../specs/013-library-search/ui-design.md)
-- [Video tags and filtering by tag: UI](../../specs/014-video-tags/ui-design.md)
-- [Single-account authentication and guest viewing: UI](../../specs/016-single-account-auth/ui-design.md)
-- [Folder groups and continuous playback: UI](../../specs/017-folder-groups/ui-design.md)
-- [Quality menu and stall warning: UI](../../specs/027-playback-quality/ui-design.md)
-- [Editing a video's display name and using the current frame as thumbnail: UI](../../specs/029-video-overrides/ui-design.md)
-- [Bundling versions of the same video: UI](../../specs/030-video-versions/ui-design.md)
-- [Tentative tag marker, and confirming, rejecting and rejected names: UI](../../specs/031-tentative-tags/ui-design.md)
-- [Scrubbing along the bottom edge of a card thumbnail: UI](../../specs/032-card-scrub-preview/ui-design.md)
-- [Modified and created dates on the video page, and the "Date created" sort: UI](../../specs/033-video-dates/ui-design.md)
-- [Favorite mark, toggling, filtering and sorting for videos and groups: UI](../../specs/035-favorites/ui-design.md)
-- [Tag admin screen at scale (top bar, band, tabs, sort, selection and bulk actions): UI](../../specs/036-tag-admin-scale/ui-design.md)
-- [vv design system on shadcn/ui (foundations, components, page patterns): UI](../../specs/038-design-system/ui-design.md)
-- [Hidden tags behind a card's `+N`, visible and pressable at any count: UI](../../specs/041-tag-overflow-list/ui-design.md)
-- [Auto-import of changed media folders (setting, problem notice, quiet result notice): UI](../../specs/042-folder-watch-import/ui-design.md)
-- [Watch history screen (day groups, removing one entry, clearing the history): UI](../../specs/043-watch-history/ui-design.md)
-- [Setting a local image as the thumbnail and editing the current thumbnail with ComfyUI (upload entry, uploaded item, source menu): UI](../../specs/046-thumbnail-image-upload/ui-design.md)
-- [Work information on videos (work details row, in-place editor, person and organization filter, people and organizations screens): UI](../../specs/047-video-work-info/ui-design.md)
-- [Groups of any videos and groups (group page with a trail, New group, Add to group, the video page's group context): UI](../../specs/048-groups/ui-design.md)
-- [Work-info plugins (settings section, approval prompt, setting values, fetch entry and dialog with the comparison): UI](../../specs/049-work-info-plugins/ui-design.md)
-- [Drag and drop to reorder, group, merge and bundle (drop indicators, drop menus, the new group's name field, the undo toast): UI](../../specs/050-drag-organize/ui-design.md)
-- [Tag kinds (the kind label on a tag row, the kind filter, Set kind in the selection bar, the Kinds tab, the library's tag kind filter): UI](../../specs/051-tag-kinds/ui-design.md)
-- [Work details from work-info plugins (the comparison's work detail rows with the `New` and `Not linked` marks, the result step's left-out values): UI](../../specs/052-plugin-work-info-fields/ui-design.md)
-- [Smart folders whose contents follow a saved condition (Save as smart folder, the smart folder dialog, card and page with its conditions lines, the video page's folder line): UI](../../specs/052-smart-folders/ui-design.md)
-- [Automatic duplicate judging (the versions mark on cards and rows, the Duplicate judging switch in Settings): UI](../../specs/054-auto-dup/ui-design.md)
-- [Media information on the video page and chapters on the seek bar (the Video, Audio, Subtitles, Embedded and Broadcast groups, chapter marks, the seek preview's chapter title, the chapters menu): UI](../../specs/056-media-info/ui-design.md)
-- [Work-info plugin tooling (setting defaults and choices, the plugin proxy in the Network section, the last run dialog, picking fetched tags one by one): UI](../../specs/056-plugin-tooling/ui-design.md)
-- [Settings split into eight pages (the page list, the narrow-screen list and back link, the Auto-import state and switch on two pages, the Auto-tagging lock and the Duplicate judging note that link to Connections): UI](../../specs/058-settings-pages/ui-design.md)
+- [Authentication and visibility](authentication.md)
+- [Catalog organization and persistent identity](catalog-organization.md)
+- [Import progress and recovery](import-pipeline.md)

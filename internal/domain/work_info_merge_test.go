@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// 取得した作品の詳細を保存済みの作品情報に重ねる（specs/052-plugin-work-info-fields/research.md R-4、#1158）。
+// 取得した作品の詳細を保存済みの作品情報に重ねる。
 
 var (
 	matchNew       = CreditMatch{State: CreditMatchNew}

@@ -3,8 +3,7 @@ import type { components } from "./gen/openapi";
 
 // 人物と団体は同じ形の経路を `/api/people` と `/api/organizations` に持つので、1 つの
 // モジュールが種類（CreditKind）を受け取って両方を扱う
-// （specs/047-video-work-info/plan.md の Structure decision、contracts/screen-api.md
-// 「People and organizations」）。
+//
 export type Person = components["schemas"]["Person"];
 export type Organization = components["schemas"]["Organization"];
 export type CreditInput = components["schemas"]["CreditInput"];
@@ -103,7 +102,7 @@ export function getCredit(
 
 /**
  * updateCredit は人物か団体を書き換える（`PATCH`）。送ったプロパティだけを置き換え、
- * 一覧は丸ごと置き換える（`null` は空にし、`parentId: null` は親を外す。research.md R-8）。
+ * 一覧は丸ごと置き換える（`null` は空にし、`parentId: null` は親を外す）。
  */
 export function updateCredit(
   kind: CreditKind,

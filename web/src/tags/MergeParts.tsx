@@ -27,8 +27,7 @@ interface MergeCommandProps {
 
 /**
  * MergeTargetField は統合の窓の統合先の欄である。見える名札、入力の下に高さを固定して
- * 並べる候補（`inline`）、候補を引けなかったときの理由を持つ（specs/036-tag-admin-scale/
- * ui-design.md「Merge dialog」「Target candidates」）。名前の規則は `Command`（タグの窓は
+ * 並べる候補（`inline`）、候補を引けなかったときの理由を持つ。名前の規則は `Command`（タグの窓は
  * `TagCommand`、人物・団体の窓は `CreditCommand`）が持つ。Esc は窓が閉じる。
  */
 export function MergeTargetField({
@@ -97,7 +96,7 @@ export function MergeTargetField({
   );
 }
 
-/** MergeSummary は窓の下端の「統合元 → 統合先」である（ui-design.md「Merge dialog」）。 */
+/** MergeSummary は窓の下端の「統合元 → 統合先」である。 */
 export function MergeSummary({ source, target }: { source: string; target: string }) {
   return (
     <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">

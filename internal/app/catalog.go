@@ -24,14 +24,13 @@ type CatalogIngestStore interface {
 
 // CatalogIndexStore は関連動画を組み立てるためのライブラリ索引である。どの
 // 読み出しも見る人（domain.Audience）を取り、ゲストには公開の動画だけを返す
-// （specs/016-single-account-auth/data-model.md §3）。
 type CatalogIndexStore interface {
 	// RelatedCandidates は関連動画の近さを測る手がかりを、見る人に見せる動画すべてと基準の
 	// 動画 selfID について返す。
 	RelatedCandidates(ctx context.Context, audience domain.Audience, selfID int64) ([]domain.RelatedCandidate, error)
 	VideosByIDs(ctx context.Context, audience domain.Audience, ids []int64) ([]domain.Video, error)
 	// VideoGroup は動画 id の文脈のグループ（contextID は動画を開いたグループ、無ければ 0。
-	// specs/048-groups/research.md R-9）を、見る人に見せてよい動画の再生順で返す。詳細は
+	// docs/design-docs/catalog-organization.md）を、見る人に見せてよい動画の再生順で返す。詳細は
 	// window の範囲だけを読む。動画がどのグループにも無ければ false。
 	VideoGroup(ctx context.Context, audience domain.Audience, id int64, opened domain.VideoContext, window domain.GroupWindow) (domain.VideoGroup, bool, error)
 }
@@ -138,7 +137,7 @@ func (c *Catalog) SeekThumbnailState(ctx context.Context, video domain.Video) (d
 }
 
 // VideoGroup は動画の文脈（opened は動画を開いたグループとスマートフォルダ。domain.VideoContext、
-// specs/048-groups/research.md R-9）の、見る人に見せてよい動画の再生順を返す
+// docs/design-docs/catalog-organization.md）の、見る人に見せてよい動画の再生順を返す
 // （GET /api/videos/{id} の group と GET /api/videos/{id}/group-members）。詳細は window の
 // 範囲だけを読む。動画がどのグループにも無ければ false。
 func (c *Catalog) VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video, opened domain.VideoContext, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
@@ -153,7 +152,7 @@ func (c *Catalog) VideoGroup(ctx context.Context, audience domain.Audience, vide
 // ゲストには公開の動画だけが並ぶ。基準の動画が手がかりに無ければ（読む間に消えた）、
 // 関連動画は空にする。
 //
-// 動画がグループにあれば、文脈のグループ（page.GroupID、specs/048-groups/research.md R-9）の
+// 動画がグループにあれば、文脈のグループ（page.GroupID、docs/design-docs/catalog-organization.md）の
 // 再生順の動画は並べる前に除く。最初のページだけがグループの窓を載せ、次と前の動画を
 // その再生順にする。グループに属さない動画の次の動画は、関連動画の並びの
 // 先頭である。前の動画は返さない（画面が見てきた順から決める）。

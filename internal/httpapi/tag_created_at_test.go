@@ -9,9 +9,8 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 画面の API の Tag.createdAt（specs/036-tag-admin-scale/contracts/screen-api.md §0、research.md R-8）を、
+// 画面の API の Tag.createdAtを、
 // 本物の保存先で確かめる。外部連携 API の listTags にも同じ値が載る
-// （specs/039-external-tag-admin/contracts/external-api.md §0）。
 func TestTagCreatedAtOnScreenAndExternalAPI(t *testing.T) {
 	env, cookie := newExternalEnv(t, Options{})
 

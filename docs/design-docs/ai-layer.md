@@ -88,8 +88,7 @@ uses the port, so it works with whatever provider is behind it.
 
 [`internal/comfyui`](../../internal/comfyui) is the provider for image edits.
 One adapter serves both a self-hosted ComfyUI and Comfy Cloud, and keeps the
-differences between them inside the package
-([045 research R-1, R-5](../../specs/045-comfyui-thumbnails/research.md#r-1-an-image-edit-port-in-internalapp-one-internalcomfyui-adapter-for-both-providers)).
+differences between them inside the package.
 `internal/app` declares the interfaces it uses, and `cmd/mdm` passes the
 adapter in; depguard keeps `internal/app` from importing it.
 
@@ -116,21 +115,20 @@ pair of the model saved when it starts.
 
 | Model | Strength | Model files | Time per edit on Comfy Cloud |
 | --- | --- | --- | --- |
-| FLUX.2 [klein] 4B fp8 (default) | Removes captions most reliably | About 12 GB | 8–16 s ([R-12](../../specs/045-comfyui-thumbnails/research.md#r-12-the-model-is-flux2-klein-4b-fp8)) |
+| FLUX.2 [klein] 4B fp8 (default) | Removes captions most reliably | About 12 GB | 8–16 s  |
 | Qwen-Image-Edit-2511 fp8mixed, Lightning 4-step LoRA | Takes the colours and mood of a reference image | About 31 GB | About 23 s, including uploads |
 
 The Qwen-Image-Edit time was measured with one synthetic frame, and a
 self-hosted ComfyUI needs a 24 GB GPU for it. The model's known weaknesses come
 from the POC: it misread a Japanese instruction once, and
-mosaicked a screen in the frame (R-12). The owner chooses the model in
+mosaicked a screen in the frame. The owner chooses the model in
 Settings, so the default stays the one that is best at the main case.
 
 The API key is write-only. `GET` answers `apiKeySet` and never the key, with
 `Cache-Control: no-store`. A `PUT` without `apiKey` keeps the saved key, and an
 empty string clears it. The key is stored as plain text: an encryption key
 would sit in the same data folder, so encrypting would protect nothing from a
-reader of the database
-([R-9](../../specs/045-comfyui-thumbnails/research.md#r-9-the-api-key-is-write-only)).
+reader of the database.
 
 | Connection test | Request | Unavailable when |
 | --- | --- | --- |
@@ -143,8 +141,7 @@ saved model's two workflows vv bundles in
 `class_type` they use must exist, and every model file a loader node names must
 be among that loader's options. The check answers unavailable with a `missing`
 list: each model file with its folder under `models` and its download page,
-then each missing node type, whose remedy is to update ComfyUI
-([R-13](../../specs/045-comfyui-thumbnails/research.md#r-13-the-connection-test-checks-the-workflows-nodes-and-model-files)).
+then each missing node type, whose remedy is to update ComfyUI.
 The embedded files are the source of truth for the workflows; the steps for an
 owner are in
 [comfyui-thumbnails.md](../how-to/comfyui-thumbnails.md).

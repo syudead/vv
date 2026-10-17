@@ -17,7 +17,7 @@ import (
 
 const (
 	// encoderCheckTimeout は -encoders の読み取りと、エンコーダーごとの確認用のエンコードの
-	// 上限時間である（specs/025-hardware-encoding/research.md R-2）。
+	// 上限時間である。
 	encoderCheckTimeout = 10 * time.Second
 	// encoderCheckStderrLimit は確認が失敗したときに結果へ残す標準エラーの末尾の長さである。
 	encoderCheckStderrLimit = 2 * 1024
@@ -28,8 +28,7 @@ var encoderCheckSource = domain.TranscodeVideo{
 	Width: 256, Height: 144, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1,
 }
 
-// EncoderCheck はハードウェアの方式が使えるかを、FFmpeg の短い実エンコードで確かめる
-// （research.md R-2）。app.EncoderChecker を満たす。-encoders は最初の確認で 1 回だけ
+// EncoderCheck はハードウェアの方式が使えるかを、FFmpeg の短い実エンコードで確かめる。app.EncoderChecker を満たす。-encoders は最初の確認で 1 回だけ
 // 読み、並行する確認で共有する。
 type EncoderCheck struct {
 	commandContext func(context.Context, string, ...string) *exec.Cmd

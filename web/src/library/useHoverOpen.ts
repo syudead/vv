@@ -39,8 +39,7 @@ export interface HoverOpen {
 }
 
 /**
- * useHoverOpen は Popover の open をポインタから動かす（specs/041-tag-overflow-list/
- * research.md R-1、ui-design.md「Interaction」）。pointerType が mouse のポインタが
+ * useHoverOpen は Popover の open をポインタから動かす。pointerType が mouse のポインタが
  * トリガーに 400ms 留まると開き、トリガーと一覧の両方から離れて 200ms たつと閉じる。
  * その間に戻れば開いたままにする。touch と pen のポインタでは開かない（幅ではなく
  * pointerType で分ける。library-ui.md「Width breakpoints in CSS」）。押して開いた

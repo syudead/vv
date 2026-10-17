@@ -17,10 +17,8 @@ const storageKey = "vv.view.v2";
 
 export const defaults: ViewPreferences = { zoom: 1, view: "grid", sort: "addedDesc" };
 
-// 保存から戻す並び順は、API の VideoSort の値のうちメニューに種類があるものに限る
-// （specs/013-library-search/contracts/list-api.md §3、
-// specs/033-video-dates/contracts/screen-api.md §3）。random を保存しても
-// seed は保存しない。開くたびに画面が新しい seed を作る（list-url.md §3）。
+// 保存から戻す並び順は、API の VideoSort の値のうちメニューに種類があるものに限る。random を保存しても
+// seed は保存しない。開くたびに画面が新しい seed を作る。
 const views: Record<ViewMode, true> = { grid: true, list: true };
 
 function isKeyOf<T extends string>(table: Record<T, true>, value: unknown): value is T {

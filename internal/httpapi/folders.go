@@ -42,8 +42,7 @@ func (s *server) ListRootFolders(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		listing, _ := domain.SummarizeFolder(root, "", locations)
-		// ゲストには、公開の動画の所在を1つも含まない登録フォルダを見せない
-		// （contracts/guest-api.md §2）。
+		// ゲストには、公開の動画の所在を1つも含まない登録フォルダを見せない。
 		if !audience.IsOwner() && !listingHasVideos(listing) {
 			continue
 		}
@@ -75,7 +74,7 @@ func (s *server) GetFolder(w http.ResponseWriter, r *http.Request, rootID gen.Fo
 	listing, found := domain.SummarizeFolder(root, rel, locations)
 	// 登録フォルダそのものは動画が無くても「ある」と答えるが、ゲストには、公開の動画を
 	// 含まないなら存在しないフォルダと同じにする。登録フォルダの rootId を数え上げられない
-	// ようにする（contracts/guest-api.md §2）。
+	// ようにする。
 	if !found || (!audience.IsOwner() && !listingHasVideos(listing)) {
 		s.notFoundReason(w, reasonFolderNotFound, folderNotFoundMessage)
 		return
@@ -114,9 +113,8 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 		Sort: domain.SortAddedDesc, Limit: domain.DefaultLimit,
 	}
 	// フォルダの有無は条件の検査より先に確かめる。無いフォルダは、条件の値に
-	// 関係なく 404 にする（contracts/list-api.md §5）。登録フォルダそのものは所有者には
-	// 動画が無くても「ある」が、ゲストには公開の動画を含むときだけある
-	// （contracts/guest-api.md §2）。
+	// 関係なく 404 にする。登録フォルダそのものは所有者には
+	// 動画が無くても「ある」が、ゲストには公開の動画を含むときだけある。
 	audience := audienceFrom(r.Context())
 	if rel != "" || !audience.IsOwner() {
 		found, err := s.folders.HasFolderLocations(r.Context(), audience, query.Dir)
@@ -268,9 +266,8 @@ func previewVideos(previews []domain.FolderPreview) []domain.Video {
 
 // apiFolder はフォルダ1件を契約の形へ写す。差し込むサムネイルの previewUrl は
 // 動画一覧と同じ presentVideos を通し、ファイルが今あるときだけ出す（消えていれば
-// 作り直しを積む）。登録フォルダの絶対パス（rootPath）はゲストの応答から外す
-// （contracts/guest-api.md §1）。まとめ方（grouping）は所有者にだけ載せる
-// （017 の contracts/folder-groups-api.md §1）。
+// 作り直しを積む）。登録フォルダの絶対パス（rootPath）はゲストの応答から外す。まとめ方（grouping）は所有者にだけ載せる
+// 。
 func (s *server) apiFolder(ctx context.Context, audience domain.Audience, folder domain.FolderSummary, grouping *gen.FolderGrouping) gen.FolderSummary {
 	previews := s.folderPreviews(ctx, previewVideos(folder.Previews))
 	out := gen.FolderSummary{

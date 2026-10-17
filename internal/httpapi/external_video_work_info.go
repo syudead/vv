@@ -13,8 +13,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 外部連携 API の作品情報の一括操作（specs/047-video-work-info/contracts/external-api.md
-// 「POST /api/v1/video-work-info」、research.md R-5・R-9）。動画の指定・index・「全件を確かめてから反映する」
+// 外部連携 API の作品情報の一括操作。動画の指定・index・「全件を確かめてから反映する」
 // 形は POST /api/v1/video-display-names と同じにし、項目の workInfo の読み方と誤りの写し方は画面の
 // PUT /api/videos/{id}/work-info と共有する（workInfoFromInput・workInfoFailureOf）。
 
@@ -131,8 +130,7 @@ func (e *externalServer) writeWorkInfoFailure(w http.ResponseWriter, failure wor
 }
 
 // toExternalWorkInfo は作品情報を外部連携 API の WorkInfo にする。画面の API と違って行の無い動画も
-// 省かず、未設定の code・description は null、空の一覧は [] で書く（contracts/external-api.md
-// 「ExternalVideo changes」）。
+// 省かず、未設定の code・description は null、空の一覧は [] で書く。
 func toExternalWorkInfo(info *domain.WorkInfo) extgen.WorkInfo {
 	var value domain.WorkInfo
 	if info != nil {

@@ -1,11 +1,11 @@
 ---
 source: docs/design-docs/live-transcode-seek.md
-sourceHash: cb74dfb3c714e232b3c4ebbc224476dde3a1dd0729ba9374294fc1b975fb440f
+sourceHash: 7f232e7151dd71e4adb7059d3d871b551692670eb923234e6876490627f2cd57
 ---
 
 # ライブ変換のシークとプローブの再利用 {#live-transcoding-seek-and-probe-reuse}
 
-ライブ変換 (`GET /api/videos/{id}/transcode.mp4`) は、保存済みのプローブから FFmpeg を起動し、可能なときはファイル途中の位置から映像ストリームをコピーし、実際の開始位置を `GET /api/videos/{id}/transcode-start` でプレーヤーに伝える ([`internal/httpapi/transcode.go`](../../internal/httpapi/transcode.go)、[`internal/media`](../../internal/media))。背景: [research.md](../../specs/018-live-transcode-seek/research.md)。
+ライブ変換 (`GET /api/videos/{id}/transcode.mp4`) は、保存済みのプローブから FFmpeg を起動し、可能なときはファイル途中の位置から映像ストリームをコピーし、実際の開始位置を `GET /api/videos/{id}/transcode-start` でプレーヤーに伝える ([`internal/httpapi/transcode.go`](../../internal/httpapi/transcode.go)、[`internal/media`](../../internal/media))。
 
 プレーヤーはファイル途中の位置からの変換 1 回につき 2 つのリクエストを送り、変換は実際の開始位置を台帳に記録し、報告がその台帳を読む。
 
@@ -76,7 +76,7 @@ sequenceDiagram
 
 ストリームをコピーできる動画 (`videoCanCopy`、たとえば MKV 内の H.264) は、保存済みのキーフレームのサンプルがまばらなら、ファイル途中からの開始時に直ちにエンコードする。それ以外は、コピーが要求位置より `domain.CopySeekAllowance` (15 秒) を超えて前から始まらない限りコピーし、超える場合は要求位置からエンコードする。
 
-コピーは直前のキーフレームから始まるので、サーバーは実際に始まった時刻を知る必要がある ([research.md R-1](../../specs/018-live-transcode-seek/research.md#r-1-source-of-the-actual-start-position))。1 つのプローブについて、FFmpeg の起動を次の順に試す:
+コピーは直前のキーフレームから始まるので、サーバーは実際に始まった時刻を知る必要がある。1 つのプローブについて、FFmpeg の起動を次の順に試す:
 
 ```mermaid
 flowchart LR
@@ -129,7 +129,7 @@ flowchart LR
 
 ### ずれの上限が 15 秒である理由 {#why-the-gap-limit-is-15-seconds}
 
-x264/x265 の既定のキーフレーム間隔は 250 フレームで、30 fps では 8.3 秒、23.976 fps では 10.4 秒になるため、上限を 10 秒にすると、既定で作ったフィルムレートの動画をすべて再エンコードすることになる。カメラや配信の動画は 1〜10 秒を使い、15 秒ならそのすべてをコピーする。シーンの切り替わりにだけキーフレームがある動画 (数十秒から数分) は選んだ位置から戻りすぎるので、再エンコードする ([research.md R-2](../../specs/018-live-transcode-seek/research.md#r-2-allowed-gap-to-the-keyframe-when-copying))。
+x264/x265 の既定のキーフレーム間隔は 250 フレームで、30 fps では 8.3 秒、23.976 fps では 10.4 秒になるため、上限を 10 秒にすると、既定で作ったフィルムレートの動画をすべて再エンコードすることになる。カメラや配信の動画は 1〜10 秒を使い、15 秒ならそのすべてをコピーする。シーンの切り替わりにだけキーフレームがある動画 (数十秒から数分) は選んだ位置から戻りすぎるので、再エンコードする。
 
 | 採用しなかった案 | 理由 |
 | --- | --- |
@@ -140,9 +140,9 @@ x264/x265 の既定のキーフレーム間隔は 250 フレームで、30 fps �
 
 ## 開始位置の報告 {#start-position-report}
 
-プレーヤーは変換の URL にリクエストごとの `attempt` を加え、同じ `attempt` を付けて `GET /api/videos/{id}/transcode-start` に実際の開始位置を問い合わせる ([契約](../../specs/018-live-transcode-seek/contracts/transcode-start-api.md))。
+プレーヤーは変換の URL にリクエストごとの `attempt` を加え、同じ `attempt` を付けて `GET /api/videos/{id}/transcode-start` に実際の開始位置を問い合わせる。
 
-`<video src>` による再生は応答ヘッダーも本文の構造も JavaScript に公開しないので、変換の応答で開始位置を運べない。報告がなければ、表示する時刻と保存する再生位置が、最大でずれの上限の分だけ映像より先に進む ([research.md R-4](../../specs/018-live-transcode-seek/research.md#r-4-path-that-reports-the-actual-start-position-to-the-player))。
+`<video src>` による再生は応答ヘッダーも本文の構造も JavaScript に公開しないので、変換の応答で開始位置を運べない。報告がなければ、表示する時刻と保存する再生位置が、最大でずれの上限の分だけ映像より先に進む。
 
 ブラウザはどちらのリクエストを先に送ることもあるので、報告は台帳のエントリを待つ:
 

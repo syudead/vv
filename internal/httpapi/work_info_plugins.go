@@ -11,8 +11,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 作品情報プラグインの追加・承認・取り消し・削除と設定の値の書き込みの経路
-// （specs/049-work-info-plugins/contracts/screen-api.md）。どれも所有者だけで、accessRoutes に載せない。
+// 作品情報プラグインの追加・承認・取り消し・削除と設定の値の書き込みの経路。どれも所有者だけで、accessRoutes に載せない。
 // 検査・規則・保存は internal/app と internal/store が持ち、ここは要求の解釈と契約の形への変換だけを持つ。
 // 応答の型は秘密の設定の値を持たない（domain.WorkInfoPluginEntry が値を落としてある）。
 
@@ -223,7 +222,7 @@ func (s *server) DeleteWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id
 }
 
 // GetWorkInfoPluginLastRun は直近の実行の標準エラーを返す（GET /api/work-info-plugins/{id}/last-run、
-// specs/056-plugin-tooling/contracts/screen-api.md）。残っていなければ {} を返す。
+// docs/design-docs/work-info-plugins.md）。残っていなければ {} を返す。
 func (s *server) GetWorkInfoPluginLastRun(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
 	if !s.workInfoPluginsConfigured(w) {
 		return
@@ -253,7 +252,7 @@ func (s *server) writeWorkInfoPlugin(w http.ResponseWriter, status int, entry do
 	writeJSON(w, status, toWorkInfoPlugin(entry), s.logger)
 }
 
-// workInfoPluginError はプラグインの誤りを契約の応答にする（contracts/screen-api.md）。
+// workInfoPluginError はプラグインの誤りを契約の応答にする。
 func (s *server) workInfoPluginError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrWorkInfoPluginTooLarge):

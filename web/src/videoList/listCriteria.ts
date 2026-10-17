@@ -8,7 +8,7 @@ import {
 import { t, type UiText } from "../i18n";
 
 /**
- * 一覧の条件と URL の相互変換（specs/013-library-search/contracts/list-url.md）。
+ * 一覧の条件と URL の相互変換。
  *
  * ライブラリとフォルダ画面は同じクエリパラメータで条件を表す。ここは React に依存しない純粋な関数だけを置き、
  * 画面との結び付けは useListCriteria が受け持つ。
@@ -23,7 +23,7 @@ export interface ListCriteria {
   playable: boolean;
   /**
    * true ならお気に入りの項目だけにする（URL は `fav=1`。所有者だけ。
-   * specs/035-favorites/ui-design.md「Filter menu」）。
+   * docs/design-docs/catalog-organization.md「Filter menu」）。
    */
   favorite: boolean;
   sort: VideoSort;
@@ -31,7 +31,7 @@ export interface ListCriteria {
   seed?: number;
 }
 
-/** MAX_SEED は seed に許す最大値である（list-url.md §1）。 */
+/** MAX_SEED は seed に許す最大値である。 */
 export const MAX_SEED = 2147483647;
 
 // 並び順の一覧は api/client が持つ。画面の部品からはここ経由でも使えるようにする。
@@ -58,7 +58,7 @@ export type SortDirection = "asc" | "desc";
 
 export interface SortKindInfo {
   kind: SortKind;
-  /** 種類を選んだときの並び順（ui-design.md「Sort and direction」の表）。 */
+  /** 種類を選んだときの並び順。 */
   initial: VideoSort;
   /** 昇順と降順の値。ランダムは向きを持たない。 */
   asc?: VideoSort;
@@ -89,8 +89,7 @@ export const sortKinds: readonly SortKindInfo[] = [
 /**
  * isListSort は、画面の一覧の条件（URL と端末の設定）に使える並び順かを返す。
  * API が受け付ける並び順のうち、メニューに種類があるものに限る。メニューに無い値を
- * 受け付けると、並べ替えの表示が別の種類（ランダム）になり、向きも切り替えられない
- * （specs/033-video-dates/contracts/screen-api.md §3）。
+ * 受け付けると、並べ替えの表示が別の種類（ランダム）になり、向きも切り替えられない。
  */
 export function isListSort(value: unknown): value is VideoSort {
   return (
@@ -133,7 +132,7 @@ export function withDirection(sort: VideoSort, direction: SortDirection): VideoS
 }
 
 /**
- * directionLabel は向きの読み上げ名を作る（ui-design.md「Sort and direction」）。
+ * directionLabel は向きの読み上げ名を作る。
  * 例: 「Descending (newest first)」。言い換えの無い種類は「Descending」。
  */
 export function directionLabel(sort: VideoSort, direction: SortDirection): UiText {
@@ -224,7 +223,7 @@ export function parseListCriteria(
  *
  * watch=all と playable・favorite の偽は書かない。sort は書く — 省略すると「端末に
  * 保存した並び順」の意味になり、並べ替えを変えたあとに戻るで前の並びに
- * 戻れなくなるからである（list-url.md §1）。seed は random のときだけ書く。
+ * 戻れなくなるからである。seed は random のときだけ書く。
  * 順は q・watch・playable・fav・sort・seed で固定し、同じ条件は同じ文字列になる。
  */
 export function serializeListCriteria(criteria: ListCriteria): URLSearchParams {
@@ -243,9 +242,7 @@ export function serializeListCriteria(criteria: ListCriteria): URLSearchParams {
 
 /**
  * ownerOnlySortKinds は所有者だけの並べ替えの種類である。最近再生した順は再生位置に、
- * お気に入りにした日時はお気に入りに依る。ゲストには出さず、サーバーも受け付けない
- * （specs/016-single-account-auth/contracts/guest-api.md §3、
- * specs/035-favorites/ui-design.md「Guest degradation」）。
+ * お気に入りにした日時はお気に入りに依る。ゲストには出さず、サーバーも受け付けない。
  */
 export const ownerOnlySortKinds: readonly SortKind[] = ["played", "favorited"];
 
@@ -261,7 +258,7 @@ export function ownerOnlySort(sort: VideoSort): boolean {
 
 /**
  * guestListCriteria は、ゲストが使えない条件（視聴状態・お気に入りのみ・所有者だけの
- * 並び順）を既定に丸める（guest-api.md §3）。丸めるものが無ければ同じ値を返す。
+ * 並び順）を既定に丸める。丸めるものが無ければ同じ値を返す。
  */
 export function guestListCriteria(criteria: ListCriteria): ListCriteria {
   if (criteria.watch === "all" && !criteria.favorite && !ownerOnlySort(criteria.sort)) {
@@ -305,7 +302,7 @@ export function criteriaKey(criteria: ListCriteria): string {
 export type HistoryMode = "push" | "replace";
 
 /**
- * SearchSession は検索欄の一続きの入力が履歴をどう増やすかを決める（list-url.md §3）。
+ * SearchSession は検索欄の一続きの入力が履歴をどう増やすかを決める。
  *
  * フォーカスが入ってから外れるか Esc で抜けるまでを1つの続きとし、その中の
  * 最初の確定だけが履歴を1つ増やし、以後は置き換える。

@@ -269,8 +269,7 @@ func copyToFile(path string, source io.Reader) error {
 	return file.Close()
 }
 
-// PublishSeekThumbnails はシーク用プレビューのスプライトを公開する
-// （specs/021-seek-thumbnail-sprite/research.md R-3）。配置情報（sprite.json）の
+// PublishSeekThumbnails はシーク用プレビューのスプライトを公開する。配置情報（sprite.json）の
 // ある完成した置き場がすでにあれば write を呼ばずに成功を返す。
 //
 // write は一時置き場のディレクトリを受け、layout の配置でシート 000.jpg から順に
@@ -281,7 +280,7 @@ func copyToFile(path string, source io.Reader) error {
 // 戻り値は、公開した（または採用した）スプライトが全編の復号から作られたかである。
 // 採用したものに記録が無ければ（この記録を持たない旧いもの）SubstitutionUnknown を
 // 返す。公開と完了の記録の間で止まった後の再実行や、同じ内容の別の動画でも、代用を
-// 取りこぼさない（specs/024-import-progress/research.md R-7）。その直前に、配置情報の無い置き場
+// 取りこぼさない。その直前に、配置情報の無い置き場
 // （旧形式の個別 JPEG や、途中で壊れたもの）を消す。同じ内容の公開と削除を
 // 直列にする錠は呼び出し側（internal/app）が持つ。
 func (s *Store) PublishSeekThumbnails(
@@ -534,7 +533,7 @@ func (s *Store) RemoveContent(contentKey string) error {
 	return errors.Join(errs...)
 }
 
-// spriteFile は sprite.json の形である（research.md R-3）。
+// spriteFile は sprite.json の形である。
 type spriteFile struct {
 	Version     int   `json:"version"`
 	IntervalMs  int64 `json:"intervalMs"`
@@ -545,7 +544,7 @@ type spriteFile struct {
 	FrameHeight int   `json:"frameHeight"`
 	SheetCount  int   `json:"sheetCount"`
 	// FullDecode は全編の復号から作ったかである。この記録より前に作られたものには
-	// 無い（specs/024-import-progress/research.md R-7）。
+	// 無い。
 	FullDecode *bool `json:"fullDecode,omitempty"`
 }
 
@@ -604,7 +603,6 @@ func readSpriteFile(dir string) (spriteFile, domain.SeekSprite, error) {
 }
 
 // validSeekSprite は配置情報の値が契約の範囲にあり、互いに食い違わないかを返す
-// （contracts/seek-sprite-api.md §2）。
 func validSeekSprite(sprite domain.SeekSprite) bool {
 	if sprite.IntervalMs < domain.SeekThumbnailInterval.Milliseconds() ||
 		sprite.FrameCount < 1 || sprite.FrameCount > 600 ||

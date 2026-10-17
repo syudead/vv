@@ -14,8 +14,7 @@ import {
 
 setUpGroupPageServer();
 
-// 子グループを含むカードを子グループに落としたときのメニュー（specs/050-drag-organize/
-// ui-design.md「Drop menus」の Group on group、「Group page」）。
+// 子グループを含むカードを子グループに落としたときのメニュー。
 
 function cardTitles(): string[] {
   return Array.from(document.querySelectorAll("article")).map(

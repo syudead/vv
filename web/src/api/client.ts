@@ -10,7 +10,7 @@ export type SeekThumbnailSprite = components["schemas"]["SeekThumbnailSprite"];
 export type VideoPage = components["schemas"]["VideoPage"];
 export type VideoSort = components["schemas"]["VideoSort"];
 
-/** videoSorts は API が受け付ける並び順のすべてである（list-api.md §3）。 */
+/** videoSorts は API が受け付ける並び順のすべてである。 */
 export const videoSorts: readonly VideoSort[] = [
   "addedAsc",
   "addedDesc",
@@ -36,8 +36,7 @@ export function isVideoSort(value: unknown): value is VideoSort {
   return typeof value === "string" && (videoSorts as readonly string[]).includes(value);
 }
 /**
- * TranscodeQuality はライブ変換が縮める画質である
- * （specs/027-playback-quality/contracts/transcode-quality-api.md §1）。
+ * TranscodeQuality はライブ変換が縮める画質である。
  */
 export type TranscodeQuality = NonNullable<
   NonNullable<operations["transcodeVideo"]["parameters"]["query"]>["quality"]
@@ -119,8 +118,7 @@ export type CreatedAPIToken = components["schemas"]["CreatedAPIToken"];
 
 /**
  * SmartFolderSummary はスマートフォルダの項目の中身である（api/openapi.yaml の
- * SmartFolderSummary）。カードの値は持たず、画面に出たカードが別に読む
- * （specs/052-smart-folders/research.md R-14）。
+ * SmartFolderSummary）。カードの値は持たず、画面に出たカードが別に読む。
  */
 export type SmartFolderSummary = components["schemas"]["SmartFolderSummary"];
 
@@ -147,14 +145,14 @@ export type ErrorReason = components["schemas"]["ErrorReason"];
 export type ProbeErrorCode = components["schemas"]["ProbeErrorCode"];
 export type ScanErrorCode = components["schemas"]["ScanErrorCode"];
 
-/** RequestFailedDetails は API エラーの、画面の文言に使う値である（contracts/error-api.md §1）。 */
+/** RequestFailedDetails は API エラーの、画面の文言に使う値である。 */
 export interface RequestFailedDetails {
   reason?: string;
   limit?: number;
   tagName?: string;
-  /** 理由が指すプロパティの経路（`code`・`dates[0].date`。specs/047-video-work-info/contracts/screen-api.md）。 */
+  /** 理由が指すプロパティの経路（`code`・`dates[0].date`。docs/design-docs/catalog-organization.md）。 */
   field?: string;
-  /** 作品情報プラグインが報告した誤りの文の先頭 300 文字（specs/049-work-info-plugins/contracts/screen-api.md）。 */
+  /** 作品情報プラグインが報告した誤りの文の先頭 300 文字。 */
   pluginMessage?: string;
   /** 作品情報プラグインの要求を拒んだか届かなかったホスト。 */
   host?: string;
@@ -201,7 +199,7 @@ export class RequestFailed extends Error {
 
 /**
  * NetworkFailed は fetch 自体が失敗した（サーバーに届かなかった）ことを表す。
- * ブラウザの文言は画面に出さない（specs/023-english-i18n/research.md R-5）。
+ * ブラウザの文言は画面に出さない。
  */
 export class NetworkFailed extends Error {
   constructor(cause: unknown) {
@@ -341,8 +339,7 @@ export async function toRequestFailed(response: Response): Promise<RequestFailed
 export const MAX_QUERY_LENGTH = 100;
 
 /**
- * ListFilterParams は2つの一覧（ライブラリとフォルダ）が共通に受ける条件である
- * （specs/013-library-search/contracts/list-api.md §2・§3）。
+ * ListFilterParams は2つの一覧（ライブラリとフォルダ）が共通に受ける条件である。
  */
 export interface ListFilterParams {
   /** 検索語。空なら送らない。100 文字を越える分は切り詰める。 */
@@ -352,8 +349,7 @@ export interface ListFilterParams {
   /** true ならブラウザで再生できる動画だけにする。false は既定なので送らない。 */
   playable?: boolean;
   /**
-   * true ならお気に入りの項目だけにする。false は既定なので送らない
-   * （specs/035-favorites/contracts/screen-api.md §2）。
+   * true ならお気に入りの項目だけにする。false は既定なので送らない。
    */
   favorite?: boolean;
   sort?: VideoSort;
@@ -370,7 +366,7 @@ export const MAX_TAG_FILTER_COUNT = 16;
 /**
  * ListVideosParams は一覧の問い合わせ条件である。`tag` は listFolderVideos には
  * 無い（フォルダ画面のタグ絞り込みは対象外。
- * specs/014-video-tags/contracts/tags-api.md §5）。
+ * docs/design-docs/catalog-organization.md）。
  */
 export interface ListVideosParams
   extends ListFilterParams, CreditFilterParams, AddedLengthFilterParams {
@@ -380,15 +376,14 @@ export interface ListVideosParams
 
 /**
  * CreditFilterParams は人物・団体での絞り込みである（listVideos・listLibrary・
- * listLibraryIds。specs/047-video-work-info/contracts/screen-api.md「List parameters
+ * listLibraryIds。docs/design-docs/catalog-organization.md「List parameters
  * `person` and `organization`」）。どの役割でもその id に結び付いた動画だけにする。
  */
 export interface CreditFilterParams {
   person?: number;
   organization?: number;
   /**
-   * その種類のタグ（手動かフォルダ名から）を 1 つでも持つ動画だけにする
-   * （specs/051-tag-kinds/contracts/screen-api.md「List parameter `tagKind`」）。
+   * その種類のタグ（手動かフォルダ名から）を 1 つでも持つ動画だけにする。
    */
   tagKind?: number;
 }
@@ -404,7 +399,7 @@ function setCreditFilter(query: URLSearchParams, params: CreditFilterParams): vo
 
 /**
  * AddedLengthFilterParams は追加日と長さでの絞り込みである（listVideos・listLibrary・
- * listLibraryIds。specs/052-smart-folders/research.md R-4）。範囲の外の値はサーバーが
+ * listLibraryIds。docs/design-docs/catalog-organization.md）。範囲の外の値はサーバーが
  * `400` で断るので、ここでは丸めずにそのまま送る。
  */
 export interface AddedLengthFilterParams {
@@ -506,8 +501,7 @@ export function toLibraryItems(
 
 /**
  * listLibrary はライブラリの一覧を1ページ取得する。項目は動画、グループ、絞り込みの無い
- * 一覧ではスマートフォルダの要約である（specs/017-folder-groups/contracts/library-api.md §1、
- * specs/052-smart-folders/data-model.md「Library items」）。
+ * 一覧ではスマートフォルダの要約である。
  */
 export async function listLibrary(
   params: ListVideosParams = {},
@@ -539,8 +533,8 @@ export interface ListLibraryIdsParams
 /**
  * listLibraryIds は listLibrary と同じ条件に合う項目の動画の id（グループは全メンバー）を、
  * ページングせずに取得する（「すべて選択」用。
- * specs/017-folder-groups/contracts/library-api.md §2）。グループの項目は `groups` にも
- * フォルダと全メンバーの id として入る（specs/035-favorites/contracts/screen-api.md §3）。
+ * docs/design-docs/catalog-organization.md）。グループの項目は `groups` にも
+ * フォルダと全メンバーの id として入る。
  */
 export function listLibraryIds(
   params: ListLibraryIdsParams = {},
@@ -612,7 +606,7 @@ export function listFolderVideos(params: ListFolderVideosParams): Promise<VideoP
 /**
  * getGroup はグループ 1 つを、絞り込みに関係なく子孫の動画の全部から作って取得する
  * （GET /api/groups/{id}。一覧に残っているグループの項目の取り直しにも使う。
- * specs/048-groups/contracts/screen-api.md）。無いか見せないときは 404 の RequestFailed で失敗する。
+ * docs/design-docs/catalog-organization.md）。無いか見せないときは 404 の RequestFailed で失敗する。
  */
 export function getGroup(id: number, signal?: AbortSignal): Promise<GroupDetail> {
   return request<GroupDetail>(`/api/groups/${String(id)}`, { signal });
@@ -620,8 +614,7 @@ export function getGroup(id: number, signal?: AbortSignal): Promise<GroupDetail>
 
 /**
  * groupQuery は動画の読み取りに付ける問い合わせである。`group` は動画を開いたグループの id、
- * `smartFolder` は動画を開いたスマートフォルダの id で、省いた方は付けない
- * （specs/048-groups/research.md R-9、specs/052-smart-folders/contracts/screen-api.md）。
+ * `smartFolder` は動画を開いたスマートフォルダの id で、省いた方は付けない。
  */
 function groupQuery(
   params: Record<string, string>,
@@ -636,7 +629,7 @@ function groupQuery(
 
 /**
  * getVideo は動画1件の詳細を取得する。`group` を渡すと、動画の `group` をそのグループの
- * 再生順で答えさせる（research.md R-9）。`smartFolder` を渡すと、`group` が無ければ動画の
+ * 再生順で答えさせる。`smartFolder` を渡すと、`group` が無ければ動画の
  * `smartFolder` をそのフォルダの再生順で答えさせる。
  */
 export function getVideo(
@@ -652,8 +645,7 @@ export function getVideo(
 
 /**
  * setVideoDisplayName は動画の表示名を設定する。前後の空白を除いて空なら解除し、元の題名に戻す。
- * 応答は `getVideo` と同じ形の動画で、`title`・`fileTitle`・`displayName` が反映済みである
- * （specs/029-video-overrides/contracts/screen-api.md §1）。
+ * 応答は `getVideo` と同じ形の動画で、`title`・`fileTitle`・`displayName` が反映済みである。
  *
  * 成功したら一覧の控えを捨てる。控えは離れた一覧の題名・並び・検索の当たりを持ち、
  * 一覧が外れている間の `video` 通知では直らないので、戻ったときは読み直す。
@@ -676,8 +668,7 @@ export async function setVideoDisplayName(
 /**
  * setVideoThumbnailPosition は動画の代表サムネイルを `positionMs`（ミリ秒）の場面で作り直す。
  * `null` は位置を解除し、自動の位置で作り直す。応答は生成が終わってから返り、`getVideo` と
- * 同じ形の動画で、新しい版の `thumbnailUrl` と `thumbnailPositionMs` が反映済みである
- * （specs/029-video-overrides/contracts/screen-api.md §2）。
+ * 同じ形の動画で、新しい版の `thumbnailUrl` と `thumbnailPositionMs` が反映済みである。
  *
  * 成功したら一覧の控えを捨てる。控えは離れた一覧のカードの `thumbnailUrl` を持ち、
  * 一覧が外れている間の `video` 通知では直らないので、戻ったときは読み直す。
@@ -701,8 +692,7 @@ export async function setVideoThumbnailPosition(
  * revertThumbnailImage は動画に適用したサムネイルの画像を外し、代表サムネイルを
  * `thumbnailPositionMs` の場面（無ければ自動の位置）のコマから作り直す。画像を適用していなくても
  * 成功する。応答は生成が終わってから返り、`getVideo` と同じ形の動画で、`thumbnailImage` が
- * 無く、新しい版の `thumbnailUrl` が反映済みである
- * （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+ * 無く、新しい版の `thumbnailUrl` が反映済みである。
  *
  * 成功したら `setVideoThumbnailPosition` と同じ理由で一覧の控えを捨てる。
  */
@@ -723,8 +713,7 @@ export async function revertThumbnailImage(
  * `multipart/form-data` の `image` で送り、動画のサムネイルにする。応答は公開が終わってから返り、
  * `getVideo` と同じ形の動画で、`thumbnailImage: "uploaded"` と新しい版の `thumbnailUrl` が反映済み
  * である。上限を越えれば 400 `thumbnail_upload_too_large`、読めなければ 400
- * `thumbnail_upload_invalid` で失敗する
- * （specs/046-thumbnail-image-upload/contracts/screen-api.md）。Content-Type はブラウザが境界と
+ * `thumbnail_upload_invalid` で失敗する。Content-Type はブラウザが境界と
  * ともに付けるので、ここでは付けない。
  *
  * `contentVersion` はプレビューを開いたときの動画の `contentVersion` で、そのあと内容が替わって
@@ -803,8 +792,7 @@ export function reprobeVideo(id: number, signal?: AbortSignal): Promise<Video> {
 
 /**
  * listVideoVersions は動画の集まり（同じ動画の別バージョン）の全バージョンを、代表を先頭に取得する。
- * 集まりに属さなければ `items` はその 1 本である
- * （specs/030-video-versions/contracts/screen-api.md §1）。
+ * 集まりに属さなければ `items` はその 1 本である。
  */
 export function listVideoVersions(
   id: number,
@@ -816,14 +804,12 @@ export function listVideoVersions(
 /**
  * maxBundleSelection は画面から一度に束ねる動画の上限である。束ねる窓は選んだ 1 本ごとに
  * `GET /api/videos/{id}` を送り、代表の候補の行を並べるので、画面の側だけで絞る。サーバーの
- * `too_many_videos` の上限（`POST /api/video-tags` と同じ）は変えない
- * （specs/030-video-versions/ui-design.md「Bundle action」）。
+ * `too_many_videos` の上限（`POST /api/video-tags` と同じ）は変えない。
  */
 export const maxBundleSelection = 20;
 
 /**
- * bundleVideos は `videoIds` の動画を 1 つの集まりに束ね、`representativeId` を一覧に出す代表にする
- * （specs/030-video-versions/contracts/screen-api.md §2）。応答は新しい集まりの全バージョンである。
+ * bundleVideos は `videoIds` の動画を 1 つの集まりに束ね、`representativeId` を一覧に出す代表にする。応答は新しい集まりの全バージョンである。
  *
  * 成功したら一覧の控えを捨てる。代表以外のバージョンが一覧から消え、一覧が外れている間の
  * `video` 通知では控えの項目の数と並びが直らないので、戻ったときは読み直す。
@@ -845,7 +831,7 @@ export async function bundleVideos(
 
 /**
  * makeRepresentativeVersion は動画をその集まりの代表（一覧に出す 1 件）にする。応答は集まりの
- * 全バージョンである（specs/030-video-versions/contracts/screen-api.md §3）。
+ * 全バージョンである。
  *
  * 成功したら一覧の控えを捨てる（一覧の 1 件が別の動画に替わる）。
  */
@@ -863,7 +849,7 @@ export async function makeRepresentativeVersion(
 
 /**
  * unbundleVideo は動画をその集まりから外す。応答は `getVideo` と同じ形の外した動画で、タグ・
- * 再生位置・公開の設定は束ねる前の値である（specs/030-video-versions/contracts/screen-api.md §4）。
+ * 再生位置・公開の設定は束ねる前の値である。
  *
  * 成功したら一覧の控えを捨てる（外した動画が一覧に戻る）。
  */
@@ -878,8 +864,7 @@ export async function unbundleVideo(id: number, signal?: AbortSignal): Promise<V
 
 /**
  * listVersionCandidates は「同じ動画かもしれない」候補の組を新しい順に取得する（最大 200 組、`total` は
- * 全件）。各組の `videos` は id の小さい順で、`getVideo` と同じ形である
- * （specs/030-video-versions/contracts/screen-api.md §5）。候補は取り込みで増減するので、`scan` の
+ * 全件）。各組の `videos` は id の小さい順で、`getVideo` と同じ形である。候補は取り込みで増減するので、`scan` の
  * 通知で取り直す（§6）。
  */
 export function listVersionCandidates(
@@ -890,7 +875,7 @@ export function listVersionCandidates(
 
 /**
  * dismissVersionCandidate は 2 本の動画を「違う動画」と記録し、その組を候補から外す。記録した組は
- * 以後候補に出ない（specs/030-video-versions/contracts/screen-api.md §5）。「同じ動画」は
+ * 以後候補に出ない。「同じ動画」は
  * `bundleVideos` に 2 本と代表を渡す。
  */
 export async function dismissVersionCandidate(
@@ -937,8 +922,7 @@ export const SCAN_ISSUE_PAGE_SIZE = 50;
 export const MAX_SCAN_ISSUE_PAGE_SIZE = 200;
 
 /**
- * listCurrentScanIssues は直近の取り込みの問題を1ページ取得する
- * （specs/024-import-progress/contracts/scan-api.md §3）。一度も取り込んでいなければ null。
+ * listCurrentScanIssues は直近の取り込みの問題を1ページ取得する。一度も取り込んでいなければ null。
  */
 export async function listCurrentScanIssues(
   params: { limit?: number; cursor?: string; signal?: AbortSignal } = {},
@@ -992,7 +976,7 @@ export function updateTranscodingSettings(
 
 /**
  * getNetworkSettings は LAN からの接続の許可と、許可中に開くアドレスを取得する。デスクトップ版で
- * なければ `404` の RequestFailed になる（specs/037-windows-app/contracts/network-settings-api.md §2）。
+ * なければ `404` の RequestFailed になる。
  */
 export function getNetworkSettings(signal?: AbortSignal): Promise<NetworkSettings> {
   return request<NetworkSettings>("/api/settings/network", { signal });
@@ -1016,8 +1000,7 @@ export function updateNetworkSettings(
 
 /**
  * getPluginProxySettings は作品情報プラグインの要求を送るプロキシの URL を取得する。保存が無ければ
- * `""`。`/api/settings/network` と違いどのビルドでも答える
- * （specs/056-plugin-tooling/contracts/screen-api.md）。
+ * `""`。`/api/settings/network` と違いどのビルドでも答える。
  */
 export function getPluginProxySettings(
   signal?: AbortSignal,
@@ -1042,8 +1025,7 @@ export function updatePluginProxySettings(
 }
 
 /**
- * getAutoImportSettings は自動の取り込みの選択と、監視が今していることを取得する
- * （specs/042-folder-watch-import/contracts/screen-api.md）。
+ * getAutoImportSettings は自動の取り込みの選択と、監視が今していることを取得する。
  */
 export function getAutoImportSettings(signal?: AbortSignal): Promise<AutoImportSettings> {
   return request<AutoImportSettings>("/api/settings/auto-import", { signal });
@@ -1063,8 +1045,7 @@ export function updateAutoImportSettings(
 }
 
 /**
- * getVersionJudgingSettings は重複の自動判定の入切を取得する。保存前は切である
- * （specs/054-auto-dup/contracts/screen-api.md）。
+ * getVersionJudgingSettings は重複の自動判定の入切を取得する。保存前は切である。
  */
 export function getVersionJudgingSettings(
   signal?: AbortSignal,
@@ -1119,7 +1100,7 @@ export function getOllamaSettings(signal?: AbortSignal): Promise<OllamaSettings>
 /**
  * updateOllamaSettings は Ollama の接続先を保存し、整えた保存後の値（`saved: true`）を返す。
  * 読んだ本文をそのまま渡されても、送るのは `endpoint` と `model` だけである（サーバーは
- * ほかの欄を 400 で拒む、specs/058-settings-pages/contracts/screen-api.md）。
+ * ほかの欄を 400 で拒む、docs/design-docs/design-system.md）。
  */
 export function updateOllamaSettings(
   settings: UpdateOllamaSettings,
@@ -1150,8 +1131,7 @@ export function checkOllama(signal?: AbortSignal): Promise<CheckResult> {
 
 /**
  * getComfyUISettings はサムネイルの編集に使う ComfyUI の接続先を取得する。API キーは返らず、
- * 保存されているかだけが `apiKeySet` で返る。何も保存されていなければ `provider` が無い
- * （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+ * 保存されているかだけが `apiKeySet` で返る。何も保存されていなければ `provider` が無い。
  */
 export function getComfyUISettings(signal?: AbortSignal): Promise<ComfyUISettings> {
   return request<ComfyUISettings>("/api/settings/comfyui", { signal });
@@ -1187,8 +1167,7 @@ export function checkComfyUI(signal?: AbortSignal): Promise<CheckResult> {
 
 /**
  * getThumbnailEditReadiness は動画のページが編集の入口を有効にできるかを取得する。
- * `connection` は接続先が保存されていることで、テストに通ったことではない
- * （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+ * `connection` は接続先が保存されていることで、テストに通ったことではない。
  */
 export function getThumbnailEditReadiness(
   signal?: AbortSignal,
@@ -1198,8 +1177,7 @@ export function getThumbnailEditReadiness(
 
 /**
  * ThumbnailEditStart は編集を何から始めるかである。`frame` は選んだ位置 `positionMs`（ミリ秒）の
- * コマ、`thumbnail` は今のサムネイルである
- * （specs/046-thumbnail-image-upload/contracts/screen-api.md）。
+ * コマ、`thumbnail` は今のサムネイルである。
  */
 export type ThumbnailEditStart =
   { source: "frame"; positionMs: number } | { source: "thumbnail" };
@@ -1208,8 +1186,7 @@ export type ThumbnailEditStart =
  * startThumbnailEdit は `start` が指す画像から、動画のサムネイルの編集のセッションを始める。
  * 同じ動画のセッションがあれば、サーバーがその実行を中止して終える。応答は `ready` のセッションで、
  * `frameUrl` が始めた画像の PNG、`frameWidth`・`frameHeight` がマスクを描く大きさ、`source` と
- * `positionMs` がその画像の元である（specs/045-comfyui-thumbnails/contracts/screen-api.md、
- * specs/046-thumbnail-image-upload/contracts/screen-api.md）。
+ * `positionMs` がその画像の元である。
  */
 export function startThumbnailEdit(
   videoId: number,
@@ -1405,7 +1382,7 @@ export function createAPIToken(
   });
 }
 
-/** revokeAPIToken は API トークンを失効する。無い id も成功として扱う（contracts/token-api.md）。 */
+/** revokeAPIToken は API トークンを失効する。無い id も成功として扱う。 */
 export async function revokeAPIToken(id: number, signal?: AbortSignal): Promise<void> {
   const response = await apiFetch(`/api/api-tokens/${String(id)}`, {
     method: "DELETE",
@@ -1523,8 +1500,7 @@ function sendProgressNow<T>(id: number, send: () => Promise<T>): Promise<T> {
 }
 
 /**
- * progressBody は再生位置の保存の body を作る。playbackId は渡されたときだけ載せる
- * （specs/043-watch-history/contracts/screen-api.md）。
+ * progressBody は再生位置の保存の body を作る。playbackId は渡されたときだけ載せる。
  */
 function progressBody(positionMs: number, playbackId?: string): string {
   const update: ProgressUpdate = { positionMs: Math.max(0, Math.round(positionMs)) };
@@ -1597,9 +1573,8 @@ export function streamUrl(id: number): string {
 
 /**
  * transcodeUrl は指定した元動画時刻からライブ変換する取得先を返す。attempt を渡すと、
- * 実際の開始位置を getTranscodeStart で引けるよう URL に付ける
- * （specs/018-live-transcode-seek/contracts/transcode-start-api.md §1）。quality を渡すと
- * その画質に縮めて変換する（specs/027-playback-quality/contracts/transcode-quality-api.md §1）。
+ * 実際の開始位置を getTranscodeStart で引けるよう URL に付ける。quality を渡すと
+ * その画質に縮めて変換する。
  */
 export function transcodeUrl(
   id: number,
@@ -1618,7 +1593,7 @@ export function transcodeUrl(
 /**
  * getTranscodeStart は、同じ attempt を付けたライブ変換の出力の時間軸の 0 が元動画の
  * どの時刻か（ミリ秒）を取得する。サーバーは決まるまで最大 6 秒待ち、決まらなければ
- * 404 を返す（contracts/transcode-start-api.md §2）。
+ * 404 を返す。
  */
 export async function getTranscodeStart(
   id: number,
@@ -1635,7 +1610,7 @@ export async function getTranscodeStart(
 
 /**
  * getVideoSubtitles は動画の隣に置いた字幕ファイルの一覧を取得する。サーバーは呼ぶたびに
- * フォルダを読み直す（specs/028-sidecar-subtitles/contracts/subtitles-api.md §1）。
+ * フォルダを読み直す。
  */
 export async function getVideoSubtitles(
   id: number,
@@ -1649,7 +1624,7 @@ export async function getVideoSubtitles(
 
 /**
  * subtitleUrl は字幕ファイル file を WebVTT で取得する先を返す。offsetMs は再生の時間軸の
- * 0 に当たる元動画の時刻（ミリ秒）で、0 なら付けない（contracts/subtitles-api.md §2）。
+ * 0 に当たる元動画の時刻（ミリ秒）で、0 なら付けない。
  */
 export function subtitleUrl(id: number, file: string, offsetMs = 0): string {
   const offset = Math.max(0, Math.round(offsetMs));
@@ -1659,7 +1634,7 @@ export function subtitleUrl(id: number, file: string, offsetMs = 0): string {
 
 /**
  * fetchSeekThumbnailSprite はシークプレビューのスプライトの配置情報を取得する。url は
- * Video.seekThumbnailUrl（specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md §2）。
+ * Video.seekThumbnailUrl。
  */
 export async function fetchSeekThumbnailSprite(
   url: string,
@@ -1678,7 +1653,7 @@ export async function fetchSeekThumbnailSprite(
 
 /**
  * fetchSeekThumbnailSheet はスプライトのシート（配置情報の sheets の URL）の JPEG を
- * 取得する（contracts/seek-sprite-api.md §3）。
+ * 取得する。
  */
 export async function fetchSeekThumbnailSheet(
   url: string,

@@ -17,7 +17,7 @@ import type { MemberTarget } from "./RelatedVideos";
 
 /**
  * useVideoPlaylist は動画ページのプレイリストの文脈（`?playlist=&item=`）である。所有者だけが
- * 読む（specs/044-playlists/ui-design.md「Video page in a playlist」、research.md R-8）。
+ * 読む。
  *
  * 文脈がある間は、矢印・予告・終わりが再生の応答に従い、関連動画の nextId・prevId は
  * 使わない（R-7）。404 で落としたら、前後は関連動画に戻り、今の動画の後で止まる。
@@ -61,7 +61,7 @@ export function useVideoPlaylist({
     context.status === "ready" ||
     context.status === "failed";
   // ステップのフォルダは再生の応答の `smartFolderId` から取る（パネルの応答には頼らない。
-  // specs/052-smart-folders/ui-design.md「Video page in a playlist」）。
+  // docs/design-docs/catalog-organization.md「Video page in a playlist」）。
   const goStep = (step: PlaylistStep, autoplay: boolean) =>
     void navigate(playlistStepPath(playlistId, step), {
       state: { ...linkState, autoplay },
@@ -79,8 +79,7 @@ export function useVideoPlaylist({
   // 項目のメンバーを開く（state はパネルの行と同じ）。項目がそうかは、パネルの並びか、次が同じ
   // 項目の中にあることで分かる。フォルダの項目では、動画の応答がページの `smartFolder` を採った
   // ときだけで、行は今のページの `smartFolder` を保つ。今の動画がフォルダから外れると、サーバーは
-  // フォルダを無視して動画のグループで答え、その行は項目の外なので今までどおり開く
-  // （specs/052-smart-folders/ui-design.md「Playlists」の States）。単体の動画の項目でも今までどおり。
+  // フォルダを無視して動画のグループで答え、その行は項目の外なので今までどおり開く。単体の動画の項目でも今までどおり。
   const folderItem = currentItem?.kind === "smartFolder" || smartFolder !== undefined;
   const inGroupItem =
     playback !== undefined &&
@@ -135,7 +134,7 @@ export function panelCurrentItemId(
 export type VideoPlaylist = ReturnType<typeof useVideoPlaylist>;
 
 /**
- * useUnplayableSkip は再生できない項目を飛ばす（ui-design.md「Unplayable item」）。再生の
+ * useUnplayableSkip は再生できない項目を飛ばす。再生の
  * できない状態（読み取りの失敗・再生できない・動画が無い）は終わらないので、自動再生で
  * 着いたときはページが自分で次の項目へ飛ばす。飛ばしたのは今の訪問（`pageKey`）の間だけ
  * 覚える。別の項目へ移れば忘れ、自動再生で同じ項目に戻ったときにもう一度飛ばす。

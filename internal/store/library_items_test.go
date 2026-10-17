@@ -204,7 +204,6 @@ func TestListLibraryGroupsFoldersIntoOneItem(t *testing.T) {
 
 // 027 の受け入れ条件 1・2・5: 一部のメンバーだけが検索語に当たったグループは、当たった
 // メンバーを1本ずつ動画の項目にし、全メンバーが当たったときだけグループの項目にする
-// （specs/027-partial-group-search/contracts/library-api.md §1）。
 func TestListLibraryShowsPartiallyMatchedMembersAsVideos(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -276,7 +275,7 @@ func TestListLibraryFiltersTagsPerMember(t *testing.T) {
 		t.Errorf("タグ two の未視聴の ids = %v, want [%d]", got, ep2)
 	}
 
-	// フォルダ名と同じ名前のタグはフォルダの下の全メンバーに付く（017 の data-model.md §4）。
+	// フォルダ名と同じ名前のタグはフォルダの下の全メンバーに付く。
 	folder, err := db.Tags().CreateTag(ctx, "show")
 	if err != nil {
 		t.Fatal(err)
@@ -304,11 +303,10 @@ func TestListLibraryFiltersTagsPerMember(t *testing.T) {
 	}
 }
 
-// itemSortValue は項目の並べ替えの値を、ListLibrary が返した項目から Go で作る
-// （data-model.md §5 の 3）。played は動画の id から再生の時刻を、created は動画の id から
-// 作成日の値（file_created_at、取れなければ mtime。specs/033-video-dates/data-model.md §4）を引く。
+// itemSortValue は項目の並べ替えの値を、ListLibrary が返した項目から Go で作る。played は動画の id から再生の時刻を、created は動画の id から
+// 作成日の値（file_created_at、取れなければ mtime。docs/design-docs/catalog-organization.md）を引く。
 // favorited は動画の id から、groupFavorited はグループのフォルダのパスから、お気に入りにした
-// 日時を引く（無ければお気に入りでない。specs/035-favorites/data-model.md §5）。
+// 日時を引く（無ければお気に入りでない。docs/design-docs/catalog-organization.md）。
 func itemSortValue(sort domain.VideoSort, seed int64, item domain.LibraryItem, played, created, favorited map[int64]int64, groupFavorited map[string]int64) (isNull bool, num int64, text string) {
 	lookup := func(value int64, ok bool) (bool, int64, string) {
 		if !ok {
@@ -398,7 +396,7 @@ func TestListLibraryAllSortsPageInExpectedOrder(t *testing.T) {
 		}
 		created[ids[file.path]] = fixedTime.Add(time.Duration(minutes) * time.Minute).Unix()
 	}
-	// お気に入りにした日時（specs/035-favorites/data-model.md §5）。動画とグループが同じ値で
+	// お気に入りにした日時。動画とグループが同じ値で
 	// 並び、同じ値は id で決着する。show・mixed/sub の y・ep1 はお気に入りでない。
 	favorited := map[int64]int64{
 		ids[fixturePath("/media/solo.mp4")]:     30,
@@ -543,7 +541,7 @@ func groupProgress(t *testing.T, db *DB, group domain.LibraryGroup) []*domain.Pr
 
 // 「すべて選択」の id は一覧の項目に合わせる。動画の項目はその id、全メンバーが当たった
 // グループは全メンバーの id で、一部だけが当たったグループは当たったメンバーの id だけである
-// （027 の受け入れ条件 7、contracts/library-api.md §2）。
+// （027 の受け入れ条件 7）。
 func TestLibraryIDsFollowLibraryItems(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ep10 := ids[fixturePath("/media/show/ep10.mp4")]
@@ -598,7 +596,7 @@ func TestLibraryIDsFollowLibraryItems(t *testing.T) {
 }
 
 // ゲストには公開のメンバーだけで数えた項目を返す。公開のメンバーが1本のグループもグループの
-// 項目になり、0本のグループは出ない（specs/048-groups/research.md R-6）。
+// 項目になり、0本のグループは出ない。
 func TestListLibraryForGuestCountsPublicMembers(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()

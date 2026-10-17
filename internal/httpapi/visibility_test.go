@@ -21,7 +21,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 公開フラグの切り替え（specs/016-single-account-auth/contracts/guest-api.md §4）と、
+// 公開フラグの切り替えと、
 // 非公開にしたときの配信の打ち切り（§6）は、本物の認証・保存層で確かめる（#301）。
 
 func visibilityBody(public bool, ids ...int64) string {

@@ -10,7 +10,7 @@ import (
 )
 
 // reopenableListener は HTTP サーバーの待ち受けを作り、アドレスを変えて開き直せる
-// 部品である（specs/037-windows-app/research.md R-14 の「待ち受け」）。
+// 部品である。
 //
 // 開き直しでは今の待ち受けを閉じてから、同じ http.Server で新しい待ち受けを
 // Serve する。http.Server は接続ごとに別の goroutine で応答するので、待ち受けを

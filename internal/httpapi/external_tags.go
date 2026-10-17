@@ -11,9 +11,8 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// 外部連携 API のタグの統合・改名・シノニム・まとめての確定・却下・削除・却下した名前
-// （specs/039-external-tag-admin/contracts/external-api.md §2〜§7）。どの操作も画面の経路と同じ TagStore の操作を Tags 越しに呼び、新しい書き込みの経路は
-// 持たない（research.md R-6）。タグは経路ではなく本文の id で指す（R-2）。ここが持つのは本文の
+// 外部連携 API のタグの統合・改名・シノニム・まとめての確定・却下・削除・却下した名前。どの操作も画面の経路と同じ TagStore の操作を Tags 越しに呼び、新しい書き込みの経路は
+// 持たない。タグは経路ではなく本文の id で指す（R-2）。ここが持つのは本文の
 // 検査と、外部連携 API の誤りの形（tagId・tagName を添えた 409 など、R-4）への写し方だけである。
 
 // MergeTags は統合元のタグを統合先へ 1 つのトランザクションで統合する（POST /api/v1/tags/merge）。
@@ -29,7 +28,7 @@ func (e *externalServer) MergeTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 保存先は統合元に混じった統合先を黙って飛ばすが、画面の経路と同じく要求の誤りとして
-	// 先に断る（specs/036-tag-admin-scale/contracts/screen-api.md §2）。
+	// 先に断る。
 	if slices.Contains(body.SourceIds, body.TargetId) {
 		reason := extgen.MergeSameTag
 		e.invalidRequest(w, &reason, "sourceIds must not contain targetId. Nothing was changed.")
@@ -72,7 +71,7 @@ func (e *externalServer) RenameTag(w http.ResponseWriter, r *http.Request) {
 }
 
 // UpdateTagSynonyms はタグのシノニムを足す・外す（POST /api/v1/tags/synonyms）。どちらも変更後の
-// タグを返す（research.md R-5）。
+// タグを返す。
 func (e *externalServer) UpdateTagSynonyms(w http.ResponseWriter, r *http.Request) {
 	var body extgen.TagSynonymsRequest
 	if !e.readJSONBody(w, r, &body) {
@@ -107,9 +106,8 @@ func (e *externalServer) UpdateTagSynonyms(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, toExternalTag(tag), e.s.logger)
 }
 
-// BatchTags は複数のタグをまとめて確定・却下・削除し、種類を付け外しする（POST /api/v1/tags/batch、
-// contracts/external-api.md §5、specs/051-tag-kinds/contracts/external-api.md）。1 つのタグ用の経路は
-// 持たない（research.md R-3）。種類の合わないタグと無いタグは何も変えずに返し、残りを 1 つの
+// BatchTags は複数のタグをまとめて確定・却下・削除し、種類を付け外しする（POST /api/v1/tags/batch、docs/design-docs/catalog-organization.md）。1 つのタグ用の経路は
+// 持たない。種類の合わないタグと無いタグは何も変えずに返し、残りを 1 つの
 // トランザクションで処理する。action と kindId は画面の経路と同じ tagBatchRequestOf で検査する。
 func (e *externalServer) BatchTags(w http.ResponseWriter, r *http.Request) {
 	var body extgen.TagBatchRequest
@@ -149,7 +147,7 @@ func (e *externalServer) BatchTags(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListRejectedTagNames は却下した名前を名前の自然順でページに分けて返す
-// （GET /api/v1/tags/rejected-names、contracts/external-api.md §6）。limit の既定と上限は画面と同じ。
+// （GET /api/v1/tags/rejected-names）。limit の既定と上限は画面と同じ。
 func (e *externalServer) ListRejectedTagNames(w http.ResponseWriter, r *http.Request, params extgen.ListRejectedTagNamesParams) {
 	limit := rejectedTagNamePageDefaultLimit
 	if params.Limit != nil {
@@ -189,10 +187,9 @@ func (e *externalServer) ListRejectedTagNames(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, body, e.s.logger)
 }
 
-// ForgetRejectedTagName は名前を却下した名前から外す（DELETE /api/v1/tags/rejected-names?name=…、
-// contracts/external-api.md §7）。応答の name は照合した綴りで、保存先と同じく
+// ForgetRejectedTagName は名前を却下した名前から外す（DELETE /api/v1/tags/rejected-names?name=…）。応答の name は照合した綴りで、保存先と同じく
 // domain.NormalizeTagName で整えた名前、整えられなければ送られた名前である。一覧に無い名前は
-// 何も変えずに removed: false を返す（research.md R-5）。
+// 何も変えずに removed: false を返す。
 func (e *externalServer) ForgetRejectedTagName(w http.ResponseWriter, r *http.Request, params extgen.ForgetRejectedTagNameParams) {
 	if e.s.tags == nil {
 		e.internalError(w, "Tag storage is not configured.", nil)
@@ -211,9 +208,8 @@ func (e *externalServer) ForgetRejectedTagName(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, extgen.RejectedTagNameForgetResult{Name: name, Removed: removed}, e.s.logger)
 }
 
-// writeTagError はタグの操作の保存先の誤りを外部連携 API の誤りへ写す（contracts/external-api.md
-// §2〜§4）。名前の衝突は、ぶつかったタグの id と元の名前を tagId・tagName に添えて返し、呼び手が
-// 一覧を読み直さずに mergeTagId を送れるようにする（research.md R-4）。
+// writeTagError はタグの操作の保存先の誤りを外部連携 API の誤りへ写す。名前の衝突は、ぶつかったタグの id と元の名前を tagId・tagName に添えて返し、呼び手が
+// 一覧を読み直さずに mergeTagId を送れるようにする。
 func (e *externalServer) writeTagError(w http.ResponseWriter, err error, failure string) {
 	var invalid *domain.InvalidTagNameError
 	var nameConflict *domain.TagNameConflict

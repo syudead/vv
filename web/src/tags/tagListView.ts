@@ -3,7 +3,7 @@ import type { ListRow, ListRowsQuery, PageRows, TagPageRows } from "./tagPageRow
 import { moreIdle, type MoreState } from "./useTagPage";
 
 /**
- * TagListEmpty は一覧の代わりに出す空の状態である（ui-design.md「States」）。
+ * TagListEmpty は一覧の代わりに出す空の状態である。
  * `tags` はタグが 1 つも無い、ほかは今の条件に合う行が無い。
  */
 export type TagListEmpty =
@@ -31,7 +31,7 @@ function filtered({ tentativeOnly = false, unusedOnly = false, kind = null }: Vi
 /**
  * filteredEmpty は、タグはあるが今の条件に合う行が無いときの空の状態である。種類の
  * 絞り込みが効いていれば、種類だけなら `noKind`、検索かほかの絞り込みと重なれば
- * `noKindMatch`（specs/051-tag-kinds/ui-design.md「Kind filter」）。
+ * `noKindMatch`。
  */
 function filteredEmpty(query: ViewQuery): TagListEmpty {
   const { tentativeOnly = false, unusedOnly = false, kind = null } = query;
@@ -69,7 +69,7 @@ export interface TagListView {
   tail: MoreState;
   /**
    * 先頭のページをまだ受けていないか、タグが 1 つも無いか。押していない絞り込みと
-   * 検索・並び順は押せない（ui-design.md「Top bar」）。
+   * 検索・並び順は押せない。
    */
   noTags: boolean;
 }
@@ -77,8 +77,8 @@ export interface TagListView {
 /**
  * tagListView は一覧の領域の見え方を決める。空の状態は、入力中の条件ではなく届いた
  * 行の条件（`page.query`）で選ぶので、条件を変えて先頭のページを待つ間は前の状態が
- * 残る（ui-design.md「States」）。読み込んだ行が無くても続きがあれば、空の状態を
- * 出さずに末尾の続きの状態を出す（ui-design.md「Loading more」）。
+ * 残る。読み込んだ行が無くても続きがあれば、空の状態を
+ * 出さずに末尾の続きの状態を出す。
  */
 export function tagListView({
   page,
@@ -105,7 +105,7 @@ export function tagListView({
 
 /**
  * tagCountText は見出しの件数である。応答の `total`・`totalAll` で出し、読み込んだ行の
- * 数（ページの区切り）や差し込んで残した改名中の行は数えない（ui-design.md「Header」）。
+ * 数（ページの区切り）や差し込んで残した改名中の行は数えない。
  */
 export function tagCountText(page: TagPageRows | undefined): UiText {
   if (page === undefined) return t.tags.loading;

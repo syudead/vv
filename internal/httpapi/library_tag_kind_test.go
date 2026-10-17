@@ -7,8 +7,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 一覧の tagKind（specs/051-tag-kinds/contracts/screen-api.md の List parameter tagKind、
-// research.md R-5、#1151）。種類による当たり方はストアのテストが確かめる。
+// 一覧の tagKind。種類による当たり方はストアのテストが確かめる。
 
 // 実体の無い種類は 200 の空の一覧で、missingTagIds のような報告はしない。どの一覧の経路も
 // tagKind を問い合わせに渡す（渡さなければ fixture の動画が出る）。

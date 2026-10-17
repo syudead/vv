@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 取得した人物・団体と既存の実体の照合（specs/052-plugin-work-info-fields/research.md R-3）。
+// 取得した人物・団体と既存の実体の照合。
 // 取得時の比較の表示は Match を使い、反映はトランザクションの中で matchCredits を直接呼ぶ。
 
 // Match は kind の取得した件 entries を kind の実体とだけ照合し、件ごとの答えを同じ順で返す。

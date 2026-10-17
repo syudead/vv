@@ -8,8 +8,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// GetNetworkSettings は LAN からの接続の許可と、許可中に開けるアドレスを返す
-// （specs/037-windows-app/contracts/network-settings-api.md §2）。デスクトップ版で
+// GetNetworkSettings は LAN からの接続の許可と、許可中に開けるアドレスを返す。デスクトップ版で
 // なければ 404 を返し、画面はこれを「この節を出さない」と読む。
 func (s *server) GetNetworkSettings(w http.ResponseWriter, _ *http.Request) {
 	if s.networkSettings == nil {

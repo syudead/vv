@@ -11,7 +11,7 @@ import (
 )
 
 // 種類のまとめての付け外しと、タグの一覧の種類での絞り込み
-// （specs/051-tag-kinds/data-model.md「Rules」、research.md R-3・R-8）。
+//
 
 // presetKindID はプリセットの種類 name の id を返す。
 func presetKindID(t *testing.T, db *DB, name string) int64 {

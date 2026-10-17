@@ -4,7 +4,7 @@ layout: home
 hero:
   name: vv docs
   text: Design documents, specifications and procedures
-  tagline: The repository's docs/ and specs/, published automatically from main.
+  tagline: The repository's permanent documents, published automatically from main.
   actions:
     - theme: brand
       text: Design documents
@@ -23,7 +23,4 @@ features:
   - title: How-to guides
     details: Repeated procedures such as running, hosting, local development and dependency updates.
     link: /docs/how-to/
-  - title: Feature plans
-    details: Plans, UI designs, data models and contracts for features built with SDD.
-    link: /specs/
 ---

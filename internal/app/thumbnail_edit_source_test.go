@@ -11,7 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 編集を始める元（specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-4）を、
+// 編集を始める元を、
 // 偽のコマの取り出しと偽の適用した画像で確かめる。
 
 var thumbnailStart = domain.ThumbnailEditStart{Source: domain.ThumbnailEditFromThumbnail}

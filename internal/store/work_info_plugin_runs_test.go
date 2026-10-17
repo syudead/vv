@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインの直近の実行の規則（specs/056-plugin-tooling/data-model.md の work_info_plugin_runs・Rules）。
+// 作品情報プラグインの直近の実行の規則。
 
 func pluginRun(plugin domain.WorkInfoPlugin, stderr string, ranAt time.Time) domain.WorkInfoPluginRun {
 	return domain.WorkInfoPluginRun{

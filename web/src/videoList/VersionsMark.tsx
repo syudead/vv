@@ -4,7 +4,7 @@ import type { Video } from "../api/client";
 import { t } from "../i18n";
 
 // 束ねた動画のカードと行の長さの印に添える、バージョンがあることの印
-// （specs/054-auto-dup/ui-design.md「Versions mark」）。
+//
 
 /**
  * shownVersionsCount は印に出すバージョンの本数である。集まりのメンバーで、見る人に見せる

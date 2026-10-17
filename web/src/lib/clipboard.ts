@@ -1,5 +1,5 @@
 // 画面の文字をクリップボードへ写す。再生画面の「パスをコピー」と設定画面の「Copy token」が
-// 共有する（specs/026-external-api/ui-design.md「Reveal」）。
+// 共有する。
 
 /**
  * copyWithSelection は見えない入力欄に文字を置いて選び、コピーの命令で写す。

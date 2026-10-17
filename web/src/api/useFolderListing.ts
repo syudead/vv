@@ -164,7 +164,7 @@ export type RootFolderName =
  *
  * ゲストの応答には登録フォルダの絶対パス（`rootPath`）が無く、子フォルダの応答の
  * `name` は最後の段なので、子フォルダを開いたときのパンくずの登録フォルダの段は、
- * その応答からは作れない（specs/016-single-account-auth/contracts/guest-api.md §1）。
+ * その応答からは作れない。
  */
 export function useRootFolderName(rootId: number, enabled: boolean): RootFolderName {
   const [result, setResult] = useState<{ rootId: number; name: RootFolderName }>({

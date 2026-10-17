@@ -1,7 +1,7 @@
 import videojs from "video.js";
 
 /**
- * 字幕ボタンの部品（specs/028-sidecar-subtitles research.md R-10）。
+ * 字幕ボタンの部品。
  *
  * video.js の `SubsCapsButton` は、メニューの項目の文字をプレイヤーの言語の表
  * （`playerDictionary()`）に通す。字幕のラベルはファイル名から来る利用者のデータなので、

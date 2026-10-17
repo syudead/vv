@@ -260,7 +260,7 @@ func scopedScanner(root string, index *fakeIndex) *Scanner {
 }
 
 // 監視の走査では、取り込みの途中で変わった・消えたファイルを失敗にせず、対象から外す。
-// その変更の知らせが、ディレクトリを次の監視の走査へ回す（research.md R-3）。
+// その変更の知らせが、ディレクトリを次の監視の走査へ回す。
 func TestScanScopedSkipsFileThatChangesOrVanishesDuringImport(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -336,7 +336,7 @@ func TestScanScopedSkipsFileThatVanishesBeforeItsInformationIsRead(t *testing.T)
 }
 
 // 監視の走査の途中でディレクトリごと移された・消されたときは、走査を失敗にせず、その所在を
-// 残す。移動の知らせで次の監視の走査が、移した先を加えてから消す（research.md R-3）。
+// 残す。移動の知らせで次の監視の走査が、移した先を加えてから消す。
 func TestScanScopedKeepsLocationsWhenParentVanishesDuringImport(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a/gone/1.mp4": "1", "a/z.mp4": "z"})
 	index := newFakeIndex()

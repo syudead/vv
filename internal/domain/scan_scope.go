@@ -8,7 +8,6 @@ import (
 )
 
 // ScanOrigin は走査を始めた主体である。値は scans.origin に対応する
-// （specs/042-folder-watch-import/data-model.md）。
 type ScanOrigin string
 
 const (
@@ -20,7 +19,6 @@ const (
 
 // ErrScanSuperseded は、手動の走査やメディアフォルダの変更に取って代わられて、走査が
 // 途中で止まったことを表す。止まった走査は何も消さず、done で閉じる
-// （specs/042-folder-watch-import/research.md R-5）。
 var ErrScanSuperseded = errors.New("the scan was superseded")
 
 // DirtyDirectory は読み直すディレクトリである。Recursive が偽なら直下のファイルだけ、

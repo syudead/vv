@@ -13,9 +13,9 @@ import (
 )
 
 // ListVideoSubtitles は動画の隣に置いた字幕ファイルの一覧を返す
-// （GET /api/videos/{id}/subtitles、specs/028-sidecar-subtitles/contracts/subtitles-api.md §1）。
+// （GET /api/videos/{id}/subtitles、docs/design-docs/sidecar-subtitles.md）。
 //
-// 要求のたびに、配信が開く所在のフォルダを読む（research.md R-1・R-2）。中身は読まない
+// 要求のたびに、配信が開く所在のフォルダを読む。中身は読まない
 // ので、壊れたファイルもここには載り、取得で 404 になる（R-7）。
 func (s *server) ListVideoSubtitles(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	video, r, release, ok := s.lookupServedVideo(w, r, id)
@@ -48,7 +48,7 @@ func (s *server) ListVideoSubtitles(w http.ResponseWriter, r *http.Request, id g
 }
 
 // GetVideoSubtitle は字幕ファイル 1 つを UTF-8 の WebVTT にして返す
-// （GET /api/videos/{id}/subtitles/{file}、contracts/subtitles-api.md §2）。
+// （GET /api/videos/{id}/subtitles/{file}）。
 //
 // file は一覧を作り直してその中の 1 つと完全に一致するときだけ開く。要求の文字列から
 // パスを組み立てないので、区切りや `..` の検査は要らない。
@@ -156,7 +156,7 @@ func (s *server) readSubtitle(
 }
 
 // subtitleSidecars は、openMediaFile と同じ順で所在を試し、最初に開けた所在と、その
-// フォルダにある字幕の一覧を返す（research.md R-2）。どの所在も開けなければ false。
+// フォルダにある字幕の一覧を返す。どの所在も開けなければ false。
 // フォルダを読めないときは、字幕が無いのと同じく空の一覧を返し、理由を記録に残す。
 func (s *server) subtitleSidecars(r *http.Request, video domain.Video) (string, []domain.SubtitleSidecar, bool) {
 	locations, err := s.videos.VideoLocations(r.Context(), video.ID)

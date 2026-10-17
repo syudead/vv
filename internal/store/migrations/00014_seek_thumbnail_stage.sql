@@ -1,6 +1,6 @@
 -- +goose Up
 -- シーク用サムネイルを代表サムネイルから独立した段階にする
--- （specs/020-seek-thumbnail-stage/data-model.md §5）。
+--
 alter table videos add column seek_thumbnail_state text not null default 'pending'
     check (seek_thumbnail_state in ('pending', 'done', 'failed'));
 

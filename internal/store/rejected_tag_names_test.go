@@ -11,7 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 却下した名前のページ読み（specs/036-tag-admin-scale/data-model.md §2）。
+// 却下した名前のページ読み。
 
 // 036 #727: 却下した名前 250 個を limit 100 で 3 ページ読むと、名前の自然順で重複も抜けも無く、
 // Total は 250、3 ページ目の NextCursor は空。外したあとの Total は減る。

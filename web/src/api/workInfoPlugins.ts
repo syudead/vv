@@ -3,8 +3,7 @@ import type { components } from "./gen/openapi";
 import { clearListSnapshot } from "./listSnapshot";
 import { afterTagsAppliedByName } from "./tags";
 
-// 作品情報プラグインの画面 API（specs/049-work-info-plugins/contracts/screen-api.md、作品の詳細は
-// specs/052-plugin-work-info-fields/contracts/screen-api.md）。型は
+// 作品情報プラグインの画面 API。型は
 // api/openapi.yaml からの生成物を使う。どの経路も所有者だけである。プラグインの変化はイベントで
 // 流れないので、画面は操作のあとに listWorkInfoPlugins で読み直す。
 
@@ -123,7 +122,7 @@ export async function deleteWorkInfoPlugin(
 
 /**
  * getWorkInfoPluginLastRun はプラグインの直近の実行が残した標準エラーを読む（GET …/{id}/last-run、
- * specs/056-plugin-tooling/contracts/screen-api.md）。秘密の設定の値は `[secret]` に置き換えてある。
+ * docs/design-docs/work-info-plugins.md）。秘密の設定の値は `[secret]` に置き換えてある。
  * 今のモジュールの実行が残っていなければ `null` を返す。無ければ 404 の RequestFailed。
  */
 export async function getWorkInfoPluginLastRun(
@@ -187,7 +186,7 @@ export function workInfoFetchCoverUrl(videoId: number, fetchId: string): string 
 /**
  * applyWorkInfoFetch は取得の結果 `fetchId` のうち `fields` の項目を動画に反映する
  * （POST …/work-info-fetches/{fetchId}/apply）。`tags` を渡せば、`fields` が `tags` を含むとき
- * 取得したタグのうちその名前だけを付ける（specs/056-plugin-tooling/contracts/screen-api.md）。応答は反映後の動画（`workInfo` を含む）と、付けなかった
+ * 取得したタグのうちその名前だけを付ける。応答は反映後の動画（`workInfo` を含む）と、付けなかった
  * タグの名前 `skippedTags` と、飛ばした作品の詳細の値 `skipped` である。結果は
  * 使い切りで、期限切れか取得の後にプラグインが変わっていれば 409 `work_info_fetch_stale` で失敗する。
  * 成功したら一覧の控えを捨て、タグを付けたなら共有のタグの一覧も取り直す。

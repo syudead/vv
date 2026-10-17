@@ -7,8 +7,7 @@ import { describe, expect, it } from "vitest";
 import { compareNaturalSortKeys, naturalSortKey } from "./naturalSortKey";
 
 /**
- * Go の NaturalSortKey と同じ入力の組を読む（specs/036-tag-admin-scale/research.md
- * R-12「移植の検査」）。Go 側は internal/domain/foldcheck/natural_sort_key_test.go が
+ * Go の NaturalSortKey と同じ入力の組を読む。Go 側は internal/domain/foldcheck/natural_sort_key_test.go が
  * 同じファイルを読み、組が鍵の strings.Compare の順に並んでいることも確かめる。
  */
 interface NaturalSortKeyFile {

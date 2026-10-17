@@ -1,5 +1,5 @@
 -- +goose Up
--- 外部連携の API トークン（specs/026-external-api/data-model.md §1）。
+-- 外部連携の API トークン。
 -- 作り直せない設定のデータで、スキャンでは戻らない。失えば発行し直す（ARCHITECTURE.md
 -- 「Rebuildable and user data」）。
 create table api_tokens (
@@ -9,7 +9,7 @@ create table api_tokens (
     name            text    not null,
     -- 平文の SHA-256（16進）。平文はどこにも保存しない。
     token_hash      text    not null unique,
-    -- 発行したときの account.version。一致しない行は無効である（research.md R-2）。
+    -- 発行したときの account.version。一致しない行は無効である。
     account_version integer not null,
     created_at      integer not null,
     -- 最後に使った時刻（Unix 秒）。未使用なら null。60 秒より細かくは書かない（R-9）。

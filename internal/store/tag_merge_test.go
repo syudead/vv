@@ -12,7 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 複数の統合元を受ける統合（specs/036-tag-admin-scale/data-model.md §2・§3）。
+// 複数の統合元を受ける統合。
 
 // countingTx は取引に流れた文を数える。mergeTagsInto の文の数と、統合先の tagByID が何回
 // 走ったか（tagByID だけが読む `select created_at from tags where id = ?` の回数）を見る。

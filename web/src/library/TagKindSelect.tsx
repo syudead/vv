@@ -24,8 +24,8 @@ export interface TagKindSelectProps {
 
 /**
  * TagKindSelect はライブラリの絞り込みのポップオーバーの最後の行、`Tag kind` の `Select` で
- * ある（specs/051-tag-kinds/ui-design.md「Library」の Kind filter）。選択肢は `Any kind` と
- * 名前の自然順の種類で、`No kind` は無い（research.md R-5）。選ぶとすぐ効く。
+ * ある。選択肢は `Any kind` と
+ * 名前の自然順の種類で、`No kind` は無い。選ぶとすぐ効く。
  */
 export default function TagKindSelect({
   value,

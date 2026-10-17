@@ -12,7 +12,7 @@ import (
 
 // transcodeStartRetention は、変換の要求が終わってから台帳の行を残す時間である。
 // 再読み込みの直後に届いた報告の要求が、終わった変換の値をまだ引けるようにする
-// （specs/018-live-transcode-seek/contracts/transcode-start-api.md §2）。
+//
 // テストが短くできるよう変数にしている。
 var transcodeStartRetention = 60 * time.Second
 
@@ -155,7 +155,6 @@ func (l *transcodeStarts) wait(ctx context.Context, key transcodeStartKey, timeo
 }
 
 // GetTranscodeStart は同じ attempt を付けた変換の実際の開始位置を返す
-// （contracts/transcode-start-api.md §2）。
 func (s *server) GetTranscodeStart(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetTranscodeStartParams) {
 	// 公開でない動画へのゲストの要求は、変換の経路と同じ判定で 404 にする。
 	video, r, release, ok := s.lookupServedVideo(w, r, id)

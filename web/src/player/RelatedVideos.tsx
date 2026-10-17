@@ -53,7 +53,7 @@ export function videoLinkLabel(video: Video): string {
  * 同じ代わりの表示にし、右下に長さ、途中まで見た動画だけ下端に進捗バーを出す。
  *
  * scrub を渡すと下端にスクラブの帯を置き、帯にいる間はコマを出して長さの表示とバーを
- * スクラブ位置に差し替える（specs/032-card-scrub-preview/ui-design.md）。
+ * スクラブ位置に差し替える。
  */
 export function VideoThumbnail({
   video,
@@ -73,7 +73,7 @@ export function VideoThumbnail({
 }) {
   const duration = formatDuration(video.durationMs);
   const ratio = watchedRatio(video);
-  // 帯にいる間のポインタの位置（ui-design.md「Time and bar」）。
+  // 帯にいる間のポインタの位置。
   const scrubPosition = scrub?.position ?? null;
   return (
     <Thumbnail className={cn("shrink-0", className)}>
@@ -200,8 +200,7 @@ export const stickyHeadingClass =
 
 /**
  * MemberTarget はメンバーの行のリンク先である。省けば `/videos/{id}` を開き、戻り先だけを
- * 引き継ぐ。プレイリストのグループの項目の中では、ページがプレイリストの文脈を保つ先を渡す
- * （specs/044-playlists/ui-design.md「Video page in a playlist」の Aside）。
+ * 引き継ぐ。プレイリストのグループの項目の中では、ページがプレイリストの文脈を保つ先を渡す。
  */
 export type MemberTarget = (videoId: number) => { to: string; state: unknown };
 
@@ -214,7 +213,7 @@ export type MemberTarget = (videoId: number) => { to: string; state: unknown };
  * issue 931）。並びは近さの順で件数に上限が無く、終わりに近づくと続きを読む（`onLoadMore`）。
  *
  * 基準の動画がグループのメンバーなら、列の上位に「続けて再生」としてメンバーの並びを
- * 出し、境目の下に関連動画を出す（specs/017-folder-groups/ui-design.md「Member list」）。
+ * 出し、境目の下に関連動画を出す。
  */
 export default function RelatedVideos({
   state,
@@ -232,7 +231,7 @@ export default function RelatedVideos({
   memberTarget?: MemberTarget;
   /**
    * 動画を開いたグループ（`?group`）かスマートフォルダ（`?smartFolder`）。メンバーの続きの読み取りにも
-   * 渡す（048 research.md R-9、052 contracts/screen-api.md）。
+   * 渡す。
    */
   groupContext?: VideoReadContext;
   /** 並びの入れ物の先頭に置く区切り（プレイリストのパネルと境目）。同じ入れ物でスクロールする。 */
@@ -689,14 +688,13 @@ export function memberLinkLabel(video: Video): string | UiText {
 }
 
 /**
- * useRelatedScrub は関連動画の行のスクラブの帯をループ再生（useHoverPreview）とつなぐ
- * （specs/032-card-scrub-preview/research.md R-2、ui-design.md「Pointer rules」）。
+ * useRelatedScrub は関連動画の行のスクラブの帯をループ再生（useHoverPreview）とつなぐ。
  *
  * - 帯への出入りでループを一時停止・再開する。帯からリンクの外へ出たときは再開せず、
  *   リンクの pointerleave の解放に任せる。
  * - リンクから出たら、帯から出たのと同じに戻し、進行中の取得を打ち切る。
  * - 窓の大きさが変わったら、一覧の usePreviewCoordination と同じくループを解放し、
- *   帯から出たのと同じに戻す（ui-design.md「Responsive」）。
+ *   帯から出たのと同じに戻す。
  */
 export function useRelatedScrub(video: Video, preview: HoverPreview) {
   const { suspendPreview, resumePreview, onPointerLeave: releasePreview } = preview;

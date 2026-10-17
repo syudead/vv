@@ -21,8 +21,7 @@ import GroupTagDialog from "./GroupTagDialog";
 type Dialog = "rename" | "tag" | "dissolve" | null;
 
 /**
- * GroupMenu は所有者のグループのページの見出しの「More」である（specs/048-groups/ui-design.md
- * 「Header」）。「Rename…」「Turn the group into a tag…」、区切り、「Dissolve…」を開き、それぞれの
+ * GroupMenu は所有者のグループのページの見出しの「More」である。「Rename…」「Turn the group into a tag…」、区切り、「Dissolve…」を開き、それぞれの
  * 窓を持つ。
  *
  * 改名できたら `onRenamed` に新しい値を渡し、フォーカスは「More」へ戻す。グループが終わったら
@@ -97,7 +96,7 @@ export default function GroupMenu({
             nameLabel: t.groups.nameLabel,
             nameRule: t.groups.nameRule,
           }}
-          // グループの名前の規則はプレイリストと同じ（research.md R-14）。
+          // グループの名前の規則はプレイリストと同じ。
           normalize={playlistName}
           rename={(name) => renameGroup(group.id, name)}
           onClose={() => setDialog(null)}

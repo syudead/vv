@@ -249,7 +249,7 @@ func TestAutoTaggerSelectsTags(t *testing.T) {
 	if got := queue.finished["k1"]; !reflect.DeepEqual(got, want) {
 		t.Fatalf("付けたタグ = %v", got)
 	}
-	// 判定モデルに聞いた実行は、終えると判断したものが ai になる（specs/055-activity/research.md R-5）。
+	// 判定モデルに聞いた実行は、終えると判断したものが ai になる。
 	if got := queue.finishDeciders["k1"]; got != domain.ActivityByAI {
 		t.Fatalf("判断したもの = %q", got)
 	}
@@ -358,7 +358,7 @@ func TestAutoTaggerQueuesOnlyWhenEnabled(t *testing.T) {
 	if n, err := tagger.QueueLibrary(ctx, domain.AutoTagScopeMissing); err != nil || n != 3 || queue.modes[2] != domain.AutoTagQueueUnlessDone {
 		t.Fatalf("QueueLibrary = %d, %v, %v", n, err, queue.modes)
 	}
-	// 取り込みが始めた実行は rule、設定や動画ページから始めた実行は owner である（research.md R-5）。
+	// 取り込みが始めた実行は rule、設定や動画ページから始めた実行は owner である。
 	wantDeciders := []domain.ActivityDecider{domain.ActivityByRule, domain.ActivityByOwner, domain.ActivityByOwner}
 	if !slices.Equal(queue.queueDeciders, wantDeciders) {
 		t.Fatalf("始めたもの = %v", queue.queueDeciders)
@@ -459,7 +459,7 @@ func (f *fakeAutoTagUndo) UndoAutoTag(_ context.Context, entryID, tagID int64) (
 }
 
 // 失敗した実行のやり直しは対象の動画を所有者の求めとして積み直し、機能が切なら ErrAutoTaggingOff を返す。
-// タグの取り消しは記録とタグを保存層の 1 つの取引に渡す（specs/055-activity/research.md R-7）。
+// タグの取り消しは記録とタグを保存層の 1 つの取引に渡す。
 func TestAutoTaggerRetriesAndUndoesActivity(t *testing.T) {
 	queue := newFakeAutoTagQueue()
 	settings := &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()}

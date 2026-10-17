@@ -20,7 +20,7 @@ import (
 // Windows デスクトップ版（VVMDM.exe）の入口。`go build -tags desktop -ldflags
 // "-H=windowsgui"` で組む。設定は環境変数（MDM_*）でなく自分で組み立て、run を同じ
 // プロセスで呼び、待ち受けまで済んだらウィンドウを出す。ウィンドウを閉じたら
-// run の停止手順を通して終わる（specs/037-windows-app/research.md R-1〜R-5、R-10、R-11）。
+// run の停止手順を通して終わる。
 // 閉じる前の確認・二重起動・サインアウトの扱いは R-6〜R-8 による。
 // このファイルは組み立てと配線だけを持ち、Win32 と WebView2 は internal/desktop が扱う。
 
@@ -29,7 +29,7 @@ import (
 const fatalStopGrace = 30 * time.Second
 
 // instanceWait は、同じセッションの前のプロセスが停止の途中（ウィンドウを隠した
-// あと）のときに、終わるのを待つ上限である（research.md R-6）。
+// あと）のときに、終わるのを待つ上限である。
 const instanceWait = 30 * time.Second
 
 // busyCheckTimeout は閉じる前の確認で「取り込みの途中か」を読む上限である。
@@ -47,7 +47,7 @@ func main() {
 }
 
 // runDesktop は起動から終わりまでを行い、終了コードを返す。起動の確認は
-// contracts/windows-app.md §2 の順に行い、最初の失敗だけをダイアログで示す。
+// 最初の失敗だけをダイアログで示す。
 func runDesktop() int {
 	// 子プロセス（ffmpeg）も同じジョブに入るよう、最初に入る。失敗しても起動は
 	// 続け、ログを開いてから記録する。
@@ -70,7 +70,7 @@ func runDesktop() int {
 		return 1
 	}
 
-	// 二重起動は DB を開く前、ログを開く前に判定する（research.md R-6）。ログを先に
+	// 二重起動は DB を開く前、ログを開く前に判定する。ログを先に
 	// 開くと、起動中のプロセスのログを前回分へ移そうとしてしまう。
 	instance, err := desktop.AcquireInstance(paths.Root, instanceWait)
 	if err != nil {

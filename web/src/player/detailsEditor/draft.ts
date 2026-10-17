@@ -10,7 +10,7 @@ import {
   workPersonRoles,
 } from "../../api/workInfo";
 
-// 編集画面の下書き（specs/047-video-work-info/ui-design.md「Editor」の Fields・Save・Leaving）。
+// 編集画面の下書き。
 // 画面の部品に依らない値の操作（動画から作る、変わったかを比べる、保存の本文にする、
 // 誤りの経路を入力へ写す）をここに集める。
 
@@ -193,7 +193,7 @@ function comparable(draft: Draft): string {
   });
 }
 
-/** draftChanged は、下書きが読み込んだ値から変わったかを返す（ui-design.md「Leaving」）。 */
+/** draftChanged は、下書きが読み込んだ値から変わったかを返す。 */
 export function draftChanged(draft: Draft, loaded: Draft): boolean {
   return comparable(draft) !== comparable(loaded);
 }

@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// 動画の作品情報の規則（specs/047-video-work-info/data-model.md「Fields」、#1021）。どの規則も、
+// 動画の作品情報の規則。どの規則も、
 // 失敗したフィールドの経路と問題を名指しして入力を拒む。
 func TestNormalizeWorkInfoRefusesEachRule(t *testing.T) {
 	performers := func(n int) []WorkPerson {

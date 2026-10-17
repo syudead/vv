@@ -1,7 +1,7 @@
 package store
 
 // 直近の取り込みの対象の動画（scan_videos）と、それがすべて済んだ時刻
-// （scans.settled_at）を保つ操作（specs/024-import-progress/data-model.md §1・§2）。
+// （scans.settled_at）を保つ操作。
 
 import (
 	"context"
@@ -21,7 +21,7 @@ func remainingJobCondition(alias string) string {
 
 // addScanVideos は動画を直近の走査の対象に加える。走査が1つも無ければ加えない。
 // 仕事を積む（または着手できるようにする）トランザクションの中で呼ぶ。
-// 対象の集合へ加える経路はすべてここを通す（data-model.md §2「加わる時点」）。
+// 対象の集合へ加える経路はすべてここを通す。
 func addScanVideos(ctx context.Context, q queryExecer, videoIDs ...int64) error {
 	if len(videoIDs) == 0 {
 		return nil
@@ -54,7 +54,7 @@ func addScanVideosWithRemainingJobs(ctx context.Context, q queryExecer) error {
 }
 
 // refreshScanSettled は直近の走査の完了の時刻を決め直す。settled_at を書くのは
-// ここだけである（data-model.md §1）。
+// ここだけである。
 //
 // 直近の走査が閉じていて、対象の動画に残りの仕事が無ければ、値が無いときだけ now を
 // 入れる。そうでなければ null に戻す。残りの仕事の数が変わりうるトランザクションで、

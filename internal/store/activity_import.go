@@ -12,7 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 取り込みと失敗した走査の記録（specs/055-activity/data-model.md「Rules」、research.md R-3）。1 本の動画の
+// 取り込みと失敗した走査の記録。1 本の動画の
 // 取り込みは 5 つの段階をまとめて 1 件の import の記録にし、仕事の行（jobs.activity_id）がその記録を指す。
 // 仕事を積む・取り出す・終える取引が、同じ取引でここを呼んで記録を開き、状態をまとめ直す。
 
@@ -22,7 +22,7 @@ func pendingJobCondition(alias string) string {
 }
 
 // videoActivitySubject は動画 videoID の記録の対象を、今の内容の鍵と表示名で返す。表示名は上書きの表示名、
-// 無ければパスの順で最初の所在の題名である（research.md R-10）。
+// 無ければパスの順で最初の所在の題名である。
 func videoActivitySubject(ctx context.Context, q rowQueryer, videoID int64) (domain.ActivitySubject, error) {
 	subject := domain.ActivitySubject{Kind: domain.ActivitySubjectVideo}
 	err := q.QueryRowContext(ctx, `select v.content_key, coalesce(
@@ -139,7 +139,7 @@ const goneImportCondition = `e.kind = 'import' and e.status = 'running' and not 
 	select 1 from jobs j where j.activity_id = e.id and j.state in ('queued', 'running'))`
 
 // closeGoneImportActivity は import の記録 id を、待つか走る仕事がもう無い running なら done/gone で閉じる。
-// 登録の所在を失った動画の最後の仕事を捨てたときに呼ぶ（data-model.md「Outcomes」の gone）。閉じたら
+// 登録の所在を失った動画の最後の仕事を捨てたときに呼ぶ。閉じたら
 // true を返す。
 func closeGoneImportActivity(ctx context.Context, q activityWriter, c *changes, id int64, now time.Time) (bool, error) {
 	return closeGoneImports(ctx, q, c, `e.id = ?`, now, id)
@@ -257,7 +257,7 @@ func attachImportProgress(ctx context.Context, q rowsQueryer, entries []domain.A
 
 // recordScanActivity は走査 id の終わりを記録する。interrupted 以外の理由で failed に終わった走査は、対象を
 // その走査、表示名を始めた主体にした attention/failed の scan の記録を書く。done に終わった走査は、開いている
-// scan の記録をすべて done/superseded で閉じる。起動時に interrupted で閉じた走査は書かない（research.md R-3）。
+// scan の記録をすべて done/superseded で閉じる。起動時に interrupted で閉じた走査は書かない。
 func recordScanActivity(
 	ctx context.Context, tx activityWriter, c *changes, id int64, origin domain.ScanOrigin, state domain.ScanState,
 	cause error, decider domain.ActivityDecider, now time.Time,

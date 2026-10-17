@@ -66,7 +66,7 @@ func TestParseProbeOutputDoesNotTreatAttachedPictureAsVideo(t *testing.T) {
 
 // 索引のコーデックは codec_name が空の stream を飛ばして次の同種の stream を採る。
 // 名前の無い先頭の音声のために後ろの ac3 を見落とすと、再生できない動画を
-// 直接再生できると判定してしまう。ライブ変換用の値は data-model.md §2 のとおり
+// 直接再生できると判定してしまう。ライブ変換用の値は
 // 最初の非添付映像・最初の音声のままである。
 func TestParseProbeOutputSkipsStreamsWithoutCodecName(t *testing.T) {
 	const output = `{

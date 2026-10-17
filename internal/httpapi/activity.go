@@ -11,7 +11,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// アクティビティの記録の一覧・やり直し・取り消し（specs/055-activity/contracts/screen-api.md）。3 つの経路は
+// アクティビティの記録の一覧・やり直し・取り消し。3 つの経路は
 // /api/* の既定どおり所有者だけで、accessRoutes には入れない（受け入れ条件 8）。記録が書かれたか変わったことは
 // /api/events の activity で知らせる（events.go）。
 
@@ -276,7 +276,7 @@ func toAPIActivityEntry(entry domain.ActivityEntry) gen.ActivityEntry {
 }
 
 // toAPIActivitySubject は対象を鍵ごとの項目にする。組は 2 項目、それ以外は 1 項目で、videoId は見る人が
-// 開ける今の動画があるときだけ入る（research.md R-10）。
+// 開ける今の動画があるときだけ入る。
 func toAPIActivitySubject(entry domain.ActivityEntry) gen.ActivitySubject {
 	subject := gen.ActivitySubject{Kind: gen.ActivitySubjectKind(entry.Subject.Kind)}
 	item := func(label string, videoID int64) gen.ActivitySubjectItem {

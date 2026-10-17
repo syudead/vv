@@ -486,7 +486,7 @@ func TestPublishReusesCompletedSeekThumbnails(t *testing.T) {
 
 // シーク用プレビューを全編の復号から作ったかは sprite.json に残り、完成したものを
 // 採用したときにも読み戻せる。公開と完了の記録の間で止まった後の再実行や、同じ内容の
-// 別の動画でも、代用を取りこぼさない（specs/024-import-progress/research.md R-7）。
+// 別の動画でも、代用を取りこぼさない。
 // 記録の無い旧い sprite.json は、代用したかが分からない。
 func TestPublishSeekThumbnailsKeepsSubstitution(t *testing.T) {
 	for _, tc := range []struct {

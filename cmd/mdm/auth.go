@@ -51,7 +51,7 @@ func newHTTPAuth(authStore *store.AuthStore) (httpapi.Authenticator, httpapi.API
 }
 
 // prepareAuth は起動時に期限切れのセッションを消し、アカウントが未設定なら初回設定を
-// 促す警告を1行記録する（contracts/auth-api.md §9）。どちらの失敗も起動は止めない。
+// 促す警告を1行記録する。どちらの失敗も起動は止めない。
 // セッションは要求ごとに期限を確かめるので、消し残しても使えない。
 func prepareAuth(ctx context.Context, authStore *store.AuthStore, now time.Time, logger *slog.Logger) {
 	if deleted, err := authStore.DeleteExpiredSessions(ctx, now); err != nil {

@@ -117,7 +117,7 @@ function SectionsPageView(props: PageViewProps) {
 /**
  * AutoTaggingPageView は「Auto-tagging」のページである。開いたときに Ollama の接続先を読み、
  * 読み終えるまでは節の読み込み中の形を出し、保存されていなければ notice に理由を出して節の操作を
- * 押せなくする。読めなければ読めなかった旨と `Retry` を出し、操作は押せたままにする（specs/058-settings-pages/research.md R-5）。
+ * 押せなくする。読めなければ読めなかった旨と `Retry` を出し、操作は押せたままにする。
  */
 function AutoTaggingPageView(props: PageViewProps) {
   const { connection, retry } = useOllamaConnection();
@@ -137,8 +137,7 @@ const pageViews: Partial<
 > = { "auto-tagging": AutoTaggingPageView };
 
 /**
- * SettingsPage は設定の 8 つのページと一覧である（specs/058-settings-pages/research.md R-1〜R-3、
- * ui-design.md「Page list and skeleton」）。`/settings/<slug>` はそのページを、`/settings` は
+ * SettingsPage は設定の 8 つのページと一覧である。`/settings/<slug>` はそのページを、`/settings` は
  * sm から「Scan」のページを、sm 未満で一覧だけを出す（どちらを見せるかは CSS が決める）。
  * 知らないスラッグは `/settings/scan` へ、対応表が知るアンカーの `/settings#<anchor>` はその
  * ページのアドレスへ置き換える。

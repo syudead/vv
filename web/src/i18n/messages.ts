@@ -3,7 +3,7 @@ import type { UiText } from "./uiText";
 
 /**
  * MessageSource はカタログの形である。言語を足すときは、この型を満たすオブジェクトを
- * 書くので、鍵の漏れと引数の食い違いは型検査で落ちる（specs/023-english-i18n/research.md R-1）。
+ * 書くので、鍵の漏れと引数の食い違いは型検査で落ちる。
  */
 export type MessageSource = typeof en;
 
@@ -33,6 +33,8 @@ function cloneTree(source: Node): Node {
 
 function assignTree(target: Node, source: Node): void {
   for (const [key, value] of Object.entries(source)) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
+    if (!Object.hasOwn(target, key)) continue;
     const current = target[key];
     if (isNode(value) && isNode(current)) assignTree(current, value);
     else target[key] = value;

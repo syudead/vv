@@ -12,7 +12,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// バージョンと束ねの画面の API（specs/030-video-versions/contracts/screen-api.md §0〜§4）は、
+// バージョンと束ねの画面の APIは、
 // 本物の認証・保存層で確かめる（#580）。guestFixture の a（公開、タグと再生位置あり）と
 // b（非公開）を束ねる。
 
@@ -124,7 +124,7 @@ func TestVideoVersionsBundleChangeRepresentativeAndUnbundle(t *testing.T) {
 	if item, ok := libraryVideo(library, a); !ok || !slices.Contains(tagNames(item.Tags), "X") {
 		t.Errorf("束ねたあとのライブラリの a: found = %v, tags = %v", ok, tagNames(item.Tags))
 	}
-	// 一覧の項目にも、集まりの代表にだけ versions が入る（specs/054-auto-dup/research.md R-9）。
+	// 一覧の項目にも、集まりの代表にだけ versions が入る。
 	videos := decode[gen.VideoPage](t, env.get("/api/videos", f.owner))
 	for _, item := range videos.Items {
 		switch {

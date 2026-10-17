@@ -10,8 +10,8 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 視聴履歴の一覧と削除（specs/043-watch-history/contracts/screen-api.md）。3 つの経路は /api/* の
-// 既定どおり所有者だけで、accessRoutes には入れない（research.md R-7）。
+// 視聴履歴の一覧と削除。3 つの経路は /api/* の
+// 既定どおり所有者だけで、accessRoutes には入れない。
 
 // WatchHistory は視聴履歴の読みと削除の先である。internal/store の *PlaybackStore がこれを満たす。
 // どの操作も 1 つの文で済むので、internal/app は通さない。
@@ -40,7 +40,7 @@ const (
 )
 
 // ListWatchHistory は視聴履歴を新しい順に返す（GET /api/watch-history）。watch・query・date は
-// ページを切る前に保存層が掛ける（research.md R-8）。各件の video は一覧の
+// ページを切る前に保存層が掛ける。各件の video は一覧の
 // 項目と同じ形で、再生位置・タグ・お気に入りと置かれたフォルダ（Video.folder）を載せる。
 func (s *server) ListWatchHistory(w http.ResponseWriter, r *http.Request, params gen.ListWatchHistoryParams) {
 	if s.watchHistory == nil {
@@ -136,7 +136,7 @@ func (s *server) ListWatchHistory(w http.ResponseWriter, r *http.Request, params
 }
 
 // ListWatchHistoryDates は絞り込みと検索を満たす件のある日を、tz の暦で新しい順に返す
-// （GET /api/watch-history/dates、research.md R-11）。tz の欠けは生成された経路の読み取りが 400 にする。
+// （GET /api/watch-history/dates）。tz の欠けは生成された経路の読み取りが 400 にする。
 func (s *server) ListWatchHistoryDates(w http.ResponseWriter, r *http.Request, params gen.ListWatchHistoryDatesParams) {
 	if s.watchHistory == nil {
 		s.internalError(w, "Watch history storage is not configured.", nil)
@@ -184,7 +184,7 @@ func (s *server) parseWatchHistoryQuery(
 
 // parseTimeZone は IANA のタイムゾーン名を読む。空と Local（サーバーの地域）は名前ではないので
 // 受け付けない。サーバーが知らない名前と合わせて 400 を書いて false を返す。cmd/mdm が time/tzdata を
-// 埋め込むので、地域の情報を持たないホストでも読める（research.md R-11）。
+// 埋め込むので、地域の情報を持たないホストでも読める。
 func (s *server) parseTimeZone(w http.ResponseWriter, name string) (*time.Location, bool) {
 	if name == "" || name == "Local" {
 		s.invalidRequest(w, "tz must be an IANA time zone name.")
@@ -199,7 +199,7 @@ func (s *server) parseTimeZone(w http.ResponseWriter, name string) (*time.Locati
 }
 
 // DeleteWatchHistoryEntry は視聴履歴を 1 件消す（DELETE /api/watch-history/{id}）。無ければ
-// 404 not_found で、画面は一覧を読み直す（research.md R-6）。生成された経路の読み取りは
+// 404 not_found で、画面は一覧を読み直す。生成された経路の読み取りは
 // minimum: 1 を確かめないので、1 未満の id はここで 400 にする。
 func (s *server) DeleteWatchHistoryEntry(w http.ResponseWriter, r *http.Request, id gen.WatchHistoryEntryId) {
 	if id < 1 {

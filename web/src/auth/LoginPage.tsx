@@ -15,7 +15,7 @@ import {
 } from "./CredentialScreen";
 import { assignPage } from "./pageNavigation";
 
-/** loginFailureMessage は、ログインの失敗を失敗の行の文言にする（ui-design.md「Login behaviour」）。 */
+/** loginFailureMessage は、ログインの失敗を失敗の行の文言にする。 */
 function loginFailureMessage(error: unknown): UiText {
   if (error instanceof LoginThrottled && error.retryAfterSeconds !== null) {
     return t.auth.login.throttledFor(error.retryAfterSeconds);

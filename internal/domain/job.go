@@ -15,8 +15,7 @@ const (
 	JobSeekThumbnail JobKind = "seek_thumbnail"
 	// JobPreview は ffmpeg による一覧用のホバープレビューの生成。
 	JobPreview JobKind = "preview"
-	// JobFingerprint はシーク用スプライトのコマからの映像の指紋の作成
-	// （specs/030-video-versions/research.md R-6）。ffmpeg を起動せず、元のファイルも読まない。
+	// JobFingerprint はシーク用スプライトのコマからの映像の指紋の作成。ffmpeg を起動せず、元のファイルも読まない。
 	JobFingerprint JobKind = "fingerprint"
 )
 

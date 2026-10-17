@@ -509,7 +509,7 @@ describe("VideoCard tagsRow（issue 269）", () => {
   });
 });
 
-// 公開の印（specs/016-single-account-auth/ui-design.md「Visibility toggle」の「Card」、issue 305）。
+// 公開の印。
 describe("VideoCard の公開の印", () => {
   afterEach(() => cleanup());
 
@@ -579,7 +579,7 @@ describe("VideoCard の公開の印", () => {
   });
 });
 
-describe("VideoCard のバージョンの印（specs/054-auto-dup/ui-design.md）", () => {
+describe("VideoCard のバージョンの印", () => {
   afterEach(() => cleanup());
 
   const bundled = { versions: { count: 3, representativeId: 1 } };
@@ -694,7 +694,7 @@ describe("VideoCard の表示（issue 308）", () => {
   );
 });
 
-describe("VideoCard のスクラブの帯（specs/032-card-scrub-preview）", () => {
+describe("VideoCard のスクラブの帯", () => {
   const play = vi.fn(() => Promise.resolve());
   const pause = vi.fn();
   const sprite: SeekThumbnailSprite = {

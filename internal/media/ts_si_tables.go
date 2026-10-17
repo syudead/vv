@@ -9,7 +9,7 @@ import (
 )
 
 // TS packet から SI の section を組み立て、PAT・SDT・EIT present/following・TOT/TDT を読む
-// 部分（specs/056-media-info/research.md R-4）。値は section の中の位置で読み、長さが
+// 部分。値は section の中の位置で読み、長さが
 // 足りない section や CRC の合わない section は捨てる。
 
 // japaneseSatelliteNetworks は ARIB の衛星放送の original_network_id（スカパー！、BS、

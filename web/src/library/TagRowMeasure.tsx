@@ -19,10 +19,7 @@ const TagRowMeasureContext = createContext<TagRowMeasureContextValue | null>(nul
 
 /**
  * TagRowMeasureProvider は、カードのタグの行の幅を測るための、一覧に1つだけの
- * `ResizeObserver` を提供する（specs/014-video-tags/ui-design.md「Overflow」:
- * 「一覧は仮想スクロールを使わないので、読み込んだカードの数だけ行を見張ることに
- * なる。カードごとに見張りを作らず、一覧に1つの ResizeObserver を置いてすべての
- * 行を見張る」）。`CardTagRow` は `useTagRowMeasure` でここへ登録する。
+ * `ResizeObserver` を提供する。`CardTagRow` は `useTagRowMeasure` でここへ登録する。
  */
 export function TagRowMeasureProvider({ children }: { children: ReactNode }) {
   const callbacks = useRef(new Map<Element, Callback>());

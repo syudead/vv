@@ -90,9 +90,8 @@ function useOpenFileRequest(
 }
 
 /**
- * useThumbnailPosition は代表サムネイルの位置の指定と解除（specs/029-video-overrides/ui-design.md
- * 「Thumbnail fact」）と、適用した画像からコマへの戻し（`revert`、
- * specs/045-comfyui-thumbnails/ui-design.md「Generated thumbnail item」）を送る。送信中は次の
+ * useThumbnailPosition は代表サムネイルの位置の指定と解除と、適用した画像からコマへの戻し（`revert`、
+ * docs/design-docs/thumbnail-editing.md「Generated thumbnail item」）を送る。送信中は次の
  * 要求を送らない。
  * 始めるときに `report(null)`、失敗したときにその文言を `report` へ渡し、`404`
  * （`video_not_found`・`file_unavailable`）では `onStale` で動画を取り直させる。
@@ -187,8 +186,7 @@ function Fact({
 }
 
 /**
- * DateFact は情報の行の日付の項目（追加日・更新日時・作成日時）である
- * （specs/033-video-dates/ui-design.md「Video facts」）。値は日付だけで、名前と時刻は
+ * DateFact は情報の行の日付の項目（追加日・更新日時・作成日時）である。値は日付だけで、名前と時刻は
  * `title` と、押して開く吹き出しで読む（ポイントできない端末でも届くように）。
  * 見た目は `Fact` と同じで、引き金であることは hover の地だけで示す。
  */
@@ -277,8 +275,8 @@ function ThumbnailFacts({
 
 /**
  * ListActions は所有者に出す、動画を集める操作である。お気に入りのハートの直後に
- * 「Add to playlist」（specs/044-playlists/ui-design.md「Add to playlist」）、その直後に
- * 「Add to group」（specs/048-groups/ui-design.md「Add to group」）を置く。
+ * 「Add to playlist」、その直後に
+ * 「Add to group」を置く。
  */
 function ListActions({
   video,
@@ -323,21 +321,18 @@ function ListActions({
  *
  * 所有者には、代表サムネイルの位置が指定されていれば 1 行目の項目の後ろにその画像・位置・
  * 解除の × を置き、`capture` があれば右端の操作の先頭近くに「今の場面を代表サムネイルにする」
- * ボタンを置く（specs/029-video-overrides/ui-design.md「Thumbnail fact」）。その直後に
+ * ボタンを置く。その直後に
  * ComfyUI でサムネイルを編集する入口を、プレイヤーが出ていなくても置き
- * （specs/046-thumbnail-image-upload/ui-design.md）、編集した画像がサムネイルの間は、位置の項目の
- * 代わりに生成した画像の項目を出す（specs/045-comfyui-thumbnails/ui-design.md）。
+ * 、編集した画像がサムネイルの間は、位置の項目の
+ * 代わりに生成した画像の項目を出す。
  * 編集の入口の直後（「ファイルを開く」の前）には、プレイヤーが出ていなくても、手元の画像を
- * サムネイルにする入口を置き、アップロードした画像がサムネイルの間はその項目を出す
- * （specs/046-thumbnail-image-upload/ui-design.md）。サムネイルの操作は一度に 1 つで、どれかの
+ * サムネイルにする入口を置き、アップロードした画像がサムネイルの間はその項目を出す。サムネイルの操作は一度に 1 つで、どれかの
  * 送信中はほかの操作を `aria-disabled` にする。
  *
  * 集まり（同じ動画の別バージョン）に属し、見せてよいバージョンが 2 本以上あれば、1 行目の
- * 作成日時のあと（サムネイルの項目の前）に「3 versions」の項目を置く。所有者にもゲストにも出す
- * （specs/030-video-versions/ui-design.md「Versions fact」）。
+ * 作成日時のあと（サムネイルの項目の前）に「3 versions」の項目を置く。所有者にもゲストにも出す。
  *
- * 所有者には、右端の操作の先頭にお気に入りの付け外しを置く
- * （specs/035-favorites/ui-design.md「Video page」）。ゲストの応答には `favorite` が無く、出ない。
+ * 所有者には、右端の操作の先頭にお気に入りの付け外しを置く。ゲストの応答には `favorite` が無く、出ない。
  * 付け外しは `onFavorite` に任せ、それが取り直しまで終えたら送信中を解く。
  *
  * 開けなかったとき・サムネイルを変えられなかったとき・お気に入りを変えられなかったときは、
@@ -392,7 +387,7 @@ export default function VideoFacts({
 
   const copyPath = () => {
     if (location === undefined) return;
-    // 前の失敗の行は、次の操作で消す（specs/035-favorites/ui-design.md「Video page」）。
+    // 前の失敗の行は、次の操作で消す。
     setFailure(null);
     copyText(location.path, {
       onCopied: () => toast(f.pathCopied),
@@ -453,11 +448,11 @@ export default function VideoFacts({
               />
             )}
             {/* 「Add to group」の後、サムネイルの操作の前に置く。所有者にだけ、プレイヤーが
-                出ていなくても置く（specs/047-video-work-info/ui-design.md「Video page: entry」）。 */}
+                出ていなくても置く。 */}
             <DetailsEntry video={video} owner={owner} details={details} />
             {/* 「Edit details」の後、「Use current frame as thumbnail」の前に置き、詳細を埋める
                 2 つの道を並べる。所有者にだけ、承認済みのプラグインがあるときだけ出る
-                （specs/049-work-info-plugins/ui-design.md「Video page: fetch entry」）。 */}
+                。 */}
             {owner && (
               <FetchEntry
                 video={video}
@@ -475,7 +470,7 @@ export default function VideoFacts({
               />
             )}
             {/* 今のサムネイルの編集はプレイヤーに依らないので、プレイヤーが出ていない動画にも
-                置く（specs/046-thumbnail-image-upload/ui-design.md）。 */}
+                置く。 */}
             {owner && (
               <EditEntry
                 videoId={video.id}
@@ -530,8 +525,7 @@ export default function VideoFacts({
       {/* 作品情報の行は、ファイルの行（と失敗の行）の後、技術の行の前に置く。 */}
       <WorkInfo info={video.workInfo} />
       <TechnicalLine summary={technical} />
-      {/* 動画の追加の情報のまとまりは、技術の行の後に置く（specs/056-media-info/ui-design.md
-          「Video page: groups」）。 */}
+      {/* 動画の追加の情報のまとまりは、技術の行の後に置く。 */}
       <MediaInfoGroups info={video.mediaInfo} />
     </div>
   );
@@ -595,9 +589,7 @@ function ThumbnailFact({
 
 /**
  * ImageThumbnailFact は情報の行の項目で、適用した画像のサムネイルの小さな画像と、コマから作る
- * サムネイルへ戻す × を並べる。生成した画像（specs/045-comfyui-thumbnails/ui-design.md
- * 「Generated thumbnail item」）とアップロードした画像（specs/046-thumbnail-image-upload/
- * ui-design.md「Uploaded thumbnail item」）は `origin` で切り替わり、違うのはアイコンと名前だけ
+ * サムネイルへ戻す × を並べる。生成した画像とアップロードした画像は `origin` で切り替わり、違うのはアイコンと名前だけ
  * である。画像は 1 つの位置から作ったものではないので時刻は出さない。
  */
 function ImageThumbnailFact({

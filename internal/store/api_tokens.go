@@ -10,11 +10,11 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// API トークン（specs/026-external-api/data-model.md §1）。平文は発行の応答にだけ現れ、
+// API トークン。平文は発行の応答にだけ現れ、
 // 保存するのは SHA-256 だけである。セッション ID と同じ作りなので、ハッシュには
 // sessionTokenHash を使う。
 
-// apiTokenTouchInterval は最終使用日時を書き換える最小の間隔である（research.md R-9）。
+// apiTokenTouchInterval は最終使用日時を書き換える最小の間隔である。
 const apiTokenTouchInterval = 60 * time.Second
 
 // AddAPIToken は名前 name・平文 token の API トークンを 1 件足し、足した行を返す。
@@ -23,7 +23,7 @@ const apiTokenTouchInterval = 60 * time.Second
 // セッションが今も有効（行があり、account.version と一致し、期限が now より後）かを確かめ、
 // 有効でなければ足さずに domain.ErrSessionNotValid を返す。account の行が無いときも同じである。
 // 境界でセッションを確かめた後、ここまでの間に mdm account が資格情報を変えても、新しい版の
-// トークンが古いセッションから生まれないようにする（specs/026-external-api/research.md R-2）。
+// トークンが古いセッションから生まれないようにする。
 //
 // name は domain.NormalizeAPITokenName を通した値を渡す（呼び出し側が確かめる）。
 func (s *AuthStore) AddAPIToken(
@@ -108,7 +108,7 @@ func (s *AuthStore) DeleteAPIToken(ctx context.Context, id int64) error {
 // APIToken は平文 token の API トークンが有効かを確かめ、有効ならその行を返す。
 //
 // 有効なのは、ハッシュが api_tokens にあり、account の行があり、発行時の版が
-// account.version と一致するときだけである（research.md R-2）。問い合わせが失敗したときは
+// account.version と一致するときだけである。問い合わせが失敗したときは
 // 無効とせず、誤りを返す。
 func (s *AuthStore) APIToken(ctx context.Context, token string) (domain.APIToken, bool, error) {
 	var (
@@ -137,7 +137,7 @@ func (s *AuthStore) APIToken(ctx context.Context, token string) (domain.APIToken
 }
 
 // TouchAPIToken は id の API トークンの最終使用日時を now にする。ただし、保存した値が
-// 空か 60 秒以上前のときだけ書く（research.md R-9）。行が無ければ何もしない。
+// 空か 60 秒以上前のときだけ書く。行が無ければ何もしない。
 func (s *AuthStore) TouchAPIToken(ctx context.Context, id int64, now time.Time) error {
 	at := now.Unix()
 	if _, err := s.sql.ExecContext(ctx, `

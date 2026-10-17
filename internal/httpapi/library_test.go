@@ -20,7 +20,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// ライブラリの項目（specs/017-folder-groups/contracts/library-api.md）を、本物の認証・
+// ライブラリの項目を、本物の認証・
 // 保存層・経路をつないで確かめる。
 //
 //	root = <media>
@@ -284,7 +284,7 @@ func (l strayGroupLibrary) ListLibrary(ctx context.Context, audience domain.Audi
 
 // 一覧の項目・total・カーソルと、グループの folder は同じスナップショットから作る。
 // 登録フォルダを別に読めなくてもグループは落ちず、フォルダが登録フォルダの下に無いグループは
-// folder を省いて返す（specs/048-groups/contracts/screen-api.md）。
+// folder を省いて返す。
 func TestListLibraryResolvesGroupFoldersFromSameSnapshot(t *testing.T) {
 	f := newLibraryFixtureWith(t, func(options Options) Options {
 		options.Folders = failingRootsFolders{options.Folders}
@@ -346,8 +346,8 @@ func TestListLibraryIdsFollowItems(t *testing.T) {
 }
 
 // ゲストには公開のメンバーだけで数えた項目を返し、公開のメンバーが1本のグループも
-// グループの項目にする（specs/048-groups/research.md R-6）。視聴の値とタグは出さず、所有者の
-// データに依る条件は 400、「すべて選択」は 401 である（data-model.md §7）。
+// グループの項目にする。視聴の値とタグは出さず、所有者の
+// データに依る条件は 400、「すべて選択」は 401 である。
 func TestListLibraryForGuest(t *testing.T) {
 	f := newLibraryFixture(t)
 	rec := f.env.get("/api/library")
@@ -414,7 +414,6 @@ func TestListLibraryForGuest(t *testing.T) {
 
 // グループの画面は絞り込みに関係なく子孫の動画の全部から作ったグループと、項目を位置の順に返し、
 // 無いグループは 404 である。ゲストは公開の動画だけで読み、公開の動画が 1 本でも読める
-// （specs/048-groups/contracts/screen-api.md「Statuses」）。
 func TestGetGroup(t *testing.T) {
 	f := newLibraryFixture(t)
 	path := f.groupPath(t, "show")

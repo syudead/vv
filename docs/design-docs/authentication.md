@@ -1,0 +1,46 @@
+# Authentication and visibility
+
+VVMDM has one owner account and a guest audience. Authentication selects an
+audience at the HTTP boundary; storage filters every read before returning
+videos, locations or folders.
+
+The diagram shows the two authentication mechanisms and the shared visibility
+boundary.
+
+```mermaid
+flowchart LR
+  browser[Browser session] --> http[HTTP boundary]
+  external[Bearer token] --> http
+  http --> audience[Owner or guest]
+  audience --> store[Audience-aware reads]
+  store --> visible[Visible results]
+```
+
+## Account and credentials
+
+Initial setup creates the account and its first session in one transaction,
+so concurrent setup requests cannot create two owners. Passwords use Argon2id
+with PHC encoding. Credential changes invalidate existing sessions and API
+tokens together, preventing old credentials from retaining access.
+
+The application owns setup and login throttling; `internal/password` owns
+hashing, and `internal/store` owns the account, sessions and tokens.
+
+## Visibility at the data boundary
+
+`domain.Audience` defaults to guest. Each read receives the audience, and
+hidden videos return the same `404` as missing videos. Filtering before
+pagination and aggregation keeps hidden entries out of counts, groups,
+related results and subsequent pages, as well as individual video reads.
+
+Public flags belong to persistent content identities rather than rebuildable
+video rows. A rescan does not change the owner's publication choices.
+
+## Browser and external API
+
+The screen API uses session cookies. The external API and MCP use bearer
+tokens and the same application and storage operations. The operation-level
+security declarations in [the screen API schema](../../api/openapi.yaml) are
+checked against the HTTP route classification. External operations are
+defined in [the external schema](../../api/external-v1.yaml); token setup and
+examples are in [the external API guide](../how-to/external-api.md).

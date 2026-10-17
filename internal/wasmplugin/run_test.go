@@ -372,7 +372,7 @@ func TestCapTablesKeepsTablesThatNeedNoCap(t *testing.T) {
 }
 
 // record は実行の枠を持ったまま呼ばれるので、record の中から始めた 2 本目の実行は枠を取れない。2 本目は
-// モジュールを動かさないので、record を呼ばない（056 research.md R-6）。
+// モジュールを動かさないので、record を呼ばない。
 func TestRunRecordsBeforeASecondRunCanStart(t *testing.T) {
 	rt := newTestRuntime(t)
 	module := probeModule(t)
@@ -399,7 +399,7 @@ func TestRunRecordsBeforeASecondRunCanStart(t *testing.T) {
 }
 
 // コンパイルに失敗した実行はモジュールを起動しないので、record を呼ばず、前の実行のログを残す
-// （056 research.md R-6）。
+// 。
 func TestRunDoesNotRecordARunWhoseModuleDidNotCompile(t *testing.T) {
 	rt := newTestRuntime(t)
 	recorded := false

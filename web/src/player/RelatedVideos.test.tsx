@@ -355,7 +355,7 @@ describe("RelatedVideos", () => {
   });
 });
 
-describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", () => {
+describe("関連動画のスクラブの帯", () => {
   const play = vi.fn(() => Promise.resolve());
   const pause = vi.fn();
   const sprite: SeekThumbnailSprite = {

@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// Move（specs/050-drag-organize/data-model.md「Operations」「Undo image」）。
+// Move。
 
 func videoRef(id int64) domain.OrganizeRef {
 	return domain.OrganizeRef{Kind: domain.OrganizeVideo, ID: id}
@@ -208,7 +208,7 @@ func TestOrganizeMoveUndoConflicts(t *testing.T) {
 }
 
 // 移動の後で戻すグループを、操作の前には無かったプレイリストに入れたなら、取り消しは
-// ErrUndoConflict で、プレイリストの項目は連鎖削除で消えずに残る（data-model.md「Undo image」）。
+// ErrUndoConflict で、プレイリストの項目は連鎖削除で消えずに残る。
 func TestOrganizeMoveUndoConflictsWithLaterPlaylistItem(t *testing.T) {
 	db := migratedDB(t)
 	k1, k2 := looseVideo(t, db, "k1"), looseVideo(t, db, "k2")

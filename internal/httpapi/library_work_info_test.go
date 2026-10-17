@@ -11,8 +11,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 一覧の person と organization（specs/047-video-work-info/contracts/screen-api.md の
-// List parameters person and organization、research.md R-7・R-10、#1025）。
+// 一覧の person と organization。
 
 // creditFilterFixture は newLibraryFixture に、花子を ep1 の出演者と solo の監督に、メーカー A を
 // ep1 と p1 に結んだものである。show の当たったメンバーは ep1 だけなので、show は動画の項目 ep1 になる。

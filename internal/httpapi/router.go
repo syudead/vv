@@ -36,7 +36,7 @@ type Pinger interface {
 // 渡す。開いてよい実体かは MediaFiles が確かめる。
 //
 // 動画を返す読み出しは見る人（domain.Audience）を取り、ゲストには公開の動画だけを
-// 返す（specs/016-single-account-auth/data-model.md §3）。見る人は境界（auth.go）が
+// 返す。見る人は境界（auth.go）が
 // 要求の context に載せ、ハンドラはそれを読んで渡す。
 type Library interface {
 	ListVideos(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.VideoPage, error)
@@ -102,13 +102,12 @@ type Tags interface {
 	// progressFor と同じ位置（httpapi）から、一覧・詳細・関連動画・読み取りの
 	// やり直しの応答へ Video.tags を載せるために使う。
 	TagsByContentKeys(ctx context.Context, contentKeys []string) (map[string][]domain.VideoTag, error)
-	// ApplyVideoTags は外部連携 API の名前でのタグの一括操作（specs/026-external-api/research.md
-	// R-7）。引けない動画があれば *domain.VideoRefNotFoundError、規則に合わない名前は
+	// ApplyVideoTags は外部連携 API の名前でのタグの一括操作。引けない動画があれば *domain.VideoRefNotFoundError、規則に合わない名前は
 	// *domain.TagNameAtError で失敗し、何も反映しない。tentative が真なら無い名前を仮のタグとして
-	// 作り、却下した名前を飛ばす（specs/031-tentative-tags/data-model.md §3）。
+	// 作り、却下した名前を飛ばす。
 	ApplyVideoTags(ctx context.Context, videos []domain.VideoRef, action domain.VideoTagsAction, names []string, tentative bool) (domain.VideoTagsOutcome, error)
 
-	// 仮のタグの確定・却下と、却下した名前（specs/031-tentative-tags/data-model.md §5）。
+	// 仮のタグの確定・却下と、却下した名前。
 	ConfirmTag(ctx context.Context, id int64) (domain.Tag, error)
 	RejectTag(ctx context.Context, id int64) (string, error)
 	ListRejectedTagNames(ctx context.Context, cursor string, limit int) (domain.RejectedTagNamePage, error)
@@ -116,13 +115,13 @@ type Tags interface {
 	// removed に載せる。
 	ForgetRejectedTagName(ctx context.Context, name string) (bool, error)
 
-	// タグ管理画面のまとめての操作と、その確認に出す数（specs/036-tag-admin-scale/data-model.md §2）。
+	// タグ管理画面のまとめての操作と、その確認に出す数。
 	// 無い種類を付ける BatchTags は domain.ErrTagKindNotFound を返し、何も変えない
-	// （specs/051-tag-kinds/data-model.md「Rules」）。
+	//
 	BatchTags(ctx context.Context, req domain.TagBatchRequest, ids []int64) (domain.TagBatchOutcome, error)
 	TagImpact(ctx context.Context, action domain.TagImpactAction, ids []int64) (domain.TagImpact, error)
 
-	// タグの種類（specs/051-tag-kinds/contracts/screen-api.md）。名前の規則違反は
+	// タグの種類。名前の規則違反は
 	// domain.ErrInvalidTagName、名前の重複は *domain.TagKindNameConflict、無い id は
 	// domain.ErrTagKindNotFound を返す。
 	ListTagKinds(ctx context.Context) ([]domain.TagKind, error)
@@ -142,7 +141,6 @@ type Transcoder interface {
 
 // TranscodeSettings はライブ変換の映像エンコード方式の設定である。internal/app の
 // *TranscodeSettings がこれを満たす。方式の決定と、使えない方式を拒む判断はそちらが持つ
-// （specs/025-hardware-encoding/research.md R-3）。
 type TranscodeSettings interface {
 	// Current は今の選択・実際に使う方式・理由・確認中か・各方式の確認結果を返す。
 	Current() domain.TranscodeEncoding
@@ -153,7 +151,6 @@ type TranscodeSettings interface {
 
 // NetworkSettings は Windows デスクトップ版の LAN からの接続の許可である。internal/app の
 // *NetworkSettings がこれを満たす。待ち受けの開き直しと保存の順はそちらが持つ
-// （specs/037-windows-app/research.md R-14）。
 type NetworkSettings interface {
 	// Current は今の許可・ポート・許可中に開けるアドレスを返す。
 	Current() domain.NetworkSettings
@@ -163,7 +160,7 @@ type NetworkSettings interface {
 }
 
 // PluginProxySettings は作品情報プラグインの要求を送るプロキシの URL である。internal/app の
-// *WorkInfoPluginProxy がこれを満たす（specs/056-plugin-tooling/research.md R-4）。
+// *WorkInfoPluginProxy がこれを満たす。
 type PluginProxySettings interface {
 	// URL は保存した URL を返す。保存が無ければ "" である。
 	URL(ctx context.Context) (string, error)
@@ -173,7 +170,7 @@ type PluginProxySettings interface {
 }
 
 // AutoImportSettings は自動の取り込みの選択と、フォルダの監視の状態である。internal/app の
-// *AutoImport がこれを満たす（specs/042-folder-watch-import/contracts/screen-api.md）。
+// *AutoImport がこれを満たす。
 type AutoImportSettings interface {
 	// Status は保存した選択と監視の今の状態を返す。
 	Status() domain.AutoImportStatus
@@ -182,7 +179,6 @@ type AutoImportSettings interface {
 }
 
 // VersionJudging は重複の自動判定の入切である。internal/app の *VersionJudge がこれを満たす
-// （specs/054-auto-dup/contracts/screen-api.md）。
 type VersionJudging interface {
 	// Enabled は保存した入切を返す。保存前は false である。
 	Enabled(ctx context.Context) (bool, error)
@@ -191,8 +187,7 @@ type VersionJudging interface {
 }
 
 // TranscodeProbeWriter は、ライブ変換がその場で解析した結果を保存する。
-// internal/store の *IngestStore がこれを満たす（specs/018-live-transcode-seek/
-// data-model.md §4）。
+// internal/store の *IngestStore がこれを満たす。
 type TranscodeProbeWriter interface {
 	SaveTranscodeProbe(ctx context.Context, videoID int64, source domain.FileStamp, probe domain.TranscodeProbe) error
 }
@@ -246,8 +241,7 @@ type MediaFiles interface {
 	// DirectoryRoots はディレクトリ選択の根を返す。
 	DirectoryRoots() domain.DirectoryListing
 	// ListSidecarFiles は、path が OpenMediaFile と同じ規則で開けるときだけ、その所在の
-	// フォルダにある通常ファイルの名前と大きさを返す（specs/028-sidecar-subtitles/research.md
-	// R-2）。開けなければ domain.ErrMediaFileUnavailable、フォルダを読めなければ
+	// フォルダにある通常ファイルの名前と大きさを返す。開けなければ domain.ErrMediaFileUnavailable、フォルダを読めなければ
 	// domain.ErrDirectoryUnavailable を包む。
 	ListSidecarFiles(roots []string, path string) ([]domain.SidecarEntry, error)
 	// OpenSidecarFile は、ListSidecarFiles が返す名前の 1 つと完全に一致する name だけを
@@ -256,8 +250,7 @@ type MediaFiles interface {
 }
 
 // SubtitleConverter は字幕ファイルの中身を UTF-8 の WebVTT にし、cue の時刻から
-// offsetMs を引く。internal/media の SubtitleConverter がこれを満たす
-// （specs/028-sidecar-subtitles/research.md R-4）。読めない中身には
+// offsetMs を引く。internal/media の SubtitleConverter がこれを満たす。読めない中身には
 // domain.ErrSubtitleUnreadable を包んだ誤りを返す。
 type SubtitleConverter interface {
 	Convert(src []byte, format domain.SubtitleFormat, offsetMs int64) ([]byte, error)
@@ -628,7 +621,7 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
 			// 同一オリジンの検査は、ブラウザが自動で送る Cookie を使った CSRF を防ぐ。
 			// Bearer の扱いの要求は Cookie を読まず、Authorization はブラウザが自動では
-			// 付けないので、Origin を問わない（specs/026-external-api/research.md R-4）。
+			// 付けないので、Origin を問わない。
 			if class, _ := classifyRequest(r); class != accessBearer && !s.acceptsSameOrigin(w, r) {
 				return
 			}
@@ -682,7 +675,7 @@ func requiresPostJSONBody(path string) bool {
 		return found && id != "" && rest == "thumbnail-edits"
 	}
 	// POST /api/playlists/{id}/items と POST /api/playlists/{id}/items/{itemId}/move
-	// （specs/044-playlists/contracts/screen-api.md）。
+	//
 	if suffix, ok := strings.CutPrefix(path, "/api/playlists/"); ok {
 		segments := strings.Split(suffix, "/")
 		switch len(segments) {
@@ -693,8 +686,7 @@ func requiresPostJSONBody(path string) bool {
 		}
 		return false
 	}
-	// POST /api/groups/{id}/items・…/items/remove・…/items/{itemId}/move
-	// （specs/048-groups/contracts/screen-api.md）。POST /api/groups/{id}/tag は本文を持たない。
+	// POST /api/groups/{id}/items・…/items/remove・…/items/{itemId}/move。POST /api/groups/{id}/tag は本文を持たない。
 	if suffix, ok := strings.CutPrefix(path, "/api/groups/"); ok {
 		return groupItemsBodyPath(strings.Split(suffix, "/"))
 	}
@@ -744,26 +736,25 @@ func requiresPutJSONBody(path string) bool {
 
 // requiresPatchJSONBody は PATCH の経路のうち本文を持つものかを返す。
 func requiresPatchJSONBody(path string) bool {
-	// PATCH /api/playlists/{id}（specs/044-playlists/contracts/screen-api.md）。
+	// PATCH /api/playlists/{id}。
 	if id, ok := strings.CutPrefix(path, "/api/playlists/"); ok {
 		return id != "" && !strings.Contains(id, "/")
 	}
-	// PATCH /api/groups/{id}（specs/048-groups/contracts/screen-api.md）。
+	// PATCH /api/groups/{id}。
 	if id, ok := strings.CutPrefix(path, "/api/groups/"); ok {
 		return id != "" && !strings.Contains(id, "/")
 	}
-	// PATCH /api/smart-folders/{id}（specs/052-smart-folders/contracts/screen-api.md）。cards は {id} の段
+	// PATCH /api/smart-folders/{id}。cards は {id} の段
 	// ではない別の経路で、PATCH を持たない。
 	if id, ok := strings.CutPrefix(path, "/api/smart-folders/"); ok {
 		return id != "" && id != "cards" && !strings.Contains(id, "/")
 	}
-	// PATCH /api/tag-kinds/{id}（specs/051-tag-kinds/contracts/screen-api.md）。
+	// PATCH /api/tag-kinds/{id}。
 	if id, ok := strings.CutPrefix(path, "/api/tag-kinds/"); ok {
 		return id != "" && !strings.Contains(id, "/")
 	}
 	// /api/tags/rejected-names・/api/tags/batch・/api/tags/impact は {id} の段ではない別の経路で、
-	// PATCH を持たない（specs/031-tentative-tags/contracts/screen-api.md §3、
-	// specs/036-tag-admin-scale/contracts/screen-api.md §1）。
+	// PATCH を持たない。
 	if id, ok := strings.CutPrefix(path, "/api/tags/"); ok {
 		switch id {
 		case "", "rejected-names", "batch", "impact":
@@ -776,7 +767,6 @@ func requiresPatchJSONBody(path string) bool {
 
 // isWorkInfoPluginJSONBody は r が PUT /api/work-info-plugins/{id}/approval、
 // PUT /api/work-info-plugins/{id}/settings か POST /api/work-info-plugins/{id}/search かを返す
-// （specs/049-work-info-plugins/contracts/screen-api.md）。
 func isWorkInfoPluginJSONBody(r *http.Request) bool {
 	suffix, ok := strings.CutPrefix(r.URL.Path, "/api/work-info-plugins/")
 	if !ok {
@@ -797,7 +787,6 @@ func isWorkInfoPluginJSONBody(r *http.Request) bool {
 
 // isWorkInfoFetchJSONPost は r が POST /api/videos/{id}/work-info-fetches か
 // POST /api/videos/{id}/work-info-fetches/{fetchId}/apply かを返す
-// （specs/049-work-info-plugins/contracts/screen-api.md）。
 func isWorkInfoFetchJSONPost(r *http.Request) bool {
 	suffix, ok := strings.CutPrefix(r.URL.Path, "/api/videos/")
 	if r.Method != http.MethodPost || !ok {
@@ -841,7 +830,6 @@ func isVideoJSONPut(rest string) bool {
 
 // requiresCreditJSONBody は人物と団体の経路のうち本文を持つもの（POST /api/people、
 // PATCH /api/people/{id}、POST /api/people/{id}/merge と団体の同じ 3 つ）を返す
-// （specs/047-video-work-info/contracts/screen-api.md「People and organizations」）。
 func requiresCreditJSONBody(method, path string) bool {
 	var rest string
 	found := false
@@ -907,7 +895,7 @@ const (
 	cacheNoStore = "no-store"
 	// 動画本体に付ける値は、それを配信する stream.go に置く。
 	// cacheRevalidate はサムネイル・シークプレビュー・ホバープレビューの成功の応答に、
-	// 所有者にもゲストにも付ける（specs/016-single-account-auth/contracts/guest-api.md §5）。
+	// 所有者にもゲストにも付ける。
 	// private で共有キャッシュに所有者の応答を残さず、no-cache で使うたびにサーバーへ
 	// 確かめさせる。ログアウト後や非公開にした後はその確かめで 404 になり、ブラウザの
 	// キャッシュから出続けない。内容が同じなら ETag で 304 になり、帯域はほぼ増えない。
@@ -1020,13 +1008,13 @@ const (
 )
 
 // writeError は JSON のエラーを書き出す。message は英語にし、OS や外部プログラムの
-// 自由文を含めない（specs/023-english-i18n/contracts/error-api.md §0）。
+// 自由文を含めない。
 func (s *server) writeError(w http.ResponseWriter, status int, code gen.ErrorCode, message string) {
 	s.writeErrorBody(w, status, gen.Error{Code: code, Message: message})
 }
 
 // writeReasonError は reason を添えた JSON のエラーを書き出す。reason は契約の表の
-// 状況だけで使う（specs/023-english-i18n/contracts/error-api.md §1）。
+// 状況だけで使う。
 func (s *server) writeReasonError(w http.ResponseWriter, status int, code gen.ErrorCode, reason gen.ErrorReason, message string) {
 	s.writeErrorBody(w, status, gen.Error{Code: code, Reason: &reason, Message: message})
 }

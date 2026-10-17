@@ -123,10 +123,8 @@ const ignoreCredit = () => undefined;
 
 /**
  * ActiveTagFilters はライブラリの本文の先頭、要約行の上に置く「絞り込み中の
- * 条件」の行である（specs/014-video-tags/ui-design.md「Active tag filters」、
- * specs/047-video-work-info/ui-design.md「Library: filter by a person or organization」）。
- * タグのチップの後に人物・団体のチップを 1 つずつ、その後にタグの種類のチップを並べる
- * （specs/051-tag-kinds/ui-design.md「Library」の Chip）。タグ・人物・団体・タグの種類の
+ * 条件」の行である。
+ * タグのチップの後に人物・団体のチップを 1 つずつ、その後にタグの種類のチップを並べる。タグ・人物・団体・タグの種類の
  * どれかで絞り込んでいるときだけ描画する（呼び出し側が出し分ける）。
  */
 export default function ActiveTagFilters({

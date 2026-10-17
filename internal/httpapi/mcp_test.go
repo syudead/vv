@@ -18,7 +18,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// /mcp の MCP サーバー（specs/026-external-api/contracts/mcp.md）を、公式の SDK のクライアントと
+// /mcp の MCP サーバーを、公式の SDK のクライアントと
 // 本物の保存先・Bearer の境界で確かめる。
 
 // bearerTransport は要求に Authorization: Bearer を付ける。
@@ -137,17 +137,17 @@ func TestMCPToolsMatchExternalAPI(t *testing.T) {
 		"get_current_scan":  {readOnly: true},
 		"update_video_tags": {destructive: true, idempotent: true},
 		"start_scan":        {},
-		// specs/029-video-overrides/contracts/external-api.md §3
+		// docs/design-docs/catalog-organization.md
 		"update_video_display_names": {destructive: true, idempotent: true},
 		"update_video_thumbnails":    {destructive: true, idempotent: true},
-		// specs/039-external-tag-admin/contracts/external-api.md §8
+		// docs/design-docs/catalog-organization.md
 		"merge_tags":               {destructive: true, idempotent: true},
 		"rename_tag":               {destructive: false, idempotent: true},
 		"update_tag_synonyms":      {destructive: true, idempotent: true},
 		"batch_tags":               {destructive: true, idempotent: true},
 		"list_rejected_tag_names":  {readOnly: true},
 		"forget_rejected_tag_name": {destructive: true, idempotent: true},
-		// specs/047-video-work-info/contracts/external-api.md「MCP tools」
+		// docs/design-docs/catalog-organization.md「MCP tools」
 		"update_video_work_info": {destructive: true, idempotent: true},
 		"list_people":            {readOnly: true},
 		"list_organizations":     {readOnly: true},
@@ -159,7 +159,7 @@ func TestMCPToolsMatchExternalAPI(t *testing.T) {
 		"merge_organizations":    {destructive: true, idempotent: true},
 		"delete_people":          {destructive: true, idempotent: true},
 		"delete_organizations":   {destructive: true, idempotent: true},
-		// specs/051-tag-kinds/contracts/external-api.md「MCP tools」
+		// docs/design-docs/catalog-organization.md「MCP tools」
 		"list_tag_kinds":   {readOnly: true},
 		"create_tag_kind":  {destructive: false, idempotent: false},
 		"rename_tag_kind":  {destructive: false, idempotent: true},
@@ -226,8 +226,7 @@ func TestMCPToolsMatchExternalAPI(t *testing.T) {
 			video.Title, video.FileTitle, video.DisplayName, video.ThumbnailPositionMs)
 	}
 
-	// 構造化された出力に updatedAt・fileCreatedAt が出る（specs/033-video-dates/contracts/
-	// external-api.md §1）。
+	// 構造化された出力に updatedAt・fileCreatedAt が出る。
 	var rawVideo map[string]json.RawMessage
 	callTool(t, session, "get_video", map[string]any{"id": f.videoA}, &rawVideo)
 	for _, key := range []string{"updatedAt", "fileCreatedAt"} {
@@ -362,7 +361,7 @@ func TestMCPRejectsMissingAndInvalidTokens(t *testing.T) {
 	})
 	assertBearerUnauthenticated(t, "失効済み", f.env.serve(mcpRequest(bearer(created.Secret))))
 
-	// 有効なトークンなら JSON で答える。別の Origin でも通す（research.md R-4）。
+	// 有効なトークンなら JSON で答える。別の Origin でも通す。
 	ok := mcpRequest(map[string]string{"Authorization": "Bearer " + f.secret, "Origin": "https://elsewhere.example"})
 	rec := f.env.serve(ok)
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") {
@@ -404,7 +403,7 @@ func TestMCPAcceptsProxiedHost(t *testing.T) {
 	}
 }
 
-// 画面での失効は、そのトークンで実行中のツールを打ち切る（research.md R-9）。
+// 画面での失効は、そのトークンで実行中のツールを打ち切る。
 func TestMCPRevokeAbortsInFlightTool(t *testing.T) {
 	tags := blockingTags{entered: make(chan struct{}), ended: make(chan error, 1)}
 	f := newMCPFixture(t, Options{Tags: tags})

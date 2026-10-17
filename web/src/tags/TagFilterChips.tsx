@@ -12,11 +12,10 @@ export type TagFilter = "tentative" | "unused" | "kind";
 export const tagFilterOrder: readonly TagFilter[] = ["tentative", "unused", "kind"];
 
 /**
- * TagFilterChips は見出しの下の、効いている絞り込みのチップである（ui-design.md
- * 「Active filters」）。押された Toggle で、押し戻すと `onRemove` を呼ぶ
+ * TagFilterChips は見出しの下の、効いている絞り込みのチップである。押された Toggle で、押し戻すと `onRemove` を呼ぶ
  * （components.md「Toggle and ToggleGroup」）。どれも効いていなければ何も描かない。
  *
- * 種類のチップ（specs/051-tag-kinds/ui-design.md「Kind filter」）は `Shapes` を添えて
+ * 種類のチップは `Shapes` を添えて
  * `Kind: Genre` か `No kind` と書き、タグの絞り込みと読み違えないようにする。種類の名前を
  * まだ読んでいない間は名前の代わりに `Skeleton` を置き、読み上げ名を「Remove the kind
  * filter」にする。

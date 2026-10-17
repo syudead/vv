@@ -13,8 +13,7 @@ import FolderVideoGrid from "./FolderVideoGrid";
 import { CardsLoading, LoadFailed, MoreRow, NoMatches, ResultCount } from "./states";
 
 /**
- * FolderSearchResults はフォルダ1件の中で検索語があるときの検索結果である
- * （ui-design.md「Search results」）。子フォルダの一群と「動画 N」の見出しを
+ * FolderSearchResults はフォルダ1件の中で検索語があるときの検索結果である。子フォルダの一群と「動画 N」の見出しを
  * 出さず、ライブラリと同じ要約行と1つの格子にする。
  */
 export default function FolderSearchResults({

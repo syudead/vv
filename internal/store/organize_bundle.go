@@ -1,7 +1,6 @@
 package store
 
-// ドロップで「バージョンとしてまとめる」（specs/050-drag-organize/data-model.md「Operations」「Undo
-// image」の Bundle）。束ねる本体は VersionStore.Bundle と共有し（planBundle・applyBundle）、落とした
+// ドロップで「バージョンとしてまとめる」。束ねる本体は VersionStore.Bundle と共有し（planBundle・applyBundle）、落とした
 // 先の動画を代表にする。像は吸い込む集まりと新しい集まりの行、付け替える項目を持つグループと
 // プレイリストの全体、新しい鍵へ写した利用者データ、刈り取る候補である。
 
@@ -127,7 +126,6 @@ func bundleImage(ctx context.Context, tx *sql.Tx, plan bundlePlan) (undoImage, e
 // video_bundles と video_bundle_members、新しい鍵へ写した利用者データ、新しい鍵を指す group_items・
 // group_exclusions・playlist_items である。最後の 3 つは、付け替えた項目（グループとプレイリストの
 // 全体の範囲にもある）のほかに、束ねた後で新しい鍵を足した行を後の像との違いとして見つける
-// （data-model.md「Undo image」）。
 func (image *undoImage) addCreatedBundle(ctx context.Context, tx *sql.Tx, outcome bundleOutcome, lastGroup int64) error {
 	created, err := queryInt64s(ctx, tx, `select id from groups where id > ? order by id`, lastGroup)
 	if err != nil {

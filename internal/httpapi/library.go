@@ -10,8 +10,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// LibraryItems はライブラリの項目（動画とグループ）の問い合わせ先である
-// （specs/017-folder-groups/contracts/library-api.md）。internal/store の
+// LibraryItems はライブラリの項目（動画とグループ）の問い合わせ先である。internal/store の
 // *LibraryStore がこれを満たす。
 type LibraryItems interface {
 	// ListLibrary は見る人に見せる項目1ページを返す（GET /api/library）。
@@ -83,7 +82,7 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 	for _, item := range page.Items {
 		if item.SmartFolder != nil {
 			// スマートフォルダの項目は要約だけを載せる。カードの値は画面が listSmartFolderCards で読む
-			// （specs/052-smart-folders/research.md R-14）。
+			//
 			folder := toAPISmartFolderSummary(audience, *item.SmartFolder)
 			payload.Items = append(payload.Items, gen.LibraryItem{Kind: gen.LibraryItemKindSmartFolder, SmartFolder: &folder})
 			continue
@@ -115,10 +114,8 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 }
 
 // ListLibraryIds は絞り込みに合う項目の動画の id を返す（GET /api/library/ids、
-// 「すべて選択」用。specs/017-folder-groups/contracts/library-api.md §2）。グループの
-// 項目は groups にもグループの id と再生順の動画として書く（specs/035-favorites/contracts/screen-api.md §3、
-// specs/048-groups/contracts/screen-api.md）。スマートフォルダの項目は smartFolderIds に書く
-// （specs/052-smart-folders/data-model.md「Library items」）。
+// 「すべて選択」用。docs/design-docs/catalog-organization.md）。グループの
+// 項目は groups にもグループの id と再生順の動画として書く。スマートフォルダの項目は smartFolderIds に書く
 func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params gen.ListLibraryIdsParams) {
 	if s.library == nil {
 		s.internalError(w, "Library queries are not configured.", nil)
@@ -182,8 +179,7 @@ func (l itemLookup) video(ctx context.Context, audience domain.Audience, roots [
 }
 
 // group はグループの項目を応答の形にする。見せる動画が無ければ false を返す。folder は
-// 自動グループのフォルダが登録フォルダ roots の下にあるときだけ載せる（specs/048-groups/
-// contracts/screen-api.md）。ゲストには視聴の値を載せず、タグを空にする（data-model.md §7）。
+// 自動グループのフォルダが登録フォルダ roots の下にあるときだけ載せる。ゲストには視聴の値を載せず、タグを空にする。
 func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots []domain.MediaFolder, group domain.LibraryGroup) (gen.LibraryGroup, bool) {
 	if len(group.Members) == 0 {
 		return gen.LibraryGroup{}, false
@@ -243,7 +239,7 @@ func groupPreviewMembers(members []domain.Video) []domain.Video {
 }
 
 // unionMemberTags はメンバーのタグの和集合を返す。同じタグは1件にまとめ、出所は
-// どれかのメンバーで真なら真にする（contracts/library-api.md §1）。
+// どれかのメンバーで真なら真にする。
 func unionMemberTags(members []domain.Video, tags map[string][]domain.VideoTag) []domain.VideoTag {
 	index := map[int64]int{}
 	var out []domain.VideoTag

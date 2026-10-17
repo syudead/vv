@@ -30,8 +30,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
-// ライブラリでグループのカードへ落とす（specs/050-drag-organize/ui-design.md「Library」
-// 「What a drop does」）。jsdom は配置を持たないので、格子のカードを横一列に 200px ずつ置き、
+// ライブラリでグループのカードへ落とす。jsdom は配置を持たないので、格子のカードを横一列に 200px ずつ置き、
 // ポインタの出来事で持ち上げて落とす。
 
 function video(id: number): Video {
@@ -523,7 +522,7 @@ describe("LibraryPage drop a group on a group", () => {
   it("マージした後も一覧に残る動画（ほかのグループにも入っている）は、読み直しで見せる", async () => {
     const server = twoGroups();
     // Clip 1 はほかのグループにも入っているので、Beach に足した後もいちばん上に残る
-    // （specs/048-groups/research.md R-6）。
+    //
     server.moveAnswer = () => {
       server.items = server.items.filter(
         (item) => item.kind !== "group" || item.group.id !== 7,

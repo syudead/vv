@@ -43,8 +43,7 @@ func (substitutingGenerator) FitThumbnailSource(_ context.Context, image []byte,
 }
 
 // 代表サムネイルを先頭のコマで代用しただけの取り込みは done のまま、代用の本数が 1 に
-// なり、問題の一覧にその動画の種類が出る（specs/024-import-progress/research.md R-7、
-// 受け入れ条件 8）。取り込みの処理が生成の返した値を保存側へ渡し、保存側が成功を書く
+// なり、問題の一覧にその動画の種類が出る。取り込みの処理が生成の返した値を保存側へ渡し、保存側が成功を書く
 // 取引で問題を入れることを、本物の SQLite で確かめる。
 func TestThumbnailSubstitutionIsReportedAsImportIssue(t *testing.T) {
 	ctx := context.Background()

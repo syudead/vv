@@ -13,7 +13,7 @@ import (
 )
 
 // 外部連携 API の表示名とサムネイルの位置の一括操作
-// （specs/029-video-overrides/contracts/external-api.md §1・§2、research.md R-9）。
+//
 // 動画の指定・index・「全件を確かめてから反映する」形は POST /api/v1/video-tags と同じにする。
 
 // maxVideoDisplayNames は POST /api/v1/video-display-names の items の上限である。

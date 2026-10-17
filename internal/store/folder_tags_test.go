@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// フォルダ由来のタグ（specs/017-folder-groups/data-model.md §4）の読み出しを確かめる。
+// フォルダ由来のタグの読み出しを確かめる。
 
 // rebuildIndexForTest はスキャンを閉じる前と同じ作り直しを行う。
 func rebuildIndexForTest(t *testing.T, db *DB) {
@@ -235,7 +235,7 @@ func TestManualAndFolderTagsMergeAndDetachRemovesOnlyManual(t *testing.T) {
 }
 
 // 検索欄の語はフォルダ由来のタグの名前とシノニムにも当たる。ゲストの検索は
-// タグ名に照合しない（data-model.md §7）。
+// タグ名に照合しない。
 func TestSearchMatchesFolderTagNamesForOwnerOnly(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

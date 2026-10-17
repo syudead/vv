@@ -18,14 +18,12 @@ import (
 // 再スキャンのたびに履歴が積み上がるのを避けるためである。
 //
 // 積んだ仕事は動画の running の import の記録に加わり、無ければ decider が始めた記録を開く
-// （specs/055-activity/research.md R-3・R-5）。
 func (s *IngestStore) EnqueueJob(ctx context.Context, kind domain.JobKind, videoID int64, decider domain.ActivityDecider) error {
 	return s.EnqueueJobs(ctx, videoID, decider, kind)
 }
 
 // EnqueueJobs は動画 videoID の kinds の仕事を、EnqueueJob と同じく 1 つの取引で積む。確定の前にワーカーが
 // 前の段階を終えて記録を閉じないよう、走査が新しい動画に要る仕事をまとめて 1 件の記録に入れるために使う
-// （research.md R-3）。
 func (s *IngestStore) EnqueueJobs(
 	ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind,
 ) error {
@@ -70,7 +68,7 @@ var jobStateColumns = map[domain.JobKind]string{
 // 完成しているのに今の版の指紋が無い」を条件にする（fingerprintMissingCondition）。
 // 上限まで失敗した failed の行も、完了した done の行も捨てて積み直す（queued・running の
 // 行があれば積まない）。失敗した指紋は次の走査で作り直され、版を上げたときも前の版の
-// done の行に妨げられずに追いつく（specs/030-video-versions/data-model.md §6）。
+// done の行に妨げられずに追いつく。
 //
 // 積んだ仕事の記録は EnqueueJob と同じく決める。
 func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64, decider domain.ActivityDecider) error {
@@ -245,7 +243,7 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 		return domain.Job{}, err
 	}
 	// 取り出した仕事の記録が running でなければ（再起動で中断した記録、この機能より前に積んだ仕事）、
-	// 新しい記録を開く。起動時の再開と同じく、始めたのは規則である（research.md R-5）。
+	// 新しい記録を開く。起動時の再開と同じく、始めたのは規則である。
 	var c changes
 	if err := joinImportActivity(ctx, conn, &c, job.VideoID, domain.ActivityByRule, time.Now()); err != nil {
 		return domain.Job{}, err
@@ -406,7 +404,7 @@ func (s *IngestStore) FailJob(ctx context.Context, id int64, reason string) erro
 // 動画側の状態へも同じ取引で記録する（recordTerminalFailure）。
 //
 // cause の文を jobs.last_error に書く。解析の終端失敗では、domain.ProbeFailure で
-// 包まれた理由のコードも動画側へ書く（specs/023-english-i18n/data-model.md §1）。
+// 包まれた理由のコードも動画側へ書く。
 func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause error) error {
 	reason := cause.Error()
 	tx, err := s.db.sql.BeginTx(ctx, nil)
@@ -550,7 +548,7 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 }
 
 // recordFailedIssue は、動画の段階を failed にした取引で、その段階の *_failed を直近の
-// 取り込みの問題として記録する（specs/024-import-progress/data-model.md §3）。上限の
+// 取り込みの問題として記録する。上限の
 // 手前の失敗は記録しない。
 func recordFailedIssue(ctx context.Context, tx *sql.Tx, job domain.Job, now int64) error {
 	issue, ok := domain.FailedIssueKind(job.Kind)
@@ -582,7 +580,7 @@ func jobIdentityCurrent(ctx context.Context, q rowQueryer, job domain.Job) (bool
 }
 
 // HasUnfinishedJobs は queued か running の仕事が 1 件以上あるかを返す。デスクトップ版の
-// 閉じる確認が、取り込みの途中かを判断するのに使う（specs/037-windows-app/research.md R-7）。
+// 閉じる確認が、取り込みの途中かを判断するのに使う。
 func (s *IngestStore) HasUnfinishedJobs(ctx context.Context) (bool, error) {
 	var found bool
 	err := s.db.sql.QueryRowContext(ctx,

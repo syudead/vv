@@ -12,8 +12,7 @@ import (
 func (s *server) GetVideoPreview(
 	w http.ResponseWriter, r *http.Request, id gen.VideoId, _ gen.GetVideoPreviewParams,
 ) {
-	// ゲストとして処理する要求は、非公開にされたら打ち切れるよう台帳に載せる
-	// （contracts/guest-api.md §6）。
+	// ゲストとして処理する要求は、非公開にされたら打ち切れるよう台帳に載せる。
 	video, r, release, ok := s.lookupServedVideo(w, r, id)
 	if !ok {
 		return
@@ -39,7 +38,7 @@ func (s *server) GetVideoPreview(
 		return
 	}
 
-	// 版の有無によらず、使うたびに確かめさせる（contracts/guest-api.md §5）。
+	// 版の有無によらず、使うたびに確かめさせる。
 	// If-None-Match が一致すれば http.ServeContent が 304 を返す。更新時刻は渡さない。
 	// 渡すと If-Modified-Since だけの要求に更新時刻で 304 を返し、同じ秒に作り直した
 	// プレビューが古いまま残る。確かめは内容のダイジェストの ETag だけで行う。

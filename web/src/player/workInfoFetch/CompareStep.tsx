@@ -287,7 +287,7 @@ function CompareRow({
 
 /**
  * CompareStep は取得の結果を今の値と項目ごとに見比べる段である（ui-design「Compare」、
- * specs/052-plugin-work-info-fields/ui-design.md「Compare」）。題名とタグの後に、結果に値の
+ * docs/design-docs/work-info-plugins.md「Compare」）。題名とタグの後に、結果に値の
  * ある作品の詳細を 1 項目 1 行で並べる。取得した側を本文の色、今の側を従の色にし、値が
  * 無いか今と同じか足せる件の無い項目は選べない。期限切れなら
  * 「Fetch again」を添えた知らせを、他の失敗なら理由を、比較の上に出す。
@@ -309,7 +309,7 @@ export default function CompareStep({
   video: Video;
   fetched: Fetched;
   selection: readonly WorkInfoField[];
-  /** 選んだタグの名前（specs/056-plugin-tooling/ui-design.md「Compare: tags row」）。 */
+  /** 選んだタグの名前。 */
   tags: readonly string[];
   /** 反映を送っている間。選択を変えられない。 */
   locked: boolean;

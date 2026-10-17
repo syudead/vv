@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// 入れ子（research.md R-5）: 自分、子、孫を親に入れるのは循環で、兄弟やほかの枝は入れてよい。
+// 入れ子: 自分、子、孫を親に入れるのは循環で、兄弟やほかの枝は入れてよい。
 func TestValidateNesting(t *testing.T) {
 	// 1 ─┬─ 2 ── 3
 	//    └─ 4
@@ -35,7 +35,7 @@ func TestValidateNesting(t *testing.T) {
 	}
 }
 
-// 再生順（research.md R-7）: 深さ優先で、2 つの子グループにある動画は最初の 1 回だけ、見せない
+// 再生順: 深さ優先で、2 つの子グループにある動画は最初の 1 回だけ、見せない
 // 項目は除く。
 func TestGroupPlayOrder(t *testing.T) {
 	children := map[int64][]GroupPlayItem{

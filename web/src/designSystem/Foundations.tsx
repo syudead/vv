@@ -114,7 +114,7 @@ function Code({ children }: { children: string }) {
 
 /**
  * Foundations は見本の基礎の節である。面の 5 段階、色の役割、文字・余白・角丸・影の段階を
- * 並べ、メンテナーが段階ごとに確かめる（specs/038-design-system/research.md R-1、R-2）。
+ * 並べ、メンテナーが段階ごとに確かめる。
  */
 export default function Foundations() {
   const f = t.designSystem.foundation;

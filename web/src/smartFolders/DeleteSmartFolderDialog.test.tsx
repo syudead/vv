@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import DeleteSmartFolderDialog from "./DeleteSmartFolderDialog";
 
-// スマートフォルダの削除の窓（specs/052-smart-folders/ui-design.md「Deleting」）。子孫の数を
+// スマートフォルダの削除の窓。子孫の数を
 // 数え終わるまで「Delete」を押せない（子孫の警告の無いまま子孫ごと消さない）。
 
 function json(body: unknown, status = 200): Response {

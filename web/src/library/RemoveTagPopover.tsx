@@ -17,8 +17,7 @@ import { buildRemoveOptions, removableSummary } from "./tagChoices";
 import TagCommand, { type TagChoice } from "../ui/TagCommand";
 
 /**
- * RemoveTagPopover は選択バーの「タグを外す」の中身である
- * （ui-design.md「Selection bar」の「Remove」）。
+ * RemoveTagPopover は選択バーの「タグを外す」の中身である。
  */
 export default function RemoveTagPopover({
   open,
@@ -54,7 +53,7 @@ export default function RemoveTagPopover({
     // 選択が空になった直後（一括で外したタグが今の絞り込みに含まれていて、
     // 呼び出し元が選択を解除した直後など）は、このポップオーバーはすぐ閉じる
     // ので要求しない。`POST /api/video-tags/summary` は videoIds を1件以上
-    // 要る（contracts/tags-api.md §4）。
+    // 要る。
     if (selectedIds.length === 0) return;
     if (selectedIds.length > maxVideoTagsSelection) {
       // 進行中の（上限内だった頃に始めた）取得を無効にする。その応答が
@@ -103,7 +102,7 @@ export default function RemoveTagPopover({
   }, [open, fetchSummary]);
 
   // 「読み込み中…」から候補に切り替わった瞬間（要約が届いたとき）は、
-  // ui-design.md「Add」「Remove」と同じくフォーカスを入力へ移す。
+  // フォーカスを入力へ移す。
   // `onOpenAutoFocus` は最初のマウント時にしか働かないため、ここで補う。
   const ready =
     open && !overLimit && !loading && !fetchFailed && (summary?.items.length ?? 0) > 0;
@@ -118,8 +117,7 @@ export default function RemoveTagPopover({
 
   function submit(option: TagChoice) {
     setErrorMessage(null);
-    // 送る直前に selectedIds の最新の件数を確かめる（AddTagPopover.submit と
-    // 同じ理由。contracts/tags-api.md §4）。
+    // 送る直前に selectedIds の最新の件数を確かめる（AddTagPopover.submit と 同じ理由）。
     if (selectedIds.length > maxVideoTagsSelection) {
       setErrorMessage(overLimitMessage());
       return;

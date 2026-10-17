@@ -8,8 +8,7 @@ import {
 import { errorText, type UiText } from "../i18n";
 
 /**
- * rejectedPageLimit は却下した名前の 1 ページの件数である（ui-design.md
- * 「Rejected names」の 100 件。research.md R-13）。
+ * rejectedPageLimit は却下した名前の 1 ページの件数である。
  */
 const rejectedPageLimit = 100;
 
@@ -32,9 +31,8 @@ export interface RejectedNamesState {
 }
 
 /**
- * useRejectedNames は却下した名前の一覧を読む（specs/036-tag-admin-scale/data-model.md
- * §4、research.md R-13）。この画面だけが読むので、共有の保持ではなくここで取る
- * （031 の research.md R-8）。開いたときに先頭のページを読む。
+ * useRejectedNames は却下した名前の一覧を読む。この画面だけが読むので、共有の保持ではなくここで取る
+ * 。開いたときに先頭のページを読む。
  */
 export function useRejectedNames(): RejectedNamesState {
   const [page, setPage] = useState<RejectedTagNameList | undefined>(undefined);
@@ -56,7 +54,7 @@ export function useRejectedNames(): RejectedNamesState {
   /**
    * reload は先頭の 1 ページを取り直す。却下・作成・改名・シノニムの追加のあと
    * （どれも一覧を変えうる。要件 15、受け入れ条件 14）と、画面を開いたときに呼ぶ。
-   * 読み込んだ続きは捨て、先頭の 1 ページに戻す（ui-design.md「Rejected names」）。
+   * 読み込んだ続きは捨て、先頭の 1 ページに戻す。
    * 追い越された古い取得の結果（続きも含む）は捨てる。取り直しの失敗は、最初の
    * 読み込みの失敗と同じ見え方（件数を出さず、「Couldn't load the rejected names」と
    * Retry）にする。古い一覧を黙って残すと、却下や作成で変わったはずの並びを

@@ -22,9 +22,8 @@ type groupListCandidate struct {
 
 // ListGroups は見る人（audience）に見せるグループを、どの深さのものも自然な名前の順（title_key、
 // 同じなら id の順）に、cursor の次から limit 件返す（GET /api/groups、
-// specs/048-groups/contracts/screen-api.md）。query は前後の空白を取り除き、名前が大文字小文字を
-// 区別せずにそれを含むものだけに絞る（空なら全部）。見せる動画の無いグループは入らない
-// （data-model.md「Visibility」）。読めない cursor は domain.ErrInvalidCursor である。
+// docs/design-docs/catalog-organization.md）。query は前後の空白を取り除き、名前が大文字小文字を
+// 区別せずにそれを含むものだけに絞る（空なら全部）。見せる動画の無いグループは入らない。読めない cursor は domain.ErrInvalidCursor である。
 func (s *LibraryStore) ListGroups(ctx context.Context, audience domain.Audience, query, cursor string, limit int) (domain.GroupListPage, error) {
 	after, err := decodeGroupListCursor(cursor)
 	if err != nil {

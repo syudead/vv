@@ -273,7 +273,7 @@ func TestVideosWithoutPlayback(t *testing.T) {
 }
 
 // 視聴の識別子があれば、再生したバージョンの content_key と有効な題名で視聴履歴を渡す。
-// 応答は識別子の有無で変わらない（specs/043-watch-history/contracts/screen-api.md）。
+// 応答は識別子の有無で変わらない。
 func TestPutProgressPassesPlay(t *testing.T) {
 	playback := newFakePlayback()
 	video := sampleVideo(1, "京都の街並み")

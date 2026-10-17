@@ -49,8 +49,7 @@ export function Problem({
 }
 
 /**
- * saveOnEnter は、1 行の入力で Enter を押したら保存する（タイトルのその場編集と同じ。
- * ui-design.md「Fields」の Keys）。IME の変換を決める Enter では保存しない。
+ * saveOnEnter は、1 行の入力で Enter を押したら保存する（タイトルのその場編集と同じ。 の Keys）。IME の変換を決める Enter では保存しない。
  */
 export function saveOnEnter(save: () => void) {
   return (event: KeyboardEvent<HTMLInputElement>) => {

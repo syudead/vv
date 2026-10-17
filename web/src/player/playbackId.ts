@@ -2,8 +2,7 @@
  * newPlaybackId は 1 回の視聴の識別子を、RFC 4122 version 4 の 36 文字の形で作る。
  *
  * crypto.randomUUID は安全な文脈にしか無く、LAN の素の http で開いた画面では使えないので、
- * crypto.getRandomValues の 16 バイトから組み立てる
- * （specs/043-watch-history/research.md R-2）。
+ * crypto.getRandomValues の 16 バイトから組み立てる。
  */
 export function newPlaybackId(): string {
   const bytes = new Uint8Array(16);

@@ -158,8 +158,7 @@ or folders takes a `domain.Audience`, whose zero value is the guest. The HTTP
 layer classifies every request at its outermost layer, before routing, by path
 into bearer, anyone, guests too or owner only, matching each operation's
 `security` in `api/openapi.yaml` (a Go test checks that). Hidden videos answer
-the same `404` as missing ones
-([guest-api.md](specs/016-single-account-auth/contracts/guest-api.md)).
+the same `404` as missing ones.
 
 **Only a scan reads the media folders' files.** Only a scan opens the files
 in the media folders, and only a user-started scan walks them whole. The
@@ -173,15 +172,15 @@ filesystem.
 
 | Package | Owns | Detail |
 | --- | --- | --- |
-| `internal/scanner` | Walking the media folders and identifying files by content, so a move or rename keeps the video | [017 data-model](specs/017-folder-groups/data-model.md), [033 research](specs/033-video-dates/research.md) |
-| `internal/watcher`, `internal/app` (`AutoImport`) | Folder change notifications as changed directories; the dirty set, the quiet and settle waits and the watch scans that import them | [folder-watching.md](docs/design-docs/folder-watching.md), [042 research](specs/042-folder-watch-import/research.md) |
-| `internal/jobs`, `internal/app` (`Ingest`, `Scans`) | One worker per ingest stage over the persistent job queue; import progress and issues | [020 data-model](specs/020-seek-thumbnail-stage/data-model.md), [024 research](specs/024-import-progress/research.md) |
-| `internal/media` | `ffprobe`/`ffmpeg` runs: metadata, thumbnails, seek sprites, previews, fingerprints | [seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md), [030 research](specs/030-video-versions/research.md) |
+| `internal/scanner` | Walking the media folders and identifying files by content, so a move or rename keeps the video | [catalog-organization.md](docs/design-docs/catalog-organization.md) |
+| `internal/watcher`, `internal/app` (`AutoImport`) | Folder change notifications as changed directories; the dirty set, the quiet and settle waits and the watch scans that import them | [folder-watching.md](docs/design-docs/folder-watching.md) |
+| `internal/jobs`, `internal/app` (`Ingest`, `Scans`) | One worker per ingest stage over the persistent job queue; import progress and issues | [import-pipeline.md](docs/design-docs/import-pipeline.md) |
+| `internal/media` | `ffprobe`/`ffmpeg` runs: metadata, thumbnails, seek sprites, previews, fingerprints | [seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md), [catalog-organization.md](docs/design-docs/catalog-organization.md) |
 | `internal/artifacts` | Paths, publication and removal of generated files under `MDM_DATA_DIR/thumbnails` | [`internal/artifacts`](internal/artifacts) |
 | Live transcoding (`internal/media`, `internal/httpapi`) | Request-scoped fragmented MP4, seek, encoder choice and quality | [live-transcode-seek.md](docs/design-docs/live-transcode-seek.md), [hardware-encoding.md](docs/design-docs/hardware-encoding.md), [playback-quality.md](docs/design-docs/playback-quality.md) |
-| `internal/store` | SQLite schema, migrations, role types, search keys | [013 data-model](specs/013-library-search/data-model.md), [030 data-model](specs/030-video-versions/data-model.md) |
-| `internal/httpapi` | Screen API, `/api/events`, authentication boundary, gzip for JSON and screen files when the client accepts it | [auth-api.md](specs/016-single-account-auth/contracts/auth-api.md), [error-api.md](specs/023-english-i18n/contracts/error-api.md) |
-| External API and MCP (`internal/httpapi`) | `/api/v1` and `/mcp` behind bearer tokens | [external-api.md](docs/how-to/external-api.md), [mcp.md](specs/026-external-api/contracts/mcp.md) |
+| `internal/store` | SQLite schema, migrations, role types, search keys | [catalog-organization.md](docs/design-docs/catalog-organization.md) |
+| `internal/httpapi` | Screen API, `/api/events`, authentication boundary, gzip for JSON and screen files when the client accepts it | [authentication.md](docs/design-docs/authentication.md), [i18n.md](docs/design-docs/i18n.md) |
+| External API and MCP (`internal/httpapi`) | `/api/v1` and `/mcp` behind bearer tokens | [external-api.md](docs/how-to/external-api.md) |
 | Sidecar subtitles (`internal/httpapi`, `internal/media`) | Finding sidecar files per request and converting them to WebVTT | [sidecar-subtitles.md](docs/design-docs/sidecar-subtitles.md) |
 | `internal/app` (`Classifier`, `OllamaConnection`), `internal/ollama` | The AI layer: a task-agnostic classifier port, and the Ollama provider behind it with its connection settings | [ai-layer.md](docs/design-docs/ai-layer.md) |
 | `internal/app` (`ComfyUIConnection`), `internal/comfyui` | The image-edit provider: one adapter for a self-hosted ComfyUI and Comfy Cloud, with its connection settings and test | [ai-layer.md](docs/design-docs/ai-layer.md#image-edit-provider) |
@@ -189,9 +188,9 @@ filesystem.
 | `internal/app` (`AutoTagger`) | Asking the classifier port which existing tags fit a video, and its queue | [auto-tagging.md](docs/design-docs/auto-tagging.md) |
 | `internal/app` (`VersionJudge`), `internal/store` (`VersionStore.ClaimJudgement`, `ApplyJudgement`) | Judging possible duplicates from their per-frame fingerprints and, for a differing run, the classifier port; bundling or dismissing the pair as the owner's actions do | [duplicate-judging.md](docs/design-docs/duplicate-judging.md) |
 | `internal/store` (`ActivityStore`), `internal/app` (`Activity`) | The activity log: one entry per run and subject written in the transaction of its change, listed newest first to the owner, with retry and undo dispatched by kind | [activity.md](docs/design-docs/activity.md) |
-| `internal/opener` | Opening a video in the server PC's default app, loopback requests only | [video-detail-api.md](specs/012-video-detail-ia/contracts/video-detail-api.md) |
-| `internal/password` | Argon2id hashing in PHC strings | [016 data-model](specs/016-single-account-auth/data-model.md) |
-| `internal/app` (`Auth`) | Setup, login throttling, sessions and API tokens | [016 data-model](specs/016-single-account-auth/data-model.md), [026 data-model](specs/026-external-api/data-model.md) |
+| `internal/opener` | Opening a video in the server PC's default app, loopback requests only | [Screen API](api/openapi.yaml) |
+| `internal/password` | Argon2id hashing in PHC strings | [authentication.md](docs/design-docs/authentication.md) |
+| `internal/app` (`Auth`) | Setup, login throttling, sessions and API tokens | [authentication.md](docs/design-docs/authentication.md), [external-api.md](docs/how-to/external-api.md) |
 | `internal/eventbus` | In-process delivery of domain events | [process-lifecycle.md](docs/design-docs/process-lifecycle.md) |
 | `internal/desktop` | The desktop app's window, dialogs and data folders | [windows-app.md](docs/design-docs/windows-app.md) |
 

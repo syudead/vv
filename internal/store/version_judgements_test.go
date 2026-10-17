@@ -10,8 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 「同じ動画かもしれない」候補の自動の判定の保存と反映（specs/054-auto-dup/data-model.md、
-// research.md R-4〜R-8）。
+// 「同じ動画かもしれない」候補の自動の判定の保存と反映。
 
 // judgementFixture は a（720p）と b（1080p）が候補の 1 組になり、c は指紋が違って候補にならない 3 本を
 // 作る。d は取り込むだけ。
@@ -174,7 +173,7 @@ func TestJudgementDifferentDismisses(t *testing.T) {
 }
 
 // 束ねる「同じ」は一致を変えうるので、すべてのスマートフォルダを名指す知らせを 1 つ伴う。束ねない
-// 「違う」は伴わない（specs/052-smart-folders/data-model.md「Notices」）。
+// 「違う」は伴わない。
 func TestJudgementNamesSmartFoldersOnlyWhenItBundles(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -329,7 +328,7 @@ func TestUnbundleRecordsPairsAndRebuildsCandidates(t *testing.T) {
 	expectNoClaim(t, db, "集まりから外した組")
 }
 
-// 同じパスの中身が変わって引き継ぐと、外した組の鍵も付け替える（data-model.md「Rules」）。
+// 同じパスの中身が変わって引き継ぐと、外した組の鍵も付け替える。
 func TestMoveKeyPairsRekeysUnbundledPairs(t *testing.T) {
 	db, _ := versionFixture(t)
 	ctx := context.Background()
@@ -353,7 +352,7 @@ func TestMoveKeyPairsRekeysUnbundledPairs(t *testing.T) {
 	}
 }
 
-// 重複の自動判定の設定は、行が無ければ切で、保存した値を返す（data-model.md「Settings」）。
+// 重複の自動判定の設定は、行が無ければ切で、保存した値を返す。
 func TestVersionJudgingSetting(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -371,7 +370,7 @@ func TestVersionJudgingSetting(t *testing.T) {
 }
 
 // 接続が無くてモデルに聞けない組は no_connection になって取り出されず、一覧に残る。接続の保存で
-// 待ちに戻る（research.md R-13）。
+// 待ちに戻る。
 func TestJudgementNoConnectionWaitsForConnection(t *testing.T) {
 	db, _ := judgementFixture(t)
 	ctx := context.Background()
@@ -441,7 +440,7 @@ func TestOllamaConnectionSaved(t *testing.T) {
 }
 
 // SavedOllamaSettings は接続先と保存したかを 1 度に返し、保存したかは OllamaConnectionSaved と
-// 同じ答えになる（前の版のキー、模型だけの行を含む。specs/058-settings-pages/research.md R-4）。
+// 同じ答えになる（前の版のキー、模型だけの行を含む。docs/design-docs/design-system.md）。
 func TestSavedOllamaSettings(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

@@ -1,6 +1,6 @@
 import { formatMonth, formatWeekdayDate, t, type UiText } from "../i18n";
 
-// 日付へ移る一覧の項目（specs/043-watch-history/ui-design.md「Jump to date」）。
+// 日付へ移る一覧の項目。
 // API が返す件のある日（ブラウザの時間帯の `YYYY-MM-DD`、新しい順）を、直近 14 日は日、
 // それより前は月にまとめる。
 

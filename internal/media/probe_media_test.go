@@ -8,8 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ffprobe の JSON の fixture から domain.MediaInfo を読む（specs/056-media-info/data-model.md
-// 「Stored value」）。外部プロセスを起動せず、どの値をどこから読むかを固定する。
+// ffprobe の JSON の fixture から domain.MediaInfo を読む。外部プロセスを起動せず、どの値をどこから読むかを固定する。
 
 func parseMediaFixture(t *testing.T, output string) *domain.MediaInfo {
 	t.Helper()

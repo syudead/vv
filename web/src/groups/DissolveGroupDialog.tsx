@@ -4,8 +4,7 @@ import { t } from "../i18n";
 import GroupConfirmDialog from "./GroupConfirmDialog";
 
 /**
- * DissolveGroupDialog はグループを解散する確認の窓である（specs/048-groups/ui-design.md
- * 「Dissolving」）。説明は動画とグループがライブラリに残ることを言い、自動グループ（`folder`
+ * DissolveGroupDialog はグループを解散する確認の窓である。説明は動画とグループがライブラリに残ることを言い、自動グループ（`folder`
  * あり）にはフォルダが自動でまとまらなくなることを 2 文目に足す（要件 13）。
  *
  * 開いている間だけ描く。確定で `DELETE /api/groups/{id}` を送り、送っている間は閉じない。

@@ -20,7 +20,7 @@ export interface TagPick {
 /**
  * TagPicker は取得した側のタグの並びで、動画にまだ無いタグは Checkbox とそのラベルのチップ、
  * 動画にあるタグは選べない `On the video` のチップである。畳まずに全部を出し、最後に
- * `{n} of {m} selected` を添える（specs/056-plugin-tooling/ui-design.md「Compare: tags row」）。
+ * `{n} of {m} selected` を添える。
  */
 export default function TagPicker({
   video,

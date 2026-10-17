@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 所有者の操作の記録（specs/055-activity/research.md R-6・R-11、data-model.md「Kinds」）。
+// 所有者の操作の記録。
 
 // ownerEntry は所有者の記録 1 件の、比べる欄である。
 type ownerEntry struct {

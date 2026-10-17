@@ -12,12 +12,11 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 動画の表示名の設定・解除（specs/029-video-overrides/contracts/screen-api.md §1、
-// research.md R-8・R-10）。1つの取引で済むので internal/app は通さず、
+// 動画の表示名の設定・解除。1つの取引で済むので internal/app は通さず、
 // internal/store の *OverrideStore を直接呼ぶ。
 //
-// 代表サムネイルの位置の設定・解除（contracts/screen-api.md §2、research.md R-4・R-8・R-11）と、
-// 適用した画像の取り消し（specs/045-comfyui-thumbnails/contracts/screen-api.md）は、画像の生成と
+// 代表サムネイルの位置の設定・解除と、
+// 適用した画像の取り消しは、画像の生成と
 // 記録を取り込みの job と同じ生成の錠の中で行うので、internal/app の *Ingest（ThumbnailPicker）を
 // 呼ぶ。
 
@@ -69,8 +68,7 @@ func (s *server) SetVideoDisplayName(w http.ResponseWriter, r *http.Request, id 
 	s.writeVideoDetail(w, r, video)
 }
 
-// invalidDisplayName は表示名の規則違反を reason 付きの 400 にする
-// （contracts/screen-api.md §1・§3）。この経路は field を付けない。
+// invalidDisplayName は表示名の規則違反を reason 付きの 400 にする。この経路は field を付けない。
 func (s *server) invalidDisplayName(w http.ResponseWriter, err error) {
 	failure, ok := displayNameFailureOf(err)
 	if !ok {
@@ -117,7 +115,7 @@ type ThumbnailPicker interface {
 	// RevertThumbnailImage は動画 videoID に適用した画像を外し、代表サムネイルを path の記録した
 	// 位置（無ければ自動の位置）の場面で作り直して公開し、反映後の動画を返す。location と誤りは
 	// SetThumbnailPosition と同じである。画像を適用していなくても作り直して成功する
-	// （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+	//
 	RevertThumbnailImage(ctx context.Context, videoID int64, location, path string) (domain.Video, error)
 }
 
@@ -209,8 +207,7 @@ func (s *server) RevertThumbnailImage(w http.ResponseWriter, r *http.Request, id
 	s.writeVideoDetail(w, r, saved)
 }
 
-// thumbnailPositionError は代表サムネイルの位置の設定の失敗を応答にする
-// （contracts/screen-api.md §2・§3）。尺の外の limit には video の尺を載せる。
+// thumbnailPositionError は代表サムネイルの位置の設定の失敗を応答にする。尺の外の limit には video の尺を載せる。
 func (s *server) thumbnailPositionError(w http.ResponseWriter, video domain.Video, err error) {
 	switch {
 	case errors.Is(err, domain.ErrDurationUnknown):

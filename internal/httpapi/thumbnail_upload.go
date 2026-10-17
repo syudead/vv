@@ -14,8 +14,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 手元の画像を動画のサムネイルにするアップロードの経路
-// （specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-1・R-2）。所有者だけで、
+// 手元の画像を動画のサムネイルにするアップロードの経路。所有者だけで、
 // accessRoutes に載せない。画像はメモリに持ち、確かめと適用は internal/app の *Ingest が行う。
 
 // thumbnailUploadMaxBody はアップロードの要求の本文全体の上限である。image 部分の上限に、部分の
@@ -172,7 +171,7 @@ func readUploadPart(part io.Reader) ([]byte, error) {
 	return data, nil
 }
 
-// thumbnailUploadError はアップロードの誤りを契約の応答にする（contracts/screen-api.md）。
+// thumbnailUploadError はアップロードの誤りを契約の応答にする。
 func (s *server) thumbnailUploadError(w http.ResponseWriter, err error) {
 	var tooLarge *domain.ThumbnailUploadTooLargeError
 	switch {

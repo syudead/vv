@@ -8,8 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// プレイリストの連続再生の位置と次の動画（specs/044-playlists/data-model.md「Playback order」、
-// research.md R-6）。
+// プレイリストの連続再生の位置と次の動画。
 
 // playbackFixture は動画 A（mixed/x）、グループ G（show: メンバー 1〜3、メンバー 1 は視聴済み、
 // 2 と 3 は未視聴）、動画 B（mixed/sub/y）のプレイリストである。

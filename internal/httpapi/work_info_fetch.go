@@ -10,11 +10,10 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 作品情報プラグインの検索・取得と、取得の結果の反映の経路
-// （specs/049-work-info-plugins/contracts/screen-api.md）。どれも所有者だけで、accessRoutes に載せない。
+// 作品情報プラグインの検索・取得と、取得の結果の反映の経路。どれも所有者だけで、accessRoutes に載せない。
 // 実行・規則・保存は internal/app と internal/store が持ち、ここは要求の解釈と契約の形への変換だけを持つ。
 // Error.message は vv 自身の英文のままで、プラグインの文は pluginMessage に分けて入れる
-// （specs/023-english-i18n/contracts/error-api.md）。
+//
 
 // SearchWorkInfo はプラグインの search で作品を探す（POST /api/work-info-plugins/{id}/search）。
 func (s *server) SearchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
@@ -70,7 +69,7 @@ func (s *server) FetchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.Vi
 	writeJSON(w, http.StatusCreated, toAPIWorkInfoFetch(fetch), s.logger)
 }
 
-// toAPIWorkInfoFetch は取得の結果を契約の形にする（specs/052-plugin-work-info-fields/contracts/screen-api.md）。
+// toAPIWorkInfoFetch は取得の結果を契約の形にする。
 // 一覧は無くても [] で、品番と説明は無ければ省く。
 func toAPIWorkInfoFetch(fetch domain.WorkInfoFetchResult) gen.WorkInfoFetch {
 	details := fetch.Details
@@ -149,7 +148,7 @@ func (s *server) GetWorkInfoFetchCover(w http.ResponseWriter, _ *http.Request, i
 
 // ApplyWorkInfoFetch は取得の結果のうち選んだ項目を動画に反映する
 // （POST /api/videos/{id}/work-info-fetches/{fetchId}/apply）。tags があれば、取得したタグのうちその名前だけを
-// 付ける（specs/056-plugin-tooling/contracts/screen-api.md）。
+// 付ける。
 func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id gen.VideoId, fetchID gen.WorkInfoFetchId) {
 	var body gen.ApplyWorkInfoFetchRequest
 	present, ok := s.readJSONBodyFields(w, r, &body)
@@ -227,7 +226,7 @@ func applyTagSelection(tags *[]string, present bool, fields []domain.WorkInfoFie
 	return *tags, true
 }
 
-// workInfoRunError は検索と取得の誤りを契約の応答にする（contracts/screen-api.md の Run failures）。
+// workInfoRunError は検索と取得の誤りを契約の応答にする。
 // notFound は domain.ErrNotFound のときの文である。
 func (s *server) workInfoRunError(w http.ResponseWriter, err error, notFound string) {
 	var (

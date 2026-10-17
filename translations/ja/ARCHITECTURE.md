@@ -1,6 +1,6 @@
 ---
 source: ARCHITECTURE.md
-sourceHash: dc38d2756ddeafd5a4eb9fbcb7848fed895fa025679c32612767f63edbb1a772
+sourceHash: b4f6f7be54562f3d0ead950fc997744f85512892f5809ee548902e751f47adac
 ---
 
 # アーキテクチャ {#architecture}
@@ -99,7 +99,7 @@ flowchart LR
 
 **ユーザーデータは再構築後も残る。** 再生位置、視聴履歴、タグ、公開フラグ、お気に入り、プレイリストの項目、グループとその項目、スマートフォルダ、所有者の編集、適用したサムネイル画像、作品情報、所有者が別物と判定した、バージョンのまとまりから外した、または自動判定を保留した動画の組、および活動ログは、再スキャンで再現される値 (内容の鍵、バージョンのまとまりの鍵、フォルダの絶対パス) または自身の id をキーとし、`videos.id` をキーにすることは決してなく、`videos` への外部キーを持たない。人物と組織は独自の id を持つ実体であり、作品情報はそれを参照する。どのテーブルが再構築できるかは [データと復旧](docs/how-to/running-vv.md#data-and-recovery) にある。
 
-**どの読み取りも閲覧者を知っている。** 動画、所在、フォルダを返すストアの読み取りはそれぞれ `domain.Audience` を受け取り、そのゼロ値はゲストである。HTTP 層はすべてのリクエストを、ルーティングの前に最も外側の層で、パスによって bearer、誰でも、ゲストも可、所有者のみに分類し、`api/openapi.yaml` の各操作の `security` と一致させる (Go のテストがそれを確認する)。非表示の動画は、存在しない動画と同じ `404` を返す ([guest-api.md](specs/016-single-account-auth/contracts/guest-api.md))。
+**どの読み取りも閲覧者を知っている。** 動画、所在、フォルダを返すストアの読み取りはそれぞれ `domain.Audience` を受け取り、そのゼロ値はゲストである。HTTP 層はすべてのリクエストを、ルーティングの前に最も外側の層で、パスによって bearer、誰でも、ゲストも可、所有者のみに分類し、`api/openapi.yaml` の各操作の `security` と一致させる (Go のテストがそれを確認する)。非表示の動画は、存在しない動画と同じ `404` を返す。
 
 **メディアフォルダのファイルを読むのはスキャンだけ。** メディアフォルダのファイルを開くのはスキャンだけであり、全体を走査するのはユーザーが開始したスキャンだけである。フォルダの監視 (`internal/watcher`) が読むのはディレクトリエントリだけで、各ディレクトリに監視を置くために読み、ファイルは決して開かない。フォルダの索引 (各動画の上にあるフォルダ名)、自動のグループのフォルダのメンバー、フォルダの閲覧、取り込みの状況は SQLite から導き、ファイルシステムからは決して導かない。
 
@@ -107,15 +107,15 @@ flowchart LR
 
 | パッケージ | 担当 | 詳細 |
 | --- | --- | --- |
-| `internal/scanner` | メディアフォルダの走査と、内容によるファイルの識別。これにより移動や名前の変更があっても動画が保たれる | [017 data-model](specs/017-folder-groups/data-model.md)、[033 research](specs/033-video-dates/research.md) |
-| `internal/watcher`、`internal/app` (`AutoImport`) | フォルダの変更通知を、変更のあったディレクトリとして受け取る。変更ディレクトリの集合、静止と安定の待機、それらを取り込む監視スキャン | [folder-watching.md](docs/design-docs/folder-watching.md)、[042 research](specs/042-folder-watch-import/research.md) |
-| `internal/jobs`、`internal/app` (`Ingest`、`Scans`) | 永続的なジョブキューに対する、取り込み段階ごとに 1 つのワーカー。取り込みの進捗と問題 | [020 data-model](specs/020-seek-thumbnail-stage/data-model.md)、[024 research](specs/024-import-progress/research.md) |
-| `internal/media` | `ffprobe`/`ffmpeg` の実行: メタデータ、サムネイル、シーク用スプライト、プレビュー、フィンガープリント | [seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md)、[030 research](specs/030-video-versions/research.md) |
+| `internal/scanner` | メディアフォルダの走査と、内容によるファイルの識別。これにより移動や名前の変更があっても動画が保たれる | [catalog-organization.md](docs/design-docs/catalog-organization.md) |
+| `internal/watcher`、`internal/app` (`AutoImport`) | フォルダの変更通知を、変更のあったディレクトリとして受け取る。変更ディレクトリの集合、静止と安定の待機、それらを取り込む監視スキャン | [folder-watching.md](docs/design-docs/folder-watching.md) |
+| `internal/jobs`、`internal/app` (`Ingest`、`Scans`) | 永続的なジョブキューに対する、取り込み段階ごとに 1 つのワーカー。取り込みの進捗と問題 | [import-pipeline.md](docs/design-docs/import-pipeline.md) |
+| `internal/media` | `ffprobe`/`ffmpeg` の実行: メタデータ、サムネイル、シーク用スプライト、プレビュー、フィンガープリント | [seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md)、[catalog-organization.md](docs/design-docs/catalog-organization.md) |
 | `internal/artifacts` | `MDM_DATA_DIR/thumbnails` の下の生成ファイルのパス、公開、削除 | [`internal/artifacts`](internal/artifacts) |
 | ライブ変換 (`internal/media`、`internal/httpapi`) | リクエスト単位の fragmented MP4、シーク、エンコーダの選択、画質 | [live-transcode-seek.md](docs/design-docs/live-transcode-seek.md)、[hardware-encoding.md](docs/design-docs/hardware-encoding.md)、[playback-quality.md](docs/design-docs/playback-quality.md) |
-| `internal/store` | SQLite のスキーマ、マイグレーション、役割の型、検索キー | [013 data-model](specs/013-library-search/data-model.md)、[030 data-model](specs/030-video-versions/data-model.md) |
-| `internal/httpapi` | 画面用 API、`/api/events`、認証の境界、クライアントが受け付けるときの JSON と画面用ファイルの gzip | [auth-api.md](specs/016-single-account-auth/contracts/auth-api.md)、[error-api.md](specs/023-english-i18n/contracts/error-api.md) |
-| 外部 API と MCP (`internal/httpapi`) | bearer トークンで保護された `/api/v1` と `/mcp` | [external-api.md](docs/how-to/external-api.md)、[mcp.md](specs/026-external-api/contracts/mcp.md) |
+| `internal/store` | SQLite のスキーマ、マイグレーション、役割の型、検索キー | [catalog-organization.md](docs/design-docs/catalog-organization.md) |
+| `internal/httpapi` | 画面用 API、`/api/events`、認証の境界、クライアントが受け付けるときの JSON と画面用ファイルの gzip | [authentication.md](docs/design-docs/authentication.md)、[i18n.md](docs/design-docs/i18n.md) |
+| 外部 API と MCP (`internal/httpapi`) | bearer トークンで保護された `/api/v1` と `/mcp` | [external-api.md](docs/how-to/external-api.md) |
 | 隣の字幕ファイル (`internal/httpapi`、`internal/media`) | リクエストごとに隣のファイルを見つけ、WebVTT に変換する | [sidecar-subtitles.md](docs/design-docs/sidecar-subtitles.md) |
 | `internal/app` (`Classifier`、`OllamaConnection`)、`internal/ollama` | AI 層。タスクに依存しない分類器のポートと、その背後にある Ollama のプロバイダおよびその接続設定 | [ai-layer.md](docs/design-docs/ai-layer.md) |
 | `internal/app` (`ComfyUIConnection`)、`internal/comfyui` | 画像編集のプロバイダ。セルフホストの ComfyUI と Comfy Cloud の両方を扱う 1 つのアダプタと、その接続設定およびテスト | [ai-layer.md](docs/design-docs/ai-layer.md#image-edit-provider) |
@@ -123,9 +123,9 @@ flowchart LR
 | `internal/app` (`AutoTagger`) | 動画に合う既存のタグを分類器のポートに問い合わせることと、そのキュー | [auto-tagging.md](docs/design-docs/auto-tagging.md) |
 | `internal/app` (`VersionJudge`)、`internal/store` (`VersionStore.ClaimJudgement`、`ApplyJudgement`) | 重複の候補を、フレームごとの指紋と、異なる連続区間については分類器のポートから判定すること。所有者の操作と同じように組をまとめるか退けること | [duplicate-judging.md](docs/design-docs/duplicate-judging.md) |
 | `internal/store` (`ActivityStore`)、`internal/app` (`Activity`) | 活動ログ。実行と対象ごとに 1 つの項目をその変更のトランザクションで書き、新しい順に所有者へ一覧表示し、再試行と取り消しを種類ごとに振り分ける | [activity.md](docs/design-docs/activity.md) |
-| `internal/opener` | サーバー PC の既定のアプリで動画を開く。ループバックからのリクエストのみ | [video-detail-api.md](specs/012-video-detail-ia/contracts/video-detail-api.md) |
-| `internal/password` | PHC 文字列での Argon2id ハッシュ化 | [016 data-model](specs/016-single-account-auth/data-model.md) |
-| `internal/app` (`Auth`) | 初期設定、ログインの試行制限、セッション、API トークン | [016 data-model](specs/016-single-account-auth/data-model.md)、[026 data-model](specs/026-external-api/data-model.md) |
+| `internal/opener` | サーバー PC の既定のアプリで動画を開く。ループバックからのリクエストのみ | [画面 API](api/openapi.yaml) |
+| `internal/password` | PHC 文字列での Argon2id ハッシュ化 | [authentication.md](docs/design-docs/authentication.md) |
+| `internal/app` (`Auth`) | 初期設定、ログインの試行制限、セッション、API トークン | [authentication.md](docs/design-docs/authentication.md)、[external-api.md](docs/how-to/external-api.md) |
 | `internal/eventbus` | ドメインイベントのプロセス内配信 | [process-lifecycle.md](docs/design-docs/process-lifecycle.md) |
 | `internal/desktop` | デスクトップアプリのウィンドウ、ダイアログ、データフォルダ | [windows-app.md](docs/design-docs/windows-app.md) |
 

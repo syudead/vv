@@ -7,7 +7,7 @@ import { GroupNameField } from "./GroupNameField";
 import { VideoDropMenu } from "./VideoDropMenu";
 
 // 新しいグループの名前の欄と、動画を動画に落としたメニュー
-// （specs/050-drag-organize/ui-design.md「The new group's name」「Bundle limit」）。
+//
 
 describe("GroupNameField", () => {
   it("仮の名前を選んだ状態でフォーカスを受け、変えた名前の Enter で送って閉じる", async () => {

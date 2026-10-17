@@ -403,7 +403,7 @@ func TestIngestThumbnailFailure(t *testing.T) {
 	}
 }
 
-// 生成が返した代用を、成功を書く保存側へ渡す（specs/024-import-progress/research.md R-7）。
+// 生成が返した代用を、成功を書く保存側へ渡す。
 // 置き場に完成したシーク用サムネイルがあって生成しなかったときは、置き場が生成時に
 // 残した記録を渡す。記録の無い旧いものは、代用したかが分からないので Unknown を渡す。
 func TestIngestPassesSubstitutionToStore(t *testing.T) {

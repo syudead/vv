@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// 人物と団体（specs/047-video-work-info/data-model.md「Entities」、research.md R-3・R-8）。
+// 人物と団体。
 // どちらも名前が重なってよい id の実体で、名前・別名・外部 ID を持ち、団体だけが親の団体を持つ。
 
 // CreditKind は実体の種類である。保存層はこれで表の名前を決める。
@@ -82,7 +82,7 @@ type CreditQuery struct {
 	// Q は生の検索語。保存層が FoldForMatch を掛けて前後の空白を落とし、空でなければ名前か
 	// 別名の照合形に部分一致する実体だけにする。
 	Q string
-	// Sort はタグの一覧と同じ 5 つの並び順（specs/036-tag-admin-scale/research.md R-1）。
+	// Sort はタグの一覧と同じ 5 つの並び順。
 	// 空なら TagSortName。
 	Sort TagSort
 	// Cursor は前のページの CreditPage.NextCursor。解釈できないもの・別の並び順や別の種類の
@@ -151,7 +151,7 @@ func (e *CreditNotFoundError) Error() string {
 
 func (e *CreditNotFoundError) Unwrap() error { return ErrNotFound }
 
-// NormalizeCredit は実体の入力を data-model.md「Fields」の規則で整える。誤りは名前・別名・
+// NormalizeCredit は実体の入力を 入力の規則で整える。誤りは名前・別名・
 // 外部 ID の順に、最初の 1 件を *InvalidWorkInfoError で返す。
 //
 //   - 名前: 表示名と同じ手順で整え、空なら name の WorkInfoEmpty、CreditNameMaxLength を超えれば TooLong。
@@ -215,7 +215,7 @@ func normalizeAliases(name string, aliases []Alias) ([]Alias, error) {
 
 // isLanguageTagSyntax は s が BCP 47 の言語タグの構文に合うかを返す。2〜35 文字の ASCII の
 // 英字・数字・- で、先頭の副タグが 2 か 3 文字の英字（その後は終わりか -）である。登録された
-// 言語かどうかは確かめない（data-model.md「Fields」）。長すぎる値は呼び手が TooLong で先に拒む。
+// 言語かどうかは確かめない。長すぎる値は呼び手が TooLong で先に拒む。
 func isLanguageTagSyntax(s string) bool {
 	if len(s) < 2 || len(s) > CreditLanguageMaxLength {
 		return false

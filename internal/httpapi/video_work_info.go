@@ -12,8 +12,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 動画の作品情報の読み書き（specs/047-video-work-info/contracts/screen-api.md「PUT /api/videos/{id}/work-info」
-// 「PUT /api/videos/{id}/details」「Video changes」、research.md R-5・R-10・R-11・R-14）。どちらの経路も
+// 動画の作品情報の読み書き。どちらの経路も
 // 所有者だけ（accessRoutes の既定）で、internal/app は通さず internal/store の WorkInfoStore の 1 つの
 // 取引で済ませる。誤りは人物・団体の経路と同じ workInfoFailureOf で写す。
 

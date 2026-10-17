@@ -36,7 +36,7 @@ export interface PanelProps {
 }
 
 /**
- * BasicsPanel は編集画面の `Basics` の欄の中身である（ui-design.md「Screen」「Fields」）。
+ * BasicsPanel は編集画面の `Basics` の欄の中身である。
  * 上から Name、Code と 3 つの日付の 2×2、Description（残りの高さを埋める）、Links、IDs。
  */
 export default function BasicsPanel({
