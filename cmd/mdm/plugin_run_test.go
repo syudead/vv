@@ -19,19 +19,19 @@ import (
 	"github.com/syudead/vv/internal/wasmplugin/plugintest"
 )
 
-// mdm plugin run のテスト（specs/056-plugin-tooling/contracts/plugin-cli.md）。プラグインは
-// 実行には testdata/runplugin、引数検証には testdata/minimal.wasm を使う。CI はインターネットに
+// mdm plugin run のテスト（specs/056-plugin-tooling/contracts/plugin-cli.md）。
+// 実行には plugintest の WASI fixture、引数検証には testdata/minimal.wasm を使う。CI はインターネットに
 // 出ないので、site.test を公開のアドレスに解決し、その接続を loopback に立てたサイトへつなぐ。
 
 const runManifest = `{"contract":1,"name":"run-test","version":"0.1.0","operations":["search","fetch"],` +
 	`"settings":[{"key":"token","label":"API token","secret":true,"required":true},` +
 	`{"key":"region","label":"Region","default":"jp","options":["jp","us"]}]}`
 
-// runModulePath は runplugin にマニフェストを足したモジュールを一時ファイルに書き、そのパスを返す。
+// runModulePath は CLI fixture にマニフェストを足したモジュールを一時ファイルに書き、そのパスを返す。
 // manifest が空ならマニフェストを足さない。
 func runModulePath(t *testing.T, manifest string) string {
 	t.Helper()
-	return writeRunModulePath(t, plugintest.Build(t, "testdata/runplugin"), manifest)
+	return writeRunModulePath(t, plugintest.CLI(), manifest)
 }
 
 func writeRunModulePath(t *testing.T, module []byte, manifest string) string {
