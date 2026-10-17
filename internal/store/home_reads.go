@@ -101,10 +101,6 @@ func (s *HomeStore) ShelfItems(ctx context.Context, audience domain.Audience, ke
 			missing = append(missing, i)
 		}
 	}
-	// グループの構造の表と根の値を、読む前に（印や欠けがあれば）整える（group_closure.go）。
-	if err := ensureGroupStructure(ctx, s.db); err != nil {
-		return domain.HomeShelfPage{}, err
-	}
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.HomeShelfPage{}, fmt.Errorf("cannot start reading the home shelves: %w", err)
@@ -135,7 +131,10 @@ func (s *HomeStore) ShelfItems(ctx context.Context, audience domain.Audience, ke
 // readHomeShelves は棚 keys のうち位置 indexes の棚を読み、同じ位置の results に入れる。棚の項目は基底の
 // 表の索引をなぞって読む（home_shelf_read.go）。
 func readHomeShelves(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []domain.HomeShelfKey, indexes []int, results []homeShelfCacheEntry) error {
-	reader := &homeShelfReader{ctx: ctx, tx: tx, audience: audience, now: listNow().Unix()}
+	reader, err := newHomeShelfReader(ctx, tx, audience, listNow().Unix())
+	if err != nil {
+		return err
+	}
 	for _, i := range indexes {
 		spec, found, err := homeShelfItemsSpec(ctx, tx, audience, keys[i], reader.now)
 		if err != nil {

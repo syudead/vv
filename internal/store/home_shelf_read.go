@@ -50,6 +50,26 @@ type homeShelfReader struct {
 	// searches は検索式の段の識別子ごとの、当たる動画の id の JSON の配列である。検索式の段は全文索引
 	// から 1 度だけ読み、条件には配列を渡す（まとまりごとに読み直さない）。
 	searches map[string]string
+	// bundles は集まり（動画のバージョン）があるかである。無ければ利用者データの鍵は内容の鍵そのもので、
+	// 集まりの代表の判定も要らないので、なぞる行ごとの副問い合わせを省く。
+	bundles bool
+}
+
+// newHomeShelfReader は読み出しを始める。
+func newHomeShelfReader(ctx context.Context, tx *sql.Tx, audience domain.Audience, now int64) (*homeShelfReader, error) {
+	r := &homeShelfReader{ctx: ctx, tx: tx, audience: audience, now: now}
+	if err := tx.QueryRowContext(ctx, `select exists (select 1 from video_bundle_members)`).Scan(&r.bundles); err != nil {
+		return nil, fmt.Errorf("cannot read whether bundles exist: %w", err)
+	}
+	return r, nil
+}
+
+// userKey は動画（別名 videos）の利用者データの鍵の式である。
+func (r *homeShelfReader) userKey() string {
+	if r.bundles {
+		return userKeyExpr("videos")
+	}
+	return `videos.content_key`
 }
 
 // videoWatchStateSQL は動画（別名 videos）の視聴状態の式で、videoWatchStateExpr と同じ決め方である。
@@ -118,6 +138,19 @@ func (r *homeShelfReader) matchedCondition(spec listSpec) (string, []any, error)
 	return strings.Join(conditions, " and "), args, nil
 }
 
+// searchDriven は棚 spec が検索式の段を持ち、その当たりの集合から動画を引けるかを返す。そのとき索引を
+// 最後までなぞらず、集合の動画だけを並べる（walks）。
+func (r *homeShelfReader) searchDriven(spec listSpec) (string, bool) {
+	if !spec.hasSearch() {
+		return "", false
+	}
+	set, err := r.searchSet(spec)
+	if err != nil {
+		return "", false
+	}
+	return set, true
+}
+
 // perVideoCondition は spec の実効の規則に動画として一致する条件（smartMatchFor と同じ。再生可否・お気に
 // 入りのみ・視聴状態も動画に掛ける）の句と引数を返す。
 func (r *homeShelfReader) perVideoCondition(spec listSpec) (string, []any, error) {
@@ -149,7 +182,8 @@ func (r *homeShelfReader) perVideoCondition(spec listSpec) (string, []any, error
 }
 
 // ruleOf は棚 spec の条件を句にする。棚にない動画の棚は、どのフォルダの棚の実効の規則にも動画として一致
-// しない条件（R-11。条件が NULL の棚も一致しないと見る）を足す。
+// しない条件（R-11）を足す。維持済みなら home_shelved_videos を引き、求め直していない動画があるときだけ
+// 規則を行ごとに掛ける（条件が NULL の棚も一致しないと見る）。
 func (r *homeShelfReader) ruleOf(spec listSpec) (homeShelfRule, error) {
 	rule := homeShelfRule{spec: spec, favorite: spec.itemGroupsFavorite(), favoriteOnly: spec.itemGroupsFavorite(),
 		playable: spec.anyLevel(func(level listSpec) bool { return level.playableOnly })}
@@ -163,6 +197,19 @@ func (r *homeShelfReader) ruleOf(spec listSpec) (homeShelfRule, error) {
 		}
 	}
 	if spec.unshelved {
+		pending, err := shelvedMarksPending(r.ctx, r.tx)
+		if err != nil {
+			return homeShelfRule{}, err
+		}
+		if !pending {
+			// 棚への一致は維持済みなので、表を引くだけでよい（home_index_maintenance.go）。
+			conditions := []string{`not exists (select 1 from home_shelved_videos sv where sv.content_key = ` + r.userKey() + `)`}
+			if rule.condition != "" {
+				conditions = append([]string{rule.condition}, conditions...)
+			}
+			rule.condition = strings.Join(conditions, " and ")
+			return rule, nil
+		}
 		if r.shelves == nil {
 			shelves, err := homeShelfSpecs(r.ctx, r.tx, r.audience, r.now)
 			if err != nil {
@@ -224,7 +271,7 @@ type homeShelfRow struct {
 // （絞り込みの無い視聴状態やお気に入り、組み立ての経路だけが使う値）は定数にして、行ごとの副問い合わせを
 // 減らす。
 func (r *homeShelfReader) rowColumns(rule homeShelfRule, assemble bool) string {
-	userKey := userKeyExpr("videos")
+	userKey := r.userKey()
 	roots := `(select group_concat(c.root_id) from group_closure c where c.content_key = ` + userKey + `
 		and not exists (select 1 from group_items pg where pg.child_id = c.root_id))`
 	if rule.favorite {
@@ -254,8 +301,11 @@ func (r *homeShelfReader) chosenLocationJoin() string {
 		and ` + visibleLocationCondition("l", r.audience) + `)`
 }
 
-// shownCondition は動画（別名 videos）を見る人に見せる条件である。
+// shownCondition は動画（別名 videos）を見る人に見せる条件である。集まりが無ければ代表の判定は要らない。
 func (r *homeShelfReader) shownCondition() string {
+	if !r.bundles {
+		return visibleVideoCondition("videos", r.audience)
+	}
 	return visibleVideoCondition("videos", r.audience) + ` and ` + shownVideoCondition("videos", r.audience)
 }
 
@@ -296,9 +346,9 @@ type homeShelfRoot struct {
 	values rootValuesRow
 }
 
-// decideRoots は根 roots（未判定のもの）を判定する。条件の無い棚では見せる子孫があれば whole で、所有者の
-// 値は stored なら group_root_values から読む（無ければ集める）。条件のある棚と、ゲストと、グループ自身の
-// 値（題名、お気に入りにした日時）が要る組み立ての経路は、子孫から集める。
+// decideRoots は根 roots（未判定のもの）を判定する。条件の無い棚では見せる子孫があれば whole である。値は
+// stored なら group_root_values から読み（まだ無い根は集める）、条件のある棚はさらに子孫のすべてが当たるかを
+// 確かめる。グループ自身の値（題名、お気に入りにした日時）が要る組み立ての経路は子孫から集める。
 func (r *homeShelfReader) decideRoots(rule homeShelfRule, roots []int64, known map[int64]homeShelfRoot, stored bool) error {
 	var fresh []int64
 	for _, root := range roots {
@@ -311,8 +361,8 @@ func (r *homeShelfReader) decideRoots(rule homeShelfRule, roots []int64, known m
 	}
 	values := map[int64]rootValuesRow{}
 	var err error
-	if stored && r.audience.IsOwner() {
-		if values, err = readStoredRootValues(r.ctx, r.tx, fresh); err != nil {
+	if stored {
+		if values, err = readStoredRootValues(r.ctx, r.tx, r.audience, fresh); err != nil {
 			return err
 		}
 		var missing, found []int64

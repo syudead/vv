@@ -99,6 +99,20 @@ func (r *homeShelfReader) walks(rule homeShelfRule, sort homeShelfTopSort) []*ho
 		shown += ` and ` + rule.condition
 	}
 	videoKey := func(row homeShelfRow) any { return row.videoID }
+	// 検索式の棚は当たりの集合（全文索引から読んだ id）から動画を引き、並べる。集合は小さいので索引を
+	// なぞるより速い。最後の再生日の表は集合と結ばず、下の表のまま読む。
+	if set, ok := r.searchDriven(rule.spec); ok && sort.source != `progress` {
+		value, order := `videos.added_at`, [2]string{`videos.added_at`, `videos.id`}
+		from := `(select value as id from json_each('` + set + `')) hits join videos on videos.id = hits.id` + r.chosenLocationJoin()
+		if sort.source == `locations` {
+			value = `loc.mtime`
+			if sort.column == `created_at` {
+				value = fileCreatedAtExpr("loc")
+			}
+			order = [2]string{value, `videos.id`}
+		}
+		return []*homeShelfWalk{{from: from, value: value, order: order, where: shown, keyOf: videoKey}}
+	}
 	switch sort.source {
 	case `locations`:
 		value := `loc.mtime`

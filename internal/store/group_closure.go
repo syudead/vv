@@ -6,12 +6,12 @@ package store
 // group_closure は、いちばん上のグループ（根）ごとの子孫の動画の項目の鍵と再生順の鍵で、グループの
 // 構造を変える書き込み（GroupStore と OrganizeStore の書き込み、フォルダの自動グループの同期、集まりの
 // 鍵の付け替え）が同じ取引で作り直す（rebuildGroupClosure）。groups と group_items への書き込みは引き金で
-// group_closure_dirty に印を付けるので、作り直しを通らない書き込みがあっても、次の棚の読み出しが印を
-// 見て作り直す（ensureGroupStructure）。
+// group_closure_dirty に印を付けるので、作り直しを通らない書き込みがあっても、書き込みの確定のあとの維持が
+// 印を見て作り直す（maintainHomeIndexes）。
 //
-// group_root_values は所有者に見せる子孫から集めた値で、値を変える書き込みが引き金で根の行を消し、次の
-// 棚の読み出しが欠けた根の行を埋め直す（refillGroupRootValues）。どちらも読み出しの前の短い書き込みの
-// 取引で行い、読み出しの取引は読むだけである。
+// group_root_values は見る人ごとに見せる子孫から集めた値で、値を変える書き込みが引き金で根の行を消し、
+// 書き込みの確定のあとの維持（home_index_maintenance.go）が欠けた根の行を埋め直す。読み出しは書かず、
+// まだ欠けている根だけその場で集める。
 
 import (
 	"context"
@@ -80,25 +80,33 @@ func rootValuesSelect(audience domain.Audience, roots, condition string, args []
 		group by m.root_id`, args
 }
 
-// refillGroupRootValues は、値の行の無いグループの所有者の値を group_root_values に入れる。子孫を見せない根は members が 0 の行になる。
-func refillGroupRootValues(ctx context.Context, tx *sql.Tx) error {
+// audienceColumn は group_root_values の audience の値である。
+func audienceColumn(audience domain.Audience) int {
+	if audience.IsOwner() {
+		return 1
+	}
+	return 0
+}
+
+// refillGroupRootValues は、見る人 audience の値の行の無いグループの値を group_root_values に入れる。
+func refillGroupRootValues(ctx context.Context, tx *sql.Tx, audience domain.Audience) error {
 	missing, err := queryInt64s(ctx, tx, `select g.id from groups g
-		where not exists (select 1 from group_root_values v where v.root_id = g.id)`)
+		where not exists (select 1 from group_root_values v where v.root_id = g.id and v.audience = ?)`, audienceColumn(audience))
 	if err != nil {
 		return fmt.Errorf("cannot find the groups without values: %w", err)
 	}
 	if len(missing) == 0 {
 		return nil
 	}
-	values, err := readRootValues(ctx, tx, domain.AudienceOwner, missing, "", nil)
+	values, err := readRootValues(ctx, tx, audience, missing, "", nil)
 	if err != nil {
 		return err
 	}
 	for _, root := range missing {
 		row := values[root]
-		if _, err := tx.ExecContext(ctx, `insert into group_root_values (root_id, members, added_at, mtime, created_at, played_at,
+		if _, err := tx.ExecContext(ctx, `insert or replace into group_root_values (root_id, audience, members, added_at, mtime, created_at, played_at,
 			duration_ms, size_bytes, watched, started, playable, added_member, mtime_member, created_member, played_member)
-			values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, root, row.members, row.addedAt, row.mtime, row.createdAt, row.playedAt,
+			values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, root, audienceColumn(audience), row.members, row.addedAt, row.mtime, row.createdAt, row.playedAt,
 			row.durationMs, row.sizeBytes, row.watched, row.started, row.playable, nullableID(row.member[`added_at`]),
 			nullableID(row.member[`mtime`]), nullableID(row.member[`created_at`]), nullableID(row.member[`played_at`])); err != nil {
 			return fmt.Errorf("cannot refill the group values: %w", err)
@@ -125,44 +133,6 @@ func rekeyGroupItems(ctx context.Context, tx *sql.Tx, from, to string) ([]int64,
 		return nil, err
 	}
 	return changed, rebuildGroupClosure(ctx, tx)
-}
-
-// ensureGroupStructure は棚の読み出しの前に、印があれば group_closure を作り直し、値の行の無い根があれば
-// 埋める。どちらも短い書き込みの取引で、無ければ何も書かない。
-func ensureGroupStructure(ctx context.Context, db *DB) error {
-	dirty, err := groupClosureDirty(ctx, db.read)
-	if err != nil {
-		return err
-	}
-	var missing bool
-	if err := db.read.QueryRowContext(ctx, `select exists (select 1 from groups g
-		where not exists (select 1 from group_root_values v where v.root_id = g.id))`).Scan(&missing); err != nil {
-		return fmt.Errorf("cannot read whether the group values are current: %w", err)
-	}
-	if !dirty && !missing {
-		return nil
-	}
-	tx, err := db.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("cannot start maintaining the group structure: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	// 印はこの取引の中で読み直す（別の書き込みが先に作り直しているかもしれない）。
-	if dirty, err = groupClosureDirty(ctx, tx); err != nil {
-		return err
-	}
-	if dirty {
-		if err := rebuildGroupClosure(ctx, tx); err != nil {
-			return err
-		}
-	}
-	if err := refillGroupRootValues(ctx, tx); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("cannot finish maintaining the group structure: %w", err)
-	}
-	return nil
 }
 
 // rootValuesRow は根 1 つの値（rootValuesSelect の 1 行）である。
@@ -234,15 +204,15 @@ func readRootValues(ctx context.Context, tx *sql.Tx, audience domain.Audience, r
 	return out, rows.Err()
 }
 
-// readStoredRootValues は所有者の根 roots の値を group_root_values から読む。行の無い根は結果に無い。
-func readStoredRootValues(ctx context.Context, tx *sql.Tx, roots []int64) (map[int64]rootValuesRow, error) {
+// readStoredRootValues は見る人 audience の根 roots の値を group_root_values から読む。行の無い根は結果に無い。
+func readStoredRootValues(ctx context.Context, tx *sql.Tx, audience domain.Audience, roots []int64) (map[int64]rootValuesRow, error) {
 	ids := make([]string, len(roots))
 	for i, root := range roots {
 		ids[i] = strconv.FormatInt(root, 10)
 	}
 	rows, err := tx.QueryContext(ctx, `select root_id, members, 0, added_at, mtime, created_at, played_at, duration_ms, size_bytes,
 		watched, started, playable, added_member, mtime_member, created_member, played_member, null, null
-		from group_root_values where root_id in (select value from json_each(?))`, `[`+strings.Join(ids, ",")+`]`)
+		from group_root_values where audience = ? and root_id in (select value from json_each(?))`, audienceColumn(audience), `[`+strings.Join(ids, ",")+`]`)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the group values: %w", err)
 	}

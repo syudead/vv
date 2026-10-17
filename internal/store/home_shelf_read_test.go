@@ -376,14 +376,15 @@ func TestGroupClosureFollowsEveryWriter(t *testing.T) {
 	requireClosureCurrent(t, db, "フォルダの自動グループの再同期")
 }
 
-// 動画・所在・再生の記録の書き込みは引き金で根の値を消し、次の読み出しが埋め直した値は子孫から集め直した
-// ものと等しい。
+// 動画・所在・再生の記録・公開の書き込みは引き金で根の値を消し、確定のあとの維持が埋め直した値は、所有者と
+// ゲストのどちらも子孫から集め直したものと等しい。棚への一致（home_shelved_videos）も求め直したものと等しい。
 func TestGroupRootValuesFollowVideoWrites(t *testing.T) {
-	db, ids, _ := homeShelfReadFixture(t)
+	db, ids, tags := homeShelfReadFixture(t)
+	homeShelfReadShelves(t, db, tags)
 	ctx := context.Background()
 	check := func(step string) {
 		t.Helper()
-		if _, err := db.Home().ShelfItems(ctx, domain.AudienceOwner, []domain.HomeShelfKey{{Kind: domain.HomeShelfRecent}}); err != nil {
+		if err := db.maintainHomeIndexes(ctx); err != nil {
 			t.Fatal(err)
 		}
 		tx, err := db.sql.BeginTx(ctx, nil)
@@ -395,23 +396,43 @@ func TestGroupRootValuesFollowVideoWrites(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		stored, err := readStoredRootValues(ctx, tx, roots)
+		for _, audience := range []domain.Audience{domain.AudienceOwner, domain.AudienceGuest} {
+			stored, err := readStoredRootValues(ctx, tx, audience, roots)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fresh, err := readRootValues(ctx, tx, audience, roots, "", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, root := range roots {
+				got, want := stored[root], fresh[root]
+				want.titleKey, want.favoritedAt = "", sql.NullInt64{}
+				if got.members == 0 && want.members == 0 {
+					continue
+				}
+				if fmt.Sprint(got) != fmt.Sprint(want) {
+					t.Errorf("%s (%s): root %d の値 = %+v, want %+v", step, audience, root, got, want)
+				}
+			}
+		}
+		// 棚への一致: 表の鍵と、規則を全動画に掛け直した鍵が等しい。
+		if _, err := tx.ExecContext(ctx, `update home_shelved_state set all_dirty = 1`); err != nil {
+			t.Fatal(err)
+		}
+		before, err := queryStrings(ctx, tx, `select content_key from home_shelved_videos order by content_key`)
 		if err != nil {
 			t.Fatal(err)
 		}
-		fresh, err := readRootValues(ctx, tx, domain.AudienceOwner, roots, "", nil)
+		if err := refillShelvedVideos(ctx, tx); err != nil {
+			t.Fatal(err)
+		}
+		after, err := queryStrings(ctx, tx, `select content_key from home_shelved_videos order by content_key`)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, root := range roots {
-			got, want := stored[root], fresh[root]
-			want.titleKey, want.favoritedAt = "", sql.NullInt64{}
-			if got.members == 0 && want.members == 0 {
-				continue
-			}
-			if fmt.Sprint(got) != fmt.Sprint(want) {
-				t.Errorf("%s: root %d の値 = %+v, want %+v", step, root, got, want)
-			}
+		if !slices.Equal(before, after) {
+			t.Errorf("%s: 棚への一致 = %v, want %v", step, before, after)
 		}
 	}
 	check("最初の読み出し")
@@ -427,6 +448,16 @@ func TestGroupRootValuesFollowVideoWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("長さの確定")
+	if _, err := db.sql.Exec(`insert into public_videos (content_key, published_at) values (?, 1)`, "key"+fixturePath("/media/pair/p2.mp4")); err != nil {
+		t.Fatal(err)
+	}
+	check("公開")
+	tags2, err := db.Tags().CreateTag(ctx, "bird")
+	if err != nil {
+		t.Fatal(err)
+	}
+	attachTag(t, db, "key"+fixturePath("/media/mixed/x.mp4"), tags2.ID)
+	check("タグ")
 	db.homeShelves.dropFor([]domain.Event{domain.HomeChanged{}})
 	if _, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{Path: fixturePath("/media/pair/p3.mp4"), Title: "p3", ContentKey: "key-p3",
 		SizeBytes: 9, MTime: fixedTime, AddedAt: fixedTime.Add(time.Hour), Container: "mp4"}); err != nil {
