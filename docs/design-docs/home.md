@@ -134,3 +134,55 @@ unshelved, because the watch history is the owner's only
 | The sum of closeness to all seeds | Videos near one large cluster of seeds fill the whole shelf |
 | Ranking on every read | One pass reads every video's clues, which does not fit the home's 1 second |
 | Continue watching held until the next notice | Playing a video in progress publishes nothing, so the shelf would keep the old order for 10 minutes |
+
+## Reading the shelves
+
+`GET /api/home/shelves` returns the first 24 items of up to 8 shelves, and
+each shelf shows the items the library would show for its rule: videos, and a
+group card for every group whose shown videos all match
+([R-12](../../specs/057-home/research.md#r-12-the-home-lists-shelf-summaries-shelf-items-are-read-on-screen),
+[R-14](../../specs/057-home/research.md#r-14-pressing-a-shelf-card-plays)).
+The library's own query rebuilds the shown videos and the group descendants
+for every shelf and builds every item row before it takes the first page, so
+at 20,000 videos eight shelves took 2.3 to 3.0 s. The shelf read in
+[`internal/store/home_shelf_read.go`](../../internal/store/home_shelf_read.go)
+builds, once per read, indexed temporary tables that do not depend on the
+shelf, and reads each shelf as sets of ids plus its first page.
+
+```mermaid
+flowchart LR
+  read[Shelf read] --> base[(hs_base: shown videos, item values, top group)]
+  base --> gm[(hs_gm, hs_groups: group descendants and aggregates)]
+  base --> search[(hs_search: videos per search phrase)]
+  base --> shelved[(hs_shelved: videos on any shelf)]
+  gm --> shelf[Per shelf: matched ids, whole groups, first page]
+  search --> shelf
+  shelved --> shelf
+  shelf --> load[Load the 24 items]
+```
+
+| Table | Rows | Built from |
+| --- | --- | --- |
+| `hs_base` | One per video the viewer is shown, with the item values (dates, length, size, title key, play, favorite, watch state) and the top group it belongs to | The same `chosen` locations as the library, joined once to locations, playback and favorites |
+| `hs_gm`, `hs_groups` | One per (top group, shown descendant video); one per top group with its member count and the group item's values | The group descendants CTE, with the video resolved through `hs_base.user_key` instead of a subquery per item |
+| `hs_search` | One per (video, search phrase) for the phrases the shelves use | The full-text index, one statement per phrase, driven by the index |
+| `hs_shelved` | One per video matched by any folder shelf's effective rule, only when the unshelved shelf is read | One statement per distinct rule over `hs_base` ([R-11](../../specs/057-home/research.md#r-11-unshelved-means-matching-no-home-shelf-computed-on-read)) |
+
+A shelf then runs one statement: the matched video ids with their top group,
+the groups whose matched count equals their member count (whole), the video
+items (matched videos in no whole group) and the group items (whole groups'
+aggregates), sorted and cut to the first page with the count. A shelf with no
+rule, the recently added shelf, skips the matching: every group is whole and
+the video items are the ungrouped videos. The tables live in the read
+transaction, which ends with a rollback so they vanish with it. A test checks that every
+shelf returns exactly the library read's first page, for every sort, both
+viewers, nested and overlapping groups and bundled videos. The shelf cache
+([R-12](../../specs/057-home/research.md#r-12-the-home-lists-shelf-summaries-shelf-items-are-read-on-screen))
+stays for repeated opens of the home within ten minutes; it is no longer what
+keeps the read inside its budget.
+
+| Rejected | Why |
+| --- | --- |
+| The library items query per shelf | Rebuilds the shown videos and the group descendants per shelf, builds every item row, and joins unindexed `with` tables through automatic indexes; 2.3 to 3.0 s for eight shelves |
+| Top-N by an index with early termination and no count | `total` is the shelf's item count and a group is whole only when all its members match, so every matched video is visited once anyway |
+| Persisting the group descendants, maintained on group writes | Saves about 70 ms of the read, costs a maintained table in five group writers; left for when the budget tightens |

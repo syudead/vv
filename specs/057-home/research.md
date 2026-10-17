@@ -244,14 +244,36 @@ the owner, the organizer state, and `GET /api/home/shelves` returns the first
 screen; with 20,000 videos and 50 shelves, each returns within 1 second on
 the development host, measured by a store benchmark.
 
+Revised 2026-10-17: the shelf items read builds, once per read, indexed
+temporary tables that depend on the viewer but not on the shelf (the shown
+videos with their item values and the top group each belongs to, the group
+descendants with each group's item values, the videos per search phrase and,
+for the unshelved shelf, the videos on any shelf), and reads each shelf as id
+sets (matched videos, whole groups) plus its first page. The items and their
+order are the library's ([R-14](#r-14-pressing-a-shelf-card-plays)), checked
+by a test against the library items read for every sort and both viewers. The
+10-minute shelf cache (PR #1335) stays for repeated opens of the home; it no
+longer carries the budget.
+
 | Option | Verdict |
 | --- | --- |
 | **Summaries, then items for the shelves on screen** | Chosen |
 | Every shelf's items in one read | Rejected: 50 shelves are 50 folder reads, as 052 R-13 found for the library cards |
 | Items from the smart folder items route, one request per shelf | Rejected: a screen of 6 shelves costs 6 round trips, and the fixed shelves are not folders |
+| **Tables built once per read; per shelf only id sets and the first page** | Chosen (2026-10-17) |
+| Each shelf through the library items query (the decision until 2026-10-17) | Rejected by the maintainer (2026-10-17): it evaluates the rule over every video, rebuilds the group descendants and every item row before taking 24 items, and joins unindexed `with` tables through automatic indexes; 2.3 to 3.0 s for 8 shelves at 20,000 videos, and the cache helped warm reads only |
+| Shelves of videos only | Rejected by the maintainer (2026-10-17): a shelf shows the group cards the library shows (R-14) |
+| The first page through an index with early termination, no count | Rejected: `total` is the shelf's item count and a group is whole only when every member matches, so every matched video is visited once; the page is then cut from the items |
+| Group descendants persisted and maintained on group writes | Rejected for now: about 70 ms of the read against a maintained table in the five group writers; reconsider if the budget tightens |
 
 **Rationale**: It is the pattern of 052 R-14 for folder cards, so a home with
-many shelves opens without waiting (Edge Case).
+many shelves opens without waiting (Edge Case). On the host of the 2026-10-17
+change, `BenchmarkHomeReads` went from 2.25 s to 0.89 to 0.93 s for the
+owner's 8 shelves, from 2.7 s to 0.52 s for a guest's, and from 0.60 s to
+0.34 s for the continue watching shelf alone; the development host measured
+the old read at 2.7 to 3.0 s. The read now spends about 0.3 s on the tables
+(shown videos, group structure) and 0.05 to 0.1 s on a shelf with many whole
+groups, half of it loading the 24 group cards' members.
 
 ## R-13: Four fixed shelves, two of them the owner's only
 
