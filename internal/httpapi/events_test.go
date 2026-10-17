@@ -330,6 +330,11 @@ func TestEventsHandleMapsDomainEvents(t *testing.T) {
 	if videos := sub.take().videos; !slices.Equal(videos, []int64{8, 9}) {
 		t.Fatalf("VideoBundleChanged: videos = %v, want [8 9]", videos)
 	}
+	// 作品情報の変化も各動画の video に写す（specs/047-video-work-info/research.md R-11）。
+	events.Handle(domain.VideoWorkInfoChanged{VideoIDs: []int64{10, 11}})
+	if videos := sub.take().videos; !slices.Equal(videos, []int64{10, 11}) {
+		t.Fatalf("VideoWorkInfoChanged: videos = %v, want [10 11]", videos)
+	}
 	// 候補の変化は candidates に写し、続けての変化は 1 つにまとまる（specs/054-auto-dup/research.md R-10）。
 	events.Handle(domain.VersionCandidatesChanged{})
 	events.Handle(domain.VersionCandidatesChanged{})

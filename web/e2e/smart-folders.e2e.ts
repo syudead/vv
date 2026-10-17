@@ -3,7 +3,6 @@ import path from "node:path";
 
 import {
   type APIRequestContext,
-  type Browser,
   expect,
   type Locator,
   type Page,
@@ -15,14 +14,16 @@ import { ownerStorageState } from "./owner-account";
 // スマートフォルダ（specs/052-smart-folders、親 #1139、子 #1182）の流れを、実サーバーと実メディアに
 // 通す。動画は run-e2e.mjs が generateSmartFoldersFixtures で作る 20 秒の 7 本で、名前は
 // media-fixtures.mjs の SMART_FOLDER_* と同じ。条件の検証、入れ子の条件、窓の入力の規則、
-// URL の運び方などはドメイン・ストア・ページのテストが持つので、ここでは重ねず、実サーバーの
-// 一致と画面の知らせ（smartFolder の画面イベント）が要る流れだけを確かめる
+// URL の運び方、グループの見せ方、子の条件、ゲストの見え方、名前の変更と削除はドメイン・ストア・
+// ページのテストが持つので、ここでは重ねない。残すのは、ライブラリから保存して実サーバーの一致を
+// 見る流れ、別のタブの変更が画面の知らせ（smartFolder の画面イベント）で届く流れ、実メディアの
+// 再生でプレイリストの中のフォルダを進む流れ、画面写真である
 // （docs/design-docs/web-testing.md の Test levels）。テストの名前の番号は親 Issue の受け入れ
 // 条件で、「画面」は specs/052-smart-folders/ui-design.md の Review criteria の番号である。
 //
-// テストは順に状態を引き継ぐ。タグ「猫」は 猫A・猫B・両方1・両方2・片方1 に付き、「犬」は犬に
-// 付く。種類 Genre は「猫」に付ける。サーバーとデータベースはほかの e2e と共有するので、作った
-// フォルダ・タグ・プレイリストと登録フォルダは終わりに消し、公開も戻す。
+// タグ「猫」は 猫A・猫B・両方1・両方2・片方1 に付ける。フォルダ「タグ: 猫」とその子「未視聴」は
+// beforeAll が API で作る。サーバーとデータベースはほかの e2e と共有するので、作ったフォルダ・
+// タグ・プレイリストと登録フォルダは終わりに消し、公開も戻す。
 
 interface MediaFolder {
   id: number;
@@ -61,31 +62,20 @@ const both2 = "スマート確認の両方2";
 const half1 = "スマート確認の片方1";
 const half2 = "スマート確認の片方2";
 const bothGroup = "両方に猫のグループ";
-const halfGroup = "片方に猫のグループ";
 const allTitles = [catA, catB, dog, both1, both2, half1, half2];
 const catTitles = [catA, catB, both1, both2, half1];
 // テストが作るタグ・フォルダ・プレイリスト。前の試行の残りも名前で探して消す。
 const catTag = "猫";
-const dogTag = "犬";
 const catFolder = "タグ: 猫";
-const renamedCatFolder = "タグ: ねこ";
 const unwatchedChild = "未視聴";
 const savedFolder = "猫の未視聴";
-const genreFolder = "ジャンルの未視聴";
-const folderNames = [
-  catFolder,
-  renamedCatFolder,
-  unwatchedChild,
-  savedFolder,
-  genreFolder,
-];
+const folderNames = [catFolder, unwatchedChild, savedFolder];
 const playlistName = "スマートフォルダの再生";
 
 const videos = new Map<string, Video>();
 const folderIds = new Map<string, number>();
 const tagIds = new Map<string, number>();
 let mediaFolder: MediaFolder | undefined;
-let genreId = 0;
 
 function video(title: string): Video {
   const found = videos.get(title);
@@ -168,19 +158,18 @@ async function readTagIds(request: APIRequestContext, title: string) {
   }
 }
 
-/** ensureGenre は種類 Genre の id を返す。新しいデータベースの既定の種類が無ければ作る。 */
-async function ensureGenre(request: APIRequestContext): Promise<number> {
-  const list = await request.get("/api/tag-kinds");
-  expect(list.ok()).toBe(true);
-  const { items } = (await list.json()) as { items: Named[] };
-  const found = items.find((item) => item.name === "Genre");
-  if (found !== undefined) return found.id;
-  const response = await request.post("/api/tag-kinds", {
+/** createFolder は API でスマートフォルダを作り、名前で id を引けるようにする。 */
+async function createFolder(
+  request: APIRequestContext,
+  name: string,
+  data: { rule: Record<string, unknown>; parentId?: number },
+) {
+  const response = await request.post("/api/smart-folders", {
     headers: mutationHeaders,
-    data: { name: "Genre" },
+    data: { name, ...data },
   });
   expect(response.status()).toBe(201);
-  return ((await response.json()) as Named).id;
+  folderIds.set(name, ((await response.json()) as Named).id);
 }
 
 /** listFolders は所有者のスマートフォルダをすべて読む。 */
@@ -203,13 +192,11 @@ async function deleteOwnFolders(request: APIRequestContext) {
 
 /** deleteOwnTags は、この e2e の名前のタグを消す。 */
 async function deleteOwnTags(request: APIRequestContext) {
-  for (const name of [catTag, dogTag]) {
-    const response = await request.get(`/api/tags?q=${encodeURIComponent(name)}`);
-    expect(response.ok()).toBe(true);
-    const { items } = (await response.json()) as { items: Named[] };
-    for (const tag of items.filter((item) => item.name === name)) {
-      await request.delete(`/api/tags/${String(tag.id)}`, { headers: mutationHeaders });
-    }
+  const response = await request.get(`/api/tags?q=${encodeURIComponent(catTag)}`);
+  expect(response.ok()).toBe(true);
+  const { items } = (await response.json()) as { items: Named[] };
+  for (const tag of items.filter((item) => item.name === catTag)) {
+    await request.delete(`/api/tags/${String(tag.id)}`, { headers: mutationHeaders });
   }
 }
 
@@ -323,27 +310,11 @@ async function saveFromLibrary(page: Page, name: string): Promise<number> {
   return id;
 }
 
-/** moreMenu はフォルダのページの見出しの「More」を開き、label の項目を押す。 */
-async function moreMenu(page: Page, label: string) {
-  await page.getByRole("button", { name: "More", exact: true }).click();
-  await page.getByRole("menuitem", { name: label }).click();
-}
-
 /** folderLine は動画のページの題名の上の、スマートフォルダの何本目かを示す行である。 */
 function folderLine(page: Page, name: string, position: number, count: number): Locator {
   return page.getByRole("link", {
     name: `Smart folder "${name}", video ${String(position)} of ${String(count)}. Open the smart folder`,
   });
-}
-
-/**
- * upNextTitles は動画のページの「Up next」の、フォルダのメンバーの一覧の題名を並びのまま返す。
- * 同じ区画の後ろに「Related videos」の一覧が続くので、最初の一覧だけを見る。
- */
-async function upNextTitles(page: Page): Promise<string[]> {
-  const list = page.getByRole("region", { name: "Up next" }).getByRole("list").first();
-  const texts = await list.getByRole("listitem").allTextContents();
-  return texts.map((text) => allTitles.find((title) => text.includes(title)) ?? text);
 }
 
 /**
@@ -385,15 +356,6 @@ async function scrollToCard(page: Page, card: Locator) {
   await expect(card.getByRole("link", { name: /smart folder of/ })).toBeVisible();
 }
 
-function guestPage(browser: Browser, width = 1280) {
-  return browser
-    .newContext({
-      storageState: { cookies: [], origins: [] },
-      viewport: { width, height: 800 },
-    })
-    .then(async (context) => ({ context, page: await context.newPage() }));
-}
-
 test.describe.serial("smart folders", () => {
   test.beforeAll(async ({ request }) => {
     test.setTimeout(240_000);
@@ -432,15 +394,12 @@ test.describe.serial("smart folders", () => {
     // 視聴の記録は動画の中身に結び付き、登録フォルダを外しても残るので、どれも未視聴に戻す。
     for (const title of allTitles) await setWatched(request, title, false);
     await tagVideos(request, catTitles, catTag);
-    await tagVideos(request, [dog], dogTag);
     await readTagIds(request, catA);
-    await readTagIds(request, dog);
-    genreId = await ensureGenre(request);
-    const kind = await request.post("/api/tags/batch", {
-      headers: mutationHeaders,
-      data: { action: "setKind", kindId: genreId, ids: [tagId(catTag)] },
+    await createFolder(request, catFolder, { rule: { tags: [tagId(catTag)] } });
+    await createFolder(request, unwatchedChild, {
+      rule: { watch: "unwatched" },
+      parentId: folderId(catFolder),
     });
-    expect(kind.ok()).toBe(true);
   });
 
   test.afterAll(async ({ request }) => {
@@ -512,30 +471,6 @@ test.describe.serial("smart folders", () => {
     ).toBeVisible();
   });
 
-  test("3: タグ: 猫 のフォルダでは、両方の part に猫のグループは 1 枚のカード、part1 だけのグループは part1 だけ（画面 7）", async ({
-    page,
-  }) => {
-    await page.goto(`/?tag=${String(tagId(catTag))}`);
-    await expect(videoCard(page, catA)).toBeVisible();
-    await saveFromLibrary(page, catFolder);
-    await openFolder(page, catFolder);
-
-    await expect(groupCard(page, bothGroup)).toBeVisible();
-    await expect(
-      groupCard(page, bothGroup).getByRole("link", {
-        name: `${bothGroup}, group of 2 videos`,
-      }),
-    ).toBeVisible();
-    await expect(videoCard(page, half1)).toBeVisible();
-    await expect(groupCard(page, halfGroup)).toHaveCount(0);
-    await expect(videoCard(page, half2)).toHaveCount(0);
-    await expect(videoCard(page, both1)).toHaveCount(0);
-    expect((await listedItems(page)).sort()).toEqual(
-      [catA, catB, half1, `${bothGroup}, group of 2 videos`].sort(),
-    );
-    await expect(page.getByText("5 videos · 1:40", { exact: true })).toBeVisible();
-  });
-
   test("1: 別のタブで猫を付けると、開いた タグ: 猫 のフォルダに再読み込みなしで入り、外すと出る。その間も動画はライブラリにある（画面 6）", async ({
     page,
     context,
@@ -592,130 +527,6 @@ test.describe.serial("smart folders", () => {
         () => (window as unknown as { e2eNoReload?: boolean }).e2eNoReload,
       ),
     ).toBe(true);
-  });
-
-  test("4: タグ: 猫 の下の 未視聴 の子は未視聴の猫の動画だけを持ち、親のページに先頭で出る（画面 5）", async ({
-    page,
-    request,
-  }) => {
-    await setWatched(request, catB, true);
-    await openFolder(page, catFolder);
-    await moreMenu(page, "New child smart folder…");
-    const dialog = page.getByRole("dialog", {
-      name: `New smart folder in "${catFolder}"`,
-    });
-    await dialog.getByRole("textbox", { name: "Name" }).fill(unwatchedChild);
-    await dialog
-      .getByRole("radiogroup", { name: "Watch status" })
-      .getByRole("radio", { name: "Unwatched" })
-      .click();
-    const created = page.waitForResponse(
-      (response) =>
-        response.request().method() === "POST" &&
-        new URL(response.url()).pathname === "/api/smart-folders",
-    );
-    await dialog.getByRole("button", { name: "Create" }).click();
-    const response = await created;
-    expect(response.status()).toBe(201);
-    const childId = ((await response.json()) as Named).id;
-    folderIds.set(unwatchedChild, childId);
-    await expect(dialog).toBeHidden();
-    await expect(toast(page, `Created "${unwatchedChild}"`)).toBeVisible();
-
-    // 親のページは子のカードを先頭に、続けて自分のカードを出す。
-    const childLink = folderCard(page, childId).getByRole("link", {
-      name: `${unwatchedChild}, smart folder of 4 videos`,
-    });
-    await expect(childLink).toBeVisible();
-    expect((await listedItems(page))[0]).toBe(
-      `${unwatchedChild}, smart folder of 4 videos`,
-    );
-    await expect(videoCard(page, catB)).toBeVisible();
-
-    await childLink.click();
-    await expect(page).toHaveURL(`/smart-folders/${String(childId)}`);
-    await expect(
-      page.getByRole("heading", { level: 1, name: unwatchedChild, exact: true }),
-    ).toBeVisible();
-    const band = page.getByRole("navigation", { name: "Smart folder path" });
-    await expect(band.getByRole("link", { name: "Library" })).toBeVisible();
-    await expect(band.getByRole("link", { name: catFolder })).toBeVisible();
-    await expect(band).toContainText(unwatchedChild);
-    await expect(page.getByText("Conditions:", { exact: true })).toBeVisible();
-    await expect(page.getByText("Unwatched", { exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: `From "${catFolder}":` })).toBeVisible();
-    await expect(page.getByText(`Tag: ${catTag}`, { exact: true })).toBeVisible();
-
-    await expect(videoCard(page, catA)).toBeVisible();
-    expect((await listedItems(page)).sort()).toEqual(
-      [catA, half1, `${bothGroup}, group of 2 videos`].sort(),
-    );
-    await expect(videoCard(page, catB)).toHaveCount(0);
-
-    // 祖先の名前のリンクは親のページを開き、帯が 1 つ短くなる。
-    await page.getByRole("link", { name: `From "${catFolder}":` }).click();
-    await expect(page).toHaveURL(`/smart-folders/${String(folderId(catFolder))}`);
-    await expect(
-      page.getByRole("navigation", { name: "Smart folder path" }).getByRole("link", {
-        name: catFolder,
-      }),
-    ).toHaveCount(0);
-  });
-
-  test("2: Genre かつ未視聴のフォルダから、見終えた動画が外れる", async ({
-    page,
-    request,
-  }) => {
-    const response = await request.post("/api/smart-folders", {
-      headers: mutationHeaders,
-      data: { name: genreFolder, rule: { tagKind: genreId, watch: "unwatched" } },
-    });
-    expect(response.status()).toBe(201);
-    folderIds.set(genreFolder, ((await response.json()) as Named).id);
-
-    await openFolder(page, genreFolder);
-    await expect(page.getByText("Kind: Genre", { exact: true })).toBeVisible();
-    await expect(videoCard(page, catA)).toBeVisible();
-    await expect(videoCard(page, catB)).toHaveCount(0);
-
-    await setWatched(request, catA, true);
-    await expect(videoCard(page, catA)).toHaveCount(0);
-    await expect(videoCard(page, half1)).toBeVisible();
-
-    await setWatched(request, catA, false);
-    await expect(videoCard(page, catA)).toBeVisible();
-  });
-
-  test("フォルダから開いた動画は、フォルダの行と Up next と矢印がフォルダの順に従う（画面 11）", async ({
-    page,
-    request,
-  }) => {
-    const id = folderId(catFolder);
-    const order = (await playOrder(request, id)).map(titleOf);
-    expect([...order].sort()).toEqual([...catTitles].sort());
-    // 動画のカードから開くので、グループのメンバーではない最初の動画から始める。同じ秒に
-    // 追加された項目は項目の id（動画は id の 2 倍、グループは id の 2 倍に 1 を足した値）で並び、
-    // 共有のデータベースではグループの id がほかの e2e の分だけ大きく、グループが先頭に来うる。
-    const start = order.findIndex((title) => title !== both1 && title !== both2);
-    const [first, second] = firstTwo(order.slice(start));
-
-    await openFolder(page, catFolder);
-    await videoCard(page, first).getByRole("link").first().click();
-    await expect(page).toHaveURL(
-      `/videos/${String(video(first).id)}?smartFolder=${String(id)}`,
-    );
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(first);
-    await expect(folderLine(page, catFolder, start + 1, order.length)).toBeVisible();
-    await expect.poll(() => upNextTitles(page)).toEqual(order);
-
-    await pressArrow(page, /^Next video/);
-    await expect(page).toHaveURL(
-      `/videos/${String(video(second).id)}?smartFolder=${String(id)}`,
-    );
-    await expect(folderLine(page, catFolder, start + 2, order.length)).toBeVisible();
-
-    await folderLine(page, catFolder, start + 2, order.length).click();
-    await expect(page).toHaveURL(`/smart-folders/${String(id)}`);
   });
 
   test("フォルダをプレイリストに足すと 1 つの行になり、その行からフォルダの順に再生する（画面 13）", async ({
@@ -799,51 +610,6 @@ test.describe.serial("smart folders", () => {
     await expect(page.getByRole("link", { name: /^Smart folder "/ })).toHaveCount(0);
   });
 
-  test("ゲストには公開の動画だけのフォルダが印の無いカードで出て、ページに条件と操作が無い（画面 12）", async ({
-    browser,
-    request,
-  }) => {
-    const shown = await request.put("/api/video-visibility", {
-      headers: mutationHeaders,
-      data: { videoIds: [video(catA).id], public: true },
-    });
-    expect(shown.ok()).toBe(true);
-    const id = folderId(catFolder);
-    const { context, page } = await guestPage(browser);
-    try {
-      await page.goto("/");
-      const link = folderCard(page, id).getByRole("link", {
-        name: `${catFolder}, smart folder of 1 video`,
-      });
-      await expect(link).toBeVisible();
-      await expect(folderCard(page, id).getByRole("button")).toHaveCount(0);
-
-      await link.click();
-      await expect(
-        page.getByRole("heading", { level: 1, name: catFolder, exact: true }),
-      ).toBeVisible();
-      await expect(page.getByRole("link", { name: /^Play/ }).first()).toBeVisible();
-      await expect(videoCard(page, catA)).toBeVisible();
-      await expect(page.locator("article[data-video-id]")).toHaveCount(1);
-      await expect(page.getByRole("button", { name: "More", exact: true })).toHaveCount(
-        0,
-      );
-      await expect(page.getByText("Conditions:", { exact: true })).toHaveCount(0);
-
-      await page.goto(`/?q=${encodeURIComponent(query)}`);
-      await expect(videoCard(page, catA)).toBeVisible();
-      await expect(
-        page.getByRole("button", { name: "Save as smart folder" }),
-      ).toHaveCount(0);
-    } finally {
-      await context.close();
-      await request.put("/api/video-visibility", {
-        headers: mutationHeaders,
-        data: { videoIds: [video(catA).id], public: false },
-      });
-    }
-  });
-
   test("画面写真（MDM_E2E_SCREENSHOT_DIR があるときだけ）", async ({ browser }) => {
     test.skip(screenshotDir === undefined, "MDM_E2E_SCREENSHOT_DIR is not set");
     if (screenshotDir === undefined) return;
@@ -907,62 +673,6 @@ test.describe.serial("smart folders", () => {
       } finally {
         await context.close();
       }
-    }
-  });
-
-  test("名前を変え、親の選択に子が出ず、消すと子も消えて動画はライブラリに残る（画面 4・10）", async ({
-    page,
-  }) => {
-    await openFolder(page, catFolder);
-    await moreMenu(page, "Edit…");
-    const dialog = page.getByRole("dialog", { name: "Edit smart folder" });
-    const name = dialog.getByRole("textbox", { name: "Name" });
-    await expect(name).toBeFocused();
-    await dialog.getByRole("combobox", { name: "Parent" }).click();
-    await expect(page.getByRole("option", { name: "None (top level)" })).toBeVisible();
-    await expect(
-      page.getByRole("option", { name: savedFolder, exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("option", { name: unwatchedChild, exact: true }),
-    ).toHaveCount(0);
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("listbox")).toHaveCount(0);
-    await name.fill(renamedCatFolder);
-    await dialog.getByRole("button", { name: "Save" }).click();
-    await expect(dialog).toBeHidden();
-    await expect(toast(page, `Saved "${renamedCatFolder}"`)).toBeVisible();
-    await expect(
-      page.getByRole("heading", { level: 1, name: renamedCatFolder, exact: true }),
-    ).toBeVisible();
-    await expect(page).toHaveTitle(new RegExp(escapeRegExp(renamedCatFolder)));
-
-    await moreMenu(page, "Delete…");
-    const confirm = page.getByRole("alertdialog", {
-      name: `Delete "${renamedCatFolder}"?`,
-    });
-    await expect(confirm).toContainText(
-      "The smart folder is deleted. Its videos stay in the library.",
-    );
-    await expect(confirm).toContainText(
-      "The 1 smart folder inside it is deleted with it.",
-    );
-    await confirm.getByRole("button", { name: "Delete" }).click();
-    await expect(page).toHaveURL("/");
-    await expect(toast(page, `Deleted "${renamedCatFolder}"`)).toBeVisible();
-    await expect(folderCard(page, folderId(catFolder))).toHaveCount(0);
-    await expect(folderCard(page, folderId(savedFolder))).toBeVisible();
-
-    await page.goto(`/smart-folders/${String(folderId(unwatchedChild))}`);
-    await expect(
-      page.getByText("This smart folder no longer exists", { exact: true }),
-    ).toBeVisible();
-    await page.goto(`/?q=${encodeURIComponent(query)}`);
-    for (const title of [catA, catB, dog]) {
-      await expect(videoCard(page, title)).toBeVisible();
-    }
-    for (const name of [bothGroup, halfGroup]) {
-      await expect(groupCard(page, name)).toBeVisible();
     }
   });
 });

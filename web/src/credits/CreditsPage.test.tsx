@@ -403,6 +403,28 @@ describe("CreditsPage 人物の一覧", () => {
     ]);
   });
 
+  it("詳細の窓は、プラグインの反映などで付いた外部 ID を Source と Value の欄に出す", async () => {
+    server.people[0]!.externalIds = [{ source: "e2eworks", value: "performer-1" }];
+    const user = userEvent.setup();
+    renderPage("person");
+    await screen.findByTitle("Alice");
+
+    await user.click(
+      within(rowOf("Alice")).getByRole("button", { name: "Edit details" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: 'Edit "Alice"' });
+    expect(
+      within(dialog)
+        .getAllByRole("textbox", { name: "Source" })
+        .map((field) => (field as HTMLInputElement).value),
+    ).toEqual(["e2eworks"]);
+    expect(
+      within(dialog)
+        .getAllByRole("textbox", { name: "Value" })
+        .map((field) => (field as HTMLInputElement).value),
+    ).toEqual(["performer-1"]);
+  });
+
   it("詳細の窓は field の示す行の下に理由を出し、開いたままにする", async () => {
     const user = userEvent.setup();
     renderPage("person");
