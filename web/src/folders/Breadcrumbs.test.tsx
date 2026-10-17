@@ -7,7 +7,7 @@ import Breadcrumbs from "./Breadcrumbs";
 // 狭い幅の畳み方は CSS の幅の分岐だけで決まるので、md 未満で隠す段（`hidden md:inline-flex`）を
 // クラスで読む。
 const crumbs = [
-  { label: "Library", to: "/" },
+  { label: "Library", to: "/library" },
   { label: "A", to: "/groups/1" },
   { label: "B", to: "/groups/2?trail=1" },
   { label: "C" },

@@ -62,6 +62,7 @@ func newLibraryFixtureWith(t *testing.T, adjust func(Options) Options) *libraryF
 			Playback: db.Playback(), Tags: db.Tags(), Visibility: db.Visibility(),
 			Favorites: db.Favorites(), Versions: db.Versions(), Playlists: db.Playlists(), Groups: db.Groups(),
 			SmartFolders:     db.SmartFolders(),
+			Home:             app.NewHome(app.HomeOptions{Store: db.Home(), Catalog: library}),
 			PlaylistPlayback: db.Playlists(),
 			Organizer:        app.NewOrganizer(app.OrganizerOptions{Store: db.Organize()}),
 		})
@@ -149,13 +150,15 @@ func (f *libraryFixture) groupPath(t *testing.T, name string) string {
 	return "/api/groups/" + strconv.FormatInt(f.groupID(t, name), 10)
 }
 
-// libraryItemNames は項目を「group:名前」か動画の題名にして並べ替えて返す。
+// libraryItemNames は項目を「group:名前」か「folder:名前」か動画の題名にして並べ替えて返す。
 func libraryItemNames(page gen.LibraryPage) []string {
 	names := make([]string, 0, len(page.Items))
 	for _, item := range page.Items {
 		switch item.Kind {
 		case gen.LibraryItemKindGroup:
 			names = append(names, "group:"+item.Group.Name)
+		case gen.LibraryItemKindSmartFolder:
+			names = append(names, "folder:"+item.SmartFolder.Name)
 		default:
 			names = append(names, item.Video.Title)
 		}
@@ -410,6 +413,33 @@ func TestListLibraryForGuest(t *testing.T) {
 		}
 	}
 	assertUnauthenticated(t, "ゲストの /api/library/ids", f.env.get("/api/library/ids"))
+}
+
+// unshelved はホームのどの棚にも一致しない動画だけにし、ゲストも使える（specs/057-home/research.md
+// R-11）。棚の手（ep1）がグループ show から抜けるので、show はグループの項目にならず ep2 が 1 本で出る。
+func TestListLibraryUnshelved(t *testing.T) {
+	f := newLibraryFixture(t)
+	ctx := context.Background()
+	shelf, err := f.env.db.SmartFolders().CreateSmartFolder(ctx, domain.SmartFolderCreate{
+		Name: "手", Rule: domain.SmartRule{Tags: []int64{f.manual}}, Sort: domain.SortTitleAsc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.env.db.Home().SetShelves(ctx, []int64{shelf.ID}); err != nil {
+		t.Fatal(err)
+	}
+	rec := f.env.get("/api/library?unshelved=true")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ゲストの unshelved: status = %d: %s", rec.Code, rec.Body)
+	}
+	page := decode[gen.LibraryPage](t, rec)
+	if names := libraryItemNames(page); !slices.Equal(names, []string{"ep2", "group:pair", "solo"}) || page.Total != 3 {
+		t.Errorf("ゲストの棚に無い項目 = %v・total %d", names, page.Total)
+	}
+	rec = f.env.get("/api/library?unshelved=false", f.owner)
+	if names := libraryItemNames(decode[gen.LibraryPage](t, rec)); !slices.Contains(names, "group:show") || !slices.Contains(names, "folder:手") {
+		t.Errorf("unshelved=false の所有者の項目 = %v, want show とフォルダを含む", names)
+	}
 }
 
 // グループの画面は絞り込みに関係なく子孫の動画の全部から作ったグループと、項目を位置の順に返し、

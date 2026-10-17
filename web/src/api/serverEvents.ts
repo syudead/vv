@@ -22,6 +22,8 @@ type SmartFolderChanged = components["schemas"]["SmartFolderChanged"];
  *   （specs/054-auto-dup/research.md R-10。最新の一覧は取り直す）
  * - `activity`: アクティビティの記録が書かれたか変わった。中身は運ばない
  *   （specs/055-activity/research.md R-8。件数と読み込んだページを取り直す）
+ * - `home`: ホームの棚の集合か並び、整理役かオンボードの状態が変わった。中身は運ばない
+ *   （specs/057-home/research.md R-16。ホームは取り直す）
  * - `open`: つながった、またはつなぎ直した。切れていた間の変化を取り直す合図。
  *   `reconnected` は、この購読者がつながった状態を前にも見ていたかを表す。
  *   つなぎ直しでは、切れていた間の `video` を受け取っていない。
@@ -33,6 +35,7 @@ export interface ServerEventHandlers {
   smartFolder?: (ids: readonly number[]) => void;
   candidates?: () => void;
   activity?: () => void;
+  home?: () => void;
   open?: (reconnected: boolean) => void;
 }
 
@@ -98,6 +101,7 @@ function connect(): void {
   });
   current.addEventListener("candidates", () => dispatch("candidates"));
   current.addEventListener("activity", () => dispatch("activity"));
+  current.addEventListener("home", () => dispatch("home"));
   current.addEventListener("error", () => {
     // 接続中の切断はブラウザが自分でつなぎ直す。CLOSED は諦めた状態
     // （応答が 200 でない等）である。EventSource からは応答の状態を読めないので、

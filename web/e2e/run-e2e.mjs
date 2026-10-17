@@ -21,6 +21,8 @@ import {
   generateGroupsFixtures,
   generateGuestFixtures,
   generateHistoryFixtures,
+  generateHomeFixtures,
+  generateOnboardingFixtures,
   generateChapterFixtures,
   generateMediaFixtures,
   generateMediaInfoFixtures,
@@ -60,6 +62,8 @@ function fixtureDirs(root) {
     groupsSpareDir: path.join(root, "groups-spare"),
     dragOrganizeMediaDir: path.join(root, "drag-organize-media"),
     historyMediaDir: path.join(root, "history-media"),
+    homeMediaDir: path.join(root, "home-media"),
+    onboardingMediaDir: path.join(root, "onboarding-media"),
     activityMediaDir: path.join(root, "activity-media"),
     activityVersionsMediaDir: path.join(root, "activity-versions-media"),
     smartFoldersMediaDir: path.join(root, "smart-folders-media"),
@@ -85,6 +89,8 @@ function generateFixtures(dirs) {
   generateGroupsFixtures(dirs.groupsMediaDir, dirs.groupsSpareDir);
   generateDragOrganizeFixtures(dirs.dragOrganizeMediaDir);
   generateHistoryFixtures(dirs.historyMediaDir);
+  generateHomeFixtures(dirs.homeMediaDir);
+  generateOnboardingFixtures(dirs.onboardingMediaDir);
   generateActivityFixtures(dirs.activityMediaDir);
   generateActivityVersionFixtures(dirs.activityVersionsMediaDir);
   generateSmartFoldersFixtures(dirs.smartFoldersMediaDir);
@@ -219,6 +225,8 @@ function run() {
           MDM_E2E_GROUPS_SPARE_DIR: fixtures.groupsSpareDir,
           MDM_E2E_DRAG_ORGANIZE_MEDIA_DIR: fixtures.dragOrganizeMediaDir,
           MDM_E2E_HISTORY_MEDIA_DIR: fixtures.historyMediaDir,
+          MDM_E2E_HOME_MEDIA_DIR: fixtures.homeMediaDir,
+          MDM_E2E_ONBOARDING_MEDIA_DIR: fixtures.onboardingMediaDir,
           MDM_E2E_ACTIVITY_MEDIA_DIR: fixtures.activityMediaDir,
           MDM_E2E_ACTIVITY_VERSIONS_MEDIA_DIR: fixtures.activityVersionsMediaDir,
           MDM_E2E_SMART_FOLDERS_MEDIA_DIR: fixtures.smartFoldersMediaDir,

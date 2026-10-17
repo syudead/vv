@@ -50,6 +50,8 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 	if !ok {
 		return
 	}
+	// 棚に無い動画のみはライブラリの項目の一覧だけが受け、ゲストも使える（specs/057-home/research.md R-11）。
+	query.Unshelved = params.Unshelved != nil && *params.Unshelved
 
 	page, err := s.library.ListLibrary(r.Context(), audience, query)
 	switch {
@@ -64,44 +66,12 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 	// 登録フォルダは項目と同じスナップショットから読んだものを使う。別に読むと、
 	// 読み取りの失敗や間に確定した登録フォルダの解除で、total とカーソルに数えた
 	// グループを応答から落としてしまう。
-	roots := page.Roots
-	// 再生位置は動画の項目にだけ載せる。グループの視聴の値は保存層が決めているので、
-	// メンバーの再生位置は引かない（ページのメンバーが多いと引数の上限に掛かる）。
-	// タグは全メンバーの和集合を載せるので、全メンバーを引く。
-	var shown, tagged []domain.Video
-	for _, item := range page.Items {
-		if item.Video != nil {
-			shown = append(shown, *item.Video)
-			tagged = append(tagged, *item.Video)
-		} else if item.Group != nil {
-			tagged = append(tagged, item.Group.Members...)
-		}
+	items, err := s.presentLibraryItems(r.Context(), audience, page.Roots, page.Items)
+	if err != nil {
+		s.internalError(w, "Could not load the list.", err)
+		return
 	}
-	lookup := s.itemLookups(r.Context(), shown, tagged)
-
-	payload := gen.LibraryPage{Items: make([]gen.LibraryItem, 0, len(page.Items)), Total: page.Total}
-	for _, item := range page.Items {
-		if item.SmartFolder != nil {
-			// スマートフォルダの項目は要約だけを載せる。カードの値は画面が listSmartFolderCards で読む
-			// （specs/052-smart-folders/research.md R-14）。
-			folder := toAPISmartFolderSummary(audience, *item.SmartFolder)
-			payload.Items = append(payload.Items, gen.LibraryItem{Kind: gen.LibraryItemKindSmartFolder, SmartFolder: &folder})
-			continue
-		}
-		if item.Video != nil {
-			video := lookup.video(r.Context(), audience, roots, *item.Video)
-			payload.Items = append(payload.Items, gen.LibraryItem{Kind: gen.LibraryItemKindVideo, Video: &video})
-			continue
-		}
-		group, ok := lookup.group(r.Context(), audience, roots, *item.Group)
-		if !ok {
-			// 見せる動画の無いグループは項目にならない。黙って落とすと items が total・カーソルと
-			// 食い違うので、要求を失敗させる。
-			s.internalError(w, "Could not load the list.", fmt.Errorf("group %d has no video", item.Group.ID))
-			return
-		}
-		payload.Items = append(payload.Items, gen.LibraryItem{Kind: gen.LibraryItemKindGroup, Group: &group})
-	}
+	payload := gen.LibraryPage{Items: items, Total: page.Total}
 	if page.NextCursor != "" {
 		next := page.NextCursor
 		payload.NextCursor = &next
@@ -157,6 +127,46 @@ func libraryGroupIDs(groups []domain.LibraryGroupSelection) []gen.LibraryGroupId
 	return out
 }
 
+// presentLibraryItems はライブラリの項目を応答の形にする。roots は項目と同じスナップショットから
+// 読んだ登録フォルダである。見せる動画の無いグループの項目は、黙って落とすと items が total・カーソルと
+// 食い違うので誤りにする。
+func (s *server) presentLibraryItems(ctx context.Context, audience domain.Audience, roots []domain.MediaFolder, items []domain.LibraryItem) ([]gen.LibraryItem, error) {
+	// 再生位置は動画の項目にだけ載せる。グループの視聴の値は保存層が決めているので、
+	// メンバーの再生位置は引かない（ページのメンバーが多いと引数の上限に掛かる）。
+	// タグは全メンバーの和集合を載せるので、全メンバーを引く。
+	var shown, tagged []domain.Video
+	for _, item := range items {
+		if item.Video != nil {
+			shown = append(shown, *item.Video)
+			tagged = append(tagged, *item.Video)
+		} else if item.Group != nil {
+			tagged = append(tagged, item.Group.Members...)
+		}
+	}
+	lookup := s.itemLookups(ctx, shown, tagged)
+	out := make([]gen.LibraryItem, 0, len(items))
+	for _, item := range items {
+		if item.SmartFolder != nil {
+			// スマートフォルダの項目は要約だけを載せる。カードの値は画面が listSmartFolderCards で読む
+			// （specs/052-smart-folders/research.md R-14）。
+			folder := toAPISmartFolderSummary(audience, *item.SmartFolder)
+			out = append(out, gen.LibraryItem{Kind: gen.LibraryItemKindSmartFolder, SmartFolder: &folder})
+			continue
+		}
+		if item.Video != nil {
+			video := lookup.video(ctx, audience, roots, *item.Video)
+			out = append(out, gen.LibraryItem{Kind: gen.LibraryItemKindVideo, Video: &video})
+			continue
+		}
+		group, ok := lookup.group(ctx, audience, roots, *item.Group)
+		if !ok {
+			return nil, fmt.Errorf("group %d has no video", item.Group.ID)
+		}
+		out = append(out, gen.LibraryItem{Kind: gen.LibraryItemKindGroup, Group: &group})
+	}
+	return out, nil
+}
+
 // itemLookup は項目に載せる再生位置とタグをまとめて引いたものである。
 type itemLookup struct {
 	s        *server
@@ -185,7 +195,8 @@ func (l itemLookup) video(ctx context.Context, audience domain.Audience, roots [
 // 自動グループのフォルダが登録フォルダ roots の下にあるときだけ載せる（specs/048-groups/
 // contracts/screen-api.md）。ゲストには視聴の値を載せず、タグを空にする（data-model.md §7）。
 func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots []domain.MediaFolder, group domain.LibraryGroup) (gen.LibraryGroup, bool) {
-	if len(group.Members) == 0 {
+	card, ok := l.card(ctx, audience, roots, group)
+	if !ok {
 		return gen.LibraryGroup{}, false
 	}
 	ids := make([]int64, 0, len(group.Members))
@@ -193,16 +204,35 @@ func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots [
 		ids = append(ids, member.ID)
 	}
 	out := gen.LibraryGroup{
+		Id: card.Id, Folder: card.Folder, Name: card.Name, VideoCount: card.VideoCount, WatchedCount: card.WatchedCount,
+		WatchState: (*gen.LibraryGroupWatchState)(card.WatchState), DurationMs: card.DurationMs, SizeBytes: card.SizeBytes,
+		AddedAt: card.AddedAt, LastPlayedAt: card.LastPlayedAt, Previews: card.Previews, OpenVideoId: card.OpenVideoId,
+		Favorite: card.Favorite, VideoIds: ids, Tags: []gen.VideoTag{},
+	}
+	if audience.IsOwner() {
+		for _, tag := range unionMemberTags(group.Members, l.tags) {
+			out.Tags = append(out.Tags, toAPIVideoTag(tag))
+		}
+	}
+	return out, true
+}
+
+// card はグループのカードの値を応答の形にする（ホームの棚の項目。specs/057-home/research.md R-12）。
+// 見せる動画が無ければ false を返す。folder は自動グループのフォルダが登録フォルダ roots の下にあるときだけ
+// 載せる（specs/048-groups/contracts/screen-api.md）。ゲストには視聴の値を載せない（data-model.md §7）。
+func (l itemLookup) card(ctx context.Context, audience domain.Audience, roots []domain.MediaFolder, group domain.LibraryGroup) (gen.LibraryGroupCard, bool) {
+	if group.VideoCount == 0 {
+		return gen.LibraryGroupCard{}, false
+	}
+	out := gen.LibraryGroupCard{
 		Id:          group.ID,
 		Name:        group.Name,
-		VideoCount:  len(group.Members),
+		VideoCount:  group.VideoCount,
 		DurationMs:  group.DurationMs,
 		SizeBytes:   group.SizeBytes,
 		AddedAt:     group.AddedAt,
-		Previews:    l.s.folderPreviews(ctx, groupPreviewMembers(group.Members)),
+		Previews:    l.s.folderPreviews(ctx, previewVideos(group.Previews)),
 		OpenVideoId: group.OpenVideoID,
-		VideoIds:    ids,
-		Tags:        []gen.VideoTag{},
 	}
 	if group.Path != "" {
 		if folder, ok := domain.LocateFolder(roots, group.Path); ok {
@@ -212,7 +242,7 @@ func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots [
 	if !audience.IsOwner() {
 		return out, true
 	}
-	state := gen.LibraryGroupWatchState(group.WatchState)
+	state := gen.LibraryGroupCardValuesWatchState(group.WatchState)
 	watched := group.WatchedCount
 	out.WatchState, out.WatchedCount = &state, &watched
 	favorite := group.Favorite
@@ -221,25 +251,7 @@ func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots [
 		played := *group.LastPlayedAt
 		out.LastPlayedAt = &played
 	}
-	for _, tag := range unionMemberTags(group.Members, l.tags) {
-		out.Tags = append(out.Tags, toAPIVideoTag(tag))
-	}
 	return out, true
-}
-
-// groupPreviewMembers は、グループのカードのフォルダの絵柄に差し込むメンバーを返す。
-// サムネイル生成済みのメンバーを並びの順に、フォルダカードと同じ上限まで取る。
-func groupPreviewMembers(members []domain.Video) []domain.Video {
-	out := make([]domain.Video, 0, domain.MaxFolderPreviews)
-	for _, member := range members {
-		if len(out) == domain.MaxFolderPreviews {
-			break
-		}
-		if member.HasThumbnail() {
-			out = append(out, member)
-		}
-	}
-	return out
 }
 
 // unionMemberTags はメンバーのタグの和集合を返す。同じタグは1件にまとめ、出所は

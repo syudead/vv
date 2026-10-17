@@ -306,8 +306,19 @@ export function useVideos(
     // 一致の変化を分けられないので、フォルダのカードが並ぶライブラリ（R-7）は読み込み済みの
     // ページを条件を保ったまま読み直す（グループの知らせと同じ）。カードの値は
     // SmartFolderCardsProvider が読み直す。
+    // 棚に無い動画のみ（specs/057-home/research.md R-11）は、読むたびに棚の条件から求めるので、
+    // フォルダの中身か棚の集合が変わる（smartFolder・home の知らせ）たびに読み直す。
     const smartFolder = () => {
-      if (libraryRef.current && listsSmartFolders(criteriaRef.current)) {
+      const current = criteriaRef.current;
+      if (
+        libraryRef.current &&
+        (listsSmartFolders(current) || current.unshelved === true)
+      ) {
+        refreshInPlaceRef.current();
+      }
+    };
+    const home = () => {
+      if (libraryRef.current && criteriaRef.current.unshelved === true) {
         refreshInPlaceRef.current();
       }
     };
@@ -327,6 +338,7 @@ export function useVideos(
           },
           group,
           smartFolder,
+          home,
           // つなぎ直したときは、切れていた間の知らせを受け取っていない。準備が
           // 済んだ動画も消えているかもしれないので、表示中の項目をすべて取り直す
           // （消えていれば一覧から外れる）。最初の接続では、準備中の項目だけでよい。
@@ -342,6 +354,7 @@ export function useVideos(
       : subscribeServerEvents({
           group,
           smartFolder,
+          home,
           open: (reconnected) => {
             if (reconnected) regroup();
           },

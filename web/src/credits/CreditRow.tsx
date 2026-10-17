@@ -4,6 +4,7 @@ import { Link } from "react-router";
 
 import type { Credit, CreditKind } from "../api/credits";
 import { t } from "../i18n";
+import { libraryFilterPath } from "../library/libraryPath";
 import RowNameInput from "../tags/RowNameInput";
 import type { TagFieldError } from "../tags/tagNameField";
 import { RowIconButton, RowMoreMenu, type TagRowRefs } from "../tags/TagRow";
@@ -37,7 +38,7 @@ export const creditRowIdAttribute = "data-credit-id";
  * CreditRow は人物・団体の管理画面の一覧の 1 行である（specs/047-video-work-info/
  * ui-design.md「People and organizations screens」）。タグの行（`TagRow`）と同じ形で、
  * チェックの列と仮の目印が無く、2 つ目のボタンが「Edit details」である。名前は
- * `/?person=<id>`（団体は `/?organization=<id>`）へのリンクで、その下に親と別名の 1 行を
+ * `/library?person=<id>`（団体は `/library?organization=<id>`）へのリンクで、その下に親と別名の 1 行を
  * 置く。改名中は名前の列だけを入力に置き換える。タッチの端末と `sm` 未満では操作を
  * 「Actions」1 つにまとめる（CSS だけで出し分ける）。
  *
@@ -108,7 +109,7 @@ function CreditRow({
             <span className="relative flex min-w-0 items-center">
               <Link
                 ref={(node) => registerRefs(credit.id, { nameLink: node })}
-                to={`/?${parameter}=${String(credit.id)}`}
+                to={libraryFilterPath(parameter, credit.id)}
                 title={credit.name}
                 aria-label={t.credits.row.open(credit.name)}
                 className="block min-w-0 truncate font-medium text-foreground after:absolute after:inset-0 hover:text-primary"

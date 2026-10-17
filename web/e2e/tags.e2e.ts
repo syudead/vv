@@ -420,6 +420,14 @@ test.describe.serial("video tags", () => {
         await kindsInView();
         await page.getByRole("tab", { name: /^Tags/ }).click();
         await expect(page).not.toHaveURL(/[?&]tab=kinds/);
+        // 押したタブへのフォーカスで帯が送られるのを描き終えてから戻る。人は押した同じ
+        // コマのうちに戻らない。
+        await page.evaluate(
+          () =>
+            new Promise((resolve) =>
+              requestAnimationFrame(() => requestAnimationFrame(resolve)),
+            ),
+        );
         await page.goBack();
         await expect(page).toHaveURL(/[?&]tab=kinds/);
         await kindsInView();
@@ -604,7 +612,7 @@ test.describe.serial("video tags", () => {
     }) => {
       test.setTimeout(120_000);
       await page.setViewportSize({ width: 1280, height: 800 });
-      await page.goto("/");
+      await page.goto("/library");
       await expect(page.getByRole("article")).toHaveCount(videoCount);
       // 格子の最後のカード（どの幅でも DOM の順は同じ）に30個のタグを付ける。
       const lastId = await page.getByRole("article").last().getAttribute("data-video-id");
@@ -631,7 +639,7 @@ test.describe.serial("video tags", () => {
         { width: 390, height: 300, scrolls: true },
       ]) {
         await page.setViewportSize(viewport);
-        await page.goto("/");
+        await page.goto("/library");
         await expect(page.getByRole("article")).toHaveCount(videoCount);
         const card = page.locator(`article[data-video-id="${String(targetId)}"]`);
         // 格子の最後の行を画面の下端まで送る（最後のカードを見せたうえで、
@@ -752,7 +760,7 @@ test.describe.serial("video tags", () => {
       request: APIRequestContext,
       prefix: string,
     ) {
-      await page.goto("/");
+      await page.goto("/library");
       await expect(page.getByRole("article")).toHaveCount(videoCount);
       const firstId = await page
         .getByRole("article")

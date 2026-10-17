@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/related-videos.md
-sourceHash: 58c9afe3d6617bed92e2b9d717d623739fac9a2a8b7e900a7d548ec4cd4eab72
+sourceHash: 75a83e4e76ca941ffd44ef25a30fc0f2065c8e228633b0872db44cefdfa34d8f
 ---
 
 # 関連動画と前後の動画 {#related-videos-and-the-previous-and-next-video}
@@ -51,7 +51,7 @@ flowchart LR
 
 点は 1 つの `RelatedScorer` から来て、store、catalog、API は結果の数値だけを見る。
 
-手がかり、重み、または方法全体を変えるには、その 1 つの型を差し替えるか編集する。catalog は `CatalogOptions.Scorer` で別の採点を受け取る。
+手がかり、重み、または方法全体を変えるには、その 1 つの型を差し替えるか編集する。catalog は `CatalogOptions.Scorer` で別の採点を受け取る。ホームのおすすめの棚は同じ採点で順位付けし、`HomeOptions.Scorer` で別の採点を受け取る ([home.md](home.md#the-owners-fixed-shelves))。
 
 ## 重複のないページ送り {#paging-without-duplicates}
 

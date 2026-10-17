@@ -325,8 +325,8 @@ to pick, what goes in each slot and what must not is in
 
 | Layer          | What it is                                                                                                                                                                                                                                   | Registry                     |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `DetailPage`, `CenteredForm`, `FormDialog`, `ConfirmDialog`, `EditorDialog`, `FormPage`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
-| Sections       | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `CardList`, `DataTable`, `GroupedList`, `JumpList`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps                           | `registry:ui`, one item each |
+| Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `DetailPage`, `CenteredForm`, `FormDialog`, `ConfirmDialog`, `EditorDialog`, `FormPage`, `StepsPage`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
+| Sections       | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `CardList`, `DataTable`, `GroupedList`, `JumpList`, `ShelfRow`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps                | `registry:ui`, one item each |
 | States         | `LoadingState`, `EmptyState`, `ErrorState`, `LoadMoreRow`: what the body shows instead of, or after, its data                                                                                                                                | `registry:ui`, one item each |
 
 Each skeleton also has an example block (`list-page-example` and so on, plus
@@ -408,6 +408,14 @@ and columns do not fit one line at 360px. `Toolbar` takes `nowrap` for a row
 of filters that must stay one line and scrolls sideways instead of wrapping,
 and `LoadingState` takes `layout="cards"` for a `CardList`
 ([055 UI design, Changes to the design system](../../specs/055-activity/ui-design.md#changes-to-the-design-system)).
+
+`StepsPage` is a page outside the shell for steps taken in a fixed order, one
+at a time, such as the first setup: a header band with the logo and a strip of
+numbered steps, then one column at most `max-w-2xl` with the step's title,
+content and a footer of `Skip` and one main action. A dialog closed by Esc
+reads as finished when the steps are not, and `CenteredForm` holds one form
+with no way to skip it
+([057 UI design, Changes to the design system](../../specs/057-home/ui-design.md#changes-to-the-design-system)).
 
 `FormDialog` takes `size="wide"` for a form that sets values side by side for
 comparison, such as the current and the fetched details of a video: it stops

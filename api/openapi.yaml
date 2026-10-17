@@ -402,6 +402,16 @@ paths:
         - $ref: "#/components/parameters/MinDurationFilter"
         - $ref: "#/components/parameters/MaxDurationFilter"
         - $ref: "#/components/parameters/TagKindFilter"
+        - name: unshelved
+          in: query
+          description: |
+            true ならホームのどのフォルダの棚の実効の規則（祖先の条件を含む経路の条件）にも
+            一致しない動画だけにする。ほかの絞り込みと AND で組み合わさり、スマートフォルダの
+            項目は出さない。動画と棚の対応は保存せず、読むたびに求める。ゲストも使える
+            （specs/057-home/research.md R-11）
+          schema:
+            type: boolean
+            default: false
       responses:
         "200":
           description: 項目の一覧
@@ -1672,6 +1682,188 @@ paths:
           $ref: "#/components/responses/Conflict"
         "500":
           description: 開き直したあとの保存に失敗した。待ち受けは元のアドレスへ戻した
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/home:
+    get:
+      operationId: getHome
+      security:
+        - sessionCookie: []
+        - {}
+      summary: ホームの棚の要約と整理役の状態を返す
+      description: |
+        ホームの位置を持つスマートフォルダの棚を並びの順に、続けて決まった棚（`recent`、`unshelved`）を
+        並べる（specs/057-home/research.md R-7、R-12、R-13）。棚の項目は `listHomeShelfItems` で読む。
+        ゲストには見せる動画の無いフォルダの棚を入れない。`organizer` と `byOrganizer` は所有者の
+        応答にだけ入る。見る人にライブラリの動画が 1 本も見えなければ `empty` が `noVideos` である。
+      responses:
+        "200":
+          description: ホームの要約
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Home"
+
+  /api/home/shelves:
+    get:
+      operationId: listHomeShelfItems
+      security:
+        - sessionCookie: []
+        - {}
+      summary: 画面に入った棚の最初の項目を返す
+      description: |
+        `keys` の棚それぞれの最初の 24 件の項目と項目の数を、`keys` の順に返す
+        （specs/057-home/research.md R-12）。読むのはフォルダの棚（`folder:<id>`、フォルダと祖先の条件で
+        フォルダの並べ順）、`unshelved` と `recent`（どちらも新しい順）で、項目はライブラリの項目
+        （動画とグループ）である。フォルダの棚の子フォルダは入れない（R-14）。もう棚でないフォルダ、
+        無いフォルダ、ゲストに見せる項目の無いフォルダの棚と、ほかの棚の鍵は落とし、同じ鍵は 1 回だけ
+        返す。`keys` が無いか、9 件以上か、形の誤った鍵があれば 400 `invalid_request`。
+      parameters:
+        - name: keys
+          in: query
+          required: true
+          description: 棚の鍵（`HomeShelfKey`）を `,` で区切って並べたもの（1〜8 件）
+          style: form
+          explode: false
+          schema:
+            type: array
+            minItems: 1
+            maxItems: 8
+            items:
+              $ref: "#/components/schemas/HomeShelfKey"
+      responses:
+        "200":
+          description: 棚の項目
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HomeShelfItemsList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+    put:
+      operationId: setHomeShelves
+      summary: どのスマートフォルダを棚にするかとその並びを書く
+      description: |
+        所有者だけ。`folderIds` のフォルダを上から順にホームの棚にし、位置を 1, 2, 3… と振り直す。
+        外したフォルダと、足したか動かしたフォルダは所有者のもの（owner_kept 1）にする
+        （specs/057-home/research.md R-7）。並びが変われば画面の知らせ `home` を出す。51 件以上か同じ id が
+        2 度あれば 400 `invalid_request`、どのフォルダでもない id があれば 404 `not_found` で、どれも何も
+        書かない。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HomeShelfOrder"
+      responses:
+        "204":
+          description: 書いた
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /api/home/organize:
+    post:
+      operationId: organizeHome
+      summary: ホームの組み直し（rebuild）を待ちに入れる
+      description: |
+        待ちの実行は設定 `home.organize.pending` に 1 つだけで、rebuild は extend を吸収する。走っている
+        実行があれば、その終わったあとに走る。待ちに入れたあとの整理役の状態を返す。所有者だけ
+        （specs/057-home/research.md R-9、contracts/screen-api.md）。
+      responses:
+        "202":
+          description: 待ちに入れたあとの整理役の状態
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HomeOrganizer"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/onboarding:
+    get:
+      operationId: getOnboarding
+      summary: オンボードの段階を返す
+      description: |
+        段階は設定 `onboarding.step` に 1 つで持つ。無ければ、メディアフォルダがあれば `done`、
+        無ければ `folders` である（specs/057-home/research.md R-3）。所有者だけ。
+      responses:
+        "200":
+          description: 今の段階
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Onboarding"
+    put:
+      operationId: updateOnboarding
+      summary: オンボードの段階を書く
+      description: |
+        名前の段階をそのまま書くので、2 つの端末からの書き込みは後のものが残る。段階が変わったら
+        画面の知らせ `home` を出す（specs/057-home/research.md R-3、R-16）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Onboarding"
+      responses:
+        "200":
+          description: 書いた段階
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Onboarding"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/onboarding/interests:
+    get:
+      operationId: listOnboardingInterests
+      summary: 分野の一覧を返す
+      description: |
+        一覧の順に、それぞれの分野のタグの条件の棚がもうホームにあるか（`onHome`）を添える
+        （specs/057-home/research.md R-5）。
+      responses:
+        "200":
+          description: 分野の一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterestList"
+    post:
+      operationId: pickOnboardingInterests
+      summary: 選んだ分野をタグと棚にする
+      description: |
+        1 つの取引で、分野ごとにタグを名前か同義語で探すか同義語付きで作り、種類の無いタグに `Genre` を
+        付け、そのタグの条件の所有者の棚をホームの後ろに作る。棚がもうある分野は棚を足さない。確定後、
+        自動タグ付けが入なら「Tag all videos again」と同じくすべての動画を判定に回し、その件数を
+        `queued` で返す（specs/057-home/research.md R-6）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InterestPick"
+      responses:
+        "200":
+          description: 足した棚と、判定に回した動画の件数
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterestPickResult"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: 棚を足すとホームが 50 を超える（conflict）
           content:
             application/json:
               schema:
@@ -5035,12 +5227,14 @@ paths:
         - `activity`: アクティビティの記録が書かれたか変わった。記録を書いた取引の確定後に送る。data は
           空のオブジェクト `{}` で、中身は運ばない。最新の記録と件数は `GET /api/activity` で取る
           （specs/055-activity/research.md R-8）
+        - `home`: ホームの棚の集合か並び、整理役やオンボードの状態が変わった。data は空のオブジェクト
+          `{}` で、中身は運ばない。最新の内容は `GET /api/home` で取る（specs/057-home/research.md R-16）
 
         接続の直後に `scan`（あれば）を1回送るので、つなぎ直したクライアントは切れていた間の
-        変化を取り戻せる。`video`・`group`・`smartFolder`・`candidates`・`activity` は切れていた間の分を送り直さない。
+        変化を取り戻せる。`video`・`group`・`smartFolder`・`candidates`・`activity`・`home` は切れていた間の分を送り直さない。
 
-        ゲストには `group` と `smartFolder` だけを送る（specs/048-groups/contracts/screen-api.md、
-        specs/052-smart-folders/contracts/screen-api.md）。`scan`・`video`・`candidates`・`activity` は所有者だけに送る。
+        ゲストには `group`・`smartFolder`・`home` だけを送る（specs/048-groups/contracts/screen-api.md、
+        specs/052-smart-folders/contracts/screen-api.md、specs/057-home/research.md R-16）。`scan`・`video`・`candidates`・`activity` は所有者だけに送る。
       responses:
         "200":
           description: イベントの流れ
@@ -6509,6 +6703,214 @@ components:
           type: string
           enum: [missing, all]
 
+    Onboarding:
+      type: object
+      required: [step]
+      additionalProperties: false
+      properties:
+        step:
+          type: string
+          enum: [folders, scan, interests, done]
+          description: オンボードの段階（specs/057-home/research.md R-3）
+
+    Interest:
+      type: object
+      required: [id, name, synonym, onHome]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: 分野の変わらない識別子（specs/057-home/data-model.md「Interest catalog」）
+        name:
+          type: string
+          description: タグの名前（英語）
+        synonym:
+          type: string
+          description: タグの同義語（日本語）
+        onHome:
+          type: boolean
+          description: この分野のタグの条件の棚がもうホームにある
+
+    InterestList:
+      type: object
+      required: [interests]
+      additionalProperties: false
+      properties:
+        interests:
+          type: array
+          items:
+            $ref: "#/components/schemas/Interest"
+
+    InterestPick:
+      type: object
+      required: [ids]
+      additionalProperties: false
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 24
+          items:
+            type: string
+
+    InterestPickResult:
+      type: object
+      required: [shelves, queued]
+      additionalProperties: false
+      properties:
+        shelves:
+          type: array
+          description: 足した棚。棚がもうホームにあった分野の分は含まない
+          items:
+            $ref: "#/components/schemas/HomeShelf"
+        queued:
+          type: integer
+          description: 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0
+
+    HomeShelfKey:
+      type: string
+      description: '`folder:<id>`、`continue`、`recent`、`unshelved` か `recommended`'
+
+    HomeShelf:
+      type: object
+      required: [key, kind, name]
+      additionalProperties: false
+      description: ホームの棚 1 つ（specs/057-home/contracts/screen-api.md）
+      properties:
+        key:
+          $ref: "#/components/schemas/HomeShelfKey"
+        kind:
+          type: string
+          enum: [folder, continue, recent, unshelved, recommended]
+        name:
+          type: string
+          description: フォルダの名前。固定の棚では空で、画面が名前を付ける
+        folderId:
+          type: integer
+          format: int64
+          description: フォルダの棚だけ
+        byOrganizer:
+          type: boolean
+          description: 所有者だけ。owner_kept が 0 の間は真
+
+    Home:
+      type: object
+      required: [shelves]
+      additionalProperties: false
+      description: GET /api/home の応答
+      properties:
+        shelves:
+          type: array
+          description: フォルダの棚を並びの順に、続けて決まった棚
+          items:
+            $ref: "#/components/schemas/HomeShelf"
+        organizer:
+          $ref: "#/components/schemas/HomeOrganizer"
+        empty:
+          type: string
+          enum: [noVideos]
+          description: 見る人にライブラリの動画が 1 本も見えないときだけ入る
+
+    HomeOrganizer:
+      type: object
+      required: [running]
+      additionalProperties: false
+      description: 整理役の状態（specs/057-home/data-model.md「Organizer state」）
+      properties:
+        running:
+          type: boolean
+          description: 実行が今走っている
+        pending:
+          type: string
+          enum: [rebuild, extend]
+          description: 待っている実行。無ければ省く
+        last:
+          $ref: "#/components/schemas/HomeOrganizeRun"
+
+    HomeOrganizeRun:
+      type: object
+      required: [run, outcome, finishedAt, added, removed]
+      additionalProperties: false
+      description: 最後に終わった実行（specs/057-home/data-model.md「Settings」の home.organize.last）
+      properties:
+        run:
+          type: string
+          enum: [rebuild, extend]
+        outcome:
+          type: string
+          enum: [done, failed, unchanged]
+          description: '`unchanged` は案が何も変えなかった'
+        finishedAt:
+          type: integer
+          format: int64
+          description: 終わった時刻（Unix ミリ秒）
+        added:
+          type: integer
+          description: 足した棚の数
+        removed:
+          type: integer
+          description: 消した棚の数
+
+    HomeShelfItems:
+      type: object
+      required: [key, items, total]
+      additionalProperties: false
+      description: 棚 1 つの最初の項目
+      properties:
+        key:
+          $ref: "#/components/schemas/HomeShelfKey"
+        items:
+          type: array
+          maxItems: 24
+          description: 動画とグループの項目だけ。フォルダの棚の子フォルダは入れない
+          items:
+            $ref: "#/components/schemas/HomeShelfItem"
+        total:
+          type: integer
+          description: 棚の項目（動画とグループ）の数を、items の上限 + 1（25）を上限に数えたもの。25 なら 1 ページより多い。0 なら画面は棚を出さない
+
+    HomeShelfItem:
+      type: object
+      required: [kind]
+      additionalProperties: false
+      description: |
+        棚の項目 1 件。`kind` に応じて `video`・`group` のちょうど 1 つが入る。グループはカードに要る値だけの
+        LibraryGroupCard で、ライブラリの LibraryGroup が持つ `videoIds`・`tags` は載せない
+        （specs/057-home/research.md R-12）
+      properties:
+        kind:
+          type: string
+          enum: [video, group]
+        video:
+          $ref: "#/components/schemas/Video"
+        group:
+          $ref: "#/components/schemas/LibraryGroupCard"
+
+    HomeShelfItemsList:
+      type: object
+      required: [shelves]
+      additionalProperties: false
+      description: GET /api/home/shelves の応答
+      properties:
+        shelves:
+          type: array
+          items:
+            $ref: "#/components/schemas/HomeShelfItems"
+
+    HomeShelfOrder:
+      type: object
+      required: [folderIds]
+      additionalProperties: false
+      description: PUT /api/home/shelves の本文
+      properties:
+        folderIds:
+          type: array
+          maxItems: 50
+          description: 棚にするフォルダの id を上から順に
+          items:
+            type: integer
+            format: int64
+
     AutoTaggingQueued:
       type: object
       required: [queued]
@@ -7787,15 +8189,23 @@ components:
         smartFolder:
           $ref: "#/components/schemas/SmartFolderSummary"
 
-    LibraryGroup:
-      type: object
-      required: [id, name, videoCount, sizeBytes, addedAt, previews, openVideoId, videoIds, tags]
-      additionalProperties: false
+    LibraryGroupCard:
+      allOf:
+        - $ref: "#/components/schemas/LibraryGroupCardValues"
+      unevaluatedProperties: false
       description: |
-        グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
+        ホームの棚の項目（HomeShelfItem）のグループ。カードの値（LibraryGroupCardValues）だけを持つ。
+
+    LibraryGroupCardValues:
+      type: object
+      required: [id, name, videoCount, sizeBytes, addedAt, previews, openVideoId]
+      description: |
+        グループのカードの値。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
         同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
         「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
-        `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
+        `watchState`・`lastPlayedAt`・`favorite` を省く。ほかの値を禁じるのはこれを合成する
+        LibraryGroupCard と LibraryGroup の `unevaluatedProperties` で、ここは開いたままにする
+        （閉じると合成で足す `videoIds`・`tags` まで禁じる）。
       properties:
         id:
           type: integer
@@ -7851,22 +8261,33 @@ components:
           description: |
             押したときに開くメンバー。並びの順で途中まで見た最初のメンバー、無ければ最初の
             未完了のメンバー、全部完了なら最初のメンバー
-        videoIds:
-          type: array
-          description: 全メンバーの id を並びの順に
-          items:
-            type: integer
-            format: int64
-        tags:
-          type: array
-          description: メンバーのタグの和集合。同じタグの出所は和にする
-          items:
-            $ref: "#/components/schemas/VideoTag"
         favorite:
           type: boolean
           description: |
             所有者がグループをお気に入りにしたか。メンバーの動画のお気に入りとは独立で、
             所有者の応答にだけ入る（specs/035-favorites/data-model.md §3）
+
+    LibraryGroup:
+      unevaluatedProperties: false
+      allOf:
+        - $ref: "#/components/schemas/LibraryGroupCardValues"
+        - type: object
+          required: [videoIds, tags]
+          description: |
+            ライブラリの項目のグループ。カードの値（LibraryGroupCardValues）に、全メンバーの id とメンバーのタグの
+            和集合を足す。ゲストの応答では `tags` を空の配列にする。
+          properties:
+            videoIds:
+              type: array
+              description: 全メンバーの id を並びの順に
+              items:
+                type: integer
+                format: int64
+            tags:
+              type: array
+              description: メンバーのタグの和集合。同じタグの出所は和にする
+              items:
+                $ref: "#/components/schemas/VideoTag"
 
     GroupMembers:
       type: object
@@ -8447,6 +8868,10 @@ components:
         nextCursor:
           type: string
           description: 続きがあるときだけ入る。`listSmartFolderItems` に渡す
+        onHome:
+          type: boolean
+          description: |
+            所有者の応答にだけ入る。このフォルダがホームの棚か（specs/057-home/contracts/screen-api.md）
 
     SmartFolderItemPage:
       type: object

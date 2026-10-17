@@ -173,7 +173,7 @@ describe("TagsPage", () => {
     const link = await screen.findByRole("link", {
       name: "Open the library filtered by 旅行",
     });
-    expect(link.getAttribute("href")).toBe("/?tag=1");
+    expect(link.getAttribute("href")).toBe("/library?tag=1");
     await user.click(link);
     expect(probe.search).toBe("?tag=1");
   });

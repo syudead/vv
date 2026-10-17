@@ -960,6 +960,123 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for HomeEmpty.
+const (
+	NoVideos HomeEmpty = "noVideos"
+)
+
+// Valid indicates whether the value is a known member of the HomeEmpty enum.
+func (e HomeEmpty) Valid() bool {
+	switch e {
+	case NoVideos:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HomeOrganizeRunOutcome.
+const (
+	HomeOrganizeRunOutcomeDone      HomeOrganizeRunOutcome = "done"
+	HomeOrganizeRunOutcomeFailed    HomeOrganizeRunOutcome = "failed"
+	HomeOrganizeRunOutcomeUnchanged HomeOrganizeRunOutcome = "unchanged"
+)
+
+// Valid indicates whether the value is a known member of the HomeOrganizeRunOutcome enum.
+func (e HomeOrganizeRunOutcome) Valid() bool {
+	switch e {
+	case HomeOrganizeRunOutcomeDone:
+		return true
+	case HomeOrganizeRunOutcomeFailed:
+		return true
+	case HomeOrganizeRunOutcomeUnchanged:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HomeOrganizeRunRun.
+const (
+	HomeOrganizeRunRunExtend  HomeOrganizeRunRun = "extend"
+	HomeOrganizeRunRunRebuild HomeOrganizeRunRun = "rebuild"
+)
+
+// Valid indicates whether the value is a known member of the HomeOrganizeRunRun enum.
+func (e HomeOrganizeRunRun) Valid() bool {
+	switch e {
+	case HomeOrganizeRunRunExtend:
+		return true
+	case HomeOrganizeRunRunRebuild:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HomeOrganizerPending.
+const (
+	HomeOrganizerPendingExtend  HomeOrganizerPending = "extend"
+	HomeOrganizerPendingRebuild HomeOrganizerPending = "rebuild"
+)
+
+// Valid indicates whether the value is a known member of the HomeOrganizerPending enum.
+func (e HomeOrganizerPending) Valid() bool {
+	switch e {
+	case HomeOrganizerPendingExtend:
+		return true
+	case HomeOrganizerPendingRebuild:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HomeShelfKind.
+const (
+	HomeShelfKindContinue    HomeShelfKind = "continue"
+	HomeShelfKindFolder      HomeShelfKind = "folder"
+	HomeShelfKindRecent      HomeShelfKind = "recent"
+	HomeShelfKindRecommended HomeShelfKind = "recommended"
+	HomeShelfKindUnshelved   HomeShelfKind = "unshelved"
+)
+
+// Valid indicates whether the value is a known member of the HomeShelfKind enum.
+func (e HomeShelfKind) Valid() bool {
+	switch e {
+	case HomeShelfKindContinue:
+		return true
+	case HomeShelfKindFolder:
+		return true
+	case HomeShelfKindRecent:
+		return true
+	case HomeShelfKindRecommended:
+		return true
+	case HomeShelfKindUnshelved:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HomeShelfItemKind.
+const (
+	HomeShelfItemKindGroup HomeShelfItemKind = "group"
+	HomeShelfItemKindVideo HomeShelfItemKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the HomeShelfItemKind enum.
+func (e HomeShelfItemKind) Valid() bool {
+	switch e {
+	case HomeShelfItemKindGroup:
+		return true
+	case HomeShelfItemKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for LibraryGroupWatchState.
 const (
 	LibraryGroupWatchStateInProgress LibraryGroupWatchState = "inProgress"
@@ -975,6 +1092,27 @@ func (e LibraryGroupWatchState) Valid() bool {
 	case LibraryGroupWatchStateUnwatched:
 		return true
 	case LibraryGroupWatchStateWatched:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LibraryGroupCardValuesWatchState.
+const (
+	LibraryGroupCardValuesWatchStateInProgress LibraryGroupCardValuesWatchState = "inProgress"
+	LibraryGroupCardValuesWatchStateUnwatched  LibraryGroupCardValuesWatchState = "unwatched"
+	LibraryGroupCardValuesWatchStateWatched    LibraryGroupCardValuesWatchState = "watched"
+)
+
+// Valid indicates whether the value is a known member of the LibraryGroupCardValuesWatchState enum.
+func (e LibraryGroupCardValuesWatchState) Valid() bool {
+	switch e {
+	case LibraryGroupCardValuesWatchStateInProgress:
+		return true
+	case LibraryGroupCardValuesWatchStateUnwatched:
+		return true
+	case LibraryGroupCardValuesWatchStateWatched:
 		return true
 	default:
 		return false
@@ -1041,6 +1179,30 @@ func (e MediaInfoVideoHdr) Valid() bool {
 	case Hlg:
 		return true
 	case Sdr:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OnboardingStep.
+const (
+	OnboardingStepDone      OnboardingStep = "done"
+	OnboardingStepFolders   OnboardingStep = "folders"
+	OnboardingStepInterests OnboardingStep = "interests"
+	OnboardingStepScan      OnboardingStep = "scan"
+)
+
+// Valid indicates whether the value is a known member of the OnboardingStep enum.
+func (e OnboardingStep) Valid() bool {
+	switch e {
+	case OnboardingStepDone:
+		return true
+	case OnboardingStepFolders:
+		return true
+	case OnboardingStepInterests:
+		return true
+	case OnboardingStepScan:
 		return true
 	default:
 		return false
@@ -2793,10 +2955,6 @@ type GroupCreate struct {
 
 // GroupDetail GET /api/groups/{id} の応答
 type GroupDetail struct {
-	// Group グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
-	// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
-	// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
-	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
 	Group LibraryGroup `json:"group"`
 
 	// Items 項目の最初のページ。位置の順で、見る人に見せる項目だけ
@@ -2811,10 +2969,6 @@ type GroupDetail struct {
 
 // GroupItem グループの項目 1 件。`kind` に応じて `video` か `group` のちょうど一方が入る
 type GroupItem struct {
-	// Group グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
-	// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
-	// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
-	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
 	Group *LibraryGroup `json:"group,omitempty"`
 
 	// Id 項目の識別子。動画やグループの id ではない
@@ -2930,10 +3084,156 @@ type Health struct {
 // HealthStatus ok = 保存層まで疎通、degraded = プロセスのみ生存
 type HealthStatus string
 
-// LibraryGroup グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
-// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
-// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
-// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
+// Home GET /api/home の応答
+type Home struct {
+	// Empty 見る人にライブラリの動画が 1 本も見えないときだけ入る
+	Empty *HomeEmpty `json:"empty,omitempty"`
+
+	// Organizer 整理役の状態（specs/057-home/data-model.md「Organizer state」）
+	Organizer *HomeOrganizer `json:"organizer,omitempty"`
+
+	// Shelves フォルダの棚を並びの順に、続けて決まった棚
+	Shelves []HomeShelf `json:"shelves"`
+}
+
+// HomeEmpty 見る人にライブラリの動画が 1 本も見えないときだけ入る
+type HomeEmpty string
+
+// HomeOrganizeRun 最後に終わった実行（specs/057-home/data-model.md「Settings」の home.organize.last）
+type HomeOrganizeRun struct {
+	// Added 足した棚の数
+	Added int `json:"added"`
+
+	// FinishedAt 終わった時刻（Unix ミリ秒）
+	FinishedAt int64 `json:"finishedAt"`
+
+	// Outcome `unchanged` は案が何も変えなかった
+	Outcome HomeOrganizeRunOutcome `json:"outcome"`
+
+	// Removed 消した棚の数
+	Removed int                `json:"removed"`
+	Run     HomeOrganizeRunRun `json:"run"`
+}
+
+// HomeOrganizeRunOutcome `unchanged` は案が何も変えなかった
+type HomeOrganizeRunOutcome string
+
+// HomeOrganizeRunRun defines model for HomeOrganizeRun.Run.
+type HomeOrganizeRunRun string
+
+// HomeOrganizer 整理役の状態（specs/057-home/data-model.md「Organizer state」）
+type HomeOrganizer struct {
+	// Last 最後に終わった実行（specs/057-home/data-model.md「Settings」の home.organize.last）
+	Last *HomeOrganizeRun `json:"last,omitempty"`
+
+	// Pending 待っている実行。無ければ省く
+	Pending *HomeOrganizerPending `json:"pending,omitempty"`
+
+	// Running 実行が今走っている
+	Running bool `json:"running"`
+}
+
+// HomeOrganizerPending 待っている実行。無ければ省く
+type HomeOrganizerPending string
+
+// HomeShelf ホームの棚 1 つ（specs/057-home/contracts/screen-api.md）
+type HomeShelf struct {
+	// ByOrganizer 所有者だけ。owner_kept が 0 の間は真
+	ByOrganizer *bool `json:"byOrganizer,omitempty"`
+
+	// FolderId フォルダの棚だけ
+	FolderId *int64 `json:"folderId,omitempty"`
+
+	// Key `folder:<id>`、`continue`、`recent`、`unshelved` か `recommended`
+	Key  HomeShelfKey  `json:"key"`
+	Kind HomeShelfKind `json:"kind"`
+
+	// Name フォルダの名前。固定の棚では空で、画面が名前を付ける
+	Name string `json:"name"`
+}
+
+// HomeShelfKind defines model for HomeShelf.Kind.
+type HomeShelfKind string
+
+// HomeShelfItem 棚の項目 1 件。`kind` に応じて `video`・`group` のちょうど 1 つが入る。グループはカードに要る値だけの
+// LibraryGroupCard で、ライブラリの LibraryGroup が持つ `videoIds`・`tags` は載せない
+// （specs/057-home/research.md R-12）
+type HomeShelfItem struct {
+	// Group ホームの棚の項目（HomeShelfItem）のグループ。カードの値（LibraryGroupCardValues）だけを持つ。
+	Group *LibraryGroupCard `json:"group,omitempty"`
+	Kind  HomeShelfItemKind `json:"kind"`
+
+	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
+	// （specs/016-single-account-auth/contracts/guest-api.md §1、
+	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	Video *Video `json:"video,omitempty"`
+}
+
+// HomeShelfItemKind defines model for HomeShelfItem.Kind.
+type HomeShelfItemKind string
+
+// HomeShelfItems 棚 1 つの最初の項目
+type HomeShelfItems struct {
+	// Items 動画とグループの項目だけ。フォルダの棚の子フォルダは入れない
+	Items []HomeShelfItem `json:"items"`
+
+	// Key `folder:<id>`、`continue`、`recent`、`unshelved` か `recommended`
+	Key HomeShelfKey `json:"key"`
+
+	// Total 棚の項目（動画とグループ）の数を、items の上限 + 1（25）を上限に数えたもの。25 なら 1 ページより多い。0 なら画面は棚を出さない
+	Total int `json:"total"`
+}
+
+// HomeShelfItemsList GET /api/home/shelves の応答
+type HomeShelfItemsList struct {
+	Shelves []HomeShelfItems `json:"shelves"`
+}
+
+// HomeShelfKey `folder:<id>`、`continue`、`recent`、`unshelved` か `recommended`
+type HomeShelfKey = string
+
+// HomeShelfOrder PUT /api/home/shelves の本文
+type HomeShelfOrder struct {
+	// FolderIds 棚にするフォルダの id を上から順に
+	FolderIds []int64 `json:"folderIds"`
+}
+
+// Interest defines model for Interest.
+type Interest struct {
+	// Id 分野の変わらない識別子（specs/057-home/data-model.md「Interest catalog」）
+	Id string `json:"id"`
+
+	// Name タグの名前（英語）
+	Name string `json:"name"`
+
+	// OnHome この分野のタグの条件の棚がもうホームにある
+	OnHome bool `json:"onHome"`
+
+	// Synonym タグの同義語（日本語）
+	Synonym string `json:"synonym"`
+}
+
+// InterestList defines model for InterestList.
+type InterestList struct {
+	Interests []Interest `json:"interests"`
+}
+
+// InterestPick defines model for InterestPick.
+type InterestPick struct {
+	Ids []string `json:"ids"`
+}
+
+// InterestPickResult defines model for InterestPickResult.
+type InterestPickResult struct {
+	// Queued 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0
+	Queued int `json:"queued"`
+
+	// Shelves 足した棚。棚がもうホームにあった分野の分は含まない
+	Shelves []HomeShelf `json:"shelves"`
+}
+
+// LibraryGroup defines model for LibraryGroup.
 type LibraryGroup struct {
 	// AddedAt メンバーの追加日時の最大
 	AddedAt time.Time `json:"addedAt"`
@@ -2989,6 +3289,64 @@ type LibraryGroup struct {
 // inProgress。所有者の応答にだけ入る
 type LibraryGroupWatchState string
 
+// LibraryGroupCard ホームの棚の項目（HomeShelfItem）のグループ。カードの値（LibraryGroupCardValues）だけを持つ。
+type LibraryGroupCard = LibraryGroupCardValues
+
+// LibraryGroupCardValues グループのカードの値。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
+// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
+// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
+// `watchState`・`lastPlayedAt`・`favorite` を省く。ほかの値を禁じるのはこれを合成する
+// LibraryGroupCard と LibraryGroup の `unevaluatedProperties` で、ここは開いたままにする
+// （閉じると合成で足す `videoIds`・`tags` まで禁じる）。
+type LibraryGroupCardValues struct {
+	// AddedAt メンバーの追加日時の最大
+	AddedAt time.Time `json:"addedAt"`
+
+	// DurationMs 長さの分かっているメンバーの合計。1本も分からなければ省く
+	DurationMs *int64 `json:"durationMs,omitempty"`
+
+	// Favorite 所有者がグループをお気に入りにしたか。メンバーの動画のお気に入りとは独立で、
+	// 所有者の応答にだけ入る（specs/035-favorites/data-model.md §3）
+	Favorite *bool `json:"favorite,omitempty"`
+
+	// Folder 自動グループのフォルダ。フォルダから自動でできたグループで、そのフォルダが登録フォルダの
+	// 下にあるときだけ入る。手で作ったグループには無く、画面はこれで 2 つを見分ける
+	Folder *VideoFolder `json:"folder,omitempty"`
+
+	// Id グループの識別子
+	Id int64 `json:"id"`
+
+	// LastPlayedAt メンバーの最後に再生した時刻の最大。無ければ省く
+	LastPlayedAt *time.Time `json:"lastPlayedAt,omitempty"`
+
+	// Name グループの名前
+	Name string `json:"name"`
+
+	// OpenVideoId 押したときに開くメンバー。並びの順で途中まで見た最初のメンバー、無ければ最初の
+	// 未完了のメンバー、全部完了なら最初のメンバー
+	OpenVideoId int64 `json:"openVideoId"`
+
+	// Previews カードのフォルダの絵柄に差し込むサムネイル。メンバーのうちサムネイル生成済みのものを
+	// 並びの順に最大4件（フォルダカードの previews と同じ形）。リスト表示の行は先頭の
+	// 1件をサムネイルに使う
+	Previews []FolderPreview `json:"previews"`
+
+	// SizeBytes メンバーの代表の所在の大きさの合計
+	SizeBytes  int64 `json:"sizeBytes"`
+	VideoCount int   `json:"videoCount"`
+
+	// WatchState 見始めたメンバーが無ければ unwatched、全メンバーが完了なら watched、それ以外は
+	// inProgress。所有者の応答にだけ入る
+	WatchState *LibraryGroupCardValuesWatchState `json:"watchState,omitempty"`
+
+	// WatchedCount 完了したメンバーの数。所有者の応答にだけ入る
+	WatchedCount *int `json:"watchedCount,omitempty"`
+}
+
+// LibraryGroupCardValuesWatchState 見始めたメンバーが無ければ unwatched、全メンバーが完了なら watched、それ以外は
+// inProgress。所有者の応答にだけ入る
+type LibraryGroupCardValuesWatchState string
+
 // LibraryGroupIds GET /api/library/ids のグループの項目 1 件
 type LibraryGroupIds struct {
 	// Id グループの識別子
@@ -3003,10 +3361,6 @@ type LibraryGroupIds struct {
 // カードの値は `listSmartFolderCards` で読む（specs/052-smart-folders/data-model.md
 // 「Library items」）
 type LibraryItem struct {
-	// Group グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
-	// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
-	// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
-	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
 	Group *LibraryGroup   `json:"group,omitempty"`
 	Kind  LibraryItemKind `json:"kind"`
 
@@ -3260,6 +3614,15 @@ type OllamaSettings struct {
 	Saved bool `json:"saved"`
 }
 
+// Onboarding defines model for Onboarding.
+type Onboarding struct {
+	// Step オンボードの段階（specs/057-home/research.md R-3）
+	Step OnboardingStep `json:"step"`
+}
+
+// OnboardingStep オンボードの段階（specs/057-home/research.md R-3）
+type OnboardingStep string
+
 // Organization 団体 1 件。Person と同じ項目に親の団体が加わる
 type Organization struct {
 	// Aliases 名前の自然順
@@ -3446,10 +3809,6 @@ type Playlist struct {
 // `smartFolder` の値は読んだ時点のフォルダの再生順から作り、再生もその時点の再生順に従う
 // （specs/052-smart-folders/contracts/screen-api.md）
 type PlaylistItem struct {
-	// Group グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
-	// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
-	// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
-	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
 	Group *LibraryGroup `json:"group,omitempty"`
 
 	// Id 並べ替えと取り外しに使う項目の識別子
@@ -3952,6 +4311,9 @@ type SmartFolderDetail struct {
 	// NextCursor 続きがあるときだけ入る。`listSmartFolderItems` に渡す
 	NextCursor *string `json:"nextCursor,omitempty"`
 
+	// OnHome 所有者の応答にだけ入る。このフォルダがホームの棚か（specs/057-home/contracts/screen-api.md）
+	OnHome *bool `json:"onHome,omitempty"`
+
 	// Settings フォルダの条件と並べ順。所有者の応答にだけ入る
 	Settings *SmartFolderSettings `json:"settings,omitempty"`
 
@@ -3967,10 +4329,6 @@ type SmartFolderDetail struct {
 
 // SmartFolderItem スマートフォルダの中身の項目 1 件。`kind` に応じて `video`・`group`・`smartFolder` のちょうど 1 つが入る
 type SmartFolderItem struct {
-	// Group グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
-	// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
-	// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
-	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
 	Group *LibraryGroup       `json:"group,omitempty"`
 	Kind  SmartFolderItemKind `json:"kind"`
 
@@ -5538,6 +5896,12 @@ type ListGroupItemsParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListHomeShelfItemsParams defines parameters for ListHomeShelfItems.
+type ListHomeShelfItemsParams struct {
+	// Keys 棚の鍵（`HomeShelfKey`）を `,` で区切って並べたもの（1〜8 件）
+	Keys []HomeShelfKey `form:"keys" json:"keys"`
+}
+
 // ListLibraryParams defines parameters for ListLibrary.
 type ListLibraryParams struct {
 	// Query 検索語。空白で区切った語をすべて含む動画に絞る（AND）。`"…"` で囲んだ部分は
@@ -5607,6 +5971,12 @@ type ListLibraryParams struct {
 	// `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
 	// （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
+
+	// Unshelved true ならホームのどのフォルダの棚の実効の規則（祖先の条件を含む経路の条件）にも
+	// 一致しない動画だけにする。ほかの絞り込みと AND で組み合わさり、スマートフォルダの
+	// 項目は出さない。動画と棚の対応は保存せず、読むたびに求める。ゲストも使える
+	// （specs/057-home/research.md R-11）
+	Unshelved *bool `form:"unshelved,omitempty" json:"unshelved,omitempty"`
 }
 
 // ListLibraryIdsParams defines parameters for ListLibraryIds.
@@ -6046,11 +6416,20 @@ type RemoveGroupItemsJSONRequestBody = GroupItemRemove
 // MoveGroupItemJSONRequestBody defines body for MoveGroupItem for application/json ContentType.
 type MoveGroupItemJSONRequestBody = GroupItemMove
 
+// SetHomeShelvesJSONRequestBody defines body for SetHomeShelves for application/json ContentType.
+type SetHomeShelvesJSONRequestBody = HomeShelfOrder
+
 // CreateMediaFolderJSONRequestBody defines body for CreateMediaFolder for application/json ContentType.
 type CreateMediaFolderJSONRequestBody = CreateMediaFolderRequest
 
 // UpdateMediaFolderJSONRequestBody defines body for UpdateMediaFolder for application/json ContentType.
 type UpdateMediaFolderJSONRequestBody = UpdateMediaFolderRequest
+
+// UpdateOnboardingJSONRequestBody defines body for UpdateOnboarding for application/json ContentType.
+type UpdateOnboardingJSONRequestBody = Onboarding
+
+// PickOnboardingInterestsJSONRequestBody defines body for PickOnboardingInterests for application/json ContentType.
+type PickOnboardingInterestsJSONRequestBody = InterestPick
 
 // CreateOrganizationJSONRequestBody defines body for CreateOrganization for application/json ContentType.
 type CreateOrganizationJSONRequestBody = CreditInput
@@ -6306,6 +6685,18 @@ type ServerInterface interface {
 	// GetHealth 稼働状態とビルド情報を返す
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// GetHome ホームの棚の要約と整理役の状態を返す
+	// (GET /api/home)
+	GetHome(w http.ResponseWriter, r *http.Request)
+	// OrganizeHome ホームの組み直し（rebuild）を待ちに入れる
+	// (POST /api/home/organize)
+	OrganizeHome(w http.ResponseWriter, r *http.Request)
+	// ListHomeShelfItems 画面に入った棚の最初の項目を返す
+	// (GET /api/home/shelves)
+	ListHomeShelfItems(w http.ResponseWriter, r *http.Request, params ListHomeShelfItemsParams)
+	// SetHomeShelves どのスマートフォルダを棚にするかとその並びを書く
+	// (PUT /api/home/shelves)
+	SetHomeShelves(w http.ResponseWriter, r *http.Request)
 	// ListLibrary ライブラリの項目（動画とグループ）の一覧を返す
 	// (GET /api/library)
 	ListLibrary(w http.ResponseWriter, r *http.Request, params ListLibraryParams)
@@ -6324,6 +6715,18 @@ type ServerInterface interface {
 	// UpdateMediaFolder メディアフォルダ1件のpathを変更する
 	// (PUT /api/media-folders/{id})
 	UpdateMediaFolder(w http.ResponseWriter, r *http.Request, id MediaFolderId)
+	// GetOnboarding オンボードの段階を返す
+	// (GET /api/onboarding)
+	GetOnboarding(w http.ResponseWriter, r *http.Request)
+	// UpdateOnboarding オンボードの段階を書く
+	// (PUT /api/onboarding)
+	UpdateOnboarding(w http.ResponseWriter, r *http.Request)
+	// ListOnboardingInterests 分野の一覧を返す
+	// (GET /api/onboarding/interests)
+	ListOnboardingInterests(w http.ResponseWriter, r *http.Request)
+	// PickOnboardingInterests 選んだ分野をタグと棚にする
+	// (POST /api/onboarding/interests)
+	PickOnboardingInterests(w http.ResponseWriter, r *http.Request)
 	// ListOrganizations 団体を一覧する
 	// (GET /api/organizations)
 	ListOrganizations(w http.ResponseWriter, r *http.Request, params ListOrganizationsParams)
@@ -7712,6 +8115,81 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// GetHome operation middleware
+func (siw *ServerInterfaceWrapper) GetHome(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHome(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OrganizeHome operation middleware
+func (siw *ServerInterfaceWrapper) OrganizeHome(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OrganizeHome(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListHomeShelfItems operation middleware
+func (siw *ServerInterfaceWrapper) ListHomeShelfItems(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListHomeShelfItemsParams
+
+	// ------------- Required query parameter "keys" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, true, "keys", r.URL.Query(), &params.Keys, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "keys"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "keys", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListHomeShelfItems(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetHomeShelves operation middleware
+func (siw *ServerInterfaceWrapper) SetHomeShelves(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetHomeShelves(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListLibrary operation middleware
 func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Request) {
 
@@ -7912,6 +8390,19 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKind"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKind", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "unshelved" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "unshelved", r.URL.Query(), &params.Unshelved, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "unshelved"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unshelved", Err: err})
 		}
 		return
 	}
@@ -8177,6 +8668,62 @@ func (siw *ServerInterfaceWrapper) UpdateMediaFolder(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateMediaFolder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOnboarding operation middleware
+func (siw *ServerInterfaceWrapper) GetOnboarding(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOnboarding(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateOnboarding operation middleware
+func (siw *ServerInterfaceWrapper) UpdateOnboarding(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateOnboarding(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListOnboardingInterests operation middleware
+func (siw *ServerInterfaceWrapper) ListOnboardingInterests(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOnboardingInterests(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PickOnboardingInterests operation middleware
+func (siw *ServerInterfaceWrapper) PickOnboardingInterests(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PickOnboardingInterests(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -12163,6 +12710,14 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/transcoding", wrapper.UpdateTranscodingSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/network", wrapper.GetNetworkSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/network", wrapper.UpdateNetworkSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/home", wrapper.GetHome)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/home/shelves", wrapper.ListHomeShelfItems)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/home/shelves", wrapper.SetHomeShelves)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/home/organize", wrapper.OrganizeHome)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/onboarding", wrapper.GetOnboarding)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/onboarding", wrapper.UpdateOnboarding)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/onboarding/interests", wrapper.ListOnboardingInterests)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/onboarding/interests", wrapper.PickOnboardingInterests)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/plugin-proxy", wrapper.GetPluginProxySettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/plugin-proxy", wrapper.UpdatePluginProxySettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/auto-import", wrapper.GetAutoImportSettings)

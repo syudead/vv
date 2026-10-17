@@ -14,6 +14,7 @@ export type SettingsSectionId =
   | "media-folders"
   | "auto-import-switch"
   | "version-judging"
+  | "home"
   | "auto-tagging"
   | "ollama"
   | "comfyui"
@@ -38,7 +39,9 @@ export const settingsPages: readonly SettingsPageEntry[] = [
   },
   {
     slug: "library",
-    sections: ["media-folders", "auto-import-switch", "version-judging"],
+    // 「Home」は「Media folders」の後に置く（specs/057-home/ui-design.md「Smart folder page and
+    // Settings」）。
+    sections: ["media-folders", "auto-import-switch", "version-judging", "home"],
     anchors: [],
   },
   { slug: "auto-tagging", sections: ["auto-tagging"], anchors: [] },

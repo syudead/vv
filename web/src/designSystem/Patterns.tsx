@@ -13,6 +13,8 @@ import { GroupedListExample } from "./blocks/grouped-list-example";
 import { ListPageExample } from "./blocks/list-page-example";
 import { type ListState, ListStatesExample } from "./blocks/list-states-example";
 import { SettingsPageExample } from "./blocks/settings-page-example";
+import { ShelfRowExample } from "./blocks/shelf-row-example";
+import { StepsPageExample } from "./blocks/steps-page-example";
 
 // 見本の画面の型の節（specs/038-design-system/ui-design.md「Page patterns」と「Review
 // criteria」6〜7）。骨格ごとに見本のブロックを枠に入れて並べ、一覧ページは状態ごとにも並べる。
@@ -110,6 +112,13 @@ export default function Patterns() {
         <GroupedListExample />
       </Pattern>
       <Pattern
+        id="shelf-row"
+        name={p.names.shelfRow}
+        items={["list-page", "shelf-row", "loading-state", "shelf-row-example"]}
+      >
+        <ShelfRowExample />
+      </Pattern>
+      <Pattern
         id="card-list"
         name={p.names.cardList}
         items={["list-page", "card-list", "card-list-example"]}
@@ -149,6 +158,13 @@ export default function Patterns() {
         items={["centered-form", "centered-form-example"]}
       >
         <CenteredFormExample />
+      </Pattern>
+      <Pattern
+        id="steps-page"
+        name={p.names.stepsPage}
+        items={["steps-page", "toggle-group", "steps-page-example"]}
+      >
+        <StepsPageExample />
       </Pattern>
       <Pattern
         id="dialogs"

@@ -266,7 +266,7 @@ test.describe.serial("folder browser", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/");
+    await page.goto("/library");
     await tabUntil(page, (active) => active.href === "/folders");
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/folders$/);

@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: 8fd9f36e8a9d1eb6dcee6ac743cd5b69c243cf88dd0181a050fa41aa4bdb404b
+sourceHash: 694688eb36413cb09cac268062ed3beda02addbf87fcda095b01b13b29df14de
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -208,8 +208,8 @@ shadcn のコンポーネントは、上流のケバブケースの名前（`dro
 
 | 層 | 何であるか | レジストリ |
 | --- | --- | --- |
-| ページの雛形 | `ListPage`、`AdminTablePage`、`SettingsPage`、`DetailPage`、`CenteredForm`、`FormDialog`、`ConfirmDialog`、`EditorDialog`、`FormPage`。ページの領域、その順序、外側の余白、最大幅、領域の間の間隔 | `registry:ui`、それぞれ 1 項目 |
-| セクション | `PageHeader`、`Toolbar`、`PageSection`、`FormRow`、`FactList`、`CardGrid`、`CardList`、`DataTable`、`GroupedList`、`JumpList`、`SelectionBar`。領域を埋める部品と、その行の余白と内側の間隔 | `registry:ui`、それぞれ 1 項目 |
+| ページの雛形 | `ListPage`、`AdminTablePage`、`SettingsPage`、`DetailPage`、`CenteredForm`、`FormDialog`、`ConfirmDialog`、`EditorDialog`、`FormPage`、`StepsPage`。ページの領域、その順序、外側の余白、最大幅、領域の間の間隔 | `registry:ui`、それぞれ 1 項目 |
+| セクション | `PageHeader`、`Toolbar`、`PageSection`、`FormRow`、`FactList`、`CardGrid`、`CardList`、`DataTable`、`GroupedList`、`JumpList`、`ShelfRow`、`SelectionBar`。領域を埋める部品と、その行の余白と内側の間隔 | `registry:ui`、それぞれ 1 項目 |
 | 状態 | `LoadingState`、`EmptyState`、`ErrorState`、`LoadMoreRow`。本体がデータの代わりに、またはデータの後に示すもの | `registry:ui`、それぞれ 1 項目 |
 
 各雛形には例のブロック（`list-page-example` など、加えて `list-states-example`）もある。雛形、そのセクションとコンポーネントを組み合わせた動作する構成であり、i18n カタログのサンプルデータで埋めてある。新しい画面を作るエージェントはブロックを複製し、文言とデータを置き換える。ブロックは `web/src/designSystem/blocks` にあり、ショーケースが描画するのはこれである。
@@ -243,6 +243,8 @@ flowchart TD
 `FormPage` は、動画の詳細のように、専用の画面でまとめて保存する多くの値のためのページであり、ダイアログではない。上部に貼り付くヘッダーの帯がタイトル、控えめな補足、操作を持ち、その下に `notice` の行がある。その下では、`lg` から名前付きのユーティリティ `grid-cols-form-page` が、名前付きの段階 `form-page-aside` の幅の `aside` と、比が 5:6 の 2 つのパネルを並べ、ページはビューポートの高さを保ち、各パネルは内側でスクロールする。`lg` 未満では各部分が縦に積まれ、ページ全体が 1 つとしてスクロールする。`FormDialog` は少数の入力欄を持ち、`SettingsPage` は各行を個別に保存するので、どちらも 1 つのボタンで保存する十数個の入力欄のフォームには合わない（[047 UI 設計、Changes to the design system](../../specs/047-video-work-info/ui-design.md#changes-to-the-design-system)）。
 
 `CardList` は、`muted` の上に枠線を付けた 1 行のカードを積み重ねる。色合いは呼び出し側が設定する 4 種類で、末尾には時刻と操作のための固定幅の列があり、それらは一覧の下まで縦にそろう。`lg` 未満では各カードが 2 行になる。枠線付きの行を描くセクションはなかった。`GroupedList` の行には枠線がなく、`DataTable` のヘッダーと列は 360px では 1 行に収まらない。`Toolbar` は、折り返さずに横へスクロールして 1 行のままにしなければならないフィルターの行のために `nowrap` を受け取り、`LoadingState` は `CardList` のために `layout="cards"` を受け取る（[055 UI 設計、Changes to the design system](../../specs/055-activity/ui-design.md#changes-to-the-design-system)）。
+
+`StepsPage` は、初回のセットアップのように決まった順序で 1 つずつ進む手順のための、シェルの外のページだ。ロゴと番号付きの手順の帯を持つヘッダーの帯があり、その下に最大 `max-w-2xl` の 1 列があって、手順のタイトル、内容、`Skip` と 1 つの主要な操作のフッターを持つ。Esc で閉じるダイアログは、手順が終わっていないのに終わったように読め、`CenteredForm` はスキップする手段のない 1 つのフォームを持つ（[057 UI 設計、Changes to the design system](../../specs/057-home/ui-design.md#changes-to-the-design-system)）。
 
 `FormDialog` は、動画の現在の詳細と取得した詳細のように、値を並べて比べながら設定するフォームのために `size="wide"` を受け取る。このサイズは `max-w-lg` ではなく `max-w-2xl` で止まり、`sm` 未満では既定のサイズと同じく 16px の余白を残して画面に広がる。閉じることだけが操作である最後の段階のために、`cancelLabel` がなければフッターは送信ボタンだけを持つ（[049 UI 設計、Changes to the design system](../../specs/049-work-info-plugins/ui-design.md#changes-to-the-design-system)）。
 

@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/auto-tagging.md
-sourceHash: e2d9dd45ac3bfea4b867baf4e38762db1055ce2044e7f38bc22c25fc2b7ba1fd
+sourceHash: 7b56e74784c00507077eb4254d60fe686994691e40c86140ab333bc3c7bc1918
 ---
 
 # 判定モデルによる自動タグ付け {#auto-tagging-with-a-decision-model}
@@ -110,8 +110,11 @@ stateDiagram-v2
 | Settings の "Tag videos not yet tagged" | 行がないか、行が `failed` の動画 |
 | Settings の "Tag all videos again" | `running` でないすべての動画 |
 | 動画ページの "Suggest tags" | その動画。`running` のときを除く |
+| オンボーディングでの興味の選択 | "Tag all videos again" と同じく、`running` でないすべての動画 |
 
-どのきっかけも "Use auto-tagging" がオンであることを必要とする。オフの間は Settings の実行ボタンと動画ページのボタンが隠れ、API は `409 auto_tagging_off` でキューへの追加を拒否する。
+どのきっかけも "Use auto-tagging" がオンであることを必要とする。オフの間は Settings の実行ボタンと動画ページのボタンが隠れ、API は `409 auto_tagging_off` でキューへの追加を拒否する。興味の選択は例外である。興味のタグと棚はそれでも作り、何もキューに入れず、`queued: 0` を返す。
+
+興味の選択は、行のない動画だけでなく、すべての動画をキューに入れる。興味のタグが存在する前に判定された動画は、そのタグについて一度も問われていないからである ([057 research, R-6](../../specs/057-home/research.md#r-6-a-picked-interest-becomes-an-owner-shelf-and-auto-tagging-is-asked-again))。
 
 `done` の行を残すので、所有者が外したタグは、同じ内容の次の取り込みで再び追加されない。1 つのワーカーが一度に 1 本の動画を判定するので、遅い CPU のみのプロバイダに、処理できない並列リクエストを送らない。
 

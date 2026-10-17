@@ -402,7 +402,7 @@ jobs:
   # だけ回す。PR では回さない。ただし Renovate の PR（renovate/ ブランチ）では回す。メジャー更新も含めて
   # renovate-triage ルーチンがマージするので、マージ前に実ブラウザで確かめる
   # （docs/how-to/dependency-updates.md）。
-  # 1 台で全部を順に流すと 10 分かかるので、ファイルを 4 組に分けて並べて流す。
+  # 1 台で全部を順に流すと 10 分かかるので、ファイルを 5 組に分けて並べて流す。
   # ファイルで絞っても、依存の準備（未設定のサーバーとログイン）は各組で先に走る。
   # e2e のファイルを足したら、どれかの組に入れる（task e2e-groups-check が確かめる）。
   e2e:
@@ -421,6 +421,9 @@ jobs:
             files: e2e/playback.e2e.ts
           - group: tags
             files: e2e/smart-folders.e2e.ts e2e/tag-kinds.e2e.ts e2e/tags.e2e.ts
+          # home.e2e.ts は走査の終わりの棚の追加を待つので数分かかる（specs/057-home/research.md R-9）。
+          - group: home
+            files: e2e/home.e2e.ts e2e/onboarding.e2e.ts
           - group: library
             files: e2e/card-scrub.e2e.ts e2e/folders.e2e.ts e2e/guest.e2e.ts e2e/history.e2e.ts e2e/hover-preview.e2e.ts e2e/media-info.e2e.ts e2e/playlists.e2e.ts e2e/thumbnail-edit.e2e.ts
           - group: scan and search

@@ -44,6 +44,13 @@ type DB struct {
 	// publisher は取引が確定した後に、その取引で起きた変化を受け取る。
 	publisherMu sync.RWMutex
 	publisher   Publisher
+
+	// homeShelves はホームの棚の項目の保持で、発行する変化で捨てる（home_shelf_cache.go）。
+	homeShelves homeShelfCache
+	// homeIndexes はホームの読み出しが引く表の維持を 1 つずつ行う（home_index_maintenance.go）。
+	// maintainCtx は確定のあとの維持に使う、開いたときの context から取り消しを外したものである。
+	homeIndexes homeIndexMaintainer
+	maintainCtx context.Context
 }
 
 // Publisher は確定した変化の発行先である。保存層は誰がそれを受け取るかを
@@ -245,9 +252,13 @@ func (db *DB) publish(c *changes) {
 // publishEvents は確定した取引で起きた変化をそのまま発行する。changes に載らない変化
 // （domain.VideoOverrideChanged）を発行する役割が、取引の確定後に呼ぶ。
 func (db *DB) publishEvents(events ...domain.Event) {
+	// 確定した書き込みの引き金が消した根の値と印を付けた動画の一致を埋め直す（home_index_maintenance.go）。
+	// 失敗しても読み出しは欠けた分をその場で求めるので、ここでは止めない。
+	_ = db.maintainHomeIndexes(db.maintainCtx)
 	if len(events) == 0 {
 		return
 	}
+	db.homeShelves.dropFor(events)
 	db.publisherMu.RLock()
 	publisher := db.publisher
 	db.publisherMu.RUnlock()
@@ -299,6 +310,11 @@ func dsn(path string, txLock string) string {
 	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeout))
 	q.Add("_pragma", "foreign_keys(on)")
+	if txLock == "deferred" {
+		// 一覧の読み出しは一時表と並べ替えの一時 B 木を作る（home_shelf_read.go）。既定の一時領域は
+		// ファイルなので、読み出し用の接続ではメモリに置く。
+		q.Add("_pragma", "temp_store(memory)")
+	}
 	return "file:" + path + "?" + q.Encode()
 }
 
@@ -324,7 +340,7 @@ func OpenContext(ctx context.Context, dataDir string) (*DB, error) {
 		return nil, fmt.Errorf("cannot open the read-only database (%s): %w", path, err)
 	}
 
-	db := &DB{sql: handle, read: read, path: path}
+	db := &DB{sql: handle, read: read, path: path, maintainCtx: context.WithoutCancel(ctx)}
 	if err := db.Ping(ctx); err != nil {
 		_ = handle.Close()
 		_ = read.Close()

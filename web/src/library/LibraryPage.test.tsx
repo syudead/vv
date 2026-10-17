@@ -21,6 +21,7 @@ import { __resetTagsForTest } from "../api/tags";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { formatBytes, formatDuration } from "../lib/format";
+import LibraryRedirect from "../app/LibraryRedirect";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
@@ -64,6 +65,7 @@ function LocationProbe() {
   return (
     <>
       <span data-testid="location">{location.search}</span>
+      <span data-testid="pathname">{location.pathname}</span>
       <button type="button" onClick={() => void navigate(-1)}>
         テストで戻る
       </button>
@@ -121,8 +123,10 @@ function renderLibrary(initial = "/", audience: Audience = "owner") {
           <AudienceProvider audience={audience}>
             <ScanProvider>
               <Routes>
+                {/* `/` は問い合わせごと `/library` へ送る（specs/057-home/research.md R-15）。 */}
+                <Route path="/" element={<LibraryRedirect />} />
                 <Route
-                  path="/"
+                  path="/library"
                   element={
                     <>
                       <LibraryPage />
@@ -226,7 +230,7 @@ describe("LibraryPage", () => {
     expect(within(dialog).getByRole("slider", { name: "Card size" })).toBeDefined();
   });
 
-  it("空なら取り込みを促す", async () => {
+  it("空なら所有者をオンボードへ案内する", async () => {
     fetchMock.mockImplementation((input) =>
       Promise.resolve(
         String(input).startsWith("/api/scans/current")
@@ -238,9 +242,18 @@ describe("LibraryPage", () => {
     );
     renderLibrary();
     expect(await screen.findByText("No videos yet")).toBeDefined();
-    // 押しても取り込みを始めず、開始の場所である設定の「Scan status」へ移る。
-    expect(screen.getByRole("link", { name: "Scan" }).getAttribute("href")).toBe(
-      "/settings/scan#scan-status",
+    // 段階を folders に書いてオンボードを開く（specs/057-home/ui-design.md「Sidebar and library」）。
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Set up library" }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input) === "/api/onboarding" &&
+            init?.method === "PUT" &&
+            init.body === JSON.stringify({ step: "folders" }),
+        ),
+      ).toBe(true),
     );
   });
 
@@ -1092,6 +1105,33 @@ describe("LibraryPage", () => {
         throw new Error(`unexpected request: ${url.toString()}`);
       });
     }
+
+    it("/?tag=3 は /library?tag=3 へ移り、タグ 3 で絞ったライブラリを開く（specs/057-home R-15）", async () => {
+      const tag = {
+        id: 3,
+        name: "旅行",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+        kind: null,
+      };
+      const requested: number[][] = [];
+      installTagAwareList([tag], (tags) => {
+        requested.push(tags);
+        return { items: [video(1, { tags: [tag] })], total: 1 };
+      });
+      renderLibrary("/?tag=3");
+
+      await screen.findByRole("link", { name: "動画 1" });
+      expect(screen.getByTestId("pathname").textContent).toBe("/library");
+      expect(screen.getByTestId("location").textContent).toContain("tag=3");
+      expect(requested.at(-1)).toEqual([3]);
+      expect(
+        within(screen.getByRole("list", { name: "Tags in the filter" })).getByText(
+          "旅行",
+        ),
+      ).toBeDefined();
+    });
 
     it("/?tag=1&sort=random は seed を補い、tag=1 を残す", async () => {
       const tag = {
@@ -2023,7 +2063,7 @@ describe("LibraryPage", () => {
       expect(screen.getByText("Sign in to see all videos.")).toBeDefined();
       expect(screen.queryByRole("link", { name: "Scan" })).toBeNull();
       const login = screen.getByRole("link", { name: "Sign in" });
-      expect(login.getAttribute("href")).toBe("/login?next=%2F");
+      expect(login.getAttribute("href")).toBe("/login?next=%2Flibrary");
     });
   });
   describe("グループのカード（specs/017-folder-groups/ui-design.md「Group card」）", () => {
@@ -2077,7 +2117,8 @@ describe("LibraryPage", () => {
               <AudienceProvider audience={audience}>
                 <ScanProvider>
                   <Routes>
-                    <Route path="/" element={<LibraryPage />} />
+                    <Route path="/" element={<LibraryRedirect />} />
+                    <Route path="/library" element={<LibraryPage />} />
                     <Route path="/videos/:id" element={<PlayerStub />} />
                     <Route path="/groups/:id" element={<PlayerStub />} />
                   </Routes>
@@ -2205,7 +2246,9 @@ describe("LibraryPage", () => {
       renderWithPlayer("/?q=ser");
       await user.click(await screen.findByRole("link", { name: ownerLabel }));
       expect(await screen.findByText("再生画面 /groups/7")).toBeDefined();
-      expect(screen.getByRole("button", { name: "一覧へ戻る /?q=ser" })).toBeDefined();
+      expect(
+        screen.getByRole("button", { name: "一覧へ戻る /library?q=ser" }),
+      ).toBeDefined();
     });
 
     it("グループのページから戻ると、カードの視聴状態がメンバーの変化で変わる（受け入れ条件12）", async () => {

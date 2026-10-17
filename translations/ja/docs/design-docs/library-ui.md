@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 9513ffb61dcda9e0e6f4c93a868c53c85635532cbaf479de431bc02cdbec396a
+sourceHash: 47a176b6ce05bff6916da16ba97adf29597da6ae51dc5fc1102dbb893ee76582
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -127,7 +127,7 @@ flowchart LR
 
 | 部品 | 所有者 | ゲスト |
 | --- | --- | --- |
-| サイドバー上部 | すべての項目 | `Library` と `Folders` だけ |
+| サイドバー上部 | すべての項目 | `Home`、`Library`、`Folders` だけ |
 | サイドバー下部 | `Settings`、`Sign out` | `Sign in` |
 | `Scan library` ボタンと取り込みの進捗 | 表示 | 非表示 |
 | 並び順 | 9 | 7 |
@@ -154,7 +154,7 @@ flowchart LR
 
 ### スキャンの入口と進捗 {#scan-entry-and-progress}
 
-スキャンはたまにしかせず、上部バーに常にあるボタンは右下のインジケーターと重複していたので、スキャンは Settings の `Scan` ページの `Scan status` の節（[`ScanStatusSection.tsx`](../../web/src/settings/ScanStatusSection.tsx)）にある `Scan library` からだけ始まる。ボタンはどのスキャン状態でも存在する。スキャンの実行中（別のタブで始めたものを含む）とメディアフォルダが 1 つもない間は無効になり、その理由を、ボタンが `aria-describedby` で参照する 1 行に示す。開始リクエストの失敗は同じ節にアラートとして表示され、ボタンは再試行のために使えるままだ。空のライブラリや空のフォルダの `Scan` 操作は `/settings/scan#scan-status` へのリンクで、何も開始しない。
+スキャンはたまにしかせず、上部バーに常にあるボタンは右下のインジケーターと重複していたので、スキャンは Settings の `Scan` ページの `Scan status` の節（[`ScanStatusSection.tsx`](../../web/src/settings/ScanStatusSection.tsx)）にある `Scan library` か、`/welcome` のオンボーディングの `Scan` の手順（[057 UI 設計、Onboarding](../../specs/057-home/ui-design.md#onboarding)）から始まる。ボタンはどのスキャン状態でも存在する。スキャンの実行中（別のタブで始めたものを含む）とメディアフォルダが 1 つもない間は無効になり、その理由を、ボタンが `aria-describedby` で参照する 1 行に示す。開始リクエストの失敗は同じ節にアラートとして表示され、ボタンは再試行のために使えるままだ。空のフォルダの `Scan` 操作は `/settings/scan#scan-status` へのリンクで、何も開始しない。空のライブラリと動画のないホームでの所有者の操作は `Set up library` で、オンボーディングの手順を `folders` にして `/welcome` を開く（[`useStartSetup.ts`](../../web/src/onboarding/useStartSetup.ts)）。
 
 右下のインジケーター（[`ScanProgressIndicator.tsx`](../../web/src/shell/ScanProgressIndicator.tsx)）は [024 UI 設計](../../specs/024-import-progress/ui-design.md) の配置と内容を保つ。ここのルールは、その開き方、閉じ方、非表示の仕方を置き換える。
 
@@ -188,7 +188,7 @@ flowchart LR
 | 場合 | 振る舞い |
 | --- | --- |
 | ライブラリでタグを押す | そのタグで絞り込む |
-| フォルダのページかグループのページでタグを押す | `/?tag=<id>` を開く |
+| フォルダのページかグループのページでタグを押す | `/library?tag=<id>` を開く |
 | 行に収まらないタグ | `+N` にまとめる。その上でマウスを止めるか押すと、隠れたタグを折り返すチップとしてビューポートの中に開き、収まらないときはスクロールし、どの名前も省略せずに示す（[041 UI 設計](../../specs/041-tag-overflow-list/ui-design.md#the-list)） |
 | フォルダ名だけから来たタグ | 同じ大きさ、塗りなし、破線の枠線、Folder の印。動画ページでは × がなく、`Remove tag` の候補にならない（[017 UI 設計](../../specs/017-folder-groups/ui-design.md)） |
 | ホバーのプレビュー | どの画面でも一度に 1 つ |
@@ -265,7 +265,9 @@ flowchart LR
 
 ## サイドバーのナビゲーション {#sidebar-navigation}
 
-サイドバーの各項目は、それぞれの画面へ移る。
+サイドバーの各項目は、それぞれの画面へ移る。`Home` は `/` を開き、`Library` の上にある。この項目は `/library` でライブラリを開く（[057 調査、R-15](../../specs/057-home/research.md#r-15-the-library-moves-to-library)）。ライブラリはそのアドレスでもクエリパラメータを保ち、ライブラリを絞り込むアプリ内のリンク（タグ、人物、組織）はすべて `/library?<parameter>=<id>` を開く。移動の前からある `/?tag=<id>` の形の URL は、同じクエリで `/library` を開く。クエリのない `/` はホームだ（[057 UI 設計、Home](../../specs/057-home/ui-design.md#home)）。
+
+所有者のオンボーディングの手順が `done` でない間は、どのルートも、シェルの外のオンボーディングのページである `/welcome` に置き換わり、手順が `done` の所有者の `/welcome` は `/` へ移る。ゲストがそこへ送られることはない。ゲート（[`OnboardingGate.tsx`](../../web/src/onboarding/OnboardingGate.tsx)）は、ルートを描画する前に手順を読み、別の機器で変えた手順が反映されるよう `home` イベントで再び読み、読めない手順を `done` として扱うので、読み込みの失敗で所有者が締め出されることはない（[057 調査、R-4](../../specs/057-home/research.md#r-4-onboarding-adds-routes-for-its-step-and-interests-only)）。
 
 ## 動画ページのレイアウト {#video-page-layout}
 

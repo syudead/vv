@@ -73,8 +73,14 @@ type LibraryGroup struct {
 	// Name はグループの名前。
 	Name string
 	// Members は見せてよい子孫の動画を再生順（子グループは深さ優先、同じ動画は最初の 1 回）で
-	// 持つ。
+	// 持つ。カードの値だけで読んだグループ（ホームの棚の項目。specs/057-home/research.md R-12）では
+	// nil で、カードに要る値は VideoCount と Previews が持つ。
 	Members []Video
+	// VideoCount は見せてよい子孫の動画の数（Members の長さ）。
+	VideoCount int
+	// Previews はカードのフォルダの絵柄に差し込むサムネイル。サムネイル生成済みのメンバーを
+	// 再生順に MaxFolderPreviews 件まで。
+	Previews []FolderPreview
 	// WatchState と WatchedCount は GroupWatch の結果である。
 	WatchState   WatchState
 	WatchedCount int
@@ -97,7 +103,7 @@ type LibraryGroup struct {
 // グループの項目を作る。progress は members と同じ長さで同じ並びである。
 // ゲストには再生の記録を渡さない（全部 nil）ので、開くメンバーは最初のメンバーになる。
 func NewLibraryGroup(id int64, path, name string, members []Video, progress []*Progress) LibraryGroup {
-	group := LibraryGroup{ID: id, Path: path, Name: name, Members: members}
+	group := LibraryGroup{ID: id, Path: path, Name: name, Members: members, VideoCount: len(members), Previews: GroupPreviews(members)}
 	group.WatchState, group.WatchedCount = GroupWatch(progress)
 	if index := GroupOpenIndex(progress); index < len(members) {
 		group.OpenVideoID = members[index].ID
@@ -122,6 +128,30 @@ func NewLibraryGroup(id int64, path, name string, members []Video, progress []*P
 		}
 	}
 	return group
+}
+
+// GroupPreviews は、グループのカードのフォルダの絵柄に差し込むメンバーを返す。サムネイル生成済みの
+// メンバーを並びの順に、フォルダカードと同じ上限（MaxFolderPreviews）まで取る。
+func GroupPreviews(members []Video) []FolderPreview {
+	out := make([]FolderPreview, 0, MaxFolderPreviews)
+	for _, member := range members {
+		if len(out) == MaxFolderPreviews {
+			break
+		}
+		if member.HasThumbnail() {
+			out = append(out, member.Preview())
+		}
+	}
+	return out
+}
+
+// Preview は動画をフォルダの絵柄のサムネイル（FolderPreview）に写す。
+func (v Video) Preview() FolderPreview {
+	return FolderPreview{
+		VideoID: v.ID, ContentKey: v.ContentKey, PreviewState: v.PreviewState,
+		ThumbnailPositionMs: v.ThumbnailPositionMs, ThumbnailRevision: v.ThumbnailRevision,
+		ThumbnailImageRevision: v.ThumbnailImageRevision,
+	}
 }
 
 // memberStarted は、メンバーを見始めた（位置が 0 より大きいか完了した）かを返す。

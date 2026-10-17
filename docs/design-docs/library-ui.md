@@ -219,7 +219,7 @@ Card width follows the zoom level. Guest rules are in
 
 | Part | Owner | Guest |
 | --- | --- | --- |
-| Sidebar, upper | All entries | `Library` and `Folders` only |
+| Sidebar, upper | All entries | `Home`, `Library` and `Folders` only |
 | Sidebar, lower | `Settings`, `Sign out` | `Sign in` |
 | `Scan library` button and import progress | Shown | Hidden |
 | Sort orders | 9 | 7 |
@@ -277,17 +277,21 @@ the `Created "{name}"` toast carries `Open` to the new folder's page
 
 ### Scan entry and progress
 
-A scan starts only from `Scan library` in the `Scan status` section of the
+A scan starts from `Scan library` in the `Scan status` section of the
 Settings `Scan` page
-([`ScanStatusSection.tsx`](../../web/src/settings/ScanStatusSection.tsx)),
+([`ScanStatusSection.tsx`](../../web/src/settings/ScanStatusSection.tsx)) or
+on the `Scan` step of onboarding at `/welcome`
+([057 UI design, Onboarding](../../specs/057-home/ui-design.md#onboarding)),
 because scanning is occasional and a permanent button in the top bar repeated
 the bottom-right indicator. The button is present in every scan state. It is
 disabled while a scan runs (including one started in another tab) and while
 no media folder exists, with the reason in a line it references through
 `aria-describedby`. A failed start request appears as an alert in the same
 section, and the button stays available to try again. The `Scan` action of an
-empty library or empty folder is a link to `/settings/scan#scan-status` and starts
-nothing.
+empty folder is a link to `/settings/scan#scan-status` and starts nothing. The
+owner's action on an empty library, and on a home with no video, is `Set up
+library`: it sets the onboarding step to `folders` and opens `/welcome`
+([`useStartSetup.ts`](../../web/src/onboarding/useStartSetup.ts)).
 
 The bottom-right indicator
 ([`ScanProgressIndicator.tsx`](../../web/src/shell/ScanProgressIndicator.tsx))
@@ -335,7 +339,7 @@ Video card behaviour:
 | Case | Behaviour |
 | --- | --- |
 | Tag pressed in the library | Filters by the tag |
-| Tag pressed on a folder page or a group page | Opens `/?tag=<id>` |
+| Tag pressed on a folder page or a group page | Opens `/library?tag=<id>` |
 | Tags that do not fit the row | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full ([041 UI design](../../specs/041-tag-overflow-list/ui-design.md#the-list)) |
 | Tag from a folder name only | Same size, no fill, dashed border, Folder marker; no × on the video page; not offered by `Remove tag` ([017 UI design](../../specs/017-folder-groups/ui-design.md)) |
 | Hover preview | One at a time on any screen |
@@ -496,7 +500,23 @@ avoid a double outline.
 
 ## Sidebar navigation
 
-Each sidebar item goes to its screen.
+Each sidebar item goes to its screen. `Home` opens `/` and sits above
+`Library`, which opens the library at `/library`
+([057 research, R-15](../../specs/057-home/research.md#r-15-the-library-moves-to-library)).
+The library keeps its query parameters at that address, and every in-app link
+that filters the library (a tag, a person, an organization) opens
+`/library?<parameter>=<id>`. A URL of the form `/?tag=<id>` from before the
+move opens `/library` with the same query. `/` without a query is the home
+([057 UI design, Home](../../specs/057-home/ui-design.md#home)).
+
+While the owner's onboarding step is not `done`, every route replaces itself
+with `/welcome`, the onboarding page outside the shell, and the owner's
+`/welcome` with the step `done` goes to `/`. Guests are never sent there. The
+gate ([`OnboardingGate.tsx`](../../web/src/onboarding/OnboardingGate.tsx))
+reads the step before it draws a route, reads it again on the `home` event so
+a step changed on another device takes effect, and treats a step it cannot
+read as `done`, so a failed read never locks the owner out
+([057 research, R-4](../../specs/057-home/research.md#r-4-onboarding-adds-routes-for-its-step-and-interests-only)).
 
 ## Video page layout
 

@@ -85,7 +85,7 @@ test("a running watch scan shows nothing; one that ends partial is announced and
     "broken-a.mp4",
     "broken-b.mp4",
   ]);
-  await page.goto("/");
+  await page.goto("/library");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
   const indicator = page.getByRole("button", { name: /Open the scan status/ });
@@ -115,7 +115,7 @@ test("a running watch scan shows nothing; one that ends partial is announced and
 
 test("a watch scan that ends done announces nothing", async ({ page }) => {
   const stub = await stubScan(page, { id: 1, origin: "manual", status: "done" });
-  await page.goto("/");
+  await page.goto("/library");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
   await stub.set({ id: 2, origin: "watch", status: "running" });
@@ -209,7 +209,7 @@ test("a finished watch scan adds new videos to the open library without losing s
     route.fulfill({ status: 404, body: "" }),
   );
 
-  await page.goto("/");
+  await page.goto("/library");
   const target = page.locator('[data-video-id="960"]');
   await target.scrollIntoViewIfNeeded();
   await page.getByRole("checkbox", { name: 'Select "video 960"' }).click({ force: true });

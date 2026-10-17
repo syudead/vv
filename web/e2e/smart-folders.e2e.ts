@@ -424,7 +424,7 @@ test.describe.serial("smart folders", () => {
   test("5: 猫と未視聴で絞ったライブラリから保存したフォルダは、ライブラリが見せていたものを同じ順に見せる（画面 2・8）", async ({
     page,
   }) => {
-    const filtered = `/?tag=${String(tagId(catTag))}&watch=unwatched`;
+    const filtered = `/library?tag=${String(tagId(catTag))}&watch=unwatched`;
     await page.goto(filtered);
     await expect(videoCard(page, catA)).toBeVisible();
     await expect(groupCard(page, bothGroup)).toBeVisible();
@@ -463,7 +463,7 @@ test.describe.serial("smart folders", () => {
     await expect.poll(() => listedItems(page)).toEqual(shown);
 
     // 新しいカードは絞り込まないライブラリに立つ。
-    await page.goto("/");
+    await page.goto("/library");
     await expect(
       folderCard(page, id).getByRole("link", {
         name: `${savedFolder}, smart folder of 5 videos`,
@@ -485,10 +485,10 @@ test.describe.serial("smart folders", () => {
     });
 
     const library = await context.newPage();
-    await library.goto(`/?q=${encodeURIComponent(dog)}`);
+    await library.goto(`/library?q=${encodeURIComponent(dog)}`);
     await expect(videoCard(library, dog)).toBeVisible();
     const cards = await context.newPage();
-    await cards.goto("/");
+    await cards.goto("/library");
     const card = folderCard(cards, id);
     await expect(
       card.getByRole("link", { name: `${catFolder}, smart folder of 5 videos` }),
@@ -534,7 +534,7 @@ test.describe.serial("smart folders", () => {
     request,
   }) => {
     const id = folderId(catFolder);
-    await page.goto("/");
+    await page.goto("/library");
     const card = folderCard(page, id);
     await card.hover();
     await card
@@ -627,11 +627,11 @@ test.describe.serial("smart folders", () => {
           fullPage,
         });
       try {
-        await page.goto("/");
+        await page.goto("/library");
         await scrollToCard(page, folderCard(page, folderId(catFolder)));
         await shot("library");
 
-        await page.goto(`/?tag=${String(tagId(catTag))}&watch=unwatched`);
+        await page.goto(`/library?tag=${String(tagId(catTag))}&watch=unwatched`);
         await expect(videoCard(page, catA)).toBeVisible();
         await shot("library-filtered");
         await page.getByRole("button", { name: "Save as smart folder" }).click();

@@ -90,6 +90,11 @@ export type VideoVersionsRef = components["schemas"]["VideoVersionsRef"];
 export type VersionCandidate = components["schemas"]["VersionCandidate"];
 export type VersionCandidatePage = components["schemas"]["VersionCandidatePage"];
 export type LibraryGroup = components["schemas"]["LibraryGroup"];
+/**
+ * LibraryGroupCard はグループのカードの値で、LibraryGroup から `videoIds`・`tags` を除いたものである。
+ * ホームの棚の項目はこの形で届く（specs/057-home/research.md R-12）。
+ */
+export type LibraryGroupCard = components["schemas"]["LibraryGroupCard"];
 export type TranscodingSettings = components["schemas"]["TranscodingSettings"];
 export type NetworkSettings = components["schemas"]["NetworkSettings"];
 export type PluginProxySettings = components["schemas"]["PluginProxySettings"];
@@ -125,13 +130,19 @@ export type CreatedAPIToken = components["schemas"]["CreatedAPIToken"];
 export type SmartFolderSummary = components["schemas"]["SmartFolderSummary"];
 
 /**
+ * LibraryItemOf は `kind` で読み分けられる項目 1 件で、グループの項目の形 G を変えられる
+ * （ライブラリは LibraryGroup、ホームの棚は LibraryGroupCard）。
+ */
+export type LibraryItemOf<G> =
+  | { kind: "video"; video: Video }
+  | { kind: "group"; group: G }
+  | { kind: "smartFolder"; smartFolder: SmartFolderSummary };
+
+/**
  * LibraryItem は一覧の項目1件である（api/openapi.yaml の LibraryItem）。生成した型は
  * `video`・`group`・`smartFolder` をどれも省略可能にしているので、`kind` で読み分けられる形にする。
  */
-export type LibraryItem =
-  | { kind: "video"; video: Video }
-  | { kind: "group"; group: LibraryGroup }
-  | { kind: "smartFolder"; smartFolder: SmartFolderSummary };
+export type LibraryItem = LibraryItemOf<LibraryGroup>;
 export type VideoChanged = components["schemas"]["VideoChanged"];
 export type GroupChanged = components["schemas"]["GroupChanged"];
 export type GroupDetail = components["schemas"]["GroupDetail"];
@@ -476,12 +487,12 @@ export type LibraryPageResponse = Omit<components["schemas"]["LibraryPage"], "it
  * toLibraryItem は生成した型の項目（ライブラリとスマートフォルダの中身が同じ形を持つ）を、
  * `kind` で読み分けられる形にする。契約に反して中身の欠けた項目は捨てる（null）。
  */
-export function toLibraryItem(item: {
+export function toLibraryItem<G>(item: {
   kind: LibraryItem["kind"];
   video?: Video;
-  group?: LibraryGroup;
+  group?: G;
   smartFolder?: SmartFolderSummary;
-}): LibraryItem | null {
+}): LibraryItemOf<G> | null {
   if (item.kind === "video" && item.video !== undefined) {
     return { kind: "video", video: item.video };
   }
@@ -495,13 +506,22 @@ export function toLibraryItem(item: {
 }
 
 /** toLibraryItems は生成した型の項目の並びを読み分け、中身の欠けた項目を捨てる。 */
-export function toLibraryItems(
-  items: readonly Parameters<typeof toLibraryItem>[0][],
-): LibraryItem[] {
+export function toLibraryItems<G>(
+  items: readonly Parameters<typeof toLibraryItem<G>>[0][],
+): LibraryItemOf<G>[] {
   return items.flatMap((item) => {
     const converted = toLibraryItem(item);
     return converted === null ? [] : [converted];
   });
+}
+
+/** ListLibraryParams はライブラリの項目の一覧（GET /api/library）の問い合わせ条件である。 */
+export interface ListLibraryParams extends ListVideosParams {
+  /**
+   * true ならホームのどの棚にも一致しない動画だけにする（specs/057-home/research.md R-11）。
+   * false は既定なので送らない。
+   */
+  unshelved?: boolean;
 }
 
 /**
@@ -510,13 +530,14 @@ export function toLibraryItems(
  * specs/052-smart-folders/data-model.md「Library items」）。
  */
 export async function listLibrary(
-  params: ListVideosParams = {},
+  params: ListLibraryParams = {},
 ): Promise<LibraryPageResponse> {
   const query = new URLSearchParams();
   setListFilters(query, params);
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
   setAddedLengthFilter(query, params);
+  if (params.unshelved === true) query.set("unshelved", "true");
   const page = await request<components["schemas"]["LibraryPage"]>(
     `/api/library?${query.toString()}`,
     { signal: params.signal },

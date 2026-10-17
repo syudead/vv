@@ -592,6 +592,8 @@ export const en = {
         editorDialog: "Editor dialog",
         formPage: "Form page",
         groupedList: "Grouped list",
+        shelfRow: "Shelf rows",
+        stepsPage: "Steps page",
         cardList: "Card list",
         listState: (state: string) => `List page: ${state}`,
       },
@@ -752,6 +754,25 @@ export const en = {
       formPageNotesHint: "Shown under the video's details.",
       formPageCode: "Code",
       save: "Save",
+      home: "Home",
+      shelves: "Shelves",
+      recentlyAdded: "Recently added",
+      seeAll: "See all",
+      seeAllFor: (name: string) => `See all: ${name}`,
+      scrollBack: (name: string) => `Scroll ${name} back`,
+      scrollForward: (name: string) => `Scroll ${name} forward`,
+      loadingShelf: (name: string) => `Loading ${name}`,
+      steps: "Setup steps",
+      stepNames: { folders: "Folders", topics: "Topics", finish: "Finish" },
+      stepOf: (current: number, total: number) =>
+        `Step ${formatNumber(current)} of ${formatNumber(total)}`,
+      stepDone: (name: string) => `${name}, done`,
+      stepCurrent: (name: string) => `${name}, current step`,
+      stepsTitle: "What do you watch?",
+      stepsDescription: "Pick a few topics. You can change them later.",
+      topics: "Topics",
+      skip: "Skip",
+      continue: "Continue",
     },
   },
   app: {
@@ -926,6 +947,7 @@ export const en = {
     empty: {
       title: "No videos yet",
       description: "Put videos in a media folder and scan to see them here.",
+      setUp: "Set up library",
     },
     view: {
       label: "View",
@@ -2273,6 +2295,52 @@ export const en = {
       title: "No history matches these conditions",
     },
   },
+  // ホーム（specs/057-home/ui-design.md「Words」の Home の行）。
+  home: {
+    title: "Home",
+    shelves: "Shelves",
+    loading: "Loading your home",
+    search: "Search the library",
+    fixed: {
+      continue: "Continue watching",
+      recent: "Recently added",
+      unshelved: "Not on any shelf",
+      recommended: "Recommended",
+    },
+    seeAll: "See all",
+    // 「See all」は棚ごとに並ぶので、読み上げ名に棚の名前を足す。
+    seeAllFor: (name: string) => `See all: ${name}`,
+    // 棚の行の端に重ねる送りのボタンの読み上げ名。
+    previous: (name: string) => `Scroll ${name} back`,
+    next: (name: string) => `Scroll ${name} forward`,
+    loadingShelf: (name: string) => `Loading ${name}`,
+    shelfFailed: (reason: string) => `Couldn't load this shelf: ${reason}`,
+    loadFailed: (reason: string) => `Couldn't load your home: ${reason}`,
+    empty: {
+      title: "No videos yet",
+      owner: "Add a media folder and scan it, and your shelves appear here.",
+      guest: "There's nothing to watch here yet.",
+      setUp: "Set up library",
+    },
+    // 所有者の棚の操作（ui-design.md「Words」の Folder shelf `More` と Add shelf の行）。
+    addShelf: "Add shelf",
+    addShelfSearch: "Find a smart folder",
+    addShelfList: "Smart folders not on your home",
+    addShelfNoMatch: "No smart folder matches.",
+    addShelfAllOnHome: "Every smart folder is already on your home.",
+    addShelfNone: "No smart folders yet. Save a library filter as a smart folder first.",
+    addShelfLoadFailed: (reason: string) => `Couldn't load the smart folders: ${reason}`,
+    shelfMore: (name: string) => `More actions for ${name}`,
+    moveUp: "Move up",
+    moveDown: "Move down",
+    removeFromHome: "Remove from home",
+    addToHome: "Add to home",
+    added: (name: string) => `Added "${name}" to your home.`,
+    removed: (name: string) => `Removed "${name}" from your home.`,
+    undo: "Undo",
+    writeFailed: (reason: string) => `Couldn't change your home: ${reason}`,
+    organizing: "Organizing your shelves…",
+  },
   // アクティビティ（specs/055-activity/ui-design.md「Words」）。
   activity: {
     title: "Activity",
@@ -2831,6 +2899,68 @@ export const en = {
     controlCharacters: "Line breaks and tabs aren't allowed",
     tooLong: (limit: number) => `Up to ${characters(limit)}`,
   },
+  // オンボード（specs/057-home/ui-design.md「Words」の Onboarding の行）。
+  onboarding: {
+    documentTitle: "Set up your library",
+    steps: "Setup steps",
+    stepNames: {
+      folders: "Media folders",
+      scan: "Scan",
+      interests: "Interests",
+    },
+    stepOf: (current: number, total: number) =>
+      `Step ${formatNumber(current)} of ${formatNumber(total)}`,
+    stepDone: (name: string) => `${name}, done`,
+    stepCurrent: (name: string) => `${name}, current step`,
+    skip: "Skip",
+    saveFailed: (reason: string) => `Couldn't save your progress: ${reason}`,
+    folders: {
+      title: "Where are your videos?",
+      description:
+        "Add the folders on the server that hold your videos. You can change them later in Settings.",
+      add: "Add folder",
+      list: "Added folders",
+      loading: "Loading the media folders",
+      loadFailed: (reason: string) => `Couldn't load the media folders: ${reason}`,
+      addFailed: (reason: string) => `Couldn't add the folder: ${reason}`,
+      continue: "Continue",
+    },
+    scan: {
+      title: "Scan your library",
+      description:
+        "VVMDM reads the folders and makes thumbnails. It keeps going in the background, so you can continue while it runs.",
+      start: "Scan library",
+      noFolder: "Add a media folder first.",
+    },
+    interests: {
+      title: "What do you watch?",
+      description:
+        "Pick what your videos are about. Each becomes a shelf on your home that fills in as videos get these tags.",
+      label: "Interests",
+      loading: "Loading the interests",
+      loadFailed: (reason: string) => `Couldn't load the interests: ${reason}`,
+      autoTaggingOff:
+        "Auto-tagging is off, so these shelves fill in only as you tag videos. You can turn it on in Settings.",
+      onHome: "On your home",
+      // ホームにもうある分野の切り替えの読み上げ名。押せない理由を名前に含める。
+      onHomeLabel: (name: string) => `${name}, on your home`,
+      scanning: (settled: number, total: number) =>
+        `Scanning: ${formatNumber(settled)} of ${formatNumber(total)}`,
+      scanProgress: "Scan progress",
+      scanFinished: "Scan finished",
+      scanFailed: "Scan failed. See Settings.",
+      finish: "Finish",
+      pickFailed: (reason: string) => `Couldn't add the shelves: ${reason}`,
+      // 棚はできたが自動タグ付けへ動画を入れられなかったとき。棚の追加の失敗とは言わない。
+      queueFailed: (reason: string) =>
+        `Added the shelves, but couldn't queue your videos for auto-tagging: ${reason}`,
+      added: (count: number) =>
+        selectPlural(count, {
+          one: `Added ${formatNumber(count)} shelf to your home.`,
+          other: `Added ${formatNumber(count)} shelves to your home.`,
+        }),
+    },
+  },
   auth: {
     gate: {
       unreachable: "Can't connect to the server",
@@ -2871,6 +3001,7 @@ export const en = {
     nav: {
       main: "Main navigation",
       account: "Account and settings",
+      home: "Home",
       library: "Library",
       folders: "Folders",
       tags: "Tags",
@@ -3390,6 +3521,27 @@ export const en = {
         deleted: (name: string) => `Deleted ${name}.`,
         failed: (reason: string) => `Couldn't delete the plugin: ${reason}`,
       },
+    },
+    // 設定の「Home」の節（specs/057-home/ui-design.md「Words」の Settings の行）。
+    home: {
+      heading: "Home",
+      shelves: "Shelves",
+      shelvesDescription:
+        "Rebuild the shelves VVMDM made from your tags, people and organizations. Shelves you made, changed or picked as interests stay.",
+      reorganize: "Reorganize",
+      lastRun: {
+        changed: (when: string, added: number, removed: number) =>
+          `Last organized ${when}: ${formatNumber(added)} added, ${formatNumber(removed)} removed.`,
+        unchanged: (when: string) => `Last organized ${when}: nothing changed.`,
+        failed: (when: string) => `Last organizing failed ${when}.`,
+        never: "Not organized yet.",
+      },
+      setup: "Setup",
+      setupDescription: "Add media folders, scan and pick interests again.",
+      startSetup: "Start setup",
+      loadFailed: (reason: string) => `Couldn't load the home settings: ${reason}`,
+      reorganizeFailed: (reason: string) => `Couldn't start reorganizing: ${reason}`,
+      setupFailed: (reason: string) => `Couldn't start setup: ${reason}`,
     },
     mediaFolders: {
       heading: "Media folders",

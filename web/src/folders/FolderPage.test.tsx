@@ -162,7 +162,7 @@ function renderFolders(initial: string, audience: Audience = "owner") {
                   }
                 />
                 <Route path="/videos/:id" element={<Player />} />
-                <Route path="/" element={<LibraryProbe />} />
+                <Route path="/library" element={<LibraryProbe />} />
               </Routes>
             </ScanProvider>
           </AudienceProvider>
@@ -289,7 +289,7 @@ describe("FolderPage", () => {
     renderFolders("/folders/3/A");
     const tag = await screen.findByRole("button", { name: "Filter by 旅行" });
     await userEvent.setup().click(tag);
-    expect(screen.getByTestId("library-location").textContent).toBe("/?tag=5");
+    expect(screen.getByTestId("library-location").textContent).toBe("/library?tag=5");
   });
 
   it("ホバープレビューは同時に 1 件だけ再生する（issue 308）", async () => {

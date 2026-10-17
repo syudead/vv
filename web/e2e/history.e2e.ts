@@ -440,7 +440,7 @@ test.describe.serial("watch history", () => {
     // 再開を確かめられない。
     expect(saved).toBeGreaterThanOrEqual(5000);
 
-    await page.goto("/");
+    await page.goto("/library");
     await openHistory(page);
     await entryLinks(page, titleA).first().click();
     await expect(page).toHaveURL(`/videos/${String(item.id)}`);
@@ -459,7 +459,7 @@ test.describe.serial("watch history", () => {
     const saved = (await saveProgress(request, item, 8000)).positionMs;
     expect(saved).toBeGreaterThanOrEqual(5000);
 
-    await page.goto("/");
+    await page.goto("/library");
     await openHistory(page);
     const row = entryRows(page, titleB).first();
     const shown = seconds((await positionText(row).textContent()) ?? "");
@@ -483,7 +483,7 @@ test.describe.serial("watch history", () => {
     const item = video(titleA);
     // A を視聴済みにする。40 秒の 30 秒目は末尾 15 秒（CompletionTailMs）の内側である。
     expect((await saveProgress(request, item, 30_000)).completed).toBe(true);
-    await page.goto("/");
+    await page.goto("/library");
     await openHistory(page);
     // A は 2 回見たので 2 行あり、どちらも今の位置（見終わった）を出す。
     const rows = entryRows(page, titleA);

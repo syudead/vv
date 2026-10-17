@@ -2,7 +2,7 @@ import { Check, Folder } from "lucide-react";
 import { memo, type MouseEvent, type ReactNode } from "react";
 import { Link } from "react-router";
 
-import type { LibraryGroup } from "../api/client";
+import type { LibraryGroup, LibraryGroupCard } from "../api/client";
 import { updateFavorites } from "../api/favorites";
 import { useAudience } from "../auth/audience";
 import { formatRelative, t, type UiText } from "../i18n";
@@ -22,15 +22,17 @@ import {
 } from "../ui/VideoThumbnail";
 import { groupPagePath } from "../groups/groupPaths";
 import { type CardDragBinding, dragRowProps, RowDropMarks } from "../videoList/cardDrag";
+import { cardLinkState } from "../videoList/cardLink";
 import FolderArt from "../videoList/FolderArt";
 
 /**
  * GroupCardProps はライブラリのグループのカードと行の props である
  * （specs/017-folder-groups/ui-design.md「Group card」）。グループのカードはフォルダ画面には
- * 出ないので `web/src/library/` に置く。
+ * 出ないので `web/src/library/` に置く。グループ G はライブラリでは LibraryGroup、ホームの棚では
+ * カードの値だけの LibraryGroupCard である（specs/057-home/research.md R-12）。
  */
-export interface GroupCardProps {
-  group: LibraryGroup;
+export interface GroupCardProps<G extends LibraryGroupCard = LibraryGroup> {
+  group: G;
   /** 遷移元の一覧 URL。開いた先の「戻る」がここへ帰る。 */
   backTo: string;
   /**
@@ -47,14 +49,14 @@ export interface GroupCardProps {
    * （specs/035-favorites/research.md R-7）。選択を持たない見る人（ゲスト）では
    * 省き、チェックを描かない。
    */
-  onSelect?: (group: LibraryGroup, selected: boolean) => void;
+  onSelect?: (group: G, selected: boolean) => void;
   /** 一覧のホバープレビューの調整（usePreviewCoordination）。格子のフォルダの絵柄が加わる。 */
   activePreviewId?: number | null;
   previewResetEpoch?: number;
   onPreviewStart?: (id: number) => void;
   onPreviewReset?: () => void;
   /** 題名の下のタグの行（格子表示だけ）。VideoCard の tagsRow と同じく関数で受ける。 */
-  tagsRow?: (group: LibraryGroup) => ReactNode;
+  tagsRow?: (group: G) => ReactNode;
   /**
    * 名前の位置に出す欄。「Make a group」で作ったばかりのグループだけが持つ
    * （specs/050-drag-organize/ui-design.md「The new group's name」）。欄の間、名前はリンクの外に出る。
@@ -62,6 +64,10 @@ export interface GroupCardProps {
   nameField?: ReactNode;
   /** リストの行をドラッグの層に加える値（useCardDrag）。所有者のライブラリのリスト表示だけが渡す。 */
   drag?: CardDragBinding;
+  /** 格子のカードが開く再生画面で再生を始める（VideoCard の autoplay と同じ）。 */
+  autoplay?: boolean;
+  /** 格子のカードの右上に、所有者のお気に入りの付け外しだけを置く（VideoCard と同じ）。 */
+  favoriteOnly?: boolean;
 }
 
 /** CollectionValues はグループとスマートフォルダのカードが共有する、視聴と長さの値である。 */
@@ -93,7 +99,7 @@ export function useCollectionFacts(values: CollectionValues) {
 }
 
 /** useGroupFacts はグループの視聴の値と、リンクの読み上げ名である。 */
-function useGroupFacts(group: LibraryGroup) {
+function useGroupFacts(group: LibraryGroupCard) {
   const facts = useCollectionFacts(group);
   return {
     ...facts,
@@ -124,7 +130,7 @@ function GroupFavorite({
   group,
   variant,
 }: {
-  group: LibraryGroup;
+  group: LibraryGroupCard;
   variant: "card" | "row";
 }) {
   const favorite = group.favorite === true;
@@ -147,7 +153,7 @@ function GroupAddToPlaylist({
   group,
   variant,
 }: {
-  group: LibraryGroup;
+  group: LibraryGroupCard;
   variant: "card" | "row";
 }) {
   return (
@@ -167,7 +173,7 @@ function GroupAddToGroup({
   group,
   variant,
 }: {
-  group: LibraryGroup;
+  group: LibraryGroupCard;
   variant: "card" | "row";
 }) {
   return (
@@ -248,7 +254,14 @@ export function CollectionName({ name, muted }: { name: string; muted: boolean }
  * カード全体がグループのページへの1つのリンクである（specs/048-groups/research.md R-8。
  * 017 の「最初の未視聴のメンバーを開く」を置き換える）。
  */
-export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
+export const GroupCard = memo(GroupCardFor) as typeof GroupCardFor;
+
+/** groupHasTags は、グループがタグを持って届いた（ライブラリの LibraryGroup で、タグが 1 つ以上ある）かである。 */
+function groupHasTags(group: LibraryGroupCard): boolean {
+  return "tags" in group && Array.isArray(group.tags) && group.tags.length > 0;
+}
+
+function GroupCardFor<G extends LibraryGroupCard>(props: GroupCardProps<G>) {
   const {
     group,
     backTo,
@@ -262,11 +275,13 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
     onPreviewReset,
     tagsRow,
     nameField,
+    autoplay,
+    favoriteOnly = false,
   } = props;
   const { state, ratio, duration, countText, label } = useGroupFacts(group);
   const owner = useAudience() === "owner";
   const tagsRowNode = tagsRow?.(group);
-  const showTagsRow = tagsRow !== undefined && group.tags.length > 0;
+  const showTagsRow = tagsRow !== undefined && groupHasTags(group);
 
   return (
     <article
@@ -300,7 +315,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
 
       <Link
         to={to}
-        state={{ from: backTo }}
+        state={cardLinkState(backTo, autoplay)}
         aria-label={label}
         onClick={(event) => {
           onPreviewReset?.();
@@ -336,21 +351,23 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
         // 前に出たサムネイルより上（チェックと同じ z-30）。リンクの外、タグの行の前に置く
         // （ui-design.md「Placement」）。
         <VideoThumbnailMark className="z-30">
-          <GroupAddToGroup group={group} variant="card" />
-          <GroupAddToPlaylist group={group} variant="card" />
+          {!favoriteOnly && <GroupAddToGroup group={group} variant="card" />}
+          {!favoriteOnly && <GroupAddToPlaylist group={group} variant="card" />}
           <GroupFavorite group={group} variant="card" />
         </VideoThumbnailMark>
       )}
       {showTagsRow && <div className="flex min-w-0 flex-col gap-1">{tagsRowNode}</div>}
     </article>
   );
-});
+}
 
 /**
  * GroupRow はリスト表示のグループの行である。動画の行（VideoRow）と同じ列に
  * グループの値を出す（ui-design.md「List view row」）。
  */
-export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
+export const GroupRow = memo(GroupRowFor) as typeof GroupRowFor;
+
+function GroupRowFor<G extends LibraryGroupCard>(props: GroupCardProps<G>) {
   const {
     group,
     backTo,
@@ -451,7 +468,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
       />
     </TableRow>
   );
-});
+}
 
 /**
  * CollectionValueCells はグループとスマートフォルダの行の、視聴・長さ・画質（空）・大きさ・

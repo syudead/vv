@@ -59,7 +59,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `list-page-example`        | Block         | Copy to start a list page                                                    |
 | `list-states-example`      | Block         | The list body in every state                                                 |
 | `load-more-row`            | State         | The next page loading, or failed with Retry                                  |
-| `loading-state`            | State         | Skeleton shapes of the final layout: grid, table or grouped list             |
+| `loading-state`            | State         | Skeleton shapes of the final layout: grid, table, grouped list or shelves    |
 | `page-header`              | Section       | Page title, count and the main action                                        |
 | `page-section`             | Section       | A titled card of rows                                                        |
 | `popover`                  | Component     | Options or a short form anchored to a control                                |
@@ -71,12 +71,16 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `separator`                | Component     | A hairline between groups                                                    |
 | `settings-page`            | Page skeleton | Settings, one value per row, with an optional list of pages                  |
 | `settings-page-example`    | Block         | Copy to start a settings page                                                |
+| `shelf-row`                | Section       | Shelves of cards, one row each, scrolling sideways                           |
+| `shelf-row-example`        | Block         | Copy to start a page of shelves                                              |
 | `sheet`                    | Component     | Edge panel; only the sidebar's narrow-width drawer                           |
 | `sidebar`                  | Component     | The app's main navigation                                                    |
 | `skeleton`                 | Component     | Shapes of the final layout while loading                                     |
 | `slider`                   | Component     | A value on a range, such as the card size                                    |
 | `sonner`                   | Component     | Short passive notices (`toast()`)                                            |
 | `spinner`                  | Component     | A short wait with no measure                                                 |
+| `steps-page`               | Page skeleton | Steps taken one at a time outside the shell, such as the first setup         |
+| `steps-page-example`       | Block         | Copy to start a steps page                                                   |
 | `switch`                   | Component     | A setting that takes effect at once                                          |
 | `table`                    | Component     | Rows of records; only inside a `data-table`                                  |
 | `tabs`                     | Component     | Switch views of the same content in place                                    |

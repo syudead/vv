@@ -549,7 +549,7 @@ test.describe("live MP4 playback", () => {
     request,
   }) => {
     test.setTimeout(30_000);
-    await page.goto("/");
+    await page.goto("/library");
     await throttle(page, 128 * 1024);
     const item = video("long-gop");
     await saveProgress(request, item, 5000);
@@ -638,7 +638,7 @@ test.describe("live MP4 playback", () => {
     test.setTimeout(45_000);
     const item = video("hd-1080p");
     expect(item.playable).toBe(true);
-    await page.goto("/");
+    await page.goto("/library");
     await page.evaluate(() => {
       window.localStorage.setItem("vv.playback-quality.v1", JSON.stringify("480p"));
     });
@@ -1000,11 +1000,12 @@ test.describe("live MP4 playback", () => {
   test("離脱とreloadは自分の変換だけを止め、別tabの再生を継続する", async ({
     browser,
   }) => {
-    test.setTimeout(60_000);
+    // 帯域を 32KB/s に絞った 2 つのページで再生画面と一覧を開くので、遅い機械では 1 分近くかかる。
+    test.setTimeout(120_000);
     const context = await browser.newContext();
     const first = await context.newPage();
     const second = await context.newPage();
-    await Promise.all([first.goto("/"), second.goto("/")]);
+    await Promise.all([first.goto("/library"), second.goto("/library")]);
     await throttle(first, 32 * 1024);
     await throttle(second, 32 * 1024);
     const item = video("long-gop");
@@ -1037,7 +1038,7 @@ test.describe("live MP4 playback", () => {
     ]);
 
     await settleResources(first);
-    await first.goto("/");
+    await first.goto("/library");
     await expect(first.locator("video")).toHaveCount(0);
     const before = await second
       .locator("video")
@@ -1147,7 +1148,7 @@ test.describe("live MP4 playback", () => {
             .evaluate((element) => (element as HTMLVideoElement).currentTime),
         )
         .toBeGreaterThan(beforeSeek);
-      // 見出しの帯の右端の閉じる × で戻る。× は帯の 1 か所だけにある。
+      // 見出しの帯の右端の閉じる × で戻る。× は帯の 1 か所だけにある。直接開いたのでホームへ戻る。
       const back = page.getByRole("button", { name: "Close" });
       await back.focus();
       await Promise.all([page.waitForURL("/"), back.press("Enter")]);
@@ -1468,7 +1469,7 @@ test.describe("live MP4 playback", () => {
   test("関連動画から移ったあとの × と Esc は最初の一覧へ戻る", async ({ page }) => {
     test.setTimeout(30_000);
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/?q=direct");
+    await page.goto("/library?q=direct");
     const card = page.getByRole("link", { name: "direct", exact: true });
     await card.click();
     await expect(page).toHaveURL(new RegExp(`/videos/${String(video("direct").id)}$`));
@@ -1488,12 +1489,12 @@ test.describe("live MP4 playback", () => {
       (await page.getByRole("heading", { level: 1 }).textContent()) ?? "missing",
     );
     await page.getByRole("button", { name: "Close" }).click();
-    await expect(page).toHaveURL(/\/\?q=direct$/);
+    await expect(page).toHaveURL(/\/library\?q=direct$/);
 
     await page.goBack();
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(page).toHaveURL(/\/\?q=direct$/);
+    await expect(page).toHaveURL(/\/library\?q=direct$/);
   });
 
   test("操作バーの読み上げ名とツールチップが英語でキーを添え、失敗の説明も英語で出す", async ({

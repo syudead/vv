@@ -225,7 +225,11 @@ func (s *GroupStore) write(ctx context.Context, verb string, fn func(*sql.Tx) ([
 func writeGroups(ctx context.Context, db *DB, verb string, fn func(*sql.Tx) ([]int64, error)) error {
 	return writeWithEvents(ctx, db, verb, func(tx *sql.Tx) ([]domain.Event, error) {
 		changed, err := fn(tx)
-		return groupsChangedEvents(changed), err
+		if err != nil {
+			return nil, err
+		}
+		// グループの構造が変わったので、その表を同じ取引で作り直す（group_closure.go）。
+		return groupsChangedEvents(changed), rebuildGroupClosure(ctx, tx)
 	})
 }
 

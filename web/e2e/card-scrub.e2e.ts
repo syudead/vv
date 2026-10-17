@@ -54,7 +54,7 @@ let sourceSnapshot = new Map<string, string>();
 
 // ライブラリ、フォルダ画面、フォルダ内の検索結果（親 Issue 要件 8）。
 const surfaces: Surface[] = [
-  { name: "library", url: () => "/" },
+  { name: "library", url: () => "/library" },
   { name: "folder", url: () => `/folders/${String(folder?.id)}` },
   { name: "folder-search", url: () => `/folders/${String(folder?.id)}?q=direct` },
 ];
@@ -400,7 +400,7 @@ test.describe.serial("library card scrub band", () => {
           await held;
           await route.continue();
         });
-        await page.goto("/");
+        await page.goto("/library");
         const target = card(page, landscape);
         await target.scrollIntoViewIfNeeded();
         const top = await mediaTop(target);
@@ -449,7 +449,7 @@ test.describe.serial("library card scrub band", () => {
 
         // 取得失敗: 配置情報の取得が失敗してもサムネイルのまま、時刻とバーは差し替わる。
         await page.route("**/seek-thumbnail?*", (route) => route.abort("failed"));
-        await page.goto("/");
+        await page.goto("/library");
         const failing = card(page, landscape);
         await failing.scrollIntoViewIfNeeded();
         const failingTop = await mediaTop(failing);

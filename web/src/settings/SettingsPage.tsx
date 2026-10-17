@@ -16,6 +16,7 @@ import APITokensSection from "./APITokensSection";
 import { AutoImportStateSection, AutoImportSwitchSection } from "./AutoImportSection";
 import AutoTaggingSection from "./AutoTaggingSection";
 import ComfyUISection from "./ComfyUISection";
+import HomeSection from "./HomeSection";
 import MediaFoldersSection from "./MediaFoldersSection";
 import NetworkSection from "./NetworkSection";
 import { ollamaLockNotice } from "./OllamaLockNotice";
@@ -40,6 +41,7 @@ const sectionComponents: Record<SettingsSectionId, ComponentType> = {
   "media-folders": MediaFoldersSection,
   "auto-import-switch": AutoImportSwitchSection,
   "version-judging": VersionJudgingSection,
+  home: HomeSection,
   "auto-tagging": AutoTaggingSection,
   ollama: OllamaSection,
   comfyui: ComfyUISection,

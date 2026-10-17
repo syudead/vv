@@ -38,7 +38,7 @@ describe("WorkInfo", () => {
       within(row)
         .getByRole("link", { name: "Show videos with 撮る人" })
         .getAttribute("href"),
-    ).toBe("/?person=4");
+    ).toBe("/library?person=4");
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
   });
 });

@@ -2,6 +2,7 @@ import type { VideoFolder } from "../api/client";
 import type { GroupRef } from "../api/groups";
 import type { Crumb } from "../folders/folderPath";
 import { t } from "../i18n";
+import { LIBRARY_PATH } from "../library/libraryPath";
 
 // グループのページが URL と応答から決める規則（specs/048-groups/ui-design.md「Group page」）。
 // 画面の部品から外し、ロジックのテストで確かめる（docs/design-docs/web-testing.md）。
@@ -104,7 +105,7 @@ export function searchWithoutGroup(search: string): string {
  */
 export function parentPagePath(trail: readonly GroupRef[]): string {
   const parent = trail[trail.length - 1];
-  if (parent === undefined) return "/";
+  if (parent === undefined) return LIBRARY_PATH;
   return groupPagePath(
     parent.id,
     trail.slice(0, -1).map((each) => each.id),
@@ -117,7 +118,7 @@ export function parentPagePath(trail: readonly GroupRef[]): string {
  */
 export function trailCrumbs(trail: readonly GroupRef[], name: string): Crumb[] {
   return [
-    { label: t.library.title, to: "/" },
+    { label: t.library.title, to: LIBRARY_PATH },
     ...trail.map((group, index) => ({
       label: group.name,
       to: groupPagePath(
@@ -134,7 +135,11 @@ export function trailCrumbs(trail: readonly GroupRef[], name: string): Crumb[] {
  * 開いているグループの段を名前の分からない段（undefined、骨組みで描く）として並べる。
  */
 export function loadingCrumbs(trail: readonly number[]): (Crumb | undefined)[] {
-  return [{ label: t.library.title, to: "/" }, ...trail.map(() => undefined), undefined];
+  return [
+    { label: t.library.title, to: LIBRARY_PATH },
+    ...trail.map(() => undefined),
+    undefined,
+  ];
 }
 
 /**

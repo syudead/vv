@@ -117,10 +117,15 @@ type listSpec struct {
 	// smartFolders は一覧の一番上にスマートフォルダの項目として混ぜるフォルダである。ライブラリの
 	// 一覧（ListLibrary）だけが librarySmartFolders で埋める（specs/052-smart-folders/research.md R-7）。
 	smartFolders []librarySmartFolder
-	sort         domain.VideoSort
-	seed         int64
-	cursor       string
-	limit        int
+	// unshelved は、ホームのどのフォルダの棚の実効の規則にも一致しない動画だけにする
+	// （specs/057-home/research.md R-11）。shelved はどれかの棚に一致する動画の id の JSON の配列
+	// （shelvedVideos）で、ライブラリの項目の問い合わせ（libraryItemsCTE）だけが読む。
+	unshelved bool
+	shelved   string
+	sort      domain.VideoSort
+	seed      int64
+	cursor    string
+	limit     int
 }
 
 // ListVideos は見る人（audience）に見せるライブラリの一覧1ページを返す。
@@ -168,7 +173,7 @@ func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int
 		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
 		personID: q.Person, organizationID: q.Organization, tagKindID: q.TagKindID,
 		addedWithinDays: q.AddedWithinDays, minDurationSec: q.MinDurationSec, maxDurationSec: q.MaxDurationSec,
-		now:  listNow().Unix(),
+		unshelved: q.Unshelved, now: listNow().Unix(),
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	}
 }
@@ -218,12 +223,53 @@ func chosenLocationsCTEFor(scope locationScope, searchAudience domain.Audience, 
 // その引数を返す。スマートフォルダの一致する動画は、検索式の段をこの文の動画に限る
 // （smartMatchConditions）。
 func chosenLocationsSelect(scope locationScope, searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
+	from, args := chosenLocationsFrom(scope, searchAudience, exprs)
+	return `select l.video_id, min(l.path) as path ` + from + `
+		group by l.video_id`, args
+}
+
+// chosenLocationsFrom は chosenLocationsSelect の所在の候補（別名 l、動画は sv）を選ぶ from 句と
+// where 句とその引数を返す。呼び出し側は ` and ` に続けて条件を足せる。
+func chosenLocationsFrom(scope locationScope, searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
 	scopeClause, args := scope.condition("l")
 	clauses := []string{scopeClause, `(sbm.bundle_id is null or sv.id = ` +
 		effectiveRepresentativeExpr("sbm.bundle_id", scope.audience) + `)`}
-	// どの検索式も同じ所在 1 行で満たす。集まりでは、すべての式を 1 つの exists の同じ bl に掛ける。
+	if search, searchArgs := searchLocationCondition(searchAudience, exprs); search != "" {
+		clauses = append(clauses, search)
+		args = append(args, searchArgs...)
+	}
+	return `from video_locations l
+		join videos sv on sv.id = l.video_id
+		left join video_bundle_members sbm on sbm.content_key = sv.content_key and sv.content_key <> ''
+		where ` + strings.Join(clauses, " and "), args
+}
+
+// searchLocationCondition は、所在 l（動画 sv、集まりの行 sbm を左結合したもの）が検索式 exprs の
+// すべてに当たる条件句とその引数を返す。式が無ければ空である。どの検索式も同じ所在 1 行で満たす。
+// 集まりに属さない動画では l 自身に、集まりの動画では同じ集まりのどれかの動画の登録の所在 bl に、
+// すべての式を 1 つの exists の同じ bl に掛ける（specs/030-video-versions/data-model.md §4）。
+func searchLocationCondition(searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
+	search := searchClausesFor(searchAudience, exprs)
+	if search.location == "" {
+		return "", nil
+	}
+	return `((sbm.bundle_id is null and ` + search.location + `) or (sbm.bundle_id is not null and ` + search.bundleExists() + `))`,
+		append(append([]any{}, search.locationArgs...), search.bundleArgs...)
+}
+
+// searchClauses は検索式の並びを所在 1 行に掛ける条件句で、location は所在 l に、bundle は集まりの
+// 動画の登録の所在 bl に掛ける句である。式が無ければどちらも空である。
+type searchClauses struct {
+	location     string
+	locationArgs []any
+	bundle       string
+	bundleArgs   []any
+}
+
+// searchClausesFor は検索式 exprs のすべてを、見る人 searchAudience の意味で照合する句にする。
+func searchClausesFor(searchAudience domain.Audience, exprs []domain.SearchExpr) searchClauses {
 	var exprClauses, bundleClauses []string
-	var exprArgs, bundleArgs []any
+	var search searchClauses
 	for _, expr := range exprs {
 		exprClause, eArgs := searchExprCondition(expr, "l", searchAudience)
 		if exprClause == "" {
@@ -231,22 +277,23 @@ func chosenLocationsSelect(scope locationScope, searchAudience domain.Audience, 
 		}
 		bundleClause, bArgs := searchExprCondition(expr, "bl", searchAudience)
 		exprClauses, bundleClauses = append(exprClauses, exprClause), append(bundleClauses, bundleClause)
-		exprArgs, bundleArgs = append(exprArgs, eArgs...), append(bundleArgs, bArgs...)
+		search.locationArgs, search.bundleArgs = append(search.locationArgs, eArgs...), append(search.bundleArgs, bArgs...)
 	}
-	if len(exprClauses) > 0 {
-		clauses = append(clauses, `((sbm.bundle_id is null and `+strings.Join(exprClauses, " and ")+`) or (sbm.bundle_id is not null and exists (
+	if len(exprClauses) == 0 {
+		return searchClauses{}
+	}
+	search.location, search.bundle = strings.Join(exprClauses, " and "), strings.Join(bundleClauses, " and ")
+	return search
+}
+
+// bundleExists は、集まりの行 sbm の集まりのどれかの動画が、登録の所在 bl で検索式のすべてに当たる
+// exists 句である。引数は bundleArgs である。
+func (s searchClauses) bundleExists() string {
+	return `exists (
 			select 1 from video_bundle_members bm
 			join videos bv on bv.content_key = bm.content_key and bv.content_key <> ''
 			join video_locations bl on bl.video_id = bv.id
-			where bm.bundle_id = sbm.bundle_id and `+registeredLocationCondition("bl")+` and `+strings.Join(bundleClauses, " and ")+`)))`)
-		args = append(args, exprArgs...)
-		args = append(args, bundleArgs...)
-	}
-	return `select l.video_id, min(l.path) as path from video_locations l
-		join videos sv on sv.id = l.video_id
-		left join video_bundle_members sbm on sbm.content_key = sv.content_key and sv.content_key <> ''
-		where ` + strings.Join(clauses, " and ") + `
-		group by l.video_id`, args
+			where bm.bundle_id = sbm.bundle_id and ` + registeredLocationCondition("bl") + ` and ` + s.bundle + `)`
 }
 
 // watchCondition は視聴状態の絞り込みを、playback_progress（別名 p、left join）

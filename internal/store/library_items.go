@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/syudead/vv/internal/domain"
@@ -186,14 +187,63 @@ const videoWatchStateExpr = `case when p.completed = 1 then 'watched'
 // 深さでも）にし、動画の項目はお気に入りの動画のうちそれらの whole のグループに入らないものにする
 // （specs/035-favorites/data-model.md §5、specs/048-groups/data-model.md「Library items」）。
 func libraryItemsCTE(spec listSpec) (string, []any) {
-	audience := spec.scope.audience
-	searchAudience := audience
-	if spec.ownerSearch {
-		searchAudience = domain.AudienceOwner
+	cte, args := chosenLocationsCTEFor(spec.scope, spec.searchAudience(), spec.searchExprs())
+	part, partArgs := libraryItemsPart(spec)
+	return cte + `,
+	` + itemGroupsCTE(spec) + `,
+	` + part, append(args, partArgs...)
+}
+
+// searchAudience は検索式を照合する見る人である。ownerSearch なら所有者の意味で照合する。
+func (s listSpec) searchAudience() domain.Audience {
+	if s.ownerSearch {
+		return domain.AudienceOwner
 	}
-	cte, args := chosenLocationsCTEFor(spec.scope, searchAudience, spec.searchExprs())
-	conditions, matchArgs := matchConditions(spec)
-	args = append(args, matchArgs...)
+	return s.scope.audience
+}
+
+// hasSearch は、どれかの段が空でない検索式を持つかを返す。
+func (s listSpec) hasSearch() bool {
+	return slices.ContainsFunc(s.searchExprs(), func(expr domain.SearchExpr) bool { return !expr.Empty() })
+}
+
+// itemGroupsFavorite は、グループの項目になりうるものがお気に入りにしたグループか（どれかの段が
+// お気に入りのみ）を返す。そうでなければいちばん上のグループである。
+func (s listSpec) itemGroupsFavorite() bool {
+	return s.anyLevel(func(level listSpec) bool { return level.favoriteOnly })
+}
+
+// itemGroupsCTE は、spec の項目のグループになりうるグループの見せてよい子孫の動画
+// `gm(group_id, video_id, position)` を定める with 句の部品である。絞り込みによらず、グループの根
+// （itemGroupsFavorite）と見る人だけで決まるので、根と見る人の同じ絞り込みはこれを分け合える。
+func itemGroupsCTE(spec listSpec) string {
+	roots := topGroupsSelect
+	if spec.itemGroupsFavorite() {
+		roots = favoriteGroupsSelect
+	}
+	return groupDescendantsCTE(roots, spec.scope.audience) + `,
+	gm as materialized (select root_id as group_id, video_id, sort_key as position from gdesc)`
+}
+
+// groupWatchStateExpr はグループの視聴状態を、子孫の動画の行ごとの completed と position_ms の式から
+// 集める式である。どれも見ていなければ unwatched、どれも見終えていれば watched、ほかは inProgress。
+func groupWatchStateExpr(completed, position string) string {
+	return `case when sum(` + completed + ` = 1 or ` + position + ` > 0) = 0 then 'unwatched'
+				when sum(` + completed + ` = 1) = count(*) then 'watched'
+				else 'inProgress' end`
+}
+
+// libraryItemsPart は libraryItemsCTE の項目の表を、所在の表 chosen（`(video_id, path)`）と gm
+// から作る with 句の部品とその引数を返す。表の名前は matched・hits・whole・carded・mv・items である。
+// ホームの棚の読み出し（home_shelf_read.go）は同じ決め方を一時表の上で行う。
+func libraryItemsPart(spec listSpec) (string, []any) {
+	audience := spec.scope.audience
+	const chosen, matched, hits, whole, carded, mv, items = `chosen`, `matched`, `hits`, `whole`, `carded`, `mv`, `items`
+	conditions, args := matchConditions(spec)
+	if spec.unshelved {
+		conditions = append(conditions, `videos.id not in (select value from json_each(?))`)
+		args = append(args, spec.shelved)
+	}
 	where := ""
 	if len(conditions) > 0 {
 		where = ` where ` + strings.Join(conditions, " and ")
@@ -205,7 +255,7 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	if spec.anyLevel(func(level listSpec) bool { return level.playableOnly }) {
 		videoPlayable = ` and ` + playableCondition
 		groupPlayable = ` and exists (select 1 from gm pm join videos on videos.id = pm.video_id
-			where pm.group_id = hits.group_id and ` + playableCondition + `)`
+			where pm.group_id = ` + hits + `.group_id and ` + playableCondition + `)`
 	}
 	// 内容の識別子が空の動画は再生位置を持たない（filteredFrom と同じ扱い）。
 	progressJoin := func(videoAlias string) string {
@@ -213,10 +263,8 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 			videoAlias + `.content_key <> ''`
 	}
 	folderItems, folderArgs := smartFolderItemsSQL(spec.smartFolders)
-	roots := topGroupsSelect
 	videoFavorite := ""
-	if spec.anyLevel(func(level listSpec) bool { return level.favoriteOnly }) {
-		roots = favoriteGroupsSelect
+	if spec.itemGroupsFavorite() {
 		videoFavorite = ` and fav.content_key is not null`
 	}
 	// 当たった動画は、どのグループにも無いか、一部だけが当たるグループのどれかにあれば動画の項目に
@@ -228,51 +276,135 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	// whole は materialized にする。インライン展開されると、相関副問い合わせ（グループの本数）が
 	// mv と not exists から当たった動画1本ごとに評価され、グループの本数の2乗で時間が増える
 	// （issue 674）。
-	cte += `,
-	matched as (
-		select videos.id as video_id, chosen.path as path
-		from chosen join videos on videos.id = chosen.video_id` + where + `),
-	` + groupDescendantsCTE(roots, audience) + `,
-	gm as materialized (select root_id as group_id, video_id, sort_key as position from gdesc),
-	hits as (
-		select gm.group_id, count(*) as n from matched
-		join gm on gm.video_id = matched.video_id
+	part := matched + ` as (
+		select videos.id as video_id, ` + chosen + `.path as path
+		from ` + chosen + ` join videos on videos.id = ` + chosen + `.video_id` + where + `),
+	` + hits + ` as (
+		select gm.group_id, count(*) as n from ` + matched + `
+		join gm on gm.video_id = ` + matched + `.video_id
 		group by gm.group_id),
-	whole as materialized (
-		select hits.group_id from hits
-		where hits.n = (select count(*) from gm c where c.group_id = hits.group_id)` + groupPlayable + `),
-	carded as materialized (
-		select video_id from gm where group_id in (select group_id from whole)
+	` + whole + ` as materialized (
+		select ` + hits + `.group_id from ` + hits + `
+		where ` + hits + `.n = (select count(*) from gm c where c.group_id = ` + hits + `.group_id)` + groupPlayable + `),
+	` + carded + ` as materialized (
+		select video_id from gm where group_id in (select group_id from ` + whole + `)
 		except
-		select video_id from gm where group_id not in (select group_id from whole)),
-	mv as (
+		select video_id from gm where group_id not in (select group_id from ` + whole + `)),
+	` + mv + ` as (
 		select gm.group_id, gm.video_id, v.added_at, v.duration_ms,
 			rl.mtime as mtime, ` + fileCreatedAtExpr("rl") + ` as created_at, rl.size_bytes as size_bytes,
 			p.updated_at as played_at,
 			coalesce(p.completed, 0) as completed, coalesce(p.position_ms, 0) as position_ms
-		from gm join whole on whole.group_id = gm.group_id
+		from gm join ` + whole + ` on ` + whole + `.group_id = gm.group_id
 		join videos v on v.id = gm.video_id` + representativeLocationJoin("gm", audience) + progressJoin("v") + `),
-	items as (
-		select null as group_id, videos.id * 2 as id, videos.id as video_id, matched.path as path,
+	` + items + ` as (
+		select null as group_id, videos.id * 2 as id, videos.id as video_id, ` + matched + `.path as path,
 			videos.added_at as added_at, loc.mtime as mtime, ` + fileCreatedAtExpr("loc") + ` as created_at,
 			loc.title_key as title_key,
 			videos.duration_ms as duration_ms, loc.size_bytes as size_bytes, p.updated_at as played_at,
 			fav.favorited_at as favorited_at, ` + videoWatchStateExpr + ` as watch_state
-		from matched join videos on videos.id = matched.video_id
-		join video_locations loc on loc.path = matched.path` + progressJoin("videos") + `
+		from ` + matched + ` join videos on videos.id = ` + matched + `.video_id
+		join video_locations loc on loc.path = ` + matched + `.path` + progressJoin("videos") + `
 		left join video_favorites fav on fav.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''
-		where matched.video_id not in (select video_id from carded)` +
+		where ` + matched + `.video_id not in (select video_id from ` + carded + `)` +
 		videoPlayable + videoFavorite + `
 		union all
 		select g.id, g.id * 2 + 1, null, null,
-			max(mv.added_at), max(mv.mtime), max(mv.created_at), g.title_key,
-			sum(mv.duration_ms), sum(mv.size_bytes), max(mv.played_at), ` + groupFavoritedAtExpr("g") + `,
-			case when sum(mv.completed = 1 or mv.position_ms > 0) = 0 then 'unwatched'
-				when sum(mv.completed = 1) = count(*) then 'watched'
-				else 'inProgress' end
-		from mv join groups g on g.id = mv.group_id
+			max(m.added_at), max(m.mtime), max(m.created_at), g.title_key,
+			sum(m.duration_ms), sum(m.size_bytes), max(m.played_at), ` + groupFavoritedAtExpr("g") + `,
+			` + groupWatchStateExpr("m.completed", "m.position_ms") + `
+		from ` + mv + ` m join groups g on g.id = m.group_id
 		group by g.id` + folderItems + `)`
-	return cte, append(args, folderArgs...)
+	return part, append(args, folderArgs...)
+}
+
+// shelvedQueryMaxArgs は shelvedVideos の問い合わせ 1 回に並べる棚の条件の引数の数の目安である。
+// 棚ごとの経路の条件は祖先の段ごとに引数を持ち、棚の数と経路の深さが上限なら、すべてを 1 回に並べると
+// SQLite のホスト変数の上限（32766）を超える。1 つの棚はこれを超えても 1 回で読む。
+const shelvedQueryMaxArgs = 8000
+
+// shelvedVideos は、見る人 audience に見せる動画のうち棚の経路の条件 shelves（homeShelfSpecs）の
+// どれかに一致する動画の id を、JSON の配列にして返す（specs/057-home/research.md R-11）。棚ごとの
+// 一致はカードの読み出しと同じ smartMatchFor で求める。棚は引数が shelvedQueryMaxArgs に収まる
+// まとまりごとに 1 回の問い合わせで読み、smart_base はまとまりごとに 1 度求める。
+func shelvedVideos(ctx context.Context, tx *sql.Tx, audience domain.Audience, shelves []listSpec) (string, error) {
+	matches := make([]smartMatch, len(shelves))
+	for i, shelf := range shelves {
+		matches[i] = smartMatchFor(shelf, `us`+strconv.Itoa(i))
+	}
+	shelved := []int64{}
+	for start := 0; start < len(matches); {
+		cte, args := smartBaseCTE(audience)
+		var conditions []string
+		var conditionArgs []any
+		end := start
+		for ; end < len(matches); end++ {
+			match := matches[end]
+			if end > start && len(args)+len(conditionArgs)+len(match.searchArgs)+len(match.args) > shelvedQueryMaxArgs {
+				break
+			}
+			if match.search != "" {
+				cte += `, ` + match.search
+				args = append(args, match.searchArgs...)
+			}
+			conditions = append(conditions, `(`+match.condition+`)`)
+			conditionArgs = append(conditionArgs, match.args...)
+		}
+		ids, err := queryInt64s(ctx, tx, cte+` select id from smart_base videos where `+strings.Join(conditions, " or "),
+			append(args, conditionArgs...)...)
+		if err != nil {
+			return "", fmt.Errorf("cannot read the videos on the home shelves: %w", err)
+		}
+		shelved = append(shelved, ids...)
+		start = end
+	}
+	encoded, err := json.Marshal(shelved)
+	if err != nil {
+		return "", fmt.Errorf("cannot encode the videos on the home shelves: %w", err)
+	}
+	return string(encoded), nil
+}
+
+// fillShelved は spec が棚にない動画だけ（unshelved）を求めるとき、spec の見る人に見せる動画のうち
+// どれかの棚に一致するものを spec.shelved に入れる（specs/057-home/research.md R-11）。求めないときは
+// 何もしない。
+func fillShelved(ctx context.Context, tx *sql.Tx, spec *listSpec) error {
+	if !spec.unshelved {
+		return nil
+	}
+	audience := spec.scope.audience
+	shelves, err := homeShelfSpecs(ctx, tx, audience, spec.now)
+	if err != nil {
+		return err
+	}
+	spec.shelved, err = shelvedVideos(ctx, tx, audience, shelves)
+	return err
+}
+
+// homeShelfSpecs は、ホームのフォルダの棚ごとの経路の条件を、見る人 audience の範囲と基準時刻 now の
+// 絞り込み（smartFolderSpec）にして棚の並びの順に返す。名指す実体の無い棚は何にも一致しないので
+// 入れない（specs/052-smart-folders/research.md R-9）。
+func homeShelfSpecs(ctx context.Context, tx *sql.Tx, audience domain.Audience, now int64) ([]listSpec, error) {
+	folders, err := homeShelves(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	specs := make([]listSpec, 0, len(folders))
+	for _, folder := range folders {
+		rules, err := smartFolderPathRules(ctx, tx, folder.ID)
+		if err != nil {
+			return nil, err
+		}
+		missing, err := missingSmartRuleRefs(ctx, tx, rules)
+		if err != nil {
+			return nil, err
+		}
+		if len(missing) > 0 {
+			continue
+		}
+		specs = append(specs, smartFolderSpec(audience, rules, folder.Sort, now))
+	}
+	return specs, nil
 }
 
 // itemWatchCondition は項目の視聴状態の絞り込みを items に対する条件句にする。
@@ -346,6 +478,9 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	}
 	spec := libraryListSpec(audience, q, tagIDs)
 	if spec.smartFolders, err = librarySmartFolders(ctx, tx, audience, q, spec.now); err != nil {
+		return domain.LibraryPage{}, err
+	}
+	if err := fillShelved(ctx, tx, &spec); err != nil {
 		return domain.LibraryPage{}, err
 	}
 	page, err := listLibraryPageTx(ctx, tx, spec)
@@ -479,6 +614,15 @@ func libraryPageItems(ctx context.Context, tx *sql.Tx, spec listSpec, order list
 // 所在（chosen）の題名・大きさ・更新時刻で、グループの項目は見せてよい子孫の動画の全部から作る。
 // スマートフォルダの項目は、一覧が混ぜたフォルダ folders の要約から取る。
 func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []itemRow, folders []librarySmartFolder) ([]domain.LibraryItem, error) {
+	return assembleLibraryItems(ctx, tx, audience, keys, folders, func(ids []int64) (map[int64]domain.LibraryGroup, error) {
+		return loadGroups(ctx, tx, audience, ids)
+	})
+}
+
+// assembleLibraryItems は loadLibraryItems の本体で、グループの項目を groups で読む。ホームの棚はカードの値
+// だけを読む loadGroupCards を渡す（home_group_cards.go）。
+func assembleLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []itemRow, folders []librarySmartFolder,
+	groups func([]int64) (map[int64]domain.LibraryGroup, error)) ([]domain.LibraryItem, error) {
 	var pairs [][2]any
 	var groupIDs []int64
 	for _, key := range keys {
@@ -497,7 +641,7 @@ func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 	if err := attachVersionsIn(ctx, tx, audience, videos); err != nil {
 		return nil, err
 	}
-	groups, err := loadGroups(ctx, tx, audience, groupIDs)
+	loaded, err := groups(groupIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -513,7 +657,7 @@ func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 			continue
 		}
 		if key.groupID.Valid {
-			group, ok := groups[key.groupID.Int64]
+			group, ok := loaded[key.groupID.Int64]
 			if !ok {
 				return nil, fmt.Errorf("cannot read the group (id=%d)", key.groupID.Int64)
 			}

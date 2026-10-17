@@ -231,7 +231,7 @@ func markFolderIndexStale(ctx context.Context, q queryExecer) error {
 // グループとその祖先の id を返す。呼び出し側は確定の後に groupsChangedEvents で知らせる。
 // 呼び出し側の書き込み取引の中で行うので、読み出しは作り直しの前か後のどちらかだけを見る。
 // ファイルシステムは読まない。
-func rebuildFolderIndex(ctx context.Context, tx *sql.Tx) ([]int64, error) {
+func rebuildFolderIndexOnly(ctx context.Context, tx *sql.Tx) ([]int64, error) {
 	roots, err := listMediaFolders(ctx, tx)
 	if err != nil {
 		return nil, err

@@ -2,6 +2,7 @@ import type { GroupRef } from "../api/groups";
 import type { Crumb } from "../folders/folderPath";
 import { parseGroupId } from "../groups/groupPaths";
 import { t } from "../i18n";
+import { LIBRARY_PATH } from "../library/libraryPath";
 
 // スマートフォルダのページが URL と応答から決める規則（specs/052-smart-folders/ui-design.md
 // 「Smart folder page」）。親は保存されているので、グループのページのような `?trail` は無い。
@@ -20,7 +21,7 @@ export function smartFolderPagePath(id: number): string {
  */
 export function smartFolderParentPath(trail: readonly GroupRef[]): string {
   const parent = trail.at(-1);
-  return parent === undefined ? "/" : smartFolderPagePath(parent.id);
+  return parent === undefined ? LIBRARY_PATH : smartFolderPagePath(parent.id);
 }
 
 /** SMART_FOLDER_PARAM は動画ページを開いたスマートフォルダの id を載せる問い合わせの名前である。 */
@@ -49,7 +50,7 @@ export function videoInSmartFolderPath(videoId: number, folderId: number): strin
  */
 export function smartFolderCrumbs(trail: readonly GroupRef[], name: string): Crumb[] {
   return [
-    { label: t.library.title, to: "/" },
+    { label: t.library.title, to: LIBRARY_PATH },
     ...trail.map((folder) => ({
       label: folder.name,
       to: smartFolderPagePath(folder.id),

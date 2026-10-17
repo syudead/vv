@@ -90,6 +90,33 @@ func TestOnFinishReportsOriginAndState(t *testing.T) {
 	}
 }
 
+// OnFinish で足した関数は、どれも登録の順に呼ばれる（自動の取り込みとホームの整理役、
+// specs/057-home/research.md R-9）。
+func TestOnFinishCallsEveryRegisteredFunction(t *testing.T) {
+	scanner := &fakeScanner{result: domain.ScanResult{Total: 1, Processed: 1}}
+	scans, store, _ := newTestScans(t, context.Background(), scanner)
+	var mu sync.Mutex
+	var got []string
+	for _, name := range []string{"auto-import", "home"} {
+		scans.OnFinish(func(domain.ScanOrigin, domain.ScanState) {
+			mu.Lock()
+			defer mu.Unlock()
+			got = append(got, name)
+		})
+	}
+	if _, _, err := scans.StartScan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	store.waitFinished(t)
+	scans.Wait()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if want := []string{"auto-import", "home"}; !slices.Equal(got, want) {
+		t.Fatalf("呼ばれた関数 = %v, want %v", got, want)
+	}
+}
+
 // 走査を始めるたびに、始めた主体を知らせる。
 func TestOnStartReportsOrigin(t *testing.T) {
 	scanner := &fakeScanner{result: domain.ScanResult{Total: 1, Processed: 1}}

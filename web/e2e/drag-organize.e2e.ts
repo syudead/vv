@@ -92,7 +92,7 @@ function groupOf(name: string): LibraryGroup {
 }
 
 function librarySearch(query: string): string {
-  return `/?q=${encodeURIComponent(query)}`;
+  return `/library?q=${encodeURIComponent(query)}`;
 }
 
 async function waitForScan(request: APIRequestContext, scanId: number) {

@@ -21,6 +21,7 @@ import {
   removePlaylistItem,
 } from "../api/playlists";
 import { errorText, t, type UiText } from "../i18n";
+import { LIBRARY_PATH } from "../library/libraryPath";
 import { useToast } from "../ui/Toast";
 import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
 import { DataTable } from "../ui/patterns/data-table";
@@ -419,7 +420,7 @@ function PlaylistScreen({ id }: { id: number | null }) {
           description={t.playlists.detail.empty.description}
           action={
             <Button size="sm" asChild>
-              <Link to="/">{t.playlists.detail.empty.action}</Link>
+              <Link to={LIBRARY_PATH}>{t.playlists.detail.empty.action}</Link>
             </Button>
           }
         />
