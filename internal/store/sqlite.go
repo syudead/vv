@@ -88,7 +88,7 @@ type changes struct {
 	groups []int64
 	// matches は、スマートフォルダの一致が変わりうることを表す（動画がライブラリに入る・出る、
 	// グループが変わる）。commit が確定の前にすべてのフォルダの id を smartFolders に読み、確定後に
-	// domain.SmartFoldersChanged で知らせる（specs/052-smart-folders/data-model.md「Notices」）。
+	// domain.SmartFoldersChanged で知らせる。
 	matches      bool
 	smartFolders []int64
 	// activity は、アクティビティの記録を書いたか変えたことを表す（activity.go）。確定後に

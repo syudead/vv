@@ -83,8 +83,7 @@ type AuthOptions struct {
 }
 
 // Auth は初回設定・ログイン・ログアウト・セッションの確認と、API トークンの発行・一覧・
-// 失効・確認を受け持つ（specs/016-single-account-auth/contracts/auth-api.md §2〜§4、
-// specs/026-external-api/contracts/token-api.md）。
+// 失効・確認を受け持つ。
 // HTTP の形（Cookie・状態コード）は知らず、送信元と Cookie の値は呼び出し側が渡す。
 type Auth struct {
 	store      AuthStore
@@ -127,7 +126,7 @@ type Session struct {
 	ExpiresAt time.Time
 }
 
-// AuthState は見る人の状態である（contracts/auth-api.md §4）。
+// AuthState は見る人の状態である。
 type AuthState string
 
 // 見る人の状態。
@@ -272,7 +271,7 @@ func (a *Auth) Login(ctx context.Context, req LoginRequest) (Session, error) {
 
 // CheckSession は token のセッションが有効かを確かめ、有効なら期限を返す。
 // 形式の違う値は保存先に問い合わせずに無効とする。問い合わせが失敗したら、
-// 無効とせず誤りを返す（data-model.md §4）。
+// 無効とせず誤りを返す。
 func (a *Auth) CheckSession(ctx context.Context, token string) (time.Time, bool, error) {
 	if !validTokenFormat(token) {
 		return time.Time{}, false, nil

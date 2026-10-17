@@ -11,8 +11,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import CreditsPage from "./CreditsPage";
 
-// 人物・団体の管理画面のページの試験（specs/047-video-work-info/ui-design.md「People and
-// organizations screens」、Issue #1028 の完了の条件）。偽のサーバーは `/api/people` と
+// 人物・団体の管理画面のページの試験。偽のサーバーは `/api/people` と
 // `/api/organizations` の 6 つの経路を持つ。
 
 function jsonResponse(body: unknown, status = 200): Response {

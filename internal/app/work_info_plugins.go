@@ -9,9 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインの追加・差し替え・承認・取り消し・削除と、設定の値の書き込み
-// （specs/049-work-info-plugins/data-model.md の Rules、research.md R-6・R-7・R-13、
-// contracts/screen-api.md）。モジュールの検査は WorkInfoPluginRuntime、保存は WorkInfoPluginStore が行う。
+// 作品情報プラグインの追加・差し替え・承認・取り消し・削除と、設定の値の書き込み。モジュールの検査は WorkInfoPluginRuntime、保存は WorkInfoPluginStore が行う。
 // 秘密の設定の値は、このパッケージの外へは返さない（domain.WorkInfoPlugin.Entry で落とす）。
 
 // workInfoPluginDefaultFileName は、ファイル名の無いアップロードに付ける名前である。名前を読めない
@@ -60,7 +58,7 @@ type WorkInfoPluginsOptions struct {
 	// Matcher は取得した人物・団体を既存の実体と照合する読み出しである。
 	Matcher WorkInfoCreditMatcher
 	// Network は各実行の前に読む、実行のネットワークの選択肢である。nil ならプロキシなしで動かす
-	// （specs/056-plugin-tooling/research.md R-4）。
+	//
 	Network WorkInfoRunNetworkSource
 	// Covers はカバー画像を動画の代表サムネイルにする適用である。
 	Covers WorkInfoCoverApplier
@@ -143,8 +141,7 @@ func (p *WorkInfoPlugins) UploadWorkInfoPlugin(
 	return saved.Entry(), !replaced, nil
 }
 
-// ApproveWorkInfoPlugin は、所有者が一覧で見たダイジェスト digest のモジュールを承認する
-// （research.md R-7）。無ければ domain.ErrNotFound、問題があれば domain.ErrWorkInfoPluginUnusable、
+// ApproveWorkInfoPlugin は、所有者が一覧で見たダイジェスト digest のモジュールを承認する。無ければ domain.ErrNotFound、問題があれば domain.ErrWorkInfoPluginUnusable、
 // 今のモジュールのダイジェストと違えば domain.ErrWorkInfoPluginChanged を返す。保存先は取引の中で
 // 同じことを確かめ直す。
 func (p *WorkInfoPlugins) ApproveWorkInfoPlugin(ctx context.Context, id int64, digest string) (domain.WorkInfoPluginEntry, error) {
@@ -167,7 +164,7 @@ func (p *WorkInfoPlugins) RevokeWorkInfoPluginApproval(ctx context.Context, id i
 }
 
 // SetWorkInfoPluginSettings はプラグイン id の設定の値を書く。nil か空の値はそのキーの値を消し、
-// values に無いキーの値はそのまま残す。承認は変わらない（research.md R-13）。無ければ
+// values に無いキーの値はそのまま残す。承認は変わらない。無ければ
 // domain.ErrNotFound、問題があれば domain.ErrWorkInfoPluginUnusable、マニフェストが宣言しないキーか
 // domain.WorkInfoPluginSettingValueMaxRunes 文字を超える値があれば domain.ErrWorkInfoPluginSettingInvalid
 // を返し、何も書かない。
@@ -194,14 +191,13 @@ func (p *WorkInfoPlugins) DeleteWorkInfoPlugin(ctx context.Context, id int64) er
 
 // WorkInfoPluginLastRun はプラグイン id の直近の実行の標準エラー（秘密の値を伏せたもの）と、それが
 // 残っているかを返す。差し替えたプラグインは、差し替えの後の実行だけが残る。無ければ domain.ErrNotFound を返す
-// （specs/056-plugin-tooling/contracts/screen-api.md）。
 func (p *WorkInfoPlugins) WorkInfoPluginLastRun(ctx context.Context, id int64) (domain.WorkInfoPluginRun, bool, error) {
 	return p.store.WorkInfoPluginRun(ctx, id)
 }
 
 // recordRun は、プラグイン plugin の 1 回の実行のログを保存する関数を返す。ログの標準エラーのうち、その実行が
 // 受け取った秘密の値 secrets を伏せてから書く。実行の枠を持っている間に呼ばれるので、行は実行が終わった順に
-// 書かれる。呼び出し元の ctx が終わっても書く（specs/056-plugin-tooling/research.md R-6）。
+// 書かれる。呼び出し元の ctx が終わっても書く。
 func (p *WorkInfoPlugins) recordRun(
 	ctx context.Context, plugin domain.WorkInfoPlugin, secrets []string,
 ) func(domain.WorkInfoRunLog) error {

@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインの取得の結果の反映（specs/049-work-info-plugins/data-model.md の Rules、research.md R-8・R-9）。
+// 作品情報プラグインの取得の結果の反映。
 
 // approvedPlugin は名前 name・ダイジェスト digest のプラグインを保存して承認する。
 func approvedPlugin(t *testing.T, db *DB, name, digest string) domain.WorkInfoPlugin {
@@ -108,7 +108,7 @@ func TestApplyFetchedWorkInfoNotifiesEveryBundleMemberOfTags(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("ApplyFetchedWorkInfo: %v", err)
 	}
-	// 適用の記録の知らせ（specs/055-activity/research.md R-6）が確定の直後に先に届く。
+	// 適用の記録の知らせが確定の直後に先に届く。
 	want := []domain.Event{domain.ActivityChanged{}, domain.VideoOverrideChanged{VideoID: ids["b"]},
 		domain.VideoOverrideChanged{VideoID: ids["a"]}}
 	if !slices.Equal(recorder.events, want) {

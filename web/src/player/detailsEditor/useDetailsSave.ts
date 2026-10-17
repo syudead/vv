@@ -14,7 +14,7 @@ export interface SaveFailure {
 }
 
 /**
- * useDetailsSave は編集画面の `Save` である（specs/047-video-work-info/ui-design.md「Save」）。
+ * useDetailsSave は編集画面の `Save` である。
  *
  * 1. 下書きのまだ作っていない名前を、人物の役割の順、団体の役割の順に 1 件ずつ
  *    `POST /api/people`（`/api/organizations`）で作る。作れたものはその場で下書きの id にし、

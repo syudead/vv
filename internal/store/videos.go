@@ -136,7 +136,7 @@ func getVideo(ctx context.Context, q videoQueryer, audience domain.Audience, id 
 	if err != nil {
 		return domain.Video{}, fmt.Errorf("cannot read the video (id=%d): %w", id, err)
 	}
-	// 集まりの要約は一覧と同じ規則で埋める（specs/054-auto-dup/research.md R-9）。
+	// 集まりの要約は一覧と同じ規則で埋める。
 	videos := []domain.Video{video}
 	if err := attachVersions(ctx, q, audience, videos); err != nil {
 		return domain.Video{}, err
@@ -198,15 +198,14 @@ func contentKeyReferenced(ctx context.Context, q rowQueryer, key string) (bool, 
 
 // registeredContentKeysForVideoIDs は動画の id の集合を、いまライブラリにある
 // 動画の content_key へ引き直す。引けない id（その間に消えた動画）は結果に
-// 含めない（specs/014-video-tags/data-model.md §4）。TagStore の付与・取り外し・
+// 含めない。TagStore の付与・取り外し・
 // 要約が使う（Structural Decisions 13：id から content_key を引く SQL の共有）。
-// videoIDs の重複は1つにまとめる（contracts/tags-api.md §4「重複は1つとして
-// 扱う」）。videos は id が主キーなので、`in` で1動画1行に自然にまとまる
+// videoIDs の重複は1つにまとめる。videos は id が主キーなので、`in` で1動画1行に自然にまとまる
 // （json_each との join だと重複した id の分だけ行が増える）。内容の識別子が
 // 空の動画（videos.go の他の読み取りと同じ理由で除く）は含めない。
 //
 // id の集合は SQLite の引数の上限に掛からないよう、json_each に1つの引数で
-// 渡す（specs/014-video-tags/contracts/tags-api.md §4）。
+// 渡す。
 func registeredContentKeysForVideoIDs(ctx context.Context, q queryExecer, videoIDs []int64) ([]string, error) {
 	if len(videoIDs) == 0 {
 		return nil, nil
@@ -312,7 +311,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	video.Public = public
 	video.Favorite = favorite
 	// 有効な題名は、表示名があればそれ、無ければ所在の題名（coalesce(ov.display_name,
-	// loc.title)。specs/029-video-overrides/research.md R-2）。
+	// loc.title)。docs/design-docs/catalog-organization.md）。
 	video.FileTitle = video.Title
 	if displayName.Valid && displayName.String != "" {
 		video.DisplayName = displayName.String
@@ -330,7 +329,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 }
 
 // fileCreatedAtExpr は所在（別名 alias）のファイルの作成日時の式である。作成日時が取れなかった
-// 所在は mtime に倒す（specs/033-video-dates/data-model.md §4）。
+// 所在は mtime に倒す。
 func fileCreatedAtExpr(alias string) string {
 	return `coalesce(` + alias + `.file_created_at, ` + alias + `.mtime)`
 }

@@ -25,7 +25,7 @@ type ScanStore interface {
 	UpdateScanProgress(ctx context.Context, id int64, progress domain.ScanProgress) error
 	// FinishScan は走査を閉じる。cause は走査そのものが失敗した理由（成功なら nil）で、
 	// domain.ScanFailure で包まれた理由のコードと場所は保存側が取り出す。decider は走査を始めたもので、
-	// 失敗した走査の記録に残る（specs/055-activity/research.md R-5）。
+	// 失敗した走査の記録に残る。
 	FinishScan(ctx context.Context, id int64, state domain.ScanState, cause error, decider domain.ActivityDecider) error
 	// FailInterruptedScans は running のまま残った走査を failed で閉じる。
 	FailInterruptedScans(ctx context.Context) (int64, error)
@@ -50,7 +50,7 @@ type UnfinishedJobStore interface {
 
 // FolderIndexStore はフォルダの索引（グループの割り当てと祖先フォルダ名）の
 // 作り直し先である。作り直しに失敗したら、保存側が索引を古いと記録してから
-// 失敗を返す（specs/017-folder-groups/data-model.md §3）。
+// 失敗を返す。
 type FolderIndexStore interface {
 	RebuildFolderIndex(ctx context.Context) error
 }
@@ -124,7 +124,7 @@ type Scans struct {
 	lifetime  context.Context
 	publisher Publisher
 	logger    *slog.Logger
-	// activity は今の処理をメモリに持つ（specs/024-import-progress/research.md R-8）。
+	// activity は今の処理をメモリに持つ。
 	activity *activities
 
 	// mu は走査の起動が重ならないようにする。実行中かどうかの判断は
@@ -177,13 +177,12 @@ func NewScans(opts ScansOptions) *Scans {
 // StartScan は取り込みを開始する。実行中なら新しく始めず、実行中のものを返す。
 // 応答は即座に返り、走査は背後で進む。started は走査の行を新しく作ったかで、
 // 作るか実行中の行を返すかを 1 つのトランザクションで決めた保存先の答えをそのまま返す
-// （specs/026-external-api/contracts/external-api.md §5）。
 //
 // ctx は要求のものなので、その取り消しを走査へは持ち込まない。要求が終わった
 // 時点で走査が打ち切られてしまう。走査は組み立て時に渡した寿命の長い context の
 // 取り消しでだけ止まる。
 //
-// 走っているのが監視の走査なら、それを止めてから始める（research.md R-5）。止めた直後に
+// 走っているのが監視の走査なら、それを止めてから始める。止めた直後に
 // 監視が次の走査を始めて取り合ったときは、もう一度止めて始め直す。
 func (s *Scans) StartScan(ctx context.Context) (domain.Scan, bool, error) {
 	const attempts = 3
@@ -199,7 +198,6 @@ func (s *Scans) StartScan(ctx context.Context) (domain.Scan, bool, error) {
 // StartWatchScan は変わったディレクトリ dirs だけを読む走査を、フォルダの監視の走査
 // （origin が watch）として始める。実行中の走査があれば、新しく始めずにそれを返す。
 // 打ち切りと出力は StartScan と同じである
-// （specs/042-folder-watch-import/research.md R-4）。
 func (s *Scans) StartWatchScan(ctx context.Context, dirs []domain.DirtyDirectory) (domain.Scan, bool, error) {
 	dirs = domain.NormalizeDirtyDirectories(dirs)
 	return s.start(ctx, func(ctx context.Context) (domain.Scan, bool, error) {
@@ -209,7 +207,7 @@ func (s *Scans) StartWatchScan(ctx context.Context, dirs []domain.DirtyDirectory
 
 // SupersedeWatchScan は走っている監視の走査を次のファイルの前で止め、何も消さずに done で
 // 閉じさせ、閉じるまで待つ。走っているのが手動の走査か、何も走っていなければ何もしない。
-// 止めたら true を返す（research.md R-5）。
+// 止めたら true を返す。
 func (s *Scans) SupersedeWatchScan(ctx context.Context) bool {
 	s.mu.Lock()
 	if !s.running || s.runOrigin != domain.ScanOriginWatch || s.cancelRun == nil {
@@ -228,7 +226,7 @@ func (s *Scans) SupersedeWatchScan(ctx context.Context) bool {
 
 // start は open で走査の行を作り、新しく作ったなら背後で走らせる。dirs が nil でなければ、
 // その範囲だけを読む監視の走査である。decider は走査を始めたもの（手動は所有者、監視と起動時の再開は
-// 規則）で、走査が積む仕事と失敗した走査の記録に残る（specs/055-activity/research.md R-5）。
+// 規則）で、走査が積む仕事と失敗した走査の記録に残る。
 func (s *Scans) start(
 	ctx context.Context, open func(context.Context) (domain.Scan, bool, error), dirs *[]domain.DirtyDirectory,
 	decider domain.ActivityDecider,
@@ -284,8 +282,7 @@ func (s *Scans) CurrentScan(ctx context.Context) (domain.Scan, error) {
 	return s.withImport(ctx, scan)
 }
 
-// ListScanIssues は直近の取り込みの問題を、cursor の次から limit 件返す
-// （specs/024-import-progress/contracts/scan-api.md §3）。一度も走査していなければ
+// ListScanIssues は直近の取り込みの問題を、cursor の次から limit 件返す。一度も走査していなければ
 // domain.ErrNotFound、カーソルが解釈できなければ domain.ErrInvalidCursor を返す。
 func (s *Scans) ListScanIssues(ctx context.Context, cursor string, limit int) (domain.ScanIssuePage, error) {
 	scan, err := s.store.CurrentScan(ctx)
@@ -304,7 +301,7 @@ func (s *Scans) ListScanIssues(ctx context.Context, cursor string, limit int) (d
 }
 
 // withImport は走査の記録と問題から取り込みの状態を組み立てる。状態の決め方は
-// domain が持つ（specs/024-import-progress/research.md R-4・R-5）。本数は、問題を
+// domain が持つ。本数は、問題を
 // 動画（未登録ならファイル）ごとにまとめた件で数える。
 func (s *Scans) withImport(ctx context.Context, scan domain.Scan) (domain.Scan, error) {
 	issues, err := s.store.ScanIssues(ctx, scan.ID)
@@ -411,12 +408,12 @@ func (s *Scans) Wait() {
 }
 
 // Busy は取り込みの途中か、つまり走っている走査があるか、queued か running の
-// 仕事が 1 件以上あるかを返す（specs/037-windows-app/research.md R-7）。どちらも
+// 仕事が 1 件以上あるかを返す。どちらも
 // 止めても次の起動で続きから再開する対象である。ライブ変換の配信は再開の対象で
 // ないので含めない。
 func (s *Scans) Busy(ctx context.Context) (bool, error) {
 	// 監視の走査は利用者に見えない取り込みなので、走っていても取り込みの途中とは数えない
-	// （specs/042-folder-watch-import/research.md R-4）。
+	//
 	s.mu.Lock()
 	running := s.running && s.runOrigin != domain.ScanOriginWatch
 	s.mu.Unlock()
@@ -461,7 +458,7 @@ func (s *Scans) RecoverInterrupted(ctx context.Context) error {
 }
 
 // ResumeInterrupted は、最新の走査が中断（failed、理由 interrupted）で終わって
-// いれば、新しい走査を 1 回始める（specs/037-windows-app/research.md R-9）。始めたら
+// いれば、新しい走査を 1 回始める。始めたら
 // true を返す。
 //
 // interrupted は、停止の指示で打ち切った走査と、running のまま残って
@@ -482,7 +479,7 @@ func (s *Scans) ResumeInterrupted(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	// 中断した監視の走査は閉じるだけで、続きは始めない。起動時にディレクトリを読み直さない
-	// ためで、止まっていた間の変更は手動の走査が受け持つ（specs/042-folder-watch-import/research.md R-8）。
+	// ためで、止まっていた間の変更は手動の走査が受け持つ。
 	if latest.State != domain.ScanFailed || latest.ErrorCode != domain.ScanErrorInterrupted ||
 		latest.Origin == domain.ScanOriginWatch {
 		return false, nil
@@ -564,11 +561,11 @@ func (s *Scans) run(
 	s.activity.end(scanActivityKey)
 
 	// 停止指示で打ち切った場合は、失敗として閉じる。次の起動で走り直せる。
-	// 理由は interrupted で、走査が包んだ理由より優先する（data-model.md §2）。
+	// 理由は interrupted で、走査が包んだ理由より優先する。
 	state := domain.ScanDone
 	if errors.Is(scanErr, domain.ErrScanSuperseded) && s.lifetime.Err() == nil {
 		// 取って代わられた走査は、何も消さずに終わる。失敗ではないので done で閉じる
-		// （research.md R-5）。
+		//
 		s.logger.Info("the watch scan was superseded", slog.Int("added", result.Added))
 		scanErr = nil
 	}

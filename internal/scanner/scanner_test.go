@@ -833,7 +833,7 @@ func TestScanContinuesAfterFileFailure(t *testing.T) {
 }
 
 // 読めないファイルを含むフォルダを走査すると、そのパスが unreadable として報告先に
-// 渡る（specs/024-import-progress/data-model.md §3）。まだ登録されていないので、動画は
+// 渡る。まだ登録されていないので、動画は
 // 結び付かない。
 func TestScanReportsUnreadableFileAsIssue(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a", "読めない.mp4": "b"})
@@ -962,8 +962,7 @@ func TestScanReportsProgress(t *testing.T) {
 	}
 }
 
-// 1ファイルごとに、登録を始めるファイルを知らせ、終えたら進みを知らせる
-// （specs/024-import-progress/research.md R-8）。以前の20件ごとの報告ではない。
+// 1ファイルごとに、登録を始めるファイルを知らせ、終えたら進みを知らせる。以前の20件ごとの報告ではない。
 func TestScanReportsProgressForEveryFile(t *testing.T) {
 	root := mediaTree(t, map[string]string{
 		"a.mp4": "a", "b.mp4": "b", "c.mp4": "c", "d.mp4": "d", "e.mp4": "e",
@@ -1266,7 +1265,6 @@ func snapshot(t *testing.T, root string) map[string]string {
 }
 
 // assertScanFailure は走査の失敗が理由のコードと場所で包まれていることを確かめる
-// （specs/023-english-i18n/data-model.md §2）。
 func assertScanFailure(t *testing.T, err error, code domain.ScanErrorCode, path string) {
 	t.Helper()
 	gotCode, gotPath := domain.ScanFailureOf(err)

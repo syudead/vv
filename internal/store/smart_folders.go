@@ -1,9 +1,9 @@
 package store
 
-// スマートフォルダの保存（specs/052-smart-folders/data-model.md「Migration」「Edits」）。
+// スマートフォルダの保存。
 // SmartFolderStore は書き込みの取引の中で親と入れ子を読み、domain の規則（ValidateGroupName・
 // SmartRule.Encode・ValidateSmartSort・ValidateSmartFolderParent）で決める。どの書き込みも
-// owner_kept を 1 にする（research.md R-10）。条件が名指す実体の有無は書き込みでは確かめず、
+// owner_kept を 1 にする。条件が名指す実体の有無は書き込みでは確かめず、
 // 読み出し（MissingRefs）が欠けた参照として返す（R-9）。
 
 import (
@@ -19,7 +19,6 @@ import (
 var smartFolderNow = groupNow
 
 // smartRuleRefTables は欠けた参照を確かめる表である。消したタグの種類も欠けた参照になる
-// （data-model.md「Merges」）。
 var smartRuleRefTables = map[domain.SmartRuleRefKind]string{
 	domain.SmartRefTag:          "tags",
 	domain.SmartRefTagKind:      "tag_kinds",
@@ -151,7 +150,7 @@ func (s *SmartFolderStore) SmartFolder(ctx context.Context, id int64) (domain.Sm
 }
 
 // MissingRefs は、スマートフォルダ id とその祖先の条件が名指す実体のうち今無いものを、外側の祖先から
-// 順に、同じものは 1 度だけ返す（data-model.md「Contents」の Missing reference）。フォルダが無ければ
+// 順に、同じものは 1 度だけ返す。フォルダが無ければ
 // domain.ErrNotFound。
 func (s *SmartFolderStore) MissingRefs(ctx context.Context, id int64) ([]domain.SmartRuleRef, error) {
 	tx, err := s.db.read.BeginTx(ctx, nil)
@@ -192,7 +191,7 @@ func missingSmartRuleRefs(ctx context.Context, tx *sql.Tx, rules []domain.SmartR
 }
 
 // rewriteSmartRuleRefs は、統合の取引 tx の中で、kind の実体 sourceIDs を名指すすべての条件を統合先
-// targetID へ書き換える（data-model.md「Merges」、research.md R-9）。所有者の編集ではないので
+// targetID へ書き換える。所有者の編集ではないので
 // owner_kept と updated_at は変えない。統合を巻き戻せば書き換えも残らない。
 func rewriteSmartRuleRefs(ctx context.Context, tx queryExecer, kind domain.SmartRuleRefKind, targetID int64, sourceIDs []int64) error {
 	rules, err := smartFolderRules(ctx, tx)

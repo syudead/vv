@@ -49,8 +49,7 @@ func checkInvariants(t *testing.T, db *DB) *DB {
 }
 
 // assertTagCanonicalNameInvariant は、どの tags の行にも canonical = 1 の
-// tag_names がちょうど1行あることを確かめる（specs/014-video-tags/data-model.md
-// §1）。作成は必ず canonical = 1 の行を1つ添え、改名は canonical = 1 の行を
+// tag_names がちょうど1行あることを確かめる。作成は必ず canonical = 1 の行を1つ添え、改名は canonical = 1 の行を
 // 書き換えるだけで、統合は統合元の名前を canonical = 0 に落としてから統合先へ
 // 付け替える。どの経路も、この不変条件を崩さずに保つ設計になっている
 // （internal/store/tags.go）。
@@ -91,8 +90,7 @@ func assertTagCanonicalNameInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertTentativeTagInvariant は仮のタグと却下した名前の不変条件を確かめる
-// （specs/031-tentative-tags/data-model.md §1）。仮のタグはシノニムを持たず（シノニムを
+// assertTentativeTagInvariant は仮のタグと却下した名前の不変条件を確かめる。仮のタグはシノニムを持たず（シノニムを
 // 足すと確定する。R-4）、却下した名前は tag_names に無い（名前を書く入口が同じ取引で
 // 外す。R-3）。
 func assertTentativeTagInvariant(t *testing.T, db *DB) {
@@ -127,8 +125,7 @@ func assertTentativeTagInvariant(t *testing.T, db *DB) {
 }
 
 // assertTagSortKeyInvariant は、tag_names と rejected_tag_names の search_version が現在の版の
-// 行の sort_key が domain.NaturalSortKey(name) と一致することを確かめる
-// （specs/036-tag-admin-scale/data-model.md §2）。名前の行を書く操作が同じ文で鍵を書き、
+// 行の sort_key が domain.NaturalSortKey(name) と一致することを確かめる。名前の行を書く操作が同じ文で鍵を書き、
 // 版の古い行は起動時の RefreshSearchKeys が埋める。統合で tag_id を付け替えても鍵は変わらない。
 func assertTagSortKeyInvariant(t *testing.T, db *DB) {
 	t.Helper()
@@ -171,8 +168,7 @@ func assertTableSortKeys(t *testing.T, db *DB, table string) {
 	}
 }
 
-// assertVideoOverrideInvariant は video_overrides の行の不変条件を確かめる
-// （specs/029-video-overrides/data-model.md §1）。表示名と位置の両方が null の行は無く
+// assertVideoOverrideInvariant は video_overrides の行の不変条件を確かめる。表示名と位置の両方が null の行は無く
 // （書く側が消す）、改版番号は位置があるときだけ持ち、空の content_key の行は無い。
 func assertVideoOverrideInvariant(t *testing.T, db *DB) {
 	t.Helper()
@@ -204,9 +200,7 @@ func assertVideoOverrideInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertThumbnailImageInvariant は thumbnail_images の行の不変条件を確かめる
-// （specs/045-comfyui-thumbnails/data-model.md、specs/046-thumbnail-image-upload/data-model.md の
-// Rules）。空の content_key の行、空の画像の行、空の元の画像の行（null は許す）、出どころが
+// assertThumbnailImageInvariant は thumbnail_images の行の不変条件を確かめる。空の content_key の行、空の画像の行、空の元の画像の行（null は許す）、出どころが
 // generated・uploaded のどちらでもない行は無い（書く側が拒む）。
 func assertThumbnailImageInvariant(t *testing.T, db *DB) {
 	t.Helper()
@@ -266,8 +260,7 @@ func thumbnailImageColumns(db *DB) (map[string]bool, error) {
 	return columns, rows.Err()
 }
 
-// assertVideoEditInvariant は video_edits の行の不変条件を確かめる
-// （specs/033-video-dates/data-model.md §1）。空の content_key の行は無い（touchEditedAt が飛ばす）。
+// assertVideoEditInvariant は video_edits の行の不変条件を確かめる。空の content_key の行は無い（touchEditedAt が飛ばす）。
 func assertVideoEditInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
@@ -290,8 +283,7 @@ func assertVideoEditInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertVideoBundleInvariant は集まりの不変条件を確かめる（specs/030-video-versions/
-// data-model.md §1）。代表はその集まりのメンバーで、メンバーが 2 本未満の集まりは無く
+// assertVideoBundleInvariant は集まりの不変条件を確かめる。代表はその集まりのメンバーで、メンバーが 2 本未満の集まりは無く
 // （書く側が解く）、user_key は bundle: で始まり、メンバーの content_key は空でない。
 func assertVideoBundleInvariant(t *testing.T, db *DB) {
 	t.Helper()
@@ -324,8 +316,7 @@ func assertVideoBundleInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertVersionCandidateInvariant は候補の不変条件を確かめる（specs/030-video-versions/
-// data-model.md §1）。候補の組は「違う動画」と記録した組（video_version_dismissals）に無く、
+// assertVersionCandidateInvariant は候補の不変条件を確かめる。候補の組は「違う動画」と記録した組（video_version_dismissals）に無く、
 // 同じ集まりの 2 本でもない。候補を作る取引が除き、束ねる操作・却下・スキャン時の引き継ぎが
 // 消す。
 func assertVersionCandidateInvariant(t *testing.T, db *DB) {
@@ -442,9 +433,9 @@ func assertRepresentativeInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertFavoriteInvariant はお気に入りの不変条件を確かめる（specs/035-favorites/data-model.md §1）。
+// assertFavoriteInvariant はお気に入りの不変条件を確かめる。
 // video_favorites に空の content_key の行は無い。グループのお気に入り（group_favorites）は
-// グループの id で持ち、外部キーが行の有無を保つ（specs/048-groups/research.md R-10）。
+// グループの id で持ち、外部キーが行の有無を保つ。
 func assertFavoriteInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
@@ -467,9 +458,8 @@ func assertFavoriteInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertPlaylistInvariant はプレイリストの不変条件を確かめる（specs/044-playlists/data-model.md
-// 「Migration」）。1 つのプレイリストの項目の位置は 0 … n-1 である。グループの項目はグループの id で
-// 持ち、外部キーが行の有無を保つ（specs/048-groups/research.md R-10）。
+// assertPlaylistInvariant はプレイリストの不変条件を確かめる。1 つのプレイリストの項目の位置は 0 … n-1 である。グループの項目はグループの id で
+// 持ち、外部キーが行の有無を保つ。
 func assertPlaylistInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
@@ -504,7 +494,7 @@ func assertPlaylistInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertGroupInvariant は、グループの不変条件（specs/048-groups/data-model.md「Migration」）を
+// assertGroupInvariant は、グループの不変条件を
 // 確かめる。1 つのグループの項目の位置が 0 … n-1 に詰まっている、origin_folder が
 // domain.FolderKey(origin_folder) と等しい、どのグループも自分の子孫にならない。
 func assertGroupInvariant(t *testing.T, db *DB) {
@@ -591,8 +581,7 @@ func assertGroupAcyclic(t *testing.T, db *DB) {
 	}
 }
 
-// assertSmartFolderInvariant は、スマートフォルダの不変条件（specs/052-smart-folders/data-model.md
-// 「Rules」）を確かめる。どの rule も domain.ParseSmartRule で読め、どの sort も
+// assertSmartFolderInvariant は、スマートフォルダの不変条件を確かめる。どの rule も domain.ParseSmartRule で読め、どの sort も
 // domain.ValidateSmartSort を通り、どのフォルダも自分の祖先にならない。
 func assertSmartFolderInvariant(t *testing.T, db *DB) {
 	t.Helper()
@@ -640,8 +629,7 @@ func assertSmartFolderInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertCreditInvariant は人物・団体の表の規則を確かめる（specs/047-video-work-info/data-model.md
-// 「Rules」のうち実体に関わるもの）。正規の名前の行がちょうど 1 つ、正規の行の language は null、
+// assertCreditInvariant は人物・団体の表の規則を確かめる。正規の名前の行がちょうど 1 つ、正規の行の language は null、
 // 団体の親の連鎖は根で終わる、別名 50 件・外部 ID 20 件以下、(source, value) は種類ごとに 1 実体、
 // 結び付きの位置は (content_key, role) ごとに 0 … n-1、名前の鍵は今の版の畳み込み。どの検査も
 // 違反を 1 行 1 件の説明として返す問い合わせで、行が無ければ守られている。
@@ -698,8 +686,7 @@ func assertCreditInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertWorkInfoInvariant は動画ごとの作品情報の表の規則を確かめる（specs/047-video-work-info/data-model.md
-// 「Rules」）。video_work_info の行は品番か説明を持ち、今の版の行の code_key は品番の畳み込みである。
+// assertWorkInfoInvariant は動画ごとの作品情報の表の規則を確かめる。video_work_info の行は品番か説明を持ち、今の版の行の code_key は品番の畳み込みである。
 // 位置が 0 … n-1 であることは assertCreditInvariant が確かめる。
 func assertWorkInfoInvariant(t *testing.T, db *DB) {
 	t.Helper()

@@ -11,8 +11,7 @@ export function playlistPath(id: number): string {
 }
 
 /**
- * PlaylistCard はプレイリストの一覧の格子でプレイリストを 1 枚で出すカードである
- * （specs/044-playlists/ui-design.md「Playlists screen」）。ライブラリのグループのカード
+ * PlaylistCard はプレイリストの一覧の格子でプレイリストを 1 枚で出すカードである。ライブラリのグループのカード
  * （GroupCard）と同じ箱で、サムネイルの枠にはフォルダの絵柄（FolderArt）を、先頭の見せる項目の
  * サムネイル（`covers`）で描き、右下の面に項目の数を重ねる。空のプレイリストは絵柄の背板だけになる。
  * 名前の下に最後に変えた時刻を出す。カード全体がプレイリストの画面への 1 つのリンクである。

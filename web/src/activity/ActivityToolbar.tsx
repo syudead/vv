@@ -29,7 +29,7 @@ import {
 } from "./activityCriteria";
 import type { ActivityLogState } from "./useActivityLog";
 
-// アクティビティの画面のツールバー（specs/055-activity/ui-design.md「Toolbar」）。検索と、
+// アクティビティの画面のツールバー。検索と、
 // 同じ形の 4 つの絞り込みのボタン（Status・Feature・Decided by・Period）と、絞り込みがあるときの
 // 「Clear filters」を 1 行に並べる。
 

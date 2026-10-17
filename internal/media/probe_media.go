@@ -10,8 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 取り込みの ffprobe の出力から domain.MediaInfo を組み立てる部分
-// （specs/056-media-info/data-model.md「Stored value」）。映像・トラック・埋め込み・
+// 取り込みの ffprobe の出力から domain.MediaInfo を組み立てる部分。映像・トラック・埋め込み・
 // チャプターのまとまりごとに関数を分ける。読めない項目は省くだけで、解析を失敗にしない。
 // 判定と整え方の規則は internal/domain にある。
 
@@ -23,7 +22,7 @@ type probeTags map[string]string
 func (t *probeTags) UnmarshalJSON(data []byte) error {
 	var raw map[string]json.RawMessage
 	if json.Unmarshal(data, &raw) != nil {
-		// tags がオブジェクトでなければ、無いものとして扱う（data-model.md「Rules」）。
+		// tags がオブジェクトでなければ、無いものとして扱う。
 		*t = nil
 		return nil
 	}

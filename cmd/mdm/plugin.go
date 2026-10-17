@@ -14,8 +14,7 @@ import (
 	"github.com/syudead/vv/internal/wasmplugin"
 )
 
-// plugin の下位コマンドは作品情報プラグインの作者のためのホスト側のコマンドである
-// （specs/056-plugin-tooling/contracts/plugin-cli.md、research.md R-1）。MDM_DATA_DIR を読まず、
+// plugin の下位コマンドは作品情報プラグインの作者のためのホスト側のコマンドである。MDM_DATA_DIR を読まず、
 // データベースも ffmpeg も使わない。マニフェストの規則は internal/domain、モジュールの検査と
 // セクションの書き換えは internal/wasmplugin が持ち、ここはファイルの読み書きだけを行う。
 
@@ -60,7 +59,7 @@ func refusedFailure(format string, args ...any) *accountFailure {
 
 // runPluginPack は mdm plugin pack <module.wasm> <manifest.json> を実行する。マニフェストを確かめ、
 // モジュールの vv.plugin のセクションを置き換え、詰めたモジュールをアップロードと同じ検査にかけてから、
-// 一時ファイルと rename でモジュールに書く（research.md R-2）。どの失敗でもモジュールは元のままである。
+// 一時ファイルと rename でモジュールに書く。どの失敗でもモジュールは元のままである。
 // モジュールがシンボリックリンクなら、リンクの先を読んで同じリンクの先へ書く。
 func runPluginPack(ctx context.Context, args []string, stderr io.Writer) *accountFailure {
 	if len(args) != 2 {

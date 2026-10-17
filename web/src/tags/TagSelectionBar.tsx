@@ -13,13 +13,12 @@ import TagSetKindMenu, { type KindChoice } from "./TagSetKindMenu";
  * TagSelectionBar はタグ管理画面で 1 件以上選んでいる間、見出しの行の代わりに出す
  * 選択バーである（見出しとタブの帯はトップバーの直下に貼り付くので、送っても届く）。
  * デザインシステムの `SelectionBar` の placement="header"（web/registry/rules/patterns.md の
- * Sections）に、選んだ数・解除とまとめての操作を入れる
- * （specs/036-tag-admin-scale/ui-design.md「Selection bar」）。選んだタグに働かない操作
+ * Sections）に、選んだ数・解除とまとめての操作を入れる。選んだタグに働かない操作
  * （仮のタグが無いときの「Confirm」「Reject…」、確定したタグが無いときの「Delete…」）は
  * 薄くせずに出さない。「Reject…」「Delete…」は確認の窓（`ConfirmDialog`）を開く。操作の
  * 名前はどの幅でも出し、収まらなければ折り返す。
  *
- * 「Set kind…」（specs/051-tag-kinds/ui-design.md「Set kind」）はどの選択にも出し、
+ * 「Set kind…」はどの選択にも出し、
  * 「Confirm」と「Merge into one tag…」の間に置く。
  */
 export default function TagSelectionBar({

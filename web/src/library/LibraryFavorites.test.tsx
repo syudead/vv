@@ -16,8 +16,7 @@ import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
 /**
- * ライブラリのカードと行のお気に入りの付け外し（specs/035-favorites/ui-design.md「Card」、
- * issue 660）。
+ * ライブラリのカードと行のお気に入りの付け外し。
  */
 
 function video(id: number, extra: Partial<Video> = {}): Video {
@@ -267,7 +266,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("ライブラリのお気に入りの付け外し（specs/035-favorites/ui-design.md「Card」）", () => {
+describe("ライブラリのお気に入りの付け外し", () => {
   it("動画のカードで押すと videoIds: [id] を送り、応答のあと同じ場所の印が付き、もう一度押すと外れる", async () => {
     const server = install([
       { kind: "video", video: video(1) },
@@ -656,7 +655,7 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
   });
 });
 
-describe("選択バーの一括のお気に入り（specs/035-favorites/ui-design.md「Selection bar」）", () => {
+describe("選択バーの一括のお気に入り", () => {
   const seriesGroupId = 7;
 
   async function favoriteSelection(user: ReturnType<typeof userEvent.setup>, add = true) {
@@ -697,8 +696,8 @@ describe("選択バーの一括のお気に入り（specs/035-favorites/ui-desig
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label"));
     expect(names.indexOf("Favorite")).toBe(names.indexOf("Remove tag") + 1);
-    // 「Favorite」と「Visibility」の間は「Add to playlist」（specs/044-playlists/ui-design.md）と
-    // 「New group」「Add to group」（specs/048-groups/ui-design.md）。
+    // 「Favorite」と「Visibility」の間は「Add to playlist」と
+    // 「New group」「Add to group」。
     expect(names.indexOf("Visibility")).toBe(names.indexOf("Favorite") + 4);
 
     await favoriteSelection(user);

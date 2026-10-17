@@ -12,7 +12,7 @@ import {
 // 絞り込みのドロップダウンのボタン（vv の部品）。ツールバーに同じ形で並べ、絞り込みの名前と
 // 今の値と山形の印を出し、押すと DropdownMenu を開く。既定の値でないときは primary-soft の面に
 // primary の文字にして、開かずに今の値が読めるようにする
-// （specs/055-activity/ui-design.md「Changes to the design system」）。
+//
 // 規則は web/registry/rules/components.md の FilterDropdownButton。
 
 export interface FilterDropdownButtonProps {

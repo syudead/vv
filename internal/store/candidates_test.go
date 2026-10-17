@@ -8,8 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 「同じ動画かもしれない」候補と「違う動画」の記録（specs/030-video-versions/data-model.md §1・§7・§8、
-// research.md R-7）。
+// 「同じ動画かもしれない」候補と「違う動画」の記録。
 
 // testFingerprint は 12 コマの指紋を返す。コマ i のハッシュは seed から決まり、flip のビットを
 // 反転する（flip が小さければ同じ場面の再エンコードに当たる）。

@@ -10,8 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// タグの種類で当てるスマートフォルダ（specs/052-smart-folders/data-model.md「smart_folders.rule」
-// の tagKind、「Merges」「Notices」、plan.md「Match smart folders by tag kind」）。
+// タグの種類で当てるスマートフォルダ。
 
 // smartFolderVideoIDs はフォルダ id の中身の動画の id を小さい順に返す。子フォルダは入れない。
 func smartFolderVideoIDs(t *testing.T, db *DB, id int64) []int64 {

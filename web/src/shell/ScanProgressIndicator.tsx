@@ -34,8 +34,7 @@ function indicatorName(presentation: ScanPresentation): UiText {
 }
 
 /**
- * ScanProgressIndicator は右下の本体と概要である（specs/024-import-progress/ui-design.md
- * 「Floating Indicator」「Summary Popover」）。置き場所・開き方・押したときの移動先は
+ * ScanProgressIndicator は右下の本体と概要である。置き場所・開き方・押したときの移動先は
  * 012 の形のまま。
  *
  * 概要はホバーかフォーカスで開き、ポインタが離れる・Esc・外を押す・設定へ移る・フォーカスが

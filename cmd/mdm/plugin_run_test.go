@@ -19,7 +19,7 @@ import (
 	"github.com/syudead/vv/internal/wasmplugin/plugintest"
 )
 
-// mdm plugin run のテスト（specs/056-plugin-tooling/contracts/plugin-cli.md）。プラグインは
+// mdm plugin run のテスト。プラグインは
 // testdata/runplugin をビルドしたもので、CI はインターネットに出ないので、site.test を公開のアドレスに
 // 解決し、その接続を loopback に立てたサイトへつなぐ。
 

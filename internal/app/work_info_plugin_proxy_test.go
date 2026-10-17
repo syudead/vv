@@ -8,7 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// プラグインのプロキシの設定と、実行への渡し方（specs/056-plugin-tooling/research.md R-4）。
+// プラグインのプロキシの設定と、実行への渡し方。
 
 // memoryProxyStore は URL を 1 つ持つ保存先で、書き込みを数える。
 type memoryProxyStore struct {

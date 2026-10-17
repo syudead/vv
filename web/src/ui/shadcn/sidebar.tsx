@@ -526,7 +526,7 @@ function SidebarMenuBadge({ className, ...props }: React.ComponentProps<"div">) 
 }
 
 /**
- * SidebarMenuCount は項目の件数である（vv が足した部品。specs/055-activity/ui-design.md
+ * SidebarMenuCount は項目の件数である（vv が足した部品。docs/design-docs/activity.md
  * 「Changes to the design system」）。上流の SidebarMenuBadge はアイコンだけのレールでは
  * 隠れるので、レールではアイコンの右上に destructive の丸い印として描き、狭い幅のドロワーでは
  * 行の端の SidebarMenuBadge として描く。0 なら何も描かない。見える文字（`text`、99 を超えれば

@@ -7,12 +7,8 @@ are [`internal/domain/activity_entry.go`](../../internal/domain/activity_entry.g
 the table and the list are
 [`internal/store/activity.go`](../../internal/store/activity.go), and retry
 and undo are dispatched by
-[`internal/app/activity_log.go`](../../internal/app/activity_log.go). The
-reasons for each rule are in
-[055 research](../../specs/055-activity/research.md); the schema is
-[055 data-model](../../specs/055-activity/data-model.md). An activity entry is
-not the scan activity, the in-memory line of what an import runs now
-([R-1](../../specs/055-activity/research.md#r-1-a-persistent-activity-log-named-apart-from-the-scan-activity)).
+[`internal/app/activity_log.go`](../../internal/app/activity_log.go). An activity entry is
+not the scan activity, the in-memory line of what an import runs now.
 
 The diagram shows where an entry is written and how the owner reads it.
 
@@ -33,13 +29,11 @@ A store role that runs, finishes or decides something recorded writes or
 updates its entry through one package-private helper inside its own
 transaction, and the commit publishes `ActivityChanged`. The entry and the
 change it records therefore always agree, and no role calls another role's
-methods
-([R-2](../../specs/055-activity/research.md#r-2-an-entry-is-written-in-the-transaction-of-the-change-it-records)).
+methods.
 `ActivityStore` only lists, reads one entry and recovers at startup.
 
 The table is user data: it is never rebuilt or pruned and names its subject by
-content key with the label as written, so an entry outlives its video
-([R-10](../../specs/055-activity/research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)).
+content key with the label as written, so an entry outlives its video.
 
 ## Status, reason and outcome
 
@@ -47,8 +41,7 @@ An entry is `running` or `attention` with a reason, or `done` with an outcome.
 Writing an entry closes the older `attention` entries of the same kind and
 subject as `done`/`superseded`, so the attention count is the problems still
 open; a `version_judgement` keeps one entry per pair and is never closed this
-way
-([R-4](../../specs/055-activity/research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem)).
+way.
 
 ```mermaid
 stateDiagram-v2
@@ -61,8 +54,7 @@ stateDiagram-v2
 
 ## Imports and failed scans
 
-A video's import is one `import` entry for its five ingest stages
-([R-3](../../specs/055-activity/research.md#r-3-one-entry-per-run-and-subject-an-import-is-one-entry-for-all-its-stages)).
+A video's import is one `import` entry for its five ingest stages.
 Each job row keeps the id of the entry it belongs to
 ([`internal/store/activity_import.go`](../../internal/store/activity_import.go)).
 
@@ -84,8 +76,7 @@ between cannot close the entry before the later stages join it. The progress
 of a `processing` entry counts the stages done across all the video's jobs,
 since a retry's entry holds only the jobs it queued again.
 
-The decider is the one who started the run
-([R-5](../../specs/055-activity/research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run)).
+The decider is the one who started the run.
 
 | Run | Decider |
 | --- | --- |
@@ -105,9 +96,7 @@ startup resumes it.
 
 An owner operation that changes a video's tags or version bundle, removes a
 media folder, or fetches or applies work information writes `done` entries
-decided by `owner` in the operation's transaction
-([R-6](../../specs/055-activity/research.md#r-6-the-owner-operations-recorded),
-[`internal/store/owner_activity.go`](../../internal/store/owner_activity.go)).
+decided by `owner` in the operation's transaction.
 
 | Operation | Entries |
 | --- | --- |
@@ -117,7 +106,7 @@ decided by `owner` in the operation's transaction
 | Attach or detach a tag (video page, library selection, turning a group into a tag, `/api/v1`) | One per video and tag whose manual tag row changed; `detail` is the tag name |
 | Keep or reject a suggested tag | One `tag_keep` or `tag_reject`; `detail` is the tag name |
 | Apply fetched work information | One `work_info_apply`; its tags write no tag entries |
-| Fetch work information | One `work_info_fetch` per plugin run, `done`/`failed` with the plugin's message (else the failure code) when the run fails, never retried ([R-11](../../specs/055-activity/research.md#r-11-a-failed-work-information-fetch-is-a-finished-entry-not-a-problem)) |
+| Fetch work information | One `work_info_fetch` per plugin run, `done`/`failed` with the plugin's message (else the failure code) when the run fails, never retried  |
 | Remove a media folder | One `media_folder_remove` for the folder path; `detail` is the number of videos it took out of the library |
 | Drag-organize undo | One `organize_undo` per video whose bundle it restored |
 
@@ -136,8 +125,7 @@ stays as it is ([process-lifecycle.md](process-lifecycle.md)).
 ## The list pages by id and counts in the same read
 
 `GET /api/activity` returns entries by id descending with an opaque cursor, so
-entries written while the owner scrolls do not shift the next page
-([R-9](../../specs/055-activity/research.md#r-9-keyset-paging-by-id-newest-first-filtered-by-status)).
+entries written while the owner scrolls do not shift the next page.
 The page, the status counts and the feature counts come from one read-only
 snapshot.
 
@@ -149,7 +137,7 @@ snapshot.
 
 `q` matches the subject's labels without case. An `undo` entry carries the
 feature of the entry it undid. The contract is
-[055 screen-api.md](../../specs/055-activity/contracts/screen-api.md).
+[the screen API schema](../../api/openapi.yaml).
 
 ## Retry and undo are dispatched by kind
 
@@ -169,8 +157,7 @@ use case registered for its kind. A kind with nothing registered answers
 
 `ActivityChanged` becomes an `activity` event with no payload on
 `/api/events`, sent to owner streams only and coalesced per connection like
-`candidates`
-([R-8](../../specs/055-activity/research.md#r-8-the-screen-refreshes-on-an-activity-notification)).
+`candidates`.
 
 On the Web client, the Activity screen (`web/src/activity`) refetches the
 counts and every page it has loaded on that event and on a reconnect, and
@@ -180,8 +167,7 @@ sidebar entry and the screen's footer read the whole log's `counts` from a
 request with no filter (`web/src/api/useActivityTotals.ts`), so `running`
 there includes queued entries. The filters live in the page URL (`status`, `feature`, `decider`,
 `period`, `q`); `period` is turned into `since` when the first page or a
-refetch starts, and the next pages keep that `since`
-([055 UI design, Activity page](../../specs/055-activity/ui-design.md#activity-page)).
+refetch starts, and the next pages keep that `since`.
 A card's `Retry`, `Undo` and `Undo tags…` send their request without a
 confirmation (`web/src/activity/useActivityOperations.ts`) and, on success,
 start the same refetch without waiting for the notification. A failure leaves

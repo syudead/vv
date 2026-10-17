@@ -284,9 +284,8 @@ function submitDisabled(flow: Flow): boolean {
 }
 
 /**
- * FetchDialog は取得のダイアログである（specs/049-work-info-plugins/ui-design.md「Fetch
- * dialog」）。見つける段（検索の候補を含む）、比較の段、付けなかったタグと飛ばした値を知らせる
- * 結果の段（specs/052-plugin-work-info-fields/ui-design.md「Result」）を
+ * FetchDialog は取得のダイアログである。見つける段（検索の候補を含む）、比較の段、付けなかったタグと飛ばした値を知らせる
+ * 結果の段を
  * 1 つの窓で切り替える。反映が成功するまで動画は変わらない。
  */
 export default function FetchDialog(props: {

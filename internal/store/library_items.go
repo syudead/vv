@@ -11,8 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ライブラリの項目（specs/027-partial-group-search/contracts/library-api.md §1〜§2、
-// specs/048-groups/data-model.md「Library items」）。013 の一覧の流れ（範囲と検索式 → chosen →
+// ライブラリの項目。013 の一覧の流れ（範囲と検索式 → chosen →
 // 絞り込み → keyset）に、当たった動画を項目（動画かグループ）へまとめる段を足す。
 //
 //  1. chosen にタグの AND を掛け、当たった動画（matched）を決める。再生可否は入れない
@@ -35,8 +34,8 @@ func memberConditions(spec listSpec) ([]string, []any) {
 
 // matchConditions は当たった動画（matched）を決める段の絞り込み、つまりタグの AND、
 // 人物・団体、追加日と長さの絞り込みを、videos に対する条件句の並びと引数にする
-// （specs/047-video-work-info/data-model.md の Lists、specs/052-smart-folders/research.md R-4）。
-// spec.and の各段の絞り込みも同じように足す（specs/052-smart-folders/research.md R-5）。
+//
+// spec.and の各段の絞り込みも同じように足す。
 func matchConditions(spec listSpec) ([]string, []any) {
 	var conditions []string
 	var args []any
@@ -88,7 +87,6 @@ const secondsPerDay = 24 * 60 * 60
 // 件数・ページ・空ページの再集計が同じ基準時刻で数えるよう、SQL の unixepoch() は使わない。
 // 長さは画面の表示（web/src/lib/format.ts の formatDuration）と同じく秒未満を切り捨てた秒で比べ、両端を含む。
 // 長さの分からない（duration_ms が NULL の）動画はどちらの端にも当たらない
-// （specs/052-smart-folders/research.md R-4）。
 func addedAndLengthConditions(spec listSpec) ([]string, []any) {
 	var conditions []string
 	var args []any
@@ -110,7 +108,7 @@ func addedAndLengthConditions(spec listSpec) ([]string, []any) {
 
 // workInfoConditions は人物と団体の絞り込みを、videos に対する条件句の並びと引数にする。
 // 役割は問わず、利用者データの鍵（userKey、listSpec.videoUserKey）に結び付いた行があれば当たる。
-// 実体の無い id は何にも当たらない（specs/047-video-work-info/data-model.md の Lists）。
+// 実体の無い id は何にも当たらない。
 func workInfoConditions(spec listSpec, userKey string) ([]string, []any) {
 	var conditions []string
 	var args []any
@@ -131,8 +129,7 @@ func workInfoConditions(spec listSpec, userKey string) ([]string, []any) {
 }
 
 // tagConditions はタグの AND とタグの種類の絞り込みを、videos に対する条件句の並びと引数にする。
-// 手で付けた分とフォルダ名から付いている分のどちらでも当たる（017 の data-model.md §4、
-// specs/051-tag-kinds/data-model.md の Rules）。userKey は videos の利用者データの鍵の式
+// 手で付けた分とフォルダ名から付いている分のどちらでも当たる（docs/design-docs/catalog-organization.md の Rules）。userKey は videos の利用者データの鍵の式
 // （listSpec.videoUserKey）である。
 func tagConditions(spec listSpec, userKey string) ([]string, []any) {
 	var conditions []string
@@ -179,12 +176,10 @@ const videoWatchStateExpr = `case when p.completed = 1 then 'watched'
 // ようにする（カーソルは種類を運ぶ）。gm の position は再生順の鍵（groupDescendantsCTE）である。
 //
 // 全子孫が当たったグループ（whole）だけをグループの項目にし、一部だけが当たったグループの当たった
-// 動画は、グループに属さない動画と同じく動画の項目にする
-// （specs/027-partial-group-search/contracts/library-api.md §1）。動画は 1 回だけ出る。
+// 動画は、グループに属さない動画と同じく動画の項目にする。動画は 1 回だけ出る。
 //
 // お気に入りのみ（favoriteOnly）は、グループの項目になりうるものをお気に入りにしたグループ（どの
 // 深さでも）にし、動画の項目はお気に入りの動画のうちそれらの whole のグループに入らないものにする
-// （specs/035-favorites/data-model.md §5、specs/048-groups/data-model.md「Library items」）。
 func libraryItemsCTE(spec listSpec) (string, []any) {
 	audience := spec.scope.audience
 	searchAudience := audience
@@ -198,7 +193,7 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	if len(conditions) > 0 {
 		where = ` where ` + strings.Join(conditions, " and ")
 	}
-	// 再生可否は決め手に入れず、できた項目に掛ける（research.md R-2）。動画の項目は
+	// 再生可否は決め手に入れず、できた項目に掛ける。動画の項目は
 	// その動画、グループの項目は子孫の動画のどれか1本が再生できるかで判定する。
 	videoPlayable := ""
 	groupPlayable := ""
@@ -221,10 +216,10 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	}
 	// 当たった動画は、どのグループにも無いか、一部だけが当たるグループのどれかにあれば動画の項目に
 	// なる。別のグループが丸ごと当たってそのカードに入っていても、部分一致のグループからは 1 本で
-	// 並ぶ（research.md R-6）。
+	// 並ぶ。
 	// carded は、グループに入り、そのどれもが丸ごと当たった（カードにだけ出る）動画である。
 	// 動画の項目はこれに入らない当たった動画で、動画ごとに gm を読む相関副問い合わせにすると、
-	// グループに入った動画の本数の 2 乗で時間が増える（specs/052-smart-folders/research.md R-13）。
+	// グループに入った動画の本数の 2 乗で時間が増える。
 	// whole は materialized にする。インライン展開されると、相関副問い合わせ（グループの本数）が
 	// mv と not exists から当たった動画1本ごとに評価され、グループの本数の2乗で時間が増える
 	// （issue 674）。
@@ -302,7 +297,7 @@ func itemWatchConditions(spec listSpec) (string, []any) {
 	return strings.Join(clauses, " and "), args
 }
 
-// itemOrderValues は項目の並べ替えの値の式である（data-model.md §5 の 3）。並び順の
+// itemOrderValues は項目の並べ替えの値の式である。並び順の
 // 向き・値の有無・カーソルの形は listOrders と同じで、値の式だけを項目の列にする。
 var itemOrderValues = map[domain.VideoSort]string{
 	domain.SortAddedAsc: `added_at`, domain.SortAddedDesc: `added_at`,
@@ -318,8 +313,7 @@ var itemOrderValues = map[domain.VideoSort]string{
 
 // itemOrder は並び順 sort の項目の並べ替えを返す。どの並び順でも値の無い項目を向きに関係なく末尾に
 // 置く（nullable）。動画の項目で値の無いものは listOrders と同じく長さ・再生日時・お気に入りにした
-// 日時だけで、ほかには一致する動画の無いスマートフォルダの項目がある（specs/052-smart-folders/
-// data-model.md「Library items」）。
+// 日時だけで、ほかには一致する動画の無いスマートフォルダの項目がある。
 func itemOrder(sort domain.VideoSort) listOrder {
 	order := listOrders[sort]
 	order.value = itemOrderValues[sort]
@@ -328,7 +322,7 @@ func itemOrder(sort domain.VideoSort) listOrder {
 }
 
 // ListLibrary は見る人（audience）に見せるライブラリの項目1ページを返す
-// （GET /api/library、specs/027-partial-group-search/contracts/library-api.md §1）。条件（視聴状態・並べ替え・
+// （GET /api/library、docs/design-docs/catalog-organization.md）。条件（視聴状態・並べ替え・
 // タグ）をゲストが使えるかは呼び出し側が domain.Audience.CheckVideoQuery で確かめる。
 //
 // タグの存在確認・件数・ページの項目・グループのメンバー・登録フォルダを同じ読み取り
@@ -573,8 +567,8 @@ func (s extraScanner) Scan(dest ...any) error {
 
 // LibraryIDs は ListLibrary と同じ条件（並び順・カーソル・件数を除く）に合う項目を、
 // 動画の項目の id と、グループの項目ごとのグループの id と再生順の動画の id と、スマートフォルダの
-// 項目の id に分けて、ページングせずに返す（GET /api/library/ids、specs/027-partial-group-search/contracts/library-api.md §2、
-// specs/035-favorites/data-model.md §5、specs/048-groups/data-model.md「Library items」）。動画の
+// 項目の id に分けて、ページングせずに返す（GET /api/library/ids、docs/design-docs/catalog-organization.md、
+// docs/design-docs/catalog-organization.md、docs/design-docs/catalog-organization.md「Library items」）。動画の
 // 項目とグループの並びは決めない。「すべて選択」は所有者だけの操作なので、所有者として読む。
 func (s *LibraryStore) LibraryIDs(ctx context.Context, q domain.VideoQuery) (domain.LibrarySelection, []int64, error) {
 	selection := domain.LibrarySelection{VideoIDs: []int64{}, Groups: []domain.LibraryGroupSelection{}, SmartFolderIDs: []int64{}}

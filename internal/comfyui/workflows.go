@@ -11,8 +11,7 @@ import (
 )
 
 // workflowFiles は vv が用意するワークフローで、モデルごとに 2 つある。ComfyUI の API 形式の JSON で、
-// ここに埋め込んだファイルが正本である（specs/045-comfyui-thumbnails/contracts/workflow.md、
-// research.md R-2）。vv が埋めるノードは _meta.title の vv:* で見つける。
+// ここに埋め込んだファイルが正本である。vv が埋めるノードは _meta.title の vv:* で見つける。
 //
 //go:embed workflows/*.json
 var workflowFiles embed.FS
@@ -105,7 +104,6 @@ var promptInputs = map[string]string{
 const diffusionLoader = "UNETLoader"
 
 // requiredFile はワークフローが読むモデルファイルの 1 つと、その置き場所と入手先である
-// （contracts/workflow.md の Required files、research.md R-12）。
 type requiredFile struct {
 	name   string
 	folder string
@@ -277,7 +275,7 @@ func (o objectInfo) options(class, input string) []string {
 }
 
 // missing はローダーの選択肢に無いファイルを Required files の表の順に、続けて info に無い
-// ノードの型を名前の順に返す（設定画面はモデルファイルを先に並べる、ui-design.md）。ローダーの
+// ノードの型を名前の順に返す（設定画面はモデルファイルを先に並べる）。ローダーの
 // 型が無ければ、その型だけを挙げ、ファイルは挙げない（ComfyUI を新しくするのが先である）。
 func (r requirement) missing(info objectInfo) []domain.ComfyUIMissingItem {
 	var items []domain.ComfyUIMissingItem

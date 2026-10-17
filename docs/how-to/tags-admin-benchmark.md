@@ -3,11 +3,8 @@
 A PR that changes how the tag admin screen (`/tags`) renders records its
 timings before and after the change, measured from headless Chromium against
 the production build with three libraries: 1,000 tags and 10,000 videos, 3,000
-tags and 30,000 videos, and 30,000 tags and 30,000 videos. What is measured and
-what is expected is in
-[specs/036-tag-admin-scale/quickstart.md](../../specs/036-tag-admin-scale/quickstart.md);
-the reasoning for this setup is in
-[research.md R-9](../../specs/036-tag-admin-scale/research.md#r-9-scriptstagsbench-builds-scale-data-and-a-playwright-script-measures-the-production-build).
+tags and 30,000 videos, and 30,000 tags and 30,000 videos. Keeping the video count equal at the two larger
+scales isolates the cost of adding tags.
 
 The benchmark is not part of `task check`, `task test-e2e` or CI. Run it by
 hand on a PR that changes how the screen renders.
@@ -64,7 +61,7 @@ The seed data follows these rules:
 
 | Property | Value |
 | --- | --- |
-| Videos at the 30,000-tag scale | 30,000, the same as the 3,000-tag scale, so the only difference is the number of tags (R-9) |
+| Videos at the 30,000-tag scale | 30,000, the same as the 3,000-tag scale, so the only difference is the number of tags |
 | Data name | The scale (`1000`) when videos are 10 times the tags; otherwise the video count is appended (`30000-videos-30000`) |
 | Tags with 0 videos | 1 in 11 (about 9%); every other tag has videos |
 | Tentative tags | Half of the tags |
@@ -144,7 +141,7 @@ each scene. Scales are told apart by the column headings (1,000, 3,000,
 
 ## Read the table
 
-The scenes are the eight in quickstart.md plus one breakdown row. Values vary
+The scenes below cover loading, editing, searching and scrolling. Values vary
 by machine and browser, so read them next to the before values measured on the
 same environment rather than against the expected column.
 
@@ -163,8 +160,7 @@ Details per scene:
   at all three scales means the transfer on open does not grow with the number
   of tags.
 - `GET /api/tags` response: a long response means the server side takes the
-  time; a short one means rendering does
-  ([quickstart.md](../../specs/036-tag-admin-scale/quickstart.md#breakdown)).
+  time; a short one means rendering does.
 - Longest task: the browser records only tasks over 50 ms, so with none the
   value is `なし（50 ms 以下）` (none, 50 ms or less). The `〜まで` ("until …")
   values in the note include Playwright's round trip and are for reference

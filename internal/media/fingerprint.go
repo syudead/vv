@@ -11,7 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 映像の指紋（specs/030-video-versions/research.md R-6、data-model.md §6）。完成した
+// 映像の指紋。完成した
 // シーク用スプライトのシートから作るので、ffmpeg を起動せず、元の動画も読み直さない。
 
 // fingerprintBlackLevel は、平均の輝度がこれ未満の端の行と列を黒い帯として落とす値である。

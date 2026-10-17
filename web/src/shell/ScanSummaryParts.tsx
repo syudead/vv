@@ -9,7 +9,7 @@ import {
 } from "./scanPresentation";
 
 /**
- * ScanStatusIcon は状態の言葉に添えるアイコンである（ui-design.md「Words」）。
+ * ScanStatusIcon は状態の言葉に添えるアイコンである。
  * 取り込み中は回転する。
  */
 export function ScanStatusIcon({

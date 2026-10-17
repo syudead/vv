@@ -39,7 +39,7 @@ import { Input } from "../ui/shadcn/input";
 import { Spinner } from "../ui/shadcn/spinner";
 import { parentOf } from "./creditRows";
 
-/** maxAliases・maxExternalIds は 1 件が持てる数である（data-model.md「Fields」）。 */
+/** maxAliases・maxExternalIds は 1 件が持てる数である。 */
 const maxAliases = 50;
 const maxExternalIds = 20;
 
@@ -100,7 +100,7 @@ function blank(...values: string[]): boolean {
 
 /**
  * buildPatch は窓の値から `PATCH` の本文を作る。手を入れた欄（`edited`）だけを送り、送る
- * 一覧は丸ごと送る（research.md R-8）。手を入れていない欄を開いたときの値で送ると、そのあと
+ * 一覧は丸ごと送る。手を入れていない欄を開いたときの値で送ると、そのあと
  * ほかのタブで変えた値を消すため送らない（サーバーは省いた欄を残す）。空の行は送らず、
  * 言語が空の別名は言語を省く。親は団体のときだけ送り、「None」は `null`。
  */
@@ -140,8 +140,7 @@ function buildPatch(
 }
 
 /**
- * CreditDetailsDialog は人物・団体の詳細の窓 `Edit "{name}"` である（specs/047-video-work-info/
- * ui-design.md「Details dialog」）。別名（言語つき、50 件まで）、外部 ID（20 件まで）、団体
+ * CreditDetailsDialog は人物・団体の詳細の窓 `Edit "{name}"` である。別名（言語つき、50 件まで）、外部 ID（20 件まで）、団体
  * だけ親の団体を持ち、1 回の「Save」で手を入れた一覧を丸ごと `PATCH` する。名前はここに
  * 無い（改名は行で行う）。
  *
@@ -288,7 +287,7 @@ export default function CreditDetailsDialog({
 
 /**
  * AliasRows は別名の行（`Alias` と `Language` と ×）と「Add alias」である。`sm` 未満では
- * 2 つの入力を縦に重ねる（ui-design.md「Details dialog」）。
+ * 2 つの入力を縦に重ねる。
  */
 function AliasRows({ rows, onChange, saving, problem, onEnter }: RowsProps<AliasRow>) {
   const d = t.credits.details;

@@ -3,7 +3,7 @@ package domain
 import "time"
 
 // ImportStatus は直近の取り込みの、利用者に見せる状態である。値は
-// api/openapi.yaml の Scan.status に対応する（specs/024-import-progress/contracts/scan-api.md §2）。
+// api/openapi.yaml の Scan.status に対応する。
 type ImportStatus string
 
 const (
@@ -19,8 +19,7 @@ const (
 	ImportFailed ImportStatus = "failed"
 )
 
-// ImportTally は取り込みの状態と本数を決める入力である
-// （specs/024-import-progress/research.md R-4・R-5）。保存の手段は知らない。
+// ImportTally は取り込みの状態と本数を決める入力である。保存の手段は知らない。
 type ImportTally struct {
 	// State は走査そのものの状態である。
 	State ScanState

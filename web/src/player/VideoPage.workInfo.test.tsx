@@ -14,8 +14,7 @@ import VideoDetailsEditor from "./detailsEditor/VideoDetailsEditor";
 import type { PlayerControls } from "./playerControls";
 import VideoPage from "./VideoPage";
 
-// 動画ページの作品情報の行と、そこから開く全画面の編集画面（specs/047-video-work-info/
-// ui-design.md「Video page: work details row」「Video page: entry」「Editor」）。
+// 動画ページの作品情報の行と、そこから開く全画面の編集画面。
 
 vi.mock("./VideoPlayer", () => ({
   default: function VideoPlayerMock(props: {
@@ -436,7 +435,7 @@ describe("VideoPage work information", () => {
   });
 
   it("ページの題名のその場編集は今も PUT /api/videos/{id}/display-name を送り、作品情報の行を残す", async () => {
-    // display-name の応答は契約上 workInfo を載せない（contracts/screen-api.md「Video changes」）。
+    // display-name の応答は契約上 workInfo を載せない。
     server.displayName.mockImplementation(() =>
       json({ ...plain, title: "Quick", displayName: "Quick" }),
     );

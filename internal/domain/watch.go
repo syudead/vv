@@ -1,7 +1,7 @@
 package domain
 
 // WatchState は再生の記録から導く視聴状態である。保存はせず、playback_progress
-// を content_key で引いて導く（specs/013-library-search/data-model.md §6）。
+// を content_key で引いて導く。
 // 値は一覧画面の watchState（web/src/lib/format.ts）と同じ定義である。
 type WatchState string
 

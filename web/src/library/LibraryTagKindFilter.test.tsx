@@ -14,8 +14,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
-// タグの種類でのライブラリの絞り込み（specs/051-tag-kinds/ui-design.md「Library」、
-// 親 Issue #1136 の要件 5、子 Issue #1155）。
+// タグの種類でのライブラリの絞り込み。
 
 function video(id: number): Video {
   return {

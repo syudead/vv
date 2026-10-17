@@ -20,7 +20,7 @@ describe("playlistName", () => {
   });
 
   it("コードポイントで数え、100 までは送り 101 からは送らない", () => {
-    // 絵文字は UTF-16 で 2 単位だが 1 文字に数える（research.md R-11）。
+    // 絵文字は UTF-16 で 2 単位だが 1 文字に数える。
     expect(playlistName("😀".repeat(100))).toBe("😀".repeat(100));
     expect(playlistName("😀".repeat(101))).toBeNull();
     expect(playlistName(` ${"a".repeat(100)} `)).toBe("a".repeat(100));

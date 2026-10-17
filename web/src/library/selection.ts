@@ -2,9 +2,8 @@ import type { LibraryGroup, LibraryItem } from "../api/client";
 
 /**
  * SelectedGroup はグループのカードのチェック（または「すべて選択」の応答の `groups`）で
- * グループとして選んだものである（specs/035-favorites/research.md R-7）。グループの id で
- * 指し、お気に入りとプレイリストへの追加もその id を `groupIds` で送る
- * （specs/048-groups/research.md R-10）。
+ * グループとして選んだものである。グループの id で
+ * 指し、お気に入りとプレイリストへの追加もその id を `groupIds` で送る。
  */
 export interface SelectedGroup {
   id: number;
@@ -96,8 +95,7 @@ export function setGroup(
 
 /**
  * deselectGroup はグループを選択から外す。メンバーを 2 つのグループが共有するとき、選んだままの
- * 別のグループのメンバーは残すので、そのグループも選んだままになる
- * （specs/048-groups/ui-design.md「Selection with shared members」）。
+ * 別のグループのメンバーは残すので、そのグループも選んだままになる。
  */
 function deselectGroup(
   selection: LibrarySelection,
@@ -132,7 +130,7 @@ export function selectedGroupOf(group: LibraryGroup): SelectedGroup {
  * isGroupSelected はグループのカードのチェックの状態である。グループとして選んだもの（`groups`）
  * にあるときだけ true で、メンバーの動画が選択に入っているかでは決めない。メンバーを共有する
  * 別のグループを選んだままこのグループを外すと、メンバーは選択に残るが、このカードは外れて
- * 見え、もう一度押せば選べる（specs/048-groups/ui-design.md「Selection with shared members」）。
+ * 見え、もう一度押せば選べる。
  */
 export function isGroupSelected(selection: LibrarySelection, groupId: number): boolean {
   return selection.groups.has(groupId);
@@ -164,7 +162,7 @@ export function fromSelectAll(
  *
  * - 選んだグループのメンバーが動画の項目として載っていれば、そのグループは今の一覧では
  *   グループの項目でない（同じグループのカードとそのメンバーの項目は同時に出ない。
- *   specs/027-partial-group-search/contracts/library-api.md §1）。グループから外し、
+ *   docs/design-docs/catalog-organization.md）。グループから外し、
  *   メンバーは選んだ動画として残す。
  * - 同じ id のグループの項目が載っていれば、そのメンバーで覚え直す。全メンバーが
  *   選択に入っていなければ（メンバーが増えた）グループから外す（removeIds と同じ考え方）。

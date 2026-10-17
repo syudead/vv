@@ -24,7 +24,7 @@ export interface FilterMenuProps {
   onWatchChange: (value: WatchFilter) => void;
   playable: boolean;
   onPlayableChange: (value: boolean) => void;
-  /** お気に入りのみ（所有者だけ。specs/035-favorites/ui-design.md「Filter menu」）。 */
+  /** お気に入りのみ（所有者だけ。docs/design-docs/catalog-organization.md「Filter menu」）。 */
   favorite: boolean;
   onFavoriteChange: (value: boolean) => void;
   /**
@@ -37,7 +37,7 @@ export interface FilterMenuProps {
   disabled?: boolean;
   /**
    * 再生可否の後ろに足す画面固有の行（ライブラリのタグの種類。
-   * specs/051-tag-kinds/ui-design.md「Library」）。
+   * docs/design-docs/catalog-organization.md「Library」）。
    */
   children?: ReactNode;
   /** `children` の行で効いている絞り込みの数（ボタンの数字に足す）。 */
@@ -47,13 +47,13 @@ export interface FilterMenuProps {
 }
 
 /**
- * FilterMenu は絞り込みのボタンとポップオーバーである（ui-design.md「Filter menu」）。
+ * FilterMenu は絞り込みのボタンとポップオーバーである。
  * ボタンの数字は視聴状態・お気に入りのみ・再生可否の数だけを数える。検索語は検索欄に
  * 見えている。
  *
  * ゲストには「視聴状態」と「お気に入りのみ」を出さない（再生位置とお気に入りは
- * 所有者のもの。specs/016-single-account-auth/ui-design.md「Guest degradation」、
- * specs/035-favorites/ui-design.md「Guest degradation」）。そのときボタンの数字は
+ * 所有者のもの。docs/design-docs/authentication.md「Guest degradation」、
+ * docs/design-docs/catalog-organization.md「Guest degradation」）。そのときボタンの数字は
  * 再生可否だけを数える。
  */
 export default function FilterMenu({
@@ -106,8 +106,7 @@ export default function FilterMenu({
 
 /**
  * WatchStatusField は視聴状態の `ToggleGroup`（`All`・`Unwatched`・`In progress`・`Watched`）の
- * 行である。絞り込みのポップオーバーとスマートフォルダの条件の欄が同じ形で使う
- * （specs/052-smart-folders/ui-design.md「Conditions」）。
+ * 行である。絞り込みのポップオーバーとスマートフォルダの条件の欄が同じ形で使う。
  */
 export function WatchStatusField({
   value,

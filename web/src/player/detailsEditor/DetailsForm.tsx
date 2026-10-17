@@ -19,7 +19,7 @@ import EditorAside from "./EditorAside";
 import { controlId } from "./fields";
 import { type SaveFailure, useDetailsSave } from "./useDetailsSave";
 
-/** EditorBand は帯の右端の `Cancel` と `Save` である（ui-design.md「Screen」の Band）。 */
+/** EditorBand は帯の右端の `Cancel` と `Save` である。 */
 export function EditorBand({
   saving,
   saveDisabled,
@@ -86,8 +86,7 @@ function failureText(failure: SaveFailure): ReactNode {
 }
 
 /**
- * DetailsForm は動画を読み終えた編集画面である（specs/047-video-work-info/ui-design.md
- * 「Editor」）。下書きを持ち、帯・左の列・`Basics`・`Credits` を FormPage で並べ、
+ * DetailsForm は動画を読み終えた編集画面である。下書きを持ち、帯・左の列・`Basics`・`Credits` を FormPage で並べ、
  * `Save` で保存する。開いたときは Name にフォーカスを置き、文字は選ばない。
  * 下書きが変わったかを `onChangedChange` で外へ知らせる（離れるときの確かめに使う）。
  */
@@ -134,7 +133,7 @@ export default function DetailsForm({
     nameRef.current?.focus();
   }, []);
 
-  // 理由を出した入力を見えるところへ出し、フォーカスを移す（ui-design.md「Save」）。
+  // 理由を出した入力を見えるところへ出し、フォーカスを移す。
   useLayoutEffect(() => {
     if (problem === null) return;
     const element = document.getElementById(controlId(problem.control));

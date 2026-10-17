@@ -20,7 +20,7 @@ export interface PlaybackAttempt {
 /**
  * createPlaybackAttempt は再生の最初の経路を決める。quality は動画に使えると確かめた画質
  * （quality.ts の effectiveQuality）で、「元の画質」以外なら経路は変換、「元の画質」なら
- * 直接再生できる動画だけ直接再生にする（research.md R-5）。
+ * 直接再生できる動画だけ直接再生にする。
  */
 export function createPlaybackAttempt(
   video: Video,
@@ -80,7 +80,7 @@ export function fallbackToTranscode(
 }
 
 /**
- * switchQuality は再生中の画質を quality に変えた attempt を返す（research.md R-5）。
+ * switchQuality は再生中の画質を quality に変えた attempt を返す。
  * 「元の画質」は直接再生できる動画なら直接再生に戻す。直接再生が読めず変換へ切り替えた
  * 動画（fallbackTried）は、元の画質でも変換のままにする。変換は positionMs から始め、
  * 直接再生は 0 から読み込むので、呼ぶ側がメタデータのあとで positionMs へシークする。

@@ -7,8 +7,7 @@ import { cn } from "../lib/cn";
 import { Button } from "../ui/shadcn/button";
 
 /**
- * VisibilitySwitch は再生画面の公開の切り替えである
- * （specs/016-single-account-auth/ui-design.md「Visibility toggle」の「Video page」）。
+ * VisibilitySwitch は再生画面の公開の切り替えである。
  * 今の状態（Private・Public）を印と一緒に名前にした `Button`（`sm`）で、読み上げには
  * `switch` の役割と `aria-checked` で切り替えであることを伝える。非公開は `secondary` の面、
  * 公開は選択と同じ `primary-soft` の面に `primary` の文字にする。
@@ -19,7 +18,7 @@ import { Button } from "../ui/shadcn/button";
  *
  * 送信中は `disabled` 属性ではなく `aria-disabled` にする。`disabled` にすると
  * ブラウザがフォーカスを外し、キーボードで押した人が応答の後にもう一度 Space で
- * 押せなくなる（ui-design.md のキーボード確認の手順 4）。押しても送らないのは
+ * 押せなくなる。押しても送らないのは
  * `toggle` が `sending` で確かめる。
  *
  * 失敗の行は次に押したときに消える。別の動画へ移ったときに消えるよう、呼び出し側が
@@ -33,8 +32,7 @@ export default function VisibilitySwitch({
   videoId: number;
   isPublic: boolean;
   /**
-   * 切り替えが成功したときに呼ぶ。更新日時が進むので、呼び出し側が動画を取り直す
-   * （specs/033-video-dates/ui-design.md「Refresh after edits」）。
+   * 切り替えが成功したときに呼ぶ。更新日時が進むので、呼び出し側が動画を取り直す。
    */
   onChanged?: () => void;
 }) {

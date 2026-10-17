@@ -4,7 +4,7 @@ import (
 	"slices"
 )
 
-// 取得した作品の詳細を保存済みの作品情報に重ねる（specs/052-plugin-work-info-fields/research.md R-4）。
+// 取得した作品の詳細を保存済みの作品情報に重ねる。
 // 品番・説明・選んだ種類の日付は置き換え、役割ごとの人物・団体、URL、外部 ID はまだ無いものを取得の順に
 // 後ろに足す。項目の規則に合わない値、上限を超える値、照合が曖昧な人物・団体は飛ばして報告し、行の残りは
 // 反映する。保存層は返した作品情報を書くだけで、規則はここで決める。
@@ -13,7 +13,7 @@ import (
 type SkippedWorkInfoReason string
 
 const (
-	// SkippedWorkInfoInvalid は項目の規則（047 data-model.md の Fields、実体の名前と外部 ID）に合わないこと。
+	// SkippedWorkInfoInvalid は項目の規則（実体の名前と外部 ID）に合わないこと。
 	SkippedWorkInfoInvalid SkippedWorkInfoReason = "invalid"
 	// SkippedWorkInfoTooMany は保存済みの件の後に数えて件数の上限を超えること。
 	SkippedWorkInfoTooMany SkippedWorkInfoReason = "too_many"

@@ -24,7 +24,7 @@ import { DEFAULT_ACTIVITY_CRITERIA } from "./activityCriteria";
 import ActivityPage from "./ActivityPage";
 import { useActivityLog } from "./useActivityLog";
 
-// アクティビティの画面（specs/055-activity/ui-design.md「Activity page」）のページテスト。
+// アクティビティの画面のページテスト。
 // 偽のサーバーは契約どおりに絞り込み、counts は status 以外、features は feature 以外の
 // 絞り込みに従う。
 

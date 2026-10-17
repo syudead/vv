@@ -50,8 +50,7 @@ export interface TagKindsTab {
   kinds: TagKind[] | undefined;
   /**
    * fresh は、画面を開いてから種類の一覧を 1 度でも読めたかである。前の画面の保持だけの
-   * 間は false で、URL の `kind` がもう無いかはこれが true になってから決める
-   * （specs/051-tag-kinds/ui-design.md「Kind filter」）。
+   * 間は false で、URL の `kind` がもう無いかはこれが true になってから決める。
    */
   fresh: boolean;
   loadError: UiText | null;
@@ -91,8 +90,7 @@ export interface TagKindsTab {
 }
 
 /**
- * useTagKindsTab はタグ管理画面の「Kinds」のタブの状態を持つ
- * （specs/051-tag-kinds/ui-design.md「Kinds tab」）。種類の一覧は `api/tagKinds.ts` の
+ * useTagKindsTab はタグ管理画面の「Kinds」のタブの状態を持つ。種類の一覧は `api/tagKinds.ts` の
  * 共有の保持を読み、取り直されるたびに追う。画面を開いたときは保持があっても取り直し
  * （ほかのタブで種類が変わったかもしれない。タグの削除・統合などで `tagCount` も変わる）、
  * タブの件数・「Tags」のタブの種類の絞り込みと「Set kind…」のメニューにも使う。

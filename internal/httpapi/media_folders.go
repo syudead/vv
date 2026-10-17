@@ -148,7 +148,7 @@ func (s *server) acceptsSameOrigin(w http.ResponseWriter, r *http.Request) bool 
 		return true
 	}
 	parsed, err := url.Parse(origin)
-	// 期待するスキームは Cookie と同じ判定から取る（contracts/auth-api.md §8）。TLS を
+	// 期待するスキームは Cookie と同じ判定から取る。TLS を
 	// 終端する信頼するプロキシの後ろでは、X-Forwarded-Proto で https になる。
 	expectedScheme := "http"
 	if s.clientOrigin(r).https {

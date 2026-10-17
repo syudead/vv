@@ -1,6 +1,5 @@
 -- +goose Up
--- お気に入りとプレイリストの項目のグループを、フォルダの鍵からグループの id で名指すように替える
--- （specs/048-groups/research.md R-10、data-model.md「Migration」）。今の自動グループの
+-- お気に入りとプレイリストの項目のグループを、フォルダの鍵からグループの id で名指すように替える。今の自動グループの
 -- origin_folder に一致するフォルダの鍵の行だけをそのグループの行に写し、ほかは落とす。
 -- どちらもグループの解散（groups の行の削除）で外部キーの on delete cascade により消える。
 
@@ -23,7 +22,7 @@ create table playlist_items_new (
     playlist_id integer not null references playlists (id) on delete cascade,
     content_key text,
     group_id    integer references groups (id) on delete cascade,
-    -- プレイリストの中で 0 から詰めた位置（specs/044-playlists/research.md R-3）。
+    -- プレイリストの中で 0 から詰めた位置。
     position    integer not null,
     -- Unix ミリ秒。
     added_at    integer not null,
@@ -43,7 +42,7 @@ select i.id, i.playlist_id, i.content_key, g.id,
  where i.content_key is not null or g.id is not null;
 
 -- 項目を落としたプレイリストは更新日時を前の値より後へ進める。同じ更新日時なら同じ並びという約束
--- （specs/044-playlists/ui-design.md「One order」）を保つため。
+-- を保つため。
 update playlists
    set updated_at = max(cast((julianday('now') - 2440587.5) * 86400000 as integer), updated_at + 1)
  where id in (select i.playlist_id

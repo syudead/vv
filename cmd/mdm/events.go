@@ -17,10 +17,9 @@ type waker interface {
 type eventSubscribers struct {
 	// Screen は画面へ送る知らせ（/api/events）へ変化を渡す。動画の上書きの変化
 	// （domain.VideoOverrideChanged）もここで video の知らせになり、ワーカーの起床には
-	// 結ばない（specs/029-video-overrides/research.md R-7）。束ねの変化
-	// （domain.VideoBundleChanged）は、影響した各動画の video の知らせになる
-	// （specs/030-video-versions/research.md R-9）。アクティビティの記録の変化（domain.ActivityChanged）は、
-	// 所有者への activity の知らせになる（specs/055-activity/research.md R-8）。
+	// 結ばない。束ねの変化
+	// （domain.VideoBundleChanged）は、影響した各動画の video の知らせになる。アクティビティの記録の変化（domain.ActivityChanged）は、
+	// 所有者への activity の知らせになる。
 	Screen func(domain.Event)
 	// Workers は段階ごとのワーカーである。
 	Workers map[domain.JobKind]waker

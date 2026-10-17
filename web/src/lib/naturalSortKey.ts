@@ -5,11 +5,10 @@ import { foldForMatch } from "./foldForMatch";
  * 同じ名前の自然順の鍵を作る。`foldForMatch` を掛けたうえで、ASCII の数字の連続を
  * 「先頭の 0 を除いた桁数を 10 進 4 桁で表した接頭辞 + 先頭の 0 を除いた数字」に
  * 置き換える（`2` → `00012`、`10` → `000210`、`0` や `00` は `0000`。
- * specs/013-library-search/data-model.md §4）。
+ * docs/design-docs/catalog-organization.md）。
  *
  * 鍵は `compareNaturalSortKeys` で比べる。画面が読み込んだ行の中で行を差し込み・
- * 動かす位置を、サーバーの名前の順（`sort_key`）と同じにするための移植である
- * （specs/036-tag-admin-scale/research.md R-12）。Go と同じ鍵になることは
+ * 動かす位置を、サーバーの名前の順（`sort_key`）と同じにするための移植である。Go と同じ鍵になることは
  * internal/domain/testdata/natural_sort_key.json の組で、Go と Vitest の両方から確かめる。
  */
 export function naturalSortKey(name: string): string {

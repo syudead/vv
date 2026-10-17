@@ -1,8 +1,7 @@
 import type { TagSort } from "../api/tags";
 
 /**
- * TagListSort はタグ管理画面の一覧の並び順である
- * （specs/036-tag-admin-scale/data-model.md §4、research.md R-7）。
+ * TagListSort はタグ管理画面の一覧の並び順である。
  * `GET /api/tags` の `sort`（生成物の `TagSort`）と同じ値を持つ。「名前」に向きは無い。
  */
 export type TagListSort = TagSort;

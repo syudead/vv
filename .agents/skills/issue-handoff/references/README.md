@@ -84,6 +84,12 @@ implementation PR, follow the open-PR rule below for that PR.
 
 **Parent Issue**: take the first rule that applies.
 
+If the parent already has an integration PR, select
+[integrate](integrate.md) instead of the artifact-presence rules below. The
+sweep deletes the completed feature's artifacts; their absence must never
+restart Plan or Design. Discover the branch from that PR and use its sweep
+comment and acceptance evidence to determine what remains.
+
 1. **An open stage PR** (`Refs` the parent and does not target `main`). If it has unaddressed review feedback — a
    changes-requested review with no later push, or unresolved threads — fix it
    on that PR's head. Otherwise report that it waits on human merge and stop.
@@ -134,6 +140,13 @@ Do not add a `spec.md` to a feature directory; the requirement lives in the
 parent Issue. An active feature directory holds `plan.md`, adds `ui-design.md`
 for a `ui` Issue, and carries `research.md`, `data-model.md`, `contracts/` or
 `quickstart.md` when the Plan has that content of its own (P-2).
+
+These are temporary inputs for this active feature, not permanent references.
+Implementation records lasting decisions in `docs/design-docs/` and never
+cites feature artifacts from code or permanent documents. The integration
+sweep removes the feature directory and its translations after validation;
+Git history preserves it. Do not consult another completed feature's artifacts
+as the current system design.
 
 Never select work from a branch name or a prior conversation. Use a separate
 checkout or worktree for each concurrent run.

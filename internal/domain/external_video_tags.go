@@ -2,8 +2,7 @@ package domain
 
 import "fmt"
 
-// 外部連携 API の名前でのタグの一括操作（specs/026-external-api/data-model.md §2、
-// contracts/external-api.md §4、research.md R-7）。
+// 外部連携 API の名前でのタグの一括操作。
 
 // ExternalVideoTagsMaxNames は 1 回のタグの一括操作が受け付けるタグ名の最大件数である。
 const ExternalVideoTagsMaxNames = 100
@@ -31,7 +30,7 @@ func (a VideoTagsAction) Valid() bool {
 	return false
 }
 
-// VideoTagsOutcome は一括操作の結果である（specs/031-tentative-tags/data-model.md §4）。
+// VideoTagsOutcome は一括操作の結果である。
 type VideoTagsOutcome struct {
 	// Items は各動画の操作後のタグで、指定した動画の順。
 	Items []VideoTagsResult

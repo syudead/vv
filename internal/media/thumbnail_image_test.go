@@ -14,7 +14,7 @@ import (
 )
 
 // 適用する画像は動画の表示上の縦横比に合わせ、長辺 640px の JPEG にする
-// （specs/045-comfyui-thumbnails/research.md R-7）。
+//
 
 func squarePNG(t *testing.T, size int) []byte {
 	t.Helper()
@@ -104,7 +104,7 @@ func TestFitThumbnailSize(t *testing.T) {
 }
 
 // 元の画像は代表サムネイルと同じく動画の縦横比に中央で切り抜き、長辺を最大 2048px にする。
-// 小さい画像は拡大しない（specs/046-thumbnail-image-upload/research.md R-3）。
+// 小さい画像は拡大しない。
 func TestFitThumbnailSource(t *testing.T) {
 	t.Parallel()
 

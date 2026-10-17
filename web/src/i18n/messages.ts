@@ -3,7 +3,7 @@ import type { UiText } from "./uiText";
 
 /**
  * MessageSource はカタログの形である。言語を足すときは、この型を満たすオブジェクトを
- * 書くので、鍵の漏れと引数の食い違いは型検査で落ちる（specs/023-english-i18n/research.md R-1）。
+ * 書くので、鍵の漏れと引数の食い違いは型検査で落ちる。
  */
 export type MessageSource = typeof en;
 

@@ -12,8 +12,7 @@ import { PageLinkText } from "./PageLink";
 import type { AutoImportSource } from "./useAutoImportSettings";
 
 /**
- * autoImportStateLine は監視の状態の 1 行である（specs/042-folder-watch-import/ui-design.md
- * 「States」、specs/058-settings-pages/ui-design.md「Words」）。切れているときとメディアフォルダが
+ * autoImportStateLine は監視の状態の 1 行である。切れているときとメディアフォルダが
  * 無いときは、「Library」のページへのリンクを挟む。
  */
 export function autoImportStateLine(settings: AutoImportSettings): ReactNode {
@@ -61,7 +60,7 @@ function ProblemAlert({ watch }: { watch: AutoImportSettings["watch"] }) {
 
 /**
  * AutoImportState は自動の取り込みの監視の状態の 1 行とその問題である（「Scan」のページ、
- * specs/058-settings-pages/ui-design.md「Scan page: Auto-import state」）。監視が `limited` の
+ * docs/design-docs/design-system.md「Scan page: Auto-import state」）。監視が `limited` の
  * あいだ、問題を `warning` の Alert で出す。読み込みの最中は 1 行の高さの Skeleton、最初の
  * 読み込みに失敗すると Retry 付きの ErrorState を出す。
  *

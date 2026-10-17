@@ -48,7 +48,7 @@ describe("TagsPage 見えている行だけ描く", () => {
     restoreHeights = stubRowHeights({
       rowHeight,
       viewportHeight,
-      // 上部バーの下に留める帯（ui-design.md「Band」）。
+      // 上部バーの下に留める帯。
       otherHeight: (element) => (element.classList.contains("sticky") ? bandHeight : 0),
     });
   });
@@ -84,7 +84,7 @@ describe("TagsPage 見えている行だけ描く", () => {
     renderPage();
     await screen.findByTitle(name(0));
 
-    // 描いた次の行のチェックへ移る（ui-design.md「Keyboard across virtualized rows」）。
+    // 描いた次の行のチェックへ移る。
     const next = await tabPastRange(user);
     expect(document.activeElement).toBe(
       screen.getByRole("checkbox", { name: `Select "${name(next)}"` }),
@@ -214,8 +214,7 @@ describe("TagsPage 見えている行だけ描く", () => {
         within(wrapperOf(first - 1)).getByRole("button", { name: "More actions" }),
       );
       // 行の上端（jsdom では一覧の上端が文書の 0、行の高さは rowHeight）から上部バーの
-      // 高さだけ上へ。行が上部バーの下に隠れない（ui-design.md「Keyboard across
-      // virtualized rows」）。
+      // 高さだけ上へ。行が上部バーの下に隠れない。
       const start = (first - 1) * rowHeight;
       expect(start).toBeGreaterThan(bandHeight);
       expect(scrollTo).toHaveBeenCalledWith(

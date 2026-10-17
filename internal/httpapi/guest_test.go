@@ -22,7 +22,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// ゲストへの応答（specs/016-single-account-auth/contracts/guest-api.md §1〜§3・§5）は、
+// ゲストへの応答は、
 // 本物の認証・保存層・関連動画の組み立てで確かめる（#300）。
 
 // guestArtifactFiles は生成物がすべてあると答える。
@@ -215,7 +215,7 @@ func rawItems(t *testing.T, body []byte, field string) []map[string]json.RawMess
 	return items
 }
 
-// assertGuestVideo は動画の JSON に所有者のデータが無いことを確かめる（guest-api.md §1）。
+// assertGuestVideo は動画の JSON に所有者のデータが無いことを確かめる。
 func assertGuestVideo(t *testing.T, label string, video map[string]json.RawMessage) {
 	t.Helper()
 	for _, field := range []string{"location", "progress", "probeError", "probeErrorCode", "fileTitle", "displayName", "thumbnailPositionMs", "thumbnailImage", "contentVersion", "favorite", "workInfo"} {
@@ -295,7 +295,7 @@ func TestGuestSeesOnlyPublicVideosWithoutOwnerData(t *testing.T) {
 		}
 	}
 
-	// 検索はタグの名前に当たらない（guest-api.md §3）。
+	// 検索はタグの名前に当たらない。
 	if page := decode[gen.VideoPage](t, env.get("/api/videos?query="+guestSecretTag)); page.Total != 0 {
 		t.Errorf("ゲストのタグ名での検索が %d 件に当たった", page.Total)
 	}
@@ -460,7 +460,7 @@ func TestGuestMediaRoutesServeOnlyPublicVideos(t *testing.T) {
 }
 
 // ゲストは公開の動画の変換の開始位置を引け、非公開の動画のそれは存在しない動画と同じ
-// 404 になる（specs/018-live-transcode-seek/contracts/transcode-start-api.md §2）。
+// 404 になる。
 func TestGuestTranscodeStartServesOnlyPublicVideos(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -501,7 +501,7 @@ func TestGuestTranscodesPublicVideoWithQuality(t *testing.T) {
 }
 
 // ゲストは公開の動画の字幕の一覧と字幕を取得でき、非公開の動画は両方の経路で存在しない
-// 動画と同じ 404 になる（specs/028-sidecar-subtitles/contracts/subtitles-api.md、受け入れ条件 11）。
+// 動画と同じ 404 になる。
 func TestGuestSubtitlesServeOnlyPublicVideos(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -528,7 +528,7 @@ func TestGuestSubtitlesServeOnlyPublicVideos(t *testing.T) {
 		wantError{status: http.StatusNotFound, code: codeNotFound, reason: reasonVideoNotFound})
 }
 
-// ゲストは所有者のデータに依る一覧の条件を使えない（guest-api.md §3）。
+// ゲストは所有者のデータに依る一覧の条件を使えない。
 func TestGuestRejectsOwnerOnlyListConditions(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -561,7 +561,7 @@ func TestGuestRejectsOwnerOnlyListConditions(t *testing.T) {
 
 // 生成物の成功の応答は、所有者にもゲストにも private, no-cache と ETag を持ち、
 // If-None-Match が一致すれば 304 になる。ログアウトした Cookie では、非公開の動画の
-// サムネイルは If-None-Match を付けても 404 になる（guest-api.md §5）。
+// サムネイルは If-None-Match を付けても 404 になる。
 func TestArtifactResponsesRevalidateForOwnerAndGuest(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env

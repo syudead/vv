@@ -1,6 +1,6 @@
 // Package desktop は Windows デスクトップ版（VVMDM.exe）の OS 側を扱う adapter である。
 // Win32 のウィンドウ、WebView2 の埋め込み、ダイアログ、ジョブオブジェクトと、
-// データの置き場の解決を持つ（specs/037-windows-app/research.md R-1〜R-5、R-10、R-11）。
+// データの置き場の解決を持つ。
 //
 // Windows の実装は _windows.go にあり、cmd/mdm の desktop タグのファイルだけが読む。
 // このファイルの引数の読み取りとデータの置き場の解決は OS に依らない純粋な手順で、
@@ -19,10 +19,9 @@ import (
 )
 
 // AppName はウィンドウの題名・ダイアログの題名・データの置き場のフォルダ名である
-// （specs/037-windows-app/contracts/windows-app.md）。
 const AppName = "VVMDM"
 
-// DefaultPort は引数が無いときに待ち受けるポートである（research.md R-4）。
+// DefaultPort は引数が無いときに待ち受けるポートである。
 const DefaultPort = 47880
 
 // UsageText は使えない引数のダイアログに添える使い方である。
@@ -30,7 +29,7 @@ const UsageText = "Usage: VVMDM.exe [--port <1-65535>]"
 
 // ParseArgs は起動の引数（プログラム名を除く）を読み、待ち受けるポートを返す。
 // 引数なしは DefaultPort、`--port <1-65535>`（`--port=<番号>` も可）はその番号で、
-// それ以外は誤りを返す（contracts/windows-app.md §2）。
+// それ以外は誤りを返す。
 func ParseArgs(args []string) (int, error) {
 	switch {
 	case len(args) == 0:
@@ -52,7 +51,7 @@ func parsePort(value string) (int, error) {
 	return port, nil
 }
 
-// Paths はデスクトップ版のデータの置き場である（contracts/windows-app.md §3）。
+// Paths はデスクトップ版のデータの置き場である。
 type Paths struct {
 	// Root は %LOCALAPPDATA%\VVMDM。
 	Root string
@@ -85,7 +84,7 @@ func ResolvePaths(localAppData string) (Paths, error) {
 }
 
 // UnwritableDirError はデータの置き場の下に書けなかったことを表す。ダイアログは
-// Dir を示す（contracts/windows-app.md §2 の 2 番目）。
+// Dir を示す。
 type UnwritableDirError struct {
 	Dir string
 	Err error
@@ -121,7 +120,7 @@ func PrepareDirs(paths Paths) error {
 	return nil
 }
 
-// OpenLog は前回のログを PreviousLogFile へ移し、今回のログを新しく開く（research.md R-10）。
+// OpenLog は前回のログを PreviousLogFile へ移し、今回のログを新しく開く。
 // 前々回のログは消える。
 //
 // 前々回のログは先に消さず、rename で置き換える（Go の os.Rename は Windows でも
@@ -140,13 +139,13 @@ func OpenLog(paths Paths) (*os.File, error) {
 	return file, nil
 }
 
-// FFmpegDir は exe の隣の同梱の ffmpeg の置き場である（research.md R-11）。
+// FFmpegDir は exe の隣の同梱の ffmpeg の置き場である。
 func FFmpegDir(exePath string) string {
 	return filepath.Join(filepath.Dir(exePath), "ffmpeg")
 }
 
 // ErrNotExtracted は exe が zip から直接（一時フォルダの下で）実行されたか、
-// 隣に同梱の ffmpeg が無いことを表す（contracts/windows-app.md §2 の 1 番目）。
+// 隣に同梱の ffmpeg が無いことを表す。
 var ErrNotExtracted = errors.New("VVMDM.exe is not running from an extracted folder")
 
 // CheckBundle は exe が一時フォルダの下になく、隣に ffmpeg\ffmpeg.exe と
@@ -183,8 +182,7 @@ func PrependPath(dir, current string) string {
 	return dir + string(os.PathListSeparator) + current
 }
 
-// InstanceNames は二重起動の判定に使う名前付きミューテックスの名前を返す
-// （research.md R-6）。global はセッションをまたいで 1 つで、同じ利用者が同じ
+// InstanceNames は二重起動の判定に使う名前付きミューテックスの名前を返す。global はセッションをまたいで 1 つで、同じ利用者が同じ
 // データの置き場で 2 つ目を起動したことを知る。local はセッションごとで、持ち主が
 // 同じセッションにいるかを知る。どちらも利用者の SID とデータの置き場（大文字と
 // 小文字を区別しない）のハッシュで名付けるので、別の利用者の起動を妨げない。

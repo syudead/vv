@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// プレイリストの一覧のカーソル（specs/044-playlists/contracts/screen-api.md「GET /api/playlists」）。
+// プレイリストの一覧のカーソル。
 
 // カーソルは書いたものを読み戻せ、読めないものは ErrInvalidCursor になる。
 func TestPlaylistCursorRoundTrip(t *testing.T) {

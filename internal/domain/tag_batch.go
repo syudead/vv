@@ -1,10 +1,10 @@
 package domain
 
-// タグ管理画面のまとめての操作と、その確認に出す数（specs/036-tag-admin-scale/data-model.md §1）。
+// タグ管理画面のまとめての操作と、その確認に出す数。
 
 // MaxTagBatch はまとめての操作と確認の数が 1 回に受け付けるタグの id の上限である。
 // 動画の一括操作の videoIds（20000 件）と同じ理由（本文の上限に収まり、json_each に 1 つの引数で渡す）で
-// 20000 にする（specs/036-tag-admin-scale/research.md R-4）。
+// 20000 にする。
 const MaxTagBatch = 20000
 
 // TagBatchAction はまとめての操作の種類である。
@@ -18,7 +18,7 @@ const (
 	// TagBatchDelete は確定したタグを消す。
 	TagBatchDelete TagBatchAction = "delete"
 	// TagBatchSetKind はタグに TagBatchRequest.KindID の種類を付ける。仮のタグを確定しない
-	// （specs/051-tag-kinds/research.md R-3）。
+	//
 	TagBatchSetKind TagBatchAction = "setKind"
 	// TagBatchClearKind はタグの種類を外す。仮のタグを確定しない。
 	TagBatchClearKind TagBatchAction = "clearKind"
@@ -50,9 +50,8 @@ type TagBatchTarget struct {
 
 // TagBatchApplies は操作 req が、今の状態が target のタグに働くかを返す。確定・却下は
 // 仮のタグ、削除は確定したタグに働く。画面の 1 行ずつの規則（仮の行に確定・却下、確定した行に
-// 削除。specs/031-tentative-tags/ui-design.md「Row」）と同じである。種類を付けるのは種類が
+// 削除。docs/design-docs/catalog-organization.md「Row」）と同じである。種類を付けるのは種類が
 // req.KindID と違うタグ、外すのは種類のあるタグに働き、仮かどうかによらない
-// （specs/051-tag-kinds/data-model.md「Rules」）。
 func TagBatchApplies(req TagBatchRequest, target TagBatchTarget) bool {
 	switch req.Action {
 	case TagBatchConfirm, TagBatchReject:

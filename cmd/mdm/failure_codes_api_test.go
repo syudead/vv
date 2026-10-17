@@ -25,7 +25,7 @@ import (
 
 // 解析と取り込みの失敗理由のコードが、失敗を作る adapter から保存層を通って API まで
 // 届くことを、本物の保存層・解析・走査と経路をつないで確かめる
-// （specs/023-english-i18n/contracts/error-api.md §2・§3）。
+//
 
 // japaneseText は日本語の固定文言が混ざっていないかを見る。
 var japaneseText = regexp.MustCompile(`[\p{Hiragana}\p{Katakana}\p{Han}]`)

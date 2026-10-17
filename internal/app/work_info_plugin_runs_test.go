@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 実行のログの保存（specs/056-plugin-tooling/research.md R-6）。行の置き換えと、世代が変わったときに
+// 実行のログの保存。行の置き換えと、世代が変わったときに
 // 書かないことは internal/store のテストが本物の SQLite で確かめる。
 
 func TestRunSavesTheMaskedLogWithTheGenerationThatRan(t *testing.T) {

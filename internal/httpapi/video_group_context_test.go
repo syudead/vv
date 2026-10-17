@@ -12,7 +12,7 @@ import (
 )
 
 // 動画ページのグループを、動画を開いたグループ（group の問い合わせ）で答えることを確かめる
-// （specs/048-groups/research.md R-9、data-model.md「Play order」）。
+//
 
 // handMadeGroups は newVideoGroupFixture に手で作ったグループを足す。G1 は ep1・ep10（非公開）・
 // solo・ep2、G2 は solo・p1 で、solo は両方にある。C は solo・p2、P は ep1・C・p1 で、P の再生順は

@@ -12,7 +12,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 動画の更新日時と作成日時（specs/033-video-dates/contracts/screen-api.md §0・§1）は、本物の
+// 動画の更新日時と作成日時は、本物の
 // 認証・保存層で確かめる（#637）。guestFixture の動画はどれも mtime が base で、作成日時を
 // 持たない。setFileCreatedAt で a にだけ作成日時を与える。fixture はタグと公開の設定で a・b・d を
 // 編集済みにするので、編集前の値は c で確かめる。

@@ -11,7 +11,7 @@ import (
 )
 
 // このファイルは AutoImport を、偽の watcher・時計・走査で確かめる。ファイルシステムも
-// SQLite も使わない（specs/042-folder-watch-import/plan.md の Implementation Work）。
+// SQLite も使わない。
 
 // stepClock は Advance で進める時計である。予約した関数は、時刻が来たら Advance の中で順に呼ぶ。
 type stepClock struct {

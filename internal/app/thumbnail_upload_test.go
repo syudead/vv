@@ -15,7 +15,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 手元の画像のアップロード（specs/046-thumbnail-image-upload/research.md R-1・R-2）。
+// 手元の画像のアップロード。
 
 // stillWebP は 1×1 の可逆の WebP である。
 var stillWebP = []byte("RIFF\x1a\x00\x00\x00WEBPVP8L\x0d\x00\x00\x00\x2f\x00\x00\x00\x10\x07\x10\x11\x11\x88\x88\xfe\x07\x00")

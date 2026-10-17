@@ -11,7 +11,7 @@ import (
 )
 
 // SubtitleFileLimit は字幕ファイルの大きさの上限（4 MiB）である。これを超える
-// ファイルは字幕の候補にしない（specs/028-sidecar-subtitles/research.md R-3）。
+// ファイルは字幕の候補にしない。
 const SubtitleFileLimit int64 = 4 << 20
 
 // ErrSubtitleUnreadable は、字幕ファイルの中身が読めないこと（空、復号できない、
@@ -43,7 +43,7 @@ type SubtitleSidecar struct {
 }
 
 // SubtitleSidecars は、動画のファイル名 videoFileName と同じフォルダの項目 entries から、
-// その動画の字幕ファイルの一覧を作る（research.md R-3）。
+// その動画の字幕ファイルの一覧を作る。
 //
 //   - `<名前>` は videoFileName から最後の拡張子だけを除いたものである。
 //   - 候補は `<名前>.srt`・`<名前>.vtt`・`<名前>.<ラベル>.srt`・`<名前>.<ラベル>.vtt` で、

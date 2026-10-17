@@ -79,12 +79,12 @@ import { firstTarget, jumpTargets } from "./historyJump";
 import { useHistoryDates } from "./useHistoryDates";
 import { type HistoryState, useWatchHistory } from "./useWatchHistory";
 
-/** 状態の切り替えの選択肢（ui-design.md「Header row」）。 */
+/** 状態の切り替えの選択肢。 */
 const watchOptions: readonly WatchHistoryFilter[] = ["all", "inProgress", "watched"];
 
 /**
  * useNow は日の見出し（Today・Yesterday）を決める今の時刻である。見る人のローカルの 0 時と、
- * タブがまた見えたときに進める。一覧は読み直さない（ui-design.md「Day groups」）。
+ * タブがまた見えたときに進める。一覧は読み直さない。
  */
 function useNow(): Date {
   const [now, setNow] = useState(() => new Date());
@@ -105,7 +105,7 @@ function useNow(): Date {
 
 /**
  * useHistoryCriteria は URL（`watch`・`q`・`date`）を画面の条件として読み、書き換える口を
- * 返す（contracts/screen-api.md「Client use」、research.md R-12）。
+ * 返す。
  */
 function useHistoryCriteria(): {
   criteria: HistoryCriteria;
@@ -136,18 +136,17 @@ function readyItems(state: HistoryState): WatchHistoryEntry[] {
 }
 
 /**
- * HistoryPage は所有者の視聴履歴を、日ごとの見出しの下に新しい順に並べる画面である
- * （specs/043-watch-history/ui-design.md「History screen」）。
+ * HistoryPage は所有者の視聴履歴を、日ごとの見出しの下に新しい順に並べる画面である。
  *
  * 見出しの行で視聴状態を切り替え、題名を検索し、横の欄で件のある日か月へ移る。条件は URL に
  * 持つ。行を押すと再生画面を開き、「Resume」「Start over」はその場で再生を始めさせる。行の ×
  * でその件を確かめずに消す。全件を消すのは lg からは横の欄の最後、lg 未満では見出しの
  * 「More」の奥にあり、確認の窓を通す。削除の 404 は一覧が古いということなので、行を残した
- * まま最初のページから読み直す（research.md R-6）。
+ * まま最初のページから読み直す。
  */
 export default function HistoryPage() {
   const toast = useToast();
-  // 行から開いた再生画面の戻り先は、今の履歴の URL をクエリ文字列ごと（ui-design.md「Entry row」）。
+  // 行から開いた再生画面の戻り先は、今の履歴の URL をクエリ文字列ごと。
   const here = useLocation();
   const from = `${here.pathname}${here.search}`;
   const { criteria, apply } = useHistoryCriteria();
@@ -164,7 +163,7 @@ export default function HistoryPage() {
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearError, setClearError] = useState<UiText | null>(null);
-  // lg 未満の検索欄を開いているか。検索語があるあいだは閉じない（ui-design.md「Header row」）。
+  // lg 未満の検索欄を開いているか。検索語があるあいだは閉じない。
   const [searchOpen, setSearchOpen] = useState(false);
   const searchShown = searchOpen || criteria.query !== "";
   // 検索欄の blur から描画後の判定までの待ち。検索のボタンで開き直すときに取り消す。
@@ -198,7 +197,7 @@ export default function HistoryPage() {
   const days = useMemo(() => groupByDay(items), [items]);
   const lastId = items.at(-1)?.id;
 
-  // 最後の行が画面の下から 1 画面分の内に来たら次のページを読む（ui-design.md「Paging」）。
+  // 最後の行が画面の下から 1 画面分の内に来たら次のページを読む。
   const canLoadMore =
     state.kind === "ready" &&
     state.nextCursor !== undefined &&
@@ -252,7 +251,7 @@ export default function HistoryPage() {
         setClearOpen(false);
         history.clear();
         dates.clear();
-        // 空の表示を「該当なし」と取り違えないよう、条件を外す（ui-design.md「Clearing the history」）。
+        // 空の表示を「該当なし」と取り違えないよう、条件を外す。
         if (conditions) apply(DEFAULT_HISTORY_CRITERIA, "replace");
         setTimeout(() => heading.current?.focus(), 0);
       },
@@ -303,7 +302,7 @@ export default function HistoryPage() {
     const date = value === null || value === firstTarget(targets) ? undefined : value;
     if (date === criteria.date) {
       // date の無い一覧で最初の項目を選んだ。URL は変わらないが、移る先は一覧の先頭なので
-      // 先頭へ戻す（ui-design.md「Jump to date」）。
+      // 先頭へ戻す。
       window.scrollTo({ top: 0, behavior: "auto" });
       return;
     }
@@ -551,8 +550,7 @@ const mainLayout =
 /**
  * HistoryRow は日のまとまりの 1 件である。サムネイルと文字を 1 つのリンクにして再生画面を
  * 開き、その後ろに「Resume」か「Start over」、端に × を置く。時刻は書かない（日は見出しが
- * 持つ）。動画がライブラリに無い件はリンクにも操作にもせず、「Not in the library」と書く
- * （ui-design.md「Entry row」「Entry not in the library」）。
+ * 持つ）。動画がライブラリに無い件はリンクにも操作にもせず、「Not in the library」と書く。
  */
 function HistoryRow({
   entry,
@@ -689,7 +687,7 @@ function HistoryRow({
 
 /**
  * HistoryRowLayout は行の列である。lg 未満はサムネイル・文字・端の × の 3 列で、操作は
- * 文字の列の下、lg からはサムネイル・文字・操作・端の × の 1 行（ui-design.md「Entry row」）。
+ * 文字の列の下、lg からはサムネイル・文字・操作・端の × の 1 行。
  */
 function HistoryRowLayout({
   rowRef,

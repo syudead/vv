@@ -16,7 +16,7 @@ import { CardsLoading, LoadFailed, MoreRow, NoMatches } from "./states";
 
 /**
  * FolderContents はフォルダ1件の直下（子フォルダと動画）を並べる通常表示である。
- * 絞り込みだけのときも同じ形にする（ui-design.md「Filter only」）。
+ * 絞り込みだけのときも同じ形にする。
  */
 export default function FolderContents({
   criteria,
@@ -43,8 +43,7 @@ export default function FolderContents({
   /** カードの題名の下に出すタグの行（useFolderTagsRow）。 */
   tagsRow: (video: Video) => ReactNode;
   /**
-   * 「動画 N」の見出しの行の右端に置く、まとめ方のメニュー（ui-design.md
-   * 「Folder grouping menu」）。ゲストでは渡さない。
+   * 「動画 N」の見出しの行の右端に置く、まとめ方のメニュー。ゲストでは渡さない。
    */
   groupingMenu?: ReactNode;
 }) {

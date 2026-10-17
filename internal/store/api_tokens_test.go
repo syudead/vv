@@ -45,7 +45,7 @@ func TestAPITokenRequiresAccount(t *testing.T) {
 }
 
 // 発行は、求めたセッションがその取引の中で有効なときだけ行う。境界で確かめた後に資格情報が
-// 変わっていれば、新しい版で足さない（research.md R-2）。
+// 変わっていれば、新しい版で足さない。
 func TestAPITokenRequiresCurrentSession(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -193,7 +193,7 @@ func TestAPITokenChangeCredentialsDeletesTokens(t *testing.T) {
 	}
 }
 
-// 版の合わない行は、残っていても一覧に出さず、有効としない（research.md R-2）。
+// 版の合わない行は、残っていても一覧に出さず、有効としない。
 func TestAPITokenStaleVersionIsInvalid(t *testing.T) {
 	db := migratedDB(t)
 	setupAccount(t, db)

@@ -3,8 +3,7 @@
 An edit of a video frame or the current thumbnail with ComfyUI is an in-memory
 session per video in
 [`app.ThumbnailEdits`](../../internal/app/thumbnail_edits.go), served to the
-video page by the `/api/thumbnail-edits` routes
-([contract](../../specs/045-comfyui-thumbnails/contracts/screen-api.md)).
+video page by the `/api/thumbnail-edits` routes.
 
 The diagram shows what a session talks to.
 
@@ -23,8 +22,7 @@ flowchart LR
 
 A session holds the frame, the current run and the result image in memory;
 the page reads it every second while a run is in progress, and each read asks
-the provider for the run's state
-([R-4](../../specs/045-comfyui-thumbnails/research.md#r-4-an-edit-is-an-in-memory-session-per-video-read-by-polling)).
+the provider for the run's state.
 A run belongs to one open page and must not be applied after a restart, so it
 is neither a queued job nor a domain event, and a restart drops every session.
 Each read is the page's heartbeat: a session not read for 5 minutes cancels its
@@ -55,8 +53,7 @@ stateDiagram-v2
 Discard, 5 minutes without a read, a new edit of the same video and a restart
 end a session in any state; a run in progress is cancelled at the provider
 first. A submitted run with no terminal state 10 minutes later is cancelled and
-fails as `timed_out`
-([R-11](../../specs/045-comfyui-thumbnails/research.md#r-11-a-new-session-replaces-the-previous-one-a-run-is-limited-to-10-minutes)).
+fails as `timed_out`.
 A background sweep every 30 seconds applies both limits to sessions nobody
 reads, and every request applies them to its own session. A new edit ends the
 previous session under that session's lock before the new one becomes visible,
@@ -88,8 +85,7 @@ has an image the apply can read.
 ## Edit source
 
 Starting an edit names its `source`: `frame`, the frame at the player's
-`positionMs`, or `thumbnail`, the current thumbnail
-([R-4](../../specs/046-thumbnail-image-upload/research.md#r-4-an-edit-from-the-current-thumbnail-starts-from-the-stored-source-or-from-the-thumbnails-frame)).
+`positionMs`, or `thumbnail`, the current thumbnail.
 `frame` without `positionMs` answers `400 thumbnail_position_out_of_range`, as
 a position outside the duration does. For `thumbnail`, the session's image is
 the first of these that exists:
@@ -132,8 +128,7 @@ make the decode allocate without bound. WebP is decoded with
 is refused. The provider's output passes the same check before the run
 succeeds, and applying a WebP output converts it to PNG for ffmpeg. The
 frame is extracted by the server at the video's size, its long side capped at
-2048 px
-([R-8](../../specs/045-comfyui-thumbnails/research.md#r-8-the-frame-is-extracted-by-the-server-at-up-to-2048-px)),
+2048 px,
 so the page paints on the same pixels the provider receives. An upload or
 submit the provider refuses answers `502 provider_failed` with the failure
 reason, and the session shows the same reason as `failed`.
@@ -142,21 +137,19 @@ reason, and the session shows the same reason as `failed`.
 
 Applying hands the result to `Ingest.ApplyThumbnailImage`, which fits it and
 publishes it inside the content's thumbnail generation lock, so the apply,
-revert and position override confirmed last wins
-([R-10](../../specs/045-comfyui-thumbnails/research.md#r-10-apply-revert-and-the-position-override-are-ordered-by-the-generation-lock)).
+revert and position override confirmed last wins.
 The session ends after a successful apply and after `content_changed`, when
 the video is gone or holds other content; an undecodable result keeps the
 session so the owner can run again.
 
 An apply writes one `thumbnail_images` row in the transaction that sets
-`thumbnail_state` to `done`
-([data model](../../specs/046-thumbnail-image-upload/data-model.md)):
+`thumbnail_state` to `done`:
 
 | Column | Content |
 | --- | --- |
 | `image` | The 640 px JPEG fitted to the video's aspect; the thumbnail file is published from it |
-| `source` | The same crop with its long side at most 2048 px, as a JPEG, for an edit that starts from the current thumbnail ([R-3](../../specs/046-thumbnail-image-upload/research.md#r-3-the-row-keeps-the-applied-images-source-at-up-to-2048-px-and-its-origin)); null in rows written before migration `00041` |
-| `origin` | `generated` for an edit's result, `uploaded` for an uploaded image; the owner's `Video` answers it as `thumbnailImage` ([R-5](../../specs/046-thumbnail-image-upload/research.md#r-5-thumbnailimage-names-the-applied-images-origin-in-place-of-thumbnailgenerated)) |
+| `source` | The same crop with its long side at most 2048 px, as a JPEG, for an edit that starts from the current thumbnail; null in rows written before migration `00041` |
+| `origin` | `generated` for an edit's result, `uploaded` for an uploaded image; the owner's `Video` answers it as `thumbnailImage`  |
 
 A position change and a revert delete the whole row. The thumbnail job
 republishes `image` and never reads `source`.
@@ -165,9 +158,7 @@ republishes `image` and never reads `source`.
 
 `POST /api/videos/{id}/thumbnail-image` makes an image from the owner's device
 the thumbnail through the same `Ingest.ApplyThumbnailImage`, with origin
-`uploaded`
-([R-1](../../specs/046-thumbnail-image-upload/research.md#r-1-an-uploaded-image-is-applied-within-its-request-through-the-same-apply-as-a-generated-image),
-[contract](../../specs/046-thumbnail-image-upload/contracts/screen-api.md#post-apivideosidthumbnail-image)).
+`uploaded`.
 It needs no ComfyUI connection and holds no session. The route reads the
 video's content key before the body, and answers `409 content_changed` without
 applying when the body's `contentVersion` (the owner-only `Video` field the page
@@ -187,8 +178,7 @@ is the `Content-Length` when that is within the limit, and the limit
 otherwise. A request that finds the budget used up waits there, under the
 client's context, before reading its body.
 
-The check is the edit's image check with a larger pixel cap
-([R-2](../../specs/046-thumbnail-image-upload/research.md#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time)):
+The check is the edit's image check with a larger pixel cap:
 
 | Limit | Upload | Edit reference |
 | --- | --- | --- |
@@ -245,7 +235,7 @@ framing for an edit from the current thumbnail.
 | Rejected | Why |
 | --- | --- |
 | Send the original with a crop rectangle and let ffmpeg compose | The preview and the result would come from two drawings; Go and ffmpeg also ignore a JPEG's EXIF orientation, which the browser applies |
-| Store the image at its own aspect and let each frame letterbox it | Cards place the scrub frames and the narrow-video backdrop on the video's aspect ([045 R-7](../../specs/045-comfyui-thumbnails/research.md#r-7-the-generated-image-is-fitted-to-the-videos-frame-before-it-is-stored)) |
+| Store the image at its own aspect and let each frame letterbox it | Cards place the scrub frames and the narrow-video backdrop on the video's aspect  |
 | A margin in the theme's colour | The JPEG has no transparency and the same file serves both themes |
 | The original's resolution on the canvas | Some browsers cap a canvas far below 120 megapixels, and the stored source keeps at most 2048 px anyway |
 

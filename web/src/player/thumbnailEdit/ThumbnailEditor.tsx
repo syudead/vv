@@ -83,7 +83,7 @@ function sessionEnded(error: unknown): boolean {
 /**
  * providerMessage は実行の開始が `502 provider_failed` で断られたときに、提供元の文を返す。
  * 応答は提供元の文を載せず、失敗したセッションの `error.message` に残すので、セッションを
- * 読み直して取る（specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+ * 読み直して取る。
  */
 async function providerMessage(
   editId: string,
@@ -113,8 +113,7 @@ function useNow(active: boolean): number {
 
 /**
  * useSessionPolling はセッションを読み続ける。実行が進んでいる間は毎秒、それ以外は 60 秒ごと
- * に読む。読み取りはページの生存の知らせを兼ね、5 分読まれないセッションはサーバーが終える
- * （specs/045-comfyui-thumbnails/research.md R-4）。操作を送るときは `pause` で読みかけを
+ * に読む。読み取りはページの生存の知らせを兼ね、5 分読まれないセッションはサーバーが終える。操作を送るときは `pause` で読みかけを
  * 捨て、操作の前に送った読み取りの答えで見え方を戻さない。操作が終わったら `resume` で
  * 読み取りを仕掛け直す。操作の答えが見え方を変えなくても（失敗しても）読み続けるため。
  */
@@ -190,8 +189,7 @@ function useDiscardOnLeave(editId: string, settled: { current: boolean }) {
 }
 
 /**
- * ThumbnailEditor は動画の 1 コマを ComfyUI で編集してサムネイルにする編集画面である
- * （specs/045-comfyui-thumbnails/ui-design.md「Thumbnail editor」）。EditorDialog の段にコマと
+ * ThumbnailEditor は動画の 1 コマを ComfyUI で編集してサムネイルにする編集画面である。EditorDialog の段にコマと
  * 塗りの層（Compose・Running）か、コマと生成した画像の比較（Compare）を出し、横の欄に指示・
  * 参考画像・実行の状態、足に主な操作を置く。閉じる・捨てる・ページを離れるとセッションを
  * 捨てる。適用したら応答の動画を `onApplied` へ渡す。

@@ -51,8 +51,7 @@ const previewScale = "scale='min(640,iw)':'min(640,ih)':force_original_aspect_ra
 // previewArgs は 1 回の ffmpeg の引数を作る。9 秒以下は全体を変換し、9 秒を超える
 // 動画は PreviewSegments の各区間を入力側シーク（-ss/-t）の別入力として読み、concat
 // フィルタで連結する。元動画を末尾までデコードしないので、読む量と保持するフレームは
-// 区間の数と長さで決まり、動画の長さに比例しない（specs/019-preview-input-seek
-// research.md R-1）。-ss は既定の accurate seek のままにし、区間と映る場面の対応を
+// 区間の数と長さで決まり、動画の長さに比例しない。-ss は既定の accurate seek のままにし、区間と映る場面の対応を
 // 保つ（R-3）。フレームの無い区間は concat が飛ばすので、その区間が無いだけの短い
 // 出力になる（R-2）。全部が空だと ffmpeg は映像の無い MP4 を終了コード 0 で書くので、
 // -abort_on empty_output で失敗にし、映像の無いプレビューを公開しない。索引の無い

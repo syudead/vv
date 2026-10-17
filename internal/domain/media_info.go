@@ -11,11 +11,10 @@ import (
 )
 
 // MediaInfoVersion は保存する MediaInfo の形の版である。項目を足す・意味を変えるときに
-// 上げる。版が違う行は「無い」と読まれる（specs/056-media-info/data-model.md
-// 「video_media_info」）。
+// 上げる。版が違う行は「無い」と読まれる。
 const MediaInfoVersion = 1
 
-// 保存する値の上限（specs/056-media-info/data-model.md「Rules」）。
+// 保存する値の上限。
 const (
 	// MediaTextMaxRunes は 1 つの文字列の上限の文字数である。超えた分は切る。
 	MediaTextMaxRunes = 2000
@@ -27,7 +26,7 @@ const (
 
 // MediaInfo は取り込みの ffprobe 1 回で読む、動画の追加の情報である。JSON にして
 // video_media_info.info に保存する。欄名は Go の欄名をそのまま使い、無い項目は JSON から
-// 省く（specs/056-media-info/data-model.md「Stored value」）。
+// 省く。
 type MediaInfo struct {
 	// Video は最初の非添付の映像 stream の項目。映像が無ければ nil。
 	Video *MediaVideo `json:",omitempty"`
@@ -126,7 +125,7 @@ func (e MediaEmbedded) IsEmpty() bool {
 // dolbyVisionCodecTags は Dolby Vision を示す codec_tag_string である。
 var dolbyVisionCodecTags = map[string]bool{"dvh1": true, "dvhe": true, "dvav": true, "dva1": true, "dav1": true}
 
-// ClassifyHDR は映像の HDR の種類を決める（specs/056-media-info/research.md R-3）。
+// ClassifyHDR は映像の HDR の種類を決める。
 // Dolby Vision の構成記録（hasDolbyVisionRecord）か codec tag、PQ（smpte2084）、
 // HLG（arib-std-b67）の順に見て、どれでもなければ SDR である。
 func ClassifyHDR(colorTransfer, codecTag string, hasDolbyVisionRecord bool) HDRKind {
@@ -361,7 +360,7 @@ func atof(digits string) float64 {
 	return parsed
 }
 
-// NormalizeChapters はチャプターを整える（specs/056-media-info/data-model.md「Rules」）。
+// NormalizeChapters はチャプターを整える。
 // 開始で並べ（同じ開始は元の順）、開始が尺以上のものを落とし、終わりを尺と開始の間に
 // 収める。1 つだけでも残し、重なりはそのまま残す。題は CleanMediaText で整え、
 // MediaChaptersMaxCount 個までにする。尺が分からない（0 以下）ときは何も残さない。

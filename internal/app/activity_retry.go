@@ -7,8 +7,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 取り込みと失敗した走査のやり直し（specs/055-activity/contracts/screen-api.md
-// 「POST /api/activity/{id}/retry」）。app.Activity の振り分け表に、import と scan の種類で登録する。
+// 取り込みと失敗した走査のやり直し。app.Activity の振り分け表に、import と scan の種類で登録する。
 
 // ImportRetryStore は import の記録のやり直し先である。internal/store の *IngestStore が満たす。
 type ImportRetryStore interface {
@@ -36,7 +35,7 @@ func (r *ImportRetrier) RetryActivity(ctx context.Context, entry domain.Activity
 
 // RetryActivity は失敗した走査の記録 entry をやり直し、POST /api/scans と同じくすべての登録フォルダの手動の
 // 走査を始める。走査中なら domain.ErrScanRunning、登録フォルダが無ければ domain.ErrActivityNotRetryable を
-// 返す。記録は、新しい走査が done で終わったときに閉じる（research.md R-3）。
+// 返す。記録は、新しい走査が done で終わったときに閉じる。
 func (s *Scans) RetryActivity(ctx context.Context, _ domain.ActivityEntry) error {
 	_, started, err := s.StartScan(ctx)
 	switch {

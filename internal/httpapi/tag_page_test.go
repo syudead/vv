@@ -15,7 +15,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// GET /api/tags のページ読み（specs/036-tag-admin-scale/contracts/screen-api.md §5、#726）を、
+// GET /api/tags のページ読みを、
 // 本物の保存先で確かめる。
 
 func TestListTagsPagesWithCursorAndTotals(t *testing.T) {
@@ -172,7 +172,6 @@ func TestListTagsRejectsInvalidParameters(t *testing.T) {
 }
 
 // 外部連携 API の一覧は limit を省けば画面と同じ並びで全件を返し、nextCursor を持たない
-// （specs/039-external-tag-admin/contracts/external-api.md §1）。
 func TestExternalListTagsWithoutLimitMatchesScreenFullList(t *testing.T) {
 	env, cookie := newExternalEnv(t, Options{})
 	ctx := context.Background()

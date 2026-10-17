@@ -8,9 +8,9 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// フォルダのまとめ方の例外（specs/017-folder-groups/contracts/folder-groups-api.md §1）。
+// フォルダのまとめ方の例外。
 // フォルダの自動グループをタグに変えるのは POST /api/groups/{id}/tag である
-// （specs/048-groups/research.md R-11）。
+//
 
 // FolderGroups はフォルダのまとめ方の保存先である。internal/store の
 // *FolderGroupStore がこれを満たす。どの操作も1つの取引で済むので、internal/app は

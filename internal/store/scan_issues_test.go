@@ -203,7 +203,6 @@ func TestStartScanClearsPreviousIssues(t *testing.T) {
 
 // 中断した走査の続きとして始めると、仕事の段階の問題と対象の動画の集合を持ち越し、
 // 取り込みは partial のままになる。走査が見つけ直す種類（unreadable）は持ち越さない
-// （specs/037-windows-app/research.md R-9）。
 func TestResumeScanCarriesJobIssuesOfInterruptedImport(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -468,7 +467,7 @@ func TestThousandsOfIssuesPageWithoutOverlap(t *testing.T) {
 }
 
 // 解析に失敗した動画がある状態から移行すると、その動画が probe_failed の問題になり、
-// 直近の取り込みは partial になる（research.md R-11）。
+// 直近の取り込みは partial になる。
 func TestScanIssuesMigrationCarriesFailedVideos(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {

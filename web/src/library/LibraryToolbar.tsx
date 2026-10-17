@@ -27,7 +27,7 @@ function viewOptions() {
 /**
  * viewControls は表示形式の切り替えと大きさ（格子表示のときだけ）の 2 つである。表示形式は
  * `lg`、大きさは `xl` から行に並ぶ。ライブラリと、検索・絞り込み・並べ替えを持たない
- * グループのページ（specs/048-groups/ui-design.md「Body」）が使う。
+ * グループのページが使う。
  */
 export function viewControls(
   view: ViewMode,
@@ -104,8 +104,7 @@ export interface LibraryToolbarProps {
 /**
  * LibraryToolbar はライブラリの操作をトップバーの中の 1 行に集める（画面の型の Toolbar の
  * placement="topBar"。LibraryPage が TopBarPortal で入れる）。並びは Tab の順で、
- * 検索欄 → 絞り込み → 並べ替え → 向き（並べ直す）→ 表示形式・大きさ
- * （ui-design.md「Toolbar」）。並べ替えは md、表示形式は lg、大きさは xl から行に並び、
+ * 検索欄 → 絞り込み → 並べ替え → 向き（並べ直す）→ 表示形式・大きさ。並べ替えは md、表示形式は lg、大きさは xl から行に並び、
  * それより狭い幅ではアイコンだけの「View and sort」のポップオーバーに入る。
  */
 export default function LibraryToolbar({

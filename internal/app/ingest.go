@@ -37,13 +37,12 @@ type IngestStore interface {
 	ApplyFingerprintForJob(ctx context.Context, job domain.Job, fingerprint domain.Fingerprint) (bool, error)
 	// SetThumbnailPosition は代表サムネイルの位置を記録し（nil は解除）、同じ取引でその内容の
 	// 動画の thumbnail_state を done にする。画像を公開したあと、生成の錠の中で呼ぶ
-	// （specs/029-video-overrides/data-model.md §3）。
+	//
 	SetThumbnailPosition(ctx context.Context, videoID int64, positionMs *int64) (domain.Video, error)
 	// ApplyThumbnailImage は内容 contentKey の動画 videoID に適用した画像 image（代表サムネイル・
 	// 元の画像・出どころ）を記録し、同じ取引でその内容の動画の thumbnail_state を done にする。
 	// 動画が無いか内容が違えば domain.ErrContentChanged で、何も書かない。画像を公開したあと、
-	// 生成の錠の中で呼ぶ（specs/045-comfyui-thumbnails/data-model.md、
-	// specs/046-thumbnail-image-upload/data-model.md）。
+	// 生成の錠の中で呼ぶ。
 	ApplyThumbnailImage(
 		ctx context.Context, videoID int64, contentKey string, image domain.AppliedThumbnailImage,
 	) (domain.Video, error)
@@ -115,7 +114,7 @@ type Generator interface {
 	// 合わせた代表サムネイルの JPEG を返す。読めない画像は domain.ErrThumbnailImageInvalid。
 	FitThumbnailImage(ctx context.Context, image []byte, aspect float64) ([]byte, error)
 	// FitThumbnailSource は image を FitThumbnailImage と同じ切り抜きで長辺最大 2048px にした
-	// JPEG を返す（specs/046-thumbnail-image-upload/research.md R-3）。読めない画像は
+	// JPEG を返す。読めない画像は
 	// domain.ErrThumbnailImageInvalid。
 	FitThumbnailSource(ctx context.Context, image []byte, aspect float64) ([]byte, error)
 }
@@ -238,7 +237,7 @@ func (i *Ingest) Probe(ctx context.Context, job domain.Job) error {
 
 	playability := domain.EvaluatePlayability(domain.ContainerFromPath(job.LocationPath), probe)
 	// 一覧用プレビューの仕事は、結果を書くのと同じ取引で保存側が積む
-	// （specs/024-import-progress/research.md R-2）。
+	//
 	_, err = i.store.ApplyProbeForJob(ctx, job, probe, playability)
 	return err
 }
@@ -246,9 +245,7 @@ func (i *Ingest) Probe(ctx context.Context, job domain.Job) error {
 // Thumbnail は代表サムネイルを1枚生成し、状態を記録する。シーク用サムネイルは
 // 別の段階（SeekThumbnails）が作るので、ここでは待たない。
 //
-// 所有者が画像を適用していればその画像を公開し直し（specs/045-comfyui-thumbnails/research.md
-// R-6）、位置を指定していればその場面で（ThumbnailAt）、どちらも無ければ自動の位置で作る
-// （specs/029-video-overrides/research.md R-5）。位置と thumbnail_state は生成の錠に
+// 所有者が画像を適用していればその画像を公開し直し、位置を指定していればその場面で（ThumbnailAt）、どちらも無ければ自動の位置で作る。位置と thumbnail_state は生成の錠に
 // 入ってから読み直した値で決める。錠を待つ間に SetThumbnailPosition が位置と done を
 // 記録していたら、古い値で画像を上書きせずに生成を飛ばす。
 func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
@@ -265,7 +262,7 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 		return nil
 	}
 	// 元の動画を読むのはコマを取るときだけである。適用した画像は元の動画が読めなくても
-	// 公開し直すので（specs/045-comfyui-thumbnails/data-model.md の Rules）、読めないことは
+	// 公開し直すので、読めないことは
 	// 錠の中で画像の行が無いと分かったときに返す。
 	sourceErr := i.generator.CheckSource(job.LocationPath)
 	if sourceErr != nil {
@@ -291,11 +288,10 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 		// 上限まで試して駄目なときの失敗は、ジョブを failed にするのと同じ取引で
 		// FailClaimedJob が動画側へ記録する。指定の位置で取れなくても行は消さない。
 		if video.ThumbnailState != domain.ThumbnailStateDone {
-			// 先頭のコマでの代用は、成功を書く取引で問題として記録する
-			// （specs/024-import-progress/research.md R-7）。指定の位置では代用しない。
+			// 先頭のコマでの代用は、成功を書く取引で問題として記録する。指定の位置では代用しない。
 			substitution := domain.SubstitutionUnknown
 			// 所有者が画像を適用していれば、コマを取らずにその画像を公開し直す
-			// （specs/045-comfyui-thumbnails/research.md R-6）。
+			//
 			image, err := i.store.ThumbnailImage(ctx, job.ContentKey)
 			if err != nil {
 				return false, err
@@ -332,8 +328,7 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 }
 
 // SetThumbnailPosition は動画 videoID の代表サムネイルを positionMs の場面で作り直して
-// 公開し、位置を記録する。positionMs が nil なら位置を解除し、自動の位置で作り直す
-// （specs/029-video-overrides/research.md R-4）。locationPath は読む元の動画の所在（登録の
+// 公開し、位置を記録する。positionMs が nil なら位置を解除し、自動の位置で作り直す。locationPath は読む元の動画の所在（登録の
 // パス）、path はそれを辿った先で、呼び出し側が開けることを確かめたものを渡す。
 //
 // 位置は domain.CheckThumbnailPosition で確かめ、解析前は domain.ErrDurationUnknown、尺の外は
@@ -370,7 +365,7 @@ func (i *Ingest) SetThumbnailPosition(
 }
 
 // RevertThumbnailImage は動画 videoID に適用した画像を外し、代表サムネイルをコマから作り直して
-// 公開する（specs/045-comfyui-thumbnails/data-model.md、research.md R-10）。記録した位置が
+// 公開する。記録した位置が
 // あればその場面で、無ければ自動の位置で作る。位置は生成の錠に入ってから読み直すので、錠を
 // 待つ間に記録された位置が使われる。画像を適用していなくても作り直して成功する。
 //
@@ -464,9 +459,7 @@ func (i *Ingest) replaceThumbnailWithFrame(
 	return saved, nil
 }
 
-// ApplyThumbnailImage は、出どころ origin の画像 image を動画 videoID の代表サムネイルにする
-// （specs/045-comfyui-thumbnails/data-model.md、research.md R-6・R-7・R-10、
-// specs/046-thumbnail-image-upload/research.md R-3）。contentKey は編集やアップロードを始めた
+// ApplyThumbnailImage は、出どころ origin の画像 image を動画 videoID の代表サムネイルにする。contentKey は編集やアップロードを始めた
 // ときの動画の内容である。
 //
 // 生成の錠の中で動画を読み直し、動画が無いか内容が contentKey でなければ何も書かずに
@@ -524,7 +517,7 @@ func (i *Ingest) ApplyThumbnailImage(
 
 // fitThumbnailImage は画像 image を動画 video の表示上の縦横比に合わせ、記録する行の内容
 // （代表サムネイル・元の画像・出どころ origin）にする。アップロードした画像は、2 回の合わせの
-// 間アップロードの門を持つ（specs/046-thumbnail-image-upload/research.md R-2）。生成した画像は
+// 間アップロードの門を持つ。生成した画像は
 // 門を取らない。
 func (i *Ingest) fitThumbnailImage(
 	ctx context.Context, image []byte, video domain.Video, origin domain.ThumbnailImageOrigin,
@@ -679,8 +672,7 @@ func (i *Ingest) Preview(ctx context.Context, job domain.Job) error {
 	})
 }
 
-// Fingerprint は完成したシーク用スプライトから映像の指紋を作り、記録する
-// （specs/030-video-versions/data-model.md §6）。ffmpeg を起動せず、元の動画も読まない。
+// Fingerprint は完成したシーク用スプライトから映像の指紋を作り、記録する。ffmpeg を起動せず、元の動画も読まない。
 //
 // スプライトが無い、またはシートが読めなければ誤りを返す。仕事は再試行し、上限まで
 // 失敗すると FailClaimedJob が問題として記録する。積み直しは次の走査が行う。

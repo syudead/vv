@@ -23,7 +23,7 @@ func progressOf(pattern string) []*Progress {
 	return out
 }
 
-// グループの視聴状態・見終えた本数・開くメンバー（specs/017-folder-groups/data-model.md §6）。
+// グループの視聴状態・見終えた本数・開くメンバー。
 func TestGroupWatchAndOpenIndex(t *testing.T) {
 	tests := []struct {
 		pattern string

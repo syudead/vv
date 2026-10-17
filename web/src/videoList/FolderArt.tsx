@@ -31,7 +31,7 @@ function sheetKeys(previews: readonly FolderPreview[]): string[] {
 /**
  * sheetLayout は差し込むサムネイルの位置（背板に対する %）と傾き（度）である。
  * 件数ごとに左右へ均等に広げ、奇数番目をわずかに高く置く。前板が無いので、
- * 束が背板の上下の中央に来る高さに置く（ui-design.md）。
+ * 束が背板の上下の中央に来る高さに置く。
  */
 const sheetLayout: Record<number, { left: number; top: number; rotate: number }[]> = {
   1: [{ left: 16, top: 14, rotate: 0 }],

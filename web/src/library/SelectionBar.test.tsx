@@ -129,7 +129,7 @@ function install() {
           return jsonResponse({ code: "internal", message: "internal error" }, 500);
         }
         // count はどちらかの出所で付いている本数、manualCount は手で付けた本数
-        // （017 の contracts/folder-groups-api.md §4）。
+        // 。
         const counts = new Map<number, { count: number; manualCount: number }>();
         for (const videoId of body.videoIds) {
           const manual = server.attached.get(videoId) ?? new Set<number>();
@@ -272,7 +272,7 @@ describe("SelectionBar", () => {
       (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement).disabled,
     ).toBe(true);
     // 選んだ本数が項目の数（total）を超えていても、集合が違えば押せる
-    // （specs/017-folder-groups/ui-design.md「Pressing and selection」）。
+    //
     rerender(
       barElement({
         count: 9,
@@ -291,7 +291,7 @@ describe("SelectionBar", () => {
   });
 
   // POST /api/video-tags は videoIds を全部か無しかでしか受け付けず、20000件を
-  // 超えると400になる（contracts/tags-api.md §4）。静かに分割して送らず、
+  // 超えると400になる。静かに分割して送らず、
   // 一括操作を disabled にして理由を伝える（Devin の指摘2）。
   it("選択が20,000件を超えると、タグの一括操作はdisabledで理由が読める", () => {
     install();
@@ -311,7 +311,7 @@ describe("SelectionBar", () => {
     }) as HTMLButtonElement;
     expect(addButton.disabled).toBe(true);
     expect(removeButton.disabled).toBe(true);
-    // 公開の一括の切り替えも同じ上限で、同じ理由を添える（016 ui-design.md「Selection bar」）。
+    // 公開の一括の切り替えも同じ上限で、同じ理由を添える。
     expect(visibilityButton.disabled).toBe(true);
     expect(visibilityButton.title).toBe("Select between 1 and 20,000 videos.");
     expect(visibilityButton.getAttribute("aria-describedby")).toBe(
@@ -666,7 +666,7 @@ describe("SelectionBar", () => {
     ).toBeDefined();
   });
 
-  // 017 の ui-design.md「Folder-derived tag chip」: フォルダ名から付いているだけの
+  // フォルダ名から付いているだけの
   // タグは外せないので候補に出さず、「一部」の判定と本数は手で付けた本数で行う。
   it("タグを外す: 候補は手で付けたタグだけで、一部の本数は手で付けた本数で数える", async () => {
     const user = userEvent.setup();
@@ -907,7 +907,7 @@ describe("SelectionBar", () => {
   });
 });
 
-// 公開の一括の切り替え（specs/016-single-account-auth/ui-design.md「Selection bar」、issue 305）。
+// 公開の一括の切り替え。
 describe("SelectionBar の公開", () => {
   it("「公開にする」で選んだ動画を1回で送り、applied の件数をトーストで伝えて選択を残す", async () => {
     const user = userEvent.setup();
@@ -1090,7 +1090,7 @@ describe("SelectionBar の英語の文言", () => {
   });
 });
 
-describe("SelectionBar の束ねる操作（specs/030-video-versions/ui-design.md「Bundle action」）", () => {
+describe("SelectionBar の束ねる操作", () => {
   it("1 本の選択では出さず、2 本目を選ぶと現れる", () => {
     install();
     const { rerender } = renderBar({ count: 1, selectedIds: [1] });

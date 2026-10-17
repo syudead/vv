@@ -14,7 +14,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// プレイリストの管理の経路（specs/044-playlists/contracts/screen-api.md）を、本物の認証・保存層・
+// プレイリストの管理の経路を、本物の認証・保存層・
 // 経路をつないで確かめる。中身は library_test.go の libraryFixture と同じ。
 
 func (f *libraryFixture) playlistRequest(method, target, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
@@ -156,7 +156,6 @@ func TestPlaylistCreateRenameAndList(t *testing.T) {
 // 一覧は limit 件ずつ返し、続きがあるときだけ nextCursor を入れ、total はどのページでも全部の数、
 // version はどのページでも同じで、プレイリストが変わると変わる。limit の範囲外は 400
 // invalid_request、読めない cursor は 400 invalid_cursor
-// （specs/044-playlists/contracts/screen-api.md「GET /api/playlists」）。
 func TestPlaylistListPaging(t *testing.T) {
 	f := newLibraryFixture(t)
 	var want []int64
@@ -391,7 +390,7 @@ func TestPlaylistAddRejectsInvalidRequests(t *testing.T) {
 	}
 }
 
-// ゲストはどの経路でも 401 で、何も変わらない（research.md R-8）。
+// ゲストはどの経路でも 401 で、何も変わらない。
 func TestPlaylistsOwnerOnly(t *testing.T) {
 	f := newLibraryFixture(t)
 	playlist := f.createPlaylist(t, "まとめ")

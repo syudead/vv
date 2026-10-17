@@ -9,7 +9,7 @@ import (
 )
 
 // スマートフォルダのお気に入り・プレイリストの項目・動画の文脈
-// （specs/052-smart-folders/contracts/screen-api.md「Schemas and parameters changed」）。
+//
 
 // smartFolderCard はフォルダ id のカードを所有者として読む。
 func smartFolderCard(t *testing.T, db *DB, id int64) domain.LibrarySmartFolder {

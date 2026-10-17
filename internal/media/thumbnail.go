@@ -37,7 +37,7 @@ const thumbnailCommand = "ffmpeg"
 // 含まれる。幅 640px でおおむね 30〜60KB であり、一覧 60 件でも 2〜4MB に収まる。
 //
 // firstFrame は、指定位置でコマを取れず、先頭のコマで作り直したかである。呼び出し側は
-// これを代用として記録する（specs/024-import-progress/research.md R-7）。ここは
+// これを代用として記録する。ここは
 // 報告先を知らず、値として返すだけである。
 func Thumbnail(ctx context.Context, videoPath string, durationMs int64, output string) (firstFrame bool, err error) {
 	ctx, cancel := context.WithTimeout(ctx, thumbnailTimeout)
@@ -63,7 +63,7 @@ func Thumbnail(ctx context.Context, videoPath string, durationMs int64, output s
 // AutoThumbnailPositions は、位置を指定していない動画の代表サムネイルのコマを取りに行く位置
 // （ミリ秒）を試す順に返す。尺 durationMs（0 以下は不明）に対する自動の位置と、そこでコマが
 // 取れなかったときの先頭（0）である。自動の位置が先頭なら 1 つだけである。サムネイルジョブ
-// （Thumbnail）と、今のサムネイルからの編集（specs/046-thumbnail-image-upload/research.md R-4）が
+// （Thumbnail）と、今のサムネイルからの編集が
 // この 1 か所の規則を使う。
 func AutoThumbnailPositions(durationMs int64) []int64 {
 	auto := int64(math.Round(thumbnailOffset(durationMs) * 1000))
@@ -79,7 +79,7 @@ func positionSeconds(positionMs int64) float64 {
 }
 
 // ThumbnailAt は動画の positionMs ミリ秒の場面を1枚取り出し、output へ書く。所有者が
-// 指定した位置の代表サムネイルに使う（specs/029-video-overrides/research.md R-4・R-5）。
+// 指定した位置の代表サムネイルに使う。
 //
 // Thumbnail と違い、指定の位置で取れなくても先頭のコマで作り直さない。利用者が指した
 // 場面と違う画像を黙って置かず、失敗として返す。位置が尺の内側かは呼び出し側

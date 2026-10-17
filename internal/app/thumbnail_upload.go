@@ -8,8 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 所有者が手元の画像を動画のサムネイルにするアップロード（specs/046-thumbnail-image-upload/
-// research.md R-1・R-2、contracts/screen-api.md）。画像はメモリに持ち、確かめてから生成した
+// 所有者が手元の画像を動画のサムネイルにするアップロード。画像はメモリに持ち、確かめてから生成した
 // 画像と同じ適用（Ingest.ApplyThumbnailImage）で代表サムネイルにする。
 
 // uploadGate は、アップロードの元の画像を読む手順を一度に 1 件だけ通す門である。120 メガ

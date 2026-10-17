@@ -1,6 +1,6 @@
 package store
 
-// ドラッグの操作の取り消しの像（specs/050-drag-organize/data-model.md「Undo image」、research.md R-1）。
+// ドラッグの操作の取り消しの像。
 // 操作は自分の取引の中で、変える行を範囲（表と列の値）ごとに変更の前と後に読む。像はこのファイル
 // だけがバイト列にし、読み戻すのもこのファイルだけである。取り消しは、今の行が後の像と等しい
 // ときだけ範囲の行を前の像に置き換え、等しくなければ domain.ErrUndoConflict で何も書かない。
@@ -123,8 +123,7 @@ func newImageScope(table, column string, key any) (imageScope, error) {
 }
 
 // groupReferenceScopes はグループ id の行と、その id を指す行の範囲を返す。グループの行、その
-// 項目、そのグループを子に持つ項目、お気に入り、プレイリストの項目の順で、親の表が先に来る
-// （data-model.md「Undo image」）。取り消しがそのグループを消すか作り直すとき、後から足された
+// 項目、そのグループを子に持つ項目、お気に入り、プレイリストの項目の順で、親の表が先に来る。取り消しがそのグループを消すか作り直すとき、後から足された
 // 参照は後の像と違うので、外部キーで黙って消えずに domain.ErrUndoConflict になる。
 func groupReferenceScopes(id int64) ([]imageScope, error) {
 	var scopes []imageScope
@@ -403,8 +402,7 @@ func finishUndo(ctx context.Context, tx *sql.Tx, image undoImage) ([]int64, erro
 	return normalizeIDs(append(changed, touched...)), nil
 }
 
-// groupsImage はグループ ids の行と、それらを指す行の範囲を、親の表を先にして並べた像を作る
-// （data-model.md「Undo image」の Move）。グループごとに groups、group_items（group_id と child_id
+// groupsImage はグループ ids の行と、それらを指す行の範囲を、親の表を先にして並べた像を作る。グループごとに groups、group_items（group_id と child_id
 // の両方）、group_exclusions、group_favorites、playlist_items（group_id）を、それらを持つ
 // プレイリストの playlist_items を丸ごと、自動グループのフォルダの folder_group_overrides を持つ。
 // 取り消しはグループの行を消して入れ直すので、外部キーで一緒に消える行はどれもこの範囲に入っている。

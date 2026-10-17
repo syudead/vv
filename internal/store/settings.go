@@ -10,7 +10,6 @@ import (
 )
 
 // transcodeVideoEncoderKey は所有者が選んだライブ変換の映像エンコード方式のキーである
-// （specs/025-hardware-encoding/data-model.md §2）。
 const transcodeVideoEncoderKey = "transcode.video_encoder"
 
 // TranscodeEncoderChoice は保存したライブ変換の映像エンコード方式を、解釈せずに文字列の
@@ -49,7 +48,7 @@ func writeSetting(ctx context.Context, q queryExecer, key, value string) error {
 }
 
 // desktopLANAccessKey は Windows デスクトップ版で LAN からの接続を許可するかのキーである。
-// 値は "true" か "false"（specs/037-windows-app/research.md R-14）。
+// 値は "true" か "false"。
 const desktopLANAccessKey = "desktop.lan_access"
 
 // LANAccess は LAN からの接続を許可するかを返す。行が無いか "true" でなければ偽である。
@@ -67,7 +66,7 @@ func (s *SettingsStore) SaveLANAccess(ctx context.Context, allowed bool) error {
 }
 
 // libraryAutoImportKey はメディアフォルダの変更を検知して自動で取り込むかのキーである。
-// 値は "true" か "false" で、行が無ければ入である（specs/042-folder-watch-import/research.md R-7）。
+// 値は "true" か "false" で、行が無ければ入である。
 const libraryAutoImportKey = "library.auto_import"
 
 // AutoImport は自動の取り込みが入かを返す。行が無いか "false" でなければ入である。
@@ -85,7 +84,7 @@ func (s *SettingsStore) SaveAutoImport(ctx context.Context, enabled bool) error 
 }
 
 // workInfoPluginProxyURLKey は作品情報プラグインの要求を送るプロキシの URL のキーである。行が無いか
-// "" ならプロキシを使わない（specs/056-plugin-tooling/data-model.md）。
+// "" ならプロキシを使わない。
 const workInfoPluginProxyURLKey = "work_info_plugins.proxy_url"
 
 // WorkInfoPluginProxyURL は保存したプロキシの URL を、解釈せずに返す。行が無ければ "" である。

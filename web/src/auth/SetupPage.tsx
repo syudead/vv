@@ -16,13 +16,13 @@ import {
 } from "./CredentialScreen";
 import { assignPage } from "./pageNavigation";
 
-/** MAX_USERNAME_LENGTH はユーザー名の文字数（コードポイント数）の上限（data-model.md §6）。 */
+/** MAX_USERNAME_LENGTH はユーザー名の文字数（コードポイント数）の上限。 */
 const MAX_USERNAME_LENGTH = 128;
 
 type SetupField = "username" | "password" | "confirm";
 
 /**
- * usernameBreaksRule は、ユーザー名が data-model.md §6 の規則（128 文字まで、
+ * usernameBreaksRule は、ユーザー名が 規則（128 文字まで、
  * 前後の空白と制御文字なし）を外れるかを返す。空かどうかは別に確かめる。
  * 正本はサーバー（internal/domain）で、ここは送る前の案内である。
  */
@@ -67,7 +67,7 @@ export function validateSetup(
 
 /**
  * SetupPage は初回設定画面（/setup）である。最初のアカウントを作り、成功したら
- * 所有者の一覧へページごと移る（specs/016-single-account-auth/ui-design.md「Setup behaviour」）。
+ * 所有者の一覧へページごと移る。
  */
 export default function SetupPage() {
   const [username, setUsername] = useState("");
@@ -162,7 +162,7 @@ export default function SetupPage() {
       footer={
         configured && (
           // SPA の遷移にしない。ゲートが setupRequired を覚えたままなので、
-          // ページごと読み直して状態を確かめ直させる（ui-design.md「Setup behaviour」）。
+          // ページごと読み直して状態を確かめ直させる。
           <Button variant="link" size="sm" asChild>
             <a ref={loginLink} href="/login">
               {t.auth.setup.goToLogin}

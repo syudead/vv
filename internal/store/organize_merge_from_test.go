@@ -11,8 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 開いているグループ from からのマージ（specs/050-drag-organize/data-model.md「Operations」の Merge
-// の from、「Undo image」の Merge、contracts/screen-api.md の要件 9）の保存層のテスト。
+// 開いているグループ from からのマージの保存層のテスト。
 
 // mergeFrom は from を開いたまま items を into へマージし、取り消しの像を返す。
 func mergeFrom(t *testing.T, db *DB, into, from int64, items ...domain.OrganizeRef) []byte {

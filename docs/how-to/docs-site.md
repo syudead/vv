@@ -1,6 +1,6 @@
 # Work with the documentation site
 
-The documents in `docs/`, `specs/` and `ARCHITECTURE.md` are published to GitHub
+The documents in `docs/` and `ARCHITECTURE.md` are published to GitHub
 Pages on every merge to `main`, in English at <https://syudead.github.io/vv/>
 and in Japanese under <https://syudead.github.io/vv/ja/>. Agent instructions
 (`.agents/`, `.claude/`), `AGENTS.md` and the root `README.md` are not

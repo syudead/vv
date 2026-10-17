@@ -17,8 +17,7 @@ import {
 } from "../testing/workInfoFetchPage";
 import type { PlayerControls } from "./playerControls";
 
-// 取得のダイアログの作品の詳細の行と結果の段（specs/052-plugin-work-info-fields/ui-design.md
-// 「Compare」「States」「Result」）。行の状態の細かな場合分けは detailRows.test.ts が見る。
+// 取得のダイアログの作品の詳細の行と結果の段。行の状態の細かな場合分けは detailRows.test.ts が見る。
 
 vi.mock("./VideoPlayer", () => ({
   default: function VideoPlayerMock(props: {

@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// 状態は上から順に最初に当てはまるものになる（specs/024-import-progress/contracts/scan-api.md §2）。
+// 状態は上から順に最初に当てはまるものになる。
 func TestImportTallyStatusOrder(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -63,7 +63,7 @@ func TestImportTallyStatusOrder(t *testing.T) {
 
 // 分母は集合の本数、登録できなかったファイルの問題の数、まだ登録を試していない
 // ファイルの数の和で、済みは集合のうち済みの本数と登録できなかったファイルの
-// 問題の数の和である（research.md R-5）。
+// 問題の数の和である。
 func TestImportTallyCounts(t *testing.T) {
 	for _, tc := range []struct {
 		name                 string

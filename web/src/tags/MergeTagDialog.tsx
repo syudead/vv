@@ -22,11 +22,10 @@ import { MergeSummary, MergeTargetField } from "./MergeParts";
 /**
  * MergeTagDialog は統合の確認の窓である。統合元（`sources`）を 1 件以上持ち、行の
  * 「別のタグへ統合…」（統合元 1 件）と選択バーの「Merge into one tag…」（統合元が
- * 選んだタグ）が同じ窓を開く（specs/036-tag-admin-scale/ui-design.md「Merge dialog」）。
+ * 選んだタグ）が同じ窓を開く。
  *
  * 統合先の候補は全部のタグから、入力のたびにサーバーの検索（`GET /api/tags?q=…&limit=8`）
- * で引く（画面が読み込んでいないタグも選べる。research.md R-14、ui-design.md「Target
- * candidates」）。並びはサーバーの名前の自然順のままで、入力と綴りが完全に一致するタグ
+ * で引く（画面が読み込んでいないタグも選べる）。並びはサーバーの名前の自然順のままで、入力と綴りが完全に一致するタグ
  * （応答の `exact`。部分一致の上位に入らなくても届く）だけを先頭に置く。
  *
  * 行から開いた（`fromSelection` でない）ときは 014 の形のまま: 統合先の候補は応答から
@@ -50,8 +49,7 @@ export default function MergeTagDialog({
   /**
    * 統合が成功したときに呼ぶ。統合先の最新の状態、送った統合元の id、もう無かった
    * 統合元の id（`notFoundIds`。送った全部ではない）と、統合の前の統合先（選んだ候補）を
-   * 渡す。呼び手は統合の前後の統合先をそれぞれ今の条件に照らして件数を数え直す
-   * （specs/036-tag-admin-scale/data-model.md §4「操作のあとの反映」）。
+   * 渡す。呼び手は統合の前後の統合先をそれぞれ今の条件に照らして件数を数え直す。
    */
   onMerged: (
     merged: Tag,
@@ -189,7 +187,7 @@ export default function MergeTagDialog({
     if (found === undefined) return;
     justSelectedRef.current = true;
     setTarget(found);
-    // 統合先を選び直すたびに数え直す（ui-design.md「Confirmation」）。
+    // 統合先を選び直すたびに数え直す。
     setAttempt((current) => current + 1);
     setValue(found.name);
     setError(null);
@@ -203,7 +201,7 @@ export default function MergeTagDialog({
     try {
       const { tag: merged, notFoundIds } = await mergeTag(target.id, sourceIds);
       // 統合元がすべてもう無かったときは何も統合されていない。tag_not_found と同じく
-      // 窓を閉じて一覧を取り直す（specs/036-tag-admin-scale/contracts/screen-api.md §2）。
+      // 窓を閉じて一覧を取り直す。
       if (notFoundIds.length >= sourceIds.length) {
         onStale();
         return;
@@ -264,7 +262,7 @@ export default function MergeTagDialog({
           <FieldTitle id={sourcesHeadingId}>{t.tags.mergeDialog.sources}</FieldTitle>
           {/*
             統合元が多いときは並びの中だけを縦にスクロールさせ、統合先の欄と確認の文言を
-            窓の中に残す（ui-design.md「Merge dialog」）。
+            窓の中に残す。
           */}
           <ul
             aria-labelledby={sourcesHeadingId}
@@ -293,7 +291,7 @@ export default function MergeTagDialog({
       )}
       {/*
         統合先の候補はサーバーの検索で引き、入力の下の本文の中に高さを固定して並べる
-        （ui-design.md「Merge dialog」「Target candidates」）。名前の検証と完全一致の扱いは
+        。名前の検証と完全一致の扱いは
         ui/TagCommand（inline）が持つ。
       */}
       <MergeTargetField
@@ -346,7 +344,7 @@ export default function MergeTagDialog({
       )}
       {message !== null && <p className="text-sm text-muted-foreground">{message}</p>}
       {target !== null && effective.length > 0 && (
-        // 統合元 → 統合先（ui-design.md「Merge dialog」）。
+        // 統合元 → 統合先。
         <MergeSummary
           source={
             effective.length === 1
@@ -361,10 +359,10 @@ export default function MergeTagDialog({
   );
 }
 
-/** targetCandidateLimit は統合先の候補に出す最大の行数（ui-design.md「Target candidates」）。 */
+/** targetCandidateLimit は統合先の候補に出す最大の行数。 */
 const targetCandidateLimit = 8;
 
-/** tagPageMaxLimit は `GET /api/tags` の `limit` の上限（contracts/screen-api.md §5）。 */
+/** tagPageMaxLimit は `GET /api/tags` の `limit` の上限。 */
 const tagPageMaxLimit = 200;
 
 /**

@@ -1,5 +1,5 @@
 -- +goose Up
--- タグ（specs/014-video-tags/data-model.md §1）。再スキャンやメディアフォルダの
+-- タグ。再スキャンやメディアフォルダの
 -- 変更で消えてはならない利用者データなので、videos への外部キーは張らない
 -- （ARCHITECTURE.md「Two kinds of data」）。
 

@@ -11,7 +11,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// ドラッグの操作と取り消し（specs/050-drag-organize/contracts/screen-api.md）。どれも /api/* の既定
+// ドラッグの操作と取り消し。どれも /api/* の既定
 // どおり所有者だけである。
 
 // Organizer はドラッグの操作とその取り消しの先である。internal/app の *Organizer がこれを満たす。

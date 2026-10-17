@@ -19,8 +19,7 @@ export interface PlayerControls {
   toggleFullscreen(): void;
   isFullscreen(): boolean;
   /**
-   * toggleSubtitles は字幕のオン・オフを切り替える（`c` キー）。字幕の無い動画では何もしない
-   * （specs/028-sidecar-subtitles research.md R-11）。
+   * toggleSubtitles は字幕のオン・オフを切り替える（`c` キー）。字幕の無い動画では何もしない。
    */
   toggleSubtitles(): void;
   /** menuOpen は、Esc を自分で扱う吹き出しやメニューが開いているかを返す。 */
@@ -29,8 +28,7 @@ export interface PlayerControls {
   wake(): void;
   /**
    * positionMs は今の論理上の再生位置をミリ秒で返す。再生位置の保存へ伝える値と同じで、
-   * 今の場面を代表サムネイルにする操作が読む（specs/029-video-overrides/ui-design.md
-   * 「Capture button」）。
+   * 今の場面を代表サムネイルにする操作が読む。
    */
   positionMs(): number;
 }

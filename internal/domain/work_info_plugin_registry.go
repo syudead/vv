@@ -6,16 +6,14 @@ import (
 	"unicode/utf8"
 )
 
-// 所有者が追加した作品情報プラグインの行と、その設定の値の規則である
-// （specs/049-work-info-plugins/data-model.md の work_info_plugins・work_info_plugin_settings・Rules、
-// research.md R-6・R-7・R-13）。保存は internal/store、判断は internal/app が行う。
+// 所有者が追加した作品情報プラグインの行と、その設定の値の規則である。保存は internal/store、判断は internal/app が行う。
 
 // WorkInfoPluginSettingValueMaxRunes は設定の値 1 つの長さの上限（文字数）である。
 const WorkInfoPluginSettingValueMaxRunes = 2000
 
 var (
 	// ErrWorkInfoPluginChanged は承認の要求のダイジェストが今のモジュールのダイジェストと違うことを表す。
-	// 所有者が見た一覧のあとにプラグインが差し替えられた（research.md R-7）。
+	// 所有者が見た一覧のあとにプラグインが差し替えられた。
 	ErrWorkInfoPluginChanged = errors.New("the work-info plugin was replaced after it was listed")
 	// ErrWorkInfoPluginUnusable はプラグインに問題があり、承認も設定の値の書き込みもできないことを表す。
 	ErrWorkInfoPluginUnusable = errors.New("the work-info plugin has a problem and cannot be used")
@@ -52,22 +50,22 @@ type WorkInfoPlugin struct {
 	AddedAt        time.Time
 	UpdatedAt      time.Time
 	// Generation はアップロードによる差し替えと承認の取り消しのたびに増える世代である。取得の結果は
-	// 取得した時の値を持ち、反映で変わっていれば古いとする（research.md R-8）。
+	// 取得した時の値を持ち、反映で変わっていれば古いとする。
 	Generation int64
 	// Values は所有者が入力した設定の値で、キーは宣言の key である。
 	Values map[string]string
 	// LastRunAt は残っている直近の実行が終わった時刻で、ゼロなら残っていない
-	// （specs/056-plugin-tooling/research.md R-6）。
+	//
 	LastRunAt time.Time
 }
 
-// State はプラグインの状態を返す（data-model.md の State transitions）。
+// State はプラグインの状態を返す。
 func (p WorkInfoPlugin) State() WorkInfoPluginState {
 	return WorkInfoPluginStateOf(p.Problem, p.Digest, p.ApprovedDigest)
 }
 
 // WorkInfoPluginSettingEntry は一覧に載せる設定の 1 つである。秘密の設定の値は持たず、
-// 値があるかだけを Set で表す（research.md R-13）。
+// 値があるかだけを Set で表す。
 type WorkInfoPluginSettingEntry struct {
 	WorkInfoPluginSetting
 	// Set は値が保存されているかである。
@@ -75,7 +73,7 @@ type WorkInfoPluginSettingEntry struct {
 	// Value は保存された値である。Secret のときは常に空である。
 	Value string
 	// StaleValue は保存された値が今の選択肢の外にあるときのその値で、それ以外は空である。実行は代わりに
-	// 既定値を受け取る（specs/056-plugin-tooling/contracts/screen-api.md の WorkInfoPluginSetting）。
+	// 既定値を受け取る。
 	StaleValue string
 }
 

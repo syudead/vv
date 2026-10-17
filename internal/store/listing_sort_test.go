@@ -13,8 +13,8 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// allSorts は contracts/list-api.md §3 の 13 通りと specs/033-video-dates/data-model.md §4 の
-// 作成日の 2 通り、specs/035-favorites/data-model.md §5 のお気に入りにした日時の 2 通りを
+// allSorts は 一覧 API の 13 通りと docs/design-docs/catalog-organization.md の
+// 作成日の 2 通り、docs/design-docs/catalog-organization.md のお気に入りにした日時の 2 通りを
 // 合わせた 17 通りの並び順である。
 var allSorts = []domain.VideoSort{
 	domain.SortAddedAsc, domain.SortAddedDesc, domain.SortModifiedAsc, domain.SortModifiedDesc,
@@ -94,7 +94,7 @@ func sortFixture(t *testing.T) (*DB, []int64) {
 	return db, ids
 }
 
-// expectedOrder は contracts/list-api.md §3 の定義どおりに並べた id を返す。
+// expectedOrder は 一覧 API の定義どおりに並べた id を返す。
 func expectedOrder(sort domain.VideoSort, seed int64, ids []int64) []int64 {
 	type entry struct {
 		id     int64
@@ -324,7 +324,6 @@ func TestListVideosRandomSurvivesAddedLocations(t *testing.T) {
 }
 
 // 別の並び順・別の seed で作ったカーソルは ErrInvalidCursor になる
-// （contracts/list-api.md §5）。
 func TestListVideosRejectsCursorOfOtherSortOrSeed(t *testing.T) {
 	db, _ := sortFixture(t)
 	ctx := context.Background()

@@ -24,7 +24,7 @@ export const creditNameRules: NameRules = {
  * 渡したものである（web/registry/rules/components.md「CreditCommand」）。
  *
  * TagCommand と違い、綴りが一致する人物がいても作成の行を出す（同名の別人を作れるように。
- * specs/047-video-work-info/ui-design.md「Why this shape」）。矢印を押さずに Enter を
+ * docs/design-docs/catalog-organization.md「Why this shape」）。矢印を押さずに Enter を
  * 押したときの決め方は呼び手が `onCommitSpelling` で持つ（候補の外の完全一致を探すため）。
  */
 export default function CreditCommand(

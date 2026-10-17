@@ -13,8 +13,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 外部連携 API の動画の読み出し（specs/026-external-api/contracts/external-api.md §2、
-// research.md R-6）。見る人は常に所有者で、非公開の動画も返す。どちらの読み出しも、
+// 外部連携 API の動画の読み出し。見る人は常に所有者で、非公開の動画も返す。どちらの読み出しも、
 // 登録フォルダの下に所在を 1 つ以上持つ動画だけを対象にし、所在も登録フォルダの下の
 // ものだけを返す。変更の追跡はしないので、表と列は足さない。
 
@@ -164,7 +163,7 @@ func loadExternalVideos(ctx context.Context, tx *sql.Tx, ids []int64) ([]domain.
 	userKeys := make([]string, 0, len(byID))
 	for _, video := range byID {
 		// 内容を読めていない動画（空の content_key）はタグを持たない。タグは利用者データの鍵
-		// （Video.UserKey、specs/030-video-versions/research.md R-10）で引く。
+		// （Video.UserKey、docs/design-docs/catalog-organization.md）で引く。
 		if video.UserKey != "" {
 			userKeys = append(userKeys, video.UserKey)
 		}
@@ -173,8 +172,7 @@ func loadExternalVideos(ctx context.Context, tx *sql.Tx, ids []int64) ([]domain.
 	if err != nil {
 		return nil, err
 	}
-	// 作品情報もタグと同じ鍵で、同じスナップショットから引く（specs/047-video-work-info/data-model.md
-	// 「Reads」）。行の無い鍵の動画は WorkInfo が nil のままで、API の層が空の作品情報として書く。
+	// 作品情報もタグと同じ鍵で、同じスナップショットから引く。行の無い鍵の動画は WorkInfo が nil のままで、API の層が空の作品情報として書く。
 	infos, err := workInfoByUserKeys(ctx, tx, userKeys)
 	if err != nil {
 		return nil, err

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { firstTarget, jumpTargets } from "./historyJump";
 
-// 日付へ移る一覧の項目（specs/043-watch-history/ui-design.md「Jump to date」）。
+// 日付へ移る一覧の項目。
 
 const now = new Date(2026, 9, 10, 12, 0);
 

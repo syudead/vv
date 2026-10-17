@@ -15,7 +15,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 作品情報プラグインの検索・取得・反映の経路（specs/049-work-info-plugins/contracts/screen-api.md）。判断は
+// 作品情報プラグインの検索・取得・反映の経路。判断は
 // internal/app のテストが確かめ、ここは誤りと結果を契約の状態コードと項目にすることを、決めた答えを返す
 // 偽の登録で確かめる。
 
@@ -228,7 +228,7 @@ func TestWorkInfoApplyAnswers(t *testing.T) {
 }
 
 // 反映の tags は選んだタグの名前として登録へ渡り、無ければ nil（全部のタグ）で渡る。空か、fields にタグが
-// 無いのに有るか null なら登録へ届かず 400、結果に無い名前は登録の答えで 400 である（specs/056-plugin-tooling）。
+// 無いのに有るか null なら登録へ届かず 400、結果に無い名前は登録の答えで 400 である。
 func TestWorkInfoApplyPassesTheSelectedTags(t *testing.T) {
 	e := newFetchRouteEnv(t)
 	status, body := e.post(applyPath, `{"fields":["tags"],"tags":["drama","comedy"]}`, e.owner)

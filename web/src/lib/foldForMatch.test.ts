@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { foldForMatch, lowerCodePoint } from "./foldForMatch";
 
 /**
- * Go の FoldForMatch と同じ入力の組を読む（specs/036-tag-admin-scale/research.md R-3）。
+ * Go の FoldForMatch と同じ入力の組を読む。
  * Go 側は internal/domain/fold_for_match_test.go が同じファイルを読む。
  */
 interface FoldForMatchFile {

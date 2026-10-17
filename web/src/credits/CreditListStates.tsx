@@ -19,8 +19,7 @@ import { TableHead, TableHeader, TableRow } from "../ui/shadcn/table";
 import { kindTexts } from "./creditRows";
 
 /**
- * CreditListStates は一覧の表の代わりか上に出す状態である（specs/047-video-work-info/
- * ui-design.md「States」）: 一覧を持ったまま読めなかった箱、読み込み中、読み込みの失敗、
+ * CreditListStates は一覧の表の代わりか上に出す状態である: 一覧を持ったまま読めなかった箱、読み込み中、読み込みの失敗、
  * 1 件も無い、検索に合うものが無い。部品と形はタグの画面のもので、文言を種類で言い分ける。
  */
 export function CreditListStates({

@@ -23,12 +23,12 @@ import { VersionDetailsLine, versionDetails, versionDetailsText } from "./Versio
 type Rows =
   { kind: "loading" } | { kind: "ready"; videos: readonly Video[] } | { kind: "failed" };
 
-/** 行が 6 本を超えたら一覧の中だけをスクロールさせる（ui-design.md「Bundle dialog」）。 */
+/** 行が 6 本を超えたら一覧の中だけをスクロールさせる。 */
 const scrollAfterRows = 6;
 
 /**
  * BundleDialog は選んだ動画を 1 つの集まり（同じ動画の別バージョン）に束ね、一覧に出す代表を
- * 選ばせる窓である（specs/030-video-versions/ui-design.md「Bundle dialog」）。選択バーの
+ * 選ばせる窓である。選択バーの
  * 「Bundle as versions」と候補の画面の「Same video…」が同じ窓を使い、代表の選び方を 2 か所で
  * 別にしない。
  *

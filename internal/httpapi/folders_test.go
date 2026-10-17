@@ -416,7 +416,6 @@ func TestFolderPreviewsExposeOnlyServeablePreviewURL(t *testing.T) {
 
 // 所有者が代表サムネイルの位置を指定した動画は、フォルダカードでも動画一覧と同じく
 // 版に改版番号を足した URL にする。URL が変わらないと、ブラウザが前の画像を使い続ける
-// （specs/029-video-overrides/research.md R-6）。
 func TestFolderPreviewThumbnailURLCarriesRevision(t *testing.T) {
 	if filepath.Separator != '/' {
 		t.Skip("fixture uses slash-separated absolute paths")

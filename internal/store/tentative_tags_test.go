@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 仮のタグと却下した名前（specs/031-tentative-tags/data-model.md §3・§5）。
+// 仮のタグと却下した名前。
 
 // tagTentative は保存されたタグの tentative を読む。
 func tagTentative(t *testing.T, db *DB, id int64) bool {

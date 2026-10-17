@@ -2,7 +2,7 @@ import type { ThumbnailEdit, ThumbnailEditState } from "../../api/client";
 import { t, type UiText } from "../../i18n";
 import { formatDuration } from "../../lib/format";
 
-// サムネイルの編集画面の規則（specs/045-comfyui-thumbnails/ui-design.md「Thumbnail editor」）。
+// サムネイルの編集画面の規則。
 // 画面の部品から切り出し、論理のテストで確かめる（docs/design-docs/web-testing.md
 // 「Rules out of pages」）。
 
@@ -33,9 +33,7 @@ export interface SourceWords {
 }
 
 /**
- * sourceWords はセッションの応答の `source` と `positionMs` だけから、編集画面の文言を決める
- * （specs/046-thumbnail-image-upload/ui-design.md「Thumbnail editor from the current
- * thumbnail」）。ページの `thumbnailImage` は読まない。別のタブが変えた後に画像が固まることが
+ * sourceWords はセッションの応答の `source` と `positionMs` だけから、編集画面の文言を決める。ページの `thumbnailImage` は読まない。別のタブが変えた後に画像が固まることが
  * あり、それから読むと違う種類を名指しうるからである。
  */
 export function sourceWords(

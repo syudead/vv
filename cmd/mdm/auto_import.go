@@ -12,7 +12,6 @@ import (
 // newAutoImport は自動の取り込みを組み立て、fsnotify の watcher とつなぐ。watcher の変更と
 // 問題の報告を AutoImport へ渡し、走査が閉じる知らせも AutoImport へ渡す。internal/app は
 // watcher を知らず、変更の型の変換はここだけが持つ
-// （specs/042-folder-watch-import/plan.md の Constitution Check）。
 func newAutoImport(
 	store app.AutoImportStore, folders app.ActivityFolderStore, scans *app.Scans, logger *slog.Logger,
 	tune ...func(*app.AutoImportOptions),

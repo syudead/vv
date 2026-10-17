@@ -19,8 +19,7 @@ import { Spinner } from "../ui/shadcn/spinner";
 export type KindChoice = TagKind | "none";
 
 /**
- * TagSetKindMenu は選択バーの「Set kind…」とそのメニューである
- * （specs/051-tag-kinds/ui-design.md「Set kind」）。1 つの `DropdownMenuRadioGroup` に
+ * TagSetKindMenu は選択バーの「Set kind…」とそのメニューである。1 つの `DropdownMenuRadioGroup` に
  * 名前の自然順の種類、区切り線、`No kind` を並べ、選ぶと確認なしで `onChoose` を呼ぶ。
  * 印は選んだタグがみな持つ種類（みな種類なしなら `No kind`）に付け、種類が混ざれば
  * どれにも付けない。種類が 1 つも無いときは、どこで作るかを伝える `DropdownMenuLabel` を

@@ -65,7 +65,7 @@ describe("TagsPage 統合", () => {
     await user.click(mergeButton);
 
     expect(await screen.findByText('Merged "旅行" into "Anime"')).toBeDefined();
-    // 1 件の統合も sourceIds で送る（specs/036-tag-admin-scale/contracts/screen-api.md §2）。
+    // 1 件の統合も sourceIds で送る。
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/tags/2/merge",
       expect.objectContaining({

@@ -7,8 +7,7 @@ import { Alert, AlertTitle } from "../ui/shadcn/alert";
 import { Field, FieldError, FieldLabel } from "../ui/shadcn/field";
 import { Input } from "../ui/shadcn/input";
 
-// 初回設定画面とログイン画面が共有する骨格と部品
-// （specs/016-single-account-auth/ui-design.md「Credential screens」）。画面は中央フォームの型
+// 初回設定画面とログイン画面が共有する骨格と部品。画面は中央フォームの型
 // （web/registry/rules/patterns.md「Centered form」）で組み、上の帯にワードマークを置く。
 
 /** CONNECTION_WARNING_ID は接続の警告の要素の id。入力と主操作が aria-describedby で指す。 */
@@ -97,7 +96,7 @@ export function CredentialField({ id, label, error, ...rest }: CredentialFieldPr
   );
 }
 
-/** UsernameField は両画面で同じ、ユーザー名の入力である（ui-design.md「Fields」）。 */
+/** UsernameField は両画面で同じ、ユーザー名の入力である。 */
 export function UsernameField(
   props: Omit<CredentialFieldProps, "label" | "name" | "type" | "autoComplete">,
 ) {
@@ -128,7 +127,7 @@ export function FailureLine({ message }: { message: UiText | null }) {
 
 /**
  * ConnectionWarning は HTTP のときだけ出す接続の警告である。HTTPS ではこの行を出さず、
- * 「This connection is secure」のような肯定の文も出さない（ui-design.md「Connection warning」）。
+ * 「This connection is secure」のような肯定の文も出さない。
  * 画面を開いた時点からある注意なので、読み上げを割り込ませる alert にはしない。
  */
 export function ConnectionWarning() {

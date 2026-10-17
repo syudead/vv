@@ -29,8 +29,7 @@ linters:
     # task lint-go が scripts/nolintguard で拒む。
     - contextcheck
 
-    # サーバーの出力（誤りの文・ログ・運用コマンドの出力）は英語に統一する
-    # （specs/023-english-i18n research.md R-3・R-7）。日本語の固定文言の再混入を
+    # サーバーの出力（誤りの文・ログ・運用コマンドの出力）は英語に統一する。日本語の固定文言の再混入を
     # 止める。コメントは AST の文字列リテラルではないので対象にならない。
     - gosmopolitan
 
@@ -386,7 +385,7 @@ linters:
     generated: lax
     rules:
       # テストの期待値やテスト名、利用者のデータとしての日本語の名前は対象外
-      # （research.md R-3・R-8）。
+      #
       - path: _test\.go$
         linters:
           - gosmopolitan

@@ -5,21 +5,20 @@ import (
 	"time"
 )
 
-// サムネイルの編集のセッションの値と誤りである（specs/045-comfyui-thumbnails/data-model.md の
-// Edit session、contracts/screen-api.md）。セッションは internal/app の ThumbnailEdits がメモリに
+// サムネイルの編集のセッションの値と誤りである。セッションは internal/app の ThumbnailEdits がメモリに
 // 持ち、画面の API へはこの値で渡す。
 
 const (
-	// ThumbnailEditIdleLimit は、読まれないセッションを終えるまでの時間である（research.md R-4）。
+	// ThumbnailEditIdleLimit は、読まれないセッションを終えるまでの時間である。
 	ThumbnailEditIdleLimit = 5 * time.Minute
 	// ThumbnailEditRunLimit は、送った実行が終わらないとき timed_out で失敗させるまでの時間である
-	// （research.md R-11）。
+	//
 	ThumbnailEditRunLimit = 10 * time.Minute
 	// ThumbnailEditMaxInstruction は指示の文の長さ（文字数）の上限である。
 	ThumbnailEditMaxInstruction = 4000
 	// ThumbnailEditMaxReferenceBytes は参考画像の大きさの上限である。
 	ThumbnailEditMaxReferenceBytes = 20 << 20
-	// ThumbnailFrameMaxSide はコマの長辺の上限（px）である（research.md R-8）。
+	// ThumbnailFrameMaxSide はコマの長辺の上限（px）である。
 	ThumbnailFrameMaxSide = 2048
 )
 
@@ -49,8 +48,7 @@ type ThumbnailFrame struct {
 	Height int
 }
 
-// ThumbnailEditSource は編集を何から始めるかである（specs/046-thumbnail-image-upload/contracts/screen-api.md、
-// research.md R-4）。
+// ThumbnailEditSource は編集を何から始めるかである。
 type ThumbnailEditSource string
 
 const (
@@ -79,12 +77,10 @@ type ThumbnailEditRunInput struct {
 	Reference   []byte
 }
 
-// ThumbnailEdit は画面へ返す編集のセッションの今の姿である（contracts/screen-api.md の
-// ThumbnailEdit）。Elapsed は実行を送ってからの時間で、ready では nil である。終わった実行では
+// ThumbnailEdit は画面へ返す編集のセッションの今の姿である。Elapsed は実行を送ってからの時間で、ready では nil である。終わった実行では
 // 終わった時点で止まる。Progress は提供元が報告したときだけ、Error は failed のときだけ持つ。
 // HasResult は succeeded で適用する画像があることである。Source はセッションを何から始めたかで、
 // PositionMs は画像がコマのときにそれを取った位置、保存した元の画像のときは nil である
-// （specs/046-thumbnail-image-upload/data-model.md の Edit session）。
 type ThumbnailEdit struct {
 	ID          string
 	VideoID     int64

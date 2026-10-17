@@ -11,12 +11,11 @@ import type { VideoLinkState } from "./pageDecisions";
 import { VideoThumbnail, videoLinkLabel } from "./RelatedVideos";
 import { Dimmed } from "./StatusOverlays";
 
-/** 予告から次のメンバーを再生するまでの秒数（specs/017-folder-groups/ui-design.md「Autoplay notice」）。 */
+/** 予告から次のメンバーを再生するまでの秒数。 */
 export const autoplayNoticeSeconds = 5;
 
 /**
- * AutoplayPhase は、グループのメンバーの再生が終わったときの層の段階である
- * （specs/017-folder-groups/ui-design.md「Autoplay notice」）。
+ * AutoplayPhase は、グループのメンバーの再生が終わったときの層の段階である。
  *
  * - `notice`: 次のメンバーを自動で再生する予告
  * - `cancelled`: 予告を取り消した。今の再生終了の層を出す
@@ -54,7 +53,7 @@ export default function AutoplayNotice({
   onGone,
 }: {
   next: Video;
-  /** 次の動画のリンクの行き先。プレイリストの文脈ではクエリを付けた場所（ui-design.md「Notice」）。 */
+  /** 次の動画のリンクの行き先。プレイリストの文脈ではクエリを付けた場所。 */
   to?: string;
   /** 次の動画へのリンクに載せる状態（linkStateFrom）。 */
   linkState: VideoLinkState;

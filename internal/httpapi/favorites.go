@@ -9,14 +9,13 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 動画・グループ・スマートフォルダのお気に入りの付け外し（specs/035-favorites/contracts/screen-api.md §1、
-// specs/052-smart-folders/contracts/screen-api.md）。
+// 動画・グループ・スマートフォルダのお気に入りの付け外し。
 
 // Favorites はお気に入りの保存先である。internal/store の *FavoriteStore がこれを満たす。
 // 1 つの取引で済むので、internal/app は通さない。
 type Favorites interface {
 	// SetFavorites は change の動画・グループ・スマートフォルダのお気に入りを change.Favorite にそろえ、
-	// 反映した数を返す（specs/035-favorites/data-model.md §4）。
+	// 反映した数を返す。
 	SetFavorites(ctx context.Context, change domain.FavoriteChange) (domain.FavoriteApplied, error)
 }
 
@@ -26,8 +25,8 @@ const favoritesBodyLimit = externalBodyLimit
 
 // UpdateFavorites は動画・グループ・スマートフォルダのお気に入りを付け外しする（PUT /api/favorites）。
 // videoIds・groupIds・smartFolderIds の合計（重複は 1 つ）の上限はタグの付け外しと同じにする。
-// 無い動画・グループ・フォルダの id は誤りにせず、保存層が数えない（specs/048-groups/research.md R-10）。
-// 確定後の /api/events の知らせは出さない（research.md R-6）。
+// 無い動画・グループ・フォルダの id は誤りにせず、保存層が数えない。
+// 確定後の /api/events の知らせは出さない。
 func (s *server) UpdateFavorites(w http.ResponseWriter, r *http.Request) {
 	// gen.FavoritesRequest の favorite は bool なので、欠けても false に読めてしまう。
 	// 欠けた本文でお気に入りを外さないよう、有無を区別して読む。

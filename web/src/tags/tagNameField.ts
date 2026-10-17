@@ -9,9 +9,8 @@ import { tagNameRules } from "../ui/TagCommand";
 /**
  * TagFieldError は、作成・改名の入力の下に出すサーバー側の失敗を運ぶ。
  * `tag_name_taken` はその名前を選んだ利用者への案内で `text-xs text-danger`
- * （ui-design.md「Create and rename」）、それ以外の失敗は
- * `role="alert"` の `text-sm text-danger`（ui-design.md「States」の
- * 「操作の失敗」）と、大きさと読み上げの扱いが違う。
+ * 、それ以外の失敗は
+ * `role="alert"` の `text-sm text-danger`と、大きさと読み上げの扱いが違う。
  */
 export type TagFieldError = { kind: "taken" | "other"; message: UiText };
 
@@ -25,7 +24,7 @@ export interface TagFieldContext {
 
 /**
  * takenText は `tag_name_taken` の具体的な説明である。API の `tagName`（競合先の
- * タグの元の名前）と送った名前を合わせる（specs/023-english-i18n/contracts/error-api.md §1）。
+ * タグの元の名前）と送った名前を合わせる。
  * `tagName` が無い応答は errorText の一般的な文にする。
  */
 function takenText(failure: RequestFailed, context: TagFieldContext): UiText {
@@ -46,9 +45,7 @@ function takenText(failure: RequestFailed, context: TagFieldContext): UiText {
 /**
  * tagFieldError は、タグの名前を打つ入力（作成・改名・シノニムの追加）が
  * 共通で使う、失敗の分類である。`tag_name_taken`（既存の名前・シノニムとの
- * 衝突）は理由が分かる `taken`、それ以外は一般の失敗 `other` にする
- * （ui-design.md「Create and rename」「States」）。サーバーの message は出さない
- * （specs/023-english-i18n/research.md R-5）。
+ * 衝突）は理由が分かる `taken`、それ以外は一般の失敗 `other` にする。サーバーの message は出さない。
  */
 export function tagFieldError(
   failure: unknown,
@@ -73,8 +70,7 @@ const kindNameReasons: ReadonlySet<string> = new Set([
 
 /**
  * kindFieldError は種類の名前の入力（作成・改名）の失敗の分類である。名前のせいの失敗は
- * 入力の下の `FieldError`（`taken`）にし、入力と文字を残す。それ以外は一般の失敗 `other`
- * （specs/051-tag-kinds/ui-design.md「Kinds tab」）。
+ * 入力の下の `FieldError`（`taken`）にし、入力と文字を残す。それ以外は一般の失敗 `other`。
  */
 export function kindFieldError(failure: unknown): TagFieldError {
   const byName =
@@ -86,7 +82,7 @@ export function kindFieldError(failure: unknown): TagFieldError {
 
 /**
  * useTagNameField は、タグの名前を打つ入力の検証と、改行を含む貼り付け・
- * 落とし込みの遮断を持つ（ui-design.md「Combobox」名前の検証・改行の扱い）。
+ * 落とし込みの遮断を持つ。
  * 管理画面の作成・改名の入力は `ui/TagCommand` の候補の一覧を持たないが、
  * 検証と理由の出し方は同じにする（Issue 271「作成と改名」）。
  *

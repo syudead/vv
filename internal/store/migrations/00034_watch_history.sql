@@ -1,5 +1,5 @@
 -- +goose Up
--- 視聴履歴（specs/043-watch-history/research.md R-1〜R-4、data-model.md）。再生 1 回につき 1 行の、
+-- 視聴履歴。再生 1 回につき 1 行の、
 -- 作り直せない利用者データである。鍵は再生したバージョンの content_key（集まりの user_key ではない）で、
 -- videos・playback_progress への外部キーを張らない。動画が消えても行は残り、title はそのときの題名の写しである。
 create table watch_history (

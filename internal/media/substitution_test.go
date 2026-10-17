@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 代用は、生成の関数が値として返す（specs/024-import-progress/research.md R-7）。
+// 代用は、生成の関数が値として返す。
 
 // 指定位置にコマの無い入力では、先頭のコマで作り、そのことを返す。
 func TestThumbnailReportsFirstFrameFallback(t *testing.T) {

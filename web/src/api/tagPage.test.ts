@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { __resetTagsForTest, currentTags, listTagPage, tagPageLimit } from "./tags";
 
-// listTagPage（specs/036-tag-admin-scale/contracts/screen-api.md §4・§5）。
+// listTagPage。
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

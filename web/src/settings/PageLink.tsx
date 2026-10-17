@@ -10,8 +10,7 @@ export interface PageLinkSentence {
 }
 
 /**
- * PageLinkText は、ほかの設定のページの名前をリンクにした 1 文である
- * （specs/058-settings-pages/ui-design.md「Words」）。リンクの文はページの名前で、
+ * PageLinkText は、ほかの設定のページの名前をリンクにした 1 文である。リンクの文はページの名前で、
  * 節の中のほかの文中のリンクと同じ見た目にする。
  */
 export function PageLinkText({

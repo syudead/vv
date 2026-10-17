@@ -10,7 +10,7 @@ import (
 	"unicode/utf8"
 )
 
-// 認証の誤り（specs/016-single-account-auth/contracts/auth-api.md）。
+// 認証の誤り。
 var (
 	// ErrAccountNotConfigured はアカウントがまだ設定されていないことを表す。
 	ErrAccountNotConfigured = errors.New("account is not configured")
@@ -29,16 +29,16 @@ var (
 	// ErrUsernameLength は ErrInvalidUsername のうち、長さ（1〜MaxUsernameLength
 	// 文字）だけを外れたことを表す。errors.Is(err, ErrInvalidUsername) も真になる。
 	// 空白・制御文字の違反と区別して、API が username_length を長さの違反にだけ
-	// 付けられるようにする（specs/023-english-i18n/contracts/error-api.md §1）。
+	// 付けられるようにする。
 	ErrUsernameLength = fmt.Errorf("%w: must be 1 to %d characters", ErrInvalidUsername, MaxUsernameLength)
 	// ErrInvalidPassword はパスワードが ValidatePassword の規則を外れることを表す。
 	ErrInvalidPassword = errors.New("invalid password")
 	// ErrGuestQueryNotAllowed は、ゲストが所有者のデータに依る一覧の条件を
-	// 指定したことを表す（specs/016-single-account-auth/contracts/guest-api.md §3）。
+	// 指定したことを表す。
 	ErrGuestQueryNotAllowed = errors.New("this filter requires signing in")
 )
 
-// ユーザー名とパスワードの長さの上限（specs/016-single-account-auth/data-model.md §6）。
+// ユーザー名とパスワードの長さの上限。
 const (
 	// MaxUsernameLength はユーザー名の文字数（Unicode のコードポイント数）の上限。
 	MaxUsernameLength = 128
@@ -56,7 +56,7 @@ type Account struct {
 	// PasswordHash は Argon2id の PHC 文字列。平文のパスワードは持たない。
 	PasswordHash string
 	// Version は資格情報を書き換えるたびに 1 増える。これと一致しない版で発行した
-	// セッションは無効である（specs/016-single-account-auth/data-model.md §4）。
+	// セッションは無効である。
 	Version int64
 }
 
@@ -98,8 +98,7 @@ const DefaultRedirectTarget = "/"
 // 実在のホストと一致しない。
 var redirectBase = &url.URL{Scheme: "http", Host: "vv.invalid", Path: "/"}
 
-// SafeRedirectTarget はログイン後の戻り先 next を確かめ、安全な戻り先を返す
-// （specs/016-single-account-auth/contracts/auth-api.md §3）。次をすべて満たす
+// SafeRedirectTarget はログイン後の戻り先 next を確かめ、安全な戻り先を返す。次をすべて満たす
 // ときだけ、解釈した結果のパスと問い合わせ文字列を組み立て直した値を返し、
 // それ以外と空は DefaultRedirectTarget を返す。入力そのものは返さない。
 //   - 制御文字・空白・`\` をどこにも含まない（ブラウザは URL からタブと改行を
@@ -177,8 +176,7 @@ func isAuthOnlyPath(path string) bool {
 	return false
 }
 
-// Audience は要求を処理する相手が所有者かゲストかを表す
-// （specs/016-single-account-auth/data-model.md §3）。ゼロ値はゲストで、
+// Audience は要求を処理する相手が所有者かゲストかを表す。ゼロ値はゲストで、
 // 付け忘れたときは狭い側に倒れる。
 type Audience int
 
@@ -200,12 +198,10 @@ func (a Audience) String() string {
 	return "guest"
 }
 
-// CheckVideoQuery は、見る人がこの一覧の条件を使えるかを確かめる
-// （specs/016-single-account-auth/contracts/guest-api.md §3）。所有者はすべて
+// CheckVideoQuery は、見る人がこの一覧の条件を使えるかを確かめる。所有者はすべて
 // 使える。ゲストは所有者のデータ（再生位置・タグ・お気に入り・作品情報）に依る条件、つまり `all` 以外の
 // 視聴状態、再生日時とお気に入りにした日時の並べ替え、タグとお気に入りと人物・団体の絞り込みを
-// 使えず、ErrGuestQueryNotAllowed を返す（specs/035-favorites/research.md R-5、
-// specs/047-video-work-info/research.md R-10）。
+// 使えず、ErrGuestQueryNotAllowed を返す。
 func (a Audience) CheckVideoQuery(q VideoQuery) error {
 	if a.IsOwner() {
 		return nil

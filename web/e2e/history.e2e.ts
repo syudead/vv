@@ -6,8 +6,7 @@ import {
   test,
 } from "@playwright/test";
 
-// 視聴履歴のうち、本物の再生でしか確かめられないもの（specs/043-watch-history、親 #792、
-// 子 #877）を実サーバーと実メディアに通す（docs/design-docs/web-testing.md）。履歴の
+// 視聴履歴のうち、本物の再生でしか確かめられないものを実サーバーと実メディアに通す（docs/design-docs/web-testing.md）。履歴の
 // 「Resume」を押すと、そのまま再生できるファイルを Chromium が保存した位置から再生し始める。
 // 動画は run-e2e.mjs が generateHistoryFixtures で作る 40 秒の2本で、ほかの e2e の動画とは
 // 題名で分ける。履歴の件の作り方・削除・絞り込み・検索・位置の表示・「Start over」・ゲストの

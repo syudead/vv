@@ -41,6 +41,12 @@ fi
 modified="$(git diff --name-only --diff-filter=DMR "$fork" -- "$dir")"
 
 if [ -n "$modified" ]; then
+	# 通常の独立したコメント行だけは整理できる。SQL、goose 指示、文字列中の
+	# コメントに見える行、削除・改名は引き続き変更として扱う。
+	modified="$(printf '%s\n' "$modified" | go run ./scripts/migrationcomments "$fork")"
+fi
+
+if [ -n "$modified" ]; then
 	echo "適用済みのマイグレーションが変更・削除されています:" >&2
 	echo "$modified" | sed 's/^/  /' >&2
 	cat >&2 <<'MSG'

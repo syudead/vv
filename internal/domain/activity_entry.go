@@ -10,9 +10,9 @@ import (
 	"time"
 )
 
-// アクティビティの記録（specs/055-activity/data-model.md）。取り込み・自動タグ付け・重複の判定・作品情報の
+// アクティビティの記録。取り込み・自動タグ付け・重複の判定・作品情報の
 // 取得・失敗した走査と、動画のタグと集まりを変える所有者の操作を、変える内容と同じ取引で 1 件ずつ残す。
-// 取り込み中の今の処理（ScanActivity）とは別物で、名前も「activity entry」として分ける（research.md R-1）。
+// 取り込み中の今の処理（ScanActivity）とは別物で、名前も「activity entry」として分ける。
 
 // ActivityKind は記録の種類である。値は activity_entries.kind 列に対応する。
 type ActivityKind string
@@ -39,7 +39,6 @@ const (
 )
 
 // ActivityFeature は種類のまとまりで、画面の機能の絞り込みの単位である
-// （specs/055-activity/contracts/screen-api.md「Features」）。
 type ActivityFeature string
 
 const (
@@ -96,7 +95,7 @@ func ParseActivityFeature(value string) (ActivityFeature, error) {
 	return feature, nil
 }
 
-// ActivitySubjectKind は記録の対象の種類である（research.md R-10）。
+// ActivitySubjectKind は記録の対象の種類である。
 type ActivitySubjectKind string
 
 const (
@@ -106,7 +105,7 @@ const (
 	ActivitySubjectFolder ActivitySubjectKind = "folder"
 )
 
-// ActivityStatus は記録の状態である（research.md R-4）。
+// ActivityStatus は記録の状態である。
 type ActivityStatus string
 
 const (
@@ -127,7 +126,7 @@ func ParseActivityStatus(value string) (ActivityStatus, error) {
 	return status, nil
 }
 
-// ActivityReason は running と attention の記録の理由である（data-model.md「Reasons」）。
+// ActivityReason は running と attention の記録の理由である。
 type ActivityReason string
 
 const (
@@ -142,7 +141,7 @@ const (
 	ActivityUndecided    ActivityReason = "undecided"
 )
 
-// ActivityOutcome は done の記録の結果である（data-model.md「Outcomes」）。
+// ActivityOutcome は done の記録の結果である。
 type ActivityOutcome string
 
 const (
@@ -156,7 +155,7 @@ const (
 	ActivityAlreadyReverted ActivityOutcome = "already_reverted"
 )
 
-// ActivityDecider は記録した判断をしたもの、無ければ処理を始めたものである（research.md R-5）。
+// ActivityDecider は記録した判断をしたもの、無ければ処理を始めたものである。
 type ActivityDecider string
 
 const (
@@ -187,7 +186,7 @@ var ErrActivityNotRetryable = errors.New("the activity entry cannot be retried")
 var ErrActivityNotUndoable = errors.New("the activity entry cannot be undone")
 
 // ActivitySubject は記録の対象である。組なら KeyB と LabelB も入り、Key < KeyB に並べる。Label は書いた
-// 時点の表示名で、対象が消えても残る（research.md R-10）。
+// 時点の表示名で、対象が消えても残る。
 type ActivitySubject struct {
 	Kind   ActivitySubjectKind
 	Key    string
@@ -218,7 +217,7 @@ type ActivityEntry struct {
 	UndoesID    int64
 	Decider     ActivityDecider
 	Probability *float64
-	// UndoKeys は自動で束ねた組の、加わった側のメンバーの鍵と元の代表の鍵の JSON である（research.md R-7）。
+	// UndoKeys は自動で束ねた組の、加わった側のメンバーの鍵と元の代表の鍵の JSON である。
 	UndoKeys string
 	// UndoneBy はこの記録を取り消した所有者の記録である。
 	UndoneBy  int64
@@ -241,7 +240,7 @@ type ActivityEntry struct {
 	Progress *ActivityImportProgress
 }
 
-// ActivityEntryTag は auto_tag の記録が付けたタグの 1 つである（data-model.md「activity_entry_tags」）。
+// ActivityEntryTag は auto_tag の記録が付けたタグの 1 つである。
 type ActivityEntryTag struct {
 	TagID       int64
 	Name        string
@@ -271,7 +270,7 @@ func (d ActivityDecider) automatic() bool {
 	return d == ActivityByRule || d == ActivityByAI
 }
 
-// activityRetryKinds はやり直しを出す種類である（data-model.md「Rules」）。
+// activityRetryKinds はやり直しを出す種類である。
 var activityRetryKinds = []ActivityKind{ActivityImport, ActivityScan, ActivityAutoTag, ActivityVersionJudgement}
 
 // RetryOffered は記録がやり直しを出すかを返す。attention で理由が failed か interrupted の、import・scan・
@@ -306,7 +305,7 @@ func (e ActivityEntry) TagUndoOffered(tag ActivityEntryTag) bool {
 }
 
 // Supersedes は新しい記録 e が、古い記録 older を superseded で閉じるかを返す。同じ種類と対象の attention の
-// 記録だけを閉じる（research.md R-4）。version_judgement は組ごとに 1 件を保つので、新しい記録で閉じない。
+// 記録だけを閉じる。version_judgement は組ごとに 1 件を保つので、新しい記録で閉じない。
 func (e ActivityEntry) Supersedes(older ActivityEntry) bool {
 	return e.Kind != ActivityVersionJudgement && older.Status == ActivityAttention &&
 		older.Kind == e.Kind && older.Subject.SameAs(e.Subject)
@@ -319,8 +318,7 @@ type ActivityState struct {
 	Outcome ActivityOutcome
 }
 
-// ImportActivityState は import の記録の状態を、その記録に属する仕事の状態から決める（data-model.md
-// 「Rules」）。待っているか走っている仕事があれば running で、まだどの仕事も取り出されていなければ理由は
+// ImportActivityState は import の記録の状態を、その記録に属する仕事の状態から決める。待っているか走っている仕事があれば running で、まだどの仕事も取り出されていなければ理由は
 // waiting、そうでなければ processing。諦めた仕事（failed）があれば attention/failed、無ければ done/completed。
 func ImportActivityState(jobs []JobState) ActivityState {
 	pending := slices.ContainsFunc(jobs, func(state JobState) bool { return state == JobQueued || state == JobRunning })
@@ -337,7 +335,7 @@ func ImportActivityState(jobs []JobState) ActivityState {
 }
 
 // ActivityChanged は記録が書かれたか変わったことを表す。記録を書いた取引の確定後に発行し、画面へは中身の
-// 無い activity の知らせになる（research.md R-8）。
+// 無い activity の知らせになる。
 type ActivityChanged struct{}
 
 func (ActivityChanged) event() {}
@@ -363,8 +361,7 @@ type ActivityCounts struct {
 	Done      int
 }
 
-// ActivityPage は一覧の 1 ページである。Counts は Status 以外の、Features は Features 以外の絞り込みに従う
-// （contracts/screen-api.md「GET /api/activity」）。NextCursor は続きがあるときだけ入る。
+// ActivityPage は一覧の 1 ページである。Counts は Status 以外の、Features は Features 以外の絞り込みに従う。NextCursor は続きがあるときだけ入る。
 type ActivityPage struct {
 	Items      []ActivityEntry
 	NextCursor string
@@ -373,7 +370,7 @@ type ActivityPage struct {
 }
 
 // EncodeActivityCursor はページの最後の記録の id を不透明なカーソルにする。並びは id の降順なので、次の
-// ページはこの id より小さい記録から始まる（research.md R-9）。
+// ページはこの id より小さい記録から始まる。
 func EncodeActivityCursor(lastID int64) string {
 	body, _ := json.Marshal(struct {
 		ID int64 `json:"i"`

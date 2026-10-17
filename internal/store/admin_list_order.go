@@ -8,8 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 管理画面の一覧（タグ・人物・団体）が共有する並び順とカーソル（specs/036-tag-admin-scale/
-// research.md R-1、specs/047-video-work-info/data-model.md「Entities」）。どの一覧も listed に
+// 管理画面の一覧（タグ・人物・団体）が共有する並び順とカーソル。どの一覧も listed に
 // id・sort_key・video_count・created_at の列を持ち、値が同じ行は名前の自然順（sort_key）、
 // それも同じなら id で並べる。
 

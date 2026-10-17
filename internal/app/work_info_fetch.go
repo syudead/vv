@@ -11,8 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインの検索・取得と、取得の結果の反映（specs/049-work-info-plugins/contracts/screen-api.md、
-// data-model.md の Rules、research.md R-8〜R-10・R-13）。実行は WorkInfoPluginRuntime、反映の書き込みは
+// 作品情報プラグインの検索・取得と、取得の結果の反映。実行は WorkInfoPluginRuntime、反映の書き込みは
 // FetchedWorkInfoApplier が行う。取得の結果はメモリに WorkInfoFetchLifetime の間だけ、動画とプラグインの
 // ダイジェストに結び付けて持つ。取得では動画を変えない。
 
@@ -30,12 +29,12 @@ type FetchedWorkInfoApplier interface {
 	// 外れれば domain.ErrWorkInfoFetchStale で何も書かない。動画が無ければ domain.ErrNotFound を返す。
 	ApplyFetchedWorkInfo(ctx context.Context, apply domain.FetchedWorkInfoApply) (domain.FetchedWorkInfoApplied, error)
 	// RecordWorkInfoFetch は動画 videoID の取得 1 回を記録する。failure が空なら済み、そうでなければ失敗で、
-	// failure をプラグインの文として残す（specs/055-activity/research.md R-11）。
+	// failure をプラグインの文として残す。
 	RecordWorkInfoFetch(ctx context.Context, videoID int64, failure string) error
 }
 
 // WorkInfoCreditMatcher は取得した人物・団体を既存の実体と照合する読み出しである。internal/store の
-// *CreditStore が満たす（specs/052-plugin-work-info-fields/research.md R-3）。
+// *CreditStore が満たす。
 type WorkInfoCreditMatcher interface {
 	// Match は種類 kind の entries を照合し、各件の答えを同じ順に返す。
 	Match(ctx context.Context, kind domain.CreditKind, entries []domain.CreditMatchEntry) ([]domain.CreditMatch, error)
@@ -62,7 +61,7 @@ func (p *WorkInfoPlugins) SearchWorkInfo(ctx context.Context, id int64, query st
 // FetchWorkInfo は承認済みのプラグイン pluginID の fetch で作品の ID id（品番など、検索の候補の ID を含む）から
 // 作品情報を取り、動画 videoID に結び付けてメモリに持ち、画面に見せる形を返す。ID を作品の URL に埋め込むのは
 // プラグインで、URL の形の ID もそのまま渡す（親 Issue #1232 の要件 14）。取得した人物・団体は既存の実体と
-// 照合し、その答えも題名・タグと同じ寿命で持つ（specs/052-plugin-work-info-fields/research.md R-3）。動画は
+// 照合し、その答えも題名・タグと同じ寿命で持つ。動画は
 // 変えない。ID が前後の空白を除いて 1〜200 文字でなければ domain.ErrWorkInfoRunInvalid、動画が無ければ
 // domain.ErrNotFound（プラグインより先に確かめる）を返す。実行の前の誤りと失敗は run と同じである。
 func (p *WorkInfoPlugins) FetchWorkInfo(
@@ -93,7 +92,7 @@ func (p *WorkInfoPlugins) keepFetched(
 	if err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}
-	// 表示名の規則に合わない題名は値が無いものとして扱い、選べなくする（contracts/screen-api.md）。
+	// 表示名の規則に合わない題名は値が無いものとして扱い、選べなくする。
 	title := domain.KeptWorkInfoTitle(result.WorkInfo.Title)
 	tags := result.WorkInfo.Tags
 	if tags == nil {
@@ -121,7 +120,7 @@ func (p *WorkInfoPlugins) keepFetched(
 	}, nil
 }
 
-// recordFetch はプラグインを動かした取得をアクティビティに記録する（specs/055-activity/research.md R-11）。
+// recordFetch はプラグインを動かした取得をアクティビティに記録する。
 // runErr が nil なら済み、*domain.WorkInfoRunError ならその文（無ければ失敗の種類）を持つ失敗として残す。
 // 動かす前に断った取得（プラグインが無い・承認されていないなど）は記録しない。
 func (p *WorkInfoPlugins) recordFetch(ctx context.Context, videoID int64, runErr error) error {
@@ -153,7 +152,7 @@ func (p *WorkInfoPlugins) matchCredits(
 // 承認済みでなければ domain.ErrWorkInfoPluginNotApproved、操作を宣言しなければ
 // domain.ErrWorkInfoOperationUnsupported、必須の設定の値が無ければ *domain.WorkInfoSettingsMissingError を
 // 返し、どれもモジュールを動かさない。要求の settings にはこのプラグインの宣言にあって値のあるものだけを
-// 入れる（research.md R-13）。実行の失敗は *domain.WorkInfoRunError である。
+// 入れる。実行の失敗は *domain.WorkInfoRunError である。
 func (p *WorkInfoPlugins) run(
 	ctx context.Context, id int64, req domain.WorkInfoRunRequest,
 ) (domain.WorkInfoPlugin, domain.WorkInfoRunResult, error) {
@@ -172,7 +171,7 @@ func (p *WorkInfoPlugins) run(
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, err
 	}
 	// プロキシは実行ごとに読むので、保存し直した値は次の実行から効き、この実行は読んだ値で終わる
-	// （specs/056-plugin-tooling/research.md R-4）。
+	//
 	network, err := p.runNetwork(ctx)
 	if err != nil {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, err
@@ -196,15 +195,14 @@ func (p *WorkInfoPlugins) runNetwork(ctx context.Context) (domain.WorkInfoRunNet
 // ApplyWorkInfoFetch は動画 videoID に、取得の結果 fetchID のうち fields の項目を反映し、反映後の動画と
 // 付けなかったタグの名前と、作品の詳細のうち飛ばした値を返す。結果は使い切りで、成功すると消える。tags が
 // nil でなければ、取得したタグのうちその名前（結果の綴りのまま）だけを付け、付けなかった名前もその中から
-// 報告する（specs/056-plugin-tooling/research.md R-7）。nil なら取得したタグを全部付ける。
+// 報告する。nil なら取得したタグを全部付ける。
 //
 // 結果が無いか期限切れなら domain.ErrWorkInfoFetchStale、結果が別の動画のものなら domain.ErrNotFound、
 // fields が空か知らない項目か結果に値の無い項目を含むか、tags が空か結果に無い名前を含むか fields に
 // タグが無いのに nil でなければ domain.ErrWorkInfoApplyInvalid を返す。取得の後に
 // プラグインが差し替えられたか、承認を取り消されたか、消されていれば domain.ErrWorkInfoFetchStale で、
-// 保存先も取引の中で同じことを確かめ直す（research.md R-8）。タグはタグ名の規則で整え、外れた名前は
-// invalid、保存先が却下した名前として飛ばしたものは rejected として、取得の結果の順に報告する
-// （research.md R-9）。失敗した反映は何も書かない。
+// 保存先も取引の中で同じことを確かめ直す。タグはタグ名の規則で整え、外れた名前は
+// invalid、保存先が却下した名前として飛ばしたものは rejected として、取得の結果の順に報告する。失敗した反映は何も書かない。
 func (p *WorkInfoPlugins) ApplyWorkInfoFetch(
 	ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField, tags []string,
 ) (domain.WorkInfoApplied, error) {
@@ -338,7 +336,7 @@ func skippedTags(names []string, invalid map[string]bool, rejected []string) []d
 }
 
 // workInfoFetch はメモリに持つ取得の結果である。title は表示名の規則を通った題名で、空は値が無い。
-// digest と generation は取得した時のプラグインの行の値である（research.md R-8）。details は題名とタグ以外の
+// digest と generation は取得した時のプラグインの行の値である。details は題名とタグ以外の
 // 作品の詳細で、personMatches と organizationMatches はその人物・団体の取得の時点の照合の答えである。反映は
 // 取引の中で照合し直すので、答えは画面に見せるためだけに持つ。
 type workInfoFetch struct {

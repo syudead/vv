@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 9513ffb61dcda9e0e6f4c93a868c53c85635532cbaf479de431bc02cdbec396a
+sourceHash: f0bcb51b226915d71ac9bafd7b7d9bbc4cfdd2bc82b1642c4853c9f4b8cf60db
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -64,7 +64,7 @@ flowchart LR
 
 一覧は折り返すグリッドで、1 行のカード数は画面幅とカード幅で変わる。そのため仮想化すると、その数を計算し、スクロール位置の復元を仮想座標で作り直すことになる。ページは 60 項目ずつ読み込む（[`PAGE_SIZE`](../../web/src/api/client.ts)）ので、DOM には利用者が読み込んだものだけがある。**何が遅いかを測った後にだけ見直す。**
 
-タグ管理の一覧（`/tags`）は測定に基づく例外だ。タグが数千あると、開く、検索、スクロールが固まったので、ビューポートの近くの行だけを描画する（`@tanstack/react-virtual` の `useWindowVirtualizer`、[036 調査、R-2](../../specs/036-tag-admin-scale/research.md)）。上の理由はどちらもそこには当てはまらない。1 列であり、行は現在の条件に対してサーバーから 100 件ずつ届く。スクロールの持ち主は文書のままで、一覧はフォーカスのある行を描画したまま保ち、Tab は描画範囲の端を越えるので、キーボードの順序はすべての行に届く。画面は管理用の表ページのパターンだ。ヘッダー、タブ、ツールバーはページと一緒にスクロールし、行は `DataTable` の本体であり、描画範囲の外の行は空のスペーサー行として保つので、列はそろったままになる。ページは固定された上部バーの高さ（`--spacing-navbar`）を仮想化の処理と `scroll-padding-top` に渡すので、フォーカスのある行が上部バーの下に隠れることはない（[036 UI 設計、Band](../../specs/036-tag-admin-scale/ui-design.md)）。人物と組織の管理の一覧（`/people`、`/organizations`）も、`web/src/tags/` にある同じ部品から同じ方法で組み立てる。サーバーから 100 件ずつのページを読み、ビューポートの近くの行を描画し、名前の変更、詳細、統合、削除の後はローカルで更新する（[047 UI 設計、People and organizations screens](../../specs/047-video-work-info/ui-design.md#people-and-organizations-screens-1)）。
+タグ管理の一覧（`/tags`）は測定に基づく例外だ。タグが数千あると、開く、検索、スクロールが固まったので、ビューポートの近くの行だけを描画する（`@tanstack/react-virtual` の `useWindowVirtualizer`）。上の理由はどちらもそこには当てはまらない。1 列であり、行は現在の条件に対してサーバーから 100 件ずつ届く。スクロールの持ち主は文書のままで、一覧はフォーカスのある行を描画したまま保ち、Tab は描画範囲の端を越えるので、キーボードの順序はすべての行に届く。画面は管理用の表ページのパターンだ。ヘッダー、タブ、ツールバーはページと一緒にスクロールし、行は `DataTable` の本体であり、描画範囲の外の行は空のスペーサー行として保つので、列はそろったままになる。ページは固定された上部バーの高さ（`--spacing-navbar`）を仮想化の処理と `scroll-padding-top` に渡すので、フォーカスのある行が上部バーの下に隠れることはない。人物と組織の管理の一覧（`/people`、`/organizations`）も、`web/src/tags/` にある同じ部品から同じ方法で組み立てる。サーバーから 100 件ずつのページを読み、ビューポートの近くの行を描画し、名前の変更、詳細、統合、削除の後はローカルで更新する。
 
 ### スクロールはウィンドウが持つ {#the-window-owns-scrolling}
 
@@ -123,7 +123,7 @@ flowchart LR
 
 ### シェルとツールバー {#shell-and-toolbar}
 
-上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰（640px 未満のみ）とロゴを持ち、スキャンのコントロールは持たない（[スキャンの入口と進捗](#scan-entry-and-progress)を参照）。ライブラリ、フォルダのページ、管理のページ（タグ、人物、組織）は、その後に自分のツールバーを差し込む。これはデザインシステムの `Toolbar` を `placement="topBar"` で使い、[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx) を通して描画したものだ。ページ本体は見出しと件数から始まるので、ツールバーはどのスクロール位置でも届く。フォルダのページはデザインシステムの `ListPage` だ。パンくずリストは上部バーの下に貼り付く帯なので、親フォルダはどのスクロール位置でも 1 クリックで開ける。パンくずリストの最後の項目がフォルダ名を示すので、ページの `h1` はスクリーンリーダー専用で、それを繰り返す見える見出しはない（[design-system.md、Page patterns](design-system.md#page-patterns)）。タグのページは `AdminTablePage` だ。中央に寄せた `max-w-4xl` の列で、ヘッダー（行を選択している間は選択バー）とタブが上部バーの下に貼り付き、表の列見出しはそのすぐ下に貼り付く。人物と組織のページは、種類を受け取る 1 つの `AdminTablePage` コンポーネントだ。同じヘッダーと列見出しを持つが、絞り込み、タブ、チェックボックスの列、選択バーはなく、同義語のダイアログの代わりに詳細のダイアログ（別名、外部 ID、組織の場合は親）を持つ。ライブラリとフォルダのページでは、検索、絞り込み、タグ、並び順のどれかを変えるとページが先頭までスクロールするので、新しい一覧は最初のカードから始まる。プレーヤーから戻ったときは、これまでどおり保存した位置を復元する。サイドバーには 2 つの状態（レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）がある。レールは幅 68px（`sidebar-rail`）で、各項目のアイコンを小さなラベルの上に 56px（`rail-item`）の正方形で表示するので、どの項目にも名前が見える。カード幅はズームの段階に従う。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
+上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰（640px 未満のみ）とロゴを持ち、スキャンのコントロールは持たない（[スキャンの入口と進捗](#scan-entry-and-progress)を参照）。ライブラリ、フォルダのページ、管理のページ（タグ、人物、組織）は、その後に自分のツールバーを差し込む。これはデザインシステムの `Toolbar` を `placement="topBar"` で使い、[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx) を通して描画したものだ。ページ本体は見出しと件数から始まるので、ツールバーはどのスクロール位置でも届く。フォルダのページはデザインシステムの `ListPage` だ。パンくずリストは上部バーの下に貼り付く帯なので、親フォルダはどのスクロール位置でも 1 クリックで開ける。パンくずリストの最後の項目がフォルダ名を示すので、ページの `h1` はスクリーンリーダー専用で、それを繰り返す見える見出しはない（[design-system.md、Page patterns](design-system.md#page-patterns)）。タグのページは `AdminTablePage` だ。中央に寄せた `max-w-4xl` の列で、ヘッダー（行を選択している間は選択バー）とタブが上部バーの下に貼り付き、表の列見出しはそのすぐ下に貼り付く。人物と組織のページは、種類を受け取る 1 つの `AdminTablePage` コンポーネントだ。同じヘッダーと列見出しを持つが、絞り込み、タブ、チェックボックスの列、選択バーはなく、同義語のダイアログの代わりに詳細のダイアログ（別名、外部 ID、組織の場合は親）を持つ。ライブラリとフォルダのページでは、検索、絞り込み、タグ、並び順のどれかを変えるとページが先頭までスクロールするので、新しい一覧は最初のカードから始まる。プレーヤーから戻ったときは、これまでどおり保存した位置を復元する。サイドバーには 2 つの状態（レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）がある。レールは幅 68px（`sidebar-rail`）で、各項目のアイコンを小さなラベルの上に 56px（`rail-item`）の正方形で表示するので、どの項目にも名前が見える。カード幅はズームの段階に従う。ゲストのルールは [authentication.md](authentication.md) にある。
 
 | 部品 | 所有者 | ゲスト |
 | --- | --- | --- |
@@ -146,17 +146,17 @@ flowchart LR
 
 件数は、ライブラリと検索結果ではグリッドの上の行に、フォルダの直下の内容では節の見出しに置く。
 
-並び順は追加日、更新日、作成日、タイトル、長さ、ファイルサイズ、最近再生、お気に入り登録日、ランダムだ。ゲストでは所有者専用の最近再生とお気に入り登録日がなくなる。作成日はほかの日付と並ぶ（[033 UI 設計](../../specs/033-video-dates/ui-design.md)）。お気に入り登録日は最近再生の後に続き、新しい順に並べる（[035 UI 設計、Sort and direction](../../specs/035-favorites/ui-design.md)）。
+並び順は追加日、更新日、作成日、タイトル、長さ、ファイルサイズ、最近再生、お気に入り登録日、ランダムだ。ゲストでは所有者専用の最近再生とお気に入り登録日がなくなる。作成日はほかの日付と並ぶ。お気に入り登録日は最近再生の後に続き、新しい順に並べる。
 
-絞り込みのポップオーバーは、視聴状態、`Favorites only`（URL は `fav=1`）、再生可否、所有者には `Tag kind` の選択欄（URL は `tagKind=<id>`）をこの順に並べる。選択欄は `Any kind` と、名前の自然順に並べた種類を示し、種類はポップオーバーを最初に開いたときに共有の種類一覧から読む。適用した種類は `Filtering by` の行に `Kind: <name>` のチップとしても表示され、読み込んだ一覧にもう含まれない種類はトーストとともに URL から外れる（[051 UI 設計、Library](../../specs/051-tag-kinds/ui-design.md#library)）。その後に `Added` と `Length` が続く。所有者とゲストに共通の、プリセットの 2 つの選択欄だ（URL は `addedWithin=<days>`、`minDuration=<s>`、`maxDuration=<s>`）。プリセット外の値はそれ自身の選択肢として描き、範囲外の値や最大を上回る最小はリクエストの前に URL から外れる（[052 UI 設計、Added and length](../../specs/052-smart-folders/ui-design.md#added-and-length)）。絞り込みボタンはそれぞれを適用中の絞り込み 1 つとして数える。`Clear filters` はお気に入りだけの絞り込み、種類、追加日、長さをほかの絞り込みと一緒に解除し、並び順は保つ。`fav=1`、`tagKind`、`sort=favorited*` のいずれかを含むゲストの URL は、リクエストの前に既定値へ戻し、URL を正す。
+絞り込みのポップオーバーは、視聴状態、`Favorites only`（URL は `fav=1`）、再生可否、所有者には `Tag kind` の選択欄（URL は `tagKind=<id>`）をこの順に並べる。選択欄は `Any kind` と、名前の自然順に並べた種類を示し、種類はポップオーバーを最初に開いたときに共有の種類一覧から読む。適用した種類は `Filtering by` の行に `Kind: <name>` のチップとしても表示され、読み込んだ一覧にもう含まれない種類はトーストとともに URL から外れる。その後に `Added` と `Length` が続く。所有者とゲストに共通の、プリセットの 2 つの選択欄だ（URL は `addedWithin=<days>`、`minDuration=<s>`、`maxDuration=<s>`）。プリセット外の値はそれ自身の選択肢として描き、範囲外の値や最大を上回る最小はリクエストの前に URL から外れる。絞り込みボタンはそれぞれを適用中の絞り込み 1 つとして数える。`Clear filters` はお気に入りだけの絞り込み、種類、追加日、長さをほかの絞り込みと一緒に解除し、並び順は保つ。`fav=1`、`tagKind`、`sort=favorited*` のいずれかを含むゲストの URL は、リクエストの前に既定値へ戻し、URL を正す。
 
-いずれかの絞り込みが適用されている間、所有者のライブラリのヘッダーには `outline` の操作 `Save as smart folder` があり、絞り込みを条件に、現在の並び順を並び順にして（`Random` は追加日に置き換える）スマートフォルダのダイアログを開き、`Created "{name}"` のトーストには新しいフォルダのページへ進む `Open` がある（[052 UI 設計、Save as smart folder](../../specs/052-smart-folders/ui-design.md#save-as-smart-folder)）。
+いずれかの絞り込みが適用されている間、所有者のライブラリのヘッダーには `outline` の操作 `Save as smart folder` があり、絞り込みを条件に、現在の並び順を並び順にして（`Random` は追加日に置き換える）スマートフォルダのダイアログを開き、`Created "{name}"` のトーストには新しいフォルダのページへ進む `Open` がある。
 
 ### スキャンの入口と進捗 {#scan-entry-and-progress}
 
 スキャンはたまにしかせず、上部バーに常にあるボタンは右下のインジケーターと重複していたので、スキャンは Settings の `Scan` ページの `Scan status` の節（[`ScanStatusSection.tsx`](../../web/src/settings/ScanStatusSection.tsx)）にある `Scan library` からだけ始まる。ボタンはどのスキャン状態でも存在する。スキャンの実行中（別のタブで始めたものを含む）とメディアフォルダが 1 つもない間は無効になり、その理由を、ボタンが `aria-describedby` で参照する 1 行に示す。開始リクエストの失敗は同じ節にアラートとして表示され、ボタンは再試行のために使えるままだ。空のライブラリや空のフォルダの `Scan` 操作は `/settings/scan#scan-status` へのリンクで、何も開始しない。
 
-右下のインジケーター（[`ScanProgressIndicator.tsx`](../../web/src/shell/ScanProgressIndicator.tsx)）は [024 UI 設計](../../specs/024-import-progress/ui-design.md) の配置と内容を保つ。ここのルールは、その開き方、閉じ方、非表示の仕方を置き換える。
+右下のインジケーター（[`ScanProgressIndicator.tsx`](../../web/src/shell/ScanProgressIndicator.tsx)）は直近の取り込みの要約を表示する。以下のルールが、その開き方、閉じ方、非表示の仕方を定める。
 
 | 出来事 | 要約のポップオーバー | インジケーター |
 | --- | --- | --- |
@@ -177,7 +177,7 @@ flowchart LR
 
 | カード | ルール |
 | --- | --- |
-| 動画、ライブラリとフォルダのページ | タイトルの下にタグの行。タグがなければ行もない（[014 UI 設計、Library card](../../specs/014-video-tags/ui-design.md)） |
+| 動画、ライブラリとフォルダのページ | タイトルの下にタグの行。タグがなければ行もない |
 | 動画、フォルダの検索結果 | タイトルの下に所在の行 |
 | フォルダ | 動画カードの幅と枠線、フォルダの絵、タイトルに Folder アイコン |
 | グループ（ライブラリだけ） | 動画カードの枠と大きさ、最大 4 つのメンバーのサムネイルによるフォルダの絵 |
@@ -189,24 +189,24 @@ flowchart LR
 | --- | --- |
 | ライブラリでタグを押す | そのタグで絞り込む |
 | フォルダのページかグループのページでタグを押す | `/?tag=<id>` を開く |
-| 行に収まらないタグ | `+N` にまとめる。その上でマウスを止めるか押すと、隠れたタグを折り返すチップとしてビューポートの中に開き、収まらないときはスクロールし、どの名前も省略せずに示す（[041 UI 設計](../../specs/041-tag-overflow-list/ui-design.md#the-list)） |
-| フォルダ名だけから来たタグ | 同じ大きさ、塗りなし、破線の枠線、Folder の印。動画ページでは × がなく、`Remove tag` の候補にならない（[017 UI 設計](../../specs/017-folder-groups/ui-design.md)） |
+| 行に収まらないタグ | `+N` にまとめる。その上でマウスを止めるか押すと、隠れたタグを折り返すチップとしてビューポートの中に開き、収まらないときはスクロールし、どの名前も省略せずに示す |
+| フォルダ名だけから来たタグ | 同じ大きさ、塗りなし、破線の枠線、Folder の印。動画ページでは × がなく、`Remove tag` の候補にならない |
 | ホバーのプレビュー | どの画面でも一度に 1 つ |
 | ズームの変更 | 上端にあったカードに戻る |
 
 フォルダカードは名前を最大 2 行で表示し、完全な名前は `title` に入れる。所有者にはメディアフォルダのパスも見え、末尾を優先して切り詰め、完全なパスは `title` に入れる。登録した空のルートは、そこにファイルを置いて取り込むよう案内する。
 
-ライブラリは `GET /api/library` を読み、これはフォルダのグループを動画に混ぜて返す。フォルダのページとその検索結果は動画を 1 本ずつ並べる。グループカードは、件数（`12 videos`）と合計の長さを示すパネル、一部のメンバーが視聴途中のときだけ出る視聴済みの割合のバー、グループ名、メンバーのタグを表示する。押すとグループのページ（`/groups/{id}`）を開く。このページは、貼り付く経路の帯の下に、グループの子グループと動画を保存した順に並べる（[048 UI 設計、Group page](../../specs/048-groups/ui-design.md#group-page)）。そのページでは、子グループは 1 グループ長い `?trail` で開き、動画は `?group` で開くので、動画のページはそのグループに従う。ゲストには視聴状態、視聴済み数、バーが見えない。
+ライブラリは `GET /api/library` を読み、これはフォルダのグループを動画に混ぜて返す。フォルダのページとその検索結果は動画を 1 本ずつ並べる。グループカードは、件数（`12 videos`）と合計の長さを示すパネル、一部のメンバーが視聴途中のときだけ出る視聴済みの割合のバー、グループ名、メンバーのタグを表示する。押すとグループのページ（`/groups/{id}`）を開く。このページは、貼り付く経路の帯の下に、グループの子グループと動画を保存した順に並べる。そのページでは、子グループは 1 グループ長い `?trail` で開き、動画は `?group` で開くので、動画のページはそのグループに従う。ゲストには視聴状態、視聴済み数、バーが見えない。
 
-ルートのスマートフォルダは、絞り込みのないライブラリ（お気に入りだけの絞り込みではお気に入りにしたものだけを残す）と、スマートフォルダのページの子の一覧で、グループや動画の間に並ぶ。一覧が持つのは各フォルダの名前だけで、カードは画面に入るまで `Skeleton` の件数パネルを描き、そのとき画面にあるカードを `GET /api/smart-folders/cards` で 60 件ずつ読む（[052 調査、R-14](../../specs/052-smart-folders/research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing)）。`smartFolder` イベントは、名前の挙がったカードを読み直してカードごとに最新の応答だけを残し、絞り込みのないライブラリに読み込み済みのページを読み直させるので、別のタブで作成、移動、名前変更したフォルダが現れる。応答に含まれないフォルダはカードを失う。フォルダカードには選択がないので、他のカードが選択されている間もカードのタグは押せる。スマートフォルダのカードはドラッグできず、その上へのドロップは `Can't drop here` を示す。
+ルートのスマートフォルダは、絞り込みのないライブラリ（お気に入りだけの絞り込みではお気に入りにしたものだけを残す）と、スマートフォルダのページの子の一覧で、グループや動画の間に並ぶ。一覧が持つのは各フォルダの名前だけで、カードは画面に入るまで `Skeleton` の件数パネルを描き、そのとき画面にあるカードを `GET /api/smart-folders/cards` で 60 件ずつ読む。`smartFolder` イベントは、名前の挙がったカードを読み直してカードごとに最新の応答だけを残し、絞り込みのないライブラリに読み込み済みのページを読み直させるので、別のタブで作成、移動、名前変更したフォルダが現れる。応答に含まれないフォルダはカードを失う。フォルダカードには選択がないので、他のカードが選択されている間もカードのタグは押せる。スマートフォルダのカードはドラッグできず、その上へのドロップは `Can't drop here` を示す。
 
-スマートフォルダのカードを押すと `/smart-folders/{id}` を開く（[052 UI 設計、Smart folder page](../../specs/052-smart-folders/ui-design.md#smart-folder-page)）。このページは、フォルダの祖先の経路の帯、名前、`12 videos · 1:32:10`、所有者には経路上のフォルダごとに 1 行の条件を示し、その後に子フォルダを名前順に、条件に合う動画とグループをフォルダの並び順に、ライブラリのグリッドかリストで並べる。動画は `?smartFolder=<id>` で開く。所有者の `More` には `Edit…`、`New child smart folder…`、`Delete…` がある。保存するとページを静かに読み直し、削除するとトーストを出して親フォルダかライブラリへ移る。空のフォルダは `EmptyState` を示し、所有者には `Edit conditions…` がある。ページは、そのフォルダを名指す `smartFolder` イベントか再接続でその場で読み直し、選択からはもう条件に合わない動画を外す。ゲストには、条件、`More`、選択のないページが見える。
+スマートフォルダのカードを押すと `/smart-folders/{id}` を開く。このページは、フォルダの祖先の経路の帯、名前、`12 videos · 1:32:10`、所有者には経路上のフォルダごとに 1 行の条件を示し、その後に子フォルダを名前順に、条件に合う動画とグループをフォルダの並び順に、ライブラリのグリッドかリストで並べる。動画は `?smartFolder=<id>` で開く。所有者の `More` には `Edit…`、`New child smart folder…`、`Delete…` がある。保存するとページを静かに読み直し、削除するとトーストを出して親フォルダかライブラリへ移る。空のフォルダは `EmptyState` を示し、所有者には `Edit conditions…` がある。ページは、そのフォルダを名指す `smartFolder` イベントか再接続でその場で読み直し、選択からはもう条件に合わない動画を外す。ゲストには、条件、`More`、選択のないページが見える。
 
-グループの解除、フォルダ直下の動画のグループ化、グループのタグへの変換はカードにない。これらは、フォルダのページの `Videos N` 見出し行の右端にある所有者のメニュー（[`FolderGroupingMenu.tsx`](../../web/src/folders/FolderGroupingMenu.tsx)）にあり、タグへの変換と解散は動画ページのグループの操作（[グループのメンバー](#group-members)）にもある。フォルダのメニューが "Turn the group into a tag…" を出すのは、登録済みのフォルダ自身のグループを含め、フォルダに自動のグループがあるときだけであり、この項目はすべての入口が共有する確認ダイアログを開く（[`GroupTagDialog.tsx`](../../web/src/groups/GroupTagDialog.tsx)、[048 UI 設計、Turning into a tag](../../specs/048-groups/ui-design.md#turning-into-a-tag)）。操作の後、キャッシュしたライブラリの一覧は破棄され、次に訪れたときに読み直す。
+グループの解除、フォルダ直下の動画のグループ化、グループのタグへの変換はカードにない。これらは、フォルダのページの `Videos N` 見出し行の右端にある所有者のメニュー（[`FolderGroupingMenu.tsx`](../../web/src/folders/FolderGroupingMenu.tsx)）にあり、タグへの変換と解散は動画ページのグループの操作（[グループのメンバー](#group-members)）にもある。フォルダのメニューが "Turn the group into a tag…" を出すのは、登録済みのフォルダ自身のグループを含め、フォルダに自動のグループがあるときだけであり、この項目はすべての入口が共有する確認ダイアログを開く。操作の後、キャッシュしたライブラリの一覧は破棄され、次に訪れたときに読み直す。
 
 ### お気に入りの印 {#favorite-mark}
 
-所有者のお気に入りの印は、印と切り替えを兼ねる 1 つのハートで、動画とグループのカードのサムネイルの右上にある（[`FavoriteToggle.tsx`](../../web/src/ui/FavoriteToggle.tsx)、[035 UI 設計、Mark、Card](../../specs/035-favorites/ui-design.md)）。
+所有者のお気に入りの印は、印と切り替えを兼ねる 1 つのハートで、動画とグループのカードのサムネイルの右上にある。
 
 | 観点 | ルール |
 | --- | --- |
@@ -230,13 +230,13 @@ flowchart LR
 
 グループは `GET /api/groups/{id}` で取得し直す。
 
-ハートの左、同じ角に、オフのハートとちょうど同じときに表示される所有者の `Add to playlist` コントロールがあり、プレイリストのピッカーを開く。その左の `Add to group` はグループのピッカーを開く。どちらも状態を持たないので、ハートが角に最も近いままになる（[`PickerButton.tsx`](../../web/src/library/PickerButton.tsx)、[044 UI 設計、Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist)、[048 UI 設計、Add to group](../../specs/048-groups/ui-design.md#add-to-group)）。
+ハートの左、同じ角に、オフのハートとちょうど同じときに表示される所有者の `Add to playlist` コントロールがあり、プレイリストのピッカーを開く。その左の `Add to group` はグループのピッカーを開く。どちらも状態を持たないので、ハートが角に最も近いままになる。
 
 ### リスト表示と選択 {#list-view-and-selection}
 
-リスト表示（ライブラリだけ）は、タイトル、お気に入り（所有者）、プレイリストへの追加とグループへの追加（所有者、`sm` から。それより下ではカードと選択バーがこれらを提供する）、視聴済み、長さ、画質、サイズ、追加日を表示する。グループの行は同じ列を使う。最初のメンバーのサムネイル、タイトルの下に Folder の印と件数、`3 / 12` の視聴済み、合計の長さとサイズ、空の画質だ（[017 UI 設計、List view row](../../specs/017-folder-groups/ui-design.md)）。
+リスト表示（ライブラリだけ）は、タイトル、お気に入り（所有者）、プレイリストへの追加とグループへの追加（所有者、`sm` から。それより下ではカードと選択バーがこれらを提供する）、視聴済み、長さ、画質、サイズ、追加日を表示する。グループの行は同じ列を使う。最初のメンバーのサムネイル、タイトルの下に Folder の印と件数、`3 / 12` の視聴済み、合計の長さとサイズ、空の画質だ。
 
-選択はライブラリと所有者だけのものだ。チェックは、グリッドではホバーかフォーカスのときに（ホバーできない環境では常に）、リスト表示では常に薄く、選択中はすべての項目に表示する。グループのチェックが何を選ぶかは [017 UI 設計、Pressing and selection](../../specs/017-folder-groups/ui-design.md#pressing-and-selection) にある。
+選択はライブラリと所有者だけのものだ。チェックは、グリッドではホバーかフォーカスのときに（ホバーできない環境では常に）、リスト表示では常に薄く、選択中はすべての項目に表示する。グループのチェックはそのグループを選ぶ。下の選択バーが、操作でグループを送るか、選んだ動画を送るかを決める。
 
 ### 選択バー {#selection-bar}
 
@@ -244,7 +244,7 @@ flowchart LR
 
 項目は順に、解除、`N selected`、`Add tag`、`Remove tag`、`Favorite`、`Add to playlist`、`New group`、`Add to group`、`Visibility`、`Bundle as versions`（動画 2 本以上）、区切り、`Select all` だ。操作は右端に置き、収まらないものは次の行の右端へ移る。
 
-詳細: タグ操作は [014 UI 設計、Selection bar](../../specs/014-video-tags/ui-design.md#selection-bar)、公開範囲のメニューは [016 UI 設計、Selection bar](../../specs/016-single-account-auth/ui-design.md#selection-bar)、`Favorite` と折り返しは [035 UI 設計、Selection bar](../../specs/035-favorites/ui-design.md#selection-bar)、`Favorite` と同じものを送る `Add to playlist` は [044 UI 設計、Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist)、同じものを送る `New group` と `Add to group` は [048 UI 設計、Selection bar](../../specs/048-groups/ui-design.md#selection-bar) にある。
+リクエストの形は[画面 API スキーマ](../../api/openapi.yaml)にある。
 
 `Favorite` は、選択したグループごとに、グループとして送るかを決める。
 
@@ -269,7 +269,7 @@ flowchart LR
 
 ## 動画ページのレイアウト {#video-page-layout}
 
-動画ページ（`/videos/:id`）は視聴のためのものなので、一覧より密度が低い。形と文言は [012 UI 設計](../../specs/012-video-detail-ia/ui-design.md) にある。
+動画ページ（`/videos/:id`）は視聴のためのものなので、一覧より密度が低い。レイアウトは[デザインシステム](design-system.md#page-patterns)の閲覧用の密度を使う。
 
 ページはシェルなしで一覧の上に重なり、× か Esc で閉じる。`DetailPage` の雛形（[デザインシステム、Page patterns](design-system.md#page-patterns)）の上に組み立て、ウィンドウの端から端までを埋める。下に境界線のあるヘッダーの帯の下に、視聴のための左の列と関連動画のための右の列を置き、境界線で区切る。図はその部品を示す。
 
@@ -286,10 +286,10 @@ flowchart LR
 | --- | --- |
 | ヘッダーの帯 | ロゴ（ホーム）、フォルダへのパンくず、唯一の × |
 | 戻り先 | ページを開く前の一覧。関連動画と `Play next` を経ても保つ |
-| タグ | タイトルのすぐ下に 1 つのまとまりとして置く（[014 UI 設計、Video page tags](../../specs/014-video-tags/ui-design.md#video-page-tags)） |
+| タグ | タイトルのすぐ下に 1 つのまとまりとして置く |
 | 公開範囲の切り替え | 錠か地球のアイコン付きの `Private` か `Public`。`role="switch"` を持つ `Button` で、タイトルのまとまりの下、情報の行の上に置く |
 | 右の列 | 最大 3 つのセクション、プレイリストのパネル、`Up next`（グループかスマートフォルダのメンバー）、関連動画を、すべて幅 224px のライブラリ形式のカードで表示する: サムネイルと、その下に最大 2 行の名前。順番のあるカードはサムネイルの左上に番号を持ち、今のカードはリンクではなく、`bg-accent` の上に `ring-2 ring-primary ring-inset` を表示する。関連動画は近さの順に並べ、一覧のスクロールに合わせて続きを読み込む ([関連動画](related-videos.md)) |
-| ゲスト | タグ、公開範囲の切り替え、作品の詳細、`Edit details`、`Open file`、`Copy path` がない（[016 UI 設計、Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)） |
+| ゲスト | タグ、公開範囲の切り替え、作品の詳細、`Edit details`、`Open file`、`Copy path` がない |
 
 幅による変化は、[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)と同じく CSS に置く。
 
@@ -310,13 +310,13 @@ flowchart LR
 | 1 行目 | アイコン付きの長さ、サイズ、追加日、編集日、作成日。続いて、グループに表示できるバージョンが 2 つ以上あるときは `3 versions`、所有者にはサムネイルの位置が設定されているか、生成またはアップロードされた画像がサムネイルであるときにサムネイルの項目。右端に操作 |
 | 作品の詳細 | 動画に作品情報があるときだけ、所有者にだけ表示する。設定された項目（コード、保存されたとおりの 3 つの日付、各役割の人物と組織、リンク、ID）を、1 行目の `text-sm` と間隔で `label value` の組として並べ、項目ごとに折り返し、その下に説明を 3 行に折りたたんで置く |
 | 技術情報 | 細い線で区切った解像度、コンテナ、コーデック。最も小さく、最も控えめ |
-| メディア情報 | `mediaInfo` のある動画にだけ、所有者にもゲストにも同じく表示する。Video、Audio、Subtitles、Embedded、Broadcast の各グループを、それぞれ 1 行目の `text-sm` と間隔で折り返す控えめな行とし、先頭に技術情報の行の書体でグループ名を置き、項目があるときだけ表示する。トラックが 6 つを超えると 6 つに折りたたみ、`+{n} more` を出す（[056 UI 設計、動画ページ: グループ](../../specs/056-media-info/ui-design.md#video-page-groups)） |
+| メディア情報 | `mediaInfo` のある動画にだけ、所有者にもゲストにも同じく表示する。Video、Audio、Subtitles、Embedded、Broadcast の各グループを、それぞれ 1 行目の `text-sm` と間隔で折り返す控えめな行とし、先頭に技術情報の行の書体でグループ名を置き、項目があるときだけ表示する。トラックが 6 つを超えると 6 つに折りたたみ、`+{n} more` を出す |
 
-作品の詳細の行は、ラベルに控えめな色の語を使い、値を本文の色で示す。項目が 3 つを超える役割、`Links`、`IDs` は 3 つと `+{n} more` を示し、それを押すとその項目がその場で開く。3 行より長い説明は `Show more` を示す。作品情報のない動画は以前と同じ行を示し、この行は入力を促す表示を加えない（[047 UI 設計、Video page: work details row](../../specs/047-video-work-info/ui-design.md#video-page-work-details-row)）。
+作品の詳細の行は、ラベルに控えめな色の語を使い、値を本文の色で示す。項目が 3 つを超える役割、`Links`、`IDs` は 3 つと `+{n} more` を示し、それを押すとその項目がその場で開く。3 行より長い説明は `Show more` を示す。作品情報のない動画は以前と同じ行を示し、この行は入力を促す表示を加えない。
 
-操作は、お気に入り、`Add to playlist`、`Add to group`、`Edit details`、`Use current frame as thumbnail`、`Edit thumbnail with ComfyUI`、`Upload an image as thumbnail`、`Open file`、`Copy path` だ。ツールチップ付きの、アイコンだけのゴーストボタンである。ComfyUI の入口は、ページの上に開く `EditorDialog` であるサムネイルエディターを開き、ComfyUI の接続が保存されるまでは設定用のポップオーバーを伴って淡く表示される。その入口で生成された画像がサムネイルである間、サムネイルの項目はその画像を `Use the frame instead` とともに示す（[045 UI 設計](../../specs/045-comfyui-thumbnails/ui-design.md#video-page-edit-entry)）。アップロードの入口は、プレイヤーが表示されないときも所有者のものであり、ComfyUI に依存しない。ブラウザーのファイル選択を PNG、JPEG、WebP 向けに開き、それ以外の種類や 64 MB を超えるファイルは何かを送る前に失敗の行で拒み、選んだファイルを読んでいる間と送っている間は回転表示になる。読めるファイルは `Preview thumbnail` を開く。これは `EditorDialog` で、その表示領域は画像を、カードの 16:9 のサムネイル枠の中に、保存されるとおりに示す。`Whole image`（既定）か `Fill frame` で、後者は `Zoom` を加え、所有者が画像をドラッグするか、矢印キーで動かし `+` と `-` でズームできるようにする。`Use as thumbnail` はダイアログを閉じて送る。`Cancel`、`×`、Esc は何も送らない（[サムネイル編集](thumbnail-editing.md#the-page-frames-the-image-before-it-is-sent)）。アップロードされた画像がサムネイルである間、サムネイルの項目はその画像を `ImageUp` アイコン、`Uploaded thumbnail` というラベル、同じ `Use the frame instead` とともに示す。サムネイルの操作は一度に 1 つだけ送る。キャプチャ、`×`、アップロードのいずれかが送っている間、ほかの操作は `aria-disabled` になる（[046 UI 設計](../../specs/046-thumbnail-image-upload/ui-design.md#video-page-upload-entry)）。日付は日付だけを表示し、時刻は `title` 属性と、日付を押すと開くポップオーバーにある。パンくずがすでに所在を示すので、タイトルの下にパスは出さない。
+操作は、お気に入り、`Add to playlist`、`Add to group`、`Edit details`、`Use current frame as thumbnail`、`Edit thumbnail with ComfyUI`、`Upload an image as thumbnail`、`Open file`、`Copy path` だ。ツールチップ付きの、アイコンだけのゴーストボタンである。ComfyUI の入口は、ページの上に開く `EditorDialog` であるサムネイルエディターを開き、ComfyUI の接続が保存されるまでは設定用のポップオーバーを伴って淡く表示される。その入口で生成された画像がサムネイルである間、サムネイルの項目はその画像を `Use the frame instead` とともに示す。アップロードの入口は、プレイヤーが表示されないときも所有者のものであり、ComfyUI に依存しない。ブラウザーのファイル選択を PNG、JPEG、WebP 向けに開き、それ以外の種類や 64 MB を超えるファイルは何かを送る前に失敗の行で拒み、選んだファイルを読んでいる間と送っている間は回転表示になる。読めるファイルは `Preview thumbnail` を開く。これは `EditorDialog` で、その表示領域は画像を、カードの 16:9 のサムネイル枠の中に、保存されるとおりに示す。`Whole image`（既定）か `Fill frame` で、後者は `Zoom` を加え、所有者が画像をドラッグするか、矢印キーで動かし `+` と `-` でズームできるようにする。`Use as thumbnail` はダイアログを閉じて送る。`Cancel`、`×`、Esc は何も送らない（[サムネイル編集](thumbnail-editing.md#the-page-frames-the-image-before-it-is-sent)）。アップロードされた画像がサムネイルである間、サムネイルの項目はその画像を `ImageUp` アイコン、`Uploaded thumbnail` というラベル、同じ `Use the frame instead` とともに示す。サムネイルの操作は一度に 1 つだけ送る。キャプチャ、`×`、アップロードのいずれかが送っている間、ほかの操作は `aria-disabled` になる。日付は日付だけを表示し、時刻は `title` 属性と、日付を押すと開くポップオーバーにある。パンくずがすでに所在を示すので、タイトルの下にパスは出さない。
 
-所有者のお気に入りの切り替えは右側の操作のまとまりの先頭にあり、`Use current frame as thumbnail` の左に置く（`FavoriteToggle` の `page` 形式: `Toggle` の `sm`、`aria-pressed`）。まとまりの中で状態を持つ唯一のコントロールなので、目が最初にそこへ向く。それでもタイトルより目立つことはない。オンは小さな `bg-primary-soft` の塗りにピンクのハートだ。グループの行とゲストにはない（[035 UI 設計、Video page](../../specs/035-favorites/ui-design.md#video-page)）。`Add to playlist`、続いて `Add to group` が同じ条件でその後に続く。
+所有者のお気に入りの切り替えは右側の操作のまとまりの先頭にあり、`Use current frame as thumbnail` の左に置く（`FavoriteToggle` の `page` 形式: `Toggle` の `sm`、`aria-pressed`）。まとまりの中で状態を持つ唯一のコントロールなので、目が最初にそこへ向く。それでもタイトルより目立つことはない。オンは小さな `bg-primary-soft` の塗りにピンクのハートだ。グループの行とゲストにはない。`Add to playlist`、続いて `Add to group` が同じ条件でその後に続く。
 
 ```mermaid
 flowchart LR
@@ -330,7 +330,7 @@ flowchart LR
 
 ### 詳細エディター {#details-editor}
 
-`Edit details`（lucide の `Clapperboard`、所有者だけ）は `/videos/:id/edit` へのリンクである。そこはシェルとプレーヤーの外にある全画面の `FormPage` で、表示名とすべての作品情報の項目をまとめて編集する。タイトルの鉛筆は、名前を変える手早い方法として残る。帯は `Cancel` と `Save` を持つ。左の列は雛形の `aside` であり、動画を示し（サムネイル、ファイル名、長さ、サイズと解像度、フォルダ）、`Back to the video` を持つ。`Basics` は、2×2 のグリッドに置いた名前、コード、日付と、説明、リンク、ID を持つ。`Credits` は役割ごとに 1 行を持ち、その行はチップと、人物か組織を探すか、`Save` が先に作成する `New` の印付きのチップを作る `CreditCommand` のピッカーを持つ。続いて `Save` は `PUT /api/videos/{id}/details` を 1 回送り、応答とともにページに戻って `Edit details` にフォーカスを置く。`field` を持つ理由は、エディターの中のその入力欄の下に残る。`Cancel`、`Back to the video`、ブラウザーの戻る操作は、下書きが変わっているときに `Discard changes?` と尋ねる。ページから開いたエディターはページの動画から始まり、履歴をたどって戻るので、ページの `×` は引き続き一覧へ向かう。URL から開いたときは先に動画を読み込み、ゲストはサインインへ送られる（[047 UI 設計、Editor](../../specs/047-video-work-info/ui-design.md#editor)）。
+`Edit details`（lucide の `Clapperboard`、所有者だけ）は `/videos/:id/edit` へのリンクである。そこはシェルとプレーヤーの外にある全画面の `FormPage` で、表示名とすべての作品情報の項目をまとめて編集する。タイトルの鉛筆は、名前を変える手早い方法として残る。帯は `Cancel` と `Save` を持つ。左の列は雛形の `aside` であり、動画を示し（サムネイル、ファイル名、長さ、サイズと解像度、フォルダ）、`Back to the video` を持つ。`Basics` は、2×2 のグリッドに置いた名前、コード、日付と、説明、リンク、ID を持つ。`Credits` は役割ごとに 1 行を持ち、その行はチップと、人物か組織を探すか、`Save` が先に作成する `New` の印付きのチップを作る `CreditCommand` のピッカーを持つ。続いて `Save` は `PUT /api/videos/{id}/details` を 1 回送り、応答とともにページに戻って `Edit details` にフォーカスを置く。`field` を持つ理由は、エディターの中のその入力欄の下に残る。`Cancel`、`Back to the video`、ブラウザーの戻る操作は、下書きが変わっているときに `Discard changes?` と尋ねる。ページから開いたエディターはページの動画から始まり、履歴をたどって戻るので、ページの `×` は引き続き一覧へ向かう。URL から開いたときは先に動画を読み込み、ゲストはサインインへ送られる。
 
 ### プレーヤーの状態 {#player-states}
 
@@ -347,7 +347,7 @@ flowchart LR
 | 閉じた後 | 同じ動画では再び表示しない |
 | 操作 | なし。画質は変えない |
 
-ルール: [Playback quality、Stall warning](playback-quality.md#stall-warning)。詳細: [027 UI 設計、Stall warning](../../specs/027-playback-quality/ui-design.md#stall-warning)。
+ルール: [Playback quality、Stall warning](playback-quality.md#stall-warning)。詳細: [playback-quality.md](playback-quality.md)。
 
 ### 再生のエラー {#playback-errors}
 
@@ -416,13 +416,13 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 | 狭い枠 | プレーヤーが 40rem 未満では、`3em` の枠にし、時刻と表示の余白を詰める。32rem 未満では変換の表示をアイコンだけに畳み、360px ですべてのボタンが収まる |
 | シークのプレビューのタイトル | ポインターの下のチャプターのタイトルを、時刻の上に出す。チャプターがありスプライトのない動画では、時刻のピルの中にそれだけを出す |
 
-画質: [Playback quality、Switching](playback-quality.md#switching) と [027 UI 設計、Control bar: quality menu](../../specs/027-playback-quality/ui-design.md#control-bar-quality-menu)。字幕は video.js の `vjs-text-track-display` を使う（[sidecar-subtitles.md](sidecar-subtitles.md)）。チャプター: シークのプレビューのタイトルとメニューの印は、ある位置のチャプターを決める 1 つのルールを共有する。その位置以前に始まり、終わりがその位置より後のもののうち、開始が最も遅いものだ（[056 UI 設計、Player: chapters](../../specs/056-media-info/ui-design.md#player-chapters)）。
+画質: [Playback quality、Switching](playback-quality.md#switching) と [playback-quality.md](playback-quality.md)。字幕は video.js の `vjs-text-track-display` を使う（[sidecar-subtitles.md](sidecar-subtitles.md)）。チャプター: シークのプレビューのタイトルとメニューの印は、ある位置のチャプターを決める 1 つのルールを共有する。その位置以前に始まり、終わりがその位置より後のもののうち、開始が最も遅いものだ。
 
 キーボードショートカットは画面全体で効く。video.js のコンポーネントはキーの伝播を止めるので、キーは `window` のキャプチャ段階で捕まえ、フォーカスのあるボタンやスライダーを操作するキーだけを通す。Space、F、M、C（字幕）、0、Esc を扱う。プレイリストの選択器のような、開いているポップオーバーやメニューの中で押したキーはそれに属する。画面に届くのは Esc だけで、Esc は画面ではなくポップオーバーを閉じる。
 
 ### グループのメンバー {#group-members}
 
-グループに属する動画は、同じページに部品が加わるだけだ。どのグループにも属さない動画は変わらない（[017 UI 設計、Video page](../../specs/017-folder-groups/ui-design.md#video-page)）。グループは、動画を開いた元のグループ（`?group=<id>`。動画、関連動画、メンバーの読み込みに渡す）であり、それがなければ動画を直接含むグループのうち id が最小のものだ。プレイリストの文脈はどちらよりも優先する（[048 UI 設計、Video page](../../specs/048-groups/ui-design.md#video-page)）。
+グループに属する動画は、同じページに部品が加わるだけだ。どのグループにも属さない動画は変わらない。グループは、動画を開いた元のグループ（`?group=<id>`。動画、関連動画、メンバーの読み込みに渡す）であり、それがなければ動画を直接含むグループのうち id が最小のものだ。プレイリストの文脈はどちらよりも優先する。
 
 | 部品 | ルール |
 | --- | --- |
@@ -434,7 +434,7 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 | 操作の後 | 動画と関連動画を `group` なしで読み直す。ページはそのまま残る |
 | 前後のハンドル | グループ内で移動する |
 
-スマートフォルダから開いた動画（`?smartFolder=<id>`）は、同じ部品でフォルダの再生順に従う。読み込みは `smartFolder` を渡し、タイトルの上の行は `FolderSearch` アイコンを持って `/smart-folders/{id}` へリンクし、その後ろに操作ボタンはない。メンバーの行、ハンドル、通知は `?smartFolder` を引き継ぐ。両方があるときは `?group` が優先し、ページはそのフォルダを指す `smartFolder` イベントで読み直す。プレイリストは、スマートフォルダの項目を、グループの項目と同じ形で `FolderSearch` アイコンを持つ 1 行として、プレイリストの画面とパネルに表示する。そのリンクと、その項目へ移るプレイリストのすべての移動は、項目、または移動の `smartFolderId` から得た `smartFolder` を渡す。動画のないフォルダはリンクのない行になる（[052 UI 設計、Playlists](../../specs/052-smart-folders/ui-design.md#playlists)）。
+スマートフォルダから開いた動画（`?smartFolder=<id>`）は、同じ部品でフォルダの再生順に従う。読み込みは `smartFolder` を渡し、タイトルの上の行は `FolderSearch` アイコンを持って `/smart-folders/{id}` へリンクし、その後ろに操作ボタンはない。メンバーの行、ハンドル、通知は `?smartFolder` を引き継ぐ。両方があるときは `?group` が優先し、ページはそのフォルダを指す `smartFolder` イベントで読み直す。プレイリストは、スマートフォルダの項目を、グループの項目と同じ形で `FolderSearch` アイコンを持つ 1 行として、プレイリストの画面とパネルに表示する。そのリンクと、その項目へ移るプレイリストのすべての移動は、項目、または移動の `smartFolderId` から得た `smartFolder` を渡す。動画のないフォルダはリンクのない行になる。
 
 `matchMedia` が `lg` の幅を読むのは、広い画面で現在のメンバーの行を見える位置へスクロールするためだけだ。狭い幅でスクロールするとページ全体が動き、プレーヤーが隠れる。
 
@@ -457,9 +457,9 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 | `organization` | いずれかの役割でその組織に結び付いた動画 | `400 guest_filter_not_allowed` |
 | `tagKind` | 手動かフォルダ由来かを問わず、その種類のタグを少なくとも 1 つ持つ動画 | `400 guest_filter_not_allowed` |
 
-`query`、`tag`、`person`、`organization` はグループの各メンバーに適用されるので、一部だけが一致したグループは、一致したメンバーを動画の項目として一覧に出す。実体のない `person` または `organization` の ID は空の一覧になり、正の整数でない値は `400 invalid_request` になる（[047 screen-api.md](../../specs/047-video-work-info/contracts/screen-api.md#list-parameters-person-and-organization)）。
+`query`、`tag`、`person`、`organization` はグループの各メンバーに適用されるので、一部だけが一致したグループは、一致したメンバーを動画の項目として一覧に出す。実体のない `person` または `organization` の ID は空の一覧になり、正の整数でない値は `400 invalid_request` になる。
 
-所有者の場合、検索語は、動画の場所のいずれかのタイトルまたは相対パス、タグのいずれかの名前または同義語、作品コード、作品情報に結び付いた人物または組織の名前または別名に現れるとき、その動画に一致する。照合は畳み込んだ形（`domain.FoldForMatch`）を使うので、全角と半角、大文字と小文字、ひらがなとカタカナの違いは問わない。説明、日付、URL、外部 ID は照合しない。ゲストの検索はタイトルと相対パスだけに一致するので、ゲストが見られない名前が、どの公開動画を返すかを決めない（[`search.go`](../../internal/store/search.go)、[047 data-model.md、Search](../../specs/047-video-work-info/data-model.md#search)）。
+所有者の場合、検索語は、動画の場所のいずれかのタイトルまたは相対パス、タグのいずれかの名前または同義語、作品コード、作品情報に結び付いた人物または組織の名前または別名に現れるとき、その動画に一致する。照合は畳み込んだ形（`domain.FoldForMatch`）を使うので、全角と半角、大文字と小文字、ひらがなとカタカナの違いは問わない。説明、日付、URL、外部 ID は照合しない。ゲストの検索はタイトルと相対パスだけに一致するので、ゲストが見られない名前が、どの公開動画を返すかを決めない。
 
 どの動画とグループがフォルダに属し、絞り込みに合うかを知るのはサーバーだけなので、手元で絞り込むページは `total` と異なる集合を表示してしまう。同じ理由で、取得し直した一覧の項目は自分の位置を決して推測しない。
 

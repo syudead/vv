@@ -7,8 +7,7 @@ import type {
 import { normalizeQuery } from "../videoList/listCriteria";
 
 /**
- * アクティビティの画面の絞り込みと URL の相互変換（specs/055-activity/ui-design.md
- * 「Toolbar」）。既定値は書かず、読めない値は既定値として扱う。React に依存しない純粋な関数
+ * アクティビティの画面の絞り込みと URL の相互変換。既定値は書かず、読めない値は既定値として扱う。React に依存しない純粋な関数
  * だけを置く。
  */
 
@@ -40,7 +39,7 @@ export const activityStatuses: readonly ActivityStatus[] = [
   "done",
 ];
 
-/** 自動の処理の機能。メニューでは区切りの前に置く（ui-design.md「Toolbar」）。 */
+/** 自動の処理の機能。メニューでは区切りの前に置く。 */
 export const runFeatures: readonly ActivityFeature[] = [
   "import",
   "scan",

@@ -41,8 +41,7 @@ func TestGetThumbnail(t *testing.T) {
 	}
 }
 
-// 版の有無によらず、使うたびに確かめさせる（specs/016-single-account-auth/
-// contracts/guest-api.md §5）。ETag が一致すれば 304 になる。
+// 版の有無によらず、使うたびに確かめさせる。ETag が一致すれば 304 になる。
 func TestThumbnailCacheControlRevalidates(t *testing.T) {
 	artifacts, video := thumbnailFixture(t)
 	handler := newTestServer(t, Options{
@@ -210,7 +209,7 @@ func TestThumbnailIgnoresIfModifiedSince(t *testing.T) {
 }
 
 // 位置が指定されている動画の thumbnailUrl の版は `<内容鍵の先頭>-r<改版番号>` で、位置の値を
-// 含まない。未指定なら今までどおり内容鍵の先頭だけ（specs/029-video-overrides/research.md R-6）。
+// 含まない。未指定なら今までどおり内容鍵の先頭だけ。
 func TestThumbnailURLVersionIncludesRevision(t *testing.T) {
 	position := int64(123_456)
 	for _, tc := range []struct {

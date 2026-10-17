@@ -11,8 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 公開フラグと、見る人ごとの読み出し（specs/016-single-account-auth/data-model.md
-// §1・§3・§5）。
+// 公開フラグと、見る人ごとの読み出し。
 
 var (
 	guest = domain.AudienceGuest

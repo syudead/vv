@@ -13,8 +13,7 @@ import { subscribeServerEvents } from "../api/serverEvents";
 import { readSmartFolderCards } from "../api/smartFolders";
 import { type CardValue, chunks, latestAnswer, withAnswer } from "./cardValueRules";
 
-// スマートフォルダのカードの値（specs/052-smart-folders/ui-design.md「Smart folder card and
-// row」、research.md R-14）。一覧の項目は要約だけを持ち、画面に入ったカードの値を
+// スマートフォルダのカードの値。一覧の項目は要約だけを持ち、画面に入ったカードの値を
 // GET /api/smart-folders/cards でまとめて読む。
 
 interface CardValues {

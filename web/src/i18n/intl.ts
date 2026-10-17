@@ -1,8 +1,7 @@
 import { asUiText, type UiText } from "./uiText";
 
 /**
- * LOCALE は画面の言語である。起動時に決まる 1 つの定数で、切り替えない
- * （specs/023-english-i18n/research.md R-1）。カタログ（messages.ts）と書式関数は
+ * LOCALE は画面の言語である。起動時に決まる 1 つの定数で、切り替えない。カタログ（messages.ts）と書式関数は
  * どちらもこれを使う。
  */
 export const LOCALE = "en-US";
@@ -56,8 +55,7 @@ export function formatDecimal(value: number, max: number, min = 0): UiText {
 const languageNames = new Intl.DisplayNames(LOCALE, { type: "language" });
 
 /**
- * formatLanguage はファイルの言語の印（`jpn`・`eng`・`ja-JP`）を言語の名前にする
- * （specs/056-media-info/research.md R-8）。`und` と空は null（言語を出さない）。名前は
+ * formatLanguage はファイルの言語の印（`jpn`・`eng`・`ja-JP`）を言語の名前にする。`und` と空は null（言語を出さない）。名前は
  * 書式の出力なので疑似ロケールの印を付ける。名前にできない印は、ファイルの値のまま返す。
  */
 export function formatLanguage(code: string): UiText | string | null {

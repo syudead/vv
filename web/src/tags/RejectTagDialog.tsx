@@ -5,8 +5,7 @@ import { Spinner } from "../ui/shadcn/spinner";
 import { DialogError } from "./DialogError";
 
 /**
- * RejectTagDialog は仮のタグの却下の確認の窓である
- * （specs/031-tentative-tags/ui-design.md「Reject」）。骨格は削除の窓
+ * RejectTagDialog は仮のタグの却下の確認の窓である。骨格は削除の窓
  * （DeleteTagDialog）と同じ `ConfirmDialog` で、本文だけが「却下した名前から戻せる」
  * ことを知らせる。本数は `GET /api/tags` の `videoCount`。
  */

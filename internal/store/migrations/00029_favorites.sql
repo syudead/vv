@@ -1,5 +1,5 @@
 -- +goose Up
--- お気に入り（specs/035-favorites/research.md R-1、data-model.md §1）。どちらも作り直せない
+-- お気に入り。どちらも作り直せない
 -- 利用者データで、再スキャン・メディアフォルダの変更・フォルダの索引の作り直しで消えてはならない。
 -- videos・folder_groups・media_folders への外部キーを張らない。
 

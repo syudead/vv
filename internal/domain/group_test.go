@@ -35,7 +35,7 @@ func TestValidateGroupName(t *testing.T) {
 	}
 }
 
-// 同期の表（specs/048-groups/data-model.md「Automatic group sync」）の各行。
+// 同期の表の各行。
 func TestPlanFolderGroupSync(t *testing.T) {
 	long := strings.Repeat("長", 120)
 	for name, c := range map[string]struct {

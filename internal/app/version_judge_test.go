@@ -11,7 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 重複の自動判定のワーカー（specs/054-auto-dup/research.md R-1〜R-3・R-5・R-11・R-13）。
+// 重複の自動判定のワーカー。
 
 // fakeVersionJudgeStore は候補の組を記憶だけで真似る。states は組ごとの判定（空は待ち）、results は
 // 反映した結果である。
@@ -171,7 +171,7 @@ func TestVersionJudgeMatchingPairBundlesWithoutClassifier(t *testing.T) {
 	if wait := judge.step(context.Background()); wait != 0 {
 		t.Fatalf("判定のあとの待ち = %v, want 0", wait)
 	}
-	// コマの規則で決めた結果は rule で、確率を持たない（specs/055-activity R-5）。
+	// コマの規則で決めた結果は rule で、確率を持たない。
 	if got := store.lastResult(t); got.Verdict != domain.VersionSame || got.Decider != domain.ActivityByRule ||
 		got.Probability != nil {
 		t.Errorf("結果 = %+v, want rule の same", got)
@@ -202,7 +202,7 @@ func TestVersionJudgeDifferingPairAsksAboutTheRun(t *testing.T) {
 			if got.Verdict != c.want || got.Probability == nil || *got.Probability != c.probability {
 				t.Fatalf("結果 = %+v, want %v（確率 %v）", got, c.want, c.probability)
 			}
-			// モデルの答えで決めた結果は ai で、アクティビティの記録に確率と共に残る（specs/055-activity R-5）。
+			// モデルの答えで決めた結果は ai で、アクティビティの記録に確率と共に残る。
 			if got.Decider != domain.ActivityByAI {
 				t.Errorf("判断したもの = %q, want ai", got.Decider)
 			}

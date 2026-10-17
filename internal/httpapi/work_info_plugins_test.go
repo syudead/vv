@@ -18,7 +18,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 作品情報プラグインの経路（specs/049-work-info-plugins/contracts/screen-api.md）は、本物の認証・保存層と
+// 作品情報プラグインの経路は、本物の認証・保存層と
 // app.WorkInfoPlugins で確かめる。検査だけが偽で、送ったバイト列をマニフェストの JSON として読む。
 
 // manifestRuntime は送られたモジュールをマニフェストの JSON として読む検査である。brokenImportPrefix で
@@ -160,7 +160,7 @@ func TestWorkInfoPluginRoutesAddApproveAndReplace(t *testing.T) {
 }
 
 // 承認済みのプラグインを同じ名前の壊れたモジュールで差し替えると同じ行が invalid になり、承認した
-// バイト列へ戻しても、同じバイト列を送り直しても、承認前に戻る（data-model.md の状態の遷移）。
+// バイト列へ戻しても、同じバイト列を送り直しても、承認前に戻る。
 func TestWorkInfoPluginReplacementNeverRestoresTheApproval(t *testing.T) {
 	e := newPluginEnv(t)
 	added := decodePlugin(t, "追加", e.uploadParts([]byte(pluginManifest), 1, e.owner), http.StatusCreated)
@@ -273,7 +273,6 @@ func TestWorkInfoPluginSettingsHideSecretValues(t *testing.T) {
 }
 
 // 一覧は設定の既定値と選択肢を返し、差し替えで選択肢から外れた保存値を staleValue で示す
-// （specs/056-plugin-tooling/contracts/screen-api.md の WorkInfoPluginSetting）。
 func TestWorkInfoPluginSettingsCarryDefaultOptionsAndStaleValue(t *testing.T) {
 	e := newPluginEnv(t)
 	manifest := func(options string) []byte {

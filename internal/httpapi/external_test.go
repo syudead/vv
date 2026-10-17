@@ -16,7 +16,7 @@ import (
 )
 
 // 外部連携 API v1 の Bearer の境界とタグ・スキャンの操作
-// （specs/026-external-api/contracts/external-api.md §1・§3・§5、research.md R-3・R-4・R-9）を、
+// を、
 // 本物の Auth と保存先で確かめる。
 
 func bearer(secret string) map[string]string {
@@ -108,7 +108,7 @@ func TestExternalListTagsWithValidToken(t *testing.T) {
 }
 
 // 無い・形式違い・無効・失効済み・Cookie だけは、原因を区別せずに 401 と
-// WWW-Authenticate: Bearer にする（contracts/external-api.md §1）。
+// WWW-Authenticate: Bearer にする。
 func TestExternalRejectsMissingInvalidAndRevokedTokens(t *testing.T) {
 	env, cookie := newExternalEnv(t, Options{})
 	revoked := env.createAPIToken(cookie, "revoked")
@@ -195,7 +195,7 @@ func TestExternalRecordsLastUsed(t *testing.T) {
 	}
 	first := *list.Items[0].LastUsedAt
 
-	// 60 秒に満たないうちは書き直さず、過ぎたら書き直す（research.md R-9）。
+	// 60 秒に満たないうちは書き直さず、過ぎたら書き直す。
 	env.advance(30 * time.Second)
 	env.serve(authRequest{method: http.MethodGet, target: "/api/v1/tags", header: bearer(created.Secret)})
 	list, _ = env.listAPITokens(cookie)
@@ -222,7 +222,7 @@ func TestExternalUnknownRouteIsBearerThenNotFound(t *testing.T) {
 	}
 }
 
-// Bearer の要求には同一オリジンの検査をかけない（research.md R-4）。新しく始めたら 201、
+// Bearer の要求には同一オリジンの検査をかけない。新しく始めたら 201、
 // 実行中のものを返したら 200 で、画面の POST /api/scans は今どおり 202 である。
 func TestExternalStartScanAcceptsForeignOrigin(t *testing.T) {
 	scans := &fakeScans{}
@@ -280,7 +280,6 @@ func TestExternalStartScanWithoutMediaFolders(t *testing.T) {
 }
 
 // 始めた直後（finding）は本数が両方 null、対象 0 本で終わった走査は両方 0 になる
-// （contracts/external-api.md §5）。
 func TestExternalCurrentScanCounts(t *testing.T) {
 	started := time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC)
 	finished := started.Add(time.Minute)
@@ -381,7 +380,7 @@ func (b blockingTags) ListTags(ctx context.Context, _ domain.TagListQuery) (doma
 	}
 }
 
-// 画面での失効は、そのトークンの実行中の応答をすぐに打ち切る（research.md R-9）。
+// 画面での失効は、そのトークンの実行中の応答をすぐに打ち切る。
 func TestExternalRevokeAbortsInFlightRequest(t *testing.T) {
 	tags := blockingTags{entered: make(chan struct{}), ended: make(chan error, 1)}
 	env, cookie := newExternalEnv(t, Options{Tags: tags})
@@ -424,7 +423,7 @@ func TestExternalRevokeAbortsInFlightRequest(t *testing.T) {
 }
 
 // ホストのコマンドによる失効（資格情報の変更でトークンの行が消える）は、長く続く要求を
-// 確かめ直しで打ち切る（research.md R-9）。
+// 確かめ直しで打ち切る。
 func TestExternalCredentialChangeAbortsInFlightRequestOnRecheck(t *testing.T) {
 	tags := blockingTags{entered: make(chan struct{}), ended: make(chan error, 1)}
 	env, cookie := newExternalEnv(t, Options{Tags: tags, SessionRecheck: 20 * time.Millisecond})

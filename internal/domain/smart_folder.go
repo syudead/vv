@@ -10,8 +10,8 @@ import (
 	"unicode/utf8"
 )
 
-// スマートフォルダ（specs/052-smart-folders/data-model.md）。スマートフォルダは所有者のデータで、
-// 中身を持たず、保存した条件（SmartRule）に今当たる動画を見せる（research.md R-1、R-3）。
+// スマートフォルダ。スマートフォルダは所有者のデータで、
+// 中身を持たず、保存した条件（SmartRule）に今当たる動画を見せる。
 // 条件はライブラリの絞り込みと同じ項目で、JSON の 1 つのオブジェクトとして smart_folders.rule に
 // 置く。親を持てば入れ子になる。
 
@@ -23,7 +23,7 @@ const SmartRuleMaxTags = 16
 
 var (
 	// ErrInvalidSmartRule は条件か並べ順がスマートフォルダの規則に合わないことを表す。API では
-	// 400 invalid_smart_rule である（contracts/screen-api.md）。
+	// 400 invalid_smart_rule である。
 	ErrInvalidSmartRule = errors.New("invalid smart rule")
 	// ErrSmartFolderNotFound は、作成か変更が親に名指したスマートフォルダが無いことを表す。API では
 	// 404 smart_folder_not_found で、フォルダそのものが無い ErrNotFound（404 not_found）と区別する
@@ -33,7 +33,7 @@ var (
 	ErrSmartFolderCycle = errors.New("smart folder cycle")
 )
 
-// SmartRule はスマートフォルダの条件である（data-model.md「smart_folders.rule」）。どの項目も
+// SmartRule はスマートフォルダの条件である。どの項目も
 // 省けて、省いた項目は絞り込まない。空の条件はどの動画にも当たる。id の項目の 0 と、長さと追加日の
 // nil は省いたことを表す。JSON の名前は smart_folders.rule と画面 API の SmartRule と同じである。
 type SmartRule struct {
@@ -192,7 +192,7 @@ func (r SmartRule) Encode() (string, error) {
 	return string(encoded), nil
 }
 
-// Query は条件と同じ絞り込みの VideoQuery を返す（research.md R-3）。並べ順・カーソル・件数は
+// Query は条件と同じ絞り込みの VideoQuery を返す。並べ順・カーソル・件数は
 // 呼び出し側が決める。TagKind はタグの種類の絞り込み（VideoQuery.TagKindID、#1136）に写す。
 func (r SmartRule) Query() VideoQuery {
 	return VideoQuery{
@@ -242,7 +242,7 @@ type SmartRuleRef struct {
 }
 
 // Refs は条件が名指す実体を、タグ（条件の順）、タグの種類、人物、団体の順に返す。欠けた参照の
-// 確かめと、統合による書き換えに使う（research.md R-9）。
+// 確かめと、統合による書き換えに使う。
 func (r SmartRule) Refs() []SmartRuleRef {
 	refs := make([]SmartRuleRef, 0, len(r.Tags)+3)
 	for _, id := range r.Tags {
@@ -261,7 +261,7 @@ func (r SmartRule) Refs() []SmartRuleRef {
 }
 
 // ReplaceRefs は、kind の実体のうち sources が名指すものを target へ書き換えた条件と、書き換えたか
-// どうかを返す（data-model.md「Merges」、research.md R-9）。タグは条件の順を保って重複を除くので、
+// どうかを返す。タグは条件の順を保って重複を除くので、
 // [A, B] の A を B へ統合すると [B] になる。タグの種類・人物・団体は id を差し替える。r は変えない。
 func (r SmartRule) ReplaceRefs(kind SmartRuleRefKind, sources []int64, target int64) (SmartRule, bool) {
 	out := r
@@ -306,7 +306,7 @@ func replaceSmartRuleID(id int64, sources []int64, target int64) (int64, bool) {
 }
 
 // ValidateSmartSort はスマートフォルダの並べ順を確かめる。既知の VideoSort で SortRandom でない
-// ものだけを受け付け、ほかは ErrInvalidSmartRule を包む誤りである（data-model.md「Rules」）。
+// ものだけを受け付け、ほかは ErrInvalidSmartRule を包む誤りである。
 func ValidateSmartSort(sort VideoSort) error {
 	if !sort.Valid() || sort == SortRandom {
 		return fmt.Errorf("%w: sort %q", ErrInvalidSmartRule, sort)
@@ -316,8 +316,7 @@ func ValidateSmartSort(sort VideoSort) error {
 
 // ValidateSmartFolderParent はフォルダ id を親 parent の下へ置いてよいかを、今の親 parents（フォルダの
 // id から親の id、根は入らないか 0）から決める。parent が 0 なら根にするので常によい。parent が id
-// そのものか id の子孫（parent から親をたどって id に着く）なら ErrSmartFolderCycle である
-// （data-model.md「Edits」）。新しく作るフォルダ（id が 0）は子孫を持たない。
+// そのものか id の子孫（parent から親をたどって id に着く）なら ErrSmartFolderCycle である。新しく作るフォルダ（id が 0）は子孫を持たない。
 func ValidateSmartFolderParent(id, parent int64, parents map[int64]int64) error {
 	if parent == 0 || id == 0 {
 		return nil
@@ -340,7 +339,7 @@ type SmartFolder struct {
 	Name     string
 	Rule     SmartRule
 	Sort     VideoSort
-	// OwnerKept は所有者が作ったか、名前・条件・並べ順・親を直したフォルダか（research.md R-10）。
+	// OwnerKept は所有者が作ったか、名前・条件・並べ順・親を直したフォルダか。
 	OwnerKept bool
 	// CreatedAt と UpdatedAt は Unix ミリ秒である。
 	CreatedAt int64
@@ -366,9 +365,8 @@ type SmartFolderChange struct {
 	ParentID  int64
 }
 
-// LibrarySmartFolder はスマートフォルダのカードである（contracts/screen-api.md の
-// LibrarySmartFolder）。カードの値は LibraryGroup と同じ値を、フォルダの再生順（Members）から
-// 作る（data-model.md「Contents」）。埋め込んだ LibraryGroup の ID と Name はフォルダのもので、
+// LibrarySmartFolder はスマートフォルダのカードである。カードの値は LibraryGroup と同じ値を、フォルダの再生順（Members）から
+// 作る。埋め込んだ LibraryGroup の ID と Name はフォルダのもので、
 // Path は空、Favorite はフォルダのお気に入りである。
 type LibrarySmartFolder struct {
 	LibraryGroup
@@ -376,8 +374,7 @@ type LibrarySmartFolder struct {
 	ParentID int64
 }
 
-// SmartFolderSummary はスマートフォルダの要約で、ライブラリと中身のページのフォルダの項目が持つ
-// （contracts/screen-api.md の SmartFolderSummary、research.md R-14）。カードの値は持たず、画面が
+// SmartFolderSummary はスマートフォルダの要約で、ライブラリと中身のページのフォルダの項目が持つ。カードの値は持たず、画面が
 // カードの読み出し（SmartFolderCard）で読む。
 type SmartFolderSummary struct {
 	ID int64
@@ -389,11 +386,9 @@ type SmartFolderSummary struct {
 }
 
 // MaxSmartFolderCards はカードの読み出し 1 回で名指せるフォルダの数の上限である
-// （contracts/screen-api.md「Statuses」）。
 const MaxSmartFolderCards = 60
 
-// SmartFolderCard はカードの読み出しのフォルダ 1 つの値である（GET /api/smart-folders/cards、
-// data-model.md「Cards read」）。値はどれも、フォルダの一致する動画（グループにまとめず動画ごとに
+// SmartFolderCard はカードの読み出しのフォルダ 1 つの値である（GET /api/smart-folders/cards）。値はどれも、フォルダの一致する動画（グループにまとめず動画ごとに
 // 条件を確かめた、見る人に見せる動画）から作る。
 type SmartFolderCard struct {
 	SmartFolderSummary
@@ -427,7 +422,7 @@ type SmartFolderPage struct {
 	// Folder はフォルダの行（条件と並べ順）である。応答の settings は所有者にだけ返す。
 	Folder SmartFolder
 	// Missing は、フォルダと祖先の条件が名指す実体のうち今無いものである（外側の祖先から順）。
-	// 1 つでもあれば、中身は子フォルダだけである（research.md R-9）。
+	// 1 つでもあれば、中身は子フォルダだけである。
 	Missing []SmartRuleRef
 	// Trail は祖先のフォルダを外側から順に持つ。
 	Trail []GroupRef
@@ -439,8 +434,7 @@ type SmartFolderPage struct {
 	Roots []MediaFolder
 }
 
-// SmartFoldersChanged は、中身かカードが変わったかもしれないスマートフォルダを表す
-// （research.md R-12、data-model.md「Notices」）。フォルダの編集はそのフォルダと子孫と親を、一致が
+// SmartFoldersChanged は、中身かカードが変わったかもしれないスマートフォルダを表す。フォルダの編集はそのフォルダと子孫と親を、一致が
 // 変わりうる書き込みはすべてのフォルダを名指す。IDs は小さい順に重複なく持ち、空では発行しない。
 // 取引の確定後に発行する。
 type SmartFoldersChanged struct {

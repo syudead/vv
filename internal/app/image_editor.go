@@ -8,7 +8,7 @@ import (
 
 // ImageEditor は画像編集の提供元を動かすポートである。入力を上げて実行を始め、状態を読み、
 // 中止し、出力を取る。ステップの進み具合も読める。internal/comfyui の *Client が自前の ComfyUI と Comfy Cloud の両方で
-// 満たす（specs/045-comfyui-thumbnails/research.md R-1・R-5）。提供元の失敗は
+// 満たす。提供元の失敗は
 // *domain.ImageEditError で返す。
 type ImageEditor interface {
 	// Start は接続先 conn に入力を上げ、vv のワークフローを送って実行を始める。

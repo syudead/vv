@@ -61,7 +61,7 @@ function failureIsStale(error: unknown): boolean {
 
 /**
  * VersionsFact は、集まり（同じ動画の別バージョン）に属する動画の情報の行に置く「3 versions」の
- * 項目と、押すと開くバージョンの一覧である（specs/030-video-versions/ui-design.md「Video page」）。
+ * 項目と、押すと開くバージョンの一覧である。
  *
  * 一覧は開くたびに取り直す。行を押すとそのバージョンのページへ移る。所有者は行のメニューで
  * 代表を替え、集まりから外せる。失敗は一覧の下の 1 行で伝え、浮き出しは閉じない。
@@ -113,7 +113,7 @@ export default function VersionsFact({
 
   // 取れた一覧が 2 本未満なら、開いた後に集まりが変わっている（別のタブで外した、見せてよい
   // 範囲が変わった）。項目の本数は古い `Video.versions.count` なので、閉じて動画を取り直し、
-  // 項目を消す（ui-design.md「Video page」の `count` 1 と「Unbundle」の残り 1 本と同じ扱い）。
+  // 項目を消す。
   const onDwindled = useRef<() => void>(() => undefined);
 
   const load = useCallback(
@@ -355,7 +355,7 @@ function VersionRow({
 }) {
   const details = versionDetails(item);
   // 所有者は行の title で絶対パスを読める。ゲストは相対の置き場所だけ
-  // （specs/016-single-account-auth/ui-design.md「Guest degradation」）。
+  //
   const fullPlace = owner ? (item.location?.path ?? details.place) : details.place;
   const detailsTitle = versionDetailsText(details, " · ", fullPlace);
   const spoken = versionDetailsText(details, " ");

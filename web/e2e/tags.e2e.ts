@@ -131,8 +131,7 @@ test.describe.serial("video tags", () => {
 
     /**
      * rowMenuName は、幅ごとに行の右端のメニューの読み上げ名を返す。`sm`（640px）
-     * 未満では行の操作が 1 つの「Actions」にまとまり、「More actions」は CSS で隠れる
-     * （specs/036-tag-admin-scale/ui-design.md「Actions on touch and narrow widths」）。
+     * 未満では行の操作が 1 つの「Actions」にまとまり、「More actions」は CSS で隠れる。
      */
     function rowMenuName(width: number) {
       return width < 640 ? "Actions" : "More actions";
@@ -140,7 +139,7 @@ test.describe.serial("video tags", () => {
 
     /**
      * revealTagRow は、名前の行が描かれるまで文書を送ってから、その行を返す。
-     * 一覧は見えている行だけを描く（specs/036-tag-admin-scale/research.md R-2）
+     * 一覧は見えている行だけを描く
      * ので、前の試験で作ったタグが増えると、探す行が表示域の外で DOM に無い。
      * 送るたびに行が描かれるのを少し待ち、末尾まで来ても無ければ先頭から送り直す。
      * 描き直しの途中（読み直した一覧が先頭へ戻すときなど）に末尾と見誤って
@@ -173,7 +172,7 @@ test.describe.serial("video tags", () => {
       page,
       request,
     }) => {
-      // 仮のタグは外部連携 API の tentative でだけ作れる（specs/031-tentative-tags）。
+      // 仮のタグは外部連携 API の tentative でだけ作れる。
       const issued = await request.post("/api/api-tokens", {
         headers: mutationHeaders,
         data: { name: "e2e仮のタグ" },
@@ -198,7 +197,7 @@ test.describe.serial("video tags", () => {
       });
       expect(tagged.ok()).toBe(true);
 
-      // 名前の列が最も狭くなる 360px でも確かめる（ui-design.md「Responsive behaviour」）。
+      // 名前の列が最も狭くなる 360px でも確かめる。
       for (const width of [1280, 360]) {
         await page.setViewportSize({ width, height: 800 });
         await page.goto("/tags");
@@ -266,7 +265,7 @@ test.describe.serial("video tags", () => {
       page,
     }) => {
       // 4 桁の件数と 4 桁の却下した名前で、見出しとタブが最も長くなる形を作る
-      // （ui-design.md「Header」「Tabs」「Responsive behaviour」）。
+      //
       const createdAt = "2026-01-01T00:00:00Z";
       const items = Array.from({ length: 1000 }, (_, index) => ({
         id: 900000 + index,
@@ -301,7 +300,7 @@ test.describe.serial("video tags", () => {
       );
       for (const width of [320, 360]) {
         await page.setViewportSize({ width, height: 800 });
-        // 「Tentative only」が効いた URL で開く（ui-design.md「URL state」）。
+        // 「Tentative only」が効いた URL で開く。
         await page.goto("/tags?tentative=1");
         const count = page.getByRole("status").filter({ hasText: "1,000 of 1,000 tags" });
         await expect(count).toBeVisible();
@@ -366,7 +365,7 @@ test.describe.serial("video tags", () => {
       await page.setViewportSize({ width: 1280, height: 800 });
     });
 
-    test("B3: 1280幅で統合先の候補を開くと、8行すべてが見える（ui-design.mdは最大8行）", async ({
+    test("B3: 1280幅で統合先の候補を開くと、8行すべてが見える", async ({
       page,
       request,
     }) => {
@@ -404,7 +403,7 @@ test.describe.serial("video tags", () => {
     });
   });
 
-  // specs/041-tag-overflow-list: カードの「+N」の一覧は、隠れたタグを折り返す
+  // docs/design-docs/library-ui.md: カードの「+N」の一覧は、隠れたタグを折り返す
   // チップで並べ、画面の中に収まり、収まらない分は一覧の中でスクロールし、長い
   // 名前を省略しない（親 Issue #813 の受け入れ条件 1・5 と、画面の下端に近い
   // カードの Edge Case）。マウスを「+N」に留めると開き、押しても開く（受け入れ

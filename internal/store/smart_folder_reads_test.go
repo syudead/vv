@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// スマートフォルダの中身（specs/052-smart-folders/data-model.md「Contents」）。
+// スマートフォルダの中身。
 
 // newSmartFolder は条件 rule と並べ順 sort のフォルダを parent の下に作る。
 func newSmartFolder(t *testing.T, db *DB, name string, rule domain.SmartRule, sort domain.VideoSort, parent int64) int64 {
@@ -162,7 +162,7 @@ func TestSmartFolderChildAndsItsParentsRule(t *testing.T) {
 	if len(first.Items) != 4 || first.NextCursor == "" {
 		t.Errorf("最初のページ = %v（子フォルダ 2 つと項目 2 件）", smartItemNames(first.Items))
 	}
-	// 子フォルダは要約だけを持つ（research.md R-14）。
+	// 子フォルダは要約だけを持つ。
 	if got, want := *first.Items[0].SmartFolder, (domain.SmartFolderSummary{ID: child, ParentID: parent, Name: "Another"}); got != want {
 		t.Errorf("Another の要約 = %+v, want %+v", got, want)
 	}
@@ -228,7 +228,7 @@ func TestSmartFolderCountsABundleOnce(t *testing.T) {
 }
 
 // ゲストには公開の動画だけが見え、見える動画の無いフォルダは ErrNotFound である。所有者は空の
-// フォルダを読める。条件は所有者の事実で決める（research.md R-8・R-11）。
+// フォルダを読める。条件は所有者の事実で決める。
 func TestSmartFolderVisibility(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -263,7 +263,7 @@ func TestSmartFolderVisibility(t *testing.T) {
 	}
 }
 
-// 消したタグを名指す条件のフォルダは子フォルダだけを出し、その子も何も出さない（research.md R-9）。
+// 消したタグを名指す条件のフォルダは子フォルダだけを出し、その子も何も出さない。
 func TestSmartFolderWithAMissingTagListsOnlyItsChildren(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()

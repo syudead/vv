@@ -19,7 +19,7 @@ import { RadioGroup, RadioGroupItem } from "../ui/shadcn/radio-group";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { HARDWARE_ENCODING_GUIDE_URL } from "./docsLinks";
 
-/** 確認中の間に `GET` し直す間隔である（research.md R-5）。 */
+/** 確認中の間に `GET` し直す間隔である。 */
 export const CHECKING_POLL_INTERVAL_MS = 3000;
 
 /** choiceOrder は選択肢の並びである（親 Issue 要件 1）。 */
@@ -64,8 +64,7 @@ function choiceState(
 /**
  * TranscodingSection は設定画面の「動画の変換」区画である。所有者がライブ変換の映像
  * エンコード方式を選び、どれが使えて今どれが効いているかを見る。選んだ時点で保存し、
- * 表示は表示時の `GET` と `PUT` の応答で置き換える。確認中の間だけ数秒ごとに `GET` し直す
- * （specs/025-hardware-encoding/research.md R-5）。
+ * 表示は表示時の `GET` と `PUT` の応答で置き換える。確認中の間だけ数秒ごとに `GET` し直す。
  */
 export default function TranscodingSection({
   pollIntervalMs = CHECKING_POLL_INTERVAL_MS,

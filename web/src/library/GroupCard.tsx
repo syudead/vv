@@ -25,8 +25,7 @@ import { type CardDragBinding, dragRowProps, RowDropMarks } from "../videoList/c
 import FolderArt from "../videoList/FolderArt";
 
 /**
- * GroupCardProps はライブラリのグループのカードと行の props である
- * （specs/017-folder-groups/ui-design.md「Group card」）。グループのカードはフォルダ画面には
+ * GroupCardProps はライブラリのグループのカードと行の props である。グループのカードはフォルダ画面には
  * 出ないので `web/src/library/` に置く。
  */
 export interface GroupCardProps {
@@ -35,16 +34,14 @@ export interface GroupCardProps {
   backTo: string;
   /**
    * カードと行の名前が開く場所。省くとそのグループのページ（`/groups/{id}`、道筋なし）で、
-   * ライブラリはこれを使う。グループのページは道筋を 1 段伸ばした場所を渡す
-   * （specs/048-groups/ui-design.md「Group card and row」「Body」）。
+   * ライブラリはこれを使う。グループのページは道筋を 1 段伸ばした場所を渡す。
    */
   to?: string;
-  /** 全メンバーが選択に入っているときだけ true（ui-design.md「Pressing and selection」）。 */
+  /** 全メンバーが選択に入っているときだけ true。 */
   selected: boolean;
   selectionMode: boolean;
   /**
-   * 全メンバー（`videoIds`）を選択に入れる・外す。呼び出し元はグループとしても覚える
-   * （specs/035-favorites/research.md R-7）。選択を持たない見る人（ゲスト）では
+   * 全メンバー（`videoIds`）を選択に入れる・外す。呼び出し元はグループとしても覚える。選択を持たない見る人（ゲスト）では
    * 省き、チェックを描かない。
    */
   onSelect?: (group: LibraryGroup, selected: boolean) => void;
@@ -56,8 +53,7 @@ export interface GroupCardProps {
   /** 題名の下のタグの行（格子表示だけ）。VideoCard の tagsRow と同じく関数で受ける。 */
   tagsRow?: (group: LibraryGroup) => ReactNode;
   /**
-   * 名前の位置に出す欄。「Make a group」で作ったばかりのグループだけが持つ
-   * （specs/050-drag-organize/ui-design.md「The new group's name」）。欄の間、名前はリンクの外に出る。
+   * 名前の位置に出す欄。「Make a group」で作ったばかりのグループだけが持つ。欄の間、名前はリンクの外に出る。
    */
   nameField?: ReactNode;
   /** リストの行をドラッグの層に加える値（useCardDrag）。所有者のライブラリのリスト表示だけが渡す。 */
@@ -72,7 +68,7 @@ export type CollectionValues = Pick<
 
 /**
  * useCollectionFacts は見る人に見せるグループかスマートフォルダの視聴の値である。ゲストでは
- * 視聴状態を出さない（ui-design.md「Screen boundary」の「ゲスト」）。格子のカードは見終えた
+ * 視聴状態を出さない。格子のカードは見終えた
  * 本数を数字では出さず、見ている途中の帯の長さと読み上げ名にだけ使う。
  */
 export function useCollectionFacts(values: CollectionValues) {
@@ -106,7 +102,7 @@ export function groupCountText(videoCount: number): UiText {
   return t.library.group.count(videoCount);
 }
 
-/** groupLinkLabel はカードのリンクの読み上げ名である（ui-design.md「Accessibility」）。 */
+/** groupLinkLabel はカードのリンクの読み上げ名である。 */
 export function groupLinkLabel(
   name: string,
   videoCount: number,
@@ -117,8 +113,7 @@ export function groupLinkLabel(
 
 /**
  * GroupFavorite はグループのカード・行のお気に入りの付け外しである（所有者だけ。
- * specs/035-favorites/ui-design.md「Card」）。グループの id を送り、メンバーには付けない
- * （specs/048-groups/research.md R-10）。
+ * docs/design-docs/catalog-organization.md「Card」）。グループの id を送り、メンバーには付けない。
  */
 function GroupFavorite({
   group,
@@ -140,8 +135,7 @@ function GroupFavorite({
 
 /**
  * GroupAddToPlaylist はグループのカード・行の「Add to playlist」である（所有者だけ。
- * specs/044-playlists/ui-design.md「Add to playlist」）。グループの id を送る
- * （specs/048-groups/research.md R-10）。
+ * docs/design-docs/catalog-organization.md「Add to playlist」）。グループの id を送る。
  */
 function GroupAddToPlaylist({
   group,
@@ -161,7 +155,7 @@ function GroupAddToPlaylist({
 
 /**
  * GroupAddToGroup はグループのカード・行の「Add to group」である（所有者だけ。
- * specs/048-groups/ui-design.md「Group card and row」）。グループの id を送る。
+ * docs/design-docs/catalog-organization.md「Group card and row」）。グループの id を送る。
  */
 function GroupAddToGroup({
   group,
@@ -245,8 +239,7 @@ export function CollectionName({ name, muted }: { name: string; muted: boolean }
  * GroupCard はライブラリの格子でグループを1枚で出すカードである。動画のカード
  * （VideoCard）と同じ箱・同じ大きさで、サムネイルの枠にはフォルダ画面のフォルダカードと
  * 同じフォルダの絵柄（FolderArt）を描き、右下の面に本数と合計の長さを重ねる。
- * カード全体がグループのページへの1つのリンクである（specs/048-groups/research.md R-8。
- * 017 の「最初の未視聴のメンバーを開く」を置き換える）。
+ * カード全体がグループのページへの1つのリンクである。
  */
 export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
   const {
@@ -334,7 +327,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
       {nameField}
       {owner && (
         // 前に出たサムネイルより上（チェックと同じ z-30）。リンクの外、タグの行の前に置く
-        // （ui-design.md「Placement」）。
+        //
         <VideoThumbnailMark className="z-30">
           <GroupAddToGroup group={group} variant="card" />
           <GroupAddToPlaylist group={group} variant="card" />
@@ -348,7 +341,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
 
 /**
  * GroupRow はリスト表示のグループの行である。動画の行（VideoRow）と同じ列に
- * グループの値を出す（ui-design.md「List view row」）。
+ * グループの値を出す。
  */
 export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
   const {

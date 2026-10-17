@@ -15,7 +15,7 @@ import {
 import { Skeleton } from "../ui/shadcn/skeleton";
 import type { Crumb } from "./folderPath";
 
-/** collapseFrom は狭い幅で途中の段を畳み始める段数である（ui-design.md）。 */
+/** collapseFrom は狭い幅で途中の段を畳み始める段数である。 */
 const collapseFrom = 4;
 
 /**
@@ -28,14 +28,13 @@ const collapseFrom = 4;
  * 出し分けは CSS の幅の分岐だけで行い、幅を監視しない（library-ui.md 4）。
  * undefined の段は名前がまだ分からない段で、骨組みで描く。
  *
- * suffix は検索中に現在地の直後へ続ける文字（「内を検索中」など、ui-design.md
- * 「Folder screen」）。段と違って省略しない — 検索中であることを見失わせないためである。
+ * suffix は検索中に現在地の直後へ続ける文字（「内を検索中」など、 「Folder screen」）。段と違って省略しない — 検索中であることを見失わせないためである。
  *
  * label は帯の読み上げ名で、省くとフォルダ画面の「Breadcrumbs」。グループのページは同じ帯を
- * 「Group path」として使う（specs/048-groups/ui-design.md「Trail band」）。
+ * 「Group path」として使う。
  *
  * keepFirst は狭い幅で畳むときも最初の段を残し、「最初 › … › 親 › 現在地」にする。グループの
- * ページが「Library」の段を残すのに使う（specs/050-drag-organize/ui-design.md「Group page」）。
+ * ページが「Library」の段を残すのに使う。
  * target は段の中身（と畳んだ「…」）を包む口で、グループのページが段を落とす先にするのに使う。
  */
 export default function Breadcrumbs({

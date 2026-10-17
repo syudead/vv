@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/seek-sprite-generation.md
-sourceHash: 4d0102535f828d3282d55210efa69ac42b3f2d60aa15d951a2347c2814cd225b
+sourceHash: af3fa244009c0ea9b24bab78f05cdb36d153fc407131eb6b095cd373175b16b3
 ---
 
 # シーク用スプライトの生成 {#seek-sprite-generation}
@@ -98,7 +98,7 @@ flowchart LR
 
 30 分の処理上限は、抽出、タイル配置、フォールバックを合わせた時間に適用する。
 
-全体のデコードは代替処理であり、ログに出し、最近の取り込みの問題 `seek_thumbnail_full_decode` として記録する（[specs/024-import-progress/research.md](../../specs/024-import-progress/research.md) R-7）。区間ごとの抽出は対象の入力にとって通常の経路であり、代替処理ではない。
+全体のデコードは代替処理であり、ログに出し、最近の取り込みの問題 `seek_thumbnail_full_decode` として記録する。区間ごとの抽出は対象の入力にとって通常の経路であり、代替処理ではない。
 
 | 場合 | 記録する問題 |
 | --- | --- |

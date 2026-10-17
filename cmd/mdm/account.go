@@ -17,8 +17,8 @@ import (
 	"github.com/syudead/vv/internal/wasmplugin"
 )
 
-// account の下位コマンドの終了コード（specs/016-single-account-auth/contracts/account-cli.md §3）。
-// plugin の下位コマンドも同じ値を使う（specs/056-plugin-tooling/contracts/plugin-cli.md）。
+// account の下位コマンドの終了コード。
+// plugin の下位コマンドも同じ値を使う。
 const (
 	exitAccountOK    = 0
 	exitAccountError = 1 // DB を開けない・書けない
@@ -184,8 +184,7 @@ func withAuthStore(ctx context.Context, env accountEnv, use func(*store.AuthStor
 	return use(db.Auth())
 }
 
-// readNewPassword は新しいパスワードを受け取り、値の規則で確かめる
-// （contracts/account-cli.md §2）。端末ならエコーを止めて2回尋ね、端末でなければ
+// readNewPassword は新しいパスワードを受け取り、値の規則で確かめる。端末ならエコーを止めて2回尋ね、端末でなければ
 // 最初の1行（末尾の改行を除く）を使う。
 func readNewPassword(env accountEnv) (string, *accountFailure) {
 	var secret string

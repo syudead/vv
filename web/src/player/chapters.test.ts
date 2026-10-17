@@ -168,8 +168,7 @@ describe("シークプレビューのチャプターのタイトル", () => {
 });
 
 /**
- * チャプターのボタンとメニューを本物の video.js で組む（ui-design.md「Chapters button and
- * menu」）。
+ * チャプターのボタンとメニューを本物の video.js で組む。
  */
 describe("ChaptersMenuButton", () => {
   let player: ReturnType<typeof videojs> | undefined;

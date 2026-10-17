@@ -2,8 +2,7 @@ import type { Video } from "../api/client";
 import { t, type UiText } from "../i18n";
 import { formatDuration } from "../lib/format";
 
-// 視聴履歴の行の再生位置と操作（specs/043-watch-history/ui-design.md「Entry row」、
-// research.md R-13）。
+// 視聴履歴の行の再生位置と操作。
 
 /** EntryPosition は行の位置の行: バーの値と最大、「16:05 / 42:18」の文字である。 */
 export interface EntryPosition {

@@ -78,7 +78,7 @@ func directChildConditionFor(alias string, windows bool) string {
 
 // FolderLocations はフォルダ配下（深さを問わない）の、見る人に見せてよい所在
 // （登録フォルダの下にあり、ゲストには公開の動画のもの）のうち、見せる動画
-// （shownVideoCondition、specs/030-video-versions/data-model.md §4）の所在をすべて返す。
+// （shownVideoCondition、docs/design-docs/catalog-organization.md）の所在をすべて返す。
 // 代表以外のバージョンだけがあるフォルダは、動画の無いフォルダになる。集計は
 // internal/domain の SummarizeFolder が行うので、ゲストには公開の動画の所在から
 // 導いたフォルダと件数だけが現れる。

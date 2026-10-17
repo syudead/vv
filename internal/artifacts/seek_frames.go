@@ -39,7 +39,7 @@ func (s *Store) SeekFrames(contentKey string, n int) ([][]byte, error) {
 }
 
 // SeekFramePairs は 2 つの内容のシーク用プレビューから、組ごとに a のコマ pair.A を左、b のコマ
-// pair.B を右に並べた 1 枚の JPEG を、組の順に返す（specs/054-auto-dup/research.md R-2）。b のコマは
+// pair.B を右に並べた 1 枚の JPEG を、組の順に返す。b のコマは
 // a のコマの大きさに合わせるので、1 枚は a の 1 コマの 2 倍の幅になる。メディアファイルは読まず、
 // ffmpeg も使わない。置き場か配置情報が無ければ fs.ErrNotExist を包んだ誤りを返す。
 func (s *Store) SeekFramePairs(keyA, keyB string, pairs []domain.FramePair) ([][]byte, error) {

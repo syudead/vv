@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// 並び順は contracts/list-api.md §3 の 13 通りと、作成日（033）・お気に入りにした日時（035）の
+// 並び順は 一覧 API の 13 通りと、作成日（033）・お気に入りにした日時（035）の
 // 2 通りずつだけを受け付ける。
 func TestVideoSortValid(t *testing.T) {
 	for _, sort := range []VideoSort{
@@ -62,8 +62,7 @@ func TestShuffleKey(t *testing.T) {
 	}
 }
 
-// スマートフォルダの項目は、検索も、お気に入りのみ以外の絞り込みも無い一覧にだけ出る
-// （specs/052-smart-folders/research.md R-7）。並べ替え・ページ・空白だけの検索は絞り込みではない。
+// スマートフォルダの項目は、検索も、お気に入りのみ以外の絞り込みも無い一覧にだけ出る。並べ替え・ページ・空白だけの検索は絞り込みではない。
 func TestVideoQueryListsSmartFolders(t *testing.T) {
 	zero := 0
 	for _, q := range []VideoQuery{

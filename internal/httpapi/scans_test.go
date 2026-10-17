@@ -65,7 +65,7 @@ func TestStartScanReturnsRunningInsteadOfConflict(t *testing.T) {
 }
 
 // 直近の状態を返す。古い項目（startedAt・finishedAt・total・completed・failed）は
-// 返さない（specs/024-import-progress/contracts/scan-api.md §2）。
+// 返さない。
 func TestGetCurrentScan(t *testing.T) {
 	handler := newTestServer(t, Options{Scans: &fakeScans{
 		hasScan: true,
@@ -97,7 +97,6 @@ func TestGetCurrentScan(t *testing.T) {
 
 // 取り込みの状態・本数・完了の時刻は、internal/app が組み立てた値をそのまま返す。
 // finding のあいだは本数を、done・partial 以外では完了の時刻を省く
-// （specs/024-import-progress/contracts/scan-api.md §2）。
 func TestGetCurrentScanReturnsImportProgress(t *testing.T) {
 	settledAt := time.Unix(1_700_000_100, 0).UTC()
 	for _, tc := range []struct {
@@ -273,7 +272,7 @@ func scanIssueFixture() []domain.ScanIssue {
 }
 
 // 問題の一覧は、失敗を先に、同じ重さの中はファイル名の順に返し、続きがあるときだけ
-// nextCursor を返す（specs/024-import-progress/contracts/scan-api.md §3）。
+// nextCursor を返す。
 func TestListCurrentScanIssuesOrderAndCursor(t *testing.T) {
 	handler := newTestServer(t, Options{Scans: &fakeScans{
 		hasScan: true, current: domain.Scan{ID: 9, State: domain.ScanDone}, issues: scanIssueFixture(),

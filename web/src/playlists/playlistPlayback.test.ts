@@ -47,7 +47,7 @@ describe("stepPath", () => {
     expect(stepPath(5, 13, 23)).toBe("/videos/13?playlist=5&item=23");
   });
 
-  it("スマートフォルダの項目なら smartFolder を付ける（052 ui-design.md「Video page in a playlist」）", () => {
+  it("スマートフォルダの項目なら smartFolder を付ける", () => {
     expect(stepPath(5, 13, 23, 7)).toBe("/videos/13?playlist=5&item=23&smartFolder=7");
   });
 
@@ -60,7 +60,7 @@ describe("stepPath", () => {
   });
 });
 
-describe("スマートフォルダの項目（052 ui-design.md「Playlist screen row」）", () => {
+describe("スマートフォルダの項目", () => {
   const folder = (openVideoId?: number) =>
     ({
       id: 4,

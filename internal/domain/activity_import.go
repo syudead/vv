@@ -2,8 +2,8 @@ package domain
 
 import "slices"
 
-// 取り込みの記録の進み具合（specs/055-activity/contracts/screen-api.md「GET /api/activity」の progress）。
-// 1 本の動画の取り込みは 5 つの段階をまとめて 1 件の記録にする（research.md R-3）。
+// 取り込みの記録の進み具合。
+// 1 本の動画の取り込みは 5 つの段階をまとめて 1 件の記録にする。
 
 // ImportJobState は import の記録に属する仕事 1 件の段階と状態である。
 type ImportJobState struct {

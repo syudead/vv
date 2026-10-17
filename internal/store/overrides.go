@@ -10,15 +10,15 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 動画の上書き（specs/029-video-overrides/data-model.md §1・§3、research.md R-1〜R-3）。
+// 動画の上書き。
 // 上書きは content_key に結ぶ video_overrides の1行で持ち、再スキャン・移動・改名・所在の
 // 追加を越えて残る。表示名・位置の両方が null になった行は消す。表示名を書き換えたら、
 // 同じ取引でその内容の動画の全所在の title_key・search_key を書き直す。
 
 // overrideColumns は動画を返す読み出し（videoColumns・listColumns）の末尾に足す列で、
 // 並びは scanVideo と対応する。表示名・位置・改版番号・適用した画像の改版番号
-// （specs/045-comfyui-thumbnails/data-model.md）・適用した画像の出どころ
-// （specs/046-thumbnail-image-upload/data-model.md）の順である。有効な題名
+// ・適用した画像の出どころ
+// の順である。有効な題名
 // （coalesce(display_name, 所在の題名)）は scanVideo が決める。内容の識別子が空の動画には
 // 結ばない。
 const overrideColumns = `(select ov.display_name from video_overrides ov
@@ -39,7 +39,7 @@ const overrideColumns = `(select ov.display_name from video_overrides ov
 // videoID は content_key へ引き直し（registeredContentKeysForVideoIDs）、登録フォルダの下に
 // 所在を持たない動画と内容の識別子が空の動画は domain.ErrNotFound にする。確定後に
 // domain.VideoOverrideChanged を1回発行し、表示名が変わったならすべてのスマートフォルダを名指す
-// domain.SmartFoldersChanged も発行する（specs/052-smart-folders/research.md R-12）。
+// domain.SmartFoldersChanged も発行する。
 func (s *OverrideStore) SetDisplayName(ctx context.Context, videoID int64, name string) (domain.Video, error) {
 	normalized, _, err := domain.NormalizeDisplayName(name)
 	if err != nil {
@@ -131,7 +131,7 @@ func (s *OverrideStore) SetDisplayNames(ctx context.Context, changes []domain.Di
 		final[target.contentKey] = names[i]
 	}
 	// 更新日時は取引の初めと最後に残る名前を比べて進める。1 回ずつの書き込みの前後では
-	// 比べないので、一括で A→B→A と書いた内容は進まない（research.md R-3）。
+	// 比べないので、一括で A→B→A と書いた内容は進まない。
 	edited := make([]string, 0, len(keys))
 	for _, key := range keys {
 		if before[key] != final[key] {
@@ -201,8 +201,7 @@ func writeDisplayName(ctx context.Context, tx *sql.Tx, key, name string, now tim
 	return nil
 }
 
-// deleteEmptyOverride は内容 key の行が表示名も位置も持たなければ消す（data-model.md §1 の
-// 不変条件）。
+// deleteEmptyOverride は内容 key の行が表示名も位置も持たなければ消す。
 func deleteEmptyOverride(ctx context.Context, tx *sql.Tx, key string) error {
 	if _, err := tx.ExecContext(ctx,
 		`delete from video_overrides where content_key = ? and display_name is null and thumbnail_position_ms is null`,
@@ -214,7 +213,7 @@ func deleteEmptyOverride(ctx context.Context, tx *sql.Tx, key string) error {
 }
 
 // SetThumbnailPosition は動画 videoID の代表サムネイルの位置を positionMs にし（nil は解除）、
-// 反映後の動画を返す（specs/029-video-overrides/data-model.md §3、research.md R-4・R-6）。
+// 反映後の動画を返す。
 //
 // 呼ぶのは internal/app の Ingest だけで、その位置（解除なら自動の位置）の画像を公開した
 // あと、生成の錠の中で呼ぶ。1 つの取引で、行を書き（位置も表示名も無くなれば消す）、位置を
@@ -251,13 +250,13 @@ func (s *OverrideStore) SetThumbnailPosition(
 		return domain.Video{}, err
 	}
 	// 位置の画像を公開したので、適用した画像の行は同じ取引で消す
-	// （specs/045-comfyui-thumbnails/research.md R-10）。
+	//
 	imageRemoved, err := deleteThumbnailImage(ctx, tx, keys[0])
 	if err != nil {
 		return domain.Video{}, err
 	}
 	// 同じ位置の指定し直しでも画像は作り直すが、更新日時は位置か適用した画像が変わったときだけ
-	// 進める（research.md R-3）。
+	// 進める。
 	if positionChanged || imageRemoved {
 		if err := touchEditedAt(ctx, tx, keys, now); err != nil {
 			return domain.Video{}, err

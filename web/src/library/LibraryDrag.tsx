@@ -32,7 +32,7 @@ import { VideoRow, type VideoCardProps } from "../videoList/VideoCard";
 import { type GroupCardProps, GroupRow } from "./GroupCard";
 import { favoriteTargets, type LibrarySelection } from "./selection";
 
-// ライブラリのドラッグである（specs/050-drag-organize/ui-design.md「Library」）。所有者の格子と
+// ライブラリのドラッグである。所有者の格子と
 // リストを包み、動画だけをグループのカードの上に落とすと、そのグループへ移す。グループを含む
 // カードを落とすと「Put in as a child group」と「Merge」のメニューを開く。動画のカードの
 // 上に落としたときの扱いは画面が決める（`onto`、`onDrop`）。ライブラリは並べ替えないので、
@@ -40,8 +40,7 @@ import { favoriteTargets, type LibrarySelection } from "./selection";
 
 /**
  * selectedKeys は選択から持ち上げるカードの鍵を返す。「Favorite」と同じ分け方で、選んだ
- * グループはグループのカード、選んだグループのメンバーでない動画は動画のカードになる
- * （specs/050-drag-organize/ui-design.md「Lifting」）。
+ * グループはグループのカード、選んだグループのメンバーでない動画は動画のカードになる。
  */
 export function selectedKeys(selection: LibrarySelection): string[] {
   const { videoIds, groupIds } = favoriteTargets(selection);
@@ -178,7 +177,7 @@ const noKeys: ReadonlySet<string> = new Set();
 /**
  * pruned は `hidden` のうち、もう一覧に無い項目の鍵（見せるときに隠す必要が無い）と、受け入れられた
  * 操作の項目の鍵 `released` を除く。読み直した一覧がまだ持つ項目はサーバーの答えなので見せる
- * （ほかのグループにも入っている動画は、グループへ足した後も一覧に残る。048 research.md R-6）。
+ * （ほかのグループにも入っている動画は、グループへ足した後も一覧に残る）。
  */
 function pruned(
   hidden: ReadonlySet<string>,
@@ -206,7 +205,7 @@ interface LibraryOperation {
 }
 
 /**
- * useLibraryMoves はライブラリでグループへ落とした項目を移すかマージする（research.md R-8）。
+ * useLibraryMoves はライブラリでグループへ落とした項目を移すかマージする。
  * 落とした項目はすぐ一覧から隠し（マージしたグループのカードも消える）、選択を解き、`move` か
  * `merge` を送る。要求は落とした順に 1 つずつ送るので、
  * 「Undo」の通知はいつも最後に落とした移動のものになる。受け入れられたら「Undo」付きの通知を

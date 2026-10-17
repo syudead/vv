@@ -19,7 +19,7 @@ import {
 import type { CardAttachment, CardDrop, HeldDrop } from "./cardDrag";
 import type { OntoAnswer } from "./cardDragRules";
 
-// 落とした先のカードに開くメニューである（specs/050-drag-organize/ui-design.md「Drop menus」）。
+// 落とした先のカードに開くメニューである。
 // メニューは落とした先のカードの下に開き、ラベルは落とした先の名前を言う。Esc、外の押下、Tab で
 // 閉じると何も送らない。閉じることが取り消しなので「Cancel」の項目は無い。
 
@@ -119,8 +119,7 @@ export function useDropMenu(
 }
 
 /**
- * useGroupDropMenu はグループを含むカードをグループのカードに落としたときのメニューを開く
- * （ui-design.md「Drop menus」の Group on group）。`hold` は落とし方を受け、`accepts` が true なら
+ * useGroupDropMenu はグループを含むカードをグループのカードに落としたときのメニューを開く。`hold` は落とし方を受け、`accepts` が true なら
  * メニューを開いて true を返す。項目は「Put in as a child group」（`onNest`）と「Merge」
  * （`onMerge`）の 2 つで、どちらも `destructive` にしない。閉じると何もしない。
  */
@@ -154,8 +153,7 @@ function useGroupDropMenu({
 }
 
 /**
- * useGroupDrops は、カードをグループのカードの上に落としたときの扱いを画面に渡す
- * （ui-design.md「What a drop does」）。画面はカードの鍵ごとの項目 `byKey`、項目が落とす先の
+ * useGroupDrops は、カードをグループのカードの上に落としたときの扱いを画面に渡す。画面はカードの鍵ごとの項目 `byKey`、項目が落とす先の
  * グループならその値を返す `groupOf`、項目がグループかを返す `isGroup` を渡す。
  *
  * - `onto` はグループのカードに「Put in」、持ち上げたカードにグループがあれば「Put in or merge…」の

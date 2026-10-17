@@ -255,7 +255,7 @@ last one shows: a new undo notice dismisses the previous one, so one "Undo"
 is on screen and it is the last action's. While the undo runs, the action is
 `disabled` with a `Spinner`. Do not give a notice any other action, a second
 action, or "Undo" for an action that cannot be put back
-([050 UI design, Undo toast](../../../specs/050-drag-organize/ui-design.md#undo-toast)).
+.
 
 The app's one `Toaster` sits in `ToastProvider` (`ui/Toast`), and screens send
 a notice with its `useToast`, which calls `toast()`. It shows at most three

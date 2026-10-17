@@ -9,8 +9,7 @@ import (
 )
 
 // ライブ変換の出力（fragmented MP4）の先頭の moov を読み、各 track の edit list から
-// 実際の開始位置を得て、時間軸が 0 から始まるよう edit list を書き換える
-// （specs/018-live-transcode-seek/research.md R-1）。moof/mdat には触れない。
+// 実際の開始位置を得て、時間軸が 0 から始まるよう edit list を書き換える。moof/mdat には触れない。
 
 const (
 	boxHeaderSize = 8

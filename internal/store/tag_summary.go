@@ -11,7 +11,6 @@ import (
 
 // Summary は videoIDs のうちいまライブラリにある動画の数（Total）と、1本以上に
 // 付いているタグごとの本数（Items）を、名前の自然順で返す
-// （contracts/tags-api.md §4 の summary）。
 func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSummary, error) {
 	// videoIDs → 利用者データの鍵の解決と本数の集計を同じ読み取りスナップショットで
 	// 行う。別々に読むと、その間の付け外しで Total と Items の本数が食い違いうる。
@@ -22,7 +21,7 @@ func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSum
 	defer func() { _ = tx.Rollback() }()
 
 	// 動画の数は利用者データの鍵の数で、同じ集まりの動画は 1 本と数える
-	// （specs/030-video-versions/data-model.md §3）。
+	//
 	keys, err := userKeysForVideoIDs(ctx, tx, videoIDs)
 	if err != nil {
 		return domain.TagSummary{}, err
@@ -37,8 +36,7 @@ func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSum
 		return domain.TagSummary{}, fmt.Errorf("cannot build video ids: %w", err)
 	}
 
-	// count はどちらかの出所で、manualCount は手で付けた分だけで数える（017 の
-	// data-model.md §4）。1本の動画に同じタグが複数のフォルダ名（元の名前と
+	// count はどちらかの出所で、manualCount は手で付けた分だけで数える（017 の）。1本の動画に同じタグが複数のフォルダ名（元の名前と
 	// シノニムなど）から当たりうるので、content_key の重複を除いて数える。
 	rows, err := tx.QueryContext(ctx, `
 		with selected(video_id, content_key) as (

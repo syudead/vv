@@ -1,5 +1,5 @@
 -- +goose Up
--- 任意のグループ（specs/048-groups/data-model.md「Migration」、research.md R-1〜R-3）。作り直せない
+-- 任意のグループ。作り直せない
 -- 利用者データで、動画の項目は利用者データの鍵（集まりのメンバーなら 'bundle:<id>'）、子グループの
 -- 項目はグループの id で持ち、videos への外部キーを張らない。生成物の片付け・releaseContentIndex・
 -- メディアフォルダの削除はどの表にも触れない。

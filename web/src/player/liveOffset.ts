@@ -61,16 +61,13 @@ function newAttempt(): string {
 /**
  * liveSource は元動画の startMs からのライブ変換の source を作る。途中から始めるときは
  * attempt を付け、仲立ちが実際の開始位置を引けるようにする。コピーで始めた変換は
- * 直前のキーフレームから始まり、指定位置とずれるためである
- * （specs/018-live-transcode-seek/contracts/transcode-start-api.md §3）。quality は縮める
- * 画質で、source が vvQuality として持ち、未 buffer シークの作り直しが引き継ぐ
- * （specs/027-playback-quality/research.md R-5）。
+ * 直前のキーフレームから始まり、指定位置とずれるためである。quality は縮める
+ * 画質で、source が vvQuality として持ち、未 buffer シークの作り直しが引き継ぐ。
  *
  * offsetSettled は、再生の時間軸の 0 が元動画のどの時刻か（offset、秒）が決まるたびに
  * 1 回呼ばれる。attempt の無い source は指定位置で直ちに、ある source は報告が 200 なら
  * 実際の開始位置、404 や誤りなら指定位置で呼ばれる。offsetPending は attempt のある source を
- * 設定して報告を待ち始めたときに呼ばれる。字幕はこの 2 つで付け直す
- * （specs/028-sidecar-subtitles research.md R-6）。source を作り直すシークも同じ経路で知らせる。
+ * 設定して報告を待ち始めたときに呼ばれる。字幕はこの 2 つで付け直す。source を作り直すシークも同じ経路で知らせる。
  */
 export function liveSource(
   videoId: number,

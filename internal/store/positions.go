@@ -9,7 +9,7 @@ import (
 )
 
 // positionTable は、親ごとに 0 から詰めた位置（position）を持つ項目の表である。プレイリストの
-// 項目（specs/044-playlists/research.md R-3）とグループの項目（specs/048-groups/data-model.md）が
+// 項目とグループの項目が
 // 同じ詰め直しを使う。
 type positionTable struct {
 	// table は項目の表、parent は親を指す列の名前である。どちらも定数で、利用者の入力ではない。
@@ -61,7 +61,7 @@ func writePositionOrder(ctx context.Context, tx *sql.Tx, t positionTable, order 
 
 // deleteRekeyDuplicates は、鍵 from を to へ付け替える前に、1 つの親に鍵 from と to の項目が
 // 両方あるとき位置の大きい方（同じなら id の大きい方）を消す。付け替えの後に同じ親で鍵が
-// 重ならず、前の位置が残る（specs/044-playlists/research.md R-2）。
+// 重ならず、前の位置が残る。
 func deleteRekeyDuplicates(ctx context.Context, tx *sql.Tx, t positionTable, from, to string) error {
 	if _, err := tx.ExecContext(ctx, `delete from `+t.table+` where content_key in (?1, ?2)
 		and exists (select 1 from `+t.table+` o where o.`+t.parent+` = `+t.table+`.`+t.parent+`
@@ -78,7 +78,7 @@ func deleteRekeyDuplicates(ctx context.Context, tx *sql.Tx, t positionTable, fro
 var errPositionItemNotFound = errors.New("item not in its parent")
 
 // moveItemAfter は親 parentID の項目 itemID を、項目 afterItemID のすぐ後ろへ移し（nil なら
-// 先頭）、親を 0 から詰め直す（specs/044-playlists/research.md R-3）。どちらかの項目が親に
+// 先頭）、親を 0 から詰め直す。どちらかの項目が親に
 // 無ければ errPositionItemNotFound。itemID の後ろへ自分を移すのは何も変えず、false を返す。
 func moveItemAfter(ctx context.Context, tx *sql.Tx, t positionTable, parentID, itemID int64, afterItemID *int64) (bool, error) {
 	order, err := positionOrder(ctx, tx, t, parentID)
@@ -99,8 +99,7 @@ func moveItemAfter(ctx context.Context, tx *sql.Tx, t positionTable, parentID, i
 }
 
 // placeItemsAfter は親 parentID の項目 itemIDs を、その順のまままとめて項目 afterItemID のすぐ
-// 後ろへ移し（nil なら先頭）、親を 0 から詰め直す（specs/050-drag-organize/data-model.md
-// 「Operations」の Reorder）。規則は placeAfter のとおりで、誤りなら何も書かない。
+// 後ろへ移し（nil なら先頭）、親を 0 から詰め直す。規則は placeAfter のとおりで、誤りなら何も書かない。
 func placeItemsAfter(ctx context.Context, tx *sql.Tx, t positionTable, parentID int64, itemIDs []int64, afterItemID *int64) error {
 	order, err := positionOrder(ctx, tx, t, parentID)
 	if err != nil {

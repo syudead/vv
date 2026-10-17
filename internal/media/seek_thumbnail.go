@@ -41,7 +41,7 @@ const (
 // 一時データは outputDir 内で片付け、完成物の公開は呼び出し側が受け持つ。
 //
 // fullDecode は、区間ごとの抽出にも失敗して全編の復号から作ったかである。呼び出し側は
-// これを代用として記録する（specs/024-import-progress/research.md R-7）。索引から
+// これを代用として記録する。索引から
 // 作れない入力が区間ごとの抽出で作れた場合は、通常の経路なので代用に数えない
 // （docs/design-docs/seek-sprite-generation.md）。
 func GenerateSeekSprite(

@@ -89,7 +89,7 @@ describe("panelCurrentItemId", () => {
   });
 });
 
-describe("useUnplayableSkip（ui-design.md「Unplayable item」）", () => {
+describe("useUnplayableSkip", () => {
   function renderSkip(playlist: VideoPlaylist, videoTitle: string | undefined) {
     return renderHook(
       ({ title }: { title: string | undefined }) =>

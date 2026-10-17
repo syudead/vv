@@ -1,6 +1,6 @@
-// プレイリストの名前の規則（specs/044-playlists/research.md R-11）。サーバーと同じく、前後の
+// プレイリストの名前の規則。サーバーと同じく、前後の
 // 空白を取り除いた名前をコードポイントで数える。HTML の maxLength は UTF-16 の単位で数えるので
-// 使わない（ui-design.md「New playlist」）。
+// 使わない。
 
 /** playlistNameLimit は名前の最大の長さ（コードポイント）である。 */
 export const playlistNameLimit = 100;

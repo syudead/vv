@@ -19,7 +19,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// http_send の誤りの値である（contracts/plugin-contract.md の Host functions）。http_meta と
+// http_send の誤りの値である。http_meta と
 // http_body は知らないハンドルに hostInvalid を返す。
 const (
 	hostInvalid      int32 = -1

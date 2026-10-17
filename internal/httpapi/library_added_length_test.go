@@ -7,8 +7,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 一覧の addedWithin・minDuration・maxDuration（specs/052-smart-folders/contracts/screen-api.md の
-// Schemas and parameters changed、research.md R-4、#1170）。newLibraryFixture の動画はどれも
+// 一覧の addedWithin・minDuration・maxDuration。newLibraryFixture の動画はどれも
 // 2026-01-01 に追加した 60 秒の動画である。
 
 var addedLengthPaths = []string{"/api/videos", "/api/library", "/api/library/ids"}
