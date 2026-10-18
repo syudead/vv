@@ -24,9 +24,18 @@ are not listed on their own; a pair entry in two pipelines appears under both.
 
 `ActivityMemberSummary`: `id`, `kind`, `feature`, `status`, `reason?`,
 `outcome?`, `stage?`, `progress?`, `retryRun`, `undoable`, `replaced` (a
-retried or reopened member kept for history), `matched` (the member satisfies
-every filter given, absent when no filter is given). It carries no `detail`
-and no `tags`.
+retried or reopened member kept for history), `matched`. It carries no
+`detail` and no `tags`.
+
+`matched` uses the same predicate that selected the pipeline, minus the
+parent-only `status`, so a listed pipeline found through a member marks that
+member.
+
+| Filters given | `matched` is true for a member that |
+| --- | --- |
+| None | Absent on every member |
+| `status` only | Has that status itself |
+| Any of `feature`, `decider`, `q`, `since`, with or without `status` | Satisfies every one of those given; `status` is not applied to members |
 
 `ActivityKind` adds `pipeline`. A `pipeline` entry has `retryRun: false` and
 `undoable: false`.
@@ -49,7 +58,7 @@ in full, `tags` with probabilities for `auto_tag`) plus:
 
 | Status | `code` | When |
 | --- | --- | --- |
-| 403 | — | Not the owner |
+| 401 | `unauthenticated` | No owner session, as for every owner-only operation |
 | 404 | `not_found` | No entry with that id |
 
 ## `POST /api/activity/{id}/retry`, `POST /api/activity/{id}/undo`

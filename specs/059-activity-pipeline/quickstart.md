@@ -17,7 +17,7 @@ the parent open, and a failure stays visible after a reload and a restart.
 
 | Step | Expected result | Acceptance |
 | --- | --- | --- |
-| Scan the media folder and open Activity while it runs | One parent per video; each parent's members are its ingest stages, its auto-tagging run and, for the two re-encodes, one duplicate judgement shown under both parents | 1 |
+| Scan the media folder and open Activity while it runs | One parent per video; each parent's members are its import run (with the five stages as its breakdown), its auto-tagging run and, for the two re-encodes, one duplicate judgement shown under both parents | 1 |
 | Watch a parent whose ingest stages finish first | The parent stays running until its auto-tagging and judgement finish | 2 |
 | Turn auto-tagging off, add a fourth video, scan again | The new parent finishes after its ingest stages; no auto-tagging member appears | 2 |
 | Turn auto-tagging on and press "Suggest tags" on a finished video's page | A standalone auto-tagging entry; no earlier parent gains a member or reopens | 1 |

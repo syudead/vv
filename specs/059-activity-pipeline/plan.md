@@ -7,8 +7,9 @@
 ## Summary
 
 The owner can open any activity entry's detail, and each video's import run
-becomes one parent entry whose members are the ingest stages, the auto-tagging
-run and the duplicate judgements that import starts. The parent is a new
+becomes one parent entry whose members are the `import` entry (its five ingest
+stages are that entry's breakdown, not members), the auto-tagging run and the
+duplicate judgements that import starts. The parent is a new
 `pipeline` activity entry linked to its members by a table, rolled up in each
 member's transaction, and the list pages parents and standalone entries only
 ([research.md](research.md)).
@@ -103,7 +104,7 @@ flowchart LR
 ### Record import pipelines and their ingest stages in the activity log
 
 **Scope**: The migration, the `pipeline` kind and `PipelineState`,
-`superseded_by`, membership and roll-up helpers, opening a pipeline with a new
+`scan_id`, `superseded_by`, membership and roll-up helpers, opening a pipeline with a new
 `import` entry and joining continuations (activity retry, claim reopen), and
 the `import` entry's stage rows
 ([data-model.md](data-model.md), R-1, R-2, R-3, R-6, R-8, R-10). Update
@@ -149,8 +150,9 @@ activity log
 
 ### Attach duplicate judgements to the import pipelines of both videos
 
-**Scope**: A newly opened `version_judgement` entry joins the unfinished
-pipelines of both keys; reattach adds nothing (R-5). Update
+**Scope**: A newly opened `version_judgement` entry joins the finishing
+fingerprint job's pipeline and the other key's newest pipeline when it is
+unfinished or of the same scan; reattach adds nothing (R-5). Update
 [duplicate-judging.md](../../docs/design-docs/duplicate-judging.md#each-pair-keeps-one-activity-entry).
 
 **Dependencies**: Record import pipelines and their ingest stages in the
@@ -159,7 +161,9 @@ activity log
 **Acceptance**:
 
 - Store tests: the second video's fingerprint opens a pair entry that is a
-  member of both videos' running pipelines and of no finished one; with
+  member of both videos' pipelines when both were opened by one scan, also
+  after the first video's pipeline finished (which returns it to `running`);
+  a first video imported by an earlier scan gets no membership; with
   judging off no member is written; turning judging on later writes standalone
   entries; retrying a failed pair returns its pipelines to `running` without a
   second entry.
@@ -177,11 +181,13 @@ activity log
 **Acceptance**:
 
 - Store tests: a member that matches `feature`, `decider` or `q` lists its
-  pipeline once with that member `matched`; counts equal the number of
+  pipeline once with that member `matched` (also with `status` combined, per
+  the contract's `matched` table); counts equal the number of
   listed entries; a pair in two pipelines is listed under both; members are
   never listed on their own; the cursor stays stable while members join.
 - HTTP adapter tests with a fake `Activity`: `getActivity` returns members,
-  pipelines and stages, `404 not_found` for an unknown id, refuses a guest;
+  pipelines and stages, `404 not_found` for an unknown id, `401` without an
+  owner session;
   retry and undo of a `pipeline` id answer `409`.
 - `task generate` leaves no diff in CI.
 

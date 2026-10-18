@@ -8,7 +8,7 @@ The rest of the model is unchanged:
 
 One migration with the next free number in `internal/store/migrations/`
 creates `activity_pipeline_members` and `activity_entry_stages`, adds
-`activity_entries.superseded_by`, and adds `pipeline` to the accepted kinds.
+`activity_entries.scan_id` and `activity_entries.superseded_by`, and adds `pipeline` to the accepted kinds.
 It creates no pipeline for existing entries
 ([R-10](research.md#r-10-earlier-entries-stay-standalone)).
 
@@ -17,6 +17,7 @@ It creates no pipeline for existing entries
 | Field | Type | Null | Meaning |
 | --- | --- | --- | --- |
 | `kind` | text | No | Adds `pipeline`; its feature is `import`, its subject is the video (`subject_kind = video`, content key, label as written) |
+| `scan_id` | integer | Yes | `pipeline` only: the scan whose queueing opened it; null for a re-probe or a move written as `done` |
 | `superseded_by` | integer | Yes | The entry that closed this one as `done`/`superseded`, written by the supersede step of `recordActivity` |
 
 A `pipeline` entry has no `stage`, `detail`, `probability` or `undo_keys`, and
@@ -53,7 +54,7 @@ has no row; that is how "not part of this run" differs from "waiting".
 | A new `import` entry opens a pipeline unless it continues another entry ([R-3](research.md#r-3-a-new-import-entry-opens-a-pipeline-continuations-join-it)) | `internal/store` (`joinImportActivity`, `recordLocationImport`) |
 | An entry that continues another one (retry, claim reopen) joins every pipeline of the entry it continues | `internal/store`, next to `recordActivity` |
 | After-import auto-tagging joins the pipeline of the finishing seek job's `import` entry ([R-4](research.md#r-4-after-import-auto-tagging-is-queued-in-the-seek-stage-transaction)) | `internal/store` (seek result and seek failure transactions) |
-| A new pair entry joins the unfinished pipelines of both keys ([R-5](research.md#r-5-a-pair-entry-joins-the-open-pipelines-of-its-two-videos)) | `internal/store` (`syncPairActivity`) |
+| A new pair entry joins the finishing fingerprint job's pipeline and the other key's newest pipeline when it is unfinished or of the same scan ([R-5](research.md#r-5-a-pair-entry-joins-the-pipelines-of-the-run-that-found-it)) | `internal/store` (`syncPairActivity`) |
 | Every member write re-rolls its pipelines in the same transaction ([R-6](research.md#r-6-parent-status-is-stored-and-rolled-up-in-the-members-transaction)) | `internal/store` helper that writes entry states; the rule in `internal/domain` |
 | A pipeline is never a member, and is never retried or undone | `internal/domain` (`RetryOffered`, `UndoOffered`) |
 | Settling an `import` entry rewrites its stage rows from the jobs it holds | `internal/store` (`settleImportActivity`) |

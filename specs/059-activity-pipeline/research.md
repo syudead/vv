@@ -47,7 +47,7 @@ joins that entry's pipelines.
 | Retry from the activity log (`import`, `auto_tag`) | The retried entry's pipelines |
 | Claim that reopens an interrupted entry (`import`, `auto_tag`) | The superseded entry's pipelines |
 | Auto-tagging queued after the seek stage | The pipeline of the finishing job's `import` entry ([R-4](#r-4-after-import-auto-tagging-is-queued-in-the-seek-stage-transaction)) |
-| A pair entry opened by a fingerprint result | [R-5](#r-5-a-pair-entry-joins-the-open-pipelines-of-its-two-videos) |
+| A pair entry opened by a fingerprint result | [R-5](#r-5-a-pair-entry-joins-the-pipelines-of-the-run-that-found-it) |
 | Settings or video page tagging, judging turned on, anything owner-started | None: listed standalone |
 
 **Rationale**: The parent Issue asks for one parent per run and forbids folding
@@ -76,20 +76,26 @@ the chained stages (preview, fingerprint) that are queued in their
 predecessor's result transaction. A disabled feature queues nothing, so the
 parent never waits for it.
 
-## R-5: A pair entry joins the open pipelines of its two videos
+## R-5: A pair entry joins the pipelines of the run that found it
 
 **Decision**: When the fingerprint transaction opens a new `version_judgement`
-entry, the entry joins every not-yet-finished pipeline of either key. Reattaching
-an existing open entry adds no membership.
+entry, the entry joins the pipeline of the finishing fingerprint job, and the
+other key's newest pipeline when that pipeline is still unfinished or was
+opened by the same scan. Reattaching an existing open entry adds no
+membership.
 
-| Option | Verdict |
-| --- | --- |
-| **Open pipelines of both keys** | Chosen: two concurrent imports both see the pair |
-| Only the pipeline of the fingerprint job | Rejected: the other import's parent hides a pair it is part of |
-| Every pipeline of both keys, finished ones included | Rejected: reopens a past import, which the parent Issue forbids |
+| Option | Two videos of one scan, A's run already done | A imported in an earlier scan | Verdict |
+| --- | --- | --- | --- |
+| **Triggering pipeline, plus the other key's newest pipeline if unfinished or of the same scan** | Joins A's pipeline, which returns to `running` | Not joined | Chosen |
+| Unfinished pipelines of both keys only | Missed: A finished first, so only B sees the pair | Not joined | Rejected: concurrent imports lose the pair depending on which fingerprint finishes first |
+| Every pipeline of both keys | Joined | Joined, reopening a past import | Rejected: the parent Issue forbids folding later work into a past import |
 
-**Rationale**: Judging off opens no pair entry, so nothing waits; turning
-judging on later opens standalone entries (R-3).
+**Rationale**: A scan that queues several videos is one "import at the same
+time" in the parent Issue's terms, so the scan that opened a pipeline
+(`activity_entries.scan_id`, [data-model.md](data-model.md#activity_entries-changes))
+identifies the pipelines of one run without inferring from time. Judging off
+opens no pair entry, so nothing waits; turning judging on later opens
+standalone entries (R-3).
 
 ## R-6: Parent status is stored and rolled up in the member's transaction
 
