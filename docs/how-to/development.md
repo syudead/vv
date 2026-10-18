@@ -36,16 +36,51 @@ restart and the Vite development server.
 Read the [testing policy](../design-docs/testing.md) when writing or changing
 Go or Web tests; it defines their scope, synchronization and fixture choices.
 
-```bash
-mise exec --command "task check"
-```
+Choose the smallest scope that covers the change and its callers. Each Go/Web
+scope includes formatting and lint as well as tests; focused tests alone are
+not a pre-push check. Run these through `mise exec --command "..."` when the
+pinned tools are not on `PATH`.
 
-`task check` runs formatting checks, static analysis, unit tests,
-generated-file checks, migration checks and the Windows build check. Before
-every push, run it for a code or configuration change and `task check-docs` for
-a change to Markdown, `docs/` or `specs/`; a skipped run tends to come back as a
-formatting or lint fix from CI. `task fmt` rewrites Go and Web sources into the
-checked format.
+| Change | Before pushing |
+| --- | --- |
+| Go package | `task check SCOPE=go GO_PACKAGES="./internal/domain/... ./internal/app/..."` |
+| Web feature | `task check SCOPE=web WEB_FILES="src/tags src/testing/tagsPage.tsx" WEB_TESTS="src/tags"` |
+| Both | Run both scoped commands |
+| Shared dependencies, configuration, or unclear impact | `task check` |
+| Markdown, `docs/`, or `specs/` | `task check-docs`, also for mixed changes |
+| Comments only | Check formatting for the changed files and verify the diff changes no code or tool directives |
+
+`task check` defaults to `SCOPE=all`, running Go and Web formatting, lint and
+tests on the host platform. `SCOPE=docs` runs the document checks.
+`task check-go` and `task check-web` are direct aliases for their scopes.
+`GO_PACKAGES` accepts space-separated Go package patterns from the repository
+root and defaults to `./...`. `WEB_FILES` accepts space-separated paths from
+`web/` for Prettier and ESLint and defaults to `.`; `WEB_TESTS` accepts Vitest
+test-file filters from `web/` and defaults to the whole suite. A source path
+is not necessarily a test-file filter: select its tests and affected callers
+explicitly. No matching tests is a failure. Web type checking always covers
+both TypeScript projects because types cross file boundaries.
+
+Include dependent packages, callers and shared fixtures when narrowing a scope.
+For a deletion, select its surviving package or parent directory. Do not narrow
+checks for shared toolchain, dependency, Taskfile, lint or test configuration
+changes. Record the scope and results in the PR; reuse passing results until
+relevant inputs change. After a fix, rerun the failed check and those affected
+by the fix. Format only affected files, or use `task fmt` for a broad rewrite.
+
+CI runs these additional checks without making them a local pre-push gate;
+`task check-ci` reproduces them together, and each task can run on its own.
+
+| CI check | Run locally when |
+| --- | --- |
+| `generate-check` | Changing OpenAPI, generators or registry components; run `task generate` first |
+| `migrations-check` | Changing migration SQL |
+| `e2e-groups-check` | Changing E2E files or CI grouping |
+| `lint-go-windows-desktop`, `build-windows-check` | Changing Windows, desktop or cross-platform code |
+| `build-check-web` | Changing bundling, assets or build configuration |
+
+`task check-ci` supplements local checks; it does not run them or browser E2E.
+CI also runs full Go and Web suites, coverage/report uploads and quality metrics.
 
 Lint findings are fixed in the code, never silenced: `task check` fails on any
 `//nolint` comment in Go sources (`scripts/nolintguard`) and on any
@@ -71,7 +106,7 @@ CI picks its jobs from the changed paths and reports through the required
 flowchart LR
   change[Changed paths] --> code{Code or config?}
   code -->|no| docs[task check-docs]
-  code -->|yes| groups[task check in parallel groups]
+  code -->|yes| groups[Full checks and CI checks]
   docs --> checks[Checks job]
   groups --> checks
   code -->|yes| push{Push to main or Renovate PR?}
@@ -81,12 +116,12 @@ flowchart LR
 ```
 
 "No" means only Markdown, `docs/` or `specs/` changed. For a code change, CI
-runs the subtasks of `task check` as parallel `Checks (<group>)` jobs: Go lint
-with the generated-file, migration, e2e group and Windows build checks, Go tests, Web
-lint with the SPA build check (`task build-check-web`), and the Vitest suite
-split into three shards (`task test-web-report -- --shard=1/3`). `task test-web`
-runs the build check and the whole suite. A check added to `task check` also
-goes into one of these groups in `.github/workflows/ci.yml`, and a new
+runs full local and CI-only tasks as parallel `Checks (<group>)` jobs: Go lint
+with generation, migration, E2E grouping and Windows lint/build checks, Go tests,
+Web lint with the SPA build check, and the Vitest suite split into three shards
+(`task test-web-report -- --shard=1/3`). `task test-web` remains an explicit
+build-and-test command. Keep both local and CI-only tasks represented in
+`.github/workflows/ci.yml`. A new
 `web/e2e/*.e2e.ts` file goes into one of the four E2E groups there;
 `task e2e-groups-check` fails when a file is in no group or in two. Only the Go groups
 restore the Go build cache, and each saves its own copy on a push to `main`.

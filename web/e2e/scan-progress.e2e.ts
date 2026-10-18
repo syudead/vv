@@ -1,12 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-/**
- * stubServerEvents は変化の知らせの接続を、何も送らない1本に差し替える。
- *
- * この検査は取り込みの状態を route で決めるので、実際のサーバーが送る状態
- * （先に走った検査の取り込み）を混ぜない。retry を長くして、切れたあとに
- * つなぎ直さないようにする。
- */
+/** Silence real SSE updates so prior scans cannot interfere with routed scan state; a long retry interval prevents reconnects. */
 async function stubServerEvents(page: Page) {
   await page.route("**/api/events", (route) =>
     route.fulfill({
@@ -17,10 +11,7 @@ async function stubServerEvents(page: Page) {
   );
 }
 
-/**
- * failLogout はログアウトの要求を失敗させる。押すたびに「ログアウトできませんでした」の
- * トーストが出るので、トーストの置き場所を確かめるきっかけに使う。
- */
+/** Fail logout to produce a repeatable toast for layout checks. */
 async function failLogout(page: Page) {
   await page.route("**/api/auth/logout", (route) =>
     route.fulfill({ status: 500, contentType: "application/json", body: "{}" }),
@@ -29,7 +20,6 @@ async function failLogout(page: Page) {
 
 const logoutFailed = "Couldn't sign out";
 
-/** scanBody は `GET /api/scans/current` の応答を作る。 */
 function scanBody(values: Record<string, unknown>) {
   return {
     origin: "manual",
@@ -64,11 +54,10 @@ for (const width of [360, 640, 768]) {
       name: /^Scanning 4 of 10 videos done\./,
     });
     await expect(indicator).toBeVisible();
-    // 狭い幅のサイドバーは ☰ で開く Sheet のドロワーで、640px 以上はいつもレール。
+    // Below 640 px the sidebar is a Sheet drawer; wider screens use a rail.
     if (width < 640) await page.getByRole("button", { name: "Menu" }).click();
     await page.getByRole("button", { name: "Sign out" }).click();
     if (width < 640) {
-      // ドロワーは Esc で閉じる。
       await page.keyboard.press("Escape");
       await expect(page.getByRole("dialog")).toHaveCount(0);
     }
@@ -76,7 +65,6 @@ for (const width of [360, 640, 768]) {
     await expect(toast).toBeVisible();
     const sidebar = page.getByRole("complementary", { name: "Main navigation" });
     if (width >= 640) {
-      // アイコンのレール（shadcn/ui の Sidebar の collapsed）。
       await expect(page.locator('[data-slot="sidebar"]')).toHaveAttribute(
         "data-state",
         "collapsed",
@@ -133,14 +121,13 @@ for (const { width, height } of [
 
     await page.goto("/library");
     if (width < 640) await page.getByRole("button", { name: "Menu" }).click();
-    // ログアウトは失敗するまで押せないので、トーストが出るのを待ってから次を押す。
+    // Wait for the failure toast before clicking logout again because the pending request disables it.
     const logoutButton = page.getByRole("button", { name: "Sign out" });
     for (let count = 1; count <= 3; count += 1) {
       await logoutButton.click();
       await expect(page.getByText(logoutFailed)).toHaveCount(count);
     }
     if (width < 640) {
-      // 狭い幅のサイドバーは Sheet のドロワーで、Esc で閉じる。
       await page.keyboard.press("Escape");
       await expect(page.getByRole("dialog")).toHaveCount(0);
     }
@@ -150,7 +137,7 @@ for (const { width, height } of [
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
     await expect(page).toHaveURL(/\/videos\/1$/);
-    // 再生画面では溜まったトーストを一度に 1 つだけ出す。1 つになってから位置を測る。
+    // Wait until the player shows only one queued toast before measuring its position.
     await expect(page.getByText(logoutFailed)).toHaveCount(1);
     const toast = page.getByText(logoutFailed);
     await expect(toast).toBeVisible();
@@ -170,10 +157,10 @@ for (const { width, height } of [
     expect(toastBox).not.toBeNull();
     expect(summaryBox).not.toBeNull();
     expect(indicatorBox).not.toBeNull();
-    // 通知は上の帯の中（右下の表示と吹き出しより上）に出る。
+    // Notifications belong in the top band above bottom-right controls and popovers.
     expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(indicatorBox!.y);
     expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(summaryBox!.y);
-    // 閉じる × は見出しの帯に 1 つだけあり、見えていることも確かめる。
+
     const closeButtons = page.getByRole("button", { name: "Close" });
     const closeBoxes = [];
     for (let index = 0; index < (await closeButtons.count()); index += 1) {

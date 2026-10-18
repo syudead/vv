@@ -8,10 +8,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// GetHealth は稼働状態とビルド情報を返す（GET /api/health）。
-//
-// 保存層まで疎通できていれば 200 と status=ok、疎通できなければ 503 と
-// status=degraded を返す。判定は要求のたびに行い、状態を保持しない。
 func (s *server) GetHealth(w http.ResponseWriter, r *http.Request) {
 	reachable := false
 	if s.pinger != nil {
@@ -43,7 +39,7 @@ func (s *server) GetHealth(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusServiceUnavailable
 	}
 
-	// 稼働確認は常に最新の判定を返す必要があるため中間キャッシュを禁止する。
+	// Health responses must bypass caches to reflect current reachability.
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, status, payload, s.logger)
 }

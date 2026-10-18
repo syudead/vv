@@ -11,36 +11,16 @@ import type { VideoLinkState } from "./pageDecisions";
 import { VideoThumbnail, videoLinkLabel } from "./RelatedVideos";
 import { Dimmed } from "./StatusOverlays";
 
-/** 予告から次のメンバーを再生するまでの秒数。 */
 export const autoplayNoticeSeconds = 5;
 
-/**
- * AutoplayPhase は、グループのメンバーの再生が終わったときの層の段階である。
- *
- * - `notice`: 次のメンバーを自動で再生する予告
- * - `cancelled`: 予告を取り消した。今の再生終了の層を出す
- * - `gone`: 予告の間に次のメンバーが消えた。「もう一度見る」だけの層を出す
- */
+/** Autoplay countdown, cancellation, or removal of the next member. */
 export type AutoplayPhase = "notice" | "cancelled" | "gone";
 
-/** autoplayAnnouncement は予告が出たときに一度だけ読み上げる文である。 */
 export function autoplayAnnouncement(title: string): UiText {
   return t.player.autoplay.announcement(title, autoplayNoticeSeconds);
 }
 
-/**
- * AutoplayNotice は、グループのメンバーの再生が終わったときに、次のメンバーを自動で
- * 再生するまでの予告の層である（親 Issue 要件 27、plan の Structural Decisions 12）。
- *
- * - 出たときから 5 秒の期限までを経過時間で数え（タイマーの間引きで延ばさない）、
- *   0 になったら次のメンバーがまだあるかを `GET /api/videos/{id}` で確かめてから `onAdvance` を呼ぶ。404 なら `onGone` を呼び、先へ進まない。
- * - 出ている間は、次のメンバーを名指しする `video` イベント（所有者だけ）を見張り、
- *   届いたら同じく確かめる。次のメンバーは開いたときの関連動画の応答で決まり、
- *   ここでは差し替えない。
- * - 始まったことは `role="status"` で一度だけ伝え、残り秒数と帯は読み上げさせない。
- * - `takeFocus` が真のとき（フォーカスがプレイヤーの中にあったとき）だけ「取り消す」へ
- *   フォーカスを移す。
- */
+/** Use an elapsed-time deadline and verify the next member before advancing. Announce once and take focus only from inside the player. */
 export default function AutoplayNotice({
   next,
   to = `/videos/${String(next.id)}`,
@@ -53,12 +33,11 @@ export default function AutoplayNotice({
   onGone,
 }: {
   next: Video;
-  /** 次の動画のリンクの行き先。プレイリストの文脈ではクエリを付けた場所。 */
+  /** Includes playlist context when present. */
   to?: string;
-  /** 次の動画へのリンクに載せる状態（linkStateFrom）。 */
   linkState: VideoLinkState;
   takeFocus: boolean;
-  /** 変化の知らせを見張るか。`/api/events` は所有者だけのものなので、ゲストでは偽。 */
+  /** Guest sessions cannot subscribe to owner-only video events. */
   watchEvents: boolean;
   onCancel: () => void;
   onPlayNow: () => void;
@@ -67,7 +46,7 @@ export default function AutoplayNotice({
 }) {
   const cancel = useRef<HTMLButtonElement | null>(null);
   const [remaining, setRemaining] = useState(autoplayNoticeSeconds);
-  // 帯は出た直後から縮み始める。最初の描画は満ちた状態で置き、次の描画で縮め始める。
+  // Start full, then animate the countdown on the next frame.
   const [started, setStarted] = useState(false);
   const latest = useRef({ onAdvance, onGone });
   useEffect(() => {
@@ -80,9 +59,8 @@ export default function AutoplayNotice({
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setStarted(true));
-    // 残り秒数はタイマーが呼ばれた回数ではなく、出たときに決めた期限との差から出す。
-    // 隠れたタブではブラウザーがタイマーを間引くので、回数で数えると 5 秒を過ぎても
-    // 先へ進まない。呼ばれるたびと、タブが見えるようになったときに期限と比べ直す。
+    // Compare against the deadline: background tabs throttle timers.
+    // Recheck on each tick and when the tab becomes visible.
     const deadline = performance.now() + autoplayNoticeSeconds * 1000;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const update = () => {
@@ -90,7 +68,6 @@ export default function AutoplayNotice({
       const seconds = Math.max(Math.ceil(left / 1000), 0);
       setRemaining(seconds);
       clearTimeout(timer);
-      // 次の秒の境目で呼ばれるようにする。
       if (seconds > 0) timer = setTimeout(update, left - (seconds - 1) * 1000);
     };
     timer = setTimeout(update, 1000);
@@ -102,7 +79,7 @@ export default function AutoplayNotice({
     };
   }, []);
 
-  // 確かめは出ている間だけ行い、層が消えたら（取り消し・移動・画面を離れた）打ち切る。
+  // Cancel verification when the overlay closes or navigation changes.
   const checks = useRef(new Set<AbortController>());
   useEffect(() => {
     const running = checks.current;
@@ -126,7 +103,7 @@ export default function AutoplayNotice({
           latest.current.onGone();
           return false;
         }
-        // 一時的な失敗では消えたとは言えない。移った先の画面が状態を伝える。
+        // A transient error does not prove removal; the destination reports its state.
         return true;
       } finally {
         checks.current.delete(controller);
@@ -163,15 +140,14 @@ export default function AutoplayNotice({
       video: (changed) => {
         if (changed === nextId) confirmGone();
       },
-      // つなぎ直したときは、切れていた間の知らせを受け取っていない。
+      // Reconnection may have missed events.
       open: (reconnected) => {
         if (reconnected) confirmGone();
       },
     });
   }, [nextId, watchEvents]);
 
-  // なめらかに縮める帯は、1 秒先の長さへ 1 秒かけて動かす。動きを減らす設定では、
-  // 秒数が減るたびに今の長さへ段階で縮める。
+  // Animate toward the next second; reduced motion uses discrete steps.
   const reduceMotion =
     typeof window.matchMedia === "function" &&
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;

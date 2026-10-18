@@ -1,7 +1,5 @@
 -- +goose Up
--- 所在ごとの照合用の鍵。
--- 鍵の値は SQL では作れない（NFKC などの正規化が要る）ので、ここでは列・索引・
--- トリガを作るまでとし、値は起動時の埋め直し（store.RefreshSearchKeys）が埋める。
+-- Go fills normalized search keys at startup because SQL cannot perform the required Unicode normalization.
 alter table video_locations add column search_key text not null default '';
 alter table video_locations add column title_key text not null default '';
 alter table video_locations add column search_version integer not null default 0;
@@ -14,8 +12,7 @@ drop table if exists videos_fts;
 create virtual table location_search_fts using fts5(
     search_key, content='video_locations', content_rowid='id', tokenize='trigram'
 );
--- 索引へ写すのは search_key だけである。題名やパスの変更は、Go が同じ書き込みの
--- 中で search_key を作り直すことで索引に届く。
+-- Index only search_key; Go rebuilds it atomically with title/path changes.
 -- +goose StatementBegin
 create trigger location_search_fts_ai after insert on video_locations begin
     insert into location_search_fts(rowid, search_key) values (new.id, new.search_key);
@@ -34,8 +31,7 @@ create trigger location_search_fts_au after update of search_key on video_locati
     insert into location_search_fts(rowid, search_key) values (new.id, new.search_key);
 end;
 -- +goose StatementEnd
--- 既存の所在も（空の鍵のまま）索引に載せておく。以後は更新トリガが、埋め直しで
--- 書かれた鍵を写す。
+-- Seed empty legacy keys now; update triggers index their startup backfill.
 insert into location_search_fts(location_search_fts) values ('rebuild');
 
 -- +goose Down

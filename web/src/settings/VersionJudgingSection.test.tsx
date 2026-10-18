@@ -28,7 +28,7 @@ function judgingSwitch(): HTMLElement {
 }
 
 function renderSection() {
-  // 説明の文が「Connections」のページへリンクするので、ルーターの中に描く。
+  // Render inside a router because the description links to Connections.
   return render(
     <MemoryRouter>
       <OwnerAudience>
@@ -60,8 +60,7 @@ describe("VersionJudgingSection", () => {
     stored = false;
     fetchMock.mockReset();
     fetchMock.mockImplementation(route);
-    // 接続先の読み込みは fetchMock を通さず保存済みと答える。注記は「Library」のページのテスト
-    // （SettingsPage.versionJudging.test.tsx）が確かめる。
+    // Stub connection reads separately; SettingsPage.versionJudging.test.tsx covers the connection note.
     vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) =>
       String(input) === "/api/settings/ollama"
         ? Promise.resolve(
@@ -113,7 +112,6 @@ describe("VersionJudgingSection", () => {
 
     expect(judgingSwitch().getAttribute("aria-checked")).toBe("true");
     expect(screen.getByRole("status")).toHaveProperty("textContent", "Saving…");
-    // 応答までは二度目の押下に反応しない。
     await user.click(judgingSwitch());
     expect(puts()).toEqual([{ enabled: true }]);
 
@@ -146,7 +144,6 @@ describe("VersionJudgingSection", () => {
     expect(await screen.findByText(/^Couldn't save the settings: /)).toBeDefined();
     expect(judgingSwitch().getAttribute("aria-checked")).toBe("false");
 
-    // 次の押下はもう一度送る。
     await user.click(judgingSwitch());
     await waitFor(() =>
       expect(judgingSwitch().getAttribute("aria-checked")).toBe("true"),

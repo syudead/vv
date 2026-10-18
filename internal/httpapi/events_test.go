@@ -17,13 +17,11 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// sseEvent は受け取ったイベント1件である。
 type sseEvent struct {
 	name string
 	data string
 }
 
-// openEvents は /api/events へつなぎ、受け取ったイベントを流すチャネルを返す。
 func openEvents(t *testing.T, handler http.Handler) (<-chan sseEvent, *http.Response) {
 	t.Helper()
 	server := httptest.NewServer(handler)
@@ -87,9 +85,6 @@ func expectNoEvent(t *testing.T, events <-chan sseEvent) {
 	}
 }
 
-// つないだ直後に今のスキャンを1回送り、その後は知らせがあったときだけ送る。
-// 切れていた間の変化は、つなぎ直した直後の送信で取り戻せる。processing の event は
-// 送らない。
 func TestStreamEventsSendsCurrentStateThenOnlyChanges(t *testing.T) {
 	events := NewEvents()
 	scans := &lockedScans{current: domain.Scan{ID: 4, State: domain.ScanRunning}}
@@ -112,14 +107,12 @@ func TestStreamEventsSendsCurrentStateThenOnlyChanges(t *testing.T) {
 		t.Errorf("scan = %+v", scan)
 	}
 
-	// 知らせが無ければ何も送らない。
 	expectNoEvent(t, stream)
 
 	scans.setImport(domain.ImportProgress{Status: domain.ImportRunning, Counted: true, Total: 10, Settled: 3})
 	events.VideoChanged(9)
 	events.ProcessingChanged()
 
-	// 仕事の成否で済みの本数が変わるので、scan を送る。
 	got := map[string]string{}
 	for range 2 {
 		event := nextEvent(t, stream)
@@ -145,8 +138,6 @@ func TestStreamEventsSendsCurrentStateThenOnlyChanges(t *testing.T) {
 	expectNoEvent(t, stream)
 }
 
-// グループの変化は group のイベント 1 件になり、変わったグループとその祖先の id を小さい順に
-// 運ぶ。名前は載せない。
 func TestStreamEventsSendsGroupChanges(t *testing.T) {
 	events := NewEvents()
 	handler := newTestServer(t, Options{Scans: &lockedScans{current: domain.Scan{ID: 1}}, Events: events})
@@ -171,7 +162,6 @@ func TestStreamEventsSendsGroupChanges(t *testing.T) {
 	expectNoEvent(t, stream)
 }
 
-// 候補の変化は所有者の流れに中身の無い candidates として届き、続けての変化は 1 つにまとまる
 func TestStreamEventsSendsCandidatesToOwners(t *testing.T) {
 	events := NewEvents()
 	handler := newTestServer(t, Options{Scans: &lockedScans{current: domain.Scan{ID: 1}}, Events: events})
@@ -188,8 +178,6 @@ func TestStreamEventsSendsCandidatesToOwners(t *testing.T) {
 	expectNoEvent(t, stream)
 }
 
-// guestEventsAuth はアカウントが設定済みで、どの要求もセッションを持たない（ゲストになる）
-// 認証の代わりである。
 type guestEventsAuth struct{ ownerAuth }
 
 func (guestEventsAuth) CheckSession(context.Context, string) (time.Time, bool, error) {
@@ -198,7 +186,6 @@ func (guestEventsAuth) CheckSession(context.Context, string) (time.Time, bool, e
 
 func (guestEventsAuth) State(context.Context, string) (AuthState, error) { return AuthStateGuest, nil }
 
-// ゲストにも group を送り、scan と video は送らない。
 func TestStreamEventsSendsOnlyGroupToGuests(t *testing.T) {
 	events := NewEvents()
 	handler := newTestServer(t, Options{
@@ -223,7 +210,6 @@ func TestStreamEventsSendsOnlyGroupToGuests(t *testing.T) {
 	expectNoEvent(t, stream)
 }
 
-// ホームの変化はゲストにも中身の無い home として届く（docs/design-docs/home.md）。
 func TestStreamEventsSendsHomeToGuests(t *testing.T) {
 	events := NewEvents()
 	handler := newTestServer(t, Options{
@@ -239,8 +225,6 @@ func TestStreamEventsSendsHomeToGuests(t *testing.T) {
 	}
 	expectNoEvent(t, stream)
 }
-
-// 送る前に重なった知らせは1回にまとめる。遅い接続のために知らせを溜め込まない。
 func TestStreamEventsCoalescesPendingChanges(t *testing.T) {
 	events := NewEvents()
 	sub, unsubscribe := events.subscribe()
@@ -263,21 +247,17 @@ func TestStreamEventsCoalescesPendingChanges(t *testing.T) {
 	}
 }
 
-// まだ一度も取り込んでいなければ、scan は送らない。
 func TestStreamEventsSkipsScanBeforeFirstScan(t *testing.T) {
 	events := NewEvents()
 	handler := newTestServer(t, Options{Scans: &fakeScans{}, Events: events})
 	stream, _ := openEvents(t, handler)
 	expectNoEvent(t, stream)
-	// 動画の変化は送る（接続は生きている）。
 	events.VideoChanged(3)
 	if event := nextEvent(t, stream); event.name != "video" {
 		t.Fatalf("イベント = %q, want video", event.name)
 	}
 }
 
-// 停止時に Close すると、接続は終わる。終わらない応答が HTTP サーバーの停止を
-// 猶予時間いっぱいまで待たせない。
 func TestStreamEventsEndsOnClose(t *testing.T) {
 	events := NewEvents()
 	handler := newTestServer(t, Options{Scans: &fakeScans{hasScan: true}, Events: events})
@@ -298,7 +278,6 @@ func TestStreamEventsEndsOnClose(t *testing.T) {
 	}
 }
 
-// /api/processing はなくなった。
 func TestProcessingRouteIsGone(t *testing.T) {
 	handler := newTestServer(t, Options{})
 	rec := do(t, handler, http.MethodGet, "/api/processing")
@@ -307,12 +286,11 @@ func TestProcessingRouteIsGone(t *testing.T) {
 	}
 }
 
-// 状態の変化は、知らせ（scan・video）に置き換わる。知らせる対象ではない変化は無視する。
 func TestEventsHandleMapsDomainEvents(t *testing.T) {
 	events := NewEvents()
 	sub, unsubscribe := events.subscribe()
 	defer unsubscribe()
-	sub.take() // つないだ直後の送信を除く。
+	sub.take()
 
 	events.Handle(domain.JobsQueued{Kinds: domain.JobKinds})
 	events.Handle(domain.ContentUnreferenced{ContentKeys: []string{"k"}})
@@ -328,29 +306,24 @@ func TestEventsHandleMapsDomainEvents(t *testing.T) {
 	if !sub.take().scan {
 		t.Fatal("ProcessingChanged: scan=false")
 	}
-	// 同じ動画の続けての変化は1つにまとまる。
 	events.Handle(domain.VideoIngestChanged{VideoID: 5, Stage: domain.JobProbe})
 	events.Handle(domain.VideoIngestChanged{VideoID: 5, Stage: domain.JobThumbnail})
 	events.Handle(domain.VideoIngestChanged{VideoID: 6})
 	if videos := sub.take().videos; !slices.Equal(videos, []int64{5, 6}) {
 		t.Fatalf("videos = %v, want [5 6]", videos)
 	}
-	// 上書きの変化も video に写す。
 	events.Handle(domain.VideoOverrideChanged{VideoID: 7})
 	if videos := sub.take().videos; !slices.Equal(videos, []int64{7}) {
 		t.Fatalf("VideoOverrideChanged: videos = %v, want [7]", videos)
 	}
-	// 束ねの変化は各動画の video に写す。
 	events.Handle(domain.VideoBundleChanged{VideoIDs: []int64{8, 9}})
 	if videos := sub.take().videos; !slices.Equal(videos, []int64{8, 9}) {
 		t.Fatalf("VideoBundleChanged: videos = %v, want [8 9]", videos)
 	}
-	// 作品情報の変化も各動画の video に写す。
 	events.Handle(domain.VideoWorkInfoChanged{VideoIDs: []int64{10, 11}})
 	if videos := sub.take().videos; !slices.Equal(videos, []int64{10, 11}) {
 		t.Fatalf("VideoWorkInfoChanged: videos = %v, want [10 11]", videos)
 	}
-	// 候補の変化は candidates に写し、続けての変化は 1 つにまとまる。
 	events.Handle(domain.VersionCandidatesChanged{})
 	events.Handle(domain.VersionCandidatesChanged{})
 	if pending := sub.take(); !pending.candidates || pending.scan || len(pending.videos) != 0 {
@@ -359,21 +332,17 @@ func TestEventsHandleMapsDomainEvents(t *testing.T) {
 	if sub.take().candidates {
 		t.Fatal("取り出した後も candidates が残る")
 	}
-	// グループの変化は group に写し、続けての変化は 1 つにまとまる。
 	events.Handle(domain.GroupsChanged{GroupIDs: []int64{3, 1}})
 	events.Handle(domain.GroupsChanged{GroupIDs: []int64{1, 2}})
 	if pending := sub.take(); !slices.Equal(pending.groups, []int64{1, 2, 3}) || len(pending.videos) != 0 {
 		t.Fatalf("GroupsChanged: %+v, want groups [1 2 3]", pending)
 	}
-	// スマートフォルダの変化は smartFolder に写し、続けての変化は 1 つにまとまる
-	//
 	events.Handle(domain.SmartFoldersChanged{IDs: []int64{4, 2}})
 	events.Handle(domain.SmartFoldersChanged{IDs: []int64{2, 5}})
 	if pending := sub.take(); !slices.Equal(pending.smartFolders, []int64{2, 4, 5}) || len(pending.groups) != 0 {
 		t.Fatalf("SmartFoldersChanged: %+v, want smartFolders [2 4 5]", pending)
 	}
-	// 名指すフォルダの無い変化は何も知らせない。先に溜まった ready を空にし、
-	// 新しい ready が鳴らないことを見る。
+	// Drain prior readiness before asserting that empty-ID changes do not signal.
 	select {
 	case <-sub.ready:
 	default:
@@ -389,7 +358,6 @@ func TestEventsHandleMapsDomainEvents(t *testing.T) {
 	}
 }
 
-// storePublisher は保存層の発行先を、画面への知らせの受け口へつなぐ。
 type storePublisher struct{ events *Events }
 
 func (p storePublisher) Publish(events ...domain.Event) {
@@ -398,7 +366,6 @@ func (p storePublisher) Publish(events ...domain.Event) {
 	}
 }
 
-// /api/events の購読者は、タグを付けたあと smartFolder のイベントを受け取る。ゲストにも送る
 func TestStreamEventsSendsSmartFolderAfterATagIsAttached(t *testing.T) {
 	ctx := context.Background()
 	db, err := store.OpenMigratedForTest(t.TempDir())
@@ -434,7 +401,6 @@ func TestStreamEventsSendsSmartFolderAfterATagIsAttached(t *testing.T) {
 	expectNoEvent(t, stream)
 }
 
-// lockedScans は、送信の goroutine が読むあいだにテストが今の処理を差し替える。
 type lockedScans struct {
 	mu      sync.Mutex
 	current domain.Scan
@@ -467,8 +433,6 @@ func (f *lockedScans) setActivity(activity domain.ScanActivity) {
 	f.current.Activity = activity
 }
 
-// 今の処理が変わると scan を送り、activity に種類とファイル名とフォルダが入る。
-// 何も動いていなければ activity を省く
 func TestStreamEventsSendsScanWhenActivityChanges(t *testing.T) {
 	events := NewEvents()
 	scans := &lockedScans{current: domain.Scan{ID: 4, State: domain.ScanRunning}}
@@ -513,7 +477,6 @@ func TestStreamEventsSendsScanWhenActivityChanges(t *testing.T) {
 	}
 	expectNoEvent(t, stream)
 
-	// 何も動かなくなれば、activity を省いた scan を送る。
 	scans.setActivity(domain.ScanActivity{})
 	events.Handle(domain.ScanActivityChanged{})
 	scan = gen.Scan{}
@@ -525,8 +488,6 @@ func TestStreamEventsSendsScanWhenActivityChanges(t *testing.T) {
 	}
 }
 
-// 今の処理の変化は scan だけを記録する。1ファイルごとに届いても、送る前の分は
-// 1回にまとまる。
 func TestScanActivityChangedMarksOnlyScan(t *testing.T) {
 	events := NewEvents()
 	sub, unsubscribe := events.subscribe()

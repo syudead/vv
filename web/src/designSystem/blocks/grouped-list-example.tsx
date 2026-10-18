@@ -14,11 +14,7 @@ import { VideoThumbnail, VideoThumbnailDuration } from "@/ui/VideoThumbnail";
 
 import { sampleVideos } from "./list-page-example";
 
-// 見出しつきのまとまりの一覧の見本（registry:block grouped-list-example）。一覧ページの
-// 本体に GroupedList を置き、日の見出し（「Today · Sep 27」）の下に行（サムネイル・題名・
-// 行の端の ×）を地の面のまま並べる。日は見出しだけが持ち、行に時刻は書かない。写した画面は
-// 見出しと行の中身を自分のものに差し替え、間隔・面・線は書かない
-// （web/registry/rules/patterns.md の Sections）。
+// registry:block grouped-list-example. Replace headings and row content while retaining shared spacing and surfaces.
 
 export function GroupedListExample() {
   const p = t.designSystem.pattern;

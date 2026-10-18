@@ -11,28 +11,21 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// tagTx は1つのトランザクションの中で名前とタグの行を読み書きするための
-// 共通部分である。*sql.Tx はこれを満たす。
 type tagTx interface {
 	queryExecer
 	rowQueryer
 }
 
-// nameLookup は tag_names を name で引いた結果である。
 type nameLookup struct {
 	tagID int64
-	// canonicalName はその名前を持つタグの元の名前（表示名）。name 自身が
-	// シノニムのときは、name とは異なる。
+	// The canonical display name differs from the queried spelling when it is a synonym.
 	canonicalName string
 	isCanonical   bool
-	// tentative はその名前を持つタグが仮のタグであること。
-	tentative bool
-	// kind はその名前を持つタグの種類。種類が無ければ nil。
-	kind *domain.TagKindRef
+	tentative     bool
+	kind          *domain.TagKindRef
 }
 
-// lookupTagName は名前からタグを引く。元の名前でも
-// シノニムでも同じタグに着く。無ければ found = false を返す。
+// Canonical names and synonyms resolve to the same tag.
 func lookupTagName(ctx context.Context, q tagTx, name string) (nameLookup, bool, error) {
 	var lookup nameLookup
 	var canonicalInt int
@@ -55,12 +48,10 @@ func lookupTagName(ctx context.Context, q tagTx, name string) (nameLookup, bool,
 	return lookup, true, nil
 }
 
-// ref は引いた名前のタグを TagRef にする（名前は元の名前）。
 func (l nameLookup) ref() domain.TagRef {
 	return domain.TagRef{ID: l.tagID, Name: l.canonicalName, Tentative: l.tentative, Kind: l.kind}
 }
 
-// tagRefByID はタグ id の元の名前と仮かどうかと種類を返す。無ければ domain.ErrTagNotFound を返す。
 func tagRefByID(ctx context.Context, q rowQueryer, id int64) (domain.TagRef, error) {
 	ref := domain.TagRef{ID: id}
 	var kind scannedTagKind
@@ -79,8 +70,6 @@ func tagRefByID(ctx context.Context, q rowQueryer, id int64) (domain.TagRef, err
 	return ref, nil
 }
 
-// canonicalNameByTagID はタグ id の元の名前を返す。無ければ
-// domain.ErrTagNotFound を返す。
 func canonicalNameByTagID(ctx context.Context, q rowQueryer, id int64) (string, error) {
 	var name string
 	err := q.QueryRowContext(ctx, `select name from tag_names where tag_id = ? and canonical = 1`, id).Scan(&name)
@@ -93,8 +82,6 @@ func canonicalNameByTagID(ctx context.Context, q rowQueryer, id int64) (string, 
 	return name, nil
 }
 
-// tagByID はタグ1件を、シノニムと本数と作った時刻を添えて返す。無ければ
-// domain.ErrTagNotFound を返す。
 func tagByID(ctx context.Context, q tagTx, id int64) (domain.Tag, error) {
 	ref, err := tagRefByID(ctx, q, id)
 	if err != nil {
@@ -118,8 +105,7 @@ func tagByID(ctx context.Context, q tagTx, id int64) (domain.Tag, error) {
 	}, nil
 }
 
-// videoCountByTagID はいまライブラリにある動画のうち id が付いている本数を
-// 数える。フォルダ名から付いている分も含む（017 の）。
+// Count both manual and folder-derived attachments on current library videos.
 func videoCountByTagID(ctx context.Context, q rowQueryer, id int64) (int, error) {
 	query := `select count(*) from (` + taggedVideosSQL(` and tag_id = ?`) + `)`
 	var count int
@@ -129,7 +115,6 @@ func videoCountByTagID(ctx context.Context, q rowQueryer, id int64) (int, error)
 	return count, nil
 }
 
-// synonymsByTagID はタグ id のシノニムを名前の自然順で返す。
 func synonymsByTagID(ctx context.Context, q queryExecer, id int64) ([]string, error) {
 	rows, err := q.QueryContext(ctx, `select name from tag_names where tag_id = ? and canonical = 0`, id)
 	if err != nil {
@@ -151,8 +136,7 @@ func synonymsByTagID(ctx context.Context, q queryExecer, id int64) ([]string, er
 	return names, nil
 }
 
-// insertTagName は tag_names に1行足し、照合用の鍵と名前の自然順の鍵を同じ文で
-// 書く。同じ取引でその名前を却下した名前から外す
+// Write search and sort keys with the name, and clear its rejection in the same transaction.
 func insertTagName(ctx context.Context, tx *sql.Tx, name string, tagID int64, canonical bool) error {
 	if _, err := tx.ExecContext(ctx, `
 		insert into tag_names (name, tag_id, canonical, search_key, sort_key, search_version)
@@ -164,7 +148,6 @@ func insertTagName(ctx context.Context, tx *sql.Tx, name string, tagID int64, ca
 	return forgetRejectedName(ctx, tx, name)
 }
 
-// forgetRejectedName は name を却下した名前から外す。無ければ何もしない。
 func forgetRejectedName(ctx context.Context, tx *sql.Tx, name string) error {
 	if _, err := tx.ExecContext(ctx, `delete from rejected_tag_names where name = ?`, name); err != nil {
 		return fmt.Errorf("cannot forget the rejected tag name (%s): %w", name, err)
@@ -172,7 +155,6 @@ func forgetRejectedName(ctx context.Context, tx *sql.Tx, name string) error {
 	return nil
 }
 
-// confirmTagInTx はタグ id を確定したタグにする（tentative = 0）。既に 0 なら何も変えない
 func confirmTagInTx(ctx context.Context, tx queryExecer, id int64) error {
 	if _, err := tx.ExecContext(ctx, `update tags set tentative = 0 where id = ? and tentative = 1`, id); err != nil {
 		return fmt.Errorf("cannot confirm the tag (id=%d): %w", id, err)
@@ -180,11 +162,7 @@ func confirmTagInTx(ctx context.Context, tx queryExecer, id int64) error {
 	return nil
 }
 
-// existingTagIDs は ids のうち tags テーブルにあるものと無いものを、それぞれ
-// ids の並びのまま返す。LibraryStore がタグでの絞り込み・
-// 「すべて選択」で使う（Structural Decisions 13：複数の型が読む問い合わせの共有）。
-// ids の重複は1つにまとめる。ids が空なら問い合わせずに両方空を返す（空の
-// in () は誤りになる）。
+// Deduplicate IDs in input order and split existing/missing IDs; an empty selection needs no query.
 func existingTagIDs(ctx context.Context, q queryExecer, ids []int64) (existing, missing []int64, err error) {
 	if len(ids) == 0 {
 		return nil, nil, nil

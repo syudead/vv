@@ -15,7 +15,6 @@ import { cn } from "../lib/cn";
 import { libraryFilterPath } from "../library/libraryPath";
 import { Button } from "../ui/shadcn/button";
 
-/** foldLimit は、長いリストを畳んだときに出しておく項目の数の既定である。 */
 const foldLimit = 3;
 
 const foldButton = "h-auto px-0 py-0 text-muted-foreground hover:text-primary";
@@ -40,12 +39,10 @@ function organizationRoleLabel(role: WorkOrganizationRole, count: number): UiTex
   return role === "maker" ? w.maker(count) : w.labelRole(count);
 }
 
-/** withoutScheme は URL の先頭の `http://`・`https://` を除いた文字である。 */
 export function withoutScheme(url: string): string {
   return url.replace(/^https?:\/\//i, "");
 }
 
-/** hasWorkInfo は、作品情報に出す項目が 1 つでもあるかを返す。 */
 export function hasWorkInfo(info: WorkInfoValue | undefined): info is WorkInfoValue {
   if (info === undefined) return false;
   return (
@@ -59,7 +56,6 @@ export function hasWorkInfo(info: WorkInfoValue | undefined): info is WorkInfoVa
   );
 }
 
-/** Item はラベル（薄い色）と値の組の項目である。動画の追加の情報のまとまりも使う。 */
 export function Item({ label, children }: { label: UiText; children: ReactNode }) {
   return (
     <li className="flex max-w-full min-w-0 flex-wrap items-baseline gap-x-1.5">
@@ -69,11 +65,6 @@ export function Item({ label, children }: { label: UiText; children: ReactNode }
   );
 }
 
-/**
- * CreditLink は人物・団体の名前で、押すとそれで絞ったライブラリ（`/library?person=<id>`・
- * `/library?organization=<id>`）を開く（ui-design.md「Video page: work details row」、
- * 「Library: filter by a person or organization」）。本文の色で、上に乗ると `primary`。
- */
 function CreditLink({
   kind,
   credit,
@@ -92,11 +83,7 @@ function CreditLink({
   );
 }
 
-/**
- * useFold は count 件の並びを先頭の limit 件に畳む状態である。開くと limit + 1 件目
- * （`nextRef` の要素）へフォーカスを移す。その中に名前のリンクがあればリンクへ移す。
- * 開いたことは覚えない。
- */
+/** Expanding focuses the first hidden item's link, if present; expansion is not persisted. */
 export function useFold<T extends HTMLElement>(count: number, limit: number) {
   const [open, setOpen] = useState(false);
   const nextRef = useRef<T | null>(null);
@@ -122,10 +109,6 @@ export function useFold<T extends HTMLElement>(count: number, limit: number) {
   };
 }
 
-/**
- * FoldButton は畳んだ並びの「+{n} more」と、開いた後の「Show fewer」である。畳んでいる間は
- * `Show all {count} {label}` の名前を持つ。
- */
 export function FoldButton({
   folded,
   count,
@@ -152,10 +135,6 @@ export function FoldButton({
   );
 }
 
-/**
- * ListItem はいくつもの値を `, ` でつないだ項目である。limit（既定 3）より多ければ先頭の
- * limit 件と「+{n} more」を出し、押すとその項目のすべてを出してフォーカスを次の 1 つへ移す。開いたことは覚えない。
- */
 function ListItem({
   label,
   entries,
@@ -197,12 +176,7 @@ function ListItem({
   );
 }
 
-/**
- * Description は作品の説明で、3 行を超えるときは畳んで「Show more」を添える。溢れるかは要素で測り、窓の大きさが変わったら
- * 測り直す。開いたことは覚えない（別の動画では呼び手が作り直す）。取得の比較の段も
- * 同じ畳み方で使い、今の側は `muted` で従の色にする。動画の追加の情報の Comment・Description は
- * 先頭のラベル（`label`）を付けて `muted` で使う。
- */
+/** Measure overflow and remeasure on resize; callers remount for another video to reset expansion. */
 export function Description({
   text,
   tone = "default",
@@ -253,12 +227,7 @@ export function Description({
   );
 }
 
-/**
- * WorkInfo は情報欄の作品情報の行である。ファイルの行と同じ形の折り返す並びに、値のある項目だけを
- * ラベル（薄い色）と値の組で出し、説明はその下に 3 行まで畳んで出す。項目が 1 つも無ければ
- * 何も描かない（情報欄は今までどおり）。ゲストの応答には `workInfo` が無いので出ない。
- * 日付は保存した文字列のまま出し、日付の書式は通さない。
- */
+/** Render only populated fields; keep stored date strings unchanged rather than formatting them. */
 export default function WorkInfo({ info }: { info: WorkInfoValue | undefined }) {
   if (!hasWorkInfo(info)) return null;
   const w = t.player.workInfo;

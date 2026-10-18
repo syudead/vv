@@ -14,13 +14,9 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// ListDirectories は、設定画面のディレクトリ選択に path の子ディレクトリを返す。
-//
-// path は絶対パスでなければ domain.ErrInvalidDirectoryPath で断る。path が無い・
-// ディレクトリでない・自身か途中の段が symlink なら domain.ErrDirectoryNotFound、
-// 読めなければ domain.ErrDirectoryUnavailable を返す。メディアフォルダの登録
-// （CheckMediaFolder）が symlink を断るので、選べないものは並べない。子のうち
-// symlink と読めないディレクトリは除き、名前の大文字小文字を区別せずに並べる。
+// ListDirectories requires an absolute, readable, non-symlink directory path; invalid syntax,
+// absent/symlink paths, and unreadable paths return distinct domain errors. Omit symlink/unreadable
+// children and sort names case-insensitively.
 func (FS) ListDirectories(path string) (domain.DirectoryListing, error) {
 	if path == "" || !filepath.IsAbs(path) {
 		return domain.DirectoryListing{}, domain.ErrInvalidDirectoryPath
@@ -72,8 +68,7 @@ func (FS) ListDirectories(path string) (domain.DirectoryListing, error) {
 	return listing, nil
 }
 
-// DirectoryRoots は、ディレクトリ選択の最初に並べる根を返す。Windows では
-// 存在するドライブ、それ以外では "/" だけである。
+// DirectoryRoots returns existing Windows drives or just "/" elsewhere.
 func (FS) DirectoryRoots() domain.DirectoryListing {
 	directories := []domain.DirectoryEntry{}
 	if runtime.GOOS != "windows" {

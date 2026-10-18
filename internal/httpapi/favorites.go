@@ -9,34 +9,31 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 動画・グループ・スマートフォルダのお気に入りの付け外し。
-
-// Favorites はお気に入りの保存先である。internal/store の *FavoriteStore がこれを満たす。
-// 1 つの取引で済むので、internal/app は通さない。
 type Favorites interface {
-	// SetFavorites は change の動画・グループ・スマートフォルダのお気に入りを change.Favorite にそろえ、
-	// 反映した数を返す。
 	SetFavorites(ctx context.Context, change domain.FavoriteChange) (domain.FavoriteApplied, error)
 }
 
-// favoritesBodyLimit は PUT /api/favorites が読む本文の上限（バイト）である。videoIds と
-// groupIds の合計の上限 20000 件が収まるよう、外部連携 API の externalBodyLimit と同じ大きさにする。
+// Match the external body cap so maximum-size favorite batches fit.
 const favoritesBodyLimit = externalBodyLimit
 
-// UpdateFavorites は動画・グループ・スマートフォルダのお気に入りを付け外しする（PUT /api/favorites）。
-// videoIds・groupIds・smartFolderIds の合計（重複は 1 つ）の上限はタグの付け外しと同じにする。
-// 無い動画・グループ・フォルダの id は誤りにせず、保存層が数えない。
-// 確定後の /api/events の知らせは出さない。
+func (s *server) favoriteBodyLimit() int64 {
+	if s.favoritesMaxBody > 0 {
+		return s.favoritesMaxBody
+	}
+	return favoritesBodyLimit
+}
+
+// Favorites count unique IDs across all types, ignore missing targets, and emit no SSE
+// notification.
 func (s *server) UpdateFavorites(w http.ResponseWriter, r *http.Request) {
-	// gen.FavoritesRequest の favorite は bool なので、欠けても false に読めてしまう。
-	// 欠けた本文でお気に入りを外さないよう、有無を区別して読む。
+	// Track required favorite presence so omission cannot silently clear favorites.
 	var body struct {
 		VideoIds       []int64 `json:"videoIds"`
 		GroupIds       []int64 `json:"groupIds"`
 		SmartFolderIds []int64 `json:"smartFolderIds"`
 		Favorite       *bool   `json:"favorite"`
 	}
-	if !s.readLargeJSONBody(w, r, favoritesBodyLimit, &body) {
+	if !s.readLargeJSONBody(w, r, s.favoriteBodyLimit(), &body) {
 		return
 	}
 	videoIDs := uniqueInt64s(body.VideoIds)
@@ -69,7 +66,6 @@ func (s *server) UpdateFavorites(w http.ResponseWriter, r *http.Request) {
 	}, s.logger)
 }
 
-// uniqueInt64s は最初に現れた順で重複を除く。
 func uniqueInt64s(values []int64) []int64 {
 	seen := make(map[int64]struct{}, len(values))
 	out := make([]int64, 0, len(values))

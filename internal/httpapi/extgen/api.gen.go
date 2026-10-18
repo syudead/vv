@@ -368,109 +368,108 @@ func (e WorkPersonRole) Valid() bool {
 	}
 }
 
-// Alias 人物か団体の別名 1 件
+// Alias One person or organization alias.
 type Alias struct {
-	// Language BCP 47 の構文の言語タグ。無ければ省く
+	// Language BCP 47 language tag; omitted when absent.
 	Language *string `json:"language,omitempty"`
 	Name     string  `json:"name"`
 }
 
 // CreditDeleteRequest defines model for CreditDeleteRequest.
 type CreditDeleteRequest struct {
-	// Ids 消す実体の id。1〜20,000 件。範囲外は `work_info_too_many`（field は ids）
+	// Ids 1-20,000 IDs to delete; otherwise work_info_too_many with field ids.
 	Ids []int64 `json:"ids"`
 }
 
-// CreditDeleteResponse 2 つは重ならず、どちらも `ids` に現れた順で重複が無い。無ければ []
+// CreditDeleteResponse Disjoint deduplicated lists in ids order; [] when empty.
 type CreditDeleteResponse struct {
-	// DeletedIds 消した実体
+	// DeletedIds Deleted entities.
 	DeletedIds []int64 `json:"deletedIds"`
 
-	// NotFoundIds 無かった実体
+	// NotFoundIds Missing entities.
 	NotFoundIds []int64 `json:"notFoundIds"`
 }
 
-// CreditIdRef 書き込みで人物か団体 1 件を指す参照
+// CreditIdRef Write reference to one person or organization.
 type CreditIdRef struct {
 	Id int64 `json:"id"`
 }
 
-// CreditInput 人物か団体を作るときの本文。parentId は団体だけが使う
+// CreditInput Person or organization creation body; parentId is organization-only.
 type CreditInput struct {
 	Aliases     *[]Alias      `json:"aliases,omitempty"`
 	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
 	Name        string        `json:"name"`
 
-	// ParentId 親の団体の id。団体だけで、人物に送ると 400 invalid_request
+	// ParentId Parent organization ID; sending it for a person returns 400 invalid_request.
 	ParentId *int64 `json:"parentId,omitempty"`
 }
 
 // CreditMergeRequest defines model for CreditMergeRequest.
 type CreditMergeRequest struct {
-	// SourceIds 統合元の id。1〜20,000 件。範囲外は `work_info_too_many`（field は sourceIds）
+	// SourceIds 1-20,000 source IDs; otherwise work_info_too_many with field sourceIds.
 	SourceIds []int64 `json:"sourceIds"`
 
-	// TargetId 結び付き・名前・外部 ID を受け取る実体
+	// TargetId Target receiving links, names and external IDs.
 	TargetId int64 `json:"targetId"`
 }
 
-// CreditRef 人物か団体 1 件への参照。name はその実体の今の名前
+// CreditRef Reference to one person or organization; name is its current name.
 type CreditRef struct {
 	Id   int64  `json:"id"`
 	Name string `json:"name"`
 }
 
-// CreditSort 人物と団体の一覧の並び順。タグの一覧（TagSort）と同じ 5 つで、値が同じものは名前の自然順、それも同じなら id
+// CreditSort Same five sort modes as TagSort; ties use natural-name order, then ID.
 type CreditSort string
 
-// CreditUpdateRequest 人物か団体の書き換えの本文。id のほかはどれも省いてよく、省いたものは今のまま残す。一覧は丸ごと
-// 置き換え、null は一覧を空にする。parentId は団体だけが使い、null は親を外す
+// CreditUpdateRequest Update body: id is required; omitted properties remain unchanged. Lists are replaced entirely and null clears them; organization-only parentId null removes the parent.
 type CreditUpdateRequest struct {
 	Aliases     *[]Alias      `json:"aliases,omitempty"`
 	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
 
-	// Id 書き換える実体
+	// Id Entity to update.
 	Id   int64   `json:"id"`
 	Name *string `json:"name,omitempty"`
 
-	// ParentId 親の団体の id。null は親を外す。人物に送ると 400 invalid_request
+	// ParentId Parent organization ID; null detaches it. Sending this for a person returns 400 invalid_request.
 	ParentId *int64 `json:"parentId,omitempty"`
 }
 
-// Error 誤りの形は画面の API と同じで、index はこの API だけの項目である。
+// Error Same error shape as the UI API, with the additional index field.
 type Error struct {
-	// Code 機械可読なエラー種別。
+	// Code Machine-readable error code.
 	Code ErrorCode `json:"code"`
 
-	// Field reason が指すプロパティの経路。JSON のプロパティ名を . でつなぎ、一覧の位置を [] で書く （people[0].person.id・aliases[2].language・externalIds[1]・parentId）。作品情報の一括操作では その項目の workInfo の中の経路である。work_info_*・person_not_found・organization_not_found・ external_id_taken のときだけ入る
+	// Field Property path using JSON names and array indices, such as people[0].person.id, aliases[2].language, externalIds[1] or parentId. For bulk work-info updates, relative to the item workInfo; present only for work_info_*, person_not_found, organization_not_found or external_id_taken.
 	Field *string `json:"field,omitempty"`
 
-	// Index 原因になった要素の位置（0 から）。タグ名の誤りでは tags の、表示名・サムネイル・作品情報の 操作では items の、それ以外では videos の位置を指す
+	// Index Zero-based position in tags for tag-name errors, items for display-name/thumbnail/work-info operations, or videos otherwise.
 	Index *int `json:"index,omitempty"`
 
-	// Limit reason の上限値。上限を持つ reason のときだけ入る
+	// Limit Limit for the reason; present only when that reason has a limit.
 	Limit *int `json:"limit,omitempty"`
 
-	// Message 英語の説明。利用者のプログラムは code と reason で分岐する
+	// Message English explanation; clients should branch on code and reason.
 	Message string `json:"message"`
 
-	// Reason 同じ code の中で状況を区別する下位の理由。
+	// Reason Specific reason within an error code.
 	Reason *ErrorReason `json:"reason,omitempty"`
 
-	// TagId 名前がぶつかったタグの id。`tag_name_taken`・`tag_merge_required` のときだけ入る
+	// TagId Conflicting tag ID; only for tag_name_taken or tag_merge_required.
 	TagId *int64 `json:"tagId,omitempty"`
 
-	// TagName 名前がぶつかったタグの元の名前（翻訳しない）。`tag_name_taken`・`tag_merge_required` の ときだけ入る。`tag_kind_name_taken` では、名前がぶつかった種類の名前が入る
+	// TagName Untranslated original name of the conflicting tag for tag_name_taken or tag_merge_required; conflicting kind name for tag_kind_name_taken.
 	TagName *string `json:"tagName,omitempty"`
 }
 
-// ErrorCode 機械可読なエラー種別。
+// ErrorCode Machine-readable error code.
 type ErrorCode string
 
-// ErrorReason 同じ code の中で状況を区別する下位の理由。
+// ErrorReason Specific reason within an error code.
 type ErrorReason string
 
-// ExternalId 外部の情報源での識別子 1 件
+// ExternalId One identifier from an external source.
 type ExternalId struct {
 	Source string `json:"source"`
 	Value  string `json:"value"`
@@ -478,74 +477,70 @@ type ExternalId struct {
 
 // ExternalScan defines model for ExternalScan.
 type ExternalScan struct {
-	// ErrorCode 走査そのものが失敗した理由のコード（status が failed のときだけ入る）
+	// ErrorCode Traversal failure code, present only when status is failed.
 	ErrorCode *string `json:"errorCode"`
 
-	// FinishedAt 走査が終わった時刻。走査中なら null
+	// FinishedAt Traversal completion timestamp; null while traversing.
 	FinishedAt *time.Time `json:"finishedAt"`
 	Id         int64      `json:"id"`
 
-	// SettledVideos 対象のうち残りの仕事が無い本数。finding のあいだは null。数えたあとは 0 ≤ settledVideos ≤ videos
+	// SettledVideos Videos with no remaining work; null during finding, then between zero and videos inclusive.
 	SettledVideos *int      `json:"settledVideos"`
 	StartedAt     time.Time `json:"startedAt"`
 
-	// Status 取り込みの状態。画面の API の Scan.status と同じ値で、failed は走査そのものの失敗、 finding は対象をまだ数え終えていない、running は走査中か済んでいない対象がある、 partial は失敗の問題がある、done はそれ以外である
+	// Status Same status as the UI Scan API: failed for traversal failure, finding while counting, running while traversal or pending work remains, partial for item failures, otherwise done.
 	Status ExternalScanStatus `json:"status"`
 
-	// Videos 対象の動画の本数。finding のあいだは null（本数を数え終えていない）
+	// Videos Video count; null during finding before counting finishes.
 	Videos *int `json:"videos"`
 }
 
-// ExternalScanStatus 取り込みの状態。画面の API の Scan.status と同じ値で、failed は走査そのものの失敗、 finding は対象をまだ数え終えていない、running は走査中か済んでいない対象がある、 partial は失敗の問題がある、done はそれ以外である
+// ExternalScanStatus Same status as the UI Scan API: failed for traversal failure, finding while counting, running while traversal or pending work remains, partial for item failures, otherwise done.
 type ExternalScanStatus string
 
-// ExternalVideo 動画 1 本。見る人は常に所有者で、非公開の動画も返す
+// ExternalVideo One video viewed as owner, including private videos.
 type ExternalVideo struct {
 	AddedAt time.Time `json:"addedAt"`
 
-	// ContentKey 内容から決まる識別子。ファイルが移動しても変わらない
+	// ContentKey Content-derived identifier, stable across file moves.
 	ContentKey string `json:"contentKey"`
 
-	// DisplayName 表示名。未設定は null
+	// DisplayName Display name, or null when unset.
 	DisplayName *string `json:"displayName"`
 
-	// DurationMs 長さ（ミリ秒）。解析前は null
+	// DurationMs Duration in milliseconds; null before probing.
 	DurationMs *int64 `json:"durationMs"`
 
-	// FileCreatedAt 代表の所在（locations の先頭）のファイルの作成日時。ファイルシステムから取れないときは
-	// そのファイルの更新日時（mtime）
+	// FileCreatedAt Creation time of the representative first location; falls back to file mtime when unavailable.
 	FileCreatedAt time.Time `json:"fileCreatedAt"`
 
-	// FileTitle 代表の所在の、拡張子を除いたファイル名
+	// FileTitle Representative location filename without extension.
 	FileTitle string `json:"fileTitle"`
 	Id        int64  `json:"id"`
 
-	// Locations 登録フォルダの下の今の所在。パスの順で、代表が先頭
+	// Locations Current locations under registered folders, ordered by path with the representative first.
 	Locations []ExternalVideoLocation `json:"locations"`
 	Tags      []ExternalVideoTag      `json:"tags"`
 
-	// ThumbnailPositionMs 代表サムネイルの位置（ミリ秒）。未設定は null（自動の位置）
+	// ThumbnailPositionMs Thumbnail position in milliseconds; null selects the automatic position.
 	ThumbnailPositionMs *int64 `json:"thumbnailPositionMs"`
 
-	// Title 有効な題名。表示名があればそれ、無ければ代表の所在（locations の先頭）の題名
+	// Title Display name when set; otherwise the title of the representative first location.
 	Title string `json:"title"`
 
-	// UpdatedAt vv 上で動画の情報（表示名・タグ・公開設定・代表サムネイル・作品情報）を最後に編集した日時。
-	// 一度も編集していなければ addedAt と同じ。この API の video-tags・display-names・
-	// video-work-info も進める
+	// UpdatedAt Last edit to display name, tags, visibility, thumbnail or work information; equals addedAt before any edit. video-tags, display-names and video-work-info operations advance it too.
 	UpdatedAt time.Time `json:"updatedAt"`
 
-	// WorkInfo 動画の作品情報。
-	// 画面の API と同じ 7 つのプロパティで、この API では未設定の code・description は null、空の一覧は []
+	// WorkInfo Video work information with the same seven properties as the UI API; unset code/description are null and empty lists are [].
 	WorkInfo WorkInfo `json:"workInfo"`
 }
 
 // ExternalVideoLocation defines model for ExternalVideoLocation.
 type ExternalVideoLocation struct {
-	// FileName path の最後の要素
+	// FileName Final path component.
 	FileName string `json:"fileName"`
 
-	// Path 絶対パス。ファイルシステムの綴り（NFD を含む）のまま
+	// Path Absolute path in filesystem spelling, including NFD.
 	Path string `json:"path"`
 }
 
@@ -553,213 +548,213 @@ type ExternalVideoLocation struct {
 type ExternalVideoPage struct {
 	Items []ExternalVideo `json:"items"`
 
-	// NextCursor 次のページの取得に渡す。続きが無ければ空文字列
+	// NextCursor Cursor for the next page; empty string when none remains.
 	NextCursor string `json:"nextCursor"`
 }
 
 // ExternalVideoTag defines model for ExternalVideoTag.
 type ExternalVideoTag struct {
-	// FromFolder 祖先のフォルダ名から付く（この API では外れない）
+	// FromFolder Derived from ancestor folder names; cannot be removed through this API.
 	FromFolder bool  `json:"fromFolder"`
 	Id         int64 `json:"id"`
 
-	// Manual 手で付けた（この API の付け外しの対象）
+	// Manual Manually assigned; mutable through this API.
 	Manual bool   `json:"manual"`
 	Name   string `json:"name"`
 
-	// Tentative 仮のタグ（自動の付与で新しく作られ、まだ確定していないタグ）
+	// Tentative Tentative tag created automatically and not yet confirmed.
 	Tentative bool `json:"tentative"`
 }
 
-// Organization 団体 1 件。Person と同じ項目に親の団体が加わる
+// Organization One organization; same fields as Person plus its parent.
 type Organization struct {
-	// Aliases 名前の自然順。無ければ []
+	// Aliases Natural-name order; [] when empty.
 	Aliases   []Alias   `json:"aliases"`
 	CreatedAt time.Time `json:"createdAt"`
 
-	// ExternalIds (source, value) の順。無ければ []
+	// ExternalIds Ordered by (source, value); [] when empty.
 	ExternalIds []ExternalId `json:"externalIds"`
 	Id          int64        `json:"id"`
 	Name        string       `json:"name"`
 
-	// Parent 親の団体（CreditRef の形）。根の団体では null
+	// Parent Parent organization as CreditRef; null for a root.
 	Parent *struct {
 		Id   int64  `json:"id"`
 		Name string `json:"name"`
 	} `json:"parent"`
 
-	// VideoCount この団体をどれかの役割で結ぶ、表示中の動画の数
+	// VideoCount Visible videos linked to this organization in any role.
 	VideoCount int `json:"videoCount"`
 }
 
-// OrganizationList 団体の一覧
+// OrganizationList Organization list.
 type OrganizationList struct {
 	Items []Organization `json:"items"`
 
-	// NextCursor 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る
+	// NextCursor Cursor for the next page; present only with limit and remaining results.
 	NextCursor *string `json:"nextCursor,omitempty"`
 
-	// Total 条件（q、または外部 ID）に合う団体の数。ページングとは独立に返る
+	// Total Organization count matching q or external ID, independent of pagination.
 	Total int `json:"total"`
 
-	// TotalAll 全部の団体の数
+	// TotalAll Total organization count.
 	TotalAll int `json:"totalAll"`
 }
 
 // OrganizationMergeResponse defines model for OrganizationMergeResponse.
 type OrganizationMergeResponse struct {
-	// NotFoundIds 無かったので飛ばした統合元。無ければ []
+	// NotFoundIds Missing sources skipped during merge; [] when none.
 	NotFoundIds []int64 `json:"notFoundIds"`
 
-	// Organization 団体 1 件。Person と同じ項目に親の団体が加わる
+	// Organization One organization; same fields as Person plus its parent.
 	Organization Organization `json:"organization"`
 }
 
-// Person 人物 1 件
+// Person One person.
 type Person struct {
-	// Aliases 名前の自然順。無ければ []
+	// Aliases Natural-name order; [] when empty.
 	Aliases   []Alias   `json:"aliases"`
 	CreatedAt time.Time `json:"createdAt"`
 
-	// ExternalIds (source, value) の順。無ければ []
+	// ExternalIds Ordered by (source, value); [] when empty.
 	ExternalIds []ExternalId `json:"externalIds"`
 	Id          int64        `json:"id"`
 	Name        string       `json:"name"`
 
-	// VideoCount この人物をどれかの役割で結ぶ、表示中の動画の数
+	// VideoCount Visible videos linked to this person in any role.
 	VideoCount int `json:"videoCount"`
 }
 
-// PersonList 人物の一覧
+// PersonList Person list.
 type PersonList struct {
 	Items []Person `json:"items"`
 
-	// NextCursor 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る
+	// NextCursor Cursor for the next page; present only with limit and remaining results.
 	NextCursor *string `json:"nextCursor,omitempty"`
 
-	// Total 条件（q、または外部 ID）に合う人物の数。ページングとは独立に返る
+	// Total Person count matching q or external ID, independent of pagination.
 	Total int `json:"total"`
 
-	// TotalAll 全部の人物の数
+	// TotalAll Total person count.
 	TotalAll int `json:"totalAll"`
 }
 
 // PersonMergeResponse defines model for PersonMergeResponse.
 type PersonMergeResponse struct {
-	// NotFoundIds 無かったので飛ばした統合元。無ければ []
+	// NotFoundIds Missing sources skipped during merge; [] when none.
 	NotFoundIds []int64 `json:"notFoundIds"`
 
-	// Person 人物 1 件
+	// Person One person.
 	Person Person `json:"person"`
 }
 
 // RejectedTagNameForgetResult defines model for RejectedTagNameForgetResult.
 type RejectedTagNameForgetResult struct {
-	// Name 照合した名前（整えた後の綴り。整えられなければ送った名前）
+	// Name Normalized spelling matched, or the submitted name if normalization failed.
 	Name string `json:"name"`
 
-	// Removed 却下した名前から外したら true。一覧に無かったら false で、何も変えていない
+	// Removed True if removed from rejected names; false and unchanged if absent.
 	Removed bool `json:"removed"`
 }
 
 // RejectedTagNameList defines model for RejectedTagNameList.
 type RejectedTagNameList struct {
-	// Items 却下した名前（名前の自然順）。無ければ空
+	// Items Rejected names in natural-name order; empty when none.
 	Items []string `json:"items"`
 
-	// NextCursor 続きを読むカーソル。続きがあるときだけ入る
+	// NextCursor Continuation cursor, present only when more remain.
 	NextCursor *string `json:"nextCursor,omitempty"`
 
-	// Total 却下した名前の全部の数
+	// Total Total rejected-name count.
 	Total int `json:"total"`
 }
 
 // Tag defines model for Tag.
 type Tag struct {
-	// CreatedAt タグを作った時刻。`sort` の `createdDesc`・`createdAsc` はこの値で並べる
+	// CreatedAt Creation timestamp used by createdDesc and createdAsc sorting.
 	CreatedAt time.Time `json:"createdAt"`
 	Id        int64     `json:"id"`
 
-	// Kind タグの種類。null は種類の無いタグ
+	// Kind Tag kind; null means unclassified.
 	Kind *TagKindRef `json:"kind"`
 	Name string      `json:"name"`
 
-	// Synonyms 名前の自然順
+	// Synonyms Natural-name order.
 	Synonyms []string `json:"synonyms"`
 
-	// Tentative 仮のタグ（自動の付与で新しく作られ、まだ確定していないタグ）
+	// Tentative Tentative tag created automatically and not yet confirmed.
 	Tentative bool `json:"tentative"`
 
-	// VideoCount いまライブラリにある動画の本数
+	// VideoCount Number of videos currently in the library.
 	VideoCount int `json:"videoCount"`
 }
 
 // TagBatchRequest defines model for TagBatchRequest.
 type TagBatchRequest struct {
-	// Action confirm は仮のタグを確定し、reject は仮のタグを却下し（消して元の名前を却下した名前に入れる）、 delete は確定したタグを消す。setKind は各タグに種類 kindId を付け、clearKind は各タグの種類を 外す（どちらも仮のタグを確定しない）
+	// Action confirm confirms tentative tags; reject removes them and remembers original names; delete removes confirmed tags. setKind assigns kindId and clearKind removes it, without confirming tentative tags.
 	Action TagBatchRequestAction `json:"action"`
 
-	// Ids 対象のタグ。送った数で 1〜20,000 件（重複も数に入り、処理は 1 回）。範囲外は `too_many_tags`
+	// Ids Target IDs: 1-20,000 submitted entries, counting duplicates but processing once; otherwise too_many_tags.
 	Ids []int64 `json:"ids"`
 
-	// KindId `setKind` で付ける種類。`setKind` だけが持ち、他の `action` に付けると `invalid_request`
+	// KindId Kind assigned by setKind; supplying it for any other action returns invalid_request.
 	KindId *int64 `json:"kindId,omitempty"`
 }
 
-// TagBatchRequestAction confirm は仮のタグを確定し、reject は仮のタグを却下し（消して元の名前を却下した名前に入れる）、 delete は確定したタグを消す。setKind は各タグに種類 kindId を付け、clearKind は各タグの種類を 外す（どちらも仮のタグを確定しない）
+// TagBatchRequestAction confirm confirms tentative tags; reject removes them and remembers original names; delete removes confirmed tags. setKind assigns kindId and clearKind removes it, without confirming tentative tags.
 type TagBatchRequestAction string
 
-// TagBatchResponse 3 つは重ならず、合わせて重複を除いた `ids` に等しい。どれも `ids` に現れた順で、無ければ空
+// TagBatchResponse Three disjoint lists whose union is the deduplicated ids, each preserving input order; empty when none.
 type TagBatchResponse struct {
-	// AppliedIds 処理したタグ
+	// AppliedIds Processed tags.
 	AppliedIds []int64 `json:"appliedIds"`
 
-	// NotApplicableIds 種類が `action` に合わず、何も変えなかったタグ
+	// NotApplicableIds Tags incompatible with the action, left unchanged.
 	NotApplicableIds []int64 `json:"notApplicableIds"`
 
-	// NotFoundIds 無かったタグ
+	// NotFoundIds Missing tags.
 	NotFoundIds []int64 `json:"notFoundIds"`
 }
 
-// TagKind 種類の一覧の 1 件
+// TagKind One entry in the kind list.
 type TagKind struct {
-	// CreatedAt 種類を作った時刻（秒の精度）
+	// CreatedAt Kind creation timestamp, with second precision.
 	CreatedAt time.Time `json:"createdAt"`
 	Id        int64     `json:"id"`
 	Name      string    `json:"name"`
 
-	// TagCount この種類のタグの数。仮のタグも数える
+	// TagCount Number of tags of this kind, including tentative tags.
 	TagCount int `json:"tagCount"`
 }
 
 // TagKindCreateRequest defines model for TagKindCreateRequest.
 type TagKindCreateRequest struct {
-	// Name 種類の名前。タグ名と同じ規則で整え、種類どうしで重ならない
+	// Name Kind name normalized like a tag name and unique among kinds.
 	Name string `json:"name"`
 }
 
 // TagKindDeleteRequest defines model for TagKindDeleteRequest.
 type TagKindDeleteRequest struct {
-	// Ids 消す種類の id。1〜20,000 件。範囲外は `invalid_request`
+	// Ids Kind IDs to delete: 1-20,000; otherwise invalid_request.
 	Ids []int64 `json:"ids"`
 }
 
-// TagKindDeleteResponse 2 つは重ならず、合わせて重複を除いた `ids` に等しい。どちらも `ids` に現れた順で、無ければ []
+// TagKindDeleteResponse Disjoint lists whose union is the deduplicated ids, each preserving input order; empty lists are [].
 type TagKindDeleteResponse struct {
-	// DeletedIds 消した種類
+	// DeletedIds Deleted kinds.
 	DeletedIds []int64 `json:"deletedIds"`
 
-	// NotFoundIds 無かった種類
+	// NotFoundIds Missing kinds.
 	NotFoundIds []int64 `json:"notFoundIds"`
 }
 
 // TagKindList defines model for TagKindList.
 type TagKindList struct {
-	// Items すべての種類。id の順
+	// Items All kinds in ID order.
 	Items []TagKind `json:"items"`
 }
 
-// TagKindRef タグの種類の id と名前
+// TagKindRef Tag kind ID and name.
 type TagKindRef struct {
 	Id   int64  `json:"id"`
 	Name string `json:"name"`
@@ -769,7 +764,7 @@ type TagKindRef struct {
 type TagKindRenameRequest struct {
 	Id int64 `json:"id"`
 
-	// Name 新しい名前。タグ名と同じ規則で整え、種類どうしで重ならない
+	// Name New name normalized like a tag name and unique among kinds.
 	Name string `json:"name"`
 }
 
@@ -777,28 +772,28 @@ type TagKindRenameRequest struct {
 type TagList struct {
 	Items []Tag `json:"items"`
 
-	// NextCursor 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る
+	// NextCursor Cursor for the next page; present only when limit is supplied and more results remain.
 	NextCursor *string `json:"nextCursor,omitempty"`
 
-	// Total 条件（`q`・`tentative`・`unused`）に合うタグの数。ページングとは独立に返る
+	// Total Count matching q, tentative and unused, independent of pagination.
 	Total int `json:"total"`
 
-	// TotalAll 全部のタグの数。ページングとは独立に返る
+	// TotalAll Total tag count, independent of pagination.
 	TotalAll int `json:"totalAll"`
 }
 
 // TagMergeRequest defines model for TagMergeRequest.
 type TagMergeRequest struct {
-	// SourceIds 統合するタグ。送った数で 1〜20,000 件（重複も数に入り、統合は 1 回）。範囲外は `too_many_tags`
+	// SourceIds Source IDs: 1-20,000 submitted entries, counting duplicates but merging once; otherwise too_many_tags.
 	SourceIds []int64 `json:"sourceIds"`
 
-	// TargetId 付与・名前・シノニムを受け取るタグ。確定したタグになる
+	// TargetId Target receiving assignments, names and synonyms; becomes confirmed.
 	TargetId int64 `json:"targetId"`
 }
 
 // TagMergeResponse defines model for TagMergeResponse.
 type TagMergeResponse struct {
-	// NotFoundIds 無かったので飛ばした統合元。無ければ空
+	// NotFoundIds Missing sources skipped during merge; empty when none.
 	NotFoundIds []int64 `json:"notFoundIds"`
 	Tag         Tag     `json:"tag"`
 }
@@ -807,67 +802,66 @@ type TagMergeResponse struct {
 type TagRenameRequest struct {
 	Id int64 `json:"id"`
 
-	// Name 新しい元の名前。タグ名と同じ規則で整える
+	// Name New original name, normalized using tag-name rules.
 	Name string `json:"name"`
 }
 
-// TagSort タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、
-// createdDesc・createdAsc は作った日。値が同じタグは名前の自然順、それも同じなら id
+// TagSort name uses natural-name order; countDesc/countAsc use video counts; createdDesc/createdAsc use creation time. Ties use natural-name order, then ID.
 type TagSort string
 
 // TagSynonymsRequest defines model for TagSynonymsRequest.
 type TagSynonymsRequest struct {
-	// Action add は足す、remove は外す
+	// Action add attaches; remove detaches.
 	Action TagSynonymsRequestAction `json:"action"`
 
-	// Id シノニムを変えるタグ
+	// Id Tag whose synonyms change.
 	Id int64 `json:"id"`
 
-	// MergeTagId `add` だけ: 統合を受け入れるタグの id。`tag_merge_required` の `tagId` を渡す。名前が別のタグの 元の名前でなければ無視する
+	// MergeTagId For add only: ID authorizing a merge, taken from tag_merge_required.tagId. Ignored unless the name is another tag's original name.
 	MergeTagId *int64 `json:"mergeTagId,omitempty"`
 
-	// Name シノニム。タグ名と同じ規則で整える
+	// Name Synonym normalized using tag-name rules.
 	Name string `json:"name"`
 }
 
-// TagSynonymsRequestAction add は足す、remove は外す
+// TagSynonymsRequestAction add attaches; remove detaches.
 type TagSynonymsRequestAction string
 
 // VideoDisplayNameChange defines model for VideoDisplayNameChange.
 type VideoDisplayNameChange struct {
-	// DisplayName 表示名。null、または前後の空白を除いて空なら解除する。制御文字を含めず、整えた後で 200 符号位置まで
+	// DisplayName Display name; null or whitespace-only clears it. No control characters; at most 200 code points after normalization.
 	DisplayName *string `json:"displayName"`
 
-	// Video 動画の指定。id・contentKey・path のちょうど 1 つを持つ。path は正規化せず、登録フォルダの下の 今の所在の path とバイト列で比べる
+	// Video Exactly one of id, contentKey or path. Paths match current locations under registered folders byte-for-byte without normalization.
 	Video VideoRef `json:"video"`
 }
 
 // VideoDisplayNamesItem defines model for VideoDisplayNamesItem.
 type VideoDisplayNamesItem struct {
-	// DisplayName 反映後の表示名。解除したら null
+	// DisplayName Resulting display name, or null when cleared.
 	DisplayName *string `json:"displayName"`
 
-	// FileTitle 代表の所在の、拡張子を除いたファイル名
+	// FileTitle Representative location filename without extension.
 	FileTitle string `json:"fileTitle"`
 
-	// Title 反映後の有効な題名
+	// Title Resulting effective title.
 	Title string         `json:"title"`
 	Video VideoTagsVideo `json:"video"`
 }
 
 // VideoDisplayNamesRequest defines model for VideoDisplayNamesRequest.
 type VideoDisplayNamesRequest struct {
-	// Items 1〜20000 件。範囲外は `too_many_videos`
+	// Items 1-20,000 entries; otherwise too_many_videos.
 	Items []VideoDisplayNameChange `json:"items"`
 }
 
 // VideoDisplayNamesResponse defines model for VideoDisplayNamesResponse.
 type VideoDisplayNamesResponse struct {
-	// Items items の順
+	// Items In items order.
 	Items []VideoDisplayNamesItem `json:"items"`
 }
 
-// VideoRef 動画の指定。id・contentKey・path のちょうど 1 つを持つ。path は正規化せず、登録フォルダの下の 今の所在の path とバイト列で比べる
+// VideoRef Exactly one of id, contentKey or path. Paths match current locations under registered folders byte-for-byte without normalization.
 type VideoRef struct {
 	ContentKey *string `json:"contentKey,omitempty"`
 	Id         *int64  `json:"id,omitempty"`
@@ -876,35 +870,35 @@ type VideoRef struct {
 
 // VideoTagsItem defines model for VideoTagsItem.
 type VideoTagsItem struct {
-	// Tags 操作後のタグ（手で付けた分とフォルダ名から付く分、出所つき）
+	// Tags Resulting manual and folder-derived tags, with provenance.
 	Tags  []ExternalVideoTag `json:"tags"`
 	Video VideoTagsVideo     `json:"video"`
 }
 
 // VideoTagsRequest defines model for VideoTagsRequest.
 type VideoTagsRequest struct {
-	// Action add は付ける、remove は外す、replace は手で付けたタグをちょうど tags の集合にする （空なら手で付けたタグをすべて外す）
+	// Action add attaches, remove detaches, and replace makes manual tags exactly the supplied set; an empty set clears all manual tags.
 	Action VideoTagsRequestAction `json:"action"`
 
-	// Tags タグの名前（シノニムも可）。100 件まで。add・remove では 1 件以上。範囲外は `too_many_tags`
+	// Tags Tag names or synonyms, at most 100; add/remove require at least one. Out-of-range counts return too_many_tags.
 	Tags []string `json:"tags"`
 
-	// Tentative 真なら add・replace で、どのタグの名前にもシノニムにも当たらない名前を仮のタグとして作る。 却下した名前（綴りの完全一致）は作らず付けずに飛ばし、skippedTags に返す。既存のタグに 当たる名前はそのタグを付け、その状態を変えない。remove では何も変えない
+	// Tentative For add/replace, create unknown names as tentative tags, skipping exact-spelling rejected names into skippedTags. Existing tags are attached without changing their state; has no effect on remove.
 	Tentative *bool `json:"tentative,omitempty"`
 
-	// Videos 1〜20000 件。範囲外は `too_many_videos`
+	// Videos 1-20,000 entries; otherwise too_many_videos.
 	Videos []VideoRef `json:"videos"`
 }
 
-// VideoTagsRequestAction add は付ける、remove は外す、replace は手で付けたタグをちょうど tags の集合にする （空なら手で付けたタグをすべて外す）
+// VideoTagsRequestAction add attaches, remove detaches, and replace makes manual tags exactly the supplied set; an empty set clears all manual tags.
 type VideoTagsRequestAction string
 
 // VideoTagsResponse defines model for VideoTagsResponse.
 type VideoTagsResponse struct {
-	// Items videos の順
+	// Items In videos order.
 	Items []VideoTagsItem `json:"items"`
 
-	// SkippedTags tentative が真の add・replace で、却下した名前に当たって飛ばした名前。整えた形で tags の順に 1 回ずつ。無ければ空の配列
+	// SkippedTags Rejected names skipped by tentative add/replace, normalized and deduplicated in tags order; [] when none.
 	SkippedTags []string `json:"skippedTags"`
 }
 
@@ -916,39 +910,38 @@ type VideoTagsVideo struct {
 
 // VideoThumbnailChange defines model for VideoThumbnailChange.
 type VideoThumbnailChange struct {
-	// PositionMs 代表サムネイルにする場面の位置（ミリ秒、0 以上で尺未満）。null なら解除し、自動の位置に戻す
+	// PositionMs Thumbnail position in milliseconds, nonnegative and below duration; null restores the automatic position.
 	PositionMs *int64 `json:"positionMs"`
 
-	// Video 動画の指定。id・contentKey・path のちょうど 1 つを持つ。path は正規化せず、登録フォルダの下の 今の所在の path とバイト列で比べる
+	// Video Exactly one of id, contentKey or path. Paths match current locations under registered folders byte-for-byte without normalization.
 	Video VideoRef `json:"video"`
 }
 
 // VideoThumbnailsItem defines model for VideoThumbnailsItem.
 type VideoThumbnailsItem struct {
-	// ThumbnailPositionMs 反映後の位置。解除したら null
+	// ThumbnailPositionMs Resulting position, or null when cleared.
 	ThumbnailPositionMs *int64         `json:"thumbnailPositionMs"`
 	Video               VideoTagsVideo `json:"video"`
 }
 
 // VideoThumbnailsRequest defines model for VideoThumbnailsRequest.
 type VideoThumbnailsRequest struct {
-	// Items 1〜20 件。範囲外は `too_many_videos`
+	// Items 1-20 entries; otherwise too_many_videos.
 	Items []VideoThumbnailChange `json:"items"`
 }
 
 // VideoThumbnailsResponse defines model for VideoThumbnailsResponse.
 type VideoThumbnailsResponse struct {
-	// Items items の順
+	// Items In items order.
 	Items []VideoThumbnailsItem `json:"items"`
 }
 
 // VideoWorkInfoChange defines model for VideoWorkInfoChange.
 type VideoWorkInfoChange struct {
-	// Video 動画の指定。id・contentKey・path のちょうど 1 つを持つ。path は正規化せず、登録フォルダの下の 今の所在の path とバイト列で比べる
+	// Video Exactly one of id, contentKey or path. Paths match current locations under registered folders byte-for-byte without normalization.
 	Video VideoRef `json:"video"`
 
-	// WorkInfo 作品情報の書き込み 1 件。画面の API の WorkInfoInput と同じ形で、項目の規則も同じ。
-	// どのプロパティも省いてよく null も受け付ける。省いたものと null は解除で、全体を置き換える
+	// WorkInfo Full replacement using the UI WorkInfoInput shape and validation rules. All properties may be omitted or null; either clears the property.
 	WorkInfo WorkInfoInput `json:"workInfo"`
 }
 
@@ -956,64 +949,61 @@ type VideoWorkInfoChange struct {
 type VideoWorkInfoItem struct {
 	Video VideoTagsVideo `json:"video"`
 
-	// WorkInfo 動画の作品情報。
-	// 画面の API と同じ 7 つのプロパティで、この API では未設定の code・description は null、空の一覧は []
+	// WorkInfo Video work information with the same seven properties as the UI API; unset code/description are null and empty lists are [].
 	WorkInfo WorkInfo `json:"workInfo"`
 }
 
 // VideoWorkInfoRequest defines model for VideoWorkInfoRequest.
 type VideoWorkInfoRequest struct {
-	// Items 1〜20000 件。範囲外は `too_many_videos`
+	// Items 1-20,000 entries; otherwise too_many_videos.
 	Items []VideoWorkInfoChange `json:"items"`
 }
 
 // VideoWorkInfoResponse defines model for VideoWorkInfoResponse.
 type VideoWorkInfoResponse struct {
-	// Items items の順
+	// Items In items order.
 	Items []VideoWorkInfoItem `json:"items"`
 }
 
 // WorkDate defines model for WorkDate.
 type WorkDate struct {
-	// Date YYYY・YYYY-MM・YYYY-MM-DD（日まであれば暦にある日）
+	// Date YYYY, YYYY-MM or YYYY-MM-DD; a full date must be valid in the calendar.
 	//
 	// Examples: 2024, 2024-02, 2024-02-29
 	Date string `json:"date"`
 
-	// Kind 日付の種類
+	// Kind Date kind.
 	Kind WorkDateKind `json:"kind"`
 }
 
-// WorkDateKind 日付の種類
+// WorkDateKind Date kind.
 type WorkDateKind string
 
-// WorkInfo 動画の作品情報。
-// 画面の API と同じ 7 つのプロパティで、この API では未設定の code・description は null、空の一覧は []
+// WorkInfo Video work information with the same seven properties as the UI API; unset code/description are null and empty lists are [].
 type WorkInfo struct {
-	// Code 品番
+	// Code Product code.
 	Code *string `json:"code"`
 
-	// Dates 種類の順（release・recorded・published）
+	// Dates Kind order: release, recorded, published.
 	Dates []WorkDate `json:"dates"`
 
-	// Description 説明。改行を含みうる
+	// Description Description, potentially including newlines.
 	Description *string `json:"description"`
 
-	// ExternalIds (source, value) の順
+	// ExternalIds Ordered by (source, value).
 	ExternalIds []ExternalId `json:"externalIds"`
 
-	// Organizations 役割の順、同じ役割の中は入力した順。name は団体の今の名前
+	// Organizations Role order, then input order within each role; name is the organization's current name.
 	Organizations []WorkOrganization `json:"organizations"`
 
-	// People 役割の順、同じ役割の中は入力した順。name は人物の今の名前
+	// People Role order, then input order within each role; name is the person's current name.
 	People []WorkPerson `json:"people"`
 
-	// Urls 入力した順
+	// Urls Input order.
 	Urls []string `json:"urls"`
 }
 
-// WorkInfoInput 作品情報の書き込み 1 件。画面の API の WorkInfoInput と同じ形で、項目の規則も同じ。
-// どのプロパティも省いてよく null も受け付ける。省いたものと null は解除で、全体を置き換える
+// WorkInfoInput Full replacement using the UI WorkInfoInput shape and validation rules. All properties may be omitted or null; either clears the property.
 type WorkInfoInput struct {
 	Code          *string                  `json:"code,omitempty"`
 	Dates         *[]WorkDate              `json:"dates,omitempty"`
@@ -1026,44 +1016,44 @@ type WorkInfoInput struct {
 
 // WorkOrganization defines model for WorkOrganization.
 type WorkOrganization struct {
-	// Organization 人物か団体 1 件への参照。name はその実体の今の名前
+	// Organization Reference to one person or organization; name is its current name.
 	Organization CreditRef `json:"organization"`
 
-	// Role 動画での団体の役割
+	// Role Organization role in a video.
 	Role WorkOrganizationRole `json:"role"`
 }
 
 // WorkOrganizationInput defines model for WorkOrganizationInput.
 type WorkOrganizationInput struct {
-	// Organization 書き込みで人物か団体 1 件を指す参照
+	// Organization Write reference to one person or organization.
 	Organization CreditIdRef `json:"organization"`
 
-	// Role 動画での団体の役割
+	// Role Organization role in a video.
 	Role WorkOrganizationRole `json:"role"`
 }
 
-// WorkOrganizationRole 動画での団体の役割
+// WorkOrganizationRole Organization role in a video.
 type WorkOrganizationRole string
 
 // WorkPerson defines model for WorkPerson.
 type WorkPerson struct {
-	// Person 人物か団体 1 件への参照。name はその実体の今の名前
+	// Person Reference to one person or organization; name is its current name.
 	Person CreditRef `json:"person"`
 
-	// Role 動画での人物の役割
+	// Role Person role in a video.
 	Role WorkPersonRole `json:"role"`
 }
 
 // WorkPersonInput defines model for WorkPersonInput.
 type WorkPersonInput struct {
-	// Person 書き込みで人物か団体 1 件を指す参照
+	// Person Write reference to one person or organization.
 	Person CreditIdRef `json:"person"`
 
-	// Role 動画での人物の役割
+	// Role Person role in a video.
 	Role WorkPersonRole `json:"role"`
 }
 
-// WorkPersonRole 動画での人物の役割
+// WorkPersonRole Person role in a video.
 type WorkPersonRole string
 
 // CreditCursor defines model for CreditCursor.
@@ -1081,127 +1071,123 @@ type CreditQuery = string
 // CreditSource defines model for CreditSource.
 type CreditSource = string
 
-// CreditDeleteInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である。
+// CreditDeleteInvalid Same error shape as the UI API, with the additional index field.
 type CreditDeleteInvalid = Error
 
-// CreditExternalIdTaken 誤りの形は画面の API と同じで、index はこの API だけの項目である。
+// CreditExternalIdTaken Same error shape as the UI API, with the additional index field.
 type CreditExternalIdTaken = Error
 
-// CreditInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である。
+// CreditInvalid Same error shape as the UI API, with the additional index field.
 type CreditInvalid = Error
 
-// CreditListInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である。
+// CreditListInvalid Same error shape as the UI API, with the additional index field.
 type CreditListInvalid = Error
 
-// CreditMergeInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である。
+// CreditMergeInvalid Same error shape as the UI API, with the additional index field.
 type CreditMergeInvalid = Error
 
-// CreditNotFound 誤りの形は画面の API と同じで、index はこの API だけの項目である。
+// CreditNotFound Same error shape as the UI API, with the additional index field.
 type CreditNotFound = Error
 
-// Internal 誤りの形は画面の API と同じで、index はこの API だけの項目である。
+// Internal Same error shape as the UI API, with the additional index field.
 type Internal = Error
 
-// TagKindNameConflict 誤りの形は画面の API と同じで、index はこの API だけの項目である。
+// TagKindNameConflict Same error shape as the UI API, with the additional index field.
 type TagKindNameConflict = Error
 
-// TagKindNameInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である。
+// TagKindNameInvalid Same error shape as the UI API, with the additional index field.
 type TagKindNameInvalid = Error
 
-// Unauthenticated 誤りの形は画面の API と同じで、index はこの API だけの項目である。
+// Unauthenticated Same error shape as the UI API, with the additional index field.
 type Unauthenticated = Error
 
 // ListOrganizationsParams defines parameters for ListOrganizations.
 type ListOrganizationsParams struct {
-	// Q 検索語。照合形にして前後の空白を落とし、空でなければ名前か別名に部分一致する実体だけにする
+	// Q Trim and normalize the query, then substring-match names or aliases when nonempty.
 	Q *CreditQuery `form:"q,omitempty" json:"q,omitempty"`
 
-	// Sort 並び順
+	// Sort Sort order
 	Sort *CreditSort `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Cursor 前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する
+	// Cursor Previous nextCursor; reuse with the same q and sort. Ignored without limit.
 	Cursor *CreditCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 
-	// Limit 1 ページの件数。省くと全件を返し、`nextCursor` は入らない。`source` と `externalId` での検索では読まない
+	// Limit Page size; omit to return all matches without nextCursor. Ignored for source/externalId lookup.
 	Limit *CreditLimit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Source 外部 ID の情報源。`externalId` と組で渡すと、その外部 ID を持つ実体だけを返す
+	// Source External-ID source; pair with externalId to return only the matching entity.
 	Source *CreditSource `form:"source,omitempty" json:"source,omitempty"`
 
-	// ExternalId 外部 ID の値。`source` と組で渡す
+	// ExternalId External-ID value; pair with source.
 	ExternalId *CreditExternalId `form:"externalId,omitempty" json:"externalId,omitempty"`
 }
 
 // ListPeopleParams defines parameters for ListPeople.
 type ListPeopleParams struct {
-	// Q 検索語。照合形にして前後の空白を落とし、空でなければ名前か別名に部分一致する実体だけにする
+	// Q Trim and normalize the query, then substring-match names or aliases when nonempty.
 	Q *CreditQuery `form:"q,omitempty" json:"q,omitempty"`
 
-	// Sort 並び順
+	// Sort Sort order
 	Sort *CreditSort `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Cursor 前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する
+	// Cursor Previous nextCursor; reuse with the same q and sort. Ignored without limit.
 	Cursor *CreditCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 
-	// Limit 1 ページの件数。省くと全件を返し、`nextCursor` は入らない。`source` と `externalId` での検索では読まない
+	// Limit Page size; omit to return all matches without nextCursor. Ignored for source/externalId lookup.
 	Limit *CreditLimit `form:"limit,omitempty" json:"limit,omitempty"`
 
-	// Source 外部 ID の情報源。`externalId` と組で渡すと、その外部 ID を持つ実体だけを返す
+	// Source External-ID source; pair with externalId to return only the matching entity.
 	Source *CreditSource `form:"source,omitempty" json:"source,omitempty"`
 
-	// ExternalId 外部 ID の値。`source` と組で渡す
+	// ExternalId External-ID value; pair with source.
 	ExternalId *CreditExternalId `form:"externalId,omitempty" json:"externalId,omitempty"`
 }
 
 // ListTagsParams defines parameters for ListTags.
 type ListTagsParams struct {
-	// Q 検索語。全角・半角、大文字・小文字、ひらがな・カタカナなどの表記の揺れを吸収した形
-	// （照合形）にして前後の空白を落とし、空でなければ元の名前かシノニムに部分一致する
-	// タグだけにする。語の分解はしない
+	// Q Trim and normalize width, case and hiragana/katakana variants, then substring-match the original name or synonyms when nonempty. Do not split into words.
 	Q *string `form:"q,omitempty" json:"q,omitempty"`
 
-	// Tentative true なら仮のタグだけにする
+	// Tentative If true, return tentative tags only.
 	Tentative *bool `form:"tentative,omitempty" json:"tentative,omitempty"`
 
-	// Unused true なら本数 0 のタグだけにする
+	// Unused If true, return tags with no videos only.
 	Unused *bool `form:"unused,omitempty" json:"unused,omitempty"`
 
-	// Kind 種類の id（正の整数）ならその種類のタグだけ、`none` なら種類の無いタグだけにする。
-	// 無い id は空の一覧。`total` はこれも掛けて数え、`totalAll` は掛けない
+	// Kind Filter by a positive kind ID or `none` for unclassified tags. Missing IDs return an empty list; this filter affects `total`, not `totalAll`.
 	Kind *string `form:"kind,omitempty" json:"kind,omitempty"`
 
-	// Sort 並び順
+	// Sort Sort order
 	Sort *TagSort `form:"sort,omitempty" json:"sort,omitempty"`
 
-	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。同じ `q`・`tentative`・
-	// `unused`・`kind`・`sort` で続けて使う。`limit` を省いたときは無視する
+	// Cursor Opaque cursor from the previous response; reuse with the same `q`, `tentative`, `unused`, `kind` and `sort`. Ignored without `limit`.
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 
-	// Limit 1 ページの件数。省くと全件を返し、`nextCursor` は入らない
+	// Limit Page size; omit to return all matches without `nextCursor`.
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ForgetRejectedTagNameParams defines parameters for ForgetRejectedTagName.
 type ForgetRejectedTagNameParams struct {
-	// Name 外す名前
+	// Name Name to forget
 	Name string `form:"name" json:"name"`
 }
 
 // ListRejectedTagNamesParams defines parameters for ListRejectedTagNames.
 type ListRejectedTagNamesParams struct {
-	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+	// Cursor Opaque nextCursor from the previous response.
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 
-	// Limit 1 ページの件数
+	// Limit Page size
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListVideosParams defines parameters for ListVideos.
 type ListVideosParams struct {
-	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。省略すると先頭から
+	// Cursor Opaque `nextCursor` from the previous response; omit to start at the beginning.
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 
-	// Limit 1 ページの件数。範囲外は `400` `invalid_request`
+	// Limit Page size; out-of-range values return `400 invalid_request`.
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
@@ -1210,7 +1196,7 @@ type LookupVideoParams struct {
 	Id         *int64  `form:"id,omitempty" json:"id,omitempty"`
 	ContentKey *string `form:"contentKey,omitempty" json:"contentKey,omitempty"`
 
-	// Path 所在の絶対パス
+	// Path Absolute location path
 	Path *string `form:"path,omitempty" json:"path,omitempty"`
 }
 
@@ -1273,91 +1259,91 @@ type UpdateVideoWorkInfoJSONRequestBody = VideoWorkInfoRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// ListOrganizations 団体の一覧を返す、または外部 ID で団体を 1 件引く
+	// ListOrganizations List organizations or look up one by external ID
 	// (GET /organizations)
 	ListOrganizations(w http.ResponseWriter, r *http.Request, params ListOrganizationsParams)
-	// CreateOrganization 団体を作る
+	// CreateOrganization Create an organization
 	// (POST /organizations)
 	CreateOrganization(w http.ResponseWriter, r *http.Request)
-	// DeleteOrganizations 団体を消す
+	// DeleteOrganizations Delete organizations
 	// (POST /organizations/delete)
 	DeleteOrganizations(w http.ResponseWriter, r *http.Request)
-	// MergeOrganizations 複数の団体を 1 つへ統合する
+	// MergeOrganizations Merge organizations into one target
 	// (POST /organizations/merge)
 	MergeOrganizations(w http.ResponseWriter, r *http.Request)
-	// UpdateOrganization 団体を書き換える
+	// UpdateOrganization Update an organization
 	// (POST /organizations/update)
 	UpdateOrganization(w http.ResponseWriter, r *http.Request)
-	// ListPeople 人物の一覧を返す、または外部 ID で人物を 1 件引く
+	// ListPeople List people or look up one by external ID
 	// (GET /people)
 	ListPeople(w http.ResponseWriter, r *http.Request, params ListPeopleParams)
-	// CreatePerson 人物を作る
+	// CreatePerson Create a person
 	// (POST /people)
 	CreatePerson(w http.ResponseWriter, r *http.Request)
-	// DeletePeople 人物を消す
+	// DeletePeople Delete people
 	// (POST /people/delete)
 	DeletePeople(w http.ResponseWriter, r *http.Request)
-	// MergePeople 複数の人物を 1 人へ統合する
+	// MergePeople Merge people into one target
 	// (POST /people/merge)
 	MergePeople(w http.ResponseWriter, r *http.Request)
-	// UpdatePerson 人物を書き換える
+	// UpdatePerson Update a person
 	// (POST /people/update)
 	UpdatePerson(w http.ResponseWriter, r *http.Request)
-	// StartScan スキャンを始める
+	// StartScan Start a scan
 	// (POST /scans)
 	StartScan(w http.ResponseWriter, r *http.Request)
-	// GetCurrentScan 直近のスキャンの状態を返す
+	// GetCurrentScan Get the latest scan status
 	// (GET /scans/current)
 	GetCurrentScan(w http.ResponseWriter, r *http.Request)
-	// ListTagKinds タグの種類をすべて返す
+	// ListTagKinds List all tag kinds
 	// (GET /tag-kinds)
 	ListTagKinds(w http.ResponseWriter, r *http.Request)
-	// CreateTagKind タグの種類を作る
+	// CreateTagKind Create a tag kind
 	// (POST /tag-kinds)
 	CreateTagKind(w http.ResponseWriter, r *http.Request)
-	// DeleteTagKinds タグの種類を消す
+	// DeleteTagKinds Delete tag kinds
 	// (POST /tag-kinds/delete)
 	DeleteTagKinds(w http.ResponseWriter, r *http.Request)
-	// RenameTagKind タグの種類の名前を変える
+	// RenameTagKind Rename a tag kind
 	// (POST /tag-kinds/update)
 	RenameTagKind(w http.ResponseWriter, r *http.Request)
-	// ListTags タグの一覧を返す
+	// ListTags List tags
 	// (GET /tags)
 	ListTags(w http.ResponseWriter, r *http.Request, params ListTagsParams)
-	// BatchTags 複数のタグをまとめて確定・却下・削除し、種類を付け外しする
+	// BatchTags Confirm, reject, delete or classify multiple tags
 	// (POST /tags/batch)
 	BatchTags(w http.ResponseWriter, r *http.Request)
-	// MergeTags 複数のタグを 1 つのタグへ統合する
+	// MergeTags Merge tags into one target
 	// (POST /tags/merge)
 	MergeTags(w http.ResponseWriter, r *http.Request)
-	// ForgetRejectedTagName 却下した名前を 1 つ外す
+	// ForgetRejectedTagName Forget a rejected tag name
 	// (DELETE /tags/rejected-names)
 	ForgetRejectedTagName(w http.ResponseWriter, r *http.Request, params ForgetRejectedTagNameParams)
-	// ListRejectedTagNames 却下した名前を一覧する
+	// ListRejectedTagNames List rejected tag names
 	// (GET /tags/rejected-names)
 	ListRejectedTagNames(w http.ResponseWriter, r *http.Request, params ListRejectedTagNamesParams)
-	// RenameTag タグの元の名前を変える
+	// RenameTag Rename a tag
 	// (POST /tags/rename)
 	RenameTag(w http.ResponseWriter, r *http.Request)
-	// UpdateTagSynonyms タグのシノニムを足す・外す
+	// UpdateTagSynonyms Add or remove a tag synonym
 	// (POST /tags/synonyms)
 	UpdateTagSynonyms(w http.ResponseWriter, r *http.Request)
-	// UpdateVideoDisplayNames 複数の動画の表示名を設定・解除する
+	// UpdateVideoDisplayNames Set or clear display names for multiple videos
 	// (POST /video-display-names)
 	UpdateVideoDisplayNames(w http.ResponseWriter, r *http.Request)
-	// UpdateVideoTags 複数の動画に名前で指定したタグを付ける・外す・置き換える
+	// UpdateVideoTags Add, remove or replace named tags on multiple videos
 	// (POST /video-tags)
 	UpdateVideoTags(w http.ResponseWriter, r *http.Request)
-	// UpdateVideoThumbnails 複数の動画の代表サムネイルの位置を設定・解除する
+	// UpdateVideoThumbnails Set or clear thumbnail positions for multiple videos
 	// (POST /video-thumbnails)
 	UpdateVideoThumbnails(w http.ResponseWriter, r *http.Request)
-	// UpdateVideoWorkInfo 複数の動画の作品情報をまるごと置き換える
+	// UpdateVideoWorkInfo Replace work information for multiple videos
 	// (POST /video-work-info)
 	UpdateVideoWorkInfo(w http.ResponseWriter, r *http.Request)
-	// ListVideos 動画の一覧をページを分けて返す
+	// ListVideos List videos with pagination
 	// (GET /videos)
 	ListVideos(w http.ResponseWriter, r *http.Request, params ListVideosParams)
-	// LookupVideo 動画を 1 本、id・内容キー・パスのどれかで引く
+	// LookupVideo Look up a video by ID, content key or path
 	// (GET /videos/lookup)
 	LookupVideo(w http.ResponseWriter, r *http.Request, params LookupVideoParams)
 }

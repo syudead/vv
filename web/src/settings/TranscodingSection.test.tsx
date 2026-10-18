@@ -244,7 +244,6 @@ describe("TranscodingSection", () => {
 
     await screen.findByRole("alert");
     await waitFor(() => expect(gets).toBe(2));
-    // 読み直しの応答が来るまでは、次の保存を始められない。
     expect(radio("Automatic").disabled).toBe(true);
     expect(screen.getByText("Saving…")).toBeDefined();
 

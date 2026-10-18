@@ -11,14 +11,11 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 公開フラグと、見る人ごとの読み出し。
-
 var (
 	guest = domain.AudienceGuest
 	owner = domain.AudienceOwner
 )
 
-// setPublic は公開フラグを切り替え、反映した本数を返す。
 func setPublic(t *testing.T, db *DB, public bool, ids ...int64) int {
 	t.Helper()
 	keys, err := db.Visibility().SetVideosPublic(context.Background(), ids, public)
@@ -28,15 +25,7 @@ func setPublic(t *testing.T, db *DB, public bool, ids ...int64) int {
 	return len(keys)
 }
 
-// visibilityFixture は公開と非公開の動画を混ぜた索引を作る。
-//
-//	/media/pub/a.mp4       公開
-//	/media/pub/b.mp4       非公開
-//	/media/pub/deep/c.mp4  公開
-//	/media/pub/deep/d.mp4  非公開
-//	/media/private/e.mp4   非公開（このフォルダには非公開の動画しか無い）
-//	/media/f.mp4           公開
-//	/media/g.mp4           非公開
+// Public fixture videos are a, c and f; the private folder contains no public video.
 func visibilityFixture(t *testing.T) (*DB, map[string]int64) {
 	t.Helper()
 	db := migratedDB(t)
@@ -71,8 +60,6 @@ func listTitles(t *testing.T, db *DB, audience domain.Audience, q domain.VideoQu
 	return titles, page.Total
 }
 
-// ゲストの一覧・件数・検索には公開の動画だけが現れ、所有者には全件が現れる。
-// Video.Public は公開フラグを写す。
 func TestListVideosByAudience(t *testing.T) {
 	db, _ := visibilityFixture(t)
 	ctx := context.Background()
@@ -86,7 +73,6 @@ func TestListVideosByAudience(t *testing.T) {
 		t.Errorf("所有者: titles = %v total = %d, want %v", titles, total, want)
 	}
 
-	// 検索（所在のパスに当たる語）も公開の動画だけに当たる。
 	titles, total = listTitles(t, db, guest, domain.VideoQuery{Query: "pub"})
 	if want := []string{"a", "c"}; !slices.Equal(titles, want) || total != len(want) {
 		t.Errorf("ゲストの検索: titles = %v total = %d, want %v", titles, total, want)
@@ -117,7 +103,6 @@ func TestListVideosByAudience(t *testing.T) {
 	}
 }
 
-// ゲストが使える並べ替えのすべてで、ページをまたいで公開の動画だけが1度ずつ現れる。
 func TestListVideosGuestPagesEverySort(t *testing.T) {
 	db, ids := visibilityFixture(t)
 	public := []int64{ids[fixturePath("/media/pub/a.mp4")], ids[fixturePath("/media/pub/deep/c.mp4")], ids[fixturePath("/media/f.mp4")]}
@@ -154,8 +139,6 @@ func TestListVideosGuestPagesEverySort(t *testing.T) {
 	}
 }
 
-// フォルダの一覧と件数、フォルダの動画には、ゲストには公開の動画から導いたものだけが
-// 現れる。非公開の動画だけを含むフォルダはゲストに現れない。
 func TestFoldersByAudience(t *testing.T) {
 	db, _ := visibilityFixture(t)
 	ctx := context.Background()
@@ -178,7 +161,6 @@ func TestFoldersByAudience(t *testing.T) {
 		return out
 	}
 
-	// VideoCount は直下の動画の件数である。
 	guestRoot, ownerRoot := summarize(guest, ""), summarize(owner, "")
 	if got, want := folderCounts(guestRoot), map[string]int{"pub": 1}; !maps.Equal(got, want) {
 		t.Errorf("ゲストのフォルダ = %v, want %v", got, want)
@@ -237,7 +219,6 @@ func TestFoldersByAudience(t *testing.T) {
 	}
 }
 
-// 関連動画の読み出しと1本の読み出しは、ゲストには公開の動画だけを返す。
 func TestRelatedAndGetVideoByAudience(t *testing.T) {
 	db, ids := visibilityFixture(t)
 	ctx := context.Background()
@@ -295,7 +276,6 @@ func TestRelatedAndGetVideoByAudience(t *testing.T) {
 	}
 }
 
-// ゲストの検索はタグの名前とシノニムに照合しない。所有者は今どおり照合する。
 func TestGuestSearchIgnoresTagNames(t *testing.T) {
 	db, _ := visibilityFixture(t)
 	ctx := context.Background()
@@ -316,14 +296,11 @@ func TestGuestSearchIgnoresTagNames(t *testing.T) {
 			t.Errorf("所有者の検索 %q = %v, want [a]", query, titles)
 		}
 	}
-	// 除外語もタグの名前を見ない。
 	if titles, _ := listTitles(t, db, guest, domain.VideoQuery{Query: "-花火大会"}); !slices.Equal(titles, []string{"a", "c", "f"}) {
 		t.Errorf("ゲストの除外 = %v, want [a c f]", titles)
 	}
 }
 
-// 公開は content_key に結ぶので、所在を移しても、同じ内容の別の所在を足しても
-// 公開のままで、最後の所在が消えるとゲストに現れない。
 func TestPublicFollowsContentKey(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -331,7 +308,6 @@ func TestPublicFollowsContentKey(t *testing.T) {
 	id := ids[fixturePath("/media/old/movie.mp4")]
 	setPublic(t, db, true, id)
 
-	// 所在を移す: 新しい所在を足して、古い所在を消す。
 	moved := upsertAll(t, db, listingFile(fixturePath("/media/new/movie.mp4"), "movie", "key-m", 1))
 	if moved[fixturePath("/media/new/movie.mp4")] != id {
 		t.Fatalf("移した所在が同じ動画にならない: %d != %d", moved[fixturePath("/media/new/movie.mp4")], id)
@@ -345,13 +321,11 @@ func TestPublicFollowsContentKey(t *testing.T) {
 		t.Errorf("移した後 = %+v", video)
 	}
 
-	// 同じ内容の別の所在を足しても公開のまま、1本として数える。
 	upsertAll(t, db, listingFile(fixturePath("/media/copy/movie.mp4"), "movie", "key-m", 1))
 	if titles, total := listTitles(t, db, guest, domain.VideoQuery{}); !slices.Equal(titles, []string{"movie"}) || total != 1 {
 		t.Errorf("別の所在を足した後 = %v (total %d)", titles, total)
 	}
 
-	// 最後の所在が消えると、ゲストに現れない。
 	removeLocation(t, db, id, fixturePath("/media/copy/movie.mp4"))
 	removeLocation(t, db, id, fixturePath("/media/new/movie.mp4"))
 	if titles, total := listTitles(t, db, guest, domain.VideoQuery{}); len(titles) != 0 || total != 0 {
@@ -361,7 +335,6 @@ func TestPublicFollowsContentKey(t *testing.T) {
 		t.Errorf("最後の所在が消えた後の GetVideo: err = %v", err)
 	}
 
-	// 同じ内容を取り込み直すと、公開のまま戻る（公開フラグは失われない）。
 	back := upsertAll(t, db, listingFile(fixturePath("/media/again/movie.mp4"), "movie", "key-m", 1))
 	video, err = db.Library().GetVideo(ctx, guest, back[fixturePath("/media/again/movie.mp4")])
 	if err != nil {
@@ -372,7 +345,6 @@ func TestPublicFollowsContentKey(t *testing.T) {
 	}
 }
 
-// removeLocation は動画の所在を1つ消す。最後の所在なら動画も消える。
 func removeLocation(t *testing.T, db *DB, videoID int64, path string) {
 	t.Helper()
 	locations, err := db.Library().VideoLocations(context.Background(), videoID)
@@ -390,8 +362,6 @@ func removeLocation(t *testing.T, db *DB, videoID int64, path string) {
 	t.Fatalf("所在 %s が無い", path)
 }
 
-// 空の content_key の動画は、public_videos に空の行があってもゲストに現れず、
-// 切り替えでも数えない。
 func TestEmptyContentKeyIsNeverPublic(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -425,8 +395,6 @@ func TestEmptyContentKeyIsNeverPublic(t *testing.T) {
 	}
 }
 
-// 切り替えはライブラリに無い id を数えず、重複した id は1つとして扱い、既に同じ
-// 状態の動画も誤りにしない。
 func TestSetVideosPublicCountsLibraryVideos(t *testing.T) {
 	db, ids := visibilityFixture(t)
 	a, b := ids[fixturePath("/media/pub/a.mp4")], ids[fixturePath("/media/pub/b.mp4")]
@@ -450,7 +418,6 @@ func TestSetVideosPublicCountsLibraryVideos(t *testing.T) {
 		t.Errorf("非公開の後 = %v", titles)
 	}
 
-	// 公開の時刻は、最初に公開したときのまま変えない。
 	var publishedAt int64
 	if _, err := db.sql.Exec(`update public_videos set published_at = 1 where content_key = 'key-a'`); err != nil {
 		t.Fatal(err)
@@ -464,7 +431,6 @@ func TestSetVideosPublicCountsLibraryVideos(t *testing.T) {
 	}
 }
 
-// 途中で失敗したら、1つも反映しない。
 func TestSetVideosPublicIsAllOrNothing(t *testing.T) {
 	db, ids := visibilityFixture(t)
 	if _, err := db.sql.Exec(`create trigger fail_public before insert on public_videos
@@ -494,7 +460,6 @@ func TestSetVideosPublicIsAllOrNothing(t *testing.T) {
 	}
 }
 
-// 公開フラグを読めないときは、公開とみなさずに誤りを返す。
 func TestGuestReadsFailWhenVisibilityCannotBeRead(t *testing.T) {
 	db, ids := visibilityFixture(t)
 	ctx := context.Background()
@@ -525,7 +490,6 @@ func TestGuestReadsFailWhenVisibilityCannotBeRead(t *testing.T) {
 	}
 }
 
-// 00011 の Up は public_videos を作り、Down は落とす。
 func TestPublicVideosMigrationDown(t *testing.T) {
 	db := migratedDB(t)
 	tableCount := func() int {

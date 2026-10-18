@@ -10,7 +10,8 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-func TestCheckMediaFolderReturnsCleanedDirectory(t *testing.T) {
+// Verify wiring to NormalizeMediaFolderPath; domain tests cover its normalization rules.
+func TestCheckMediaFolderReturnsNormalizedDirectory(t *testing.T) {
 	root := t.TempDir()
 	got, err := New().CheckMediaFolder(root + string(os.PathSeparator) + ".")
 	if err != nil {
@@ -67,10 +68,9 @@ func TestCheckMediaFolderRejectsSymbolicLinks(t *testing.T) {
 		t.Skipf("symbolic links are unavailable: %v", err)
 	}
 	for name, path := range map[string]string{
-		// 末尾が symlink なら Lstat で断る。
+		// Lstat rejects a final symlink.
 		"last component": link,
-		// 末尾は実ディレクトリなので Lstat を通り、EvalSymlinks による途中の段の
-		// 検証が働く。
+		// EvalSymlinks catches ancestors when the final component itself is a real directory.
 		"parent component": filepath.Join(link, "child"),
 	} {
 		t.Run(name, func(t *testing.T) {

@@ -2,19 +2,10 @@ import type { ActivityEntry, ActivityTag } from "../api/activity";
 import { formatDateTime, formatMonthDay, formatTime, t, type UiText } from "../i18n";
 import { videoEditPath } from "../lib/videoEditPath";
 
-/**
- * アクティビティの記録 1 件の見せ方。
- * カードの色・状態の印・対象・結果・時刻・開く操作を記録から決める。React に依存しない純粋な
- * 関数だけを置く。
- */
-
-/** CardTone はカードの枠と面の色である（CardList の tone）。 */
 export type CardTone = "default" | "primary" | "destructive" | "warning";
 
-/** StatusMark は状態の印の種類である。 */
 export type StatusMark = "running" | "waiting" | "attention" | "done" | "doneByYou";
 
-/** cardTone は記録のカードの色を返す。 */
 export function cardTone(entry: ActivityEntry): CardTone {
   if (entry.status === "running")
     return entry.reason === "processing" ? "primary" : "default";
@@ -24,7 +15,6 @@ export function cardTone(entry: ActivityEntry): CardTone {
     : "destructive";
 }
 
-/** statusMark は状態の印を返す。 */
 export function statusMark(entry: ActivityEntry): StatusMark {
   switch (entry.status) {
     case "running":
@@ -36,16 +26,12 @@ export function statusMark(entry: ActivityEntry): StatusMark {
   }
 }
 
-/** SubjectPart は対象の 1 項目で、動画があれば再生画面へのリンクになる。 */
+/** Subjects with a video link to playback. */
 export interface SubjectPart {
   label: string;
   videoId?: number;
 }
 
-/**
- * subjectParts は対象の項目を返す。組は 2 項目（間に「↔」）、走査は手動か監視かの名前、
- * フォルダはそのパス、動画はファイル名。
- */
 export function subjectParts(entry: ActivityEntry): SubjectPart[] {
   const { kind, items } = entry.subject;
   if (kind === "scan") {
@@ -62,7 +48,6 @@ export function subjectParts(entry: ActivityEntry): SubjectPart[] {
   );
 }
 
-/** subjectText は対象を 1 行の文字列にする（読み上げ名とツールチップ）。 */
 export function subjectText(entry: ActivityEntry): string {
   const parts = subjectParts(entry);
   const [first, second] = parts;
@@ -72,13 +57,12 @@ export function subjectText(entry: ActivityEntry): string {
     : t.activity.subject.pair(first.label, second.label);
 }
 
-/** ResultPart は結果の文の一片である。strong はモデルの割合で、foreground で描く。 */
+/** Render model percentages with foreground emphasis. */
 export interface ResultPart {
   text: UiText;
   strong?: boolean;
 }
 
-/** ResultTone は結果の文の色である。 */
 export type ResultTone = "muted" | "destructive" | "warning";
 
 export interface EntryResult {
@@ -216,7 +200,6 @@ function doneResult(entry: ActivityEntry): ResultPart[] {
   }
 }
 
-/** missingVideo は動画の記録で、その動画がもうライブラリに無いか。 */
 function missingVideo(entry: ActivityEntry): boolean {
   return (
     entry.subject.kind === "video" &&
@@ -225,10 +208,6 @@ function missingVideo(entry: ActivityEntry): boolean {
   );
 }
 
-/**
- * entryResult は結果の文と色を返す。所有者が取り消した記録には「· Undone by you」を足し、
- * 対象の動画がもう無い記録には「· Not in the library」を足す。
- */
 export function entryResult(entry: ActivityEntry, now: Date): EntryResult {
   if (entry.status === "running") return { parts: runningResult(entry), tone: "muted" };
   if (entry.status === "attention") {
@@ -243,7 +222,6 @@ export function entryResult(entry: ActivityEntry, now: Date): EntryResult {
   return { parts, tone: "muted" };
 }
 
-/** OpenAction は記録から開ける画面である。 */
 export interface OpenAction {
   id: "settings" | "workInfo" | "duplicates" | "open";
   label: UiText;
@@ -254,10 +232,7 @@ function firstVideo(entry: ActivityEntry): number | undefined {
   return entry.subject.items.find((item) => item.videoId !== undefined)?.videoId;
 }
 
-/**
- * openActions は記録のカードの端の開く操作を返す。
- * 対象に動画が無い記録の Open と Work info は出さない。
- */
+/** Hide Open and Work info when the subject has no video. */
 export function openActions(entry: ActivityEntry): OpenAction[] {
   const actions: OpenAction[] = [];
   const videoId = firstVideo(entry);
@@ -284,19 +259,15 @@ export function openActions(entry: ActivityEntry): OpenAction[] {
   return actions;
 }
 
-/** EntryOperations は記録のカードが出すやり直しと取り消しの操作である。 */
 export interface EntryOperations {
-  /** `Retry` を出すか。 */
   retry: boolean;
-  /** `Undo` を出すか（`auto_tag` 以外）。 */
+  /** Undo excludes auto_tag. */
   undo: boolean;
-  /** `Undo tags…` のメニューに並べるタグ。空ならボタンを出さない。 */
+  /** Omit the button when no undoable tags remain. */
   undoTags: ActivityTag[];
 }
 
-/**
- * entryOperations は記録のカードのやり直しと取り消しの操作を返す。`auto_tag` はまだ取り消していないタグを 1 つずつ取り消すメニューにする。
- */
+/** Auto-tag entries undo remaining tags individually. */
 export function entryOperations(entry: ActivityEntry): EntryOperations {
   const autoTag = entry.kind === "auto_tag";
   return {
@@ -307,7 +278,6 @@ export function entryOperations(entry: ActivityEntry): EntryOperations {
   };
 }
 
-/** EntryTime は記録の時刻の長い形・短い形・ツールチップの日時である。 */
 export interface EntryTime {
   long: UiText;
   short: UiText;
@@ -318,7 +288,7 @@ const minuteMs = 60 * 1000;
 const hourMs = 60 * minuteMs;
 
 function startOfDay(date: Date, daysBack = 0): number {
-  // 日付を引いてから 0 時を作る。夏時間の切り替わる日は 23 時間・25 時間あるので、時間では引かない。
+  // Subtract calendar days before finding midnight: DST days may have 23 or 25 hours.
   return new Date(
     date.getFullYear(),
     date.getMonth(),
@@ -326,11 +296,6 @@ function startOfDay(date: Date, daysBack = 0): number {
   ).getTime();
 }
 
-/**
- * entryTime は記録を作った時刻を「Just now」「12 minutes ago」「3 hours ago」「Yesterday
- * 2:05 PM」「Oct 7 2:05 PM」で表す。1 時間までは分、今日のうちは時間、昨日は Yesterday、
- * それより前は日付。短い形（360px）は「now」「12m」「3h」「Yesterday」「Oct 7」。
- */
 export function entryTime(iso: string, now: Date): EntryTime {
   const at = new Date(iso);
   const full = formatDateTime(at);

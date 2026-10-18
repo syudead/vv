@@ -30,19 +30,14 @@ function cover(videoId: number): NonNullable<PlaylistSummary["covers"]>[number] 
 }
 
 const server = {
-  /** 一覧の応答（最後に変えた順）。作るとその先頭に入る。 */
   items: [] as PlaylistSummary[],
-  /** 1 ページの件数。items がこれより多ければ nextCursor（次の先頭の位置）を返す。 */
   pageSize: 60,
-  /** 一覧の版。items を変えるたびに進める。 */
   version: 1,
   listStatus: 200,
-  /** 続きのページ（cursor 付き）の要求だけを失敗にする状態。0 なら応答を返さない。 */
+  /** Fail only cursor requests; zero holds them indefinitely. */
   moreStatus: 200,
   listCalls: 0,
-  /** 一覧の要求の URL。 */
   listUrls: [] as string[],
-  /** 作る要求の本文。 */
   creates: [] as unknown[],
   createStatus: 201,
   nextId: 100,
@@ -123,33 +118,25 @@ function renderPage() {
   );
 }
 
-/** cards は格子のカードを上から返す。 */
 function cards(): HTMLElement[] {
   return Array.from(document.querySelectorAll<HTMLElement>("article[data-playlist-id]"));
 }
 
-/** cardNames はカードのリンクの読み上げ名を上から返す。 */
 function cardNames(): string[] {
   return cards().map(
     (card) => within(card).getByRole("link").getAttribute("aria-label") ?? "",
   );
 }
 
-/** findCards は格子が描かれるのを待つ。 */
 async function findCards(): Promise<HTMLElement[]> {
   await screen.findAllByRole("article");
   return cards();
 }
 
-/** 見張っている（observe から disconnect までの）IntersectionObserver の知らせ先。 */
 let intersect: IntersectionObserverCallback | undefined;
-/** 作られた IntersectionObserver の数。 */
 let observers = 0;
 
-/**
- * reachEnd は格子の末尾の見張りが画面に近づいたことにする。見張りは描画の後の effect で
- * 付くので、カードが見えた時点ではまだ無いことがある。付くのを待ってから知らせる。
- */
+/** Wait for the observer effect before triggering it; rendered cards can precede attachment. */
 async function reachEnd() {
   await waitFor(() => expect(intersect).toBeDefined());
   act(() => {
@@ -219,7 +206,6 @@ describe("PlaylistsPage", () => {
     expect(
       screen.getByRole("link", { name: "Morning, 12 items" }).getAttribute("href"),
     ).toBe("/playlists/3");
-    // 表の列は無い。
     expect(screen.queryByRole("table")).toBeNull();
   });
 
@@ -242,7 +228,6 @@ describe("PlaylistsPage", () => {
       "/api/videos/34/thumbnail?v=x",
     ]);
     expect(sheets(roadTrip)).toEqual(["/api/videos/11/thumbnail?v=x"]);
-    // 空のプレイリストはフォルダの背板だけ。
     expect(emptyOne.querySelector("[data-folder-art]")).not.toBeNull();
     expect(sheets(emptyOne)).toEqual([]);
 
@@ -251,7 +236,6 @@ describe("PlaylistsPage", () => {
     ).toBeDefined();
     expect(within(morning).getByText("12 items")).toBeDefined();
     expect(within(emptyOne).getByText("0 items")).toBeDefined();
-    // 最後に変えた時刻は、表の列ではなく名前の下の 1 行。
     const updated = morning.querySelector("p span[title]");
     expect(updated?.textContent).not.toBe("");
   });
@@ -297,7 +281,6 @@ describe("PlaylistsPage", () => {
         screen.getByRole("link", { name: "Evening, 0 items" }),
       ),
     );
-    // 作った後に一覧を読み直す。
     await waitFor(() => expect(server.listCalls).toBe(2));
     expect(cardNames()).toHaveLength(4);
   });
@@ -311,7 +294,6 @@ describe("PlaylistsPage", () => {
     const dialog = await screen.findByRole("dialog", { name: "New playlist" });
     const field = within(dialog).getByRole("textbox", { name: "Name" });
     await user.type(field, "   ");
-    // 入れている間は誤りを出さない。
     expect(within(dialog).queryByText("Use a name of 1 to 100 characters.")).toBeNull();
     await user.keyboard("{Enter}");
 
@@ -420,7 +402,6 @@ describe("PlaylistsPage", () => {
     await reachEnd();
     await waitFor(() => expect(cards()).toHaveLength(5));
     expect(server.listUrls).toHaveLength(3);
-    // 続きが無くなれば見張りを外して付け直さず、同じ要求を繰り返さない。
     await waitFor(() => expect(intersect).toBeUndefined());
     expect(observers).toBe(2);
     expect(server.listUrls).toHaveLength(3);
@@ -460,7 +441,7 @@ describe("PlaylistsPage", () => {
     await findCards();
     expect(cardNames()).toEqual(["P1, 1 item", "P2, 2 items"]);
 
-    // 2 ページ目を読む前に P5 が変わって先頭へ動いた。元の cursor の次からは P5 は返らない。
+    // Move P5 before the cursor via a concurrent update; ordinary pagination would miss it.
     const [moved] = server.items.splice(4, 1);
     server.items = [moved as PlaylistSummary, ...server.items];
     server.version += 1;
@@ -474,7 +455,6 @@ describe("PlaylistsPage", () => {
     ]);
     expect(screen.getByText("5 playlists")).toBeDefined();
 
-    // 読み直した後は見張りが付け直され、続きは新しい並びで足される。
     await reachEnd();
     await waitFor(() => expect(cards()).toHaveLength(4));
     expect(cardNames()).toEqual([
@@ -495,7 +475,7 @@ describe("PlaylistsPage", () => {
     renderPage();
     await findCards();
 
-    // 2 ページ目の要求は応答が返らないまま、プレイリストを作る。
+    // Create a playlist while page two remains pending.
     server.moreStatus = 0;
     await reachEnd();
     expect(server.listUrls[1]).toBe("/api/playlists?cursor=2&limit=60");
@@ -508,7 +488,6 @@ describe("PlaylistsPage", () => {
     );
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-    // 読み直しは最初のページを求め、失敗したら今のカードを残して Retry の行を出す。
     const row = await screen.findByText("Couldn't load the playlists");
     expect(row.closest('[data-slot="load-more-row"]')?.getAttribute("data-state")).toBe(
       "failed",
@@ -518,7 +497,6 @@ describe("PlaylistsPage", () => {
     expect(screen.getByText("5 playlists")).toBeDefined();
     expect(server.listUrls).toHaveLength(3);
 
-    // Retry は最初のページを読み直して置き換え、見張りが付け直されて続きが読める。
     server.listStatus = 200;
     server.moreStatus = 200;
     await user.click(screen.getByRole("button", { name: "Retry" }));

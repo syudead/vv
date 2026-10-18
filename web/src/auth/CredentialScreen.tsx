@@ -7,23 +7,16 @@ import { Alert, AlertTitle } from "../ui/shadcn/alert";
 import { Field, FieldError, FieldLabel } from "../ui/shadcn/field";
 import { Input } from "../ui/shadcn/input";
 
-// 初回設定画面とログイン画面が共有する骨格と部品。画面は中央フォームの型
-// （web/registry/rules/patterns.md「Centered form」）で組み、上の帯にワードマークを置く。
-
-/** CONNECTION_WARNING_ID は接続の警告の要素の id。入力と主操作が aria-describedby で指す。 */
+/** Inputs and the primary action reference this warning via aria-describedby. */
 export const CONNECTION_WARNING_ID = "connection-warning";
-/** FAILURE_ID は失敗の行の id。初回設定の検証で名指しした欄が指す。 */
+/** Setup validation references this failure from the affected field. */
 export const FAILURE_ID = "credential-failure";
 
-/**
- * isInsecureConnection は、ページが HTTPS で開かれていないかを返す。
- * isSecureContext は http://127.0.0.1 でも真になるので使わない（要件 14）。
- */
+/** Check HTTPS directly: isSecureContext also accepts HTTP loopback addresses. */
 export function isInsecureConnection(): boolean {
   return window.location.protocol !== "https:";
 }
 
-/** describedBy は空でない id をつないで aria-describedby の値にする。 */
 export function describedBy(
   ...ids: (string | false | null | undefined)[]
 ): string | undefined {
@@ -42,9 +35,7 @@ export function CredentialScreen({
   title: UiText;
   description?: UiText;
   onSubmit: () => void;
-  /** 送信の Button（default、1 つ）。 */
   submit: ReactNode;
-  /** カードの下の補足（ログイン画面へのリンクなど）。 */
   footer?: ReactNode;
   children: ReactNode;
 }) {
@@ -63,7 +54,7 @@ export function CredentialScreen({
         />
       </header>
       <main className="flex flex-1 flex-col">
-        {/* 送信は web/src/api/auth.ts が行う。method="post" を付けない。 */}
+        {/* api/auth.ts submits the form; do not set method="post". */}
         <CenteredForm
           title={title}
           description={description}
@@ -85,7 +76,6 @@ export interface CredentialFieldProps extends ComponentProps<"input"> {
   error?: UiText | null;
 }
 
-/** CredentialField はラベル付きの 1 行の入力と、その欄を名指しする失敗の行である。 */
 export function CredentialField({ id, label, error, ...rest }: CredentialFieldProps) {
   return (
     <Field data-invalid={rest["aria-invalid"] === true || undefined}>
@@ -96,7 +86,6 @@ export function CredentialField({ id, label, error, ...rest }: CredentialFieldPr
   );
 }
 
-/** UsernameField は両画面で同じ、ユーザー名の入力である。 */
 export function UsernameField(
   props: Omit<CredentialFieldProps, "label" | "name" | "type" | "autoComplete">,
 ) {
@@ -114,7 +103,6 @@ export function UsernameField(
   );
 }
 
-/** FailureLine は欄を名指ししない失敗の行である。出た時点で読まれる。 */
 export function FailureLine({ message }: { message: UiText | null }) {
   if (message === null) return null;
   return (
@@ -125,11 +113,7 @@ export function FailureLine({ message }: { message: UiText | null }) {
   );
 }
 
-/**
- * ConnectionWarning は HTTP のときだけ出す接続の警告である。HTTPS ではこの行を出さず、
- * 「This connection is secure」のような肯定の文も出さない。
- * 画面を開いた時点からある注意なので、読み上げを割り込ませる alert にはしない。
- */
+/** Show only on HTTP; avoid an alert because this warning is present at page load. */
 export function ConnectionWarning() {
   if (!isInsecureConnection()) return null;
   return (
@@ -140,7 +124,6 @@ export function ConnectionWarning() {
   );
 }
 
-/** connectionWarningId は警告を出すときだけその id を返す。 */
 export function connectionWarningId(): string | undefined {
   return isInsecureConnection() ? CONNECTION_WARNING_ID : undefined;
 }

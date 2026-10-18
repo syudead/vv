@@ -2,10 +2,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の Table。構造は上流のまま、色を vv のトークンで着せる。上流の
-// `translate-y-[2px]`（チェック欄の位置合わせ）は任意の値なので落とし、チェック欄の判定は
-// 入れ子の角括弧が検査を通らないので has-data-[slot=checkbox] に変える。行の hover は
-// accent、選択行は primary-soft にする。規則は web/registry/rules/components.md の Table。
+// Adapted from shadcn/ui Table; replace arbitrary checkbox alignment and nested selectors with approved tokens and has-data-[slot=checkbox].
 
 function Table({ className, ...props }: ComponentProps<"table">) {
   return (

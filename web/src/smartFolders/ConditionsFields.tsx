@@ -42,25 +42,17 @@ import TagCommand from "../ui/TagCommand";
 import { FilterCheckbox, WatchStatusField } from "../videoList/FilterMenu";
 import { ruleWatch, SMART_RULE_MAX_TAGS, withWatch } from "./smartRule";
 
-/** creditCandidateLimit は、打つたびに読む人物・団体の候補の数である（詳細の編集と同じ）。 */
 const creditCandidateLimit = 8;
 
 export interface ConditionsFieldsProps {
   rule: SmartRule;
   onChange: (rule: SmartRule) => void;
-  /** もう無い参照（SmartFolderSettings.missing）。その条件は警告のチップで出す。 */
   missing: readonly SmartRuleRef[];
-  /** 条件の欄の誤り（条件が無い、範囲の外）。 */
   error: UiText | null;
-  /** 検索語の欄の id（窓が誤りのときにフォーカスを移す）。 */
   searchId?: string;
 }
 
-/**
- * ConditionsFields はスマートフォルダの窓の「Conditions」の欄である。ライブラリの絞り込みの部品を表の
- * 順に並べ、同じ言葉と形で条件を持つ: 検索、視聴状態、お気に入りのみ・再生できるものだけ、
- * タグの種類、タグ、人物、団体、追加日、長さ。空の条件は条件から外れる。
- */
+/** Omit empty conditions from the rule. */
 export default function ConditionsFields({
   rule,
   onChange,
@@ -144,10 +136,6 @@ export default function ConditionsFields({
   );
 }
 
-/**
- * ConditionChip は条件の 1 つを名前と × で出すチップである（動画のページの手で付けたタグの
- * チップの形）。名前が届く前は Skeleton。`deleted` は、もう無い参照の `warning` のチップ。
- */
 function ConditionChip({
   icon,
   name,
@@ -195,9 +183,8 @@ function ConditionChip({
 const ignore = () => undefined;
 
 /**
- * useTagKindList は共有のタグの種類の一覧を読む（保持があれば要求しない）。`value` の種類が
- * 開いた時点の保持に無ければ、別のタブで作られた種類かもしれないので取り直す
- * （useLibraryTagKinds と同じ）。`unconfirmed` はその取り直しの結果がまだ無い間、真である。
+ * Refresh when the cached list lacks the selected kind, which may have been created in another
+ * tab; unconfirmed stays true until that read completes.
  */
 function useTagKindList(value: number | undefined): {
   kinds: TagKind[] | undefined;
@@ -220,10 +207,6 @@ function useTagKindList(value: number | undefined): {
   return { kinds, unconfirmed };
 }
 
-/**
- * TagKindRow は `Tag kind` の行である。もう無い種類は `Kind: deleted` の警告のチップと × で
- * 出し、外すと `Select` に戻る。
- */
 function TagKindRow({
   value,
   missing,
@@ -234,7 +217,7 @@ function TagKindRow({
   onChange: (id: number | undefined) => void;
 }) {
   const { kinds, unconfirmed } = useTagKindList(value);
-  // 取り直す前の古いかもしれない一覧では、無い種類と決めない。
+  // Do not declare a kind missing from a potentially stale pre-refresh cache.
   const gone =
     value !== undefined &&
     (missing ||
@@ -259,10 +242,7 @@ function TagKindRow({
   );
 }
 
-/**
- * TagsRow は `Tags` の行である: 条件のタグのチップと、その後ろの TagCommand（作成の行は
- * 出さない — 条件は既にあるタグを名指す）。16 個で入力を止めて上限を添える。
- */
+/** Conditions reference existing tags only; disable entry at the 16-tag limit. */
 function TagsRow({
   ids,
   isMissing,
@@ -346,17 +326,12 @@ function TagsRow({
   );
 }
 
-/** creditLabel は人物・団体の行の名前である。 */
 function creditLabel(kind: CreditKind): UiText {
   return kind === "person"
     ? t.smartFolders.dialog.person
     : t.smartFolders.dialog.organization;
 }
 
-/**
- * CreditRow は `Person`・`Organization` の行である: 選んだ 1 つのチップと ×、無ければ
- * 候補を選ぶ CreditCommand（作成の行は出さない）。
- */
 function CreditRow({
   kind,
   value,
@@ -389,7 +364,6 @@ function CreditRow({
   );
 }
 
-/** CreditChip は条件の人物か団体のチップである。名前を読んで `404` なら警告のチップにする。 */
 function CreditChip({
   kind,
   id,
@@ -423,10 +397,7 @@ function CreditChip({
   );
 }
 
-/**
- * CreditConditionPicker は人物か団体を候補から選ぶ入力である（詳細の編集の CreditCommand の
- * `dropdown`）。打つたびに `limit=8` で候補を読み、前の要求は打ち切る。作成の行は出さない。
- */
+/** Abort obsolete candidate requests and omit creation options. */
 function CreditConditionPicker({
   kind,
   onPick,
@@ -460,7 +431,7 @@ function CreditConditionPicker({
     return () => controller.abort();
   }, [kind, trimmed]);
 
-  // 今の語への応答が届くまで、前の語の候補を出さない（選べば別の人物を条件にしてしまう）。
+  // Hide old-query candidates until the current response arrives to prevent selecting the wrong credit.
   const items = trimmed === "" || found.q !== trimmed ? [] : found.items;
   const choices: CreditChoice[] = items.map((credit) => ({
     id: String(credit.id),

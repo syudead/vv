@@ -14,10 +14,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// 外部連携 API の作品情報と人物・団体を、本物の
-// 認証・保存層と Bearer の境界で確かめる。
-
-// assertExternalField は誤りの応答の field が want であることを確かめる。
 func assertExternalField(t *testing.T, label string, rec *httptest.ResponseRecorder, want string) {
 	t.Helper()
 	var got extgen.Error
@@ -34,7 +30,6 @@ func (f externalOverridesFixture) get(t *testing.T, target string) *httptest.Res
 	return f.env.serve(authRequest{method: http.MethodGet, target: target, header: bearer(f.secret)})
 }
 
-// createCredit は保存層で人物か団体を作り、その id を返す。
 func (f externalOverridesFixture) createCredit(t *testing.T, kind domain.CreditKind, input domain.CreditInput) int64 {
 	t.Helper()
 	credit, err := f.env.db.Credits().Create(context.Background(), kind, input)
@@ -44,8 +39,6 @@ func (f externalOverridesFixture) createCredit(t *testing.T, kind domain.CreditK
 	return credit.ID
 }
 
-// 受け入れ条件 8（サーバー側）: 2 項目の POST が 200 で両方の作品情報を返し、lookup が未設定の code を
-// null にしてそれらを返す。同じ要求を繰り返しても 200 で updatedAt が変わらない。
 func TestExternalVideoWorkInfoAppliesAndRepeats(t *testing.T) {
 	f := newExternalOverridesFixture(t)
 	performer := f.createCredit(t, domain.CreditPerson, domain.CreditInput{Name: "出演者"})
@@ -106,7 +99,6 @@ func TestExternalVideoWorkInfoAppliesAndRepeats(t *testing.T) {
 	if !reflect.DeepEqual(before.WorkInfo, wantA) {
 		t.Errorf("lookup の workInfo = %+v", before.WorkInfo)
 	}
-	// 作品情報の無い動画も workInfo を持つ。
 	page := decode[extgen.ExternalVideoPage](t, f.get(t, "/api/v1/videos?limit=200"))
 	for _, item := range page.Items {
 		if item.WorkInfo.People == nil || item.WorkInfo.Urls == nil {
@@ -114,7 +106,6 @@ func TestExternalVideoWorkInfoAppliesAndRepeats(t *testing.T) {
 		}
 	}
 
-	// 同じ要求を繰り返すと 200 で、updatedAt は変わらない。
 	if again := f.post(t, "/api/v1/video-work-info", body); again.Code != http.StatusOK {
 		t.Fatalf("繰り返し: status = %d: %s", again.Code, again.Body)
 	}
@@ -122,7 +113,6 @@ func TestExternalVideoWorkInfoAppliesAndRepeats(t *testing.T) {
 		t.Errorf("繰り返しで updatedAt が %v から %v に変わった", before.UpdatedAt, after.UpdatedAt)
 	}
 
-	// {} はすべてを解除する。
 	cleared := f.post(t, "/api/v1/video-work-info", map[string]any{"items": []any{
 		map[string]any{"video": map[string]any{"id": f.ids["a"]}, "workInfo": map[string]any{}},
 	}})
@@ -134,7 +124,6 @@ func TestExternalVideoWorkInfoAppliesAndRepeats(t *testing.T) {
 	}
 }
 
-// 規則に合わない項目・無い人物・引けない動画・形の誤りはどれも何も反映せず、index と field を返す。
 func TestExternalVideoWorkInfoRejectsAndChangesNothing(t *testing.T) {
 	f := newExternalOverridesFixture(t)
 	first := map[string]any{"video": map[string]any{"id": f.ids["a"]}, "workInfo": map[string]any{"code": "KEEP-1"}}
@@ -189,7 +178,6 @@ func TestExternalVideoWorkInfoRejectsAndChangesNothing(t *testing.T) {
 	}
 }
 
-// 外部 ID での検索・作成・書き換え・統合・削除が画面と同じ保存先の操作を通る。
 func TestExternalCreditsLookupCreateUpdateMergeDelete(t *testing.T) {
 	f := newExternalOverridesFixture(t)
 	created := f.post(t, "/api/v1/people", map[string]any{
@@ -205,7 +193,6 @@ func TestExternalCreditsLookupCreateUpdateMergeDelete(t *testing.T) {
 	if len(found.Items) != 1 || found.Items[0].Id != person.Id || found.Total != 1 || found.TotalAll != 1 {
 		t.Errorf("外部 ID の検索 = %+v", found)
 	}
-	// 保存と同じく前後の空白を落として照らす。
 	if spaced := decode[extgen.PersonList](t, f.get(t, "/api/v1/people?source=%20example&externalId=42%20")); len(spaced.Items) != 1 {
 		t.Errorf("空白付きの検索 = %+v", spaced)
 	}
@@ -227,7 +214,6 @@ func TestExternalCreditsLookupCreateUpdateMergeDelete(t *testing.T) {
 	withParent := f.post(t, "/api/v1/people", map[string]any{"name": "親つき", "parentId": nil})
 	assertExternalError(t, "人物の parentId", withParent, wantExternalError{status: http.StatusBadRequest, code: extgen.ErrorCodeInvalidRequest, index: -1})
 
-	// 書き換え: aliases の null は一覧を空にし、省いた externalIds は残る。
 	updated := f.post(t, "/api/v1/people/update", map[string]any{"id": person.Id, "name": "山田 花子（新）", "aliases": nil})
 	if updated.Code != http.StatusOK {
 		t.Fatalf("書き換え: status = %d: %s", updated.Code, updated.Body)
@@ -246,7 +232,6 @@ func TestExternalCreditsLookupCreateUpdateMergeDelete(t *testing.T) {
 	})
 	assertExternalField(t, "空の名前", emptyName, "name")
 
-	// 統合: 統合元の名前は別名になり、無い統合元は notFoundIds に出る。
 	source := f.createCredit(t, domain.CreditPerson, domain.CreditInput{Name: "旧名"})
 	merged := f.post(t, "/api/v1/people/merge", map[string]any{"targetId": person.Id, "sourceIds": []int64{source, 888888}})
 	if merged.Code != http.StatusOK {
@@ -266,7 +251,6 @@ func TestExternalCreditsLookupCreateUpdateMergeDelete(t *testing.T) {
 	})
 	assertExternalField(t, "統合元が空", noSources, "sourceIds")
 
-	// 削除: 消した id と無かった id を ids の順で重複なく返す。
 	other := f.createCredit(t, domain.CreditPerson, domain.CreditInput{Name: "消す人"})
 	deleted := f.post(t, "/api/v1/people/delete", map[string]any{"ids": []int64{777777, other, person.Id, other}})
 	if deleted.Code != http.StatusOK {
@@ -281,7 +265,6 @@ func TestExternalCreditsLookupCreateUpdateMergeDelete(t *testing.T) {
 	}
 }
 
-// 団体の版は parent（根では null）と parentId を持ち、親の輪を断る。一覧は画面と同じ引数で読む。
 func TestExternalOrganizationsCarryParent(t *testing.T) {
 	f := newExternalOverridesFixture(t)
 	root := decode[extgen.Organization](t, f.post(t, "/api/v1/organizations", map[string]any{"name": "親会社"}))
@@ -325,9 +308,6 @@ func TestExternalOrganizationsCarryParent(t *testing.T) {
 	assertExternalError(t, "知らない並び順", badSort, wantExternalError{status: http.StatusBadRequest, code: extgen.ErrorCodeInvalidRequest, index: -1})
 }
 
-// 必須のプロパティ（作成の name・統合の targetId・書き換えの id）が無いか null の本文は、項目の規則の誤りや
-// 無い実体ではなく形の誤り（400 invalid_request、reason なし）である。外部 ID での検索は limit を読まない
-// ので、整数でない limit でも引け、一覧では limit が整数でなければ 400 である。
 func TestExternalCreditsRejectMalformedBodiesAndIgnoreLookupLimit(t *testing.T) {
 	f := newExternalOverridesFixture(t)
 	id := f.createCredit(t, domain.CreditPerson, domain.CreditInput{

@@ -15,18 +15,12 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// eventsKeepAlive は、変化が無いあいだに接続を保つためのコメント行を送る間隔
-// である。途中の中継や OS が無通信の接続を切るのを防ぐだけで、状態は送らない。
+// Keepalive comments prevent idle intermediaries from closing SSE connections without transmitting state.
 const eventsKeepAlive = 30 * time.Second
 
-// eventsRetryMs は、切れたときにブラウザがつなぎ直すまでの待ち時間である。
 const eventsRetryMs = 3000
 
-// Events は画面へ送る変化の知らせを配る。
-//
-// 知らせるのは「何が変わったか」だけで、送る内容は送る直前に読み直す。
-// 知らせが続けて届いても、まだ送っていない分は1つにまとめるので、遅い
-// 接続のために知らせを捨てたり、送る側を待たせたりしない。
+// Events coalesces unsent changes and rereads state immediately before delivery, avoiding publisher blocking or stale queues on slow connections.
 type Events struct {
 	mu     sync.Mutex
 	subs   map[*eventSubscriber]struct{}
@@ -34,27 +28,20 @@ type Events struct {
 	once   sync.Once
 }
 
-// NewEvents は配り先の無い Events を返す。
 func NewEvents() *Events {
 	return &Events{subs: map[*eventSubscriber]struct{}{}, closed: make(chan struct{})}
 }
 
-// eventSubscriber は1本の接続が、まだ送っていない変化を持つ。
 type eventSubscriber struct {
-	mu   sync.Mutex
-	scan bool
-	// candidates は重複の候補の一覧が変わったかもしれないことを表す。
-	candidates bool
-	// activity はアクティビティの記録が書かれたか変わったことを表す。
-	activity bool
-	videos   map[int64]struct{}
-	groups   map[int64]struct{}
-	// smartFolders はまだ送っていないスマートフォルダの知らせの id である。
+	mu           sync.Mutex
+	scan         bool
+	candidates   bool
+	activity     bool
+	videos       map[int64]struct{}
+	groups       map[int64]struct{}
 	smartFolders map[int64]struct{}
-	// home はホームが変わったことを表す（docs/design-docs/home.md）。
-	home bool
-	// ready は送るものがあることを知らせる。容量1で、重なった知らせはまとまる。
-	ready chan struct{}
+	home         bool
+	ready        chan struct{}
 }
 
 func (s *eventSubscriber) mark(update func(*eventSubscriber)) {
@@ -67,7 +54,6 @@ func (s *eventSubscriber) mark(update func(*eventSubscriber)) {
 	}
 }
 
-// pendingEvents はまだ送っていない変化である。
 type pendingEvents struct {
 	scan         bool
 	candidates   bool
@@ -78,7 +64,6 @@ type pendingEvents struct {
 	home         bool
 }
 
-// take はまだ送っていない変化を取り出して空にする。
 func (s *eventSubscriber) take() pendingEvents {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -96,7 +81,6 @@ func (s *eventSubscriber) take() pendingEvents {
 	return pending
 }
 
-// sortedIDs は集合の id を小さい順に返す。空なら nil である。
 func sortedIDs(set map[int64]struct{}) []int64 {
 	var ids []int64
 	for id := range set {
@@ -111,7 +95,7 @@ func (e *Events) subscribe() (*eventSubscriber, func()) {
 		videos: map[int64]struct{}{}, groups: map[int64]struct{}{}, smartFolders: map[int64]struct{}{},
 		ready: make(chan struct{}, 1),
 	}
-	// つないだ直後に今の状態を1回送る。切れていた間の変化を取り戻すためである。
+	// Send current state on connection to recover changes missed while disconnected.
 	sub.mark(func(s *eventSubscriber) { s.scan = true })
 	e.mu.Lock()
 	e.subs[sub] = struct{}{}
@@ -135,43 +119,34 @@ func (e *Events) publish(update func(*eventSubscriber)) {
 	}
 }
 
-// ScanChanged は直近の取り込みが変わったかもしれないことを知らせる。
 func (e *Events) ScanChanged() {
 	e.publish(func(s *eventSubscriber) { s.scan = true })
 }
 
-// ProcessingChanged は残りの仕事が変わったかもしれないことを知らせる。仕事の成否で
-// 直近の取り込みの済みの本数と状態が変わるので、scan を送る
+// Job outcomes affect import counts/state, so processing changes send scan events.
 func (e *Events) ProcessingChanged() {
 	e.publish(func(s *eventSubscriber) { s.scan = true })
 }
 
-// ScanActivityChanged は取り込み中の今の処理が変わったことを知らせる。今の処理は
-// scan が運ぶので、scan だけを送る。
-// 1ファイルごとに届くが、接続ごとにまとまるので、遅い接続に古い値は積もらない。
+// Activity changes coalesce into scan notifications rather than queueing stale per-file updates.
 func (e *Events) ScanActivityChanged() {
 	e.publish(func(s *eventSubscriber) { s.scan = true })
 }
 
-// VideoChanged は動画の状態が変わったことを知らせる。
 func (e *Events) VideoChanged(id int64) {
 	e.publish(func(s *eventSubscriber) { s.videos[id] = struct{}{} })
 }
 
-// CandidatesChanged は重複の候補の一覧が変わったかもしれないことを知らせる。中身は運ばず、
-// 重複の候補の画面が取り直す。
+// Candidate notifications have no payload; the UI rereads the list.
 func (e *Events) CandidatesChanged() {
 	e.publish(func(s *eventSubscriber) { s.candidates = true })
 }
 
-// ActivityChanged はアクティビティの記録が書かれたか変わったことを知らせる。中身は運ばず、アクティビティの
-// 画面と入口の件数が取り直す。
+// Activity notifications have no payload; the UI rereads entries and counts.
 func (e *Events) ActivityChanged() {
 	e.publish(func(s *eventSubscriber) { s.activity = true })
 }
 
-// GroupsChanged はグループの名前か項目が変わったことを知らせる。
-// ids は変わったグループとその祖先の id である。
 func (e *Events) GroupsChanged(ids []int64) {
 	if len(ids) == 0 {
 		return
@@ -183,7 +158,6 @@ func (e *Events) GroupsChanged(ids []int64) {
 	})
 }
 
-// SmartFoldersChanged はスマートフォルダの中身かカードが変わったかもしれないことを知らせる。ids は名指すフォルダの id である。
 func (e *Events) SmartFoldersChanged(ids []int64) {
 	if len(ids) == 0 {
 		return
@@ -195,14 +169,9 @@ func (e *Events) SmartFoldersChanged(ids []int64) {
 	})
 }
 
-// HomeChanged はホームの棚の集合か並び、整理役やオンボードの状態が変わったことを知らせる
-// （docs/design-docs/home.md）。中身は運ばず、ホームが GET /api/home で読み直す。
 func (e *Events) HomeChanged() {
 	e.publish(func(s *eventSubscriber) { s.home = true })
 }
-
-// Handle は状態の変化を、画面へ送る知らせに置き換える。cmd/mdm が
-// domain.Event の購読として登録する。知らせる対象ではない変化は無視する。
 func (e *Events) Handle(event domain.Event) {
 	switch event := event.(type) {
 	case domain.ScanChanged:
@@ -214,40 +183,27 @@ func (e *Events) Handle(event domain.Event) {
 	case domain.VideoIngestChanged:
 		e.VideoChanged(event.VideoID)
 	case domain.VideoOverrideChanged:
-		// 表示名・代表サムネイルの位置の変化も、一覧と動画ページに読み直させる
-		//
 		e.VideoChanged(event.VideoID)
 	case domain.VideoBundleChanged:
-		// 束ねの変化は、影響した各動画の video の知らせにする。一覧・動画ページが集まりの
-		// 値と代表を読み直す。
 		for _, id := range event.VideoIDs {
 			e.VideoChanged(id)
 		}
 	case domain.VideoWorkInfoChanged:
-		// 作品情報の変化は、同じ利用者データの鍵の各動画の video の知らせにする。/api/events の種類は
-		// 増やさない。
+		// Work-info changes reuse per-video notifications rather than adding an SSE kind.
 		for _, id := range event.VideoIDs {
 			e.VideoChanged(id)
 		}
 	case domain.AutoTagApplied:
-		// 自動タグ付けの結果は、一覧と動画ページにタグを読み直させる（docs/design-docs/auto-tagging.md）。
 		for _, id := range event.VideoIDs {
 			e.VideoChanged(id)
 		}
 	case domain.VersionCandidatesChanged:
-		// 判定の結果や版の取り外しで候補が変わったら candidates の知らせにする
-		//
 		e.CandidatesChanged()
 	case domain.ActivityChanged:
-		// 記録の書き込みと変化は activity の知らせにする。
 		e.ActivityChanged()
 	case domain.GroupsChanged:
-		// グループの変化は group の知らせにする。グループの画面・カード・動画ページのグループの行が
-		// 読み直す。
 		e.GroupsChanged(event.GroupIDs)
 	case domain.SmartFoldersChanged:
-		// スマートフォルダの変化は smartFolder の知らせにする。フォルダの画面とライブラリのフォルダの
-		// カードが読み直す。
 		e.SmartFoldersChanged(event.IDs)
 	case domain.HomeChanged:
 		// ホームの変化は home の知らせにする。所有者にもゲストにも送る（docs/design-docs/home.md）。
@@ -255,27 +211,20 @@ func (e *Events) Handle(event domain.Event) {
 	}
 }
 
-// Close はすべての接続を終わらせる。停止時に呼ぶ。流れ続ける応答が残ると、
-// HTTP サーバーの停止が猶予時間いっぱいまで待たされる。
+// Close all SSE streams during shutdown so they cannot exhaust the HTTP grace period.
 func (e *Events) Close() {
 	e.once.Do(func() { close(e.closed) })
 }
 
-// StreamEvents は変化を Server-Sent Events で送る（GET /api/events）。
 func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	if s.events == nil {
 		s.internalError(w, "Change notifications are not configured.", nil)
 		return
 	}
-	// 応答を返し始める前に受け口を作る。ブラウザは最初の送信を受けた時点で
-	// つながったとみなして取り直すので、そのあとに登録すると、間に起きた
-	// 動画の変化を取りこぼす。
+	// Subscribe before sending headers so the browser's initial reload cannot race missed changes.
 	sub, unsubscribe := s.events.subscribe()
 	defer unsubscribe()
-	// ゲストには group と smartFolder と home だけを送る。scan と video は所有者の取り込みと非公開の
-	// 動画を運び、candidates と activity は所有者だけが開く重複の候補とアクティビティの画面のものである
-	// （docs/design-docs/catalog-organization.md「/api/events」、docs/design-docs/duplicate-judging.md、
-	// docs/design-docs/activity.md、docs/design-docs/home.md）。
+	// Guests receive group, smartFolder and home events; other events expose owner activity or private videos.
 	guest := !audienceFrom(r.Context()).IsOwner()
 
 	controller := http.NewResponseController(w)
@@ -283,7 +232,7 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	header := w.Header()
 	header.Set("Content-Type", "text/event-stream; charset=utf-8")
 	header.Set("Cache-Control", cacheNoStore)
-	// 途中の中継がまとめて送ろうと溜め込むのを止める。
+	// Disable buffering by intermediaries.
 	header.Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 	if _, err := fmt.Fprintf(w, "retry: %d\n\n", eventsRetryMs); err != nil {
@@ -322,8 +271,6 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// writePendingEvents はまだ送っていない変化を、今の内容で書き出す。guest なら group と smartFolder と
-// home だけを書く。
 func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, sub *eventSubscriber, guest bool) error {
 	pending := sub.take()
 	if guest {
@@ -345,14 +292,12 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 		}
 	}
 	if pending.candidates {
-		// 中身の無い知らせである。EventSource は data の無いイベントを届けないので、空の
-		// オブジェクトを data にする。
+		// EventSource ignores events without data, so payload-free notifications send an empty object.
 		if err := writeEvent(w, "candidates", struct{}{}); err != nil {
 			return err
 		}
 	}
 	if pending.activity {
-		// candidates と同じく中身の無い知らせである。
 		if err := writeEvent(w, "activity", struct{}{}); err != nil {
 			return err
 		}
@@ -363,14 +308,13 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 		}
 	}
 	if len(pending.groups) > 0 {
-		// 変わったグループは 1 つの知らせにまとめる。名前は載せない（ゲストに見せないグループの
-		// 名前を運ばない）。
+		// Coalesce IDs without names to avoid leaking guest-inaccessible group names.
 		if err := writeEvent(w, "group", gen.GroupChanged{Ids: pending.groups}); err != nil {
 			return err
 		}
 	}
 	if len(pending.smartFolders) > 0 {
-		// group と同じく 1 つにまとめ、名前は載せない。
+		// As with groups, coalesce IDs without names.
 		if err := writeEvent(w, "smartFolder", gen.SmartFolderChanged{Ids: pending.smartFolders}); err != nil {
 			return err
 		}

@@ -15,8 +15,6 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
-// 人物・団体でのライブラリの絞り込み。
-
 function video(id: number, extra: Partial<Video> = {}): Video {
   return {
     id,
@@ -157,7 +155,6 @@ function libraryRequests(): URL[] {
     .filter((url) => url.pathname === "/api/library");
 }
 
-/** location は今の URL の問い合わせ部分である（既定の並び順を書き足した分は除く）。 */
 function location(): string {
   const params = new URLSearchParams(screen.getByTestId("location").textContent);
   if (params.get("sort") === "addedDesc") params.delete("sort");
@@ -229,7 +226,6 @@ describe("人物・団体での絞り込み", () => {
       await screen.findByRole("button", { name: "Remove the filter for Studio" }),
     ).toBeDefined();
     expect(screen.queryByRole("button", { name: "Remove the person filter" })).toBeNull();
-    // 外した条件で一覧を読み直す。
     await waitFor(() => {
       const last = libraryRequests().at(-1);
       expect(last?.searchParams.has("person")).toBe(false);
@@ -244,7 +240,6 @@ describe("人物・団体での絞り込み", () => {
     fetchMock.mockImplementation((input, init) => {
       const path = new URL(String(input), "http://localhost").pathname;
       if (path === "/api/people/9" || path === "/api/organizations/8") {
-        // 両方の応答をそろえて、同じ描画の前に返す。
         return new Promise<Response>((resolve) => {
           pending.push(() => {
             void base?.(input, init)?.then(resolve);
@@ -327,7 +322,6 @@ describe("人物・団体での絞り込み", () => {
     renderAt("/library?person=1&organization=5&sort=titleAsc");
     await screen.findByRole("button", { name: "Remove the filter for Alice" });
 
-    // 絞り込みのボタンの件数には数えない。
     await user.click(screen.getByRole("button", { name: "Filter" }));
     await user.click(await screen.findByRole("button", { name: "Clear filters" }));
     await waitFor(() => expect(location()).toBe("?sort=titleAsc"));

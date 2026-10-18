@@ -19,21 +19,7 @@ import TentativeMark from "../ui/TentativeMark";
 import { DialogError } from "./DialogError";
 import { MergeSummary, MergeTargetField } from "./MergeParts";
 
-/**
- * MergeTagDialog は統合の確認の窓である。統合元（`sources`）を 1 件以上持ち、行の
- * 「別のタグへ統合…」（統合元 1 件）と選択バーの「Merge into one tag…」（統合元が
- * 選んだタグ）が同じ窓を開く。
- *
- * 統合先の候補は全部のタグから、入力のたびにサーバーの検索（`GET /api/tags?q=…&limit=8`）
- * で引く（画面が読み込んでいないタグも選べる）。並びはサーバーの名前の自然順のままで、入力と綴りが完全に一致するタグ
- * （応答の `exact`。部分一致の上位に入らなくても届く）だけを先頭に置く。
- *
- * 行から開いた（`fromSelection` でない）ときは 014 の形のまま: 統合先の候補は応答から
- * 統合元を除いたもので、確認の本数は統合元の `videoCount`。選択から開いたときは、候補に
- * 選んだタグも残し、選んだ中のタグを統合先に選ぶとそのタグは統合元から外れる。統合先を選ぶたびに、
- * 統合先を外した統合元について `POST /api/tags/impact`（`merge`）で数え直し、届くまで
- * 「Merge」を押せなくする（数の無い確認で実行させない）。
- */
+/** Search all server tags with exact matches first. Selection merges exclude the chosen target from sources and require refreshed impact counts. */
 export default function MergeTagDialog({
   sources,
   fromSelection = false,
@@ -41,26 +27,17 @@ export default function MergeTagDialog({
   onMerged,
   onStale,
 }: {
-  /** 統合元。窓を開いた時点で固定する（1 件以上）。 */
+  /** Freeze nonempty sources when opening. */
   sources: readonly Tag[];
-  /** 選択バーから開いた。統合先の候補に統合元も含める。 */
   fromSelection?: boolean;
   onClose: () => void;
-  /**
-   * 統合が成功したときに呼ぶ。統合先の最新の状態、送った統合元の id、もう無かった
-   * 統合元の id（`notFoundIds`。送った全部ではない）と、統合の前の統合先（選んだ候補）を
-   * 渡す。呼び手は統合の前後の統合先をそれぞれ今の条件に照らして件数を数え直す。
-   */
+  /** Pass before/after target state and missing source IDs so callers can update filtered counts, including unloaded sources. */
   onMerged: (
     merged: Tag,
     sourceIds: readonly number[],
     notFoundIds: readonly number[],
     target: Tag,
   ) => void;
-  /**
-   * 統合先がもう無い（tag_not_found）か、統合元がすべてもう無かった（応答の
-   * notFoundIds が送った全部）ときに呼ぶ。
-   */
   onStale: () => void;
 }) {
   const cancel = useRef<HTMLButtonElement>(null);
@@ -72,21 +49,13 @@ export default function MergeTagDialog({
   const [error, setError] = useState<UiText | null>(null);
   const [impact, setImpact] = useState<TagImpactResponse | null>(null);
   const [countError, setCountError] = useState<UiText | null>(null);
-  // 統合先の候補（最後に届いた検索の応答）。次の応答が届くまで前の候補を残す。
   const [candidates, setCandidates] = useState<readonly Tag[]>([]);
-  // 最後に届いた応答の `exact`（入力と綴りが完全に一致するタグ）。
   const [exactCandidate, setExactCandidate] = useState<Tag | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<UiText | null>(null);
-  // 数え直しのきっかけ。「Retry」と、統合先を選ぶたび（同じタグを選び直したときも。
-  // targetId と effective が変わらないので、これが無いと前の数が残る）に進める。
+  // Recount on retry or reselection even if target ID and effective sources are unchanged.
   const [attempt, setAttempt] = useState(0);
-  // 選んだ直後（フォーカスをまだ動かしていない）かを持つ。統合先を選ぶと
-  // 「統合する」へフォーカスを移すが、それは候補を選んだ直後の1回だけで、
-  // 統合先を選び直した（別の候補、または綴りの完全一致）ときにも1回だけ
-  // 動かす（B: フォーカスは常に動く意味のある要素へ。候補の一覧を開いたまま
-  // 確認の文言に重ねない）。数えている間は「統合する」が押せないので、数が
-  // 届いて押せるようになってから動かす。
+  // Focus Merge once per target choice, only after impact counts enable it.
   const justSelectedRef = useRef(false);
 
   const excluded = useMemo(
@@ -98,11 +67,9 @@ export default function MergeTagDialog({
     options,
     exactOption,
   } = buildTargetOptions(candidates, exactCandidate, excluded, value);
-  // 行から開いたときは応答から統合元を除くので、その分を多く引いて候補を 8 件に保つ。
+  // Overfetch row-dialog candidates to keep eight options after excluding sources.
   const requestLimit = Math.min(targetCandidateLimit + excluded.size, tagPageMaxLimit);
 
-  // 入力が変わるたびに統合先の候補をサーバーで引く（窓を開いた直後の空の入力も同じ経路）。
-  // 進行中の要求は次の入力で打ち切り、最後の応答だけを候補にする。
   useEffect(() => {
     const controller = new AbortController();
     setSearching(true);
@@ -123,14 +90,12 @@ export default function MergeTagDialog({
   }, [value, requestLimit]);
 
   const targetId = target?.id ?? null;
-  /** 統合先を外した統合元。実際に送る `sourceIds` になる。 */
   const effective = useMemo(
     () => sources.filter((item) => item.id !== targetId),
     [sources, targetId],
   );
   const kept = targetId !== null && effective.length < sources.length;
 
-  // 選択から開いたときは、統合先を選ぶたびに統合元の影響を数え直す。
   useEffect(() => {
     setImpact(null);
     setCountError(null);
@@ -160,11 +125,9 @@ export default function MergeTagDialog({
     }
   }, [target, canSubmit]);
 
-  // 統合が失敗した直後は、まだ有効な操作（統合先を選んだままなら「統合する」、
-  // そうでなければ「キャンセル」）へフォーカスを戻す。何もしないと、失敗の
-  // 直前に disabled にした「統合する」がフォーカスを失い、body に落ちる
+  // Restore actionable focus after errors; disabled Merge may have dropped focus to body.
   // （N4）。
-  // きっかけは error だけで、統合先を選び直しても（target が変わっても）動かさない。
+  // React only to errors, not target reselection.
   const restoreFocus = useEffectEvent(() => {
     (target !== null ? mergeButton : cancel).current?.focus();
   });
@@ -172,11 +135,7 @@ export default function MergeTagDialog({
     if (error !== null) restoreFocus();
   }, [error]);
 
-  /**
-   * handleClose は窓を閉じるすべての経路（×・キャンセル・Esc）が通る。
-   * 統合の要求が届いている間は、その応答がもう無いこの窓の状態を書き換える
-   * ことを防ぐため閉じない（cancelDelete と同じ扱い。N3）。
-   */
+  /** Block every close path while merging so pending responses cannot update a removed dialog. */
   function handleClose() {
     if (pending) return;
     onClose();
@@ -187,7 +146,6 @@ export default function MergeTagDialog({
     if (found === undefined) return;
     justSelectedRef.current = true;
     setTarget(found);
-    // 統合先を選び直すたびに数え直す。
     setAttempt((current) => current + 1);
     setValue(found.name);
     setError(null);
@@ -200,8 +158,7 @@ export default function MergeTagDialog({
     setPending(true);
     try {
       const { tag: merged, notFoundIds } = await mergeTag(target.id, sourceIds);
-      // 統合元がすべてもう無かったときは何も統合されていない。tag_not_found と同じく
-      // 窓を閉じて一覧を取り直す。
+      // All-missing sources performed no merge; close and refresh as for a missing target.
       if (notFoundIds.length >= sourceIds.length) {
         onStale();
         return;
@@ -260,10 +217,7 @@ export default function MergeTagDialog({
       {sources.length > 1 && (
         <Field>
           <FieldTitle id={sourcesHeadingId}>{t.tags.mergeDialog.sources}</FieldTitle>
-          {/*
-            統合元が多いときは並びの中だけを縦にスクロールさせ、統合先の欄と確認の文言を
-            窓の中に残す。
-          */}
+          {/* Scroll only the sources so target selection and confirmation remain visible. */}
           <ul
             aria-labelledby={sourcesHeadingId}
             className="flex max-h-16 flex-wrap gap-1 overflow-y-auto"
@@ -289,11 +243,7 @@ export default function MergeTagDialog({
           </ul>
         </Field>
       )}
-      {/*
-        統合先の候補はサーバーの検索で引き、入力の下の本文の中に高さを固定して並べる
-        。名前の検証と完全一致の扱いは
-        ui/TagCommand（inline）が持つ。
-      */}
+      {}
       <MergeTargetField
         Command={TagCommand}
         label={t.tags.mergeDialog.target}
@@ -344,7 +294,6 @@ export default function MergeTagDialog({
       )}
       {message !== null && <p className="text-sm text-muted-foreground">{message}</p>}
       {target !== null && effective.length > 0 && (
-        // 統合元 → 統合先。
         <MergeSummary
           source={
             effective.length === 1
@@ -359,20 +308,11 @@ export default function MergeTagDialog({
   );
 }
 
-/** targetCandidateLimit は統合先の候補に出す最大の行数。 */
 const targetCandidateLimit = 8;
 
-/** tagPageMaxLimit は `GET /api/tags` の `limit` の上限。 */
 const tagPageMaxLimit = 200;
 
-/**
- * buildTargetOptions はサーバーの検索の応答から統合先の候補を作る。入力と綴りが完全に
- * 一致するタグ（応答の `exact`、無ければ `items` の中の一致）を先頭に置き、残りは応答の
- * まま（サーバーの名前の自然順）で、合わせて `targetCandidateLimit` 件まで。`exact` は
- * 前の入力への応答のこともあるので、今の入力と綴りが一致するときだけ使う。名前ではなく
- * シノニムで当たった候補には、照合形（`foldForMatch`。サーバーと同じ）で当たったシノニムを
- * 補足に添える。
- */
+/** Prioritize exact only when it still matches current input; otherwise preserve server order and show matched-synonym hints. */
 function buildTargetOptions(
   items: readonly Tag[],
   exact: Tag | null,

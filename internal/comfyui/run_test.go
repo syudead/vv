@@ -19,21 +19,19 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// runProvider は自前の ComfyUI か Comfy Cloud の偽物である。経路ごとの応答を差し替えられ、
-// 受けた要求を覚える。
 type runProvider struct {
 	t      *testing.T
 	server *httptest.Server
 	cloud  bool
-	prefix string // Comfy Cloud なら "/api"
+	prefix string // "/api" for Comfy Cloud.
 
 	mu        sync.Mutex
-	uploads   map[string][]byte // 上げた名前ごとの中身
+	uploads   map[string][]byte
 	fields    []map[string]string
 	prompts   []map[string]any
-	clientIDs []string // POST /prompt の client_id
+	clientIDs []string
 	posts     []recorded
-	keys      []string // 受けた要求の X-API-Key
+	keys      []string
 	handlers  map[string]http.HandlerFunc
 }
 
@@ -53,7 +51,6 @@ func newRunProvider(t *testing.T, cloud bool) *runProvider {
 	return f
 }
 
-// conn はこの偽物への接続先である。
 func (f *runProvider) conn() domain.ComfyUISettings {
 	if f.cloud {
 		return domain.ComfyUISettings{Provider: domain.ComfyUICloud, APIKey: "secret", URL: "http://unused"}
@@ -65,7 +62,7 @@ func (f *runProvider) client() *Client {
 	return NewWithOptions(fixedSettings{}, Options{CloudBaseURL: f.server.URL + "/api"})
 }
 
-// handle は経路 path（/api を除いた形）の応答を差し替える。
+// Paths exclude the /api prefix.
 func (f *runProvider) handle(path string, handler http.HandlerFunc) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -75,8 +72,8 @@ func (f *runProvider) handle(path string, handler http.HandlerFunc) {
 func (f *runProvider) serve(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, f.prefix)
 	if path == "/ws" {
-		// WebSocket は X-API-Key ではなく token の問い合わせでキーを渡すので、キーの記録に入れない。
-		// 差し替えが無ければ接続を拒む。
+		// Sockets authenticate through the token query, not X-API-Key; reject them unless explicitly
+		// overridden.
 		f.mu.Lock()
 		handler, ok := f.handlers[path]
 		f.mu.Unlock()
@@ -138,7 +135,6 @@ func (f *runProvider) upload(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"name": header.Filename, "subfolder": "", "type": "input"})
 }
 
-// pngOf は w×h の単色の PNG を作る。
 func pngOf(t *testing.T, w, h int, c color.Color) []byte {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
@@ -154,7 +150,6 @@ func pngOf(t *testing.T, w, h int, c color.Color) []byte {
 	return out.Bytes()
 }
 
-// embedded は埋め込んだワークフロー name を、送った形と比べられるように読む。
 func embedded(t *testing.T, name string) map[string]any {
 	t.Helper()
 	data, err := workflowFiles.ReadFile(name)
@@ -170,7 +165,6 @@ func embedded(t *testing.T, name string) map[string]any {
 	return out
 }
 
-// inputsOf はワークフロー w の _meta.title が title のノードの入力を返す。
 func inputsOf(t *testing.T, w map[string]any, title string) map[string]any {
 	t.Helper()
 	for _, node := range w {
@@ -192,8 +186,6 @@ func hasTitle(w map[string]any, title string) bool {
 	return false
 }
 
-// 送るプロンプトは埋め込んだ版から vv:* の入力だけを変えたもので、参考画像があれば参考画像ありの
-// 版を、なければもう一方を使う。上げるファイルは vv- と乱数で始まり、overwrite=true、type=input である。
 func TestStartSubmitsBundledWorkflowWithOnlyVVInputs(t *testing.T) {
 	for _, cloud := range []bool{false, true} {
 		f := newRunProvider(t, cloud)
@@ -255,7 +247,6 @@ func TestStartSubmitsBundledWorkflowWithOnlyVVInputs(t *testing.T) {
 	}
 }
 
-// assertKeys は Comfy Cloud への要求がすべてキーを持ち、自前への要求がどれも持たないことを確かめる。
 func assertKeys(t *testing.T, f *runProvider) {
 	t.Helper()
 	f.mu.Lock()
@@ -267,8 +258,6 @@ func assertKeys(t *testing.T, f *runProvider) {
 	}
 }
 
-// DiffusionModel を渡すと、自前の ComfyUI へは UNETLoader の unet_name だけをそのファイルに代えて
-// 送り、Comfy Cloud へは埋め込んだワークフローのまま送る。
 func TestStartWithDiffusionModelReplacesOnlyTheUNETLoaderFile(t *testing.T) {
 	cloud := newRunProvider(t, true)
 	cloudClient := NewWithOptions(fixedSettings{}, Options{CloudBaseURL: cloud.server.URL + "/api", DiffusionModel: "klein-4b-finetune.safetensors"})
@@ -308,8 +297,7 @@ func TestStartWithDiffusionModelReplacesOnlyTheUNETLoaderFile(t *testing.T) {
 	}
 }
 
-// Qwen-Image-Edit を選ぶと、そのモデルのワークフローの組を使い、指示は prompt の入力に書く。
-// klein の拡散モデルの差し替えは効かない。
+// Qwen uses its own workflow and prompt input; klein diffusion overrides must not apply.
 func TestStartWithQwenUsesItsWorkflows(t *testing.T) {
 	f := newRunProvider(t, false)
 	client := NewWithOptions(fixedSettings{}, Options{DiffusionModel: "klein-4b-finetune.safetensors"})
@@ -342,7 +330,6 @@ func TestStartWithQwenUsesItsWorkflows(t *testing.T) {
 	}
 }
 
-// マスクが無ければ、コマと同じ大きさの真っ白な PNG を上げる。
 func TestStartWithoutMaskUploadsWhiteMaskOfFrameSize(t *testing.T) {
 	f := newRunProvider(t, false)
 	if _, err := f.client().Start(context.Background(), f.conn(), domain.ImageEditInput{Frame: pngOf(t, 7, 5, color.Black), Instruction: "x"}); err != nil {
@@ -365,7 +352,7 @@ func TestStartWithoutMaskUploadsWhiteMaskOfFrameSize(t *testing.T) {
 	}
 }
 
-// 塗ったマスクと空の指示では契約の既定の指示を一字一句送る。塗っていなければ空のまま送る。
+// Send the contractual default instruction verbatim only for painted masks with empty instructions.
 func TestStartInstruction(t *testing.T) {
 	const contract = "Remove any text, logo or object in the marked area and restore the background behind it so it matches its surroundings."
 	frame := pngOf(t, 4, 4, color.Black)
@@ -408,7 +395,6 @@ const historyWithImage = `{"run-1":{"outputs":{"99":{"images":[{"filename":"vv-t
 
 const emptyQueue = `{"queue_running":[],"queue_pending":[]}`
 
-// 自前の ComfyUI の Run states の表の各行が、その vv の状態になる。
 func TestStateSelfHosted(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -456,7 +442,6 @@ func checkState(t *testing.T, name string, got domain.ThumbnailEditState, failur
 	}
 }
 
-// Comfy Cloud の Run states の表の各行が、その vv の状態になる。表に無い値は前の状態を保つ。
 func TestStateCloud(t *testing.T) {
 	rows := map[domain.ThumbnailEditState][]string{
 		domain.ThumbnailEditQueued:    {"submitted", "preprocessing", "queued_waiting", "queued_limited", "allocated", "waiting_to_dispatch", "pending"},
@@ -486,7 +471,6 @@ func TestStateCloud(t *testing.T) {
 		{"success", historyWithImage, domain.ThumbnailEditSucceeded, "", ""},
 		{"completed", historyWithImage, domain.ThumbnailEditSucceeded, "", ""},
 		{"success", `{"run-1":{"outputs":{}}}`, domain.ThumbnailEditFailed, domain.ImageEditNoOutput, ""},
-		// 状態が success でも履歴の項目がまだ無ければ、失敗にせず前の状態を保つ。
 		{"success", `{}`, domain.ThumbnailEditRunning, "", ""},
 		{"error", `{"run-1":{"outputs":{},"status":{"status_str":"error","messages":[["execution_error",{"exception_type":"RuntimeError","exception_message":"boom"}]]}}}`, domain.ThumbnailEditFailed, domain.ImageEditRunFailed, "boom"},
 		{"non_retryable_error", `{}`, domain.ThumbnailEditFailed, domain.ImageEditRunFailed, ""},
@@ -512,7 +496,7 @@ func cloudJob(f *runProvider) domain.ImageEditJob {
 	return j
 }
 
-// sequence は GET に bodies を順に返し（最後のものを繰り返す）、POST は偽物の記録に回す。
+// Repeat the last GET response; leave POST recording to the fake provider.
 func (f *runProvider) sequence(path string, bodies ...string) {
 	var mu sync.Mutex
 	f.handle(path, func(w http.ResponseWriter, r *http.Request) {
@@ -538,16 +522,14 @@ const (
 	runningQueue = `{"queue_running":[[1,"run-1",{},{},["99"]]],"queue_pending":[]}`
 )
 
-// 中止は提供元の今の状態で要求を選ぶ。待ち行列にある間は待ち行列から消し、実行中は自前が
-// prompt_id を付けて interrupt し、Cloud は POST /interrupt を送る。前に読んだ状態が古くても、
-// 終わった実行には何も送らず（Cloud の interrupt が別の実行を止めないため）、消す間に始まった
-// 実行は interrupt で止める。
+// Never interrupt completed Cloud jobs, since doing so could stop a different run; recheck jobs
+// that start during queue deletion.
 func TestCancel(t *testing.T) {
 	cases := []struct {
 		name     string
 		cloud    bool
 		previous domain.ThumbnailEditState
-		states   []string // 自前は GET /queue、Cloud は GET /job/{id}/status の応答の順
+		states   []string // GET /queue for self-hosted; GET /job/{id}/status for Cloud.
 		history  string
 		want     []recorded
 	}{
@@ -592,7 +574,6 @@ func TestCancel(t *testing.T) {
 	}
 }
 
-// 自前の ComfyUI は vv:output の最初の画像を GET /view で取る。
 func TestOutputSelfHosted(t *testing.T) {
 	f := newRunProvider(t, false)
 	f.handle("/history/run-1", jsonHandler(historyWithImage))
@@ -609,7 +590,6 @@ func TestOutputSelfHosted(t *testing.T) {
 	}
 }
 
-// Comfy Cloud の出力は署名付き URL への転送先から X-API-Key なしで取る。
 func TestOutputCloudFollowsRedirectWithoutKey(t *testing.T) {
 	signed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-API-Key") != "" {
@@ -642,7 +622,7 @@ func reasonOf(t *testing.T, name string, err error) *domain.ImageEditError {
 	return failure
 }
 
-// Failure reasons の表の各行（timed_out は編集のセッションが数える）が、その接続先の応答から作られる。
+// The edit session, not the provider adapter, determines timed_out.
 func TestFailureReasons(t *testing.T) {
 	frame := pngOf(t, 4, 4, color.Black)
 	start := func(f *runProvider) error {
@@ -728,7 +708,6 @@ func TestFailureReasons(t *testing.T) {
 	}
 }
 
-// stateFailure は実行の状態を読み、failed の理由を誤りとして返す。
 func stateFailure(f *runProvider) error {
 	state, failure, err := f.client().State(context.Background(), cloudJob(f), domain.ThumbnailEditRunning)
 	if err != nil {

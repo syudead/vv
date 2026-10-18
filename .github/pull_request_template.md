@@ -1,32 +1,27 @@
-<!--
-  本文は日本語で、表と図を主にする。コードを開かなくても、何が変わるかが分かるように書く。
-  plan・design の段階 PR は .agents/skills/issue-handoff/references/stage-pr-body.md の形式を使う。
-  節に書くことが無いときは「なし」と 1 行書く。
--->
+<!-- Write the body in Japanese, using tables and diagrams to explain the change without code.
+Use the stage PR template for plan/design PRs; write `なし` in empty sections. -->
 
 ## 概要
 
-<!-- 何を、なぜ変えるのか。1〜2 行 -->
+<!-- What changes and why, in one or two sentences. -->
 
 ## 関連 Issue
 
-<!-- stage PRは親、implement PRは子を `Refs #NNN`。main向け統合PRだけ親を `Closes #NNN`。 -->
+<!-- Stage PRs reference the parent; implementation PRs reference the child. Only integration PRs close the parent. -->
 
 ## 何が変わるか
 
-<!-- 利用者や API の呼び出し側から見た振る舞いを、場面ごとに変更前と変更後で書く。
-     内部だけの変更は、変わる仕組み（どこからどこへ移るか）を同じ形で書く。 -->
+<!-- Describe before and after behavior for users, callers, or the changed internal mechanism. -->
 
 | 場面 | 変更前 | 変更後 |
 | --- | --- | --- |
 | | | |
 
-<!-- 流れ・順序・状態・分岐が変わるときは Mermaid の図を付ける。
-     （docs/design-docs/writing-quality.md の W-7） -->
+<!-- Add Mermaid when flow, order, state or branching changes (writing-quality.md W-7). -->
 
 ## 実装で決めたこと
 
-<!-- Plan や Issue に無く、実装中に決めたこと。Plan どおりなら「なし」。 -->
+<!-- Record implementation decisions not already in the Plan or Issue. -->
 
 | 決めたこと | 採らなかった案 | 理由 |
 | --- | --- | --- |
@@ -34,14 +29,14 @@
 
 ## 文書
 
-<!-- 更新した設計文書・手順書。無ければ「なし」。 -->
+<!-- Link updated design documents or instructions. -->
 
 ## 確認
 
 | 検査 | 結果 |
 | --- | --- |
-| `task check` | |
+| <!-- Scoped check command --> | |
 
 ## 残したこと
 
-<!-- この PR でやらなかったこと、後で直すこと、既知の危険。無ければ「なし」。 -->
+<!-- List deferred work and known limitations. -->

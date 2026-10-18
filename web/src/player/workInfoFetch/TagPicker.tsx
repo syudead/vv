@@ -8,20 +8,12 @@ import { Label } from "../../ui/shadcn/label";
 import { selectableTags, videoTagNames } from "./fetchRules";
 import { Chip } from "./TagChips";
 
-/** TagPick は比較の段のタグの選択と、それを変える手段である。 */
 export interface TagPick {
-  /** 選んだタグの名前。 */
   selected: readonly string[];
-  /** 反映を送っている間か結果が期限切れで、選択を変えられない。 */
   locked: boolean;
   onToggle: (name: string, on: boolean) => void;
 }
 
-/**
- * TagPicker は取得した側のタグの並びで、動画にまだ無いタグは Checkbox とそのラベルのチップ、
- * 動画にあるタグは選べない `On the video` のチップである。畳まずに全部を出し、最後に
- * `{n} of {m} selected` を添える。
- */
 export default function TagPicker({
   video,
   result,
@@ -35,7 +27,7 @@ export default function TagPicker({
   const onVideo = videoTagNames(video);
   const selectable = selectableTags(video, result);
   const selected = selectable.filter((name) => pick.selected.includes(name)).length;
-  // 同じ名前が結果に 2 回あっても、チェックボックスは 1 つにする。
+  // Duplicate result names share one checkbox.
   const names = [...new Set(result.tags)];
   return (
     <div className="flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1">

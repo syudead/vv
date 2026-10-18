@@ -13,9 +13,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 取り込みと失敗した走査のやり直し。
-
-// listActivityItems は GET /api/activity の項目を返す。
 func (e *activityEnv) listActivityItems(t *testing.T, query string) []gen.ActivityEntry {
 	t.Helper()
 	rec := e.serve(http.MethodGet, "/api/activity?"+query, "")
@@ -29,7 +26,6 @@ func (e *activityEnv) listActivityItems(t *testing.T, query string) []gen.Activi
 	return page.Items
 }
 
-// failImport は登録フォルダの中に動画を登録して解析の仕事を積み、上限まで失敗させる。
 func (e *activityEnv) failImport(t *testing.T, name string) {
 	t.Helper()
 	ctx := context.Background()
@@ -59,8 +55,6 @@ func (e *activityEnv) failImport(t *testing.T, name string) {
 	}
 }
 
-// 受け入れ: 失敗した取り込みのやり直しは 202 を返し、所有者が始めた新しい running の記録が続く。失敗した記録は
-// superseded で閉じる。
 func TestRetryFailedImportStartsANewRunningEntry(t *testing.T) {
 	e := newActivityEnv(t)
 	e.failImport(t, "broken")
@@ -91,7 +85,6 @@ func TestRetryFailedImportStartsANewRunningEntry(t *testing.T) {
 	})
 }
 
-// recordFailedScan は登録フォルダを 1 つ置き、interrupted 以外の理由で失敗した走査を記録する。
 func (e *activityEnv) recordFailedScan(t *testing.T) int64 {
 	t.Helper()
 	ctx := context.Background()
@@ -113,7 +106,6 @@ func (e *activityEnv) recordFailedScan(t *testing.T) int64 {
 	return items[0].Id
 }
 
-// 受け入れ: 失敗した走査のやり直しは手動の走査を始め、それが done で終わると scan の記録が superseded になる。
 func TestRetryFailedScanStartsAManualScan(t *testing.T) {
 	e := newActivityEnv(t)
 	id := e.recordFailedScan(t)
@@ -136,7 +128,6 @@ func TestRetryFailedScanStartsAManualScan(t *testing.T) {
 	}
 }
 
-// 走査中の scan のやり直しは、POST /api/scans と同じ判断で 409 scan_in_progress を返す。
 func TestRetryFailedScanWhileScanningAnswersConflict(t *testing.T) {
 	e := newActivityEnv(t)
 	id := e.recordFailedScan(t)

@@ -2,13 +2,8 @@ import type { ReactNode, Ref } from "react";
 
 import { cn } from "@/lib/cn";
 
-// 1 行のカードの一覧（区画）。枠線のある muted の面のカードを gap-2 で縦に重ね、カードの
-// 色（tone）は呼ぶ側が決める。カードの端には時刻と操作の決まった幅の列を置き、時刻と操作が
-// 一覧の下まで揃う。lg からは 1 行（印・題・チップ・右に寄せた結果・時刻・操作）、lg 未満では
-// 2 行（印と題、その下にチップ・結果・短い時刻。操作は右で 2 行にまたがる）。
-// 余白・面・線・列の幅はこの区画が持ち、画面は中身を渡すだけにする
+// This section owns card spacing, surfaces and aligned time/action columns; callers supply content and tone. See web/registry/rules/patterns.md, Sections.
 //
-// 規則は web/registry/rules/patterns.md の Sections。
 
 export type CardListTone = "default" | "primary" | "destructive" | "warning";
 
@@ -20,9 +15,7 @@ const toneClass: Record<CardListTone, string> = {
 };
 
 export interface CardListProps {
-  /** 一覧の名前（「Activity log」）。支援技術に読まれる。 */
   label: string;
-  /** CardListItem を並べる。 */
   children: ReactNode;
 }
 
@@ -35,28 +28,20 @@ function CardListRoot({ label, children }: CardListProps) {
 }
 
 export interface CardListItemProps {
-  /** カードの色。既定は default（border と muted）。 */
   tone?: CardListTone;
-  /** 行の頭の状態の印（size-5 のアイコン）。 */
   icon: ReactNode;
-  /** 題（ファイル名など）。1 行で、幅が足りないとき最初に切る。 */
+  /** Truncate the title before other columns. */
   title: ReactNode;
-  /** 種類のチップ（Badge）。切らない。 */
+  /** Chips never truncate. */
   badge?: ReactNode;
-  /** 結果。lg からは右に寄せ、題の次に切る。中の文字の要素に truncate を付ける。 */
+  /** Truncate after the title; apply truncate to the nested text element. */
   detail?: ReactNode;
-  /** 時刻（lg から、activity-time の幅の列）。 */
   time: ReactNode;
-  /** lg 未満で結果の後ろに置く短い時刻（「15m」）。 */
   timeShort: ReactNode;
-  /** ghost の icon-sm のボタン。決まった幅の端の列に置く。 */
   actions?: ReactNode;
   ref?: Ref<HTMLLIElement>;
 }
 
-/**
- * CardListItem は一覧の 1 枚のカードである。最小の高さは activity-card、横の余白は px-4。
- */
 function CardListItem({
   tone = "default",
   icon,
@@ -120,7 +105,6 @@ function CardListItem({
   );
 }
 
-/** CardList は一覧の全体で、`CardList.Item` を持つ。 */
 const CardList = Object.assign(CardListRoot, { Item: CardListItem });
 
 export { CardList, CardListItem };

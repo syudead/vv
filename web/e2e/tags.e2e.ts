@@ -1,13 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-// タグのうち、本物のブラウザのレイアウトでしか確かめられないものだけを流す
-// （docs/design-docs/web-testing.md）。タグ管理画面の行・タブ・統合先の候補と、カードの「+N」の
-// 一覧の実際の配置である。ほかの振る舞いは Vitest（src/player/VideoTags、src/tags/TagsPage*、
-// src/library/CardTagRow、src/library/useHoverOpen）と Go のストアのテストが確かめる。
-// 動画は run-e2e.mjs が generateTagsFixtures で作る videoCount 本。本数は、1280×800 で格子の
-// 最後の行を画面の下端に置くためにある（041-tag-overflow-list）。
+// Verify tag layout in the browser; lower-level suites cover behavior. The fixture count positions the last grid row near the bottom at 1280 x 800; see docs/design-docs/web-testing.md.
 
-/** generateTagsFixtures（media-fixtures.mjs）が作る動画の本数。 */
 const videoCount = 16;
 
 interface MediaFolder {
@@ -68,11 +62,7 @@ async function attachTag(request: APIRequestContext, videoId: number, tagId: num
   expect(response.ok()).toBe(true);
 }
 
-/**
- * clearVideoTags は、ほかのテストが付けたタグをすべて外す。カードのタグの行は
- * 1行に収まる数が限られるので、狙ったタグを直に押せる状態にしてテストを
- * 決定的にする（「+N」の配線自体は別のテストで確かめる）。
- */
+/** Remove inherited tags so the target chip stays directly clickable instead of moving into overflow. */
 async function clearVideoTags(request: APIRequestContext, videoId: number) {
   const response = await request.get(`/api/videos/${String(videoId)}`);
   const data = (await response.json()) as { tags: { id: number }[] };
@@ -119,40 +109,27 @@ test.describe.serial("video tags", () => {
   });
 
   test.describe("タグ管理画面（issue 271）", () => {
-    /** tagRowByName は、名前のリンク（読み上げ名「〈名〉で絞り込んだライブラリを開く」）から行を探す。 */
+    /** Find rows through the tag link accessible name. */
     function tagRowByName(page: Page, name: string) {
-      // exact: true を付けないと、Playwright の役割名の照合は大文字小文字を
-      // 区別しない部分一致になり、大文字小文字だけが違う別のタグ（`Anime` と
-      // `anime`、要件4）の行を取り違える。
+      // Use exact matching to distinguish case-sensitive tag names such as Anime and anime.
       return page
         .getByRole("link", { name: `Open the library filtered by ${name}`, exact: true })
         .locator("xpath=ancestor::*[@data-tag-id][1]");
     }
 
-    /**
-     * rowMenuName は、幅ごとに行の右端のメニューの読み上げ名を返す。`sm`（640px）
-     * 未満では行の操作が 1 つの「Actions」にまとまり、「More actions」は CSS で隠れる。
-     */
+    /** Below sm (640 px), Actions replaces the CSS-hidden More actions menu. */
     function rowMenuName(width: number) {
       return width < 640 ? "Actions" : "More actions";
     }
 
-    /**
-     * revealTagRow は、名前の行が描かれるまで文書を送ってから、その行を返す。
-     * 一覧は見えている行だけを描く
-     * ので、前の試験で作ったタグが増えると、探す行が表示域の外で DOM に無い。
-     * 送るたびに行が描かれるのを少し待ち、末尾まで来ても無ければ先頭から送り直す。
-     * 描き直しの途中（読み直した一覧が先頭へ戻すときなど）に末尾と見誤って
-     * やめないよう、回数ではなく時間で区切る。
-     */
+    /** Scroll until the virtualized row mounts, restarting from the top if needed. Use a deadline so intermediate layout resets cannot be mistaken for the end. */
     async function revealTagRow(page: Page, name: string) {
       const row = tagRowByName(page, name);
       await expect(
         page.getByRole("link", { name: /^Open the library filtered by / }).first(),
       ).toBeVisible();
       await page.evaluate(() => window.scrollTo(0, 0));
-      // 行が描かれたあとでも、一覧が測り直して描く範囲を動かすと行は DOM から外れる。
-      // 表示域へ送るところまでを 1 回の試みに含め、外れたら送り直す。
+      // Include scrolling into view in each attempt because remeasurement may unmount the row.
       await expect(async () => {
         if ((await row.count()) === 0) {
           await page.evaluate(() => {
@@ -172,7 +149,7 @@ test.describe.serial("video tags", () => {
       page,
       request,
     }) => {
-      // 仮のタグは外部連携 API の tentative でだけ作れる。
+      // Tentative tags can only be created through the external API.
       const issued = await request.post("/api/api-tokens", {
         headers: mutationHeaders,
         data: { name: "e2e仮のタグ" },
@@ -197,7 +174,6 @@ test.describe.serial("video tags", () => {
       });
       expect(tagged.ok()).toBe(true);
 
-      // 名前の列が最も狭くなる 360px でも確かめる。
       for (const width of [1280, 360]) {
         await page.setViewportSize({ width, height: 800 });
         await page.goto("/tags");
@@ -210,14 +186,14 @@ test.describe.serial("video tags", () => {
           });
           const mark = row.locator("svg.lucide-circle-dashed");
           await expect(mark).toBeVisible();
-          // 目印は名前の後ろに、同じ行で並ぶ（間の幅は見ない）。
+          // The marker stays after the name on the same line; spacing is not part of this assertion.
           const linkBox = await link.boundingBox();
           const markBox = await mark.boundingBox();
           if (linkBox === null || markBox === null) throw new Error("no layout");
           expect(markBox.x).toBeGreaterThanOrEqual(linkBox.x + linkBox.width);
           expect(markBox.y).toBeLessThan(linkBox.y + linkBox.height);
           expect(markBox.y + markBox.height).toBeGreaterThan(linkBox.y);
-          // 長い名前でも操作は行の中に収まる（`sm` 未満では「Actions」1 つ）。
+
           const rowBox = await row.boundingBox();
           const moreBox = await row
             .getByRole("button", { name: rowMenuName(width) })
@@ -225,7 +201,7 @@ test.describe.serial("video tags", () => {
           if (rowBox === null || moreBox === null) throw new Error("no layout");
           expect(moreBox.x + moreBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width);
         }
-        // 長い名前は省略される。
+
         await revealTagRow(page, longName);
         const longLink = tagRowByName(page, longName).getByRole("link", {
           name: `Open the library filtered by ${longName}`,
@@ -234,7 +210,7 @@ test.describe.serial("video tags", () => {
         expect(
           await longLink.evaluate((node) => node.scrollWidth > node.clientWidth),
         ).toBe(true);
-        // 横スクロールは出ない。
+
         expect(
           await page.evaluate(
             () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -243,7 +219,7 @@ test.describe.serial("video tags", () => {
       }
       await page.setViewportSize({ width: 1280, height: 800 });
 
-      // 短い名前の行で、名前と目印より右の空白を押す。
+      // Click the blank area after the short name and marker.
       await revealTagRow(page, shortName);
       const row = tagRowByName(page, shortName);
       const link = row.getByRole("link", {
@@ -264,8 +240,7 @@ test.describe.serial("video tags", () => {
     test("狭い幅でも見出しの件数は折り返さず、「Rejected names」のタブを省略せずに本文の中に収める", async ({
       page,
     }) => {
-      // 4 桁の件数と 4 桁の却下した名前で、見出しとタブが最も長くなる形を作る
-      //
+      // Four-digit counts maximize heading and tab widths.
       const createdAt = "2026-01-01T00:00:00Z";
       const items = Array.from({ length: 1000 }, (_, index) => ({
         id: 900000 + index,
@@ -273,11 +248,11 @@ test.describe.serial("video tags", () => {
         synonyms: [],
         videoCount: 0,
         tentative: true,
-        // `kind` は必須（null は種類なし）。欠けると種類の名札が描けず画面が落ちる。
+        // kind is required; null means unclassified, while omission breaks the badge.
         kind: null,
         createdAt,
       }));
-      // ページで読む画面はクエリ（sort・limit・tentative）を付けて送る。
+      // Paginated requests include sort, limit and tentative parameters.
       await page.route(/\/api\/tags(\?.*)?$/, (route) =>
         route.request().method() === "GET"
           ? route.fulfill({
@@ -300,7 +275,7 @@ test.describe.serial("video tags", () => {
       );
       for (const width of [320, 360]) {
         await page.setViewportSize({ width, height: 800 });
-        // 「Tentative only」が効いた URL で開く。
+
         await page.goto("/tags?tentative=1");
         const count = page.getByRole("status").filter({ hasText: "1,000 of 1,000 tags" });
         await expect(count).toBeVisible();
@@ -309,7 +284,7 @@ test.describe.serial("video tags", () => {
         await expect(tab).toContainText("1,000");
         const tabBox = await tab.boundingBox();
         if (tabBox === null) throw new Error("no layout");
-        // 件数は 1 行のまま（折り返すと行の箱が 2 つ以上になる）。
+        // A wrapped count produces multiple client rectangles.
         expect(
           await count.evaluate((element) => {
             const range = document.createRange();
@@ -319,19 +294,19 @@ test.describe.serial("video tags", () => {
             ).size;
           }),
         ).toBe(1);
-        // タブは画面の中にある。
+
         expect(tabBox.x + tabBox.width).toBeLessThanOrEqual(width);
-        // 横スクロールは出ない。
+
         expect(
           await page.evaluate(
             () => document.documentElement.scrollWidth <= window.innerWidth,
           ),
         ).toBe(true);
-        // 3 つ目の「Kinds」は、収まらなければタブの並びの中で送って押せる。
+        // The third tab must remain reachable by scrolling when it does not fit.
         const kinds = page.getByRole("tab", { name: /^Kinds/ });
         await kinds.click();
         await expect(page).toHaveURL(/[?&]tab=kinds/);
-        // キーボードで移ったタブのフォーカスの輪（外へ 4px）は、送る帯に切られない。
+        // The scroll strip must not clip the focus ring extending 4 px outside the tab.
         await kinds.press("ArrowLeft");
         await expect(tab).toBeFocused();
         expect(
@@ -343,7 +318,7 @@ test.describe.serial("video tags", () => {
             return outer.top <= inner.top - 4 && outer.bottom >= inner.bottom + 4;
           }),
         ).toBe(true);
-        // URL から開いたとき、戻ったときも、選んでいる「Kinds」は帯の見える位置にある。
+        // The selected tab stays visible after direct navigation and back navigation.
         const kindsInView = async () => {
           await expect(kinds).toHaveAttribute("aria-selected", "true");
           await expect
@@ -396,14 +371,12 @@ test.describe.serial("video tags", () => {
       const combo = dialog.getByRole("combobox", { name: "Tag to merge into" });
       await combo.fill("e2eB3統合先");
 
-      // 8行すべてが、窓の overflow によって切り取られずに見える
-      // （MergeTagDialog.tsx の overflow-y-auto がこの候補の一覧まで
-      // 覆っていたときは、ここが見えないまま timeout していた）。
+      // All eight candidates must remain visible despite the dialog overflow container.
       for (const name of names) {
         await expect(page.getByRole("option", { name: new RegExp(name) })).toBeVisible();
       }
 
-      // 最後の行（8番目）を実際に選べる（クリックが素通りしないことも確かめる）。
+      // Click the last candidate to detect pointer-event interception too.
       await page.getByRole("option", { name: new RegExp(names[7]!) }).click();
       await expect(
         dialog.getByText(new RegExp(`get the tag "${names[7]!}"`)),
@@ -411,18 +384,14 @@ test.describe.serial("video tags", () => {
     });
   });
 
-  // docs/design-docs/library-ui.md: カードの「+N」の一覧は、隠れたタグを折り返す
-  // チップで並べ、画面の中に収まり、収まらない分は一覧の中でスクロールし、長い
-  // 名前を省略しない（親 Issue #813 の受け入れ条件 1・5 と、画面の下端に近い
-  // カードの Edge Case）。マウスを「+N」に留めると開き、押しても開く（受け入れ
-  // 条件 2・3・4）。
+  // Overflow chips wrap without truncation, stay inside the viewport and scroll internally when needed; see docs/design-docs/library-ui.md.
   test.describe("カードの「+N」の一覧（041-tag-overflow-list）", () => {
-    /** 60文字の、空白を持たない名前。一覧の内幅より広いので、チップの中で折り返す。 */
+    /** A 60-character unbroken name forces wrapping within the chip. */
     const longName = (
       "e2e一覧の長い名前_" + "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
     ).slice(0, 60);
 
-    /** box が画面の中に、Radix の collisionPadding（8px）を空けて収まるかを確かめる。 */
+    /** Respect Radix collisionPadding of 8 px. */
     function expectInsideViewport(
       box: { x: number; y: number; width: number; height: number },
       viewport: { width: number; height: number },
@@ -442,7 +411,7 @@ test.describe.serial("video tags", () => {
       await page.setViewportSize({ width: 1280, height: 800 });
       await page.goto("/library");
       await expect(page.getByRole("article")).toHaveCount(videoCount);
-      // 格子の最後のカード（どの幅でも DOM の順は同じ）に30個のタグを付ける。
+
       const lastId = await page.getByRole("article").last().getAttribute("data-video-id");
       if (lastId === null) throw new Error("no data-video-id on the last card");
       const targetId = Number(lastId);
@@ -458,9 +427,7 @@ test.describe.serial("video tags", () => {
       tagIds.set(longName, long.id);
       await attachTag(request, targetId, long.id);
 
-      // 1280×800 と 390×844 では30個の一覧が画面に収まり、並びはスクロールしない。
-      // 低い 390×300 では収まらず、並びの中のスクロールで最後のタグへ届くことを
-      // 確かめる（要件3）。
+      // Thirty chips fit at normal heights; 390 x 300 requires internal scrolling to reach the last chip.
       for (const { scrolls, ...viewport } of [
         { width: 1280, height: 800, scrolls: false },
         { width: 390, height: 844, scrolls: false },
@@ -470,8 +437,7 @@ test.describe.serial("video tags", () => {
         await page.goto("/library");
         await expect(page.getByRole("article")).toHaveCount(videoCount);
         const card = page.locator(`article[data-video-id="${String(targetId)}"]`);
-        // 格子の最後の行を画面の下端まで送る（最後のカードを見せたうえで、
-        // その先へも回し切る）。
+        // Scroll beyond the last card to place the final grid row at the viewport bottom.
         await card.scrollIntoViewIfNeeded();
         await page.mouse.move(viewport.width / 2, viewport.height / 2);
         await page.mouse.wheel(0, 10_000);
@@ -480,18 +446,18 @@ test.describe.serial("video tags", () => {
         const moreBox = await overflow.boundingBox();
         if (moreBox === null) throw new Error("no layout for +N");
         if (viewport.width === 1280) {
-          // 「+N」は画面の下半分にあり、下には30個の一覧を置く余地が無い。
+          // There is no room for thirty chips below this trigger.
           expect(moreBox.y).toBeGreaterThan(viewport.height / 2);
         }
 
         await overflow.click();
         const dialog = page.getByRole("dialog");
         await expect(dialog).toBeVisible();
-        // 開くときの拡大の動きが済んでから箱を測る。
+        // Wait for the opening scale animation before measuring.
         await dialog.evaluate((element) =>
           Promise.all(element.getAnimations().map((animation) => animation.finished)),
         );
-        // 一覧の高さは、Radix が知らせる残りの高さで抑えられている（R-2）。
+        // Height must respect the remaining space reported by Radix.
         expect(
           await dialog.evaluate((element) => getComputedStyle(element).maxHeight),
         ).toMatch(/px$/);
@@ -499,7 +465,7 @@ test.describe.serial("video tags", () => {
         if (dialogBox === null) throw new Error("no layout for the list");
         expectInsideViewport(dialogBox, viewport);
         if (viewport.width === 1280) {
-          // 下端の近くのカードでは、一覧は「+N」の上か横に開く（Edge Case）。
+          // Near the viewport bottom, open above or beside the trigger.
           const above = dialogBox.y + dialogBox.height <= moreBox.y;
           const beside =
             dialogBox.x >= moreBox.x + moreBox.width ||
@@ -507,7 +473,6 @@ test.describe.serial("video tags", () => {
           expect(above || beside).toBe(true);
         }
 
-        // 60文字の名前は … なしで全文、複数行で描かれる（受け入れ条件5）。
         const longChip = dialog.getByRole("button", {
           name: `Filter by ${longName}`,
           exact: true,
@@ -528,13 +493,12 @@ test.describe.serial("video tags", () => {
         expect(rendered.clipped).toBe(false);
         expect(rendered.lines).toBeGreaterThanOrEqual(2);
 
-        // 一覧をスクロールすると最後のタグが見える（受け入れ条件1）。
         const chips = dialog.getByRole("button");
         await expect(chips).toHaveCount(30 - (await visibleChipCount(card)));
         const lastChip = chips.last();
         const list = dialog.getByRole("list");
         if (scrolls) {
-          // 並びは板の高さを超え、最後のタグは並びをスクロールするまで見えない。
+          // The last chip starts outside the visible scroll area.
           await list.evaluate((element) => element.scrollTo(0, 0));
           const overflow = await list.evaluate((element) => ({
             scrollHeight: element.scrollHeight,
@@ -562,7 +526,7 @@ test.describe.serial("video tags", () => {
       }
     });
 
-    /** visibleChipCount は、カードの行に直に出ているタグのチップの数（「+N」を除く）。 */
+    /** Count directly visible chips, excluding the overflow trigger. */
     async function visibleChipCount(card: ReturnType<Page["locator"]>) {
       return card
         .getByRole("list", { name: "Tags", exact: true })

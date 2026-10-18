@@ -12,44 +12,39 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// encoderCheckTimeout は起動時の確認の、エンコーダーごとの上限時間である
+// Per-encoder startup check deadline.
 const encoderCheckTimeout = 10 * time.Second
 
-// TranscodeSettingsStore はライブ変換の映像エンコード方式の保存先である。値は解釈せずに
-// 文字列で読み書きし、解釈は domain.ParseEncoderChoice が行う。
+// Store raw strings; domain.ParseEncoderChoice owns interpretation.
 type TranscodeSettingsStore interface {
 	TranscodeEncoderChoice(ctx context.Context) (value string, found bool, err error)
 	SaveTranscodeEncoderChoice(ctx context.Context, value string) error
 }
 
-// EncoderChecker は 1 つのハードウェアの方式が使えるかを、短い実エンコードで確かめる。
-// 結果の State は available か unavailable で、unavailable には Reason を付ける。
-// ctx の期限で打ち切る。internal/media の EncoderCheck がこれを満たす。
+// Trial encodes return available or unavailable with a reason and honor context deadlines.
 type EncoderChecker interface {
 	CheckEncoder(ctx context.Context, encoder domain.VideoEncoder) domain.EncoderAvailability
 }
 
-// TranscodeSettingsOptions はライブ変換の方式の設定に必要な依存である。
 type TranscodeSettingsOptions struct {
 	Store   TranscodeSettingsStore
 	Checker EncoderChecker
-	// GOOS は確認対象を決める OS（runtime.GOOS の値）である。
-	GOOS string
-	// CheckTimeout はエンコーダーごとの上限時間で、0 なら encoderCheckTimeout。
+	GOOS    string
+	// Zero uses encoderCheckTimeout.
 	CheckTimeout time.Duration
-	// Logger は nil なら slog の既定を使う。
+	// Nil uses slog.Default.
 	Logger *slog.Logger
 }
 
-// TranscodeSettings はライブ変換の映像エンコード方式の選択と、起動時の確認の結果を
-// メモリに持ち、実際に使う方式を決める。確認の結果は保存しない。
+// Keep capability checks in memory only; persisted choice and current availability determine the
+// effective encoder.
 type TranscodeSettings struct {
 	store        TranscodeSettingsStore
 	checker      EncoderChecker
 	checkTimeout time.Duration
 	logger       *slog.Logger
 
-	// selectMu は Select を 1 つずつにし、保存値とメモリの選択を食い違わせない。
+	// Serialize saving and in-memory selection to prevent divergence.
 	selectMu sync.Mutex
 
 	mu           sync.Mutex
@@ -59,8 +54,7 @@ type TranscodeSettings struct {
 	done         chan struct{}
 }
 
-// NewTranscodeSettings は保存値を読み込み、確認を始める前の状態を返す。確認は
-// StartChecks で始める。それまでの確認対象は確認中で、実際に使う方式は software である。
+// Before StartChecks completes, hardware remains checking and software is effective.
 func NewTranscodeSettings(ctx context.Context, opts TranscodeSettingsOptions) (*TranscodeSettings, error) {
 	value, found, err := opts.Store.TranscodeEncoderChoice(ctx)
 	if err != nil {
@@ -90,8 +84,7 @@ func NewTranscodeSettings(ctx context.Context, opts TranscodeSettingsOptions) (*
 	}, nil
 }
 
-// StartChecks は確認対象のエンコーダーの確認を並行して始め、待たずに戻る。2 度目からは
-// 何もしない。すべて終わると結果を反映してログに記録し、Done を閉じる。
+// StartChecks runs once asynchronously and closes Done after recording all results.
 func (t *TranscodeSettings) StartChecks(ctx context.Context) {
 	t.mu.Lock()
 	if t.started {
@@ -124,13 +117,11 @@ func (t *TranscodeSettings) StartChecks(ctx context.Context) {
 	}()
 }
 
-// Done は起動時の確認がすべて終わると閉じる。
 func (t *TranscodeSettings) Done() <-chan struct{} {
 	return t.done
 }
 
-// check は 1 つのエンコーダーを上限時間つきで確かめる。checker が上限時間を過ぎても
-// 戻らないときは待たずに timed_out とする。
+// Do not wait past the deadline even if a checker ignores cancellation.
 func (t *TranscodeSettings) check(ctx context.Context, encoder domain.VideoEncoder) domain.EncoderAvailability {
 	checkCtx, cancel := context.WithTimeout(ctx, t.checkTimeout)
 	defer cancel()
@@ -177,16 +168,14 @@ func (t *TranscodeSettings) setAvailability(result domain.EncoderAvailability) {
 	}
 }
 
-// Current は今の選択・実際に使う方式・理由・確認中か・各エンコーダーの結果を返す。
 func (t *TranscodeSettings) Current() domain.TranscodeEncoding {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return domain.NewTranscodeEncoding(t.choice, t.availability)
 }
 
-// Select は選択を保存して状態を更新し、更新後の状態を返す。software と auto は常に
-// 受け付ける。使えない（確認中を含む）ハードウェアの方式には domain.ErrEncoderUnavailable
-// を返し、保存値を変えない。
+// Select always accepts software/auto, rejecting unavailable or still-checking hardware without
+// changing storage.
 func (t *TranscodeSettings) Select(ctx context.Context, choice domain.EncoderChoice) (domain.TranscodeEncoding, error) {
 	if !choice.Valid() {
 		return domain.TranscodeEncoding{}, fmt.Errorf("unknown video encoder choice %q", choice)
@@ -218,8 +207,7 @@ func (t *TranscodeSettings) isAvailable(encoder domain.VideoEncoder) bool {
 	return false
 }
 
-// logCheckDetails は確認に失敗したエンコーダーの補足（FFmpeg の標準エラーの末尾）を
-// 1 件ずつ記録する。補足はログ用で、API には出さない。
+// Log FFmpeg stderr details without exposing them through the API.
 func (t *TranscodeSettings) logCheckDetails(encoding domain.TranscodeEncoding) {
 	for _, a := range encoding.Encoders {
 		if a.State != domain.EncoderUnavailable || a.Detail == "" {
@@ -233,7 +221,6 @@ func (t *TranscodeSettings) logCheckDetails(encoding domain.TranscodeEncoding) {
 	}
 }
 
-// logEncoding は選択・実際の方式・理由を記録する（親 Issue #370 要件 9）。
 func (t *TranscodeSettings) logEncoding(msg string, encoding domain.TranscodeEncoding) {
 	encoders := make([]string, 0, len(encoding.Encoders))
 	for _, a := range encoding.Encoders {

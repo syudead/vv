@@ -5,48 +5,40 @@ import (
 	"strings"
 )
 
-// 起動の失敗のダイアログの文。
-// 文言は英語で、どの文にもログの場所を添える（ログを書けない 2 番目を除く）。
+// Failure dialogs include the log path except when the data/log directory itself is unwritable.
 
-// WebView2URL は WebView2 ランタイムの入手先である。
+// WebView2 runtime download URL.
 const WebView2URL = "https://developer.microsoft.com/microsoft-edge/webview2/"
 
-// MessageBadArgs は使えない引数のダイアログの文である。
 func MessageBadArgs(err error) string {
 	return fmt.Sprintf("VVMDM cannot start with these arguments.\n\n%v\n\n%s", err, UsageText)
 }
 
-// MessageNotExtracted は zip から直接実行したときのダイアログの文である（§2 の 1 番目）。
 func MessageNotExtracted(logFile string) string {
 	return withLog("VVMDM must be extracted before it can run.\n\n"+
 		"Right-click the zip file, choose \"Extract All\", "+
 		"and then run VVMDM.exe in the extracted folder.", logFile)
 }
 
-// MessageUnwritable はデータの置き場に書けないときのダイアログの文である（§2 の 2 番目）。
 func MessageUnwritable(dir string) string {
 	return fmt.Sprintf("VVMDM cannot write to the following folder, so it cannot start.\n\n%s", dir)
 }
 
-// MessageNoWebView2 は WebView2 ランタイムが無いときのダイアログの文である（§2 の 3 番目）。
 func MessageNoWebView2(logFile string) string {
 	return withLog("VVMDM needs the Microsoft Edge WebView2 Runtime, which was not found on this PC.\n\n"+
 		"Install it from "+WebView2URL+" and then run VVMDM again.", logFile)
 }
 
-// MessageDatabase はデータベースを開けないときのダイアログの文である（§2 の 4 番目）。
 func MessageDatabase(err error, logFile string) string {
 	return withLog(fmt.Sprintf("VVMDM could not open its database.\n\n%s", summarize(err)), logFile)
 }
 
-// MessagePortInUse は待ち受けられないときのダイアログの文である（§2 の 5 番目）。
 func MessagePortInUse(port int, logFile string) string {
 	return withLog(fmt.Sprintf("VVMDM could not use port %d. Another program may be using it.\n\n"+
 		"To use a different port, start VVMDM.exe with --port <number>, "+
 		"for example by adding --port %d to the target of a shortcut.", port, alternativePort(port)), logFile)
 }
 
-// MessageFailed は上のどれにも当たらない失敗のダイアログの文である。
 func MessageFailed(err error, logFile string) string {
 	return withLog(fmt.Sprintf("VVMDM stopped because of an error.\n\n%s", summarize(err)), logFile)
 }
@@ -55,7 +47,7 @@ func withLog(text, logFile string) string {
 	return text + "\n\nDetails are in the log:\n" + logFile
 }
 
-// summarizeLimit はダイアログに載せる誤りの文の長さの上限である。全文はログにある。
+// Bound dialog text; logs retain the complete error.
 const summarizeLimit = 600
 
 func summarize(err error) string {
@@ -73,32 +65,25 @@ func alternativePort(port int) int {
 	return port + 1
 }
 
-// 閉じる前の確認の文。ボタンは
-// 「閉じる」「続ける」に当たる 2 つで、既定は「続ける」。
+// Close confirmation defaults to continuing.
 const (
 	CloseConfirmInstruction = "Import is in progress"
 	CloseConfirmContent     = "If you close VVMDM now, the import is interrupted. " +
 		"It continues from where it left off the next time you start VVMDM."
 	CloseConfirmClose    = "Close"
 	CloseConfirmContinue = "Keep running"
-	// CloseConfirmFallbackQuestion は TaskDialog を使えないとき（Common Controls v6 の
-	// manifest が無いビルド）の、はい・いいえのダイアログに足す問いである。
+	// Fallback question for builds without a Common Controls v6 manifest.
 	CloseConfirmFallbackQuestion = "Close VVMDM now?"
 )
 
-// ShutdownBlockReason はサインアウト・シャットダウンで停止を待つ間に Windows が示す
-// 理由である。
+// Windows displays this reason while waiting for sign-out or shutdown cleanup.
 const ShutdownBlockReason = "VVMDM is stopping"
 
-// MessageOtherSession は同じ利用者が別のセッション（リモート デスクトップなど）で
-// 起動中のときのダイアログの文である。
 func MessageOtherSession() string {
 	return "VVMDM is already running in another sign-in session of this user.\n\n" +
 		"Close VVMDM in that session, and then run it here again."
 }
 
-// MessageStillRunning は同じセッションで起動中か停止の途中の VVMDM が、待っても
-// ウィンドウを出さず終わりもしなかったときのダイアログの文である。
 func MessageStillRunning() string {
 	return "VVMDM is already running, but its window did not appear.\n\n" +
 		"Wait a moment, and then run VVMDM again."

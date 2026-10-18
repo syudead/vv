@@ -1,4 +1,4 @@
-# shadcn の MCP サーバー。web/package.json で固定した版を使う。
+# Use the shadcn MCP version pinned in web/package.json.
 [mcp_servers.shadcn]
 command = "npm"
 args = ["--prefix", "web", "exec", "--", "shadcn", "mcp"]

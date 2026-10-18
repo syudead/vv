@@ -7,7 +7,6 @@ import type { TagChoice } from "../ui/TagCommand";
 
 type VideoTagsSummaryItem = VideoTagsSummary["items"][number];
 
-/** buildAddOptions は「タグを付ける」の候補（全タグ、各行の右に本数）を作る。 */
 export function buildAddOptions(
   allTags: readonly Tag[],
   input: string,
@@ -67,20 +66,12 @@ export function buildAddOptions(
   return { options, exactOption };
 }
 
-/**
- * removableSummary は要約から、選んだ動画のどれかに手で付けたタグ
- * （`manualCount >= 1`）だけを残す。フォルダ名から付いているだけのタグは
- * 外せないので、候補にも `disabled` の行にも出さない。
- */
+// Folder-only tags cannot be removed, so omit them from the choices.
 export function removableSummary(summary: VideoTagsSummary): VideoTagsSummary {
   return { ...summary, items: summary.items.filter((item) => item.manualCount >= 1) };
 }
 
-/**
- * buildRemoveOptions は「タグを外す」の候補（要約のタグだけ）を作る。作成の行は持たない。
- * 外れるのは手で付けた分だけなので、「一部」の判定と本数は `manualCount` で行い、
- * 分母は選んだ本数（`total`）のままにする。
- */
+// Removal counts use manual assignments; the denominator remains the full selection.
 export function buildRemoveOptions(
   summary: VideoTagsSummary,
   input: string,

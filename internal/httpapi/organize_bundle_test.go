@@ -8,10 +8,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// POST /api/organize/bundleを、本物の保存層と
-// internal/app の Organizer をつないで確かめる。
-
-// versionsOf は所有者として動画 id の集まりを読み、代表と本数を返す。
 func (f *libraryFixture) versionsOf(t *testing.T, id int64) (int64, int) {
 	t.Helper()
 	rec := f.groupRequest(http.MethodGet, fmt.Sprintf("/api/videos/%d/versions", id), "", f.owner)
@@ -22,7 +18,6 @@ func (f *libraryFixture) versionsOf(t *testing.T, id int64) (int64, int) {
 	return versions.RepresentativeId, len(versions.Items)
 }
 
-// 動画を動画に落とすと 200 で、落とした先を代表にした集まりができ、取り消しは 204 で集まりを解く。
 func TestOrganizeBundleAndUndo(t *testing.T) {
 	f := newLibraryFixture(t)
 	rec := f.organize("bundle", map[string]any{"videoIds": []int64{f.ids["p1"]}, "target": f.ids["p2"]}, f.owner)
@@ -42,8 +37,6 @@ func TestOrganizeBundleAndUndo(t *testing.T) {
 	}
 }
 
-// 本文の誤りと落とした先だけは 400 invalid_request、21 本以上は 400 too_many_videos、無い動画は 404
-// group_target_not_found で、どれも何も束ねない。ゲストは 401 である。
 func TestOrganizeBundleErrors(t *testing.T) {
 	f := newLibraryFixture(t)
 	tooMany := make([]int64, 21)

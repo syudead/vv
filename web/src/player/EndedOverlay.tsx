@@ -9,17 +9,7 @@ import type { VideoLinkState } from "./pageDecisions";
 import { VideoThumbnail, videoLinkLabel } from "./RelatedVideos";
 import { Dimmed } from "./StatusOverlays";
 
-/**
- * EndedOverlay は最後まで再生したときの層である（要件 14）。
- *
- * 次の動画（関連動画の並びの先頭。グループのメンバーならグループの中の次）が
- * あれば、それと「次を再生」「もう一度見る」を出す。無ければ「もう一度見る」だけにする。
- * 自動では再生せず、カウントダウンも出さない（メンバーの予告は AutoplayNotice が出し、
- * これは予告を取り消した後の層になる）。
- *
- * `takeFocus` が真のとき（フォーカスがプレイヤーの中にあったとき）だけ、主な操作へ
- * フォーカスを移す。プレイヤーの外にいる人のフォーカスは奪わない。
- */
+/** Show replay and optional next-video actions without autoplay. Take focus only from inside the player. */
 export default function EndedOverlay({
   next,
   to,
@@ -29,9 +19,8 @@ export default function EndedOverlay({
   onPlayNext,
 }: {
   next: Video | undefined;
-  /** 次の動画のリンクの行き先。プレイリストの文脈ではクエリを付けた場所。 */
+  /** Includes playlist context when present. */
   to?: string;
-  /** 次の動画へのリンクに載せる状態（linkStateFrom）。 */
   linkState: VideoLinkState;
   takeFocus: boolean;
   onReplay: () => void;

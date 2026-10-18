@@ -1,15 +1,7 @@
 /**
- * limitCodePoints は入力欄の値を符号位置（コードポイント）で max 個までに収める。HTML の
- * maxLength は UTF-16 の単位で数えるので、絵文字などのサロゲートペアを 2 と数え、符号位置で
- * 数えるサーバーの上限より早く入力を止めてしまう。
- *
- * 上限を超えたときは、入力前の値と比べて新しく入った部分だけを切る。先頭や途中への
- * 入力で、もとからあった末尾を消さないためである。上限を超える貼り付けも、入る分
- * だけが入る。
- *
- * `caret` は入力後のカーソル位置（UTF-16 の単位）で、新しく入った部分はその手前で
- * 終わる。選択範囲を、選んだ文字で終わる語に置き換えたときも、入った部分を既存の
- * 末尾と取り違えないよう、共通の先頭と末尾をカーソルの前後に収める。
+ * Count code points like the server, unlike HTML maxLength's UTF-16 units; trim only inserted text
+ * to preserve the existing suffix. caret is a post-input UTF-16 offset that bounds the unchanged
+ * prefix and suffix.
  */
 export function limitCodePoints(
   next: string,
@@ -20,7 +12,7 @@ export function limitCodePoints(
   const after = Array.from(next);
   if (after.length <= max) return next;
   const before = Array.from(previous);
-  // カーソル位置が分からないときは、先頭と末尾を縛らない。
+  // Without a caret, leave common-prefix and suffix detection unbounded.
   const cursor =
     caret === undefined ? undefined : Array.from(next.slice(0, caret)).length;
   let prefix = 0;

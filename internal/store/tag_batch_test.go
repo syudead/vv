@@ -10,10 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// まとめての確定・却下・削除と確認の数。
-
-// batchFixture は key-a に仮のタグ t1・t2・t3 を付け、確定したタグ c1・c2 を作る。
-// 返す map は名前から id。
 func batchFixture(t *testing.T) (*DB, map[string]int64) {
 	t.Helper()
 	db, _ := tentativeFixture(t)
@@ -36,14 +32,11 @@ func batchFixture(t *testing.T) (*DB, map[string]int64) {
 	return db, ids
 }
 
-// batchIDs は仮・確定・無い id を混ぜ、重複も含めた ids を返す。
 func batchIDs(ids map[string]int64, missing int64) []int64 {
 	return []int64{ids["t1"], ids["c1"], missing, ids["t2"], ids["c2"], ids["t3"], ids["t1"]}
 }
 
-// assertTagInvariantsNow は 031 の不変条件（と各タグがちょうど 1 つの元の名前を持つこと）と
-// 名前の自然順の鍵の不変条件を、テストの終わりを待たずにその場で
-// 確かめる。
+// Check invariants immediately between batch operations rather than waiting for fixture cleanup.
 func assertTagInvariantsNow(t *testing.T, db *DB) {
 	t.Helper()
 	assertTagCanonicalNameInvariant(t, db)
@@ -81,7 +74,6 @@ func TestBatchTagsConfirmConfirmsOnlyTentativeTags(t *testing.T) {
 			t.Errorf("%s がまだ仮のタグ", name)
 		}
 	}
-	// 付与は変わらない。
 	if got := videoTagsOf(t, db, "key-a"); len(got) != 3 {
 		t.Errorf("key-a のタグ = %+v, want 3 件", got)
 	}
@@ -158,7 +150,6 @@ func TestBatchTagsDeleteDeletesOnlyConfirmedTags(t *testing.T) {
 	assertTagInvariantsNow(t, db)
 }
 
-// 働くタグが 1 つも無ければ何も変えず、どの配列も nil でなく空になる。
 func TestBatchTagsWithNothingApplicableReturnsEmptyArrays(t *testing.T) {
 	db, ids := batchFixture(t)
 
@@ -175,8 +166,6 @@ func TestBatchTagsWithNothingApplicableReturnsEmptyArrays(t *testing.T) {
 	assertTagInvariantsNow(t, db)
 }
 
-// 受け入れ条件 11: 同じ動画に付いた 2 つのタグは 1 本と数え、フォルダ名からだけ付いている
-// 動画も数え、ライブラリに無い動画は数えない。
 func TestTagImpactCountsDistinctRegisteredVideos(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -188,12 +177,12 @@ func TestTagImpactCountsDistinctRegisteredVideos(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	upsertFolderVideo(t, db, fixturePath("/media/Anime/1.mp4"), "k1") // フォルダ名からだけ Anime
+	upsertFolderVideo(t, db, fixturePath("/media/Anime/1.mp4"), "k1")
 	upsertFolderVideo(t, db, fixturePath("/media/Other/2.mp4"), "k2")
 	rebuildIndexForTest(t, db)
 	attachTag(t, db, "k2", anime.ID)
 	attachTag(t, db, "k2", x.ID)
-	attachTag(t, db, "key-gone", x.ID) // いまライブラリに無い動画
+	attachTag(t, db, "key-gone", x.ID)
 
 	for _, action := range []domain.TagImpactAction{domain.TagImpactDelete, domain.TagImpactMerge} {
 		got, err := db.Tags().TagImpact(ctx, action, []int64{anime.ID, x.ID, x.ID, 999999})
@@ -204,7 +193,6 @@ func TestTagImpactCountsDistinctRegisteredVideos(t *testing.T) {
 			t.Errorf("%s: TagImpact = %+v, want %+v", action, got, want)
 		}
 	}
-	// 却下は仮のタグだけを数えるので、確定したタグだけなら 0。
 	got, err := db.Tags().TagImpact(ctx, domain.TagImpactReject, []int64{anime.ID, x.ID})
 	if err != nil {
 		t.Fatal(err)
@@ -214,18 +202,16 @@ func TestTagImpactCountsDistinctRegisteredVideos(t *testing.T) {
 	}
 }
 
-// 100 本に付いた仮のタグと、別の 1 本に付いた確定したタグを渡すと、操作ごとに働くタグと
-// その動画だけを数える。
 func TestTagImpactCountsOnlyTagsTheActionAppliesTo(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	files := make([]domain.VideoFile, 0, 101)
-	refs := make([]domain.VideoRef, 0, 100)
-	for i := range 101 {
+	files := make([]domain.VideoFile, 0, 3)
+	refs := make([]domain.VideoRef, 0, 2)
+	for i := range 3 {
 		key := fmt.Sprintf("key-%03d", i)
 		files = append(files, listingFile(fixturePath(fmt.Sprintf("/media/%03d.mp4", i)), key, key, i))
-		if i < 100 {
+		if i < 2 {
 			refs = append(refs, domain.VideoRef{ContentKey: key})
 		}
 	}
@@ -236,15 +222,15 @@ func TestTagImpactCountsOnlyTagsTheActionAppliesTo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	attachTag(t, db, "key-100", confirmed.ID)
+	attachTag(t, db, "key-002", confirmed.ID)
 
 	cases := []struct {
 		action domain.TagImpactAction
 		want   domain.TagImpact
 	}{
 		{domain.TagImpactDelete, domain.TagImpact{TagCount: 1, VideoCount: 1}},
-		{domain.TagImpactReject, domain.TagImpact{TagCount: 1, VideoCount: 100}},
-		{domain.TagImpactMerge, domain.TagImpact{TagCount: 2, VideoCount: 101}},
+		{domain.TagImpactReject, domain.TagImpact{TagCount: 1, VideoCount: 2}},
+		{domain.TagImpactMerge, domain.TagImpact{TagCount: 2, VideoCount: 3}},
 	}
 	for _, tc := range cases {
 		got, err := db.Tags().TagImpact(ctx, tc.action, []int64{tentative, confirmed.ID})

@@ -8,10 +8,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 人物と団体による一覧の絞り込み。
-// fixture のグループ show のメンバーは ep1・ep2・ep10、pair のメンバーは p1・p2 である。
-
-// sortedLibraryNames は所有者の ListLibrary を最後まで読み、項目の名前を並べて返す。
 func sortedLibraryNames(t *testing.T, db *DB, q domain.VideoQuery) []string {
 	t.Helper()
 	names := itemNames(libraryPages(t, db, domain.AudienceOwner, q))
@@ -19,8 +15,6 @@ func sortedLibraryNames(t *testing.T, db *DB, q domain.VideoQuery) []string {
 	return names
 }
 
-// workInfoListingFixture は、花子を ep1 の出演者・solo の監督・p1 の出演者に、メーカー A を ep1 と p2 に、
-// レーベル B を show の全メンバーに結ぶ。
 func workInfoListingFixture(t *testing.T) (db *DB, ids map[string]int64, hanako, makerA, labelB domain.Credit) {
 	t.Helper()
 	db, ids = itemsFixture(t)
@@ -42,8 +36,6 @@ func workInfoListingFixture(t *testing.T) (db *DB, ids map[string]int64, hanako,
 	return db, ids, hanako, makerA, labelB
 }
 
-// person と organization はどの役割でも結び付いた動画だけにし、一部のメンバーだけが当たったグループは
-// そのメンバーを動画の項目にする。total も絞り込みを掛けて数える。
 func TestListLibraryFiltersByPersonAndOrganization(t *testing.T) {
 	db, _, hanako, makerA, labelB := workInfoListingFixture(t)
 
@@ -75,7 +67,6 @@ func TestListLibraryFiltersByPersonAndOrganization(t *testing.T) {
 	}
 }
 
-// GET /api/videos の一覧と GET /api/library/ids も同じ条件で絞る。
 func TestListVideosAndLibraryIDsFilterByPerson(t *testing.T) {
 	db, ids, hanako, _, labelB := workInfoListingFixture(t)
 	ctx := context.Background()

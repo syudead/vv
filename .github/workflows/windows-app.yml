@@ -1,8 +1,4 @@
-# Windows 版の zip（VVMDM-<版>-windows-amd64.zip）を作る。タグ v* の push では GitHub Release に
-# 添付し、main への push では prerelease の Release「nightly」1 件の zip を差し替え、手動実行では
-# workflow の成果物として残す。組み立ては手元の task build-windows-app と
-# 同じ入口で、同梱の ffmpeg のエンコーダは Windows のランナーで確かめる
-#
+# Build release zips with task build-windows-app; validate bundled FFmpeg on Windows.
 name: Windows app
 
 on:
@@ -14,7 +10,7 @@ on:
 permissions:
   contents: read
 
-# main では新しい push が来たら前の組み立てを打ち切る。タグの組み立ては打ち切らない。
+# Cancel superseded main builds, but preserve tagged releases.
 concurrency:
   group: windows-app-${{ github.ref }}
   cancel-in-progress: ${{ github.ref_type != 'tag' }}
@@ -49,16 +45,14 @@ jobs:
       - name: Web依存を取得する
         run: npm --prefix web ci
 
-      # 同梱の FFmpeg の zip は版と SHA-256 を固定しているので、取得元の都合で main が赤くならないよう
-      # 取っておく。使うたびに SHA-256 を確かめるのは task build-windows-app のまま。
+      # Cache the pinned FFmpeg archive to tolerate upstream outages; verify its hash on every use.
       - name: FFmpeg の zip を復元する
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: dist/cache
           key: windows-ffmpeg-${{ hashFiles('scripts/build/windows_app.go') }}
 
-      # タグの push なら v を除いたタグが版になり、手動実行では VERSION を空にして sha-<12 桁> にする。
-      # 手動実行でもタグを ref に選ぶと ref_type は tag になるので、event_name で分ける。
+      # Manual runs use sha-<12 digits>, even when the selected ref is a tag.
       - name: zip を組む
         env:
           VERSION: ${{ github.event_name == 'push' && github.ref_type == 'tag' && github.ref_name || '' }}
@@ -80,11 +74,10 @@ jobs:
           name: windows-app
           path: dist/${{ steps.zip.outputs.name }}
           if-no-files-found: error
-          # zip は既に圧縮してある。
+          # ZIP files are already compressed.
           compression-level: 0
 
-  # 同梱の ffmpeg が Windows で動き、NVENC と QSV のエンコーダを持つことを確かめる（R-12）。
-  # GPU が無いランナーなので、確かめるのはエンコーダが組み込まれていることまでである。
+  # The runner has no GPU; verify compiled-in NVENC and QSV support only.
   verify:
     name: Verify bundled FFmpeg
     needs: build
@@ -105,8 +98,7 @@ jobs:
           foreach ($file in 'VVMDM.exe', 'README.txt', 'ffmpeg\ffmpeg.exe', 'ffmpeg\ffprobe.exe', 'ffmpeg\LICENSE.txt', 'ffmpeg\README.txt') {
             if (-not (Test-Path (Join-Path $root $file))) { throw "zip に $file がありません" }
           }
-          # Select-Object -First 1 に直接つなぐと途中でパイプラインを打ち切り、ffprobe の終了コードが
-          # 0 以外になる。出力をいったん受けてから終了コードを確かめる。
+          # Capture output before selecting a line; early pipeline termination changes the exit code.
           $version = & (Join-Path $root 'ffmpeg\ffprobe.exe') -hide_banner -version
           if ($LASTEXITCODE -ne 0) { throw "ffprobe が動きません" }
           $version | Select-Object -First 1
@@ -129,9 +121,8 @@ jobs:
         with:
           name: windows-app
 
-      # タグ v* では Release が無ければ作り、あれば zip を差し替える（同じタグの再実行）。
-      # main の push では prerelease の Release「nightly」を 1 件だけ使い回す。タグ nightly を
-      # このコミットへ動かし、新しい zip を載せてから前の zip を消すので、落とせる zip が途切れない。
+      # Replace tagged release assets on reruns. Publish the new nightly zip before
+      # removing the previous one so downloads remain available.
       - name: GitHub Release に添付する
         env:
           GH_TOKEN: ${{ github.token }}
@@ -155,8 +146,7 @@ jobs:
           NOTES="main の最新のコミット ${GITHUB_SHA} から組んだ Windows 版です。正式版ではありません。main に push するたびに差し替わります。"
           if gh release view "$TAG" > /dev/null 2>&1; then
             gh api --method PATCH "repos/${GH_REPO}/git/refs/tags/${TAG}" -f sha="$GITHUB_SHA" -F force=true > /dev/null
-            # 同じコミットの再実行では zip の名前も同じになる。--clobber は先に消してから載せるので、
-            # 同じ名前の zip が既にあれば載せ直さない。
+            # Avoid --clobber on an existing identical asset: it deletes before uploading.
             if ! gh release view "$TAG" --json assets --jq '.assets[].name' | grep -Fqx "$ZIP"; then
               gh release upload "$TAG" "$ZIP"
             fi
@@ -170,7 +160,7 @@ jobs:
             gh release create "$TAG" "$ZIP" --target "$GITHUB_SHA" --title "$TITLE" --notes "$NOTES" --prerelease --latest=false
           fi
 
-          # 以前は main の push ごとに Release とタグ main-<12 桁> を作っていた。残っていれば消す。
+          # Remove legacy per-commit nightly releases and tags.
           gh release list --limit 100 --json tagName --jq '.[].tagName | select(startswith("main-"))' | while read -r old; do
             gh release delete "$old" --cleanup-tag --yes
           done

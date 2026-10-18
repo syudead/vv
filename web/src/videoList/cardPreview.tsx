@@ -15,13 +15,8 @@ import { isNarrowVideo, unplayableText } from "../lib/format";
 import { ScrubFrame, type ScrubFrameData } from "../ui/ScrubPreview";
 import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
 
-/**
- * CardPreviewOptions は一覧の動画のカード（VideoCard）の hover プレビューの条件である
- * （400ms、同時に1件）。グループのカードはフォルダの絵柄（FolderArt）が前に出した1枚を
- * 流し、同じ usePreviewCoordination の調整に加わる。
- */
+/** Coordinate one preview after 400ms across video cards and FolderArt. */
 export interface CardPreviewOptions {
-  /** プレビューを流す動画。 */
   video: Video;
   selectionMode: boolean;
   activePreviewId?: number | null;
@@ -29,7 +24,6 @@ export interface CardPreviewOptions {
   onPreviewStart?: (id: number) => void;
 }
 
-/** CardPreview は useCardPreview の結果である。 */
 export interface CardPreview {
   attempting: boolean;
   previewActive: boolean;
@@ -38,22 +32,12 @@ export interface CardPreview {
   setPlaying: (playing: boolean) => void;
   releasePreview: () => void;
   startPreview: (event: PointerEvent<HTMLElement>) => void;
-  /**
-   * suspendPreview はスクラブの帯に入ったときに、400ms の待ちを止め、再生中・読み込み中の
-   * 動画を src と要素を保ったまま止める。
-   */
+  /** Stop the delay and pause media without discarding its source or element. */
   suspendPreview: () => void;
-  /**
-   * resumePreview は帯からカードの中へ出たときに、待ちを 400ms から数え直し、止めた
-   * 動画をその場面から再生し直す。
-   */
+  /** Restart the 400ms delay and resume from the paused frame. */
   resumePreview: () => void;
 }
 
-/**
- * useCardPreview は、マウスを 400ms 載せたらプレビューを流し、離したり別のカードが
- * 流し始めたりしたら止める。
- */
 export function useCardPreview({
   video,
   selectionMode,
@@ -70,7 +54,6 @@ export function useCardPreview({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const lifecycle = useRef(0);
-  // 帯にいる間の一時停止。waiting は待ちの途中で止めたことを表す。
   const suspended = useRef(false);
   const waiting = useRef(false);
   const observedResetEpoch = useRef(previewResetEpoch);
@@ -119,8 +102,8 @@ export function useCardPreview({
   // can still pause the element and release its resource.
   useLayoutEffect(() => () => releasePreview(), [releasePreview]);
 
-  // play の失敗は、その後に解放・一時停止されていなければプレビューを解放する。
-  // 一時停止の pause() が読み込み中の play() を打ち切った失敗では解放しない。
+  // Release on play failure only if no later release or suspension superseded it.
+  // Do not release when pause aborts a pending play during scrubbing.
   const playElement = useCallback(
     (element: HTMLVideoElement) => {
       const currentLifecycle = lifecycle.current;
@@ -179,7 +162,7 @@ export function useCardPreview({
     }
     const element = videoRef.current;
     if (element !== null) {
-      // 読み込み中の play() が pause() で打ち切られても解放しないよう、世代を進める。
+      // Advance generation so pause-induced play rejection cannot release the preview.
       lifecycle.current += 1;
       element.pause();
     }
@@ -210,11 +193,6 @@ export function useCardPreview({
   };
 }
 
-/**
- * CardMedia はカードのサムネイルと、その上に重ねるプレビューの動画である。
- * サムネイルが無いときは代わりの表示を出す。スクラブの帯にいる間のコマ（scrubFrame）は
- * サムネイルとループの動画の前に、同じ media 層の中で重ねる。
- */
 export function CardMedia({
   video,
   preview,

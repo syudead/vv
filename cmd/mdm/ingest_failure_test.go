@@ -15,9 +15,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// newTestIngest は本物の保存層と生成物の置き場で取り込みを組み立てる。
-// アプリケーション層の単体テスト（internal/app）はどちらも差し替えるので、
-// SQLite の取引と組み合わせたときの振る舞いはここで確かめる。
+// Use the real store and artifacts to verify ingestion behavior across SQLite transactions.
 func newTestIngest(db *store.DB, dataDir string) *app.Ingest {
 	return app.NewIngest(app.IngestOptions{
 		Store:     db.Ingest(),
@@ -27,7 +25,6 @@ func newTestIngest(db *store.DB, dataDir string) *app.Ingest {
 	})
 }
 
-// missingSourceFixture は所在のファイルが無い動画を1本取り込む。
 func missingSourceFixture(t *testing.T) (context.Context, string, *store.DB, int64) {
 	t.Helper()
 	ctx := context.Background()
@@ -54,7 +51,7 @@ func missingSourceFixture(t *testing.T) (context.Context, string, *store.DB, int
 func claimLastAttempt(t *testing.T, ctx context.Context, db *store.DB, kind domain.JobKind, videoID int64) domain.Job {
 	t.Helper()
 	if kind == domain.JobThumbnail {
-		// サムネイルは解析の後に取り出すので、解析は済ませておく。
+		// Thumbnails are claimable only after probing.
 		probe := domain.Probe{DurationMs: 1000, VideoCodec: "h264", AudioCodec: "aac"}
 		if err := db.Ingest().ApplyProbe(ctx, videoID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
 			t.Fatal(err)
@@ -73,9 +70,8 @@ func claimLastAttempt(t *testing.T, ctx context.Context, db *store.DB, kind doma
 	return job
 }
 
-// ファイルの確認で上限まで失敗した読み取り・サムネイルのジョブは、ハンドラ自身は
-// 状態を書かず、ジョブの失敗と同じ取引で動画側が failed になる。失敗が記録される
-// までは pending のままで、その間の読み取りのやり直しは断られる。
+// Video failure is committed with exhausted job failure; until then it stays pending and rejects
+// probe retries.
 func TestIngestHandlersLeaveTerminalFailureToFailClaimedJob(t *testing.T) {
 	cases := []struct {
 		kind  domain.JobKind

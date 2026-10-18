@@ -94,13 +94,9 @@ export function clearScanNoticeSession(): void {
   }
 }
 
-/**
- * 右下の表示を閉じた取り込みの id である。同じ取り込みの間は、読み込み直しや別のタブでも
- * 右下に出さない（issue 830）ので、sessionStorage ではなく localStorage に置く。
- */
+/** Use localStorage so dismissal survives reloads and propagates across tabs. */
 export const dismissedStorageKey = "vv.scan-indicator-dismissed";
 
-/** parseDismissedScanId は保存した値を読む。形が違えば null を返す。 */
 export function parseDismissedScanId(raw: string | null): number | null {
   if (raw === null) return null;
   try {

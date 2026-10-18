@@ -47,8 +47,6 @@ describe("TagsPage 仮のタグ", () => {
     const gamma = rowOf("Gamma");
     expect(within(gamma).queryByText("Tentative")).toBeNull();
     expect(within(gamma).queryByRole("button", { name: "Confirm" })).toBeNull();
-    // 確定した行の操作は今と同じ3つ（マウスの端末）と、タッチ・狭い幅でそれを
-    // まとめる「Actions」（CSS でどちらか一方だけを描く）。
     expect(
       within(gamma)
         .getAllByRole("button")
@@ -62,9 +60,7 @@ describe("TagsPage 仮のタグ", () => {
     renderPage();
     await screen.findByTitle("Gamma");
 
-    // 吹き出しは 1 回だけ開き、押す前と後のチェックを同じ吹き出しで読む。開き直して読むと
-    // 開閉のたびに描き直し、CI の遅い走りで 5 秒の上限に近づく。閉じたあとも効いている
-    // ことは「Filter」の読み上げ名で確かめる。
+    // Keep the popover open for both assertions to avoid redundant rerenders; its accessible name verifies the closed state.
     expect(filterButton().getAttribute("aria-label")).toBe("Filter");
     await user.click(filterButton());
     const tentative = () => screen.getByRole("checkbox", { name: /^Tentative only/ });
@@ -78,7 +74,6 @@ describe("TagsPage 仮のタグ", () => {
     expect(screen.queryByTitle("Gamma")).toBeNull();
     expect(screen.getByTitle("Alpha")).toBeDefined();
 
-    // 検索と重ねられる。
     await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "be");
     expect(await screen.findByText("1 of 4 tags")).toBeDefined();
     expect(screen.getByTitle("Beta")).toBeDefined();
@@ -139,7 +134,6 @@ describe("TagsPage 仮のタグ", () => {
         .getByRole("button", { name: "More actions" })
         .hasAttribute("disabled"),
     ).toBe(true);
-    // ほかの行はそのまま。
     expect(
       within(rowOf("Beta"))
         .getByRole("button", { name: "Rename" })
@@ -266,7 +260,6 @@ describe("TagsPage 仮のタグ", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
     const dialog = await screen.findByRole("alertdialog", { name: 'Reject "Alpha"' });
 
-    // 窓を開いたあと、別のタブで先に確定されたことにする。
     server.tags = server.tags.map((item) =>
       item.id === 1 ? { ...item, tentative: false } : item,
     );
@@ -348,7 +341,6 @@ describe("TagsPage 仮のタグ", () => {
     expect(
       entry.compareDocumentPosition(firstRow) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    // タブは見出しと同じ帯の中にある。窓は開かない。
     expect(entry.closest(".sticky")).toBe(
       screen.getByRole("heading", { name: "Tags" }).closest(".sticky"),
     );
@@ -358,7 +350,6 @@ describe("TagsPage 仮のタグ", () => {
 
     const list = await openRejectedTab(user);
     expect(screen.queryByRole("dialog")).toBeNull();
-    // タグの行は「Tags」のタブに戻るまで描かない。
     expect(
       screen.queryByRole("link", { name: "Open the library filtered by Alpha" }),
     ).toBeNull();
@@ -410,7 +401,6 @@ describe("TagsPage 仮のタグ", () => {
     renderPage();
     await screen.findByTitle("Alpha");
 
-    // 却下で取り直しが始まり、その応答は取り外しの前の並びを持ったまま止まる。
     hold.rejectedGets = true;
     await user.click(within(rowOf("Beta")).getByRole("button", { name: "More actions" }));
     await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
@@ -425,7 +415,6 @@ describe("TagsPage 仮のタグ", () => {
     await waitFor(() => expect(within(list).queryByTitle("Old")).toBeNull());
 
     rejectedGetReleases.forEach((resolve) => resolve());
-    // 取り外しのあとの取り直しが却下した Beta を並べ、古い応答の Old は戻らない。
     expect(
       await within(list).findByRole("button", { name: 'Allow "Beta" again' }),
     ).toBeDefined();
@@ -510,7 +499,6 @@ describe("TagsPage 仮のタグ", () => {
     await user.click(within(rowOf("Beta")).getByRole("button", { name: "Confirm" }));
     expect(confirmReleases).toHaveLength(2);
 
-    // 後から押した Beta が先に終わり、そのあとで Alpha が終わる。
     const [releaseAlpha, releaseBeta] = confirmReleases;
     releaseBeta!();
     await waitFor(() => expect(screen.queryByTitle("Beta")).toBeNull());
@@ -567,7 +555,6 @@ describe("TagsPage 仮のタグ", () => {
     await user.click(within(dialog).getByRole("button", { name: "Merge" }));
 
     expect(await screen.findByText('Merged "Alpha" into "Beta"')).toBeDefined();
-    // 統合元（Alpha）は消え、統合先（Beta）は確定になって絞り込みから外れる。
     await waitFor(() => expect(screen.queryByTitle("Beta")).toBeNull());
     await waitFor(() =>
       expect(document.activeElement).toBe(
@@ -596,7 +583,6 @@ describe("TagsPage 仮のタグ", () => {
     expect(filter.hasAttribute("disabled")).toBe(false);
     await waitFor(() => expect(document.activeElement).toBe(filter));
 
-    // 「Show all tags」で外すとタグが 0 なので、フォーカスは「新しいタグ」へ。
     await user.click(screen.getByRole("button", { name: "Show all tags" }));
     expect(await screen.findByText("No tags yet")).toBeDefined();
     expect(filter.hasAttribute("disabled")).toBe(true);

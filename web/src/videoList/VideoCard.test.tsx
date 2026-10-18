@@ -454,7 +454,6 @@ describe("VideoCard tagsRow（issue 269）", () => {
       },
     );
     const row = screen.getByText("タグの行").parentElement;
-    // 題名との間隔はカードの gap-2 が持つ。
     expect(row?.closest("a")).toBeNull();
     expect(row?.parentElement?.className).toContain("gap-2");
   });
@@ -488,9 +487,7 @@ describe("VideoCard tagsRow（issue 269）", () => {
     );
     expect(stableTagsRow).toHaveBeenCalledTimes(1);
 
-    // 親を、まったく同じ props（同じ参照）で再描画する（無関係な状態が変わった
-    // ことを模す）。memo(VideoCard) が効いていれば、VideoCard は再描画されず、
-    // tagsRow はもう一度呼ばれない。
+    // Rerender with identical prop references to verify memo(VideoCard) does not invoke tagsRow again.
     rerender(
       <MemoryRouter>
         <VideoCard {...props} />
@@ -498,7 +495,6 @@ describe("VideoCard tagsRow（issue 269）", () => {
     );
     expect(stableTagsRow).toHaveBeenCalledTimes(1);
 
-    // tagsRow の参照が変われば、当然に再描画され、新しい関数が呼ばれる。
     const nextTagsRow = vi.fn(() => <p>タグの行</p>);
     rerender(
       <MemoryRouter>
@@ -509,7 +505,6 @@ describe("VideoCard tagsRow（issue 269）", () => {
   });
 });
 
-// 公開の印。
 describe("VideoCard の公開の印", () => {
   afterEach(() => cleanup());
 
@@ -528,7 +523,6 @@ describe("VideoCard の公開の印", () => {
     const mark = screen.getByText("Public");
     expect(mark.className).toContain("sr-only");
     const face = mark.parentElement!;
-    // 先頭が地球のアイコン、その後に時間。
     expect(face.firstElementChild?.tagName.toLowerCase()).toBe("svg");
     expect(face.firstElementChild?.getAttribute("class")).toContain("lucide-globe");
     expect(face.textContent).toBe("Public1:00");
@@ -668,7 +662,6 @@ describe("VideoCard の表示（issue 308）", () => {
     sizeBytes: 5 * 1024 * 1024,
   });
 
-  // ライブラリ（tagsRow あり）・フォルダ画面（なし）・検索結果（置き場所あり）の3通り。
   const variants: [string, Partial<React.ComponentProps<typeof VideoCard>>][] = [
     ["Library", { tagsRow: () => null }],
     ["フォルダ画面", { onSelect: undefined }],
@@ -688,7 +681,6 @@ describe("VideoCard の表示（issue 308）", () => {
       expect(article.textContent).not.toMatch(/MB|KB/);
       expect(article.textContent).not.toMatch(/ ago|just now/);
       expect(screen.queryByText("Watched")).toBeNull();
-      // 再生時間は残す。
       expect(screen.getByText("1:05")).toBeDefined();
     },
   );
@@ -721,8 +713,7 @@ describe("VideoCard のスクラブの帯", () => {
   const timeBox = () => screen.getByText(/^\d+:\d\d( \/ \d+:\d\d)?$/);
   const scrubBar = () => document.querySelector<HTMLElement>("[data-scrub-bar]");
 
-  // React は要素の間の移動を pointerout から pointerenter / pointerleave にするので、
-  // リンクから帯へ移る pointerout を送る。
+  // React derives enter/leave from pointerout between elements; dispatch it from the link to the band.
   function moveFromLinkToBand(element: HTMLElement, clientX: number) {
     fireEvent.pointerOut(screen.getByRole("link"), {
       pointerType: "mouse",
@@ -731,7 +722,6 @@ describe("VideoCard のスクラブの帯", () => {
     });
   }
 
-  // 帯の矩形は左 100px・幅 400px。clientX 300 で真ん中（60 秒の動画の 0:30）。
   function enterBand(clientX: number) {
     const element = band();
     if (element === null) throw new Error("no band");
@@ -795,7 +785,6 @@ describe("VideoCard のスクラブの帯", () => {
     expect(timeBox().textContent).toBe("0:30 / 1:00");
     expect(scrubBar()?.getAttribute("aria-hidden")).toBe("true");
     expect(scrubBar()?.firstElementChild?.getAttribute("style")).toContain("width: 50%");
-    // 視聴位置のバーは値を保ったまま見た目だけ隠す。
     expect(progress.classList.contains("opacity-0")).toBe(true);
     expect(progress.getAttribute("aria-valuenow")).toBe("25");
 
@@ -919,8 +908,7 @@ describe("VideoCard のスクラブの帯", () => {
     );
     const element = enterBand(300);
     fireEvent.click(element);
-    // 時刻の問い合わせも自動再生の印も無いので、プレイヤーは保存した続きの位置から始める
-    // （VideoPage.test.tsx「途中まで見た動画は続きの位置から始め…」）。
+    // Without seek or autoplay overrides, playback resumes from the stored position.
     expect(screen.getByText('player search=[] state={"from":"/"}')).not.toBeNull();
   });
 

@@ -14,7 +14,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// openFixture は実在するファイルを代表の所在に持つ動画を返す。
 func openFixture(t *testing.T) (domain.Video, *fakeLibrary) {
 	t.Helper()
 	root := t.TempDir()
@@ -45,8 +44,6 @@ func assertErrorCode(t *testing.T, rec *httptest.ResponseRecorder, status int, c
 	}
 }
 
-// ループバックから、ループバックの Host で来た要求だけが 204 を得る。opener には、
-// 要求の内容に関わらず代表の所在だけが渡る。
 func TestOpenVideoFileOpensRepresentativeLocation(t *testing.T) {
 	video, library := openFixture(t)
 	opener := &fakeOpener{available: true}
@@ -67,7 +64,6 @@ func TestOpenVideoFileOpensRepresentativeLocation(t *testing.T) {
 	}
 }
 
-// ループバック以外の要求と、Host がループバックの名前でない要求は 403 になる。
 func TestOpenVideoFileRejectsNonLoopback(t *testing.T) {
 	_, library := openFixture(t)
 	opener := &fakeOpener{available: true}
@@ -76,7 +72,7 @@ func TestOpenVideoFileRejectsNonLoopback(t *testing.T) {
 	for _, tc := range []struct{ remote, host string }{
 		{remote: "192.168.1.20:50000", host: "192.168.1.10:8080"},
 		{remote: "192.168.1.20:50000", host: "localhost:8080"},
-		// DNS rebinding で 127.0.0.1 を指させた他サイトのページ。
+		// Simulate a foreign origin resolving to 127.0.0.1 through DNS rebinding.
 		{remote: "127.0.0.1:50000", host: "evil.example:8080"},
 		{remote: "127.0.0.1:50000", host: "192.168.1.10:8080"},
 	} {
@@ -89,7 +85,6 @@ func TestOpenVideoFileRejectsNonLoopback(t *testing.T) {
 	}
 }
 
-// 開けない環境では、要求元を問わず 409 open_unavailable になる（403 より先）。
 func TestOpenVideoFileUnavailableRegardlessOfRequester(t *testing.T) {
 	_, library := openFixture(t)
 	for _, opts := range []Options{
@@ -104,7 +99,6 @@ func TestOpenVideoFileUnavailableRegardlessOfRequester(t *testing.T) {
 	}
 }
 
-// ファイルが無いときは 409 file_missing になる。要求元の判定（403）の後である。
 func TestOpenVideoFileReportsMissingFile(t *testing.T) {
 	video, library := openFixture(t)
 	if err := os.Remove(video.Path); err != nil {
@@ -123,9 +117,6 @@ func TestOpenVideoFileReportsMissingFile(t *testing.T) {
 	}
 }
 
-// 代表の所在が登録フォルダの外を指すとき（シンボリックリンクで外へ出る、または
-// 登録を外したフォルダの下にある）は、ファイルが無いときと同じ 409 file_missing に
-// なり、opener には何も渡らない。配信と同じく DB の値をそのまま OS へ渡さない。
 func TestOpenVideoFileRejectsLocationOutsideMediaFolders(t *testing.T) {
 	video, library := openFixture(t)
 	outside := filepath.Join(t.TempDir(), "secret.txt")
@@ -152,7 +143,6 @@ func TestOpenVideoFileRejectsLocationOutsideMediaFolders(t *testing.T) {
 	}
 }
 
-// 知らない id は、開けない環境でも要求元を問わず 404 になる。
 func TestOpenVideoFileUnknownVideo(t *testing.T) {
 	_, library := openFixture(t)
 	for _, opener := range []*fakeOpener{{available: true}, {available: false}} {
@@ -169,7 +159,6 @@ func TestOpenVideoFileReportsStartFailure(t *testing.T) {
 	assertErrorCode(t, rec, http.StatusInternalServerError, codeInternal)
 }
 
-// 既存の同一オリジン確認は、この経路にもそのまま掛かる。
 func TestOpenVideoFileKeepsSameOriginCheck(t *testing.T) {
 	_, library := openFixture(t)
 	opener := &fakeOpener{available: true}

@@ -25,19 +25,11 @@ import {
 } from "../ui/shadcn/dropdown-menu";
 import { useToast } from "../ui/Toast";
 
-/** modes はまとめ方の選択肢の並びである。表示名は描画のたびにカタログから引く。 */
 const modes: readonly FolderGroupingMode[] = ["auto", "ungroup", "groupDirect"];
 
 /**
- * FolderGroupingMenu はフォルダ画面の「動画 N」の見出しの行の右端に置く、そのフォルダの
- * ライブラリでのまとめ方のメニューである。
- *
- * ラジオは応答の `grouping` を `onGroupingChange` で返すだけで、一覧は読み直させない。
- * 「Turn the group into a tag…」は `grouping.groupId`（そのフォルダの自動グループ）があるときだけ
- * 描き、共有のタグの窓（GroupTagDialog）を開く。グループは改名できるので、窓の名前は開く前に `GET /api/groups/{id}` で読んだ今の名前に
- * する（タグはその名前で作られる）。その読み出しの 404 は窓からの 404 と同じに扱う。成功は `onTagged` で画面に動画の一覧を読み直させ、窓からの 404（途中で解散された）と
- * ラジオの 409 は `onStale` でフォルダの `grouping` を読み直させる。どちらの操作も、成功すると
- * 一覧の控えを捨てる（api/folderGrouping、api/groups）。
+ * Fetch the group's current name before opening the tag dialog because groups can be renamed. A
+ * missing group or grouping conflict calls onStale; tagging calls onTagged to refresh videos.
  */
 export default function FolderGroupingMenu({
   folder,
@@ -48,7 +40,6 @@ export default function FolderGroupingMenu({
   onStale,
 }: {
   folder: FolderRef;
-  /** フォルダの名前（失敗の文言に使う）。 */
   name: string;
   grouping: FolderGrouping;
   onGroupingChange: (grouping: FolderGrouping) => void;
@@ -69,7 +60,7 @@ export default function FolderGroupingMenu({
     if (conflict) onStale();
   };
 
-  // 同じ値を選び直しても送る。
+  // Send even when the selected value is unchanged.
   const choose = async (mode: FolderGroupingMode) => {
     setBusy(true);
     try {
@@ -81,7 +72,7 @@ export default function FolderGroupingMenu({
     }
   };
 
-  // グループが途中で解散された。ライブラリの控えにはまだそのカードがあるので捨てる。
+  // The group was dissolved; discard the cached library card.
   const gone = () => {
     setTagging(null);
     clearListSnapshot();
@@ -163,7 +154,7 @@ export default function FolderGroupingMenu({
           onTagged={(result) => {
             setTagging(null);
             toast(taggedMessage(result));
-            // タグにすると自動グループは解散し、そのフォルダに ungroup が書かれる。
+            // Tag conversion dissolves the automatic group and records ungroup for its folder.
             onGroupingChange({ mode: "ungroup" });
             onTagged();
           }}

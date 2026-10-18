@@ -8,11 +8,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// お気に入りとプレイリストの項目をグループの id で名指す。
-
-// 受け入れ条件 8: 手で作ったグループをお気に入りにでき、お気に入りの絞り込みに並び、プレイリストの
-// 項目として並び、その再生順（深さ優先）で再生される。解散するとお気に入りとプレイリストの項目が
-// 消え、プレイリストは詰め直されて更新日時が進む。
 func TestHandMadeGroupIsFavoritedAndPlayedFromAPlaylist(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -74,7 +69,6 @@ func TestHandMadeGroupIsFavoritedAndPlayedFromAPlaylist(t *testing.T) {
 	}
 }
 
-// existingGroupIDs は今あるグループの id だけを、最初に現れた順に重複なしで返す。
 func TestExistingGroupIDsKeepsRequestOrderWithoutDuplicates(t *testing.T) {
 	db, _ := itemsFixture(t)
 	ctx := context.Background()
@@ -94,9 +88,6 @@ func TestExistingGroupIDsKeepsRequestOrderWithoutDuplicates(t *testing.T) {
 	}
 }
 
-// 移行は今のフォルダグループのお気に入りとプレイリストのグループの項目をそのグループのものにし、
-// グループでないフォルダのものは落としてプレイリストを詰め直す。Down は folder_favorites を空で戻し、
-// 自動グループの項目をフォルダの鍵へ戻す。
 func TestGroupKeysMigrationConvertsFolderKeys(t *testing.T) {
 	db, provider := migrateTo(t, 43)
 	ctx := context.Background()
@@ -105,7 +96,7 @@ func TestGroupKeysMigrationConvertsFolderKeys(t *testing.T) {
 		domain.NaturalSortKey("Show"), domain.NaturalSortKey("Mine"))
 	execSQL(t, db, `insert into folder_favorites (path, favorited_at) values ('/m/show', 50), ('/m/gone', 60)`)
 	execSQL(t, db, `insert into playlists (id, name, created_at, updated_at) values (1, 'P', 1, 1), (2, 'Q', 1, 1)`)
-	// id の最も大きい項目 6 が落ちても、新しい項目は id 6 を使い回さない。
+	// Dropping the highest old item ID must not let later inserts reuse it.
 	execSQL(t, db, `insert into playlist_items (id, playlist_id, content_key, folder_key, position, added_at) values
 		(1, 1, 'key-a', null, 0, 1), (2, 1, null, '/m/gone', 1, 1), (3, 1, null, '/m/show', 2, 1), (4, 1, 'key-b', null, 3, 1),
 		(5, 2, 'key-a', null, 0, 1), (6, 1, null, '/m/gone2', 4, 1)`)
@@ -144,7 +135,6 @@ func TestGroupKeysMigrationConvertsFolderKeys(t *testing.T) {
 		t.Errorf("項目を落とさないプレイリストの updated_at = %d, want 1", got)
 	}
 
-	// 手で作ったグループの項目は Down で落ちる。
 	if id := insertForTest(t, db, `insert into playlist_items (playlist_id, group_id, position, added_at) values (1, 8, 3, 1)`); id != 7 {
 		t.Errorf("移行のあとに足した項目の id = %d, want 7", id)
 	}
@@ -176,7 +166,6 @@ func TestGroupKeysMigrationConvertsFolderKeys(t *testing.T) {
 	}
 }
 
-// playlistUpdatedAtForTest はプレイリスト id の updated_at を読む。
 func playlistUpdatedAtForTest(t *testing.T, db *DB, id int64) int64 {
 	t.Helper()
 	var updatedAt int64
@@ -186,7 +175,6 @@ func playlistUpdatedAtForTest(t *testing.T, db *DB, id int64) int64 {
 	return updatedAt
 }
 
-// insertForTest は query を実行し、足した行の id を返す。
 func insertForTest(t *testing.T, db *DB, query string) int64 {
 	t.Helper()
 	result, err := db.sql.Exec(query)

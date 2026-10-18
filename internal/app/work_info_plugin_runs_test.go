@@ -9,8 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 実行のログの保存。行の置き換えと、世代が変わったときに
-// 書かないことは internal/store のテストが本物の SQLite で確かめる。
+// Test run-log orchestration; store tests verify replacement and generation checks against SQLite.
 
 func TestRunSavesTheMaskedLogWithTheGenerationThatRan(t *testing.T) {
 	e := newFetchEnv()
@@ -53,7 +52,7 @@ func TestRunSavesTheLogOfAFailedRun(t *testing.T) {
 	}
 }
 
-// 2 回目の実行のログは 1 回目のものに替わる。保存は呼び出しの順で、実行が終わった順である。
+// Persist runs in completion order, replacing the previous log.
 func TestRunLastRunIsTheNewest(t *testing.T) {
 	e := newFetchEnv()
 	e.runtime.stderr = "first"
@@ -71,7 +70,7 @@ func TestRunLastRunIsTheNewest(t *testing.T) {
 	}
 }
 
-// 実行の前に断った要求は、モジュールを動かさないのでログを残さない。
+// Preflight rejections never execute the module or record a log.
 func TestRunRefusedBeforeTheModuleRunsSavesNoLog(t *testing.T) {
 	e := newFetchEnv()
 	e.store.plugins[1].ApprovedDigest = ""

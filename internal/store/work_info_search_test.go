@@ -8,11 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ライブラリの検索欄と作品情報。
-
-// workInfoSearchFixture は題名にも相対パスにも検索語を含まない 2 本の動画を作り、1 本目に作品情報を書く。
-// 1 本目の作品情報は品番 AB-12、出演者の人物（別名はひらがな）、メーカーの団体、説明を持つ。2 本目は
-// 作品情報を持たない。どちらも公開する。
+// Keep query terms out of titles and paths to isolate work-info matching.
 func workInfoSearchFixture(t *testing.T) (*DB, int64, int64, domain.Credit) {
 	t.Helper()
 	db := migratedDB(t)
@@ -33,8 +29,6 @@ func workInfoSearchFixture(t *testing.T) (*DB, int64, int64, domain.Credit) {
 	return db, tagged, other, person
 }
 
-// 所有者の検索語は品番（2〜5 文字の部分）、人物の名前、別のかなの形で書いた別名、団体の名前に当たり、
-// 除外語にするとその動画が除かれる。説明にだけある語では当たらない。
 func TestSearchMatchesWorkInfoCodeAndCreditNames(t *testing.T) {
 	db, tagged, other, _ := workInfoSearchFixture(t)
 	for _, query := range []string{"ab", "AB-", "ab-1", "ab-12", "山田花子", "ヤマダハナコ", "ﾔﾏﾀﾞ", "メーカーA", "めーかーa"} {
@@ -52,7 +46,6 @@ func TestSearchMatchesWorkInfoCodeAndCreditNames(t *testing.T) {
 	}
 }
 
-// ゲストの検索は作品情報に照合しないので、作品情報だけで当たる公開動画は返らない（R-10）。
 func TestGuestSearchDoesNotMatchWorkInfo(t *testing.T) {
 	db, _, _, _ := workInfoSearchFixture(t)
 	for _, query := range []string{"ab-12", "山田花子", "やまだ", "メーカーA"} {
@@ -62,7 +55,6 @@ func TestGuestSearchDoesNotMatchWorkInfo(t *testing.T) {
 	}
 }
 
-// 改名した人物は新しい名前で見つかり、古い名前では見つからない。動画側の鍵は書き直さない（R-6）。
 func TestSearchFollowsRenamedPerson(t *testing.T) {
 	db, tagged, _, person := workInfoSearchFixture(t)
 	name := "佐藤春子"
@@ -77,8 +69,6 @@ func TestSearchFollowsRenamedPerson(t *testing.T) {
 	}
 }
 
-// 人物を統合すると、統合元の名前は統合先の別名になり、その名前で統合先の動画がすべて当たる
-// （親 Issue #967 の受け入れ条件 5）。
 func TestSearchFindsAMergedPersonByTheMergedName(t *testing.T) {
 	db, tagged, other, person := workInfoSearchFixture(t)
 	source := createPerson(t, db, "佐藤秋子")
@@ -91,9 +81,6 @@ func TestSearchFindsAMergedPersonByTheMergedName(t *testing.T) {
 	}
 }
 
-// 集まりの代表以外のバージョンから書いた作品情報も集まりの利用者データの鍵に載るので、ライブラリの
-// 項目（ListLibrary）では品番・人物・団体の名前の語で代表の 1 件が出て、除外語にすると集まりごと
-// 除かれる。
 func TestLibrarySearchMatchesWorkInfoOfTheBundle(t *testing.T) {
 	db := migratedDB(t)
 	paths := upsertAll(t, db,

@@ -12,7 +12,6 @@ import SearchBox from "../videoList/SearchBox";
 import { CompactSortControls, SortMenu } from "../videoList/SortControls";
 import ZoomSlider from "../videoList/ZoomSlider";
 
-/** viewOptions は表示形式の選択肢である。文言は描画のたびにカタログから引く。 */
 function viewOptions() {
   return [
     {
@@ -24,11 +23,6 @@ function viewOptions() {
   ] as const;
 }
 
-/**
- * viewControls は表示形式の切り替えと大きさ（格子表示のときだけ）の 2 つである。表示形式は
- * `lg`、大きさは `xl` から行に並ぶ。ライブラリと、検索・絞り込み・並べ替えを持たない
- * グループのページが使う。
- */
 export function viewControls(
   view: ViewMode,
   onViewChange: (value: ViewMode) => void,
@@ -58,7 +52,6 @@ export function viewControls(
       ),
     },
   ];
-  // 大きさは格子表示のときだけ意味を持つ。
   if (view === "grid") {
     controls.push({
       id: "size",
@@ -93,20 +86,11 @@ export interface LibraryToolbarProps {
   onViewChange: (value: ViewMode) => void;
   zoom: Zoom;
   onZoomChange: (value: Zoom) => void;
-  /** 絞り込みのポップオーバーの最後の行（所有者のタグの種類と、追加日と長さ）。 */
   extraFilter?: ReactNode;
-  /** `extraFilter` で効いている絞り込みの数。 */
   extraFilterCount?: number;
-  /** 絞り込みのポップオーバーを開いた。 */
   onFilterOpen?: () => void;
 }
 
-/**
- * LibraryToolbar はライブラリの操作をトップバーの中の 1 行に集める（画面の型の Toolbar の
- * placement="topBar"。LibraryPage が TopBarPortal で入れる）。並びは Tab の順で、
- * 検索欄 → 絞り込み → 並べ替え → 向き（並べ直す）→ 表示形式・大きさ。並べ替えは md、表示形式は lg、大きさは xl から行に並び、
- * それより狭い幅ではアイコンだけの「View and sort」のポップオーバーに入る。
- */
 export default function LibraryToolbar({
   query,
   onQueryCommit,

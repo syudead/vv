@@ -71,7 +71,6 @@ describe("parseListCriteria（URL の解釈）", () => {
       favorite: false,
       sort: "addedDesc",
     });
-    // 未知の sort は端末に保存した並び順に戻る。
     expect(parse("?sort=nope", "durationDesc").criteria.sort).toBe("durationDesc");
     expect(parse("?sort=nope", "durationDesc").hasExplicitSort).toBe(false);
   });
@@ -83,7 +82,6 @@ describe("parseListCriteria（URL の解釈）", () => {
 
   it("メニューに種類がある並び順をすべて読む", () => {
     const listed = videoSorts.filter((sort) => isListSort(sort));
-    // 9 つの種類の 17 の値（ランダムは向きを持たない）。
     expect(listed).toHaveLength(17);
     expect(listed).toContain("favoritedAsc");
     expect(listed).toContain("favoritedDesc");
@@ -118,7 +116,6 @@ describe("parseListCriteria（URL の解釈）", () => {
     expect(parse("?q=%20%20abc%20").criteria.query).toBe("abc");
     const long = "猫".repeat(120);
     expect(parse(`?q=${encodeURIComponent(long)}`).criteria.query).toBe("猫".repeat(100));
-    // サロゲートペアを割らない
     const emoji = "😀".repeat(101);
     expect(
       Array.from(parse(`?q=${encodeURIComponent(emoji)}`).criteria.query),

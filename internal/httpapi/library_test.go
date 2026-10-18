@@ -20,19 +20,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// ライブラリの項目を、本物の認証・
-// 保存層・経路をつないで確かめる。
-//
-//	root = <media>
-//	  show/ep1.mp4   公開。完了。手で付けたタグ「手」
-//	  show/ep2.mp4   公開。途中まで
-//	  show/ep10.mp4  非公開
-//	  pair/p1.mp4    公開
-//	  pair/p2.mp4    非公開
-//	  solo.mp4       公開
-//
-// show と pair はグループになる。フォルダ名 show と同じ名前のタグがあり、show の
-// メンバーにはフォルダ由来で付く。
+// show and pair are automatic groups; ep1/ep2/p1/solo are public, ep1 is watched, ep2 is in progress, and show members inherit their folder tag.
 type libraryFixture struct {
 	env      *authEnv
 	owner    *http.Cookie
@@ -48,8 +36,6 @@ func newLibraryFixture(t *testing.T) *libraryFixture {
 	return newLibraryFixtureWith(t, func(options Options) Options { return options })
 }
 
-// newLibraryFixtureWith は newLibraryFixture と同じ中身を、経路の問い合わせ先を
-// adjust で差し替えて作る。
 func newLibraryFixtureWith(t *testing.T, adjust func(Options) Options) *libraryFixture {
 	t.Helper()
 	ctx := context.Background()
@@ -95,7 +81,7 @@ func newLibraryFixtureWith(t *testing.T, adjust func(Options) Options) *libraryF
 			t.Fatal(err)
 		}
 	}
-	// ep1 にはサムネイルが無い。グループの絵柄はサムネイル生成済みのメンバーだけを差し込む。
+	// ep1 has no thumbnail, so group previews must skip it.
 	for _, name := range []string{"ep2", "ep10"} {
 		if err := db.Ingest().SetThumbnailState(ctx, f.ids[name], domain.ThumbnailStateDone); err != nil {
 			t.Fatal(err)
@@ -129,7 +115,6 @@ func newLibraryFixtureWith(t *testing.T, adjust func(Options) Options) *libraryF
 	return f
 }
 
-// previewIDs はグループの絵柄に差し込むサムネイルの動画の id を並びの順に返す。
 func previewIDs(previews []gen.FolderPreview) []int64 {
 	ids := make([]int64, 0, len(previews))
 	for _, preview := range previews {
@@ -138,19 +123,16 @@ func previewIDs(previews []gen.FolderPreview) []int64 {
 	return ids
 }
 
-// groupID は所有者のライブラリの一覧から、名前 name のグループの id を返す。
 func (f *libraryFixture) groupID(t *testing.T, name string) int64 {
 	t.Helper()
 	return libraryGroupNamed(t, decode[gen.LibraryPage](t, f.env.get("/api/library", f.owner)), name).Id
 }
 
-// groupPath は名前 name のグループの GET /api/groups/{id} の経路である。
 func (f *libraryFixture) groupPath(t *testing.T, name string) string {
 	t.Helper()
 	return "/api/groups/" + strconv.FormatInt(f.groupID(t, name), 10)
 }
 
-// libraryItemNames は項目を「group:名前」か「folder:名前」か動画の題名にして並べ替えて返す。
 func libraryItemNames(page gen.LibraryPage) []string {
 	names := make([]string, 0, len(page.Items))
 	for _, item := range page.Items {
@@ -181,8 +163,6 @@ func libraryGroupNamed(t *testing.T, page gen.LibraryPage, name string) gen.Libr
 	return gen.LibraryGroup{}
 }
 
-// 受け入れ条件 1・2・12・14: 所有者にはグループが1件の項目で出て、全メンバーの本数・
-// 合計・絵柄のサムネイル・並んだ id・視聴状態・見終えた本数・開くメンバー・タグの和集合が入る。
 func TestListLibraryForOwner(t *testing.T) {
 	f := newLibraryFixture(t)
 	rec := f.env.get("/api/library?limit=1&sort=titleAsc", f.owner)
@@ -229,7 +209,6 @@ func TestListLibraryForOwner(t *testing.T) {
 		}
 	}
 
-	// 027 の受け入れ条件 1: 1本のメンバーだけが検索語に当たれば、その動画が動画の項目で出る。
 	hit := decode[gen.LibraryPage](t, f.env.get("/api/library?query=ep10", f.owner))
 	if names := libraryItemNames(hit); !slices.Equal(names, []string{"ep10"}) || hit.Total != 1 {
 		t.Fatalf("ep10 の検索 = %v・total %d", names, hit.Total)
@@ -238,14 +217,12 @@ func TestListLibraryForOwner(t *testing.T) {
 		t.Errorf("ep10 の検索の項目 = %+v, want ep10 の動画の項目", item)
 	}
 
-	// 視聴状態の絞り込みは項目の視聴状態に掛かる。
 	if names := libraryItemNames(decode[gen.LibraryPage](t, f.env.get("/api/library?watch=inProgress", f.owner))); !slices.Equal(names, []string{"group:show"}) {
 		t.Errorf("途中まで = %v", names)
 	}
 	if names := libraryItemNames(decode[gen.LibraryPage](t, f.env.get("/api/library?watch=watched", f.owner))); len(names) != 0 {
 		t.Errorf("見終えた = %v, want 空（ep1 だけ完了のグループは watched ではない）", names)
 	}
-	// フォルダ由来のタグでも絞れる。
 	if names := libraryItemNames(decode[gen.LibraryPage](t, f.env.get("/api/library?tag="+strconv.FormatInt(f.folder, 10), f.owner))); !slices.Equal(names, []string{"group:show"}) {
 		t.Errorf("タグ show = %v", names)
 	}
@@ -262,15 +239,12 @@ func TestListLibraryForOwner(t *testing.T) {
 		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
 }
 
-// failingRootsFolders は登録フォルダの一覧だけを読めないフォルダの問い合わせ先である。
 type failingRootsFolders struct{ Folders }
 
 func (failingRootsFolders) ListMediaFolders(context.Context) ([]domain.MediaFolder, error) {
 	return nil, errors.New("登録フォルダを読めない")
 }
 
-// strayGroupLibrary は、登録フォルダの下に無いフォルダのグループを返す、索引の
-// 食い違った問い合わせ先である。
 type strayGroupLibrary struct{ LibraryItems }
 
 func (l strayGroupLibrary) ListLibrary(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.LibraryPage, error) {
@@ -285,9 +259,7 @@ func (l strayGroupLibrary) ListLibrary(ctx context.Context, audience domain.Audi
 	return page, err
 }
 
-// 一覧の項目・total・カーソルと、グループの folder は同じスナップショットから作る。
-// 登録フォルダを別に読めなくてもグループは落ちず、フォルダが登録フォルダの下に無いグループは
-// folder を省いて返す。
+// Use one snapshot for items/totals/cursors/folders; omit only folder metadata for stale automatic paths.
 func TestListLibraryResolvesGroupFoldersFromSameSnapshot(t *testing.T) {
 	f := newLibraryFixtureWith(t, func(options Options) Options {
 		options.Folders = failingRootsFolders{options.Folders}
@@ -318,9 +290,6 @@ func TestListLibraryResolvesGroupFoldersFromSameSnapshot(t *testing.T) {
 	}
 }
 
-// 「すべて選択」の id は一覧の項目に合わせる。一部だけが当たったグループは当たった
-// メンバーの id だけで、全メンバーが当たったグループは全メンバーの id である
-// （027 の受け入れ条件 7）。
 func TestListLibraryIdsFollowItems(t *testing.T) {
 	f := newLibraryFixture(t)
 	rec := f.env.get("/api/library/ids?query=ep10&tag=999", f.owner)
@@ -348,9 +317,6 @@ func TestListLibraryIdsFollowItems(t *testing.T) {
 	})
 }
 
-// ゲストには公開のメンバーだけで数えた項目を返し、公開のメンバーが1本のグループも
-// グループの項目にする。視聴の値とタグは出さず、所有者の
-// データに依る条件は 400、「すべて選択」は 401 である。
 func TestListLibraryForGuest(t *testing.T) {
 	f := newLibraryFixture(t)
 	rec := f.env.get("/api/library")
@@ -372,7 +338,6 @@ func TestListLibraryForGuest(t *testing.T) {
 		t.Errorf("ゲストの show の長さ・大きさ = %v・%d", show.DurationMs, show.SizeBytes)
 	}
 
-	// 省いた欄が JSON に無いこと。
 	items := rawItems(t, rec.Body.Bytes(), "items")
 	for _, item := range items {
 		if string(item["kind"]) != `"group"` {
@@ -415,8 +380,6 @@ func TestListLibraryForGuest(t *testing.T) {
 	assertUnauthenticated(t, "ゲストの /api/library/ids", f.env.get("/api/library/ids"))
 }
 
-// unshelved はホームのどの棚にも一致しない動画だけにし、ゲストも使える（docs/design-docs/home.md
-// R-11）。棚の手（ep1）がグループ show から抜けるので、show はグループの項目にならず ep2 が 1 本で出る。
 func TestListLibraryUnshelved(t *testing.T) {
 	f := newLibraryFixture(t)
 	ctx := context.Background()
@@ -441,9 +404,6 @@ func TestListLibraryUnshelved(t *testing.T) {
 		t.Errorf("unshelved=false の所有者の項目 = %v, want show とフォルダを含む", names)
 	}
 }
-
-// グループの画面は絞り込みに関係なく子孫の動画の全部から作ったグループと、項目を位置の順に返し、
-// 無いグループは 404 である。ゲストは公開の動画だけで読み、公開の動画が 1 本でも読める
 func TestGetGroup(t *testing.T) {
 	f := newLibraryFixture(t)
 	path := f.groupPath(t, "show")
@@ -474,7 +434,6 @@ func TestGetGroup(t *testing.T) {
 		t.Errorf("項目 = %v, want [ep1 ep2 ep10]", titles)
 	}
 
-	// 続きのページはカーソルで読み、読めないカーソルと範囲外の limit は 400。
 	first := decode[gen.GroupItemPage](t, f.env.get(path+"/items?limit=2", f.owner))
 	if len(first.Items) != 2 || first.NextCursor == nil {
 		t.Fatalf("1 ページ目 = %+v", first)

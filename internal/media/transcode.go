@@ -27,12 +27,9 @@ const (
 	maxVideoShortSide  = 2160
 	maxVideoFPS        = 60
 	maxMacroblocksSec  = 983040
-	// liveKeyframeInterval は映像をエンコードするときのキーフレームの間隔（秒）。
-	// 出力は frag_keyframe でキーフレームごとに fragment を区切るので、最初の
-	// データはこの間隔分をエンコードし終えるまで出ない。
+	// frag_keyframe emits the first fragment only after this many seconds have been encoded.
 	liveKeyframeInterval = 2
-	// vaapiDevice は VAAPI で使う DRM の render node である。
-	vaapiDevice = "/dev/dri/renderD128"
+	vaapiDevice          = "/dev/dri/renderD128"
 )
 
 // LiveTranscoder starts one FFmpeg process for each HTTP request. Its output is
@@ -52,21 +49,9 @@ func NewLiveTranscoder(serverDone <-chan struct{}) *LiveTranscoder {
 	}
 }
 
-// Start は変換を始め、最初のデータが出たところで返す。request.Probe があれば ffprobe を起動せず、
-// 無ければその場で ffprobe を実行して結果を Probed に載せる。
-//
-// 映像がコピーできる動画（videoCanCopy が真で Normalize でない）は、まず映像をコピーして
-// 始める。途中からのコピーは直前のキーフレームから始まるので、出力の moov から実際の
-// 開始位置を読み、指定位置との差が domain.CopySeekAllowance を超えたら映像をエンコード
-// し直して指定位置から始める。コピーが最初のデータを出さずに終わったときも同じ要求の中で
-// エンコードに切り替える。保存済みの解析情報で始めた変換がそれでも最初のデータを出さずに
-// 終わったときは、その場の ffprobe を実行し、コピーから 1 回だけやり直す。期限
-// （StartupDeadline）は解析と切り替えを含めて 1 つで、期限切れは切り替えずに失敗にする。
-//
-// 映像をエンコードする段は request.VideoEncoder がハードウェアの方式ならまずそれで始め、
-// 最初のデータを出さずに終わったら同じ解析情報で libx264 で始め直す（startEncode）。
-// 切り替えたことは戻り値の HardwareFailure に載せる。
-// 成功したら Wait をちょうど 1 回呼ぶこと。
+// Start shares one deadline across probing and copy/encode fallbacks; stale saved probes may be
+// refreshed once after empty output, and hardware failures fall back to software. Copy seeks beyond
+// CopySeekAllowance re-encode at the requested position; successful calls require exactly one Wait.
 func (t *LiveTranscoder) Start(
 	requestContext context.Context,
 	request domain.LiveTranscodeRequest,
@@ -122,8 +107,8 @@ func (t *LiveTranscoder) Start(
 			}, nil
 		}
 
-		// その場の解析に切り替えるのは、保存済みの解析情報で始めたプロセスがデータを
-		// 出さずに終わったときだけである。取り消しと期限切れはそのまま失敗にする。
+		// Refresh saved probes only on empty output; cancellation and deadline errors must propagate
+		// immediately.
 		if ctx.Err() != nil || !errors.Is(err, errNoInitialData) || metadata != request.Probe {
 			cleanup()
 			return domain.LiveTranscode{}, fmt.Errorf("live transcode could not produce initial data: %w", err)
@@ -138,26 +123,21 @@ func (t *LiveTranscoder) Start(
 }
 
 var (
-	// errNoInitialData はプロセスが最初のデータ（途中からのコピーでは moov まで）を
-	// 出さずに終わったことを表す。
-	errNoInitialData = errors.New("FFmpeg exited before producing any data")
-	// errCopySeekTooFar はコピーの実際の開始位置が指定位置から離れすぎていることを表す。
+	errNoInitialData  = errors.New("FFmpeg exited before producing any data")
 	errCopySeekTooFar = errors.New("the previous keyframe is too far from the requested position")
 )
 
-// startedTranscode は最初のデータを出した FFmpeg 1 本である。
 type startedTranscode struct {
 	process transcodeProcess
 	first   []byte
 	startMs int64
-	// encoder は映像をエンコードした方式で、コピーでは空である。
-	encoder domain.VideoEncoder
-	// hardwareFailure はハードウェアから software に切り替えたときの誤りである。
+	// Empty for stream copy.
+	encoder         domain.VideoEncoder
 	hardwareFailure error
 }
 
-// startWithProbe は 1 つの解析情報で変換を始める。間隔が長いと分かっているシークを除き、コピーを試し、
-// 最初のデータを出さずに終わるか差の上限を超えたら、映像をエンコードして始め直す。
+// Try copy unless known keyframe spacing is too long; empty output or excessive seek error falls
+// back to encoding.
 func (t *LiveTranscoder) startWithProbe(
 	ctx context.Context, request domain.LiveTranscodeRequest, metadata domain.TranscodeProbe,
 ) (startedTranscode, error) {
@@ -174,8 +154,7 @@ func (t *LiveTranscoder) startWithProbe(
 		copyErr := err
 		started, err = t.startEncode(ctx, request, metadata)
 		if err != nil {
-			// その場の解析へ切り替えるかはエンコードの失敗だけで決めるので、コピーの
-			// 誤りは文字列として添える。
+			// Keep copy failures textual so only the encode failure determines whether to refresh the probe.
 			return startedTranscode{}, fmt.Errorf("%w; video copy: %s", err, copyErr.Error())
 		}
 		return started, nil
@@ -183,9 +162,8 @@ func (t *LiveTranscoder) startWithProbe(
 	return t.startEncode(ctx, request, metadata)
 }
 
-// startEncode は映像をエンコードして始める。要求の方式がハードウェアなら、まずそれで始め、
-// 最初のデータを出さずに終わったら同じ解析情報で software で始め直す。
-// 期限切れと取り消しは切り替えない。期限は Start と共通の StartupDeadline 1 つである。
+// Hardware empty-output failures retry with software using the same probe and startup deadline;
+// cancellation and timeout never trigger fallback.
 func (t *LiveTranscoder) startEncode(
 	ctx context.Context, request domain.LiveTranscodeRequest, metadata domain.TranscodeProbe,
 ) (startedTranscode, error) {
@@ -203,17 +181,15 @@ func (t *LiveTranscoder) startEncode(
 	hardwareErr := fmt.Errorf("%s video encoder failed before producing data: %w", encoder, err)
 	started, err = t.startAttempt(ctx, request, metadata, domain.VideoEncoderSoftware)
 	if err != nil {
-		// その場の解析へ切り替えるかは software の失敗だけで決めるので、ハードウェアの
-		// 誤りは文字列として添える。
+		// Keep hardware failures textual so only software failure controls probe refresh.
 		return startedTranscode{}, fmt.Errorf("%w; %s", err, hardwareErr.Error())
 	}
 	started.hardwareFailure = hardwareErr
 	return started, nil
 }
 
-// startAttempt は FFmpeg を 1 本起動し、最初のデータを待つ。encoder が空なら映像をコピーし、
-// そうでなければその方式でエンコードする。途中からのコピーでは moov までを読み、edit list
-// から実際の開始位置を得て書き換える（fmp4.go）。
+// An empty encoder means stream copy; midstream copies read and rebase moov edit lists before
+// returning initial data.
 func (t *LiveTranscoder) startAttempt(
 	ctx context.Context, request domain.LiveTranscodeRequest, metadata domain.TranscodeProbe, encoder domain.VideoEncoder,
 ) (startedTranscode, error) {
@@ -252,15 +228,14 @@ func (t *LiveTranscoder) startAttempt(
 	return startedTranscode{}, errors.Join(readErr, closeErr, waitErr)
 }
 
-// transcodeProcess は起動した FFmpeg 1 本である。
+// One running FFmpeg process.
 type transcodeProcess struct {
 	stdout io.ReadCloser
 	wait   func() error
 	stop   func()
 }
 
-// startProcess は FFmpeg を 1 本起動する。プロセスは自分の context を持ち、stop で
-// そのプロセスだけを止める。
+// Each process has its own context so stop affects only that attempt.
 func (t *LiveTranscoder) startProcess(ctx context.Context, args []string) (transcodeProcess, error) {
 	processCtx, cancel := context.WithCancel(ctx)
 	cmd := t.commandContext(processCtx, transcodeCommand, args...)
@@ -293,8 +268,8 @@ type firstOutput struct {
 	err  error
 }
 
-// readFirstOutput は read で最初のデータを待つ。期限切れと取り消しでは、読みかけの
-// goroutine はプロセスを止めて出力を閉じたところで終わる。
+// Stopping the process and closing output releases an in-progress reader after cancellation or
+// timeout.
 func readFirstOutput(
 	ctx context.Context, stdout io.Reader, timeout time.Duration, read func(io.Reader) ([]byte, error),
 ) ([]byte, error) {
@@ -322,7 +297,6 @@ func readAtLeastOneByte(stdout io.Reader) ([]byte, error) {
 	return buffer[:length], err
 }
 
-// prefixedReadCloser は先に読んだ最初のデータに続けて FFmpeg の出力を読ませる。
 type prefixedReadCloser struct {
 	io.Reader
 	closer io.Closer
@@ -332,12 +306,12 @@ func (r *prefixedReadCloser) Close() error { return r.closer.Close() }
 
 type sourceProbe struct {
 	probe domain.TranscodeProbe
-	// saved は保存してよい結果で、解析のあとにファイルが変わっていたら nil。
+	// Nil when the source changed after probing.
 	saved *domain.TranscodeProbe
 }
 
-// probeSource はその場で ffprobe を実行する。解析のあとにファイルの大きさか
-// 更新時刻が開いたときと違っていたら、変換には使うが保存用には返さない
+// Use fresh probe results for this conversion but do not persist them if size/mtime differs from
+// the opened source.
 func (t *LiveTranscoder) probeSource(ctx context.Context, request domain.LiveTranscodeRequest) (sourceProbe, error) {
 	metadata, err := t.probe(ctx, request.Path, request.StartupDeadline)
 	if err != nil {
@@ -351,8 +325,7 @@ func (t *LiveTranscoder) probeSource(ctx context.Context, request domain.LiveTra
 	return result, nil
 }
 
-// probe はその場で ffprobe を実行する。期限は変換の開始と共通で、期限切れと
-// 取り消しは動画固有の誤りにしない。
+// Share the startup deadline; cancellation and timeout are not media-specific failures.
 func (t *LiveTranscoder) probe(ctx context.Context, path string, startupDeadline time.Time) (domain.TranscodeProbe, error) {
 	probeCtx, cancel := context.WithDeadline(ctx, startupDeadline)
 	defer cancel()
@@ -371,9 +344,8 @@ func (t *LiveTranscoder) probe(ctx context.Context, path string, startupDeadline
 	return metadata, nil
 }
 
-// parseTranscodeProbe は要求時の ffprobe の出力を、取り込みと同じ parseProbeOutput で
-// 解釈し、ライブ変換に要る値を返す。尺が正でない動画と、使える映像 stream（非添付で
-// 寸法がある）の無い動画は変換できない。
+// Reuse ingestion's parser; nonpositive duration or absent usable video dimensions prevents
+// conversion.
 func parseTranscodeProbe(output []byte) (domain.TranscodeProbe, error) {
 	probe, err := parseProbeOutput(output)
 	if err != nil {
@@ -388,25 +360,13 @@ func parseTranscodeProbe(output []byte) (domain.TranscodeProbe, error) {
 	return *probe.Transcode, nil
 }
 
-// transcodeArgs は software の方式で最初に試す引数を返す。映像はコピーできればコピーする。
 func transcodeArgs(path string, startMs int64, metadata domain.TranscodeProbe, normalize bool) []string {
 	return buildTranscodeArgs(path, startMs, metadata, normalize, !normalize && videoCanCopy(metadata.Video), domain.VideoEncoderSoftware, "")
 }
 
-// buildTranscodeArgs は FFmpeg の引数を組み立てる。copyVideo は映像をコピーするかで、
-// normalize でなく videoCanCopy が真のときだけ効く。encoder は映像をエンコードするときの
-// 方式で、コピーするときは見ない。quality は縮める画質で、空なら元の画質である。
-//
-// 音声は normalize でなく audioCanCopy が真ならコピーする（親 Issue #371 要件 4）。ただし
-// 映像をエンコードして途中から始めるときは、今までどおり音声もエンコードする。入力側の
-// -ss は、エンコードする stream では指定位置より前を捨てるが、コピーする stream では
-// demuxer が着いたキーフレームからの区間を残すので、音声だけが指定位置より前から始まる。
-//
-// 途中からのコピーだけ -copyts -start_at_zero と delay_moov を付け、mp4 muxer が各 track の
-// 開始時刻を moov の edit list に書くようにする。-noaccurate_seek は、
-// エンコードする音声もコピーする映像と同じくキーフレームの時刻から始めるためのものである。
-//
-// 画質があるときは映像も音声も必ずエンコードし、音声はその画質の kbps にする
+// Midstream video encoding also encodes audio so input seeking cannot leave copied audio ahead of
+// video; copy seeks use edit-list timestamps and noaccurate_seek to preserve A/V alignment.
+// Explicit quality forces both streams to encode with its bitrate limits.
 func buildTranscodeArgs(
 	path string, startMs int64, metadata domain.TranscodeProbe, normalize, copyVideo bool,
 	encoder domain.VideoEncoder, quality domain.TranscodeQuality,
@@ -432,8 +392,7 @@ func buildTranscodeArgs(
 	}
 
 	if metadata.Audio != nil && usesMOVDemuxer(metadata.FormatName) {
-		// MOVでは映像と音声を別々の入力で読む。各demuxerが一方のtrackだけを
-		// 追うため、ネットワークドライブ上でtrack間を往復seekせずに済む。
+		// Separate MOV audio/video demuxers avoid repeated inter-track seeks on network drives.
 		appendInput("-an")
 		appendInput("-vn")
 		args = append(args,
@@ -509,7 +468,7 @@ func audioCanCopy(stream domain.TranscodeAudio) bool {
 		stream.SampleRate >= 8000 && stream.SampleRate <= 48000
 }
 
-// hardwareDeviceArgs は方式が要る入力より前の大域の指定を返す。VAAPI だけがデバイスを開く。
+// Only VAAPI requires opening a device before input.
 func hardwareDeviceArgs(encoder domain.VideoEncoder) []string {
 	if encoder == domain.VideoEncoderVAAPI {
 		return []string{"-vaapi_device", vaapiDevice}
@@ -517,20 +476,16 @@ func hardwareDeviceArgs(encoder domain.VideoEncoder) []string {
 	return nil
 }
 
-// encoderCodecArgs は方式ごとの符号化器の指定である。どれも H.264 High・
-// Level 5.1・4:2:0 8bit で、強制キーフレームを IDR にする。VAAPI の画素形式は
-// フィルターの format=nv12,hwupload で与える。知らない方式は software とする。
-//
-// 画質が無ければ一定品質である。画質があれば、software と NVENC は一定品質に
-// -maxrate／-bufsize の上限を重ね、QSV・VAAPI・VideoToolbox は一定品質をやめて上限の
-// VBR にする。
+// Keep H.264 High/5.1, eight-bit 4:2:0, and forced IDR across encoders; unknown encoders use
+// software. With explicit quality, software/NVENC cap constant quality while QSV/VAAPI/VideoToolbox
+// use bounded VBR.
 func encoderCodecArgs(encoder domain.VideoEncoder, quality domain.TranscodeQuality) []string {
 	limits, hasQuality := quality.Limits()
 	var capped []string
 	if hasQuality {
 		capped = []string{"-maxrate", kbps(limits.VideoKbps), "-bufsize", kbps(limits.BufferKbps)}
 	}
-	// variable は QSV・VAAPI・VideoToolbox の品質の指定で、画質があれば上限の VBR に替える。
+	// Explicit quality switches these encoders from constant quality to bounded VBR.
 	variable := func(constantQuality ...string) []string {
 		if !hasQuality {
 			return constantQuality
@@ -566,10 +521,8 @@ func kbps(value int) string {
 	return strconv.Itoa(value) + "k"
 }
 
-// videoEncodeArgs は映像をエンコードする引数を返す。フィルター（縮小・pad・setsar・fps）と
-// キーフレームの指定は方式に依らず共通で、出力の約束を守る。符号化器の指定だけを方式で
-// 差し替える。画質があれば表示の短辺をその画質へ縮め（qualityDimensions）、符号化器に
-// ビットレートの上限を付ける。
+// Share scaling, padding, SAR, FPS, and keyframe rules across encoders; explicit quality
+// additionally bounds dimensions and bitrate.
 func videoEncodeArgs(stream domain.TranscodeVideo, encoder domain.VideoEncoder, quality domain.TranscodeQuality) []string {
 	displayWidth, displayHeight, sampleAspectNum, sampleAspectDen := displayGeometry(stream)
 	width, height := outputDimensions(displayWidth, displayHeight)
@@ -607,13 +560,12 @@ func videoEncodeArgs(stream domain.TranscodeVideo, encoder domain.VideoEncoder, 
 	}
 
 	if encoder == domain.VideoEncoderVAAPI {
-		// h264_vaapi は hw フレームしか受けないので、8bit 4:2:0 にしてから GPU へ上げる。
+		// VAAPI accepts hardware frames only; convert to NV12 before uploading.
 		filters = append(filters, "format=nv12", "hwupload")
 	}
 
 	args := encoderCodecArgs(encoder, quality)
-	// フレーム数ではなく出力の時刻で揃えるため、fps フィルターで間引いたあとも
-	// 入力のフレームレートによらず同じ間隔になる。
+	// Force keyframes by output time so FPS filtering does not change their spacing.
 	args = append(args, "-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%d)", liveKeyframeInterval))
 	if len(filters) > 0 {
 		args = append(args, "-vf", strings.Join(filters, ","))
@@ -625,9 +577,8 @@ func constantFrameRate(stream domain.TranscodeVideo) bool {
 	return stream.FPS > 0 && stream.RealFPS > 0 && math.Abs(stream.FPS-stream.RealFPS) < 0.0001
 }
 
-// exceedsVideoBounds は、長辺・短辺のどちらかが上限を超えるかを返す。上限は向きを問わず
-// 長辺 maxVideoLongSide・短辺 maxVideoShortSide とし、縦長の 2160x3840 も横長の 3840x2160 と
-// 同じく縮めずに通す（どちらも H.264 Level 5.1 の 1 フレームの上限に収まる）。
+// Apply long/short-side bounds independent of orientation, allowing portrait and landscape 4K
+// within Level 5.1.
 func exceedsVideoBounds(width, height int) bool {
 	return max(width, height) > maxVideoLongSide || min(width, height) > maxVideoShortSide
 }
@@ -643,10 +594,8 @@ func outputDimensions(width, height int) (int, int) {
 	return width + width%2, height + height%2
 }
 
-// qualityDimensions は表示の寸法 width×height を、縦横比を保って短辺が shortSide になるよう
-// 縮めた偶数の寸法を返す。縮める比は shortSide への比と、今の変換の枠（長辺 maxVideoLongSide・
-// 短辺 maxVideoShortSide）への比の小さい方で、極端に細長い動画だけは短辺が shortSide より
-// 小さくなる。shortSide は動画の短辺より小さいこと。
+// Scale to even dimensions while respecting both requested short side and global bounds; very
+// narrow videos may need a smaller short side.
 func qualityDimensions(width, height, shortSide int) (int, int) {
 	longSide, videoShortSide := float64(max(width, height)), float64(min(width, height))
 	ratio := math.Min(float64(shortSide)/videoShortSide,
@@ -728,8 +677,7 @@ func outputSampleAspectRatio(numerator, denominator int64, sourceWidth, sourceHe
 	)
 }
 
-// streamRotation は stream の回転（0/90/180/270）を返す。Display Matrix が
-// あればそれを、無ければ旧来の rotate タグを採る。
+// Prefer Display Matrix rotation over the legacy rotate tag.
 func streamRotation(tag string, sideDataList []probeSideData) int {
 	for _, sideData := range sideDataList {
 		if strings.EqualFold(sideData.SideDataType, "Display Matrix") {
@@ -764,12 +712,12 @@ func formatSeconds(milliseconds int64) string {
 }
 
 func formatCappedFPS(fps float64) string {
-	// 丸めでmacroblock rate上限を越えないよう、ミリfps単位で切り捨てる。
+	// Floor to milli-FPS so rounding cannot exceed the macroblock-rate limit.
 	return strconv.FormatFloat(math.Floor(fps*1000)/1000, 'f', 3, 64)
 }
 
 func formatExactFPS(fps float64) string {
-	// 低fpsのVFRを0へ丸めず、ffprobeから得た正の値を保つ。
+	// Preserve positive low VFR rates instead of rounding them to zero.
 	return strconv.FormatFloat(fps, 'f', -1, 64)
 }
 

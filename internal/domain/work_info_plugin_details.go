@@ -5,28 +5,21 @@ import (
 	"slices"
 )
 
-// プラグインの fetch の結果のうち、題名とタグ以外の作品の詳細を読む。文字列はすべて前後の空白を除き、空になった件と、kind・role・source・value が
-// 無いか未知の件を落とし、落とした後に上限まで残す。項目の規則（品番の長さ、日付の形、URL の形）は
-// ここでは確かめず、反映の側が判断して知らせる。
-//
-// 契約 1 は知らない項目を無視すると公開しているので、形の違う項目や件はその項目か件だけを読まずに
-// 捨て、実行を失敗させない。題名とタグだけを返すプラグインの結果は今までと変わらない（要件 8）。
+// Trim and drop empty/unknown detail entries before enforcing limits; malformed fields are ignored under contract 1, while semantic validation is deferred to apply.
 
-// FetchedPerson はプラグインが返した人物 1 件である。動画に結ぶ前の、名前と外部 ID だけの値である。
 type FetchedPerson struct {
 	Role        PersonRole
 	Name        string
 	ExternalIDs []ExternalID
 }
 
-// FetchedOrganization はプラグインが返した団体 1 件である。
 type FetchedOrganization struct {
 	Role        OrganizationRole
 	Name        string
 	ExternalIDs []ExternalID
 }
 
-// workDetailsJSON は workInfo の詳細の項目である。どの項目も形が違えば読まずに捨てるため、生の JSON で受ける。
+// Keep raw JSON so malformed fields can be discarded independently.
 type workDetailsJSON struct {
 	Code          json.RawMessage `json:"code"`
 	Description   json.RawMessage `json:"description"`
@@ -54,7 +47,6 @@ type fetchedExternalIDJSON struct {
 	Value  string `json:"value"`
 }
 
-// parseWorkDetails は詳細の項目を out に読む。
 func parseWorkDetails(raw workDetailsJSON, out *FetchedWorkInfo) {
 	limits := WorkInfoLimits
 	out.Code = lenientString(raw.Code)
@@ -73,7 +65,7 @@ func parseWorkDetails(raw workDetailsJSON, out *FetchedWorkInfo) {
 	out.CoverURL = workInfoCoverURL(lenientString(raw.Cover))
 }
 
-// lenientString は文字列の JSON の前後の空白を除いて返す。無いか文字列でなければ空の文字列を返す。
+// Missing/nonstring values become empty strings.
 func lenientString(raw json.RawMessage) string {
 	var s string
 	if len(raw) == 0 || json.Unmarshal(raw, &s) != nil {
@@ -82,7 +74,7 @@ func lenientString(raw json.RawMessage) string {
 	return trimWorkInfoText(s)
 }
 
-// lenientList は配列の JSON の各件を T として読み、読めた件を順に返す。無いか配列でなければ nil を返す。
+// Keep decodable array entries in order; missing/nonarray input yields nil.
 func lenientList[T any](raw json.RawMessage) []T {
 	var items []json.RawMessage
 	if len(raw) == 0 || json.Unmarshal(raw, &items) != nil {
@@ -98,7 +90,7 @@ func lenientList[T any](raw json.RawMessage) []T {
 	return out
 }
 
-// parseFetchedDates は種類ごとに最初の 1 件を残す。
+// Keep the first date per kind.
 func parseFetchedDates(raw []fetchedDateJSON) []WorkDate {
 	var out []WorkDate
 	for _, d := range raw {
@@ -113,8 +105,7 @@ func parseFetchedDates(raw []fetchedDateJSON) []WorkDate {
 	return out
 }
 
-// parseFetchedCredits は役割ごとに最初の limit 件の人物か団体を残す。同じ役割で名前と外部 ID の集合が
-// 同じ件は、外部 ID の並びが違っても同じ人物（団体）として 1 件にする。
+// Deduplicate credits per role by name and external-ID set, ignoring external-ID order, then enforce per-role limits.
 func parseFetchedCredits[R ~string, C any](
 	raw []fetchedCreditJSON, roles []R, limit int, build func(R, string, []ExternalID) C,
 ) []C {
@@ -133,7 +124,7 @@ func parseFetchedCredits[R ~string, C any](
 			continue
 		}
 		ids := parseFetchedExternalIDs(c.ExternalIDs)
-		// 外部 ID の並びは同じ人物かどうかに関わらないので、整列した複製でキーを作り、結果の順序は保つ。
+		// Sort a copy for identity while preserving result order.
 		sortedIDs := slices.Clone(ids)
 		SortExternalIDs(sortedIDs)
 		idsKey, _ := json.Marshal(sortedIDs)
@@ -148,7 +139,6 @@ func parseFetchedCredits[R ~string, C any](
 	return out
 }
 
-// parseFetchedURLs は重複を除いた最初の limit 件の URL を残す。
 func parseFetchedURLs(raw []string, limit int) []string {
 	var out []string
 	for _, u := range raw {
@@ -164,8 +154,7 @@ func parseFetchedURLs(raw []string, limit int) []string {
 	return out
 }
 
-// parseFetchedExternalIDs は source と value のどちらかが空の件を落とし、重複を除いた最初の
-// ExternalIDsMaxCount 件の外部 ID を残す。
+// Drop partially blank external IDs and retain unique pairs up to the limit.
 func parseFetchedExternalIDs(raw json.RawMessage) []ExternalID {
 	var out []ExternalID
 	for _, e := range lenientList[fetchedExternalIDJSON](raw) {

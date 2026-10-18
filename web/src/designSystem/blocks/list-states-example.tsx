@@ -17,9 +17,7 @@ import {
   sampleVideos,
 } from "./list-page-example";
 
-// 一覧ページの状態の見本（registry:block list-states-example）。見出し行とツールバーは
-// 動かさず、本体の位置だけが読み込み中・空・エラー・追加読み込み・続きの失敗に変わる
-// （web/registry/rules/patterns.md の States）。
+// Keep the header and toolbar fixed while demonstrating body states; see web/registry/rules/patterns.md, States.
 
 export type ListState = "loading" | "empty" | "error" | "loadingMore" | "loadMoreFailed";
 

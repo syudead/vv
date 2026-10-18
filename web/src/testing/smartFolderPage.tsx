@@ -1,7 +1,3 @@
-/**
- * smartFolderPage はスマートフォルダのページ（src/smartFolders/SmartFolderPage.tsx）とカードの
- * テストが共有する偽のサーバーと、画面に入ったことにする見張りである。
- */
 import { act, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, vi } from "vitest";
@@ -21,7 +17,6 @@ import { json, Probe, video } from "./groupPage";
 
 export { video };
 
-/** folderCard はカードの値である。 */
 export function folderCard(
   id: number,
   name: string,
@@ -44,39 +39,23 @@ export function folderCard(
 }
 
 export const server = {
-  /** GET /api/smart-folders/{id} の応答（id ごと）。 */
   folders: new Map<number, SmartFolderDetail>(),
-  /** GET /api/smart-folders/cards が答える値（id ごと）。 */
   cards: new Map<number, LibrarySmartFolder>(),
-  /** GET /api/smart-folders/cards の `ids`（要求ごと）。 */
   cardRequests: [] as number[][],
-  /** GET /api/smart-folders/{id} の回数（id ごと）。 */
   reads: new Map<number, number>(),
-  /** GET /api/tags の項目。 */
   tags: [] as { id: number; name: string }[],
-  /** GET /api/smart-folders/{id}/items の応答（`id:cursor` ごと）。 */
   pages: new Map<string, SmartFolderItemPage>(),
-  /** 書き込みの要求（メソッド、パス、本文）。 */
   writes: [] as { method: string; path: string; body: unknown }[],
-  /**
-   * 真の間、GET /api/smart-folders/cards の答えを求めた時点の値で作って `heldCards` にため、
-   * 呼ばれるまで返さない（答えが届く順をテストが決める）。
-   */
+  /** Capture card values at request time and hold delivery so tests control response order. */
   holdCards: false,
   heldCards: [] as (() => void)[],
-  /** 真の間、GET /api/smart-folders/cards は 500 で失敗する。 */
   failCards: false,
-  /** 真の間、GET /api/smart-folders/{id} は 500 で失敗する。 */
   failDetail: false,
-  /** 真の間、GET /api/smart-folders/{id}/items は 500 で失敗する。 */
   failPage: false,
-  /** ホームのフォルダの棚の id（上から順）。GET /api/home と PUT /api/home/shelves が使う。 */
   homeShelves: [] as number[],
-  /** 書き込みの答えを差し替える（省くと保存した中身を書き換えて答える）。 */
   writeAnswer: undefined as ((method: string, id: number) => Response) | undefined,
 };
 
-/** summaries は保存したフォルダの木（GET /api/smart-folders）である。 */
 function summaries(): SmartFolderSummary[] {
   return [...server.folders.values()].map((detail) => ({
     id: detail.smartFolder.id,
@@ -85,7 +64,6 @@ function summaries(): SmartFolderSummary[] {
   }));
 }
 
-/** writeResponse は PATCH・POST・DELETE を偽のサーバーの中身に当てて答える。 */
 function writeResponse(method: string, url: URL, body: unknown): Response {
   if (url.pathname === "/api/home/shelves") {
     server.writes.push({ method, path: url.pathname, body });
@@ -188,7 +166,6 @@ function install() {
   vi.stubGlobal("fetch", fetchMock);
 }
 
-/** FakeObserver は見張る要素を覚え、`revealCards` で画面に入ったことにする。 */
 class FakeObserver {
   static all = new Set<FakeObserver>();
   private readonly callback: IntersectionObserverCallback;
@@ -212,10 +189,7 @@ class FakeObserver {
   }
 }
 
-/**
- * revealCards はスマートフォルダのカード（`ids`、省けばすべて）が画面に入ったことにし、
- * まとめた読み出しが答えるまで待つ。
- */
+/** Reveal requested cards, or all when omitted, and await the batched read. */
 export async function revealCards(ids?: readonly number[]) {
   await act(async () => {
     for (const observer of [...FakeObserver.all]) {
@@ -229,10 +203,7 @@ export async function revealCards(ids?: readonly number[]) {
   });
 }
 
-/**
- * revealSentinel はページ送りの番兵（カードでない見張り）が画面に近づいたことにし、続きの
- * 読み出しが答えるまで待つ。
- */
+/** Reveal the pagination sentinel and await its page response. */
 export async function revealSentinel() {
   await act(async () => {
     for (const observer of [...FakeObserver.all]) {
@@ -245,7 +216,6 @@ export async function revealSentinel() {
   });
 }
 
-/** setUpSmartFolderServer は各テストの前に偽のサーバーを初期状態へ戻し、後で差し替えを解く。 */
 export function setUpSmartFolderServer() {
   beforeEach(() => {
     server.folders = new Map();
@@ -292,9 +262,6 @@ export function renderPage(initial: string, audience: Audience = "owner") {
   );
 }
 
-/**
- * seed は「タグ: 猫」（id 1）に子「未視聴」（id 5）と動画 2 本を、「未視聴」に動画 1 本を置く。
- */
 export function seed() {
   server.tags = [{ id: 3, name: "猫" }];
   server.folders.set(1, {

@@ -9,7 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// smartFolderNotices は記録した変化のうち、スマートフォルダの知らせだけを返す。
 func smartFolderNotices(recorder *eventRecorder) []domain.SmartFoldersChanged {
 	var out []domain.SmartFoldersChanged
 	for _, event := range recorder.events {
@@ -20,7 +19,6 @@ func smartFolderNotices(recorder *eventRecorder) []domain.SmartFoldersChanged {
 	return out
 }
 
-// tagNoticeFixture はタグ 1 つと動画 1 本を持つデータベースを返す。
 func tagNoticeFixture(t *testing.T) (*DB, domain.Tag, int64) {
 	t.Helper()
 	db := migratedDB(t)
@@ -32,7 +30,6 @@ func tagNoticeFixture(t *testing.T) (*DB, domain.Tag, int64) {
 	return db, tag, ids[fixturePath("/media/a.mp4")]
 }
 
-// フォルダが 1 つあるとき、タグを付けると確定後にそのフォルダを名指す知らせが 1 つ出る
 func TestAttachingATagNamesEverySmartFolderOnce(t *testing.T) {
 	db, tag, videoID := tagNoticeFixture(t)
 	folder := createSmartFolder(t, db, "旅", 0)
@@ -49,7 +46,6 @@ func TestAttachingATagNamesEverySmartFolderOnce(t *testing.T) {
 	}
 }
 
-// フォルダが無ければ、一致が変わりうる書き込みでも何も出ない。
 func TestNoSmartFolderPublishesNoNotice(t *testing.T) {
 	db, tag, videoID := tagNoticeFixture(t)
 	recorder := &eventRecorder{}
@@ -67,7 +63,6 @@ func TestNoSmartFolderPublishesNoNotice(t *testing.T) {
 	}
 }
 
-// 視聴状態の変わらない進捗の保存は何も出さず、動画を見終える保存は出す。
 func TestProgressSaveNamesFoldersOnlyWhenWatchStateChanges(t *testing.T) {
 	db, _, _ := tagNoticeFixture(t)
 	folder := createSmartFolder(t, db, "旅", 0)
@@ -94,19 +89,16 @@ func TestProgressSaveNamesFoldersOnlyWhenWatchStateChanges(t *testing.T) {
 	}
 }
 
-// ロールバックした書き込みは何も出さない。
 func TestRolledBackMatchChangePublishesNothing(t *testing.T) {
 	db, _, videoID := tagNoticeFixture(t)
 	createSmartFolder(t, db, "旅", 0)
 	recorder := &eventRecorder{}
 	db.PublishTo(recorder)
 
-	// 無いタグを付ける書き込みは途中で断って巻き戻す。
 	if _, _, err := db.Tags().AttachTagByID(context.Background(), []int64{videoID}, 999999); !errors.Is(err, domain.ErrTagNotFound) {
 		t.Fatalf("AttachTagByID error = %v, want domain.ErrTagNotFound", err)
 	}
 
-	// 確定の前に取り消した取引も発行しない。
 	ctx, cancel := context.WithCancel(context.Background())
 	tx, err := db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -125,7 +117,6 @@ func TestRolledBackMatchChangePublishesNothing(t *testing.T) {
 	}
 }
 
-// フォルダの編集は、そのフォルダと子孫と、移動の前後の親を名指す。
 func TestSmartFolderEditsNameTheFolderItsDescendantsAndParents(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -155,7 +146,6 @@ func TestSmartFolderEditsNameTheFolderItsDescendantsAndParents(t *testing.T) {
 	}
 }
 
-// グループの変化はすべてのフォルダを名指す知らせを伴い、知らせは 1 つにまとまる。
 func TestGroupChangeNamesEverySmartFolder(t *testing.T) {
 	db, _, videoID := tagNoticeFixture(t)
 	first := createSmartFolder(t, db, "一", 0)
@@ -173,8 +163,7 @@ func TestGroupChangeNamesEverySmartFolder(t *testing.T) {
 	}
 }
 
-// 解析の結果を書くと、後継の引き継ぎが無くても長さと再生可否が変わるので、すべてのフォルダを名指す。
-// 走査を閉じるときの知らせは解析より前に出るので、ここで知らせないと長さで絞るフォルダが古いまま残る。
+// Probe completion changes duration/playability after the scan event; notify again even without succession.
 func TestProbeResultNamesEverySmartFolder(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	folder := createSmartFolder(t, db, "長い", 0)
@@ -205,7 +194,6 @@ func TestProbeResultNamesEverySmartFolder(t *testing.T) {
 	}
 }
 
-// 表示名は検索の対象なので、変えるとすべてのフォルダを名指す。同じ名前の書き直しは何も出さない。
 func TestDisplayNameChangeNamesEverySmartFolder(t *testing.T) {
 	db, _, videoID := tagNoticeFixture(t)
 	folder := createSmartFolder(t, db, "題名", 0)

@@ -9,15 +9,12 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 代用は、生成の関数が値として返す。
-
-// 指定位置にコマの無い入力では、先頭のコマで作り、そのことを返す。
 func TestThumbnailReportsFirstFrameFallback(t *testing.T) {
 	requireFFmpeg(t)
 	videoPath := filepath.Join(t.TempDir(), "short.mp4")
 	runFFmpeg(t, "-f", "lavfi", "-i", "color=c=white:s=64x64:r=10:d=2", "-c:v", "mpeg4", "-y", videoPath)
 
-	// 尺を 100 秒と偽ると、抽出位置は 10 秒になり、2 秒の入力にはコマが無い。
+	// A fake hundred-second duration selects second ten, beyond the two-second source.
 	output := filepath.Join(t.TempDir(), "thumbnail.jpg")
 	firstFrame, err := Thumbnail(context.Background(), videoPath, 100_000, output)
 	if err != nil {
@@ -31,7 +28,6 @@ func TestThumbnailReportsFirstFrameFallback(t *testing.T) {
 	}
 }
 
-// 指定位置でコマを取れた入力では、代用を返さない。
 func TestThumbnailReportsNoFallbackAtOffset(t *testing.T) {
 	requireFFmpeg(t)
 	videoPath := filepath.Join(t.TempDir(), "normal.mp4")
@@ -46,11 +42,8 @@ func TestThumbnailReportsNoFallbackAtOffset(t *testing.T) {
 	}
 }
 
-// 区間ごとの抽出に失敗する入力では、全編から作り、そのことを返す。
-//
-// 映像が 12 秒目から始まり、音声が 0 秒から始まる入力は、先頭の区間（0〜5 秒）に
-// 映像のコマが無いので、区間ごとの抽出ではどのコマも取れない。全編の復号は最初の
-// コマから作れる。
+// Video starts at second twelve while audio starts at zero; segment seeking yields no frames, but
+// full decoding can start at the first available frame.
 func TestGenerateSeekSpriteReportsFullDecode(t *testing.T) {
 	requireFFmpeg(t)
 	dir := t.TempDir()
@@ -77,7 +70,6 @@ func TestGenerateSeekSpriteReportsFullDecode(t *testing.T) {
 	}
 }
 
-// 索引から作れない入力が区間ごとの抽出で作れたときは、通常の経路なので代用に数えない。
 func TestGenerateSeekSpriteDoesNotCountPerIntervalExtraction(t *testing.T) {
 	requireFFmpeg(t)
 	videoPath := filepath.Join(t.TempDir(), "mpeg4.mp4")

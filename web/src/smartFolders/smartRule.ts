@@ -5,17 +5,10 @@ import { type AddedLengthFilter, validAddedLength } from "../library/addedLength
 import type { CreditFilter } from "../library/creditCriteria";
 import { DEFAULT_SORT, type ListCriteria } from "../videoList/listCriteria";
 
-/**
- * smartRule はスマートフォルダの条件（SmartRule）と、ライブラリの絞り込み・親の木との間の
- * 純粋な変換である。
- */
-
-/** SMART_RULE_MAX_QUERY は条件の検索語の長さの上限（符号位置）である。 */
+/** Count Unicode code points. */
 export const SMART_RULE_MAX_QUERY = 500;
-/** SMART_RULE_MAX_TAGS は条件のタグの数の上限である。 */
 export const SMART_RULE_MAX_TAGS = 16;
 
-/** LibraryFilter はライブラリの今の絞り込みの全体である。 */
 export interface LibraryFilter {
   criteria: ListCriteria;
   tagIds: readonly number[];
@@ -23,10 +16,6 @@ export interface LibraryFilter {
   addedLength: AddedLengthFilter;
 }
 
-/**
- * cleanRule は空の条件を落とした条件を返す（検索語の空、`watch` の `all`、偽の
- * チェック、空のタグ、無い id）。空の条件は送らない。
- */
 export function cleanRule(rule: SmartRule): SmartRule {
   const clean: SmartRule = {};
   if (rule.q !== undefined && rule.q !== "") clean.q = rule.q;
@@ -43,19 +32,15 @@ export function cleanRule(rule: SmartRule): SmartRule {
   return clean;
 }
 
-/** ruleWatch は条件の視聴状態をライブラリの視聴状態にする（無ければ `all`）。 */
 export function ruleWatch(rule: SmartRule): WatchFilter {
   return rule.watch ?? "all";
 }
 
-/** withWatch は視聴状態を差し替えた条件を返す（`all` は条件から外す）。 */
 export function withWatch(rule: SmartRule, watch: WatchFilter): SmartRule {
   return { ...rule, watch: watch === "all" ? undefined : watch };
 }
 
-/**
- * ruleFromLibrary はライブラリの今の絞り込みを条件にする。並べ順は含めない（folderSort が別に決める）。
- */
+/** Sort is separate from conditions and handled by folderSort. */
 export function ruleFromLibrary(filter: LibraryFilter): SmartRule {
   const { criteria, tagIds, credits, addedLength } = filter;
   return cleanRule({
@@ -73,7 +58,6 @@ export function ruleFromLibrary(filter: LibraryFilter): SmartRule {
   });
 }
 
-/** hasRuleMember は条件が 1 つでもあるかを返す。 */
 export function hasRuleMember(rule: SmartRule): boolean {
   return Object.keys(cleanRule(rule)).length > 0;
 }
@@ -88,10 +72,7 @@ function validTags(tags: readonly number[] | undefined): boolean {
   return tags.every(positiveId) && new Set(tags).size === tags.length;
 }
 
-/**
- * validRule は条件をサーバーが受け付けるかを返す（domain.SmartRule.Validate と同じ範囲）。
- * 範囲の外の条件は送らずに条件の欄の誤りを出す。
- */
+/** Match domain.SmartRule.Validate bounds; reject invalid conditions before submission. */
 export function validRule(rule: SmartRule): boolean {
   const clean = cleanRule(rule);
   if (Array.from(clean.q ?? "").length > SMART_RULE_MAX_QUERY) return false;
@@ -100,7 +81,7 @@ export function validRule(rule: SmartRule): boolean {
   return validAddedLength(clean);
 }
 
-/** ruleKey は条件を値で比べるための文字列にする（空の条件を落とし、鍵の順をそろえる）。 */
+/** Omit empty conditions and stabilize key order for equality. */
 export function ruleKey(rule: SmartRule): string {
   const clean = cleanRule(rule);
   return JSON.stringify(
@@ -110,10 +91,7 @@ export function ruleKey(rule: SmartRule): string {
   );
 }
 
-/**
- * folderSort はフォルダに保存する並べ順を返す。ランダムは保存できないので追加日の新しい
- * 順にし、`randomReplaced` で知らせる。
- */
+/** Random cannot be persisted; replace it with newest-added and set randomReplaced. */
 export function folderSort(sort: VideoSort): {
   sort: VideoSort;
   randomReplaced: boolean;
@@ -123,7 +101,6 @@ export function folderSort(sort: VideoSort): {
     : { sort, randomReplaced: false };
 }
 
-/** ParentChoice は親の `Select` の 1 行である（深さは字下げの段）。 */
 export interface ParentChoice {
   folder: SmartFolderSummary;
   depth: number;
@@ -135,7 +112,7 @@ function childrenByParent(
   const known = new Set(folders.map((folder) => folder.id));
   const byParent = new Map<number | undefined, SmartFolderSummary[]>();
   for (const folder of folders) {
-    // 見えない親（ゲストなど）の子は一番上に置く。
+    // Promote children with invisible parents to the top level.
     const parent =
       folder.parentId !== undefined && known.has(folder.parentId)
         ? folder.parentId
@@ -150,9 +127,7 @@ function childrenByParent(
   return byParent;
 }
 
-/**
- * descendantIds は `id` の子孫（どの深さも）の id を返す。`id` 自身は入らない。
- */
+/** Include every descendant depth, excluding id itself. */
 export function descendantIds(
   folders: readonly SmartFolderSummary[],
   id: number,
@@ -169,11 +144,7 @@ export function descendantIds(
   return found;
 }
 
-/**
- * parentChoices は親の `Select` に並べるフォルダを、木の順（親の直後にその子を自然な名前の
- * 順）と深さで返す。`editing` を渡すと、そのフォルダと子孫を除く — 選べば自分の中へ入る
- * ことになるから。
- */
+/** Use parent-first natural name order; exclude the edited folder and descendants to prevent cycles. */
 export function parentChoices(
   folders: readonly SmartFolderSummary[],
   editing?: number,

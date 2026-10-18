@@ -7,36 +7,29 @@ import (
 	"time"
 )
 
-// 作品情報プラグインの実行が残した標準エラーと、その秘密の値の伏せ方
-//
-// 実行は internal/wasmplugin、伏せて保存するのは internal/app、保存は internal/store が行う。
+// internal/wasmplugin captures stderr, internal/app redacts it, and internal/store persists it.
 
-// WorkInfoSecretMask は標準エラーの中の秘密の設定の値と置き換える文字列である。
 const WorkInfoSecretMask = "[secret]"
 
-// WorkInfoRunLog は 1 回の実行が残した標準エラーである。Stderr は先頭 WorkInfoPluginStderrKeptBytes
-// バイトで、Truncated はそれより後ろを捨てたかである。
+// Stderr retains the first WorkInfoPluginStderrKeptBytes; Truncated records discarded trailing bytes.
 type WorkInfoRunLog struct {
 	Operation WorkInfoOperation
-	// Failure は実行の失敗の種類で、成功した実行では空である。
 	Failure   WorkInfoRunFailure
 	Stderr    string
 	Truncated bool
 }
 
-// WorkInfoPluginRun はプラグインごとに 1 つ持つ、直近の実行の標準エラーである。Stderr は秘密の値を
-// 伏せたあとのものである。
+// WorkInfoPluginRun stores one latest run per plugin with secrets already masked.
 type WorkInfoPluginRun struct {
 	PluginID int64
-	// Generation は実行を始めたときのプラグインの行の世代である。保存は、行がまだこの世代のときだけ書く。
+	// Persist only while the plugin still matches its execution-start generation.
 	Generation int64
-	// RanAt は実行が終わった時刻である。
+	// RanAt is completion time.
 	RanAt time.Time
 	WorkInfoRunLog
 }
 
-// SecretWorkInfoPluginValues は宣言 settings のうち秘密の設定について、実行の要求の値 values にある
-// 空でない値を返す。
+// SecretWorkInfoPluginValues returns nonempty request values for declared secret settings.
 func SecretWorkInfoPluginValues(settings []WorkInfoPluginSetting, values map[string]string) []string {
 	var secrets []string
 	for _, s := range settings {
@@ -47,11 +40,7 @@ func SecretWorkInfoPluginValues(settings []WorkInfoPluginSetting, values map[str
 	return secrets
 }
 
-// MaskWorkInfoRunLog は log の標準エラーのうち、秘密の値 secrets のどれかに一致する部分をすべて
-// WorkInfoSecretMask に置き換える。一致はもとの標準エラーの上ですべて探し、重なる一致（2 つの値の重なりや、
-// 同じ値の自己重複）はまとめて 1 つの WorkInfoSecretMask にするので、どの一致も一部も残らない。空の値は
-// どこにも一致しない。log が切り詰められていれば、末尾に残った秘密の値の先頭にあたる部分も伏せ、64 KiB で
-// 切れた値を一部も残さない。プラグインが符号化してから書いた値は見つけられない
+// MaskWorkInfoRunLog merges overlapping matches in the original text and masks secret prefixes at truncated tails; empty secrets do not match, and plugin-encoded secrets cannot be detected.
 func MaskWorkInfoRunLog(log WorkInfoRunLog, secrets []string) WorkInfoRunLog {
 	secrets = slices.DeleteFunc(slices.Clone(secrets), func(s string) bool { return s == "" })
 	if len(secrets) == 0 {
@@ -76,10 +65,10 @@ func MaskWorkInfoRunLog(log WorkInfoRunLog, secrets []string) WorkInfoRunLog {
 	return log
 }
 
-// span は文字列の [start, end) のバイトの範囲である。
+// span is a half-open byte range [start, end).
 type span struct{ start, end int }
 
-// secretSpans は text の中の、秘密の値 secrets の一致をすべて返す。重なる一致も返す。
+// secretSpans includes overlapping matches.
 func secretSpans(text string, secrets []string) []span {
 	var spans []span
 	for _, s := range secrets {
@@ -95,8 +84,7 @@ func secretSpans(text string, secrets []string) []span {
 	return spans
 }
 
-// mergeSpans は spans を始まりの順に並べ、重なる範囲をまとめる。接するだけの範囲はまとめないので、
-// 続けて書かれた 2 つの値は 2 つの WorkInfoSecretMask になる。
+// Merge overlaps but not adjacent spans so adjacent secret values retain separate masks.
 func mergeSpans(spans []span) []span {
 	slices.SortFunc(spans, func(a, b span) int { return cmp.Compare(a.start, b.start) })
 	var merged []span
@@ -110,8 +98,7 @@ func mergeSpans(spans []span) []span {
 	return merged
 }
 
-// secretPrefixSuffix は text の末尾のうち、秘密の値のどれかの（値そのものより短い）先頭と等しい最も長い
-// 部分のバイト数を返す。無ければ 0 を返す。
+// Return the longest trailing byte span matching a proper secret prefix, or zero.
 func secretPrefixSuffix(text string, secrets []string) int {
 	longest := 0
 	for _, s := range secrets {

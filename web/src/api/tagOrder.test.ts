@@ -79,7 +79,6 @@ describe("applyTagToTags", () => {
       "add",
     );
     expect(result).toEqual([manual(1, "2話"), manual(2, "5話"), manual(3, "10話")]);
-    // 元の配列は変えない。
     expect(tags).toHaveLength(2);
   });
 
@@ -90,8 +89,6 @@ describe("applyTagToTags", () => {
       { kind: null, id: 1, name: "Date", tentative: false },
       "add",
     );
-    // 改名で並びが変わる（"Date" は "Cherry" より後）ことも、この差し替えは
-    // 正しく反映する。
     expect(result).toEqual([manual(2, "Cherry"), manual(1, "Date")]);
   });
 

@@ -4,9 +4,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の Select（radix）。一覧の位置と大きさは Radix の CSS 変数で決まるので、
-// その変数を読むクラスだけを web/design-exceptions.js の special で許す。
-// 規則は web/registry/rules/components.md の Select and RadioGroup。
+// Adapted from shadcn/ui Radix; positioning-variable classes have explicit design-exceptions.js allowances.
 
 function Select({ ...props }: ComponentProps<typeof SelectPrimitive.Root>) {
   return <SelectPrimitive.Root data-slot="select" {...props} />;

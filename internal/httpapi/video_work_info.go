@@ -12,24 +12,18 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 動画の作品情報の読み書き。どちらの経路も
-// 所有者だけ（accessRoutes の既定）で、internal/app は通さず internal/store の WorkInfoStore の 1 つの
-// 取引で済ませる。誤りは人物・団体の経路と同じ workInfoFailureOf で写す。
+// Work-info mutations are owner-only, use one transaction, and share workInfoFailureOf with other APIs.
 
-// WorkInfo は動画の作品情報の保存先である。internal/store の *WorkInfoStore がこれを満たす。
 type WorkInfo interface {
-	// Set は動画 videoID の作品情報をまるごと置き換え、作品情報を含む動画を返す。
 	Set(ctx context.Context, videoID int64, info domain.WorkInfo) (domain.Video, error)
-	// SetMany は外部連携の一括操作で、各動画の作品情報を 1 つの取引でまとめて置き換え、反映後の動画を
-	// changes の順に返す。誤りは *domain.WorkInfoAtError か *domain.VideoRefNotFoundError で位置を運ぶ。
+	// SetMany is atomic; indexed errors preserve input order.
 	SetMany(ctx context.Context, changes []domain.WorkInfoChange) ([]domain.Video, error)
-	// SetDetails は表示名と作品情報を 1 つの取引で書き、両方を含む動画を返す。
+	// SetDetails saves display name and work information atomically.
 	SetDetails(ctx context.Context, videoID int64, displayName string, info domain.WorkInfo) (domain.Video, error)
-	// ByUserKeys は利用者データの鍵ごとの作品情報を返す。行の無い鍵は含めない。
+	// ByUserKeys omits keys that do not exist.
 	ByUserKeys(ctx context.Context, userKeys []string) (map[string]domain.WorkInfo, error)
 }
 
-// SetVideoWorkInfo は動画の作品情報をまるごと置き換える（PUT /api/videos/{id}/work-info）。
 func (s *server) SetVideoWorkInfo(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	var body *gen.WorkInfoInput
 	raw, ok := s.readJSONBodyRaw(w, r, &body)
@@ -52,10 +46,8 @@ func (s *server) SetVideoWorkInfo(w http.ResponseWriter, r *http.Request, id gen
 	s.writeVideoDetail(w, r, video)
 }
 
-// SetVideoDetails は表示名と作品情報を 1 回で保存する（PUT /api/videos/{id}/details）。
 func (s *server) SetVideoDetails(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
-	// gen.VideoDetailsInput の displayName は string、workInfo は値なので、欠けても空（解除）に読めて
-	// しまう。欠けた本文で表示名や作品情報を消さないよう、有無を区別して読む。
+	// Check raw field presence so generated zero values cannot silently clear data.
 	var body struct {
 		DisplayName *string            `json:"displayName"`
 		WorkInfo    *gen.WorkInfoInput `json:"workInfo"`
@@ -68,8 +60,7 @@ func (s *server) SetVideoDetails(w http.ResponseWriter, r *http.Request, id gen.
 		s.invalidRequest(w, "displayName and workInfo are required.")
 		return
 	}
-	// 契約は displayName を先に確かめる。作品情報の列挙と必須のプロパティの検査より前に表示名の規則を
-	// 見て、両方に誤りがあっても display_name_* と field: displayName を返す。
+	// Validate displayName before work-info enums and required fields, even when both are invalid.
 	if _, _, err := domain.NormalizeDisplayName(*body.DisplayName); s.writeDetailsDisplayNameError(w, err) {
 		return
 	}
@@ -95,7 +86,6 @@ func (s *server) SetVideoDetails(w http.ResponseWriter, r *http.Request, id gen.
 	s.writeVideoDetail(w, r, video)
 }
 
-// writeDetailsDisplayNameError は err が表示名の誤りなら field: displayName を付けて書き、true を返す。
 func (s *server) writeDetailsDisplayNameError(w http.ResponseWriter, err error) bool {
 	failure, ok := displayNameFailureOf(err)
 	if !ok {
@@ -106,8 +96,6 @@ func (s *server) writeDetailsDisplayNameError(w http.ResponseWriter, err error) 
 	return true
 }
 
-// writeVideoWorkInfoError は作品情報の書き込みの誤りを写す。項目と参照の誤りは workInfoFailureOf が、
-// 動画が無いことはここが video_not_found で写す。
 func (s *server) writeVideoWorkInfoError(w http.ResponseWriter, err error) {
 	if failure, ok := workInfoFailureOf(err); ok {
 		s.writeWorkInfoFailure(w, failure)
@@ -131,11 +119,7 @@ func (s *server) workInfoConfigured(w http.ResponseWriter) bool {
 	return true
 }
 
-// readWorkInfoInput は要求の作品情報を domain の形にする。raw は input を読んだ JSON そのもので、
-// 一覧の各件の必須のプロパティ（WorkDate の kind・date など）が欠けているか null なら、または種類と
-// 役割が契約の列挙に無ければ、400 invalid_request を書いて false を返す（契約の「generated schema
-// check」に当たる検査）。生成型は欠けた date を空の文字列に読み、空の日付は落として保存済みの日付を
-// 消してしまうので、有無は raw で確かめる。省いた一覧の値と null は空で、空は解除である。
+// Check required nested fields before decoding: missing dates must not silently clear values. Omitted or null lists clear them; enum values are validated.
 func (s *server) readWorkInfoInput(w http.ResponseWriter, input gen.WorkInfoInput, raw json.RawMessage) (domain.WorkInfo, bool) {
 	info, message, ok := workInfoFromInput(input, raw)
 	if !ok {
@@ -144,8 +128,7 @@ func (s *server) readWorkInfoInput(w http.ResponseWriter, input gen.WorkInfoInpu
 	return info, ok
 }
 
-// workInfoFromInput は readWorkInfoInput の本体で、応答を書かずに誤りの文言と false を返す。外部連携 API の
-// POST /api/v1/video-work-info も、項目の workInfo を同じ形の gen.WorkInfoInput に読んでこれを呼ぶ。
+// Share body parsing with the REST API.
 func workInfoFromInput(input gen.WorkInfoInput, raw json.RawMessage) (domain.WorkInfo, string, bool) {
 	message, ok := workInfoInputRequiredPresent(raw)
 	if ok {
@@ -173,8 +156,6 @@ func workInfoFromInput(input gen.WorkInfoInput, raw json.RawMessage) (domain.Wor
 	return info, "", true
 }
 
-// workInfoInputEnumsValid は日付の種類と人物・団体の役割が契約の列挙にあるかを確かめ、無ければ
-// 誤りの文言と false を返す。
 func workInfoInputEnumsValid(input gen.WorkInfoInput) (string, bool) {
 	for _, date := range valueOrZero(input.Dates) {
 		if !date.Kind.Valid() {
@@ -194,8 +175,7 @@ func workInfoInputEnumsValid(input gen.WorkInfoInput) (string, bool) {
 	return "", true
 }
 
-// workInfoInputEntries は WorkInfoInput の一覧のうち、件が必須のプロパティを持つものを JSON のまま
-// 読む形である。一覧の null と省略は空で、件の null は空の map（どのプロパティも無い）になる。
+// Omitted or null lists are empty; null entries still fail required-field checks.
 type workInfoInputEntries struct {
 	Dates         []map[string]json.RawMessage `json:"dates"`
 	People        []map[string]json.RawMessage `json:"people"`
@@ -203,9 +183,7 @@ type workInfoInputEntries struct {
 	ExternalIds   []map[string]json.RawMessage `json:"externalIds"`
 }
 
-// workInfoInputRequired は一覧ごとの件の必須のプロパティを WorkInfo の順に並べたものである
-// （api/openapi.yaml の WorkDate・WorkPersonInput・WorkOrganizationInput・ExternalId）。ref は
-// CreditIdRef を値に持つプロパティで、その id も必須である。
+// Check required fields in schema order, including reference IDs.
 var workInfoInputRequired = []struct {
 	list     string
 	entries  func(workInfoInputEntries) []map[string]json.RawMessage
@@ -220,8 +198,6 @@ var workInfoInputRequired = []struct {
 		[]string{"source", "value"}, ""},
 }
 
-// workInfoInputRequiredPresent は raw（WorkInfoInput の JSON）の一覧の各件が必須のプロパティを null で
-// なく持つかを WorkInfo の順に確かめ、最初に欠けたものの誤りの文言と false を返す。
 func workInfoInputRequiredPresent(raw json.RawMessage) (string, bool) {
 	var entries workInfoInputEntries
 	if err := json.Unmarshal(raw, &entries); err != nil {
@@ -247,13 +223,11 @@ func workInfoInputRequiredPresent(raw json.RawMessage) (string, bool) {
 	return "", true
 }
 
-// jsonPropertyNotNull は JSON オブジェクトが name を null でない値で持つことを返す。
 func jsonPropertyNotNull(fields map[string]json.RawMessage, name string) bool {
 	value, ok := jsonProperty(fields, name)
 	return ok && !bytes.Equal(bytes.TrimSpace(value), []byte("null"))
 }
 
-// valueOrZero は省いた値と null を型の零値として読む。
 func valueOrZero[T any](value *T) T {
 	if value == nil {
 		var zero T
@@ -262,8 +236,7 @@ func valueOrZero[T any](value *T) T {
 	return *value
 }
 
-// workInfoForDetail は動画 1 件の応答に載せる作品情報を読む（GET /api/videos/{id}）。所有者にだけ
-// 読み、ゲストと保存先の無い構成では video をそのまま返す。
+// Work details are owner-only; leave guest responses and responses without a store unchanged.
 func (s *server) workInfoForDetail(ctx context.Context, video domain.Video) (domain.Video, error) {
 	if s.workInfo == nil || !audienceFrom(ctx).IsOwner() || video.UserKey == "" {
 		return video, nil
@@ -278,7 +251,7 @@ func (s *server) workInfoForDetail(ctx context.Context, video domain.Video) (dom
 	return video, nil
 }
 
-// toAPIWorkInfo は作品情報を契約の WorkInfo にする。nil（行の無い動画）なら nil を返し、応答から省く。
+// Omit nil work information.
 func toAPIWorkInfo(info *domain.WorkInfo) *gen.WorkInfo {
 	if info == nil {
 		return nil

@@ -1,18 +1,11 @@
 /*
- * デザインシステムの基礎 — 見た目の値の唯一の置き場
- * 。
- *
- * 色は shadcn の意味名と vv 固有の役割で、6 桁の hex（overlay だけ半透明）。暗い配色の
- * 1 組だけを持つ。画面はここから生成される実用クラス（bg-card、text-muted-foreground、
- * rounded-md、gap-3 など）だけを使う。使い方の規則は web/registry/rules/foundations.md、
- * 生の色と対比の検査は src/theme/tokens.test.ts。
+ * Single source of visual values; screens use generated utilities only. See
+ * web/registry/rules/foundations.md and src/theme/tokens.test.ts for usage and contrast checks.
  */
 @theme {
   /*
-   * --- 段階を持つ名前空間を Tailwind の既定から空にする。ここで定めた
-   * 段だけが実用クラスになり、段階の外（p-7、text-2xl、rounded-xl、font-bold、bg-red-500
-   * など）は生成されず、web/eslint.config.js の no-unknown-classes で落ちる。
-   * tw-animate-css の animate-in などもここで消えるので、動きは下の段だけを使う。 ---
+   * Clear Tailwind scales so only declared tokens generate utilities; ESLint rejects out-of-scale
+   * classes. This also removes tw-animate-css animations, so use only those declared below.
    */
   --color-*: initial;
   --text-*: initial;
@@ -24,7 +17,6 @@
   --drop-shadow-*: initial;
   --animate-*: initial;
 
-  /* --- 面（暗い順に navbar・background・muted・card・popover）と文字 --- */
   --color-navbar: #000000;
   --color-background: #111111;
   --color-foreground: #f2f2f2;
@@ -35,25 +27,26 @@
   --color-popover: #2b2b2b;
   --color-popover-foreground: #f2f2f2;
 
-  /* --- 副次の操作・チップ、hover と強調した行（shadcn の accent。ブランド色ではない） --- */
   --color-secondary: #363636;
   --color-secondary-foreground: #f2f2f2;
   --color-accent: #363636;
   --color-accent-foreground: #f2f2f2;
 
-  /* --- VVMDM のシアン: 1 区画に 1 つの主操作・選択・進行。押下と選択には濃い版を使う。 --- */
+  /*
+   * Primary cyan is for one primary action per section, selection and progress; use the darker
+   * variant for pressed states.
+   */
   --color-primary: #3ec1d3;
   --color-primary-hover: #68cedc;
   --color-primary-active: #29a4b5;
   --color-primary-foreground: #111111;
   --color-primary-soft: #163b40;
 
-  /* --- 線とフォーカス --- */
   --color-border: #383838;
   --color-input: #7a7a7a;
   --color-ring: #68cedc;
 
-  /* --- 状態。いつも文言と印を添える。 --- */
+  /* Always accompany status colors with text and an icon. */
   --color-destructive: #ff8a80;
   --color-destructive-strong: #b8363c;
   --color-destructive-foreground: #ffffff;
@@ -65,13 +58,11 @@
   --color-success-foreground: #111111;
   --color-success-soft: #204334;
 
-  /* --- お気に入りの印だけの色 --- */
   --color-favorite: #ff6f9c;
 
-  /* --- ダイアログの後ろとサムネイルの上（ただ一つの半透明） --- */
+  /* The only translucent color, for backdrops and thumbnail overlays. */
   --color-overlay: rgb(0 0 0 / 0.88);
 
-  /* --- 書体と文字の 6 段階。太さは normal・medium・semibold の 3 種。 --- */
   --font-sans:
     "Inter Variable", "Noto Sans JP Variable", system-ui, -apple-system, "Segoe UI",
     "Hiragino Sans", sans-serif;
@@ -87,20 +78,15 @@
   --text-lg--line-height: 1.75rem;
   --text-xl: 1.25rem;
   --text-xl--line-height: 1.75rem;
-  /* 畳んだサイドバー（レール）の項目の名前。56px の枡に「Duplicates」が収まる大きさ */
+  /* Fit Duplicates within a 56px rail item. */
   --text-rail: 0.625rem;
   --text-rail--line-height: 1;
-  /* 動画ページの題名の sm 以上の大きさ（player/VideoTitle.tsx） */
   --text-video-title: 1.5rem;
   --text-video-title--line-height: 1.375;
   --font-weight-normal: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
 
-  /*
-   * --- 余白と大きさ: 4px 格子の 0・px・0.5・1・1.5・2・3・4・5・6・8・9・10・
-   * 12・16 と、次の名前つきの段。ほかの数値の段は生成されない。 ---
-   */
   --spacing-0: 0px;
   --spacing-0\.5: 0.125rem;
   --spacing-1: 0.25rem;
@@ -118,104 +104,81 @@
   --spacing-navbar: 3.25rem;
   --spacing-sidebar: 14.5rem;
   --spacing-sidebar-rail: 4.25rem;
-  /* レールの項目（アイコンの下に名前を出す正方形） */
   --spacing-rail-item: 3.5rem;
   --spacing-card-0: 13.75rem;
   --spacing-card-1: 17.5rem;
   --spacing-card-2: 22.5rem;
   --spacing-card-3: 30rem;
-  /* 一覧表示の列（サムネイルの列・サムネイル・数値の列・広い数値の列） */
   --spacing-list-thumb-cell: 8rem;
   --spacing-list-thumb: 7rem;
   --spacing-list-number: 5rem;
   --spacing-list-number-wide: 6rem;
   --spacing-list-date: 7rem;
-  /* 視聴履歴（web/src/history/HistoryPage.tsx）の行のサムネイル（lg 以上と lg 未満。16:9 で
-     約 192px と 128px）。再生位置の棒が読める幅として履歴の画面が決めた */
   --spacing-history-thumb: 12rem;
   --spacing-history-thumb-sm: 8rem;
-  /* ツールバーの検索欄の最小幅（狭い幅と sm 以上）とズームの幅 */
   --spacing-search-min: 5rem;
   --spacing-search-min-sm: 10rem;
   --spacing-zoom: 6rem;
-  /* 選択バーの高さと、その下に隠れないよう一覧の末尾に足す余白 */
+  /* Reserve list-end space so the selection bar cannot cover the final cards. */
   --spacing-selection-bar: 2.75rem;
   --spacing-selection-bar-clearance: 6rem;
-  /* ポップオーバーの幅とチップの名前の最大幅 */
   --spacing-popover: 18rem;
   --spacing-popover-wide: 20rem;
-  /* 画面の端に固定して浮かべる知らせ（取り込みの表示）の幅の上限。左右に 0.75rem を残す。 */
+  /* Leave 0.75rem on each viewport edge for fixed notifications. */
   --spacing-viewport-inset: calc(100vw - 1.5rem);
   --spacing-chip-label: 12rem;
-  /* タグの名前を打つ TagCommand（ui/TagCommand.tsx）の dropdown・inline の入力の幅と候補の一覧の幅・最大の高さ、
-     窓の中に置いた一覧の高さとその最大 */
   --spacing-combobox: 10rem;
   --spacing-combobox-list: 16rem;
   --spacing-combobox-panel: 15rem;
   --spacing-combobox-panel-max: 40vh;
-  /* メニュー（DropdownMenu）の最小幅 */
   --spacing-menu: 11rem;
-  /* 詳細ページの横の情報欄の幅（web/src/ui/patterns/detail-page.tsx）。xl からは広い方。
-     動画ページでは中のカードの幅（224px）に左右の余白を足した幅 */
+  /* Detail aside width includes a 224px card plus horizontal padding; wider from xl. */
   --spacing-detail-aside: 16rem;
   --spacing-detail-aside-wide: 16rem;
-  /* 編集画面（web/src/ui/patterns/editor-dialog.tsx）の横の欄の幅。xl からは広い方 */
   --spacing-editor-aside: 20rem;
   --spacing-editor-aside-wide: 24rem;
-  /* 編集画面（web/src/ui/patterns/editor-dialog.tsx）の段の高さ。lg 未満で、画面の高さの約 45% */
+  /* Narrow-screen editor stage occupies roughly 45% of viewport height. */
   --spacing-editor-stage: 45dvh;
-  /* 入力画面（web/src/ui/patterns/form-page.tsx）の左の列の幅。lg から */
   --spacing-form-page-aside: 16.25rem;
-  /* 一覧ページの横の欄（web/src/ui/patterns/list-page.tsx の aside）の幅と、トップバーの下に
-     貼り付けたときの高さの上限（それより高ければ欄の中で動かす）。lg から */
+  /* Cap sticky list-aside height beneath the top bar and scroll overflow internally. */
   --spacing-list-aside: 11rem;
   --spacing-list-aside-max: calc(100dvh - 3.25rem - 2rem);
-  /* 設定ページ（web/src/ui/patterns/settings-page.tsx）のページの一覧の列の幅。sm から。
-     text-sm の「Video conversion」が行の px-2 と合わせて 1 行に収まる幅 */
+  /* Fit Video conversion with text-sm and px-2 on one line. */
   --spacing-settings-nav: 10rem;
-  /* 貼り付けた一覧の高さの上限（それより高ければ一覧の中で動かす）。sm から */
   --spacing-settings-nav-max: calc(100dvh - 3.25rem - 2rem);
-  /* 動画ページ: 行のサムネイルの幅（設計の見本の行）、前後の動画へのつまみの幅と最小の高さ（狭い幅と
-     sm 以上）、状態の層の下に操作バーの分だけ空ける余白、バージョンの一覧の幅 */
   --spacing-related-thumb: 10rem;
   --spacing-neighbor-arrow: 1.75rem;
   --spacing-neighbor-arrow-min: 4.5rem;
   --spacing-neighbor-arrow-min-sm: 6rem;
   --spacing-control-bar-clearance: 3.5rem;
   --spacing-versions-popover: min(28rem, calc(100vw - 2rem));
-  /* 動画ページ: プレイリストのパネルの一覧の高さの上限（カード 2 枚と 3 枚目の上端が見える。
-     低い画面では列の半分ほどに抑え、下の続けて再生と関連動画に届くようにする） */
+  /*
+   * Show two playlist cards and the next card's top; cap at roughly half short viewports so lower
+   * lists remain reachable.
+   */
   --spacing-playlist-panel: min(28rem, 45dvh);
-  /* 動画ページ: 公開の切り替えの左右の余白と、技術情報の項目の左右の余白 */
   --spacing-visibility-x: 0.625rem;
   --spacing-technical-x: 0.625rem;
-  /* 設定の取り込みの問題の一覧の最大の高さと、フォルダ選択の一覧の高さ */
   --spacing-issue-list: 50vh;
   --spacing-folder-list: 18rem;
-  /* 設定の作品情報プラグインの直近の実行のダイアログの出力の最大の高さ。事実と足の行が 1280×800 と 360×640 で見えたまま、長い出力は中で動く */
+  /* Bound run output so facts and actions remain visible at both 1280x800 and 360x640. */
   --spacing-run-output: 40vh;
-  /* アクティビティ（web/src/activity）: カードの最小の高さ（52px）、時刻の列の幅（104px）、
-     取り込みの進み具合の棒の幅（160px）。フッターの帯もカードと同じ高さ */
   --spacing-activity-card: 3.25rem;
   --spacing-activity-time: 6.5rem;
   --spacing-activity-bar: 10rem;
 
-  /* --- 角丸: sm（チェック・バッジ）、md（操作・カード・サムネイル）、lg（浮く層）、full --- */
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 10px;
 
-  /* --- 影: 置いた面には付けず、hover のカードと浮く層と画像の上の印にだけ付ける --- */
+  /* Reserve shadows for hovered cards, overlays and image marks, not resting surfaces. */
   --shadow-card-hover: 0 0 0 1px rgb(255 255 255 / 0.1), 0 8px 24px rgb(0 0 0 / 0.45);
   --shadow-elevated: 0 0 0 1px rgb(255 255 255 / 0.06), 0 12px 32px rgb(0 0 0 / 0.55);
-  /* 貼り付いた表の列の見出しの下線。行の境界線は貼り付きと一緒に動かないので、影で描く。 */
+  /* Use a shadow for sticky table-header borders because row borders do not stick with them. */
   --shadow-table-head: inset 0 -1px 0 var(--color-border);
   --drop-shadow-mark: 0 1px 2px rgb(0 0 0 / 0.75);
 
-  /*
-   * --- 動き: fade-in・pop-in・slide-up と、読み込み中の shimmer・spin（Spinner）・pulse
-   * （量の分からない Progress）。動きを減らす設定では止める。 ---
-   */
+  /* Disable these animations under reduced-motion preferences. */
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
   --animate-fade-in: fade-in 150ms var(--ease-out-quart);
   --animate-pop-in: pop-in 120ms var(--ease-out-quart);
@@ -224,7 +187,6 @@
   --animate-spin: spin 1s linear infinite;
   --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 
-  /* --- 再生画面のシークプレビュー（index.css の .vv-seek-preview。special の例外） --- */
   --size-seek-preview: clamp(160px, calc(89.41px + 19.61vw), 240px);
   --size-seek-preview-max: 240px;
   --spacing-seek-preview-gap: 18px;
@@ -234,7 +196,7 @@
   --spacing-seek-preview-time-x: 6px;
   --text-seek-preview: 11px;
   --duration-seek-preview: 100ms;
-  /* シークバーのチャプターの印の幅（index.css の .vv-chapter-mark。docs/design-docs/media-information.md）。 */
+  /* Chapter tick width; see docs/design-docs/media-information.md. */
   --spacing-chapter-mark: 2px;
 
   @keyframes fade-in {
@@ -286,13 +248,9 @@
 }
 
 /*
- * 動画ページのプレイヤーの枠（player/VideoPage.tsx）。高さの上限は、狭い幅では見出しの帯と
- * 題名・タグ・情報の行が画面に収まる高さ（12.25rem を引く）。lg からは見出しの帯と題名の 1 行だけが
- * 収まる高さ（8.25rem を引き、15rem を下回らない）にし、プレイヤーを左の列の幅いっぱいまで広げる。
- * 幅の上限はその高さに動画の比率（16:9 より細いときは 16:9）を掛けた値で、比率は実行時に枠が
- * `--vv-video-aspect` として持つ。lg からは、大きな画面で引き延ばしすぎないよう、さらに
- * 動画の元の表示幅（`--vv-video-width`。小さな動画でも 60rem までは広げる）と 100rem を
- * 上限にする。値が要素の変数を読むので、:root の変数にせず実用クラスへ直に書き込む（inline）。
+ * Reserve height for headings and metadata, then cap player width by aspect, native width and
+ * 100rem. Inline utilities must read element-local --vv-video-aspect and --vv-video-width rather
+ * than root-resolved variables.
  */
 @theme inline {
   --spacing-player-height: calc(100dvh - 12.25rem);
@@ -306,9 +264,6 @@
   --aspect-player: var(--vv-video-aspect);
 }
 
-/*
- * 読み込み中の面（Skeleton）の光の帯。animate-shimmer が背景の位置を動かす。
- */
 @utility bg-shimmer {
   background-image: linear-gradient(
     90deg,
@@ -319,51 +274,32 @@
   background-size: 200% 100%;
 }
 
-/*
- * DataTable の貼り付く列の見出しの位置。画面が測った帯の下端を、DataTable が
- * --data-table-head-top で渡す（web/registry/rules/patterns.md の Data table）。
- */
+/* DataTable supplies the measured sticky-band bottom through --data-table-head-top. */
 @utility top-data-table-head {
   top: var(--data-table-head-top, 0px);
 }
 
-/*
- * 中身の幅の列と残りの列の 2 列（検索の書き方の例と説明）。列の定義は段で表せないので
- * 名前つきのユーティリティにする。
- */
+/* Use a named utility because content-sized grid columns cannot be represented by spacing tokens. */
 @utility grid-cols-term {
   grid-template-columns: auto 1fr;
 }
 
-/*
- * 横の欄のある一覧ページの本体（web/src/ui/patterns/list-page.tsx）。lg から本体と
- * list-aside の幅の欄の 2 列。列の定義は段で表せないので名前つきのユーティリティにする。
- */
+/* Named grid utility for the list body's flexible content and fixed-width aside. */
 @utility grid-cols-list-aside {
   grid-template-columns: minmax(0, 1fr) var(--spacing-list-aside);
 }
 
-/*
- * 入力画面の本体（web/src/ui/patterns/form-page.tsx）。lg から form-page-aside の幅の左の列と、
- * 5:6 の 2 つの欄。列の定義は段で表せないので名前つきのユーティリティにする。
- */
+/* Named grid utility for the fixed-width aside and 5:6 form panels. */
 @utility grid-cols-form-page {
   grid-template-columns: var(--spacing-form-page-aside) minmax(0, 5fr) minmax(0, 6fr);
 }
 
-/*
- * ページの一覧のある設定ページ（web/src/ui/patterns/settings-page.tsx）。sm から settings-nav の
- * 幅の左の列と本文の 2 列。列の定義は段で表せないので名前つきのユーティリティにする。
- */
+/* Named grid utility for settings navigation and its flexible body. */
 @utility grid-cols-settings-page {
   grid-template-columns: var(--spacing-settings-nav) minmax(0, 1fr);
 }
 
-/*
- * 視聴履歴の行の列（web/src/history/HistoryPage.tsx）。lg 未満はサムネイル・文字・端の ×、
- * lg からはサムネイル・文字・操作・端の ×。列の定義は段で表せないので名前つきの
- * ユーティリティにする。
- */
+/* Named responsive history grid: thumbnail, text and remove, adding actions from lg. */
 @utility grid-cols-history-row {
   grid-template-columns: var(--spacing-history-thumb-sm) minmax(0, 1fr) auto;
 }
@@ -373,8 +309,8 @@
 }
 
 /*
- * フォルダの絵に重ねる 1 枚のサムネイルの幅（背板の幅に対する割合）。位置と傾きは 1 枚ごとに
- * 決まるので画面が style で渡す（videoList/FolderArt.tsx）。
+ * Width is relative to the folder backplate; FolderArt supplies per-sheet positions and rotations
+ * through style.
  */
 @utility w-folder-preview {
   width: 68%;

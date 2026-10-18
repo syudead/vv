@@ -11,13 +11,8 @@ import { smartFolderPagePath } from "./smartFolderPaths";
 import { folderSort, type LibraryFilter, ruleFromLibrary } from "./smartRule";
 
 /**
- * SaveSmartFolderButton はライブラリの見出しの「Save as smart folder」と、それが開く窓である。呼び手は所有者で条件が
- * 効いている間だけ描く（条件の無いときは出さない、要件 10）。
- *
- * 押した時点の絞り込みを条件に、並べ順を今の並べ順に（ランダムなら追加日の新しい順に）して
- * 窓を開く。作れたら `Created "{name}"` のトーストに、新しいフォルダのページを開く `Open` を
- * 添える。絞り込んだ一覧と選択とスクロールはそのまま（絞り込んだライブラリにフォルダの
- * カードは並ばない、R-7）。
+ * Render only for owners with active conditions; snapshot filters on click and replace random sort
+ * with newest-added. Creation leaves the filtered list, selection and scroll intact.
  */
 export default function SaveSmartFolderButton({
   filter,

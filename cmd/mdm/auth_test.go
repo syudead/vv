@@ -16,8 +16,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// ownerAuth はどの要求も所有者として通す。認証の境界は internal/httpapi の
-// auth_test.go が確かめるので、他の経路の組み立てのテストはこれで境界を越える。
+// Bypass authentication in unrelated wiring tests; internal/httpapi tests the auth boundary.
 type ownerAuth struct{}
 
 func (ownerAuth) Setup(context.Context, string, string) (httpapi.IssuedSession, error) {
@@ -38,8 +37,6 @@ func (ownerAuth) State(context.Context, string) (httpapi.AuthState, error) {
 	return httpapi.AuthStateOwner, nil
 }
 
-// 組み立てた認証で初回設定した Cookie が所有者として通り、ホストのコマンドで
-// パスワードを再設定すると通らなくなる。
 func TestAssembledAuthSetupAndHostPasswordReset(t *testing.T) {
 	dataDir := newMigratedDataDir(t)
 	db, err := store.Open(dataDir)
@@ -79,7 +76,6 @@ func TestAssembledAuthSetupAndHostPasswordReset(t *testing.T) {
 	if rec := serve(http.MethodGet, "/api/videos", "", cookie); rec.Code != http.StatusOK {
 		t.Fatalf("初回設定の Cookie で一覧: status = %d: %s", rec.Code, rec.Body)
 	}
-	// 初回設定の Cookie で API トークンを発行する。
 	created := serve(http.MethodPost, "/api/api-tokens", `{"name":"Claude Code"}`, cookie)
 	if created.Code != http.StatusCreated || !strings.Contains(created.Body.String(), `"secret":"vvt_`) {
 		t.Fatalf("API トークンの発行: status = %d: %s", created.Code, created.Body)
@@ -92,7 +88,7 @@ func TestAssembledAuthSetupAndHostPasswordReset(t *testing.T) {
 	if run := runAccountCommand(t, dataDir, []string{"account", "set-password"}, newPassword+"\n", nil); run.code != exitAccountOK {
 		t.Fatalf("set-password: code = %d: %s", run.code, run.stderr)
 	}
-	// 「ゲストも」の一覧はゲストとして返るので、所有者だけの経路で確かめる。
+	// Use an owner-only route because guest-enabled listings return the guest view.
 	if rec := serve(http.MethodGet, "/api/scans/current", "", cookie); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("再設定後の Cookie: status = %d", rec.Code)
 	}
@@ -103,7 +99,6 @@ func TestAssembledAuthSetupAndHostPasswordReset(t *testing.T) {
 	if login.Code != http.StatusOK {
 		t.Fatalf("新しいパスワードでログイン: status = %d: %s", login.Code, login.Body)
 	}
-	// パスワードの再設定で API トークンもすべて失効し、一覧から消える。
 	fresh := login.Result().Cookies()[0]
 	list := serve(http.MethodGet, "/api/api-tokens", "", &http.Cookie{Name: fresh.Name, Value: fresh.Value})
 	if list.Code != http.StatusOK || strings.TrimSpace(list.Body.String()) != `{"items":[]}` {

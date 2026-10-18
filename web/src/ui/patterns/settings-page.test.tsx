@@ -34,13 +34,11 @@ describe("SettingsPage", () => {
     const nav = screen.getByRole("navigation", { name: p.settings });
     expect(slot("settings-page").className).toContain("max-w-4xl");
     expect(slot("settings-page").dataset.view).toBe("list");
-    // 一覧の住所: sm 未満は本文を隠し（sm から並べる）、一覧は隠さない。
     expect(slot("settings-page-main").className).toMatch(/(^| )hidden( |$)/);
     expect(slot("settings-page-nav").className).not.toMatch(/(^| )hidden( |$)/);
-    // sm から貼り付けた一覧は窓より高ければ列の中で動かし、末尾の項目にも届く。
+    // Scroll tall sticky navigation internally so every entry remains reachable.
     expect(slot("settings-page-nav").className).toContain("sm:max-h-settings-nav-max");
     expect(slot("settings-page-nav").className).toContain("sm:overflow-y-auto");
-    // sm からは最初のページを今のページとして出す。
     const library = within(nav).getByRole("link", { name: p.settingsPages.library });
     expect(library.getAttribute("aria-current")).toBe("page");
     expect(library.className).toContain("sm:data-current:bg-secondary");
@@ -62,14 +60,12 @@ describe("SettingsPage", () => {
         .getByRole("link", { name: p.settingsPages.library })
         .hasAttribute("aria-current"),
     ).toBe(false);
-    // 各ページの住所: sm 未満は一覧を隠して本文を出し、戻るリンクは sm から隠す。
     expect(slot("settings-page-nav").className).toMatch(/(^| )hidden( |$)/);
     expect(slot("settings-page-main").className).not.toMatch(/(^| )hidden( |$)/);
     expect(slot("settings-page-main").className).toContain(
       "sm:**:data-[slot=page-header-leading]:hidden",
     );
 
-    // 「Server」のページは notice を見出しと節の間に置き、ほかのページには描かない。
     const notice = slot("settings-page-notice");
     expect(notice.textContent).toBe(p.serverNotice);
     expect(

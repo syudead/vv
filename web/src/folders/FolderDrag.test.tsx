@@ -13,9 +13,6 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import FolderPage from "./FolderPage";
 
-// フォルダ画面で動画を動画に落とす。
-// 選択が無いので 1 枚ずつ持ち上がり、「Make a group」は 2 枚を残して名前の欄を窓で出す。
-
 function video(id: number, title: string): Video {
   return {
     id,
@@ -56,9 +53,8 @@ const listing: FolderListing = {
 const server = {
   videos: [] as Video[],
   writes: [] as { path: string; body: unknown }[],
-  /** 次の「Make a group」が作るグループの id。 */
   nextGroupId: 70,
-  /** 置くと名前を変える要求は、これが解けるまで答えない。 */
+  /** Gate rename responses until this promise resolves. */
   holdRename: null as Promise<void> | null,
 };
 
@@ -125,7 +121,6 @@ async function open() {
   await screen.findByRole("link", { name: "y" });
 }
 
-/** dropXOnY は x を y に落とし、開いたメニューを返す。持ち上げている間、件数の印は無い。 */
 async function dropXOnY() {
   lift("x", 0);
   moveTo(1);

@@ -10,7 +10,6 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import DuplicatesPage from "./DuplicatesPage";
 
-/** groupList は組の一覧である。通知（Sonner）の並び（ol）は数えない。 */
 function groupList(): HTMLElement | undefined {
   return screen
     .queryAllByRole("list")
@@ -78,10 +77,8 @@ const server = {
   dismissRequests: [] as number[][],
   dismissError: null as { status: number; body: unknown } | null,
   holdDismiss: null as ((response: Response) => void) | null,
-  /** 止めている却下の応答すべて（重なった決定を同じ時に返すため）。 */
   heldDismisses: [] as ((response: Response) => void)[],
   hold: false,
-  /** 一覧の応答を止めておく（取り直しの重なりを見るため）。 */
   holdList: [] as (() => void)[],
   holdingList: false,
   bundleRequests: [] as { videoIds: number[]; representativeId: number }[],
@@ -229,7 +226,6 @@ describe("DuplicatesPage", () => {
     const item = first!;
     expect(within(item).getByText("Same length · similar frames")).toBeDefined();
 
-    // 判断が先、動画の中身は後。DOM の順も「Different videos」→「Same video…」→ 2 本。
     const focusable = Array.from(item.querySelectorAll("button, a")).map((element) =>
       element.getAttribute("aria-label"),
     );
@@ -252,7 +248,6 @@ describe("DuplicatesPage", () => {
     expect(within(left).getByText("MATROSKA")).toBeDefined();
     expect(within(left).getByText("H.265")).toBeDefined();
     expect(within(left).getByText("4.0 GB")).toBeDefined();
-    // 置き場所は 3 行目。title に絶対パスを入れる。
     const place = within(left).getByText("movies / anime");
     expect(place.closest("[title]")?.getAttribute("title")).toBe(
       "/media/movies/anime/劇場版.mkv",
@@ -262,7 +257,6 @@ describe("DuplicatesPage", () => {
     expect(within(right).getByText("1280×720")).toBeDefined();
     expect(within(right).getByText("1.0 GB")).toBeDefined();
     expect(within(right).getByText("backup / old")).toBeDefined();
-    // 距離の数字は出さない。
     expect(item.textContent).not.toContain("3 ");
   });
 
@@ -283,7 +277,6 @@ describe("DuplicatesPage", () => {
     );
 
     const dialog = screen.getByRole("dialog", { name: "Bundle as versions" });
-    // 組の 2 本をそのまま渡し、取り直さない。行は id の昇順。
     const radios = within(dialog).getAllByRole("radio");
     expect(radios.map((radio) => radio.closest("label")?.textContent)).toEqual([
       expect.stringContaining("劇場版"),
@@ -307,7 +300,6 @@ describe("DuplicatesPage", () => {
         screen.getByRole("button", { name: "Different videos, for 旅行 and 旅行 (1)" }),
       ),
     );
-    // 一覧の取り直しは scan の知らせに任せる。
     expect(server.listCalls).toBe(1);
   });
 
@@ -326,7 +318,6 @@ describe("DuplicatesPage", () => {
     const buttons = within(item).getAllByRole("button") as HTMLButtonElement[];
     expect(buttons.every((button) => button.disabled)).toBe(true);
     expect(different.querySelector("svg.animate-spin")).not.toBeNull();
-    // もう一方の組は押せる。
     expect(
       (
         screen.getByRole("button", {
@@ -402,7 +393,7 @@ describe("DuplicatesPage", () => {
       [3, 4],
     ]);
 
-    // 2 つの応答を同じ描画の前に返す。
+    // Resolve both decisions before the same render to exercise concurrent state updates.
     for (const resolve of server.heldDismisses)
       resolve(new Response(null, { status: 204 }));
 
@@ -420,7 +411,6 @@ describe("DuplicatesPage", () => {
     renderPage();
     expect(await screen.findByText("Showing 1 of 2 pairs")).toBeDefined();
 
-    // 上限の外にあった組は、見せていた組が減ると応答に入る。
     const rest = pair(
       video(5, { title: "残りの組" }),
       video(6, { title: "残りの組 (2)" }),
@@ -447,7 +437,6 @@ describe("DuplicatesPage", () => {
     const different = await screen.findByRole("button", {
       name: /^Different videos, for 劇場版 and/,
     });
-    // 確かめている間に片方がスキャンで消えた。
     server.candidates = [server.candidates[1]!];
     await user.click(different);
 
@@ -508,7 +497,7 @@ describe("DuplicatesPage", () => {
   it("初めてつながったときも取り直し、つながる前に決まった組を一覧から落とす", async () => {
     renderPage();
     await screen.findByText("2 pairs");
-    // 最初の取得のあと、サーバーが受け口を作る前に判定が組を除いた。candidates は届かない。
+    // A decision falls between the initial read and server subscription; no candidates event is delivered.
     server.candidates = [server.candidates[1]!];
     await emitServerEvent("open");
 
@@ -529,7 +518,6 @@ describe("DuplicatesPage", () => {
     server.holdList.shift()?.();
     await screen.findByText("2 pairs");
     await waitFor(() => expect(server.listCalls).toBe(2));
-    // 重なった 3 回は 1 回に畳む。
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(server.listCalls).toBe(2);
   });

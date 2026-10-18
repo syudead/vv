@@ -10,146 +10,109 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// IngestStore は取り込みのジョブが読み書きする保存先である。
 type IngestStore interface {
 	ContentIndex
 	GetVideo(ctx context.Context, id int64) (domain.Video, error)
-	// JobIdentityCurrent は専有した時点の所在と内容が今も同じかを返す。
 	JobIdentityCurrent(ctx context.Context, job domain.Job) (bool, error)
-	// ContentKeyCurrent は動画の内容が key のままかを返す。
 	ContentKeyCurrent(ctx context.Context, videoID int64, key string) (bool, error)
-	// PreviewSourceCurrent はプレビューの元が専有した時点と同じかを返す。
 	PreviewSourceCurrent(ctx context.Context, job domain.Job) (bool, error)
-	// ThumbnailSourceCurrent は動画の内容が key のままで、所在 locationPath が今も内容 key の
-	// 動画の所在かを返す。
+	// Require both unchanged video content and membership of locationPath in that content's locations.
 	ThumbnailSourceCurrent(ctx context.Context, videoID int64, key, locationPath string) (bool, error)
-	// ApplyProbeForJob は解析の結果を書き、同じ取引で一覧用プレビューの仕事を積む。
+	// Probe results and preview jobs commit together.
 	ApplyProbeForJob(ctx context.Context, job domain.Job, probe domain.Probe, play domain.Playability) (bool, error)
-	// SetThumbnailStateForJob と SetSeekThumbnailStateForJob は、成功を書く取引で
-	// substitution に従って代用の問題を入れる・消す。
+	// Record or clear substitution issues in the same transaction as successful stage completion.
 	SetThumbnailStateForJob(
 		ctx context.Context, job domain.Job, state domain.ThumbnailState, substitution domain.Substitution) (bool, error)
 	SetSeekThumbnailStateForJob(
 		ctx context.Context, job domain.Job, state domain.SeekThumbnailState, substitution domain.Substitution) (bool, error)
 	CompletePreviewForContent(ctx context.Context, job domain.Job) (bool, error)
-	// ApplyFingerprintForJob は専有した時点の内容と所在が今も同じときだけ、その内容の
-	// 映像の指紋を置き換え、反映したかを返す。
+	// Apply fingerprints only while claimed content and location still match.
 	ApplyFingerprintForJob(ctx context.Context, job domain.Job, fingerprint domain.Fingerprint) (bool, error)
-	// SetThumbnailPosition は代表サムネイルの位置を記録し（nil は解除）、同じ取引でその内容の
-	// 動画の thumbnail_state を done にする。画像を公開したあと、生成の錠の中で呼ぶ
-	//
+	// After publication, record position and done state within the generation lock; nil clears the
+	// position.
 	SetThumbnailPosition(ctx context.Context, videoID int64, positionMs *int64) (domain.Video, error)
-	// ApplyThumbnailImage は内容 contentKey の動画 videoID に適用した画像 image（代表サムネイル・
-	// 元の画像・出どころ）を記録し、同じ取引でその内容の動画の thumbnail_state を done にする。
-	// 動画が無いか内容が違えば domain.ErrContentChanged で、何も書かない。画像を公開したあと、
-	// 生成の錠の中で呼ぶ。
+	// After publication under the generation lock, atomically store image/provenance and done state;
+	// missing or changed content returns ErrContentChanged without writing.
 	ApplyThumbnailImage(
 		ctx context.Context, videoID int64, contentKey string, image domain.AppliedThumbnailImage,
 	) (domain.Video, error)
-	// RevertThumbnailImage は動画 videoID の内容に適用した画像の行を消し、同じ取引でその内容の
-	// 動画の thumbnail_state を done にする。コマを公開したあと、生成の錠の中で呼ぶ。
+	// After frame publication under the generation lock, atomically remove the image row and mark
+	// matching content done.
 	RevertThumbnailImage(ctx context.Context, videoID int64) (domain.Video, error)
-	// ThumbnailImage は内容 contentKey に適用した画像を返す。適用していなければ nil。
+	// Nil means no applied image.
 	ThumbnailImage(ctx context.Context, contentKey string) ([]byte, error)
 }
 
-// ContentIndex は内容の識別子を参照する動画があるかの問い合わせ先である。
 type ContentIndex interface {
 	ContentKeyReferenced(ctx context.Context, key string) (bool, error)
 }
 
-// ArtifactRemover は内容1つ分の生成物を消す。
 type ArtifactRemover interface {
 	RemoveContent(contentKey string) error
 }
 
-// ArtifactStore は生成物の置き場である。internal/artifacts の *Store がこれを
-// 満たす。置き場の並べ方と一時置き場からの公開はそちらが持ち、ここは生成を
-// write として渡す。
+// ArtifactStore owns paths and atomic publication; app supplies generation callbacks.
 type ArtifactStore interface {
 	ArtifactRemover
-	// PublishThumbnail は write に一時置き場のパスを渡して書かせ、公開する。
 	PublishThumbnail(contentKey string, write func(output string) error) error
-	// StashThumbnail は今の代表サムネイルを写しておき、PublishThumbnail で置き換えたあとに
-	// 前の画像へ戻す restore と、写しを捨てる discard を返す。前の画像が無ければ restore は
-	// 置き換えた画像を消す。
+	// restore removes the replacement when no prior thumbnail existed; discard drops only the backup.
 	StashThumbnail(contentKey string) (restore func() error, discard func(), err error)
-	// PublishSeekThumbnails は完成したもの（配置情報のある置き場）があれば write を
-	// 呼ばない。write は一時置き場のディレクトリを受け、layout の配置でシートを書き、
-	// 全編の復号から作ったかを返す。配置情報の無い置き場（旧形式・途中で壊れたもの）は
-	// 公開の直前に消す。公開した、または採用したスプライトが代用で作られたかを返し、
-	// 採用したものに記録が無ければ SubstitutionUnknown を返す。
+	// Reuse complete sprites without write, replacing incomplete legacy directories during
+	// publication; return persisted substitution provenance or SubstitutionUnknown for old metadata.
 	PublishSeekThumbnails(contentKey string, layout domain.SeekSpriteLayout,
 		write func(outputDir string) (fullDecode bool, err error)) (domain.Substitution, error)
-	// PublishPreview は完成したものがあれば write を呼ばない。公開の直前に current を
-	// 呼び、false なら公開せずに domain.ErrPreviewStale を返す。
+	// Reuse complete previews; current=false immediately before publication returns ErrPreviewStale
+	// without publishing.
 	PublishPreview(ctx context.Context, contentKey string, write func(output string) error,
 		current func(context.Context) (bool, error)) error
-	// SeekSprite は完成したシーク用スプライトの配置情報を読む。無ければ誤りを返す。
 	SeekSprite(contentKey string) (domain.SeekSprite, error)
-	// SeekSpriteSheet はシーク用スプライトのシート sheet（0 から）の JPEG を読む。
+	// Sheet indexes start at zero.
 	SeekSpriteSheet(contentKey string, sheet int) ([]byte, error)
 }
 
-// Generator は元の動画を読み、渡されたパスへ生成物を書く。生成物から映像の指紋も
-// 作る。internal/media の *Assets がこれを満たす。
 type Generator interface {
-	// CheckSource は元の動画が読める通常ファイルかを確かめる。
 	CheckSource(path string) error
 	Probe(ctx context.Context, path string) (domain.Probe, error)
-	// Thumbnail は代表サムネイルを output へ書き、指定位置で取れず先頭のコマで
-	// 作ったかを返す。
+	// Thumbnail reports first-frame substitution.
 	Thumbnail(ctx context.Context, path string, durationMs int64, output string) (firstFrame bool, err error)
-	// ThumbnailAt は positionMs の場面の代表サムネイルを output へ書く。先頭のコマへの
-	// 代用はしない。
+	// ThumbnailAt never substitutes the first frame.
 	ThumbnailAt(ctx context.Context, path string, positionMs int64, output string) error
-	// SeekSprite はシーク用サムネイルのシートを layout の配置で outputDir へ書き、
-	// 区間ごとの抽出にも失敗して全編から作ったかを返す。
+	// SeekSprite reports fallback to full decoding after segment extraction fails.
 	SeekSprite(ctx context.Context, path, outputDir string, layout domain.SeekSpriteLayout) (fullDecode bool, err error)
 	Preview(ctx context.Context, path, output string, durationMs int64) error
-	// SpriteFingerprint は完成したシーク用スプライトのシート（シート 0 から順の JPEG）から
-	// 映像の指紋を作る。ffmpeg は起動しない。
+	// Build fingerprints from ordered JPEG sheets without ffmpeg.
 	SpriteFingerprint(sprite domain.SeekSprite, sheets [][]byte) (domain.Fingerprint, error)
-	// FitThumbnailImage は所有者が適用する画像 image を動画の表示上の縦横比 aspect（0 は不明）に
-	// 合わせた代表サムネイルの JPEG を返す。読めない画像は domain.ErrThumbnailImageInvalid。
+	// Zero aspect means unknown; unreadable images return ErrThumbnailImageInvalid.
 	FitThumbnailImage(ctx context.Context, image []byte, aspect float64) ([]byte, error)
-	// FitThumbnailSource は image を FitThumbnailImage と同じ切り抜きで長辺最大 2048px にした
-	// JPEG を返す。読めない画像は
-	// domain.ErrThumbnailImageInvalid。
+	// Use the same crop with at most 2048px longest side; unreadable images return
+	// ErrThumbnailImageInvalid.
 	FitThumbnailSource(ctx context.Context, image []byte, aspect float64) ([]byte, error)
 }
 
-// IngestOptions は取り込みの組み立てに必要な依存である。
 type IngestOptions struct {
 	Store     IngestStore
 	Generator Generator
 	Artifacts ArtifactStore
-	// Publisher は nil なら発行しない。
+	// Nil disables events.
 	Publisher Publisher
-	// Logger は nil なら slog の既定を使う。
+	// Nil uses slog.Default.
 	Logger *slog.Logger
 }
 
-// Ingest は取り込みの各段階（解析・代表サムネイル・シーク用サムネイル・
-// プレビュー・映像の指紋）のジョブの処理と、
-// 参照の無くなった内容の生成物の削除を受け持つ。
-//
-// ジョブを取り出して成否を記録する進め方は internal/jobs が持ち、1件で何を
-// するかはここが決める。
+// Ingest owns each job's effects and artifact cleanup; jobs owns claiming and recording job
+// outcomes.
 type Ingest struct {
 	store     IngestStore
 	generator Generator
 	files     ArtifactStore
 	publisher Publisher
 	artifacts *artifacts
-	// uploads はアップロードの元の画像を読む手順（確かめと適用の 2 回の合わせ）を 1 件ずつにする
-	// プロセス全体の門である（thumbnail_upload.go）。
-	uploads uploadGate
-	// checkUpload はアップロードの画像を確かめる。テストが止めておく偽物に替える。
+	// Serialize uploaded-image decoding across both validation and fitting passes; see
+	// thumbnail_upload.go.
+	uploads     uploadGate
 	checkUpload func(image []byte) error
 }
 
-// NewIngest は取り込みを組み立てる。
 func NewIngest(opts IngestOptions) *Ingest {
 	logger := opts.Logger
 	if logger == nil {
@@ -166,7 +129,7 @@ func NewIngest(opts IngestOptions) *Ingest {
 	}
 }
 
-// Handler は kind のジョブ1件を処理する関数を返す。知らない種類なら nil。
+// Unknown stages return nil handlers.
 func (i *Ingest) Handler(kind domain.JobKind) func(context.Context, domain.Job) error {
 	switch kind {
 	case domain.JobProbe:
@@ -183,12 +146,8 @@ func (i *Ingest) Handler(kind domain.JobKind) func(context.Context, domain.Job) 
 	return nil
 }
 
-// JobFinished は1件の成否が記録されたあとに呼ばれる。ワーカーの Finished に渡す。
-//
-// その動画の取り込みの状態と、段階ごとの残りが変わったことを発行する。
-// 解析の成否が決まったら待っていたサムネイルのワーカーを起こす、代表サムネイルの
-// 成否が決まったら待っていたシーク用サムネイルのワーカーを起こす、という段階の
-// 間の受け渡しは、この発行の購読として cmd/mdm が登録する。
+// Publish stage completion; cmd/mdm subscriptions wire downstream worker wakeups without direct
+// stage coupling.
 func (i *Ingest) JobFinished(job domain.Job) {
 	if i.publisher == nil {
 		return
@@ -199,23 +158,17 @@ func (i *Ingest) JobFinished(job domain.Job) {
 	)
 }
 
-// ReleaseArtifacts は、参照の無くなった内容の生成物を消す。消す直前に参照を
-// 確かめ直し、同じ内容の動画が取り込み直されていれば残す。
-// domain.ContentUnreferenced の購読として cmd/mdm が登録する。
+// Recheck references immediately before deletion so reimported content retains artifacts.
 func (i *Ingest) ReleaseArtifacts(event domain.ContentUnreferenced) {
 	i.artifacts.release(event.ContentKeys)
 }
 
-// Wait は背後で動いている生成物の削除の終わりを待つ。データベースを閉じる前に
-// 呼ぶ。途中で閉じると、消すはずの生成物が残り続ける。
+// Wait must finish before database closure or pending cleanup could leak artifacts.
 func (i *Ingest) Wait() {
 	i.artifacts.wait()
 }
 
-// Probe は ffprobe の結果を索引へ反映する。プレビューの仕事は保存側が同じ取引で積む。
-//
-// 再生可否の判定は internal/domain の純粋関数が行い、ここはその結果を
-// 保存層へ渡すだけである。
+// Probe persists domain-derived results and queues previews in the same storage transaction.
 func (i *Ingest) Probe(ctx context.Context, job domain.Job) error {
 	current, err := i.store.JobIdentityCurrent(ctx, job)
 	if err != nil {
@@ -228,28 +181,21 @@ func (i *Ingest) Probe(ctx context.Context, job domain.Job) error {
 		return err
 	}
 
-	// 上限まで試して駄目なときの失敗は、ジョブを failed にするのと同じ取引で
-	// FailClaimedJob が動画側へ記録する。行は残したままで、一覧からは消さない。
+	// FailClaimedJob atomically records exhausted failures on jobs and videos, retaining library rows.
 	probe, err := i.generator.Probe(ctx, job.LocationPath)
 	if err != nil {
 		return err
 	}
 
 	playability := domain.EvaluatePlayability(domain.ContainerFromPath(job.LocationPath), probe)
-	// 一覧用プレビューの仕事は、結果を書くのと同じ取引で保存側が積む
-	//
 	_, err = i.store.ApplyProbeForJob(ctx, job, probe, playability)
 	return err
 }
 
-// Thumbnail は代表サムネイルを1枚生成し、状態を記録する。シーク用サムネイルは
-// 別の段階（SeekThumbnails）が作るので、ここでは待たない。
-//
-// 所有者が画像を適用していればその画像を公開し直し、位置を指定していればその場面で（ThumbnailAt）、どちらも無ければ自動の位置で作る。位置と thumbnail_state は生成の錠に
-// 入ってから読み直した値で決める。錠を待つ間に SetThumbnailPosition が位置と done を
-// 記録していたら、古い値で画像を上書きせずに生成を飛ばす。
+// Reread applied image, position, and state under the generation lock so a queued job cannot
+// overwrite a newer owner change; applied images take precedence over selected or automatic frames.
 func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
-	// 錠の外の読み出しは、動画がまだあるかの確認だけに使う。
+	// The unlocked read only checks whether the video still exists.
 	if _, err := i.store.GetVideo(ctx, job.VideoID); err != nil {
 		return err
 	}
@@ -261,9 +207,8 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 	if !current {
 		return nil
 	}
-	// 元の動画を読むのはコマを取るときだけである。適用した画像は元の動画が読めなくても
-	// 公開し直すので、読めないことは
-	// 錠の中で画像の行が無いと分かったときに返す。
+	// Applied images can be republished even when source media is unreadable; defer that error until
+	// the locked read confirms no image exists.
 	sourceErr := i.generator.CheckSource(job.LocationPath)
 	if sourceErr != nil {
 		image, err := i.store.ThumbnailImage(ctx, job.ContentKey)
@@ -274,30 +219,28 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 			return sourceErr
 		}
 	}
-	// 生成（既存のファイルの採用を含む）から完了の記録までを、同じ内容の
-	// 生成物の削除と直列にする。別の種類の生成は待たない。
+	// Keep publication and completion serialized with deletion, without blocking other artifact kinds.
 	return i.artifacts.generate(ctx, job.ContentKey, artifactThumbnail, func() (bool, error) {
 		video, err := i.store.GetVideo(ctx, job.VideoID)
 		if errors.Is(err, domain.ErrNotFound) {
-			// 錠を待つ間に動画が消えた。残った生成物は後始末に任せる。
+			// Cleanup handles artifacts left after deletion while waiting for the lock.
 			return true, nil
 		}
 		if err != nil {
 			return false, err
 		}
-		// 上限まで試して駄目なときの失敗は、ジョブを failed にするのと同じ取引で
-		// FailClaimedJob が動画側へ記録する。指定の位置で取れなくても行は消さない。
+		// Exhausted failure is recorded with the job transaction; a missing selected frame must not
+		// delete the video.
 		if video.ThumbnailState != domain.ThumbnailStateDone {
-			// 先頭のコマでの代用は、成功を書く取引で問題として記録する。指定の位置では代用しない。
+			// Record first-frame substitution atomically with success; explicit positions never substitute.
 			substitution := domain.SubstitutionUnknown
-			// 所有者が画像を適用していれば、コマを取らずにその画像を公開し直す
-			//
 			image, err := i.store.ThumbnailImage(ctx, job.ContentKey)
 			if err != nil {
 				return false, err
 			}
 			if image == nil && sourceErr != nil {
-				// 錠を待つ間に画像が取り消された。読めない元の動画からはコマを取れない。
+				// The applied image was reverted while waiting; unreadable media cannot supply its replacement
+				// frame.
 				return false, sourceErr
 			}
 			if err := i.files.PublishThumbnail(job.ContentKey, func(output string) error {
@@ -315,33 +258,19 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 			}); err != nil {
 				return false, err
 			}
-			// 生成中に動画が消えていたら（applied が偽）、書き終えたサムネイルを
-			// 後始末で残さない。
 			if _, err := i.store.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone, substitution); err != nil {
 				return false, err
 			}
 		}
-		// 生成中にスキャンが動画を消すことがある。書き終えたあとで確かめ直し、
-		// 参照の無くなった生成物を残さない。
+		// Recheck references after generation because scans may delete the video concurrently.
 		return true, nil
 	})
 }
 
-// SetThumbnailPosition は動画 videoID の代表サムネイルを positionMs の場面で作り直して
-// 公開し、位置を記録する。positionMs が nil なら位置を解除し、自動の位置で作り直す。locationPath は読む元の動画の所在（登録の
-// パス）、path はそれを辿った先で、呼び出し側が開けることを確かめたものを渡す。
-//
-// 位置は domain.CheckThumbnailPosition で確かめ、解析前は domain.ErrDurationUnknown、尺の外は
-// domain.ErrThumbnailPositionOutOfRange を返す。生成と記録は取り込みの job と同じ生成の錠の
-// 中で行うので、同じ内容への指定と job は直列になり、最後に記録した位置の画像が残る。
-// 生成に失敗したら何も記録せず domain.ErrThumbnailFrameUnavailable を返す。置き場は
-// 一時置き場から置き換えるので、前の画像はそのまま残る。
-//
-// 走査は生成の錠を取らないので、要求が所在を決めたあとに、その所在が別の内容へ付け替わる
-// ことがある。生成の直前、生成のあとで公開する前、記録の直前に、所在が今も動画の内容のものかを
-// 確かめ直し、違えば別の動画のコマを公開・記録せずに domain.ErrMediaFileUnavailable を返す。公開のあとで記録
-// できなかったときは（確かめ直しの失敗・取引の失敗・要求の取り消し）、前の画像へ戻し、
-// 記録の位置と版に画像を揃える。
+// SetThumbnailPosition validates duration/bounds and publishes under the generation lock, with nil
+// restoring automatic selection and extraction failures preserving the old image. Recheck source
+// identity before generation, publication, and recording; roll back published bytes on any later
+// failure so file, position, and revision agree.
 func (i *Ingest) SetThumbnailPosition(
 	ctx context.Context, videoID int64, locationPath, path string, positionMs *int64,
 ) (domain.Video, error) {
@@ -355,7 +284,7 @@ func (i *Ingest) SetThumbnailPosition(
 		}
 	}
 	if video.ContentKey == "" {
-		// 内容を読めていない動画は、生成物の置き場も上書きの行も持てない。
+		// Contentless videos cannot have artifact paths or override rows.
 		return domain.Video{}, domain.ErrNotFound
 	}
 
@@ -364,14 +293,9 @@ func (i *Ingest) SetThumbnailPosition(
 		func() (domain.Video, error) { return i.store.SetThumbnailPosition(ctx, videoID, positionMs) })
 }
 
-// RevertThumbnailImage は動画 videoID に適用した画像を外し、代表サムネイルをコマから作り直して
-// 公開する。記録した位置が
-// あればその場面で、無ければ自動の位置で作る。位置は生成の錠に入ってから読み直すので、錠を
-// 待つ間に記録された位置が使われる。画像を適用していなくても作り直して成功する。
-//
-// locationPath・path と、生成・公開・記録の順と失敗の扱いは SetThumbnailPosition と同じである。
-// 生成に失敗したら何も記録せず domain.ErrThumbnailFrameUnavailable を返し、画像の行と
-// 前のファイルは残る。
+// RevertThumbnailImage rereads position under the generation lock and restores that frame or the
+// automatic frame, even when no applied image exists. It shares SetThumbnailPosition identity
+// checks and rollback, preserving the image row/file on extraction failure.
 func (i *Ingest) RevertThumbnailImage(
 	ctx context.Context, videoID int64, locationPath, path string,
 ) (domain.Video, error) {
@@ -393,10 +317,8 @@ func (i *Ingest) RevertThumbnailImage(
 		func() (domain.Video, error) { return i.store.RevertThumbnailImage(ctx, videoID) })
 }
 
-// replaceThumbnailWithFrame は、生成の錠の中で動画 video の代表サムネイルを path のコマから
-// 作り直して公開し、record で記録する。コマの位置は錠の中で position が決め、nil なら自動の
-// 位置にする。所在の確かめ直し、前の画像の写し、記録できなかったときの復元は
-// SetThumbnailPosition の説明の通りである。
+// Choose the frame position inside the generation lock; reuse SetThumbnailPosition source checks,
+// backup, and rollback.
 func (i *Ingest) replaceThumbnailWithFrame(
 	ctx context.Context, video domain.Video, locationPath, path string,
 	position func() (*int64, error), record func() (domain.Video, error),
@@ -425,8 +347,7 @@ func (i *Ingest) replaceThumbnailWithFrame(
 			if generateErr != nil {
 				return generateErr
 			}
-			// 生成の間に付け替わっていたら、別の動画のコマを置き場へ移さない。公開の改名の
-			// 前に確かめるので、並ぶ要求にもその画像は見えない。
+			// Check before rename so even concurrent readers cannot see a frame from replaced content.
 			sourceErr = i.checkThumbnailSource(ctx, videoID, video.ContentKey, locationPath)
 			return sourceErr
 		}); err != nil {
@@ -439,9 +360,8 @@ func (i *Ingest) replaceThumbnailWithFrame(
 			}
 			return false, err
 		}
-		// 公開した画像は、記録できたときだけ残す。公開から記録までの間に付け替わったときや
-		// 記録できなければ前の画像へ戻し、生成中に動画が消えていたら、戻した画像も後始末で
-		// 残さない。
+		// Keep published bytes only after recording succeeds; restore on failure and clean up even
+		// restored bytes if the video disappeared.
 		if err := i.checkThumbnailSource(ctx, videoID, video.ContentKey, locationPath); err != nil {
 			return true, errors.Join(err, restore())
 		}
@@ -459,16 +379,9 @@ func (i *Ingest) replaceThumbnailWithFrame(
 	return saved, nil
 }
 
-// ApplyThumbnailImage は、出どころ origin の画像 image を動画 videoID の代表サムネイルにする。contentKey は編集やアップロードを始めた
-// ときの動画の内容である。
-//
-// 生成の錠の中で動画を読み直し、動画が無いか内容が contentKey でなければ何も書かずに
-// domain.ErrContentChanged を返す。画像は動画の表示上の縦横比に合わせた長辺 640px の代表
-// サムネイルと長辺最大 2048px の元の画像にし（読めなければ domain.ErrThumbnailImageInvalid）、
-// 今の代表サムネイルを写してから代表サムネイルを公開し、1 つの取引で画像の行（代表サムネイル・
-// 元の画像・出どころ）を書いて、その内容の動画の thumbnail_state を done にする。公開に失敗すれば画像の行も
-// ファイルも元のまま、記録に失敗すれば写した前のファイルへ戻す。位置の指定と同じ錠の中で
-// 行うので、あとで確定した方が残る。錠を待つ間に ctx が終われば、何も書かずに ctx の誤りを返す。
+// ApplyThumbnailImage rechecks content under a cancelable generation lock, fits thumbnail/source
+// JPEGs, and atomically records image, provenance, and done state. Publication failure preserves
+// existing data, while recording failure restores the stashed file so the last committed edit wins.
 func (i *Ingest) ApplyThumbnailImage(
 	ctx context.Context, videoID int64, contentKey string, image []byte, origin domain.ThumbnailImageOrigin,
 ) (domain.Video, error) {
@@ -515,10 +428,7 @@ func (i *Ingest) ApplyThumbnailImage(
 	return saved, nil
 }
 
-// fitThumbnailImage は画像 image を動画 video の表示上の縦横比に合わせ、記録する行の内容
-// （代表サムネイル・元の画像・出どころ origin）にする。アップロードした画像は、2 回の合わせの
-// 間アップロードの門を持つ。生成した画像は
-// 門を取らない。
+// Uploaded images hold the upload gate across both fitting passes; generated images bypass it.
 func (i *Ingest) fitThumbnailImage(
 	ctx context.Context, image []byte, video domain.Video, origin domain.ThumbnailImageOrigin,
 ) (domain.AppliedThumbnailImage, error) {
@@ -541,7 +451,6 @@ func (i *Ingest) fitThumbnailImage(
 	return domain.AppliedThumbnailImage{Image: fitted, Source: source, Origin: origin}, nil
 }
 
-// writeThumbnailImage は適用した画像 image を一時置き場のパス output へ書く。
 func writeThumbnailImage(output string, image []byte) error {
 	if err := os.WriteFile(output, image, 0o644); err != nil {
 		return fmt.Errorf("cannot write the thumbnail image: %w", err)
@@ -549,9 +458,8 @@ func writeThumbnailImage(output string, image []byte) error {
 	return nil
 }
 
-// checkThumbnailSource は、所在 locationPath が今も動画 videoID の内容 key のものかを確かめる。
-// 動画が消えていれば domain.ErrNotFound、所在が消えたか別の内容へ付け替わっていれば
-// domain.ErrMediaFileUnavailable を返す。
+// Missing videos return ErrNotFound; removed or reassigned source locations return
+// ErrMediaFileUnavailable.
 func (i *Ingest) checkThumbnailSource(ctx context.Context, videoID int64, key, locationPath string) error {
 	current, err := i.store.ThumbnailSourceCurrent(ctx, videoID, key, locationPath)
 	if err != nil {
@@ -566,7 +474,7 @@ func (i *Ingest) checkThumbnailSource(ctx context.Context, videoID int64, key, l
 	return domain.ErrMediaFileUnavailable
 }
 
-// durationOf は動画の尺（ミリ秒）を返す。分からなければ 0。
+// Unknown duration returns zero.
 func durationOf(video domain.Video) int64 {
 	if video.DurationMs == nil {
 		return 0
@@ -574,13 +482,8 @@ func durationOf(video domain.Video) int64 {
 	return *video.DurationMs
 }
 
-// SeekThumbnails はシーク用サムネイル（スプライトシート）を生成し、
-// 状態を記録する。配置は動画の長さから domain.NewSeekSpriteLayout で決める。
-// 置き場に完成したものがあれば生成せず、状態だけを記録する。
-//
-// 代表サムネイルと同じく、完了は専有した時点の内容・所在・所在の世代が今も
-// 同じときだけ記録する。上限まで試して駄目なときの失敗は、FailClaimedJob が
-// seek_thumbnail_state だけへ記録し、代表サムネイルの状態には触れない。
+// SeekThumbnails reuses complete sprites and records completion only for unchanged claimed
+// identity; exhausted failures affect seek state only, never the representative thumbnail.
 func (i *Ingest) SeekThumbnails(ctx context.Context, job domain.Job) error {
 	video, err := i.store.GetVideo(ctx, job.VideoID)
 	if err != nil {
@@ -601,35 +504,26 @@ func (i *Ingest) SeekThumbnails(ctx context.Context, job domain.Job) error {
 		durationMs = *video.DurationMs
 	}
 	layout := domain.NewSeekSpriteLayout(durationMs)
-	// 生成（既存のファイルの採用を含む）から完了の記録までを、同じ内容の
-	// 生成物の削除と直列にする。別の種類の生成は待たない。
+	// Serialize generation and completion with deletion, allowing other artifact kinds concurrently.
 	return i.artifacts.generate(ctx, job.ContentKey, artifactSeekThumbnails, func() (bool, error) {
-		// 全編からの作り直しは、成功を書く取引で問題として記録する（R-7）。置き場に
-		// 完成したものがあって生成しなかったときは、置き場が生成時に残した記録を使う。
-		// 公開と完了の記録の間で止まった後の再実行や、同じ内容の別の動画でも代用を
-		// 取りこぼさない。記録の無い旧いものは代用したかが分からないので、問題の行を
-		// 変えない。
+		// Reuse persisted substitution provenance after restart or across duplicate content; unknown
+		// legacy provenance must not alter existing issue rows.
 		substitution, err := i.files.PublishSeekThumbnails(job.ContentKey, layout, func(outputDir string) (bool, error) {
 			return i.generator.SeekSprite(ctx, job.LocationPath, outputDir, layout)
 		})
 		if err != nil {
 			return false, err
 		}
-		// 生成中に動画が消えていたら（applied が偽）、書き終えたシーク用サムネイルを
-		// 後始末で残さない。
 		if _, err := i.store.SetSeekThumbnailStateForJob(ctx, job, domain.SeekThumbnailDone, substitution); err != nil {
 			return false, err
 		}
-		// 生成中にスキャンが動画を消すことがある。書き終えたあとで確かめ直し、
-		// 参照の無くなった生成物を残さない。
+		// Recheck references after generation because scans may delete the video concurrently.
 		return true, nil
 	})
 }
 
-// errMissingDuration は解析済みなのに長さが無く、プレビューを作れないことを表す。
 var errMissingDuration = errors.New("the video has no duration to generate a preview from")
 
-// Preview は一覧用プレビューを生成し、完了を記録する。
 func (i *Ingest) Preview(ctx context.Context, job domain.Job) error {
 	video, err := i.store.GetVideo(ctx, job.VideoID)
 	if err != nil {
@@ -652,8 +546,7 @@ func (i *Ingest) Preview(ctx context.Context, job domain.Job) error {
 		return i.store.PreviewSourceCurrent(validateCtx, job)
 	}
 	durationMs := *video.DurationMs
-	// 生成（既存のファイルの採用を含む）から完了の記録までを、同じ内容の
-	// 生成物の削除と直列にする。別の種類の生成は待たない。
+	// Serialize generation and completion with deletion, allowing other artifact kinds concurrently.
 	return i.artifacts.generate(ctx, job.ContentKey, artifactPreview, func() (bool, error) {
 		if err := i.files.PublishPreview(ctx, job.ContentKey, func(output string) error {
 			return i.generator.Preview(ctx, job.LocationPath, output, durationMs)
@@ -665,17 +558,14 @@ func (i *Ingest) Preview(ctx context.Context, job domain.Job) error {
 			return false, err
 		}
 		if !applied {
-			// 生成中に動画が消えていたら、書き終えたプレビューを後始末で残さない。
 			return true, domain.ErrPreviewStale
 		}
 		return false, nil
 	})
 }
 
-// Fingerprint は完成したシーク用スプライトから映像の指紋を作り、記録する。ffmpeg を起動せず、元の動画も読まない。
-//
-// スプライトが無い、またはシートが読めなければ誤りを返す。仕事は再試行し、上限まで
-// 失敗すると FailClaimedJob が問題として記録する。積み直しは次の走査が行う。
+// Fingerprint reads completed sprite sheets without source media or ffmpeg; failed jobs retry to
+// their limit and a later scan requeues them.
 func (i *Ingest) Fingerprint(ctx context.Context, job domain.Job) error {
 	current, err := i.store.JobIdentityCurrent(ctx, job)
 	if err != nil {

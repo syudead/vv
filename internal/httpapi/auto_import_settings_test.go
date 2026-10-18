@@ -13,13 +13,11 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// autoImportWatcher は監視の代わりである。
 type autoImportWatcher struct{}
 
 func (autoImportWatcher) Arm([]string) error { return nil }
 func (autoImportWatcher) Disarm()            {}
 
-// autoImportScans は監視の走査の代わりで、始めようとした回数を数える。
 type autoImportScans struct {
 	mu     sync.Mutex
 	starts int
@@ -46,7 +44,6 @@ type autoImportFixture struct {
 	owner *http.Cookie
 }
 
-// newAutoImportFixture は本物の設定の保存先と app.AutoImport で経路を組む。監視と走査だけが偽である。
 func newAutoImportFixture(t *testing.T) *autoImportFixture {
 	t.Helper()
 	f := &autoImportFixture{scans: &autoImportScans{}}
@@ -83,7 +80,7 @@ func TestGetAutoImportSettingsOnNewDatabaseIsEnabled(t *testing.T) {
 	if !got.Enabled {
 		t.Errorf("enabled = false on a new database")
 	}
-	// メディアフォルダが無いので監視するものが無く、off のままである。
+	// Without media folders there is nothing to watch, so the state stays off.
 	if got.Watch.State != gen.FolderWatchState(domain.FolderWatchOff) || got.Watch.Problem != nil || got.Watch.Path != nil {
 		t.Errorf("watch = %+v", got.Watch)
 	}
@@ -130,7 +127,6 @@ func TestPutAutoImportSettingsRejectsInvalidBody(t *testing.T) {
 	}
 }
 
-// ゲスト（Cookie なし）には、オーナー専用の応答（未認証）が返り、何も変わらない。
 func TestAutoImportSettingsAreOwnerOnly(t *testing.T) {
 	f := newAutoImportFixture(t)
 

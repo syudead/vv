@@ -14,8 +14,7 @@ const branch = 'main'
 // .claude/, the root README) is not published.
 const published = ['docs', 'ARCHITECTURE.md']
 
-// リポジトリ直下のうち、公開するものとこのサイト自身以外を全て外す。新しい
-// ディレクトリが増えても、公開する側へ入れない限り出ない。
+// New root directories stay private unless explicitly included.
 const srcExclude = [
   '**/node_modules/**',
   'docs-site/.vitepress/**',
@@ -25,8 +24,7 @@ const srcExclude = [
     .map((e) => (e.isDirectory() ? `${e.name}/**` : e.name)),
 ]
 
-// README.md はディレクトリの入口なので index として出す。/docs/how-to/ の
-// ようなディレクトリの URL で開ける。
+// Serve README.md as index so directory URLs work.
 function rewrite(id: string): string {
   if (id === 'docs-site/index.md') return 'index.md'
   return id.replace(/(^|\/)README\.md$/, '$1index.md')
@@ -113,7 +111,6 @@ function mermaidFence(md: MarkdownIt) {
   }
 }
 
-// 見出し1を題として読む。サイドバーの表示に使う。
 function titleOf(file: string): string {
   const source = fs.readFileSync(path.join(repoRoot, file), 'utf8')
   const m = source.match(/^#[ \t]+(.+?)[ \t#]*$/m)
@@ -124,8 +121,7 @@ function pageLink(file: string): string {
   return '/' + rewrite(file).replace(/(^|\/)index\.md$/, '$1').replace(/\.md$/, '')
 }
 
-// ディレクトリの構成どおりのサイドバーを作る。入口（README / index）を先頭に、
-// 他の文書を題の順ではなくファイル名の順に並べる。
+// Put each directory entry first, then sort documents by filename rather than title.
 function sidebarFor(dir: string, collapsed: boolean): DefaultTheme.SidebarItem[] {
   if (!stat(dir)?.isDirectory()) return []
   const entries = fs.readdirSync(path.join(repoRoot, dir), { withFileTypes: true })

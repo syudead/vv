@@ -7,33 +7,30 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// WorkInfoPluginProxyStore は作品情報プラグインの要求を送るプロキシの URL の保存先である。internal/store の
-// *SettingsStore がこれを満たす。
+// WorkInfoPluginProxyStore persists plugin proxy settings; implemented by store.SettingsStore.
 type WorkInfoPluginProxyStore interface {
-	// WorkInfoPluginProxyURL は保存した URL を返す。保存が無ければ "" である。
+	// WorkInfoPluginProxyURL returns an empty string when unset.
 	WorkInfoPluginProxyURL(ctx context.Context) (string, error)
-	// SaveWorkInfoPluginProxyURL は URL を保存する。"" はプロキシなしである。
+	// SaveWorkInfoPluginProxyURL uses an empty string to disable the proxy.
 	SaveWorkInfoPluginProxyURL(ctx context.Context, value string) error
 }
 
-// WorkInfoPluginProxy は所有者が設定画面で選ぶ、プラグインの要求を送るプロキシである。値はサーバーに持たず、読むたびに保存先から読むので、
-// 次の実行は保存した値を使い、進行中の実行は始めたときの値で終わる。
+// WorkInfoPluginProxy rereads storage for each run; settings changes affect the next run while active runs retain their snapshot.
 type WorkInfoPluginProxy struct {
 	store WorkInfoPluginProxyStore
 }
 
-// NewWorkInfoPluginProxy は保存先 store のプロキシの設定を作る。
+// NewWorkInfoPluginProxy creates proxy settings backed by store.
 func NewWorkInfoPluginProxy(store WorkInfoPluginProxyStore) *WorkInfoPluginProxy {
 	return &WorkInfoPluginProxy{store: store}
 }
 
-// URL は保存した URL を返す。保存が無ければ "" である。
+// URL returns an empty string when unset.
 func (p *WorkInfoPluginProxy) URL(ctx context.Context) (string, error) {
 	return p.store.WorkInfoPluginProxyURL(ctx)
 }
 
-// SetURL は URL raw を domain.ParseWorkInfoPluginProxyURL で確かめて保存し、保存した値を返す。"" は
-// プロキシなしである。規則に外れれば domain.ErrWorkInfoPluginProxyURLInvalid を返し、何も書かない。
+// SetURL validates with ParseWorkInfoPluginProxyURL before saving; empty disables the proxy. Invalid values return ErrWorkInfoPluginProxyURLInvalid without writes.
 func (p *WorkInfoPluginProxy) SetURL(ctx context.Context, raw string) (string, error) {
 	if _, err := domain.ParseWorkInfoPluginProxyURL(raw); err != nil {
 		return "", err
@@ -44,9 +41,7 @@ func (p *WorkInfoPluginProxy) SetURL(ctx context.Context, raw string) (string, e
 	return raw, nil
 }
 
-// RunNetwork は次の 1 回の実行のネットワークの選択肢を、保存した URL から作る。保存が無いか "" なら
-// プロキシなしである。保存した値が規則に外れれば（手で書き換えられたときだけ起こる）誤りを返し、
-// プロキシを飛ばして直接つなぐことはしない。
+// RunNetwork snapshots saved proxy settings; absent/empty means direct access. Invalid persisted values fail closed rather than bypassing the proxy.
 func (p *WorkInfoPluginProxy) RunNetwork(ctx context.Context) (domain.WorkInfoRunNetwork, error) {
 	raw, err := p.store.WorkInfoPluginProxyURL(ctx)
 	if err != nil {

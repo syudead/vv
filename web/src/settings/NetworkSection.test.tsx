@@ -43,15 +43,11 @@ function proxyInput(): Promise<HTMLInputElement> {
   return screen.findByRole("textbox", { name: PROXY_LABEL });
 }
 
-/** 経路ごとの応答。init は fetch の第 2 引数である。 */
 type Handler = (init?: RequestInit) => Response | Promise<Response>;
 
 describe("NetworkSection", () => {
   const fetchMock = vi.fn<typeof fetch>();
 
-  /**
-   * serve は 2 つの経路に応答を割り当てる。proxy を渡さなければ、プロキシは何も保存されていない。
-   */
   function serve(network: Handler, proxy: Handler = () => json({ url: "" })) {
     fetchMock.mockImplementation((input, init) => {
       const url = String(input);
@@ -61,7 +57,6 @@ describe("NetworkSection", () => {
     });
   }
 
-  /** proxyServer はプロキシの URL を 1 つ持つサーバーの代わりで、PUT の本文を記録する。 */
   function proxyServer(initial = "") {
     const server = { stored: initial, puts: [] as string[] };
     const handler: Handler = (init) => {
@@ -135,7 +130,6 @@ describe("NetworkSection", () => {
     expect(
       toggle.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    // 節の前の説明は、スイッチの行の説明になった。
     expect(screen.getByText(/By default only this PC can open VVMDM/)).toBeDefined();
     expect(input.getAttribute("aria-describedby")).toBe(
       "network-plugin-proxy-description",
@@ -158,7 +152,6 @@ describe("NetworkSection", () => {
     expect(await screen.findByText("Saved.")).toBeDefined();
     expect(server.puts).toEqual(["http://user:pass@proxy.example:3128"]);
     expect(input.value).toBe("http://user:pass@proxy.example:3128");
-    // 同じ値でもう一度離れても送らない。
     await user.click(input);
     await user.tab();
     expect(server.puts).toHaveLength(1);
@@ -182,7 +175,6 @@ describe("NetworkSection", () => {
 
     expect(await screen.findByText("Saved.")).toBeDefined();
     expect(server.puts).toEqual([""]);
-    // 編集し直すと Saved. は消える。
     await user.type(input, "h");
     expect(screen.queryByText("Saved.")).toBeNull();
   });
@@ -259,7 +251,6 @@ describe("NetworkSection", () => {
     await user.tab();
     expect(await screen.findByText("Saving…")).toBeDefined();
 
-    // 保存中に打ち直した欄には、前の値の失敗を出さない。
     await user.type(input, "x");
     first.resolve(serverError());
     await waitFor(() => expect(screen.queryByText("Saving…")).toBeNull());
@@ -279,7 +270,6 @@ describe("NetworkSection", () => {
     await user.tab();
     expect(await screen.findByRole("alert")).toBeDefined();
 
-    // 保存済みの値（""）に戻すと送らないので、編集で失敗を消す。
     await user.clear(input);
     await user.tab();
     expect(screen.queryByRole("alert")).toBeNull();
@@ -302,7 +292,6 @@ describe("NetworkSection", () => {
     await user.tab();
     expect(await screen.findByText("Saving…")).toBeDefined();
 
-    // 保存中も編集でき、離れても今は送らない。
     await user.click(input);
     await user.clear(input);
     await user.type(input, "http://two.example");
@@ -352,7 +341,6 @@ describe("NetworkSection", () => {
     );
     expect(lanSwitch().getAttribute("aria-checked")).toBe("true");
     expect(lanSwitch().getAttribute("aria-disabled")).toBe("true");
-    // 送信中にもう一度押しても送らない。
     await user.click(lanSwitch());
     expect(putCalls(NETWORK)).toHaveLength(1);
 

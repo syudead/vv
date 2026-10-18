@@ -6,17 +6,12 @@ import { Button } from "../ui/shadcn/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 
 export interface Neighbor {
-  /** 移り先の題名。関連動画の並びに無いときは分からない。 */
+  /** Unknown when the destination is absent from related results. */
   title: string | undefined;
   go: () => void;
 }
 
-/**
- * NeighborArrows はプレイヤーの左右の端に寄せた、前後の動画へ移るつまみである。
- *
- * 映像を隠さないよう幅は細くし、押しやすいよう縦に長くする。見せる時期は操作バーと同じで、
- * `visible` が偽の間は見えなくし、押せなくする。前後が無い側は出さない。
- */
+/** Match control-bar visibility and disable hidden navigation. */
 export default function NeighborArrows({
   previous,
   next,
@@ -27,9 +22,8 @@ export default function NeighborArrows({
   previous: Neighbor | undefined;
   next: Neighbor | undefined;
   visible: boolean;
-  /** つまみの名前。プレイリストの文脈では「Previous item」「Next item」。 */
   labels?: { previous: UiText; next: UiText };
-  /** 全画面にしている入れ物。題名の吹き出しはその中に描かないと全画面の間に見えない。 */
+  /** Tooltips must render inside the fullscreen container to remain visible. */
   container: HTMLElement | null;
 }) {
   return (
@@ -83,14 +77,14 @@ function Arrow({
           data-neighbor-arrow={side}
           onClick={neighbor.go}
           className={cn(
-            // 操作バー（約 3rem）を除いた映像の上下中央に置く（中央から 1.5rem 上）。
+            // Center above the control bar, 1.5rem above the full frame's midpoint.
             "absolute top-1/2 z-30 -mt-6 h-11/20 min-h-neighbor-arrow-min w-neighbor-arrow -translate-y-1/2 bg-overlay px-0 text-foreground transition duration-150 hover:bg-background motion-reduce:transition-none sm:h-1/2 sm:min-h-neighbor-arrow-min-sm sm:w-8 [&_svg]:size-5",
             side === "left"
               ? "left-0 rounded-l-none rounded-r-lg"
               : "right-0 rounded-l-lg rounded-r-none",
             visible
               ? "opacity-100"
-              : // 見えない間は押せなくする。キーボードでフォーカスが来たときだけ見せる。
+              : // Hidden arrows remain keyboard-focusable but ignore pointer input.
                 "pointer-events-none opacity-0 focus-visible:opacity-100",
           )}
         >

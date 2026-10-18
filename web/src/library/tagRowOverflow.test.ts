@@ -8,8 +8,6 @@ describe("computeVisibleTagCount", () => {
   });
 
   it("収まらない分は +N の余白を残して切る", () => {
-    // 20+4+30+4+25 = 83（全部収まる場合）。90 では収まらないので、
-    // 最後の1個は +N（幅24・gap4）の分を差し引いた上で判定する。
     expect(computeVisibleTagCount([20, 30, 25], 24, 4, 80)).toBe(1);
   });
 

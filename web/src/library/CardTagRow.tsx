@@ -13,36 +13,21 @@ import { useTagRowMeasure } from "./TagRowMeasure";
 import { computeVisibleTagCount } from "./tagRowOverflow";
 import { useHoverOpen } from "./useHoverOpen";
 
-/** gap-1（0.25rem、16px 基準）と同じ値。 */
+/** Match gap-1 at the 16px root size. */
 const GAP_PX = 4;
 
 export interface CardTagRowProps {
   tags: readonly VideoTag[];
-  /**
-   * 選択中（1件以上選んでいる）ときは、チップをボタンとして描かず Tab の順からも
-   * 外し、押すとカードの選択を切り替える。
-   */
+  /** In selection mode, chips leave tab order and toggle their card instead of filtering. */
   selectionMode: boolean;
-  /** チップを押したとき、そのタグで絞り込む。 */
   onPress: (tag: VideoTag) => void;
-  /** 選択中にチップを押したとき、カードの選択を切り替える。 */
   onToggleSelection: () => void;
 }
 
-/**
- * chipClassName はタグのチップの見た目で、Badge の secondary（web/registry/rules/
- * components.md「Badge」）である。押せるチップは Badge の形の Button にする。
- *
- * shrink は、行に収まらないときに幅を縮めて省略してよいかを決める。「+N」と、選ぶ
- * 余地の無い唯一の可視タグ（B4）以外は `shrink-0` にし、計測した幅のまま出す。
- *
- * folderOnly のチップは面を持たず（Badge の outline）、破線の枠と Folder の目印で区別する。
- * hover では枠を実線にする（「Interaction states」）。
- */
+/** Keep measured widths except the overflow trigger and a sole oversized visible tag; folder-only assignments use outlined chips. */
 function chipClassName(pressable: boolean, shrink = false, folderOnly = false): string {
   return cn(
     badgeVariants({ variant: folderOnly ? "outline" : "secondary" }),
-    // Button の高さと余白を Badge の段に揃える（押せるチップも同じ大きさにする）。
     "max-w-full min-w-0 py-0 font-normal text-muted-foreground has-[>svg]:px-2 [&_svg]:size-3",
     folderOnly && "border-dashed border-input",
     shrink ? "shrink" : "shrink-0",
@@ -53,9 +38,6 @@ function chipClassName(pressable: boolean, shrink = false, folderOnly = false): 
   );
 }
 
-/**
- * chipLabel は押せるチップの読み上げ名である。仮のタグは「(tentative)」を添える。
- */
 function chipLabel(tag: VideoTag, folderOnly: boolean): string {
   const row = t.library.tagRow;
   if (folderOnly) {
@@ -66,16 +48,10 @@ function chipLabel(tag: VideoTag, folderOnly: boolean): string {
   return showsTentative(tag) ? row.filterByTentative(tag.name) : row.filterBy(tag.name);
 }
 
-/**
- * listChipClassName は「+N」の一覧のチップに足す形である。一覧では名前を省略せず、一覧の内幅
- * より広い名前はチップの中で左揃えに折り返し、その行の分だけ高くなる。1行に
- * 収まる名前は h-6 と同じ高さ（py-1 と text-xs の1行）で、行のチップと変わらない。
- * 目印は items-start で1行目に置き、mt-0.5 で1行目の文字の中央に揃える。
- */
+/** Wrap full names in overflow lists without changing single-line chip height; align markers with the first line. */
 const listChipClassName =
   "h-auto min-h-6 items-start justify-start py-1 text-left whitespace-normal [&_svg]:mt-0.5";
 
-/** FolderMark は破線のチップの名前の前に置く目印である。 */
 function FolderMark() {
   return <Folder className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />;
 }
@@ -90,7 +66,6 @@ function TagChip({
   tag: VideoTag;
   pressable: boolean;
   shrink?: boolean;
-  /** 「+N」の一覧の中のチップか。一覧では省略せず折り返す（R-3）。 */
   inList?: boolean;
   onPress: () => void;
 }) {
@@ -126,11 +101,6 @@ function TagChip({
   );
 }
 
-/**
- * CardTagRow はライブラリの格子カードの題名の下に出すタグの行である。1行に収まらない
- * 分は末尾の「+N」にまとめ、マウスを留めるか押すと Popover で残りを折り返すチップの
- * 並びで見せる。
- */
 export default function CardTagRow({
   tags,
   selectionMode,
@@ -155,16 +125,13 @@ export default function CardTagRow({
     setVisibleCount(computeVisibleTagCount(widths, overflowWidth, GAP_PX, available));
   }, []);
 
-  // 描画の前（layout effect）に決める。測る前の1フレームで行が伸び縮みしない
-  // ようにするためである。
-  // tags の中身が変わったときも測り直す（依存に含めるだけで、効果の中では
-  // 直接参照しない。measure 用の子要素を再描画させる役目は React の再描画が担う）。
+  // Measure before paint to avoid a one-frame row size change.
+  // Tag changes rerender the measurement children and require another measurement.
   useLayoutEffect(() => {
     recompute();
   }, [recompute, tags]);
 
-  // カードごとに見張りを作らず、一覧に1つの ResizeObserver へ登録する。Provider の外（単体テストなど）では
-  // useTagRowMeasure が null を返し、初回の layout effect の計測だけになる。
+  // Share one ResizeObserver per list; outside the provider only the initial layout measurement runs.
   const observeRow = useTagRowMeasure();
   useLayoutEffect(() => {
     const row = rowRef.current;
@@ -176,15 +143,11 @@ export default function CardTagRow({
   const clampedVisible = Math.min(visibleCount, tags.length);
   const hidden = tags.slice(clampedVisible);
   const visible = tags.slice(0, clampedVisible);
-  // 一覧は開いたときに写さず、行と同じ tags と測った数から毎回導く（041 の）。隠れるタグが無くなったとき、または選択が始まったときは
-  // 「+N」と一覧が一緒に消える。開いた状態も落とし、あとで隠れるタグが戻っても
-  // 勝手に開かないようにする。
+  // Derive overflow from current tags, and reset open state when overflow disappears or selection starts.
   const hasList = pressable && hidden.length > 0;
-  // 一覧はマウスを「+N」に留めても、押しても開く。
   const { open, setOpen, triggerHandlers, contentHandlers, lastOpenedByHover } =
     useHoverOpen(hasList);
-  // 先頭の1つすら自然な幅では収まらないのに1つは出しているとき（B4）は、
-  // その1つだけ縮めて省略してよいことにする。
+  // Allow the sole visible tag to shrink when even its natural width cannot fit.
   const forcedShrink = visible.length === 1 && hidden.length > 0;
 
   return (
@@ -215,8 +178,7 @@ export default function CardTagRow({
             <li className="shrink-0">
               <Popover open={open} onOpenChange={setOpen}>
                 <PopoverTrigger asChild>
-                  {/* 一覧が開いている間（留めても押しても）は hover の見た目を保つ
-                      。 */}
+                  {}
                   <Button
                     variant="ghost"
                     aria-label={t.library.tagRow.showMore(hidden.length)}
@@ -231,12 +193,8 @@ export default function CardTagRow({
                     </span>
                   </Button>
                 </PopoverTrigger>
-                {/* 幅はチップに合わせて max-w-popover まで、高さは PopoverContent が
-                    画面に残る高さで抑える。余白 p-2 はスクロールする並びの外に置く
-                    。 */}
-                {/* 留めたマウスで開いた一覧はフォーカスを動かさず、閉じても返さない。
-                    押して開いた一覧は最初のチップへフォーカスし、閉じると「+N」へ返す
-                    。 */}
+                {}
+                {/* Hover opening preserves focus; explicit opening focuses the first chip and restores the trigger on close. */}
                 <PopoverContent
                   align="start"
                   className="w-auto max-w-popover p-2"
@@ -277,11 +235,10 @@ export default function CardTagRow({
           ))}
       </ul>
 
-      {/* 測るためだけの、見えない全タグの並び（Overflow の算出）。 */}
+      {}
       <div
         aria-hidden="true"
-        // 幅 0 で切り、測る並びがカードの外（ページの右端の外）へはみ出して横スクロールを
-        // 作らないようにする。中の並びは内容の幅のまま測れる。
+        // Clip the measurement row at zero width to prevent horizontal page overflow while retaining intrinsic measurements.
         className="pointer-events-none invisible absolute flex w-0 flex-nowrap items-center gap-1 overflow-hidden"
       >
         <div ref={measureRowRef} className="flex flex-nowrap items-center gap-1">

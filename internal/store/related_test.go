@@ -30,9 +30,6 @@ func candidateOf(t *testing.T, candidates []domain.RelatedCandidate, id int64) d
 	return domain.RelatedCandidate{}
 }
 
-// 見せる動画すべての手がかりを返す。代表の所在のパス、表示名を優先した題名、追加日時、
-// 手で付けた（確定・仮）タグとフォルダ名から付いたタグ、指紋を持つ。登録フォルダの下に
-// 所在の無い動画は含めない。
 func TestRelatedCandidates(t *testing.T) {
 	db, ids := folderFixture(t,
 		sampleFile(fixturePath("/media/cats/a.mp4"), "a", "key-a", 1, 0),
@@ -49,7 +46,6 @@ func TestRelatedCandidates(t *testing.T) {
 	if _, err := db.Tags().ApplyVideoTags(ctx, []domain.VideoRef{{ID: a}, {ID: c}}, domain.VideoTagsAdd, []string{"候補"}, true); err != nil {
 		t.Fatal(err)
 	}
-	// フォルダ名 cats と同じ名前のタグは、cats の下の動画に付いているものとして数える。
 	cats, err := db.Tags().CreateTag(ctx, "cats")
 	if err != nil {
 		t.Fatal(err)
@@ -89,7 +85,6 @@ func TestRelatedCandidates(t *testing.T) {
 	}
 }
 
-// 本体は指定の順で返し、登録フォルダの下に所在が無い動画は抜ける。
 func TestVideosByIDsKeepsOrder(t *testing.T) {
 	db, ids := folderFixture(t,
 		sampleFile(fixturePath("/media/a.mp4"), "a", "key-a", 1, 0),
@@ -113,8 +108,7 @@ func TestVideosByIDsKeepsOrder(t *testing.T) {
 	}
 }
 
-// 登録フォルダ `/` の直下の自動グループは origin_folder が空文字になる。それを手で作ったグループ
-// （origin_folder が NULL）と取り違えず、動画のグループにフォルダ（登録フォルダそのもの）を載せる。
+// An empty root-folder key is automatic, distinct from a manual group's NULL.
 func TestVideoGroupLocatesRootFolderGroup(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("登録フォルダ `/` は Unix だけのもの")
@@ -144,7 +138,6 @@ func TestVideoGroupLocatesRootFolderGroup(t *testing.T) {
 		t.Errorf("group = id %d, folder %+v; want id %d, folder {RootID:%d Path:}", group.ID, group.Folder, auto, rootID)
 	}
 
-	// 手で作ったグループにはフォルダを載せない。
 	if _, err := db.sql.Exec(`update groups set origin_folder = null where id = ?`, auto); err != nil {
 		t.Fatal(err)
 	}

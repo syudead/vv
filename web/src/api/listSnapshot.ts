@@ -9,53 +9,29 @@ import type {
 import { groupsIn, groupsWithMembers } from "./libraryItems";
 import { applyTagToTags } from "./tagOrder";
 
-/**
- * defaultSort は並び順が指定されていないときの値である。
- *
- * 鍵の正規化がこの既定を吸収する。`/` と `/?sort=addedDesc` は利用者から見て
- * 同じ一覧なので、片方で保存した控えをもう片方で拾えないと復元が取りこぼす。
- */
+/** Normalize omitted/default sort equally so / and /?sort=addedDesc restore the same snapshot. */
 const defaultSort: VideoSort = "addedDesc";
 
-/**
- * ListKey は一覧を一意に決める条件である（検索語・視聴状態・再生可否・お気に入りのみ・並び順・
- * seed、フォルダ画面ではフォルダも。docs/design-docs/catalog-organization.md）。
- */
 export interface ListKey {
-  /** 検索語。前後の空白は鍵の正規化が落とす。 */
+  /** Normalize by trimming surrounding whitespace. */
   query: string;
-  /** 視聴状態。省略すると all と同じ鍵になる。 */
+  /** Omitted equals all. */
   watch?: WatchFilter;
-  /** 再生できるものだけか。省略すると偽と同じ鍵になる。 */
+  /** Omitted equals false. */
   playable?: boolean;
-  /**
-   * お気に入りのみか。省略すると偽と同じ鍵になる。お気に入りのみの一覧と絞らない一覧の
-   * 控えを取り違えない。
-   */
+  /** Omitted equals false; filtered and unfiltered snapshots remain distinct. */
   favorite?: boolean;
-  /** 並び順。省略すると既定値と同じ鍵になる。 */
+  /** Omitted equals the default sort. */
   sort?: VideoSort;
-  /** sort=random の並びを決める値。ほかの並び順では鍵に入れない。 */
+  /** Included only for random sort. */
   seed?: number;
-  /**
-   * フォルダ画面のフォルダ（`folderKey` の値）。ライブラリ一覧では省く。
-   * 省いた鍵とフォルダを含む鍵は、検索語と並び順が同じでも一致しない。
-   */
+  /** Folder keys remain distinct from library keys even when other conditions match. */
   folder?: string;
-  /**
-   * ライブラリのタグ絞り込み（id の並び。順は問わない、鍵の正規化がそろえる）。
-   * `/?tag=1` から戻って `/` の控えが使われないようにする。
-   */
+  /** Normalize tag IDs without regard to order. */
   tags?: readonly number[];
-  /**
-   * ライブラリの人物・団体の絞り込み（id）。`/?person=1` から戻って `/` の控えが
-   * 使われないようにする。
-   */
   person?: number;
   organization?: number;
-  /** ライブラリのタグの種類の絞り込み。 */
   tagKind?: number;
-  /** ライブラリの追加日と長さの絞り込み。 */
   addedWithin?: number;
   minDuration?: number;
   maxDuration?: number;
@@ -63,66 +39,28 @@ export interface ListKey {
   unshelved?: boolean;
 }
 
-/** ListSnapshot は一覧を離れる直前の状態である。 */
 export interface ListSnapshot {
-  /** 鍵。ListKey を正規化して連結したもの。 */
   key: string;
-  /**
-   * 読み込み済みの項目（ページをまたいで連結済み）。動画の項目とグループの項目がある。
-   */
   items: LibraryItem[];
-  /** 総件数（件数の表示に使う）。 */
   total: number;
-  /** 次のページの続き位置。 */
   cursor?: string;
-  /** 次のページがあるか。 */
   hasMore: boolean;
-  /** 離れる直前のスクロール位置。 */
   scrollY: number;
-  /** フォルダ画面では、直下の子フォルダの一覧も控える（戻ったときに往復しない）。 */
+  /** Retain immediate child folders to avoid another request on return. */
   folderListing?: FolderListing;
-  /**
-   * 控えを取った時点で分かっていた「最後に終わった取り込み」の id。
-   *
-   * 戻ってきたときにこれと違う取り込みが終わっていれば、控えの一覧は
-   * 古い（動画が増減している）。同じなら控えをそのまま使ってよい。
-   * 一度も取り込みを観測していなければ未設定。
-   */
+  /** Reject snapshots if a different scan has completed since capture; undefined means no scan observed. */
   scanId?: number;
-  /**
-   * 控えを取った後にメンバーの再生位置かタグが変わったグループの項目の id である。
-   * グループの値はメンバーから数えるので、ここでは書き換えずに印だけ付け、一覧が
-   * 控えから戻ったときに `GET /api/groups/{id}` で取り直す（useVideos）。
-   */
+  /** Refresh marked group summaries on restore because their values aggregate member state. */
   staleGroups?: number[];
 }
 
-/**
- * held は保持している控えである。
- *
- * **直近の 1 件だけ**を持つ。鍵ごとに溜めると、検索語を変えて回っただけで
- * 数千件の Video がメモリに残る。
- *
- * localStorage・sessionStorage には書かない。1 ページ 60 件 × 複数ページの
- * JSON を毎回直列化する費用に対し、得られるのは「タブを閉じても戻れる」ことだけで、
- * FR-016 はそれを求めていない。
- */
+/** Retain one in-memory snapshot only; per-key caches retain thousands of videos, and persistence adds unnecessary serialization. */
 let held: (ListSnapshot & { expiresAt?: number }) | undefined;
 
-/**
- * ADDED_WITHIN_SNAPSHOT_TTL_MS は追加日の絞り込み（`addedWithin`）のある控えを使える時間である。
- * その絞り込みは今から遡る相対の期間なので、時間が経つと当たる動画が変わる。控えは鍵の一致だけでは古さが分からないので、
- * 取ってからこの時間を過ぎたら使わず、1 ページ目から読み直させる。戻る操作（動画を見て
- * 戻る）でスクロールを保てるだけの長さで、期間の端が動いた影響が無視できる短さにする。
- */
+/** Relative addedWithin filters become stale as time advances; expire snapshots even when their keys match. */
 export const ADDED_WITHIN_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
 
-/**
- * normalize は鍵を文字列にする。
- *
- * 区切りに NUL を使うのは、検索語に何が入っていても `sort` との境界が
- * 曖昧にならないようにするためである（URL のクエリに NUL は現れない）。
- */
+/** NUL separators prevent ambiguous boundaries between search text and other key fields. */
 function normalize(key: ListKey): string {
   const sort = key.sort ?? defaultSort;
   const seed = sort === "random" ? String(key.seed ?? "") : "";
@@ -146,19 +84,9 @@ function normalize(key: ListKey): string {
   return key.folder === undefined ? list : `folder\0${key.folder}\0${list}`;
 }
 
-/**
- * holds は、表示中の一覧に古いかもしれない項目があり、その取り直しがまだ
- * 終わっていない数である（holdListSnapshot）。0 でない間は控えを取らない。
- */
 let holds = 0;
 
-/**
- * holdListSnapshot は、表示中の一覧の項目が古いかもしれないあいだ控えを取らせない。
- * 今の控えも捨てる。戻り値を呼ぶと解く（何度呼んでも1回だけ解く）。
- *
- * 公開の切り替えが一部の動画にしか反映されなかったとき、取り直しの途中で動画を
- * 開くと、取り直す前の一覧が控えられて戻ったときに復元されてしまう（Devin の指摘、PR 338）。
- */
+/** Discard and block snapshots while refreshes settle so navigation cannot preserve stale mutation results; release is idempotent. */
 export function holdListSnapshot(): () => void {
   holds += 1;
   held = undefined;
@@ -170,10 +98,6 @@ export function holdListSnapshot(): () => void {
   };
 }
 
-/**
- * saveListSnapshot は一覧を離れる瞬間の状態を控える。前の控えは捨てる。
- * holdListSnapshot で止めている間は控えを取らない（戻ったときは1ページ目から読む）。
- */
 export function saveListSnapshot(key: ListKey, value: Omit<ListSnapshot, "key">): void {
   if (holds > 0) {
     held = undefined;
@@ -185,25 +109,13 @@ export function saveListSnapshot(key: ListKey, value: Omit<ListSnapshot, "key">)
   }
 }
 
-/**
- * takeListSnapshot は鍵の一致する控えを返す。**鍵が違えば undefined を返す。**
- * 復元できないことは異常ではなく、呼び出し側は 1 ページ目から読めばよい。
- *
- * 取り出しても控えは残す。React は開発時に効果を 2 回走らせるし、戻る操作が
- * 連続することもある — 1 回目で消してしまうと、そのどちらでも復元が消える。
- * 要らなくなった控えは次の保存が上書きするか、clearListSnapshot が捨てる。
- * 追加日の絞り込みのある控えは、取ってから ADDED_WITHIN_SNAPSHOT_TTL_MS を過ぎたら返さない。
- */
+/** Return matching unexpired snapshots without consuming them, supporting StrictMode and repeated back navigation. Missing snapshots restart at page one. */
 export function takeListSnapshot(key: ListKey): ListSnapshot | undefined {
   if (held === undefined || held.key !== normalize(key)) return undefined;
   if (held.expiresAt !== undefined && Date.now() >= held.expiresAt) return undefined;
   return held;
 }
 
-/**
- * markStaleGroups は、`videoIds` をメンバーに持つ控えの中のグループに取り直しの印を付ける。
- * 印の付いた控えを返す（当たるグループが無ければ受け取った控えのまま）。
- */
 function markStaleGroups(
   snapshot: ListSnapshot,
   videoIds: readonly number[],
@@ -211,7 +123,6 @@ function markStaleGroups(
   return withStaleGroups(snapshot, groupsWithMembers(snapshot.items, videoIds));
 }
 
-/** withStaleGroups は控えの取り直しの印に `groupIds` を足す。足すものが無ければ控えのまま返す。 */
 function withStaleGroups(
   snapshot: ListSnapshot,
   groupIds: readonly number[],
@@ -221,11 +132,7 @@ function withStaleGroups(
   return { ...snapshot, staleGroups: [...merged] };
 }
 
-/**
- * applyProgressToListSnapshot は控えの中の動画1件の再生位置を差し替える。
- * 再生画面から戻ったとき、見終えた動画を未視聴のまま復元しないためである。
- * その動画をメンバーに持つグループの項目には、戻ったときに取り直す印を付ける。
- */
+/** Update video progress and mark containing groups stale so returning lists reflect watched state. */
 export function applyProgressToListSnapshot(videoId: number, progress: Progress): void {
   if (held === undefined) return;
   let next = markStaleGroups(held, [videoId]);
@@ -242,11 +149,6 @@ export function applyProgressToListSnapshot(videoId: number, progress: Progress)
   held = next;
 }
 
-/**
- * applyVisibilityToListSnapshot は控えの中の動画たちの公開フラグを差し替える。
- * 公開・非公開の切り替えの直後に、控えを取り直さず結果を反映するために使う
- * （タグの付け外しの applyTagToListSnapshot と同じ扱い）。動画の項目だけが対象である。
- */
 export function applyVisibilityToListSnapshot(
   videoIds: readonly number[],
   isPublic: boolean,
@@ -272,11 +174,7 @@ export function applyVisibilityToListSnapshot(
   };
 }
 
-/**
- * applyFavoritesToListSnapshot はお気に入りの付け外しの結果を控えへ反映する。動画の項目は `favorite` を差し替え、グループの
- * 項目は戻ったときに取り直す印を付ける（グループの値はサーバーから取り直す）。
- * お気に入りのみで絞った一覧でも、その場では項目を外さない。
- */
+/** Update videos and mark groups for refresh; retain unfavorited rows in the current favorites-only snapshot. */
 export function applyFavoritesToListSnapshot(
   videoIds: readonly number[],
   groupIds: readonly number[],
@@ -305,20 +203,11 @@ export function applyFavoritesToListSnapshot(
   held = withStaleGroups(next, groupsIn(next.items, groupIds));
 }
 
-/**
- * clearListSnapshot は控えを捨てる。取り込みが終わって一覧を読み直すときに
- * 呼ぶ — 取り込む前の一覧に戻してはならない。
- */
 export function clearListSnapshot(): void {
   held = undefined;
 }
 
-/**
- * applyTagToListSnapshot は控えの中の動画たちのタグを書き換える。付け外しの
- * 直後に、控えを取り直さず結果を反映するために使う。action = "remove" で絞り込みに合わなくなった項目も、その場では
- * 一覧から外さない（次の読み込みで反映する）。
- * 対象の動画をメンバーに持つグループの項目には、戻ったときに取り直す印を付ける。
- */
+/** Apply manual tag changes without removing newly nonmatching rows until reload; mark containing groups stale. */
 export function applyTagToListSnapshot(
   videoIds: readonly number[],
   tag: TagRef,

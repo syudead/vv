@@ -13,7 +13,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// GetVideoSeekThumbnail はシーク用サムネイルのスプライトの配置情報を返す
 func (s *server) GetVideoSeekThumbnail(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -43,7 +42,6 @@ func (s *server) GetVideoSeekThumbnail(
 	}
 	body = append(body, '\n')
 
-	// 版の有無によらず、使うたびに確かめさせる。
 	etag := bytesETag(body)
 	setRevalidate(w, etag)
 	if etagMatches(r.Header.Get("If-None-Match"), etag) {
@@ -58,7 +56,6 @@ func (s *server) GetVideoSeekThumbnail(
 	}
 }
 
-// GetVideoSeekThumbnailSheet はシーク用サムネイルのスプライトのシートを返す
 func (s *server) GetVideoSeekThumbnailSheet(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -104,10 +101,7 @@ func (s *server) GetVideoSeekThumbnailSheet(
 	}
 }
 
-// lookupSeekSprite は動画と、完成したスプライトの配置情報を引く。解析が終わって
-// いない・尺が無い、またはスプライトが完成していなければ 409 を書く。完成の
-// 判断（配置情報の有無）は Catalog.SeekThumbnailState が done を返す条件と同じで、
-// 置き場（internal/artifacts）が持つ。
+// lookupSeekSprite requires completed probing, known duration, and completed artifact metadata, matching Catalog's state rules; otherwise return 409.
 func (s *server) lookupSeekSprite(
 	w http.ResponseWriter, r *http.Request, id int64,
 ) (domain.Video, domain.SeekSprite, bool) {

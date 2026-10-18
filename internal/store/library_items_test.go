@@ -13,21 +13,18 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// itemFile はライブラリの項目の検証用の所在1件である。nil は値が無いことを表す。
 type itemFile struct {
 	path     string
-	added    int // 分
-	mtime    int // 分
+	added    int // Minutes.
+	mtime    int // Minutes.
 	size     int64
 	duration *int64
 	progress *domain.Progress
-	played   int64  // playback_progress.updated_at（Unix 秒）。progress があるときだけ使う
-	created  *int64 // 所在の file_created_at（分）。nil は取れなかった（並びは mtime に倒す）
+	played   int64  // Playback save time in Unix seconds; used only with progress.
+	created  *int64 // Creation time in minutes; nil falls back to modification time.
 }
 
-// itemFiles は、グループ show（3本）と pair（2本）、グループにならない動画3本
-// （登録フォルダ直下の solo、子フォルダを持つ mixed の x、1本だけの mixed/sub の y）
-// である。値の同じ項目を混ぜ、id での決着も確かめる。
+// Include tied values to exercise ID tie breakers across groups and standalone videos.
 var itemFiles = []itemFile{
 	{path: fixturePath("/media/show/ep10.mp4"), added: 9, mtime: 1, size: 100, duration: ptr(1000),
 		progress: &domain.Progress{PositionMs: 500}, played: 300, created: ptr(7)},
@@ -44,7 +41,6 @@ var itemFiles = []itemFile{
 		progress: &domain.Progress{PositionMs: 50}, played: 50},
 }
 
-// itemsFixture は itemFiles を取り込んで索引を作り、パスごとの動画の id を返す。
 func itemsFixture(t *testing.T) (*DB, map[string]int64) {
 	t.Helper()
 	db := migratedDB(t)
@@ -89,8 +85,7 @@ func titleOf(path string) string {
 	return strings.TrimSuffix(filepath.Base(path), ".mp4")
 }
 
-// itemKey は項目の keyset の id（動画の id の 2 倍か、グループの id の 2 倍に 1 を足した値か、
-// スマートフォルダの id を負にした値）である。
+// Videos use even keys, groups odd keys, and smart folders negative keys.
 func itemKey(item domain.LibraryItem) int64 {
 	if item.SmartFolder != nil {
 		return -item.SmartFolder.ID
@@ -101,8 +96,7 @@ func itemKey(item domain.LibraryItem) int64 {
 	return item.Video.ID * 2
 }
 
-// libraryPages は limit 件ずつカーソルで最後まで読み、出た項目を順に返す。どの
-// ページの total も同じで、項目の数と一致することを確かめる。
+// Verify totals agree across pages and with the final item count.
 func libraryPages(t *testing.T, db *DB, audience domain.Audience, q domain.VideoQuery) []domain.LibraryItem {
 	t.Helper()
 	var out []domain.LibraryItem
@@ -111,8 +105,8 @@ func libraryPages(t *testing.T, db *DB, audience domain.Audience, q domain.Video
 		if err != nil {
 			t.Fatalf("%+v: %v", q, err)
 		}
+		assertPageSize(t, len(page.Items), q.Limit, page.NextCursor)
 		out = append(out, page.Items...)
-		// 自動グループのフォルダは、同じスナップショットの登録フォルダの下にある。
 		for _, item := range page.Items {
 			if item.Group == nil || item.Group.Path == "" {
 				continue
@@ -167,8 +161,6 @@ func memberIDs(group domain.LibraryGroup) []int64 {
 	return ids
 }
 
-// 受け入れ条件 1・2: グループは1件の項目になり、名前・本数・合計の長さ・大きさ・
-// 追加日時・最初のメンバー（cover）を全メンバーから作る。
 func TestListLibraryGroupsFoldersIntoOneItem(t *testing.T) {
 	db, ids := itemsFixture(t)
 	items := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Limit: domain.MaxLimit})
@@ -202,8 +194,6 @@ func TestListLibraryGroupsFoldersIntoOneItem(t *testing.T) {
 	}
 }
 
-// 027 の受け入れ条件 1・2・5: 一部のメンバーだけが検索語に当たったグループは、当たった
-// メンバーを1本ずつ動画の項目にし、全メンバーが当たったときだけグループの項目にする
 func TestListLibraryShowsPartiallyMatchedMembersAsVideos(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -227,23 +217,18 @@ func TestListLibraryShowsPartiallyMatchedMembersAsVideos(t *testing.T) {
 		t.Errorf("show の検索のグループの本数 = %d, want 3（全メンバー）", got)
 	}
 
-	// 再生可否は決め手に入れず項目に掛ける。ep2 だけが再生できず、show は全メンバーが
-	// 当たったグループのまま残る（027 の要件 4・6）。
+	// Apply playability after group formation so one unplayable member does not split the group.
 	items = libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{PlayableOnly: true, Limit: domain.MaxLimit})
 	names := itemNames(items)
 	slices.Sort(names)
 	if want := []string{"group:show", "solo", "x", "y"}; !slices.Equal(names, want) {
 		t.Errorf("再生できるものだけ = %v, want %v", names, want)
 	}
-	// 一部だけが当たったメンバーには、その動画の再生可否を掛ける。
 	if names := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Query: "ep2", PlayableOnly: true})); len(names) != 0 {
 		t.Errorf("ep2 の検索で再生できるものだけ = %v, want 空", names)
 	}
 }
 
-// 027 の受け入れ条件 3・6: タグの AND は1本の動画に求め、手で付けたタグが一部のメンバー
-// だけに当たればそのメンバーが動画の項目になり、フォルダ由来のタグで全メンバーが当たれば
-// グループの項目になる。視聴状態は1本ずつ出したメンバー自身のものに掛ける。
 func TestListLibraryFiltersTagsPerMember(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -262,7 +247,6 @@ func TestListLibraryFiltersTagsPerMember(t *testing.T) {
 	if want := []string{"ep10", "ep2"}; !slices.Equal(names, want) {
 		t.Errorf("タグ two = %v, want %v", names, want)
 	}
-	// ep2 は未視聴、ep10 は途中（show 全体は途中）。
 	if names := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{two.ID}, Watch: domain.WatchUnwatched})); !slices.Equal(names, []string{"ep2"}) {
 		t.Errorf("タグ two の未視聴 = %v, want [ep2]", names)
 	}
@@ -275,7 +259,6 @@ func TestListLibraryFiltersTagsPerMember(t *testing.T) {
 		t.Errorf("タグ two の未視聴の ids = %v, want [%d]", got, ep2)
 	}
 
-	// フォルダ名と同じ名前のタグはフォルダの下の全メンバーに付く。
 	folder, err := db.Tags().CreateTag(ctx, "show")
 	if err != nil {
 		t.Fatal(err)
@@ -283,14 +266,12 @@ func TestListLibraryFiltersTagsPerMember(t *testing.T) {
 	if names := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{folder.ID}})); !slices.Equal(names, []string{"group:show"}) {
 		t.Errorf("タグ show = %v, want [group:show]", names)
 	}
-	// 1本で両方を満たすのは ep2・ep10 で、一部だけなので動画の項目になる。
 	names = itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{folder.ID, two.ID}}))
 	slices.Sort(names)
 	if want := []string{"ep10", "ep2"}; !slices.Equal(names, want) {
 		t.Errorf("タグ show と two = %v, want %v", names, want)
 	}
 
-	// ep1 に a だけを付けると、two と a の両方を満たすメンバーは無い。
 	tagA, err := db.Tags().CreateTag(ctx, "a")
 	if err != nil {
 		t.Fatal(err)
@@ -303,10 +284,7 @@ func TestListLibraryFiltersTagsPerMember(t *testing.T) {
 	}
 }
 
-// itemSortValue は項目の並べ替えの値を、ListLibrary が返した項目から Go で作る。played は動画の id から再生の時刻を、created は動画の id から
-// 作成日の値（file_created_at、取れなければ mtime。docs/design-docs/catalog-organization.md）を引く。
-// favorited は動画の id から、groupFavorited はグループのフォルダのパスから、お気に入りにした
-// 日時を引く（無ければお気に入りでない。docs/design-docs/catalog-organization.md）。
+// Derive expected sort values from returned items, using fixture playback, creation and favorite times independently of SQL.
 func itemSortValue(sort domain.VideoSort, seed int64, item domain.LibraryItem, played, created, favorited map[int64]int64, groupFavorited map[string]int64) (isNull bool, num int64, text string) {
 	lookup := func(value int64, ok bool) (bool, int64, string) {
 		if !ok {
@@ -331,7 +309,6 @@ func itemSortValue(sort domain.VideoSort, seed int64, item domain.LibraryItem, p
 			}
 			return false, latest, ""
 		case domain.SortCreatedAsc, domain.SortCreatedDesc:
-			// グループはメンバーの作成日の最大。
 			var latest int64
 			for _, member := range group.Members {
 				latest = max(latest, created[member.ID])
@@ -380,8 +357,6 @@ func itemSortValue(sort domain.VideoSort, seed int64, item domain.LibraryItem, p
 	return false, domain.ShuffleKey(seed, itemKey(item)), ""
 }
 
-// 受け入れ条件 10: 17 の並び順すべてで、項目が要件 18 の値で並び、ページをまたいで
-// 重複と抜けが無く、total が項目の数と一致する。
 func TestListLibraryAllSortsPageInExpectedOrder(t *testing.T) {
 	db, ids := itemsFixture(t)
 	played := map[int64]int64{}
@@ -396,12 +371,10 @@ func TestListLibraryAllSortsPageInExpectedOrder(t *testing.T) {
 		}
 		created[ids[file.path]] = fixedTime.Add(time.Duration(minutes) * time.Minute).Unix()
 	}
-	// お気に入りにした日時。動画とグループが同じ値で
-	// 並び、同じ値は id で決着する。show・mixed/sub の y・ep1 はお気に入りでない。
 	favorited := map[int64]int64{
 		ids[fixturePath("/media/solo.mp4")]:     30,
 		ids[fixturePath("/media/mixed/x.mp4")]:  10,
-		ids[fixturePath("/media/show/ep1.mp4")]: 50, // show はグループの項目なので使われない
+		ids[fixturePath("/media/show/ep1.mp4")]: 50,
 	}
 	groupFavorited := map[string]int64{fixturePath("/media/pair"): 30}
 	for id, at := range favorited {
@@ -417,7 +390,8 @@ func TestListLibraryAllSortsPageInExpectedOrder(t *testing.T) {
 	}
 	all := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Limit: domain.MaxLimit})
 
-	for _, sort := range allSorts {
+	for _, tc := range pagingCases(allSorts, 2, 3) {
+		sort := tc.value
 		const seed = 42
 		want := slices.Clone(all)
 		desc := sort != domain.SortRandom && sort[len(sort)-4:] == "Desc"
@@ -436,16 +410,13 @@ func TestListLibraryAllSortsPageInExpectedOrder(t *testing.T) {
 			}
 			return c
 		})
-		for _, limit := range []int{1, 2, 3} {
-			got := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Sort: sort, Seed: seed, Limit: limit})
-			if !slices.Equal(itemNames(got), itemNames(want)) {
-				t.Errorf("%s limit=%d = %v, want %v", sort, limit, itemNames(got), itemNames(want))
-			}
+		got := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Sort: sort, Seed: seed, Limit: tc.limit})
+		if !slices.Equal(itemNames(got), itemNames(want)) {
+			t.Errorf("%s limit=%d = %v, want %v", sort, tc.limit, itemNames(got), itemNames(want))
 		}
 	}
 }
 
-// 別の並び順のカーソルは誤りになる（013 と同じカーソルの形）。
 func TestListLibraryRejectsCursorOfOtherSort(t *testing.T) {
 	db, _ := itemsFixture(t)
 	ctx := context.Background()
@@ -459,8 +430,7 @@ func TestListLibraryRejectsCursorOfOtherSort(t *testing.T) {
 	}
 }
 
-// 受け入れ条件 12・14: グループの視聴状態・見終えた本数・開くメンバーと、視聴状態の
-// 絞り込み。SQL の視聴状態（絞り込み）は domain.GroupWatch・ClassifyWatch と同じ結果になる。
+// Compare SQL watch-state filtering with the domain's group/video classification.
 func TestListLibraryWatchStateMatchesDomain(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -476,7 +446,6 @@ func TestListLibraryWatchStateMatchesDomain(t *testing.T) {
 		t.Errorf("pair = %s・開く %d, want unwatched・p1", pair.WatchState, pair.OpenVideoID)
 	}
 
-	// 全部を完了にすると watched になり、開くのは最初のメンバーになる。
 	for _, name := range []string{"ep2", "ep10"} {
 		if _, err := db.sql.Exec(`update playback_progress set completed = 1 where content_key = ?`, "key"+fixturePath("/media/show/"+name+".mp4")); err != nil {
 			t.Fatal(err)
@@ -502,7 +471,6 @@ func TestListLibraryWatchStateMatchesDomain(t *testing.T) {
 				t.Errorf("%s の一覧に %v（%s）が出た", filter, itemNames([]domain.LibraryItem{item}), state)
 			}
 		}
-		// 絞り込みの結果と全体を視聴状態で分けた結果が一致する。
 		all := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Limit: domain.MaxLimit})
 		want := 0
 		for _, item := range all {
@@ -539,9 +507,6 @@ func groupProgress(t *testing.T, db *DB, group domain.LibraryGroup) []*domain.Pr
 	return out
 }
 
-// 「すべて選択」の id は一覧の項目に合わせる。動画の項目はその id、全メンバーが当たった
-// グループは全メンバーの id で、一部だけが当たったグループは当たったメンバーの id だけである
-// （027 の受け入れ条件 7）。
 func TestLibraryIDsFollowLibraryItems(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ep10 := ids[fixturePath("/media/show/ep10.mp4")]
@@ -550,7 +515,6 @@ func TestLibraryIDsFollowLibraryItems(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := selection.AllVideoIDs()
-	// 存在しないタグは条件から落ちる。
 	if !slices.Equal(missing, []int64{999}) {
 		t.Errorf("missing = %v", missing)
 	}
@@ -595,8 +559,6 @@ func TestLibraryIDsFollowLibraryItems(t *testing.T) {
 	}
 }
 
-// ゲストには公開のメンバーだけで数えた項目を返す。公開のメンバーが1本のグループもグループの
-// 項目になり、0本のグループは出ない。
 func TestListLibraryForGuestCountsPublicMembers(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -624,8 +586,6 @@ func TestListLibraryForGuestCountsPublicMembers(t *testing.T) {
 	if show.LastPlayedAt != nil || show.WatchedCount != 0 || show.OpenVideoID != ids[fixturePath("/media/show/ep1.mp4")] {
 		t.Errorf("ゲストの show に再生の記録が出た: %+v", show)
 	}
-	// 「全メンバー」は公開のメンバーで数える（027 の受け入れ条件 8）。公開の ep10 だけが
-	// 当たれば動画の項目、フォルダ名で公開の2本が当たればグループの項目になる。
 	if names := itemNames(libraryPages(t, db, domain.AudienceGuest, domain.VideoQuery{Query: "ep10"})); !slices.Equal(names, []string{"ep10"}) {
 		t.Errorf("ゲストの ep10 の検索 = %v, want [ep10]", names)
 	}
@@ -635,7 +595,6 @@ func TestListLibraryForGuestCountsPublicMembers(t *testing.T) {
 	} else if got := len(items[0].Group.Members); got != 2 {
 		t.Errorf("ゲストの show の検索のグループの本数 = %d, want 2", got)
 	}
-	// ゲストの検索は非公開のメンバー（ep2）に当たらない。
 	if names := itemNames(libraryPages(t, db, domain.AudienceGuest, domain.VideoQuery{Query: "ep2"})); len(names) != 0 {
 		t.Errorf("ゲストの ep2 の検索 = %v, want 空", names)
 	}
@@ -650,9 +609,7 @@ func TestListLibraryForGuestCountsPublicMembers(t *testing.T) {
 	}
 }
 
-// TestListLibraryCountsWithoutItemsAfterTheCursor は、カーソルの先に項目が無いページでも
-// total に絞り込み後の項目の数を返すことを確かめる（件数とページを1つの問い合わせで読む
-// とき、行が無いと件数も読めないので数え直す）。
+// An empty page cannot carry a window count and must still return the full filtered total.
 func TestListLibraryCountsWithoutItemsAfterTheCursor(t *testing.T) {
 	db, _ := itemsFixture(t)
 	ctx := context.Background()

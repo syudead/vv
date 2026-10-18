@@ -9,18 +9,7 @@ import { Button } from "../ui/shadcn/button";
 import { Spinner } from "../ui/shadcn/spinner";
 import TagSetKindMenu, { type KindChoice } from "./TagSetKindMenu";
 
-/**
- * TagSelectionBar はタグ管理画面で 1 件以上選んでいる間、見出しの行の代わりに出す
- * 選択バーである（見出しとタブの帯はトップバーの直下に貼り付くので、送っても届く）。
- * デザインシステムの `SelectionBar` の placement="header"（web/registry/rules/patterns.md の
- * Sections）に、選んだ数・解除とまとめての操作を入れる。選んだタグに働かない操作
- * （仮のタグが無いときの「Confirm」「Reject…」、確定したタグが無いときの「Delete…」）は
- * 薄くせずに出さない。「Reject…」「Delete…」は確認の窓（`ConfirmDialog`）を開く。操作の
- * 名前はどの幅でも出し、収まらなければ折り返す。
- *
- * 「Set kind…」はどの選択にも出し、
- * 「Confirm」と「Merge into one tag…」の間に置く。
- */
+/** Hide inapplicable batch actions and keep labels visible at every width. */
 export default function TagSelectionBar({
   count,
   hasTentative,
@@ -43,28 +32,20 @@ export default function TagSelectionBar({
   rejectRef,
   deleteRef,
 }: {
-  /** 選んだタグの数（1 以上）。 */
   count: number;
-  /** 選んだ中に仮のタグがある（「Confirm」「Reject…」を出す）。 */
   hasTentative: boolean;
-  /** 選んだ中に確定したタグがある（「Delete…」を出す）。 */
   hasConfirmed: boolean;
-  /** 選んだ数が `maxTagBatch` を超える。まとめての操作を押せなくし、理由を添える。 */
   overLimit: boolean;
-  /** まとめての操作の送信中。ボタンをすべて disabled にする。 */
   busy: boolean;
-  /** まとめての確定の送信中。「Confirm」のアイコンを回す。 */
   confirming: boolean;
   onConfirm: () => void;
   onReject: () => void;
   onDelete: () => void;
   onMerge: () => void;
   onClear: () => void;
-  /** 名前の自然順の種類（「Set kind…」のメニュー）。読み込み前は undefined。 */
   kinds: readonly TagKind[] | undefined;
-  /** 選んだタグがみな持つ種類（id の文字列か `none`）。混ざっていれば undefined。 */
+  /** Shared kind ID or none; undefined for mixed kinds. */
   sharedKind: string | undefined;
-  /** 種類の付け外しの送信中。「Set kind…」のアイコンを回す。 */
   settingKind: boolean;
   onSetKind: (choice: KindChoice) => void;
   setKindRef?: Ref<HTMLButtonElement>;

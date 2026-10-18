@@ -20,10 +20,8 @@ import (
 	"github.com/syudead/vv/internal/mediafs"
 )
 
-// fakeArtifacts は生成物の置き場の代わりである。thumbnails・previews は content
-// key から配信するファイルのパスへの対応で、無いものは「無い」と答える。
-// シーク用プレビューは、配置情報を sprite と spriteErr（sprite が nil なら
-// fs.ErrNotExist）、シートを image と err で決め打ちに返し、渡された値を控える。
+// fakeArtifacts maps content keys to files; nil sprite means fs.ErrNotExist, and returned
+// values/arguments are controllable.
 type fakeArtifacts struct {
 	thumbnails map[string]string
 	previews   map[string]string
@@ -40,7 +38,6 @@ func (f *fakeArtifacts) ThumbnailFile(contentKey string) (*os.File, error) {
 	return openFake(f.thumbnails, contentKey)
 }
 
-// PreviewFile は本物の置き場と同じく、内容の SHA-256 を添えて返す。
 func (f *fakeArtifacts) PreviewFile(contentKey string) (*os.File, string, error) {
 	file, err := openFake(f.previews, contentKey)
 	if err != nil {
@@ -74,7 +71,7 @@ func (f *fakeArtifacts) SeekSpriteSheet(contentKey string, sheet int) ([]byte, e
 	return f.image, f.err
 }
 
-// testSprite は既に生成済みの旧2シート形式を表す。
+// testSprite represents the older two-sheet layout.
 func testSprite() *domain.SeekSprite {
 	return &domain.SeekSprite{
 		SeekSpriteLayout: domain.SeekSpriteLayout{IntervalMs: 5000, FrameCount: 150, Columns: 10, Rows: 10, SheetCount: 2},
@@ -91,13 +88,12 @@ func openFake(paths map[string]string, contentKey string) (*os.File, error) {
 	return os.Open(path)
 }
 
-// fakeLibrary は保存層の代わりに、決め打ちの動画を返す。ハンドラの振る舞い
-// （形・状態コード・ヘッダ）だけを検証したいので SQLite には触れない。
+// Use fixed videos to isolate response shape/status/headers without SQLite.
 type fakeLibrary struct {
 	videos map[int64]domain.Video
 	roots  []string
 	page   domain.VideoPage
-	// lastQuery は最後に渡された問い合わせ条件。丸めの検証に使う。
+
 	lastQuery domain.VideoQuery
 	listErr   error
 }
@@ -110,8 +106,8 @@ func (f *fakeLibrary) VideoLocations(_ context.Context, videoID int64) ([]domain
 	return []domain.VideoLocation{{ID: 1, VideoID: videoID, Path: video.Path, Version: 1}}, nil
 }
 
-// TranscodeProbe は保存済みの解析情報が無いと答える。保存と再利用は
-// transcode_test.go が本物の保存層で確かめる。
+// TranscodeProbe reports no stored metadata. Tests of metadata forwarding
+// override it through probeLibrary.
 func (f *fakeLibrary) TranscodeProbe(context.Context, int64) (*domain.StoredTranscodeProbe, error) {
 	return nil, nil
 }
@@ -124,9 +120,8 @@ func (f *fakeLibrary) ListMediaFolders(context.Context) ([]domain.MediaFolder, e
 	return folders, nil
 }
 
-// requireOwner は、偽物を使う経路のテストが所有者として読むことを偽物の側で確かめる。
-// それらのテストは ownerAuth で境界を越えるので、ゲストとして読んだら取り違えである。
-// ゲストとしての読み出しは guest_test.go が本物の保存層で確かめる。
+// Fake-backed route tests must request owner reads; guest behavior is tested with real storage in
+// guest_test.go.
 func requireOwner(audience domain.Audience) error {
 	if !audience.IsOwner() {
 		return errors.New("所有者として読んでいません")
@@ -162,14 +157,13 @@ func (f *fakeLibrary) GetVideo(_ context.Context, audience domain.Audience, id i
 	return video, nil
 }
 
-// fakeScans は走査の制御を差し替える。
 type fakeScans struct {
 	current    domain.Scan
 	hasScan    bool
 	started    int
 	startErr   error
 	currentErr error
-	// issues は直近の取り込みの問題で、並べ替えとページ分けは domain が行う。
+
 	issues []domain.ScanIssue
 }
 
@@ -187,7 +181,6 @@ func (f *fakeScans) ListScanIssues(_ context.Context, cursor string, limit int) 
 	return domain.ScanIssuePage{ScanID: f.current.ID, Items: items, NextCursor: next}, nil
 }
 
-// StartScan は実行中（ScanRunning）の走査があればそれを返し、無ければ新しく始める。
 func (f *fakeScans) StartScan(context.Context) (domain.Scan, bool, error) {
 	if f.startErr != nil {
 		return domain.Scan{}, false, f.startErr
@@ -211,7 +204,6 @@ func (f *fakeScans) CurrentScan(context.Context) (domain.Scan, error) {
 	return f.current, nil
 }
 
-// sampleVideo は解析済みの動画を1件返す。
 func sampleVideo(id int64, title string) domain.Video {
 	duration := int64(8533)
 	width, height := 1280, 720
@@ -236,7 +228,6 @@ func sampleVideo(id int64, title string) domain.Video {
 	}
 }
 
-// newTestServer は検証用の経路を組み立てる。
 func newTestServer(t *testing.T, opts Options) http.Handler {
 	t.Helper()
 
@@ -252,8 +243,7 @@ func newTestServer(t *testing.T, opts Options) http.Handler {
 	return NewRouter(opts)
 }
 
-// ownerAuth はどの要求も所有者として通す認証の代わりである。認証の境界そのものは
-// auth_test.go が本物の Auth で確かめるので、他の経路のテストはこれで境界を越える。
+// Use ownerAuth to isolate routes; auth_test.go verifies the real boundary.
 type ownerAuth struct{}
 
 func (ownerAuth) Setup(context.Context, string, string) (IssuedSession, error) {
@@ -272,13 +262,10 @@ func (ownerAuth) Logout(context.Context, string) error { return nil }
 
 func (ownerAuth) State(context.Context, string) (AuthState, error) { return AuthStateOwner, nil }
 
-// emptyAssets は SPA を持たないファイルシステムである。API の検証では
-// index.html を要らない。
 type emptyAssets struct{}
 
 func (emptyAssets) Open(string) (fs.File, error) { return nil, errors.New("assets はありません") }
 
-// do は要求を1つ投げて応答を返す。
 func do(t *testing.T, handler http.Handler, method, target string) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -295,7 +282,6 @@ func do(t *testing.T, handler http.Handler, method, target string) *httptest.Res
 	return rec
 }
 
-// decode は JSON の応答を読み取る。
 func decode[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
 	t.Helper()
 
@@ -306,14 +292,12 @@ func decode[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
 	return out
 }
 
-// fakeCatalog はアプリケーション層の代わりに、決め打ちの判断を返す。プレビューの
-// 作り直しやシーク用プレビューの状態の導き方は internal/app で検証するので、
-// ここでは返された判断が応答にどう写るかだけを見る。
+// Application tests cover rebuild/state decisions; fakeCatalog isolates how handlers present them.
 type fakeCatalog struct {
 	mu sync.Mutex
-	// previews はファイルがある一覧用プレビューの内容の識別子。
+
 	previews map[string]bool
-	// requeue が真なら、ファイルの無い done のプレビューを pending と読み替える。
+	// requeue changes missing done previews to pending.
 	requeue  bool
 	requeued []int64
 
@@ -323,16 +307,15 @@ type fakeCatalog struct {
 	related      domain.RelatedVideos
 	relatedErr   error
 	relatedAsked []int64
-	// relatedPages は RelatedVideos に渡されたページの指定を順に持つ。
+
 	relatedPages []domain.RelatedPage
 
-	// group は VideoGroup が返すグループ。grouped が false ならグループに属さない。
 	group    domain.VideoGroup
 	grouped  bool
 	groupErr error
-	// groupWindows は VideoGroup に渡された窓を順に持つ。
+
 	groupWindows []domain.GroupWindow
-	// groupContexts は VideoGroup に渡された文脈のグループの id を順に持つ。
+
 	groupContexts []int64
 
 	retry func(domain.Video) error

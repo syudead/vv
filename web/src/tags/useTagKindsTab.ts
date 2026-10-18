@@ -16,21 +16,17 @@ import type { ShowToast } from "../ui/Toast";
 import { kindFieldError, type TagFieldError } from "./tagNameField";
 import { isShown } from "./useVirtualTagRows";
 
-/** KindRowRefs は種類の行の、フォーカスの行き先になる要素である。 */
 export interface KindRowRefs {
   nameLink: HTMLAnchorElement | null;
   renameButton: HTMLButtonElement | null;
   menuButton: HTMLButtonElement | null;
-  /** タッチの端末と `sm` 未満で、行の操作をまとめた「Actions」の入口。 */
   actionsButton: HTMLButtonElement | null;
 }
 
-/** withKind は 1 件を足すか置き換え、名前の位置へ並べ直す。 */
 export function withKind(kinds: readonly TagKind[], kind: TagKind): TagKind[] {
   return sortTagKinds([...kinds.filter((item) => item.id !== kind.id), kind]);
 }
 
-/** nextAfterRemoval は消えた行の次の行（無ければ前の行）を返す。 */
 export function nextAfterRemoval(
   order: readonly TagKind[],
   removedId: number,
@@ -44,14 +40,9 @@ function isKindNotFound(error: unknown): boolean {
   return error instanceof RequestFailed && error.reason === "tag_kind_not_found";
 }
 
-/** TagKindsTab はタグ管理画面の「Kinds」のタブが描く状態と操作である。 */
 export interface TagKindsTab {
-  /** 名前の自然順の種類。undefined の間は読み込み中か、読み込みの失敗。 */
   kinds: TagKind[] | undefined;
-  /**
-   * fresh は、画面を開いてから種類の一覧を 1 度でも読めたかである。前の画面の保持だけの
-   * 間は false で、URL の `kind` がもう無いかはこれが true になってから決める。
-   */
+  /** Cached data alone cannot prove a URL kind is gone; require a successful read since mount. */
   fresh: boolean;
   loadError: UiText | null;
   creating: boolean;
@@ -63,9 +54,7 @@ export interface TagKindsTab {
   deleting: TagKind | null;
   deletePending: boolean;
   deleteError: UiText | null;
-  /** 作成・改名・削除の送信中。タブを切り替えない。 */
   pending: boolean;
-  /** 作成の行・改名の入力・削除の確認の窓のどれかが開いている。 */
   editing: boolean;
   registerRefs: (id: number, refs: Partial<KindRowRefs>) => void;
   reload: () => void;
@@ -80,29 +69,17 @@ export interface TagKindsTab {
   openDelete: (kind: TagKind) => void;
   cancelDelete: () => void;
   performDelete: (kind: TagKind) => void;
-  /** タブを離れるときに、作成の行・改名の入力・削除の確認の窓を閉じる。 */
   closeEdits: () => void;
-  /**
-   * takeChanged は、前に呼んだときから種類の改名・削除（もう無かったときを含む）が
-   * あったかを返し、印を消す。タブを離れるときに「Tags」のタブを読み直すかを決める。
-   */
+  /** Consume rename/deletion changes to decide whether the Tags tab must refresh. */
   takeChanged: () => boolean;
 }
 
-/**
- * useTagKindsTab はタグ管理画面の「Kinds」のタブの状態を持つ。種類の一覧は `api/tagKinds.ts` の
- * 共有の保持を読み、取り直されるたびに追う。画面を開いたときは保持があっても取り直し
- * （ほかのタブで種類が変わったかもしれない。タグの削除・統合などで `tagCount` も変わる）、
- * タブの件数・「Tags」のタブの種類の絞り込みと「Set kind…」のメニューにも使う。
- * 作成・改名・削除の直後は読み込んだ並びをその場で書き換え、共有の保持の取り直しは
- * `api/tagKinds.ts` が始める。
- */
+/** Refresh on entry even with cached kinds because counts may have changed; apply edits locally while the API refreshes shared state. */
 export function useTagKindsTab({
   toast,
   newKindRef,
 }: {
   toast: ShowToast;
-  /** 見出しの行の「New kind」。行へフォーカスを移せないときの行き先。 */
   newKindRef: RefObject<HTMLButtonElement | null>;
 }): TagKindsTab {
   const [kinds, setKinds] = useState<TagKind[] | undefined>(() => {
@@ -136,12 +113,7 @@ export function useTagKindsTab({
     return unsubscribe;
   }, []);
 
-  /**
-   * reload は種類の一覧をサーバーから取り直す。「Kinds」のタブを開いたときと Retry で
-   * 呼ぶ（タグの削除・統合などで `tagCount` が変わっているかもしれない）。読み込んだ
-   * 並びがあれば取り直しの間は並びを残す。失敗したら `loadError` を立て、パネルは古い
-   * 数の並びではなく失敗と Retry を描く。
-   */
+  /** Preserve rows during refresh, but expose failure instead of stale counts used by deletion confirmation. */
   const reload = useCallback(() => {
     setLoadError(null);
     refreshTagKinds().catch((failure: unknown) => setLoadError(errorText(failure)));
@@ -152,11 +124,7 @@ export function useTagKindsTab({
     rowRefs.current.set(id, { ...current, ...refs });
   }, []);
 
-  /**
-   * focusLater は描き直しのあとで、その行の部分へフォーカスを移す。行の操作が「Actions」
-   * 1 つにまとまっている（タッチの端末と `sm` 未満）ときは「Actions」へ。行が無ければ
-   * 「New kind」へ。
-   */
+  /** Focus compact Actions when individual buttons are hidden; fall back to New kind for missing rows. */
   function focusLater(id: number | undefined, part: "name" | "rename" | "menu") {
     setTimeout(() => {
       const refs = id === undefined ? undefined : rowRefs.current.get(id);
@@ -175,9 +143,7 @@ export function useTagKindsTab({
     }, 0);
   }
 
-  // 送信中に作成・改名を始めたり取り消したりしないことは、呼び出す側の部品が守る
-  // （「New kind」と行の操作は送信中 disabled、CreateTagRow・RowNameInput は送信中の
-  // 取り消しを受けない）。
+  // Callers block starting/cancelling edits while pending through disabled actions and guarded row inputs.
   function openCreate() {
     setCreating(true);
     setCreateError(null);
@@ -219,10 +185,6 @@ export function useTagKindsTab({
     focusLater(kind.id, "rename");
   }
 
-  /**
-   * gone は改名・削除の `404 tag_kind_not_found` を扱う。入力や窓を閉じ、トーストを出す。
-   * 一覧の取り直しは `api/tagKinds.ts` が始めている。フォーカスは消えた行の次の行へ。
-   */
   function gone(order: readonly TagKind[], id: number) {
     changed.current = true;
     toast(t.tags.kinds.gone);
@@ -257,16 +219,15 @@ export function useTagKindsTab({
   }
 
   function cancelDelete() {
-    // ConfirmDialog は送信中の Esc でも閉じようとするので、ここで受けない。
+    // ConfirmDialog still attempts Escape closure while pending; reject it here.
     if (deletePending || deleting === null) return;
     const target = deleting;
     setDeleting(null);
     setDeleteError(null);
-    // 窓は「More actions」のメニューの項目から開いたので、その行の「More actions」へ戻す。
+    // The originating menu item unmounted; restore its row's menu trigger.
     focusLater(target.id, "menu");
   }
 
-  // 削除の確認の窓は送信中に「Delete」を disabled にするので、二重には呼ばれない。
   async function performDelete(target: TagKind) {
     const order = kinds ?? [];
     setDeleteError(null);

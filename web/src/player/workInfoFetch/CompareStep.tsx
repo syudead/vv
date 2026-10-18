@@ -36,18 +36,13 @@ import {
 import TagChips, { type ChipItem, chipsOfVideo } from "./TagChips";
 import TagPicker, { type TagPick } from "./TagPicker";
 
-/** Fetched は比較の段に出す取得の結果と、それをどこから取ったかである。 */
 export interface Fetched {
   result: WorkInfoFetch;
-  /** 取った作品の ID。「Fetch again」も同じもので走らせる。 */
   source: string;
-  /** 取得に使ったプラグイン。「Fetch again」も同じプラグインで走らせる。 */
   plugin: WorkInfoPlugin;
-  /** 検索の候補から取った。「Back to the matches」を出す。 */
   fromSearch: boolean;
 }
 
-/** Cell は比較の行の値の 1 つで、狭い画面では見出しを前に置く。 */
 function Cell({ heading, children }: { heading: string; children: ReactNode }) {
   return (
     <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 sm:col-span-2">
@@ -72,7 +67,6 @@ function TitleValue({ title, tone }: { title: string; tone: "now" | "fetched" })
   );
 }
 
-/** StateNote は選べない行の理由（`Not in the result`・`Same as now`）である。 */
 function StateNote({ state, noteId }: { state: RowState; noteId: string }) {
   const text = t.player.workInfoFetch;
   return (
@@ -93,7 +87,7 @@ function SingleValue({
 }) {
   if (value === undefined) return null;
   if (field === "description")
-    // 鍵を値にし、「Fetch again」で説明が変われば畳んだ状態から出し直す。
+    // Key by value so Fetch again collapses a changed description.
     return (
       <Description key={value} text={value} tone={tone === "now" ? "muted" : "default"} />
     );
@@ -148,10 +142,6 @@ function ListValue({
   );
 }
 
-/**
- * CoverValue はカバー画像の行の画像で、今の側は動画の代表サムネイル、取得した側は vv が取ったカバー画像である。
- * どちらもサムネイルの枠に収める。今のサムネイルが無ければ何も出さない。
- */
 function CoverValue({
   video,
   result,
@@ -176,7 +166,6 @@ function CoverValue({
   );
 }
 
-/** Value は行の今か取得した側の値である。取得した側で選べない行は理由を出す。 */
 function Value({
   field,
   video,
@@ -242,7 +231,6 @@ function CompareRow({
   const id = useId();
   const state = rowState(field, video, result);
   const selectable = state === "differs";
-  // タグの行のチェックボックスは選べるタグ全部の選択で、一部なら `indeterminate` である。
   const checked =
     field === "tags"
       ? tagsRowChecked(selectableTags(video, result), tagPick.selected)
@@ -285,13 +273,6 @@ function CompareRow({
   );
 }
 
-/**
- * CompareStep は取得の結果を今の値と項目ごとに見比べる段である（ui-design「Compare」、
- * docs/design-docs/work-info-plugins.md「Compare」）。題名とタグの後に、結果に値の
- * ある作品の詳細を 1 項目 1 行で並べる。取得した側を本文の色、今の側を従の色にし、値が
- * 無いか今と同じか足せる件の無い項目は選べない。期限切れなら
- * 「Fetch again」を添えた知らせを、他の失敗なら理由を、比較の上に出す。
- */
 export default function CompareStep({
   video,
   fetched,
@@ -309,12 +290,9 @@ export default function CompareStep({
   video: Video;
   fetched: Fetched;
   selection: readonly WorkInfoField[];
-  /** 選んだタグの名前。 */
   tags: readonly string[];
-  /** 反映を送っている間。選択を変えられない。 */
   locked: boolean;
   stale: boolean;
-  /** 「Fetch again」が走っている。 */
   refetching: boolean;
   failure: unknown;
   onToggle: (field: WorkInfoField, on: boolean) => void;

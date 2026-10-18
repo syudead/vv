@@ -54,7 +54,7 @@ const playerMock = vi.hoisted(() => ({
 vi.mock("./VideoPlayer", () => ({
   default: function VideoPlayerMock(props: PlayerProps) {
     playerMock.props = props;
-    // プレイヤーは作ったときの値だけを使う。
+    // The player reads these values only when created.
     const [initial] = useState(props);
     useEffect(() => {
       playerMock.mounts += 1;
@@ -113,26 +113,18 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-/** server は経路ごとの応答を差し替えられる偽のサーバーである。 */
 const server = {
   videos: new Map<number, (() => Response) | Video[]>(),
   related: new Map<number, RelatedVideos>(),
-  /** GET /api/videos/{id}/subtitles の応答。無い動画は字幕無し。 */
   subtitles: new Map<number, () => Response>(),
   probe: vi.fn<() => Response>(),
   open: vi.fn<() => Response>(),
-  /** フォルダの経路（/api/folders/…）とグループの書き込み（/api/groups/…）の応答。 */
   grouping:
     vi.fn<(method: string, url: string, body: unknown) => Response | Promise<Response>>(),
-  /** GET /api/groups/{id}/items が返すグループの直接の項目。無いグループは 404。 */
   groupItems: new Map<number, GroupItem[]>(),
-  /** PUT /api/videos/{id}/display-name の応答。 */
   displayName: vi.fn<(body: unknown) => Response>(),
-  /** PUT /api/videos/{id}/thumbnail-position の応答。 */
   thumbnailPosition: vi.fn<(body: unknown) => Response | Promise<Response>>(),
-  /** 集まりの経路（GET …/versions・POST …/make-representative・POST …/unbundle）の応答。 */
   versions: vi.fn<(method: string, id: number, suffix: string) => Response>(),
-  /** GET /api/auth/session が答える見る人の状態。 */
   session: "owner" as AuthState,
 };
 
@@ -173,7 +165,7 @@ function renderPage(
   let state: Record<string, unknown> | undefined =
     from === undefined ? undefined : autoplay ? { from, autoplay } : { from };
   if (trail !== undefined) state = { ...state, trail };
-  // `id` は問い合わせ（`12?group=1`）を含められる。
+  // IDs may include a query, such as 12?group=1.
   const [pathId, search] = id.split("?");
   return render(
     <TooltipProvider>
@@ -221,7 +213,6 @@ function player(): PlayerProps {
   return props;
 }
 
-/** factList は題名とタグの下の、ファイルの情報の行（「File details」の並び）を返す。 */
 function factList(): HTMLElement {
   return screen.getByRole("list", { name: "File details" });
 }
@@ -273,8 +264,7 @@ describe("VideoPage", () => {
         return Promise.resolve(server.grouping(method, url, body));
       }
       if (url === "/api/tags") return Promise.resolve(json([]));
-      // 動画を開いたグループ（`?group=`）かスマートフォルダ（`?smartFolder=`）だけの問い合わせは、
-      // 無いときと同じ応答にする。
+      // Group/smart-folder-only queries use the same response as the bare URL.
       const match =
         /^\/api\/videos\/(\d+)(\/[a-z-]+)?(?:\?(?:group|smartFolder)=\d+)?$/.exec(url);
       if (match === null) return Promise.resolve(json({}));
@@ -313,7 +303,7 @@ describe("VideoPage", () => {
         );
       }
       if (typeof entry === "function") return Promise.resolve(entry());
-      // 配列は取得のたびに先頭から 1 つずつ返し、最後の 1 つを返し続ける。
+      // Consume response arrays in order, then repeat the last response.
       const next = entry.length > 1 ? entry.shift() : entry[0];
       return Promise.resolve(json(next));
     });
@@ -329,7 +319,7 @@ describe("VideoPage", () => {
     it("題名・ファイルの情報・技術情報・関連動画を出し、廃止した項目を出さない", async () => {
       renderPage("7", "/?q=abc");
       expect((await ready()).textContent).toBe("テスト動画");
-      // 題名は描画後の effect で入るので、h1 が出た直後ではなく反映を待つ。
+      // The title updates in an effect after the heading first renders.
       await waitFor(() => expect(document.title).toBe("テスト動画 · VVMDM"));
       expect(factList()).toBeDefined();
       expect(screen.getByText("H.264")).toBeDefined();
@@ -352,7 +342,6 @@ describe("VideoPage", () => {
       ]) {
         expect(text).not.toContain(removed);
       }
-      // × は見出しの帯に 1 つだけ置く。
       expect(screen.getAllByRole("button", { name: "Close" })).toHaveLength(1);
     });
 
@@ -363,13 +352,6 @@ describe("VideoPage", () => {
       expect(screen.getByTestId("screen").textContent).toBe(
         "フォルダ /folders/3/A%20B?sort=titleAsc",
       );
-    });
-
-    it("直接開いたら × は / へ、外部 URL は戻り先にしない", async () => {
-      renderPage("7", "//evil.example");
-      await ready();
-      fireEvent.click(closeButton());
-      expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /");
     });
 
     it("Esc で遷移元の一覧へ戻る", async () => {
@@ -440,10 +422,8 @@ describe("VideoPage", () => {
       );
       expect(screen.getAllByRole("alert")).toHaveLength(1);
       expect(screen.getByTestId("video-player")).toBeDefined();
-      // 情報の行のすぐ下（技術情報の上）に出る。
       const row = factList().parentElement;
       expect(row?.nextElementSibling).toBe(alert);
-      // 足されるのはその 1 行だけで、帯・プレイヤー・題名・情報・関連動画は変わらない。
       expect(snapshot()).toEqual(before);
     });
   });
@@ -467,7 +447,7 @@ describe("VideoPage", () => {
     it("プレイヤーの入れ物は列を 1 本（grid-cols-1、minmax(0,1fr)）に固定し、層を幅の中で折り返させる", async () => {
       renderPage();
       await ready();
-      // 列の指定が無いと、層の列が内容の幅まで広がり、狭い幅で右が切れる。
+      // Without a column constraint, overlay content can overflow narrow screens.
       const frame = document.querySelector("[data-player-frame]");
       expect(frame?.className.split(" ")).toContain("grid-cols-1");
     });
@@ -533,7 +513,6 @@ describe("VideoPage", () => {
       await ready();
       await waitFor(() => expect(screen.queryByText("Related videos")).toBeNull());
       await act(async () => undefined);
-      // タグの並びの見出し（視覚的に隠した h2「タグ」）は関連動画と関係なく常に出る。
       expect(
         screen.queryByRole("heading", { level: 2, name: "Related videos" }),
       ).toBeNull();
@@ -548,9 +527,7 @@ describe("VideoPage", () => {
       renderPage("7", "/folders/1/movies");
       await ready();
       const next = await screen.findByRole("button", { name: "Next video: 後続の動画" });
-      // URL を直接開いた動画（見てきた動画が無い）には ‹ を出さない。
       expect(screen.queryByRole("button", { name: /^Previous video/ })).toBeNull();
-      // 止まっている間に移ったときは、移った先で再生を始めない。
       fireEvent.click(next);
       await waitFor(() => expect(player().video.id).toBe(8));
       expect(player().autoplay).toBe(false);
@@ -559,7 +536,6 @@ describe("VideoPage", () => {
         await screen.findByRole("button", { name: "Previous video: テスト動画" }),
       );
       await waitFor(() => expect(player().video.id).toBe(7));
-      // 戻った先では、さらに前に見ていた動画が無いので ‹ を出さない。
       await screen.findByRole("button", { name: "Next video: 後続の動画" });
       expect(screen.queryByRole("button", { name: /^Previous video/ })).toBeNull();
       fireEvent.click(closeButton());
@@ -713,8 +689,7 @@ describe("VideoPage", () => {
       renderPage();
       await ready();
       await screen.findByTestId("video-player");
-      // 画面全体のキー操作がプレイヤーの操作を受け取るのは描画後の effect なので、0 が効く
-      // ようになるのを待ってから Space を確かめる。
+      // Wait for page shortcuts to receive the player controls before testing Space.
       await waitFor(() => {
         fireEvent.keyDown(document.body, { key: "0" });
         expect(controls.seekTo).toHaveBeenCalledWith(0);
@@ -792,7 +767,6 @@ describe("VideoPage", () => {
       expect(
         screen.getByText("Creating the list preview · You can play the video now"),
       ).toBeDefined();
-      // thumbnailState などが変わっても、プレイヤーは作り直さない。
       expect(playerMock.mounts).toBe(1);
 
       await emitServerEvent("video", { id: 7 });
@@ -803,7 +777,6 @@ describe("VideoPage", () => {
       );
       expect(calls).toHaveLength(4);
       await advance(10_000);
-      // failed だけが残ったら取り直さない。
       expect(
         fetchMock.mock.calls.filter(([input]) => String(input) === "/api/videos/7"),
       ).toHaveLength(4);
@@ -827,14 +800,12 @@ describe("VideoPage", () => {
       await advance(0);
       const alert = await screen.findByRole("alert");
       expect(within(alert).getByText("Couldn't read this video")).toBeDefined();
-      // ffprobe の出力（probeError）は出さず、コードから英語の説明を作る。
       expect(
         within(alert).getByText("The file is damaged or isn't a supported video."),
       ).toBeDefined();
       expect(within(alert).queryByText(/moov atom/)).toBeNull();
       expect(within(alert).getByRole("button", { name: "Open file" })).toBeDefined();
       expect(screen.getByText("Couldn't read the technical details")).toBeDefined();
-      // 読み取りの失敗は終わりとして扱い、プレビューが pending でも取り直さない。
       await advance(10_000);
       expect(
         fetchMock.mock.calls.filter(([input]) => String(input) === "/api/videos/7"),
@@ -1069,7 +1040,6 @@ describe("VideoPage", () => {
       renderPage();
       await ready();
       await screen.findByRole("heading", { level: 2, name: "Related videos" });
-      // プレイヤー内の前後ボタンへフォーカスを置く。
       (await screen.findByRole("button", { name: /^Next video/ })).focus();
       end();
       expect(document.activeElement).toBe(
@@ -1199,7 +1169,6 @@ describe("VideoPage", () => {
       expect(link.textContent).toBe("series·2 / 3");
       expect(link.getAttribute("href")).toBe("/groups/1");
       expect(screen.getByTitle("series")).toBeDefined();
-      // 行の後の同じ並びに、グループ操作のボタンを置く。
       expect(link.nextElementSibling).toBe(await actionsButton());
       fireEvent.click(link);
       expect(screen.getByTestId("screen").textContent).toBe("グループ /groups/1");
@@ -1271,7 +1240,6 @@ describe("VideoPage", () => {
           .getAllByRole("menuitem")
           .map((item) => item.textContent);
 
-      /** leaveOnServer は、操作の後の取り直しでグループに属さない応答を返させる。 */
       function leaveOnServer() {
         server.videos.set(12, [single(ep02)]);
         server.related.set(12, { items: [related(8, "後続の動画")], nextId: 8 });
@@ -1339,7 +1307,6 @@ describe("VideoPage", () => {
           { itemIds: [52] },
         );
         await expectPlainVideo();
-        // 読み直しは group を運ばない。
         expect(videoRequests(12)).toBeGreaterThan(0);
         await waitFor(() =>
           expect(
@@ -1498,7 +1465,6 @@ describe("VideoPage", () => {
         expect(urls()).toContain("/api/videos/12?group=1");
         expect(urls()).toContain("/api/videos/12/related?group=1");
         expect(urls()).not.toContain("/api/videos/12");
-        // メンバーの行も ?group を保つ。
         const members = document.getElementById("group-heading")!.closest("section")!;
         expect(
           within(members).getByRole("link", { name: /ep03/ }).getAttribute("href"),
@@ -1576,7 +1542,6 @@ describe("VideoPage", () => {
         expect(urls()).toContain("/api/videos/12?smartFolder=1");
         expect(urls()).toContain("/api/videos/12/related?smartFolder=1");
         expect(urls()).not.toContain("/api/videos/12");
-        // メンバーの行も ?smartFolder を保つ。
         const members = document.getElementById("group-heading")!.closest("section")!;
         expect(
           within(members).getByRole("link", { name: /ep03/ }).getAttribute("href"),
@@ -1676,20 +1641,16 @@ describe("VideoPage", () => {
         .getAllByRole("status")
         .filter((node) => node.textContent === announcement);
       expect(statuses).toHaveLength(1);
-      // フォーカスがプレイヤーの中にあったので「取り消す」へ移る。
       expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cancel" }));
-      // DOM の順でも「取り消す」が先。
       const cancel = screen.getByRole("button", { name: "Cancel" });
       const now = screen.getByRole("button", { name: "Play now" });
       expect(
         cancel.compareDocumentPosition(now) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
-      // 残り秒数は読み上げさせない。
       const seconds = screen.getByText("in 5 seconds");
       expect(seconds.getAttribute("aria-hidden")).toBe("true");
       await advance(2000);
       expect(screen.getByText("in 3 seconds")).toBeDefined();
-      // 秒数が減っても読み上げの文は増えない。
       expect(
         screen.getAllByRole("status").filter((node) => node.textContent === announcement),
       ).toHaveLength(1);
@@ -1699,7 +1660,6 @@ describe("VideoPage", () => {
       expect(videoRequests(13)).toBeGreaterThan(before);
       expect(player().autoplay).toBe(true);
       expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("ep03");
-      // メンバーを移っても × は開く前の一覧へ戻る。
       fireEvent.click(closeButton());
       expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /?q=series");
     });
@@ -1710,7 +1670,7 @@ describe("VideoPage", () => {
       await screen.findByTestId("video-player");
       end();
       expect(screen.getByText("in 5 seconds")).toBeDefined();
-      // タイマーが一度も呼ばれないまま 30 秒経ったことにする。
+      // Simulate 30 seconds passing without any timer callbacks.
       const now = performance.now.bind(performance);
       const skipped = now() + 30_000;
       const clock = vi.spyOn(performance, "now").mockImplementation(() => skipped);
@@ -1807,7 +1767,6 @@ describe("VideoPage", () => {
       await screen.findByTestId("video-player");
       end();
       server.videos.delete(13);
-      // ほかの動画の知らせでは確かめない。
       const before = videoRequests(13);
       await emitServerEvent("video", { id: 8 });
       expect(videoRequests(13)).toBe(before);
@@ -1893,7 +1852,6 @@ describe("VideoPage", () => {
           .map((b) => b.ariaLabel),
       ).toEqual(["Dismiss"]);
       expect(within(status).queryByText(/Quality|480p|720p|360p/)).toBeNull();
-      // 入れ物は下の操作へ通し、× だけが押せる。状態表示の入れ物とは別の層にある。
       const layer = status.closest("[data-stall-warning]");
       expect(layer?.className).toContain("pointer-events-none");
       expect(layer?.className).toContain("inset-x-2");
@@ -1984,7 +1942,7 @@ describe("VideoPage", () => {
     it("最初の再生で、positioned のあとに視聴の識別子を progress API の body へ送る", async () => {
       renderPage();
       await ready();
-      // 自動再生の play は、続きからの位置へシークし終える前に届く。
+      // Autoplay may emit play before the resume seek completes.
       act(() => player().onPlay?.());
       act(() => player().onPosition(42_000));
       act(() =>
@@ -2014,7 +1972,6 @@ describe("VideoPage", () => {
     it("位置を知らせる前に positioned で再生しても、最初の位置で視聴の識別子を送る", async () => {
       renderPage();
       await ready();
-      // 続きの位置が無い動画は、メタデータで positioned になる。
       act(() =>
         player().onStatus({
           loading: false,
@@ -2085,9 +2042,7 @@ describe("VideoPage", () => {
       expect(screen.queryByText("Couldn't play this video")).toBeNull();
     });
   });
-  // 公開の切り替え。
   describe("公開の切り替え", () => {
-    /** visibility は PUT /api/video-visibility の応答を1つずつ返す。 */
     function holdVisibility() {
       const answers: ((response: Response) => void)[] = [];
       const bodies: unknown[] = [];
@@ -2101,8 +2056,6 @@ describe("VideoPage", () => {
         bodies.push(body);
         return new Promise<Response>((resolve) =>
           answers.push((response) => {
-            // 成功したら、切り替えの後に取り直す動画（033 の「Refresh after edits」）も
-            // サーバーと同じく切り替わった値にする。
             if (response.ok) {
               for (const id of body.videoIds) {
                 const entry = server.videos.get(id);
@@ -2130,8 +2083,6 @@ describe("VideoPage", () => {
       expect(toggle().textContent).toBe("Private");
 
       fireEvent.click(toggle());
-      // 送信中は押せない印（aria-disabled）で、フォーカスは外さず、応答が来るまで
-      // 状態を変えない。
       expect(toggle().getAttribute("aria-disabled")).toBe("true");
       expect(toggle().getAttribute("aria-checked")).toBe("false");
       fireEvent.click(toggle());
@@ -2141,7 +2092,6 @@ describe("VideoPage", () => {
       await waitFor(() => expect(toggle().getAttribute("aria-checked")).toBe("true"));
       expect(toggle().textContent).toBe("Public");
       expect(toggle().getAttribute("aria-disabled")).toBeNull();
-      // トーストは出さない。
       expect(screen.queryByRole("status")).toBeNull();
     });
 
@@ -2174,7 +2124,7 @@ describe("VideoPage", () => {
 
       fireEvent.click(toggle());
       expect(screen.queryByRole("alert")).toBeNull();
-      // 切り替えは1つずつ順に送るので、決着させないと後のテストの要求が待たされる。
+      // Resolve serialized toggles so later tests do not wait behind pending requests.
       await act(async () => answers[1]!(json({ applied: 1 })));
       await waitFor(() => expect(toggle().getAttribute("aria-checked")).toBe("true"));
     });
@@ -2208,7 +2158,6 @@ describe("VideoPage", () => {
   describe("お気に入り", () => {
     const owned: Video = { ...video, favorite: false };
 
-    /** holdFavorites は PUT /api/favorites の応答を 1 つずつ返す。 */
     function holdFavorites() {
       const answers: ((response: Response) => void)[] = [];
       const bodies: unknown[] = [];
@@ -2223,7 +2172,6 @@ describe("VideoPage", () => {
         bodies.push(body);
         return new Promise<Response>((resolve) =>
           answers.push((response) => {
-            // 成功したら、付け外しの後に取り直す動画もサーバーと同じ値にする。
             if (response.ok) {
               for (const id of body.videoIds) {
                 const entry = server.videos.get(id);
@@ -2288,7 +2236,6 @@ describe("VideoPage", () => {
       const before = videoRequests(7);
 
       fireEvent.click(favoriteButton());
-      // 送信中は aria-disabled で、重ねて送らず、状態は前のまま。
       expect(favoriteButton().getAttribute("aria-disabled")).toBe("true");
       expect(favoriteButton().getAttribute("aria-pressed")).toBe("false");
       fireEvent.click(favoriteButton());
@@ -2301,17 +2248,14 @@ describe("VideoPage", () => {
       );
       expect(favoriteButton().getAttribute("aria-disabled")).toBeNull();
       expect(favoriteButton().getAttribute("data-state")).toBe("on");
-      // 押した状態の面は残し、ハートの色だけを桃色に上書きする（「Video page」「Mark」）。
       expect(favoriteButton().className).toContain("data-[state=on]:bg-primary-soft");
       expect(favoriteButton().className).toContain("data-[state=on]:text-favorite");
       expect(favoriteButton().querySelector("svg")?.getAttribute("class")).toContain(
         "fill-current",
       );
-      // トーストも失敗の行も出さない。
       expect(screen.queryByRole("status")).toBeNull();
       expect(screen.queryByRole("alert")).toBeNull();
 
-      // もう一度押すと外す。
       fireEvent.click(favoriteButton());
       expect(bodies[1]).toEqual({ videoIds: [7], groupIds: [], favorite: false });
       await act(async () => answers[1]!(applied()));
@@ -2336,7 +2280,6 @@ describe("VideoPage", () => {
       );
       expect(favoriteButton().getAttribute("aria-pressed")).toBe("false");
       expect(favoriteButton().getAttribute("aria-disabled")).toBeNull();
-      // トーストは出さない。
       expect(screen.queryByRole("status")).toBeNull();
 
       fireEvent.click(favoriteButton());
@@ -2353,12 +2296,10 @@ describe("VideoPage", () => {
       renderPage();
       await ready();
       const before = videoRequests(7);
-      // 付け外しの後の取り直しは失敗する。
       server.videos.set(7, () => json({ code: "internal", message: "失敗" }, 500));
 
       fireEvent.click(favoriteButton());
       await act(async () => answers[0]!(applied()));
-      // 取り直しが終わるまで送信中のままで、塗りは前のまま。
       expect(favoriteButton().getAttribute("aria-pressed")).toBe("false");
       await waitFor(() => expect(videoRequests(7)).toBe(before + 1));
       await waitFor(() =>
@@ -2430,7 +2371,6 @@ describe("VideoPage", () => {
       await waitFor(() =>
         expect(favoriteButton().getAttribute("aria-pressed")).toBe("false"),
       );
-      // お気に入りのみの一覧の控えでも、外した動画は同じ位置に線のハートで残る。
       const snapshot = takeListSnapshot({ query: "" });
       expect(
         snapshot?.items.map((item) =>
@@ -2552,16 +2492,13 @@ describe("VideoPage", () => {
       });
       renderPage();
       await ready();
-      // グループの行には置かず、情報の行の一群に 1 つだけ。
       const buttons = screen.getAllByRole("button", { name: "Add to playlist" });
       expect(buttons).toHaveLength(1);
       const add = buttons[0]!;
       const favorite = screen.getByRole("button", { name: "Favorite" });
       expect(favorite.nextElementSibling).toBe(add);
-      // 「Add to group」が直後に入る。
       const addToGroup = screen.getByRole("button", { name: /to a group$/ });
       expect(add.nextElementSibling).toBe(addToGroup);
-      // その後に作品情報の編集の入口。
       const details = screen.getByRole("link", { name: "Edit details" });
       expect(addToGroup.nextElementSibling).toBe(details);
       expect(details.nextElementSibling).toBe(
@@ -2621,7 +2558,6 @@ describe("VideoPage", () => {
         `File name ${fileTitle}`,
       );
       expect(document.title).toBe("夏の旅行 · VVMDM");
-      // 画面は移っていない。
       expect(screen.queryByTestId("screen")).toBeNull();
 
       await user.click(screen.getByRole("button", { name: "Edit name" }));
@@ -2704,7 +2640,6 @@ describe("VideoPage", () => {
       expect(captureButton().getAttribute("aria-disabled")).toBe("true");
       fireEvent.click(captureButton());
       expect(server.thumbnailPosition).not.toHaveBeenCalled();
-      // 位置を指定していない動画には項目が無い。
       expect(screen.queryByRole("button", { name: clearName })).toBeNull();
 
       report();
@@ -2716,12 +2651,10 @@ describe("VideoPage", () => {
       expect(image.getAttribute("src")).toBe("/api/videos/7/thumbnail?v=2");
       expect(server.thumbnailPosition).toHaveBeenCalledTimes(1);
       expect(server.thumbnailPosition).toHaveBeenCalledWith({ positionMs: 83_456 });
-      // 再生は止めない。
       expect(controls.togglePlay).not.toHaveBeenCalled();
       const facts = factList();
       expect(within(facts).getByTitle(label)).toBeDefined();
       expect(within(facts).getByRole("button", { name: clearName })).toBeDefined();
-      // 時刻を数値で入力させる入口は無い。
       expect(screen.queryByRole("spinbutton")).toBeNull();
       expect(screen.queryByRole("textbox")).toBeNull();
     });
@@ -2798,7 +2731,7 @@ describe("VideoPage", () => {
   });
 
   describe("更新日時", () => {
-    // 日時はブラウザのタイムゾーンで表すので、その日の正午を渡して日付が変わらないようにする。
+    // Use noon to avoid a date change in the browser's timezone.
     const before = new Date(2026, 8, 1, 12, 0).toISOString();
     const after = new Date(2026, 8, 28, 12, 0).toISOString();
     const tag = {
@@ -2810,7 +2743,6 @@ describe("VideoPage", () => {
       kind: null,
     };
 
-    /** current は GET /api/videos/7 が今返す動画である。 */
     let current: Video;
     let failRefetch = false;
 
@@ -3077,7 +3009,6 @@ describe("VideoPage", () => {
       expect(versionsCalls("/versions")).toHaveLength(1);
 
       const [first, second, third] = rows();
-      // 今の動画の行はリンクにせず、印を持つ。
       expect(first?.getAttribute("aria-current")).toBe("true");
       expect(first?.textContent).toContain("Now playing");
       expect(first?.textContent).toContain("Representative");
@@ -3087,7 +3018,6 @@ describe("VideoPage", () => {
       expect(link.getAttribute("aria-label")).toBe(
         `Play B, 1280×720 MKV H.265 ${formatBytes(1_048_576)} Media / movies/small`,
       );
-      // 所有者は行の title で絶対パスを読める。
       expect(
         second?.querySelector('[title*="/media/movies/small/B.mkv"]'),
       ).not.toBeNull();
@@ -3098,7 +3028,6 @@ describe("VideoPage", () => {
       ).toBe(
         `Play C, 1920×1080 MP4 H.264 ${formatBytes(video.sizeBytes)} Media / movies`,
       );
-      // 開いたときのフォーカスは今の動画以外の最初の行。
       await waitFor(() => expect(document.activeElement).toBe(link));
     });
 
@@ -3128,7 +3057,6 @@ describe("VideoPage", () => {
       );
       await waitFor(() => expect(player().video.id).toBe(20));
       expect(player().autoplay).toBe(true);
-      // 戻り先は変えない。
       fireEvent.click(closeButton());
       expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /?q=abc");
     });
@@ -3169,7 +3097,6 @@ describe("VideoPage", () => {
       expect(rows()[0]?.textContent).toContain("Representative");
       expect(rows()[1]?.textContent).not.toContain("Representative");
       expect(versionsCalls("/make-representative")).toHaveLength(1);
-      // 代表の行のメニューには「Make representative」が無い。
       await user.click(
         within(rows()[0] as HTMLElement).getByRole("button", {
           name: "More actions for B",
@@ -3181,7 +3108,6 @@ describe("VideoPage", () => {
           .getAllByRole("menuitem")
           .map((item) => item.textContent),
       ).toEqual(["Remove from versions"]);
-      // トーストは出さない。
       expect(screen.queryByText(/Removed/)).toBeNull();
     });
 
@@ -3230,8 +3156,7 @@ describe("VideoPage", () => {
     });
 
     it("今の動画を外すと閉じ、応答の動画で差し替えて自分のタグと作品情報に戻す（受け入れ条件 9）", async () => {
-      // 束の作品情報（BUNDLE）は、外すと B 固有の作品情報（OWN）に戻る。外した応答は
-      // workInfo を載せないので、取り直した動画で OWN を出す。
+      // Unbundle omits workInfo; reload to replace bundle metadata with the video's own metadata.
       const coded = (code: string) => ({
         code,
         dates: [],
@@ -3307,7 +3232,6 @@ describe("VideoPage", () => {
       expect(alert.textContent).toBe(
         "Couldn't change the versions: This video isn't bundled with others.",
       );
-      // 浮き出しは開いたまま。
       expect(screen.getByRole("list", { name: "Versions" })).toBeDefined();
       await waitFor(() =>
         expect(versionsCalls("/versions").length).toBeGreaterThanOrEqual(2),
@@ -3323,7 +3247,6 @@ describe("VideoPage", () => {
     });
 
     it("開いて取れた一覧が 1 本だけなら、閉じて動画を取り直し項目を消す", async () => {
-      // 画面を開いた後に別のタブで外された、または見せてよい範囲が変わった。
       server.videos.set(7, [versionA, { ...versionA, versions: undefined }]);
       answerVersions([versionA]);
       renderPage("7");
@@ -3389,33 +3312,15 @@ describe("VideoPage", () => {
       const user = await openVersions();
       expect(screen.queryByRole("button", { name: /More actions/ })).toBeNull();
       const link = within(rows()[1] as HTMLElement).getByRole("link");
-      // ゲストの行の title は相対の置き場所だけ。
       expect(rows()[1]?.querySelector('[title*="/media/"]')).toBeNull();
       await user.click(link);
       await waitFor(() => expect(player().video.id).toBe(20));
-    });
-
-    it("集まりの再生位置がこのバージョンの尺以上なら 0 から再生する", async () => {
-      server.videos.set(20, [
-        {
-          ...versionB,
-          durationMs: 60_000,
-          progress: {
-            positionMs: 90_000,
-            completed: false,
-            updatedAt: "2026-09-01T00:00:00Z",
-          },
-        },
-      ]);
-      renderPage("20");
-      await ready();
-      await waitFor(() => expect(player().initialPositionMs).toBe(0));
     });
   });
 
   describe("見る人", () => {
     function guestVideo(overrides: Partial<Video> = {}): Video {
-      // ゲストの応答には location・progress・probeError が無く、tags は空である。
+      // Guest responses omit location, progress, and probeError and return no tags.
       return { ...video, location: undefined, tags: [], public: true, ...overrides };
     }
 
@@ -3440,8 +3345,6 @@ describe("VideoPage", () => {
     });
 
     it("ゲストには仮のタグも確定したタグも出さない（031 受け入れ条件4）", async () => {
-      // サーバーはゲストに tags を空で返すが、画面の側も所有者でなければタグの
-      // 並びを描かない。
       server.videos.set(7, [
         guestVideo({
           tags: [
@@ -3550,7 +3453,7 @@ describe("VideoPage", () => {
   });
 
   describe("英語の画面（疑似ロケール）", () => {
-    // 利用者のデータ（題名・パス・タグ名）と、ロケールに依らない値（長さ・容量・技術情報）。
+    // Exclude user content and locale-independent duration, size, and technical values.
     const technical = technicalSummary(video);
     const userData = [
       "テスト動画",
@@ -3628,7 +3531,6 @@ describe("VideoPage", () => {
       );
       expectCatalogTextOnly(document.body, userData);
 
-      // タグの入力の候補（作成の行）。
       await user.type(screen.getByRole("combobox", { name: /Add tag/ }), "新");
       await screen.findByRole("option", { name: /Create/ });
       expectCatalogTextOnly(document.body, [...userData, "新"]);

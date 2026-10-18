@@ -16,34 +16,15 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// probeTimeout は ffprobe 1回に与える上限である。
-//
-// 壊れたファイルで ffprobe が戻らないことがあり、そこで取り込み全体が止まると
-// 残りの動画が一覧に出てこない。1件を諦めて次へ進む方が損失が小さい。
+// Bound probing so one corrupt file cannot stall ingestion of the remaining library.
 const probeTimeout = 30 * time.Second
 
-// probeCommand は実行する外部コマンドである。存在は起動前に確認済み
-// （Preflight）。
+// Preflight already verified this command exists.
 const probeCommand = "ffprobe"
 
-// Probe は1ファイルのメタデータを取得する。
-//
-// stream の情報は -show_format -show_streams の1回で揃う。値ごとに
-// -show_entries で複数回起動すると、プロセス起動が支配的なコストなので遅くなる。
-//
-// ffmpeg／ffprobe を起こす os/exec はこのパッケージの外へ漏らさない（OS の
-// 既定アプリの起動だけは別の責務として internal/opener に閉じ込める）。
-// 再生可否の判定規則は internal/domain にあり、外部プロセスに触れずにテストできる。
-//
-// コピー可能な映像では、別の時間制限付き調査でキーフレーム間隔も記録する（ProbeKeyframes）。
-//
-// ffprobe の直前にファイルの大きさと更新時刻を取り、Probe.Source に載せる。
-// 保存したライブ変換用の解析情報が、変換で開いたファイルと同じ内容かを比べる鍵になる。ffprobe の後にも取り直し、
-// 途中で差し替わっていたら解析情報を持たせない（stampProbe）。
-//
-// TS の録画（.ts・.m2ts・.mts）は ffprobe の後に SI を読み、放送局名と番組名を
-// MediaInfo.Broadcast に入れる（readBroadcast）。SI の読み取りは probeTimeout と別の
-// 自分の期限で動き、読めなければ名前を省くだけである。
+// Probe reads format and streams in one process to avoid repeated startup costs, then separately
+// probes keyframes for copyable video. Source stamps guard cached results against replacement, and
+// optional TS broadcast metadata has its own deadline.
 func Probe(ctx context.Context, path string) (domain.Probe, error) {
 	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
@@ -62,7 +43,7 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 				"%s failed (%s): %s", probeCommand, path, firstLine(exitErr.Stderr)))
 		}
 		if errors.Is(probeCtx.Err(), context.DeadlineExceeded) {
-			// 1件の上限（probeTimeout）に達した。壊れたファイルとして扱う。
+			// Treat per-file timeout as a corrupt input and continue ingestion.
 			return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorProbeFailed,
 				fmt.Errorf("%s timed out (%s): %w", probeCommand, path, err))
 		}
@@ -90,13 +71,9 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 	return stampProbe(probe, domain.FileStampOf(info), domain.FileStampOf(after)), nil
 }
 
-// stampProbe は ffprobe の前後に取ったファイルの印を解析結果に結び付ける。
-//
-// 前後で大きさか更新時刻が違えば、ffprobe が読んだ内容は前の印のファイルと同じとは
-// 限らない。その印で保存すると、同じ印を持つ別の所在の変換に別の内容の解析情報が
-// 使われるので、ライブ変換用の解析情報を持たせない（行を書かず、変換の要求時に
-// その場で解析させる）。メディア情報も同じ理由で持たせない。行が無い動画は
-// 再解析の対象になり、混ざった内容の行が今の版として残り続けることが無い。索引の値はこれまでどおり反映する。
+// Discard transcode and media metadata when size/mtime changes during probing to avoid caching
+// mixed content under a valid stamp; index values still apply and missing metadata remains eligible
+// for reprobe.
 func stampProbe(probe domain.Probe, before, after domain.FileStamp) domain.Probe {
 	probe.Source = before
 	if before != after {
@@ -107,8 +84,7 @@ func stampProbe(probe domain.Probe, before, after domain.FileStamp) domain.Probe
 	return probe
 }
 
-// probeArgs は ffprobe に渡す1回分の引数を組み立てる。
-// パスは -- の後ろに置き、"-" で始まる名前のファイルを選択肢と取り違えない。
+// Place paths after -- so names beginning with a dash cannot become options.
 func probeArgs(path string) []string {
 	return []string{
 		"-v", "error",
@@ -119,9 +95,8 @@ func probeArgs(path string) []string {
 	}
 }
 
-// importProbeArgs は取り込みの解析の引数である。probeArgs にチャプターを足し、MPEG-TS
-// だけ長く読む。ライブ変換の要求時の解析は
-// 変換の開始を待たせないよう、probeArgs のままにする。
+// Import probing adds chapters and longer TS reads; request-time probing stays short to avoid
+// delaying playback.
 func importProbeArgs(path string) []string {
 	args := []string{"-show_chapters"}
 	if isTransportStreamPath(path) {
@@ -130,11 +105,10 @@ func importProbeArgs(path string) []string {
 	return append(args, probeArgs(path)...)
 }
 
-// transportStreamProbeArgs は TS を 30 秒・100 MiB まで読む上限である。既定の 5 秒・5 MB では
-// 録画の後ろから始まる音声や字幕の stream を見落とす。
+// Read up to thirty seconds/100 MiB to discover late-starting TS audio or subtitles missed by
+// ffprobe defaults.
 var transportStreamProbeArgs = []string{"-analyzeduration", "30M", "-probesize", "100M"}
 
-// isTransportStreamPath は path が MPEG-TS の拡張子（.ts・.m2ts・.mts）かを返す。
 func isTransportStreamPath(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".ts", ".m2ts", ".mts":
@@ -143,7 +117,6 @@ func isTransportStreamPath(path string) bool {
 	return false
 }
 
-// probeSideData は stream の side_data_list の 1 件である。
 type probeSideData struct {
 	SideDataType string    `json:"side_data_type"`
 	Rotation     float64   `json:"rotation"`
@@ -151,7 +124,6 @@ type probeSideData struct {
 	Type         probeText `json:"type"`
 }
 
-// probeOutput は ffprobe の JSON のうち、取り出す部分だけを写す。
 type probeOutput struct {
 	Streams  []probeStream  `json:"streams"`
 	Chapters []probeChapter `json:"chapters"`
@@ -162,7 +134,6 @@ type probeOutput struct {
 	} `json:"format"`
 }
 
-// probeStream は ffprobe の streams の 1 件のうち、取り出す部分だけを写す。
 type probeStream struct {
 	Index             int    `json:"index"`
 	CodecType         string `json:"codec_type"`
@@ -184,7 +155,7 @@ type probeStream struct {
 	FieldOrder        string `json:"field_order"`
 	BitRate           string `json:"bit_rate"`
 	ClosedCaptions    int    `json:"closed_captions"`
-	// Tags は stream の tags。鍵は小文字にして持つ（get）。
+	// Tag keys are normalized to lowercase.
 	Tags         probeTags       `json:"tags"`
 	SideDataList []probeSideData `json:"side_data_list"`
 	Disposition  struct {
@@ -195,13 +166,8 @@ type probeStream struct {
 	} `json:"disposition"`
 }
 
-// parseProbeOutput は JSON から domain.Probe を組み立てる。取り込みの解析もライブ変換の
-// 要求時の解析もこの関数だけで ffprobe の出力を解釈し、同じ出力から同じ
-// domain.TranscodeProbe を得る。
-//
-// 外部プロセスを起動しないので、「どの値を取り出すか」を単体テストで固定できる。
-// 尺が取れないものは誤りとして返す。尺が分からない動画は一覧で長さを出せず、
-// サムネイルの抽出位置も決められないため、取り込めなかったものとして扱う。
+// Share JSON interpretation between ingestion and live transcoding; reject unknown duration because
+// listings and thumbnail positions require it.
 func parseProbeOutput(output []byte) (domain.Probe, error) {
 	var parsed probeOutput
 	if err := json.Unmarshal(output, &parsed); err != nil {
@@ -221,12 +187,8 @@ func parseProbeOutput(output []byte) (domain.Probe, error) {
 		FormatName: parsed.Format.FormatName,
 	}
 
-	// ライブ変換用の値は、映像は最初の非添付stream、音声は最初のstreamから採る。アルバムアートや
-	// posterはvideoとして現れるため、attached_picを本編にしてはならない。
-	//
-	// 索引のコーデック・寸法はこれまでどおり、codec_name が空の stream を飛ばして
-	// 次の同種の stream を採る。再生可否（EvaluatePlayability）はこの値で決まるので、
-	// 名前の無い先頭の音声のために後ろの非対応の音声を見落とさない。
+	// Transcoding uses the first nonattached video and first audio stream; index codec selection skips
+	// unnamed codecs so later unsupported audio is not mistaken for direct-playable content.
 	transcode := domain.TranscodeProbe{FormatName: strings.ToLower(parsed.Format.FormatName)}
 	videoFound := false
 	for _, stream := range parsed.Streams {
@@ -241,8 +203,7 @@ func parseProbeOutput(output []byte) (domain.Probe, error) {
 			}
 			if probe.VideoCodec == "" {
 				probe.VideoCodec = stream.CodecName
-				// 表示される向きの解像度を記録する。スマートフォンの縦動画は横長で記録し
-				// 90 度回転の印を付けていることが多く、そのままでは横長に見えてしまう。
+				// Apply display rotation so portrait recordings are not indexed as landscape.
 				probe.Width, probe.Height = stream.Width, stream.Height
 				rotated := false
 				if rotation := streamRotation(stream.Tags.get("rotate"), stream.SideDataList); rotation == 90 || rotation == 270 {
@@ -261,7 +222,7 @@ func parseProbeOutput(output []byte) (domain.Probe, error) {
 			}
 		}
 	}
-	// 寸法の無い映像はライブ変換できないので、変換用の情報を持たない（保存もしない）。
+	// Without dimensions, omit unusable transcode metadata from persistence.
 	if videoFound && transcode.Video.Width > 0 && transcode.Video.Height > 0 {
 		probe.Transcode = &transcode
 	}
@@ -270,7 +231,6 @@ func parseProbeOutput(output []byte) (domain.Probe, error) {
 	return probe, nil
 }
 
-// transcodeVideo は映像 stream からライブ変換に要る値を取り出す。
 func transcodeVideo(stream probeStream) domain.TranscodeVideo {
 	sampleAspectNum, sampleAspectDen := parseAspectRatio(stream.SampleAspectRatio)
 	return domain.TranscodeVideo{
@@ -290,7 +250,6 @@ func transcodeVideo(stream probeStream) domain.TranscodeVideo {
 	}
 }
 
-// transcodeAudio は音声 stream からライブ変換に要る値を取り出す。
 func transcodeAudio(stream probeStream) domain.TranscodeAudio {
 	return domain.TranscodeAudio{
 		Index:      stream.Index,
@@ -301,9 +260,7 @@ func transcodeAudio(stream probeStream) domain.TranscodeAudio {
 	}
 }
 
-// displayAspectRatio は、符号化した寸法と画素の縦横比（SAR）から表示される横÷縦の比率を
-// 返す。720x576・SAR 16:15 のように画素が正方形でない動画は、寸法の比（5:4）と表示の比
-// （4:3）が違う。回転していれば逆数にする。寸法が分からなければ 0。
+// Account for sample aspect ratio and rotation; return zero for unknown dimensions.
 func displayAspectRatio(width, height int, sampleAspectRatio string, rotated bool) float64 {
 	if width <= 0 || height <= 0 {
 		return 0
@@ -319,7 +276,7 @@ func displayAspectRatio(width, height int, sampleAspectRatio string, rotated boo
 	return ratio
 }
 
-// firstLine は標準エラーの先頭行を返す。誤りの文面が長大にならないようにする。
+// Keep error text bounded to the first stderr line.
 func firstLine(raw []byte) string {
 	for i, b := range raw {
 		if b == '\n' {

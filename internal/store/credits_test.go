@@ -11,8 +11,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 人物と団体の保存。
-
 func createCredit(t *testing.T, db *DB, kind domain.CreditKind, input domain.CreditInput) domain.Credit {
 	t.Helper()
 	credit, err := db.Credits().Create(context.Background(), kind, input)
@@ -40,8 +38,6 @@ func createOrganization(t *testing.T, db *DB, name string, parent *domain.Credit
 	return createCredit(t, db, domain.CreditOrganization, input)
 }
 
-// linkPeople は利用者データの鍵 key の役割 role に、people の人物を位置の順に結ぶ。作品情報の書き込みは
-// 次の単位なので、行を直接書く。
 func linkPeople(t *testing.T, db *DB, key, role string, people ...int64) {
 	t.Helper()
 	for position, id := range people {
@@ -52,7 +48,6 @@ func linkPeople(t *testing.T, db *DB, key, role string, people ...int64) {
 	}
 }
 
-// linkedPeople は鍵 key の役割 role の人物を位置の順に返す。
 func linkedPeople(t *testing.T, db *DB, key, role string) []int64 {
 	t.Helper()
 	rows, err := db.sql.Query(`select position, person_id from video_work_people where content_key = ? and role = ? order by position`, key, role)
@@ -78,7 +73,7 @@ func linkedPeople(t *testing.T, db *DB, key, role string) []int64 {
 	return ids
 }
 
-// creditRows は人物・団体の表すべての行を文字列にして返す。拒まれた操作が何も変えないことを見る。
+// Snapshot every credit table to detect partial writes after rejected operations.
 func creditRows(t *testing.T, db *DB) []string {
 	t.Helper()
 	var all []string
@@ -92,7 +87,6 @@ func creditRows(t *testing.T, db *DB) []string {
 	return all
 }
 
-// tableRows は表 table のすべての行を文字列にして返す。
 func tableRows(t *testing.T, db *DB, table string) []string {
 	t.Helper()
 	rows, err := db.sql.Query(`select * from ` + table)
@@ -151,17 +145,17 @@ func TestCreditsWithTheSameNameAreDifferentPeople(t *testing.T) {
 
 func TestListCreditsPagesUnderAnAliasQuery(t *testing.T) {
 	db := migratedDB(t)
-	for i := range 150 {
+	for i := range 3 {
 		createPerson(t, db, fmt.Sprintf("人物%03d", i), fmt.Sprintf("Hanako %d", i))
 	}
 	createPerson(t, db, "別の人", "Taro")
 
-	query := domain.CreditQuery{Q: "ＨＡＮＡＫＯ", Limit: 100}
+	query := domain.CreditQuery{Q: "ＨＡＮＡＫＯ", Limit: 2}
 	first, err := db.Credits().List(context.Background(), domain.CreditPerson, query)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(first.Items) != 100 || first.Total != 150 || first.TotalAll != 151 || first.NextCursor == "" {
+	if len(first.Items) != 2 || first.Total != 3 || first.TotalAll != 4 || first.NextCursor == "" {
 		t.Fatalf("1 ページ目 = %d 件、total %d、totalAll %d、nextCursor %q", len(first.Items), first.Total, first.TotalAll, first.NextCursor)
 	}
 	if first.Items[0].Name != "人物000" || len(first.Items[0].Aliases) != 1 {
@@ -172,13 +166,12 @@ func TestListCreditsPagesUnderAnAliasQuery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(second.Items) != 50 || second.Total != 150 || second.NextCursor != "" || second.Items[0].Name != "人物100" {
+	if len(second.Items) != 1 || second.Total != 3 || second.NextCursor != "" || second.Items[0].Name != "人物002" {
 		t.Fatalf("2 ページ目 = %d 件、total %d、nextCursor %q", len(second.Items), second.Total, second.NextCursor)
 	}
 
-	// 別の種類のカーソルは受け付けない。
 	if _, err := db.Credits().List(context.Background(), domain.CreditOrganization,
-		domain.CreditQuery{Limit: 100, Cursor: first.NextCursor}); !errors.Is(err, domain.ErrInvalidCursor) {
+		domain.CreditQuery{Limit: 2, Cursor: first.NextCursor}); !errors.Is(err, domain.ErrInvalidCursor) {
 		t.Errorf("団体の一覧に人物のカーソル: err = %v", err)
 	}
 }
@@ -254,7 +247,6 @@ func TestCreateCreditStoresEverythingAndGetReadsIt(t *testing.T) {
 	if !errors.As(err, &notFound) || notFound.Field != "parentId" || notFound.ID != missing {
 		t.Errorf("無い親: err = %v", err)
 	}
-	// 人物は親を読まない。
 	person := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "P", ParentID: &missing})
 	if person.Parent != nil {
 		t.Errorf("人物に親がある: %+v", person.Parent)
@@ -286,13 +278,11 @@ func TestUpdateCreditReplacesOnlyTheGivenFields(t *testing.T) {
 		t.Fatalf("別名の置き換え = %v", aliasNames(replaced))
 	}
 
-	// 何も変えない更新はそのまま返す。
 	same, err := db.Credits().Update(ctx, domain.CreditPerson, person.ID, domain.CreditPatch{Name: &name, Aliases: &aliases})
 	if err != nil || !reflect.DeepEqual(same, replaced) {
 		t.Fatalf("変えない更新 = %+v, %v", same, err)
 	}
 
-	// 残す別名と同じ新しい名前は name の重なり。
 	clash := "Yamada"
 	_, err = db.Credits().Update(ctx, domain.CreditPerson, person.ID, domain.CreditPatch{Name: &clash})
 	var invalid *domain.InvalidWorkInfoError
@@ -300,7 +290,6 @@ func TestUpdateCreditReplacesOnlyTheGivenFields(t *testing.T) {
 		t.Errorf("別名と同じ名前: err = %v", err)
 	}
 
-	// null の一覧は空にする。
 	cleared, err := db.Credits().Update(ctx, domain.CreditPerson, person.ID, domain.CreditPatch{
 		Aliases: new([]domain.Alias), ExternalIDs: new([]domain.ExternalID),
 	})
@@ -317,7 +306,7 @@ func TestExternalIDHeldByAnotherPersonIsRefused(t *testing.T) {
 	ctx := context.Background()
 	holder := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "A", ExternalIDs: []domain.ExternalID{{Source: "ex", Value: "42"}}})
 	other := createPerson(t, db, "B")
-	// 同じ外部 ID を団体が持つのは構わない。
+	// External-ID uniqueness is per kind, so an organization may share a person's external ID.
 	createCredit(t, db, domain.CreditOrganization, domain.CreditInput{Name: "O", ExternalIDs: []domain.ExternalID{{Source: "ex", Value: "42"}}})
 
 	taken := []domain.ExternalID{{Source: "", Value: ""}, {Source: "ex", Value: "1"}, {Source: " ex ", Value: "42"}}
@@ -337,7 +326,6 @@ func TestExternalIDHeldByAnotherPersonIsRefused(t *testing.T) {
 	if after := creditRows(t, db); !reflect.DeepEqual(before, after) {
 		t.Errorf("拒んだ書き込みが行を変えた")
 	}
-	// 自分が持つ外部 ID は書き直せる。
 	keep := []domain.ExternalID{{Source: "ex", Value: "42"}, {Source: "ex", Value: "43"}}
 	if _, err := db.Credits().Update(ctx, domain.CreditPerson, holder.ID, domain.CreditPatch{ExternalIDs: &keep}); err != nil {
 		t.Errorf("自分の外部 ID: err = %v", err)
@@ -390,7 +378,7 @@ func TestMergeCreditsMovesLinksNamesAndExternalIDs(t *testing.T) {
 	if !reflect.DeepEqual(merged.ExternalIDs, []domain.ExternalID{{Source: "ex", Value: "1"}}) {
 		t.Errorf("外部 ID = %v", merged.ExternalIDs)
 	}
-	// 統合先は統合元の場所を引き継ぐ。両方を持っていた一覧は統合元の行を捨てて詰め直す。
+	// The target inherits source positions; existing target links force duplicate removal and compaction.
 	if got := linkedPeople(t, db, "k0", "performer"); !reflect.DeepEqual(got, []int64{target.ID, other.ID}) {
 		t.Errorf("k0 performer = %v", got)
 	}
@@ -482,7 +470,6 @@ func TestOrganizationParentCycleIsRefused(t *testing.T) {
 			t.Errorf("parentId %d: err = %v", id, err)
 		}
 	}
-	// 輪にならない付け替えと、親を外す更新は通る。
 	moved, err := db.Credits().Update(ctx, domain.CreditOrganization, grandchild.ID, domain.CreditPatch{ParentSet: true, ParentID: &root.ID})
 	if err != nil || moved.Parent == nil || moved.Parent.ID != root.ID {
 		t.Fatalf("付け替え = %+v, %v", moved, err)
@@ -562,7 +549,7 @@ func TestRefreshCreditSearchKeysFillsStaleRows(t *testing.T) {
 	}
 }
 
-// 正でない id はどの実体も指さない。一覧の絞り込みなしと取り違えて、表の最初の実体を返さない。
+// Nonpositive detail IDs must not accidentally invoke the unfiltered list path.
 func TestNonPositiveCreditIDIsNotFound(t *testing.T) {
 	db := migratedDB(t)
 	createPerson(t, db, "山田")

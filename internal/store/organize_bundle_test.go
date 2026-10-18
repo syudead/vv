@@ -10,9 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ドロップで「バージョンとしてまとめる」。
-
-// bundleSnapshot は organizeSnapshot に、集まり・メンバー・タグ・お気に入り・候補の行を足す。
 func bundleSnapshot(t *testing.T, db *DB) []string {
 	t.Helper()
 	out := organizeSnapshot(t, db)
@@ -42,8 +39,6 @@ func organizeBundle(t *testing.T, db *DB, target int64, videoIDs ...int64) []byt
 	return image
 }
 
-// A を B に落とすと、B を代表にした集まりができ、B の値が集まりの鍵へ写る（受け入れ条件 3）。
-// 確定後に 2 本の VideoBundleChanged を知らせる。
 func TestOrganizeBundleMakesTargetRepresentative(t *testing.T) {
 	db, ids := versionFixture(t)
 	attachNamedTag(t, db, "X", ids["a"])
@@ -69,8 +64,6 @@ func TestOrganizeBundleMakesTargetRepresentative(t *testing.T) {
 	}
 }
 
-// 既にまとまっている A を B に落とすと、A の集まりの全メンバーごと B を代表にした集まりになり、
-// 吸い込んだ集まりの行は消える（Edge Case）。
 func TestOrganizeBundleBringsWholeBundle(t *testing.T) {
 	db, ids := versionFixture(t)
 	bundle(t, db, ids["a"], ids["a"], ids["c"])
@@ -89,8 +82,6 @@ func TestOrganizeBundleBringsWholeBundle(t *testing.T) {
 	}
 }
 
-// 取り消すと、新しい集まりと写した利用者データが消え、吸い込んだ集まりが id ごと戻り、グループと
-// プレイリストの項目と刈り取った候補が元の鍵で戻る。
 func TestOrganizeBundleUndoRestoresEverything(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -157,7 +148,6 @@ func TestOrganizeBundleUndoRestoresEverything(t *testing.T) {
 	assertSnapshot("2 回目の取り消しのあと")
 }
 
-// 束ねたあとで集まりにタグを付けると、取り消しは ErrUndoConflict で何も書かない。
 func TestOrganizeBundleUndoConflictsAfterChange(t *testing.T) {
 	db, ids := versionFixture(t)
 	image := organizeBundle(t, db, ids["b"], ids["a"])
@@ -165,7 +155,6 @@ func TestOrganizeBundleUndoConflictsAfterChange(t *testing.T) {
 	assertBundleUndoConflicts(t, db, "タグを付けたあと", image)
 }
 
-// 落とした先だけ・無い動画・展開して 20 本を超える集まりは誤りで、何も書かない。
 func TestOrganizeBundleRefusals(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -201,7 +190,6 @@ func TestOrganizeBundleRefusals(t *testing.T) {
 	}
 }
 
-// 束ねたあとで新しい鍵を別のグループやプレイリストに足すと、取り消しは ErrUndoConflict で何も書かない
 func TestOrganizeBundleUndoConflictsAfterLaterReference(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -221,7 +209,6 @@ func TestOrganizeBundleUndoConflictsAfterLaterReference(t *testing.T) {
 	assertBundleUndoConflicts(t, db, "グループに足したあと", image)
 }
 
-// assertBundleUndoConflicts は image の取り消しが ErrUndoConflict で、何も書かないことを確かめる。
 func assertBundleUndoConflicts(t *testing.T, db *DB, label string, image []byte) {
 	t.Helper()
 	after := bundleSnapshot(t, db)
@@ -233,10 +220,7 @@ func assertBundleUndoConflicts(t *testing.T, db *DB, label string, image []byte)
 	}
 }
 
-// 代表が移って自動グループが生まれるか項目を得るとき、取り消しはその自動グループを消し、項目を外す。
-// フォルダ X の A と Y の B が A を代表に 1 つの集まりで、Y に C がある。A の集まりを B を代表に
-// 束ね直すと Y に 2 本が見えて自動グループができ、取り消すと消える。Y に D もあって自動グループが
-// 先にあれば、束ねで B の項目が足され、取り消しで外れる。
+// Representative changes can create automatic groups or add members; undo must restore both newly created and preexisting group shapes.
 func TestOrganizeBundleUndoRemovesFolderGroupChanges(t *testing.T) {
 	for _, tc := range []struct {
 		label  string
@@ -282,7 +266,6 @@ func TestOrganizeBundleUndoRemovesFolderGroupChanges(t *testing.T) {
 	}
 }
 
-// groupItemKeys はグループ groupID の項目の content_key を位置の順に返す。
 func groupItemKeys(t *testing.T, db *DB, groupID int64) []string {
 	t.Helper()
 	keys, err := queryStringsForTest(db, `select content_key from group_items where group_id = ? and content_key is not null order by position`, groupID)

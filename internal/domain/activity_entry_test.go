@@ -5,8 +5,6 @@ import (
 	"testing"
 )
 
-// アクティビティの記録の規則。
-
 func TestActivityKindFeature(t *testing.T) {
 	for kind, want := range map[ActivityKind]ActivityFeature{
 		ActivityImport:            ActivityFeatureImport,
@@ -21,7 +19,6 @@ func TestActivityKindFeature(t *testing.T) {
 			t.Errorf("%s.Feature() = %q, %v; want %q", kind, got, ok, want)
 		}
 	}
-	// undo の機能は取り消した記録で決まる。
 	if _, ok := ActivityUndo.Feature(); ok {
 		t.Error("undo に種類だけで決まる機能がある")
 	}
@@ -48,7 +45,6 @@ func TestParseActivityFilters(t *testing.T) {
 	}
 }
 
-// import の記録は、待っているか走っている仕事があれば running、諦めた仕事があれば attention、無ければ done。
 func TestImportActivityState(t *testing.T) {
 	for _, tc := range []struct {
 		name string

@@ -19,27 +19,18 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 代表サムネイルの位置の設定・解除は、
-// 本物の認証・保存層で確かめる（#559）。画像の生成だけを fakeThumbnailPicker が代わりにする。
-
-// fakeThumbnailPicker は internal/app の Ingest.SetThumbnailPosition の代わりである。位置を
-// domain.CheckThumbnailPosition で確かめ、生成は行わず、記録は本物の保存層に任せる。
 type fakeThumbnailPicker struct {
 	db *store.DB
 
-	mu sync.Mutex
-	// fail があれば生成に失敗したとして何も記録しない。
-	fail error
-	// failVideos の動画は生成に失敗したとして何も記録しない（一括操作の途中の失敗）。
+	mu         sync.Mutex
+	fail       error
 	failVideos map[int64]bool
-	// paths は読む元として渡された所在（辿った先）、locations は辿る前の所在である。
+	// paths holds resolved sources; locations holds original registered paths.
 	paths     []string
 	locations []string
-	// stale が真なら、所在を決めたあとに走査がそれを別の内容へ付け替えたとして、生成せずに
-	// domain.ErrMediaFileUnavailable を返す。偽なら本物の保存層で所在を確かめ直す。
+	// stale simulates reassignment after resolution; otherwise use real storage to revalidate location ownership.
 	stale bool
-	// afterSet があれば、記録を終えたあとに記録した動画の ID で呼ぶ（一括操作の途中で
-	// 動画や所在が変わる場合を作る）。
+	// afterSet injects membership/source changes between batch items.
 	afterSet func(videoID int64)
 }
 
@@ -84,8 +75,6 @@ func (p *fakeThumbnailPicker) SetThumbnailPosition(
 	return saved, err
 }
 
-// RevertThumbnailImage は internal/app の Ingest.RevertThumbnailImage の代わりである。所在の
-// 確かめ直しと失敗は SetThumbnailPosition と同じで、生成は行わず、記録は本物の保存層に任せる。
 func (p *fakeThumbnailPicker) RevertThumbnailImage(
 	ctx context.Context, videoID int64, location, path string,
 ) (domain.Video, error) {
@@ -163,7 +152,6 @@ func (f *guestFixture) setThumbnailPosition(name, body string, cookies ...*http.
 	})
 }
 
-// thumbnailURLOf は動画の thumbnailUrl を返す。無ければ空。
 func thumbnailURLOf(video gen.Video) string {
 	if video.ThumbnailUrl == nil {
 		return ""
@@ -171,7 +159,6 @@ func thumbnailURLOf(video gen.Video) string {
 	return *video.ThumbnailUrl
 }
 
-// libraryThumbnailURL はライブラリの応答の動画 id の thumbnailUrl を返す。
 func libraryThumbnailURL(t *testing.T, page gen.LibraryPage, id int64) string {
 	t.Helper()
 	for _, item := range page.Items {
@@ -183,10 +170,6 @@ func libraryThumbnailURL(t *testing.T, page gen.LibraryPage, id int64) string {
 	return ""
 }
 
-// 所有者の PUT は 200 と thumbnailPositionMs 付きの Video を返し、thumbnailUrl の版が変わり、
-// ライブラリの同じ動画も同じ URL になる（受け入れ条件 5）。同じ位置の指定し直しでも版が変わり、
-// ゲストの thumbnailUrl は所有者と同じで位置を含まない。null で位置が消え URL が元に戻る
-// （受け入れ条件 6）。確定後に /api/events の video が流れる。
 func TestSetVideoThumbnailPositionAppliesAndClears(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -194,7 +177,7 @@ func TestSetVideoThumbnailPositionAppliesAndClears(t *testing.T) {
 	env.db.PublishTo(eventsPublisher{events: events})
 	sub, unsubscribe := events.subscribe()
 	defer unsubscribe()
-	sub.take() // つないだ直後の送信を除く。
+	sub.take()
 
 	original := thumbnailURLOf(decode[gen.Video](t, env.get(f.videoPath("a", ""), f.owner)))
 	if original == "" {
@@ -220,11 +203,9 @@ func TestSetVideoThumbnailPositionAppliesAndClears(t *testing.T) {
 	if first == "" || first == original {
 		t.Errorf("設定の応答の thumbnailUrl = %q, 前 = %q", first, original)
 	}
-	// GET /api/videos/{id} と同じ形（所在・タグ・再生位置を含む）。
 	if saved.Location == nil || saved.Progress == nil || len(saved.Tags) != 1 {
 		t.Errorf("設定の応答が詳細と同じ形でない: %+v", saved)
 	}
-	// 読む元は配信と同じ規則で開けた所在の、symlink を辿った先である。
 	if got := f.thumbnails.calledPaths(); !slices.Equal(got, []string{resolvedPath(t, filepath.Join(f.mediaDir, "pub", "a.mp4"))}) {
 		t.Errorf("読む元 = %v", got)
 	}
@@ -237,14 +218,12 @@ func TestSetVideoThumbnailPositionAppliesAndClears(t *testing.T) {
 		t.Errorf("ライブラリの thumbnailUrl = %q, want %q", got, first)
 	}
 
-	// 同じ位置の指定し直しでも版が変わる。
 	again := decode[gen.Video](t, f.setThumbnailPosition("a", thumbnailPositionBody(&position), f.owner))
 	second := thumbnailURLOf(again)
 	if second == "" || second == first {
 		t.Errorf("指定し直しの thumbnailUrl = %q, 前 = %q", second, first)
 	}
 
-	// ゲストは所有者と同じ URL を受け取り、位置の値を受け取らない（受け入れ条件 9）。
 	guest := env.get(f.videoPath("a", ""))
 	if guest.Code != http.StatusOK {
 		t.Fatalf("ゲストの詳細: status = %d: %s", guest.Code, guest.Body)
@@ -262,7 +241,6 @@ func TestSetVideoThumbnailPositionAppliesAndClears(t *testing.T) {
 		t.Errorf("ゲストの thumbnailUrl = %q, 所有者 = %q", guestURL, second)
 	}
 
-	// null で位置が消え、URL が元に戻る。
 	rec = f.setThumbnailPosition("a", `{"positionMs":null}`, f.owner)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("解除: status = %d: %s", rec.Code, rec.Body)
@@ -277,8 +255,6 @@ func TestSetVideoThumbnailPositionAppliesAndClears(t *testing.T) {
 	}
 }
 
-// ゲストの PUT は 401、解析前は 409 duration_unknown、尺の外は 400 と limit、生成の失敗は
-// 409 で前の thumbnailUrl のまま、開けない所在は 404 file_unavailable、無い動画は 404 になる。
 func TestSetVideoThumbnailPositionRejects(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -299,7 +275,7 @@ func TestSetVideoThumbnailPositionRejects(t *testing.T) {
 	}{
 		{"尺ちょうど", "a", `{"positionMs":60000}`, outOfRange},
 		{"負の位置", "a", `{"positionMs":-1}`, outOfRange},
-		// d は解析に失敗していて尺が無い。
+		// d has no duration because probing failed.
 		{"解析前", "d", `{"positionMs":1000}`, wantError{
 			status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonDurationUnknown,
 		}},
@@ -315,7 +291,6 @@ func TestSetVideoThumbnailPositionRejects(t *testing.T) {
 		t.Errorf("尺の直前: status = %d: %s", rec.Code, rec.Body)
 	}
 
-	// 生成の失敗では前の画像と位置が残る。
 	before := decode[gen.Video](t, env.get(f.videoPath("a", ""), f.owner))
 	f.thumbnails.setFail(errors.New("ffmpeg: no frame"))
 	rec := f.setThumbnailPosition("a", thumbnailPositionBody(&position), f.owner)
@@ -342,7 +317,6 @@ func TestSetVideoThumbnailPositionRejects(t *testing.T) {
 		assertStatus(t, label, f.setThumbnailPosition("a", body, f.owner), http.StatusBadRequest)
 	}
 
-	// 所在を決めたあとに、走査がそれを別の内容へ付け替えた。
 	f.thumbnails.setStale(true)
 	rec = f.setThumbnailPosition("a", thumbnailPositionBody(&position), f.owner)
 	assertErrorBody(t, "付け替わった所在", rec.Code, rec.Body.Bytes(), wantError{
@@ -350,7 +324,6 @@ func TestSetVideoThumbnailPositionRejects(t *testing.T) {
 	})
 	f.thumbnails.setStale(false)
 
-	// どの所在も開けない。
 	if err := os.Remove(filepath.Join(f.mediaDir, "pub", "b.mp4")); err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +341,6 @@ func TestSetVideoThumbnailPositionRejects(t *testing.T) {
 	})
 }
 
-// resolvedPath は path の symlink を辿った先を返す。
 func resolvedPath(t *testing.T, path string) string {
 	t.Helper()
 	resolved, err := filepath.EvalSymlinks(path)
@@ -378,9 +350,7 @@ func resolvedPath(t *testing.T, path string) string {
 	return resolved
 }
 
-// 所在が symlink なら、生成へは辿った先のパスを渡す。確かめた後に symlink を差し替えられても
-// ffmpeg が別の動画や登録フォルダの外を読まないためである。辿った先が登録フォルダの外なら、
-// 生成を呼ばずに 404 file_unavailable にする。
+// Pass resolved paths to ffmpeg so replacing a symlink after validation cannot redirect reading outside the root.
 func TestSetVideoThumbnailPositionPassesResolvedPath(t *testing.T) {
 	f := newGuestFixture(t, true)
 	position := int64(1_000)
@@ -400,7 +370,7 @@ func TestSetVideoThumbnailPositionPassesResolvedPath(t *testing.T) {
 	if got := f.thumbnails.calledPaths(); !slices.Equal(got, []string{resolvedPath(t, target)}) {
 		t.Errorf("読む元 = %v, want 辿った先 %s", got, target)
 	}
-	// 確かめ直しには辿る前の所在（登録のパス）を渡す。
+	// Revalidate ownership using the original registered path.
 	if got := f.thumbnails.calledLocations(); !slices.Equal(got, []string{aPath}) {
 		t.Errorf("所在 = %v, want 辿る前 %s", got, aPath)
 	}

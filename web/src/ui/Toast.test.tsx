@@ -24,7 +24,6 @@ function Harness() {
   );
 }
 
-/** ActionHarness はアクション付きの通知を出すボタン（「first」「second」）を描く。 */
 function ActionHarness({ action }: { action: ToastAction }) {
   const toast = useToast();
   return (
@@ -42,7 +41,6 @@ function ActionHarness({ action }: { action: ToastAction }) {
   );
 }
 
-/** DismissHarness は通知「first」「second」を出し、「close second」で second の閉じる関数を呼ぶ。 */
 function DismissHarness() {
   const toast = useToast();
   const [closeSecond, setCloseSecond] = useState<() => void>(() => () => undefined);
@@ -66,14 +64,13 @@ function DismissHarness() {
   );
 }
 
-// Sonner は通知を次の tick で描き、消すときは 200ms の退場の後に外す。
+// Sonner renders next tick and removes dismissed notifications after a 200ms exit.
 const settle = 250;
 
 function press(message: string) {
   fireEvent.click(screen.getByRole("button", { name: message }));
 }
 
-/** visible は今出ている（退場中でない）通知の文言である。 */
 function visible(): string[] {
   return Array.from(
     document.querySelectorAll<HTMLElement>(
@@ -159,7 +156,7 @@ describe("ToastProvider", () => {
         <Harness />
       </ToastProvider>,
     );
-    // 置き場が変わると Sonner は描き直し、その時点から出し直す。
+    // Placement changes remount Sonner and restart visible notification timing.
     advance(400);
     expect(visible()).toEqual(["first"]);
 
@@ -178,7 +175,7 @@ describe("ToastProvider", () => {
     advance(10);
     expect(visible()).toEqual(["second", "first"]);
 
-    // 再生画面では 1 件だけ出すので、second は新しい id で待ちに戻る。
+    // Playback permits one notification; requeue the second with a new ID.
     rerender(
       <ToastProvider placement="playback">
         <DismissHarness />

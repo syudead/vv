@@ -5,7 +5,6 @@ import (
 	"testing"
 )
 
-// 画質ごとの短辺と kbps は契約 §2 の表のとおりである。
 func TestTranscodeQualityLimitsMatchContract(t *testing.T) {
 	want := map[TranscodeQuality]TranscodeQualityLimits{
 		"1080p": {ShortSide: 1080, VideoKbps: 5000, BufferKbps: 10000, AudioKbps: 128},
@@ -39,7 +38,6 @@ func TestParseTranscodeQualityRejectsUnknown(t *testing.T) {
 	}
 }
 
-// 画質は、その短辺が動画の短辺より小さいときだけ使える（R-3）。
 func TestTranscodeQualityAvailable(t *testing.T) {
 	for _, tc := range []struct {
 		name          string

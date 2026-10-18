@@ -2,31 +2,23 @@ package domain
 
 import "errors"
 
-// JobKind は待ち行列に積む仕事の種類である。走査そのものはジョブにせず、
-// 重い処理（外部プロセスを起こすもの）だけを積む。
+// Only expensive processing is queued; scans themselves are not jobs.
 type JobKind string
 
 const (
-	// JobProbe は ffprobe によるメタデータの取得。
-	JobProbe JobKind = "probe"
-	// JobThumbnail は ffmpeg による代表サムネイル（静止画1枚）の抽出。
-	JobThumbnail JobKind = "thumbnail"
-	// JobSeekThumbnail は ffmpeg によるシーク用スプライトの生成。
+	JobProbe         JobKind = "probe"
+	JobThumbnail     JobKind = "thumbnail"
 	JobSeekThumbnail JobKind = "seek_thumbnail"
-	// JobPreview は ffmpeg による一覧用のホバープレビューの生成。
-	JobPreview JobKind = "preview"
-	// JobFingerprint はシーク用スプライトのコマからの映像の指紋の作成。ffmpeg を起動せず、元のファイルも読まない。
+	JobPreview       JobKind = "preview"
+	// JobFingerprint reads sprite frames without ffmpeg or the source file.
 	JobFingerprint JobKind = "fingerprint"
 )
 
-// MaxJobAttempts は諦めるまでの試行回数である。止めないと、壊れたファイル
-// 1つが並列度1のワーカーを永久に占有する。
+// Bound retries so one corrupt file cannot monopolize a single worker forever.
 const MaxJobAttempts = 3
 
-// ErrNoJob は待ち行列が空であることを表す。ワーカーはこれを見て待機に入る。
 var ErrNoJob = errors.New("no job to process")
 
-// Job は待ち行列から専有した仕事である。
 type Job struct {
 	ID              int64
 	Kind            JobKind
@@ -35,41 +27,27 @@ type Job struct {
 	LocationID      int64
 	LocationVersion int64
 	LocationPath    string
-	// LocationGeneration はclaim時点のlocation集合世代。処理中にmembershipが
-	// 変わった場合、古いsnapshotで完了・最終失敗にしないために使う。
+	// LocationGeneration prevents completing or permanently failing against stale location membership after a claim.
 	LocationGeneration int64
-	// LastLocation はclaim時点の登録済みlocation集合で最後の候補かを表す。
+	// LastLocation refers to the registered location set at claim time.
 	LastLocation bool
-	// Attempts はこの取り出しを含めた試行回数。
+	// Attempts includes this claim.
 	Attempts int
 }
 
-// JobKinds は取り込みの段階の順に並べたジョブの種類である。段階ごとに
-// ワーカーを1本ずつ置くので、ここに無い種類は処理されない。
+// JobKinds defines stage order and worker creation; omitted kinds are never processed.
 var JobKinds = []JobKind{JobProbe, JobThumbnail, JobSeekThumbnail, JobPreview, JobFingerprint}
 
-// JobState は待ち行列の行の状態である。値は jobs.state 列に対応する。
 type JobState string
 
 const (
-	// JobQueued は取り出されるのを待っている。
-	JobQueued JobState = "queued"
-	// JobRunning はワーカーが専有して処理している。
+	JobQueued  JobState = "queued"
 	JobRunning JobState = "running"
-	// JobDone は処理を終えた。
-	JobDone JobState = "done"
-	// JobFailed は試行回数の上限まで失敗して諦めた。
-	JobFailed JobState = "failed"
+	JobDone    JobState = "done"
+	JobFailed  JobState = "failed"
 )
 
-// ClaimAttempts は、専有したときに記録する試行回数を返す。attempts は専有前に
-// 記録されていた回数である。
-//
-// 1回の試行は、登録済みの所在を path の順に1巡することを指す。ある所在で
-// 失敗した仕事は、次に専有されると同じ試行のまま次の所在で続きを試す。
-// startsRound は、この専有が新しい巡回の始まりかどうかである。直前に試した
-// 所在が無いとき（初めての専有）と、直前の所在より後ろに登録済みの所在が
-// 無く先頭へ戻るときに真になる。
+// ClaimAttempts counts full path-ordered rounds across registered locations, not individual claims; startsRound marks initial claims or wraparound.
 func ClaimAttempts(attempts int, startsRound bool) int {
 	if startsRound {
 		return attempts + 1
@@ -77,15 +55,7 @@ func ClaimAttempts(attempts int, startsRound bool) int {
 	return attempts
 }
 
-// JobStateAfterFailure は、専有した仕事が失敗したあとの状態を返す。
-//
-// 専有したときの所在がもう当てにならない（claimCurrent が偽）なら、その失敗は
-// 今の所在の失敗ではないので数えずに queued へ戻す。所在の集合が変わったのに
-// 古い集合での失敗で諦めると、今ある所在を1度も試さずに終わる。
-//
-// そうでなければ、試行回数が MaxJobAttempts に達し、かつ巡回の最後の所在
-// （lastLocation）で失敗したときだけ failed で止める。まだ試していない所在が
-// 残っているうちは、上限に達していても諦めない。
+// JobStateAfterFailure requeues stale claims without counting them and fails only after MaxJobAttempts on the last location, ensuring every current location is tried.
 func JobStateAfterFailure(attempts int, lastLocation, claimCurrent bool) JobState {
 	if claimCurrent && lastLocation && attempts >= MaxJobAttempts {
 		return JobFailed
@@ -93,38 +63,16 @@ func JobStateAfterFailure(attempts int, lastLocation, claimCurrent bool) JobStat
 	return JobQueued
 }
 
-// JobClaimCondition は、待ち行列の仕事を取り出してよい条件である。保存側の
-// 問い合わせはこの条件をそのまま SQL の条件へ写す。
 type JobClaimCondition struct {
-	// RegisteredLocation は、登録済みのメディアフォルダの下に所在がある動画に
-	// 限ることを表す。登録前の所在は保持するが処理しない。フォルダを登録すれば
-	// 同じ仕事をそのまま再開でき、登録外のパスをワーカーへ渡すこともない。
+	// RegisteredLocation prevents workers from receiving unregistered paths while preserving jobs for resumption after registration.
 	RegisteredLocation bool
-	// ProbeFinished は、動画の解析（probe）が pending でなくなっている
-	// （done か failed になっている）ことを求める。
-	ProbeFinished bool
-	// NoClaimableThumbnail は、取り出せる代表サムネイルの仕事（queued か
-	// running で、登録済みの所在がある thumbnail の行）が1件も無いことを求める。
-	// 解析待ちで今は取り出せない thumbnail も数える。
-	NoClaimableThumbnail bool
-	// SeekThumbnailFinished は、動画のシーク用スプライトが完成している
-	// （seek_thumbnail_state が done である）ことを求める。
+	ProbeFinished      bool
+	// NoClaimableThumbnail counts queued/running registered thumbnails, including those still waiting for probe.
+	NoClaimableThumbnail  bool
 	SeekThumbnailFinished bool
 }
 
-// ClaimConditionFor は kind の仕事を取り出してよい条件を返す。
-//
-// どの種類も登録済みの所在がある動画に限る。サムネイルは解析が終わるまで
-// 取り出さない。抽出位置は動画の長さで決まり、解析より先に作ると長さの
-// 分からない位置で固定される。段階ごとのワーカーは並行して動くので、積んだ
-// 順では解析が先になる保証が無い。
-//
-// シーク用サムネイルは解析の完了に加え、取り出せる代表サムネイルの仕事が
-// 残っていないことを待つ。シーク用スプライトの重い仕事を代表サムネイルの流れと
-// 競わせず、代表サムネイルを先に揃えるためである。この条件は取り出しの
-// 時点だけで判断し、走っているシーク用サムネイルは止めない。
-//
-// 指紋はシーク用スプライトのコマから作るので、スプライトが完成するまで取り出さない。
+// ClaimConditionFor waits for probe before thumbnails, prioritizes representative thumbnails over seek sprites, and requires completed sprites for fingerprints; it never interrupts running work.
 func ClaimConditionFor(kind JobKind) JobClaimCondition {
 	return JobClaimCondition{
 		RegisteredLocation:    true,
@@ -134,10 +82,6 @@ func ClaimConditionFor(kind JobKind) JobClaimCondition {
 	}
 }
 
-// Allows は、動画の今の状態でこの条件を満たすかを返す。hasRegisteredLocation は
-// 登録済みのメディアフォルダの下に所在が1つ以上あるか、probe は動画の解析の
-// 状態、claimableThumbnail は取り出せる代表サムネイルの仕事が1件以上あるか、
-// seekThumbnail は動画のシーク用サムネイルの状態である。
 func (c JobClaimCondition) Allows(
 	hasRegisteredLocation bool, probe ProbeState, claimableThumbnail bool, seekThumbnail SeekThumbnailState,
 ) bool {

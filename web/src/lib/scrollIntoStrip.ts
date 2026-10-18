@@ -1,7 +1,6 @@
 /**
- * scrollIntoStrip は横に送る帯（overflow-x の要素）の scrollLeft を、item が帯の
- * 中央に来る位置へ合わせる。帯の左端より前には送らない。位置は描いた箱から測るので、
- * 帯が item の offsetParent でなくてもよい。
+ * Measure rendered bounds so the strip need not be the item's offsetParent; clamp before the
+ * strip's start.
  */
 export function scrollIntoStrip(root: HTMLElement, item: HTMLElement): void {
   const rootBox = root.getBoundingClientRect();

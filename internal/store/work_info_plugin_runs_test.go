@@ -9,8 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインの直近の実行の規則。
-
 func pluginRun(plugin domain.WorkInfoPlugin, stderr string, ranAt time.Time) domain.WorkInfoPluginRun {
 	return domain.WorkInfoPluginRun{
 		PluginID: plugin.ID, Generation: plugin.Generation, RanAt: ranAt,
@@ -25,7 +23,6 @@ func saveRun(t *testing.T, s *WorkInfoPluginStore, run domain.WorkInfoPluginRun)
 	}
 }
 
-// wantNoRun はプラグイン id に残っている実行が無いことを確かめる。
 func wantNoRun(t *testing.T, s *WorkInfoPluginStore, id int64) {
 	t.Helper()
 	run, ok, err := s.WorkInfoPluginRun(context.Background(), id)
@@ -75,7 +72,7 @@ func TestWorkInfoPluginReplacementDeletesTheLastRun(t *testing.T) {
 	wantNoRun(t, s, plugin.ID)
 }
 
-// 実行の後、保存の前にプラグインが差し替えられた（同じバイト列でも）か、消された実行は何も書かない。
+// Ignore stale runs after replacement, even when the replacement bytes are identical.
 func TestWorkInfoPluginRunOfAnOlderGenerationWritesNothing(t *testing.T) {
 	ctx := context.Background()
 	s := migratedDB(t).WorkInfoPlugins()

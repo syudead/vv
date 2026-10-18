@@ -4,18 +4,12 @@ import { cn } from "@/lib/cn";
 
 import { useDensity } from "./density";
 
-// 節（区画）。題・説明・操作の見出しと、カードの面に並ぶ中身を持つ。中身の直下の子は
-// 1 行ずつ区切り線で分け、行の上下の余白を節が付ける（管理の画面は p-3、見る画面は p-4）。
-// 規則は web/registry/rules/patterns.md の Page section。
+// This section owns direct-child separators and density-dependent padding; see web/registry/rules/patterns.md, Page section.
 
 export interface PageSectionProps {
-  /** 節の題。h2 になる。 */
   title: ReactNode;
-  /** 題の下の説明。 */
   description?: ReactNode;
-  /** 節の見出しの右に置く操作（outline か ghost の sm）。 */
   actions?: ReactNode;
-  /** 行（FormRow、FactList、文）。直下の子ごとに区切る。 */
   children: ReactNode;
 }
 

@@ -60,33 +60,20 @@ import {
 } from "./cardDragRules";
 import { verticalOnly } from "./reorder";
 
-// カードと行を持ち上げて、ほかのカードの上か間に落とす共通の層である。所有者の格子とリストを
-// 包み、何を持ち上げたか、ポインタが何の上か、落としたら何になるかを決める。何を送るかは
-// 画面が決める。ゲストの画面はこの層で包まない。
+// Owner-only drag layer; screens own server mutations. Cards support pointer drops, while list handles also support keyboard reordering.
 //
-// - マウスは 8 px 動いたら、タッチは 200 ms 押したら持ち上がる。それより前に離せばクリック、
-//   動かせばスクロールのまま。カードの中の操作（チェック、角の印、タグ、`×`）からは
-//   持ち上がらない。リストのハンドルは 044 のまま 4 px で持ち上がる。
-// - カードの隙間（`gap-3`）では、いちばん近いカードを落とす先にする。間の棒は隙間の中央に
-//   立つので、その上で離しても落とせる。
-// - 持ち上げたカードはその場で半透明になり、写しがポインタに付いてくる。Esc や何も無い所で
-//   離すと何も送らない。
-// - リストのハンドルは 044 の持ち上げ方（行が縦に動き、ほかの行が避ける）とキーボード
-//   （Space、矢印、Space）を保ち、1 項目の並べ替えとして落とす。
-// - 道筋の帯の段（CrumbDropTarget）も落とす先になる。段は帯が貼り付いて動くので、当たり判定の
-//   たびにその場の箱で測る。
+// Mouse activation requires 8px, touch requires a 200ms hold, and handles require 4px; nested controls never start a drag.
+// Resolve gaps to the nearest card so the centered insertion marker remains droppable.
+// Measure sticky breadcrumb targets on every hit test because scroll deltas cannot predict their position.
 
-/** CardSign はカードに出す印である（上、間、拒否）。 */
 export type CardSign = DropSign<UiText>;
 
-/** CardDrop は受け入れた落とし方である。拒否と何もなしは画面に渡らない。 */
 export interface CardDrop {
-  /** 持ち上げたカード（画面の順）。 */
+  /** Preserve display order. */
   lifted: readonly string[];
   sign: Exclude<CardSign, { kind: "refused" }>;
 }
 
-/** Mode は持ち上げ方である。cards はカードの層、handle はリストのハンドル。 */
 type Mode = "cards" | "handle";
 
 interface DragState {
@@ -98,44 +85,39 @@ interface DragState {
   axis: Axis;
 }
 
-/** Probe はポインタの下のカードとその箱である（当たり判定のたびに覚え直す）。 */
 interface Probe {
   key: string;
   pointer: { x: number; y: number };
   rect: ClientRect;
   rects: readonly ClientRect[];
-  /** ポインタの下が道筋の段なら、その段が拒否か。カードなら省く。 */
   crumb?: { refused: boolean };
 }
 
-/** crumbPrefix は道筋の段の鍵の頭である。カードの鍵と混ざらない。 */
+/** Keep breadcrumb keys disjoint from card keys. */
 const crumbPrefix = "crumb:";
 
-/** crumbKey は道筋の `index` 番目（0 始まり）の段の鍵である。 */
 export function crumbKey(index: number | "ellipsis"): string {
   return `${crumbPrefix}${String(index)}`;
 }
 
-/** crumbIndexOf は段の鍵から段の番号を返す。段の鍵でないか、畳んだ「…」なら null。 */
+/** Return null for non-crumb keys and the collapsed ellipsis. */
 export function crumbIndexOf(key: string): number | null {
   if (!key.startsWith(crumbPrefix)) return null;
   const index = Number(key.slice(crumbPrefix.length));
   return Number.isInteger(index) ? index : null;
 }
 
-/** isCrumb は落とす先が道筋の段かを返す。 */
 function isCrumb(id: UniqueIdentifier): boolean {
   return String(id).startsWith(crumbPrefix);
 }
 
-/** CrumbData は道筋の段の落とす先に添える値である。 */
 interface CrumbData {
   refused: boolean;
 }
 
 /**
- * crumbAt はポインタの下の道筋の段の Probe を返す。段の箱は今の場所で測る（帯は上に
- * 貼り付くので、持ち上げたときに測った箱とスクロールの量からは決まらない）。
+ * Measure current breadcrumb bounds; sticky positioning invalidates lift-time bounds plus scroll
+ * offsets.
  */
 function crumbAt(
   pointer: { x: number; y: number } | null,
@@ -173,16 +155,12 @@ function crumbAt(
   return null;
 }
 
-/**
- * HeldDrop は落とした後も画面が保つ印である。落とした先のメニューが開いている間、持ち上げた
- * カードは半透明のまま、落とした先は輪と札のまま残る。
- */
+/** Preserve lifted opacity and target marks while a post-drop menu is open. */
 export interface HeldDrop {
   lifted: readonly string[];
   sign: CardSign;
 }
 
-/** CardAttachment はカード `key` に重ねて描くもの（落とした先のメニュー、名前の欄の窓）である。 */
 export interface CardAttachment {
   key: string;
   node: ReactNode;
@@ -200,41 +178,31 @@ const LayerContext = createContext<LayerValue>({
   attached: null,
 });
 
-/** controlSelector はカードの中で、持ち上げずにそれ自身の操作をする要素である。 */
 const controlSelector =
   'button, input, label, select, textarea, [role="checkbox"], [role="menuitem"], [data-preview-checkbox]';
 
-/** handleAttribute はリストのハンドルの印である。そこから持ち上げると handle の持ち上げ方になる。 */
 const handleAttribute = "data-drag-handle";
 
-/**
- * startsOnControl は押した場所が、listeners を付けた要素 `currentTarget` の中の操作かを返す。
- * ハンドルのように、listeners を付けた要素そのものが操作なら持ち上げる。
- */
+/** Nested controls do not drag, but a control carrying listeners itself, such as a handle, may. */
 function startsOnControl(target: EventTarget | null, currentTarget: EventTarget | null) {
   if (!(target instanceof Element) || !(currentTarget instanceof Element)) return false;
-  // カードに重ねた窓やメニュー（ポータル）の中の出来事も React ではカードへ伝わる。カードの
-  // 中に無い場所からは持ち上げない。
+  // Portal events bubble through React; reject drag starts outside the card's DOM subtree.
   if (!currentTarget.contains(target)) return true;
   const control = target.closest(controlSelector);
   return control !== null && control !== currentTarget && currentTarget.contains(control);
 }
 
-/** onHandle は押した場所がリストのハンドルかを返す。 */
 function onHandle(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest(`[${handleAttribute}]`) !== null;
 }
 
-/** cardDistance はカードと行が持ち上がるまでの距離（px）である。 */
 const cardDistance = 8;
 
-/** handleDistance はリストのハンドルが持ち上がるまでの距離（px）である（044 のまま）。 */
 const handleDistance = 4;
 
 /**
- * CardPointerSensor はマウスとペンで持ち上げる。カードと行は 8 px、ハンドルは 044 のまま
- * 4 px 動いたら持ち上がる。dnd-kit は同じ出来事の activator を 1 つしか持てないので、
- * 1 つのセンサーが押した場所で距離を決める。タッチは CardTouchSensor に任せる。
+ * dnd-kit permits only one activator per event, so choose 8px card or 4px handle activation within
+ * one sensor; touch uses its own sensor.
  */
 class CardPointerSensor extends PointerSensor {
   static activators = [
@@ -262,7 +230,6 @@ class CardPointerSensor extends PointerSensor {
   }
 }
 
-/** CardTouchSensor は 200 ms の長押しで持ち上げる。 */
 class CardTouchSensor extends TouchSensor {
   static activators = [
     {
@@ -280,7 +247,7 @@ class CardTouchSensor extends TouchSensor {
   ];
 }
 
-/** useCardSensors はカードの持ち上げ方である（R-7）。キーボードはハンドルだけが使う。 */
+/** Keyboard lifting is restricted to handles. */
 function useCardSensors() {
   return useSensors(
     useSensor(CardPointerSensor),
@@ -289,17 +256,15 @@ function useCardSensors() {
   );
 }
 
-/** noShift はカードの層の並べ方である。落とすまでどのカードも動かさない。 */
+/** Cards remain stationary until drop. */
 const noShift: SortingStrategy = () => null;
 
-/** edgeScroll は端から 48 px で窓を送る autoScroll の設定である。 */
 function edgeScroll() {
   const height = typeof window === "undefined" ? 0 : window.innerHeight;
   const y = height > 0 ? Math.min(0.5, 48 / height) : 0.1;
   return { threshold: { x: 0, y } };
 }
 
-/** eventPoint は持ち上げを始めた出来事の画面上の点である。 */
 function eventPoint(event: Event): { x: number; y: number } | null {
   if (typeof TouchEvent !== "undefined" && event instanceof TouchEvent) {
     const touch = event.touches[0] ?? event.changedTouches[0];
@@ -308,12 +273,11 @@ function eventPoint(event: Event): { x: number; y: number } | null {
   return event instanceof MouseEvent ? { x: event.clientX, y: event.clientY } : null;
 }
 
-/** grabInset はリストの写しの左端からつかんだ点までの距離（px）である。 */
 const grabInset = 16;
 
 /**
- * besidePointer はリストの写しを、行の幅の箱の左端ではなく、つかんだ点のすぐ左に置く。
- * 写しは行のサムネイルの幅しかないので、箱の左端のままではポインタから離れて見える。
+ * Place the thumbnail-sized row preview near the grab point, not the distant left edge of the full
+ * row.
  */
 const besidePointer: Modifier = ({ activatorEvent, activeNodeRect, transform }) => {
   const point = activatorEvent === null ? null : eventPoint(activatorEvent);
@@ -321,7 +285,6 @@ const besidePointer: Modifier = ({ activatorEvent, activeNodeRect, transform }) 
   return { ...transform, x: transform.x + point.x - activeNodeRect.left - grabInset };
 };
 
-/** reducedMotion は動きを減らす設定かを返す。 */
 function reducedMotion(): boolean {
   return (
     typeof window.matchMedia === "function" &&
@@ -337,21 +300,14 @@ function sameSign(a: CardSign | null, b: CardSign | null): boolean {
   return true;
 }
 
-/** modeOf は持ち上げを始めた出来事から持ち上げ方を決める。 */
 function modeOf(event: Event): Mode {
   return event instanceof KeyboardEvent || onHandle(event.target) ? "handle" : "cards";
 }
 
-/**
- * gapReach は隙間でいちばん近いカードを落とす先にする距離（px）である。格子の `gap-3`
- * （12 px）の中のどこからでも、どちらかのカードが 6 px 以内にある。
- */
+/** Half of gap-3's 12px gap keeps a card within reach everywhere in the gap. */
 const gapReach = 12;
 
-/**
- * probeAt はポインタの下か、隙間ならいちばん近い持ち上げていないカードの Probe を返す。
- * 持ち上げたカードの隣の隙間でも、その向こうのカードの間として落とせる。
- */
+/** Exclude lifted cards so the adjacent gap can target the next stationary card. */
 function probeAt(
   pointer: { x: number; y: number } | null,
   collisions: Collision[],
@@ -379,38 +335,25 @@ function probeAt(
 }
 
 export interface CardDragLayerProps {
-  /** 持ち上げられるカードの鍵（画面の順）。 */
   order: readonly string[];
-  /** 押したカードから持ち上げるカード（画面の順）を決める。 */
   liftedFor: (key: string) => readonly string[];
-  /** カードの間に落として並べ替えられる画面か。並べ替えない画面ではカード全体が「上」になる。 */
+  /** Without reordering, the whole card is an onto target. */
   reorder: boolean;
-  /**
-   * カード `target` の上に `lifted` を落とせるか。省くか null を返すと上に落とす先ではなく、
-   * 並べ替えられる画面ではカードの半分ずつが間になる。
-   */
+  /** Null or absent means no onto target; reorderable cards split into before/after halves. */
   onto?: (target: string, lifted: readonly string[]) => OntoAnswer<UiText>;
-  /** 読み上げに使うカードの名前。 */
   nameOf: (key: string) => string;
-  /** 持ち上げたカードの写しの中身（CardDragFace）。 */
   preview: (key: string) => ReactNode;
-  /** 写しをリストの行の幅（w-list-thumb）にする。 */
   list?: boolean;
   onDrop: (drop: CardDrop) => void;
-  /** 持ち上がったときに呼ぶ（ホバープレビューを止める）。 */
   onLift?: () => void;
-  /** リストのハンドルのキーボードの案内と、ハンドルで持ち上げたときの読み上げ。 */
   handle?: { announcements: Announcements };
-  /** dnd-kit の操作の案内（読み上げ用）。ハンドルを持つ画面はそのキーボードの案内を渡す。 */
   instructions: UiText;
-  /** 落とした後も保つ印（メニューを開いている間）。持ち上げている間は持ち上げの印が先。 */
+  /** Active drag marks take precedence over retained post-drop marks. */
   held?: HeldDrop | null;
-  /** カード 1 枚に重ねて描くもの。 */
   attached?: CardAttachment | null;
   children: ReactNode;
 }
 
-/** signAt はポインタの下のカード `probe` に出す印と、その並びの向きを返す。 */
 function signAt(
   probe: Probe | null,
   state: DragState,
@@ -442,12 +385,11 @@ function signAt(
   };
 }
 
-/** insertPosition は間の印の位置（1 始まり）である。 */
+/** One-based insertion position. */
 function insertPosition(order: readonly string[], key: string, side: "before" | "after") {
   return order.indexOf(key) + (side === "after" ? 2 : 1);
 }
 
-/** useAnnouncements はカードの層の読み上げである。 */
 function useAnnouncements(
   latest: { current: CardDragLayerProps },
   announced: { current: DragState | null },
@@ -508,9 +450,8 @@ function useAnnouncements(
 }
 
 /**
- * useEscapeMarked は持ち上げている間の Esc に preventDefault を付ける。持ち上げを取り消すだけに
- * し、選択の解除（useEscapeClearsSelection）には渡さない。dnd-kit は文書の bubble で Esc を
- * 受けるので、capture で印を付けても取り消しは働く。
+ * Mark Escape in capture so it cancels dragging without clearing selection; dnd-kit's bubble
+ * handler still receives it.
  */
 function useEscapeMarked(active: boolean) {
   useEffect(() => {
@@ -523,10 +464,6 @@ function useEscapeMarked(active: boolean) {
   }, [active]);
 }
 
-/**
- * CardDragLayer は所有者の格子かリストを包むドラッグの層である。中のカードは
- * DraggableCard で、リストの行は useCardDrag で層に加わる。
- */
 export function CardDragLayer(props: CardDragLayerProps) {
   const {
     order,
@@ -539,7 +476,7 @@ export function CardDragLayer(props: CardDragLayerProps) {
   const sensors = useCardSensors();
   const [drag, setDrag] = useState<DragState | null>(null);
   const current = useRef<DragState | null>(null);
-  // 読み上げは持ち上げが終わった後にも読むので、最後の持ち上げを別に残す。
+  // Retain the last drag for announcements delivered after dragging ends.
   const announced = useRef<DragState | null>(null);
   const probe = useRef<Probe | null>(null);
   const latest = useRef(props);
@@ -648,7 +585,7 @@ export function CardDragLayer(props: CardDragLayerProps) {
       >
         <LayerContext value={value}>{children}</LayerContext>
       </SortableContext>
-      {/* 写しは body に置き、サイドバーや上のバーより前に出す。 */}
+      {/* Portal the preview to body above the sidebar and top bar. */}
       {createPortal(
         <DragOverlay
           dropAnimation={reducedMotion() ? null : { duration: 150 }}
@@ -667,27 +604,19 @@ export function CardDragLayer(props: CardDragLayerProps) {
   );
 }
 
-/** CardDragBinding はカードか行を層に加える値である（useCardDrag の戻り値）。 */
 export interface CardDragBinding {
   ref: (node: HTMLElement | null) => void;
-  /** カードか行に広げるポインタとタッチの listeners。 */
   listeners: Record<string, unknown>;
-  /** リストのハンドルに渡す値（reorder.tsx の ReorderHandle）。 */
   handle: { ref: (node: HTMLElement | null) => void; props: Record<string, unknown> };
-  /** ハンドルで持ち上げている間の行の位置。 */
   style: CSSProperties | undefined;
-  /** このカードが持ち上げたものに入っている間 true（半透明にする）。 */
   lifted: boolean;
-  /** ハンドルで持ち上げているのがこの行のとき true（行を浮かせる）。 */
   sorting: boolean;
-  /** このカードに出す印。 */
   sign: CardSign | null;
   axis: Axis;
-  /** このカードに重ねて描くもの（CardAttachment）。 */
   attachment: ReactNode;
 }
 
-/** useCardDrag はカード `key` を層に加える。CardDragLayer の中で使う。 */
+/** Must run within CardDragLayer. */
 export function useCardDrag(key: string): CardDragBinding {
   const { drag, held, attached } = useContext(LayerContext);
   const {
@@ -727,16 +656,15 @@ export function useCardDrag(key: string): CardDragBinding {
   };
 }
 
-/** signOf はカード `key` に出す印である。持ち上げている間はその印、無ければ保った印。 */
+/** Prefer active drag marks over retained marks. */
 function signOf(key: string, drag: DragState | null, held: HeldDrop | null) {
   const sign = drag === null ? (held?.sign ?? null) : drag.sign;
   return sign !== null && sign.key === key ? sign : null;
 }
 
 /**
- * CardDropMark はカードか行に出す印である。上はカードの箱の
- * `primary` の輪とサムネイルの札、間は隙間の中央の細い棒、拒否はカードに何も出さない。
- * 置く先は `relative` の箱（カードは DraggableCard、行は TableRow）。
+ * Render in a relative card or row; insertion markers sit at gap centers, while refusal appears
+ * only on the preview.
  */
 export function CardDropMark({
   sign,
@@ -790,10 +718,6 @@ export function CardDropMark({
   );
 }
 
-/**
- * dragRowProps はリストの行（TableRow）を層に加える props である。行のクラス `className` に、
- * 持ち上げたら半透明にするクラスを足す。`drag` が無ければ行はそのまま。
- */
 export function dragRowProps(drag: CardDragBinding | undefined, className: string) {
   return {
     ref: drag?.ref,
@@ -806,7 +730,6 @@ export function dragRowProps(drag: CardDragBinding | undefined, className: strin
   };
 }
 
-/** RowDropMarks はリストの行の印と、行に重ねたもの（メニューの位置の目印）である。 */
 export function RowDropMarks({ drag }: { drag: CardDragBinding | undefined }) {
   if (drag === undefined) return null;
   return (
@@ -817,10 +740,7 @@ export function RowDropMarks({ drag }: { drag: CardDragBinding | undefined }) {
   );
 }
 
-/**
- * DraggableCard は格子のカード 1 枚を層に加える。カード（`article`）を包み、持ち上げたら
- * 半透明にし、印を重ねる。包みは格子の 1 枡で、中のカードを枡の高さまで伸ばす。
- */
+/** Stretch the inner article to the grid cell height. */
 export function DraggableCard({ id, children }: { id: string; children: ReactNode }) {
   const drag = useCardDrag(id);
   return (
@@ -840,11 +760,7 @@ export function DraggableCard({ id, children }: { id: string; children: ReactNod
   );
 }
 
-/**
- * RefusingDropCard は持ち上げられず、上に落とすと拒否する格子のカード 1 枚を層に加える
- * （スマートフォルダのカード。docs/design-docs/catalog-organization.md「Smart folder card and
- * row」）。拒否するかは層の `onto` が `id` に "refused" を返して決め、写しに拒否の Badge が出る。
- */
+/** Non-draggable cards still register as targets so onto can explicitly return refused. */
 export function RefusingDropCard({ id, children }: { id: string; children: ReactNode }) {
   const { setNodeRef } = useDroppable({ id });
   return (
@@ -854,10 +770,6 @@ export function RefusingDropCard({ id, children }: { id: string; children: React
   );
 }
 
-/**
- * CardDragFace は写しの中身である。カードのサムネイル（動画は VideoThumbnail、グループは
- * フォルダの絵柄）と、その下の 1 行の題名。
- */
 export function CardDragFace({
   thumbnail,
   title,
@@ -875,11 +787,6 @@ export function CardDragFace({
   );
 }
 
-/**
- * CardDragPreview はポインタに付いてくる写しである。カードの幅
- * （リストでは w-list-thumb）で、2 枚以上なら右上に件数の Badge、拒否の上では `Ban` の
- * Badge を出す。
- */
 function CardDragPreview({
   count,
   refused,
@@ -920,10 +827,8 @@ function CardDragPreview({
 }
 
 /**
- * CrumbDropTarget は道筋の帯の段 1 つを落とす先にする。
- * 落とせる段の上では段の文字に `primary-soft` の地を敷き、帯のほかの所は変えない。`refused`
- * の段（開いているグループ、畳んだ「…」）は印を出さず、写しに拒否の Badge を出す。
- * CardDragLayer の中で使う。
+ * Use within CardDragLayer; refused crumbs affect only the preview badge, not the breadcrumb
+ * appearance.
  */
 export function CrumbDropTarget({
   id,

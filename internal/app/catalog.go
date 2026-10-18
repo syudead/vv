@@ -8,54 +8,42 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// CatalogIngestStore は動画の応答から取り込み状態を問い合わせ、更新する保存先である。
 type CatalogIngestStore interface {
-	// RequeueMissingPreview は、作り終えた記録があるのにファイルが無いプレビューの
-	// 状態を pending へ戻し、作り直しを積む。両方を1つの取引で行う。積んだら
-	// true を返す。すでに戻っていれば false。
+	// Atomically reset missing completed previews to pending and enqueue once; return false if already
+	// reset.
 	RequeueMissingPreview(ctx context.Context, id int64, contentKey string) (bool, error)
-	// RequeueMissingSeekThumbnails は、作り終えた記録があるのに置き場が無い
-	// シーク用サムネイルの状態を pending へ戻し、作り直しを積む。両方を1つの
-	// 取引で行う。積んだら true を返す。すでに戻っていれば false。
+	// Atomically reset missing completed seek previews to pending and enqueue once; return false if
+	// already reset.
 	RequeueMissingSeekThumbnails(ctx context.Context, id int64, contentKey string) (bool, error)
-	// RetryProbe は読み取りに失敗した動画を読み取り直す状態へ戻し、ジョブを積む。
 	RetryProbe(ctx context.Context, id int64) error
 }
 
-// CatalogIndexStore は関連動画を組み立てるためのライブラリ索引である。どの
-// 読み出しも見る人（domain.Audience）を取り、ゲストには公開の動画だけを返す
+// Every lookup preserves audience restrictions; guests receive public videos only.
 type CatalogIndexStore interface {
-	// RelatedCandidates は関連動画の近さを測る手がかりを、見る人に見せる動画すべてと基準の
-	// 動画 selfID について返す。
+	// Include ranking clues for all visible candidates and selfID.
 	RelatedCandidates(ctx context.Context, audience domain.Audience, selfID int64) ([]domain.RelatedCandidate, error)
 	VideosByIDs(ctx context.Context, audience domain.Audience, ids []int64) ([]domain.Video, error)
-	// VideoGroup は動画 id の文脈のグループ（contextID は動画を開いたグループ、無ければ 0。
-	// docs/design-docs/catalog-organization.md）を、見る人に見せてよい動画の再生順で返す。詳細は
-	// window の範囲だけを読む。動画がどのグループにも無ければ false。
+	// Return visible group members in playback order, loading details only within window; contextID
+	// zero means no opened group. See docs/design-docs/catalog-organization.md.
 	VideoGroup(ctx context.Context, audience domain.Audience, id int64, opened domain.VideoContext, window domain.GroupWindow) (domain.VideoGroup, bool, error)
 }
 
-// ArtifactFiles は生成物が今あるかを答える。internal/artifacts の *Store が
-// これを満たす。ホバープレビューは manifest と大きさが一致するときだけ、ある
-// とみなす。
+// Hover previews count as available only when manifest and file size agree.
 type ArtifactFiles interface {
 	PreviewAvailable(contentKey string) bool
 	SeekThumbnailsAvailable(contentKey string) bool
 }
 
-// CatalogOptions は動画の応答の組み立てに必要な依存である。
 type CatalogOptions struct {
 	Index  CatalogIndexStore
 	Ingest CatalogIngestStore
 	Files  ArtifactFiles
-	// Scorer は関連動画の近さの付け方。nil なら domain.DefaultRelatedScorer を使う。
+	// Nil uses domain.DefaultRelatedScorer.
 	Scorer domain.RelatedScorer
-	// Logger は nil なら slog の既定を使う。
+	// Nil uses slog.Default.
 	Logger *slog.Logger
 }
 
-// Catalog は動画を応答に載せるときの判断（消えたプレビューの作り直しの予約、
-// シーク用プレビューの状態の導出）と、関連動画の組み立てを受け持つ。
 type Catalog struct {
 	index  CatalogIndexStore
 	ingest CatalogIngestStore
@@ -64,7 +52,6 @@ type Catalog struct {
 	logger *slog.Logger
 }
 
-// NewCatalog は動画の応答の組み立てを返す。
 func NewCatalog(opts CatalogOptions) *Catalog {
 	logger := opts.Logger
 	if logger == nil {
@@ -77,14 +64,8 @@ func NewCatalog(opts CatalogOptions) *Catalog {
 	return &Catalog{index: opts.Index, ingest: opts.Ingest, files: opts.Files, scorer: scorer, logger: logger}
 }
 
-// PresentVideos は動画たちを応答に載せる形にする。順序は保つ。
-//
-// プレビューを作り終えた記録があるのにファイルが無ければ、作り直しを積み、
-// 準備中として返す。ファイルの有無は、URL を出すかどうかを決めるためにもともと
-// 確かめている。見つけたときだけ書くので、ファイルがある通常の場合に書き込みは
-// 増えない。積むのは状態が done の間の1回だけで（同じ動画を並行して見ても、
-// 保存層の取引で1回になる）、作り直しが上限まで失敗すれば failed になり、
-// それ以上は積まない。
+// PresentVideos preserves order and repairs missing completed previews once through a storage
+// transaction; ordinary reads do not write, and terminal failures are not retried.
 func (c *Catalog) PresentVideos(ctx context.Context, videos []domain.Video) []domain.VideoView {
 	views := make([]domain.VideoView, 0, len(videos))
 	for _, video := range videos {
@@ -106,7 +87,7 @@ func (c *Catalog) present(ctx context.Context, video domain.Video) domain.VideoV
 	requeued, err := c.ingest.RequeueMissingPreview(ctx, video.ID, video.ContentKey)
 	switch {
 	case err != nil:
-		// 作り直しを積めなくても、応答は URL を省いて返せる。次に見つけたときに積む。
+		// Even if requeueing fails, omit the URL and retry repair on a later read.
 		c.logger.Warn("could not queue regeneration of a missing preview",
 			slog.Int64("videoId", video.ID), slog.Any("error", err))
 	case requeued:
@@ -115,13 +96,8 @@ func (c *Catalog) present(ctx context.Context, video domain.Video) domain.VideoV
 	return domain.VideoView{Video: video}
 }
 
-// SeekThumbnailState はシーク用サムネイルの状態を導く。
-//
-// 置き場があれば done。無ければ、保存した状態が done のときは作り直しを積んで
-// pending とし（積めなくても pending。次に見つけたときに積む）、それ以外は
-// 保存した状態をそのまま返す。積むのは状態が done の間の1回だけで、同じ動画を
-// 並行して見ても保存層の取引で1回になる（プレビューの RequeueMissingPreview と
-// 同じ形）。
+// SeekThumbnailState prefers existing artifacts; missing done artifacts appear pending even if
+// repair enqueueing fails, with transactional deduplication across readers.
 func (c *Catalog) SeekThumbnailState(ctx context.Context, video domain.Video) (domain.SeekThumbnailState, error) {
 	if c.files.SeekThumbnailsAvailable(video.ContentKey) {
 		return domain.SeekThumbnailDone, nil
@@ -136,26 +112,15 @@ func (c *Catalog) SeekThumbnailState(ctx context.Context, video domain.Video) (d
 	return domain.SeekThumbnailPending, nil
 }
 
-// VideoGroup は動画の文脈（opened は動画を開いたグループとスマートフォルダ。domain.VideoContext、
-// docs/design-docs/catalog-organization.md）の、見る人に見せてよい動画の再生順を返す
-// （GET /api/videos/{id} の group と GET /api/videos/{id}/group-members）。詳細は window の
-// 範囲だけを読む。動画がどのグループにも無ければ false。
+// VideoGroup preserves audience and opened context, loading only the requested detail window; see
+// docs/design-docs/catalog-organization.md.
 func (c *Catalog) VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video, opened domain.VideoContext, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
 	return c.index.VideoGroup(ctx, audience, video.ID, opened, window)
 }
 
-// RelatedVideos は関連動画の 1 ページを返す（issue 931）。
-//
-// 並べ方は internal/domain の RankRelated と、近さの付け方 scorer（既定は
-// domain.DefaultRelatedScorer）が決める。ここは、見る人に見せる動画すべての手がかりを読み、
-// 並べ、page の範囲の動画の本体を引くだけである。どれも見る人（audience）として読むので、
-// ゲストには公開の動画だけが並ぶ。基準の動画が手がかりに無ければ（読む間に消えた）、
-// 関連動画は空にする。
-//
-// 動画がグループにあれば、文脈のグループ（page.GroupID、docs/design-docs/catalog-organization.md）の
-// 再生順の動画は並べる前に除く。最初のページだけがグループの窓を載せ、次と前の動画を
-// その再生順にする。グループに属さない動画の次の動画は、関連動画の並びの
-// 先頭である。前の動画は返さない（画面が見てきた順から決める）。
+// RelatedVideos ranks audience-visible candidates, excluding context-group members before
+// pagination; missing self yields no results. Only the first page includes group navigation, while
+// ungrouped navigation uses the top related video and leaves previous navigation to the UI.
 func (c *Catalog) RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.RelatedPage) (domain.RelatedVideos, error) {
 	first := page.After == nil
 	window := domain.GroupWindow{}
@@ -212,11 +177,8 @@ func (c *Catalog) RelatedVideos(ctx context.Context, audience domain.Audience, v
 	return related, nil
 }
 
-// RetryProbe は読み取りに失敗した動画を読み取り直す。状態を戻すこととジョブを
-// 積むことは保存層が1つの取引で行う。
-//
-// 失敗していない動画には domain.ErrProbeNotFailed、無い動画には
-// domain.ErrNotFound を返す。
+// RetryProbe atomically resets failed state and queues work; nonfailed or missing videos return
+// ErrProbeNotFailed or ErrNotFound.
 func (c *Catalog) RetryProbe(ctx context.Context, video domain.Video) error {
 	return c.ingest.RetryProbe(ctx, video.ID)
 }

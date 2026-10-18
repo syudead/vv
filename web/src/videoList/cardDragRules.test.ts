@@ -128,8 +128,7 @@ describe("liftedKeys", () => {
   });
 
   it("lifts the pressed card alone when it is not among the selected items", () => {
-    // 選んだ子グループのメンバーの動画の直接の項目は、チェックが見えていても選択した項目に
-    // 入らない（「Favorite」の分け方）ので、それだけが持ち上がる。
+    // A checked direct video covered by a selected child group is not a selected item, so dragging it lifts only itself.
     expect(liftedKeys(order, "b", ["d", "a"])).toEqual(["b"]);
   });
 });

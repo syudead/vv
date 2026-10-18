@@ -22,40 +22,24 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// ゲストへの応答は、
-// 本物の認証・保存層・関連動画の組み立てで確かめる（#300）。
-
-// guestArtifactFiles は生成物がすべてあると答える。
 type guestArtifactFiles struct{}
 
 func (guestArtifactFiles) PreviewAvailable(string) bool        { return true }
 func (guestArtifactFiles) SeekThumbnailsAvailable(string) bool { return true }
 
-// guestFixture は公開と非公開の動画を混ぜたライブラリである。
-//
-//	root   = <media>        登録フォルダ1
-//	  pub/a.mp4             公開。タグ「秘密の名前」と再生位置を持つ
-//	  pub/b.mp4             非公開
-//	  private/c.mp4         非公開（このフォルダには非公開の動画しか無い）
-//	  d.mp4                 公開。読み取りに失敗し、誤りの文に絶対パスを含む
-//	other  = <other>        登録フォルダ2（非公開の動画しか無い）
-//	  e.mp4                 非公開
+// The fixture mixes public/private videos across two roots; only a and d are public, a has owner data, and d's probe error contains an absolute path.
 type guestFixture struct {
-	env       *authEnv
-	owner     *http.Cookie
-	ids       map[string]int64
-	rootID    int64
-	otherID   int64
-	mediaDir  string
-	otherDir  string
-	tagID     int64
-	transcode *fakeTranscoder
-	// thumbnails は代表サムネイルの位置の設定先の代わりである（video_overrides_test.go）。
+	env        *authEnv
+	owner      *http.Cookie
+	ids        map[string]int64
+	rootID     int64
+	otherID    int64
+	mediaDir   string
+	otherDir   string
+	tagID      int64
+	transcode  *fakeTranscoder
 	thumbnails *fakeThumbnailPicker
-	// edits はサムネイルの編集のセッションで、提供元・コマ・適用だけが偽である（thumbnail_edits_test.go）。
-	edits *editFakes
-	// uploads は手元の画像のアップロードで、合わせと公開だけが偽である（thumbnail_upload_test.go）。
-	uploads *uploadFakes
+	edits      *editFakes
 }
 
 const guestSecretTag = "秘密の名前"
@@ -71,34 +55,28 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 		library := db.Library()
 		f.thumbnails = &fakeThumbnailPicker{db: db}
 		f.edits = newEditFakes(db)
-		f.uploads = newUploadFakes(t, db)
 		return Options{
-			Videos:     library,
-			Folders:    library,
-			Playback:   db.Playback(),
-			Tags:       db.Tags(),
-			Visibility: db.Visibility(),
-			Favorites:  db.Favorites(),
-			// 視聴履歴の経路（watch_history_test.go）。
-			WatchHistory: db.Playback(),
-			Overrides:    db.Overrides(),
-			// 作品情報と人物・団体の経路（video_work_info_test.go）。
-			WorkInfo: db.WorkInfo(),
-			Credits:  db.Credits(),
-			// 動画の追加の情報（video_media_info_test.go）。
-			MediaInfo: library,
-			Versions:  db.Versions(),
-			Library:   library,
-			// 外部連携 API の上書きの一括操作（external_video_overrides_test.go）が引き当てに使う。
+			Videos:         library,
+			Folders:        library,
+			Playback:       db.Playback(),
+			Tags:           db.Tags(),
+			Visibility:     db.Visibility(),
+			Favorites:      db.Favorites(),
+			WatchHistory:   db.Playback(),
+			Overrides:      db.Overrides(),
+			WorkInfo:       db.WorkInfo(),
+			Credits:        db.Credits(),
+			MediaInfo:      library,
+			Versions:       db.Versions(),
+			Library:        library,
 			ExternalVideos: library,
-			// 生成は代わりにし、位置の確かめと記録は本物の保存層で行う。
-			ThumbnailPicker:  f.thumbnails,
-			ThumbnailEdits:   f.edits.edits,
-			ThumbnailUploads: f.uploads,
-			Catalog:          app.NewCatalog(app.CatalogOptions{Index: library, Ingest: db.Ingest(), Files: guestArtifactFiles{}}),
-			Artifacts:        artifacts,
-			Transcoder:       f.transcode,
-			Subtitles:        media.NewSubtitleConverter(),
+			// Fake only generation; position validation and persistence use real storage.
+			ThumbnailPicker: f.thumbnails,
+			ThumbnailEdits:  f.edits.edits,
+			Catalog:         app.NewCatalog(app.CatalogOptions{Index: library, Ingest: db.Ingest(), Files: guestArtifactFiles{}}),
+			Artifacts:       artifacts,
+			Transcoder:      f.transcode,
+			Subtitles:       media.NewSubtitleConverter(),
 		}
 	})
 	db := f.env.db
@@ -134,7 +112,6 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 		if err := os.WriteFile(file.path, content, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		// 動画ごとに隣へ字幕を 1 つ置く（<名前>.srt）。
 		subtitle := strings.TrimSuffix(file.path, ".mp4") + ".srt"
 		if err := os.WriteFile(subtitle, []byte("1\n00:00:01,000 --> 00:00:02,000\n"+file.name+"\n"), 0o600); err != nil {
 			t.Fatal(err)
@@ -156,7 +133,7 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 			}
 			continue
 		}
-		// 画質（480p など）が使えるよう、短辺は 360 より大きくする。
+		// A short edge above 360 makes lower transcode qualities available.
 		probe := domain.Probe{DurationMs: 60_000, Width: 1280, Height: 720, VideoCodec: "h264", AudioCodec: "aac"}
 		if err := db.Ingest().ApplyProbe(ctx, id, probe, domain.Playability{Playable: true}); err != nil {
 			t.Fatal(err)
@@ -201,7 +178,6 @@ func (f *guestFixture) folderPath(rootID int64, suffix string) string {
 	return "/api/folders/" + strconv.FormatInt(rootID, 10) + suffix
 }
 
-// rawItems は応答の項目を JSON のまま返す。省いた欄が無いことを確かめるのに使う。
 func rawItems(t *testing.T, body []byte, field string) []map[string]json.RawMessage {
 	t.Helper()
 	var payload map[string]json.RawMessage
@@ -215,7 +191,6 @@ func rawItems(t *testing.T, body []byte, field string) []map[string]json.RawMess
 	return items
 }
 
-// assertGuestVideo は動画の JSON に所有者のデータが無いことを確かめる。
 func assertGuestVideo(t *testing.T, label string, video map[string]json.RawMessage) {
 	t.Helper()
 	for _, field := range []string{"location", "progress", "probeError", "probeErrorCode", "fileTitle", "displayName", "thumbnailPositionMs", "thumbnailImage", "contentVersion", "favorite", "workInfo"} {
@@ -249,7 +224,6 @@ func assertStatus(t *testing.T, label string, rec interface{ Result() *http.Resp
 	}
 }
 
-// Cookie なしの一覧・件数・詳細・関連動画には公開の動画だけが、所有者のデータを外した形で出る。
 func TestGuestSeesOnlyPublicVideosWithoutOwnerData(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -273,7 +247,6 @@ func TestGuestSeesOnlyPublicVideosWithoutOwnerData(t *testing.T) {
 		}
 	}
 
-	// 所有者には全件と、所有者のデータが出る（比較のため）。
 	owner := env.get("/api/videos", f.owner)
 	ownerPage := decode[gen.VideoPage](t, owner)
 	if ownerPage.Total != 5 {
@@ -295,7 +268,6 @@ func TestGuestSeesOnlyPublicVideosWithoutOwnerData(t *testing.T) {
 		}
 	}
 
-	// 検索はタグの名前に当たらない。
 	if page := decode[gen.VideoPage](t, env.get("/api/videos?query="+guestSecretTag)); page.Total != 0 {
 		t.Errorf("ゲストのタグ名での検索が %d 件に当たった", page.Total)
 	}
@@ -334,8 +306,6 @@ func TestGuestSeesOnlyPublicVideosWithoutOwnerData(t *testing.T) {
 	}
 }
 
-// フォルダには公開の動画から導いたものだけが、登録フォルダの絶対パスを外して出る。
-// 公開の動画を含まないフォルダは、存在しないフォルダと同じ 404 になる。
 func TestGuestFoldersHideFoldersWithoutPublicVideos(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -378,7 +348,6 @@ func TestGuestFoldersHideFoldersWithoutPublicVideos(t *testing.T) {
 		t.Errorf("ゲストのフォルダの動画の total = %d", page.Total)
 	}
 
-	// 公開の動画を含まないフォルダと、存在しないフォルダが同じ応答になる。
 	pairs := [][2]string{
 		{f.folderPath(f.otherID, ""), "/api/folders/9999"},
 		{f.folderPath(f.otherID, "/videos"), "/api/folders/9999/videos"},
@@ -395,8 +364,7 @@ func TestGuestFoldersHideFoldersWithoutPublicVideos(t *testing.T) {
 	}
 }
 
-// assertSameResponse は、見せない対象と存在しない対象の応答が状態・本文・ヘッダーまで
-// 同じであることを確かめる。
+// Hidden and nonexistent targets must have identical status, body, and headers.
 func assertSameResponse(t *testing.T, label string, hidden, missing interface {
 	Result() *http.Response
 }, want int,
@@ -424,8 +392,6 @@ func readAll(t *testing.T, resp *http.Response) string {
 	return string(body)
 }
 
-// Cookie なしで公開の動画の配信と生成物が返り、非公開の動画のそれらは存在しない動画と
-// 同じ 404 になる。
 func TestGuestMediaRoutesServeOnlyPublicVideos(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -459,8 +425,6 @@ func TestGuestMediaRoutesServeOnlyPublicVideos(t *testing.T) {
 	}
 }
 
-// ゲストは公開の動画の変換の開始位置を引け、非公開の動画のそれは存在しない動画と同じ
-// 404 になる。
 func TestGuestTranscodeStartServesOnlyPublicVideos(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -472,7 +436,6 @@ func TestGuestTranscodeStartServesOnlyPublicVideos(t *testing.T) {
 	assertStatus(t, "公開の動画の開始位置", public, http.StatusOK)
 	assertAudience(t, "公開の動画の開始位置", public, "guest")
 
-	// 所有者が非公開の動画を変換していても、ゲストはその開始位置を引けない。
 	owner := env.serve(authRequest{method: http.MethodGet, target: f.videoPath("b", "/transcode.mp4?attempt=guest-b"), cookies: []*http.Cookie{f.owner}})
 	assertStatus(t, "所有者の非公開の動画の変換", owner, http.StatusOK)
 	hidden := env.serve(authRequest{method: http.MethodGet, target: f.videoPath("b", "/transcode-start?attempt=guest-b")})
@@ -482,8 +445,6 @@ func TestGuestTranscodeStartServesOnlyPublicVideos(t *testing.T) {
 	assertStatus(t, "所有者の非公開の動画の開始位置", ownerStart, http.StatusOK)
 }
 
-// ゲストも公開の動画を画質付きで変換できる（親 Issue #521 受け入れ条件 8）。非公開の動画は
-// 画質があっても存在しない動画と同じ 404 である。
 func TestGuestTranscodesPublicVideoWithQuality(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -500,8 +461,6 @@ func TestGuestTranscodesPublicVideoWithQuality(t *testing.T) {
 	assertSameResponse(t, "非公開の動画の画質付きの変換", hidden, missing, http.StatusNotFound)
 }
 
-// ゲストは公開の動画の字幕の一覧と字幕を取得でき、非公開の動画は両方の経路で存在しない
-// 動画と同じ 404 になる。
 func TestGuestSubtitlesServeOnlyPublicVideos(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -528,7 +487,6 @@ func TestGuestSubtitlesServeOnlyPublicVideos(t *testing.T) {
 		wantError{status: http.StatusNotFound, code: codeNotFound, reason: reasonVideoNotFound})
 }
 
-// ゲストは所有者のデータに依る一覧の条件を使えない。
 func TestGuestRejectsOwnerOnlyListConditions(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -559,9 +517,6 @@ func TestGuestRejectsOwnerOnlyListConditions(t *testing.T) {
 	}
 }
 
-// 生成物の成功の応答は、所有者にもゲストにも private, no-cache と ETag を持ち、
-// If-None-Match が一致すれば 304 になる。ログアウトした Cookie では、非公開の動画の
-// サムネイルは If-None-Match を付けても 404 になる。
 func TestArtifactResponsesRevalidateForOwnerAndGuest(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -592,7 +547,6 @@ func TestArtifactResponsesRevalidateForOwnerAndGuest(t *testing.T) {
 		}
 	}
 
-	// 所有者として非公開の動画のサムネイルを得てから、ログアウトする。
 	target := f.videoPath("b", "/thumbnail?v=abc")
 	ownerRec := env.get(target, f.owner)
 	assertStatus(t, "所有者の非公開のサムネイル", ownerRec, http.StatusOK)
@@ -608,8 +562,6 @@ func TestArtifactResponsesRevalidateForOwnerAndGuest(t *testing.T) {
 	}
 }
 
-// 「ゲストも」の操作は、Cookie なしでも未認証にならずゲストとして処理される。
-// アカウントが未設定なら、公開の動画があっても未認証になる（親 Issue 要件 2）。
 func TestGuestOperationsRequireConfiguredAccount(t *testing.T) {
 	configured := newGuestFixture(t, true)
 	unconfigured := newGuestFixture(t, false)

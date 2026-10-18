@@ -8,7 +8,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// fakeReprober は保存層の RetryProbe と同じ規則で状態を戻し、積んだジョブを数える。
 type fakeReprober struct {
 	library *fakeLibrary
 	jobs    map[domain.JobKind]int
@@ -55,8 +54,6 @@ func failedProbeVideo() domain.Video {
 	return video
 }
 
-// 失敗した動画への要求は 202 と更新後の動画を返す。続けて送ると 2 回目は
-// 409 probe_not_failed で、ジョブは増えない。
 func TestReprobeVideo(t *testing.T) {
 	library := &fakeLibrary{videos: map[int64]domain.Video{1: failedProbeVideo()}}
 	reprober := &fakeReprober{library: library, jobs: map[domain.JobKind]int{}}
@@ -83,7 +80,6 @@ func TestReprobeVideo(t *testing.T) {
 	}
 }
 
-// 読み取りのやり直しの応答にもタグが載る（#267）。
 func TestReprobeVideoIncludesTags(t *testing.T) {
 	video := failedProbeVideo()
 	library := &fakeLibrary{videos: map[int64]domain.Video{1: video}}
@@ -99,7 +95,6 @@ func TestReprobeVideoIncludesTags(t *testing.T) {
 	}
 }
 
-// 読み取り済みの動画は 409、知らない id は 404 になる。
 func TestReprobeVideoRejectsNonFailedAndUnknown(t *testing.T) {
 	library := &fakeLibrary{videos: map[int64]domain.Video{1: sampleVideo(1, "読み取り済み")}}
 	reprober := &fakeReprober{library: library, jobs: map[domain.JobKind]int{}}

@@ -1,8 +1,6 @@
 package store
 
-// グループの読み出し。
-// グループの値・ライブラリの項目・グループの画面は、どれもグループの子孫の動画を再生順で読む
-// 1 つの with 句（groupDescendantsCTE）から作る。
+// All group views derive descendant playback order from groupDescendantsCTE.
 
 import (
 	"context"
@@ -16,9 +14,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// shownVideoForKeyExpr は、利用者データの鍵の式 key に対して見る人（audience）に見せる動画の id を
-// 返す式である。集まりの鍵なら集まりの実効の代表、そうでなければ集まりに属さない同じ content_key の
-// 動画で、見る人に見せてよい所在が無ければ NULL になる。
+// Resolve bundle keys to the audience's effective representative; inaccessible keys yield NULL.
 func shownVideoForKeyExpr(key string, audience domain.Audience) string {
 	bundleID := `(select sb.id from video_bundles sb where sb.user_key = ` + key + `)`
 	return `(case when exists (select 1 from video_bundles sb where sb.user_key = ` + key + `) then ` +
@@ -28,28 +24,10 @@ func shownVideoForKeyExpr(key string, audience domain.Audience) string {
 			and ` + visibleVideoCondition("sv", audience) + ` order by sv.id limit 1) end)`
 }
 
-// groupSortWidth は再生順の並びの鍵で、位置 1 つを表す桁数である。位置を同じ桁の 0 詰めの
-// 文字列にしてつなぐと、鍵のバイト順が深さ優先の順（親の項目の位置、その中の位置、…）になる。
+// Fixed-width zero-padded positions make byte ordering match depth-first playback ordering.
 const groupSortWidth = 10
 
-// groupDescendantsCTE は、グループ id を 1 列 id で返す select 文 roots の各グループについて、
-// 見る人に見せる子孫の動画を再生順の鍵とともに返す with 句の部品を返す。
-// 呼び出し側が読むのは `gdesc(root_id, video_id, sort_key)` だけで、根と動画の組ごとに 1 行、
-// sort_key は深さ優先で最初に現れた位置の鍵である。見せる動画の無い根は gdesc に現れない。
-// 呼び出し側は先頭に with を付けるか、ほかの with 句の部品に続けてつなぐ。roots は 1 度だけ
-// 埋め込むので、位置で結び付ける ? を持ってよい。
-//
-// 複数の親に入った子グループ（ダイヤモンド状の階層）を、たどれる道ごとに展開すると、行数が段数に
-// 対して指数的に増える。そこで道ではなく、根と子孫のグループの組ごとに 1 本だけ、深さ優先で最初に
-// 現れる道（位置の鍵がいちばん小さい道）を求める。
-//   - gclos(anc, descendant) は根から届くグループの推移閉包（自分自身を含む）。union で重複を
-//     捨てるので、行数はグループの組の数で抑えられ、壊れた行の循環があっても終わる。
-//   - gpath は根から目的のグループへ、目的に届く項目のうち位置のいちばん小さいものを 1 段ずつ選んで
-//     進む。どの道も同じグループを 2 度通らない（通るなら循環）ので、どの位置の鍵も別の道の鍵の
-//     接頭辞にならず、最初の道の鍵に中の位置を足した鍵が、すべての道の鍵のうち最小になる。
-//     seen は壊れた行の循環で止めるためのもの。
-//
-// 入れ子の深さに上限は無い。
+// Build one earliest depth-first path per root/descendant pair to avoid exponential expansion of diamond hierarchies.
 func groupDescendantsCTE(roots string, audience domain.Audience) string {
 	return groupDescendantsCTEFrom(roots, shownVideoForKeyExpr("gi.content_key", audience), "")
 }
@@ -92,15 +70,11 @@ func groupDescendantsCTEFrom(roots, videoExpr, videoJoin string) string {
 		group by root_id, video_id)`
 }
 
-// groupFavoritedAtExpr は、グループ（別名 alias の groups）をお気に入りにした時刻を返す式である。
-// お気に入りでなければ NULL になる（group_favorites、docs/design-docs/catalog-organization.md）。
 func groupFavoritedAtExpr(alias string) string {
 	return `(select gf.favorited_at from group_favorites gf where gf.group_id = ` + alias + `.id)`
 }
 
-// memberProgressSelect は、videos の行に再生の記録を並べる列 4 つと、その結合を返す。ゲストには
-// 再生の記録を読まない（016 の guest-api §1）ので、列はどれも NULL で結合は空である。列は
-// memberProgress.dest の順に読む。
+// Guests never read playback history; return four NULL columns without a join.
 func memberProgressSelect(audience domain.Audience) (columns, join string) {
 	if !audience.IsOwner() {
 		return `null, null, null, null`, ""
@@ -109,7 +83,6 @@ func memberProgressSelect(audience domain.Audience) (columns, join string) {
 		` left join playback_progress p on p.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''`
 }
 
-// memberProgress は memberProgressSelect の列 4 つを受け取る。
 type memberProgress struct {
 	position, duration, updatedAt sql.NullInt64
 	completed                     sql.NullBool
@@ -119,7 +92,6 @@ func (m *memberProgress) dest() []any {
 	return []any{&m.position, &m.duration, &m.completed, &m.updatedAt}
 }
 
-// progress は受け取った再生の記録を返す。記録が無ければ nil である。
 func (m *memberProgress) progress() *domain.Progress {
 	if !m.position.Valid {
 		return nil
@@ -130,9 +102,7 @@ func (m *memberProgress) progress() *domain.Progress {
 	}
 }
 
-// loadGroups はグループの id ごとに、見せてよい子孫の動画を再生順に読み、グループの項目を作る。
-// ゲストには再生の記録を読まない（016 の guest-api §1）。見せてよい動画が無いグループと、無い
-// グループは結果に入らない。
+// Load only groups with visible descendants, in playback order; omit playback records for guests.
 func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, groupIDs []int64) (map[int64]domain.LibraryGroup, error) {
 	out := map[int64]domain.LibraryGroup{}
 	if len(groupIDs) == 0 {
@@ -203,9 +173,7 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 	return out, nil
 }
 
-// Group は見る人（audience）に見せるグループ id と、その項目の最初の 1 ページ、要求の trail の
-// 親と子の組が続く部分を返す（GET /api/groups/{id}、docs/design-docs/catalog-organization.md）。
-// 無いグループと見る人に見せないグループは domain.ErrNotFound である。
+// Group returns the first item page and valid parent trail; hidden and missing groups both return domain.ErrNotFound.
 func (s *LibraryStore) Group(ctx context.Context, audience domain.Audience, id int64, trail []int64) (domain.GroupPage, error) {
 	return s.readGroupPage(ctx, audience, id, func(tx *sql.Tx, page *domain.GroupPage) error {
 		var err error
@@ -218,8 +186,7 @@ func (s *LibraryStore) Group(ctx context.Context, audience domain.Audience, id i
 	})
 }
 
-// GroupItems はグループ id の項目 1 ページを返す（GET /api/groups/{id}/items）。cursor は前の
-// ページの NextCursor で、読めなければ domain.ErrInvalidCursor である。グループの扱いは Group と同じ。
+// GroupItems uses the same visibility as Group and rejects malformed cursors.
 func (s *LibraryStore) GroupItems(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int) (domain.GroupPage, error) {
 	return s.readGroupPage(ctx, audience, id, func(tx *sql.Tx, page *domain.GroupPage) error {
 		var err error
@@ -228,8 +195,7 @@ func (s *LibraryStore) GroupItems(ctx context.Context, audience domain.Audience,
 	})
 }
 
-// readGroupPage はグループ id の値と登録フォルダを 1 つの読み取りスナップショットで読み、同じ
-// 取引で fill にページの残りを埋めさせる。
+// Read the group, registered folders and page contents from one snapshot.
 func (s *LibraryStore) readGroupPage(ctx context.Context, audience domain.Audience, id int64, fill func(*sql.Tx, *domain.GroupPage) error) (domain.GroupPage, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -259,9 +225,7 @@ func (s *LibraryStore) readGroupPage(ctx context.Context, audience domain.Audien
 	return page, nil
 }
 
-// groupTrail は trail（外側から順のグループの id）のうち、グループ id から外へ向かって親と子の組が
-// 続く部分を、外側から順に名前とともに返す。最後の要素は id の親で、組が崩れた
-// 所より外側は捨てる。
+// Keep only the contiguous parent-child suffix of the requested trail, returned outermost first.
 func groupTrail(ctx context.Context, tx *sql.Tx, id int64, trail []int64) ([]domain.GroupRef, error) {
 	out := []domain.GroupRef{}
 	child := id
@@ -285,13 +249,9 @@ func groupTrail(ctx context.Context, tx *sql.Tx, id int64, trail []int64) ([]dom
 	return out, nil
 }
 
-// groupItemsCursorKind はグループの項目のカーソルの最初の項目である。ほかの一覧のカーソルを
-// 渡されたときに読めないカーソルとして断る。
 const groupItemsCursorKind = "group-items"
 
-// groupItemsPage はグループ id の見せる項目を、位置が cursor の項目より後ろから limit 件、位置の
-// 順に返す。動画の項目は見る人に見せる動画（shownVideoForKeyExpr）、子グループの項目は見る人に
-// 見せる子孫の動画を持つものだけを数える。
+// Page visible videos and child groups with visible descendants by item position.
 func groupItemsPage(ctx context.Context, tx *sql.Tx, audience domain.Audience, id int64, cursor string, limit int) ([]domain.GroupItem, string, error) {
 	after := int64(-1)
 	if cursor != "" {

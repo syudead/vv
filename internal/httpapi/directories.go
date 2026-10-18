@@ -8,9 +8,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// ListDirectories は設定画面のディレクトリ選択に、サーバーのディレクトリを返す
-// （GET /api/directories）。どのディレクトリを並べるかは MediaFiles が決め、
-// ここは誤りを応答の状態へ移すだけである。
 func (s *server) ListDirectories(w http.ResponseWriter, _ *http.Request, params gen.ListDirectoriesParams) {
 	if s.files == nil {
 		s.internalError(w, "Directory listing is not configured.", nil)

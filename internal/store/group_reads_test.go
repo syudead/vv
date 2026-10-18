@@ -10,7 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// groupIDOf はフォルダ dir（絶対パス）の自動グループの id を返す。
 func groupIDOf(t *testing.T, db *DB, dir string) int64 {
 	t.Helper()
 	var id int64
@@ -20,8 +19,7 @@ func groupIDOf(t *testing.T, db *DB, dir string) int64 {
 	return id
 }
 
-// insertGroup は名前 name の手で作ったグループを作り、その id を返す。items は並びの順の項目で、
-// string は動画の利用者データの鍵、int64 は子グループの id である。
+// String items denote video user keys; int64 items denote child-group IDs.
 func insertGroup(t *testing.T, db *DB, name string, items ...any) int64 {
 	t.Helper()
 	result, err := db.sql.Exec(`insert into groups (name, title_key, created_at, updated_at) values (?, ?, 0, 0)`,
@@ -51,7 +49,6 @@ func insertGroup(t *testing.T, db *DB, name string, items ...any) int64 {
 	return id
 }
 
-// itemKeyOf は itemsFixture のファイルの利用者データの鍵である。
 func itemKeyOf(path string) string {
 	return "key" + fixturePath(path)
 }
@@ -75,8 +72,6 @@ func groupItemNames(items []domain.GroupItem) []string {
 	return out
 }
 
-// 受け入れ条件 1: 3 つのフォルダの 3 本の動画を持つ 1 つのグループは、1 つのグループの項目として
-// 並び、3 本は動画として並ばない。
 func TestListLibraryListsHandMadeGroupAsOneItem(t *testing.T) {
 	db, ids := itemsFixture(t)
 	mix := insertGroup(t, db, "mix",
@@ -95,8 +90,6 @@ func TestListLibraryListsHandMadeGroupAsOneItem(t *testing.T) {
 	}
 }
 
-// A が B の中にあるとき、いちばん上には B だけが並び、B のグループの画面が A を返す。B の値は
-// 子孫の動画を深さ優先の再生順で数える。
 func TestListLibraryListsTopGroupsAndGroupShowsChildGroup(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -122,8 +115,6 @@ func TestListLibraryListsTopGroupsAndGroupShowsChildGroup(t *testing.T) {
 	}
 }
 
-// 子孫がすべて検索に当たるグループは 1 項目、子孫 1 本だけが当たるグループはその動画を 1 回だけ
-// 返す。2 つの部分一致のグループにある動画も 1 回だけ並ぶ（R-6）。
 func TestListLibraryMatchesOverDescendants(t *testing.T) {
 	db, _ := itemsFixture(t)
 	a := insertGroup(t, db, "A", itemKeyOf("/media/mixed/x.mp4"))
@@ -137,13 +128,12 @@ func TestListLibraryMatchesOverDescendants(t *testing.T) {
 	if names := ownerLibraryNames(t, db, domain.VideoQuery{Query: "y"}); !slices.Equal(names, []string{"y"}) {
 		t.Errorf("y の検索 = %v, want [y]", names)
 	}
-	// solo は C と D の両方にあり、どちらも一部だけが当たる。
 	if names := ownerLibraryNames(t, db, domain.VideoQuery{Query: "solo"}); !slices.Equal(names, []string{"solo"}) {
 		t.Errorf("solo の検索 = %v, want [solo]（1 回だけ）", names)
 	}
 }
 
-// 丸ごと当たるグループのカードにある動画も、一部だけが当たる別のグループからは 1 本で並ぶ。件数と「すべて選択」の id も同じ項目を数える。
+// A partial group can expose a standalone video even when a different whole-group card includes it.
 func TestListLibraryKeepsPartialMatchBesideWholeGroup(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -170,8 +160,6 @@ func TestListLibraryKeepsPartialMatchBesideWholeGroup(t *testing.T) {
 	}
 }
 
-// 入れ子の深さに上限は無い。いちばん深いグループの動画もいちばん上の
-// グループの再生順に入る。
 func TestGroupReadsDescendantsAtAnyDepth(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -189,9 +177,7 @@ func TestGroupReadsDescendantsAtAnyDepth(t *testing.T) {
 
 }
 
-// 複数の親に入った子グループ（ダイヤモンド状の階層）は、たどれる道ごとに展開し直さない。各段の
-// 2 つのグループがどちらも次の段の 2 つを持つ 40 段の階層は、道が 2^40 本あるが、すぐに読める。
-// 再生順は深さ優先で最初に現れた位置のままである。
+// Forty diamond levels encode 2^40 paths; verify bounded traversal preserves the earliest depth-first order.
 func TestGroupReadsSharedChildGroupsOnce(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -216,7 +202,6 @@ func TestGroupReadsSharedChildGroupsOnce(t *testing.T) {
 	}
 }
 
-// 見える動画のないグループは並ばず、そのグループの画面は ErrNotFound である。
 func TestGroupWithoutVisibleVideoIsNotShown(t *testing.T) {
 	db, _ := itemsFixture(t)
 	ctx := context.Background()
@@ -236,7 +221,6 @@ func TestGroupWithoutVisibleVideoIsNotShown(t *testing.T) {
 	}
 }
 
-// ゲストは公開の動画 1 本のグループを見られ、公開の動画の無い子グループは親から外れる。
 func TestGroupForGuestReadsPublicVideosOnly(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -265,7 +249,6 @@ func TestGroupForGuestReadsPublicVideosOnly(t *testing.T) {
 	}
 }
 
-// trail は親と子の組が崩れた所で切られ、最後はグループの親である（R-8）。
 func TestGroupTrailIsCutAtABrokenPair(t *testing.T) {
 	db, _ := itemsFixture(t)
 	ctx := context.Background()
@@ -294,7 +277,6 @@ func TestGroupTrailIsCutAtABrokenPair(t *testing.T) {
 	}
 }
 
-// 項目は位置の順にカーソルで区切られ、読めないカーソルは ErrInvalidCursor である。
 func TestGroupItemsPages(t *testing.T) {
 	db, _ := itemsFixture(t)
 	ctx := context.Background()

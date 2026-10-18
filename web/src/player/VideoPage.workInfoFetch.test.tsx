@@ -23,8 +23,6 @@ import {
 } from "../testing/workInfoFetchPage";
 import type { PlayerControls } from "./playerControls";
 
-// 動画ページの作品情報の取得。作品の詳細の行は VideoPage.workInfoFetchDetails.test.tsx。
-
 vi.mock("./VideoPlayer", () => ({
   default: function VideoPlayerMock(props: {
     onControls: (controls: PlayerControls | null) => void;
@@ -45,7 +43,6 @@ vi.mock("./VideoPlayer", () => ({
   },
 }));
 
-/** coded は品番だけを持つ作品情報である。 */
 const coded: Video["workInfo"] = {
   code: "ABC-123",
   dates: [],
@@ -85,7 +82,6 @@ describe("VideoPage work-info fetch", () => {
     expect(
       details.compareDocumentPosition(fetchEntry) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    // 後ろの操作はサムネイルの編集（プレイヤーの有無に依らず所有者に出る）。
     const edit = screen.getByRole("button", { name: "Edit thumbnail with ComfyUI" });
     expect(
       fetchEntry.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -110,7 +106,6 @@ describe("VideoPage work-info fetch", () => {
     await user.click(within(dialog).getByRole("button", { name: "Search" }));
     expect(server.search).toHaveBeenCalledWith({ query: "テスト動画" });
     await within(dialog).findByText("2 matches");
-    // 候補の行はページのホストとページへのリンクを出す。リンクは開くだけで、取得には使わない。
     expect(within(dialog).getByText("other.example")).toBeDefined();
     expect(
       within(dialog)
@@ -119,9 +114,7 @@ describe("VideoPage work-info fetch", () => {
     ).toEqual([workUrl, "https://other.example/w/2"]);
     await user.click(within(dialog).getByRole("button", { name: /候補の作品/ }));
     await within(dialog).findByRole("checkbox", { name: "Title" });
-    // 候補を選ぶとその ID で取得し、候補の URL は送らない（親 Issue 1232 の要件 15）。
     expect(server.fetch).toHaveBeenCalledWith({ pluginId: 3, id: workId });
-    // 取得した値は「既存」が動画に付いているので、選べるのは 1 つだけである。
     expect(within(dialog).getByText("1 of 1 selected")).toBeDefined();
     expect(within(dialog).getByRole("checkbox", { name: "Title" })).toHaveProperty(
       "ariaChecked",
@@ -367,7 +360,6 @@ describe("VideoPage work-info fetch", () => {
     const words = within(dialog).getByRole("textbox", { name: "Search words" });
     await user.clear(words);
     await user.type(words, pasted);
-    // URL の形でも入力欄の名前と押すボタンは変わらない（親 Issue 1232 の要件 14）。
     expect(within(dialog).queryByRole("button", { name: "Fetch" })).toBeNull();
     await user.click(within(dialog).getByRole("button", { name: "Search" }));
     expect(server.search).toHaveBeenCalledWith({ query: pasted });

@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// fileCreatedAt は作成日時の読み方を持たない OS では常に取れない
+// Unsupported OSes report no creation time.
 func fileCreatedAt(string, fs.FileInfo) (time.Time, bool) {
 	return time.Time{}, false
 }

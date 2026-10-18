@@ -8,8 +8,7 @@ import { Field, FieldDescription, FieldLabel } from "@/ui/shadcn/field";
 import { Input } from "@/ui/shadcn/input";
 import { Textarea } from "@/ui/shadcn/textarea";
 
-// フォームダイアログの型の見本（registry:block form-dialog-example）。タグを作る形で、
-// 写した画面は欄と送信の処理を差し替える（web/registry/rules/patterns.md の Form dialog）。
+// registry:block form-dialog-example. Replace fields and submission handling.
 
 export function FormDialogExample({ defaultOpen = false }: { defaultOpen?: boolean }) {
   const p = t.designSystem.pattern;

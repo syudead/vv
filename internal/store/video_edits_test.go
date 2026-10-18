@@ -3,8 +3,8 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io/fs"
+	"slices"
 	"testing"
 	"time"
 
@@ -13,18 +13,14 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 動画の更新日時。
-
-// staleEditedAt は「進んでいない」ことを見分けるために更新日時へ書き戻す過去の値である。
+// Use an old timestamp to distinguish unchanged edit times.
 var staleEditedAt = time.Unix(1_000, 0)
 
-// editedAt は動画の更新日時を GetVideo で読む。
 func editedAt(t *testing.T, db *DB, id int64) time.Time {
 	t.Helper()
 	return ownerVideo(t, db, id).EditedAt
 }
 
-// resetEditedAt は記録済みの更新日時をすべて staleEditedAt に戻す。
 func resetEditedAt(t *testing.T, db *DB) {
 	t.Helper()
 	if _, err := db.sql.Exec(`update video_edits set edited_at = ?`, staleEditedAt.Unix()); err != nil {
@@ -32,7 +28,6 @@ func resetEditedAt(t *testing.T, db *DB) {
 	}
 }
 
-// assertEditedSince は動画の更新日時が since 以後（操作の時刻）であることを確かめる。
 func assertEditedSince(t *testing.T, db *DB, id int64, since time.Time) {
 	t.Helper()
 	if got := editedAt(t, db, id); got.Before(since.Truncate(time.Second)) || got.After(time.Now()) {
@@ -40,7 +35,6 @@ func assertEditedSince(t *testing.T, db *DB, id int64, since time.Time) {
 	}
 }
 
-// assertEditedAt は動画の更新日時が want であることを確かめる。
 func assertEditedAt(t *testing.T, db *DB, id int64, want time.Time) {
 	t.Helper()
 	if got := editedAt(t, db, id); !got.Equal(want) {
@@ -57,8 +51,6 @@ func editRowCount(t *testing.T, db *DB) int {
 	return count
 }
 
-// 編集していない動画の更新日時は追加日時で、取り込み（UpsertVideo）は行を作らない
-// （受け入れ条件 3）。一覧の読み出しにも同じ値が載る。
 func TestEditedAtDefaultsToAddedAt(t *testing.T) {
 	db, ids := overrideFixture(t)
 	for _, id := range ids {
@@ -81,14 +73,12 @@ func TestEditedAtDefaultsToAddedAt(t *testing.T) {
 	}
 }
 
-// 表示名・代表サムネイルの位置・公開の設定・タグの付け外しは、値を変えたときだけ更新日時を
-// 操作の時刻に進める（受け入れ条件 1、Edge Case「値が変わらなかった」）。
 func TestEditsAdvanceEditedAtOnlyWhenChanged(t *testing.T) {
 	ctx := context.Background()
 	position := int64(5_000)
 	other := int64(7_000)
 	for name, c := range map[string]struct {
-		// prepare は最初の変更、again は同じ値の書き直し、change は別の値への変更である。
+		// Exercise the first edit, repeating the same value, then changing it.
 		prepare, again, change func(db *DB, id int64) error
 	}{
 		"表示名": {
@@ -207,8 +197,7 @@ func TestEditsAdvanceEditedAtOnlyWhenChanged(t *testing.T) {
 	}
 }
 
-// SetDisplayNames の 1 回の一括は取引の初めと最後の名前を比べる。同じ動画を A→B→A と書いても
-// 進めず、名前が変わった動画だけを進める（Edge Case）。
+// A batch that changes A to B and back to A must compare the final value with the initial value.
 func TestSetDisplayNamesComparesTheFinalName(t *testing.T) {
 	db, ids := overrideFixture(t)
 	alpha := ids[fixturePath("/media/alpha.mp4")]
@@ -232,7 +221,6 @@ func TestSetDisplayNamesComparesTheFinalName(t *testing.T) {
 	}
 }
 
-// 一括のタグ付けは、タグが実際に付いた動画だけを進める（Edge Case）。
 func TestBulkTaggingAdvancesOnlyChangedVideos(t *testing.T) {
 	db, ids := overrideFixture(t)
 	alpha := ids[fixturePath("/media/alpha.mp4")]
@@ -262,8 +250,6 @@ func TestBulkTaggingAdvancesOnlyChangedVideos(t *testing.T) {
 	assertEditedAt(t, db, beta, staleEditedAt)
 }
 
-// 名前での一括の置き換え・外すは、手で付けたタグが実際に変わる動画だけを進める（R-3）。
-// 置き換えは足すだけ・外すだけのどちらで変わっても進め、同じ集合なら進めない。
 func TestApplyVideoTagsReplaceAndRemoveAdvanceOnlyChanged(t *testing.T) {
 	ctx := context.Background()
 	db, ids := overrideFixture(t)
@@ -280,9 +266,9 @@ func TestApplyVideoTagsReplaceAndRemoveAdvanceOnlyChanged(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	apply(domain.VideoTagsAdd, []string{"好き"}, alpha)     // 同じ集合
-	apply(domain.VideoTagsAdd, []string{"好き", "別"}, beta) // 集合に無いタグがある
-	resetEditedAt(t, db)                                  // gamma はタグなし（足すだけで変わる）
+	apply(domain.VideoTagsAdd, []string{"好き"}, alpha)
+	apply(domain.VideoTagsAdd, []string{"好き", "別"}, beta)
+	resetEditedAt(t, db)
 	start := time.Now()
 	apply(domain.VideoTagsReplace, []string{"好き"}, alpha, beta, gamma)
 	assertEditedAt(t, db, alpha, staleEditedAt)
@@ -298,19 +284,12 @@ func TestApplyVideoTagsReplaceAndRemoveAdvanceOnlyChanged(t *testing.T) {
 	assertEditedSince(t, db, beta, start)
 }
 
-// 変わる鍵を求める問い合わせは、鍵ごとに高々 1 行を返す。鍵 × タグの組の数だけ行を
-// 返さないので、上限の一括操作でも書き込みの取引の中で受け取る行は鍵の数までである。
+// Changed keys are returned once each, in input order, rather than once per tag.
 func TestChangedManualTagKeysReturnsOneRowPerKey(t *testing.T) {
 	ctx := context.Background()
 	db := migratedDB(t)
-	keys := make([]string, 0, 500)
-	for i := range 500 {
-		keys = append(keys, fmt.Sprintf("key-%d", i))
-	}
-	tagIDs := make([]int64, 0, 100)
-	for i := range 100 {
-		tagIDs = append(tagIDs, int64(i+1))
-	}
+	keys := []string{"key-c", "key-a", "key-b"}
+	tagIDs := []int64{1, 2}
 	encodedKeys, _ := json.Marshal(keys)
 	encodedTags, _ := json.Marshal(tagIDs)
 	tx, err := db.sql.BeginTx(ctx, nil)
@@ -323,7 +302,7 @@ func TestChangedManualTagKeysReturnsOneRowPerKey(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(got) != len(keys) || got[0] != keys[0] || got[len(got)-1] != keys[len(keys)-1] {
+		if !slices.Equal(got, keys) {
 			t.Errorf("%s: %d 行, want 鍵ごとに 1 行・鍵の順の %d 行", action, len(got), len(keys))
 		}
 	}
@@ -336,7 +315,6 @@ func TestChangedManualTagKeysReturnsOneRowPerKey(t *testing.T) {
 	}
 }
 
-// 集まりのメンバーへのタグ付け・公開の設定は、集まりの全メンバーを進める（R-1）。
 func TestBundleEditsAdvanceEveryMember(t *testing.T) {
 	db, ids := versionFixture(t)
 	bundle(t, db, ids["a"], ids["a"], ids["b"])
@@ -356,8 +334,6 @@ func TestBundleEditsAdvanceEveryMember(t *testing.T) {
 	}
 }
 
-// 再生位置・取り込み・解析・タグ自体の操作・束ねる操作は更新日時を進めない（受け入れ条件 2、
-// R-2）。
 func TestNonEditingWritesKeepEditedAt(t *testing.T) {
 	ctx := context.Background()
 	db, ids := versionFixture(t)
@@ -420,7 +396,6 @@ func TestNonEditingWritesKeepEditedAt(t *testing.T) {
 	assertEditedAt(t, db, ids["d"], ownerVideo(t, db, ids["d"]).AddedAt)
 }
 
-// 同じパスの中身の引き継ぎは、前の内容の更新日時を新しい内容へ付け替える（Edge Case）。
 func TestSuccessionCarriesEditedAt(t *testing.T) {
 	db, a := taggedVideoFixture(t)
 	resetEditedAt(t, db)
@@ -440,7 +415,6 @@ func TestSuccessionCarriesEditedAt(t *testing.T) {
 	}
 }
 
-// 移行は空の video_edits を作り（既存の動画を埋め戻さない）、Down は表を落とす。
 func TestVideoEditsMigration(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {

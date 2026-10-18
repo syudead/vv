@@ -13,8 +13,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 自動タグ付けの待ち行列と設定（docs/design-docs/auto-tagging.md）。
-
 func autoTagState(t *testing.T, db *DB, contentKey string) string {
 	t.Helper()
 	var state string
@@ -64,7 +62,6 @@ func claimAutoTag(t *testing.T, store *AutoTagStore) domain.AutoTagJob {
 	return job
 }
 
-// 保存値が無ければ既定値を返し、保存した値はそのまま読み戻せる。機能の設定と接続先は別に持つ。
 func TestAutoTagSettingsDefaultsAndRoundTrip(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -87,7 +84,6 @@ func TestAutoTagSettingsDefaultsAndRoundTrip(t *testing.T) {
 	}
 }
 
-// 接続先は保存した値を読み戻し、新しいキーが無ければ前の版のキーを読む。
 func TestOllamaSettingsRoundTripAndLegacyKeys(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -110,7 +106,6 @@ func TestOllamaSettingsRoundTripAndLegacyKeys(t *testing.T) {
 	}
 }
 
-// 積み方ごとに、既にある行の扱いが変わる。判定中の行はどの積み方でも動かさない。
 func TestAutoTagQueueModes(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -154,7 +149,6 @@ func TestAutoTagQueueModes(t *testing.T) {
 	}
 }
 
-// ライブラリ全体を積むと、登録フォルダの下の動画がすべて積まれ、古い順に取り出せる。
 func TestAutoTagQueueLibraryAndClaimOrder(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -163,7 +157,7 @@ func TestAutoTagQueueLibraryAndClaimOrder(t *testing.T) {
 	if _, err := store.QueueVideos(ctx, []int64{first}, domain.AutoTagQueueIfNew, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
-	// 次の積みが同じミリ秒に入っても順が決まるよう、最初に積んだ行を前の時刻にする。
+	// Separate queue times so same-millisecond insertion cannot obscure FIFO ordering.
 	if _, err := db.sql.Exec(`update auto_tag_queue set queued_at = queued_at - 1000`); err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +189,6 @@ func TestAutoTagQueueLibraryAndClaimOrder(t *testing.T) {
 	}
 }
 
-// 終えると今もあるタグだけを付け、行を done にし、確定の後に AutoTagApplied を発行する。
 func TestAutoTagFinishAttachesExistingTags(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -229,7 +222,6 @@ func TestAutoTagFinishAttachesExistingTags(t *testing.T) {
 	}
 }
 
-// 判定の最中に積み直された行は、古い判定の結果では終えない。
 func TestAutoTagFinishIgnoresJobsNoLongerRunning(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -258,7 +250,6 @@ func TestAutoTagFinishIgnoresJobsNoLongerRunning(t *testing.T) {
 	}
 }
 
-// 判定の間に動画が消えたら、行を消してタグを付けない。
 func TestAutoTagFinishDropsRemovedVideos(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -269,7 +260,6 @@ func TestAutoTagFinishDropsRemovedVideos(t *testing.T) {
 		t.Fatal(err)
 	}
 	claimAutoTag(t, store)
-	// 判定の手がかりは、代表の所在とそれを含む登録フォルダである。
 	var root string
 	if err := db.sql.QueryRow(`select path from media_folders order by length(path) desc limit 1`).Scan(&root); err != nil {
 		t.Fatal(err)
@@ -292,7 +282,6 @@ func TestAutoTagFinishDropsRemovedVideos(t *testing.T) {
 	}
 }
 
-// 候補は確定したタグだけで、シノニムを添え、名前の自然順に並ぶ。
 func TestAutoTagCandidates(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -318,8 +307,6 @@ func TestAutoTagCandidates(t *testing.T) {
 	}
 }
 
-// その動画に確定して付いているタグと却下されたタグは聞かない。仮に付いているタグは聞く。
-// ほかの動画の付与と却下は関係しない。
 func TestAutoTagCandidatesExcludeAttachedAndRejected(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -354,7 +341,6 @@ func TestAutoTagCandidatesExcludeAttachedAndRejected(t *testing.T) {
 		t.Fatalf("候補 = %v", names)
 	}
 
-	// 別の動画には、どのタグも聞く。
 	var otherKey string
 	if err := db.sql.QueryRowContext(ctx, `select content_key from videos where id <> ? and content_key <> '' limit 1`,
 		solo).Scan(&otherKey); err != nil {
@@ -372,7 +358,6 @@ func TestAutoTagCandidatesExcludeAttachedAndRejected(t *testing.T) {
 	}
 }
 
-// 件数は状態ごとに数え、直近の失敗の理由を返す。
 func TestAutoTagCountsLastError(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -393,7 +378,6 @@ func TestAutoTagCountsLastError(t *testing.T) {
 	}
 }
 
-// 集まりのメンバーを判定すると、タグは集まりの鍵に付き、すべてのメンバーに知らせる。
 func TestAutoTagFinishNotifiesBundleMembers(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -427,7 +411,6 @@ func TestAutoTagFinishNotifiesBundleMembers(t *testing.T) {
 	}
 }
 
-// tentativeOf は利用者データの鍵 key に付いたタグ tagID の仮の状態を返す。行が無ければ -1。
 func tentativeOf(t *testing.T, db *DB, key string, tagID int64) int {
 	t.Helper()
 	var tentative int
@@ -451,7 +434,6 @@ func finishSolo(t *testing.T, db *DB, ids map[string]int64, selection domain.Aut
 	}
 }
 
-// 中間の帯のタグは仮に付き、動画のタグに Unconfirmed として出る。手で付けた分は仮にしない。
 func TestAutoTagFinishAttachesTentativeTags(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -479,14 +461,12 @@ func TestAutoTagFinishAttachesTentativeTags(t *testing.T) {
 		t.Fatalf("unconfirmed = %v", unconfirmed)
 	}
 
-	// 次の判定で確率が上がれば確定し、手で付けても確定する。
 	finishSolo(t, db, ids, domain.AutoTagSelection{Confirmed: []int64{dog.ID}})
 	if got := tentativeOf(t, db, soloKey, dog.ID); got != 0 {
 		t.Fatalf("確率が上がった仮の付与が確定しない: %d", got)
 	}
 }
 
-// 確定すると普通の付与になり、却下すると外れて、次の判定でも付かない。
 func TestAutoTagConfirmAndRejectTentative(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -520,7 +500,6 @@ func TestAutoTagConfirmAndRejectTentative(t *testing.T) {
 	if got := tentativeOf(t, db, soloKey, dog.ID); got != -1 {
 		t.Fatalf("却下したタグを付け直した: %d", got)
 	}
-	// 手で付けるのは止めない。
 	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{solo}, dog.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -538,9 +517,7 @@ func TestAutoTagConfirmAndRejectTentative(t *testing.T) {
 	}
 }
 
-// 00036 まで適用したデータベース（video_tags.tentative を持たない）を最新まで上げても、付いていた
-// タグがそのまま読める。00036 を書き換えて列を足していた版では、適用済みのデータベースで列が
-// できず、タグの読み出しが失敗して画面からタグが消えた。
+// Upgrade databases without the tentative column as well as databases from the release that already included it.
 func TestAutoTagSuggestionsMigrationKeepsTags(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {

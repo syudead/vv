@@ -14,7 +14,6 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// openSettingsStore は移行を済ませた DB の設定の保存先を返す。
 func openSettingsStore(t *testing.T) *store.SettingsStore {
 	t.Helper()
 	db, err := store.OpenMigratedForTest(t.TempDir())
@@ -25,7 +24,6 @@ func openSettingsStore(t *testing.T) *store.SettingsStore {
 	return db.Settings()
 }
 
-// 起動時は保存値が真なら 0.0.0.0、偽か行が無ければ 127.0.0.1 で待ち受ける（R-14）。
 func TestStartNetworkSettingsChoosesListenAddressFromSavedValue(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	for _, tc := range []struct {
@@ -56,7 +54,6 @@ func TestStartNetworkSettingsChoosesListenAddressFromSavedValue(t *testing.T) {
 	}
 }
 
-// addresses にはループバックと IPv6 を入れない。
 func TestLANIPv4ExcludesLoopbackAndIPv6(t *testing.T) {
 	addrs := []net.Addr{
 		&net.IPNet{IP: net.ParseIP("127.0.0.1"), Mask: net.CIDRMask(8, 32)},
@@ -82,8 +79,6 @@ func TestLANIPv4ExcludesLoopbackAndIPv6(t *testing.T) {
 	}
 }
 
-// 本物の待ち受けと DB で切り替えると、許可中だけ LAN のアドレスから接続でき、addresses が
-// 入る。やめると LAN のアドレスからの新しい接続は拒まれる（受け入れ条件 7）。
 func TestNetworkSettingsSwitchesRealListener(t *testing.T) {
 	lanIP := ownNonLoopbackIPv4(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))

@@ -21,8 +21,9 @@ file into a handbook.
 
 - Talk to the maintainer in Japanese: every chat reply, question and progress
   report is Japanese, even when the prompt, the tools or the documents are in
-  English. Internal reasoning may stay in English. Code, code comments,
-  identifiers and quoted output stay as they are.
+  English. Use English for agent-to-agent briefs, messages, handoffs and
+  reports; the parent agent summarizes results for the maintainer in Japanese.
+  Code comments follow the policy below; preserve identifiers and quoted output.
 - Keep documentation close to the code and update it with behavior changes.
 - Maintain repository documents only in English. Do not create translated mirrors.
 - Write documents in technical English to
@@ -46,10 +47,16 @@ file into a handbook.
 - Keep each function a change adds or makes more complex at complexity 25 or
   less, and share code instead of copying it; the commands that check this are
   in [complexity-and-duplication.md](docs/design-docs/complexity-and-duplication.md).
-- Before every push, run `task check` when any path outside `*.md`, `docs/`
-  and `specs/` changed, and `task check-docs` when any path inside them
-  changed (both for a mixed change). Fix formatting failures with `task fmt`.
-  Focused tests alone do not catch formatting or lint drift.
+- Before a push, run formatting, lint and tests for the affected scope using
+  `task check SCOPE=go GO_PACKAGES="./internal/example/..."` or
+  `task check SCOPE=web WEB_FILES="src/example" WEB_TESTS="src/example"`.
+  Include affected callers and shared fixtures; widen to `task check` when the
+  impact is unclear or dependencies/shared configuration change. Run
+  `task check-docs` for Markdown, `docs/` or `specs/` changes, including mixed
+  changes. See [validation scope](docs/how-to/development.md#validate-changes)
+  for CI-only checks and exceptions. Fix formatting in the affected files.
+  Reuse passing results until relevant inputs change; after a failure, rerun
+  the failed check and checks affected by its fix, not every suite.
 - Do not hand-edit generated files (`internal/httpapi/gen/`,
   `internal/httpapi/extgen/`, `web/src/api/gen/`); change `api/openapi.yaml` or
   `api/external-v1.yaml` and run `task generate`.
@@ -60,6 +67,19 @@ file into a handbook.
 - Before writing, moving or optimizing Go or Web tests, read
   [docs/design-docs/testing.md](docs/design-docs/testing.md) for shared scope,
   synchronization and fixture rules; it links to the Web-specific levels.
+  Apply [write-tests](.agents/skills/write-tests/SKILL.md) before selecting
+  cases, including tests added during implementation or review fixes without
+  an explicit test request. SDD carries that selection in acceptance evidence.
+- Name the unit contract before choosing its fixture. Use the minimum cases
+  that expose its failure, fake unrelated dependencies, and assert arguments,
+  results and required effects. Apply the
+  [unit contracts](docs/design-docs/testing.md#unit-test-contracts) and
+  [fixture rules](docs/design-docs/testing.md#fixtures-and-build-cost).
+- Keep load and stress work out of unit cases, and use observable synchronization
+  or virtual time instead of wall-clock waits. Remove duplicate or out-of-scope
+  cases; do not move them to integration tests merely to retain them
+  ([load and waiting](docs/design-docs/testing.md#load-and-waiting),
+  [existing tests](docs/design-docs/testing.md#changes-to-existing-tests)).
 - Give every pushed working branch a pull request as its review target.
 - Dependency updates (Renovate) follow
   [docs/how-to/dependency-updates.md](docs/how-to/dependency-updates.md). The
@@ -86,8 +106,26 @@ file into a handbook.
   list the rest for the maintainer
   ([integrate](.agents/skills/issue-handoff/references/integrate.md#review-of-the-integration-pr)).
 
+## Code comments
+
+- Write comments in concise English. Explain a non-obvious reason, invariant,
+  constraint or workaround; describe public contracts when callers need them.
+- Delete narration of the next statement, repeated type/function names,
+  section dividers and obsolete history. Prefer clear names over explanations.
+- Keep a comment to one or two sentences. Put lasting design rationale in
+  `docs/design-docs/` and link to it instead of copying it into code.
+- When touching existing comments, translate useful Japanese text, shorten it,
+  and remove redundant text. Preserve compiler/tool directives, licenses,
+  generated-code markers and meaningful quoted text or examples. Regenerate
+  generated files from their source instead of editing their comments by hand.
+
 ## Review guidelines
 
+- Flag bulk fixtures, repeated runs, wall-clock waits and real dependencies
+  whose necessity is not explained by the tested contract. Check extracted
+  rules retain a caller wiring case and removed integration tests are not
+  claimed as covered by isolated unit tests
+  ([testing policy](docs/design-docs/testing.md)).
 - Treat as P1 a function the change adds or makes more complex whose
   complexity goes over 25 (gocyclo for Go; ESLint `complexity` with
   `variant: "modified"` for `web/src`), and code the change copies from

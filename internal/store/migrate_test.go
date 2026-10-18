@@ -178,7 +178,6 @@ func TestHoverPreviewMigrationBackfillsOnlyProbeCompleteVideos(t *testing.T) {
 	}
 }
 
-// 初回起動でスキーマが手作業なしに適用される。
 func TestMigrateAppliesSchemaOnEmptyDirectory(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -213,7 +212,6 @@ func TestMigrateAppliesSchemaOnEmptyDirectory(t *testing.T) {
 	}
 }
 
-// 2 度目の呼び出しで何も適用されないこと（冪等）。
 func TestMigrateIsIdempotent(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -240,7 +238,6 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	}
 }
 
-// データベースファイルを削除しても、手作業なしに次の起動で復旧する。
 func TestMigrateRecoversAfterDatabaseFileIsDeleted(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -255,7 +252,7 @@ func TestMigrateRecoversAfterDatabaseFileIsDeleted(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// WAL の付随ファイルも含めて消す。利用者が丸ごと削除した状況を再現する。
+	// Remove WAL sidecars too, matching deletion of the entire data directory.
 	for _, suffix := range []string{"", "-wal", "-shm"} {
 		path := DatabasePath(dataDir) + suffix
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -281,7 +278,6 @@ func TestMigrateRecoversAfterDatabaseFileIsDeleted(t *testing.T) {
 	}
 }
 
-// ダウングレードによる破壊を防ぐ。将来の版を持つデータベースは書き換えずに中止する。
 func TestMigrateAbortsOnFutureSchemaWithoutWriting(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -295,7 +291,6 @@ func TestMigrateAbortsOnFutureSchemaWithoutWriting(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// アプリケーションが知らない将来の版が適用済みである状況を作る。
 	const futureVersion = 9999
 	_, err = db.sql.Exec(
 		`insert into `+versionTableName+` (version_id, is_applied, tstamp) values (?, 1, current_timestamp)`,
@@ -304,7 +299,7 @@ func TestMigrateAbortsOnFutureSchemaWithoutWriting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 将来の版が触るはずのない印を置き、書き換えられないことを確かめる。
+	// Use a sentinel to detect any writes after future-schema rejection.
 	if _, err := db.sql.Exec(`insert into videos(added_at, content_key, indexed_at) values (1, 'sentinel', 1)`); err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +334,6 @@ func TestMigrateAbortsOnFutureSchemaWithoutWriting(t *testing.T) {
 	}
 }
 
-// データベースのパスは DataDir/mdm.db に固定する（設定項目にしない）。
 func TestDatabasePathIsFixedUnderDataDir(t *testing.T) {
 	got := DatabasePath(fixturePath("/data"))
 	want := filepath.Join(fixturePath("/data"), DatabaseFileName)
@@ -351,8 +345,6 @@ func TestDatabasePathIsFixedUnderDataDir(t *testing.T) {
 	}
 }
 
-// 00002 で足した列が揃っていること。取り込み・再生可否・サムネイルの状態は
-// すべて videos の列として読めなければ、一覧が列を読むだけで描けない。
 func TestMigrateAddsCoreColumnsToVideos(t *testing.T) {
 	db := migratedDB(t)
 
@@ -369,8 +361,6 @@ func TestMigrateAddsCoreColumnsToVideos(t *testing.T) {
 		}
 	}
 
-	// 解析前は「再生できない」側に倒す。既定値がここで崩れると、
-	// 未解析の動画が再生できるものとして一覧に出てしまう。
 	if notNull, ok := got["playable"]; !ok || !notNull {
 		t.Error("playable が not null ではない")
 	}
@@ -382,8 +372,7 @@ func TestMigrateAddsCoreColumnsToVideos(t *testing.T) {
 	}
 }
 
-// playback_progress は「再構築できない利用者データ」なので、索引側の videos に
-// 引きずられて消えてはならない。外部キーを持たないこと自体が要件である。
+// Persistent progress must have no foreign key to rebuildable video rows.
 func TestPlaybackProgressHasNoForeignKeyToVideos(t *testing.T) {
 	db := migratedDB(t)
 
@@ -406,8 +395,6 @@ func TestPlaybackProgressHasNoForeignKeyToVideos(t *testing.T) {
 	}
 }
 
-// 動画を消しても再生位置が残ること。外部キーを張らない判断が、実際の削除で
-// 成立していることを確かめる。
 func TestDeletingVideoKeepsPlaybackProgress(t *testing.T) {
 	db := migratedDB(t)
 
@@ -436,8 +423,6 @@ func TestDeletingVideoKeepsPlaybackProgress(t *testing.T) {
 	}
 }
 
-// 同じ (kind, video_id) の未完了ジョブは1件だけ。再スキャンのたびにジョブを
-// 積んでも待ち行列が膨らまないことを、制約として持つ。
 func TestJobsPartialUniqueIndexRejectsSecondPendingJob(t *testing.T) {
 	db := migratedDB(t)
 
@@ -462,7 +447,7 @@ func TestJobsPartialUniqueIndexRejectsSecondPendingJob(t *testing.T) {
 		t.Error("queued があるのに running を積めてしまった")
 	}
 
-	// 完了した行は制約の対象外。同じ対象を再解析できなければならない。
+	// Finished jobs are excluded from the uniqueness constraint so content can be reprocessed.
 	if _, err := db.sql.Exec(`update jobs set state = 'done' where state = 'queued'`); err != nil {
 		t.Fatal(err)
 	}
@@ -471,7 +456,6 @@ func TestJobsPartialUniqueIndexRejectsSecondPendingJob(t *testing.T) {
 	}
 }
 
-// 動画を消すとジョブは連鎖して消える。ジョブは索引側のデータである。
 func TestDeletingVideoCascadesJobs(t *testing.T) {
 	db := migratedDB(t)
 
@@ -497,8 +481,6 @@ func TestDeletingVideoCascadesJobs(t *testing.T) {
 	}
 }
 
-// running なスキャンは同時に1件だけ。POST /api/scans が「実行中ならそれを返す」
-// 振る舞いは、この制約に依存している。
 func TestScansAllowOnlyOneRunning(t *testing.T) {
 	db := migratedDB(t)
 
@@ -515,7 +497,6 @@ func TestScansAllowOnlyOneRunning(t *testing.T) {
 		t.Error("running なスキャンが同時に2件作れてしまった")
 	}
 
-	// 終わったスキャンは何件あってもよい。履歴として残る。
 	if _, err := db.sql.Exec(`update scans set state = 'done' where state = 'running'`); err != nil {
 		t.Fatal(err)
 	}
@@ -527,7 +508,6 @@ func TestScansAllowOnlyOneRunning(t *testing.T) {
 	}
 }
 
-// 位置は負にならない。クライアントの申告をそのまま入れても壊れない最後の防壁。
 func TestPlaybackProgressRejectsNegativePosition(t *testing.T) {
 	db := migratedDB(t)
 
@@ -539,7 +519,6 @@ func TestPlaybackProgressRejectsNegativePosition(t *testing.T) {
 	}
 }
 
-// 00009 の Down で、表示の縦横比の列だけが消え、ほかの列と行は残る。
 func TestDisplayAspectRatioMigrationDown(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -549,7 +528,6 @@ func TestDisplayAspectRatioMigrationDown(t *testing.T) {
 	if _, ok := tableColumns(t, db, "videos")["display_aspect_ratio"]; !ok {
 		t.Fatal("videos に display_aspect_ratio 列が無い")
 	}
-	// 00010 以降を先に戻してから、検査対象の 00009 を戻す。
 	downTo(t, db, 9)
 	if err := Down(ctx, db); err != nil {
 		t.Fatalf("Down に失敗した: %v", err)
@@ -570,14 +548,11 @@ func TestDisplayAspectRatioMigrationDown(t *testing.T) {
 	}
 }
 
-// Down で 001 の状態へ戻ること。スキーマ変更を取り消せることは、
-// 適用を自動化している以上（起動時に適用する）必要な出口である。
 func TestMigrateDownReturnsToInitialSchema(t *testing.T) {
 	db := migratedDB(t)
 
 	downTo(t, db, 1)
 
-	// 002 が足した表は消えている。
 	for _, name := range []string{"playback_progress", "jobs", "scans"} {
 		var count int
 		if err := db.sql.QueryRow(
@@ -590,7 +565,6 @@ func TestMigrateDownReturnsToInitialSchema(t *testing.T) {
 		}
 	}
 
-	// 002 が足した列も消えている。
 	columns := tableColumns(t, db, "videos")
 	for _, name := range []string{"content_key", "probe_state", "thumbnail_state"} {
 		if _, ok := columns[name]; ok {
@@ -598,7 +572,6 @@ func TestMigrateDownReturnsToInitialSchema(t *testing.T) {
 		}
 	}
 
-	// 001 の表と索引は残っている。
 	for _, name := range []string{"videos", "videos_fts"} {
 		var count int
 		if err := db.sql.QueryRow(
@@ -622,7 +595,6 @@ func TestMediaFolderMigrationRejectsLossyDown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 00004 より後を戻してから、検査対象の 00003 を戻す。
 	downTo(t, db, 3)
 	if err := Down(ctx, db); err == nil {
 		t.Fatal("multiple locations were silently collapsed by Down")
@@ -636,8 +608,7 @@ func TestMediaFolderMigrationRejectsLossyDown(t *testing.T) {
 	}
 }
 
-// migrationsAbove は、埋め込み済みのマイグレーションのうち版 version より後の数と、
-// 最大の版を返す。マイグレーションを足すたびに数を書き換えずに済むようにする。
+// Derive migration counts from embedded versions so adding a migration needs no fixture-count edits.
 func migrationsAbove(t *testing.T, version int64) (int, int64) {
 	t.Helper()
 	fsys, err := fs.Sub(migrationsFS, "migrations")
@@ -663,7 +634,6 @@ func migrationsAbove(t *testing.T, version int64) (int, int64) {
 	return count, latest
 }
 
-// downTo は、記録された版が version になるまでマイグレーションを1つずつ戻す。
 func downTo(t *testing.T, db *DB, version int64) {
 	t.Helper()
 	ctx := context.Background()
@@ -681,7 +651,6 @@ func downTo(t *testing.T, db *DB, version int64) {
 	}
 }
 
-// migratedDB はマイグレーションを適用したデータベースを返す。
 func migratedDB(t *testing.T) *DB {
 	t.Helper()
 
@@ -695,12 +664,10 @@ func migratedDB(t *testing.T) *DB {
 		t.Fatalf("テスト用メディアフォルダを登録できない: %v", err)
 	}
 
-	// 検査はここに掛ける。個々のテストへ呼び出しを足すと、経路が増えるたびに
-	// 足し忘れが起き、不変条件を1件ずつ潰す元の状態へ戻る。
+	// Register invariant checks centrally so new fixture paths cannot omit them.
 	return checkInvariants(t, db)
 }
 
-// tableColumns は列名から「not null かどうか」への対応を返す。
 func tableColumns(t *testing.T, db *DB, table string) map[string]bool {
 	t.Helper()
 
@@ -725,9 +692,7 @@ func tableColumns(t *testing.T, db *DB, table string) map[string]bool {
 	return columns
 }
 
-// 失敗理由のコードの移行（00016）は、移行前に入れた日本語の理由をそのまま残し、
-// コードは null のままにする。コードの列を持つ
-// 読み出しでも、その行は理由だけを返す。Down は列だけを外し、理由は残す。
+// Preserve legacy error text exactly and leave new reason codes NULL; rollback removes only the added columns.
 func TestFailureCodesMigrationKeepsExistingReasons(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {

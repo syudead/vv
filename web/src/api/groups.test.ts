@@ -46,7 +46,6 @@ const group = {
   tags: [],
 };
 
-/** holdSnapshot はライブラリの一覧の控えを 1 つ置く（動画ページへ離れたときと同じ）。 */
 function holdSnapshot() {
   saveListSnapshot({ query: "" }, { items: [], total: 0, hasMore: false, scrollY: 0 });
 }
@@ -133,7 +132,6 @@ describe("groups API", () => {
       { url: "/api/groups/7/items/11/move", method: "POST", body: {} },
       { url: "/api/groups/7", method: "DELETE", body: undefined },
       { url: "/api/groups/7/tag", method: "POST", body: undefined },
-      // タグ化の後は共有のタグの一覧を取り直す（タグが増えるか、本数が変わる）。
       { url: "/api/tags", method: "GET", body: undefined },
     ]);
   });
@@ -231,7 +229,6 @@ describe("groups API", () => {
   });
 
   it("listAllGroups はページの数で打ち切らず nextCursor が尽きるまで辿る", async () => {
-    // 200 件のページを 101 回（2 万件を超える）。
     const pages = 101;
     const fetchMock = vi.fn<typeof fetch>((input) => {
       const cursor = new URL(String(input), "http://x").searchParams.get("cursor");

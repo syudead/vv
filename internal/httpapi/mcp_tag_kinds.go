@@ -9,11 +9,8 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// タグの種類の MCP のツール。他のツールと
-// 同じく、外部連携 API の同じ操作を call で呼ぶ。本文を取るツールは入力をそのまま REST へ渡す
-// （mcp_work_info.go の post と同じ。id の null と省略を REST と同じく見分ける）。
+// Forward raw tag-kind inputs to REST to preserve null versus omitted IDs.
 
-// registerTagKinds は list_tag_kinds・create_tag_kind・rename_tag_kind・delete_tag_kinds を載せる。
 func (t *mcpTools) registerTagKinds(server *mcp.Server) {
 	destructive, notDestructive := true, false
 

@@ -4,49 +4,33 @@ import { parseGroupId } from "../groups/groupPaths";
 import { t } from "../i18n";
 import { LIBRARY_PATH } from "../library/libraryPath";
 
-// スマートフォルダのページが URL と応答から決める規則。親は保存されているので、グループのページのような `?trail` は無い。
+// Parents are persisted, so smart-folder URLs need no group-style trail query.
 
-/** parseSmartFolderId は経路の id を正の整数として読む。読めなければ null（無いフォルダ）。 */
 export const parseSmartFolderId = parseGroupId;
 
-/** smartFolderPagePath はスマートフォルダのページの場所である。 */
 export function smartFolderPagePath(id: number): string {
   return `/smart-folders/${String(id)}`;
 }
 
-/**
- * smartFolderParentPath はフォルダを消した後に移る場所である。応答の `trail` の最後（親）の
- * ページ、親が無ければライブラリ。
- */
+/** After deletion, navigate to the response's final ancestor or the library. */
 export function smartFolderParentPath(trail: readonly GroupRef[]): string {
   const parent = trail.at(-1);
   return parent === undefined ? LIBRARY_PATH : smartFolderPagePath(parent.id);
 }
 
-/** SMART_FOLDER_PARAM は動画ページを開いたスマートフォルダの id を載せる問い合わせの名前である。 */
 const SMART_FOLDER_PARAM = "smartFolder";
 
-/**
- * smartFolderContextOf は動画ページの URL の問い合わせから、動画を開いたスマートフォルダの id を
- * 読む。無いか正の整数でなければ undefined（読み取りに `smartFolder` を渡さない）。
- */
+/** Omit absent or invalid smart-folder context from requests. */
 export function smartFolderContextOf(search: string): number | undefined {
   const raw = new URLSearchParams(search).get(SMART_FOLDER_PARAM);
   return parseSmartFolderId(raw ?? undefined) ?? undefined;
 }
 
-/**
- * videoInSmartFolderPath はスマートフォルダ `folderId` のページから開く動画ページの場所である。
- * `?smartFolder` で再生画面の `Up next` がフォルダの再生順に従う。
- */
+/** Pass smartFolder so Up next follows the folder's playback order. */
 export function videoInSmartFolderPath(videoId: number, folderId: number): string {
   return `/videos/${String(videoId)}?${SMART_FOLDER_PARAM}=${String(folderId)}`;
 }
 
-/**
- * smartFolderCrumbs は道筋の帯の段である。「Library」、応答の `trail` の各祖先（そのページへの
- * リンク、外側から）、開いているフォルダの名前（現在地、リンクにしない）の順。
- */
 export function smartFolderCrumbs(trail: readonly GroupRef[], name: string): Crumb[] {
   return [
     { label: t.library.title, to: LIBRARY_PATH },

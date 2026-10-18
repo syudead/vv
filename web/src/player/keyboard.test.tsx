@@ -66,7 +66,6 @@ describe("useKeyboardShortcuts", () => {
     const escape = fireEvent.keyDown(screen.getByTestId("plain"), { key: "Escape" });
     expect(controls.togglePlay).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
-    // 既定の動作（欄への入力、編集画面の Esc）を止めない。
     expect(space).toBe(true);
     expect(escape).toBe(true);
 
@@ -112,7 +111,6 @@ describe("useKeyboardShortcuts", () => {
     fireEvent.keyDown(screen.getByRole("button"), { key: " " });
     fireEvent.keyDown(screen.getByRole("link"), { key: " " });
     expect(controls.togglePlay).not.toHaveBeenCalled();
-    // ボタンの上でも Space 以外のキーは効く。
     fireEvent.keyDown(screen.getByRole("button"), { key: "m" });
     expect(controls.toggleMute).toHaveBeenCalledTimes(1);
   });
@@ -167,7 +165,7 @@ describe("useKeyboardShortcuts", () => {
   });
 
   it("プレイヤーの操作が描かれた直後の Esc から、全画面を見て閉じない", () => {
-    // 描画の確定と同時に押された Esc を、後に並ぶ部品のレイアウト効果で再現する。
+    // Reproduce Escape at commit time from a later component's layout effect.
     function EscapeOnCommit({ when }: { when: boolean }) {
       useLayoutEffect(() => {
         if (when) fireEvent.keyDown(document.body, { key: "Escape" });
@@ -211,7 +209,6 @@ describe("useKeyboardShortcuts", () => {
       fireEvent.keyDown(content, { key: "Escape" });
       expect(onClose).not.toHaveBeenCalled();
 
-      // ツールチップは吹き出しに含めない。出ていても Esc で閉じる。
       content.setAttribute("role", "tooltip");
       fireEvent.keyDown(document.body, { key: "Escape" });
       expect(onClose).toHaveBeenCalledTimes(1);
@@ -260,7 +257,6 @@ describe("useKeyboardShortcuts", () => {
       expect(controls.toggleMute).not.toHaveBeenCalled();
       expect(controls.toggleSubtitles).not.toHaveBeenCalled();
       expect(controls.seekTo).not.toHaveBeenCalled();
-      // Esc は吹き出しに任せ、画面も閉じない。
       fireEvent.keyDown(retry, { key: "Escape" });
       expect(onClose).not.toHaveBeenCalled();
     } finally {

@@ -1,20 +1,15 @@
 import { en } from "./en";
 import type { UiText } from "./uiText";
 
-/**
- * MessageSource はカタログの形である。言語を足すときは、この型を満たすオブジェクトを
- * 書くので、鍵の漏れと引数の食い違いは型検査で落ちる。
- */
+/** New catalogs must satisfy this type so missing keys and mismatched arguments fail compilation. */
 export type MessageSource = typeof en;
 
-/** Catalog は文言の葉をすべて UiText（関数なら UiText を返す関数）にした形である。 */
 export type Catalog<T> = T extends string
   ? UiText
   : T extends (...args: infer A) => string
     ? (...args: A) => UiText
     : { readonly [K in keyof T]: Catalog<T[K]> };
 
-/** Messages はコンポーネントが引くカタログの型である。 */
 export type Messages = Catalog<MessageSource>;
 
 type Node = { [key: string]: unknown };
@@ -42,24 +37,16 @@ function assignTree(target: Node, source: Node): void {
 }
 
 /**
- * t は今の言語のカタログである。言語は起動時に決まる 1 つの定数なので、React の
- * context や provider を挟まず、コンポーネントはこれを静的に import する。
- *
- * 実行時の値は文字列と文字列を返す関数で、型だけを UiText にする（ブランドは型の上の
- * 印である）。
+ * The startup-fixed locale needs no React provider; import t directly. UiText branding is type-
+ * only, with strings and functions at runtime.
  */
 export const t = cloneTree(en) as unknown as Messages;
 
-/**
- * replaceMessages はカタログの中身を置き換える。入れ子のオブジェクトはそのまま使い、
- * 葉だけを差し替えるので、枝を変数に取ったコンポーネントにも届く。疑似ロケール
- * （pseudo.ts）への差し替えのためだけにある。テスト専用。
- */
+/** Test-only replacement preserves nested object identities so cached branches see updated leaves. */
 export function replaceMessages(source: MessageSource): void {
   assignTree(t as unknown as Node, source as unknown as Node);
 }
 
-/** mapMessages は葉を変えたカタログの写しを作る（pseudo.ts が使う）。 */
 export function mapMessages(
   source: MessageSource,
   mapText: (text: string) => string,
@@ -79,5 +66,4 @@ export function mapMessages(
   return walk(source as unknown as Node) as unknown as MessageSource;
 }
 
-/** englishMessages は英語のカタログの元である（疑似ロケールを戻すときに使う）。 */
 export const englishMessages: MessageSource = en;

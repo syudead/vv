@@ -17,7 +17,7 @@ import {
 } from "../testing/workInfoFetchPage";
 import type { PlayerControls } from "./playerControls";
 
-// 取得のダイアログの作品の詳細の行と結果の段。行の状態の細かな場合分けは detailRows.test.ts が見る。
+// detailRows.test.ts covers individual comparison states.
 
 vi.mock("./VideoPlayer", () => ({
   default: function VideoPlayerMock(props: {
@@ -57,7 +57,6 @@ function performer(
   return { role: "performer", name, externalIds: [], match };
 }
 
-/** chip は取得した側のチップを名前（title）で引く。 */
 function chip(dialog: HTMLElement, name: string) {
   const found = within(dialog)
     .getAllByTitle(name)
@@ -74,7 +73,6 @@ describe("VideoPage work-info fetch details", () => {
 
   it("題名とタグだけの結果は今までどおり 2 行で比べる", async () => {
     const { dialog } = await fetchById();
-    // 2 行の選択と、動画にまだ無いタグ「新しい」の選択である。
     expect(within(dialog).getAllByRole("checkbox")).toHaveLength(3);
     expect(checkbox(dialog, "Title")).toHaveProperty("ariaChecked", "true");
     expect(checkbox(dialog, "Tags")).toHaveProperty("ariaChecked", "true");
@@ -127,7 +125,6 @@ describe("VideoPage work-info fetch details", () => {
     expect(performers).toHaveProperty("ariaChecked", "true");
     expect(chip(dialog, "新しい人").textContent).toBe("新しい人, New");
     expect(chip(dialog, "同名の人").textContent).toBe("同名の人, Not linked");
-    // 既存の実体に当たった件はその今の名前で出し、結び付かない件は数えない。
     expect(chip(dialog, "既存の人").textContent).toBe("既存の人");
     expect(within(dialog).getByText("2 new")).toBeDefined();
   });

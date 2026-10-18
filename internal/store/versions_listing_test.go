@@ -8,10 +8,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 一覧・検索・フォルダ・グループで集まりを実効の代表の 1 件に畳む
-//
-
-// libraryItemIDs は ListLibrary の全ページの項目を、動画は id、グループはメンバーの id で返す。
 func libraryItemIDs(t *testing.T, db *DB, audience domain.Audience, q domain.VideoQuery) []int64 {
 	t.Helper()
 	var ids []int64
@@ -26,7 +22,6 @@ func libraryItemIDs(t *testing.T, db *DB, audience domain.Audience, q domain.Vid
 	return ids
 }
 
-// listedPage は ListVideos の 1 ページ（全件）を返す。
 func listedPage(t *testing.T, db *DB, audience domain.Audience, q domain.VideoQuery) domain.VideoPage {
 	t.Helper()
 	q.Limit = domain.MaxLimit
@@ -37,9 +32,6 @@ func listedPage(t *testing.T, db *DB, audience domain.Audience, q domain.VideoQu
 	return page
 }
 
-// A（タグ X）と B（タグ Y）を A を代表に束ねると、ListLibrary・ListVideos に A の 1 件だけが出て
-// total が 1 になり、タグ Y で絞っても出ない（受け入れ条件 6）。CountVideos・タグの本数も
-// 代表の 1 本で数え、GetVideo は代表以外の B も返す。
 func TestBundledVersionsFoldToTheRepresentative(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -96,8 +88,6 @@ func TestBundledVersionsFoldToTheRepresentative(t *testing.T) {
 	}
 }
 
-// B の題名にだけ含まれる語で検索すると、代表 A の 1 件が出る（受け入れ条件 10）。一覧の題名は
-// 代表の所在のもので、式は集まりのどれか 1 つの所在で真になれば当たる。
 func TestSearchMatchesAnyVersionOfTheBundle(t *testing.T) {
 	db := migratedDB(t)
 	paths := upsertAll(t, db,
@@ -117,7 +107,7 @@ func TestSearchMatchesAnyVersionOfTheBundle(t *testing.T) {
 			t.Errorf("%q の ListLibrary = %v", query, got)
 		}
 	}
-	// 式は所在 1 行に対して評価するので、別々のバージョンの題名の語を AND しても当たらない。
+	// AND terms cannot be satisfied by different version locations.
 	if got := listedIDs(t, db, domain.VideoQuery{Query: "bravo alpha"}); len(got) != 0 {
 		t.Errorf("bravo alpha の ListVideos = %v, want なし", got)
 	}
@@ -129,9 +119,6 @@ func TestSearchMatchesAnyVersionOfTheBundle(t *testing.T) {
 	}
 }
 
-// A と B が別のフォルダにあり A が代表のとき、B のフォルダに B は出ず、A のフォルダに A が出る。
-// 代表以外だけのフォルダは動画の無いフォルダで、代表以外はフォルダのグループに入らない
-// （受け入れ条件 11）。束ねる・外すと同じ取引で索引を作り直す（R-4）。
 func TestBundledVersionsLeaveFoldersAndGroups(t *testing.T) {
 	db, ids := folderFixture(t,
 		sampleFile(fixturePath("/media/A/a.mp4"), "a", "key-a", 1, 0),
@@ -201,7 +188,7 @@ func TestBundledVersionsLeaveFoldersAndGroups(t *testing.T) {
 	if slices.Contains(candidateIDs(candidates), b) {
 		t.Errorf("関連動画の候補に代表以外のバージョンがある: %+v", candidates)
 	}
-	// 代表以外のバージョン B を開いたときは、B 自身を含め、同じ集まりの代表 A と E は除く。
+	// When opening a nonrepresentative version, include it as self and exclude its other bundle versions.
 	fromB, err := db.Library().RelatedCandidates(ctx, domain.AudienceOwner, b)
 	if err != nil {
 		t.Fatal(err)
@@ -210,7 +197,6 @@ func TestBundledVersionsLeaveFoldersAndGroups(t *testing.T) {
 		t.Errorf("B から見た関連動画の候補 = %v, want B を含み A・E を含まない", got)
 	}
 
-	// B を外すと同じ取引で索引を作り直し、B は B のフォルダに戻る。
 	if _, err := db.Versions().Unbundle(ctx, b); err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +208,6 @@ func TestBundledVersionsLeaveFoldersAndGroups(t *testing.T) {
 	}
 }
 
-// groupedVideos は索引のグループに入っている動画の id の集合を返す。
 func groupedVideos(t *testing.T, db *DB) map[int64]bool {
 	t.Helper()
 	out := map[int64]bool{}
@@ -234,8 +219,6 @@ func groupedVideos(t *testing.T, db *DB) map[int64]bool {
 	return out
 }
 
-// 代表を B に替えると 1 件の題名とサムネイル（内容）が B のものになり、タグは変わらない
-// （受け入れ条件 8）。
 func TestMakeRepresentativeChangesTheListedItem(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -259,8 +242,6 @@ func TestMakeRepresentativeChangesTheListedItem(t *testing.T) {
 	}
 }
 
-// 代表の所在が消えると残っているバージョンが 1 件として出て、全部消えると出ない（Edge Case
-// 「代表のファイルが消えても」）。値は集まりのまま。
 func TestRepresentativeFallsBackWhenItsFileIsGone(t *testing.T) {
 	db, ids := versionFixture(t)
 	x := attachNamedTag(t, db, "X", ids["a"])
@@ -286,8 +267,6 @@ func TestRepresentativeFallsBackWhenItsFileIsGone(t *testing.T) {
 	}
 }
 
-// ゲストには、公開した集まりが代表の 1 件として見える（受け入れ条件 12）。代表以外の B も
-// GetVideo で引ける。
 func TestGuestSeesThePublicBundleAsOneItem(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()

@@ -12,11 +12,10 @@ import (
 	"github.com/syudead/vv/internal/scanner"
 )
 
-// 変わったディレクトリだけを読む監視の走査を、本物の保存層と走査でつなぐ
-//
+// Verify scoped watcher scans through the real scanner and store.
 
-// 1回の走査の範囲の中で、2つのディレクトリの間を移した動画は、id・タグ・再生位置を保つ。
-// 範囲の外の所在は、ファイルが消えていても変わらない。
+// Moves inside the scan scope retain IDs, tags, and playback position; missing files outside it
+// remain untouched.
 func TestWatchScanKeepsVideoMovedBetweenDirtyDirectories(t *testing.T) {
 	ctx, db, mediaDir := openTestDB(t)
 	for name, content := range map[string]string{
@@ -62,7 +61,6 @@ func TestWatchScanKeepsVideoMovedBetweenDirtyDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// a から b へ移し、範囲の外 c のファイルは消す。
 	if err := os.Rename(moviePath, filepath.Join(mediaDir, "b", "movie.mp4")); err != nil {
 		t.Fatal(err)
 	}

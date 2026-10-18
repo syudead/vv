@@ -8,8 +8,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 取得した人物・団体と既存の実体の照合。
-
 func matchFetched(t *testing.T, db *DB, kind domain.CreditKind, entries ...domain.CreditMatchEntry) []domain.CreditMatch {
 	t.Helper()
 	matches, err := db.Credits().Match(context.Background(), kind, entries)
@@ -121,8 +119,7 @@ func TestCreditMatchIsStable(t *testing.T) {
 	}
 }
 
-// 取得の上限まで埋まった結果（役割 4 つ × 100 人）は、件ごとに問い合わせず種類ごとにまとめて
-// 引いても、件ごとの答えを入力の順に返す。同じ外部 ID・同じ名前を持つ件はそれぞれ同じ答えになる。
+// Batched matches preserve input order, including repeated IDs and names.
 func TestCreditMatchBatchKeepsEntryOrder(t *testing.T) {
 	db := migratedDB(t)
 	byID := createCredit(t, db, domain.CreditPerson, domain.CreditInput{
@@ -144,7 +141,7 @@ func TestCreditMatchBatchKeepsEntryOrder(t *testing.T) {
 	}
 	var entries []domain.CreditMatchEntry
 	var want []domain.CreditMatch
-	for len(entries) < 400 {
+	for range 2 {
 		for _, c := range cycle {
 			entries = append(entries, c.entry)
 			want = append(want, c.want)

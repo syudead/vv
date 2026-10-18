@@ -8,93 +8,60 @@ import (
 	"strings"
 )
 
-// FolderIndexVersion はフォルダの索引（グループの割り当てと動画ごとの祖先
-// フォルダ名）を作る規則の版である。BuildFolderIndex か FolderKey の規則を
-// 変えたら上げる。起動時に保存した版と違えば索引を作り直す
-//
-// 2: 束ねた動画の代表以外のバージョンの所在を索引に入れない
-// 規則に合わせて作り直す。
-// 3: 自動グループを最初の起動で
-// フォルダとそろえる。
+// Bump FolderIndexVersion when BuildFolderIndex or FolderKey rules change; startup rebuilds mismatched persisted indexes.
 const FolderIndexVersion = 3
 
-// FolderGroupMode はフォルダごとの例外である。値は保存する
-// folder_group_overrides.mode と同じ。
 type FolderGroupMode string
 
 const (
-	// FolderGroupUngroup は「まとめを解除」。そのフォルダをグループにしない。
 	FolderGroupUngroup FolderGroupMode = "ungroup"
-	// FolderGroupDirect は「直下をまとめる」。子フォルダがあっても、登録フォルダ
-	// そのものでも、直下の動画をグループにする。
+	// FolderGroupDirect includes roots and folders with child directories.
 	FolderGroupDirect FolderGroupMode = "group_direct"
 )
 
-// Valid は既知の値かどうかを返す。
 func (m FolderGroupMode) Valid() bool {
 	return m == FolderGroupUngroup || m == FolderGroupDirect
 }
 
-// FolderGrouping はフォルダ1つのまとめ方の今の状態である
 type FolderGrouping struct {
-	// Mode はそのフォルダに付いた例外。例外が無ければ空（自動）である。
+	// An empty Mode selects automatic grouping.
 	Mode FolderGroupMode
-	// GroupID はそのフォルダの自動グループ（groups.origin_folder がそのフォルダ）の id である。
-	// 無ければ 0。
+	// GroupID is zero without an automatic group for this folder.
 	GroupID int64
 }
 
-// FolderIndexLocation は索引を作るのに要る所在1件である。
 type FolderIndexLocation struct {
 	VideoID int64
-	// Path は所在の絶対パス。
-	Path string
+	Path    string
 }
 
-// FolderGroupAssignment は1つのグループである。
 type FolderGroupAssignment struct {
-	// Key はフォルダを指す鍵（FolderKey）。グループの同一性はこれで決める。
 	Key string
-	// Path はフォルダの絶対パスの綴り。そのフォルダの下の所在のうちパスの最小の
-	// ものから取る。登録フォルダそのものなら登録フォルダのパスである。
-	Path string
-	// Name はフォルダ名（FolderName と同じ最後の段）。
-	Name string
-	// TitleKey は題名順の並べ替えの鍵（NaturalSortKey(Name)）。
+	// Path uses the first location's spelling, or the registered path for a root.
+	Path     string
+	Name     string
 	TitleKey string
-	// VideoIDs はメンバーの動画 id をグループの中の並びで持つ。
 	VideoIDs []int64
 }
 
-// FolderIndex はフォルダの索引の中身である。
 type FolderIndex struct {
-	// Groups はグループを Key の順に持つ。1本の動画は多くても1つのグループに入る。
+	// Groups is key-sorted; each video belongs to at most one group.
 	Groups []FolderGroupAssignment
-	// FolderNames は動画ごとの祖先フォルダ名（NormalizeTagName を通したもの）を、
-	// 重複を除いて名前の順に持つ。名前の無い動画は入らない。
+	// FolderNames contains normalized, unique, sorted ancestor names; videos without names are omitted.
 	FolderNames map[int64][]string
-	// Folders は直下に所在を持つフォルダすべてを Key の順に持つ。規則がグループにしない
-	// フォルダも入る。自動グループの同期（PlanFolderGroupSync）の入力である。
+	// Folders includes ungrouped folders with direct locations, key-sorted for PlanFolderGroupSync.
 	Folders []FolderVideos
 }
 
-// FolderVideos は直下に所在を持つフォルダ1つである。
 type FolderVideos struct {
-	// Key はフォルダを指す鍵（FolderKey）。
-	Key string
-	// Name はフォルダ名（FolderGroupAssignment.Name と同じ）。
-	Name string
-	// Grouped は 017 の規則がこのフォルダをグループにするかどうかである。
+	Key     string
+	Name    string
 	Grouped bool
-	// VideoIDs は直下の動画の id をファイル名の自然順に持つ。代表の所在に限らず、
-	// 所在のどれかが直下にある動画をすべて、1度ずつ持つ
-	//
+	// VideoIDs includes each directly located video once, in natural filename order, regardless of representative location.
 	VideoIDs []int64
 }
 
-// FolderKey はフォルダの絶対パスを、フォルダを同一視する鍵にする。末尾の区切りを
-// 落とし、Windows では `/` を `\` にそろえて ASCII の大文字小文字を畳む。登録
-// フォルダの判定（LocateVideoFolder）と同じ区切りと大文字小文字の規則である。
+// FolderKey strips trailing separators and normalizes Windows separators and ASCII case consistently with LocateVideoFolder.
 func FolderKey(path string) string {
 	return folderKeyFor(path, runtime.GOOS == "windows", filepath.Separator)
 }
@@ -107,34 +74,26 @@ func folderKeyFor(path string, windows bool, separator rune) string {
 	return key
 }
 
-// BuildFolderIndex は、登録フォルダ・その下の所在・例外（FolderKey → mode）から、
-// グループの割り当てと動画ごとの祖先フォルダ名を作る
-//
-// locations のうちどの登録フォルダの下にも無いものは使わない。順番は問わない。
+// BuildFolderIndex accepts unordered locations and ignores those outside registered roots.
 func BuildFolderIndex(roots []MediaFolder, locations []FolderIndexLocation, overrides map[string]FolderGroupMode) FolderIndex {
 	return buildFolderIndexFor(roots, locations, overrides, runtime.GOOS == "windows", filepath.Separator)
 }
 
-// folderIndexLocation は登録フォルダの下にあると分かった所在1件である。
 type folderIndexLocation struct {
 	videoID int64
 	path    string
 	root    MediaFolder
-	// dirs は登録フォルダそのもの（深さ 0）から所在の親フォルダまでの、各段の
-	// フォルダの絶対パスの綴り。
-	dirs []string
-	// segments は登録フォルダより下の段で、最後はファイル名である。
+	// dirs spans the registered root (depth zero) through the location's parent.
+	dirs     []string
 	segments []string
 }
 
-// folderState はフォルダ1つについて集めたものである。
 type folderState struct {
-	path     string
-	root     MediaFolder
-	rel      string
-	hasChild bool
-	direct   []siblingEntry
-	// located は所在のどれかが直下にある動画で、1本につき最初の所在の1件である。
+	path        string
+	root        MediaFolder
+	rel         string
+	hasChild    bool
+	direct      []siblingEntry
 	located     []siblingEntry
 	locatedSeen map[int64]struct{}
 }
@@ -152,8 +111,7 @@ func buildFolderIndexFor(roots []MediaFolder, locations []FolderIndexLocation, o
 			placed = append(placed, entry)
 		}
 	}
-	// パスのバイト順に並べる。動画ごとに最初に出た所在が代表の所在になり、
-	// フォルダごとに最初に出た所在からフォルダの綴りを取る。
+	// Byte-sorted paths choose each video's representative and each folder's spelling deterministically.
 	slices.SortFunc(placed, func(a, b folderIndexLocation) int {
 		if order := strings.Compare(a.path, b.path); order != 0 {
 			return order
@@ -180,7 +138,6 @@ func buildFolderIndexFor(roots []MediaFolder, locations []FolderIndexLocation, o
 	names := map[int64][]string{}
 	for _, entry := range placed {
 		parent := len(entry.dirs) - 1
-		// 親より上の段は、子フォルダの下に所在を持つ。
 		for depth := range parent {
 			folderOf(entry, depth).hasChild = true
 		}
@@ -197,7 +154,7 @@ func buildFolderIndexFor(roots []MediaFolder, locations []FolderIndexLocation, o
 			represented[entry.videoID] = struct{}{}
 			parentState.direct = append(parentState.direct, siblingEntry{id: entry.videoID, name: fileName})
 		}
-		// 祖先フォルダ名は、代表に限らずすべての所在から取る。
+		// Ancestor names come from all locations, not just representatives.
 		for _, segment := range entry.segments[:len(entry.segments)-1] {
 			name, err := NormalizeTagName(segment)
 			if err != nil {
@@ -232,7 +189,6 @@ func buildFolderIndexFor(roots []MediaFolder, locations []FolderIndexLocation, o
 	return index
 }
 
-// groupsFolder はフォルダがグループになるかを決める
 func groupsFolder(key string, state *folderState, overrides map[string]FolderGroupMode, rootKeys map[string]struct{}) bool {
 	if len(state.direct) < 2 {
 		return false
@@ -245,7 +201,6 @@ func groupsFolder(key string, state *folderState, overrides map[string]FolderGro
 	return !state.hasChild && !isRoot
 }
 
-// placeLocation は所在を含む登録フォルダを探し、各段のフォルダの綴りを求める。
 func placeLocation(roots []MediaFolder, location FolderIndexLocation, separators string, windows bool) (folderIndexLocation, bool) {
 	for _, root := range roots {
 		rest, ok := pathBelowRoot(root.Path, location.Path, separators, windows)
@@ -261,7 +216,6 @@ func placeLocation(roots []MediaFolder, location FolderIndexLocation, separators
 			}
 			if i > start {
 				if len(entry.segments) > 0 {
-					// 前の段までを1つのフォルダとして記録する。
 					entry.dirs = append(entry.dirs, location.Path[:offset+previousEnd])
 				}
 				entry.segments = append(entry.segments, rest[start:i])
@@ -270,7 +224,7 @@ func placeLocation(roots []MediaFolder, location FolderIndexLocation, separators
 			start = i + 1
 		}
 		if len(entry.segments) == 0 {
-			// 登録フォルダそのものを指す所在はファイルではない。
+			// A location pointing to the root itself is not a file.
 			return folderIndexLocation{}, false
 		}
 		return entry, true
@@ -278,7 +232,6 @@ func placeLocation(roots []MediaFolder, location FolderIndexLocation, separators
 	return folderIndexLocation{}, false
 }
 
-// sortedSiblingIDs は同じディレクトリの動画の id を compareSiblings の順に返す。
 func sortedSiblingIDs(entries []siblingEntry) []int64 {
 	sorted := slices.Clone(entries)
 	slices.SortFunc(sorted, compareSiblings)
@@ -294,8 +247,7 @@ type siblingEntry struct {
 	name string
 }
 
-// compareSiblings は同じディレクトリの動画を全順序で比べる。ファイル名の
-// 自然順、次にバイト順、最後に id の小さい方を先にする。
+// compareSiblings breaks natural filename ties by bytes, then video ID.
 func compareSiblings(a, b siblingEntry) int {
 	if order := CompareNatural(a.name, b.name); order != 0 {
 		return order

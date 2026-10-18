@@ -5,23 +5,15 @@ import { formatDateTime, formatRelative, t } from "../i18n";
 import { VideoThumbnail, VideoThumbnailDuration } from "../ui/VideoThumbnail";
 import FolderArt from "../videoList/FolderArt";
 
-/** playlistPath はプレイリストの画面の場所である。 */
 export function playlistPath(id: number): string {
   return `/playlists/${String(id)}`;
 }
 
-/**
- * PlaylistCard はプレイリストの一覧の格子でプレイリストを 1 枚で出すカードである。ライブラリのグループのカード
- * （GroupCard）と同じ箱で、サムネイルの枠にはフォルダの絵柄（FolderArt）を、先頭の見せる項目の
- * サムネイル（`covers`）で描き、右下の面に項目の数を重ねる。空のプレイリストは絵柄の背板だけになる。
- * 名前の下に最後に変えた時刻を出す。カード全体がプレイリストの画面への 1 つのリンクである。
- */
 export function PlaylistCard({
   playlist,
   linkRef,
 }: {
   playlist: PlaylistSummary;
-  /** 作った直後にフォーカスを移すためのリンクの ref。 */
   linkRef?: (node: HTMLAnchorElement | null) => void;
 }) {
   return (
@@ -37,8 +29,7 @@ export function PlaylistCard({
       >
         <VideoThumbnail>
           <FolderArt previews={playlist.covers ?? []} />
-          {/* 項目の数は、グループのカードの本数と同じ面で右下に重ねる。前に出たサムネイルより
-              上に置き、絵柄の下見の操作を妨げない。 */}
+          {/* Keep the count above the front cover without intercepting preview interactions. */}
           <VideoThumbnailDuration className="pointer-events-none z-20">
             <span>{t.playlists.items(playlist.itemCount)}</span>
           </VideoThumbnailDuration>

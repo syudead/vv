@@ -11,8 +11,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// LocalAppData は利用者の %LOCALAPPDATA% のパスを返す。環境変数ではなく既知の
-// フォルダとして読む。
+// LocalAppData uses the known-folder API rather than an environment variable.
 func LocalAppData() (string, error) {
 	path, err := windows.KnownFolderPath(windows.FOLDERID_LocalAppData, 0)
 	if err != nil {
@@ -21,8 +20,7 @@ func LocalAppData() (string, error) {
 	return path, nil
 }
 
-// TempDir は一時フォルダの長い形のパスを返す。GetTempPath は 8.3 の短い名前
-// （RUNNER~1 など）を返すことがあり、そのままでは exe のパスと比べられない。
+// Expand 8.3 temporary paths before comparing against the executable path.
 func TempDir() string {
 	dir := filepath.Clean(os.TempDir())
 	long, err := longPathName(dir)
@@ -50,16 +48,14 @@ func longPathName(path string) (string, error) {
 	}
 }
 
-// FileExists は path がフォルダでないファイルとしてあるかを返す。
 func FileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
 }
 
-// ErrNoWebView2 は WebView2 ランタイムが入っていないことを表す。
 var ErrNoWebView2 = errors.New("the Microsoft Edge WebView2 Runtime is not installed")
 
-// WebView2Version は入っている WebView2 ランタイムの版を返す。無ければ ErrNoWebView2 を返す。
+// WebView2Version returns ErrNoWebView2 when the runtime is absent.
 func WebView2Version() (string, error) {
 	version, err := webviewloader.GetAvailableCoreWebView2BrowserVersionString("")
 	if err != nil {
@@ -71,8 +67,7 @@ func WebView2Version() (string, error) {
 	return version, nil
 }
 
-// ShowError は Windows 標準のダイアログ（題名 VVMDM、OK だけ）で text を示し、
-// 閉じられるまで待つ。
+// ShowError blocks until the standard Windows dialog closes.
 func ShowError(text string) {
 	title, _ := windows.UTF16PtrFromString(AppName)
 	body, err := windows.UTF16PtrFromString(text)
@@ -82,10 +77,8 @@ func ShowError(text string) {
 	_, _ = windows.MessageBox(0, body, title, windows.MB_OK|windows.MB_ICONERROR|windows.MB_SETFOREGROUND)
 }
 
-// JoinKillOnCloseJob は自分のプロセスを JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE の
-// ジョブオブジェクトに入れる。子プロセス（ffmpeg・ffprobe）も同じ
-// ジョブに入るので、このプロセスが強制終了されても子が残らない。ジョブのハンドルは
-// プロセスの終わりまで閉じない（閉じるとジョブの全てのプロセスが終わる）。
+// Keep the kill-on-close job handle until process exit so forced termination also kills
+// ffmpeg/ffprobe children; closing it earlier would kill the application too.
 func JoinKillOnCloseJob() error {
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {

@@ -12,10 +12,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインの検索・取得・反映の判断。保存先の取引の中の読み直しと書き込みは internal/store のテストが本物の
-// SQLite で確かめる。
+// Test plugin orchestration; store tests cover transactional revalidation and writes against SQLite.
 
-// runPluginStore はプラグインを id で持つ保存先である。登録の書き込みは使わない。
+// Read-only plugin lookup for execution tests.
 type runPluginStore struct {
 	fakePluginStore
 	plugins map[int64]*domain.WorkInfoPlugin
@@ -37,8 +36,7 @@ func (s *runPluginStore) WorkInfoPluginModule(ctx context.Context, id int64) (do
 	return plugin, []byte("module " + plugin.Digest), nil
 }
 
-// recordingRuntime は実行の要求を記録し、決めた結果を返す。本物の実行と同じく、stderr を標準エラーとした
-// 実行のログを record に渡す。
+// Record requests and pass stderr logs to the callback as the real runtime does.
 type recordingRuntime struct {
 	fakePluginRuntime
 	requests  []domain.WorkInfoRunRequest
@@ -48,7 +46,7 @@ type recordingRuntime struct {
 	err       error
 	stderr    string
 	truncated bool
-	// recordErrs は record が返した誤りである。本物の実行はサーバーのログに残すだけで、結果を変えない。
+	// Log persistence failures do not change execution results.
 	recordErrs []error
 }
 
@@ -79,7 +77,7 @@ func (v fakeVideos) GetVideo(_ context.Context, _ domain.Audience, id int64) (do
 	return domain.Video{ID: id}, nil
 }
 
-// fakeFetchApplier は動画の表示名とタグを持ち、本物の保存先と同じく、プラグインの行を読み直してから書く。
+// Reread plugin state before writes, matching transactional store behavior.
 type fakeFetchApplier struct {
 	plugins  *runPluginStore
 	titles   map[int64]string
@@ -88,7 +86,7 @@ type fakeFetchApplier struct {
 	skipped  []domain.SkippedWorkInfoValue
 	err      error
 	calls    []domain.FetchedWorkInfoApply
-	// fetches は記録した取得の、動画と失敗の文である。
+
 	fetches []recordedFetch
 }
 
@@ -141,8 +139,7 @@ type fetchEnv struct {
 	now     time.Time
 }
 
-// newFetchEnv は承認済みのプラグイン 1（設定 apiKey が必須で値あり、lang は任意で値あり）と、別の値を持つ
-// プラグイン 2 を持つ。
+// Plugin 1 has a required apiKey and optional lang, both set; plugin 2 has distinct values.
 func newFetchEnv() *fetchEnv {
 	settings := []domain.WorkInfoPluginSetting{
 		{Key: "apiKey", Label: "API key", Secret: true, Required: true},
@@ -258,7 +255,7 @@ func TestFetchWorkInfoSendsTheTrimmedIDToFetch(t *testing.T) {
 	if len(e.applier.calls) != 0 {
 		t.Fatal("fetching by ID wrote to the video")
 	}
-	// URL の形の入力も作品 ID としてそのまま渡し、vv が URL として読むことはない（親 Issue #1232 の要件 14）。
+	// Pass URL-shaped IDs unchanged; vv must not interpret them as URLs.
 	if _, err := e.plugins.FetchWorkInfo(ctx, fetchVideo, 1, " https://example.com/works/1 "); err != nil {
 		t.Fatalf("URL-shaped id: err = %v", err)
 	}
@@ -272,7 +269,7 @@ func TestFetchWorkInfoSendsTheTrimmedIDToFetch(t *testing.T) {
 	if _, err := e.plugins.FetchWorkInfo(ctx, 999, 1, "ABC-123"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("missing video: err = %v", err)
 	}
-	// 検索だけを宣言するプラグインには取得を送らない。
+
 	e.store.plugins[1].Manifest.Operations = []domain.WorkInfoOperation{domain.WorkInfoSearch}
 	if _, err := e.plugins.FetchWorkInfo(ctx, fetchVideo, 1, "ABC-123"); !errors.Is(err, domain.ErrWorkInfoOperationUnsupported) {
 		t.Fatalf("no fetch: err = %v", err)
@@ -298,11 +295,10 @@ func TestFetchWorkInfoKeepsTheResultAndLeavesTheVideo(t *testing.T) {
 		t.Fatal("fetching wrote to the video")
 	}
 
-	// 表示名の規則に合わない題名は値が無いものになる。
 	if bad := e.fetch(t, "bad\ttitle"); bad.Title != "" {
 		t.Fatalf("title = %q; want none", bad.Title)
 	}
-	// 動画が無ければプラグインを動かさない。
+
 	runs := len(e.runtime.requests)
 	if _, err := e.plugins.FetchWorkInfo(ctx, 999, 1, "W-1"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("missing video: err = %v", err)
@@ -315,7 +311,7 @@ func TestFetchWorkInfoKeepsTheResultAndLeavesTheVideo(t *testing.T) {
 	if len(e.runtime.requests) != runs {
 		t.Fatal("the module ran for a refused fetch")
 	}
-	// 実行の失敗はそのまま返り、結果を持たない。
+
 	e.runtime.err = &domain.WorkInfoRunError{Failure: domain.WorkInfoRunBlockedAddress, Host: "127.0.0.1"}
 	var failed *domain.WorkInfoRunError
 	if _, err := e.plugins.FetchWorkInfo(ctx, fetchVideo, 1, "W-1"); !errors.As(err, &failed) ||
@@ -324,7 +320,7 @@ func TestFetchWorkInfoKeepsTheResultAndLeavesTheVideo(t *testing.T) {
 	}
 }
 
-// プラグインを動かした取得だけを記録し、失敗はプラグインの文（無ければ失敗の種類）を持つ。動かす前に断った取得は記録しない。
+// Only executed fetches create activity; failures preserve the plugin message or fall back to the error kind.
 func TestFetchWorkInfoRecordsEveryRun(t *testing.T) {
 	ctx := context.Background()
 	e := newFetchEnv()
@@ -368,7 +364,7 @@ func TestApplyWorkInfoFetchWritesSelectedFieldsAndReportsSkippedTags(t *testing.
 	if e.applier.calls[0].Digest != "d1" || e.applier.calls[0].PluginID != 1 {
 		t.Fatalf("apply = %+v; want the fetch's plugin and digest", e.applier.calls[0])
 	}
-	// 結果は使い切りである。
+
 	if _, err := e.plugins.ApplyWorkInfoFetch(ctx, fetchVideo, result.ID, []domain.WorkInfoField{domain.WorkInfoFieldTitle}, nil); !errors.Is(err, domain.ErrWorkInfoFetchStale) {
 		t.Fatalf("second apply: err = %v; want ErrWorkInfoFetchStale", err)
 	}
@@ -406,7 +402,7 @@ func TestApplyWorkInfoFetchRefusals(t *testing.T) {
 		}, domain.ErrWorkInfoFetchStale, false},
 		{"revoked", fetchVideo, title, func(e *fetchEnv) { e.store.plugins[1].ApprovedDigest = "" },
 			domain.ErrWorkInfoFetchStale, false},
-		// 同じバイト列の差し替えか取り消しのあとに同じダイジェストを再承認すると、行の世代だけが変わる（R-8）。
+		// Replacing identical bytes or revoking/reapproving the same digest still changes generation.
 		{"approved again with the same digest", fetchVideo, title, func(e *fetchEnv) { e.store.plugins[1].Generation++ },
 			domain.ErrWorkInfoFetchStale, false},
 		{"deleted", fetchVideo, title, func(e *fetchEnv) { delete(e.store.plugins, 1) },
@@ -428,7 +424,7 @@ func TestApplyWorkInfoFetchRefusals(t *testing.T) {
 			if e.applier.titles[fetchVideo] != "" || len(e.applier.tags[fetchVideo]) != 0 {
 				t.Fatal("a refused apply changed the video")
 			}
-			// 残る結果は、直したあとで反映できる。
+			// Retained results remain applicable after correcting the problem.
 			e.applier.err = nil
 			_, err = e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, title, nil)
 			if tc.keeps && err != nil {

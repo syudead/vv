@@ -5,7 +5,6 @@ import (
 	"testing"
 )
 
-// 組の記録の状態は候補の判定に従う。
 func TestVersionJudgementActivityState(t *testing.T) {
 	for judgement, want := range map[VersionJudgement]ActivityState{
 		"":                           {Status: ActivityRunning, Reason: ActivityWaiting},
@@ -23,7 +22,6 @@ func TestVersionJudgementActivityState(t *testing.T) {
 	}
 }
 
-// 取り消しの鍵は JSON で往復し、メンバーの無いものは読まない。
 func TestVersionBundleUndoKeysRoundTrip(t *testing.T) {
 	keys := VersionBundleUndoKeys{Members: []string{"key-a", "key-c"}, Representative: "key-a"}
 	got, err := DecodeVersionBundleUndoKeys(keys.Encode())

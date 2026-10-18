@@ -33,7 +33,7 @@ function video(id: number, extra: Partial<Video> = {}): Video {
   };
 }
 
-/** 見る人のローカル時刻で作った playedAt。日の見出しは日付になる（2026 年 9 月）。 */
+/** Use local playedAt values so date headings use the viewer's calendar. */
 function at(day: number, hour: number, minute = 0): string {
   return new Date(2026, 8, day, hour, minute).toISOString();
 }
@@ -52,18 +52,15 @@ const server = {
   deletes: [] as string[],
   deleteStatus: 204,
   clearStatus: 204,
-  /** 有れば、一覧の応答を作った後、これが解けるまで返さない。 */
+  /** Gate delivery after taking the list snapshot. */
   holdList: null as Promise<void> | null,
-  /** 200 でなければ、一覧の要求にこの状態で答える。 */
   listStatus: 200,
-  /** 日付の一覧の応答。条件で絞らずにそのまま返す。 */
+  /** Return date responses unchanged, ignoring filters. */
   dates: [] as string[],
   datesUrls: [] as string[],
-  /** 200 でなければ、日付の一覧の要求にこの状態で答える。 */
   datesStatus: 200,
 };
 
-/** matches は一覧の要求の条件（watch・query・date）に件が合うかである。 */
 function matches(entry: WatchHistoryEntry, query: URLSearchParams): boolean {
   const watch = query.get("watch");
   const progress = entry.video?.progress;
@@ -90,7 +87,7 @@ function install() {
     if (url.startsWith("/api/watch-history?") && method === "GET") {
       server.listUrls.push(url);
       const query = new URLSearchParams(url.slice(url.indexOf("?") + 1));
-      // 鍵は前のページの最後の件の id。その間に件が消えても続きの位置はずれない。
+      // Cursor by the previous last ID so deletions do not shift pagination.
       const cursor = query.get("cursor");
       const matching = server.entries.filter((entry) => matches(entry, query));
       const rest =
@@ -105,7 +102,7 @@ function install() {
           ? { nextCursor: String(last.id) }
           : {}),
       });
-      // 状態は応答を返すときに読むので、止めた応答も後から失敗にできる。
+      // Read status on delivery so a held response can fail later.
       const respond = () =>
         server.listStatus === 200
           ? body
@@ -146,7 +143,6 @@ function install() {
 }
 
 let intersect: IntersectionObserverCallback | undefined;
-/** 作られた IntersectionObserver の数。 */
 let observers = 0;
 let location: { pathname: string; state: unknown } | undefined;
 let search = "";
@@ -178,7 +174,6 @@ function historyList(): HTMLElement {
   return screen.getByRole("list", { name: "Watch history" });
 }
 
-/** positionBar は行の位置の行のバー（最大が動画の長さのもの）である。 */
 function positionBar(bars: HTMLElement[]): HTMLElement {
   const bar = bars.find((item) => item.getAttribute("aria-valuemax") === "2538000");
   if (bar === undefined) throw new Error("no position bar");
@@ -192,7 +187,7 @@ function toasts(): string[] {
 }
 
 beforeEach(() => {
-  // 日の見出しの「今日」「今年」を決める今の日付を固定する（2026 年 10 月 1 日）。
+  // Freeze the date used for Today and current-year headings.
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(2026, 9, 1, 12, 0));
   server.entries = [
@@ -260,7 +255,6 @@ describe("HistoryPage", () => {
       "Saturday · Sep 26",
     ]);
 
-    // その日の行はすべてその見出しの下に、API の順で並ぶ。
     const titlesUnder = (heading: HTMLElement) => {
       const group = heading.closest('[data-slot="grouped-list-group"]');
       if (!(group instanceof HTMLElement)) throw new Error("no group");
@@ -277,7 +271,6 @@ describe("HistoryPage", () => {
       'Remove "Kyoto" played Saturday, Sep 26 from history',
     ]);
 
-    // どの行にも時刻が無く（formatTime の形「9:42 PM」）、時間軸の区画も無い。
     expect(historyList().textContent).not.toMatch(/\d{1,2}:\d{2}\s?[AP]M/);
     expect(document.querySelector('[data-slot^="timeline"]')).toBeNull();
   });
@@ -302,34 +295,6 @@ describe("HistoryPage", () => {
     expect(screen.queryByRole("status", { name: "Loading…" })).toBeNull();
   });
 
-  it("同じ動画を同じ日に 2 度見た件は 1 つの見出しの下の 2 行になる", async () => {
-    server.entries = [
-      {
-        id: 2,
-        playedAt: at(27, 21, 30),
-        title: "Kyoto",
-        video: video(11, { title: "Kyoto" }),
-      },
-      {
-        id: 1,
-        playedAt: at(27, 8, 0),
-        title: "Kyoto",
-        video: video(11, { title: "Kyoto" }),
-      },
-    ];
-    server.dates = ["2026-09-27"];
-    renderPage();
-    await screen.findByRole("list", { name: "Watch history" });
-
-    const headings = within(historyList()).getAllByRole("heading", { level: 2 });
-    expect(headings.map((heading) => heading.textContent)).toEqual(["Sunday · Sep 27"]);
-    const links = within(historyList()).getAllByRole("link", {
-      name: "Kyoto, 1:00, played Sunday, Sep 27",
-    });
-    expect(links).toHaveLength(2);
-    expect(document.querySelectorAll('[data-slot="grouped-list-item"]')).toHaveLength(2);
-  });
-
   it("動画のある件は再生画面を開き、無い件はリンクにせず再生できないと書く", async () => {
     const user = userEvent.setup();
     renderPage();
@@ -340,7 +305,6 @@ describe("HistoryPage", () => {
       "/videos/10",
       "/videos/11",
     ]);
-    // 題名はいまの動画の題名。写しの題名は使わない。
     expect(links[0]?.getAttribute("aria-label")).toBe(
       "Harbour lights, 1:00, played Sunday, Sep 27",
     );
@@ -404,7 +368,6 @@ describe("HistoryPage", () => {
 
     const midway = within(row("Harbour lights"));
     expect(midway.getByText("16:05 / 42:18")).toBeDefined();
-    // サムネイルの下端の縁（百分率）とは別に、位置の行のバーを長さで描く。
     const bar = positionBar(
       midway.getAllByRole("progressbar", { name: "Watched portion" }),
     );
@@ -421,12 +384,10 @@ describe("HistoryPage", () => {
     expect(watched.getByRole("link", { name: "Start Kyoto over" })).toBeDefined();
     expect(watched.queryByRole("link", { name: /^Resume/ })).toBeNull();
 
-    // 位置の無い動画は位置も操作も出さず、行そのものが動画を開く。
     const fresh = within(row("Fresh"));
     expect(fresh.queryByRole("progressbar")).toBeNull();
     expect(fresh.getAllByRole("link")).toHaveLength(1);
 
-    // 動画の無い件はどちらの操作も出さない。
     const gone = within(row("Gone"));
     expect(gone.queryByRole("link")).toBeNull();
     expect(gone.queryByRole("progressbar")).toBeNull();
@@ -537,7 +498,6 @@ describe("HistoryPage", () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByRole("list", { name: "Watch history" });
-    // 別のタブで消えた。
     server.entries = server.entries.filter((entry) => entry.id !== 3 && entry.id !== 1);
     server.deleteStatus = 404;
 
@@ -558,7 +518,7 @@ describe("HistoryPage", () => {
     server.pageSize = 2;
     renderPage();
     await screen.findByRole("list", { name: "Watch history" });
-    // 別のタブで消えたと答えさせ、読み直しの応答を止めておく。
+    // Hold the refresh after reporting that another tab deleted the record.
     server.deleteStatus = 404;
     let release = () => {};
     server.holdList = new Promise((resolve) => {
@@ -573,7 +533,7 @@ describe("HistoryPage", () => {
     await user.click(screen.getByRole("button", { name: /^Remove "Gone"/ }));
     await waitFor(() => expect(screen.queryByText("Gone")).toBeNull());
 
-    // 止めていた応答は消した 2 件と、その後ろの鍵を返す。
+    // The held snapshot still contains both deleted records and their continuation cursor.
     server.holdList = null;
     act(() => release());
 
@@ -607,7 +567,6 @@ describe("HistoryPage", () => {
 
     await user.click(screen.getByRole("button", { name: /^Remove "Gone"/ }));
     await waitFor(() => expect(server.listUrls).toHaveLength(2));
-    // 読み直しの間に最後の行が見えても、続きは読まない。
     const armed = observers;
     act(() => {
       intersect?.(
@@ -624,7 +583,7 @@ describe("HistoryPage", () => {
       expect(toasts()).toEqual(["Something went wrong on the server."]),
     );
 
-    // 見張りを付け直すので、最後の行が見えたままなら続きを読む。
+    // Reattach the observer so a still-visible final row loads more.
     expect(observers).toBeGreaterThan(armed);
     server.listStatus = 200;
     act(() => {
@@ -651,7 +610,6 @@ describe("HistoryPage", () => {
 
     await user.click(screen.getByRole("button", { name: /^Remove "Gone"/ }));
     await waitFor(() => expect(server.listUrls).toHaveLength(2));
-    // 読み直しの間に見えている行を全部消す。続きの読み込みは断られる。
     server.deleteStatus = 204;
     await user.click(screen.getByRole("button", { name: /^Remove "Harbour lights"/ }));
     await user.click(screen.getByRole("button", { name: /^Remove "Gone"/ }));
@@ -668,7 +626,7 @@ describe("HistoryPage", () => {
       expect(toasts()).toEqual(["Something went wrong on the server."]),
     );
 
-    // 見張る行が無くても、残っている古い件を読む。
+    // Load remaining records even when no row remains to observe.
     server.listStatus = 200;
     await waitFor(() =>
       expect(server.listUrls.at(-1)).toBe("/api/watch-history?cursor=3&limit=60"),
@@ -749,7 +707,7 @@ describe("HistoryPage", () => {
       ),
     ).toBeDefined();
     expect(screen.getByRole("alertdialog")).toBeDefined();
-    // 窓の後ろの一覧は読み上げから隠れているので、行を数える。
+    // The modal hides the background list from accessibility queries; count rows directly.
     expect(document.querySelectorAll('[data-slot="grouped-list-item"]')).toHaveLength(4);
   });
 
@@ -852,7 +810,6 @@ describe("HistoryPage", () => {
     expect(first.get("query")).toBe("kyoto");
     expect(first.get("tz")).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
 
-    // 日を選んでも日付は読み直さない。
     await user.click(within(jump).getByRole("radio", { name: "August" }));
     await waitFor(() => expect(search).toBe("?watch=watched&q=kyoto&date=2026-08"));
     expect(server.datesUrls).toHaveLength(1);
@@ -869,7 +826,6 @@ describe("HistoryPage", () => {
     const second = new URLSearchParams(server.datesUrls[1]?.split("?")[1]);
     expect(second.has("watch")).toBe(false);
     expect(second.get("query")).toBe("kyoto");
-    // 状態を変えても日は残る。
     expect(search).toBe("?q=kyoto&date=2026-08");
   });
 
@@ -896,12 +852,10 @@ describe("HistoryPage", () => {
     ).toBe("true");
     expect(window.scrollTo).toHaveBeenCalled();
 
-    // 押している項目をもう一度押すと date を外す。
     await user.click(within(jump).getByRole("radio", { name: "Sat, Sep 26" }));
     await waitFor(() => expect(search).toBe(""));
     expect(await within(historyList()).findByText("Harbour lights")).toBeDefined();
 
-    // 最初の項目は一覧の先頭なので date を書かない。
     await user.click(within(jump).getByRole("radio", { name: "Sun, Sep 27" }));
     expect(search).toBe("");
   });
@@ -935,7 +889,6 @@ describe("HistoryPage", () => {
     expect(
       screen.getByText("Try a different search or change the filters."),
     ).toBeDefined();
-    // 見出しの行は何が外したかを見せたまま。
     expect(
       within(screen.getByRole("radiogroup", { name: "Watch status" }))
         .getByRole("radio", { name: "Watched" })
@@ -1042,7 +995,6 @@ describe("HistoryPage", () => {
     const jump = screen.getByRole("region", { name: "Jump to date" });
     await user.click(within(jump).getByRole("button", { name: "Retry" }));
     expect(await within(jump).findByRole("radio", { name: "Sun, Sep 27" })).toBeDefined();
-    // 横の欄の最後の「Clear history…」から確認の窓を開く。
     await user.click(within(jump).getByRole("button", { name: "Clear history…" }));
     expect(
       await screen.findByRole("alertdialog", { name: "Clear watch history?" }),

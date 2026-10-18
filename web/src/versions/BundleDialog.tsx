@@ -23,19 +23,12 @@ import { VersionDetailsLine, versionDetails, versionDetailsText } from "./Versio
 type Rows =
   { kind: "loading" } | { kind: "ready"; videos: readonly Video[] } | { kind: "failed" };
 
-/** 行が 6 本を超えたら一覧の中だけをスクロールさせる。 */
+/** Scroll only the list after six rows. */
 const scrollAfterRows = 6;
 
 /**
- * BundleDialog は選んだ動画を 1 つの集まり（同じ動画の別バージョン）に束ね、一覧に出す代表を
- * 選ばせる窓である。選択バーの
- * 「Bundle as versions」と候補の画面の「Same video…」が同じ窓を使い、代表の選び方を 2 か所で
- * 別にしない。
- *
- * 呼び出し元は束ねる id の並び（`videoIds`）を渡し、行の中身をこの窓が `GET /api/videos/{id}` で
- * 取る。中身を既に持つ呼び出し元は `videos` も渡し、最初の取得を省く。行の並びは `videoIds` の順。
- * 代表は既定で選ばない。成功したらトーストで伝えて `onBundled` を呼び、閉じるのは呼び出し元に
- * 任せる。失敗は窓の中の 1 行で伝え、選んだ代表を残す。
+ * Keep videoIds order and leave the representative unselected initially; supplied videos skip only
+ * the initial read. Failures preserve the selection and callers own closing after onBundled.
  */
 export default function BundleDialog({
   videoIds,
@@ -44,7 +37,7 @@ export default function BundleDialog({
   onBundled,
 }: {
   videoIds: readonly number[];
-  /** 行の中身を既に持つとき（候補の画面）に渡す。`videoIds` と同じ順に並べる。 */
+  /** Must follow videoIds order. */
   videos?: readonly Video[];
   onClose: () => void;
   onBundled: (versions: VideoVersions) => void;
@@ -80,13 +73,13 @@ export default function BundleDialog({
       },
       (error: unknown) => {
         if (isAborted(error) || controller.signal.aborted) return;
-        // 1 本でも取れなければ（404 を含む）、どれが代表の候補かを示せないので束ねさせない。
+        // A failed candidate read, including 404, blocks bundling because the representative choices are incomplete.
         setRows({ kind: "failed" });
       },
     );
   }, [videoIds]);
 
-  // 中身を渡されたときは最初の取得を省く。取り直し（Retry・404）は常に取る。
+  // Supplied videos skip only the initial read; Retry and 404 recovery always fetch.
   const given = useRef(videos !== undefined);
   useEffect(() => {
     if (given.current) return;
@@ -94,14 +87,13 @@ export default function BundleDialog({
     return () => request.current?.abort();
   }, [load]);
 
-  // 取り直した行に選んだ代表がもう無ければ、選び直させる。
+  // Require a new representative if refresh removes the selected video.
   const chosen =
     rows.kind === "ready" && rows.videos.some((video) => video.id === representative)
       ? representative
       : null;
 
-  // 送信の失敗の直後は、送る間 disabled にしていた「Bundle」がフォーカスを失い body に
-  // 落ちるので、まだ押せる操作（代表が残っていれば「Bundle」）へ戻す（014 の統合の窓と同じ）。
+  // Restore focus after failure because the disabled Bundle button may have sent focus to body.
   const restoreFocus = useEffectEvent(() => {
     (chosen !== null && rows.kind === "ready" ? submitButton : cancel).current?.focus();
   });
@@ -109,7 +101,7 @@ export default function BundleDialog({
     if (failure !== null) restoreFocus();
   }, [failure]);
 
-  /** 窓を閉じるすべての経路（×・Cancel・Esc）が通る。送っている間は閉じない。 */
+  /** All close paths pass here; reject closing while submitting. */
   function handleClose() {
     if (pending) return;
     onClose();
@@ -133,7 +125,7 @@ export default function BundleDialog({
         if (!alive.current) return;
         setPending(false);
         setFailure(t.versions.bundle.failed(errorText(error)));
-        // 選んだ中に消えた動画がある。行を出したうえで一覧を取り直す。
+        // A selected video disappeared; show the failure and refresh candidates.
         if (error instanceof RequestFailed && error.status === 404) load();
       },
     );
@@ -216,14 +208,13 @@ export default function BundleDialog({
 
 function RepresentativeRow({ video, disabled }: { video: Video; disabled: boolean }) {
   const details = versionDetails(video);
-  // 所有者だけの窓なので、行の title で絶対パスを読める（「Versions list」と同じ）。
+  // This owner-only dialog may expose the absolute path in title.
   const detailsTitle = versionDetailsText(
     details,
     " · ",
     video.location?.path ?? details.place,
   );
-  // どのタグが集まりのものになり、どれが脇に置かれるかを選ぶ前に見せる。フォルダ名から
-  // だけ付いたタグは束ねても変わらないので出さない。
+  // Preview manual-tag effects before bundling; folder-derived tags are unchanged and omitted.
   const tags = video.tags.filter((tag) => tag.manual).map((tag) => tag.name);
   const bundled =
     video.versions !== undefined && video.versions.count > 1

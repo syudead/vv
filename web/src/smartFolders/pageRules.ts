@@ -4,19 +4,15 @@ import type { SmartRule, SmartRuleRef } from "../api/smartFolders";
 import { fromSelectAll, type LibrarySelection } from "../library/selection";
 import { conditionChips, hasMissing } from "./conditions";
 
-// スマートフォルダのページが中身と条件から決める規則。画面の部品から外し、ロジックのテストで確かめる。
-
 /**
- * BodyKind は読めたページの本体の形である。`content` は中身を並べる。`empty` と `missing` は
- * 動画もグループも無いフォルダで、子フォルダのカードの後に空の印を出す。`missing` は条件の
- * どれかが消えた実体を名指している（それで何にも一致しない）。
+ * missing means a condition references a deleted target; both missing and empty follow child-
+ * folder cards.
  */
 export type BodyKind = "content" | "empty" | "missing";
 
 /**
- * bodyKind は本体の形を決める。動画かグループが 1 つでも並ぶか、続きがあれば `content`。
- * そうでなく欠けた参照があれば `missing`、無ければ `empty`。欠けた参照は所有者の応答にだけ
- * 入る（ゲストには空のフォルダは届かない）。
+ * Any content or continuation wins over missing/empty; only owner responses expose missing
+ * references.
  */
 export function bodyKind(
   items: readonly LibraryItem[],
@@ -28,16 +24,14 @@ export function bodyKind(
   return missing.length > 0 ? "missing" : "empty";
 }
 
-/** AncestorRule は祖先 1 つと、読めていればその条件である。 */
 export interface AncestorRule {
   folder: GroupRef;
   rule?: SmartRule;
 }
 
 /**
- * missingParent は欠けた参照を自分の条件に持たないとき、それを持ついちばん近い祖先である
- * （欠けた状態の説明に「The condition is in "{parent}".」を足す）。自分の条件にあるか、祖先の
- * 条件がまだ読めていなければ undefined。`ancestors` は近い順。
+ * Return the nearest ancestor with missing references only when this folder has none; ancestors
+ * are nearest-first.
  */
 export function missingParent(
   own: SmartRule | undefined,
@@ -51,11 +45,7 @@ export function missingParent(
   )?.folder;
 }
 
-/**
- * selectAllLoaded はスマートフォルダのページの「Select all」の選択である。ここまでに並んだ
- * 動画と、グループ（全メンバー、グループとしても覚える）を選ぶ。子フォルダのカードは
- * 選ばない（中の動画はそれぞれのカードで選ぶ）。
- */
+/** Select loaded videos and all members of loaded groups; never select child-folder cards. */
 export function selectAllLoaded(items: readonly LibraryItem[]): LibrarySelection {
   const ids: number[] = [];
   const groups = [];

@@ -26,20 +26,17 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 生成物の置き場（internal/artifacts）を、本物の保存層・アプリケーション層・経路と
-// つないで確かめる。置き場の単体テストは経路を通らず、httpapi と app の単体テストは
-// 置き場を差し替えるので、既存の MDM_DATA_DIR がそのまま使えることはここで見る。
+// These wiring tests verify compatibility with existing MDM_DATA_DIR artifacts through the real
+// store, application, and routes.
 
-// existingKey は実際の形（"<16進>:<サイズ>"）の content key である。
 const existingKey = "ab12cd34ef:5678"
 
 type existingArtifacts struct {
 	thumbnail, frame0, frame1, preview, manifest string
 }
 
-// placeExistingArtifacts は、この変更より前の版が作ったのと同じ場所に生成物を置く。
-// パスは規則の実装を通さず文字列で書く。シーク用プレビューは、スプライトにする前の
-// 形式（個別 JPEG）である。
+// Use literal legacy paths to avoid reproducing the implementation under test; seek previews use
+// individual JPEGs.
 func placeExistingArtifacts(t *testing.T, dataDir string) existingArtifacts {
 	t.Helper()
 	root := filepath.Join(dataDir, "thumbnails")
@@ -78,8 +75,7 @@ type artifactsFixture struct {
 	ingest  *app.Ingest
 }
 
-// newArtifactsFixture は、3種類の生成物を作り終えた動画が1本ある MDM_DATA_DIR を
-// 用意し、main と同じ組み立てで経路と取り込みをつなぐ。
+// Wire routes and ingestion as main does, with one fully processed video.
 func newArtifactsFixture(t *testing.T) artifactsFixture {
 	t.Helper()
 	ctx := context.Background()
@@ -132,8 +128,6 @@ func newArtifactsFixture(t *testing.T) artifactsFixture {
 	return artifactsFixture{ctx: ctx, db: db, videoID: video.ID, files: files, handler: handler, ingest: ingest}
 }
 
-// placeSprite は、シーク用プレビューの置き場をスプライトの形式（シート 000.jpg と
-// sprite.json）に置き換える。
 func (f artifactsFixture) placeSprite(t *testing.T) {
 	t.Helper()
 	dir := filepath.Dir(f.files.frame0)
@@ -199,8 +193,6 @@ func (f artifactsFixture) previewJobs(t *testing.T) int {
 	return count
 }
 
-// 作り終えた生成物がある MDM_DATA_DIR では、作り直しを積まずに一覧のサムネイル・
-// シークバーのプレビュー（スプライト）・ホバープレビューを出す。
 func TestExistingArtifactsAreServedWithoutRegeneration(t *testing.T) {
 	f := newArtifactsFixture(t)
 	f.placeSprite(t)
@@ -247,8 +239,7 @@ func TestExistingArtifactsAreServedWithoutRegeneration(t *testing.T) {
 	}
 }
 
-// スプライトにする前の個別 JPEG しか無い置き場は未完成で、シーク用プレビューを
-// 配信せず、詳細は done を返さない。ほかの生成物はそのまま出す。
+// Legacy individual JPEGs do not count as a complete sprite; other artifacts remain available.
 func TestLegacySeekFramesAreNotServed(t *testing.T) {
 	f := newArtifactsFixture(t)
 	video := f.video(t)
@@ -266,8 +257,8 @@ func TestLegacySeekFramesAreNotServed(t *testing.T) {
 	}
 }
 
-// 完了の記録があるのに、プレビューが無い・manifest と一致しないときは、並行した
-// 要求でも作り直しを1回だけ積み、previewUrl を出さない。
+// Missing or mismatched previews hide previewUrl and enqueue regeneration once under concurrent
+// requests.
 func TestIncompletePreviewIsRequeuedOnce(t *testing.T) {
 	for name, damage := range map[string]func(files existingArtifacts) error{
 		"MP4 が無い":      func(files existingArtifacts) error { return os.Remove(files.preview) },
@@ -306,8 +297,6 @@ func TestIncompletePreviewIsRequeuedOnce(t *testing.T) {
 	}
 }
 
-// 動画の行が消えたとき、同じ content key を参照する動画が無ければ3種類の
-// 生成物を消し、あれば残す。
 func TestDeletedVideoReleasesOnlyUnreferencedArtifacts(t *testing.T) {
 	t.Run("参照が無い", func(t *testing.T) {
 		f := newArtifactsFixture(t)
@@ -327,7 +316,7 @@ func TestDeletedVideoReleasesOnlyUnreferencedArtifacts(t *testing.T) {
 	})
 	t.Run("参照が残っている", func(t *testing.T) {
 		f := newArtifactsFixture(t)
-		// 行が消えたという知らせが、同じ内容の動画が取り込み直された後に届いた場合。
+		// Deletion notification arrives after identical content has been reimported.
 		f.ingest.ReleaseArtifacts(domain.ContentUnreferenced{ContentKeys: []string{existingKey}})
 		f.ingest.Wait()
 		for _, path := range []string{f.files.thumbnail, f.files.frame1, f.files.preview, f.files.manifest} {

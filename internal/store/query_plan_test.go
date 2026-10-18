@@ -9,7 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// queryPlan は問い合わせの実行計画（EXPLAIN QUERY PLAN の detail）を行ごとに返す。
 func queryPlan(t *testing.T, db *DB, query string, args ...any) []string {
 	t.Helper()
 	rows, err := db.sql.QueryContext(context.Background(), `explain query plan `+query, args...)
@@ -32,8 +31,7 @@ func queryPlan(t *testing.T, db *DB, query string, args ...any) []string {
 	return plan
 }
 
-// TestVersionCandidatesUseTheContentKeyIndex は、候補の組の動画を内容の識別子の索引で引き、
-// videos を全件走査しないことを確かめる（issue 674: 走査すると動画の本数の2乗で時間が増える）。
+// A full video scan per candidate produces quadratic work; require content-key index lookups.
 func TestVersionCandidatesUseTheContentKeyIndex(t *testing.T) {
 	db := migratedDB(t)
 	plan := queryPlan(t, db, `select count(*) `+candidatePairsFrom+candidatePairsCondition())
@@ -44,8 +42,6 @@ func TestVersionCandidatesUseTheContentKeyIndex(t *testing.T) {
 	}
 }
 
-// TestFolderLocationsSearchThePathRange は、フォルダの配下の所在をパスの範囲で引き、
-// video_locations を全件走査しないことを確かめる（issue 674）。
 func TestFolderLocationsSearchThePathRange(t *testing.T) {
 	db := migratedDB(t)
 	inFolder, args := folderPrefixCondition("l", folderPrefix(fixturePath("/media/show")))

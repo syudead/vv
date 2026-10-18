@@ -13,8 +13,7 @@ import {
 
 setUpGroupPageServer();
 
-// 子グループのカードと道筋の段へ落として移す。jsdom は配置を持たないので、格子のカードを横一列に
-// 200px ずつ、道筋の段をその下に 100px ずつ置き、ポインタの出来事で持ち上げて落とす。
+// Supply card and breadcrumb positions because jsdom has no layout.
 
 const cardWidth = 190;
 const cardHeight = 150;
@@ -35,7 +34,6 @@ function box(left: number, top: number, width: number, height: number): DOMRect 
   } as DOMRect;
 }
 
-/** layout はカードを左から 200px ずつ、道筋の段を y=300 に左から 100px ずつ置く。 */
 function layout() {
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (
     this: Element,
@@ -60,7 +58,6 @@ function onCard(index: number, ratio = 0.5) {
   return { clientX: index * step + cardWidth * ratio, clientY: cardHeight / 2 };
 }
 
-/** onCrumb は道筋の `index` 番目の段（「…」を含め、帯に描いた順）の中の点である。 */
 function onCrumb(index: number) {
   return { clientX: index * 100 + 40, clientY: crumbTop + 10 };
 }
@@ -91,7 +88,6 @@ function moves() {
     .map((each) => each.body);
 }
 
-/** openSeason は「Season」（Episode 1、Extras、Episode 2）を開く。 */
 async function openSeason() {
   seed();
   layout();
@@ -171,7 +167,6 @@ describe("GroupPage move", () => {
   it("開いているグループの段の上は拒否の印を出し、落としても何も送らない", async () => {
     await openSeason();
     lift("Episode 2", 2);
-    // 帯は「Library」「Season」の 2 段。
     moveTo(onCrumb(1));
     expect(screen.getByLabelText("Can't drop here")).toBeDefined();
     release(onCrumb(1));
@@ -242,7 +237,6 @@ describe("GroupPage move", () => {
     await screen.findByRole("heading", { level: 1, name: "Extras" });
 
     lift("Bonus", 0);
-    // 帯は「Library」「Season」「Extras」の 3 段。
     moveTo(onCrumb(1));
     release(onCrumb(1));
 

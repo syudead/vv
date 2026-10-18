@@ -30,8 +30,6 @@ func TestStartScanRejectsEmptyFolderSetWithoutCreatingScan(t *testing.T) {
 	}
 }
 
-// 実行中のスキャンは同時に1件だけ。POST /api/scans が「実行中ならそれを返す」
-// 振る舞いは、これが成り立つことを前提にしている。
 func TestStartScanReturnsRunningInsteadOfStartingAnother(t *testing.T) {
 	db := scanDB(t)
 	ctx := context.Background()
@@ -62,7 +60,6 @@ func TestStartScanReturnsRunningInsteadOfStartingAnother(t *testing.T) {
 	}
 }
 
-// 進捗を更新できること。取り込みの規模と残りが利用者に見える。
 func TestUpdateScanProgress(t *testing.T) {
 	db := scanDB(t)
 	ctx := context.Background()
@@ -85,7 +82,6 @@ func TestUpdateScanProgress(t *testing.T) {
 	}
 }
 
-// 終了すると done になり、終了時刻が入る。次のスキャンを始められる。
 func TestFinishScan(t *testing.T) {
 	db := scanDB(t)
 	ctx := context.Background()
@@ -118,7 +114,6 @@ func TestFinishScan(t *testing.T) {
 	}
 }
 
-// 走査そのものが失敗した場合（対象ディレクトリが読めない等）は理由を残す。
 func TestFinishScanRecordsError(t *testing.T) {
 	db := scanDB(t)
 	ctx := context.Background()
@@ -149,7 +144,6 @@ func TestFinishScanRecordsError(t *testing.T) {
 	}
 }
 
-// 理由のコードで包まれていない失敗は internal で、場所は残さない。成功は理由を残さない。
 func TestFinishScanRecordsInternalForUncodedError(t *testing.T) {
 	db := scanDB(t)
 	ctx := context.Background()
@@ -185,7 +179,6 @@ func TestFinishScanRecordsInternalForUncodedError(t *testing.T) {
 	}
 }
 
-// 直近のスキャンは「実行中があればそれ、無ければ最後に終わったもの」。
 func TestCurrentScanPrefersRunning(t *testing.T) {
 	db := scanDB(t)
 	ctx := context.Background()
@@ -212,7 +205,6 @@ func TestCurrentScanPrefersRunning(t *testing.T) {
 	}
 }
 
-// 一度もスキャンしていなければ「無い」と分かる誤りを返す（GET は 404 になる）。
 func TestCurrentScanWhenNeverScanned(t *testing.T) {
 	db := scanDB(t)
 
@@ -221,8 +213,6 @@ func TestCurrentScanWhenNeverScanned(t *testing.T) {
 	}
 }
 
-// プロセスが running のまま落ちた場合、次の起動で失敗として閉じる。
-// 閉じないと「実行中は1件だけ」の制約が二度とスキャンを始めさせない。
 func TestFailInterruptedScans(t *testing.T) {
 	db := scanDB(t)
 	ctx := context.Background()

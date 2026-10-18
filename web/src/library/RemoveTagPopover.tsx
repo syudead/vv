@@ -16,9 +16,6 @@ import { isTagNotFound, overLimitMessage } from "./selectionErrors";
 import { buildRemoveOptions, removableSummary } from "./tagChoices";
 import TagCommand, { type TagChoice } from "../ui/TagCommand";
 
-/**
- * RemoveTagPopover は選択バーの「タグを外す」の中身である。
- */
 export default function RemoveTagPopover({
   open,
   onOpenChange,
@@ -28,7 +25,6 @@ export default function RemoveTagPopover({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedIds: readonly number[];
-  /** タグを外し終えるたびに、外したタグの id を渡して呼ぶ。 */
   onRemoved: (tagId: number) => void;
 }) {
   const toast = useToast();
@@ -41,23 +37,16 @@ export default function RemoveTagPopover({
   const [fetchFailed, setFetchFailed] = useState(false);
   const [summary, setSummary] = useState<VideoTagsSummary | null>(null);
 
-  // 開いている間に選択が増えて上限を超えたら、要約の取得も送信も止める
-  // （親の SelectionBar がこのポップオーバー自体を閉じるまでの間の保険）。
+  // Guard the interval before the parent closes an over-limit popover.
   const overLimit = selectedIds.length > maxVideoTagsSelection;
 
-  // 要約の取得は選ぶたびに通し番号を払い出し、古い応答が新しい選択の結果を
-  // 上書きしないようにする（Devin の指摘2。summarizeVideoTags 自身は要求の
-  // 順・届く順を揃えない）。
+  // Sequence summary requests because response order need not match selection changes.
   const summarySeq = useRef(0);
   const fetchSummary = useCallback(() => {
-    // 選択が空になった直後（一括で外したタグが今の絞り込みに含まれていて、
-    // 呼び出し元が選択を解除した直後など）は、このポップオーバーはすぐ閉じる
-    // ので要求しない。`POST /api/video-tags/summary` は videoIds を1件以上
-    // 要る。
+    // Empty selections are about to close; the summary endpoint requires at least one ID.
     if (selectedIds.length === 0) return;
     if (selectedIds.length > maxVideoTagsSelection) {
-      // 進行中の（上限内だった頃に始めた）取得を無効にする。その応答が
-      // 後から届いても、上限超過の表示を古い要約で上書きしない。
+      // Invalidate earlier summaries so they cannot replace the over-limit state.
       summarySeq.current += 1;
       setLoading(false);
       setFetchFailed(false);
@@ -81,10 +70,7 @@ export default function RemoveTagPopover({
       });
   }, [selectedIds]);
 
-  // 開いている間に選択が変わったら（別の動画を選び直す・「すべて選択」の
-  // 結果が届くなど）要約を取り直す。取り直している間は loading が立ち、
-  // 候補（TagCommand）ごと隠れるので、古い候補を選べない（Devin の指摘2）。
-  // 開いた瞬間（justOpened）だけ、前回の入力と失敗の文言を消す。
+  // Hide stale candidates while refreshing for a changed selection.
   const wasOpenRef = useRef(false);
   useEffect(() => {
     if (!open) {
@@ -101,9 +87,7 @@ export default function RemoveTagPopover({
     fetchSummary();
   }, [open, fetchSummary]);
 
-  // 「読み込み中…」から候補に切り替わった瞬間（要約が届いたとき）は、
-  // フォーカスを入力へ移す。
-  // `onOpenAutoFocus` は最初のマウント時にしか働かないため、ここで補う。
+  // Focus the input after loading; onOpenAutoFocus runs only on initial mount.
   const ready =
     open && !overLimit && !loading && !fetchFailed && (summary?.items.length ?? 0) > 0;
   useEffect(() => {
@@ -117,7 +101,7 @@ export default function RemoveTagPopover({
 
   function submit(option: TagChoice) {
     setErrorMessage(null);
-    // 送る直前に selectedIds の最新の件数を確かめる（AddTagPopover.submit と 同じ理由）。
+    // Recheck current selection size immediately before submission.
     if (selectedIds.length > maxVideoTagsSelection) {
       setErrorMessage(overLimitMessage());
       return;
@@ -155,7 +139,7 @@ export default function RemoveTagPopover({
           inputRef.current?.focus();
         }
       }}
-      // Esc はポップオーバーだけを閉じ、選択は残す（AddTagPopover と同じ）。
+      // Consume Escape without clearing the parent list's selection.
       onEscapeKeyDown={(event) => {
         event.preventDefault();
         onOpenChange(false);

@@ -14,9 +14,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// プレイリストの管理の経路を、本物の認証・保存層・
-// 経路をつないで確かめる。中身は library_test.go の libraryFixture と同じ。
-
 func (f *libraryFixture) playlistRequest(method, target, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 	return f.env.serve(authRequest{method: method, target: target, body: body, cookies: cookies})
 }
@@ -37,7 +34,6 @@ func playlistNameBody(name string) string {
 	return string(out)
 }
 
-// playlistAddBody は POST /api/playlists/{id}/items の本文を作る。
 func playlistAddBody(videoIDs []int64, groupIDs ...int64) string {
 	body := map[string]any{}
 	if videoIDs != nil {
@@ -60,7 +56,6 @@ func playlistMoveBody(after *int64) string {
 	return fmt.Sprintf(`{"afterItemId":%d}`, *after)
 }
 
-// createPlaylist は所有者としてプレイリストを作り、その要約を返す。
 func (f *libraryFixture) createPlaylist(t *testing.T, name string) gen.PlaylistSummary {
 	t.Helper()
 	rec := f.playlistRequest(http.MethodPost, "/api/playlists", playlistNameBody(name), f.owner)
@@ -82,7 +77,6 @@ func (f *libraryFixture) getPlaylist(t *testing.T, id int64) gen.Playlist {
 	return decode[gen.Playlist](t, rec)
 }
 
-// playlistItemNames は項目を「group:名前」か動画の題名にして位置の順に返す。
 func playlistItemNames(playlist gen.Playlist) []string {
 	names := make([]string, 0, len(playlist.Items))
 	for _, item := range playlist.Items {
@@ -96,8 +90,6 @@ func playlistItemNames(playlist gen.Playlist) []string {
 	return names
 }
 
-// 作成は 201 でトリムした名前、空の名前と 101 文字は 400 invalid_request。名前の変更は 200 で
-// トリムした名前を返し、一覧は更新日時の新しい順に並ぶ。
 func TestPlaylistCreateRenameAndList(t *testing.T) {
 	f := newLibraryFixture(t)
 
@@ -138,8 +130,7 @@ func TestPlaylistCreateRenameAndList(t *testing.T) {
 	for _, item := range list.Items {
 		ids = append(ids, item.Id)
 	}
-	// 並び順（更新日時、同じミリ秒なら id）は保存層の試験が確かめる。ここでは両方が並ぶことと、
-	// 名前が変わったことを確かめる。
+	// Storage tests cover ordering; this case checks membership and the renamed value.
 	if len(ids) != 2 || !slices.Contains(ids, created.Id) || !slices.Contains(ids, other.Id) {
 		t.Fatalf("一覧の id = %v", ids)
 	}
@@ -153,9 +144,6 @@ func TestPlaylistCreateRenameAndList(t *testing.T) {
 	}
 }
 
-// 一覧は limit 件ずつ返し、続きがあるときだけ nextCursor を入れ、total はどのページでも全部の数、
-// version はどのページでも同じで、プレイリストが変わると変わる。limit の範囲外は 400
-// invalid_request、読めない cursor は 400 invalid_cursor
 func TestPlaylistListPaging(t *testing.T) {
 	f := newLibraryFixture(t)
 	var want []int64
@@ -219,8 +207,6 @@ func TestPlaylistListPaging(t *testing.T) {
 	})
 }
 
-// 追加は 200 で added と existing を返し、要求の順（動画、次にグループ）で末尾に足す。ライブラリに
-// 無い動画の id と無いグループの id はどちらにも数えない。読み出しの項目は所有者の値を持つ。
 func TestPlaylistAddAndRead(t *testing.T) {
 	f := newLibraryFixture(t)
 	playlist := f.createPlaylist(t, "まとめ")
@@ -259,8 +245,6 @@ func TestPlaylistAddAndRead(t *testing.T) {
 	}
 }
 
-// 並べ替えは 204 で、null は先頭、自分の後ろは 400、プレイリストに無い項目は 404。項目を外すと
-// 204 で、もう一度外すと 404。外しても動画とその再生位置は変わらない。
 func TestPlaylistMoveAndRemove(t *testing.T) {
 	f := newLibraryFixture(t)
 	playlist := f.createPlaylist(t, "まとめ")
@@ -318,7 +302,6 @@ func TestPlaylistMoveAndRemove(t *testing.T) {
 	}
 }
 
-// 消したプレイリストは 204 のあと、どの経路でも 404 not_found。
 func TestPlaylistDelete(t *testing.T) {
 	f := newLibraryFixture(t)
 	playlist := f.createPlaylist(t, "まとめ")
@@ -346,8 +329,6 @@ func TestPlaylistDelete(t *testing.T) {
 	}
 }
 
-// 追加の要求の誤り: どちらも空は invalid_request、重複を除いて 20000 を超えれば too_many_videos、
-// 廃止した folders は知らない欄として 400 で、何も足さない。
 func TestPlaylistAddRejectsInvalidRequests(t *testing.T) {
 	f := newLibraryFixture(t)
 	playlist := f.createPlaylist(t, "まとめ")
@@ -384,13 +365,11 @@ func TestPlaylistAddRejectsInvalidRequests(t *testing.T) {
 		t.Errorf("誤りの要求で項目が足された: %v", playlistItemNames(read))
 	}
 
-	// 重複を 1 つに数えれば 20000 で、上限に収まる。
 	if rec := add(playlistAddBody(append(append([]int64{}, ids...), ids[0]))); rec.Code != http.StatusOK {
 		t.Errorf("重複を含む 20000: status = %d: %s", rec.Code, rec.Body)
 	}
 }
 
-// ゲストはどの経路でも 401 で、何も変わらない。
 func TestPlaylistsOwnerOnly(t *testing.T) {
 	f := newLibraryFixture(t)
 	playlist := f.createPlaylist(t, "まとめ")
@@ -418,9 +397,6 @@ func TestPlaylistsOwnerOnly(t *testing.T) {
 	}
 }
 
-// 一覧の要約は covers に、見せる項目の順で、動画の項目はその動画、グループの項目はそのカードの絵柄の
-// 先頭と同じメンバーのサムネイルを、サムネイル生成済みのものだけ持つ。空のプレイリストは空の配列で、
-// 作成の応答は covers を省く。
 func TestPlaylistListCovers(t *testing.T) {
 	f := newLibraryFixture(t)
 	empty := f.createPlaylist(t, "空")
@@ -458,7 +434,6 @@ func TestPlaylistListCovers(t *testing.T) {
 	if got := covers[empty.Id]; len(got) != 0 {
 		t.Errorf("空のプレイリストの covers = %v", got)
 	}
-	// solo にはサムネイルが無いので飛ばす。グループはカードの絵柄の先頭、ep10 はその動画。
 	ep10 := read.Items[2].Video
 	want := []gen.FolderPreview{group.Previews[0], {VideoId: ep10.Id, ThumbnailUrl: *ep10.ThumbnailUrl}}
 	if got := covers[playlist.Id]; len(got) != 2 || !samePreview(got[0], want[0]) || !samePreview(got[1], want[1]) {
@@ -466,7 +441,7 @@ func TestPlaylistListCovers(t *testing.T) {
 	}
 }
 
-// samePreview は差し込むサムネイルの動画と URL が同じかを返す（previewUrl はファイルの有無で変わるので見ない）。
+// Ignore previewUrl because it depends on artifact existence.
 func samePreview(a, b gen.FolderPreview) bool {
 	return a.VideoId == b.VideoId && a.ThumbnailUrl == b.ThumbnailUrl
 }

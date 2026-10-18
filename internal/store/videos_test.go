@@ -11,10 +11,8 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// fixedTime はテストの期待値を安定させるための基準時刻である。
 var fixedTime = time.Unix(1_757_000_000, 0).UTC()
 
-// sampleFile は走査で分かる事実を1件組み立てる。
 func sampleFile(path, title, key string, size int64, offset time.Duration) domain.VideoFile {
 	return domain.VideoFile{
 		Path:       path,
@@ -26,7 +24,6 @@ func sampleFile(path, title, key string, size int64, offset time.Duration) domai
 	}
 }
 
-// 新規の取り込み。走査で分かる事実だけが入り、解析はこれからの状態になる。
 func TestUpsertVideoAddsNewRow(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -52,7 +49,6 @@ func TestUpsertVideoAddsNewRow(t *testing.T) {
 	if video.ContentKey != "key-a" {
 		t.Errorf("ContentKey = %q", video.ContentKey)
 	}
-	// 解析前は「再生できない」側に倒す。
 	if video.Playable {
 		t.Error("解析前なのに再生できる扱いになっている")
 	}
@@ -62,14 +58,11 @@ func TestUpsertVideoAddsNewRow(t *testing.T) {
 	if video.ThumbnailState != domain.ThumbnailStatePending {
 		t.Errorf("ThumbnailState = %q, want pending", video.ThumbnailState)
 	}
-	// 取得できていない尺は null のままにする。0 で代用しない。
 	if video.DurationMs != nil {
 		t.Errorf("DurationMs = %v, want nil", *video.DurationMs)
 	}
 }
 
-// 同じパス・同じサイズ・同じ mtime の再取り込みでは何も変わらない。
-// 2 回目以降のスキャンを安く保つ前提である。
 func TestUpsertVideoIsUnchangedWhenNothingMoved(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -92,7 +85,6 @@ func TestUpsertVideoIsUnchangedWhenNothingMoved(t *testing.T) {
 	}
 }
 
-// 内容が変われば（サイズか mtime が変わる）属性を更新し、解析をやり直す。
 func TestUpsertVideoUpdatesChangedFileAndResetsProbe(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -107,7 +99,6 @@ func TestUpsertVideoUpdatesChangedFileAndResetsProbe(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 同じパスで内容が差し替わった（content_key も変わる）。
 	updated, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "a", "key-a2", 2048, time.Hour))
 	if err != nil {
 		t.Fatal(err)
@@ -164,8 +155,6 @@ func TestReassigningRepresentativeLocationSynchronizesOldVideo(t *testing.T) {
 	}
 }
 
-// 移動・改名は行の作り直しではなくパスの更新になる。重複を作らないことが
-// 要求で、再生位置を引き継ぐ前提でもある。
 func TestUpsertVideoTreatsSameContentAtNewPathAsMove(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -205,7 +194,6 @@ func TestUpsertVideoTreatsSameContentAtNewPathAsMove(t *testing.T) {
 	if video.Title != "海辺の散歩（編集済み）" {
 		t.Errorf("Title が更新されていない: %q", video.Title)
 	}
-	// 内容は変わっていないので、解析結果は捨てない。
 	if video.ProbeState != domain.ProbeStatePending {
 		t.Errorf("ProbeState = %q", video.ProbeState)
 	}
@@ -273,7 +261,6 @@ func TestRepresentativeLocationComesFromRegisteredRoot(t *testing.T) {
 	}
 }
 
-// 存在しない id は「無い」と分かる誤りを返す。
 func TestGetVideoReportsMissing(t *testing.T) {
 	db := migratedDB(t)
 
@@ -283,7 +270,6 @@ func TestGetVideoReportsMissing(t *testing.T) {
 	}
 }
 
-// 解析の結果を反映する。再生可否は domain の判定をそのまま書き込む。
 func TestApplyProbeStoresFactsAndPlayability(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -323,8 +309,7 @@ func TestApplyProbeStoresFactsAndPlayability(t *testing.T) {
 	}
 }
 
-// 尺が取れなかった場合は null のままにする。0 で代用すると、一覧で
-// 「尺が 0 の動画」と「尺が分からない動画」を区別できなくなる。
+// NULL means unknown duration; zero is a known value.
 func TestApplyProbeKeepsUnknownDurationNull(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -350,8 +335,6 @@ func TestApplyProbeKeepsUnknownDurationNull(t *testing.T) {
 	}
 }
 
-// 解析に失敗した動画は、理由を添えて failed にする。取り込み全体は止めない
-// ので、一覧には並んだままになる。
 func TestMarkProbeFailedKeepsRowAndRecordsReason(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -382,7 +365,6 @@ func TestMarkProbeFailedKeepsRowAndRecordsReason(t *testing.T) {
 		t.Error("解析に失敗したのに再生できる扱いになっている")
 	}
 
-	// 解析に成功すれば、理由と一緒にコードも消える。
 	probe := domain.Probe{DurationMs: 1000, VideoCodec: "h264", AudioCodec: "aac"}
 	if err := db.Ingest().ApplyProbe(ctx, added.ID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
 		t.Fatal(err)
@@ -396,7 +378,7 @@ func TestMarkProbeFailedKeepsRowAndRecordsReason(t *testing.T) {
 	}
 }
 
-// listFixture は並び順の検証用に、追加順と題名順が食い違う行を入れる。
+// Make title order differ from ingestion order.
 func listFixture(t *testing.T) (*DB, []int64) {
 	t.Helper()
 
@@ -416,7 +398,7 @@ func listFixture(t *testing.T) (*DB, []int64) {
 
 	ids := make([]int64, 0, len(rows))
 	for i, row := range rows {
-		// added_at が行ごとに違わないと、追加順の並びが id 頼みになる。
+		// Distinct ingestion times prevent accidental reliance on ID ordering.
 		got, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
 			Path:       fmt.Sprintf(fixturePath("/media/%s.mp4"), row.title),
 			Title:      row.title,
@@ -434,7 +416,6 @@ func listFixture(t *testing.T) (*DB, []int64) {
 	return db, ids
 }
 
-// titlesOf は一覧の題名を順に取り出す。
 func titlesOf(page domain.VideoPage) []string {
 	out := make([]string, 0, len(page.Items))
 	for _, item := range page.Items {
@@ -443,7 +424,6 @@ func titlesOf(page domain.VideoPage) []string {
 	return out
 }
 
-// 並び順のうち、以前からある「追加が新しい順」と「題名順（自然順）」。
 func TestListVideosSortOrders(t *testing.T) {
 	db, _ := listFixture(t)
 	ctx := context.Background()
@@ -467,7 +447,6 @@ func TestListVideosSortOrders(t *testing.T) {
 	}
 }
 
-// 既定の件数は 60、上限は 200。上限を越える指定は上限に丸める。
 func TestListVideosLimitDefaultsAndCaps(t *testing.T) {
 	db, _ := listFixture(t)
 	ctx := context.Background()
@@ -500,8 +479,6 @@ func TestListVideosLimitDefaultsAndCaps(t *testing.T) {
 	}
 }
 
-// カーソルで続きから取れること。並び順の値と id を境界にするので、
-// 途中で行が増減しても取りこぼしと重複が起きない。
 func TestListVideosPagesWithCursor(t *testing.T) {
 	for _, sort := range []domain.VideoSort{domain.SortAddedDesc, domain.SortTitleAsc} {
 		t.Run(string(sort), func(t *testing.T) {
@@ -533,8 +510,6 @@ func TestListVideosPagesWithCursor(t *testing.T) {
 	}
 }
 
-// 最後のページでは次のカーソルを返さない。返し続けると無限スクロールが
-// 止まらなくなる。
 func TestListVideosStopsAtLastPage(t *testing.T) {
 	db, _ := listFixture(t)
 
@@ -547,7 +522,6 @@ func TestListVideosStopsAtLastPage(t *testing.T) {
 	}
 }
 
-// total は絞り込み後の総件数であり、ページの件数とは独立している。
 func TestListVideosTotalIsIndependentOfPageSize(t *testing.T) {
 	db, _ := listFixture(t)
 
@@ -563,8 +537,6 @@ func TestListVideosTotalIsIndependentOfPageSize(t *testing.T) {
 	}
 }
 
-// 壊れたカーソルは誤りとして返す。黙って先頭から返すと、無限スクロールが
-// 巻き戻って同じ内容を延々と表示することになる。
 func TestListVideosRejectsBrokenCursor(t *testing.T) {
 	db, _ := listFixture(t)
 
@@ -576,7 +548,6 @@ func TestListVideosRejectsBrokenCursor(t *testing.T) {
 	}
 }
 
-// 行の削除。消えたファイルを索引から落とす。
 func TestDeleteVideos(t *testing.T) {
 	db, ids := listFixture(t)
 	ctx := context.Background()
@@ -593,7 +564,6 @@ func TestDeleteVideos(t *testing.T) {
 		t.Errorf("残り = %d 行, want 3", total)
 	}
 
-	// 空の指定で全件消してしまわないこと。
 	if err := db.ScanIndex().DeleteVideos(ctx, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -602,8 +572,6 @@ func TestDeleteVideos(t *testing.T) {
 	}
 }
 
-// 索引に入っているパスの一覧を取れること。走査は実際のファイルとこれを
-// 突き合わせて差分を出す。
 func TestIndexedVideosByPath(t *testing.T) {
 	db, _ := listFixture(t)
 
@@ -627,7 +595,6 @@ func TestIndexedVideosByPath(t *testing.T) {
 	}
 }
 
-// 生成中に動画が消えたかどうかを、内容の識別子1つで確かめられること。
 func TestContentKeyReferenced(t *testing.T) {
 	db, _ := listFixture(t)
 	ctx := context.Background()
@@ -655,9 +622,7 @@ func equalStrings(got, want []string) bool {
 	return true
 }
 
-// 同じ内容の場所を後から足して代表場所が入れ替わる場合。取り込みは新しい行を
-// 作らず場所だけを足すので、container は既存の値のまま残りうる。
-// assertRepresentativeInvariant が働くのはこの状態である（invariants_test.go）。
+// Adding a same-content location can change the representative without creating a video; resync its container.
 func TestUpsertVideoResyncsWhenAddedLocationBecomesRepresentative(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -665,7 +630,6 @@ func TestUpsertVideoResyncsWhenAddedLocationBecomesRepresentative(t *testing.T) 
 	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/b.mkv"), "movie", "same", 10, 0)); err != nil {
 		t.Fatal(err)
 	}
-	// /media/a.mp4 はパス順で先にくるので、足した時点で代表場所になる。
 	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "movie", "same", 10, 0)); err != nil {
 		t.Fatal(err)
 	}
@@ -680,8 +644,7 @@ func TestUpsertVideoResyncsWhenAddedLocationBecomesRepresentative(t *testing.T) 
 	}
 }
 
-// 代表場所を削除して、残った別拡張子の場所が代表になる場合。
-// 削除経路にも同じ再同期が要る。
+// Removing the representative can also change the derived container.
 func TestDeleteVideoLocationsResyncsRemainingRepresentative(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -712,7 +675,6 @@ func TestDeleteVideoLocationsResyncsRemainingRepresentative(t *testing.T) {
 	}
 }
 
-// releasedRecorder は発行のうち、参照の無くなった内容の識別子を記録する。
 type releasedRecorder struct {
 	keys []string
 }
@@ -737,9 +699,6 @@ func (r *releasedRecorder) take() []string {
 	return keys
 }
 
-// 動画の行を消したら、消した動画の内容の識別子を知らせる。生成物の片付けは
-// この知らせだけで行い、ライブラリ全体は読まない。所在が残っていて動画の行が
-// 消えないときは知らせない。
 func TestContentReleasedWhenVideoRowsAreDeleted(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -765,7 +724,6 @@ func TestContentReleasedWhenVideoRowsAreDeleted(t *testing.T) {
 		return id
 	}
 
-	// 同じ内容の所在が残るので、動画の行は消えない。
 	if err := db.ScanIndex().DeleteVideoLocations(ctx, []int64{location(fixturePath("/media/a2.mp4"))}); err != nil {
 		t.Fatal(err)
 	}
@@ -773,7 +731,6 @@ func TestContentReleasedWhenVideoRowsAreDeleted(t *testing.T) {
 		t.Fatalf("動画の行が残るのに知らせた: %v", got)
 	}
 
-	// 最後の所在が消えると、動画の行と一緒に知らせる。
 	if err := db.ScanIndex().DeleteVideoLocations(ctx, []int64{location(fixturePath("/media/b.mp4"))}); err != nil {
 		t.Fatal(err)
 	}
@@ -781,7 +738,6 @@ func TestContentReleasedWhenVideoRowsAreDeleted(t *testing.T) {
 		t.Fatalf("DeleteVideoLocations の知らせ = %v, want [key-b]", got)
 	}
 
-	// 同じ所在の内容が変わると、前の内容の動画が消える。
 	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/c.mp4"), "c", "key-c2", 4, time.Minute)); err != nil {
 		t.Fatal(err)
 	}
@@ -789,7 +745,6 @@ func TestContentReleasedWhenVideoRowsAreDeleted(t *testing.T) {
 		t.Fatalf("内容の変更の知らせ = %v, want [key-c]", got)
 	}
 
-	// 登録を外すと、その下の動画がすべて消える。
 	folders, err := db.Settings().ListMediaFolders(ctx)
 	if err != nil {
 		t.Fatal(err)

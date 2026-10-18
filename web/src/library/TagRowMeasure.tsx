@@ -11,16 +11,12 @@ import {
 type Callback = () => void;
 
 interface TagRowMeasureContextValue {
-  /** observe はその要素を見張りへ加える。戻り値で外す。 */
   observe: (el: Element, callback: Callback) => () => void;
 }
 
 const TagRowMeasureContext = createContext<TagRowMeasureContextValue | null>(null);
 
-/**
- * TagRowMeasureProvider は、カードのタグの行の幅を測るための、一覧に1つだけの
- * `ResizeObserver` を提供する。`CardTagRow` は `useTagRowMeasure` でここへ登録する。
- */
+/** Share one ResizeObserver across the list's tag rows. */
 export function TagRowMeasureProvider({ children }: { children: ReactNode }) {
   const callbacks = useRef(new Map<Element, Callback>());
   const [observer] = useState<ResizeObserver | null>(() =>
@@ -52,11 +48,7 @@ export function TagRowMeasureProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * useTagRowMeasure は一覧共有の見張りへの登録関数を返す。`TagRowMeasureProvider`
- * の外（単体テストなど）では null を返し、呼び出し側は layout effect の初回の
- * 計測だけで済ませる。
- */
+/** Outside the provider, callers measure only during initial layout. */
 export function useTagRowMeasure(): TagRowMeasureContextValue["observe"] | null {
   return useContext(TagRowMeasureContext)?.observe ?? null;
 }

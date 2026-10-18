@@ -8,8 +8,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// GetNetworkSettings は LAN からの接続の許可と、許可中に開けるアドレスを返す。デスクトップ版で
-// なければ 404 を返し、画面はこれを「この節を出さない」と読む。
+// Non-desktop builds return 404 so the UI hides LAN settings.
 func (s *server) GetNetworkSettings(w http.ResponseWriter, _ *http.Request) {
 	if s.networkSettings == nil {
 		s.notFound(w, "Network settings are only available in the desktop app.")
@@ -19,14 +18,13 @@ func (s *server) GetNetworkSettings(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, toAPINetworkSettings(s.networkSettings.Current()), s.logger)
 }
 
-// UpdateNetworkSettings は許可を切り替え、切り替えたあとの設定を返す（契約 §3）。
-// 待ち受けの開き直しと保存の順、失敗時の戻し方は NetworkSettings が持つ。
+// NetworkSettings owns listener reopening, persistence order, and rollback.
 func (s *server) UpdateNetworkSettings(w http.ResponseWriter, r *http.Request) {
 	if s.networkSettings == nil {
 		s.notFound(w, "Network settings are only available in the desktop app.")
 		return
 	}
-	// lanAccess は必須なので、無いことを偽と区別して読む。
+	// Distinguish missing required lanAccess from false.
 	var body struct {
 		LANAccess *bool `json:"lanAccess"`
 	}

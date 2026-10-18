@@ -9,8 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// setTagKindForTest は tags.kind_id を直接書き、テストの前提をバッチの操作によらずに作る。
-// kindID が 0 なら種類を外す。
+// Set kinds directly so fixture setup is independent of the batch operation under test.
 func setTagKindForTest(t *testing.T, db *DB, tagID, kindID int64) {
 	t.Helper()
 	var value any
@@ -53,7 +52,6 @@ func createTagForTest(t *testing.T, db *DB, name string) int64 {
 	return tag.ID
 }
 
-// R-2: 新しいデータベースの種類はプリセットの 4 つで、この id 順に並ぶ。
 func TestTagKindsStartWithPresets(t *testing.T) {
 	db := migratedDB(t)
 	kinds, err := db.Tags().ListTagKinds(context.Background())
@@ -71,8 +69,6 @@ func TestTagKindsStartWithPresets(t *testing.T) {
 	}
 }
 
-// Edge Case「同じ名前を 2 回」: 2 つ目は TagKindNameConflict で、何も書かない。名前は
-// NormalizeTagName で整えてから比べ、タグの名前とは別の名前空間で扱う（R-6）。
 func TestCreateTagKindRejectsDuplicateName(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -100,7 +96,6 @@ func TestCreateTagKindRejectsDuplicateName(t *testing.T) {
 			t.Errorf("CreateTagKind(%q) error = %v, want ErrInvalidTagName", name, err)
 		}
 	}
-	// 大文字・小文字は区別する（R-6）。
 	if _, err := db.Tags().CreateTagKind(ctx, "genre"); err != nil {
 		t.Errorf("CreateTagKind(genre) error = %v", err)
 	}
@@ -131,7 +126,6 @@ func TestRenameTagKind(t *testing.T) {
 	}
 }
 
-// 受け入れ条件 3: 種類を足して名前を変え、消すと、その種類のタグは残り、種類が null になる。
 func TestTagKindLifecycleKeepsTags(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -177,7 +171,6 @@ func TestTagKindLifecycleKeepsTags(t *testing.T) {
 	}
 }
 
-// R-4: タグを返す読み取りはどれも種類を載せる。
 func TestTagReadsCarryKind(t *testing.T) {
 	db, ids := tentativeFixture(t)
 	ctx := context.Background()
@@ -227,8 +220,6 @@ func TestTagReadsCarryKind(t *testing.T) {
 	}
 }
 
-// Edge Case「統合」: 統合先の種類を残し、統合元の種類は統合元と一緒に消える。統合先が種類なしなら
-// 種類なしのまま。
 func TestMergeKeepsTargetKind(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -254,7 +245,6 @@ func TestMergeKeepsTargetKind(t *testing.T) {
 	}
 }
 
-// Edge Case「仮のタグの確定」: 確定しても種類は残る。
 func TestConfirmTentativeTagKeepsKind(t *testing.T) {
 	db, _ := tentativeFixture(t)
 	ctx := context.Background()
@@ -271,7 +261,6 @@ func TestConfirmTentativeTagKeepsKind(t *testing.T) {
 	}
 }
 
-// Down は索引と列と表を落とし、Up はもう一度プリセットを入れる。
 func TestTagKindsMigrationDown(t *testing.T) {
 	db := migratedDB(t)
 	downTo(t, db, 47)

@@ -11,23 +11,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 外部連携 API の名前でのタグの一括操作。画面の付与（video_tags.go）と違い、引けない動画を
-// 飛ばさずに要求全体を失敗させる。書き換えるのは手で付けたタグ（video_tags の行）だけで、
-// 祖先のフォルダ名から付くタグは変えない。
+// External bulk tag edits fail atomically on unresolved videos and affect manual attachments only.
 
-// ApplyVideoTags は videos の各動画に、names のタグを action の通りに付ける・外す・置き換え、
-// 各動画の操作後のタグを videos の順に返す（同じ動画を 2 度指せば 2 度返す）。
-//
-// tentative が真の add・replace は、どのタグの名前にもシノニムにも当たらない名前を仮のタグとして
-// 作る。その名前が却下した名前なら作らず付けず、飛ばした名前として返す（replace の置き換え後の
-// 集合にも入らない）。tentative が偽なら確定したタグとして作る。既存のタグに当たる名前は
-// tentative を問わずそのタグを付け、その状態を変えない。
-//
-// 全体を 1 つのトランザクションで行う。videos の指定のうち、登録フォルダの下に所在を持つ
-// 今の動画へ引けないもの（内容を読めていない動画を含む）が 1 つでもあれば
-// *domain.VideoRefNotFoundError（domain.ErrNotFound を包む）で失敗し、何も反映しない。
-// names は domain.NormalizeTagName で整え、規則に合わないものは *domain.TagNameAtError。
-// 同じタグに当たる名前は 1 つにまとめる。件数の上限は呼び出し側が確かめる。
+// ApplyVideoTags resolves normalized names and synonyms atomically, preserves input video order, and skips rejected tentative names.
 func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef, action domain.VideoTagsAction, names []string, tentative bool) (domain.VideoTagsOutcome, error) {
 	if !action.Valid() {
 		return domain.VideoTagsOutcome{}, fmt.Errorf("unknown video tags action %q", action)
@@ -52,7 +38,6 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 		return domain.VideoTagsOutcome{}, err
 	}
 	keys := uniqueUserKeys(targets)
-	// 外部連携 API の操作も所有者の操作として記録する。
 	c := &changes{}
 	skipped, err := writeVideoTagsByName(ctx, tx, keys, action, normalized, tagWrite{tentative: tentative, activity: c},
 		time.Now())
@@ -64,7 +49,6 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 	if err != nil {
 		return domain.VideoTagsOutcome{}, err
 	}
-	// タグを書くので、スマートフォルダの一致も変わりうる。
 	c.matchesChanged()
 	if err := s.db.commit(ctx, tx, c); err != nil {
 		return domain.VideoTagsOutcome{}, fmt.Errorf("cannot update the video tags: %w", err)
@@ -81,22 +65,14 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 	return domain.VideoTagsOutcome{Items: out, SkippedNames: skipped}, nil
 }
 
-// tagWrite は writeVideoTagsByName の書き方である。tentative は無い名前を仮のタグとして作る
-// （resolveTagNames）。keepSuggested は、自動タグ付けが提案した（video_tags.tentative = 1 の）付与に
-// 同じタグを付けるとき、提案のまま残す。偽なら手で付けたのと同じく確定する（docs/design-docs/auto-tagging.md）。
-// activity が nil でなければ、変わる鍵とタグの組ごとに所有者の記録を書き（recordManualTagActivity）、それを
-// activity に残す。
+// keepSuggested preserves tentative attachments; activity records owner changes when supplied.
 type tagWrite struct {
 	tentative     bool
 	keepSuggested bool
 	activity      *changes
 }
 
-// writeVideoTagsByName は利用者データの鍵 keys の手で付けたタグを、整えた名前 names で action の通りに
-// 書き換え、飛ばした（却下した）名前を返す。名前の引き当て（resolveTagNames）と書き込みと更新日時は
-// 呼び出し側の取引 tx で行う。更新日時は手で付けたタグが実際に変わった鍵（集まりなら全メンバー）だけを
-// 進める。外部連携の一括操作と、作品情報の取得の結果の反映
-// （ApplyFetchedWorkInfo）が共有する。
+// Resolve names and write tags in the caller's transaction; advance edit times only for keys whose attachments change.
 func writeVideoTagsByName(
 	ctx context.Context, tx *sql.Tx, keys []string, action domain.VideoTagsAction, names []string, mode tagWrite, now time.Time,
 ) ([]string, error) {
@@ -114,17 +90,14 @@ func writeVideoTagsByName(
 	return skipped, nil
 }
 
-// taggableVideo は一括操作の対象に引き当てた動画である。userKey は利用者データの鍵
-// で、タグはこの鍵に書き、この鍵で読む。
+// Read and write tags through the resolved user-data key.
 type taggableVideo struct {
 	id         int64
 	contentKey string
 	userKey    string
 }
 
-// resolveTaggableVideos は videos の各指定を、登録フォルダの下に所在を持ち内容の識別子の
-// ある動画へ引き当てる。引けない指定があれば、その位置を持つ *domain.VideoRefNotFoundError。
-// 内容を読めていない動画（空の content_key）はタグを持てないので、引けない動画と同じに扱う。
+// Videos without content keys cannot hold tags and are reported as unresolved references.
 func resolveTaggableVideos(ctx context.Context, tx *sql.Tx, videos []domain.VideoRef) ([]taggableVideo, error) {
 	out := make([]taggableVideo, 0, len(videos))
 	for i, ref := range videos {
@@ -151,12 +124,7 @@ func resolveTaggableVideos(ctx context.Context, tx *sql.Tx, videos []domain.Vide
 	return out, nil
 }
 
-// resolveTagNames は整えた名前をシノニムを含めてタグの id へ引く。add・replace は無い名前の
-// タグを作り、remove はどのタグにも当たらない名前を飛ばす（tentative は読まない）。同じタグに
-// 当たる名前は 1 つにまとめる。
-//
-// 作るタグは tentative が真なら仮のタグで、名前が却下した名前なら作らずに skipped へ入れる
-// （names の順、重複なし）。偽なら確定したタグで、名前を却下した名前から外す。判定は名前の引き当てと同じ取引で行う（R-6）。
+// Resolve names and synonyms once; remove skips unknown names, while tentative creation skips rejected names.
 func resolveTagNames(ctx context.Context, tx *sql.Tx, action domain.VideoTagsAction, names []string, tentative bool) ([]int64, []string, error) {
 	seen := make(map[int64]bool, len(names))
 	ids := make([]int64, 0, len(names))
@@ -201,7 +169,6 @@ func resolveTagNames(ctx context.Context, tx *sql.Tx, action domain.VideoTagsAct
 	return ids, skipped, nil
 }
 
-// isRejectedTagName は name が却下した名前かどうかを返す。
 func isRejectedTagName(ctx context.Context, q rowQueryer, name string) (bool, error) {
 	var n int
 	if err := q.QueryRowContext(ctx, `select count(*) from rejected_tag_names where name = ?`, name).Scan(&n); err != nil {
@@ -210,7 +177,7 @@ func isRejectedTagName(ctx context.Context, q rowQueryer, name string) (bool, er
 	return n > 0, nil
 }
 
-// uniqueContentKeys は対象の content_key を重複なく最初に現れた順で返す（表示名の一括操作）。
+// Preserve first occurrence order while deduplicating content keys.
 func uniqueContentKeys(targets []taggableVideo) []string {
 	seen := make(map[string]bool, len(targets))
 	keys := make([]string, 0, len(targets))
@@ -223,8 +190,7 @@ func uniqueContentKeys(targets []taggableVideo) []string {
 	return keys
 }
 
-// uniqueUserKeys は対象の利用者データの鍵を重複なく最初に現れた順で返す。同じ集まりの
-// 動画は 1 つの鍵になる。
+// Deduplicate user-data keys in input order; bundle members share one key.
 func uniqueUserKeys(targets []taggableVideo) []string {
 	seen := make(map[string]bool, len(targets))
 	keys := make([]string, 0, len(targets))
@@ -237,14 +203,7 @@ func uniqueUserKeys(targets []taggableVideo) []string {
 	return keys
 }
 
-// applyManualTags は利用者データの鍵 keys の手で付けたタグ（video_tags の行）を action の通りに
-// 書き換え、行が実際に変わる鍵を重複なく keys の順で返す。add・replace は、自動タグ付けが提案した
-// 付与に同じタグを付けると確定する。mode.keepSuggested が真なら提案のまま残す。mode.activity があれば
-// 書き込みの前に所有者の記録を書く。
-// 動画とタグの組を 1 行ずつ送らず、json_each で渡した集合に対する文の数を一定に保つ。上限の
-// 20000 件 × 100 件でも文の数が増えず、書き込みの鍵を持つ時間を SQLite の中の処理だけに抑える。
-// 変わる鍵は書き込みの前に 1 文で求め（changedManualTagKeys）、返る行を鍵の数までに抑える。書き込みは同じ取引で行うので、求めた鍵と実際に
-// 変わる行は食い違わない。
+// Use set-based SQL to bound statement count for large batches; identify changed keys before writing in the same transaction.
 func applyManualTags(
 	ctx context.Context, tx *sql.Tx, keys []string, action domain.VideoTagsAction, tagIDs []int64, mode tagWrite, now time.Time,
 ) ([]string, error) {
@@ -303,11 +262,7 @@ func applyManualTags(
 	return changed, nil
 }
 
-// changedManualTagKeys は、鍵の集合 encodedKeys（JSON の配列）のうち、action の書き込みで
-// 手で付けたタグの行が変わる鍵を、書き込みの前に 1 文で返す（1 鍵につき高々 1 行）。
-// add はタグの集合 encodedTags に付いていないタグがある鍵、remove は集合のタグが付いている鍵、
-// replace はその両方に加えて集合に無いタグが付いている鍵である。keepSuggested が偽なら、提案のまま
-// 付いている（tentative = 1 の）タグは確定して行が変わるので、付いていないタグと同じに数える（unheldManualTag）。
+// Return at most one row per changed key; promoting a suggestion also counts as a change.
 func changedManualTagKeys(
 	ctx context.Context, tx *sql.Tx, encodedKeys string, action domain.VideoTagsAction, encodedTags string, keepSuggested bool,
 ) ([]string, error) {
@@ -348,8 +303,7 @@ func changedManualTagKeys(
 	return keys, nil
 }
 
-// unheldManualTag は、鍵 k.value にタグ t.value を付ける書き込み（applyManualTags の add）がその行を
-// 変える条件である。行が無いときに加えて、keepSuggested が偽なら提案のまま付いている行も確定するので変わる。
+// An existing tentative attachment changes when promotion is requested.
 func unheldManualTag(keepSuggested bool) string {
 	held := `vt.content_key = k.value and vt.tag_id = t.value`
 	if !keepSuggested {

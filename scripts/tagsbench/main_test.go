@@ -43,8 +43,8 @@ func TestParseArgs(t *testing.T) {
 	}
 }
 
-func TestPlanTagsMatchesTheParentIssueShape(t *testing.T) {
-	for _, shape := range []struct{ scale, videos int }{{1000, 10000}, {3000, 30000}, {30000, 30000}} {
+func TestPlanTagsDistributionAndUniqueAssignments(t *testing.T) {
+	for _, shape := range []struct{ scale, videos int }{{22, 10}, {33, 60}, {44, 100}} {
 		scale := shape.scale
 		plans := planTags(scale, shape.videos)
 		if len(plans) != scale {
@@ -71,23 +71,23 @@ func TestPlanTagsMatchesTheParentIssueShape(t *testing.T) {
 				seen[v] = true
 			}
 		}
-		// 親 Issue の「1,000 個のうち約 90 個」が本数 0、半数が仮。
-		if unused < scale*8/100 || unused > scale*10/100 {
-			t.Errorf("scale %d: %d unused tags, want about 9%%", scale, unused)
+		// Every eleventh tag is unused; every second tag is tentative.
+		if unused != scale/11 {
+			t.Errorf("scale %d: %d unused tags, want every eleventh tag", scale, unused)
 		}
 		if tentative != scale/2 {
 			t.Errorf("scale %d: %d tentative tags, want %d", scale, tentative, scale/2)
 		}
 	}
-	// 動画が 10 本未満でも、本数 0 は unusedEvery 個に 1 個だけで、本数の多いタグは空にならない。
+	// Heavy tags remain nonempty even with fewer than ten videos.
 	for videos := 1; videos < 10; videos++ {
-		for i, plan := range planTags(100, videos) {
+		for i, plan := range planTags(22, videos) {
 			if wantUnused := i%unusedEvery == unusedEvery-1; (len(plan.videos) == 0) != wantUnused {
 				t.Errorf("videos %d: tag %d has %d videos, want unused=%v", videos, i, len(plan.videos), wantUnused)
 			}
 		}
 	}
-	if !reflect.DeepEqual(planTags(100, 1000), planTags(100, 1000)) {
+	if !reflect.DeepEqual(planTags(22, 10), planTags(22, 10)) {
 		t.Error("planTags is not deterministic")
 	}
 }

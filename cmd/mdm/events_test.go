@@ -20,7 +20,6 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// countingWaker は起こされた回数を数える。
 type countingWaker struct{ woken atomic.Int32 }
 
 func (w *countingWaker) Wake() { w.woken.Add(1) }
@@ -29,9 +28,6 @@ func newTestBus() *eventbus.Bus {
 	return eventbus.New(slog.New(slog.DiscardHandler))
 }
 
-// 仕事が積まれた段階のワーカーだけを起こし、解析の成否が決まったらサムネイルの
-// ワーカーを起こす。シーク用サムネイルのワーカーは、解析と代表サムネイルの成否と
-// 動画の行の削除で起こす。購読をやめたら、止めたワーカーを起こさない。
 func TestSubscribeEventsWakesWorkers(t *testing.T) {
 	bus := newTestBus()
 	wakers := map[domain.JobKind]*countingWaker{}
@@ -44,7 +40,6 @@ func TestSubscribeEventsWakesWorkers(t *testing.T) {
 	subs := subscribeEvents(bus, eventSubscribers{Workers: workers, VersionJudge: judge})
 
 	bus.Publish(domain.JobsQueued{Kinds: []domain.JobKind{domain.JobProbe, domain.JobPreview}})
-	// 重複の判定のワーカーは、仕事の終わりと候補の変化で起こす。
 	bus.Publish(domain.ProcessingChanged{})
 	bus.Publish(domain.VersionCandidatesChanged{})
 	bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobProbe})
@@ -54,7 +49,7 @@ func TestSubscribeEventsWakesWorkers(t *testing.T) {
 	bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobPreview})
 	want := map[domain.JobKind]int32{
 		domain.JobProbe: 1, domain.JobThumbnail: 1, domain.JobPreview: 1,
-		// 解析・代表サムネイル・動画の行の削除の3回。
+		// Probe, thumbnail, and video deletion each wake the worker.
 		domain.JobSeekThumbnail: 3,
 	}
 	check := func() bool {
@@ -68,7 +63,7 @@ func TestSubscribeEventsWakesWorkers(t *testing.T) {
 		}
 		return true
 	}
-	// 購読者へは非同期に渡るので、届くまで待つ。
+	// Delivery is asynchronous.
 	for deadline := time.Now().Add(5 * time.Second); !check() && time.Now().Before(deadline); {
 		time.Sleep(time.Millisecond)
 	}
@@ -86,7 +81,6 @@ func TestSubscribeEventsWakesWorkers(t *testing.T) {
 	}
 }
 
-// probeOnlyGenerator は解析だけを返す。ffprobe を起動しない。
 type probeOnlyGenerator struct{}
 
 func (probeOnlyGenerator) CheckSource(string) error { return nil }
@@ -113,7 +107,6 @@ func (probeOnlyGenerator) FitThumbnailSource(_ context.Context, image []byte, _ 
 	return image, nil
 }
 
-// emptyClaims は、取り出しが空振りしたことを知らせる待ち行列である。
 type emptyClaims struct {
 	jobs.Queue
 	empty chan struct{}
@@ -146,9 +139,7 @@ func openTestDB(t *testing.T) (context.Context, *store.DB, string) {
 	return ctx, db, mediaDir
 }
 
-// 解析が終わると、待ち行列を一定間隔で問い合わせずにサムネイルの生成が始まる。
-// 解析の完了からサムネイルのワーカーの起床への依存は、subscribeEvents の購読だけで
-// 表されている。
+// Verify the subscription alone starts thumbnail work after probing, without queue polling.
 func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
 	ctx, db, mediaDir := openTestDB(t)
 	video, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
@@ -169,7 +160,7 @@ func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
 		Store: db.Ingest(), Generator: probeOnlyGenerator{}, Artifacts: artifacts.New(t.TempDir()),
 		Publisher: bus, Logger: logger,
 	})
-	// 取り出しの失敗による再試行でも起きないよう、再試行の間隔は長くする。
+	// Prevent retry wakeups from masking missing event delivery.
 	const noRetry = time.Hour
 	thumbnailStarted := make(chan domain.Job, 1)
 	thumbnailQueue := emptyClaims{Queue: db.Ingest(), empty: make(chan struct{}, 1)}
@@ -198,7 +189,7 @@ func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
 		bus.Close()
 	}()
 	running.Go(func() { thumbnail.Run(runCtx) })
-	// 解析の前なので、サムネイルのワーカーは空振りして眠る。
+	// Before probing, the thumbnail worker finds no claim and sleeps.
 	select {
 	case <-thumbnailQueue.empty:
 	case <-time.After(5 * time.Second):
@@ -219,7 +210,6 @@ func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
 	}
 }
 
-// eventLog は受け取った変化の種類を記録する、テスト用の購読者である。
 type eventLog struct {
 	mu     sync.Mutex
 	events []domain.Event
@@ -247,8 +237,6 @@ func (finishedScanner) ScanScoped(context.Context, []domain.DirtyDirectory) (dom
 	return domain.ScanResult{}, nil
 }
 
-// 購読者を1つ加えるには、購読者と、配り先への登録だけがあればよい。発行する
-// 側（保存層・取り込み・走査）は変えずに、定めたすべての変化が届く。
 func TestAddedSubscriberReceivesEveryEventWithoutPublisherChanges(t *testing.T) {
 	ctx, db, mediaDir := openTestDB(t)
 	video, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
@@ -275,7 +263,6 @@ func TestAddedSubscriberReceivesEveryEventWithoutPublisherChanges(t *testing.T) 
 		Workers:          map[domain.JobKind]waker{domain.JobProbe: &countingWaker{}},
 		ReleaseArtifacts: ingest.ReleaseArtifacts,
 	})
-	// テスト用の購読者。加えるのはこの1行だけである。
 	log := &eventLog{}
 	bus.Subscribe("テスト用の購読者", log.handle)
 
@@ -319,7 +306,6 @@ func TestAddedSubscriberReceivesEveryEventWithoutPublisherChanges(t *testing.T) 
 	}
 }
 
-// 停止時の待ちは、終われば真を返し、終わらなければ上限で諦める。
 func TestWaitAtMost(t *testing.T) {
 	if !waitAtMost(func() {}, time.Second) {
 		t.Fatal("終わった待ちを諦めた")

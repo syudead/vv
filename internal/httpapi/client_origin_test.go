@@ -10,12 +10,8 @@ import (
 	"testing"
 )
 
-// 送信元と HTTPS の判定。
-
 const (
-	// proxyRemote は信頼するプロキシの接続元である。
-	proxyRemote = "10.0.0.5:40000"
-	// directRemote は信頼しない、直接つないだ接続元である。
+	proxyRemote  = "10.0.0.5:40000"
 	directRemote = "203.0.113.7:40000"
 )
 
@@ -92,7 +88,6 @@ func TestClientOrigin(t *testing.T) {
 			for _, value := range tc.proto {
 				r.Header.Add("X-Forwarded-Proto", value)
 			}
-			// Forwarded（RFC 7239）は、どの場合も読まない。
 			r.Header.Set("Forwarded", "for=192.0.2.60;proto=https")
 			got := srv.clientOrigin(r)
 			if got.source.String() != tc.wantSource || got.https != tc.wantHTTPS {
@@ -102,8 +97,6 @@ func TestClientOrigin(t *testing.T) {
 	}
 }
 
-// 信頼するプロキシが無いとき（MDM_TRUSTED_PROXIES=none）は、ループバックの接続元でも
-// 転送ヘッダーを読まない。
 func TestClientOriginIgnoresHeadersWithoutTrustedProxies(t *testing.T) {
 	srv := &server{}
 	r := httptest.NewRequest(http.MethodGet, "/api/health", nil)
@@ -115,13 +108,10 @@ func TestClientOriginIgnoresHeadersWithoutTrustedProxies(t *testing.T) {
 	}
 }
 
-// forgedHeaders は直接つないだ利用者が偽る転送ヘッダーである。
 func forgedHeaders(forwardedFor string) map[string]string {
 	return map[string]string{"X-Forwarded-For": forwardedFor, "X-Forwarded-Proto": "https"}
 }
 
-// 信頼しない接続元が付けた X-Forwarded-For と X-Forwarded-Proto: https は無視される。
-// 試行制限は接続元のアドレスで掛かり、Cookie は vv_session で Secure が付かない。
 func TestUntrustedForwardedHeadersAreIgnored(t *testing.T) {
 	env := newAuthEnv(t, t.TempDir(), Options{TrustedProxies: testTrustedProxies})
 	env.setup()
@@ -138,7 +128,6 @@ func TestUntrustedForwardedHeadersAreIgnored(t *testing.T) {
 		t.Errorf("Set-Cookie = %q, want Secure の無い vv_session", setCookie)
 	}
 
-	// 転送元を毎回変えて偽っても、5回の失敗で接続元が制限される。
 	for i := range 5 {
 		rec := env.serve(authRequest{
 			method: http.MethodPost, target: "/api/auth/login", body: credentialsBody(testUsername, "wrong"),
@@ -159,7 +148,6 @@ func TestUntrustedForwardedHeadersAreIgnored(t *testing.T) {
 		t.Errorf("記録の送信元が接続元でない:\n%s", logs)
 	}
 
-	// Origin: https://<Host> は、偽った X-Forwarded-Proto では同一オリジンにならない。
 	rec = env.serve(authRequest{
 		method: http.MethodPost, target: "/api/auth/logout", remote: directRemote,
 		header: map[string]string{"X-Forwarded-Proto": "https", "Origin": "https://example.com"},
@@ -169,8 +157,6 @@ func TestUntrustedForwardedHeadersAreIgnored(t *testing.T) {
 	}
 }
 
-// 信頼するプロキシからの X-Forwarded-Proto: https では __Host-vv_session に Secure が付き、
-// Origin: https://<Host> の POST が通る。試行制限と記録は転送元のアドレスで分かれる。
 func TestTrustedProxyForwardedHeadersAreUsed(t *testing.T) {
 	env := newAuthEnv(t, t.TempDir(), Options{TrustedProxies: testTrustedProxies, Videos: sampleLibrary()})
 	env.setup()
@@ -203,7 +189,6 @@ func TestTrustedProxyForwardedHeadersAreUsed(t *testing.T) {
 		t.Errorf("プロキシ越しの HTTPS の Cookie: status = %d: %s", rec.Code, rec.Body)
 	}
 
-	// Origin が http:// なら、プロキシ越しの HTTPS とは別オリジンである。
 	if rec := env.serve(authRequest{
 		method: http.MethodPost, target: "/api/auth/logout", remote: proxyRemote,
 		header: viaProxy("198.51.100.1", map[string]string{"Origin": "http://example.com"}),
@@ -211,7 +196,6 @@ func TestTrustedProxyForwardedHeadersAreUsed(t *testing.T) {
 		t.Errorf("Origin: http://<Host>: status = %d, want 403: %s", rec.Code, rec.Body)
 	}
 
-	// 別の転送元の失敗は、この転送元の制限を使い切らない。
 	for i := range 5 {
 		rec := env.serve(authRequest{
 			method: http.MethodPost, target: "/api/auth/login", body: credentialsBody(testUsername, "wrong"),
@@ -238,8 +222,7 @@ func TestTrustedProxyForwardedHeadersAreUsed(t *testing.T) {
 	}
 }
 
-// HTTP の要求は、認証に __Host-vv_session を読まない。偽った X-Forwarded-Proto でも同じである。
-// 「ゲストも」の経路はゲストとして返るので、所有者だけの経路で確かめる。
+// Use an owner-only route because guest routes may succeed without authenticating the forged cookie.
 func TestHTTPRequestDoesNotReadHostCookie(t *testing.T) {
 	env := newAuthEnv(t, t.TempDir(), Options{TrustedProxies: testTrustedProxies, Videos: sampleLibrary()})
 	env.setup()
@@ -261,7 +244,6 @@ func TestHTTPRequestDoesNotReadHostCookie(t *testing.T) {
 	}
 }
 
-// 信頼するプロキシが同じ PC にあっても、転送元が外部なら既定アプリで開く操作は 403 になる。
 func TestOpenVideoFileBehindLoopbackProxy(t *testing.T) {
 	video, library := openFixture(t)
 	opener := &fakeOpener{available: true}
@@ -271,7 +253,6 @@ func TestOpenVideoFileBehindLoopbackProxy(t *testing.T) {
 	external.Header.Set("X-Forwarded-For", "198.51.100.1")
 	assertErrorCode(t, serve(handler, external), http.StatusForbidden, codeForbidden)
 
-	// 外部の転送元がループバックを名乗っても、右端の信頼しない値が送信元になる。
 	forged := openRequest("/api/videos/1/open", "127.0.0.1:50000", "localhost:8080")
 	forged.Header.Set("X-Forwarded-For", "127.0.0.1, 198.51.100.1")
 	assertErrorCode(t, serve(handler, forged), http.StatusForbidden, codeForbidden)
@@ -279,7 +260,6 @@ func TestOpenVideoFileBehindLoopbackProxy(t *testing.T) {
 		t.Fatalf("opened = %q, want none", opener.opened)
 	}
 
-	// 同じ PC のブラウザがプロキシを通したときは開ける。
 	local := openRequest("/api/videos/1/open", "127.0.0.1:50000", "localhost:8080")
 	local.Header.Set("X-Forwarded-For", "::1")
 	if rec := serve(handler, local); rec.Code != http.StatusNoContent {
@@ -289,7 +269,6 @@ func TestOpenVideoFileBehindLoopbackProxy(t *testing.T) {
 		t.Fatalf("opened = %q", opener.opened)
 	}
 
-	// LAN のプロキシを信頼していても、LAN の機器がループバックを名乗るだけでは開けない。
 	lanHandler := newTestServer(t, Options{
 		Videos: library, Opener: opener,
 		TrustedProxies: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/16")},
@@ -301,7 +280,6 @@ func TestOpenVideoFileBehindLoopbackProxy(t *testing.T) {
 		t.Fatalf("LAN の機器の偽装で開いた: opened = %q", opener.opened)
 	}
 
-	// 動画の応答の openable も同じ判定による。
 	detail := httptest.NewRequest(http.MethodGet, "/api/videos/1", nil)
 	detail.RemoteAddr = "127.0.0.1:50000"
 	detail.Host = "localhost:8080"

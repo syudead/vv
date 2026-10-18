@@ -1,20 +1,12 @@
 import type { FolderRef, VideoFolder } from "../api/client";
 import { t } from "../i18n";
 
-/** FOLDERS_ROOT はフォルダ画面の最上位の URL である。 */
 export const FOLDERS_ROOT = "/folders";
 
-/** FolderLocation は URL が指すフォルダ画面の場所である。 */
 export type FolderLocation =
-  | { kind: "root" }
-  | { kind: "folder"; folder: FolderRef }
-  /** 解釈できない URL（id が数でない・復号できない段・空の段）。 */
-  | { kind: "invalid" };
+  { kind: "root" } | { kind: "folder"; folder: FolderRef } | { kind: "invalid" };
 
-/**
- * folderUrl はフォルダの URL を作る。段ごとに encodeURIComponent で包むので、
- * `%`・`#`・`?`・空白を含む名前でも URL の往復で同じフォルダに戻る。
- */
+/** Encode each segment to preserve names containing %, #, ?, or spaces through URL round trips. */
 export function folderUrl(folder?: FolderRef): string {
   if (folder === undefined) return FOLDERS_ROOT;
   const segments = folder.path === "" ? [] : folder.path.split("/");
@@ -24,10 +16,8 @@ export function folderUrl(folder?: FolderRef): string {
 }
 
 /**
- * parseFolderPathname は URL のパス部分からフォルダを読み取る。
- *
- * react-router の splat 引数には任せず、`location.pathname` を段ごとに1回だけ
- * 復号する。任せると `%25` を含む段が二重に復号され、別のフォルダを指す。
+ * Decode location.pathname once per segment; React Router splats can decode %25 twice and select a
+ * different folder.
  */
 export function parseFolderPathname(pathname: string): FolderLocation {
   const trimmed = pathname.replace(/\/+$/, "");
@@ -58,20 +48,13 @@ export function parseFolderPathname(pathname: string): FolderLocation {
   };
 }
 
-/**
- * VideoLocationLabel は動画カードに添える置き場所である。`label` は表示・読み上げに使う文字列（先頭の側を
- * 省略して表示する）、`title` は `title` 属性に入れる省略しない全体である。
- */
+/** label may truncate at the start; title retains the full location. */
 export interface VideoLocationLabel {
   label: string;
   title: string;
 }
 
-/**
- * folderLocationLabel は、開いているフォルダの配下検索結果に添える置き場所を作る。直下は「このフォルダ」、それ以外は開いている
- * フォルダからの相対パス。相対パス自体が省略しない全体なので、`title` は `label`
- * と同じにする。
- */
+/** Use a path relative to the current folder; label and title are identical. */
 export function folderLocationLabel(
   open: FolderRef,
   target: VideoFolder,
@@ -85,26 +68,22 @@ export function folderLocationLabel(
   return { label: relative, title: relative };
 }
 
-/** RootDisplay は最上位の置き場所を作るのに要る登録フォルダの情報である。 */
 export interface RootDisplay {
-  /** rootFolderName と同じ規則の表示名。 */
   name: string;
-  /** 登録フォルダの絶対パス。ゲストの応答には無い。 */
+  /** Absolute root path; absent for guests. */
   rootPath?: string;
 }
 
 /**
- * topLevelLocationLabel は、最上位（`/folders`）の検索結果に添える置き場所を作る。
- * 表示は登録フォルダの表示名から始め、直下ならその名前だけにする。`title` は
- * 省略しない全体として、登録フォルダの絶対パスから始める。登録フォルダが分からない間（取り込み直後の入れ替わりなど）
- * は undefined を返し、呼び出し側は行ごと出さない。
+ * Labels start with the root display name, titles with its absolute path. Return undefined until
+ * the root is known so callers omit the row.
  */
 export function topLevelLocationLabel(
   target: VideoFolder,
   root: RootDisplay | undefined,
 ): VideoLocationLabel | undefined {
   if (root === undefined) return undefined;
-  // 絶対パスが無い（ゲストの）ときは、表示名から始める。
+  // Guests fall back to the display name.
   const base = root.rootPath ?? root.name;
   if (target.path === "") return { label: root.name, title: base };
   return {
@@ -113,17 +92,13 @@ export function topLevelLocationLabel(
   };
 }
 
-/** folderKey はフォルダを一意に表す文字列である（控えの鍵・React の key）。 */
 export function folderKey(folder: FolderRef): string {
   return `${String(folder.rootId)}\0${folder.path}`;
 }
 
 /**
- * rootDisplayName は登録フォルダの表示名を絶対パスから作る。サーバーの
- * `FolderSummary.name` と同じ規則（最後の段、段が無ければパスそのもの）。
- *
- * 区切りはサーバーの OS に従う。`/` で始まる（Unix の）パスでは `\` はファイル名の
- * 一部なので区切りにしない。それ以外（Windows のドライブ付きパス）は両方を区切る。
+ * Follow server path semantics: backslashes are filename characters in Unix paths, separators in
+ * Windows paths.
  */
 export function rootDisplayName(rootPath: string): string {
   const separator = rootPath.startsWith("/") ? /\// : /[/\\]/;
@@ -133,25 +108,18 @@ export function rootDisplayName(rootPath: string): string {
   return last;
 }
 
-/**
- * rootFolderName は登録フォルダの集計（`path` が空の FolderSummary）から表示名を作る。
- * 絶対パスがあれば rootDisplayName で作り、ゲストの応答のように無ければサーバーが
- * 同じ規則で作った `name` を使う。
- */
+/** Without an absolute path, use the server's identically derived name. */
 export function rootFolderName(root: { name: string; rootPath?: string }): string {
   return root.rootPath === undefined ? root.name : rootDisplayName(root.rootPath);
 }
 
-/** Crumb はパンくずの1段である。to が無い段は現在地。 */
+/** A crumb without to is the current location. */
 export interface Crumb {
   label: string;
   to?: string;
 }
 
-/**
- * breadcrumbsFor はフォルダまでのパンくずを作る。rootName が分からない間は
- * undefined を渡し、登録フォルダの段は骨組みで描く。
- */
+/** An unknown rootName produces a skeleton root crumb. */
 export function breadcrumbsFor(
   folder: FolderRef,
   rootName: string | undefined,

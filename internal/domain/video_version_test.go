@@ -2,7 +2,6 @@ package domain
 
 import "testing"
 
-// 尺がほぼ同じかは、差が 1 秒と長い方の 0.5% の大きい方以下で決まる。
 func TestDurationsMatch(t *testing.T) {
 	for _, c := range []struct {
 		name string

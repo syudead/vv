@@ -1,7 +1,6 @@
 package domain
 
-// TranscodeQuality はライブ変換で縮める画質である。空は「元の画質」で、今までどおり
-// 縮めず、ビットレートの上限も付けない
+// Empty TranscodeQuality preserves original resolution without a bitrate cap.
 type TranscodeQuality string
 
 const (
@@ -11,7 +10,7 @@ const (
 	TranscodeQuality360p  TranscodeQuality = "360p"
 )
 
-// TranscodeQualities は知っている画質を大きい順に並べる。
+// TranscodeQualities is ordered largest first.
 var TranscodeQualities = []TranscodeQuality{
 	TranscodeQuality1080p,
 	TranscodeQuality720p,
@@ -19,16 +18,14 @@ var TranscodeQualities = []TranscodeQuality{
 	TranscodeQuality360p,
 }
 
-// TranscodeQualityLimits は 1 つの画質の変換の約束である（契約 §2）。
 type TranscodeQualityLimits struct {
-	// ShortSide は表示の短辺（画素）である。
+	// ShortSide is the displayed short edge in pixels.
 	ShortSide int
-	// VideoKbps は映像のビットレートの上限（-maxrate）である。
+	// VideoKbps is the -maxrate limit.
 	VideoKbps int
-	// BufferKbps は VBV の大きさ（-bufsize）で、上限の 2 倍である。
+	// BufferKbps is -bufsize, twice the bitrate limit.
 	BufferKbps int
-	// AudioKbps は AAC の音声のビットレートである。
-	AudioKbps int
+	AudioKbps  int
 }
 
 var transcodeQualityLimits = map[TranscodeQuality]TranscodeQualityLimits{
@@ -38,8 +35,7 @@ var transcodeQualityLimits = map[TranscodeQuality]TranscodeQualityLimits{
 	TranscodeQuality360p:  {ShortSide: 360, VideoKbps: 700, BufferKbps: 1400, AudioKbps: 64},
 }
 
-// ParseTranscodeQuality は文字列を画質として解釈する。知らない文字列（空を含む）は
-// 解釈できない。
+// ParseTranscodeQuality rejects unknown values, including empty.
 func ParseTranscodeQuality(value string) (TranscodeQuality, bool) {
 	quality := TranscodeQuality(value)
 	if _, ok := transcodeQualityLimits[quality]; !ok {
@@ -48,14 +44,12 @@ func ParseTranscodeQuality(value string) (TranscodeQuality, bool) {
 	return quality, true
 }
 
-// Limits は画質の変換の約束を返す。知らない画質（空を含む）は ok が偽である。
 func (q TranscodeQuality) Limits() (TranscodeQualityLimits, bool) {
 	limits, ok := transcodeQualityLimits[q]
 	return limits, ok
 }
 
-// Available は、表示の寸法（回転を反映済み）が width×height の動画にこの画質が使えるかを
-// 返す。画質の短辺が動画の短辺より小さいときだけ使え、寸法が無ければ使えない
+// Available requires known display dimensions and a strictly smaller target short edge.
 func (q TranscodeQuality) Available(width, height int) bool {
 	limits, ok := q.Limits()
 	if !ok || width <= 0 || height <= 0 {

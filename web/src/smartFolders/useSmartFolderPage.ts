@@ -15,17 +15,12 @@ import {
 } from "../api/smartFolders";
 import type { AncestorRule } from "./pageRules";
 
-/** SmartFolderPageData は読めたスマートフォルダのページの中身である。 */
 export interface SmartFolderPageData {
-  /** フォルダのカードの値（再生順から）。 */
   folder: LibrarySmartFolder;
-  /** 条件・並べ順・欠けた参照。所有者の応答にだけ入る。 */
+  /** Owner responses only. */
   settings?: SmartFolderSettings;
-  /** 祖先（外側から）。 */
   trail: readonly GroupRef[];
-  /** 子フォルダ（名前の順）、続けて動画とグループ（フォルダの並べ順）。 */
   items: readonly LibraryItem[];
-  /** 続きがあるときだけ入る。 */
   nextCursor?: string;
   /** フォルダがホームの棚か。所有者の応答にだけ入る（docs/design-docs/home.md）。 */
   onHome?: boolean;
@@ -33,10 +28,7 @@ export interface SmartFolderPageData {
 
 export type SmartFolderPageState = PagedDetailState<SmartFolderPageData>;
 
-/**
- * appendItems は読んだ続きのページを今の項目の後ろへ足す。同じ項目（itemKey）が前のページに
- * あれば足さない（読む間に一致が変わって、ページの境目で同じ項目が二度返ったとき）。
- */
+/** Deduplicate itemKey across pages because concurrent matching changes can repeat boundary entries. */
 export function appendItems(
   current: readonly LibraryItem[],
   page: readonly LibraryItem[],
@@ -45,16 +37,12 @@ export function appendItems(
   return [...current, ...page.filter((item) => !known.has(itemKey(item)))];
 }
 
-/** readItems はフォルダの中身の続きを 1 ページ読み、項目を読み分ける。 */
 async function readItems(id: number, cursor: string, signal: AbortSignal) {
   const page = await listSmartFolderItems(id, cursor, signal);
   return { items: toLibraryItems(page.items), nextCursor: page.nextCursor };
 }
 
-/**
- * readFolderThrough はフォルダを読み、項目が `atLeast` 件そろうか続きが無くなるまで続きの
- * ページを辿る（読み直しで、並んでいた分を減らさずに入れ替える）。
- */
+/** Refresh through the prior loaded count so existing rows are not dropped. */
 async function readFolderThrough(
   id: number,
   atLeast: number,
@@ -78,13 +66,8 @@ async function readFolderThrough(
 }
 
 /**
- * useSmartFolderPage はスマートフォルダのページ 1 つの読み込みである。開いたときに
- * 読み、続きは `loadMore` で 1 ページずつ足す。このフォルダの id を運ぶ `smartFolder` の知らせと
- * つなぎ直しで、骨組みを出さずに並んでいる分を保ったまま読み直す。
- *
- * 新しい読み込みを始めると、古い読み込みと続きのページの応答は捨てる。静かな読み直しの失敗
- * （404 のほか）は並んでいる中身を残す。どの読み込みの 404 もフォルダが無くなったこととして
- * 見せる。
+ * Keep rows during event/reconnect refreshes and discard superseded reads. Any 404 becomes not-
+ * found; other background failures retain content.
  */
 export function useSmartFolderPage(id: number | null) {
   const { state, stateRef, more, read, loadMore, stop, markGone } = usePagedDetail(id, {
@@ -96,7 +79,7 @@ export function useSmartFolderPage(id: number | null) {
   const refresh = useCallback(() => read(true), [read]);
 
   useEffect(() => {
-    // 知らせは読み込みの前に購読し、読んだ後に起きた変化を取りこぼさない。
+    // Subscribe before reading so changes after the snapshot are not lost.
     const unsubscribe = subscribeServerEvents({
       smartFolder: (ids) => {
         if (id !== null && ids.includes(id) && stateRef.current.kind !== "gone") {
@@ -122,10 +105,8 @@ export function useSmartFolderPage(id: number | null) {
 }
 
 /**
- * useAncestorRules は祖先（近い順に返す）の条件を、それぞれのフォルダを 1 件だけ読んで
- * 引く（`settings` は所有者の応答にだけ入る）。`version` が変わるたびに読み直す。呼び手は
- * ページを読み直したときだけ変わる値（読んだフォルダの値）を渡し、続きのページを足しただけ
- * では読み直さない。読めない祖先の条件は undefined のまま（チップの代わりに骨組み）。
+ * Return ancestor rules nearest-first; version changes only for folder refreshes, not pagination.
+ * Unreadable rules remain undefined for skeletons.
  */
 export function useAncestorRules(
   trail: readonly GroupRef[],

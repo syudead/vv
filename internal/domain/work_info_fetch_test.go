@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-// 実行の要求は設定ごとの実効値を運ぶ。未設定のキーと選択肢の外の保存値には既定値、設定済みのキーには保存値で、
-// 既定値のある必須のキーは不足にならない。
 func TestWorkInfoPluginEffectiveValues(t *testing.T) {
 	settings := []WorkInfoPluginSetting{
 		{Key: "unset", Label: "L", Required: true, Default: "d1"},

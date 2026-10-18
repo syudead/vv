@@ -5,8 +5,6 @@ import { describe, expect, it } from "vitest";
 import type { WorkInfo as WorkInfoValue } from "../api/workInfo";
 import WorkInfo from "./WorkInfo";
 
-// 情報欄の作品情報の行。
-
 const empty: WorkInfoValue = {
   dates: [],
   people: [],

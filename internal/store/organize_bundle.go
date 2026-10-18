@@ -1,8 +1,6 @@
 package store
 
-// ドロップで「バージョンとしてまとめる」。束ねる本体は VersionStore.Bundle と共有し（planBundle・applyBundle）、落とした
-// 先の動画を代表にする。像は吸い込む集まりと新しい集まりの行、付け替える項目を持つグループと
-// プレイリストの全体、新しい鍵へ写した利用者データ、刈り取る候補である。
+// Drag bundles share version planning and capture all affected groups, playlists, copied user data and candidates for undo.
 
 import (
 	"context"
@@ -14,12 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// Bundle は動画 videoIDs を落とした先の動画 targetID と 1 つの集まりに束ね、targetID を代表にする。
-// 既に集まりに属する動画はその集まりの全メンバーごと移る（Edge Case）。取り消しの像を返し、確定後に
-// domain.VideoBundleChanged と domain.GroupsChanged を発行する。重複を除いて 2 本未満なら
-// domain.ErrTooFewVersions、動画がいまライブラリに無ければ domain.ErrGroupTargetNotFound、集まりを
-// 展開して domain.MaxOrganizeBundleVideos 本を超えれば domain.ErrTooManyVersions で、どれも何も
-// 書かない。
+// Bundle expands existing bundles, makes the drop target representative, and rejects missing videos or expanded size limits atomically.
 func (s *OrganizeStore) Bundle(ctx context.Context, videoIDs []int64, targetID int64) ([]byte, error) {
 	ids := uniqueIDs(append([]int64{targetID}, videoIDs...))
 	if len(ids) < 2 {
@@ -76,10 +69,7 @@ func (s *OrganizeStore) Bundle(ctx context.Context, videoIDs []int64, targetID i
 	return encoded, nil
 }
 
-// bundleImage は束ねる前に決まる像の範囲を、親の表を先にして並べる。吸い込む集まりの video_bundles と
-// video_bundle_members、吸い込む鍵の項目か除外を持つグループの group_items と group_exclusions、
-// 吸い込む鍵の項目を持つプレイリストの playlist_items（どれも全体）、新しい集まりのメンバーの鍵の
-// video_version_candidates（key_a で引く。候補の組は key_a < key_b なので、刈り取る組はどれも入る）。
+// Capture parent tables first and whole affected groups/playlists; sorted candidate keys ensure all pruned pairs are covered.
 func bundleImage(ctx context.Context, tx *sql.Tx, plan bundlePlan) (undoImage, error) {
 	keys, err := json.Marshal(plan.absorbedKeys)
 	if err != nil {
@@ -120,12 +110,7 @@ func bundleImage(ctx context.Context, tx *sql.Tx, plan bundlePlan) (undoImage, e
 	return image, nil
 }
 
-// addCreatedBundle は束ねた後で、束ねが作った行の範囲を足す。どれも束ねる前には無かった行なので、
-// 前の像は空で、取り消しが消す。代表が移ってフォルダの索引が作った自動グループ（id が lastGroup より
-// 大きいグループ）の行とそれを指す行（groupReferenceScopes と group_exclusions）、新しい集まりの
-// video_bundles と video_bundle_members、新しい鍵へ写した利用者データ、新しい鍵を指す group_items・
-// group_exclusions・playlist_items である。最後の 3 つは、付け替えた項目（グループとプレイリストの
-// 全体の範囲にもある）のほかに、束ねた後で新しい鍵を足した行を後の像との違いとして見つける
+// New rows have empty before images; include new-key references so later attachments cause undo conflicts instead of silent deletion.
 func (image *undoImage) addCreatedBundle(ctx context.Context, tx *sql.Tx, outcome bundleOutcome, lastGroup int64) error {
 	created, err := queryInt64s(ctx, tx, `select id from groups where id > ? order by id`, lastGroup)
 	if err != nil {
@@ -151,8 +136,7 @@ func (image *undoImage) addCreatedBundle(ctx context.Context, tx *sql.Tx, outcom
 	return image.addScopes(specs)
 }
 
-// maxGroupID は今あるグループの最大の id を返す（無ければ 0）。groups.id は autoincrement なので、
-// この後で作られたグループはどれもこれより大きい id を持つ。
+// AUTOINCREMENT makes every subsequently created group ID greater than this maximum.
 func maxGroupID(ctx context.Context, tx *sql.Tx) (int64, error) {
 	var id int64
 	if err := tx.QueryRowContext(ctx, `select coalesce(max(id), 0) from groups`).Scan(&id); err != nil {
@@ -161,7 +145,6 @@ func maxGroupID(ctx context.Context, tx *sql.Tx) (int64, error) {
 	return id, nil
 }
 
-// addScopes は specs の範囲を像の終わりに足す。
 func (image *undoImage) addScopes(specs []imageScopeSpec) error {
 	for _, spec := range specs {
 		scope, err := newImageScope(spec.table, spec.column, spec.key)

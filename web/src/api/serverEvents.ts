@@ -9,25 +9,7 @@ import type { components } from "./gen/openapi";
 
 type SmartFolderChanged = components["schemas"]["SmartFolderChanged"];
 
-/**
- * ServerEventHandlers はサーバーから届く変化の受け取り先である。
- *
- * - `scan`: 直近の取り込みが変わった（済みの本数と今の処理を含む）
- * - `video`: 動画の状態が変わった（最新の内容は取り直す）
- * - `group`: グループの名前か項目が変わった。変わったグループとその祖先の id を受け取る
- *
- * - `smartFolder`: スマートフォルダの中身かカードの値が変わったかもしれない。名指された
- *   フォルダの id を受け取る
- * - `candidates`: 重複の候補の一覧が変わったかもしれない。中身は運ばない
- *
- * - `activity`: アクティビティの記録が書かれたか変わった。中身は運ばない
- *   （docs/design-docs/activity.md。件数と読み込んだページを取り直す）
- * - `home`: ホームの棚の集合か並び、整理役かオンボードの状態が変わった。中身は運ばない
- *   （docs/design-docs/home.md。ホームは取り直す）
- * - `open`: つながった、またはつなぎ直した。切れていた間の変化を取り直す合図。
- *   `reconnected` は、この購読者がつながった状態を前にも見ていたかを表す。
- *   つなぎ直しでは、切れていた間の `video` を受け取っていない。
- */
+/** Events invalidate local data; group IDs include ancestors. Reconnected opens require refresh because disconnected clients miss changes. */
 export interface ServerEventHandlers {
   scan?: (scan: Scan) => void;
   video?: (id: number) => void;
@@ -39,12 +21,10 @@ export interface ServerEventHandlers {
   open?: (reconnected: boolean) => void;
 }
 
-/** reconnectDelayMs は、ブラウザがつなぎ直しを諦めたときに張り直すまでの待ち時間である。 */
 const reconnectDelayMs = 3000;
 
 interface Subscriber {
   handlers: ServerEventHandlers;
-  /** つながった状態を一度でも見たか。 */
   opened: boolean;
 }
 
@@ -103,11 +83,8 @@ function connect(): void {
   current.addEventListener("activity", () => dispatch("activity"));
   current.addEventListener("home", () => dispatch("home"));
   current.addEventListener("error", () => {
-    // 接続中の切断はブラウザが自分でつなぎ直す。CLOSED は諦めた状態
-    // （応答が 200 でない等）である。EventSource からは応答の状態を読めないので、
-    // 見る人の状態を確かめる。セッションが失効して所有者でなくなっていれば、張り直さず
-    // ページを1度だけ読み直す（失敗した要求を無限に再試行しない）。そうでなければ
-    // （サーバーが一時的に落ちている等）、少し待って張り直す。
+    // CLOSED means browser retries stopped; check audience explicitly because EventSource hides HTTP status.
+    // Reload once after owner access expires; otherwise reconnect after a delay.
     if (current.readyState !== EventSource.CLOSED || source !== current) return;
     source = null;
     if (subscribers.size === 0) return;
@@ -132,16 +109,9 @@ function disconnect(): void {
   source = null;
 }
 
-/**
- * subscribeServerEvents はサーバーからの変化の知らせを受け取る。戻り値で購読をやめる。
- *
- * 接続は購読者のあいだで1本を共有し、購読者がいなくなったら閉じる。一定間隔で
- * 問い合わせる代わりに使う。購読してから初回の取得をすると、取得のあとに起きた
- * 変化を取りこぼさない。
- */
+/** Share one connection across subscribers; subscribe before fetching initial data to avoid missing intervening changes. */
 export function subscribeServerEvents(handlers: ServerEventHandlers): () => void {
-  // すでにつながっていれば、この購読者が取りこぼした知らせは無い。次の open は
-  // つなぎ直しである。
+  // An already-open connection means this subscriber missed no events; its next open is a reconnect.
   const subscriber: Subscriber = {
     handlers,
     opened: source !== null && source.readyState === EventSource.OPEN,
@@ -151,7 +121,7 @@ export function subscribeServerEvents(handlers: ServerEventHandlers): () => void
   return () => {
     subscribers.delete(subscriber);
     if (subscribers.size > 0) return;
-    // React の開発時の再実行のように、外してすぐ付け直す場合に張り直さない。
+    // Preserve the connection across immediate resubscription, including React effect replay.
     queueMicrotask(() => {
       if (subscribers.size === 0) disconnect();
     });

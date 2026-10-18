@@ -42,8 +42,7 @@ func runFFmpeg(t *testing.T, args ...string) {
 	}
 }
 
-// timeGraySource は時刻を明るさで描く入力で、t 秒の場面の輝度は制限範囲の 16+7t になる
-// （30 秒で 226 まで）。
+// Encode time t as limited-range luma 16+7t, reaching 226 at thirty seconds.
 func timeGraySource(size string, seconds string) string {
 	return "color=c=black:s=" + size + ":r=10:d=" + seconds + ",format=yuv420p,geq=lum='16+7*T':cb=128:cr=128"
 }
@@ -83,15 +82,13 @@ func readSheets(t *testing.T, dir string) []image.Image {
 	return sheets
 }
 
-// frameSeconds は timeGraySource で作った入力のコマ k に描かれた時刻（秒）を返す。
-// シートは全範囲（yuvj420p）の JPEG なので、入力の制限範囲の輝度に戻してから読む。
+// Convert full-range JPEG luma back to the source's limited range before reading time.
 func frameSeconds(t *testing.T, sheets []image.Image, layout domain.SeekSpriteLayout, k int) float64 {
 	t.Helper()
 	limited := float64(frameLuma(t, sheets, layout, k))*219/255 + 16
 	return (limited - 16) / 7
 }
 
-// frameLuma はシートに並んだコマ k の中心の輝度を返す。
 func frameLuma(t *testing.T, sheets []image.Image, layout domain.SeekSpriteLayout, k int) int {
 	t.Helper()
 	sheet := sheets[k/domain.SeekSpriteFramesPerSheet]
@@ -111,7 +108,6 @@ func frameLuma(t *testing.T, sheets []image.Image, layout domain.SeekSpriteLayou
 	}
 }
 
-// 先頭・中間・末尾のコマに描かれた時刻は、それぞれが受け持つ区間の中にある。
 func TestGenerateSeekSpriteFramesStayInTheirIntervals(t *testing.T) {
 	t.Parallel()
 
@@ -132,18 +128,17 @@ func TestGenerateSeekSpriteFramesStayInTheirIntervals(t *testing.T) {
 	for _, k := range []int{0, 15, 29} {
 		startSec := float64(k) * float64(layout.IntervalMs) / 1000
 		got := frameSeconds(t, sheets, layout, k)
-		// 入力側シークは区間の先頭のフレームを選ぶ。圧縮と JPEG の誤差を許す。
+		// Allow codec/JPEG error when checking interval-start seeks.
 		if got < startSec-0.5 || got > startSec+1 {
 			t.Errorf("コマ %d の時刻 %.2f 秒が区間の先頭 %.0f 秒から離れている", k, got, startSec)
 		}
 	}
-	// 使わない升目は黒のまま。
+	// Unused cells stay black.
 	if luma := frameLuma(t, sheets, layout, 30); luma > 20 {
 		t.Errorf("空きの升目の輝度が %d", luma)
 	}
 }
 
-// 映像が容器の長さより短い入力では、映像の後ろのコマは直前のコマを複製する。
 func TestGenerateSeekSpriteRepeatsLastSceneWhenVideoEndsEarly(t *testing.T) {
 	t.Parallel()
 
@@ -162,14 +157,14 @@ func TestGenerateSeekSpriteRepeatsLastSceneWhenVideoEndsEarly(t *testing.T) {
 			t.Errorf("コマ %d は %.2f 秒（区間先頭 %.0f 秒のはず）", k, got, startSec)
 		}
 	}
-	// 映像の無い区間（23〜30 秒）は、直前のコマ（22 秒の場面）で埋まる。
+	// Intervals 23-30 repeat the frame at second 22.
 	if last := frameSeconds(t, sheets, layout, layout.FrameCount-1); last < 21.5 || last > 23 {
 		t.Fatalf("末尾のコマの時刻が %.2f 秒（22 秒の場面のはず）", last)
 	}
 }
 
-// フレームの無い区間は、次の区間のフレームを使わず、直前のコマを複製する。
-// 全編復号へは切り替えない。
+// Missing intervals reuse the preceding frame without borrowing the next interval or falling back
+// to full decoding.
 func TestGenerateSeekSpriteRepeatsPreviousFrameForEmptyInterval(t *testing.T) {
 	t.Parallel()
 
@@ -205,7 +200,6 @@ func TestGenerateSeekSpriteIgnoresAttachedCover(t *testing.T) {
 	}
 }
 
-// 間隔の半分より短い入力でも、1 コマのシートができる。
 func TestGenerateSeekSpriteWritesSingleFrameForOneSecondInput(t *testing.T) {
 	requireFFmpeg(t)
 	videoPath := mediaFixture(t, "one-second.mp4")
@@ -223,7 +217,6 @@ func TestGenerateSeekSpriteWritesSingleFrameForOneSecondInput(t *testing.T) {
 	}
 }
 
-// 縦長の入力でも、コマは縦横比を保って1枚のシートになる。
 func TestGenerateSeekSpriteKeepsPortraitAspect(t *testing.T) {
 	t.Parallel()
 
@@ -240,7 +233,7 @@ func TestGenerateSeekSpriteKeepsPortraitAspect(t *testing.T) {
 	}
 	for i, sheet := range sheets {
 		b := sheet.Bounds()
-		// 360x640 を 320x320 の枠に収めると 180x320 になる。
+		// Fitting 360x640 inside 320x320 yields 180x320.
 		if b.Dx() != 180*layout.Columns || b.Dy() != 320*layout.Rows {
 			t.Errorf("シート %d の大きさ %v（コマ 180x320 のはず）", i, b)
 		}

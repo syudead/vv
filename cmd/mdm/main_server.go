@@ -11,11 +11,9 @@ import (
 	"golang.org/x/term"
 )
 
-// main はサーバーとホスト側のコマンドの入口である。設定は環境変数（MDM_*）から読む。
-// Windows デスクトップ版（desktop タグ）の入口は desktop_windows.go にある。
+// The server entry point reads MDM_* settings; desktop_windows.go provides the desktop-tagged entry
+// point.
 func main() {
-	// 引数つきはホスト側のコマンド（mdm account …）で、サーバーは起動しない
-	//
 	if len(os.Args) > 1 {
 		os.Exit(runCommand(context.Background(), os.Args[1:], osAccountEnv()))
 	}
@@ -29,13 +27,12 @@ func main() {
 		})
 	}
 	if err != nil {
-		// 記録の設定前に失敗する場合もあるため、利用者向けの説明は標準エラーへ出す。
+		// Startup can fail before logging is configured, so report errors to stderr.
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
 
-// osAccountEnv は実際の標準入出力と環境変数を使う accountEnv を返す。
 func osAccountEnv() accountEnv {
 	env := accountEnv{Getenv: os.Getenv, Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Now: time.Now}
 	fd := int(os.Stdin.Fd())

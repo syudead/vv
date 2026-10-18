@@ -7,25 +7,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// assertRepresentativeInvariant は、登録済みメディアフォルダ配下に場所を持つ
-// すべての動画について、container と再生可否が代表場所から導かれる値と一致する
-// ことを確かめる。代表場所は登録済みの場所をパス順に並べた先頭で、
-// syncRepresentativeContainer の選び方と同じである。
-//
-// この不変条件は、代表場所が変わりうる経路ごとに syncRepresentativeContainer を
-// 呼ぶことで保たれる。呼び忘れは PR #77 と #79 で4つの経路から1件ずつ見つかり、
-// そのたびにレビュー1往復と修正専用PRを要した。呼び出し点を数え上げる代わりに、
-// 結果の側を検査する。新しい経路が加わっても、この検査は追加の変更なしに効く。
-//
-// 登録済みの場所を1つも持たない動画は対象外である。syncRepresentativeContainer は
-// 代表場所が無いとき何も書き換えないので、保存済みの値は最後に登録されていた
-// ときのまま残る（videos.go の sql.ErrNoRows 分岐）。
-// checkInvariants は db を返しつつ、テスト終了時の検査を登録する。
-// ライブラリの行を作るテスト用フィクスチャはこれを通す。
-//
-// スキーマの遷移そのものを検査するテスト（migrate_test.go が個別に Open する
-// もの）は対象外である。そこでは videos や video_locations が中間状態にあり、
-// 派生属性の一致はまだ意味を持たない。
+// Check representative-derived attributes after every fixture operation, excluding intermediate migration schemas and videos without registered locations.
 func checkInvariants(t *testing.T, db *DB) *DB {
 	t.Helper()
 	t.Cleanup(func() {
@@ -48,15 +30,11 @@ func checkInvariants(t *testing.T, db *DB) *DB {
 	return db
 }
 
-// assertTagCanonicalNameInvariant は、どの tags の行にも canonical = 1 の
-// tag_names がちょうど1行あることを確かめる。作成は必ず canonical = 1 の行を1つ添え、改名は canonical = 1 の行を
-// 書き換えるだけで、統合は統合元の名前を canonical = 0 に落としてから統合先へ
-// 付け替える。どの経路も、この不変条件を崩さずに保つ設計になっている
-// （internal/store/tags.go）。
+// Every tag must retain exactly one canonical name across creation, renaming and merging.
 func assertTagCanonicalNameInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
-	// down migration を検査するテストは、この時点で表を落としている。
+	// Down-migration tests may already have dropped this table.
 	var present int
 	if err := db.sql.QueryRow(
 		`select count(*) from sqlite_master where type = 'table' and name = 'tags'`,
@@ -90,13 +68,11 @@ func assertTagCanonicalNameInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertTentativeTagInvariant は仮のタグと却下した名前の不変条件を確かめる。仮のタグはシノニムを持たず（シノニムを
-// 足すと確定する。R-4）、却下した名前は tag_names に無い（名前を書く入口が同じ取引で
-// 外す。R-3）。
+// Tentative tags have no synonyms, and rejected names cannot also exist in tag_names.
 func assertTentativeTagInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
-	// down migration を検査するテストは、この時点で表を落としている。
+	// Down-migration tests may already have dropped this table.
 	var present int
 	if err := db.sql.QueryRow(
 		`select count(*) from sqlite_master where type = 'table' and name = 'rejected_tag_names'`,
@@ -124,13 +100,11 @@ func assertTentativeTagInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertTagSortKeyInvariant は、tag_names と rejected_tag_names の search_version が現在の版の
-// 行の sort_key が domain.NaturalSortKey(name) と一致することを確かめる。名前の行を書く操作が同じ文で鍵を書き、
-// 版の古い行は起動時の RefreshSearchKeys が埋める。統合で tag_id を付け替えても鍵は変わらない。
+// Only current-version rows must match current natural-sort rules; startup repairs older versions.
 func assertTagSortKeyInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
-	// down migration を検査するテストは、この時点で列や表を落としている。
+	// Down-migration tests may already have dropped these columns or tables.
 	var present int
 	if err := db.sql.QueryRow(
 		`select count(*) from pragma_table_info('rejected_tag_names') where name in ('sort_key', 'search_version')`,
@@ -146,7 +120,6 @@ func assertTagSortKeyInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertTableSortKeys は table の現在の版の行の sort_key が NaturalSortKey(name) と一致することを確かめる。
 func assertTableSortKeys(t *testing.T, db *DB, table string) {
 	t.Helper()
 	rows, err := db.sql.Query(`select name, sort_key from `+table+` where search_version = ?`, domain.SearchKeyVersion)
@@ -168,8 +141,7 @@ func assertTableSortKeys(t *testing.T, db *DB, table string) {
 	}
 }
 
-// assertVideoOverrideInvariant は video_overrides の行の不変条件を確かめる。表示名と位置の両方が null の行は無く
-// （書く側が消す）、改版番号は位置があるときだけ持ち、空の content_key の行は無い。
+// Overrides cannot have empty keys or both values absent; revisions exist exactly when positions do.
 func assertVideoOverrideInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
@@ -200,8 +172,7 @@ func assertVideoOverrideInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertThumbnailImageInvariant は thumbnail_images の行の不変条件を確かめる。空の content_key の行、空の画像の行、空の元の画像の行（null は許す）、出どころが
-// generated・uploaded のどちらでもない行は無い（書く側が拒む）。
+// Applied thumbnails require nonempty keys/images and a valid origin; a source may be NULL but never empty.
 func assertThumbnailImageInvariant(t *testing.T, db *DB) {
 	t.Helper()
 	violations, err := thumbnailImageViolations(db)
@@ -213,8 +184,7 @@ func assertThumbnailImageInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// thumbnailImageViolations は thumbnail_images の不変条件に反する行を数え、反した条件ごとに
-// 1 つの説明を返す。表や列が無い（down migration の検査の途中）なら、その条件は数えない。
+// Skip constraints whose columns are absent during down-migration tests.
 func thumbnailImageViolations(db *DB) ([]string, error) {
 	columns, err := thumbnailImageColumns(db)
 	if err != nil {
@@ -242,7 +212,6 @@ func thumbnailImageViolations(db *DB) ([]string, error) {
 	return violations, nil
 }
 
-// thumbnailImageColumns は thumbnail_images の列名を返す。表が無ければ空である。
 func thumbnailImageColumns(db *DB) (map[string]bool, error) {
 	rows, err := db.sql.Query(`select name from pragma_table_info('thumbnail_images')`)
 	if err != nil {
@@ -260,7 +229,6 @@ func thumbnailImageColumns(db *DB) (map[string]bool, error) {
 	return columns, rows.Err()
 }
 
-// assertVideoEditInvariant は video_edits の行の不変条件を確かめる。空の content_key の行は無い（touchEditedAt が飛ばす）。
 func assertVideoEditInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
@@ -283,8 +251,7 @@ func assertVideoEditInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertVideoBundleInvariant は集まりの不変条件を確かめる。代表はその集まりのメンバーで、メンバーが 2 本未満の集まりは無く
-// （書く側が解く）、user_key は bundle: で始まり、メンバーの content_key は空でない。
+// Bundles require at least two identified members, a member representative and a bundle-prefixed user key.
 func assertVideoBundleInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
@@ -316,9 +283,7 @@ func assertVideoBundleInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertVersionCandidateInvariant は候補の不変条件を確かめる。候補の組は「違う動画」と記録した組（video_version_dismissals）に無く、
-// 同じ集まりの 2 本でもない。候補を作る取引が除き、束ねる操作・却下・スキャン時の引き継ぎが
-// 消す。
+// Candidates cannot contain dismissed pairs or members of the same bundle.
 func assertVersionCandidateInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
@@ -352,9 +317,7 @@ func assertVersionCandidateInvariant(t *testing.T, db *DB) {
 func assertRepresentativeInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
-	// down migration を検査するテストは、この時点で新しい表を落としている。
-	// スキーマそのものはこの不変条件の対象ではない。問い合わせ自体の失敗は
-	// 表の不在と区別する。区別しないと、検査が黙って空振りする。
+	// Distinguish absent migration tables from query failures so invariant checks cannot silently skip errors.
 	var present int
 	if err := db.sql.QueryRow(
 		`select count(*) from sqlite_master where type = 'table' and name = 'video_locations'`,
@@ -433,9 +396,6 @@ func assertRepresentativeInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertFavoriteInvariant はお気に入りの不変条件を確かめる。
-// video_favorites に空の content_key の行は無い。グループのお気に入り（group_favorites）は
-// グループの id で持ち、外部キーが行の有無を保つ。
 func assertFavoriteInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
@@ -458,8 +418,7 @@ func assertFavoriteInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertPlaylistInvariant はプレイリストの不変条件を確かめる。1 つのプレイリストの項目の位置は 0 … n-1 である。グループの項目はグループの id で
-// 持ち、外部キーが行の有無を保つ。
+// Playlist positions remain contiguous from zero; foreign keys protect group references.
 func assertPlaylistInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
@@ -494,9 +453,7 @@ func assertPlaylistInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertGroupInvariant は、グループの不変条件を
-// 確かめる。1 つのグループの項目の位置が 0 … n-1 に詰まっている、origin_folder が
-// domain.FolderKey(origin_folder) と等しい、どのグループも自分の子孫にならない。
+// Groups require contiguous positions, normalized automatic folder keys and acyclic nesting.
 func assertGroupInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
@@ -581,8 +538,7 @@ func assertGroupAcyclic(t *testing.T, db *DB) {
 	}
 }
 
-// assertSmartFolderInvariant は、スマートフォルダの不変条件を確かめる。どの rule も domain.ParseSmartRule で読め、どの sort も
-// domain.ValidateSmartSort を通り、どのフォルダも自分の祖先にならない。
+// Smart-folder rules and sorts must parse, and parents must remain acyclic.
 func assertSmartFolderInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
@@ -629,10 +585,7 @@ func assertSmartFolderInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertCreditInvariant は人物・団体の表の規則を確かめる。正規の名前の行がちょうど 1 つ、正規の行の language は null、
-// 団体の親の連鎖は根で終わる、別名 50 件・外部 ID 20 件以下、(source, value) は種類ごとに 1 実体、
-// 結び付きの位置は (content_key, role) ごとに 0 … n-1、名前の鍵は今の版の畳み込み。どの検査も
-// 違反を 1 行 1 件の説明として返す問い合わせで、行が無ければ守られている。
+// Check canonical names, acyclic parents, limits, external-ID uniqueness, contiguous link positions and current name keys.
 func assertCreditInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
@@ -686,8 +639,7 @@ func assertCreditInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertWorkInfoInvariant は動画ごとの作品情報の表の規則を確かめる。video_work_info の行は品番か説明を持ち、今の版の行の code_key は品番の畳み込みである。
-// 位置が 0 … n-1 であることは assertCreditInvariant が確かめる。
+// Scalar work-info rows need code or description; current code keys must match normalization.
 func assertWorkInfoInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
@@ -724,7 +676,6 @@ func assertWorkInfoInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// assertCreditNameKeys は今の版の名前の行の search_key と sort_key が名前の畳み込みであることを確かめる。
 func assertCreditNameKeys(t *testing.T, db *DB, tables creditTables) {
 	t.Helper()
 	rows, err := db.sql.Query(tables.q(`select name, search_key, sort_key from {names} where search_version = ?`),
@@ -747,7 +698,6 @@ func assertCreditNameKeys(t *testing.T, db *DB, tables creditTables) {
 	}
 }
 
-// violations は違反を 1 列の文字列で返す問い合わせの行を読み切る。
 func violations(t *testing.T, db *DB, query string) []string {
 	t.Helper()
 	rows, err := db.sql.Query(query)

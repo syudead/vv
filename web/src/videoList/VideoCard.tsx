@@ -47,43 +47,29 @@ import { shownVersionsCount, VersionsMark } from "./VersionsMark";
 
 export interface VideoCardProps {
   video: Video;
-  /** 遷移元の一覧 URL。再生画面の「戻る」がここへ帰る。 */
+  /** Return URL for playback. */
   backTo: string;
-  /**
-   * カードと行が開く場所。省くとその動画の再生画面（`/videos/{id}`）。グループのページは
-   * `?group` を付けた場所を渡す。
-   */
+  /** Defaults to /videos/{id}; group pages supply group query context. */
   to?: string;
   selected: boolean;
   selectionMode: boolean;
-  /** 選択を持たない画面（フォルダ画面）では省き、チェックを描かない。 */
+  /** Omit in views without selection, such as folders. */
   onSelect?: (id: number, selected: boolean) => void;
   activePreviewId?: number | null;
   previewResetEpoch?: number;
   onPreviewStart?: (id: number) => void;
   onPreviewReset?: () => void;
   /**
-   * フォルダ画面の検索結果にだけ添える置き場所。
-   * `label` は表示・読み上げ名に使う文字列（先頭の側を省略して表示する）で、
-   * `title` 属性には省略しない全体を入れる（最上位では登録フォルダの絶対パスから）。
+   * Truncate label at the start; title retains the complete location, including root absolute path
+   * for top-level searches.
    */
   location?: { label: string; title: string };
   /**
-   * 題名の下に呼び出し側の行を足す口。省くと
-   * 題名の下には何も足さない。ライブラリの格子表示とフォルダ画面はここへタグの行を
-   * 渡す。タグの行はリンクの**外**、
-   * 同じ `article` の中に置かれる（Structural Decisions 10、キーボードの入れ子を避ける）。
-   *
-   * `ReactNode` ではなく関数で受け取るのは、呼び出し側が安定した
-   * 参照を渡せるようにするためである。`memo(VideoCard)` は props が前回と同じ
-   * 参照なら再描画しない。ReactNode を直に渡すと、呼び出し側の描画のたびに
-   * 新しい要素になり、無関係な状態変化でも全カードが作り直されてしまう（N4）。
+   * Render tags outside the link to avoid nested keyboard controls. Accept a stable callback
+   * instead of ReactNode so unrelated parent renders preserve memo(VideoCard).
    */
   tagsRow?: (video: Video) => ReactNode;
-  /**
-   * リストの行をドラッグの層に加える値（useCardDrag）。所有者のライブラリのリスト表示だけが
-   * 渡す。格子のカードは DraggableCard で包む。
-   */
+  /** Owner library rows supply drag metadata; grid cards use DraggableCard wrappers. */
   drag?: CardDragBinding;
   /**
    * 格子のカードが開く再生画面で再生を始める（`state.autoplay`）。ホームの棚のカードが渡す
@@ -108,18 +94,11 @@ function useCardState(video: Video) {
   };
 }
 
-/**
- * usePublicMark は所有者の一覧で公開の印を出すかを返す。
- * ゲストに見えるのはすべて公開の動画で、印に意味が無いので出さない。
- */
+/** Hide public marks for guests because every visible video is already public. */
 function usePublicMark(video: Video): boolean {
   return useAudience() === "owner" && video.public;
 }
 
-/**
- * VideoFavorite は動画のカード・行のお気に入りの付け外しである（所有者だけ。
- * docs/design-docs/catalog-organization.md「Card」）。ゲストには描かない（「Guest degradation」）。
- */
 function VideoFavorite({ video, variant }: { video: Video; variant: "card" | "row" }) {
   const favorite = video.favorite === true;
   return (
@@ -132,10 +111,6 @@ function VideoFavorite({ video, variant }: { video: Video; variant: "card" | "ro
   );
 }
 
-/**
- * VideoAddToPlaylist は動画のカード・行の「Add to playlist」である（所有者だけ。
- * docs/design-docs/catalog-organization.md「Add to playlist」）。ハートと同じところにだけ描く。
- */
 function VideoAddToPlaylist({
   video,
   variant,
@@ -152,10 +127,6 @@ function VideoAddToPlaylist({
   );
 }
 
-/**
- * VideoAddToGroup は動画のカード・行の「Add to group」である（所有者だけ。
- * docs/design-docs/catalog-organization.md「Group card and row」）。ハートと同じところにだけ描く。
- */
 function VideoAddToGroup({ video, variant }: { video: Video; variant: "card" | "row" }) {
   return (
     <AddToGroupButton
@@ -166,7 +137,6 @@ function VideoAddToGroup({ video, variant }: { video: Video; variant: "card" | "
   );
 }
 
-/** PublicMark は公開の印（地球のアイコンと、読み上げ用の「公開」）である。 */
 function PublicMark() {
   return (
     <>
@@ -177,9 +147,8 @@ function PublicMark() {
 }
 
 /**
- * SelectCheck はカードの左上の選択のチェックである。リンクの外に置き、ポインタが入ったら
- * ホバープレビューを止める。選択中か選択モードの間は常に、それ以外はカードの hover と
- * フォーカス、`hover:none` の端末で見せる。
+ * Keep selection outside the link and stop previews on hover; show on selection, hover, focus or
+ * touch-only devices.
  */
 function SelectCheck({
   video,
@@ -214,13 +183,8 @@ function SelectCheck({
 }
 
 /**
- * useCardScrub はカードのスクラブの帯をループ再生（useCardPreview）とつなぐ。
- *
- * - 帯への出入りでループを一時停止・再開する。帯から下へカードの外に出たときは再開せず、
- *   カードの pointerleave の解放に任せる。
- * - 並び替えなどの reset（previewResetEpoch）、別のカードのプレビューの開始
- *   （activePreviewId）、解放（release）で、帯から出たのと同じに戻し取得を打ち切る。
- *   選択モードでは useScrubPreview が帯を外す。
+ * Pause/resume loop previews across the scrub band; exiting the card delegates release without
+ * resuming. Resets, other active previews and release abort scrub requests.
  */
 function useCardScrub({
   video,
@@ -291,9 +255,6 @@ function useCardScrub({
   return { scrub: band, release, setArticle };
 }
 
-/**
- * VideoCard は箱型。サムネイルはカードの端まで、右下に再生時間、下に題名。
- */
 function VideoCard(props: VideoCardProps) {
   const {
     video,
@@ -312,8 +273,7 @@ function VideoCard(props: VideoCardProps) {
     favoriteOnly = false,
   } = props;
   const { duration, unplayable: rawUnplayable, state, ratio } = useCardState(video);
-  // タグが無い動画は行を出さないが、題名の下の余白は
-  // 今の pb-3 のまま保つ（タグの有無で高さの余白が変わって見えないように）。
+  // Keep bottom padding identical with and without tags to avoid inconsistent card spacing.
   const tagsRowNode = tagsRow?.(video);
   const publicMark = usePublicMark(video);
   const versions = shownVersionsCount(video);
@@ -335,7 +295,6 @@ function VideoCard(props: VideoCardProps) {
     previewResetEpoch,
     preview,
   });
-  // 帯にいる間のポインタの位置。時刻の表示とスクラブ位置のバーを差し替える
   //
   const scrubPosition = scrub.position;
 
@@ -359,8 +318,7 @@ function VideoCard(props: VideoCardProps) {
           onPreviewCancel={release}
         />
       )}
-      {/* リンクは flex-1 で伸ばし、同じ格子の行で高いカードとの差を引き受ける。タグの行を
-          カードの下端へそろえつつ、その間の余白も押せる（開く・選択する）範囲に含めるためである。 */}
+      {/* Stretch the link to align tags at the card bottom and keep intervening whitespace clickable. */}
       <Link
         to={to ?? `/videos/${String(video.id)}`}
         state={cardLinkState(backTo, autoplay)}
@@ -369,7 +327,7 @@ function VideoCard(props: VideoCardProps) {
             ? video.title
             : t.list.card.withLocation(video.title, location.label)
         }
-        // リンクの名前が中の文を置き換えるので、バージョンの印の読み上げは説明として指す
+        // The link name replaces child text; reference the versions mark as an accessible description.
         //
         aria-describedby={versions === null ? undefined : versionsId}
         onClick={(event) => {
@@ -405,7 +363,7 @@ function VideoCard(props: VideoCardProps) {
             <VideoThumbnailProgress
               value={Math.round(ratio * 100)}
               aria-label={t.list.card.watchedRatio}
-              // 帯にいる間は見た目だけ隠し、値と読み上げは保つ（R-6）。
+              // Hide only visually while scrubbing; retain value and accessible state.
               className={cn(scrubPosition !== null && "opacity-0")}
             />
           )}
@@ -423,7 +381,7 @@ function VideoCard(props: VideoCardProps) {
             </span>
           )}
 
-          {/* 帯は時刻の表示とバーより前、全面の警告と選択のチェックより後ろ（R-5）。 */}
+          {/* Layer the band above time and progress but below warnings and selection. */}
           <ScrubBand scrub={scrub} />
 
           {rawUnplayable !== null && (
@@ -447,8 +405,7 @@ function VideoCard(props: VideoCardProps) {
           {location !== undefined && (
             <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
               <Folder aria-hidden="true" className="size-3 shrink-0" />
-              {/* 先頭の側を省略し、末尾のフォルダ名を残す（011 のフォルダカードと同じ扱い）。
-                  title 属性は省略しない全体（最上位では登録フォルダの絶対パスから）。 */}
+              {/* Preserve path suffixes visually; title retains the full path. */}
               <span
                 dir="rtl"
                 title={location.title}
@@ -460,11 +417,9 @@ function VideoCard(props: VideoCardProps) {
           )}
         </div>
       </Link>
-      {/* 付け外しはサムネイルの右上、リンクの外に置く（チェックと同じ。DOM の順は
-          チェック → リンク → 付け外し → タグの行）。 */}
+      {/* Keep mark actions outside the link in checkbox, link, marks, tags DOM order. */}
       {owner && (
-        // ポインタが入ったらホバープレビューを止め、ここからはプレビューを始めない。
-        // 足す操作はハートの左。
+        // Stop previews on entry and never start them from these actions.
         <VideoThumbnailMark data-preview-checkbox="true" onPointerEnter={release}>
           {!favoriteOnly && <VideoAddToGroup video={video} variant="card" />}
           {!favoriteOnly && <VideoAddToPlaylist video={video} variant="card" />}
@@ -478,7 +433,6 @@ function VideoCard(props: VideoCardProps) {
 
 export default memo(VideoCard);
 
-/** VideoRow はリスト表示の 1 行。 */
 export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
   const { video, backTo, to, selected, selectionMode, onSelect, drag } = props;
   const { duration, unplayable, state, ratio, quality } = useCardState(video);
@@ -492,7 +446,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
       data-video-id={video.id}
       data-state={selected ? "selected" : undefined}
     >
-      {/* 選択を持たない画面（ゲストの一覧）では、選択の列ごと描かない。 */}
+      {/* Omit the entire selection column for audiences without selection. */}
       {onSelect !== undefined && (
         <TableCell className="w-10 pl-3">
           <Checkbox
@@ -549,19 +503,16 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
         )}
         <RowDropMarks drag={drag} />
       </TableCell>
-      {/* お気に入りは題名の列の直後の列。ゲストには列ごと描かない。 */}
       {owner && (
         <TableCell className="w-8 px-0">
           <VideoFavorite video={video} variant="row" />
         </TableCell>
       )}
-      {/* 足す操作はお気に入りの列の直後の列で、sm 未満では列ごと隠す。 */}
       {owner && (
         <TableCell className="hidden w-8 px-0 sm:table-cell">
           <VideoAddToPlaylist video={video} variant="row" />
         </TableCell>
       )}
-      {/* 「Add to group」は「Add to playlist」の列の直後の列。 */}
       {owner && (
         <TableCell className="hidden w-8 px-0 sm:table-cell">
           <VideoAddToGroup video={video} variant="row" />
@@ -576,7 +527,6 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
         )}
       </TableCell>
       <TableCell className="w-list-number pr-4 text-right tabular-nums">
-        {/* 公開の印は時間の直前に、バージョンの印はその前に置く。 */}
         <span className="inline-flex items-center justify-end gap-1.5">
           {versions !== null && <VersionsMark count={versions} />}
           {publicMark && <PublicMark />}

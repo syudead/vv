@@ -1,9 +1,7 @@
 -- +goose Up
--- お気に入りとプレイリストの項目のグループを、フォルダの鍵からグループの id で名指すように替える。今の自動グループの
--- origin_folder に一致するフォルダの鍵の行だけをそのグループの行に写し、ほかは落とす。
--- どちらもグループの解散（groups の行の削除）で外部キーの on delete cascade により消える。
+-- Map only existing automatic folder groups to IDs; references cascade when those groups dissolve.
 
--- グループのお気に入り。favorited_at は Unix ミリ秒。
+-- Favorited time is Unix milliseconds.
 create table group_favorites (
     group_id     integer primary key references groups (id) on delete cascade,
     favorited_at integer not null
@@ -16,15 +14,14 @@ select g.id, ff.favorited_at
 
 drop table folder_favorites;
 
--- 項目は動画の利用者データの鍵（content_key）かグループの id（group_id）のどちらか一方を持つ。
+-- Exactly one content user key or group ID is present.
 create table playlist_items_new (
     id          integer primary key autoincrement,
     playlist_id integer not null references playlists (id) on delete cascade,
     content_key text,
     group_id    integer references groups (id) on delete cascade,
-    -- プレイリストの中で 0 から詰めた位置。
     position    integer not null,
-    -- Unix ミリ秒。
+    -- Unix milliseconds.
     added_at    integer not null,
     check ((content_key is null) <> (group_id is null)),
     check (content_key is null or content_key <> ''),
@@ -32,7 +29,7 @@ create table playlist_items_new (
     unique (playlist_id, group_id)
 );
 
--- どの origin_folder にも一致しないグループの項目は落とし、残りの位置を今の並びのまま詰め直す。
+-- Drop unresolved folder groups and compact remaining positions without changing order.
 insert into playlist_items_new (id, playlist_id, content_key, group_id, position, added_at)
 select i.id, i.playlist_id, i.content_key, g.id,
        row_number() over (partition by i.playlist_id order by i.position, i.id) - 1,
@@ -41,8 +38,7 @@ select i.id, i.playlist_id, i.content_key, g.id,
   left join groups g on i.folder_key is not null and g.origin_folder = i.folder_key
  where i.content_key is not null or g.id is not null;
 
--- 項目を落としたプレイリストは更新日時を前の値より後へ進める。同じ更新日時なら同じ並びという約束
--- を保つため。
+-- Advance timestamps for changed playlists so equal timestamps continue to imply equal order.
 update playlists
    set updated_at = max(cast((julianday('now') - 2440587.5) * 86400000 as integer), updated_at + 1)
  where id in (select i.playlist_id
@@ -50,7 +46,7 @@ update playlists
                where i.folder_key is not null
                  and not exists (select 1 from groups g where g.origin_folder = i.folder_key));
 
--- 採番を前の表の続きから行う。末尾の項目を落としても、消えた項目の id を新しい項目に使い回さない。
+-- Continue the old sequence even when trailing items were dropped; deleted IDs must not be reused.
 insert into sqlite_sequence (name, seq)
 select 'playlist_items_new', 0
  where not exists (select 1 from sqlite_sequence where name = 'playlist_items_new');
@@ -67,8 +63,7 @@ create index playlist_items_content_idx on playlist_items (content_key);
 create index playlist_items_group_idx on playlist_items (group_id);
 
 -- +goose Down
--- 落とした folder_favorites は空で戻す。プレイリストのグループの項目は、自動グループのものだけ
--- そのフォルダの鍵へ戻し、手で作ったグループの項目は落として詰め直す。
+-- Restore favorites empty; only automatic group items can map back to folder keys, so discard manual groups and compact positions.
 create table folder_favorites (
     path         text    primary key,
     favorited_at integer not null

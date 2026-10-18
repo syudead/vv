@@ -5,7 +5,7 @@ import type * as React from "react";
 import { t } from "@/i18n";
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の breadcrumb（radix-nova）を vv のトークンで着せたもの。フォルダの階層の道筋
+// Adapted from shadcn/ui radix-nova; see web/registry/rules/components.md, Breadcrumb.
 // （web/registry/rules/components.md「Breadcrumb」）。
 
 function Breadcrumb({ className, ...props }: React.ComponentProps<"nav">) {

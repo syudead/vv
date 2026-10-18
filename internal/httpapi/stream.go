@@ -13,37 +13,21 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// cacheStream は動画本体に付ける値である。内容が同じでも別の利用者に
-// 共有キャッシュさせないため public にしない。
+// Media responses must not be shared across users even for identical content.
 const cacheStream = "private, max-age=0, must-revalidate"
 
-// streamContentTypes は拡張子から Content-Type を決める表である。
-//
-// ffprobe の format_name ではなく拡張子を見るのは、format_name が
-// mov,mp4,m4a,3gp,3g2,mj2 のようにまとめて返り mp4 と mov を区別できない
-// ためである。再生可否の判定も拡張子を基準にしているので、判定と配信で
-// 基準が揃う。
+// Use extensions for Content-Type because ffprobe conflates MOV/MP4; playability uses the same rule.
 var streamContentTypes = map[string]string{
 	".mp4":  "video/mp4",
 	".m4v":  "video/mp4",
 	".webm": "video/webm",
 }
 
-// defaultStreamContentType は表に無い拡張子に使う。
 const defaultStreamContentType = "application/octet-stream"
 
-// StreamVideo は動画本体を配信する（GET /api/videos/{id}/stream）。
-//
-// Range の解釈・206・Content-Range・Accept-Ranges・416・If-Range は
-// http.ServeContent に任せ、自前で組み立てない（技術選定文書 3.3）。
-// Linux では io.Copy が sendfile に落ちるため、大きなファイルでもユーザー
-// 空間のコピーが起きない。応答を包む層（errorCacheWriter）は io.ReaderFrom を
-// 中継し、この経路を塞がないようにしている。
-//
-// 再生できない形式（playable = false）でも配信自体は行う。ブラウザが再生
-// できるかどうかと、ファイルを取得できるかは別の話である。
+// Delegate Range handling to ServeContent and preserve ReaderFrom/sendfile through wrappers; streaming remains available for browser-incompatible formats.
 func (s *server) StreamVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
-	// ゲストとして処理する要求は、非公開にされたら打ち切れるよう台帳に載せる。
+	// Register guest streams for cancellation when visibility becomes private.
 	video, r, release, ok := s.lookupServedVideo(w, r, id)
 	if !ok {
 		return
@@ -56,9 +40,7 @@ func (s *server) StreamVideo(w http.ResponseWriter, r *http.Request, id gen.Vide
 	}
 	file, info, path, ok := s.openMediaFile(r, video)
 	if !ok {
-		// 実体を開けない理由（外を指している、消えた、通常ファイルでない）は
-		// 応答で区別しない。403 と 404 を出し分けると、どのパスが存在するかを
-		// 漏らすことになる。
+		// Mask missing, outside-root, and nonregular targets identically to avoid leaking path existence.
 		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
 		return
 	}
@@ -70,9 +52,7 @@ func (s *server) StreamVideo(w http.ResponseWriter, r *http.Request, id gen.Vide
 	http.ServeContent(w, r, filepath.Base(path), info.ModTime(), file)
 }
 
-// openMediaFile は、動画の所在のうち開いてよい実体を開く。開いてよいかは
-// MediaFiles が判定し、ここは所在と登録フォルダを渡すだけである。返すパスは
-// 所在のパス（辿る前）で、Content-Type とファイル名に使う。
+// openMediaFile returns the unresolved location path for filename/Content-Type; MediaFiles validates the opened target.
 func (s *server) openMediaFile(r *http.Request, video domain.Video) (*os.File, os.FileInfo, string, bool) {
 	var (
 		file *os.File
@@ -89,11 +69,7 @@ func (s *server) openMediaFile(r *http.Request, video domain.Video) (*os.File, o
 	return file, info, path, true
 }
 
-// resolveMediaFile は、openMediaFile と同じ規則・同じ順で所在を選び、開かずに
-// symlink を辿った先のパスを返す。ffmpeg など別のプロセスへ渡す読む元に使う。
-// 確かめたパスと読むパスを揃えるため、辿る前の所在のパスは読む元に使わない。
-// location は選んだ所在（辿る前の登録のパス）で、読む元が今もその動画のものかを
-// 確かめ直すのに使う。
+// resolveMediaFile returns the validated symlink target for subprocesses plus the original location for later ownership revalidation.
 func (s *server) resolveMediaFile(r *http.Request, video domain.Video) (location, resolved string, ok bool) {
 	location, ok = s.firstMediaLocation(r, video, func(roots []string, path string) error {
 		var err error
@@ -106,8 +82,6 @@ func (s *server) resolveMediaFile(r *http.Request, video domain.Video) (location
 	return location, resolved, true
 }
 
-// firstMediaLocation は動画の所在を順に try へ渡し、最初に成功した所在のパス
-// （辿る前）を返す。
 func (s *server) firstMediaLocation(
 	r *http.Request, video domain.Video, try func(roots []string, path string) error,
 ) (string, bool) {
@@ -134,7 +108,6 @@ func (s *server) firstMediaLocation(
 	return "", false
 }
 
-// mediaFolderPaths は登録フォルダのパスを返す。
 func (s *server) mediaFolderPaths(r *http.Request) ([]string, error) {
 	folders, err := s.videos.ListMediaFolders(r.Context())
 	if err != nil {
@@ -147,7 +120,6 @@ func (s *server) mediaFolderPaths(r *http.Request) ([]string, error) {
 	return roots, nil
 }
 
-// streamContentType は拡張子から Content-Type を決める。
 func streamContentType(path string) string {
 	if contentType, ok := streamContentTypes[strings.ToLower(filepath.Ext(path))]; ok {
 		return contentType

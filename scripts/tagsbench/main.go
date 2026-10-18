@@ -1,16 +1,5 @@
-// tagsbench はタグ管理画面（/tags）を規模のデータで測る。手順は
-// docs/how-to/tags-admin-benchmark.md にある。
-//
-// 流れは、規模のデータの作成（初回だけ）→ 単一バイナリのビルド → そのデータの写しで
-// vv を起動 → web/bench/tags-admin.bench.ts（Playwright）で測る、である。測る対象は
-// 本番のビルドそのもので、計測の仕掛けは製品に入れない
-//
-// 行は internal/store の役割の型（SettingsStore.AddMediaFolder・ScanIndexStore.UpsertVideo・
-// TagStore.ApplyVideoTags）だけで書き、SQL を internal/store の外に出さない。動画のファイルは
-// 作らず、登録フォルダの下の所在の行だけを書く（一覧・本数・検索は所在の行から決まる）。
-//
-// 計測は確定・改名・まとめての確定で行を書き換えるので、作ったデータ（seed）は残したまま、
-// 起動のたびにその写し（run）を使う。
+// tagsbench measures the production tags screen; see docs/how-to/tags-admin-benchmark.md.
+// Seed through store interfaces using location records without media files; benchmark mutations run on a fresh copy of the seed.
 package main
 
 import (
@@ -35,32 +24,27 @@ import (
 	"github.com/syudead/vv/scripts/devtools"
 )
 
-// videosPerTag は -videos を省いたときの、規模（タグの数）に対する動画の数の倍率である
-// （親 Issue #651 の「タグ 1,000 個・動画 10,000 本」「タグ 3,000 個・動画 30,000 本」）。
-// タグ 30,000 個の規模は -videos 30000 で動画を 3,000 個の規模と同じにし、違いをタグの
-// 数だけにする。
+// Default to ten videos per tag; use -videos 30000 for the 30,000-tag case to isolate tag-count effects.
 const videosPerTag = 10
 
-// unusedEvery は本数 0 のタグの間隔である。11 個に 1 個（約 9%）で、親 Issue の
-// 「1,000 個のうち約 90 個」に合わせる。
+// Leave roughly 9% of tags unused (one in eleven).
 const unusedEvery = 11
 
-// heavyTags は本数の多いタグの数である。先頭のこれだけのタグは動画の 1 割に付く。
+// Attach each heavy tag to one tenth of all videos.
 const heavyTags = 10
 
-// maxLightCount は残りのタグに付ける本数の上限である（1〜この値の一様）。
+// Uniform upper bound for light-tag video counts.
 const maxLightCount = 60
 
-// config はコマンドラインの解釈結果である。
 type config struct {
 	scale int
-	// videos は動画の数。-videos を省けば scale の videosPerTag 倍。
+	// Defaults to scale * videosPerTag when -videos is omitted.
 	videos    int
 	skipBuild bool
 	chromium  string
 }
 
-// errUsage は使い方の誤りを表す。終了コードを分けるために使う。
+// Separate usage errors from runtime failures by exit code.
 var errUsage = errors.New("使い方の誤り")
 
 func parseArgs(args []string, stderr io.Writer) (config, error) {
@@ -83,7 +67,7 @@ func parseArgs(args []string, stderr io.Writer) (config, error) {
 	if *scale < 1 {
 		return config{}, fmt.Errorf("%w: -scale は 1 以上にしてください（%d）", errUsage, *scale)
 	}
-	// 既定の本数は -videos を省いたときだけ使う。明示した 0 を省略と取り違えない。
+	// Distinguish omitted -videos from an explicit zero.
 	videoCount := *scale * videosPerTag
 	videosSet := false
 	flags.Visit(func(f *flag.Flag) {
@@ -100,8 +84,7 @@ func parseArgs(args []string, stderr io.Writer) (config, error) {
 	return config{scale: *scale, videos: videoCount, skipBuild: *skipBuild, chromium: *chromium}, nil
 }
 
-// dataName は規模のデータのディレクトリ名である。動画が既定の数（規模の 10 倍）なら
-// 規模だけ、そうでなければ動画の数を添え、作り方の違うデータを取り違えない。
+// Include nondefault video counts in the directory name to avoid reusing a different seed.
 func (c config) dataName() string {
 	if c.videos == c.scale*videosPerTag {
 		return fmt.Sprint(c.scale)
@@ -109,24 +92,21 @@ func (c config) dataName() string {
 	return fmt.Sprintf("%d-videos-%d", c.scale, c.videos)
 }
 
-// tagPlan は作るタグ 1 つである。videos は付ける動画の番号（0 から）で、空なら本数 0。
+// videos contains zero-based indices; an empty list represents an unused tag.
 type tagPlan struct {
 	name      string
 	tentative bool
 	videos    []int
 }
 
-// nameWords はタグの名前の語である。英字と日本語を混ぜ、検索の照合形（foldForMatch）を
-// 両方の文字で通す。
+// Mix Latin and Japanese names to exercise both forms of foldForMatch.
 var nameWords = []string{
 	"action", "アニメ", "drama", "旅行", "comedy", "料理", "documentary", "音楽",
 	"horror", "スポーツ", "romance", "ゲーム", "thriller", "ライブ", "fantasy", "自然",
 	"mystery", "ニュース", "western", "子ども", "musical", "歴史", "sci-fi", "インタビュー",
 }
 
-// planTags は規模 scale・動画 videoCount 本のタグの作り方を決める。同じ引数なら毎回同じ
-// 結果になる。偶数番目は確定、奇数番目は仮のタグで（半数が仮）、unusedEvery 個に 1 個は
-// 本数 0 にする。
+// Deterministic plan: alternate confirmed and tentative tags, leaving every unusedEvery-th tag unused.
 func planTags(scale, videoCount int) []tagPlan {
 	rng := rand.New(rand.NewPCG(uint64(scale), 36))
 	plans := make([]tagPlan, 0, scale)
@@ -138,8 +118,7 @@ func planTags(scale, videoCount int) []tagPlan {
 		if i%unusedEvery != unusedEvery-1 {
 			count := 1 + rng.IntN(maxLightCount)
 			if i < heavyTags {
-				// 動画が 10 本未満でも本数の多いタグを本数 0 にしない（本数 0 は unusedEvery 個に
-				// 1 個だけにする）。
+				// Keep heavy tags nonempty even with fewer than ten videos.
 				count = max(1, videoCount/10)
 			}
 			plan.videos = pickVideos(rng, videoCount, min(count, videoCount))
@@ -149,7 +128,7 @@ func planTags(scale, videoCount int) []tagPlan {
 	return plans
 }
 
-// pickVideos は 0〜n-1 から重ならない count 個を選ぶ。
+// Pick distinct indices in [0, n).
 func pickVideos(rng *rand.Rand, n, count int) []int {
 	seen := make(map[int]bool, count)
 	picked := make([]int, 0, count)
@@ -163,7 +142,6 @@ func pickVideos(rng *rand.Rand, n, count int) []int {
 	return picked
 }
 
-// seedSummary は作ったデータの確かめに使う数である。
 type seedSummary struct {
 	tags      int
 	unused    int
@@ -171,8 +149,7 @@ type seedSummary struct {
 	videos    int
 }
 
-// seed は dataDir に規模 scale のデータを書く。mediaDir を登録フォルダにし、その直下に
-// 動画の所在の行だけを書く（直下に置くのは、祖先のフォルダ名から付くタグを作らないため）。
+// Seed locations directly under mediaDir to avoid tags derived from ancestor folders.
 func seed(ctx context.Context, dataDir, mediaDir string, scale, videoCount int, progress io.Writer) (seedSummary, error) {
 	db, err := store.OpenContext(ctx, dataDir)
 	if err != nil {
@@ -216,7 +193,7 @@ func seed(ctx context.Context, dataDir, mediaDir string, scale, videoCount int, 
 			refs = append(refs, domain.VideoRef{ID: ids[v]})
 		}
 		if len(refs) == 0 {
-			// 本数 0 のタグは、1 本に付けて作ってから外す。外してもタグは残る。
+			// Create unused tags by attaching and then detaching them; detaching preserves the tag.
 			refs = append(refs, domain.VideoRef{ID: ids[0]})
 		}
 		if _, err := tags.ApplyVideoTags(ctx, refs, domain.VideoTagsAdd, []string{plan.name}, plan.tentative); err != nil {
@@ -252,8 +229,7 @@ func seed(ctx context.Context, dataDir, mediaDir string, scale, videoCount int, 
 	return summary, nil
 }
 
-// ensureSeed は規模のデータを用意する。既にあれば作り直さない。途中で止まっても半端な
-// データを本物と取り違えないよう、別名で作ってから移す。
+// Build missing seeds under a temporary name, then rename to avoid reusing partial data.
 func ensureSeed(ctx context.Context, scaleDir string, scale, videoCount int, stdout io.Writer) (string, error) {
 	seedDir := filepath.Join(scaleDir, "seed")
 	if _, err := os.Stat(seedDir); err == nil {
@@ -285,7 +261,7 @@ func ensureSeed(ctx context.Context, scaleDir string, scale, videoCount int, std
 	return seedDir, nil
 }
 
-// copyDir は src の下を dst へ写す。dst は先に消す。
+// copyDir replaces dst before copying.
 func copyDir(src, dst string) error {
 	if err := os.RemoveAll(dst); err != nil {
 		return err
@@ -326,7 +302,6 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
-// freeAddress は空いているループバックのポートを返す。
 func freeAddress() (string, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -336,7 +311,6 @@ func freeAddress() (string, error) {
 	return address, listener.Close()
 }
 
-// server は起動した vv である。
 type server struct {
 	cmd  *exec.Cmd
 	done chan struct{}
@@ -406,7 +380,7 @@ func (s *server) waitHealthy(ctx context.Context, address string) error {
 	}
 }
 
-// runBench は Playwright の計測を走らせ、結果の表を resultPath に書かせる。
+// runBench writes the Playwright results table to resultPath.
 func runBench(ctx context.Context, root string, cfg config, baseURL, resultPath string, stdout, stderr io.Writer) error {
 	webRoot := filepath.Join(root, "web")
 	cli := filepath.Join(webRoot, "node_modules", "@playwright", "test", "cli.js")

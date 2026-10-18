@@ -12,14 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// folderPrefix はフォルダ配下の所在の接頭辞（フォルダのパス + 区切り）を返す。
-// `/` のように区切りで終わるフォルダには区切りを重ねない。落とすのはその OS の
-// 区切りだけで、Unix では `\` はファイル名の一部なので残す（`A\` という名前の
-// フォルダを `A` と取り違えない）。
-//
-// Windows では大文字小文字を区別しない。比べる相手の SQL の lower() は ASCII の
-// 英字しか小文字にしないので、ここも ASCII だけを小文字にそろえる
-// （strings.ToLower だと `Ä` が `ä` になり、SQL 側の `Ä` と一致しなくなる）。
+// Trim only OS separators, preserving Unix backslashes; on Windows fold ASCII only to match SQLite lower().
 func folderPrefix(dir string) string {
 	return folderPrefixFor(dir, runtime.GOOS == "windows")
 }
@@ -38,18 +31,13 @@ func folderPrefixFor(dir string, windows bool) string {
 	return prefix
 }
 
-// folderPrefixCondition は、所在（別名 alias）のパスが接頭辞 prefix（folderPrefix の値）で
-// 始まることを表す条件句と引数を返す。instr の比較に加えて、接頭辞で始まる文字列の範囲
-// （prefix 以上、区切りの次の文字に置き換えた値未満）を掛けて、パスの索引で範囲を
-// 引かせる。instr だけでは video_locations を全件走査する。
+// Combine instr with a prefix range so SQLite can use the location-path index instead of a full scan.
 func folderPrefixCondition(alias, prefix string) (string, []any) {
 	expr := folderPathExpr(alias)
 	upper := prefix[:len(prefix)-1] + string(prefix[len(prefix)-1]+1)
 	return `(` + expr + ` >= ? and ` + expr + ` < ? and instr(` + expr + `, ?) = 1)`, []any{prefix, upper, prefix}
 }
 
-// folderPathExpr は所在のパスを接頭辞と比べられる形にする。Windows では
-// 大文字小文字を区別しない（registeredLocationCondition と同じ扱い）。
 func folderPathExpr(alias string) string {
 	return folderPathExprFor(alias, runtime.GOOS == "windows")
 }
@@ -61,8 +49,7 @@ func folderPathExprFor(alias string, windows bool) string {
 	return alias + `.path`
 }
 
-// directChildCondition は、接頭辞の後ろに区切りが無い（直下にある）ことを表す。
-// 接頭辞の `?` は1つだけにする。呼び出し側は接頭辞を条件ごとに1回ずつ渡す。
+// Use one prefix placeholder per direct-child predicate.
 func directChildCondition(alias string) string {
 	return directChildConditionFor(alias, runtime.GOOS == "windows")
 }
@@ -70,18 +57,13 @@ func directChildCondition(alias string) string {
 func directChildConditionFor(alias string, windows bool) string {
 	rest := `substr(` + folderPathExprFor(alias, windows) + `, length(?) + 1)`
 	if windows {
-		// Windows では `/` も区切りなので、`\` にそろえてから1回で調べる。
+		// Windows accepts both slash styles, so normalize them before checking for another separator.
 		return `instr(replace(` + rest + `, char(47), char(92)), char(92)) = 0`
 	}
 	return `instr(` + rest + `, char(` + strconv.Itoa(int(os.PathSeparator)) + `)) = 0`
 }
 
-// FolderLocations はフォルダ配下（深さを問わない）の、見る人に見せてよい所在
-// （登録フォルダの下にあり、ゲストには公開の動画のもの）のうち、見せる動画
-// （shownVideoCondition、docs/design-docs/catalog-organization.md）の所在をすべて返す。
-// 代表以外のバージョンだけがあるフォルダは、動画の無いフォルダになる。集計は
-// internal/domain の SummarizeFolder が行うので、ゲストには公開の動画の所在から
-// 導いたフォルダと件数だけが現れる。
+// FolderLocations exposes only audience-visible representative locations; nonrepresentative-only folders appear empty.
 func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audience, dir string) ([]domain.FolderLocation, error) {
 	inFolder, args := folderPrefixCondition("l", folderPrefix(dir))
 	rows, err := s.db.sql.QueryContext(ctx, `select l.path, l.video_id, videos.content_key, videos.thumbnail_state, videos.preview_state,
@@ -125,8 +107,7 @@ func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audi
 	return locations, nil
 }
 
-// HasFolderLocations はフォルダ配下（深さを問わない）に、見る人に見せてよい
-// 見せる動画の所在が1件でもあるかを返す（FolderLocations と同じ範囲）。
+// HasFolderLocations uses the same visibility and descendant scope as FolderLocations.
 func (s *LibraryStore) HasFolderLocations(ctx context.Context, audience domain.Audience, dir string) (bool, error) {
 	var found int
 	inFolder, args := folderPrefixCondition("l", folderPrefix(dir))

@@ -15,9 +15,6 @@ import {
 } from "../preferences/viewPreferences";
 import { useZoomAnchor } from "./useZoomAnchor";
 
-// 1 つのものを開いた一覧の画面（グループのページ、スマートフォルダのページ）が共有するフック。
-
-/** useDocumentTitle は名前が分かっている間だけ、窓の題をその名前にする。 */
 export function useDocumentTitle(name: string | undefined) {
   useEffect(() => {
     if (name === undefined) return;
@@ -29,7 +26,6 @@ export function useDocumentTitle(name: string | undefined) {
   }, [name]);
 }
 
-/** useViewPreferences はライブラリと共有する表示形式と大きさである。 */
 function useViewPreferences() {
   const [preferences, setPreferences] = useState(readViewPreferences);
   const save = useCallback((updated: ViewPreferences) => {
@@ -40,8 +36,8 @@ function useViewPreferences() {
 }
 
 /**
- * useViewControls はライブラリと共有する表示形式と大きさを、変えるときにホバープレビューを
- * 止めて保存する。大きさを変える前に見ていた位置を覚え、`listRef` の一覧で戻す（useZoomAnchor）。
+ * Stop previews before changing view or zoom; capture the current anchor before resizing and
+ * persist shared preferences.
  */
 export function useViewControls(resetPreview: () => void) {
   const { preferences, save } = useViewPreferences();
@@ -70,7 +66,6 @@ export function useViewControls(resetPreview: () => void) {
   };
 }
 
-/** useSentinel は番兵が見える範囲の 600px 以内に来たら `onNear` を呼ぶ（ライブラリと同じ）。 */
 export function useSentinel(enabled: boolean, onNear: () => void) {
   const sentinel = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -88,10 +83,7 @@ export function useSentinel(enabled: boolean, onNear: () => void) {
   return sentinel;
 }
 
-/**
- * useLoadMoreSentinel は番兵が近づいたら、ホバープレビューを止めて続きを読む。`enabled` の
- * 間だけ見張る。
- */
+/** Stop previews before pagination; observe only while enabled. */
 export function useLoadMoreSentinel(
   enabled: boolean,
   loadMore: () => void,
@@ -105,8 +97,8 @@ export function useLoadMoreSentinel(
 }
 
 /**
- * usePressTagToLibrary はカードのタグを押したとき、そのタグで絞ったライブラリを開く。開いた
- * ものの並びを見せる画面（グループ、スマートフォルダ）は自分の絞り込みを持たない。
+ * Group and smart-folder pages have no independent tag filter, so tag clicks open the filtered
+ * library.
  */
 export function usePressTagToLibrary() {
   const navigate = useNavigate();
@@ -116,7 +108,6 @@ export function usePressTagToLibrary() {
   );
 }
 
-/** useSelectionTargets は選択バーへ渡す、選んだ動画の id とお気に入りの対象である。 */
 export function useSelectionTargets(selection: LibrarySelection) {
   const favorites = useMemo(() => favoriteTargets(selection), [selection]);
   const selectedIds = useMemo(() => Array.from(selection.ids), [selection.ids]);

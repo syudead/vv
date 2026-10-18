@@ -17,8 +17,6 @@ import (
 
 const subtitleSRT = "1\r\n00:00:01,000 --> 00:00:02,000\r\nこんにちは\r\n\r\n2\r\n00:00:03,000 --> 00:00:04,000\r\nさようなら\r\n"
 
-// subtitleFixture は一時ディレクトリに movie.mp4 を置き、本物の mediafs と字幕の変換で
-// 経路を組み立てる。
 func subtitleFixture(t *testing.T) (http.Handler, string) {
 	t.Helper()
 	mediaDir := t.TempDir()
@@ -57,7 +55,6 @@ func listSubtitles(t *testing.T, handler http.Handler) []gen.SubtitleTrack {
 	if got := rec.Header().Get("Cache-Control"); got != cacheNoStore {
 		t.Errorf("Cache-Control = %q, want %q", got, cacheNoStore)
 	}
-	// 無いときは null ではなく空の配列であること。
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
 		t.Fatal(err)
@@ -84,7 +81,6 @@ func TestListVideoSubtitlesReadsTheFolderEveryTime(t *testing.T) {
 	}
 	assertTracks(t, "2 件", listSubtitles(t, handler), want)
 
-	// 開いたあとに足したファイルも、呼び直せば載る（受け入れ条件 4）。
 	writeSubtitleFile(t, mediaDir, "movie.en.vtt", "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nhello\n")
 	want = []gen.SubtitleTrack{
 		{File: "movie.srt", Label: "", Format: gen.Srt},
@@ -145,7 +141,6 @@ func TestGetVideoSubtitleServesWebVTT(t *testing.T) {
 		t.Fatal("ETag が無い")
 	}
 
-	// offsetMs だけ時刻がずれ、終わりが 0 以下の cue は落ちる。
 	shifted := do(t, handler, http.MethodGet, subtitleTarget("movie.srt", "offsetMs=2500"))
 	if shifted.Code != http.StatusOK {
 		t.Fatalf("offsetMs: status = %d: %s", shifted.Code, shifted.Body.String())
@@ -158,7 +153,6 @@ func TestGetVideoSubtitleServesWebVTT(t *testing.T) {
 		t.Error("ずらした本文の ETag が同じ")
 	}
 
-	// If-None-Match が一致すれば 304。
 	req := httptest.NewRequest(http.MethodGet, subtitleTarget("movie.srt", ""), nil)
 	req.Header.Set("If-None-Match", etag)
 	notModified := httptest.NewRecorder()
@@ -178,13 +172,13 @@ func TestGetVideoSubtitleRefusesUnlistedAndBrokenFiles(t *testing.T) {
 
 	unavailable := wantError{status: http.StatusNotFound, code: codeNotFound, reason: reasonSubtitleUnavailable}
 	for _, file := range []string{
-		"movie.fr.srt",     // 無い
-		"other.srt",        // 別の動画の字幕
-		"movie.ja.srt",     // .vtt に隠れた .srt
-		"movie.broken.srt", // 読めない
-		"movie.big.srt",    // 上限を超える
-		"../movie.ja.vtt",  // フォルダを含む名前
-		"movie.mp4",        // 字幕でない
+		"movie.fr.srt",     // Missing file.
+		"other.srt",        // Another video's subtitle.
+		"movie.ja.srt",     // SRT shadowed by VTT.
+		"movie.broken.srt", // Unreadable content.
+		"movie.big.srt",    // Oversized file.
+		"../movie.ja.vtt",  // Name containing a directory.
+		"movie.mp4",        // Not a subtitle.
 	} {
 		rec := do(t, handler, http.MethodGet, subtitleTarget(file, ""))
 		assertErrorBody(t, file, rec.Code, rec.Body.Bytes(), unavailable)

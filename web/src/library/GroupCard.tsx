@@ -25,41 +25,21 @@ import { type CardDragBinding, dragRowProps, RowDropMarks } from "../videoList/c
 import { cardLinkState } from "../videoList/cardLink";
 import FolderArt from "../videoList/FolderArt";
 
-/**
- * GroupCardProps はライブラリのグループのカードと行の props である
- * （docs/design-docs/catalog-organization.md「Group card」）。グループのカードはフォルダ画面には
- * 出ないので `web/src/library/` に置く。グループ G はライブラリでは LibraryGroup、ホームの棚では
- * カードの値だけの LibraryGroupCard である（docs/design-docs/home.md）。
- */
 export interface GroupCardProps<G extends LibraryGroupCard = LibraryGroup> {
   group: G;
-  /** 遷移元の一覧 URL。開いた先の「戻る」がここへ帰る。 */
   backTo: string;
-  /**
-   * カードと行の名前が開く場所。省くとそのグループのページ（`/groups/{id}`、道筋なし）で、
-   * ライブラリはこれを使う。グループのページは道筋を 1 段伸ばした場所を渡す。
-   */
+  /** Default to the group page without a trail; group-page callers extend their current trail. */
   to?: string;
-  /** 全メンバーが選択に入っているときだけ true。 */
+  /** True only when every member is selected. */
   selected: boolean;
   selectionMode: boolean;
-  /**
-   * 全メンバー（`videoIds`）を選択に入れる・外す。呼び出し元はグループとしても覚える。選択を持たない見る人（ゲスト）では
-   * 省き、チェックを描かない。
-   */
   onSelect?: (group: G, selected: boolean) => void;
-  /** 一覧のホバープレビューの調整（usePreviewCoordination）。格子のフォルダの絵柄が加わる。 */
   activePreviewId?: number | null;
   previewResetEpoch?: number;
   onPreviewStart?: (id: number) => void;
   onPreviewReset?: () => void;
-  /** 題名の下のタグの行（格子表示だけ）。VideoCard の tagsRow と同じく関数で受ける。 */
   tagsRow?: (group: G) => ReactNode;
-  /**
-   * 名前の位置に出す欄。「Make a group」で作ったばかりのグループだけが持つ。欄の間、名前はリンクの外に出る。
-   */
   nameField?: ReactNode;
-  /** リストの行をドラッグの層に加える値（useCardDrag）。所有者のライブラリのリスト表示だけが渡す。 */
   drag?: CardDragBinding;
   /** 格子のカードが開く再生画面で再生を始める（VideoCard の autoplay と同じ）。 */
   autoplay?: boolean;
@@ -67,17 +47,12 @@ export interface GroupCardProps<G extends LibraryGroupCard = LibraryGroup> {
   favoriteOnly?: boolean;
 }
 
-/** CollectionValues はグループとスマートフォルダのカードが共有する、視聴と長さの値である。 */
 export type CollectionValues = Pick<
   LibraryGroup,
   "videoCount" | "watchedCount" | "watchState" | "durationMs"
 >;
 
-/**
- * useCollectionFacts は見る人に見せるグループかスマートフォルダの視聴の値である。ゲストでは
- * 視聴状態を出さない。格子のカードは見終えた
- * 本数を数字では出さず、見ている途中の帯の長さと読み上げ名にだけ使う。
- */
+/** Hide watched state for guests; grid cards use watched counts only for progress and accessible names. */
 export function useCollectionFacts(values: CollectionValues) {
   const owner = useAudience() === "owner";
   const watchedCount = owner ? (values.watchedCount ?? 0) : 0;
@@ -95,7 +70,6 @@ export function useCollectionFacts(values: CollectionValues) {
   };
 }
 
-/** useGroupFacts はグループの視聴の値と、リンクの読み上げ名である。 */
 function useGroupFacts(group: LibraryGroupCard) {
   const facts = useCollectionFacts(group);
   return {
@@ -104,12 +78,10 @@ function useGroupFacts(group: LibraryGroupCard) {
   };
 }
 
-/** groupCountText はカードの本数の文字（「12 videos」）である。 */
 export function groupCountText(videoCount: number): UiText {
   return t.library.group.count(videoCount);
 }
 
-/** groupLinkLabel はカードのリンクの読み上げ名である。 */
 export function groupLinkLabel(
   name: string,
   videoCount: number,
@@ -118,10 +90,7 @@ export function groupLinkLabel(
   return t.library.group.label(name, videoCount, watchedCount);
 }
 
-/**
- * GroupFavorite はグループのカード・行のお気に入りの付け外しである（所有者だけ。
- * docs/design-docs/catalog-organization.md「Card」）。グループの id を送り、メンバーには付けない。
- */
+/** Favorite the group itself, never its members. */
 function GroupFavorite({
   group,
   variant,
@@ -140,10 +109,6 @@ function GroupFavorite({
   );
 }
 
-/**
- * GroupAddToPlaylist はグループのカード・行の「Add to playlist」である（所有者だけ。
- * docs/design-docs/catalog-organization.md「Add to playlist」）。グループの id を送る。
- */
 function GroupAddToPlaylist({
   group,
   variant,
@@ -160,10 +125,6 @@ function GroupAddToPlaylist({
   );
 }
 
-/**
- * GroupAddToGroup はグループのカード・行の「Add to group」である（所有者だけ。
- * docs/design-docs/catalog-organization.md「Group card and row」）。グループの id を送る。
- */
 function GroupAddToGroup({
   group,
   variant,
@@ -180,11 +141,7 @@ function GroupAddToGroup({
   );
 }
 
-/**
- * CollectionThumbnail はグループとスマートフォルダのカードのサムネイルの枠である。フォルダの
- * 絵柄（FolderArt）に、動画のカードの長さと同じ面で右下に `face`（本数と長さ）を重ね、見ている
- * 途中なら帯を出す。面と帯は前に出たサムネイルより上に置き、絵柄の下見の操作を妨げない。
- */
+/** Keep count/duration and progress above foreground thumbnails without intercepting preview input. */
 export function CollectionThumbnail({
   previews,
   selected = false,
@@ -227,7 +184,6 @@ export function CollectionThumbnail({
   );
 }
 
-/** CollectionName はグループとスマートフォルダのカードの名前である（2 行まで）。 */
 export function CollectionName({ name, muted }: { name: string; muted: boolean }) {
   return (
     <h3
@@ -242,15 +198,8 @@ export function CollectionName({ name, muted }: { name: string; muted: boolean }
   );
 }
 
-/**
- * GroupCard はライブラリの格子でグループを1枚で出すカードである。動画のカード
- * （VideoCard）と同じ箱・同じ大きさで、サムネイルの枠にはフォルダ画面のフォルダカードと
- * 同じフォルダの絵柄（FolderArt）を描き、右下の面に本数と合計の長さを重ねる。
- * カード全体がグループのページへの1つのリンクである。
- */
 export const GroupCard = memo(GroupCardFor) as typeof GroupCardFor;
 
-/** groupHasTags は、グループがタグを持って届いた（ライブラリの LibraryGroup で、タグが 1 つ以上ある）かである。 */
 function groupHasTags(group: LibraryGroupCard): boolean {
   return "tags" in group && Array.isArray(group.tags) && group.tags.length > 0;
 }
@@ -288,7 +237,6 @@ function GroupCardFor<G extends LibraryGroupCard>(props: GroupCardProps<G>) {
       )}
     >
       {onSelect !== undefined && (
-        // 前に出たサムネイルより上に置く（z-30）。
         <VideoThumbnailMark
           corner="top-start"
           className={cn(
@@ -342,7 +290,6 @@ function GroupCardFor<G extends LibraryGroupCard>(props: GroupCardProps<G>) {
       </Link>
       {nameField}
       {owner && (
-        // 前に出たサムネイルより上（チェックと同じ z-30）。リンクの外、タグの行の前に置く
         //
         <VideoThumbnailMark className="z-30">
           {!favoriteOnly && <GroupAddToGroup group={group} variant="card" />}
@@ -355,10 +302,6 @@ function GroupCardFor<G extends LibraryGroupCard>(props: GroupCardProps<G>) {
   );
 }
 
-/**
- * GroupRow はリスト表示のグループの行である。動画の行（VideoRow）と同じ列に
- * グループの値を出す。
- */
 export const GroupRow = memo(GroupRowFor) as typeof GroupRowFor;
 
 function GroupRowFor<G extends LibraryGroupCard>(props: GroupCardProps<G>) {
@@ -374,7 +317,6 @@ function GroupRowFor<G extends LibraryGroupCard>(props: GroupCardProps<G>) {
   } = props;
   const { watchedCount, state, ratio, duration, label } = useGroupFacts(group);
   const owner = useAudience() === "owner";
-  // リスト表示は今回変えない。サムネイルは先頭のメンバーの1枚（previews の先頭）を使う。
   const cover = group.previews[0];
 
   return (
@@ -464,10 +406,6 @@ function GroupRowFor<G extends LibraryGroupCard>(props: GroupCardProps<G>) {
   );
 }
 
-/**
- * CollectionValueCells はグループとスマートフォルダの行の、視聴・長さ・画質（空）・大きさ・
- * 追加日の列である（動画の行と同じ列）。
- */
 export function CollectionValueCells({
   state,
   watchedCount,

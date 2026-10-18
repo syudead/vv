@@ -8,7 +8,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// jobCounts は種類と状態ごとのジョブの数を返す。
 func jobCounts(t *testing.T, db *DB, videoID int64) map[string]int {
 	t.Helper()
 	rows, err := db.sql.Query(`select kind || ':' || state, count(*) from jobs where video_id = ? group by kind, state`, videoID)
@@ -31,7 +30,6 @@ func jobCounts(t *testing.T, db *DB, videoID int64) map[string]int {
 	return counts
 }
 
-// claimAtLastAttempt は指定の種類のジョブを、最後の試行として専有する。
 func claimAtLastAttempt(t *testing.T, db *DB, kind domain.JobKind, videoID int64) domain.Job {
 	t.Helper()
 	ctx := context.Background()
@@ -51,8 +49,6 @@ func claimAtLastAttempt(t *testing.T, db *DB, kind domain.JobKind, videoID int64
 	return job
 }
 
-// failedVideoFixture は読み取り・サムネイル・プレビューがすべて終端失敗した
-// 動画を、ジョブの失敗を経て作る。
 func failedVideoFixture(t *testing.T) (*DB, int64) {
 	t.Helper()
 	db, videoID := jobsFixture(t)
@@ -69,9 +65,6 @@ func failedVideoFixture(t *testing.T) (*DB, int64) {
 	return db, videoID
 }
 
-// 失敗した動画を読み取り直すと、状態が pending に戻り、読み取りとサムネイルの
-// ジョブがちょうど1件ずつ積まれる。続けて送ると 2 回目は ErrProbeNotFailed で、
-// ジョブは増えない。
 func TestRetryProbeRequeuesFailedVideoOnce(t *testing.T) {
 	db, videoID := failedVideoFixture(t)
 	ctx := context.Background()
@@ -102,9 +95,6 @@ func TestRetryProbeRequeuesFailedVideoOnce(t *testing.T) {
 	}
 }
 
-// サムネイルが完成していれば状態は done のままにし、サムネイルのジョブは積まない。
-// シーク用サムネイルの置き場の有無は見ない（消えた置き場は動画の応答を組み立てる
-// ときに RequeueMissingSeekThumbnails が積み直す）。
 func TestRetryProbeKeepsCompletedThumbnail(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -127,7 +117,6 @@ func TestRetryProbeKeepsCompletedThumbnail(t *testing.T) {
 	}
 }
 
-// 読み取り中・読み取り済みの動画は ErrProbeNotFailed、無い動画は ErrNotFound。
 func TestRetryProbeRejectsNonFailedAndMissing(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -149,8 +138,7 @@ func TestRetryProbeRejectsNonFailedAndMissing(t *testing.T) {
 	}
 }
 
-// ファイルの確認などで上限まで失敗した読み取り・サムネイルのジョブは、ジョブを
-// failed にするのと同じ取引で動画側を failed にする。
+// Terminal job failure and video failure must be atomic.
 func TestFailClaimedJobRecordsProbeAndThumbnailFailure(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -180,7 +168,6 @@ func TestFailClaimedJobRecordsProbeAndThumbnailFailure(t *testing.T) {
 	}
 }
 
-// 失敗の記録が拒まれたら、ジョブの失敗も記録しない（同じ取引である）。
 func TestFailClaimedProbeRollsBackJobWhenStateUpdateFails(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -197,7 +184,6 @@ func TestFailClaimedProbeRollsBackJobWhenStateUpdateFails(t *testing.T) {
 	}
 }
 
-// 再試行が残っている間は、動画側は pending のままにする。
 func TestFailClaimedProbeKeepsPendingWhileRetrying(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -220,9 +206,7 @@ func TestFailClaimedProbeKeepsPendingWhileRetrying(t *testing.T) {
 	}
 }
 
-// 読み取りの結果を保存したあと、プレビューのジョブを積むところで上限まで失敗
-// しても、probe_state は done のまま変わらない。代表サムネイルの後でシーク用
-// プレビューだけが失敗したときも、thumbnail_state は done のまま残る。
+// A later job failure must not overwrite probe or representative-thumbnail results already saved successfully.
 func TestFailClaimedJobKeepsCompletedState(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -257,15 +241,13 @@ func TestFailClaimedJobKeepsCompletedState(t *testing.T) {
 	}
 }
 
-// 最後の試行が失敗した直後（ジョブの失敗が記録される前）には、動画はまだ failed に
-// ならない。この間の要求は ErrProbeNotFailed になり、ジョブの無い pending は
-// 生まれない。失敗が記録されたあとの要求は、新しいジョブをちょうど1件積む。
+// Before terminal failure commits, retry must reject rather than create pending state without a job.
 func TestRetryProbeDuringFinalAttemptWindow(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 	job := claimAtLastAttempt(t, db, domain.JobProbe, videoID)
 
-	// ハンドラは失敗を返したが、ワーカーはまだ FailClaimedJob を呼んでいない。
+	// Simulate a handler failure before the worker records it through FailClaimedJob.
 	if err := db.Ingest().RetryProbe(ctx, videoID); !errors.Is(err, domain.ErrProbeNotFailed) {
 		t.Fatalf("window: err = %v, want ErrProbeNotFailed", err)
 	}
@@ -275,7 +257,6 @@ func TestRetryProbeDuringFinalAttemptWindow(t *testing.T) {
 	if err := db.Ingest().RetryProbe(ctx, videoID); err != nil {
 		t.Fatal(err)
 	}
-	// サムネイルは完成していないので、読み取りと同じ組で積む。
 	if got, want := jobCounts(t, db, videoID), map[string]int{"probe:queued": 1, "thumbnail:queued": 1}; !equalCounts(got, want) {
 		t.Fatalf("jobs = %v, want %v", got, want)
 	}

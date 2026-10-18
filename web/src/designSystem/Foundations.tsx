@@ -1,7 +1,7 @@
 import { t } from "../i18n";
 
-// 見本の各項目は、Tailwind が生成できるようクラス名をそのまま書く（組み立てない）。
-// 値と役割の割り当ては src/ui/tokens.css と docs/design-docs/design-system.md の Foundations。
+// Keep class names literal so Tailwind can discover them.
+// See src/ui/tokens.css and the design-system Foundations documentation for token roles.
 
 const surfaces = [
   { token: "navbar", className: "bg-navbar" },
@@ -112,10 +112,6 @@ function Code({ children }: { children: string }) {
   return <code className="font-mono text-xs text-foreground">{children}</code>;
 }
 
-/**
- * Foundations は見本の基礎の節である。面の 5 段階、色の役割、文字・余白・角丸・影の段階を
- * 並べ、メンテナーが段階ごとに確かめる。
- */
 export default function Foundations() {
   const f = t.designSystem.foundation;
   return (

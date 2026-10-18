@@ -7,9 +7,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 名前の自然順の鍵 sort_key。
-
-// sortKeyRow は table の name の行の sort_key と search_version を返す。
 func sortKeyRow(t *testing.T, db *DB, table, name string) (sortKey string, searchVersion int64) {
 	t.Helper()
 	if err := db.sql.QueryRow(`select sort_key, search_version from `+table+` where name = ?`, name).
@@ -19,7 +16,6 @@ func sortKeyRow(t *testing.T, db *DB, table, name string) (sortKey string, searc
 	return sortKey, searchVersion
 }
 
-// assertSortKeyWritten は table の name の行が、今の規則の鍵と現在の版を持つことを確かめる。
 func assertSortKeyWritten(t *testing.T, db *DB, table, name, when string) {
 	t.Helper()
 	key, version := sortKeyRow(t, db, table, name)
@@ -29,7 +25,6 @@ func assertSortKeyWritten(t *testing.T, db *DB, table, name, when string) {
 	}
 }
 
-// 移行で足した列が空と 0 で始まり、起動時の埋め直しで両方の表が埋まる。Down は列だけを落とす。
 func TestTagSortKeysMigrationAndRefresh(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -45,7 +40,7 @@ func TestTagSortKeysMigrationAndRefresh(t *testing.T) {
 		t.Fatal("Down のあとも rejected_tag_names.search_version が残っている")
 	}
 
-	// 移行前の行。tag_names は今の版の search_key を持っていても埋め直しに戻る。
+	// Even current search keys become stale when the new sort-key column needs backfill.
 	for i, name := range []string{"tag10", "tag2"} {
 		if _, err := db.sql.Exec(`insert into tags (id, created_at) values (?, 1)`, i+1); err != nil {
 			t.Fatal(err)
@@ -96,12 +91,10 @@ func TestTagSortKeysMigrationAndRefresh(t *testing.T) {
 		assertSortKeyWritten(t, db, "rejected_tag_names", name, "埋め直し後")
 	}
 
-	// 鍵のバイト順が名前の自然順になる。
 	if k2, _ := sortKeyRow(t, db, "tag_names", "tag2"); k2 >= domain.NaturalSortKey("tag10") {
 		t.Errorf("tag2 の鍵 %q が tag10 の鍵より前でない", k2)
 	}
 
-	// 版が今のものなら、もう書き直さない。
 	again, err := db.Tags().RefreshSearchKeys(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +105,6 @@ func TestTagSortKeysMigrationAndRefresh(t *testing.T) {
 	assertTagInvariantsNow(t, db)
 }
 
-// 名前の行を書く操作は、同じ文で sort_key と現在の版を書く。
 func TestTagSortKeysAreWrittenByEveryNameWriter(t *testing.T) {
 	db, _ := tentativeFixture(t)
 	ctx := context.Background()
@@ -157,7 +149,6 @@ func TestTagSortKeysAreWrittenByEveryNameWriter(t *testing.T) {
 	assertTagInvariantsNow(t, db)
 }
 
-// 統合で tag_id を付け替えた名前の行は、sort_key を変えない。
 func TestMergeTagsKeepsSortKeys(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

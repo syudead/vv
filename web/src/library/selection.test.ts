@@ -15,7 +15,6 @@ import {
   toggleVideo,
 } from "./selection";
 
-/** 選択の持ち方。 */
 const series = {
   id: 5,
   videoIds: [101, 102, 103],
@@ -88,7 +87,7 @@ describe("LibrarySelection", () => {
   });
 
   it("全メンバーを共有するグループを外すと、動画は残ってもカードは外れて見え、もう一度選べる", () => {
-    // G1={B}・G2={B,C}（B=12、C=13）。
+    // G1={B}, G2={B,C}, where B=12 and C=13.
     const g1 = { id: 1, videoIds: [12] };
     const g2 = { id: 2, videoIds: [12, 13] };
     const both = setGroup(setGroup(emptySelection, g1, true), g2, true);
@@ -162,7 +161,6 @@ describe("LibrarySelection", () => {
         { id: 6, videoIds: [201] },
       ],
     );
-    // 選んだグループのメンバーは動画として送らない。
     expect(favoriteTargets(all)).toEqual({ videoIds: [], groupIds: [5, 6] });
   });
 

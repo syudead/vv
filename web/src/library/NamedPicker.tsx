@@ -14,13 +14,11 @@ import { overLimitMessage } from "./selectionErrors";
 
 const createValue = "__create__";
 
-/** NamedTarget はピッカーが並べる行（プレイリストやグループ）である。 */
 export interface NamedTarget {
   id: number;
   name: string;
 }
 
-/** PickerWords はピッカーの文言である（各機能の）。 */
 export interface PickerWords {
   label: UiText;
   search: UiText;
@@ -33,26 +31,14 @@ export interface PickerWords {
   failed: (reason: string) => UiText;
 }
 
-/** PickerChoice は押された行である。既にある行か、打った名前で作る行。 */
 export type PickerChoice<T extends NamedTarget> = { target: T } | { create: string };
 
 type Load<T> =
   { status: "loading" } | { status: "failed" } | { status: "ready"; rows: T[] };
 
-/** Pending は返事を待っている行（選んだ行か作成の行）である。 */
 type Pending = { kind: "target"; id: number } | { kind: "create" } | null;
 
-/**
- * NamedPicker は「Add to playlist」と「Add to group」のポップオーバーの中身である。呼び出し側がそれぞれの `Popover` の中に置く。
- *
- * - 開くたびに `loadAll` で全部を読み、打った文字を名前に含むものを読んだ順に出す
- *   （`excludeIds` の行は出さない）。打った名前と同じ名前の行が無ければ、先頭に
- *   「Create "{name}"」の行を出す。`createWhileLoading` なら読み込み中と失敗の間も出す。
- * - 行を選ぶと `submit` を呼ぶ。返した文言をトースト 1 つで伝えて閉じる。投げた失敗は開いた
- *   まま、入力の下に理由を出し、途中で消えた行を除くため一覧を静かに読み直す。
- * - 送る数（`memberCount`）が上限を超えていれば送らずに理由を出す（「Favorite」と同じ）。
- * - Esc はポップオーバーだけを閉じる。一覧の Esc（選択の解除）には「使った」と伝える。
- */
+/** Reload all choices on open; failures keep the picker open and refresh stale rows. Recheck selection limits and consume Escape without clearing selection. */
 export default function NamedPicker<T extends NamedTarget>({
   open,
   onOpenChange,
@@ -69,11 +55,9 @@ export default function NamedPicker<T extends NamedTarget>({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   words: PickerWords;
-  /** 入力と行のアイコン。 */
   icon: LucideIcon;
   memberCount: number;
   loadAll: (signal: AbortSignal) => Promise<T[]>;
-  /** 送って結果のトーストの文言を返す。失敗は投げる。 */
   submit: (choice: PickerChoice<T>) => Promise<UiText>;
   excludeIds?: readonly number[];
   createWhileLoading?: boolean;
@@ -87,10 +71,9 @@ export default function NamedPicker<T extends NamedTarget>({
   const [pending, setPending] = useState<Pending>(null);
   const [failure, setFailure] = useState<UiText | null>(null);
   const loadAbort = useRef<AbortController | null>(null);
-  // 開くたび・閉じるたびに進める。返事が来たときに数が変わっていれば、その送信は閉じた
-  // ピッカーのもので、開き直したピッカーを閉じたり理由を書き換えたりしてはいけない。
+  // Opening/closing advances generation so late responses cannot affect a reopened picker.
   const session = useRef(0);
-  // 読み込みは開くときだけ始めるので、最新の関数を ref で持つ。
+  // Read the latest loader through a ref without refetching on every render.
   const loadRef = useRef(loadAll);
   useEffect(() => {
     loadRef.current = loadAll;
@@ -112,7 +95,6 @@ export default function NamedPicker<T extends NamedTarget>({
     );
   }, []);
 
-  // 開くたびに読み直す（別の画面で作ったものもそこにある）。
   useEffect(() => {
     if (!open) return;
     session.current += 1;
@@ -143,7 +125,7 @@ export default function NamedPicker<T extends NamedTarget>({
     const mine = session.current;
     const current = () => session.current === mine;
     setFailure(null);
-    // 開いている間に選択が増えて上限を超えたら、送らずに理由を出す（「Favorite」と同じ）。
+    // Recheck limits because selection can grow while the picker is open.
     if (memberCount > maxVideoTagsSelection) {
       setFailure(overLimitMessage());
       return;
@@ -152,13 +134,13 @@ export default function NamedPicker<T extends NamedTarget>({
       "target" in choice ? { kind: "target", id: choice.target.id } : { kind: "create" },
     );
     try {
-      // 結果は、ピッカーを閉じた後でもトーストで伝える。
+      // Report submitted results even if the picker has since closed.
       toast(await submit(choice));
       if (current()) onOpenChange(false);
     } catch (error: unknown) {
       if (!current()) return;
       setFailure(words.failed(errorText(error)));
-      // 途中で消えた行を除き、作った分を足すため、一覧を静かに読み直す。
+      // Refresh silently to remove vanished targets and include newly created ones.
       read(true);
     } finally {
       if (current()) setPending(null);
@@ -210,7 +192,7 @@ export default function NamedPicker<T extends NamedTarget>({
           aria-label={words.search}
           aria-busy={pending !== null || undefined}
         />
-        {/* 理由は入力のすぐ下に出す。 */}
+        {}
         {tooLong && (
           <p role="alert" className="py-1 text-xs text-destructive">
             {words.nameTooLong}

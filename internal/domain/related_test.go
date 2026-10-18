@@ -2,7 +2,6 @@ package domain
 
 import "testing"
 
-// VideoGroup の位置は 1 始まりで、前後はグループの中の並びで決まる。
 func TestVideoGroupPositionAndNeighbors(t *testing.T) {
 	group := VideoGroup{MemberIDs: []int64{5, 3, 9}}
 	for _, tc := range []struct {
@@ -23,7 +22,6 @@ func TestVideoGroupPositionAndNeighbors(t *testing.T) {
 	}
 }
 
-// 窓は基準の動画を中ほどに置き、グループの端では内側へ寄せる。Offset を使う窓はその位置から。
 func TestGroupWindowStart(t *testing.T) {
 	for _, tc := range []struct {
 		window          GroupWindow

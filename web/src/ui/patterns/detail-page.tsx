@@ -4,30 +4,20 @@ import { cn } from "@/lib/cn";
 
 import { DensityProvider } from "./density";
 
-// 詳細ページ（骨格）。画面の幅いっぱいに、上端の見出しの帯（下に線）と、その下の主領域・
-// 横の情報欄（左に線）を並べる。lg より狭い幅では縦に積み、メディアは端から端まで、その下の
-// 中身と情報欄は左右に余白を取る。見る画面なので、区画は viewing の密度で並ぶ。
-// 狭い幅はページ全体が 1 つとしてスクロールし、見出しの帯は上に留まる。lg 以上で呼び手が
-// 高さを画面に留める（lg:h-dvh の flex の列の中に置く）と、帯の下で主領域と情報欄がそれぞれ
-// 中でスクロールする（情報欄は、中身の並びが自分でスクロールする入れ物を持つ）。ページと列の
-// 両方がスクロールして二重に動くことがないようにするためである。
-// 規則は web/registry/rules/patterns.md の Detail page。
+// Detail-page skeleton; see web/registry/rules/patterns.md, Detail page.
+// On wide screens, constrain height in an lg:h-dvh flex column to scroll content and aside independently without double page scrolling.
 
 export interface DetailPageProps {
-  /** 見出しの帯の中身: 左にロゴや戻る操作と場所、右端に閉じる操作。 */
   header: ReactNode;
-  /** 主領域の先頭のメディア（プレイヤー、画像）。lg より狭い幅では端から端まで。 */
   media: ReactNode;
-  /** 横の情報欄: 関連する項目の並び。 */
   aside?: ReactNode;
-  /** メディアの下の中身: 題名・タグ・情報の行。 */
   children: ReactNode;
   /**
-   * 主領域の中身（メディアとその下）の幅の上限（lg 以上）。メディアが高さで止まって列より細い
-   * とき、中身をこの幅にして列の中央に置き、余りを左右に均等に分ける。
+   * Constrain content to the media's width and center it when media height limits make it narrower
+   * than its column.
    */
   contentClassName?: string;
-  /** ページの根に渡す style。contentClassName が読む CSS 変数を置く。 */
+  /** Root CSS variables consumed by contentClassName. */
   style?: CSSProperties;
 }
 
@@ -53,9 +43,10 @@ export function DetailPage({
           {header}
         </div>
         <div className="flex w-full flex-col gap-5 lg:min-h-0 lg:flex-1 lg:flex-row lg:gap-6 lg:px-6">
-          {/* 列の端にあるフォーカスの輪が切れないよう、スクロールする列は輪の分だけ外へ広げて
-              内側に余白を取る（-mx-1 と px-1）。列を位置の基準にし（lg:relative）、中の
-              absolute の要素（読み上げ用の sr-only など）が列の外を基準にページを伸ばさないようにする。 */}
+          {/*
+           * Expand scrolling edges with padding to preserve focus rings; establish a relative
+           * container so absolute accessibility elements cannot enlarge the page.
+           */}
           <div
             data-slot="detail-page-main"
             className="flex min-w-0 flex-col gap-5 lg:relative lg:-mx-1 lg:min-h-0 lg:flex-1 lg:scrollbar-none lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:py-6"
@@ -68,8 +59,10 @@ export function DetailPage({
               <div className="flex flex-col gap-5 px-4 sm:px-6 lg:px-0">{children}</div>
             </div>
           </div>
-          {/* 広い画面の情報欄は画面の右端まで寄せ（lg:-mr-6 と lg:pr-0）、中でスクロールする並びの
-              スクロールバーを画面の端に出す。右の余白は並びの側が持つ。 */}
+          {/*
+           * Extend the wide-screen aside to the viewport edge for its scrollbar; inner lists own
+           * right padding.
+           */}
           {aside && (
             <aside
               data-slot="detail-page-aside"

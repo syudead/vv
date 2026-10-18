@@ -2,8 +2,7 @@ package arib
 
 import "testing"
 
-// ARIB STD-B24 の 8 単位符号の文字列を組み立て、期待する UTF-8 になることを確かめる。
-// 初期の状態は GL = G0 漢字、GR = G2 平仮名、G1 英数、G3 片仮名である。
+// Fixtures start with GL=G0 Kanji, GR=G2 hiragana, G1 alphanumeric, and G3 katakana.
 
 const (
 	esc = 0x1B
@@ -22,14 +21,14 @@ func TestDecode(t *testing.T) {
 		{
 			name: "漢字・ひらがな・カタカナ・半角カタカナの並び",
 			data: []byte{
-				0x34, 0x41, 0x3B, 0x7A, // 漢字（GL の G0 漢字）
-				0xD2, 0xE9, 0xAC, 0xCA, // ひらがな（GR の G2 平仮名）
-				esc, 0x7C, // LS3R: GR に G3 片仮名
-				0xAB, 0xBF, 0xAB, 0xCA, 0xF9, // カタカナー
-				esc, 0x29, 0x49, ls1, // G1 に JIS X 0201 片仮名を指示して GL に呼ぶ
-				0x31, 0x46, 0x52, // ｱﾆﾒ
+				0x34, 0x41, 0x3B, 0x7A, // Kanji via GL/G0.
+				0xD2, 0xE9, 0xAC, 0xCA, // Hiragana via GR/G2.
+				esc, 0x7C, // LS3R selects G3 katakana for GR.
+				0xAB, 0xBF, 0xAB, 0xCA, 0xF9, // Katakana including a long-vowel mark.
+				esc, 0x29, 0x49, ls1, // Designate JIS X 0201 katakana as G1 and invoke it in GL.
+				0x31, 0x46, 0x52, // Half-width katakana.
 				ls0,
-				0x34, 0x41, // 漢（GL が G0 に戻る）
+				0x34, 0x41, // GL returns to G0 Kanji.
 			},
 			want: "漢字ひらがなカタカナーｱﾆﾒ漢",
 		},
@@ -56,10 +55,10 @@ func TestDecode(t *testing.T) {
 		{
 			name: "対応の無い符号は落とす",
 			data: []byte{
-				0x79, 0x21, // 表に無い 89 区
-				esc, 0x28, 0x20, 0x41, 0x21, // G0 に DRCS-1 を指示した 1 文字
-				esc, 0x24, 0x42, // G0 を漢字に戻す
-				esc, 0x24, 0x3A, 0x30, 0x21, // JIS 互換漢字 2 面
+				0x79, 0x21, // Unsupported row 89.
+				esc, 0x28, 0x20, 0x41, 0x21, // One character after designating G0 as DRCS-1.
+				esc, 0x24, 0x42, // Restore G0 Kanji.
+				esc, 0x24, 0x3A, 0x30, 0x21, // JIS-compatible Kanji plane 2.
 				esc, 0x24, 0x42,
 				0x34, 0x41,
 			},
@@ -68,8 +67,8 @@ func TestDecode(t *testing.T) {
 		{
 			name: "大きさ・色・位置の制御は無視する",
 			data: []byte{
-				0x89, 0x80, // MSZ、黒
-				0x9B, '1', ';', '2', 0x20, 0x53, // CSI の SWF
+				0x89, 0x80, // Medium size, black.
+				0x9B, '1', ';', '2', 0x20, 0x53, // CSI SWF.
 				0x90, 0x48, // COL
 				0x16, 0x41, // PAPF
 				0x34, 0x41, 0x8A,

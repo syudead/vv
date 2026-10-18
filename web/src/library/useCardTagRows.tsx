@@ -3,14 +3,9 @@ import { useCallback } from "react";
 import type { LibraryGroup, TagRef, Video, VideoTag } from "../api/client";
 import CardTagRow from "./CardTagRow";
 
-/** ignoreToggle は選択を持たないカードのタグの行の、選択を切り替えない口である。 */
 const ignoreToggle = () => undefined;
 
-/**
- * useFolderTagRow はスマートフォルダのカードのタグの行を作る関数である（SmartFolderCard の
- * tagsRow）。フォルダのカードは選択を持たないので、ほかのカードを選んでいる間もチップは押せる
- * ままで、押すとそのタグで絞り込む。ライブラリとスマートフォルダのページが共有する。
- */
+// Smart folders have no selection mode, so their chips remain interactive.
 export function useFolderTagRow(onPressTag: (tag: TagRef) => void) {
   return useCallback(
     (tags: readonly VideoTag[]) => (
@@ -25,12 +20,7 @@ export function useFolderTagRow(onPressTag: (tag: TagRef) => void) {
   );
 }
 
-/**
- * useCardTagRows はカードの題名の下のタグの行を作る関数である（VideoCard・GroupCard・
- * SmartFolderCard の tagsRow）。チップを押すと `onPressTag`、選択中に押すと動画とグループの
- * カードの選択を切り替える。スマートフォルダのカードは選択を持たない（useFolderTagRow）。グループのページと
- * スマートフォルダのページが共有する。
- */
+// In selection mode, ordinary card chips toggle selection; smart folder chips stay interactive.
 export function useCardTagRows({
   selectionMode,
   onPressTag,

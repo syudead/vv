@@ -5,11 +5,7 @@ import type { VideoLinkState } from "./pageDecisions";
 import RelatedVideos, { type MemberTarget } from "./RelatedVideos";
 import { panelCurrentItemId, type VideoPlaylist } from "./useVideoPlaylist";
 
-/**
- * VideoPageAside は動画ページの右の列（関連動画）である。プレイリストの文脈では、プレイリストの
- * パネルを続けて再生・関連動画と同じ入れ物の先頭に置き、一緒にスクロールさせる（広い画面。
- * docs/design-docs/catalog-organization.md「Video page in a playlist」）。
- */
+/** Playlist, continuous-play, and related sections share one scroll container. See docs/design-docs/catalog-organization.md. */
 export default function VideoPageAside({
   related,
   linkState,
@@ -26,11 +22,10 @@ export default function VideoPageAside({
   onRetry: () => void;
   onLoadMore: () => void;
   readContext: VideoReadContext;
-  /** `?group` か `?smartFolder` で開いた動画のメンバーの行の開き方（その文脈を保って開く）。 */
+  /** Preserve the group or smart-folder context in member links. */
   groupMemberTarget: MemberTarget | undefined;
   playlist: VideoPlaylist;
   backTo: string;
-  /** パネルの行を押して移った先で再生を始めるか。 */
   autoplay: boolean;
 }) {
   if (!playlist.inPlaylist)
@@ -66,10 +61,10 @@ export default function VideoPageAside({
             backTo={backTo}
             autoplay={autoplay}
             onRetry={playlist.context.retry}
-            // 続けて再生があるときは、そちらが今のメンバーへ動かす。
+            // Continuous-play handles scrolling to the current member when present.
             scrollToCurrent={ready?.group === undefined}
           />
-          {/* 後に何も続かなければ境目を描かない。 */}
+          {}
           {!(
             ready !== undefined &&
             ready.group === undefined &&

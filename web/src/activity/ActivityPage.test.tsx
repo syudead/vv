@@ -24,9 +24,7 @@ import { DEFAULT_ACTIVITY_CRITERIA } from "./activityCriteria";
 import ActivityPage from "./ActivityPage";
 import { useActivityLog } from "./useActivityLog";
 
-// アクティビティの画面のページテスト。
-// 偽のサーバーは契約どおりに絞り込み、counts は status 以外、features は feature 以外の
-// 絞り込みに従う。
+// Counts ignore the status filter; features ignore the feature filter.
 
 function entry(id: number, extra: Partial<ActivityEntry> = {}): ActivityEntry {
   return {
@@ -62,15 +60,13 @@ const features: ActivityFeature[] = [
 const server = {
   entries: [] as ActivityEntry[],
   requests: [] as URLSearchParams[],
-  /** 置くと、一覧の要求は応答を作った後でこれを待ってから返す（読んだ後に記録が変わる場合）。 */
+  /** Delay the response after taking its snapshot to simulate concurrent changes. */
   gate: null as Promise<void> | null,
-  /** やり直しと取り消しの要求（パスと本文）。 */
   operations: [] as { path: string; body: unknown }[],
-  /** 置くと、やり直しと取り消しはこの誤りの code で 409 を返す。 */
+  /** Return this code with HTTP 409 for retry and undo requests. */
   conflict: null as string | null,
-  /** 取り消しが返す undo の記録の outcome。 */
   undoOutcome: "completed" as ActivityEntry["outcome"],
-  /** 置くと、やり直しと取り消しの応答はこれを待ってから返す。 */
+  /** Gate retry and undo responses until this promise resolves. */
   operationGate: null as Promise<void> | null,
 };
 
@@ -81,7 +77,6 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-/** operate は POST /api/activity/{id}/retry と /undo に契約どおりに答える。 */
 async function operate(path: string, init: RequestInit | undefined): Promise<Response> {
   const body: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : null;
   server.operations.push({ path, body });
@@ -225,7 +220,7 @@ beforeEach(() => {
   server.undoOutcome = "completed";
   server.operationGate = null;
   search = "";
-  // jsdom は scrollTo を持たない。絞り込みを変えると先頭へ戻す。
+  // jsdom lacks scrollTo, which filter changes invoke.
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   installFakeEventSource();
   install();
@@ -243,7 +238,6 @@ describe("ActivityPage", () => {
     renderPage();
     expect(screen.getByRole("heading", { level: 1, name: "Activity" })).toBeDefined();
     await waitFor(() => expect(cards()).toHaveLength(4));
-    // 新しい順（id の降順）。
     expect(
       cards().map(
         (card) => card.querySelector("[data-slot=card-list-title]")?.textContent,
@@ -365,7 +359,7 @@ describe("ActivityPage", () => {
     });
     renderPage();
     await waitFor(() => expect(filterRequests()).toHaveLength(1));
-    // 最初のページを読んだ後、応答が届く前に記録が増える。
+    // Insert a record after the first-page snapshot but before delivery.
     server.entries.push(entry(5));
     await emitServerEvent("activity");
     server.gate = null;
@@ -529,7 +523,7 @@ describe("ActivityPage retry and undo", () => {
     const user = userEvent.setup();
     renderPage();
     await waitFor(() => expect(cards()).toHaveLength(5));
-    // 取り消しの後のサーバーの記録。読み直しの応答は gate が開くまで届かない。
+    // Keep the post-undo refresh pending until the gate opens.
     server.entries = server.entries.map((item) =>
       item.id === 2 ? { ...item, undoable: false, undone: true } : item,
     );
@@ -562,7 +556,6 @@ describe("ActivityPage retry and undo", () => {
       within(card("file-3.mp4")).getByRole("button", { name: "Undo tags…" }),
     );
     const items = await screen.findAllByRole("menuitem");
-    // 取り消し済みの fox は並べない。
     expect(items.map((item) => item.textContent)).toEqual([
       "cat90%",
       "dog(suggested)60%",
@@ -621,7 +614,7 @@ describe("useActivityLog", () => {
       useActivityLog({ ...DEFAULT_ACTIVITY_CRITERIA, period: "today" }),
     );
     await waitFor(() => expect(result.current.state.kind).toBe("ready"));
-    // 次のページは日をまたいでから読む。
+    // Load the next page after crossing midnight.
     vi.setSystemTime(new Date(2026, 9, 17, 0, 0, 1));
     act(() => result.current.loadMore());
     await waitFor(() => expect(filterRequests()).toHaveLength(2));

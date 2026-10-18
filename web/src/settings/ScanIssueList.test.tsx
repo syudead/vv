@@ -58,10 +58,7 @@ function renderSection() {
   );
 }
 
-/**
- * serve は `/api/scans/current` と `/api/scans/current/issues` を返す。`pages` は cursor
- * （1ページ目は空文字）ごとの応答で、呼び出しのたびに今の値を読む。
- */
+/** Read current fixture values for every cursor request; empty cursor means page one. */
 function serve(
   fetchMock: ReturnType<typeof vi.fn<typeof fetch>>,
   state: { scan: Scan; pages: Record<string, ScanIssuePage> },
@@ -159,7 +156,6 @@ describe("ScanIssueList", () => {
         ?.getAttribute("title"),
     );
     expect(places).toEqual(["media / 旅行/2024", "archive / 旅行/2024"]);
-    // 未登録のファイルはリンクにしない。
     expect(within(rows[0]!).queryByRole("link")).toBeNull();
   });
 
@@ -199,7 +195,6 @@ describe("ScanIssueList", () => {
     renderSection();
     expect(await screen.findByText("old.mp4")).toBeDefined();
 
-    // 同じ取り込みで問題が増えた（つながり直したあとの取り直しと同じ経路）。
     state.scan = scan({ issues: { failed: 2, substituted: 1, revision: 2 } });
     state.pages[""] = {
       scanId: 2,
@@ -208,7 +203,6 @@ describe("ScanIssueList", () => {
     act(() => window.dispatchEvent(new Event("focus")));
     expect(await screen.findByText("added.mp4")).toBeDefined();
 
-    // 新しい取り込み。
     state.scan = scan({ id: 3, issues: { failed: 1, substituted: 0, revision: 1 } });
     state.pages[""] = { scanId: 3, items: [issue({ fileName: "new.mp4" })] };
     act(() => window.dispatchEvent(new Event("focus")));
@@ -221,7 +215,7 @@ describe("ScanIssueList", () => {
   it("rereads the scan and the list when the response belongs to another scan", async () => {
     let scanReads = 0;
     const state = {
-      // 最初に読んだ状態は古く、一覧はもう次の取り込みのものである。
+      // The initial status is stale; the issues already belong to the next scan.
       get scan() {
         scanReads += 1;
         return scanReads === 1 ? scan() : scan({ id: 3 });
@@ -245,10 +239,9 @@ describe("ScanIssueList", () => {
     const requests = serve(fetchMock, state);
     renderSection();
     const warning = await screen.findByText(/^Couldn't load the list/);
-    // 読めなかった理由は見せるが、取り込みの節目ではないので読み上げない。
+    // Show load failures without announcing a scan milestone.
     expect(warning.closest("[role=status]")).toBeNull();
 
-    // 版は同じまま、ウィンドウへ戻って状態を取り直す。
     state.pages[""] = { scanId: 2, items: [issue({ fileName: "back.mp4" })] };
     act(() => window.dispatchEvent(new Event("focus")));
     expect(await screen.findByText("back.mp4")).toBeDefined();

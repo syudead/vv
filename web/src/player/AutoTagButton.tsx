@@ -6,12 +6,7 @@ import { errorText, t } from "../i18n";
 import { Button } from "../ui/shadcn/button";
 import { useToast } from "../ui/Toast";
 
-/**
- * AutoTagButton は動画ページで、この動画を自動タグ付けの判定に回す操作である
- * （docs/design-docs/auto-tagging.md）。判定は裏で進み、タグが付くと動画の知らせで
- * ページが読み直すので、ここでは積んだことだけを知らせる。自動タグ付けの機能が切なら
- * （設定を読めないときも）何も出さない。
- */
+/** Queue auto-tagging; video events refresh the result. Hide when settings are unavailable or disabled. */
 export default function AutoTagButton({ videoId }: { videoId: number }) {
   const text = t.player.autoTag;
   const toast = useToast();

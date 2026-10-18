@@ -20,7 +20,7 @@ function session(state: string): Response {
   });
 }
 
-/** close はブラウザがつなぎ直しを諦めた（応答が 200 でない）ことを再現する。 */
+/** Simulate the browser abandoning reconnection after a non-200 response. */
 function close(): void {
   const source = currentEventSource();
   source.readyState = FakeEventSource.CLOSED;

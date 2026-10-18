@@ -1,8 +1,6 @@
 package store
 
-// 動画の追加の情報（video_media_info）の書き込みと読み出し。書き込みは取り込みの解析
-// （ApplyProbe と ApplyProbeForJob）だけが upsertMediaInfo で行う。読み出しは
-// LibraryStore が受け持つ。
+// Only ingest probes write media information; LibraryStore owns reads.
 
 import (
 	"context"
@@ -15,8 +13,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// upsertMediaInfo は video_media_info の 1 行を今の版で置き換える。呼び手は動画の身元を
-// 確かめた取引の中で呼ぶ。
+// The caller must validate video identity in the same transaction.
 func upsertMediaInfo(ctx context.Context, db queryExecer, videoID int64, info domain.MediaInfo, now time.Time) error {
 	encoded, err := json.Marshal(info)
 	if err != nil {
@@ -34,9 +31,7 @@ func upsertMediaInfo(ctx context.Context, db queryExecer, videoID int64, info do
 	return nil
 }
 
-// MediaInfo は動画 1 件の追加の情報を返す。行が無い、版が domain.MediaInfoVersion と違う、
-// JSON が読めない、のいずれかなら nil（無い）である。詳細の読み出しだけが使い、一覧には
-// 載せない。
+// MediaInfo is detail-only and returns nil for missing, outdated or malformed rows.
 func (s *LibraryStore) MediaInfo(ctx context.Context, videoID int64) (*domain.MediaInfo, error) {
 	var version int
 	var encoded string

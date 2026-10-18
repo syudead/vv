@@ -11,12 +11,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 人物と団体の一覧と 1 件の読み出し。
-// 一覧はタグの一覧と同じ並び順とカーソル（admin_list_order.go）で、1 件の読み出しも同じ listed を
-// id で絞って読む。
+// Credit lists share tag ordering and cursors; detail reads use the same listed relation.
 
-// List は条件に合う kind の実体を並び順に 1 ページ返す。本数 0 の実体も返す。query.Limit が 0 なら
-// 全件を返し、カーソルは無視する。件数と行はタグの一覧と同じく、読み取り用の接続の 1 つの取引で読む。
+// List includes zero-video entities and reads counts with rows in one snapshot; limit zero ignores cursors and returns all rows.
 func (s *CreditStore) List(ctx context.Context, kind domain.CreditKind, query domain.CreditQuery) (domain.CreditPage, error) {
 	t, err := creditTablesFor(kind)
 	if err != nil {
@@ -58,7 +55,7 @@ func (s *CreditStore) List(ctx context.Context, kind domain.CreditKind, query do
 	}
 	page.Total = total
 	if len(items) == 0 && cursorClause != "" {
-		// カーソルより後ろに行が無いときは、ページの行から数を取れないので、条件に合う数だけを数える。
+		// An empty page cannot carry a window count, so count the full filtered result separately.
 		if err := tx.QueryRowContext(ctx, listed+` select count(*) from listed`, listedArgs...).Scan(&page.Total); err != nil {
 			return domain.CreditPage{}, fmt.Errorf("cannot count %s entities: %w", kind, err)
 		}
@@ -79,8 +76,7 @@ func (s *CreditStore) List(ctx context.Context, kind domain.CreditKind, query do
 	return page, nil
 }
 
-// creditByID は取引 tx の中で実体 id を読む。無ければ domain.ErrNotFound。正でない id は
-// どの実体も指さない（listedCreditsCTE は正でない onlyID を絞り込みなしと読むので、先に拒む）。
+// Reject nonpositive IDs before the CTE interprets them as no ID filter.
 func creditByID(ctx context.Context, tx *sql.Tx, t creditTables, id int64) (domain.Credit, error) {
 	if id <= 0 {
 		return domain.Credit{}, domain.ErrNotFound
@@ -100,16 +96,9 @@ func creditByID(ctx context.Context, tx *sql.Tx, t creditTables, id int64) (doma
 	return items[0], nil
 }
 
-// creditListedColumns は listed から読む列である。readListedCredits が最後の total と合わせて読む。
 const creditListedColumns = `id, name, created_at, sort_key, video_count, parent_id`
 
-// listedCreditsCTE は条件に合う実体を listed（id・name・created_at・sort_key・video_count・
-// parent_id）として返す CTE と、その引数を返す。search が空でなければ名前か別名の照合形に部分一致
-// する実体だけ、onlyID が正ならその実体だけにする。
-//
-// video_count は表示中の動画（所有者として見える代表）の利用者データの鍵のうち、どれかの役割の
-// 結び付きの行がこの実体を指すものの数である。束ねの代表だけが
-// 表示中なので、1 つの鍵は 1 本の動画として数える。
+// Count visible representatives by user-data key so each bundle contributes one video.
 func listedCreditsCTE(t creditTables, search string, onlyID int64) (string, []any) {
 	var countFilter, where string
 	var countArgs, whereArgs []any
@@ -145,8 +134,7 @@ func listedCreditsCTE(t creditTables, search string, onlyID int64) (string, []an
 	return t.q(statement), append(countArgs, whereArgs...)
 }
 
-// readListedCredits は listed の行を読み、行ごとの名前の鍵（カーソルに包む）と、行が持つ条件に合う
-// 数を返す。行が無ければ数は 0。親は id だけを入れ、名前は addCreditDetails が足す。
+// Parent names are populated later by addCreditDetails.
 func readListedCredits(ctx context.Context, tx *sql.Tx, t creditTables, statement string, args []any) ([]domain.Credit, []string, int, error) {
 	rows, err := tx.QueryContext(ctx, statement, args...)
 	if err != nil {
@@ -178,8 +166,7 @@ func readListedCredits(ctx context.Context, tx *sql.Tx, t creditTables, statemen
 	return items, keys, total, nil
 }
 
-// addCreditDetails は items の各実体に別名（名前の自然順）・外部 ID（(source, value) の順）・親の
-// 名前を足す。ページの実体の id を json_each に 1 つの引数で渡し、それぞれ 1 回で読む（N+1 にしない）。
+// Batch aliases, external IDs and parent names for the page to avoid N+1 queries.
 func addCreditDetails(ctx context.Context, tx *sql.Tx, t creditTables, items []domain.Credit) error {
 	if len(items) == 0 {
 		return nil
@@ -220,7 +207,6 @@ func addCreditDetails(ctx context.Context, tx *sql.Tx, t creditTables, items []d
 	return addCreditParentNames(ctx, tx, t, items, parentIDs)
 }
 
-// addCreditParentNames は親を持つ実体に親の今の名前を足す。
 func addCreditParentNames(ctx context.Context, tx *sql.Tx, t creditTables, items []domain.Credit, parentIDs []int64) error {
 	if len(parentIDs) == 0 {
 		return nil
@@ -244,7 +230,6 @@ func addCreditParentNames(ctx context.Context, tx *sql.Tx, t creditTables, items
 	return nil
 }
 
-// eachCreditRow は query（id と 2 つの文字列の列を返す）の行ごとに visit を呼ぶ。
 func eachCreditRow(ctx context.Context, tx *sql.Tx, query string, arg any, visit func(id int64, a, b string)) error {
 	rows, err := tx.QueryContext(ctx, query, arg)
 	if err != nil {

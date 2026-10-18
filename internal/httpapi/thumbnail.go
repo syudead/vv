@@ -7,10 +7,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// GetVideoThumbnail はサムネイル画像を返す（GET /api/videos/{id}/thumbnail）。
-//
-// 未生成の場合は 404 を返し、クライアントは枠だけを描く。壊れた
-// 応答を返すより、未生成と同じ扱いにする方が利用者の損失が小さい。
+// Unready thumbnails return 404 so the client displays an empty frame.
 func (s *server) GetVideoThumbnail(
 	w http.ResponseWriter, r *http.Request, id gen.VideoId, _ gen.GetVideoThumbnailParams,
 ) {
@@ -26,8 +23,7 @@ func (s *server) GetVideoThumbnail(
 
 	file, err := s.artifacts.ThumbnailFile(video.ContentKey)
 	if err != nil {
-		// 状態が done でも実体が無いことはある（利用者が消した、生成中に
-		// 停止した）。存在を漏らさないためにも 404 に揃える。
+		// Done state does not guarantee a surviving file; use the same 404 as ungenerated thumbnails.
 		s.notFound(w, "The thumbnail has not been generated yet.")
 		return
 	}
@@ -39,9 +35,7 @@ func (s *server) GetVideoThumbnail(
 		return
 	}
 
-	// 版の有無によらず、使うたびに確かめさせる。
-	// If-None-Match が一致すれば http.ServeContent が 304 を返す。ETag は内容から
-	// 作る。作り直しで大きさと更新時刻が前と同じになっても、古い画像を使わせない。
+	// Always revalidate with content ETags so same-size/time rebuilds replace cached images.
 	etag, err := readerETag(file)
 	if err != nil {
 		s.notFound(w, "The thumbnail has not been generated yet.")
@@ -50,8 +44,6 @@ func (s *server) GetVideoThumbnail(
 	setRevalidate(w, etag)
 	w.Header().Set("Content-Type", "image/jpeg")
 
-	// 更新時刻は渡さない。渡すと ServeContent が Last-Modified を付け、If-Modified-Since
-	// だけの要求に更新時刻で 304 を返すので、同じ秒に作り直した画像が古いまま残る。
-	// 確かめは内容の ETag だけで行う。
+	// Omit modification time to prevent stale same-second If-Modified-Since 304 responses.
 	http.ServeContent(w, r, info.Name(), time.Time{}, file)
 }

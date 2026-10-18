@@ -6,7 +6,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// GetVersionJudgingSettings は重複の自動判定の入切を返す。保存前は切である
+// Unsaved settings default to disabled.
 func (s *server) GetVersionJudgingSettings(w http.ResponseWriter, r *http.Request) {
 	if s.versionJudging == nil {
 		s.internalError(w, "Duplicate judging settings are not configured.", nil)
@@ -21,13 +21,13 @@ func (s *server) GetVersionJudgingSettings(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, gen.VersionJudgingSettings{Enabled: enabled}, s.logger)
 }
 
-// UpdateVersionJudgingSettings は入切を保存し、判定の処理を起こす。入れると待っていた候補を判定し始める。
+// Enabling matching wakes pending candidates.
 func (s *server) UpdateVersionJudgingSettings(w http.ResponseWriter, r *http.Request) {
 	if s.versionJudging == nil {
 		s.internalError(w, "Duplicate judging settings are not configured.", nil)
 		return
 	}
-	// enabled は必須なので、無いことを偽と区別して読む。
+	// Distinguish a missing enabled field from false.
 	var body struct {
 		Enabled *bool `json:"enabled"`
 	}

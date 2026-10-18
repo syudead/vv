@@ -2,10 +2,8 @@ import { type RefObject, useLayoutEffect, useRef } from "react";
 import { useLocation } from "react-router";
 
 /**
- * useSectionAnchor は Settings の節を `/settings/<page>#<id>` の行き先にする。返す ref を節を包む
- * 要素（`id` を付ける）に渡すと、その URL で移ってきたとき、節の見出し（PageSection が描く
- * h2）へスクロールしてフォーカスを移す。見出しは移ってきたときだけ focus できるようにする。
- * 節の上にある節が読み込みで伸び縮みしても見出しに留まるよう、少し後にも合わせ直す。
+ * Attach to the section element with its ID; focus its h2 only on anchor navigation. Realign after
+ * loading sections above it changes layout.
  */
 export function useSectionAnchor(id: string): RefObject<HTMLDivElement | null> {
   const location = useLocation();

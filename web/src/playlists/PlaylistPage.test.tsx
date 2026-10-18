@@ -52,7 +52,7 @@ function group(name: string, openVideoId: number): LibraryGroup {
   };
 }
 
-/** folderItem はスマートフォルダ 9 の項目である。videoCount が 0 なら開く動画も長さも無い。 */
+/** Zero-video folders have neither a playback target nor duration. */
 function folderItem(id: number, videoCount: number): PlaylistItem {
   return {
     id,
@@ -90,7 +90,7 @@ const server = {
   items: [] as PlaylistItem[],
   getStatus: 200,
   getCalls: 0,
-  /** 置くと、GET は送られた時点の内容をこれが解けてから返す。 */
+  /** Capture GET content on request, then gate delivery. */
   getHold: null as Promise<void> | null,
   moves: [] as { itemId: number; afterItemId: number | null }[],
   moveStatus: 204,
@@ -99,9 +99,8 @@ const server = {
   renames: [] as unknown[],
   deletes: 0,
   deleteStatus: 204,
-  /** 置くと、DELETE はこれが解けてから答える。 */
   deleteHold: null as Promise<void> | null,
-  /** プレイリスト 8 の GET。答えないまま止めておく。 */
+  /** Hold GET for playlist 8 indefinitely. */
   otherGets: 0,
 };
 
@@ -173,7 +172,6 @@ function install() {
   vi.stubGlobal("fetch", fetchMock);
 }
 
-/** VideoProbe は開いた動画ページの場所と state を書き出す。 */
 function VideoProbe() {
   const location = useLocation();
   return (
@@ -183,7 +181,6 @@ function VideoProbe() {
   );
 }
 
-/** 経路の外から別の場所へ移る関数（id だけが変わる移動を試す）。 */
 let navigateTo: (to: string) => void = () => undefined;
 
 function NavigateProbe() {
@@ -210,7 +207,6 @@ function renderPage(path = "/playlists/7") {
   );
 }
 
-/** hold は GET の応答を止め、解く関数を返す。 */
 function hold(): () => void {
   let release: () => void = () => undefined;
   server.getHold = new Promise<void>((done) => {
@@ -222,12 +218,10 @@ function hold(): () => void {
   };
 }
 
-/** serverNames は今のサーバーの並びを行の読み上げ名で返す。 */
 function serverNames(): string[] {
   return server.items.map((item) => `Play from ${itemTitle(item)}`);
 }
 
-/** rowNames は表の行のリンクの読み上げ名を上から返す。 */
 function rowNames(): string[] {
   const table = screen.getByRole("table", { name: "Items" });
   return within(table)
@@ -235,8 +229,7 @@ function rowNames(): string[] {
     .map((link) => link.getAttribute("aria-label") ?? "");
 }
 
-// jsdom は配置を持たないので、行の位置を上から 48px ずつに置く。dnd-kit のキーボードの
-// 移動は行の位置から次の行を探す。
+// Provide 48px row geometry because dnd-kit keyboard navigation needs layout absent from jsdom.
 function layoutRows() {
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (
     this: Element,
@@ -403,7 +396,7 @@ describe("PlaylistPage", () => {
     await waitFor(() => expect(server.getCalls).toBe(2));
     server.moveStatus = 204;
 
-    // 読み直しが答える前に、もう 1 つ動かす。
+    // Move again before the refresh response arrives.
     screen.getByRole("button", { name: 'Reorder "Video 13"' }).focus();
     await user.keyboard("[Space]");
     await user.keyboard("[ArrowUp]");
@@ -745,7 +738,7 @@ describe("PlaylistPage", () => {
     enablePseudoLocale();
     renderPage();
     await screen.findByRole("table", { name: /Items/ });
-    // 長さ（「1:00」）は数の書式で、カタログの文ではない。
+    // Duration is numeric formatting, not catalog copy.
     expectCatalogTextOnly(document.body, [
       "Morning",
       "Video 11",

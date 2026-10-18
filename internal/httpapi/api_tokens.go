@@ -10,29 +10,17 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 画面の API トークンの管理。
-//
-// 3 つの操作はどれも所有者だけで、accessRoutes に載せない。Bearer はここでは読まない。
-// Bearer で所有者を確かめるのは境界（auth.go の bearerBoundary）で、同じ APITokens を使う。
-// 名前の規則・平文の作り・保存は internal/app と internal/store が持ち、httpapi は要求の
-// 解釈と契約の形への変換だけを持つ。
+// Token management is session-only; bearerBoundary uses APITokens separately, while app/store own token generation, naming rules, and persistence.
 
-// APITokens は API トークンの発行・一覧・失効と、Bearer の確かめである。internal/app の
-// *Auth がこれを満たす。
 type APITokens interface {
-	// CheckAPIToken は Bearer で送られた平文 secret が有効な API トークンかを確かめ、有効なら
-	// その行を返す。問い合わせが失敗したら、無効とせずに誤りを返す。
+	// Lookup failures return errors rather than treating tokens as invalid.
 	CheckAPIToken(ctx context.Context, secret string) (domain.APIToken, bool, error)
-	// RecordAPITokenUse は id の API トークンを今使ったことを記録する。60 秒より細かくは
-	// 書かない。
+	// RecordAPITokenUse writes at most once per sixty seconds.
 	RecordAPITokenUse(ctx context.Context, id int64) error
-	// ListAPITokens は有効な API トークンを作成日時の降順で返す。
 	ListAPITokens(ctx context.Context) ([]domain.APIToken, error)
-	// CreateAPIToken はセッション sessionToken の求めで API トークンを発行し、保存した行と
-	// 平文を返す。名前が規則を外れれば *domain.InvalidAPITokenNameError を、保存の時点で
-	// セッションが有効でなければ domain.ErrSessionNotValid を返す。
+	// CreateAPIToken revalidates the session when persisting and returns plaintext only with the created row.
 	CreateAPIToken(ctx context.Context, sessionToken, name string) (domain.APIToken, string, error)
-	// RevokeAPIToken は API トークンを失効させる。無い id では何もしない。
+	// Revoking an absent ID is a no-op.
 	RevokeAPIToken(ctx context.Context, id int64) error
 }
 
@@ -63,8 +51,7 @@ func (s *server) CreateApiToken(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "API token storage is not configured.", nil)
 		return
 	}
-	// 境界が確かめたのと同じセッションを渡し、保存と同じ取引でもう一度確かめさせる。
-	// 境界の後に資格情報が変わっていれば、新しい版のトークンを作らない。
+	// Recheck the boundary's exact session in the write transaction so revoked credentials cannot issue a new-version token.
 	token, secret, err := s.apiTokens.CreateAPIToken(r.Context(), s.sessionToken(r), body.Name)
 	if errors.Is(err, domain.ErrInvalidAPITokenName) {
 		s.invalidAPITokenName(w, err)
@@ -78,7 +65,7 @@ func (s *server) CreateApiToken(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "Could not create the API token.", err)
 		return
 	}
-	// 平文を含むので、どこにも残させない。
+	// The response contains plaintext and must never be cached.
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusCreated, gen.CreatedAPIToken{Token: toAPIToken(token), Secret: secret}, s.logger)
 }
@@ -92,14 +79,12 @@ func (s *server) DeleteApiToken(w http.ResponseWriter, r *http.Request, id gen.A
 		s.internalError(w, "Could not revoke the API token.", err)
 		return
 	}
-	// 失効したトークンで処理中の外部連携 API と MCP の要求を、すぐに打ち切る。
+	// Immediately cancel external API/MCP requests using the revoked token.
 	s.sessions.revoke(apiTokenLedgerKey(id))
 	w.Header().Set("Cache-Control", cacheNoStore)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// invalidAPITokenName は domain.NormalizeAPITokenName の失敗を、その理由に応じた reason の
-// invalid_request へ写す。
 func (s *server) invalidAPITokenName(w http.ResponseWriter, err error) {
 	var invalid *domain.InvalidAPITokenNameError
 	if !errors.As(err, &invalid) {
@@ -119,7 +104,7 @@ func (s *server) invalidAPITokenName(w http.ResponseWriter, err error) {
 	}
 }
 
-// toAPIToken は API トークンを契約の形にする。未使用なら lastUsedAt は null である。
+// Unused tokens expose lastUsedAt as null.
 func toAPIToken(token domain.APIToken) gen.APIToken {
 	out := gen.APIToken{Id: token.ID, Name: token.Name, CreatedAt: token.CreatedAt.UTC()}
 	if !token.LastUsedAt.IsZero() {

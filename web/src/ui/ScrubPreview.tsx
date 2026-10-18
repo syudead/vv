@@ -22,20 +22,18 @@ import {
   spriteCellBackground,
 } from "../lib/seekSprite";
 
-// 一覧のカードと関連動画のサムネイルの下端に置く、スクラブの帯である
 //
 
 export interface ScrubPreviewOptions {
   video: Video;
-  /** 選択モードの間は帯を置かない。 */
+  /** Omit the band during selection mode. */
   selectionMode?: boolean;
-  /** 帯に入ったときに呼ぶ。ループ再生の suspendPreview を渡す。 */
+  /** Pass suspendPreview to pause the loop on band entry. */
   onSuspend?: () => void;
-  /** 帯からカードの中へ出たときに呼ぶ。ループ再生の resumePreview を渡す。 */
+  /** Pass resumePreview when leaving the band into the card. */
   onResume?: () => void;
 }
 
-/** ScrubFrameData は帯の位置のコマを出すのに要るもの一式である。 */
 export interface ScrubFrameData {
   url: string;
   sprite: SeekThumbnailSprite;
@@ -48,33 +46,24 @@ export interface ScrubBandHandlers {
   onPointerLeave: (event: PointerEvent<HTMLElement>) => void;
 }
 
-/** ScrubPreview は useScrubPreview の結果である。 */
 export interface ScrubPreview {
-  /** 帯を置くか。 */
   enabled: boolean;
-  /** 帯にいる間のポインタの位置。帯の外では null。 */
   position: SeekPosition | null;
-  /** 帯の位置のコマ。配置情報とシートが揃うまでは null。 */
+  /** Null until both metadata and sheet are available. */
   frame: ScrubFrameData | null;
-  /** ScrubBand に渡すポインタの受け口。 */
   bandHandlers: ScrubBandHandlers;
-  /** カードからポインタが出たときに呼ぶ。進行中の取得を打ち切る。 */
+  /** Abort in-flight requests when the pointer leaves the card. */
   leaveCard: () => void;
-  /** 帯にいる状態を、ループ再生の再開を呼ばずに終える（解放の契機に使う）。 */
+  /** End scrubbing without resuming the loop, for resource release. */
   reset: () => void;
-  /** カードの要素。viewport から外れたら持っているシートを解放する。 */
+  /** Release cached sheets when the card leaves the viewport. */
   cardRef: (element: Element | null) => void;
 }
 
 /**
- * useScrubPreview はカード 1 枚の帯の状態を持つ。
- *
- * - 帯に初めて入ったときに配置情報を、続いて今の位置のコマが載るシートを取得し、
- *   object URL で持つ。持っているものは帯を出入りしても取り直さない。
- * - カードを出たら進行中の取得を打ち切る。帯を出てカードの中にいる間は取得を続ける。
- * - 失敗したら、カードを出て入り直すまで取り直さない。
- * - カードが viewport から外れたときと unmount で、object URL と配置情報を捨てる。
- *   viewport から外れたときは最後の位置も捨てる。
+ * Cache metadata and sheet object URLs across band visits; abort only on card exit and retry
+ * failures only after reentry. Release resources on unmount or viewport exit, also clearing the
+ * last position on viewport exit.
  */
 export function useScrubPreview({
   video,
@@ -94,7 +83,7 @@ export function useScrubPreview({
   const [sprite, setSprite] = useState<SeekThumbnailSprite | null>(null);
   const [sheets, setSheets] = useState<ReadonlyMap<number, string>>(() => new Map());
 
-  // 非同期の取得から読む最新の値。
+  // Latest values for async reads.
   const spriteRef = useRef<SeekThumbnailSprite | null>(null);
   const sheetsRef = useRef(new Map<number, string>());
   const positionRef = useRef<SeekPosition | null>(null);
@@ -123,7 +112,6 @@ export function useScrubPreview({
     setSprite(null);
   }, [abortRequests]);
 
-  // 今の位置（帯を出た後は最後の位置）のコマに要るものを、まだ無ければ取得する。
   const ensure = useCallback(() => {
     if (unavailable.current || spriteUrl === undefined) return;
     const layout = spriteRef.current;
@@ -233,15 +221,13 @@ export function useScrubPreview({
     unavailable.current = false;
   }, [abortRequests]);
 
-  // 選択モードに入るなどで帯が無くなったら、帯にいる状態を終え、最後の位置も捨てて
-  // 進行中の取得を打ち切る。帯を出てカードの中にいるときと違い、取得を続ける先が無い。
+  // If the band disappears, clear position and abort; unlike band exit into the card, no preview destination remains.
   useEffect(() => {
     if (!enabled) leaveCard();
   }, [enabled, leaveCard]);
 
-  // unmount と、別のスプライトを指すようになったときに、持っているシートを捨てる。
-  // 取り直しで URL が変わったときにまだ位置を持っていれば（帯の中、または帯を出て
-  // カードの中）、ポインタが動くのを待たずに新しい URL から取り直す。
+  // Release sheets on unmount or sprite identity changes.
+  // Refetch a changed sprite URL immediately when a current or retained pointer position exists.
   useEffect(() => {
     if (positionRef.current !== null) ensure();
     return () => releaseAll();
@@ -256,8 +242,7 @@ export function useScrubPreview({
       observer.current = new IntersectionObserver(
         (entries) => {
           if (!entries.some((entry) => !entry.isIntersecting)) return;
-          // 最後の位置も捨てる。残すと、外れている間に URL が変わったときに取り直し、
-          // 次に外れるまで解放されない。
+          // Clear the retained position to prevent an offscreen URL change from refetching and retaining sheets.
           positionRef.current = null;
           releaseAll();
         },
@@ -286,17 +271,12 @@ export function useScrubPreview({
   };
 }
 
-/**
- * ScrubFrame は帯の位置のコマを、サムネイルの object-contain と同じ枠に出す層である。
- * コマが揃うまでは何も出さない。
- */
 export function ScrubFrame({ frame }: { frame: ScrubFrameData | null }) {
   if (frame === null) return null;
   const { url, sprite, cell } = frame;
   const background = spriteCellBackground(cell, sprite);
   const style: CSSProperties = {
     aspectRatio: `${String(sprite.frameWidth)} / ${String(sprite.frameHeight)}`,
-    // 面の幅と高さの両方に収まる大きさ（object-contain と同じ収め方）。
     width: `min(100cqw, calc(100cqh * ${String(sprite.frameWidth)} / ${String(sprite.frameHeight)}))`,
     maxWidth: "100%",
     maxHeight: "100%",
@@ -316,10 +296,7 @@ export function ScrubFrame({ frame }: { frame: ScrubFrameData | null }) {
   );
 }
 
-/**
- * ScrubBand はサムネイルの面の下端 5 分の 1 に置く透明な帯である。ポインタの出入りと
- * 移動を受け取るだけで、クリックは下のリンクに届く。
- */
+/** Handle pointer movement only; clicks must reach the underlying link. */
 export function ScrubBand({ scrub }: { scrub: ScrubPreview }) {
   if (!scrub.enabled) return null;
   return (

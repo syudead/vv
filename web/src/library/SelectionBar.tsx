@@ -27,10 +27,6 @@ import { SelectionAction, WithTooltip } from "./SelectionAction";
 import { overLimitMessage } from "./selectionErrors";
 import VisibilityMenu from "./VisibilityMenu";
 
-/**
- * PickerAction は選択バーの、ピッカーを上に開く操作（「Add to playlist」「Add to group」）である。
- * 送るものは「Favorite」と同じで、上限を超えたら押せなくして理由を添える。
- */
 function PickerAction({
   icon,
   label,
@@ -67,41 +63,20 @@ function PickerAction({
 }
 
 export interface SelectionBarProps {
-  /** 選んだ動画の本数（グループはメンバーを数える）。 */
   count: number;
-  /**
-   * 選択が直前の「すべて選択」の応答と同じ集合のとき true。その間だけ「すべて選択」を
-   * 押せなくする。
-   * 選んだ本数と項目の数（total）は数えるものが違うので比べない。
-   */
+  /** Compare sets, not selected-video count with mixed-item total; groups count differently. */
   allSelected: boolean;
   selectedIds: readonly number[];
-  /**
-   * 一括のお気に入りで送る動画（選んだ id のうち選んだグループのメンバーでないもの）と
-   * グループ。上限はこの 2 つの合計で判定する。
-   */
+  /** Send standalone video IDs plus selected group IDs; limits apply to that combined request count. */
   favoriteVideoIds: readonly number[];
   favoriteGroupIds: readonly number[];
-  /** 「すべて選択」の要求の間 true。 */
   selectingAll: boolean;
   onSelectAll: () => void;
   onClear: () => void;
-  /**
-   * 「タグを外す」で外し終えるたびに、外したタグの id を渡して呼ぶ。呼び出し元
-   * （LibraryPage）は、そのタグが今の絞り込みに含まれていれば、一覧と選択が
-   * 食い違わないよう選択を解除して一覧を取り直す（Devin の指摘4）。
-   */
+  /** Removing an active filter tag lets callers clear selection and reload matching rows. */
   onTagRemoved: (tagId: number) => void;
-  /**
-   * 「Bundle as versions」の窓で束ね終えたときに呼ぶ。呼び出し元（LibraryPage）は選択を
-   * 解除して一覧を取り直す。
-   */
   onBundled: (versions: VideoVersions) => void;
-  /**
-   * グループのページだけが渡す「Remove from group」。`count` は外す項目の数で、0 の間と送っている間（`pending`）は押せない。
-   * `itemIds` の上限（20000）を超える間は、「Favorite」と同じ理由を
-   * 添えて押せない（分けて送らない。docs/design-docs/library-ui.md）。
-   */
+  /** Group-only removal; disable oversized batches instead of splitting them. */
   removeFromGroup?: {
     count: number;
     pending: boolean;
@@ -109,12 +84,6 @@ export interface SelectionBarProps {
   };
 }
 
-/**
- * SelectionBar は 1 件以上選ぶとページの下端に貼り付く選択バーである。画面の型の
- * SelectionBar（web/registry/rules/patterns.md「Sections」）に、選んだ数・解除・一括の操作
- * （タグを付ける・外す・お気に入り・公開・版をまとめる・すべて選択）を入れる。操作の名前は
- * どの幅でも出し、収まらなければ帯が折り返す。
- */
 export default function SelectionBar({
   count,
   allSelected,
@@ -135,36 +104,23 @@ export default function SelectionBar({
   const [newGroupOpen, setNewGroupOpen] = useState(false);
   const addTriggerRef = useRef<HTMLButtonElement | null>(null);
 
-  // `POST /api/video-tags` は videoIds 1件以上 maxVideoTagsSelection 件以下を
-  // 全部か無しかで受け付ける。それを超える選択は
-  // 静かに分割して送らず、一括操作そのものを disabled にして理由を添える
-  // （Devin の指摘2、docs/design-docs/library-ui.md）。
+  // Batch APIs are atomic; disable oversized selections with a reason instead of silently splitting.
   const overLimitId = useId();
   const overLimit = count > maxVideoTagsSelection;
-  // お気に入りの上限は送る数（videoIds と groupIds の合計）で判定する。メンバーが上限を超える
-  // グループ 1 つは、タグ・公開では押せないままで、お気に入りは groupIds 1 つとして押せる
+  // Favorite limits count groups as one target, unlike tag/visibility operations on all members.
   //
   const favoriteOverLimitId = useId();
   const favoriteOverLimit =
     favoriteVideoIds.length + favoriteGroupIds.length > maxVideoTagsSelection;
 
-  // 束ねる操作は 2 本以上で現れ、画面の側だけの上限 maxBundleSelection を超えると
-  // disabled にして理由を添える。
-  // 窓を開いている間の背景は inert なので、開いたあとに選択が増えることはない。
+  // Freeze dialog IDs at opening; inert background content prevents selection changes.
   const [bundleOpen, setBundleOpen] = useState(false);
   const bundleOverLimitId = useId();
   const canBundle = count >= 2;
   const bundleOverLimit = count > maxBundleSelection;
-  // 窓に渡す id の並びは、開いた時点の選択で固定する。
   const [bundleIds, setBundleIds] = useState<readonly number[]>([]);
 
-  // count===0 のときはバーごと描かない（下の return null）が、SelectionBar
-  // 自身は選択の間ずっと同じインスタンスのまま（アンマウントしない）ので、
-  // addOpen・removeOpen をそのままにすると、選択を解除してまた選び直したときに
-  // ポップオーバーが勝手に開いた状態で戻ってしまう（Devin の指摘3）。0 になった
-  // 時点で両方閉じる。中の AddTagPopover・RemoveTagPopover 自体は、バーが
-  // null を返す間はツリーから外れて（アンマウントして）いるので、内部の状態
-  // （入力・要約など）はこの操作をしなくても次に開くときは白紙に戻る。
+  // SelectionBar survives returning null; close popovers at zero so reselecting cannot reopen them unexpectedly.
   useEffect(() => {
     if (count === 0) {
       setAddOpen(false);
@@ -176,7 +132,7 @@ export default function SelectionBar({
     }
   }, [count]);
 
-  // 「Add to playlist」は「Favorite」と同じ数で上限を判定する。開いている間に超えたら閉じる。
+  // Recheck picker limits as selection grows and close over-limit popovers.
   useEffect(() => {
     if (favoriteOverLimit) {
       setPlaylistOpen(false);
@@ -184,8 +140,7 @@ export default function SelectionBar({
     }
   }, [favoriteOverLimit]);
 
-  // 「New group」はグループ 1 つだけの選択では押せない。グループ 1 つのグループは段を足すだけで
-  // ある。
+  // A group alone cannot form a new group: that would only add another hierarchy level.
   const newGroupNeedsMoreId = useId();
   const newGroupNeedsMore =
     favoriteGroupIds.length === 1 && favoriteVideoIds.length === 0;
@@ -195,11 +150,8 @@ export default function SelectionBar({
       ? t.library.selection.newGroupNeedsMore
       : undefined;
 
-  // ポップオーバーを開いたままの間に選択が増えて上限を超えたら、両方閉じる
-  // （トリガを disabled にするだけでは、開いている最中の分は防げない。
-  // Devin の指摘）。ポップオーバー自身の送信前の確かめ（AddTagPopover・
-  // RemoveTagPopover の submit・fetchSummary）は、この効果が走るまでの
-  // ごく短い間の保険である。
+  // Disabling a trigger does not close its popover when selection exceeds the limit.
+  // Guard the render before the closing effect runs.
   useEffect(() => {
     if (overLimit) {
       setAddOpen(false);
@@ -214,8 +166,7 @@ export default function SelectionBar({
     : t.library.selection.selectAll;
 
   return (
-    // 帯は画面の型のもので、名前（region）はこの包みが持つ。包みは箱を作らない
-    // （contents）ので、帯はページの下端に貼り付いたままになる。
+    // Keep the region wrapper from changing the bar's bottom alignment.
     <div role="region" aria-label={t.library.selection.region} className="contents">
       <SelectionBarSection
         count={t.library.selection.count(count)}
@@ -280,8 +231,7 @@ export default function SelectionBar({
           </span>
         )}
 
-        {/* 「Favorite」の直後、「Visibility」の前。送るものは「Favorite」と同じで、結果の後も
-            選択は残す。 */}
+        {}
         <PickerAction
           icon={<ListPlus aria-hidden="true" />}
           label={t.library.selection.addToPlaylist}
@@ -300,8 +250,7 @@ export default function SelectionBar({
           />
         </PickerAction>
 
-        {/* 「Add to playlist」の後、「Visibility」の前。送るものは「Favorite」と同じ。「New group」の
-            後は選択を外し、「Add to group」の後は残す。 */}
+        {}
         <WithTooltip label={newGroupReason ?? t.library.selection.newGroup}>
           <SelectionAction
             icon={<Group aria-hidden="true" />}
@@ -353,7 +302,7 @@ export default function SelectionBar({
           />
         </PickerAction>
 
-        {/* グループのページだけ。「Add to group」の後、「Visibility」の前に置く。 */}
+        {}
         {removeFromGroup !== undefined && <RemoveFromGroupAction {...removeFromGroup} />}
 
         <VisibilityMenu
@@ -412,10 +361,6 @@ export default function SelectionBar({
   );
 }
 
-/**
- * RemoveFromGroupAction は選択バーの「Remove from group」である。外す項目が無い間と送っている間は押せない。`itemIds` の上限を超える間は、
- * 「Favorite」と同じ理由を添えて押せない。
- */
 function RemoveFromGroupAction({
   count,
   pending,

@@ -8,10 +8,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ライブラリの一番上のスマートフォルダ。
-
-// favoriteSmartFolder はフォルダ id をお気に入りにする。お気に入りの書き込みは別の作業が足すので、
-// 表に直に書く。
 func favoriteSmartFolder(t *testing.T, db *DB, id, at int64) {
 	t.Helper()
 	if _, err := db.sql.Exec(`insert into smart_folder_favorites (smart_folder_id, favorited_at) values (?, ?)`, id, at); err != nil {
@@ -19,7 +15,6 @@ func favoriteSmartFolder(t *testing.T, db *DB, id, at int64) {
 	}
 }
 
-// libraryFolderIDs は LibraryIDs のスマートフォルダの id を返す。
 func libraryFolderIDs(t *testing.T, db *DB, q domain.VideoQuery) []int64 {
 	t.Helper()
 	selection, _, err := db.Library().LibraryIDs(context.Background(), q)
@@ -29,14 +24,11 @@ func libraryFolderIDs(t *testing.T, db *DB, q domain.VideoQuery) []int64 {
 	return selection.SmartFolderIDs
 }
 
-// libraryOrder は並び順 sort の絞り込みの無いライブラリの項目の名前を返す。
 func libraryOrder(t *testing.T, db *DB, audience domain.Audience, sort domain.VideoSort) []string {
 	t.Helper()
 	return itemNames(libraryPages(t, db, audience, domain.VideoQuery{Sort: sort, Limit: domain.MaxLimit}))
 }
 
-// 絞り込みの無いライブラリは、親の無いフォルダを要約だけで、グループや動画の間の並べ替えの位置に出し、
-// そのフォルダの動画も出す。子フォルダは一番上に出ない。並べ替えの値は一致する動画から求める。
 func TestListLibraryShowsRootSmartFoldersAmongItems(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo, x, ep1 := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")], ids[fixturePath("/media/show/ep1.mp4")]
@@ -52,17 +44,13 @@ func TestListLibraryShowsRootSmartFoldersAmongItems(t *testing.T) {
 		t.Errorf("q猫 の要約 = %+v, want %+v", got, want)
 	}
 
-	// q猫（solo と x）の値は、追加 9 分・長さ 6000・大きさ 700・再生 300 である。
 	for _, check := range []struct {
 		sort  domain.VideoSort
 		index int
 	}{
-		// 長さの昇順は y(100)、3000 の 3 件、q猫、値の無い pair。
 		{domain.SortDurationAsc, 4},
 		{domain.SortDurationDesc, 0},
-		// 再生日時の降順で 300 は show・solo・q猫 で、同じ値は id の降順（フォルダの id は負）。
 		{domain.SortPlayedDesc, 2},
-		// 大きさの降順で 700 は y と q猫 で、q猫 が後ろ。
 		{domain.SortSizeDesc, 1},
 	} {
 		if got := libraryOrder(t, db, domain.AudienceOwner, check.sort); got[check.index] != "folder:q猫" {
@@ -70,8 +58,6 @@ func TestListLibraryShowsRootSmartFoldersAmongItems(t *testing.T) {
 		}
 	}
 
-	// ep1（200）だけのフォルダは、大きさの昇順で 100 の 2 件の後ろ、600 の前に並ぶ。q猫（700）は
-	// 同じ値の y より id（負）で前に並ぶ。
 	small := attachNamedTag(t, db, "犬", ep1)
 	newSmartFolder(t, db, "犬", domain.SmartRule{Tags: []int64{small}}, domain.SortTitleAsc, 0)
 	if got := libraryOrder(t, db, domain.AudienceOwner, domain.SortSizeAsc); len(got) != 7 || got[2] != "folder:犬" || got[5] != "folder:q猫" || got[6] != "y" {
@@ -83,9 +69,7 @@ func TestListLibraryShowsRootSmartFoldersAmongItems(t *testing.T) {
 	}
 }
 
-// 並べ替えの値はグループにまとめず、動画ごとに条件を確かめた一致する動画から求める。show は ep2 だけが
-// 未視聴で、グループとしては見ている途中なので中身（再生順）は空だが、一致する動画は ep2（追加 3 分）で、
-// フォルダは追加日時の昇順で先頭に並ぶ。
+// Sort aggregates filter individual videos even when watch-state filtering leaves the grouped playback order empty.
 func TestListLibrarySortsSmartFoldersByTheirMatchingVideos(t *testing.T) {
 	db, _ := itemsFixture(t)
 	newSmartFolder(t, db, "未視聴のep", domain.SmartRule{Q: "ep", Watch: domain.WatchUnwatched}, domain.SortTitleAsc, 0)
@@ -95,9 +79,6 @@ func TestListLibrarySortsSmartFoldersByTheirMatchingVideos(t *testing.T) {
 	}
 }
 
-// 一致する動画の無いフォルダは、題名とお気に入りにした日時以外のどの並び順でも、向きによらず値を持つ
-// どの項目よりも後ろに並ぶ。後ろに来てよいのは同じく値の無い項目（長さの無い pair、再生の記録の無い
-// pair と x）だけである。
 func TestListLibraryPlacesEmptySmartFoldersLast(t *testing.T) {
 	db, _ := itemsFixture(t)
 	newSmartFolder(t, db, "空", domain.SmartRule{Q: "どれにも当たらない"}, domain.SortTitleAsc, 0)
@@ -121,8 +102,6 @@ func TestListLibraryPlacesEmptySmartFoldersLast(t *testing.T) {
 	}
 }
 
-// 検索やタグなどの絞り込みではフォルダが出ない。お気に入りのみでは、お気に入りにしたフォルダが深さに
-// よらず出る。
 func TestListLibraryShowsSmartFoldersOnlyWithoutFilters(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo := ids[fixturePath("/media/solo.mp4")]
@@ -171,8 +150,6 @@ func TestListLibraryShowsSmartFoldersOnlyWithoutFilters(t *testing.T) {
 	}
 }
 
-// フォルダの項目をまたぐページ送りで、どの並び順でもどの項目も 1 回だけ返る。一致する動画の無い
-// フォルダ（値の無い項目）も含める。
 func TestListLibraryPagesAcrossSmartFolders(t *testing.T) {
 	db, ids := itemsFixture(t)
 	cat := attachNamedTag(t, db, "猫", ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/pair/p2.mp4")])
@@ -185,19 +162,16 @@ func TestListLibraryPagesAcrossSmartFolders(t *testing.T) {
 	if want := []string{"folder:全部", "folder:猫", "folder:空", "group:pair", "group:show", "solo", "x", "y"}; !slices.Equal(all, want) {
 		t.Fatalf("項目 = %v, want %v", all, want)
 	}
-	for _, sort := range allSorts {
-		for _, limit := range []int{1, 2, 3} {
-			got := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Sort: sort, Seed: 7, Limit: limit}))
-			slices.Sort(got)
-			if !slices.Equal(got, all) {
-				t.Errorf("%s limit=%d = %v, want %v", sort, limit, got, all)
-			}
+	for _, tc := range pagingCases(allSorts, 2, 3) {
+		got := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Sort: tc.value, Seed: 7, Limit: tc.limit}))
+		slices.Sort(got)
+		if !slices.Equal(got, all) {
+			t.Errorf("%s limit=%d = %v, want %v", tc.value, tc.limit, got, all)
 		}
 	}
 }
 
-// ゲストのライブラリに、再生順の空のフォルダは出ない。一致する動画があっても、それが視聴状態の条件で
-// 項目にならない混ざったグループにだけあるフォルダも出ない。所有者には出る。
+// Guests must not see folders whose matching videos form no eligible playback items.
 func TestListLibraryHidesEmptySmartFoldersFromGuests(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo, x := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")]
@@ -210,7 +184,7 @@ func TestListLibraryHidesEmptySmartFoldersFromGuests(t *testing.T) {
 	newSmartFolder(t, db, "公開", domain.SmartRule{Tags: []int64{publicTag}}, domain.SortTitleAsc, 0)
 	newSmartFolder(t, db, "非公開", domain.SmartRule{Tags: []int64{privateTag}}, domain.SortTitleAsc, 0)
 	newSmartFolder(t, db, "空", domain.SmartRule{Q: "どれにも当たらない"}, domain.SortTitleAsc, 0)
-	// show は ep2 だけが未視聴で、グループとしては見ている途中なので、未視聴の項目にならない。
+	// The group is in progress even though one member remains unwatched.
 	newSmartFolder(t, db, "混ざる", domain.SmartRule{Q: "ep", Watch: domain.WatchUnwatched}, domain.SortTitleAsc, 0)
 
 	folders := func(audience domain.Audience) []string {
@@ -231,21 +205,18 @@ func TestListLibraryHidesEmptySmartFoldersFromGuests(t *testing.T) {
 	}
 }
 
-// 条件と並べ順が同じ一番上のフォルダは、どれも同じ並べ替えの値で並ぶ（値は 1 度だけ求めて写す）。
 func TestListLibrarySortsTwinSmartFoldersByTheSameValues(t *testing.T) {
 	db, ids := itemsFixture(t)
 	cat := attachNamedTag(t, db, "猫", ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")])
 	newSmartFolder(t, db, "猫", domain.SmartRule{Tags: []int64{cat}}, domain.SortTitleAsc, 0)
 	newSmartFolder(t, db, "同じ猫", domain.SmartRule{Tags: []int64{cat}}, domain.SortTitleAsc, 0)
 
-	// 大きさの降順で 700 は y と 2 つのフォルダ（solo 600 と x 100）で、フォルダは y の後ろに並ぶ。
 	got := libraryOrder(t, db, domain.AudienceOwner, domain.SortSizeDesc)
 	if len(got) != 7 || got[0] != "y" || !slices.Equal(slices.Sorted(slices.Values(got[1:3])), []string{"folder:同じ猫", "folder:猫"}) {
 		t.Errorf("大きさの降順 = %v, want y then both folders", got)
 	}
 }
 
-// 条件が無い実体を名指すフォルダしか無くても、所有者のライブラリには値の無い項目として末尾に出る
 func TestListLibraryShowsASmartFolderWithOnlyAMissingTag(t *testing.T) {
 	db, ids := itemsFixture(t)
 	gone := attachNamedTag(t, db, "消す", ids[fixturePath("/media/solo.mp4")])

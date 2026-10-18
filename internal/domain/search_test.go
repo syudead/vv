@@ -9,7 +9,6 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// and は語1つずつの項を AND で並べた式を作る。
 func and(terms ...SearchTerm) SearchExpr {
 	var expr SearchExpr
 	for _, term := range terms {
@@ -18,7 +17,7 @@ func and(terms ...SearchTerm) SearchExpr {
 	return expr
 }
 
-// has は含む語、not は除外語、clauses は OR の組を AND で並べた式、anyOf は OR の組を表す。
+// has/not build positive/negative terms; clauses combines OR groups with AND.
 func has(text string) SearchTerm { return SearchTerm{Text: text} }
 func not(text string) SearchTerm { return SearchTerm{Text: text, Negated: true} }
 
@@ -37,11 +36,8 @@ func TestParseSearchQuery(t *testing.T) {
 		input string
 		want  SearchExpr
 	}{
-		// 親 Issue #195 の受け入れ条件 1〜5 の入力。
 		{`京都 2024`, and(has("京都"), has("2024"))},
-		// 絵文字や ZWJ 連結を含む語でも失敗しない（親 Issue の Edge Case）。
 		{"😀‍👩 x", and(has("😀‍👩"), has("x"))},
-		// 空白だけのフレーズは空のフレーズと同じく捨てる。
 		{`"   "`, SearchExpr{}},
 		{`"京都旅行 2024"`, and(has("京都旅行 2024"))},
 		{`"旅行 20"`, and(has("旅行 20"))},
@@ -58,7 +54,6 @@ func TestParseSearchQuery(t *testing.T) {
 		{`(test)`, and(has("(test)"))},
 		{`title:x`, and(has("title:x"))},
 
-		// 絞り込まない入力。
 		{``, SearchExpr{}},
 		{`|`, SearchExpr{}},
 		{`| |`, SearchExpr{}},
@@ -66,14 +61,12 @@ func TestParseSearchQuery(t *testing.T) {
 		{`-""`, SearchExpr{}},
 		{"  \t　  ", SearchExpr{}},
 
-		// 全角の演算子・空白・引用符は NFKC で半角になる。
 		{"京都　ＯＲ　奈良", clauses(anyOf(has("京都"), has("奈良")))},
 		{"京都｜奈良", and(has("京都|奈良"))},
 		{"京都 ｜ 奈良", clauses(anyOf(has("京都"), has("奈良")))},
 		{"－京都", and(not("京都"))},
 		{"＂京都 旅行＂", and(has("京都 旅行"))},
 
-		// 演算子になれない OR と |。
 		{`OR 京都`, and(has("or"), has("京都"))},
 		{`京都 OR`, and(has("京都"), has("or"))},
 		{`| 京都 |`, and(has("京都"))},
@@ -86,12 +79,10 @@ func TestParseSearchQuery(t *testing.T) {
 		{`"OR"`, and(has("or"))},
 		{`-OR`, and(not("or"))},
 
-		// OR は AND より強く結び付き、除外語も OR の項になる。
 		{`a OR b OR c d`, clauses(anyOf(has("a"), has("b"), has("c")), anyOf(has("d")))},
 		{`a OR -b`, clauses(anyOf(has("a"), not("b")))},
 		{`-"京都 旅行" OR 奈良`, clauses(anyOf(not("京都 旅行"), has("奈良")))},
 
-		// 除外、フレーズ、引用符の細部。
 		{`- a`, and(has("-"), has("a"))},
 		{`--a`, and(not("-a"))},
 		{`-"京都`, and(not(`"京都`))},
@@ -99,7 +90,6 @@ func TestParseSearchQuery(t *testing.T) {
 		{`ab"c d"`, and(has(`ab"c`), has(`d"`))},
 		{`a OR "" b`, clauses(anyOf(has("a"), has("b")))},
 
-		// 各語に照合形への変換を掛ける。
 		{`ＡＢＣ たび ｶﾀｶﾅ`, and(has("abc"), has("タビ"), has("カタカナ"))},
 	}
 	for _, tt := range tests {
@@ -128,13 +118,11 @@ func TestParseSearchQueryKeepsFirstSixteenTerms(t *testing.T) {
 		t.Errorf("20 terms = %+v, want the first 16", got)
 	}
 
-	// 17 個目の語に掛かる演算子も無視し、16 個目までの項は変えない。
 	withOr := strings.Join(words[:MaxSearchTerms], " ") + " OR w17 OR w18"
 	if got := ParseSearchQuery(withOr); !reflect.DeepEqual(got, want) {
 		t.Errorf("16 terms + OR = %+v, want the first 16", got)
 	}
 
-	// 演算子は語として数えない。
 	orChain := strings.Join(words, " OR ")
 	got := ParseSearchQuery(orChain)
 	if len(got.Clauses) != 1 || len(got.Clauses[0].Terms) != MaxSearchTerms {
@@ -195,13 +183,9 @@ func TestNaturalSortKey(t *testing.T) {
 	}
 }
 
-// TestNaturalSortKeyAgreesWithCompareNatural は、鍵のバイト順が
-// CompareNatural(fold(a), fold(b)) と同じ向きになることを、組をすべて比べて確かめる。
 func TestNaturalSortKeyAgreesWithCompareNatural(t *testing.T) {
 	names := []string{
-		// TestCompareNatural の名前。
 		"10", "b", "2", "A", "1", "100% #1 日本語", "a2", "a10", "file01", "file1",
-		// かな・全角数字・先頭の 0・数字とほかの文字の境目。
 		"ア", "い", "あ", "カ", "か", "が", "ｶﾞ", "ヽ", "ゝ",
 		"２話", "10話", "2話", "第１０話", "第9話", "①", "⑫",
 		"0", "00", "000a", "a0", "a00b", "a0b", "a01b", "x9", "x09", "x10", "x9y", "x9 ",

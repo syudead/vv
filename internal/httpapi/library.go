@@ -10,29 +10,16 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// LibraryItems はライブラリの項目（動画とグループ）の問い合わせ先である。internal/store の
-// *LibraryStore がこれを満たす。
 type LibraryItems interface {
-	// ListLibrary は見る人に見せる項目1ページを返す（GET /api/library）。
 	ListLibrary(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.LibraryPage, error)
-	// LibraryIDs は ListLibrary と同じ条件（並び順・カーソル・件数を除く）に合う項目の、
-	// 動画の項目の id と、グループの項目ごとのグループの id と再生順の動画の id を返す
-	// （GET /api/library/ids、所有者だけ）。
+	// LibraryIDs shares list filters but ignores sorting, cursor, and limit, returning group playback members separately.
 	LibraryIDs(ctx context.Context, q domain.VideoQuery) (selection domain.LibrarySelection, missingTagIDs []int64, err error)
-	// Group は見る人に見せるグループ id と、その道筋と項目の最初のページを返す
-	// （GET /api/groups/{id}）。無いか見せないときは domain.ErrNotFound である。
+	// Missing and invisible groups both return ErrNotFound.
 	Group(ctx context.Context, audience domain.Audience, id int64, trail []int64) (domain.GroupPage, error)
-	// GroupItems はグループ id の項目の続きのページを返す（GET /api/groups/{id}/items）。
-	// 読めないカーソルは domain.ErrInvalidCursor である。
 	GroupItems(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int) (domain.GroupPage, error)
-	// ListGroups は見る人に見せるグループを、どの深さのものも自然な名前の順に、名前が query を
-	// 大文字小文字を区別せずに含むものだけ 1 ページ返す（GET /api/groups）。読めないカーソルは
-	// domain.ErrInvalidCursor である。
 	ListGroups(ctx context.Context, audience domain.Audience, query, cursor string, limit int) (domain.GroupListPage, error)
 }
 
-// ListLibrary はライブラリの項目の一覧を返す（GET /api/library）。パラメータの検査と
-// 誤りは listVideos と同じである。
 func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.ListLibraryParams) {
 	if s.library == nil {
 		s.internalError(w, "Library queries are not configured.", nil)
@@ -62,9 +49,6 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 		return
 	}
 
-	// 登録フォルダは項目と同じスナップショットから読んだものを使う。別に読むと、
-	// 読み取りの失敗や間に確定した登録フォルダの解除で、total とカーソルに数えた
-	// グループを応答から落としてしまう。
 	items, err := s.presentLibraryItems(r.Context(), audience, page.Roots, page.Items)
 	if err != nil {
 		s.internalError(w, "Could not load the list.", err)
@@ -83,9 +67,6 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 	writeJSON(w, http.StatusOK, payload, s.logger)
 }
 
-// ListLibraryIds は絞り込みに合う項目の動画の id を返す（GET /api/library/ids、
-// 「すべて選択」用。docs/design-docs/catalog-organization.md）。グループの
-// 項目は groups にもグループの id と再生順の動画として書く。スマートフォルダの項目は smartFolderIds に書く
 func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params gen.ListLibraryIdsParams) {
 	if s.library == nil {
 		s.internalError(w, "Library queries are not configured.", nil)
@@ -108,7 +89,6 @@ func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params g
 	s.writeVideoIDs(w, selection.AllVideoIDs(), missingTagIDs, libraryGroupIDs(selection.Groups), selection.SmartFolderIDs)
 }
 
-// libraryGroupIDs はグループの項目を応答の LibraryGroupIds にする。
 func libraryGroupIDs(groups []domain.LibraryGroupSelection) []gen.LibraryGroupIds {
 	if len(groups) == 0 {
 		return nil
@@ -124,13 +104,7 @@ func libraryGroupIDs(groups []domain.LibraryGroupSelection) []gen.LibraryGroupId
 	return out
 }
 
-// presentLibraryItems はライブラリの項目を応答の形にする。roots は項目と同じスナップショットから
-// 読んだ登録フォルダである。見せる動画の無いグループの項目は、黙って落とすと items が total・カーソルと
-// 食い違うので誤りにする。
 func (s *server) presentLibraryItems(ctx context.Context, audience domain.Audience, roots []domain.MediaFolder, items []domain.LibraryItem) ([]gen.LibraryItem, error) {
-	// 再生位置は動画の項目にだけ載せる。グループの視聴の値は保存層が決めているので、
-	// メンバーの再生位置は引かない（ページのメンバーが多いと引数の上限に掛かる）。
-	// タグは全メンバーの和集合を載せるので、全メンバーを引く。
 	var shown, tagged []domain.Video
 	for _, item := range items {
 		if item.Video != nil {
@@ -144,8 +118,6 @@ func (s *server) presentLibraryItems(ctx context.Context, audience domain.Audien
 	out := make([]gen.LibraryItem, 0, len(items))
 	for _, item := range items {
 		if item.SmartFolder != nil {
-			// スマートフォルダの項目は要約だけを載せる。カードの値は画面が listSmartFolderCards で読む
-			// （docs/design-docs/catalog-organization.md）。
 			folder := toAPISmartFolderSummary(audience, *item.SmartFolder)
 			out = append(out, gen.LibraryItem{Kind: gen.LibraryItemKindSmartFolder, SmartFolder: &folder})
 			continue
@@ -164,21 +136,17 @@ func (s *server) presentLibraryItems(ctx context.Context, audience domain.Audien
 	return out, nil
 }
 
-// itemLookup は項目に載せる再生位置とタグをまとめて引いたものである。
 type itemLookup struct {
 	s        *server
 	progress map[string]domain.Progress
 	tags     map[string][]domain.VideoTag
 }
 
-// itemLookups は、応答に載せる動画（shown）の再生位置と、tagged のタグをまとめて引く。
-// ゲストには読まない（progressFor・tagsFor と同じ）。
+// Skip progress/tag reads entirely for guests.
 func (s *server) itemLookups(ctx context.Context, shown, tagged []domain.Video) itemLookup {
 	return itemLookup{s: s, progress: s.progressFor(ctx, shown), tags: s.tagsFor(ctx, tagged)}
 }
 
-// video は動画の項目を応答の形にする。一覧（writeVideoPage）と同じく、再生位置・タグ・
-// 一覧に出す所在のフォルダを載せ、見る人に合わせる。
 func (l itemLookup) video(ctx context.Context, audience domain.Audience, roots []domain.MediaFolder, video domain.Video) gen.Video {
 	view := l.s.presentVideos(ctx, []domain.Video{video})[0]
 	item := withTags(withProgress(toAPIVideo(view), l.progress, video.UserKey), l.tags, video.UserKey)
@@ -188,8 +156,7 @@ func (l itemLookup) video(ctx context.Context, audience domain.Audience, roots [
 	return forAudience(audience, item)
 }
 
-// group はグループの項目を応答の形にする。見せる動画が無ければ false を返す。folder は
-// 自動グループのフォルダが登録フォルダ roots の下にあるときだけ載せる。ゲストには視聴の値を載せず、タグを空にする。
+// Guest groups omit watch data and tags; automatic folders are exposed only under registered roots.
 func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots []domain.MediaFolder, group domain.LibraryGroup) (gen.LibraryGroup, bool) {
 	card, ok := l.card(ctx, audience, roots, group)
 	if !ok {
@@ -250,8 +217,6 @@ func (l itemLookup) card(ctx context.Context, audience domain.Audience, roots []
 	return out, true
 }
 
-// unionMemberTags はメンバーのタグの和集合を返す。同じタグは1件にまとめ、出所は
-// どれかのメンバーで真なら真にする。
 func unionMemberTags(members []domain.Video, tags map[string][]domain.VideoTag) []domain.VideoTag {
 	index := map[int64]int{}
 	var out []domain.VideoTag

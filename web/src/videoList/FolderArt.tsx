@@ -10,14 +10,9 @@ import {
 import type { FolderPreview } from "../api/client";
 import { cn } from "../lib/cn";
 
-// フォルダの絵柄は、フォルダ画面のフォルダカードとライブラリのグループのカードが
-// 共有する（どちらの画面にも属さないので videoList に置く）。
-
 /**
- * sheetKeys は差し込む 1 枚ごとの React の key である。動画の id を基にし、同じ動画が
- * 2 度目以降に出たときだけ出た回数を足す。プレイリストの絵柄（covers）は動画の項目と、
- * 並びの先頭が同じ動画のグループの項目とで同じ動画を 2 度持てる。重ならない限り key は
- * 動画の id のままなので、再取得で並びが変わっても同じ 1 枚の要素を保つ。
+ * Use video IDs as stable keys, adding occurrence counts only for duplicate playlist covers. A
+ * direct video and a group cover may reference the same video.
  */
 function sheetKeys(previews: readonly FolderPreview[]): string[] {
   const seen = new Map<number, number>();
@@ -28,11 +23,6 @@ function sheetKeys(previews: readonly FolderPreview[]): string[] {
   });
 }
 
-/**
- * sheetLayout は差し込むサムネイルの位置（背板に対する %）と傾き（度）である。
- * 件数ごとに左右へ均等に広げ、奇数番目をわずかに高く置く。前板が無いので、
- * 束が背板の上下の中央に来る高さに置く。
- */
 const sheetLayout: Record<number, { left: number; top: number; rotate: number }[]> = {
   1: [{ left: 16, top: 14, rotate: 0 }],
   2: [
@@ -52,24 +42,20 @@ const sheetLayout: Record<number, { left: number; top: number; rotate: number }[
   ],
 };
 
-/** frontPlace は指した1枚を前に出すときの位置（背板の中央）である。 */
 const frontPlace = { left: 16, top: 6 };
 
-/** previewDelayMs は前に出た1枚が動画を流し始めるまでの待ち時間（動画カードと同じ）。 */
 const previewDelayMs = 400;
 
 /**
- * SheetPreview は前に出た1枚の上で、一覧用のプレビュー動画を無音でくり返し流す。
- * 前に出てから previewDelayMs 待って読み込み、流れ始めるまではサムネイルを見せる。
- * 読めなければ何も出さず、サムネイルのまま残す。外れるときは読み込みを止める。
- * 読み込みを始めるときに onStart を呼ぶ（一覧の同時に1件の調整に知らせる）。
+ * Keep the thumbnail until muted preview playback starts; failures leave it intact. Notify
+ * coordination on loading and abort on exit.
  */
 function SheetPreview({ src, onStart }: { src: string; onStart?: () => void }) {
   const [armed, setArmed] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [failed, setFailed] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  // 待ち時間は前に出たときに1回だけ数える。onStart が変わっても数え直さない。
+  // Start the delay once on promotion; onStart identity changes must not restart it.
   const onStartRef = useRef(onStart);
   useLayoutEffect(() => {
     onStartRef.current = onStart;
@@ -91,14 +77,14 @@ function SheetPreview({ src, onStart }: { src: string; onStart?: () => void }) {
     element.load();
   }, []);
 
-  // レイアウトの後始末は ref が外れる前に走るので、ここで読み込みを止められる。
+  // Layout cleanup runs before ref detachment, allowing loading to stop here.
   useLayoutEffect(() => release, [release]);
 
   useEffect(() => {
     if (!armed || failed) return;
     const element = videoRef.current;
     if (element === null) return;
-    // 再生を断られたら、要素を外す前に読み込みを解く（外した後は ref が届かない）。
+    // Release loading before removing the element because its ref then becomes unavailable.
     const fail = () => {
       release();
       setFailed(true);
@@ -136,18 +122,8 @@ function SheetPreview({ src, onStart }: { src: string; onStart?: () => void }) {
 }
 
 /**
- * FolderArt はタブ付きのフォルダの外形と、背板に斜めに重ねたサムネイルを描く。
- * マウスを横に動かすと、位置に応じた1枚が傾きを戻し、少し大きくなって中央の
- * 最前面に出て、プレビュー動画があればそれを流す（フォルダの中身の下見）。
- * 装飾なので読み上げない。
- *
- * 置き場所（`relative` で 16:9 の箱）いっぱいに描く。先頭の4件だけを、先頭ほど手前に重ねる。
- *
- * ライブラリの格子では、動画のカードと同じ一覧のプレビューの調整
- * （usePreviewCoordination）に加わる。`onPreviewStart` を渡すと、流し始めた1枚の
- * 動画の id を知らせ、ほかのカードが流し始めたとき（`activePreviewId` が変わる）と
- * 止める指示（`previewResetEpoch` が進む）で前の1枚を戻す。選択中（`selectionMode`）は
- * 前に出さない。
+ * Render within a relative 16:9 box and coordinate one preview across the list. Selection mode
+ * disables promotion; another preview or reset returns the promoted sheet.
  */
 export default function FolderArt({
   previews,
@@ -165,9 +141,8 @@ export default function FolderArt({
   const shown = previews.slice(0, 4);
   const keys = sheetKeys(shown);
   const layout = sheetLayout[shown.length] ?? [];
-  // 取り込み後の再取得で件数が減って範囲外になった位置は、どの1枚にも当たらない。
+  // A refreshed shorter cover list can leave the old position out of range.
   const [front, setFront] = useState<number | null>(null);
-  // 一覧の調整に知らせて流している1枚の動画の id。
   const [playingId, setPlayingId] = useState<number | null>(null);
   const observedResetEpoch = useRef(previewResetEpoch);
   const observedActiveId = useRef(activePreviewId);
@@ -180,8 +155,7 @@ export default function FolderArt({
   useEffect(() => {
     const resetChanged = observedResetEpoch.current !== previewResetEpoch;
     observedResetEpoch.current = previewResetEpoch;
-    // ほかのカードが流し始めたこと（流している1枚と違う id への変化）だけで戻す。
-    // 知らせた id が届く前の古い値では戻さない。
+    // Reset only for a different preview started elsewhere, not an old value before this card's own announcement arrives.
     const activeChanged = observedActiveId.current !== activePreviewId;
     observedActiveId.current = activePreviewId;
     const replaced =
@@ -239,8 +213,8 @@ export default function FolderArt({
                 "w-folder-preview",
                 isFront && "shadow-card-hover",
               )}
-              // 位置と傾きは 1 枚ごとに決まるので style で渡す（幅は w-folder-preview）。
-              // 重なりは先頭ほど手前にし、前に出した1枚はどれよりも手前にする。
+              // Use style for per-sheet positions and rotations; width comes from w-folder-preview.
+              // Earlier sheets sit in front, with the promoted sheet above all.
               style={{
                 zIndex: isFront ? shown.length + 1 : shown.length - index,
                 left: `${String(isFront ? frontPlace.left : place.left)}%`,

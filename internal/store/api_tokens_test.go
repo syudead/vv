@@ -9,7 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// setupSession は setupAccount が作るセッションの平文である。
 const setupSession = "session"
 
 func setupAccount(t *testing.T, db *DB) {
@@ -44,8 +43,7 @@ func TestAPITokenRequiresAccount(t *testing.T) {
 	}
 }
 
-// 発行は、求めたセッションがその取引の中で有効なときだけ行う。境界で確かめた後に資格情報が
-// 変わっていれば、新しい版で足さない。
+// Recheck the issuing session inside the write transaction after possible credential changes.
 func TestAPITokenRequiresCurrentSession(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -135,14 +133,12 @@ func TestAPITokenListOrderAndRevoke(t *testing.T) {
 	if err := db.Auth().DeleteAPIToken(ctx, second.ID); err != nil {
 		t.Fatal(err)
 	}
-	// 無い id は何もしない。
 	if err := db.Auth().DeleteAPIToken(ctx, second.ID); err != nil {
 		t.Fatal(err)
 	}
 	if apiTokenValid(t, db, "t2") || !apiTokenValid(t, db, "t1") {
 		t.Error("失効が別のトークンに及んだか、失効したトークンが有効")
 	}
-	// 失効した行の id は再利用しない。
 	fourth := addAPIToken(t, db, "new", "t4", authNow.Add(2*time.Minute))
 	if fourth.ID <= third.ID {
 		t.Errorf("新しい id = %d, 以前の最大 = %d", fourth.ID, third.ID)
@@ -193,7 +189,6 @@ func TestAPITokenChangeCredentialsDeletesTokens(t *testing.T) {
 	}
 }
 
-// 版の合わない行は、残っていても一覧に出さず、有効としない。
 func TestAPITokenStaleVersionIsInvalid(t *testing.T) {
 	db := migratedDB(t)
 	setupAccount(t, db)
@@ -239,7 +234,6 @@ func TestAPITokenTouchWritesAtMostOncePerMinute(t *testing.T) {
 			t.Errorf("%v に使った後の LastUsedAt = %v, want %v", step.at, got, authNow.Add(step.want))
 		}
 	}
-	// 無い id は何もしない。
 	if err := db.Auth().TouchAPIToken(ctx, added.ID+100, authNow); err != nil {
 		t.Fatal(err)
 	}

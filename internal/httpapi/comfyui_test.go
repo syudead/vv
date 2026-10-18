@@ -18,7 +18,6 @@ type comfyUIFixture struct {
 	owner *http.Cookie
 }
 
-// newComfyUIFixture は本物の保存先と app.ComfyUIConnection で経路を組む。接続の確かめだけが偽である。
 func newComfyUIFixture(t *testing.T, probe app.ComfyUIProbe) *comfyUIFixture {
 	t.Helper()
 	f := &comfyUIFixture{}
@@ -45,7 +44,6 @@ func (f *comfyUIFixture) stored(t *testing.T) domain.ComfyUISettings {
 	return got
 }
 
-// 保存前は provider を省き、保存した値は整えて返す。どの応答にもキーは出ず、apiKeySet だけが出る。
 func TestComfyUISettingsSaveNeverReturnsKey(t *testing.T) {
 	f := newComfyUIFixture(t, ollamaProbe{})
 	rec := f.env.get("/api/settings/comfyui", f.owner)
@@ -65,7 +63,6 @@ func TestComfyUISettingsSaveNeverReturnsKey(t *testing.T) {
 		t.Fatalf("GET = %s", rec.Body)
 	}
 
-	// apiKey を省いた保存はキーを残す。
 	code, body = f.put(t, `{"provider":"self_hosted","url":" http://gpu:8188/ "}`)
 	if code != http.StatusOK || strings.Contains(body, "sk-secret-key") {
 		t.Fatalf("PUT self_hosted = %d %s", code, body)
@@ -80,7 +77,6 @@ func TestComfyUISettingsSaveNeverReturnsKey(t *testing.T) {
 		t.Fatalf("stored = %+v", got)
 	}
 
-	// 空文字列のキーは消す。
 	if code, body = f.put(t, `{"provider":"self_hosted","url":"http://gpu:8188","apiKey":""}`); code != http.StatusOK ||
 		!strings.Contains(body, `"apiKeySet":false`) {
 		t.Fatalf("clear = %d %s", code, body)
@@ -90,7 +86,6 @@ func TestComfyUISettingsSaveNeverReturnsKey(t *testing.T) {
 	}
 }
 
-// 保存前は既定のモデルを返し、選んだモデルを保存する。model を省いた保存はモデルを残す。
 func TestComfyUISettingsModel(t *testing.T) {
 	f := newComfyUIFixture(t, ollamaProbe{})
 	if got := decode[gen.ComfyUISettings](t, f.env.get("/api/settings/comfyui", f.owner)); got.Model != gen.Flux2Klein4b {
@@ -109,7 +104,6 @@ func TestComfyUISettingsModel(t *testing.T) {
 	}
 }
 
-// 契約の 400 の reason を返し、何も保存しない。
 func TestComfyUISettingsRejectsInvalidBodies(t *testing.T) {
 	f := newComfyUIFixture(t, ollamaProbe{})
 	for _, c := range []struct {
@@ -136,7 +130,6 @@ func TestComfyUISettingsRejectsInvalidBodies(t *testing.T) {
 	}
 }
 
-// 確かめは要求の本文を使わず保存した接続先だけを確かめ、使えないことは 200 で返す。
 func TestCheckComfyUI(t *testing.T) {
 	var checks int
 	ok := newComfyUIFixture(t, ollamaProbe{checks: &checks})
@@ -155,7 +148,6 @@ func TestCheckComfyUI(t *testing.T) {
 	}
 }
 
-// 足りないノードとモデルファイルは missing に挙げ、モデルにだけフォルダと入手先を付ける。
 func TestCheckComfyUIListsMissingItems(t *testing.T) {
 	missing := &domain.ComfyUIMissingError{Items: []domain.ComfyUIMissingItem{
 		{Kind: domain.ComfyUIMissingNode, Name: "Flux2Scheduler"},
@@ -179,7 +171,6 @@ func TestCheckComfyUIListsMissingItems(t *testing.T) {
 	}
 }
 
-// readiness の connection は保存の前は false、保存の後は true である。確かめは呼ばない。
 func TestThumbnailEditReadinessFollowsSavedConnection(t *testing.T) {
 	var checks int
 	f := newComfyUIFixture(t, ollamaProbe{checks: &checks, err: errors.New("unreachable")})

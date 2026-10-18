@@ -112,7 +112,6 @@ const folderRoot: FolderListing = {
   ],
 };
 
-/** Player は再生画面の代わりで、「戻る」で履歴を1つ戻る。 */
 function Player() {
   const navigate = useNavigate();
   return (
@@ -122,7 +121,6 @@ function Player() {
   );
 }
 
-/** LocationProbe は今の URL を見せ、履歴を1つ戻る操作を置く（戻る/進むの確認）。 */
 function LocationProbe() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -136,7 +134,6 @@ function LocationProbe() {
   );
 }
 
-/** LibraryProbe はライブラリの代わりで、移ってきた URL を見せる。 */
 function LibraryProbe() {
   const location = useLocation();
   return (
@@ -210,8 +207,7 @@ describe("FolderPage", () => {
           };
           return Promise.resolve(json(page));
         }
-        // 検索中にフォルダが無くなった状況を模す（listing は 200 のまま、配下の
-        // 検索だけが 404 を返す）。
+        // Simulate a missing folder while listing still succeeds and descendant search returns 404.
         if (params.get("query") === "gone") {
           return Promise.resolve(
             json({ code: "not_found", message: "folder not found" }, 404),
@@ -228,7 +224,6 @@ describe("FolderPage", () => {
         if (params.get("watch") === "watched") {
           return Promise.resolve(json({ items: [], total: 0 }));
         }
-        // 絞り込みなし（直下）は常に x の1件。
         const page: VideoPage = { items: [video(1, "x")], total: 1 };
         return Promise.resolve(json(page));
       }
@@ -247,7 +242,7 @@ describe("FolderPage", () => {
         }
         return Promise.resolve(json({ items: [], total: 0 }));
       }
-      // 準備中の項目は1件ずつ取り直される。実際のサーバーと同じく、その動画を返す。
+      // Match the server when polling individual videos still being prepared.
       const single = /^\/api\/videos\/(\d+)$/.exec(url);
       if (single !== null) return Promise.resolve(json(video(Number(single[1]), "x")));
       return Promise.resolve(
@@ -318,7 +313,6 @@ describe("FolderPage", () => {
     vi.spyOn(HTMLMediaElement.prototype, "load").mockReturnValue(undefined);
     renderFolders("/folders/3/A");
     await screen.findByRole("link", { name: "x" });
-    // 読み込み直後の描画と効果を済ませてから触れる。
     await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
     await hover("x");
     expect(
@@ -358,7 +352,6 @@ describe("FolderPage", () => {
     expect(card.querySelector("h3")?.getAttribute("title")).toBe(name);
     expect(card.querySelector("h3 span")?.className).toContain("line-clamp-2");
     expect(card.querySelector("p[dir=rtl]")?.getAttribute("title")).toBe(rootPath);
-    // カード全体が1つのリンクで、その縁が境界になる。
     expect(card.className).toContain("border-border");
 
     rerender(
@@ -425,7 +418,6 @@ describe("FolderPage", () => {
     expect(
       child.compareDocumentPosition(movie) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    // フォルダ画面は選択を持たない。
     expect(screen.queryByRole("checkbox")).toBeNull();
 
     const headings = screen
@@ -447,7 +439,7 @@ describe("FolderPage", () => {
     ]);
     const current = within(nav).getByText("A");
     expect(current.getAttribute("aria-current")).toBe("page");
-    // 道筋は折り返さず一行に保つ（上流の一覧の flex-wrap を上書きする）。
+    // Override upstream flex-wrap to keep the path on one line.
     const list = within(nav).getByRole("list");
     expect(list.className.split(" ")).toEqual(
       expect.arrayContaining(["flex-nowrap", "whitespace-nowrap"]),
@@ -554,7 +546,6 @@ describe("FolderPage", () => {
       expect(art.querySelector("[data-folder-front] video")).not.toBeNull();
       expect(play).toHaveBeenCalled();
 
-      // プレビュー動画の無い1枚に移ると、前には出すが動画は流さない。
       fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 190 });
       act(() => vi.advanceTimersByTime(500));
       expect(videos()).toEqual([]);
@@ -831,7 +822,7 @@ describe("FolderPage", () => {
   it("別のフォルダの控えでは復元しない", async () => {
     const user = userEvent.setup();
     renderFolders("/folders/3/A");
-    // A の控えを取ってから B へ移る。B は A の控えを使わず自分で読む。
+    // Cache A before opening B; B must fetch independently.
     await user.click(await screen.findByRole("link", { name: "B, 1 video, 1 folder" }));
     await screen.findByText("This folder wasn't found");
     expect(requests.filter((url) => url === "/api/folders/3?path=A%2FB").length).toBe(1);
@@ -857,7 +848,7 @@ describe("FolderPage", () => {
       }
       if (url === "/api/folders/3?path=A") {
         listingCalls += 1;
-        // 取り込み後の子フォルダの読み直し（2回目）だけ、返らないままにする。
+        // Hold only the post-import child-folder refresh.
         if (listingCalls === 2) {
           requests.push(url);
           return new Promise<Response>(() => {});
@@ -876,11 +867,9 @@ describe("FolderPage", () => {
     });
     await waitFor(() => expect(listingCalls).toBe(2));
 
-    // 動画は読み直し済みで、子フォルダはまだ古い。
     await user.click(await screen.findByRole("link", { name: "x" }));
     await user.click(await screen.findByRole("button", { name: "戻る" }));
 
-    // 控えから復元せず、子フォルダを読み直す。
     await waitFor(() => expect(listingCalls).toBe(3));
   }, 10_000);
 
@@ -988,7 +977,6 @@ describe("FolderPage", () => {
     const user = userEvent.setup();
     renderFolders("/folders/3/A?tag=1");
     await screen.findByRole("link", { name: "x" });
-    // tag は読まないので、絞り込みなしと同じ要求になる（tag は送らない）。
     expect(
       requests.some(
         (url) => url.startsWith("/api/folders/3/videos?path=A") && url.includes("tag="),
@@ -1012,7 +1000,6 @@ describe("FolderPage", () => {
     const y = await screen.findByRole("link", { name: "y, B" });
     expect(x).toBeDefined();
     expect(y).toBeDefined();
-    // 検索中は子フォルダのカードと「フォルダ」「動画」の見出しを出さない。
     expect(screen.queryByRole("link", { name: /^B, / })).toBeNull();
     expect(
       screen.getByRole("heading", { level: 2, name: "Search results" }),
@@ -1020,7 +1007,6 @@ describe("FolderPage", () => {
     const status = screen.getByText("2 videos");
     expect(status.textContent).toBe("2 videos");
     expect(status.classList.contains("sr-only")).toBe(false);
-    // パンくずの現在地に、配下を探していることを添える。
     expect(screen.getByRole("navigation", { name: "Breadcrumbs" }).textContent).toContain(
       "— searching inside",
     );
@@ -1075,7 +1061,6 @@ describe("FolderPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(resolveRetry).toBeDefined());
-    // 件数の行が読み込み中を示す（骨組みの格子も読み込み中の状態を持つ）。
     expect(screen.getAllByRole("status").map((status) => status.textContent)).toContain(
       "Loading…",
     );
@@ -1116,7 +1101,6 @@ describe("FolderPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(resolveRetry).toBeDefined());
-    // 件数の行が読み込み中を示す（骨組みの格子も読み込み中の状態を持つ）。
     expect(screen.getAllByRole("status").map((status) => status.textContent)).toContain(
       "Loading…",
     );
@@ -1155,7 +1139,6 @@ describe("FolderPage", () => {
     expect(y).toBeDefined();
     expect(z).toBeDefined();
     expect(requests.some((url) => url.startsWith("/api/videos?query="))).toBe(true);
-    // 検索語が空のときは無効の絞り込み・並べ替えを、検索中は使える。
     expect(
       (screen.getByRole("button", { name: "Filter" }) as HTMLButtonElement).disabled,
     ).toBe(false);
@@ -1165,8 +1148,7 @@ describe("FolderPage", () => {
     ).toBe(false);
   });
 
-  // 受け入れ条件 18: グループはライブラリでだけ1件にまとまる。フォルダ画面の一覧と
-  // 最上位の検索結果は、今のまま動画を1本ずつ出す（GET /api/library を使わない）。
+  // Only the library groups videos; folder and root search results remain individual videos.
   it("フォルダの一覧と最上位の検索結果は、グループにまとめず1本ずつ出す", async () => {
     renderFolders("/folders?q=京都");
     expect(await screen.findByRole("link", { name: "x, movies/A" })).toBeDefined();
@@ -1280,10 +1262,7 @@ describe("FolderPage", () => {
     await screen.findAllByRole("link", { name: /^movies, / });
 
     await user.click(screen.getByRole("button", { name: "View and sort" }));
-    // jsdom は <fieldset disabled> から子孫の入力への継承を実装しないので、
-    // fieldset 自身が disabled を持つことを確かめる（実ブラウザでは子の
-    // input・button にも及ぶ）。絞り込み・並べ替えのメニューボタンは disabled
-    // 属性を自分で持つので、そちらは直接確かめられる。
+    // jsdom does not propagate fieldset disabled to descendants, so assert the fieldset itself.
     const group = await screen.findByRole("group", { name: "Sort by" });
     expect((group as HTMLFieldSetElement).disabled).toBe(true);
     expect(
@@ -1295,7 +1274,6 @@ describe("FolderPage", () => {
     ).toBe(true);
   });
   describe("ゲスト", () => {
-    /** withoutRootPath はゲストの応答（登録フォルダの絶対パスが無い）を作る。 */
     function withoutRootPath({ rootPath: _, ...rest }: FolderSummary): FolderSummary {
       return rest;
     }
@@ -1454,10 +1432,6 @@ describe("FolderPage", () => {
     };
     const writes: { method: string; url: string; body: unknown }[] = [];
 
-    /**
-     * respond は、まとめ方の経路の応答を差し替えた偽のサーバーを入れる。`readGroup` は
-     * タグの窓を開く前のグループの読み出し（GET /api/groups/{id}）の応答で、既定は名前「series」。
-     */
     function respond(
       grouping: (method: string, url: string) => Response,
       readGroup: () => Response = () => groupDetail("series"),
@@ -1491,12 +1465,10 @@ describe("FolderPage", () => {
       });
     }
 
-    /** groupDetail は GET /api/groups/{id} の応答（窓が使うのは名前だけ）。 */
     function groupDetail(name: string) {
       return json({ group: { id: 7, name }, trail: [], items: [] });
     }
 
-    /** holdLibrarySnapshot はライブラリの一覧の控えを置く（再生画面から戻る前の状態）。 */
     function holdLibrarySnapshot() {
       saveListSnapshot(
         { query: "" },
@@ -1558,16 +1530,13 @@ describe("FolderPage", () => {
           body: { mode: "ungroup" },
         },
       ]);
-      // 次にライブラリを開くと、控えではなく読み直した一覧が出る。
       expect(takeListSnapshot({ query: "" })).toBeUndefined();
-      // フォルダ画面の一覧は1本ずつのままなので読み直さない。
       expect(requests.filter((url) => url === "/api/folders/3?path=series").length).toBe(
         listingReads,
       );
       expect(
         requests.filter((url) => url.startsWith("/api/folders/3/videos?")).length,
       ).toBe(videoReads);
-      // 自動グループの無いフォルダ（応答に groupId が無い）では項目を出さない。
       await user.click(await trigger(false));
       expect(
         within(await screen.findByRole("menu")).queryByRole("menuitem", {
@@ -1670,7 +1639,7 @@ describe("FolderPage", () => {
           await screen.findByRole("menuitem", { name: "Turn the group into a tag…" }),
         );
         await user.click(await screen.findByRole("button", { name: "Turn into a tag" }));
-        // 7000px に届くのは 3 ページ目を読んだ後（3 × 3000 − 768）。4 ページ目は読まない。
+        // The third page reaches 7000px (3 × 3000 - 768); do not fetch a fourth.
         await waitFor(() => expect(loadedPages).toBe(3));
         await waitFor(() =>
           expect(scrollTo).toHaveBeenLastCalledWith({ top: 7000, behavior: "auto" }),
@@ -1730,7 +1699,6 @@ describe("FolderPage", () => {
           requests.filter((url) => url === "/api/folders/3?path=series").length,
         ).toBe(listingReads + 1),
       );
-      // 解散済みのグループのカードを控えから出さない。
       expect(takeListSnapshot({ query: "" })).toBeUndefined();
     });
 
@@ -1804,7 +1772,6 @@ describe("FolderPage", () => {
       );
       expect(await trigger(true)).toBeDefined();
       expect(writes.map(({ url }) => url)).toEqual(["/api/folders/3/grouping"]);
-      // 登録フォルダ自身のグループもタグに変えられる。
       await user.click(await trigger(true));
       expect(
         await screen.findByRole("menuitem", { name: "Turn the group into a tag…" }),
@@ -1852,7 +1819,6 @@ describe("FolderPage", () => {
 
 describe("FolderPage の英語の画面", () => {
   const fetchMock = vi.fn<typeof fetch>();
-  /** route は URL ごとの応答である。無い URL は 404 を返す。 */
   let route: (url: string, method: string) => Promise<Response> | undefined;
 
   const japanese: FolderListing = {

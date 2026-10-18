@@ -15,9 +15,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// アクティビティの記録の画面 API。
-
-// publishToEvents は保存層の発行を画面への知らせに渡す（cmd/mdm の購読の代わり）。
+// Forward storage events as cmd/mdm subscriptions do.
 type publishToEvents struct{ events *Events }
 
 func (p publishToEvents) Publish(events ...domain.Event) {
@@ -26,8 +24,6 @@ func (p publishToEvents) Publish(events ...domain.Event) {
 	}
 }
 
-// activityEnv は本物の保存層と app.Activity で組んだ経路である。やり直しは cmd/mdm と同じく、import を
-// 保存層へ、scan を app.Scans へ振り分ける。走査は登録フォルダを読まず、すぐに終わる（finishingScanner）。
 type activityEnv struct {
 	db      *store.DB
 	events  *Events
@@ -35,7 +31,6 @@ type activityEnv struct {
 	handler http.Handler
 }
 
-// finishingScanner は何も読まずに成功で終わる走査である。
 type finishingScanner struct{}
 
 func (finishingScanner) Scan(context.Context, domain.ActivityDecider) (domain.ScanResult, error) {
@@ -106,7 +101,6 @@ func failedImport() domain.ActivityEntry {
 	}
 }
 
-// 一覧は契約の形で、件数と機能ごとの数を添える。対象の動画がライブラリに無ければ videoId は入らない。
 func TestListActivityReturnsThePage(t *testing.T) {
 	e := newActivityEnv(t)
 	probability := 0.9
@@ -155,7 +149,6 @@ func TestListActivityReturnsThePage(t *testing.T) {
 	}
 }
 
-// 知らない値、読めない cursor と since、範囲の外の q と limit、10 個以上の feature は 400 invalid_request。
 func TestListActivityRejectsInvalidFilters(t *testing.T) {
 	e := newActivityEnv(t)
 	for _, query := range []string{
@@ -171,7 +164,6 @@ func TestListActivityRejectsInvalidFilters(t *testing.T) {
 	})
 }
 
-// 対象の動画がもう無い import のやり直しと、振り分け先の無い取り消しは 409 を返す。無い記録は 404。
 func TestRetryAndUndoAnswerConflictForEveryKind(t *testing.T) {
 	e := newActivityEnv(t)
 	failed := e.record(t, failedImport())
@@ -195,7 +187,6 @@ func TestRetryAndUndoAnswerConflictForEveryKind(t *testing.T) {
 	assertErrorBody(t, "undo missing", rec.Code, rec.Body.Bytes(), wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound})
 }
 
-// 自動タグ付けが切のあいだ、失敗した auto_tag の記録のやり直しは 409 auto_tagging_off を返す。
 func TestRetryAutoTagWhileOffAnswersAutoTaggingOff(t *testing.T) {
 	e := newActivityEnv(t)
 	tagger := app.NewAutoTagger(app.AutoTaggerOptions{Queue: e.db.AutoTags(), Settings: e.db.Settings(), Undo: e.db.Activity()})
@@ -217,7 +208,6 @@ func TestRetryAutoTagWhileOffAnswersAutoTaggingOff(t *testing.T) {
 	})
 }
 
-// 受け入れ: 記録を書いた後に、所有者の stream が activity を受ける。続けての書き込みは 1 つにまとまる。
 func TestStreamEventsSendsActivityToOwners(t *testing.T) {
 	e := newActivityEnv(t)
 	stream, _ := openEvents(t, e.handler)
@@ -233,7 +223,6 @@ func TestStreamEventsSendsActivityToOwners(t *testing.T) {
 	expectNoEvent(t, stream)
 }
 
-// ゲストには activity を送らない。
 func TestStreamEventsSendsNoActivityToGuests(t *testing.T) {
 	events := NewEvents()
 	handler := newTestServer(t, Options{
@@ -245,7 +234,6 @@ func TestStreamEventsSendsNoActivityToGuests(t *testing.T) {
 	expectNoEvent(t, stream)
 }
 
-// 受け入れ: ゲストは 3 つの操作すべてで 401 unauthenticated を受ける（accessRoutes に無い）。
 func TestActivityRoutesRefuseGuests(t *testing.T) {
 	env := newAuthEnvWith(t, t.TempDir(), func(db *store.DB) Options {
 		return Options{Activity: app.NewActivity(app.ActivityOptions{Store: db.Activity()})}

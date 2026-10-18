@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Zoom } from "../preferences/viewPreferences";
 import { useZoomAnchor } from "./useZoomAnchor";
 
-/** 倍率ごとにカードの高さが変わる一覧を模す（上から順に高さ `height` で並ぶ）。 */
 function Harness({ onReady }: { onReady: (change: (zoom: Zoom) => void) => void }) {
   const [zoom, setZoom] = useState<Zoom>(1);
   const { listRef, capture } = useZoomAnchor(zoom);
@@ -37,7 +36,6 @@ describe("useZoomAnchor", () => {
       scrollY = options.top ?? scrollY;
     });
     vi.stubGlobal("scrollTo", scrollTo);
-    // 各カードの文書上の位置は index × 高さ。高さは倍率 1 で 200、倍率 3 で 400。
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
       this: HTMLElement,
     ) {
@@ -51,9 +49,7 @@ describe("useZoomAnchor", () => {
 
     let change: (zoom: Zoom) => void = () => undefined;
     render(<Harness onReady={(fn) => (change = fn)} />);
-    // 上端（ナビバー 48px の下）にあるのは 3 番目のカード（id 2、文書上 400〜600）。
     act(() => change(3));
-    // 倍率 3 では 3 番目のカードは文書上 800 から。ナビバーと余白を引いた位置へ。
     expect(scrollTo).toHaveBeenCalledWith({ top: 800 - 48 - 8, behavior: "auto" });
   });
 

@@ -17,18 +17,16 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// HTTP のテストは probe の http の振る舞いを使う。probe は設定 request の要求を count 回送り、
-// 誤りを無視して成功で終わる（fail を付けると誤りを報告して失敗する）。
+// The HTTP probe repeats its configured request and ignores errors unless fail explicitly requests
+// plugin failure.
 
-// testNames はテストの resolver が返す名前とアドレスである。site.test は公開のアドレスに、
-// lan.test は LAN のアドレスに解決される。
+// site.test resolves publicly; lan.test resolves privately.
 var testNames = map[string]string{
 	"site.test":  "93.184.215.14",
 	"other.test": "93.184.215.15",
 	"lan.test":   "192.168.1.20",
 }
 
-// testSite はテストのサイトである。届いた要求のホストと User-Agent を記録する。
 type testSite struct {
 	*httptest.Server
 	mu        sync.Mutex
@@ -58,7 +56,7 @@ func newTestSite(t *testing.T) *testSite {
 		http.Redirect(w, r, "http://other.test/broken", http.StatusFound)
 	})
 	mux.HandleFunc("/broken", func(w http.ResponseWriter, _ *http.Request) {
-		// 本文の途中で接続を切る。
+		// Terminate the connection midway through its body.
 		w.Header().Set("Content-Length", "100")
 		_, _ = w.Write([]byte("short"))
 		if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {
@@ -85,8 +83,7 @@ func newTestSite(t *testing.T) *testSite {
 	return s
 }
 
-// newNetTestRuntime は、testNames で名前を解決し、規則に許されたアドレスへの接続を site に
-// つなぐ Runtime を返す。許されるかは本物の dialer と同じ control で確かめる。
+// Use the real address-control rule before routing approved addresses to the local fixture.
 func newNetTestRuntime(t *testing.T, site *testSite) *Runtime {
 	t.Helper()
 	rt := newTestRuntime(t)
@@ -107,13 +104,11 @@ func newNetTestRuntime(t *testing.T, site *testSite) *Runtime {
 	return rt
 }
 
-// runHTTP は probe に request を count 回、プロキシなしで送らせる。
 func runHTTP(t *testing.T, rt *Runtime, request string, count int, fail bool) (domain.FetchedWorkInfo, error) {
 	t.Helper()
 	return runHTTPVia(t, rt, domain.WorkInfoRunNetwork{}, request, count, fail)
 }
 
-// runHTTPVia は probe に request を count 回、network のとおりに送らせる。
 func runHTTPVia(
 	t *testing.T, rt *Runtime, network domain.WorkInfoRunNetwork, request string, count int, fail bool,
 ) (domain.FetchedWorkInfo, error) {
@@ -131,7 +126,6 @@ func get(url string) string {
 	return `{"method":"GET","url":"` + url + `"}`
 }
 
-// runErrorOf は wantFailure で確かめた err の *domain.WorkInfoRunError を返す。
 func runErrorOf(err error) *domain.WorkInfoRunError {
 	var runErr *domain.WorkInfoRunError
 	errors.As(err, &runErr)
@@ -220,7 +214,6 @@ func TestHTTPAnswersEachLimitWithItsErrorCode(t *testing.T) {
 		wantCodes(t, info, err, "-1")
 	}
 
-	// 不正なヘッダーは要求を壊さずに落とす。
 	info, err = runHTTP(t, rt, `{"method":"GET","url":"http://site.test/page","headers":{"X-\u00dc":"1","X-Ctl":"a\u0001b"}}`, 1, false)
 	wantCodes(t, info, err, "0")
 
@@ -268,7 +261,7 @@ func TestHTTPDialLeavesTimeForTheNextAddress(t *testing.T) {
 	var firstDeadline time.Time
 	nc.dial = func(ctx context.Context, network, address string) (net.Conn, error) {
 		if strings.HasPrefix(address, "[2606:4700::1]") {
-			// パケットを捨てるアドレスとして、与えられた期限を記録して時間切れにする。
+			// Simulate a blackholed address while recording its assigned deadline.
 			firstDeadline, _ = ctx.Deadline()
 			return nil, context.DeadlineExceeded
 		}

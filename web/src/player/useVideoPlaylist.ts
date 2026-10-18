@@ -15,16 +15,7 @@ import type { Neighbor } from "./NeighborArrows";
 import type { VideoLinkState } from "./pageDecisions";
 import type { MemberTarget } from "./RelatedVideos";
 
-/**
- * useVideoPlaylist は動画ページのプレイリストの文脈（`?playlist=&item=`）である。所有者だけが
- * 読む。
- *
- * 文脈がある間は、矢印・予告・終わりが再生の応答に従い、関連動画の nextId・prevId は
- * 使わない（R-7）。404 で落としたら、前後は関連動画に戻り、今の動画の後で止まる。
- * `readKey` はページが再生の応答を読み直すたびに増やす値で、`ended` の間に読み終えた値と
- * 違えば読み直しの途中である（`reading`）。矢印とメンバーの行で移った先では、
- * `keepPlaying` なら再生を続ける。
- */
+/** Owner-only playlist state controls navigation and autoplay. After a 404, restore related arrows but stop at the current video's end. */
 export function useVideoPlaylist({
   query,
   videoId,
@@ -43,12 +34,8 @@ export function useVideoPlaylist({
   ended: boolean;
   keepPlaying: boolean;
   linkState: VideoLinkState;
-  /** ページの `?smartFolder`。フォルダの項目の中でメンバーの行が保つ。 */
   smartFolder: number | undefined;
-  /**
-   * 動画の応答が採ったフォルダ（`Video.smartFolder` の id）。フォルダが動画を持たなくなると
-   * サーバーは `smartFolder` を無視して答えるので、undefined になる。
-   */
+  /** The server omits smartFolder when it no longer contains this video. */
   adoptedSmartFolder: number | undefined;
 }) {
   const navigate = useNavigate();
@@ -60,7 +47,7 @@ export function useVideoPlaylist({
     context.status === "reading" ||
     context.status === "ready" ||
     context.status === "failed";
-  // ステップのフォルダは再生の応答の `smartFolderId` から取る（パネルの応答には頼らない。
+  // Read step folder IDs from playback data, not the panel response.
   // docs/design-docs/catalog-organization.md「Video page in a playlist」）。
   const goStep = (step: PlaylistStep, autoplay: boolean) =>
     void navigate(playlistStepPath(playlistId, step), {
@@ -75,11 +62,7 @@ export function useVideoPlaylist({
     context.panel.kind === "ready"
       ? context.panel.playlist.items.find((item) => item.id === itemId)
       : undefined;
-  // グループとスマートフォルダの項目の中では、メンバー一覧の行もプレイリストの文脈を保ち、同じ
-  // 項目のメンバーを開く（state はパネルの行と同じ）。項目がそうかは、パネルの並びか、次が同じ
-  // 項目の中にあることで分かる。フォルダの項目では、動画の応答がページの `smartFolder` を採った
-  // ときだけで、行は今のページの `smartFolder` を保つ。今の動画がフォルダから外れると、サーバーは
-  // フォルダを無視して動画のグループで答え、その行は項目の外なので今までどおり開く。単体の動画の項目でも今までどおり。
+  // Preserve playlist context within group/folder items; keep smartFolder only when the video response accepted it.
   const folderItem = currentItem?.kind === "smartFolder" || smartFolder !== undefined;
   const inGroupItem =
     playback !== undefined &&
@@ -99,15 +82,11 @@ export function useVideoPlaylist({
     playlistId,
     itemId,
     playback,
-    /** 文脈を読んでいるか、読めたか、読み直しに失敗した。 */
     inPlaylist,
-    /** 404 で文脈を落とした。 */
     dropped: context.status === "dropped",
-    /** 終わった後の読み直しを待っている。その間は予告も終わりの層も出さない。 */
+    /** Suppress autoplay and ended overlays while awaiting the post-ended refresh. */
     reading: inPlaylist && ended && context.settledKey !== readKey,
-    /** 再生の応答の次のステップ。 */
     next,
-    /** 次のステップを自動再生で開く。 */
     playNext: () => {
       if (next !== undefined) goStep(next, true);
     },
@@ -118,10 +97,7 @@ export function useVideoPlaylist({
   };
 }
 
-/**
- * panelCurrentItemId はパネルで再生中にする項目である。再生の応答が無ければ URL の項目
- * `itemId`、位置が 0（項目がもう無い）なら無し。
- */
+/** Use the URL item until playback loads; position zero means no current item. */
 export function panelCurrentItemId(
   playback: PlaylistPlayback | undefined,
   itemId: number,
@@ -130,15 +106,9 @@ export function panelCurrentItemId(
   return playback.position > 0 ? playback.itemId : undefined;
 }
 
-/** VideoPlaylist は useVideoPlaylist の返す文脈である。 */
 export type VideoPlaylist = ReturnType<typeof useVideoPlaylist>;
 
-/**
- * useUnplayableSkip は再生できない項目を飛ばす。再生の
- * できない状態（読み取りの失敗・再生できない・動画が無い）は終わらないので、自動再生で
- * 着いたときはページが自分で次の項目へ飛ばす。飛ばしたのは今の訪問（`pageKey`）の間だけ
- * 覚える。別の項目へ移れば忘れ、自動再生で同じ項目に戻ったときにもう一度飛ばす。
- */
+/** Unplayable items never end, so autoplay skips them once per page visit. Returning on a new visit permits another skip. */
 export function useUnplayableSkip({
   playlist,
   autoplay,
@@ -150,7 +120,6 @@ export function useUnplayableSkip({
   playlist: VideoPlaylist;
   autoplay: boolean;
   unplayable: boolean;
-  /** 動画の題名。読めていなければ undefined で、項目の名前を知らせる。 */
   videoTitle: string | undefined;
   pageKey: string;
   linkState: VideoLinkState;
@@ -161,7 +130,6 @@ export function useUnplayableSkip({
   const skippedTitle =
     videoTitle ?? (currentItem === undefined ? "" : itemTitle(currentItem));
   const skippedFor = useRef<string | null>(null);
-  // 次の効果より先に走る。
   useEffect(() => {
     skippedFor.current = null;
   }, [pageKey]);

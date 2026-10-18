@@ -12,51 +12,42 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// ClassName はウィンドウクラス名である。二重起動の検出に使う
+// Also used to detect existing instances.
 const ClassName = "VVMDMWindow"
 
-// 初期のウィンドウの大きさ（96 DPI での画素数）。画面より大きければ収める。
+// Initial dimensions at 96 DPI, capped to the screen.
 const (
 	initialWidth  = 1280
 	initialHeight = 800
 )
 
-// wmAppCall は Post で積んだ関数を UI のスレッドで呼ぶ合図である。
 const wmAppCall = wmApp + 1
 
-// WindowOptions は Window を作るときに渡すものである。
 type WindowOptions struct {
-	// URL は WebView2 が開くアドレス（http://localhost:<ポート>/）。
-	URL string
-	// DataPath は WebView2 の利用者データの置き場。
+	// Loopback URL, including the listener port.
+	URL      string
 	DataPath string
-	// ShouldConfirmClose は利用者がウィンドウを閉じようとしたときに UI のスレッドで
-	// 呼び、真なら閉じる前の確認を出す。nil なら確認しない。
+	// Called on the UI thread; nil skips confirmation.
 	ShouldConfirmClose func() bool
-	// OnClose は利用者がウィンドウを閉じると決めたときに UI のスレッドで呼ぶ。
-	// ウィンドウは先に隠れる。ウィンドウを壊すのは Destroy で、呼び出し元が停止を
-	// 終えてから呼ぶ。
+	// Called on the UI thread after hiding the window; the caller invokes Destroy after shutdown
+	// finishes.
 	OnClose func()
-	// OnEndSession はサインアウト・シャットダウンが確定したとき（WM_ENDSESSION）に
-	// UI のスレッドで呼ぶ。停止を終えるまで戻らない。
+	// Called on the UI thread for WM_ENDSESSION; must not return until shutdown finishes.
 	OnEndSession func()
-	// OnFatal は WebView2 が続けられない誤りを起こしたときに UI のスレッドで呼ぶ。
-	// 戻るとプロセスは終わる。
+	// Called on the UI thread for fatal WebView2 errors; the process exits after return.
 	OnFatal func(error)
 	Logger  *slog.Logger
 }
 
-// Window は WebView2 を埋め込んだ自前の Win32 ウィンドウである。
-// NewWindow・Run・Post 以外の操作は UI のスレッドで行う。
+// Window embeds WebView2; operations other than NewWindow, Run, and Post require the UI thread.
 type Window struct {
 	opts     WindowOptions
 	hwnd     uintptr
 	chromium *edge.Chromium
 	ready    bool
 	closing  bool
-	// confirming は閉じる前の確認を出している間は真で、重ねて出さない。
-	confirming bool
-	// endingSession はサインアウト・シャットダウンの停止を始めたら真である。
+	// Prevent overlapping close confirmations.
+	confirming    bool
 	endingSession bool
 
 	fullscreen      bool
@@ -68,15 +59,13 @@ type Window struct {
 	destroyedSignal chan struct{}
 }
 
-// 1 つのプロセスにウィンドウは 1 つだけで、ウィンドウ手続きはこれを使う。
+// The window procedure uses the process's single window.
 var (
 	current     *Window
 	wndProcAddr = windows.NewCallback(wndProc)
 )
 
-// NewWindow はウィンドウを作って WebView2 を埋め込み、URL を開いて表に出す。
-// 呼び出し元は runtime.LockOSThread で固定したスレッド（UI のスレッド）で呼び、
-// 同じスレッドで Run を呼ぶ。
+// Call NewWindow and Run on the same runtime.LockOSThread-pinned UI thread.
 func NewWindow(opts WindowOptions) (*Window, error) {
 	if current != nil {
 		return nil, errors.New("the window already exists")
@@ -125,7 +114,7 @@ func NewWindow(opts WindowOptions) (*Window, error) {
 	chromium.ContainsFullScreenElementChangedCallback = w.fullScreenChanged
 	chromium.ProcessFailedCallback = w.processFailed
 	w.chromium = chromium
-	// Embed は WebView2 の用意ができるまでメッセージを回す。
+	// Embed pumps messages until WebView2 is ready.
 	if !chromium.Embed(hwnd) {
 		return nil, errors.New("cannot embed WebView2")
 	}
@@ -134,8 +123,7 @@ func NewWindow(opts WindowOptions) (*Window, error) {
 	_, _, _ = procShowWindow.Call(hwnd, swShowNormal)
 	_, _, _ = procUpdateWindow.Call(hwnd)
 	_, _, _ = procSetForegroundWindow.Call(hwnd)
-	// WebView2 は隠れたウィンドウに埋め込んだので、ウィンドウを表に出しても
-	// 描画の子ウィンドウは隠れたまま（白いだけ）になる。表示を明示的に伝える。
+	// WebView2 was embedded while hidden; explicitly show its drawing child to avoid a blank window.
 	if err := chromium.Show(); err != nil {
 		opts.Logger.Warn("could not show the WebView2 controller", slog.Any("error", err))
 	}
@@ -145,8 +133,8 @@ func NewWindow(opts WindowOptions) (*Window, error) {
 	return w, nil
 }
 
-// initialBounds は初期の位置と大きさを返す。DPI に合わせて広げ、主画面の作業領域に
-// 収めて中央に置く。作業領域が分からなければ位置は Windows に任せる。
+// Scale by DPI and center within the primary work area; fall back to Windows positioning if
+// unavailable.
 func initialBounds() (x, y, width, height int32) {
 	dpi := systemDPI()
 	width = initialWidth * dpi / defaultDPI
@@ -160,12 +148,12 @@ func initialBounds() (x, y, width, height int32) {
 	return area.Left + (areaWidth-width)/2, area.Top + (areaHeight-height)/2, width, height
 }
 
-// Run はウィンドウが壊れるまでメッセージを回す。NewWindow と同じスレッドで呼ぶ。
+// Run must use the same thread as NewWindow.
 func (w *Window) Run() {
 	var m msg
 	for {
 		r, _, _ := procGetMessageW.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0)
-		// 0 は WM_QUIT、-1 は誤り。どちらでも回すのをやめる。
+		// Both WM_QUIT (0) and errors (-1) end the loop.
 		if r == 0 || int32(r) == -1 {
 			return
 		}
@@ -174,8 +162,7 @@ func (w *Window) Run() {
 	}
 }
 
-// Post は fn を UI のスレッドで呼ぶよう積む。どのスレッドからでも呼べる。
-// ウィンドウが壊れたあとは何もしない。
+// Post may be called from any thread and ignores calls after destruction.
 func (w *Window) Post(fn func()) {
 	w.pendingMu.Lock()
 	if w.destroyed {
@@ -187,7 +174,7 @@ func (w *Window) Post(fn func()) {
 	postMessage(w.hwnd, wmAppCall, 0, 0)
 }
 
-// Destroy はウィンドウを壊し、Run を終わらせる。どのスレッドからでも呼べる。
+// Destroy may be called from any thread and ends Run.
 func (w *Window) Destroy() {
 	w.Post(func() {
 		if w.chromium != nil {
@@ -232,12 +219,12 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		w.requestClose()
 		return 0
 	case wmQueryEndSession:
-		// 終了は拒まず、停止を待つ理由を Windows に示す。
+		// Allow session termination while showing why cleanup must finish first.
 		w.setShutdownBlockReason(true)
 		return 1
 	case wmEndSession:
 		if wparam != 0 && !w.endingSession {
-			// 確認は出さない。今の停止手順を最後まで通してから戻る。
+			// Skip confirmation and finish shutdown before returning.
 			w.endingSession = true
 			w.closing = true
 			if w.opts.OnEndSession != nil {
@@ -260,9 +247,7 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 	return r
 }
 
-// requestClose は閉じる操作を扱う。取り込みの途中なら確認を出し、「続ける」なら
-// 何もしない。閉じるなら、反応がすぐ見えるよう先にウィンドウを隠し、停止を終えた
-// 呼び出し元が Destroy で壊す。
+// Hide immediately for visible feedback; the caller destroys the window after shutdown completes.
 func (w *Window) requestClose() {
 	if w.closing || w.confirming {
 		return
@@ -272,7 +257,7 @@ func (w *Window) requestClose() {
 		ask := w.opts.ShouldConfirmClose()
 		closeNow := !ask || confirmClose(w.hwnd)
 		w.confirming = false
-		// 確認の間にサインアウトの停止が始まっていたら、そちらに任せる。
+		// A session shutdown begun during confirmation owns cleanup.
 		if !closeNow || w.closing {
 			return
 		}
@@ -284,8 +269,6 @@ func (w *Window) requestClose() {
 	}
 }
 
-// setShutdownBlockReason はサインアウト・シャットダウンで停止を待つ理由を
-// 登録するか消す。
 func (w *Window) setShutdownBlockReason(on bool) {
 	if !on {
 		_, _, _ = procShutdownBlockReasonDestroy.Call(w.hwnd)
@@ -310,8 +293,6 @@ func (w *Window) focusWebView() {
 	}
 }
 
-// fullScreenChanged は動画の全画面をウィンドウの全画面（枠なし・画面いっぱい）に
-// 切り替え、抜けたら元の位置と大きさに戻す。
 func (w *Window) fullScreenChanged(sender *edge.ICoreWebView2, _ *edge.ICoreWebView2ContainsFullScreenElementChangedEventArgs) {
 	on, err := sender.GetContainsFullScreenElement()
 	if err != nil {
@@ -355,9 +336,7 @@ func (w *Window) setFullScreen(on bool) {
 		swpNoMove|swpNoSize|swpNoZOrder|swpNoOwnerZOrder|swpFrameChanged)
 }
 
-// processFailed は描画プロセスが落ちたり応答しなくなったりしたら、今のページを
-// 読み直す。ブラウザのプロセスが終わると WebView2 は使えないので、続けられない
-// 誤りとして扱う。
+// Reload renderer failures; browser-process failure makes WebView2 unusable and is fatal.
 func (w *Window) processFailed(sender *edge.ICoreWebView2, args *edge.ICoreWebView2ProcessFailedEventArgs) {
 	kind, err := args.GetProcessFailedKind()
 	if err != nil {
@@ -383,8 +362,8 @@ func (w *Window) processFailed(sender *edge.ICoreWebView2, args *edge.ICoreWebVi
 	}
 }
 
-// fatal は WebView2 の続けられない誤りを呼び出し元へ渡す。go-webview2 はこの
-// あとプロセスを終わらせることがあるので、呼び出し元は戻る前に停止を済ませる。
+// The caller must finish shutdown before returning because go-webview2 may terminate the process
+// next.
 func (w *Window) fatal(err error) {
 	w.opts.Logger.Error("WebView2 failed", slog.Any("error", err))
 	if w.opts.OnFatal != nil {
@@ -392,8 +371,7 @@ func (w *Window) fatal(err error) {
 	}
 }
 
-// LockUIThread は呼んだ goroutine を今の OS のスレッドに固定する。ウィンドウと
-// WebView2 は作ったスレッドでしか扱えない。
+// Pin the goroutine because Win32 and WebView2 must stay on their creation thread.
 func LockUIThread() {
 	runtime.LockOSThread()
 }

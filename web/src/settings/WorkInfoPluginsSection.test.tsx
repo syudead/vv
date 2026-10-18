@@ -10,7 +10,7 @@ import { TooltipProvider } from "../ui/shadcn/tooltip";
 import { WORK_INFO_PLUGINS_GUIDE_URL } from "./docsLinks";
 import WorkInfoPluginsSection from "./WorkInfoPluginsSection";
 
-// 設定の「Work-info plugins」節のページのテストである。値の決まりは workInfoPluginRows.test.ts が確かめる。
+// Value rules are covered separately by workInfoPluginRows.test.ts.
 
 function json(body: unknown, status = 200): Response {
   return new Response(status === 204 ? null : JSON.stringify(body), {
@@ -35,7 +35,6 @@ function plugin(values: Partial<WorkInfoPlugin> & { id: number }): WorkInfoPlugi
   };
 }
 
-/** uploads はファイル名ごとに、偽のサーバーが追加で返すプラグインである。 */
 const uploads: Record<string, Omit<WorkInfoPlugin, "id">> = {
   "example.wasm": plugin({ id: 0 }),
   "broken.wasm": plugin({
@@ -50,7 +49,7 @@ const uploads: Record<string, Omit<WorkInfoPlugin, "id">> = {
   }),
 };
 
-/** saved は偽のサーバーが値を保存した後の設定である。秘密の値は返さない。 */
+/** Saved settings never return secret values. */
 function saved(
   setting: WorkInfoPluginSetting,
   value: string | null | undefined,
@@ -62,7 +61,6 @@ function saved(
 
 type Override = (method: string, url: string) => Response | undefined;
 
-/** server は保存されたプラグインを持つ偽のサーバーである。override は先に答える。 */
 function server(initial: WorkInfoPlugin[], override: Override = () => undefined) {
   let stored = [...initial];
   let nextId = 100;
@@ -160,7 +158,7 @@ describe("WorkInfoPluginsSection", () => {
 
   beforeEach(() => {
     vi.stubGlobal("fetch", fetchMock);
-    // Radix Select はポインタの捕捉を使う。jsdom には無いので何もしない実装を置く。
+    // Radix Select needs pointer capture, which jsdom lacks.
     Element.prototype.hasPointerCapture ??= () => false;
     Element.prototype.releasePointerCapture ??= () => undefined;
   });
@@ -217,7 +215,6 @@ describe("WorkInfoPluginsSection", () => {
   });
 
   it("差し替えかどうかは一覧ではなく応答の状態コードで決める", async () => {
-    // 別のタブで足されて一覧にまだ無いプラグインでも、200 なら差し替えと知らせる。
     const replaced = plugin({ id: 7 });
     fetchMock.mockImplementation(
       server([], (method, url) =>
@@ -425,7 +422,6 @@ describe("WorkInfoPluginsSection", () => {
     await user.click(within(row).getByRole("button", { name: "Settings" }));
     const dialog = screen.getByRole("dialog", { name: "Settings for example.works" });
 
-    // 既定値は欄の値ではなく placeholder と欄の下の注記に出る。
     const region = within(dialog).getByLabelText<HTMLInputElement>(/Region/);
     expect(region.value).toBe("");
     expect(region.placeholder).toBe("jp");
@@ -434,7 +430,6 @@ describe("WorkInfoPluginsSection", () => {
     expect(lang.value).toBe("en");
     expect(within(dialog).getByText("Default: ja")).toBeDefined();
 
-    // 選択肢の設定は Select だけで、既定値の項目が選ばれている。
     expect(within(dialog).queryByRole("textbox", { name: /Sort/ })).toBeNull();
     const sort = within(dialog).getByRole("combobox", { name: /Sort/ });
     expect(sort.textContent).toBe("Default (new)");
@@ -494,7 +489,6 @@ describe("WorkInfoPluginsSection", () => {
     expect(within(row).getByText(/Settings: Mode not set/)).toBeDefined();
     expect(within(row).getByText("Choose again: Mode")).toBeDefined();
 
-    // 承認のプロンプトは既定値を設定の行の末尾に出す。
     await user.click(within(row).getByRole("button", { name: "Review and approve" }));
     const approval = screen.getByRole("dialog", { name: "Approve example.works?" });
     expect(within(approval).getByText("Default: fast")).toBeDefined();
@@ -614,7 +608,7 @@ describe("WorkInfoPluginsSection", () => {
 
   it("追加の後の読み直しより先に取り消しが終わっても、遅れて届いた一覧で承認済みに戻らない", async () => {
     const fake = server([plugin({ id: 1, state: "approved" })]);
-    // 追加の後の一覧は、取り消しの前のサーバーの行を持ったまま、取り消しの後に届く。
+    // Deliver the post-upload snapshot after revocation, with its stale pre-revocation row.
     let release: () => void = () => {};
     let gets = 0;
     fetchMock.mockImplementation((input, init) => {
@@ -644,7 +638,6 @@ describe("WorkInfoPluginsSection", () => {
     await waitFor(() => expect(within(row).getByText("Not approved")).toBeDefined());
     release();
 
-    // 追加が終わる（読み直しが済む）まで待つ。
     await screen.findByRole("button", { name: "Add plugin" });
     expect(within(rowOf("example.works")).getByText("Not approved")).toBeDefined();
     expect(within(rowOf("example.works")).queryByText("Approved")).toBeNull();

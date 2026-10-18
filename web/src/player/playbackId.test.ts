@@ -10,7 +10,7 @@ describe("newPlaybackId", () => {
   });
 
   it("crypto.randomUUID が無くても RFC 4122 version 4 の 36 文字の形で作る", () => {
-    // LAN の素の http では randomUUID が無い。getRandomValues だけを持つ crypto にする。
+    // Simulate LAN HTTP, where crypto exposes getRandomValues but not randomUUID.
     const getRandomValues = vi.fn((array: Uint8Array) => {
       array.fill(0xff);
       return array;

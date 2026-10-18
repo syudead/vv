@@ -9,9 +9,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// Folders はフォルダ画面の問い合わせ先である。フォルダは保存されておらず、
-// 所在のパスから導く。所在と動画を返す読み出しは見る人（domain.Audience）を取る
-// （Library と同じく、今はすべて所有者として読む）。
+// Folders are derived from location paths, not persisted; reads receive the audience.
 type Folders interface {
 	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
 	FolderLocations(ctx context.Context, audience domain.Audience, dir string) ([]domain.FolderLocation, error)
@@ -21,7 +19,6 @@ type Folders interface {
 
 const folderNotFoundMessage = "Folder not found."
 
-// ListRootFolders は登録済みメディアフォルダの集計を返す（GET /api/folders）。
 func (s *server) ListRootFolders(w http.ResponseWriter, r *http.Request) {
 	if s.folders == nil {
 		s.internalError(w, "Folder queries are not configured.", nil)
@@ -42,7 +39,6 @@ func (s *server) ListRootFolders(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		listing, _ := domain.SummarizeFolder(root, "", locations)
-		// ゲストには、公開の動画の所在を1つも含まない登録フォルダを見せない。
 		if !audience.IsOwner() && !listingHasVideos(listing) {
 			continue
 		}
@@ -59,7 +55,6 @@ func (s *server) ListRootFolders(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.RootFolderListing{Folders: s.apiFolders(r.Context(), audience, summaries, groupings)}, s.logger)
 }
 
-// GetFolder はフォルダ1件と直下の子フォルダを返す（GET /api/folders/{rootId}）。
 func (s *server) GetFolder(w http.ResponseWriter, r *http.Request, rootID gen.FolderRootId, params gen.GetFolderParams) {
 	root, rel, ok := s.resolveFolderRoot(w, r, rootID, params.Path)
 	if !ok {
@@ -72,15 +67,13 @@ func (s *server) GetFolder(w http.ResponseWriter, r *http.Request, rootID gen.Fo
 		return
 	}
 	listing, found := domain.SummarizeFolder(root, rel, locations)
-	// 登録フォルダそのものは動画が無くても「ある」と答えるが、ゲストには、公開の動画を
-	// 含まないなら存在しないフォルダと同じにする。登録フォルダの rootId を数え上げられない
-	// ようにする。
+	// Hide roots without public videos from guests to prevent enumerating registered root IDs.
 	if !found || (!audience.IsOwner() && !listingHasVideos(listing)) {
 		s.notFoundReason(w, reasonFolderNotFound, folderNotFoundMessage)
 		return
 	}
 
-	// 開いたフォルダと子フォルダのまとめ方を、同じ読み取りから引く。
+	// Read current and child-folder grouping from the same snapshot.
 	groupings, err := s.folderGroupings(r.Context(), audience, append([]domain.FolderSummary{listing.Folder}, listing.Folders...))
 	if err != nil {
 		s.folderError(w, r, "Could not load folders.", err)
@@ -99,9 +92,7 @@ func (s *server) GetFolder(w http.ResponseWriter, r *http.Request, rootID gen.Fo
 	}, s.logger)
 }
 
-// ListFolderVideos はフォルダの動画を返す（GET /api/folders/{rootId}/videos）。
-// 範囲は scope で直下（既定）か配下すべてかを選ぶ。ページング・絞り込み・並び順は
-// ListVideos と同じである。フォルダが無ければ scope・query に関係なく 404 を返す。
+// Folder absence takes precedence over scope/query validation and always yields 404.
 func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID gen.FolderRootId, params gen.ListFolderVideosParams) {
 	roots, root, rel, ok := s.resolveFolderRootIn(w, r, rootID, params.Path)
 	if !ok {
@@ -112,9 +103,6 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 		Dir: domain.FolderDir(root.Path, rel), Scope: domain.FolderScopeDirect,
 		Sort: domain.SortAddedDesc, Limit: domain.DefaultLimit,
 	}
-	// フォルダの有無は条件の検査より先に確かめる。無いフォルダは、条件の値に
-	// 関係なく 404 にする。登録フォルダそのものは所有者には
-	// 動画が無くても「ある」が、ゲストには公開の動画を含むときだけある。
 	audience := audienceFrom(r.Context())
 	if rel != "" || !audience.IsOwner() {
 		found, err := s.folders.HasFolderLocations(r.Context(), audience, query.Dir)
@@ -173,14 +161,11 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 	s.writeVideoPage(w, r, page, roots)
 }
 
-// resolveFolderRoot は登録フォルダと相対パスを確かめる。不正な相対パスは 400、
-// 登録されていない id は 404 を書いて false を返す。
 func (s *server) resolveFolderRoot(w http.ResponseWriter, r *http.Request, rootID int64, path *string) (domain.MediaFolder, string, bool) {
 	_, root, rel, ok := s.resolveFolderRootIn(w, r, rootID, path)
 	return root, rel, ok
 }
 
-// resolveFolderRootIn は resolveFolderRoot と同じで、引いた登録フォルダの一覧も返す。
 func (s *server) resolveFolderRootIn(w http.ResponseWriter, r *http.Request, rootID int64, path *string) ([]domain.MediaFolder, domain.MediaFolder, string, bool) {
 	if s.folders == nil {
 		s.internalError(w, "Folder queries are not configured.", nil)
@@ -210,14 +195,11 @@ func (s *server) resolveFolderRootIn(w http.ResponseWriter, r *http.Request, roo
 	return nil, domain.MediaFolder{}, "", false
 }
 
-// listingHasVideos は、フォルダの配下（深さを問わない）に見せてよい動画があるかを返す。
-// 子フォルダは所在のあるものだけが導かれるので、直下の動画か子フォルダがあれば足りる。
+// Derived child folders always contain locations, so a direct video or child folder proves visible descendants exist.
 func listingHasVideos(listing domain.FolderListing) bool {
 	return listing.Folder.VideoCount > 0 || len(listing.Folders) > 0
 }
 
-// apiFolders はフォルダたちを契約の形へ写す。groupings は folderGroupings の結果で、
-// nil なら grouping を省く。
 func (s *server) apiFolders(ctx context.Context, audience domain.Audience, folders []domain.FolderSummary, groupings []*gen.FolderGrouping) []gen.FolderSummary {
 	out := make([]gen.FolderSummary, 0, len(folders))
 	for i, folder := range folders {
@@ -230,9 +212,7 @@ func (s *server) apiFolders(ctx context.Context, audience domain.Audience, folde
 	return out
 }
 
-// folderPreviews は、フォルダの絵柄に差し込むサムネイル（サムネイル生成済みの動画）を
-// 契約の形へ写す。previewUrl は動画一覧と同じ presentVideos を通し、ファイルが今ある
-// ときだけ出す（消えていれば作り直しを積む）。フォルダカードとグループのカードが使う。
+// Preview presentation verifies current files and schedules missing-artifact regeneration, matching video listings.
 func (s *server) folderPreviews(ctx context.Context, videos []domain.Video) []gen.FolderPreview {
 	views := s.presentVideos(ctx, videos)
 	previews := make([]gen.FolderPreview, 0, len(views))
@@ -250,8 +230,6 @@ func (s *server) folderPreviews(ctx context.Context, videos []domain.Video) []ge
 	return previews
 }
 
-// previewVideos は保存層が集めた差し込むサムネイル（domain.FolderPreview）を、folderPreviews が
-// URL を組むのに使う動画の値に写す。フォルダカードとプレイリストの一覧のカードが使う。
 func previewVideos(previews []domain.FolderPreview) []domain.Video {
 	videos := make([]domain.Video, 0, len(previews))
 	for _, preview := range previews {
@@ -264,10 +242,7 @@ func previewVideos(previews []domain.FolderPreview) []domain.Video {
 	return videos
 }
 
-// apiFolder はフォルダ1件を契約の形へ写す。差し込むサムネイルの previewUrl は
-// 動画一覧と同じ presentVideos を通し、ファイルが今あるときだけ出す（消えていれば
-// 作り直しを積む）。登録フォルダの絶対パス（rootPath）はゲストの応答から外す。まとめ方（grouping）は所有者にだけ載せる
-// 。
+// Guest folder responses omit absolute root paths and grouping settings.
 func (s *server) apiFolder(ctx context.Context, audience domain.Audience, folder domain.FolderSummary, grouping *gen.FolderGrouping) gen.FolderSummary {
 	previews := s.folderPreviews(ctx, previewVideos(folder.Previews))
 	out := gen.FolderSummary{
@@ -286,8 +261,7 @@ func (s *server) apiFolder(ctx context.Context, audience domain.Audience, folder
 	return out
 }
 
-// folderError は保存層の失敗を 500 で返す。要求が打ち切られた（画面が先へ
-// 進んだ）ための失敗は、誰も応答を読まないので書かず、ログにも残さない。
+// Canceled requests produce neither an error response nor a log entry because the client has left.
 func (s *server) folderError(w http.ResponseWriter, r *http.Request, message string, err error) {
 	if errors.Is(r.Context().Err(), context.Canceled) {
 		return

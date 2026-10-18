@@ -8,7 +8,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// fakeActivityFolders は今の処理のフォルダを求めるための登録フォルダである。
 type fakeActivityFolders struct {
 	roots []domain.MediaFolder
 }
@@ -17,7 +16,6 @@ func (f fakeActivityFolders) ListMediaFolders(context.Context) ([]domain.MediaFo
 	return f.roots, nil
 }
 
-// newActivityScans は直近の走査が1つある Scans を組み立てる。
 func newActivityScans(t *testing.T, root string) (*Scans, *fakePublisher) {
 	t.Helper()
 	store := newFakeScanStore()
@@ -53,8 +51,6 @@ func activityChanges(publisher *fakePublisher) int {
 	return count
 }
 
-// 2つの仕事が重なったら、後に始まった方を示す。それが終わると、動いている残りの
-// 方に戻る。すべて終わると今の処理は無くなる。
 func TestScanActivityShowsLatestAndFallsBack(t *testing.T) {
 	root := t.TempDir()
 	scans, publisher := newActivityScans(t, root)
@@ -88,13 +84,12 @@ func TestScanActivityShowsLatestAndFallsBack(t *testing.T) {
 	if got := currentActivity(t, scans); got.Active() {
 		t.Errorf("すべて終わったのに今の処理がある: %+v", got)
 	}
-	// 始まり2回と、示すものが変わった終わり2回。
+	// Two starts and two visible completions emit events.
 	if changes := activityChanges(publisher); changes != 4 {
 		t.Errorf("ScanActivityChanged = %d, want 4", changes)
 	}
 }
 
-// 示していない方が先に終わっても、示すものは変わらず、変化も発行しない。
 func TestScanActivityIgnoresEndOfHiddenJob(t *testing.T) {
 	root := t.TempDir()
 	scans, publisher := newActivityScans(t, root)
@@ -112,8 +107,6 @@ func TestScanActivityIgnoresEndOfHiddenJob(t *testing.T) {
 	}
 }
 
-// 走査の登録は1つの枠で、次のファイルに移ると置き換わる。登録を終えると、動いて
-// いる仕事に戻る。
 func TestScanActivityRegistering(t *testing.T) {
 	root := t.TempDir()
 	scans, _ := newActivityScans(t, root)
@@ -137,7 +130,6 @@ func TestScanActivityRegistering(t *testing.T) {
 	}
 }
 
-// 登録フォルダの外のファイルは、フォルダを持たずに示す。
 func TestScanActivityOutsideRootsHasNoFolder(t *testing.T) {
 	scans, _ := newActivityScans(t, t.TempDir())
 	scans.JobStarted(domain.Job{ID: 1, Kind: domain.JobProbe, LocationPath: filepath.Join(t.TempDir(), "x.mp4")})

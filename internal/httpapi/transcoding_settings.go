@@ -8,7 +8,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// GetTranscodingSettings はライブ変換の映像エンコード方式の設定と、各方式が使えるかを返す
 func (s *server) GetTranscodingSettings(w http.ResponseWriter, _ *http.Request) {
 	if s.transcodeSettings == nil {
 		s.internalError(w, "Transcoding settings are not configured.", nil)
@@ -18,8 +17,6 @@ func (s *server) GetTranscodingSettings(w http.ResponseWriter, _ *http.Request) 
 	writeJSON(w, http.StatusOK, toAPITranscodingSettings(s.transcodeSettings.Current()), s.logger)
 }
 
-// UpdateTranscodingSettings は方式を保存し、保存後の状態を返す（契約 §3）。方式の決定と
-// 使えない方式を拒む判断は TranscodeSettings が持つ。
 func (s *server) UpdateTranscodingSettings(w http.ResponseWriter, r *http.Request) {
 	var body gen.UpdateTranscodingSettingsRequest
 	if !s.readJSONBody(w, r, &body) {
@@ -47,8 +44,7 @@ func (s *server) UpdateTranscodingSettings(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, toAPITranscodingSettings(encoding), s.logger)
 }
 
-// toAPITranscodingSettings は今の状態を契約の形にする。確認の補足（Detail）はログ用で、
-// 応答には載せない。
+// Details are diagnostic only and must not appear in API responses.
 func toAPITranscodingSettings(encoding domain.TranscodeEncoding) gen.TranscodingSettings {
 	encoders := make([]gen.EncoderAvailability, 0, len(encoding.Encoders))
 	for _, a := range encoding.Encoders {

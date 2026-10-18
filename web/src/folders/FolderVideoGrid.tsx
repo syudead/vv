@@ -12,15 +12,11 @@ import { useOrderedItemDrag } from "../videoList/OrderedItemFace";
 import { useUndoToast } from "../videoList/undoToast";
 import { useVideoDrops } from "../videoList/useVideoDrops";
 
-/** single はフォルダ画面の持ち上げ方である。選択が無いので、押したカード 1 枚だけが動く。 */
+/** Folders have no selection, so dragging lifts only the pressed card. */
 function single(key: string): readonly string[] {
   return [key];
 }
 
-/**
- * FolderVideoGrid はフォルダ画面の動画のカードの格子である。所有者には動画のカードを 1 枚ずつ
- * ドラッグさせ、動画のカードだけを落とす先にする。フォルダの直下と検索結果が共有する。
- */
 export default function FolderVideoGrid(props: FolderVideoGridProps) {
   const owner = useAudience() === "owner";
   if (!owner) {
@@ -36,9 +32,8 @@ export default function FolderVideoGrid(props: FolderVideoGridProps) {
 interface FolderVideoGridProps {
   videos: VideosState;
   zoom: Zoom;
-  /** 動画 1 本のカード。 */
   card: (video: Video) => ReactNode;
-  /** 持ち上がったときに呼ぶ（ホバープレビューを止める）。 */
+  /** Called on lift to stop hover previews. */
   onLift: () => void;
 }
 
@@ -55,7 +50,7 @@ function OwnerFolderVideoGrid({ videos, zoom, card, onLift }: FolderVideoGridPro
     undo,
   });
   const shown = drops.shown;
-  // フォルダ画面にスマートフォルダの項目は来ないが、型の上で持ち上げる項目に絞る。
+  // Narrow the type to draggable items; folders never receive smart-folder entries.
   const organizable = useMemo(() => shown.filter(isOrganizable), [shown]);
   const { order, nameOf, preview } = useOrderedItemDrag(organizable, itemKey, false);
   return (

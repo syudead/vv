@@ -13,7 +13,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// seekAndThumbnailState は動画の seek_thumbnail_state と thumbnail_state を返す。
 func seekAndThumbnailState(t *testing.T, db *DB, videoID int64) (string, string) {
 	t.Helper()
 	var seek, thumbnail string
@@ -24,9 +23,7 @@ func seekAndThumbnailState(t *testing.T, db *DB, videoID int64) (string, string)
 	return seek, thumbnail
 }
 
-// シーク用サムネイルは、その動画の解析の完了と、取り出せる代表サムネイルの仕事が
-// 残っていないことの両方を待つ。解析待ちで今は取り出せない代表サムネイルも数え、
-// 登録外の所在しかない動画の代表サムネイルは数えない。
+// Seek jobs wait for probe completion and all registered thumbnail work, including thumbnails still waiting on their probes.
 func TestClaimSeekThumbnailWaitsForProbeAndRemainingThumbnails(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -57,7 +54,7 @@ func TestClaimSeekThumbnailWaitsForProbeAndRemainingThumbnails(t *testing.T) {
 
 	noJob("解析前")
 	probeDone(t, db, videoID)
-	// b の代表サムネイルは解析待ちで取り出せないが、残りとして待つ。
+	// The other thumbnail still blocks seek work even though its own probe is pending.
 	noJob("解析待ちの代表サムネイルが残る間")
 	probeDone(t, db, other.ID)
 	thumbnail, err := db.Ingest().ClaimJob(ctx, domain.JobThumbnail)
@@ -81,7 +78,6 @@ func TestClaimSeekThumbnailWaitsForProbeAndRemainingThumbnails(t *testing.T) {
 	}
 }
 
-// 残りの仕事は、シーク用サムネイルを代表サムネイルと分けて数える。
 func TestRemainingJobsCountSeekThumbnailSeparately(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -106,9 +102,6 @@ func TestRemainingJobsCountSeekThumbnailSeparately(t *testing.T) {
 	}
 }
 
-// シーク用サムネイルの終端失敗は seek_thumbnail_state だけを failed にし、
-// 代表サムネイルの状態に触れない。代表サムネイルの終端失敗も seek_thumbnail_state
-// に触れない。
 func TestFailClaimedSeekThumbnailMarksOnlySeekState(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -134,7 +127,6 @@ func TestFailClaimedSeekThumbnailMarksOnlySeekState(t *testing.T) {
 	}
 }
 
-// 作り終えたシーク用サムネイルは、終端失敗で上書きしない。
 func TestFailClaimedSeekThumbnailKeepsDone(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -151,7 +143,6 @@ func TestFailClaimedSeekThumbnailKeepsDone(t *testing.T) {
 	}
 }
 
-// 完了の記録は、専有したときの内容鍵・所在・所在の世代が今も同じときだけ反映する。
 func TestSetSeekThumbnailStateForJobRequiresClaimIdentity(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -184,7 +175,6 @@ func TestSetSeekThumbnailStateForJobRequiresClaimIdentity(t *testing.T) {
 	}
 }
 
-// 読み取りのやり直しは、失敗したシーク用サムネイルを pending に戻して積む。
 func TestRetryProbeRequeuesFailedSeekThumbnail(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -215,8 +205,6 @@ func TestRetryProbeRequeuesFailedSeekThumbnail(t *testing.T) {
 	}
 }
 
-// 作り終えた記録があるのに置き場が無いシーク用サムネイルは、done のときだけ
-// 状態を戻して1回だけ積む。
 func TestRequeueMissingSeekThumbnails(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -251,8 +239,6 @@ func TestRequeueMissingSeekThumbnails(t *testing.T) {
 	}
 }
 
-// 走査は seek_thumbnail_state が done でない内容にシーク用サムネイルを求め、
-// pending の既存動画には EnsureJob で積み直せる。
 func TestUpsertVideoReportsSeekThumbnailNeed(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -292,8 +278,6 @@ func TestUpsertVideoReportsSeekThumbnailNeed(t *testing.T) {
 	}
 }
 
-// 00014 は解析が終わり所在のある既存の動画にシーク用サムネイルを積み、既存の
-// 代表サムネイルの仕事は残す。down は積んだ仕事と列を取り除き、up をやり直せる。
 func TestSeekThumbnailStageMigrationBackfillsAndRollsBack(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {
@@ -389,10 +373,6 @@ func TestSeekThumbnailStageMigrationBackfillsAndRollsBack(t *testing.T) {
 	}
 }
 
-// 00015 は done のシーク用サムネイルを pending に戻して作り直しを積む。failed の
-// 動画と、未完了のシーク用サムネイルのジョブが既にある動画には積まず、代表
-// サムネイルと動くプレビューの状態とジョブには触れない。down は schema を変えず、
-// up をやり直せる。
 func TestSeekThumbnailSpriteMigrationRequeuesDone(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {

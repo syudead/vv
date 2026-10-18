@@ -12,19 +12,14 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// 外部連携 API の表示名とサムネイルの位置の一括操作
-//
-// 動画の指定・index・「全件を確かめてから反映する」形は POST /api/v1/video-tags と同じにする。
+// Batch overrides share video references, indexed errors, and validate-before-apply semantics with video-tags.
 
-// maxVideoDisplayNames は POST /api/v1/video-display-names の items の上限である。
 const maxVideoDisplayNames = 20000
 
-// maxVideoThumbnails は POST /api/v1/video-thumbnails の items の上限である。1 件ごとに
-// ffmpeg を走らせるので、1 つの要求に収まるよう小さく区切る（R-9）。
+// Keep thumbnail batches small because every item starts ffmpeg.
 const maxVideoThumbnails = 20
 
-// displayNameItem・thumbnailItem は本文の要素の JSON の形である。知らない項目は誤りにする。
-// displayName・positionMs が欠けた要素を null（解除）と取り違えないよう、有無を区別して読む。
+// Distinguish missing displayName/positionMs from explicit null resets and reject unknown fields.
 type (
 	displayNameItem struct {
 		Video       extgen.VideoRef `json:"video"`
@@ -36,9 +31,7 @@ type (
 	}
 )
 
-// UpdateVideoDisplayNames は複数の動画の表示名を設定・解除する
-// （POST /api/v1/video-display-names）。全件を 1 つの取引で行う保存先
-// （OverrideStore.SetDisplayNames）に任せ、internal/app は通さない。
+// Display-name updates are atomic through OverrideStore.SetDisplayNames.
 func (e *externalServer) UpdateVideoDisplayNames(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Items []displayNameItem `json:"items"`
@@ -96,7 +89,6 @@ func (e *externalServer) UpdateVideoDisplayNames(w http.ResponseWriter, r *http.
 	writeJSON(w, http.StatusOK, out, e.s.logger)
 }
 
-// writeDisplayNamesError は表示名の一括操作の保存先の誤りを応答へ写す。
 func (e *externalServer) writeDisplayNamesError(w http.ResponseWriter, err error) {
 	var notFound *domain.VideoRefNotFoundError
 	if errors.As(err, &notFound) {
@@ -125,20 +117,13 @@ func (e *externalServer) writeDisplayNamesError(w http.ResponseWriter, err error
 	e.internalError(w, "Could not update the display names.", err)
 }
 
-// thumbnailTarget は引き当てを通ったサムネイルの位置の指定 1 件である。読む元の所在は
-// 持たず、生成の直前に決め直す（前の項目の生成の間に所在が変わりうるため）。
+// Resolve source locations immediately before generation because prior items may take time.
 type thumbnailTarget struct {
 	videoID    int64
 	positionMs *int64
 }
 
-// UpdateVideoThumbnails は複数の動画の代表サムネイルの位置を設定・解除する
-// （POST /api/v1/video-thumbnails）。先に全件の引き当て・位置の検証・所在の解決を行い、
-// 誤りがあれば何も反映しない。通ったら items の順に 1 件ずつ、画面の
-// PUT /api/videos/{id}/thumbnail-position と同じ手順（動画を読み直し、位置を確かめ、所在を
-// 解決して、ThumbnailPicker で画像を作って記録する）を行う。前の項目の生成の間に動画や所在が
-// 変わりうるので、所在は検証のときに決めたものを使わず生成の直前に決め直す。
-// 途中の失敗では、それより前の項目は反映済みのまま index で止まった位置を返す。
+// Validate every target first, then re-read/revalidate/re-resolve and apply in input order; failures during application retain earlier changes and report the stopping index.
 func (e *externalServer) UpdateVideoThumbnails(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Items []thumbnailItem `json:"items"`
@@ -215,14 +200,12 @@ func (e *externalServer) UpdateVideoThumbnails(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, out, e.s.logger)
 }
 
-// thumbnailStep は誤りを返すときの items の位置と段階である。applying は反映の段階
-// （前の項目を反映済みでありうる）を表す。
+// applying means earlier items may already be committed.
 type thumbnailStep struct {
 	index    int
 	applying bool
 }
 
-// outcome は誤りの文言の末尾に添える、それまでに何を反映したかの説明である。
 func (step thumbnailStep) outcome() string {
 	if step.applying && step.index > 0 {
 		return "The items before it were changed."
@@ -230,13 +213,10 @@ func (step thumbnailStep) outcome() string {
 	return "Nothing was changed."
 }
 
-// prefix は誤りの文言の先頭に添える項目の位置である。
 func (step thumbnailStep) prefix() string {
 	return "Item " + strconv.Itoa(step.index) + ": "
 }
 
-// checkThumbnailTarget は items の index 番目を検証の段階で引き当て、位置と読む元の所在を
-// 確かめる。誤りなら応答を書いて ok = false を返す。
 func (e *externalServer) checkThumbnailTarget(
 	w http.ResponseWriter, r *http.Request, index int, ref domain.VideoRef, positionMs *int64,
 ) (thumbnailTarget, bool) {
@@ -257,15 +237,13 @@ func (e *externalServer) checkThumbnailTarget(
 	return target, true
 }
 
-// thumbnailFile は代表サムネイルの読む元である。location は辿る前の所在、path は辿った先。
+// location is the unresolved path; path is its symlink-resolved target.
 type thumbnailFile struct {
 	location string
 	path     string
 }
 
-// thumbnailSource は動画を読み直し、位置を確かめ、読む元の所在を決める。誤りなら応答を
-// 書いて ok = false を返す。順序は画面の経路と同じで、位置は所在を開く前に確かめる
-// （解析前や尺の外の指定で file_unavailable を返さない）。
+// Validate position before opening the source so unknown/out-of-range duration errors are not masked as file_unavailable.
 func (e *externalServer) thumbnailSource(
 	w http.ResponseWriter, r *http.Request, step thumbnailStep, target thumbnailTarget,
 ) (domain.Video, thumbnailFile, bool) {
@@ -284,7 +262,7 @@ func (e *externalServer) thumbnailSource(
 			return domain.Video{}, thumbnailFile{}, false
 		}
 	}
-	// 読む元は配信と同じ規則で決め、symlink を辿った先のパスを渡す（画面の経路と同じ）。
+	// Use the same source rules as streaming and pass the resolved path.
 	location, path, ok := e.s.resolveMediaFile(r, video)
 	if !ok {
 		e.fileUnavailableAt(w, step)
@@ -293,14 +271,11 @@ func (e *externalServer) thumbnailSource(
 	return video, thumbnailFile{location: location, path: path}, true
 }
 
-// fileUnavailableAt は items の index 番目の読む元を開けないときの 404 を返す。
 func (e *externalServer) fileUnavailableAt(w http.ResponseWriter, step thumbnailStep) {
 	e.writeItemError(w, http.StatusNotFound, extgen.ErrorCodeNotFound, extgen.FileUnavailable, step.index, nil,
 		step.prefix()+"Cannot open this video's file. "+step.outcome())
 }
 
-// writeThumbnailError は items の index 番目の位置の設定の失敗を応答にする。尺の外の limit
-// には video の尺を載せる。
 func (e *externalServer) writeThumbnailError(w http.ResponseWriter, step thumbnailStep, video domain.Video, err error) {
 	prefix, outcome := step.prefix(), " "+step.outcome()
 	switch {
@@ -319,13 +294,13 @@ func (e *externalServer) writeThumbnailError(w http.ResponseWriter, step thumbna
 		e.writeItemError(w, http.StatusBadRequest, extgen.ErrorCodeInvalidRequest,
 			extgen.ThumbnailPositionOutOfRange, step.index, limit, message+outcome)
 	case errors.Is(err, domain.ErrThumbnailFrameUnavailable):
-		// 生成の失敗の理由（ffmpeg の出力など）は記録にだけ残す。
+		// Log generation details such as ffmpeg output without exposing them.
 		e.s.logger.Warn("cannot extract a frame for the thumbnail",
 			slog.Int64("video", video.ID), slog.Int("index", step.index), slog.Any("error", err))
 		e.writeItemError(w, http.StatusConflict, extgen.ErrorCodeConflict, extgen.ThumbnailFrameUnavailable, step.index, nil,
 			prefix+"Cannot make a thumbnail from this position."+outcome)
 	case errors.Is(err, domain.ErrMediaFileUnavailable):
-		// 所在を決めたあとに、走査がそれを別の内容へ付け替えたか消した。
+		// The scan removed or reassigned this location after resolution.
 		e.fileUnavailableAt(w, step)
 	case errors.Is(err, domain.ErrNotFound):
 		e.videoNotFoundAt(w, step.index, step.outcome())
@@ -334,8 +309,6 @@ func (e *externalServer) writeThumbnailError(w http.ResponseWriter, step thumbna
 	}
 }
 
-// internalErrorAt は items の index 番目で起きた想定外の失敗を、index とそれまでに何を
-// 反映したかを添えた 500 にする。
 func (e *externalServer) internalErrorAt(w http.ResponseWriter, step thumbnailStep, message string, err error) {
 	e.s.logger.Error(message, slog.Int("index", step.index), slog.Any("error", err))
 	index := step.index
@@ -344,21 +317,17 @@ func (e *externalServer) internalErrorAt(w http.ResponseWriter, step thumbnailSt
 	})
 }
 
-// videoNotFoundAt は items の index 番目の動画を引けなかったときの 404 を返す。outcome は
-// それまでに何を反映したかの説明である。
 func (e *externalServer) videoNotFoundAt(w http.ResponseWriter, index int, outcome string) {
 	e.writeItemError(w, http.StatusNotFound, extgen.ErrorCodeNotFound, extgen.VideoNotFound, index, nil,
 		"Video "+strconv.Itoa(index)+" is not in the library. "+outcome)
 }
 
-// invalidItem は items の index 番目の形の誤りを 400 invalid_request にする。
 func (e *externalServer) invalidItem(w http.ResponseWriter, index int, message string) {
 	writeExternalError(w, e.s, http.StatusBadRequest, extgen.Error{
 		Code: extgen.ErrorCodeInvalidRequest, Index: &index, Message: message,
 	})
 }
 
-// writeItemError は reason と index（と上限）を添えた誤りを返す。
 func (e *externalServer) writeItemError(
 	w http.ResponseWriter, status int, code extgen.ErrorCode, reason extgen.ErrorReason,
 	index int, limit *int, message string,
@@ -368,7 +337,6 @@ func (e *externalServer) writeItemError(
 	})
 }
 
-// optionalString は空を nil にする。
 func optionalString(value string) *string {
 	if value == "" {
 		return nil

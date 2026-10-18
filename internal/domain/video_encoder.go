@@ -2,11 +2,9 @@ package domain
 
 import "errors"
 
-// ErrEncoderUnavailable は、使えない（確認中を含む）ハードウェアの方式を選ぼうとしたことを表す。
-// 保存値は変えない。
+// Unavailable or still-checking encoder choices leave saved settings unchanged.
 var ErrEncoderUnavailable = errors.New("video encoder is not available")
 
-// VideoEncoder はライブ変換が実際に使う映像エンコード方式である
 type VideoEncoder string
 
 const (
@@ -17,7 +15,7 @@ const (
 	VideoEncoderVideoToolbox VideoEncoder = "videotoolbox"
 )
 
-// HardwareVideoEncoders はハードウェアの方式を、auto が選ぶ順（一覧に載せる順でもある）に並べる。
+// HardwareVideoEncoders defines automatic selection and display order.
 var HardwareVideoEncoders = []VideoEncoder{
 	VideoEncoderNVENC,
 	VideoEncoderQSV,
@@ -25,7 +23,6 @@ var HardwareVideoEncoders = []VideoEncoder{
 	VideoEncoderVideoToolbox,
 }
 
-// EncoderChoice は所有者が選ぶ値で、VideoEncoder に auto を足したものである
 type EncoderChoice string
 
 const (
@@ -37,7 +34,6 @@ const (
 	EncoderChoiceAuto         EncoderChoice = "auto"
 )
 
-// Valid は c が知っている選択肢かを返す。
 func (c EncoderChoice) Valid() bool {
 	switch c {
 	case EncoderChoiceSoftware, EncoderChoiceAuto:
@@ -47,7 +43,6 @@ func (c EncoderChoice) Valid() bool {
 	return ok
 }
 
-// HardwareEncoder は c がハードウェアの方式のとき、その VideoEncoder を返す。
 func (c EncoderChoice) HardwareEncoder() (VideoEncoder, bool) {
 	for _, encoder := range HardwareVideoEncoders {
 		if EncoderChoice(encoder) == c {
@@ -57,8 +52,7 @@ func (c EncoderChoice) HardwareEncoder() (VideoEncoder, bool) {
 	return "", false
 }
 
-// ParseEncoderChoice は保存値を解釈する。行が無いときと知らない文字列は software と
-// して扱う（親 Issue #370 要件 3、Edge Case「保存値が未知の値」）。保存値は変えない。
+// ParseEncoderChoice treats missing/unknown values as software without rewriting storage.
 func ParseEncoderChoice(value string, found bool) EncoderChoice {
 	choice := EncoderChoice(value)
 	if !found || !choice.Valid() {
@@ -67,7 +61,6 @@ func ParseEncoderChoice(value string, found bool) EncoderChoice {
 	return choice
 }
 
-// EncoderState は起動時の確認の、1 つのハードウェアの方式の状態である。
 type EncoderState string
 
 const (
@@ -76,7 +69,6 @@ const (
 	EncoderUnavailable EncoderState = "unavailable"
 )
 
-// EncoderUnavailableReason は方式が使えない理由である。State が unavailable のときだけ付く。
 type EncoderUnavailableReason string
 
 const (
@@ -86,7 +78,6 @@ const (
 	EncoderReasonTimedOut       EncoderUnavailableReason = "timed_out"
 )
 
-// EncoderFallbackReason は、選んだハードウェアの方式を使えず software にしたときの理由である。
 type EncoderFallbackReason string
 
 const (
@@ -94,33 +85,24 @@ const (
 	EncoderFallbackChecking            EncoderFallbackReason = "checking"
 )
 
-// EncoderAvailability は 1 つのハードウェアの方式の確認結果である。software は載らない
-// （常に使える）。
+// Software is omitted because it is always available.
 type EncoderAvailability struct {
 	Encoder VideoEncoder
 	State   EncoderState
-	// Reason は State が EncoderUnavailable のときだけ付く。
-	Reason EncoderUnavailableReason
-	// Detail は確認が失敗したときの補足（FFmpeg の標準エラーの末尾など）で、ログ用である。
-	// API には出さない。
+	Reason  EncoderUnavailableReason
+	// Detail is diagnostic-only, potentially including an FFmpeg stderr tail, and is never exposed through the API.
 	Detail string
 }
 
-// TranscodeEncoding は今のライブ変換の方式の状態である。保存しない。
 type TranscodeEncoding struct {
-	// Choice は保存値の解釈である。
-	Choice EncoderChoice
-	// Effective は今のライブ変換の要求が使う方式である。
+	Choice    EncoderChoice
 	Effective VideoEncoder
-	// FallbackReason は選んだハードウェアの方式を使えず software にしたときだけ付く。
+	// FallbackReason is set only when a selected hardware encoder falls back to software.
 	FallbackReason EncoderFallbackReason
-	// Checking は起動時の確認が終わっていないか。
-	Checking bool
-	// Encoders は HardwareVideoEncoders の順の確認結果である。
-	Encoders []EncoderAvailability
+	Checking       bool
+	Encoders       []EncoderAvailability
 }
 
-// NewTranscodeEncoding は選択と確認結果から今の状態を組み立てる。
 func NewTranscodeEncoding(choice EncoderChoice, availability []EncoderAvailability) TranscodeEncoding {
 	effective, reason := ResolveVideoEncoder(choice, availability)
 	checking := false
@@ -138,15 +120,7 @@ func NewTranscodeEncoding(choice EncoderChoice, availability []EncoderAvailabili
 	}
 }
 
-// ResolveVideoEncoder は選択と確認結果から実際に使う方式を決める
-//
-//   - software は software。
-//   - auto は使えるものを HardwareVideoEncoders の順で最初の 1 つ。無ければ software で、
-//     fallback ではないので理由は付けない（要件 7）。
-//   - ハードウェアの方式は使えればそれ。使えなければ software で selected_unavailable、
-//     確認中なら software で checking。
-//
-// 知らない選択は software として扱う。
+// ResolveVideoEncoder selects the first available automatic candidate without a fallback reason; explicit unavailable/checking hardware falls back to software with a reason, and unknown choices use software.
 func ResolveVideoEncoder(choice EncoderChoice, availability []EncoderAvailability) (VideoEncoder, EncoderFallbackReason) {
 	if choice == EncoderChoiceAuto {
 		for _, encoder := range HardwareVideoEncoders {
@@ -170,7 +144,6 @@ func ResolveVideoEncoder(choice EncoderChoice, availability []EncoderAvailabilit
 	}
 }
 
-// stateOf は encoder の状態を返す。一覧に無い方式は使えないものとする。
 func stateOf(encoder VideoEncoder, availability []EncoderAvailability) EncoderState {
 	for _, a := range availability {
 		if a.Encoder == encoder {
@@ -180,8 +153,6 @@ func stateOf(encoder VideoEncoder, availability []EncoderAvailability) EncoderSt
 	return EncoderUnavailable
 }
 
-// HardwareEncoderCandidates は OS（runtime.GOOS の値）ごとの確認対象を
-// HardwareVideoEncoders の順で返す。
 func HardwareEncoderCandidates(goos string) []VideoEncoder {
 	switch goos {
 	case "linux":
@@ -195,8 +166,7 @@ func HardwareEncoderCandidates(goos string) []VideoEncoder {
 	}
 }
 
-// InitialEncoderAvailability は確認を始める前の一覧を HardwareVideoEncoders の順で返す。
-// 確認対象は checking、対象外の方式は unavailable／unsupported_os である。
+// InitialEncoderAvailability marks supported candidates checking and others unavailable/unsupported_os.
 func InitialEncoderAvailability(goos string) []EncoderAvailability {
 	candidates := HardwareEncoderCandidates(goos)
 	list := make([]EncoderAvailability, 0, len(HardwareVideoEncoders))

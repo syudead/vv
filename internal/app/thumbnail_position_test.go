@@ -5,17 +5,13 @@ import (
 	"errors"
 	"slices"
 	"testing"
-	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 代表サムネイルの位置の指定。
-
 func int64Ptr(value int64) *int64 { return &value }
 
-// 指定では ThumbnailAt、解除では自動の位置の Thumbnail で画像を作り、公開してから位置を
-// 記録する。
+// Publish the selected or automatic frame before recording its position.
 func TestSetThumbnailPositionPublishesThenRecords(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -55,7 +51,6 @@ func TestSetThumbnailPositionPublishesThenRecords(t *testing.T) {
 	}
 }
 
-// 生成に失敗したら記録せず ErrThumbnailFrameUnavailable を返す。
 func TestSetThumbnailPositionGenerationFailure(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -81,7 +76,6 @@ func TestSetThumbnailPositionGenerationFailure(t *testing.T) {
 	}
 }
 
-// 解析前は ErrDurationUnknown、尺以上は ErrThumbnailPositionOutOfRange で、生成も記録もしない。
 func TestSetThumbnailPositionRejectsBeforeGenerating(t *testing.T) {
 	pending := probedVideo(1, "a")
 	pending.ProbeState = domain.ProbeStatePending
@@ -113,44 +107,28 @@ func TestSetThumbnailPositionRejectsBeforeGenerating(t *testing.T) {
 	}
 }
 
-// 位置の指定は生成の錠の中で行う。生成の途中で始めた同じ内容の削除は、記録を待ってから
-// 参照を確かめる。
+// Generation and recording must both exclude other thumbnail writes and deletion.
 func TestSetThumbnailPositionHoldsGenerationLock(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
-	hold := newHoldGeneration("thumbnail-at")
-	generator := &fakeGenerator{gate: hold.gate, recordPublish: true}
-	store.order = generator
+	generator := &fakeGenerator{}
 	ingest, _ := newTestIngest(store, generator)
-
-	done := make(chan error, 1)
-	go func() {
-		_, err := ingest.SetThumbnailPosition(context.Background(), video.ID, video.Path, video.Path, int64Ptr(5_000))
-		done <- err
-	}()
-	<-hold.started["thumbnail-at"]
-	store.mu.Lock()
-	delete(store.referenced, "a")
-	store.mu.Unlock()
-	ingest.ReleaseArtifacts(domain.ContentUnreferenced{ContentKeys: []string{"a"}})
-	time.Sleep(50 * time.Millisecond)
-	if _, removed := generator.snapshot(); len(removed) != 0 {
-		t.Fatalf("記録を待たずに消した: %v", removed)
+	var phases []string
+	check := func(phase string) {
+		assertThumbnailLocksHeld(t, ingest.artifacts, "a")
+		phases = append(phases, phase)
 	}
-
-	close(hold.release["thumbnail-at"])
-	if err := waitJob(t, done); err != nil {
+	generator.gate = check
+	ingest.store = &thumbnailLockStore{IngestStore: store, check: check}
+	if _, err := ingest.SetThumbnailPosition(context.Background(), video.ID, video.Path, video.Path, int64Ptr(5_000)); err != nil {
 		t.Fatal(err)
 	}
-	ingest.Wait()
-	calls, _ := generator.snapshot()
-	if !slices.Equal(calls, []string{"thumbnail-at", "publish-thumbnail", "set-position"}) {
-		t.Fatalf("呼び出し = %v", calls)
+	if want := []string{"thumbnail-at", "record-position"}; !slices.Equal(phases, want) {
+		t.Fatalf("phases = %v, want %v", phases, want)
 	}
 }
 
-// job は位置のある動画ではその位置で ThumbnailAt を、無い動画では Thumbnail を呼ぶ。指定の
-// 位置では先頭のコマの代用をしないので、代用なしとして記録する。
+// Selected positions never fall back to the first frame.
 func TestIngestThumbnailUsesRecordedPosition(t *testing.T) {
 	withPosition := probedVideo(1, "a")
 	withPosition.ThumbnailPositionMs = int64Ptr(7_000)
@@ -186,8 +164,8 @@ func TestIngestThumbnailUsesRecordedPosition(t *testing.T) {
 	}
 }
 
-// 指定の位置で取れなければ job は失敗を返し（再試行と failed の記録は待ち行列が持つ）、
-// 位置の行は消さない。
+// Failed selected-frame extraction leaves the position override intact; the queue owns retries and
+// failure state.
 func TestIngestThumbnailAtPositionFailureKeepsPosition(t *testing.T) {
 	video := probedVideo(1, "a")
 	video.ThumbnailPositionMs = int64Ptr(7_000)
@@ -209,57 +187,39 @@ func TestIngestThumbnailAtPositionFailureKeepsPosition(t *testing.T) {
 	}
 }
 
-// job が錠の外で動画を読んだあと、錠を待つ間に SetThumbnailPosition が位置と done を記録
-// したら、job は錠の中で読み直して生成を飛ばす。記録された位置の画像が残る。
+// The initial read sees pending; the read under the lock sees the user's completed
+// selection. The job must not generate over that newer thumbnail.
 func TestIngestThumbnailRereadsInsideLock(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
-	hold := newHoldGeneration("thumbnail-at")
-	generator := &fakeGenerator{gate: hold.gate}
+	generator := &fakeGenerator{}
 	ingest, _ := newTestIngest(store, generator)
-
-	picked := make(chan error, 1)
-	go func() {
-		_, err := ingest.SetThumbnailPosition(context.Background(), video.ID, video.Path, video.Path, int64Ptr(9_000))
-		picked <- err
-	}()
-	<-hold.started["thumbnail-at"]
-
-	job := runJob(ingest, domain.JobThumbnail, video)
-	// job が錠の外で動画を読み（pending のまま）、錠を待つところまで進める。
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		store.mu.Lock()
-		reads := store.reads
-		store.mu.Unlock()
-		calls, _ := generator.snapshot()
-		if reads >= 2 && slices.Contains(calls, "check") {
-			break
+	store.afterRead = func(reads int) {
+		if reads == 1 {
+			current := video
+			current.ThumbnailPositionMs = int64Ptr(9_000)
+			current.ThumbnailState = domain.ThumbnailStateDone
+			store.videos[video.ID] = current
+		} else {
+			assertThumbnailLocksHeld(t, ingest.artifacts, "a")
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("job が錠の前まで進まない")
-		}
-		time.Sleep(5 * time.Millisecond)
 	}
-
-	close(hold.release["thumbnail-at"])
-	if err := waitJob(t, picked); err != nil {
+	if err := ingest.Thumbnail(context.Background(), jobFor(domain.JobThumbnail, video)); err != nil {
 		t.Fatal(err)
 	}
-	if err := waitJob(t, job); err != nil {
-		t.Fatal(err)
+	if store.reads != 2 {
+		t.Fatalf("video reads = %d, want 2", store.reads)
 	}
-	calls, _ := generator.snapshot()
-	if slices.Contains(calls, "thumbnail") || !slices.Equal(generator.positions, []int64{9_000}) {
-		t.Fatalf("job が画像を作り直した: 呼び出し %v, 位置 %v", calls, generator.positions)
+	if calls, _ := generator.snapshot(); !slices.Equal(calls, []string{"check"}) {
+		t.Fatalf("generation after completed thumbnail: %v", calls)
 	}
 	if len(store.thumbnailStates) != 0 {
-		t.Fatalf("job が状態を書いた: %v", store.thumbnailStates)
+		t.Fatalf("job recorded state: %v", store.thumbnailStates)
 	}
 }
 
-// 公開のあとで記録に失敗したら（取引の失敗・要求の取り消し）、前の画像へ戻し、記録の位置と
-// 版に画像を揃える。記録できたときは写しを捨てる。
+// Restore the previous image when persistence fails after publication so file, position and
+// revision stay consistent.
 func TestSetThumbnailPositionRestoresPreviousImageWhenRecordingFails(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
@@ -285,10 +245,9 @@ func TestSetThumbnailPositionRestoresPreviousImageWhenRecordingFails(t *testing.
 	}
 }
 
-// 所在を決めたあとに走査がそれを別の内容へ付け替えたら、別の動画のコマをこの内容の画像として
-// 公開・記録せずに ErrMediaFileUnavailable を返す。生成の直前に付け替わっていれば生成しない。
-// 生成の間に付け替わっていれば、生成した画像を公開しない（並ぶ要求にも見せない）。公開と記録の
-// 間に付け替わっていれば、記録せずに前の画像へ戻す。
+// Reject location reassignment before generation, before publication, or before persistence; never
+// expose another video's frame. If reassigned after publication, restore the previous image and
+// return ErrMediaFileUnavailable.
 func TestSetThumbnailPositionRevalidatesSource(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -332,12 +291,12 @@ func TestSetThumbnailPositionRevalidatesSource(t *testing.T) {
 	}
 }
 
-// 生成の錠を待つ間に動画が消えていたら、所在の確かめ直しは ErrNotFound を返し、生成しない。
+// Deletion while waiting for the generation lock returns ErrNotFound before generation.
 func TestSetThumbnailPositionVideoGoneBeforeGenerating(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
 	store.staleSourceAt = 1
-	// 錠の外の最初の読み出しのあとに動画を消す。
+
 	store.afterRead = func(reads int) {
 		if reads == 1 {
 			delete(store.videos, video.ID)

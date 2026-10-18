@@ -8,8 +8,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// タグの種類による一覧の絞り込み。
-
 type tagKindListing struct {
 	db               *DB
 	genre, work      domain.TagKind
@@ -19,9 +17,6 @@ type tagKindListing struct {
 	workVideo, plain int64
 }
 
-// tagKindListingFixture は、ジャンルの種類のタグ Anime をフォルダ名から（folder）、ジャンルの
-// Action を手で（manual・both）、作品の種類のタグを手で（workVideo）、種類なしの
-// タグを手で（plain）付けた動画を作る。both には種類なしのタグも付ける。
 func tagKindListingFixture(t *testing.T) tagKindListing {
 	t.Helper()
 	db := migratedDB(t)
@@ -62,8 +57,6 @@ func sortedIDs(ids ...int64) []int64 {
 	return ids
 }
 
-// 動画は、その種類のタグが手で付いていてもフォルダ名から付いていても当たり、別の種類か種類なしの
-// タグだけの動画は当たらない。tag と AND で組み合わさり、無い種類は空の一覧になる。total も数える。
 func TestListVideosFiltersByTagKind(t *testing.T) {
 	f := tagKindListingFixture(t)
 	cases := []struct {
@@ -104,7 +97,6 @@ func TestListVideosFiltersByTagKind(t *testing.T) {
 	}
 }
 
-// 種類を消すとそのタグは種類なしになり、消した種類の id では何にも当たらない。
 func TestListVideosByDeletedTagKindIsEmpty(t *testing.T) {
 	f := tagKindListingFixture(t)
 	if err := f.db.Tags().DeleteTagKind(context.Background(), f.work.ID); err != nil {

@@ -14,10 +14,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 外部連携 API の表示名とサムネイルの位置の一括操作
-// を、本物の認証・保存層と
-// Bearer の境界で確かめる。画像の生成だけを fakeThumbnailPicker が代わりにする。
-
 type externalOverridesFixture struct {
 	*guestFixture
 	secret string
@@ -63,8 +59,7 @@ func (f externalOverridesFixture) screenVideo(t *testing.T, name string) gen.Vid
 	return decode[gen.Video](t, f.env.get(f.videoPath(name, ""), f.owner))
 }
 
-// wantExternalError は外部連携 API の誤りの応答に期待する値である。reason が空・index が
-// -1・limit が 0 なら、その項目が無いことを期待する。
+// Empty reason, index -1, and limit zero mean those fields must be absent.
 type wantExternalError struct {
 	status int
 	code   extgen.ErrorCode
@@ -107,9 +102,6 @@ func assertExternalError(t *testing.T, label string, rec *httptest.ResponseRecor
 	}
 }
 
-// 受け入れ条件 8: トークン付きの POST /api/v1/video-display-names が 200 を返し、画面の
-// GET /api/videos/{id} の title と、lookup の title・displayName・fileTitle に出る。null と
-// 空白だけの名前で戻る。
 func TestExternalVideoDisplayNamesApplyAndClear(t *testing.T) {
 	f := newExternalOverridesFixture(t)
 	aPath := filepath.Join(f.mediaDir, "pub", "a.mp4")
@@ -165,7 +157,6 @@ func TestExternalVideoDisplayNamesApplyAndClear(t *testing.T) {
 	}
 }
 
-// 引けない動画・規則に合わない名前・形の誤りは index 付きの誤りで、何も反映しない。
 func TestExternalVideoDisplayNamesRejects(t *testing.T) {
 	f := newExternalOverridesFixture(t)
 	valid := map[string]any{"video": map[string]any{"id": f.ids["a"]}, "displayName": "変わらない"}
@@ -224,7 +215,6 @@ func thumbnailItemBody(ref map[string]any, positionMs any) map[string]any {
 	return map[string]any{"video": ref, "positionMs": positionMs}
 }
 
-// POST /api/v1/video-thumbnails が 200 を返し、画面の thumbnailUrl が変わる。null で戻る。
 func TestExternalVideoThumbnailsApplyAndClear(t *testing.T) {
 	f := newExternalOverridesFixture(t)
 	beforeA, beforeB := thumbnailURLOf(f.screenVideo(t, "a")), thumbnailURLOf(f.screenVideo(t, "b"))
@@ -270,8 +260,6 @@ func TestExternalVideoThumbnailsApplyAndClear(t *testing.T) {
 	}
 }
 
-// 検証の誤りは何も生成せず index で返し、途中の生成の失敗は 409 と index で、それより前の
-// 項目だけが反映される。
 func TestExternalVideoThumbnailsRejects(t *testing.T) {
 	f := newExternalOverridesFixture(t)
 	valid := thumbnailItemBody(map[string]any{"id": f.ids["a"]}, 1_000)
@@ -293,7 +281,7 @@ func TestExternalVideoThumbnailsRejects(t *testing.T) {
 			wantExternalError{http.StatusBadRequest, extgen.ErrorCodeInvalidRequest, extgen.ThumbnailPositionOutOfRange, 1, 60_000}},
 		{"負の位置", map[string]any{"items": []any{thumbnailItemBody(map[string]any{"id": f.ids["b"]}, -1)}},
 			wantExternalError{http.StatusBadRequest, extgen.ErrorCodeInvalidRequest, extgen.ThumbnailPositionOutOfRange, 0, 60_000}},
-		// d は解析に失敗していて尺が無い。
+		// d has failed probing and no duration.
 		{"解析前", map[string]any{"items": []any{valid, thumbnailItemBody(map[string]any{"id": f.ids["d"]}, 1_000)}},
 			wantExternalError{http.StatusConflict, extgen.ErrorCodeConflict, extgen.DurationUnknown, 1, 0}},
 		{"引けない動画", map[string]any{"items": []any{valid, thumbnailItemBody(map[string]any{"path": "/nowhere.mp4"}, 1)}},
@@ -309,7 +297,6 @@ func TestExternalVideoThumbnailsRejects(t *testing.T) {
 		assertExternalError(t, tc.label, f.post(t, "/api/v1/video-thumbnails", tc.body), tc.want)
 	}
 
-	// どの所在も開けない。
 	if err := os.Remove(filepath.Join(f.mediaDir, "pub", "b.mp4")); err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +310,7 @@ func TestExternalVideoThumbnailsRejects(t *testing.T) {
 		t.Errorf("検証の誤りの後に a の位置が変わった: %v", *looked.ThumbnailPositionMs)
 	}
 
-	// 途中（index 1 の c）で生成に失敗すると、a だけが反映され、c と e は反映されない。
+	// Failure at index 1 leaves only a applied.
 	f.thumbnails.failVideo(f.ids["c"])
 	rec := f.post(t, "/api/v1/video-thumbnails", map[string]any{"items": []any{
 		valid,
@@ -353,9 +340,6 @@ func TestExternalVideoThumbnailsRejects(t *testing.T) {
 	}))
 }
 
-// 前の項目を生成している間に後の項目の所在が開けなくなったら、検証のときに決めた所在を
-// 使わずに生成の直前に決め直し、file_unavailable と index で止まる。文言はそれより前の
-// 項目が反映済みであることを伝える。
 func TestExternalVideoThumbnailsResolveEachSourceBeforeGenerating(t *testing.T) {
 	f := newExternalOverridesFixture(t)
 	f.thumbnails.setAfterSet(func(videoID int64) {
@@ -391,9 +375,6 @@ func TestExternalVideoThumbnailsResolveEachSourceBeforeGenerating(t *testing.T) 
 	}
 }
 
-// 所在を決めたあとに走査がそれを別の内容へ付け替えたら（internal/app が生成の錠の中で
-// domain.ErrMediaFileUnavailable を返す）、file_unavailable と index で止まり、その項目は
-// 反映しない。
 func TestExternalVideoThumbnailsStopAtReassignedSource(t *testing.T) {
 	f := newExternalOverridesFixture(t)
 	f.thumbnails.setStale(true)

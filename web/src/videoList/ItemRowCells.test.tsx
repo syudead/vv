@@ -13,8 +13,7 @@ import {
 
 afterEach(() => cleanup());
 
-// 順に並ぶ項目の行の共通の値。
-// 画面の行はプレイリストとグループのページのテストが確かめ、ここでは項目の種類ごとの値を見る。
+// Page tests cover row rendering; these tests cover values by item type.
 
 const folder: OrderedItem = {
   kind: "smartFolder",
@@ -103,7 +102,6 @@ function renderCell(item: OrderedItem) {
   );
 }
 
-// 順に並ぶ行（プレイリスト、グループのリスト表示）のバージョンの印
 //
 describe("ItemThumbnailCell のバージョンの印", () => {
   it("2 本以上の動画は長さの面の先頭に印を出す", () => {

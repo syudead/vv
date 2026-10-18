@@ -1,14 +1,12 @@
 import { act, fireEvent, screen } from "@testing-library/react";
 import { vi } from "vitest";
 
-// ドラッグの層（videoList/cardDrag.tsx）のページテストの道具である。jsdom は配置を持たないので、
-// 格子のカード（ドラッグの包み）を横一列に 200px ずつ置き、ポインタの出来事で持ち上げて落とす。
+// Supply 200px card positions because jsdom has no layout.
 
 const cardWidth = 190;
 const cardHeight = 150;
 const step = 200;
 
-/** layoutCards は格子のカード（`[data-drag-card]`）を左から 200px ずつ、同じ高さに置く。 */
 export function layoutCards() {
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (
     this: Element,
@@ -31,49 +29,39 @@ export function layoutCards() {
   });
 }
 
-/** pointOn は左から `index` 番目（0 始まり）のカードの、横の位置 `ratio` の点である。 */
 function pointOn(index: number, ratio: number) {
   return { clientX: index * step + cardWidth * ratio, clientY: cardHeight / 2 };
 }
 
-/** mouse はマウスのポインタの出来事の共通の値である。 */
 export const mouse = { pointerType: "mouse", isPrimary: true, button: 0, pointerId: 1 };
 
-/** lift は名前 `name` のリンク（左から `index` 番目のカード）を押し、持ち上がるまで動かす。 */
 export function lift(name: string | RegExp, index: number) {
   const link = screen.getByRole("link", { name });
   fireEvent.pointerDown(link, { ...mouse, ...pointOn(index, 0.5) });
   fireEvent.pointerMove(document, { ...mouse, ...pointOn(index, 0.4) });
 }
 
-/** moveTo はポインタをカード `index` の位置 `ratio` へ動かす。 */
 export function moveTo(index: number, ratio = 0.5) {
   fireEvent.pointerMove(document, { ...mouse, ...pointOn(index, ratio) });
 }
 
-/** release はカード `index` の位置 `ratio` で離す。 */
 export function release(index: number, ratio = 0.5) {
   fireEvent.pointerUp(document, { ...mouse, ...pointOn(index, ratio) });
 }
 
-/** dropOn は名前 `name` のカード（左から `from` 番目）を、左から `to` 番目のカードの真ん中に落とす。 */
 export function dropOn(name: string | RegExp, from: number, to: number) {
   lift(name, from);
   moveTo(to);
   release(to);
 }
 
-/**
- * afterDrop は落とした後、dnd-kit が document で click を止める間（50ms）を待つ。落とした先に開いた
- * メニューの項目は、この後に押す（押すのが早いとクリックが届かず、何も送らないまま終わる）。
- */
+/** Wait 50ms for dnd-kit's document click suppression before selecting the drop menu. */
 export async function afterDrop() {
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 60));
   });
 }
 
-/** openedMenu は落とした先に開いたメニューを、afterDrop を待ってから返す。 */
 export async function openedMenu(): Promise<HTMLElement> {
   await afterDrop();
   return screen.findByRole("menu");

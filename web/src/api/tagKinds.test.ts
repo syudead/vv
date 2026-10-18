@@ -41,7 +41,6 @@ function urlOf(input: Parameters<typeof globalThis.fetch>[0]): string {
   return input instanceof URL ? input.pathname : new URL(input.url).pathname;
 }
 
-/** routes は経路ごとに応答を返す偽の fetch を作る。呼ばれた経路は calls に残る。 */
 function routes(handlers: Record<string, () => Response>) {
   const calls: string[] = [];
   const fetch = vi.fn<typeof globalThis.fetch>((input, init) => {
@@ -136,7 +135,6 @@ describe("共有の種類の一覧の保持", () => {
       "GET /api/tag-kinds": () => jsonResponse({ items }),
       "POST /api/tag-kinds": () => jsonResponse(kind(5, "Era"), 201),
     });
-    // 最初の取得を、作る操作の後まで届かせない。
     const original = globalThis.fetch;
     let first = true;
     vi.stubGlobal(
@@ -195,7 +193,7 @@ describe("共有の種類の一覧の保持", () => {
       "PATCH /api/tag-kinds/5": () => jsonResponse(kind(5, "Period")),
     });
     const unsubscribe = subscribeTagKinds(() => undefined);
-    // GET /api/tag-kinds と GET /api/tags は経路が無く 500 で失敗する。取り直しは待たない。
+    // Missing GET routes fail with 500; mutation completion does not await refresh.
     await expect(createTagKind("Era")).resolves.toMatchObject({ name: "Era" });
     await expect(renameTagKind(5, "Period")).resolves.toMatchObject({ name: "Period" });
     await flush();

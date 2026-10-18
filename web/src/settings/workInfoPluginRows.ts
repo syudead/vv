@@ -5,21 +5,17 @@ import type {
 } from "../api/workInfoPlugins";
 import { t, type UiText } from "../i18n";
 
-// 設定画面の「Work-info plugins」節が行とダイアログに出す値の決まりである
 //
 
-/** MAX_PLUGIN_BYTES は送る前に断るファイルの大きさの上限（16 MiB）である。 */
 export const MAX_PLUGIN_BYTES = 16 * 1024 * 1024;
 
-/** MAX_SETTING_LENGTH は設定の値 1 つの上限である。サーバーと同じく符号位置で数える。 */
+/** Match server code-point limits. */
 export const MAX_SETTING_LENGTH = 2000;
 
-/** pluginName は行と文言に出す名前である。マニフェストを読めなかったプラグインはファイル名。 */
 export function pluginName(plugin: Pick<WorkInfoPlugin, "name" | "fileName">): string {
   return plugin.name ?? plugin.fileName;
 }
 
-/** operationTexts はプラグインの操作を宣言の順の文言にする。 */
 export function operationTexts(plugin: Pick<WorkInfoPlugin, "operations">): UiText[] {
   return plugin.operations.map(
     (operation) => t.settings.workInfoPlugins.operations[operation],
@@ -34,19 +30,13 @@ function summaryOf(setting: WorkInfoPluginSetting): UiText {
   return text.settingNotSet(setting.label);
 }
 
-/**
- * settingsSummary は事実の行の設定の要約である。設定を宣言しないプラグインには無い。既定値で
- * 動く設定は `{label} default`、選択肢の外の保存値は `{label} not set` と数える。
- */
+/** Count defaults as default and out-of-options stored values as not set. */
 export function settingsSummary(plugin: Pick<WorkInfoPlugin, "settings">): UiText | null {
   if (plugin.settings.length === 0) return null;
   return t.settings.workInfoPlugins.settingsSummary(plugin.settings.map(summaryOf));
 }
 
-/**
- * missingRequired は実効値の無い `required` の設定のラベルを宣言の順に返す。選択肢の外の保存値は
- * 使われないので値の無いものと数え、既定値のある設定は実行を止めないので挙げない。
- */
+/** Out-of-options values are unavailable; defaults satisfy required settings. */
 export function missingRequired(plugin: Pick<WorkInfoPlugin, "settings">): string[] {
   return plugin.settings
     .filter(
@@ -58,7 +48,6 @@ export function missingRequired(plugin: Pick<WorkInfoPlugin, "settings">): strin
     .map((setting) => setting.label);
 }
 
-/** staleSettings は保存値が今の版の選択肢に無い設定のラベルを宣言の順に返す（`Choose again`）。 */
 export function staleSettings(plugin: Pick<WorkInfoPlugin, "settings">): string[] {
   return plugin.settings
     .filter((setting) => setting.staleValue !== undefined)
@@ -66,16 +55,15 @@ export function staleSettings(plugin: Pick<WorkInfoPlugin, "settings">): string[
 }
 
 /**
- * SettingDraft は設定のダイアログの欄 1 つである。秘密の欄の value は今入力した値だけで、
- * 保存済みの値は持たない。forgotten は保存済みの秘密を「Forget」で消す印である。選択肢の欄では
- * 空が先頭の項目（既定値か Not set）で、選択肢の外の保存値は value にそのまま残る。
+ * Secret drafts contain only new input; forgotten marks explicit deletion. Empty selects
+ * default/Not set, while stale option values remain visible for correction.
  */
 export interface SettingDraft {
   value: string;
   forgotten: boolean;
 }
 
-/** draftsOf はダイアログを開いたときの欄である。秘密の欄は常に空で始まる。 */
+/** Secret drafts always start empty. */
 export function draftsOf(
   settings: readonly WorkInfoPluginSetting[],
 ): Record<string, SettingDraft> {
@@ -102,10 +90,7 @@ function changeOf(
   return draft.value;
 }
 
-/**
- * settingChanges は保存で送る値である。変わったキーだけを持ち、消す値は `null` にする。
- * 空の秘密の欄は保存済みの値を残す。
- */
+/** Send changed keys only; null clears a value, while an empty secret input preserves it. */
 export function settingChanges(
   settings: readonly WorkInfoPluginSetting[],
   drafts: Readonly<Record<string, SettingDraft>>,
@@ -118,16 +103,11 @@ export function settingChanges(
   return changes;
 }
 
-/** unixDate は API の Unix 秒を日時にする。 */
 export function unixDate(seconds: number): Date {
   return new Date(seconds * 1000);
 }
 
-/**
- * runFailureText は直近の実行の失敗の理由である。実行の失敗のコードごとに 049 の Error reasons の
- * 文を使う。実行の行は接続先の `{host}` を残さないので、`blocked_address` と `network_error` は
- * 接続先の無い形にする。
- */
+/** Run records do not retain hosts, so blocked-address and network errors use hostless wording. */
 export function runFailureText(failure: WorkInfoPluginRunFailure): UiText {
   const { code, reason } = t.errors;
   switch (failure) {

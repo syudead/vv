@@ -2,21 +2,14 @@ import { type FormEventHandler, type ReactNode, useId } from "react";
 
 import { FieldGroup } from "@/ui/shadcn/field";
 
-// 中央フォーム（骨格）。囲む領域の中央に 1 枚のカードを置き、題・説明・欄・主操作を
-// 縦に並べる。サインインや初期設定のように、その画面の目的が 1 つのフォームだけのときに
-// 使う。規則は web/registry/rules/patterns.md の Centered form。
+// For screens centered on one form; see web/registry/rules/patterns.md, Centered form.
 
 export interface CenteredFormProps {
-  /** フォームの題。h1 になる。 */
   title: ReactNode;
-  /** 題の下の説明。 */
   description?: ReactNode;
   onSubmit: FormEventHandler<HTMLFormElement>;
-  /** Field の並び。 */
   children: ReactNode;
-  /** 送信の Button（default、1 つ）。カードの幅いっぱいに伸びる。 */
   submit: ReactNode;
-  /** カードの下の補足（別の画面へのリンクなど）。 */
   footer?: ReactNode;
 }
 

@@ -13,8 +13,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// currentImport は直近の走査と、そこから決まる本数を返す。ここでの検査は問題を
-// 起こさないので、問題の数は 0 とする（問題を含む組み立ては importIssues）。
 func currentImport(t *testing.T, db *DB) (domain.Scan, domain.ImportProgress) {
 	t.Helper()
 	scan, err := db.Scans().CurrentScan(context.Background())
@@ -24,7 +22,6 @@ func currentImport(t *testing.T, db *DB) (domain.Scan, domain.ImportProgress) {
 	return scan, scan.Tally(0, 0).Progress(scan.SettledAt)
 }
 
-// scanVideoRows は scan_videos の行を scan_id ごとに数える。
 func scanVideoRows(t *testing.T, db *DB) map[int64]int {
 	t.Helper()
 	rows, err := db.sql.Query(`select scan_id, count(*) from scan_videos group by scan_id`)
@@ -47,7 +44,6 @@ func scanVideoRows(t *testing.T, db *DB) map[int64]int {
 	return out
 }
 
-// upsertForImport は動画を登録し、走査と同じく解析の仕事を積む。
 func upsertForImport(t *testing.T, db *DB, name string) int64 {
 	t.Helper()
 	ctx := context.Background()
@@ -61,8 +57,6 @@ func upsertForImport(t *testing.T, db *DB, name string) int64 {
 	return video.ID
 }
 
-// runOneJob は kind の仕事を1件取り出して成功で記録する。解析は結果を書き、同じ取引で
-// プレビューの仕事が積まれる。取り出せる仕事が無ければ false を返す。
 func runOneJob(t *testing.T, db *DB, kind domain.JobKind) bool {
 	t.Helper()
 	ctx := context.Background()
@@ -92,8 +86,7 @@ func finishScan(t *testing.T, db *DB, id int64) {
 	}
 }
 
-// 10本の新しいファイルを登録すると対象は10本になり、仕事を順に終えると済みの本数は
-// 減ることなく10本まで増える。解析のあとにプレビューが積まれるあいだも減らない。
+// Completed-video counts must never decrease while probe completion queues its preview.
 func TestImportTenNewFilesSettleWithoutGoingBack(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -142,7 +135,7 @@ func TestImportTenNewFilesSettleWithoutGoingBack(t *testing.T) {
 	}
 }
 
-// 解析の結果とプレビューの仕事は同じ取引で書かれるので、その間に済みに数えられない。
+// Probe results and preview enqueueing share a transaction, preventing transient completion.
 func TestImportProbeKeepsVideoUnsettledUntilPreview(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -191,7 +184,6 @@ func countJobsFor(t *testing.T, db *DB, kind domain.JobKind, videoID int64) int 
 	return count
 }
 
-// 変化の無い動画に仕事が積み直されると、その動画が対象に数えられる。
 func TestImportCountsUnchangedVideoWithRestoredJob(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -215,7 +207,6 @@ func TestImportCountsUnchangedVideoWithRestoredJob(t *testing.T) {
 	}
 }
 
-// 前回の未完了の動画は新しい走査へ持ち越され、前の走査の集合は消える。
 func TestImportCarriesUnfinishedVideosIntoNextScan(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -226,8 +217,7 @@ func TestImportCarriesUnfinishedVideosIntoNextScan(t *testing.T) {
 	upsertForImport(t, db, "a")
 	unfinished := upsertForImport(t, db, "b")
 	finishScan(t, db, first.ID)
-	// 1本だけ解析を終える（プレビューは残る）ので、残りの仕事を持つ動画は2本になる。
-	// どちらも持ち越されることを、片方のプレビューまで終えて確かめる。
+	// Leave a preview pending after one probe to verify both unfinished videos carry forward.
 	if !runOneJob(t, db, domain.JobProbe) || !runOneJob(t, db, domain.JobPreview) {
 		t.Fatal("仕事を進められない")
 	}
@@ -259,7 +249,6 @@ func TestImportCarriesUnfinishedVideosIntoNextScan(t *testing.T) {
 	}
 }
 
-// settleImport は走査を1つ閉じ、すべての仕事を終えて完了の時刻を入れる。
 func settleImport(t *testing.T, db *DB, names ...string) []int64 {
 	t.Helper()
 	ctx := context.Background()
@@ -282,14 +271,11 @@ func settleImport(t *testing.T, db *DB, names ...string) []int64 {
 	return ids
 }
 
-// 見つからないプレビューの積み直しと解析のやり直しで、その動画は直近の走査の対象に
-// 加わり、完了の時刻が消える。
 func TestImportRequeueAndRetryReopenCurrentImport(t *testing.T) {
 	t.Run("プレビューの積み直し", func(t *testing.T) {
 		ctx := context.Background()
 		db := migratedDB(t)
 		ids := settleImport(t, db, "a")
-		// 集合から外した状態から、積み直しで加わることを確かめる。
 		if _, err := db.sql.Exec(`delete from scan_videos`); err != nil {
 			t.Fatal(err)
 		}
@@ -327,7 +313,6 @@ func TestImportRequeueAndRetryReopenCurrentImport(t *testing.T) {
 	})
 }
 
-// 閉じた走査の残りの仕事がメディアフォルダの削除で着手できなくなると、完了の時刻が入る。
 func TestImportSettlesWhenMediaFolderRemovalLeavesNoClaimableJobs(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -339,7 +324,6 @@ func TestImportSettlesWhenMediaFolderRemovalLeavesNoClaimableJobs(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 動画は登録外になる所在（/elsewhere）も持つので、フォルダを外しても行は残る。
 	video, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/extra/a.mp4"), "a", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
@@ -367,7 +351,6 @@ func TestImportSettlesWhenMediaFolderRemovalLeavesNoClaimableJobs(t *testing.T) 
 	}
 }
 
-// 対象の動画の行が消えると、分母から除かれる。
 func TestImportDropsDeletedVideosFromTotal(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -389,7 +372,6 @@ func TestImportDropsDeletedVideosFromTotal(t *testing.T) {
 	}
 }
 
-// running の仕事を積み直して再起動しても、済みの本数は二重に数えない。
 func TestImportDoesNotDoubleCountRequeuedRunningJobs(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -420,8 +402,6 @@ func TestImportDoesNotDoubleCountRequeuedRunningJobs(t *testing.T) {
 	}
 }
 
-// 未完了の仕事がある状態から移行すると、その動画が直近の走査の対象に入り、完了の時刻は
-// null のままになる。前の走査の完了の時刻は、閉じた時刻になる。
 func TestScanImportMigrationCarriesUnfinishedJobs(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {
@@ -492,8 +472,7 @@ func TestScanImportMigrationCarriesUnfinishedJobs(t *testing.T) {
 	}
 }
 
-// 移行が登録外の所在の動画を対象に入れて完了の時刻を null にしても、起動時の積み直しが
-// 実行時の条件で決め直し、閉じた走査に完了の時刻が入る。戻す仕事が無くても決め直す。
+// Startup recomputes OS-specific completion even without running jobs to requeue.
 func TestRequeueRunningJobsSettlesImportLeftOpenByMigration(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

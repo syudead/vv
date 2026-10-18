@@ -18,10 +18,6 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// /mcp の MCP サーバーを、公式の SDK のクライアントと
-// 本物の保存先・Bearer の境界で確かめる。
-
-// bearerTransport は要求に Authorization: Bearer を付ける。
 type bearerTransport struct{ secret string }
 
 func (b bearerTransport) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -92,7 +88,6 @@ func (f mcpFixture) connect(t *testing.T) *mcp.ClientSession {
 	return session
 }
 
-// callTool はツールを呼び、structured content を out に読む。isError は結果の isError。
 func callTool(t *testing.T, session *mcp.ClientSession, name string, args any, out any) (isError bool) {
 	t.Helper()
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: args})
@@ -115,8 +110,6 @@ func callTool(t *testing.T, session *mcp.ClientSession, name string, args any, o
 	return result.IsError
 }
 
-// SDK のクライアントから接続すると 29 のツールが契約の注記つきで並び、update_video_tags の
-// 結果が REST の lookup に、update_video_display_names の結果が get_video に出る。
 func TestMCPToolsMatchExternalAPI(t *testing.T) {
 	scans := &fakeScans{}
 	f := newMCPFixture(t, Options{Scans: scans, Build: domain.BuildInfo{Version: "1.2.3"}})
@@ -189,7 +182,6 @@ func TestMCPToolsMatchExternalAPI(t *testing.T) {
 		t.Errorf("tools = %v", names)
 	}
 
-	// 名前で付けたタグが REST の lookup に出る。
 	var tagged extgen.VideoTagsResponse
 	args := map[string]any{"videos": []any{map[string]any{"path": f.pathA}}, "action": "add", "tags": []string{"from-mcp"}}
 	if callTool(t, session, "update_video_tags", args, &tagged) {
@@ -210,7 +202,6 @@ func TestMCPToolsMatchExternalAPI(t *testing.T) {
 		t.Errorf("lookup の tags = %+v", looked.Tags)
 	}
 
-	// 読み出しのツールは REST の本文と同じ形を返す。
 	var page extgen.ExternalVideoPage
 	if callTool(t, session, "list_videos", map[string]any{"limit": 1}, &page) ||
 		len(page.Items) != 1 || page.Items[0].Id != f.videoA || page.NextCursor != "" {
@@ -226,7 +217,6 @@ func TestMCPToolsMatchExternalAPI(t *testing.T) {
 			video.Title, video.FileTitle, video.DisplayName, video.ThumbnailPositionMs)
 	}
 
-	// 構造化された出力に updatedAt・fileCreatedAt が出る。
 	var rawVideo map[string]json.RawMessage
 	callTool(t, session, "get_video", map[string]any{"id": f.videoA}, &rawVideo)
 	for _, key := range []string{"updatedAt", "fileCreatedAt"} {
@@ -238,7 +228,6 @@ func TestMCPToolsMatchExternalAPI(t *testing.T) {
 		t.Errorf("get_video: updatedAt %v, addedAt %v, fileCreatedAt %v", video.UpdatedAt, video.AddedAt, video.FileCreatedAt)
 	}
 
-	// 表示名を付けると get_video と list_videos に出る。
 	var named extgen.VideoDisplayNamesResponse
 	if callTool(t, session, "update_video_display_names", map[string]any{"items": []any{
 		map[string]any{"video": map[string]any{"path": f.pathA}, "displayName": "From MCP"},
@@ -254,7 +243,6 @@ func TestMCPToolsMatchExternalAPI(t *testing.T) {
 	if callTool(t, session, "list_videos", nil, &page) || len(page.Items) != 1 || page.Items[0].Title != "From MCP" {
 		t.Errorf("表示名の後の list_videos = %+v", page)
 	}
-	// null で解除する。
 	named = extgen.VideoDisplayNamesResponse{}
 	if callTool(t, session, "update_video_display_names", map[string]any{"items": []any{
 		map[string]any{"video": map[string]any{"id": f.videoA}, "displayName": nil},
@@ -276,7 +264,6 @@ func TestMCPToolsMatchExternalAPI(t *testing.T) {
 	}
 }
 
-// 操作の誤りは isError: true と、外部連携 API の誤りと同じ本文で返る。
 func TestMCPToolErrorsUseExternalErrorBody(t *testing.T) {
 	f := newMCPFixture(t, Options{Scans: &fakeScans{}})
 	session := f.connect(t)
@@ -317,7 +304,6 @@ func TestMCPToolErrorsUseExternalErrorBody(t *testing.T) {
 		t.Errorf("不正なカーソル: %+v", body)
 	}
 
-	// サムネイルの位置は解析前の動画を 409 duration_unknown と index で断る。
 	body = extgen.Error{}
 	if !callTool(t, session, "update_video_thumbnails", map[string]any{"items": []any{
 		map[string]any{"video": map[string]any{"id": f.videoA}, "positionMs": 1000},
@@ -332,7 +318,7 @@ func TestMCPToolErrorsUseExternalErrorBody(t *testing.T) {
 	}
 }
 
-// mcpCall は tools/call の JSON-RPC の本文である。stateless なので initialize を要らない。
+// Stateless tools/call requests do not require initialize.
 const mcpListTagsCall = `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_tags","arguments":{}}}`
 
 func mcpRequest(header map[string]string) authRequest {
@@ -343,7 +329,6 @@ func mcpRequest(header map[string]string) authRequest {
 	return authRequest{method: http.MethodPost, target: "/mcp", body: mcpListTagsCall, header: h}
 }
 
-// トークンが無い・無効・失効済みなら、MCP の処理に入る前に境界が 401 を返す。
 func TestMCPRejectsMissingAndInvalidTokens(t *testing.T) {
 	f := newMCPFixture(t, Options{})
 
@@ -361,7 +346,6 @@ func TestMCPRejectsMissingAndInvalidTokens(t *testing.T) {
 	})
 	assertBearerUnauthenticated(t, "失効済み", f.env.serve(mcpRequest(bearer(created.Secret))))
 
-	// 有効なトークンなら JSON で答える。別の Origin でも通す。
 	ok := mcpRequest(map[string]string{"Authorization": "Bearer " + f.secret, "Origin": "https://elsewhere.example"})
 	rec := f.env.serve(ok)
 	if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") {
@@ -382,7 +366,6 @@ func TestMCPRejectsMissingAndInvalidTokens(t *testing.T) {
 	}
 }
 
-// 同じ PC のリバースプロキシ越し（localhost で受け、Host は公開名）でも断らない。
 func TestMCPAcceptsProxiedHost(t *testing.T) {
 	f := newMCPFixture(t, Options{})
 	req, err := http.NewRequest(http.MethodPost, f.url+"/mcp", strings.NewReader(mcpListTagsCall))
@@ -403,7 +386,6 @@ func TestMCPAcceptsProxiedHost(t *testing.T) {
 	}
 }
 
-// 画面での失効は、そのトークンで実行中のツールを打ち切る。
 func TestMCPRevokeAbortsInFlightTool(t *testing.T) {
 	tags := blockingTags{entered: make(chan struct{}), ended: make(chan error, 1)}
 	f := newMCPFixture(t, Options{Tags: tags})

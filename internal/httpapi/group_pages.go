@@ -9,11 +9,8 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// グループの画面の読み取り（GET /api/groups/{id} と GET /api/groups/{id}/items、
-// docs/design-docs/catalog-organization.md）。所有者とゲストが読め（accessRoutes）、ゲストには
-// 公開の動画だけから作ったグループを返す。
+// Group pages are guest-readable but aggregate only publicly visible videos (docs/design-docs/catalog-organization.md).
 
-// GetGroup はグループ 1 つと、その道筋と項目の最初のページを返す（GET /api/groups/{id}）。
 func (s *server) GetGroup(w http.ResponseWriter, r *http.Request, id gen.GroupId, params gen.GetGroupParams) {
 	if s.library == nil {
 		s.internalError(w, "Group queries are not configured.", nil)
@@ -45,7 +42,6 @@ func (s *server) GetGroup(w http.ResponseWriter, r *http.Request, id gen.GroupId
 	writeJSON(w, http.StatusOK, payload, s.logger)
 }
 
-// ListGroupItems はグループの項目の続きのページを返す（GET /api/groups/{id}/items）。
 func (s *server) ListGroupItems(w http.ResponseWriter, r *http.Request, id gen.GroupId, params gen.ListGroupItemsParams) {
 	if s.library == nil {
 		s.internalError(w, "Group queries are not configured.", nil)
@@ -82,7 +78,6 @@ func (s *server) ListGroupItems(w http.ResponseWriter, r *http.Request, id gen.G
 	writeJSON(w, http.StatusOK, payload, s.logger)
 }
 
-// groupReadOK はグループの読み取りの誤りを応答にし、続けてよいかを返す。
 func (s *server) groupReadOK(w http.ResponseWriter, err error) bool {
 	switch {
 	case err == nil:
@@ -97,9 +92,7 @@ func (s *server) groupReadOK(w http.ResponseWriter, err error) bool {
 	return false
 }
 
-// presentGroupPage はグループの値と項目を応答の形にする。項目の動画はライブラリの動画の項目と
-// 同じく再生位置・タグ・フォルダを載せ、子グループはライブラリのグループの項目と同じ形にする。
-// グループに見せる動画が無ければ false を返す。
+// presentGroupPage uses library item presentation and returns false when no videos are visible.
 func (s *server) presentGroupPage(ctx context.Context, audience domain.Audience, page domain.GroupPage) (gen.LibraryGroup, []gen.GroupItem, bool) {
 	var shown []domain.Video
 	tagged := append([]domain.Video{}, page.Group.Members...)

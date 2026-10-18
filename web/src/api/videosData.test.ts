@@ -4,7 +4,6 @@ import type { LibraryItem, Video } from "./client";
 import { videoItem } from "./libraryItems";
 import { type VideosData, videosDataReducer } from "./videosData";
 
-/** video は一覧の 1 件を作る。 */
 function video(id: number): Video {
   return {
     id,

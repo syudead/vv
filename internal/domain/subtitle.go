@@ -10,50 +10,31 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// SubtitleFileLimit は字幕ファイルの大きさの上限（4 MiB）である。これを超える
-// ファイルは字幕の候補にしない。
 const SubtitleFileLimit int64 = 4 << 20
 
-// ErrSubtitleUnreadable は、字幕ファイルの中身が読めないこと（空、復号できない、
-// SRT の cue が 1 つも読めない、WebVTT のヘッダーが無い）を表す。
+// ErrSubtitleUnreadable includes empty/undecodable files, SRT without cues, and WebVTT without its header.
 var ErrSubtitleUnreadable = errors.New("subtitle file is unreadable")
 
-// SubtitleFormat は字幕ファイルの元の形式である。
 type SubtitleFormat string
 
-// 対応する字幕の形式。値は拡張子（小文字）と同じである。
 const (
 	SubtitleFormatSRT SubtitleFormat = "srt"
 	SubtitleFormatVTT SubtitleFormat = "vtt"
 )
 
-// SidecarEntry は動画と同じフォルダにある通常ファイル 1 つの名前と大きさである。
 type SidecarEntry struct {
 	Name string
 	Size int64
 }
 
-// SubtitleSidecar は動画の隣に置かれた字幕ファイル 1 つである。
 type SubtitleSidecar struct {
-	// File はフォルダの項目の名前そのもので、開くときの照合に使う。
-	File string
-	// Label はファイル名のラベル（`ja`、`en.forced`）。ラベルの無い字幕は "" である。
+	// File retains the original directory entry spelling for opening.
+	File   string
 	Label  string
 	Format SubtitleFormat
 }
 
-// SubtitleSidecars は、動画のファイル名 videoFileName と同じフォルダの項目 entries から、
-// その動画の字幕ファイルの一覧を作る。
-//
-//   - `<名前>` は videoFileName から最後の拡張子だけを除いたものである。
-//   - 候補は `<名前>.srt`・`<名前>.vtt`・`<名前>.<ラベル>.srt`・`<名前>.<ラベル>.vtt` で、
-//     `<名前>` と拡張子は NFC 正規化のうえ大文字・小文字を区別せずに照合する。
-//   - SubtitleFileLimit を超える項目は候補にしない。
-//   - ラベルはファイル名に書かれたままの形で返す。
-//   - 同じラベル（NFC 正規化のうえ Unicode の case folding で比べる）の `.srt` と `.vtt` は
-//     `.vtt` だけを残し、
-//     同じ拡張子どうしは名前の自然順で先の 1 つを残す。
-//   - 並びはラベルの無いものが先頭で、続いてラベルの自然順である。
+// SubtitleSidecars matches NFC/case-folded video stems and extensions, preserving label spelling; it excludes oversized files, prefers VTT per folded label, and orders unlabeled first then labels naturally.
 func SubtitleSidecars(videoFileName string, entries []SidecarEntry) []SubtitleSidecar {
 	stem := norm.NFC.String(videoFileName)
 	if dot := strings.LastIndexByte(stem, '.'); dot > 0 {
@@ -95,10 +76,7 @@ func SubtitleSidecars(videoFileName string, entries []SidecarEntry) []SubtitleSi
 	return sidecars
 }
 
-// matchSidecar は name が stem の字幕ファイルの名前のときだけ、その字幕を返す。
-// 照合は NFC 正規化した形で行い、ラベルはファイル名に書かれたままの形で返す。
-// 正規化でバイト長が変わるので、元の名前をドットで区切った位置ごとに、その手前を
-// 正規化して stem と比べる（ドットは合成に加わらないので、区切りごとの正規化で足りる）。
+// Normalize prefixes at original dot boundaries because NFC can change byte lengths while labels must retain their spelling.
 func matchSidecar(stem, name string) (SubtitleSidecar, bool) {
 	dot := strings.LastIndexByte(name, '.')
 	if dot < 0 {
@@ -133,8 +111,7 @@ func matchSidecar(stem, name string) (SubtitleSidecar, bool) {
 	return SubtitleSidecar{}, false
 }
 
-// trimPrefixFold は s が prefix で始まる（大文字・小文字を区別しない）とき、残りを返す。
-// 大文字と小文字でバイト長が違う文字があるので、文字ごとに比べる。
+// Compare rune-by-rune because case-equivalent characters can have different byte lengths.
 func trimPrefixFold(s, prefix string) (string, bool) {
 	for prefix != "" {
 		if s == "" {
@@ -162,8 +139,7 @@ func equalFoldRune(a, b rune) bool {
 	return false
 }
 
-// FoldKey は s の各文字を Unicode の単純な case folding で同じとみなす文字のうち最小の
-// ものに置き換える。equalFoldRune で等しい 2 つの文字列は同じ鍵になる（`Σ`・`σ`・`ς`）。
+// FoldKey selects the smallest rune in each Unicode simple-fold class so equivalent strings share a key (including Σ, σ, and ς).
 func FoldKey(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
@@ -177,7 +153,6 @@ func FoldKey(s string) string {
 	return b.String()
 }
 
-// preferSidecar は同じラベルの 2 つのうち a を残すべきときに真を返す。
 func preferSidecar(a, b SubtitleSidecar) bool {
 	if a.Format != b.Format {
 		return a.Format == SubtitleFormatVTT

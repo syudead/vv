@@ -13,12 +13,11 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
-
-// サムネイルの編集のセッションを、偽の ImageEditor と偽の時計で確かめる。
 
 type fakeImageEditor struct {
 	mu        sync.Mutex
@@ -30,12 +29,12 @@ type fakeImageEditor struct {
 	readJobs  []domain.ImageEditJob
 	cancels   []string
 	cancelErr error
-	// cancelHold が正なら、次の cancelHold 回の Cancel は、cancelEntered に実行の id を送ってから
-	// cancelRelease が閉じるまで返らない。
+	onCancel  func()
+	// The next cancelHold cancellations signal cancelEntered and block until cancelRelease closes.
 	cancelHold    int
 	cancelEntered chan string
 	cancelRelease chan struct{}
-	// cancelsActive は返っていない Cancel の数、startsWhileCancelling はその間に来た Start の数である。
+	// Track active cancellations and starts received while cancellation is blocked.
 	cancelsActive         int
 	startsWhileCancelling int
 	output                []byte
@@ -76,6 +75,9 @@ func (f *fakeImageEditor) Cancel(_ context.Context, job domain.ImageEditJob, _ d
 	}
 	err := f.cancelErr
 	f.mu.Unlock()
+	if f.onCancel != nil {
+		f.onCancel()
+	}
 	if hold {
 		f.cancelEntered <- job.ID
 		<-f.cancelRelease
@@ -118,11 +120,11 @@ func (f *fakeImageEditor) cancelled() []string {
 type fakeFrames struct {
 	mu    sync.Mutex
 	frame domain.ThumbnailFrame
-	// missing はコマが取れない位置である。
+	// Positions at which frame extraction fails.
 	missing map[int64]bool
-	// auto は AutoThumbnailPositions が返す位置である。
+	// Positions returned by AutoThumbnailPositions.
 	auto []int64
-	// positions は FrameAt に渡された位置である。
+
 	positions []int64
 }
 
@@ -148,8 +150,7 @@ func (f *fakeFrames) extracted() []int64 {
 	return append([]int64(nil), f.positions...)
 }
 
-// fakeThumbnailImages は内容ごとに適用した画像（代表サムネイル image と元の画像 source）と
-// 指定した位置を持つ。
+// Store applied thumbnail/original images and selected positions per content key.
 type fakeThumbnailImages struct {
 	mu       sync.Mutex
 	image    map[string][]byte
@@ -170,7 +171,6 @@ func (f *fakeThumbnailImages) CurrentThumbnailSelection(
 	return domain.CurrentThumbnailSelection{Image: image, PositionMs: f.position[contentKey]}, f.err
 }
 
-// setPosition は内容 contentKey に指定した位置を置く。nil なら解除する。
 func (f *fakeThumbnailImages) setPosition(contentKey string, positionMs *int64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -180,7 +180,7 @@ func (f *fakeThumbnailImages) setPosition(contentKey string, positionMs *int64) 
 	f.position[contentKey] = positionMs
 }
 
-// set は内容 contentKey に適用した画像を置く。image が nil なら外す（元に戻す操作）。
+// A nil image simulates reverting the applied image.
 func (f *fakeThumbnailImages) set(contentKey string, image, source []byte) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -193,19 +193,16 @@ func (f *fakeThumbnailImages) set(contentKey string, image, source []byte) {
 type fakeApplier struct {
 	err     error
 	applied [][]byte
-	// origins は適用に渡された出どころである。
+
 	origins []domain.ThumbnailImageOrigin
-	// entered と release があれば、適用はそこで止まり、release が閉じるまで返らない。
-	entered chan struct{}
-	release chan struct{}
+	onApply func()
 }
 
 func (f *fakeApplier) ApplyThumbnailImage(
 	_ context.Context, videoID int64, _ string, image []byte, origin domain.ThumbnailImageOrigin,
 ) (domain.Video, error) {
-	if f.entered != nil {
-		close(f.entered)
-		<-f.release
+	if f.onApply != nil {
+		f.onApply()
 	}
 	if f.err != nil {
 		return domain.Video{}, f.err
@@ -253,18 +250,18 @@ func testPNG(t *testing.T, width, height int) []byte {
 	return buf.Bytes()
 }
 
-// testWebP は 1×1 の可逆の WebP である。
+// A 1 x 1 lossless WebP.
 var testWebP = []byte("RIFF\x1a\x00\x00\x00WEBPVP8L\x0d\x00\x00\x00\x2f\x00\x00\x00\x10\x07\x10\x11\x11\x88\x88\xfe\x07\x00")
 
-// corruptWebP は、RIFF とチャンクの長さも VP8L の見出しも正しいまま、画像の符号だけが壊れた
-// WebP である。チャンクの並びと見出しを見るだけでは見分けられない。
+// Corrupt image coding with valid RIFF/chunk lengths and VP8L header; header-only validation cannot
+// detect it.
 func corruptWebP() []byte {
 	data := append([]byte(nil), testWebP...)
 	data[26] = 0
 	return data
 }
 
-// shortWebP は、VP8L の符号が途中で終わり、RIFF とチャンクの長さをその短さに合わせた WebP である。
+// Truncated VP8L coding with RIFF/chunk lengths adjusted to match.
 func shortWebP() []byte {
 	payload := testWebP[20:27]
 	data := []byte("RIFF\x14\x00\x00\x00WEBPVP8L\x07\x00\x00\x00")
@@ -285,14 +282,14 @@ func testJPEG(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
-// truncatedJPEG は、見出しは読めるが走査の途中で切れた JPEG を返す。
+// Readable JPEG header with truncated scan data.
 func truncatedJPEG(t *testing.T) []byte {
 	t.Helper()
 	data := testJPEG(t)
 	return data[:len(data)-len(data)/4]
 }
 
-// truncatedPNG は data の IDAT の途中から後を切り落とした PNG を返す。見出しは読める。
+// Truncate within IDAT while retaining a readable PNG header.
 func truncatedPNG(t *testing.T, data []byte) []byte {
 	t.Helper()
 	at := bytes.Index(data, []byte("IDAT"))
@@ -302,13 +299,13 @@ func truncatedPNG(t *testing.T, data []byte) []byte {
 	return data[:at+8]
 }
 
-// hugePNGHeader は、見出しだけが 100000×100000 を名乗る PNG を返す。
+// PNG header claiming 100,000 x 100,000 pixels.
 func hugePNGHeader(t *testing.T) []byte {
 	t.Helper()
 	return pngHeaderSized(t, 100_000, 100_000)
 }
 
-// pngHeaderSized は、見出しだけが width×height を名乗る 1×1 の PNG を返す。
+// A 1 x 1 PNG whose header claims the supplied dimensions.
 func pngHeaderSized(t *testing.T, width, height uint32) []byte {
 	t.Helper()
 	data := testPNG(t, 1, 1)
@@ -336,7 +333,6 @@ func (f *editsFixture) start(t *testing.T, videoID int64) domain.ThumbnailEdit {
 	return edit
 }
 
-// frameStart は positionMs のコマから始める要求である。
 func frameStart(positionMs int64) domain.ThumbnailEditStart {
 	return domain.ThumbnailEditStart{Source: domain.ThumbnailEditFromFrame, PositionMs: &positionMs}
 }
@@ -373,8 +369,7 @@ func wantState(t *testing.T, edit domain.ThumbnailEdit, state domain.ThumbnailEd
 	}
 }
 
-// ready から始まり、実行は queued・preparing・running を経て succeeded になり、出力を取る。
-// 終わった実行はどれも再実行で queued に戻り、succeeded から適用するとセッションが終わる。
+// Completed runs can restart from queued; applying succeeded output ends the session.
 func TestThumbnailEditHappyPath(t *testing.T) {
 	f := newEditsFixture(t)
 	edit := f.start(t, 1)
@@ -407,6 +402,7 @@ func TestThumbnailEditHappyPath(t *testing.T) {
 		t.Fatalf("Result = %q, %v", result, err)
 	}
 
+	f.applier.onApply = func() { assertEditSessionHeld(t, f.edits, edit.ID) }
 	video, err := f.edits.Apply(context.Background(), edit.ID)
 	if err != nil || video.ID != 1 || len(f.applier.applied) != 1 || !bytes.Equal(f.applier.applied[0], f.editor.output) {
 		t.Fatalf("Apply = %+v, %v, applied %q", video, err, f.applier.applied)
@@ -420,8 +416,7 @@ func TestThumbnailEditHappyPath(t *testing.T) {
 	}
 }
 
-// queued・preparing・running のどれからも、提供元の誤りか 10 分の時間切れで failed に、持ち主の
-// 中止で cancelled になる。queued から running へ直に進むこともある。
+// Every active state can fail or cancel; providers may skip preparing.
 func TestThumbnailEditRunEndings(t *testing.T) {
 	from := []domain.ThumbnailEditState{domain.ThumbnailEditQueued, domain.ThumbnailEditPreparing, domain.ThumbnailEditRunning}
 	endings := map[string]func(*testing.T, *editsFixture, string) domain.ThumbnailEdit{
@@ -432,7 +427,7 @@ func TestThumbnailEditRunEndings(t *testing.T) {
 		},
 		"time limit": func(t *testing.T, f *editsFixture, id string) domain.ThumbnailEdit {
 			t.Helper()
-			// 読み続けるので、読まれないことでは終わらない。
+			// Renew the heartbeat to isolate the run timeout from idle expiry.
 			for range 9 {
 				f.clock.Advance(time.Minute)
 				wantState(t, f.get(t, id), f.editor.state)
@@ -483,14 +478,12 @@ func TestThumbnailEditRunEndings(t *testing.T) {
 					t.Errorf("Apply = %v, want ErrThumbnailEditNoResult", err)
 				}
 
-				// 再実行で queued に戻る。
 				wantState(t, f.run(t, id), domain.ThumbnailEditQueued)
 			})
 		}
 	}
 }
 
-// 提供元が中止を報告した実行は cancelled になる。実行中でない中止は今の姿を返す。
 func TestThumbnailEditProviderCancelAndIdleCancel(t *testing.T) {
 	f := newEditsFixture(t)
 	id := f.start(t, 1).ID
@@ -508,7 +501,6 @@ func TestThumbnailEditProviderCancelAndIdleCancel(t *testing.T) {
 	}
 }
 
-// 成功を報告しても出力を取れなければ、その理由で failed になる。
 func TestThumbnailEditOutputFailure(t *testing.T) {
 	f := newEditsFixture(t)
 	id := f.start(t, 1).ID
@@ -522,7 +514,7 @@ func TestThumbnailEditOutputFailure(t *testing.T) {
 	}
 }
 
-// 出力が届かなければ前の状態のまま次の読み取りで取り直し、取れたら succeeded になる。
+// Preserve the prior state across unreachable output reads so a later poll can succeed.
 func TestThumbnailEditOutputFetchRetries(t *testing.T) {
 	for name, fetchErr := range map[string]error{
 		"unreachable": &domain.ImageEditError{Reason: domain.ImageEditUnreachable, Message: "cannot reach ComfyUI"},
@@ -552,8 +544,7 @@ func TestThumbnailEditOutputFetchRetries(t *testing.T) {
 	}
 }
 
-// 出力が読めない画像なら、succeeded にせず no_output で failed にする。
-// 提供元の WebP の出力は、最後まで読めれば適用できる結果になり、符号が壊れていれば no_output になる。
+// Full decoding distinguishes valid provider WebP output from corrupt data despite valid headers.
 func TestThumbnailEditWebPOutput(t *testing.T) {
 	for name, c := range map[string]struct {
 		output []byte
@@ -593,7 +584,7 @@ func TestThumbnailEditUndecodableOutput(t *testing.T) {
 	}
 }
 
-// 5 分読まれないセッションは、提供元で実行を中止してから終わる。片付けでも、次の読み取りでも同じ。
+// Idle expiry behaves identically during sweeps and reads.
 func TestThumbnailEditIdleExpiry(t *testing.T) {
 	for _, sweep := range []bool{true, false} {
 		t.Run("sweep "+strconv.FormatBool(sweep), func(t *testing.T) {
@@ -634,7 +625,7 @@ func TestThumbnailEditIdleExpiry(t *testing.T) {
 	}
 }
 
-// 片付けは、読まれ続けていても送ってから 10 分終わらない実行を中止して timed_out にする。
+// Run timeout applies even while the session is actively polled.
 func TestThumbnailEditSweepTimesOutRun(t *testing.T) {
 	f := newEditsFixture(t)
 	id := f.start(t, 1).ID
@@ -657,7 +648,6 @@ func TestThumbnailEditSweepTimesOutRun(t *testing.T) {
 	}
 }
 
-// 同じ動画で 2 つ目の編集を始めると、1 つ目の実行を中止して 1 つ目を終える。別の動画は残る。
 func TestThumbnailEditSecondEditReplacesFirst(t *testing.T) {
 	f := newEditsFixture(t)
 	first := f.start(t, 1).ID
@@ -666,6 +656,7 @@ func TestThumbnailEditSecondEditReplacesFirst(t *testing.T) {
 	f.editor.set(domain.ThumbnailEditRunning, nil)
 	f.get(t, first)
 
+	f.editor.onCancel = func() { assertEditSessionHeld(t, f.edits, first) }
 	second := f.start(t, 1).ID
 	if second == first {
 		t.Fatal("the second edit reused the id")
@@ -678,54 +669,26 @@ func TestThumbnailEditSecondEditReplacesFirst(t *testing.T) {
 	wantState(t, f.get(t, other), domain.ThumbnailEditReady)
 }
 
-// 同じ動画の新しい編集は、1 つ目で進んでいる適用が終わるまで載らない。1 つ目の id は、その後
-// どの要求にも 404 である。
-func TestThumbnailEditSecondEditWaitsForApply(t *testing.T) {
-	f := newEditsFixture(t)
-	first := f.start(t, 1).ID
-	f.run(t, first)
-	f.editor.set(domain.ThumbnailEditSucceeded, nil)
-	f.get(t, first)
-	f.applier.entered = make(chan struct{})
-	f.applier.release = make(chan struct{})
-
-	applied := make(chan error, 1)
-	go func() {
-		_, err := f.edits.Apply(context.Background(), first)
-		applied <- err
-	}()
-	<-f.applier.entered
-	started := make(chan domain.ThumbnailEdit, 1)
-	go func() {
-		started <- f.start(t, 1)
-	}()
-
-	deadline := time.Now().Add(100 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		f.edits.mu.Lock()
-		active := f.edits.byVideo[1]
-		f.edits.mu.Unlock()
-		if active != first {
-			t.Fatalf("the second edit %s became active while the first was applying", active)
-		}
-		select {
-		case <-started:
-			t.Fatal("the second edit started while the first was applying")
-		default:
-		}
-		time.Sleep(5 * time.Millisecond)
+// Check the production session lock at the apply/cancel boundary. The old
+// session must remain active until that operation finishes.
+func assertEditSessionHeld(t *testing.T, edits *ThumbnailEdits, id string) {
+	t.Helper()
+	edits.mu.Lock()
+	session := edits.byID[id]
+	active := ""
+	if session != nil {
+		active = edits.byVideo[session.videoID]
 	}
-
-	close(f.applier.release)
-	if err := <-applied; err != nil {
-		t.Fatalf("Apply = %v", err)
+	edits.mu.Unlock()
+	if session == nil || active != id {
+		t.Fatalf("session %q is no longer active: %q", id, active)
 	}
-	second := <-started
-	f.wantEnded(t, first)
-	wantState(t, f.get(t, second.ID), domain.ThumbnailEditReady)
+	if session.mu.TryLock() {
+		session.mu.Unlock()
+		t.Fatal("session lock was released before the operation finished")
+	}
 }
 
-// 実行中に新しい実行を始めると、今の実行を中止してから送る。
 func TestThumbnailEditRunAgainCancelsRunningRun(t *testing.T) {
 	f := newEditsFixture(t)
 	id := f.start(t, 1).ID
@@ -742,7 +705,7 @@ func TestThumbnailEditRunAgainCancelsRunningRun(t *testing.T) {
 	}
 }
 
-// 実行の途中で接続先を変えても、その実行は送ったときの接続先で問い合わせる。次の実行は新しい接続先を使う。
+// Active runs keep their settings snapshot; new runs use updated settings.
 func TestThumbnailEditRunKeepsConnectionSnapshot(t *testing.T) {
 	f := newEditsFixture(t)
 	id := f.start(t, 1).ID
@@ -771,7 +734,7 @@ func TestThumbnailEditRunKeepsConnectionSnapshot(t *testing.T) {
 	}
 }
 
-// マスクと参考画像は何も上げる前に確かめる。接続先が消されていれば始めない。
+// Validate inputs before uploading anything.
 func TestThumbnailEditRunRejectsInputs(t *testing.T) {
 	f := newEditsFixture(t)
 	id := f.start(t, 1).ID
@@ -819,8 +782,8 @@ func TestThumbnailEditRunRejectsInputs(t *testing.T) {
 	}
 }
 
-// 提供元が中止を受け付けなければ、画面には cancelled を返すが、実行は追い続けて片付けのたびに
-// 中止をやり直す。中止が済むまで、その動画の新しい実行は送らずに unreachable で失敗させる。
+// Local cancellation remains visible while sweeps retry the provider; block new runs until provider
+// cancellation completes.
 func TestThumbnailEditFailedCancelIsRetried(t *testing.T) {
 	f := newEditsFixture(t)
 	ctx := context.Background()
@@ -871,114 +834,127 @@ func TestThumbnailEditFailedCancelIsRetried(t *testing.T) {
 	}
 }
 
-// 片付けがある実行の中止をやり直している間は、同じ動画の新しい実行を送らない。Comfy Cloud の
-// interrupt はアカウントの実行中の仕事をすべて止めるので、遅れて届いた片付けのやり直しが新しい
-// 実行を止めうる。StartRun は片付けのやり直しの終わりを待ち、同じ実行を重ねて中止しない。
+// StartRun waits for the sweep retry without duplicating cancellation: a late account-wide Comfy
+// Cloud interrupt could stop the newly submitted run.
 func TestThumbnailEditRunWaitsForInFlightCancelRetry(t *testing.T) {
-	f := newEditsFixture(t)
-	ctx := context.Background()
-	id := f.start(t, 1).ID
-	f.run(t, id)
-	f.editor.set(domain.ThumbnailEditRunning, nil)
-	f.get(t, id)
-	f.editor.mu.Lock()
-	f.editor.cancelErr = errors.New("the status endpoint timed out")
-	f.editor.mu.Unlock()
-	if _, err := f.edits.Cancel(ctx, id); err != nil {
-		t.Fatal(err)
-	}
-
-	f.editor.mu.Lock()
-	f.editor.cancelErr = nil
-	f.editor.cancelHold = 1
-	f.editor.cancelEntered = make(chan string, 1)
-	f.editor.cancelRelease = make(chan struct{})
-	f.editor.mu.Unlock()
-	swept := make(chan struct{})
-	go func() {
-		defer close(swept)
-		f.edits.Sweep(ctx)
-	}()
-	if got := <-f.editor.cancelEntered; got != "job-1" {
-		t.Fatalf("the sweep retried %s", got)
-	}
-
-	type result struct {
-		edit domain.ThumbnailEdit
-		err  error
-	}
-	ran := make(chan result, 1)
-	go func() {
-		edit, err := f.edits.StartRun(ctx, id, domain.ThumbnailEditRunInput{Instruction: "again"})
-		ran <- result{edit, err}
-	}()
-	select {
-	case r := <-ran:
-		close(f.editor.cancelRelease)
-		<-swept
-		t.Fatalf("the run returned while the sweep was still cancelling job-1: %+v, %v", r.edit, r.err)
-	case <-time.After(100 * time.Millisecond):
-	}
-	close(f.editor.cancelRelease)
-	<-swept
-	r := <-ran
-	if r.err != nil {
-		t.Fatal(r.err)
-	}
-	wantState(t, r.edit, domain.ThumbnailEditQueued)
-	f.editor.mu.Lock()
-	defer f.editor.mu.Unlock()
-	if f.editor.startsWhileCancelling != 0 || len(f.editor.starts) != 2 {
-		t.Fatalf("starts = %d, while a cancel was in flight = %d", len(f.editor.starts), f.editor.startsWhileCancelling)
-	}
-	if got := f.editor.cancels; len(got) != 2 {
-		t.Fatalf("cancels = %v, want job-1 cancelled once by the sweep after the first attempt", got)
-	}
-}
-
-// 片付けは、別々の実行の中止を同時にやり直す。1 つずつ待つと、届かない提供元の実行が多いほど
-// 次の片付け（読まれないセッションと時間切れの実行）が遅れる。
-func TestThumbnailEditSweepRetriesCancelsConcurrently(t *testing.T) {
-	f := newEditsFixture(t)
-	ctx := context.Background()
-	f.editor.mu.Lock()
-	f.editor.cancelErr = errors.New("unreachable")
-	f.editor.mu.Unlock()
-	for _, videoID := range []int64{1, 2} {
-		id := f.start(t, videoID).ID
+	synctest.Test(t, func(t *testing.T) {
+		f := newEditsFixture(t)
+		ctx := context.Background()
+		id := f.start(t, 1).ID
 		f.run(t, id)
-		f.edits.Discard(ctx, id)
-	}
-
-	f.editor.mu.Lock()
-	f.editor.cancelErr = nil
-	f.editor.cancelHold = 2
-	f.editor.cancelEntered = make(chan string, 2)
-	f.editor.cancelRelease = make(chan struct{})
-	f.editor.mu.Unlock()
-	swept := make(chan struct{})
-	go func() {
-		defer close(swept)
-		f.edits.Sweep(ctx)
-	}()
-	for range 2 {
-		select {
-		case <-f.editor.cancelEntered:
-		case <-time.After(5 * time.Second):
-			close(f.editor.cancelRelease)
-			<-swept
-			t.Fatal("the sweep retried one cancel at a time")
+		f.editor.set(domain.ThumbnailEditRunning, nil)
+		f.get(t, id)
+		f.editor.mu.Lock()
+		f.editor.cancelErr = errors.New("the status endpoint timed out")
+		f.editor.mu.Unlock()
+		if _, err := f.edits.Cancel(ctx, id); err != nil {
+			t.Fatal(err)
 		}
-	}
-	close(f.editor.cancelRelease)
-	<-swept
-	f.edits.Sweep(ctx)
-	if got := f.editor.cancelled(); len(got) != 4 {
-		t.Fatalf("cancels = %v, want each job retried once and then none", got)
-	}
+
+		f.editor.mu.Lock()
+		f.editor.cancelErr = nil
+		f.editor.cancelHold = 1
+		f.editor.cancelEntered = make(chan string, 1)
+		f.editor.cancelRelease = make(chan struct{})
+		f.editor.mu.Unlock()
+		swept := make(chan struct{})
+		go func() {
+			defer close(swept)
+			f.edits.Sweep(ctx)
+		}()
+		releaseCancel := sync.OnceFunc(func() { close(f.editor.cancelRelease) })
+		defer func() {
+			releaseCancel()
+			<-swept
+		}()
+		synctest.Wait()
+		select {
+		case got := <-f.editor.cancelEntered:
+			if got != "job-1" {
+				t.Fatalf("the sweep retried %s", got)
+			}
+		default:
+			t.Fatal("the sweep did not retry job-1")
+		}
+
+		type result struct {
+			edit domain.ThumbnailEdit
+			err  error
+		}
+		ran := make(chan result, 1)
+		go func() {
+			edit, err := f.edits.StartRun(ctx, id, domain.ThumbnailEditRunInput{Instruction: "again"})
+			ran <- result{edit, err}
+		}()
+		synctest.Wait()
+		select {
+		case r := <-ran:
+			t.Fatalf("the run returned while the sweep was still cancelling job-1: %+v, %v", r.edit, r.err)
+		default:
+		}
+		releaseCancel()
+		<-swept
+		r := <-ran
+		if r.err != nil {
+			t.Fatal(r.err)
+		}
+		wantState(t, r.edit, domain.ThumbnailEditQueued)
+		f.editor.mu.Lock()
+		defer f.editor.mu.Unlock()
+		if f.editor.startsWhileCancelling != 0 || len(f.editor.starts) != 2 {
+			t.Fatalf("starts = %d, while a cancel was in flight = %d", len(f.editor.starts), f.editor.startsWhileCancelling)
+		}
+		if got := f.editor.cancels; len(got) != 2 {
+			t.Fatalf("cancels = %v, want job-1 cancelled once by the sweep after the first attempt", got)
+		}
+	})
 }
 
-// 終えたセッションの実行も中止をやり直し、1 時間たっても済まなければ諦める。
+// Retry distinct cancellations concurrently so unreachable providers do not delay the next sweep
+// proportionally.
+func TestThumbnailEditSweepRetriesCancelsConcurrently(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newEditsFixture(t)
+		ctx := context.Background()
+		f.editor.mu.Lock()
+		f.editor.cancelErr = errors.New("unreachable")
+		f.editor.mu.Unlock()
+		for _, videoID := range []int64{1, 2} {
+			id := f.start(t, videoID).ID
+			f.run(t, id)
+			f.edits.Discard(ctx, id)
+		}
+
+		f.editor.mu.Lock()
+		f.editor.cancelErr = nil
+		f.editor.cancelHold = 2
+		f.editor.cancelEntered = make(chan string, 2)
+		f.editor.cancelRelease = make(chan struct{})
+		f.editor.mu.Unlock()
+		swept := make(chan struct{})
+		go func() {
+			defer close(swept)
+			f.edits.Sweep(ctx)
+		}()
+		releaseCancel := sync.OnceFunc(func() { close(f.editor.cancelRelease) })
+		defer func() {
+			releaseCancel()
+			<-swept
+		}()
+		synctest.Wait()
+		if got := len(f.editor.cancelEntered); got != 2 {
+			t.Fatalf("concurrent cancels = %d, want 2", got)
+		}
+		releaseCancel()
+		<-swept
+		f.edits.Sweep(ctx)
+		if got := f.editor.cancelled(); len(got) != 4 {
+			t.Fatalf("cancels = %v, want each job retried once and then none", got)
+		}
+	})
+}
+
+// Retry even after session removal, but abandon after one hour.
 func TestThumbnailEditFailedCancelGivesUp(t *testing.T) {
 	f := newEditsFixture(t)
 	ctx := context.Background()
@@ -1002,7 +978,6 @@ func TestThumbnailEditFailedCancelGivesUp(t *testing.T) {
 	}
 }
 
-// 提供元が受け付けなければ、セッションは同じ理由の failed になり、誤りを返す。
 func TestThumbnailEditRunSubmitFailure(t *testing.T) {
 	f := newEditsFixture(t)
 	id := f.start(t, 1).ID
@@ -1022,7 +997,6 @@ func TestThumbnailEditRunSubmitFailure(t *testing.T) {
 	}
 }
 
-// 始めるときは接続先・内容・位置・コマを確かめる。
 func TestThumbnailEditStartRejects(t *testing.T) {
 	f := newEditsFixture(t)
 	ctx := context.Background()
@@ -1051,7 +1025,7 @@ func TestThumbnailEditStartRejects(t *testing.T) {
 	}
 }
 
-// 適用で動画が別の内容になっていればセッションは終わり、画像を読めなければ残る。
+// Content changes end the session; unreadable images preserve it.
 func TestThumbnailEditApplyFailures(t *testing.T) {
 	f := newEditsFixture(t)
 	id := f.start(t, 1).ID
@@ -1072,8 +1046,7 @@ func TestThumbnailEditApplyFailures(t *testing.T) {
 	f.wantEnded(t, id)
 }
 
-// 捨てると実行を中止してセッションを終える。終わったセッションや無い id を捨てても何も起きない。
-// 止めるときは進んでいる実行をすべて中止する。
+// Discard is idempotent, and shutdown cancels every active run.
 func TestThumbnailEditDiscardAndClose(t *testing.T) {
 	f := newEditsFixture(t)
 	discarded := f.start(t, 1).ID

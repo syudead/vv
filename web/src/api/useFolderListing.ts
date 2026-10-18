@@ -11,30 +11,17 @@ import {
   type RootFolderListing,
 } from "./client";
 
-/** FolderListingState はフォルダ画面の子フォルダ一覧の状態である。 */
 export interface FolderListingState<T> {
   data: T | null;
   loading: boolean;
-  /** notFound はフォルダが存在しない（404）ことを表す。 */
   notFound: boolean;
   error: UiText | null;
   reload: () => void;
-  /**
-   * refresh は値を取り直して置き換える。reload と違い、今の値を見せ続け（読み込み中にせず）、
-   * 失敗は静かに捨てる。フォルダが無くなっていれば notFound になる。
-   */
+  /** Keep current content during refresh and suppress transient errors; missing folders become notFound. */
   refresh: () => void;
-  /**
-   * update は読み込み済みの値を書き換える（取り直さない）。まだ値が無ければ何もしない。
-   * 操作の応答で一部だけが変わったとき（フォルダのまとめ方）に使う。
-   */
   update: (change: (data: T) => T) => void;
 }
 
-/**
- * useFolderData は1回の要求で取れるフォルダの情報を読む。画面を離れたら
- * 要求を取り消し、古い応答が新しい画面を上書きしないようにする。
- */
 function useFolderData<T>(
   load: (signal: AbortSignal) => Promise<T>,
   key: string,
@@ -47,20 +34,17 @@ function useFolderData<T>(
   const [generation, setGeneration] = useState(seed === undefined ? 1 : 0);
   const [quietGeneration, setQuietGeneration] = useState(0);
 
-  // load は呼び出し元が描画のたびに作り直す。key が同じ間は同じ要求を表すので、
-  // 取り直すきっかけは世代と key だけにする。
+  // load identity changes each render; only key and generation identify a new request.
   const request = useEffectEvent((signal: AbortSignal) => load(signal));
 
-  // 通常の読み込みとその場の取り直しは重ならせない。通常の読み込みが走っている間に
-  // 取り直しが始まると、先に返った新しい値を、あとから返った古い通常の応答が上書きする。
-  // そこで、通常の読み込みの間は取り直しを保留し、終わってから行う。通常の読み込みが
-  // 始まったら、走っている取り直しは捨てる（通常の読み込みの方が新しい）。
+  // Defer refresh until ordinary loading finishes so older responses cannot overwrite newer data.
+  // A new ordinary load supersedes and aborts an active refresh.
   const normalInFlight = useRef(false);
   const quietPending = useRef(false);
   const quietController = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    // 0 番目の世代は復元した控え（seed）で、取りに行かない。
+    // Generation zero restores the seed without fetching.
     if (generation === 0) return;
     const controller = new AbortController();
     quietController.current?.abort();
@@ -100,7 +84,6 @@ function useFolderData<T>(
     };
   }, [generation, key]);
 
-  // その場の取り直し。読み込み中の表示にせず、今の値を新しい値で置き換える。
   useEffect(() => {
     if (quietGeneration === 0) return;
     if (normalInFlight.current) {
@@ -135,12 +118,10 @@ function useFolderData<T>(
   return { data, loading, notFound, error, reload, refresh, update };
 }
 
-/** useRootFolders はフォルダ画面の最上位（登録済みメディアフォルダ）を読む。 */
 export function useRootFolders(): FolderListingState<RootFolderListing> {
   return useFolderData(listRootFolders, "root");
 }
 
-/** useFolderListing はフォルダ1件と直下の子フォルダを読む。 */
 export function useFolderListing(
   folder: FolderRef,
   seed?: FolderListing,
@@ -152,20 +133,12 @@ export function useFolderListing(
   );
 }
 
-/** RootFolderName は登録フォルダの表示名の取得の結果である。 */
 export type RootFolderName =
   | { status: "idle" | "loading" }
   | { status: "ready"; name: string }
   | { status: "failed" };
 
-/**
- * useRootFolderName は、enabled のときだけ登録フォルダそのもの（`path` を省いた
- * getFolder）を読み、その `name` を返す。
- *
- * ゲストの応答には登録フォルダの絶対パス（`rootPath`）が無く、子フォルダの応答の
- * `name` は最後の段なので、子フォルダを開いたときのパンくずの登録フォルダの段は、
- * その応答からは作れない。
- */
+/** Fetch the root name separately: guest child responses omit the absolute root path and expose only the final path segment. */
 export function useRootFolderName(rootId: number, enabled: boolean): RootFolderName {
   const [result, setResult] = useState<{ rootId: number; name: RootFolderName }>({
     rootId,

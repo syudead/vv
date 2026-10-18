@@ -5,12 +5,10 @@ import (
 	"fmt"
 )
 
-// sectionCustom はカスタムセクションの id である。
 const sectionCustom = 0
 
-// WithManifest は module の vv.plugin のカスタムセクションをすべて外し、manifest を中身とする
-// vv.plugin のセクションを末尾に足した新しいバイト列を返す。何度かけてもセクションは 1 つである。マニフェストの中身は確かめない。セクションの並びとして
-// 読めないバイト列には errMalformed を包んだ誤りを返す。
+// WithManifest replaces all vv.plugin sections with one trailing section without validating
+// manifest content; malformed section layout wraps errMalformed.
 func WithManifest(module, manifest []byte) ([]byte, error) {
 	if len(module) < 8 || string(module[:4]) != "\x00asm" {
 		return nil, errMalformed
@@ -40,7 +38,7 @@ func WithManifest(module, manifest []byte) ([]byte, error) {
 	return appendCustomSection(out, manifestSection, manifest), nil
 }
 
-// customSectionName はカスタムセクションの中身の先頭にある名前を返す。読めなければ空を返す。
+// Return empty when the custom-section name is unreadable.
 func customSectionName(payload []byte) string {
 	name, err := (&reader{b: payload}).name()
 	if err != nil {
@@ -49,7 +47,6 @@ func customSectionName(payload []byte) string {
 	return name
 }
 
-// appendCustomSection は名前 name、中身 data のカスタムセクション（id 0）を符号化して dst に足す。
 func appendCustomSection(dst []byte, name string, data []byte) []byte {
 	payload := binary.AppendUvarint(nil, uint64(len(name)))
 	payload = append(payload, name...)

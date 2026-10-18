@@ -134,7 +134,7 @@ describe("TagCommand（dropdown）", () => {
     act(() => input().focus());
     const end = fireEvent.keyDown(input(), { key: "End" });
     const home = fireEvent.keyDown(input(), { key: "Home" });
-    // fireEvent は既定の動作が止められなかったときに true を返す。
+    // fireEvent returns true when default behavior was not prevented.
     expect(end).toBe(true);
     expect(home).toBe(true);
     expect(input().getAttribute("aria-activedescendant")).toBeNull();

@@ -29,10 +29,6 @@ import {
 } from "./activityCriteria";
 import type { ActivityLogState } from "./useActivityLog";
 
-// アクティビティの画面のツールバー。検索と、
-// 同じ形の 4 つの絞り込みのボタン（Status・Feature・Decided by・Period）と、絞り込みがあるときの
-// 「Clear filters」を 1 行に並べる。
-
 const allValue = "all";
 
 function MenuCount({ count, alert = false }: { count: number; alert?: boolean }) {
@@ -87,15 +83,10 @@ function SearchField({
 export interface ActivityToolbarProps {
   criteria: ActivityCriteria;
   state: ActivityLogState;
-  /** 絞り込みを変える。mode は履歴の増やし方で、省けば push。 */
+  /** History mode defaults to push. */
   onChange: (next: ActivityCriteria, mode?: HistoryMode) => void;
 }
 
-/**
- * ActivityToolbar は検索と 4 つの絞り込みである。Status のメニューは応答の `counts`、Feature の
- * メニューは `features` を値の右に出す。md 未満では検索欄の代わりに検索のボタンを置き、押すと
- * 欄が行の上に重なる。
- */
 export function ActivityToolbar({ criteria, state, onChange }: ActivityToolbarProps) {
   const counts = state.kind === "ready" ? state.counts : undefined;
   const features = state.kind === "ready" ? state.features : undefined;

@@ -27,6 +27,11 @@ in the parent Issue or the approved artifacts the statement comes from.
    the contract for an endpoint's errors, the data model for a field's rules,
    the parent Issue for the behaviour — rather than leaving the implementer to
    find them.
+   Carry the plan's test-level choices, existing coverage and required boundaries
+   into acceptance evidence, following
+   [write-tests](../../write-tests/SKILL.md#select-cases). Do not turn a response
+   assertion into an end-to-end scenario or require new tests where the plan
+   reuses sufficient coverage.
    Include a link to `plan.md`, the feature directory, and the feature branch
    name.
    Start the body with one line that names the unit's dependencies as Issue

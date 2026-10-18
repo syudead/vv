@@ -15,9 +15,8 @@ import (
 	"github.com/syudead/vv/internal/mediafs"
 )
 
-// 配信を、main と同じ保存層の役割の型と mediafs をつないで確かめる。httpapi の
-// 単体テストは保存層を差し替えるので、つなぎ方の誤り（#256 で配信の経路が所在を
-// 引けずに全件 404 を返し、再生の E2E が main でだけ落ちた）はここでしか見えない。
+// Verify main's stream-store wiring because isolated HTTP tests cannot detect a store-role mismatch
+// that makes all streams return 404.
 func TestStreamServesIndexedFileWithStore(t *testing.T) {
 	f := newListAPIFixture(t)
 	content := []byte("not really an mp4 but bytes all the same")

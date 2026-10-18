@@ -1,7 +1,11 @@
 version: "3"
 
-# 込み入った処理は scripts/ の Go プログラムに置く。Go と Node は全員が既に
-# 持っているので、検査のためだけに別のランタイムを足さない。
+# Keep complex commands in scripts/; reuse Go and Node instead of adding runtimes.
+vars:
+  GO_PACKAGES: '{{.GO_PACKAGES | default "./..."}}'
+  WEB_FILES: '{{.WEB_FILES | default "."}}'
+  WEB_TESTS: '{{.WEB_TESTS | default ""}}'
+
 tasks:
   default:
     cmds:
@@ -20,12 +24,11 @@ tasks:
 
   setup:
     desc: Download dependencies and warm local tool caches.
-    # .claude/hooks/session-start.sh が同じ手順を差分だけで実行している。
-    # 手順を足したり外したりしたら、フックも合わせる。
+    # Keep .claude/hooks/session-start.sh in sync with these setup steps.
     cmds:
       - go mod download
       - go -C tools mod download
-      # setup は「入れ直す」入口なので、最新かどうかの判定で飛ばしてはいけない。
+      # Setup explicitly reinstalls dependencies, even when caches are warm.
       - npm --prefix web ci
       - npm --prefix tools ci
       - npm --prefix docs-site ci
@@ -37,8 +40,7 @@ tasks:
 
   up:
     desc: Build and run the Docker Compose app.
-    # イメージには .git を入れないので、コミットとその時刻をここで求めて渡す
-    # （task build で Go が埋める vcs.revision / vcs.time と同じ値）。git の外なら空になる。
+    # The image excludes .git; pass the same revision and timestamp that Go embeds locally.
     env:
       VV_COMMIT:
         sh: git rev-parse HEAD 2>/dev/null || true
@@ -69,7 +71,7 @@ tasks:
 
   build-windows-app:
     desc: Build the Windows app zip (dist/VVMDM-<version>-windows-amd64.zip) with the bundled FFmpeg.
-    # VERSION=v1.2.3 で版を決める。無ければ今の commit の sha-<12 桁>。
+    # VERSION overrides the default sha-<12 digits>.
     cmds:
       - go run ./scripts/build -windows-app
 
@@ -108,23 +110,50 @@ tasks:
       - task: test-web
 
   check:
-    desc: Run every check that does not require a browser.
-    # CI は同じ部分タスクを組に分けて並べて流す（.github/workflows/ci.yml の
-    # check-group）。ここに検査を足したら、どれかの組にも足す。
+    desc: Run local formatting, lint and tests (SCOPE=all|go|web|docs).
+    vars:
+      SCOPE: '{{.SCOPE | default "all"}}'
+    requires:
+      vars:
+        - name: SCOPE
+          enum: [all, go, web, docs]
     cmds:
-      - task: fmt-check
-      - task: lint
-      - task: test
+      - task: check-{{.SCOPE}}
+
+  check-all:
+    desc: Run local Go and Web checks; CI runs repository and build checks separately.
+    cmds:
+      - task: check-go
+      - task: check-web
+
+  check-go:
+    desc: Check Go formatting, lint and tests (GO_PACKAGES defaults to ./...).
+    cmds:
+      - task: fmt-check-go
+      - task: lint-go
+      - task: test-go
+
+  check-web:
+    desc: Check Web formatting, types, lint and tests (WEB_FILES and WEB_TESTS narrow the scope).
+    cmds:
+      - task: fmt-check-web
+      - task: lint-web
+      - task: test-web-unit
+
+  check-ci:
+    desc: Reproduce the repository and build checks normally left to CI.
+    cmds:
       - task: generate-check
       - task: migrations-check
       - task: e2e-groups-check
+      - task: lint-go-windows-desktop
       - task: build-windows-check
-      - 'echo "check: all checks passed (browser checks are in task test-e2e)"'
+      - task: build-check-web
 
   check-docs:
     desc: Check documentation links and repository artifact rules.
     cmds:
-      # 文書一覧は git ls-files から得るため、Go の成功キャッシュを再利用しない。
+      # Document discovery uses git ls-files, which the Go test cache does not track.
       - go test -count=1 ./scripts/sddguard
 
   fmt-check:
@@ -137,42 +166,43 @@ tasks:
     desc: Check Go formatting.
     cmds:
       - task: golangci
-        vars: { GOLANGCI_ARGS: "fmt --diff" }
+        vars: { GOLANGCI_ARGS: "fmt --diff {{.GO_PACKAGES}}" }
 
   fmt-check-web:
-    desc: Check Web formatting.
+    desc: Check Web formatting (WEB_FILES is relative to web/).
+    dir: web
     cmds:
-      - npm --prefix web run format:check
+      - npm exec -- prettier --check {{.WEB_FILES}}
 
   lint-go:
     desc: Run golangci-lint, including dependency rules, and reject //nolint.
     cmds:
       - task: golangci
-        vars: { GOLANGCI_ARGS: "run" }
-      - task: lint-go-windows-desktop
-      # 指摘はコードで解消し、//nolint による無効化は認めない（syudead/vv#443）。
+        vars: { GOLANGCI_ARGS: "run {{.GO_PACKAGES}}" }
       - go run ./scripts/nolintguard
 
   lint-go-windows-desktop:
     desc: Run golangci-lint on the Windows desktop build (VVMDM.exe).
-    # Windows 専用と desktop タグのファイルは、Linux のタグなしの lint では読まれない
-    #
+    # Host lint cannot see Windows-only or desktop-tagged sources.
     cmds:
       - task: golangci
         vars:
-          # golangci-lint の場所は Linux のまま求め、読み込む対象だけを Windows にする。
+          # Resolve the host linter binary before setting the target OS.
           GOLANGCI_ENV: "GOOS=windows CGO_ENABLED=0"
           GOLANGCI_ARGS: "run --build-tags desktop"
 
   lint-web:
-    desc: Run Web static analysis.
+    desc: Check all Web types and lint WEB_FILES (relative to web/).
+    dir: web
     cmds:
-      - npm --prefix web run lint
+      - npm run typecheck
+      - npm exec -- tsc --noEmit -p tsconfig.e2e.json
+      - npm exec -- eslint --max-warnings 0 --no-warn-ignored {{.WEB_FILES}}
 
   test-go:
     desc: Run Go tests.
     cmds:
-      - go test ./...
+      - go test {{.GO_PACKAGES}}
 
   test-go-report:
     desc: Run Go tests and write coverage and JUnit reports under reports/ (CI sends them to Codecov).
@@ -185,7 +215,7 @@ tasks:
 
   test-web:
     desc: Run the Web build check and unit tests.
-    # CI はビルド検査を 1 回だけ流し、vitest を組に分ける。後ろの引数は vitest へ渡す。
+    # CI builds once and shards Vitest separately.
     cmds:
       - task: build-check-web
       - task: test-web-unit
@@ -198,16 +228,13 @@ tasks:
   test-web-unit:
     desc: Run the Web unit tests without the build check.
     cmds:
-      - npm --prefix web run test:unit -- {{.CLI_ARGS}}
+      - npm --prefix web run test:unit -- {{.WEB_TESTS}} {{.CLI_ARGS}}
 
   test-web-report:
     desc: Run the Web unit tests and write coverage and JUnit reports under reports/ (CI sends them to Codecov).
-    # 後ろの引数は vitest へ渡す（CI は --shard=1/3 などを付ける）。
     cmds:
       - npm --prefix web run test:unit -- --coverage --coverage.reportsDirectory=../reports/web-coverage --reporter=default --reporter=junit --outputFile.junit=../reports/web-junit.xml {{.CLI_ARGS}}
 
-  # 複雑度と重複を、各ツールの出力のまま指標ごとに reports/quality/<指標>/ に残す。
-  # CI は指標ごとの job で並列に流し、artifact に残す（.github/workflows/ci.yml の quality）。
   quality-metrics:
     desc: Write the complexity of every function and the duplicated code under reports/quality/.
     deps: [complexity-go, complexity-web, duplication]
@@ -219,19 +246,17 @@ tasks:
         sh: go -C tools tool -n gocyclo
     cmds:
       - mkdir -p reports/quality/complexity-go
-      # 生成コードとテストは手で書いたコードの複雑さではないので外す。
       - '"{{.GOCYCLO}}" -avg -ignore "(^|/)(gen|extgen|node_modules|worktrees|reports|testdata|\.claude|\.local)/|_test\.go$" . > reports/quality/complexity-go/gocyclo.txt'
 
   complexity-web:
     desc: Write the cyclomatic complexity of every Web function (the ESLint complexity rule) to reports/quality/complexity-web/.
     cmds:
       - mkdir -p reports/quality/complexity-web
-      # complexity の上限を 0 にして、web/src のすべての関数の値を出させる。
+      # A zero threshold reports the complexity of every function.
       - 'cd web && npx eslint --rule "complexity: [warn, 0]" --format json --output-file ../reports/quality/complexity-web/eslint.json src'
 
   duplication:
     desc: Write the duplicated Go and Web code (jscpd) to reports/quality/duplication/.
-    # tools の npm 依存を使う。
     cmds:
       - >-
         node tools/node_modules/jscpd/bin/jscpd .
@@ -239,11 +264,7 @@ tasks:
         --ignore "**/node_modules/**,**/dist/**,**/gen/**,**/extgen/**,docs-site/**,worktrees/**,.claude/**,web/registry/**,media/**,**/testdata/**,**/*.d.ts,reports/**,tools/**"
         --gitignore --reporters json --output reports/quality/duplication --silent
 
-  # 変異テスト（mutation testing）。テストが壊れたコードを見つけられるかを測る。
-  # 時間がかかるので task check には入れず、CI は月に 1 回流す
-  # （.github/workflows/mutation-testing.yml）。スコアは参考値で、低くても失敗にしない。
-  # Web（StrykerJS）は、vitest-runner が Vitest 5 で検査を 1 件も流さない不具合
-  # （stryker-mutator/stryker-js#6210）の修正版が出てから足す。
+  # Web mutation testing awaits the fix for stryker-mutator/stryker-js#6210.
   mutation:
     desc: Run mutation testing and write reports under reports/mutation/ (CI runs it monthly).
     cmds:
@@ -251,17 +272,12 @@ tasks:
 
   mutation-go:
     desc: Run gremlins on the Go domain packages and write reports/mutation/go/gremlins.json.
-    # gremlins は 1 回に 1 つの根を受け取り、その下のパッケージを全部扱う。
-    # 根を足すときは、CI の所要時間（いまは 20 分ほどまで）を見て決める。
+    # Gremlins accepts one package root per run; consider CI duration before expanding it.
     vars:
       GREMLINS:
         sh: go -C tools tool -n gremlins
       MUTATION_GO_DIR: '{{.MUTATION_GO_DIR | default "./internal/domain"}}'
-    # gremlins は最初のカバレッジ計測にかかった時間から、変異ごとの待ち時間を決める。
-    # go test の結果がキャッシュから返ると計測が一瞬で終わり、全変異が TIMED OUT になる
-    # ので、キャッシュを使わせない。待ち時間は既定で計測時間の 3 倍だが、変異ごとに
-    # テストを組み直す時間を含めると足りず、無限ループでない変異まで TIMED OUT になる
-    # ので 10 倍にする。後ろの引数は gremlins unleash へ渡す（--workers 4 など）。
+    # Disable cached baseline timing and allow compilation time for each mutant.
     env:
       GOFLAGS: -count=1
     cmds:
@@ -271,7 +287,7 @@ tasks:
   test-e2e:
     desc: Run browser end-to-end tests through Go and Vite.
     cmds:
-      # `task test-e2e -- e2e/tags.e2e.ts` のように、後ろの引数は Playwright へ渡す。
+      # Arguments after -- go to Playwright, e.g. task test-e2e -- e2e/tags.e2e.ts.
       - npm --prefix web run test:e2e -- {{.CLI_ARGS}}
 
   generate-check:
@@ -289,8 +305,6 @@ tasks:
     cmds:
       - bash scripts/e2e-groups.sh
 
-  # Windows でしか使わないコード（scripts/dev/procgroup_windows.go）は、
-  # 手元の GOOS では型検査すらされない。壊れたことに気付く口をここに置く。
   build-windows-check:
     desc: Check that the sources still build for Windows.
     env:
@@ -298,11 +312,9 @@ tasks:
       CGO_ENABLED: 0
     cmds:
       - go build ./...
-      # Windows デスクトップ版（VVMDM.exe）。出力は捨て、組めることだけを確かめる。
       - go build -tags desktop -ldflags "-H=windowsgui" -o {{if eq OS "windows"}}NUL{{else}}/dev/null{{end}} ./cmd/mdm
 
-  # golangci-lint は run と fmt の両方で使う。版は tools/go.mod が
-  # 単一の出どころなので、呼び出しもここ1か所に寄せる。
+  # Resolve the pinned linter from tools/go.mod for both run and fmt.
   golangci:
     internal: true
     vars:

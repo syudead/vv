@@ -28,8 +28,6 @@ func relatedFixture() (*fakeLibrary, *fakeCatalog) {
 	return &fakeLibrary{videos: videos}, catalog
 }
 
-// アプリケーション層が並べた順に返し、nextId・prevId を写す。一覧と同じく progress を
-// 付け、所在は載せない。並べ方は internal/app の Catalog.RelatedVideos で検証する。
 func TestGetRelatedVideos(t *testing.T) {
 	library, catalog := relatedFixture()
 	playback := newFakePlayback()
@@ -68,8 +66,6 @@ func TestGetRelatedVideos(t *testing.T) {
 	}
 }
 
-// ページの指定を読んでアプリケーション層へ渡し、続きの位置を nextCursor に写す。指定が
-// 無ければ先頭から既定の件数。
 func TestGetRelatedVideosPages(t *testing.T) {
 	library, catalog := relatedFixture()
 	cursor := domain.RelatedCursor{Score: 25_000_000, AddedAt: 1_757_000_000, VideoID: 4}
@@ -100,7 +96,6 @@ func TestGetRelatedVideosPages(t *testing.T) {
 	}
 }
 
-// 次・前の動画が無いとき nextId・prevId は省かれる。
 func TestGetRelatedVideosOmitsMissingNeighbors(t *testing.T) {
 	library, catalog := relatedFixture()
 	catalog.related.NextID = 0
@@ -116,7 +111,6 @@ func TestGetRelatedVideosOmitsMissingNeighbors(t *testing.T) {
 	}
 }
 
-// 関連動画の応答にもタグが載り、タグの無い動画は空配列になる（#267）。
 func TestGetRelatedVideosIncludesTags(t *testing.T) {
 	library, catalog := relatedFixture()
 	tags := &fakeTags{byContentKey: map[string][]domain.VideoTag{
@@ -125,7 +119,7 @@ func TestGetRelatedVideosIncludesTags(t *testing.T) {
 	handler := newTestServer(t, Options{Videos: library, Catalog: catalog, Tags: tags})
 
 	got := decode[gen.RelatedVideos](t, do(t, handler, http.MethodGet, "/api/videos/3/related"))
-	// items[0] は videos[2]（"ep 10"、content key "ep 10:1"）である（relatedFixture 参照）。
+	// items[0] corresponds to videos[2], ep 10 with content key ep 10:1.
 	if len(got.Items[0].Tags) != 1 || got.Items[0].Tags[0].Name != "旅行" {
 		t.Fatalf("tags = %+v", got.Items[0].Tags)
 	}

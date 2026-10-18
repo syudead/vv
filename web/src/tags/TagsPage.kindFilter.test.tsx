@@ -14,7 +14,7 @@ import {
 
 setUpTagsPageServer();
 
-// Radix の Select は開くときにポインタの捕捉を確かめる。jsdom には無いので空の実装を置く。
+// Radix checks pointer capture on open; jsdom needs a stub.
 beforeAll(() => {
   const proto = Element.prototype as unknown as Record<string, unknown>;
   proto.hasPointerCapture ??= () => false;
@@ -26,7 +26,6 @@ type User = ReturnType<typeof userEvent.setup>;
 const genre = { id: 1, name: "Genre" };
 const work = { id: 2, name: "Work" };
 
-/** seedKindTags は種類を持つタグと持たないタグを並べる。 */
 function seedKindTags() {
   server.tags = [
     tag({ id: 1, name: "Robot", kind: genre }),
@@ -50,7 +49,6 @@ function bar(): HTMLElement {
   return screen.getByRole("region", { name: "Selected tags" });
 }
 
-/** chooseKind は「Filter」の吹き出しを開き、「Kind」の `Select` で `option` を選んで閉じる。 */
 async function chooseKind(user: User, option: string) {
   await user.click(filterButton());
   const select = await screen.findByRole("combobox", { name: "Kind" });
@@ -62,7 +60,6 @@ async function chooseKind(user: User, option: string) {
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 }
 
-/** setKind は選択バーの「Set kind…」のメニューで `name` を選ぶ。 */
 async function setKind(user: User, name: string) {
   await user.click(within(bar()).getByRole("button", { name: "Set kind…" }));
   await user.click(await screen.findByRole("menuitemradio", { name }));

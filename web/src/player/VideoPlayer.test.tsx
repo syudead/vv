@@ -22,7 +22,6 @@ const mock = vi.hoisted(() => {
     videoHeightValue = 1080;
     posterValue: string | undefined;
     userActiveValue = true;
-    /** 付けた字幕のトラック（addRemoteTextTrack の引数と mode）。 */
     remoteTracks: {
       options: { src: string; label: string; kind: string };
       mode: string;
@@ -36,7 +35,7 @@ const mock = vi.hoisted(() => {
       this.element = element;
       this.options = options;
       this.posterValue = options.poster as string | undefined;
-      // 操作バーの DOM だけを真似る（差し込みと aria-keyshortcuts の検査のため）。
+      // Only emulate the control-bar DOM needed for insertion and aria-keyshortcuts checks.
       element.innerHTML =
         '<div class="vjs-control-bar"><div class="vjs-progress-control">' +
         '<div class="vjs-progress-holder"></div></div>' +
@@ -94,7 +93,6 @@ const mock = vi.hoisted(() => {
       for (const callback of [...(this.handlers.get(event) ?? [])])
         callback({ type: event }, hash);
     }
-    /** 画質メニューに渡した状態（qualityMenu.ts の setQualityMenu）。 */
     qualityStates: { options: readonly string[]; current: string }[] = [];
     getChild(name: string): unknown {
       if (name === "ControlBar") return this;
@@ -110,7 +108,6 @@ const mock = vi.hoisted(() => {
     src(source: unknown) {
       this.sources.push(source);
     }
-    /** 技術層の要素。設けたときだけ、要素が読み込んでいる source（currentSrc）を確かめる。 */
     techElement: HTMLVideoElement | undefined;
     tech() {
       return {
@@ -127,7 +124,6 @@ const mock = vi.hoisted(() => {
       for (const callback of this.techHandlers.get(event) ?? [])
         callback({ type: event });
     }
-    /** 要素が読み込んでいる source を src に替える。 */
     loadInTech(src: string) {
       this.techElement ??= document.createElement("video");
       Object.defineProperty(this.techElement, "currentSrc", {
@@ -213,7 +209,6 @@ const mock = vi.hoisted(() => {
     {
       use: vi.fn(),
       addLanguage: vi.fn(),
-      // qualityMenu.ts が読み込むときに基底の部品を引いて登録する。
       getComponent: vi.fn(() => class {}),
       registerComponent: vi.fn(),
       createTimeRanges: vi.fn((values: [number, number][]) => ({
@@ -412,7 +407,7 @@ describe("VideoPlayer", () => {
     act(() => player.trigger("timeupdate"));
     expect(values.onPosition).toHaveBeenLastCalledWith(90_000);
 
-    // Replay は先頭へ戻してすぐ play し、timeupdate より先に play が届くことがある。
+    // Replay may emit play before timeupdate after seeking to zero.
     player.time = 0;
     act(() => player.trigger("play"));
 
@@ -518,7 +513,6 @@ describe("VideoPlayer", () => {
       "showing",
     ]);
 
-    // c キーの入口は字幕を切り替える。
     const controls = base.onControls.mock.calls.at(-1)?.[0] as {
       toggleSubtitles(): void;
     };
@@ -562,7 +556,6 @@ describe("VideoPlayer", () => {
       vvOffsetSettled?: (seconds: number) => void;
       vvOffsetPending?: () => void;
     };
-    // 仲立ちは報告を待ち始めたときに未決を、届いたら実際の開始位置を知らせる。
     act(() => live.vvOffsetPending?.());
     expect(player.remoteTracks).toEqual([]);
     act(() => live.vvOffsetSettled?.(8));
@@ -666,7 +659,6 @@ describe("VideoPlayer", () => {
     });
     const bar = mock.instances[1]?.element.querySelector(".vjs-control-bar");
     expect(bar?.contains(indicator)).toBe(true);
-    // 字幕ボタンは再生速度の隣に保ち、「変換して再生中」はその前に置く。
     const next = indicator.closest(".vv-transcode-indicator")?.nextElementSibling;
     expect(next?.className).toBe("vjs-subs-caps-button");
     expect(next?.nextElementSibling?.className).toBe("vjs-playback-rate");
@@ -764,14 +756,12 @@ describe("VideoPlayer", () => {
     player.trigger("loadedmetadata");
     player.time = 42.5;
     player.errorValue = { code: 4 };
-    // 番号 4 はサーバーに届くかを確かめてから分ける。届けば動画を出せなかった失敗になる。
     const fetchMock = vi.fn(() => Promise.resolve(new Response("{}")));
     vi.stubGlobal("fetch", fetchMock);
     act(() => player.trigger("error"));
     await waitFor(() => expect(values.onError).toHaveBeenCalledWith(42_500, "source"));
     expect(fetchMock).toHaveBeenCalledWith("/api/health", expect.anything());
     expect(player.errorValue).toBeNull();
-    // 変換へ切り替えたあとの失敗でも、操作バーを出す印を付け直す。
     expect(player.started).toBe(true);
   });
 
@@ -857,7 +847,6 @@ describe("VideoPlayer", () => {
 
     act(() => player.trigger("loadedmetadata"));
     expect(player.time).toBe(12);
-    // 続きからの位置へのシークが終わるまでは、映っている場面がまだその位置ではない。
     expect(values.onStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({ positioned: false }),
     );
@@ -880,7 +869,6 @@ describe("VideoPlayer", () => {
       vvOffsetSettled?: (seconds: number) => void;
       vvOffsetPending?: () => void;
     };
-    // 仲立ちは source を設定した直後に報告を待ち始める。
     act(() => live.vvOffsetPending?.());
     act(() => player.trigger("loadedmetadata"));
     expect(values.onStatus).toHaveBeenLastCalledWith(
@@ -903,7 +891,7 @@ describe("VideoPlayer", () => {
     expect(values.onStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({ positioned: true }),
     );
-    // 開いただけで知らせると、離脱時の保存が再生していない動画に進捗を作る。
+    // Reporting on open would create progress for an unplayed video when leaving.
     expect(values.onPosition).not.toHaveBeenCalled();
   });
 
@@ -938,7 +926,6 @@ describe("VideoPlayer", () => {
     const changes = vi.fn();
     player.on("fullscreenchange", changes);
 
-    // F キーも video.js の全画面ボタンも player.requestFullscreen を通る。
     controls.toggleFullscreen();
     expect(requestFullscreen).toHaveBeenCalledTimes(1);
 
@@ -950,7 +937,6 @@ describe("VideoPlayer", () => {
       document.dispatchEvent(new Event("fullscreenchange"));
     });
     expect(controls.isFullscreen()).toBe(true);
-    // 全画面ボタンの表示を切り替えるため、プレイヤーにも知らせる。
     expect(changes).toHaveBeenCalledTimes(1);
 
     fireEvent.click(
@@ -1011,7 +997,6 @@ describe("VideoPlayer", () => {
       children.indexOf("customControlSpacer") + 1,
     );
     const element = player?.element;
-    // チャプターの無い動画は今のまま（プレビューも印も無い）。
     expect(element?.querySelector(".vv-seek-preview")).toBeNull();
     expect(element?.querySelector(".vv-chapter-mark")).toBeNull();
 
@@ -1266,7 +1251,6 @@ describe("VideoPlayer", () => {
       const player = startPlaying(values);
       player.errorValue = { code: 2 };
       act(() => player.trigger("error"));
-      // 要素は止まっていない（pausedValue は偽）が、見る人の意図は再生である。
       expect(player.paused()).toBe(false);
       const controls = values.onControls.mock.calls[0]?.[0] as {
         togglePlay(): void;
@@ -1275,7 +1259,6 @@ describe("VideoPlayer", () => {
       expect(player.paused()).toBe(true);
       act(() => controls.togglePlay());
       expect(player.paused()).toBe(false);
-      // 再生を押したので、待たずに読み込み直した。
       expect(player.sources).toHaveLength(2);
     });
 
@@ -1339,7 +1322,6 @@ describe("VideoPlayer", () => {
       player.errorValue = { code: 2 };
       act(() => player.trigger("error"));
       act(() => vi.advanceTimersByTime(1000));
-      // 仲立ちが、コピーで始めた変換の実際の開始位置（直前のキーフレーム）を知らせる。
       const reloaded = player.sources[1] as { vvOffsetChanged(seconds: number): void };
       act(() => reloaded.vvOffsetChanged(28.5));
       player.time = 0;
@@ -1466,14 +1448,12 @@ describe("VideoPlayer", () => {
         await screen.findByRole("button", { name: "Converting to 480p" }),
       ).toBeDefined();
 
-      // 差し替えた要素は止まった状態・既定の速度から始まる。
       player.pausedValue = true;
       player.rate = 1;
       player.time = 0;
       act(() => player.trigger("loadedmetadata"));
       expect(player.pausedValue).toBe(false);
       expect(player.rate).toBe(1.5);
-      // 変換の source は URL が位置を持つので、シークしない。
       expect(player.time).toBe(0);
     });
 
@@ -1537,7 +1517,6 @@ describe("VideoPlayer", () => {
         vvQuality: "360p",
       });
       expect(player.qualityStates.at(-1)).toMatchObject({ current: "360p" });
-      // 直接再生へ戻す切り替えのシークは、置き換えた変換の source には効かない。
       player.pausedValue = true;
       player.time = 0;
       act(() => player.trigger("loadedmetadata"));
@@ -1564,7 +1543,6 @@ describe("VideoPlayer", () => {
       expect(first.src).toMatch(/quality=480p$/);
       expect(last.src).toMatch(/quality=360p$/);
 
-      // video.js が 360p を要素へ渡す前に、480p のメタデータが届く。
       player.pausedValue = true;
       player.rate = 1;
       player.loadInTech(first.src);
@@ -1572,8 +1550,7 @@ describe("VideoPlayer", () => {
       expect(player.pausedValue).toBe(true);
       expect(player.rate).toBe(1);
 
-      // 360p が要素に渡ったあと、未 buffer シークで仲立ちが同じ画質の URL へ読み込み直しても、
-      // そのメタデータで切り替えを終える。
+      // Once the new source reaches the element, unbuffered seeks may change its URL without invalidating metadata.
       player.loadInTech(last.src);
       act(() => player.trigger("loadstart"));
       player.loadInTech(
@@ -1639,7 +1616,6 @@ describe("VideoPlayer", () => {
       return calls[calls.length - 1]?.[0] as Record<string, unknown> | undefined;
     }
 
-    /** 再生を始め、最初の読み込みが落ち着いた（playing が来た）プレイヤー。 */
     function startPlaying(values: ReturnType<typeof props>) {
       vi.useFakeTimers();
       render(<VideoPlayer {...values} />);

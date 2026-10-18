@@ -7,7 +7,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 保存前はゼロ値を返し、保存した値を読み戻せる。キーを消した保存は空で読める。
 func TestComfyUISettingsRoundTrip(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

@@ -12,13 +12,10 @@ import (
 	"github.com/syudead/vv/scripts/devtools"
 )
 
-// appShutdownGrace は cmd/mdm が処理中の要求を待つ猶予を読み出す。定数を
-// import できないので、値そのものを読む。
+// Read the constant from cmd/mdm because package main cannot be imported.
 var appShutdownGrace = regexp.MustCompile(`shutdownGrace = (\d+) \* time\.Second`)
 
-// TestGracePeriodsAreOrdered は、停止の猶予が内側から順に長くなっていることを
-// 確かめる。アプリが要求を捌き終える前に SIGKILL すると、task dev 越しの停止
-// だけが中途半端に終わる。cmd/mdm 側の猶予が伸びたらここが落ちる。
+// Keep outer shutdown deadlines longer than the application deadline.
 func TestGracePeriodsAreOrdered(t *testing.T) {
 	root, err := devtools.RepositoryRoot()
 	if err != nil {

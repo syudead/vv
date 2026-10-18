@@ -4,44 +4,32 @@ import (
 	"slices"
 )
 
-// 取得した作品の詳細を保存済みの作品情報に重ねる。
-// 品番・説明・選んだ種類の日付は置き換え、役割ごとの人物・団体、URL、外部 ID はまだ無いものを取得の順に
-// 後ろに足す。項目の規則に合わない値、上限を超える値、照合が曖昧な人物・団体は飛ばして報告し、行の残りは
-// 反映する。保存層は返した作品情報を書くだけで、規則はここで決める。
+// Fetched merging replaces scalar/date fields and appends new credits, URLs, and IDs; invalid, excessive, or ambiguous values are reported and skipped while valid values still apply.
 
-// SkippedWorkInfoReason は反映で飛ばした値の理由である。
 type SkippedWorkInfoReason string
 
 const (
-	// SkippedWorkInfoInvalid は項目の規則（実体の名前と外部 ID）に合わないこと。
-	SkippedWorkInfoInvalid SkippedWorkInfoReason = "invalid"
-	// SkippedWorkInfoTooMany は保存済みの件の後に数えて件数の上限を超えること。
-	SkippedWorkInfoTooMany SkippedWorkInfoReason = "too_many"
-	// SkippedWorkInfoAmbiguous は人物・団体の照合が複数の実体に当たったこと。
+	SkippedWorkInfoInvalid   SkippedWorkInfoReason = "invalid"
+	SkippedWorkInfoTooMany   SkippedWorkInfoReason = "too_many"
 	SkippedWorkInfoAmbiguous SkippedWorkInfoReason = "ambiguous"
 )
 
-// SkippedDescriptionMaxRunes は飛ばした説明の Value に載せる先頭の文字数である。
 const SkippedDescriptionMaxRunes = 100
 
-// SkippedWorkInfoValue は反映で飛ばした値 1 つである。Value は比較が見せた文字列（日付、URL、名前、
-// "source: value"、説明は先頭 SkippedDescriptionMaxRunes 文字）である。
+// Value preserves the comparison text, truncating descriptions to SkippedDescriptionMaxRunes.
 type SkippedWorkInfoValue struct {
 	Field  WorkInfoField
 	Value  string
 	Reason SkippedWorkInfoReason
 }
 
-// NewCredit は反映が作る人物か団体 1 つである。Input は NormalizeCredit を通った名前と外部 ID で、
-// Links はこの実体を結ぶ、重ねた作品情報の People（団体なら Organizations）の位置である。保存層は
-// 実体を作ってから、その位置の ID を埋める。
+// NewCredit.Links identifies result positions whose IDs storage fills after creating the normalized entity.
 type NewCredit struct {
 	Input CreditInput
 	Links []int
 }
 
-// WorkInfoMergeInput は MergeFetchedWorkInfo の入力である。PersonMatches と OrganizationMatches は
-// Fetched.People と Fetched.Organizations の各件の照合の答えで、同じ順に並ぶ。
+// Match arrays must align with fetched credit entries.
 type WorkInfoMergeInput struct {
 	Stored              WorkInfo
 	Fetched             FetchedWorkInfo
@@ -50,8 +38,7 @@ type WorkInfoMergeInput struct {
 	Fields              []WorkInfoField
 }
 
-// WorkInfoMerge は MergeFetchedWorkInfo の結果である。Info の作る人物・団体の ID は 0 で、NewPeople と
-// NewOrganizations の Links が指す。Skipped は WorkInfoFields の順、項目の中は取得の順である。
+// New entities initially have ID zero; Links identifies their positions, and Skipped follows field order then fetch order.
 type WorkInfoMerge struct {
 	Info             WorkInfo
 	NewPeople        []NewCredit
@@ -59,8 +46,7 @@ type WorkInfoMerge struct {
 	Skipped          []SkippedWorkInfoValue
 }
 
-// MergeFetchedWorkInfo は in.Fields が選んだ項目を保存済みの作品情報に重ねる（R-4）。結果に値の無い
-// 項目と、題名とタグは何もしない。値ごとの規則は NormalizeWorkInfo で確かめる。
+// MergeFetchedWorkInfo ignores absent selected values and title/tags, validating individual values with NormalizeWorkInfo.
 func MergeFetchedWorkInfo(in WorkInfoMergeInput) WorkInfoMerge {
 	m := workInfoMerger{
 		selected: func(field WorkInfoField) bool { return slices.Contains(in.Fields, field) },
@@ -105,7 +91,6 @@ func MergeFetchedWorkInfo(in WorkInfoMergeInput) WorkInfoMerge {
 	return m.out
 }
 
-// workInfoMerger は MergeFetchedWorkInfo の途中の状態である。
 type workInfoMerger struct {
 	selected func(WorkInfoField) bool
 	out      WorkInfoMerge
@@ -115,7 +100,6 @@ func (m *workInfoMerger) skip(field WorkInfoField, value string, reason SkippedW
 	m.out.Skipped = append(m.out.Skipped, SkippedWorkInfoValue{Field: field, Value: value, Reason: reason})
 }
 
-// replaceText は選んだ品番か説明 value を、規則に合えば置き換え、合わなければ invalid で飛ばす。
 func (m *workInfoMerger) replaceText(field WorkInfoField, value string, at func(*WorkInfo) *string) {
 	if value == "" || !m.selected(field) {
 		return
@@ -134,8 +118,6 @@ func (m *workInfoMerger) replaceText(field WorkInfoField, value string, at func(
 	*at(&m.out.Info) = *at(&normalized)
 }
 
-// replaceDates は選んだ種類の日付を、形が正しければ置き換え、正しくなければ invalid で飛ばす。ほかの
-// 種類の日付は残し、一覧は DateKinds の順に並べる。
 func (m *workInfoMerger) replaceDates(dates []WorkDate) {
 	for _, kind := range DateKinds {
 		i := slices.IndexFunc(dates, func(d WorkDate) bool { return d.Kind == kind })
@@ -155,8 +137,6 @@ func (m *workInfoMerger) replaceDates(dates []WorkDate) {
 	})
 }
 
-// appendURLs は選んだ URL のうちまだ無いものを取得の順に足す。形の違う URL は invalid、上限を超える分は
-// too_many で飛ばす。
 func (m *workInfoMerger) appendURLs(urls []string) {
 	if !m.selected(WorkInfoFieldURLs) {
 		return
@@ -175,8 +155,6 @@ func (m *workInfoMerger) appendURLs(urls []string) {
 	}
 }
 
-// appendExternalIDs は選んだ外部 ID のうちまだ無い (source, value) を足す。規則に合わない件は invalid、
-// 上限を超える分は too_many で飛ばす。
 func (m *workInfoMerger) appendExternalIDs(ids []ExternalID) {
 	if !m.selected(WorkInfoFieldExternalIDs) {
 		return
@@ -196,7 +174,7 @@ func (m *workInfoMerger) appendExternalIDs(ids []ExternalID) {
 	}
 }
 
-// cloneWorkInfo は一覧を写した作品情報を返す。重ねる側が保存済みの値の配列を書き換えないためである。
+// Clone lists to avoid mutating persisted input arrays during merge.
 func cloneWorkInfo(w WorkInfo) WorkInfo {
 	w.Dates = slices.Clone(w.Dates)
 	w.People = slices.Clone(w.People)
@@ -206,9 +184,7 @@ func cloneWorkInfo(w WorkInfo) WorkInfo {
 	return w
 }
 
-// creditLink は重ねる途中の人物か団体の結び付き 1 件である。created は作る実体の NewCredit の位置で、
-// 既存の実体なら -1 である。pending は足すときに新しく作る実体の入力で、それ以外は nil である。absorb は
-// もう作ると決めた実体にまとめた件の外部 ID で、その実体の入力に足す。
+// created is a NewCredit index or -1 for existing entities; pending creates on append, while absorb collects IDs for an already-planned entity.
 type creditLink[R ~string] struct {
 	role    R
 	ref     CreditRef
@@ -217,7 +193,6 @@ type creditLink[R ~string] struct {
 	absorb  []ExternalID
 }
 
-// fetchedCredit は取得した人物か団体 1 件である。
 type fetchedCredit[R ~string] struct {
 	role R
 	name string
@@ -242,7 +217,6 @@ func fetchedLinks[R ~string, F any](fetched []F, split func(F) (R, string, []Ext
 	return out
 }
 
-// creditRoleInput は人物か団体の一覧を重ねる入力である。matches は fetched と同じ順の照合の答えである。
 type creditRoleInput[R ~string] struct {
 	roles   []R
 	field   func(R) WorkInfoField
@@ -252,18 +226,14 @@ type creditRoleInput[R ~string] struct {
 	matches []CreditMatch
 }
 
-// creditRoleMerge は人物か団体の一覧を重ねた結果である。links は保存済みの結び付きの後ろに足したもので、
-// 位置がそのまま作品情報の一覧の位置になる。
+// Appended link positions match the resulting work-info list positions.
 type creditRoleMerge[R ~string] struct {
 	links   []creditLink[R]
 	created []NewCredit
 	skipped []SkippedWorkInfoValue
 }
 
-// mergeCreditRoles は選んだ役割ごとに、取得の順に件を足す。既存の実体はその役割にまだ結んでいなければ
-// 足し、曖昧な件は ambiguous、作る件は NormalizeCredit に合わなければ invalid で飛ばす。件数は保存済みの
-// 件の後に数え、上限を超える分は too_many。同じ結果の中で外部 ID か名前の照合形が重なる作る件は 1 つの
-// 実体にまとめ、後の件の外部 ID もその実体に足す（mergeIDs）。
+// mergeCreditRoles skips invalid/ambiguous/over-limit entries and coalesces planned entities sharing external IDs or folded names, merging their IDs across roles.
 func mergeCreditRoles[R ~string](selected func(WorkInfoField) bool, in creditRoleInput[R]) creditRoleMerge[R] {
 	out := creditRoleMerge[R]{links: slices.Clone(in.stored)}
 	for _, role := range in.roles {
@@ -303,8 +273,6 @@ func mergeCreditRoles[R ~string](selected func(WorkInfoField) bool, in creditRol
 	return out
 }
 
-// resolve は取得した件 entry を照合の答え match で結び付きにする。飛ばすなら理由を、その役割にもう
-// 結んでいる実体なら keep を偽で返す。
 func (m *creditRoleMerge[R]) resolve(entry fetchedCredit[R], match CreditMatch) (creditLink[R], SkippedWorkInfoReason, bool) {
 	link := creditLink[R]{role: entry.role, created: -1}
 	switch match.State {
@@ -326,15 +294,14 @@ func (m *creditRoleMerge[R]) resolve(entry fetchedCredit[R], match CreditMatch) 
 			link.ref.Name = m.created[link.created].Input.Name
 			link.absorb = input.ExternalIDs
 		} else {
-			// 作るのは足すときで、飛ばした件は実体を残さない。
+			// Create only when appending so skipped entries leave no orphan entity.
 			link.created, link.pending = len(m.created), &input
 		}
 	}
 	return link, "", !m.linked(link)
 }
 
-// createdIndex は作る実体のうち、input と外部 ID を共有するか、なければ名前の照合形が等しいものの位置を返す。
-// 無ければ -1。
+// createdIndex prefers shared external IDs, then folded-name equality, or -1.
 func (m *creditRoleMerge[R]) createdIndex(input CreditInput) int {
 	for i, created := range m.created {
 		for _, id := range input.ExternalIDs {
@@ -347,8 +314,7 @@ func (m *creditRoleMerge[R]) createdIndex(input CreditInput) int {
 	return slices.IndexFunc(m.created, func(c NewCredit) bool { return FoldForMatch(c.Input.Name) == key })
 }
 
-// mergeIDs は、もう作ると決めた実体にまとめた件 link の外部 ID のうち、その実体にまだ無いものを足す。
-// ほかの作る実体が持つ ID は ambiguous、実体の外部 ID の上限を超える分は too_many で飛ばす。
+// mergeIDs skips IDs owned by another planned entity as ambiguous and excess IDs as too_many.
 func (m *creditRoleMerge[R]) mergeIDs(field WorkInfoField, link creditLink[R]) {
 	if link.pending != nil || link.created < 0 {
 		return
@@ -368,7 +334,6 @@ func (m *creditRoleMerge[R]) mergeIDs(field WorkInfoField, link creditLink[R]) {
 	}
 }
 
-// linked は link と同じ役割に同じ実体がもう結ばれているかを返す。
 func (m *creditRoleMerge[R]) linked(link creditLink[R]) bool {
 	return slices.ContainsFunc(m.links, func(l creditLink[R]) bool {
 		if l.role != link.role {
@@ -381,7 +346,6 @@ func (m *creditRoleMerge[R]) linked(link creditLink[R]) bool {
 	})
 }
 
-// add は link を足し、作る実体ならその Links に位置を記す。
 func (m *creditRoleMerge[R]) add(link creditLink[R]) {
 	if link.pending != nil {
 		m.created = append(m.created, NewCredit{Input: *link.pending})

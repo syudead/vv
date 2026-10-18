@@ -1,19 +1,18 @@
 -- +goose Up
--- 作品情報プラグインごとの直近の実行の標準エラー。
--- 利用者データで、プラグインごとに 1 行を実行のたびに置き換える。
+-- Persist only the latest run's stderr per plugin.
 create table work_info_plugin_runs (
     plugin_id  integer primary key references work_info_plugins (id) on delete cascade,
-    -- 実行を始めたときの work_info_plugins.generation。行はこの世代がまだあるときだけ書く。
+    -- Write only while the plugin still has the generation captured at run start.
     generation integer not null,
-    -- search か fetch。
+    -- Either search or fetch.
     operation  text    not null,
-    -- 実行の失敗の種類。成功した実行では null。
+    -- Failure kind, NULL on success.
     failure    text,
-    -- 実行が終わった時刻（Unix 秒）。
+    -- Completion time in Unix seconds.
     ran_at     integer not null,
-    -- 標準エラーの先頭 64 KiB。秘密の設定の値は [secret] に置き換えてある。
+    -- First 64 KiB of stderr with secret settings replaced by [secret].
     stderr     text    not null,
-    -- 64 KiB より後ろを捨てたら 1。
+    -- One when trailing stderr was discarded.
     truncated  integer not null
 );
 

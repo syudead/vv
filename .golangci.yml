@@ -1,11 +1,10 @@
-# golangci-lint v2 の設定（書式は v1 と非互換なので version: "2" が必要）。
-# 版は tools/go.mod で固定する。
+# golangci-lint v2 format; tools/go.mod pins the version.
 version: "2"
 
 linters:
   default: standard
   enable:
-    # ARCHITECTURE.md が定める依存の向きを機械的に強制する。
+    # Enforce dependency direction from ARCHITECTURE.md.
     - depguard
     - errcheck
     - govet
@@ -13,41 +12,23 @@ linters:
     - staticcheck
     - unused
 
-    # 以下は 007 設定画面の実装で実際に起きた欠陥の種類に対応する。
-    # レビューは1件ずつ指摘するので、同じ種類が別の場所に残る。
-
-    # 行の反復を打ち切ったまま成功として扱う誤り。フォルダの削除や同期が
-    # 黙って一部にしか適用されない状態になる。
+    # Reject silent partial success when row iteration fails.
     - rowserrcheck
-    # rows を defer せずに閉じる誤り。途中の return で閉じ漏れる。
+    # Require row cleanup across early returns.
     - sqlclosecheck
-    # 原因エラーを %v で埋め込み、errors.Is で辿れなくする誤り。
+    # Preserve wrapped causes for errors.Is.
     - errorlint
-    # 背後で動かす処理へ context を渡し忘れる誤り。
-    #
-    # 指摘はコードの書き換えで解消する。//nolint による無効化は認めず、
-    # task lint-go が scripts/nolintguard で拒む。
+    # Require context propagation; scripts/nolintguard rejects suppression directives.
     - contextcheck
 
-    # サーバーの出力（誤りの文・ログ・運用コマンドの出力）は英語に統一する。日本語の固定文言の再混入を
-    # 止める。コメントは AST の文字列リテラルではないので対象にならない。
+    # Keep service errors, logs and operational output in English; AST string checks exclude comments.
     - gosmopolitan
 
-    # テストコードの質を見る。
-    #
-    # 補助関数が t.Helper() を呼ばないと、失敗の行がテスト本体でなく補助関数の
-    # 中を指す。
+    # Require t.Helper so failures point to the caller.
     - thelper
-    # testing が用意する t.TempDir・t.Setenv・t.Chdir を使わずに os の関数で
-    # 一時ディレクトリや環境変数を作り、後始末が漏れる誤り。
-    # context.Background() を t.Context() に置き換える検査（context-background・
-    # context-todo）は既定のまま切っている。テストの約 900 箇所に及び、t.Context() は
-    # t.Cleanup の前に取り消されるので、後始末で文脈を使うテストの振る舞いが変わる。
+    # Use testing cleanup helpers. Keep context replacements disabled: t.Context cancels before t.Cleanup and would change tests whose cleanup still uses that context.
     - usetesting
-    # paralleltest と tparallel は有効にしない。t.Parallel() を呼ぶテストは無く、
-    # paralleltest は約 1,650 件を指摘する。テストは環境変数・パッケージ変数・
-    # 一時ディレクトリの SQLite などの共有状態に触れるものが多く、機械的に並列に
-    # できない。Go のパッケージは既にプロセスごとに並列に走る。
+    # Do not require t.Parallel: tests share environment and package state, while Go already runs packages in separate parallel processes.
 
   settings:
     gosmopolitan:
@@ -58,11 +39,7 @@ linters:
       allow-time-local: true
     depguard:
       rules:
-        # cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin} → internal/domain の
-        # 一方向のみを許す。internal/domain は依存の終端なので、外部 I/O にも
-        # 他の internal パッケージにも依存してはならない。
-        #
-        # 違反したときは、この deny の desc がそのまま出力に出る。
+        # Domain is the dependency leaf: no external I/O or sibling internal packages. Violations report the deny description below.
         domain-is-the-end-of-the-dependency-chain:
           files:
             - "**/internal/domain/*.go"
@@ -173,9 +150,7 @@ linters:
                 依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
 
-        # アプリケーション層（internal/app）はユースケースだけを持つ。外部 I/O の
-        # 手段にもアダプタにも依存せず、宣言した interface 越しに使う。そのため
-        # SQLite・ffmpeg・HTTP サーバーを起動せずに単体で検証できる。
+        # Application use cases depend on declared interfaces, not I/O adapters, so tests need no SQLite, FFmpeg or HTTP server.
         app-uses-adapters-only-through-interfaces:
           files:
             - "**/internal/app/*.go"
@@ -276,11 +251,7 @@ linters:
                 検査と実行（wazero）はアダプタの仕事で、機能は app.WorkInfoPluginRuntime の口だけを使う。
                 実装は cmd/mdm が渡す（docs/design-docs/work-info-plugins.md）。
 
-        # internal/ の兄弟パッケージ（アダプタとアプリケーション層）は互いに
-        # import しない。使う側が interface を宣言し、組み立ては cmd/mdm が行う。
-        # 外部テストパッケージ（package x_test）は自分のパッケージを import する
-        # ので、テストのファイルは対象から外す。末尾の $ は完全一致で、
-        # internal/httpapi/gen・extgen のような子パッケージは対象に含めない。
+        # Sibling packages communicate through consumer-owned interfaces wired in cmd/mdm. Exclude external test packages; trailing $ permits child packages such as httpapi/gen.
         internal-siblings-do-not-import-each-other:
           files:
             - "**/internal/httpapi/*.go"
@@ -384,16 +355,15 @@ linters:
   exclusions:
     generated: lax
     rules:
-      # テストの期待値やテスト名、利用者のデータとしての日本語の名前は対象外
-      #
+      # Allow Japanese test names, expected values and user data.
       - path: _test\.go$
         linters:
           - gosmopolitan
-      # scripts/ は開発者向けの道具で、配布されるサービスの出力ではない（R-8）。
+      # Developer scripts do not emit distributed service output.
       - path: ^scripts/
         linters:
           - gosmopolitan
-      # 生成物は手編集しないので、検査の対象からも外す（AGENTS.md）。
+      # Exclude generated files, which must not be hand-edited.
       - path: internal/httpapi/(ext)?gen/
         linters:
           - depguard

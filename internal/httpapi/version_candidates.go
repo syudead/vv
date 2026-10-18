@@ -7,13 +7,9 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 「同じ動画かもしれない」候補の一覧と「違う動画」の記録。どちらも
-// 所有者だけで、accessRoutes に載せない。候補は取り込みの fingerprint の段階で増減し、画面は
-// /api/events の scan（ProcessingChanged）で取り直すので、新しい知らせの種類は足さない。
-// 「同じ動画」は POST /api/video-bundles を使い、束ねると保存層が候補を消す。
+// Candidate routes are owner-only and excluded from accessRoutes. Fingerprint updates use scan events; bundling clears matching candidates in the store.
 
-// ListVersionCandidates は候補を新しい順に返す（GET /api/version-candidates）。各組の動画は
-// id の小さい順で、GET /api/videos/{id} と同じ形。
+// Return newest pairs first, with video IDs ascending within each pair.
 func (s *server) ListVersionCandidates(w http.ResponseWriter, r *http.Request) {
 	if s.versions == nil {
 		s.internalError(w, "Version storage is not configured.", nil)
@@ -41,7 +37,6 @@ func (s *server) ListVersionCandidates(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, payload, s.logger)
 }
 
-// DismissVersionCandidate は 2 本を「違う動画」と記録する（POST /api/version-candidates/dismiss）。
 func (s *server) DismissVersionCandidate(w http.ResponseWriter, r *http.Request) {
 	var body gen.VersionCandidateDismissRequest
 	if !s.readJSONBody(w, r, &body) {

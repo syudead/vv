@@ -3,14 +3,11 @@ import type { components, operations } from "./gen/openapi";
 import { clearListSnapshot } from "./listSnapshot";
 import { nextProgressSequence, recordSavedProgress } from "./progressEvents";
 
-// 型は api/openapi.yaml からの生成物を使う。契約を変えると、ここが
-// コンパイルエラーになって気付ける。
 export type Video = components["schemas"]["Video"];
 export type SeekThumbnailSprite = components["schemas"]["SeekThumbnailSprite"];
 export type VideoPage = components["schemas"]["VideoPage"];
 export type VideoSort = components["schemas"]["VideoSort"];
 
-/** videoSorts は API が受け付ける並び順のすべてである。 */
 export const videoSorts: readonly VideoSort[] = [
   "addedAsc",
   "addedDesc",
@@ -31,18 +28,13 @@ export const videoSorts: readonly VideoSort[] = [
   "random",
 ];
 
-/** isVideoSort は API が受け付ける並び順かどうかを返す。 */
 export function isVideoSort(value: unknown): value is VideoSort {
   return typeof value === "string" && (videoSorts as readonly string[]).includes(value);
 }
-/**
- * TranscodeQuality はライブ変換が縮める画質である。
- */
 export type TranscodeQuality = NonNullable<
   NonNullable<operations["transcodeVideo"]["parameters"]["query"]>["quality"]
 >;
 
-/** transcodeQualities は API が受け付ける画質のすべてで、大きい順に並ぶ。 */
 export const transcodeQualities: readonly TranscodeQuality[] = [
   "1080p",
   "720p",
@@ -50,7 +42,6 @@ export const transcodeQualities: readonly TranscodeQuality[] = [
   "360p",
 ];
 
-/** isTranscodeQuality は API が受け付ける画質かどうかを返す。 */
 export function isTranscodeQuality(value: unknown): value is TranscodeQuality {
   return (
     typeof value === "string" && (transcodeQualities as readonly string[]).includes(value)
@@ -121,34 +112,21 @@ export type EncoderUnavailableReason = components["schemas"]["EncoderUnavailable
 export type APIToken = components["schemas"]["APIToken"];
 export type CreatedAPIToken = components["schemas"]["CreatedAPIToken"];
 
-/**
- * SmartFolderSummary はスマートフォルダの項目の中身である（api/openapi.yaml の
- * SmartFolderSummary）。カードの値は持たず、画面に出たカードが別に読む。
- */
+/** Card values are fetched separately when a smart-folder card becomes visible. */
 export type SmartFolderSummary = components["schemas"]["SmartFolderSummary"];
 
-/**
- * LibraryItemOf は `kind` で読み分けられる項目 1 件で、グループの項目の形 G を変えられる
- * （ライブラリは LibraryGroup、ホームの棚は LibraryGroupCard）。
- */
 export type LibraryItemOf<G> =
   | { kind: "video"; video: Video }
   | { kind: "group"; group: G }
   | { kind: "smartFolder"; smartFolder: SmartFolderSummary };
 
-/**
- * LibraryItem は一覧の項目1件である（api/openapi.yaml の LibraryItem）。生成した型は
- * `video`・`group`・`smartFolder` をどれも省略可能にしているので、`kind` で読み分けられる形にする。
- */
 export type LibraryItem = LibraryItemOf<LibraryGroup>;
 export type VideoChanged = components["schemas"]["VideoChanged"];
 export type GroupChanged = components["schemas"]["GroupChanged"];
 export type GroupDetail = components["schemas"]["GroupDetail"];
 
-// 1ページの件数。既定は契約（api/openapi.yaml）と同じ 60 で、最初の画面は
-// これだけを待つ。
+// Match the contract's default page size; the initial screen waits for one page only.
 export const PAGE_SIZE = 60;
-/** MAX_PAGE_SIZE は一覧の 1 ページに求められる件数の上限（契約の `limit` の maximum）である。 */
 export const MAX_PAGE_SIZE = 200;
 
 export type ErrorCode = ApiError["code"];
@@ -156,27 +134,19 @@ export type ErrorReason = components["schemas"]["ErrorReason"];
 export type ProbeErrorCode = components["schemas"]["ProbeErrorCode"];
 export type ScanErrorCode = components["schemas"]["ScanErrorCode"];
 
-/** RequestFailedDetails は API エラーの、画面の文言に使う値である。 */
 export interface RequestFailedDetails {
   reason?: string;
   limit?: number;
   tagName?: string;
-  /** 理由が指すプロパティの経路（`code`・`dates[0].date`。docs/design-docs/catalog-organization.md）。 */
+  /** Server field path, such as code or dates[0].date. */
   field?: string;
-  /** 作品情報プラグインが報告した誤りの文の先頭 300 文字。 */
+  /** First 300 characters of the plugin error message. */
   pluginMessage?: string;
-  /** 作品情報プラグインの要求を拒んだか届かなかったホスト。 */
   host?: string;
-  /** 値の無い必須の設定のキー（`plugin_settings_missing`）。 */
   settingKeys?: readonly string[];
 }
 
-/**
- * RequestFailed は応答がエラーだったことを表す。画面に出す文言は i18n の errorText が
- * `reason`・`code` から作る。`message` はサーバーの英語の文（無ければ空）で、未知の
- * コードのときだけ画面に出る。未知のコードでも `status` と `code` は残す。本文が
- * JSON でなかったときの `code` は空である。
- */
+/** Localize known error codes; use the server's English message only for unknown codes. Preserve status and code, or an empty code for non-JSON bodies. */
 export class RequestFailed extends Error {
   readonly status: number;
   readonly code: string;
@@ -208,10 +178,7 @@ export class RequestFailed extends Error {
   }
 }
 
-/**
- * NetworkFailed は fetch 自体が失敗した（サーバーに届かなかった）ことを表す。
- * ブラウザの文言は画面に出さない。
- */
+/** Fetch-level failure; browser-specific messages are not user-facing. */
 export class NetworkFailed extends Error {
   constructor(cause: unknown) {
     super("network request failed", { cause });
@@ -219,10 +186,7 @@ export class NetworkFailed extends Error {
   }
 }
 
-/**
- * sendRequest は fetch を呼び、fetch 自体の失敗を NetworkFailed に変える。打ち切り
- * （AbortError）はそのまま投げる。`/api/*` への要求はすべてここを通す。
- */
+/** Route API requests through this boundary; wrap fetch failures but preserve AbortError. */
 export async function sendRequest(path: string, init?: RequestInit): Promise<Response> {
   try {
     return await fetch(path, init);
@@ -232,60 +196,35 @@ export async function sendRequest(path: string, init?: RequestInit): Promise<Res
   }
 }
 
-// --- 見る人が変わったときの読み直し ---
-
-/** renderedAudience はゲートが確かめた、今描いている相手である。確かめる前は null。 */
 let renderedAudience: "owner" | "guest" | null = null;
-/** reloading は読み直しを1度始めたかどうか。2度目からは何もしない。 */
 let reloading = false;
 
-/**
- * setRenderedAudience は、ゲートが確かめた相手を覚える。所有者として描いている間に
- * 見る人が変わったと分かったら、apiFetch がページを読み直す。
- */
+/** Track the gated audience so API responses can detect loss of owner access. */
 export function setRenderedAudience(audience: "owner" | "guest" | null): void {
   renderedAudience = audience;
   reloading = false;
 }
 
-/**
- * reloadForViewerChange は、見る人が変わったときに今の URL をページごと1度だけ
- * 読み直す。何度呼んでも読み直しは1回である。トーストは出さない。読み直した画面は
- * ゲートで状態を取り直す。
- */
+/** Reload the current URL once so the auth gate rechecks the audience. */
 export function reloadForViewerChange(): void {
   if (reloading) return;
   reloading = true;
   reloadPage();
 }
 
-/**
- * reloadIfNoLongerOwner は、所有者として描いている間に確かめた見る人の状態が所有者で
- * なくなっていたら、ページを1度だけ読み直して true を返す。応答の本文や状態を
- * 読めない経路（`/api/events` の EventSource、`video` 要素）が、状態の確認
- * （GET /api/auth/session）の答えを渡すために使う。
- */
+/** EventSource and media errors cannot expose response headers; use an explicit session check to detect audience changes. */
 export function reloadIfNoLongerOwner(state: string): boolean {
   if (renderedAudience !== "owner" || state === "owner") return false;
   reloadForViewerChange();
   return true;
 }
 
-/**
- * viewerChanged は、所有者として描いている間に、この応答が「もう所有者ではない」
- * ことを示すか（401 か X-VV-Audience: guest）を返す。
- */
 function viewerChanged(response: Response): boolean {
   if (renderedAudience !== "owner") return false;
   return response.status === 401 || response.headers.get("X-VV-Audience") === "guest";
 }
 
-/**
- * apiFetch は `/api/*` への fetch である。所有者として描いている間に 401 か
- * `X-VV-Audience: guest` を受けたら、ページを1度だけ読み直し、応答は返さない
- * （決して解決しない）。ゲストとして処理した応答を、所有者の画面に一瞬でも
- * 描かないためである。認証の経路（auth.ts）はこれを通さない。
- */
+/** On owner-to-guest responses, reload once and never resolve, preventing guest data from reaching an owner view. Auth routes bypass this wrapper. */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const response = await sendRequest(path, init);
   if (viewerChanged(response)) {
@@ -295,13 +234,6 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   return response;
 }
 
-/**
- * request は JSON を取りに行く薄いラッパである。
- *
- * データ取得ライブラリは入れない。この時点の要求は「一覧（無限スクロール）・
- * 詳細・進捗送信」の3種類しかなく、キャッシュ無効化の関係も単純だからである。
- * 画面をまたぐキャッシュ整合や楽観更新が要る段階で再検討する。
- */
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await apiFetch(path, init);
 
@@ -311,8 +243,6 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-/** toRequestFailed は誤りの応答を、画面が文言を選べる形へ変える。 */
-/** stringArray は文字列の配列ならそのまま、そうでなければ undefined を返す。 */
 function stringArray(value: unknown): readonly string[] | undefined {
   return Array.isArray(value) && value.every((item) => typeof item === "string")
     ? (value as string[])
@@ -324,7 +254,7 @@ export async function toRequestFailed(response: Response): Promise<RequestFailed
   try {
     body = (await response.json()) as Partial<ApiError> | null;
   } catch {
-    // JSON で返ってこない場合もある（経路の取り違え、中継の失敗）。
+    // Proxies and incorrect routes may return non-JSON error bodies.
   }
   if (typeof body !== "object" || body === null) {
     return new RequestFailed(response.status, "", "");
@@ -346,60 +276,42 @@ export async function toRequestFailed(response: Response): Promise<RequestFailed
   );
 }
 
-/** MAX_QUERY_LENGTH は検索語に許す長さである（api/openapi.yaml の maxLength）。 */
 export const MAX_QUERY_LENGTH = 100;
 
-/**
- * ListFilterParams は2つの一覧（ライブラリとフォルダ）が共通に受ける条件である。
- */
 export interface ListFilterParams {
-  /** 検索語。空なら送らない。100 文字を越える分は切り詰める。 */
+  /** Omit empty queries and truncate to 100 Unicode code points. */
   query?: string;
-  /** 視聴状態の絞り込み。省略時はサーバーの既定（all）。 */
+  /** Omitted values use the server's all default. */
   watch?: WatchFilter;
-  /** true ならブラウザで再生できる動画だけにする。false は既定なので送らない。 */
+  /** Send true only; false uses the server default. */
   playable?: boolean;
-  /**
-   * true ならお気に入りの項目だけにする。false は既定なので送らない。
-   */
+  /** Send true only; false uses the server default. */
   favorite?: boolean;
   sort?: VideoSort;
-  /** sort=random の並びを決める値（0 以上 2147483647 以下）。 */
+  /** Random-sort seed in 0..2147483647. */
   seed?: number;
   cursor?: string;
   limit?: number;
   signal?: AbortSignal;
 }
 
-/** MAX_TAG_FILTER_COUNT はタグでの絞り込みに使える id の最大個数である。 */
 export const MAX_TAG_FILTER_COUNT = 16;
 
-/**
- * ListVideosParams は一覧の問い合わせ条件である。`tag` は listFolderVideos には
- * 無い（フォルダ画面のタグ絞り込みは対象外。
- * docs/design-docs/catalog-organization.md）。
- */
+/** Tag filtering applies to the library, not folder-video listings. */
 export interface ListVideosParams
   extends ListFilterParams, CreditFilterParams, AddedLengthFilterParams {
-  /** 絞り込むタグの id（すべて持つ動画だけにする AND）。最大16個。書く順は問わない。 */
+  /** AND up to 16 tag IDs; order is irrelevant. */
   tag?: number[];
 }
 
-/**
- * CreditFilterParams は人物・団体での絞り込みである（listVideos・listLibrary・
- * listLibraryIds。docs/design-docs/catalog-organization.md「List parameters
- * `person` and `organization`」）。どの役割でもその id に結び付いた動画だけにする。
- */
+/** Match linked people or organizations in any role. */
 export interface CreditFilterParams {
   person?: number;
   organization?: number;
-  /**
-   * その種類のタグ（手動かフォルダ名から）を 1 つでも持つ動画だけにする。
-   */
+  /** Match any manual or folder-derived tag of this kind. */
   tagKind?: number;
 }
 
-/** setCreditFilter は人物・団体・タグの種類の絞り込みを問い合わせに載せる。 */
 function setCreditFilter(query: URLSearchParams, params: CreditFilterParams): void {
   if (params.person !== undefined) query.set("person", String(params.person));
   if (params.organization !== undefined) {
@@ -408,21 +320,16 @@ function setCreditFilter(query: URLSearchParams, params: CreditFilterParams): vo
   if (params.tagKind !== undefined) query.set("tagKind", String(params.tagKind));
 }
 
-/**
- * AddedLengthFilterParams は追加日と長さでの絞り込みである（listVideos・listLibrary・
- * listLibraryIds。docs/design-docs/catalog-organization.md）。範囲の外の値はサーバーが
- * `400` で断るので、ここでは丸めずにそのまま送る。
- */
+/** Send bounds unchanged; the server rejects out-of-range values instead of clamping them. */
 export interface AddedLengthFilterParams {
-  /** この日数前以後に追加した動画だけにする（1 以上 36500 以下）。 */
+  /** Inclusive age bound in days, 1..36500. */
   addedWithin?: number;
-  /** 長さの下限（秒、含む。0 以上 360000 以下）。長さの分からない動画は当たらない。 */
+  /** Inclusive minimum seconds, 0..360000; unknown durations do not match. */
   minDuration?: number;
-  /** 長さの上限（秒、含む。0 以上 360000 以下）。長さの分からない動画は当たらない。 */
+  /** Inclusive maximum seconds, 0..360000; unknown durations do not match. */
   maxDuration?: number;
 }
 
-/** setAddedLengthFilter は追加日と長さの絞り込みを問い合わせに載せる。 */
 function setAddedLengthFilter(
   query: URLSearchParams,
   params: AddedLengthFilterParams,
@@ -435,10 +342,9 @@ function setAddedLengthFilter(
     query.set("maxDuration", String(params.maxDuration));
 }
 
-/** setListFilters は共通の条件を問い合わせに載せる。 */
 function setListFilters(query: URLSearchParams, params: ListFilterParams): void {
   if (params.query !== undefined && params.query !== "") {
-    // サーバーと同じく符号位置で数えて切る（サロゲートペアを割らない）。
+    // Count Unicode code points like the server without splitting surrogate pairs.
     query.set("query", Array.from(params.query).slice(0, MAX_QUERY_LENGTH).join(""));
   }
   if (params.watch !== undefined) query.set("watch", params.watch);
@@ -452,7 +358,6 @@ function setListFilters(query: URLSearchParams, params: ListFilterParams): void 
   query.set("limit", String(params.limit ?? PAGE_SIZE));
 }
 
-/** setTagFilter はタグの絞り込みを問い合わせに載せる（listVideos・listLibrary・listLibraryIds）。 */
 function setTagFilter(query: URLSearchParams, tag?: number[]): void {
   if (tag === undefined) return;
   for (const id of tag.slice(0, MAX_TAG_FILTER_COUNT)) {
@@ -460,7 +365,6 @@ function setTagFilter(query: URLSearchParams, tag?: number[]): void {
   }
 }
 
-/** listVideos は一覧を1ページ取得する。 */
 export function listVideos(params: ListVideosParams = {}): Promise<VideoPage> {
   const query = new URLSearchParams();
   setListFilters(query, params);
@@ -470,18 +374,10 @@ export function listVideos(params: ListVideosParams = {}): Promise<VideoPage> {
   return request<VideoPage>(`/api/videos?${query.toString()}`, { signal: params.signal });
 }
 
-/**
- * LibraryPageResponse はライブラリの一覧1ページである（GET /api/library）。項目は
- * `kind` で読み分けられる LibraryItem にそろえてある。
- */
 export type LibraryPageResponse = Omit<components["schemas"]["LibraryPage"], "items"> & {
   items: LibraryItem[];
 };
 
-/**
- * toLibraryItem は生成した型の項目（ライブラリとスマートフォルダの中身が同じ形を持つ）を、
- * `kind` で読み分けられる形にする。契約に反して中身の欠けた項目は捨てる（null）。
- */
 export function toLibraryItem<G>(item: {
   kind: LibraryItem["kind"];
   video?: Video;
@@ -500,7 +396,6 @@ export function toLibraryItem<G>(item: {
   return null;
 }
 
-/** toLibraryItems は生成した型の項目の並びを読み分け、中身の欠けた項目を捨てる。 */
 export function toLibraryItems<G>(
   items: readonly Parameters<typeof toLibraryItem<G>>[0][],
 ): LibraryItemOf<G>[] {
@@ -510,19 +405,10 @@ export function toLibraryItems<G>(
   });
 }
 
-/** ListLibraryParams はライブラリの項目の一覧（GET /api/library）の問い合わせ条件である。 */
 export interface ListLibraryParams extends ListVideosParams {
-  /**
-   * true ならホームのどの棚にも一致しない動画だけにする（docs/design-docs/home.md）。
-   * false は既定なので送らない。
-   */
   unshelved?: boolean;
 }
 
-/**
- * listLibrary はライブラリの一覧を1ページ取得する。項目は動画、グループ、絞り込みの無い
- * 一覧ではスマートフォルダの要約である。
- */
 export async function listLibrary(
   params: ListLibraryParams = {},
 ): Promise<LibraryPageResponse> {
@@ -539,24 +425,17 @@ export async function listLibrary(
   return { ...page, items: toLibraryItems(page.items) };
 }
 
-/** ListLibraryIdsParams は「すべて選択」用の全件 id の問い合わせ条件である。 */
 export interface ListLibraryIdsParams
   extends CreditFilterParams, AddedLengthFilterParams {
   query?: string;
   watch?: WatchFilter;
   playable?: boolean;
-  /** true ならお気に入りの項目だけにする。false は既定なので送らない。 */
   favorite?: boolean;
   tag?: number[];
   signal?: AbortSignal;
 }
 
-/**
- * listLibraryIds は listLibrary と同じ条件に合う項目の動画の id（グループは全メンバー）を、
- * ページングせずに取得する（「すべて選択」用。
- * docs/design-docs/catalog-organization.md）。グループの項目は `groups` にも
- * フォルダと全メンバーの id として入る。
- */
+/** Fetch all matching video IDs without pagination, expanding groups to all members for Select all. */
 export function listLibraryIds(
   params: ListLibraryIdsParams = {},
 ): Promise<VideoIdsResponse> {
@@ -575,26 +454,23 @@ export function listLibraryIds(
   });
 }
 
-/** FolderRef はフォルダを指す。登録フォルダの id と `/` 区切りの相対パスの組である。 */
+/** Registered root ID plus a slash-separated relative path. */
 export interface FolderRef {
   rootId: number;
-  /** 登録フォルダ自身は空文字。 */
+  /** Empty for the registered root itself. */
   path: string;
 }
 
-/** listRootFolders はフォルダ画面の最上位（登録済みメディアフォルダ）を取得する。 */
 export function listRootFolders(signal?: AbortSignal): Promise<RootFolderListing> {
   return request<RootFolderListing>("/api/folders", { signal });
 }
 
-/** folderQuery は相対パスを問い合わせに載せる。登録フォルダ自身では省く。 */
 function folderQuery(folder: FolderRef): URLSearchParams {
   const query = new URLSearchParams();
   if (folder.path !== "") query.set("path", folder.path);
   return query;
 }
 
-/** getFolder はフォルダ1件と直下の子フォルダを取得する。 */
 export function getFolder(
   folder: FolderRef,
   signal?: AbortSignal,
@@ -606,14 +482,12 @@ export function getFolder(
   });
 }
 
-/** ListFolderVideosParams はフォルダの動画の問い合わせ条件である。 */
 export interface ListFolderVideosParams extends ListFilterParams {
   folder: FolderRef;
-  /** direct（既定）は直下だけ、subtree は配下すべて。省略時は送らない。 */
+  /** direct includes immediate children; subtree includes descendants. Omit for the server default. */
   scope?: FolderScope;
 }
 
-/** listFolderVideos はフォルダの動画を1ページ取得する。 */
 export function listFolderVideos(params: ListFolderVideosParams): Promise<VideoPage> {
   const query = folderQuery(params.folder);
   if (params.scope !== undefined) query.set("scope", params.scope);
@@ -624,19 +498,11 @@ export function listFolderVideos(params: ListFolderVideosParams): Promise<VideoP
   );
 }
 
-/**
- * getGroup はグループ 1 つを、絞り込みに関係なく子孫の動画の全部から作って取得する
- * （GET /api/groups/{id}。一覧に残っているグループの項目の取り直しにも使う。
- * docs/design-docs/catalog-organization.md）。無いか見せないときは 404 の RequestFailed で失敗する。
- */
+/** Read all descendant videos regardless of current filters; missing or invisible groups return 404. */
 export function getGroup(id: number, signal?: AbortSignal): Promise<GroupDetail> {
   return request<GroupDetail>(`/api/groups/${String(id)}`, { signal });
 }
 
-/**
- * groupQuery は動画の読み取りに付ける問い合わせである。`group` は動画を開いたグループの id、
- * `smartFolder` は動画を開いたスマートフォルダの id で、省いた方は付けない。
- */
 function groupQuery(
   params: Record<string, string>,
   group: number | undefined,
@@ -648,11 +514,7 @@ function groupQuery(
   return query.size === 0 ? "" : `?${query.toString()}`;
 }
 
-/**
- * getVideo は動画1件の詳細を取得する。`group` を渡すと、動画の `group` をそのグループの
- * 再生順で答えさせる。`smartFolder` を渡すと、`group` が無ければ動画の
- * `smartFolder` をそのフォルダの再生順で答えさせる。
- */
+/** Group context takes precedence over smart-folder context when choosing playback order. */
 export function getVideo(
   id: number,
   signal?: AbortSignal,
@@ -664,13 +526,7 @@ export function getVideo(
   });
 }
 
-/**
- * setVideoDisplayName は動画の表示名を設定する。前後の空白を除いて空なら解除し、元の題名に戻す。
- * 応答は `getVideo` と同じ形の動画で、`title`・`fileTitle`・`displayName` が反映済みである。
- *
- * 成功したら一覧の控えを捨てる。控えは離れた一覧の題名・並び・検索の当たりを持ち、
- * 一覧が外れている間の `video` 通知では直らないので、戻ったときは読み直す。
- */
+/** Clear whitespace-only names and invalidate snapshots because detached lists cannot observe title/search/order changes. */
 export async function setVideoDisplayName(
   id: number,
   displayName: string,
@@ -686,14 +542,7 @@ export async function setVideoDisplayName(
   return video;
 }
 
-/**
- * setVideoThumbnailPosition は動画の代表サムネイルを `positionMs`（ミリ秒）の場面で作り直す。
- * `null` は位置を解除し、自動の位置で作り直す。応答は生成が終わってから返り、`getVideo` と
- * 同じ形の動画で、新しい版の `thumbnailUrl` と `thumbnailPositionMs` が反映済みである。
- *
- * 成功したら一覧の控えを捨てる。控えは離れた一覧のカードの `thumbnailUrl` を持ち、
- * 一覧が外れている間の `video` 通知では直らないので、戻ったときは読み直す。
- */
+/** Null restores automatic positioning; return after generation completes and invalidate detached list thumbnails. */
 export async function setVideoThumbnailPosition(
   id: number,
   positionMs: number | null,
@@ -709,14 +558,7 @@ export async function setVideoThumbnailPosition(
   return video;
 }
 
-/**
- * revertThumbnailImage は動画に適用したサムネイルの画像を外し、代表サムネイルを
- * `thumbnailPositionMs` の場面（無ければ自動の位置）のコマから作り直す。画像を適用していなくても
- * 成功する。応答は生成が終わってから返り、`getVideo` と同じ形の動画で、`thumbnailImage` が
- * 無く、新しい版の `thumbnailUrl` が反映済みである。
- *
- * 成功したら `setVideoThumbnailPosition` と同じ理由で一覧の控えを捨てる。
- */
+/** Restore a frame-based thumbnail even if no image is applied; return after generation and invalidate snapshots. */
 export async function revertThumbnailImage(
   id: number,
   signal?: AbortSignal,
@@ -729,20 +571,7 @@ export async function revertThumbnailImage(
   return video;
 }
 
-/**
- * uploadThumbnailImage は手元の画像（PNG・JPEG・静止画の WebP、64 MiB・1 億 2000 万画素まで）を
- * `multipart/form-data` の `image` で送り、動画のサムネイルにする。応答は公開が終わってから返り、
- * `getVideo` と同じ形の動画で、`thumbnailImage: "uploaded"` と新しい版の `thumbnailUrl` が反映済み
- * である。上限を越えれば 400 `thumbnail_upload_too_large`、読めなければ 400
- * `thumbnail_upload_invalid` で失敗する。Content-Type はブラウザが境界と
- * ともに付けるので、ここでは付けない。
- *
- * `contentVersion` はプレビューを開いたときの動画の `contentVersion` で、そのあと内容が替わって
- * いれば 409 `content_changed` で失敗し、何も適用されない
- * （docs/design-docs/thumbnail-editing.md「Uploaded images」）。
- *
- * 成功したら `setVideoThumbnailPosition` と同じ理由で一覧の控えを捨てる。
- */
+/** Let the browser set multipart boundaries. contentVersion must match the previewed video; stale content fails atomically with content_changed. */
 export async function uploadThumbnailImage(
   id: number,
   image: Blob,
@@ -761,12 +590,7 @@ export async function uploadThumbnailImage(
   return video;
 }
 
-/**
- * getRelatedVideos は動画詳細画面の関連動画を近さの順に 1 ページ取得する。`cursor` を省くと
- * 先頭のページで、次の動画の id とグループも載る。続きは応答の `nextCursor` を渡して読む。
- * `group` は動画を開いたグループの id で、グループ・前後をその再生順で答えさせる（R-9）。
- * `smartFolder` は動画を開いたスマートフォルダの id で、`group` が無ければその再生順で答えさせる。
- */
+/** The first proximity-sorted page includes group and next-video metadata; preserve context when following nextCursor. */
 export function getRelatedVideos(
   id: number,
   signal?: AbortSignal,
@@ -778,11 +602,7 @@ export function getRelatedVideos(
   return request<RelatedVideos>(`/api/videos/${String(id)}/related${query}`, { signal });
 }
 
-/**
- * listVideoGroupMembers は動画が属するグループのメンバーを、グループの中の並びで
- * offset 本目（0 始まり）から最大 limit 本取得する。関連動画の group の窓の外を読む。
- * `group` と `smartFolder` は動画を開いた文脈で、関連動画の読み取りと同じものを渡す（R-9）。
- */
+/** Fetch members beyond the related-video window using the same group/smart-folder context. */
 export function listVideoGroupMembers(
   id: number,
   offset: number,
@@ -801,20 +621,12 @@ export function listVideoGroupMembers(
   });
 }
 
-/**
- * reprobeVideo は読み取りに失敗した動画を、もう一度読み取りの処理へ入れる。
- *
- * 202 の本文は所在とシーク用プレビューの状態を持たない（動画 1 件の取得にだけ入る）。
- * 画面はこの本文で控えを置き換えず、取り直して使う。
- */
+/** The 202 response omits location and seek-preview state; reload details instead of replacing cached video data. */
 export function reprobeVideo(id: number, signal?: AbortSignal): Promise<Video> {
   return request<Video>(`/api/videos/${String(id)}/probe`, { method: "POST", signal });
 }
 
-/**
- * listVideoVersions は動画の集まり（同じ動画の別バージョン）の全バージョンを、代表を先頭に取得する。
- * 集まりに属さなければ `items` はその 1 本である。
- */
+/** Representative first; unbundled videos return a single-item list. */
 export function listVideoVersions(
   id: number,
   signal?: AbortSignal,
@@ -822,19 +634,10 @@ export function listVideoVersions(
   return request<VideoVersions>(`/api/videos/${String(id)}/versions`, { signal });
 }
 
-/**
- * maxBundleSelection は画面から一度に束ねる動画の上限である。束ねる窓は選んだ 1 本ごとに
- * `GET /api/videos/{id}` を送り、代表の候補の行を並べるので、画面の側だけで絞る。サーバーの
- * `too_many_videos` の上限（`POST /api/video-tags` と同じ）は変えない。
- */
+/** UI-only bound: the dialog fetches each representative candidate separately; server mutation limits remain independent. */
 export const maxBundleSelection = 20;
 
-/**
- * bundleVideos は `videoIds` の動画を 1 つの集まりに束ね、`representativeId` を一覧に出す代表にする。応答は新しい集まりの全バージョンである。
- *
- * 成功したら一覧の控えを捨てる。代表以外のバージョンが一覧から消え、一覧が外れている間の
- * `video` 通知では控えの項目の数と並びが直らないので、戻ったときは読み直す。
- */
+/** Invalidate snapshots because nonrepresentative versions disappear and detached lists cannot update their counts/order. */
 export async function bundleVideos(
   videoIds: readonly number[],
   representativeId: number,
@@ -850,12 +653,7 @@ export async function bundleVideos(
   return versions;
 }
 
-/**
- * makeRepresentativeVersion は動画をその集まりの代表（一覧に出す 1 件）にする。応答は集まりの
- * 全バージョンである。
- *
- * 成功したら一覧の控えを捨てる（一覧の 1 件が別の動画に替わる）。
- */
+/** Invalidate snapshots because the displayed representative changes. */
 export async function makeRepresentativeVersion(
   id: number,
   signal?: AbortSignal,
@@ -868,12 +666,7 @@ export async function makeRepresentativeVersion(
   return versions;
 }
 
-/**
- * unbundleVideo は動画をその集まりから外す。応答は `getVideo` と同じ形の外した動画で、タグ・
- * 再生位置・公開の設定は束ねる前の値である。
- *
- * 成功したら一覧の控えを捨てる（外した動画が一覧に戻る）。
- */
+/** Restore the video's pre-bundle tags, progress, and visibility; invalidate snapshots because it returns to the list. */
 export async function unbundleVideo(id: number, signal?: AbortSignal): Promise<Video> {
   const video = await request<Video>(`/api/videos/${String(id)}/unbundle`, {
     method: "POST",
@@ -883,22 +676,14 @@ export async function unbundleVideo(id: number, signal?: AbortSignal): Promise<V
   return video;
 }
 
-/**
- * listVersionCandidates は「同じ動画かもしれない」候補の組を新しい順に取得する（最大 200 組、`total` は
- * 全件）。各組の `videos` は id の小さい順で、`getVideo` と同じ形である。候補は取り込みで増減するので、`scan` の
- * 通知で取り直す（§6）。
- */
+/** Return up to 200 newest candidate pairs; total counts all pairs. Refresh on scan events as ingestion changes candidates. */
 export function listVersionCandidates(
   signal?: AbortSignal,
 ): Promise<VersionCandidatePage> {
   return request<VersionCandidatePage>("/api/version-candidates", { signal });
 }
 
-/**
- * dismissVersionCandidate は 2 本の動画を「違う動画」と記録し、その組を候補から外す。記録した組は
- * 以後候補に出ない。「同じ動画」は
- * `bundleVideos` に 2 本と代表を渡す。
- */
+/** Persist dismissal so this pair never reappears as a candidate. */
 export async function dismissVersionCandidate(
   videoIds: readonly [number, number],
   signal?: AbortSignal,
@@ -914,7 +699,7 @@ export async function dismissVersionCandidate(
   }
 }
 
-/** openVideoFile はサーバーの PC で、動画の代表の所在を既定のアプリで開く。 */
+/** Open the representative file on the server's machine. */
 export async function openVideoFile(id: number, signal?: AbortSignal): Promise<void> {
   const response = await apiFetch(`/api/videos/${String(id)}/open`, {
     method: "POST",
@@ -925,7 +710,7 @@ export async function openVideoFile(id: number, signal?: AbortSignal): Promise<v
   }
 }
 
-/** getCurrentScan は直近の取り込みの状態を取得する。一度も取り込んでいなければ null。 */
+/** Return null before the first scan. */
 export async function getCurrentScan(signal?: AbortSignal): Promise<Scan | null> {
   try {
     return await request<Scan>("/api/scans/current", { signal });
@@ -937,14 +722,10 @@ export async function getCurrentScan(signal?: AbortSignal): Promise<Scan | null>
   }
 }
 
-/** SCAN_ISSUE_PAGE_SIZE は問題の一覧の1ページの件数である（契約の既定と同じ 50）。 */
 export const SCAN_ISSUE_PAGE_SIZE = 50;
-/** MAX_SCAN_ISSUE_PAGE_SIZE は問題の一覧の1ページに求められる件数の上限である。 */
 export const MAX_SCAN_ISSUE_PAGE_SIZE = 200;
 
-/**
- * listCurrentScanIssues は直近の取り込みの問題を1ページ取得する。一度も取り込んでいなければ null。
- */
+/** Return null before the first scan. */
 export async function listCurrentScanIssues(
   params: { limit?: number; cursor?: string; signal?: AbortSignal } = {},
 ): Promise<ScanIssuePage | null> {
@@ -965,7 +746,7 @@ export async function listCurrentScanIssues(
   }
 }
 
-/** startScan は取り込みを促す。実行中なら、実行中のものがそのまま返る。 */
+/** Return the current scan unchanged if one is already running. */
 export function startScan(signal?: AbortSignal): Promise<Scan> {
   return request<Scan>("/api/scans", {
     method: "POST",
@@ -975,14 +756,12 @@ export function startScan(signal?: AbortSignal): Promise<Scan> {
   });
 }
 
-/** getTranscodingSettings はライブ変換の映像エンコード方式と、各方式の確認結果を取得する。 */
 export function getTranscodingSettings(
   signal?: AbortSignal,
 ): Promise<TranscodingSettings> {
   return request<TranscodingSettings>("/api/settings/transcoding", { signal });
 }
 
-/** updateTranscodingSettings は方式を保存し、保存後の状態全体を返す。 */
 export function updateTranscodingSettings(
   videoEncoder: VideoEncoderChoice,
   signal?: AbortSignal,
@@ -995,18 +774,12 @@ export function updateTranscodingSettings(
   });
 }
 
-/**
- * getNetworkSettings は LAN からの接続の許可と、許可中に開くアドレスを取得する。デスクトップ版で
- * なければ `404` の RequestFailed になる。
- */
+/** Desktop-only; other builds return 404. */
 export function getNetworkSettings(signal?: AbortSignal): Promise<NetworkSettings> {
   return request<NetworkSettings>("/api/settings/network", { signal });
 }
 
-/**
- * updateNetworkSettings は LAN からの接続の許可を切り替え、開き直したあとの状態を返す。
- * 開き直せなければ `409`・reason `listen_failed` になる（同 §3）。
- */
+/** Return reopened network state; listener failures return 409 listen_failed. */
 export function updateNetworkSettings(
   lanAccess: boolean,
   signal?: AbortSignal,
@@ -1019,20 +792,14 @@ export function updateNetworkSettings(
   });
 }
 
-/**
- * getPluginProxySettings は作品情報プラグインの要求を送るプロキシの URL を取得する。保存が無ければ
- * `""`。`/api/settings/network` と違いどのビルドでも答える。
- */
+/** Empty means no proxy; available in every build. */
 export function getPluginProxySettings(
   signal?: AbortSignal,
 ): Promise<PluginProxySettings> {
   return request<PluginProxySettings>("/api/settings/plugin-proxy", { signal });
 }
 
-/**
- * updatePluginProxySettings はプロキシの URL を保存し、保存した値を返す。`""` はプロキシなし。
- * 規則に外れれば `400` `invalid_request` になる（同）。
- */
+/** Empty clears the proxy; invalid values return 400 invalid_request. */
 export function updatePluginProxySettings(
   url: string,
   signal?: AbortSignal,
@@ -1045,14 +812,11 @@ export function updatePluginProxySettings(
   });
 }
 
-/**
- * getAutoImportSettings は自動の取り込みの選択と、監視が今していることを取得する。
- */
 export function getAutoImportSettings(signal?: AbortSignal): Promise<AutoImportSettings> {
   return request<AutoImportSettings>("/api/settings/auto-import", { signal });
 }
 
-/** updateAutoImportSettings は選択を保存し、保存後の状態を返す。取り込みは始めない。 */
+/** Save without starting a scan. */
 export function updateAutoImportSettings(
   enabled: boolean,
   signal?: AbortSignal,
@@ -1065,16 +829,14 @@ export function updateAutoImportSettings(
   });
 }
 
-/**
- * getVersionJudgingSettings は重複の自動判定の入切を取得する。保存前は切である。
- */
+/** Disabled before the first save. */
 export function getVersionJudgingSettings(
   signal?: AbortSignal,
 ): Promise<VersionJudgingSettings> {
   return request<VersionJudgingSettings>("/api/settings/version-judging", { signal });
 }
 
-/** updateVersionJudgingSettings は入切を保存し、保存した値を返す。入れると判定の処理が起きる。 */
+/** Enabling starts duplicate judging. */
 export function updateVersionJudgingSettings(
   enabled: boolean,
   signal?: AbortSignal,
@@ -1087,17 +849,13 @@ export function updateVersionJudgingSettings(
   });
 }
 
-/**
- * getAutoTaggingSettings は自動タグ付けの設定と、判定の待ち行列の件数を取得する
- * （docs/design-docs/auto-tagging.md）。
- */
 export function getAutoTaggingSettings(
   signal?: AbortSignal,
 ): Promise<AutoTaggingSettings> {
   return request<AutoTaggingSettings>("/api/settings/auto-tagging", { signal });
 }
 
-/** updateAutoTaggingSettings は設定を保存し、保存後の状態を返す。判定は始めない。 */
+/** Save without starting classification. */
 export function updateAutoTaggingSettings(
   settings: UpdateAutoTaggingSettings,
   signal?: AbortSignal,
@@ -1110,19 +868,12 @@ export function updateAutoTaggingSettings(
   });
 }
 
-/**
- * getOllamaSettings は判定モデルを動かす Ollama の接続先を取得する。自動タグ付けの機能の
- * 入切とは別の設定である（docs/design-docs/auto-tagging.md）。
- */
+/** Connection settings are independent of whether auto-tagging is enabled. */
 export function getOllamaSettings(signal?: AbortSignal): Promise<OllamaSettings> {
   return request<OllamaSettings>("/api/settings/ollama", { signal });
 }
 
-/**
- * updateOllamaSettings は Ollama の接続先を保存し、整えた保存後の値（`saved: true`）を返す。
- * 読んだ本文をそのまま渡されても、送るのは `endpoint` と `model` だけである（サーバーは
- * ほかの欄を 400 で拒む、docs/design-docs/design-system.md）。
- */
+/** Send only endpoint and model; the server rejects response-only fields. */
 export function updateOllamaSettings(
   settings: UpdateOllamaSettings,
   signal?: AbortSignal,
@@ -1139,10 +890,7 @@ export function updateOllamaSettings(
   });
 }
 
-/**
- * checkOllama は保存した接続先に Ollama が動いていて、保存した模型があるかを確かめる。判定は
- * させないので数秒で終わる。接続先は送らない（サーバーは保存した設定だけを使う）。
- */
+/** Check the saved endpoint/model without running classification. */
 export function checkOllama(signal?: AbortSignal): Promise<CheckResult> {
   return request<CheckResult>("/api/settings/ollama/check", {
     method: "POST",
@@ -1150,18 +898,12 @@ export function checkOllama(signal?: AbortSignal): Promise<CheckResult> {
   });
 }
 
-/**
- * getComfyUISettings はサムネイルの編集に使う ComfyUI の接続先を取得する。API キーは返らず、
- * 保存されているかだけが `apiKeySet` で返る。何も保存されていなければ `provider` が無い。
- */
+/** Return only whether an API key exists, never its value; absent provider means unconfigured. */
 export function getComfyUISettings(signal?: AbortSignal): Promise<ComfyUISettings> {
   return request<ComfyUISettings>("/api/settings/comfyui", { signal });
 }
 
-/**
- * updateComfyUISettings は ComfyUI の接続先を保存し、保存後の値を返す。`apiKey` を省けば
- * 保存済みのキーを残し、`""` なら消す。
- */
+/** Omitted apiKey preserves the saved key; empty clears it. */
 export function updateComfyUISettings(
   settings: UpdateComfyUISettings,
   signal?: AbortSignal,
@@ -1174,11 +916,7 @@ export function updateComfyUISettings(
   });
 }
 
-/**
- * checkComfyUI は保存した接続先に ComfyUI が応え、vv のワークフローに要るノードとモデル
- * ファイルが揃っているかを確かめる。足りなければ `missing` に `ComfyUIMissingItem` が並ぶ。
- * 接続先は送らない（サーバーは保存した設定だけを使う）。
- */
+/** Check the saved connection and required nodes/models; return missing dependencies in missing. */
 export function checkComfyUI(signal?: AbortSignal): Promise<CheckResult> {
   return request<CheckResult>("/api/settings/comfyui/check", {
     method: "POST",
@@ -1186,29 +924,17 @@ export function checkComfyUI(signal?: AbortSignal): Promise<CheckResult> {
   });
 }
 
-/**
- * getThumbnailEditReadiness は動画のページが編集の入口を有効にできるかを取得する。
- * `connection` は接続先が保存されていることで、テストに通ったことではない。
- */
+/** connection means configured, not successfully tested. */
 export function getThumbnailEditReadiness(
   signal?: AbortSignal,
 ): Promise<ThumbnailEditReadiness> {
   return request<ThumbnailEditReadiness>("/api/thumbnail-edits/readiness", { signal });
 }
 
-/**
- * ThumbnailEditStart は編集を何から始めるかである。`frame` は選んだ位置 `positionMs`（ミリ秒）の
- * コマ、`thumbnail` は今のサムネイルである。
- */
 export type ThumbnailEditStart =
   { source: "frame"; positionMs: number } | { source: "thumbnail" };
 
-/**
- * startThumbnailEdit は `start` が指す画像から、動画のサムネイルの編集のセッションを始める。
- * 同じ動画のセッションがあれば、サーバーがその実行を中止して終える。応答は `ready` のセッションで、
- * `frameUrl` が始めた画像の PNG、`frameWidth`・`frameHeight` がマスクを描く大きさ、`source` と
- * `positionMs` がその画像の元である。
- */
+/** Starting replaces any existing session for this video; the response fixes source image and mask dimensions. */
 export function startThumbnailEdit(
   videoId: number,
   start: ThumbnailEditStart,
@@ -1222,16 +948,11 @@ export function startThumbnailEdit(
   });
 }
 
-/** thumbnailEditPath はセッション `editId` の経路である。 */
 function thumbnailEditPath(editId: string, suffix = ""): string {
   return `/api/thumbnail-edits/${encodeURIComponent(editId)}${suffix}`;
 }
 
-/**
- * getThumbnailEdit はセッションの今の状態を取得する。読み取りはページの生存の知らせを兼ね、5 分
- * 読まれないセッションは終わる。`succeeded` なら `resultUrl` が出力の画像である。終わった
- * セッションは 404 `thumbnail_edit_not_found` で失敗する。
- */
+/** Reads renew the five-minute session lease; ended sessions return thumbnail_edit_not_found. */
 export function getThumbnailEdit(
   editId: string,
   signal?: AbortSignal,
@@ -1239,22 +960,16 @@ export function getThumbnailEdit(
   return request<ThumbnailEdit>(thumbnailEditPath(editId), { signal });
 }
 
-/** ThumbnailEditRun は 1 回の実行の入力である。どれも省ける。 */
 export interface ThumbnailEditRun {
-  /** 指示の文（4000 文字まで）。 */
+  /** Up to 4,000 characters. */
   prompt?: string;
-  /** コマと同じ大きさの PNG。塗った画素が不透明な白、残りが不透明な黒。 */
+  /** Frame-sized PNG with opaque white paint over opaque black. */
   mask?: Blob;
-  /** 参考画像（PNG・JPEG・WebP、20 MiB まで）。 */
+  /** PNG, JPEG, or WebP up to 20 MiB. */
   reference?: Blob;
 }
 
-/**
- * runThumbnailEdit は入力を `multipart/form-data` で送って実行を始め、`queued` のセッションを返す。
- * 進んでいる実行があればサーバーが中止する。マスクがコマの大きさでなければ 400
- * `thumbnail_edit_mask_invalid`、ComfyUI が受け付けなければ 502 `provider_failed` で失敗する。
- * Content-Type はブラウザが境界とともに付けるので、ここでは付けない。
- */
+/** Starting cancels an active run; let the browser set multipart Content-Type and its boundary. */
 export function runThumbnailEdit(
   editId: string,
   run: ThumbnailEditRun,
@@ -1277,10 +992,7 @@ export function runThumbnailEdit(
   });
 }
 
-/**
- * cancelThumbnailEdit は進んでいる実行を中止し、`cancelled`（進んでいなければ今の状態）を返す。
- * サムネイルは変わらない。
- */
+/** Cancel an active run without changing the thumbnail; otherwise return current state. */
 export function cancelThumbnailEdit(
   editId: string,
   signal?: AbortSignal,
@@ -1291,10 +1003,7 @@ export function cancelThumbnailEdit(
   });
 }
 
-/**
- * applyThumbnailEdit は成功した実行の画像をサムネイルにし、`getVideo` と同じ形の動画を返す。
- * セッションは終わる。成功したら `setVideoThumbnailPosition` と同じ理由で一覧の控えを捨てる。
- */
+/** Apply a successful result, end the session, and invalidate list snapshots. */
 export async function applyThumbnailEdit(
   editId: string,
   signal?: AbortSignal,
@@ -1307,10 +1016,7 @@ export async function applyThumbnailEdit(
   return video;
 }
 
-/**
- * discardThumbnailEdit は進んでいる実行を中止してセッションを捨てる。終わったセッションでも
- * 成功する。ページを離れるときにも送れるよう keepalive を付ける。
- */
+/** Idempotently discard; keepalive allows submission while leaving the page. */
 export async function discardThumbnailEdit(editId: string): Promise<void> {
   const response = await apiFetch(thumbnailEditPath(editId), {
     method: "DELETE",
@@ -1321,15 +1027,11 @@ export async function discardThumbnailEdit(editId: string): Promise<void> {
   }
 }
 
-/**
- * checkAutoTaggingClassifier は判定の口に 1 問を判定させ、自動タグ付けに使えるかを確かめる。
- * 模型の読み込みを含むので数分かかることがある。
- */
+/** Run one classification; loading the model may take several minutes. */
 export function checkAutoTaggingClassifier(signal?: AbortSignal): Promise<CheckResult> {
   return request<CheckResult>("/api/auto-tagging/check", { method: "POST", signal });
 }
 
-/** startAutoTagging はライブラリの動画を判定に回し、積んだ件数を返す。 */
 export async function startAutoTagging(
   scope: AutoTaggingScope,
   signal?: AbortSignal,
@@ -1346,7 +1048,7 @@ export async function startAutoTagging(
   return result.queued;
 }
 
-/** autoTagVideo は動画 1 本を判定に回し、積んだか（判定中なら偽）を返す。 */
+/** Return false if this video is already queued or running. */
 export async function autoTagVideo(id: number, signal?: AbortSignal): Promise<boolean> {
   const result = await request<components["schemas"]["AutoTagVideoResult"]>(
     `/api/videos/${String(id)}/auto-tag`,
@@ -1355,15 +1057,11 @@ export async function autoTagVideo(id: number, signal?: AbortSignal): Promise<bo
   return result.queued;
 }
 
-/**
- * confirmVideoTag は動画に自動タグ付けが仮に付けたタグ（`VideoTag.unconfirmed`）を確定する
- * （docs/design-docs/auto-tagging.md）。
- */
 export async function confirmVideoTag(id: number, tagId: number): Promise<void> {
   await settleVideoTag(id, tagId, "confirm");
 }
 
-/** rejectVideoTag は仮に付いたタグを外し、この動画には自動タグ付けで付け直させない。 */
+/** Reject the tentative assignment and prevent auto-tagging from restoring it. */
 export async function rejectVideoTag(id: number, tagId: number): Promise<void> {
   await settleVideoTag(id, tagId, "reject");
 }
@@ -1382,7 +1080,7 @@ async function settleVideoTag(
   }
 }
 
-/** listAPITokens は発行済みの API トークンを作成日時の新しい順で取得する。平文は含まない。 */
+/** Secrets are never included in token lists. */
 export async function listAPITokens(signal?: AbortSignal): Promise<APIToken[]> {
   const list = await request<components["schemas"]["APITokenList"]>("/api/api-tokens", {
     signal,
@@ -1390,7 +1088,7 @@ export async function listAPITokens(signal?: AbortSignal): Promise<APIToken[]> {
   return list.items;
 }
 
-/** createAPIToken は API トークンを発行する。平文（`secret`）はこの応答にだけ現れる。 */
+/** The secret appears only in this creation response. */
 export function createAPIToken(
   name: string,
   signal?: AbortSignal,
@@ -1403,7 +1101,7 @@ export function createAPIToken(
   });
 }
 
-/** revokeAPIToken は API トークンを失効する。無い id も成功として扱う。 */
+/** Revoking an absent ID succeeds. */
 export async function revokeAPIToken(id: number, signal?: AbortSignal): Promise<void> {
   const response = await apiFetch(`/api/api-tokens/${String(id)}`, {
     method: "DELETE",
@@ -1414,17 +1112,11 @@ export async function revokeAPIToken(id: number, signal?: AbortSignal): Promise<
   }
 }
 
-/** listMediaFolders は登録rootをid順で取得する。 */
 export function listMediaFolders(signal?: AbortSignal): Promise<MediaFolder[]> {
   return request<MediaFolder[]>("/api/media-folders", { signal });
 }
 
-/**
- * createMediaFolder は選択済みpathを1件追加する。
- *
- * 登録フォルダを変える3つの操作は、成功したら一覧の控えを捨てる。控えは
- * 登録の変更を知らないので、戻ったときに消えたフォルダや古い一覧を出してしまう。
- */
+/** Invalidate snapshots after root changes so returning lists cannot show removed folders or stale items. */
 export async function createMediaFolder(
   path: string,
   signal?: AbortSignal,
@@ -1439,7 +1131,7 @@ export async function createMediaFolder(
   return created;
 }
 
-/** updateMediaFolder は1件だけをversion付きで置き換える。 */
+/** Replace one folder using its version for concurrency control. */
 export async function updateMediaFolder(
   id: number,
   path: string,
@@ -1456,7 +1148,7 @@ export async function updateMediaFolder(
   return updated;
 }
 
-/** deleteMediaFolder は1件だけをversion付きで削除する。 */
+/** Delete one folder using its version for concurrency control. */
 export async function deleteMediaFolder(
   id: number,
   version: number,
@@ -1472,7 +1164,6 @@ export async function deleteMediaFolder(
   clearListSnapshot();
 }
 
-/** listDirectories はpickerのnavigation起点または指定path直下を取得する。 */
 export function listDirectories(
   path?: string,
   signal?: AbortSignal,
@@ -1485,16 +1176,11 @@ export function listDirectories(
   return request<DirectoryListing>(`/api/directories${suffix}`, { signal });
 }
 
-/**
- * progressQueue は動画ごとに、送った保存の完了を待つ連なりである。
- *
- * サーバーは届いた保存をそのまま上書きするので、同じ動画の保存を並行して送ると、
- * 先に送った古い位置が後から届いて残ることがある。1件ずつ順に送る。
- */
+/** Serialize saves per video because the server applies arrival order and older concurrent requests could overwrite newer positions. */
 const progressQueue = new Map<number, Promise<unknown>>();
 
 function enqueueProgress<T>(id: number, send: () => Promise<T>): Promise<T> {
-  // 送信中の保存が無ければ、その場で送る（画面を離れる瞬間の送信を遅らせない）。
+  // Send immediately when idle to avoid delaying saves during navigation.
   const previous = progressQueue.get(id);
   const next = previous === undefined ? send() : previous.then(send);
   const tail = next.catch(() => undefined);
@@ -1505,10 +1191,7 @@ function enqueueProgress<T>(id: number, send: () => Promise<T>): Promise<T> {
   return next;
 }
 
-/**
- * sendProgressNow は順番を待たずにすぐ送り、それでも以後の保存は、それまでの
- * 保存とこの送信の両方が終わってから送るようにする。
- */
+/** Bypass prior saves, but make later saves await both prior requests and this one. */
 function sendProgressNow<T>(id: number, send: () => Promise<T>): Promise<T> {
   const previous = progressQueue.get(id) ?? Promise.resolve();
   const next = send();
@@ -1520,20 +1203,13 @@ function sendProgressNow<T>(id: number, send: () => Promise<T>): Promise<T> {
   return next;
 }
 
-/**
- * progressBody は再生位置の保存の body を作る。playbackId は渡されたときだけ載せる。
- */
 function progressBody(positionMs: number, playbackId?: string): string {
   const update: ProgressUpdate = { positionMs: Math.max(0, Math.round(positionMs)) };
   if (playbackId !== undefined) update.playbackId = playbackId;
   return JSON.stringify(update);
 }
 
-/**
- * saveProgress は再生位置を送る。視聴済みの判定はサーバー側が行うので、
- * ここでは位置だけを送る。playbackId があれば、その視聴の視聴履歴を記録させる。
- * 同じ動画の保存は、前の保存が終わってから送る。
- */
+/** Serialize per video; the server derives watched state and optionally records the supplied playbackId. */
 export function saveProgress(
   id: number,
   positionMs: number,
@@ -1554,15 +1230,7 @@ export function saveProgress(
   });
 }
 
-/**
- * beaconProgress は離脱時に再生位置を送る。
- *
- * keepalive付きfetchで、既存のPUT契約を保ったまま画面離脱後も送信を継続する。
- * アプリの中で画面を移るときは、送信中の保存が終わってから送る。ページ自体が
- * 隠れる（タブを閉じるなど）ときは待てないので、すぐに送る。その場合も、以後の
- * 保存はこの送信の完了を待つ。すでに送信中だった保存との順序は、クライアントだけ
- * では保証できない（サーバーは届いた順に上書きする）。
- */
+/** Use keepalive PUT on exit; page-hidden saves bypass queues. Later saves wait, but ordering against already in-flight saves cannot be guaranteed. */
 export function beaconProgress(
   id: number,
   positionMs: number,
@@ -1587,16 +1255,11 @@ export function beaconProgress(
   void sending.catch(() => undefined);
 }
 
-/** streamUrl は動画本体の取得先を返す。 */
 export function streamUrl(id: number): string {
   return `/api/videos/${id}/stream`;
 }
 
-/**
- * transcodeUrl は指定した元動画時刻からライブ変換する取得先を返す。attempt を渡すと、
- * 実際の開始位置を getTranscodeStart で引けるよう URL に付ける。quality を渡すと
- * その画質に縮めて変換する。
- */
+/** attempt enables lookup of the actual transcode start; quality requests downscaling. */
 export function transcodeUrl(
   id: number,
   startMs = 0,
@@ -1611,11 +1274,7 @@ export function transcodeUrl(
   return `/api/videos/${String(id)}/transcode.mp4${suffix}`;
 }
 
-/**
- * getTranscodeStart は、同じ attempt を付けたライブ変換の出力の時間軸の 0 が元動画の
- * どの時刻か（ミリ秒）を取得する。サーバーは決まるまで最大 6 秒待ち、決まらなければ
- * 404 を返す。
- */
+/** Map output time zero to original milliseconds; the server waits up to six seconds before returning 404. */
 export async function getTranscodeStart(
   id: number,
   attempt: string,
@@ -1629,10 +1288,7 @@ export async function getTranscodeStart(
   return body.startMs;
 }
 
-/**
- * getVideoSubtitles は動画の隣に置いた字幕ファイルの一覧を取得する。サーバーは呼ぶたびに
- * フォルダを読み直す。
- */
+/** The server rescans sidecar files on every call. */
 export async function getVideoSubtitles(
   id: number,
   signal?: AbortSignal,
@@ -1643,20 +1299,13 @@ export async function getVideoSubtitles(
   return body.subtitles;
 }
 
-/**
- * subtitleUrl は字幕ファイル file を WebVTT で取得する先を返す。offsetMs は再生の時間軸の
- * 0 に当たる元動画の時刻（ミリ秒）で、0 なら付けない。
- */
+/** offsetMs maps output time zero to the original video; omit zero. */
 export function subtitleUrl(id: number, file: string, offsetMs = 0): string {
   const offset = Math.max(0, Math.round(offsetMs));
   const suffix = offset > 0 ? `?offsetMs=${String(offset)}` : "";
   return `/api/videos/${String(id)}/subtitles/${encodeURIComponent(file)}${suffix}`;
 }
 
-/**
- * fetchSeekThumbnailSprite はシークプレビューのスプライトの配置情報を取得する。url は
- * Video.seekThumbnailUrl。
- */
 export async function fetchSeekThumbnailSprite(
   url: string,
   signal: AbortSignal,
@@ -1672,10 +1321,6 @@ export async function fetchSeekThumbnailSprite(
   return (await response.json()) as SeekThumbnailSprite;
 }
 
-/**
- * fetchSeekThumbnailSheet はスプライトのシート（配置情報の sheets の URL）の JPEG を
- * 取得する。
- */
 export async function fetchSeekThumbnailSheet(
   url: string,
   signal: AbortSignal,
@@ -1691,7 +1336,6 @@ export async function fetchSeekThumbnailSheet(
   return response.blob();
 }
 
-/** isAborted は「利用者が先に進んだので打ち切った」だけかどうかを返す。 */
 export function isAborted(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }

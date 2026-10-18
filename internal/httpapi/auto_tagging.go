@@ -9,23 +9,17 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// AutoTagging は自動タグ付けの設定と判定の始め方である。internal/app の *AutoTagger が
-// これを満たす（docs/design-docs/auto-tagging.md）。判定モデルの接続先は OllamaConnection が
-// 持ち、ここには無い。
+// Classifier connection settings belong to OllamaConnection, not AutoTagging (docs/design-docs/auto-tagging.md).
 type AutoTagging interface {
 	Status(ctx context.Context) (domain.AutoTagStatus, error)
 	SaveSettings(ctx context.Context, settings domain.AutoTagSettings) (domain.AutoTagStatus, error)
-	// CheckClassifier は判定の口に 1 問を判定させ、使えるかを確かめる。
 	CheckClassifier(ctx context.Context) error
 	QueueLibrary(ctx context.Context, scope domain.AutoTagScope) (int, error)
 	QueueVideo(ctx context.Context, videoID int64) (bool, error)
-	// ConfirmTag と RejectTag は動画に仮に付いたタグを確定・却下する。仮に付いていなければ
-	// domain.ErrNotFound。
 	ConfirmTag(ctx context.Context, videoID, tagID int64) error
 	RejectTag(ctx context.Context, videoID, tagID int64) error
 }
 
-// GetAutoTaggingSettings は自動タグ付けの設定と待ち行列の件数を返す。
 func (s *server) GetAutoTaggingSettings(w http.ResponseWriter, r *http.Request) {
 	if s.autoTagging == nil {
 		s.internalError(w, "Auto-tagging is not configured.", nil)
@@ -40,13 +34,12 @@ func (s *server) GetAutoTaggingSettings(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, toAPIAutoTaggingSettings(status), s.logger)
 }
 
-// UpdateAutoTaggingSettings は設定を確かめて保存する。判定は始めない。
 func (s *server) UpdateAutoTaggingSettings(w http.ResponseWriter, r *http.Request) {
 	if s.autoTagging == nil {
 		s.internalError(w, "Auto-tagging is not configured.", nil)
 		return
 	}
-	// すべての項目が必須なので、無いことを零値と区別して読む。
+	// Distinguish missing required fields from zero values.
 	var body struct {
 		Enabled            *bool    `json:"enabled"`
 		AfterImport        *bool    `json:"afterImport"`
@@ -78,8 +71,7 @@ func (s *server) UpdateAutoTaggingSettings(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, toAPIAutoTaggingSettings(status), s.logger)
 }
 
-// CheckAutoTaggingClassifier は判定の口に 1 問を判定させ、自動タグ付けに使えるかを確かめる。
-// 機能の入切に関係なく確かめる。使えないことは 200 の available=false で返す。
+// Classifier checks run even when tagging is disabled; unavailable results return 200 with available=false.
 func (s *server) CheckAutoTaggingClassifier(w http.ResponseWriter, r *http.Request) {
 	if s.autoTagging == nil {
 		s.internalError(w, "Auto-tagging is not configured.", nil)
@@ -88,7 +80,6 @@ func (s *server) CheckAutoTaggingClassifier(w http.ResponseWriter, r *http.Reque
 	s.writeCheckResult(w, s.autoTagging.CheckClassifier(r.Context()))
 }
 
-// StartAutoTagging はライブラリの動画を判定に回す。
 func (s *server) StartAutoTagging(w http.ResponseWriter, r *http.Request) {
 	if s.autoTagging == nil {
 		s.internalError(w, "Auto-tagging is not configured.", nil)
@@ -117,7 +108,6 @@ func (s *server) StartAutoTagging(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, gen.AutoTaggingQueued{Queued: queued}, s.logger)
 }
 
-// AutoTagVideo は動画 1 本を判定に回す。
 func (s *server) AutoTagVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	if s.autoTagging == nil {
 		s.internalError(w, "Auto-tagging is not configured.", nil)
@@ -139,12 +129,11 @@ func (s *server) AutoTagVideo(w http.ResponseWriter, r *http.Request, id gen.Vid
 	writeJSON(w, http.StatusAccepted, gen.AutoTagVideoResult{Queued: queued}, s.logger)
 }
 
-// ConfirmVideoTag は動画に自動タグ付けが仮に付けたタグを確定する。
 func (s *server) ConfirmVideoTag(w http.ResponseWriter, r *http.Request, id gen.VideoId, tagID gen.VideoTagId) {
 	s.settleVideoTag(w, r, id, tagID, false)
 }
 
-// RejectVideoTag は動画に自動タグ付けが仮に付けたタグを外し、この動画には付け直さない。
+// Rejected assignments are not automatically reapplied to the video.
 func (s *server) RejectVideoTag(w http.ResponseWriter, r *http.Request, id gen.VideoId, tagID gen.VideoTagId) {
 	s.settleVideoTag(w, r, id, tagID, true)
 }

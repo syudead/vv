@@ -13,7 +13,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// looseVideo は、どのフォルダグループにも入らない（直下に 1 本だけの）フォルダに動画を置く。
+// Place one video directly under each folder so automatic grouping does not hide it.
 func looseVideo(t *testing.T, db *DB, key string) int64 {
 	t.Helper()
 	return upsertFolderVideo(t, db, fixturePath("/media/"+key+"/"+key+".mp4"), key)
@@ -28,8 +28,7 @@ func createGroup(t *testing.T, db *DB, name string, add domain.GroupAdd) int64 {
 	return group.ID
 }
 
-// groupEntries はグループ id の項目を位置の順に "v:<鍵>" か "g:<子の id>" で返す。位置が 0 から
-// 詰まっていなければ失敗にする。
+// Also assert that stored positions are contiguous from zero.
 func groupEntries(t *testing.T, db *DB, id int64) []string {
 	t.Helper()
 	rows, err := db.sql.Query(`select position, coalesce('v:' || content_key, 'g:' || child_id) from group_items
@@ -66,8 +65,7 @@ func assertEntries(t *testing.T, db *DB, id int64, want ...string) {
 	}
 }
 
-// groupTablesSnapshot はグループの 3 つの表と例外を 1 つの文字列にする。「何も書かない」を
-// 確かめるのに使う。
+// Snapshot all group tables and overrides to detect partial writes.
 func groupTablesSnapshot(t *testing.T, db *DB) string {
 	t.Helper()
 	var b strings.Builder
@@ -106,8 +104,6 @@ func groupExists(t *testing.T, db *DB, id int64) bool {
 	return exists
 }
 
-// 作成は名前を整え、動画、次にグループを要求の順に項目にする。1 本の動画を 2 つのグループに
-// 足すと両方の項目になり、1 つの集まりの 2 つのバージョンは 1 つの項目になる。
 func TestCreateAndAddGroupItems(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -127,13 +123,11 @@ func TestCreateAndAddGroupItems(t *testing.T) {
 	assertEntries(t, db, other, "v:ka")
 	assertEntries(t, db, group.ID, "v:kb", "v:ka", fmt.Sprintf("g:%d", child))
 
-	// 既にある項目は飛ばし、新しいものだけを末尾に足す。
 	if _, err := db.Groups().AddGroupItems(ctx, other, domain.GroupAdd{VideoIDs: []int64{a, c}, GroupIDs: []int64{child}}); err != nil {
 		t.Fatal(err)
 	}
 	assertEntries(t, db, other, "v:ka", "v:kc", fmt.Sprintf("g:%d", child))
 
-	// 束ねた 2 つのバージョンは集まりの鍵の 1 つの項目になる。
 	d, e := looseVideo(t, db, "kd"), looseVideo(t, db, "ke")
 	bundle(t, db, d, d, e)
 	keys, err := queryStringsForTest(db, `select user_key from video_bundles`)
@@ -146,7 +140,6 @@ func TestCreateAndAddGroupItems(t *testing.T) {
 	assertEntries(t, db, other, "v:ka", "v:kc", fmt.Sprintf("g:%d", child), "v:"+keys[0])
 }
 
-// 前後を削って 0 文字と 101 文字の名前は、作成でも改名でも拒まれ、何も書かれない。
 func TestGroupNamesAreValidated(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -172,14 +165,13 @@ func TestGroupNamesAreValidated(t *testing.T) {
 		t.Fatalf("renamed = %+v", renamed)
 	}
 	if rows := readGroups(t, db); rows[0].Name != renamed.Name {
-		t.Fatalf("groups = %+v", rows) // readGroups は title_key が名前に合うことも確かめる。
+		t.Fatalf("groups = %+v", rows)
 	}
 	if _, err := db.Groups().RenameGroup(ctx, 999, "x"); !errors.Is(err, domain.ErrGroupNotFound) {
 		t.Fatalf("RenameGroup(missing) error = %v", err)
 	}
 }
 
-// A を B に足した後で B を A に足すのは循環で、自分自身も同じ。どちらも何も書かない。
 func TestAddGroupItemsRefusesCycles(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -203,8 +195,6 @@ func TestAddGroupItemsRefusesCycles(t *testing.T) {
 	}
 }
 
-// 存在しない動画・グループ・項目の id は ErrGroupTargetNotFound で、何も書かない。グループ
-// そのものが無ければ ErrGroupNotFound。
 func TestGroupEditsFailWholeOnMissingTargets(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -258,8 +248,6 @@ func TestGroupEditsFailWholeOnMissingTargets(t *testing.T) {
 	}
 }
 
-// 移動は 1 つの項目を別の項目の後か先頭へ動かし、詰め直す。自分の後ろへは何も変えない。
-// 除去は項目を消して詰め直す。
 func TestMoveAndRemoveGroupItems(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -289,8 +277,6 @@ func TestMoveAndRemoveGroupItems(t *testing.T) {
 	}
 }
 
-// 自動グループのフォルダメンバーを外すと除外が書かれ、再構築で戻らない。足し直すと除外が消え、
-// 手で足した項目として末尾に戻る。
 func TestRemovingFolderMemberWritesExclusion(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -319,9 +305,6 @@ func TestRemovingFolderMemberWritesExclusion(t *testing.T) {
 	assertGroupRows(t, db, []groupRow{{ID: id, Name: "Show", Origin: origin, Items: []groupItem{{Key: "k2", Folder: true}, {Key: "k1"}}}})
 }
 
-// 最後の項目を外したグループは、同じ取引で解散される（要求者の判断「空になったら解散する」）。
-// 親からその項目が消えて詰め直され、GroupsChanged は解散と同じく元の親とその祖先を名指す。
-// 自動グループならそのフォルダに ungroup を書き、作り直しで戻らない。項目が残る除去は解散しない。
 func TestRemovingTheLastItemDissolvesTheGroup(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -372,7 +355,6 @@ func TestRemovingTheLastItemDissolvesTheGroup(t *testing.T) {
 	}
 }
 
-// 解散で子グループと動画は残り、親から項目が消えて詰め直される。
 func TestDissolveGroupKeepsChildrenAndLeavesParents(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -397,8 +379,6 @@ func TestDissolveGroupKeepsChildrenAndLeavesParents(t *testing.T) {
 	}
 }
 
-// 自動グループの解散は ungroup を書き、再構築で作り直されない。そのフォルダに auto を選ぶと新しい
-// グループができ、ungroup を選ぶと解散と同じく消える。
 func TestDissolveAutomaticGroupWritesUngroup(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -437,8 +417,7 @@ func TestDissolveAutomaticGroupWritesUngroup(t *testing.T) {
 	}
 }
 
-// 登録フォルダ `/` の自動グループは origin_folder が空文字になる。それを手で作ったグループ
-// （NULL）と取り違えず、解散でそのフォルダに ungroup を書くので、次の作り直しで作り直されない。
+// The root automatic folder key is empty, which must remain distinct from a manual group's NULL.
 func TestDissolveRootFolderGroupWritesUngroup(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("登録フォルダ `/` は Unix だけのもの")
@@ -470,7 +449,6 @@ func folderGroupingOf(t *testing.T, db *DB, path string) domain.FolderGrouping {
 	return groupings[0]
 }
 
-// 子グループを持つグループをタグにすると、子孫の全動画にタグが手で付き、グループが解散される。
 func TestTagGroupAttachesToDescendantsAndDissolves(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -497,7 +475,6 @@ func TestTagGroupAttachesToDescendantsAndDissolves(t *testing.T) {
 		t.Fatal("only the tagged group should be dissolved")
 	}
 
-	// 同じ名前のグループは今あるタグを使う。
 	again := createGroup(t, db, "Trip", domain.GroupAdd{VideoIDs: []int64{a}})
 	result2, err := db.Groups().TagGroup(ctx, again)
 	if err != nil {
@@ -508,8 +485,6 @@ func TestTagGroupAttachesToDescendantsAndDissolves(t *testing.T) {
 	}
 }
 
-// 各操作が、変えたグループとその祖先の id で GroupsChanged を確定後に出す。解散では元の親と
-// その祖先も入る。失敗した操作と何も変えない操作は出さない。
 func TestGroupEditsPublishGroupsChanged(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -575,7 +550,6 @@ func TestGroupEditsPublishGroupsChanged(t *testing.T) {
 	if _, err := groups.TagGroup(ctx, parent); err != nil {
 		t.Fatal(err)
 	}
-	// グループのタグ化は動画にタグを付けるので、所有者の記録の知らせも続く（owner_activity_test.go）。
 	if want := []domain.Event{domain.GroupsChanged{GroupIDs: []int64{parent, top}}, domain.ActivityChanged{}}; !reflect.DeepEqual(recorder.events, want) {
 		t.Fatalf("tag: events = %+v, want %+v", recorder.events, want)
 	}
@@ -584,8 +558,6 @@ func TestGroupEditsPublishGroupsChanged(t *testing.T) {
 	}
 }
 
-// 解散で項目が 1 つも残らなくなった親も、祖先へ向かって同じ取引で解散する。ほかの項目が残る親は
-// 残る。GroupsChanged は解散したすべてのグループと、その祖先の id を入れる。
 func TestDissolveCascadesToEmptiedParents(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -614,13 +586,11 @@ func TestDissolveCascadesToEmptiedParents(t *testing.T) {
 		}
 	}
 
-	// 親 1 つ。
 	child := createGroup(t, db, "Child", domain.GroupAdd{VideoIDs: []int64{a}})
 	parent := createGroup(t, db, "Parent", domain.GroupAdd{GroupIDs: []int64{child}})
 	expectDissolved("single parent", func() error { return db.Groups().DissolveGroup(ctx, child) },
 		[]int64{child, parent}, nil, child, parent)
 
-	// 2 段の親。ほかの項目を持つ祖先は残り、項目が詰め直される。
 	child = createGroup(t, db, "Child", domain.GroupAdd{VideoIDs: []int64{a}})
 	middle := createGroup(t, db, "Middle", domain.GroupAdd{GroupIDs: []int64{child}})
 	upper := createGroup(t, db, "Upper", domain.GroupAdd{GroupIDs: []int64{middle}})
@@ -629,7 +599,6 @@ func TestDissolveCascadesToEmptiedParents(t *testing.T) {
 		[]int64{child, middle, upper}, []int64{top}, child, middle, upper, top)
 	assertEntries(t, db, top, "v:kb")
 
-	// ほかの項目を持つ親は残る。最後の項目を取り除いた解散でも空の親を解散する。
 	child = createGroup(t, db, "Child", domain.GroupAdd{VideoIDs: []int64{a}})
 	sibling := createGroup(t, db, "Sibling", domain.GroupAdd{GroupIDs: []int64{child}, VideoIDs: []int64{b}})
 	lonely := createGroup(t, db, "Lonely", domain.GroupAdd{GroupIDs: []int64{child}})
@@ -640,8 +609,7 @@ func TestDissolveCascadesToEmptiedParents(t *testing.T) {
 	assertEntries(t, db, sibling, "v:kb")
 }
 
-// 項目を失った自動グループの親も解散と同じ道筋で消え、そのフォルダに ungroup を書くので、作り直しで
-// 戻らない。
+// Empty automatic ancestors must use normal dissolution so their ungroup overrides prevent recreation.
 func TestDissolveCascadeToAutomaticParentWritesUngroup(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

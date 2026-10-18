@@ -18,10 +18,6 @@ import { Button } from "../ui/shadcn/button";
 import { TableHead, TableHeader, TableRow } from "../ui/shadcn/table";
 import { kindTexts } from "./creditRows";
 
-/**
- * CreditListStates は一覧の表の代わりか上に出す状態である: 一覧を持ったまま読めなかった箱、読み込み中、読み込みの失敗、
- * 1 件も無い、検索に合うものが無い。部品と形はタグの画面のもので、文言を種類で言い分ける。
- */
 export function CreditListStates({
   kind,
   loaded,
@@ -35,7 +31,6 @@ export function CreditListStates({
   onClearSearch,
 }: {
   kind: CreditKind;
-  /** 先頭のページを一度でも受けたか。 */
   loaded: boolean;
   loadError: UiText | null;
   firstPending: boolean;
@@ -100,7 +95,6 @@ export function CreditListStates({
   return null;
 }
 
-/** CreditListTail は一覧の末尾の続きの状態である（読み込み中・失敗・一覧が変わった）。 */
 export function CreditListTail({
   kind,
   tail,
@@ -125,7 +119,6 @@ export function CreditListTail({
   }
 }
 
-/** CreditListHead は表の列の見出し（Name・Videos・操作）である。 */
 export function CreditListHead({ headRef }: { headRef: Ref<HTMLTableSectionElement> }) {
   return (
     <TableHeader ref={headRef}>

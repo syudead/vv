@@ -11,13 +11,9 @@ import type { UndoToast } from "../videoList/undoToast";
 import type { GroupDestination, MoveDestination } from "./GroupDrag";
 import type { GroupPageData } from "./useGroupPage";
 
-/** FocusTarget は編集の後にフォーカスを移す先である（項目の `×`、見出し、「More」）。 */
 export type FocusTarget = number | "title" | "more";
 
-/**
- * isTargetGone は編集の対象（項目、`after`）がもう無いこと（`404 group_target_not_found`）を表すかを返す。サーバーは `code` を `not_found` にし、どの 404 かを
- * `reason` に入れる（グループそのものが無いときは `reason` が無い）。
- */
+/** The server distinguishes target 404s through reason; missing groups have no reason. */
 function isTargetGone(error: unknown): boolean {
   return (
     error instanceof RequestFailed &&
@@ -26,12 +22,10 @@ function isTargetGone(error: unknown): boolean {
   );
 }
 
-/** isNotFound は応答が 404（対象かグループが無い）かを返す。 */
 function isNotFound(error: unknown): boolean {
   return error instanceof RequestFailed && error.status === 404;
 }
 
-/** withoutItems は外した項目を除き、見出しの値を外した後のグループにした中身である。 */
 function withoutItems(
   data: GroupPageData,
   removed: ReadonlySet<number>,
@@ -44,7 +38,6 @@ function withoutItems(
   };
 }
 
-/** refOf は項目を移す操作で指す値（動画かグループの id）である。 */
 function refOf(item: GroupItem): OrganizeRef[] {
   if (item.kind === "group") {
     return item.group === undefined ? [] : [{ kind: "group", id: item.group.id }];
@@ -52,10 +45,7 @@ function refOf(item: GroupItem): OrganizeRef[] {
   return item.video === undefined ? [] : [{ kind: "video", id: item.video.id }];
 }
 
-/**
- * withoutMoved は移した項目を除き、見出しの本数をその分だけ減らした中身である。本数は
- * 子孫の動画を数えたものなので目安で、移した後の読み直しが正しい値にする。
- */
+/** The optimistic descendant count is approximate; refresh supplies the authoritative value. */
 function withoutMoved(data: GroupPageData, moved: readonly GroupItem[]): GroupPageData {
   const gone = new Set(moved.map((item) => item.id));
   const lost = moved.reduce(
@@ -69,10 +59,7 @@ function withoutMoved(data: GroupPageData, moved: readonly GroupItem[]): GroupPa
   };
 }
 
-/**
- * useFocusAfterEdit は窓やメニューが閉じてフォーカスを戻した後（setTimeout 0）に移す。グループの
- * ページとスマートフォルダのページ（直した後の「More」）が共有する。
- */
+/** Defer focus until dialogs and menus finish restoring their own focus. */
 export function useFocusAfterEdit() {
   const [focusTarget, setFocusTarget] = useState<FocusTarget | null>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -102,30 +89,9 @@ export function useFocusAfterEdit() {
 }
 
 /**
- * useGroupEdits はグループのページの項目の編集である。
- *
- * - 並べ替えは置いたときに番号を振り直してから、持ち上げた項目を画面の順に `reorder` で
- *   1 回送る。送る要求は置いた順に
- *   1 つずつ流し（鎖は useGroupPage と共有し、静かな読み直しは鎖が答えてから読む）、
- *   受け入れられたら「Undo」付きの通知を出し、失敗したらサーバーが最後に認めた並びへ戻して
- *   知らせる。鎖が空になったら、認めた並びを見せる（途中の読み直しが移動の前の並びを置いても、
- *   行を正しい順に戻す）。
- * - 行の `×` は確認なしにその項目を外す。外せたら行が消え、フォーカスは次の行の `×`、
- *   無ければ前の行、無ければ見出しへ移る。続きのページが残っていたら、サーバーが位置を
- *   詰めて手元の続き位置が使えなくなるので、先頭から読み直す。
- * - ドラッグで子グループ・祖先・ライブラリへ移す項目は、置いたときに画面から外してから
- *   `move` で 1 回送る（並べ替えと同じ鎖）。受け入れられたら「Undo」付きの通知を出して
- *   読み直し、失敗したら外す前に見せていた項目と本数に戻して知らせる。すべての項目を
- *   移すとサーバーがグループを解散するので、通知とトークンを持ち越して `onDissolved` へ渡す。
- * - 子グループを含む項目を子グループへマージすると、持ち上げた項目（動画と子グループの両方）を
- *   画面から外してから、開いているグループを `from` に付けて `merge` で 1 回送る（並べ替えと
- *   同じ鎖）。サーバーは持ち上げた動画とグループを `from` から外す。受け入れられたら「Undo」
- *   付きの通知を出して読み直し、失敗したら外す前の項目に戻して知らせる。
- * - 選択バーの「Remove from group」は選んだ項目をまとめて外し、件数を知らせる。
- * - 最後の項目を外すとサーバーがグループを解散する（`204`）。外した行は
- *   見せず、`onDissolved` で画面を解散と同じ結末（道筋の親へ移ってトースト）へ渡す。
- * - どれも `404 group_target_not_found` なら表示を保ったまま読み直し、変わっていたと知らせる。
- *   ほかの `404`（グループが無い）は読み直しが無くなった状態を見せる。
+ * Serialize optimistic edits with page refreshes; restore the last confirmed state on failure and
+ * discard queued moves. Removal invalidates positional cursors, while removing the last item
+ * dissolves the group; see docs/design-docs/catalog-organization.md.
  */
 export function useGroupEdits({
   id,
@@ -143,28 +109,26 @@ export function useGroupEdits({
   moves: MutableRefObject<Promise<void>>;
   movesSent: MutableRefObject<number>;
   refresh: () => void;
-  /** 最後の項目を外してグループが解散されたときに呼ぶ。 */
+  /** Called when removing the final item dissolves the group. */
   onDissolved: () => void;
-  /** 受け入れられた並べ替えの取り消しの通知。 */
   undo: UndoToast;
 }) {
   const toast = useToast();
   const [removing, setRemoving] = useState<ReadonlySet<number>>(new Set());
   const [removingSelected, setRemovingSelected] = useState(false);
   const focus = useFocusAfterEdit();
-  /** 失敗で鎖の残りを捨てるための世代と、鎖で待っているか送っている移動の数。 */
+  /** Track queue generation and pending moves so failures can discard the remainder. */
   const generation = useRef(0);
   const queued = useRef(0);
 
   useEffect(
     () => () => {
-      // 鎖で待っている移動は、画面を離れたら送らない。
+      // Do not send queued moves after leaving the page.
       generation.current += 1;
     },
     [],
   );
 
-  /** failed は編集の失敗を見せる。対象が消えていたら読み直す。 */
   const failed = useCallback(
     (error: unknown, message: (reason: string) => UiText) => {
       if (isTargetGone(error)) {
@@ -190,16 +154,15 @@ export function useGroupEdits({
         paged = data.nextCursor !== undefined;
         return withoutItems(data, gone, group);
       });
-      // サーバーは外した後に位置を詰める。位置で決まる続き位置は、読んでいない項目を飛ばす。
+      // Removal compacts positions, so an old positional cursor would skip unseen items.
       if (paged) refresh();
     },
     [confirmed, refresh, update],
   );
 
   /**
-   * enqueue は移動 1 つを鎖の最後に足す。`step` は送って結果を見せ、`alive` が false に
-   * なった（失敗か画面を離れて鎖の残りを捨てた）後は何も見せない。失敗したら鎖の残りを
-   * 捨てて `onError` を呼ぶ。
+   * Append to the move queue; stop updating after failure or unmount. A failure discards the
+   * remainder and calls onError.
    */
   const enqueue = useCallback(
     (
@@ -226,10 +189,7 @@ export function useGroupEdits({
     [moves, movesSent],
   );
 
-  /**
-   * restore は送った編集の失敗を見せる。グループが無い（`404`）のでなければ、項目をサーバーが
-   * 最後に認めたものに、見出しを `group()`（無ければ今のまま）に戻す。
-   */
+  /** Restore confirmed items and the current group header unless the group itself is missing. */
   const restore = useCallback(
     (message: (reason: string) => UiText, group: () => LibraryGroup | undefined) =>
       (error: unknown) => {

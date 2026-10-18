@@ -12,7 +12,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// runScoped は dirs だけを読む走査を1回実行する。
 func runScoped(t *testing.T, root string, index *fakeIndex, dirs ...domain.DirtyDirectory) domain.ScanResult {
 	t.Helper()
 
@@ -38,7 +37,6 @@ func rowFor(t *testing.T, index *fakeIndex, path string) domain.IndexedVideo {
 	return row
 }
 
-// 1つのディレクトリの走査は、その外の所在を、ファイルが消えていても変えない。
 func TestScanScopedLeavesLocationsOutsideTheScope(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a/1.mp4": "1", "b/2.mp4": "2", "c/3.mp4": "3"})
 	index := newFakeIndex()
@@ -67,7 +65,6 @@ func TestScanScopedLeavesLocationsOutsideTheScope(t *testing.T) {
 	rowFor(t, index, filepath.Join(root, "c", "3.mp4"))
 }
 
-// 範囲の中の新しいファイルは取り込み、変わらないファイルは読み直さない。
 func TestScanScopedImportsOnlyTheScope(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a/1.mp4": "1", "b/2.mp4": "2"})
 	index := newFakeIndex()
@@ -88,7 +85,6 @@ func TestScanScopedImportsOnlyTheScope(t *testing.T) {
 	}
 }
 
-// 再帰でない項目は直下だけを読む。再帰の項目はその下をすべて読む。
 func TestScanScopedRecursiveFlag(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a/1.mp4": "1", "a/sub/2.mp4": "2"})
 	index := newFakeIndex()
@@ -102,8 +98,7 @@ func TestScanScopedRecursiveFlag(t *testing.T) {
 	rowFor(t, index, filepath.Join(root, "a", "sub", "2.mp4"))
 }
 
-// 1回の範囲の中で2つのディレクトリの間を移した動画は、同じ動画のまま所在が付け替わる。
-// 追加を先に処理するので、移した先の取り込みが前の所在の消去より先に済む。
+// Process destinations before deleting old locations so moves retain identity.
 func TestScanScopedMoveBetweenDirtyDirectoriesKeepsVideo(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a/movie.mp4": "same content", "b/other.mp4": "other"})
 	index := newFakeIndex()
@@ -124,7 +119,6 @@ func TestScanScopedMoveBetweenDirtyDirectoriesKeepsVideo(t *testing.T) {
 	}
 }
 
-// 消えたディレクトリの下は、再帰の項目なら所在を失い、再帰でない項目なら直下だけが失う。
 func TestScanScopedRemovedSubtree(t *testing.T) {
 	root := mediaTree(t, map[string]string{"d/1.mp4": "1", "d/sub/2.mp4": "2", "keep/3.mp4": "3"})
 	index := newFakeIndex()
@@ -149,7 +143,6 @@ func TestScanScopedRemovedSubtree(t *testing.T) {
 	rowFor(t, index, filepath.Join(root, "keep", "3.mp4"))
 }
 
-// 取って代わられた走査は、足したものを残して何も消さず、ErrScanSuperseded を返す。
 func TestScanScopedSupersededRemovesNothing(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a/gone.mp4": "gone"})
 	index := newFakeIndex()
@@ -180,7 +173,6 @@ func TestScanScopedSupersededRemovesNothing(t *testing.T) {
 	rowFor(t, index, filepath.Join(root, "a", "gone.mp4"))
 }
 
-// 全体の走査も、取って代わられれば何も消さずに止まる。
 func TestScanSupersededRemovesNothing(t *testing.T) {
 	root := mediaTree(t, map[string]string{"gone.mp4": "gone"})
 	index := newFakeIndex()
@@ -200,7 +192,6 @@ func TestScanSupersededRemovesNothing(t *testing.T) {
 	}
 }
 
-// メディアフォルダが読めなければ、範囲の中の所在を消さずに失敗する。
 func TestScanScopedFailsWhenMediaFolderIsUnreachable(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a/1.mp4": "1"})
 	index := newFakeIndex()
@@ -220,7 +211,6 @@ func TestScanScopedFailsWhenMediaFolderIsUnreachable(t *testing.T) {
 	}
 }
 
-// 除外するディレクトリと、メディアフォルダの外のディレクトリは読まない。
 func TestScanScopedSkipsExcludedAndForeignDirectories(t *testing.T) {
 	root := mediaTree(t, map[string]string{"@eaDir/1.mp4": "1", ".hidden/2.mp4": "2", "ok/3.mp4": "3"})
 	foreign := mediaTree(t, map[string]string{"4.mp4": "4"})
@@ -234,7 +224,6 @@ func TestScanScopedSkipsExcludedAndForeignDirectories(t *testing.T) {
 	}
 }
 
-// メディアフォルダの祖先の項目は歩かないので、その下のメディアフォルダの所在を消さない。
 func TestScanScopedAncestorOfMediaFolderRemovesNothing(t *testing.T) {
 	parent := mediaTree(t, map[string]string{"library/a/1.mp4": "1"})
 	root := filepath.Join(parent, "library")
@@ -253,14 +242,12 @@ func TestScanScopedAncestorOfMediaFolderRemovesNothing(t *testing.T) {
 	rowFor(t, index, filepath.Join(root, "a", "1.mp4"))
 }
 
-// scopedScanner は root だけを登録した、範囲を絞った走査の組み立てである。
 func scopedScanner(root string, index *fakeIndex) *Scanner {
 	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
 	return New(Options{Index: index, Queue: index, Reporter: index})
 }
 
-// 監視の走査では、取り込みの途中で変わった・消えたファイルを失敗にせず、対象から外す。
-// その変更の知らせが、ディレクトリを次の監視の走査へ回す。
+// Watcher events schedule changed or vanished files for a later pass.
 func TestScanScopedSkipsFileThatChangesOrVanishesDuringImport(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -302,7 +289,6 @@ func TestScanScopedSkipsFileThatChangesOrVanishesDuringImport(t *testing.T) {
 	}
 }
 
-// vanishedEntry は列挙のあとに消えた項目である。
 type vanishedEntry struct {
 	fs.DirEntry
 }
@@ -311,7 +297,6 @@ func (e vanishedEntry) Info() (fs.FileInfo, error) {
 	return nil, &fs.PathError{Op: "lstat", Path: e.Name(), Err: fs.ErrNotExist}
 }
 
-// 監視の走査で列挙のあとにファイルの情報を読む前に消えたファイルは、失敗にしない。
 func TestScanScopedSkipsFileThatVanishesBeforeItsInformationIsRead(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a/gone.mp4": "gone"})
 	index := newFakeIndex()
@@ -335,8 +320,7 @@ func TestScanScopedSkipsFileThatVanishesBeforeItsInformationIsRead(t *testing.T)
 	}
 }
 
-// 監視の走査の途中でディレクトリごと移された・消されたときは、走査を失敗にせず、その所在を
-// 残す。移動の知らせで次の監視の走査が、移した先を加えてから消す。
+// Keep moved-directory locations until the next scan adds destinations before deleting sources.
 func TestScanScopedKeepsLocationsWhenParentVanishesDuringImport(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a/gone/1.mp4": "1", "a/z.mp4": "z"})
 	index := newFakeIndex()
@@ -371,9 +355,8 @@ func TestScanScopedKeepsLocationsWhenParentVanishesDuringImport(t *testing.T) {
 	}
 }
 
-// 監視の走査の歩みの途中でディレクトリが移されたときは、走査を失敗にせず、その下の所在を
-// 残す。歩いた項目の情報を読む前に消えた場合（vanishedAt が項目）も、ディレクトリの中身を
-// 読む前に消えた場合（vanishedAt がディレクトリ）も同じである。
+// Both missing entry metadata and missing directory contents must retain scoped locations for the
+// next event.
 func TestScanScopedKeepsLocationsWhenDirectoryVanishesWhileWalking(t *testing.T) {
 	for _, tc := range []struct {
 		name       string

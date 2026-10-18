@@ -29,8 +29,7 @@ func testBox(boxType string, payload ...[]byte) []byte {
 	return append(out, body...)
 }
 
-// testInitSegment は ffmpeg の delay_moov の出力と同じ形の先頭部分（ftyp と moov）を作る。
-// delays は track ごとの開始時刻（movie timescale）で、正なら先頭に空の edit を置く。
+// Model ffmpeg delay_moov output; positive track delays create leading empty edits.
 func testInitSegment(timescale uint32, delays []uint32) []byte {
 	mvhd := make([]byte, 100)
 	binary.BigEndian.PutUint32(mvhd[12:16], timescale)
@@ -144,7 +143,6 @@ func TestReadInitSegmentFailures(t *testing.T) {
 	}
 }
 
-// recordingTranscoder は本物の ffmpeg/ffprobe を起動し、FFmpeg の引数を記録する。
 type recordingTranscoder struct {
 	*LiveTranscoder
 	mu   sync.Mutex
@@ -176,8 +174,7 @@ func (r *recordingTranscoder) videoCodecs() []string {
 	return codecs
 }
 
-// generateFixture は 30fps の H.264 と AAC の動画を作る。gop はキーフレームの間隔（フレーム）。
-// 音声は周波数が変わるチャープを使い、異なる時刻のAAC packetが一致しないようにする。
+// Use chirp audio so AAC packets from different times cannot compare equal.
 func generateFixture(t *testing.T, path string, seconds, gop int) {
 	t.Helper()
 	generate := exec.Command(transcodeCommand,
@@ -220,7 +217,6 @@ type mediaPacket struct {
 	hash     string
 }
 
-// packets は stream の packet を読む。selector は "v:0" か "a:0"。
 func packets(t *testing.T, path, selector string) []mediaPacket {
 	t.Helper()
 	output, err := exec.Command(probeCommand,
@@ -259,7 +255,6 @@ func formatStartTime(t *testing.T, path string) float64 {
 	return start
 }
 
-// transcodeToFile は変換を最後まで読み、出力をファイルに書く。
 func transcodeToFile(t *testing.T, transcoder *recordingTranscoder, input string, metadata domain.TranscodeProbe, startMs int64) (string, domain.LiveTranscode) {
 	t.Helper()
 	info, err := os.Stat(input)
@@ -287,9 +282,8 @@ func transcodeToFile(t *testing.T, transcoder *recordingTranscoder, input string
 	return output, started
 }
 
-// assertCopySeek は途中からのコピーの出力を元動画と比べる。最初の映像 packet は指定位置の
-// 直前のキーフレームそのもので、時間軸は 0 から始まり、出力の時刻に実際の開始位置を
-// 足すと、映像も音声も元動画の時刻になる（音声との差が元動画と同じ）。
+// Copy-seek must preserve the preceding keyframe and A/V alignment when output times are offset by
+// the actual start.
 func assertCopySeek(t *testing.T, input, output string, requestedMs, actualMs int64) {
 	t.Helper()
 	sourceStart := formatStartTime(t, input)
@@ -302,8 +296,7 @@ func assertCopySeek(t *testing.T, input, output string, requestedMs, actualMs in
 	if keyframe.hash == "" {
 		t.Fatal("元動画に指定位置より前のキーフレームがありません")
 	}
-	// 実際の開始位置は最も早く始まる track の時刻で、音声が映像のキーフレームの少し前から
-	// 始まることがある。
+	// Audio can start slightly before the video keyframe, determining the earliest track start.
 	if keyframeMs := (keyframe.pts - sourceStart) * 1000; float64(actualMs) > keyframeMs+1 || float64(actualMs) < keyframeMs-100 {
 		t.Errorf("実際の開始位置 = %d ms, 直前のキーフレーム = %.0f ms", actualMs, keyframeMs)
 	}
@@ -342,8 +335,6 @@ func assertCopySeek(t *testing.T, input, output string, requestedMs, actualMs in
 	}
 }
 
-// H.264 の MKV を途中から変換すると映像をコピーし、直前のキーフレームから始まる
-// （親 Issue #371 受け入れ条件 1・4 の一部）。
 func TestCopySeekStartsAtPreviousKeyframeWithFFmpeg(t *testing.T) {
 	t.Parallel()
 
@@ -373,8 +364,6 @@ func TestCopySeekStartsAtPreviousKeyframeWithFFmpeg(t *testing.T) {
 	}
 }
 
-// キーフレームの間隔が差の上限より長い動画は、エンコードし直して指定位置から始める
-// （受け入れ条件 3）。
 func TestCopySeekFallsBackToEncodeForSparseKeyframesWithFFmpeg(t *testing.T) {
 	t.Parallel()
 
@@ -400,7 +389,6 @@ func TestCopySeekFallsBackToEncodeForSparseKeyframesWithFFmpeg(t *testing.T) {
 	if len(video) == 0 || video[0].pts > 0.1 {
 		t.Fatalf("出力の映像が 0 秒から始まりません")
 	}
-	// 指定位置から始めたので、出力の長さは元動画の残りに等しい。
 	if last := video[len(video)-1].pts; math.Abs(last-(sourceDuration-float64(requestedMs)/1000)) > 0.1 {
 		t.Errorf("出力の最後の映像 = %.3f 秒", last)
 	}

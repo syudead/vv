@@ -8,12 +8,8 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ListSidecarFiles は、videoPath が OpenMediaFile と同じ規則で開けるときだけ、その
-// 所在のフォルダにある通常ファイルの名前と大きさを返す。サブフォルダと symlink は含めない。
-// 名前の意味（字幕かどうか）はここでは判断しない。
-//
-// 動画を開けないときは domain.ErrMediaFileUnavailable を包んだ誤りを返し、フォルダを
-// 読めないときは domain.ErrDirectoryUnavailable を包んだ誤りを返す。
+// ListSidecarFiles requires a video readable under OpenMediaFile rules and returns sibling regular
+// files without symlinks; video and directory failures use their respective domain errors.
 func (FS) ListSidecarFiles(roots []string, videoPath string) ([]domain.SidecarEntry, error) {
 	folder, err := sidecarFolder(roots, videoPath)
 	if err != nil {
@@ -25,7 +21,7 @@ func (FS) ListSidecarFiles(roots []string, videoPath string) ([]domain.SidecarEn
 	}
 	entries := make([]domain.SidecarEntry, 0, len(dirEntries))
 	for _, entry := range dirEntries {
-		// Type() は symlink を ModeSymlink として返すので、辿らずに除ける。
+		// Type detects symlinks without following them.
 		if !entry.Type().IsRegular() {
 			continue
 		}
@@ -38,10 +34,8 @@ func (FS) ListSidecarFiles(roots []string, videoPath string) ([]domain.SidecarEn
 	return entries, nil
 }
 
-// OpenSidecarFile は、videoPath の所在のフォルダにある name という通常ファイルを開く。
-// 閉じるのは呼び出し側である。name は ListSidecarFiles が返す名前のどれかと完全に
-// 一致するものだけを受け、要求の文字列からパスを組み立てない（`../x.srt` や別の
-// フォルダの名前は断る）。開けないときは domain.ErrMediaFileUnavailable を包んだ誤りを返す。
+// OpenSidecarFile accepts only an exact listed filename, never constructs paths from unchecked
+// request input, and returns a caller-owned file; failures wrap ErrMediaFileUnavailable.
 func (fs FS) OpenSidecarFile(roots []string, videoPath, name string) (*os.File, os.FileInfo, error) {
 	entries, err := fs.ListSidecarFiles(roots, videoPath)
 	if err != nil {
@@ -57,15 +51,13 @@ func (fs FS) OpenSidecarFile(roots []string, videoPath, name string) (*os.File, 
 	if !found {
 		return nil, nil, fmt.Errorf("%w: not a file next to the video", domain.ErrMediaFileUnavailable)
 	}
-	// 一覧のあとに symlink へ差し替えられても外を開かないよう、開く前にもう一度確かめる。
+	// Recheck before opening in case the listed file became a symlink.
 	return fs.OpenMediaFile(roots, filepath.Join(filepath.Dir(filepath.Clean(videoPath)), name))
 }
 
-// sidecarFolder は、videoPath が OpenMediaFile と同じ規則で開けるときだけ、その所在
-// （symlink を辿る前のパス）のフォルダを返す。再生に使う所在の隣を探すためである。
+// Find sidecars beside the original playback location, before resolving video symlinks.
 func sidecarFolder(roots []string, videoPath string) (string, error) {
-	// 配信と同じ判定にするため、stat ではなく実際に開いて閉じる。stat はできても読めない
-	// 所在（権限が無いなど）は配信が飛ばすので、その隣も探さない。
+	// Actually open the video to match serving rules; stat alone also permits unreadable locations.
 	file, _, err := FS{}.OpenMediaFile(roots, videoPath)
 	if err != nil {
 		return "", err

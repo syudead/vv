@@ -10,8 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインの行と設定の値の規則。
-
 var pluginNow = time.Unix(1_800_000_000, 0)
 
 func pluginUpload(name, digest string, keys ...string) domain.WorkInfoPluginUpload {
@@ -79,8 +77,7 @@ func TestWorkInfoPluginUploadApproveAndReplace(t *testing.T) {
 	}
 }
 
-// 差し替えは、ダイジェストが承認したときと同じでも承認前に戻す。同じバイト列の再アップロードと、
-// 問題のある差し替えを挟んで承認したバイト列へ戻した差し替えの両方で確かめる。
+// Replacement revokes approval even for identical bytes or a return to an earlier version.
 func TestWorkInfoPluginReplacementWithTheApprovedDigestIsUnapproved(t *testing.T) {
 	ctx := context.Background()
 	s := migratedDB(t).WorkInfoPlugins()
@@ -203,7 +200,6 @@ func TestWorkInfoPluginValuesKeepApproval(t *testing.T) {
 	if !maps.Equal(written.Values, map[string]string{"apiKey": "k", "lang": "ja"}) {
 		t.Fatalf("values = %v", written.Values)
 	}
-	// null と空の値は消し、省いたキーは残す。
 	cleared := setPluginValues(t, s, added.ID, map[string]*string{"apiKey": nil})
 	if !maps.Equal(cleared.Values, map[string]string{"lang": "ja"}) {
 		t.Fatalf("values after null = %v", cleared.Values)
@@ -228,7 +224,7 @@ func TestWorkInfoPluginReplacementKeepsDeclaredValues(t *testing.T) {
 		t.Fatalf("values after replacement = %v; want only the still-declared key", replaced.Values)
 	}
 
-	// 問題のある差し替えは宣言を読めていないので、値を全部残す。
+	// An unreadable replacement manifest must preserve all settings.
 	broken := brokenUpload("example.wasm", "d3", domain.WorkInfoPluginImportUnsupported)
 	broken.Manifest.Name = "example"
 	invalid, wasReplaced := savePlugin(t, s, broken)

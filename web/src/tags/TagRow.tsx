@@ -36,30 +36,10 @@ export interface TagRowRefs {
   renameButton: HTMLButtonElement | null;
   synonymsButton: HTMLButtonElement | null;
   menuButton: HTMLButtonElement | null;
-  /** タッチの端末と `sm` 未満で、行の操作をまとめた「Actions」の入口。 */
   actionsButton: HTMLButtonElement | null;
 }
 
-/**
- * TagRow は管理画面の一覧の1行である。改名中は、名前の場所（列）だけを同じ入力に置き換える。本数・
- * 「改名」・「その他の操作」は出したままにし、行の高さも変えない
- * （行全体を作成の行のような別レイアウトに差し替えない）。削除は行に直接
- * 出さず「その他の操作」のメニューへ置く（UI品質「削除と統合を、作成・改名
- * より目立たせない」）。「シノニム」は改名の右に直接置き、「別のタグへ
- * 統合…」は「その他の操作」の先頭・区切り線の上に置く。
- *
- * 仮のタグ（`tentative`）の行は、名前の後ろに仮の目印を付け、操作の一群の
- * 先頭に「確定する」を置き、メニューの「削除…」を「却下する…」に置き換える。行の高さ・本数の列・改名の
- * 入力は確定した行と同じ。
- *
- * 名前の列の左に行のチェックを置き、選んだ行は面を `primary-soft` にする。
- * タッチの端末（`pointer: coarse`）と `sm` 未満の幅では、行の操作を文字を持つ
- * 1 つのメニュー「Actions」にまとめる。出し分けは CSS だけで行う。
- *
- * 一覧は見えている行だけを描き、スクロールや検索のたびに行を描き直すので、
- * `React.memo` で包む。呼び出し元は
- * 行の props（関数を含む）を安定させる。
- */
+/** Rename only the name cell while preserving row layout. Memoization requires stable props because virtualization rerenders on scrolling/search. */
 export default memo(TagRow);
 
 function TagRow({
@@ -84,14 +64,13 @@ function TagRow({
   selected = false,
   onSelect,
 }: {
-  /** 一覧の中の位置。仮想化が行を測るときに読む（`data-index`）。 */
+  /** Virtual row index used by measurement. */
   index: number;
-  /** 仮想化の行の測り（`virtualizer.measureElement`）。 */
   measureRef: Ref<HTMLTableRowElement>;
   tag: Tag;
   renaming: boolean;
   pending: boolean;
-  /** ほかの行の作成・改名が送信中で、この行では新しく改名や削除を始められない。 */
+  /** Another row's pending mutation blocks starting edits here. */
   blockStart: boolean;
   error: TagFieldError | null;
   registerRefs: (id: number, refs: Partial<TagRowRefs>) => void;
@@ -101,13 +80,10 @@ function TagRow({
   onOpenSynonyms: (tag: Tag) => void;
   onOpenMerge: (tag: Tag) => void;
   onDelete: (tag: Tag) => void;
-  /** 仮のタグの確定の要求が届いている間 true。「確定する」は次の押下を無視する。 */
   confirming?: boolean;
   onConfirm?: (tag: Tag) => void;
   onReject?: (tag: Tag) => void;
-  /** 値が変わるたびに呼ぶ。呼び出し元はこれで直前の失敗の表示を消す。 */
   onDraftChange?: () => void;
-  /** この行を選んでいる。 */
   selected?: boolean;
   onSelect?: (tag: Tag, selected: boolean) => void;
 }) {
@@ -119,11 +95,7 @@ function TagRow({
       data-state={selected && !renaming ? "selected" : undefined}
     >
       <TableCell>
-        {/*
-          押す範囲はチェックを中央に置いた size-8 の正方形（タッチでも外さない）。
-          包みの余白を押しても同じチェックを切り替える。改名中の行は選ばない
-          （改名の確定で並びの別の位置へ動きうるため）。
-        */}
+        {/* Do not select renaming rows: saving may move them to a different position. */}
         <div
           className="-my-1.5 flex size-8 items-center justify-center"
           onClick={(event) => {
@@ -139,10 +111,7 @@ function TagRow({
           />
         </div>
       </TableCell>
-      {/*
-        名前の列は残りの幅をすべて取り（w-full）、長い名前は省略する（max-w-0 で表の幅を
-        押し広げない）。
-      */}
+      {/* max-w-0 keeps long names from expanding the table. */}
       <TableCell className="w-full max-w-0 whitespace-normal">
         {renaming ? (
           <RowNameInput
@@ -158,13 +127,7 @@ function TagRow({
           />
         ) : (
           <>
-            {/*
-              名前は省略されても、仮の目印は shrink-0 で名前の後ろに残す
-              。Link は文字の幅に縮むので、`after:` の
-              疑似要素を包み（relative）いっぱいに広げ、名前の列の空白を押しても絞り込んだ
-              一覧が開くようにする。目印は relative で疑似要素の上に置き、Tooltip を
-              受けられるようにする。
-            */}
+            {/* Expand the link hit area while keeping tentative markers above it for tooltip input. */}
             <span className="relative flex min-w-0 items-center gap-1">
               <Link
                 ref={(node) => registerRefs(tag.id, { nameLink: node })}
@@ -217,10 +180,7 @@ function TagRow({
           onReject={onReject}
         />
         <div className="flex items-center justify-end gap-1 max-sm:hidden [@media(pointer:coarse)]:hidden">
-          {/*
-            確定したタグの行も「確定する」の分の幅を空けておき、操作の並びを全部の行で
-            そろえる。
-          */}
+          {/* Reserve confirmation width on all rows to align actions. */}
           {!tag.tentative && <span aria-hidden="true" className="size-8 shrink-0" />}
           {tag.tentative && (
             <RowIconButton
@@ -228,8 +188,7 @@ function TagRow({
               aria-busy={confirming || undefined}
               aria-disabled={confirming || undefined}
               onClick={() => {
-                // 送信中は disabled にせず（押した本人のボタンのフォーカスを
-                // 保つため）、次の押下を無視して要求を1回だけにする。
+                // Preserve button focus while pending; suppress repeat clicks instead of disabling it.
                 if (confirming) return;
                 onConfirm?.(tag);
               }}
@@ -282,10 +241,6 @@ function TagRow({
   );
 }
 
-/**
- * RowIconButton は行の操作の、文字を持たないボタンである（ghost の icon-sm と、同じ
- * 名前の Tooltip。web/registry/rules/components.md「Button」）。
- */
 export function RowIconButton({
   label,
   ...props
@@ -302,10 +257,6 @@ export function RowIconButton({
   );
 }
 
-/**
- * RowMoreMenu は行の「More actions」（`Ellipsis` の ghost の icon-sm と同じ名前の Tooltip）と、
- * それが開くメニューである。タグの行と人物・団体の行（`web/src/credits/CreditRow`）が使う。
- */
 export function RowMoreMenu({
   buttonRef,
   label,
@@ -315,7 +266,6 @@ export function RowMoreMenu({
   buttonRef: Ref<HTMLButtonElement>;
   label: string;
   disabled: boolean;
-  /** メニューの項目。 */
   children: ReactNode;
 }) {
   return (
@@ -341,15 +291,7 @@ export function RowMoreMenu({
   );
 }
 
-/**
- * CompactActions は、タッチの端末と `sm` 未満の幅で行の右端に出す「Actions」の
- * メニューである。項目は文字を持ち、行のアイコンのボタン（`RowIconButton`）と「その他の操作」の項目と
- * 同じ振る舞いをする。
- * マウスの端末で `sm` 以上では CSS で隠す（`matchMedia` は読まない）。
- *
- * DOM では行のアイコンのボタンの一群より前に置く。どちらか一方だけが描かれるので
- * 見た目の順は変わらず、隠れている一群は Tab の順に入らない。
- */
+/** CSS selects compact actions for touch/narrow layouts and removes hidden actions from tab order. */
 function CompactActions({
   tag,
   renaming,
@@ -388,7 +330,6 @@ function CompactActions({
             aria-busy={confirming || undefined}
             disabled={renaming}
             onPointerDown={(event) => {
-              // 確定の送信中は次の押下を無視する（行の「確定する」と同じ）。
               if (confirming) event.preventDefault();
             }}
             onKeyDown={(event) => {

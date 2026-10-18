@@ -170,7 +170,7 @@ func TestAuthStoreChangeCredentialsInvalidatesSessions(t *testing.T) {
 				t.Errorf("sessions = %d, want 0", got)
 			}
 
-			// 書き換え前に読んだ版で照合したログインが、書き換えの後に行を足しても無効。
+			// A session created after credential changes remains invalid if authentication used the old account version.
 			if err := auth.AddSession(ctx, "stale-token", before.Version, "", authNow); err != nil {
 				t.Fatal(err)
 			}
@@ -221,7 +221,6 @@ func TestAuthStoreExpiredSessions(t *testing.T) {
 	if !sessionValid(t, auth, "old", expiry.Add(-time.Second)) {
 		t.Error("期限の直前に無効")
 	}
-	// 使っても延長しない。
 	if sessionValid(t, auth, "old", expiry) {
 		t.Error("期限ちょうどで有効")
 	}
@@ -229,7 +228,6 @@ func TestAuthStoreExpiredSessions(t *testing.T) {
 		t.Errorf("確かめた後の sessions = %d, want 0（期限切れの行は消える）", got)
 	}
 
-	// 起動時の掃除。
 	for _, token := range []string{"a", "b"} {
 		if err := auth.AddSession(ctx, token, 1, "", authNow); err != nil {
 			t.Fatal(err)
@@ -301,7 +299,6 @@ func TestAuthStoreUnknownSessionIsInvalid(t *testing.T) {
 	}
 }
 
-// セッション ID そのものは保存せず、SHA-256 の16進だけを置く。
 func TestAuthStoreStoresOnlyTokenHash(t *testing.T) {
 	db := migratedDB(t)
 	if err := db.Auth().Setup(context.Background(), "owner", "hash", "secret-token", authNow); err != nil {

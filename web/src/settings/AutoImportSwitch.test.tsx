@@ -13,7 +13,6 @@ import {
 import AutoImportSwitch from "./AutoImportSwitch";
 import { useAutoImportSettings } from "./useAutoImportSettings";
 
-/** 切り替えだけを、開いたときの読み込みで出す。 */
 function SwitchHarness() {
   const source = useAutoImportSettings();
   return <AutoImportSwitch source={source} />;
@@ -63,7 +62,6 @@ describe("AutoImportSwitch", () => {
     expect(autoImportSwitch().getAttribute("aria-checked")).toBe("true");
     expect(autoImportSwitch().getAttribute("aria-disabled")).toBe("true");
     expect(screen.getByText("Saving…")).toBeDefined();
-    // 送信中にもう一度押しても送らない。
     await user.click(autoImportSwitch());
     expect(server.puts()).toBe(1);
 

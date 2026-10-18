@@ -11,33 +11,27 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// fakeScanStore は scans 表の偽物である。実行中は1件だけという制約を持つ。
+// The fake enforces one running scan.
 type fakeScanStore struct {
-	mu       sync.Mutex
-	nextID   int64
-	current  domain.Scan
-	hasScan  bool
-	progress map[int64][]domain.ScanProgress
-	finished chan domain.Scan
-	// finishDeciders は FinishScan が受け取った、走査を始めたものである。
+	mu             sync.Mutex
+	nextID         int64
+	current        domain.Scan
+	hasScan        bool
+	progress       map[int64][]domain.ScanProgress
+	finished       chan domain.Scan
 	finishDeciders []domain.ActivityDecider
 
 	interrupted int64
 	requeued    int64
 	recovered   []string
 
-	// rebuilds はフォルダの索引を作り直した回数、rebuildErr はその失敗である。
-	rebuilds   int
-	rebuildErr error
-	// rebuiltBeforeFinish は閉じる時点までに作り直した回数である。
+	rebuilds            int
+	rebuildErr          error
 	rebuiltBeforeFinish []int
-	// issues は記録された問題である。
-	issues []domain.ScanIssue
-	// resumedFrom は走査を始めるたびの持ち越し元（StartScan なら 0）である。
-	resumedFrom []int64
-	// watchDirs は監視の走査を始めたときの範囲である。
-	watchDirs [][]domain.DirtyDirectory
-	// unfinished は queued か running の仕事があるか、unfinishedErr はその問い合わせの失敗である。
+	issues              []domain.ScanIssue
+	// Zero denotes StartScan rather than a resumed predecessor.
+	resumedFrom   []int64
+	watchDirs     [][]domain.DirtyDirectory
 	unfinished    bool
 	unfinishedErr error
 }
@@ -50,12 +44,10 @@ func (f *fakeScanStore) StartScan(ctx context.Context) (domain.Scan, bool, error
 	return f.ResumeScan(ctx, 0)
 }
 
-// ResumeScan は StartScan と同じで、持ち越し元を resumedFrom に残す。
 func (f *fakeScanStore) ResumeScan(_ context.Context, from int64) (domain.Scan, bool, error) {
 	return f.begin(from, domain.ScanOriginManual)
 }
 
-// StartWatchScan は origin が watch の走査を始め、範囲を watchDirs に残す。
 func (f *fakeScanStore) StartWatchScan(_ context.Context, dirs []domain.DirtyDirectory) (domain.Scan, bool, error) {
 	f.mu.Lock()
 	f.watchDirs = append(f.watchDirs, dirs)
@@ -98,7 +90,7 @@ func (f *fakeScanStore) UpdateScanProgress(_ context.Context, id int64, progress
 func (f *fakeScanStore) FinishScan(
 	ctx context.Context, id int64, state domain.ScanState, cause error, decider domain.ActivityDecider,
 ) error {
-	// 閉じる書き込みは、停止で取り消された context でも届かなければならない。
+	// Final writes must survive lifecycle cancellation.
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -174,27 +166,22 @@ func (f *fakeScanStore) waitFinished(t *testing.T) domain.Scan {
 	}
 }
 
-// fakeScanner は決め打ちの結果を返す。進捗を1回報告してから、release が
-// 閉じられるまで（または ctx が取り消されるまで）待つ。
+// Report progress once, then wait for release or context cancellation.
 type fakeScanner struct {
-	reporter ScanReporter
-	result   domain.ScanResult
-	err      error
-	panics   bool
-	// beforeReturn は結果を返す直前に呼ぶ。nil なら呼ばない。
+	reporter     ScanReporter
+	result       domain.ScanResult
+	err          error
+	panics       bool
 	beforeReturn func()
 	release      chan struct{}
 	started      chan struct{}
 	runs         int
-	// deciders は Scan が受け取った、走査を始めたものである。
-	deciders []domain.ActivityDecider
-	// scoped は範囲を絞った走査の呼び出しで受け取った範囲である。
-	scoped [][]domain.DirtyDirectory
-	mu     sync.Mutex
+	deciders     []domain.ActivityDecider
+	scoped       [][]domain.DirtyDirectory
+	mu           sync.Mutex
 }
 
-// ScanScoped は Scan と同じ決め打ちで、範囲を scoped に残す。取り消しの理由が
-// 取って代わられたことなら、ErrScanSuperseded を返す。
+// Return ErrScanSuperseded when cancellation carries that cause.
 func (f *fakeScanner) ScanScoped(ctx context.Context, dirs []domain.DirtyDirectory) (domain.ScanResult, error) {
 	f.mu.Lock()
 	f.scoped = append(f.scoped, dirs)
@@ -254,8 +241,6 @@ func newTestScans(t *testing.T, ctx context.Context, scanner *fakeScanner) (*Sca
 	return scans, store, publisher
 }
 
-// 走査が最後まで走れば、最終の進捗を記録して done で閉じ、変化を発行する。
-// 要求の context が応答とともに終わっても、走査は打ち切られない。
 func TestScanCompletes(t *testing.T) {
 	scanner := &fakeScanner{result: domain.ScanResult{Total: 3, Processed: 2, Added: 2, Failed: 1}}
 	scans, store, publisher := newTestScans(t, context.Background(), scanner)
@@ -280,15 +265,13 @@ func TestScanCompletes(t *testing.T) {
 	if len(progress) != 2 || progress[len(progress)-1] != want {
 		t.Fatalf("進捗 = %+v, want 途中1回と最終 %+v", progress, want)
 	}
-	// 開始・途中の進捗・終了の3回。
+	// Start, progress, and finish each publish an event.
 	want3 := []domain.Event{domain.ScanChanged{}, domain.ScanChanged{}, domain.ScanChanged{}}
 	if got := publisher.published(); !slices.Equal(got, want3) {
 		t.Fatalf("走査の発行 = %v, want %v", got, want3)
 	}
 }
 
-// 走査が失敗すれば failed で閉じ、理由とそのコードを残す。走査が包んだコードと場所は
-// そのまま渡り、包まれていない失敗と panic は internal になる。
 func TestScanFailure(t *testing.T) {
 	folder := fixturePath("/media/unreadable")
 	for _, tc := range []struct {
@@ -331,7 +314,6 @@ func TestScanFailure(t *testing.T) {
 	}
 }
 
-// 実行中に開始を要求しても、新しく始めずに実行中のものを返す。
 func TestStartScanWhileRunningReturnsCurrent(t *testing.T) {
 	scanner := &fakeScanner{release: make(chan struct{}), started: make(chan struct{})}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
@@ -362,8 +344,6 @@ func TestStartScanWhileRunningReturnsCurrent(t *testing.T) {
 	}
 }
 
-// Busy は走っている走査があるか、queued・running の仕事があるとき真で、どちらも
-// 無いとき偽。
 func TestBusy(t *testing.T) {
 	scanner := &fakeScanner{release: make(chan struct{}), started: make(chan struct{})}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
@@ -381,7 +361,6 @@ func TestBusy(t *testing.T) {
 
 	assertBusy(false)
 
-	// 走査中。
 	if _, _, err := scans.StartScan(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -392,21 +371,17 @@ func TestBusy(t *testing.T) {
 	scans.Wait()
 	assertBusy(false)
 
-	// queued か running の仕事がある（保存先はどちらも 1 つの問い合わせで答える）。
 	store.setUnfinished(true, nil)
 	assertBusy(true)
 	store.setUnfinished(false, nil)
 	assertBusy(false)
 
-	// 問い合わせの失敗は返す。
 	store.setUnfinished(false, errors.New("disk"))
 	if _, err := scans.Busy(ctx); err == nil {
 		t.Error("問い合わせの失敗が返らない")
 	}
 }
 
-// 停止で寿命の長い context が取り消されたら、走査は打ち切られ、それでも
-// failed で閉じる（閉じる書き込みは取り消しを引き継がない）。
 func TestScanStoppedByShutdownIsClosedAsFailed(t *testing.T) {
 	baseCtx, stop := context.WithCancel(context.Background())
 	scanner := &fakeScanner{release: make(chan struct{}), started: make(chan struct{})}
@@ -428,8 +403,7 @@ func TestScanStoppedByShutdownIsClosedAsFailed(t *testing.T) {
 	}
 }
 
-// 停止の直後に走査が別の理由で失敗しても、中断として閉じる。停止は走査の
-// context へ非同期に伝わるので、それを待たずに失敗が返る場合を確かめる。
+// Exercise the race where scanner failure precedes asynchronous cancellation propagation.
 func TestScanFailingRightAfterShutdownIsInterrupted(t *testing.T) {
 	baseCtx, stop := context.WithCancel(context.Background())
 	scanner := &fakeScanner{
@@ -447,8 +421,6 @@ func TestScanFailingRightAfterShutdownIsInterrupted(t *testing.T) {
 	}
 }
 
-// 起動時の回復は、残った走査を閉じ、閉じた走査があればフォルダの索引を作り直し、
-// 残った仕事を戻すことを保存層へ頼む。作り直しの失敗で起動は止めない。
 func TestRecoverInterrupted(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -474,8 +446,6 @@ func TestRecoverInterrupted(t *testing.T) {
 	}
 }
 
-// 起動時に、最新の走査が中断で終わっていれば走査を 1 回始め直す。done、
-// interrupted 以外の理由の failed、走査の記録が無いときは始めない
 func TestResumeInterrupted(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -487,7 +457,6 @@ func TestResumeInterrupted(t *testing.T) {
 		{"interrupted 以外の failed なら始めない", &domain.Scan{ID: 4, State: domain.ScanFailed, ErrorCode: domain.ScanErrorInternal}, false},
 		{"理由のコードの無い failed なら始めない", &domain.Scan{ID: 4, State: domain.ScanFailed}, false},
 		{"走査の記録が無ければ始めない", nil, false},
-		// 中断した監視の走査は閉じるだけで、続きは始めない（R-8）。
 		{"中断した監視の走査は始めない", &domain.Scan{
 			ID: 4, State: domain.ScanFailed, ErrorCode: domain.ScanErrorInterrupted, Origin: domain.ScanOriginWatch,
 		}, false},
@@ -530,8 +499,6 @@ func TestResumeInterrupted(t *testing.T) {
 	}
 }
 
-// スキャンは成功でも失敗でも、閉じる直前にフォルダの索引を作り直す。作り直しに
-// 失敗してもスキャンは失敗にしない。
 func TestScanRebuildsFolderIndexBeforeClosing(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -565,15 +532,12 @@ func TestScanRebuildsFolderIndexBeforeClosing(t *testing.T) {
 	}
 }
 
-// setVideos は保存側が数える対象の動画の本数と、完了の時刻を決め打ちにする。
 func (f *fakeScanStore) setVideos(videos, settled int, settledAt time.Time) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.current.Videos, f.current.SettledVideos, f.current.SettledAt = videos, settled, settledAt
 }
 
-// 走査が閉じても対象に残りの仕事があるあいだは running のままで、最後の仕事の成否が
-// 記録された時点で done になる。完了の時刻は走査の終了より後になる
 func TestCurrentScanStaysRunningUntilJobsSettle(t *testing.T) {
 	scanner := &fakeScanner{result: domain.ScanResult{Total: 2, Processed: 2, Added: 2}}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
@@ -583,7 +547,6 @@ func TestCurrentScanStaysRunningUntilJobsSettle(t *testing.T) {
 	closed := store.waitFinished(t)
 	scans.Wait()
 
-	// 走査は閉じたが、2本のうち1本に仕事が残っている。
 	store.setVideos(2, 1, time.Time{})
 	current, err := scans.CurrentScan(context.Background())
 	if err != nil {
@@ -596,7 +559,6 @@ func TestCurrentScanStaysRunningUntilJobsSettle(t *testing.T) {
 		t.Fatalf("残りがあるのに完了の時刻を返した: %v", current.Import.SettledAt)
 	}
 
-	// 最後の仕事の成否を記録した時点で、保存側が完了の時刻を入れる。
 	settledAt := closed.FinishedAt.Add(3 * time.Second)
 	store.setVideos(2, 2, settledAt)
 	current, err = scans.CurrentScan(context.Background())
@@ -611,7 +573,6 @@ func TestCurrentScanStaysRunningUntilJobsSettle(t *testing.T) {
 	}
 }
 
-// 開始の応答も、取り込みの状態を組み立てて返す。対象を数える前は finding である。
 func TestStartScanReturnsFindingImport(t *testing.T) {
 	release := make(chan struct{})
 	scanner := &fakeScanner{result: domain.ScanResult{Total: 1, Processed: 1}, release: release}
@@ -628,8 +589,6 @@ func TestStartScanReturnsFindingImport(t *testing.T) {
 	scans.Wait()
 }
 
-// 走査が報告したファイルの失敗は問題として記録され、変化として知らせる。登録できなかった
-// ファイルは分母と済みの本数に入り、失敗の問題があるので取り込みは partial になる
 func TestReportedFileIssueMakesImportPartial(t *testing.T) {
 	scanner := &fakeScanner{result: domain.ScanResult{Total: 2, Processed: 1, Added: 1, Failed: 1}}
 	scans, store, publisher := newTestScans(t, context.Background(), scanner)
@@ -662,7 +621,6 @@ func TestReportedFileIssueMakesImportPartial(t *testing.T) {
 	}
 }
 
-// 問題の一覧は直近の走査の id と一緒に返り、一度も走査していなければ ErrNotFound である。
 func TestListScanIssues(t *testing.T) {
 	scans, store, _ := newTestScans(t, context.Background(), &fakeScanner{})
 	if _, err := scans.ListScanIssues(context.Background(), "", 50); !errors.Is(err, domain.ErrNotFound) {
@@ -690,7 +648,6 @@ func TestListScanIssues(t *testing.T) {
 	}
 }
 
-// 監視の走査は範囲を絞った走査として走り、origin は watch で記録される。範囲は整えて渡す。
 func TestStartWatchScanRunsScopedScan(t *testing.T) {
 	scanner := &fakeScanner{result: domain.ScanResult{Total: 1, Processed: 1}}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
@@ -720,7 +677,6 @@ func TestStartWatchScanRunsScopedScan(t *testing.T) {
 	}
 }
 
-// 取って代わられた監視の走査は、失敗でも interrupted でもなく done で閉じる。
 func TestSupersedeWatchScanClosesDone(t *testing.T) {
 	scanner := &fakeScanner{release: make(chan struct{}), started: make(chan struct{})}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
@@ -742,7 +698,6 @@ func TestSupersedeWatchScanClosesDone(t *testing.T) {
 	}
 }
 
-// 手動の走査は取って代わられず、走り続ける。
 func TestSupersedeWatchScanLeavesManualScan(t *testing.T) {
 	scanner := &fakeScanner{release: make(chan struct{}), started: make(chan struct{})}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)

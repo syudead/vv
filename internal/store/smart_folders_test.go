@@ -21,7 +21,6 @@ func createSmartFolder(t *testing.T, db *DB, name string, parent int64) domain.S
 	return folder
 }
 
-// smartFolderRows は smart_folders の行を id の順に "id:parent:name:owner_kept" で返す。
 func smartFolderRows(t *testing.T, db *DB) []string {
 	t.Helper()
 	rows, err := db.sql.Query(`select id || ':' || coalesce(parent_id, 0) || ':' || name || ':' || owner_kept

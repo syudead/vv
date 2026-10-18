@@ -8,57 +8,49 @@ import (
 	"time"
 )
 
-// 人物と団体。
-// どちらも名前が重なってよい id の実体で、名前・別名・外部 ID を持ち、団体だけが親の団体を持つ。
+// People and organizations have stable IDs, duplicate names, aliases, and external IDs; only organizations have parents.
 
-// CreditKind は実体の種類である。保存層はこれで表の名前を決める。
+// CreditKind selects the persistence table.
 type CreditKind string
 
 const (
-	// CreditPerson は人物（出演者・監督・撮影・配信者）。
-	CreditPerson CreditKind = "person"
-	// CreditOrganization は団体（メーカー・レーベル）。
+	CreditPerson       CreditKind = "person"
 	CreditOrganization CreditKind = "organization"
 )
 
-// Valid は k が既知の種類であることを返す。
 func (k CreditKind) Valid() bool {
 	return k == CreditPerson || k == CreditOrganization
 }
 
 const (
-	// CreditNameMaxLength は実体の名前と別名の上限（符号位置数）である。表示名と同じ。
-	CreditNameMaxLength = 200
-	// CreditAliasesMaxCount は 1 つの実体の別名の件数の上限である。
-	CreditAliasesMaxCount = 50
-	// CreditLanguageMaxLength は別名の language の上限（文字数）である。
+	// CreditNameMaxLength counts code points and matches the display-name limit.
+	CreditNameMaxLength     = 200
+	CreditAliasesMaxCount   = 50
 	CreditLanguageMaxLength = 35
 )
 
-// Alias は実体の別名 1 件である。Language は BCP 47 の構文の言語タグで、無ければ空。
+// Language is an optional BCP 47 syntax tag.
 type Alias struct {
 	Name     string
 	Language string
 }
 
-// Credit は人物か団体 1 件である。
 type Credit struct {
 	Kind CreditKind
 	ID   int64
-	// Name は正規の名前（canonical = 1 の行）。
 	Name string
-	// Aliases は名前の自然順（CompareNatural、同じなら元の文字列）。
+	// Aliases use natural name order, breaking ties by the original string.
 	Aliases []Alias
-	// ExternalIDs は (source, value) の順。
+	// ExternalIDs are ordered by (source, value).
 	ExternalIDs []ExternalID
-	// Parent は団体の親の団体。人物と根の団体では nil。
+	// Parent is nil for people and root organizations.
 	Parent *CreditRef
-	// VideoCount はこの実体をどれかの役割で結ぶ、表示中の動画の利用者データの鍵の数。
+	// VideoCount counts visible video user-data keys linked in any role.
 	VideoCount int
 	CreatedAt  time.Time
 }
 
-// CreditInput は実体を作るときの入力である。ParentID は団体だけが使い、人物では読まない。
+// ParentID is used only for organizations.
 type CreditInput struct {
 	Name        string
 	Aliases     []Alias
@@ -66,9 +58,7 @@ type CreditInput struct {
 	ParentID    *int64
 }
 
-// CreditPatch は実体の更新の入力である。nil のフィールドは今の値のまま残す。一覧は丸ごと
-// 置き換え、nil の配列を指すポインタは一覧を空にする。ParentSet が真なら親を ParentID
-// （nil なら親を外す）にし、偽なら今の親のまま残す。親は団体だけが使う。
+// CreditPatch preserves nil fields and replaces whole lists; pointers to nil lists clear them, while ParentSet controls whether ParentID changes (nil removes the parent).
 type CreditPatch struct {
 	Name        *string
 	Aliases     *[]Alias
@@ -77,54 +67,38 @@ type CreditPatch struct {
 	ParentID    *int64
 }
 
-// CreditQuery は実体の一覧の条件である。
 type CreditQuery struct {
-	// Q は生の検索語。保存層が FoldForMatch を掛けて前後の空白を落とし、空でなければ名前か
-	// 別名の照合形に部分一致する実体だけにする。
+	// Q is folded and trimmed by storage, then matched as a substring of canonical names and aliases.
 	Q string
-	// Sort はタグの一覧と同じ 5 つの並び順。
-	// 空なら TagSortName。
+	// Sort defaults to TagSortName and supports the five tag sort orders.
 	Sort TagSort
-	// Cursor は前のページの CreditPage.NextCursor。解釈できないもの・別の並び順や別の種類の
-	// ものは ErrInvalidCursor。
+	// Cursor must match the credit kind and sort order or yields ErrInvalidCursor.
 	Cursor string
-	// Limit は 1 ページの件数（1 から MaxTagPageLimit）。0 なら全件を返し、Cursor は無視する。
+	// Limit is 1–MaxTagPageLimit; zero returns all results and ignores Cursor.
 	Limit int
 }
 
-// CreditPage は実体の一覧の 1 ページである。
 type CreditPage struct {
-	Items []Credit
-	// Total は条件に合う実体の数。
-	Total int
-	// TotalAll はその種類の実体の数。
-	TotalAll int
-	// NextCursor は続きの取得に渡す。続きが無ければ空。
+	Items      []Credit
+	Total      int
+	TotalAll   int
 	NextCursor string
 }
 
-// CreditMergeOutcome は統合の結果である。
 type CreditMergeOutcome struct {
-	// Credit は統合後の統合先。
 	Credit Credit
-	// NotFoundIDs はもう無かった統合元の id。重複を除いた統合元に現れた順で、無ければ空の配列。
+	// NotFoundIDs deduplicates missing sources in input order and is empty when none are missing.
 	NotFoundIDs []int64
 }
 
-// ErrCreditParentCycle は親の団体の付け替えか統合で、親の連鎖が輪になることを表す。API では
-// organization_parent_cycle（400）になる。
 var ErrCreditParentCycle = errors.New("the parent organization would form a cycle")
 
-// ErrMergeSameCredit は統合元に統合先そのものが含まれることを表す。API では merge_same_person か
-// merge_same_organization（400）になる。
 var ErrMergeSameCredit = errors.New("cannot merge an entity into itself")
 
-// ErrExternalIDTaken は外部 ID を同じ種類の別の実体が既に持つことを表す。API では
-// external_id_taken（409）になる。errors.As で *CreditExternalIDTakenError を取り出せる。
+// ErrExternalIDTaken wraps CreditExternalIDTakenError and maps to external_id_taken (409).
 var ErrExternalIDTaken = errors.New("external ID is held by another entity")
 
-// CreditExternalIDTakenError は他の実体が持つ外部 ID を運ぶ。Field は呼び手が送った一覧での
-// 経路（externalIds[1]）、HolderID はその外部 ID を持つ実体の id である。
+// Field identifies the input path (e.g. externalIds[1]); HolderID identifies the current owner.
 type CreditExternalIDTakenError struct {
 	Kind     CreditKind
 	Field    string
@@ -137,8 +111,7 @@ func (e *CreditExternalIDTakenError) Error() string {
 
 func (e *CreditExternalIDTakenError) Unwrap() error { return ErrExternalIDTaken }
 
-// CreditNotFoundError は参照した実体が無いことを表す。Field はその id を運んだプロパティの経路
-// （parentId・people[0].person.id）である。errors.Is(err, ErrNotFound) は真になる。
+// CreditNotFoundError records the input field path and matches ErrNotFound.
 type CreditNotFoundError struct {
 	Kind  CreditKind
 	ID    int64
@@ -151,16 +124,7 @@ func (e *CreditNotFoundError) Error() string {
 
 func (e *CreditNotFoundError) Unwrap() error { return ErrNotFound }
 
-// NormalizeCredit は実体の入力を 入力の規則で整える。誤りは名前・別名・
-// 外部 ID の順に、最初の 1 件を *InvalidWorkInfoError で返す。
-//
-//   - 名前: 表示名と同じ手順で整え、空なら name の WorkInfoEmpty、CreditNameMaxLength を超えれば TooLong。
-//   - 別名: 名前の空になった件は language があっても落とす。language は整えて空なら無し、
-//     BCP 47 の構文（isLanguageTagSyntax）でなければ InvalidLanguage。名前か前の別名と同じ綴りは
-//     aliases[i].name の Duplicate、落とした後の件数が CreditAliasesMaxCount を超えれば aliases の TooMany。
-//   - 外部 ID: 両方が空の件は落とし、片方だけ空なら空の側の Empty。同じ (source, value) は Duplicate。
-//
-// 綴りは畳み込まない（Anime と anime は別の別名）。親の有無と輪は保存層が確かめる。
+// NormalizeCredit trims without case folding, drops blank aliases and fully blank external IDs, and returns the first InvalidWorkInfoError in name/alias/external-ID order; storage validates parent existence and cycles.
 func NormalizeCredit(input CreditInput) (CreditInput, error) {
 	name, err := normalizeWorkInfoText("name", input.Name, CreditNameMaxLength, false)
 	if err != nil {
@@ -180,7 +144,6 @@ func NormalizeCredit(input CreditInput) (CreditInput, error) {
 	return CreditInput{Name: name, Aliases: aliases, ExternalIDs: externalIDs, ParentID: input.ParentID}, nil
 }
 
-// normalizeAliases は NormalizeCredit の別名の規則である。
 func normalizeAliases(name string, aliases []Alias) ([]Alias, error) {
 	normalized := make([]Alias, 0, len(aliases))
 	seen := map[string]bool{name: true}
@@ -191,7 +154,7 @@ func normalizeAliases(name string, aliases []Alias) ([]Alias, error) {
 			return nil, err
 		}
 		if alias == "" {
-			// 名前の無い別名は language を確かめずに落とす（language の誤りでも拒まない）。
+			// Drop nameless aliases without validating their language.
 			continue
 		}
 		language, err := normalizeWorkInfoText(field+".language", raw.Language, CreditLanguageMaxLength, false)
@@ -213,9 +176,7 @@ func normalizeAliases(name string, aliases []Alias) ([]Alias, error) {
 	return normalized, nil
 }
 
-// isLanguageTagSyntax は s が BCP 47 の言語タグの構文に合うかを返す。2〜35 文字の ASCII の
-// 英字・数字・- で、先頭の副タグが 2 か 3 文字の英字（その後は終わりか -）である。登録された
-// 言語かどうかは確かめない。長すぎる値は呼び手が TooLong で先に拒む。
+// isLanguageTagSyntax checks BCP 47 syntax, not registration; callers reject overlong values first.
 func isLanguageTagSyntax(s string) bool {
 	if len(s) < 2 || len(s) > CreditLanguageMaxLength {
 		return false
@@ -240,7 +201,6 @@ func isASCIILetter(c byte) bool {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
-// SortAliases は別名を名前の自然順に並べる。同順位は元の文字列で決着させる（SortTagNames と同じ）。
 func SortAliases(aliases []Alias) {
 	slices.SortStableFunc(aliases, func(a, b Alias) int {
 		if order := CompareNatural(a.Name, b.Name); order != 0 {
@@ -250,7 +210,6 @@ func SortAliases(aliases []Alias) {
 	})
 }
 
-// SortExternalIDs は外部 ID を (source, value) の順に並べる。
 func SortExternalIDs(ids []ExternalID) {
 	slices.SortFunc(ids, func(a, b ExternalID) int {
 		if order := strings.Compare(a.Source, b.Source); order != 0 {

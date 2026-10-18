@@ -13,8 +13,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// fakeOrganizeStore は操作ごとに "image-<n>" の像を返し、取り消しで受け取った像を覚える。
-// imageSize が 0 でなければ、像をそのバイト数に伸ばす。
+// Use deterministic image-n snapshots, optionally padded to exercise byte limits.
 type fakeOrganizeStore struct {
 	reorders  int
 	undone    [][]byte
@@ -55,14 +54,12 @@ func (f *fakeOrganizeStore) Undo(_ context.Context, image []byte) error {
 	return f.undoErr
 }
 
-// Group は 100 から順のグループの id と "group-<n>" の像を返す。
 func (f *fakeOrganizeStore) Group(_ context.Context, _ []int64, _ int64, _ *int64) (int64, []byte, error) {
 	f.groups++
 	return 99 + int64(f.groups), fmt.Appendf(nil, "group-%d", f.groups), nil
 }
 
-// RenameGroup は受け取った像を覚え、像があって staleRename でなければ "renamed-<n>" の像を返す。
-// renameEntered があれば入ったことを知らせ、renameRelease が閉じるまで待つ。
+// Optional gates pause rename; staleRename prevents snapshot refresh.
 func (f *fakeOrganizeStore) RenameGroup(_ context.Context, id int64, name string, image []byte) (domain.Group, []byte, error) {
 	f.renames = append(f.renames, renameCall{id: id, name: name, image: image})
 	if f.renameEntered != nil {
@@ -79,7 +76,6 @@ func (f *fakeOrganizeStore) RenameGroup(_ context.Context, id int64, name string
 	return group, fmt.Appendf(nil, "renamed-%d", len(f.renames)), nil
 }
 
-// renameCall は保存先の RenameGroup の呼び出し 1 つである。
 type renameCall struct {
 	id    int64
 	name  string
@@ -102,7 +98,6 @@ func reorderToken(t *testing.T, o *Organizer) string {
 	return result.UndoToken
 }
 
-// トークンは操作の像を保存先へ返し、2 回目の使用は ErrUndoExpired である。
 func TestOrganizerTokenIsUsedOnce(t *testing.T) {
 	store := &fakeOrganizeStore{}
 	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
@@ -127,7 +122,6 @@ func TestOrganizerTokenIsUsedOnce(t *testing.T) {
 	}
 }
 
-// 保存先が取り消しを拒んでも、トークンは使い済みになる。
 func TestOrganizerConflictUsesTheToken(t *testing.T) {
 	store := &fakeOrganizeStore{undoErr: domain.ErrUndoConflict}
 	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
@@ -140,7 +134,6 @@ func TestOrganizerConflictUsesTheToken(t *testing.T) {
 	}
 }
 
-// 取引の中断のように保存先が何も書かずに失敗したら、トークンは残り、同じトークンでやり直せる。
 func TestOrganizerKeepsTheTokenWhenTheUndoFails(t *testing.T) {
 	store := &fakeOrganizeStore{undoErr: context.Canceled}
 	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
@@ -157,7 +150,6 @@ func TestOrganizerKeepsTheTokenWhenTheUndoFails(t *testing.T) {
 	}
 }
 
-// トークンが作れなければ、保存先は並べ替えない。
 func TestOrganizerCreatesTheTokenBeforeTheStoreWrites(t *testing.T) {
 	store := &fakeOrganizeStore{}
 	o := NewOrganizer(OrganizerOptions{Store: store, Random: bytes.NewReader(nil)})
@@ -169,7 +161,6 @@ func TestOrganizerCreatesTheTokenBeforeTheStoreWrites(t *testing.T) {
 	}
 }
 
-// 像の合計が undoMaxBytes を超えると古いトークンから忘れる。いちばん新しい像は上限より大きくても持つ。
 func TestOrganizerBoundsTheJournalInBytes(t *testing.T) {
 	store := &fakeOrganizeStore{imageSize: undoMaxBytes/2 + 1}
 	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
@@ -193,7 +184,6 @@ func TestOrganizerBoundsTheJournalInBytes(t *testing.T) {
 	}
 }
 
-// トークンは 10 分で切れる。10 分に満たなければ使える。
 func TestOrganizerTokenExpiresAfterTenMinutes(t *testing.T) {
 	store := &fakeOrganizeStore{}
 	clock := &fakeClock{now: time.Unix(1000, 0)}
@@ -210,7 +200,6 @@ func TestOrganizerTokenExpiresAfterTenMinutes(t *testing.T) {
 	}
 }
 
-// より新しいトークンが 100 件たまると、いちばん古いトークンは拒まれ、その次は使える。
 func TestOrganizerKeepsAtMostOneHundredTokens(t *testing.T) {
 	store := &fakeOrganizeStore{}
 	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
@@ -226,7 +215,6 @@ func TestOrganizerKeepsAtMostOneHundredTokens(t *testing.T) {
 	}
 }
 
-// 保存先の誤りはそのまま返り、トークンは作らない。
 func TestOrganizerReturnsStoreErrors(t *testing.T) {
 	o := NewOrganizer(OrganizerOptions{Store: failingOrganizeStore{}})
 	if _, err := o.Reorder(context.Background(), 1, []int64{2}, nil); !errors.Is(err, domain.ErrGroupTargetNotFound) {
@@ -269,7 +257,6 @@ func (failingOrganizeStore) Merge(context.Context, []domain.OrganizeRef, int64, 
 
 func (failingOrganizeStore) Undo(context.Context, []byte) error { return nil }
 
-// マージは from を保存先へ渡してトークンを返し、その取り消しはマージの像を保存先へ返す。
 func TestOrganizerMergeKeepsItsImage(t *testing.T) {
 	store := &fakeOrganizeStore{}
 	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
@@ -317,7 +304,6 @@ func renameGroup(t *testing.T, o *Organizer, id int64, token string) {
 	}
 }
 
-// 「グループにする」は新しいグループの id とトークンを返し、そのトークンの取り消しは操作の像を返す。
 func TestOrganizerGroupReturnsTheNewGroup(t *testing.T) {
 	store := &fakeOrganizeStore{}
 	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
@@ -333,8 +319,7 @@ func TestOrganizerGroupReturnsTheNewGroup(t *testing.T) {
 	}
 }
 
-// そのグループを作ったトークン付きの名前変更は、保存先が返した像をトークンの像にする。保存先が
-// 像を返さなければ（行が変わっていた）、トークンは古い像のままである。どちらもトークンは使える。
+// Keep the old snapshot when storage cannot refresh it; either snapshot remains undoable.
 func TestOrganizerRenameWithTheTokenReplacesTheImage(t *testing.T) {
 	store := &fakeOrganizeStore{}
 	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
@@ -361,7 +346,6 @@ func TestOrganizerRenameWithTheTokenReplacesTheImage(t *testing.T) {
 	}
 }
 
-// 名前変更が失敗すれば、その誤りを返し、トークンは古い像のまま残る。
 func TestOrganizerRenameFailureKeepsTheToken(t *testing.T) {
 	store := &fakeOrganizeStore{renameErr: domain.ErrGroupNotFound}
 	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
@@ -377,8 +361,6 @@ func TestOrganizerRenameFailureKeepsTheToken(t *testing.T) {
 	}
 }
 
-// 知らない・使い済み・切れた・並べ替えの・別のグループのトークンでの名前変更は、像を渡さずに
-// グループの名前を変え、生きているトークンの像はそのままである。
 func TestOrganizerRenameWithOtherTokensKeepsTheImage(t *testing.T) {
 	clock := &fakeClock{now: time.Unix(1000, 0)}
 	store := &fakeOrganizeStore{}
@@ -421,8 +403,6 @@ func TestOrganizerRenameWithOtherTokensKeepsTheImage(t *testing.T) {
 	}
 }
 
-// トークン付きの名前変更の間の同じトークンの取り消しは、名前変更が終わるのを待ち、名前を変えた
-// 後の像で取り消す。
 func TestOrganizerUndoWaitsForTheRename(t *testing.T) {
 	store := &fakeOrganizeStore{renameEntered: make(chan struct{}), renameRelease: make(chan struct{})}
 	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
@@ -449,7 +429,6 @@ func TestOrganizerUndoWaitsForTheRename(t *testing.T) {
 	}
 }
 
-// 名前変更を待つ取り消しは、ctx が終われば ctx の誤りを返し、トークンは残る。
 func TestOrganizerUndoStopsWaitingWhenCanceled(t *testing.T) {
 	store := &fakeOrganizeStore{renameEntered: make(chan struct{}), renameRelease: make(chan struct{})}
 	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
@@ -477,7 +456,6 @@ func TestOrganizerUndoStopsWaitingWhenCanceled(t *testing.T) {
 	}
 }
 
-// waitForWaiters は取り消しが n 件、名前変更を待ち始めるまで待つ。
 func waitForWaiters(t *testing.T, o *Organizer, n int) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -495,8 +473,6 @@ func waitForWaiters(t *testing.T, o *Organizer, n int) {
 	}
 }
 
-// 同じトークンの名前変更が重なれば、後の名前変更は前のものが終わるのを待ち、前の名前変更の像を
-// 受け取って像を進める。取り消しは両方の名前変更の後の像で取り消す。
 func TestOrganizerConcurrentRenamesBothAdvanceTheImage(t *testing.T) {
 	store := &fakeOrganizeStore{renameEntered: make(chan struct{}), renameRelease: make(chan struct{})}
 	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
@@ -533,7 +509,7 @@ func TestOrganizerConcurrentRenamesBothAdvanceTheImage(t *testing.T) {
 	}
 }
 
-// steppingClock は時刻を読むたびに、step が残っていればそれだけ進める（一度だけ）。
+// Advance once by step on the next clock read.
 type steppingClock struct {
 	mu   sync.Mutex
 	now  time.Time
@@ -549,8 +525,7 @@ func (c *steppingClock) Now() time.Time {
 	return now
 }
 
-// 名前変更がトークンを取る途中で 10 分を越えても、その項目を持ったまま名前を変え、戻すときに
-// 切れたトークンとして忘れる。後の取り消しは待たずに ErrUndoExpired である。
+// Tokens expiring during rename are discarded on release, without leaving undo blocked.
 func TestOrganizerRenameAtTheExpiryHoldsTheEntry(t *testing.T) {
 	clock := &steppingClock{now: time.Unix(1000, 0)}
 	store := &fakeOrganizeStore{}
@@ -572,7 +547,6 @@ func TestOrganizerRenameAtTheExpiryHoldsTheEntry(t *testing.T) {
 	}
 }
 
-// 移動もトークンで像を持ち、取り消しでその像を保存先へ返す。
 func TestOrganizerMoveKeepsItsImage(t *testing.T) {
 	store := &fakeOrganizeStore{}
 	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})

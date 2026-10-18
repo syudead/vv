@@ -6,24 +6,7 @@ import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { Button } from "../ui/shadcn/button";
 
-/**
- * VisibilitySwitch は再生画面の公開の切り替えである。
- * 今の状態（Private・Public）を印と一緒に名前にした `Button`（`sm`）で、読み上げには
- * `switch` の役割と `aria-checked` で切り替えであることを伝える。非公開は `secondary` の面、
- * 公開は選択と同じ `primary-soft` の面に `primary` の文字にする。
- *
- * 押すと `PUT /api/video-visibility` を1回送り、応答を受けてから状態を変える。
- * 状態は親（useVideoDetail）の `public` が持ち、応答の通知（api/visibility.ts）で
- * 差し替わる。トーストは出さない。部品自身の文言が変わるので、それが結果である。
- *
- * 送信中は `disabled` 属性ではなく `aria-disabled` にする。`disabled` にすると
- * ブラウザがフォーカスを外し、キーボードで押した人が応答の後にもう一度 Space で
- * 押せなくなる。押しても送らないのは
- * `toggle` が `sending` で確かめる。
- *
- * 失敗の行は次に押したときに消える。別の動画へ移ったときに消えるよう、呼び出し側が
- * 動画の id を `key` にして作り直す。
- */
+/** Apply visibility only after success; aria-disabled preserves keyboard focus while blocking duplicate submissions. Callers key by video ID to reset errors. */
 export default function VisibilitySwitch({
   videoId,
   isPublic,
@@ -31,9 +14,7 @@ export default function VisibilitySwitch({
 }: {
   videoId: number;
   isPublic: boolean;
-  /**
-   * 切り替えが成功したときに呼ぶ。更新日時が進むので、呼び出し側が動画を取り直す。
-   */
+  /** Refresh video data after success because its updated timestamp changes. */
   onChanged?: () => void;
 }) {
   const [sending, setSending] = useState(false);

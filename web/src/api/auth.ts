@@ -1,17 +1,14 @@
 import { RequestFailed, sendRequest, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
 
-// 認証の経路。
-// 画面は fetch せず、ここを通す。所有者として描いている間の 401 で読み直す
-// client.ts の仕組みには乗せない。ここの誤りは画面がそのまま扱う。
+// Bypass client audience reload handling so authentication screens can handle their own errors.
 
 export type AuthSession = components["schemas"]["AuthSession"];
 export type AuthState = AuthSession["state"];
 export type AuthRedirect = components["schemas"]["AuthRedirect"];
 
-/** LoginThrottled はログインの試行が多すぎた（429 login_throttled）ことを表す。 */
 export class LoginThrottled extends RequestFailed {
-  /** 再び試せるまでの秒数（Retry-After）。読めなければ null。 */
+  /** Retry-After seconds, or null if unavailable. */
   readonly retryAfterSeconds: number | null;
 
   constructor(message: string, retryAfterSeconds: number | null) {
@@ -34,10 +31,7 @@ async function redirectFrom(response: Response): Promise<AuthRedirect> {
   return (await response.json()) as AuthRedirect;
 }
 
-/**
- * getAuthSession は見る人の状態を返す。next を渡すと、所有者のときだけサーバーが
- * 確かめた戻り先（redirectTo）も返る。戻り先を画面で判定しないためである。
- */
+/** Owners receive a server-validated redirectTo for next; clients must not validate redirects independently. */
 export async function getAuthSession(
   next?: string,
   signal?: AbortSignal,
@@ -48,7 +42,6 @@ export async function getAuthSession(
   return (await response.json()) as AuthSession;
 }
 
-/** setupAccount は最初のアカウントを作り、そのままログインする。 */
 export async function setupAccount(
   username: string,
   password: string,
@@ -56,7 +49,7 @@ export async function setupAccount(
   return redirectFrom(await postJSON("/api/auth/setup", { username, password }));
 }
 
-/** login はログインする。429 は LoginThrottled、それ以外の誤りは RequestFailed で投げる。 */
+/** Throw LoginThrottled for 429 and RequestFailed for other failures. */
 export async function login(
   username: string,
   password: string,
@@ -75,7 +68,6 @@ export async function login(
   return redirectFrom(response);
 }
 
-/** logout はログアウトする。204 以外は RequestFailed で投げる。 */
 export async function logout(): Promise<void> {
   const response = await sendRequest("/api/auth/logout", { method: "POST" });
   if (response.status !== 204) throw await toRequestFailed(response);

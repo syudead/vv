@@ -8,10 +8,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// 閉じる前の確認のダイアログ。
-// Windows 標準の TaskDialog で「閉じる」「続ける」に当たる 2 つのボタンを出す。
-// TaskDialog は Common Controls v6 にしか無く、v6 は exe の manifest で選ぶ。
-// manifest の無いビルドでは、はい・いいえの MessageBox で同じことを問う。
+// Use Common Controls v6 TaskDialog selected by the executable manifest; fall back to a yes/no
+// MessageBox when unavailable.
 
 var (
 	comctl32                = windows.NewLazySystemDLL("comctl32.dll")
@@ -23,9 +21,8 @@ var (
 	taskDialogRelativeToWnd = uint32(0x1000)  // TDF_POSITION_RELATIVE_TO_WINDOW
 )
 
-// TASKDIALOGCONFIG と TASKDIALOG_BUTTON は commctrl.h で 1 バイト境界に詰めて
-// 並ぶ（pshpack1.h）。Go の構造体では表せないので、64 ビットの並びのとおりに
-// バイト列へ書く。
+// Win32 task-dialog structs are packed to one-byte alignment; encode the 64-bit layout manually
+// because Go structs cannot express it.
 const (
 	taskDialogConfigSize = 160
 	taskDialogButtonSize = 12
@@ -46,8 +43,7 @@ const (
 	messageBoxYes      = 6 // IDYES
 )
 
-// confirmClose は閉じる前の確認を owner の上に出し、「閉じる」を選んだかを返す。
-// Esc やダイアログの閉じるボタンは「続ける」として扱う。UI のスレッドで呼ぶ。
+// Call on the UI thread; Esc and window-close mean continue.
 func confirmClose(owner uintptr) bool {
 	if closed, ok := confirmCloseWithTaskDialog(owner); ok {
 		return closed
@@ -63,8 +59,7 @@ func confirmClose(owner uintptr) bool {
 	return answer == messageBoxYes
 }
 
-// confirmCloseWithTaskDialog は TaskDialog で問う。TaskDialog を使えなかったら
-// ok は偽である。
+// Returns ok=false when TaskDialog is unavailable.
 func confirmCloseWithTaskDialog(owner uintptr) (closed, ok bool) {
 	if procTaskDialogIndirect.Find() != nil {
 		return false, false
@@ -104,7 +99,7 @@ func confirmCloseWithTaskDialog(owner uintptr) (closed, ok bool) {
 		uintptr(unsafe.Pointer(&pressed)),
 		0, 0,
 	)
-	// バイト列に書いたポインタは GC から見えないので、呼び出しが戻るまで保つ。
+	// Keep pointer targets alive because the GC cannot see pointers encoded in byte slices.
 	runtime.KeepAlive(title)
 	runtime.KeepAlive(instruction)
 	runtime.KeepAlive(content)

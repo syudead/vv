@@ -13,9 +13,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// allSorts は 一覧 API の 13 通りと docs/design-docs/catalog-organization.md の
-// 作成日の 2 通り、docs/design-docs/catalog-organization.md のお気に入りにした日時の 2 通りを
-// 合わせた 17 通りの並び順である。
 var allSorts = []domain.VideoSort{
 	domain.SortAddedAsc, domain.SortAddedDesc, domain.SortModifiedAsc, domain.SortModifiedDesc,
 	domain.SortCreatedAsc, domain.SortCreatedDesc,
@@ -24,17 +21,16 @@ var allSorts = []domain.VideoSort{
 	domain.SortFavoritedAsc, domain.SortFavoritedDesc, domain.SortRandom,
 }
 
-// sortRow は並べ替えの検証用の動画1件である。値の同じ行を混ぜ、id での決着も
-// 確かめる。nil は値が無いことを表す。
+// Include tied values for ID ordering and nil values for NULL placement.
 type sortRow struct {
 	title    string
-	added    int // 分
-	mtime    int // 分
+	added    int // Minutes.
+	mtime    int // Minutes.
 	size     int64
 	duration *int64
-	played   *int64 // playback_progress.updated_at（Unix 秒）
-	created  *int64 // 所在の file_created_at（分）。nil は取れなかった（並びは mtime に倒す）
-	// favorited は video_favorites.favorited_at。nil はお気に入りでない。
+	played   *int64 // Playback save time in Unix seconds.
+	created  *int64 // Creation time in minutes; nil falls back to modification time.
+	// Nil means not favorited.
 	favorited *int64
 }
 
@@ -50,7 +46,6 @@ var sortRows = []sortRow{
 	{"ア", 0, 5, 400, nil, nil, ptr(4), nil},
 }
 
-// sortFixture は sortRows を取り込み、行の順に動画の id を返す。
 func sortFixture(t *testing.T) (*DB, []int64) {
 	t.Helper()
 	db := migratedDB(t)
@@ -94,7 +89,6 @@ func sortFixture(t *testing.T) (*DB, []int64) {
 	return db, ids
 }
 
-// expectedOrder は 一覧 API の定義どおりに並べた id を返す。
 func expectedOrder(sort domain.VideoSort, seed int64, ids []int64) []int64 {
 	type entry struct {
 		id     int64
@@ -118,7 +112,6 @@ func expectedOrder(sort domain.VideoSort, seed int64, ids []int64) []int64 {
 		case domain.SortModifiedAsc, domain.SortModifiedDesc:
 			e.num = int64(row.mtime)
 		case domain.SortCreatedAsc, domain.SortCreatedDesc:
-			// 作成日時が取れなかった所在は mtime に倒す（受け入れ条件 5・6）。
 			e.num = int64(row.mtime)
 			if row.created != nil {
 				e.num = *row.created
@@ -140,7 +133,6 @@ func expectedOrder(sort domain.VideoSort, seed int64, ids []int64) []int64 {
 	}
 	desc := sort != domain.SortRandom && sort[len(sort)-4:] == "Desc"
 	slices.SortFunc(entries, func(a, b entry) int {
-		// 値の無い行は向きに関係なく末尾。
 		if a.isNull != b.isNull {
 			if a.isNull {
 				return 1
@@ -160,7 +152,6 @@ func expectedOrder(sort domain.VideoSort, seed int64, ids []int64) []int64 {
 	return out
 }
 
-// pageIDs は limit 件ずつカーソルで最後まで読み、出た id を順に返す。
 func pageIDs(t *testing.T, db *DB, q domain.VideoQuery) []int64 {
 	t.Helper()
 	var out []int64
@@ -169,6 +160,7 @@ func pageIDs(t *testing.T, db *DB, q domain.VideoQuery) []int64 {
 		if err != nil {
 			t.Fatalf("%+v: %v", q, err)
 		}
+		assertPageSize(t, len(page.Items), q.Limit, page.NextCursor)
 		for _, item := range page.Items {
 			out = append(out, item.ID)
 		}
@@ -181,20 +173,16 @@ func pageIDs(t *testing.T, db *DB, q domain.VideoQuery) []int64 {
 	return nil
 }
 
-// 17 の並び順すべてで、ページをまたいで全件が1度ずつ、期待する順で返る。
 func TestListVideosAllSortsPageInExpectedOrder(t *testing.T) {
 	db, ids := sortFixture(t)
-	for _, sort := range allSorts {
-		for _, limit := range []int{1, 2, 3} {
-			got := pageIDs(t, db, domain.VideoQuery{Sort: sort, Seed: 42, Limit: limit})
-			if want := expectedOrder(sort, 42, ids); !slices.Equal(got, want) {
-				t.Errorf("%s limit=%d = %v, want %v", sort, limit, got, want)
-			}
+	for _, tc := range pagingCases(allSorts, 2, 3) {
+		got := pageIDs(t, db, domain.VideoQuery{Sort: tc.value, Seed: 42, Limit: tc.limit})
+		if want := expectedOrder(tc.value, 42, ids); !slices.Equal(got, want) {
+			t.Errorf("%s limit=%d = %v, want %v", tc.value, tc.limit, got, want)
 		}
 	}
 }
 
-// フォルダの一覧も同じ並び順と seed で並ぶ。
 func TestListFolderVideosSortsWithSeed(t *testing.T) {
 	db, ids := sortFixture(t)
 	for _, sort := range []domain.VideoSort{domain.SortRandom, domain.SortDurationDesc, domain.SortCreatedAsc, domain.SortCreatedDesc} {
@@ -220,7 +208,6 @@ func TestListFolderVideosSortsWithSeed(t *testing.T) {
 	}
 }
 
-// titleAsc は自然順で、2話 が 10話 より前に来る（親 Issue #195 の受け入れ条件 13）。
 func TestListVideosTitleAscIsNatural(t *testing.T) {
 	db := migratedDB(t)
 	upsertAll(t, db,
@@ -237,8 +224,6 @@ func TestListVideosTitleAscIsNatural(t *testing.T) {
 	}
 }
 
-// 長さの無い動画と再生の記録の無い動画は、昇順でも降順でも末尾に来る
-// （受け入れ条件 14）。
 func TestListVideosMissingValuesComeLast(t *testing.T) {
 	db, ids := sortFixture(t)
 	for _, tc := range []struct {
@@ -267,7 +252,6 @@ func TestListVideosMissingValuesComeLast(t *testing.T) {
 	}
 }
 
-// random は同じ seed なら同じ並び、別の seed なら別の並びになる。
 func TestListVideosRandomDependsOnlyOnSeed(t *testing.T) {
 	db, _ := sortFixture(t)
 	first := pageIDs(t, db, domain.VideoQuery{Sort: domain.SortRandom, Seed: 1, Limit: 3})
@@ -285,9 +269,7 @@ func TestListVideosRandomDependsOnlyOnSeed(t *testing.T) {
 	}
 }
 
-// random で読み進める途中で別の動画に所在を足しても、同じ動画が2度出ない
-// （受け入れ条件 15、Edge Case「ランダムと取り込み」）。題名が変わる所在
-// （パスが前に来る）を足しても、並べ替えの値は seed と id だけで決まる。
+// Changing representative paths cannot disturb shuffle paging because shuffle keys depend only on seed and ID.
 func TestListVideosRandomSurvivesAddedLocations(t *testing.T) {
 	db, ids := sortFixture(t)
 	ctx := context.Background()
@@ -302,7 +284,6 @@ func TestListVideosRandomSurvivesAddedLocations(t *testing.T) {
 			seen = append(seen, item.ID)
 		}
 		if pageIndex == 0 {
-			// まだ出ていない動画すべてに、パスが前に来る所在を足す。
 			for i := range sortRows {
 				if !slices.Contains(seen, ids[i]) {
 					upsertAll(t, db, listingFile(fmt.Sprintf(fixturePath("/media/0-extra-%d.mp4"), i), "extra", fmt.Sprintf("key-%d", i), 0))
@@ -323,7 +304,6 @@ func TestListVideosRandomSurvivesAddedLocations(t *testing.T) {
 	}
 }
 
-// 別の並び順・別の seed で作ったカーソルは ErrInvalidCursor になる
 func TestListVideosRejectsCursorOfOtherSortOrSeed(t *testing.T) {
 	db, _ := sortFixture(t)
 	ctx := context.Background()
@@ -357,14 +337,12 @@ func TestListVideosRejectsCursorOfOtherSortOrSeed(t *testing.T) {
 		}
 	}
 
-	// 同じ並び順・同じ seed なら続きが取れる。
 	if _, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortRandom, Seed: 1, Cursor: random}); err != nil {
 		t.Errorf("同じ seed のカーソルで失敗した: %v", err)
 	}
 }
 
-// 既知の並び順（VideoSort.Valid）はすべて listOrders に定義がある。定義が無いと
-// 空の式で SQL が壊れるので、2つの一覧を揃えて保つ。
+// Every domain sort enum needs an SQL order definition; otherwise queries would contain empty expressions.
 func TestListOrdersCoverEveryValidSort(t *testing.T) {
 	for _, sort := range allSorts {
 		if !sort.Valid() {

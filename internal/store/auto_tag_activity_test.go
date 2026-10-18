@@ -10,9 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 自動タグ付けのアクティビティの記録と、タグごとの取り消し。
-
-// autoTagEntries は auto_tag の記録を新しい順に返す。
 func autoTagEntries(t *testing.T, db *DB) []domain.ActivityEntry {
 	t.Helper()
 	page, err := db.Activity().ListActivity(context.Background(), domain.AudienceOwner,
@@ -23,7 +20,6 @@ func autoTagEntries(t *testing.T, db *DB) []domain.ActivityEntry {
 	return page.Items
 }
 
-// latestAutoTagEntry はいちばん新しい auto_tag の記録を返す。
 func latestAutoTagEntry(t *testing.T, db *DB) domain.ActivityEntry {
 	t.Helper()
 	entries := autoTagEntries(t, db)
@@ -33,7 +29,6 @@ func latestAutoTagEntry(t *testing.T, db *DB) domain.ActivityEntry {
 	return entries[0]
 }
 
-// runAutoTag は動画を decider で積み、取り出して selection で終え、その実行の記録を返す。
 func runAutoTag(
 	t *testing.T, db *DB, videoID int64, decider domain.ActivityDecider, selection domain.AutoTagSelection,
 ) domain.ActivityEntry {
@@ -60,8 +55,6 @@ func rejectedFor(t *testing.T, db *DB, key string, tagID int64) bool {
 	return n > 0
 }
 
-// 積むと始めたものの running/waiting の記録が開き、取り出すと processing、終えると done/completed で判断した
-// ものが ai になり、付けたタグと提案したタグがその確率で並ぶ。
 func TestAutoTagActivityRecordsTheRun(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -104,7 +97,6 @@ func TestAutoTagActivityRecordsTheRun(t *testing.T) {
 		t.Fatalf("取り消し = %v, やり直し = %v", done.UndoOffered(), done.RetryOffered())
 	}
 
-	// 設定や動画ページから始めた実行は、終えるまで owner である。
 	if _, err := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueAgain, domain.ActivityByOwner); err != nil {
 		t.Fatal(err)
 	}
@@ -113,8 +105,6 @@ func TestAutoTagActivityRecordsTheRun(t *testing.T) {
 	}
 }
 
-// 失敗は attention/failed で理由を detail に残し、やり直しを出す。積み直すと新しい記録が開き、失敗した記録は
-// superseded で閉じる。止めて途切れた実行は、次に取り出すと新しい記録になる。
 func TestAutoTagActivityRecordsFailuresAndInterruptions(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -161,8 +151,6 @@ func TestAutoTagActivityRecordsFailuresAndInterruptions(t *testing.T) {
 	}
 }
 
-// 付けたタグを取り消すと、集まりのすべてのメンバーから外れ、却下が残り、所有者の undo の記録が書かれる。
-// 後の「Tag all again」でもそのタグは聞かず、付かない。取り消し済みのタグは 409、付けていないタグは 404。
 func TestUndoAutoTagRemovesTheTagFromTheBundle(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -209,7 +197,6 @@ func TestUndoAutoTagRemovesTheTagFromTheBundle(t *testing.T) {
 		!slices.Contains(recorder.events, domain.Event(domain.ActivityChanged{})) {
 		t.Fatalf("発行した変化 = %#v", recorder.events)
 	}
-	// タグが外れるとスマートフォルダの一致が変わりうるので、すべてのフォルダを 1 度名指す。
 	if got, want := smartFolderNotices(recorder), []domain.SmartFoldersChanged{{IDs: []int64{folder.ID}}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("スマートフォルダの知らせ = %+v, want %+v", got, want)
 	}
@@ -228,7 +215,6 @@ func TestUndoAutoTagRemovesTheTagFromTheBundle(t *testing.T) {
 		t.Fatalf("付けていないタグの取り消し = %v", err)
 	}
 
-	// 「Tag all again」は取り消したタグを聞かず、答えが来ても付けない。
 	store := db.AutoTags()
 	if _, err := store.QueueLibrary(ctx, domain.AutoTagQueueAgain, domain.ActivityByOwner); err != nil {
 		t.Fatal(err)
@@ -258,9 +244,7 @@ func TestUndoAutoTagRemovesTheTagFromTheBundle(t *testing.T) {
 	}
 }
 
-// 所有者がもう変えたタグの取り消しは already_reverted で、どのタグも変えずに却下だけを残す。外しただけ、外して
-// 手で付け直した、提案を確定した、のどれでも所有者のタグは残る。所有者の操作は判定と同じ秒の中で行い、取り消しが
-// 時刻ではなく所有者の記録の id で見分けることを確かめる。
+// Same-second owner edits must be protected by activity IDs, not timestamps.
 func TestUndoAutoTagAfterTheOwnerChangedIt(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -303,9 +287,7 @@ func TestUndoAutoTagAfterTheOwnerChangedIt(t *testing.T) {
 	}
 }
 
-// 集まりのメンバー（代表でない）の判定が集まりの鍵に付けたタグを、所有者が同じ秒の中で外して付け直すと、所有者の
-// 記録の対象は代表の内容の鍵になり、触った鍵としてメンバー全員の内容の鍵を持つ。その後に代表が別のメンバーに
-// 変わっても、取り消しは対象の動画の内容の鍵で所有者の変更を見つけて already_reverted にし、所有者のタグを残す
+// Find later owner tag changes by affected member content keys even after the bundle representative changes.
 func TestUndoAutoTagKeepsTheOwnersReattachOnTheBundle(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -324,7 +306,7 @@ func TestUndoAutoTagKeepsTheOwnersReattachOnTheBundle(t *testing.T) {
 	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{p2}, cat.ID); err != nil {
 		t.Fatal(err)
 	}
-	// 所有者の記録の対象は p1 だった。代表が solo になっても、p2 の鍵で見つかる。
+	// The activity subject was p1, but p2's affected key still identifies the edit after solo becomes representative.
 	if _, err := db.Versions().MakeRepresentative(ctx, solo); err != nil {
 		t.Fatal(err)
 	}
@@ -344,9 +326,7 @@ func TestUndoAutoTagKeepsTheOwnersReattachOnTheBundle(t *testing.T) {
 	}
 }
 
-// 判定を待つ間・判定中に所有者が同じタグを付けて外しても、その記録は判定の結果より前なので、取り消しは判定が付けた
-// タグを消す。記録は積んだときに開くので、所有者の記録の id は記録の id より大きいが、結果を書いた印
-// （decided_mark）より小さい。
+// Owner edits before result persistence must not block undo of that result.
 func TestUndoAutoTagRemovesTheTagTheOwnerChangedWhileItWaited(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -383,8 +363,7 @@ func TestUndoAutoTagRemovesTheTagTheOwnerChangedWhileItWaited(t *testing.T) {
 	}
 }
 
-// 所有者の記録はタグを id で持つので、判定の後にタグが改名され、所有者が外して付け直し、さらに改名されても、取り消し
-// は所有者の変更を見つけて already_reverted にし、所有者のタグを残す。
+// Stable tag IDs preserve owner edits across renames.
 func TestUndoAutoTagKeepsTheOwnersReattachAcrossRenames(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -419,8 +398,7 @@ func TestUndoAutoTagKeepsTheOwnersReattachAcrossRenames(t *testing.T) {
 	}
 }
 
-// 判定の後に対象を代表として束ねると、タグは集まりの鍵へ写り、記録した鍵にも隠れて残る。取り消しは今の集まりの
-// 鍵の行を消してすべてのメンバーから外し、除外を集まりの鍵に書くので、判定は取り消したタグを聞かない。
+// Undo removes both the current bundle copy and the hidden original attachment.
 func TestUndoAutoTagAfterTheSubjectJoinedABundle(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -462,9 +440,7 @@ func TestUndoAutoTagAfterTheSubjectJoinedABundle(t *testing.T) {
 	}
 }
 
-// ownerTagContest は、判定が p1 に cat を付け、所有者が p2 に cat を手で付けてから、p1 と p2 を representative
-// （"p1" か "p2"）を代表に束ねる。集まりの行は代表の行の写しなので、判定の行と所有者の行のどちらが集まりの行に
-// なるかは代表で決まる。判定の記録・cat・p1 と p2 の動画の id・鍵（集まりの鍵は "bundle"）を返す。
+// The chosen representative determines whether the bundle copies the automatic or owner attachment.
 func ownerTagContest(t *testing.T, representative string) (*DB, domain.ActivityEntry, domain.Tag, map[string]int64, map[string]string) {
 	t.Helper()
 	db, ids := itemsFixture(t)
@@ -485,9 +461,7 @@ func ownerTagContest(t *testing.T, representative string) (*DB, domain.ActivityE
 	return db, entry, cat, videos, keys
 }
 
-// 判定が p1 に付けたタグを、所有者が p2 に手で付けてから p2 を代表に束ねると、集まりの行は所有者の p2 の行の写しで、
-// 判定の行は p1 の鍵に隠れて残る。取り消しは判定が書いた行とその写しだけを消す（activity_entry_tag_keys）ので、
-// 集まりの所有者のタグは残し、隠れた判定の行を消して already_reverted になる。
+// Preserve the owner's winning bundle attachment while removing the hidden automatic row.
 func TestUndoAutoTagKeepsTheOwnersTagThatWonTheBundle(t *testing.T) {
 	db, entry, cat, _, keys := ownerTagContest(t, "p2")
 
@@ -513,8 +487,7 @@ func TestUndoAutoTagKeepsTheOwnersTagThatWonTheBundle(t *testing.T) {
 	}
 }
 
-// 逆に、判定が付けた p1 を代表に束ねると、集まりの行は判定の行の写しである。取り消しは集まりの行と p1 の行を消して
-// completed になり、所有者が p2 に付けた行は p2 の鍵に隠れたまま残る。
+// When the automatic row wins, undo removes its copies but preserves the owner's hidden member row.
 func TestUndoAutoTagRemovesTheRunsRowThatWonTheBundle(t *testing.T) {
 	db, entry, cat, _, keys := ownerTagContest(t, "p1")
 
@@ -535,8 +508,7 @@ func TestUndoAutoTagRemovesTheRunsRowThatWonTheBundle(t *testing.T) {
 	}
 }
 
-// 所有者の p2 の行が勝った集まりから代表の p2 を外すと、残る p1 は集まりの行（所有者の行の写し）で自分の行を置き換え、
-// 判定が書いた行は無くなる。取り消しは p1 の今の行を判定の行の写しとは見ず、何も消さずに already_reverted になる。
+// A singleton inheriting the owner's bundle row no longer holds the automatic attachment.
 func TestUndoAutoTagAfterTheBundleRowReplacedTheSubjects(t *testing.T) {
 	db, entry, cat, videos, keys := ownerTagContest(t, "p2")
 	ctx := context.Background()

@@ -13,13 +13,12 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// passwordHasher は internal/password を app.PasswordHasher にする。
 type passwordHasher struct{}
 
 func (passwordHasher) Hash(p string) (string, error)          { return password.Hash(p) }
 func (passwordHasher) Verify(p, encoded string) (bool, error) { return password.Verify(p, encoded) }
 
-// httpAuth は *app.Auth を httpapi.Authenticator にする。値の形を移すだけで、判断はしない。
+// httpAuth only adapts values; authentication decisions belong to app.Auth.
 type httpAuth struct{ auth *app.Auth }
 
 func (a httpAuth) Setup(ctx context.Context, username, pass string) (httpapi.IssuedSession, error) {
@@ -43,16 +42,13 @@ func (a httpAuth) State(ctx context.Context, token string) (httpapi.AuthState, e
 	return httpapi.AuthState(state), err
 }
 
-// newHTTPAuth は認証を組み立て、HTTP の境界に渡す形にする。API トークンの管理は
-// *app.Auth がそのまま httpapi.APITokens を満たすので、同じ値を渡す。
+// Reuse app.Auth for API tokens because it already implements httpapi.APITokens.
 func newHTTPAuth(authStore *store.AuthStore) (httpapi.Authenticator, httpapi.APITokens) {
 	auth := app.NewAuth(app.AuthOptions{Store: authStore, Hasher: passwordHasher{}})
 	return httpAuth{auth: auth}, auth
 }
 
-// prepareAuth は起動時に期限切れのセッションを消し、アカウントが未設定なら初回設定を
-// 促す警告を1行記録する。どちらの失敗も起動は止めない。
-// セッションは要求ごとに期限を確かめるので、消し残しても使えない。
+// Cleanup failures do not block startup; each request still rejects expired sessions.
 func prepareAuth(ctx context.Context, authStore *store.AuthStore, now time.Time, logger *slog.Logger) {
 	if deleted, err := authStore.DeleteExpiredSessions(ctx, now); err != nil {
 		logger.Warn("could not delete expired sessions", slog.Any("error", err))

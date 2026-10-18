@@ -15,8 +15,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 画質があるときは表示の短辺をその画質にし、偶数に丸める。極端に細長い動画は今の変換の枠
-// （長辺 3840）に収まるまで縮める。
 func TestVideoEncodeArgsScalesToQuality(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -47,7 +45,7 @@ func TestVideoEncodeArgsScalesToQuality(t *testing.T) {
 	}
 }
 
-// 偶数に丸める規則: 縦横比を保った寸法に最も近い偶数である。
+// Round to the nearest even dimensions preserving aspect ratio.
 func TestQualityDimensionsRoundsToNearestEven(t *testing.T) {
 	for _, tc := range []struct {
 		width, height, shortSide int
@@ -59,7 +57,7 @@ func TestQualityDimensionsRoundsToNearestEven(t *testing.T) {
 		{1280, 1024, 480, 600, 480},   // 600.0
 		{1000, 998, 360, 360, 360},    // 360.72 → 360
 		{1001, 719, 480, 668, 480},    // 668.26 → 668
-		{12000, 1200, 480, 3840, 384}, // 枠が先に効く
+		{12000, 1200, 480, 3840, 384}, // Global bounds take precedence.
 	} {
 		width, height := qualityDimensions(tc.width, tc.height, tc.shortSide)
 		if width != tc.wantWidth || height != tc.wantHeight {
@@ -68,8 +66,6 @@ func TestQualityDimensionsRoundsToNearestEven(t *testing.T) {
 	}
 }
 
-// 画質があれば、コピーできる動画でも映像を libx264 でエンコードし、上限を付け、音声は
-// 画質の kbps の AAC にする。
 func TestTranscodeArgsWithQualityEncodesCopyableVideo(t *testing.T) {
 	for _, startMs := range []int64{0, 25000} {
 		args := strings.Join(buildTranscodeArgs("movie.mkv", startMs, compatibleMetadata(), false, true, domain.VideoEncoderSoftware, "480p"), " ")
@@ -90,7 +86,6 @@ func TestTranscodeArgsWithQualityEncodesCopyableVideo(t *testing.T) {
 	}
 }
 
-// 画質ごとの上限と音声の kbps は契約 §2 の表のとおりである。
 func TestTranscodeArgsQualityLimits(t *testing.T) {
 	metadata := compatibleMetadata()
 	metadata.Video.Width, metadata.Video.Height = 3840, 2160
@@ -112,7 +107,6 @@ func TestTranscodeArgsQualityLimits(t *testing.T) {
 	}
 }
 
-// ハードウェアの方式でも R-2 の上限を付け、キーフレームと movflags は変えない。
 func TestTranscodeArgsQualityForHardwareEncoders(t *testing.T) {
 	metadata := compatibleMetadata()
 	metadata.FormatName = "mov,mp4,m4a,3gp,3g2,mj2"
@@ -151,8 +145,6 @@ func TestTranscodeArgsQualityForHardwareEncoders(t *testing.T) {
 	}
 }
 
-// 画質のある要求はコピーを試さずに指定位置からエンコードし、ハードウェアが最初のデータを
-// 出さずに終わって software に切り替えても同じ短辺と上限で変換する（Edge Case 6）。
 func TestLiveTranscoderQualityEncodesAndKeepsLimitsOnFallback(t *testing.T) {
 	path, stamp := sourceFile(t)
 	stored := compatibleMetadata()
@@ -176,8 +168,6 @@ func TestLiveTranscoderQualityEncodesAndKeepsLimitsOnFallback(t *testing.T) {
 	}
 }
 
-// 動きの多い入力を 480p で変換すると、短辺が 480 になり、映像の平均ビットレートは上限の
-// 1.2 倍以下、音声は 96 kbps 付近になる。
 func TestTranscodeQualityCapsBitrateWithFFmpeg(t *testing.T) {
 	t.Parallel()
 
@@ -201,8 +191,8 @@ func TestTranscodeQualityCapsBitrateWithFFmpeg(t *testing.T) {
 
 			directory := t.TempDir()
 			input := filepath.Join(directory, "input.mp4")
-			// 一面のノイズで一定品質のままでは上限を大きく超える入力にする。コピーできる
-			// H.264 と AAC にして、画質があればコピーしないことも同時に確かめる。
+			// Use full-frame noise to exceed uncapped constant-quality bitrate; copyable H.264/AAC also
+			// verifies quality forces encoding.
 			generate := exec.Command(transcodeCommand,
 				"-hide_banner", "-loglevel", "error", "-y",
 				"-f", "lavfi", "-i", fmt.Sprintf("testsrc2=size=%s:rate=30:duration=20,noise=alls=60:allf=t", tc.size),
@@ -264,8 +254,7 @@ func TestTranscodeQualityCapsBitrateWithFFmpeg(t *testing.T) {
 	}
 }
 
-// averagePacketKbps は 1 つの stream のパケットの大きさの合計を、最初と最後の pts_time の差で
-// 割った平均ビットレート（kbps）である。fragmented MP4 は bit_rate を出さないことがある。
+// Compute bitrate from packet bytes and PTS span because fragmented MP4 may omit bit_rate.
 func averagePacketKbps(t *testing.T, path, stream string) float64 {
 	t.Helper()
 	packets, err := exec.Command(probeCommand,

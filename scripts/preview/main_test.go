@@ -55,9 +55,7 @@ func TestProxyRewritesOnlySameSiteOrigin(t *testing.T) {
 	}
 	proxy := newProxy(target)
 
-	// 公開側と同じ Origin は、vv から見た origin（http と受けた Host）に書き換わる。
-	// Host はそのまま渡す。ループバックに書き換えると、vv がローカル限定の操作を
-	// 外からの要求にも許してしまう。
+	// Rewrite only Origin; changing Host to loopback would grant remote requests local-only privileges.
 	r := httptest.NewRequest(http.MethodPost, "/api/scans", nil)
 	r.Host = "x-8080.app.github.dev"
 	r.Header.Set("Origin", "https://x-8080.app.github.dev")
@@ -69,7 +67,7 @@ func TestProxyRewritesOnlySameSiteOrigin(t *testing.T) {
 		t.Errorf("Origin = %q, want http://x-8080.app.github.dev", gotOrigin)
 	}
 
-	// 別サイトからの書き込みと Origin の無い書き込みは、vv へ渡さずに断る。
+	// Reject foreign or missing Origins before forwarding writes.
 	for _, origin := range []string{"https://evil.example", ""} {
 		gotOrigin = "not reached"
 		r = httptest.NewRequest(http.MethodDelete, "/api/tags/1", nil)
@@ -84,7 +82,7 @@ func TestProxyRewritesOnlySameSiteOrigin(t *testing.T) {
 		}
 	}
 
-	// 読み取りは Origin が無くても通す。
+	// Reads may omit Origin.
 	gotOrigin = "not reached"
 	r = httptest.NewRequest(http.MethodGet, "/api/videos", nil)
 	proxy.ServeHTTP(httptest.NewRecorder(), r)
@@ -121,9 +119,9 @@ func TestWaitScan(t *testing.T) {
 		body    string
 		wantErr bool
 	}{
-		// 取り込み自体の失敗は、一覧が欠けたまま案内しないようエラーにする。
+
 		{"取り込みの失敗", `{"id":1,"state":"failed","total":0,"completed":0,"failed":0,"error":"boom"}`, true},
-		// ファイル単位の失敗は、残りは使えるので止めない。
+		// Per-file failures do not make the remaining imported library unusable.
 		{"一部のファイルだけ失敗", `{"id":1,"state":"done","total":5,"completed":4,"failed":1}`, false},
 		{"成功", `{"id":1,"state":"done","total":5,"completed":5,"failed":0}`, false},
 	}

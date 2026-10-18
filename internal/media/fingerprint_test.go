@@ -41,16 +41,13 @@ func spriteFingerprintFixture(t *testing.T, name string, intervalMs int64, frame
 	return fingerprint
 }
 
-// logDistance は閾値との余裕が分かるよう距離を記録する。
+// Log distances to show margin against the threshold.
 func logDistance(t *testing.T, name string, a, b domain.Fingerprint) {
 	t.Helper()
 	distance, ok := domain.CompareFingerprints(a, b)
 	t.Logf("%s: 中央値 %d（比べられた %v、閾値 %d）", name, distance, ok, domain.FingerprintMatchMaxDistance)
 }
 
-// 同じ動画を解像度・画質・キーフレームの間隔を変えて再エンコードした 2 本は一致し、
-// 尺だけ同じ別の動画は一致しない（受け入れ条件 3・4 の判定の部分）。黒い帯を足した版も
-// 帯を落として比べる。
 func TestSpriteFingerprintMatchesReencodes(t *testing.T) {
 	t.Parallel()
 
@@ -91,9 +88,7 @@ func TestSpriteFingerprintMatchesLongReencodesWithDifferentIntervals(t *testing.
 	}
 }
 
-// 既存の 160px・-q:v 4 のスプライトから作った指紋と、今の 320px・-q:v 2 のスプライトから
-// 作った指紋は、同じ動画なら一致し、尺だけ同じ別の動画とは一致しない。指紋は 32×32 に
-// 面積平均で縮めた輝度の低周波から作るので、コマの大きさと画質の違いはほぼ残らない。
+// Low-frequency 32x32 luma should tolerate both legacy 160px/q4 and current 320px/q2 sprites.
 func TestSpriteFingerprintMatchesAcrossSpriteSizes(t *testing.T) {
 	t.Parallel()
 
@@ -111,7 +106,6 @@ func TestSpriteFingerprintMatchesAcrossSpriteSizes(t *testing.T) {
 	}
 }
 
-// シートの枚数や大きさが配置情報と合わなければ誤りを返す。
 func TestSpriteFingerprintRejectsMismatchedSheets(t *testing.T) {
 	layout := domain.NewSeekSpriteLayout(60_000)
 	sprite := domain.SeekSprite{SeekSpriteLayout: layout, FrameWidth: 160, FrameHeight: 90}

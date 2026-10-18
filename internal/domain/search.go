@@ -9,37 +9,30 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// SearchKeyVersion は FoldForMatch と NaturalSortKey の規則の版である。
-// 規則を変えるときは版を上げ、保存済みの鍵を作り直させる
+// Bump SearchKeyVersion when folding or sort-key rules change to rebuild persisted keys.
 const SearchKeyVersion = 1
 
-// MaxSearchTerms は1つの検索式で使う語の上限である。17 個目以降の語と、
-// それに掛かる演算子は無視する。
+// Terms after the sixteenth and their operators are ignored.
 const MaxSearchTerms = 16
 
-// SearchTerm は検索語1つである。Text は FoldForMatch を掛けた照合形で、
-// 空にはならない。
+// Text is folded and nonempty.
 type SearchTerm struct {
-	Text string
-	// Negated は「Text を含まない」を満たす除外語であることを表す。
+	Text    string
 	Negated bool
 }
 
-// SearchClause は OR で結ばれた語の連なりで、どれか1つを満たせば満たす。
+// SearchClause joins terms with OR.
 type SearchClause struct {
 	Terms []SearchTerm
 }
 
-// SearchExpr は解釈済みの検索式である。Clauses をすべて満たせば当たる（AND）。
-// Clauses が空なら絞り込まない。
+// SearchExpr joins clauses with AND; empty clauses mean no filter.
 type SearchExpr struct {
 	Clauses []SearchClause
 }
 
-// Empty は式が絞り込まない（語が1つも無い）ことを返す。
 func (e SearchExpr) Empty() bool { return len(e.Clauses) == 0 }
 
-// searchToken は区切った直後の字句である。
 type searchToken struct {
 	kind    searchTokenKind
 	text    string
@@ -50,21 +43,13 @@ type searchTokenKind int
 
 const (
 	tokenTerm searchTokenKind = iota
-	// tokenOR は単独の `OR`。演算子になれなければ字面の語になる。
+	// An OR token that cannot act as an operator becomes literal text.
 	tokenOR
-	// tokenPipe は単独の `|`。演算子になれなければ捨てる。
+	// A pipe that cannot act as an operator is discarded.
 	tokenPipe
 )
 
-// ParseSearchQuery は検索欄の入力を検索式に解釈する。規則は
-// docs/design-docs/catalog-organization.md のとおりで、どの入力でも
-// 誤りを返さない。語が残らなければ空の式（絞り込まない）を返す。
-//
-// 契約に書かれていない細部は次のように決めている。
-//   - フレーズを開く `"` は語の先頭（除外の `-` の直後を含む）にあるものだけで、
-//     語の途中の `"` は字面の文字である（`ab"c` は1語）。
-//   - 閉じた `"` の直後に空白を挟まず続く文字は、次の語として扱う。
-//   - 空のフレーズと空白だけのフレーズは、演算子の判定より前に捨てる（`a OR "" b` は `a OR b`）。
+// ParseSearchQuery never rejects input; quotes open only at term boundaries, text after a closing quote starts another term, and empty phrases disappear before operator parsing (docs/design-docs/catalog-organization.md).
 func ParseSearchQuery(input string) SearchExpr {
 	tokens := tokenizeSearchQuery(norm.NFKC.String(input))
 
@@ -81,14 +66,11 @@ func ParseSearchQuery(input string) SearchExpr {
 				continue
 			}
 			if token.kind == tokenPipe {
-				// 演算子になれない `|` は捨てる。直前の演算子もそのまま残す。
 				continue
 			}
-			// 演算子になれない `OR` は字面の語である。
 			token = searchToken{kind: tokenTerm, text: token.text}
 		}
 		if count == MaxSearchTerms {
-			// 17 個目以降の語と、それに掛かる演算子は無視する。
 			break
 		}
 		count++
@@ -105,9 +87,7 @@ func ParseSearchQuery(input string) SearchExpr {
 	return expr
 }
 
-// hasFollowingTerm は、演算子の候補の後ろに語が続くかどうかを返す。演算子の
-// 直後の `|` は捨てられるので読み飛ばし、`OR` は演算子の直後では字面の語に
-// なるので語として数える。
+// Skip pipes after an operator; OR in that position counts as a literal term.
 func hasFollowingTerm(rest []searchToken) bool {
 	for _, token := range rest {
 		if token.kind != tokenPipe {
@@ -117,8 +97,6 @@ func hasFollowingTerm(rest []searchToken) bool {
 	return false
 }
 
-// tokenizeSearchQuery は NFKC 済みの入力を空白とフレーズで区切る。空のフレーズは
-// ここで捨てる。
 func tokenizeSearchQuery(s string) []searchToken {
 	var tokens []searchToken
 	for {
@@ -138,13 +116,12 @@ func tokenizeSearchQuery(s string) []searchToken {
 			if end := strings.IndexByte(body[1:], '"'); end >= 0 {
 				phrase := body[1 : 1+end]
 				s = body[end+2:]
-				// 空のフレーズと空白だけのフレーズは捨てる。
 				if strings.TrimFunc(phrase, isSearchSpace) != "" {
 					tokens = append(tokens, searchToken{kind: tokenTerm, text: phrase, negated: negated})
 				}
 				continue
 			}
-			// 閉じていない `"` は字面の文字として語に含める。
+			// An unmatched quote is literal text.
 		}
 		end := strings.IndexFunc(body, isSearchSpace)
 		if end < 0 {
@@ -160,7 +137,7 @@ func tokenizeSearchQuery(s string) []searchToken {
 		case word == "|":
 			tokens = append(tokens, searchToken{kind: tokenPipe, text: word})
 		default:
-			// `-` だけの語もここに来て、字面の `-` を探す語になる。
+			// A standalone minus is a literal search term.
 			tokens = append(tokens, searchToken{kind: tokenTerm, text: word})
 		}
 	}
@@ -168,37 +145,20 @@ func tokenizeSearchQuery(s string) []searchToken {
 
 func isSearchSpace(r rune) bool { return unicode.Is(unicode.White_Space, r) }
 
-// FoldForMatch は文字列を照合形にする。NFKC 正規化、1文字ずつの
-// unicode.ToLower（CompareNatural と同じ小文字化）、ひらがなからカタカナへの
-// 置き換えの順に掛ける。全角半角・大文字小文字・かなの違いと、NFC・NFD の
-// 違いが同じ照合形に畳まれる。検索語の各語と、所在の search_key の両方に
-// 掛ける。
+// FoldForMatch applies NFKC, per-code-point lowercase, then hiragana-to-katakana conversion to both query terms and persisted search keys.
 func FoldForMatch(s string) string {
 	return strings.Map(func(r rune) rune {
 		r = unicode.ToLower(r)
 		switch {
 		case r >= 'ぁ' && r <= 'ゖ', r == 'ゝ', r == 'ゞ':
-			// U+3041–U+3096 と ゝゞ（U+309D・U+309E）は、0x60 足すと対応する
-			// カタカナ（ァ–ヶ、ヽヾ）になる。
+			// Adding 0x60 maps U+3041–U+3096 and U+309D–U+309E to their katakana equivalents.
 			return r + 0x60
 		}
 		return r
 	}, norm.NFKC.String(s))
 }
 
-// NaturalSortKey は題名から、バイト順に比べると自然順になる鍵を作る。FoldForMatch を掛けたうえで、
-// ASCII の数字の連続を「先頭の 0 を除いた桁数を10進4桁で表した接頭辞 + 先頭の
-// 0 を除いた数字」に置き換える（`2` → `00012`、`10` → `000210`、`0` や `00` は
-// 数値 0 として `0000`）。
-//
-// 異なる2つの題名 a・b について、鍵のバイト順は CompareNatural(FoldForMatch(a),
-// FoldForMatch(b)) と同じ向きを返す。CompareNatural が同順位とする組（`01` と
-// `1` のように先頭の 0 だけが違う組や、照合形が同じ組）は同じ鍵になり、呼び出し
-// 側が id で決着させる。接頭辞は `0` から始まるので、数字の連続とほかの文字との
-// 前後は元の文字の前後と変わらない。
-//
-// 先頭の 0 を除いて 9999 桁を超える数字の連続は4桁の接頭辞に収まらず、順序を
-// 保証しない。題名はファイル名から作るので、その長さには届かない。
+// NaturalSortKey encodes folded digit runs as a four-digit significant-length prefix plus digits, making byte order match natural order; callers break equal keys by ID, and runs beyond 9,999 significant digits are unsupported.
 func NaturalSortKey(title string) string {
 	folded := FoldForMatch(title)
 	var b strings.Builder

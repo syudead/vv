@@ -11,7 +11,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// fiveItemGroup は動画 5 本（鍵 k1〜k5）を順に持つグループを作り、その id と、項目の id を鍵の順に返す。
 func fiveItemGroup(t *testing.T, db *DB) (int64, []int64) {
 	t.Helper()
 	var videos []int64
@@ -26,7 +25,6 @@ func fiveItemGroup(t *testing.T, db *DB) (int64, []int64) {
 	return id, items
 }
 
-// groupItemIDsInOrder はグループ id の項目の id を位置の順に返す。
 func groupItemIDsInOrder(t *testing.T, db *DB, id int64) []int64 {
 	t.Helper()
 	ids, err := queryStringsForTest(db, `select id from group_items where group_id = ? order by position`, id)
@@ -49,8 +47,6 @@ func parseIDsForTest(t *testing.T, values []string) []int64 {
 	return out
 }
 
-// 5 項目のうちドラッグした 3 項目（5 番目・2 番目・4 番目の順）は、その順のまま 1 番目の後ろへ
-// まとめて動き、位置は 0 から詰まる。取り消すと 5 項目が同じ項目 id のまま元の順に戻る。
 func TestOrganizeReorderAndUndo(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -82,7 +78,6 @@ func TestOrganizeReorderAndUndo(t *testing.T) {
 	}
 }
 
-// after が無ければ先頭へ移り、親のグループにも知らせる。
 func TestOrganizeReorderToTopNotifiesAncestors(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -101,8 +96,6 @@ func TestOrganizeReorderToTopNotifiesAncestors(t *testing.T) {
 	}
 }
 
-// 同じグループをもう一度並べ替えた後の取り消しは ErrUndoConflict で、何も変えない。2 回目の操作の
-// 取り消しは効き、その後で 1 回目を取り消せる。
 func TestOrganizeUndoConflictsAfterAnotherChange(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -134,7 +127,6 @@ func TestOrganizeUndoConflictsAfterAnotherChange(t *testing.T) {
 	assertEntries(t, db, id, "v:k1", "v:k2", "v:k3", "v:k4", "v:k5")
 }
 
-// 一つの項目を外した後や、グループを解散した後の取り消しも ErrUndoConflict である。
 func TestOrganizeUndoConflictsAfterRemovalOrDissolve(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -162,8 +154,6 @@ func TestOrganizeUndoConflictsAfterRemovalOrDissolve(t *testing.T) {
 	}
 }
 
-// 無いグループ、ほかのグループの項目、無い目印、ドラッグした項目の中の目印は
-// ErrGroupTargetNotFound で、何も書かない。
 func TestOrganizeReorderRefusesMissingTargets(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -192,7 +182,6 @@ func TestOrganizeReorderRefusesMissingTargets(t *testing.T) {
 	}
 }
 
-// 像のバイト列に imageScopeColumns に無い表があれば、読み戻さずに誤りにする。
 func TestUndoImageRefusesUnknownTables(t *testing.T) {
 	for _, data := range []string{
 		`{"scopes":[{"table":"videos","column":"id","key":{"i":1}}]}`,

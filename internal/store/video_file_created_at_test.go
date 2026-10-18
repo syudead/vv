@@ -12,9 +12,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 所在のファイルの作成日時。
-
-// upsertCreated は作成日時 created（ゼロ値は取れなかった）の動画を1件取り込み、動画の id を返す。
 func upsertCreated(t *testing.T, db *DB, path, key string, mtime, created time.Time) int64 {
 	t.Helper()
 	got, err := db.ScanIndex().UpsertVideo(context.Background(), domain.VideoFile{
@@ -27,7 +24,6 @@ func upsertCreated(t *testing.T, db *DB, path, key string, mtime, created time.T
 	return got.ID
 }
 
-// locationCreatedAt は所在の file_created_at の列をそのまま読む。
 func locationCreatedAt(t *testing.T, db *DB, path string) sql.NullInt64 {
 	t.Helper()
 	var value sql.NullInt64
@@ -38,8 +34,6 @@ func locationCreatedAt(t *testing.T, db *DB, path string) sql.NullInt64 {
 	return value
 }
 
-// 受け入れ条件 5: 取り込んだ作成日時が所在に入り、動画を返す読み出しに載る。取れなかった
-// 所在は null で、読み出しの FileCreatedAt は MTime と等しい。
 func TestUpsertVideoStoresFileCreatedAt(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -103,7 +97,6 @@ func TestUpsertVideoStoresFileCreatedAt(t *testing.T) {
 	}
 }
 
-// 中身が変わって所在を書き直すときも作成日時を書き、取れなければ null に戻す。
 func TestUpsertVideoRewritesFileCreatedAtOnChange(t *testing.T) {
 	db := migratedDB(t)
 	created := fixedTime.Add(-time.Hour)
@@ -119,7 +112,6 @@ func TestUpsertVideoRewritesFileCreatedAtOnChange(t *testing.T) {
 	}
 }
 
-// UpdateLocationCreatedAt は列だけを書き、ゼロ値で null に戻す。updated_at・version は動かさない。
 func TestUpdateLocationCreatedAt(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -161,7 +153,6 @@ func TestUpdateLocationCreatedAt(t *testing.T) {
 	}
 }
 
-// 移行のあと、既存の所在の file_created_at は null で、読み出しは mtime に倒れる。
 func TestMigrationLeavesExistingFileCreatedAtNull(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {

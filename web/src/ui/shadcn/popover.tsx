@@ -3,7 +3,7 @@ import type * as React from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の popover（radix-nova）を vv のトークンで着せたもの
+// Adapted from shadcn/ui radix-nova with shared tokens.
 // （web/registry/rules/components.md「Popover」）。
 
 function Popover({ ...props }: React.ComponentProps<typeof PopoverPrimitive.Root>) {
@@ -24,7 +24,7 @@ function PopoverContent({
   container,
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Content> & {
-  /** 描く先。全画面の要素の中で開くときに、その要素を渡す。既定は body。 */
+  /** Pass the fullscreen element when opening within fullscreen; defaults to body. */
   container?: HTMLElement | null;
 }) {
   return (

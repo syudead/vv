@@ -4,11 +4,7 @@ import { Link } from "react-router";
 import { t } from "../i18n";
 import { playlistPath } from "../playlists/playlistItems";
 
-/**
- * PlaylistLine は題名の上に置く、プレイリスト名と何番目かの 1 行である。Group line と
- * 同じ形で、題名より小さく従の色にする。行はプレイリストの画面へのリンクである。
- * `position` が 0（今の項目が見せない項目）なら名前だけを出す。
- */
+/** Position zero identifies a hidden item; show only the playlist name. */
 export default function PlaylistLine({
   playlistId,
   name,

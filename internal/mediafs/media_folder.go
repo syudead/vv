@@ -10,13 +10,8 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// CheckMediaFolder は path を整えた絶対パスにし（domain.NormalizeMediaFolderPath）、
-// 走査できるディレクトリかを確かめて、整えたパスを返す。
-//
-// 存在しない・ディレクトリでない・読めないパスは domain.ErrInvalidMediaFolder、
-// パス自身かその途中の段が symlink なら domain.ErrUnsupportedMediaFolder で断る。
-// 走査は symlink をたどらないので、symlink の先を登録すると、登録と走査で
-// 見えるものが食い違う。
+// CheckMediaFolder rejects unreadable/non-directory paths and any symlink component; allowing
+// symlink roots would disagree with the scanner, which does not follow links.
 func (FS) CheckMediaFolder(path string) (string, error) {
 	cleaned, err := domain.NormalizeMediaFolderPath(path)
 	if err != nil {

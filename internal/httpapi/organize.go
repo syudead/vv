@@ -11,39 +11,21 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// ドラッグの操作と取り消し。どれも /api/* の既定
-// どおり所有者だけである。
-
-// Organizer はドラッグの操作とその取り消しの先である。internal/app の *Organizer がこれを満たす。
-// 操作は 1 つの取引で行い、取り消しのトークンを返す。要求が名指したグループや項目が無ければ
-// domain.ErrGroupTargetNotFound で、何も書かない。
+// Organizer writes atomically and returns undo tokens; missing group targets leave storage unchanged.
 type Organizer interface {
-	// Reorder はグループ groupID の項目 itemIDs を、その順のまままとめて項目 afterItemID の
-	// すぐ後ろへ移す（nil なら先頭）。
 	Reorder(ctx context.Context, groupID int64, itemIDs []int64, afterItemID *int64) (domain.OrganizeResult, error)
-	// Group は動画 targetID に videoIDs を落としてグループを作る（fromID があればその中の
-	// targetID の位置に置く）。結果の GroupID が新しいグループである。
 	Group(ctx context.Context, videoIDs []int64, targetID int64, fromID *int64) (domain.OrganizeResult, error)
-	// RenameGroup はグループ id の名前を name にし、token がそのグループを作った「グループにする」の
-	// 生きているトークンなら、名前の変更をその取り消しに含める。応答と誤りは Groups.RenameGroup と
-	// 同じで、トークンが原因で失敗しない。
+	// A live creation token incorporates the rename into undo; token problems never fail the rename itself.
 	RenameGroup(ctx context.Context, id int64, name, token string) (domain.Group, error)
-	// Move はカードを move.To へ足し、move.From から外す。ドラッグしたグループが To か To の祖先なら
-	// domain.ErrGroupCycle。
 	Move(ctx context.Context, move domain.OrganizeMove) (domain.OrganizeResult, error)
-	// Bundle は動画 videoIDs を落とした先の動画 targetID と束ね、targetID を代表にする。動画が無ければ
-	// domain.ErrGroupTargetNotFound、集まりを展開して domain.MaxOrganizeBundleVideos 本を超えれば
-	// domain.ErrTooManyVersions。
+	// Bundle expands existing groups before enforcing MaxOrganizeBundleVideos and chooses the drop target as representative.
 	Bundle(ctx context.Context, videoIDs []int64, targetID int64) (domain.OrganizeResult, error)
-	// Merge はドラッグしたカード items を画面の順にたどり、グループはグループ into へマージし、
-	// 動画は into の末尾へ足す。ドラッグしたグループが into か into の祖先なら domain.ErrGroupCycle。
+	// Merge follows screen order, appending videos and rejecting self/ancestor group cycles.
 	Merge(ctx context.Context, items []domain.OrganizeRef, into, from int64) (domain.OrganizeResult, error)
-	// Undo はトークン token の操作を取り消す。行が変わっていれば domain.ErrUndoConflict、トークンが
-	// 無い・使い済み・古ければ domain.ErrUndoExpired。
+	// Undo reports changed rows as conflict and missing/used/expired tokens as expired.
 	Undo(ctx context.Context, token string) error
 }
 
-// OrganizeReorder はグループの項目をまとめて並べ替える（POST /api/organize/reorder）。
 func (s *server) OrganizeReorder(w http.ResponseWriter, r *http.Request) {
 	var body gen.OrganizeReorder
 	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
@@ -71,7 +53,6 @@ func (s *server) OrganizeReorder(w http.ResponseWriter, r *http.Request) {
 	s.writeOrganizeResult(w, result)
 }
 
-// OrganizeGroup はドラッグした動画と落とした先の動画のグループを作る（POST /api/organize/group）。
 func (s *server) OrganizeGroup(w http.ResponseWriter, r *http.Request) {
 	var body gen.OrganizeGroup
 	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
@@ -89,8 +70,6 @@ func (s *server) OrganizeGroup(w http.ResponseWriter, r *http.Request) {
 	s.writeOrganizeResult(w, result)
 }
 
-// organizeVideoIDs はドラッグしたカード items を動画の id にする。空か多すぎるか、動画でない
-// カードがあれば 400 を書いて false を返す。
 func (s *server) organizeVideoIDs(w http.ResponseWriter, items gen.OrganizeRefs) ([]int64, bool) {
 	switch {
 	case len(items) == 0:
@@ -111,8 +90,6 @@ func (s *server) organizeVideoIDs(w http.ResponseWriter, items gen.OrganizeRefs)
 	return ids, true
 }
 
-// OrganizeMove はカードをグループへ入れるか、グループの間で動かすか、グループから外す
-// （POST /api/organize/move）。
 func (s *server) OrganizeMove(w http.ResponseWriter, r *http.Request) {
 	var body gen.OrganizeMove
 	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
@@ -125,8 +102,7 @@ func (s *server) OrganizeMove(w http.ResponseWriter, r *http.Request) {
 		s.invalidRequest(w, problem)
 		return
 	case !namedGroupID(body.From) || !namedGroupID(body.To):
-		// グループの id は 1 から始まる。明示した 0 以下を省略と取り違えると、無い移動先を
-		// ライブラリへ外すことにしてしまう。
+		// Explicit nonpositive group IDs must not become omitted destinations that remove items into the library.
 		s.writeGroupError(w, domain.ErrGroupTargetNotFound, "Could not move the cards.")
 		return
 	case from == 0 && to == 0:
@@ -147,8 +123,6 @@ func (s *server) OrganizeMove(w http.ResponseWriter, r *http.Request) {
 	s.writeOrganizeResult(w, result)
 }
 
-// OrganizeBundle は動画を落とした先の動画を代表にして束ねる（POST /api/organize/bundle）。代表を
-// 選ぶダイアログは無い。
 func (s *server) OrganizeBundle(w http.ResponseWriter, r *http.Request) {
 	var body gen.OrganizeBundle
 	if !s.readJSONBody(w, r, &body) {
@@ -157,7 +131,7 @@ func (s *server) OrganizeBundle(w http.ResponseWriter, r *http.Request) {
 	ids := uniqueInt64s(append([]int64{body.Target}, body.VideoIds...))
 	switch {
 	case body.Target <= 0:
-		// 動画の id は 1 から始まる。省かれた必須の欄（0 になる）を無い動画と取り違えて 404 にしない。
+		// Reject missing required IDs before zero becomes a misleading lookup 404.
 		s.invalidRequest(w, "target is required.")
 		return
 	case len(body.VideoIds) == 0 || len(ids) < 2:
@@ -185,14 +159,11 @@ func (s *server) OrganizeBundle(w http.ResponseWriter, r *http.Request) {
 	s.writeOrganizeResult(w, result)
 }
 
-// tooManyBundleVideos はまとまりを展開した動画が多すぎることを 400 too_many_videos で返す。
 func (s *server) tooManyBundleVideos(w http.ResponseWriter) {
 	s.invalidRequestLimit(w, reasonTooManyVideos, domain.MaxOrganizeBundleVideos,
 		fmt.Sprintf("Bundle at most %d videos at a time.", domain.MaxOrganizeBundleVideos))
 }
 
-// organizeRefs はドラッグしたカードの本文を domain の並びにする。空か多すぎるか、知らない種類が
-// あれば、画面に出してよい英語の文を返す。
 func organizeRefs(refs gen.OrganizeRefs) ([]domain.OrganizeRef, string) {
 	switch {
 	case len(refs) == 0:
@@ -210,12 +181,10 @@ func organizeRefs(refs gen.OrganizeRefs) ([]domain.OrganizeRef, string) {
 	return out, ""
 }
 
-// namedGroupID は省ける id が、省かれたか、あり得るグループの id（1 以上）かを返す。
 func namedGroupID(id *int64) bool {
 	return id == nil || *id > 0
 }
 
-// optionalID は省ける id を、無ければ 0 にする。
 func optionalID(id *int64) int64 {
 	if id == nil {
 		return 0
@@ -223,7 +192,6 @@ func optionalID(id *int64) int64 {
 	return *id
 }
 
-// OrganizeMerge はドラッグしたグループと動画をグループへマージする（POST /api/organize/merge）。
 func (s *server) OrganizeMerge(w http.ResponseWriter, r *http.Request) {
 	var body gen.OrganizeMerge
 	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
@@ -238,7 +206,7 @@ func (s *server) OrganizeMerge(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !namedGroupID(body.From) {
-		// 明示した 0 以下の from を省略と取り違えると、開いているグループから外さずにマージしてしまう。
+		// Explicit nonpositive from IDs must not become omitted sources that leave the original membership behind.
 		s.writeGroupError(w, domain.ErrGroupTargetNotFound, "Could not merge the groups.")
 		return
 	}
@@ -253,7 +221,6 @@ func (s *server) OrganizeMerge(w http.ResponseWriter, r *http.Request) {
 	s.writeOrganizeResult(w, result)
 }
 
-// OrganizeUndo はドラッグの操作を取り消す（POST /api/organize/undo）。
 func (s *server) OrganizeUndo(w http.ResponseWriter, r *http.Request) {
 	var body gen.OrganizeUndo
 	if !s.readJSONBody(w, r, &body) {
@@ -282,7 +249,6 @@ func (s *server) OrganizeUndo(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// organizerConfigured は操作の先が無ければ 500 を書いて false を返す。
 func (s *server) organizerConfigured(w http.ResponseWriter) bool {
 	if s.organizer == nil {
 		s.internalError(w, "Drag operations are not configured.", nil)
@@ -291,7 +257,6 @@ func (s *server) organizerConfigured(w http.ResponseWriter) bool {
 	return true
 }
 
-// writeOrganizeResult は操作の結果を 200 OrganizeResult にする。
 func (s *server) writeOrganizeResult(w http.ResponseWriter, result domain.OrganizeResult) {
 	out := gen.OrganizeResult{UndoToken: result.UndoToken}
 	if result.GroupID != 0 {

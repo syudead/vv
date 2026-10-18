@@ -1,9 +1,5 @@
 -- +goose Up
--- 直近の取り込みで起きた、利用者に知らせる出来事。
--- 走査と準備をやり直せば作り直せる索引の側に入る。
---
--- 1出来事1行で保存し、読み出しで動画（未登録ならファイルのパス）ごとに1件へまとめる。
--- 行を入れる・消す取引は、同じ中で直近の走査の scans.issues_revision を増やす。
+-- Store one event per row and group by video/path on read; issue writes advance the latest scan's revision atomically.
 create table scan_issues (
     id         integer primary key,
     scan_id    integer not null references scans(id) on delete cascade,
@@ -18,8 +14,7 @@ create unique index scan_issues_path_kind_idx on scan_issues (scan_id, path, kin
     where video_id is null;
 create index scan_issues_video_idx on scan_issues (video_id);
 
--- 今 failed の準備がある動画を、直近の走査の問題として入れる。走査中のファイルの失敗は移行前の行に残っていないので復元しない。
--- path は所在のうちパスの最小のもの（動画の代表の選び方と同じ順）である。
+-- Backfill current failed stages using the smallest location path; historical scan-file failures cannot be reconstructed.
 insert or ignore into scan_issues (scan_id, video_id, path, kind, created_at)
 select (select max(id) from scans), v.id,
        (select min(l.path) from video_locations l where l.video_id = v.id),

@@ -10,7 +10,6 @@ vi.mock("../api/client", async (importOriginal) => ({
 
 const transcodeStart = vi.mocked(getTranscodeStart);
 
-/** report は実際の開始位置の報告を、テストが決めるまで保留する。 */
 function deferredReports() {
   const pending: {
     attempt: string;
@@ -69,7 +68,7 @@ function fixture() {
 
 describe("live offset middleware", () => {
   beforeEach(() => {
-    // 既定では報告は届かず、指定位置を表示し続ける（404 と同じ）。
+    // No report by default: retain the requested position as for a 404.
     transcodeStart.mockReset();
     transcodeStart.mockRejectedValue(new Error("not found"));
   });

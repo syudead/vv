@@ -11,22 +11,15 @@ import {
   SelectValue,
 } from "../ui/shadcn/select";
 
-/** anyValue は `Any kind` の選択肢の値である（種類の id は正の整数なので重ならない）。 */
+// Kind IDs are positive, so this sentinel cannot collide with an actual kind.
 const anyValue = "any";
 
 export interface TagKindSelectProps {
-  /** 絞り込み中の種類の id。undefined は `Any kind`。 */
   value: number | undefined;
-  /** 共有の種類の一覧。届く前は undefined で、`Any kind` だけを並べる。 */
   kinds: readonly TagKind[] | undefined;
   onValueChange: (id: number | undefined) => void;
 }
 
-/**
- * TagKindSelect はライブラリの絞り込みのポップオーバーの最後の行、`Tag kind` の `Select` で
- * ある。選択肢は `Any kind` と
- * 名前の自然順の種類で、`No kind` は無い。選ぶとすぐ効く。
- */
 export default function TagKindSelect({
   value,
   kinds,
@@ -46,7 +39,7 @@ export default function TagKindSelect({
         <SelectTrigger id={id} size="sm" className="w-full">
           <SelectValue />
         </SelectTrigger>
-        {/* 長い種類の名前で画面の横にはみ出さないよう、一覧はポップオーバーの幅で切る。 */}
+        {/* Constrain long kind names to the popup width. */}
         <SelectContent className="max-w-popover">
           <SelectItem value={anyValue}>{t.library.tagKindFilter.any}</SelectItem>
           {sorted.map((kind) => (

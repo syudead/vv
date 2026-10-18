@@ -3,46 +3,32 @@ import type { LibraryGroup, Video } from "../api/client";
 import { t, type UiText } from "../i18n";
 import type { OntoAnswer } from "./cardDragRules";
 
-// 動画を動画に落としたときの規則である。画面（ライブラリ、グループのページ、フォルダ
-// 画面）が共有する。
-
-/** groupNameLimit はグループの名前の長さの上限（コードポイント）である（domain.ValidateGroupName）。 */
+/** Code-point limit matching domain.ValidateGroupName. */
 export const groupNameLimit = 100;
 
-/**
- * videoOnto は動画のカードの上に `lifted` を落とせるかを返す。動画だけなら「Group or bundle…」、
- * グループが混じれば拒否（グループからはグループを作らない。 `/group`）。
- */
+/** Reject lifted groups: group creation accepts videos only. */
 export function videoOnto(liftedAllVideos: boolean): OntoAnswer<UiText> {
   return liftedAllVideos ? { label: t.organize.drop.groupOrBundle } : "refused";
 }
 
-/**
- * bundleOverLimit は持ち上げたカード `liftedCount` 枚と落とした先の 1 枚が、束ねられる 20 本を
- * 超えるかを返す。画面はカードを数え、集まりの展開はサーバーに任せる。
- */
+/** Count lifted cards plus the target against 20; the server expands existing bundles. */
 export function bundleOverLimit(liftedCount: number): boolean {
   return liftedCount + 1 > maxBundleSelection;
 }
 
-/** codePoints は文字列のコードポイントの数である。 */
 function codePoints(value: string): number {
   return Array.from(value).length;
 }
 
-/**
- * whiteSpace は Unicode の White_Space（Go の unicode.White_Space）である。JS の `trim` が削る
- * 集合とは U+0085 と U+FEFF で食い違うので、サーバーと同じ集合を明示する。
- */
+/** Match Go Unicode White_Space explicitly; JavaScript trim differs at U+0085 and U+FEFF. */
 const whiteSpace =
   "\t\n\v\f\r \u0085\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000";
 const leadingWhiteSpace = new RegExp(`^[${whiteSpace}]+`, "u");
 const trailingWhiteSpace = new RegExp(`[${whiteSpace}]+$`, "u");
 
 /**
- * provisionalGroupName はサーバーが「Make a group」の新しいグループに付ける名前である。落とした先の
- * 題名の先頭の空白を除き、先頭 100 コードポイントに切り、末尾の空白を除いたもの
- * （domain.GroupNameFromTitle、の Group）。順序もサーバーと同じにする。
+ * Match domain.GroupNameFromTitle order: trim leading whitespace, take 100 code points, then trim
+ * trailing whitespace.
  */
 export function provisionalGroupName(title: string): string {
   const cut = Array.from(title.replace(leadingWhiteSpace, ""))
@@ -51,14 +37,10 @@ export function provisionalGroupName(title: string): string {
   return cut.replace(trailingWhiteSpace, "");
 }
 
-/** NameFieldOutcome は名前の欄で Enter を押した結果である。 */
 export type NameFieldOutcome =
   { kind: "keep" } | { kind: "invalid" } | { kind: "rename"; name: string };
 
-/**
- * nameFieldOutcome は名前の欄の値 `value` で Enter を押した結果を返す。前後を削って空か仮の名前と
- * 同じなら何も送らずに閉じ、100 コードポイントを超えれば閉じない。
- */
+/** Trimmed empty or unchanged names close without saving; overlength names keep the field open. */
 export function nameFieldOutcome(value: string, provisional: string): NameFieldOutcome {
   const name = value.trim();
   if (name === "" || name === provisional) return { kind: "keep" };
@@ -66,7 +48,6 @@ export function nameFieldOutcome(value: string, provisional: string): NameFieldO
   return { kind: "rename", name };
 }
 
-/** nameTooLong は名前の欄の値が長すぎるか（欄の下に規則を出すか）を返す。 */
 export function nameTooLong(value: string): boolean {
   return codePoints(value.trim()) > groupNameLimit;
 }
@@ -75,10 +56,7 @@ function latest(values: readonly string[], fallback: string): string {
   return values.reduce((max, value) => (value > max ? value : max), fallback);
 }
 
-/**
- * provisionalGroup は「Make a group」の結果をサーバーが答える前に見せる、新しいグループのカードの
- * 値である。落とした先 `target`、続いて `lifted` を画面の順に持つ。所有者の画面だけが使う。
- */
+/** Owner-only optimistic group: target video first, then lifted videos in display order. */
 export function provisionalGroup(
   id: number,
   target: Video,
@@ -116,17 +94,13 @@ export function provisionalGroup(
   };
 }
 
-/**
- * DropOverlay はサーバーが答える前に見せる、落とした結果である（R-8）。`made` があれば落とした
- * 先がその項目（新しいグループ）になり、無ければ持ち上げたカードだけが消える（束ねた）。
- */
+/** made replaces the target for grouping; otherwise only lifted cards disappear for bundling. */
 export interface DropOverlay<T> {
   target: string;
   lifted: ReadonlySet<string>;
   made: T | null;
 }
 
-/** applyDropOverlay は並び `items` に落とした結果 `overlay` を重ねた並びを返す。 */
 export function applyDropOverlay<T>(
   items: readonly T[],
   keyOf: (item: T) => string,
@@ -138,10 +112,7 @@ export function applyDropOverlay<T>(
   return replaceWithGroup(items, keyOf, overlay.target, overlay.lifted, overlay.made);
 }
 
-/**
- * replaceWithGroup は並び `items` のうち、落とした先 `target` を新しい項目 `made` に置き換え、
- * 持ち上げた項目 `lifted` を除いた並びを返す。新しいグループは落とした先の位置を取る（R-6）。
- */
+/** Place the new group at the target's position and remove lifted items. */
 export function replaceWithGroup<T>(
   items: readonly T[],
   keyOf: (item: T) => string,

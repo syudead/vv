@@ -17,15 +17,13 @@ import (
 	"github.com/syudead/vv/internal/wasmplugin"
 )
 
-// account の下位コマンドの終了コード。
-// plugin の下位コマンドも同じ値を使う。
+// Shared exit codes for account and plugin subcommands.
 const (
 	exitAccountOK    = 0
-	exitAccountError = 1 // DB を開けない・書けない
-	exitAccountUsage = 2 // 未設定・値の誤り・確認の不一致・未知の下位コマンド
+	exitAccountError = 1 // Database access failure.
+	exitAccountUsage = 2 // Invalid input, unconfigured account, or unknown subcommand.
 )
 
-// accountUsage は引数つきの mdm（account と plugin の下位コマンド）の使い方である。
 const accountUsage = `Usage:
   mdm                                 start the server
   mdm account set-username <NAME>     change the username
@@ -40,21 +38,19 @@ const accountUsage = `Usage:
 Account settings are read only from MDM_DATA_DIR; plugin commands do not read it. The password is never taken from arguments or environment variables.
 If standard input is a terminal, the password is asked for twice; otherwise the first line is used as the password.`
 
-// accountEnv はホスト側のコマンドが外界から受け取るものである。テストが差し替える。
+// accountEnv supplies replaceable host dependencies.
 type accountEnv struct {
 	Getenv func(string) string
 	Stdin  io.Reader
 	Stdout io.Writer
 	Stderr io.Writer
-	// ReadHidden はエコーを止めて端末から1行読む。nil なら標準入力は端末でない。
+	// ReadHidden reads a terminal line without echo; nil means non-terminal input.
 	ReadHidden func() ([]byte, error)
 	Now        func() time.Time
-	// PluginRuntime は mdm plugin run のランタイムの選択肢である。本番はゼロ値で、テストが名前の解決と接続を
-	// 差し替える。
+	// PluginRuntime defaults to production networking; tests can replace resolution and dialing.
 	PluginRuntime wasmplugin.Options
 }
 
-// accountFailure は終了コードと、標準エラーへ出す理由の組である。
 type accountFailure struct {
 	code      int
 	message   string
@@ -69,13 +65,12 @@ func operationFailure(format string, args ...any) *accountFailure {
 	return &accountFailure{code: exitAccountError, message: fmt.Sprintf(format, args...)}
 }
 
-// notConfiguredFailure は未設定のときの失敗である。コマンドではアカウントを作らない。
+// Commands cannot create an account.
 func notConfiguredFailure() *accountFailure {
 	return usageFailure("The account is not set up yet. Open VVMDM in a browser and complete the initial setup first.")
 }
 
-// runCommand は引数つきの mdm を実行し、終了コードを返す。args は os.Args[1:] である。
-// 引数なしの起動（サーバー）はここを通らない。
+// runCommand handles os.Args[1:] for CLI subcommands; server startup bypasses it.
 func runCommand(ctx context.Context, args []string, env accountEnv) int {
 	var failure *accountFailure
 	switch {
@@ -100,8 +95,7 @@ func runCommand(ctx context.Context, args []string, env accountEnv) int {
 	return failure.code
 }
 
-// runAccount は account の下位コマンド sub を実行する。成功したら何を変えたかを
-// 標準エラーへ出して nil を返す。パスワードとそのハッシュはどの結果でも出力しない。
+// runAccount reports successful changes to stderr without exposing passwords or hashes.
 func runAccount(ctx context.Context, sub string, args []string, env accountEnv) *accountFailure {
 	switch sub {
 	case "set-username":
@@ -122,7 +116,7 @@ func runAccount(ctx context.Context, sub string, args []string, env accountEnv) 
 			return usageFailure("set-password takes no arguments. Pass the password on standard input.")
 		}
 		return withAuthStore(ctx, env, func(auth *store.AuthStore) *accountFailure {
-			// 未設定なら尋ねる前に終える。書き換えでも未設定は確かめ直す。
+			// Reject unconfigured accounts before prompting; recheck when writing.
 			if _, err := auth.Account(ctx); errors.Is(err, domain.ErrAccountNotConfigured) {
 				return notConfiguredFailure()
 			} else if err != nil {
@@ -144,7 +138,6 @@ func runAccount(ctx context.Context, sub string, args []string, env accountEnv) 
 	}
 }
 
-// changeCredentials は書き換えの結果を終了の形にする。
 func changeCredentials(err error, done string, env accountEnv) *accountFailure {
 	if errors.Is(err, domain.ErrAccountNotConfigured) {
 		return notConfiguredFailure()
@@ -156,11 +149,8 @@ func changeCredentials(err error, done string, env accountEnv) *accountFailure {
 	return nil
 }
 
-// withAuthStore は MDM_DATA_DIR のデータベースを開き、マイグレーションを適用してから
-// use に AuthStore を渡す。サーバーの起動前確認（ffmpeg・ffprobe）は行わない。
-//
-// データベースのファイルが無ければ未設定として終える。ファイルを作らないので、
-// MDM_DATA_DIR の打ち間違いで空のデータベースができることもない。
+// withAuthStore opens an existing database and migrates it without checking media tools. Missing
+// files fail as unconfigured, so a mistyped data path cannot create a database.
 func withAuthStore(ctx context.Context, env accountEnv, use func(*store.AuthStore) *accountFailure) *accountFailure {
 	dataDir := valueOr(env.Getenv(envDataDir), defaultDataDir)
 	if !filepath.IsAbs(dataDir) {
@@ -184,8 +174,8 @@ func withAuthStore(ctx context.Context, env accountEnv, use func(*store.AuthStor
 	return use(db.Auth())
 }
 
-// readNewPassword は新しいパスワードを受け取り、値の規則で確かめる。端末ならエコーを止めて2回尋ね、端末でなければ
-// 最初の1行（末尾の改行を除く）を使う。
+// readNewPassword validates input, prompting twice without echo on terminals or reading one line
+// otherwise.
 func readNewPassword(env accountEnv) (string, *accountFailure) {
 	var secret string
 	if env.ReadHidden != nil {
@@ -215,11 +205,10 @@ func readNewPassword(env accountEnv) (string, *accountFailure) {
 	return secret, nil
 }
 
-// promptHidden は標準エラーに prompt を出し、エコーを止めて1行読む。
 func promptHidden(env accountEnv, prompt string) (string, error) {
 	_, _ = fmt.Fprint(env.Stderr, prompt)
 	secret, err := env.ReadHidden()
-	// エコーを止めているので、入力の改行は画面に出ない。
+	// Echo is disabled, so print the missing newline.
 	_, _ = fmt.Fprintln(env.Stderr)
 	if err != nil {
 		return "", err
@@ -227,16 +216,15 @@ func promptHidden(env accountEnv, prompt string) (string, error) {
 	return string(secret), nil
 }
 
-// readFirstLine は r の最初の1行を、末尾の改行（\n または \r\n）を除いて返す。
-// 上限を超える長さは読み切らず、上限を超えた値として返す（規則の確認で外れる）。
+// readFirstLine strips LF or CRLF and stops after enough bytes to detect an oversized password.
 func readFirstLine(r io.Reader) (string, error) {
-	// 上限 + 改行2バイト + 1 まで読めば、上限を超えたかを判断できる。
+	// Read the limit plus CRLF and one extra byte to detect overflow.
 	limited := io.LimitReader(r, int64(domain.MaxPasswordBytes)+3)
 	line, err := bufio.NewReader(limited).ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err
 	}
-	// CR を除くのは CRLF の一部のときだけ。改行なしで終わる値の末尾の CR はパスワードの一部。
+	// Strip CR only as part of CRLF; a trailing CR without LF belongs to the password.
 	if trimmed, ok := strings.CutSuffix(line, "\n"); ok {
 		line = strings.TrimSuffix(trimmed, "\r")
 	}

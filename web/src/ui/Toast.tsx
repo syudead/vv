@@ -15,28 +15,19 @@ import { Button } from "./shadcn/button";
 import { Toaster } from "./shadcn/sonner";
 import { Spinner } from "./shadcn/spinner";
 
-// アプリの通知の出し口。表示は shadcn/ui の Sonner（web/registry/rules/components.md
-// 「Sonner」）に任せ、ここは同時に出す数だけを決める。一覧の画面では新しい通知を
-// すぐ出して最大 3 件、再生画面では 1 件ずつ出し、残りは前のものが消えてから出す。
-// シェルで出た通知を持ったまま再生画面へ移っても、待っているものは順に出る。
-// 取り消しの形（アクション 1 つ、8 秒）の通知は最後の 1 件だけを出す
+// Show up to three list notifications and one at a time in playback, retaining the queue across navigation.
+// Keep only the latest action notification; its default duration is eight seconds.
 // （web/registry/rules/components.md「Sonner」）。
 
-/** visibleLimit は配置ごとの同時に出す数である。 */
 const visibleLimit = { default: 3, playback: 1 } as const;
 
-/** toastDuration は通知を出しておく時間（ms）である。 */
 export const toastDuration = 2800;
 
-/** actionToastDuration はアクションを持つ通知（取り消しの形）を出しておく時間（ms）である。 */
 export const actionToastDuration = 8000;
 
 type Placement = keyof typeof visibleLimit;
 
-/**
- * ToastAction は通知の終わりに置くボタン 1 つである。押すと `run` を呼び、終わるまでボタンを
- * `disabled` にして `Spinner` を出し、終わったら通知を閉じる。
- */
+/** Disable the action and show progress until run settles, then dismiss the notification. */
 export interface ToastAction {
   label: UiText;
   run: () => Promise<void>;
@@ -44,34 +35,33 @@ export interface ToastAction {
 
 export interface ToastOptions {
   action?: ToastAction;
-  /** 出しておく時間（ms）。省くと、アクションがあれば 8 秒、無ければ 2.8 秒。 */
+  /** Milliseconds; defaults to eight seconds with an action, 2.8 seconds otherwise. */
   duration?: number;
 }
 
-/** ShowToast は通知を出し、それを閉じる関数を返す。 */
+/** Returns a dismissal function. */
 export type ShowToast = (message: UiText, options?: ToastOptions) => () => void;
 
 const ToastContext = createContext<ShowToast>(() => () => undefined);
 
-/** useToast は短い通知を出す関数を返す。 */
 export function useToast(): ShowToast {
   return useContext(ToastContext);
 }
 
 interface ToastItem {
-  /** Sonner に渡す id。配置が変わって出し直すと変わる。 */
+  /** Sonner ID changes when redisplayed after placement changes. */
   id: string;
-  /** 呼び出し元が閉じるのに使う鍵。出し直しても変わらない。 */
+  /** Stable dismissal handle survives redisplay. */
   handle: string;
   message: UiText;
   options: ToastOptions;
-  /** アクションを実行中か。出し直しても引き継ぐ。 */
+  /** Pending action state survives redisplay. */
   busy: { running: boolean };
 }
 
 /**
- * ToastActionButton は通知のアクションである。押した後は二度送らず、配置が変わって通知を
- * 出し直しても実行中のままにする。終わったら通知を（出し直した後でも）閉じる。
+ * Reject duplicate actions and retain pending state across placement changes; dismiss the current
+ * instance after completion.
  */
 function ToastActionButton({
   item,
@@ -110,7 +100,6 @@ function nextToastId(): string {
   return `vv-toast-${String(sequence)}`;
 }
 
-/** wideQuery は一覧の画面の通知を下端の中央へ移す幅（Tailwind の lg）である。 */
 const wideQuery = "(min-width: 64rem)";
 
 function subscribeWide(onChange: () => void): () => void {
@@ -124,34 +113,28 @@ function readWide(): boolean {
   return typeof window.matchMedia === "function" && window.matchMedia(wideQuery).matches;
 }
 
-/**
- * useWide は lg 以上かを返す。Sonner の置き場は CSS の幅の分岐では変えられないので、
- * 通知の置き場だけは幅を読む（docs/design-docs/library-ui.md「Width breakpoints in CSS」）。
- */
+/** Sonner positioning cannot use CSS breakpoints, so observe width only for notification placement. */
 function useWide(): boolean {
   return useSyncExternalStore(subscribeWide, readWide, () => false);
 }
 
 /**
- * toasterPlacement は Sonner の置き場である。一覧の画面は、lg より狭い幅ではトップバーの
- * 下の右端に出してページの道具に重ねず、lg 以上では下端の中央（選択バーの上）に出し、
- * 一括の操作の結果を操作した場所の近くで読ませる。再生画面では上端の中央に出す
- * （右上には見出しの帯の閉じる × がある）。配置が変わると Sonner は通知を描き直すので、
- * 出ている通知はその時点から出し直しになる。
+ * Playback uses top-center to avoid its close button; wide lists use bottom-center near selection
+ * actions. Sonner restarts visible notifications when placement changes.
  */
 function toasterPlacement(placement: Placement, wide: boolean) {
   if (placement === "playback") {
     return {
       position: "top-center",
       offset: { top: "0.375rem" },
-      // 狭い幅でも右上の閉じる × に重ならないよう、左右を 4rem ずつ空ける。
+      // Reserve four rem on each side to avoid the playback close button.
       mobileOffset: { top: "0.375rem", left: "4rem", right: "4rem" },
     } as const;
   }
   if (wide) {
     return {
       position: "bottom-center",
-      // 下端に貼り付く選択バー（bottom-3 と h-selection-bar）の上に出す。
+      // Place above the sticky selection bar.
       offset: { bottom: "calc(var(--spacing-selection-bar) + 2rem)" },
     } as const;
   }
@@ -170,17 +153,15 @@ export function ToastProvider({
   children: ReactNode;
   placement?: Placement;
 }) {
-  // 出している通知（古い順）と、出すのを待っている通知。
   const shown = useRef<ToastItem[]>([]);
   const waiting = useRef<ToastItem[]>([]);
   const limit = useRef<number>(visibleLimit[placement]);
   const wide = useWide();
 
-  // 出しているか待っている、アクションを持つ通知の鍵。次のものが前のものを置き換える。
+  // The next action notification replaces this handle, whether visible or queued.
   const lastAction = useRef<string | null>(null);
 
-  // dismiss は鍵 `handle` の通知を、待っていれば待ちから外し、出ていれば閉じる。配置が
-  // 変わって出し直した通知も、鍵は同じなので閉じられる。
+  // Dismiss by stable handle so placement changes do not invalidate caller cleanup.
   const dismiss = useCallback((handle: string) => {
     if (lastAction.current === handle) lastAction.current = null;
     const index = waiting.current.findIndex((entry) => entry.handle === handle);
@@ -192,7 +173,6 @@ export function ToastProvider({
     if (entry !== undefined) sonner.dismiss(entry.id);
   }, []);
 
-  // display は Sonner に 1 件を渡す。消えたら（時間切れでも閉じても）待ちから次を出す。
   const display = useCallback(
     (item: ToastItem) => {
       shown.current.push(item);
@@ -233,7 +213,7 @@ export function ToastProvider({
         return;
       }
       if (limit.current === visibleLimit.default) {
-        // 一覧の画面では新しい通知を待たせず、いちばん古いものと入れ替える。
+        // List notifications replace the oldest visible item instead of waiting.
         const oldest = shown.current.shift();
         if (oldest !== undefined) sonner.dismiss(oldest.id);
         display(item);
@@ -264,16 +244,12 @@ export function ToastProvider({
     [dismiss, enqueue],
   );
 
-  // 配置が変わったら数を合わせる。再生画面へ移ったときは先頭の 1 件だけを残して
-  // 残りを待ちの先頭へ戻し、先頭の 1 件は出し続ける。一覧へ戻ったら
-  // 待っているものを 3 件まで出す。
+  // Entering playback retains the first notification and requeues the rest; returning to lists fills three slots.
   useEffect(() => {
     limit.current = visibleLimit[placement];
     const extra = shown.current.splice(limit.current);
     for (const item of extra) sonner.dismiss(item.id);
-    // 戻した通知は新しい id で出し直す。同じ id のまま出すと、Sonner は消す途中の
-    // 通知の更新として扱い、消さずに残す。鍵（handle）は変えないので、呼び出し元の
-    // 閉じる関数は出し直した後も効く。
+    // Redisplay with a new Sonner ID to avoid updating a dismissing toast; keep the stable handle for caller dismissal.
     const renamed = extra.map((item) => ({ ...item, id: nextToastId() }));
     waiting.current.unshift(...renamed);
     while (shown.current.length < limit.current) {
@@ -283,8 +259,7 @@ export function ToastProvider({
     }
   }, [display, placement]);
 
-  // 外れるときは通知をすべて片付ける。Sonner の通知は画面の外に残り、次に置いた
-  // Toaster が出し直すため。アプリに ToastProvider は 1 つだけである。
+  // Clear all on unmount because Sonner retains notifications outside the provider and could show them in a later Toaster.
   useEffect(
     () => () => {
       shown.current = [];

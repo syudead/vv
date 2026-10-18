@@ -20,38 +20,27 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// contentTypeJSON はすべての JSON 応答に付けるヘッダ値である。
 const contentTypeJSON = "application/json; charset=utf-8"
 
-// Pinger は保存層への疎通を確認する。internal/store の *DB がこれを満たす。
-// 稼働確認が ok / degraded を判定するために使う。
 type Pinger interface {
 	Ping(context.Context) error
 }
 
-// Library は一覧と詳細の問い合わせ先である。httpapi は保存の手段を知らないので、
-// 必要な操作だけを宣言する。
-//
-// 配信と既定アプリで開く操作は、動画の所在と登録フォルダを読んで MediaFiles へ
-// 渡す。開いてよい実体かは MediaFiles が確かめる。
-//
-// 動画を返す読み出しは見る人（domain.Audience）を取り、ゲストには公開の動画だけを
-// 返す。見る人は境界（auth.go）が
-// 要求の context に載せ、ハンドラはそれを読んで渡す。
+// Library reads honor the audience from the auth boundary; MediaFiles, not HTTP handlers, validates
+// opened/resolved locations against registered roots.
 type Library interface {
 	ListVideos(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.VideoPage, error)
 	GetVideo(ctx context.Context, audience domain.Audience, id int64) (domain.Video, error)
 	VideoLocations(ctx context.Context, videoID int64) ([]domain.VideoLocation, error)
 	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
-	// TranscodeProbe は保存済みのライブ変換用の解析情報を解釈せずに返す。行が無ければ
-	// nil。使ってよいかはライブ変換の経路が domain.TranscodeProbeUsable で決める。
+	// TranscodeProbe returns raw persisted data or nil; handlers validate reuse with
+	// domain.TranscodeProbeUsable.
 	TranscodeProbe(ctx context.Context, videoID int64) (*domain.StoredTranscodeProbe, error)
 	KeyframeSpacing(ctx context.Context, videoID int64) (domain.KeyframeProbe, error)
 }
 
-// Playback は再生位置の保存先である。鍵は content_key（videos.id ではない）なので、
-// 動画の行が消えても記録が残る。play が nil でなく ContentKey が空でなければ、同じ取引で
-// 視聴履歴を 1 件書く（同じ PlaybackID の 2 回目以降は何も足さない）。
+// Playback survives deleted video rows through content keys and writes history atomically when
+// supplied, deduplicating PlaybackID.
 type Playback interface {
 	SaveProgress(
 		ctx context.Context, contentKey string, progress domain.Progress, play *domain.Play,
@@ -59,20 +48,15 @@ type Playback interface {
 	ProgressByContentKeys(ctx context.Context, contentKeys []string) (map[string]domain.Progress, error)
 }
 
-// Scans は取り込みの開始と状態の取得である。internal/app の *Scans がこれを
-// 満たす。
-//
-// StartScan は実行中なら新しく始めず、実行中のものを返す。started は新しく始めたか
-// である。走査を実際に動かすのはアプリケーション層である。
+// StartScan returns the current scan without restarting it; started identifies transactional
+// creation.
 type Scans interface {
 	StartScan(ctx context.Context) (scan domain.Scan, started bool, err error)
 	CurrentScan(ctx context.Context) (domain.Scan, error)
-	// ListScanIssues は直近の取り込みの問題を cursor の次から limit 件返す。一度も
-	// 走査していなければ domain.ErrNotFound、カーソルが不正なら domain.ErrInvalidCursor。
+	// ListScanIssues returns ErrNotFound before any scan and ErrInvalidCursor for malformed cursors.
 	ListScanIssues(ctx context.Context, cursor string, limit int) (domain.ScanIssuePage, error)
 }
 
-// MediaFolders は設定画面が1件ずつ操作するメディアフォルダ保存先である。
 type MediaFolders interface {
 	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
 	AddMediaFolder(ctx context.Context, path string) (domain.MediaFolder, error)
@@ -80,8 +64,7 @@ type MediaFolders interface {
 	DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) error
 }
 
-// Tags はタグ管理画面が操作するタグの保存先である。どの操作も1つのトランザクションで済むので、
-// internal/app は通さず、internal/store の TagStore をここへ直接渡す。
+// Tag operations each complete in one store transaction without an app use case.
 type Tags interface {
 	ListTags(ctx context.Context, query domain.TagListQuery) (domain.TagPage, error)
 	CreateTag(ctx context.Context, name string) (domain.Tag, error)
@@ -89,313 +72,255 @@ type Tags interface {
 	DeleteTag(ctx context.Context, id int64) error
 	MergeTags(ctx context.Context, targetID int64, sourceIDs []int64) (domain.TagMergeOutcome, error)
 	AddSynonym(ctx context.Context, tagID int64, name string, mergeTagID *int64) (domain.Tag, error)
-	// RemoveSynonym は外した後のタグを返す。画面の経路は捨て、外部連携 API が応答に載せる。
+
 	RemoveSynonym(ctx context.Context, tagID int64, name string) (domain.Tag, error)
 
-	// 付与・取り外し・要約・一覧の項目のタグ引き。どの操作も1つのトランザクションで済むので、こちらも
-	// internal/app を通さない。
 	AttachTagByID(ctx context.Context, videoIDs []int64, tagID int64) (domain.TagRef, int, error)
 	AttachTagByName(ctx context.Context, videoIDs []int64, name string) (domain.TagRef, int, error)
 	DetachTag(ctx context.Context, videoIDs []int64, tagID int64) (domain.TagRef, int, error)
 	Summary(ctx context.Context, videoIDs []int64) (domain.TagSummary, error)
-	// TagsByContentKeys は利用者データの鍵（Video.UserKey）の集合からそれぞれのタグを引く。
-	// progressFor と同じ位置（httpapi）から、一覧・詳細・関連動画・読み取りの
-	// やり直しの応答へ Video.tags を載せるために使う。
+	// TagsByContentKeys uses Video.UserKey for shared bundle data.
 	TagsByContentKeys(ctx context.Context, contentKeys []string) (map[string][]domain.VideoTag, error)
-	// ApplyVideoTags は外部連携 API の名前でのタグの一括操作。引けない動画があれば *domain.VideoRefNotFoundError、規則に合わない名前は
-	// *domain.TagNameAtError で失敗し、何も反映しない。tentative が真なら無い名前を仮のタグとして
-	// 作り、却下した名前を飛ばす。
+	// ApplyVideoTags atomically applies named tags through the external API, returning
+	// VideoRefNotFoundError for missing videos or TagNameAtError for invalid names. With tentative
+	// set, create unknown names as tentative tags and skip rejected names.
 	ApplyVideoTags(ctx context.Context, videos []domain.VideoRef, action domain.VideoTagsAction, names []string, tentative bool) (domain.VideoTagsOutcome, error)
 
-	// 仮のタグの確定・却下と、却下した名前。
 	ConfirmTag(ctx context.Context, id int64) (domain.Tag, error)
 	RejectTag(ctx context.Context, id int64) (string, error)
 	ListRejectedTagNames(ctx context.Context, cursor string, limit int) (domain.RejectedTagNamePage, error)
-	// ForgetRejectedTagName は名前を外したかどうかを返す。画面の経路は捨て、外部連携 API が応答の
-	// removed に載せる。
+
 	ForgetRejectedTagName(ctx context.Context, name string) (bool, error)
 
-	// タグ管理画面のまとめての操作と、その確認に出す数。
-	// 無い種類を付ける BatchTags は domain.ErrTagKindNotFound を返し、何も変えない
-	//
+	// BatchTags rejects nonexistent kind IDs without writes.
 	BatchTags(ctx context.Context, req domain.TagBatchRequest, ids []int64) (domain.TagBatchOutcome, error)
 	TagImpact(ctx context.Context, action domain.TagImpactAction, ids []int64) (domain.TagImpact, error)
 
-	// タグの種類。名前の規則違反は
-	// domain.ErrInvalidTagName、名前の重複は *domain.TagKindNameConflict、無い id は
-	// domain.ErrTagKindNotFound を返す。
 	ListTagKinds(ctx context.Context) ([]domain.TagKind, error)
 	CreateTagKind(ctx context.Context, name string) (domain.TagKind, error)
 	RenameTagKind(ctx context.Context, id int64, name string) (domain.TagKind, error)
 	DeleteTagKind(ctx context.Context, id int64) error
 }
 
-// Transcoder は1 request分のfragmented MP4を生成する。internal/media の
-// *LiveTranscoder がこれを満たす。Start は最初のデータが出たところで返す。
-// 保存済みの解析情報（request.Probe）が nil ならその場で ffprobe を実行し、結果を
-// Probed に載せる。StartupDeadline はその場の解析と初期データ生成の共通期限である。
-// Wait は成功した Start につきちょうど1回呼び、Stop は切断時にprocessを止める。
+// Transcoder produces fragmented MP4 per request; Start returns with initial data and probes into
+// Probed only when request.Probe is nil. StartupDeadline covers both probing and initial output;
+// call Wait exactly once after successful Start and Stop on disconnection.
 type Transcoder interface {
 	Start(ctx context.Context, request domain.LiveTranscodeRequest) (domain.LiveTranscode, error)
 }
 
-// TranscodeSettings はライブ変換の映像エンコード方式の設定である。internal/app の
-// *TranscodeSettings がこれを満たす。方式の決定と、使えない方式を拒む判断はそちらが持つ
+// TranscodeSettings selects live encoding modes and rejects unavailable modes; implemented by
+// app.TranscodeSettings.
 type TranscodeSettings interface {
-	// Current は今の選択・実際に使う方式・理由・確認中か・各方式の確認結果を返す。
 	Current() domain.TranscodeEncoding
-	// Select は選択を保存し、保存後の状態を返す。使えないハードウェアの方式には
-	// domain.ErrEncoderUnavailable を返し、保存値を変えない。
+	// Selecting unavailable hardware leaves saved settings unchanged.
 	Select(ctx context.Context, choice domain.EncoderChoice) (domain.TranscodeEncoding, error)
 }
 
-// NetworkSettings は Windows デスクトップ版の LAN からの接続の許可である。internal/app の
-// *NetworkSettings がこれを満たす。待ち受けの開き直しと保存の順はそちらが持つ
+// NetworkSettings controls Windows desktop LAN access; app.NetworkSettings owns listener
+// replacement and persistence ordering.
 type NetworkSettings interface {
-	// Current は今の許可・ポート・許可中に開けるアドレスを返す。
 	Current() domain.NetworkSettings
-	// SetLANAccess は許可を切り替え、切り替えたあとの設定を返す。新しいアドレスで待ち受けを
-	// 開けなければ domain.ErrListenFailed を包んで返し、保存値を変えない。
+	// Listener reopen failures wrap ErrListenFailed and preserve saved settings.
 	SetLANAccess(ctx context.Context, allowed bool) (domain.NetworkSettings, error)
 }
 
-// PluginProxySettings は作品情報プラグインの要求を送るプロキシの URL である。internal/app の
-// *WorkInfoPluginProxy がこれを満たす。
+// PluginProxySettings supplies the work-info plugin proxy URL; implemented by
+// app.WorkInfoPluginProxy.
 type PluginProxySettings interface {
-	// URL は保存した URL を返す。保存が無ければ "" である。
 	URL(ctx context.Context) (string, error)
-	// SetURL は URL を確かめて保存し、保存した値を返す。規則に外れれば
-	// domain.ErrWorkInfoPluginProxyURLInvalid を返し、何も書かない。
+
 	SetURL(ctx context.Context, raw string) (string, error)
 }
 
-// AutoImportSettings は自動の取り込みの選択と、フォルダの監視の状態である。internal/app の
-// *AutoImport がこれを満たす。
+// AutoImportSettings supplies auto-import preferences and watcher state; implemented by
+// app.AutoImport.
 type AutoImportSettings interface {
-	// Status は保存した選択と監視の今の状態を返す。
 	Status() domain.AutoImportStatus
-	// SetEnabled は選択を保存し、監視を張る／外す。走査は始めない。今と同じ値なら何もしない。
+	// SetEnabled changes watches without starting scans and is a no-op for the current value.
 	SetEnabled(ctx context.Context, enabled bool) (domain.AutoImportStatus, error)
 }
 
-// VersionJudging は重複の自動判定の入切である。internal/app の *VersionJudge がこれを満たす
 type VersionJudging interface {
-	// Enabled は保存した入切を返す。保存前は false である。
 	Enabled(ctx context.Context) (bool, error)
-	// SaveEnabled は入切を保存し、判定の処理を起こす。
+
 	SaveEnabled(ctx context.Context, enabled bool) error
 }
 
-// TranscodeProbeWriter は、ライブ変換がその場で解析した結果を保存する。
-// internal/store の *IngestStore がこれを満たす。
 type TranscodeProbeWriter interface {
 	SaveTranscodeProbe(ctx context.Context, videoID int64, source domain.FileStamp, probe domain.TranscodeProbe) error
 }
 
-// ArtifactReader は生成物を配信のために読み出す。internal/artifacts の *Store が
-// これを満たす。置き場の並べ方と、生成途中・不完全なものを除く判断はそちらが
-// 持ち、無い・不完全・生成中のものには fs.ErrNotExist を包んだ誤りを返す。
+// Artifacts reports absent, incomplete, or in-progress files as fs.ErrNotExist.
 type ArtifactReader interface {
-	// ThumbnailFile はライブラリ用サムネイルを開く。閉じるのは呼び出し側である。
+	// The caller closes the thumbnail file.
 	ThumbnailFile(contentKey string) (*os.File, error)
-	// PreviewFile はホバープレビューの MP4 を開き、内容の SHA-256（manifest に
-	// 記録したもの）と合わせて返す。閉じるのは呼び出し側である。
+	// PreviewFile returns the stored SHA-256 digest with the file; the caller closes it.
 	PreviewFile(contentKey string) (*os.File, string, error)
-	// SeekSprite は完成したシーク用プレビューのスプライトの配置情報を読む。
-	// 配置情報の形が違えば fs.ErrNotExist 以外の誤りを返す。
+	// Invalid sprite metadata returns an error distinct from fs.ErrNotExist.
 	SeekSprite(contentKey string) (domain.SeekSprite, error)
-	// SeekSpriteSheet はスプライトのシート sheet（0 から）を読む。
+	// Sheet indices are zero-based.
 	SeekSpriteSheet(contentKey string, sheet int) ([]byte, error)
 }
 
-// VideoCatalog は動画を応答に載せるときの判断と、関連動画の組み立てを行う
-// アプリケーション層である。internal/app の *Catalog がこれを満たす。
-// httpapi は要求の解釈と契約の形への変換だけを持ち、プレビューの作り直しの
-// 予約やシーク用プレビューの状態の導出は行わない。
+// VideoCatalog owns artifact rebuild scheduling, derived seek-preview state, and related-video
+// assembly; handlers only parse and present.
 type VideoCatalog interface {
-	// PresentVideos は動画たちを応答に載せる形にする。順序は保つ。
+	// PresentVideos preserves input order.
 	PresentVideos(ctx context.Context, videos []domain.Video) []domain.VideoView
 	SeekThumbnailState(ctx context.Context, video domain.Video) (domain.SeekThumbnailState, error)
 	RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.RelatedPage) (domain.RelatedVideos, error)
-	// VideoGroup は動画の文脈（opened は動画を開いたグループとスマートフォルダ）の、
-	// 見る人に見せてよい動画の再生順を返す。詳細は window の範囲だけを読む。動画がどの
-	// グループにも無ければ false。
+	// VideoGroup returns visible playback order and reads detail only inside window; false means no
+	// group context.
 	VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video, opened domain.VideoContext, window domain.GroupWindow) (domain.VideoGroup, bool, error)
-	// RetryProbe は読み取りに失敗した動画を読み取り直す。失敗していなければ
-	// domain.ErrProbeNotFailed を返す。
+
 	RetryProbe(ctx context.Context, video domain.Video) error
 }
 
-// MediaFiles は、メディアファイルとディレクトリへのアクセスを確かめる担当である。
-// internal/mediafs の FS がこれを満たす。開いてよいか（登録フォルダの内側にあり、
-// symlink を辿った先も内側にあり、通常ファイルであること）の判定はそちらが持ち、
-// httpapi は結果を応答へ移すだけである。
+// MediaFiles validates regular files and both original/resolved paths within registered roots.
 type MediaFiles interface {
-	// OpenMediaFile は roots のどれかの内側にある通常ファイルだけを、symlink を
-	// 辿った先で開く。開けないときは domain.ErrMediaFileUnavailable を包む。
 	OpenMediaFile(roots []string, path string) (*os.File, os.FileInfo, error)
-	// ResolveMediaFile は OpenMediaFile と同じ規則で、辿った先のパスを返す。
+
 	ResolveMediaFile(roots []string, path string) (string, error)
-	// ListDirectories はディレクトリ選択に path の子ディレクトリを返す。
+
 	ListDirectories(path string) (domain.DirectoryListing, error)
-	// DirectoryRoots はディレクトリ選択の根を返す。
+
 	DirectoryRoots() domain.DirectoryListing
-	// ListSidecarFiles は、path が OpenMediaFile と同じ規則で開けるときだけ、その所在の
-	// フォルダにある通常ファイルの名前と大きさを返す。開けなければ domain.ErrMediaFileUnavailable、フォルダを読めなければ
-	// domain.ErrDirectoryUnavailable を包む。
+	// ListSidecarFiles applies media-opening rules first, distinguishing unavailable media from
+	// unreadable directories.
 	ListSidecarFiles(roots []string, path string) ([]domain.SidecarEntry, error)
-	// OpenSidecarFile は、ListSidecarFiles が返す名前の 1 つと完全に一致する name だけを
-	// 開く。開けないときは domain.ErrMediaFileUnavailable を包む。
+	// OpenSidecarFile accepts only exact names returned by ListSidecarFiles.
 	OpenSidecarFile(roots []string, path, name string) (*os.File, os.FileInfo, error)
 }
 
-// SubtitleConverter は字幕ファイルの中身を UTF-8 の WebVTT にし、cue の時刻から
-// offsetMs を引く。internal/media の SubtitleConverter がこれを満たす。読めない中身には
-// domain.ErrSubtitleUnreadable を包んだ誤りを返す。
+// SubtitleConverter outputs UTF-8 WebVTT with offsetMs subtracted from cue times; unreadable input
+// wraps ErrSubtitleUnreadable.
 type SubtitleConverter interface {
 	Convert(src []byte, format domain.SubtitleFormat, offsetMs int64) ([]byte, error)
 }
 
-// FileOpener はサーバーの PC の既定アプリでファイルを開く。internal/opener の
-// *Opener がこれを満たす。起動できる環境かどうかは起動時に決まっている。
+// FileOpener launches the server host default application; opener.Opener determines capability at
+// startup.
 type FileOpener interface {
 	Available() bool
 	Open(path string) error
 }
 
-// Options は経路の組み立てに必要な依存である。
+// Options wires route dependencies; missing services normally yield 500, with read omissions and
+// fallbacks documented below.
 type Options struct {
-	// Build は稼働中のバイナリを特定するための情報。
 	Build domain.BuildInfo
-	// Pinger は保存層への疎通確認。nil の場合は疎通できないものとして扱う。
+	// Nil Pinger means storage is unreachable.
 	Pinger Pinger
-	// Videos は一覧と詳細の問い合わせ先。nil なら該当の経路は 500 を返す。
+
 	Videos Library
-	// Playback は再生位置の保存先。nil なら記録の経路は 500 を返し、
-	// 一覧には progress が載らない。
+	// Nil Playback makes writes fail and omits progress from reads.
 	Playback Playback
-	// Scans は取り込みの開始と状態の取得。nil なら該当の経路は 500 を返す。
+
 	Scans Scans
-	// MediaFolders は登録rootの取得と個別操作。nilなら該当経路は500を返す。
+
 	MediaFolders MediaFolders
-	// Tags はタグの取得と個別操作。nilなら該当経路は500を返す。
+
 	Tags Tags
-	// Credits は人物と団体の保存先。nilなら /api/people* と /api/organizations* は500を返す。
+
 	Credits Credits
-	// WorkInfo は動画の作品情報の保存先。nilなら作品情報の書き込みの経路は500を返し、
-	// 動画1件の応答に workInfo が載らない。
+	// Nil WorkInfo makes writes fail and omits workInfo from video responses.
 	WorkInfo WorkInfo
-	// MediaInfo は動画の追加の情報の読み出し先。nilなら動画1件の応答に mediaInfo が載らない。
+	// Nil MediaInfo omits mediaInfo from video responses.
 	MediaInfo MediaInfoReader
-	// Visibility は動画の公開フラグの保存先。nilなら切り替えの経路は500を返す。
+
 	Visibility Visibility
-	// Favorites はお気に入りの保存先。nilなら付け外しの経路は500を返す。
+
 	Favorites Favorites
-	// Playlists はプレイリストの保存先。nilならプレイリストの経路は500を返す。
+
 	Playlists Playlists
-	// PlaylistPlayback はプレイリストの連続再生の読み出し先。nilなら連続再生の経路は500を返す。
+
 	PlaylistPlayback PlaylistPlaybackReader
-	// WatchHistory は視聴履歴の読みと削除の先。nilなら視聴履歴の経路は500を返す。
+
 	WatchHistory WatchHistory
-	// Activity はアクティビティの記録の一覧・やり直し・取り消しの先。nilなら /api/activity* は500を返す。
+
 	Activity Activity
-	// Overrides は動画の表示名の保存先。nilなら表示名の設定の経路は500を返す。
+
 	Overrides OverrideStore
-	// ThumbnailPicker は代表サムネイルの位置の設定先。nilなら位置の設定の経路は500を返す。
+
 	ThumbnailPicker ThumbnailPicker
-	// Versions は同じ動画の別バージョンの集まりの保存先。nilならバージョンと束ねの経路は500を返す。
+
 	Versions VersionStore
-	// Folders はフォルダ画面の問い合わせ先。nilなら該当経路は500を返す。
+
 	Folders Folders
-	// FolderGroups はフォルダのまとめ方の保存先。nilならまとめ方の変更とグループの
-	// タグ化の経路は500を返し、フォルダの応答には grouping が載らない。
+	// Nil FolderGroups makes mutations fail and omits grouping from folder reads.
 	FolderGroups FolderGroups
-	// Groups はグループの編集の保存先。nilならグループの作成と編集の経路は500を返す。
+
 	Groups Groups
-	// SmartFolders はスマートフォルダの保存先。nilなら /api/smart-folders* は500を返す。
+
 	SmartFolders SmartFolders
-	// Organizer はドラッグの操作とその取り消しの先。nilなら /api/organize/* は500を返す。
+
 	Organizer Organizer
-	// Library はライブラリの項目（動画とグループ）の問い合わせ先。nilなら
-	// /api/library*・グループ1件の経路は500を返す。
+
 	Library LibraryItems
-	// Transcoder は非対応動画をMP4へ変換する。nilなら経路は500を返す。
+
 	Transcoder Transcoder
-	// TranscodeSettings はライブ変換の映像エンコード方式の設定。nil なら設定の経路は 500 を
-	// 返し、ライブ変換は software でエンコードする。
+	// Nil TranscodeSettings makes settings routes fail but uses software encoding.
 	TranscodeSettings TranscodeSettings
-	// NetworkSettings は LAN からの接続の許可。デスクトップ版だけが渡し、nil なら
-	// /api/settings/network は 404 を返す。
+	// Only desktop builds supply NetworkSettings; nil yields 404.
 	NetworkSettings NetworkSettings
-	// PluginProxy は作品情報プラグインの要求を送るプロキシ。どのビルドでも渡し、nil なら
-	// /api/settings/plugin-proxy は 500 を返す。
+
 	PluginProxy PluginProxySettings
-	// AutoImport は自動の取り込みの選択と監視の状態。nil なら /api/settings/auto-import は
-	// 500 を返す。
+
 	AutoImport AutoImportSettings
-	// AutoTagging は自動タグ付けの設定と判定の始め方。nil なら該当の経路は 500 を返す。
-	AutoTagging AutoTagging
-	// Onboarding はオンボードの段階と分野の選び方。nil なら /api/onboarding* は 500 を返す。
-	Onboarding Onboarding
-	// Home はホームの棚の読み出しと並びの書き込み。nil なら /api/home* は 500 を返す。
-	Home Home
-	// VersionJudging は重複の自動判定の入切。nil なら /api/settings/version-judging は 500 を返す。
+
+	AutoTagging    AutoTagging
+	Onboarding     Onboarding
+	Home           Home
 	VersionJudging VersionJudging
-	// Ollama は判定モデルの提供元 Ollama の接続先と確かめ。nil なら該当の経路は 500 を返す。
+
 	Ollama OllamaConnection
-	// ComfyUI は画像編集の提供元 ComfyUI の接続先と確かめ。nil なら該当の経路は 500 を返す。
+
 	ComfyUI ComfyUIConnection
-	// ThumbnailEdits はサムネイルの編集のセッション。nil なら該当の経路は 500 を返す。
+
 	ThumbnailEdits ThumbnailEdits
-	// ThumbnailUploads は手元の画像のサムネイルへのアップロード。nil なら該当の経路は 500 を返す。
+
 	ThumbnailUploads ThumbnailUploads
-	// WorkInfoPlugins は作品情報プラグインの登録。nil なら該当の経路は 500 を返す。
+
 	WorkInfoPlugins WorkInfoPlugins
-	// TranscodeProbes はライブ変換がその場で解析した結果の保存先。nil なら保存せず、
-	// 解析情報の無い動画は変換のたびに解析する。
+	// Nil TranscodeProbes disables persistence, requiring uncached videos to be probed on every
+	// transcode.
 	TranscodeProbes TranscodeProbeWriter
-	// Artifacts は生成物（サムネイル・シーク用プレビュー・ホバープレビュー）の
-	// 読み出し。nil ならサムネイルとホバープレビューは 404、シーク用プレビューは
-	// 500 を返す。
+	// Nil Artifacts yields 404 for thumbnails/hover previews and 500 for seek previews.
 	Artifacts ArtifactReader
-	// Catalog は動画の応答に要る判断・関連動画・読み取りのやり直し。nil なら
-	// 関連動画と読み取りのやり直しの経路は 500 を返し、動画の応答にはプレビューの
-	// URL とシーク用プレビューの状態が載らない。
+	// Nil Catalog makes related/reprobe routes fail and omits preview URLs and seek-preview state.
 	Catalog VideoCatalog
-	// Opener はファイルを既定アプリで開く。nil なら開けない環境として扱う。
+	// Nil Opener means opening files is unavailable.
 	Opener FileOpener
-	// Files はメディアファイルとディレクトリへのアクセス。nil なら配信・ライブ変換・
-	// 字幕・既定アプリで開く操作・ディレクトリ選択は 500 を返す。黙って 404 にしないのは、
-	// つなぎ忘れを「実体が無い」と見分けられなくなるためである。
+	// Nil Files yields 500, not 404, so missing wiring cannot masquerade as missing media.
 	Files MediaFiles
-	// Subtitles は字幕ファイルの WebVTT への変換。nil なら字幕の取得の経路は 500 を返す。
+
 	Subtitles SubtitleConverter
-	// Events は画面へ送る変化の知らせ。nilなら経路は500を返す。
+
 	Events *Events
-	// Assets は SPA のビルド成果物（web/dist に相当）。
+
 	Assets fs.FS
-	// Logger は応答の過程で出す記録。nil の場合は slog の既定を使う。
+	// Nil Logger uses slog's default.
 	Logger *slog.Logger
-	// Auth は初回設定・ログイン・ログアウト・セッションの確認。nil なら「誰でも」以外の
-	// 要求と認証の経路は 500 を返す。所有者とみなして通すことはしない。
+	// Nil Auth fails nonpublic/auth routes with 500 and never grants owner access.
 	Auth Authenticator
-	// APITokens は API トークンの発行・一覧・失効。nil なら該当の経路は 500 を返す。
+
 	APITokens APITokens
-	// ExternalVideos は外部連携 API の動画の一覧と引き当て。nil なら該当の経路は 500 を返す。
+
 	ExternalVideos ExternalVideos
-	// SessionRecheck は、所有者として長く続く要求のセッションを確かめ直す間隔である。
-	// 0 なら 30 秒。テストが短くする。
+	// SessionRecheck defaults to thirty seconds when zero.
 	SessionRecheck time.Duration
-	// Now は今の時刻を返す（Cookie の Max-Age の計算に使う）。nil なら time.Now。
+	// Nil Now uses time.Now for cookie Max-Age.
 	Now func() time.Time
-	// TrustedProxies は転送ヘッダー（X-Forwarded-For・X-Forwarded-Proto）を信じてよい
-	// 直接の接続元である（MDM_TRUSTED_PROXIES）。空ならヘッダーを読まない（client_origin.go）。
+	// Empty TrustedProxies ignores forwarding headers; configure with MDM_TRUSTED_PROXIES.
 	TrustedProxies []netip.Prefix
 }
 
-// server は生成された gen.ServerInterface を満たす。契約（api/openapi.yaml）に
-// 経路を足したらこの型がコンパイルエラーになるため、実装漏れに気付ける。
+// Generated interface conformance catches missing implementations after schema changes.
 type server struct {
+	// favoritesMaxBody overrides the default byte limit for this server instance.
+	favoritesMaxBody int64
+
 	build        domain.BuildInfo
 	pinger       Pinger
 	videos       Library
@@ -409,7 +334,7 @@ type server struct {
 	visibility   Visibility
 	favorites    Favorites
 	playlists    Playlists
-	// playlistPlayback はプレイリストの連続再生の読み出し先（playlist_playback.go）。
+
 	playlistPlayback PlaylistPlaybackReader
 	watchHistory     WatchHistory
 	activity         Activity
@@ -423,7 +348,7 @@ type server struct {
 	organizer        Organizer
 	library          LibraryItems
 	transcoder       Transcoder
-	// transcodeSettings はライブ変換の映像エンコード方式の設定（nil なら software）。
+
 	transcodeSettings TranscodeSettings
 	networkSettings   NetworkSettings
 	pluginProxy       PluginProxySettings
@@ -437,11 +362,11 @@ type server struct {
 	thumbnailEdits    ThumbnailEdits
 	thumbnailUploads  ThumbnailUploads
 	workInfoPlugins   WorkInfoPlugins
-	// thumbnailUploadBuffers はアップロードの本文が同時に占めるメモリの枠である（thumbnail_upload.go）。
+	// thumbnailUploadBuffers bounds aggregate concurrent upload memory.
 	thumbnailUploadBuffers *semaphore.Weighted
-	// transcodeProbes はライブ変換がその場で解析した結果の保存先（nil なら保存しない）。
+
 	transcodeProbes TranscodeProbeWriter
-	// transcodeStarts は attempt ごとの実際の開始位置の台帳である（transcode_start.go）。
+
 	transcodeStarts *transcodeStarts
 	artifacts       ArtifactReader
 	catalog         VideoCatalog
@@ -454,31 +379,15 @@ type server struct {
 	apiTokens       APITokens
 	externalVideos  ExternalVideos
 	sessions        *sessionLedger
-	// guests はゲストとして処理中の配信の応答を content_key ごとに覚える（visibility.go）。
+
 	guests *guestLedger
 	now    func() time.Time
-	// trustedProxies は転送ヘッダーを信じてよい直接の接続元である。
+
 	trustedProxies trustedProxies
 }
 
-// NewRouter は経路を分配するハンドラを返す。
-//
-//	/api/health      → JSON（生成された経路定義から登録する）
-//	/api/videos*     → JSON・動画本体・サムネイル（同上）
-//	/api/scans*      → JSON（同上）
-//	/api/events      → Server-Sent Events（同上）
-//	/api/folders*    → JSON（同上）
-//	/api/library*    → JSON（同上）
-//	/api/tags*       → JSON（同上）
-//	/api/people*・/api/organizations* → JSON（所有者が管理する人物と団体。同上）
-//	/api/auth/*      → JSON（初回設定・ログイン・ログアウト・状態。同上）
-//	/api/settings/*  → JSON（所有者が設定画面で選ぶ値。同上）
-//	/api/api-tokens* → JSON（所有者が設定画面で管理する API トークン。同上）
-//	/api/work-info-plugins* → JSON と multipart（所有者が設定画面で管理する作品情報プラグイン。同上）
-//	/api/v1/*        → JSON（外部連携 API。api/external-v1.yaml から生成した経路で、Bearer だけ）
-//	/mcp             → MCP（Streamable HTTP の stateless。外部連携 API のツール、Bearer だけ）
-//	/api/*（未定義） → 404 + Error（index.html を返してはならない）
-//	それ以外          → SPA（/videos/{id} を含むクライアント側ルーティング）
+// NewRouter registers generated UI/external APIs and Bearer-only MCP, returns JSON 404 for unknown
+// API paths, and falls back to the SPA elsewhere.
 func NewRouter(opts Options) http.Handler {
 	logger := opts.Logger
 	if logger == nil {
@@ -487,8 +396,7 @@ func NewRouter(opts Options) http.Handler {
 
 	mux := http.NewServeMux()
 
-	// 先に広い経路を登録する。net/http の ServeMux はより具体的な模様を優先するため、
-	// 生成された "GET /api/health" が下の "/api/" より先に一致する。
+	// ServeMux prefers generated method-specific routes over the broad /api/ fallback.
 	mux.Handle("/api/", http.HandlerFunc(apiNotFound))
 	mux.Handle("/", newSPAHandler(opts.Assets, logger))
 
@@ -548,7 +456,7 @@ func NewRouter(opts Options) http.Handler {
 		sessions:               newSessionLedger(opts.SessionRecheck, logger),
 		guests:                 newGuestLedger(),
 		now:                    opts.Now,
-		// 呼び出し側が後から書き換えても判定が変わらないよう写しを持つ。
+		// Copy trusted proxies so caller mutations cannot change access decisions.
 		trustedProxies: slices.Clone(opts.TrustedProxies),
 	}
 	if srv.now == nil {
@@ -576,12 +484,8 @@ func NewRouter(opts Options) http.Handler {
 	return compressResponses(noStoreOnError(srv.authBoundary(srv.mutationBoundary(generated))))
 }
 
-// noStoreOnError は 4xx と 5xx の応答に no-store を付け直す。
-//
-// stream と thumbnail は成功用の Cache-Control を設定してから
-// http.ServeContent を呼び、ServeContent 自身が不正な Range に 416 を返す。
-// その経路は writeError を通らないので、版付きサムネイルでは失敗応答に
-// 1年の immutable が残っていた。書き出す直前の状態で判断する。
+// Set no-store at write time for all 4xx/5xx, including ServeContent Range errors that bypass
+// writeError after success headers were set.
 func noStoreOnError(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		next.ServeHTTP(&errorCacheWriter{ResponseWriter: w}, r)
@@ -600,18 +504,15 @@ func (w *errorCacheWriter) Flush() {
 	}
 }
 
-// ReadFrom は下の ResponseWriter の io.ReaderFrom へ中継する。これが無いと
-// http.ServeContent の io.Copy が包みの Write しか見つけられず、sendfile を
-// 使えずに 32KB ずつユーザー空間を通る。
+// Forward ReaderFrom so ServeContent/io.Copy can use sendfile instead of 32KB userspace copies.
 func (w *errorCacheWriter) ReadFrom(src io.Reader) (int64, error) {
 	if readerFrom, ok := w.ResponseWriter.(io.ReaderFrom); ok {
 		return readerFrom.ReadFrom(src)
 	}
-	// 包みの ReadFrom へ戻らないよう、Write だけを見せて写す。
+	// Expose only Write to avoid recursing into this wrapper's ReadFrom.
 	return io.Copy(writerOnly{w.ResponseWriter}, src)
 }
 
-// writerOnly は io.Copy に ReadFrom を見つけさせないための包みである。
 type writerOnly struct {
 	io.Writer
 }
@@ -627,9 +528,8 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
-			// 同一オリジンの検査は、ブラウザが自動で送る Cookie を使った CSRF を防ぐ。
-			// Bearer の扱いの要求は Cookie を読まず、Authorization はブラウザが自動では
-			// 付けないので、Origin を問わない。
+			// Origin checks protect automatic cookie credentials; Bearer routes ignore cookies and need no
+			// Origin restriction.
 			if class, _ := classifyRequest(r); class != accessBearer && !s.acceptsSameOrigin(w, r) {
 				return
 			}
@@ -650,7 +550,6 @@ func requiresJSONBody(r *http.Request) bool {
 		isActivityUndoPost(r) || requiresOtherJSONBody(r)
 }
 
-// requiresOtherJSONBody は人物と団体の経路（requiresCreditJSONBody）を除く、本文を持つ経路を返す。
 func requiresOtherJSONBody(r *http.Request) bool {
 	switch r.Method {
 	case http.MethodPost:
@@ -663,7 +562,6 @@ func requiresOtherJSONBody(r *http.Request) bool {
 	return false
 }
 
-// requiresPostJSONBody は POST の経路のうち本文を持つものかを返す。
 func requiresPostJSONBody(path string) bool {
 	switch path {
 	case "/api/media-folders", "/api/scans", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/tag-kinds",
@@ -682,8 +580,7 @@ func requiresPostJSONBody(path string) bool {
 		id, rest, found := strings.Cut(suffix, "/")
 		return found && id != "" && rest == "thumbnail-edits"
 	}
-	// POST /api/playlists/{id}/items と POST /api/playlists/{id}/items/{itemId}/move
-	//
+
 	if suffix, ok := strings.CutPrefix(path, "/api/playlists/"); ok {
 		segments := strings.Split(suffix, "/")
 		switch len(segments) {
@@ -694,7 +591,7 @@ func requiresPostJSONBody(path string) bool {
 		}
 		return false
 	}
-	// POST /api/groups/{id}/items・…/items/remove・…/items/{itemId}/move。POST /api/groups/{id}/tag は本文を持たない。
+
 	if suffix, ok := strings.CutPrefix(path, "/api/groups/"); ok {
 		return groupItemsBodyPath(strings.Split(suffix, "/"))
 	}
@@ -709,7 +606,6 @@ func requiresPostJSONBody(path string) bool {
 	return false
 }
 
-// putJSONBodyPaths は本文を持つ PUT の経路のうち、変わる部分の無いものである。
 var putJSONBodyPaths = map[string]bool{
 	"/api/video-visibility":         true,
 	"/api/favorites":                true,
@@ -725,7 +621,6 @@ var putJSONBodyPaths = map[string]bool{
 	"/api/home/shelves":             true,
 }
 
-// requiresPutJSONBody は PUT の経路のうち本文を持つものかを返す。
 func requiresPutJSONBody(path string) bool {
 	if putJSONBodyPaths[path] {
 		return true
@@ -744,7 +639,6 @@ func requiresPutJSONBody(path string) bool {
 	return false
 }
 
-// requiresPatchJSONBody は PATCH の経路のうち本文を持つものかを返す。
 func requiresPatchJSONBody(path string) bool {
 	// PATCH /api/playlists/{id}。
 	if id, ok := strings.CutPrefix(path, "/api/playlists/"); ok {
@@ -754,8 +648,7 @@ func requiresPatchJSONBody(path string) bool {
 	if id, ok := strings.CutPrefix(path, "/api/groups/"); ok {
 		return id != "" && !strings.Contains(id, "/")
 	}
-	// PATCH /api/smart-folders/{id}。cards は {id} の段
-	// ではない別の経路で、PATCH を持たない。
+	// cards is a literal route, not an ID, and has no PATCH operation.
 	if id, ok := strings.CutPrefix(path, "/api/smart-folders/"); ok {
 		return id != "" && id != "cards" && !strings.Contains(id, "/")
 	}
@@ -763,8 +656,7 @@ func requiresPatchJSONBody(path string) bool {
 	if id, ok := strings.CutPrefix(path, "/api/tag-kinds/"); ok {
 		return id != "" && !strings.Contains(id, "/")
 	}
-	// /api/tags/rejected-names・/api/tags/batch・/api/tags/impact は {id} の段ではない別の経路で、
-	// PATCH を持たない。
+	// rejected-names, batch, and impact are literal routes without PATCH operations.
 	if id, ok := strings.CutPrefix(path, "/api/tags/"); ok {
 		switch id {
 		case "", "rejected-names", "batch", "impact":
@@ -775,8 +667,6 @@ func requiresPatchJSONBody(path string) bool {
 	return false
 }
 
-// isWorkInfoPluginJSONBody は r が PUT /api/work-info-plugins/{id}/approval、
-// PUT /api/work-info-plugins/{id}/settings か POST /api/work-info-plugins/{id}/search かを返す
 func isWorkInfoPluginJSONBody(r *http.Request) bool {
 	suffix, ok := strings.CutPrefix(r.URL.Path, "/api/work-info-plugins/")
 	if !ok {
@@ -795,8 +685,6 @@ func isWorkInfoPluginJSONBody(r *http.Request) bool {
 	return false
 }
 
-// isWorkInfoFetchJSONPost は r が POST /api/videos/{id}/work-info-fetches か
-// POST /api/videos/{id}/work-info-fetches/{fetchId}/apply かを返す
 func isWorkInfoFetchJSONPost(r *http.Request) bool {
 	suffix, ok := strings.CutPrefix(r.URL.Path, "/api/videos/")
 	if r.Method != http.MethodPost || !ok {
@@ -812,8 +700,6 @@ func isWorkInfoFetchJSONPost(r *http.Request) bool {
 	return false
 }
 
-// groupItemsBodyPath は /api/groups/ の後ろを / で分けた段が、本文を持つ項目の POST
-// （{id}/items・{id}/items/remove・{id}/items/{itemId}/move）かを返す。
 func groupItemsBodyPath(segments []string) bool {
 	if len(segments) < 2 || segments[0] == "" || segments[1] != "items" {
 		return false
@@ -829,7 +715,6 @@ func groupItemsBodyPath(segments []string) bool {
 	return false
 }
 
-// isVideoJSONPut は PUT /api/videos/{id}/<rest> のうち本文を持つものかを返す。
 func isVideoJSONPut(rest string) bool {
 	switch rest {
 	case "progress", "display-name", "thumbnail-position", "work-info", "details":
@@ -838,8 +723,6 @@ func isVideoJSONPut(rest string) bool {
 	return false
 }
 
-// requiresCreditJSONBody は人物と団体の経路のうち本文を持つもの（POST /api/people、
-// PATCH /api/people/{id}、POST /api/people/{id}/merge と団体の同じ 3 つ）を返す
 func requiresCreditJSONBody(method, path string) bool {
 	var rest string
 	found := false
@@ -868,11 +751,8 @@ func requiresCreditJSONBody(method, path string) bool {
 	return false
 }
 
-// apiNotFound は /api/ 配下の未定義経路に JSON の 404 を返す。
-//
-// フォールバックを無条件にすると、綴りを誤った API 呼び出しに HTML が 200 で返り、
-// クライアント側では「JSON 解析の失敗」としてしか観測できなくなる。原因の切り分けが
-// 遅れるため、/api/ 配下だけは必ず JSON のエラーを返す。
+// Unknown API paths must return JSON 404, never SPA HTML 200 that obscures routing errors as JSON
+// parse failures.
 func apiNotFound(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusNotFound, gen.Error{
@@ -881,7 +761,6 @@ func apiNotFound(w http.ResponseWriter, r *http.Request) {
 	}, slog.Default())
 }
 
-// writeJSON は JSON 応答を書き出す。Content-Type は契約で固定されている。
 func writeJSON(w http.ResponseWriter, status int, payload any, logger *slog.Logger) {
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -898,23 +777,15 @@ func writeJSON(w http.ResponseWriter, status int, payload any, logger *slog.Logg
 	}
 }
 
-// キャッシュの指示は経路ごとに下で定める。
 const (
-	// cacheNoStore は一覧・詳細・スキャンの状態に付ける。取り込みで内容が
-	// 変わり続けるため、中間キャッシュに残してはならない。
+	// Mutable API data must not remain in intermediary caches.
 	cacheNoStore = "no-store"
-	// 動画本体に付ける値は、それを配信する stream.go に置く。
-	// cacheRevalidate はサムネイル・シークプレビュー・ホバープレビューの成功の応答に、
-	// 所有者にもゲストにも付ける。
-	// private で共有キャッシュに所有者の応答を残さず、no-cache で使うたびにサーバーへ
-	// 確かめさせる。ログアウト後や非公開にした後はその確かめで 404 になり、ブラウザの
-	// キャッシュから出続けない。内容が同じなら ETag で 304 になり、帯域はほぼ増えない。
+	// Artifact responses use private/no-cache so logout or visibility changes force reauthorization
+	// while unchanged ETags allow 304 responses.
 	cacheRevalidate = "private, no-cache"
 )
 
-// エラーの code の正本は api/openapi.yaml の Error.code である。gen.ErrorCode*
-// は task generate の出力なので、新しい種別は openapi.yaml へ足す。ここで別名を
-// 与えているのは呼び出し側を短く保つためだけで、値を決めてはいない。
+// Error codes come from api/openapi.yaml and task generate; aliases only shorten call sites.
 const (
 	codeNotFound                    = gen.ErrorCodeNotFound
 	codeInvalidRequest              = gen.ErrorCodeInvalidRequest
@@ -953,9 +824,7 @@ const (
 	codeActivityNotUndoable         = gen.ErrorCodeActivityNotUndoable
 )
 
-// エラーの reason の正本も api/openapi.yaml の ErrorReason である。生成された
-// 定数名は前置きを持たないので、ここで reason の別名を与えて呼び出し側で
-// 取り違えないようにする。
+// Error reasons likewise come from the schema; aliases distinguish generated unprefixed constants.
 const (
 	reasonNameIsTag                     = gen.ErrorReasonNameIsTag
 	reasonNameIsSynonym                 = gen.ErrorReasonNameIsSynonym
@@ -1017,45 +886,35 @@ const (
 	reasonTagKindNameTaken              = gen.ErrorReasonTagKindNameTaken
 )
 
-// writeError は JSON のエラーを書き出す。message は英語にし、OS や外部プログラムの
-// 自由文を含めない。
+// Error messages must be English and exclude arbitrary OS/external-program output.
 func (s *server) writeError(w http.ResponseWriter, status int, code gen.ErrorCode, message string) {
 	s.writeErrorBody(w, status, gen.Error{Code: code, Message: message})
 }
 
-// writeReasonError は reason を添えた JSON のエラーを書き出す。reason は契約の表の
-// 状況だけで使う。
 func (s *server) writeReasonError(w http.ResponseWriter, status int, code gen.ErrorCode, reason gen.ErrorReason, message string) {
 	s.writeErrorBody(w, status, gen.Error{Code: code, Reason: &reason, Message: message})
 }
 
-// writeErrorBody は組み立てたエラーの本文を書き出す。
 func (s *server) writeErrorBody(w http.ResponseWriter, status int, body gen.Error) {
-	// エラーもキャッシュさせない。存在しなかった経路や読めなかったディレクトリの
-	// 応答が残ると、状態が変わったあとも古い失敗を返しうる（PR #74 の指摘）。
-	// 成功側と違って呼び出し箇所が多いので、ここで一括して付ける。
+	// Centralize no-store on errors to prevent stale failures after state changes.
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, status, body, s.logger)
 }
 
-// notFound は対象が存在しないことを返す。実体を開けない場合もこれを使う。
-// 403 にしないのは、存在そのものを漏らさないためである。
+// Use the same 404 for missing and inaccessible media to avoid disclosing existence.
 func (s *server) notFound(w http.ResponseWriter, message string) {
 	s.writeError(w, http.StatusNotFound, codeNotFound, message)
 }
 
-// invalidRequest は要求の形式が不正であることを返す。
 func (s *server) invalidRequest(w http.ResponseWriter, message string) {
 	s.writeError(w, http.StatusBadRequest, codeInvalidRequest, message)
 }
 
-// invalidRequestReason は reason を添えて要求の形式が不正であることを返す。
 func (s *server) invalidRequestReason(w http.ResponseWriter, reason gen.ErrorReason, message string) {
 	s.writeReasonError(w, http.StatusBadRequest, codeInvalidRequest, reason, message)
 }
 
-// invalidRequestLimit は reason と上限値を添えて要求の形式が不正であることを返す。
-// limit はサーバーの定数から渡し、画面は上限を自分で持たない。
+// Limits come from server constants so the UI need not duplicate them.
 func (s *server) invalidRequestLimit(w http.ResponseWriter, reason gen.ErrorReason, limit int, message string) {
 	s.writeErrorBody(w, http.StatusBadRequest, gen.Error{
 		Code:    codeInvalidRequest,
@@ -1065,17 +924,15 @@ func (s *server) invalidRequestLimit(w http.ResponseWriter, reason gen.ErrorReas
 	})
 }
 
-// notFoundReason は reason を添えて対象が存在しないことを返す。
 func (s *server) notFoundReason(w http.ResponseWriter, reason gen.ErrorReason, message string) {
 	s.writeReasonError(w, http.StatusNotFound, codeNotFound, reason, message)
 }
 
-// conflictReason は reason を添えて今の状態では受け付けられないことを返す。
 func (s *server) conflictReason(w http.ResponseWriter, reason gen.ErrorReason, message string) {
 	s.writeReasonError(w, http.StatusConflict, codeConflict, reason, message)
 }
 
-// internalError は予期しない失敗を返す。原因は記録に残し、応答には出さない。
+// Log internal causes without exposing them in responses.
 func (s *server) internalError(w http.ResponseWriter, message string, err error) {
 	s.logger.Error(message, slog.Any("error", err))
 	s.writeError(w, http.StatusInternalServerError, codeInternal, message)

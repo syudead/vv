@@ -69,7 +69,6 @@ func TestApplyComfyUISettingsUpdate(t *testing.T) {
 	}
 }
 
-// モデルが保存されていなければ既定のモデルを使う。
 func TestComfyUISettingsEffectiveModel(t *testing.T) {
 	if got := (ComfyUISettings{}).EffectiveModel(); got != ComfyUIModelFlux2Klein {
 		t.Errorf("empty = %s", got)

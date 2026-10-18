@@ -64,7 +64,6 @@ func TestCheckMediaFolderPlacementRejectsContainment(t *testing.T) {
 			}
 		})
 	}
-	// 走査中は包含の有無によらず断る。
 	if err := CheckMediaFolderPlacement(true, nil, 0, filepath.Join(root, "music")); !errors.Is(err, ErrScanRunning) {
 		t.Fatalf("running scan error = %v, want ErrScanRunning", err)
 	}

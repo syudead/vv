@@ -19,8 +19,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 一覧 API の検索・絞り込み・並べ替えを、本物の保存層と経路をつないで確かめる。httpapi の単体テストは
-// 保存層を差し替えるので、条件どおりの項目が返ることはここで見る。
+// Verify filtering and sorting through the real store; HTTP unit tests replace that dependency.
 
 type listAPIFixture struct {
 	ctx     context.Context
@@ -48,8 +47,7 @@ func newListAPIFixture(t *testing.T) listAPIFixture {
 	return listAPIFixture{ctx: ctx, db: db, root: root, handler: handler}
 }
 
-// add は登録フォルダからの相対パス rel に動画を取り込む。durationMs が 0 より
-// 大きければ解析済みにする。
+// A positive duration marks the fixture as probed.
 func (f listAPIFixture) add(t *testing.T, rel, title string, durationMs int64) (int64, string) {
 	t.Helper()
 	key := "key-" + rel
@@ -91,7 +89,6 @@ func titles(page gen.VideoPage) []string {
 	return out
 }
 
-// tag はタグを1件作り、そのidを返す。
 func (f listAPIFixture) tag(t *testing.T, name string) int64 {
 	t.Helper()
 	created, err := f.db.Tags().CreateTag(f.ctx, name)
@@ -101,7 +98,6 @@ func (f listAPIFixture) tag(t *testing.T, name string) int64 {
 	return created.ID
 }
 
-// attach は tagID を videoID へ付ける。
 func (f listAPIFixture) attach(t *testing.T, videoID, tagID int64) {
 	t.Helper()
 	if _, _, err := f.db.Tags().AttachTagByID(f.ctx, []int64{videoID}, tagID); err != nil {
@@ -109,7 +105,6 @@ func (f listAPIFixture) attach(t *testing.T, videoID, tagID int64) {
 	}
 }
 
-// getIDs は GET /api/library/ids を呼ぶ。
 func (f listAPIFixture) getIDs(t *testing.T, target string) gen.VideoIdsResponse {
 	t.Helper()
 	rec := httptest.NewRecorder()
@@ -132,8 +127,6 @@ func tagNames(refs []gen.VideoTag) []string {
 	return out
 }
 
-// タグでの絞り込み（AND）・名前の自然順・missingTagIds・GET /api/library/ids・
-// タグ名での検索を、本物の保存層と経路をつないで確かめる
 func TestListVideosFiltersByTagWithStore(t *testing.T) {
 	f := newListAPIFixture(t)
 	tenID, _ := f.add(t, "10話.mp4", "10話", 1_000)
@@ -144,7 +137,6 @@ func TestListVideosFiltersByTagWithStore(t *testing.T) {
 	epTwo := f.tag(t, "2話")
 	travel := f.tag(t, "旅行")
 
-	// 「10話」の動画に両方のタグを付ける。もう1件は片方だけ。
 	f.attach(t, tenID, epTen)
 	f.attach(t, tenID, epTwo)
 	f.attach(t, travelID, travel)
@@ -156,32 +148,28 @@ func TestListVideosFiltersByTagWithStore(t *testing.T) {
 	if page.Items[0].Title != "10話" {
 		t.Fatalf("title = %q, want 10話", page.Items[0].Title)
 	}
-	// タグは名前の自然順（domain.CompareNatural）で並ぶ: "2話" < "10話"。
+	// Natural sorting places episode 2 before episode 10.
 	if want := []string{"2話", "10話"}; !slices.Equal(tagNames(page.Items[0].Tags), want) {
 		t.Errorf("tags = %q, want %q", tagNames(page.Items[0].Tags), want)
 	}
 
-	// 存在しない id は絞り込みから落ち、missingTagIds に返る。
 	page = f.get(t, "/api/videos?tag="+strconv.FormatInt(epTen, 10)+"&tag=999")
 	if page.MissingTagIds == nil || !slices.Equal(*page.MissingTagIds, []int64{999}) {
 		t.Fatalf("missingTagIds = %v, want [999]", page.MissingTagIds)
 	}
 
-	// query はタグの元の名前・シノニムにも照合する。題名に「旅行」を含まない
-	// 「旅行記」ではなく、タグに「旅行」を持つ動画が当たる。
+	// The query also matches original tag names and synonyms, independently of video titles.
 	page = f.get(t, "/api/videos?query="+url.QueryEscape("旅行"))
 	if len(page.Items) != 1 || page.Items[0].Title != "旅行記" {
 		t.Fatalf("query=旅行: items = %+v, want 旅行記（タグ一致）", page.Items)
 	}
 
-	// GET /api/library/ids は同じ条件の全件の id を返す。
 	ids := f.getIDs(t, "/api/library/ids?tag="+strconv.FormatInt(epTen, 10)+"&tag="+strconv.FormatInt(epTwo, 10))
 	if want := []int64{tenID}; !slices.Equal(ids.Ids, want) {
 		t.Errorf("ids = %v, want %v", ids.Ids, want)
 	}
 }
 
-// フォルダの配下検索でも、題名に語を含まずタグに語を持つ動画が当たる
 func TestListFolderVideosSearchesByTagNameWithStore(t *testing.T) {
 	f := newListAPIFixture(t)
 	videoID, _ := f.add(t, "A/x.mp4", "x", 1_000)
@@ -225,7 +213,6 @@ func TestListVideosAppliesQueryWatchAndSort(t *testing.T) {
 	}
 }
 
-// 受け入れ条件 17: root/A で配下すべてを検索すると x と y が返り、C の z は返らない。
 func TestListFolderVideosSearchesSubtreeWithStore(t *testing.T) {
 	f := newListAPIFixture(t)
 	f.add(t, "A/x 京都.mp4", "x 京都", 1_000)
@@ -244,7 +231,6 @@ func TestListFolderVideosSearchesSubtreeWithStore(t *testing.T) {
 		t.Errorf("x folder = %+v, want A", folder)
 	}
 
-	// 既定の範囲（直下）では、孫のフォルダの y は返らない。
 	page = f.get(t, base)
 	if want := []string{"x 京都"}; !slices.Equal(titles(page), want) || page.Total != 1 {
 		t.Errorf("direct titles = %q (total %d), want %q", titles(page), page.Total, want)

@@ -11,9 +11,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 編集を始める元を、
-// 偽のコマの取り出しと偽の適用した画像で確かめる。
-
 var thumbnailStart = domain.ThumbnailEditStart{Source: domain.ThumbnailEditFromThumbnail}
 
 func (f *editsFixture) startFrom(t *testing.T, video domain.Video, start domain.ThumbnailEditStart) domain.ThumbnailEdit {
@@ -25,7 +22,7 @@ func (f *editsFixture) startFrom(t *testing.T, video domain.Video, start domain.
 	return edit
 }
 
-// wantSource は始めたセッションの元と、コマを取った位置（nil は保存した画像）を確かめる。
+// A nil position identifies a saved image rather than a video frame.
 func wantSource(t *testing.T, edit domain.ThumbnailEdit, source domain.ThumbnailEditSource, positionMs *int64) {
 	t.Helper()
 	wantState(t, edit, domain.ThumbnailEditReady)
@@ -42,7 +39,6 @@ func wantSource(t *testing.T, edit domain.ThumbnailEdit, source domain.Thumbnail
 
 func ms(value int64) *int64 { return &value }
 
-// コマから始めると、その位置で取り出してその位置を返す。
 func TestThumbnailEditStartFromFrame(t *testing.T) {
 	f := newEditsFixture(t)
 	edit := f.startFrom(t, editVideo(1), frameStart(1_500))
@@ -52,7 +48,7 @@ func TestThumbnailEditStartFromFrame(t *testing.T) {
 	}
 }
 
-// コマから始めるのに位置が無ければ、尺の外と同じ誤りで、コマを取りに行かない。
+// A missing frame position fails before extraction, like an out-of-range position.
 func TestThumbnailEditStartFromFrameNeedsPosition(t *testing.T) {
 	f := newEditsFixture(t)
 	_, err := f.edits.Start(context.Background(), editVideo(1), "/a", domain.ThumbnailEditStart{Source: domain.ThumbnailEditFromFrame})
@@ -64,8 +60,7 @@ func TestThumbnailEditStartFromFrameNeedsPosition(t *testing.T) {
 	}
 }
 
-// 画像を適用していれば、保存した元の画像を PNG にして、その画素の大きさで始め、位置は持たない。
-// コマのルートはその PNG を返す。
+// Saved originals retain their dimensions and have no video position.
 func TestThumbnailEditStartFromStoredSource(t *testing.T) {
 	f := newEditsFixture(t)
 	video := editVideo(1)
@@ -90,7 +85,7 @@ func TestThumbnailEditStartFromStoredSource(t *testing.T) {
 	}
 }
 
-// 元の画像を持たない古い行では、代表サムネイルから始める。
+// Legacy rows without originals fall back to the displayed thumbnail.
 func TestThumbnailEditStartFromStoredImageWithoutSource(t *testing.T) {
 	f := newEditsFixture(t)
 	video := editVideo(1)
@@ -103,7 +98,7 @@ func TestThumbnailEditStartFromStoredImageWithoutSource(t *testing.T) {
 	}
 }
 
-// 保存した画像を読めなければ thumbnail_frame_unavailable で、読み出しの誤りはそのまま返す。
+// Unreadable images become thumbnail_frame_unavailable; storage errors propagate unchanged.
 func TestThumbnailEditStartFromUnreadableStoredImage(t *testing.T) {
 	f := newEditsFixture(t)
 	video := editVideo(1)
@@ -119,8 +114,7 @@ func TestThumbnailEditStartFromUnreadableStoredImage(t *testing.T) {
 	}
 }
 
-// 画像を適用しておらず位置を指定していれば、その位置で取り出してその位置を返す。位置は保存先から
-// 画像と同じ時点のものを読み、要求が先に読んだ動画の古い位置は使わない。
+// Read the position and image from the same storage snapshot, ignoring stale video metadata.
 func TestThumbnailEditStartFromRecordedPosition(t *testing.T) {
 	f := newEditsFixture(t)
 	video := editVideo(1)
@@ -134,8 +128,7 @@ func TestThumbnailEditStartFromRecordedPosition(t *testing.T) {
 	}
 }
 
-// どちらも無ければサムネイルジョブと同じ自動の位置で取り出し、そこで取れなければ先頭のコマを
-// 取り出して位置 0 を返す。どちらでも取れなければ thumbnail_frame_unavailable である。
+// Use the thumbnail job fallback order: automatic position, then frame zero.
 func TestThumbnailEditStartFromAutomaticPosition(t *testing.T) {
 	f := newEditsFixture(t)
 	edit := f.startFrom(t, editVideo(1), thumbnailStart)
@@ -159,7 +152,7 @@ func TestThumbnailEditStartFromAutomaticPosition(t *testing.T) {
 	}
 }
 
-// 始めたあとに元に戻しても、セッションの画像は変わらず、実行もその画像を送る。
+// A session retains its source image even after the thumbnail is reverted.
 func TestThumbnailEditKeepsItsImageAfterRevert(t *testing.T) {
 	f := newEditsFixture(t)
 	video := editVideo(1)

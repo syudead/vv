@@ -14,8 +14,6 @@ import VideoDetailsEditor from "./detailsEditor/VideoDetailsEditor";
 import type { PlayerControls } from "./playerControls";
 import VideoPage from "./VideoPage";
 
-// 動画ページの作品情報の行と、そこから開く全画面の編集画面。
-
 vi.mock("./VideoPlayer", () => ({
   default: function VideoPlayerMock(props: {
     onControls: (controls: PlayerControls | null) => void;
@@ -88,7 +86,6 @@ function person(id: number, name: string) {
   };
 }
 
-/** server は経路ごとの応答を差し替えられる偽のサーバーである。 */
 const server = {
   video: withInfo,
   details: vi.fn<(body: unknown) => Response>(),
@@ -195,7 +192,6 @@ describe("VideoPage work information", () => {
     ).toEqual(["CodeAB-123", "Released2024-03-01", "PerformerAlice"]);
     expect(within(row).queryByText("Recorded")).toBeNull();
     expect(within(row).queryByText("Links")).toBeNull();
-    // 行の順: ファイルの行、作品情報の行、技術の行。
     const facts = screen.getByRole("list", { name: "File details" });
     const technical = screen.getByRole("list", { name: "Technical details" });
     expect(
@@ -257,7 +253,6 @@ describe("VideoPage work information", () => {
     expect(field("Code").value).toBe("AB-123");
     expect(field("Released").value).toBe("2024-03-01");
     expect(screen.getByRole("button", { name: "Remove Alice" })).toBeDefined();
-    // 入口から開いたときは、ページの Video から始めて読み直さない。
     expect(server.requests.filter((r) => r === "GET /api/videos/7")).toHaveLength(1);
   });
 
@@ -293,8 +288,7 @@ describe("VideoPage work information", () => {
     await openPage();
     const user = await openEditor();
 
-    // 空の欄には貼り付けて 1 回で入れる。1 文字ずつ打つと編集画面を打鍵ごとに描き直し、
-    // CI の遅い走りで 5 秒の上限に近づく。送る値はどちらでも同じ。
+    // Paste once to avoid rerendering on every keystroke and approaching the CI timeout.
     for (const [name, value] of [
       ["Name", "New title"],
       ["Code", "XY-9"],
@@ -435,7 +429,7 @@ describe("VideoPage work information", () => {
   });
 
   it("ページの題名のその場編集は今も PUT /api/videos/{id}/display-name を送り、作品情報の行を残す", async () => {
-    // display-name の応答は契約上 workInfo を載せない。
+    // The display-name response omits workInfo by contract.
     server.displayName.mockImplementation(() =>
       json({ ...plain, title: "Quick", displayName: "Quick" }),
     );

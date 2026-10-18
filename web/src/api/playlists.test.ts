@@ -84,8 +84,6 @@ describe("playlists API", () => {
   });
 
   it("listAllPlaylists は version が最初のページと違うページを捨て、最初のページから読み直す", async () => {
-    // 1 ページ目の後に「夜」が変わって先頭へ動いた。2 ページ目は version が違うので、読み直した
-    // 一覧には「夜」が先頭に入り、何も欠けない。
     const other = { ...summary, id: 4, name: "夜" };
     const fetchMock = vi
       .fn<typeof fetch>()
@@ -112,7 +110,6 @@ describe("playlists API", () => {
     let calls = 0;
     const fetchMock = vi.fn<typeof fetch>(() => {
       calls += 1;
-      // どの読み直しでも 2 ページ目の version が 1 ページ目と違う。
       return Promise.resolve(
         json({ items: [summary], total: 2, version: String(calls), nextCursor: "c" }),
       );

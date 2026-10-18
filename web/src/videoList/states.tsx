@@ -11,14 +11,9 @@ import { LoadMoreRow } from "../ui/patterns/load-more-row";
 import { Button } from "../ui/shadcn/button";
 import { Skeleton } from "../ui/shadcn/skeleton";
 
-// 一覧の状態（空・失敗・読み込み中）。画面の型の状態のブロック（web/src/ui/patterns）を、
-// 一覧の文言で埋めて使う（web/registry/rules/patterns.md の States）。題は見出し（h2）に
-// して、画面の見出しの並びに入れる。
+// Use h2 state titles so screen-reader heading navigation can reach them; see web/registry/rules/patterns.md, States.
 
-/**
- * EmptyState は本体の位置に出す空の状態である。`tone="danger"` は印を destructive の色に
- * する（画面ごと出せないとき）。
- */
+/** Use danger when the entire screen is unavailable. */
 export function EmptyState({
   icon: Icon,
   title,
@@ -47,10 +42,7 @@ export function EmptyState({
   );
 }
 
-/**
- * GuestEmpty はゲストに公開の動画が1本も無いときの状態である。取り込みや設定の
- * 代わりに、ログインへの入口を置く。ライブラリとフォルダ画面の最上位で同じ文言を使う。
- */
+/** Offer guests login rather than owner-only import or settings actions. */
 export function GuestEmpty() {
   const location = useLocation();
   return (
@@ -67,7 +59,6 @@ export function GuestEmpty() {
   );
 }
 
-/** NoMatches は条件に一致しない理由と次の操作を示す。 */
 export function NoMatches({ onSearch }: { onSearch?: () => void }) {
   return (
     <EmptyState
@@ -85,7 +76,6 @@ export function NoMatches({ onSearch }: { onSearch?: () => void }) {
   );
 }
 
-/** LoadFailed は最初のページを取得できなかったときに本体の位置に出す失敗である。 */
 export function LoadFailed({ reason, onRetry }: { reason: UiText; onRetry: () => void }) {
   return (
     <ErrorState
@@ -97,10 +87,7 @@ export function LoadFailed({ reason, onRetry }: { reason: UiText; onRetry: () =>
   );
 }
 
-/**
- * LoadMoreFailed は続きのページを取得できなかったときに一覧の下へ出す一行である。
- * 読み込んだ分はそのまま残し、続きだけを取り直させる。
- */
+/** Retain loaded rows and retry only the failed continuation. */
 export function LoadMoreFailed({
   reason,
   onRetry,
@@ -118,7 +105,6 @@ export function LoadMoreFailed({
   );
 }
 
-/** CardSkeleton はカードの格子（Grid）の中に並べる、読み込み中のカードの形である。 */
 export function CardSkeleton({ count }: { count: number }) {
   return (
     <>

@@ -1,13 +1,11 @@
 -- +goose Up
--- フォルダの索引のグループの表を落とす。
--- グループは groups と group_items が持ち、この 2 表はもう誰も読まない。
+-- groups and group_items replace these obsolete index tables.
 
 drop table folder_group_members;
 drop table folder_groups;
 
 -- +goose Down
--- 表は空で戻す。前の版は索引の作り直しで埋めるので、索引を古い（stale）と記録して次の起動で
--- 作り直させる。
+-- Restore empty index tables and mark them stale so the previous application rebuilds them at startup.
 create table folder_groups (
     id              integer primary key,
     path_key        text    not null unique,

@@ -1,8 +1,5 @@
 package store
 
-// 直近の取り込みの問題（scan_issues）を記録・消去・読み出す操作
-//
-
 import (
 	"context"
 	"database/sql"
@@ -13,8 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// bumpIssuesRevision は直近の走査の issues_revision を1増やす。問題の行を入れる・
-// 消す取引の中で呼ぶ。件数が変わらない変化でも、画面がこの番号で一覧を読み直せる。
+// Advance issue revision for every issue change, including changes that preserve the count.
 func bumpIssuesRevision(ctx context.Context, q queryExecer) error {
 	if _, err := q.ExecContext(ctx, `update scans set issues_revision = issues_revision + 1
 		where id = (select max(id) from scans)`); err != nil {
@@ -23,9 +19,7 @@ func bumpIssuesRevision(ctx context.Context, q queryExecer) error {
 	return nil
 }
 
-// videosHaveIssues は、直近の走査に videoIDs のどれかの問題の行があるかを返す。
-// 所在を足す・消す・付け替える取引は、問題のある動画の所在が変わると一覧に出る
-// ファイル名とフォルダが変わるので、これが真なら issuesChanged を記録する。
+// Location changes alter issue labels and folders; mark issuesChanged when an affected video has issues.
 func videosHaveIssues(ctx context.Context, q queryExecer, videoIDs ...int64) (bool, error) {
 	if len(videoIDs) == 0 {
 		return false, nil
@@ -48,9 +42,7 @@ func videosHaveIssues(ctx context.Context, q queryExecer, videoIDs ...int64) (bo
 	return found, nil
 }
 
-// recordScanIssue は直近の走査に問題を1行入れる。同じ動画（未登録ならパス）と種類の
-// 行があれば入れない。走査が1つも無ければ何もしない。入れたときだけ番号を増やす。
-// videoID が 0 なら未登録のファイルとして記録する。
+// Deduplicate issues by video or unregistered path and kind; no scan means no record, and zero video ID means unregistered.
 func recordScanIssue(
 	ctx context.Context, q queryExecer, videoID int64, path string, kind domain.ScanIssueKind, now int64,
 ) error {
@@ -58,7 +50,7 @@ func recordScanIssue(
 	if videoID != 0 {
 		video = videoID
 	}
-	// 動画の行がもう無ければ、未登録のファイルとして記録する。
+	// A missing video is recorded as an unregistered file.
 	res, err := q.ExecContext(ctx, `insert into scan_issues (scan_id, video_id, path, kind, created_at)
 		select s.id, (select id from videos where id = ?), ?, ?, ? from (select max(id) as id from scans) s
 		where s.id is not null
@@ -76,16 +68,13 @@ func recordScanIssue(
 	return bumpIssuesRevision(ctx, q)
 }
 
-// clearScanIssues は直近の走査から、その動画の kinds の問題を消す。同じ段階が後で
-// 成功したとき、結果を書く取引で呼ぶ。消したときだけ番号を増やす。
+// Clear stage issues in the successful-result transaction; advance revision only if rows were removed.
 func clearScanIssues(ctx context.Context, q queryExecer, videoID int64, kinds ...domain.ScanIssueKind) error {
 	_, err := removeScanIssues(ctx, q, videoID, kinds...)
 	return err
 }
 
-// removeScanIssues は clearScanIssues と同じことをし、問題を1件でも消したかを返す。
-// 仕事の成否の記録を通らずに問題を消す書き手が、確定後に scan の知らせを出すかを
-// 決めるのに使う。
+// Report whether anything changed so writes outside job completion can emit a scan event.
 func removeScanIssues(ctx context.Context, q queryExecer, videoID int64, kinds ...domain.ScanIssueKind) (bool, error) {
 	if len(kinds) == 0 {
 		return false, nil
@@ -110,7 +99,6 @@ func removeScanIssues(ctx context.Context, q queryExecer, videoID int64, kinds .
 	return true, bumpIssuesRevision(ctx, q)
 }
 
-// clearFailedIssue は job の段階の *_failed を消す。その段階の成功を書いた取引で呼ぶ。
 func clearFailedIssue(ctx context.Context, q queryExecer, kind domain.JobKind, videoID int64) error {
 	issue, ok := domain.FailedIssueKind(kind)
 	if !ok {
@@ -119,9 +107,7 @@ func clearFailedIssue(ctx context.Context, q queryExecer, kind domain.JobKind, v
 	return clearScanIssues(ctx, q, videoID, issue)
 }
 
-// applySubstitution は段階 kind の成功を書いた取引で、代用の行を入れる・消す。
-// 代用したなら入れ、代用せずに作り直したなら消す。分からない（既存の生成物を採用した）
-// ときは変えない。
+// Successful substitutions add issues, full regeneration clears them, and unknown provenance leaves them unchanged.
 func applySubstitution(
 	ctx context.Context, q queryExecer, kind domain.JobKind, job domain.Job, substitution domain.Substitution,
 ) error {
@@ -139,8 +125,6 @@ func applySubstitution(
 	return nil
 }
 
-// RecordScanIssue は走査が1つのファイルで出会った失敗を、直近の取り込みの問題として
-// 記録する。走査が知っている既存の動画があれば、その動画の問題になる。
 func (s *ScanStore) RecordScanIssue(ctx context.Context, issue domain.ScanFileIssue) error {
 	if !issue.Kind.Valid() || !issue.Kind.FromScan() {
 		return fmt.Errorf("not a scan issue kind: %q", issue.Kind)
@@ -159,9 +143,7 @@ func (s *ScanStore) RecordScanIssue(ctx context.Context, issue domain.ScanFileIs
 	return nil
 }
 
-// ScanIssueRecords は走査 scanID の問題を、動画（未登録ならパス）ごとにまとめて返す。
-// 動画の表示の所在は、登録フォルダの中の所在のうちパスの最小のもの（一覧の代表と
-// 同じ）である。そうした所在が無い動画は Path を空で返す。
+// Use the smallest registered path for each video; no registered location yields an empty path.
 func (s *ScanStore) ScanIssueRecords(ctx context.Context, scanID int64) ([]domain.ScanIssueRecord, error) {
 	rows, err := s.db.sql.QueryContext(ctx, `
 		select i.video_id,
@@ -201,8 +183,7 @@ func (s *ScanStore) ScanIssueRecords(ctx context.Context, scanID int64) ([]domai
 	return out, nil
 }
 
-// ScanIssues は走査 scanID の問題を、表示の形にまとめて並べて返す。所在がどの登録フォルダにも
-// 含まれない件は除く。
+// ScanIssues excludes locations outside all registered folders.
 func (s *ScanStore) ScanIssues(ctx context.Context, scanID int64) ([]domain.ScanIssue, error) {
 	records, err := s.ScanIssueRecords(ctx, scanID)
 	if err != nil {

@@ -10,7 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// listGroupNames は ListGroups を cursor が尽きるまで limit 件ずつ読み、グループの名前を順に返す。
 func listGroupNames(t *testing.T, db *DB, audience domain.Audience, query string, limit int) []string {
 	t.Helper()
 	var names []string
@@ -35,8 +34,6 @@ func listGroupNames(t *testing.T, db *DB, audience domain.Audience, query string
 	return nil
 }
 
-// 一覧はどの深さのグループも自然な名前の順に並べ、見せる動画の無いグループを除く。limit 件ずつの
-// カーソルで、見せないグループが続いても抜けも重複も無く読み切れる（GET /api/groups）。
 func TestListGroupsPagesInNameOrderSkippingHiddenGroups(t *testing.T) {
 	db, _ := itemsFixture(t)
 	inner := insertGroup(t, db, "Mix 2", itemKeyOf("/media/solo.mp4"))
@@ -55,8 +52,6 @@ func TestListGroupsPagesInNameOrderSkippingHiddenGroups(t *testing.T) {
 	}
 }
 
-// q は前後の空白を除き、大文字小文字を区別せずに名前の部分を照らす。Unicode の case folding で
-// 同じ文字（`Σ`・`σ`・`ς`）も一致する。
 func TestListGroupsFiltersByNameIgnoringCase(t *testing.T) {
 	db, _ := itemsFixture(t)
 	insertGroup(t, db, "Summer Trip", itemKeyOf("/media/solo.mp4"))
@@ -79,7 +74,6 @@ func TestListGroupsFiltersByNameIgnoringCase(t *testing.T) {
 	}
 }
 
-// ゲストには公開の動画のあるグループだけを返し、所有者の値（視聴・お気に入り）を読まない。
 func TestListGroupsForGuestReadsPublicVideosOnly(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -101,7 +95,6 @@ func TestListGroupsForGuestReadsPublicVideosOnly(t *testing.T) {
 	}
 }
 
-// 読めないカーソルとほかの一覧のカーソルは ErrInvalidCursor である。
 func TestListGroupsRejectsUnreadableCursor(t *testing.T) {
 	db, _ := itemsFixture(t)
 	for _, bad := range []string{

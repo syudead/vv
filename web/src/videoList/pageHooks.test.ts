@@ -4,8 +4,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readViewPreferences } from "../preferences/viewPreferences";
 import { useViewControls } from "./pageHooks";
 
-// 1 つのものを開いた一覧の画面（グループ、スマートフォルダ）の表示形式と大きさ。
-
 afterEach(() => {
   localStorage.clear();
 });

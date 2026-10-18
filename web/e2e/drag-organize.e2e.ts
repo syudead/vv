@@ -9,18 +9,8 @@ import {
 
 import { ownerStorageState } from "./owner-account";
 
-// ドラッグでの整理を、実サーバーと実メディアに
-// 通す。動画は run-e2e.mjs が generateDragOrganizeFixtures で作る 2 秒の動画で、題名は
-// media-fixtures.mjs の DRAG_ORGANIZE_VIDEOS と同じ。落とし方の規則、取り消しの像、送る本文と、
-// 束ね・マージ・入れ子・移動・複数の選択の結果（受け入れ条件 3〜7・9）はドメイン・ストア・
-// ハンドラー・ページのテストが持つので、ここでは重ねない。残すのは、本物の配置とポインタで
-// 間に落とす並べ替え（1）、カードの上に落としてメニューを開く「Make a group」（2）、タッチの
-// 長押し（docs/design-docs/web-testing.md の Test levels）である。括弧の番号は親 Issue の
-// 受け入れ条件である。
-//
-// テストの組ごとに題名の頭（「並べ確認」など）を変え、ライブラリの検索でその組だけを出す。
-// グループは API で作り、ドラッグは画面で行う。取り消し（8）・再読み込みの後の順・グループの
-// カードのサムネイルは、ストア・ハンドラー・ページのテストが持つ。
+// Exercise real pointer geometry for reorder, Make a group, and touch long-press; lower-level suites cover organizing rules.
+// Fixture title prefixes isolate each scenario; see docs/design-docs/web-testing.md.
 
 interface MediaFolder {
   id: number;
@@ -43,7 +33,7 @@ interface LibraryGroup {
 const origin = "http://127.0.0.1:15173";
 const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
 
-// media-fixtures.mjs の DRAG_ORGANIZE_VIDEOS と同じ題名。
+// Keep titles aligned with DRAG_ORGANIZE_VIDEOS in media-fixtures.mjs.
 const reorderVideos = ["並べ確認の1", "並べ確認の2", "並べ確認の3"] as const;
 const makeA = "作る確認のA";
 const makeB = "作る確認のB";
@@ -51,7 +41,7 @@ const touchVideo = "タッチ確認の1";
 const touchTarget1 = "タッチ確認の先1";
 const allTitles = [...reorderVideos, makeA, makeB, touchVideo, touchTarget1];
 
-// テストが API で作るグループ。「作る確認のB」は「Make a group」が B の題名で作るグループ。
+// Include the group named after video B by Make a group.
 const reorderGroup = "並べ確認のグループ";
 const touchGroup = "タッチ確認の先";
 const groupNames = [reorderGroup, makeB, touchGroup];
@@ -94,7 +84,7 @@ async function waitForScan(request: APIRequestContext, scanId: number) {
     .toBe("done");
 }
 
-/** readVideos は API から、題名に「確認の」を含む動画をすべて題名で引けるように読む。 */
+/** Index fixture videos by title. */
 async function readVideos(request: APIRequestContext): Promise<Map<string, Video>> {
   const found = new Map<string, Video>();
   let cursor: string | undefined;
@@ -110,7 +100,7 @@ async function readVideos(request: APIRequestContext): Promise<Map<string, Video
   return found;
 }
 
-/** waitForVideos はすべての動画が読み込まれ、サムネイルの生成を待たなくなるまで待つ。 */
+/** Wait for import and thumbnail generation to finish. */
 async function waitForVideos(request: APIRequestContext) {
   await expect
     .poll(
@@ -128,7 +118,6 @@ async function waitForVideos(request: APIRequestContext) {
     .toBe(true);
 }
 
-/** groupsNamed は API から、name という名前のグループをすべて読む。 */
 async function groupsNamed(request: APIRequestContext, name: string) {
   const response = await request.get(
     `/api/groups?limit=200&q=${encodeURIComponent(name)}`,
@@ -139,7 +128,7 @@ async function groupsNamed(request: APIRequestContext, name: string) {
   );
 }
 
-/** dissolveAll は name のグループをすべて解散する。前の試行が残したものも消す。 */
+/** Remove all matching groups, including leftovers from retries. */
 async function dissolveAll(request: APIRequestContext) {
   for (const name of groupNames) {
     for (const group of await groupsNamed(request, name)) {
@@ -151,7 +140,6 @@ async function dissolveAll(request: APIRequestContext) {
   }
 }
 
-/** createGroup は API で、動画 `titles` からグループを作る。 */
 async function createGroup(
   request: APIRequestContext,
   name: string,
@@ -164,14 +152,12 @@ async function createGroup(
   expect(response.status()).toBe(201);
 }
 
-/** videoCard は一覧の、title の動画のカード（article）である。 */
 function videoCard(page: Page, title: string): Locator {
   return page.locator("article[data-video-id]").filter({
     has: page.locator("h3", { hasText: new RegExp(`^${escapeRegExp(title)}$`) }),
   });
 }
 
-/** groupCard は一覧の、name のグループのカード（article）である。 */
 function groupCard(page: Page, name: string): Locator {
   return page.locator("article[data-group-id]").filter({
     has: page.getByRole("link", {
@@ -180,12 +166,11 @@ function groupCard(page: Page, name: string): Locator {
   });
 }
 
-/** dragCard はドラッグの層のカード（落とした先の印を重ねる包み）である。 */
+/** The drag-layer wrapper includes the drop indicator. */
 function dragCard(card: Locator): Locator {
   return card.page().locator("[data-drag-card]").filter({ has: card });
 }
 
-/** cardTitles は格子の動画のカードの、並びのままの題名である。 */
 async function cardTitles(page: Page): Promise<string[]> {
   return page
     .locator("article[data-video-id] h3")
@@ -196,12 +181,10 @@ function notifications(page: Page): Locator {
   return page.getByRole("region", { name: /Notifications/ });
 }
 
-/** toast は画面に出た知らせのうち、text のものである。 */
 function toast(page: Page, text: string | RegExp): Locator {
   return notifications(page).getByText(text, { exact: true });
 }
 
-/** organized は次の POST /api/organize/{kind} の答えを待つ。 */
 function organized(page: Page, kind: string) {
   return page.waitForResponse(
     (response) =>
@@ -215,22 +198,17 @@ interface Point {
   y: number;
 }
 
-/** pointIn は要素の箱の中の、幅と高さに対する割合 (fx, fy) の点である。 */
 async function pointIn(locator: Locator, fx = 0.5, fy = 0.5): Promise<Point> {
   const box = await locator.boundingBox();
   if (box === null) throw new Error("the element has no box");
   return { x: box.x + box.width * fx, y: box.y + box.height * fy };
 }
 
-/** preview はポインタに付いてくる写しである。 */
 function preview(page: Page): Locator {
   return page.locator("[data-drag-preview]");
 }
 
-/**
- * mouseLift はカード `card` のリンク（サムネイル）をマウスで押して 8 px より動かし、写しが
- * 出るのを待つ。離すのは mouseDrop。
- */
+/** Move beyond the 8 px activation threshold and wait for the drag preview; mouseDrop releases it. */
 async function mouseLift(card: Locator) {
   const page = card.page();
   const start = await pointIn(card.getByRole("link").first());
@@ -240,17 +218,13 @@ async function mouseLift(card: Locator) {
   await expect(preview(page)).toBeVisible();
 }
 
-/** mouseMoveTo は持ち上げたままポインタを `point` まで動かす。 */
 async function mouseMoveTo(page: Page, point: Point) {
   await page.mouse.move(point.x, point.y, { steps: 12 });
-  // 最後の 1 歩で当たり判定をもう一度走らせ、印を今の場所に合わせる。
+  // Trigger collision detection once more at the final position.
   await page.mouse.move(point.x + 1, point.y + 1);
 }
 
-/**
- * dropOnto は `source` をマウスで持ち上げ、`target` の真ん中に運ぶ。落とす前に、落とした先の
- * カードに札 `label` が出るのを確かめてから離す。
- */
+/** Release only after the target displays the expected drop label. */
 async function dropOnto(source: Locator, target: Locator, label: string) {
   const page = source.page();
   await mouseLift(source);
@@ -259,14 +233,12 @@ async function dropOnto(source: Locator, target: Locator, label: string) {
   await page.mouse.up();
 }
 
-/** menuItem は落とした先に開いたメニューの、name の項目である。 */
 async function menuItem(page: Page, target: string, name: string): Promise<Locator> {
   const menu = page.getByRole("menu");
   await expect(menu).toContainText(`Dropped on "${target}"`);
   return menu.getByRole("menuitem", { name, exact: true });
 }
 
-/** openGroupPage はライブラリの検索から name のグループのカードを押し、そのページを開く。 */
 async function openGroupPage(page: Page, query: string, name: string) {
   await page.goto(librarySearch(query));
   await groupCard(page, name).getByRole("link").first().click();
@@ -274,7 +246,7 @@ async function openGroupPage(page: Page, query: string, name: string) {
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 }
 
-/** Touch は CDP で 1 本の指のタッチを送る（Playwright の touchscreen は tap しか無い）。 */
+/** Use CDP for single-finger gestures; Playwright touchscreen only supports taps. */
 class Touch {
   private readonly cdp: CDPSession;
 
@@ -321,7 +293,7 @@ test.describe.serial("drag organize", () => {
     expect(scan.status()).toBe(202);
     await waitForScan(request, ((await scan.json()) as { id: number }).id);
     await waitForVideos(request);
-    // CI のリトライは前の試行のグループを見るので、作り直す前に消す。
+    // CI retries reuse the server, so remove previous groups first.
     await dissolveAll(request);
 
     await createGroup(request, reorderGroup, reorderVideos);
@@ -404,7 +376,7 @@ test.describe.serial("drag organize", () => {
       const sent = organized(page, "move");
       const start = await pointIn(source.getByRole("link").first());
       await touch.start(start);
-      // 200 ms の長押しで持ち上がる。
+      // The touch activation delay is 200 ms.
       await expect(preview(page)).toBeVisible();
       const end = await pointIn(target, 0.5, 0.3);
       await touch.moveTo(start, end);

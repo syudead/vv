@@ -3,9 +3,7 @@ import type * as React from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の alert（radix-nova）を vv のトークンで着せたもの。区画の中の失敗・注意・案内
-// （web/registry/rules/components.md「Alert」）。上流の default と destructive に、vv の状態の
-// 役割（tokens.css の warning・success）を同じ形で足す。
+// Adapted from shadcn/ui radix-nova with shared warning and success roles; see components.md, Alert.
 
 const alertVariants = cva(
   "group/alert relative grid w-full gap-0.5 rounded-lg border px-3 py-2 text-left text-sm has-data-[slot=alert-action]:pr-16 has-[>svg]:grid-cols-[auto_1fr] has-[>svg]:gap-x-2 *:[svg]:row-span-2 *:[svg]:translate-y-0.5 *:[svg]:text-current *:[svg:not([class*='size-'])]:size-4",

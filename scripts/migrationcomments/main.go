@@ -34,24 +34,34 @@ func main() {
 	}
 }
 
-// Only whole ordinary line comments may change. Preserve SQL bytes, blank lines,
-// goose directives, block comments and text inside multiline quoted values.
+// Only ordinary line comments may change. Preserve SQL bytes, inline line endings,
+// blank lines, goose directives, block comments and quoted values.
 func withoutCommentLines(sql []byte) []byte {
 	var out []byte
 	var quote byte
 	block := false
 	for _, line := range bytes.SplitAfter(sql, []byte("\n")) {
-		trimmed := strings.TrimSpace(string(line))
-		if quote == 0 && !block && strings.HasPrefix(trimmed, "--") && !strings.Contains(strings.ToLower(trimmed), "+goose") {
+		var comment int
+		quote, block, comment = nextState(line, quote, block)
+		if comment >= 0 && !strings.Contains(strings.ToLower(string(line[comment:])), "+goose") {
+			prefix := line[:comment]
+			if len(bytes.TrimSpace(prefix)) == 0 {
+				continue
+			}
+			out = append(out, prefix...)
+			if bytes.HasSuffix(line, []byte("\r\n")) {
+				out = append(out, '\r', '\n')
+			} else if bytes.HasSuffix(line, []byte("\n")) {
+				out = append(out, '\n')
+			}
 			continue
 		}
 		out = append(out, line...)
-		quote, block = nextState(line, quote, block)
 	}
 	return out
 }
 
-func nextState(line []byte, quote byte, block bool) (byte, bool) {
+func nextState(line []byte, quote byte, block bool) (byte, bool, int) {
 	for i := 0; i < len(line); i++ {
 		c := line[i]
 		var next byte
@@ -73,7 +83,7 @@ func nextState(line []byte, quote byte, block bool) (byte, bool) {
 				}
 			}
 		case c == '-' && next == '-':
-			return quote, block
+			return quote, block, i
 		case c == '/' && next == '*':
 			block = true
 			i++
@@ -83,5 +93,5 @@ func nextState(line []byte, quote byte, block bool) (byte, bool) {
 			quote = ']'
 		}
 	}
-	return quote, block
+	return quote, block, -1
 }

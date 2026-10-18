@@ -3,8 +3,7 @@ import type * as React from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の empty（radix-nova）を vv のトークンで着せたもの。一覧や区画に中身が無いときの
-// 区画（web/registry/rules/components.md「Empty」）。
+// Adapted from shadcn/ui radix-nova; see web/registry/rules/components.md, Empty.
 
 function Empty({ className, ...props }: React.ComponentProps<"div">) {
   return (

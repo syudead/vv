@@ -4,9 +4,7 @@ import type * as React from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の badge（radix-nova）を vv のトークンで着せたもの。タグのチップ、件数、状態の印
-// （web/registry/rules/components.md「Badge」）。上流の variant に、vv の状態の役割
-// （warning・success）と選択の柔らかい面（soft）を同じ形で足す。
+// Adapted from shadcn/ui radix-nova with warning, success and soft variants; see components.md, Badge.
 
 const badgeVariants = cva(
   "group/badge inline-flex h-6 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-sm border border-transparent px-2 text-xs font-medium whitespace-nowrap tabular-nums transition-colors has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&>svg]:pointer-events-none [&>svg]:size-3",

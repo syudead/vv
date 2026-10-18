@@ -13,12 +13,11 @@ import (
 	"github.com/syudead/vv/internal/wasmplugin/plugintest"
 )
 
-// 検査のテストは手で組んだ小さなモジュールを使う。どれも実行しない。
+// Inspection fixtures are small hand-built modules and are never executed.
 
 const goodManifest = `{"contract":1,"name":"example.works","version":"1.0.0","description":"Example",` +
 	`"operations":["search","fetch"],"settings":[{"key":"apiKey","label":"API key","secret":true,"required":true}]}`
 
-// 型の番号。
 const (
 	typeVoid     = 0 // () -> ()
 	typeI32      = 1 // (i32) -> ()
@@ -36,7 +35,7 @@ func funcImport(module, name string, typeIndex byte) testImport {
 	return testImport{module: module, name: name, kind: 0x00, desc: []byte{typeIndex}}
 }
 
-// moduleSpec は手で組むモジュールの形である。既定は検査を通る形になる。
+// Defaults produce a valid module.
 type moduleSpec struct {
 	manifest     *string
 	imports      []testImport
@@ -44,9 +43,9 @@ type moduleSpec struct {
 	noStart      bool
 	noMemory     bool
 	memoryExport string
-	tables       [][]byte // 各テーブルの宣言（要素の型と要素数）
-	code         []byte   // _start の命令（end を除く）。空なら何もしない
-	data         []byte   // メモリの 0 番地から置くデータ
+	tables       [][]byte // Per-table element type and limits.
+	code         []byte   // _start instructions excluding end; empty means no-op.
+	data         []byte   // Initial data at linear-memory address zero.
 }
 
 func goodSpec() moduleSpec {
@@ -268,7 +267,7 @@ func TestInspectReportsEachProblem(t *testing.T) {
 		}, domain.WorkInfoPluginTableTooLarge},
 		{"table without a maximum beside another table", func() []byte {
 			s := goodSpec()
-			// 最大値の無いテーブルは vv が書き足す 100,000 で数えるので、もう 1 要素で合計を超える。
+			// An uncapped table counts as 100,000 elements, so one more exceeds the total limit.
 			s.tables = [][]byte{binary.AppendUvarint([]byte{0x70, 0x00}, 1), maxTable(1)}
 			return s.bytes()
 		}, domain.WorkInfoPluginTableTooLarge},
@@ -282,7 +281,6 @@ func TestInspectReportsEachProblem(t *testing.T) {
 			if problem != tc.want {
 				t.Fatalf("problem = %q, want %q", problem, tc.want)
 			}
-			// マニフェストを読めたあとの問題（import・export・テーブル）は、読めた名前も返す。
 			wantName := ""
 			if readsManifest(tc.want) {
 				wantName = "example.works"
@@ -294,7 +292,6 @@ func TestInspectReportsEachProblem(t *testing.T) {
 	}
 }
 
-// readsManifest は、問題 problem がマニフェストを読めたあとの検査で見つかるものかを返す。
 func readsManifest(problem domain.WorkInfoPluginProblem) bool {
 	switch problem {
 	case domain.WorkInfoPluginImportUnsupported, domain.WorkInfoPluginExportInvalid, domain.WorkInfoPluginTableTooLarge:
@@ -306,7 +303,7 @@ func readsManifest(problem domain.WorkInfoPluginProblem) bool {
 func TestInspectAcceptsTableWithoutAMaximum(t *testing.T) {
 	rt := newTestRuntime(t)
 	s := goodSpec()
-	// Go の wasip1 のリンカは関数のテーブルを最大値なしで書く。
+	// Go's wasip1 linker emits function tables without maxima.
 	s.tables = [][]byte{binary.AppendUvarint([]byte{0x70, 0x00}, domain.WorkInfoPluginTableMaxElements)}
 	if _, problem, err := rt.Inspect(context.Background(), s.bytes()); err != nil || problem != "" {
 		t.Fatalf("Inspect = problem %q, err %v; want none", problem, err)
@@ -331,7 +328,6 @@ func TestInspectAcceptsTablesSummingToTheLimit(t *testing.T) {
 	}
 }
 
-// maxTable は最小値 0、最大値 n の funcref のテーブルの宣言である。
 func maxTable(n uint64) []byte {
 	return binary.AppendUvarint([]byte{0x70, 0x01, 0x00}, n)
 }

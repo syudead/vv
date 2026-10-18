@@ -15,15 +15,10 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 外部連携 API v1 の Bearer の境界とタグ・スキャンの操作
-// を、
-// 本物の Auth と保存先で確かめる。
-
 func bearer(secret string) map[string]string {
 	return map[string]string{"Authorization": "Bearer " + secret}
 }
 
-// assertBearerUnauthenticated は Bearer の扱いの未認証の応答であることを確かめる。
 func assertBearerUnauthenticated(t *testing.T, label string, rec *httptest.ResponseRecorder) {
 	t.Helper()
 	if rec.Code != http.StatusUnauthorized {
@@ -42,7 +37,6 @@ func assertBearerUnauthenticated(t *testing.T, label string, rec *httptest.Respo
 	}
 }
 
-// newExternalEnv は本物のタグと動画の保存先でつないだ経路を組み立て、初回設定の Cookie を返す。
 func newExternalEnv(t *testing.T, opts Options) (*authEnv, *http.Cookie) {
 	t.Helper()
 	env := newAuthEnvWith(t, t.TempDir(), func(db *store.DB) Options {
@@ -86,7 +80,6 @@ func TestExternalListTagsWithValidToken(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
 		t.Fatal(err)
 	}
-	// 並びは画面の ListTags と同じ。
 	screen := env.get("/api/tags", cookie)
 	var screenList struct{ Items []struct{ Name string } }
 	if err := json.Unmarshal(screen.Body.Bytes(), &screenList); err != nil {
@@ -107,8 +100,6 @@ func TestExternalListTagsWithValidToken(t *testing.T) {
 	}
 }
 
-// 無い・形式違い・無効・失効済み・Cookie だけは、原因を区別せずに 401 と
-// WWW-Authenticate: Bearer にする。
 func TestExternalRejectsMissingInvalidAndRevokedTokens(t *testing.T) {
 	env, cookie := newExternalEnv(t, Options{})
 	revoked := env.createAPIToken(cookie, "revoked")
@@ -146,7 +137,6 @@ func TestExternalRejectsMissingInvalidAndRevokedTokens(t *testing.T) {
 		})
 	}
 
-	// 方式の名前は大文字小文字を区別しない。
 	rec = env.serve(authRequest{
 		method: http.MethodGet, target: "/api/v1/tags",
 		header: map[string]string{"Authorization": "bearer " + valid.Secret},
@@ -156,8 +146,6 @@ func TestExternalRejectsMissingInvalidAndRevokedTokens(t *testing.T) {
 	}
 }
 
-// 画面の API は Bearer を読まない。Bearer だけの「ゲストも」の要求はゲストとして処理し、
-// 非公開の動画を出さない（受け入れ条件 7）。
 func TestScreenAPITreatsBearerOnlyAsGuest(t *testing.T) {
 	f := newGuestFixture(t, true)
 	created := f.env.createAPIToken(f.owner, "scraper")
@@ -195,7 +183,6 @@ func TestExternalRecordsLastUsed(t *testing.T) {
 	}
 	first := *list.Items[0].LastUsedAt
 
-	// 60 秒に満たないうちは書き直さず、過ぎたら書き直す。
 	env.advance(30 * time.Second)
 	env.serve(authRequest{method: http.MethodGet, target: "/api/v1/tags", header: bearer(created.Secret)})
 	list, _ = env.listAPITokens(cookie)
@@ -210,7 +197,6 @@ func TestExternalRecordsLastUsed(t *testing.T) {
 	}
 }
 
-// /api/v1 の下の未定義の経路も Bearer の扱いで、認証の後に JSON の 404 を返す。
 func TestExternalUnknownRouteIsBearerThenNotFound(t *testing.T) {
 	env, cookie := newExternalEnv(t, Options{})
 	created := env.createAPIToken(cookie, "scraper")
@@ -222,8 +208,6 @@ func TestExternalUnknownRouteIsBearerThenNotFound(t *testing.T) {
 	}
 }
 
-// Bearer の要求には同一オリジンの検査をかけない。新しく始めたら 201、
-// 実行中のものを返したら 200 で、画面の POST /api/scans は今どおり 202 である。
 func TestExternalStartScanAcceptsForeignOrigin(t *testing.T) {
 	scans := &fakeScans{}
 	env, cookie := newExternalEnv(t, Options{Scans: scans})
@@ -251,7 +235,6 @@ func TestExternalStartScanAcceptsForeignOrigin(t *testing.T) {
 		t.Errorf("実行中の開始の id = %d, want %d", again.Id, scan.Id)
 	}
 
-	// 画面の API は今どおり 202 で、別のオリジンは拒む。
 	rec = env.serve(authRequest{method: http.MethodPost, target: "/api/scans", body: "{}", cookies: []*http.Cookie{cookie}})
 	if rec.Code != http.StatusAccepted {
 		t.Errorf("画面の開始: status = %d: %s", rec.Code, rec.Body)
@@ -279,7 +262,6 @@ func TestExternalStartScanWithoutMediaFolders(t *testing.T) {
 	}
 }
 
-// 始めた直後（finding）は本数が両方 null、対象 0 本で終わった走査は両方 0 になる
 func TestExternalCurrentScanCounts(t *testing.T) {
 	started := time.Date(2026, 9, 1, 10, 0, 0, 0, time.UTC)
 	finished := started.Add(time.Minute)
@@ -360,8 +342,6 @@ func TestExternalCurrentScanWithoutScan(t *testing.T) {
 	}
 }
 
-// blockingTags は ListTags で、要求の context が取り消されるまで待つ。実行中の応答の
-// 打ち切りを確かめるのに使う。
 type blockingTags struct {
 	Tags
 	entered chan struct{}
@@ -380,7 +360,6 @@ func (b blockingTags) ListTags(ctx context.Context, _ domain.TagListQuery) (doma
 	}
 }
 
-// 画面での失効は、そのトークンの実行中の応答をすぐに打ち切る。
 func TestExternalRevokeAbortsInFlightRequest(t *testing.T) {
 	tags := blockingTags{entered: make(chan struct{}), ended: make(chan error, 1)}
 	env, cookie := newExternalEnv(t, Options{Tags: tags})
@@ -393,7 +372,6 @@ func TestExternalRevokeAbortsInFlightRequest(t *testing.T) {
 	}()
 	<-tags.entered
 
-	// 別のトークンの失効では打ち切らない。
 	env.serve(authRequest{
 		method: http.MethodDelete, target: "/api/api-tokens/" + strconv.FormatInt(other.Token.Id, 10),
 		cookies: []*http.Cookie{cookie},
@@ -422,8 +400,6 @@ func TestExternalRevokeAbortsInFlightRequest(t *testing.T) {
 	<-done
 }
 
-// ホストのコマンドによる失効（資格情報の変更でトークンの行が消える）は、長く続く要求を
-// 確かめ直しで打ち切る。
 func TestExternalCredentialChangeAbortsInFlightRequestOnRecheck(t *testing.T) {
 	tags := blockingTags{entered: make(chan struct{}), ended: make(chan error, 1)}
 	env, cookie := newExternalEnv(t, Options{Tags: tags, SessionRecheck: 20 * time.Millisecond})

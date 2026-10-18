@@ -3,20 +3,12 @@ import { Skeleton } from "@/ui/shadcn/skeleton";
 import { CardGrid, type CardSize } from "./card-grid";
 import { ShelfCardSkeletons } from "./shelf-row";
 
-// 読み込み中（状態）。出来上がりの形の Skeleton を、骨格の本体の位置に並べる。
-// ページ全体を覆う回転の印は出さない。規則は web/registry/rules/patterns.md の States。
+// Match final content geometry with skeletons instead of a page-covering spinner; see web/registry/rules/patterns.md, States.
 
 export interface LoadingStateProps {
-  /** 読み込んでいるものの名前（「Loading videos」）。支援技術に読まれる。 */
   label: string;
-  /**
-   * 出来上がりの形: カードのグリッドか、表の行か、見出しつきのまとまり（GroupedList）の行か、
-   * 1 行のカードの一覧（CardList）か、棚の行（ShelfRow）か。
-   */
   layout: "grid" | "table" | "grouped" | "cards" | "shelves";
-  /** grid のときのカードの大きさ。データが来たときの CardGrid と同じにする。 */
   size?: CardSize;
-  /** 並べる数。既定は grid・table・cards で 8、grouped と shelves で 3（shelves は棚の数）。 */
   count?: number;
 }
 
@@ -40,7 +32,6 @@ export function LoadingState({ label, layout, size = 1, count }: LoadingStatePro
           ))}
         </CardGrid>
       ) : layout === "cards" ? (
-        // CardList と同じ形: 枠線のある muted の面の 1 行のカード。
         <div className="flex flex-col gap-2">
           {keys.map((key) => (
             <div
@@ -54,7 +45,6 @@ export function LoadingState({ label, layout, size = 1, count }: LoadingStatePro
           ))}
         </div>
       ) : layout === "grouped" ? (
-        // GroupedList と同じ形: 見出しの大きさの棒と、地の面の上のサムネイルの大きさの行。
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2 py-2">
             <Skeleton className="h-4 w-16" />

@@ -10,12 +10,8 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 作品情報プラグインの検索・取得と、取得の結果の反映の経路。どれも所有者だけで、accessRoutes に載せない。
-// 実行・規則・保存は internal/app と internal/store が持ち、ここは要求の解釈と契約の形への変換だけを持つ。
-// Error.message は vv 自身の英文のままで、プラグインの文は pluginMessage に分けて入れる
-//
+// Work-info plugin routes are owner-only and excluded from accessRoutes. Keep vv's English error message separate from pluginMessage.
 
-// SearchWorkInfo はプラグインの search で作品を探す（POST /api/work-info-plugins/{id}/search）。
 func (s *server) SearchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
 	var body struct {
 		Query *string `json:"query"`
@@ -43,8 +39,7 @@ func (s *server) SearchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.W
 	writeJSON(w, http.StatusOK, gen.WorkInfoSearchResult{Candidates: out}, s.logger)
 }
 
-// FetchWorkInfo はプラグインの fetch で作品の id から動画の作品情報を取り、結果をメモリに持つ
-// （POST /api/videos/{id}/work-info-fetches）。id は URL の形でも作品の ID としてそのまま渡す。動画は変えない。
+// FetchWorkInfo caches results without changing the video; pass IDs unchanged even when they look like URLs.
 func (s *server) FetchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	var body struct {
 		PluginID *int64  `json:"pluginId"`
@@ -69,8 +64,7 @@ func (s *server) FetchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.Vi
 	writeJSON(w, http.StatusCreated, toAPIWorkInfoFetch(fetch), s.logger)
 }
 
-// toAPIWorkInfoFetch は取得の結果を契約の形にする。
-// 一覧は無くても [] で、品番と説明は無ければ省く。
+// Use empty arrays for absent lists; omit absent code and description.
 func toAPIWorkInfoFetch(fetch domain.WorkInfoFetchResult) gen.WorkInfoFetch {
 	details := fetch.Details
 	dates := make([]gen.WorkInfoFetchedDate, 0, len(details.Dates))
@@ -115,7 +109,7 @@ func toAPIWorkInfoFetch(fetch domain.WorkInfoFetchResult) gen.WorkInfoFetch {
 	}
 }
 
-// toAPIWorkInfoMatch は i 件目の照合の答えを契約の形にする。答えが無ければ new とする。
+// Use new when no match result exists.
 func toAPIWorkInfoMatch(matches []domain.CreditMatch, i int) gen.WorkInfoMatch {
 	if i >= len(matches) {
 		return gen.WorkInfoMatch{State: gen.WorkInfoMatchStateNew}
@@ -127,8 +121,7 @@ func toAPIWorkInfoMatch(matches []domain.CreditMatch, i int) gen.WorkInfoMatch {
 	return match
 }
 
-// GetWorkInfoFetchCover は取得の結果のカバー画像を返す（GET /api/videos/{id}/work-info-fetches/{fetchId}/cover）。
-// 本文は vv が取って形式を確かめたもので、型は vv が決める。
+// Serve only cover bytes fetched and validated by vv, with the content type determined by vv.
 func (s *server) GetWorkInfoFetchCover(w http.ResponseWriter, _ *http.Request, id gen.VideoId, fetchID gen.WorkInfoFetchId) {
 	if !s.workInfoPluginsConfigured(w) {
 		return
@@ -146,9 +139,7 @@ func (s *server) GetWorkInfoFetchCover(w http.ResponseWriter, _ *http.Request, i
 	_, _ = w.Write(cover.Data)
 }
 
-// ApplyWorkInfoFetch は取得の結果のうち選んだ項目を動画に反映する
-// （POST /api/videos/{id}/work-info-fetches/{fetchId}/apply）。tags があれば、取得したタグのうちその名前だけを
-// 付ける。
+// ApplyWorkInfoFetch applies selected fields; tags restrict imported tags to the selected names.
 func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id gen.VideoId, fetchID gen.WorkInfoFetchId) {
 	var body gen.ApplyWorkInfoFetchRequest
 	present, ok := s.readJSONBodyFields(w, r, &body)
@@ -191,9 +182,7 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 		s.internalError(w, "Could not apply the fetched work information.", err)
 		return
 	}
-	// 反映は確定しているので、詳細の一部を読めなくても成功を返す。結果は使い切りで、500 を返すと画面は
-	// 反映できたかを知れず、再送も work_info_fetch_stale になる。読めなかった項目は、確定後に発行した動画の
-	// 知らせで画面が読み直す。
+	// After commit, return success even if detail enrichment fails: the result is single-use and cannot be retried. The emitted video event lets the UI reload missing fields.
 	video, err := s.videoDetail(r, applied.Video, domain.VideoContext{})
 	if err != nil {
 		s.logger.Warn("cannot load part of the video after applying the fetched work information",
@@ -213,9 +202,7 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 	writeJSON(w, http.StatusOK, gen.WorkInfoFetchApplied{Video: video, SkippedTags: skippedTags, Skipped: skipped}, s.logger)
 }
 
-// applyTagSelection は反映の本文の tags を、登録へ渡す選んだタグの名前にする。無ければ nil（全部のタグ）で、
-// 空か、fields にタグが無いのに有れば偽を返す。名前が結果に有るかは登録が確かめる。present は本文に tags が
-// あったか（値が null でも）で、生成型では省略と同じ nil になる null を、全部のタグに化けないよう偽にする。
+// Omitted tags means all tags (nil). Reject null, empty selections, or tags without the tags field selected; the registry validates names against the fetch result.
 func applyTagSelection(tags *[]string, present bool, fields []domain.WorkInfoField) ([]string, bool) {
 	if tags == nil {
 		return nil, !present
@@ -226,8 +213,7 @@ func applyTagSelection(tags *[]string, present bool, fields []domain.WorkInfoFie
 	return *tags, true
 }
 
-// workInfoRunError は検索と取得の誤りを契約の応答にする。
-// notFound は domain.ErrNotFound のときの文である。
+// notFound supplies the message for domain.ErrNotFound.
 func (s *server) workInfoRunError(w http.ResponseWriter, err error, notFound string) {
 	var (
 		missing *domain.WorkInfoSettingsMissingError
@@ -254,7 +240,6 @@ func (s *server) workInfoRunError(w http.ResponseWriter, err error, notFound str
 	}
 }
 
-// workInfoRunFailureStatus は実行の失敗の状態コードである。
 func workInfoRunFailureStatus(failure domain.WorkInfoRunFailure) int {
 	switch failure {
 	case domain.WorkInfoRunTimedOut:
@@ -266,7 +251,6 @@ func workInfoRunFailureStatus(failure domain.WorkInfoRunFailure) int {
 	}
 }
 
-// workInfoRunFailureBody は実行の失敗を、code・reason・pluginMessage・host の付いた Error にする。
 func workInfoRunFailureBody(failed *domain.WorkInfoRunError) gen.Error {
 	body := gen.Error{
 		Code:          codePluginFailed,

@@ -1,6 +1,4 @@
-// build は SPA を web/dist へ出して Go の単一バイナリに埋め込む。
-// task build の実体。-windows-app を付けると、代わりに Windows 版の zip を
-// dist/ へ作る（task build-windows-app、windows_app.go）。
+// build embeds the SPA in a Go binary; -windows-app creates the Windows ZIP instead.
 package main
 
 import (
@@ -19,12 +17,7 @@ const (
 	outputPath = "bin/mdm"
 )
 
-// cleanDist はビルドの出力先から前回の生成物だけを消す。
-//
-// web/dist は Go の埋め込み先で、版管理に入れているのは .gitkeep だけである
-// （.gitignore）。Vite の emptyOutDir は .git 以外を区別せず消すので切ってあり、
-// 代わりにここで掃除する。.gitkeep を残したまま横へ書くので、途中で中断されても
-// 作業ツリーから版管理のファイルが消えることはない。
+// cleanDist preserves the tracked .gitkeep so interrupted builds and builds without the SPA retain a valid embed target. Vite emptyOutDir would remove it.
 func cleanDist(root string) error {
 	dist := filepath.Join(root, distPath)
 	entries, err := os.ReadDir(dist)
@@ -75,8 +68,7 @@ func main() {
 	if err := os.MkdirAll(filepath.Join(root, "bin"), 0o755); err != nil {
 		devtools.Fail(err)
 	}
-	// CGO を切るのは、配布するバイナリを実行環境の libc から独立させるため
-	// （Dockerfile の実行段は alpine）。
+	// Disable CGO so distributed binaries do not depend on the host libc.
 	if err := devtools.RunEnv(root, []string{"CGO_ENABLED=0"}, "go", "build",
 		"-trimpath", "-ldflags", "-s -w -X main.version="+version,
 		"-o", outputPath, "./cmd/mdm"); err != nil {

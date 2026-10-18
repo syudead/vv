@@ -25,14 +25,12 @@ func scoreOf(self, other RelatedCandidate) RelatedScore {
 	return DefaultRelatedScorer.For(self)(other)
 }
 
-// 受け入れ条件 1・2: タグがすべて同じ別フォルダの動画は同じディレクトリの動画より上、
-// 同じディレクトリの動画はタグが一部だけ共通する別フォルダの動画より上に出る。
 func TestRankRelatedWeighsTagsAgainstFolder(t *testing.T) {
 	self := candidate(1, "/media/show/a.mp4", 10, 11, 12)
 	sameTags := candidate(2, "/media/other/b.mp4", 10, 11, 12)
 	sameDir := candidate(3, "/media/show/c.mp4")
 	halfTags := candidate(4, "/media/else/d.mp4", 10, 11, 13)
-	// 新しく追加された方が同点で先になるので、別フォルダの方を新しくしても順は変わらない。
+	// The newer unrelated-directory candidate must not win through the date tie-breaker.
 	halfTags.AddedAt = relatedBase.Add(time.Hour)
 
 	got := rankedIDs(RankRelated(DefaultRelatedScorer, self, []RelatedCandidate{halfTags, sameDir, sameTags}))
@@ -41,7 +39,6 @@ func TestRankRelatedWeighsTagsAgainstFolder(t *testing.T) {
 	}
 }
 
-// タグの一致率は 2 本を合わせた種類のうち両方にあるものの割合で、どちらかに無ければ 0。
 func TestContentRelatednessTagShare(t *testing.T) {
 	self := candidate(1, "/a/x.mp4", 1, 2, 3)
 	cases := []struct {
@@ -56,7 +53,7 @@ func TestContentRelatednessTagShare(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			other := candidate(2, "/b/y.mp4", tc.tags...)
-			// 題名「x」は 1 文字なので語にならず、題名の点は付かない。日付は同じ日で満点。
+			// Single-letter x contributes no title score; equal dates receive full date credit.
 			want := RelatedScore(float64(relatedTagPoints)*tc.share*float64(RelatedScoreUnit)) +
 				relatedDatePoints*RelatedScoreUnit
 			if got := scoreOf(self, other); got != want {
@@ -66,7 +63,6 @@ func TestContentRelatednessTagShare(t *testing.T) {
 	}
 }
 
-// 題名とファイル名は、数字と記号を除いた語の重なりで比べる。かなと漢字は 2 文字ずつ比べる。
 func TestTitleWords(t *testing.T) {
 	cases := []struct {
 		name         string
@@ -111,8 +107,6 @@ func sceneFingerprint(hashes ...uint64) *Fingerprint {
 	return &Fingerprint{Version: FingerprintVersion, IntervalMs: 1000, Frames: frames}
 }
 
-// 指紋は時刻を揃えずに比べ、似た場面が共通する割合に比例する。指紋が無い・比べられる
-// コマが足りない・単色ばかりなら 0 点。
 func TestContentRelatednessFingerprint(t *testing.T) {
 	const a, b, c, d = 0x0000_0000_0000_00ff, 0x0000_0000_ffff_0000, 0x00ff_ff00_0000_0000, 0xff00_0000_00ff_ff00
 	base := sceneFingerprint(a, b, c, d)
@@ -125,11 +119,10 @@ func TestContentRelatednessFingerprint(t *testing.T) {
 		other *Fingerprint
 		share float64
 	}{
-		// 同じ場面を逆の順で持つ（時刻が揃っていない）。1 ビットの違いは似た場面に入る。
+		// Reversed scenes remain similar despite different timestamps and one-bit noise.
 		{name: "same scenes at other times", other: sceneFingerprint(d, c^1, b, a), share: 1},
 		{name: "half of the scenes", other: sceneFingerprint(a, b, 0x5555_5555_5555_5555, 0x3333_3333_3333_3333), share: 0.5},
-		// 似た場面とみなすのはハミング距離 12 まで。a と 12 ビット違うコマ 3 枚は a と組になり、
-		// 13 ビット違うコマはどのコマとも組にならない。
+		// Twelve differing bits still match; thirteen must not match any frame.
 		{name: "12 bits apart", other: sceneFingerprint(a^0xfff, a^0xfff, a^0xfff), share: 4.0 / 7.0},
 		{name: "13 bits apart", other: sceneFingerprint(a^0x1fff, a^0x1fff, a^0x1fff), share: 0},
 		{name: "missing", other: nil, share: 0},
@@ -150,7 +143,6 @@ func TestContentRelatednessFingerprint(t *testing.T) {
 	}
 }
 
-// 日付の近さは同じ日で満点、離れるほど下がり 1 年でほぼ 0 になる。
 func TestDateCloseness(t *testing.T) {
 	if got := dateCloseness(relatedBase, relatedBase.Add(23*time.Hour)); got != 1 {
 		t.Fatalf("same day = %v, want 1", got)
@@ -163,8 +155,6 @@ func TestDateCloseness(t *testing.T) {
 	}
 }
 
-// どの手がかりにも当たらない動画は、日付の近い順に後ろに並ぶ。同点なら新しく追加された順、
-// それも同じなら id の大きい順。基準の動画と重複は除く。
 func TestRankRelatedTieBreaks(t *testing.T) {
 	self := RelatedCandidate{VideoID: 1, Path: "/x/self.mp4", Title: "self", AddedAt: relatedBase}
 	near := RelatedCandidate{VideoID: 2, Path: "/y/near.mp4", Title: "near", AddedAt: relatedBase.Add(-3 * 24 * time.Hour)}
@@ -180,8 +170,6 @@ func TestRankRelatedTieBreaks(t *testing.T) {
 	}
 }
 
-// 受け入れ条件 3 と Edge Case: ページを最後まで読むと、すべての動画が重複なく 1 回ずつ出る。
-// 読む間に足された・消えた動画があっても、読み込み済みの動画が続きに再び出ない。
 func TestPageRelated(t *testing.T) {
 	self := RelatedCandidate{VideoID: 100, Path: "/x/self.mp4", AddedAt: relatedBase}
 	var candidates []RelatedCandidate
@@ -205,7 +193,6 @@ func TestPageRelated(t *testing.T) {
 		if next == nil {
 			break
 		}
-		// 読む間に 1 本消え、1 本足された。
 		if pages == 0 {
 			ranked = slices.Delete(slices.Clone(ranked), 3, 4)
 			extra := RelatedCandidate{VideoID: 50, Path: "/x/new.mp4", AddedAt: relatedBase}
@@ -231,7 +218,6 @@ func TestPageRelated(t *testing.T) {
 	}
 }
 
-// rankedCandidates は並びに残る動画の候補を返す。
 func rankedCandidates(ranked []RankedRelated, candidates []RelatedCandidate) []RelatedCandidate {
 	var out []RelatedCandidate
 	for _, item := range ranked {

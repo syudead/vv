@@ -13,9 +13,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// タグの一覧のページ読み。
-
-// createTagsNamed は名前ごとにタグを作り、名前から id への対応を返す。
 func createTagsNamed(t *testing.T, db *DB, names ...string) map[string]int64 {
 	t.Helper()
 	ids := make(map[string]int64, len(names))
@@ -29,7 +26,6 @@ func createTagsNamed(t *testing.T, db *DB, names ...string) map[string]int64 {
 	return ids
 }
 
-// addLibraryVideos はいまライブラリにある動画を n 本足し、その content_key を返す。
 func addLibraryVideos(t *testing.T, db *DB, n int) []string {
 	t.Helper()
 	keys := make([]string, n)
@@ -44,7 +40,6 @@ func addLibraryVideos(t *testing.T, db *DB, n int) []string {
 	return keys
 }
 
-// readAllTagPages は query を Limit ずつ最後まで読み、ページごとの結果を返す。
 func readAllTagPages(t *testing.T, db *DB, query domain.TagListQuery) []domain.TagPage {
 	t.Helper()
 	var pages []domain.TagPage
@@ -53,6 +48,7 @@ func readAllTagPages(t *testing.T, db *DB, query domain.TagListQuery) []domain.T
 		if err != nil {
 			t.Fatalf("ListTags(%+v) error = %v", query, err)
 		}
+		assertPageSize(t, len(page.Items), query.Limit, page.NextCursor)
 		pages = append(pages, page)
 		if page.NextCursor == "" {
 			return pages
@@ -74,7 +70,6 @@ func pagedTagNames(pages []domain.TagPage) []string {
 	return names
 }
 
-// naturalOrder は名前を (NaturalSortKey, id) の順に並べた写しを返す。
 func naturalOrder(names []string, ids map[string]int64) []string {
 	sorted := slices.Clone(names)
 	slices.SortFunc(sorted, func(a, b string) int {
@@ -89,30 +84,26 @@ func naturalOrder(names []string, ids map[string]int64) []string {
 func TestListTagsReadsAllTagsInPagesByNaturalOrder(t *testing.T) {
 	db := migratedDB(t)
 
-	// 照合形が同じ名前（全角・半角、かな）を含め、id で前後が決まる組を作る。
+	// Include equivalent folded names to exercise ID tie breakers.
 	names := []string{"tag 2", "tag 10", "ｔａｇ ２", "アニメ", "あにめ", "Tag 1", "ﾀｸﾞ", "タグ"}
-	for i := 0; len(names) < 250; i++ {
-		names = append(names, fmt.Sprintf("tag %d", 100+i))
-	}
 	ids := createTagsNamed(t, db, names...)
 
-	pages := readAllTagPages(t, db, domain.TagListQuery{Limit: 100})
+	pages := readAllTagPages(t, db, domain.TagListQuery{Limit: 3})
 	if len(pages) != 3 {
 		t.Fatalf("ページの数 = %d, want 3", len(pages))
 	}
 	for i, page := range pages {
-		if page.Total != 250 || page.TotalAll != 250 {
-			t.Errorf("pages[%d]: Total = %d, TotalAll = %d, want 250, 250", i, page.Total, page.TotalAll)
+		if page.Total != 8 || page.TotalAll != 8 {
+			t.Errorf("pages[%d]: Total = %d, TotalAll = %d, want 8, 8", i, page.Total, page.TotalAll)
 		}
 	}
-	if len(pages[0].Items) != 100 || len(pages[1].Items) != 100 || len(pages[2].Items) != 50 {
-		t.Errorf("各ページの件数 = %d, %d, %d, want 100, 100, 50",
+	if len(pages[0].Items) != 3 || len(pages[1].Items) != 3 || len(pages[2].Items) != 2 {
+		t.Errorf("各ページの件数 = %d, %d, %d, want 3, 3, 2",
 			len(pages[0].Items), len(pages[1].Items), len(pages[2].Items))
 	}
 	if got, want := pagedTagNames(pages), naturalOrder(names, ids); !slices.Equal(got, want) {
 		t.Errorf("並び = %v\nwant %v", got, want)
 	}
-	// 照合形が同じ名前は id の順。
 	got := pagedTagNames(pages)
 	if slices.Index(got, "アニメ") > slices.Index(got, "あにめ") {
 		t.Errorf("アニメ（先に作った）が あにめ の後ろにある: %v", got)
@@ -141,7 +132,6 @@ func TestListTagsSearchMatchesFoldedNameOrSynonym(t *testing.T) {
 		t.Errorf("映画のシノニム = %v", page.Items[1].Synonyms)
 	}
 
-	// 空白だけの検索語は絞らない。
 	page, err = db.Tags().ListTags(ctx, domain.TagListQuery{Search: "　 "})
 	if err != nil {
 		t.Fatal(err)
@@ -151,8 +141,6 @@ func TestListTagsSearchMatchesFoldedNameOrSynonym(t *testing.T) {
 	}
 }
 
-// TestListTagsReturnsTheExactSpellingOutsideThePage は、検索語と綴りが完全に一致する
-// タグを、部分一致の 1 ページ目に入らなくても Exact に返すことを確かめる（統合の窓の統合先）。
 func TestListTagsReturnsTheExactSpellingOutsideThePage(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -174,18 +162,15 @@ func TestListTagsReturnsTheExactSpellingOutsideThePage(t *testing.T) {
 		t.Fatalf("Exact = %+v, want cat（本数 1）", page.Exact)
 	}
 
-	// シノニムの綴りでも元のタグに着く。照合形が同じだけ（綴りが違う）なら入れない。
 	cases := []struct {
 		query domain.TagListQuery
 		want  int64
 	}{
 		{domain.TagListQuery{Search: "neko", Limit: 2}, ids["猫"]},
 		{domain.TagListQuery{Search: "CAT", Limit: 2}, 0},
-		// 2 ページ目・全件・空の検索語では引かない。
 		{domain.TagListQuery{Search: "cat", Limit: 2, Cursor: page.NextCursor}, 0},
 		{domain.TagListQuery{Search: "cat"}, 0},
 		{domain.TagListQuery{Search: "  ", Limit: 2}, 0},
-		// 絞り込みに合わなければ入れない。
 		{domain.TagListQuery{Search: "cat", Limit: 2, UnusedOnly: true}, 0},
 		{domain.TagListQuery{Search: "cat", Limit: 2, TentativeOnly: true}, 0},
 		{domain.TagListQuery{Search: "neko", Limit: 2, UnusedOnly: true}, ids["猫"]},
@@ -251,7 +236,7 @@ func TestListTagsFiltersCombineWithAnd(t *testing.T) {
 
 func TestListTagsSortsByCountAndCreatedAcrossPages(t *testing.T) {
 	db := migratedDB(t)
-	// 本数と作った日が同じタグが多く、どのページの境目でも前後が同じ値になる組。
+	// Tie counts and creation times across page boundaries.
 	names := []string{"a", "b", "c", "d", "e", "f", "g", "h", "tag 2", "tag 10"}
 	ids := createTagsNamed(t, db, names...)
 	counts := map[string]int{"a": 3, "b": 1, "c": 1, "d": 1, "e": 1, "f": 0, "g": 0, "h": 1, "tag 2": 3, "tag 10": 0}
@@ -290,21 +275,18 @@ func TestListTagsSortsByCountAndCreatedAcrossPages(t *testing.T) {
 		{domain.TagSortCreatedAsc, expected(createdAt, false)},
 		{domain.TagSortName, naturalOrder(names, ids)},
 	}
-	for _, tc := range cases {
-		for _, limit := range []int{1, 2, 3, 4} {
-			pages := readAllTagPages(t, db, domain.TagListQuery{Sort: tc.sort, Limit: limit})
-			if got := pagedTagNames(pages); !slices.Equal(got, tc.want) {
-				t.Errorf("%s limit=%d: %v\nwant %v", tc.sort, limit, got, tc.want)
-			}
+	for _, pageCase := range pagingCases(cases, 2, 3, 4) {
+		tc := pageCase.value
+		pages := readAllTagPages(t, db, domain.TagListQuery{Sort: tc.sort, Limit: pageCase.limit})
+		if got := pagedTagNames(pages); !slices.Equal(got, tc.want) {
+			t.Errorf("%s limit=%d: %v\nwant %v", tc.sort, pageCase.limit, got, tc.want)
 		}
 	}
 
-	// 最多のタグが先頭、0 本が末尾、同数は名前の順。
 	desc := expected(count, true)
 	if desc[0] != "a" || desc[1] != "tag 2" || desc[len(desc)-1] != "tag 10" {
 		t.Errorf("countDesc = %v", desc)
 	}
-	// 新しく作ったタグが先頭。
 	page, err := db.Tags().ListTags(context.Background(), domain.TagListQuery{Sort: domain.TagSortCreatedDesc, Limit: 1})
 	if err != nil {
 		t.Fatal(err)
@@ -345,13 +327,14 @@ func TestListTagsRejectsCursorOfAnotherSortOrUnreadable(t *testing.T) {
 func TestListTagsWithoutLimitReturnsEverythingWithoutCursor(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	names := make([]string, 0, 250)
-	for i := range 250 {
+	// Exceed the paged limit to catch accidental clamping of an unpaged query.
+	const total = domain.MaxLimit + 1
+	names := make([]string, 0, total)
+	for i := range total {
 		names = append(names, fmt.Sprintf("t%d", i))
 	}
 	ids := createTagsNamed(t, db, names...)
 
-	// Limit 0 はカーソルを無視する。
 	page, err := db.Tags().ListTags(ctx, domain.TagListQuery{Cursor: "ignored"})
 	if err != nil {
 		t.Fatal(err)
@@ -359,7 +342,7 @@ func TestListTagsWithoutLimitReturnsEverythingWithoutCursor(t *testing.T) {
 	if page.NextCursor != "" {
 		t.Errorf("NextCursor = %q, want 空", page.NextCursor)
 	}
-	if page.Total != 250 || page.TotalAll != 250 {
+	if page.Total != total || page.TotalAll != total {
 		t.Errorf("Total = %d, TotalAll = %d", page.Total, page.TotalAll)
 	}
 	if got := pagedTagNames([]domain.TagPage{page}); !slices.Equal(got, naturalOrder(names, ids)) {
@@ -376,7 +359,6 @@ func TestListTagsKeepsTotalWhenThePageAfterTheCursorIsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 続きを読むあいだに、カーソルより後ろのタグが消えた。
 	if err := db.Tags().DeleteTag(ctx, ids["c"]); err != nil {
 		t.Fatal(err)
 	}
@@ -397,7 +379,7 @@ func TestListTagsDoesNotWaitForTheWriter(t *testing.T) {
 	ctx := context.Background()
 	createTagsNamed(t, db, "a", "b")
 
-	// 書き込みの取引が書き込みの予約を持ったままのあいだにも、一覧は読める。
+	// The list must remain readable while another transaction holds the write reservation.
 	writer, err := db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatal(err)

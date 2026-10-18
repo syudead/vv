@@ -2,8 +2,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の Input。地は muted、縁は input、誤りは aria-invalid で destructive の縁。
-// 規則は web/registry/rules/components.md の Input, Textarea, Label and Field。
+// Adapted from shadcn/ui Input with shared surface, border and invalid-state tokens.
 function Input({ className, type, ...props }: ComponentProps<"input">) {
   return (
     <input

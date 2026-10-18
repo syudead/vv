@@ -30,33 +30,24 @@ import { useSmartFolderCardValue } from "./cardValues";
 import { smartFolderPagePath } from "./smartFolderPaths";
 
 /**
- * SmartFolderCardProps はスマートフォルダのカードと行の props である。項目は要約だけを持ち、
- * 値はカードが画面に入ってから SmartFolderCardsProvider が読む。
+ * Summaries arrive with list items; SmartFolderCardsProvider loads values only when cards become
+ * visible.
  */
 export interface SmartFolderCardProps {
   folder: SmartFolderSummary;
-  /** 遷移元の一覧 URL。開いた先の「戻る」がここへ帰る。 */
+  /** Return URL for the opened page. */
   backTo: string;
   activePreviewId?: number | null;
   previewResetEpoch?: number;
   onPreviewStart?: (id: number) => void;
   onPreviewReset?: () => void;
-  /** 題名の下のタグの行（格子表示だけ）。 */
   tagsRow?: (tags: readonly VideoTag[]) => ReactNode;
-  /**
-   * 所有者のドラッグの層の中で描くとき true。カードは持ち上げられず、上に落とすと拒否する
-   * （RefusingDropCard）。
-   */
+  /** Inside an owner drag layer, this card neither lifts nor accepts drops. */
   refusesDrop?: boolean;
 }
 
-/** noValues は値が届く前の視聴の値である（本数 0、視聴の帯なし）。 */
 const noValues = { videoCount: 0 };
 
-/**
- * useSmartFolderFacts はカードの値と、それから決める視聴の値・読み上げ名である。値が届く前は
- * `values` が undefined で、読み上げ名は名前と「smart folder」だけ。
- */
 function useSmartFolderFacts(folder: SmartFolderSummary) {
   const { value, ref } = useSmartFolderCardValue(folder.id);
   const values: LibrarySmartFolder | undefined = value === "gone" ? undefined : value;
@@ -68,10 +59,6 @@ function useSmartFolderFacts(folder: SmartFolderSummary) {
   return { gone: value === "gone", values, facts, label, ref };
 }
 
-/**
- * SmartFolderMark はカードの面と行の本数の前に置くスマートフォルダの印である。グループの
- * カードとの見た目の違いはこの小さな印だけで、休むと「Smart folder」を出す。
- */
 function SmartFolderMark() {
   return (
     <Tooltip>
@@ -86,12 +73,8 @@ function SmartFolderMark() {
 }
 
 /**
- * SmartFolderFavorite はフォルダのカード・行のお気に入りの付け外しである（所有者だけ。
- * docs/design-docs/catalog-organization.md「Smart folder card and row」）。フォルダの id を
- * `smartFolderIds` で送る。フォルダの付け外しは画面へ知らせない（api/favorites.ts）ので、
- * 成功したらここで塗りを変える。この塗りは押したときの `read` にだけ効き、カードの値か要約が
- * 新しく読まれたら（`read` が別の物になったら）捨てて、読んだ `favorite` に従う。値が同じかは
- * 比べない（別タブが元へ戻した値を、古い塗りが隠さないため）。
+ * Apply optimistic favorite state only to the current read object; discard it on every new read
+ * identity, even if values match. Otherwise a later change from another tab can remain hidden.
  */
 function SmartFolderFavorite({
   folder,
@@ -99,7 +82,7 @@ function SmartFolderFavorite({
   variant,
 }: {
   folder: SmartFolderSummary;
-  /** いちばん新しく読んだ値。カードの値が届く前は要約。読み直すたびに別の物になる。 */
+  /** A new object on every read; initially the summary, then card values. */
   read: { favorite?: boolean };
   variant: "card" | "row";
 }) {
@@ -121,11 +104,6 @@ function SmartFolderFavorite({
   );
 }
 
-/**
- * SmartFolderAddToPlaylist はフォルダのカード・行の「Add to playlist」である（所有者だけ。
- * docs/design-docs/catalog-organization.md「Add to playlist」）。フォルダを 1 つの項目として
- * `smartFolderIds` で送る。
- */
 function SmartFolderAddToPlaylist({
   folder,
   variant,
@@ -143,11 +121,8 @@ function SmartFolderAddToPlaylist({
 }
 
 /**
- * SmartFolderCard はスマートフォルダを 1 枚で出すカードである。箱・絵柄・本数の面・視聴の帯・
- * 名前・タグの行はグループのカードと同じで、違いは面の本数の前の印だけ。チェックとドラッグは
- * 持たない（中の動画はそれぞれのカードで選ぶ）。所有者には角の印にハートと「Add to playlist」を
- * 置き、「Add to group」は置かない（フォルダはグループに入らない）。値が届く前は本数の代わりに
- * 骨組みを出し、答えに入らなかったフォルダは描かない。
+ * Smart folders cannot be selected, dragged or added to groups; omitted value responses hide the
+ * card.
  */
 export const SmartFolderCard = memo(function SmartFolderCard(
   props: SmartFolderCardProps,
@@ -195,7 +170,6 @@ export const SmartFolderCard = memo(function SmartFolderCard(
         <CollectionName name={folder.name} muted={facts.state === "watched" || empty} />
       </Link>
       {owner && (
-        // グループのカードと同じく、前に出たサムネイルより上に、リンクの外のタグの行の前に置く。
         <VideoThumbnailMark className="z-30">
           <SmartFolderAddToPlaylist folder={folder} variant="card" />
           <SmartFolderFavorite folder={folder} read={values ?? folder} variant="card" />
@@ -213,11 +187,6 @@ export const SmartFolderCard = memo(function SmartFolderCard(
   );
 });
 
-/**
- * SmartFolderRow はリスト表示のスマートフォルダの行である。グループの行と同じ列で、本数の行の
- * 印が `FolderSearch` になる。チェックとグループの列は空にし、お気に入りとプレイリストの列に
- * それぞれの操作を置く（`owner` のときだけその列がある）。
- */
 export const SmartFolderRow = memo(function SmartFolderRow({
   folder,
   backTo,

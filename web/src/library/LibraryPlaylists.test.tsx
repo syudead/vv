@@ -12,10 +12,6 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
-/**
- * ライブラリのカード・行・選択バーからプレイリストに足す。
- */
-
 function video(id: number, extra: Partial<Video> = {}): Video {
   return {
     id,
@@ -80,7 +76,6 @@ interface AddBody {
 
 const fetchMock = vi.fn<typeof fetch>();
 
-/** install は一覧と、プレイリスト「Tonight」（id 5）への追加を受ける偽のサーバーを置く。 */
 function install(items: LibraryItem[]): { adds: AddBody[] } {
   const server = { adds: [] as AddBody[] };
   fetchMock.mockImplementation((input, init) => {
@@ -180,7 +175,6 @@ describe("ライブラリからプレイリストに足す", () => {
       name: 'Add "動画 1" to a playlist',
     });
     const heart = screen.getByRole("button", { name: 'Favorite "動画 1"' });
-    // 同じ右上の印の置き場で、ハートの左。オフのハートと同じ条件で見える。
     expect(trigger.parentElement).toBe(heart.parentElement);
     expect(trigger.parentElement?.getAttribute("data-corner")).toBe("top-end");
     expect(trigger.nextElementSibling).toBe(heart);
@@ -190,7 +184,6 @@ describe("ライブラリからプレイリストに足す", () => {
     expect(trigger.closest("a")).toBeNull();
 
     await user.click(trigger);
-    // 開いている間は見えたまま。
     expect(trigger.className).not.toContain("opacity-0");
     await choose(user);
     expect(await screen.findByText('Added 1 item to "Tonight"')).toBeDefined();
@@ -222,13 +215,11 @@ describe("ライブラリからプレイリストに足す", () => {
     await user.click(screen.getByRole("checkbox", { name: 'Select "動画 2"' }));
     await user.click(screen.getByRole("checkbox", { name: 'Select the group "series"' }));
 
-    // 「Favorite」の直後、「Visibility」の前。
     const bar = screen.getByRole("region", { name: "Selection actions" });
     const names = within(bar)
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label"));
     expect(names.indexOf("Add to playlist")).toBe(names.indexOf("Favorite") + 1);
-    // 間に「New group」「Add to group」。
     expect(names.indexOf("Visibility")).toBe(names.indexOf("Add to playlist") + 3);
 
     await user.click(within(bar).getByRole("button", { name: "Add to playlist" }));
@@ -261,11 +252,10 @@ describe("ライブラリからプレイリストに足す", () => {
     const groupCell = screen
       .getByRole("button", { name: 'Add group "series" to a playlist' })
       .closest("td") as HTMLElement;
-    // 見出しの列の数は行と同じ。
     const heads = screen.getAllByRole("columnheader");
     const row = trigger.closest("tr") as HTMLElement;
     expect(row.children).toHaveLength(heads.length);
-    // 360px で長さの列を表から押し出さないよう、sm 未満では見出しごと列を隠す
+    // Hide the column below sm so it cannot push duration off a 360px screen.
     //
     const head = heads[Array.from(row.children).indexOf(cell)] as HTMLElement;
     for (const element of [cell, groupCell, head]) {
@@ -273,7 +263,6 @@ describe("ライブラリからプレイリストに足す", () => {
         expect.arrayContaining(["hidden", "sm:table-cell"]),
       );
     }
-    // お気に入りの列は sm 未満でも残る。
     expect((cell.previousElementSibling as HTMLElement).className).not.toContain(
       "hidden",
     );

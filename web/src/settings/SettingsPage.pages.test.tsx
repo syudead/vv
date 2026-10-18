@@ -11,10 +11,8 @@ import {
   renderSettings,
 } from "../testing/settingsPage";
 
-// 設定の 8 つのページ、その一覧とアドレス。
-// アドレスの決め方そのものは settingsPages.test.ts が確かめる。
+// settingsPages.test.ts covers route mapping separately.
 
-/** sectionHeadings はページの本文にある節の見出しである（一覧の見出しは含まない）。 */
 function sectionHeadings(): string[] {
   const body = document.querySelector("[data-slot='settings-page-body']");
   if (body === null) return [];

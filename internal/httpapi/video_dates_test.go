@@ -12,13 +12,8 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 動画の更新日時と作成日時は、本物の
-// 認証・保存層で確かめる（#637）。guestFixture の動画はどれも mtime が base で、作成日時を
-// 持たない。setFileCreatedAt で a にだけ作成日時を与える。fixture はタグと公開の設定で a・b・d を
-// 編集済みにするので、編集前の値は c で確かめる。
+// All videos share mtime; a also has creation time. a, b, and d have overrides; c does not.
 
-// setFileCreatedAt は動画 name の所在のファイルの作成日時を createdAt にする（走査の
-// refreshCreatedAt と同じ書き込み）。
 func (f *guestFixture) setFileCreatedAt(t *testing.T, name, dir string, createdAt time.Time) {
 	t.Helper()
 	ctx := context.Background()
@@ -35,7 +30,6 @@ func (f *guestFixture) setFileCreatedAt(t *testing.T, name, dir string, createdA
 	}
 }
 
-// videoIDsOf は動画の id を並びのまま返す。
 func videoIDsOf(videos []gen.Video) []int64 {
 	ids := make([]int64, 0, len(videos))
 	for _, video := range videos {
@@ -44,7 +38,6 @@ func videoIDsOf(videos []gen.Video) []int64 {
 	return ids
 }
 
-// assertVideoDates は動画の JSON に updatedAt と fileCreatedAt があることを確かめる。
 func assertVideoDates(t *testing.T, label string, video map[string]json.RawMessage) {
 	t.Helper()
 	for _, field := range []string{"updatedAt", "fileCreatedAt"} {
@@ -60,9 +53,6 @@ func assertVideoDates(t *testing.T, label string, video map[string]json.RawMessa
 	}
 }
 
-// 詳細・一覧・関連・バージョンの Video に updatedAt と fileCreatedAt が入る。編集前の updatedAt は
-// addedAt と等しく、表示名を変えると PUT の応答で進む（受け入れ条件 1・3）。fileCreatedAt は
-// 作成日時、取れなければ mtime になる。
 func TestVideoResponsesCarryUpdatedAtAndFileCreatedAt(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -98,7 +88,6 @@ func TestVideoResponsesCarryUpdatedAtAndFileCreatedAt(t *testing.T) {
 		t.Errorf("詳細の updatedAt = %v, want %v", got.UpdatedAt, saved.UpdatedAt)
 	}
 
-	// 束ねてバージョンの応答も確かめる。
 	if rec := f.bundle(bundleBody([]int64{f.ids["a"], f.ids["b"]}, f.ids["a"]), f.owner); rec.Code != http.StatusOK {
 		t.Fatalf("束ねる: status = %d: %s", rec.Code, rec.Body)
 	}
@@ -142,8 +131,6 @@ func TestVideoResponsesCarryUpdatedAtAndFileCreatedAt(t *testing.T) {
 	}
 }
 
-// sort=createdAsc・createdDesc は一覧・フォルダの一覧・ライブラリで受け付けられ、ゲストでも
-// 400 にならない（要件 5）。作成日時の早い a が createdAsc の先頭、createdDesc の末尾に来る。
 func TestVideoListsAcceptCreatedSort(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env

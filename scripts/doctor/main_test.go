@@ -6,8 +6,7 @@ import (
 	"testing"
 )
 
-// stubRun は外部コマンドの代わりに決まった応答を返す。実際の PATH に依存すると
-// 検査そのものの正しさを確かめられないため。
+// Stub commands so tests do not depend on the host PATH.
 func stubRun(responses map[string]string, failures map[string]bool) firstLineFunc {
 	return func(name string, args ...string) (string, error) {
 		if failures[name] {

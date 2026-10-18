@@ -12,7 +12,7 @@ import (
 func (s *server) GetVideoPreview(
 	w http.ResponseWriter, r *http.Request, id gen.VideoId, _ gen.GetVideoPreviewParams,
 ) {
-	// ゲストとして処理する要求は、非公開にされたら打ち切れるよう台帳に載せる。
+	// Register guest requests so making the video private cancels them.
 	video, r, release, ok := s.lookupServedVideo(w, r, id)
 	if !ok {
 		return
@@ -24,7 +24,7 @@ func (s *server) GetVideoPreview(
 		return
 	}
 
-	// 無い・manifest と合わない・生成途中のものは、置き場が「無い」と答える。
+	// Missing, manifest-mismatched, or incomplete artifacts all appear absent.
 	file, digest, err := s.artifacts.PreviewFile(video.ContentKey)
 	if err != nil {
 		s.notFound(w, "The preview has not been generated yet.")
@@ -38,10 +38,7 @@ func (s *server) GetVideoPreview(
 		return
 	}
 
-	// 版の有無によらず、使うたびに確かめさせる。
-	// If-None-Match が一致すれば http.ServeContent が 304 を返す。更新時刻は渡さない。
-	// 渡すと If-Modified-Since だけの要求に更新時刻で 304 を返し、同じ秒に作り直した
-	// プレビューが古いまま残る。確かめは内容のダイジェストの ETag だけで行う。
+	// Revalidate only by content ETag, without modification time, so same-second rebuilds cannot return stale If-Modified-Since results.
 	setRevalidate(w, digestETag("preview", digest))
 	w.Header().Set("Content-Type", "video/mp4")
 	http.ServeContent(w, r, info.Name(), time.Time{}, file)

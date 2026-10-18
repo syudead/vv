@@ -10,107 +10,78 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ScanStore は走査の記録先である。
 type ScanStore interface {
-	// StartScan は走査の行を running で作る。実行中のものがあれば作らずに
-	// それを返し、started は false になる。
+	// StartScan returns the existing running scan with started=false instead of opening another.
 	StartScan(ctx context.Context) (scan domain.Scan, started bool, err error)
-	// ResumeScan は StartScan と同じだが、中断で終わった走査 from の対象の動画の
-	// 集合と、仕事の段階の問題（失敗と代用）を新しい走査へ持ち越す。
+	// ResumeScan carries interrupted scan membership and stage failures/substitutions into the new
+	// scan.
 	ResumeScan(ctx context.Context, from int64) (scan domain.Scan, started bool, err error)
-	// StartWatchScan は StartScan と同じだが、origin が watch の走査の行を作り、前の走査の
-	// 問題のうち dirs の読む範囲の外のものを新しい走査へ持ち越す。
+	// Watch scans retain prior issues outside their scope.
 	StartWatchScan(ctx context.Context, dirs []domain.DirtyDirectory) (scan domain.Scan, started bool, err error)
 	CurrentScan(ctx context.Context) (domain.Scan, error)
 	UpdateScanProgress(ctx context.Context, id int64, progress domain.ScanProgress) error
-	// FinishScan は走査を閉じる。cause は走査そのものが失敗した理由（成功なら nil）で、
-	// domain.ScanFailure で包まれた理由のコードと場所は保存側が取り出す。decider は走査を始めたもので、
-	// 失敗した走査の記録に残る。
+	// FinishScan persists ScanFailure code/location and the initiating decider for failed scans.
 	FinishScan(ctx context.Context, id int64, state domain.ScanState, cause error, decider domain.ActivityDecider) error
-	// FailInterruptedScans は running のまま残った走査を failed で閉じる。
 	FailInterruptedScans(ctx context.Context) (int64, error)
-	// RecordScanIssue は走査が1つのファイルで出会った失敗を、直近の取り込みの問題と
-	// して記録する。
 	RecordScanIssue(ctx context.Context, issue domain.ScanFileIssue) error
-	// ScanIssues は走査 scanID の問題を、まとめて並べた形で返す。所在がどの登録
-	// フォルダにも含まれない件は含めない。
+	// Exclude issues whose locations belong to no registered folder.
 	ScanIssues(ctx context.Context, scanID int64) ([]domain.ScanIssue, error)
 }
 
-// JobRecoveryStore は中断した取り込みジョブを待ち行列へ戻す保存先である。
 type JobRecoveryStore interface {
 	RequeueRunningJobs(ctx context.Context) (int64, error)
 }
 
-// UnfinishedJobStore は未完了の取り込みの仕事の有無の問い合わせ先である。
 type UnfinishedJobStore interface {
-	// HasUnfinishedJobs は queued か running の仕事が 1 件以上あるかを返す。
 	HasUnfinishedJobs(ctx context.Context) (bool, error)
 }
 
-// FolderIndexStore はフォルダの索引（グループの割り当てと祖先フォルダ名）の
-// 作り直し先である。作り直しに失敗したら、保存側が索引を古いと記録してから
-// 失敗を返す。
+// Storage marks the folder index stale before returning rebuild failures.
 type FolderIndexStore interface {
 	RebuildFolderIndex(ctx context.Context) error
 }
 
-// Scanner は登録済みのメディアフォルダを1回走査する。internal/scanner の
-// *Scanner がこれを満たす。
 type Scanner interface {
-	// Scan はすべての登録フォルダを読む。decider は走査を始めたもので、積む仕事の記録に渡す。
 	Scan(ctx context.Context, decider domain.ActivityDecider) (domain.ScanResult, error)
-	// ScanScoped は dirs のディレクトリだけを読み、消すのもその範囲の所在だけにする。
-	// ctx が domain.ErrScanSuperseded を理由に取り消されたら、何も消さずに
-	// domain.ErrScanSuperseded を返す。
+	// Superseded scoped scans delete nothing and return ErrScanSuperseded.
 	ScanScoped(ctx context.Context, dirs []domain.DirtyDirectory) (domain.ScanResult, error)
 }
 
-// ScanReporter は走査の進捗・今のファイル・ファイルごとの失敗の報告先である。
-// *Scans がこれを満たし、ScansOptions.NewScanner に渡される。
 type ScanReporter interface {
 	ReportScanProgress(ctx context.Context, result domain.ScanResult) error
 	ReportScanIssue(ctx context.Context, issue domain.ScanFileIssue) error
 	ReportScanFile(path string, videoID int64)
 }
 
-// ActivityFolderStore は、今の処理のファイルが置かれたフォルダを求めるための
-// 登録フォルダの読み出し先である。
 type ActivityFolderStore interface {
 	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
 }
 
-// Publisher は状態の変化の発行先である。誰が受け取るか（画面への知らせ・
-// ワーカーの起床など）は知らない。購読者の登録は cmd/mdm が行う。
+// Publishers do not know subscribers; cmd/mdm wires delivery.
 type Publisher interface {
 	Publish(events ...domain.Event)
 }
 
-// ScansOptions は走査の組み立てに必要な依存である。
 type ScansOptions struct {
 	Store ScanStore
 	Jobs  JobRecoveryStore
-	// UnfinishedJobs は Busy が未完了の仕事の有無を読む先である。nil なら
-	// Busy は走っている走査だけを見る。
+	// Nil makes Busy consider only the active scan.
 	UnfinishedJobs UnfinishedJobStore
-	// FolderIndex はスキャンを閉じる直前と、中断したスキャンを閉じたときに
-	// フォルダの索引を作り直す。nil なら作り直さない。
+	// Optional rebuilds before scan completion and after interrupted-scan recovery.
 	FolderIndex FolderIndexStore
-	// NewScanner は進捗の報告先を受け取って走査を組み立てる。走査は報告先を、
-	// 報告先は走査を必要とするので、組み立てを関数で受け取る。
+	// Inject a factory to resolve the scanner/reporter construction dependency.
 	NewScanner func(ScanReporter) Scanner
-	// Context は走査に使う寿命の長い context。停止時に取り消され、走査は
-	// failed で閉じる。nil なら context.Background を使う。
+	// Long-lived scan context; nil uses context.Background and shutdown cancellation closes scans as
+	// failed.
 	Context context.Context
-	// Folders は今の処理のフォルダを求めるのに使う。nil ならフォルダを省く。
+	// Nil omits the activity folder.
 	Folders ActivityFolderStore
-	// Publisher は nil なら発行しない。
+	// Nil disables events.
 	Publisher Publisher
-	// Logger は nil なら slog の既定を使う。
+	// Nil uses slog.Default.
 	Logger *slog.Logger
 }
 
-// Scans は走査の開始・実行・進捗の記録と、起動時の中断からの回復を受け持つ。
 type Scans struct {
 	store   ScanStore
 	jobs    JobRecoveryStore
@@ -118,37 +89,28 @@ type Scans struct {
 	folders FolderIndexStore
 	roots   ActivityFolderStore
 	scanner Scanner
-	// lifetime は組み立て時に渡した寿命の長い context。取り消しは stopRuns が
-	// 走査の context へ伝えるが、それは非同期なので、中断かどうかの判定では
-	// こちらも直接見る。
+	// Inspect lifetime directly too because stopRuns propagates cancellation asynchronously.
 	lifetime  context.Context
 	publisher Publisher
 	logger    *slog.Logger
-	// activity は今の処理をメモリに持つ。
-	activity *activities
+	activity  *activities
 
-	// mu は走査の起動が重ならないようにする。実行中かどうかの判断は
-	// scans 表（部分ユニーク索引）が持つので、ここは goroutine を
-	// 二重に起こさないためだけの錠である。
-	mu      sync.Mutex
-	running bool
-	// cancelRun は走っている走査の context を取り消す。走っていなければ nil。
-	cancelRun context.CancelCauseFunc
-	// runOrigin と runFinished は走っている走査の origin と、その終わりを知らせる channel である。
+	// The database's partial unique index owns running-scan exclusivity; mu only prevents duplicate
+	// goroutines.
+	mu          sync.Mutex
+	running     bool
+	cancelRun   context.CancelCauseFunc
 	runOrigin   domain.ScanOrigin
 	runFinished chan struct{}
-	// onFinish は走査を閉じたあとに、走査の錠を持って登録の順に呼ぶ。
-	onFinish []func(origin domain.ScanOrigin, state domain.ScanState)
-	// onStart は走査を始めるたびに、走査の錠を持って呼ぶ。nil なら呼ばない。
+	// Optional callback invoked under the scan lock after closure.
+	onFinish func(origin domain.ScanOrigin, state domain.ScanState)
+	// Optional callback invoked under the scan lock at startup.
 	onStart func(origin domain.ScanOrigin)
-	// stopped は組み立て時の context が取り消されたことを表す。以後に始める
-	// 走査は、始めた直後に取り消す。
+	// Later starts are canceled immediately after lifecycle shutdown.
 	stopped bool
-	// done は背後で走っている走査の終わりを待つ。
-	done sync.WaitGroup
+	done    sync.WaitGroup
 }
 
-// NewScans は走査を組み立てる。
 func NewScans(opts ScansOptions) *Scans {
 	s := &Scans{
 		store:     opts.Store,
@@ -174,16 +136,9 @@ func NewScans(opts ScansOptions) *Scans {
 	return s
 }
 
-// StartScan は取り込みを開始する。実行中なら新しく始めず、実行中のものを返す。
-// 応答は即座に返り、走査は背後で進む。started は走査の行を新しく作ったかで、
-// 作るか実行中の行を返すかを 1 つのトランザクションで決めた保存先の答えをそのまま返す
-//
-// ctx は要求のものなので、その取り消しを走査へは持ち込まない。要求が終わった
-// 時点で走査が打ち切られてしまう。走査は組み立て時に渡した寿命の長い context の
-// 取り消しでだけ止まる。
-//
-// 走っているのが監視の走査なら、それを止めてから始める。止めた直後に
-// 監視が次の走査を始めて取り合ったときは、もう一度止めて始め直す。
+// StartScan responds immediately and uses the long-lived lifecycle context rather than request
+// cancellation; storage atomically decides started versus existing. Supersede watcher scans before
+// manual starts, retrying if another watcher wins the race.
 func (s *Scans) StartScan(ctx context.Context) (domain.Scan, bool, error) {
 	const attempts = 3
 	for attempt := 1; ; attempt++ {
@@ -195,9 +150,7 @@ func (s *Scans) StartScan(ctx context.Context) (domain.Scan, bool, error) {
 	}
 }
 
-// StartWatchScan は変わったディレクトリ dirs だけを読む走査を、フォルダの監視の走査
-// （origin が watch）として始める。実行中の走査があれば、新しく始めずにそれを返す。
-// 打ち切りと出力は StartScan と同じである
+// StartWatchScan returns any existing scan without starting another and limits new work to dirs.
 func (s *Scans) StartWatchScan(ctx context.Context, dirs []domain.DirtyDirectory) (domain.Scan, bool, error) {
 	dirs = domain.NormalizeDirtyDirectories(dirs)
 	return s.start(ctx, func(ctx context.Context) (domain.Scan, bool, error) {
@@ -205,9 +158,8 @@ func (s *Scans) StartWatchScan(ctx context.Context, dirs []domain.DirtyDirectory
 	}, &dirs, domain.ActivityByRule)
 }
 
-// SupersedeWatchScan は走っている監視の走査を次のファイルの前で止め、何も消さずに done で
-// 閉じさせ、閉じるまで待つ。走っているのが手動の走査か、何も走っていなければ何もしない。
-// 止めたら true を返す。
+// SupersedeWatchScan waits for watcher-only cancellation between files, closing done without
+// deleting locations; manual scans remain untouched.
 func (s *Scans) SupersedeWatchScan(ctx context.Context) bool {
 	s.mu.Lock()
 	if !s.running || s.runOrigin != domain.ScanOriginWatch || s.cancelRun == nil {
@@ -224,9 +176,8 @@ func (s *Scans) SupersedeWatchScan(ctx context.Context) bool {
 	return true
 }
 
-// start は open で走査の行を作り、新しく作ったなら背後で走らせる。dirs が nil でなければ、
-// その範囲だけを読む監視の走査である。decider は走査を始めたもの（手動は所有者、監視と起動時の再開は
-// 規則）で、走査が積む仕事と失敗した走査の記録に残る。
+// The initiator propagates to jobs and failed activity records: owner for manual starts, rule for
+// watcher/recovery starts.
 func (s *Scans) start(
 	ctx context.Context, open func(context.Context) (domain.Scan, bool, error), dirs *[]domain.DirtyDirectory,
 	decider domain.ActivityDecider,
@@ -249,9 +200,8 @@ func (s *Scans) start(
 	s.running = true
 	s.done.Add(1)
 
-	// 走査は要求の ctx の取り消しを受け継がない（WithoutCancel）。受け継ぐと
-	// 応答を返した時点で走査が打ち切られる。止めるのは、組み立て時に渡した
-	// 寿命の長い context が取り消されたときの stopRuns だけである。
+	// Detach request cancellation so returning the HTTP response cannot stop ingestion; stopRuns
+	// propagates lifecycle cancellation instead.
 	runCtx, cancel := context.WithCancelCause(context.WithoutCancel(ctx))
 	s.cancelRun = cancel
 	s.runOrigin = domain.ScanOriginManual
@@ -272,8 +222,6 @@ func (s *Scans) start(
 	return scan, true, err
 }
 
-// CurrentScan は直近の走査を、利用者に見せる取り込みの状態（Scan.Import）を
-// 組み立てて返す。
 func (s *Scans) CurrentScan(ctx context.Context) (domain.Scan, error) {
 	scan, err := s.store.CurrentScan(ctx)
 	if err != nil {
@@ -282,8 +230,7 @@ func (s *Scans) CurrentScan(ctx context.Context) (domain.Scan, error) {
 	return s.withImport(ctx, scan)
 }
 
-// ListScanIssues は直近の取り込みの問題を、cursor の次から limit 件返す。一度も走査していなければ
-// domain.ErrNotFound、カーソルが解釈できなければ domain.ErrInvalidCursor を返す。
+// No previous scan returns ErrNotFound; malformed cursors return ErrInvalidCursor.
 func (s *Scans) ListScanIssues(ctx context.Context, cursor string, limit int) (domain.ScanIssuePage, error) {
 	scan, err := s.store.CurrentScan(ctx)
 	if err != nil {
@@ -300,9 +247,7 @@ func (s *Scans) ListScanIssues(ctx context.Context, cursor string, limit int) (d
 	return domain.ScanIssuePage{ScanID: scan.ID, Items: items, NextCursor: next}, nil
 }
 
-// withImport は走査の記録と問題から取り込みの状態を組み立てる。状態の決め方は
-// domain が持つ。本数は、問題を
-// 動画（未登録ならファイル）ごとにまとめた件で数える。
+// Count issues per video, or per file before registration; domain determines import status.
 func (s *Scans) withImport(ctx context.Context, scan domain.Scan) (domain.Scan, error) {
 	issues, err := s.store.ScanIssues(ctx, scan.ID)
 	if err != nil {
@@ -318,7 +263,6 @@ func (s *Scans) withImport(ctx context.Context, scan domain.Scan) (domain.Scan, 
 	return scan, nil
 }
 
-// currentActivity は今の処理を、ファイルの置かれたフォルダを添えて返す。
 func (s *Scans) currentActivity(ctx context.Context) (domain.ScanActivity, error) {
 	activity := s.activity.current()
 	if !activity.Active() || s.roots == nil {
@@ -331,9 +275,7 @@ func (s *Scans) currentActivity(ctx context.Context) (domain.ScanActivity, error
 	return activity.Locate(roots), nil
 }
 
-// ReportScanFile は走査が登録を始めるファイルを、今の処理として記録する。videoID は
-// 走査が知っている既存の動画（知らなければ 0）である。path が空なら、ファイルの
-// 登録をすべて終えたことを表す。
+// Unknown videoID is zero; empty path marks registration completion.
 func (s *Scans) ReportScanFile(path string, videoID int64) {
 	if path == "" {
 		s.activity.end(scanActivityKey)
@@ -344,8 +286,6 @@ func (s *Scans) ReportScanFile(path string, videoID int64) {
 	})
 }
 
-// JobStarted は仕事の処理が始まったことを、今の処理として記録する。ワーカーの
-// Started に渡す。
 func (s *Scans) JobStarted(job domain.Job) {
 	kind, ok := domain.ActivityKindOf(job.Kind)
 	if !ok || job.LocationPath == "" {
@@ -356,13 +296,11 @@ func (s *Scans) JobStarted(job domain.Job) {
 	})
 }
 
-// JobFinished は仕事の処理が終わったことを記録する。ワーカーの Finished に渡す。
 func (s *Scans) JobFinished(job domain.Job) {
 	s.activity.end(jobActivityKey(job))
 }
 
-// ReportScanIssue は走査が1つのファイルで出会った失敗を、直近の取り込みの問題として
-// 記録する。本数が変わるので、走査の変化として知らせる。
+// Issue counts affect scan state, so publish a scan change.
 func (s *Scans) ReportScanIssue(ctx context.Context, issue domain.ScanFileIssue) error {
 	if err := s.store.RecordScanIssue(ctx, issue); err != nil {
 		return err
@@ -371,8 +309,7 @@ func (s *Scans) ReportScanIssue(ctx context.Context, issue domain.ScanFileIssue)
 	return nil
 }
 
-// ReportScanProgress は走査の進捗を記録する。走査中も一覧・再生は通常どおり
-// 応答するので、ここでは行を1つ書き換えるだけにする。
+// Keep progress updates to one row so listing and playback remain responsive.
 func (s *Scans) ReportScanProgress(ctx context.Context, result domain.ScanResult) error {
 	if err := s.store.UpdateScanProgress(ctx, s.currentScanID(ctx), progressOf(result)); err != nil {
 		return err
@@ -381,40 +318,30 @@ func (s *Scans) ReportScanProgress(ctx context.Context, result domain.ScanResult
 	return nil
 }
 
-// OnFinish registers a callback invoked when a scan closes, in registration order.
-// origin identifies what started the scan. Callbacks must return promptly without
-// acquiring the scan lock. Register them before starting scans.
+// Register once before scans start; callbacks run under the scan lock and must return quickly
+// without reacquiring it.
 func (s *Scans) OnFinish(f func(origin domain.ScanOrigin, state domain.ScanState)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.onFinish = append(s.onFinish, f)
+	s.onFinish = f
 }
 
-// OnStart は走査を新しく始めるたびに呼ぶ関数を登録する。関数は走査の錠を持って呼ばれるので、
-// 走査を触らずに短く戻る。組み立てのあと、走査を始める前に 1 度だけ呼ぶ。
+// Register once before scans start; callbacks run under the scan lock and must not access scans.
 func (s *Scans) OnStart(f func(origin domain.ScanOrigin)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.onStart = f
 }
 
-// Wait は背後で走っている走査の終わりを待つ。組み立て時の context を
-// 取り消したあとに呼ぶ。
-//
-// cmd/mdm は停止時に、変化の配り先を閉じる前にこれを猶予つきで待つ。走査は
-// 取り消しを見て止まるので、通常は長くは待たない。途中で配り先を閉じると、走査が
-// 消した動画の知らせが捨てられ、その生成物が残り続ける。
+// Wait after canceling the lifecycle context and before closing the event bus; otherwise scan
+// deletion events can be lost and artifacts leaked.
 func (s *Scans) Wait() {
 	s.done.Wait()
 }
 
-// Busy は取り込みの途中か、つまり走っている走査があるか、queued か running の
-// 仕事が 1 件以上あるかを返す。どちらも
-// 止めても次の起動で続きから再開する対象である。ライブ変換の配信は再開の対象で
-// ないので含めない。
+// Busy includes resumable ingestion scans/jobs, excluding live transcoding.
 func (s *Scans) Busy(ctx context.Context) (bool, error) {
-	// 監視の走査は利用者に見えない取り込みなので、走っていても取り込みの途中とは数えない
-	//
+	// Watcher scans are background ingestion and do not count as user-visible busy work.
 	s.mu.Lock()
 	running := s.running && s.runOrigin != domain.ScanOriginWatch
 	s.mu.Unlock()
@@ -431,13 +358,8 @@ func (s *Scans) Busy(ctx context.Context) (bool, error) {
 	return pending, nil
 }
 
-// RecoverInterrupted は前回の停止で中途半端に残った状態を戻す。
-//
-// running のまま残った走査を閉じないと、「実行中は1件だけ」の制約が働いた
-// まま二度と取り込みを始められなくなる。閉じた走査があれば、閉じる直前の
-// フォルダの索引の作り直しも済んでいないので、ここで作り直す（索引の表だけを
-// 読み、ファイルシステムは読まない）。running のまま残った仕事は queued へ
-// 戻し、各段階のワーカーが続きから処理する。
+// RecoverInterrupted closes stale running scans to release the uniqueness constraint, rebuilds
+// interrupted folder indexes, and requeues running jobs.
 func (s *Scans) RecoverInterrupted(ctx context.Context) error {
 	closed, err := s.store.FailInterruptedScans(ctx)
 	if err != nil {
@@ -458,19 +380,9 @@ func (s *Scans) RecoverInterrupted(ctx context.Context) error {
 	return nil
 }
 
-// ResumeInterrupted は、最新の走査が中断（failed、理由 interrupted）で終わって
-// いれば、新しい走査を 1 回始める。始めたら
-// true を返す。
-//
-// interrupted は、停止の指示で打ち切った走査と、running のまま残って
-// RecoverInterrupted が閉じた走査の両方に付く。利用者が走査を取り消す操作は無いので、
-// どちらもプロセスの停止による。走査はサイズと mtime が変わらないファイルを何も
-// しないで通るので、始め直しは続きからと同じ結果になる。ただし変わらないファイルの
-// 上限まで失敗した仕事は積み直されないので、中断した走査の対象の動画の集合と
-// 仕事の段階の問題は新しい走査へ持ち越す（ScanStore.ResumeScan）。最新の走査が done、
-// interrupted 以外の理由の failed、または走査の記録が無いときは始めない。
-//
-// 起動時に、RecoverInterrupted のあと、ワーカーを動かしてから 1 度だけ呼ぶ。
+// ResumeInterrupted runs once after recovery and worker startup, resuming only the latest
+// interrupted manual scan. Carry prior target membership and stage issues because unchanged files
+// do not requeue exhausted work.
 func (s *Scans) ResumeInterrupted(ctx context.Context) (bool, error) {
 	latest, err := s.store.CurrentScan(ctx)
 	if errors.Is(err, domain.ErrNotFound) {
@@ -479,8 +391,7 @@ func (s *Scans) ResumeInterrupted(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	// 中断した監視の走査は閉じるだけで、続きは始めない。起動時にディレクトリを読み直さない
-	// ためで、止まっていた間の変更は手動の走査が受け持つ。
+	// Do not resume watcher scans at startup; manual scans handle changes made while offline.
 	if latest.State != domain.ScanFailed || latest.ErrorCode != domain.ScanErrorInterrupted ||
 		latest.Origin == domain.ScanOriginWatch {
 		return false, nil
@@ -498,8 +409,8 @@ func (s *Scans) ResumeInterrupted(ctx context.Context) (bool, error) {
 	return started, nil
 }
 
-// currentScanID は進捗の書き込み先を返す。取れない場合は 0 を返し、
-// 書き込みは何にも当たらない（走査は続ける）。
+// Failure to find the current ID returns zero so progress writes match nothing while scanning
+// continues.
 func (s *Scans) currentScanID(ctx context.Context) int64 {
 	scan, err := s.store.CurrentScan(ctx)
 	if err != nil {
@@ -508,8 +419,7 @@ func (s *Scans) currentScanID(ctx context.Context) int64 {
 	return scan.ID
 }
 
-// stopRuns は組み立て時の context が取り消されたときに呼ばれ、走っている
-// 走査を止める。以後に始める走査も、始めた直後に止まる。
+// Lifecycle shutdown also cancels subsequently started scans immediately.
 func (s *Scans) stopRuns() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -519,7 +429,6 @@ func (s *Scans) stopRuns() {
 	}
 }
 
-// run は走査を最後まで走らせ、結果を記録する。
 func (s *Scans) run(
 	ctx context.Context, scanID int64, finished chan struct{}, dirs *[]domain.DirtyDirectory, decider domain.ActivityDecider,
 ) {
@@ -534,11 +443,10 @@ func (s *Scans) run(
 		s.running = false
 		s.cancelRun(nil)
 		s.cancelRun = nil
-		// 閉じる知らせは走査の錠を持ったまま呼ぶ。錠を放してから呼ぶと、その隙に次の走査が
-		// 始まって開始の知らせが先に届き、閉じる走査が自分の開始時点の状態を取り違える。
-		// 知らせを受ける側は、この錠を取る呼び出しをしてはならない。
-		for _, finish := range s.onFinish {
-			finish(origin, endState)
+		// Invoke completion under the scan lock so the next scan's start cannot overtake it; callbacks
+		// must not reacquire that lock.
+		if s.onFinish != nil {
+			s.onFinish(origin, endState)
 		}
 		s.mu.Unlock()
 		close(finished)
@@ -558,15 +466,14 @@ func (s *Scans) run(
 		}
 		return s.scanner.Scan(ctx, decider)
 	}()
-	// 走査が途中で止まっても、登録中のファイルを今の処理に残さない。
+	// Always clear current registration activity, including interrupted scans.
 	s.activity.end(scanActivityKey)
 
-	// 停止指示で打ち切った場合は、失敗として閉じる。次の起動で走り直せる。
-	// 理由は interrupted で、走査が包んだ理由より優先する。
+	// Shutdown closes failed/interrupted for restart recovery, taking precedence over scanner-specific
+	// errors.
 	state := domain.ScanDone
 	if errors.Is(scanErr, domain.ErrScanSuperseded) && s.lifetime.Err() == nil {
-		// 取って代わられた走査は、何も消さずに終わる。失敗ではないので done で閉じる
-		//
+		// Superseded scans delete nothing and close done rather than failed.
 		s.logger.Info("the watch scan was superseded", slog.Int("added", result.Added))
 		scanErr = nil
 	}
@@ -588,17 +495,15 @@ func (s *Scans) run(
 		)
 	}
 
-	// 停止済みでも記録は残す。context を引き継ぐと、閉じる書き込み自体が
-	// 打ち切られて running のまま残る。
+	// Detach cancellation for final writes so shutdown cannot leave scans stuck running.
 	closeCtx := context.WithoutCancel(ctx)
 
 	if err := s.store.UpdateScanProgress(closeCtx, scanID, progressOf(result)); err != nil {
 		s.logger.Warn("could not record scan progress", slog.Any("error", err))
 	}
 
-	// 成功でも失敗でも、閉じる直前にフォルダの索引を作り直す。読むのは索引の
-	// 表（SQLite）だけで、ファイルシステムは読まない。ファイルシステムを歩くのは
-	// 利用者が取り込みを始めたときの走査だけである。
+	// Rebuild from index tables before closing either successful or failed scans, without walking the
+	// filesystem.
 	s.rebuildFolderIndex(closeCtx)
 
 	if err := s.store.FinishScan(closeCtx, scanID, state, scanErr, decider); err != nil {
@@ -609,9 +514,8 @@ func (s *Scans) run(
 	s.scanChanged()
 }
 
-// rebuildFolderIndex はフォルダの索引を作り直す。失敗してもスキャンは失敗に
-// せず、ログに残すだけにする。保存側が索引を古いと記録しているので、次の作り直しの
-// 時点（次の起動を含む）で直る。
+// Rebuild failures are logged without failing scans; storage marks the index stale for later retry,
+// including startup.
 func (s *Scans) rebuildFolderIndex(ctx context.Context) {
 	if s.folders == nil {
 		return
@@ -621,7 +525,6 @@ func (s *Scans) rebuildFolderIndex(ctx context.Context) {
 	}
 }
 
-// activityChanged は今の処理が変わったことを発行する。
 func (s *Scans) activityChanged() {
 	if s.publisher == nil {
 		return
@@ -629,7 +532,6 @@ func (s *Scans) activityChanged() {
 	s.publisher.Publish(domain.ScanActivityChanged{})
 }
 
-// scanChanged は走査の状態が変わったことを発行する。
 func (s *Scans) scanChanged() {
 	if s.publisher == nil {
 		return

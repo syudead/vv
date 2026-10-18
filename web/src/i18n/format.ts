@@ -10,8 +10,7 @@ export {
   type PluralForms,
 } from "./intl";
 
-// 日時の書式はカタログと同じロケール（LOCALE）の Intl で作る。`ja-JP` やロケール引数の無い
-// toLocale*String は i18n/ の外に置かない。
+// Use catalog LOCALE for Intl formatting; keep locale-specific calls inside i18n/.
 
 const dateFormat = new Intl.DateTimeFormat(LOCALE, { dateStyle: "medium" });
 const dateTimeFormat = new Intl.DateTimeFormat(LOCALE, {
@@ -54,34 +53,31 @@ function toDate(value: string | Date): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-/** formatDate は日付を表す（例: Sep 27, 2026）。読めない値は空。 */
+/** Return empty for invalid dates. */
 export function formatDate(value: string | Date): UiText {
   const date = toDate(value);
   return date === null ? empty : decorated(dateFormat.format(date));
 }
 
-/** formatDateTime は日時を表す（例: Sep 27, 2026, 3:04 PM）。読めない値は空。 */
+/** Return empty for invalid timestamps. */
 export function formatDateTime(value: string | Date): UiText {
   const date = toDate(value);
   return date === null ? empty : decorated(dateTimeFormat.format(date));
 }
 
-/** formatTime は時刻を表す（例: 3:04 PM）。読めない値は空。 */
+/** Return empty for invalid times. */
 export function formatTime(value: string | Date): UiText {
   const date = toDate(value);
   return date === null ? empty : decorated(timeFormat.format(date));
 }
 
-/** formatWeekday は曜日の名前を表す（例: Tuesday）。読めない値は空。 */
+/** Return empty for invalid dates. */
 export function formatWeekday(value: string | Date): UiText {
   const date = toDate(value);
   return date === null ? empty : decorated(weekdayFormat.format(date));
 }
 
-/**
- * formatMonthDay は月と日を表す（例: Oct 7）。`now` と年が違えば年も付ける（例: Oct 7, 2025）。
- * 読めない値は空。now は検査のために差し替えられる。
- */
+/** Include the year only outside now's year; invalid dates return empty. */
 export function formatMonthDay(value: string | Date, now: Date = new Date()): UiText {
   const date = toDate(value);
   if (date === null) return empty;
@@ -90,10 +86,7 @@ export function formatMonthDay(value: string | Date, now: Date = new Date()): Ui
   return decorated(format.format(date));
 }
 
-/**
- * formatWeekdayDate は曜日と月と日を表す（例: Tue, Oct 7）。`now` と年が違えば年も付ける
- * （例: Tue, Oct 7, 2025）。読めない値は空。
- */
+/** Include the year only outside now's year; invalid dates return empty. */
 export function formatWeekdayDate(value: string | Date, now: Date = new Date()): UiText {
   const date = toDate(value);
   if (date === null) return empty;
@@ -102,10 +95,7 @@ export function formatWeekdayDate(value: string | Date, now: Date = new Date()):
   return decorated(format.format(date));
 }
 
-/**
- * formatMonth は月の名前を表す（例: September）。`now` と年が違えば年も付ける
- * （例: December 2025）。読めない値は空。
- */
+/** Include the year only outside now's year; invalid dates return empty. */
 export function formatMonth(value: string | Date, now: Date = new Date()): UiText {
   const date = toDate(value);
   if (date === null) return empty;
@@ -113,10 +103,6 @@ export function formatMonth(value: string | Date, now: Date = new Date()): UiTex
   return decorated(format.format(date));
 }
 
-/**
- * formatRelative は「3 days ago」のような相対表記である。区切り（たった今・分・時間・日・
- * 週・か月・年）は英語化の前と同じにする。now は検査のために差し替えられる。
- */
 export function formatRelative(iso: string, now: Date = new Date()): UiText {
   const then = toDate(iso);
   if (then === null) return empty;

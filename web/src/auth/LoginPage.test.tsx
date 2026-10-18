@@ -75,7 +75,6 @@ describe("LoginPage", () => {
     );
     expect(screen.getByRole("heading", { level: 1, name: "Sign in" })).toBeDefined();
     expect(screen.getByText("Sign in with the owner account")).toBeDefined();
-    // 入力は design system の Input で、フォーカスの輪は全部品で共通のものになる。
     expect(username.dataset.slot).toBe("input");
   });
 
@@ -148,7 +147,6 @@ describe("LoginPage", () => {
     expect(username.value).toBe("owner");
     expect(password.value).toBe("");
     expect(document.activeElement).toBe(password);
-    // どの欄が違うかは示さない。
     expect(username.getAttribute("aria-invalid")).toBeNull();
     expect(password.getAttribute("aria-invalid")).toBeNull();
     expect(assignPage).not.toHaveBeenCalled();

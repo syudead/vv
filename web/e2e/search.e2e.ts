@@ -1,12 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-// ライブラリの検索・絞り込み・並べ替え（親 Issue #195）のうち、本物のブラウザでしか
-// 確かめられないものだけを流す（docs/design-docs/web-testing.md）。ランダムの並びで 2 ページ目の
-// 動画を開いて戻ったときのスクロール位置と、キーボードで結果へ着いたときのフォーカスの見え方で
-// ある。条件・並べ替え・ページ送り・再読み込みとシャッフルの振る舞いは Vitest
-// （src/library/LibraryPage、src/api/useVideos、src/api/listSnapshot）が、検索・絞り込み・
-// 並び順の結果は Go のストアのテスト（internal/store/listing*_test.go）が確かめる。
-// 動画は run-e2e.mjs が generateSearchFixtures で作る。
+// Verify scroll restoration from the second shuffled page and visible keyboard focus with real browser layout. Lower-level suites cover search behavior; see docs/design-docs/web-testing.md.
 
 interface MediaFolder {
   id: number;
@@ -29,7 +23,7 @@ interface VideoPage {
 
 const origin = "http://127.0.0.1:15173";
 const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
-/** 取り込む動画の数（名前のある 7 本・clip 62 本・長さ不明 1 本）。 */
+/** Seven named clips, 62 filler clips and one unknown-duration video. */
 const expectedVideos = 70;
 let folder: MediaFolder | undefined;
 
@@ -39,7 +33,6 @@ async function listAll(request: APIRequestContext, query = ""): Promise<VideoPag
   return (await response.json()) as VideoPage;
 }
 
-/** cardIds はカードの動画 id を画面の順に返す。 */
 async function cardIds(page: Page): Promise<number[]> {
   return (
     await page
@@ -48,7 +41,7 @@ async function cardIds(page: Page): Promise<number[]> {
   ).map(Number);
 }
 
-/** loadEverything は下までスクロールして、件数分のカードが出るまで続きを読む。 */
+/** Load pages until the expected number of cards is rendered. */
 async function loadEverything(page: Page, total: number) {
   await expect
     .poll(
@@ -89,7 +82,7 @@ test.describe.serial("library search", () => {
         { timeout: 60_000 },
       )
       .toBe(true);
-    // 並べ替えは長さを使うので、読める動画の解析が終わるまで待つ。
+    // Wait for probing because duration determines the sort order.
     await expect
       .poll(
         async () => {
@@ -127,7 +120,6 @@ test.describe.serial("library search", () => {
     const order = await cardIds(page);
     expect(new Set(order).size).toBe(expectedVideos);
 
-    // 2 ページ目の動画を開いて戻ると、同じ並びの同じ位置に戻る。
     const target = page.locator(`[data-video-id="${String(order[64])}"]`);
     await target.scrollIntoViewIfNeeded();
     const top = await target.evaluate((card) => card.getBoundingClientRect().top);
@@ -150,7 +142,7 @@ test.describe.serial("library search", () => {
     await expect(page.locator("[data-video-id]").first()).toBeVisible();
 
     const focused = () => page.locator(":focus");
-    // ツールバーの操作とレールの項目を越えて、最初の結果のカードへ着く。
+
     const first = page.locator("[data-video-id]").first();
     for (let i = 0; i < 40; i += 1) {
       await page.keyboard.press("Tab");

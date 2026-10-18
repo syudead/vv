@@ -4,8 +4,6 @@ import { isAborted } from "../api/client";
 import { listWatchHistory, type WatchHistoryEntry } from "../api/history";
 import { type HistoryCriteria, historyCriteriaKey } from "./historyCriteria";
 
-// 視聴履歴の一覧の読み込み。
-
 export type MoreState =
   { kind: "idle" } | { kind: "loading" } | { kind: "failed"; error: unknown };
 
@@ -15,12 +13,10 @@ export type HistoryState =
   | {
       kind: "ready";
       items: WatchHistoryEntry[];
-      /** 続きのページの鍵。無ければもう古い件は無い。 */
       nextCursor?: string;
       more: MoreState;
     };
 
-/** conditionsOf は条件を一覧の要求の引数にする。既定の値は送らない。 */
 function conditionsOf(criteria: HistoryCriteria) {
   return {
     ...(criteria.watch === "all" ? {} : { watch: criteria.watch }),
@@ -31,36 +27,30 @@ function conditionsOf(criteria: HistoryCriteria) {
 
 export interface WatchHistory {
   state: HistoryState;
-  /** 次のページを読む。読んでいる間、続きが無いとき、最初のページを読み直している間は何もしない。 */
+  /** No-op during loading or first-page refresh, or without a continuation cursor. */
   loadMore: () => void;
-  /** 最初のページから読み直す。読んでいる間は読み込み中の表示にする。 */
   retry: () => void;
-  /**
-   * 今の行を残したまま最初のページから読み直し、届いたら差し替える（削除の 404。R-6）。
-   * 失敗したら行を残して `onReloadFailed` を呼ぶ。
-   */
+  /** Keep rows during a stale-data reload; failures retain them and call onReloadFailed. */
   reload: () => void;
   /**
-   * 消えた件を一覧から外し、次にフォーカスを置く件（次の件、無ければ前の件）の id を返す。
-   * 行が尽きても続きがあれば、すぐに次のページを読む。
+   * Return the next focus ID, falling back to the previous record; fetch immediately if all loaded
+   * rows disappear.
    */
   remove: (id: number) => number | null;
-  /** 全件を消した後の空の一覧にする。読んでいる要求は捨てる。 */
+  /** Discard in-flight responses after clearing history. */
   clear: () => void;
 }
 
 /**
- * useWatchHistory は条件（状態・検索語・日）に合う視聴履歴を新しい順にページごとに読む。
- * 条件が変わると最初のページから読み直し、同じ表示のどのページにも同じ条件を送る。日が
- * あればブラウザの時間帯（tz）を添える（api/history.ts）。消した件の id を覚えておき、
- * 消す前に始まった読み込みの応答にあっても一覧へ戻さない。
+ * Keep pagination conditions stable and include the browser timezone for date filtering. Remember
+ * deleted IDs so older in-flight responses cannot restore them.
  */
 export function useWatchHistory(
   criteria: HistoryCriteria,
   onReloadFailed: (error: unknown) => void,
 ): WatchHistory {
   const [state, setState] = useState<HistoryState>({ kind: "loading" });
-  // 応答は後から届くので、描画を待たずに今の一覧を読めるようにする。
+  // Async responses need the latest rows without waiting for rendering.
   const stateRef = useRef(state);
   const show = useCallback((next: HistoryState) => {
     stateRef.current = next;
@@ -72,7 +62,7 @@ export function useWatchHistory(
     onReloadFailedRef.current = onReloadFailed;
   }, [onReloadFailed]);
 
-  // 今の条件と、今の表示（最初のページを読んだ条件）。続きのページは表示の条件で読む。
+  // Paginate with the displayed list's conditions, not a newer pending query.
   const criteriaKey = historyCriteriaKey(criteria);
   const latestCriteria = useRef(criteria);
   useEffect(() => {
@@ -80,7 +70,7 @@ export function useWatchHistory(
   });
   const shownCriteria = useRef(criteria);
 
-  // 最初のページを読み直すたび、全件を消すたびに増やし、古い応答を捨てる。
+  // Advance on first-page reload or clear to invalidate stale responses.
   const generation = useRef(0);
   const controllers = useRef(new Set<AbortController>());
   const readingFirst = useRef(false);
@@ -103,8 +93,7 @@ export function useWatchHistory(
     };
   }, []);
 
-  // 読み込んだ行が尽きても古い件が残っていれば、すぐに続きを読む（「Paging」）。行が
-  // 無いと最後の行を見る IntersectionObserver が働かないので、ここで読む。
+  // Load directly when all rows disappear: there is no final row for IntersectionObserver.
   const loadMoreRef = useRef(() => {});
   const fill = useCallback(
     (next: HistoryState) => {
@@ -144,7 +133,7 @@ export function useWatchHistory(
           request.done();
           if (gen !== generation.current) return;
           readingFirst.current = false;
-          // 読み直しの間に消した件が応答の全部でも、応答の鍵から続きを読む。
+          // Continue from the response cursor even if every returned entry was deleted while loading.
           fill({
             kind: "ready",
             items: kept(page.items),
@@ -158,9 +147,7 @@ export function useWatchHistory(
           readingFirst.current = false;
           const now = stateRef.current;
           if (keeping && now.kind === "ready") {
-            // 行は残す。読み直しの間は続きの読み込みを断っているので、最後の行が見えたままでも
-            // 見張りの知らせは二度と来ない。行の配列を新しくして見張りを付け直させ、見えて
-            // いればすぐ続きを読ませる。その間に行が尽きていれば、見張る行が無いのでここで読む。
+            // Replace the row array to reattach the observer after refresh; a still-visible final row otherwise emits no new event. If no rows remain, fetch directly.
             fill({ ...now, items: [...now.items] });
             onReloadFailedRef.current(error);
             return;
@@ -239,7 +226,6 @@ export function useWatchHistory(
   const retry = useCallback(() => readFirst(false), [readFirst]);
   const reload = useCallback(() => readFirst(true), [readFirst]);
 
-  // 開いたときと条件が変わったときに、読み込み中の表示にして最初のページから読む。
   useEffect(() => {
     readFirst(false);
     return () => {

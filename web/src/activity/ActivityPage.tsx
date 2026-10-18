@@ -30,7 +30,7 @@ import { ActivityToolbar } from "./ActivityToolbar";
 import { useActivityLog } from "./useActivityLog";
 import { useActivityOperations } from "./useActivityOperations";
 
-/** 時刻の表示を進める間隔。一覧は読み直さない。 */
+/** Refresh relative timestamps without reloading the list. */
 const clockMs = 30_000;
 
 function useNow(): Date {
@@ -42,7 +42,6 @@ function useNow(): Date {
   return now;
 }
 
-/** useActivityCriteria は URL を絞り込みとして読み、書き換える口を返す。 */
 function useActivityCriteria(): {
   criteria: ActivityCriteria;
   apply: (next: ActivityCriteria, mode?: HistoryMode) => void;
@@ -67,9 +66,7 @@ function useActivityCriteria(): {
   return { criteria, apply };
 }
 
-/**
- * ActivityFooter はログ全体の数の帯である。絞り込みによらず、サイドバーと同じ数を出す。`running` は待ちの記録も含む。
- */
+/** Global counts ignore filters; running includes queued records. */
 function ActivityFooter({ counts }: { counts: ActivityCounts | null }) {
   if (counts === null) return null;
   return (
@@ -95,10 +92,6 @@ function ActivityFooter({ counts }: { counts: ActivityCounts | null }) {
   );
 }
 
-/**
- * ActivityPage は所有者のアクティビティの記録を新しい順にカードで並べる画面である。絞り込みは URL に持ち、`activity` の
- * 知らせで件数と読み込んだページを読み直す。最後のカードが見えたら次のページを読む。
- */
 export default function ActivityPage() {
   const here = useLocation();
   const from = `${here.pathname}${here.search}`;
@@ -108,7 +101,7 @@ export default function ActivityPage() {
   const totals = useActivityTotals();
   const now = useNow();
   const end = useRef<HTMLDivElement>(null);
-  // 絞り込みを変えたら先頭へ戻す。最初の表示と再生からの戻りでは位置を保つ。
+  // Reset scroll only on filter changes, preserving initial and playback-return positions.
   useScrollTopOnChange(activityCriteriaKey(criteria));
 
   useEffect(() => {
@@ -125,7 +118,7 @@ export default function ActivityPage() {
     state.nextCursor !== undefined &&
     state.more.kind === "idle";
 
-  // 一覧の末尾が画面の下から 1 画面分の内に来たら次のページを読む。
+  // Prefetch within one viewport of the list end.
   useLoadMoreWhenNear(end, canLoadMore, loadMore, items.length);
 
   const filtered = hasActivityConditions(criteria);

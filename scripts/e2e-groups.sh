@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
-# CI の e2e の組（.github/workflows/ci.yml の e2e ジョブの matrix）が、web/e2e の
-# *.e2e.ts をちょうど 1 回ずつ持つか確かめる。
-#
-# CI はファイルを組に分けて並べて流し、組に名前の無いファイルは流さない。
-# auto-import.e2e.ts と tag-kinds.e2e.ts は、足したときに組へ入れ忘れられ、
-# CI で一度も流れていなかった。
-#
-# 使い方: scripts/e2e-groups.sh
+# Ensure each web/e2e/*.e2e.ts appears exactly once in the CI matrix; unlisted files never run.
+# Usage: scripts/e2e-groups.sh
 set -eu
 
 workflow=".github/workflows/ci.yml"

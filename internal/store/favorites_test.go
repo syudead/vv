@@ -13,9 +13,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 動画とグループのお気に入り。
-
-// setFavorites はお気に入りを付け外しし、反映した数を返す。
 func setFavorites(t *testing.T, db *DB, change domain.FavoriteChange) domain.FavoriteApplied {
 	t.Helper()
 	applied, err := db.Favorites().SetFavorites(context.Background(), change)
@@ -25,13 +22,11 @@ func setFavorites(t *testing.T, db *DB, change domain.FavoriteChange) domain.Fav
 	return applied
 }
 
-// favoriteVideos は ids の動画にお気に入りを付ける（favorite が偽なら外す）。
 func favoriteVideos(t *testing.T, db *DB, favorite bool, ids ...int64) domain.FavoriteApplied {
 	t.Helper()
 	return setFavorites(t, db, domain.FavoriteChange{VideoIDs: ids, Favorite: favorite})
 }
 
-// favoritedAt は表 table の鍵 key の favorited_at を返す。行が無ければ -1。
 func favoritedAt(t *testing.T, db *DB, table, column string, key any) int64 {
 	t.Helper()
 	var at int64
@@ -54,7 +49,6 @@ func favoriteRowCount(t *testing.T, db *DB, table string) int {
 	return count
 }
 
-// freezeFavoriteClock は付け外しの時計を at に止め、試験の終わりに戻す。
 func freezeFavoriteClock(t *testing.T, at time.Time) {
 	t.Helper()
 	previous := favoriteNow
@@ -62,8 +56,6 @@ func freezeFavoriteClock(t *testing.T, at time.Time) {
 	t.Cleanup(func() { favoriteNow = previous })
 }
 
-// libraryFavorites は ListLibrary の動画の項目の id とグループの項目のフォルダのパスごとに
-// Favorite を返し、グループのメンバーの Favorite も id ごとに返す。
 func libraryFavorites(t *testing.T, db *DB) (videos map[int64]bool, groups map[string]bool, members map[int64]bool) {
 	t.Helper()
 	videos, groups, members = map[int64]bool{}, map[string]bool{}, map[int64]bool{}
@@ -102,9 +94,6 @@ func folderGroupFavorite(t *testing.T, db *DB, dir string) bool {
 	return page.Group.Favorite
 }
 
-// 付けると GetVideo・ListVideos・ListLibrary の Video.Favorite と ListLibrary・Group の
-// LibraryGroup.Favorite が真になり、外すと偽に戻る（受け入れ条件 1）。グループに付けてもメンバーは
-// 偽、メンバーに付けてもグループは偽（受け入れ条件 3、要件 4）。
 func TestSetFavoritesReflectsInReads(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo := ids[fixturePath("/media/solo.mp4")]
@@ -164,8 +153,6 @@ func TestSetFavoritesReflectsInReads(t *testing.T) {
 	}
 }
 
-// ライブラリに無い動画の id・無いグループの id は数えず誤りにしない。既に同じ状態のものは数え、
-// 日時を変えない。同じグループの重複は 1 つに数える（Edge Case）。
 func TestSetFavoritesCountsOnlyApplicable(t *testing.T) {
 	db, ids := itemsFixture(t)
 	freezeFavoriteClock(t, fixedTime)
@@ -206,7 +193,7 @@ func TestSetFavoritesCountsOnlyApplicable(t *testing.T) {
 	}
 }
 
-// 同じ集まりの 2 本の id を送ると Videos は 2（鍵の数でなく id の数）で、行は集まりの鍵の 1 行。
+// Two bundle member IDs count as two requested videos but write one shared favorite row.
 func TestSetFavoritesCountsBundleMembersByID(t *testing.T) {
 	db, ids := versionFixture(t)
 	bundle(t, db, ids["a"], ids["a"], ids["b"])
@@ -222,8 +209,7 @@ func TestSetFavoritesCountsBundleMembersByID(t *testing.T) {
 	}
 }
 
-// 時計を止めても、続けて付けた後のほうが大きい favorited_at を持つ。動画とグループは同じ列で
-// 比べるので、2 表をまたいでも後のほうが大きい。
+// A frozen clock must still produce increasing favorite times across both tables.
 func TestFavoritedAtIncreasesWithFrozenClock(t *testing.T) {
 	db, ids := itemsFixture(t)
 	freezeFavoriteClock(t, fixedTime)
@@ -242,7 +228,6 @@ func TestFavoritedAtIncreasesWithFrozenClock(t *testing.T) {
 		t.Errorf("favorited_at = %d, %d, %d; want 止めた時刻 %d から増える", first, second, third, fixedTime.UnixMilli())
 	}
 
-	// 外して付け直すと、いちばん大きい値になる。
 	favoriteVideos(t, db, false, solo)
 	favoriteVideos(t, db, true, solo)
 	if again := favoritedAt(t, db, "video_favorites", "content_key", ownerVideo(t, db, solo).UserKey); again <= third {
@@ -250,7 +235,6 @@ func TestFavoritedAtIncreasesWithFrozenClock(t *testing.T) {
 	}
 }
 
-// 付け外しは動画の更新日時（video_edits）を進めない。
 func TestSetFavoritesKeepsEditedAt(t *testing.T) {
 	db, ids := versionFixture(t)
 	before := editedAt(t, db, ids["a"])
@@ -263,8 +247,6 @@ func TestSetFavoritesKeepsEditedAt(t *testing.T) {
 	}
 }
 
-// 同じ内容の所在を別のフォルダへ移しても（新しい所在の取り込みと前の所在の削除）お気に入りの
-// ままで（受け入れ条件 2）、再生位置を完了にしてもお気に入りのまま（受け入れ条件 6）。
 func TestFavoriteSurvivesMoveAndCompletion(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -300,8 +282,6 @@ func TestFavoriteSurvivesMoveAndCompletion(t *testing.T) {
 	}
 }
 
-// 束ねると代表の値が集まりの鍵に写って全バージョンが真になり、外したバージョンは自分の鍵の
-// 値に戻る。
 func TestFavoriteFollowsBundles(t *testing.T) {
 	db, ids := versionFixture(t)
 	favoriteVideos(t, db, true, ids["a"])
@@ -324,7 +304,6 @@ func TestFavoriteFollowsBundles(t *testing.T) {
 	}
 }
 
-// 同じパスの中身の引き継ぎは、前の内容のお気に入りを新しい内容へ移す。
 func TestSuccessionCarriesFavorite(t *testing.T) {
 	db, a := taggedVideoFixture(t)
 	favoriteVideos(t, db, true, a)
@@ -342,9 +321,7 @@ func TestSuccessionCarriesFavorite(t *testing.T) {
 	}
 }
 
-// フォルダの索引の作り直し・動画の削除（releaseContentIndex）・メディアフォルダの削除のあとも、
-// 2 表の行は残る（Edge Case）。生成物の片付け（artifacts の RemoveContent）はファイルだけを消し、
-// データベースに触れない。
+// Index rebuilds and registration removal must preserve persistent favorites.
 func TestFavoritesSurviveIndexChanges(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -381,7 +358,6 @@ func TestFavoritesSurviveIndexChanges(t *testing.T) {
 	assertRows("メディアフォルダの削除")
 }
 
-// 移行は空の 2 表を作り、Down は表を落とす。
 func TestFavoritesMigration(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {

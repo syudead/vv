@@ -2,6 +2,9 @@ package media
 
 import (
 	"context"
+	"io"
+	"os"
+	"os/exec"
 	"slices"
 	"strings"
 	"testing"
@@ -10,8 +13,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// software の引数は方式を足す前と 1 文字も変わらない（親 Issue #370 受け入れ条件 1）。
-// 空の方式と知らない方式も software である。
 func TestVideoEncodeArgsSoftwareUnchanged(t *testing.T) {
 	odd := domain.TranscodeVideo{Width: 641, Height: 359, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1}
 	for _, tc := range []struct {
@@ -29,8 +30,6 @@ func TestVideoEncodeArgsSoftwareUnchanged(t *testing.T) {
 	}
 }
 
-// ハードウェアの方式は符号化器の指定だけを差し替え、High・Level 5.1・8bit 4:2:0 への変換・
-// 時刻基準のキーフレーム・MOV の二入力は software と同じに保つ。
 func TestTranscodeArgsForHardwareEncoders(t *testing.T) {
 	metadata := compatibleMetadata()
 	metadata.FormatName = "mov,mp4,m4a,3gp,3g2,mj2"
@@ -74,7 +73,6 @@ func TestTranscodeArgsForHardwareEncoders(t *testing.T) {
 	}
 }
 
-// 映像をコピーできる要求は方式に依らずコピーし、デバイスも開かない（要件 12）。
 func TestTranscodeArgsCopyIgnoresVideoEncoder(t *testing.T) {
 	for _, encoder := range domain.HardwareVideoEncoders {
 		for _, startMs := range []int64{0, 25000} {
@@ -100,7 +98,6 @@ func startHardware(
 	return scripted.Start(ctx, request)
 }
 
-// ハードウェアで始めた変換が最初のデータを出せば、そのまま使い、切り替えない。
 func TestLiveTranscoderStartsWithHardwareEncoder(t *testing.T) {
 	scripted := newScriptedTranscoder("ffmpeg")
 	started, err := startHardware(t, scripted, context.Background(), domain.LiveTranscodeRequest{
@@ -118,8 +115,6 @@ func TestLiveTranscoderStartsWithHardwareEncoder(t *testing.T) {
 	}
 }
 
-// ハードウェアが最初のデータを出さずに終わると、同じ要求の中で libx264 で始め直し、
-// 切り替えの事実と FFmpeg の誤りを返す（要件 11）。コピーから始めた要求でも同じである。
 func TestLiveTranscoderFallsBackToSoftwareWhenHardwareFails(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -158,7 +153,6 @@ func TestLiveTranscoderFallsBackToSoftwareWhenHardwareFails(t *testing.T) {
 	}
 }
 
-// ハードウェアの期限切れは切り替えずに失敗にする。期限は要求全体で 1 つである。
 func TestLiveTranscoderDoesNotFallBackAfterHardwareTimeout(t *testing.T) {
 	scripted := newScriptedTranscoder("ffmpeg-silent", "ffmpeg")
 	_, err := startHardware(t, scripted, context.Background(), domain.LiveTranscodeRequest{
@@ -172,11 +166,9 @@ func TestLiveTranscoderDoesNotFallBackAfterHardwareTimeout(t *testing.T) {
 	}
 }
 
-// 要求の取り消しでは切り替えない。
 func TestLiveTranscoderDoesNotFallBackAfterCancellation(t *testing.T) {
 	scripted := newScriptedTranscoder("ffmpeg-silent", "ffmpeg")
-	ctx, cancel := context.WithCancel(context.Background())
-	time.AfterFunc(100*time.Millisecond, cancel)
+	ctx := cancelAfterProcessStart(t, scripted)
 	_, err := startHardware(t, scripted, ctx, domain.LiveTranscodeRequest{
 		Normalize: true, VideoEncoder: domain.VideoEncoderNVENC,
 	})
@@ -188,16 +180,40 @@ func TestLiveTranscoderDoesNotFallBackAfterCancellation(t *testing.T) {
 	}
 }
 
-// 最初のデータを出したあとの失敗は切り替えず、Wait が誤りを返す。
 func TestLiveTranscoderDoesNotFallBackAfterInitialData(t *testing.T) {
 	scripted := newScriptedTranscoder("ffmpeg-data-then-fail", "ffmpeg")
-	started, err := startHardware(t, scripted, context.Background(), domain.LiveTranscodeRequest{
+	input, release, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = input.Close() }()
+	defer func() { _ = release.Close() }()
+	commandContext := scripted.commandContext
+	scripted.commandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		cmd := commandContext(ctx, name, args...)
+		cmd.Stdin = input
+		return cmd
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	started, err := startHardware(t, scripted, ctx, domain.LiveTranscodeRequest{
 		Normalize: true, VideoEncoder: domain.VideoEncoderNVENC,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = started.Stream.Close() }()
+	defer func() {
+		started.Stop()
+		_ = started.Stream.Close()
+		_ = started.Wait()
+	}()
+	first := make([]byte, len("fragment"))
+	if _, err := io.ReadFull(started.Stream, first); err != nil || string(first) != "fragment" {
+		t.Fatalf("initial data = %q, error = %v", first, err)
+	}
+	if err := release.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if started.VideoEncoder != domain.VideoEncoderNVENC || started.HardwareFailure != nil {
 		t.Errorf("VideoEncoder = %q, HardwareFailure = %v", started.VideoEncoder, started.HardwareFailure)
 	}
@@ -209,7 +225,6 @@ func TestLiveTranscoderDoesNotFallBackAfterInitialData(t *testing.T) {
 	}
 }
 
-// 映像をコピーできる要求は方式に依らずコピーで始め、VideoEncoder は空である（要件 12）。
 func TestLiveTranscoderCopiesRegardlessOfVideoEncoder(t *testing.T) {
 	scripted := newScriptedTranscoder("ffmpeg")
 	started, err := startHardware(t, scripted, context.Background(), domain.LiveTranscodeRequest{

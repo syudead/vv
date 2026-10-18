@@ -1,9 +1,4 @@
-// nolintguard は Go のソース（テストを含む）に //nolint が無いことを確かめる。
-// task lint-go の一部として動く。
-//
-// golangci-lint は //nolint を書いた箇所の指摘を黙らせる。検査が全体に例外なく
-// 効くように、指摘はコードの書き換えで解消し、無効化の記述そのものを認めない
-// （syudead/vv#443）。golangci-lint には無効化を拒む設定が無いので、ここで拒む。
+// nolintguard rejects Go lint suppression comments, including in tests, because golangci-lint cannot enforce this policy itself.
 package main
 
 import (
@@ -17,11 +12,10 @@ import (
 	"strings"
 )
 
-// directive は golangci-lint が無効化として読むコメントの本文に一致する。
-// 行頭の空白や大文字小文字の違いも拒む側に倒す。
+// Reject suppression directives regardless of leading whitespace or case.
 var directive = regexp.MustCompile(`(?i)^\s*nolint\b`)
 
-// skippedDirs は Go のソースを持たない、または手元の依存物を置く場所である。
+// Skip dependencies and directories without Go sources.
 var skippedDirs = map[string]bool{
 	".git":         true,
 	".local":       true,
@@ -47,8 +41,7 @@ func main() {
 	}
 }
 
-// findDirectives は root 配下の .go ファイルを読み、//nolint の位置を返す。
-// 文字列の中の "//nolint" は無効化にならないので、コメントだけを見る。
+// Inspect parsed comments only; directive-like text in strings has no effect.
 func findDirectives(root string) ([]string, error) {
 	var found []string
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {

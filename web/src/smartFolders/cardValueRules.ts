@@ -1,11 +1,7 @@
 import { type LibrarySmartFolder, MAX_SMART_FOLDER_CARDS } from "../api/smartFolders";
 
-// スマートフォルダのカードの値を読む規則（cardValues.tsx）。ロジックのテストで確かめる。
-
-/** CardValue は読めたカードの値か、答えに入らなかった（無いか見せない）フォルダの "gone" である。 */
 export type CardValue = LibrarySmartFolder | "gone";
 
-/** chunks は `ids` を 1 回の読み出しで名指せる数ずつに分ける。 */
 export function chunks(ids: readonly number[]): number[][] {
   const result: number[][] = [];
   for (let start = 0; start < ids.length; start += MAX_SMART_FOLDER_CARDS) {
@@ -14,10 +10,7 @@ export function chunks(ids: readonly number[]): number[][] {
   return result;
 }
 
-/**
- * withAnswer は読み出し `asked` の答え `cards` を値に重ねる。答えに入らなかったフォルダは
- * "gone"（カードを消す）にする。
- */
+/** Mark omitted requested IDs as gone so their cards disappear. */
 export function withAnswer(
   current: ReadonlyMap<number, CardValue>,
   asked: readonly number[],
@@ -29,11 +22,7 @@ export function withAnswer(
   return next;
 }
 
-/**
- * latestAnswer は読み出し `asked` の答え `cards` のうち、`isLatest` が真の id（その id を
- * 最後に読んだのがこの読み出し）の分だけを残す。後から送った読み出しがある id は、その答えを
- * 待つ。
- */
+/** Keep only IDs for which this is the latest request; later requests own their pending results. */
 export function latestAnswer(
   asked: readonly number[],
   cards: readonly LibrarySmartFolder[],

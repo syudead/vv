@@ -19,10 +19,6 @@ function json(body: unknown, status = 200) {
   });
 }
 
-/**
- * scan は取り込みの応答である。state だけを指定したときは、status をそれに合わせる
- * （走査が閉じて準備も終わった形）。
- */
 function scan(values: Partial<Scan> = {}): Scan {
   const state = values.state ?? "running";
   const status: Scan["status"] = values.status ?? state;
@@ -234,7 +230,7 @@ describe("ScanProgressIndicator", () => {
     const user = userEvent.setup();
     fireEvent.focus(trigger);
     expect(await screen.findByRole("dialog")).toBeDefined();
-    // 外を押したことの受け取りは、開いた次の tick から始まる。
+    // Outside-pointer handling starts on the tick after opening.
     await new Promise((resolve) => window.setTimeout(resolve, 0));
     await user.click(screen.getByTestId("location"));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -274,11 +270,9 @@ describe("ScanProgressIndicator", () => {
     expect(await screen.findByRole("dialog")).toBeDefined();
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    // 閉じたことで本体へフォーカスが戻っても（focus が届いても）開き直らない。
     fireEvent.focus(trigger);
     expect(screen.queryByRole("dialog")).toBeNull();
 
-    // フォーカスが本体から外れると閉じ、戻れば開く。
     await user.tab();
     expect(document.activeElement).not.toBe(trigger);
     await user.tab({ shift: true });
@@ -304,7 +298,6 @@ describe("ScanProgressIndicator", () => {
       '"scanId":1',
     );
 
-    // 読み込み直しと別のタブ（sessionStorage が空）でも、同じ取り込みは出さない。
     first.unmount();
     window.sessionStorage.clear();
     renderIndicator();
@@ -323,11 +316,9 @@ describe("ScanProgressIndicator", () => {
       current = result;
       await emitServerEvent("scan", result);
       expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull();
-      // 結果の通知も読み上げもしない。
       expect(screen.queryByRole("status")).toBeNull();
     }
 
-    // 次の取り込みは、また出す。
     current = scan({ id: 2 });
     await emitServerEvent("scan", current);
     expect(
@@ -403,7 +394,6 @@ describe("ScanProgressIndicator", () => {
     );
     await act(async () => rejectStart?.(new TypeError("network")));
 
-    // サーバーは取り込みを始めていた。あとの知らせで見つかっても出さない。
     current = scan({ id: 7 });
     await emitServerEvent("scan", current);
     expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull();
@@ -411,7 +401,6 @@ describe("ScanProgressIndicator", () => {
       '"scanId":7',
     );
 
-    // 次の開始の取り込みは出す。
     current = scan({ id: 7, state: "done" });
     await emitServerEvent("scan", current);
     await user.click(start);
@@ -494,7 +483,6 @@ describe("ScanProgressIndicator", () => {
     expect(screen.getByRole("dialog")).toBeDefined();
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(screen.queryByRole("dialog")).toBeNull();
-    // ポインタは本体の上に残っていても、閉じた概要は通知を止めない。
     await act(async () => vi.advanceTimersByTimeAsync(8100));
     expect(screen.queryByRole("button", { name: /^Done / })).toBeNull();
   });
@@ -717,7 +705,6 @@ describe("ScanProgressIndicator", () => {
     expect(screen.queryByRole("button", { name: /^Done/ })).toBeNull();
     expect(screen.getByRole("status").textContent).toBe("");
 
-    // 仕事の件数や段階ごとの内訳は無い。
     fireEvent.focus(trigger);
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).queryByRole("term")).toBeNull();
@@ -768,7 +755,6 @@ describe("ScanProgressIndicator", () => {
     expect(screen.getByRole("status")).toBe(status);
     expect(status.textContent).toBe("");
 
-    // activity が一瞬無くなっても、行を空にしない。
     await emitServerEvent("scan", scan({ videos: { total: 10, settled: 6 } }));
     expect(line.textContent).toMatch(/^Creating the preview/);
     expect(status.textContent).toBe("");
@@ -794,7 +780,6 @@ describe("ScanProgressIndicator", () => {
     const trigger = screen.getByRole("button", {
       name: "Some failed 10 of 10 videos done, 2 failed and 1 to check. Open the scan status",
     });
-    // 本体には失敗だけを出す。
     expect(trigger.textContent).toContain("2 failed");
     expect(trigger.textContent).not.toContain("to check");
     expect(screen.getByRole("status").textContent).toBe(

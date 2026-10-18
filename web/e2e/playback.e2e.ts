@@ -73,15 +73,7 @@ async function waitForVideos(request: APIRequestContext) {
     .toBe(12);
 }
 
-/**
- * play は動画のページを開き、大きな再生ボタンで再生を始める。
- *
- * 再生を始める前に動画の取得が失敗すると、プレイヤーの上に失敗の層（role="alert"）が
- * 出て、大きな再生ボタンは隠れたままになる（vjs-has-started）。ボタンだけを待つと、
- * テストの期限まで「ボタンが見えない」とだけ言って止まる（#256・#259 のマージ後に、
- * 配信が 404 を返したときがそうだった）。最初の読み込みの成否が決まるまで待ち、
- * 失敗の層が出たら、その文言と配信の応答を添えてすぐに失敗させる。
- */
+/** Wait for initial media loading and fail with the alert and stream response when it fails; otherwise the hidden play button only produces a timeout. */
 async function play(page: Page, item: Video) {
   const mediaResponses: string[] = [];
   page.on("response", (response) => {
@@ -91,8 +83,7 @@ async function play(page: Page, item: Video) {
     }
   });
   await page.goto(`/videos/${String(item.id)}`);
-  // 押す前に、最初の読み込み（preload=metadata）の成否が決まるのを待つ。ボタンが
-  // 見えた直後に取得が失敗すると、押そうとしている間にボタンが隠れるためである。
+  // Wait for preload metadata before clicking; a late load failure can hide the play button.
   await page.waitForFunction(
     () => {
       const failed = document.querySelector('[data-player-frame] [role="alert"]');
@@ -133,9 +124,7 @@ function mediaRequests(page: Page): Request[] {
   return requests;
 }
 
-/**
- * reportedStart は変換の要求に付いた attempt の、実際の開始位置の報告を待って返す。
- */
+/** Match the reported actual start to the transcode attempt. */
 async function reportedStart(page: Page, transcode: Request): Promise<number> {
   const attempt = new URL(transcode.url()).searchParams.get("attempt");
   if (attempt === null) throw new Error(`attempt が無い: ${transcode.url()}`);
@@ -148,13 +137,7 @@ async function reportedStart(page: Page, transcode: Request): Promise<number> {
   return ((await response.json()) as { startMs: number }).startMs;
 }
 
-/**
- * pauseAndRecordProgress は再生中の動画を操作バーで止め、止まったあとの保存の位置を返す。
- * 再生中は 5 秒ごとにも保存を送る（web/src/player/VideoPlayer.tsx の saveIntervalMs）ので、
- * 押す前に待ち始めた最初の PUT が止めたときの保存とは限らない。止まったのを確かめてから、
- * 最後に送った保存の位置を使う。`lastSaved` は、そのあと（再読み込みで離れるときの保存も
- * 含む）に送った最後の位置を返す。
- */
+/** Use the latest save after playback pauses, since the first PUT may be a periodic save. lastSaved also includes later navigation saves. */
 async function pauseAndRecordProgress(page: Page, item: Video) {
   const saves: number[] = [];
   page.on("request", (candidate) => {
@@ -177,7 +160,6 @@ async function pauseAndRecordProgress(page: Page, item: Video) {
   return { saved: lastSaved(), lastSaved };
 }
 
-/** reloadAndWaitForTranscode は再読み込みのあとのライブ変換の要求と、その開始位置を返す。 */
 async function reloadAndWaitForTranscode(page: Page, item: Video) {
   const resumedPromise = page.waitForRequest((candidate) =>
     candidate.url().includes(`/api/videos/${String(item.id)}/transcode.mp4?startMs=`),
@@ -190,7 +172,6 @@ async function reloadAndWaitForTranscode(page: Page, item: Video) {
   };
 }
 
-/** frameColor は再生中の映像の左上の 1 画素の RGBA を返す。 */
 async function frameColor(page: Page): Promise<number[]> {
   return page.evaluate(() => {
     const element = document.querySelector("video");
@@ -205,7 +186,6 @@ async function frameColor(page: Page): Promise<number[]> {
   });
 }
 
-/** displayedSeconds は操作バーの現在時刻の表示（m:ss）を秒で返す。 */
 async function displayedSeconds(page: Page): Promise<number> {
   const text = await page.locator(".vjs-current-time-display").innerText();
   const match = /(\d+):(\d{2})/.exec(text);
@@ -233,9 +213,7 @@ async function throttle(page: Page, bytesPerSecond: number) {
   });
 }
 
-// serial にしない。1 つの失敗で残りが走らないと、1 回の実行で 1 件ずつしか失敗が
-// 分からない。準備（フォルダの登録と取り込み）は beforeAll にあり、失敗のあとに作業者が
-// 入れ替わっても入れ直す。
+// Keep tests independent so one failure does not skip the rest; beforeAll restores fixtures after worker replacement.
 test.describe("live MP4 playback", () => {
   test.beforeAll(async ({ request }) => {
     test.setTimeout(120_000);
@@ -272,8 +250,7 @@ test.describe("live MP4 playback", () => {
   test("広い画面では左の列の中身が長くても、ページ全体はスクロールしない（1280・1920px）", async ({
     page,
   }) => {
-    // 左の列の下の方にある absolute の要素（読み上げ用の sr-only など）が列の外を基準に
-    // すると、列はスクロールしてもページが伸び、余計なスクロールバーと余白が出る。
+    // Absolutely positioned descendants must not escape the scrolling column and extend the page.
     for (const viewport of [
       { width: 1280, height: 720 },
       { width: 1920, height: 950 },
@@ -395,9 +372,7 @@ test.describe("live MP4 playback", () => {
       return element !== null && !element.paused && element.currentTime > 0.1;
     });
 
-    // 絞った回線では再生が始まるまでに 2 秒を超えることがあり、そのあいだに video.js は
-    // 操作バーを隠して押せなくする（vjs-user-inactive）。人と同じく、プレイヤーの上で
-    // マウスを動かして操作バーを出してから再生バーを押す。
+    // Reveal controls after slow startup: video.js can hide them before playback begins.
     const playerBox = await page.locator(".video-js").boundingBox();
     if (playerBox === null) throw new Error("player is not visible");
     await page.mouse.move(
@@ -426,7 +401,7 @@ test.describe("live MP4 playback", () => {
     const seekStart = Number(new URL(seekRequest.url()).searchParams.get("startMs"));
     expect(seekStart).toBeGreaterThan(20_000);
     expect(seekStart).toBeLessThan(25_500);
-    // 映像はコピーで直前のキーフレーム（20 秒）から始まる。
+    // Stream copy starts at the preceding keyframe (20 seconds).
     const actualStart = await reportedStart(page, seekRequest);
     expect(actualStart).toBeGreaterThan(19_500);
     expect(actualStart).toBeLessThanOrEqual(seekStart);
@@ -457,7 +432,7 @@ test.describe("live MP4 playback", () => {
     expect(item.playable).toBe(false);
     await play(page, item);
 
-    // 14 秒付近（緑の区間、直前のキーフレームは 8 秒）へシークする。
+    // Seek into the green interval near 14 seconds, whose preceding keyframe is at 8 seconds.
     const playerBox = await page.locator(".video-js").boundingBox();
     if (playerBox === null) throw new Error("player is not visible");
     await page.mouse.move(
@@ -485,7 +460,7 @@ test.describe("live MP4 playback", () => {
       return element !== null && !element.paused && element.readyState >= 2;
     });
     const { saved, lastSaved } = await pauseAndRecordProgress(page, item);
-    // 表示も保存も、映っている内容の時刻（キーフレーム + 再生した分）になる。
+    // Displayed and saved time must follow the actual content: keyframe time plus elapsed playback.
     const elementSeconds = await page
       .locator("video")
       .evaluate((element) => (element as HTMLVideoElement).currentTime);
@@ -499,7 +474,6 @@ test.describe("live MP4 playback", () => {
     expect(paused[1]).toBeGreaterThan(paused[0] ?? 255);
     expect(paused[1]).toBeGreaterThan(paused[2] ?? 255);
 
-    // 再読み込みすると保存した位置から始まり、同じキーフレームからの同じ場面が映る。
     const { resumed, startMs } = await reloadAndWaitForTranscode(page, item);
     expect(startMs).toBe(lastSaved());
     expect(Math.abs(startMs - saved)).toBeLessThan(1000);
@@ -543,15 +517,14 @@ test.describe("live MP4 playback", () => {
     test.setTimeout(30_000);
     const item = video("direct");
     await page.setViewportSize({ width: 1280, height: 800 });
-    // 操作バーは再生を始めるまで出ない（video.js）。再生を始めてから操作バーを出す。
-    // cue は 0.5 秒から。
+    // Controls appear only after playback starts; subtitle cues begin at 0.5 seconds.
     await play(page, item);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("direct");
     await page.locator(".video-js").hover();
 
     const button = page.locator(".vjs-control-bar > .vjs-subs-caps-button");
     const display = page.locator(".vjs-text-track-display");
-    // 再生が 0.5 秒を過ぎていれば、選んだ字幕の文字が出る。
+
     await button.hover();
     await page.getByRole("menuitemradio", { name: /^Default/ }).click();
     await expect(display).toContainText("Default subtitle cue");

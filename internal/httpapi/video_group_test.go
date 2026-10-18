@@ -18,10 +18,6 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 動画と関連動画の応答のグループを、
-// 本物の認証・保存層・関連動画の組み立て（app.Catalog）をつないで確かめる。中身は
-// newLibraryFixture と同じで、show は ep1・ep2（公開）と ep10（非公開）、pair は p1（公開）と
-// p2（非公開）のグループである。
 func newVideoGroupFixture(t *testing.T) *libraryFixture {
 	t.Helper()
 	return newLibraryFixtureWith(t, withCatalog)
@@ -61,7 +57,6 @@ func getJSON[T any](t *testing.T, f *libraryFixture, target string, cookies ...*
 	return decode[T](t, rec), raw
 }
 
-// groupRefString は動画の group を比べられる文字列にする（folder はポインタなので中身で書く）。
 func groupRefString(ref *gen.VideoGroupRef) string {
 	if ref == nil {
 		return "省略"
@@ -80,9 +75,6 @@ func idPtrString(id *int64) string {
 	return strconv.FormatInt(*id, 10)
 }
 
-// 所有者: メンバーの動画に何本目かが入り、関連動画にはグループの全メンバーが並びの順で
-// 入る。前後はグループの中の並びで、最初に前、最後に次が無い。関連動画の items には
-// 同じグループのメンバーが無い。
 func TestVideoGroupForOwner(t *testing.T) {
 	f := newVideoGroupFixture(t)
 	members := []int64{f.ids["ep1"], f.ids["ep2"], f.ids["ep10"]}
@@ -135,8 +127,6 @@ func sameSet(a, b []int64) bool {
 	return slices.Equal(a, b)
 }
 
-// 受け入れ条件 17: グループに属さない動画の応答は group が無く、関連動画は近さの順に並ぶ
-// （グループのメンバーも除かない）。
 func TestVideoGroupAbsentForNonMember(t *testing.T) {
 	f := newVideoGroupFixture(t)
 	solo := f.ids["solo"]
@@ -153,20 +143,16 @@ func TestVideoGroupAbsentForNonMember(t *testing.T) {
 	if _, ok := rawRelated["group"]; ok || related.Group != nil {
 		t.Errorf("関連動画の group = %+v, want 省略", related.Group)
 	}
-	// solo は登録フォルダ直下に1本だけで、題名・タグ・指紋の共通する動画が無い。追加日時の
-	// 近さだけで並び、同じ日なので追加日時の新しい順になる。
+	// solo has no title, tag, or fingerprint clues; same-day results sort newest first.
 	want := []int64{f.ids["p2"], f.ids["p1"], f.ids["ep10"], f.ids["ep2"], f.ids["ep1"]}
 	if got := videoIDs(related.Items); !slices.Equal(got, want) {
 		t.Errorf("関連動画 = %v, want %v", got, want)
 	}
-	// 次の動画は関連動画の先頭で、前の動画は返さない（画面が見てきた順から決める）。
 	if idPtrString(related.NextId) != strconv.FormatInt(want[0], 10) || related.PrevId != nil {
 		t.Errorf("前後 = %s・%s, want 省略・%d", idPtrString(related.PrevId), idPtrString(related.NextId), want[0])
 	}
 }
 
-// ゲスト: group と前後は公開のメンバーだけで作る。公開の動画が1本のグループ（pair）も、
-// 再生順が空でないので見せる。
 func TestVideoGroupForGuest(t *testing.T) {
 	f := newVideoGroupFixture(t)
 	public := []int64{f.ids["ep1"], f.ids["ep2"]}
@@ -201,7 +187,6 @@ func TestVideoGroupForGuest(t *testing.T) {
 		t.Errorf("ゲストの関連動画 = %v, want p1 と solo", got)
 	}
 
-	// pair は公開の動画が p1 だけで、ゲストには 1 本のグループである。前後は無い。
 	p1 := f.ids["p1"]
 	video, _ := getJSON[gen.Video](t, f, videoPath(p1))
 	if video.Group == nil || video.Group.Count != 1 || video.Group.Position != 1 {
@@ -215,15 +200,12 @@ func TestVideoGroupForGuest(t *testing.T) {
 		t.Errorf("ゲストの p1 の前後 = %s・%s, want 省略・省略", idPtrString(pair.PrevId), idPtrString(pair.NextId))
 	}
 
-	// 所有者には pair が2本のグループである。
 	owner, _ := getJSON[gen.Video](t, f, videoPath(p1), f.owner)
 	if owner.Group == nil || owner.Group.Count != 2 || owner.Group.Position != 1 {
 		t.Errorf("所有者の p1 の group = %+v", owner.Group)
 	}
 }
 
-// Edge Case「大きなグループ」: group.items には上限を掛けず全メンバーが並び、関連動画は
-// メンバーを除いたうえで残る。
 func TestVideoGroupLargerThanRelatedLimit(t *testing.T) {
 	ctx := context.Background()
 	mediaDir := t.TempDir()
@@ -282,9 +264,6 @@ func TestVideoGroupLargerThanRelatedLimit(t *testing.T) {
 	}
 }
 
-// GET /api/videos/{id}/group-members は、グループの中の並びの範囲を関連動画の group と
-// 同じ形で返す。offset と total はグループ全体で数え、ゲストには公開のメンバーだけで数える。
-// メンバーでなければ 404、範囲の誤りは 400（issue 674）。
 func TestListVideoGroupMembers(t *testing.T) {
 	f := newVideoGroupFixture(t)
 	members := []int64{f.ids["ep1"], f.ids["ep2"], f.ids["ep10"]}
@@ -326,8 +305,6 @@ func TestListVideoGroupMembers(t *testing.T) {
 	}
 }
 
-// 関連動画は近さの順に並び（issue 931）、ページを最後まで読むとこの動画以外のすべての動画が
-// 重複なく 1 回ずつ出る（受け入れ条件 3）。solo とタグを共有する ep1 が先頭に来る。
 func TestRelatedVideosRankAndPage(t *testing.T) {
 	f := newVideoGroupFixture(t)
 	solo := f.ids["solo"]

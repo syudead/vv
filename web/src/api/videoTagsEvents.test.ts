@@ -54,8 +54,6 @@ describe("videoTagsEvents", () => {
     unsubscribe();
   });
 
-  // N1: 同じ動画・タグの組では、通し番号が古い応答が後から届いても、新しい
-  // 応答の結果を巻き戻さない。
   it("順番どおりに届けば両方反映する", () => {
     saveListSnapshot(
       { query: "" },
@@ -99,7 +97,6 @@ describe("videoTagsEvents", () => {
     const first = nextVideoTagsSequence();
     const second = nextVideoTagsSequence();
 
-    // 2番目（外す）の応答が先に届く。
     recordAppliedVideoTags(
       [1],
       { kind: null, id: 5, name: "旅行", tentative: false },
@@ -108,8 +105,6 @@ describe("videoTagsEvents", () => {
     );
     expect(itemVideos(takeListSnapshot({ query: "" })?.items ?? [])[0]?.tags).toEqual([]);
 
-    // 1番目（付ける）の応答が遅れて届いても、2番目の結果（外れた状態）を
-    // 上書きしない。
     recordAppliedVideoTags(
       [1],
       { kind: null, id: 5, name: "旅行", tentative: false },
@@ -130,8 +125,6 @@ describe("videoTagsEvents", () => {
       },
     );
 
-    // 動画2・タグ9への新しい操作を先に払い出しても、動画1・タグ5の古い操作の
-    // 反映を妨げない（鍵は動画・タグの組ごと）。
     const unrelated = nextVideoTagsSequence();
     const target = nextVideoTagsSequence();
     recordAppliedVideoTags(
@@ -177,16 +170,12 @@ describe("videoTagsEvents", () => {
 
     const first = nextVideoTagsSequence();
     const second = nextVideoTagsSequence();
-    // 動画2は先に新しい操作（second）を受け取り済みとする。
     recordAppliedVideoTags(
       [2],
       { kind: null, id: 5, name: "旅行", tentative: false },
       "add",
       second,
     );
-    // 動画1・2をまとめて外す古い操作（first）が後から届く。動画2はfirstより
-    // 新しいsecondを既に反映しているので、この操作からは除く。動画1は初めて
-    // なので反映する。
     recordAppliedVideoTags(
       [1, 2],
       { kind: null, id: 5, name: "旅行", tentative: false },

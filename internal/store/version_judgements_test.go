@@ -10,10 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 「同じ動画かもしれない」候補の自動の判定の保存と反映。
-
-// judgementFixture は a（720p）と b（1080p）が候補の 1 組になり、c は指紋が違って候補にならない 3 本を
-// 作る。d は取り込むだけ。
+// Only the 720p/1080p pair shares a fingerprint; the third video differs and the fourth is merely indexed.
 func judgementFixture(t *testing.T) (*DB, map[string]int64) {
 	t.Helper()
 	db, ids := versionFixture(t)
@@ -37,7 +34,6 @@ func judgementFixture(t *testing.T) (*DB, map[string]int64) {
 	return db, ids
 }
 
-// claimJudgement は候補を 1 組取り出し、それが (key-a, key-b) であることを確かめる。
 func claimJudgement(t *testing.T, db *DB) domain.VersionJudgeJob {
 	t.Helper()
 	job, err := db.Versions().ClaimJudgement(context.Background())
@@ -50,7 +46,6 @@ func claimJudgement(t *testing.T, db *DB) domain.VersionJudgeJob {
 	return job
 }
 
-// applyJudgement は結果を反映し、反映したことと VersionCandidatesChanged の発行を確かめる。
 func applyJudgement(t *testing.T, db *DB, keys [2]string, result domain.VersionJudgeResult) []domain.Event {
 	t.Helper()
 	recorder := &eventRecorder{}
@@ -65,7 +60,6 @@ func applyJudgement(t *testing.T, db *DB, keys [2]string, result domain.VersionJ
 	return recorder.events
 }
 
-// hasEvent は events に型 E の変化があるかを返す。
 func hasEvent[E domain.Event](events []domain.Event) bool {
 	for _, event := range events {
 		if _, ok := event.(E); ok {
@@ -75,7 +69,6 @@ func hasEvent[E domain.Event](events []domain.Event) bool {
 	return false
 }
 
-// candidateJudgement は (key-a, key-b) の候補の行の判定・失敗の数・再試行の時刻・確率を返す。
 func candidateJudgement(t *testing.T, db *DB) (judgement *string, attempts int, retryAt *int64, probability *float64) {
 	t.Helper()
 	if err := db.sql.QueryRow(`select judgement, attempts, retry_at, probability from video_version_candidates
@@ -92,8 +85,6 @@ func expectNoClaim(t *testing.T, db *DB, why string) {
 	}
 }
 
-// 「同じ」は R-7 の代表で束ね（タグの付いた 720p が新しい 1080p の複製より代表に残る）、候補が消える
-// （受け入れ条件 1・8）。取り出しは両方の指紋を返す。
 func TestJudgementSameBundlesWithOwnersRepresentative(t *testing.T) {
 	db, ids := judgementFixture(t)
 	a, b := ids["a"], ids["b"]
@@ -118,15 +109,13 @@ func TestJudgementSameBundlesWithOwnersRepresentative(t *testing.T) {
 	if rows := candidateRows(t, db); rows != 0 {
 		t.Errorf("束ねたあとの候補の行 = %d, want 0", rows)
 	}
-	// 結果は 1 度だけ反映する。
 	if applied, err := db.Versions().ApplyJudgement(context.Background(), job.Keys,
 		domain.VersionJudgeResult{Verdict: domain.VersionSame}); err != nil || applied {
 		t.Errorf("消えた候補への結果 = %v, %v, want 捨てる", applied, err)
 	}
 }
 
-// 新しい動画と集まりの 1 本が「同じ」なら、新しい動画がその集まりに加わる。その集まりを手で分けて
-// 束ね直した後も同じ（受け入れ条件 2、R-6: 同じ側の中の組は妨げない）。
+// Differences within one existing side must not prevent adding a matching new video.
 func TestJudgementSameJoinsExistingBundle(t *testing.T) {
 	for _, split := range []bool{false, true} {
 		t.Run(map[bool]string{false: "bundled", true: "split and bundled again"}[split], func(t *testing.T) {
@@ -154,7 +143,6 @@ func TestJudgementSameJoinsExistingBundle(t *testing.T) {
 	}
 }
 
-// 「違う」は「違う動画」を記録して候補を消す（受け入れ条件 3・8）。
 func TestJudgementDifferentDismisses(t *testing.T) {
 	db, _ := judgementFixture(t)
 	job := claimJudgement(t, db)
@@ -172,8 +160,6 @@ func TestJudgementDifferentDismisses(t *testing.T) {
 	}
 }
 
-// 束ねる「同じ」は一致を変えうるので、すべてのスマートフォルダを名指す知らせを 1 つ伴う。束ねない
-// 「違う」は伴わない。
 func TestJudgementNamesSmartFoldersOnlyWhenItBundles(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -205,8 +191,7 @@ func TestJudgementNamesSmartFoldersOnlyWhenItBundles(t *testing.T) {
 	}
 }
 
-// 却下した組をまたぐ「同じ」は候補を undecided に残し、undecided の組は取り出さない（受け入れ条件 4・5）。
-// 却下は判定の途中で記録されても勝つ（R-6）。
+// A cross-side dismissal recorded during judging must override the automatic same verdict.
 func TestJudgementSameAcrossDismissedPairStaysUndecided(t *testing.T) {
 	db, ids := judgementFixture(t)
 	a, b, c := ids["a"], ids["b"], ids["c"]
@@ -230,7 +215,6 @@ func TestJudgementSameAcrossDismissedPairStaysUndecided(t *testing.T) {
 	expectNoClaim(t, db, "undecided の組")
 }
 
-// 「決められない」は確率を残し、その組は取り出さない（受け入れ条件 5・8）。
 func TestJudgementUndecidedKeepsProbability(t *testing.T) {
 	db, _ := judgementFixture(t)
 	job := claimJudgement(t, db)
@@ -243,7 +227,6 @@ func TestJudgementUndecidedKeepsProbability(t *testing.T) {
 	expectNoClaim(t, db, "undecided の組")
 }
 
-// failed の行は retry_at の後にだけ取り出され、その attempts は回復を経ても残る（受け入れ条件 6・8、R-5）。
 func TestJudgementFailedRetriesAfterRetryAt(t *testing.T) {
 	db, _ := judgementFixture(t)
 	ctx := context.Background()
@@ -270,7 +253,6 @@ func TestJudgementFailedRetriesAfterRetryAt(t *testing.T) {
 	if job := claimJudgement(t, db); job.Attempts != 1 {
 		t.Errorf("取り出した attempts = %d, want 1", job.Attempts)
 	}
-	// 判定中のまま終わった行は、起動時に待ちへ戻り、attempts を保つ。
 	recovered, err := db.Versions().RecoverRunningJudgements(ctx)
 	if err != nil || recovered != 1 {
 		t.Fatalf("RecoverRunningJudgements = %d, %v, want 1", recovered, err)
@@ -285,8 +267,6 @@ func TestJudgementFailedRetriesAfterRetryAt(t *testing.T) {
 	}
 }
 
-// Unbundle は外した動画と残る各メンバーの組を記録し、対応する候補が一覧に戻るが、その組は取り出さない
-// （受け入れ条件 5・7・8、R-8）。
 func TestUnbundleRecordsPairsAndRebuildsCandidates(t *testing.T) {
 	db, ids := judgementFixture(t)
 	a, b, c := ids["a"], ids["b"], ids["c"]
@@ -328,7 +308,6 @@ func TestUnbundleRecordsPairsAndRebuildsCandidates(t *testing.T) {
 	expectNoClaim(t, db, "集まりから外した組")
 }
 
-// 同じパスの中身が変わって引き継ぐと、外した組の鍵も付け替える。
 func TestMoveKeyPairsRekeysUnbundledPairs(t *testing.T) {
 	db, _ := versionFixture(t)
 	ctx := context.Background()
@@ -352,7 +331,6 @@ func TestMoveKeyPairsRekeysUnbundledPairs(t *testing.T) {
 	}
 }
 
-// 重複の自動判定の設定は、行が無ければ切で、保存した値を返す。
 func TestVersionJudgingSetting(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -369,8 +347,6 @@ func TestVersionJudgingSetting(t *testing.T) {
 	}
 }
 
-// 接続が無くてモデルに聞けない組は no_connection になって取り出されず、一覧に残る。接続の保存で
-// 待ちに戻る。
 func TestJudgementNoConnectionWaitsForConnection(t *testing.T) {
 	db, _ := judgementFixture(t)
 	ctx := context.Background()
@@ -393,7 +369,6 @@ func TestJudgementNoConnectionWaitsForConnection(t *testing.T) {
 	claimJudgement(t, db)
 }
 
-// 次に取り出せる時刻は failed の行の retry_at のうち最も早いもので、無ければ見つからない（R-5）。
 func TestNextJudgementRetry(t *testing.T) {
 	db, _ := judgementFixture(t)
 	ctx := context.Background()
@@ -409,8 +384,7 @@ func TestNextJudgementRetry(t *testing.T) {
 	}
 }
 
-// 取り出せない failed の組（両側の登録の所在が無くなった組）は次の再試行の時刻に数えない。数えると
-// 取り出せない組の時刻を過ぎたあと、ワーカーが毎秒問い合わせ続ける（R-5）。
+// Exclude unclaimable retries or workers repeatedly poll an overdue pair they can never claim.
 func TestNextJudgementRetryIgnoresUnclaimablePairs(t *testing.T) {
 	db, _ := judgementFixture(t)
 	ctx := context.Background()
@@ -424,7 +398,6 @@ func TestNextJudgementRetryIgnoresUnclaimablePairs(t *testing.T) {
 	}
 }
 
-// Ollama の接続先は、行を保存したときだけ保存済みである。既定の接続先に倒した値は数えない（R-13）。
 func TestOllamaConnectionSaved(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -439,8 +412,6 @@ func TestOllamaConnectionSaved(t *testing.T) {
 	}
 }
 
-// SavedOllamaSettings は接続先と保存したかを 1 度に返し、保存したかは OllamaConnectionSaved と
-// 同じ答えになる（前の版のキー、模型だけの行を含む。docs/design-docs/design-system.md）。
 func TestSavedOllamaSettings(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

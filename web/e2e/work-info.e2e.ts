@@ -1,13 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-// 動画の作品情報の長い説明（親 Issue #967 の Edge Cases「長い説明で崩れない」、子 #1030）を
-// 実ブラウザに通す。畳むかどうかは描画した高さで決まり、横スクロールが出ないことも実際の
-// レイアウトでしか確かめられない。編集・保存・外部 API・項目の出し方は Go のストアとハンドラー、
-// Vitest のページとコンポーネントのテストが持つ（docs/design-docs/web-testing.md の Test levels）。
-// 動画は run-e2e.mjs が generateWorkInfoFixtures で作る作品動画A〜D の 4 本。人物はフォルダを
-// 外しても残るので、名前の末尾に実行ごとの印 run を付け、CI の再試行（同じサーバーと DB で
-// ワーカーを作り直す）が前の試行の同名の人物に当たらないようにする。作品情報は動画の中身に
-// 付いて残り、再登録と再スキャンで戻ってくるので、beforeAll で消す。
+// Verify description collapsing and overflow with real layout; lower-level suites cover work-info behavior.
+// Use per-attempt person names and clear persisted details before each retry because the server and database survive worker replacement.
 
 interface MediaFolder {
   id: number;
@@ -27,10 +21,10 @@ interface Credit {
 const origin = "http://127.0.0.1:15173";
 const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
 
-/** run は試行ごとに変わる印。再試行はワーカーを作り直すので、このモジュールも読み直される。 */
+/** Worker replacement reloads this module and gives retries a new marker. */
 const run = Date.now().toString(36);
 
-/** 入れる値。名前は他の e2e の人物・団体に当たらないものにする。 */
+/** Use names distinct from other e2e fixtures. */
 const haruka = `作品e2e春香${run}`;
 
 let folder: MediaFolder | undefined;
@@ -85,7 +79,7 @@ async function setWorkInfo(request: APIRequestContext, id: number, workInfo: obj
   expect(response.ok()).toBe(true);
 }
 
-/** clearDetails は前の試行が残した表示名と作品情報を消し、ファイル名の題名に戻った動画を返す。 */
+/** Clear persisted details from prior attempts and restore filename-derived titles. */
 async function clearDetails(request: APIRequestContext, id: number): Promise<Video> {
   const response = await request.put(`/api/videos/${String(id)}/details`, {
     headers: mutationHeaders,
@@ -95,7 +89,6 @@ async function clearDetails(request: APIRequestContext, id: number): Promise<Vid
   return (await response.json()) as Video;
 }
 
-/** infoArea は動画ページの情報欄（ファイルの行・作品情報・技術の行を縦に並べる枠）である。 */
 function infoArea(page: Page) {
   return page.getByRole("list", { name: "File details" }).locator("xpath=../..");
 }
@@ -177,7 +170,6 @@ test.describe.serial("work information", () => {
       ),
     ).toBe(true);
 
-    // 開いても横には広がらず、閉じると畳んだ状態に戻る。
     await page.getByRole("button", { name: "Show more" }).click();
     expect(
       await page.evaluate(

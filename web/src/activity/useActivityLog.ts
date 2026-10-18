@@ -16,8 +16,6 @@ import {
   activityCriteriaKey,
 } from "./activityCriteria";
 
-// アクティビティの一覧の読み込み。
-
 export type MoreState = { kind: "idle" } | { kind: "loading" } | { kind: "failed" };
 
 export type ActivityLogState =
@@ -26,32 +24,29 @@ export type ActivityLogState =
   | {
       kind: "ready";
       items: ActivityEntry[];
-      /** 続きのページの鍵。無ければもう古い記録は無い。 */
+      /** No cursor means there are no older records. */
       nextCursor?: string;
-      /** status 以外の絞り込みに合う、状態ごとの数（Status のメニュー）。 */
+      /** Status counts apply every filter except status. */
       counts: ActivityCounts;
-      /** feature 以外の絞り込みに合う、機能ごとの数（Feature のメニュー）。 */
+      /** Feature counts apply every filter except feature. */
       features: ActivityFeatureCounts;
       more: MoreState;
     };
 
 export interface ActivityLog {
   state: ActivityLogState;
-  /** 次のページを読む。読んでいる間と続きが無いときは何もしない。 */
+  /** No-op while loading or when no next page exists. */
   loadMore: () => void;
-  /** 最初のページから読み直す。読んでいる間は読み込み中の表示にする。 */
   retry: () => void;
   /**
-   * 件数と読み込んだページを、今の行を残したまま読み直す（`activity` の知らせと同じ）。返す
-   * Promise は、この呼び出しの後に始めた読み直しが終わり、読み直しが止んだときに解決する
-   * （読めなかったときも解決し、拒否しない）。
+   * Keep current rows while refreshing counts and loaded pages; resolve after refreshes settle,
+   * even on failure.
    */
   refresh: () => Promise<void>;
 }
 
 type Ready = Extract<ActivityLogState, { kind: "ready" }>;
 
-/** readyOf は最初のページの件数と、行と続きの鍵から一覧を作る。 */
 function readyOf(
   page: ActivityPage,
   items: ActivityEntry[],
@@ -68,13 +63,9 @@ function readyOf(
 }
 
 /**
- * useActivityLog は絞り込みに合う記録を新しい順にページごとに読む。絞り込みが変わると最初の
- * ページから読み直す。`activity` の知らせとつなぎ直しでは、件数と読み込んだのと同じ数の
- * ページを読み直し、届いたら行を差し替える（並びは id の降順なので、読んでいたカードは
- * 動かない）。読み直しが重なったら今の読み直しの後に 1 度だけ読む。最初のページを読んでいる
- * 間に届いた知らせも、そのページが届いた後に 1 度だけ読み直す。読み直しの失敗では今の行を
- * 残す。最初のページが読めなかった画面（`failed`）は知らせでは読み直さず、`Retry` を待つ。
- * 期間は最初のページと読み直しを始めるときに `since` へ直し、続きのページは同じ条件で読む。
+ * Coalesce overlapping refreshes into one trailing reload and keep existing rows on failure; an
+ * initial failure requires Retry. Freeze the period boundary across pagination and recompute it on
+ * refresh.
  */
 export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
   const [state, setState] = useState<ActivityLogState>({ kind: "loading" });
@@ -90,14 +81,14 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
     criteriaRef.current = criteria;
   });
 
-  // 読み直しのたびに増やし、古い応答を捨てる。
+  // Increment on reload to discard stale responses.
   const generation = useRef(0);
   const controller = useRef<AbortController | null>(null);
-  // 読み込んだページの数。読み直しはこの数だけ読む。
+  // Refresh the same number of loaded pages.
   const pages = useRef(0);
   const refreshing = useRef(false);
   const again = useRef(false);
-  // 今の行を読んだ条件。続きのページはこれで読み、期間の境界を動かさない。
+  // Reuse these conditions for pagination so the period boundary stays fixed.
   const conditions = useRef<ActivityConditions>({});
 
   const begin = useCallback(() => {
@@ -117,9 +108,9 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
     [],
   );
 
-  // readFirst から refresh を呼ぶための控え（refresh は readFirst の後に作る）。
+  // Allow readFirst to call refresh, which is defined later.
   const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
-  // refresh の呼び出し手のうち、読み直しが止むのを待っている者。
+  // Callers waiting for all refreshes to settle.
   const waiters = useRef<(() => void)[]>([]);
   const settle = useCallback(() => {
     const waiting = waiters.current;
@@ -241,7 +232,6 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
     );
   }, [readPage, show]);
 
-  // 絞り込みが変わるたびに最初のページから読む。
   useEffect(() => {
     readFirst();
   }, [key, readFirst]);

@@ -8,9 +8,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// プラグインのプロキシの設定と、実行への渡し方。
-
-// memoryProxyStore は URL を 1 つ持つ保存先で、書き込みを数える。
 type memoryProxyStore struct {
 	value  string
 	writes int
@@ -26,7 +23,6 @@ func (s *memoryProxyStore) SaveWorkInfoPluginProxyURL(_ context.Context, value s
 	return nil
 }
 
-// 保存したあとの実行は URL を受け取り、消したあとの実行は何も受け取らない。
 func TestWorkInfoRunsUseTheSavedProxy(t *testing.T) {
 	ctx := context.Background()
 	e := newFetchEnv()
@@ -72,7 +68,7 @@ func TestSetWorkInfoPluginProxyURLRefusesBrokenURLs(t *testing.T) {
 	}
 }
 
-// 手で書き換えられて規則に外れた保存値では、プロキシを飛ばして直接つながず、実行しない。
+// Invalid persisted settings must fail closed rather than bypassing the proxy.
 func TestWorkInfoRunRefusesABrokenSavedProxy(t *testing.T) {
 	e := newFetchEnv()
 	e.plugins.network = NewWorkInfoPluginProxy(&memoryProxyStore{value: "http://proxy.example/path"})

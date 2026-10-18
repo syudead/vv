@@ -37,10 +37,7 @@ import {
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
 
-/**
- * videoLinkLabel は関連動画と「次の動画」のリンクの読み上げ名である。題名と長さだけにし、
- * 中の進捗バーの割合が名前に混ざらないようにする。進捗バー自体は読み上げに残す。
- */
+/** Keep progress percentages out of the link name while leaving the progress bar accessible. */
 export function videoLinkLabel(video: Video): string {
   const duration = formatDuration(video.durationMs);
   return duration === ""
@@ -48,13 +45,7 @@ export function videoLinkLabel(video: Video): string {
     : t.player.related.videoLink(video.title, duration);
 }
 
-/**
- * VideoThumbnail は関連動画と「次の動画」のサムネイルである。無いときは一覧のカードと
- * 同じ代わりの表示にし、右下に長さ、途中まで見た動画だけ下端に進捗バーを出す。
- *
- * scrub を渡すと下端にスクラブの帯を置き、帯にいる間はコマを出して長さの表示とバーを
- * スクラブ位置に差し替える。
- */
+/** Scrubbing temporarily replaces the thumbnail, duration, and progress with the hovered frame. */
 export function VideoThumbnail({
   video,
   className,
@@ -64,16 +55,13 @@ export function VideoThumbnail({
 }: {
   video: Video;
   className?: string;
-  /** 角に重ねる印（何本目か）。続けて再生とプレイリストのカードが渡す。 */
+  /** Position badge supplied by continuous-play and playlist cards. */
   marks?: ReactNode;
-  /** マウスを乗せたときの一覧用プレビュー。関連動画の列だけが渡す。 */
   preview?: HoverPreview;
-  /** スクラブの帯。関連動画の列のリンクだけが渡す。 */
   scrub?: ScrubPreview;
 }) {
   const duration = formatDuration(video.durationMs);
   const ratio = watchedRatio(video);
-  // 帯にいる間のポインタの位置。
   const scrubPosition = scrub?.position ?? null;
   return (
     <Thumbnail className={cn("shrink-0", className)}>
@@ -116,7 +104,6 @@ export function VideoThumbnail({
       )}
       <ScrubFrame frame={scrub?.frame ?? null} />
       {duration !== "" && (
-        // 関連動画の列と次の動画の小さなサムネイルでは、長さを角に寄せて読みやすい大きさにする。
         <VideoThumbnailDuration className="right-1 bottom-1 px-1 py-0 text-xs font-normal">
           {scrubPosition === null
             ? duration
@@ -127,7 +114,7 @@ export function VideoThumbnail({
         <VideoThumbnailProgress
           value={Math.round(ratio * 100)}
           aria-label={t.list.card.watchedRatio}
-          // 帯にいる間は見た目だけ隠し、値と読み上げは保つ（R-6）。
+          // Hide only the visual bar while scrubbing; preserve its value and accessible representation.
           className={cn(scrubPosition !== null && "opacity-0")}
         />
       )}
@@ -144,23 +131,20 @@ export function VideoThumbnail({
         </span>
       )}
       {marks}
-      {/* 帯は長さの表示とバーより前に置く（R-5）。 */}
+      {/* Keep the scrub band above duration and progress. */}
       {scrub !== undefined && <ScrubBand scrub={scrub} />}
     </Thumbnail>
   );
 }
 
-/** 広い画面（`lg` 以上）。左右の列がそれぞれ中でスクロールする幅である。 */
+/** The lg breakpoint enables independently scrolling columns. */
 const wideScreen = "(min-width: 64rem)";
 
 export function isWideScreen(): boolean {
   return typeof window.matchMedia === "function" && window.matchMedia(wideScreen).matches;
 }
 
-/**
- * useWideScreen は広い画面かを返し、窓の幅や向きが `lg` をまたいで変わったら描き直す。
- * 描くときに一度だけ調べると、またいだ後も前の幅の読み足し方（スクロールかボタンか）が残る。
- */
+/** Track breakpoint changes so pagination switches between scrolling and buttons after resizing. */
 function useWideScreen(): boolean {
   const [wide, setWide] = useState(isWideScreen);
   useEffect(() => {
@@ -175,46 +159,22 @@ function useWideScreen(): boolean {
   return wide;
 }
 
-/**
- * 右の列の並びの入れ物。プレイリスト・続けて再生・関連動画を 1 つに入れ、広い画面では
- * この入れ物の中だけをスクロールさせる。中の位置（offsetTop）の基準にもする（lg:relative）。
- */
+/** Share one scroll container and offsetTop origin across playlist, continuous-play, and related sections. */
 const scrollerClass =
-  // 端まで来てもページへは送らない。行の hover の面と輪郭が切れないよう、左と上ははみ出す分
-  // だけ内側に余白を取る。右は画面の端に接するので、見出しの帯の × と揃う余白（pr-3）を取る。
+  // Contain scrolling and leave space for hover outlines; align right padding with the header close button.
   "flex flex-col lg:relative lg:-ml-1.5 lg:min-h-0 lg:flex-1 lg:scrollbar-on-hover lg:overflow-y-auto lg:overscroll-contain lg:pt-1.5 lg:pr-3 lg:pb-6 lg:pl-1.5";
 
-/**
- * 右の列の並び（関連動画・続けて再生・プレイリスト）は、どれもライブラリと同じカード
- * （サムネイルの下に名前）で並べる。広い画面の右の列では 1 列、積む幅では列の数を増やす。
- */
 export const cardListClass =
   "grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-1";
 
-/**
- * 区切りの見出しの行。広い画面では、自分の区切りの中身が見えている間だけ並びの入れ物の上に
- * 留まる（続けて再生が流れ終わると、関連動画の見出しに入れ替わる）。
- */
+/** Each section heading remains sticky only while its section is visible. */
 export const stickyHeadingClass =
   "flex items-baseline justify-between gap-3 bg-background pb-3 lg:sticky lg:-top-1.5 lg:z-30 lg:-mx-1.5 lg:-mt-1.5 lg:px-1.5 lg:pt-1.5";
 
-/**
- * MemberTarget はメンバーの行のリンク先である。省けば `/videos/{id}` を開き、戻り先だけを
- * 引き継ぐ。プレイリストのグループの項目の中では、ページがプレイリストの文脈を保つ先を渡す。
- */
+/** Defaults to the video's URL and return destination; playlist callers preserve playlist context. */
 export type MemberTarget = (videoId: number) => { to: string; state: unknown };
 
-/**
- * RelatedVideos は関連動画の列である（要件 15）。
- *
- * 関連動画が 0 件のときは見出しと並びを出さない（閉じる × は見出しの帯 VideoHeader にある）。
- * 各項目はサムネイル・長さ・題名だけで、追加日時などの文字は出さない。
- * リンクは最初の戻り先と見てきた動画を引き継ぐ（linkState。plan の Structural Decisions 10、
- * issue 931）。並びは近さの順で件数に上限が無く、終わりに近づくと続きを読む（`onLoadMore`）。
- *
- * 基準の動画がグループのメンバーなら、列の上位に「続けて再生」としてメンバーの並びを
- * 出し、境目の下に関連動画を出す。
- */
+/** Paginate related videos by proximity, preserving return/history state. Group members appear first in a separate continuous-play section. */
 export default function RelatedVideos({
   state,
   linkState,
@@ -229,12 +189,9 @@ export default function RelatedVideos({
   onRetry: () => void;
   onLoadMore: () => void;
   memberTarget?: MemberTarget;
-  /**
-   * 動画を開いたグループ（`?group`）かスマートフォルダ（`?smartFolder`）。メンバーの続きの読み取りにも
-   * 渡す。
-   */
+  /** Preserve group or smart-folder context when loading more members. */
   groupContext?: VideoReadContext;
-  /** 並びの入れ物の先頭に置く区切り（プレイリストのパネルと境目）。同じ入れ物でスクロールする。 */
+  /** A leading section that shares this scroll container. */
   leading?: ReactNode;
 }) {
   return (
@@ -252,7 +209,6 @@ export default function RelatedVideos({
   );
 }
 
-/** RelatedSections は、並びの入れ物の中の続けて再生と関連動画の区切りである。 */
 function RelatedSections({
   state,
   linkState,
@@ -272,10 +228,7 @@ function RelatedSections({
     const group = state.related.group;
     return (
       <GroupedRelated
-        // 別のメンバーへ移ったら、または同じ動画のまま応答のグループが替わったら（`?group`、
-        // そのフォールバック、グループの操作の後の読み直し）、読み足した分と読み足し中の要求を
-        // 捨てて新しい窓から始める。同じグループのまま最初のページを読み直したとき（グループの
-        // 知らせ）も、generation が替わるので同じように始め直す。
+        // Reset pagination and pending requests when the member, response group, or generation changes.
         key={`${String(state.id)}:${String(group.id)}:${String(state.generation ?? 0)}`}
         currentId={state.id}
         members={group.items}
@@ -289,7 +242,7 @@ function RelatedSections({
       />
     );
   }
-  // 並びが空でも続きがあれば（読む間に先頭のページの動画がすべて消えた）、続きを読む目印を残す。
+  // Keep the sentinel when a page becomes empty but more results remain.
   const empty =
     state.kind === "ready" &&
     state.related.items.length === 0 &&
@@ -340,23 +293,11 @@ function RelatedSections({
   );
 }
 
-/** groupPageSize は、窓の外のメンバーを1回に読む本数である。 */
 const groupPageSize = 100;
 
-/** 窓の外を読む向き。 */
 type GroupSide = "before" | "after";
 
-/**
- * GroupedRelated は、グループのメンバーを開いたときの列である。見出し「続けて再生」と
- * 何本目かを上に留め、その下のメンバーの並び・境目・関連動画を1つの入れ物でスクロールさせる。
- * メンバーの並びと関連動画は別々の `ul` にし、読み上げでも境目が分かるようにする。
- *
- * 関連動画の応答のメンバーは、今の動画を中ほどに置いた窓（`offset` から）だけである。
- * 窓の後ろはスクロールで続きを読み足す。前は、広い画面では入れ物を上へスクロールすると
- * 読み足し（見ている行が動かないようスクロールの位置を補う）、狭い画面ではボタンで読む。
- * 狭い画面ではページごと動くので、並びの先頭が見えた時点で読み足すと、開いた直後から
- * 前のメンバーを次々に読んでしまう（issue 674）。
- */
+/** Prepend members with scroll compensation on wide screens. Narrow screens use a button to avoid repeatedly loading earlier members as the page opens. */
 function GroupedRelated({
   currentId,
   members,
@@ -374,7 +315,6 @@ function GroupedRelated({
   total: number;
   items: Video[];
   linkState: VideoLinkState;
-  /** 関連動画の並びの続きを読む目印（RelatedTail）。 */
   tail: ReactNode;
   memberTarget: MemberTarget | undefined;
   groupContext: VideoReadContext | undefined;
@@ -395,13 +335,12 @@ function GroupedRelated({
   const end = offset + members.length + after.length;
   const index = shown.findIndex((member) => member.id === currentId);
   const currentRef = useRef<HTMLLIElement | null>(null);
-  // 並びの入れ物は親（RelatedVideos）が持つ。区切りの根から辿って使う。
   const sectionRef = useRef<HTMLElement | null>(null);
   const scrollerOf = () =>
     sectionRef.current?.closest<HTMLElement>("[data-related-scroller]") ?? null;
   const loadingRef = useRef(false);
   const abort = useRef<AbortController | null>(null);
-  // 前を読み足す直前の入れ物の高さ。読み足した後、見ている行が動かないよう補う。
+  // Capture height before prepending to keep the visible rows anchored.
   const heightBeforePrepend = useRef<number | null>(null);
 
   useEffect(() => () => abort.current?.abort(), []);
@@ -449,7 +388,6 @@ function GroupedRelated({
     [currentId, end, first, openedGroup, openedSmartFolder, total],
   );
 
-  // 前を読み足したら、増えた高さだけ入れ物を下へずらし、見ていた行を同じ位置に残す。
   useLayoutEffect(() => {
     const height = heightBeforePrepend.current;
     const scroller = scrollerOf();
@@ -458,15 +396,12 @@ function GroupedRelated({
     scroller.scrollTop += scroller.scrollHeight - height;
   }, [before]);
 
-  // 端の目印が見えそうになったら続きを読む。前の目印は広い画面だけに置く。
   const observe = useInfiniteEdge(load);
 
-  // 広い画面では、開いたとき（別のメンバーへ移ったときを含む）に今のメンバーの行を入れ物の
-  // 中で見える位置へ動かす。ページと左の列は動かさない。狭い画面ではページごと動いて
-  // プレイヤーが画面の上から消えるので、動かさない（Edge Case「大きなグループ」）。
+  // Scroll only the wide-screen list; moving the narrow page would hide the player.
   useLayoutEffect(() => {
     if (!isWideScreen()) return;
-    // 上にプレイリストの区切りがあっても前後のメンバーが見えるよう、入れ物の中ほどに置く。
+    // Center within the container so playlist sections do not obscure neighboring members.
     currentRef.current?.scrollIntoView?.({ block: "center" });
   }, [currentId]);
 
@@ -553,11 +488,7 @@ function GroupedRelated({
   );
 }
 
-/**
- * useInfiniteEdge は、端の目印（要素）が画面の近くに入ったら onEdge(side) を呼ぶ ref を返す。
- * 入れ物の中のスクロールでも、ページのスクロールでも同じに働く（交差は入れ物で切り取って
- * 判定される）。
- */
+/** Trigger near an edge, using container-clipped intersections for both page and container scrolling. */
 function useInfiniteEdge<Side extends string>(onEdge: (side: Side) => void) {
   const onEdgeRef = useRef(onEdge);
   useEffect(() => {
@@ -589,11 +520,6 @@ function useInfiniteEdge<Side extends string>(onEdge: (side: Side) => void) {
   );
 }
 
-/**
- * RelatedTail は関連動画の並びの終わりに置く、続きを読む目印である（issue 931）。続きが
- * あれば、目印が見えそうになったところで `onLoadMore` を呼ぶ。読んでいる間は行の形の
- * 骨組みを出し、失敗したらやり直しのボタンにする。続きが無ければ何も出さない。
- */
 function RelatedTail({
   state,
   onLoadMore,
@@ -620,7 +546,6 @@ function RelatedTail({
   );
 }
 
-/** GroupEdge は窓の外を読むボタン（狭い画面の前、読み足しの失敗のやり直し）である。 */
 function GroupEdge({
   label,
   failed,
@@ -644,10 +569,6 @@ function GroupEdge({
   );
 }
 
-/**
- * CardNumber はカードのサムネイルの左上に重ねる並びの番号である。今の位置と残りが数えなくても
- * 分かるようにする。続けて再生とプレイリストのカードが使う。
- */
 export function CardNumber({ position }: { position: number }) {
   return (
     <VideoThumbnailMark corner="top-start" aria-hidden="true">
@@ -681,21 +602,12 @@ function MemberTitle({ video }: { video: Video }) {
   );
 }
 
-/** memberLinkLabel はメンバーの行の読み上げ名である。視聴済みならそれを続ける。 */
 export function memberLinkLabel(video: Video): string | UiText {
   const label = videoLinkLabel(video);
   return video.progress?.completed === true ? t.player.related.watchedLink(label) : label;
 }
 
-/**
- * useRelatedScrub は関連動画の行のスクラブの帯をループ再生（useHoverPreview）とつなぐ。
- *
- * - 帯への出入りでループを一時停止・再開する。帯からリンクの外へ出たときは再開せず、
- *   リンクの pointerleave の解放に任せる。
- * - リンクから出たら、帯から出たのと同じに戻し、進行中の取得を打ち切る。
- * - 窓の大きさが変わったら、一覧の usePreviewCoordination と同じくループを解放し、
- *   帯から出たのと同じに戻す。
- */
+/** Pause preview while scrubbing; resume only inside the link. Leaving or resizing releases the preview and aborts pending requests. */
 export function useRelatedScrub(video: Video, preview: HoverPreview) {
   const { suspendPreview, resumePreview, onPointerLeave: releasePreview } = preview;
   const scrub = useScrubPreview({
@@ -784,10 +696,7 @@ function MemberItem({
   );
 }
 
-/**
- * CurrentMember は今見ているメンバーのカードである。押せないので、リンクにせず hover でも
- * 変えない。枠と面で今の位置を示す。
- */
+/** The current member is not interactive and has no hover treatment. */
 function CurrentMember({
   ref,
   video,
@@ -799,7 +708,7 @@ function CurrentMember({
 }) {
   const watched = video.progress?.completed === true;
   return (
-    // 入れ物の端にぴったり付かないよう、動かすときは上下に少し間を残す。上は留まる見出しの分を足す。
+    // Leave scroll margins for the sticky heading and card edges.
     <li ref={ref} aria-current="true" className="scroll-mt-12 scroll-mb-6">
       <div className="-m-1.5 flex flex-col gap-2 rounded-lg bg-accent p-1.5 ring-2 ring-primary ring-inset">
         <VideoThumbnail video={video} marks={<CardNumber position={position} />} />
@@ -839,7 +748,6 @@ function RelatedItem({ video, linkState }: { video: Video; linkState: VideoLinkS
   );
 }
 
-/** RelatedCardSkeleton は、読み込み中の関連動画のカードの形である。 */
 function RelatedCardSkeleton() {
   return (
     <div className="flex flex-col gap-2">

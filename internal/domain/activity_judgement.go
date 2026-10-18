@@ -5,12 +5,9 @@ import (
 	"fmt"
 )
 
-// 重複の候補の判定の記録。組ごとに 1 件の
-// version_judgement の記録を保ち、その状態は候補の判定に従う。
+// Each duplicate candidate pair retains one version_judgement entry whose state follows its judgement.
 
-// VersionJudgementActivityState は候補の判定 judgement（空は待ち）のときの、組の開いている記録の状態である。
-// 待ちは running/waiting、判定中は running/processing、決められない・失敗・接続なしは attention とその理由。
-// 知らない値は待ちとみなす。
+// VersionJudgementActivityState treats empty or unknown judgements as waiting and maps unresolved, failed, and disconnected judgements to attention.
 func VersionJudgementActivityState(judgement VersionJudgement) ActivityState {
 	switch judgement {
 	case VersionJudgementRunning:
@@ -26,7 +23,7 @@ func VersionJudgementActivityState(judgement VersionJudgement) ActivityState {
 	}
 }
 
-// ResultDecider は結果を決めたものを返す。空は ActivityByRule である。
+// ResultDecider defaults to ActivityByRule.
 func (r VersionJudgeResult) ResultDecider() ActivityDecider {
 	if r.Decider == "" {
 		return ActivityByRule
@@ -34,20 +31,18 @@ func (r VersionJudgeResult) ResultDecider() ActivityDecider {
 	return r.Decider
 }
 
-// VersionBundleUndoKeys は自動で束ねた組の、加わった側のメンバーの鍵と、その側の元の代表の鍵である
-// （activity_entries.undo_keys）。取り消しはこの側を元の代表のまとまりとして外す。
+// VersionBundleUndoKeys records joined members and their former representative so undo can detach that original bundle.
 type VersionBundleUndoKeys struct {
 	Members        []string `json:"members"`
 	Representative string   `json:"representative"`
 }
 
-// Encode は undo_keys の列に書く JSON を返す。
 func (k VersionBundleUndoKeys) Encode() string {
-	body, _ := json.Marshal(k) // 文字列だけの構造体の Marshal は失敗しない。
+	body, _ := json.Marshal(k) // Marshaling a struct containing only strings cannot fail.
 	return string(body)
 }
 
-// DecodeVersionBundleUndoKeys は Encode の逆である。読めないか、メンバーが無いものは誤りを返す。
+// DecodeVersionBundleUndoKeys rejects malformed JSON and empty member lists.
 func DecodeVersionBundleUndoKeys(value string) (VersionBundleUndoKeys, error) {
 	var keys VersionBundleUndoKeys
 	if err := json.Unmarshal([]byte(value), &keys); err != nil {

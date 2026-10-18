@@ -1,7 +1,5 @@
 package store
 
-// 取り込みの段階の結果を動画の行へ反映する操作と、作り直しの予約。IngestStore が受け持つ。
-
 import (
 	"context"
 	"database/sql"
@@ -13,13 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ApplyProbe は解析の結果を反映する。再生可否の判定は domain が行い、
-// ここはその結果を書き込むだけである。ライブ変換用の解析情報（probe.Transcode）と
-// 追加の情報（probe.Media）があれば、同じ取引で video_transcode_probes と
-// video_media_info へ upsert する。
-//
-// 取得できなかった値は null のままにする。0 で代用すると、一覧で
-// 「尺が 0 の動画」と「尺が分からない動画」を区別できなくなる。
+// ApplyProbe writes domain decisions and related probe rows atomically; unknown values remain NULL rather than zero.
 func (s *IngestStore) ApplyProbe(
 	ctx context.Context, id int64, probe domain.Probe, play domain.Playability,
 ) error {
@@ -62,17 +54,13 @@ func (s *IngestStore) ApplyProbe(
 			return err
 		}
 	}
-	// 長さと再生可否が変わるので、書いたならスマートフォルダの一致も変わりうる
-	//
 	if err := s.db.commitMatchChangeIf(ctx, tx, count == 1, successionEvents(succeeded)...); err != nil {
 		return fmt.Errorf("cannot apply the probe result (id=%d): %w", id, err)
 	}
 	return nil
 }
 
-// upsertProbeRows は videos の行を書いた取引の中で、解析の結果に付く行（ライブ変換用の
-// 解析情報と追加の情報）を書く。どちらも無ければ何もしない。差し替わったファイルの値が
-// 残らないよう、呼び手は videos の更新が 1 行に当たったときだけ呼ぶ
+// Write related probe rows only after updating the matching video, so replaced files cannot retain stale results.
 func upsertProbeRows(ctx context.Context, tx *sql.Tx, videoID int64, probe domain.Probe, now time.Time) error {
 	if probe.Transcode != nil {
 		if err := upsertTranscodeProbe(ctx, tx, videoID, probe.Source, *probe.Transcode, now); err != nil {
@@ -90,12 +78,7 @@ func upsertProbeRows(ctx context.Context, tx *sql.Tx, videoID int64, probe domai
 	return nil
 }
 
-// ApplyProbeForJob writes only while the file identity captured at claim time is current.
-// The live-transcode probe and the media information are upserted in the same transaction,
-// only when the video row was written.
-//
-// 結果を書いたら、同じ取引で一覧用プレビューの仕事を積む。解析の仕事はこの時点で
-// まだ running なので、その動画が一瞬だけ「済み」に数えられることが無い
+// ApplyProbeForJob writes only while the claimed identity is current; enqueue preview work atomically so import never appears briefly complete.
 func (s *IngestStore) ApplyProbeForJob(
 	ctx context.Context, job domain.Job, probe domain.Probe, play domain.Playability,
 ) (bool, error) {
@@ -133,16 +116,13 @@ func (s *IngestStore) ApplyProbeForJob(
 	if err := requeueJob(ctx, tx, &c, domain.JobPreview, job.VideoID, now.Unix(), domain.ActivityByRule); err != nil {
 		return false, err
 	}
-	// 走査が閉じたあとに解析が終わったなら、同じパスの前の中身を引き継ぐかをここで決める
-	//
+	// If probing finishes after the scan, resolve same-path succession here.
 	succeeded, err := applySuccession(ctx, tx, job.ContentKey, probe.DurationMs)
 	if err != nil {
 		return false, err
 	}
 	c.jobsQueued(domain.JobPreview)
-	// 長さと再生可否を書いたので、後継の引き継ぎが無くてもスマートフォルダの一致は変わりうる。
-	// 走査を閉じるときの知らせ（FinishScan）は解析より前に出るので、ここでも知らせる
-	//
+	// Probe results can change smart-folder matches even without succession; the earlier scan event cannot cover this update.
 	c.matchesChanged()
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return false, err
@@ -151,16 +131,13 @@ func (s *IngestStore) ApplyProbeForJob(
 	return true, nil
 }
 
-// SaveTranscodeProbe は、ライブ変換の要求時にその場で解析した結果を保存する。
-// source は変換で開いたファイルの大きさと更新時刻である。upsert 1 文なので、取り込みと
-// 変換が同時に書いても後に書いた行が残る。
+// SaveTranscodeProbe uses the opened file's size and modification time; one upsert makes concurrent writes last-writer-wins.
 func (s *IngestStore) SaveTranscodeProbe(
 	ctx context.Context, videoID int64, source domain.FileStamp, probe domain.TranscodeProbe,
 ) error {
 	return upsertTranscodeProbe(ctx, s.db.sql, videoID, source, probe, time.Now())
 }
 
-// upsertTranscodeProbe は video_transcode_probes の 1 行を今の版で置き換える。
 func upsertTranscodeProbe(
 	ctx context.Context, db queryExecer, videoID int64, source domain.FileStamp, probe domain.TranscodeProbe, now time.Time,
 ) error {
@@ -181,10 +158,7 @@ func upsertTranscodeProbe(
 	return nil
 }
 
-// MarkProbeFailed は解析に失敗したことを記録する。行は残す。個別のファイルの
-// 失敗で取り込み全体を止めないため、一覧には並んだままになる。cause の文を
-// probe_error に、domain.ProbeFailure で包まれた理由のコードを probe_error_code に
-// 書く（包まれていなければ internal）。
+// MarkProbeFailed keeps the video listed and stores its reason code, defaulting unclassified errors to internal.
 func (s *IngestStore) MarkProbeFailed(ctx context.Context, id int64, cause error) error {
 	_, err := s.db.sql.ExecContext(ctx, `
 		update videos
@@ -198,7 +172,6 @@ func (s *IngestStore) MarkProbeFailed(ctx context.Context, id int64, cause error
 	return nil
 }
 
-// SetThumbnailState はサムネイル生成の状態を記録する。
 func (s *IngestStore) SetThumbnailState(ctx context.Context, id int64, state domain.ThumbnailState) error {
 	_, err := s.db.sql.ExecContext(ctx,
 		`update videos set thumbnail_state = ?, indexed_at = ? where id = ?`,
@@ -209,10 +182,7 @@ func (s *IngestStore) SetThumbnailState(ctx context.Context, id int64, state dom
 	return nil
 }
 
-// SetThumbnailStateForJob は代表サムネイルの状態を記録する。専有したときの内容鍵・
-// 所在・所在の世代が今も同じときだけ反映し、反映したかを返す。done を書いたら、同じ
-// 取引でその動画の thumbnail_failed を問題から消し、substitution に従って
-// thumbnail_first_frame を入れる・消す。
+// SetThumbnailStateForJob checks the claimed identity and atomically clears failures and updates substitution when complete.
 func (s *IngestStore) SetThumbnailStateForJob(
 	ctx context.Context, job domain.Job, state domain.ThumbnailState, substitution domain.Substitution,
 ) (bool, error) {
@@ -220,11 +190,7 @@ func (s *IngestStore) SetThumbnailStateForJob(
 		state == domain.ThumbnailStateDone, substitution, nil)
 }
 
-// setStageStateForJob は段階 kind の状態列 column に state を書く。専有したときの
-// 内容鍵・所在・所在の世代が今も同じときだけ反映し、反映したかを返す。succeeded なら、
-// 同じ取引でその段階の *_failed を直近の取り込みの問題から消し、substitution に従って
-// 代用の行を入れる・消す。succeeded なら、
-// 続く段階 next の仕事も同じ取引で積む。
+// Write only for the current claimed identity; success clears failures, records substitutions and queues the next stage atomically.
 func (s *IngestStore) setStageStateForJob(
 	ctx context.Context, job domain.Job, kind domain.JobKind, column, state string, succeeded bool,
 	substitution domain.Substitution, next []domain.JobKind,
@@ -270,12 +236,7 @@ func (s *IngestStore) setStageStateForJob(
 	return true, nil
 }
 
-// SetSeekThumbnailStateForJob はシーク用サムネイルの状態を記録する。専有した
-// ときの内容鍵・所在・所在の世代が今も同じときだけ反映し、反映したかを返す。done を
-// 書いたら、substitution に従って seek_thumbnail_full_decode を入れる・消す。
-//
-// done を書いたら、同じ取引で指紋の仕事を積む。指紋は完成したスプライトから作るので、
-// 作り直し（RequeueMissingSeekThumbnails）のあとの完了でも積み直す
+// SetSeekThumbnailStateForJob checks the claimed identity and queues fingerprints on completion, including rebuilt sprites.
 func (s *IngestStore) SetSeekThumbnailStateForJob(
 	ctx context.Context, job domain.Job, state domain.SeekThumbnailState, substitution domain.Substitution,
 ) (bool, error) {
@@ -369,9 +330,7 @@ func (s *IngestStore) PreviewSourceCurrent(ctx context.Context, job domain.Job) 
 	return current != 0, err
 }
 
-// ThumbnailSourceCurrent は、動画 videoID の内容が key のままで、所在 locationPath が今も
-// 内容 key の動画の所在かを返す。代表サムネイルの位置の指定で、要求が所在を決めてから
-// 生成するまでの間に、走査がその所在を別の内容へ付け替えていないかを確かめる。所在が消えていても偽を返す。
+// ThumbnailSourceCurrent rejects locations removed or reassigned since generation was requested.
 func (s *IngestStore) ThumbnailSourceCurrent(
 	ctx context.Context, videoID int64, key, locationPath string,
 ) (bool, error) {
@@ -390,13 +349,7 @@ func (s *IngestStore) SetPreviewState(ctx context.Context, id int64, state domai
 	return err
 }
 
-// RequeueMissingPreview は、プレビューを作り終えた記録があるのにファイルが
-// 無い動画を、1つの取引の中で作り直す状態へ戻し、プレビューのジョブを積む。
-// ファイルの有無はファイルの事実なので、呼び出し側が確かめて呼ぶ。
-//
-// preview_state が done で、内容の識別子が今も同じときだけ変える。すでに戻って
-// いる、内容が変わった、動画が消えた場合は何もせず false を返す。同じ動画を
-// 何度見つけても、積むのは1回である。
+// RequeueMissingPreview queues at most once for unchanged completed content; the caller checks the filesystem.
 func (s *IngestStore) RequeueMissingPreview(ctx context.Context, id int64, contentKey string) (bool, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -428,13 +381,7 @@ func (s *IngestStore) RequeueMissingPreview(ctx context.Context, id int64, conte
 	return true, nil
 }
 
-// RequeueMissingSeekThumbnails は、シーク用サムネイルを作り終えた記録があるのに
-// 置き場が無い動画を、1つの取引の中で作り直す状態へ戻し、シーク用サムネイルの
-// ジョブを積む。置き場の有無はファイルの事実なので、呼び出し側が確かめて呼ぶ。
-//
-// seek_thumbnail_state が done で、内容の識別子が今も同じときだけ変える。
-// そうでなければ何もせず false を返す。同じ動画を何度見つけても、積むのは
-// 1回である（RequeueMissingPreview と同じ形）。
+// RequeueMissingSeekThumbnails queues at most once for unchanged completed content; the caller checks the filesystem.
 func (s *IngestStore) RequeueMissingSeekThumbnails(ctx context.Context, id int64, contentKey string) (bool, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -459,9 +406,7 @@ func (s *IngestStore) RequeueMissingSeekThumbnails(ctx context.Context, id int64
 	if err := requeueJob(ctx, tx, &c, domain.JobSeekThumbnail, id, now, domain.ActivityByRule); err != nil {
 		return false, err
 	}
-	// 待っている指紋の仕事は、スプライトが完成するまで取り出せない。作り直しが上限まで
-	// 失敗するとスプライトは完成しないので、残すと残りの仕事に数え続ける。捨てて、作り直しの
-	// 完了（SetSeekThumbnailStateForJob）で積み直す。
+	// Drop blocked fingerprint work so failed sprite rebuilds do not count forever; completion queues it again.
 	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and state = 'queued'`,
 		string(domain.JobFingerprint), id); err != nil {
 		return false, fmt.Errorf("cannot drop the waiting fingerprint job (id=%d): %w", id, err)
@@ -473,11 +418,7 @@ func (s *IngestStore) RequeueMissingSeekThumbnails(ctx context.Context, id int64
 	return true, nil
 }
 
-// requeueJob は終わった行を捨ててから kind の仕事を queued で積み、その動画を直近の
-// 走査の対象に加える（addScanVideos）。未完了の行が既にあれば積まない。積んだ仕事は動画の
-// running の import の記録に加わり、無ければ decider が始めた記録を開く（joinImportActivity）。
-//
-// 呼び出し側は changes.jobsQueued を記録し、commit で完了の時刻を決め直させる。
+// Replace finished jobs and join the running import activity; callers mark jobsQueued so commit recomputes completion.
 func requeueJob(
 	ctx context.Context, tx *sql.Tx, c *changes, kind domain.JobKind, id, now int64, decider domain.ActivityDecider,
 ) error {
@@ -497,20 +438,7 @@ func requeueJob(
 	return addScanVideos(ctx, tx, id)
 }
 
-// RetryProbe は読み取りに失敗した動画を、1つの取引の中で読み取り直す状態へ
-// 戻し、スキャンが新しい内容に積むのと同じジョブを積む。
-//
-// probe_state が failed でなければ何も変えず domain.ErrProbeNotFailed を返す。
-// 連打や別タブからの二度目はこれになり、ジョブは重複しない。failed は、その
-// 動画の読み取りのジョブが終わっていることを意味する（FailClaimedJob が同じ
-// 取引で記録する）ので、ここで積むジョブが running の古いジョブとの重複防止で
-// 省かれることは無い。
-//
-// thumbnail_state は done でなければ、seek_thumbnail_state は failed なら
-// pending に戻し、戻したときだけそれぞれのジョブを積む。seek_thumbnail_state が done なのに
-// 置き場が無い動画は、動画の応答を組み立てるときに
-// RequeueMissingSeekThumbnails が積み直す。
-// 一覧用プレビューのジョブは、読み取りの結果を書く取引で ApplyProbeForJob が積む。
+// RetryProbe requires a failed probe and atomically resets unfinished stages; probe completion queues preview work.
 func (s *IngestStore) RetryProbe(ctx context.Context, id int64) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -557,9 +485,7 @@ func (s *IngestStore) RetryProbe(ctx context.Context, id int64) error {
 	return nil
 }
 
-// resetFailedStages は動画 id の段階のうち、終わっていないサムネイル・失敗したシーク用サムネイル・失敗した
-// 一覧用プレビューを pending に戻し、積み直す仕事の種類を返す。プレビューは probeDone のときだけ積む。解析が
-// まだなら、解析の結果を書く取引（ApplyProbeForJob）が積む。
+// Queue previews only after probing completes; otherwise ApplyProbeForJob queues them with its result.
 func resetFailedStages(ctx context.Context, tx *sql.Tx, id, now int64, probeDone bool) ([]domain.JobKind, error) {
 	stages := []struct {
 		kind      domain.JobKind
@@ -589,12 +515,7 @@ func resetFailedStages(ctx context.Context, tx *sql.Tx, id, now int64, probeDone
 	return kinds, nil
 }
 
-// RetryImport は内容の鍵 contentKey の動画の失敗した段階を、1 つの取引の中で積み直す（POST
-// /api/activity/{id}/retry の import）。読み取りのやり直し（RetryProbe）と同じく段階の状態を pending に戻し、
-// 解析が済んでいれば失敗した一覧用プレビューを、シーク用サムネイルが済んでいれば上限まで失敗した指紋も積む。
-// 積んだ仕事と、再起動で中断して待っている仕事は、所有者が始めた新しい import の記録になる。やり直す記録
-// entryID は同じ取引で読み直し、もうやり直しを出さない（同時に届いた別のやり直しが閉じた）か、その動画が
-// 無いか、積み直す仕事が 1 つも無ければ domain.ErrActivityNotRetryable を返す。
+// RetryImport rechecks eligibility atomically and opens an owner activity for retried or interrupted work; concurrent repeated retries fail.
 func (s *IngestStore) RetryImport(ctx context.Context, entryID int64, contentKey string) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -646,7 +567,6 @@ func (s *IngestStore) RetryImport(ctx context.Context, entryID int64, contentKey
 	return nil
 }
 
-// retryImportStages は動画 id の失敗した段階を pending に戻し、積み直す仕事の種類を返す。
 func retryImportStages(
 	ctx context.Context, tx *sql.Tx, id int64, probe domain.ProbeState, seek domain.SeekThumbnailState,
 ) ([]domain.JobKind, error) {

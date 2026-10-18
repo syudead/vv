@@ -7,19 +7,7 @@ import { Button } from "../ui/shadcn/button";
 import { Popover, PopoverTrigger } from "../ui/shadcn/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 
-/**
- * PickerButton はカード・リスト表示の行・動画ページの「Add to playlist」「Add to group」の
- * 引き金である。所有者の画面で、お気に入りのハートが描かれるところにだけ
- * 置く（呼び出し側が決める）。中身のピッカーは `picker` が開閉の状態から描く。
- *
- * - `card` はサムネイルの右上の印の置き場の形。面も枠も無い `size-8` の押せる範囲に `size-5`
- *   のアイコンを `drop-shadow-mark` で置く。
- * - `row` はリスト表示の列に置く形（`size-6`、アイコン 16px）。
- * - どちらもオフのハートと同じ条件（hover・中へのフォーカス・`hover:none`）で見え、
- *   ピッカーを開いている間は見えたままにする。押してもカードは開かず、選択も変わらない。
- * - `page` は動画ページの情報の行の操作の一群に置くアイコンだけの `ghost` のボタンで、
- *   ツールチップ（`tooltip`、無ければ `label`）を添える。常に見える。
- */
+/** Keep triggers visible while open; isolate them from card navigation and selection. */
 export default function PickerButton({
   variant,
   label,
@@ -28,9 +16,7 @@ export default function PickerButton({
   picker,
 }: {
   variant: "card" | "row" | "page";
-  /** 読み上げ名。 */
   label: UiText;
-  /** `page` のツールチップ。省けば読み上げ名。 */
   tooltip?: UiText;
   icon: LucideIcon;
   picker: (open: boolean, onOpenChange: (open: boolean) => void) => ReactNode;
@@ -68,8 +54,7 @@ export default function PickerButton({
         <Button
           variant="ghost"
           aria-label={label}
-          // カードのリンクにも選択にも渡さない（ハートと同じ）。preventDefault は Radix の
-          // 開閉を止めるので使わない。
+          // Stop card navigation/selection without preventDefault, which would block Radix toggling.
           onClick={(event) => event.stopPropagation()}
           className={cn(
             "rounded-sm p-0 transition-opacity duration-150 hover:bg-transparent active:bg-transparent",

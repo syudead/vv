@@ -16,9 +16,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// videoColumns は domain.Video を組み立てるのに要る列である。
-// 並びは scanVideo と対応させる。代表の所在 rep（見る人に見せてよい所在のうちパスの
-// 最小の1件）は representativeJoin が結ぶ。
+// Keep columns aligned with scanVideo; representativeJoin supplies the smallest audience-visible location path.
 const videoColumnsTemplate = `videos.id, rep.path as path, rep.title as title, rep.size_bytes as size_bytes,
 	rep.mtime as mtime, coalesce(rep.file_created_at, rep.mtime) as file_created_at,
 	videos.added_at, videos.indexed_at, videos.content_key, {userKey} as user_key, videos.duration_ms, videos.width,
@@ -26,10 +24,7 @@ const videoColumnsTemplate = `videos.id, rep.path as path, rep.title as title, r
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
 	{public} as public, {favorite} as favorite, ` + overrideColumns + `, ` + editedAtColumn
 
-// registrationSeparators は、登録フォルダの下かどうかを調べるときに区切りとして
-// 扱う文字である。Windows では `/` と `\` の両方、それ以外の OS では `/` だけで、
-// `\` はファイル名の一部である。一覧の判定（registeredLocationCondition）と
-// 照合用の鍵（registeredRelativePath）は、この同じ規則を使う。
+// Windows recognizes both slash styles; other systems treat backslash as filename data, shared by listing and search-key rules.
 func registrationSeparators() []rune {
 	if runtime.GOOS == "windows" {
 		return []rune{'/', '\\'}
@@ -62,8 +57,6 @@ func registeredVideoCondition(alias string) string {
 		registeredLocationCondition("l") + `)`
 }
 
-// videoColumns は動画1件を domain.Video に写す列を返す。パス・題名・大きさ・更新時刻は
-// 代表の所在（rep）のものなので、from 句で videos の後に representativeJoin を結ぶ。
 func videoColumns(audience domain.Audience) string {
 	return strings.NewReplacer(
 		"{public}", publicColumn,
@@ -72,8 +65,6 @@ func videoColumns(audience domain.Audience) string {
 	).Replace(videoColumnsTemplate)
 }
 
-// VideoLocations は動画の所在をパスの順にすべて返す。配信と既定アプリで開く
-// 操作が、登録フォルダの内側にある実体を選ぶのに使う。
 func (s *LibraryStore) VideoLocations(ctx context.Context, videoID int64) ([]domain.VideoLocation, error) {
 	rows, err := s.db.sql.QueryContext(ctx, `select id, video_id, path, version, title, size_bytes, mtime, file_created_at, created_at, updated_at
 		from video_locations where video_id = ? order by path`, videoID)
@@ -99,27 +90,21 @@ func (s *LibraryStore) VideoLocations(ctx context.Context, videoID int64) ([]dom
 	return locations, rows.Err()
 }
 
-// GetVideo は1件を返す。取り込みと閲覧が同じものを読むので、SQL は getVideo の
-// 1か所に置く。取り込みは所有者として読む。
 func (s *IngestStore) GetVideo(ctx context.Context, id int64) (domain.Video, error) {
 	return getVideo(ctx, s.db.sql, domain.AudienceOwner, id)
 }
 
-// GetVideo は見る人（audience）に見せる1件を返す。ゲストに見せない動画
-// （非公開の動画）は、存在しない動画と同じく domain.ErrNotFound にする。
+// GetVideo returns domain.ErrNotFound for both hidden and missing videos.
 func (s *LibraryStore) GetVideo(ctx context.Context, audience domain.Audience, id int64) (domain.Video, error) {
 	return getVideo(ctx, s.db.sql, audience, id)
 }
 
-// videoQueryer は 1 行と複数行の問い合わせを投げられるもの（*sql.DB と *sql.Tx）である。
 type videoQueryer interface {
 	rowQueryer
 	rowsQueryer
 }
 
-// representativeJoin は、videos の行に代表の所在（見る人に見せてよい所在のうちパスの最小）を
-// rep として結ぶ（videoColumns が読む）。列ごとに代表を選ぶ副問い合わせを書くと、1行に
-// つき同じ選び方を列の数だけ繰り返す（issue 674）。代表が無ければ rep の列は NULL になる。
+// Select the representative once for all columns; no visible location yields NULL fields.
 func representativeJoin(audience domain.Audience) string {
 	return ` left join video_locations rep on rep.id = (select l.id from video_locations l
 		where l.video_id = videos.id and ` + visibleLocationCondition("l", audience) + ` order by l.path limit 1)`
@@ -136,7 +121,6 @@ func getVideo(ctx context.Context, q videoQueryer, audience domain.Audience, id 
 	if err != nil {
 		return domain.Video{}, fmt.Errorf("cannot read the video (id=%d): %w", id, err)
 	}
-	// 集まりの要約は一覧と同じ規則で埋める。
 	videos := []domain.Video{video}
 	if err := attachVersions(ctx, q, audience, videos); err != nil {
 		return domain.Video{}, err
@@ -176,9 +160,7 @@ func syncRepresentativeContainer(ctx context.Context, tx *sql.Tx, videoID int64)
 	return nil
 }
 
-// ContentKeyReferenced は内容の識別子を持つ動画が今もあるかを返す。生成中に
-// 動画が消えた場合に、書き終えた生成物を残さないために使う。取り込みと閲覧が
-// 同じものを確かめるので、SQL は contentKeyReferenced の1か所に置く。
+// ContentKeyReferenced prevents publishing artifacts whose content lost its final video during generation.
 func (s *IngestStore) ContentKeyReferenced(ctx context.Context, key string) (bool, error) {
 	return contentKeyReferenced(ctx, s.db.sql, key)
 }
@@ -196,16 +178,7 @@ func contentKeyReferenced(ctx context.Context, q rowQueryer, key string) (bool, 
 	return referenced == 1, nil
 }
 
-// registeredContentKeysForVideoIDs は動画の id の集合を、いまライブラリにある
-// 動画の content_key へ引き直す。引けない id（その間に消えた動画）は結果に
-// 含めない。TagStore の付与・取り外し・
-// 要約が使う（Structural Decisions 13：id から content_key を引く SQL の共有）。
-// videoIDs の重複は1つにまとめる。videos は id が主キーなので、`in` で1動画1行に自然にまとまる
-// （json_each との join だと重複した id の分だけ行が増える）。内容の識別子が
-// 空の動画（videos.go の他の読み取りと同じ理由で除く）は含めない。
-//
-// id の集合は SQLite の引数の上限に掛からないよう、json_each に1つの引数で
-// 渡す。
+// Bind IDs as one JSON array to avoid SQLite limits; IN deduplicates IDs while excluding unidentified or unregistered content.
 func registeredContentKeysForVideoIDs(ctx context.Context, q queryExecer, videoIDs []int64) ([]string, error) {
 	if len(videoIDs) == 0 {
 		return nil, nil
@@ -238,12 +211,10 @@ func registeredContentKeysForVideoIDs(ctx context.Context, q queryExecer, videoI
 	return keys, nil
 }
 
-// rowScanner は *sql.Row と *sql.Rows の共通部分である。
 type rowScanner interface {
 	Scan(dest ...any) error
 }
 
-// scanVideo は1行を domain.Video へ写す。列の並びは videoColumns と対応する。
 func scanVideo(row rowScanner) (domain.Video, error) {
 	var (
 		video                                    domain.Video
@@ -310,8 +281,6 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	video.PreviewState = domain.PreviewState(previewState)
 	video.Public = public
 	video.Favorite = favorite
-	// 有効な題名は、表示名があればそれ、無ければ所在の題名（coalesce(ov.display_name,
-	// loc.title)。docs/design-docs/catalog-organization.md）。
 	video.FileTitle = video.Title
 	if displayName.Valid && displayName.String != "" {
 		video.DisplayName = displayName.String
@@ -328,13 +297,11 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	return video, nil
 }
 
-// fileCreatedAtExpr は所在（別名 alias）のファイルの作成日時の式である。作成日時が取れなかった
-// 所在は mtime に倒す。
+// Use modification time when file creation time is unknown.
 func fileCreatedAtExpr(alias string) string {
 	return `coalesce(` + alias + `.file_created_at, ` + alias + `.mtime)`
 }
 
-// nullableUnix は時刻を Unix 秒で書き込み、ゼロ値なら null にする。
 func nullableUnix(t time.Time) any {
 	if t.IsZero() {
 		return nil
@@ -342,7 +309,6 @@ func nullableUnix(t time.Time) any {
 	return t.Unix()
 }
 
-// unixOrZero は null を許す Unix 秒を時刻へ写し、null ならゼロ値にする。
 func unixOrZero(value sql.NullInt64) time.Time {
 	if !value.Valid {
 		return time.Time{}
@@ -350,8 +316,7 @@ func unixOrZero(value sql.NullInt64) time.Time {
 	return time.Unix(value.Int64, 0)
 }
 
-// nullableString は空文字を null として書き込む。「値が無い」と「空文字」を
-// 列の上で区別しないための単純化である。
+// Treat an empty string as absent rather than preserving a separate empty-column value.
 func nullableString(value string) any {
 	if value == "" {
 		return nil
@@ -359,7 +324,7 @@ func nullableString(value string) any {
 	return value
 }
 
-// nullableInt64 は 0 を null として書き込む。尺は 0 で代用しない。
+// Zero becomes NULL; unknown duration must not be represented as zero.
 func nullableInt64(value int64) any {
 	if value <= 0 {
 		return nil

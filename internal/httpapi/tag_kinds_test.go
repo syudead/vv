@@ -19,7 +19,7 @@ func (f *fakeTags) ListTagKinds(context.Context) ([]domain.TagKind, error) {
 
 func (f *fakeTags) CreateTagKind(_ context.Context, name string) (domain.TagKind, error) {
 	f.operation, f.lastName = "createKind", name
-	// 実際の store.CreateTagKind と同じく、名前の規則違反を最初に検査する。
+	// Validate the name first, matching the real store.
 	if _, err := domain.NormalizeTagName(name); err != nil {
 		return domain.TagKind{}, err
 	}
@@ -102,7 +102,6 @@ func TestDeleteTagKindReturnsNoContent(t *testing.T) {
 	}
 }
 
-// 契約の表の誤りのすべての状態。
 func TestTagKindErrorsFollowTheContract(t *testing.T) {
 	taken := &domain.TagKindNameConflict{Kind: domain.TagKindRef{ID: 1, Name: "Genre"}}
 	nameRules := []struct {
@@ -144,7 +143,6 @@ func TestTagKindErrorsFollowTheContract(t *testing.T) {
 	assertErrorBody(t, "DELETE 無い id", rec.Code, rec.Body.Bytes(), notFound)
 }
 
-// 保存先の想定外の失敗は 4 つの経路のどれも 500 internal で、壊れた本文は保存層に届かず 400 になる。
 func TestTagKindStoreFailuresAndMalformedBodies(t *testing.T) {
 	internal := wantError{status: http.StatusInternalServerError, code: gen.ErrorCodeInternal}
 	broken := errors.New("disk I/O error")
@@ -173,7 +171,6 @@ func TestTagKindStoreFailuresAndMalformedBodies(t *testing.T) {
 	}
 }
 
-// ゲストは 4 つの経路のどれも 401 で、保存層に届かない。
 func TestTagKindRoutesAreOwnerOnly(t *testing.T) {
 	fake := &fakeTags{}
 	env := newAuthEnv(t, t.TempDir(), Options{Tags: fake})
@@ -192,7 +189,6 @@ func TestTagKindRoutesAreOwnerOnly(t *testing.T) {
 	}
 }
 
-// タグの 3 つの形は種類を { id, name } か null で載せる。
 func TestTagShapesCarryKind(t *testing.T) {
 	genre := &domain.TagKindRef{ID: 1, Name: "Genre"}
 	fake := &fakeTags{tags: []domain.Tag{

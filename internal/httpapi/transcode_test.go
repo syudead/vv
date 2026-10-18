@@ -3,47 +3,41 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"runtime"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
 
-	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
-	"github.com/syudead/vv/internal/media"
-	"github.com/syudead/vv/internal/store"
 )
 
-// fakeTranscoder は media.LiveTranscoder の代わりである。保存済みの解析情報が
-// 渡されなければ「その場で解析した」とみなして probes を数え、probed を返す。
+// Return on-demand probe results only when stored probe metadata was not supplied.
 type fakeTranscoder struct {
-	body      string
-	stream    io.ReadCloser
-	err       error
-	waitErr   error
-	path      string
-	startMs   int64
-	normalize bool
-	quality   domain.TranscodeQuality
-	source    domain.FileStamp
-	probe     *domain.TranscodeProbe
-	probed    domain.TranscodeProbe
-	starts    int
-	probes    int
-	waits     int
-	stops     int
-	// beforeReturn は Start が戻る直前に呼ばれる（期限の間際に戻る変換を模す）。
+	body            string
+	stream          io.ReadCloser
+	err             error
+	waitErr         error
+	hardwareFailure error
+	path            string
+	startMs         int64
+	normalize       bool
+	quality         domain.TranscodeQuality
+	source          domain.FileStamp
+	probe           *domain.TranscodeProbe
+	probed          domain.TranscodeProbe
+	starts          int
+	waits           int
+	stops           int
+	// beforeReturn simulates Start completing near its deadline.
 	beforeReturn func(domain.LiveTranscodeRequest)
-	// actualStartMs は Start が返す実際の開始位置である。
+
 	actualStartMs int64
 }
 
@@ -54,7 +48,6 @@ func (f *fakeTranscoder) Start(_ context.Context, request domain.LiveTranscodeRe
 	f.source, f.probe = request.Source, request.Probe
 	var probed *domain.TranscodeProbe
 	if request.Probe == nil {
-		f.probes++
 		result := f.probed
 		probed = &result
 	}
@@ -69,11 +62,12 @@ func (f *fakeTranscoder) Start(_ context.Context, request domain.LiveTranscodeRe
 		stream = io.NopCloser(strings.NewReader(f.body))
 	}
 	return domain.LiveTranscode{
-		Stream:  stream,
-		Wait:    func() error { f.waits++; return f.waitErr },
-		Stop:    func() { f.stops++ },
-		Probed:  probed,
-		StartMs: f.actualStartMs,
+		Stream:          stream,
+		Wait:            func() error { f.waits++; return f.waitErr },
+		Stop:            func() { f.stops++ },
+		Probed:          probed,
+		StartMs:         f.actualStartMs,
+		HardwareFailure: f.hardwareFailure,
 	}, nil
 }
 
@@ -136,7 +130,7 @@ func TestTranscodeStreamsMP4WithoutRangeHeaders(t *testing.T) {
 	if got := rec.Header().Get("Content-Length"); got != "" {
 		t.Errorf("Content-Length = %q", got)
 	}
-	// シークだけではエンコードを強いない。
+
 	if fake.startMs != 1000 || fake.normalize || fake.waits != 1 {
 		t.Errorf("transcoder = %+v", fake)
 	}
@@ -177,7 +171,7 @@ func TestTranscodeErrorsBeforeBody(t *testing.T) {
 				assertErrorBody(t, tc.name, rec.Code, rec.Body.Bytes(),
 					wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonTranscodeUnavailable})
 			case "invalid start", "invalid attempt":
-				// 画面が送らない値の誤りには reason を付けない。
+				// Errors for values the UI never sends have no reason.
 				assertErrorBody(t, tc.name, rec.Code, rec.Body.Bytes(),
 					wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
 			}
@@ -246,7 +240,7 @@ func TestTranscodeSilentlyStopsWhenRequestIsCanceledBeforeInitialData(t *testing
 	}
 }
 
-// Start が期限の間際に最初のデータを持って戻っても、経路は期限をかけ直さずに配信する。
+// Initial output arriving just before the deadline must stream without restarting the timeout.
 func TestTranscodeServesStreamStartedAtDeadline(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		fake := &fakeTranscoder{body: "fragmented-mp4", beforeReturn: func(request domain.LiveTranscodeRequest) {
@@ -259,253 +253,6 @@ func TestTranscodeServesStreamStartedAtDeadline(t *testing.T) {
 	})
 }
 
-// transcodeProbeEnv は本物の保存層に動画を 3 本入れる。"ingested" は取り込みの解析で
-// ライブ変換用の解析情報を保存済み、"bare" は保存が無い。"hd" は映像をコピーできる
-// 1280×720 の動画で、解析情報を保存済みである。
-type transcodeProbeEnv struct {
-	db      *store.DB
-	handler http.Handler
-	fake    *fakeTranscoder
-	ids     map[string]int64
-	paths   map[string]string
-}
-
-func newTranscodeProbeEnv(t *testing.T) *transcodeProbeEnv {
-	t.Helper()
-	ctx := context.Background()
-	db, err := store.OpenMigratedForTest(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	mediaDir := t.TempDir()
-	if _, err := db.Settings().AddMediaFolder(ctx, mediaDir); err != nil {
-		t.Fatal(err)
-	}
-	env := &transcodeProbeEnv{
-		db:    db,
-		fake:  &fakeTranscoder{body: "fragmented-mp4", probed: transcodeProbeFixture("fresh")},
-		ids:   map[string]int64{},
-		paths: map[string]string{},
-	}
-	for _, name := range []string{"ingested", "bare", "hd"} {
-		path := filepath.Join(mediaDir, name+".mkv")
-		if err := os.WriteFile(path, []byte(strings.Repeat(name, 1024)), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		info, err := os.Stat(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		result, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
-			Path: path, Title: name, ContentKey: "key-" + name, SizeBytes: info.Size(),
-			MTime: info.ModTime(), AddedAt: info.ModTime(), Container: "mkv",
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		probe := domain.Probe{DurationMs: 60_000, Width: 640, Height: 360, VideoCodec: "h264"}
-		switch name {
-		case "ingested":
-			stored := transcodeProbeFixture("ingest")
-			probe.Transcode, probe.Source = &stored, domain.FileStampOf(info)
-		case "hd":
-			stored := transcodeProbeFixture("ingest")
-			stored.Video.Width, stored.Video.Height = 1280, 720
-			stored.Video.Profile, stored.Video.Level = "High", 41
-			stored.Video.PixelFormat, stored.Video.BitsPerRawSample = "yuv420p", 8
-			probe.Width, probe.Height = 1280, 720
-			probe.Transcode, probe.Source = &stored, domain.FileStampOf(info)
-		}
-		if err := db.Ingest().ApplyProbe(ctx, result.ID, probe, domain.Playability{}); err != nil {
-			t.Fatal(err)
-		}
-		env.ids[name], env.paths[name] = result.ID, path
-	}
-	env.handler = newTestServer(t, Options{
-		Videos:          db.Library(),
-		Transcoder:      env.fake,
-		TranscodeProbes: db.Ingest(),
-	})
-	return env
-}
-
-// transcodeProbeFixture は由来を FormatName に記した解析情報である。
-func transcodeProbeFixture(origin string) domain.TranscodeProbe {
-	return domain.TranscodeProbe{FormatName: origin, Video: domain.TranscodeVideo{
-		CodecName: "h264", Width: 640, Height: 360, FPS: 30, RealFPS: 30,
-	}}
-}
-
-// transcode は動画 1 本を変換させ、その要求で解析したか（probes の増分）と、
-// 変換に渡された解析情報を返す。
-func (e *transcodeProbeEnv) transcode(t *testing.T, name, query string) (bool, *domain.TranscodeProbe) {
-	t.Helper()
-	before := e.fake.probes
-	rec := do(t, e.handler, http.MethodGet, fmt.Sprintf("/api/videos/%d/transcode.mp4%s", e.ids[name], query))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("%s%s: status = %d: %s", name, query, rec.Code, rec.Body.String())
-	}
-	return e.fake.probes != before, e.fake.probe
-}
-
-func (e *transcodeProbeEnv) stored(t *testing.T, name string) *domain.StoredTranscodeProbe {
-	t.Helper()
-	stored, err := e.db.Library().TranscodeProbe(context.Background(), e.ids[name])
-	if err != nil {
-		t.Fatal(err)
-	}
-	return stored
-}
-
-// 取り込み済みの動画は、1 回目もシーク後も解析しない（親 Issue #371 受け入れ条件 7）。
-func TestTranscodeUsesIngestedProbe(t *testing.T) {
-	env := newTranscodeProbeEnv(t)
-	for _, query := range []string{"", "?startMs=30000"} {
-		probed, probe := env.transcode(t, "ingested", query)
-		if probed || probe == nil || probe.FormatName != "ingest" {
-			t.Errorf("%q: probed=%v probe=%+v", query, probed, probe)
-		}
-	}
-	info, err := os.Stat(env.paths["ingested"])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if env.fake.source != domain.FileStampOf(info) {
-		t.Errorf("source = %+v", env.fake.source)
-	}
-}
-
-// 解析情報が無い動画は 1 回目だけ解析し、結果を保存して 2 回目は解析しない（受け入れ条件 8）。
-func TestTranscodeSavesFreshProbe(t *testing.T) {
-	env := newTranscodeProbeEnv(t)
-	if probed, _ := env.transcode(t, "bare", ""); !probed {
-		t.Fatal("解析情報が無いのに解析しなかった")
-	}
-	info, err := os.Stat(env.paths["bare"])
-	if err != nil {
-		t.Fatal(err)
-	}
-	stored := env.stored(t, "bare")
-	if probe, ok := domain.TranscodeProbeUsable(stored, domain.FileStampOf(info)); !ok || probe.FormatName != "fresh" {
-		t.Fatalf("保存された解析情報 = %+v", stored)
-	}
-	if probed, probe := env.transcode(t, "bare", "?startMs=1000"); probed || probe == nil || probe.FormatName != "fresh" {
-		t.Errorf("2 回目: probed=%v probe=%+v", probed, probe)
-	}
-}
-
-// 大きさか更新時刻が違うファイルでは解析して保存を置き換え、次は解析しない（受け入れ条件 9）。
-func TestTranscodeReprobesChangedFile(t *testing.T) {
-	for _, change := range []string{"mtime", "size"} {
-		t.Run(change, func(t *testing.T) {
-			env := newTranscodeProbeEnv(t)
-			path := env.paths["ingested"]
-			if change == "mtime" {
-				later := time.Now().Add(time.Hour)
-				if err := os.Chtimes(path, later, later); err != nil {
-					t.Fatal(err)
-				}
-			} else {
-				info, err := os.Stat(path)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(path, []byte("changed"), 0o600); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if probed, _ := env.transcode(t, "ingested", ""); !probed {
-				t.Fatal("変わったファイルで保存値を使った")
-			}
-			info, err := os.Stat(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			stored := env.stored(t, "ingested")
-			if stored == nil || stored.Source != domain.FileStampOf(info) {
-				t.Fatalf("保存が置き換わっていない: %+v", stored)
-			}
-			if probed, probe := env.transcode(t, "ingested", ""); probed || probe == nil || probe.FormatName != "fresh" {
-				t.Errorf("次の変換: probed=%v probe=%+v", probed, probe)
-			}
-		})
-	}
-}
-
-// 変換が始められなかったとき（打ち切られた解析を含む）は何も保存しない。
-func TestTranscodeDoesNotSaveProbeWhenStartFails(t *testing.T) {
-	env := newTranscodeProbeEnv(t)
-	env.fake.err = context.Canceled
-	rec := do(t, env.handler, http.MethodGet, fmt.Sprintf("/api/videos/%d/transcode.mp4", env.ids["bare"]))
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d", rec.Code)
-	}
-	if stored := env.stored(t, "bare"); stored != nil {
-		t.Errorf("失敗した変換の解析情報を保存した: %+v", stored)
-	}
-}
-
-// firstChunkReader は最初の Read で初期データを返し、そのことを read で知らせる。
-type firstChunkReader struct {
-	read chan struct{}
-	done bool
-}
-
-func (r *firstChunkReader) Read(p []byte) (int, error) {
-	if r.done {
-		return 0, io.EOF
-	}
-	r.done = true
-	close(r.read)
-	return copy(p, "init"), nil
-}
-
-func (r *firstChunkReader) Close() error { return nil }
-
-// slowProbeWriter は初期データが読まれるまで保存を終えない。保存が初期データの
-// 読み出しより先に同期で走ると、期限まで待って失敗を記録する。
-type slowProbeWriter struct {
-	firstRead   chan struct{}
-	blocked     bool
-	hasDeadline bool
-	saves       int
-}
-
-func (w *slowProbeWriter) SaveTranscodeProbe(ctx context.Context, _ int64, _ domain.FileStamp, _ domain.TranscodeProbe) error {
-	w.saves++
-	_, w.hasDeadline = ctx.Deadline()
-	select {
-	case <-w.firstRead:
-		return nil
-	case <-time.After(2 * time.Second):
-		w.blocked = true
-		return errors.New("初期データより先に保存を待たされた")
-	}
-}
-
-// その場の解析結果の保存は初期データの読み出しを待たせず、独立した期限で行う。
-func TestTranscodeSavesFreshProbeWithoutDelayingInitialData(t *testing.T) {
-	mediaDir, video, _ := streamFixture(t, "a.mkv", 128)
-	stream := &firstChunkReader{read: make(chan struct{})}
-	writer := &slowProbeWriter{firstRead: stream.read}
-	handler := newTestServer(t, Options{
-		Videos:          &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, roots: []string{mediaDir}},
-		Transcoder:      &fakeTranscoder{stream: stream, probed: transcodeProbeFixture("fresh")},
-		TranscodeProbes: writer,
-	})
-	rec := do(t, handler, http.MethodGet, "/api/videos/1/transcode.mp4")
-	if rec.Code != http.StatusOK || rec.Body.String() != "init" {
-		t.Fatalf("response = %d %q", rec.Code, rec.Body.String())
-	}
-	if writer.saves != 1 || writer.blocked || !writer.hasDeadline {
-		t.Errorf("saves=%d blocked=%v hasDeadline=%v", writer.saves, writer.blocked, writer.hasDeadline)
-	}
-}
-
 func doRequest(handler http.Handler, req *http.Request) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -514,194 +261,86 @@ func doRequest(handler http.Handler, req *http.Request) *httptest.ResponseRecord
 
 var _ gen.ServerInterface = (*server)(nil)
 
-// fakeFFmpegScript は PATH の先頭に置く偽の ffmpeg である。引数を 1 行ずつ calls.log に
-// 残し、fail-hw があれば h264_nvenc の起動を最初のデータを出さずに失敗させる。それ以外は
-// 最初のデータを出し、release ができるまで終わらない（配信中の変換を模す）。
-const fakeFFmpegScript = `#!/bin/sh
-dir=$(dirname "$0")
-echo "$*" >> "$dir/calls.log"
-case " $* " in
-*" h264_nvenc "*)
-  if [ -e "$dir/fail-hw" ]; then
-    echo "OpenEncodeSessionEx failed: out of memory (10)" >&2
-    exit 1
-  fi
-  ;;
-esac
-printf 'fmp4-data'
-i=0
-while [ ! -e "$dir/release" ] && [ "$i" -lt 400 ]; do
-  sleep 0.05
-  i=$((i + 1))
-done
-exit 0
-`
-
-// liveEncoderEnv は本物の media.LiveTranscoder と app.TranscodeSettings を、偽の ffmpeg で
-// つないだ経路である。
-type liveEncoderEnv struct {
-	dir      string
-	server   *httptest.Server
-	handler  http.Handler
-	settings *app.TranscodeSettings
-	logs     *syncBuffer
-	target   string
-	// hdTarget は画質を選べる 1280×720 の動画の変換の経路である。
-	hdTarget string
+// The HTTP layer samples settings once per request and forwards that choice.
+type selectedEncoderSettings struct {
+	TranscodeSettings
+	encoding domain.TranscodeEncoding
+	reads    int
 }
 
-func newLiveEncoderEnv(t *testing.T) *liveEncoderEnv {
-	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("偽の ffmpeg は sh のスクリプトである")
-	}
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "ffmpeg"), []byte(fakeFFmpegScript), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-
-	probes := newTranscodeProbeEnv(t)
-	env := &liveEncoderEnv{
-		dir:      dir,
-		settings: newCheckedTranscodeSettings(t, &memoryEncoderStore{}),
-		logs:     &syncBuffer{},
-		target:   fmt.Sprintf("/api/videos/%d/transcode.mp4", probes.ids["ingested"]),
-		hdTarget: fmt.Sprintf("/api/videos/%d/transcode.mp4", probes.ids["hd"]),
-	}
-	serverDone := make(chan struct{})
-	t.Cleanup(func() { close(serverDone) })
-	env.handler = newTestServer(t, Options{
-		Videos:            probes.db.Library(),
-		Transcoder:        media.NewLiveTranscoder(serverDone),
-		TranscodeProbes:   probes.db.Ingest(),
-		TranscodeSettings: env.settings,
-		Logger:            slog.New(slog.NewTextHandler(env.logs, nil)),
-	})
-	env.server = httptest.NewServer(env.handler)
-	t.Cleanup(env.server.Close)
-	// 待たせた偽の ffmpeg を必ず終わらせる。
-	t.Cleanup(func() { env.touch(t, "release") })
-	return env
+func (s *selectedEncoderSettings) Current() domain.TranscodeEncoding {
+	s.reads++
+	return s.encoding
 }
 
-func (e *liveEncoderEnv) touch(t *testing.T, name string) {
-	t.Helper()
-	if err := os.WriteFile(filepath.Join(e.dir, name), nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-}
-
-// calls は偽の ffmpeg が起動された引数を順に返す。
-func (e *liveEncoderEnv) calls(t *testing.T) []string {
-	t.Helper()
-	body, err := os.ReadFile(filepath.Join(e.dir, "calls.log"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return strings.Split(strings.TrimSpace(string(body)), "\n")
-}
-
-// start は変換を要求し、最初のデータまでを読んだ応答を返す。
-func (e *liveEncoderEnv) start(t *testing.T) *http.Response {
-	t.Helper()
-	return e.startAt(t, e.target)
-}
-
-// startAt は target（経路と問い合わせ）の変換を要求し、最初のデータまでを読んだ応答を返す。
-func (e *liveEncoderEnv) startAt(t *testing.T, target string) *http.Response {
-	t.Helper()
-	res, err := e.server.Client().Get(e.server.URL + target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = res.Body.Close() })
-	if res.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(res.Body)
-		t.Fatalf("status = %d: %s", res.StatusCode, body)
-	}
-	first := make([]byte, len("fmp4-data"))
-	if _, err := io.ReadFull(res.Body, first); err != nil || string(first) != "fmp4-data" {
-		t.Fatalf("最初のデータ = %q, %v", first, err)
-	}
-	return res
-}
-
-func videoCodecArg(args string) string {
-	fields := strings.Fields(args)
-	for i := 0; i+1 < len(fields); i++ {
-		if fields[i] == "-c:v" {
-			return fields[i+1]
-		}
-	}
-	return ""
-}
-
-// 方式の変更は次に始まる要求から効き、配信中の変換は始めた方式のまま続く
-// （親 Issue #370 要件 4）。
 func TestTranscodeUsesEncoderSelectedBeforeRequestStarts(t *testing.T) {
-	env := newLiveEncoderEnv(t)
+	synctest.Test(t, func(t *testing.T) {
+		settings := &selectedEncoderSettings{encoding: domain.TranscodeEncoding{Effective: domain.VideoEncoderSoftware}}
+		entered, release := make(chan struct{}), make(chan struct{})
+		releaseFirst := sync.OnceFunc(func() { close(release) })
+		defer releaseFirst()
+		var encoders []domain.VideoEncoder
+		fake := &fakeTranscoder{body: "fragmented-mp4", beforeReturn: func(request domain.LiveTranscodeRequest) {
+			encoders = append(encoders, request.VideoEncoder)
+			if len(encoders) == 1 {
+				close(entered)
+				<-release
+			}
+		}}
+		mediaDir, video, _ := streamFixture(t, "a.mkv", 1)
+		handler := newTestServer(t, Options{
+			Videos:     &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, roots: []string{mediaDir}},
+			Transcoder: fake, TranscodeSettings: settings,
+		})
+		first := make(chan *httptest.ResponseRecorder, 1)
+		go func() {
+			first <- doRequest(handler, httptest.NewRequest(http.MethodGet, "/api/videos/1/transcode.mp4", nil))
+		}()
+		<-entered
+		settings.encoding = domain.TranscodeEncoding{Choice: domain.EncoderChoiceNVENC, Effective: domain.VideoEncoderNVENC}
+		releaseFirst()
+		if rec := <-first; rec.Code != http.StatusOK || rec.Body.String() != fake.body {
+			t.Fatalf("first = %d %q", rec.Code, rec.Body)
+		}
+		rec := do(t, handler, http.MethodGet, "/api/videos/1/transcode.mp4")
+		if rec.Code != http.StatusOK || rec.Body.String() != fake.body {
+			t.Fatalf("second = %d %q", rec.Code, rec.Body)
+		}
+		if want := []domain.VideoEncoder{domain.VideoEncoderSoftware, domain.VideoEncoderNVENC}; !slices.Equal(encoders, want) {
+			t.Fatalf("encoders = %v, want %v", encoders, want)
+		}
+		if settings.reads != 2 || fake.starts != 2 {
+			t.Fatalf("settings reads=%d starts=%d", settings.reads, fake.starts)
+		}
+	})
+}
 
-	before := env.start(t)
-	if calls := env.calls(t); len(calls) != 1 || videoCodecArg(calls[0]) != "libx264" {
-		t.Fatalf("変更前の要求の引数 = %q", calls)
+// Fallback belongs to media. HTTP reports the returned warning while serving the
+// successful stream, and does not change the selected encoder.
+func TestTranscodeReportsHardwareFallback(t *testing.T) {
+	settings := &selectedEncoderSettings{encoding: domain.TranscodeEncoding{Choice: domain.EncoderChoiceNVENC, Effective: domain.VideoEncoderNVENC}}
+	fake := &fakeTranscoder{body: "fragmented-mp4", hardwareFailure: errors.New("OpenEncodeSessionEx failed")}
+	logs := &syncBuffer{}
+	mediaDir, video, _ := streamFixture(t, "a.mkv", 1)
+	handler := newTestServer(t, Options{
+		Videos:     &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, roots: []string{mediaDir}},
+		Transcoder: fake, TranscodeSettings: settings,
+		Logger: slog.New(slog.NewTextHandler(logs, nil)),
+	})
+	rec := do(t, handler, http.MethodGet, "/api/videos/1/transcode.mp4")
+	if rec.Code != http.StatusOK || rec.Body.String() != fake.body || fake.starts != 1 {
+		t.Fatalf("status=%d body=%q starts=%d", rec.Code, rec.Body, fake.starts)
 	}
-
-	if rec := putTranscoding(t, env.handler, `{"videoEncoder":"nvenc"}`); rec.Code != http.StatusOK {
-		t.Fatalf("PUT: status = %d: %s", rec.Code, rec.Body)
-	}
-	after := env.start(t)
-	calls := env.calls(t)
-	if len(calls) != 2 || videoCodecArg(calls[1]) != "h264_nvenc" {
-		t.Fatalf("変更後の要求の引数 = %q", calls)
-	}
-
-	// 変更前に始まった要求は、変更のあとも同じプロセスのまま最後まで届く。
-	env.touch(t, "release")
-	for label, res := range map[string]*http.Response{"変更前": before, "変更後": after} {
-		if rest, err := io.ReadAll(res.Body); err != nil || len(rest) != 0 {
-			t.Errorf("%s の要求の残り = %q, %v", label, rest, err)
+	for _, want := range []string{"level=WARN", "fell back to software", "encoder=nvenc", "video=1", "OpenEncodeSessionEx failed"} {
+		if !strings.Contains(logs.String(), want) {
+			t.Errorf("missing %q: %s", want, logs.String())
 		}
 	}
-	if calls := env.calls(t); len(calls) != 2 {
-		t.Errorf("ffmpeg の起動 = %q, want 2 回", calls)
-	}
-	if logs := env.logs.String(); strings.Contains(logs, "level=WARN") {
-		t.Errorf("切り替えの無い要求で警告が出た: %s", logs)
+	if settings.encoding.Choice != domain.EncoderChoiceNVENC || settings.encoding.Effective != domain.VideoEncoderNVENC {
+		t.Fatalf("settings changed: %+v", settings.encoding)
 	}
 }
 
-// ハードウェアが最初のデータを出さずに失敗した要求は、同じ要求の中で software に切り替えて
-// 200 で本文を返し、Warn を記録する（親 Issue #370 受け入れ条件 8）。
-func TestTranscodeFallsBackToSoftwareAndWarns(t *testing.T) {
-	env := newLiveEncoderEnv(t)
-	if rec := putTranscoding(t, env.handler, `{"videoEncoder":"nvenc"}`); rec.Code != http.StatusOK {
-		t.Fatalf("PUT: status = %d: %s", rec.Code, rec.Body)
-	}
-	env.touch(t, "fail-hw")
-	env.touch(t, "release")
-
-	res := env.start(t)
-	if rest, err := io.ReadAll(res.Body); err != nil || len(rest) != 0 {
-		t.Fatalf("本文の残り = %q, %v", rest, err)
-	}
-	calls := env.calls(t)
-	if len(calls) != 2 || videoCodecArg(calls[0]) != "h264_nvenc" || videoCodecArg(calls[1]) != "libx264" {
-		t.Fatalf("ffmpeg の起動 = %q, want h264_nvenc のあと libx264", calls)
-	}
-	logs := env.logs.String()
-	for _, want := range []string{"level=WARN", "fell back to software", "encoder=nvenc", "video=", "OpenEncodeSessionEx failed"} {
-		if !strings.Contains(logs, want) {
-			t.Errorf("ログに %q が無い: %s", want, logs)
-		}
-	}
-	// 切り替えは要求の中だけで、設定の選択と実際の方式は変えない。
-	if current := env.settings.Current(); current.Choice != domain.EncoderChoiceNVENC || current.Effective != domain.VideoEncoderNVENC {
-		t.Errorf("切り替えのあとの設定 = %+v", current)
-	}
-}
-
-// 設定が無い経路は software でエンコードする。
 func TestTranscodeWithoutSettingsRequestsSoftware(t *testing.T) {
 	var got domain.VideoEncoder
 	fake := &fakeTranscoder{body: "fragmented-mp4", beforeReturn: func(request domain.LiveTranscodeRequest) {
@@ -716,81 +355,7 @@ func TestTranscodeWithoutSettingsRequestsSoftware(t *testing.T) {
 	}
 }
 
-// argsContain は ffmpeg の引数に want が連続して並ぶかを返す。
-func argsContain(args string, want ...string) bool {
-	fields := strings.Fields(args)
-	for i := 0; i+len(want) <= len(fields); i++ {
-		matched := true
-		for j, value := range want {
-			if fields[i+j] != value {
-				matched = false
-				break
-			}
-		}
-		if matched {
-			return true
-		}
-	}
-	return false
-}
-
-// 画質付きの要求は映像をエンコードし、短辺を縮めてビットレートに上限を付ける。画質の無い要求は
-// 今までどおりコピーで始まる。
-func TestTranscodeQualityScalesAndCapsWhileOriginalCopies(t *testing.T) {
-	env := newLiveEncoderEnv(t)
-	env.touch(t, "release")
-
-	original := env.startAt(t, env.hdTarget)
-	if _, err := io.ReadAll(original.Body); err != nil {
-		t.Fatal(err)
-	}
-	quality := env.startAt(t, env.hdTarget+"?quality=480p")
-	if _, err := io.ReadAll(quality.Body); err != nil {
-		t.Fatal(err)
-	}
-
-	calls := env.calls(t)
-	if len(calls) != 2 {
-		t.Fatalf("ffmpeg の起動 = %q, want 2 回", calls)
-	}
-	if got := videoCodecArg(calls[0]); got != "copy" {
-		t.Errorf("画質の無い要求の -c:v = %q, want copy: %s", got, calls[0])
-	}
-	if strings.Contains(calls[0], "-maxrate") || strings.Contains(calls[0], "scale=") {
-		t.Errorf("画質の無い要求に縮小か上限がある: %s", calls[0])
-	}
-	if got := videoCodecArg(calls[1]); got != "libx264" {
-		t.Errorf("480p の -c:v = %q, want libx264: %s", got, calls[1])
-	}
-	if !strings.Contains(calls[1], "scale=854:480") {
-		t.Errorf("480p の引数に scale=854:480 が無い: %s", calls[1])
-	}
-	if !argsContain(calls[1], "-maxrate", "1200k") {
-		t.Errorf("480p の引数に -maxrate 1200k が無い: %s", calls[1])
-	}
-}
-
-// 画質付きの変換は startMs の位置そのものから始まり、transcode-start は startMs を返す。
-func TestTranscodeQualityReportsRequestedStart(t *testing.T) {
-	env := newLiveEncoderEnv(t)
-	env.touch(t, "release")
-
-	res := env.startAt(t, env.hdTarget+"?quality=360p&startMs=30000&attempt=quality-seek")
-	if _, err := io.ReadAll(res.Body); err != nil {
-		t.Fatal(err)
-	}
-	calls := env.calls(t)
-	if len(calls) != 1 || videoCodecArg(calls[0]) != "libx264" || !argsContain(calls[0], "-maxrate", "700k") {
-		t.Fatalf("ffmpeg の起動 = %q, want 360p の上限を付けたエンコード 1 回", calls)
-	}
-	startTarget := strings.TrimSuffix(env.hdTarget, "/transcode.mp4") + "/transcode-start?attempt=quality-seek"
-	rec := do(t, env.handler, http.MethodGet, startTarget)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"startMs":30000`) {
-		t.Errorf("transcode-start = %d %s, want startMs 30000", rec.Code, rec.Body)
-	}
-}
-
-// 画質は LiveTranscodeRequest.Quality に載り、開始のログに添えられる。
+// Pass quality through LiveTranscodeRequest and include it in startup logs.
 func TestTranscodePassesQualityToTranscoder(t *testing.T) {
 	fake := &fakeTranscoder{body: "fragmented-mp4"}
 	logs := &syncBuffer{}
@@ -816,7 +381,8 @@ func TestTranscodePassesQualityToTranscoder(t *testing.T) {
 	}
 }
 
-// 列挙に無い値、動画の短辺以上の画質、寸法の無い動画は 400 で、変換を始めない。
+// Reject unsupported quality, values at/above the short side, and unknown dimensions before
+// starting a transcode.
 func TestTranscodeRejectsUnavailableQuality(t *testing.T) {
 	width, height := 1280, 720
 	tests := []struct {

@@ -1,24 +1,16 @@
 import type { ReactNode, Ref } from "react";
 
-// 管理表ページ（骨格）。見出しの下に帯（タブ・効いている絞り込み・操作）を置き、その下に
-// 表を置く。読みやすい幅（max-w-4xl）で中央に寄せ、見出しと帯はトップバーの直下に
-// 貼り付ける（行を送っても、見出しの操作・選択バー・タブに届く）。検索・絞り込み・並び順の Toolbar（placement="topBar"）は TopBarPortal で包んで
-// toolbar に渡し、共通のトップバーの中央に入れる（ポータルなので、ページの中には描かない）。
-// 外側の余白と領域の間隔は骨格が持つ。読み込み中・空・エラーの状態は表の位置に入れる。
-// 規則は web/registry/rules/patterns.md の Admin table page。
+// Admin table skeleton; see web/registry/rules/patterns.md, Admin table page. Supply TopBarPortal-wrapped Toolbar for the shared top bar.
+// The skeleton owns spacing; replace the table slot with loading, empty or error states.
 
 export interface AdminTablePageProps {
-  /** TopBarPortal で包んだ Toolbar（検索・絞り込み・並び順）。 */
   toolbar?: ReactNode;
-  /** PageHeader（題・件数・主操作）。選んでいる間は SelectionBar（placement="header"）。 */
   header: ReactNode;
-  /** 帯: Tabs の TabsList と効いている絞り込み。 */
   band: ReactNode;
-  /** 選択があるときの、下端に浮かせる SelectionBar。見出しの行に置くなら header に入れる。 */
+  /** Use header instead for a selection bar replacing the page heading. */
   selectionBar?: ReactNode;
-  /** 貼り付く帯（見出しと band）。行が帯の下に隠れないよう、画面が高さを測るのに使う。 */
+  /** Measure the sticky band so virtual rows remain visible beneath it. */
   bandRef?: Ref<HTMLDivElement>;
-  /** DataTable、または状態のブロック。 */
   children: ReactNode;
 }
 

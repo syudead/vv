@@ -10,8 +10,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// MCP の仮の付与。update_video_tags は
-// REST と同じ結果になり、list_tags・get_video の出力に tentative が出る（受け入れ条件 15）。
 func TestMCPUpdateVideoTagsTentative(t *testing.T) {
 	f := newMCPFixture(t, Options{})
 	session := f.connect(t)

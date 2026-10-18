@@ -26,7 +26,7 @@ function CatalogCard({ title, count }: { title: string; count: number }) {
 }
 
 function LeakyCard({ title }: { title: string }) {
-  // カタログを通らない英語を string の変数を経由して描く（型ではすり抜ける経路）。
+  // A plain string variable bypasses literal typing; the rendered pseudo-locale check must catch it.
   const note: string = "Saved to your library";
   return (
     <article>

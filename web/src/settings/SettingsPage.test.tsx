@@ -11,8 +11,7 @@ import {
   renderSettings,
 } from "../testing/settingsPage";
 
-// 「Library」のページの「Media folders」節の流れを確かめる。ページの行き来と一覧は
-// SettingsPage.pages.test.tsx が確かめる。
+// Test the media-folder flow here; SettingsPage.pages.test.tsx covers navigation.
 function renderPage() {
   return renderSettings("/settings/library");
 }

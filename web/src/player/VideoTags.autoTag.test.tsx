@@ -8,8 +8,6 @@ import { __resetTagsForTest } from "../api/tags";
 import { ToastProvider } from "../ui/Toast";
 import VideoTags from "./VideoTags";
 
-// 自動タグ付けが仮に付けたタグ（unconfirmed）の確定と却下（docs/design-docs/auto-tagging.md）。
-
 function json(body: unknown, status = 200): Response {
   return new Response(body === null ? null : JSON.stringify(body), {
     status,

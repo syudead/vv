@@ -12,9 +12,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 稼働状態とビルド情報を返す
-         * @description 認証を必要としない。外形監視とコンテナのヘルスチェックから参照される。
-         *     データベースへ疎通できない場合も応答自体は返し、`status` で区別する。
+         * Return health and build information
+         * @description Unauthenticated endpoint for monitoring and container health checks. Database connectivity failures are reported through `status`.
          */
         get: operations["getHealth"];
         put?: never;
@@ -35,9 +34,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 未設定のサーバーで最初のアカウントを作り、そのままログインする
-         * @description 本文は 8 KiB まで。成立したら `Set-Cookie` でセッションを渡す。
-         *     同時の初回設定は1つだけが成立し、他は 409 になる。
+         * Create the first account and sign in
+         * @description Accepts at most 8 KiB. Returns the session through `Set-Cookie`. Only one concurrent setup succeeds; others return 409.
          */
         post: operations["setupAccount"];
         delete?: never;
@@ -56,10 +54,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * ユーザー名とパスワードでログインする
-         * @description 本文は 8 KiB まで。ユーザー名かパスワードの誤り、空欄、上限超え、アカウントの
-         *     未設定は、どれも同じ 401 `invalid_credentials` になる。
-         *     `next` は戻り先の候補で、安全でなければ `/` にして `redirectTo` に返す。
+         * Sign in with a username and password
+         * @description Accepts at most 8 KiB. Incorrect, empty or oversized credentials and an unconfigured account all return `401 invalid_credentials`. Validates `next` and returns it as `redirectTo`, falling back to `/` when unsafe.
          */
         post: operations["login"];
         delete?: never;
@@ -76,9 +72,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 見る人の状態を返す
-         * @description 未設定なら Cookie によらず `setupRequired` を返す。ユーザー名は返さない。
-         *     `next` を付けると、`owner` のときだけ確かめた戻り先を `redirectTo` に返す。
+         * Return the viewer state
+         * @description Returns `setupRequired` before account setup regardless of cookies; never returns the username. For an owner, validates optional `next` and returns it as `redirectTo`.
          */
         get: operations["getAuthSession"];
         put?: never;
@@ -99,9 +94,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * ログアウトする
-         * @description 要求に付いていたセッションの Cookie（`__Host-vv_session` と `vv_session` の両方）を
-         *     見て、有効なセッションを消し、両方の Cookie を `Max-Age=0` で消す。本文は無い。
+         * Sign out
+         * @description Revokes valid sessions from both `__Host-vv_session` and `vv_session` cookies and clears both with `Max-Age=0`. No request body.
          */
         post: operations["logout"];
         delete?: never;
@@ -118,22 +112,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 動画の一覧を返す
-         * @description カーソル方式でページングする。対象は登録メディアフォルダの下に所在がある動画で、
-         *     `query`・`watch`・`playable` で絞り込む。`total` は絞り込み後の総件数で、
-         *     ページングとは独立に返る。
-         *
-         *     同じ動画の別バージョンの集まりは、実効の代表（代表に見せてよい所在が無ければ、
-         *     見せてよい所在を持つバージョンのうち id の最小のもの）の1件だけを返し、代表以外の
-         *     バージョンは返さない。`query` は集まりのどれかのバージョンの所在に当たれば代表の
-         *     1件を返し、タグ・視聴状態・並び順は集まりの値で判定する。代表以外のバージョンも
-         *     `GET /api/videos/{id}` では引ける。
-         *
-         *     ゲストでは公開の動画だけを対象にし、`query` はタグの名前とシノニムに照合しない。
-         *     所有者のデータに依る条件（`watch` が `all` 以外、`sort` が `playedAsc`・
-         *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true、`person`、
-         *     `organization`、`tagKind`）は
-         *     `400` `invalid_request` にする（docs/design-docs/catalog-organization.md）。
+         * List videos
+         * @description Cursor-paginated videos with locations under registered media folders, filtered by `query`, `watch` and `playable`. `total` counts all matches independently of pagination. Version bundles appear only as their effective representative: the chosen representative when visible, otherwise the visible version with the lowest ID. A query matching any version location selects the representative; tags, watch state and sorting use bundle values. Other versions remain available through `GET /api/videos/{id}`. Guests see public videos only and queries exclude tag names and synonyms. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`. See docs/design-docs/catalog-organization.md.
          */
         get: operations["listVideos"];
         put?: never;
@@ -152,28 +132,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * ライブラリの項目（動画とグループ）の一覧を返す
-         * @description `listVideos` と同じ条件で、当たった動画を項目にまとめて返す。
-         *     `query`・`tag`・`person`・`organization`・`tagKind` はメンバー単位で掛け（1本の動画が全条件を満たす）、グループの
-         *     全メンバーが当たればグループの項目1件に、一部だけが当たれば当たったメンバーを
-         *     それぞれ動画の項目にする。グループに属さない動画は動画の項目になる。
-         *     絞り込みが無ければどのグループも全メンバーが当たる。グループの値は全メンバーから
-         *     数える。`playable` は項目に掛け（グループはメンバーのどれか1本が再生できれば残る）、
-         *     `watch` は項目の視聴状態に掛け、並べ替えは項目の値で行う。`total` は絞り込み後の
-         *     項目（カード）の数。カーソルの形は `listVideos` と同じ。
-         *
-         *     `favorite` が true なら、項目ごとに自分のお気に入りで判定する（動画の項目は動画、
-         *     グループの項目はグループ）。お気に入りでないグループに属するお気に入りの動画は
-         *     動画の項目になる。
-         *
-         *     同じ動画の別バージョンの集まりは `listVideos` と同じく実効の代表の1件だけを
-         *     項目にし、代表以外のバージョンは出ない。代表以外のバージョンはフォルダの
-         *     グループのメンバーにもならない。
-         *
-         *     ゲストでは公開のメンバーだけを数え（「全メンバー」も公開のメンバー）、公開の
-         *     メンバーが1本のグループは動画の項目にし、0本のグループは出さない。`watch` が `all` 以外、`sort` が `playedAsc`・
-         *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true、`person`、`organization`、`tagKind` は
-         *     `400` `invalid_request` にする。
+         * List library items (videos and groups)
+         * @description Uses `listVideos` filters and collects matches into items. Query, tag, person, organization and tagKind filters apply to each video, which must satisfy all conditions. A group appears as one item when all members match; partial matches appear as individual videos, as do ungrouped videos. Without filters all members match. Group values aggregate all members. `playable` filters items (a group needs one playable member); `watch` and sorting use item values. `total` counts matching cards; cursors follow `listVideos`. Favorites use each item's own state: a favorite video in a non-favorite group appears individually. Version bundles use their effective representative, and non-representative versions cannot be folder-group members. For guests, membership counts only public videos: groups with one become video items and groups with none are omitted. Owner-dependent filters (`watch` other than `all`, played/favorited sorting, `tag`, `favorite=true`, `person`, `organization`, `tagKind`) return `400 invalid_request`.
          */
         get: operations["listLibrary"];
         put?: never;
@@ -192,18 +152,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 絞り込みに合う項目の動画の id を返す
-         * @description `listLibrary` と同じ条件（`query`・`watch`・`playable`・`tag`・`favorite`・`person`・
-         *     `organization`・`tagKind`）に合う項目の、
-         *     動画の項目の id と、グループの項目の全メンバーの id を、ページングせずに返す。
-         *     一部のメンバーだけが当たったグループは動画の項目なので、当たったメンバーの id
-         *     だけが入る。並びは決めない。「すべて選択」用。
-         *     グループの項目は `groups` にも、フォルダと全メンバーの id として入る。スマートフォルダの
-         *     項目は `smartFolderIds` に入り、その動画は `ids` に入らない。
-         *
-         *     `favorite` が true なら、項目ごとに自分のお気に入りで判定する（動画の項目は動画、
-         *     グループの項目はグループ）。お気に入りでないグループに属するお気に入りの動画は
-         *     動画の項目になる。
+         * Return video IDs for matching items
+         * @description Returns unpaginated video IDs for the same filters as `listLibrary`, including every member of matching group items. Partial group matches contribute only their matching videos. Order is unspecified; used for select-all. `groups` also includes each group folder and all member IDs. Smart folders appear in `smartFolderIds`; their videos are excluded from `ids`. Favorites use item state, so a favorite video in a non-favorite group appears individually.
          */
         get: operations["listLibraryIds"];
         put?: never;
@@ -222,9 +172,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 動画1件の詳細を返す
-         * @description ゲストでは公開の動画だけを返し、公開でない動画は存在しない動画と同じ 404 にする。この扱いは関連動画・配信・プレビュー・ライブ変換・
-         *     サムネイル・シークプレビューでも同じである。
+         * Return video details
+         * @description Guests see public videos only; private videos return the same 404 as missing videos. The same rule applies to related videos, streaming, previews, live transcoding, thumbnails and seek previews.
          */
         get: operations["getVideo"];
         put?: never;
@@ -243,20 +192,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 関連動画を返す
-         * @description 見る人に見せる動画を、この動画との近さの点が高い順に、`cursor` の後から最大 `limit` 件
-         *     返す。この動画自身、同じ動画の別バージョン（集まりの代表以外）、同じグループのメンバーは
-         *     含めない。点は映像の指紋で似た場面が共通する割合（満点 40）、タグの一致率（30）、題名・
-         *     ファイル名の数字を除いた語の重なり（25）、同じディレクトリの直下（20）、追加日時の近さ
-         *     （5）の合計で、同点なら追加日時の新しい方、それも同じなら id の大きい方を先にする
-         *     （docs/design-docs/related-videos.md）。件数に上限は無く、`nextCursor` を `cursor` に
-         *     渡して続きを読む。続きは返した位置より後の動画だけなので、読む間に動画が足されたり
-         *     消えたりしても、同じ動画が二重に出ない。
-         *     `cursor` を付けない最初の要求だけが `nextId`・`prevId`・`group` を持つ。この動画が
-         *     グループにあれば、文脈のグループ（`group` の問い合わせ、docs/design-docs/catalog-organization.md）
-         *     の再生順で、group にこの動画を中ほどに置いた最大 100 本のメンバーの窓を載せ、
-         *     nextId・prevId をその再生順の前後にする。窓の外のメンバーは `listVideoGroupMembers` で
-         *     読む。
+         * Return related videos
+         * @description Returns up to `limit` visible videos after `cursor`, ordered by similarity. Excludes this video, non-representative versions and members of its group. Scores combine matching fingerprint scenes (40), tags (30), title/filename words excluding digits (25), immediate directory (20) and added-time proximity (5); ties prefer newer additions, then higher IDs. See docs/design-docs/related-videos.md. Follow `nextCursor` without a total limit; resuming strictly after the returned position prevents duplicates during additions/deletions. Only the first request (without `cursor`) includes `nextId`, `prevId` and `group`. For grouped videos, the contextual group supplies playback order and a window of up to 100 members centered on this video. Read members outside that window with `listVideoGroupMembers`.
          */
         get: operations["getRelatedVideos"];
         put?: never;
@@ -275,11 +212,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 動画が属するグループのメンバーを、並びの範囲で返す
-         * @description 文脈のグループ（`group` の問い合わせ、docs/design-docs/catalog-organization.md）の見せてよい
-         *     動画を、その再生順で `offset` 本目（0 始まり）から最大 `limit` 本返す。メンバーの選び方と
-         *     形は関連動画の group と同じで、ゲストには公開の動画だけで数える。動画がどのグループにも
-         *     無ければ `404`。`offset` が本数以上なら items は空。
+         * Return a range of group members
+         * @description Returns up to `limit` visible videos in contextual-group playback order, starting at zero-based `offset`. Selection and shape match the related-video group; guest offsets count public videos only. Returns 404 for an ungrouped video and empty items when offset is beyond the group. See docs/design-docs/catalog-organization.md.
          */
         get: operations["listVideoGroupMembers"];
         put?: never;
@@ -300,12 +234,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 読み取りに失敗した動画を読み取り直す
-         * @description `probeState = failed` の動画だけを受け付ける。1つの取引の中で読み取りの状態を
-         *     pending に戻し、読み取りのジョブを積む。代表サムネイル・シーク用サムネイル・
-         *     一覧用プレビューのうち failed のもの（代表サムネイルは完成していないもの）を
-         *     pending に戻し、代表サムネイルとシーク用サムネイルは戻したときだけそのジョブを
-         *     積む（一覧用プレビューは読み取りの成功後に積まれる）。要求の本文は無い。
+         * Retry a failed video probe
+         * @description Accepts only `probeState=failed`. Atomically resets the probe to pending and queues it. Failed seek sprites and hover previews, and any unfinished representative thumbnail, return to pending. Thumbnail and seek jobs are queued only when reset; hover previews are queued after a successful probe. No request body.
          */
         post: operations["reprobeVideo"];
         delete?: never;
@@ -324,9 +254,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 動画 1 本を自動タグ付けの判定に回す
-         * @description 判定を終えていても回し直す。判定中なら積まない（`queued` が偽）。要求の本文は無い
-         *     （docs/design-docs/auto-tagging.md）。
+         * Queue auto-tagging for a video
+         * @description Requeues even after a completed judgement. Does not queue an in-progress judgement (`queued=false`). No request body; see docs/design-docs/auto-tagging.md.
          */
         post: operations["autoTagVideo"];
         delete?: never;
@@ -345,9 +274,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 自動タグ付けが仮に付けたタグを確定する
-         * @description 動画に仮に付いたタグ（`VideoTag.unconfirmed`）を普通の付与にする。要求の本文は無い
-         *     （docs/design-docs/auto-tagging.md）。
+         * Confirm an auto-assigned tag
+         * @description Converts an unconfirmed video tag (`VideoTag.unconfirmed`) to a normal assignment. No request body; see docs/design-docs/auto-tagging.md.
          */
         post: operations["confirmVideoTag"];
         delete?: never;
@@ -366,9 +294,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 自動タグ付けが仮に付けたタグを却下する
-         * @description 動画に仮に付いたタグを外し、この動画にこのタグを自動タグ付けで付け直さない。要求の本文は
-         *     無い（docs/design-docs/auto-tagging.md）。
+         * Reject an auto-assigned tag
+         * @description Removes the tentative tag and prevents auto-tagging from assigning it to this video again. No request body; see docs/design-docs/auto-tagging.md.
          */
         post: operations["rejectVideoTag"];
         delete?: never;
@@ -387,11 +314,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 代表の所在をサーバーの PC の既定アプリで開く
-         * @description 要求の本文は無く、パスも受け取らない。子プロセスを起動した時点で 204 を返す。
-         *     判定は 404 → 409 open_unavailable → 403 → 409 file_missing → 500 の順に行う。
-         *     要求元（RemoteAddr）がループバックで、Host がループバックの名前
-         *     （localhost・127.0.0.1・[::1]）のときだけ受け付ける。
+         * Open the representative location in the server PC's default application
+         * @description Accepts no body or path; returns 204 once the child process starts. Validation order is 404, 409 open_unavailable, 403, 409 file_missing, then 500. Requires a loopback RemoteAddr and a loopback Host (localhost, 127.0.0.1 or [::1]).
          */
         post: operations["openVideoFile"];
         delete?: never;
@@ -408,10 +332,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 動画本体を配信する
-         * @description `Range` 要求に対応し、`206 Partial Content` と `Content-Range` を返す。
-         *     詳細は [http-routes.md](./http-routes.md) を参照。再生できない形式
-         *     （`playable = false`）でもファイルはそのまま配信する。
+         * Stream the video file
+         * @description Supports Range requests with `206 Partial Content` and `Content-Range`; see [http-routes.md](./http-routes.md). Files are served unchanged even when `playable=false`.
          */
         get: operations["streamVideo"];
         put?: never;
@@ -430,10 +352,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 生成済み hover preview を配信する
-         * @description 保存済みの preview MP4 だけを Range 対応で配信する。元動画の stream や
-         *     live transcode へ fallback しない。成功の応答は `Cache-Control: private, no-cache`
-         *     と `ETag` を持ち、`If-None-Match` が一致すれば `304` を返す。
+         * Serve a generated hover preview
+         * @description Serves only the saved preview MP4 with Range support; never falls back to the source or live transcoding. Successful responses use `Cache-Control: private, no-cache` and `ETag`; matching `If-None-Match` returns 304.
          */
         get: operations["getVideoPreview"];
         put?: never;
@@ -452,9 +372,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 動画をMP4へライブ変換して配信する
-         * @description 指定位置からfragmented MP4を生成し、保存せずレスポンスへ直送する。
-         *     Rangeは使わず、シークはstartMsを変えた新しいrequestで行う。
+         * Stream live-transcoded MP4
+         * @description Generates fragmented MP4 from the requested position directly into the response without saving. Seeking starts a new request with a different `startMs`; Range is unsupported.
          */
         get: operations["transcodeVideo"];
         put?: never;
@@ -473,11 +392,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * ライブ変換の実際の開始位置を返す
-         * @description 同じ `attempt` を付けた `transcodeVideo` の出力の時間軸の 0 が、元動画のどの時刻かを
-         *     ミリ秒で返す。`attempt` がまだ無いか開始位置が未決なら、決まるまで最大 6 秒待つ。
-         *     それまでに決まらないか、変換が最初のデータを出せずに失敗したら 404。応答は
-         *     `Cache-Control: no-store`。
+         * Return the actual transcode start
+         * @description Returns the source timestamp in milliseconds corresponding to output time zero for `transcodeVideo` with this `attempt`. Waits up to six seconds for a missing attempt or undecided start. Returns 404 if still unavailable or transcoding fails before its first output. Uses `Cache-Control: no-store`.
          */
         get: operations["getTranscodeStart"];
         put?: never;
@@ -496,12 +412,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 動画の隣に置いた字幕ファイルの一覧を返す
-         * @description 配信が開く所在（`streamVideo` と同じ順で最初に開けたもの）のフォルダを要求のたびに読み、
-         *     `<名前>.srt`・`<名前>.vtt`・`<名前>.<ラベル>.srt`・`<名前>.<ラベル>.vtt` を返す。
-         *     ラベルの無いものが先頭で、続いてラベルの自然順。同じラベルの `.srt` と `.vtt` は `.vtt`
-         *     だけ、4 MiB を超えるファイルは載せない。中身は読まない。無ければ空の配列で、フォルダを
-         *     読めないときも空の配列を返す。応答は `Cache-Control: no-store`。
+         * List sidecar subtitle files
+         * @description Reads the folder of the first accessible location in streamVideo order on every request. Returns <name>.srt, <name>.vtt, <name>.<label>.srt and <name>.<label>.vtt, unlabeled first then natural label order. For duplicate labels, prefers .vtt over .srt; excludes files over 4 MiB and does not read file contents. Returns an empty array when none exist or the directory is unreadable. Uses `Cache-Control: no-store`.
          */
         get: operations["listVideoSubtitles"];
         put?: never;
@@ -520,12 +432,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 字幕ファイルを WebVTT にして返す
-         * @description `file` が `listVideoSubtitles` と同じ一覧の 1 つと完全に一致するときだけ開き、文字コードを
-         *     判定して UTF-8 の WebVTT にし、すべての cue の時刻から `offsetMs` を引いて返す。
-         *     一覧に無い、開けない、上限を超える、読めない字幕は `404`（reason `subtitle_unavailable`）。
-         *     成功の応答は `Cache-Control: private, no-cache` と `ETag` を持ち、`If-None-Match` が
-         *     一致すれば `304` を返す。
+         * Return a subtitle file as WebVTT
+         * @description Opens only a file exactly matching an entry from `listVideoSubtitles`. Detects encoding, converts to UTF-8 WebVTT and subtracts `offsetMs` from every cue. Missing, inaccessible, oversized or unreadable subtitles return 404 with reason `subtitle_unavailable`. Successful responses use `Cache-Control: private, no-cache` and `ETag`; matching `If-None-Match` returns 304.
          */
         get: operations["getVideoSubtitle"];
         put?: never;
@@ -544,11 +452,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * サムネイル画像を返す
-         * @description `v` は内容由来の識別子で、画像が変われば URL も変わる。未生成の場合は 404。
-         *     成功の応答は `Cache-Control: private, no-cache` と `ETag` を持ち、`If-None-Match` が
-         *     一致すれば `304` を返す。見るたびにサーバーへ確かめさせ、ログアウト後や非公開に
-         *     した後にキャッシュから出続けないようにする。
+         * Return the thumbnail image
+         * @description Content-derived `v` changes the URL when the image changes; unavailable thumbnails return 404. Uses `Cache-Control: private, no-cache` and `ETag`; matching `If-None-Match` returns 304. Revalidation prevents cached images remaining visible after sign-out or visibility changes.
          */
         get: operations["getVideoThumbnail"];
         put?: never;
@@ -567,14 +472,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * シーク用サムネイルのスプライトの配置情報を返す
-         * @description 完成したスプライトの配置情報を返す。位置 p ms のコマは
-         *     `min(floor(p / intervalMs), frameCount - 1)` で、コマ k はシート
-         *     `floor(k / (columns * rows))` の左上から行優先で `k mod (columns * rows)` 番目に載る。
-         *     `v` は内容由来の識別子である。成功の応答は `Cache-Control: private, no-cache` と
-         *     `ETag` を持ち、`If-None-Match` が一致すれば `304` を返す。
-         *     解析が終わっていない・尺が無い、またはスプライトが完成していない（生成待ち・生成中・
-         *     失敗）ときは `409`。
+         * Return seek-sprite layout
+         * @description For position p ms, use frame `min(floor(p / intervalMs), frameCount - 1)`. Frame k appears on sheet `floor(k / (columns * rows))`, in row-major slot `k mod (columns * rows)`. `v` is content-derived. Successful responses use `Cache-Control: private, no-cache` and `ETag`; matching `If-None-Match` returns 304. Returns 409 when probing or sprite generation is incomplete, duration is unknown, or generation failed.
          */
         get: operations["getVideoSeekThumbnail"];
         put?: never;
@@ -593,11 +492,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * シーク用サムネイルのスプライトのシートを返す
-         * @description 配置情報の `sheets[sheet]` が指す JPEG を返す。幅は `columns × frameWidth`、高さは
-         *     `rows × frameHeight`。`sheet` が枚数以上なら `404`。成功の応答は
-         *     `Cache-Control: private, no-cache` と `ETag` を持ち、`If-None-Match` が一致すれば
-         *     `304` を返す。
+         * Return a seek-sprite sheet
+         * @description Returns the JPEG identified by `sheets[sheet]`, with dimensions `columns * frameWidth` by `rows * frameHeight`. Out-of-range sheet indexes return 404. Uses `Cache-Control: private, no-cache` and `ETag`; matching `If-None-Match` returns 304.
          */
         get: operations["getVideoSeekThumbnailSheet"];
         put?: never;
@@ -617,9 +513,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * 再生位置を記録する
-         * @description 視聴済みの判定はサーバー側で行う。クライアントは位置だけを送る。
-         *     記録は動画の内容に紐づくため、ファイルを移動・改名しても引き継がれる。
+         * Save playback position
+         * @description The server determines watched state; clients send only the position. Records follow video content across moves and renames.
          */
         put: operations["putVideoProgress"];
         post?: never;
@@ -638,12 +533,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * 動画の表示名を設定・解除する
-         * @description 所有者だけ。`displayName` の前後の空白を取り除き、空なら表示名を解除して元の題名に戻す。
-         *     制御文字を含む名前と 200 符号位置を超える名前は受け付けない。他の動画と同じ表示名も
-         *     受け付け、同時の変更は後勝ちである。応答は `GET /api/videos/{id}` と同じ形の `Video` で、
-         *     `title`・`fileTitle`・`displayName` が反映済みである。確定後に `/api/events` の `video` が
-         *     流れる。
+         * Set or clear the video display name
+         * @description Owner-only. Trims surrounding whitespace; an empty name clears the override. Rejects control characters and names over 200 code points. Duplicate display names are allowed; concurrent edits are last-write-wins. Returns the same Video shape as GET details, including updated title, fileTitle and displayName. Emits a `video` event after commit.
          */
         put: operations["setVideoDisplayName"];
         post?: never;
@@ -662,12 +553,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * 動画の作品情報をまるごと置き換える
-         * @description 所有者だけ。本文の作品情報で保存済みのものを置き換える。省いた・null の・前後の空白を除いて空の
-         *     項目は解除し、`{}` はすべてを解除する。人物と団体は id で指す。規則に合わない最初の項目を
-         *     `field` 付きの誤りで返し、何も書かない。応答は `GET /api/videos/{id}` と同じ形の `Video` で、
-         *     `workInfo` が反映済み（すべて解除したときは無い）。変わったときは確定後に同じ利用者データの鍵の
-         *     各動画の `video` が `/api/events` に流れる。
+         * Replace video work information
+         * @description Owner-only. Replaces saved work information; omitted, null or trimmed-empty fields clear their values, and `{}` clears all. People and organizations are referenced by ID. Returns the first invalid field with `field` and writes nothing. Returns Video with updated workInfo, omitted when empty. After a change commits, emits a video event for every video sharing the same user-data key.
          */
         put: operations["setVideoWorkInfo"];
         post?: never;
@@ -686,12 +573,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * 動画の表示名と作品情報を 1 回で保存する
-         * @description 所有者だけ。全画面の編集画面の保存で、表示名（`PUT /api/videos/{id}/display-name` の規則）と
-         *     作品情報（`PUT /api/videos/{id}/work-info` の規則）を 1 つの取引で書き、どちらかが規則に
-         *     合わなければどちらも書かない。表示名を先に、次に作品情報を `WorkInfo` の項目の順に確かめ、
-         *     最初の誤りだけを返す。表示名の誤りの `field` は `displayName`、作品情報の誤りの `field` は
-         *     `workInfo` の中の位置である。応答は `GET /api/videos/{id}` と同じ形の `Video`。
+         * Save display name and work information atomically
+         * @description Owner-only. Applies display-name and work-info endpoint rules in one transaction, writing neither if either fails. Validates displayName first, then WorkInfo field order, returning only the first error. Error `field` is displayName or a location within workInfo. Returns the same Video shape as GET details.
          */
         put: operations["setVideoDetails"];
         post?: never;
@@ -710,15 +593,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * 動画の代表サムネイルの位置を設定・解除する
-         * @description 所有者だけ。`positionMs` の場面で代表サムネイルを作り直して公開し、位置を記録する。
-         *     `null` は位置を解除し、自動の位置で作り直す。応答は生成が終わってから返し、形は
-         *     `GET /api/videos/{id}` と同じ `Video` である（`thumbnailState: done`、新しい版の
-         *     `thumbnailUrl`、指定なら `thumbnailPositionMs`）。解析が終わっていないか尺が分からなければ
-         *     409 `duration_unknown`、0 未満か尺以上なら 400 `thumbnail_position_out_of_range`（`limit` に
-         *     尺のミリ秒）、画像を作れなければ 409 `thumbnail_frame_unavailable`（前の画像と位置はそのまま）、
-         *     どの所在も開けなければ 404 `file_unavailable` を返す。同じ動画への同時の指定は直列になり、
-         *     最後に記録した位置の画像が残る。適用した画像があれば同じ取引で外す。確定後に `/api/events` の `video` が流れる。
+         * Set or clear the representative thumbnail position
+         * @description Owner-only. Generates and publishes a thumbnail at positionMs, then saves the position; null restores automatic selection. Waits for generation and returns Video with thumbnailState=done, a new thumbnailUrl and the explicit position when set. Unknown duration returns 409 duration_unknown; a negative position or position at/after duration returns 400 thumbnail_position_out_of_range with duration in limit. Generation failure returns 409 thumbnail_frame_unavailable, preserving the old image and position; inaccessible locations return 404 file_unavailable. Concurrent changes for one video serialize, leaving the last saved position. Clears any applied image atomically and emits a video event after commit.
          */
         put: operations["setVideoThumbnailPosition"];
         post?: never;
@@ -738,29 +614,13 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 手元の画像を動画のサムネイルにする
-         * @description 所有者だけ。`multipart/form-data` の `image`（PNG・JPEG・静止画の WebP、64 MiB・1 億 2000 万画素まで）を
-         *     受け取り、メモリに持ったまま最後まで読めるかを確かめて、生成した画像と同じ適用で動画の縦横比に
-         *     合わせた代表サムネイルにする。本文全体は部分の区切りと見出しのぶん 1 MiB 多くまで認める。応答は
-         *     公開が終わってから返し、形は `GET /api/videos/{id}` と同じ `Video` である（`thumbnailImage:
-         *     "uploaded"`、新しい版の `thumbnailUrl`）。記録した位置はそのまま残る。`image` が 64 MiB を越えるか
-         *     見出しが 1 億 2000 万画素を越えれば 400 `thumbnail_upload_too_large`（`limit` に越えた上限）、
-         *     PNG・JPEG・WebP でない、アニメーションの WebP、最後まで読めない画像は 400
-         *     `thumbnail_upload_invalid`、動画が無ければ 404 `video_not_found`、要求を始めたときから動画が消えたか
-         *     別の内容になるか `contentVersion` が今の内容と違えば 409 `content_changed`、ffmpeg が合わせられなければ 409 `thumbnail_image_invalid`
-         *     を返し、どの誤りでも何も書かない。本文が届き終わったあとの確かめと適用は、接続が切れても 5 分を
-         *     上限に最後まで行う。確定後に `/api/events` の `video` が流れる。
+         * Use an uploaded image as the video thumbnail
+         * @description Owner-only. Accepts multipart `image` (PNG, JPEG or static WebP), up to 64 MiB and 120 million pixels, with 1 MiB additional multipart overhead. Fully decodes in memory and fits the video aspect ratio using the generated-image application path. Waits for publication, returning Video with thumbnailImage=uploaded and a new thumbnailUrl; preserves the saved frame position. Oversized data or dimensions return 400 thumbnail_upload_too_large with limit. Unsupported, animated or unreadable images return 400 thumbnail_upload_invalid. Missing video returns 404 video_not_found; deletion, changed content or stale contentVersion since request start returns 409 content_changed; failed fitting returns 409 thumbnail_image_invalid. Errors write nothing. After upload completes, validation/application continues despite disconnect, with a five-minute limit. Emits a video event after commit.
          */
         post: operations["uploadThumbnailImage"];
         /**
-         * 動画に適用したサムネイルの画像を外す
-         * @description 所有者だけ。要求の本文は無い。適用した画像を外し、代表サムネイルをコマから作り直して公開する。
-         *     `thumbnailPositionMs` があればその場面、無ければ自動の位置で作る。画像を適用していなくても
-         *     作り直して 200 を返す。応答は生成が終わってから返し、形は `GET /api/videos/{id}` と同じ
-         *     `Video` である（`thumbnailImage` は無く、新しい版の `thumbnailUrl`）。誤りは
-         *     `PUT /api/videos/{id}/thumbnail-position` と同じで、画像を作れなければ 409
-         *     `thumbnail_frame_unavailable`（適用した画像と前のファイルはそのまま）、どの所在も開けなければ
-         *     404 `file_unavailable` を返す。確定後に `/api/events` の `video` が流れる。
+         * Remove an applied thumbnail image
+         * @description Owner-only; no body. Removes the applied image and regenerates from thumbnailPositionMs or the automatic frame. Regenerates and returns 200 even without an applied image. Returns Video after completion with no thumbnailImage and a new thumbnailUrl. Uses thumbnail-position endpoint errors: 409 thumbnail_frame_unavailable preserves the applied image and old file; inaccessible locations return 404 file_unavailable. Emits a video event after commit.
          */
         delete: operations["revertThumbnailImage"];
         options?: never;
@@ -778,17 +638,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 動画の1コマか今のサムネイルからサムネイルの編集を始める
-         * @description 所有者だけ。`source` が `frame` なら `positionMs` の場面を、長辺を動画の長辺（上限 2048 px）にした
-         *     PNG として取り出す。`thumbnail` なら今のサムネイルから始め、画像を適用していればその元の画像
-         *     （長辺最大 2048 px）を PNG にしたもの、なければ指定した位置のコマ、それも無ければサムネイル
-         *     ジョブと同じ自動の位置のコマ（そこで取れなければ先頭のコマ）を使う。`ready` の編集のセッションを
-         *     `201` で返し、セッションは始めた時点の画像を持ち続ける。同じ動画のセッションがあれば、その実行を
-         *     ComfyUI で中止してから終える。`frame` で `positionMs` が無いか尺の外なら 400
-         *     `thumbnail_position_out_of_range`、ほかの位置の誤りと所在の誤りは
-         *     `PUT /api/videos/{id}/thumbnail-position` と同じで、ComfyUI の接続先が保存されていなければ 409
-         *     `thumbnail_edit_not_ready`、コマを取り出せないか保存した画像を読めなければ 409
-         *     `thumbnail_frame_unavailable` を返す。セッションはメモリにだけあり、イベントは流れない。
+         * Start thumbnail editing from a frame or the current thumbnail
+         * @description Owner-only. For source=frame, extracts positionMs as PNG with the video's long edge capped at 2048 px. For source=thumbnail, uses the original applied image (long edge at most 2048 px), otherwise the explicit thumbnail frame or the automatic job position, falling back to the first frame. Returns a ready session with 201; it retains its starting image. Cancels any prior ComfyUI run for this video before closing its session. Missing/out-of-range frame position returns 400 thumbnail_position_out_of_range; other position/location errors follow the thumbnail-position endpoint. Missing ComfyUI configuration returns 409 thumbnail_edit_not_ready; unavailable frame or saved image returns 409 thumbnail_frame_unavailable. Sessions are memory-only and emit no events.
          */
         post: operations["startThumbnailEdit"];
         delete?: never;
@@ -805,12 +656,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 動画の集まりの全バージョンを返す
-         * @description この動画が属する集まり（同じ動画の別バージョン）のうち、見る人に見せてよい所在を持つ
-         *     バージョンを、実効の代表を先頭に、続きを題名の自然順（同じなら id）で返す。集まりに
-         *     属さなければ `items` はこの動画 1 本である。各項目は `GET /api/videos/{id}` と同じ形
-         *     （所有者には `location`、どちらにも `folder`）で、解像度・コーデック・`sizeBytes`・
-         *     `container` を持つ。ゲストでは公開の動画だけを数え、見せられない動画は 404 `video_not_found`。
+         * List all versions in the video's bundle
+         * @description Returns versions with visible locations, effective representative first, then natural title order with ID ties. Ungrouped videos return themselves as the sole item. Items use the GET detail shape (location for owners, folder for both audiences), including resolution, codec, sizeBytes and container. Guests count only public versions; invisible videos return 404 video_not_found.
          */
         get: operations["listVideoVersions"];
         put?: never;
@@ -831,11 +678,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 動画をその集まりの代表にする
-         * @description 所有者だけ。要求の本文は無い。この動画を集まりの代表（一覧に出す 1 件）にし、集まりの
-         *     全バージョンを返す（既に代表でも同じ）。集まりのタグ・再生位置・公開の設定は変わらない。
-         *     集まりに属さなければ 400 `not_bundled`、無いか登録フォルダの下に所在が無ければ 404
-         *     `video_not_found`。確定後に `/api/events` の `video` が全メンバーで流れる。
+         * Make this video the bundle representative
+         * @description Owner-only; no body. Selects the listed representative and returns all versions, including when already selected. Preserves bundle tags, playback position and visibility. Returns 400 not_bundled or 404 video_not_found when missing or without a registered-folder location. Emits video events for all members after commit.
          */
         post: operations["makeRepresentativeVersion"];
         delete?: never;
@@ -854,12 +698,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 動画をその集まりから外す
-         * @description 所有者だけ。要求の本文は無い。外した動画を `GET /api/videos/{id}` と同じ形で返し、
-         *     `tags`・`progress`・`public` は束ねる前のこの動画の値で、`versions` は無い。残りが 1 本
-         *     なら集まりは解け、その 1 本が集まりの値を持つ。集まりに属さなければ 400 `not_bundled`、
-         *     無いか登録フォルダの下に所在が無ければ 404 `video_not_found`。確定後に `/api/events` の
-         *     `video` が元の全メンバーで流れる。
+         * Remove this video from its version bundle
+         * @description Owner-only; no body. Returns the removed Video with its pre-bundle tags, progress and public state, without versions. A remaining singleton dissolves the bundle and inherits bundle values. Returns 400 not_bundled or 404 video_not_found when missing or without a registered-folder location. Emits video events for every former member after commit.
          */
         post: operations["unbundleVideo"];
         delete?: never;
@@ -878,9 +718,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 取り込みを開始する
-         * @description すでに実行中の場合は、新しく始めずに実行中のスキャンを返す。
-         *     応答は即座に返り、取り込みは背後で進む。
+         * Start import
+         * @description Returns an existing active scan instead of starting another. Responds immediately while import runs in the background.
          */
         post: operations["startScan"];
         delete?: never;
@@ -896,10 +735,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 登録済みメディアフォルダを返す */
+        /** List registered media folders */
         get: operations["listMediaFolders"];
         put?: never;
-        /** メディアフォルダを1件追加する */
+        /** Add a media folder */
         post: operations["createMediaFolder"];
         delete?: never;
         options?: never;
@@ -915,10 +754,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** メディアフォルダ1件のpathを変更する */
+        /** Change a media folder path */
         put: operations["updateMediaFolder"];
         post?: never;
-        /** メディアフォルダを1件削除する */
+        /** Delete a media folder */
         delete: operations["deleteMediaFolder"];
         options?: never;
         head?: never;
@@ -933,16 +772,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * ライブ変換の映像エンコード方式の設定と、各方式が使えるかを返す
-         * @description 保存した選択、今のライブ変換の要求が使う方式、選んだ方式を使えないときの理由、起動時の
-         *     確認が終わっていないか、ハードウェアの方式ごとの確認結果を返す。
+         * Return live-transcode encoder settings and availability
+         * @description Returns the saved choice, effective encoder for new requests, fallback reason, whether startup probing is pending, and per-hardware-encoder availability.
          */
         get: operations["getTranscodingSettings"];
         /**
-         * ライブ変換の映像エンコード方式を保存する
-         * @description 保存は次に始まるライブ変換の要求から効き、配信中の変換は始めた方式のまま続く。
-         *     `software` と `auto` は常に受け付ける。使える（`state` が `available`）ハードウェアの
-         *     方式でないときは `409` `conflict`・reason `encoder_unavailable` を返し、保存値は変えない。
+         * Save the live-transcode encoder
+         * @description Applies to new transcode requests; active requests retain their encoder. Always accepts software and auto. Unavailable hardware encoders return 409 conflict with reason encoder_unavailable without changing settings.
          */
         put: operations["updateTranscodingSettings"];
         post?: never;
@@ -960,18 +796,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * LAN からの接続の許可と、許可中に開けるアドレスを返す
-         * @description Windows デスクトップ版だけの設定。保存した選択、今の待ち受けのポート、許可中なら上がっている
-         *     非ループバックの IPv4 アドレスごとの URL を返す。デスクトップ版でなければ `404` `not_found`。
+         * Return LAN access settings and available addresses
+         * @description Windows desktop only. Returns the saved setting and listening port, plus URLs for active non-loopback IPv4 addresses when enabled. Other builds return 404 not_found.
          */
         get: operations["getNetworkSettings"];
         /**
-         * LAN からの接続を許可するかを切り替え、待ち受けを開き直してから保存する
-         * @description 許可するなら `0.0.0.0:<ポート>`、しないなら `127.0.0.1:<ポート>` で待ち受けを開き直し、
-         *     開き直せたら保存する。確立済みの接続は切らない。今と同じ値なら何もしない。新しいアドレスで
-         *     開き直せなければ元のアドレスで待ち受けを戻し、保存値を変えずに `409` `conflict`・reason
-         *     `listen_failed` を返す。開き直せたが保存に失敗したら、待ち受けを元のアドレスへ戻して `500`
-         *     を返す。デスクトップ版でなければ `404` `not_found`。
+         * Toggle LAN access, reopen the listener and save
+         * @description Reopens on `0.0.0.0:<port>` when enabled or `127.0.0.1:<port>` otherwise, then saves. Existing connections remain open; unchanged settings are a no-op. Reopen failure restores the original listener and returns 409 conflict with listen_failed without saving. Save failure restores the original listener and returns 500. Other builds return 404 not_found.
          */
         put: operations["updateNetworkSettings"];
         post?: never;
@@ -1099,16 +930,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 作品情報プラグインの要求を送るプロキシの URL を返す
-         * @description 保存した URL を返す。保存が無ければ `""`（プロキシなし）。`/api/settings/network` と違い、
-         *     どのビルドでも答える。
+         * Return the work-info plugin proxy URL
+         * @description Returns the saved URL or an empty string for no proxy. Available on all builds, unlike /api/settings/network.
          */
         get: operations["getPluginProxySettings"];
         /**
-         * 作品情報プラグインの要求を送るプロキシの URL を保存する
-         * @description `url` を規則のとおりに確かめて保存する。`""` はプロキシなし。次の実行が保存した値を使い、
-         *     進行中の実行は始めたときの値で終わる。`url` が無いか規則に外れれば `400` `invalid_request`
-         *     で、何も書かない。
+         * Save the work-info plugin proxy URL
+         * @description Validates and saves url; an empty string disables the proxy. New runs use the saved value; active runs retain their starting value. Missing or invalid url returns 400 invalid_request without writing.
          */
         put: operations["updatePluginProxySettings"];
         post?: never;
@@ -1126,14 +954,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 自動の取り込みの選択と、フォルダの監視の今の状態を返す
-         * @description 保存した選択（`enabled`）と、監視が今していること（`watch.state`）を返す。問題があれば
-         *     `watch.problem` と、あればその場所 `watch.path` を返す。
+         * Return auto-import settings and folder-watch state
+         * @description Returns saved enabled and current watch.state, with watch.problem and watch.path when available.
          */
         get: operations["getAutoImportSettings"];
         /**
-         * 自動の取り込みを入れる／切るを保存し、監視を張る／外す
-         * @description 選択を保存し、監視を張る／外すだけで、スキャンは始めない。今と同じ値なら何も変えない。
+         * Save auto-import enablement and attach or detach folder watches
+         * @description Saves the setting and changes watches without starting a scan. An unchanged value is a no-op.
          */
         put: operations["updateAutoImportSettings"];
         post?: never;
@@ -1151,12 +978,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Ollama の接続先を返す
-         * @description 判定モデル（Clef）を動かす Ollama の基底 URL と模型名。判定モデルを使う機能（自動タグ付け）の
-         *     設定とは別に持つ（docs/design-docs/ai-layer.md）。保存値が無ければ既定値を返す。
+         * Return the Ollama connection
+         * @description Ollama base URL and model for the Clef classifier, stored separately from feature settings such as auto-tagging. Returns defaults when unset; see docs/design-docs/ai-layer.md.
          */
         get: operations["getOllamaSettings"];
-        /** Ollama の接続先を保存する */
+        /** Save the Ollama connection */
         put: operations["updateOllamaSettings"];
         post?: never;
         delete?: never;
@@ -1175,11 +1001,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 保存した接続先に Ollama が動いていて、保存した模型があるかを確かめる
-         * @description `GET /api/version` と `GET /api/tags` だけで確かめ、判定はさせず模型も読み込まないので
-         *     数秒で終わる。判定に使えるかは `POST /api/auto-tagging/check` が確かめる
-         *     （docs/design-docs/ai-layer.md）。接続先は要求の本文から取らない（任意の URL へ
-         *     サーバーから要求を送らせないため）。要求の本文は無い。
+         * Check the saved Ollama connection and model availability
+         * @description Uses only GET /api/version and GET /api/tags, without loading a model or running inference, so usually finishes in seconds. POST /api/auto-tagging/check tests classification. Uses the saved URL, never a request-supplied URL; no body. See docs/design-docs/ai-layer.md.
          */
         post: operations["checkOllama"];
         delete?: never;
@@ -1196,19 +1019,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * ComfyUI の接続先を返す
-         * @description サムネイルの編集に使う ComfyUI の接続先（自前の ComfyUI か Comfy Cloud）。サムネイルの編集の
-         *     機能とは別に持つ（docs/design-docs/ai-layer.md）。API キーは返さず、保存されているかを
-         *     `apiKeySet` で返す。何も保存されていなければ `provider` を省いた `200` を返す。
-         *     `Cache-Control: no-store` を付ける。
+         * Return the ComfyUI connection
+         * @description Connection for thumbnail editing, either self-hosted or Comfy Cloud, stored separately from the feature. Never returns the API key; apiKeySet indicates presence. Unconfigured connections return 200 without provider. Uses Cache-Control: no-store; see docs/design-docs/ai-layer.md.
          */
         get: operations["getComfyUISettings"];
         /**
-         * ComfyUI の接続先を保存する
-         * @description `apiKey` が無ければ保存済みのキーを残し、`""` なら消す。`self_hosted` で正しい http か
-         *     https の URL が無ければ `400` `invalid_request`・reason `comfyui_url_invalid`、`cloud` で
-         *     キーが保存も送信もされていなければ reason `comfyui_api_key_missing` を返し、保存しない。
-         *     `cloud` では `url` を使わず、保存済みの URL を残す。
+         * Save the ComfyUI connection
+         * @description Omitted apiKey preserves the saved key; an empty string clears it. Self-hosted requires a valid HTTP(S) URL or returns 400 invalid_request with comfyui_url_invalid. Cloud requires a supplied or saved key or returns comfyui_api_key_missing. Errors do not save. Cloud ignores url and retains the saved URL.
          */
         put: operations["updateComfyUISettings"];
         post?: never;
@@ -1228,13 +1045,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 保存した接続先に ComfyUI が応えるかを確かめる
-         * @description 自前の ComfyUI は保存した URL の `GET /system_stats`、Comfy Cloud は `GET /jobs?limit=1` に
-         *     `X-API-Key` を付けて確かめる。応えたら `GET /object_info` を読み、vv のワークフローの
-         *     ノードの型とローダーが名指すモデルファイルがあるかを確かめ、足りなければ `available: false`
-         *     と `missing` を返す（R-13）。使えないときの `message` は、届かない、ComfyUI でない、キーが
-         *     拒まれた、何も保存されていない、ファイルが足りないを区別する。接続先は要求の本文から取らない
-         *     （任意の URL へサーバーから要求を送らせないため）。要求の本文は無い。
+         * Check the saved ComfyUI connection
+         * @description Checks self-hosted GET /system_stats or cloud GET /jobs?limit=1 with X-API-Key, then GET /object_info for required workflow node types and loader model files. Missing requirements return available=false and missing. Failure messages distinguish unreachable, non-ComfyUI, rejected key, unconfigured and missing files. Uses only the saved connection, never a request URL; no body.
          */
         post: operations["checkComfyUI"];
         delete?: never;
@@ -1251,9 +1063,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * サムネイルの編集を始められるかを返す
-         * @description 動画のページが編集の入口を有効にするために読む。`connection` は ComfyUI の接続先が保存されて
-         *     いることで、接続テストに通ったことではない。
+         * Return thumbnail-edit readiness
+         * @description Used by the video page to enable editing. connection means a saved ComfyUI connection exists, not that its connection test passed.
          */
         get: operations["getThumbnailEditReadiness"];
         put?: never;
@@ -1272,19 +1083,15 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * サムネイルの編集のセッションの今の状態を返す
-         * @description 実行が進んでいれば ComfyUI の状態を読み、成功していれば出力を取ってから返す。読み取りはページの
-         *     生存の知らせを兼ね、5 分読まれないセッションは実行を中止して終わる。送ってから 10 分終わらない
-         *     実行は中止して `failed`（`timed_out`）にする。終わったセッションは 404
-         *     `thumbnail_edit_not_found`。`Cache-Control: no-store` を付ける。
+         * Return the thumbnail-edit session state
+         * @description Polls ComfyUI for an active run and retrieves successful output before responding. Reads renew the session heartbeat; five minutes without a read cancels and closes it. Runs exceeding ten minutes after submission are cancelled and marked failed/timed_out. Closed sessions return 404 thumbnail_edit_not_found. Uses Cache-Control: no-store.
          */
         get: operations["getThumbnailEdit"];
         put?: never;
         post?: never;
         /**
-         * サムネイルの編集のセッションを捨てる
-         * @description 実行が進んでいれば ComfyUI で中止してからセッションを捨て、`204` を返す。終わったセッションや
-         *     無いセッションでも `204` である。サムネイルは変わらない。画面は破棄とページを離れるときに呼ぶ。
+         * Discard a thumbnail-edit session
+         * @description Cancels any active ComfyUI run before discarding the session. Returns 204 even for closed or missing sessions; does not change the thumbnail. Called on discard and page exit.
          */
         delete: operations["discardThumbnailEdit"];
         options?: never;
@@ -1300,10 +1107,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 編集するコマの PNG を返す
-         * @description セッションを始めたときに取り出したコマ。大きさは `ThumbnailEdit` の `frameWidth`・`frameHeight`
-         *     で、マスクはこの大きさで描く。読み取りはページの生存の知らせを兼ねる。終わったセッションは 404
-         *     `thumbnail_edit_not_found`。`Cache-Control: no-store` を付ける。
+         * Return the editing frame as PNG
+         * @description Returns the starting frame at ThumbnailEdit.frameWidth/frameHeight, the dimensions required for masks. Reads renew the heartbeat. Closed sessions return 404 thumbnail_edit_not_found. Uses Cache-Control: no-store.
          */
         get: operations["getThumbnailEditFrame"];
         put?: never;
@@ -1322,10 +1127,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 成功した実行の出力の画像を返す
-         * @description `succeeded` のときの ComfyUI の出力の画像そのもの（適用で動画の縦横比に合わせる前）。成功した
-         *     実行が無ければ 409 `thumbnail_edit_no_result`、終わったセッションは 404 `thumbnail_edit_not_found`。
-         *     `Cache-Control: no-store` を付ける。
+         * Return the successful run's output image
+         * @description Returns the original ComfyUI output before fitting it to the video's aspect ratio. Without a successful run returns 409 thumbnail_edit_no_result; closed sessions return 404 thumbnail_edit_not_found. Uses Cache-Control: no-store.
          */
         get: operations["getThumbnailEditResult"];
         put?: never;
@@ -1346,14 +1149,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * サムネイルの編集を ComfyUI で実行する
-         * @description `multipart/form-data` の `prompt`（4000 文字まで）、`mask`（コマの大きさの PNG）、`reference`
-         *     （PNG・JPEG・WebP、20 MiB まで）を受け取る。どれも省略できる。進んでいる実行があれば中止し、
-         *     今の接続先をこの実行の写しにして、入力を上げてワークフローを送り、`202` で `queued` のセッションを
-         *     返す。マスクがコマの大きさの PNG でなければ 400 `thumbnail_edit_mask_invalid`、参考画像を読めなければ
-         *     400 `thumbnail_edit_reference_invalid` を、何も上げる前に返す。接続先が消されていれば 409
-         *     `thumbnail_edit_not_ready`。上げるか送るのに失敗すれば 502 `provider_failed` と失敗の理由
-         *     （`unreachable` など）を返し、セッションは同じ理由の `failed` になる。
+         * Run thumbnail editing in ComfyUI
+         * @description Accepts optional multipart prompt (up to 4000 characters), mask (PNG matching frame dimensions) and reference (PNG/JPEG/WebP up to 20 MiB). Cancels an active run, snapshots the current connection, uploads inputs and submits the workflow, returning the queued session with 202. Invalid masks or references return 400 thumbnail_edit_mask_invalid or thumbnail_edit_reference_invalid before uploading anything. A removed connection returns 409 thumbnail_edit_not_ready. Upload/submission failure returns 502 provider_failed with a reason such as unreachable and marks the session failed with that reason.
          */
         post: operations["runThumbnailEdit"];
         delete?: never;
@@ -1372,9 +1169,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 進んでいる実行を中止する
-         * @description 要求の本文は無い。進んでいる実行を ComfyUI で中止して `cancelled` を返す。進んでいなければ今の
-         *     状態を返す。サムネイルは変わらない。終わったセッションは 404 `thumbnail_edit_not_found`。
+         * Cancel the active run
+         * @description No body. Cancels the active ComfyUI run and returns cancelled; otherwise returns current state. Does not change the thumbnail. Closed sessions return 404 thumbnail_edit_not_found.
          */
         post: operations["cancelThumbnailEdit"];
         delete?: never;
@@ -1393,12 +1189,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 成功した実行の画像をサムネイルにする
-         * @description 要求の本文は無い。出力を動画の縦横比に合わせて代表サムネイルとして適用し、セッションを終えて
-         *     `GET /api/videos/{id}` と同じ形の `Video` を返す。`succeeded` でなければ 409
-         *     `thumbnail_edit_no_result`、動画が消えたか別の内容を持てば 409 `content_changed`（セッションは
-         *     終わる）、画像を読めなければ 409 `thumbnail_image_invalid` を返す。確定後に `/api/events` の
-         *     `video` が流れる。
+         * Apply the successful output as the thumbnail
+         * @description No body. Fits output to the video aspect ratio, applies it, closes the session and returns Video. A non-succeeded run returns 409 thumbnail_edit_no_result. Missing or changed video content returns 409 content_changed and closes the session; unreadable output returns 409 thumbnail_image_invalid. Emits a video event after commit.
          */
         post: operations["applyThumbnailEdit"];
         delete?: never;
@@ -1415,15 +1207,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 自動タグ付けの機能の設定と、判定の待ち行列の件数を返す
-         * @description 機能の入切（`enabled`、既定は切）、取り込みのあとの自動の判定、2 つの確率。接続先は
-         *     `/api/settings/ollama` が持つ（docs/design-docs/ai-layer.md）。
+         * Return auto-tagging settings and queue counts
+         * @description Includes enablement (off by default), automatic classification after import and two probability thresholds. Connection settings live at /api/settings/ollama; see docs/design-docs/ai-layer.md.
          */
         get: operations["getAutoTaggingSettings"];
         /**
-         * 自動タグ付けの機能の設定を保存する
-         * @description 値を確かめて保存する。判定は始めない。`enabled` を入れると、積んであった判定を続きから
-         *     処理する。
+         * Save auto-tagging settings
+         * @description Validates and saves without starting a judgement. Enabling resumes queued work.
          */
         put: operations["updateAutoTaggingSettings"];
         post?: never;
@@ -1441,14 +1231,13 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 重複の自動判定の入切を返す
-         * @description 所有者だけが読める。保存前は `enabled: false` を返す。
+         * Return automatic duplicate-judging enablement
+         * @description Owner-only; defaults to enabled=false before saving
          */
         get: operations["getVersionJudgingSettings"];
         /**
-         * 重複の自動判定の入切を保存し、判定の処理を起こす
-         * @description 保存した値を返す。入れると、待っていた候補を判定し始める。Ollama の接続先は
-         *     `/api/settings/ollama` が持つ。
+         * Save automatic duplicate-judging enablement and wake its worker
+         * @description Returns the saved setting. Enabling starts queued candidates. Connection settings live at /api/settings/ollama.
          */
         put: operations["updateVersionJudgingSettings"];
         post?: never;
@@ -1468,10 +1257,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 判定の口に 1 問を判定させ、自動タグ付けに使えるかを確かめる
-         * @description 今の判定の提供元に短い質問を 1 つ判定させ、確率の答えが返るかを確かめる。機能の入切に
-         *     関係なく確かめられる。模型の読み込みを含むので数分かかることがある
-         *     （docs/design-docs/auto-tagging.md）。要求の本文は無い。
+         * Test the classifier with one question for auto-tagging
+         * @description Asks the current provider one short question and checks for a probability response, regardless of feature enablement. Model loading may take minutes. No body; see docs/design-docs/auto-tagging.md.
          */
         post: operations["checkAutoTaggingClassifier"];
         delete?: never;
@@ -1490,9 +1277,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * ライブラリの動画を判定に回す
-         * @description `missing` はまだ判定を終えていない動画（判定していない・失敗した）を、`all` は
-         *     判定中のもの以外のすべてを積む。積んだ件数を返す。
+         * Queue library videos for classification
+         * @description missing queues videos without a successful judgement, including failures; all queues every video not currently being judged. Returns the queued count.
          */
         post: operations["startAutoTagging"];
         delete?: never;
@@ -1509,17 +1295,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 発行した API トークンを返す
-         * @description 作成日時の降順で返す。平文とハッシュは返さない。所有者のセッションだけで使え、
-         *     Bearer は読まない。
+         * List issued API tokens
+         * @description Newest first; excludes plaintext and hashes. Requires an owner session and ignores Bearer credentials.
          */
         get: operations["listApiTokens"];
         put?: never;
         /**
-         * API トークンを 1 件発行する
-         * @description `secret` は平文で、この応答にだけ現れる。名前の規則を外れれば `400` `invalid_request` に
-         *     reason `api_token_name_empty`・`api_token_name_control_characters`・
-         *     `api_token_name_too_long`（`limit` 付き）を付ける。
+         * Issue an API token
+         * @description The plaintext secret appears only in this response. Invalid names return 400 invalid_request with api_token_name_empty, api_token_name_control_characters or api_token_name_too_long (with limit).
          */
         post: operations["createApiToken"];
         delete?: never;
@@ -1539,8 +1322,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * API トークンを 1 件失効させる
-         * @description 無い id も `204` にする（二重の失効を誤りにしない）。
+         * Revoke an API token
+         * @description Unknown IDs also return 204, making repeated revocation idempotent.
          */
         delete: operations["deleteApiToken"];
         options?: never;
@@ -1556,21 +1339,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 作品情報プラグインを一覧する
-         * @description 所有者だけ。名前、次にファイル名の順で返す（名前を読めなかったプラグインは名前のあるものの後）。
-         *     秘密の設定の値は返さず、`set` だけを返す。プラグインの変化はイベントで流れないので、設定画面と
-         *     動画ページはこれを読み直す。
+         * List work-info plugins
+         * @description Owner-only. Sorts by name then filename, placing unreadable names last. Secret settings return only set, not values. Plugin changes emit no events; settings and video pages refetch the list.
          */
         get: operations["listWorkInfoPlugins"];
         put?: never;
         /**
-         * 作品情報プラグインを追加するか、同じ名前のものを差し替える
-         * @description 所有者だけ。`multipart/form-data` の `module`（WebAssembly モジュール、16 MiB まで）を 1 つ受け取り、
-         *     実行せずに検査して保存する。ファイル名は残す。マニフェストの `name` が既存のプラグインと同じなら
-         *     その行を差し替えて `200`、それ以外は新しい行で `201` を返す。差し替えたプラグインは承認前に戻り、
-         *     新しいマニフェストが宣言するキーの設定の値だけが残る。使えないファイルも保存し、`state: invalid` と
-         *     `problem` を付けて返す。`module` が無いか 2 つ以上なら `400` `invalid_request`、16 MiB を超えれば
-         *     `413` `plugin_too_large`（`limit`）を返し、何も書かない。
+         * Add a work-info plugin or replace one with the same name
+         * @description Owner-only. Accepts one multipart module (WebAssembly up to 16 MiB), inspects without execution and saves its filename. A matching manifest name replaces the existing row with 200; otherwise creates with 201. Replacement resets approval and preserves values only for keys declared by the new manifest. Unusable modules are saved with state=invalid and problem. Missing/multiple modules return 400 invalid_request; oversized modules return 413 plugin_too_large with limit, without writing.
          */
         post: operations["uploadWorkInfoPlugin"];
         delete?: never;
@@ -1590,8 +1366,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * 作品情報プラグインを消す
-         * @description 所有者だけ。設定の値も一緒に消える。無ければ `404` `not_found`。
+         * Delete a work-info plugin
+         * @description Owner-only; also deletes settings. Missing plugins return 404 not_found.
          */
         delete: operations["deleteWorkInfoPlugin"];
         options?: never;
@@ -1608,16 +1384,14 @@ export interface paths {
         };
         get?: never;
         /**
-         * 所有者が見たモジュールを承認する
-         * @description 所有者だけ。`digest` は一覧の `digest` である。無ければ `404` `not_found`、保存されたモジュールの
-         *     ダイジェストが違えば `409` `plugin_changed`、プラグインが `invalid` なら `409` `plugin_unusable` を
-         *     返し、何も書かない。
+         * Approve the module inspected by the owner
+         * @description Owner-only. digest must match the listed module. Missing plugin returns 404 not_found, changed digest returns 409 plugin_changed, and invalid plugins return 409 plugin_unusable; errors write nothing.
          */
         put: operations["approveWorkInfoPlugin"];
         post?: never;
         /**
-         * 作品情報プラグインの承認を取り消す
-         * @description 所有者だけ。無ければ `404` `not_found`。承認していなくても `200` を返す。
+         * Revoke work-info plugin approval
+         * @description Owner-only. Missing plugins return 404 not_found; already-unapproved plugins return 200.
          */
         delete: operations["revokeWorkInfoPluginApproval"];
         options?: never;
@@ -1634,11 +1408,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * 作品情報プラグインの設定の値を書く
-         * @description 所有者だけ。`values` のキーごとに値を書き、`null`（と空の文字列）はその値を消し、省いたキーの値は
-         *     そのまま残す。承認は変わらない。マニフェストが宣言しないキーか 2000 文字を超える値があれば `400`
-         *     `invalid_request`、無ければ `404` `not_found`、プラグインが `invalid` なら `409` `plugin_unusable` を
-         *     返し、何も書かない。応答の秘密の設定は `set` だけを持つ。
+         * Save work-info plugin settings
+         * @description Owner-only. Updates each supplied values key; null or empty strings clear it, omitted keys remain. Approval is unchanged. Undeclared keys or values over 2000 characters return 400 invalid_request; missing plugins return 404 not_found; invalid plugins return 409 plugin_unusable. Errors write nothing. Secret settings return only set.
          */
         put: operations["setWorkInfoPluginSettings"];
         post?: never;
@@ -1656,10 +1427,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 作品情報プラグインの直近の実行の標準エラーを読む
-         * @description 所有者だけ。今のモジュールの直近の実行が残した標準エラーの先頭 64 KiB を、その実行が受け取った秘密の
-         *     設定の値を `[secret]` に置き換えて返す。実行が残っていなければ `{}`。差し替えたプラグインは差し替えの
-         *     後の実行だけを返す。無ければ `404` `not_found`。
+         * Read stderr from the latest work-info plugin run
+         * @description Owner-only. Returns the first 64 KiB of the current module's latest stderr, replacing that run's secret-setting values with [secret]. No retained run returns {}. Replaced modules show only subsequent runs. Missing plugins return 404 not_found.
          */
         get: operations["getWorkInfoPluginLastRun"];
         put?: never;
@@ -1680,11 +1449,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 作品情報プラグインの search で作品を探す
-         * @description 所有者だけ。承認済みのプラグインの `search` を 1 回動かし、候補（作品 ID・ページの URL・題名・省略できる説明の文字だけ）を
-         *     返す。`query` は前後の空白を除いて 1〜200 文字で、外れれば `400` `invalid_request`。マニフェストが
-         *     `search` を宣言しなければ `409` `operation_unsupported`。実行の前の誤りと実行の失敗は
-         *     docs/design-docs/work-info-plugins.md の Run failures のとおりである。
+         * Search for works with a work-info plugin
+         * @description Owner-only. Runs an approved plugin's search once and returns candidate ID, page URL, title and optional plain-text description. Trimmed query must be 1–200 characters or returns 400 invalid_request. Undeclared search returns 409 operation_unsupported. See Run failures in docs/design-docs/work-info-plugins.md for execution errors.
          */
         post: operations["searchWorkInfo"];
         delete?: never;
@@ -1703,14 +1469,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 作品情報プラグインの fetch で動画の作品情報を取る
-         * @description 所有者だけ。承認済みのプラグイン `pluginId` の `fetch` を、作品の `id`（前後の空白を除いて 1〜200 文字。
-         *     検索の候補の `id` か所有者が入れた文字列で、URL の形でもそのまま ID として渡し、vv が URL として取得する
-         *     ことはない。URL に埋め込むのはプラグイン）で 1 回動かし、結果を 10 分の間メモリに持って `201` で返す。
-         *     `id` が無いか規則に外れれば `400` `invalid_request`。動画は変えない。`title` は表示名の規則を
-         *     通ったもので、無いか規則に外れれば省く。人物・団体は取得の時点の照合の答え `match` を持つ。動画が無ければ `404` `not_found`、マニフェストが `fetch` を
-         *     宣言しなければ `409` `operation_unsupported`。実行の前の誤りと実行の失敗は
-         *     docs/design-docs/work-info-plugins.md の Run failures のとおりである。
+         * Fetch video work information with a plugin
+         * @description Owner-only. Runs approved pluginId fetch once with a trimmed 1–200 character id from search or owner input. Even URL-shaped IDs are passed unchanged; VV does not fetch them as URLs. Retains the result in memory for ten minutes and returns 201 without changing the video. Missing/invalid id returns 400 invalid_request. Includes title only if it passes display-name rules. People and organizations carry their fetch-time match. Missing video returns 404 not_found; undeclared fetch returns 409 operation_unsupported. See Run failures in docs/design-docs/work-info-plugins.md.
          */
         post: operations["fetchWorkInfo"];
         delete?: never;
@@ -1729,19 +1489,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 取得の結果のうち選んだ項目を動画に反映する
-         * @description 所有者だけ。`fields` の項目（`title` は表示名、`tags` は仮のタグ、ほかは作品情報）を 1 つの取引で書く。
-         *     `cover` はその取引が確定したあとに、手元の画像のアップロードと同じ確かめと適用で動画の代表サムネイルに
-         *     し、できなければサムネイルは変えずに `skipped` で `invalid` として知らせる。
-         *     作品情報の項目は保存済みの作品情報に重ね、規則に合わない値・上限を超える件・照合が曖昧な人物と団体は
-         *     飛ばして `skipped` で知らせる。結果は使い切りで、
-         *     成功すると消える。タグ名の規則に合わない名前は `invalid`、却下した名前は `rejected` として
-         *     `skippedTags` で知らせ、付けない。`tags` を送れば取得したタグのうちその名前だけを付け、`skippedTags` も
-         *     その名前だけを知らせる。`fields` が空か結果に値の無い
-         *     項目を含むか、`tags` が空か結果に無い名前を含むか `fields` に `tags` が無いのに有れば `400` `invalid_request`、
-         *     動画が無いか結果が別の動画のものなら `404` `not_found`、結果が期限切れか不明か、取得の後にプラグインが
-         *     差し替えられたか承認を取り消されたか消されていれば `409` `work_info_fetch_stale` で、どれも何も
-         *     書かない。確定後に `/api/events` の `video` が流れる。
+         * Apply selected fetched fields to a video
+         * @description Owner-only. Atomically saves selected fields: title as display name, tags as tentative assignments, others merged into work information. After commit, cover uses uploaded-image validation/application; failure preserves the thumbnail and reports skipped invalid. Invalid values, excess entries and ambiguous people/organizations are skipped. A successful result is consumed. Invalid or rejected tag names are reported in skippedTags without assignment. Optional tags selects fetched names and limits skippedTags to that selection. Empty fields, unavailable fields, empty/unknown tag selections or tags without fields containing tags return 400 invalid_request. Missing video or mismatched result video returns 404 not_found. Expired/unknown results or plugin replacement, revocation or deletion after fetch return 409 work_info_fetch_stale. These errors write nothing. Emits a video event after commit.
          */
         post: operations["applyWorkInfoFetch"];
         delete?: never;
@@ -1758,10 +1507,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 取得の結果のカバー画像を返す
-         * @description 所有者だけ。メモリに持つ取得の結果のカバー画像を、プラグインが返した URL の先から vv が取った本文のまま
-         *     返す。ブラウザが外部のサイトに画像を取りに行かないよう、比較の段はこれを表示する。結果が無いか期限切れか、
-         *     別の動画のものか、カバー画像を持たなければ `404` `not_found`。`Cache-Control: no-store` を持つ。
+         * Return the fetched cover image
+         * @description Owner-only. Returns the cover bytes fetched by VV from the plugin's URL and retained with the result, keeping the browser from contacting external sites. Missing, expired, mismatched-video or coverless results return 404 not_found. Uses Cache-Control: no-store.
          */
         get: operations["getWorkInfoFetchCover"];
         put?: never;
@@ -1780,14 +1527,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * タグを一覧する
-         * @description 本数0のタグも含む。`q`・`tentative`・`unused`・`kind` は全部のタグに
-         *     AND で掛かり、`sort` の順に並べる。`limit` を付けると1ページずつ返し、続きがあれば
-         *     `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す。
+         * List tags
+         * @description Includes unused tags. Applies q, tentative, unused and kind by AND, ordered by sort. With limit, returns a page and nextCursor when more remain; without limit returns all matches.
          */
         get: operations["listTags"];
         put?: never;
-        /** タグを1件作る */
+        /** Create a tag */
         post: operations["createTag"];
         delete?: never;
         options?: never;
@@ -1805,13 +1550,13 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** タグを1件削除する */
+        /** Delete a tag */
         delete: operations["deleteTag"];
         options?: never;
         head?: never;
         /**
-         * タグの元の名前を書き換える
-         * @description 今と同じ名前を送ったときは何も変えずに今の状態を返す。
+         * Rename a tag's canonical name
+         * @description An unchanged name returns current state without writing.
          */
         patch: operations["renameTag"];
         trace?: never;
@@ -1826,12 +1571,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * sourceIdsのタグをidのタグへ統合する
-         * @description 統合元（sourceIds、1件以上20,000件以下）の付与・元の名前・シノニムはすべて
-         *     統合先（id）へ1つの取引で移り、統合元は一覧から消え、統合先は確定したタグになる。
-         *     無い統合元は飛ばしてnotFoundIdsに載せる。統合元がすべて無かったときも200で、
-         *     tagは変わらない統合先。sourceIdsが空か多すぎる（too_many_tags）・idを含む
-         *     （merge_same_tag）ときは400、統合先が無いときは404を返す。
+         * Merge sourceIds into tag id
+         * @description Atomically moves assignments, canonical names and synonyms from 1–20,000 sourceIds into id. Sources disappear and the destination becomes confirmed. Missing sources are skipped and returned in notFoundIds; even if all are missing, returns 200 with the unchanged destination. Empty/oversized sourceIds (too_many_tags) or inclusion of id (merge_same_tag) returns 400; missing destination returns 404.
          */
         post: operations["mergeTag"];
         delete?: never;
@@ -1850,16 +1591,13 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 名前をidのタグのシノニムにする
-         * @description 既にidのシノニムなら何も変えずに200を返す。idの元の名前なら409
-         *     tag_name_takenを返す。別のタグSの元の名前で、mergeTagIdがSのidと
-         *     一致するときはSをidへ統合し、一致しない（無い場合を含む）ときは409
-         *     tag_merge_requiredを返す。
+         * Add a synonym to tag id
+         * @description An existing synonym of id is a no-op with 200. Its canonical name returns 409 tag_name_taken. Another tag's canonical name merges that tag into id only when mergeTagId matches it; otherwise returns 409 tag_merge_required.
          */
         post: operations["addTagSynonym"];
         /**
-         * nameをidのタグのシノニムから外す
-         * @description nameがidのシノニムでなければ何も変えずに204を返す。
+         * Remove name from tag id's synonyms
+         * @description Returns 204 without changes when name is not a synonym of id.
          */
         delete: operations["removeTagSynonym"];
         options?: never;
@@ -1877,9 +1615,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 仮のタグを確定する
-         * @description 仮のタグを確定したタグにする。付いている動画・名前・シノニムは変えない。既に確定した
-         *     タグなら何も変えずに今の状態を返す。
+         * Confirm a tentative tag
+         * @description Confirms the tag without changing videos, names or synonyms. Already-confirmed tags return current state without changes.
          */
         post: operations["confirmTag"];
         delete?: never;
@@ -1898,9 +1635,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 仮のタグを却下する
-         * @description 仮のタグを消し、付いていた動画から外し、元の名前を却下した名前の一覧に入れる。
-         *     確定したタグには 409 tag_not_tentative を返し、何も変えない。
+         * Reject a tentative tag
+         * @description Deletes the tentative tag and its video assignments, and records its canonical name as rejected. Confirmed tags return 409 tag_not_tentative without changes.
          */
         post: operations["rejectTag"];
         delete?: never;
@@ -1917,17 +1653,15 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 却下した名前を一覧する
-         * @description 名前の自然順（sort_key、同じなら name のバイト順）でページに分けて返す。`limit` が範囲外、`cursor` が
-         *     解釈できないときは 400 `invalid_request`。
+         * List rejected names
+         * @description Paginates in natural name order (sort_key, then bytewise name). Invalid limit or cursor returns 400 invalid_request.
          */
         get: operations["listRejectedTagNames"];
         put?: never;
         post?: never;
         /**
-         * 却下した名前を一覧から外す
-         * @description name を登録時と同じく整えてから照合する。一覧に無い名前・整えられない入力でも、
-         *     何も変えずに 204 を返す。
+         * Remove a rejected name
+         * @description Normalizes name as on insertion. Missing names and unnormalizable input return 204 without changes.
          */
         delete: operations["forgetRejectedTagName"];
         options?: never;
@@ -1945,15 +1679,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 複数のタグをまとめて確定・却下・削除し、種類を付け外しする
-         * @description `ids` のうち今あり、`action` が働く種類（`confirm`・`reject` は仮のタグ、`delete` は
-         *     確定したタグ）のタグだけを 1 つの取引で処理する。働かない種類の id は何も変えずに
-         *     `notApplicableIds`、無い id は `notFoundIds` に入れる。`ids` の重複は 1 つとして扱い、
-         *     3 つの配列は互いに重ならず、`ids` に現れた順。取引が失敗したら何も変えない。
-         *     `setKind` は `kindId` の種類を付け、`clearKind` は種類を外す。どちらも仮のタグを確定しない。
-         *     すでにその種類のタグ（`clearKind` では種類の無いタグ）は `notApplicableIds` に入る。
-         *     `kindId` の無い `setKind` と、`kindId` を付けた他の `action` は 400 `invalid_request`、
-         *     無い種類の `setKind` は何も変えずに 404 `not_found` / `tag_kind_not_found`。
+         * Bulk confirm, reject, delete or classify tags
+         * @description Atomically handles existing IDs applicable to action: confirm/reject require tentative tags, delete requires confirmed tags. Others go to notApplicableIds; missing IDs to notFoundIds. Deduplicates IDs; result arrays are disjoint and preserve input order. Transaction failure changes nothing. setKind assigns kindId and clearKind removes it without confirming tentative tags; unchanged kinds go to notApplicableIds. Missing kindId for setKind, or kindId with other actions, returns 400 invalid_request. An unknown kind returns 404 not_found/tag_kind_not_found without changes.
          */
         post: operations["batchTags"];
         delete?: never;
@@ -1972,11 +1699,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * まとめての却下・削除・統合の確認に出す数を返す
-         * @description `ids` のうち今あり、`action` が働くタグ（`reject` は仮のタグ、`delete` は確定したタグ、
-         *     `merge` はどちらも）の数と、そのどれかが付いた、いまライブラリにある動画の本数
-         *     （手で付けた分とフォルダ名から付いている分のどちらでも 1 本、重複なし）を返す。
-         *     何も変えない。
+         * Return confirmation counts for bulk reject, delete or merge
+         * @description Counts existing applicable tags (reject: tentative; delete: confirmed; merge: either) and distinct current-library videos assigned any of them, including manual and folder-derived assignments. Writes nothing.
          */
         post: operations["tagImpact"];
         delete?: never;
@@ -1993,16 +1717,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * タグの種類を一覧する
-         * @description すべての種類を id の順に返す。
+         * List tag kinds
+         * @description Returns all kinds in ID order
          */
         get: operations["listTagKinds"];
         put?: never;
         /**
-         * タグの種類を1件作る
-         * @description 名前はタグの名前と同じ規則で整え、種類どうしでだけ一意にする。
-         *     規則に合わなければ 400 `invalid_request` と `tag_name_*`、別の種類が同じ名前なら
-         *     409 `conflict` / `tag_kind_name_taken` で、何も変えない。
+         * Create a tag kind
+         * @description Normalizes names using tag-name rules, unique only among kinds. Invalid names return 400 invalid_request with tag_name_*; conflicts return 409 conflict/tag_kind_name_taken. Errors change nothing.
          */
         post: operations["createTagKind"];
         delete?: never;
@@ -2022,16 +1744,15 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * タグの種類を1件削除する
-         * @description その種類のタグは残り、種類なしになる。無い id は 404 `not_found` / `tag_kind_not_found`。
+         * Delete a tag kind
+         * @description Preserves its tags without a kind. Missing ID returns 404 not_found/tag_kind_not_found.
          */
         delete: operations["deleteTagKind"];
         options?: never;
         head?: never;
         /**
-         * タグの種類の名前を書き換える
-         * @description 今と同じ名前なら何も変えずに今の状態を返す。無い id は 404 `not_found` / `tag_kind_not_found`、
-         *     別の種類が同じ名前なら 409 `conflict` / `tag_kind_name_taken`。
+         * Rename a tag kind
+         * @description Unchanged names return current state. Missing ID returns 404 not_found/tag_kind_not_found; duplicate name returns 409 conflict/tag_kind_name_taken.
          */
         patch: operations["renameTagKind"];
         trace?: never;
@@ -2044,16 +1765,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 人物を一覧する
-         * @description 所有者だけ。`q` は名前と別名に部分一致し、`sort` の順に並べる。`limit` を付けると 1 ページずつ返し、
-         *     続きがあれば `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す。
+         * List people
+         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches.
          */
         get: operations["listPeople"];
         put?: never;
         /**
-         * 人物を 1 件作る
-         * @description 所有者だけ。項目の規則に合わなければ 400 で `reason`（`work_info_*`）と `field` を返し、他の人物が持つ
-         *     外部 ID なら 409 `external_id_taken`（`field: externalIds[i]`）。`parentId` は送れない（400 `invalid_request`）。
+         * Create a person
+         * @description Owner-only. Invalid fields return 400 with work_info_* reason and field. An external ID owned by another person returns 409 external_id_taken with field externalIds[i]. parentId is forbidden (400 invalid_request).
          */
         post: operations["createPerson"];
         delete?: never;
@@ -2070,23 +1789,22 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 人物を 1 件返す
-         * @description 所有者だけ。無ければ 404 `person_not_found`。
+         * Return a person
+         * @description Owner-only; missing person returns 404 person_not_found
          */
         get: operations["getPerson"];
         put?: never;
         post?: never;
         /**
-         * 人物を 1 件消す
-         * @description 所有者だけ。動画との結び付きも外す。無ければ 404 `person_not_found`。
+         * Delete a person
+         * @description Owner-only; removes video associations. Missing person returns 404 person_not_found.
          */
         delete: operations["deletePerson"];
         options?: never;
         head?: never;
         /**
-         * 人物の名前・別名・外部 ID を書き換える
-         * @description 所有者だけ。送ったプロパティだけを置き換え、一覧は丸ごと置き換える（`null` は空にする）。何も変わらなければ
-         *     書かずに今の状態を返す。誤りは作成と同じで、無ければ 404 `person_not_found`。`parentId` は送れない（400 `invalid_request`）。
+         * Update a person's name, aliases and external IDs
+         * @description Owner-only. Replaces only supplied properties, replacing lists entirely (null clears them). Unchanged input returns current state without writing. Uses creation errors; missing person returns 404 person_not_found. parentId is forbidden (400 invalid_request).
          */
         patch: operations["updatePerson"];
         trace?: never;
@@ -2101,12 +1819,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * sourceIds の人物を id の人物へ統合する
-         * @description 所有者だけ。統合元（1 件以上 20,000 件以下）の結び付き・名前・外部 ID を 1 つの取引で統合先へ移し、
-         *     統合元を消す。無い統合元は飛ばして `notFoundIds` に載せる。`sourceIds` の件数が範囲の外なら 400
-         *     `work_info_too_many`（`field: sourceIds`）、統合先を含めば 400 `merge_same_person`、統合後の別名か
-         *     外部 ID が上限を超えれば 400 `work_info_too_many`（`field: aliases` か `externalIds`）、統合先が無ければ
-         *     404 `person_not_found`。誤りのときは何も変えない。
+         * Merge sourceIds into person id
+         * @description Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_person; exceeding merged alias/external-ID limits returns work_info_too_many with field aliases or externalIds. Missing destination returns 404 person_not_found. Errors change nothing.
          */
         post: operations["mergePeople"];
         delete?: never;
@@ -2123,16 +1837,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 団体を一覧する
-         * @description 所有者だけ。`q` は名前と別名に部分一致し、`sort` の順に並べる。`limit` を付けると 1 ページずつ返し、
-         *     続きがあれば `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す。
+         * List organizations
+         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches.
          */
         get: operations["listOrganizations"];
         put?: never;
         /**
-         * 団体を 1 件作る
-         * @description 所有者だけ。項目の規則に合わなければ 400 で `reason`（`work_info_*`）と `field` を返し、他の団体が持つ
-         *     外部 ID なら 409 `external_id_taken`（`field: externalIds[i]`）。`parentId` の団体が無ければ 404 `organization_not_found`（`field: parentId`）。
+         * Create an organization
+         * @description Owner-only. Invalid fields return 400 with work_info_* reason and field. An external ID owned by another organization returns 409 external_id_taken with field externalIds[i]. Missing parentId returns 404 organization_not_found with field parentId.
          */
         post: operations["createOrganization"];
         delete?: never;
@@ -2149,23 +1861,22 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 団体を 1 件返す
-         * @description 所有者だけ。無ければ 404 `organization_not_found`。
+         * Return an organization
+         * @description Owner-only; missing organization returns 404 organization_not_found
          */
         get: operations["getOrganization"];
         put?: never;
         post?: never;
         /**
-         * 団体を 1 件消す
-         * @description 所有者だけ。動画との結び付きも外す。無ければ 404 `organization_not_found`。
+         * Delete an organization
+         * @description Owner-only; removes video associations. Missing organization returns 404 organization_not_found.
          */
         delete: operations["deleteOrganization"];
         options?: never;
         head?: never;
         /**
-         * 団体の名前・別名・外部 ID を書き換える
-         * @description 所有者だけ。送ったプロパティだけを置き換え、一覧は丸ごと置き換える（`null` は空にする）。何も変わらなければ
-         *     書かずに今の状態を返す。誤りは作成と同じで、無ければ 404 `organization_not_found`。`parentId` の団体が無ければ 404 `organization_not_found`（`field: parentId`）、自分か子孫なら 400 `organization_parent_cycle`。
+         * Update an organization's name, aliases and external IDs
+         * @description Owner-only. Replaces only supplied properties, replacing lists entirely (null clears them). Unchanged input returns current state without writing. Uses creation errors; missing organization returns 404 organization_not_found. Missing parentId returns the same error with field parentId; self/descendant parents return 400 organization_parent_cycle.
          */
         patch: operations["updateOrganization"];
         trace?: never;
@@ -2180,12 +1891,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * sourceIds の団体を id の団体へ統合する
-         * @description 所有者だけ。統合元（1 件以上 20,000 件以下）の結び付き・名前・外部 ID を 1 つの取引で統合先へ移し、
-         *     統合元を消す。無い統合元は飛ばして `notFoundIds` に載せる。`sourceIds` の件数が範囲の外なら 400
-         *     `work_info_too_many`（`field: sourceIds`）、統合先を含めば 400 `merge_same_organization`、統合後の別名か
-         *     外部 ID が上限を超えれば 400 `work_info_too_many`（`field: aliases` か `externalIds`）、統合先が無ければ
-         *     404 `organization_not_found`。統合元が統合先の親か祖先なら 400 `organization_parent_cycle`。誤りのときは何も変えない。
+         * Merge sourceIds into organization id
+         * @description Owner-only. Atomically moves associations, names and external IDs from 1–20,000 sources into the destination and deletes sources. Missing sources go to notFoundIds. Invalid source count returns 400 work_info_too_many with field sourceIds; including the destination returns merge_same_organization; exceeding merged alias/external-ID limits returns work_info_too_many with field aliases or externalIds. Missing destination returns 404 organization_not_found. A source that is an ancestor of the destination returns 400 organization_parent_cycle. Errors change nothing.
          */
         post: operations["mergeOrganizations"];
         delete?: never;
@@ -2204,13 +1911,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 動画へタグを付ける・外す
-         * @description `videoIds` へ `action`（`add`・`remove`）の `tag` を適用する。再生画面の1本も
-         *     選択バーの複数本も、同じこの経路を使う。`remove` は `tag.id` での指定だけを
-         *     受け付け、`name` を送ると400になる。`tag: { name }` の付与は、名前を
-         *     シノニムを含めて引き、無ければ作る。`videoIds` は1件以上20000件以下で、
-         *     重複は1つとして数える。処理は1つのトランザクションで、全部に反映するか
-         *     1つも反映しない。
+         * Add or remove a video tag
+         * @description Applies action (add/remove) and tag to videoIds for single-video and bulk callers. Removal requires tag.id; name returns 400. Addition by name resolves synonyms and creates a missing tag. Accepts 1–20,000 distinct videoIds; all changes are atomic.
          */
         post: operations["updateVideoTags"];
         delete?: never;
@@ -2229,10 +1931,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 選んだ動画に付いたタグの要約を返す
-         * @description `total` は `videoIds` のうちいまライブラリにある動画の数、`count` はそのうち
-         *     そのタグが付いている数。`count < total` のタグが一部にだけ付いている。
-         *     `items` は1本以上に付いているタグだけで、名前の自然順。
+         * Summarize tags on selected videos
+         * @description total counts requested videos currently in the library; each tag's count counts assignments among them. count < total indicates partial assignment. items includes tags assigned to at least one video, in natural name order.
          */
         post: operations["summarizeVideoTags"];
         delete?: never;
@@ -2250,12 +1950,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * 動画の公開・非公開を切り替える
-         * @description `videoIds` の公開フラグを `public` にそろえる。詳細画面の1本も選択バーの複数本も、
-         *     同じこの経路を使う。`videoIds` は1件以上20000件以下で、重複は1つとして数える。
-         *     既に同じ状態の動画も誤りにせず `applied` に数える。処理は1つのトランザクションで、
-         *     全部に反映するか1つも反映しない。非公開にした動画をゲストとして配信中の応答は
-         *     打ち切る。
+         * Change video visibility
+         * @description Sets public on 1–20,000 distinct videoIds atomically, for single-video and bulk callers. Already-matching videos count as applied. Active guest streams are terminated when their video becomes private.
          */
         put: operations["updateVideoVisibility"];
         post?: never;
@@ -2274,15 +1970,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * 動画とグループのお気に入りを付け外しする
-         * @description 所有者だけ。`videoIds` の動画、`groupIds` のグループと `smartFolderIds` のスマートフォルダの
-         *     お気に入りを `favorite` にそろえる。無いスマートフォルダの id は数えない。
-         *     `videoIds`・`groupIds`・`smartFolderIds` の合計（重複は 1 つに数える）が 1 以上 20000 以下でなければ 400
-         *     `too_many_videos`（`POST /api/video-tags` と同じ上限）で、何も変えない。ライブラリに無い
-         *     動画の id と無いグループの id は誤りにせず数えない。既に同じ状態のものは誤りにせず数え、
-         *     付いているものに付けてもお気に入りにした日時は変えない。`groupIds` にグループを入れても
-         *     その動画には付かない。グループのお気に入りはグループの解散で消える。処理は 1 つのトランザクションで、全部に反映するか 1 つも反映しない。確定後の
-         *     `/api/events` の知らせは無い。
+         * Set or clear favorites on videos and groups
+         * @description Owner-only. Sets favorite on videoIds, groupIds and smartFolderIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events.
          */
         put: operations["updateFavorites"];
         post?: never;
@@ -2300,22 +1989,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * プレイリストを更新日時の新しい順に返す
-         * @description 所有者だけ。プレイリストを `updatedAt` の新しい順（同じなら id の大きい順）に、`cursor` の
-         *     次から最大 `limit` 件返す。続きがあれば `nextCursor` を入れ、`total` はページングとは独立に
-         *     全部の数を返す。`version` は一覧の版で、プレイリストを作る・消す・変えるたびに変わる。
-         *     ページを読んでいる間に変わったプレイリストは前のページの側へ動いて `cursor` の次からは
-         *     返らないので、クライアントは `version` が最初のページと違えば最初のページから読み直す。
-         *     `covers` は返したページの分だけ作る。`cursor` が読めなければ 400
-         *     `invalid_cursor`、`limit` が範囲の外なら 400 `invalid_request`。`itemCount` は今見せる
-         *     項目の数である。
+         * List playlists by most recently updated
+         * @description Owner-only. Returns up to limit after cursor in descending updatedAt, then ID order. nextCursor indicates more; total counts independently of pagination. version changes on playlist creation/deletion/update. Updated playlists move before the cursor, so clients restart from page one when version changes. Builds covers only for returned items; itemCount counts currently visible items. Invalid cursor returns 400 invalid_cursor; invalid limit returns 400 invalid_request.
          */
         get: operations["listPlaylists"];
         put?: never;
         /**
-         * 空のプレイリストを作る
-         * @description 所有者だけ。名前は前後の空白を取り除いて 1〜100 文字（符号位置）でなければ 400
-         *     `invalid_request`。同じ名前のプレイリストがあってもよい。
+         * Create an empty playlist
+         * @description Owner-only. Trimmed name must contain 1–100 code points or returns 400 invalid_request. Duplicate names are allowed.
          */
         post: operations["createPlaylist"];
         delete?: never;
@@ -2332,25 +2013,22 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * プレイリスト 1 つと見せる項目を返す
-         * @description 所有者だけ。項目は位置の順で、今ライブラリの動画かグループに引ける項目だけを返す。`video` と `group` はライブラリの項目と同じく所有者の値
-         *     （`progress`・`watchState`・`watchedCount`・`favorite`）を持つ。無ければ 404 `not_found`。
+         * Return a playlist and its visible items
+         * @description Owner-only. Returns items in position order when they resolve to current-library videos or groups. Video/group values include owner progress, watchState, watchedCount and favorite, as library items do. Missing playlist returns 404 not_found.
          */
         get: operations["getPlaylist"];
         put?: never;
         post?: never;
         /**
-         * プレイリストを消す
-         * @description 所有者だけ。項目も消える。動画・グループ、そのお気に入りと再生位置は変わらない。
-         *     無ければ 404 `not_found`。
+         * Delete a playlist
+         * @description Owner-only. Deletes items but preserves videos, groups, favorites and playback positions. Missing playlist returns 404 not_found.
          */
         delete: operations["deletePlaylist"];
         options?: never;
         head?: never;
         /**
-         * プレイリストの名前を変える
-         * @description 所有者だけ。名前の規則は作成と同じで、応答の `name` は前後の空白を取り除いた名前である。
-         *     無ければ 404 `not_found`。
+         * Rename a playlist
+         * @description Owner-only; follows creation name rules and returns the trimmed name. Missing playlist returns 404 not_found.
          */
         patch: operations["renamePlaylist"];
         trace?: never;
@@ -2365,14 +2043,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * プレイリストの末尾に動画とグループを足す
-         * @description 所有者だけ。`videoIds` の動画、次に `groupIds` のグループ、次に `smartFolderIds` のスマート
-         *     フォルダを要求の順で末尾に足す。無い
-         *     スマートフォルダの id は数えず、スマートフォルダの項目はフォルダを消すと消える。ライブラリに無い
-         *     動画の id と無いグループの id はどちらの数にも入らず、重複は 1 度だけ数える。既にプレイリストに
-         *     あるものは `existing` に数え、何も変えない。グループの項目はグループの解散で消える。
-         *     両方が空なら 400 `invalid_request`、重複を除いた合計が 20000 を超えれば 400
-         *     `too_many_videos`（`PUT /api/favorites` と同じ上限）。プレイリストが無ければ 404 `not_found`。
+         * Append videos and groups to a playlist
+         * @description Owner-only. Appends videoIds, then groupIds, then smartFolderIds in request order. Missing IDs are ignored; duplicates count once. Existing items count as existing without changes. Group/smart-folder items disappear when their group dissolves or folder is deleted. Empty input returns 400 invalid_request; over 20,000 distinct IDs returns 400 too_many_videos. Missing playlist returns 404 not_found.
          */
         post: operations["addPlaylistItems"];
         delete?: never;
@@ -2392,9 +2064,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * プレイリストから項目を 1 つ外す
-         * @description 所有者だけ。残りの項目は詰め直す。動画・グループ、そのお気に入りと再生位置は変わらない。
-         *     プレイリストか項目が無ければ 404 `not_found`。
+         * Remove a playlist item
+         * @description Owner-only. Compacts remaining positions, preserving videos, groups, favorites and playback positions. Missing playlist or item returns 404 not_found.
          */
         delete: operations["removePlaylistItem"];
         options?: never;
@@ -2412,9 +2083,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * プレイリストの項目 1 つを並べ替える
-         * @description 所有者だけ。項目を `afterItemId` の項目のすぐ後ろへ移す。`null` なら先頭へ移す。プレイリスト・項目・`afterItemId` の項目がそのプレイリストに
-         *     無ければ 404 `not_found`、`afterItemId` が `itemId` と同じなら 400 `invalid_request`。
+         * Reorder a playlist item
+         * @description Owner-only. Moves the item immediately after afterItemId, or to the start for null. Missing playlist, item or afterItemId within the playlist returns 404 not_found. Moving after itself returns 400 invalid_request.
          */
         post: operations["movePlaylistItem"];
         delete?: never;
@@ -2431,21 +2101,15 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 視聴履歴を新しい順に返す
-         * @description 所有者だけ。視聴履歴を視聴を始めた時刻の新しい順（同じ時刻は id の大きい順）に返す。各件の `video` は、その内容の動画が
-         *     いまライブラリにあって開ける所在を持つときだけ入る（集まりの代表でないバージョンも含む）。
-         *     `watch`・`query`・`date` はページを切る前に掛け、`and` で結ぶ。`cursor` が読めなければ 400
-         *     `invalid_cursor`。`limit` が範囲の外、`watch` が 3 つの値のどれでもない、`query` が 100 文字を
-         *     超える、`date` が 2 つの形のどちらでもない、`date` に `tz` が無い、`tz` をサーバーが知らない
-         *     ときは 400 `invalid_request`。
+         * List watch history, newest first
+         * @description Owner-only. Orders by playback start descending, then ID descending. Includes video only when its content currently exists in the library with an accessible location, including non-representative versions. watch, query and date are ANDed before pagination. Invalid cursor returns 400 invalid_cursor. Invalid limit/watch/date/tz, query over 100 characters or date without tz returns 400 invalid_request.
          */
         get: operations["listWatchHistory"];
         put?: never;
         post?: never;
         /**
-         * 視聴履歴を全件消す
-         * @description 所有者だけ。視聴履歴をすべて消す。空でも 204。再生位置・視聴済み・最後に再生した日時は
-         *     変えず、`/api/events` の知らせも無い。
+         * Clear all watch history
+         * @description Owner-only; returns 204 even when empty. Preserves playback position, watched state and last-played time; emits no events.
          */
         delete: operations["clearWatchHistory"];
         options?: never;
@@ -2461,10 +2125,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 視聴履歴のある日を新しい順に返す
-         * @description 所有者だけ。`watch` と `query` を満たす件のある日を、`tz` の暦の `YYYY-MM-DD` で新しい順に返す。どの日もその月も一覧の `date` に渡せる。
-         *     `tz` が無いかサーバーが知らない、`watch` が 3 つの値のどれでもない、`query` が 100 文字を
-         *     超えるときは 400 `invalid_request`。
+         * List days with watch history, newest first
+         * @description Owner-only. Returns YYYY-MM-DD dates in tz with entries matching watch and query; dates or their months can be passed to the list date filter. Missing/unknown tz, invalid watch or query over 100 characters returns 400 invalid_request.
          */
         get: operations["listWatchHistoryDates"];
         put?: never;
@@ -2486,9 +2148,8 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * 視聴履歴を 1 件消す
-         * @description 所有者だけ。その件が無ければ 404 `not_found`（別のタブで消えた件）。再生位置・視聴済み・
-         *     最後に再生した日時は変えず、`/api/events` の知らせも無い。
+         * Delete a watch-history entry
+         * @description Owner-only. Missing entry returns 404 not_found. Preserves playback position, watched state and last-played time; emits no events.
          */
         delete: operations["deleteWatchHistoryEntry"];
         options?: never;
@@ -2504,15 +2165,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * プレイリストから再生しているときの位置と次の動画を返す
-         * @description 所有者だけ。動画ページがプレイリスト `id` の項目 `item` の動画 `video` を再生しているときの、見せる
-         *     項目の中での位置と数、連続再生で次に開く動画（`next`）、前後の見せる項目の開始の動画
-         *     （`previousItem`・`nextItem`）を、その時点の並びから返す。グループの項目は、今の動画が
-         *     メンバーなら後ろのメンバーへ進み、最後のメンバーかメンバーでなくなっていれば次の見せる項目へ
-         *     進む。項目の開始の動画は、動画の項目ならその動画、グループの項目ならグループを開くときの
-         *     メンバー（`openVideoId`）である。今の項目が見せない項目なら `position` は 0 で、その位置の前後の
-         *     見せる項目から決める。プレイリストの終わりなら `next` は無い。`item` か `video` が無いか
-         *     整数でなければ 400 `invalid_request`、プレイリストか項目が無ければ 404 `not_found`。
+         * Return playlist playback position and next video
+         * @description Owner-only. For playlist id, item and video, returns position/count among visible items, continuous-play next, and starting videos for previousItem/nextItem from current order. A group advances to its next member, or the next visible item if at the end or no longer a member. Item starts use the video itself or group openVideoId. An invisible current item has position=0 and navigation uses surrounding visible items. No next at playlist end. Missing/noninteger item or video returns 400 invalid_request; missing playlist/item returns 404 not_found.
          */
         get: operations["getPlaylistPlayback"];
         put?: never;
@@ -2533,14 +2187,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 動画を同じ動画の別バージョンとして束ねる
-         * @description 所有者だけ。`videoIds` の動画を 1 つの集まりに束ね、`representativeId` を代表（一覧に出す
-         *     1 件）にする。集まりのタグ・再生位置・公開の設定は代表のものになる。既に集まりに属する
-         *     動画を含むときは、その集まりの全メンバーが新しい集まりに入る。`videoIds` の重複は 1 つと
-         *     数え、2 本未満なら 400 `too_few_videos`、20000 本を超えれば 400 `too_many_videos`
-         *     （`POST /api/video-tags` と同じ上限）、`representativeId` が `videoIds` に無ければ 400
-         *     `representative_not_selected`、どれかが無いか登録フォルダの下に所在が無ければ 404
-         *     `video_not_found` で、何も変えない。確定後に `/api/events` の `video` が全メンバーで流れる。
+         * Bundle videos as versions of the same video
+         * @description Owner-only. Bundles videoIds using representativeId as the listed representative and source of bundle tags, progress and visibility. Existing bundles expand to all members. Counts distinct input IDs: fewer than two returns 400 too_few_videos; over 20,000 returns too_many_videos; unselected representative returns representative_not_selected. Missing videos or videos without registered-folder locations return 404 video_not_found. Errors change nothing. Emits video events for all members after commit.
          */
         post: operations["bundleVideos"];
         delete?: never;
@@ -2557,11 +2205,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 「同じ動画かもしれない」候補の一覧を返す
-         * @description 所有者だけ。映像の指紋が一致し尺がほぼ同じ 2 本の組のうち、どちらも登録フォルダの下に
-         *     所在を持つものを新しい順に最大 200 組返す。`total` は全件の数。「違う動画」と記録した組と
-         *     同じ集まりの 2 本は出ない。候補は `fingerprint` の取り込みの段階で増減し、`/api/events` の
-         *     `scan` で取り直す。
+         * List possible duplicate videos
+         * @description Owner-only. Returns up to 200 newest pairs with matching fingerprints, similar duration and registered-folder locations on both sides. total counts all candidates. Excludes dismissed pairs and same-bundle pairs. Fingerprint import updates candidates; refetch on scan events.
          */
         get: operations["listVersionCandidates"];
         put?: never;
@@ -2582,11 +2227,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 2 本の動画を「違う動画」と記録する
-         * @description 所有者だけ。2 本の組を「違う動画」と記録し、その組の候補を消す。候補に無い組でも記録し、
-         *     記録した組は以後候補に出ない。`videoIds` が 2 つでないか同じなら 400 `invalid_request`、
-         *     どちらかが無いか登録フォルダの下に所在が無ければ 404 `video_not_found` で、何も変えない。「同じ動画」は
-         *     `POST /api/video-bundles` に 2 本と代表を渡す。
+         * Record two videos as different
+         * @description Owner-only. Dismisses the pair and removes its candidate, even if no candidate exists; the pair is excluded thereafter. Requires exactly two distinct videoIds or returns 400 invalid_request. Missing videos or registered-folder locations return 404 video_not_found without changes. To mark them the same, use POST /api/video-bundles with both videos and a representative.
          */
         post: operations["dismissVersionCandidate"];
         delete?: never;
@@ -2603,12 +2245,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * アクティビティの記録を新しい順に返す
-         * @description 所有者だけ。取り込み・自動タグ付け・重複の判定・作品情報の取得・失敗した走査と、所有者のタグと
-         *     集まりの操作の記録を id の大きい順に返す。絞り込みはページを切る前に掛け、`and` で結ぶ。`counts` は `status` 以外の、
-         *     `features` は `feature` 以外の絞り込みに従う。`status`・`feature`・`decider` が知らない値、
-         *     `cursor` か `since` が読めない、`q` か `limit` が範囲の外のときは 400 `invalid_request`
-         *     （読めない `cursor` は reason `invalid_cursor`）。
+         * List activity records, newest first
+         * @description Owner-only. Returns import, auto-tagging, duplicate judgement, work-info fetch, failed scan and owner tag/bundle actions in descending ID order. Filters are ANDed before pagination. counts applies every filter except status; features applies every filter except feature. Unknown status/feature/decider, unreadable cursor/since or out-of-range q/limit returns 400 invalid_request (invalid_cursor reason for unreadable cursors).
          */
         get: operations["listActivity"];
         put?: never;
@@ -2629,12 +2267,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 記録の処理を始め直す
-         * @description 所有者だけ。記録の処理を始め直し、202 を返す。新しい実行は新しい記録になり、この記録を閉じる。
-         *     `version_judgement` は記録を保ち、`running` に戻る。`import` は動画の失敗した段階を積み直し、`scan` はすべてのメディアフォルダの手動の
-         *     スキャンを始める。無い記録は 404 `not_found`、やり直しを出さない記録か対象がもう無い記録は 409
-         *     `activity_not_retryable`、スキャン中の `scan` の記録は 409 `scan_in_progress`、自動タグ付けが切の
-         *     あいだの `auto_tag` の記録は 409 `auto_tagging_off`。
+         * Retry an activity operation
+         * @description Owner-only. Starts a retry with 202, creating a new record and closing this one; version_judgement instead keeps its record and returns to running. import requeues failed stages; scan starts a manual scan of all folders. Missing record returns 404 not_found; unavailable retry or missing subject returns 409 activity_not_retryable; active scans return scan_in_progress; disabled auto-tagging returns auto_tagging_off.
          */
         post: operations["retryActivity"];
         delete?: never;
@@ -2653,10 +2287,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 自動の判断を取り消す
-         * @description 所有者だけ。自動の判断を取り消し、所有者の `undo` の記録を返す。所有者がすでに状態を変えていれば、
-         *     その `outcome` は `already_reverted` になる。無い記録と、`auto_tag` の記録が付けていないタグは 404 `not_found`、取り消しを
-         *     出さない記録かタグと、取り消し済みのものは 409 `activity_not_undoable`。
+         * Undo an automatic decision
+         * @description Owner-only. Reverts the decision and returns an owner undo record. If the owner already changed state, outcome is already_reverted. Missing activity or a tag not assigned by its auto_tag action returns 404 not_found. Unsupported, already-undone records/tags return 409 activity_not_undoable.
          */
         post: operations["undoActivity"];
         delete?: never;
@@ -2672,7 +2304,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** フォルダ選択用の直下ディレクトリを返す */
+        /** List immediate directories for the folder picker */
         get: operations["listDirectories"];
         put?: never;
         post?: never;
@@ -2690,14 +2322,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * フォルダ画面の最上位（登録済みメディアフォルダ）を返す
-         * @description フォルダは保存せず、取り込み済みの所在のパスから導く。登録済みの
-         *     メディアフォルダは、動画が無くても含む。並びは名前の自然順。
-         *     同じ動画の別バージョンの集まりは実効の代表の所在だけを数え、代表以外の
-         *     バージョンだけがあるフォルダは動画の無いフォルダとして扱う。
-         *
-         *     ゲストでは公開の動画だけを数え、公開の動画の所在を1つも含まない登録フォルダは
-         *     省く。
+         * List top-level registered media folders
+         * @description Derives folders from imported location paths rather than storing them. Includes empty registered folders, in natural name order. Version bundles count only effective-representative locations; folders containing only other versions count as empty. Guests count public videos only and omit roots without public-video locations.
          */
         get: operations["listRootFolders"];
         put?: never;
@@ -2716,13 +2342,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * フォルダ1件と、その直下の子フォルダを返す
-         * @description フォルダは登録済みメディアフォルダの id と、そこからの `/` 区切りの相対パスで
-         *     指す。子フォルダは直下だけを名前の自然順で返す。本数は `listRootFolders` と
-         *     同じく、同じ動画の別バージョンの集まりを実効の代表の所在だけで数える。
-         *
-         *     ゲストでは公開の動画だけを数え、公開の動画の所在を1つも含まないフォルダは、
-         *     登録フォルダそのもの（`path` を省いた要求）を含めて 404 にする。
+         * Return a folder and its immediate children
+         * @description Identifies folders by registered media-folder ID and slash-separated relative path. Returns immediate children in natural name order. Counts only effective-representative locations, as listRootFolders does. Guests count public videos only; folders without public locations return 404, including a root requested without path.
          */
         get: operations["getFolder"];
         put?: never;
@@ -2741,25 +2362,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * フォルダの動画を返す
-         * @description `scope` で対象の所在の範囲を選ぶ。`direct`（既定）はフォルダ直下だけで、
-         *     孫以降のフォルダにある動画は含めない。`subtree` はフォルダとその配下すべてを
-         *     対象にする。`scope` と `query` は独立していて、照合はその範囲にある所在だけを
-         *     対象にする。ページング・絞り込み・並び順は `listVideos` と同じ。`title` と
-         *     `sizeBytes` はその範囲にある所在（検索語があれば当たった所在）のうちパスの
-         *     昇順で最初のもので、同じ動画の所在が範囲に2つ以上あっても1件だけ返す。
-         *     フォルダが無いときは `scope`・`query` に関係なく 404 を返す。
-         *
-         *     同じ動画の別バージョンの集まりは、実効の代表の所在がこの範囲にあるときだけ
-         *     1件として出て、代表以外のバージョンはそのファイルのあるフォルダにも出ない。
-         *     代表以外のバージョンだけがあるフォルダは動画の無いフォルダである。集まりの
-         *     `query` は集まりのどれかのバージョンの所在に当たればよく、`title` と `sizeBytes`
-         *     は範囲にある代表の所在のうちパスの昇順で最初のもの。
-         *
-         *     ゲストでは公開の動画だけを対象にし、公開の動画の所在を1つも含まないフォルダは
-         *     登録フォルダそのもの（`path` を省いた要求）を含めて 404 にする。`watch` が `all`
-         *     以外、`sort` が `playedAsc`・`playedDesc`・`favoritedAsc`・`favoritedDesc`、`favorite` が true は
-         *     `400` `invalid_request` にする。
+         * List folder videos
+         * @description scope selects direct locations (default, excluding descendants) or the entire subtree. Query matching considers only locations in that scope; pagination, filtering and sorting follow listVideos. title and sizeBytes use the lexicographically first matching location path in scope, deduplicating videos with multiple locations. Missing folders return 404 regardless of scope/query. Version bundles appear only when their effective representative has a location in scope; other versions never appear individually. Bundle queries may match any version location, but title and sizeBytes use the first representative location in scope. Guests see public videos only; folders with no public-video locations, including roots, return 404. Guest watch filters other than all, played/favorited sorts and favorite=true return 400 invalid_request.
          */
         get: operations["listFolderVideos"];
         put?: never;
@@ -2778,23 +2382,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 見る人に見せるグループを名前の順に返す
-         * @description 「Add to group」のピッカーの一覧。見る人に見せる
-         *     グループを、どの深さのものも自然な名前の順（同じなら id の順）に、`cursor` の次から最大
-         *     `limit` 件返す。`q` は前後の空白を取り除き、名前が大文字小文字を区別せずにそれを含むものだけに
-         *     絞る（空なら全部）。グループの値は `getGroup` と同じで、ゲストでは公開の動画だけから作り、
-         *     見る人に見せる動画の無いグループは入らない。読めない `cursor` は 400 `invalid_cursor`、
-         *     `limit` が範囲の外なら 400 `invalid_request`。
+         * List visible groups by name
+         * @description Add-to-group picker: returns visible groups at any depth, in natural name order then ID, up to limit after cursor. Trimmed q is a case-insensitive name substring; empty q selects all. Values follow getGroup and guest values use public videos only. Excludes groups without visible videos. Invalid cursor returns 400 invalid_cursor; invalid limit returns 400 invalid_request.
          */
         get: operations["listGroups"];
         put?: never;
         /**
-         * 動画とグループからグループを作る
-         * @description 所有者だけ。名前は前後の空白を取り除いて 1〜100 文字（符号位置）で、同じ名前のグループが
-         *     あってもよい。`videoIds` の動画、次に `groupIds` の
-         *     グループを要求の順に項目にする。名前が空か長すぎるか、メンバーが無ければ 400
-         *     `invalid_request`。本文の動画かグループのどれかが無ければ 404 `group_target_not_found` で、
-         *     何も作らない（R-12）。
+         * Create a group from videos and groups
+         * @description Owner-only. Trimmed name must contain 1–100 code points; duplicate names are allowed. Adds videoIds then groupIds in request order. Empty/oversized name or no members returns 400 invalid_request. Any missing video/group returns 404 group_target_not_found without creating anything.
          */
         post: operations["createGroup"];
         delete?: never;
@@ -2811,34 +2406,22 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * グループ 1 つと、その道筋と項目の最初のページを返す
-         * @description グループの値（`LibraryGroup`）、`trail` のうち今も親と子の組が続く部分、項目（子グループと
-         *     動画）の最初の 1 ページ（100 件）を位置の順に返す。
-         *     項目は見る人に見せるものだけで、見る人に引けない動画と、見る人に見せる動画の無い子グループは
-         *     入らない。続きは `listGroupItems` で読む。
-         *
-         *     グループの値は子孫の動画を再生順（子グループは深さ優先、同じ動画は最初の 1 回）で数える。ゲストでは公開の動画だけから作る。無いグループと、
-         *     見る人に見せる動画の無いグループは 404 `not_found`。
+         * Return a group, its trail and first item page
+         * @description Returns LibraryGroup, the still-connected portion of trail and the first 100 items in position order. Omits invisible videos and child groups without visible videos; continue with listGroupItems. Group values count descendant videos in depth-first playback order, deduplicated at first occurrence, using public videos only for guests. Missing groups and groups with no visible videos return 404 not_found.
          */
         get: operations["getGroup"];
         put?: never;
         post?: never;
         /**
-         * グループを解散する
-         * @description 所有者だけ。グループとその項目を消す。子グループと動画は残り、親からこのグループの項目が
-         *     消える。自動グループならそのフォルダに `ungroup` を書く。
-         *     グループが無ければ 404 `not_found`。
+         * Dissolve a group
+         * @description Owner-only. Deletes the group and its items, retaining child groups and videos and removing its item from parents. Automatic groups record ungroup on their folder. Missing group returns 404 not_found.
          */
         delete: operations["dissolveGroup"];
         options?: never;
         head?: never;
         /**
-         * グループの名前を変える
-         * @description 所有者だけ。名前の規則は作成と同じで、応答の `name` は前後の空白を取り除いた名前である。
-         *     グループが無ければ 404 `not_found`。`undoToken` が、このグループを作った
-         *     `POST /api/organize/group` の生きているトークンなら、名前を変えた後の行をそのトークンの
-         *     取り消しの像にするので、取り消しは名前を変えたグループを消す。それ以外のトークンは何も変えず、応答と
-         *     誤りはトークンが無いときと同じで、トークンが原因で失敗することはない。
+         * Rename a group
+         * @description Owner-only; follows creation name rules and returns the trimmed name. Missing group returns 404 not_found. A live undoToken from the organize/group operation that created this group updates that token's undo snapshot to include the rename, so undo still deletes it. Other tokens are ignored and never cause rename failure.
          */
         patch: operations["renameGroup"];
         trace?: never;
@@ -2851,20 +2434,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * グループの項目の続きのページを返す
-         * @description `getGroup` と同じ項目を、前の応答の `nextCursor` の続きから位置の順に返す。読めない
-         *     カーソルは 400 `invalid_cursor`。グループの扱いは `getGroup` と同じで、無いか見せないときは
-         *     404 `not_found`。
+         * Return the next page of group items
+         * @description Continues getGroup items after nextCursor in position order. Invalid cursors return 400 invalid_cursor. Missing or invisible groups return 404 not_found as in getGroup.
          */
         get: operations["listGroupItems"];
         put?: never;
         /**
-         * グループの末尾に動画とグループを足す
-         * @description 所有者だけ。`videoIds` の動画、次に `groupIds` のグループを要求の順で末尾に足す。既に項目に
-         *     あるものは飛ばす。両方が空なら 400 `invalid_request`。
-         *     本文の動画かグループのどれかが無ければ 404 `group_target_not_found`、本文のグループがこの
-         *     グループかその祖先なら 409 `group_cycle` で、どちらも何も足さない。グループが無ければ 404
-         *     `not_found`。
+         * Append videos and groups to a group
+         * @description Owner-only. Appends videoIds then groupIds in request order, skipping existing items. Empty input returns 400 invalid_request. Missing targets return 404 group_target_not_found; adding self or an ancestor returns 409 group_cycle. These errors add nothing. Missing destination returns 404 not_found.
          */
         post: operations["addGroupItems"];
         delete?: never;
@@ -2883,12 +2460,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * グループから項目を外す
-         * @description 所有者だけ。項目を外して残りを詰め直す。動画と子グループそのものは残る。自動グループの
-         *     フォルダ由来の項目は、フォルダの作り直しでも戻らない。項目が 1 つも残らなければ、そのグループは
-         *     `DELETE /api/groups/{id}` と同じく解散され（自動グループならフォルダに `ungroup` を書く）、
-         *     本文の無い 204 を返す。項目のどれかがこのグループに無ければ 404 `group_target_not_found` で、
-         *     何も外さない。グループが無ければ 404 `not_found`。
+         * Remove group items
+         * @description Owner-only. Removes items and compacts positions, preserving videos and child groups. Removed folder-derived items stay excluded after rebuilding automatic groups. Removing the last item dissolves the group as DELETE does, recording ungroup for automatic groups, and returns bodyless 204. Any absent item returns 404 group_target_not_found without removals; missing group returns 404 not_found.
          */
         post: operations["removeGroupItems"];
         delete?: never;
@@ -2907,10 +2480,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * グループの項目 1 つを並べ替える
-         * @description 所有者だけ。項目を `after` の項目のすぐ後ろへ移す。`after` が無ければ先頭へ移す。`after` が項目自身なら 400 `invalid_request`、項目か
-         *     `after` がこのグループに無ければ 404 `group_target_not_found`。グループが無ければ 404
-         *     `not_found`。
+         * Reorder a group item
+         * @description Owner-only. Moves the item immediately after after, or to the start when omitted. Self-reference returns 400 invalid_request; item/after absent from the group returns 404 group_target_not_found; missing group returns 404 not_found.
          */
         post: operations["moveGroupItem"];
         delete?: never;
@@ -2929,10 +2500,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * グループをタグに変える
-         * @description 所有者だけ。1 つの取引で、グループの名前を `NormalizeTagName` に通し、名前かシノニムで
-         *     引けたタグを使うか新しく作り、子孫の全動画に手で付け、グループを解散する。本文は無い。名前がタグ名の規則に合わなければ 400
-         *     `invalid_request` で、何も変えない。グループが無ければ 404 `not_found`。
+         * Convert a group to a tag
+         * @description Owner-only; no body. Atomically normalizes the group name with NormalizeTagName, resolves a tag by name/synonym or creates one, assigns it manually to all descendant videos, and dissolves the group. Invalid name returns 400 invalid_request without changes; missing group returns 404 not_found.
          */
         post: operations["tagGroup"];
         delete?: never;
@@ -2949,21 +2518,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 見る人に見せるスマートフォルダを親の id とともに返す
-         * @description 親を選ぶ欄とフォルダの木が読む一覧。
-         *     見る人に見せるフォルダを、どの深さのものも自然な名前の順（同じなら id の順）に、ページに
-         *     分けずに返す。所有者にはすべてのフォルダを、ゲストには再生順が空でないフォルダだけを返す。`favorite` は所有者の応答にだけ入る。
+         * List visible smart folders with parent IDs
+         * @description Unpaginated list for parent selectors and folder trees, in natural name order then ID across all depths. Owners see all folders; guests see only folders with nonempty playback order. favorite appears only for owners.
          */
         get: operations["listSmartFolders"];
         put?: never;
         /**
-         * スマートフォルダを作る
-         * @description 所有者だけ。名前は前後の空白を取り除いて 1〜100 文字（符号位置）で、グループと同じ規則である。
-         *     `sort` を省けば `addedDesc`、`parentId` を省けば一番上に作る。`rule` が条件の規則に合わないか
-         *     `sort` が `random` なら 400 `invalid_smart_rule`、名前が空か長すぎれば 400 `invalid_request`、
-         *     `parentId` のフォルダが無ければ 404 `smart_folder_not_found` で、どれも何も作らない。`rule` が
-         *     今無いタグ・タグの種類・人物・団体を名指しても受け付け、`getSmartFolder` の
-         *     `settings.missing` に返す。
+         * Create a smart folder
+         * @description Owner-only. Trimmed name follows group rules (1–100 code points). Defaults to sort=addedDesc and no parent. Invalid rule or random sort returns 400 invalid_smart_rule; invalid name returns 400 invalid_request; missing parent returns 404 smart_folder_not_found. Errors create nothing. Rules may reference missing tags, kinds, people or organizations, reported by getSmartFolder settings.missing.
          */
         post: operations["createSmartFolder"];
         delete?: never;
@@ -2980,12 +2542,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 画面に出たスマートフォルダのカードの値を返す
-         * @description `ids` のフォルダのカードの値を、`ids` の順に返す。値はどれも、フォルダの一致する動画（グループにまとめず、動画ごとに経路の
-         *     どの条件にも当たる見る人に見せる動画）から作る。無いフォルダと、ゲストに
-         *     見せないフォルダ（再生順が空）の id は飛ばし、同じ id は 1 回だけ返す。`ids` が無いか空か
-         *     整数でないか、61 件以上なら 400 `invalid_request`。ゲストの応答では `watchedCount`・
-         *     `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空にする。
+         * Return values for displayed smart-folder cards
+         * @description Returns distinct requested IDs in input order. Values aggregate visible videos matching all path rules, without grouping. Skips missing folders and guest-invisible folders with empty playback order. Missing, empty, noninteger or over-60 IDs return 400 invalid_request. Guests omit watchedCount, watchState, lastPlayedAt and favorite, with empty tags.
          */
         get: operations["listSmartFolderCards"];
         put?: never;
@@ -3004,31 +2562,22 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * スマートフォルダ 1 つと、その祖先と中身の最初のページを返す
-         * @description フォルダのカード（`LibrarySmartFolder`、値は再生順から作る）、祖先（外側から順）、中身の
-         *     最初の 1 ページを返す。中身は子フォルダを
-         *     名前の順に要約で先に置き、続けてフォルダと祖先の条件で絞ったライブラリの項目を最大 `limit`
-         *     件、フォルダの並べ順で置く。続きは `listSmartFolderItems` で読む。
-         *     `settings`（条件・並べ順・欠けた参照）は所有者の応答にだけ入る。経路の条件が今無い実体を
-         *     名指せば、中身は子フォルダだけである。無いフォルダと、ゲストに見せる動画の
-         *     無いフォルダは 404 `not_found`。
+         * Return a smart folder, ancestors and first content page
+         * @description Returns LibrarySmartFolder values derived from playback order, ancestors outermost first, and the first page. Child-folder summaries come first by name, followed by up to limit library items matching this folder and all ancestors in the folder's sort order. Continue with listSmartFolderItems. Only owners receive settings (rule, sort and missing references). Missing entities referenced by path rules leave only child folders. Missing or guest-invisible folders return 404 not_found.
          */
         get: operations["getSmartFolder"];
         put?: never;
         post?: never;
         /**
-         * スマートフォルダとその子孫を消す
-         * @description 所有者だけ。フォルダと子孫、それらのお気に入りとプレイリストの項目を消す。動画は変えない。フォルダが無ければ 404 `not_found`。
+         * Delete a smart folder and descendants
+         * @description Owner-only. Deletes folders, their favorites and playlist items, preserving videos. Missing folder returns 404 not_found.
          */
         delete: operations["deleteSmartFolder"];
         options?: never;
         head?: never;
         /**
-         * スマートフォルダの名前・条件・並べ順・親を変える
-         * @description 所有者だけ。本文に入れた項目だけを変え、少なくとも 1 つを入れる（無ければ 400
-         *     `invalid_request`）。`parentId` が null なら一番上にする。規則と状態は作成と同じで、加えて
-         *     `parentId` がこのフォルダかその子孫なら 409 `smart_folder_cycle` で何も変えない。フォルダが
-         *     無ければ 404 `not_found`。
+         * Update a smart folder's name, rule, sort or parent
+         * @description Owner-only. Changes only supplied fields; no fields returns 400 invalid_request. Null parentId moves to the root. Uses creation validation; self/descendant parents additionally return 409 smart_folder_cycle without changes. Missing folder returns 404 not_found.
          */
         patch: operations["changeSmartFolder"];
         trace?: never;
@@ -3041,10 +2590,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * スマートフォルダの中身の続きのページを返す
-         * @description `getSmartFolder` と同じ中身を、前の応答の `nextCursor` の続きから返す。子フォルダは最初の
-         *     ページにだけ入る。読めないカーソルは 400 `invalid_cursor`。フォルダの扱いは `getSmartFolder`
-         *     と同じで、無いか見せないときは 404 `not_found`。
+         * Return the next smart-folder content page
+         * @description Continues getSmartFolder content after nextCursor; child folders appear only on the first page. Invalid cursors return 400 invalid_cursor. Missing or invisible folders return 404 not_found as in getSmartFolder.
          */
         get: operations["listSmartFolderItems"];
         put?: never;
@@ -3065,12 +2612,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * グループの項目をまとめて並べ替え、取り消しのトークンを返す
-         * @description 所有者だけ。グループ `groupId` の項目 `itemIds` を画面の順のまままとめて項目 `after` の
-         *     すぐ後ろへ移す。`after` が無ければ先頭へ移す。1 つの取引で行い、応答の `undoToken` で
-         *     取り消せる。`itemIds` が空か `after` が
-         *     `itemIds` の中にあれば 400 `invalid_request`。グループ・項目・`after` のどれかが無いか
-         *     そのグループに無ければ 404 `group_target_not_found` で、何も書かない。
+         * Reorder group items together and return an undo token
+         * @description Owner-only. Atomically moves itemIds in display order immediately after after in groupId, or to the start when omitted. Returns undoToken. Empty itemIds or after within itemIds returns 400 invalid_request. Missing group/items/after or items outside the group return 404 group_target_not_found without writing.
          */
         post: operations["organizeReorder"];
         delete?: never;
@@ -3089,12 +2632,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * ドラッグした動画と落とした先の動画のグループを作り、取り消しのトークンを返す
-         * @description 所有者だけ。落とした先の動画 `target` の題名を先頭 100 文字に切った名前で新しいグループを作り、
-         *     `target`、続いて `items` の動画を画面の順に入れる。`from` があれば、新しいグループが
-         *     `from` の中で `target` の位置を取り、`target` と `items` は `from` から抜ける。1 つの取引で行い、応答の `groupId` が新しい
-         *     グループ、`undoToken` で取り消せる。`items` が空かグループを含めば 400 `invalid_request`。
-         *     動画か `from` が無いか、動画が `from` に無ければ 404 `group_target_not_found` で、何も書かない。
+         * Create a group from dragged videos and the drop target
+         * @description Owner-only. Names the new group from the first 100 characters of target's title, adding target then items in display order. When from is supplied, the new group replaces target there and removes target/items from from. Atomic; returns groupId and undoToken. Empty items or group items return 400 invalid_request. Missing videos/from or videos outside from return 404 group_target_not_found without writing.
          */
         post: operations["organizeGroup"];
         delete?: never;
@@ -3113,14 +2652,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * カードをグループへ入れるか、グループの間で動かすか、グループから外し、取り消しのトークンを返す
-         * @description 所有者だけ。ドラッグしたカード `items` を画面の順のままグループ `to` の末尾へ足し（既に
-         *     あるものは飛ばす）、`from` があればそこから外す。`to` が無ければ外すだけ（ライブラリに
-         *     落とした）。フォルダ由来のメンバーを外すと除外を書き、最後の項目を外した `from` は解散する。
-         *     1 つの取引で行い、応答の `undoToken` で取り消せる。
-         *     `from` と `to` がどちらも無いか同じなら 400 `invalid_request`。`from`・`to`・カードの動画や
-         *     グループが無いか、カードが `from` に無ければ 404 `group_target_not_found`、ドラッグした
-         *     グループが `to` か `to` の祖先なら 409 `group_cycle` で、どれも何も書かない。
+         * Move cards into, between or out of groups and return an undo token
+         * @description Owner-only. Appends items to to in display order, skipping duplicates, and removes them from optional from. Omitted to means removal only (drop on library). Records exclusions for removed folder-derived members and dissolves an emptied from group. Atomic; returns undoToken. Missing or identical from/to returns 400 invalid_request. Missing groups/cards or cards outside from returns 404 group_target_not_found. Moving to self/descendant returns 409 group_cycle. Errors write nothing.
          */
         post: operations["organizeMove"];
         delete?: never;
@@ -3139,18 +2672,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * ドラッグしたグループをグループへマージし、取り消しのトークンを返す
-         * @description 所有者だけ。`items` を画面の順にたどり、グループはグループ `into` へマージし、動画は `into` の
-         *     末尾へ足す（既にあれば飛ばす）。グループ X のマージは X の項目を順に `into` の末尾へ足し、X が
-         *     お気に入りなら `into` をお気に入りにし、X を持つプレイリストと親グループの項目を X の位置で
-         *     `into` に置き換えて（そこにすでに `into` があるか、`into` が親自身か親の祖先なら X の項目を
-         *     消す）、X を消す。`from` があれば、カードは同じ
-         *     取引で `from` から外れる（Move の取り外しと同じ。動画の項目は消え、グループの項目は `into` に
-         *     置き換えずに消え、自動グループのフォルダのメンバーには除外を書く）。1 つの取引で行い、応答の
-         *     `undoToken` で取り消せる。`items` にグループが無ければ 400 `invalid_request`。`into`・`from`・
-         *     グループ・動画のどれかが無いか、カードが `from` に無ければ 404 `group_target_not_found`、
-         *     ドラッグしたグループが `into` そのものか `into` の祖先なら 409 `group_cycle` で、どれも何も
-         *     書かない。
+         * Merge dragged groups and return an undo token
+         * @description Owner-only. Processes items in display order: merges groups into into and appends videos, skipping duplicates. Merging X appends its items, carries its favorite, replaces playlist/parent items at X's position with into, then deletes X. If the parent already contains into or into is the parent/ancestor, removes X's item instead. Optional from removes dragged cards in the same transaction without replacing group items with into; folder-derived members get exclusions. Atomic; returns undoToken. No group items returns 400 invalid_request; missing targets/from/cards or cards outside from returns 404 group_target_not_found; merging self/ancestor returns 409 group_cycle. Errors write nothing.
          */
         post: operations["organizeMerge"];
         delete?: never;
@@ -3169,14 +2692,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 動画を落とした先の動画を代表にしてバージョンとしてまとめ、取り消しのトークンを返す
-         * @description 所有者だけ。ドラッグした動画 `videoIds` を落とした先の動画 `target` と 1 つの集まりに束ね、
-         *     `target` を代表にする（代表を選ぶダイアログは無い）。既に集まりに属する動画は、その集まりの
-         *     全メンバーごと移る。規則は `POST /api/video-bundles` と同じで、1 つの取引で行い、応答の
-         *     `undoToken` で取り消せる。`target` の
-         *     ほかに動画が無ければ 400 `invalid_request`、集まりを展開して 20 本を超えれば 400
-         *     `too_many_videos`、動画がいまライブラリに無ければ 404 `group_target_not_found` で、どれも
-         *     何も書かない。
+         * Bundle dragged videos with the drop target as representative
+         * @description Owner-only. Bundles videoIds with target as representative, expanding existing bundles to all members. Uses video-bundles rules atomically and returns undoToken. No video besides target returns 400 invalid_request; over 20 videos after expansion returns 400 too_many_videos; videos absent from the library return 404 group_target_not_found. Errors write nothing.
          */
         post: operations["organizeBundle"];
         delete?: never;
@@ -3195,10 +2712,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * ドラッグの操作を取り消す
-         * @description 所有者だけ。`token` の操作の前の状態へ戻す。操作の
-         *     後で行が変わっていれば 409 `undo_conflict` で、何も書かない。トークンが無い、使い済み、
-         *     または 10 分より古ければ 410 `undo_expired`。トークンは 1 回だけ使える。
+         * Undo a drag operation
+         * @description Owner-only. Restores the state before token's operation. Changed rows since the operation return 409 undo_conflict without writing. Missing, consumed or over-ten-minute-old tokens return 410 undo_expired. Single-use.
          */
         post: operations["organizeUndo"];
         delete?: never;
@@ -3216,10 +2731,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * フォルダのまとめ方の例外を付ける・外す
-         * @description `auto` は例外を外し、`ungroup` は「まとめを解除」、`groupDirect` は「直下をまとめる」を付ける。同じ値の再設定も 200。
-         *     例外の保存と索引の作り直しは1つの取引で、後の要求が勝つ。フォルダの有無は
-         *     `getFolder` と同じ判定で、無ければ 404。
+         * Set or clear a folder grouping override
+         * @description auto clears the override; ungroup disables grouping; groupDirect groups immediate videos. Repeating the current value returns 200. Saving and rebuilding the index are atomic, last-write-wins. Folder existence follows getFolder; missing folders return 404.
          */
         put: operations["setFolderGrouping"];
         post?: never;
@@ -3237,8 +2750,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 直近のスキャンの状態を返す
-         * @description 実行中のものがあればそれを、無ければ最後に終わったものを返す。
+         * Return the latest scan state
+         * @description Returns the active scan if any, otherwise the most recently completed scan
          */
         get: operations["getCurrentScan"];
         put?: never;
@@ -3257,11 +2770,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 直近の取り込みの問題の一覧を返す
-         * @description 直近の取り込みの問題を、動画（未登録ならファイル）ごとに1件で返す。失敗を先に、同じ重さの中は
-         *     ファイル名、次にフォルダの順に並ぶ。所在がどの登録フォルダにも含まれない件は返さず、
-         *     Scan.issues の本数にも数えない。一覧は SSE では送らない。画面は Scan.id か
-         *     Scan.issues.revision が変わったら読み直す。
+         * List latest import issues
+         * @description Returns one issue per video, or per file when unregistered. Failures sort first, then filename and folder. Excludes locations outside registered folders from both this list and Scan.issues counts. Issues are not streamed through SSE; refetch when Scan.id or Scan.issues.revision changes.
          */
         get: operations["listCurrentScanIssues"];
         put?: never;
@@ -3280,36 +2790,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 取り込みと動画の変化を Server-Sent Events で送る
-         * @description 接続中は、変化が起きたときだけ次のイベントを送る。一定間隔の送信はしない
-         *     （接続を保つためのコメント行を除く）。
-         *
-         *     - `scan`: 直近の取り込みが変わった。data は `Scan`（まだ一度も無ければ送らない）。
-         *       走査の変化、仕事の成否（済みの本数が変わる）、今の処理の変化で送る
-         *     - `video`: 動画の状態が変わった。data は `VideoChanged`。最新の内容は
-         *       `GET /api/videos/{id}` で取る
-         *     - `group`: グループの名前か項目が変わった。data は `GroupChanged` で、変わったグループと
-         *       その祖先の id を運ぶ。最新の内容は
-         *       `GET /api/groups/{id}` で取る
-         *     - `smartFolder`: スマートフォルダの中身かカードが変わったかもしれない。data は
-         *       `SmartFolderChanged` で、編集したフォルダとその子孫と親、または一致が変わりうる書き込み
-         *       （タグ・人物・団体・お気に入り・視聴状態・ライブラリにある動画・束ね・グループの変化）では
-         *       すべてのフォルダの id を運ぶ。最新の内容は
-         *       `GET /api/smart-folders/{id}` で取る
-         *     - `candidates`: 重複の候補の一覧が変わったかもしれない。判定の結果や版の取り外しの確定後に
-         *       送る。data は空のオブジェクト `{}` で、中身は運ばない。最新の一覧は
-         *       `GET /api/version-candidates` で取る
-         *     - `activity`: アクティビティの記録が書かれたか変わった。記録を書いた取引の確定後に送る。data は
-         *       空のオブジェクト `{}` で、中身は運ばない。最新の記録と件数は `GET /api/activity` で取る
-         *       （docs/design-docs/activity.md）
-         *     - `home`: ホームの棚の集合か並び、整理役やオンボードの状態が変わった。data は空のオブジェクト
-         *       `{}` で、中身は運ばない。最新の内容は `GET /api/home` で取る（docs/design-docs/home.md）
-         *
-         *     接続の直後に `scan`（あれば）を1回送るので、つなぎ直したクライアントは切れていた間の
-         *     変化を取り戻せる。`video`・`group`・`smartFolder`・`candidates`・`activity`・`home` は切れていた間の分を送り直さない。
-         *
-         *     ゲストには `group`・`smartFolder`・`home` だけを送る（docs/design-docs/catalog-organization.md、
-         *     docs/design-docs/catalog-organization.md、docs/design-docs/home.md）。`scan`・`video`・`candidates`・`activity` は所有者だけに送る。
+         * Stream import and video changes through Server-Sent Events
+         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). home carries an empty object when shelves or onboarding change; refetch GET /api/home. candidates and activity carry empty objects after committed changes; refetch their lists/counts. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/home events. Guests receive only group, smartFolder and home; scan, video, candidates and activity are owner-only.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -3325,47 +2807,47 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         SetupRequest: {
-            /** @description 1〜128 文字。制御文字を含まず、先頭と末尾に空白を置かない */
+            /** @description 1–128 characters, without control characters or surrounding whitespace */
             username: string;
-            /** @description 1〜1024 バイト */
+            /** @description 1–1024 bytes */
             password: string;
         };
         LoginRequest: {
             username: string;
             password: string;
-            /** @description ログイン後に戻る先の候補。省略か安全でなければ `/` */
+            /** @description Candidate redirect after login; omitted or unsafe values become `/` */
             next?: string;
         };
         AuthRedirect: {
-            /** @description 画面が遷移する先。サーバーが確かめた同じオリジンのパス */
+            /** @description Server-validated same-origin navigation path */
             redirectTo: string;
         };
         AuthSession: {
             /**
-             * @description owner = ログイン済み、guest = 未ログイン、setupRequired = アカウントが未設定
+             * @description owner: signed in; guest: signed out; setupRequired: account unconfigured
              * @enum {string}
              */
             state: "owner" | "guest" | "setupRequired";
-            /** @description `next` を付けて呼び、state が owner のときだけ返す戻り先 */
+            /** @description Validated redirect returned only when next was supplied and state is owner */
             redirectTo?: string;
         };
         Health: {
             /**
-             * @description ok = 保存層まで疎通、degraded = プロセスのみ生存
+             * @description ok: storage reachable; degraded: process alive without storage connectivity
              * @enum {string}
              */
             status: "ok" | "degraded";
             /**
-             * @description リリース名。ビルド時に指定されなければ dev
+             * @description Release name; defaults to dev when unset at build time
              * @example dev
              * @example 0.1.0
              */
             version: string;
-            /** @description ビルド元のコミット。取得できない場合は省略される */
+            /** @description Source commit; omitted when unavailable */
             commit?: string;
             /**
              * Format: date-time
-             * @description ビルド時刻。取得できない場合は省略される
+             * @description Build time; omitted when unavailable
              */
             builtAt?: string;
         };
@@ -3389,22 +2871,22 @@ export interface components {
             version: number;
         };
         /**
-         * @description 所有者が選ぶライブ変換の映像エンコード方式。auto は使えるハードウェアの方式を nvenc・qsv・vaapi・videotoolbox の順で選び、無ければ software にする
+         * @description Owner-selected live encoder. auto tries available hardware in nvenc, qsv, vaapi, videotoolbox order, falling back to software.
          * @enum {string}
          */
         VideoEncoderChoice: "software" | "nvenc" | "qsv" | "vaapi" | "videotoolbox" | "auto";
         /**
-         * @description ライブ変換が実際に使う映像エンコード方式
+         * @description Effective live-transcode encoder
          * @enum {string}
          */
         VideoEncoder: "software" | "nvenc" | "qsv" | "vaapi" | "videotoolbox";
         /**
-         * @description ハードウェアの方式が使えない理由
+         * @description Reason hardware encoding is unavailable
          * @enum {string}
          */
         EncoderUnavailableReason: "unsupported_os" | "encoder_missing" | "check_failed" | "timed_out";
         /**
-         * @description 選んだハードウェアの方式を使えず software にしている理由。selected_unavailable は 確認の結果使えない、checking は起動時の確認が終わっていない
+         * @description Software fallback reason: selected_unavailable after probing, or checking while startup probing remains incomplete
          * @enum {string}
          */
         EncoderFallbackReason: "selected_unavailable" | "checking";
@@ -3418,124 +2900,124 @@ export interface components {
             videoEncoder: components["schemas"]["VideoEncoderChoice"];
             effectiveEncoder: components["schemas"]["VideoEncoder"];
             fallbackReason?: components["schemas"]["EncoderFallbackReason"];
-            /** @description 起動時の確認が終わっていない */
+            /** @description Startup probing is incomplete */
             checking: boolean;
-            /** @description ハードウェアの方式の確認結果。nvenc・qsv・vaapi・videotoolbox の順で常に 4 件。 software は常に使えるので載らない */
+            /** @description Always four results in nvenc, qsv, vaapi, videotoolbox order; software is always available and omitted */
             encoders: components["schemas"]["EncoderAvailability"][];
         };
         UpdateTranscodingSettingsRequest: {
             videoEncoder: components["schemas"]["VideoEncoderChoice"];
         };
-        /** @description Windows デスクトップ版の LAN からの接続の設定 */
+        /** @description Windows desktop LAN access settings */
         NetworkSettings: {
-            /** @description 保存した選択。保存値が無ければ false */
+            /** @description Saved choice; defaults to false */
             lanAccess: boolean;
-            /** @description 今の待ち受けのポート */
+            /** @description Current listening port */
             port: number;
-            /** @description lanAccess が true のときだけ、上がっている非ループバックの IPv4 アドレスごとに "http://<アドレス>:<ポート>/" が入る。false なら空 */
+            /** @description When lanAccess=true, http://<address>:<port>/ for every active non-loopback IPv4 address; otherwise empty */
             addresses: string[];
         };
         UpdateNetworkSettingsRequest: {
             lanAccess: boolean;
         };
-        /** @description 作品情報プラグインの要求を送るプロキシ */
+        /** @description Proxy for work-info plugin requests */
         PluginProxySettings: {
-            /** @description 保存した URL。http、https か socks5 の scheme、ホスト、任意のポートと任意のユーザー情報からなり、 パスもクエリも持たない。"" はプロキシなし */
+            /** @description Saved URL with http, https or socks5 scheme, host, optional port/userinfo, and no path/query. Empty string disables the proxy. */
             url: string;
         };
         UpdatePluginProxySettingsRequest: {
-            /** @description 保存する URL。規則は PluginProxySettings.url と同じ。"" はプロキシなし */
+            /** @description URL to save, following PluginProxySettings.url; empty string disables the proxy */
             url: string;
         };
-        /** @description 自動の取り込みの選択と監視の状態 */
+        /** @description Auto-import setting and watch state */
         AutoImportSettings: {
-            /** @description 保存した選択。保存値が無ければ true */
+            /** @description Saved choice; defaults to true */
             enabled: boolean;
             watch: components["schemas"]["FolderWatch"];
         };
         FolderWatch: {
             /**
-             * @description off は切れているか、メディアフォルダが無い。starting は監視を張っている最中。active は すべてのディレクトリを監視している。limited は問題がある
+             * @description off: disabled or no media folders; starting: attaching watches; active: watching every directory; limited: a problem occurred
              * @enum {string}
              */
             state: "off" | "starting" | "active" | "limited";
             /**
-             * @description 直近の問題。state が limited のときだけ返す
+             * @description Latest problem, returned only in limited state
              * @enum {string}
              */
             problem?: "watch_limit" | "events_lost" | "folder_unreachable" | "permission_denied";
-            /** @description 問題が 1 つのディレクトリに関わるときの、その絶対パス（利用者のデータ。翻訳しない） */
+            /** @description Absolute path when the problem concerns one directory; user data, not translated */
             path?: string;
         };
         UpdateAutoImportSettingsRequest: {
             enabled: boolean;
         };
-        /** @description 重複の自動判定の入切 */
+        /** @description Automatic duplicate-judging enablement */
         VersionJudgingSettings: {
-            /** @description 保存した選択。保存値が無ければ false */
+            /** @description Saved choice; defaults to false */
             enabled: boolean;
         };
         UpdateVersionJudgingSettingsRequest: {
             enabled: boolean;
         };
-        /** @description 自動タグ付けの機能の設定と待ち行列の件数（docs/design-docs/auto-tagging.md） */
+        /** @description Auto-tagging settings and queue counts; see docs/design-docs/auto-tagging.md */
         AutoTaggingSettings: {
-            /** @description 機能を使うか。切なら判定を始めず、Ollama に接続しない。保存値が無ければ false */
+            /** @description Enable classification; when off, no judgement starts and Ollama is not contacted. Defaults to false. */
             enabled: boolean;
-            /** @description 取り込みのあとに自動で判定するか（enabled が真のときだけ効く）。保存値が無ければ false */
+            /** @description Classify automatically after import when enabled; defaults to false */
             afterImport: boolean;
             /**
              * Format: double
-             * @description タグを確定した付与として付けるのに要る確率。保存値が無ければ 0.8
+             * @description Minimum probability for confirmed assignment; defaults to 0.8
              */
             threshold: number;
             /**
              * Format: double
-             * @description タグを仮に付けるのに要る確率（threshold 以下）。保存値が無ければ 0.5
+             * @description Minimum probability for tentative assignment, at most threshold; defaults to 0.5
              */
             tentativeThreshold: number;
             queue: components["schemas"]["AutoTaggingQueue"];
         };
-        /** @description Ollama の接続先（docs/design-docs/ai-layer.md） */
+        /** @description Ollama connection; see docs/design-docs/ai-layer.md */
         OllamaSettings: {
-            /** @description Ollama の基底 URL（http か https）。保存値が無ければ http://127.0.0.1:11434 */
+            /** @description HTTP(S) Ollama base URL; defaults to http://127.0.0.1:11434 */
             endpoint: string;
-            /** @description Ollama の模型名。保存値が無ければ clef-flash */
+            /** @description Ollama model name; defaults to clef-flash */
             model: string;
-            /** @description 所有者が接続先を保存したか（接続先の行があるか）。false のあいだ endpoint と model は サーバーが返す既定値である。保存の応答は常に true */
+            /** @description Whether the owner has saved connection settings. Until then, endpoint and model are server defaults; save responses always return true. */
             saved: boolean;
         };
-        /** @description Ollama の接続先を保存する要求。saved は要求に含めない */
+        /** @description Request to save Ollama settings; omit saved. */
         UpdateOllamaSettingsRequest: {
-            /** @description Ollama の基底 URL（http か https） */
+            /** @description Ollama base URL using HTTP or HTTPS. */
             endpoint: string;
-            /** @description Ollama の模型名 */
+            /** @description Ollama model name. */
             model: string;
         };
         /**
-         * @description ComfyUI の提供元。`self_hosted` は所有者が動かす ComfyUI、`cloud` は Comfy Cloud
+         * @description ComfyUI provider: self_hosted for the owner's instance, cloud for Comfy Cloud.
          * @enum {string}
          */
         ComfyUIProvider: "self_hosted" | "cloud";
         /**
-         * @description サムネイルの編集に使うモデル。モデルごとに vv が同梱するワークフローの組が決まる。 `flux2_klein_4b` は FLUX.2 [klein] 4B（既定）、`qwen_image_edit_2511` は Qwen-Image-Edit-2511 に Lightning の 4 ステップの LoRA を当てたもの
+         * @description Thumbnail editing model, selecting a bundled workflow set: flux2_klein_4b is FLUX.2 [klein] 4B (default); qwen_image_edit_2511 uses Qwen-Image-Edit-2511 with the four-step Lightning LoRA.
          * @enum {string}
          */
         ComfyUIModel: "flux2_klein_4b" | "qwen_image_edit_2511";
-        /** @description ComfyUI の接続先（docs/design-docs/ai-layer.md）。API キーそのものは返さない */
+        /** @description ComfyUI connection settings; never returns the API key. See docs/design-docs/ai-layer.md. */
         ComfyUISettings: {
             provider?: components["schemas"]["ComfyUIProvider"];
-            /** @description 自前の ComfyUI の基底 URL（http か https）。保存値が無ければ省く */
+            /** @description Self-hosted ComfyUI HTTP or HTTPS base URL; omitted when unset. */
             url?: string;
-            /** @description Comfy Cloud の API キーが保存されているか */
+            /** @description Whether a Comfy Cloud API key is stored. */
             apiKeySet: boolean;
             model: components["schemas"]["ComfyUIModel"];
         };
         UpdateComfyUISettingsRequest: {
             provider: components["schemas"]["ComfyUIProvider"];
-            /** @description `self_hosted` のとき必須。http か https の基底 URL */
+            /** @description Required for self_hosted: HTTP or HTTPS base URL. */
             url?: string;
-            /** @description Comfy Cloud の API キー。省けば保存済みのキーを残し、空文字列なら消す */
+            /** @description Comfy Cloud API key; omission preserves the stored key, an empty string deletes it. */
             apiKey?: string;
             model?: components["schemas"]["ComfyUIModel"];
         };
@@ -3544,7 +3026,7 @@ export interface components {
             running: number;
             done: number;
             failed: number;
-            /** @description 直近に失敗した判定の理由（英語。Ollama の応答を含むことがある）。失敗が無ければ省く */
+            /** @description Latest judging failure reason in English, possibly including the Ollama response; omitted if none. */
             lastError?: string;
         };
         UpdateAutoTaggingSettingsRequest: {
@@ -3552,256 +3034,248 @@ export interface components {
             afterImport: boolean;
             /**
              * Format: double
-             * @description 0 より大きく 1 以下
+             * @description Greater than zero and at most one.
              */
             threshold: number;
             /**
              * Format: double
-             * @description 0 より大きく threshold 以下。threshold と同じなら仮に付けない
+             * @description Greater than zero and at most threshold; equal values disable tentative assignment.
              */
             tentativeThreshold: number;
         };
-        /** @description 確かめた結果。使えないことも 200 で返す */
+        /** @description Connection check result; unavailable providers also return 200. */
         CheckResult: {
             available: boolean;
-            /** @description 使えないときの理由（英語。提供元が JSON で返した誤りの文を含むことがある） */
+            /** @description Unavailability reason in English, possibly including the provider's JSON error message. */
             message?: string;
-            /** @description ComfyUI の確かめだけが返す。接続先は応えたが vv のワークフローに足りないノードとモデルファイル */
+            /** @description ComfyUI checks only: missing nodes and model files when the endpoint responds but cannot run vv workflows. */
             missing?: components["schemas"]["ComfyUIMissingItem"][];
         };
-        /** @description ComfyUI に足りないノードの型かモデルファイル */
+        /** @description Missing ComfyUI node type or model file. */
         ComfyUIMissingItem: {
             /** @enum {string} */
             kind: "node" | "model";
-            /** @description ノードの `class_type` かファイル名 */
+            /** @description Node class_type or filename. */
             name: string;
-            /** @description モデルファイルだけ。ComfyUI の `models` の下のフォルダ */
+            /** @description Model files only: directory under ComfyUI models. */
             folder?: string;
-            /** @description モデルファイルだけ。入手先のページの URL */
+            /** @description Model files only: download page URL. */
             source?: string;
         };
         ThumbnailEditReadiness: {
-            /** @description ComfyUI の接続先が保存されているか（テストに通ったかではない） */
+            /** @description Whether ComfyUI settings are saved, regardless of connection test success. */
             connection: boolean;
         };
         StartThumbnailEditRequest: {
             source: components["schemas"]["ThumbnailEditSource"];
             /**
              * Format: int64
-             * @description `frame` のときだけ必須。編集するコマの位置（ミリ秒）。0 以上で尺未満。`thumbnail` では無視する
+             * @description Required only for frame: frame position in milliseconds, nonnegative and below duration. Ignored for thumbnail.
              */
             positionMs?: number;
         };
         /**
-         * @description 編集を何から始めるか。`frame` は選んだ位置のコマ、`thumbnail` は今のサムネイル
+         * @description Editing source: frame uses the selected video frame; thumbnail uses the current thumbnail.
          * @enum {string}
          */
         ThumbnailEditSource: "frame" | "thumbnail";
         RunThumbnailEditRequest: {
-            /** @description 持ち主の指示。省けば、塗った範囲があるとき vv の既定の指示を送る */
+            /** @description Owner's instruction; when omitted with a painted mask, use vv's default instruction. */
             prompt?: string;
             /**
              * Format: binary
-             * @description コマと同じ大きさの PNG。塗った画素が不透明な白、残りが不透明な黒。省けばコマ全体
+             * @description PNG matching the frame dimensions, with painted pixels opaque white and all others opaque black; omission selects the whole frame.
              */
             mask?: string;
             /**
              * Format: binary
-             * @description 参考画像（PNG・JPEG・WebP、20 MiB まで）。省けば参考画像の無いワークフローを使う
+             * @description Reference image: PNG, JPEG or WebP up to 20 MiB; omission selects a workflow without a reference image.
              */
             reference?: string;
         };
         UploadThumbnailImageRequest: {
             /**
              * Format: binary
-             * @description サムネイルにする画像（PNG・JPEG・静止画の WebP、64 MiB・1 億 2000 万画素まで）
+             * @description Thumbnail image: PNG, JPEG or static WebP, at most 64 MiB and 120 million pixels.
              */
             image: string;
-            /** @description プレビューを開いたときに画面が持っていた動画の `contentVersion` */
+            /** @description Video contentVersion held by the UI when the preview opened. */
             contentVersion: string;
         };
         UploadWorkInfoPluginRequest: {
             /**
              * Format: binary
-             * @description 作品情報プラグインの WebAssembly モジュール（16 MiB まで）。ファイル名は残す
+             * @description Work-info plugin WebAssembly module, up to 16 MiB; retain the uploaded filename.
              */
             module: string;
         };
         /**
-         * @description プラグインの状態
+         * @description Plugin state.
          * @enum {string}
          */
         WorkInfoPluginState: "approved" | "unapproved" | "invalid";
         /**
-         * @description プラグインを承認できない理由
+         * @description Reason the plugin cannot be approved.
          * @enum {string}
          */
         WorkInfoPluginProblem: "not_wasm" | "manifest_missing" | "manifest_invalid" | "contract_unsupported" | "import_unsupported" | "export_invalid" | "table_too_large";
         /**
-         * @description プラグインの操作
+         * @description Plugin operation.
          * @enum {string}
          */
         WorkInfoOperation: "search" | "fetch";
-        /** @description マニフェストが宣言する設定の 1 つと、その値の有無。`value` は `secret` が偽で値があるときだけ入る */
+        /** @description One manifest setting and its availability; value appears only for nonsecret settings with a stored value. */
         WorkInfoPluginSetting: {
             key: string;
             label: string;
             secret: boolean;
             required: boolean;
-            /** @description 値が保存されているか */
+            /** @description Whether a value is stored. */
             set: boolean;
-            /** @description 保存された値。秘密の設定では入らない */
+            /** @description Stored value; never included for secret settings. */
             value?: string;
-            /** @description マニフェストの既定値。値が保存されていないとき、または保存された値が選択肢の外にあるときに実行が受け取る */
+            /** @description Manifest default used at runtime when no value is stored or the stored value is outside the current choices. */
             default?: string;
-            /** @description マニフェストの選択肢で、マニフェストの順。無ければ値は自由に入力する */
+            /** @description Manifest choices in declaration order; absent means free-text input. */
             options?: string[];
-            /**
-             * @description 保存された値が今の選択肢の外にあるときだけ入る、その値。`set` は真で `value` も同じ値を持つが、
-             *     実行は代わりに既定値を受け取る
-             */
+            /** @description Stored value outside the current choices, included only in that case. set remains true and value matches, but execution receives the default instead. */
             staleValue?: string;
         };
-        /** @description 作品情報プラグイン 1 つ */
+        /** @description One work-info plugin. */
         WorkInfoPlugin: {
             /** Format: int64 */
             id: number;
-            /** @description マニフェストの name。マニフェストを読めなかったときは無い */
+            /** @description Manifest name; absent when the manifest could not be read. */
             name?: string;
-            /** @description アップロードしたファイルの名前 */
+            /** @description Uploaded filename. */
             fileName: string;
             version?: string;
             description?: string;
-            /** @description マニフェストの operations。invalid のプラグインでは空 */
+            /** @description Manifest operations; empty for invalid plugins. */
             operations: components["schemas"]["WorkInfoOperation"][];
-            /** @description モジュールの SHA-256（小文字の 16 進）。承認のときに送り返す */
+            /** @description Module SHA-256 in lowercase hexadecimal; send it back when approving. */
             digest: string;
             state: components["schemas"]["WorkInfoPluginState"];
             problem?: components["schemas"]["WorkInfoPluginProblem"];
-            /** @description 宣言の順の設定。invalid のプラグインでは空 */
+            /** @description Settings in declaration order; empty for invalid plugins. */
             settings: components["schemas"]["WorkInfoPluginSetting"][];
-            /** @description 取り決めの版 1 では常に真。プラグインはインターネットのサイトに届く */
+            /** @description Always true in protocol v1: plugins can access internet sites. */
             network: boolean;
             /**
              * Format: int64
-             * @description 最後のアップロードか承認の変更の時刻（Unix 秒）
+             * @description Timestamp of the latest upload or approval change, in Unix seconds.
              */
             updatedAt: number;
             /**
              * Format: int64
-             * @description 出力が残っている直近の実行が終わった時刻（Unix 秒）。残っていなければ無い
+             * @description Completion timestamp of the latest run whose output remains, in Unix seconds; absent when none remains.
              */
             lastRunAt?: number;
         };
         /**
-         * @description 実行の失敗の種類。
-         *     枠を取れなかった実行はモジュールを動かさないので、busy は残らない
+         * @description Run failure kind; busy is not retained because runs without an execution slot never start the module.
          * @enum {string}
          */
         WorkInfoPluginRunFailure: "plugin_failed" | "timed_out" | "memory_exceeded" | "output_too_large" | "blocked_address" | "network_error";
-        /** @description 直近の実行の標準エラー */
+        /** @description Latest run's standard error. */
         WorkInfoPluginRun: {
             /**
              * Format: int64
-             * @description 実行が終わった時刻（Unix 秒）
+             * @description Run completion timestamp in Unix seconds.
              */
             ranAt: number;
             operation: components["schemas"]["WorkInfoOperation"];
             failure?: components["schemas"]["WorkInfoPluginRunFailure"];
-            /** @description 標準エラーの先頭 64 KiB。秘密の設定の値は `[secret]` に置き換えてある。何も書かなければ空 */
+            /** @description First 64 KiB of standard error, with secret setting values replaced by [secret]; empty if nothing was written. */
             stderr: string;
-            /** @description 64 KiB より後ろを捨てたか */
+            /** @description Whether output beyond 64 KiB was discarded. */
             truncated: boolean;
         };
         WorkInfoPluginLastRun: {
             run?: components["schemas"]["WorkInfoPluginRun"];
         };
         WorkInfoPluginList: {
-            /** @description 名前、次にファイル名の順 */
+            /** @description Ordered by name, then filename. */
             plugins: components["schemas"]["WorkInfoPlugin"][];
         };
         ApproveWorkInfoPluginRequest: {
-            /** @description 一覧で見た digest */
+            /** @description Digest observed in the list response. */
             digest: string;
         };
         SetWorkInfoPluginSettingsRequest: {
-            /** @description キーから新しい値へ。null はその値を消し、省いたキーはそのまま残す */
+            /** @description Map of keys to new values; null deletes a value, omitted keys remain unchanged. */
             values: {
                 [key: string]: string | null;
             };
         };
         WorkInfoSearchRequest: {
-            /** @description 探す語。前後の空白を除いて 1〜200 文字 */
+            /** @description Search query: 1-200 characters after trimming. */
             query: string;
         };
-        /** @description 検索の候補 1 つ。文字だけで、画像は持たない */
+        /** @description One text-only search candidate without images. */
         WorkInfoCandidate: {
-            /** @description 作品の ID（前後の空白を除いて 1〜200 文字）。候補を選ぶと取得の `id` にそのまま渡す */
+            /** @description Work ID: 1-200 characters after trimming; selecting the candidate passes it unchanged as the fetch id. */
             id: string;
-            /** @description 作品のページの URL（http か https）。画面がリンクとして出すだけで、取得には渡さない */
+            /** @description HTTP or HTTPS work-page URL, displayed as a link only and not passed to fetch. */
             url: string;
             title: string;
-            /** @description 候補を見分ける説明の 1 行 */
+            /** @description One-line description distinguishing the candidate. */
             detail?: string;
         };
         WorkInfoSearchResult: {
-            /** @description プラグインが返した順の候補（先頭 50 件まで） */
+            /** @description First 50 candidates in plugin order. */
             candidates: components["schemas"]["WorkInfoCandidate"][];
         };
         WorkInfoFetchRequest: {
             /**
              * Format: int64
-             * @description 承認済みのプラグイン
+             * @description Approved plugin.
              */
             pluginId: number;
-            /** @description 作品の ID（品番など、前後の空白を除いて 1〜200 文字）。URL の形でも ID としてそのまま渡し、URL に埋め込むのはプラグイン */
+            /** @description Work ID, such as a product code: 1-200 characters after trimming. Even URL-shaped values pass unchanged as IDs; the plugin builds request URLs. */
             id: string;
         };
-        /** @description メモリに持つ取得の結果 */
+        /** @description Fetch result held in memory. */
         WorkInfoFetch: {
-            /** @description 結果の識別子。反映に使う */
+            /** @description Result identifier used when applying it. */
             fetchId: string;
             /**
              * Format: int64
-             * @description 結果が消える時刻（Unix 秒）
+             * @description Result expiration timestamp in Unix seconds.
              */
             expiresAt: number;
-            /** @description 表示名の規則を通った題名。プラグインが返さなかったか規則に外れれば無い */
+            /** @description Title passing display-name validation; absent if omitted by the plugin or invalid. */
             title?: string;
-            /** @description 取得したタグの名前。空でもよい */
+            /** @description Fetched tag names; may be empty. */
             tags: string[];
-            /** @description 前後の空白を除いた品番。プラグインが返さなければ無い。規則に外れても残し、反映が飛ばす */
+            /** @description Trimmed product code; absent if omitted by the plugin. Invalid values remain in the result but are skipped when applying. */
             code?: string;
-            /** @description 前後の空白を除いた説明。プラグインが返さなければ無い */
+            /** @description Trimmed description; absent if omitted by the plugin. */
             description?: string;
-            /** @description 種類の順（release・recorded・published）。無ければ [] */
+            /** @description Kind order: release, recorded, published; [] when empty. */
             dates: components["schemas"]["WorkInfoFetchedDate"][];
-            /** @description 役割の順、同じ役割の中は取得した順。無ければ [] */
+            /** @description Role order, then fetched order within each role; [] when empty. */
             people: components["schemas"]["WorkInfoFetchedPerson"][];
-            /** @description 役割の順、同じ役割の中は取得した順。無ければ [] */
+            /** @description Role order, then fetched order within each role; [] when empty. */
             organizations: components["schemas"]["WorkInfoFetchedOrganization"][];
-            /** @description 取得した順。無ければ [] */
+            /** @description Fetched order; [] when empty. */
             urls: string[];
-            /** @description 動画の外部 ID。取得した順。無ければ [] */
+            /** @description Video external IDs in fetched order; [] when empty. */
             externalIds: components["schemas"]["ExternalId"][];
             cover?: components["schemas"]["WorkInfoFetchedCover"];
         };
-        /**
-         * @description 取ったカバー画像の大きさ。プラグインが返さなかったか、取れないか、PNG・JPEG・静止画の WebP で
-         *     なければ無い。画像は getWorkInfoFetchCover で読む
-         */
+        /** @description Fetched cover dimensions; absent if omitted, unavailable or not PNG, JPEG or static WebP. Read the image through getWorkInfoFetchCover. */
         WorkInfoFetchedCover: {
             width: number;
             height: number;
         };
         WorkInfoFetchedDate: {
             kind: components["schemas"]["WorkDateKind"];
-            /** @description プラグインが返した日付。形が規則に外れても残し、反映が飛ばす */
+            /** @description Plugin-provided date; invalid formats remain in the result but are skipped when applying. */
             date: string;
         };
         /**
-         * @description 取得した人物・団体の照合の答え。existing は既存の実体 1 つ、new は何にも当たらず反映が作る、
-         *     ambiguous は複数に当たり反映が飛ばす
+         * @description Fetched person/organization match: existing identifies one entity, new creates an unmatched entity on apply, ambiguous matches multiple entities and is skipped.
          * @enum {string}
          */
         WorkInfoMatchState: "existing" | "new" | "ambiguous";
@@ -3809,42 +3283,39 @@ export interface components {
             state: components["schemas"]["WorkInfoMatchState"];
             /**
              * Format: int64
-             * @description state が existing のときだけ。一致した実体
+             * @description Matched entity, only when state is existing.
              */
             id?: number;
-            /** @description state が existing のときだけ。一致した実体の今の名前 */
+            /** @description Matched entity's current name, only when state is existing. */
             name?: string;
         };
         WorkInfoFetchedPerson: {
             role: components["schemas"]["WorkPersonRole"];
-            /** @description プラグインが返した名前 */
+            /** @description Plugin-provided name. */
             name: string;
             externalIds: components["schemas"]["ExternalId"][];
             match: components["schemas"]["WorkInfoMatch"];
         };
         WorkInfoFetchedOrganization: {
             role: components["schemas"]["WorkOrganizationRole"];
-            /** @description プラグインが返した名前 */
+            /** @description Plugin-provided name. */
             name: string;
             externalIds: components["schemas"]["ExternalId"][];
             match: components["schemas"]["WorkInfoMatch"];
         };
         /**
-         * @description 動画に反映できる取得の結果の項目。比較の行の順
+         * @description Fetched fields applicable to the video, in comparison-row order.
          * @enum {string}
          */
         WorkInfoField: "title" | "tags" | "cover" | "code" | "description" | "dates.release" | "dates.recorded" | "dates.published" | "people.performer" | "people.director" | "people.photographer" | "people.streamer" | "organizations.maker" | "organizations.label" | "urls" | "externalIds";
         ApplyWorkInfoFetchRequest: {
-            /** @description 反映する項目。空にできず、どれも結果に値がなければならない */
+            /** @description Fields to apply; nonempty, and every selected field must have a result value. */
             fields: components["schemas"]["WorkInfoField"][];
-            /**
-             * @description fields が tags を含むときに付ける取得済みのタグの名前。結果の tags の空でない部分集合で、結果が返した綴りのまま。
-             *     無ければ取得したタグを全部付ける。空、結果に無い名前、fields に tags が無いのに有る場合は 400
-             */
+            /** @description Fetched tag names to attach when fields includes tags: a nonempty subset of result tags using their exact spelling. Omission attaches all fetched tags; an empty subset, unknown name or presence without tags in fields returns 400. */
             tags?: string[];
         };
         /**
-         * @description 付けなかった理由。rejected は却下した名前、invalid はタグ名の規則に合わない名前
+         * @description Tag skip reason: rejected names were previously rejected; invalid names fail tag-name validation.
          * @enum {string}
          */
         SkippedTagReason: "rejected" | "invalid";
@@ -3853,36 +3324,35 @@ export interface components {
             reason: components["schemas"]["SkippedTagReason"];
         };
         /**
-         * @description 反映で飛ばした理由。invalid は項目の規則に合わない値、too_many は保存済みの件の後に数えて上限を超える件、
-         *     ambiguous は複数の実体に当たった人物・団体
+         * @description Apply skip reason: invalid values fail field validation; too_many entries exceed limits after existing entries; ambiguous people/organizations match multiple entities.
          * @enum {string}
          */
         SkippedWorkInfoReason: "invalid" | "too_many" | "ambiguous";
         SkippedWorkInfoValue: {
             field: components["schemas"]["WorkInfoField"];
-            /** @description 比較が見せた値（日付、URL、名前、`source: value`、説明は先頭 100 文字） */
+            /** @description Value shown in the comparison: date, URL, name, source: value, or the first 100 description characters. */
             value: string;
             reason: components["schemas"]["SkippedWorkInfoReason"];
         };
         WorkInfoFetchApplied: {
             video: components["schemas"]["Video"];
-            /** @description 付けなかったタグの名前。取得の結果の順 */
+            /** @description Unattached tag names in fetched-result order. */
             skippedTags: components["schemas"]["SkippedTag"][];
-            /** @description 題名とタグ以外の選んだ項目のうち反映で飛ばした値。項目の順、項目の中は取得した順 */
+            /** @description Skipped values for selected fields other than title and tags, in field order then fetched order. */
             skipped: components["schemas"]["SkippedWorkInfoValue"][];
         };
         /**
-         * @description 編集のセッションの状態
+         * @description Editing session state.
          * @enum {string}
          */
         ThumbnailEditState: "ready" | "queued" | "preparing" | "running" | "succeeded" | "failed" | "cancelled";
         /**
-         * @description 実行が失敗した理由
+         * @description Run failure reason.
          * @enum {string}
          */
         ThumbnailEditFailure: "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out";
         ThumbnailEdit: {
-            /** @description セッションの識別子 */
+            /** @description Session identifier. */
             id: string;
             /** Format: int64 */
             videoId: number;
@@ -3890,35 +3360,34 @@ export interface components {
             source: components["schemas"]["ThumbnailEditSource"];
             /**
              * Format: int64
-             * @description 画像がコマのとき、それを取った位置（ミリ秒。選んだ位置、指定した位置、自動の位置、先頭に
-             *     戻したときは 0）。保存した元の画像から始めたときは省く
+             * @description Source frame position in milliseconds: selected, specified, automatic, or zero when falling back to the start. Omitted when starting from a saved original image.
              */
             positionMs?: number;
-            /** @description コマの PNG（`GET /api/thumbnail-edits/{editId}/frame`） */
+            /** @description Frame PNG at GET /api/thumbnail-edits/{editId}/frame. */
             frameUrl: string;
-            /** @description コマの幅（px）。マスクはこの大きさで描く */
+            /** @description Frame width in pixels; draw the mask at these dimensions. */
             frameWidth: number;
-            /** @description コマの高さ（px） */
+            /** @description Frame height in pixels. */
             frameHeight: number;
             /**
              * Format: int64
-             * @description 実行を送ってからの時間（ミリ秒）。終わった実行では終わった時点で止まる。`ready` では省く
+             * @description Milliseconds since submission, frozen at completion for finished runs; omitted in ready state.
              */
             elapsedMs?: number;
             progress?: components["schemas"]["ThumbnailEditProgress"];
             error?: components["schemas"]["ThumbnailEditError"];
-            /** @description `succeeded` のときだけ。出力の画像（`GET /api/thumbnail-edits/{editId}/result`） */
+            /** @description Output image at GET /api/thumbnail-edits/{editId}/result; succeeded only. */
             resultUrl?: string;
         };
-        /** @description 提供元が報告したステップの進み具合。報告が無ければ省く */
+        /** @description Provider-reported step progress; omitted if unreported. */
         ThumbnailEditProgress: {
             value: number;
             max: number;
         };
-        /** @description `failed` のときだけ。失敗の理由と、提供元が渡した文 */
+        /** @description Failure reason and provider message; failed only. */
         ThumbnailEditError: {
             reason: components["schemas"]["ThumbnailEditFailure"];
-            /** @description 提供元の文（ノードの誤り、実行の誤り、足りない名前）。無ければ省く */
+            /** @description Provider message for node/run errors or missing resources; omitted when absent. */
             message?: string;
         };
         StartAutoTaggingRequest: {
@@ -4008,14 +3477,14 @@ export interface components {
             folderIds: number[];
         };
         AutoTaggingQueued: {
-            /** @description 積んだ動画の件数 */
+            /** @description Number of queued videos. */
             queued: number;
         };
         AutoTagVideoResult: {
-            /** @description 積んだか。判定中なら偽 */
+            /** @description Whether queued; false if already being judged. */
             queued: boolean;
         };
-        /** @description 発行した API トークン 1 件。平文とハッシュは持たない。 */
+        /** @description One issued API token, without plaintext or hash. */
         APIToken: {
             /** Format: int64 */
             id: number;
@@ -4024,128 +3493,117 @@ export interface components {
             createdAt: string;
             /**
              * Format: date-time
-             * @description 最後に使った時刻。未使用なら null。1 分より細かくは更新しない
+             * @description Last-use timestamp; null if unused, updated at most once per minute.
              */
             lastUsedAt: string | null;
         };
         APITokenList: {
-            /** @description 作成日時の降順 */
+            /** @description Creation time descending. */
             items: components["schemas"]["APIToken"][];
         };
         CreateAPITokenRequest: {
-            /** @description 用途の名前。前後の空白を除いて 1〜100 文字で、制御文字を含まない。重複してよい */
+            /** @description Purpose name: 1-100 characters after trimming, without control characters; duplicates allowed. */
             name: string;
         };
         CreatedAPIToken: {
             token: components["schemas"]["APIToken"];
-            /** @description トークンの平文（`vvt_` で始まる 47 文字）。この応答にだけ現れ、再び取り出せない */
+            /** @description Plaintext token: 47 characters beginning with vvt_. Returned only here and cannot be retrieved again. */
             secret: string;
         };
-        /** @description 動画に付いたタグ1件。nameは常に元の名前。 */
+        /** @description One assigned tag; name is always the original name. */
         TagRef: {
             /** Format: int64 */
             id: number;
             name: string;
-            /** @description 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である */
+            /** @description Whether the tag was automatically created and remains tentative. */
             tentative: boolean;
-            /** @description タグの種類。null は種類の無いタグ */
+            /** @description Tag kind; null means unclassified. */
             kind: components["schemas"]["TagKindRef"] | null;
         };
-        /**
-         * @description 動画に付いたタグ1件と、その出所。nameは常に元の名前。同じタグが手でも
-         *     フォルダ名からも付いていれば1件にまとめて両方を真にする。
-         */
+        /** @description One assigned tag with provenance; name is always the original name. Coalesce manual and folder-derived assignment into one entry with both flags true. */
         VideoTag: {
             /** Format: int64 */
             id: number;
             name: string;
-            /** @description 手で付けた分がある */
+            /** @description Has a manual assignment. */
             manual: boolean;
-            /** @description 祖先のフォルダ名がこのタグの名前かシノニムに一致する */
+            /** @description An ancestor folder name matches the tag name or a synonym. */
             fromFolder: boolean;
-            /** @description そのタグが仮のタグである。フォルダ由来だけで付いていても、そのタグの状態を出す */
+            /** @description Whether the tag is tentative, even when assigned only through a folder. */
             tentative: boolean;
-            /**
-             * @description 自動タグ付けが確率の中間の帯で仮に付け、所有者がまだ確定していない付与である。真のときだけ
-             *     返す。フォルダ名からも付いていれば返さない（docs/design-docs/auto-tagging.md）
-             */
+            /** @description Unconfirmed assignment suggested by the intermediate auto-tagging confidence band; returned only when true and not also folder-derived. See docs/design-docs/auto-tagging.md. */
             unconfirmed?: boolean;
-            /** @description タグの種類。null は種類の無いタグ */
+            /** @description Tag kind; null means unclassified. */
             kind: components["schemas"]["TagKindRef"] | null;
         };
-        /** @description 管理画面と候補に出す1件。 */
+        /** @description One management-screen or candidate entry. */
         Tag: {
             /** Format: int64 */
             id: number;
             name: string;
-            /** @description 名前の自然順 */
+            /** @description Natural-name order. */
             synonyms: string[];
-            /** @description いまライブラリにある動画の本数 */
+            /** @description Number of videos currently in the library. */
             videoCount: number;
-            /** @description 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である */
+            /** @description Whether the tag was automatically created and remains tentative. */
             tentative: boolean;
             /**
              * Format: date-time
-             * @description タグを作った時刻（秒の精度。docs/design-docs/catalog-organization.md）
+             * @description Tag creation timestamp with second precision; see docs/design-docs/catalog-organization.md.
              */
             createdAt: string;
-            /** @description タグの種類。null は種類の無いタグ */
+            /** @description Tag kind; null means unclassified. */
             kind: components["schemas"]["TagKindRef"] | null;
         };
         TagList: {
             items: components["schemas"]["Tag"][];
-            /** @description 条件（`q`・`tentative`・`unused`・`kind`）に合うタグの数。ページングとは独立に返る */
+            /** @description Tag count matching q, tentative, unused and kind, independent of pagination. */
             total: number;
-            /** @description 全部のタグの数。ページングとは独立に返る */
+            /** @description Total tag count, independent of pagination. */
             totalAll: number;
-            /** @description 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る */
+            /** @description Next-page cursor, included only when limit is supplied and more results remain. */
             nextCursor?: string;
-            /**
-             * @description 前後の空白を落とした `q` と、元の名前かシノニムの綴りが完全に一致し、`tentative`・`unused`・`kind` にも
-             *     合うタグ。`limit` を付け `cursor` の無い要求で、`q` が空でなく該当があるときだけ入る。
-             *     `items` に入るとは限らない（`items` は部分一致を `sort` の順に並べた 1 ページのため）
-             */
+            /** @description Tag whose original name or synonym exactly matches trimmed q and satisfies tentative, unused and kind. Included only for nonempty q with a match, limit and no cursor; it need not appear in the substring-matched, sorted items page. */
             exact?: components["schemas"]["Tag"];
         };
-        /** @description タグの種類の id と名前。 */
+        /** @description Tag kind ID and name. */
         TagKindRef: {
             /** Format: int64 */
             id: number;
             name: string;
         };
-        /** @description 種類の一覧の1件。 */
+        /** @description One kind-list entry. */
         TagKind: {
             /** Format: int64 */
             id: number;
             name: string;
-            /** @description この種類のタグの数。仮のタグも数える */
+            /** @description Number of tags of this kind, including tentative tags. */
             tagCount: number;
             /**
              * Format: date-time
-             * @description 種類を作った時刻（秒の精度）
+             * @description Kind creation timestamp with second precision.
              */
             createdAt: string;
         };
         TagKindList: {
-            /** @description すべての種類。id の順。画面は名前の自然順に並べ直す */
+            /** @description All kinds in ID order; the UI reorders them by natural name. */
             items: components["schemas"]["TagKind"][];
         };
         TagKindNameRequest: {
             name: string;
         };
         /**
-         * @description タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、
-         *     createdDesc・createdAsc は作った日。値が同じタグは名前の自然順、それも同じなら id
+         * @description name uses natural-name order; countDesc/countAsc use video count; createdDesc/createdAsc use creation time. Ties use natural-name order, then ID.
          * @default name
          * @enum {string}
          */
         TagSort: "name" | "countDesc" | "countAsc" | "createdDesc" | "createdAsc";
         RejectedTagNameList: {
-            /** @description 却下した名前。名前の自然順 */
+            /** @description Rejected names in natural-name order. */
             items: string[];
-            /** @description 却下した名前の全部の数 */
+            /** @description Total rejected-name count. */
             total: number;
-            /** @description 続きがあるときだけ入る。次の要求の `cursor` に渡す */
+            /** @description Included only when more results remain; pass as cursor in the next request. */
             nextCursor?: string;
         };
         CreateTagRequest: {
@@ -4155,12 +3613,12 @@ export interface components {
             name: string;
         };
         MergeTagRequest: {
-            /** @description 統合元の id。1 件の統合も [sourceId] で送る */
+            /** @description Source IDs; use [sourceId] for a single-source merge too. */
             sourceIds: number[];
         };
         TagMergeResponse: {
             tag: components["schemas"]["Tag"];
-            /** @description もう無かった統合元 */
+            /** @description Sources that no longer exist. */
             notFoundIds: number[];
         };
         TagBatchRequest: {
@@ -4168,86 +3626,83 @@ export interface components {
             action: "confirm" | "reject" | "delete" | "setKind" | "clearKind";
             /**
              * Format: int64
-             * @description `setKind` で付ける種類。`setKind` だけが持つ
+             * @description Kind assigned by setKind; present only for that action.
              */
             kindId?: number;
             ids: number[];
         };
         TagBatchResponse: {
-            /** @description 処理した id */
+            /** @description Processed IDs. */
             appliedIds: number[];
-            /** @description もう無かった id */
+            /** @description IDs that no longer exist. */
             notFoundIds: number[];
-            /** @description 操作が働かない種類だった id */
+            /** @description IDs whose state is incompatible with the operation. */
             notApplicableIds: number[];
         };
         TagImpactRequest: {
             /**
-             * @description 確認をとる操作。数える種類がこれで決まる
+             * @description Operation to confirm; determines which tag states are counted.
              * @enum {string}
              */
             action: "reject" | "delete" | "merge";
             ids: number[];
         };
         TagImpactResponse: {
-            /** @description ids のうち今あり、action が働くタグの数 */
+            /** @description Number of existing tags in ids to which action applies. */
             tagCount: number;
-            /** @description そのどれかが付いた、いまライブラリにある動画の本数（重複なし） */
+            /** @description Distinct current library videos carrying any of those tags. */
             videoCount: number;
         };
         AddTagSynonymRequest: {
             name: string;
             /**
              * Format: int64
-             * @description 統合を承諾したタグのid
+             * @description ID of the tag whose merge was approved.
              */
             mergeTagId?: number;
         };
-        /**
-         * @description 付与で使うタグの指定。id と name のちょうど一方を持つ。両方あるか、どちらも
-         *     無いときは invalid_request（400）にする。
-         */
+        /** @description Tag reference with exactly one of id or name; both or neither return 400 invalid_request. */
         TagInput: {
             /** Format: int64 */
             id?: number;
             name?: string;
         };
-        /** @description 人物か団体 1 件への参照。name はその実体の今の名前 */
+        /** @description Reference to one person or organization; name is its current name. */
         CreditRef: {
             /** Format: int64 */
             id: number;
             name: string;
         };
-        /** @description 人物か団体の別名 1 件 */
+        /** @description One person or organization alias. */
         Alias: {
             name: string;
-            /** @description BCP 47 の構文の言語タグ。無ければ省く */
+            /** @description BCP 47 language tag; omitted when absent. */
             language?: string;
         };
-        /** @description 外部の情報源での識別子 1 件 */
+        /** @description One identifier from an external source. */
         ExternalId: {
             source: string;
             value: string;
         };
         /**
-         * @description 日付の種類
+         * @description Date kind.
          * @enum {string}
          */
         WorkDateKind: "release" | "recorded" | "published";
         /**
-         * @description 動画での人物の役割
+         * @description Person role in a video.
          * @enum {string}
          */
         WorkPersonRole: "performer" | "director" | "photographer" | "streamer";
         /**
-         * @description 動画での団体の役割
+         * @description Organization role in a video.
          * @enum {string}
          */
         WorkOrganizationRole: "maker" | "label";
         WorkDate: {
             kind: components["schemas"]["WorkDateKind"];
             /**
-             * @description YYYY・YYYY-MM・YYYY-MM-DD（日まであれば暦にある日）
+             * @description YYYY, YYYY-MM or YYYY-MM-DD; a full date must be calendar-valid.
              * @example 2024
              * @example 2024-02
              * @example 2024-02-29
@@ -4262,27 +3717,24 @@ export interface components {
             role: components["schemas"]["WorkOrganizationRole"];
             organization: components["schemas"]["CreditRef"];
         };
-        /**
-         * @description 動画の作品情報。
-         *     一覧は必ずあり、空なら []。単一の値は未設定なら無い
-         */
+        /** @description Video work information; lists are always present, using [] when empty, while unset scalar values are absent. */
         WorkInfo: {
-            /** @description 品番 */
+            /** @description Product code. */
             code?: string;
-            /** @description 説明。改行を含みうる */
+            /** @description Description, potentially including newlines. */
             description?: string;
-            /** @description 種類の順（release・recorded・published） */
+            /** @description Kind order: release, recorded, published. */
             dates: components["schemas"]["WorkDate"][];
-            /** @description 役割の順、同じ役割の中は入力した順。name は人物の今の名前 */
+            /** @description Role order, then input order within each role; name is the person's current name. */
             people: components["schemas"]["WorkPerson"][];
-            /** @description 役割の順、同じ役割の中は入力した順。name は団体の今の名前 */
+            /** @description Role order, then input order within each role; name is the organization's current name. */
             organizations: components["schemas"]["WorkOrganization"][];
-            /** @description 入力した順 */
+            /** @description Input order. */
             urls: string[];
-            /** @description (source, value) の順 */
+            /** @description Ordered by (source, value). */
             externalIds: components["schemas"]["ExternalId"][];
         };
-        /** @description 書き込みで人物か団体 1 件を指す参照 */
+        /** @description Write reference to one person or organization. */
         CreditIdRef: {
             /** Format: int64 */
             id: number;
@@ -4295,11 +3747,7 @@ export interface components {
             role: components["schemas"]["WorkOrganizationRole"];
             organization: components["schemas"]["CreditIdRef"];
         };
-        /**
-         * @description 作品情報の書き込みの本文。
-         *     WorkInfo の 7 つのプロパティを持ち、どれも省いてよく null も受け付ける。省いたものと null は
-         *     解除で、全体を置き換える
-         */
+        /** @description Full work-info replacement with the seven WorkInfo properties; each may be omitted or null, either of which clears it. */
         WorkInfoInput: {
             code?: string | null;
             description?: string | null;
@@ -4309,103 +3757,100 @@ export interface components {
             urls?: string[] | null;
             externalIds?: components["schemas"]["ExternalId"][] | null;
         };
-        /** @description 全画面の編集画面の保存の本文。両方とも必須 */
+        /** @description Fullscreen editor save body; both fields are required. */
         VideoDetailsInput: {
-            /** @description 新しい表示名。前後の空白を取り除いて空なら解除する */
+            /** @description New display name; whitespace-only after trimming clears it. */
             displayName: string;
             workInfo: components["schemas"]["WorkInfoInput"];
         };
-        /** @description 人物 1 件 */
+        /** @description One person. */
         Person: {
             /** Format: int64 */
             id: number;
             name: string;
-            /** @description 名前の自然順 */
+            /** @description Natural-name order. */
             aliases: components["schemas"]["Alias"][];
-            /** @description (source, value) の順 */
+            /** @description Ordered by (source, value). */
             externalIds: components["schemas"]["ExternalId"][];
-            /** @description この人物をどれかの役割で結ぶ、表示中の動画の数 */
+            /** @description Visible videos linked to this person in any role. */
             videoCount: number;
             /** Format: date-time */
             createdAt: string;
         };
-        /** @description 団体 1 件。Person と同じ項目に親の団体が加わる */
+        /** @description One organization, with Person fields plus a parent organization. */
         Organization: {
             /** Format: int64 */
             id: number;
             name: string;
-            /** @description 名前の自然順 */
+            /** @description Natural-name order. */
             aliases: components["schemas"]["Alias"][];
-            /** @description (source, value) の順 */
+            /** @description Ordered by (source, value). */
             externalIds: components["schemas"]["ExternalId"][];
-            /** @description この団体をどれかの役割で結ぶ、表示中の動画の数 */
+            /** @description Visible videos linked to this organization in any role. */
             videoCount: number;
             /** Format: date-time */
             createdAt: string;
-            /** @description 親の団体。根の団体では省く */
+            /** @description Parent organization; omitted for roots. */
             parent?: components["schemas"]["CreditRef"];
         };
-        /** @description 人物か団体を作るときの本文。parentId は団体だけが使う */
+        /** @description Person or organization creation body; parentId is organization-only. */
         CreditInput: {
             name: string;
             aliases?: components["schemas"]["Alias"][];
             externalIds?: components["schemas"]["ExternalId"][];
             /**
              * Format: int64
-             * @description 親の団体の id。団体だけで、人物に送ると 400 invalid_request
+             * @description Parent organization ID; sending it for a person returns 400 invalid_request.
              */
             parentId?: number;
         };
-        /**
-         * @description 人物か団体の書き換えの本文。どのプロパティも省いてよく、省いたものは今のまま残す。一覧は丸ごと
-         *     置き換え、null は一覧を空にする。parentId は団体だけが使い、null は親を外す
-         */
+        /** @description Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent. */
         CreditPatch: {
             name?: string;
             aliases?: components["schemas"]["Alias"][] | null;
             externalIds?: components["schemas"]["ExternalId"][] | null;
             /**
              * Format: int64
-             * @description 親の団体の id。null は親を外す。人物に送ると 400 invalid_request
+             * @description Parent organization ID; null detaches it. Sending this for a person returns 400 invalid_request.
              */
             parentId?: number | null;
         };
         CreditMergeRequest: {
-            /** @description 統合元の id。1 件以上 20,000 件以下 */
+            /** @description Source IDs: 1-20,000 entries. */
             sourceIds: number[];
         };
-        /** @description 人物の一覧（契約の CreditList の人物の形） */
+        /** @description Person form of the CreditList contract. */
         PersonList: {
             items: components["schemas"]["Person"][];
-            /** @description 条件（q）に合う人物の数。ページングとは独立に返る */
+            /** @description Person count matching q, independent of pagination. */
             total: number;
-            /** @description 全部の人物の数 */
+            /** @description Total person count. */
             totalAll: number;
-            /** @description 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る */
+            /** @description Next-page cursor, included only when limit is supplied and more results remain. */
             nextCursor?: string;
         };
-        /** @description 団体の一覧（契約の CreditList の団体の形） */
+        /** @description Organization form of the CreditList contract. */
         OrganizationList: {
             items: components["schemas"]["Organization"][];
-            /** @description 条件（q）に合う団体の数。ページングとは独立に返る */
+            /** @description Organization count matching q, independent of pagination. */
             total: number;
-            /** @description 全部の団体の数 */
+            /** @description Total organization count. */
             totalAll: number;
-            /** @description 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る */
+            /** @description Next-page cursor, included only when limit is supplied and more results remain. */
             nextCursor?: string;
         };
         PersonMergeResponse: {
             person: components["schemas"]["Person"];
-            /** @description もう無かった統合元 */
+            /** @description Sources that no longer exist. */
             notFoundIds: number[];
         };
         OrganizationMergeResponse: {
             organization: components["schemas"]["Organization"];
-            /** @description もう無かった統合元 */
+            /** @description Sources that no longer exist. */
             notFoundIds: number[];
         };
         /**
-         * @description 人物と団体の一覧の並び順。タグの一覧（TagSort）と同じ 5 つで、値が同じものは名前の自然順、それも同じなら id
+         * @description Same five sort modes as TagSort; ties use natural-name order, then ID.
          * @default name
          * @enum {string}
          */
@@ -4419,93 +3864,79 @@ export interface components {
         };
         VideoTagsResponse: {
             tag: components["schemas"]["TagRef"];
-            /** @description videoIds のうちいまライブラリにある動画の数 */
+            /** @description Number of videoIds currently in the library. */
             applied: number;
         };
         VideoVisibilityRequest: {
             videoIds: number[];
-            /** @description true で公開、false で非公開にする */
+            /** @description True makes videos public; false makes them private. */
             public: boolean;
         };
         FavoritesRequest: {
-            /** @description お気に入りを付け外しする動画の id */
+            /** @description Video IDs whose favorite state changes. */
             videoIds?: number[];
-            /** @description お気に入りを付け外しするグループの id */
+            /** @description Group IDs whose favorite state changes. */
             groupIds?: number[];
-            /** @description お気に入りを付け外しするスマートフォルダの id */
+            /** @description Smart-folder IDs whose favorite state changes. */
             smartFolderIds?: number[];
-            /** @description true でお気に入りにし、false で外す */
+            /** @description True adds favorites; false removes them. */
             favorite: boolean;
         };
         FavoritesResponse: {
-            /**
-             * @description videoIds のうちいまライブラリにある異なる動画の id の数（同じ集まりの id も 1 本ずつ数え、
-             *     既に同じ状態だったものを含む）
-             */
+            /** @description Distinct videoIds currently in the library, counting versions within the same set separately and including videos already in the requested state. */
             appliedVideos: number;
-            /** @description groupIds のうちいまある異なるグループの数（既に同じ状態だったものを含む） */
+            /** @description Distinct existing groupIds, including groups already in the requested state. */
             appliedGroups: number;
-            /** @description smartFolderIds のうちいまある異なるスマートフォルダの数（既に同じ状態だったものを含む） */
+            /** @description Distinct existing smartFolderIds, including folders already in the requested state. */
             appliedSmartFolders: number;
         };
-        /** @description プレイリスト 1 つの要約 */
+        /** @description One playlist summary. */
         PlaylistSummary: {
             /** Format: int64 */
             id: number;
-            /** @description 前後の空白を取り除いた 1〜100 文字の名前。ほかのプレイリストと同じでもよい */
+            /** @description Name of 1-100 characters after trimming; may duplicate another playlist name. */
             name: string;
-            /** @description 今見せる項目の数 */
+            /** @description Number of currently visible items. */
             itemCount: number;
             /**
              * Format: date-time
-             * @description 名前か項目を最後に変えた時刻
+             * @description Timestamp of the latest name or item change.
              */
             updatedAt: string;
-            /**
-             * @description 一覧のカードのフォルダの絵柄に差し込むサムネイル（`LibraryGroup.previews` と同じ形）。
-             *     見せる項目を位置の順にたどり、動画の項目はその動画、グループの項目は並びの順で
-             *     最初のサムネイル生成済みのメンバーを 1 枚ずつ、サムネイル生成済みのものだけ最大 4 件。
-             *     `GET /api/playlists` の要約にだけ入り、ほかの応答では省く
-             */
+            /** @description Up to four generated thumbnails for the folder-style card, shaped like LibraryGroup.previews. Walk visible items in position order, choosing a video's thumbnail or the first generated member thumbnail for a group; included only in GET /api/playlists summaries. */
             covers?: components["schemas"]["FolderPreview"][];
         };
         PlaylistList: {
-            /** @description プレイリストの要約の 1 ページ。`updatedAt` の新しい順（同じなら id の大きい順） */
+            /** @description One summary page ordered by updatedAt descending, then ID descending. */
             items: components["schemas"]["PlaylistSummary"][];
-            /** @description 全部のプレイリストの数。ページングとは独立に返る */
+            /** @description Total playlist count, independent of pagination. */
             total: number;
-            /**
-             * @description 一覧の版。プレイリストを作る・消す・名前か項目を変えるたびに変わる不透明な文字列。
-             *     ページごとの値が最初のページと違えば、並びが変わっているので最初のページから読み直す
-             */
+            /** @description Opaque list version changed by playlist creation, deletion, renaming or item changes. If a later page differs from the first, restart pagination because ordering changed. */
             version: string;
-            /** @description 次のページの取得に渡す。続きがあるときだけ入る */
+            /** @description Next-page cursor; included only when more results remain. */
             nextCursor?: string;
         };
-        /** @description プレイリスト 1 つ。`PlaylistSummary` の欄に見せる項目を足したもの */
+        /** @description PlaylistSummary fields plus visible items. */
         Playlist: {
             /** Format: int64 */
             id: number;
-            /** @description 前後の空白を取り除いた 1〜100 文字の名前 */
+            /** @description Name of 1-100 characters after trimming. */
             name: string;
-            /** @description 今見せる項目の数 */
+            /** @description Number of currently visible items. */
             itemCount: number;
             /**
              * Format: date-time
-             * @description 名前か項目を最後に変えた時刻
+             * @description Timestamp of the latest name or item change.
              */
             updatedAt: string;
-            /** @description 見せる項目を位置の順に並べたもの */
+            /** @description Visible items in position order. */
             items: components["schemas"]["PlaylistItem"][];
         };
-        /**
-         * @description プレイリストの項目 1 つ。`kind` に応じて `video`・`group`・`smartFolder` のちょうど 1 つが入る。
-         *     `smartFolder` の値は読んだ時点のフォルダの再生順から作り、再生もその時点の再生順に従う
-         */
+        /** @description One playlist item containing exactly one of video, group or smartFolder according to kind. smartFolder reflects its playback order at read time, which playback also follows. */
         PlaylistItem: {
             /**
              * Format: int64
-             * @description 並べ替えと取り外しに使う項目の識別子
+             * @description Item identifier for reordering and removal.
              */
             id: number;
             /** @enum {string} */
@@ -4515,32 +3946,32 @@ export interface components {
             smartFolder?: components["schemas"]["LibrarySmartFolder"];
         };
         PlaylistName: {
-            /** @description プレイリストの名前。サーバーが前後の空白を取り除いてから長さを数える */
+            /** @description Playlist name; the server trims whitespace before checking length. */
             name: string;
         };
         PlaylistItemsAdd: {
-            /** @description 足す動画の id */
+            /** @description Video IDs to add. */
             videoIds?: number[];
-            /** @description 足すグループの id（`PUT /api/favorites` と同じ形） */
+            /** @description Group IDs to add, matching the PUT /api/favorites shape. */
             groupIds?: number[];
-            /** @description 足すスマートフォルダの id（`PUT /api/favorites` と同じ形） */
+            /** @description Smart-folder IDs to add, matching the PUT /api/favorites shape. */
             smartFolderIds?: number[];
         };
         PlaylistItemsAdded: {
-            /** @description 末尾に足した項目の数 */
+            /** @description Number of items appended. */
             added: number;
-            /** @description 引けたが既にプレイリストにあった項目の数 */
+            /** @description Number of resolved items already present in the playlist. */
             existing: number;
         };
         PlaylistItemMove: {
             /**
              * Format: int64
-             * @description この項目のすぐ後ろへ移す。null は先頭へ移す
+             * @description Move immediately after this item; null moves to the start.
              */
             afterItemId: number | null;
         };
         VideoVisibilityResponse: {
-            /** @description videoIds のうちいまライブラリにある動画の数（既に同じ状態だったものを含む） */
+            /** @description Number of videoIds currently in the library, including videos already in the requested state. */
             applied: number;
         };
         VideoTagsSummaryRequest: {
@@ -4548,39 +3979,33 @@ export interface components {
         };
         VideoTagsSummaryItem: {
             tag: components["schemas"]["TagRef"];
-            /** @description 手で付けた分とフォルダ名から付いている分のどちらかで付いている本数 */
+            /** @description Videos carrying the tag manually or through folder names. */
             count: number;
-            /** @description 手で付けた本数 */
+            /** @description Videos carrying the tag manually. */
             manualCount: number;
         };
         VideoTagsSummary: {
             total: number;
-            /** @description 1本以上に付いているタグだけ。名前の自然順 */
+            /** @description Tags assigned to at least one video, in natural-name order. */
             items: components["schemas"]["VideoTagsSummaryItem"][];
         };
         VideoIdsResponse: {
             ids: number[];
-            /** @description tag のうち存在しなかった id。1つも無ければ省略される */
+            /** @description Missing IDs from tag; omitted when none. */
             missingTagIds?: number[];
-            /**
-             * @description 条件に合うグループの項目。各要素のグループの id と、その再生順の動画の id（ids にも含まれる）。
-             *     listLibraryIds の応答にだけ入り、1 つも無ければ省略される
-             */
+            /** @description Matching group entries with each group ID and playback-ordered video IDs, also included in ids. Only in listLibraryIds responses; omitted when none. */
             groups?: components["schemas"]["LibraryGroupIds"][];
-            /**
-             * @description 条件に合うスマートフォルダの項目の id。フォルダの動画は ids に入らない。listLibraryIds の
-             *     応答にだけ入り、1 つも無ければ省略される
-             */
+            /** @description Matching smart-folder item IDs; their videos are not included in ids. Only in listLibraryIds responses; omitted when none. */
             smartFolderIds?: number[];
         };
-        /** @description GET /api/library/ids のグループの項目 1 件 */
+        /** @description One group entry in GET /api/library/ids. */
         LibraryGroupIds: {
             /**
              * Format: int64
-             * @description グループの識別子
+             * @description Group ID
              */
             id: number;
-            /** @description グループの再生順の、見せてよい動画の id */
+            /** @description Visible video IDs in group playback order. */
             videoIds: number[];
         };
         DirectoryEntry: {
@@ -4593,57 +4018,42 @@ export interface components {
             directories: components["schemas"]["DirectoryEntry"][];
         };
         /**
-         * @description 並び順。末尾の Asc は昇順、Desc は降順。added = 追加日、modified = 一覧に出す
-         *     所在の更新日時（mtime）、created = 一覧に出す所在の作成日時（取れなければ mtime。
-         *     docs/design-docs/catalog-organization.md）、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
-         *     動画は向きに関係なく末尾）、size = 一覧に出す所在のファイルサイズ、played =
-         *     最後に再生した時刻（記録の無い動画は向きに関係なく末尾）、favorited = お気に入りに
-         *     した日時（お気に入りでない項目は向きに関係なく末尾。グループの項目はグループを
-         *     お気に入りにした日時）、random = `seed` と
-         *     動画の識別子から作る順。値が同じなら識別子で決着させる
+         * @description Asc/Desc select direction. added uses added time; modified uses displayed-location mtime; created uses its birth time or mtime fallback; title uses its natural title; duration uses video length; size uses its file size; played uses last playback; favorited uses favorite time (the group's for group items); random derives order from seed and video ID. Missing duration/playback/favorite values sort last in either direction; ties use ID. See docs/design-docs/catalog-organization.md.
          * @default addedDesc
          * @enum {string}
          */
         VideoSort: "addedAsc" | "addedDesc" | "modifiedAsc" | "modifiedDesc" | "createdAsc" | "createdDesc" | "titleAsc" | "titleDesc" | "durationAsc" | "durationDesc" | "sizeAsc" | "sizeDesc" | "playedAsc" | "playedDesc" | "favoritedAsc" | "favoritedDesc" | "random";
         /**
-         * @description 視聴状態の絞り込み。all = 絞り込まない、unwatched = 未視聴、inProgress = 視聴途中、
-         *     watched = 視聴済み
+         * @description Watch filter: all, unwatched, inProgress or watched.
          * @default all
          * @enum {string}
          */
         WatchFilter: "all" | "unwatched" | "inProgress" | "watched";
         /**
-         * @description direct = フォルダ直下の所在だけ、subtree = フォルダとその配下すべての所在
+         * @description direct selects immediate locations; subtree includes all descendants
          * @default direct
          * @enum {string}
          */
         FolderScope: "direct" | "subtree";
         VideoPage: {
             items: components["schemas"]["Video"][];
-            /**
-             * @description 検索語・watch・playable・範囲（listFolderVideos の scope）をすべて適用した
-             *     全件の数。ページングとは独立に返る
-             */
+            /** @description Total after applying query, watch, playable and listFolderVideos scope, independent of pagination. */
             total: number;
-            /** @description 次のページの取得に渡す。これ以上無い場合は省略される */
+            /** @description Next-page cursor; omitted when no more results remain. */
             nextCursor?: string;
-            /** @description tag のうち存在しなかった id。1つも無ければ省略される */
+            /** @description Missing IDs from tag; omitted when none. */
             missingTagIds?: number[];
         };
         LibraryPage: {
             items: components["schemas"]["LibraryItem"][];
-            /** @description 絞り込み後の項目（カード）の数。ページングとは独立に返る */
+            /** @description Filtered item/card count, independent of pagination. */
             total: number;
-            /** @description 次のページの取得に渡す。これ以上無い場合は省略される */
+            /** @description Next-page cursor; omitted when no more results remain. */
             nextCursor?: string;
-            /** @description tag のうち存在しなかった id。1つも無ければ省略される */
+            /** @description Missing IDs from tag; omitted when none. */
             missingTagIds?: number[];
         };
-        /**
-         * @description ライブラリの項目1件。`kind` に応じて `video`・`group`・`smartFolder` のちょうど 1 つが入る。
-         *     `smartFolder` は一番上のスマートフォルダ（お気に入りのみではお気に入りのフォルダ）の要約で、
-         *     カードの値は `listSmartFolderCards` で読む
-         */
+        /** @description One library item containing exactly one of video, group or smartFolder according to kind. smartFolder summarizes a top-level folder, or a favorited folder in favorites-only mode; fetch card values with listSmartFolderCards. */
         LibraryItem: {
             /** @enum {string} */
             kind: "video" | "group" | "smartFolder";
@@ -4651,159 +4061,140 @@ export interface components {
             group?: components["schemas"]["LibraryGroup"];
             smartFolder?: components["schemas"]["SmartFolderSummary"];
         };
-        /** @description ホームの棚の項目（HomeShelfItem）のグループ。カードの値（LibraryGroupCardValues）だけを持つ。 */
+        /** @description Group card values for Home shelf items, without member IDs or tags. */
         LibraryGroupCard: components["schemas"]["LibraryGroupCardValues"];
-        /**
-         * @description グループのカードの値。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
-         *     同じ動画は最初の 1 回）に並べたものから作る（docs/design-docs/catalog-organization.md。この説明の
-         *     「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
-         *     `watchState`・`lastPlayedAt`・`favorite` を省く。ほかの値を禁じるのはこれを合成する
-         *     LibraryGroupCard と LibraryGroup の `unevaluatedProperties` で、ここは開いたままにする
-         *     （閉じると合成で足す `videoIds`・`tags` まで禁じる）。
-         */
+        /** @description Values aggregate visible descendants in playback order, depth-first and deduplicated. Guest responses omit watchedCount, watchState, lastPlayedAt and favorite. Composing schemas close unevaluatedProperties so LibraryGroup can add videoIds and tags. */
         LibraryGroupCardValues: {
             /**
              * Format: int64
-             * @description グループの識別子
+             * @description Group ID
              */
             id: number;
-            /**
-             * @description 自動グループのフォルダ。フォルダから自動でできたグループで、そのフォルダが登録フォルダの
-             *     下にあるときだけ入る。手で作ったグループには無く、画面はこれで 2 つを見分ける
-             */
+            /** @description Folder for an automatic group, included only when that folder is under a registered folder. Absent for manual groups, allowing the UI to distinguish them. */
             folder?: components["schemas"]["VideoFolder"];
-            /** @description グループの名前 */
+            /** @description Group name. */
             name: string;
             videoCount: number;
-            /** @description 完了したメンバーの数。所有者の応答にだけ入る */
+            /** @description Completed member count; owner responses only. */
             watchedCount?: number;
             /**
-             * @description 見始めたメンバーが無ければ unwatched、全メンバーが完了なら watched、それ以外は
-             *     inProgress。所有者の応答にだけ入る
+             * @description unwatched if none have started, watched if all are complete, otherwise inProgress; owner responses only.
              * @enum {string}
              */
             watchState?: "unwatched" | "inProgress" | "watched";
             /**
              * Format: int64
-             * @description 長さの分かっているメンバーの合計。1本も分からなければ省く
+             * @description Sum of known member durations; omitted if none are known.
              */
             durationMs?: number;
             /**
              * Format: int64
-             * @description メンバーの代表の所在の大きさの合計
+             * @description Sum of representative-location sizes for members.
              */
             sizeBytes: number;
             /**
              * Format: date-time
-             * @description メンバーの追加日時の最大
+             * @description Latest member addition timestamp.
              */
             addedAt: string;
             /**
              * Format: date-time
-             * @description メンバーの最後に再生した時刻の最大。無ければ省く
+             * @description Latest member playback timestamp; omitted when absent.
              */
             lastPlayedAt?: string;
-            /**
-             * @description カードのフォルダの絵柄に差し込むサムネイル。メンバーのうちサムネイル生成済みのものを
-             *     並びの順に最大4件（フォルダカードの previews と同じ形）。リスト表示の行は先頭の
-             *     1件をサムネイルに使う
-             */
+            /** @description Up to four generated member thumbnails in order, matching folder-card previews. List rows use the first thumbnail. */
             previews: components["schemas"]["FolderPreview"][];
             /**
              * Format: int64
-             * @description 押したときに開くメンバー。並びの順で途中まで見た最初のメンバー、無ければ最初の
-             *     未完了のメンバー、全部完了なら最初のメンバー
+             * @description First in-progress member, otherwise first incomplete member, otherwise the first member.
              */
             openVideoId: number;
-            /**
-             * @description 所有者がグループをお気に入りにしたか。メンバーの動画のお気に入りとは独立で、
-             *     所有者の応答にだけ入る
-             */
+            /** @description Whether the owner favorited the group, independently of member favorites; owner-only. */
             favorite?: boolean;
         };
         LibraryGroup: components["schemas"]["LibraryGroupCardValues"] & {
-            /** @description 全メンバーの id を並びの順に */
+            /** @description All member IDs in playback order. */
             videoIds: number[];
-            /** @description メンバーのタグの和集合。同じタグの出所は和にする */
+            /** @description Union of member tags, combining provenance for each tag. */
             tags: components["schemas"]["VideoTag"][];
         };
-        /** @description グループの項目に足す動画とグループ。動画、次にグループの順に、それぞれ要求の順で足す */
+        /** @description Videos and groups to append: videos first, then groups, preserving request order within each kind. */
         GroupMembers: {
-            /** @description 足す動画の id */
+            /** @description Video IDs to add. */
             videoIds?: number[];
-            /** @description 足すグループの id */
+            /** @description Group IDs to add. */
             groupIds?: number[];
         };
-        /** @description POST /api/groups の本文。`GroupMembers` に名前を足したもの */
+        /** @description POST /api/groups body: GroupMembers plus a name. */
         GroupCreate: {
-            /** @description グループの名前。サーバーが前後の空白を取り除いてから長さを数える */
+            /** @description Group name; the server trims whitespace before checking length. */
             name: string;
-            /** @description 項目にする動画の id */
+            /** @description Video IDs to include as items. */
             videoIds?: number[];
-            /** @description 項目にするグループの id */
+            /** @description Group IDs to include as items. */
             groupIds?: number[];
         };
         GroupName: {
-            /** @description グループの名前。サーバーが前後の空白を取り除いてから長さを数える */
+            /** @description Group name; the server trims whitespace before checking length. */
             name: string;
         };
-        /** @description PATCH /api/groups/{id} の本文 */
+        /** @description PATCH /api/groups/{id} body. */
         GroupRename: {
-            /** @description グループの名前。サーバーが前後の空白を取り除いてから長さを数える */
+            /** @description Group name; the server trims whitespace before checking length. */
             name: string;
-            /** @description このグループを作った POST /api/organize/group の `undoToken`。名前の変更をその取り消しに含める */
+            /** @description undoToken from the POST /api/organize/group that created this group, including this rename in that undo operation. */
             undoToken?: string;
         };
-        /** @description GET /api/groups の応答 */
+        /** @description GET /api/groups response. */
         GroupListPage: {
-            /** @description 見る人に見せるグループを、どの深さのものも自然な名前の順に */
+            /** @description Visible groups at every depth, in natural-name order. */
             groups: components["schemas"]["LibraryGroup"][];
-            /** @description 続きがあるときだけ入る */
+            /** @description Included only when more results remain. */
             nextCursor?: string;
         };
         GroupItemMove: {
             /**
              * Format: int64
-             * @description この項目のすぐ後ろへ移す。無ければ先頭へ移す
+             * @description Move immediately after this item; omission moves to the start.
              */
             after?: number;
         };
         GroupItemRemove: {
-            /** @description 外す項目の id（動画やグループの id ではない） */
+            /** @description Item ID to remove, not a video or group ID. */
             itemIds: number[];
         };
-        /** @description ドラッグしたカード 1 枚 */
+        /** @description One dragged card. */
         OrganizeRef: {
             /** @enum {string} */
             kind: "video" | "group";
             /**
              * Format: int64
-             * @description 動画かグループの id
+             * @description Video or group ID.
              */
             id: number;
         };
-        /** @description ドラッグしたカード。画面の順 */
+        /** @description Dragged cards in screen order. */
         OrganizeRefs: components["schemas"]["OrganizeRef"][];
         OrganizeResult: {
-            /** @description この操作を取り消すトークン（POST /api/organize/undo）。10 分有効で、1 回だけ使える */
+            /** @description Single-use undo token for POST /api/organize/undo, valid for ten minutes. */
             undoToken: string;
             /**
              * Format: int64
-             * @description 新しいグループの id。/api/organize/group だけが返す
+             * @description New group ID; returned only by /api/organize/group.
              */
             groupId?: number;
         };
         OrganizeReorder: {
             /**
              * Format: int64
-             * @description 開いているグループ
+             * @description Currently open group.
              */
             groupId: number;
-            /** @description 移す項目の id（動画やグループの id ではない）。画面の順 */
+            /** @description Item IDs to move in screen order, not video or group IDs. */
             itemIds: number[];
             /**
              * Format: int64
-             * @description この項目のすぐ後ろへ移す。無ければ先頭へ移す
+             * @description Move immediately after this item; omission moves to the start.
              */
             after?: number;
         };
@@ -4811,12 +4202,12 @@ export interface components {
             items: components["schemas"]["OrganizeRefs"];
             /**
              * Format: int64
-             * @description 落とした先の動画
+             * @description Drop-target video.
              */
             target: number;
             /**
              * Format: int64
-             * @description 新しいグループを置く、開いているグループ
+             * @description Currently open group in which to place the new group.
              */
             from?: number;
         };
@@ -4824,12 +4215,12 @@ export interface components {
             items: components["schemas"]["OrganizeRefs"];
             /**
              * Format: int64
-             * @description カードをドラッグして出した開いているグループ
+             * @description Currently open group from which cards were dragged.
              */
             from?: number;
             /**
              * Format: int64
-             * @description カードを入れるグループ。無ければライブラリ（`from` から外すだけ）
+             * @description Destination group; omission means the library, removing cards from from only.
              */
             to?: number;
         };
@@ -4837,45 +4228,44 @@ export interface components {
             items: components["schemas"]["OrganizeRefs"];
             /**
              * Format: int64
-             * @description 落とした先のグループ。`items` は少なくとも 1 つのグループを含む
+             * @description Drop-target group; items must contain at least one group.
              */
             into: number;
             /**
              * Format: int64
-             * @description カードをドラッグして出した開いているグループ。グループのページが送り、ライブラリは送らない。
-             *     あればカードはマージと同じ取引でここから外れる
+             * @description Source group supplied by a group page, not the library. When present, remove cards from it in the same transaction as the merge.
              */
             from?: number;
         };
         OrganizeBundle: {
-            /** @description ドラッグした動画の id */
+            /** @description Dragged video IDs. */
             videoIds: number[];
             /**
              * Format: int64
-             * @description 落とした先の動画。新しい集まりの代表になる
+             * @description Drop-target video, which becomes the new version-set representative.
              */
             target: number;
         };
         OrganizeUndo: {
-            /** @description 操作の応答の `undoToken` */
+            /** @description undoToken from the operation response. */
             token: string;
         };
         GroupTagResult: {
             tag: components["schemas"]["TagRef"];
-            /** @description タグを新しく作ったとき true。名前かシノニムで引けた既存のタグなら false */
+            /** @description True for a newly created tag; false for an existing tag resolved by name or synonym. */
             created: boolean;
         };
-        /** @description グループを指す id と名前 */
+        /** @description Group ID and name. */
         GroupRef: {
             /** Format: int64 */
             id: number;
             name: string;
         };
-        /** @description グループの項目 1 件。`kind` に応じて `video` か `group` のちょうど一方が入る */
+        /** @description One group item containing exactly one of video or group according to kind. */
         GroupItem: {
             /**
              * Format: int64
-             * @description 項目の識別子。動画やグループの id ではない
+             * @description Item identifier, not a video or group ID.
              */
             id: number;
             /** @enum {string} */
@@ -4883,165 +4273,154 @@ export interface components {
             video?: components["schemas"]["Video"];
             group?: components["schemas"]["LibraryGroup"];
         };
-        /** @description GET /api/groups/{id} の応答 */
+        /** @description GET /api/groups/{id} response. */
         GroupDetail: {
             group: components["schemas"]["LibraryGroup"];
-            /** @description 要求の `trail` のうち親と子の組が続く部分。外側から順で、最後はこのグループの親 */
+            /** @description Connected parent-child portion of the requested trail, ordered outermost first and ending at this group's parent. */
             trail: components["schemas"]["GroupRef"][];
-            /** @description 項目の最初のページ。位置の順で、見る人に見せる項目だけ */
+            /** @description First item page in position order, including visible items only. */
             items: components["schemas"]["GroupItem"][];
-            /** @description 続きがあるときだけ入る。`listGroupItems` に渡す */
+            /** @description Included only when more results remain; pass to listGroupItems. */
             nextCursor?: string;
         };
-        /** @description GET /api/groups/{id}/items の応答 */
+        /** @description GET /api/groups/{id}/items response. */
         GroupItemPage: {
             items: components["schemas"]["GroupItem"][];
-            /** @description 続きがあるときだけ入る */
+            /** @description Included only when more results remain. */
             nextCursor?: string;
         };
-        /** @description /api/events の `group` の data */
+        /** @description Data for the group event on /api/events. */
         GroupChanged: {
-            /** @description 名前か項目が変わったグループと、その祖先のグループの id。小さい順 */
+            /** @description IDs of renamed or changed groups and their ancestors, ascending. */
             ids: number[];
         };
-        /** @description /api/events の `smartFolder` の data */
+        /** @description Data for the smartFolder event on /api/events. */
         SmartFolderChanged: {
-            /** @description 中身かカードが変わったかもしれないスマートフォルダの id。小さい順 */
+            /** @description Smart-folder IDs whose contents or cards may have changed, ascending. */
             ids: number[];
         };
-        /**
-         * @description スマートフォルダの条件。どの
-         *     項目も省けて、省いた項目は絞り込まない。空のオブジェクトはどの動画にも当たる。各項目は
-         *     ライブラリの絞り込みの同じ欄と同じ意味である。null は省いた項目ではなく誤りである
-         */
+        /** @description Smart-folder filters with the same meanings as library filters. All properties are optional; omission disables that filter and {} matches every video. Null is invalid, not omission. */
         SmartRule: {
-            /** @description 検索欄の入力。所有者の意味で照合する */
+            /** @description Search input matched with owner semantics. */
             q?: string;
             /**
-             * @description 視聴状態
+             * @description Watch state.
              * @enum {string}
              */
             watch?: "unwatched" | "inProgress" | "watched";
-            /** @description ブラウザで再生できる動画だけにする */
+            /** @description Restrict to browser-playable videos. */
             playable?: boolean;
-            /** @description お気に入りの動画だけにする */
+            /** @description Restrict to favorite videos. */
             favorite?: boolean;
-            /** @description すべてを持つ動画だけにするタグの id（重複なし） */
+            /** @description Distinct tag IDs that every matching video must carry. */
             tags?: number[];
             /**
              * Format: int64
-             * @description その種類のタグをどれか持つ動画だけにするタグの種類の id
+             * @description Tag-kind IDs requiring a matching video to carry a tag of that kind.
              */
             tagKind?: number;
             /**
              * Format: int64
-             * @description どの役割でも結び付いた人物の id
+             * @description Person IDs linked in any role.
              */
             person?: number;
             /**
              * Format: int64
-             * @description どの役割でも結び付いた団体の id
+             * @description Organization IDs linked in any role.
              */
             organization?: number;
-            /** @description 追加からの日数 */
+            /** @description Days since addition. */
             addedWithin?: number;
-            /** @description 長さの下限（秒、含む）。`maxDuration` 以下 */
+            /** @description Inclusive minimum duration in seconds; at most maxDuration. */
             minDuration?: number;
-            /** @description 長さの上限（秒、含む） */
+            /** @description Inclusive maximum duration in seconds. */
             maxDuration?: number;
         };
-        /** @description 条件が名指す実体のうち、今は無いもの */
+        /** @description Entities referenced by filters that no longer exist. */
         SmartRuleRef: {
             /** @enum {string} */
             kind: "tag" | "tagKind" | "person" | "organization";
             /** Format: int64 */
             id: number;
         };
-        /**
-         * @description スマートフォルダの要約。ライブラリの項目と中身のページの子フォルダの項目が持ち、カードの値は
-         *     持たない。値は画面が `listSmartFolderCards` で読む
-         */
+        /** @description Smart-folder summary used by library and child-folder items, without card values; fetch those using listSmartFolderCards. */
         SmartFolderSummary: {
             /** Format: int64 */
             id: number;
             /**
              * Format: int64
-             * @description 親のフォルダの id。一番上のフォルダでは省く
+             * @description Parent folder ID; omitted for top-level folders.
              */
             parentId?: number;
             name: string;
-            /** @description 所有者がフォルダをお気に入りにしたか。所有者の応答にだけ入る */
+            /** @description Whether the owner favorited the folder; owner responses only. */
             favorite?: boolean;
         };
-        /** @description GET /api/smart-folders の応答 */
+        /** @description GET /api/smart-folders response. */
         SmartFolderList: {
-            /** @description 見る人に見せるフォルダ。自然な名前の順（同じなら id の順） */
+            /** @description Visible folders in natural-name order, then ID. */
             smartFolders: components["schemas"]["SmartFolderSummary"][];
         };
-        /**
-         * @description スマートフォルダのカード。値は `LibraryGroup` の同じ名前の欄と同じ意味で、`getSmartFolder` では
-         *     フォルダの再生順、`listSmartFolderCards` ではフォルダの一致する動画から作る。ゲストの応答では `watchedCount`・
-         *     `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする
-         */
+        /** @description Smart-folder card fields match LibraryGroup semantics. getSmartFolder uses playback order; listSmartFolderCards aggregates matching videos. Guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags. */
         LibrarySmartFolder: {
             /** Format: int64 */
             id: number;
             /**
              * Format: int64
-             * @description 親のフォルダの id。一番上のフォルダでは省く
+             * @description Parent folder ID; omitted for top-level folders.
              */
             parentId?: number;
             name: string;
             videoCount: number;
-            /** @description 完了した動画の数。所有者の応答にだけ入る */
+            /** @description Completed video count; owner responses only. */
             watchedCount?: number;
             /**
-             * @description `LibraryGroup.watchState` と同じ決め方。所有者の応答にだけ入る
+             * @description Derived like LibraryGroup.watchState; owner responses only.
              * @enum {string}
              */
             watchState?: "unwatched" | "inProgress" | "watched";
             /**
              * Format: int64
-             * @description 長さの分かっている動画の合計。1本も分からなければ省く
+             * @description Sum of known video durations; omitted if none are known.
              */
             durationMs?: number;
             /** Format: int64 */
             sizeBytes: number;
             /**
              * Format: date-time
-             * @description 追加日時の最大。動画が無ければ省く
+             * @description Latest addition timestamp; omitted if there are no videos.
              */
             addedAt?: string;
             /**
              * Format: date-time
-             * @description 最後に再生した時刻の最大。無ければ省く
+             * @description Latest playback timestamp; omitted when absent.
              */
             lastPlayedAt?: string;
-            /** @description サムネイル生成済みの動画を並びの順に最大4件 */
+            /** @description Up to four generated video thumbnails in order. */
             previews: components["schemas"]["FolderPreview"][];
             /**
              * Format: int64
-             * @description 押したときに開く動画（`LibraryGroup.openVideoId` と同じ選び方）。動画が無ければ省く
+             * @description Video opened on click, selected like LibraryGroup.openVideoId; omitted if there are no videos.
              */
             openVideoId?: number;
-            /** @description 動画のタグの和集合 */
+            /** @description Union of video tags. */
             tags: components["schemas"]["VideoTag"][];
-            /** @description 所有者がフォルダをお気に入りにしたか。所有者の応答にだけ入る */
+            /** @description Whether the owner favorited the folder; owner responses only. */
             favorite?: boolean;
         };
-        /** @description GET /api/smart-folders/cards の応答 */
+        /** @description GET /api/smart-folders/cards response. */
         SmartFolderCards: {
-            /** @description 要求の `ids` の順。無いか見せないフォルダは入らない */
+            /** @description In requested ids order, excluding missing or hidden folders. */
             cards: components["schemas"]["LibrarySmartFolder"][];
         };
-        /** @description フォルダの条件と並べ順。所有者の応答にだけ入る */
+        /** @description Folder filters and sort order; owner responses only. */
         SmartFolderSettings: {
             rule: components["schemas"]["SmartRule"];
             sort: components["schemas"]["VideoSort"];
-            /** @description このフォルダと祖先の条件が名指す実体のうち今無いもの（外側の祖先から順） */
+            /** @description Missing entities referenced by this folder or its ancestors, ordered from the outermost ancestor. */
             missing: components["schemas"]["SmartRuleRef"][];
         };
-        /** @description スマートフォルダの中身の項目 1 件。`kind` に応じて `video`・`group`・`smartFolder` のちょうど 1 つが入る */
+        /** @description One smart-folder item containing exactly one of video, group or smartFolder according to kind. */
         SmartFolderItem: {
             /** @enum {string} */
             kind: "video" | "group" | "smartFolder";
@@ -5049,111 +4428,99 @@ export interface components {
             group?: components["schemas"]["LibraryGroup"];
             smartFolder?: components["schemas"]["SmartFolderSummary"];
         };
-        /** @description GET /api/smart-folders/{id} の応答 */
+        /** @description GET /api/smart-folders/{id} response. */
         SmartFolderDetail: {
             smartFolder: components["schemas"]["LibrarySmartFolder"];
             settings?: components["schemas"]["SmartFolderSettings"];
-            /** @description 祖先のフォルダ。外側から順で、最後はこのフォルダの親 */
+            /** @description Ancestor folders, ordered outermost first and ending at this folder's parent. */
             trail: components["schemas"]["GroupRef"][];
-            /** @description 中身の最初のページ。子フォルダを名前の順に先に、続けてフォルダの並べ順の項目 */
+            /** @description First contents page: child folders in name order, then items in folder sort order. */
             items: components["schemas"]["SmartFolderItem"][];
-            /** @description 続きがあるときだけ入る。`listSmartFolderItems` に渡す */
+            /** @description Included only when more results remain; pass to listSmartFolderItems. */
             nextCursor?: string;
-            /** @description 所有者の応答にだけ入る。このフォルダがホームの棚か（docs/design-docs/home.md） */
+            /** @description Whether this folder is a Home shelf; owner responses only. */
             onHome?: boolean;
         };
-        /** @description GET /api/smart-folders/{id}/items の応答 */
+        /** @description GET /api/smart-folders/{id}/items response. */
         SmartFolderItemPage: {
             items: components["schemas"]["SmartFolderItem"][];
-            /** @description 続きがあるときだけ入る */
+            /** @description Included only when more results remain. */
             nextCursor?: string;
         };
-        /** @description POST /api/smart-folders の本文 */
+        /** @description POST /api/smart-folders body. */
         SmartFolderCreate: {
-            /** @description 前後の空白を取り除いて 1〜100 文字 */
+            /** @description 1-100 characters after trimming. */
             name: string;
             rule: components["schemas"]["SmartRule"];
             sort?: components["schemas"]["VideoSort"];
             /**
              * Format: int64
-             * @description 親のフォルダの id。省けば一番上に作る
+             * @description Parent folder ID; omission creates a top-level folder.
              */
             parentId?: number;
         };
-        /** @description PATCH /api/smart-folders/{id} の本文。入れた項目だけを変え、少なくとも 1 つを入れる */
+        /** @description PATCH /api/smart-folders/{id} body; change supplied properties only, requiring at least one. */
         SmartFolderChange: {
-            /** @description 前後の空白を取り除いて 1〜100 文字 */
+            /** @description 1-100 characters after trimming. */
             name?: string;
             rule?: components["schemas"]["SmartRule"];
             sort?: components["schemas"]["VideoSort"];
             /**
              * Format: int64
-             * @description 親のフォルダの id。null なら一番上にする
+             * @description Parent folder ID; null moves to the top level.
              */
             parentId?: number | null;
         };
-        /**
-         * @description 動画を開いたスマートフォルダ（`smartFolder` の問い合わせ）。GET /api/videos/{id} の応答にだけ、
-         *     文脈がスマートフォルダで、その再生順が動画を持つときだけ入る。このとき `group` は入らない。
-         *     位置と本数はフォルダの再生順で数え、ゲストの応答では公開の動画だけで数える
-         */
+        /** @description Smart-folder context from the smartFolder query, only in GET /api/videos/{id} when its playback order contains the video; group is then absent. Position and count follow folder playback order, counting only public videos for guests. */
         VideoSmartFolderRef: {
             /**
              * Format: int64
-             * @description スマートフォルダの識別子
+             * @description Smart folder ID
              */
             id: number;
-            /** @description スマートフォルダの名前 */
+            /** @description Smart-folder name. */
             name: string;
-            /** @description フォルダの再生順で何本目か（1 始まり） */
+            /** @description One-based position in folder playback order. */
             position: number;
-            /** @description フォルダの再生順の動画の本数 */
+            /** @description Video count in folder playback order. */
             count: number;
         };
         FolderPreview: {
             /** Format: int64 */
             videoId: number;
-            /** @description Video.thumbnailUrl と同じ版付き URL */
+            /** @description Versioned URL matching Video.thumbnailUrl. */
             thumbnailUrl: string;
-            /** @description Video.previewUrl と同じ版付き URL。一覧用プレビューが生成済みで、保存済み asset が配信可能なときだけ入る */
+            /** @description Versioned URL matching Video.previewUrl, included only when the list preview is generated and its stored asset is available. */
             previewUrl?: string;
         };
         FolderSummary: {
             /** Format: int64 */
             rootId: number;
-            /** @description 登録フォルダからの `/` 区切りの相対パス。登録フォルダ自身は空文字 */
+            /** @description Slash-separated path relative to the registered folder; empty for the root itself. */
             path: string;
-            /** @description 表示名。相対パスの最後の段、登録フォルダ自身は絶対パスの最後の段 */
+            /** @description Display name: final relative-path segment, or final absolute-path segment for the registered root. */
             name: string;
-            /**
-             * @description 登録フォルダの絶対パス。ゲストの応答では省く。画面は
-             *     登録フォルダの表示名を、これが無ければ `name` から作る
-             */
+            /** @description Registered folder's absolute path; omitted for guests. The UI derives the root display name from this path, falling back to name. */
             rootPath?: string;
-            /** @description 直下の動画の件数（ゲストでは公開の動画だけを数える） */
+            /** @description Direct video count, public videos only for guests. */
             videoCount: number;
-            /** @description 直下の子フォルダの件数 */
+            /** @description Direct child-folder count. */
             folderCount: number;
-            /** @description 直下の動画のうちサムネイル生成済みのもの。所在のパスの昇順で最大4件 */
+            /** @description Up to four generated direct-video thumbnails in location-path ascending order. */
             previews: components["schemas"]["FolderPreview"][];
             grouping?: components["schemas"]["FolderGrouping"];
         };
         /**
-         * @description フォルダのまとめ方の例外。`auto` は例外なし、`ungroup` は「まとめを解除」、
-         *     `groupDirect` は「直下をまとめる」
+         * @description Folder grouping override: auto for none, ungroup to dissolve grouping, groupDirect to group direct children.
          * @enum {string}
          */
         FolderGroupingMode: "auto" | "ungroup" | "groupDirect";
-        /**
-         * @description フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
-         *     ゲストでは省く
-         */
+        /** @description Current folder grouping state, included as FolderSummary.grouping in owner responses only. */
         FolderGrouping: {
             mode: components["schemas"]["FolderGroupingMode"];
             /**
              * Format: int64
-             * @description このフォルダの自動グループの id。無ければ省く。`POST /api/groups/{id}/tag` で
-             *     タグに変えられる
+             * @description Automatic group ID for this folder; omitted if absent. Convert it to a tag through POST /api/groups/{id}/tag.
              */
             groupId?: number;
         };
@@ -5162,40 +4529,32 @@ export interface components {
         };
         FolderListing: {
             folder: components["schemas"]["FolderSummary"];
-            /** @description 直下の子フォルダ。名前の自然順 */
+            /** @description Direct child folders in natural-name order. */
             folders: components["schemas"]["FolderSummary"][];
         };
         RootFolderListing: {
-            /** @description 登録済みメディアフォルダ。名前の自然順 */
+            /** @description Registered media folders in natural-name order. */
             folders: components["schemas"]["FolderSummary"][];
         };
-        /**
-         * @description ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-         *     `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする。
-         */
+        /** @description Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and workInfo, and return empty tags. */
         Video: {
             /** Format: int64 */
             id: number;
-            /** @description 有効な題名。表示名があればそれ、無ければ拡張子を除いたファイル名 */
+            /** @description Effective title: display name when set, otherwise filename without extension. */
             title: string;
-            /** @description 拡張子を除いたファイル名。所有者の応答にだけ入る */
+            /** @description Filename without extension; owner responses only. */
             fileTitle?: string;
-            /** @description 所有者が付けた表示名。設定されているときだけ、所有者の応答にだけ入る */
+            /** @description Owner-assigned display name; included only when set and for owners. */
             displayName?: string;
             /**
              * Format: int64
-             * @description 代表サムネイルにする場面の位置（ミリ秒）。設定されているときだけ、所有者の応答にだけ入る
+             * @description Thumbnail frame position in milliseconds; included only when set and for owners.
              */
             thumbnailPositionMs?: number;
-            /**
-             * @description 動画の内容の版（内容鍵の先頭 12 文字で、`thumbnailUrl` の版の先頭と同じ値）。所有者の応答にだけ入る。
-             *     画像のアップロードに添え、プレビューを開いてから内容が替わった動画への適用を断るのに使う
-             *     （docs/design-docs/thumbnail-editing.md「Uploaded images」）
-             */
+            /** @description Content version: first 12 content-key characters, matching the thumbnailUrl version prefix; owner responses only. Submit with image uploads to reject changes since the preview opened; see Uploaded images in docs/design-docs/thumbnail-editing.md. */
             contentVersion?: string;
             /**
-             * @description 所有者が適用した画像が代表サムネイルのとき、その出どころ。`generated` は ComfyUI の編集結果、
-             *     `uploaded` はアップロードした画像。適用しているときだけ、所有者の応答にだけ入る
+             * @description Applied thumbnail image source: generated for ComfyUI output, uploaded for an uploaded image. Included only while applied and for owners.
              * @enum {string}
              */
             thumbnailImage?: "generated" | "uploaded";
@@ -5205,29 +4564,26 @@ export interface components {
             addedAt: string;
             /**
              * Format: date-time
-             * @description vv 上で動画の情報（表示名・タグ・公開設定・代表サムネイル）を最後に編集した日時。
-             *     一度も編集していなければ addedAt と同じ
+             * @description Latest vv edit to display name, tags, visibility or thumbnail; equals addedAt if never edited.
              */
             updatedAt: string;
             /**
              * Format: date-time
-             * @description 一覧に出す所在のファイルの作成日時。ファイルシステムから取れないときはそのファイルの
-             *     更新日時（mtime）
+             * @description Creation timestamp of the displayed-location file; falls back to its mtime when unavailable.
              */
             fileCreatedAt: string;
             /**
              * Format: int64
-             * @description 尺。解析前・取得不能の場合は省略される
+             * @description Duration; omitted before probing or when unavailable.
              */
             durationMs?: number;
-            /** @description 表示される向きの幅（回転の印を反映済み） */
+            /** @description Display-oriented width, including rotation metadata. */
             width?: number;
-            /** @description 表示される向きの高さ（回転の印を反映済み） */
+            /** @description Display-oriented height, including rotation metadata. */
             height?: number;
             /**
              * Format: double
-             * @description 表示される横÷縦の比率。回転と画素の縦横比（SAR）を反映し、縦長の動画は 1 未満になる。
-             *     解析前・取得不能の場合は省略される
+             * @description Displayed width/height ratio, including rotation and sample aspect ratio; portrait videos are below one. Omitted before probing or when unavailable.
              */
             displayAspectRatio?: number;
             /**
@@ -5246,33 +4602,27 @@ export interface components {
              * @example opus
              */
             audioCodec?: string;
-            /** @description ブラウザでそのまま再生できると判定されたか */
+            /** @description Whether the video is judged directly playable in the browser. */
             playable: boolean;
             /**
-             * @description playable = false の理由。判定前は省略される
+             * @description Reason for playable=false; omitted before classification.
              * @enum {string}
              */
             unplayableReason?: "container" | "video_codec" | "audio_codec";
             /** @enum {string} */
             probeState: "pending" | "done" | "failed";
-            /** @description probeState = failed のときの理由。ゲストの応答では省く（ファイルの絶対パスを含みうる） */
+            /** @description Reason for probeState=failed; omitted for guests because it may contain an absolute path. */
             probeError?: string;
             probeErrorCode?: components["schemas"]["ProbeErrorCode"];
             /** @enum {string} */
             thumbnailState: "pending" | "done" | "failed";
             /** @enum {string} */
             previewState: "pending" | "done" | "failed";
-            /**
-             * @description thumbnailState = done のときだけ入る。版は内容鍵の先頭で、位置の指定中は `-r<改版番号>`、
-             *     適用した画像の表示中は `-g<改版番号>` が付く（ゲストにも同じ文字列）
-             */
+            /** @description Included only when thumbnailState=done. The content-key prefix forms the version, with -r<revision> for a selected position or -g<revision> for an applied image; guests receive the same URL. */
             thumbnailUrl?: string;
-            /** @description previewState = done かつ保存済み asset が配信可能なときだけ入る版付き URL。done なのに asset が無ければ、サーバーは作り直しを積み、previewState を pending として返す */
+            /** @description Versioned URL included only when previewState=done and the stored asset is available. Missing assets trigger regeneration and return previewState=pending. */
             previewUrl?: string;
-            /**
-             * @description probeState = done かつ正のdurationMsを持つときだけ入る、シーク用サムネイルの
-             *     スプライトの配置情報（SeekThumbnailSprite）を返す経路の版付き URL
-             */
+            /** @description Versioned URL for SeekThumbnailSprite layout metadata, included only when probeState=done and durationMs is positive. */
             seekThumbnailUrl?: string;
             progress?: components["schemas"]["Progress"];
             location?: components["schemas"]["VideoLocation"];
@@ -5280,83 +4630,64 @@ export interface components {
             group?: components["schemas"]["VideoGroupRef"];
             smartFolder?: components["schemas"]["VideoSmartFolderRef"];
             versions?: components["schemas"]["VideoVersionsRef"];
-            /**
-             * @description 付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
-             *     無ければ空配列。ゲストの応答では常に空配列。
-             *     フォルダ名から付いている分も含む
-             */
+            /** @description Assigned tags in natural-name order (domain.CompareNatural), then ID, including folder-derived assignments. Empty when none, and always empty for guests. */
             tags: components["schemas"]["VideoTag"][];
-            /** @description 公開の動画か。公開の動画はログインしていない人にも見える */
+            /** @description Whether the video is public and visible without login. */
             public: boolean;
-            /** @description 所有者がお気に入りにした動画か。所有者の応答にだけ入る */
+            /** @description Whether the owner favorited the video; owner responses only. */
             favorite?: boolean;
-            /**
-             * @description 作品情報。GET /api/videos/{id} と、作品情報を書く所有者の PUT（work-info・details）の
-             *     応答にだけ入り、行の無い動画とゲストの応答では無い。一覧の項目・関連動画・ライブラリの
-             *     項目には入らない
-             */
+            /** @description Work information, only in owner GET /api/videos/{id} and PUT work-info/details responses when a row exists. Omitted from guests, lists, related videos and library items. */
             workInfo?: components["schemas"]["WorkInfo"];
-            /**
-             * @description 取り込みの解析で読んだ動画の追加の情報。GET /api/videos/{id} の応答にだけ入り、今の版の
-             *     行がある動画にだけ入る。所有者と、公開の動画を読むゲストに同じ値を返す。一覧の項目・関連動画・
-             *     ライブラリの項目・所有者の PUT の応答には入らない
-             */
+            /** @description Additional import-probed metadata, only in GET /api/videos/{id} when a current-version row exists. Owners and guests viewing public videos receive the same values; omitted from lists, related videos, library items and owner PUT responses. */
             mediaInfo?: components["schemas"]["MediaInfo"];
             /**
-             * @description シーク用サムネイルの状態。GET /api/videos/{id} の応答にだけ入り、
-             *     seekThumbnailUrl と同じ条件のときだけ入る。done = スプライトが完成している、
-             *     pending = 生成を待っている、または生成中（保存した状態が done なのに置き場が
-             *     無いときは、サーバーが作り直しを積んで pending として返す）、failed = 生成に
-             *     失敗し、再試行の上限に達した
+             * @description Seek-thumbnail state, only in GET /api/videos/{id} under the same conditions as seekThumbnailUrl. done means a complete sprite; pending means queued or generating, including missing done assets queued for regeneration; failed means retries exhausted.
              * @enum {string}
              */
             seekThumbnailState?: "pending" | "done" | "failed";
         };
-        /**
-         * @description 動画の追加の情報。どの項目も、ファイルに
-         *     無ければ省く。項目の無い object は丸ごと省く。
-         */
+        /** @description Additional video metadata; omit unavailable fields and objects with no fields. */
         MediaInfo: {
             video?: components["schemas"]["MediaInfoVideo"];
-            /** @description すべての音声 stream。stream の順 */
+            /** @description All audio streams in stream order. */
             audioTracks?: components["schemas"]["MediaInfoAudioTrack"][];
-            /** @description すべての字幕 stream。stream の順 */
+            /** @description All subtitle streams in stream order. */
             subtitleTracks?: components["schemas"]["MediaInfoSubtitleTrack"][];
             embedded?: components["schemas"]["MediaInfoEmbedded"];
             broadcast?: components["schemas"]["MediaInfoBroadcast"];
-            /** @description チャプター。開始の順で、尺の内側にある */
+            /** @description Chapters in start order, within video duration. */
             chapters?: components["schemas"]["MediaInfoChapter"][];
         };
-        /** @description 映像 stream の項目。`hdr` は映像があれば必ず入る */
+        /** @description Video-stream metadata; hdr is always included when a video stream exists. */
         MediaInfoVideo: {
             /**
              * Format: double
-             * @description 毎秒のコマ数（avg_frame_rate）
+             * @description Frames per second from avg_frame_rate.
              */
             frameRate?: number;
-            /** @description 1 標本のビット数 */
+            /** @description Bits per sample. */
             bitDepth?: number;
             /**
              * Format: int64
-             * @description 映像 stream のビット毎秒
+             * @description Video-stream bits per second.
              */
             bitRate?: number;
-            /** @description ファイルがプログレッシブかインターレースかを示すときだけ入る */
+            /** @description Included only when the file identifies progressive or interlaced scanning. */
             interlaced?: boolean;
             /** @enum {string} */
             hdr: "sdr" | "hdr10" | "hlg" | "dolby_vision";
-            /** @description 360 度動画の投影（`equirectangular`・`cubemap` などの ffprobe の名前） */
+            /** @description 360-degree projection using ffprobe names such as equirectangular or cubemap. */
             projection?: string;
-            /** @description 3D の方式（`side by side`・`top and bottom` などの ffprobe の名前） */
+            /** @description 3D layout using ffprobe names such as side by side or top and bottom. */
             stereo3d?: string;
-            /** @description 映像 stream がクローズドキャプションを運ぶとき true */
+            /** @description True when the video stream carries closed captions. */
             closedCaptions?: boolean;
         };
         MediaInfoAudioTrack: {
-            /** @description ファイルの中の stream の番号 */
+            /** @description Stream index within the file. */
             index: number;
             /**
-             * @description ffprobe の codec_name
+             * @description ffprobe codec_name.
              * @example aac
              * @example ac3
              */
@@ -5367,48 +4698,48 @@ export interface components {
              * @example 5.1
              */
             channelLayout?: string;
-            /** @description ファイルの言語の印（`und` は省く） */
+            /** @description File language tag; und is omitted. */
             language?: string;
             title?: string;
             default?: boolean;
         };
         MediaInfoSubtitleTrack: {
-            /** @description ファイルの中の stream の番号 */
+            /** @description Stream index within the file. */
             index: number;
             /**
-             * @description ffprobe の codec_name
+             * @description ffprobe codec_name.
              * @example subrip
              * @example arib_caption
              */
             codec?: string;
-            /** @description ファイルの言語の印（`und` は省く） */
+            /** @description File language tag; und is omitted. */
             language?: string;
             title?: string;
             default?: boolean;
             forced?: boolean;
             hearingImpaired?: boolean;
         };
-        /** @description ファイルに埋め込まれたタグ */
+        /** @description Tags embedded in the file. */
         MediaInfoEmbedded: {
             title?: string;
             author?: string;
             comment?: string;
             description?: string;
             genre?: string;
-            /** @description ファイルの date タグの文字のまま */
+            /** @description Unmodified file date-tag text. */
             date?: string;
             /**
              * Format: date-time
-             * @description 撮影の日時。ファイルに時差があればそれを保つ
+             * @description Capture timestamp, preserving the file's timezone offset when present.
              */
             recordedAt?: string;
-            /** @description メーカーと機種 */
+            /** @description Manufacturer and model. */
             device?: string;
             location?: components["schemas"]["MediaInfoLocation"];
-            /** @description ファイルが添付の画像を持つとき true */
+            /** @description True when the file contains an attached picture. */
             coverArt?: boolean;
         };
-        /** @description 撮影場所（度、高度はメートル） */
+        /** @description Capture location in degrees, with altitude in meters. */
         MediaInfoLocation: {
             /** Format: double */
             latitude: number;
@@ -5417,7 +4748,7 @@ export interface components {
             /** Format: double */
             altitude?: number;
         };
-        /** @description TS の録画の放送局と番組 */
+        /** @description Broadcaster and program for a TS recording. */
         MediaInfoBroadcast: {
             station?: string;
             program?: string;
@@ -5429,222 +4760,175 @@ export interface components {
             endMs: number;
             title?: string;
         };
-        /**
-         * @description シーク用サムネイルのスプライトの配置情報。最後のシートの
-         *     frameCount を超える部分は黒く、クライアントはそこを指さない。
-         */
+        /** @description Seek-thumbnail sprite layout; cells beyond frameCount on the final sheet are black and must not be addressed by clients. */
         SeekThumbnailSprite: {
             /**
              * Format: int64
-             * @description コマ k が受け持つ位置は [k*intervalMs, (k+1)*intervalMs)
+             * @description Frame k covers positions [k*intervalMs, (k+1)*intervalMs).
              */
             intervalMs: number;
-            /** @description 全シートに載るコマの数 */
+            /** @description Total frames across all sheets. */
             frameCount: number;
-            /** @description 1 シートの列数 */
+            /** @description Columns per sheet. */
             columns: number;
-            /** @description 1 シートの行数 */
+            /** @description Rows per sheet. */
             rows: number;
-            /** @description 1 コマの幅（px）。1 本の中で全コマ同じ */
+            /** @description Frame width in pixels, constant within a video. */
             frameWidth: number;
-            /** @description 1 コマの高さ（px） */
+            /** @description Frame height in pixels. */
             frameHeight: number;
-            /** @description シートの版付き URL。番号順 */
+            /** @description Versioned sheet URLs in index order. */
             sheets: string[];
         };
-        /**
-         * @description 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
-         *     GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-         *     登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
-         *     今の処理のファイルのフォルダを指す。
-         *     LibraryGroup.folder（自動グループ）・Video.group.folder（自動グループ、GET /api/videos/{id}）では
-         *     グループのフォルダそのものを指す
-         */
+        /** @description Containing folder for the displayed location in video lists, representative location in GET /api/videos/{id}, problem location in ScanIssue, or active file in ScanActivity; omitted outside registered folders. For automatic LibraryGroup.folder and Video.group.folder, identifies the group folder itself. */
         VideoFolder: {
             /**
              * Format: int64
-             * @description 所在を含む登録メディアフォルダの識別子
+             * @description Registered media-folder ID containing the location.
              */
             rootId: number;
-            /** @description 登録フォルダからその所在が置かれたフォルダまでの `/` 区切りの相対パス。直下は空文字 */
+            /** @description Slash-separated path from the registered root to the containing folder; empty for direct children. */
             path: string;
-            /**
-             * @description 登録フォルダの表示名（FolderSummary.name と同じ規則）。GET /api/videos/{id} の
-             *     Video.folder・ScanIssue.folder・ScanActivity.folder にだけ入る（Video.group.folder には入らない）
-             */
+            /** @description Registered folder display name using FolderSummary.name rules. Included only in GET /api/videos/{id} Video.folder, ScanIssue.folder and ScanActivity.folder, not Video.group.folder. */
             rootName?: string;
         };
-        /** @description 代表の所在。GET /api/videos/{id} の応答にだけ入る */
+        /** @description Representative location, only in GET /api/videos/{id}. */
         VideoLocation: {
-            /** @description 代表の所在の絶対パス。サーバーから見たパスで、コンテナ内ならコンテナ内のパス */
+            /** @description Representative absolute path as seen by the server, inside the container when containerized. */
             path: string;
-            /**
-             * @description 要求元がループバックで、Host がループバックの名前で、サーバーが既定アプリを
-             *     起動できる環境のとき true
-             */
+            /** @description True when both request source and Host are loopback and the server environment can launch the default application. */
             openable: boolean;
         };
-        /**
-         * @description 動画の文脈のグループ（`group` の問い合わせ、docs/design-docs/catalog-organization.md）。
-         *     GET /api/videos/{id} の応答にだけ、動画がグループにあるときだけ入る（location と同じ扱いで、
-         *     一覧の項目には入らない）。位置と本数はそのグループの再生順（子グループは深さ優先、同じ動画は
-         *     最初の 1 回）で数え、ゲストの応答では公開の動画だけで数える
-         */
+        /** @description Group context from the group query; see docs/design-docs/catalog-organization.md. Included only in GET /api/videos/{id} when the video belongs to the group, never in list items. Position/count follow depth-first playback order with first-occurrence deduplication, counting only public videos for guests. */
         VideoGroupRef: {
             /**
              * Format: int64
-             * @description グループの識別子
+             * @description Group ID
              */
             id: number;
-            /**
-             * @description 自動グループのフォルダ。LibraryGroup の folder と同じく、フォルダから自動でできた
-             *     グループで、そのフォルダが登録フォルダの下にあるときだけ入る
-             */
+            /** @description Automatic group folder, as in LibraryGroup.folder; included only for folder-derived groups under a registered folder. */
             folder?: components["schemas"]["VideoFolder"];
-            /** @description グループの名前 */
+            /** @description Group name. */
             name: string;
-            /** @description グループの再生順で何本目か（1 始まり） */
+            /** @description One-based position in group playback order. */
             position: number;
-            /** @description グループの再生順の動画の本数 */
+            /** @description Video count in group playback order. */
             count: number;
         };
-        /**
-         * @description 動画が属する集まり（同じ動画の別バージョン）の要約。集まりのメンバーのときだけ、
-         *     画面 API が Video を返すすべての応答に入る（一覧の項目も含む。一覧はページごとに 1 回の
-         *     問い合わせで読む）。カードの印はこれから出す
-         */
+        /** @description Summary of the video's version set, included for members in every screen API Video response, including lists. Lists fetch these once per page; card indicators use this summary. */
         VideoVersionsRef: {
-            /** @description 見る人に見せてよい所在を持つバージョンの本数 */
+            /** @description Number of versions with locations visible to the viewer. */
             count: number;
             /**
              * Format: int64
-             * @description 実効の代表（一覧に出ている 1 件）の動画の id
+             * @description Effective representative video ID, the one displayed in lists.
              */
             representativeId: number;
         };
-        /** @description 集まりの全バージョン */
+        /** @description All versions in the set. */
         VideoVersions: {
             /**
              * Format: int64
-             * @description 実効の代表の動画の id。集まりに属さなければその動画の id
+             * @description Effective representative video ID, or the video's own ID when outside a set.
              */
             representativeId: number;
-            /**
-             * @description 代表が先頭で、続きは題名の自然順（同じなら id）。各項目は GET /api/videos/{id} と
-             *     同じ形
-             */
+            /** @description Representative first, then natural-title order with ID ties; each item has the GET /api/videos/{id} shape. */
             items: components["schemas"]["Video"][];
         };
         VideoBundleRequest: {
-            /** @description 束ねる動画。重複は 1 つと数え、2 本以上 */
+            /** @description Videos to bundle: at least two distinct IDs, with duplicates counted once. */
             videoIds: number[];
             /**
              * Format: int64
-             * @description 代表にする動画。videoIds の 1 つ
+             * @description Representative video, one of videoIds.
              */
             representativeId: number;
         };
-        /** @description 「同じ動画かもしれない」2 本の組 */
+        /** @description Pair of potentially identical videos. */
         VersionCandidate: {
-            /** @description 2 本の動画。id の小さい順で、各項目は GET /api/videos/{id} と同じ形 */
+            /** @description Two videos in ID ascending order, each shaped like GET /api/videos/{id}. */
             videos: components["schemas"]["Video"][];
-            /** @description 2 本の映像の指紋のハミング距離の中央値（小さいほど似ている） */
+            /** @description Median Hamming distance between video fingerprints; lower means more similar. */
             distance: number;
         };
         VersionCandidatePage: {
-            /** @description 新しい順、最大 200 組 */
+            /** @description Newest first, at most 200 pairs. */
             items: components["schemas"]["VersionCandidate"][];
-            /** @description 候補の全件の数 */
+            /** @description Total candidate count. */
             total: number;
         };
         VersionCandidateDismissRequest: {
-            /** @description 「違う動画」と記録する 2 本。同じ id は受け付けない */
+            /** @description Two distinct video IDs to record as different videos. */
             videoIds: number[];
         };
-        /**
-         * @description 基準の動画の文脈のグループ（`group` の問い合わせ、docs/design-docs/catalog-organization.md）。
-         *     メンバーはそのグループの再生順の動画で、ゲストの応答では公開の動画だけで作る
-         */
+        /** @description Reference video's group context from the group query; see docs/design-docs/catalog-organization.md. Members follow group playback order, public videos only for guests. */
         RelatedGroup: {
             /**
              * Format: int64
-             * @description グループの識別子
+             * @description Group ID
              */
             id: number;
-            /** @description グループの名前 */
+            /** @description Group name. */
             name: string;
-            /**
-             * @description 基準の動画を中ほどに置いた、グループの中の並びで連続するメンバーの窓（基準の動画を
-             *     含む）。グループの端では窓を内側へ寄せる。窓の外は `listVideoGroupMembers` で読む
-             */
+            /** @description Contiguous group-member window centered near and including the reference video, shifted inward at group edges. Fetch outside the window with listVideoGroupMembers. */
             items: components["schemas"]["Video"][];
-            /** @description items の先頭のメンバーの、グループの中の並びの位置（0 始まり） */
+            /** @description Zero-based group-order position of the first item. */
             offset: number;
-            /** @description 見せてよいメンバーの本数 */
+            /** @description Visible member count. */
             total: number;
         };
-        /** @description グループのメンバーの、グループの中の並びで連続する範囲 */
+        /** @description Contiguous range of members in group order. */
         GroupMemberPage: {
             items: components["schemas"]["Video"][];
-            /** @description items の先頭のメンバーの、グループの中の並びの位置（0 始まり） */
+            /** @description Zero-based group-order position of the first item. */
             offset: number;
-            /** @description 見せてよいメンバーの本数 */
+            /** @description Visible member count. */
             total: number;
         };
         RelatedVideos: {
-            /**
-             * @description 関連動画の近さの順の 1 ページ。基準の動画がグループのメンバーなら、同じグループの
-             *     メンバーを除いてから並べる
-             */
+            /** @description One related-video page in relevance order, excluding members of the reference video's group when applicable. */
             items: components["schemas"]["Video"][];
-            /** @description 続きを読むときに `cursor` へ渡す値。並びの終わりまで返したら省く */
+            /** @description Value for the next cursor request; omitted at the end. */
             nextCursor?: string;
             /**
              * Format: int64
-             * @description 次の動画。グループのメンバーならグループの中の並びの次（最後のメンバーでは省く）、
-             *     そうでなければ関連動画の並びの先頭。無ければ省く。`cursor` を付けた要求では省く
+             * @description Next group member, omitted at the final member; otherwise the first related video. Omitted when unavailable or when the request includes cursor.
              */
             nextId?: number;
             /**
              * Format: int64
-             * @description グループの中の並びの前の動画（最初のメンバーでは省く）。グループに属さない動画では
-             *     省き、画面が直前に見ていた動画を前の動画にする。`cursor` を付けた要求では省く。
-             *     items に入るとは限らない
+             * @description Previous group member, omitted at the first member, outside a group, or when cursor is supplied. Outside groups the UI uses the previously viewed video; this value need not appear in items.
              */
             prevId?: number;
             group?: components["schemas"]["RelatedGroup"];
         };
         DisplayNameUpdate: {
-            /** @description 新しい表示名。前後の空白を取り除いて空なら解除する */
+            /** @description New display name; whitespace-only after trimming clears it. */
             displayName: string;
         };
         ThumbnailPositionUpdate: {
             /**
              * Format: int64
-             * @description 代表サムネイルにする場面の位置（ミリ秒）。null は解除して自動の位置に戻す
+             * @description Thumbnail frame position in milliseconds; null clears it and restores the automatic position.
              */
             positionMs: number | null;
         };
         ProgressUpdate: {
             /** Format: int64 */
             positionMs: number;
-            /**
-             * @description この視聴にクライアントが付けた識別子（RFC 4122 の文字列の形）。ある識別子での
-             *     最初の保存が動画の視聴履歴を 1 件足し、同じ識別子での以降の保存は何も足さない。
-             *     再生が始まる前は送らない。形が違えば 400 invalid_request。
-             */
+            /** @description Client playback identifier in RFC 4122 string form. Its first save adds one history entry; later saves with the same ID add none. Send only after playback starts; invalid format returns 400 invalid_request. */
             playbackId?: string;
         };
         SubtitleTrackList: {
             subtitles: components["schemas"]["SubtitleTrack"][];
         };
         SubtitleTrack: {
-            /** @description 字幕ファイルの名前（フォルダを含まない）。`getVideoSubtitle` の `file` に使う */
+            /** @description Subtitle filename without directories, used as getVideoSubtitle's file parameter. */
             file: string;
-            /** @description ファイル名のラベル（`ja`、`en.forced`）。ラベルの無い字幕は空文字列 */
+            /** @description Filename label such as ja or en.forced; empty for unlabeled subtitles. */
             label: string;
             /**
-             * @description 元のファイルの形式
+             * @description Original file format.
              * @enum {string}
              */
             format: "srt" | "vtt";
@@ -5652,7 +4936,7 @@ export interface components {
         TranscodeStart: {
             /**
              * Format: int64
-             * @description 変換の出力の時間軸の 0 に当たる元動画の時刻（ミリ秒）
+             * @description Original-video timestamp in milliseconds corresponding to zero on the transcode output timeline.
              */
             startMs: number;
         };
@@ -5663,12 +4947,12 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
-        /** @description 直近の取り込みの状態。右下の表示と設定画面は、 どちらもこの1つを読む */
+        /** @description Latest import status, shared by the bottom-right indicator and Settings. */
         Scan: {
             /** Format: int64 */
             id: number;
             /**
-             * @description 取り込みを始めた主体。watch はフォルダの監視が始めた、変わったフォルダだけの取り込み
+             * @description Import initiator; watch means a folder-watcher import limited to changed folders.
              * @enum {string}
              */
             origin: "manual" | "watch";
@@ -5677,121 +4961,115 @@ export interface components {
             issues: components["schemas"]["ScanIssueCounts"];
             /**
              * Format: date-time
-             * @description 対象の動画がすべて済んだ時刻。status が done・partial のときだけ返す
+             * @description Timestamp when all target videos settled; returned only for done or partial status.
              */
             settledAt?: string;
             activity?: components["schemas"]["ScanActivity"];
             /**
-             * @description 走査そのものの状態。一覧の読み直しと、取り込みを始められるかの判定に使う
+             * @description Traversal state, used to refresh listings and determine whether another import can start.
              * @enum {string}
              */
             state: "running" | "done" | "failed";
-            /** @description スキャン自体が失敗した理由の自由文。画面は表示せず、errorCode と errorPath から説明を作る */
+            /** @description Free-text scan failure reason; the UI builds its explanation from errorCode and errorPath instead of displaying this text. */
             error?: string;
             errorCode?: components["schemas"]["ScanErrorCode"];
-            /** @description errorCode の理由が特定の場所に結び付くときの、その絶対パス（メディアフォルダ、またはその下の 読めなかった場所。翻訳しない利用者のデータ）。それ以外は省略される */
+            /** @description Absolute media-folder or unreadable-descendant path associated with errorCode, as untranslated user data; otherwise omitted. */
             errorPath?: string;
         };
         /**
-         * @description 利用者に見せる取り込みの状態。上から順に最初に当てはまるものになる。failed は走査そのものの失敗、 finding は走査が対象をまだ数え終えていない、running は走査中か済んでいない対象がある、 partial は失敗の問題がある、done はそれ以外
+         * @description User-visible import status, first matching rule: failed for traversal failure; finding while counting; running while traversal or pending work remains; partial for failed issues; otherwise done.
          * @enum {string}
          */
         ScanStatus: "finding" | "running" | "done" | "partial" | "failed";
-        /** @description 取り込み中の今の処理。複数が同時に動くときは 最後に始まったもの。何も動いていなければ Scan から省く。利用者の言葉は SPA が kind から組み立てる */
+        /** @description Current import activity, the most recently started when concurrent; omitted from Scan when idle. The SPA derives user-facing text from kind. */
         ScanActivity: {
             kind: components["schemas"]["ScanActivityKind"];
-            /** @description 処理しているファイルの名前（翻訳しない利用者のデータ） */
+            /** @description Active filename as untranslated user data. */
             fileName: string;
             folder?: components["schemas"]["VideoFolder"];
             /**
              * Format: int64
-             * @description 登録された動画なら、その id
+             * @description Video ID when already registered.
              */
             videoId?: number;
         };
         /**
-         * @description 今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を 読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている、fingerprint は 同じ動画の別バージョンを探すための映像の指紋を作っている
+         * @description Current work: registering adds files to the catalog; probe reads metadata; thumbnail, seekThumbnail and preview generate their assets; fingerprint builds visual fingerprints to find video versions.
          * @enum {string}
          */
         ScanActivityKind: "registering" | "probe" | "thumbnail" | "seekThumbnail" | "preview" | "fingerprint";
-        /** @description 取り込みの進み具合。status が finding のあいだは省く */
+        /** @description Import progress; omitted while status is finding. */
         ScanVideos: {
-            /** @description 対象の本数。0 は変化が無かったことを示す */
+            /** @description Target count; zero means no changes. */
             total: number;
-            /** @description 済みの本数。total を超えない */
+            /** @description Settled count, never exceeding total. */
             settled: number;
         };
-        /** @description 直近の取り込みの問題の本数。GET /api/scans/current/issues のまとめた件を数える */
+        /** @description Issue count for the latest import, counting aggregated GET /api/scans/current/issues entries. */
         ScanIssueCounts: {
-            /** @description 重さが失敗の件数。1以上なら取り込みは partial になる */
+            /** @description Failed-severity issue count; any failure makes the import partial. */
             failed: number;
-            /** @description 重さが代用の件数 */
+            /** @description Fallback-severity issue count. */
             substituted: number;
             /**
              * Format: int64
-             * @description 問題の一覧の中身が変わるたびに増える番号。本数が同じでも、種類や行が変われば増える。 画面はこれが変わったら一覧を読み直す
+             * @description Revision incremented whenever issue-list contents change, even with the same count; the UI refreshes the list when it changes.
              */
             revision: number;
         };
         /**
-         * @description 視聴履歴を動画のいまの視聴状態で絞る。all = 絞り込まない、inProgress = 視聴途中、watched = 視聴済み。
-         *     視聴途中と視聴済みはライブラリの絞り込みと同じ規則で、動画の無い件は all にだけ出る
+         * @description History filter using the video's current watch state: all, inProgress or watched, with library watch-state rules. Entries without a video appear only in all.
          * @default all
          * @enum {string}
          */
         WatchHistoryFilter: "all" | "inProgress" | "watched";
         WatchHistoryDates: {
-            /** @description 件のある日。新しい順で、合う件が無ければ空 */
+            /** @description Days with matching entries, newest first; empty if none. */
             days: string[];
         };
         WatchHistoryPage: {
             items: components["schemas"]["WatchHistoryEntry"][];
-            /** @description 続きがあるときだけ入る */
+            /** @description Included only when more results remain. */
             nextCursor?: string;
         };
-        /**
-         * @description 視聴履歴の 1 件。再生 1 回につき 1 件。`video` はその内容の動画がいまライブラリにあって
-         *     開けるときだけ入り、一覧と同じ形で `progress`・`tags`・`favorite` も入る。無ければ履歴から
-         *     再生できない
-         */
+        /** @description One history entry per playback. video appears only when that content is currently in the library and openable, using list shape including progress, tags and favorite; otherwise the entry cannot be played. */
         WatchHistoryEntry: {
             /**
              * Format: int64
-             * @description 削除の対象と、同じ時刻の並びに使う識別子
+             * @description Identifier used for deletion and ordering equal timestamps.
              */
             id: number;
             /**
              * Format: date-time
-             * @description 視聴を始めた時刻（その視聴の最初の保存のサーバーの時刻）
+             * @description Playback-start timestamp, recorded by the server on that playback's first save.
              */
             playedAt: string;
-            /** @description 視聴を始めたときの題名の写し。空のこともある。`video` が無い件の表示に使う */
+            /** @description Title snapshot at playback start, possibly empty; displayed when video is absent. */
             title: string;
             video?: components["schemas"]["Video"];
         };
-        /** @description 連続再生で開く動画 1 本と、それが属する項目 */
+        /** @description One continuous-playback video and its containing item. */
         PlaylistStep: {
             /** Format: int64 */
             itemId: number;
             video: components["schemas"]["Video"];
             /**
              * Format: int64
-             * @description 項目がスマートフォルダの項目のときのフォルダの id。動画とグループの項目では無い。
-             *     動画ページはこれで開く URL に smartFolder を付ける
+             * @description Folder ID only for smart-folder items, absent for video/group items; the video page adds smartFolder to the destination URL.
              */
             smartFolderId?: number;
         };
-        /** @description プレイリストから再生しているときの位置と次の動画 */
+        /** @description Playlist playback position and next video. */
         PlaylistPlayback: {
             playlist: components["schemas"]["PlaylistSummary"];
             /**
              * Format: int64
-             * @description 再生している項目
+             * @description Currently playing item.
              */
             itemId: number;
-            /** @description 見せる項目の中での 1 からの番号。今の項目が見せない項目なら 0 */
+            /** @description One-based position among visible items; zero when the current item is hidden. */
             position: number;
-            /** @description 見せる項目の数 */
+            /** @description Visible item count. */
             count: number;
             next?: components["schemas"]["PlaylistStep"];
             previousItem?: components["schemas"]["PlaylistStep"];
@@ -5800,96 +5078,95 @@ export interface components {
         ScanIssuePage: {
             /**
              * Format: int64
-             * @description どの取り込みの一覧か。Scan.id と違えば、画面は読み直す
+             * @description Import identifier for this list; the UI refreshes if it differs from Scan.id.
              */
             scanId: number;
             items: components["schemas"]["ScanIssue"][];
-            /** @description 続きがあるときだけ入る */
+            /** @description Included only when more results remain. */
             nextCursor?: string;
         };
-        /** @description 直近の取り込みの問題の、動画（未登録ならファイル）ごとの1件 */
+        /** @description One latest-import issue entry per video, or per file when unregistered. */
         ScanIssue: {
             /**
-             * @description まとめた件の重さ。失敗の種類を1つでも含めば failed
+             * @description Aggregated severity: failed if any included event is a failure.
              * @enum {string}
              */
             severity: "failed" | "substituted";
-            /** @description 起きた出来事の種類。重い順 */
+            /** @description Event kinds in severity order. */
             kinds: components["schemas"]["ScanIssueKind"][];
-            /** @description ファイル名（翻訳しない利用者のデータ） */
+            /** @description Filename as untranslated user data. */
             fileName: string;
             folder: components["schemas"]["VideoFolder"];
             /**
              * Format: int64
-             * @description 登録された動画のときだけ入る。画面は /videos/{id} へ移れる
+             * @description Included only for registered videos, allowing navigation to /videos/{id}.
              */
             videoId?: number;
         };
         /**
-         * @description 取り込みの問題の種類。unreadable・ changed_during_import・register_failed は走査で、*_failed は準備の仕事がやり直しの上限まで 失敗したもの（以上は失敗）。thumbnail_first_frame・seek_thumbnail_full_decode は代用
+         * @description Import issue kind: unreadable, changed_during_import and register_failed are traversal failures; *_failed means preparation exhausted retries. thumbnail_first_frame and seek_thumbnail_full_decode are fallbacks.
          * @enum {string}
          */
         ScanIssueKind: "unreadable" | "changed_during_import" | "register_failed" | "probe_failed" | "thumbnail_failed" | "seek_thumbnail_failed" | "preview_failed" | "fingerprint_failed" | "thumbnail_first_frame" | "seek_thumbnail_full_decode";
         /**
-         * @description 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く。ここが正本で、Go の定数は 生成物である（task generate）。
+         * @description Probe failure code, returned only for probeState=failed with a stored code and never to guests. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
         ProbeErrorCode: "file_unavailable" | "probe_unavailable" | "probe_failed" | "invalid_metadata" | "internal";
         /**
-         * @description スキャン自体の失敗理由のコード。state = failed でコードが保存されているときだけ返す。ここが正本で、Go の定数は生成物である （task generate）。
+         * @description Scan failure code, returned only for state=failed with a stored code. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
         ScanErrorCode: "media_folder_unreadable" | "media_folder_not_directory" | "location_unreadable" | "interrupted" | "internal";
         /**
-         * @description アクティビティの記録の種類
+         * @description Activity record kind.
          * @enum {string}
          */
         ActivityKind: "import" | "scan" | "auto_tag" | "version_judgement" | "work_info_fetch" | "bundle" | "unbundle" | "make_representative" | "dismiss" | "tag_attach" | "tag_detach" | "tag_keep" | "tag_reject" | "work_info_apply" | "media_folder_remove" | "organize_undo" | "undo";
         /**
-         * @description 種類のまとまりで、機能の絞り込みの単位。
-         *     `undo` は取り消した記録の機能に入る
+         * @description Kind grouping used for feature filters; undo belongs to the feature of the undone record.
          * @enum {string}
          */
         ActivityFeature: "import" | "scan" | "duplicate_check" | "auto_tagging" | "work_info" | "tags" | "versions" | "media_folders" | "organize";
         /**
-         * @description 記録の状態
+         * @description Record status.
          * @enum {string}
          */
         ActivityStatus: "running" | "attention" | "done";
         /**
-         * @description running と attention の記録の理由
+         * @description Reason for running or attention records.
          * @enum {string}
          */
         ActivityReason: "waiting" | "processing" | "failed" | "interrupted" | "no_connection" | "undecided";
         /**
-         * @description done の記録の結果
+         * @description Outcome of done records.
          * @enum {string}
          */
         ActivityOutcome: "completed" | "same" | "different" | "failed" | "superseded" | "decided_by_owner" | "gone" | "already_reverted";
         /**
-         * @description 記録した判断をしたもの、無ければ処理を始めたもの
+         * @description Actor responsible for the recorded decision, otherwise the actor that started processing.
          * @enum {string}
          */
         ActivityDecider: "rule" | "ai" | "owner";
         /**
-         * @description 取り込みの段階（jobs.kind の値）
+         * @description Import stage, using jobs.kind values.
          * @enum {string}
          */
         ActivityStage: "probe" | "thumbnail" | "seek_thumbnail" | "preview" | "fingerprint";
         ActivityPage: {
             items: components["schemas"]["ActivityEntry"][];
-            /** @description 続きがあるときだけ入る */
+            /** @description Included only when more results remain. */
             nextCursor?: string;
             counts: components["schemas"]["ActivityCounts"];
             features: components["schemas"]["ActivityFeatureCounts"];
         };
-        /** @description `status` 以外の絞り込みを満たす記録の、状態ごとの数 */
+        /** @description Counts by status for records matching every filter except status. */
         ActivityCounts: {
             running: number;
             attention: number;
             done: number;
         };
-        /** @description `feature` 以外の絞り込みを満たす記録の、機能ごとの数。どの機能も入る */
+        /** @description Counts for all features among records matching every filter except feature. */
         ActivityFeatureCounts: {
             import: number;
             scan: number;
@@ -5901,7 +5178,7 @@ export interface components {
             media_folders: number;
             organize: number;
         };
-        /** @description アクティビティの記録の 1 件 */
+        /** @description One activity record. */
         ActivityEntry: {
             /** Format: int64 */
             id: number;
@@ -5913,60 +5190,57 @@ export interface components {
             decider: components["schemas"]["ActivityDecider"];
             /**
              * Format: double
-             * @description モデルの答え。モデルが決めたか決められなかった組と、自動タグ付けで入る
+             * @description Model answer for judged or inconclusive pairs and auto-tagging.
              */
             probability?: number;
-            /**
-             * @description 提供元か段階の失敗の文、所有者の操作が変えたタグ、メディアフォルダの登録の解除で外れた動画の数
-             *     （翻訳しない）
-             */
+            /** @description Untranslated provider/stage error text, tags changed by owner actions, or number of videos removed by unregistering a media folder. */
             detail?: string;
             subject: components["schemas"]["ActivitySubject"];
-            /** @description 組の候補が重複の候補の画面にまだある */
+            /** @description Whether the pair remains on the duplicate-candidate screen. */
             candidate: boolean;
             stage?: components["schemas"]["ActivityStage"];
             /**
              * Format: date-time
-             * @description 失敗した `version_judgement` が次に試す時刻
+             * @description Next retry timestamp for a failed version_judgement.
              */
             retryAt?: string;
             progress?: components["schemas"]["ActivityProgress"];
             undoes?: components["schemas"]["ActivityUndone"];
-            /** @description `auto_tag` が付けたタグ */
+            /** @description Tags assigned by auto_tag. */
             tags?: components["schemas"]["ActivityTag"][];
-            /** @description やり直しを出す */
+            /** @description Show retry action. */
             retryRun: boolean;
-            /** @description 取り消しを出す（`auto_tag` は取り消せるタグが 1 つでもある） */
+            /** @description Show undo action; auto_tag requires at least one undoable tag. */
             undoable: boolean;
-            /** @description 所有者が取り消した */
+            /** @description Undone by the owner. */
             undone: boolean;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
         };
-        /** @description 記録の対象。鍵ごとに 1 項目で、組は 2 項目、それ以外は 1 項目 */
+        /** @description Record targets, one per key: two for pairs and one otherwise. */
         ActivitySubject: {
             /** @enum {string} */
             kind: "video" | "pair" | "scan" | "folder";
             items: components["schemas"]["ActivitySubjectItem"][];
         };
         ActivitySubjectItem: {
-            /** @description 書いた時点の表示名（翻訳しない利用者のデータ） */
+            /** @description Display-name snapshot at recording time, as untranslated user data. */
             label: string;
             /**
              * Format: int64
-             * @description 見る人が開ける今の動画。無ければ入らない
+             * @description Current video accessible to the viewer; omitted when unavailable.
              */
             videoId?: number;
         };
-        /** @description waiting を過ぎた running の `import` の、今の段階と済んだ段階の数 */
+        /** @description Current stage and completed-stage count for a running import beyond waiting. */
         ActivityProgress: {
             stage: components["schemas"]["ActivityStage"];
             done: number;
             total: number;
         };
-        /** @description `undo` の記録が取り消した記録の種類と結果、タグごとの取り消しならそのタグ */
+        /** @description Kind and outcome of the record undone by this undo record, plus the tag for per-tag undo. */
         ActivityUndone: {
             kind: components["schemas"]["ActivityKind"];
             outcome?: components["schemas"]["ActivityOutcome"];
@@ -5975,59 +5249,59 @@ export interface components {
         ActivityTag: {
             /** Format: int64 */
             id: number;
-            /** @description 書いた時点のタグの名前 */
+            /** @description Tag-name snapshot at recording time. */
             name: string;
-            /** @description 提案のタグとして付けた */
+            /** @description Assigned as a suggested tag. */
             suggested: boolean;
             /** Format: double */
             probability: number;
-            /** @description 所有者が取り消した */
+            /** @description Undone by the owner. */
             undone: boolean;
         };
         ActivityUndoRequest: {
             /**
              * Format: int64
-             * @description `auto_tag` の記録で取り消すタグ。ほかの種類では使わない
+             * @description Tag to undo on an auto_tag record; unused for other kinds.
              */
             tagId?: number;
         };
         VideoChanged: {
             /**
              * Format: int64
-             * @description 状態が変わった動画の識別子
+             * @description Identifier of the video whose state changed.
              */
             id: number;
         };
         Error: {
             /**
-             * @description 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
+             * @description Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
              * @enum {string}
              */
             code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "operation_unsupported" | "work_info_fetch_stale" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable";
-            /** @description 英語の説明。画面は code と reason から表示し、この文は API 利用者と未知のコードに 対するフォールバックである */
+            /** @description English explanation for API clients and unknown-code fallback; the UI derives text from code and reason. */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
-            /** @description reason の上限値。契約の表で limit を返す reason のときだけ入る */
+            /** @description Reason limit, included only for reasons whose contract specifies a limit. */
             limit?: number;
-            /** @description reason が指すプロパティの経路。JSON のプロパティ名を . でつなぎ、一覧の位置を [] で書く （aliases[0].language・externalIds[1]・parentId）。work_info_*・person_not_found・ organization_not_found・external_id_taken のときだけ入る */
+            /** @description JSON property path using dots and array indices, such as aliases[0].language, externalIds[1] or parentId; only for work_info_*, person_not_found, organization_not_found or external_id_taken. */
             field?: string;
-            /** @description 競合の相手になったタグの元の名前（翻訳しない利用者のデータ）。tag_name_taken と tag_merge_required のときだけ入る */
+            /** @description Conflicting tag's original name as untranslated user data; only for tag_name_taken and tag_merge_required. */
             tagName?: string;
-            /** @description 作品情報プラグインが報告した誤りの文の先頭 300 文字（翻訳しないプラグインの文）。plugin_failed のとき だけ入りうる */
+            /** @description First 300 characters of the plugin's untranslated error message; may appear only for plugin_failed. */
             pluginMessage?: string;
-            /** @description 作品情報プラグインの要求を拒んだか届かなかったホスト。reason が blocked_address か network_error の ときだけ入る */
+            /** @description Host that rejected or could not receive a plugin request; only for blocked_address or network_error reasons. */
             host?: string;
-            /** @description 値の無い必須の設定のキー（宣言の順）。plugin_settings_missing のときだけ入る */
+            /** @description Required setting keys without values, in declaration order; only for plugin_settings_missing. */
             settingKeys?: string[];
         };
         /**
-         * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない。ここが正本で、Go の定数は 生成物である（task generate）。
+         * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
         ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken";
     };
     responses: {
-        /** @description 対象が存在しない */
+        /** @description Resource not found */
         NotFound: {
             headers: {
                 [name: string]: unknown;
@@ -6036,7 +5310,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description 要求の形式が不正 */
+        /** @description Invalid request format */
         InvalidRequest: {
             headers: {
                 [name: string]: unknown;
@@ -6045,7 +5319,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description same-originでない操作 */
+        /** @description Operation is not same-origin */
         Forbidden: {
             headers: {
                 [name: string]: unknown;
@@ -6054,7 +5328,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description 現在の状態と競合する操作 */
+        /** @description Operation conflicts with current state */
         Conflict: {
             headers: {
                 [name: string]: unknown;
@@ -6063,7 +5337,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description 作品情報プラグインのモジュールが上限（limit）を超える */
+        /** @description Plugin module exceeds limit */
         PluginTooLarge: {
             headers: {
                 [name: string]: unknown;
@@ -6072,7 +5346,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description 作品情報プラグインの実行が失敗した（reason・pluginMessage・host） */
+        /** @description Plugin execution failed (reason, pluginMessage, host) */
         PluginFailed: {
             headers: {
                 [name: string]: unknown;
@@ -6081,7 +5355,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description 別の作品情報プラグインの実行が枠を空けなかった */
+        /** @description Another plugin run did not release a slot */
         PluginBusy: {
             headers: {
                 [name: string]: unknown;
@@ -6090,7 +5364,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description 作品情報プラグインの実行が 30 秒を超えて止めた */
+        /** @description Plugin execution stopped after exceeding 30 seconds */
         PluginTimedOut: {
             headers: {
                 [name: string]: unknown;
@@ -6099,7 +5373,7 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
-        /** @description 画像編集の提供元（ComfyUI）が入力の受け取りか実行の受け付けに失敗した */
+        /** @description Image-edit provider (ComfyUI) rejected input upload or run submission */
         ProviderFailed: {
             headers: {
                 [name: string]: unknown;
@@ -6110,108 +5384,74 @@ export interface components {
         };
     };
     parameters: {
-        /** @description アクティビティの記録の識別子 */
+        /** @description Activity record ID */
         ActivityId: number;
-        /** @description サムネイルの編集のセッションの識別子 */
+        /** @description Thumbnail-edit session ID */
         ThumbnailEditId: string;
-        /**
-         * @description 動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
-         *     このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
-         *     持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
-         *     答える
-         */
+        /** @description Group from which the video was opened. If its visible playback order contains the video, uses that order for context, navigation and member windows/pages. If omitted or inapplicable, uses the lowest-ID visible group directly containing the video. */
         VideoGroupContext: number;
-        /**
-         * @description 動画を開いたスマートフォルダの id。`group` が無く、このフォルダの見る人に見せる再生順が動画を
-         *     持てば、動画の文脈（`smartFolder`）・前後・メンバーの窓とメンバーのページをその再生順で
-         *     答える。`group` があれば `group` が勝ち、動画を持たないフォルダは無視する
-         */
+        /** @description Smart folder from which the video was opened. Without group, uses its visible playback order for context, navigation and member windows/pages when it contains the video. group takes precedence; inapplicable folders are ignored. */
         VideoSmartFolderContext: number;
-        /** @description 動画の識別子 */
+        /** @description Video ID */
         VideoId: number;
-        /**
-         * @description 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
-         *     組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
-         *     `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
-         *     ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
-         */
+        /** @description Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
         PersonFilter: number;
-        /** @description 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ */
+        /** @description Organization ID, matching any role; follows person filter semantics */
         OrganizationFilter: number;
-        /**
-         * @description 日数。いまからその日数前の時刻以後に追加した動画だけにする。ほかの絞り込みと AND で
-         *     組み合わさり、`total` もそれを掛けて数える。1 以上 36500 以下でなければ `400`
-         *     `invalid_request`。ゲストも使える
-         */
+        /** @description Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests. */
         AddedWithinFilter: number;
-        /**
-         * @description 長さの下限（秒、含む）。秒未満を切り捨てた長さで比べ、長さの分からない動画は当たらない。
-         *     0 以上 360000 以下でなければ、または `maxDuration` を越えれば `400` `invalid_request`。
-         *     ゲストも使える
-         */
+        /** @description Inclusive minimum duration in whole seconds, rounded down; excludes unknown durations. Accepts 0–360000 and cannot exceed maxDuration, otherwise 400 invalid_request. Available to guests. */
         MinDurationFilter: number;
-        /** @description 長さの上限（秒、含む）。扱いは `minDuration` と同じ */
+        /** @description Inclusive maximum duration in seconds; follows minDuration semantics */
         MaxDurationFilter: number;
-        /**
-         * @description タグの種類の id。手で付けたかフォルダ名から付いたかを問わず、その種類のタグを 1 つでも
-         *     持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
-         *     実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
-         *     `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
-         */
+        /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
         TagKindFilter: number;
-        /** @description メディアフォルダの識別子 */
+        /** @description Media folder ID */
         MediaFolderId: number;
-        /** @description API トークンの識別子 */
+        /** @description API token ID */
         APITokenId: number;
-        /** @description 作品情報プラグインの識別子 */
+        /** @description Work-info plugin ID */
         WorkInfoPluginId: number;
-        /** @description 取得の結果の識別子 */
+        /** @description Fetch result ID */
         WorkInfoFetchId: string;
-        /** @description グループの識別子 */
+        /** @description Group ID */
         GroupId: number;
-        /** @description スマートフォルダの識別子 */
+        /** @description Smart folder ID */
         SmartFolderId: number;
-        /** @description グループの項目の識別子。動画やグループの id ではない */
+        /** @description Group item ID, distinct from a video or group ID */
         GroupItemId: number;
-        /** @description プレイリストの識別子 */
+        /** @description Playlist ID */
         PlaylistId: number;
-        /** @description 視聴履歴の 1 件の識別子 */
+        /** @description Watch-history entry ID */
         WatchHistoryEntryId: number;
-        /** @description 動画に付いたタグの識別子 */
+        /** @description Assigned video-tag ID */
         VideoTagId: number;
-        /** @description タグの識別子 */
+        /** @description Tag ID */
         TagId: number;
-        /** @description タグの種類の識別子 */
+        /** @description Tag kind ID */
         TagKindId: number;
-        /** @description 人物の識別子 */
+        /** @description Person ID */
         PersonId: number;
-        /** @description 団体の識別子 */
+        /** @description Organization ID */
         OrganizationId: number;
-        /** @description 検索語。照合形にして前後の空白を落とし、空でなければ名前か別名に部分一致する実体だけにする */
+        /** @description Normalized, trimmed query; nonempty queries substring-match names or aliases */
         CreditQuery: string;
-        /** @description 並び順 */
+        /** @description Sort order */
         CreditSort: components["schemas"]["CreditSort"];
-        /** @description 前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する */
+        /** @description Previous nextCursor, continued with the same q and sort; ignored without limit */
         CreditCursor: string;
-        /** @description 1 ページの件数。省くと全件を返し、`nextCursor` は入らない */
+        /** @description Page size; omit for all results without nextCursor */
         CreditLimit: number;
-        /** @description フォルダが属する登録済みメディアフォルダの識別子 */
+        /** @description Registered media-folder ID containing this folder */
         FolderRootId: number;
-        /** @description プレイリストの項目の識別子 */
+        /** @description Playlist item ID */
         PlaylistItemId: number;
-        /**
-         * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
-         *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
-         */
+        /** @description Slash-separated path relative to the registered folder; omitted/empty selects the root. Rejects empty segments, leading/trailing slash, dot and dot-dot segments. */
         FolderPath: string;
     };
     requestBodies: never;
     headers: {
-        /**
-         * @description セッションの Cookie。HTTPS では
-         *     `__Host-vv_session=<ID>; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=<期限までの秒>`、
-         *     HTTP では `vv_session=<ID>; HttpOnly; SameSite=Strict; Path=/; Max-Age=<期限までの秒>`
-         */
+        /** @description Session cookie: HTTPS uses `__Host-vv_session=<ID>; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=<seconds>`; HTTP uses `vv_session=<ID>; HttpOnly; SameSite=Strict; Path=/; Max-Age=<seconds>`. */
         SessionSetCookie: string;
     };
     pathItems: never;
@@ -6227,7 +5467,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 稼働中。依存する保存層にも疎通できている */
+            /** @description Running with storage connectivity */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6236,7 +5476,7 @@ export interface operations {
                     "application/json": components["schemas"]["Health"];
                 };
             };
-            /** @description 起動はしているが保存層に疎通できていない */
+            /** @description Running without storage connectivity */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -6260,7 +5500,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 初回設定が成立し、ログインした */
+            /** @description Account created and signed in */
             200: {
                 headers: {
                     "Set-Cookie": components["headers"]["SessionSetCookie"];
@@ -6272,7 +5512,7 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
-            /** @description アカウントは既に設定されている（account_already_configured）。何も書かない */
+            /** @description Account already configured (`account_already_configured`); nothing written */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -6296,7 +5536,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description ログインした */
+            /** @description Signed in */
             200: {
                 headers: {
                     "Set-Cookie": components["headers"]["SessionSetCookie"];
@@ -6307,7 +5547,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
-            /** @description ユーザー名またはパスワードが違う（invalid_credentials） */
+            /** @description Incorrect username or password (`invalid_credentials`) */
             401: {
                 headers: {
                     [name: string]: unknown;
@@ -6317,10 +5557,10 @@ export interface operations {
                 };
             };
             403: components["responses"]["Forbidden"];
-            /** @description 試行が多すぎる（login_throttled）。照合していない */
+            /** @description Too many attempts (`login_throttled`); credentials were not checked */
             429: {
                 headers: {
-                    /** @description 再び試せるまでの秒数 */
+                    /** @description Seconds until another attempt is allowed */
                     "Retry-After"?: number;
                     [name: string]: unknown;
                 };
@@ -6333,7 +5573,7 @@ export interface operations {
     getAuthSession: {
         parameters: {
             query?: {
-                /** @description ログイン済みのときに戻る先の候補 */
+                /** @description Candidate redirect after sign-in */
                 next?: string;
             };
             header?: never;
@@ -6342,7 +5582,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 見る人の状態 */
+            /** @description Viewer state */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6362,7 +5602,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description ログアウトした */
+            /** @description Signed out */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -6375,70 +5615,35 @@ export interface operations {
     listVideos: {
         parameters: {
             query?: {
-                /**
-                 * @description 検索語。空白で区切った語をすべて含む動画に絞る（AND）。`"…"` で囲んだ部分は
-                 *     空白を含めて1語（フレーズ）、先頭の `-` はその語を含まない（除外）、単独の
-                 *     `OR` と `|` は前後の語のどちらかを含む（和）。全角・半角、大文字・小文字、
-                 *     ひらがな・カタカナなどの表記の揺れは吸収する。照合するのは題名と、登録
-                 *     フォルダより下の相対パスで、いずれも部分一致。先頭から 16 語までを使い、
-                 *     語が残らなければ絞り込まない。書き方の誤りは返さない
-                 */
+                /** @description Search terms are ANDed. Double quotes form phrases, a leading `-` excludes a term, and standalone `OR` or `|` joins alternatives. Matching normalizes width, case and hiragana/katakana, and checks title and relative paths below registered folders by substring. Uses at most 16 terms; no remaining terms means no filter. Syntax errors are not reported. */
                 query?: string;
-                /** @description 視聴状態で絞る。all は絞り込まない */
+                /** @description Watch-state filter; `all` disables it */
                 watch?: components["schemas"]["WatchFilter"];
-                /** @description true ならブラウザでそのまま再生できる（playable = true の）動画だけにする */
+                /** @description Restrict to videos playable directly in the browser */
                 playable?: boolean;
-                /**
-                 * @description true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
-                 *     ほかの絞り込みと AND で組み合わさる
-                 */
+                /** @description Restrict to favorited items using each item's own favorite state, combined with other filters by AND */
                 favorite?: boolean;
-                /** @description 並び順 */
+                /** @description Sort order */
                 sort?: components["schemas"]["VideoSort"];
-                /**
-                 * @description `sort=random` の並びを決める値。同じ値ならページをまたいでも同じ並びになる。
-                 *     ほかの並び順では無視する
-                 */
+                /** @description Seed for stable `sort=random` ordering across pages; ignored for other sorts */
                 seed?: number;
-                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                /** @description Opaque `nextCursor` from the previous response */
                 cursor?: string;
-                /** @description 1ページの件数 */
+                /** @description Page size */
                 limit?: number;
-                /**
-                 * @description タグの id ごとに1つ（`tag=3&tag=8`）。すべて持つ動画だけにする（AND）。
-                 *     最大16個、17個以上は400。存在しない id は条件から落とし、応答の
-                 *     missingTagIds に返す
-                 */
+                /** @description One parameter per tag ID (`tag=3&tag=8`), combined by AND. At most 16; more returns 400. Unknown IDs are removed from the filter and returned in `missingTagIds`. */
                 tag?: number[];
-                /**
-                 * @description 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
-                 *     組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
-                 *     `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
-                 *     ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
-                 */
+                /** @description Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 person?: components["parameters"]["PersonFilter"];
-                /** @description 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ */
+                /** @description Organization ID, matching any role; follows person filter semantics */
                 organization?: components["parameters"]["OrganizationFilter"];
-                /**
-                 * @description 日数。いまからその日数前の時刻以後に追加した動画だけにする。ほかの絞り込みと AND で
-                 *     組み合わさり、`total` もそれを掛けて数える。1 以上 36500 以下でなければ `400`
-                 *     `invalid_request`。ゲストも使える
-                 */
+                /** @description Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests. */
                 addedWithin?: components["parameters"]["AddedWithinFilter"];
-                /**
-                 * @description 長さの下限（秒、含む）。秒未満を切り捨てた長さで比べ、長さの分からない動画は当たらない。
-                 *     0 以上 360000 以下でなければ、または `maxDuration` を越えれば `400` `invalid_request`。
-                 *     ゲストも使える
-                 */
+                /** @description Inclusive minimum duration in whole seconds, rounded down; excludes unknown durations. Accepts 0–360000 and cannot exceed maxDuration, otherwise 400 invalid_request. Available to guests. */
                 minDuration?: components["parameters"]["MinDurationFilter"];
-                /** @description 長さの上限（秒、含む）。扱いは `minDuration` と同じ */
+                /** @description Inclusive maximum duration in seconds; follows minDuration semantics */
                 maxDuration?: components["parameters"]["MaxDurationFilter"];
-                /**
-                 * @description タグの種類の id。手で付けたかフォルダ名から付いたかを問わず、その種類のタグを 1 つでも
-                 *     持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
-                 *     実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
-                 *     `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
-                 */
+                /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
             };
             header?: never;
@@ -6447,7 +5652,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 一覧 */
+            /** @description List */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6462,70 +5667,35 @@ export interface operations {
     listLibrary: {
         parameters: {
             query?: {
-                /**
-                 * @description 検索語。空白で区切った語をすべて含む動画に絞る（AND）。`"…"` で囲んだ部分は
-                 *     空白を含めて1語（フレーズ）、先頭の `-` はその語を含まない（除外）、単独の
-                 *     `OR` と `|` は前後の語のどちらかを含む（和）。全角・半角、大文字・小文字、
-                 *     ひらがな・カタカナなどの表記の揺れは吸収する。照合するのは題名と、登録
-                 *     フォルダより下の相対パスで、いずれも部分一致。先頭から 16 語までを使い、
-                 *     語が残らなければ絞り込まない。書き方の誤りは返さない
-                 */
+                /** @description Search terms are ANDed. Double quotes form phrases, a leading `-` excludes a term, and standalone `OR` or `|` joins alternatives. Matching normalizes width, case and hiragana/katakana, and checks title and relative paths below registered folders by substring. Uses at most 16 terms; no remaining terms means no filter. Syntax errors are not reported. */
                 query?: string;
-                /** @description 視聴状態で絞る。all は絞り込まない */
+                /** @description Watch-state filter; `all` disables it */
                 watch?: components["schemas"]["WatchFilter"];
-                /** @description true ならブラウザでそのまま再生できる（playable = true の）動画だけにする */
+                /** @description Restrict to videos playable directly in the browser */
                 playable?: boolean;
-                /**
-                 * @description true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
-                 *     ほかの絞り込みと AND で組み合わさる
-                 */
+                /** @description Restrict to favorited items using each item's own favorite state, combined with other filters by AND */
                 favorite?: boolean;
-                /** @description 並び順 */
+                /** @description Sort order */
                 sort?: components["schemas"]["VideoSort"];
-                /**
-                 * @description `sort=random` の並びを決める値。同じ値ならページをまたいでも同じ並びになる。
-                 *     ほかの並び順では無視する
-                 */
+                /** @description Seed for stable `sort=random` ordering across pages; ignored for other sorts */
                 seed?: number;
-                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                /** @description Opaque `nextCursor` from the previous response */
                 cursor?: string;
-                /** @description 1ページの件数 */
+                /** @description Page size */
                 limit?: number;
-                /**
-                 * @description タグの id ごとに1つ（`tag=3&tag=8`）。すべて持つ動画だけにする（AND）。
-                 *     最大16個、17個以上は400。存在しない id は条件から落とし、応答の
-                 *     missingTagIds に返す
-                 */
+                /** @description One parameter per tag ID (`tag=3&tag=8`), combined by AND. At most 16; more returns 400. Unknown IDs are removed from the filter and returned in `missingTagIds`. */
                 tag?: number[];
-                /**
-                 * @description 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
-                 *     組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
-                 *     `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
-                 *     ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
-                 */
+                /** @description Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 person?: components["parameters"]["PersonFilter"];
-                /** @description 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ */
+                /** @description Organization ID, matching any role; follows person filter semantics */
                 organization?: components["parameters"]["OrganizationFilter"];
-                /**
-                 * @description 日数。いまからその日数前の時刻以後に追加した動画だけにする。ほかの絞り込みと AND で
-                 *     組み合わさり、`total` もそれを掛けて数える。1 以上 36500 以下でなければ `400`
-                 *     `invalid_request`。ゲストも使える
-                 */
+                /** @description Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests. */
                 addedWithin?: components["parameters"]["AddedWithinFilter"];
-                /**
-                 * @description 長さの下限（秒、含む）。秒未満を切り捨てた長さで比べ、長さの分からない動画は当たらない。
-                 *     0 以上 360000 以下でなければ、または `maxDuration` を越えれば `400` `invalid_request`。
-                 *     ゲストも使える
-                 */
+                /** @description Inclusive minimum duration in whole seconds, rounded down; excludes unknown durations. Accepts 0–360000 and cannot exceed maxDuration, otherwise 400 invalid_request. Available to guests. */
                 minDuration?: components["parameters"]["MinDurationFilter"];
-                /** @description 長さの上限（秒、含む）。扱いは `minDuration` と同じ */
+                /** @description Inclusive maximum duration in seconds; follows minDuration semantics */
                 maxDuration?: components["parameters"]["MaxDurationFilter"];
-                /**
-                 * @description タグの種類の id。手で付けたかフォルダ名から付いたかを問わず、その種類のタグを 1 つでも
-                 *     持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
-                 *     実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
-                 *     `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
-                 */
+                /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
                 /**
                  * @description true ならホームのどのフォルダの棚の実効の規則（祖先の条件を含む経路の条件）にも
@@ -6541,7 +5711,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 項目の一覧 */
+            /** @description Item list */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6559,42 +5729,21 @@ export interface operations {
                 query?: string;
                 watch?: components["schemas"]["WatchFilter"];
                 playable?: boolean;
-                /**
-                 * @description true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
-                 *     ほかの絞り込みと AND で組み合わさる
-                 */
+                /** @description Restrict to favorited items using each item's own favorite state, combined with other filters by AND */
                 favorite?: boolean;
-                /** @description 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す */
+                /** @description At most 16; more returns 400. Unknown IDs are ignored and returned in `missingTagIds`. */
                 tag?: number[];
-                /**
-                 * @description 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
-                 *     組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
-                 *     `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
-                 *     ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
-                 */
+                /** @description Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 person?: components["parameters"]["PersonFilter"];
-                /** @description 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ */
+                /** @description Organization ID, matching any role; follows person filter semantics */
                 organization?: components["parameters"]["OrganizationFilter"];
-                /**
-                 * @description 日数。いまからその日数前の時刻以後に追加した動画だけにする。ほかの絞り込みと AND で
-                 *     組み合わさり、`total` もそれを掛けて数える。1 以上 36500 以下でなければ `400`
-                 *     `invalid_request`。ゲストも使える
-                 */
+                /** @description Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests. */
                 addedWithin?: components["parameters"]["AddedWithinFilter"];
-                /**
-                 * @description 長さの下限（秒、含む）。秒未満を切り捨てた長さで比べ、長さの分からない動画は当たらない。
-                 *     0 以上 360000 以下でなければ、または `maxDuration` を越えれば `400` `invalid_request`。
-                 *     ゲストも使える
-                 */
+                /** @description Inclusive minimum duration in whole seconds, rounded down; excludes unknown durations. Accepts 0–360000 and cannot exceed maxDuration, otherwise 400 invalid_request. Available to guests. */
                 minDuration?: components["parameters"]["MinDurationFilter"];
-                /** @description 長さの上限（秒、含む）。扱いは `minDuration` と同じ */
+                /** @description Inclusive maximum duration in seconds; follows minDuration semantics */
                 maxDuration?: components["parameters"]["MaxDurationFilter"];
-                /**
-                 * @description タグの種類の id。手で付けたかフォルダ名から付いたかを問わず、その種類のタグを 1 つでも
-                 *     持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
-                 *     実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
-                 *     `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
-                 */
+                /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
             };
             header?: never;
@@ -6603,7 +5752,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 条件に合う項目の動画の id */
+            /** @description Video IDs for matching items */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6618,30 +5767,21 @@ export interface operations {
     getVideo: {
         parameters: {
             query?: {
-                /**
-                 * @description 動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
-                 *     このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
-                 *     持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
-                 *     答える
-                 */
+                /** @description Group from which the video was opened. If its visible playback order contains the video, uses that order for context, navigation and member windows/pages. If omitted or inapplicable, uses the lowest-ID visible group directly containing the video. */
                 group?: components["parameters"]["VideoGroupContext"];
-                /**
-                 * @description 動画を開いたスマートフォルダの id。`group` が無く、このフォルダの見る人に見せる再生順が動画を
-                 *     持てば、動画の文脈（`smartFolder`）・前後・メンバーの窓とメンバーのページをその再生順で
-                 *     答える。`group` があれば `group` が勝ち、動画を持たないフォルダは無視する
-                 */
+                /** @description Smart folder from which the video was opened. Without group, uses its visible playback order for context, navigation and member windows/pages when it contains the video. group takes precedence; inapplicable folders are ignored. */
                 smartFolder?: components["parameters"]["VideoSmartFolderContext"];
             };
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 詳細 */
+            /** @description Details */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6656,34 +5796,25 @@ export interface operations {
     getRelatedVideos: {
         parameters: {
             query?: {
-                /**
-                 * @description 動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
-                 *     このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
-                 *     持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
-                 *     答える
-                 */
+                /** @description Group from which the video was opened. If its visible playback order contains the video, uses that order for context, navigation and member windows/pages. If omitted or inapplicable, uses the lowest-ID visible group directly containing the video. */
                 group?: components["parameters"]["VideoGroupContext"];
-                /**
-                 * @description 動画を開いたスマートフォルダの id。`group` が無く、このフォルダの見る人に見せる再生順が動画を
-                 *     持てば、動画の文脈（`smartFolder`）・前後・メンバーの窓とメンバーのページをその再生順で
-                 *     答える。`group` があれば `group` が勝ち、動画を持たないフォルダは無視する
-                 */
+                /** @description Smart folder from which the video was opened. Without group, uses its visible playback order for context, navigation and member windows/pages when it contains the video. group takes precedence; inapplicable folders are ignored. */
                 smartFolder?: components["parameters"]["VideoSmartFolderContext"];
-                /** @description 前の応答の `nextCursor`。省くと先頭から返す */
+                /** @description Previous `nextCursor`; omit to start at the beginning */
                 cursor?: string;
-                /** @description 返す件数の上限 */
+                /** @description Maximum results */
                 limit?: number;
             };
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 関連動画 */
+            /** @description Related videos */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6698,34 +5829,25 @@ export interface operations {
     listVideoGroupMembers: {
         parameters: {
             query?: {
-                /**
-                 * @description 動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
-                 *     このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
-                 *     持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
-                 *     答える
-                 */
+                /** @description Group from which the video was opened. If its visible playback order contains the video, uses that order for context, navigation and member windows/pages. If omitted or inapplicable, uses the lowest-ID visible group directly containing the video. */
                 group?: components["parameters"]["VideoGroupContext"];
-                /**
-                 * @description 動画を開いたスマートフォルダの id。`group` が無く、このフォルダの見る人に見せる再生順が動画を
-                 *     持てば、動画の文脈（`smartFolder`）・前後・メンバーの窓とメンバーのページをその再生順で
-                 *     答える。`group` があれば `group` が勝ち、動画を持たないフォルダは無視する
-                 */
+                /** @description Smart folder from which the video was opened. Without group, uses its visible playback order for context, navigation and member windows/pages when it contains the video. group takes precedence; inapplicable folders are ignored. */
                 smartFolder?: components["parameters"]["VideoSmartFolderContext"];
-                /** @description 返す最初のメンバーの、グループの中の並びの位置（0 始まり） */
+                /** @description Zero-based index of the first member */
                 offset?: number;
-                /** @description 返す本数の上限 */
+                /** @description Maximum videos */
                 limit?: number;
             };
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description グループのメンバーの範囲 */
+            /** @description Group member range */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6743,14 +5865,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 読み取りを積み直した。更新後の動画 */
+            /** @description Probe requeued; updated video */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -6761,7 +5883,7 @@ export interface operations {
             };
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            /** @description probeState が failed でない（probe_not_failed） */
+            /** @description Probe state is not failed (`probe_not_failed`) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -6777,14 +5899,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 積んだかどうか */
+            /** @description Whether a job was queued */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -6795,7 +5917,7 @@ export interface operations {
             };
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            /** @description 自動タグ付けの機能が切（auto_tagging_off） */
+            /** @description Auto-tagging is off (`auto_tagging_off`) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -6811,16 +5933,16 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
-                /** @description 動画に付いたタグの識別子 */
+                /** @description Assigned video-tag ID */
                 tagId: components["parameters"]["VideoTagId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 確定した */
+            /** @description Confirmed */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -6836,16 +5958,16 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
-                /** @description 動画に付いたタグの識別子 */
+                /** @description Assigned video-tag ID */
                 tagId: components["parameters"]["VideoTagId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 却下した */
+            /** @description Rejected */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -6861,14 +5983,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 既定アプリを起動した */
+            /** @description Default application started */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -6877,7 +5999,7 @@ export interface operations {
             };
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            /** @description 既定アプリを起動できない環境（open_unavailable）か、ファイルが無い（file_missing） */
+            /** @description Opening is unsupported (`open_unavailable`) or the file is missing (`file_missing`) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -6886,7 +6008,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description 子プロセスを起動できなかった */
+            /** @description Could not start the child process */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -6902,14 +6024,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 全体 */
+            /** @description Complete file */
             200: {
                 headers: {
                     "Accept-Ranges"?: string;
@@ -6921,7 +6043,7 @@ export interface operations {
                     "application/octet-stream": string;
                 };
             };
-            /** @description 指定された範囲 */
+            /** @description Requested range */
             206: {
                 headers: {
                     "Content-Range"?: string;
@@ -6932,7 +6054,7 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
-            /** @description 範囲指定が不正 */
+            /** @description Invalid range */
             416: {
                 headers: {
                     [name: string]: unknown;
@@ -6944,19 +6066,19 @@ export interface operations {
     getVideoPreview: {
         parameters: {
             query?: {
-                /** @description 一覧・詳細が返した current content key */
+                /** @description Current content key from the list or detail response */
                 v?: string;
             };
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description preview MP4 全体 */
+            /** @description Complete preview MP4 */
             200: {
                 headers: {
                     "Accept-Ranges"?: string;
@@ -6966,7 +6088,7 @@ export interface operations {
                     "video/mp4": string;
                 };
             };
-            /** @description preview MP4 の指定範囲 */
+            /** @description Requested preview MP4 range */
             206: {
                 headers: {
                     "Accept-Ranges"?: string;
@@ -6977,7 +6099,7 @@ export interface operations {
                     "video/mp4": string;
                 };
             };
-            /** @description `If-None-Match` が `ETag` と一致した */
+            /** @description `If-None-Match` matches `ETag` */
             304: {
                 headers: {
                     [name: string]: unknown;
@@ -6985,7 +6107,7 @@ export interface operations {
                 content?: never;
             };
             404: components["responses"]["NotFound"];
-            /** @description 範囲指定が不正 */
+            /** @description Invalid range */
             416: {
                 headers: {
                     [name: string]: unknown;
@@ -6998,22 +6120,14 @@ export interface operations {
         parameters: {
             query?: {
                 startMs?: number;
-                /**
-                 * @description プレイヤーが要求ごとに作る識別子。付けると、実際の開始位置を
-                 *     `getTranscodeStart` で引けるよう台帳に載る。形式が違えば 400。
-                 */
+                /** @description Player-generated request identifier. When supplied, records the actual start for `getTranscodeStart`. Invalid format returns 400. */
                 attempt?: string;
-                /**
-                 * @description 縮める画質。無ければ元の画質（今までどおり、映像をコピーできればコピーする）。
-                 *     あれば映像を必ずエンコードし、表示の短辺をこの値に縮め、ビットレートに上限を付ける。
-                 *     動画の表示の短辺（`Video.width`・`height` の小さい方）より小さい画質だけを受け付け、
-                 *     それ以外と寸法の無い動画は 400。
-                 */
+                /** @description Target short-edge resolution. Omit for original quality, copying video when possible. Supplying it forces encoding, downsizes the display's short edge and caps bitrate. Must be smaller than min(Video.width, Video.height); other values and videos without dimensions return 400. */
                 quality?: "1080p" | "720p" | "480p" | "360p";
             };
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
@@ -7032,7 +6146,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
-            /** @description 変換processを開始できない */
+            /** @description Could not start the transcoder */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -7046,19 +6160,19 @@ export interface operations {
     getTranscodeStart: {
         parameters: {
             query: {
-                /** @description `transcodeVideo` に付けた識別子 */
+                /** @description Identifier supplied to `transcodeVideo` */
                 attempt: string;
             };
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 実際の開始位置 */
+            /** @description Actual start position */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7076,14 +6190,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 字幕ファイルの一覧 */
+            /** @description Subtitle file list */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7098,21 +6212,21 @@ export interface operations {
     getVideoSubtitle: {
         parameters: {
             query?: {
-                /** @description 再生の時間軸の 0 に当たる元動画の時刻（ミリ秒）。cue の時刻からこの値を引く */
+                /** @description Source timestamp corresponding to playback time zero, in milliseconds; subtracted from cue times */
                 offsetMs?: number;
             };
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
-                /** @description `listVideoSubtitles` が返した `file` */
+                /** @description `file` returned by `listVideoSubtitles` */
                 file: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description UTF-8 の WebVTT */
+            /** @description UTF-8 WebVTT */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7121,7 +6235,7 @@ export interface operations {
                     "text/vtt": string;
                 };
             };
-            /** @description `If-None-Match` が `ETag` と一致した */
+            /** @description `If-None-Match` matches `ETag` */
             304: {
                 headers: {
                     [name: string]: unknown;
@@ -7135,19 +6249,19 @@ export interface operations {
     getVideoThumbnail: {
         parameters: {
             query?: {
-                /** @description 一覧・詳細が返した URL に含まれる版 */
+                /** @description Version in the URL returned by list or detail */
                 v?: string;
             };
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 画像 */
+            /** @description Image */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7156,14 +6270,14 @@ export interface operations {
                     "image/jpeg": string;
                 };
             };
-            /** @description `If-None-Match` が `ETag` と一致した */
+            /** @description `If-None-Match` matches `ETag` */
             304: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
-            /** @description 動画が存在しないか、サムネイルが未生成 */
+            /** @description Video missing or thumbnail not generated */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -7175,19 +6289,19 @@ export interface operations {
     getVideoSeekThumbnail: {
         parameters: {
             query?: {
-                /** @description 一覧・詳細が返したURLに含まれる内容由来の版 */
+                /** @description Content-derived version in the list/detail URL */
                 v?: string;
             };
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description スプライトの配置情報 */
+            /** @description Sprite layout */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7196,7 +6310,7 @@ export interface operations {
                     "application/json": components["schemas"]["SeekThumbnailSprite"];
                 };
             };
-            /** @description `If-None-Match` が `ETag` と一致した */
+            /** @description `If-None-Match` matches `ETag` */
             304: {
                 headers: {
                     [name: string]: unknown;
@@ -7206,7 +6320,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
-            /** @description 配置情報を読めない、または形が違う */
+            /** @description Unreadable or invalid layout */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -7220,21 +6334,21 @@ export interface operations {
     getVideoSeekThumbnailSheet: {
         parameters: {
             query?: {
-                /** @description 配置情報の `sheets` に含まれていた内容由来の版 */
+                /** @description Content-derived version from layout `sheets` */
                 v?: string;
             };
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
-                /** @description シートの番号（0 から） */
+                /** @description Zero-based sheet index */
                 sheet: number;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description シートの画像 */
+            /** @description Sheet image */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7243,7 +6357,7 @@ export interface operations {
                     "image/jpeg": string;
                 };
             };
-            /** @description `If-None-Match` が `ETag` と一致した */
+            /** @description `If-None-Match` matches `ETag` */
             304: {
                 headers: {
                     [name: string]: unknown;
@@ -7253,7 +6367,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
-            /** @description 画像を読めない */
+            /** @description Image could not be read */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -7269,7 +6383,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
@@ -7280,7 +6394,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 記録後の状態 */
+            /** @description Saved state */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7299,7 +6413,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
@@ -7310,7 +6424,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 反映後の動画 */
+            /** @description Updated video */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7329,7 +6443,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
@@ -7340,7 +6454,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 反映後の動画 */
+            /** @description Updated video */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7359,7 +6473,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
@@ -7370,7 +6484,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 反映後の動画 */
+            /** @description Updated video */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7389,7 +6503,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
@@ -7400,7 +6514,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 反映後の動画 */
+            /** @description Updated video */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7420,7 +6534,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
@@ -7431,7 +6545,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 反映後の動画 */
+            /** @description Updated video */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7451,14 +6565,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 反映後の動画 */
+            /** @description Updated video */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7477,7 +6591,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
@@ -7488,7 +6602,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 始めたセッション */
+            /** @description Started session */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -7508,14 +6622,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 集まりの全バージョン */
+            /** @description All bundle versions */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7532,14 +6646,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 反映後の集まりの全バージョン */
+            /** @description Updated bundle versions */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7558,14 +6672,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 外した動画 */
+            /** @description Removed video */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7592,7 +6706,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 開始した、または実行中のスキャン */
+            /** @description New or active scan */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -7602,7 +6716,7 @@ export interface operations {
                 };
             };
             403: components["responses"]["Forbidden"];
-            /** @description メディアフォルダが未設定 */
+            /** @description No media folders configured */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -7622,7 +6736,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description id昇順のメディアフォルダ一覧 */
+            /** @description Media folders in ascending ID order */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7646,7 +6760,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 作成したメディアフォルダ */
+            /** @description Created media folder */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -7665,7 +6779,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description メディアフォルダの識別子 */
+                /** @description Media folder ID */
                 id: components["parameters"]["MediaFolderId"];
             };
             cookie?: never;
@@ -7676,7 +6790,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 更新後のメディアフォルダ */
+            /** @description Updated media folder */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7698,14 +6812,14 @@ export interface operations {
             };
             header?: never;
             path: {
-                /** @description メディアフォルダの識別子 */
+                /** @description Media folder ID */
                 id: components["parameters"]["MediaFolderId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 削除した */
+            /** @description Deleted */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -7727,7 +6841,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 今の設定と確認結果 */
+            /** @description Current settings and probe results */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7751,7 +6865,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 保存後の設定と確認結果 */
+            /** @description Saved settings and probe results */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7774,7 +6888,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 今の設定 */
+            /** @description Current settings */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7799,7 +6913,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 切り替えたあとの設定 */
+            /** @description Updated settings */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7812,7 +6926,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
-            /** @description 開き直したあとの保存に失敗した。待ち受けは元のアドレスへ戻した */
+            /** @description Saving failed after reopening; restored the original listener */
             500: {
                 headers: {
                     [name: string]: unknown;
@@ -8002,7 +7116,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 保存した URL */
+            /** @description Saved URL */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8026,7 +7140,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 保存した URL */
+            /** @description Saved URL */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8048,7 +7162,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 今の設定と監視の状態 */
+            /** @description Current settings and watch state */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8072,7 +7186,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 変更後の設定。`watch.state` は `starting` か `off` */
+            /** @description Updated settings; watch.state is starting or off */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8094,7 +7208,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 今の接続先 */
+            /** @description Current connection */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8118,7 +7232,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 保存後の接続先 */
+            /** @description Saved connection */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8140,7 +7254,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 確かめた結果 */
+            /** @description Check result */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8161,7 +7275,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 今の接続先 */
+            /** @description Current connection */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8185,7 +7299,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 保存後の接続先 */
+            /** @description Saved connection */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8207,7 +7321,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 確かめた結果 */
+            /** @description Check result */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8228,7 +7342,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 編集の準備の状態 */
+            /** @description Edit readiness */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8245,14 +7359,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description サムネイルの編集のセッションの識別子 */
+                /** @description Thumbnail-edit session ID */
                 editId: components["parameters"]["ThumbnailEditId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description セッションの今の状態 */
+            /** @description Current session state */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8270,14 +7384,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description サムネイルの編集のセッションの識別子 */
+                /** @description Thumbnail-edit session ID */
                 editId: components["parameters"]["ThumbnailEditId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 捨てた */
+            /** @description Discarded */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -8292,14 +7406,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description サムネイルの編集のセッションの識別子 */
+                /** @description Thumbnail-edit session ID */
                 editId: components["parameters"]["ThumbnailEditId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description コマの画像 */
+            /** @description Frame image */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8317,14 +7431,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description サムネイルの編集のセッションの識別子 */
+                /** @description Thumbnail-edit session ID */
                 editId: components["parameters"]["ThumbnailEditId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 出力の画像 */
+            /** @description Output image */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8343,7 +7457,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description サムネイルの編集のセッションの識別子 */
+                /** @description Thumbnail-edit session ID */
                 editId: components["parameters"]["ThumbnailEditId"];
             };
             cookie?: never;
@@ -8354,7 +7468,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 送った実行 */
+            /** @description Submitted run */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -8375,14 +7489,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description サムネイルの編集のセッションの識別子 */
+                /** @description Thumbnail-edit session ID */
                 editId: components["parameters"]["ThumbnailEditId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description セッションの今の状態 */
+            /** @description Current session state */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8400,14 +7514,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description サムネイルの編集のセッションの識別子 */
+                /** @description Thumbnail-edit session ID */
                 editId: components["parameters"]["ThumbnailEditId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 反映後の動画 */
+            /** @description Updated video */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8430,7 +7544,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 今の設定と待ち行列の件数 */
+            /** @description Current settings and queue counts */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8454,7 +7568,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 保存後の設定と待ち行列の件数 */
+            /** @description Saved settings and queue counts */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8476,7 +7590,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 今の設定 */
+            /** @description Current settings */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8500,7 +7614,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 保存後の設定 */
+            /** @description Saved settings */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8522,7 +7636,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 確かめた結果 */
+            /** @description Check result */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8547,7 +7661,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 積んだ件数 */
+            /** @description Queued count */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -8558,7 +7672,7 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
-            /** @description 自動タグ付けの機能が切（auto_tagging_off） */
+            /** @description Auto-tagging is off (`auto_tagging_off`) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -8578,7 +7692,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description API トークンの一覧 */
+            /** @description API token list */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8602,7 +7716,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 発行した API トークンと、その平文 */
+            /** @description Issued API token and plaintext secret */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -8620,14 +7734,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description API トークンの識別子 */
+                /** @description API token ID */
                 id: components["parameters"]["APITokenId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 失効させた */
+            /** @description Revoked */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -8647,7 +7761,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 作品情報プラグインの一覧 */
+            /** @description Work-info plugin list */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8671,7 +7785,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 差し替えたプラグイン */
+            /** @description Replaced plugin */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8680,7 +7794,7 @@ export interface operations {
                     "application/json": components["schemas"]["WorkInfoPlugin"];
                 };
             };
-            /** @description 追加したプラグイン */
+            /** @description Added plugin */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -8699,14 +7813,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 作品情報プラグインの識別子 */
+                /** @description Work-info plugin ID */
                 id: components["parameters"]["WorkInfoPluginId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 消した */
+            /** @description Deleted */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -8723,7 +7837,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 作品情報プラグインの識別子 */
+                /** @description Work-info plugin ID */
                 id: components["parameters"]["WorkInfoPluginId"];
             };
             cookie?: never;
@@ -8734,7 +7848,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 承認したプラグイン */
+            /** @description Approved plugin */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8754,14 +7868,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 作品情報プラグインの識別子 */
+                /** @description Work-info plugin ID */
                 id: components["parameters"]["WorkInfoPluginId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 承認を取り消したプラグイン */
+            /** @description Plugin with approval revoked */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8780,7 +7894,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 作品情報プラグインの識別子 */
+                /** @description Work-info plugin ID */
                 id: components["parameters"]["WorkInfoPluginId"];
             };
             cookie?: never;
@@ -8791,7 +7905,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 書いた後のプラグイン */
+            /** @description Updated plugin */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8811,14 +7925,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 作品情報プラグインの識別子 */
+                /** @description Work-info plugin ID */
                 id: components["parameters"]["WorkInfoPluginId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 直近の実行。残っていなければ `run` が無い */
+            /** @description Latest run; run is absent when none is retained */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8836,7 +7950,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 作品情報プラグインの識別子 */
+                /** @description Work-info plugin ID */
                 id: components["parameters"]["WorkInfoPluginId"];
             };
             cookie?: never;
@@ -8847,7 +7961,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 検索の候補 */
+            /** @description Search candidates */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8870,7 +7984,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
             };
             cookie?: never;
@@ -8881,7 +7995,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 取得の結果 */
+            /** @description Fetch result */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -8904,9 +8018,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
-                /** @description 取得の結果の識別子 */
+                /** @description Fetch result ID */
                 fetchId: components["parameters"]["WorkInfoFetchId"];
             };
             cookie?: never;
@@ -8917,7 +8031,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 反映後の動画と、付けなかったタグの名前と、飛ばした作品情報の値 */
+            /** @description Updated video, unassigned tag names and skipped work-info values */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8937,16 +8051,16 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 動画の識別子 */
+                /** @description Video ID */
                 id: components["parameters"]["VideoId"];
-                /** @description 取得の結果の識別子 */
+                /** @description Fetch result ID */
                 fetchId: components["parameters"]["WorkInfoFetchId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description カバー画像 */
+            /** @description Cover image */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -8964,30 +8078,19 @@ export interface operations {
     listTags: {
         parameters: {
             query?: {
-                /**
-                 * @description 検索語。全角・半角、大文字・小文字、ひらがな・カタカナなどの表記の揺れを吸収した形
-                 *     （照合形）にして前後の空白を落とし、空でなければ元の名前かシノニムに部分一致する
-                 *     タグだけにする。語の分解はしない
-                 */
+                /** @description Normalizes width, case and hiragana/katakana and trims the query, then substring-matches the canonical name or synonyms when nonempty. Does not split terms. */
                 q?: string;
-                /** @description true なら仮のタグだけにする */
+                /** @description Restrict to tentative tags */
                 tentative?: boolean;
-                /** @description true なら本数0のタグだけにする */
+                /** @description Restrict to tags with zero videos */
                 unused?: boolean;
-                /**
-                 * @description 種類の id（正の整数）ならその種類のタグだけ、`none` なら種類の無いタグだけにする。
-                 *     無い id は空の一覧。`total` はこれも掛けて数え、`totalAll` は掛けない。正の整数でも
-                 *     `none` でもなければ 400 `invalid_request`
-                 */
+                /** @description Positive kind ID selects that kind; none selects unclassified tags. Unknown IDs return an empty list. Affects total but not totalAll. Other values return 400 invalid_request. */
                 kind?: string;
-                /** @description 並び順 */
+                /** @description Sort order */
                 sort?: components["schemas"]["TagSort"];
-                /**
-                 * @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。同じ `q`・`tentative`・
-                 *     `unused`・`kind`・`sort` で続けて使う。`limit` を省いたときは無視する
-                 */
+                /** @description Opaque nextCursor from the previous response, continued with the same q, tentative, unused, kind and sort. Ignored without limit. */
                 cursor?: string;
-                /** @description 1ページの件数。省くと全件を返し、`nextCursor` は入らない */
+                /** @description Page size; omit for all matches without nextCursor */
                 limit?: number;
             };
             header?: never;
@@ -8996,7 +8099,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description タグの一覧 */
+            /** @description Tag list */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9021,7 +8124,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 作成したタグ */
+            /** @description Created tag */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -9040,14 +8143,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description タグの識別子 */
+                /** @description Tag ID */
                 id: components["parameters"]["TagId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 削除した */
+            /** @description Deleted */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -9063,7 +8166,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description タグの識別子 */
+                /** @description Tag ID */
                 id: components["parameters"]["TagId"];
             };
             cookie?: never;
@@ -9074,7 +8177,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 更新後のタグ */
+            /** @description Updated tag */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9094,7 +8197,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description タグの識別子 */
+                /** @description Tag ID */
                 id: components["parameters"]["TagId"];
             };
             cookie?: never;
@@ -9105,7 +8208,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 統合後の統合先タグと、もう無かった統合元 */
+            /** @description Merged destination tag and missing source IDs */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9124,7 +8227,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description タグの識別子 */
+                /** @description Tag ID */
                 id: components["parameters"]["TagId"];
             };
             cookie?: never;
@@ -9135,7 +8238,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 更新後のタグ */
+            /** @description Updated tag */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9153,19 +8256,19 @@ export interface operations {
     removeTagSynonym: {
         parameters: {
             query: {
-                /** @description 外すシノニムの名前 */
+                /** @description Synonym to remove */
                 name: string;
             };
             header?: never;
             path: {
-                /** @description タグの識別子 */
+                /** @description Tag ID */
                 id: components["parameters"]["TagId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 外した、またはもともとシノニムでなかった */
+            /** @description Removed or already absent */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -9181,14 +8284,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description タグの識別子 */
+                /** @description Tag ID */
                 id: components["parameters"]["TagId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 確定したタグ（tentative は偽） */
+            /** @description Confirmed tag (tentative=false) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9206,14 +8309,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description タグの識別子 */
+                /** @description Tag ID */
                 id: components["parameters"]["TagId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 却下した */
+            /** @description Rejected */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -9228,9 +8331,9 @@ export interface operations {
     listRejectedTagNames: {
         parameters: {
             query?: {
-                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                /** @description Opaque `nextCursor` from the previous response */
                 cursor?: string;
-                /** @description 1ページの件数 */
+                /** @description Page size */
                 limit?: number;
             };
             header?: never;
@@ -9239,7 +8342,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 却下した名前の一覧 */
+            /** @description Rejected names */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9255,7 +8358,7 @@ export interface operations {
     forgetRejectedTagName: {
         parameters: {
             query: {
-                /** @description 外す名前 */
+                /** @description Name to remove */
                 name: string;
             };
             header?: never;
@@ -9264,7 +8367,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 外した、またはもともと一覧に無かった */
+            /** @description Removed or already absent */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -9288,7 +8391,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 処理した・無かった・働かなかった id */
+            /** @description Applied, missing and inapplicable IDs */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9315,7 +8418,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 確認に出す数 */
+            /** @description Confirmation counts */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9337,7 +8440,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 種類の一覧 */
+            /** @description Kind list */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9361,7 +8464,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 作成した種類 */
+            /** @description Created kind */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -9380,14 +8483,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description タグの種類の識別子 */
+                /** @description Tag kind ID */
                 id: components["parameters"]["TagKindId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 削除した */
+            /** @description Deleted */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -9403,7 +8506,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description タグの種類の識別子 */
+                /** @description Tag kind ID */
                 id: components["parameters"]["TagKindId"];
             };
             cookie?: never;
@@ -9414,7 +8517,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 更新後の種類 */
+            /** @description Updated kind */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9432,13 +8535,13 @@ export interface operations {
     listPeople: {
         parameters: {
             query?: {
-                /** @description 検索語。照合形にして前後の空白を落とし、空でなければ名前か別名に部分一致する実体だけにする */
+                /** @description Normalized, trimmed query; nonempty queries substring-match names or aliases */
                 q?: components["parameters"]["CreditQuery"];
-                /** @description 並び順 */
+                /** @description Sort order */
                 sort?: components["parameters"]["CreditSort"];
-                /** @description 前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する */
+                /** @description Previous nextCursor, continued with the same q and sort; ignored without limit */
                 cursor?: components["parameters"]["CreditCursor"];
-                /** @description 1 ページの件数。省くと全件を返し、`nextCursor` は入らない */
+                /** @description Page size; omit for all results without nextCursor */
                 limit?: components["parameters"]["CreditLimit"];
             };
             header?: never;
@@ -9447,7 +8550,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 人物の一覧 */
+            /** @description People */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9472,7 +8575,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 作った人物 */
+            /** @description Created person */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -9492,14 +8595,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 人物の識別子 */
+                /** @description Person ID */
                 id: components["parameters"]["PersonId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 人物 */
+            /** @description Person */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9516,14 +8619,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 人物の識別子 */
+                /** @description Person ID */
                 id: components["parameters"]["PersonId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 消した */
+            /** @description Deleted */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -9539,7 +8642,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 人物の識別子 */
+                /** @description Person ID */
                 id: components["parameters"]["PersonId"];
             };
             cookie?: never;
@@ -9550,7 +8653,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 書き換えた後の人物 */
+            /** @description Updated person */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9570,7 +8673,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 人物の識別子 */
+                /** @description Person ID */
                 id: components["parameters"]["PersonId"];
             };
             cookie?: never;
@@ -9581,7 +8684,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 統合後の統合先と、もう無かった統合元 */
+            /** @description Merged destination and missing source IDs */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9598,13 +8701,13 @@ export interface operations {
     listOrganizations: {
         parameters: {
             query?: {
-                /** @description 検索語。照合形にして前後の空白を落とし、空でなければ名前か別名に部分一致する実体だけにする */
+                /** @description Normalized, trimmed query; nonempty queries substring-match names or aliases */
                 q?: components["parameters"]["CreditQuery"];
-                /** @description 並び順 */
+                /** @description Sort order */
                 sort?: components["parameters"]["CreditSort"];
-                /** @description 前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する */
+                /** @description Previous nextCursor, continued with the same q and sort; ignored without limit */
                 cursor?: components["parameters"]["CreditCursor"];
-                /** @description 1 ページの件数。省くと全件を返し、`nextCursor` は入らない */
+                /** @description Page size; omit for all results without nextCursor */
                 limit?: components["parameters"]["CreditLimit"];
             };
             header?: never;
@@ -9613,7 +8716,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 団体の一覧 */
+            /** @description Organizations */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9638,7 +8741,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 作った団体 */
+            /** @description Created organization */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -9658,14 +8761,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 団体の識別子 */
+                /** @description Organization ID */
                 id: components["parameters"]["OrganizationId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 団体 */
+            /** @description Organization */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9682,14 +8785,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 団体の識別子 */
+                /** @description Organization ID */
                 id: components["parameters"]["OrganizationId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 消した */
+            /** @description Deleted */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -9705,7 +8808,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 団体の識別子 */
+                /** @description Organization ID */
                 id: components["parameters"]["OrganizationId"];
             };
             cookie?: never;
@@ -9716,7 +8819,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 書き換えた後の団体 */
+            /** @description Updated organization */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9736,7 +8839,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 団体の識別子 */
+                /** @description Organization ID */
                 id: components["parameters"]["OrganizationId"];
             };
             cookie?: never;
@@ -9747,7 +8850,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 統合後の統合先と、もう無かった統合元 */
+            /** @description Merged destination and missing source IDs */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9774,7 +8877,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 適用結果 */
+            /** @description Applied result */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9784,7 +8887,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
-            /** @description 指定したタグがもう無い（tag_not_found） */
+            /** @description Tag no longer exists (tag_not_found) */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -9808,7 +8911,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description タグの要約 */
+            /** @description Tag summary */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9833,7 +8936,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 適用結果 */
+            /** @description Applied result */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9858,7 +8961,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 適用結果 */
+            /** @description Applied result */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9873,9 +8976,9 @@ export interface operations {
     listPlaylists: {
         parameters: {
             query?: {
-                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                /** @description Opaque `nextCursor` from the previous response */
                 cursor?: string;
-                /** @description 1ページの件数 */
+                /** @description Page size */
                 limit?: number;
             };
             header?: never;
@@ -9884,7 +8987,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description プレイリストの一覧 */
+            /** @description Playlist list */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9909,7 +9012,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 作ったプレイリスト */
+            /** @description Created playlist */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -9927,14 +9030,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description プレイリストの識別子 */
+                /** @description Playlist ID */
                 id: components["parameters"]["PlaylistId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description プレイリスト */
+            /** @description Playlist */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -9952,14 +9055,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description プレイリストの識別子 */
+                /** @description Playlist ID */
                 id: components["parameters"]["PlaylistId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 消した */
+            /** @description Deleted */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -9976,7 +9079,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description プレイリストの識別子 */
+                /** @description Playlist ID */
                 id: components["parameters"]["PlaylistId"];
             };
             cookie?: never;
@@ -9987,7 +9090,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 名前を変えたあとのプレイリスト */
+            /** @description Renamed playlist */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10006,7 +9109,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description プレイリストの識別子 */
+                /** @description Playlist ID */
                 id: components["parameters"]["PlaylistId"];
             };
             cookie?: never;
@@ -10017,7 +9120,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 足した結果 */
+            /** @description Append result */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10036,16 +9139,16 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description プレイリストの識別子 */
+                /** @description Playlist ID */
                 id: components["parameters"]["PlaylistId"];
-                /** @description プレイリストの項目の識別子 */
+                /** @description Playlist item ID */
                 itemId: components["parameters"]["PlaylistItemId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 外した */
+            /** @description Removed */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -10062,9 +9165,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description プレイリストの識別子 */
+                /** @description Playlist ID */
                 id: components["parameters"]["PlaylistId"];
-                /** @description プレイリストの項目の識別子 */
+                /** @description Playlist item ID */
                 itemId: components["parameters"]["PlaylistItemId"];
             };
             cookie?: never;
@@ -10075,7 +9178,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 移した */
+            /** @description Moved */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -10090,24 +9193,17 @@ export interface operations {
     listWatchHistory: {
         parameters: {
             query?: {
-                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                /** @description Opaque `nextCursor` from the previous response */
                 cursor?: string;
-                /** @description 1ページの件数 */
+                /** @description Page size */
                 limit?: number;
-                /** @description 動画のいまの視聴状態で絞る。all は絞り込まない。動画の無い件は all にだけ出る */
+                /** @description Current video watch-state filter; all disables filtering and includes entries without a video */
                 watch?: components["schemas"]["WatchHistoryFilter"];
-                /**
-                 * @description 検索語。書き方は `GET /api/videos` の `query` と同じ（AND・フレーズ・除外・OR、表記の揺れの吸収、
-                 *     先頭から 16 語まで）。照合するのは題名だけで、動画のある件はファイルの題名と表示名、動画の無い件は
-                 *     題名の写し。相対パスとタグ名には照合しない
-                 */
+                /** @description Uses video-query syntax (AND, phrases, exclusion, OR, normalization, at most 16 terms), matching only titles: file title/display name for existing videos, saved title otherwise. Does not match paths or tags. */
                 query?: string;
-                /**
-                 * @description `YYYY-MM-DD` か `YYYY-MM`。`tz` の暦でその日か月が終わるより前の件だけにする。1 ページ目は
-                 *     その日付から始まり、`nextCursor` で古い件へ続く。`tz` が必須
-                 */
+                /** @description YYYY-MM-DD or YYYY-MM in tz. Includes entries before that day/month ends; the first page starts there and nextCursor continues backward. Requires tz. */
                 date?: string;
-                /** @description 日と月の境目を取る IANA のタイムゾーン名（例 Asia/Tokyo）。`date` があるときは必須 */
+                /** @description IANA timezone for day/month boundaries, such as Asia/Tokyo; required with date */
                 tz?: string;
             };
             header?: never;
@@ -10116,7 +9212,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 視聴履歴の1ページ */
+            /** @description Watch-history page */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10137,7 +9233,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 消した */
+            /** @description Deleted */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -10150,11 +9246,11 @@ export interface operations {
     listWatchHistoryDates: {
         parameters: {
             query: {
-                /** @description 日を数える IANA のタイムゾーン名（例 Asia/Tokyo） */
+                /** @description IANA timezone for calendar dates, such as Asia/Tokyo */
                 tz: string;
-                /** @description 一覧の `watch` と同じ */
+                /** @description Same as the list watch filter */
                 watch?: components["schemas"]["WatchHistoryFilter"];
-                /** @description 一覧の `query` と同じ */
+                /** @description Same as the list query filter */
                 query?: string;
             };
             header?: never;
@@ -10163,7 +9259,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 件のある日 */
+            /** @description Dates containing entries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10180,14 +9276,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description 視聴履歴の 1 件の識別子 */
+                /** @description Watch-history entry ID */
                 id: components["parameters"]["WatchHistoryEntryId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 消した */
+            /** @description Deleted */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -10202,21 +9298,21 @@ export interface operations {
     getPlaylistPlayback: {
         parameters: {
             query: {
-                /** @description 再生している項目の識別子 */
+                /** @description Playing item ID */
                 item: number;
-                /** @description 動画ページで開いている動画の識別子 */
+                /** @description Video ID open in the player */
                 video: number;
             };
             header?: never;
             path: {
-                /** @description プレイリストの識別子 */
+                /** @description Playlist ID */
                 id: components["parameters"]["PlaylistId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 位置と次の動画 */
+            /** @description Position and next video */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10242,7 +9338,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 新しい集まりの全バージョン */
+            /** @description New bundle versions */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10265,7 +9361,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 候補の一覧 */
+            /** @description Candidate list */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10290,7 +9386,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 記録した */
+            /** @description Recorded */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -10305,19 +9401,19 @@ export interface operations {
     listActivity: {
         parameters: {
             query?: {
-                /** @description その状態の記録だけにする。無ければすべて */
+                /** @description Restrict to this status; omit for all */
                 status?: components["schemas"]["ActivityStatus"];
-                /** @description その機能の記録だけにする。繰り返して複数を選べる。無ければすべて */
+                /** @description Restrict to these features; repeat to select several, omit for all */
                 feature?: components["schemas"]["ActivityFeature"][];
-                /** @description その判断したものの記録だけにする */
+                /** @description Restrict to this decision maker */
                 decider?: components["schemas"]["ActivityDecider"];
-                /** @description この時刻以降に作った記録だけにする */
+                /** @description Records created at or after this time */
                 since?: string;
-                /** @description 対象の表示名にこの文字列を含む記録だけにする。大文字と小文字を区別しない */
+                /** @description Case-insensitive substring of the subject display name */
                 q?: string;
-                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                /** @description Opaque `nextCursor` from the previous response */
                 cursor?: string;
-                /** @description 1ページの件数 */
+                /** @description Page size */
                 limit?: number;
             };
             header?: never;
@@ -10326,7 +9422,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 記録の1ページと件数 */
+            /** @description Activity page and counts */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10343,14 +9439,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description アクティビティの記録の識別子 */
+                /** @description Activity record ID */
                 id: components["parameters"]["ActivityId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 始め直した */
+            /** @description Restarted */
             202: {
                 headers: {
                     [name: string]: unknown;
@@ -10367,7 +9463,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description アクティビティの記録の識別子 */
+                /** @description Activity record ID */
                 id: components["parameters"]["ActivityId"];
             };
             cookie?: never;
@@ -10378,7 +9474,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 所有者の undo の記録 */
+            /** @description Owner undo record */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10396,7 +9492,7 @@ export interface operations {
     listDirectories: {
         parameters: {
             query?: {
-                /** @description 列挙する絶対path。省略時はnavigation rootを返す */
+                /** @description Absolute path to list; omit for navigation roots */
                 path?: string;
             };
             header?: never;
@@ -10405,7 +9501,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description directory一覧 */
+            /** @description Directory list */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10427,7 +9523,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 登録済みメディアフォルダの集計 */
+            /** @description Registered-folder summaries */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10441,22 +9537,19 @@ export interface operations {
     getFolder: {
         parameters: {
             query?: {
-                /**
-                 * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
-                 *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
-                 */
+                /** @description Slash-separated path relative to the registered folder; omitted/empty selects the root. Rejects empty segments, leading/trailing slash, dot and dot-dot segments. */
                 path?: components["parameters"]["FolderPath"];
             };
             header?: never;
             path: {
-                /** @description フォルダが属する登録済みメディアフォルダの識別子 */
+                /** @description Registered media-folder ID containing this folder */
                 rootId: components["parameters"]["FolderRootId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description フォルダと直下の子フォルダ */
+            /** @description Folder and immediate children */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10472,53 +9565,37 @@ export interface operations {
     listFolderVideos: {
         parameters: {
             query?: {
-                /**
-                 * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
-                 *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
-                 */
+                /** @description Slash-separated path relative to the registered folder; omitted/empty selects the root. Rejects empty segments, leading/trailing slash, dot and dot-dot segments. */
                 path?: components["parameters"]["FolderPath"];
-                /** @description direct = フォルダ直下の所在だけ、subtree = フォルダとその配下すべての所在 */
+                /** @description direct selects immediate locations; subtree includes all descendants */
                 scope?: components["schemas"]["FolderScope"];
-                /**
-                 * @description 検索語。空白で区切った語をすべて含む動画に絞る（AND）。`"…"` で囲んだ部分は
-                 *     空白を含めて1語（フレーズ）、先頭の `-` はその語を含まない（除外）、単独の
-                 *     `OR` と `|` は前後の語のどちらかを含む（和）。全角・半角、大文字・小文字、
-                 *     ひらがな・カタカナなどの表記の揺れは吸収する。照合するのは題名と、登録
-                 *     フォルダより下の相対パスで、いずれも部分一致。先頭から 16 語までを使い、
-                 *     語が残らなければ絞り込まない。書き方の誤りは返さない
-                 */
+                /** @description Search terms are ANDed. Double quotes form phrases, a leading `-` excludes a term, and standalone `OR` or `|` joins alternatives. Matching normalizes width, case and hiragana/katakana, and checks title and relative paths below registered folders by substring. Uses at most 16 terms; no remaining terms means no filter. Syntax errors are not reported. */
                 query?: string;
-                /** @description 視聴状態で絞る。all は絞り込まない */
+                /** @description Watch-state filter; `all` disables it */
                 watch?: components["schemas"]["WatchFilter"];
-                /** @description true ならブラウザでそのまま再生できる（playable = true の）動画だけにする */
+                /** @description Restrict to videos playable directly in the browser */
                 playable?: boolean;
-                /**
-                 * @description true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
-                 *     ほかの絞り込みと AND で組み合わさる
-                 */
+                /** @description Restrict to favorited items using each item's own favorite state, combined with other filters by AND */
                 favorite?: boolean;
-                /** @description 並び順 */
+                /** @description Sort order */
                 sort?: components["schemas"]["VideoSort"];
-                /**
-                 * @description `sort=random` の並びを決める値。同じ値ならページをまたいでも同じ並びになる。
-                 *     ほかの並び順では無視する
-                 */
+                /** @description Seed for stable `sort=random` ordering across pages; ignored for other sorts */
                 seed?: number;
-                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                /** @description Opaque `nextCursor` from the previous response */
                 cursor?: string;
-                /** @description 1ページの件数 */
+                /** @description Page size */
                 limit?: number;
             };
             header?: never;
             path: {
-                /** @description フォルダが属する登録済みメディアフォルダの識別子 */
+                /** @description Registered media-folder ID containing this folder */
                 rootId: components["parameters"]["FolderRootId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description フォルダの動画 */
+            /** @description Folder videos */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10534,11 +9611,11 @@ export interface operations {
     listGroups: {
         parameters: {
             query?: {
-                /** @description 名前に含む文字列。前後の空白を取り除き、大文字小文字を区別しない */
+                /** @description Trimmed, case-insensitive name substring */
                 q?: string;
-                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                /** @description Opaque `nextCursor` from the previous response */
                 cursor?: string;
-                /** @description 1ページの件数 */
+                /** @description Page size */
                 limit?: number;
             };
             header?: never;
@@ -10547,7 +9624,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description グループ 1 ページ */
+            /** @description Group page */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10572,7 +9649,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 作ったグループ */
+            /** @description Created group */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -10589,22 +9666,19 @@ export interface operations {
     getGroup: {
         parameters: {
             query?: {
-                /**
-                 * @description 画面が通ってきたグループの id を外側から順に `,` で区切って並べたもの。応答の `trail` は、このグループから外へ向かって
-                 *     親と子の組が続く部分で、組が崩れた所より外側を捨てる
-                 */
+                /** @description Comma-separated group IDs visited by the UI, outermost first. Response trail retains the connected parent-child chain outward from this group and drops ancestors beyond the first broken link. */
                 trail?: number[];
             };
             header?: never;
             path: {
-                /** @description グループの識別子 */
+                /** @description Group ID */
                 id: components["parameters"]["GroupId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description グループ */
+            /** @description Group */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10622,14 +9696,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description グループの識別子 */
+                /** @description Group ID */
                 id: components["parameters"]["GroupId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 解散した */
+            /** @description Dissolved */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -10645,7 +9719,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description グループの識別子 */
+                /** @description Group ID */
                 id: components["parameters"]["GroupId"];
             };
             cookie?: never;
@@ -10656,7 +9730,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 名前を変えたあとのグループ */
+            /** @description Renamed group */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10673,21 +9747,21 @@ export interface operations {
     listGroupItems: {
         parameters: {
             query?: {
-                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                /** @description Opaque `nextCursor` from the previous response */
                 cursor?: string;
-                /** @description 1ページの件数 */
+                /** @description Page size */
                 limit?: number;
             };
             header?: never;
             path: {
-                /** @description グループの識別子 */
+                /** @description Group ID */
                 id: components["parameters"]["GroupId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 項目 1 ページ */
+            /** @description Item page */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10705,7 +9779,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description グループの識別子 */
+                /** @description Group ID */
                 id: components["parameters"]["GroupId"];
             };
             cookie?: never;
@@ -10716,7 +9790,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 足したあとのグループ */
+            /** @description Updated group */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10736,7 +9810,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description グループの識別子 */
+                /** @description Group ID */
                 id: components["parameters"]["GroupId"];
             };
             cookie?: never;
@@ -10747,7 +9821,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 外したあとのグループ（項目が残るとき） */
+            /** @description Updated group when items remain */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10756,7 +9830,7 @@ export interface operations {
                     "application/json": components["schemas"]["LibraryGroup"];
                 };
             };
-            /** @description 最後の項目を外したので、グループを解散した */
+            /** @description Group dissolved after removing its last item */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -10773,9 +9847,9 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description グループの識別子 */
+                /** @description Group ID */
                 id: components["parameters"]["GroupId"];
-                /** @description グループの項目の識別子。動画やグループの id ではない */
+                /** @description Group item ID, distinct from a video or group ID */
                 itemId: components["parameters"]["GroupItemId"];
             };
             cookie?: never;
@@ -10786,7 +9860,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 移した */
+            /** @description Moved */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -10803,14 +9877,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description グループの識別子 */
+                /** @description Group ID */
                 id: components["parameters"]["GroupId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 使ったタグ */
+            /** @description Applied tag */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10833,7 +9907,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description スマートフォルダの一覧 */
+            /** @description Smart folders */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10857,7 +9931,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 作ったスマートフォルダの要約 */
+            /** @description Created smart-folder summary */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -10874,7 +9948,7 @@ export interface operations {
     listSmartFolderCards: {
         parameters: {
             query: {
-                /** @description カードの値を読むフォルダの id を `,` で区切って並べたもの（1〜60 件） */
+                /** @description Comma-separated folder IDs, 1–60 */
                 ids: number[];
             };
             header?: never;
@@ -10883,7 +9957,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description カードの値 */
+            /** @description Card values */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10898,19 +9972,19 @@ export interface operations {
     getSmartFolder: {
         parameters: {
             query?: {
-                /** @description 子フォルダを除く項目の 1 ページの件数 */
+                /** @description Page size excluding child folders */
                 limit?: number;
             };
             header?: never;
             path: {
-                /** @description スマートフォルダの識別子 */
+                /** @description Smart folder ID */
                 id: components["parameters"]["SmartFolderId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description スマートフォルダ */
+            /** @description Smart folder */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10928,14 +10002,14 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description スマートフォルダの識別子 */
+                /** @description Smart folder ID */
                 id: components["parameters"]["SmartFolderId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 消した */
+            /** @description Deleted */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -10951,7 +10025,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                /** @description スマートフォルダの識別子 */
+                /** @description Smart folder ID */
                 id: components["parameters"]["SmartFolderId"];
             };
             cookie?: never;
@@ -10962,7 +10036,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 変えたあとのスマートフォルダの要約 */
+            /** @description Updated smart-folder summary */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -10980,21 +10054,21 @@ export interface operations {
     listSmartFolderItems: {
         parameters: {
             query: {
-                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                /** @description Opaque `nextCursor` from the previous response */
                 cursor: string;
-                /** @description 1ページの件数 */
+                /** @description Page size */
                 limit?: number;
             };
             header?: never;
             path: {
-                /** @description スマートフォルダの識別子 */
+                /** @description Smart folder ID */
                 id: components["parameters"]["SmartFolderId"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 中身 1 ページ */
+            /** @description Content page */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -11020,7 +10094,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 並べ替えた。取り消しのトークン */
+            /** @description Reordered; undo token */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -11047,7 +10121,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description グループを作った。新しいグループの id と取り消しのトークン */
+            /** @description Created group ID and undo token */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -11074,7 +10148,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 動かした。取り消しのトークン */
+            /** @description Moved; undo token */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -11102,7 +10176,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description マージした。取り消しのトークン */
+            /** @description Merged; undo token */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -11130,7 +10204,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 束ねた。取り消しのトークン */
+            /** @description Bundled; undo token */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -11157,7 +10231,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 取り消した */
+            /** @description Undone */
             204: {
                 headers: {
                     [name: string]: unknown;
@@ -11167,7 +10241,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
-            /** @description 取り消しのトークンが無い、使い済み、または 10 分より古い */
+            /** @description Undo token missing, consumed or older than ten minutes */
             410: {
                 headers: {
                     [name: string]: unknown;
@@ -11181,15 +10255,12 @@ export interface operations {
     setFolderGrouping: {
         parameters: {
             query?: {
-                /**
-                 * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
-                 *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
-                 */
+                /** @description Slash-separated path relative to the registered folder; omitted/empty selects the root. Rejects empty segments, leading/trailing slash, dot and dot-dot segments. */
                 path?: components["parameters"]["FolderPath"];
             };
             header?: never;
             path: {
-                /** @description フォルダが属する登録済みメディアフォルダの識別子 */
+                /** @description Registered media-folder ID containing this folder */
                 rootId: components["parameters"]["FolderRootId"];
             };
             cookie?: never;
@@ -11200,7 +10271,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 変更後のまとめ方 */
+            /** @description Updated grouping mode */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -11222,7 +10293,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description スキャンの状態 */
+            /** @description Scan state */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -11231,7 +10302,7 @@ export interface operations {
                     "application/json": components["schemas"]["Scan"];
                 };
             };
-            /** @description 一度もスキャンしていない */
+            /** @description No scan has run */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -11243,9 +10314,9 @@ export interface operations {
     listCurrentScanIssues: {
         parameters: {
             query?: {
-                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                /** @description Opaque `nextCursor` from the previous response */
                 cursor?: string;
-                /** @description 1ページの件数 */
+                /** @description Page size */
                 limit?: number;
             };
             header?: never;
@@ -11254,7 +10325,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 問題の一覧 */
+            /** @description Issues */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -11264,7 +10335,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
-            /** @description 一度もスキャンしていない */
+            /** @description No scan has run */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -11284,7 +10355,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description イベントの流れ */
+            /** @description Event stream */
             200: {
                 headers: {
                     [name: string]: unknown;

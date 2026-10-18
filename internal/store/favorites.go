@@ -10,32 +10,14 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// お気に入り。動画のお気に入りは
-// 利用者データの鍵（userKeyExpr）に結ぶ video_favorites の行、グループのお気に入りはグループの
-// id に結ぶ group_favorites の行、スマートフォルダのお気に入りは
-// フォルダの id に結ぶ smart_folder_favorites の行の有無で表す。どれも作り直せない利用者データで、生成物の片付け・フォルダの索引の
-// 作り直し・メディアフォルダの削除は触れない。group_favorites の行はグループの解散で、
-// smart_folder_favorites の行はフォルダの削除で、外部キーの on delete cascade により消える。
+// Favorites are persistent user data; index rebuilds leave them intact, while deleting a group or smart folder cascades its favorite.
 
-// favoriteColumn は動画（videos）がお気に入りかを 0/1 で返す列の式である。domain.Video.Favorite
-// に写す。形は publicColumn と同じである。
 var favoriteColumn = `exists (select 1 from video_favorites fav where fav.content_key = ` + userKeyExpr("videos") +
 	` and videos.content_key <> '')`
 
-// favoriteNow は付け外しの時刻の元である。試験が時計を止めるために差し替える。
 var favoriteNow = time.Now
 
-// SetFavorites は change の動画・グループ・スマートフォルダのお気に入りを change.Favorite に
-// そろえ、反映した数を返す。
-//
-// 動画の id は利用者データの鍵へ引き直し（userKeysForVideoIDs）、その鍵に書く。Videos は鍵の数で
-// なく、鍵を引けた異なる id の数である。グループとスマートフォルダは今あるもの（existingIDs）だけを
-// 書く。ライブラリに無い動画の id・無いグループやフォルダの id は数えず誤りにしない。既に同じ状態の
-// ものは数え、日時は変えない。
-//
-// favorited_at は Unix ミリ秒で、取引の中で max(今の時刻, 3 表の最大値 + 1) を 1 度だけ求め、
-// この取引の対象すべてに使う。動画の更新日時（video_edits）は進めない。
-// 全体を 1 つの取引で行い、途中で失敗したら何も残さない。確定後に domain.SmartFoldersChanged だけを発行する。
+// SetFavorites counts existing video IDs separately even when they share a key; one monotonic timestamp covers the atomic change without advancing video edits.
 func (s *FavoriteStore) SetFavorites(ctx context.Context, change domain.FavoriteChange) (domain.FavoriteApplied, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -87,7 +69,7 @@ func (s *FavoriteStore) SetFavorites(ctx context.Context, change domain.Favorite
 			favoriteNow().UnixMilli()).Scan(&at); err != nil {
 			return domain.FavoriteApplied{}, fmt.Errorf("cannot decide the favorited time: %w", err)
 		}
-		// 空の鍵は書かない。数の id は空文字と等しくならないので、同じ条件でどれも書く。
+		// Never write empty user keys; numeric IDs safely share this predicate.
 		for _, target := range targets {
 			if _, err := tx.ExecContext(ctx, `insert or ignore into `+target.table+` (`+target.column+`, favorited_at)
 				select distinct value, ? from json_each(?) where value <> ''`, at, target.values); err != nil {
@@ -109,13 +91,11 @@ func (s *FavoriteStore) SetFavorites(ctx context.Context, change domain.Favorite
 	return domain.FavoriteApplied{Videos: videos, Groups: len(groups), SmartFolders: len(folders)}, nil
 }
 
-// favoriteTable はお気に入りの表 1 つと、そこへ書く値（JSON の配列）である。
 type favoriteTable struct {
 	table, column, values string
 }
 
-// countMappedVideoIDs は videoIDs のうち、userKeysForVideoIDs が鍵を引ける異なる id の数を返す
-// （同じ条件の count(distinct v.id)）。同じ集まりの id も 1 本ずつ数える。
+// Count distinct video IDs, not shared bundle keys.
 func countMappedVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64) (int, error) {
 	if len(videoIDs) == 0 {
 		return 0, nil
@@ -133,13 +113,10 @@ func countMappedVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64) (int
 	return count, nil
 }
 
-// existingGroupIDs は ids のうち今あるグループの id を、最初に現れた順に重複なしで返す。
 func existingGroupIDs(ctx context.Context, tx *sql.Tx, ids []int64) ([]int64, error) {
 	return existingIDs(ctx, tx, "groups", ids)
 }
 
-// existingIDs は ids のうち表 table（groups か smart_folders）に今ある行の id を、最初に現れた順に
-// 重複なしで返す。
 func existingIDs(ctx context.Context, tx *sql.Tx, table string, ids []int64) ([]int64, error) {
 	if len(ids) == 0 {
 		return nil, nil
@@ -152,7 +129,7 @@ func existingIDs(ctx context.Context, tx *sql.Tx, table string, ids []int64) ([]
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the %s: %w", table, err)
 	}
-	// 要求は最大 20,000 件なので、集合で引いて線形時間に保つ。
+	// Use set lookups to keep requests of up to 20,000 IDs linear.
 	pending := make(map[int64]bool, len(found))
 	for _, id := range found {
 		pending[id] = true
@@ -167,7 +144,7 @@ func existingIDs(ctx context.Context, tx *sql.Tx, table string, ids []int64) ([]
 	return out, nil
 }
 
-// nonNil は nil のスライスを空のスライスにする。json_each に null でなく [] を渡すため。
+// Encode nil slices as [] instead of null for json_each.
 func nonNil[T any](items []T) []T {
 	if items == nil {
 		return []T{}

@@ -8,11 +8,8 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// Bus は発行された変化を購読者へ配る。
-//
-// 購読者ごとに goroutine と順番を保つ待ち行列を持つ。発行は待ち行列に積む
-// だけなので、遅い購読者や panic した購読者が、発行する側（取引の確定、
-// ワーカー、走査）を止めることはない。
+// Bus gives each subscriber an ordered queue and goroutine, isolating publishers from slow or
+// panicking handlers.
 type Bus struct {
 	logger *slog.Logger
 
@@ -21,7 +18,7 @@ type Bus struct {
 	closed bool
 }
 
-// New は購読者の無い Bus を返す。logger が nil なら slog の既定を使う。
+// New uses slog.Default when logger is nil.
 func New(logger *slog.Logger) *Bus {
 	if logger == nil {
 		logger = slog.Default()
@@ -29,28 +26,25 @@ func New(logger *slog.Logger) *Bus {
 	return &Bus{logger: logger, subs: map[*subscription]struct{}{}}
 }
 
-// subscription は1つの購読者と、まだ渡していない変化である。
 type subscription struct {
 	name   string
 	handle func(domain.Event)
 
 	mu      sync.Mutex
 	pending []domain.Event
-	// closing は Bus を閉じたことを表す。積んである分を渡し終えたら止まる。
+	// Drain queued events before stopping.
 	closing bool
-	// ready は渡すものがあることを知らせる。容量1で、重なった知らせはまとまる。
+	// Capacity one coalesces readiness notifications.
 	ready chan struct{}
-	// stop は購読をやめたことを表す。積んである分は捨てる。
+	// Unsubscription discards queued events.
 	stop     chan struct{}
 	stopOnce sync.Once
 	done     chan struct{}
 }
 
-// Publish は変化を購読者へ配る。購読者の処理は待たない。閉じた後は何もしない。
-//
-// 全購読者の待ち行列へ積み終えるまで Bus の錠を持つ。積むのは待ち行列への
-// 追加だけなので短い。錠を持つので、並行した発行が購読者ごとに違う順番で
-// 届くことはなく、始まった発行の途中に Close が割り込んで取りこぼすこともない。
+// Publish holds the bus lock through enqueueing for every subscriber, preserving a common order and
+// preventing Close from interrupting delivery; handlers run asynchronously and closed buses ignore
+// events.
 func (b *Bus) Publish(events ...domain.Event) {
 	if len(events) == 0 {
 		return
@@ -65,11 +59,8 @@ func (b *Bus) Publish(events ...domain.Event) {
 	}
 }
 
-// Subscribe は、発行された変化をすべて handle へ渡す購読者を登録する。name は
-// 記録に出す名前である。handle は1つの goroutine から、発行された順に呼ばれる。
-//
-// 返す関数で購読をやめる。やめた後は handle を呼ばず、呼び出し中のものが
-// あれば終わるのを待ってから戻る。handle の中からは呼ばないこと。
+// Subscribe invokes handle serially in publication order; unsubscribe waits for any active call and
+// prevents later calls. Never unsubscribe from inside handle.
 func (b *Bus) Subscribe(name string, handle func(domain.Event)) (unsubscribe func()) {
 	sub := &subscription{
 		name:   name,
@@ -97,8 +88,7 @@ func (b *Bus) Subscribe(name string, handle func(domain.Event)) (unsubscribe fun
 	}
 }
 
-// On は E の変化だけを handle へ渡す購読者を登録する。Subscribe と同じく、
-// 返す関数で購読をやめる。
+// On filters events by type E and returns an unsubscribe function.
 func On[E domain.Event](b *Bus, name string, handle func(E)) (unsubscribe func()) {
 	return b.Subscribe(name, func(event domain.Event) {
 		if typed, ok := event.(E); ok {
@@ -107,9 +97,8 @@ func On[E domain.Event](b *Bus, name string, handle func(E)) (unsubscribe func()
 	})
 }
 
-// Close は新しい発行を受け付けなくし、すでに積んである変化を購読者へ渡し
-// 終えるのを待つ。停止時に、発行する側を止めてから呼ぶ。購読をやめた購読者の
-// 分は待たない。
+// Close rejects new events and drains active subscribers; call it after stopping publishers. It
+// does not wait for unsubscribed handlers.
 func (b *Bus) Close() {
 	b.mu.Lock()
 	b.closed = true
@@ -147,8 +136,7 @@ func (s *subscription) signal() {
 	}
 }
 
-// next は次に渡す変化を取り出す。無ければ ok は false で、closing は閉じた
-// あとで積んである分も無いことを表す。
+// closing means closed and fully drained, not merely temporarily empty.
 func (s *subscription) next() (event domain.Event, ok, closing bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -188,7 +176,7 @@ func (s *subscription) run(logger *slog.Logger) {
 	}
 }
 
-// deliver は1件を渡す。購読者が panic しても、次の変化は渡し続ける。
+// Recover handler panics so later events still arrive.
 func (s *subscription) deliver(event domain.Event, logger *slog.Logger) {
 	defer func() {
 		if recovered := recover(); recovered != nil {

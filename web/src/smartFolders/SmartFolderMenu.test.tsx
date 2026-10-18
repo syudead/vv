@@ -10,7 +10,6 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import SmartFolderMenu from "./SmartFolderMenu";
 
-// スマートフォルダの「More」の Edit・New child・Delete と、条件の編集の窓
 //
 
 function json(body: unknown, status = 200): Response {
@@ -20,7 +19,6 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-/** 猫 ─ 未視聴 ─ 最近、犬。 */
 const folders = [
   { id: 1, name: "猫" },
   { id: 2, parentId: 1, name: "未視聴" },
@@ -29,9 +27,7 @@ const folders = [
 ];
 
 const fetchMock = vi.fn<typeof fetch>();
-/** 書き込みの要求（メソッド、パス、本文）。 */
 let writes: { method: string; path: string; body: unknown }[] = [];
-/** PATCH の答え。 */
 let patchAnswer: () => Response = () => json({ id: 2, name: "未視聴" });
 
 function install() {
@@ -148,7 +144,6 @@ describe("SmartFolderMenu", () => {
         "猫",
       ),
     );
-    // 何も変えていない間は送れない。
     const save = within(dialog).getByRole("button", { name: "Save" });
     expect((save as HTMLButtonElement).disabled).toBe(true);
 
@@ -219,7 +214,7 @@ describe("SmartFolderMenu", () => {
     );
     await user.keyboard("{Escape}");
 
-    // 別のタブで木が変わり、選んだ親が実は子孫だった（Edge Case）。
+    // Simulate another tab changing the tree so the selected parent is now a descendant.
     patchAnswer = () =>
       json(
         {

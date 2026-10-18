@@ -8,7 +8,7 @@ import testingLibrary from "eslint-plugin-testing-library";
 import globals from "globals";
 import designExceptions from "./design-exceptions.js";
 
-// 画面の文言の訳し漏れを報告する。文言と書式は web/src/i18n/ だけが持つ。
+// UI text and formatting belong exclusively to src/i18n.
 const japanese =
   "[\\u3040-\\u30ff\\u3400-\\u4dbf\\u4e00-\\u9fff\\uf900-\\ufaff\\uff66-\\uff9f]";
 const letter =
@@ -52,8 +52,7 @@ const i18nRestrictedSyntax = [
   },
 ];
 
-// デザインシステムの外の書き方を落とす。例外はコメントでなく web/design-exceptions.js に置き、
-// 一覧の検査は src/theme/designExceptions.test.ts が行う。
+// Centralize design exceptions in design-exceptions.js; src/theme/designExceptions.test.ts validates them.
 const sourceFiles = ["src/**/*.{ts,tsx}"];
 const i18nFiles = ["src/i18n/**"];
 const testFiles = ["src/**/*.test.{ts,tsx}", "src/testing/**"];
@@ -73,8 +72,7 @@ const controlRestrictedSyntax = [
     selector: 'JSXAttribute[name.name="role"][value.value="button"]',
     message: "Use the design-system Button (web/registry/rules/components.md).",
   },
-  // style は実行時にしか決まらない値（位置・割合・測った高さ）だけに使う。固定の値は段の外の
-  // 値になるので、トークンとクラスで書く。
+  // Reserve style for runtime measurements and positions; fixed values must use tokens and classes.
   {
     selector: 'JSXAttribute[name.name="style"] Property[value.type="Literal"]',
     message:
@@ -99,25 +97,19 @@ const controlRestrictedSyntax = [
   },
 ];
 
-// 変種（任意の変種 `data-[state=open]:` を含む）を先読みと後方参照で最後の `:` まで
-// 取り切り、残ったユーティリティに `[` か `(` があれば、任意の値・任意のプロパティ・
-// `(--var)` 省略形とみなす。任意の変種の中の 1 段の入れ子（shadcn/ui の
-// `[&_svg:not([class*='size-'])]:`）も変種として読む。
+// Consume variants through the final colon, including one nested bracket level, before detecting arbitrary values, properties or (--var) shorthand in the utility.
 const variants = String.raw`(?=((?:(?:[^:\[\]]|\[(?:[^\[\]]|\[[^\]]*\])*\])*:)*))\1`;
 const arbitraryUtility = String.raw`[^\[(]*[\[(]`;
 const arbitraryMessage =
   "Arbitrary value outside the design-system scale (web/registry/rules/foundations.md).";
 
-// 段階の外の数値の段（`p-7`、`text-2xl`、`rounded-xl`、`font-bold` など）は、src/ui/tokens.css
-// がテーマの名前空間を空にしているので生成されず、no-unknown-classes が落とす。
-// 共通のフォーカスの輪（index.css の :focus-visible）を消すか、独自の輪を足すクラス。
-// web/registry/rules/components.md の Focus。shadcn の部品（ui/shadcn）は上流のまま持つので外す。
+// Reset theme namespaces make off-scale numeric classes unknown. Preserve the shared focus ring; upstream shadcn components are exempt (web/registry/rules/components.md).
 const focusRing = String.raw`(?:^|:)!?outline-(?:none|hidden)!?$|(?:^|:)(?:focus|focus-visible|focus-within):(?:[^:]*:)*!?(?:ring|outline)(?:-[^:]*)?!?$`;
 const focusMessage =
   "Keep the shared focus ring (web/src/index.css :focus-visible); never remove it or add your own (web/registry/rules/components.md, Focus).";
 
 function restrictedClasses(allowed = [], { focus = true } = {}) {
-  // 末尾（v4）と先頭（v3）の重要度の印 `!` は許す一覧の判定から外す。
+  // Ignore both v3 prefix and v4 suffix ! markers when matching the allowlist.
   const allow = allowed.length > 0 ? `(?!!?(?:${allowed.join("|")})!?$)` : "";
   const restrict = [
     { pattern: `^${allow}${variants}${arbitraryUtility}`, message: arbitraryMessage },
@@ -131,8 +123,7 @@ function unknownClasses(allowed = []) {
   return ["error", { ignore: allowed.map((pattern) => `^(?:${pattern})$`) }];
 }
 
-// 例外の項目を、その 1 ファイルだけに効く規則の上書きにする。no-restricted-syntax は
-// 訳し漏れの検査と共有しているため、生の部品の選択子だけを外す。
+// Override raw-component selectors only; no-restricted-syntax also enforces translation rules.
 function exceptionRules(entry) {
   const rules = {};
   for (const rule of entry.rules) {
@@ -203,9 +194,7 @@ export default [
     ignores: ["dist/**", ".vite-build-check/**", "test-results/**", "src/api/gen/**"],
   },
   {
-    // 規則はコード全体に例外なく効かせる。指摘はコードの書き換えで解消し、
-    // eslint-disable* などのコメントによる無効化は認めない（syudead/vv#443）。
-    // 書かれたコメントは効かず警告になり、lint の --max-warnings 0 で失敗する。
+    // Reject inline suppression comments; --max-warnings 0 turns their warnings into lint failures.
     linterOptions: {
       noInlineConfig: true,
     },
@@ -260,16 +249,15 @@ export default [
     },
   },
   ...designSystemConfig(),
-  // テストコードの質を見る（docs/design-docs/web-testing.md）。両方の推奨設定から始め、
-  // 変える規則と外す規則は理由をここに書く。
+  // Use recommended test rules with the exceptions below; see docs/design-docs/web-testing.md.
   {
     files: testFiles,
     plugins: vitest.configs.recommended.plugins,
     rules: {
       ...vitest.configs.recommended.rules,
-      // expectCatalogTextOnly のような expect で始まる補助関数も表明として数える。
+      // Treat expect-prefixed assertion helpers as assertions.
       "vitest/expect-expect": ["error", { assertFunctionNames: ["expect", "expect*"] }],
-      // Vitest の expect は 2 つ目の引数に失敗時の文言を取る。表の検査はその行の名前を渡す。
+      // Vitest accepts a failure message as the second expect argument, used for table-row names.
       "vitest/valid-expect": ["error", { maxArgs: 2 }],
     },
   },
@@ -278,26 +266,18 @@ export default [
     plugins: testingLibrary.configs["flat/react"].plugins,
     rules: {
       ...testingLibrary.configs["flat/react"].rules,
-      // 約 700 件（48 ファイル）。役割や名前を持たない構造（data-* の目印、フォーカスの
-      // 移動先、<video>、隣の要素）を確かめるテストが DOM を辿っており、役割の問い合わせ
-      // へ書き換えられない箇所が多い。書き換えは振る舞いを変えない大量の差分になる。
+      // Structural assertions inspect data markers, focus targets, video elements and siblings without accessible roles.
       "testing-library/no-node-access": "off",
-      // no-node-access と同じ理由。container から引くのは data-* の目印やアイコンの
-      // クラスで、役割の問い合わせに置き換えられない。
+      // Container queries inspect structural markers and icon classes without accessible roles.
       "testing-library/no-container": "off",
-      // Vitest の globals を切っているので、Testing Library の自動の後片付けは動かない。
-      // 後片付けは vitest.setup.ts が明示的に呼び、テストの途中で描き直す前にも呼ぶ。
+      // Allow explicit cleanup in vitest.setup.ts and before rerendering within a test.
       "testing-library/no-manual-cleanup": "off",
-      // 1 つのテストで何度も描くときは first・direct・loading のように場面の名前を付ける
-      // ほうが読める。また render を名前に含む補助関数（onClose を返す renderHeader など）
-      // まで描画の結果とみなして誤って指摘する。
+      // Scenario-specific result names improve multi-render tests; render-named helpers do not always return render results.
       "testing-library/render-result-naming-convention": "off",
     },
   },
   {
-    // 本番の関数 setRenderedAudience（src/api/client.ts）を、名前に render を含むので
-    // 描画とみなして誤って指摘する。描画の補助関数の名前を列挙して判定を狭めると、補助
-    // 関数を足すたびに設定を直すことになるので、呼んでいる 3 ファイルでだけ切る。
+    // setRenderedAudience is production code misidentified as a render helper; limit this exception to its callers.
     files: [
       "src/api/serverEvents.test.ts",
       "src/player/VideoPage.test.tsx",
@@ -308,9 +288,7 @@ export default [
     },
   },
   {
-    // 「画面のどこでも Space・0 がプレイヤーに効く」は、画面全体のキー操作が差し替えた
-    // プレイヤーの操作を受け取る effect を待つ目印を持たないので、何度押しても同じ結果に
-    // なる 0 を、効くまで waitFor の中で押し直す。その 1 件のためにこのファイルでだけ切る。
+    // This keyboard test has no readiness signal for its replacement player effect; retry the idempotent 0 key until it takes effect.
     files: ["src/player/VideoPage.test.tsx"],
     rules: {
       "testing-library/no-wait-for-side-effects": "off",

@@ -129,7 +129,7 @@ export default function FolderPicker({
     rows.current[next]?.focus();
   };
 
-  // 確かめの段に移ったら、戻る操作へ focus を移す。窓は開いたままなので Radix は移さない。
+  // Move focus to Back on the confirmation step; Radix does not refocus an already-open dialog.
   useEffect(() => {
     if (confirming) confirmBack.current?.focus();
   }, [confirming]);

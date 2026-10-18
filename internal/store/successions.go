@@ -12,17 +12,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 同じパスの中身の引き継ぎ。
-//
-// UpsertVideo は、同じパスの中身が変わって新しい動画の行を作り、前の動画の行が所在を失って
-// 消えるとき、前の尺が分かっていれば video_successions に後継の候補を記録する。新しい中身の
-// 尺は解析が終わるまで分からず、前の中身が同じ走査の中で別のパスに現れうる（ファイルの
-// 入れ替え）ので、判定は記録した走査が done で閉じたあと（FinishScan）か、そのあとの解析の
-// 結果を書く取引で行う。どちらも applySuccession を呼ぶ。
+// Defer same-path succession until a successful full scan and known replacement duration, since old content may reappear elsewhere during the scan.
 
-// recordSuccession は、パスの中身が oldKey から newKey に変わって前の動画の行が消えたことを
-// 記録する。oldDurationMs が分からなければ（解析前・失敗）記録しない。newKey の既存の行は
-// 置き換える。
+// Record only when the deleted old content has a known duration; replace any existing successor record.
 func recordSuccession(ctx context.Context, tx *sql.Tx, newKey, oldKey string, oldDurationMs sql.NullInt64, now int64) error {
 	if newKey == "" || oldKey == "" || !oldDurationMs.Valid || oldDurationMs.Int64 <= 0 {
 		return nil
@@ -35,8 +27,7 @@ func recordSuccession(ctx context.Context, tx *sql.Tx, newKey, oldKey string, ol
 	return nil
 }
 
-// cancelSuccessionsFrom は、前の中身が key の記録を消す。前の中身が別のパスの動画として
-// 現れたので、同じパスの新しい中身はその後継ではない（Edge Case「ファイルの入れ替え」）。
+// Old content reappearing elsewhere means a file swap, not succession.
 func cancelSuccessionsFrom(ctx context.Context, tx *sql.Tx, key string) error {
 	if _, err := tx.ExecContext(ctx, `delete from video_successions where old_key = ?`, key); err != nil {
 		return fmt.Errorf("cannot cancel the succession: %w", err)
@@ -44,8 +35,6 @@ func cancelSuccessionsFrom(ctx context.Context, tx *sql.Tx, key string) error {
 	return nil
 }
 
-// releaseContentIndex は、動画の行を消して内容の参照が無くなった鍵の索引の行を、同じ取引で
-// 消す。
 func releaseContentIndex(ctx context.Context, tx *sql.Tx, released []domain.DeletedVideo) error {
 	if len(released) == 0 {
 		return nil
@@ -71,8 +60,7 @@ func releaseContentIndex(ctx context.Context, tx *sql.Tx, released []domain.Dele
 	return nil
 }
 
-// applyReadySuccessions は done で閉じる走査の取引で呼ぶ。全行を判定してよい状態（ready = 1）
-// にし、新しい中身の尺が分かっている行を判定する。引き継いだとき知らせる動画の id を返す。
+// A successful scan marks candidates ready, then resolves those with known replacement duration.
 func applyReadySuccessions(ctx context.Context, tx *sql.Tx) (succession, error) {
 	if _, err := tx.ExecContext(ctx, `update video_successions set ready = 1`); err != nil {
 		return succession{}, fmt.Errorf("cannot mark the successions ready: %w", err)
@@ -96,20 +84,17 @@ func applyReadySuccessions(ctx context.Context, tx *sql.Tx) (succession, error) 
 	}, nil
 }
 
-// succession は引き継ぎで、確定後に知らせる動画とグループの id と、アクティビティの記録を付け替えたかである。
 type succession struct {
 	videoIDs []int64
 	groupIDs []int64
 	activity bool
 }
 
-// judgeableSuccession は判定する記録の新しい鍵と、その動画の尺である。
 type judgeableSuccession struct {
 	newKey     string
 	durationMs int64
 }
 
-// judgeableSuccessions は新しい中身の尺が分かっている記録を読み切る。
 func judgeableSuccessions(ctx context.Context, tx *sql.Tx) ([]judgeableSuccession, error) {
 	rows, err := tx.QueryContext(ctx, `select s.new_key, v.duration_ms from video_successions s
 		join videos v on v.content_key = s.new_key and v.content_key <> ''
@@ -132,9 +117,7 @@ func judgeableSuccessions(ctx context.Context, tx *sql.Tx) ([]judgeableSuccessio
 	return out, nil
 }
 
-// applySuccession は contentKey の判定してよい（ready = 1）記録を読んで消し、尺が合い、前の
-// 中身を参照する動画が無ければ、前の中身の利用者データと集まりの位置を新しい中身へ付け替える。引き継いだとき、確定後に domain.VideoBundleChanged で知らせる動画の
-// id と、フォルダの索引の作り直しで変わったグループの id を返す（引き継がなければ空）。
+// Consume ready succession only; transfer user data and bundle position when durations match and old content has no remaining video reference.
 func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, durationMs int64) (succession, error) {
 	if contentKey == "" {
 		return succession{}, nil
@@ -171,7 +154,7 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 		return succession{}, fmt.Errorf("cannot read the succeeding video: %w", err)
 	}
 
-	// 付け替えで隠れていた項目が見えるようになったプレイリストは、終わりに更新日時を進める。
+	// Advance playlist timestamps after rekeying only when their visible shape changes.
 	shapes, err := snapshotPlaylistShapes(ctx, tx, []string{oldKey, contentKey})
 	if err != nil {
 		return succession{}, err
@@ -185,24 +168,22 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 			return succession{}, err
 		}
 	}
-	// 集まりのメンバーだった場合も、前の鍵自身の行（集まりに入る前の値）を付け替える。
+	// Also move the old member's hidden pre-bundle user data.
 	rekeyedGroups, err := moveUserData(ctx, tx, oldKey, contentKey)
 	if err != nil {
 		return succession{}, err
 	}
-	// 「違う動画」の組・集まりから外した組・判定を保留した組は、同じ規則で付け替える
-	//
 	for _, table := range []string{"video_version_dismissals", "video_version_unbundles", "video_version_judging_holds"} {
 		if err := moveKeyPairs(ctx, tx, table, oldKey, contentKey); err != nil {
 			return succession{}, err
 		}
 	}
-	// 記録が持つ鍵も同じ規則で付け替える（終わった記録も。取り消しが新しい鍵の行を見つけるため）。
+	// Rekey completed activities too, so later undo finds the new content's rows.
 	movedActivity, err := moveActivityKey(ctx, tx, oldKey, contentKey, time.Now())
 	if err != nil {
 		return succession{}, err
 	}
-	// 付け替えた集まりと却下で、新しい鍵の候補が同じ集まりや却下の組になりうる。
+	// Updated bundles and dismissals can invalidate the replacement content's candidates.
 	if err := pruneVersionCandidates(ctx, tx); err != nil {
 		return succession{}, err
 	}
@@ -219,7 +200,6 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 			return succession{}, err
 		}
 		changed = append(changed, ids...)
-		// 見せる動画が変わりうるので、束ねる操作と同じく作り直す。
 		if changedGroups, err = rebuildFolderIndex(ctx, tx); err != nil {
 			return succession{}, err
 		}
@@ -233,9 +213,7 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 	}, nil
 }
 
-// abandonSuccession は引き継がないと決めた記録を消したあと、前の中身がライブラリから外れたなら、その鍵の組の
-// 開いている判定の記録を done/gone で閉じる。閉じた記録があれば
-// succession の activity が真になる。
+// Rejected succession closes open pair activities as gone once the old content leaves the library.
 func abandonSuccession(ctx context.Context, tx *sql.Tx) (succession, error) {
 	c := &changes{}
 	if err := closeGonePairActivities(ctx, tx, c, time.Now()); err != nil {
@@ -244,9 +222,7 @@ func abandonSuccession(ctx context.Context, tx *sql.Tx) (succession, error) {
 	return succession{activity: c.activity}, nil
 }
 
-// moveBundleMember は集まりのメンバーの鍵 oldKey を newKey に付け替え、代表だったなら代表も
-// 付け替える。集まりの値には触らない。newKey が既にどれかの集まりのメンバーなら、その集まりの
-// 値を持っているので付け替えない。
+// Preserve bundle values and update its representative; do not replace membership if the new key already belongs to a bundle.
 func moveBundleMember(ctx context.Context, tx *sql.Tx, bundle bundleRef, oldKey, newKey string) error {
 	if _, already, err := bundleOf(ctx, tx, newKey); err != nil {
 		return err
@@ -265,10 +241,7 @@ func moveBundleMember(ctx context.Context, tx *sql.Tx, bundle bundleRef, oldKey,
 	return nil
 }
 
-// moveUserData は鍵 from の再生位置・公開の設定・お気に入り・更新日時・タグ・視聴履歴・プレイリストとグループの項目を
-// 鍵 to へ付け替え、項目を付け替えたグループとその祖先の id を返す。
-// 再生位置・公開の設定・お気に入り・更新日時は from に行があれば to の行を置き換え、タグと視聴履歴は和にする。
-// 作品情報は 6 表を 1 つの物として、from にどれかの行があれば to の作品情報を置き換える（moveWorkInfo）。
+// Move scalar user data with source precedence and union tags/history; move all work-info tables as one unit.
 func moveUserData(ctx context.Context, tx *sql.Tx, from, to string) ([]int64, error) {
 	if err := moveWorkInfo(ctx, tx, from, to); err != nil {
 		return nil, err
@@ -296,17 +269,14 @@ func moveUserData(ctx context.Context, tx *sql.Tx, from, to string) ([]int64, er
 	if _, err := tx.ExecContext(ctx, `delete from auto_tag_rejections where content_key = ?`, from); err != nil {
 		return nil, fmt.Errorf("cannot move the auto_tag_rejections values: %w", err)
 	}
-	// 視聴履歴は 1 行が視聴 1 回なので、to に既にある行も残す。
+	// Each history row is a separate viewing, so retain existing destination rows.
 	if _, err := tx.ExecContext(ctx, `update watch_history set content_key = ? where content_key = ?`, to, from); err != nil {
 		return nil, fmt.Errorf("cannot move the watch_history values: %w", err)
 	}
-	// プレイリストとグループの項目は移し、同じプレイリストやグループで重なれば前の位置を残す
-	//
 	return rekeyUserItems(ctx, tx, from, to)
 }
 
-// moveKeyPairs は内容の鍵の組の表 table（video_version_dismissals か video_version_unbundles）の鍵 from を
-// to に付け替える。組は並べ直し、重複は 1 つにし、to 自身との組は捨てる。
+// Rekey sorted pairs, deduplicate collisions and discard self-pairs.
 func moveKeyPairs(ctx context.Context, tx *sql.Tx, table, from, to string) error {
 	pairs, err := keyPairsOf(ctx, tx, table, from)
 	if err != nil {
@@ -327,13 +297,11 @@ func moveKeyPairs(ctx context.Context, tx *sql.Tx, table, from, to string) error
 	return nil
 }
 
-// keyPair は鍵の組の相手と、記録した時刻である。
 type keyPair struct {
 	other     string
 	createdAt int64
 }
 
-// keyPairsOf は表 table の、鍵 key を含む組を読み切る。
 func keyPairsOf(ctx context.Context, tx *sql.Tx, table, key string) ([]keyPair, error) {
 	rows, err := tx.QueryContext(ctx, `select key_a, key_b, created_at from `+table+`
 		where key_a = ? or key_b = ?`, key, key)
@@ -360,7 +328,6 @@ func keyPairsOf(ctx context.Context, tx *sql.Tx, table, key string) ([]keyPair, 
 	return out, nil
 }
 
-// successionEvents は引き継ぎで知らせる動画とグループの id を、確定後に発行する変化にする。
 func successionEvents(changed succession) []domain.Event {
 	var events []domain.Event
 	if len(changed.videoIDs) > 0 {
@@ -372,7 +339,6 @@ func successionEvents(changed succession) []domain.Event {
 	return append(events, groupsChangedEvents(changed.groupIDs)...)
 }
 
-// normalizeIDs は id を小さい順に並べ、重複を除く。
 func normalizeIDs(ids []int64) []int64 {
 	slices.Sort(ids)
 	return slices.Compact(ids)

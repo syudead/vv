@@ -24,35 +24,27 @@ const (
 	startExport     = "_start"
 	memoryExport    = "memory"
 
-	// compiledCacheSize はダイジェストごとにコンパイル済みのまま持つモジュールの数である。
 	compiledCacheSize = 8
 )
 
-// Options は Runtime の設定である。
 type Options struct {
-	// Logger はプラグインの標準エラーを書く先である。nil なら slog の既定を使う。
+	// Nil uses slog.Default.
 	Logger *slog.Logger
-	// Resolve はプラグインの要求のホスト名を解決する。nil ならシステムの resolver を使う。インターネットに
-	// 出られないテスト（mdm plugin run のテストなど）が差し替える。
+	// Nil uses the system resolver; tests may replace it without internet access.
 	Resolve func(ctx context.Context, host string) ([]netip.Addr, error)
-	// Connect はプロキシのない要求を、アドレスの規則が許した解決済みのアドレス（ip:port）へつなぐ。規則は
-	// Connect の前に確かめる。nil なら net.Dialer で接続する。テストが差し替える。
+	// Connect receives only rule-approved resolved addresses for direct requests; nil uses net.Dialer.
 	Connect func(ctx context.Context, network, address string) (net.Conn, error)
 }
 
-// Runtime は作品情報プラグインを検査し、動かす。app.WorkInfoPluginRuntime を満たす。
-// 検査はいつでも並べて行え、実行は同時に 1 本だけ動く。
+// Runtime allows concurrent inspection but serial execution.
 type Runtime struct {
 	logger *slog.Logger
 
-	// inspect は検査でコンパイルだけを行う wazero のランタイムで、何も実行しない。
+	// Inspection compiles modules without running them.
 	inspect wazero.Runtime
-	// allowed は import してよい関数と、その引数と戻り値の型である。
 	allowed map[importKey]signature
 
-	// run は実行の wazero のランタイムで、WASI と vv のホストモジュールを持つ。
-	run *runner
-	// slot は同時に動く実行の枠である。
+	run  *runner
 	slot chan struct{}
 }
 
@@ -60,7 +52,7 @@ type importKey struct{ module, name string }
 
 type signature struct{ params, results []api.ValueType }
 
-// New は Runtime を作る。使い終えたら Close を呼ぶ。
+// Call Close when the runtime is no longer needed.
 func New(ctx context.Context, opts Options) (*Runtime, error) {
 	logger := opts.Logger
 	if logger == nil {
@@ -88,13 +80,12 @@ func New(ctx context.Context, opts Options) (*Runtime, error) {
 	}, nil
 }
 
-// Close は wazero のランタイムを閉じる。動いている実行があれば止まる。
+// Close stops active executions.
 func (r *Runtime) Close(ctx context.Context) error {
 	return errors.Join(r.inspect.Close(ctx), r.run.close(ctx))
 }
 
-// allowedImports は WASI と vv のホストモジュールをコンパイルし、それが export する関数を
-// import してよい関数の一覧にする。
+// Allowed imports come from compiled WASI and application host exports.
 func allowedImports(ctx context.Context, rt wazero.Runtime) (map[importKey]signature, error) {
 	allowed := map[importKey]signature{}
 	builders := []interface {
@@ -112,11 +103,9 @@ func allowedImports(ctx context.Context, rt wazero.Runtime) (map[importKey]signa
 	return allowed, nil
 }
 
-// Inspect はモジュールを実行せずに検査する。最大値を宣言しないテーブルに最大値を書き足してから
-// コンパイルし、順に、コンパイル、vv.plugin のマニフェスト、import、export、テーブルを確かめ、
-// 最初に当たった問題を返す。マニフェストを読めた
-// あとの検査で問題が見つかったときも、読めたマニフェストを問題と一緒に返す。名前が分かれば、保存層が
-// 同じ名前の行を問題のある差し替えとして扱える。
+// Inspect caps unbounded tables before compilation and returns the first validation problem without
+// running code. Preserve a readable manifest even on later failure so storage can identify invalid
+// replacements by name.
 func (r *Runtime) Inspect(ctx context.Context, module []byte) (domain.WorkInfoPluginManifest, domain.WorkInfoPluginProblem, error) {
 	if len(module) > domain.WorkInfoPluginModuleMaxBytes {
 		return domain.WorkInfoPluginManifest{}, "", domain.ErrWorkInfoPluginTooLarge
@@ -156,7 +145,6 @@ func readManifest(compiled wazero.CompiledModule) (domain.WorkInfoPluginManifest
 	return domain.WorkInfoPluginManifest{}, domain.WorkInfoPluginManifestMissing
 }
 
-// checkImports は、どの import も WASI か vv のホストモジュールが export する関数で、型も同じかを確かめる。
 func (r *Runtime) checkImports(compiled wazero.CompiledModule, layout moduleLayout) domain.WorkInfoPluginProblem {
 	for _, imp := range layout.imports {
 		if imp.kind != importKindFunc {
@@ -184,10 +172,8 @@ func checkExports(compiled wazero.CompiledModule) domain.WorkInfoPluginProblem {
 	return ""
 }
 
-// checkTables は、どのテーブルも最小値と、宣言するなら最大値が上限以下で、全テーブルの要素数の
-// 合計も上限以下かを確かめる。合計では、各テーブルを宣言した最大値で数え、最大値を宣言しない
-// テーブルは capTables がコンパイルの前に書き足す上限で数える。テーブルの要素は線形メモリの外の
-// ホストのメモリなので、テーブルを並べてもモジュール全体で上限を超えないようにする。
+// Bound both individual tables and their aggregate declared maxima, including inserted caps; tables
+// consume host memory outside linear-memory limits.
 func checkTables(layout moduleLayout) domain.WorkInfoPluginProblem {
 	var total uint64
 	for _, t := range layout.tables {

@@ -14,7 +14,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// fakeTranscodeSettingsStore は保存値を 1 つだけ持つ。
 type fakeTranscodeSettingsStore struct {
 	mu      sync.Mutex
 	value   string
@@ -46,8 +45,7 @@ func (f *fakeTranscodeSettingsStore) stored() (string, bool, int) {
 	return f.value, f.found, f.saves
 }
 
-// fakeEncoderChecker は方式ごとに決めた結果を返す。release が nil でなければ、閉じるまで
-// どの確認も戻らない。hang の方式は ctx が終わるまで戻らない。
+// release gates all checks; hang waits for context cancellation.
 type fakeEncoderChecker struct {
 	results map[domain.VideoEncoder]domain.EncoderAvailability
 	release chan struct{}
@@ -101,7 +99,6 @@ func TestTranscodeSettingsIsSoftwareWhileChecking(t *testing.T) {
 		got.FallbackReason != domain.EncoderFallbackChecking {
 		t.Fatalf("while checking = %+v", got)
 	}
-	// 確認中のハードウェアの方式は選べず、保存値は変わらない。
 	if _, err := s.Select(context.Background(), domain.EncoderChoiceQSV); !errors.Is(err, domain.ErrEncoderUnavailable) {
 		t.Fatalf("Select(qsv) while checking = %v, want ErrEncoderUnavailable", err)
 	}
@@ -153,7 +150,6 @@ func TestTranscodeSettingsLogsResultWhenChecksFinish(t *testing.T) {
 	if got.Effective != domain.VideoEncoderSoftware || got.FallbackReason != domain.EncoderFallbackSelectedUnavailable {
 		t.Fatalf("after checks = %+v", got)
 	}
-	// 使えない方式を選んでいても保存値は変えない（要件 8）。
 	if value, _, saves := store.stored(); value != "vaapi" || saves != 0 {
 		t.Fatalf("stored = %q after %d saves", value, saves)
 	}

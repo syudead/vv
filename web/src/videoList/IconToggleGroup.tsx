@@ -10,12 +10,6 @@ export interface IconToggleOption<T extends string> {
   icon: ReactNode;
 }
 
-/**
- * IconToggleGroup はアイコンだけの排他の選択（表示形式・並び順の向き）である。
- * shadcn/ui の ToggleGroup（type="single"、outline、sm）で、各項目に名前と同じ
- * ツールチップを添える（web/registry/rules/components.md「Toggle and ToggleGroup」）。
- * 項目は支援技術に radio として読まれる。
- */
 export default function IconToggleGroup<T extends string>({
   value,
   onValueChange,
@@ -40,8 +34,10 @@ export default function IconToggleGroup<T extends string>({
     >
       {options.map((option) => (
         <Tooltip key={option.value}>
-          {/* 項目を外に置き、ツールチップの引き金を asChild で重ねる。選んだ見た目は
-              ツールチップが開いている間も aria-checked で付く（ui/shadcn/toggle.tsx）。 */}
+          {/*
+           * Keep the item outside the tooltip trigger; aria-checked preserves selection styling
+           * while tooltip state is active.
+           */}
           <ToggleGroupItem value={option.value} asChild>
             <TooltipTrigger aria-label={option.label}>{option.icon}</TooltipTrigger>
           </ToggleGroupItem>

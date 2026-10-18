@@ -5,7 +5,6 @@ import { seekPosition, seekSpriteCell, spriteCellBackground } from "./seekSprite
 
 const rect = { left: 100, width: 400 };
 
-// 2 時間の動画の配置情報（12 秒間隔・600 コマ・10×10 の 6 シート）。
 function twoHourSprite(): SeekThumbnailSprite {
   return {
     intervalMs: 12_000,
@@ -43,7 +42,7 @@ describe("seekPosition", () => {
       ratio: 1,
       positionMs: 119_999,
     });
-    // 端数のある長さでも、右端は ceil で丸めた末尾の 1ms 手前になる。
+    // Clamp fractional durations to one millisecond before their rounded-up end.
     expect(seekPosition(500, rect, 10_000.4).positionMs).toBe(10_000);
   });
 
@@ -54,7 +53,6 @@ describe("seekPosition", () => {
 
 describe("seekSpriteCell", () => {
   it("帯の右端の位置で末尾のコマを指し、frameCount - 1を超えない", () => {
-    // 9 コマ（3×3 の 1 シート）で、最後のコマの区間がちょうど末尾で終わる長さ。
     const sprite = {
       intervalMs: 5_000,
       frameCount: 9,
@@ -70,7 +68,7 @@ describe("seekSpriteCell", () => {
       column: 2,
       row: 2,
     });
-    // シートに空き升目が残る（frameCount < columns × rows）ときも空き升目を指さない。
+    // Never select unused cells in a partially filled sheet.
     const partial = { ...sprite, frameCount: 7 };
     expect(seekSpriteCell(partial, 44_999)).toEqual({
       frame: 6,
@@ -87,7 +85,6 @@ describe("seekSpriteCell", () => {
     expect(
       seekSpriteCell(sprite, seekPosition(100, rect, durationMs).positionMs).sheet,
     ).toBe(0);
-    // 帯の真ん中は 3_600_000ms = 300 コマ目で、4 枚目（番号 3）の先頭。
     expect(
       seekSpriteCell(sprite, seekPosition(300, rect, durationMs).positionMs),
     ).toEqual({

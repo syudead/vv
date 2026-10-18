@@ -9,8 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 監視の走査。
-
 func startTestWatchScan(t *testing.T, db *DB, dirs ...domain.DirtyDirectory) domain.Scan {
 	t.Helper()
 	scan, started, err := db.Scans().StartWatchScan(context.Background(), dirs)
@@ -29,7 +27,6 @@ func issuePaths(issues []domain.ScanIssue) []string {
 	return paths
 }
 
-// 走査の起点は行に残り、既存の行と手動の走査は manual である。
 func TestScanOriginIsRecorded(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -49,15 +46,13 @@ func TestScanOriginIsRecorded(t *testing.T) {
 		t.Fatalf("CurrentScan = %+v, err %v", current, err)
 	}
 
-	// 走査は同時に1つだけで、監視の走査が走っていれば手動の走査は新しく始まらない。
 	again, started, err := db.Scans().StartScan(ctx)
 	if err != nil || started || again.ID != watch.ID {
 		t.Fatalf("StartScan = #%d started %v err %v, want 走っている監視の走査", again.ID, started, err)
 	}
 }
 
-// 監視の走査は、前の走査の問題のうち読み直さない範囲のものを持ち越し、読み直す範囲の、走査が
-// 見つける種類の問題は消す。仕事の段階の問題は、走査が見つけ直せないので範囲の中でも持ち越す。
+// Watch scans retain stage issues inside their scope because unchanged files do not rerun those jobs.
 func TestWatchScanCarriesIssuesOutsideItsScope(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -97,7 +92,6 @@ func TestWatchScanCarriesIssuesOutsideItsScope(t *testing.T) {
 		t.Fatalf("前の走査の問題が %d 行残った", stale)
 	}
 
-	// 手動の走査は、これまでどおりすべて消す。
 	finishScan(t, db, watch.ID)
 	if _, _, err := db.Scans().StartScan(ctx); err != nil {
 		t.Fatal(err)
@@ -107,8 +101,7 @@ func TestWatchScanCarriesIssuesOutsideItsScope(t *testing.T) {
 	}
 }
 
-// done で閉じた監視の走査は、保留中の後継の記録を判定してよい状態にしない。次に done で閉じる
-// 手動の走査が判定する。
+// Only successful full manual scans can make pending succession ready.
 func TestDoneWatchScanLeavesSuccessionsUnready(t *testing.T) {
 	db, _ := taggedVideoFixture(t)
 	watch := startTestWatchScan(t, db, domain.DirtyDirectory{Path: fixturePath("/media")})
@@ -134,8 +127,6 @@ func TestDoneWatchScanLeavesSuccessionsUnready(t *testing.T) {
 	}
 }
 
-// 起動時に、中断した監視の走査は origin を保ったまま failed（interrupted）で閉じる。
-// 再開するかは、アプリ層が origin を見て決める。
 func TestInterruptedWatchScanKeepsItsOrigin(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -153,7 +144,6 @@ func TestInterruptedWatchScanKeepsItsOrigin(t *testing.T) {
 	}
 }
 
-// フォルダが無ければ、監視の走査も始まらない。
 func TestStartWatchScanRejectsEmptyFolderSet(t *testing.T) {
 	db := migratedDB(t)
 	if _, err := db.sql.Exec(`delete from media_folders`); err != nil {

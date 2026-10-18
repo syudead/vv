@@ -10,11 +10,7 @@ import { DialogError } from "./DialogError";
 
 export type BulkTagAction = "reject" | "delete";
 
-/**
- * BulkTagDialog は選択バーの「Reject…」「Delete…」が開く確認の窓である。開くと同時に
- * `POST /api/tags/impact` で働くタグの数と影響を受ける動画の本数を数え、届くまで
- * danger のボタンを押せなくする（数の無い確認で実行させない）。
- */
+/** Load impact counts before enabling destructive confirmation; never execute an uncounted batch. */
 export default function BulkTagDialog({
   action,
   ids,
@@ -24,7 +20,7 @@ export default function BulkTagDialog({
   onSubmit,
 }: {
   action: BulkTagAction;
-  /** 選んだタグの id。窓を開いた時点の選択で固定する。 */
+  /** Freeze the selection when opening the dialog. */
   ids: readonly number[];
   pending: boolean;
   error: UiText | null;

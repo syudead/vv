@@ -5,13 +5,7 @@ import { t } from "../i18n";
 import { Button } from "../ui/shadcn/button";
 import { Dimmed } from "./StatusOverlays";
 
-/**
- * PlaylistEndOverlay はプレイリストの最後の項目を見終えたときの層である。
- * 何も進めず、カウントダウンも出さない。「もう一度見る」だけを置く。
- *
- * `takeFocus` が真のとき（フォーカスがプレイヤーの中にあったとき）だけ、その操作へ
- * フォーカスを移す。
- */
+/** Replay only; take focus only from inside the player. */
 export default function PlaylistEndOverlay({
   name,
   takeFocus,

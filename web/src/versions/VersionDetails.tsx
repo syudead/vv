@@ -3,13 +3,9 @@ import { t } from "../i18n";
 import { formatBytes, formatResolution } from "../lib/format";
 import { formatCodec } from "../player/properties";
 
-/**
- * 同じ動画の別バージョンの行の 2 行目の値。再生画面のバージョンの一覧と、束ねる窓の代表の行が同じ書式で使う。
- */
 export interface VersionDetailValues {
-  /** 解像度・コンテナ・映像コーデック・サイズ。分からない値は省く。 */
   specs: string[];
-  /** 「登録フォルダの表示名 / 相対パス」。分からなければ空。 */
+  /** Empty when the root display name or relative location is unknown. */
   place: string;
 }
 
@@ -27,7 +23,6 @@ export function versionDetails(video: Video): VersionDetailValues {
   return { specs, place: t.shell.scan.location(parts) };
 }
 
-/** versionDetailsText は 2 行目を 1 つの文字列にする（読み上げ名・`title` 用）。 */
 export function versionDetailsText(
   details: VersionDetailValues,
   separator: string,
@@ -36,16 +31,11 @@ export function versionDetailsText(
   return [...details.specs, place].filter((value) => value !== "").join(separator);
 }
 
-/**
- * VersionDetailsLine は 2 行目の表示である。項目の間は `text-muted-foreground` の「·」で、置き場所は
- * 末尾（ファイルに近い側）を優先して残し、行全体を 1 行で省略する。
- */
 export function VersionDetailsLine({
   details,
   title,
 }: {
   details: VersionDetailValues;
-  /** 行の `title`。省略した分を読めるようにする。 */
   title: string;
 }) {
   return (
@@ -73,7 +63,7 @@ export function VersionDetailsLine({
               ·
             </span>
           )}
-          {/* 置き場所は末尾（ファイルに近い側）を優先して残す。 */}
+          {/* Preserve the path suffix nearest the file. */}
           <span dir="rtl" className="min-w-0 truncate text-left">
             <bdi dir="ltr">{details.place}</bdi>
           </span>

@@ -1,18 +1,13 @@
-# 変異テスト（mutation testing）を月に 1 回流し、テストが壊れたコードを見つけられるかを測る。
-# いまは Go だけで、gremlins が internal/domain を変異させる（task mutation-go）。
-# gremlins の出力（変異ごとの場所と結果）を集計せずに artifact に残す。参考の出力なので、
-# 結果が悪くても失敗にしない。手元では task mutation-go で同じものを流す。
-# Web（StrykerJS）は、vitest-runner が Vitest 5 で検査を 1 件も流さない不具合
-# （stryker-mutator/stryker-js#6210）の修正版が出てから足す。
+# Mutation scores are informational; preserve raw reports for inspection.
+# Web testing awaits stryker-mutator/stryker-js#6210.
 name: Mutation testing
 
 on:
   schedule:
-    # 毎月 1 日 09:00（日本時間）。
+    # First day of each month at 09:00 JST.
     - cron: "0 0 1 * *"
   workflow_dispatch: {}
-  # 測る仕組みそのもの（このワークフロー）を変えた PR では流して確かめる。
-  # コードやテストの変更では流さない。
+  # Validate workflow changes without running mutation tests on ordinary code changes.
   pull_request:
     paths:
       - .github/workflows/mutation-testing.yml
@@ -25,7 +20,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # リポジトリのコード（テスト）を実行するので、読み取りだけにする。
   go:
     name: Go (gremlins)
     runs-on: ubuntu-latest

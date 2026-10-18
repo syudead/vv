@@ -10,60 +10,40 @@ import (
 	"unicode/utf8"
 )
 
-// 認証の誤り。
 var (
-	// ErrAccountNotConfigured はアカウントがまだ設定されていないことを表す。
 	ErrAccountNotConfigured = errors.New("account is not configured")
-	// ErrAccountAlreadyConfigured は初回設定の時点でアカウントが既にあることを表す。
-	// 同時の初回設定で負けた場合も含む。
+	// ErrAccountAlreadyConfigured includes concurrent setup attempts that lose the race.
 	ErrAccountAlreadyConfigured = errors.New("account is already configured")
-	// ErrInvalidCredentials はユーザー名かパスワードが違うことを表す。
-	ErrInvalidCredentials = errors.New("username or password is incorrect")
-	// ErrLoginThrottled はログインの試行が制限されていることを表す。
-	ErrLoginThrottled = errors.New("too many login attempts")
-	// ErrSessionNotValid は、操作を求めたセッションがその時点で有効でないことを表す。
-	// 境界で確かめた後に、ログアウトや資格情報の変更で無効になった場合を含む。
+	ErrInvalidCredentials       = errors.New("username or password is incorrect")
+	ErrLoginThrottled           = errors.New("too many login attempts")
+	// ErrSessionNotValid includes sessions revoked after boundary validation by logout or credential changes.
 	ErrSessionNotValid = errors.New("session is no longer valid")
-	// ErrInvalidUsername はユーザー名が ValidateUsername の規則を外れることを表す。
 	ErrInvalidUsername = errors.New("invalid username")
-	// ErrUsernameLength は ErrInvalidUsername のうち、長さ（1〜MaxUsernameLength
-	// 文字）だけを外れたことを表す。errors.Is(err, ErrInvalidUsername) も真になる。
-	// 空白・制御文字の違反と区別して、API が username_length を長さの違反にだけ
-	// 付けられるようにする。
-	ErrUsernameLength = fmt.Errorf("%w: must be 1 to %d characters", ErrInvalidUsername, MaxUsernameLength)
-	// ErrInvalidPassword はパスワードが ValidatePassword の規則を外れることを表す。
-	ErrInvalidPassword = errors.New("invalid password")
-	// ErrGuestQueryNotAllowed は、ゲストが所有者のデータに依る一覧の条件を
-	// 指定したことを表す。
+	// ErrUsernameLength wraps ErrInvalidUsername so the API can distinguish length violations from whitespace or control characters.
+	ErrUsernameLength       = fmt.Errorf("%w: must be 1 to %d characters", ErrInvalidUsername, MaxUsernameLength)
+	ErrInvalidPassword      = errors.New("invalid password")
 	ErrGuestQueryNotAllowed = errors.New("this filter requires signing in")
 )
 
-// ユーザー名とパスワードの長さの上限。
 const (
-	// MaxUsernameLength はユーザー名の文字数（Unicode のコードポイント数）の上限。
+	// MaxUsernameLength counts Unicode code points.
 	MaxUsernameLength = 128
-	// MaxPasswordBytes はパスワードのバイト数の上限。
+	// MaxPasswordBytes counts bytes.
 	MaxPasswordBytes = 1024
 )
 
-// SessionLifetime はログインセッションの寿命である。発行から数え、使っても
-// 延長しない（親 Issue #135 要件 7）。
+// SessionLifetime starts at issuance and never extends on use.
 const SessionLifetime = 90 * 24 * time.Hour
 
-// Account は設定済みの唯一のアカウントである。
 type Account struct {
 	Username string
-	// PasswordHash は Argon2id の PHC 文字列。平文のパスワードは持たない。
+	// PasswordHash stores an Argon2id PHC string, never plaintext.
 	PasswordHash string
-	// Version は資格情報を書き換えるたびに 1 増える。これと一致しない版で発行した
-	// セッションは無効である。
+	// Version increments on credential changes; sessions issued against other versions are invalid.
 	Version int64
 }
 
-// ValidateUsername はユーザー名が規則を満たすかを確かめる。1〜128 文字で、
-// 制御文字を含まず、先頭と末尾に空白を置かない。正規化や大文字小文字の畳み込みは
-// しないので、規則を満たす値はそのまま保存する。外れたら ErrInvalidUsername を返し、
-// 長さだけの違反ではそれを包む ErrUsernameLength を返す。
+// ValidateUsername accepts 1–128 code points without controls or surrounding whitespace, preserving case and normalization; length failures wrap ErrInvalidUsername in ErrUsernameLength.
 func ValidateUsername(username string) error {
 	if !utf8.ValidString(username) {
 		return ErrInvalidUsername
@@ -82,8 +62,7 @@ func ValidateUsername(username string) error {
 	return nil
 }
 
-// ValidatePassword はパスワードが 1〜1024 バイトであるかを確かめる。強度の規則は
-// 置かない。外れたら ErrInvalidPassword を返す。
+// ValidatePassword accepts 1–1024 bytes without strength requirements.
 func ValidatePassword(password string) error {
 	if password == "" || len(password) > MaxPasswordBytes {
 		return ErrInvalidPassword
@@ -91,21 +70,12 @@ func ValidatePassword(password string) error {
 	return nil
 }
 
-// DefaultRedirectTarget は、戻り先が省略されたときと安全でないときに使う戻り先である。
 const DefaultRedirectTarget = "/"
 
-// redirectBase は戻り先を解釈する固定の基底である。予約済みの .invalid を使うので、
-// 実在のホストと一致しない。
+// The reserved .invalid base cannot match a real host.
 var redirectBase = &url.URL{Scheme: "http", Host: "vv.invalid", Path: "/"}
 
-// SafeRedirectTarget はログイン後の戻り先 next を確かめ、安全な戻り先を返す。次をすべて満たす
-// ときだけ、解釈した結果のパスと問い合わせ文字列を組み立て直した値を返し、
-// それ以外と空は DefaultRedirectTarget を返す。入力そのものは返さない。
-//   - 制御文字・空白・`\` をどこにも含まない（ブラウザは URL からタブと改行を
-//     取り除くので、`/\t/evil.example` は `//evil.example` になる）。
-//   - 固定の基底に対して解釈した結果が、スキームもホストも持たず、`/` で始まる
-//     パスになる。
-//   - パスが `/login`・`/setup`・`/api/` 以下でない。
+// SafeRedirectTarget rebuilds a local path and query, rejecting controls, whitespace, backslashes, hosts, schemes, and auth/API destinations; empty or unsafe input returns DefaultRedirectTarget.
 func SafeRedirectTarget(next string) string {
 	if next == "" || !utf8.ValidString(next) {
 		return DefaultRedirectTarget
@@ -120,7 +90,7 @@ func SafeRedirectTarget(next string) string {
 	if !strings.HasPrefix(ref.Path, "/") {
 		return DefaultRedirectTarget
 	}
-	// 基底に対して解く。`.` と `..` の区切りはここで取り除かれる。
+	// Resolving against the base removes dot segments.
 	resolved := redirectBase.ResolveReference(ref)
 	if resolved.Scheme != redirectBase.Scheme || resolved.Host != redirectBase.Host {
 		return DefaultRedirectTarget
@@ -129,13 +99,11 @@ func SafeRedirectTarget(next string) string {
 		return DefaultRedirectTarget
 	}
 	target := resolved.EscapedPath()
-	// `/.//evil.example` のように、区切りを取り除いた結果が `//` で始まると、
-	// ブラウザはホストとして解釈する。
+	// A normalized path starting with // becomes a host reference in browsers.
 	if !strings.HasPrefix(target, "/") || strings.HasPrefix(target, "//") {
 		return DefaultRedirectTarget
 	}
-	// ブラウザは `%2e` を `.` とみなして区切りを取り除くので、`/videos/%2e%2e/login`
-	// は `/login` になる。Go の解釈では取り除かれないので、ここで拒む。
+	// Browsers normalize encoded dot segments such as /videos/%2e%2e/login, unlike Go; reject them here.
 	if hasEncodedDotSegment(target) {
 		return DefaultRedirectTarget
 	}
@@ -145,13 +113,10 @@ func SafeRedirectTarget(next string) string {
 	return target
 }
 
-// isUnsafeRedirectRune は戻り先に含めてはならない文字（制御文字・空白・`\`）かを返す。
 func isUnsafeRedirectRune(r rune) bool {
 	return r == '\\' || unicode.IsControl(r) || unicode.IsSpace(r)
 }
 
-// hasEncodedDotSegment は、エスケープしたパスに `%2e` を含む `.` か `..` の区切りが
-// あるかを返す。
 func hasEncodedDotSegment(escapedPath string) bool {
 	for _, segment := range strings.Split(escapedPath, "/") {
 		switch strings.ReplaceAll(strings.ToLower(segment), "%2e", ".") {
@@ -162,9 +127,7 @@ func hasEncodedDotSegment(escapedPath string) bool {
 	return false
 }
 
-// isAuthOnlyPath は、ログイン後の戻り先にしてはならないパス（ログイン画面・
-// 初回設定画面・API）かを返す。画面の経路（React Router）は大文字と小文字を
-// 区別しないので、ここでも区別しない。
+// Auth route matching is case-insensitive to match React Router.
 func isAuthOnlyPath(path string) bool {
 	path = strings.ToLower(path)
 	switch {
@@ -176,21 +139,18 @@ func isAuthOnlyPath(path string) bool {
 	return false
 }
 
-// Audience は要求を処理する相手が所有者かゲストかを表す。ゼロ値はゲストで、
-// 付け忘れたときは狭い側に倒れる。
+// Audience defaults to guest so omitted values fail closed.
 type Audience int
 
 const (
-	// AudienceGuest は有効なセッションを持たない見る人である（ゼロ値）。
 	AudienceGuest Audience = iota
-	// AudienceOwner は有効なセッションを持つ所有者である。
 	AudienceOwner
 )
 
-// IsOwner は所有者かを返す。AudienceOwner 以外はすべてゲストとして扱う。
+// IsOwner treats every value except AudienceOwner as guest.
 func (a Audience) IsOwner() bool { return a == AudienceOwner }
 
-// String は `X-VV-Audience` などで使う名前（`owner` か `guest`）を返す。
+// String returns the owner/guest names used by X-VV-Audience.
 func (a Audience) String() string {
 	if a.IsOwner() {
 		return "owner"
@@ -198,10 +158,7 @@ func (a Audience) String() string {
 	return "guest"
 }
 
-// CheckVideoQuery は、見る人がこの一覧の条件を使えるかを確かめる。所有者はすべて
-// 使える。ゲストは所有者のデータ（再生位置・タグ・お気に入り・作品情報）に依る条件、つまり `all` 以外の
-// 視聴状態、再生日時とお気に入りにした日時の並べ替え、タグとお気に入りと人物・団体の絞り込みを
-// 使えず、ErrGuestQueryNotAllowed を返す。
+// CheckVideoQuery rejects guest filters and sorting based on owner data with ErrGuestQueryNotAllowed.
 func (a Audience) CheckVideoQuery(q VideoQuery) error {
 	if a.IsOwner() {
 		return nil

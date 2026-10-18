@@ -18,8 +18,7 @@ import {
 
 setUpTagsPageServer();
 
-// 「Kinds」のタブの取り消し・失敗・フォーカスの行き先と、狭い幅の「Actions」。作成・改名・削除の通る道は
-// TagsPage.kinds.test.tsx にある。
+// Cover failure/focus paths; TagsPage.kinds.test.tsx covers successful mutations.
 
 type User = ReturnType<typeof userEvent.setup>;
 
@@ -39,7 +38,6 @@ async function openKindsPage(): Promise<HTMLElement> {
   return screen.findByRole("table", { name: "Kinds" });
 }
 
-/** openDeleteDialog は行の「More actions」から削除の確認の窓を開く。 */
 async function openDeleteDialog(user: User, name: string): Promise<HTMLElement> {
   await user.click(within(kindRow(name)).getByRole("button", { name: "More actions" }));
   await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
@@ -112,10 +110,9 @@ describe("TagsPage「Kinds」のタブの取り消しと失敗", () => {
       await within(dialog).findByText("Something went wrong on the server."),
     ).toBeDefined();
     expect(screen.getByRole("alertdialog")).toBe(dialog);
-    // 窓の背面は読み上げから隠れているので、行は title で探す。
+    // Dialogs hide background rows from role queries; use title instead.
     expect(screen.getByTitle("Place")).toBeDefined();
 
-    // もう一度押せば消せ、誤りは消える。
     await user.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(kindNames(table)).not.toContain("Place");
@@ -156,7 +153,7 @@ describe("TagsPage「Kinds」のタブの行の操作", () => {
     await openKindsPage();
     const link = screen.getByRole("link", { name: 'Show the tags of the kind "Genre"' });
     let prevented: boolean | undefined;
-    // React の処理の後で既定の動きを見て、jsdom の移動は止める。
+    // Inspect default behavior after React handles it, then suppress jsdom navigation.
     const record = (event: Event) => {
       prevented = event.defaultPrevented;
       event.preventDefault();

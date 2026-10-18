@@ -12,21 +12,17 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// TS の録画の SI（PAT・SDT・EIT present/following・TOT/TDT）から放送局名と番組名を読む
-// 部分。ffprobe の後に、ファイルの先頭
-// siReadLimit までを自分の siTimeout の期限で読む。読めなかったものは省くだけで、
-// プローブを失敗にしない。
+// Read bounded TS SI after ffprobe with an independent deadline; missing broadcast metadata must
+// not fail the probe.
 
 const (
-	// siReadLimit は SI を探す範囲（ファイルの先頭から）である。
 	siReadLimit = 32 << 20
-	// siTimeout は SI の読み取りに与える上限で、ffprobe の probeTimeout とは別に数える。
-	siTimeout = 10 * time.Second
-	// siContextCheckPackets は期限を確かめる間隔（packet 数）である。
+	// Independent of ffprobe's timeout.
+	siTimeout             = 10 * time.Second
 	siContextCheckPackets = 4096
 )
 
-// TS の packet と SI の定数（ISO/IEC 13818-1、ARIB STD-B10）。
+// ISO/IEC 13818-1 and ARIB STD-B10 constants.
 const (
 	tsPacketSize = 188
 	tsSyncByte   = 0x47
@@ -37,8 +33,8 @@ const (
 	pidTime = 0x0014
 
 	tablePAT = 0x00
-	tableSDT = 0x42 // 自 TS の SDT
-	tableEIT = 0x4E // 自 TS の EIT present/following
+	tableSDT = 0x42 // SDT for the current transport stream.
+	tableEIT = 0x4E // Present/following EIT for the current transport stream.
 	tableTDT = 0x70
 	tableTOT = 0x73
 
@@ -48,27 +44,24 @@ const (
 	maxSectionSize = 4096
 )
 
-// tsUnitSizes は 1 packet が占めるバイト数の候補である。188 は .ts、192 は先頭に 4 バイトの
-// 時刻を持つ .m2ts・.mts、204 は誤り訂正の 16 バイトを後ろに持つ TS である。
+// TS packets occupy 188 bytes; M2TS adds a four-byte prefix, and FEC TS adds a sixteen-byte suffix.
 var tsUnitSizes = []int{tsPacketSize, 192, 204}
 
-// tsSyncCheckPackets は packet の大きさを決めるときに同期バイトを確かめる packet 数である。
 const tsSyncCheckPackets = 5
 
-// broadcastZone は ARIB の SI の時刻の時間帯（日本標準時）である。present/following と
-// TOT は同じ時間帯なので、比べるだけならどちらでもよいが、時刻として正しく持つ。
+// ARIB timestamps use Japan Standard Time, including present/following and TOT.
 var broadcastZone = time.FixedZone("JST", 9*60*60)
 
-// transportStreamSI は SI から読んだ値である。名前は ARIB の文字列を decode したもの。
+// Names contain decoded ARIB strings.
 type transportStreamSI struct {
 	Station   string
 	Present   *domain.BroadcastEvent
 	Following *domain.BroadcastEvent
-	// Time は最初に見つけた TOT か TDT の時刻。無ければ零値。
+	// First TOT/TDT timestamp; zero when absent.
 	Time time.Time
 }
 
-// readBroadcast は TS の録画の放送局名と番組名を読む。読み取りの誤り・期限切れでは nil を返す。
+// readBroadcast returns nil on read failure or timeout.
 func readBroadcast(ctx context.Context, path string, durationMs int64) *domain.MediaBroadcast {
 	si, err := readTransportStreamSI(ctx, path)
 	if err != nil {
@@ -78,7 +71,6 @@ func readBroadcast(ctx context.Context, path string, durationMs int64) *domain.M
 		domain.SelectBroadcastProgram(si.Time, durationMs, si.Present, si.Following))
 }
 
-// readTransportStreamSI は path の先頭 siReadLimit を siTimeout の期限で読む。
 func readTransportStreamSI(ctx context.Context, path string) (transportStreamSI, error) {
 	ctx, cancel := context.WithTimeout(ctx, siTimeout)
 	defer cancel()
@@ -90,8 +82,7 @@ func readTransportStreamSI(ctx context.Context, path string) (transportStreamSI,
 	return scanTransportStreamSI(ctx, io.LimitReader(file, siReadLimit))
 }
 
-// scanTransportStreamSI は r の TS packet から SI を集める。局名・present と following・
-// 時刻がそろえばそこで読むのをやめる。r の終わりに達したら、それまでに集めた値を返す。
+// Stop once service name, both events, and time are available; EOF returns partial results.
 func scanTransportStreamSI(ctx context.Context, r io.Reader) (transportStreamSI, error) {
 	packets := &packetReader{r: bufio.NewReaderSize(r, 1<<16)}
 	collector := newSICollector()
@@ -113,19 +104,16 @@ func scanTransportStreamSI(ctx context.Context, r io.Reader) (transportStreamSI,
 	return collector.result(), nil
 }
 
-// packetReader は同期バイトに合わせて 188 バイトの TS packet を 1 つずつ返す。
 type packetReader struct {
 	r *bufio.Reader
-	// unit は 1 packet が占めるバイト数。0 なら未定で、次の next で決める。
+	// Zero means packet size is not yet detected.
 	unit int
 }
 
-// tsSyncWindow は同期を探すときに一度に見るバイト数である。最も大きい packet で
-// tsSyncCheckPackets 個先まで確かめられる。
+// The window checks enough sync bytes even for the largest packet size.
 const tsSyncWindow = 204 * (tsSyncCheckPackets + 1)
 
-// next は次の packet を返す。同期が外れたら探し直す。返す slice は次の呼び出しまでしか
-// 有効でない。データの終わりでは io.EOF を、読み取りの誤りではその誤りを返す。
+// Returned slices remain valid only until the next call; lost synchronization triggers a rescan.
 func (p *packetReader) next() ([]byte, error) {
 	for {
 		if p.unit == 0 {
@@ -142,15 +130,13 @@ func (p *packetReader) next() ([]byte, error) {
 			continue
 		}
 		packet := head[:tsPacketSize:tsPacketSize]
-		// unit が 188 より大きいとき、残りは次の packet の前置き（.m2ts）か後置き（FEC）である。
-		// 終わりの packet では Discard が足りなくてもよい（次の Peek が io.EOF を返す）。
+		// Extra bytes are the next M2TS prefix or current FEC suffix; an incomplete final discard is
+		// harmless because the next Peek returns EOF.
 		_, _ = p.r.Discard(p.unit)
 		return packet, nil
 	}
 }
 
-// sync は同期バイトが等間隔に続く位置と packet の大きさを探し、その位置まで読み飛ばす。
-// データの終わりまで見つからなければ io.EOF を返す。
 func (p *packetReader) sync() error {
 	for {
 		window, err := p.r.Peek(tsSyncWindow)
@@ -184,9 +170,7 @@ func (p *packetReader) sync() error {
 	}
 }
 
-// syncedUnit は data の先頭から同期バイトが等間隔に続く packet の大きさを返す。続く
-// tsSyncCheckPackets 個の packet の先頭で確かめる。atEnd（データの終わりまで見えている）
-// なら、data に収まる packet の分だけ確かめる。見つからなければ 0。
+// At EOF, check only packets available in data; zero means no recognized packet size.
 func syncedUnit(data []byte, atEnd bool) int {
 	for _, unit := range tsUnitSizes {
 		need := tsSyncCheckPackets
@@ -200,7 +184,6 @@ func syncedUnit(data []byte, atEnd bool) int {
 	return 0
 }
 
-// syncRepeats は data の unit おきの need 個の位置がすべて同期バイトかを返す。
 func syncRepeats(data []byte, unit, need int) bool {
 	for k := 1; k <= need; k++ {
 		if k*unit >= len(data) || data[k*unit] != tsSyncByte {

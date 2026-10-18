@@ -8,22 +8,19 @@ import (
 	"math"
 )
 
-// ライブ変換の出力（fragmented MP4）の先頭の moov を読み、各 track の edit list から
-// 実際の開始位置を得て、時間軸が 0 から始まるよう edit list を書き換える。moof/mdat には触れない。
+// Rebase track edit lists in moov to zero while returning the actual start; leave moof and mdat
+// unchanged.
 
 const (
 	boxHeaderSize = 8
-	// maxInitSegmentSize は moov までの先頭部分の上限である。empty_moov の moov は
-	// sample table を持たないので数 KB に収まる。
+	// empty_moov has no sample tables and should occupy only a few kilobytes.
 	maxInitSegmentSize = 1 << 20
 )
 
-// errInvalidInitSegment は出力の先頭が期待した形（ftyp などに続く moov）でないことを表す。
 var errInvalidInitSegment = errors.New("cannot read the start of the live transcode output")
 
-// readInitSegment は r から moov までの box を読み、そのまま返す。moov より前に moof が
-// 来たとき、または box の大きさが読めないときは errInvalidInitSegment を返す。moov を
-// 読み終える前に出力が終わったら io.EOF か io.ErrUnexpectedEOF を返す。
+// readInitSegment rejects moof before moov and malformed sizes; premature end returns io.EOF or
+// io.ErrUnexpectedEOF.
 func readInitSegment(r io.Reader) ([]byte, error) {
 	var segment []byte
 	for {
@@ -71,8 +68,7 @@ func unexpectedEOF(err error) error {
 	return err
 }
 
-// mp4Box は読み取った box 1 つである。payload は header を除いた中身で、children は
-// 書き換えのために分解した容器（moov・trak・edts）の中身である。
+// children contains parsed moov/trak/edts containers for rewriting.
 type mp4Box struct {
 	boxType  string
 	payload  []byte
@@ -137,8 +133,7 @@ func serializeBoxes(boxes []mp4Box) ([]byte, error) {
 	return out, nil
 }
 
-// editList は elst の中身である。空の edit（media_time が -1）は track の開始を
-// 遅らせる区間で、その長さ（movie timescale）が track の開始時刻になる。
+// Empty edits (media_time=-1) delay track start in movie-timescale units.
 type editList struct {
 	version uint8
 	flags   [3]byte
@@ -203,8 +198,7 @@ func (l editList) serialize() []byte {
 	return out
 }
 
-// startDelay は track の開始時刻（movie timescale）で、先頭の空の edit の長さである。
-// 空の edit が無い track は 0 から始まる。
+// No leading empty edit means a zero start delay.
 func (l editList) startDelay() uint64 {
 	if len(l.entries) > 0 && l.entries[0].empty() {
 		return l.entries[0].segmentDuration
@@ -212,8 +206,7 @@ func (l editList) startDelay() uint64 {
 	return 0
 }
 
-// withStartDelay は先頭の空の edit を delay にした edit list を返す。delay が 0 なら
-// 空の edit を除く。
+// Zero delay removes the leading empty edit.
 func (l editList) withStartDelay(delay uint64) editList {
 	entries := l.entries
 	if len(entries) > 0 && entries[0].empty() {
@@ -230,10 +223,8 @@ func (l editList) withStartDelay(delay uint64) editList {
 	return l
 }
 
-// rebaseEditLists は moov までの先頭部分 segment を読み、最も早く始まる track の開始
-// 時刻を実際の開始位置（ミリ秒）として返す。書き換えた先頭部分では、その track が 0 から
-// 始まり、他の track は元の差だけ遅れて始まる。すべての track が 0 から始まるときは
-// segment をそのまま返す。
+// rebaseEditLists returns the earliest track start in milliseconds and preserves relative track
+// offsets; all-zero starts leave the segment unchanged.
 func rebaseEditLists(segment []byte) ([]byte, int64, error) {
 	boxes, err := parseBoxes(segment)
 	if err != nil {
@@ -298,7 +289,7 @@ func rebaseEditLists(segment []byte) ([]byte, int64, error) {
 		return segment, 0, nil
 	}
 	for _, track := range tracks {
-		// earliest が正なら、どの track にも空の edit がある。
+		// A positive earliest start implies every track has an empty edit.
 		list := track.list.withStartDelay(track.list.startDelay() - earliest)
 		trak := &moov.children[track.trak]
 		edts := &trak.children[track.edts]

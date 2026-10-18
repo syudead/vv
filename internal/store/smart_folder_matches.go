@@ -1,11 +1,6 @@
 package store
 
-// スマートフォルダの一致する動画。見る人に見せる動画（内容の鍵ごとに 1 本）のうち、経路のどの段の条件にも
-// 一致する動画で、条件は動画そのものに確かめ、グループにまとめる段を持たない。ライブラリの一番上の
-// フォルダの並べ替えの値と、カードの読み出しの値をこの動画から作る。
-//
-// フォルダによらない部分（見せる動画とその所在・再生の記録・お気に入り）は、1 回の読み出しで
-// smart_base に 1 度だけ求め、どのフォルダもそれを絞って読む。
+// Filter individual visible videos through every ancestor rule; materialize shared location, progress and favorite data once per read.
 
 import (
 	"context"
@@ -18,15 +13,10 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// smartBaseCTE は、見る人 audience に見せる動画を 1 本 1 行に持つ `smart_base` を定める with 句と
-// その引数を返す。列は動画の条件が読む videos の列（id・content_key・added_at・duration_ms・
-// playable・probe_state）と、ライブラリの項目と同じ名前の値の列（mtime・created_at・title_key・
-// size_bytes・played_at・favorited_at・watch_state）、利用者データの鍵 user_key、thumbnail_state
-// である。所在は一覧と同じく見せてよい所在のパスの最小（chosen）で、別名 videos で読めば
-// matchConditions と playableCondition の句がそのまま掛かる。
+// Use listing-compatible column names and representative locations so existing video predicates apply directly to smart_base.
 func smartBaseCTE(audience domain.Audience) (string, []any) {
 	cte, args := chosenLocationsCTEFor(libraryScope(audience), audience, nil)
-	// 利用者データの鍵は動画 1 本に 1 度だけ求め（smart_keys）、再生の記録・お気に入り・条件がそれを使う。
+	// Compute each user-data key once for progress, favorites and predicates.
 	return cte + `,
 	smart_keys as materialized (
 		select videos.id as id, videos.content_key as content_key, ` + userKeyExpr("videos") + ` as user_key,
@@ -43,25 +33,16 @@ func smartBaseCTE(audience domain.Audience) (string, []any) {
 		left join video_favorites fav on fav.content_key = k.user_key and k.content_key <> '')`, args
 }
 
-// smartMatch はフォルダ 1 つの一致する動画の条件である。
 type smartMatch struct {
-	// search は検索式の段に当たる動画の id を持つ with 句の項目（`s<i> as materialized (...)`）と
-	// その引数で、検索式が無ければ空である。
 	search     string
 	searchArgs []any
-	// condition は smart_base（別名 videos）に対する条件句で、args はその引数である。filter は
-	// condition から検索式の段の条件を除いた句で、引数は同じ args である。
-	condition string
-	filter    string
-	args      []any
+	condition  string
+	// filter excludes search expressions; args also bind its placeholders.
+	filter string
+	args   []any
 }
 
-// smartMatchFor は経路の条件 spec（smartFolderSpec）の一致する動画の条件を作る。name は検索式の
-// with 句の名前である。どの段の絞り込みも動画 1 本に掛ける。タグ・人物と団体・追加日と長さは
-// matchConditions、再生可否とお気に入りのみはどれかの段が求めれば掛け、視聴状態は段ごとの
-// itemWatchConditions を動画の視聴状態に掛ける。検索式は所有者の意味で、どの段の式も同じ所在 1 行で
-// 満たす動画に限る（chosenLocationsSelect）。検索式は別の with 句に 1 度だけ
-// 求める（条件句の副問い合わせにすると、フォルダが増えるほど遅くなる）。
+// Apply every rule to each video using owner search semantics; all search expressions must match one location and are materialized once.
 func smartMatchFor(spec listSpec, name string) smartMatch {
 	return smartMatchOf(spec, name, true)
 }
@@ -103,20 +84,15 @@ func smartMatchOf(spec listSpec, name string, perVideo bool) smartMatch {
 	return match
 }
 
-// smartFolderTarget は 1 回の読み出しで値を求めるフォルダ 1 つである。
 type smartFolderTarget struct {
 	summary domain.SmartFolderSummary
 	sort    domain.VideoSort
-	// spec は経路の条件の絞り込み（smartFolderSpec）である。
-	spec listSpec
-	// missing は経路の条件が無い実体を名指すことで、そのときフォルダは何にも一致しない
-	//
+	spec    listSpec
+	// A missing referenced entity makes the folder match nothing.
 	missing bool
 }
 
-// smartFolderTargetOf はフォルダ folder を経路の条件 rules（外側の祖先から順、最後が folder の条件）
-// で読む準備をし、見る人 audience に見せるかとともに返す。所有者には常に、ゲストには再生順が空で
-// ないときだけ見せる。ゲストには再生順の最初の項目があるかを 1 回の問い合わせで確かめる
+// Owners see empty folders; guests require at least one playback item.
 func smartFolderTargetOf(ctx context.Context, tx *sql.Tx, audience domain.Audience, folder domain.SmartFolder, rules []domain.SmartRule, now int64) (smartFolderTarget, bool, error) {
 	target, err := readSmartFolderTarget(ctx, tx, audience, folder, rules, now)
 	if err != nil || audience.IsOwner() {
@@ -129,7 +105,6 @@ func smartFolderTargetOf(ctx context.Context, tx *sql.Tx, audience domain.Audien
 	return target, shown, err
 }
 
-// readSmartFolderTarget はフォルダ folder を経路の条件 rules で読む準備をする。見せるかは確かめない。
 func readSmartFolderTarget(ctx context.Context, tx *sql.Tx, audience domain.Audience, folder domain.SmartFolder, rules []domain.SmartRule, now int64) (smartFolderTarget, error) {
 	target := smartFolderTarget{
 		summary: domain.SmartFolderSummary{ID: folder.ID, ParentID: folder.ParentID, Name: folder.Name},
@@ -148,9 +123,7 @@ func readSmartFolderTarget(ctx context.Context, tx *sql.Tx, audience domain.Audi
 	return target, nil
 }
 
-// shownSmartFolderTargets はフォルダ ids のうち、あって見る人に見せるものを ids の順に読む。
-// 同じ id は最初の 1 回だけ読む。ゲストに見せるか（再生順が空でないか）は、どのフォルダも
-// まとめて 1 つの問い合わせで確かめる（smartFoldersHaveItems、docs/design-docs/home.md）。
+// Deduplicate and preserve input order while selecting existing audience-visible folders.
 func shownSmartFolderTargets(ctx context.Context, tx *sql.Tx, audience domain.Audience, ids []int64, now int64) ([]smartFolderTarget, error) {
 	targets := make([]smartFolderTarget, 0, len(ids))
 	seen := make(map[int64]bool, len(ids))
@@ -194,8 +167,6 @@ func shownSmartFolderTargets(ctx context.Context, tx *sql.Tx, audience domain.Au
 	return shown, nil
 }
 
-// smartFolderHasItems は、経路の条件 spec の中身（ライブラリの項目の問い合わせ）に項目が 1 つでも
-// あるか、つまり再生順が空でないかを返す。
 func smartFolderHasItems(ctx context.Context, tx *sql.Tx, spec listSpec) (bool, error) {
 	cte, args := libraryItemsCTE(spec)
 	where, watchArgs := itemsWhere(spec)
@@ -207,8 +178,6 @@ func smartFolderHasItems(ctx context.Context, tx *sql.Tx, spec listSpec) (bool, 
 	return found, nil
 }
 
-// itemsWhere は spec の各段の視聴状態の絞り込みを、items に対する where 句（絞り込まなければ空）と
-// その引数にする。
 func itemsWhere(spec listSpec) (string, []any) {
 	clause, args := itemWatchConditions(spec)
 	if clause == "" {
@@ -217,24 +186,16 @@ func itemsWhere(spec listSpec) (string, []any) {
 	return ` where ` + clause, args
 }
 
-// smartFolderQuery は、フォルダごとの断片を smart_base の後ろに並べた問い合わせの組み立てである。
 type smartFolderQuery struct {
-	// ctes は with 句に足す項目（検索式とフォルダごとの項目）で、cteArgs はその引数である。
-	ctes    []string
-	cteArgs []any
-	// parts は with 句の後ろに union all で並べる select 文で、partArgs はその引数である。
+	ctes     []string
+	cteArgs  []any
 	parts    []string
 	partArgs []any
-	// same は、前のフォルダと条件も並べ順も同じで断片を足さなかったフォルダの位置から、その前の
-	// フォルダの位置への対応である。呼び出し側は値を写す。
+	// Reuse earlier results for identical rules and order instead of adding another SQL branch.
 	same map[int]int
 }
 
-// smartFolderBranches は、値を求めるフォルダ targets のうち何かに一致しうるもの（missing でない
-// もの）ごとに、branch で問い合わせの断片を足す。branch はフォルダの位置 index と一致する動画の条件
-// match を受け取り、query.ctes・query.parts とその引数に足す。検索式の with 句はここで足す。経路の
-// 条件と並べ順が前のフォルダと同じフォルダは、断片を足さず query.same に記す（同じ絞り込みを 2 度
-// 求めない）。
+// Skip impossible targets and reuse identical rule/order branches; callers copy those results through query.same.
 func smartFolderBranches(targets []smartFolderTarget, branch func(query *smartFolderQuery, index int, target smartFolderTarget, match smartMatch)) smartFolderQuery {
 	query := smartFolderQuery{same: map[int]int{}}
 	first := map[string]int{}
@@ -259,8 +220,6 @@ func smartFolderBranches(targets []smartFolderTarget, branch func(query *smartFo
 	return query
 }
 
-// run は audience に見せる動画の smart_base に続けて断片を並べた問い合わせを実行する。断片が無ければ
-// nil を返す。
 func (q smartFolderQuery) run(ctx context.Context, tx *sql.Tx, audience domain.Audience) (*sql.Rows, error) {
 	if len(q.parts) == 0 {
 		return nil, nil

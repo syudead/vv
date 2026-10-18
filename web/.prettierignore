@@ -3,7 +3,7 @@ dist/
 .vite-build-check/
 playwright-report/
 test-results/
-# 生成物は手編集しないので整形の対象にもしない（AGENTS.md）。
+# Generated files are formatted by their generators.
 src/api/gen/
-# shadcn build が書く registry の項目。
+# shadcn registry output.
 registry/r/

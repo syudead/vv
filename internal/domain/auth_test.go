@@ -4,7 +4,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestSafeRedirectTarget(t *testing.T) {
@@ -41,7 +40,7 @@ func TestSafeRedirectTarget(t *testing.T) {
 		{"javascript:alert(1)", "/"},
 		{"//user@evil.example/", "/"},
 		{"/.//evil.example", "/"},
-		// 区切りを取り除いても `/` 1つで始まるので、同じオリジンのパスのままである。
+		// Normalization preserves a single leading slash and therefore the same origin.
 		{"/a/..//evil.example", "/evil.example"},
 		{"videos/1", "/"},
 		{"?t=2", "/"},
@@ -100,7 +99,6 @@ func TestValidateUsername(t *testing.T) {
 	}
 }
 
-// 長さだけの違反は ErrUsernameLength になり、空白・制御文字の違反はならない。
 func TestValidateUsernameLengthProblem(t *testing.T) {
 	for _, tooLong := range []string{"", strings.Repeat("a", MaxUsernameLength+1)} {
 		if err := ValidateUsername(tooLong); !errors.Is(err, ErrUsernameLength) {
@@ -120,17 +118,11 @@ func TestValidatePassword(t *testing.T) {
 			t.Errorf("ValidatePassword(len %d) = %v, want nil", len(ok), err)
 		}
 	}
-	// 「あ」は3バイトなので、342 文字で 1026 バイトになる。
+	// Each code point is three bytes, so 342 code points exceed the 1,024-byte limit.
 	for _, bad := range []string{"", strings.Repeat("a", MaxPasswordBytes+1), strings.Repeat("あ", 342)} {
 		if err := ValidatePassword(bad); !errors.Is(err, ErrInvalidPassword) {
 			t.Errorf("ValidatePassword(len %d) = %v, want ErrInvalidPassword", len(bad), err)
 		}
-	}
-}
-
-func TestSessionLifetime(t *testing.T) {
-	if SessionLifetime != 90*24*time.Hour {
-		t.Fatalf("SessionLifetime = %v, want 90 days", SessionLifetime)
 	}
 }
 

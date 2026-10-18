@@ -10,19 +10,15 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// ExternalVideos は外部連携 API の動画の一覧と引き当てである。internal/store の *LibraryStore がこれを満たす。見る人は
-// 常に所有者なので、画面の Library と違って audience を取らない。
+// ExternalVideos always reads as owner and therefore has no audience argument.
 type ExternalVideos interface {
-	// ListExternalVideos は登録フォルダの下に所在を持つ動画を (added_at, id) の昇順で
-	// 1 ページ返す。解釈できないカーソルは domain.ErrInvalidCursor。
+	// ListExternalVideos includes only registered locations and orders by (added_at, id) ascending.
 	ListExternalVideos(ctx context.Context, q domain.ExternalVideoQuery) (domain.ExternalVideoPage, error)
-	// LookupExternalVideo は ref の動画を返す。無い、または登録フォルダの下に所在が
-	// 無ければ domain.ErrNotFound。
+	// Unregistered-only locations are not found.
 	LookupExternalVideo(ctx context.Context, ref domain.VideoRef) (domain.ExternalVideo, error)
 }
 
-// ListVideos は動画の一覧 1 ページを返す（GET /api/v1/videos）。limit の範囲外は丸めずに
-// 400 にする（画面の API と違い、契約が範囲外を誤りと決めている）。
+// External list limits reject out-of-range values rather than clamping, as required by this API's contract.
 func (e *externalServer) ListVideos(w http.ResponseWriter, r *http.Request, params extgen.ListVideosParams) {
 	if e.s.externalVideos == nil {
 		e.internalError(w, "Video storage is not configured.", nil)
@@ -57,8 +53,7 @@ func (e *externalServer) ListVideos(w http.ResponseWriter, r *http.Request, para
 	writeJSON(w, http.StatusOK, out, e.s.logger)
 }
 
-// LookupVideo は id・内容キー・パスのちょうど 1 つで動画を引く（GET /api/v1/videos/lookup）。
-// 指定の数は引数が要求にあるかで数え、空の値も 1 つと数えたうえで誤りにする。
+// Count reference parameters by presence, including invalid empty values.
 func (e *externalServer) LookupVideo(w http.ResponseWriter, r *http.Request, params extgen.LookupVideoParams) {
 	if e.s.externalVideos == nil {
 		e.internalError(w, "Video storage is not configured.", nil)
@@ -86,8 +81,7 @@ func (e *externalServer) LookupVideo(w http.ResponseWriter, r *http.Request, par
 		e.invalidRequest(w, nil, "contentKey and path must not be empty.")
 		return
 	}
-	// 1 未満の id は、どの動画にも当たらない id として 404 にする（ref.Valid が偽になり、
-	// 保存先が domain.ErrNotFound を返す）。
+	// Nonpositive IDs are lookup misses, producing 404.
 	video, err := e.s.externalVideos.LookupExternalVideo(r.Context(), ref)
 	if errors.Is(err, domain.ErrNotFound) {
 		reason := extgen.VideoNotFound
@@ -104,21 +98,18 @@ func (e *externalServer) LookupVideo(w http.ResponseWriter, r *http.Request, par
 	writeJSON(w, http.StatusOK, toExternalVideo(video), e.s.logger)
 }
 
-// invalidRequest は 400 invalid_request を返す。
 func (e *externalServer) invalidRequest(w http.ResponseWriter, reason *extgen.ErrorReason, message string) {
 	writeExternalError(w, e.s, http.StatusBadRequest, extgen.Error{
 		Code: extgen.ErrorCodeInvalidRequest, Reason: reason, Message: message,
 	})
 }
 
-// toExternalVideo は domain.ExternalVideo を外部連携 API の形へ写す。
 func toExternalVideo(item domain.ExternalVideo) extgen.ExternalVideo {
 	out := extgen.ExternalVideo{
-		Id:         item.Video.ID,
-		ContentKey: item.Video.ContentKey,
-		Title:      item.Video.Title,
-		FileTitle:  item.Video.FileTitle,
-		// 表示名は空を未設定とする（domain.Video.DisplayName）。
+		Id:                  item.Video.ID,
+		ContentKey:          item.Video.ContentKey,
+		Title:               item.Video.Title,
+		FileTitle:           item.Video.FileTitle,
 		DisplayName:         optionalString(item.Video.DisplayName),
 		ThumbnailPositionMs: item.Video.ThumbnailPositionMs,
 		DurationMs:          item.Video.DurationMs,
@@ -135,8 +126,6 @@ func toExternalVideo(item domain.ExternalVideo) extgen.ExternalVideo {
 	return out
 }
 
-// toExternalVideoTags は動画のタグを出所つきで写す。後の単位（タグの一括操作）の応答も
-// 同じ形を使う。
 func toExternalVideoTags(tags []domain.VideoTag) []extgen.ExternalVideoTag {
 	out := make([]extgen.ExternalVideoTag, 0, len(tags))
 	for _, tag := range tags {

@@ -16,7 +16,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// locationKeys は path の所在の search_key・title_key・search_version を返す。
 func locationKeys(t *testing.T, db *DB, path string) (searchKey, titleKey string, version int) {
 	t.Helper()
 	if err := db.sql.QueryRow(
@@ -27,8 +26,6 @@ func locationKeys(t *testing.T, db *DB, path string) (searchKey, titleKey string
 	return searchKey, titleKey, version
 }
 
-// 00006 の状態で所在を入れた DB を移行して開くと、再取り込みなしで全所在の鍵が
-// 埋まる（親 Issue の受け入れ条件 8）。
 func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {
@@ -50,7 +47,7 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`, fixturePath("/media")); err != nil {
 		t.Fatal(err)
 	}
-	// バッチの境目を跨ぐよう、searchKeyBatchSize より多く入れる。
+	// Cross a batch boundary to exercise resumable backfill.
 	const extra = searchKeyBatchSize + 1
 	locations := []struct{ path, title string }{
 		{fixturePath("/media/旅/ＡＢＣ１２３.mp4"), "ＡＢＣ１２３"},
@@ -110,12 +107,10 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 		t.Errorf("登録フォルダ外の鍵 = %q・%q（版 %d）, want 空・題名の鍵（現在の版）", key, titleKey, version)
 	}
 
-	// 埋め直した鍵が索引に届いている。
 	if got := searchTitles(t, db, "abc123"); len(got) != 1 || got[0] != "ＡＢＣ１２３" {
 		t.Errorf("検索 abc123 = %v, want [ＡＢＣ１２３]", got)
 	}
 
-	// 版は行ごとなので、2度目は何も作り直さない。途中で止まった分だけが残る。
 	if refreshed, err := db.Library().RefreshSearchKeys(ctx); err != nil || refreshed != 0 {
 		t.Errorf("2度目の埋め直し = %d (err=%v), want 0", refreshed, err)
 	}
@@ -134,7 +129,6 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 	}
 }
 
-// 登録フォルダ自身のパスは search_key に入らない（要件 8）。
 func TestSearchKeyExcludesRegisteredFolderPath(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -154,7 +148,6 @@ func TestSearchKeyExcludesRegisteredFolderPath(t *testing.T) {
 			t.Errorf("検索 %q = %v, want 登録フォルダのパスには当たらない", query, got)
 		}
 	}
-	// 登録フォルダより下のディレクトリ名と拡張子には当たる。
 	for _, query := range []string{"旅行", "movie.mp4", ".mp4"} {
 		if got := searchTitles(t, db, query); len(got) != 1 {
 			t.Errorf("検索 %q = %v, want [movie]", query, got)
@@ -162,7 +155,6 @@ func TestSearchKeyExcludesRegisteredFolderPath(t *testing.T) {
 	}
 }
 
-// 取り込みで題名が変わると、鍵も作り直される。
 func TestUpsertVideoRefreshesSearchKey(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -184,8 +176,6 @@ func TestUpsertVideoRefreshesSearchKey(t *testing.T) {
 	}
 }
 
-// メディアフォルダを追加・差し替えると、新しい登録の下の所在の鍵が、新しい
-// 相対パスで作り直される。
 func TestMediaFolderChangesRebuildSearchKeys(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -210,7 +200,6 @@ func TestMediaFolderChangesRebuildSearchKeys(t *testing.T) {
 		t.Errorf("登録フォルダ直下の search_key = %q", key)
 	}
 
-	// 登録の無いまま残った所在。鍵は空になる。
 	inAdded := filepath.Join(addedRoot, "season", "episode.mp4")
 	inWide := filepath.Join(wideRoot, "deep", "season", "finale.mp4")
 	for i, path := range []string{inAdded, inWide} {
@@ -222,7 +211,6 @@ func TestMediaFolderChangesRebuildSearchKeys(t *testing.T) {
 		}
 	}
 
-	// 追加: 新しい登録の下の所在が、登録からの相対パスで作り直される。
 	if _, err := db.Settings().AddMediaFolder(ctx, addedRoot); err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +221,6 @@ func TestMediaFolderChangesRebuildSearchKeys(t *testing.T) {
 		t.Errorf("追加した登録の外の search_key = %q, want 空のまま", key)
 	}
 
-	// 差し替え: 新しい登録の下の所在が、新しい登録からの相対パスで作り直される。
 	if _, err := db.Settings().ReplaceMediaFolder(ctx, oldFolder.ID, oldFolder.Version, wideRoot); err != nil {
 		t.Fatal(err)
 	}
@@ -249,8 +236,6 @@ func TestMediaFolderChangesRebuildSearchKeys(t *testing.T) {
 	}
 }
 
-// 検索語と search_key に同じ照合形を掛けるので、全角半角・大文字小文字・かなの
-// 違いを問わず当たる。
 func TestSearchFoldsQueryAndKey(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -263,11 +248,11 @@ func TestSearchFoldsQueryAndKey(t *testing.T) {
 	for query, want := range map[string]string{
 		"abc123": "ＡＢＣ１２３",
 		"ABC":    "ＡＢＣ１２３",
-		"タビ":     "たびにっき", // 2文字は instr 経路
-		"タビニッキ":  "たびにっき", // 3文字以上は MATCH 経路
-		"ﾀﾋﾞ":    "たびにっき", // 半角カナも NFKC で畳まれる
+		"タビ":     "たびにっき",
+		"タビニッキ":  "たびにっき",
+		"ﾀﾋﾞ":    "たびにっき",
 		"100%":   "100% 満足",
-		"0%":     "100% 満足", // % は字面として扱う
+		"0%":     "100% 満足",
 	} {
 		got := searchTitles(t, db, query)
 		if len(got) != 1 || got[0] != want {
@@ -279,7 +264,6 @@ func TestSearchFoldsQueryAndKey(t *testing.T) {
 	}
 }
 
-// Down で videos_fts と3つのトリガが戻り、足した列と索引が消える。
 func TestLocationSearchMigrationDownRestoresVideosFTS(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -287,7 +271,6 @@ func TestLocationSearchMigrationDownRestoresVideosFTS(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 00008 以降を先に戻してから、検査対象の00007を戻す。
 	downTo(t, db, 7)
 	if err := Down(ctx, db); err != nil {
 		t.Fatalf("Down に失敗した: %v", err)
@@ -312,7 +295,6 @@ func TestLocationSearchMigrationDownRestoresVideosFTS(t *testing.T) {
 		}
 	}
 
-	// rebuild で既存の所在が索引に戻り、トリガが以後の書き込みを写す。
 	var count int
 	if err := db.sql.QueryRow(`select count(*) from videos_fts where videos_fts match '夏休み'`).Scan(&count); err != nil {
 		t.Fatal(err)
@@ -330,7 +312,6 @@ func TestLocationSearchMigrationDownRestoresVideosFTS(t *testing.T) {
 		t.Errorf("Down 後の更新が videos_fts に届かない: %d 件", count)
 	}
 
-	// もう一度上げても壊れない。
 	if _, err := Migrate(ctx, db); err != nil {
 		t.Fatalf("Down の後の再適用に失敗した: %v", err)
 	}
@@ -342,15 +323,14 @@ func TestLocationSearchMigrationDownRestoresVideosFTS(t *testing.T) {
 	}
 }
 
-// 一覧の登録判定と鍵の登録判定は同じ規則に従う。`\` を区切りとして扱うのは
-// Windows だけで、ほかの OS では `\` はファイル名の一部である。
+// Listing and search-key registration must agree; backslash is a separator only on Windows.
 func TestSearchKeyFollowsListRegistrationRule(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("`\\` is a path separator on this OS")
 	}
 	db := migratedDB(t)
 	ctx := context.Background()
-	// 登録フォルダ /media の直後の `\` は区切りではないので、この所在は登録の外である。
+	// On Unix, a backslash after the root is filename data, so this path is outside registration.
 	outside := `/media\film.mp4`
 	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(outside, "film", "key-outside", 1, 0)); err != nil {
 		t.Fatal(err)
@@ -362,7 +342,7 @@ func TestSearchKeyFollowsListRegistrationRule(t *testing.T) {
 		t.Errorf("一覧 = %v, want 登録の外の所在は出ない", got)
 	}
 
-	// 名前が `\` で終わる登録フォルダでは、`\` を削らずにその下だけを登録とみなす。
+	// Preserve a trailing backslash in a Unix folder name when checking its descendants.
 	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`, `/elsewhere\`); err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +364,6 @@ func TestSearchKeyFollowsListRegistrationRule(t *testing.T) {
 	}
 }
 
-// 改行を含む題名も、改行を空白に読み替えた語で見つかる。
 func TestSearchFindsTitleContainingNewline(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -398,15 +377,13 @@ func TestSearchFindsTitleContainingNewline(t *testing.T) {
 	}
 }
 
-// 題名と相対パスの境目（改行）をまたぐ検索語には当たらない。
 func TestSearchDoesNotMatchAcrossTitleAndPath(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/def.mp4"), "abc", "key-boundary", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
-	// 3文字以上（MATCH）と1〜2文字（instr）の両方の経路を調べる。
-	// 空白（改行を含む）は語の区切りなので、改行はフレーズの中にだけ現れる。
+	// Exercise MATCH and instr; newlines can appear only within quoted phrases because whitespace splits terms.
 	for _, query := range []string{"\"bc\nde\"", "\"c\nd\""} {
 		if got := searchTitles(t, db, query); len(got) != 0 {
 			t.Errorf("検索 %q = %v, want 境目をまたいで当たらない", query, got)

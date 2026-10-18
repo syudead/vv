@@ -9,11 +9,8 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// タグの種類の API。タグの管理 API と同じく
-// internal/app は通さず、どの操作も internal/store.TagStore の 1 つの取引で済む。/api/* の
-// 既定で所有者だけが使える。
+// Tag-kind operations are owner-only and complete in one TagStore transaction.
 
-// ListTagKinds はすべての種類を id の順に返す（GET /api/tag-kinds）。
 func (s *server) ListTagKinds(w http.ResponseWriter, r *http.Request) {
 	if s.tags == nil {
 		s.internalError(w, "Tag storage is not configured.", nil)
@@ -32,7 +29,6 @@ func (s *server) ListTagKinds(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.TagKindList{Items: items}, s.logger)
 }
 
-// CreateTagKind は種類を 1 件作る（POST /api/tag-kinds）。
 func (s *server) CreateTagKind(w http.ResponseWriter, r *http.Request) {
 	var body gen.TagKindNameRequest
 	if !s.readJSONBody(w, r, &body) {
@@ -51,8 +47,7 @@ func (s *server) CreateTagKind(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toAPITagKind(kind), s.logger)
 }
 
-// RenameTagKind は種類の名前を書き換える（PATCH /api/tag-kinds/{id}）。今と同じ名前なら何も
-// 変えずに 200 を返す。
+// Renaming to the current name is a no-op returning 200.
 func (s *server) RenameTagKind(w http.ResponseWriter, r *http.Request, id gen.TagKindId) {
 	var body gen.TagKindNameRequest
 	if !s.readJSONBody(w, r, &body) {
@@ -71,7 +66,7 @@ func (s *server) RenameTagKind(w http.ResponseWriter, r *http.Request, id gen.Ta
 	writeJSON(w, http.StatusOK, toAPITagKind(kind), s.logger)
 }
 
-// DeleteTagKind は種類を消す（DELETE /api/tag-kinds/{id}）。その種類のタグは種類なしで残る。
+// Deleting a kind preserves its tags with no kind.
 func (s *server) DeleteTagKind(w http.ResponseWriter, r *http.Request, id gen.TagKindId) {
 	if s.tags == nil {
 		s.internalError(w, "Tag storage is not configured.", nil)
@@ -85,9 +80,7 @@ func (s *server) DeleteTagKind(w http.ResponseWriter, r *http.Request, id gen.Ta
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// writeTagKindError は種類の操作の誤りを契約の表の状態へ写す。名前の規則違反はタグの名前と
-// 同じ reason（tag_name_*）にする。名前の重複には、
-// 画面が文に入れられるように、その名前を持つ種類の名前を tagName に載せる。
+// Use tag-name validation reasons and include the conflicting kind name in tagName for UI messages.
 func (s *server) writeTagKindError(w http.ResponseWriter, err error) {
 	var conflict *domain.TagKindNameConflict
 	switch {
@@ -113,7 +106,6 @@ func toAPITagKind(kind domain.TagKind) gen.TagKind {
 	return gen.TagKind{Id: kind.ID, Name: kind.Name, TagCount: kind.TagCount, CreatedAt: kind.CreatedAt}
 }
 
-// toAPITagKindRef はタグの種類を応答の形にする。種類の無いタグは nil（null）。
 func toAPITagKindRef(kind *domain.TagKindRef) *gen.TagKindRef {
 	if kind == nil {
 		return nil

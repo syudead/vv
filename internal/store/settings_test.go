@@ -29,7 +29,6 @@ func TestTranscodeEncoderChoiceRoundTrip(t *testing.T) {
 		t.Fatalf("after saving = (%q, %v), want (nvenc, true)", value, found)
 	}
 
-	// 解釈は store では行わないので、知らない文字列もそのまま戻る。
 	if err := settings.SaveTranscodeEncoderChoice(ctx, "future_encoder"); err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +67,6 @@ func TestTranscodeEncoderChoiceKeepsUnknownValue(t *testing.T) {
 	}
 }
 
-// LAN からの接続の許可は、行が無ければ偽で、保存した値が読める
 func TestLANAccessRoundTrip(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -104,7 +102,7 @@ func TestLANAccessRoundTrip(t *testing.T) {
 	}
 }
 
-// 知らない値は許可として読まない（許可していないのに LAN で待ち受けない）。
+// Unknown settings must not accidentally enable LAN listening.
 func TestLANAccessTreatsUnknownValueAsDenied(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -121,7 +119,6 @@ func TestLANAccessTreatsUnknownValueAsDenied(t *testing.T) {
 	}
 }
 
-// 自動の取り込みは、行が無ければ入で、保存した値が読める
 func TestAutoImportDefaultsToOnAndRoundTrips(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -155,7 +152,6 @@ func TestAutoImportDefaultsToOnAndRoundTrips(t *testing.T) {
 	}
 }
 
-// プラグインのプロキシは、行が無ければ "" で、保存した値をそのまま読める
 func TestWorkInfoPluginProxyURLRoundTrip(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

@@ -17,27 +17,19 @@ import { DEFAULT_SORT } from "../videoList/listCriteria";
 import DeleteSmartFolderDialog from "./DeleteSmartFolderDialog";
 import SmartFolderDialog from "./SmartFolderDialog";
 
-/** SmartFolderMenuDialog は「More」が開いている窓である。 */
 export type SmartFolderMenuDialog = "edit" | "newChild" | "delete" | null;
 
-/** SmartFolderMenuProps はフォルダのページの「More」の props である。 */
 export interface SmartFolderMenuProps {
   folder: { id: number; name: string; parentId?: number };
-  /** 所有者だけが受け取る条件・並べ順・もう無い参照。 */
+  /** Owner-only settings and missing references. */
   settings: SmartFolderSettings;
   moreRef?: Ref<HTMLButtonElement>;
-  /** 直せた（名前・親・並べ順・条件）。呼び手が読み直す。 */
   onSaved: (folder: SmartFolderSummary) => void;
-  /** 新しい子を作れた。呼び手が読み直す。 */
   onCreatedChild: (folder: SmartFolderSummary) => void;
-  /** 消えた。`announce` が偽なら、もう無かった（トーストを出さない）。 */
+  /** False means already missing; suppress the toast. */
   onDeleted: (announce: boolean) => void;
-  /** 直そうとしたらフォルダ自身がもう無かった。 */
   onGone: () => void;
-  /**
-   * 開いている窓を呼び手が持つとき（空の状態の「Edit conditions…」が同じ窓を開く）の値と、
-   * その変更。省くとメニューが自分で持つ。
-   */
+  /** Optional controlled dialog state lets the empty-state action share this dialog. */
   dialog?: SmartFolderMenuDialog;
   onDialogChange?: (dialog: SmartFolderMenuDialog) => void;
   /**
@@ -48,11 +40,7 @@ export interface SmartFolderMenuProps {
   home?: { onHome: boolean; busy: boolean; toggle: () => void };
 }
 
-/**
- * SmartFolderMenu は所有者のスマートフォルダのページの見出しの「More」である。「Edit…」「New child smart folder…」、区切り、
- * 「Delete…」を開き、それぞれの窓を持つ。直せたら `Saved "{name}"`、子を作れたら
- * `Created "{name}"` のトーストを出す。消えた後の移動とトーストは呼び手が持つ。
- */
+/** The caller owns post-deletion navigation and notification. */
 export default function SmartFolderMenu({
   folder,
   settings,

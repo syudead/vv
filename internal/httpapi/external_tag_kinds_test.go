@@ -14,10 +14,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// 外部連携 API と MCP のタグの種類を、本物の保存先と
-// Bearer の境界で確かめる。
-
-// postExternalAs は外部連携 API に body を POST し、200 なら本文を T に読む。200 でなければ止める。
 func postExternalAs[T any](t *testing.T, f mcpFixture, path string, body any) T {
 	t.Helper()
 	res := f.postExternal(t, path, body)
@@ -31,7 +27,6 @@ func postExternalAs[T any](t *testing.T, f mcpFixture, path string, body any) T 
 	return out
 }
 
-// postExternalRec は外部連携 API に body を POST し、応答を assertExternalError に渡せる形で返す。
 func (f mcpFixture) postExternalRec(t *testing.T, path string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 	res := f.postExternal(t, path, body)
@@ -41,9 +36,6 @@ func (f mcpFixture) postExternalRec(t *testing.T, path string, body any) *httpte
 	return rec
 }
 
-// 外部連携 API で種類を作り、batchTags の setKind でタグに付けると、画面の GET /api/tags からその種類が
-// 読め（受け入れ条件 4）、GET /api/v1/tags の kind で絞り込める。名前の変更・重複・削除は画面の経路と
-// 同じ状態と reason で、消した種類のタグは種類なしで残る。
 func TestExternalTagKindsRoundTripWithScreen(t *testing.T) {
 	f := newMCPFixture(t, Options{Scans: &fakeScans{}})
 	genre := postExternalAs[extgen.TagKind](t, f, "/tag-kinds", map[string]any{"name": "ジャンル"})
@@ -66,7 +58,6 @@ func TestExternalTagKindsRoundTripWithScreen(t *testing.T) {
 		t.Errorf("setKind = %+v", batch)
 	}
 
-	// 画面の一覧が、外部連携 API で付けた種類を返す（受け入れ条件 4）。
 	var screen struct {
 		Items []struct {
 			ID   int64
@@ -104,7 +95,7 @@ func TestExternalTagKindsRoundTripWithScreen(t *testing.T) {
 		t.Errorf("renameTagKind = %+v", renamed)
 	}
 	postExternalAs[extgen.TagKind](t, f, "/tag-kinds", map[string]any{"name": "作品"})
-	// 移行が入れる既定の種類の後に、作った順（id の順）で並ぶ。
+	// Created kinds follow migration defaults in ascending ID order.
 	if names := kindNames(f.listTagKinds(t)); len(names) < 2 || !slices.Equal(names[len(names)-2:], []string{"分類", "作品"}) {
 		t.Errorf("listTagKinds = %v", names)
 	}
@@ -119,7 +110,6 @@ func TestExternalTagKindsRoundTripWithScreen(t *testing.T) {
 	}
 }
 
-// kindNames は種類の一覧の名前を順に返す。
 func kindNames(list extgen.TagKindList) []string {
 	names := make([]string, 0, len(list.Items))
 	for _, kind := range list.Items {
@@ -128,7 +118,6 @@ func kindNames(list extgen.TagKindList) []string {
 	return names
 }
 
-// listTagKinds は GET /api/v1/tag-kinds の本文を返す。
 func (f mcpFixture) listTagKinds(t *testing.T) extgen.TagKindList {
 	t.Helper()
 	rec := f.env.serve(authRequest{method: http.MethodGet, target: "/api/v1/tag-kinds", header: bearer(f.secret)})
@@ -138,7 +127,6 @@ func (f mcpFixture) listTagKinds(t *testing.T) extgen.TagKindList {
 	return decode[extgen.TagKindList](t, rec)
 }
 
-// 断る要求は画面の経路と同じ状態で、何も変えない。
 func TestExternalTagKindsRejectInvalidRequests(t *testing.T) {
 	f := newMCPFixture(t, Options{Scans: &fakeScans{}})
 	tag := f.createTag(t, "SF")
@@ -171,8 +159,6 @@ func TestExternalTagKindsRejectInvalidRequests(t *testing.T) {
 	}
 }
 
-// MCP の 4 つの種類のツールと、batch_tags の setKind・clearKind、list_tags の kind が外部連携 API と同じ
-// 操作を呼ぶ。
 func TestMCPTagKindTools(t *testing.T) {
 	f := newMCPFixture(t, Options{Scans: &fakeScans{}})
 	tag := f.createTag(t, "SF")
@@ -218,7 +204,6 @@ func TestMCPTagKindTools(t *testing.T) {
 	}
 }
 
-// failingKindDeletes は failAt の id の削除だけを failure で失敗させ、消した id を deleted に残す。
 type failingKindDeletes struct {
 	*fakeTags
 	failAt  int64
@@ -234,8 +219,6 @@ func (f *failingKindDeletes) DeleteTagKind(_ context.Context, id int64) error {
 	return nil
 }
 
-// newExternalKindsEnv は tags を保存先にした外部連携 API と、その Bearer の値を返す。tags が nil なら
-// 保存先の無い構成になる。
 func newExternalKindsEnv(t *testing.T, tags Tags) (*authEnv, map[string]string) {
 	t.Helper()
 	env := newAuthEnv(t, t.TempDir(), Options{Tags: tags})
@@ -243,7 +226,6 @@ func newExternalKindsEnv(t *testing.T, tags Tags) (*authEnv, map[string]string) 
 	return env, bearer(env.createAPIToken(owner, "agent").Secret)
 }
 
-// 保存先の想定外の失敗は 500 internal で、削除は失敗した id より前の id を消したまま止まる
 func TestExternalTagKindsStoreFailures(t *testing.T) {
 	internal := wantExternalError{http.StatusInternalServerError, extgen.ErrorCodeInternal, "", -1, 0}
 	broken := errors.New("disk I/O error")
@@ -268,8 +250,7 @@ func TestExternalTagKindsStoreFailures(t *testing.T) {
 	}
 }
 
-// 断る要求のうち、本物の保存先では作れないもの: 壊れた本文、*InvalidTagNameError を伴わない
-// ErrInvalidTagName（Tags の約束はこの番兵だけを求める）、保存先の無い構成。
+// Exercise malformed bodies, bare sentinel errors, and missing storage that the real store cannot produce.
 func TestExternalTagKindsRejectWithoutRealStore(t *testing.T) {
 	invalid := wantExternalError{http.StatusBadRequest, extgen.ErrorCodeInvalidRequest, "", -1, 0}
 	fake := &fakeTags{}

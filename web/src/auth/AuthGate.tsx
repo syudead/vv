@@ -14,23 +14,19 @@ import { currentPath, loginPath, reloadPage } from "./pageNavigation";
 type GateState =
   | { status: "checking" }
   | { status: "failed"; reason: UiText }
-  // search は、確かめたときの /login の問い合わせ（next を送ったか）である。
+  // The /login query used by the session check, including whether next was supplied.
   | { status: "ready"; session: AuthSession; search: string | null };
 
 /**
- * routePath は、経路の判定に使う形へパスを揃える。画面の経路（React Router）は
- * 大文字と小文字を区別せず、末尾の / も無視するので、ここでも同じに扱う。
- * そうしないと /Settings や /setup/ がゲートの判定をすり抜けて描かれる。
+ * Match React Router's case and trailing-slash normalization so paths such as /Settings cannot
+ * bypass the gate.
  */
 export function routePath(pathname: string): string {
   const lowered = pathname.toLowerCase().replace(/\/+$/, "");
   return lowered === "" ? "/" : lowered;
 }
 
-/**
- * ownerOnlyPath は所有者だけの画面（設定・タグの管理・人物と団体の管理・視聴履歴・
- * プレイリスト・重複の候補・アクティビティ・オンボード・動画の作品情報の編集画面）かを返す。pathname は routePath 済み。
- */
+/** Expects a pathname normalized by routePath. */
 function ownerOnlyPath(pathname: string): boolean {
   return (
     [
@@ -48,7 +44,6 @@ function ownerOnlyPath(pathname: string): boolean {
   );
 }
 
-/** loginNext は /login の問い合わせの next を返す。無ければ undefined。 */
 function loginNext(search: string): string | undefined {
   return new URLSearchParams(search).get("next") ?? undefined;
 }
@@ -58,12 +53,7 @@ function failureReason(error: unknown): UiText {
   return t.auth.gate.noResponse;
 }
 
-/**
- * OwnerLoginRedirect は、ログイン済みで /login を開いたとき、サーバーが確かめた
- * 戻り先（redirectTo）へ置き換える。戻り先は画面で判定しない。
- * SPA の中で来て確かめ直しが失敗したときは、ゲートと同じく遷移せずに理由と
- * 「再試行」を出す。自動では確かめ直さない。
- */
+/** Use the server-validated redirectTo; failed SPA rechecks require an explicit retry. */
 function OwnerLoginRedirect({
   session,
   checkedSearch,
@@ -81,7 +71,7 @@ function OwnerLoginRedirect({
       void navigate(session.redirectTo ?? "/", { replace: true });
       return;
     }
-    // SPA の中で /login へ来たとき。ゲートが確かめたときとは next が違う。
+    // SPA navigation may supply a different next value from the gate's session check.
     const controller = new AbortController();
     getAuthSession(loginNext(location.search), controller.signal).then(
       (current) => {
@@ -130,22 +120,15 @@ function GateFailure({ reason, onRetry }: { reason: UiText; onRetry: () => void 
 }
 
 /**
- * AuthGate は見る人の状態（GET /api/auth/session）が分かるまで何も描かず、分かったら
- * 状態に合う画面へ振り分ける。
- *
- * - setupRequired: どの URL でも /setup
- * - guest: 所有者だけの画面は /login?next=…、/setup は /
- * - owner: /login はサーバーの redirectTo、/setup は /
- *
- * 確認に失敗したら何も描かずに理由と「再試行」を出す。自動では確かめ直さない。
+ * Render nothing until the session is known; route setup, guests and owners accordingly. Failed
+ * checks require an explicit retry.
  */
 export default function AuthGate({ children }: { children: ReactNode }) {
   const location = useLocation();
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<GateState>({ status: "checking" });
 
-  // 確かめるのは読み込みのときと「再試行」のときだけである。遷移のたびには確かめない。
-  // 見る人が変わるときは、ページごと読み直してここからやり直す。
+  // Check only on initial load or Retry; audience changes reload the page.
   const [initialLocation] = useState(location);
   useEffect(() => {
     const controller = new AbortController();
@@ -153,7 +136,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     const next = onLogin ? loginNext(initialLocation.search) : undefined;
     getAuthSession(next, controller.signal).then(
       (session) => {
-        // 所有者として描く間に見る人が変わったら、client.ts が1度だけ読み直す。
+        // client.ts reloads once if the audience changes while rendering as owner.
         setRenderedAudience(
           session.state === "owner" || session.state === "guest" ? session.state : null,
         );

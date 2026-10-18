@@ -13,21 +13,14 @@ import {
 } from "../ui/shadcn/select";
 import type { TagKindFilter } from "./tagListUrl";
 
-/** anyKind は「Any kind」（絞らない）の `Select` の値である。 */
 const anyKind = "any";
 
-/**
- * TagKindSelect は「Filter」の吹き出しの「Kind」の行である。値は `Any kind`、種類の 1 つ、
- * `No kind` で、選ぶとすぐ効く。種類は名前の自然順で、`No kind` は区切り線の後ろに置く。
- * 種類をまだ読んでいない間は `Any kind` と `No kind` だけを並べる。
- */
 export default function TagKindSelect({
   kind,
   kinds,
   onKindChange,
 }: {
   kind: TagKindFilter;
-  /** 名前の自然順の種類。読み込み前は undefined。 */
   kinds: readonly TagKind[] | undefined;
   onKindChange: (kind: TagKindFilter) => void;
 }) {

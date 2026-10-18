@@ -14,78 +14,73 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// CloudBaseURL は Comfy Cloud の API の基底 URL である。
 const CloudBaseURL = "https://cloud.comfy.org/api"
 
-// checkTimeout は接続の確かめの上限時間である。画像は作らないので短い。
+// Connection checks do not generate images, so use a short timeout.
 const checkTimeout = 15 * time.Second
 
-// maxResponseBytes は確かめで読む応答の上限である。
 const maxResponseBytes = 1 << 20
 
-// maxObjectInfoBytes は GET /object_info の応答の上限である。すべてのノードの定義を返すので、
-// カスタムノードの多い ComfyUI では数 MB になる。
+// Custom node installations can make /object_info several megabytes.
 const maxObjectInfoBytes = 64 << 20
 
-// SettingsSource は保存された接続先を読む。internal/store の *SettingsStore が満たす。
 type SettingsSource interface {
 	ComfyUISettings(ctx context.Context) (domain.ComfyUISettings, error)
 }
 
-// Client は ComfyUI と Comfy Cloud を呼ぶ。ゼロ値は使えず、New で作る。
+// Client requires New; its zero value is unusable.
 type Client struct {
 	settings SettingsSource
 	http     *http.Client
 	cloud    string
-	// diffusionModel は埋め込んだワークフローの拡散モデルのファイル名に代えて読ませるファイルである。
-	// 空なら埋め込んだファイルのままにする。Comfy Cloud は自身のモデルしか持たないので、自前の
-	// ComfyUI のときだけ使う。
+	// Override diffusion models only for self-hosted ComfyUI; Cloud owns its model inventory.
 	diffusionModel string
 
-	// progressMu は progress を守る。progress は実行の id ごとの、進み具合を読む WebSocket である。
+	// startProgress opens the independently managed progress stream.
+	startProgress func(context.Context, *target, string) *progressWatch
+
+	// progressMu protects per-run progress sockets.
 	progressMu sync.Mutex
 	progress   map[string]*progressWatch
 }
 
-// Options は Client の差し替えられる部分である。テストが使う。
 type Options struct {
-	// HTTPClient は要求を送る HTTP クライアントである。nil なら既定のものを使う。
+	// Nil uses the default HTTP client.
 	HTTPClient *http.Client
-	// CloudBaseURL は Comfy Cloud の基底 URL である。空なら CloudBaseURL を使う。
+	// Empty uses CloudBaseURL.
 	CloudBaseURL string
-	// DiffusionModel は UNETLoader に読ませる拡散モデルのファイル名である。空なら埋め込んだ
-	// ワークフローのファイル（flux-2-klein-4b-fp8.safetensors）を使う。同じ構造の派生モデルを
-	// 試すための差し替えで、テキストエンコーダ・VAE・手順の数は変えない。自前の ComfyUI だけに効く。
+	// DiffusionModel replaces the self-hosted UNETLoader file only, preserving text encoder, VAE, and
+	// step count; empty uses the bundled workflow model.
 	DiffusionModel string
 }
 
-// New は既定の HTTP クライアント（環境のプロキシ設定に従う）で Client を作る。
+// New uses an HTTP client that honors environment proxy settings.
 func New(settings SettingsSource) *Client {
 	return NewWithOptions(settings, Options{})
 }
 
-// NewWithOptions は opts で差し替えた Client を作る。
 func NewWithOptions(settings SettingsSource, opts Options) *Client {
 	client := &http.Client{}
 	if opts.HTTPClient != nil {
 		copied := *opts.HTTPClient
 		client = &copied
 	}
-	// 転送先へ API キーを持ち出さないよう、転送には自分では従わない。確かめは転送の応答を
-	// ComfyUI でない応答として扱い、出力の取得は転送先をキーを付けずに取り直す。
+	// Do not follow redirects with API keys; checks reject redirects and output downloads follow them
+	// without the key.
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	cloud := opts.CloudBaseURL
 	if cloud == "" {
 		cloud = CloudBaseURL
 	}
-	return &Client{
+	c := &Client{
 		settings: settings, http: client, cloud: strings.TrimRight(cloud, "/"),
 		diffusionModel: strings.TrimSpace(opts.DiffusionModel), progress: map[string]*progressWatch{},
 	}
+	c.startProgress = c.watchProgress
+	return c
 }
 
-// diffusionModelFor は接続先 conn で拡散モデルに代えて読ませるファイルを返す。差し替えは
-// 自前の ComfyUI で、差し替えられるモデルのときだけ効く。それ以外は空を返す。
+// Only compatible models on self-hosted connections accept overrides.
 func (c *Client) diffusionModelFor(conn domain.ComfyUISettings) string {
 	if conn.Provider != domain.ComfyUISelfHosted || !presetFor(conn.EffectiveModel()).overridable {
 		return ""
@@ -93,16 +88,10 @@ func (c *Client) diffusionModelFor(conn domain.ComfyUISettings) string {
 	return c.diffusionModel
 }
 
-// errAPIKeyRejected は Comfy Cloud が API キーを受け付けなかったことを表す。
 var errAPIKeyRejected = errors.New("the API key was rejected by Comfy Cloud; check the key under Settings")
 
-// Check は保存した接続先に ComfyUI が応え、vv のワークフローに要るものが揃っているかを
-// 確かめる。自前の ComfyUI は保存した URL の GET /system_stats、Comfy Cloud は
-// GET /jobs?limit=1 に X-API-Key を付けて問い合わせる。応えたら
-// GET /object_info を読み、ワークフローのノードの型とローダーが名指すモデルファイルが
-// あるかを確かめる（R-13）。使えなければ、何も保存されていない・つながらない・ComfyUI でない・
-// キーが拒まれたのどれかを述べた誤りか、足りないものを挙げた *domain.ComfyUIMissingError を
-// 返す。接続先は保存した設定だけから取る。
+// Check validates the saved endpoint and required workflow nodes/models; missing prerequisites
+// return *domain.ComfyUIMissingError, while connection, identity, and key failures remain distinct.
 func (c *Client) Check(ctx context.Context) error {
 	settings, err := c.settings.ComfyUISettings(ctx)
 	if err != nil {
@@ -139,8 +128,6 @@ func (c *Client) Check(ctx context.Context) error {
 	}
 }
 
-// checkRequired は基底 URL base の GET /object_info を読み、settings のモデルのワークフローの
-// ノードの型とモデルファイルがあるかを確かめる。足りなければ *domain.ComfyUIMissingError を返す。
 func (c *Client) checkRequired(ctx context.Context, base, apiKey, name string, settings domain.ComfyUISettings) error {
 	required, err := workflowRequirement(settings.EffectiveModel(), c.diffusionModelFor(settings))
 	if err != nil {
@@ -156,8 +143,7 @@ func (c *Client) checkRequired(ctx context.Context, base, apiKey, name string, s
 	return nil
 }
 
-// systemStats は ComfyUI の GET /system_stats の応答のうち、ComfyUI であることを見分ける部分である。
-// どの版の ComfyUI も system に os と python_version を、devices に装置の配列を返す。
+// Recognize ComfyUI by system.os, system.python_version, and the devices array.
 type systemStats struct {
 	System *struct {
 		OS            string `json:"os"`
@@ -170,14 +156,13 @@ func (s systemStats) valid() bool {
 	return s.System != nil && s.System.OS != "" && s.System.PythonVersion != "" && s.Devices != nil
 }
 
-// jobList は Comfy Cloud の GET /jobs の応答のうち、仕事の一覧である。空の一覧も一覧である。
+// An empty jobs array is a valid list.
 type jobList struct {
 	Jobs *[]json.RawMessage `json:"jobs"`
 }
 
-// getJSON は基底 URL base の path を GET し、200 の JSON を最大 limit バイトまで out に読む。
-// apiKey が空でなければ X-API-Key に付ける。name はつながらないときの誤りに入れる相手の名前である。応答の本文そのものは、問い合わせ先が ComfyUI でないときに別の
-// サービスの中身を画面へ写すことになるので誤りに含めない。
+// getJSON bounds response reads and never includes raw bodies in errors, which could expose content
+// from a different service.
 func (c *Client) getJSON(ctx context.Context, base, path, apiKey, name string, limit int64, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(base, "/")+path, nil)
 	if err != nil {

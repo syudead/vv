@@ -4,30 +4,15 @@ import { Slot } from "radix-ui";
 
 import { cn } from "@/lib/cn";
 
-// 設定ページ（骨格）。最大幅を固定した 1 列に、見出しと節（PageSection）を並べる。
-// 節の間隔は骨格が持つ。nav（ページの一覧、SettingsNav）を渡すと、sm からは settings-nav の
-// 幅の列を本文の左に置き、トップバーの下に貼り付ける（窓より高ければ列の中で動かす）。sm 未満は view が "list" なら一覧だけ、
-// "page" なら本文だけを出す（幅は CSS が決め、useIsMobile は使わない）。本文だけのときの
-// 一覧へ戻るリンクは header の PageHeader の leading に置き、骨格が sm から隠す。notice を渡すと、
-// 見出しと節の間にページ全体に効く状態の 1 行（Alert）を置く。
-// 規則は web/registry/rules/patterns.md の Settings page。
+// Use CSS to switch list/page visibility at sm; avoid useIsMobile. See web/registry/rules/patterns.md, Settings page.
 
 export interface SettingsPageProps {
-  /** PageHeader（題と説明）。nav があるときは、leading に一覧へ戻るリンクだけを置く。 */
+  /** With nav, leading should contain only the back-to-index link. */
   header: ReactNode;
-  /** PageSection の並び。 */
   children: ReactNode;
-  /** ページの一覧（SettingsNav）。渡すと最大幅が max-w-4xl になり、sm から左の列になる。 */
   nav?: ReactNode;
-  /**
-   * sm 未満で何を出すか。"list" は一覧だけ（一覧の住所）、"page" は本文だけ（各ページの住所）。
-   * sm からはどちらも一覧と本文を並べる。nav が無いときは使わない。
-   */
+  /** Below sm, choose index-only or page-only; from sm, show both. Ignored without nav. */
   view?: "list" | "page";
-  /**
-   * ページ全体に効く状態の 1 行（Alert、たとえば設定が前提を欠いて押せない理由）。見出しと節の
-   * 間に置く。渡さなければ何も描かない。
-   */
   notice?: ReactNode;
 }
 
@@ -88,16 +73,10 @@ export function SettingsPage({
 }
 
 export interface SettingsNavProps {
-  /** 一覧の見出し。nav の読み上げ名にもなる（「Settings」）。 */
   label: string;
-  /** SettingsNavItem の並び。 */
   children: ReactNode;
 }
 
-/**
- * SettingsNav は設定ページの一覧（SettingsPage の nav）である。sm からは列の上の小さな見出し、
- * sm 未満で一覧だけを出すときはページの題の大きさの見出しになる。
- */
 export function SettingsNav({ label, children }: SettingsNavProps) {
   const headingId = useId();
   return (
@@ -112,20 +91,17 @@ export function SettingsNav({ label, children }: SettingsNavProps) {
       >
         {label}
       </h2>
-      {/* sm 未満は行の文字を見出しの左端にそろえ、塗りだけを余白へはみ出させる。 */}
+      {/* Align narrow-screen text with the heading while extending only the hover fill into padding. */}
       <ul className="-mx-2 flex flex-col gap-1 sm:mx-0">{children}</ul>
     </nav>
   );
 }
 
 export interface SettingsNavItemProps {
-  /** 今のページの項目。aria-current="page" を付け、sm から塗る（sm 未満は印を出さない）。 */
   current?: boolean;
-  /** 1 つのリンク（ルーターのリンク）。骨格が行の見た目を足す。 */
   children: ReactNode;
 }
 
-/** SettingsNavItem は一覧の 1 行である。子のリンクに行の見た目と aria-current を足す。 */
 export function SettingsNavItem({ current = false, children }: SettingsNavItemProps) {
   return (
     <li>

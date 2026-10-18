@@ -3,10 +3,8 @@ import { useEffect, useRef } from "react";
 import { useScanControls } from "./ScanProvider";
 
 /**
- * useWatchScanRefresh は、表示を始めたあとに自動の取り込み（`origin` が `watch`）が終わる
- * たびに `refresh` を呼ぶ。開いている一覧が結果をその場で取り込むための入口で、手動の取り込みの
- * 終わりに一覧を消して読み直す経路（`ScanControlsValue.finished`）とは別である。
- * 表示を始める前に終わっていた取り込みは、読み込んだ中身に反映済みなので呼ばない。
+ * Refresh in place for automatic scans completed after mounting; earlier completions are already
+ * reflected in loaded data.
  */
 export function useWatchScanRefresh(refresh: () => void) {
   const { watchFinished } = useScanControls();

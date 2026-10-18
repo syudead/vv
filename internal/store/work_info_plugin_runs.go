@@ -10,11 +10,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインごとの直近の実行の標準エラー。利用者データで、イベントを発行しない。
+// Latest plugin stderr is persistent user data and emits no events.
 
-// SaveWorkInfoPluginRun はプラグイン run.PluginID の直近の実行を run に置き換える。プラグインの行が無いか、
-// 世代が run.Generation でなければ（実行の後に差し替えられたか、取り消されたか、消された）何も書かない。
-// 確かめと書き込みは 1 つの文で行う。
+// SaveWorkInfoPluginRun atomically ignores missing plugins or changed generations so stale runs cannot overwrite current state.
 func (s *WorkInfoPluginStore) SaveWorkInfoPluginRun(ctx context.Context, run domain.WorkInfoPluginRun) error {
 	failure := nullString(string(run.Failure))
 	if _, err := s.sql.ExecContext(ctx, `insert into work_info_plugin_runs
@@ -30,8 +28,7 @@ func (s *WorkInfoPluginStore) SaveWorkInfoPluginRun(ctx context.Context, run dom
 	return nil
 }
 
-// WorkInfoPluginRun はプラグイン id の直近の実行と、それが残っているかを返す。プラグインが無ければ
-// domain.ErrNotFound を返す。
+// WorkInfoPluginRun distinguishes no saved run from a missing plugin, which returns domain.ErrNotFound.
 func (s *WorkInfoPluginStore) WorkInfoPluginRun(ctx context.Context, id int64) (domain.WorkInfoPluginRun, bool, error) {
 	var (
 		generation, ranAt  sql.NullInt64

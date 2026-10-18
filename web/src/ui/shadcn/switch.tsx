@@ -3,8 +3,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の Switch（radix）。入れると地が primary になる。
-// 規則は web/registry/rules/components.md の Checkbox and Switch。
+// Adapted from shadcn/ui Radix Switch with shared tokens.
 function Switch({ className, ...props }: ComponentProps<typeof SwitchPrimitive.Root>) {
   return (
     <SwitchPrimitive.Root

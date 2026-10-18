@@ -1,25 +1,16 @@
 package domain
 
-// タグ管理画面の一覧のページ読み。
-
-// TagSort はタグの一覧の並び順である。API の TagSort と同じ文字列を持つ。値が同じ
-// タグは名前の自然順（tag_names.sort_key）、それも同じなら id で並べる。
+// TagSort breaks ties by natural name, then ID, matching API values.
 type TagSort string
 
 const (
-	// TagSortName は名前の自然順（既定）。向きは無い。
-	TagSortName TagSort = "name"
-	// TagSortCountDesc は本数の多い順。
-	TagSortCountDesc TagSort = "countDesc"
-	// TagSortCountAsc は本数の少ない順。
-	TagSortCountAsc TagSort = "countAsc"
-	// TagSortCreatedDesc は作った日の新しい順。
+	TagSortName        TagSort = "name"
+	TagSortCountDesc   TagSort = "countDesc"
+	TagSortCountAsc    TagSort = "countAsc"
 	TagSortCreatedDesc TagSort = "createdDesc"
-	// TagSortCreatedAsc は作った日の古い順。
-	TagSortCreatedAsc TagSort = "createdAsc"
+	TagSortCreatedAsc  TagSort = "createdAsc"
 )
 
-// Valid は s が既知の並び順であることを返す。
 func (s TagSort) Valid() bool {
 	switch s {
 	case TagSortName, TagSortCountDesc, TagSortCountAsc, TagSortCreatedDesc, TagSortCreatedAsc:
@@ -29,38 +20,28 @@ func (s TagSort) Valid() bool {
 	}
 }
 
-// MaxTagPageLimit はタグの一覧の 1 ページの件数の上限である（GET /api/library と同じ）。
 const MaxTagPageLimit = 200
 
-// TagListQuery はタグの一覧の条件である。
 type TagListQuery struct {
-	// Search は呼び手が受けた生の検索語。店が FoldForMatch を掛けて前後の空白を落とし、
-	// 空でなければ元の名前かシノニムの照合形に部分一致するタグだけにする。
-	Search string
-	// TentativeOnly は仮のタグだけにする。
+	// Storage folds and trims Search, then substring-matches canonical names and synonyms.
+	Search        string
 	TentativeOnly bool
-	// UnusedOnly は本数 0 のタグだけにする。
-	UnusedOnly bool
-	// Kind は種類での絞り込み。ゼロ値なら絞らない。
-	Kind TagKindFilter
-	// Sort は並び順。空なら TagSortName。
-	Sort TagSort
-	// Cursor は前のページの TagPage.NextCursor。解釈できないものや別の並び順の
-	// ものは ErrInvalidCursor。
+	UnusedOnly    bool
+	Kind          TagKindFilter
+	Sort          TagSort
+	// Cursor must match the sort order or yields ErrInvalidCursor.
 	Cursor string
-	// Limit は 1 ページの件数。0 なら全件を返し、Cursor は無視する。
+	// Limit zero returns all rows and ignores Cursor.
 	Limit int
 }
 
-// TagKindFilter はタグの一覧を 1 つの種類か「種類なし」で絞る条件である。ゼロ値は絞らない。
+// TagKindFilter's zero value applies no filter.
 type TagKindFilter struct {
-	// ID はその種類のタグだけにする種類の id。0 なら種類の id では絞らない。
 	ID int64
-	// None は種類の無いタグだけにする。ID と一緒には立てない。
+	// None and ID are mutually exclusive.
 	None bool
 }
 
-// Matches は種類 kind（nil は種類なし）のタグが f に合うかを返す。
 func (f TagKindFilter) Matches(kind *TagKindRef) bool {
 	switch {
 	case f.None:
@@ -71,17 +52,11 @@ func (f TagKindFilter) Matches(kind *TagKindRef) bool {
 	return true
 }
 
-// TagPage はタグの一覧の 1 ページである。
 type TagPage struct {
-	Items []Tag
-	// Total は条件（検索・絞り込み）に合うタグの数。
-	Total int
-	// TotalAll は全部のタグの数。
-	TotalAll int
-	// NextCursor は続きの取得に渡す。続きが無ければ空。
+	Items      []Tag
+	Total      int
+	TotalAll   int
 	NextCursor string
-	// Exact は検索語と元の名前かシノニムの綴りが完全に一致し、絞り込みにも合うタグ。
-	// Limit を付けた 1 ページ目（Cursor が空）で、検索語が空でないときだけ引く。
-	// 無ければ nil。
+	// Exact matches original spelling plus filters and is queried only on a limited first page with nonempty search.
 	Exact *Tag
 }

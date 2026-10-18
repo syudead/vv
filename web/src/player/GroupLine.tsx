@@ -22,13 +22,7 @@ import { useToast } from "../ui/Toast";
 
 type VideoGroup = NonNullable<Video["group"]>;
 
-/**
- * GroupLine は題名の上に置く、グループ名と何本目かの1行である。題名より小さく従の色にし、題名より先に目に入らないようにする。行はグループの
- * ページへのリンクで、ゲストにも同じリンクを出す。動画ページから開くので道筋は空である。
- *
- * 所有者には、行の後の同じ並びに「Group actions」のメニューを置く。行そのものはグループを開くので、
- * メニューは別のボタンにする（1 つの操作が開くこととメニューを開くことを兼ねない）。
- */
+/** Keep group navigation separate from the owner's actions menu. */
 export default function GroupLine({
   group,
   videoId,
@@ -37,12 +31,11 @@ export default function GroupLine({
   onChanged,
 }: {
   group: VideoGroup;
-  /** 今の動画の id。「Remove from this group」の項目を探すのに使う。 */
   videoId: number;
   owner: boolean;
-  /** 動画ページの戻り先。グループのページへ `state.from` として引き継ぐ。 */
+  /** Preserve the video's return destination as state.from. */
   backTo: string;
-  /** グループの操作の後に、動画と関連動画を `group` なしで読み直させる。 */
+  /** Reload the video and related results without group context after mutations. */
   onChanged: () => void;
 }) {
   return (
@@ -67,7 +60,6 @@ export default function GroupLine({
       </Link>
       {owner && (
         <GroupActions
-          // 別の動画・別のグループへ移ったら、探した項目と開いた窓を持ち越さない。
           key={`${String(group.id)}:${String(videoId)}`}
           group={group}
           videoId={videoId}
@@ -78,10 +70,7 @@ export default function GroupLine({
   );
 }
 
-/**
- * useDirectItem は、動画 `videoId` がグループ `groupId` の直接の項目ならその項目の id を返す。
- * 探している間、見つからないとき、読めなかったときは undefined（メニューに外す項目を出さない）。
- */
+/** Return the direct item's ID, or undefined while loading, missing, or failed. */
 function useDirectItem(groupId: number, videoId: number): number | undefined {
   const [itemId, setItemId] = useState<number | undefined>(undefined);
   useEffect(() => {
@@ -97,12 +86,6 @@ function useDirectItem(groupId: number, videoId: number): number | undefined {
   return itemId;
 }
 
-/**
- * GroupActions は所有者の「Group actions」のメニューである。「Remove from this group」（動画が
- * グループの直接の項目のときだけ）、「Turn the group into a tag…」、区切り、「Dissolve…」の順。
- * 解散とタグ化はグループのページと同じ窓を開く。どの操作も成功したらトーストを出し、ページに
- * 留まって動画と関連動画を読み直させる。
- */
 function GroupActions({
   group,
   videoId,
@@ -116,8 +99,7 @@ function GroupActions({
   const itemId = useDirectItem(group.id, videoId);
   const [dialog, setDialog] = useState<"tag" | "dissolve" | null>(null);
   const [removing, setRemoving] = useState(false);
-  // 要求の間に別の動画へ移るか画面を離れたら、応答で読み直させない。読み直しは操作を始めた
-  // ときの動画の URL へ移るので、利用者を前の動画へ引き戻してしまう。
+  // Ignore responses after navigation; reloading would send the user back to the old video.
   const mounted = useRef(false);
   useEffect(() => {
     mounted.current = true;
@@ -140,7 +122,7 @@ function GroupActions({
       },
       (error: unknown) => {
         setRemoving(false);
-        // 項目かグループがもう無い。トーストなしで読み直し、今の所属に合わせる。
+        // A missing item or group requires a silent refresh of membership.
         if (error instanceof RequestFailed && error.status === 404) {
           clearListSnapshot();
           changed();
@@ -151,7 +133,6 @@ function GroupActions({
     );
   };
 
-  // 窓が途中で解散を知ったときは、トーストなしで読み直す。
   const gone = () => {
     setDialog(null);
     changed();

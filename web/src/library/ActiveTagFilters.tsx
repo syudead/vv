@@ -10,28 +10,20 @@ import { type CreditFilter, creditKinds } from "./creditCriteria";
 import { useCreditName, useTagNames } from "./filterNames";
 
 export interface ActiveTagFiltersProps {
-  /** 絞り込み中のタグの id（並びは問わない。表示は名前の自然順にそろえる）。 */
   tagIds: readonly number[];
   onRemove: (id: number) => void;
-  /** 絞り込み中の人物・団体（タグのチップの後に、人物、団体の順で 1 つずつ出す）。 */
   credits?: CreditFilter;
   onRemoveCredit?: (kind: CreditKind) => void;
-  /** 名前を読んだら `404` だった（もう無い）人物・団体。呼び手が URL から外して知らせる。 */
+  /** Callers remove missing credit filters from the URL and notify the user. */
   onCreditGone?: (kind: CreditKind) => void;
-  /**
-   * 絞り込み中のタグの種類の名前（`credits.tagKind` があるときだけ使う）。種類の一覧が
-   * 届く前は undefined で、名前の代わりに Skeleton を出す。
-   */
+  /** Undefined until kind names load; render a skeleton meanwhile. */
   tagKindName?: string;
   onRemoveTagKind?: () => void;
-  /** 最後の1つを外したときのフォーカスの移し先（検索欄）。 */
   searchFieldRef: RefObject<HTMLInputElement | null>;
 }
 
-/** ChipKey はチップの鍵である（タグは `tag:<id>`、人物・団体は種類）。 */
 type ChipKey = string;
 
-/** tagKindKey はタグの種類のチップの鍵である。 */
 const tagKindKey: ChipKey = "tagKind";
 
 function tagKey(id: number): ChipKey {
@@ -41,20 +33,13 @@ function tagKey(id: number): ChipKey {
 interface ChipProps {
   icon: ReactNode;
   name: string | undefined;
-  /** 名前が分かる前の読み上げ名。 */
   unnamedLabel: string;
-  /** 名前が分かったあとの読み上げ名。省けば「〈名〉の絞り込みを外す」。 */
   namedLabel?: (name: string) => string;
-  /** チップに出す文字。省けば名前そのもの。 */
   text?: (name: string) => string;
   onPress: () => void;
   buttonRef: (node: HTMLButtonElement | null) => void;
 }
 
-/**
- * FilterChip は効いている絞り込み 1 つのチップである。効いている絞り込みは押された
- * Toggle で、押し戻すと外れる（web/registry/rules/components.md「Toggle and ToggleGroup」）。
- */
 function FilterChip({
   icon,
   name,
@@ -64,8 +49,7 @@ function FilterChip({
   onPress,
   buttonRef,
 }: ChipProps) {
-  // 名前をまだ読んでいない間も、読み上げる名前が無くならないようにする（N2）。
-  // 名前が分かれば「〈名〉の絞り込みを外す」に差し替わる。
+  // Keep an accessible remove name even before the filter's display name arrives.
   const label = name === undefined ? unnamedLabel : namedLabel(name);
   return (
     <li>
@@ -121,12 +105,6 @@ function CreditChip({
 const noCredits: CreditFilter = {};
 const ignoreCredit = () => undefined;
 
-/**
- * ActiveTagFilters はライブラリの本文の先頭、要約行の上に置く「絞り込み中の
- * 条件」の行である。
- * タグのチップの後に人物・団体のチップを 1 つずつ、その後にタグの種類のチップを並べる。タグ・人物・団体・タグの種類の
- * どれかで絞り込んでいるときだけ描画する（呼び出し側が出し分ける）。
- */
 export default function ActiveTagFilters({
   tagIds,
   onRemove,
@@ -168,9 +146,7 @@ export default function ActiveTagFilters({
     ...(credits.tagKind === undefined ? [] : [tagKindKey]),
   ];
 
-  // 外したチップの次、無ければ前のチップへフォーカスを移す。最後の1つを外すと、
-  // この行は呼び出し側で描画されなくなり、フォーカスを移す効果も走らないので、
-  // 外す前に検索欄へ移しておく。
+  // Focus the search input before removing the last chip because unmounting prevents the focus effect.
   function removeChip(key: ChipKey, remove: () => void) {
     const index = ordered.indexOf(key);
     const next = ordered[index + 1] ?? ordered[index - 1];
@@ -207,7 +183,6 @@ export default function ActiveTagFilters({
         ))}
         {activeCredits.map(({ kind, id }) => (
           <CreditChip
-            // id が変わったら名前を読み直す（鍵に id を入れて作り直す）。
             key={`${kind}:${String(id)}`}
             kind={kind}
             id={id}

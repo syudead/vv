@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AutoTaggingSettings } from "../api/client";
 import AutoTaggingSection, { parseThreshold } from "./AutoTaggingSection";
 
-/** 説明の文が「Connections」のページへリンクするので、ルーターの中に描く。 */
+/** Render inside a router because the description links to Connections. */
 function renderSection() {
   return render(
     <MemoryRouter>
@@ -114,7 +114,6 @@ describe("AutoTaggingSection", () => {
       screen.queryByRole("button", { name: "Tag videos not yet tagged" }),
     ).toBeNull();
     expect(screen.queryByText(/^Waiting/)).toBeNull();
-    // 「Progress」の節は残り、切である旨と入れる場所を出す。
     expect(screen.getByRole("heading", { level: 2, name: "Progress" })).toBeDefined();
     expect(screen.getByText("Auto-tagging is off.")).toBeDefined();
     expect(

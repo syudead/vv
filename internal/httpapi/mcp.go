@@ -17,19 +17,8 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// /mcp の MCP サーバー。
-//
-// 転送は Streamable HTTP の stateless で、POST /mcp だけを受けて application/json で返す
-// （GET・DELETE は SDK が 405 にする）。認証は境界（auth.go の Bearer の扱い）が済ませていて、
-// ここに届く要求は API トークンで確かめた所有者のものだけである。
-//
-// ツールは外部連携 API の操作と 1 対 1 で、REST の経路と同じ externalServer のハンドラを
-// 呼ぶ。引数を同じ操作の問い合わせと本文に組み立ててハンドラに渡し、応答の本文をそのまま
-// structured content にする。2xx 以外は isError: true で、本文は外部連携 API の誤りと同じ
-// { code, message, reason?, limit?, index? } である。引数の解釈・上限・誤りの写し方を REST と
-// 二重に持たないための形である。
+// MCP uses stateless Streamable HTTP and authenticated external handlers; REST responses become structured content, with non-2xx marked isError to share validation and error mapping.
 
-// newMCPHandler は /mcp に載せるハンドラを返す。
 func newMCPHandler(srv *server) http.Handler {
 	api := http.NewServeMux()
 	registerExternalAPI(api, srv)
@@ -40,14 +29,9 @@ func newMCPHandler(srv *server) http.Handler {
 	handler := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
 		Stateless:    true,
 		JSONResponse: true,
-		// SDK の既定の DNS rebinding の防御は、localhost で受けた要求の Host が localhost で
-		// なければ 403 にする。同じ PC のリバースプロキシ越しの公開（Host は公開名）を断って
-		// しまう。/mcp は Authorization: Bearer がなければ境界が 401 にし、ブラウザは
-		// Authorization を自動では付けないので、rebinding で所有者の権限は得られない
-		// （同一オリジンの検査をかけないのと同じ理由）。
+		// Disable SDK Host rebinding rejection for local reverse proxies; mandatory explicit Bearer authentication prevents browsers from acquiring owner authority through rebinding.
 		DisableLocalhostProtection: true,
-		// 本文の上限は外部連携 API の本文（externalBodyLimit）に JSON-RPC の包みの分を足す。
-		// update_video_tags に REST と同じ件数を渡せるようにする。
+		// Add JSON-RPC envelope overhead to the REST body cap so both accept the same batch size.
 		MaxRequestBodyBytes: externalBodyLimit + 64<<10,
 		Logger:              srv.logger,
 	})
@@ -60,34 +44,25 @@ func newMCPHandler(srv *server) http.Handler {
 	})
 }
 
-// mcpRequestWatch は /mcp の HTTP 要求が打ち切られたときに cancel を呼ぶよう登録し、登録を
-// 外す関数を返す。SDK はツールの context を要求の取り消しから切り離す（値は引き継ぐ）ので、
-// 失効・資格情報の変更で境界が要求を打ち切ったときにツールも止まるよう、
-// call がこれで取り消しをつなぐ。
+// The SDK detaches tool cancellation from HTTP requests; reconnect it so token revocation and credential changes stop running tools.
 type mcpRequestWatch func(cancel func(error)) (stop func() bool)
 
-// mcpRequestWatchKey は mcpRequestWatch を context に載せる鍵である。
 type mcpRequestWatchKey struct{}
 
-// mcpTools はツールの呼び出しを外部連携 API のハンドラへ渡す。
 type mcpTools struct {
-	// api は外部連携 API の経路だけを載せた ServeMux である。境界は通さない（/mcp の要求が
-	// 既に通っている）。
+	// The internal API mux skips authentication because /mcp already passed the boundary.
 	api http.Handler
 }
 
-// 入力の形。外部連携 API の同じ操作の引数・本文と同じ JSON にする。
 type (
-	mcpNoInput     struct{}
-	mcpListVideos  = extgen.ListVideosParams
-	mcpLookupVideo = extgen.LookupVideoParams
-	mcpListTags    = extgen.ListTagsParams
-	// mcpListRejectedTagNames と mcpForgetRejectedTagName は却下した名前の操作の問い合わせである。
+	mcpNoInput               struct{}
+	mcpListVideos            = extgen.ListVideosParams
+	mcpLookupVideo           = extgen.LookupVideoParams
+	mcpListTags              = extgen.ListTagsParams
 	mcpListRejectedTagNames  = extgen.ListRejectedTagNamesParams
 	mcpForgetRejectedTagName = extgen.ForgetRejectedTagNameParams
 )
 
-// mcpListTagsDefaultLimit は list_tags が limit を省かれたときに入れる 1 ページの件数である。
 const mcpListTagsDefaultLimit = 100
 
 func (t *mcpTools) register(server *mcp.Server) {
@@ -160,8 +135,7 @@ func (t *mcpTools) register(server *mcp.Server) {
 		if in.Cursor != nil {
 			query.Set("cursor", *in.Cursor)
 		}
-		// REST の既定（省けば全件）は変えず、ツールだけが 1 ページを既定にする
-		//
+		// Only MCP defaults to one page; REST retains its all-results default.
 		limit := mcpListTagsDefaultLimit
 		if in.Limit != nil {
 			limit = *in.Limit
@@ -306,8 +280,7 @@ func (t *mcpTools) register(server *mcp.Server) {
 	t.registerTagKinds(server)
 }
 
-// videoTagsInputSchema は update_video_tags の入力の形である。型から導き、action に
-// 契約の値を足す（型からは文字列としか分からない）。
+// Type-derived schemas need explicit action enum values.
 func videoTagsInputSchema() *jsonschema.Schema {
 	schema, err := jsonschema.For[extgen.VideoTagsRequest](nil)
 	if err != nil {
@@ -320,8 +293,6 @@ func videoTagsInputSchema() *jsonschema.Schema {
 	return schema
 }
 
-// tagSynonymsInputSchema は update_tag_synonyms の入力の形である。型から導き、action に契約の値を
-// 足す（update_video_tags と同じやり方）。
 func tagSynonymsInputSchema() *jsonschema.Schema {
 	schema := inputSchemaFor[extgen.TagSynonymsRequest]("update_tag_synonyms")
 	if action := schema.Properties["action"]; action != nil {
@@ -330,8 +301,7 @@ func tagSynonymsInputSchema() *jsonschema.Schema {
 	return schema
 }
 
-// listTagsInputSchema は list_tags の入力の形である。型から導き、sort に契約の値を、
-// limit と q に上限を、kind に値の形を足す（型からは文字列・整数としか分からない）。
+// Add enum, range, length, and kind constraints absent from the Go types.
 func listTagsInputSchema() *jsonschema.Schema {
 	schema := withListInputLimits(inputSchemaFor[mcpListTags]("list_tags"), mcpListTagsDefaultLimit,
 		string(extgen.TagSortName), string(extgen.TagSortCountDesc), string(extgen.TagSortCountAsc),
@@ -342,8 +312,6 @@ func listTagsInputSchema() *jsonschema.Schema {
 	return schema
 }
 
-// withListInputLimits は一覧のツールの入力の形に、sort の値、limit の範囲と既定、q の上限を足して返す。
-// list_tags と list_people・list_organizations が同じ規則で読む。
 func withListInputLimits(schema *jsonschema.Schema, defaultLimit int, sorts ...any) *jsonschema.Schema {
 	if sort := schema.Properties["sort"]; sort != nil {
 		sort.Enum = sorts
@@ -360,9 +328,7 @@ func withListInputLimits(schema *jsonschema.Schema, defaultLimit int, sorts ...a
 	return schema
 }
 
-// tagBatchInputSchema は batch_tags の入力の形である。型から導き、action に契約の値を足す
-// （update_video_tags と同じやり方）。入力は REST へそのまま渡す（kindId の null と省略を REST と
-// 同じく見分けるため、mcp_work_info.go の post と同じ）。
+// Pass raw batch input through to preserve omitted versus null kindId semantics.
 func tagBatchInputSchema() *jsonschema.Schema {
 	schema := inputSchemaFor[extgen.TagBatchRequest]("batch_tags")
 	if action := schema.Properties["action"]; action != nil {
@@ -372,8 +338,6 @@ func tagBatchInputSchema() *jsonschema.Schema {
 	return schema
 }
 
-// rejectedTagNamesInputSchema は list_rejected_tag_names の入力の形である。型から導き、limit に
-// 範囲と既定を足す（型からは整数としか分からない）。
 func rejectedTagNamesInputSchema() *jsonschema.Schema {
 	schema := inputSchemaFor[mcpListRejectedTagNames]("list_rejected_tag_names")
 	if limit := schema.Properties["limit"]; limit != nil {
@@ -384,7 +348,6 @@ func rejectedTagNamesInputSchema() *jsonschema.Schema {
 	return schema
 }
 
-// inputSchemaFor は一括操作のツールの入力の形を型から導く。
 func inputSchemaFor[T any](tool string) *jsonschema.Schema {
 	schema, err := jsonschema.For[T](nil)
 	if err != nil {
@@ -393,7 +356,6 @@ func inputSchemaFor[T any](tool string) *jsonschema.Schema {
 	return schema
 }
 
-// call は外部連携 API の操作を呼び、応答をツールの結果にする。
 func (t *mcpTools) call(ctx context.Context, method, path string, query url.Values, body any) (*mcp.CallToolResult, any, error) {
 	if watch, ok := ctx.Value(mcpRequestWatchKey{}).(mcpRequestWatch); ok {
 		var cancel context.CancelCauseFunc
@@ -434,7 +396,6 @@ func (t *mcpTools) call(ctx context.Context, method, path string, query url.Valu
 	}, nil, nil
 }
 
-// toolResponse は外部連携 API のハンドラの応答を受け取る http.ResponseWriter である。
 type toolResponse struct {
 	header      http.Header
 	body        bytes.Buffer

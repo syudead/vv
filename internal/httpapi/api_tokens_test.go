@@ -17,9 +17,6 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 画面の API トークンの管理を、本物の
-// Auth と保存先で確かめる。
-
 func createAPITokenBody(name string) string {
 	body, _ := json.Marshal(map[string]string{"name": name})
 	return string(body)
@@ -160,10 +157,8 @@ func TestAPITokenCreateRejectsInvalidNames(t *testing.T) {
 		})
 		assertErrorBody(t, strconv.Quote(tc.name), rec.Code, rec.Body.Bytes(), tc.want)
 	}
-	// 上限ちょうどは受け付ける。
 	env.createAPIToken(cookie, strings.Repeat("あ", domain.APITokenNameMaxLength))
 
-	// 本文は JSON が必須である。
 	rec := env.serve(authRequest{
 		method: http.MethodPost, target: "/api/api-tokens", body: createAPITokenBody("n"),
 		cookies: []*http.Cookie{cookie}, header: map[string]string{"Content-Type": "text/plain"},
@@ -176,7 +171,6 @@ func TestAPITokenCreateRejectsInvalidNames(t *testing.T) {
 	}
 }
 
-// 画面の API は Bearer を読まない。有効なトークンでも Cookie が無ければ未認証である（受け入れ条件 8）。
 func TestAPITokenOperationsIgnoreBearer(t *testing.T) {
 	env := newAuthEnv(t, t.TempDir(), Options{})
 	cookie := env.setup()
@@ -196,8 +190,7 @@ func TestAPITokenOperationsIgnoreBearer(t *testing.T) {
 	}
 }
 
-// beforeCreateAPITokens は発行の直前に before を走らせる。境界がセッションを確かめた後、
-// 保存の前に割り込む試験に使う。
+// Inject between boundary session validation and persistence.
 type beforeCreateAPITokens struct {
 	APITokens
 	before func()
@@ -208,8 +201,6 @@ func (b beforeCreateAPITokens) CreateAPIToken(ctx context.Context, sessionToken,
 	return b.APITokens.CreateAPIToken(ctx, sessionToken, name)
 }
 
-// 境界がセッションを確かめた後に mdm account が資格情報を変えたら、その要求では発行せず
-// 未認証にする。新しい版のトークンが古いセッションから生まれない。
 func TestAPITokenCreateRacingCredentialChangeIsUnauthenticated(t *testing.T) {
 	var db *store.DB
 	env := newAuthEnvWith(t, t.TempDir(), func(opened *store.DB) Options {

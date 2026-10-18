@@ -8,36 +8,25 @@ import (
 	"strings"
 )
 
-// 応答ヘッダは下の振り分けに従う。
 const (
-	// assetsPrefix 配下は内容ハッシュ付きの名前なので長期キャッシュして良い。
-	assetsPrefix = "assets/"
-	// assetsCacheControl は /assets/* に付ける値。
+	// Content-hashed asset names permit long-lived caching.
+	assetsPrefix       = "assets/"
 	assetsCacheControl = "public, max-age=31536000, immutable"
-	// indexCacheControl は index.html に付ける値。更新したビルドが即座に反映される
-	// ようにするため、内容の再確認を必ず行わせる。
+	// Always revalidate index.html so new builds become visible immediately.
 	indexCacheControl = "no-cache"
-	// indexFileName は SPA の入口である。
-	indexFileName = "index.html"
+	indexFileName     = "index.html"
 )
 
-// spaHandler は埋め込んだ SPA のビルド成果物を配信する。
 type spaHandler struct {
 	assets fs.FS
 	logger *slog.Logger
 }
 
-// newSPAHandler は SPA 配信のハンドラを返す。assets は web/dist に相当する
-// ファイルシステムで、通常は embed.FS から渡る。
 func newSPAHandler(assets fs.FS, logger *slog.Logger) http.Handler {
 	return &spaHandler{assets: assets, logger: logger}
 }
 
-// ServeHTTP は次のように振り分ける。
-//
-//   - 実在するファイル → そのまま配信する
-//   - /assets/ 配下で実在しない → 404（index.html へ落とさない）
-//   - それ以外 → index.html（クライアント側ルーティングのためのフォールバック）
+// Serve existing files, return 404 for missing /assets/ files, and use index.html elsewhere for client routing.
 func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.assets == nil {
 		h.logger.Error("SPA build output is not configured")
@@ -53,8 +42,7 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 資産の取り違えを index.html の 200 で隠してしまうと、ビルドの不整合に
-	// 気付けなくなる。/assets/ 配下は素直に 404 を返す。
+	// Never hide missing build assets behind a successful HTML fallback.
 	if strings.HasPrefix(name, assetsPrefix) {
 		http.NotFound(w, r)
 		return
@@ -63,7 +51,6 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.serveIndex(w, r)
 }
 
-// serveIndex は SPA の入口を返す。
 func (h *spaHandler) serveIndex(w http.ResponseWriter, r *http.Request) {
 	if !h.isRegularFile(indexFileName) {
 		h.logger.Error("index.html is not embedded", slog.String("path", r.URL.Path))
@@ -76,7 +63,6 @@ func (h *spaHandler) serveIndex(w http.ResponseWriter, r *http.Request) {
 	http.ServeFileFS(w, r, h.assets, indexFileName)
 }
 
-// setCacheControl は配信するファイルに応じたキャッシュ指示を付ける。
 func (h *spaHandler) setCacheControl(w http.ResponseWriter, name string) {
 	switch {
 	case strings.HasPrefix(name, assetsPrefix):
@@ -86,7 +72,6 @@ func (h *spaHandler) setCacheControl(w http.ResponseWriter, name string) {
 	}
 }
 
-// isRegularFile は名前が通常のファイルとして存在するかを返す。
 func (h *spaHandler) isRegularFile(name string) bool {
 	info, err := fs.Stat(h.assets, name)
 	return err == nil && info.Mode().IsRegular()

@@ -9,9 +9,7 @@ import (
 	"github.com/syudead/vv/internal/watcher"
 )
 
-// newAutoImport は自動の取り込みを組み立て、fsnotify の watcher とつなぐ。watcher の変更と
-// 問題の報告を AutoImport へ渡し、走査が閉じる知らせも AutoImport へ渡す。internal/app は
-// watcher を知らず、変更の型の変換はここだけが持つ
+// Adapt watcher events here so internal/app does not depend on the watcher.
 func newAutoImport(
 	store app.AutoImportStore, folders app.ActivityFolderStore, scans *app.Scans, logger *slog.Logger,
 	tune ...func(*app.AutoImportOptions),
@@ -46,7 +44,6 @@ func newAutoImport(
 	return auto
 }
 
-// watchProblemOf は watcher の問題を、設定画面に見せる種類へ写す。
 func watchProblemOf(p watcher.Problem) domain.FolderWatchProblem {
 	kind := domain.FolderWatchProblemFolderUnreachable
 	switch p.Kind {

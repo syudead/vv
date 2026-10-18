@@ -7,12 +7,11 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 一覧の addedWithin・minDuration・maxDuration。newLibraryFixture の動画はどれも
-// 2026-01-01 に追加した 60 秒の動画である。
+// All fixture videos were added on 2026-01-01 and last sixty seconds.
 
 var addedLengthPaths = []string{"/api/videos", "/api/library", "/api/library/ids"}
 
-// 条件は一覧に掛かる。並びの細部は store のテストが確かめるので、ここでは当たる本数だけを見る。
+// Check boundary filtering counts here; storage tests cover sort details.
 func TestListVideosFiltersByAddedWithinAndLength(t *testing.T) {
 	f := newLibraryFixture(t)
 	cases := []struct {
@@ -37,7 +36,6 @@ func TestListVideosFiltersByAddedWithinAndLength(t *testing.T) {
 	}
 }
 
-// 範囲の外の値と、minDuration が maxDuration を越える組は 400 invalid_request である。
 func TestAddedWithinAndLengthRejectOutOfRangeValues(t *testing.T) {
 	f := newLibraryFixture(t)
 	invalid := wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}
@@ -53,7 +51,6 @@ func TestAddedWithinAndLengthRejectOutOfRangeValues(t *testing.T) {
 	}
 }
 
-// ゲストも追加日と長さで絞れる（R-4）。
 func TestGuestMayFilterByAddedWithinAndLength(t *testing.T) {
 	f := newLibraryFixture(t)
 	for _, path := range []string{"/api/videos", "/api/library"} {

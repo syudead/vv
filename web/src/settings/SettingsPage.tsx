@@ -34,7 +34,6 @@ import { useOllamaConnection } from "./useOllamaConnection";
 import VersionJudgingSection from "./VersionJudgingSection";
 import WorkInfoPluginsSection from "./WorkInfoPluginsSection";
 
-/** sectionComponents は対応表（settingsPages）の節を描く部品である。 */
 const sectionComponents: Record<SettingsSectionId, ComponentType> = {
   "scan-status": ScanStatusSection,
   "auto-import-state": AutoImportStateSection,
@@ -68,7 +67,6 @@ interface PageViewProps {
   view: "list" | "page";
 }
 
-/** PageSections は対応表のページの節を上から順に描く。 */
 function PageSections({ page }: { page: SettingsPageEntry }) {
   return page.sections.map((section) => {
     const Section = sectionComponents[section];
@@ -117,9 +115,8 @@ function SectionsPageView(props: PageViewProps) {
 }
 
 /**
- * AutoTaggingPageView は「Auto-tagging」のページである。開いたときに Ollama の接続先を読み、
- * 読み終えるまでは節の読み込み中の形を出し、保存されていなければ notice に理由を出して節の操作を
- * 押せなくする。読めなければ読めなかった旨と `Retry` を出し、操作は押せたままにする。
+ * Lock controls only when the connection is known to be unsaved; connection-load failure shows
+ * Retry without locking.
  */
 function AutoTaggingPageView(props: PageViewProps) {
   const { connection, retry } = useOllamaConnection();
@@ -133,21 +130,13 @@ function AutoTaggingPageView(props: PageViewProps) {
   );
 }
 
-/** pageViews は対応表の節を並べるだけでないページの描き方である。ほかは SectionsPageView。 */
 const pageViews: Partial<
   Record<SettingsPageEntry["slug"], ComponentType<PageViewProps>>
 > = { "auto-tagging": AutoTaggingPageView };
 
 /**
- * SettingsPage は設定の 8 つのページと一覧である。`/settings/<slug>` はそのページを、`/settings` は
- * sm から「Scan」のページを、sm 未満で一覧だけを出す（どちらを見せるかは CSS が決める）。
- * 知らないスラッグは `/settings/scan` へ、対応表が知るアンカーの `/settings#<anchor>` はその
- * ページのアドレスへ置き換える。
- *
- * 今のページの節だけを組み込むので、ページを移ると前のページの未保存の入力は失われ、各ページは
- * 自分の読み込みだけをする。ページごとに key を変え、移った先のページを初めから組む。
- * 一覧の列は貼り付いたまま見えているので、長いページの途中から別のページへ移ったときは、移った先を
- * 先頭から見せる（題と最初の操作が見えるように）。
+ * Mount only the current page, keyed by route, so navigation discards unsaved drafts and isolates
+ * requests. Reset scroll on navigation; CSS chooses the index versus default page at sm.
  */
 export default function SettingsPage() {
   const location = useLocation();

@@ -19,7 +19,7 @@ import { PluginProxyRow } from "./PluginProxyRow";
 import { SaveStatus } from "./SaveStatus";
 import { useSwitchSave } from "./useSwitchSave";
 
-/** 1 つの読み込みの状態。`absent` はデスクトップ版でない（`404`）ことである。 */
+/** absent means the desktop-only endpoint returned 404. */
 type Load<T> =
   | { kind: "loading" }
   | { kind: "loaded"; value: T }
@@ -28,9 +28,6 @@ type Load<T> =
 
 const LOADING = { kind: "loading" } as const;
 
-/**
- * useLoad は get を読み、その状態と読み直しを返す。absentOn404 なら `404` を `absent` と読む。
- */
 function useLoad<T>(
   get: (signal?: AbortSignal) => Promise<T>,
   absentOn404: boolean,
@@ -63,18 +60,8 @@ function useLoad<T>(
 }
 
 /**
- * NetworkSection は「Network」のページの「Local network」節である。デスクトップ版では所有者が
- * LAN からの接続を許可し、許可中に開くアドレスを見る。
- * どのビルドでも、プラグインの要求を送るプロキシを選ぶ。
- *
- * `GET /api/settings/network`（デスクトップ版だけ、ほかは `404`）か `GET /api/settings/plugin-proxy`
- * のどちらかが答えるまでは何も出さない。LAN スイッチはデスクトップ版だけで、`404` のとき（デスク
- * トップ版でない）はスイッチの代わりにデスクトップ版で設定する旨の 1 行を出す。プロキシの行は
- * その下に出す。どちらも読めなければ 1 つの ErrorState を出し、片方だけ読めなければ読めない側の
- * 行の場所に出す。
- *
- * スイッチを押すと、送信中は押した先の状態を示し、応答で表示を置き換える。失敗
- * （`409` `listen_failed` など）では誤りを出し、スイッチを元の状態に戻す。
+ * Network 404 means a non-desktop build; proxy settings remain available. Show independent load
+ * failures per row and rollback the optimistic LAN toggle on save failure.
  */
 export default function NetworkSection() {
   const text = t.settings.network;
@@ -137,7 +124,6 @@ export default function NetworkSection() {
   );
 }
 
-/** firstFailure は、読めなかった読み込みの理由を 1 つ返す。無ければ null。 */
 function firstFailure(...loads: Load<unknown>[]): UiText | null {
   for (const load of loads) {
     if (load.kind === "failed") return load.reason;
@@ -145,7 +131,6 @@ function firstFailure(...loads: Load<unknown>[]): UiText | null {
   return null;
 }
 
-/** LANAccess は LAN スイッチの行と、その下のアドレスか注意である（デスクトップ版だけ）。 */
 function LANAccess({
   settings,
   checked,

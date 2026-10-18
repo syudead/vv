@@ -1,7 +1,7 @@
 -- +goose Up
--- 動画の作品情報と、人物・団体の実体。12 表はすべて利用者データで、videos への外部キーを持たない。
+-- All twelve work-info and credit tables are persistent user data without video foreign keys.
 
--- 実体（R-3）。autoincrement で、消した id を使い回さない。
+-- AUTOINCREMENT prevents reusing deleted entity IDs.
 create table people (
     id         integer primary key autoincrement,
     created_at integer not null
@@ -12,13 +12,12 @@ create table organizations (
     created_at integer not null
 );
 
--- 名前と別名。実体ごとに綴り 1 つにつき 1 行で、canonical = 1 が表示する名前。
--- 2 つの実体が同じ綴りを持ってよい（同名の別人）。
+-- Names are unique within an entity, not across entities; distinct people can share a spelling.
 create table people_names (
     person_id      integer not null references people (id) on delete cascade,
     name           text    not null,
     canonical      integer not null check (canonical in (0, 1)),
-    language       text,                            -- 別名だけ。無ければ null
+    language       text,                            -- Aliases only; NULL when absent.
     search_key     text    not null default '',     -- domain.FoldForMatch(name)
     sort_key       text    not null default '',     -- domain.NaturalSortKey(name)
     search_version integer not null default 0,
@@ -43,7 +42,7 @@ create table people_external_ids (
     value     text    not null,
     primary key (person_id, source, value)
 ) without rowid;
--- 外部 ID は種類ごとに 1 つの実体を指すので、Lookup の答えは 1 つになる。
+-- External IDs identify at most one entity per kind.
 create unique index people_external_ids_lookup_idx on people_external_ids (source, value);
 create table organization_external_ids (
     organization_id integer not null references organizations (id) on delete cascade,
@@ -53,8 +52,7 @@ create table organization_external_ids (
 ) without rowid;
 create unique index organization_external_ids_lookup_idx on organization_external_ids (source, value);
 
--- 動画ごとの表（R-2）。content_key は利用者データの鍵。videos への外部キーも表どうしの外部キーも
--- 持たないので、束ねの経路は表ごとに写し、引き継ぎは 6 表をまとめて動かす。
+-- Treat six user-keyed work-info tables as one value during succession; bundles copy them to new keys without video foreign keys.
 create table video_work_info (
     content_key    text    primary key,
     code           text,
@@ -65,7 +63,7 @@ create table video_work_info (
 create table video_work_dates (
     content_key text not null,
     kind        text not null check (kind in ('release', 'recorded', 'published')),
-    date        text not null,                      -- YYYY・YYYY-MM・YYYY-MM-DD
+    date        text not null,                      -- YYYY, YYYY-MM or YYYY-MM-DD.
     primary key (content_key, kind)
 ) without rowid;
 create table video_work_urls (

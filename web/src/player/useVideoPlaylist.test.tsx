@@ -24,7 +24,6 @@ vi.mock("../playlists/usePlaylistContext", () => ({
 const video = { id: 13, title: "third" } as Video;
 const linkState = { from: "/playlists/5", trail: [] };
 
-/** lastPlayback は 3 つの項目の最後（項目 23）の再生の応答である。次が無い。 */
 const lastPlayback: PlaylistPlayback = {
   playlist: { id: 5, name: "Tonight", itemCount: 3, updatedAt: "2026-10-01T00:00:00Z" },
   itemId: 23,

@@ -30,8 +30,7 @@ const repoRoot = path.resolve(webRoot, "..");
 const runRoot = path.join(repoRoot, ".local", "e2e", `${Date.now()}-${process.pid}`);
 const outputDir = path.join(runRoot, "bin");
 const output = path.join(outputDir, process.platform === "win32" ? "mdm.exe" : "mdm");
-// fixtureDirs は、テストの動画を置くフォルダを root の下に並べる。生成はキャッシュの下へ、
-// 実行は runRoot の下へ、同じ並びで置く。
+// Keep generated cache and per-run fixture directory layouts identical.
 function fixtureDirs(root) {
   return {
     mediaDir: path.join(root, "media"),
@@ -58,10 +57,7 @@ function generateFixtures(dirs) {
   generateWorkInfoFixtures(dirs.workInfoMediaDir);
 }
 
-// テストの動画は ffmpeg で作ると時間がかかるので、作り方（media-fixtures.mjs と、
-// 生成先の並びを決めるこのファイル）と ffmpeg の版が同じあいだは、一度作った
-// ものを写して使う。CI はこの置き場を
-// actions/cache で持ち越す（.github/workflows/ci.yml）。
+// Cache FFmpeg fixtures by generator sources, directory layout and FFmpeg version; CI preserves this cache between runs.
 const fixtureCacheRoot =
   process.env.MDM_E2E_FIXTURE_CACHE ?? path.join(repoRoot, ".local", "e2e-fixtures");
 
@@ -75,8 +71,7 @@ function fixtureKey() {
   return hash.digest("hex").slice(0, 16);
 }
 
-// prepareFixtures は、キャッシュに無ければ作ってから、runRoot へ写す。写したあとで、
-// 実行の時刻に合わせるもの（更新時刻）を整える。
+// Copy cached fixtures into runRoot, then refresh time-dependent metadata.
 function prepareFixtures(dirs) {
   const cached = path.join(fixtureCacheRoot, fixtureKey());
   const complete = path.join(cached, ".complete");
@@ -99,10 +94,7 @@ function prepareFixtures(dirs) {
 }
 
 const fixtures = fixtureDirs(runRoot);
-// Go のビルドキャッシュは実行をまたいで使い回す。実行ごとの runRoot に置くと
-// 毎回ゼロからのコンパイルになる。既定の置き場（GOCACHE）が決まっていれば
-// それに従い（CI は setup-go が復元した場所を渡す）、無ければ作業ツリーの中の
-// .local に置く。作業ツリーの外に書けない環境でも動くようにするためである。
+// Reuse GOCACHE across runs; otherwise use .local so restricted workspaces need no writes outside the checkout.
 const goCache = process.env.GOCACHE ?? path.join(repoRoot, ".local", "go-build");
 
 function run() {

@@ -10,8 +10,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// GET /api/playlists/{id}/playbackを、本物の認証・
-// 保存層・経路をつないで確かめる。順序の規則そのものは domain と store の試験が持つ。
+// Domain/storage tests cover playback ordering; this fixture verifies route integration.
 
 type playlistPlaybackFixture struct {
 	*libraryFixture
@@ -19,8 +18,6 @@ type playlistPlaybackFixture struct {
 	itemA, itemG, itemB int64
 }
 
-// newPlaylistPlaybackFixture は動画 solo、グループ show（ep1 は視聴済み、ep2 は途中）、動画 p1 の
-// プレイリストを作る。
 func newPlaylistPlaybackFixture(t *testing.T) *playlistPlaybackFixture {
 	t.Helper()
 	ctx := context.Background()
@@ -71,7 +68,6 @@ func TestPlaylistPlaybackAnswersThePositionAndTheNextVideo(t *testing.T) {
 	if playback.ItemId != f.itemA || playback.Position != 1 || playback.Count != 3 || playback.PreviousItem != nil {
 		t.Errorf("playback = %+v", playback)
 	}
-	// show は途中の ep2 から始まる。
 	for name, step := range map[string]*gen.PlaylistStep{"next": playback.Next, "nextItem": playback.NextItem} {
 		if step == nil || step.ItemId != f.itemG || step.Video.Id != f.ids["ep2"] {
 			t.Fatalf("%s = %+v, want show の ep2", name, step)
@@ -113,7 +109,6 @@ func TestPlaylistPlaybackRejectsAMalformedQuery(t *testing.T) {
 	}
 }
 
-// 外した項目と消したプレイリストは 404 not_found。
 func TestPlaylistPlaybackNotFound(t *testing.T) {
 	f := newPlaylistPlaybackFixture(t)
 	ctx := context.Background()
@@ -135,7 +130,6 @@ func TestPlaylistPlaybackNotFound(t *testing.T) {
 	}
 }
 
-// ゲストは /api/* の既定で 401。
 func TestPlaylistPlaybackIsOwnerOnly(t *testing.T) {
 	f := newPlaylistPlaybackFixture(t)
 	if rec := f.env.get(f.target(f.id, f.itemA, fmt.Sprint(f.ids["solo"]))); rec.Code != http.StatusUnauthorized {
@@ -143,8 +137,6 @@ func TestPlaylistPlaybackIsOwnerOnly(t *testing.T) {
 	}
 }
 
-// 項目がスマートフォルダの項目の step だけが smartFolderId を持ち、フォルダの中の next も持つ。
-// 動画とグループの項目への step は持たない。
 func TestPlaylistPlaybackNamesTheSmartFolderOfAStep(t *testing.T) {
 	f := newLibraryFixture(t)
 	ctx := context.Background()

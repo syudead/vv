@@ -11,9 +11,6 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import CreditsPage from "./CreditsPage";
 
-// 人物・団体の管理画面のページの試験。偽のサーバーは `/api/people` と
-// `/api/organizations` の 6 つの経路を持つ。
-
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(status === 204 ? null : JSON.stringify(body), {
     status,
@@ -43,7 +40,7 @@ const server = {
   organizations: [] as Credit[],
   sent: [] as Sent[],
   nextId: 100,
-  /** 設定すると、次の変更の要求（POST・PATCH・DELETE）をこの応答で 1 回だけ失敗させる。 */
+  /** Fail the next mutation once with this response. */
   nextError: null as { status: number; body: Record<string, unknown> } | null,
 };
 
@@ -51,7 +48,7 @@ function listOf(kind: CreditKind): Credit[] {
   return kind === "person" ? server.people : server.organizations;
 }
 
-/** pageOf は一覧の 1 ページを作る。カーソルは読み終えた数である。 */
+/** The pagination cursor is the number of consumed rows. */
 function pageOf(items: readonly Credit[], params: URLSearchParams) {
   const q = foldForMatch(params.get("q") ?? "").trim();
   const sort = (params.get("sort") ?? "name") as Parameters<typeof compareTagsForSort>[2];
@@ -99,7 +96,6 @@ function handle(kind: CreditKind, rest: string, method: string, url: URL, body: 
       target.videoCount += source.videoCount;
       target.aliases.push({ name: source.name });
       items.splice(items.indexOf(source), 1);
-      // 統合元の団体の子は統合先の下へ付け替わる。
       for (const child of items) {
         if ((child as { parent?: { id: number } }).parent?.id === source.id)
           Object.assign(child, { parent: { id: target.id, name: target.name } });
@@ -126,7 +122,6 @@ function handle(kind: CreditKind, rest: string, method: string, url: URL, body: 
   }
   if (method === "DELETE") {
     items.splice(items.indexOf(target), 1);
-    // 消えた団体の子は親を失う。
     for (const child of items) {
       if ((child as { parent?: { id: number } }).parent?.id === target.id)
         Reflect.deleteProperty(child, "parent");
@@ -237,7 +232,6 @@ describe("CreditsPage 人物の一覧", () => {
         .getByRole("link", { name: "Open the library filtered by Alice" })
         .getAttribute("href"),
     ).toBe("/library?person=1");
-    // 別名の無い行は 2 行目を持たない。
     expect(rowOf("Carol").querySelector("p")).toBeNull();
   });
 
@@ -264,7 +258,7 @@ describe("CreditsPage 人物の一覧", () => {
     server.people = Array.from({ length: 150 }, (_, index) =>
       credit({ id: index + 1, name: `Person ${String(index).padStart(3, "0")}` }),
     );
-    // jsdom には表示域と要素の高さが無いので、試験用の高さを置く（タグの画面の試験と同じ）。
+    // Provide dimensions because jsdom has no viewport or element layout.
     const restoreHeights = stubRowHeights({ rowHeight: 40, viewportHeight: 200 });
     try {
       renderPage("person");
@@ -335,7 +329,6 @@ describe("CreditsPage 人物の一覧", () => {
       within(rowOf("Alice")).getByRole("button", { name: "Edit details" }),
     );
     const dialog = await screen.findByRole("dialog", { name: 'Edit "Alice"' });
-    // 2 つ目の別名を消し、言語つきの別名を 1 つ足す。
     await user.click(within(dialog).getAllByRole("button", { name: "Remove alias" })[1]!);
     await user.click(within(dialog).getByRole("button", { name: "Add alias" }));
     const names = within(dialog).getAllByRole("textbox", { name: "Alias" });
@@ -372,7 +365,7 @@ describe("CreditsPage 人物の一覧", () => {
       within(rowOf("Alice")).getByRole("button", { name: "Edit details" }),
     );
     const dialog = await screen.findByRole("dialog", { name: 'Edit "Alice"' });
-    // 窓を開いたあとに、ほかのタブが外部 ID を足す。
+    // Simulate another tab adding an external ID after the dialog opens.
     server.people[0]!.externalIds.push({ source: "wikidata", value: "Q1" });
     await user.click(within(dialog).getAllByRole("button", { name: "Remove alias" })[1]!);
     await user.click(within(dialog).getByRole("button", { name: "Save" }));
@@ -455,7 +448,6 @@ describe("CreditsPage 人物の一覧", () => {
     const dialog = await screen.findByRole("dialog", { name: 'Merge "Bob"' });
     const merge = within(dialog).getByRole("button", { name: "Merge" });
     expect((merge as HTMLButtonElement).disabled).toBe(true);
-    // 候補は統合元を除く。
     await within(dialog).findByRole("option", { name: /Alice/ });
     expect(within(dialog).queryByRole("option", { name: /Bob/ })).toBeNull();
 
@@ -591,7 +583,6 @@ describe("CreditsPage 団体の一覧", () => {
     expect(
       requests("PATCH", /^\/api\/organizations\/10$/).map((item) => item.body),
     ).toEqual([{ parentId: 11 }]);
-    // 親の候補は自分を除き、「None」が先頭にある。
     expect(
       requests("GET", /^\/api\/organizations$/)
         .at(-1)

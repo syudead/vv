@@ -6,11 +6,8 @@ import (
 	"testing"
 )
 
-// 入れ子: 自分、子、孫を親に入れるのは循環で、兄弟やほかの枝は入れてよい。
 func TestValidateNesting(t *testing.T) {
-	// 1 ─┬─ 2 ── 3
-	//    └─ 4
-	// 5 は独立。
+	// 1 has children 2 and 4; 2 has child 3; 5 is independent.
 	edges := []GroupEdge{{Parent: 1, Child: 2}, {Parent: 2, Child: 3}, {Parent: 1, Child: 4}}
 	for name, c := range map[string]struct {
 		parent, child int64
@@ -35,8 +32,6 @@ func TestValidateNesting(t *testing.T) {
 	}
 }
 
-// 再生順: 深さ優先で、2 つの子グループにある動画は最初の 1 回だけ、見せない
-// 項目は除く。
 func TestGroupPlayOrder(t *testing.T) {
 	children := map[int64][]GroupPlayItem{
 		10: {{VideoID: 1}, {VideoID: 2}},
@@ -70,7 +65,7 @@ func TestGroupPlayOrder(t *testing.T) {
 	}
 }
 
-// 循環した入力でも止まる（書き込みが循環を拒むので通常は起きない）。
+// Malformed cycles must terminate even though writes normally reject them.
 func TestGroupPlayOrderStopsOnCycle(t *testing.T) {
 	children := map[int64][]GroupPlayItem{
 		1: {{VideoID: 1}, {ChildID: 2}},

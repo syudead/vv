@@ -6,7 +6,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// golang.org/x/sys/windows に無い user32 と kernel32 の関数と型。
+// Win32 APIs absent from golang.org/x/sys/windows.
 
 var (
 	user32   = windows.NewLazySystemDLL("user32.dll")
@@ -48,7 +48,7 @@ const (
 	wsPopup            = 0x80000000
 	wsVisible          = 0x10000000
 
-	// cwUseDefault は CW_USEDEFAULT（int の 0x80000000）。
+	// CW_USEDEFAULT as the signed int bit pattern 0x80000000.
 	cwUseDefault int32 = -0x80000000
 
 	swHide       = 0
@@ -79,10 +79,9 @@ const (
 	swpFrameChanged  = 0x0020
 	swpNoOwnerZOrder = 0x0200
 
-	// gwlStyle は GWL_STYLE（-16）。
+	// GWL_STYLE (-16).
 	gwlStyle = ^uintptr(15)
 
-	// defaultDPI は拡大していない画面の DPI である。
 	defaultDPI = 96
 )
 
@@ -136,7 +135,7 @@ func moduleHandle() uintptr {
 	return h
 }
 
-// systemDPI は画面の DPI を返す。Windows 10 1607 より前は既定の 96 とする。
+// Use 96 DPI on Windows versions before 10 1607.
 func systemDPI() int32 {
 	if procGetDpiForSystem.Find() != nil {
 		return defaultDPI
@@ -148,7 +147,6 @@ func systemDPI() int32 {
 	return int32(dpi)
 }
 
-// workArea はタスクバーを除いた主画面の領域を返す。
 func workArea() (rect, bool) {
 	var r rect
 	ok, _, _ := procSystemParametersInfo.Call(spiGetWorkArea, 0, uintptr(unsafe.Pointer(&r)), 0)

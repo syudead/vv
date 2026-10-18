@@ -8,8 +8,7 @@ import (
 	"testing"
 )
 
-// sceneLuma は seed で決まる滑らかな場面の輝度を返す。低周波の正弦波を重ねるので、
-// 縮めた映像のコマに近い。
+// Low-frequency sine waves approximate downsampled video frames.
 func sceneLuma(seed uint64) [FingerprintFrameSize][FingerprintFrameSize]float64 {
 	random := rand.New(rand.NewPCG(seed, seed*7+1))
 	type wave struct{ fx, fy, phase, amplitude float64 }
@@ -33,7 +32,6 @@ func sceneLuma(seed uint64) [FingerprintFrameSize][FingerprintFrameSize]float64 
 	return out
 }
 
-// toLuma は輝度を brightness だけ明るくし、平均の周りで contrast 倍にして 0〜255 に収める。
 func toLuma(scene [FingerprintFrameSize][FingerprintFrameSize]float64, brightness, contrast float64) [FingerprintFrameSize][FingerprintFrameSize]uint8 {
 	var out [FingerprintFrameSize][FingerprintFrameSize]uint8
 	for y := range FingerprintFrameSize {
@@ -49,7 +47,6 @@ func hammingDistance(a, b FrameHash) int {
 	return bits.OnesCount64(a.Hash ^ b.Hash)
 }
 
-// 同じ場面の明るさ・コントラストを変えたものは閾値の内、別の場面は外になる。
 func TestHashFrameToleratesBrightnessAndContrast(t *testing.T) {
 	for seed := uint64(1); seed <= 20; seed++ {
 		scene := sceneLuma(seed)
@@ -73,12 +70,11 @@ func TestHashFrameToleratesBrightnessAndContrast(t *testing.T) {
 	}
 }
 
-// 輝度の分散が小さいコマ（黒画面や単色）は単色の印が付く。
 func TestHashFrameMarksFlatFrames(t *testing.T) {
 	var black, gray [FingerprintFrameSize][FingerprintFrameSize]uint8
 	for y := range FingerprintFrameSize {
 		for x := range FingerprintFrameSize {
-			black[y][x] = uint8((x + y) % 3) // JPEG の揺らぎ程度
+			black[y][x] = uint8((x + y) % 3) // Approximate JPEG noise.
 			gray[y][x] = 120
 		}
 	}
@@ -117,7 +113,6 @@ func TestFingerprintEncodeRoundTrip(t *testing.T) {
 	}
 }
 
-// fingerprintOf は時刻 t ミリ秒の場面が scene(t) の動画を間隔 intervalMs で並べた指紋を返す。
 func fingerprintOf(durationMs, intervalMs int64, scene func(positionMs int64) FrameHash) Fingerprint {
 	count := (durationMs + intervalMs - 1) / intervalMs
 	frames := make([]FrameHash, count)
@@ -127,15 +122,13 @@ func fingerprintOf(durationMs, intervalMs int64, scene func(positionMs int64) Fr
 	return Fingerprint{Version: FingerprintVersion, IntervalMs: intervalMs, Frames: frames}
 }
 
-// 場面が 20 秒ごとに変わる動画。
 func sceneAt(offset uint64) func(int64) FrameHash {
 	return func(positionMs int64) FrameHash {
 		return HashFrame(toLuma(sceneLuma(offset+uint64(positionMs/20_000)), 0, 1))
 	}
 }
 
-// 間隔が違う 2 本（405 秒を超える動画の再エンコードで尺が数ミリ秒違う）も、コマを時刻で
-// 組にするので一致する。番号で組にすると後ろの方がずれる長さでも同じである。
+// Slight duration changes alter frame intervals, so index-based pairing would drift.
 func TestCompareFingerprintsAlignsFramesByTime(t *testing.T) {
 	a := fingerprintOf(3_600_000, NewSeekSpriteLayout(3_600_000).IntervalMs, sceneAt(0))
 	b := fingerprintOf(3_600_400, NewSeekSpriteLayout(3_600_400).IntervalMs, sceneAt(0))
@@ -160,8 +153,7 @@ func TestCompareFingerprintsAlignsFramesByTime(t *testing.T) {
 	}
 }
 
-// 間隔の下限が 5 秒だったころの指紋と 1 秒間隔の指紋も、先頭の時刻が揃うコマどうしで
-// 比べるので一致する。場面が 1 秒ごとに変わっても、別の時刻の場面とは組にしない。
+// Pair frame starts so older five-second fingerprints remain comparable to one-second fingerprints without matching different scenes.
 func TestCompareFingerprintsMatchesOldFiveSecondInterval(t *testing.T) {
 	everySecond := func(positionMs int64) FrameHash {
 		return HashFrame(toLuma(sceneLuma(uint64(positionMs/1000)), 0, 1))
@@ -179,7 +171,6 @@ func TestCompareFingerprintsMatchesOldFiveSecondInterval(t *testing.T) {
 	}
 }
 
-// 版が違う、単色のコマばかりで比べた組が足りない、b のコマ数の外は比べない。
 func TestCompareFingerprintsRefusesWhenNotComparable(t *testing.T) {
 	a := fingerprintOf(60_000, 5000, sceneAt(0))
 	older := a
@@ -207,7 +198,6 @@ func TestCompareFingerprintsRefusesWhenNotComparable(t *testing.T) {
 	}
 }
 
-// 中央値なので、一部のコマだけが違っても一致する。
 func TestCompareFingerprintsUsesMedian(t *testing.T) {
 	a := fingerprintOf(100_000, 5000, sceneAt(0))
 	b := fingerprintOf(100_000, 5000, sceneAt(0))

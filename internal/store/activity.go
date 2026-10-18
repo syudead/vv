@@ -15,12 +15,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// アクティビティの記録。記録は変える内容と同じ取引で、記録する各役割が
-// recordActivity・setActivityState を呼んで書き、確定後に domain.ActivityChanged を発行する。ActivityStore は記録の一覧・1 件の読み出しと、起動時の回復だけを持つ。
+// Write activity in the same transaction as its effects; publish ActivityChanged only after commit.
 
-// foldCaseFunction は表示名の検索で大文字と小文字をそろえる関数を SQLite から呼ぶ名前である。SQLite の
-// lower は ASCII だけを変えるので、Go の strings.ToLower を使う。select の中でしか使わず、スキーマには
-// 残らない（vv_natural_sort_key と同じ）。
+// SQLite lower() is ASCII-only; use Go's Unicode case folding for display-name searches.
 const foldCaseFunction = "vv_fold_case"
 
 func init() {
@@ -42,14 +39,12 @@ func init() {
 	}
 }
 
-// activityWriter は記録を書く取引である。*sql.Tx と、begin immediate で取引を始めた *sql.Conn
-// （仕事の専有）が満たす。
+// Implemented by *sql.Tx and the *sql.Conn holding a BEGIN IMMEDIATE job claim.
 type activityWriter interface {
 	queryExecer
 	rowQueryer
 }
 
-// nullID は 0 の id を列の null にする。
 func nullID(id int64) any {
 	if id == 0 {
 		return nil
@@ -57,10 +52,7 @@ func nullID(id int64) any {
 	return id
 }
 
-// recordActivity は記録 entry を書き、その id を返す。entry.ID・CreatedAt・UpdatedAt は見ず、now を使う。
-// Feature は種類の機能で、undo では取り消した記録（UndoesID）の機能を同じ取引で読んで写す。同じ取引で、同じ
-// 種類と対象の古い attention の記録を done/superseded で閉じる（domain.ActivityEntry.Supersedes）。c に
-// 記録を書いたことを残し、確定後に domain.ActivityChanged を発行させる。
+// recordActivity ignores entry timestamps and ID, supersedes matching attention entries, and schedules an event after commit.
 func recordActivity(ctx context.Context, tx activityWriter, c *changes, entry domain.ActivityEntry, now time.Time) (int64, error) {
 	feature, err := activityFeatureOf(ctx, tx, entry)
 	if err != nil {
@@ -92,7 +84,6 @@ func recordActivity(ctx context.Context, tx activityWriter, c *changes, entry do
 	return id, nil
 }
 
-// activityFeatureOf は記録 entry の機能を返す。undo は取り消した記録の機能である。
 func activityFeatureOf(ctx context.Context, tx activityWriter, entry domain.ActivityEntry) (domain.ActivityFeature, error) {
 	if feature, ok := entry.Kind.Feature(); ok {
 		return feature, nil
@@ -108,8 +99,7 @@ func activityFeatureOf(ctx context.Context, tx activityWriter, entry domain.Acti
 	return domain.ActivityFeature(feature), nil
 }
 
-// supersedeActivity は新しい記録 entry が閉じる古い記録を done/superseded にする。閉じるかの判断は
-// domain.ActivityEntry.Supersedes が持ち、ここは候補を種類と対象の索引で引いてそれに渡す。
+// The domain decides which entries to supersede; SQL narrows candidates by kind and subject.
 func supersedeActivity(ctx context.Context, tx activityWriter, entry domain.ActivityEntry, at int64) error {
 	rows, err := tx.QueryContext(ctx, `select id, status from activity_entries
 		where kind = ? and subject_key = ? and subject_key_b is ? and subject_kind = ? and id < ? and status = ?`,
@@ -144,8 +134,7 @@ func supersedeActivity(ctx context.Context, tx activityWriter, entry domain.Acti
 	return nil
 }
 
-// activityRetryOffered は記録 id が取引 tx の中でまだやり直しを出すかを返す（domain.ActivityEntry.RetryOffered）。
-// やり直しを書く取引の中で読み直し、同時に届いた別のやり直しが閉じた記録を二度やり直さない。無い記録は偽である。
+// Recheck retry eligibility inside the write transaction so concurrent retries cannot repeat an already closed entry.
 func activityRetryOffered(ctx context.Context, tx activityWriter, id int64) (bool, error) {
 	var entry domain.ActivityEntry
 	var kind, status, reason string
@@ -162,7 +151,6 @@ func activityRetryOffered(ctx context.Context, tx activityWriter, id int64) (boo
 	return entry.RetryOffered(), nil
 }
 
-// setActivityState は記録 id の状態と理由か結果を state にする。記録を変えたことを c に残す。
 func setActivityState(ctx context.Context, tx activityWriter, c *changes, id int64, state domain.ActivityState, now time.Time) error {
 	if err := writeActivityState(ctx, tx, id, state, now.UnixMilli()); err != nil {
 		return err
@@ -180,9 +168,7 @@ func writeActivityState(ctx context.Context, tx activityWriter, id int64, state 
 	return nil
 }
 
-// RecoverInterruptedActivity は、前回の停止で processing の running のまま残った記録をすべて
-// attention/interrupted にし、件数を返す。waiting の記録は取り出される前なので変えない。
-// 起動時に、ワーカーを動かす前に 1 度だけ呼ぶ。変えた記録があれば確定後に domain.ActivityChanged を発行する。
+// RecoverInterruptedActivity marks processing entries interrupted before workers start; waiting entries remain untouched.
 func (s *ActivityStore) RecoverInterruptedActivity(ctx context.Context) (int, error) {
 	result, err := s.db.sql.ExecContext(ctx, `update activity_entries set status = ?, reason = ?, updated_at = ?
 		where status = ? and reason = ?`,
@@ -201,9 +187,7 @@ func (s *ActivityStore) RecoverInterruptedActivity(ctx context.Context) (int, er
 	return int(affected), nil
 }
 
-// activityColumns は一覧と 1 件の読み出しが読む列である。e は記録、c は組の候補、u は取り消した記録。
-// 組が候補の画面にまだあるかは、候補の行があるだけでなく、重複の候補の一覧と同じ条件
-// （candidatePairsCondition: 両方に登録の所在があり、却下も同じ集まりでもない）で決める。
+// A pair is a visible candidate only when it satisfies the same predicate as the candidate list.
 var activityColumns = `e.id, e.kind, e.feature, e.subject_kind, e.subject_key, coalesce(e.subject_key_b, ''),
 	e.subject_label, coalesce(e.subject_label_b, ''), e.status, coalesce(e.reason, ''), coalesce(e.outcome, ''),
 	coalesce(e.detail, ''), coalesce(e.stage, ''), coalesce(e.undoes_id, 0), e.decider, e.probability,
@@ -213,13 +197,11 @@ var activityColumns = `e.id, e.kind, e.feature, e.subject_kind, e.subject_key, c
 	coalesce(c.judgement, ''), c.retry_at, u.kind, u.outcome,
 	(select t.tag_name from activity_entry_tags t where t.entry_id = e.undoes_id and t.undone_by = e.id limit 1)`
 
-// activityFrom は一覧と 1 件の読み出しの from 句である。組の候補は判定と再試行の時刻を運ぶ。
 const activityFrom = ` from activity_entries e
 	left join video_version_candidates c on e.subject_kind = 'pair' and c.key_a = e.subject_key
 		and c.key_b = e.subject_key_b
 	left join activity_entries u on u.id = e.undoes_id`
 
-// scanActivityEntry は activityColumns の 1 行を読む。
 func scanActivityEntry(row rowScanner) (domain.ActivityEntry, error) {
 	var (
 		entry                                    domain.ActivityEntry
@@ -264,7 +246,7 @@ func scanActivityEntry(row rowScanner) (domain.ActivityEntry, error) {
 	return entry, nil
 }
 
-// ActivityEntry は記録 id を、一覧の 1 件と同じ形で返す。見る人は所有者である。無ければ domain.ErrNotFound。
+// ActivityEntry returns an owner-visible entry or domain.ErrNotFound.
 func (s *ActivityStore) ActivityEntry(ctx context.Context, id int64) (domain.ActivityEntry, error) {
 	entry, err := scanActivityEntry(s.db.sql.QueryRowContext(ctx,
 		`select `+activityColumns+activityFrom+` where e.id = ?`, id))
@@ -281,10 +263,7 @@ func (s *ActivityStore) ActivityEntry(ctx context.Context, id int64) (domain.Act
 	return entries[0], nil
 }
 
-// ListActivity は query を満たす記録を id の降順に、cursor の次から limit 件返す。
-// cursor が空なら先頭から、読めなければ domain.ErrInvalidCursor。Counts は Status 以外の、Features は
-// Features 以外の絞り込みに従う。ページと件数は同じスナップショットから読む（読み取り用の接続）。
-// 各件の VideoIDs は audience が開ける今の動画である。
+// ListActivity uses descending IDs and a snapshot shared with its counts; counts omit their own facet filter.
 func (s *ActivityStore) ListActivity(
 	ctx context.Context, audience domain.Audience, query domain.ActivityQuery, cursor string, limit int,
 ) (domain.ActivityPage, error) {
@@ -319,8 +298,7 @@ func (s *ActivityStore) ListActivity(
 	return page, nil
 }
 
-// activityFilter は絞り込みの条件句と引数である。withStatus・withFeatures が偽ならその絞り込みを外す
-// （件数の読み出し）。
+// Disable status or feature filtering when counting that facet.
 func activityFilter(query domain.ActivityQuery, withStatus, withFeatures bool) ([]string, []any) {
 	var conditions []string
 	var args []any
@@ -329,7 +307,7 @@ func activityFilter(query domain.ActivityQuery, withStatus, withFeatures bool) (
 		args = append(args, string(query.Status))
 	}
 	if withFeatures && len(query.Features) > 0 {
-		encoded, _ := json.Marshal(query.Features) // 文字列の一覧の Marshal は失敗しない。
+		encoded, _ := json.Marshal(query.Features)
 		conditions = append(conditions, `e.feature in (select value from json_each(?))`)
 		args = append(args, string(encoded))
 	}
@@ -342,7 +320,7 @@ func activityFilter(query domain.ActivityQuery, withStatus, withFeatures bool) (
 		args = append(args, query.Since.UnixMilli())
 	}
 	if query.Search != "" {
-		// 対象の表示名だけを見る。ほかの絞り込みが残す行を読むので、文字の索引は要らない。
+		// Search only subject labels; other filters bound the scan without a text index.
 		needle := strings.ToLower(query.Search)
 		conditions = append(conditions, `(instr(`+foldCaseFunction+`(e.subject_label), ?) > 0 or instr(`+
 			foldCaseFunction+`(e.subject_label_b), ?) > 0)`)
@@ -351,8 +329,6 @@ func activityFilter(query domain.ActivityQuery, withStatus, withFeatures bool) (
 	return conditions, args
 }
 
-// activityItems は 1 ページの記録を読み、続きがあればカーソルを返す。before が 0 でなければその id より
-// 小さい記録から読む。
 func activityItems(
 	ctx context.Context, tx *sql.Tx, query domain.ActivityQuery, before int64, limit int,
 ) ([]domain.ActivityEntry, string, error) {
@@ -361,7 +337,7 @@ func activityItems(
 		conditions = append(conditions, `e.id < ?`)
 		args = append(args, before)
 	}
-	// 1 件多く読んで、続きがあるかを知る。
+	// Read one extra entry to detect another page.
 	args = append(args, limit+1)
 	rows, err := tx.QueryContext(ctx, `select `+activityColumns+activityFrom+whereClause(conditions)+
 		` order by e.id desc limit ?`, args...)
@@ -387,7 +363,6 @@ func activityItems(
 	return items, domain.EncodeActivityCursor(items[len(items)-1].ID), nil
 }
 
-// activityCounts は Status 以外の絞り込みを満たす記録を状態ごとに数える。
 func activityCounts(ctx context.Context, tx *sql.Tx, query domain.ActivityQuery) (domain.ActivityCounts, error) {
 	conditions, args := activityFilter(query, false, true)
 	var counts domain.ActivityCounts
@@ -404,7 +379,7 @@ func activityCounts(ctx context.Context, tx *sql.Tx, query domain.ActivityQuery)
 	return counts, err
 }
 
-// activityFeatureCounts は Features 以外の絞り込みを満たす記録を機能ごとに数える。どの機能も 0 から入る。
+// Feature counts include zero-valued features and ignore the feature filter.
 func activityFeatureCounts(ctx context.Context, tx *sql.Tx, query domain.ActivityQuery) (map[domain.ActivityFeature]int, error) {
 	conditions, args := activityFilter(query, true, false)
 	counts := make(map[domain.ActivityFeature]int, len(domain.ActivityFeatures))
@@ -417,7 +392,6 @@ func activityFeatureCounts(ctx context.Context, tx *sql.Tx, query domain.Activit
 	return counts, err
 }
 
-// groupedCounts は条件を満たす記録を column ごとに数え、1 組ずつ add に渡す。
 func groupedCounts(
 	ctx context.Context, tx *sql.Tx, column string, conditions []string, args []any, add func(string, int),
 ) error {
@@ -441,8 +415,6 @@ func groupedCounts(
 	return nil
 }
 
-// attachActivityDetails は記録に、auto_tag の付けたタグ、running の import の進み具合と、対象の鍵ごとの
-// audience が開ける今の動画を添える。
 func attachActivityDetails(ctx context.Context, q rowsQueryer, audience domain.Audience, entries []domain.ActivityEntry) error {
 	if len(entries) == 0 {
 		return nil
@@ -456,7 +428,6 @@ func attachActivityDetails(ctx context.Context, q rowsQueryer, audience domain.A
 	return attachActivityVideos(ctx, q, audience, entries)
 }
 
-// activityEntryIDs は keep を満たす記録の id から entries の添字を引く表と、それらの id の JSON の配列を返す。
 func activityEntryIDs(entries []domain.ActivityEntry, keep func(domain.ActivityEntry) bool) (map[int64]int, string) {
 	index := map[int64]int{}
 	ids := []int64{}
@@ -466,11 +437,10 @@ func activityEntryIDs(entries []domain.ActivityEntry, keep func(domain.ActivityE
 			ids = append(ids, entry.ID)
 		}
 	}
-	encoded, _ := json.Marshal(ids) // 整数の一覧の Marshal は失敗しない。
+	encoded, _ := json.Marshal(ids)
 	return index, string(encoded)
 }
 
-// attachActivityTags は auto_tag の記録に、付けたタグを名前の順で添える。
 func attachActivityTags(ctx context.Context, q rowsQueryer, entries []domain.ActivityEntry) error {
 	index, encoded := activityEntryIDs(entries, func(entry domain.ActivityEntry) bool {
 		return entry.Kind == domain.ActivityAutoTag
@@ -500,8 +470,7 @@ func attachActivityTags(ctx context.Context, q rowsQueryer, entries []domain.Act
 	return nil
 }
 
-// attachActivityVideos は動画と組の記録の各鍵に、audience が開ける今の動画の id を添える。鍵の動画が無いか
-// 開けなければ 0 のままにする。
+// Missing or inaccessible videos retain ID zero.
 func attachActivityVideos(ctx context.Context, q rowsQueryer, audience domain.Audience, entries []domain.ActivityEntry) error {
 	var keys []string
 	for _, entry := range entries {

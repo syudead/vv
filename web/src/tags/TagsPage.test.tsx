@@ -27,7 +27,6 @@ describe("TagsPage", () => {
     expect(screen.getByTitle("Anime")).toBeDefined();
     expect(screen.getByText("Synonyms: アニメ")).toBeDefined();
     expect(screen.getByText("3 tags")).toBeDefined();
-    // 本数 0 のタグも出る。
     const dramaRow = screen.getByTitle("Drama").closest<HTMLElement>("[data-tag-id]")!;
     expect(dramaRow.textContent).toContain("0 videos");
   });
@@ -72,7 +71,6 @@ describe("TagsPage", () => {
     expect(screen.getByTitle("action")).toBeDefined();
     expect(screen.queryByTitle("Anime")).toBeNull();
 
-    // シノニムも照合形で照らす（ひらがなで打ってもカタカナのシノニムに当たる）。
     await user.clear(search);
     await user.type(search, "あにめ");
     expect(await screen.findByText("1 of 3 tags")).toBeDefined();
@@ -190,7 +188,6 @@ describe("TagsPage", () => {
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
     expect(document.activeElement).toBe(input);
 
-    // 既存のシノニムと重なる改名は拒否され、理由が画面に出る。
     await user.clear(input);
     await user.type(input, "アニメ");
     await user.keyboard("{Enter}");
@@ -251,7 +248,6 @@ describe("TagsPage", () => {
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const input = await screen.findByRole("textbox", { name: 'New name for "旅行"' });
 
-    // 改名を試みる前に、別のタブで削除されたことにする。
     server.tags = server.tags.filter((t) => t.name !== "旅行");
 
     await user.clear(input);
@@ -286,7 +282,6 @@ describe("TagsPage", () => {
 
     await waitFor(() => expect(screen.queryByTitle("Anime")).toBeNull());
     expect(await screen.findByText('Deleted "Anime"')).toBeDefined();
-    // Anime の次は Drama（自然順で 旅行 < Anime < Drama）。
     await waitFor(() =>
       expect(document.activeElement).toBe(
         within(
@@ -326,9 +321,7 @@ describe("TagsPage", () => {
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(screen.getByTitle("Drama")).toBeDefined();
-    // その他の操作のメニュー項目（削除…）はメニューが閉じるともう無いので、
-    // ModalFrame の「前のフォーカスへ戻す」だけには頼らず、その行の
-    // 「その他の操作」へ明示的に戻す。
+    // The menu item unmounts on close; restore focus explicitly to its row's menu trigger.
     await waitFor(() => expect(document.activeElement).toBe(menuButton));
   });
 
@@ -361,7 +354,6 @@ describe("TagsPage", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
     const dialog = await screen.findByRole("alertdialog", { name: 'Delete "Anime"' });
 
-    // 確認を開いたあと、別のタブで先に削除されたことにする。
     server.tags = server.tags.filter((t) => t.name !== "Anime");
 
     await user.click(within(dialog).getByRole("button", { name: "Delete" }));
@@ -370,7 +362,6 @@ describe("TagsPage", () => {
       await screen.findByText("This tag no longer exists, so the list was reloaded"),
     ).toBeDefined();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    // Anime の次は Drama（自然順で 旅行 < Anime < Drama）。
     await waitFor(() =>
       expect(document.activeElement).toBe(
         within(
@@ -421,7 +412,6 @@ describe("TagsPage", () => {
     renderPage();
     await screen.findByTitle("旅行");
 
-    // 作成の入力。
     await user.click(screen.getByRole("button", { name: "New tag" }));
     const createInput = screen.getByRole("textbox", { name: "New tag name" });
     await user.type(createInput, "IME作成中");
@@ -432,7 +422,6 @@ describe("TagsPage", () => {
     fireEvent.keyDown(createInput, { key: "Enter" });
     expect(await screen.findByTitle("IME作成中")).toBeDefined();
 
-    // 改名の入力。
     const row = screen.getByTitle("旅行").closest<HTMLElement>("[data-tag-id]")!;
     await user.click(within(row).getByRole("button", { name: "Rename" }));
     const renameInput = await screen.findByRole("textbox", {
@@ -447,7 +436,6 @@ describe("TagsPage", () => {
     fireEvent.keyDown(renameInput, { key: "Enter" });
     expect(await screen.findByTitle("旅行2024")).toBeDefined();
 
-    // 検索の入力。
     const search = screen.getByRole("searchbox", { name: "Search tags" });
     await user.type(search, "存在しない語");
     fireEvent.keyDown(search, { key: "Escape", keyCode: 229 });
@@ -627,7 +615,6 @@ describe("TagsPage", () => {
     await user.keyboard("{Enter}");
     await screen.findByTitle("Banana");
 
-    // 作った 1 件は読み込んだ行の中に置き、ページも全件も取り直さない。
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(server.getCalls).toBe(1);
     expect(server.fullGetCalls).toBe(0);
@@ -636,7 +623,6 @@ describe("TagsPage", () => {
   it("共有の保持の購読者がいれば、操作のあとに全件の GET が送られる（R-12）", async () => {
     const user = userEvent.setup();
     install();
-    // 候補や絞り込みの確かめが共有の保持を購読している（別の画面の部品など）。
     const unsubscribe = subscribeTags(() => undefined);
     try {
       renderPage();
@@ -721,15 +707,12 @@ describe("TagsPage", () => {
     await user.clear(input);
     await user.type(input, "捨てない下書き");
 
-    // 「旅行」はもう検索に一致しない条件へ変える。
     const search = screen.getByRole("searchbox", { name: "Search tags" });
     await user.type(search, "Anime");
 
-    // 行は消えず、打っている途中の名前もそのまま残る。
     const stillInput = screen.getByRole("textbox", { name: 'New name for "旅行"' });
     expect(stillInput).toBe(input);
     expect((stillInput as HTMLInputElement).value).toBe("捨てない下書き");
-    // 件数の行は実際の一致件数（Anime の1件）のままで、ピン留めした分は数えない。
     expect(screen.getByText("1 of 3 tags")).toBeDefined();
   });
 
@@ -749,7 +732,6 @@ describe("TagsPage", () => {
     await user.keyboard("{Enter}");
     await waitFor(() => expect(input.getAttribute("aria-busy")).toBe("true"));
 
-    // 送信中の Esc は無視される。
     await user.keyboard("{Escape}");
     expect(screen.getByRole("textbox", { name: 'New name for "旅行"' })).toBeDefined();
 
@@ -808,8 +790,6 @@ describe("TagsPage", () => {
     );
 
     hold.release?.();
-    // 「旅行」の改名が終わって初めて、Anime の改名を始められる。応答が
-    // すでに終わった「旅行」の改名を巻き戻すことは無い。
     expect(await screen.findByTitle("旅行2024")).toBeDefined();
     await user.click(within(animeRow).getByRole("button", { name: "Rename" }));
     expect(
@@ -885,7 +865,6 @@ describe("TagsPage の英語の文言", () => {
     await user.clear(search);
     await screen.findByTitle("旅行");
 
-    // 作成の行（理由と、送信の失敗）。
     await user.click(screen.getByRole("button", { name: /New tag/ }));
     const create = await screen.findByRole("textbox", { name: /New tag name/ });
     await user.type(create, "x".repeat(101));
@@ -897,7 +876,6 @@ describe("TagsPage の英語の文言", () => {
     expectCatalogTextOnly(document.body, userData);
     await user.keyboard("{Escape}");
 
-    // 改名の行と、その他の操作のメニュー。
     await user.click(within(rowOf("Anime")).getByRole("button", { name: /Rename/ }));
     await screen.findByRole("textbox", { name: /New name for/ });
     expectCatalogTextOnly(document.body, userData);
@@ -1092,8 +1070,7 @@ describe("TagsPage の英語の文言", () => {
     await user.click(within(rowOf("Anime")).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
-    // サーバーは整えた名前（前後の空白を除くだけ）を BINARY で照合するので、
-    // 前後に空白を付けて打った綴りでも、tagName は元の名前「ドラマ」になる。
+    // Server name matching trims whitespace but remains binary; errors return the canonical spelling.
     await user.type(input, "  ドラマ  ");
     await user.keyboard("{Enter}");
     expect(

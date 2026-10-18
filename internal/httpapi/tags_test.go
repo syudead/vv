@@ -13,17 +13,15 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// fakeTags はタグ管理の経路をテストするための決め打ちの実装である。
 type fakeTags struct {
 	tags []domain.Tag
 
 	operation string
 	lastID    int64
 	lastName  string
-	lastTag   *int64 // AddSynonymのmergeTagID
+	lastTag   *int64
 	err       error
 
-	// #267: 付け外し・要約・一覧のタグ引きの決め打ち。
 	lastVideoIDs  []int64
 	attachRef     domain.TagRef
 	attachApplied int
@@ -32,26 +30,20 @@ type fakeTags struct {
 	summary       domain.TagSummary
 	byContentKey  map[string][]domain.VideoTag
 
-	// 031: 却下した名前の一覧の決め打ち。nil なら nil を返す。
 	rejectedNames []string
-	// 036: 却下した名前の一覧に渡ったカーソルと件数。
-	lastCursor string
-	lastLimit  int
+	lastCursor    string
+	lastLimit     int
 
-	// 036: まとめての操作と確認の数の決め打ち。
 	lastBatchAction  domain.TagBatchAction
 	lastBatchKindID  int64
 	lastImpactAction domain.TagImpactAction
 	lastIDs          []int64
 	batchOutcome     domain.TagBatchOutcome
 	impact           domain.TagImpact
-	// mergeNotFound は MergeTags が NotFoundIDs として返す id。
-	mergeNotFound []int64
-	// lastListQuery は ListTags が受けた条件。listPage があれば ListTags はそれを返す。
-	lastListQuery domain.TagListQuery
-	listPage      *domain.TagPage
+	mergeNotFound    []int64
+	lastListQuery    domain.TagListQuery
+	listPage         *domain.TagPage
 
-	// 051: ListTagKinds が返す種類。
 	kinds []domain.TagKind
 }
 
@@ -68,8 +60,7 @@ func (f *fakeTags) ListTags(_ context.Context, query domain.TagListQuery) (domai
 
 func (f *fakeTags) CreateTag(_ context.Context, name string) (domain.Tag, error) {
 	f.operation, f.lastName = "create", name
-	// 実際の store.CreateTag と同じく、名前の規則違反を最初に検査する。これで
-	// 具体的な理由（空・制御文字・長さ超過）が message に出ることを確かめられる。
+	// Validate names first, matching the real store, to exercise specific error reasons.
 	if _, err := domain.NormalizeTagName(name); err != nil {
 		return domain.Tag{}, err
 	}
@@ -186,7 +177,6 @@ func (f *fakeTags) Summary(_ context.Context, videoIDs []int64) (domain.TagSumma
 	return f.summary, nil
 }
 
-// manualTag は手で付けただけのタグ1件を作る。
 func manualTag(id int64, name string) domain.VideoTag {
 	return domain.VideoTag{TagRef: domain.TagRef{ID: id, Name: name}, Manual: true}
 }
@@ -253,9 +243,6 @@ func TestCreateTagNameTakenReturnsConflict(t *testing.T) {
 	}
 }
 
-// TestTagNameTakenMessageDistinguishesOwnNameFromSynonym は、tag_name_taken の
-// message が「送った名前が衝突したタグ自身の元の名前か、そのシノニムか」を
-// 言い分けることを確かめる。
 func TestTagNameTakenMessageDistinguishesOwnNameFromSynonym(t *testing.T) {
 	t.Run("送った名前が衝突したタグ自身の元の名前", func(t *testing.T) {
 		fake := &fakeTags{err: &domain.TagNameConflict{Tag: domain.TagRef{ID: 5, Name: "Bar"}}}
@@ -277,9 +264,7 @@ func TestTagNameTakenMessageDistinguishesOwnNameFromSynonym(t *testing.T) {
 	})
 
 	t.Run("前後の空白を整えてから比較する", func(t *testing.T) {
-		// nameConflict.Tag.Name は常に整えた形（domain.NormalizeTagName の結果）で
-		// 保存されている。送った名前を整えずに比較すると、実際には自分の元の名前
-		// なのにシノニムだと誤って報告してしまう。
+		// Stored names are normalized; comparing raw input would incorrectly label whitespace variants as synonyms.
 		fake := &fakeTags{err: &domain.TagNameConflict{Tag: domain.TagRef{ID: 5, Name: "Bar"}}}
 		rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPost, "/api/tags", `{"name":"  Bar  "}`)
 		assertErrorBody(t, "自分の元の名前", rec.Code, rec.Body.Bytes(), wantError{
@@ -288,8 +273,6 @@ func TestTagNameTakenMessageDistinguishesOwnNameFromSynonym(t *testing.T) {
 	})
 
 	t.Run("自分自身の元の名前を自分のシノニムに登録", func(t *testing.T) {
-		// AddTagSynonym(id=5, name="Bar") で id=5 自身の元の名前が "Bar" のとき、
-		// store は自分自身を owner とする TagNameConflict を返す。この場合も「自分の名前」の文言になる。
 		fake := &fakeTags{err: &domain.TagNameConflict{Tag: domain.TagRef{ID: 5, Name: "Bar"}}}
 		rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPost, "/api/tags/5/synonyms",
 			`{"name":"Bar"}`)
@@ -389,8 +372,6 @@ func TestMergeTagsReturnsTagAndNotFoundIDs(t *testing.T) {
 	}
 }
 
-// 統合元がすべて無かったときも 200 で、tag は変わらない統合先、notFoundIds は全部。
-// NotFoundIDs が nil でも応答は [] にする。
 func TestMergeTagsWithOnlyMissingSourcesReturnsOK(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

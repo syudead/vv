@@ -8,17 +8,13 @@ import (
 	"github.com/syudead/vv/internal/artifacts"
 )
 
-// maxThumbnailBytes は判定に渡す代表サムネイルの大きさの上限である。代表サムネイルは
-// 長辺 640px の JPEG なので、通常はずっと小さい。
+// 640px JPEG thumbnails normally stay well below this classification input limit.
 const maxThumbnailBytes = 8 << 20
 
-// videoImageSource は生成物の置き場から代表サムネイルとシーク用プレビューのコマを読み、
-// app.VideoImageSource を満たす。
 type videoImageSource struct {
 	artifacts *artifacts.Store
 }
 
-// ThumbnailJPEG は内容の代表サムネイルを読む。
 func (t videoImageSource) ThumbnailJPEG(contentKey string) ([]byte, error) {
 	file, err := t.artifacts.ThumbnailFile(contentKey)
 	if err != nil {
@@ -35,7 +31,7 @@ func (t videoImageSource) ThumbnailJPEG(contentKey string) ([]byte, error) {
 	return data, nil
 }
 
-// SeekFramesJPEG はシーク用プレビューから動画全体に等間隔に n コマを選んで読む。
+// SeekFramesJPEG selects n frames evenly across the video.
 func (t videoImageSource) SeekFramesJPEG(contentKey string, n int) ([][]byte, error) {
 	return t.artifacts.SeekFrames(contentKey, n)
 }

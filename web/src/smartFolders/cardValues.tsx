@@ -13,12 +13,8 @@ import { subscribeServerEvents } from "../api/serverEvents";
 import { readSmartFolderCards } from "../api/smartFolders";
 import { type CardValue, chunks, latestAnswer, withAnswer } from "./cardValueRules";
 
-// スマートフォルダのカードの値。一覧の項目は要約だけを持ち、画面に入ったカードの値を
-// GET /api/smart-folders/cards でまとめて読む。
-
 interface CardValues {
   values: ReadonlyMap<number, CardValue>;
-  /** カード `id` が画面に入った。まだ求めていなければ値を読む。 */
   request: (id: number) => void;
 }
 
@@ -27,22 +23,17 @@ const CardValuesContext = createContext<CardValues | null>(null);
 const noValues: ReadonlyMap<number, CardValue> = new Map();
 
 /**
- * SmartFolderCardsProvider は一覧 1 つのスマートフォルダのカードの値を持つ。カードが画面に
- * 入るたびに求めた id を同じ描画の間だけためて、60 件ずつ 1 回の読み出しにする。`smartFolder`
- * の知らせが名指したフォルダのうち、すでに求めたものの値を、知らせ 1 つにつき 1 回だけ骨組み
- * なしで読み直す。つなぎ直したら求めたものをすべて読み直す。同じ id を重ねて読んだときは、
- * いちばん後に送った読み出しの答えだけを使う（先に送った読み出しが後から届いても値を戻さない）。
- * 失敗した読み出しは値を変えない（カードは骨組みのまま、次の知らせで読み直す）。
+ * Batch visible-card IDs in groups of 60; events refresh previously requested IDs without
+ * skeletons, and reconnect refreshes all. Apply only each ID's latest request and retain values on
+ * failure.
  */
 export function SmartFolderCardsProvider({ children }: { children: ReactNode }) {
   const [values, setValues] = useState<ReadonlyMap<number, CardValue>>(noValues);
-  /** 一度でも求めた id（画面に入ったカード）。 */
   const asked = useRef(new Set<number>());
-  /** 次の読み出しにまとめる id。 */
   const queued = useRef<number[]>([]);
   const flushTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const controllers = useRef(new Set<AbortController>());
-  /** id ごとの最後の読み出しの番号。遅れて届いた古い答えで新しい値を戻さない。 */
+  /** Per-ID request generations prevent late responses from rolling values back. */
   const latestRead = useRef(new Map<number, number>());
   const readCount = useRef(0);
 
@@ -110,11 +101,7 @@ export function SmartFolderCardsProvider({ children }: { children: ReactNode }) 
   return <CardValuesContext value={context}>{children}</CardValuesContext>;
 }
 
-/**
- * useSmartFolderCardValue はカード `id` の値と、カードの要素に付ける `ref` である。要素が
- * 画面に入ったら値を求める。値が届くまでは undefined。SmartFolderCardsProvider の外では
- * 何も求めず、値はいつも undefined。
- */
+/** Outside SmartFolderCardsProvider, never request data and always return undefined. */
 export function useSmartFolderCardValue(id: number) {
   const context = useContext(CardValuesContext);
   const [node, setNode] = useState<Element | null>(null);

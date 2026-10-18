@@ -3,15 +3,7 @@ import path from "node:path";
 
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-// フォルダ画面（親 Issue #145・#195）のうち、本物のサーバーとブラウザでしか
-// 確かめられないものだけを流す（docs/design-docs/web-testing.md）。長い名前の三幅での
-// 横のはみ出しと、取り込んだフォルダをキーボードでたどるときのフォーカスの見え方である。
-// 並び順・パンくず・空の案内・検索・絞り込み・取り込みでフォルダが無くなったときの案内の
-// 振る舞いは Vitest（src/folders/FolderPage、
-// src/folders/folderPath）が、子フォルダの自然順・直下だけの一覧・配下の検索は
-// Go のテスト（internal/domain/folder_test.go、internal/httpapi/folders_test.go、
-// internal/store/folders_test.go）が確かめる。
-// 構成は run-e2e.mjs が generateFolderFixtures で作る。
+// Verify long-name overflow and keyboard focus with real layout; lower-level suites cover folder behavior. Fixtures come from generateFolderFixtures; see docs/design-docs/web-testing.md.
 
 interface MediaFolder {
   id: number;
@@ -54,7 +46,7 @@ async function waitForLibrary(request: APIRequestContext, scanId: number) {
       { timeout: 60_000 },
     )
     .toBe("finished");
-  // 取り込めなかったファイルがあれば、ここで結果を見てすぐに落とす。
+  // Fail immediately if any fixture failed to import.
   const scan = await currentScan();
   expect({ state: scan.state, failed: scan.issues.failed }).toEqual({
     state: "done",
@@ -62,7 +54,6 @@ async function waitForLibrary(request: APIRequestContext, scanId: number) {
   });
 }
 
-/** tabUntil は条件を満たす要素にフォーカスが来るまで Tab を押す。 */
 async function tabUntil(
   page: Page,
   matches: (element: {
@@ -82,7 +73,7 @@ async function tabUntil(
         label: element?.getAttribute("aria-label") ?? "",
         href: element?.getAttribute("href") ?? "",
         text: element?.textContent?.trim() ?? "",
-        // 輪郭は要素自身か、カードなら外側の箱（overflow-hidden で切れるため）に出る。
+        // Cards draw focus on the outer wrapper to avoid clipping by overflow-hidden.
         visible:
           (element?.matches(":focus-visible") ?? false) &&
           [element, element?.closest("article")].some((box) => {

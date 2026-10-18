@@ -16,33 +16,23 @@ import { foldForMatch } from "../../lib/foldForMatch";
 import { withoutScheme } from "../WorkInfo";
 import type { RowState } from "./fetchRules";
 
-// 比較の段の作品の詳細の行。今の値はページの workInfo から、取得した値は取得の結果と照合の答えから作る。
-
-/** DetailField は題名とタグ以外の、作品の詳細の行の項目である。 */
 export type DetailField = Exclude<WorkInfoField, "title" | "tags" | "cover">;
 
-/** CreditKind は人物・団体の行の実体の種類である。 */
 export type CreditKind = "person" | "organization";
 
-/**
- * ChipMark は取得した側のチップの印である。`onVideo` は動画にすでにある件、`new` は反映で
- * 作られる件、`notLinked` は複数に当たり反映されない件で、無ければ足される既存の件か値である。
- */
+/** notLinked marks ambiguous matches that cannot be applied; unmarked entries add existing entities or values. */
 export type ChipMark = "onVideo" | "new" | "notLinked";
 
-/** DetailChip は一覧の行に並べる 1 件である。 */
 export interface DetailChip {
   key: string;
-  /** チップに出す名前。既存の実体に当たった件はその今の名前。 */
+  /** Use the current entity name when a fetched entry matches an existing entity. */
   name: string;
   mark?: ChipMark;
-  /** 既存の実体に当たった件で、取得した綴りが今の名前と違うときの取得した名前。 */
+  /** Original fetched spelling when it differs from the matched entity's current name. */
   fetchedAs?: string;
-  /** 省略せずに見せる値（URL の全体）。 */
   full?: string;
 }
 
-/** SingleRow は品番・説明・日付の行である。 */
 export interface SingleRow {
   kind: "single";
   state: RowState;
@@ -50,13 +40,12 @@ export interface SingleRow {
   fetched?: string;
 }
 
-/** ListRow は人物・団体・リンク・ID の行である。 */
 export interface ListRow {
   kind: "list";
   state: RowState;
   now: DetailChip[];
   fetched: DetailChip[];
-  /** 動画にまだ無い件の数（`{n} new`）。`notLinked` は数えない。 */
+  /** Count new entities, excluding unresolved matches. */
   fresh: number;
 }
 
@@ -96,19 +85,16 @@ function isOrganizationField(field: DetailField): field is OrganizationField {
   return field in ORGANIZATION_FIELDS;
 }
 
-/** isDetailField は作品の詳細の行（題名・タグ・カバー画像以外）かを返す。 */
 export function isDetailField(field: WorkInfoField): field is DetailField {
   return field !== "title" && field !== "tags" && field !== "cover";
 }
 
-/** creditKind は人物・団体の行の実体の種類で、それ以外の行なら undefined である。 */
 export function creditKind(field: WorkInfoField): CreditKind | undefined {
   if (!isDetailField(field)) return undefined;
   if (isPersonField(field)) return "person";
   return isOrganizationField(field) ? "organization" : undefined;
 }
 
-/** chipHint は取得した側のチップのツールチップである（ui-design「Words」）。 */
 export function chipHint(
   chip: DetailChip,
   kind: CreditKind | undefined,
@@ -117,13 +103,12 @@ export function chipHint(
   if (chip.mark === "new") return text.newHint;
   if (chip.mark === "notLinked") return text.notLinkedHint[kind ?? "person"];
   if (chip.fetchedAs === undefined) return undefined;
-  // 動画にある件も、別名で当たったなら取得した綴りを確かめられるようにする。
+  // Preserve fetched aliases in tooltips even for entities already on the video.
   return chip.mark === "onVideo"
     ? text.onVideoFetchedAs(chip.fetchedAs)
     : text.fetchedAs(chip.fetchedAs);
 }
 
-/** isDateRow は日付の行かを返す。 */
 export function isDateRow(field: WorkInfoField): boolean {
   return isDetailField(field) && isDateField(field);
 }
@@ -136,7 +121,6 @@ const EMPTY_INFO: WorkInfo = {
   externalIds: [],
 };
 
-/** videoWorkInfo はページの動画の作品情報で、無ければ空である。 */
 export function videoWorkInfo(video: Video): WorkInfo {
   return video.workInfo ?? EMPTY_INFO;
 }
@@ -152,10 +136,7 @@ function adds(chip: DetailChip): boolean {
   return chip.mark === undefined || chip.mark === "new";
 }
 
-/**
- * listState は一覧の行の状態である。足せる件があれば選べ、無くて結び付かない件があれば
- * `nothing`（Nothing to add）、すべて動画にあれば `same` である。
- */
+/** Selectable when additions exist; unresolved-only rows are nothing, and fully present rows are same. */
 function listState(fetched: readonly DetailChip[]): RowState {
   if (fetched.length === 0) return "missing";
   if (fetched.some(adds)) return "differs";
@@ -170,10 +151,6 @@ function listRow(
   return { kind: "list", state: listState(fetched), now, fetched, fresh };
 }
 
-/**
- * creditChip は取得した人物・団体の 1 件を照合の答えでチップにする。既存の実体に当たれば
- * その今の名前で、その役割にすでに結び付いていれば `onVideo` である。
- */
 function creditChip(
   entry: { name: string; match: WorkInfoMatch },
   linked: ReadonlySet<number>,
@@ -194,16 +171,12 @@ function creditChip(
 
 type FetchedCredit = { name: string; externalIds: ExternalId[]; match: WorkInfoMatch };
 
-/** NewCreditGroup は反映で 1 つの実体にまとまる作る件の外部 ID と、最初の件の名前の照合形である。 */
 interface NewCreditGroup {
   ids: Set<string>;
   fold: string;
 }
 
-/**
- * joinNewCredit は作る件 entry を、反映（internal/domain/work_info_merge.go の createdIndex）と
- * 同じく外部 ID を共有するか、無ければ名前の照合形が等しい作る件にまとめる。新しい実体なら真を返す。
- */
+/** Match backend createdIndex grouping by shared external ID, or normalized name when no ID applies. */
 function joinNewCredit(groups: NewCreditGroup[], entry: FetchedCredit): boolean {
   const ids = entry.externalIds.map(idKey);
   const fold = foldForMatch(entry.name.trim());
@@ -218,10 +191,7 @@ function joinNewCredit(groups: NewCreditGroup[], entry: FetchedCredit): boolean 
   return false;
 }
 
-/**
- * freshCredits は動画にまだ無い実体の数である。反映は同じ既存の実体を一度しか結ばず、作る件も
- * 同じ実体にまとめるので、足せる件を実体ごとに 1 つと数える。
- */
+/** Count distinct entities, matching backend deduplication of existing and newly created credits. */
 function freshCredits(
   fetched: readonly FetchedCredit[],
   chips: readonly DetailChip[],
@@ -323,7 +293,6 @@ function creditDetailRow(
   );
 }
 
-/** detailRow は作品の詳細の行 field を、今の作品情報 info と取得の結果 result から作る。 */
 export function detailRow(
   field: DetailField,
   info: WorkInfo,

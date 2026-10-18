@@ -18,9 +18,6 @@ import { isTagNotFound, overLimitMessage } from "./selectionErrors";
 import { buildAddOptions } from "./tagChoices";
 import TagCommand from "../ui/TagCommand";
 
-/**
- * AddTagPopover は選択バーの「タグを付ける」の中身である。
- */
 export default function AddTagPopover({
   open,
   onOpenChange,
@@ -45,7 +42,6 @@ export default function AddTagPopover({
     return unsubscribe;
   }, []);
 
-  // 開くたびに共有の一覧を確かめ直す（直前に届いた一覧があればそれを使う）。
   useEffect(() => {
     if (!open) return;
     setValue("");
@@ -53,8 +49,7 @@ export default function AddTagPopover({
     revalidateTags().catch(() => undefined);
   }, [open]);
 
-  // 開いている間に選択が増えて上限を超えたら、候補も送信も止める（親の
-  // SelectionBar がこのポップオーバー自体を閉じるまでの間の保険）。
+  // Guard the interval before the parent closes an over-limit popover.
   const overLimit = selectedIds.length > maxVideoTagsSelection;
 
   const { options, exactOption } = buildAddOptions(allTags ?? [], value);
@@ -69,8 +64,7 @@ export default function AddTagPopover({
 
   function submit(tag: { id: number; name: string } | { name: string }) {
     setErrorMessage(null);
-    // 送る直前に selectedIds の最新の件数を確かめる。ポップオーバーを開いた
-    // ままの間に選択が増えて上限を超えていれば、静かに送らず理由を示す。
+    // Recheck the current selection at submission; it may have grown while open.
     if (selectedIds.length > maxVideoTagsSelection) {
       setErrorMessage(overLimitMessage());
       return;
@@ -107,8 +101,7 @@ export default function AddTagPopover({
         event.preventDefault();
         if (!overLimit) inputRef.current?.focus();
       }}
-      // Esc はポップオーバーだけを閉じ、選択は残す。既定を止めて自分で閉じ、一覧の
-      // Esc（選択の解除）に「使った」と伝える。
+      // Consume Escape so it closes this popover without clearing the list selection.
       onEscapeKeyDown={(event) => {
         event.preventDefault();
         onOpenChange(false);

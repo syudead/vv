@@ -9,9 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインの取得の結果の反映。
-
-// approvedPlugin は名前 name・ダイジェスト digest のプラグインを保存して承認する。
 func approvedPlugin(t *testing.T, db *DB, name, digest string) domain.WorkInfoPlugin {
 	t.Helper()
 	added, _ := savePlugin(t, db.WorkInfoPlugins(), pluginUpload(name, digest))
@@ -47,8 +44,6 @@ func allTagCount(t *testing.T, db *DB) int {
 	return n
 }
 
-// 題名とタグを選ぶと、表示名が変わり、タグが仮のタグとして付き、却下した名前は付かずに返る。選んだ動画の
-// ほかは変わらない。
 func TestApplyFetchedWorkInfoWritesTitleAndTentativeTags(t *testing.T) {
 	ctx := context.Background()
 	db, ids := overrideFixture(t)
@@ -93,8 +88,6 @@ func TestApplyFetchedWorkInfoWritesTitleAndTentativeTags(t *testing.T) {
 	}
 }
 
-// 束のメンバーにタグを反映すると、タグは束の鍵に付くので、束の全メンバーに動画の知らせが届く。
-// 題名だけなら反映先だけである。
 func TestApplyFetchedWorkInfoNotifiesEveryBundleMemberOfTags(t *testing.T) {
 	ctx := context.Background()
 	db, ids := versionFixture(t)
@@ -108,7 +101,6 @@ func TestApplyFetchedWorkInfoNotifiesEveryBundleMemberOfTags(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("ApplyFetchedWorkInfo: %v", err)
 	}
-	// 適用の記録の知らせが確定の直後に先に届く。
 	want := []domain.Event{domain.ActivityChanged{}, domain.VideoOverrideChanged{VideoID: ids["b"]},
 		domain.VideoOverrideChanged{VideoID: ids["a"]}}
 	if !slices.Equal(recorder.events, want) {
@@ -127,7 +119,6 @@ func TestApplyFetchedWorkInfoNotifiesEveryBundleMemberOfTags(t *testing.T) {
 	}
 }
 
-// タグだけを選ぶと表示名は変わらない。
 func TestApplyFetchedWorkInfoTagsOnlyKeepsTheDisplayName(t *testing.T) {
 	ctx := context.Background()
 	db, ids := overrideFixture(t)
@@ -143,9 +134,7 @@ func TestApplyFetchedWorkInfoTagsOnlyKeepsTheDisplayName(t *testing.T) {
 	}
 }
 
-// app の確認の後で反映の取引の前にプラグインが差し替えられたか、承認を取り消されたか、消されると、
-// 取引の中の読み直しで work_info_fetch_stale になり、何も書かない（R-8）。同じダイジェストに戻して再承認しても、
-// 行の世代が変わるので古い結果のままである。
+// Revoking and reapproving the same digest must invalidate the fetched generation; recheck it inside the transaction.
 func TestApplyFetchedWorkInfoRechecksThePluginInsideTheTransaction(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -211,7 +200,6 @@ func TestApplyFetchedWorkInfoRechecksThePluginInsideTheTransaction(t *testing.T)
 	}
 }
 
-// 失敗した反映は表示名もタグも残さない。動画が無ければ not_found、題名が規則に合わなければその誤りである。
 func TestApplyFetchedWorkInfoFailureWritesNeitherField(t *testing.T) {
 	ctx := context.Background()
 	db, ids := overrideFixture(t)
@@ -235,8 +223,7 @@ func TestApplyFetchedWorkInfoFailureWritesNeitherField(t *testing.T) {
 	}
 }
 
-// 自動タグ付けが提案した付与と同じタグを取り込んでも、提案は確定せずに残る。取り込みは仮の付け方
-// だからである（Issue #968 の要件 6、docs/design-docs/auto-tagging.md）。
+// Fetched tentative tags must not promote automatic suggestions.
 func TestApplyFetchedWorkInfoKeepsASuggestedTagSuggested(t *testing.T) {
 	ctx := context.Background()
 	db, ids := overrideFixture(t)
@@ -259,7 +246,6 @@ func TestApplyFetchedWorkInfoKeepsASuggestedTagSuggested(t *testing.T) {
 	}
 }
 
-// 行とモジュールは同じ読み出しで返り、問題のある行のモジュールは無い。
 func TestWorkInfoPluginModuleReturnsTheRowAndBytes(t *testing.T) {
 	ctx := context.Background()
 	s := migratedDB(t).WorkInfoPlugins()
