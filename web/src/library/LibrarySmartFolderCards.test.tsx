@@ -68,6 +68,7 @@ function install(items: LibraryItem[]) {
           cards: [
             folderCard(9, "猫", {
               videoCount: 4,
+              favorite: favoriteBodies.length > 0,
               previews: [
                 { videoId: 10, thumbnailUrl: "/thumb10", title: "Harbour" },
                 { videoId: 11, thumbnailUrl: "/thumb11", title: "Ridge" },
@@ -290,6 +291,13 @@ describe("ライブラリのスマートフォルダのカード", () => {
     expect(favoriteBodies).toEqual([
       { videoIds: [], groupIds: [], smartFolderIds: [9], favorite: true },
     ]);
+    // The server emits no event for favorites, so the card re-reads its values.
+    await waitFor(() => expect(cardRequests).toEqual(["9", "9"]));
+    expect(
+      (
+        await within(card).findByRole("button", { name: 'Favorite smart folder "猫"' })
+      ).getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 
   it("「すべて選択」は応答の smartFolderIds のフォルダも選ぶ", async () => {
