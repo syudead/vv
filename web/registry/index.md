@@ -40,6 +40,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `empty`                    | Component     | The empty state of a list or section                                         |
 | `empty-state`              | State         | Nothing to show, and the action that fills it                                |
 | `error-state`              | State         | The body failed to load, with Retry                                          |
+| `face-grid-example`        | Block         | Copy to start a grid of people's face cards                                  |
 | `fact-list`                | Section       | Term and value pairs                                                         |
 | `favorite-toggle`          | vv component  | The favorite heart: mark and toggle                                          |
 | `field`                    | Component     | Label, control, description and error of one form field                      |

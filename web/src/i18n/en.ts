@@ -588,6 +588,7 @@ export const en = {
         editorDialog: "Editor dialog",
         formPage: "Form page",
         profilePage: "Profile page",
+        faceGrid: "Face grid",
         groupedList: "Grouped list",
         stepsPage: "Steps page",
         cardList: "Card list",
@@ -763,6 +764,14 @@ export const en = {
       profilePageRoles: "Role",
       profilePageAll: "All",
       profilePageDirector: "Director",
+      faceGridLabel: "People",
+      faceGridLoading: "Loading people",
+      faceGridPeople: [
+        { name: "Hana Mori", meta: "34 · 12 videos" },
+        { name: "Ren Aoki", meta: "3 videos" },
+        { name: "Mio Sato", meta: "28–29 · 5 videos" },
+        { name: "Kaito Fujiwara Takahashi", meta: "1 video" },
+      ],
       save: "Save",
       home: "Home",
       steps: "Setup steps",
@@ -1554,6 +1563,19 @@ export const en = {
       submitting: "Deleting…",
     },
     deleted: (name: string) => `Deleted "${name}"`,
+    peopleGrid: {
+      youngestFirst: "Youngest first",
+      oldestFirst: "Oldest first",
+      noFavorites: "No favorite people yet",
+      cardMeta: (age: string | null, count: number) =>
+        age === null ? videos(count) : `${age} · ${videos(count)}`,
+      newDialog: {
+        title: "New person",
+        submit: "Create",
+        submitting: "Creating…",
+        failed: (reason: string) => `Couldn't create the person: ${reason}`,
+      },
+    },
     personPage: {
       profile: "Person",
       loading: "Loading…",

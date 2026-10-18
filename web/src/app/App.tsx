@@ -25,7 +25,7 @@ const SettingsPage = await deferredRoute(
 );
 const TagsPage = await deferredRoute(() => import("../tags/TagsPage"), "/tags");
 const PeoplePage = await deferredRoute(
-  () => import("../credits/PeoplePage"),
+  () => import("../credits/people/PeoplePage"),
   (pathname) => matchesExactPath(pathname, "/people"),
 );
 const PersonPage = await deferredRoute(

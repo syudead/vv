@@ -7,6 +7,7 @@ import { CenteredFormExample } from "./blocks/centered-form-example";
 import { ConfirmDialogExample } from "./blocks/confirm-dialog-example";
 import { DetailPageExample } from "./blocks/detail-page-example";
 import { EditorDialogExample } from "./blocks/editor-dialog-example";
+import { FaceGridExample } from "./blocks/face-grid-example";
 import { FormDialogExample } from "./blocks/form-dialog-example";
 import { FormPageExample } from "./blocks/form-page-example";
 import { GroupedListExample } from "./blocks/grouped-list-example";
@@ -188,6 +189,16 @@ export default function Patterns() {
         items={["profile-page", "profile-page-example", "person-face"]}
       >
         <ProfilePageExample />
+      </Pattern>
+      <Pattern
+        id="face-grid"
+        name={p.names.faceGrid}
+        items={["card-grid", "loading-state", "person-face", "face-grid-example"]}
+      >
+        <div className="flex flex-col gap-6 p-4">
+          <FaceGridExample />
+          <FaceGridExample loading />
+        </div>
       </Pattern>
     </div>
   );

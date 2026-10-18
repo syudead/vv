@@ -101,10 +101,11 @@ rows are the body of a `DataTable`, and rows outside the drawn range are kept
 as empty spacer rows so the columns stay aligned. The page passes the fixed top
 bar's height (`--spacing-navbar`) to the virtualizer and to
 `scroll-padding-top`, so a focused row never hides under the top bar.
-The people and organizations admin lists (`/people`, `/organizations`) are
-built the same way from the same pieces in `web/src/tags/`: pages of 100
-read from the server, rows drawn near the viewport, and local updates after
-rename, details, merge and delete.
+The organizations admin list (`/organizations`) is built the same way from
+the same pieces in `web/src/tags/`: pages of 100 read from the server, rows
+drawn near the viewport, and local updates after rename, details, merge and
+delete. The people list (`/people`) shares the paging but is a grid of face
+cards ([people.md](people.md#the-people-grid)).
 
 ### The window owns scrolling
 
@@ -199,11 +200,11 @@ page's `h1` is for screen readers only and no visible title repeats it
 The tags page is an `AdminTablePage`: a centered `max-w-4xl` column whose
 header (or, while rows are selected, the selection bar) and tabs stick under
 the top bar, and the table's column header sticks right under them. The
-people and organizations pages are one `AdminTablePage` component that takes
-the kind; they have the same header and column header, without the filter,
-tabs, checkbox column and selection bar, and a details dialog (aliases,
-external IDs and, for an organization, the parent) in place of the synonyms
-dialog.
+organizations page is an `AdminTablePage` with the same header and column
+header, without the filter, tabs, checkbox column and selection bar, and a
+details dialog (aliases, external IDs and the parent) in place of the synonyms
+dialog. The people page is a `ListPage` of face cards with the search, the
+favorites filter and the sort in the top bar.
 On the library and folder pages, changing the search, a filter, a tag or the
 sort order scrolls the page back to the top, so the new list starts from its
 first card. Returning from the player still restores the saved position.

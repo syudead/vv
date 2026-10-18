@@ -112,7 +112,7 @@ export function fetchCreditPage(kind: CreditKind) {
 
 export interface CreditListCriteria {
   query: string;
-  // The screen offers the sorts tags share; the API's person-only age sorts are not chosen here.
+  // The sorts tags share; the people grid adds the age sorts in its own criteria.
   sort: TagListSort;
 }
 

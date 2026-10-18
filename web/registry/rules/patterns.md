@@ -83,6 +83,19 @@ the page starts with the header. The body is the only part that changes
 between states: the header and the toolbar stay where they are while the body
 shows loading, empty or an error.
 
+### Face grid
+
+A list of people is a `CardGrid size="face"`: cards at least `card-face` wide,
+so a 360px screen holds three and 1280px with the full sidebar eight or nine.
+A card is one link (`rounded-md`, `p-1`, `hover:shadow-card-hover`) holding a
+`PersonFace` `card`, then the name (`text-sm font-medium`, one line, centred,
+truncated, the full name in `title`) and a meta line (`text-xs`, muted,
+centred). The favorite heart is the only control: a `FavoriteToggle`
+`card` in a `PersonFaceMark` `top-end`, outside the link. Its loading state
+is `LoadingState layout="grid" size="face"`, circles with a line under them.
+Use it only for people; videos, folders and groups keep their card sizes.
+Example block `face-grid-example`.
+
 ## Admin table page
 
 Item `admin-table-page`. `AdminTablePage` is one column, at most `max-w-4xl`,
@@ -348,7 +361,7 @@ must be taken in order and the screen is nothing else; one form is a
 | `PageSection`  | `page-section`  | A titled card (`h2`, `text-lg`); each direct child is one row, divided by a line and padded by the section                                                                                                                                                                                                                                                                                                                                                                                  |
 | `FormRow`      | `form-row`      | A setting: label and description on the left, one control on the right; stacked below `sm`                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `FactList`     | `fact-list`     | Term and value pairs in two columns                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `CardGrid`     | `card-grid`     | Cards at least `card-0` to `card-3` wide, stretched to fill the row. Each card occupies one column, including groups and smart folders                                                                                                                                                                                                                                                                                                                                                      |
+| `CardGrid`     | `card-grid`     | Cards at least `card-0` to `card-3` wide, or `card-face` for face cards, stretched to fill the row. Each card occupies one column, including groups and smart folders                                                                                                                                                                                                                                                                                                                       |
 | `GroupedList`  | `grouped-list`  | Rows under headings (`h2`, `text-sm font-semibold`, with an optional `detail` after a `·` in `text-xs` muted on the same line) that stick under the top bar while their group scrolls; each row `py-2` on the page background with no card, no line and no horizontal padding, `gap-2` between a heading and its rows, and groups `gap-6` apart                                                                                                                                             |
 | `CardList`     | `card-list`     | One-line cards stacked `gap-2` apart, each on `muted` with a `border` line, `rounded-lg`, `px-4`, at least `activity-card` high, in one of four tones (`default`, `primary`, `destructive`, `warning`); an icon, a title truncated first, a `badge` never truncated, a `detail` pushed right and truncated after the title, then a time column at least `activity-time` wide that never wraps and an actions column of fixed width; below `lg` two lines with a short time after the detail |
 | `JumpList`     | `jump-list`     | A `ToggleGroup type="single"` of jump targets in groups divided by `Separator`s; from `lg` a vertical list of full-width, left-aligned `sm` toggles in the muted colour under an `h2` (`text-sm font-semibold`) with an optional `action` after a last divider, and below `lg` one horizontally scrolling line of outlined `sm` chips with the heading for screen readers only and no `action`                                                                                              |
@@ -422,13 +435,13 @@ control }`: inline, the controls stand without a visible name, so each needs
 Every list, table and section shows its data or exactly one of these blocks,
 in the body slot of its skeleton, so the header and the toolbar never move.
 
-| State            | Block                            | Shows                                                                                                                      |
-| ---------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Loading          | `LoadingState` (`loading-state`) | `Skeleton` shapes of the final layout: `grid` cards, `table` rows, `grouped` rows under a heading, `cards` of a `CardList` |
-| Empty            | `EmptyState` (`empty-state`)     | An icon, a title saying why, a description, and the action that fills it when the viewer can take it                       |
-| Error            | `ErrorState` (`error-state`)     | A `destructive` `Alert`: what failed, and `Retry` when retrying can help                                                   |
-| Loading more     | `LoadMoreRow` (`load-more-row`)  | The content, then a `Spinner` row at the end                                                                               |
-| Load more failed | `LoadMoreRow` (`load-more-row`)  | The content kept, then an `Alert` row with `Retry`, which requests the same page again                                     |
+| State            | Block                            | Shows                                                                                                                                                        |
+| ---------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Loading          | `LoadingState` (`loading-state`) | `Skeleton` shapes of the final layout: `grid` cards (face circles with `size="face"`), `table` rows, `grouped` rows under a heading, `cards` of a `CardList` |
+| Empty            | `EmptyState` (`empty-state`)     | An icon, a title saying why, a description, and the action that fills it when the viewer can take it                                                         |
+| Error            | `ErrorState` (`error-state`)     | A `destructive` `Alert`: what failed, and `Retry` when retrying can help                                                                                     |
+| Loading more     | `LoadMoreRow` (`load-more-row`)  | The content, then a `Spinner` row at the end                                                                                                                 |
+| Load more failed | `LoadMoreRow` (`load-more-row`)  | The content kept, then an `Alert` row with `Retry`, which requests the same page again                                                                       |
 
 ```mermaid
 stateDiagram-v2

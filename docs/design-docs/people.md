@@ -162,6 +162,29 @@ never answers `304` to the removed face's `ETag`.
 A merge keeps the target's face; a target without one takes the face of the
 first source in `sourceIds` order that has one.
 
+## The people grid
+
+`/people` is a `ListPage` of round face cards
+([patterns.md, Face grid](../../web/registry/rules/patterns.md#face-grid)),
+because people are found by face. A card is one link to the person page with
+the face, the name and `34 · 12 videos`, the age computed as on the person
+page ([Ages are computed in the browser](#ages-are-computed-in-the-browser)),
+and the favorite heart outside the link. Renaming, merging and deleting moved
+to the person page, so a card has no other control.
+
+The grid reads `GET /api/people` 100 at a time with the shared paging of the
+admin lists ([library-ui.md](library-ui.md)), and asks for the next page when
+the end of the grid comes into view. The search, `favorite=true` and the sort,
+including `ageAsc` and `ageDesc`, are sent to the server and kept in the URL;
+the sort is also remembered per browser. `New person` asks for the name in a
+dialog and opens the new person's page. Organizations keep the table.
+
+| Rejected                      | Why                                                                          |
+| ----------------------------- | ---------------------------------------------------------------------------- |
+| Cards inside `AdminTablePage` | The design system keeps cards out of that skeleton                           |
+| A virtualized grid            | Library card grids are not virtualized, and the list pages 100 at a time     |
+| Row actions on a card         | A card is one link; the person page holds the actions with room to confirm |
+
 ## The person page
 
 `/people/:id` shows one person in a `ProfilePage`
