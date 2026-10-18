@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -107,5 +108,25 @@ func TestDeletePersonRemovesTheFavorite(t *testing.T) {
 	}
 	if got := favoriteRowCount(t, db, "person_favorites"); got != 0 {
 		t.Errorf("削除のあとの person_favorites の行 = %d, want 0", got)
+	}
+}
+
+func TestPersonOnlyFavoriteChangeNamesNoSmartFolder(t *testing.T) {
+	db := migratedDB(t)
+	person := createPerson(t, db, "P")
+	videoID := upsertAll(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 0))[fixturePath("/media/a.mp4")]
+	folder := createSmartFolder(t, db, "旅", 0)
+	recorder := &eventRecorder{}
+	db.PublishTo(recorder)
+
+	favoritePeople(t, db, true, person.ID)
+	if got := smartFolderNotices(recorder); len(got) != 0 {
+		t.Fatalf("人物だけの変更の notices = %+v, want none", got)
+	}
+
+	setFavorites(t, db, domain.FavoriteChange{PersonIDs: []int64{person.ID}, VideoIDs: []int64{videoID}, Favorite: false})
+	want := []domain.SmartFoldersChanged{{IDs: []int64{folder.ID}}}
+	if got := smartFolderNotices(recorder); !reflect.DeepEqual(got, want) {
+		t.Fatalf("動画を含む変更の notices = %+v, want %+v", got, want)
 	}
 }

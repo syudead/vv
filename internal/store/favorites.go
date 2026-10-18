@@ -93,7 +93,9 @@ func (s *FavoriteStore) SetFavorites(ctx context.Context, change domain.Favorite
 		}
 	}
 
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
+	// No smart rule reads a person favorite, so a people-only change refreshes no folder.
+	matched := len(change.VideoIDs)+len(change.GroupIDs)+len(change.SmartFolderIDs) > 0
+	if err := s.db.commitMatchChangeIf(ctx, tx, matched); err != nil {
 		return domain.FavoriteApplied{}, fmt.Errorf("cannot update favorites: %w", err)
 	}
 	return domain.FavoriteApplied{Videos: videos, Groups: len(groups), SmartFolders: len(folders)}, nil
