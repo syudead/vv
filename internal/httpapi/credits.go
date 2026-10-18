@@ -399,7 +399,7 @@ func toAPIPerson(credit domain.Credit) gen.Person {
 	return gen.Person{
 		Id: credit.ID, Name: credit.Name, Aliases: toAPIAliases(credit.Aliases),
 		ExternalIds: toAPIExternalIDs(credit.ExternalIDs), Profile: toAPIProfile(credit.Profile),
-		VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,
+		ImageRevision: optionalPositive(credit.ImageRevision), VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,
 	}
 }
 

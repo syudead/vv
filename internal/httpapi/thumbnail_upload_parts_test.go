@@ -47,7 +47,7 @@ func TestReadUploadPartErrors(t *testing.T) {
 func TestReadUploadImagePartMapsBodyLimit(t *testing.T) {
 	srv := &server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	rec := httptest.NewRecorder()
-	if _, ok := srv.readUploadImagePart(rec, errReader{&http.MaxBytesError{Limit: thumbnailUploadMaxBody}}); ok {
+	if _, ok := srv.readUploadImagePart(rec, errReader{&http.MaxBytesError{Limit: thumbnailUploadMaxBody}}, srv.thumbnailUploadError); ok {
 		t.Fatal("oversized body was accepted")
 	}
 	assertErrorBody(t, "body limit", rec.Code, rec.Body.Bytes(), wantError{

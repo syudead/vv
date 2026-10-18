@@ -619,6 +619,9 @@ const (
 	ErrorReasonOrganizationParentCycle       ErrorReason = "organization_parent_cycle"
 	ErrorReasonOutputTooLarge                ErrorReason = "output_too_large"
 	ErrorReasonPasswordLength                ErrorReason = "password_length"
+	ErrorReasonPersonImageInvalid            ErrorReason = "person_image_invalid"
+	ErrorReasonPersonImageNotFound           ErrorReason = "person_image_not_found"
+	ErrorReasonPersonImageTooLarge           ErrorReason = "person_image_too_large"
 	ErrorReasonPersonNotFound                ErrorReason = "person_not_found"
 	ErrorReasonProbeInfoMissing              ErrorReason = "probe_info_missing"
 	ErrorReasonRelativeDirectoryPath         ErrorReason = "relative_directory_path"
@@ -750,6 +753,12 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonOutputTooLarge:
 		return true
 	case ErrorReasonPasswordLength:
+		return true
+	case ErrorReasonPersonImageInvalid:
+		return true
+	case ErrorReasonPersonImageNotFound:
+		return true
+	case ErrorReasonPersonImageTooLarge:
 		return true
 	case ErrorReasonPersonNotFound:
 		return true
@@ -3486,7 +3495,10 @@ type Person struct {
 	// ExternalIds Ordered by (source, value).
 	ExternalIds []ExternalId `json:"externalIds"`
 	Id          int64        `json:"id"`
-	Name        string       `json:"name"`
+
+	// ImageRevision Present only when the person has a face; changes with every change of the face and is never reused. Load the face from /api/people/{id}/image?v={imageRevision}.
+	ImageRevision *PersonImageRevision `json:"imageRevision,omitempty"`
+	Name          string               `json:"name"`
 
 	// Profile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
 	Profile PersonProfile `json:"profile"`
@@ -3494,6 +3506,9 @@ type Person struct {
 	// VideoCount Visible videos linked to this person in any role.
 	VideoCount int `json:"videoCount"`
 }
+
+// PersonImageRevision Present only when the person has a face; changes with every change of the face and is never reused. Load the face from /api/people/{id}/image?v={imageRevision}.
+type PersonImageRevision = int64
 
 // PersonList Person form of the CreditList contract.
 type PersonList struct {
@@ -4529,6 +4544,12 @@ type UpdateVersionJudgingSettingsRequest struct {
 	Enabled bool `json:"enabled"`
 }
 
+// UploadPersonImageRequest defines model for UploadPersonImageRequest.
+type UploadPersonImageRequest struct {
+	// Image Face image: PNG, JPEG or static WebP, at most 64 MiB and 120 million pixels.
+	Image openapi_types.File `json:"image"`
+}
+
 // UploadThumbnailImageRequest defines model for UploadThumbnailImageRequest.
 type UploadThumbnailImageRequest struct {
 	// ContentVersion Video contentVersion held by the UI when the preview opened.
@@ -5263,6 +5284,9 @@ type WorkOrganizationRole string
 
 // WorkPerson defines model for WorkPerson.
 type WorkPerson struct {
+	// ImageRevision Present only when the person has a face; changes with every change of the face and is never reused. Load the face from /api/people/{id}/image?v={imageRevision}.
+	ImageRevision *PersonImageRevision `json:"imageRevision,omitempty"`
+
 	// Person Reference to one person or organization; name is its current name.
 	Person CreditRef `json:"person"`
 
@@ -5389,6 +5413,9 @@ type InvalidRequest = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error
+
+// PersonImageTooLarge defines model for PersonImageTooLarge.
+type PersonImageTooLarge = Error
 
 // PluginBusy defines model for PluginBusy.
 type PluginBusy = Error
@@ -5630,6 +5657,12 @@ type ListPeopleParams struct {
 
 	// Limit Page size; omit for all results without nextCursor
 	Limit *CreditLimit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetPersonImageParams defines parameters for GetPersonImage.
+type GetPersonImageParams struct {
+	// V imageRevision from Person or WorkPerson; ignored by the server
+	V *string `form:"v,omitempty" json:"v,omitempty"`
 }
 
 // ListPlaylistsParams defines parameters for ListPlaylists.
@@ -6021,6 +6054,9 @@ type CreatePersonJSONRequestBody = CreditInput
 // UpdatePersonJSONRequestBody defines body for UpdatePerson for application/json ContentType.
 type UpdatePersonJSONRequestBody = CreditPatch
 
+// UploadPersonImageMultipartRequestBody defines body for UploadPersonImage for multipart/form-data ContentType.
+type UploadPersonImageMultipartRequestBody = UploadPersonImageRequest
+
 // MergePeopleJSONRequestBody defines body for MergePeople for application/json ContentType.
 type MergePeopleJSONRequestBody = CreditMergeRequest
 
@@ -6323,6 +6359,15 @@ type ServerInterface interface {
 	// UpdatePerson Update a person's name, aliases and external IDs
 	// (PATCH /api/people/{id})
 	UpdatePerson(w http.ResponseWriter, r *http.Request, id PersonId)
+	// DeletePersonImage Remove a person's face
+	// (DELETE /api/people/{id}/image)
+	DeletePersonImage(w http.ResponseWriter, r *http.Request, id PersonId)
+	// GetPersonImage Return a person's face
+	// (GET /api/people/{id}/image)
+	GetPersonImage(w http.ResponseWriter, r *http.Request, id PersonId, params GetPersonImageParams)
+	// UploadPersonImage Set a person's face from an uploaded image
+	// (PUT /api/people/{id}/image)
+	UploadPersonImage(w http.ResponseWriter, r *http.Request, id PersonId)
 	// MergePeople Merge sourceIds into person id
 	// (POST /api/people/{id}/merge)
 	MergePeople(w http.ResponseWriter, r *http.Request, id PersonId)
@@ -8626,6 +8671,100 @@ func (siw *ServerInterfaceWrapper) UpdatePerson(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdatePerson(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeletePersonImage operation middleware
+func (siw *ServerInterfaceWrapper) DeletePersonImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeletePersonImage(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPersonImage operation middleware
+func (siw *ServerInterfaceWrapper) GetPersonImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPersonImageParams
+
+	// ------------- Optional query parameter "v" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "v", r.URL.Query(), &params.V, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "v"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "v", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPersonImage(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UploadPersonImage operation middleware
+func (siw *ServerInterfaceWrapper) UploadPersonImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UploadPersonImage(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -12407,6 +12546,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}", wrapper.GetPerson)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/people/{id}", wrapper.UpdatePerson)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/merge", wrapper.MergePeople)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/people/{id}/image", wrapper.DeletePersonImage)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/image", wrapper.GetPersonImage)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/people/{id}/image", wrapper.UploadPersonImage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/organizations", wrapper.ListOrganizations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organizations", wrapper.CreateOrganization)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/organizations/{id}", wrapper.DeleteOrganization)
