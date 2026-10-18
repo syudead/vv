@@ -325,7 +325,7 @@ A non-zero exit, or output that is none of these, fails the run with
 | `code` | string, such as the product code | Trimmed |
 | `description` | string; line feeds allowed | Trimmed |
 | `dates` | `[{"kind": "release", "date": "2024-03-01"}]`; `kind` is `release`, `recorded` or `published`; `date` is `YYYY`, `YYYY-MM` or `YYYY-MM-DD` | The first date of each kind |
-| `people` | `[{"role": "performer", "name": "...", "externalIds": [{"source": "...", "value": "..."}]}]`; `role` is `performer`, `director`, `photographer` or `streamer`; `externalIds` optional | The first 100 of each role, and the first 20 distinct external IDs of each person |
+| `people` | `[{"role": "performer", "name": "...", "externalIds": [{"source": "...", "value": "..."}], "image": "https://...", "profile": {...}}]`; `role` is `performer`, `director`, `photographer` or `streamer`; `externalIds`, `image` and `profile` optional | The first 100 of each role, and the first 20 distinct external IDs of each person; `image` and `profile` as in [People's images and profiles](#peoples-images-and-profiles) |
 | `organizations` | `[{"role": "maker", "name": "...", "externalIds": [...]}]`; `role` is `maker` or `label`; `externalIds` optional | The first 20 of each role, and the first 20 distinct external IDs of each organization |
 | `urls` | `["https://..."]` | The first 20 distinct |
 | `externalIds` | `[{"source": "...", "value": "..."}]`, the work's identifiers on other sites | The first 20 distinct `(source, value)` pairs |
@@ -366,6 +366,33 @@ image.
 | A PNG, JPEG or still WebP of at most 4 MiB and 120 megapixels | Shown, and selected for the apply |
 | Any other answer: not `2xx`, larger, another format, unreachable | Dropped; the rest of the result is kept |
 | On a refused address | The run fails with `blocked_address`, as for the plugin's own requests |
+
+### People's images and profiles
+
+A person in `people` may carry `image`, an `http` or `https` URL of the
+person's face of at most 2048 characters, and `profile`, an object with the
+profile properties of
+[the people API](external-api.md#manage-people-and-organizations): `gender`,
+`birthDate`, `deathDate`, `birthplace`, `heightCm`, `bustCm`, `waistCm`,
+`hipsCm`, `cup`, `bloodType`, `careerStartYear`, `careerEndYear`, `bio` and
+`links`. Numbers are integers, `links` is an array of URLs, and the rest are
+strings, under the rules in
+[People: profiles](../design-docs/people.md#what-a-valid-profile-is).
+Organizations take neither field.
+
+VVMDM drops an `image` that is not such a URL and a `profile` property of
+another JSON type, and keeps the rest of the person. After the run it fetches
+the images of the first 7 people that have one, in the order the plugin
+returned them, the way it fetches the [cover](#cover-image): the same client,
+limits, formats and 30 seconds, and a refused address fails the run with
+`blocked_address`. An image that cannot be fetched is dropped.
+
+When the owner applies a role, each person linked in it gets the profile
+values for the fields that are still empty on that person; a value already
+stored is never replaced. A value that breaks a profile rule, such as a
+`heightCm` of 1000 or a `bloodType` of `C`, is not applied, and VVMDM reports
+it as skipped. The fetched image becomes the person's face only when the person
+has none.
 
 ## Host functions
 

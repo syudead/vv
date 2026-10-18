@@ -454,6 +454,8 @@ type WorkInfoRunResult struct {
 	WorkInfo   FetchedWorkInfo
 	// CoverImage is unvalidated response data, nil when absent or fetching fails.
 	CoverImage []byte
+	// PersonImages aligns with WorkInfo.People and holds unvalidated response data, nil for a person without one.
+	PersonImages [][]byte
 }
 
 type WorkInfoRunFailure string

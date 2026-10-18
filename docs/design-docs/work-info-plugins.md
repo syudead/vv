@@ -277,7 +277,7 @@ no value in the result with `invalid_request`.
 ## VVMDM fetches the cover and applies it as an uploaded image
 
 A plugin returns its cover as a URL in `workInfo.cover`, and VVMDM fetches it
-after the run (`coverImage` in
+after the run (`image` in
 [`cover.go`](../../internal/wasmplugin/cover.go)), with the HTTP client of the
 plugin's requests. The address rule of
 [Plugins reach only public internet addresses](#plugins-reach-only-public-internet-addresses)
@@ -313,10 +313,10 @@ the plugin's site. VVMDM sets the type from the format it read and sends
 `nosniff` and a sandboxing `Content-Security-Policy`, so the response is only
 ever an image.
 
-Each cover is held in memory with its fetch. Together the held covers stay
-within 32 MiB, eight covers at the 4 MiB limit: a new fetch over that budget
-drops the fetches with covers that expire first, and applying one of them
-answers `work_info_fetch_stale`.
+Each cover is held in memory with its fetch. Together the held covers and
+people's images stay within 32 MiB, eight images at the 4 MiB limit: a new
+fetch over that budget drops the fetches with images that expire first, and
+applying one of them answers `work_info_fetch_stale`.
 
 The apply makes the cover the thumbnail after the work-information
 transaction commits, so a plugin replaced or revoked since the fetch, which
@@ -331,6 +331,37 @@ unable to tell what was written.
 | The plugin downloads the image and returns it in its response | The response is limited to 1 MiB, and base64 grows the image by a third |
 | The browser loads the cover from the site | The site would see the viewer's address |
 | Fetching the cover again for each view or at the apply | The site could answer another image than the one the owner compared |
+
+## People's images are fetched like the cover and become faces after the commit
+
+A fetched person's `image` URL goes through the cover's path: after the run,
+`personImages` in [`cover.go`](../../internal/wasmplugin/cover.go) fetches the
+first 7 image URLs in result order, one after another within the run's
+deadline, and the header check keeps each image with its person in the fetch.
+`GET /api/videos/{id}/work-info-fetches/{fetchId}/people/{index}/image` serves
+it to the comparison, and `hasImage` on the fetched person tells the screen
+which index has one.
+
+The limit of 7 keeps one fetch within the 32 MiB budget: the cover and seven
+images at 4 MiB make 32 MiB, and an eighth would let a single result exceed
+the budget and be evicted as soon as it is kept.
+
+After the apply commits, `applyPersonImages` in
+[`work_info_person_images.go`](../../internal/app/work_info_person_images.go)
+takes each person the apply linked and whose fetched entry has an image. A
+person who has a face keeps it. For the others, the image is fitted as an
+uploaded face under the thumbnail uploads' gate
+([people.md](people.md#a-face-is-one-fitted-jpeg-in-sqlite)), and `AddPersonImage` stores it only if no face was
+set since. The returned video carries each stored face's new revision, so the
+client can address the face without reading the video again. An image that does
+not decode, a person deleted since, or a write error drops that face and leaves
+the apply's result as it is, for the reason the cover gives.
+
+| Rejected | Why |
+| --- | --- |
+| Fetch every person's image | 100 people per role at 4 MiB exceed the result budget and the 30 s deadline |
+| Store the face inside the apply transaction | Decoding and fitting an image would hold the write transaction |
+| Replace a face the person has | The owner's face would be lost to a plugin's choice |
 
 ## The apply merges the selected fields in one transaction
 
@@ -376,6 +407,14 @@ entities together.
 | `code`, `description`, a date kind | Replaces the stored value |
 | A person or organization role | Appends the entities not linked in that role yet, in fetched order |
 | `urls`, `externalIds` | Appends the values not stored yet, in fetched order |
+
+The merge also returns, for each fetched person, the position of the link it
+resolved to. After the new entities are created, the apply fills each linked
+person's empty profile fields from the fetched `profile`, in fetched order, so
+a person named twice keeps the first valid value; a stored value is never
+replaced. `domain.FillFetchedPersonProfile` copies a value only when the
+profile stays valid with it, and reports the others as skipped under the
+person's role field with the value `name: property value`.
 
 A value the merge leaves out is returned as skipped with its field, the text
 the comparison showed and a reason. The rest of the row is still applied.

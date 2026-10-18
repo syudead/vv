@@ -1442,6 +1442,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/{id}/work-info-fetches/{fetchId}/people/{index}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return a fetched person's image
+         * @description Owner-only. Returns the image VV fetched for the person at index in the result's people, kept with the result like the cover. Missing, expired or mismatched-video results return 404 not_found; an index without a kept image, or outside people, returns 404 person_image_not_found. Uses Cache-Control: no-store.
+         */
+        get: operations["getWorkInfoFetchPersonImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tags": {
         parameters: {
             query?: never;
@@ -3273,6 +3293,10 @@ export interface components {
             name: string;
             externalIds: components["schemas"]["ExternalId"][];
             match: components["schemas"]["WorkInfoMatch"];
+            /** @description Present and true when VV kept an image for this person, served by getWorkInfoFetchPersonImage at its index. */
+            hasImage?: boolean;
+            /** @description Plugin-provided profile values that pass validation; omitted when none. Applying the person's role fills only the linked person's empty fields. */
+            profile?: components["schemas"]["PersonProfile"];
         };
         WorkInfoFetchedOrganization: {
             role: components["schemas"]["WorkOrganizationRole"];
@@ -3308,7 +3332,7 @@ export interface components {
         SkippedWorkInfoReason: "invalid" | "too_many" | "ambiguous";
         SkippedWorkInfoValue: {
             field: components["schemas"]["WorkInfoField"];
-            /** @description Value shown in the comparison: date, URL, name, source: value, or the first 100 description characters. */
+            /** @description Value shown in the comparison: date, URL, name, source: value, or the first 100 description characters. A profile value is name: property value, such as Hanako: heightCm 1000. */
             value: string;
             reason: components["schemas"]["SkippedWorkInfoReason"];
         };
@@ -7961,6 +7985,37 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Cover image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/jpeg": string;
+                    "image/webp": string;
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getWorkInfoFetchPersonImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Video ID */
+                id: components["parameters"]["VideoId"];
+                /** @description Fetch result ID */
+                fetchId: components["parameters"]["WorkInfoFetchId"];
+                /** @description Position in the result's people */
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Person image */
             200: {
                 headers: {
                     [name: string]: unknown;

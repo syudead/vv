@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -68,11 +69,13 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 			return domain.FetchedWorkInfoApplied{}, err
 		}
 	}
-	edited, skipped, err := applyFetchedDetails(ctx, tx, userKeys[0], apply)
+	details, err := applyFetchedDetails(ctx, tx, userKeys[0], apply)
 	if err != nil {
 		return domain.FetchedWorkInfoApplied{}, err
 	}
-	out.Skipped = append(out.Skipped, skipped...)
+	edited := details.edited
+	out.Skipped = append(out.Skipped, details.skipped...)
+	out.PersonIDs = details.personIDs
 	members, err := contentKeysForUserKeys(ctx, tx, edited)
 	if err != nil {
 		return domain.FetchedWorkInfoApplied{}, err
@@ -102,27 +105,64 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 	return out, nil
 }
 
-// Rematch credits in the write transaction so entities created since fetch can be reused.
+type appliedDetails struct {
+	edited    []string
+	skipped   []domain.SkippedWorkInfoValue
+	personIDs []int64
+}
+
+// Rematch credits in the write transaction so entities created since fetch can be reused, then fill the linked
+// people's empty profile fields.
 func applyFetchedDetails(
 	ctx context.Context, tx *sql.Tx, userKey string, apply domain.FetchedWorkInfoApply,
-) ([]string, []domain.SkippedWorkInfoValue, error) {
+) (appliedDetails, error) {
 	if len(apply.DetailFields) == 0 {
-		return nil, nil, nil
+		return appliedDetails{}, nil
 	}
+	merge, err := mergeFetchedDetails(ctx, tx, userKey, apply)
+	if err != nil {
+		return appliedDetails{}, err
+	}
+	final, _, err := domain.NormalizeWorkInfo(merge.Info)
+	if err != nil {
+		return appliedDetails{}, fmt.Errorf("cannot merge the fetched work information: %w", err)
+	}
+	out := appliedDetails{skipped: merge.Skipped, personIDs: make([]int64, len(apply.Details.People))}
+	for i, at := range merge.PersonLinks {
+		if at >= 0 {
+			out.personIDs[i] = merge.Info.People[at].Person.ID
+		}
+	}
+	profileSkipped, err := fillFetchedPersonProfiles(ctx, tx, apply.Details.People, out.personIDs)
+	if err != nil {
+		return appliedDetails{}, err
+	}
+	out.skipped = append(out.skipped, profileSkipped...)
+	if out.edited, err = applyWorkInfo(ctx, tx, []string{userKey}, map[string]domain.WorkInfo{userKey: final}); err != nil {
+		return appliedDetails{}, err
+	}
+	return out, nil
+}
+
+// mergeFetchedDetails lays the fetched details over the stored ones and creates the new entities the merge kept,
+// filling their IDs into the merged work information.
+func mergeFetchedDetails(
+	ctx context.Context, tx *sql.Tx, userKey string, apply domain.FetchedWorkInfoApply,
+) (domain.WorkInfoMerge, error) {
 	stored, err := workInfoByUserKeys(ctx, tx, []string{userKey})
 	if err != nil {
-		return nil, nil, err
+		return domain.WorkInfoMerge{}, err
 	}
 	people := creditTablesByKind[domain.CreditPerson]
 	organizations := creditTablesByKind[domain.CreditOrganization]
 	personMatches, err := matchCredits(ctx, tx, people, domain.PersonMatchEntries(apply.Details.People))
 	if err != nil {
-		return nil, nil, err
+		return domain.WorkInfoMerge{}, err
 	}
 	organizationMatches, err := matchCredits(ctx, tx, organizations,
 		domain.OrganizationMatchEntries(apply.Details.Organizations))
 	if err != nil {
-		return nil, nil, err
+		return domain.WorkInfoMerge{}, err
 	}
 	merge := domain.MergeFetchedWorkInfo(domain.WorkInfoMergeInput{
 		Stored: stored[userKey], Fetched: apply.Details, Fields: apply.DetailFields,
@@ -132,23 +172,65 @@ func applyFetchedDetails(
 		merge.Info.People[at].Person.ID = id
 	})
 	if err != nil {
-		return nil, nil, err
+		return domain.WorkInfoMerge{}, err
 	}
 	err = createMergedCredits(ctx, tx, organizations, merge.NewOrganizations, func(at int, id int64) {
 		merge.Info.Organizations[at].Organization.ID = id
 	})
 	if err != nil {
-		return nil, nil, err
+		return domain.WorkInfoMerge{}, err
 	}
-	final, _, err := domain.NormalizeWorkInfo(merge.Info)
+	return merge, nil
+}
+
+// fillFetchedPersonProfiles fills each linked person's empty profile fields in fetched order, so a person named twice
+// keeps the first valid value, and returns the values that would have made a profile invalid.
+func fillFetchedPersonProfiles(
+	ctx context.Context, tx *sql.Tx, fetched []domain.FetchedPerson, personIDs []int64,
+) ([]domain.SkippedWorkInfoValue, error) {
+	index := map[int64]int{}
+	var ids []int64
+	for i, id := range personIDs {
+		if _, seen := index[id]; id != 0 && !seen && !fetched[i].Profile.Equal(domain.PersonProfile{}) {
+			index[id] = len(ids)
+			ids = append(ids, id)
+		}
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	encoded, err := json.Marshal(ids)
 	if err != nil {
-		return nil, nil, fmt.Errorf("cannot merge the fetched work information: %w", err)
+		return nil, fmt.Errorf("cannot build person ids: %w", err)
 	}
-	edited, err := applyWorkInfo(ctx, tx, []string{userKey}, map[string]domain.WorkInfo{userKey: final})
-	if err != nil {
-		return nil, nil, err
+	people := make([]domain.Credit, len(ids))
+	if err := addPersonProfiles(ctx, tx, people, index, string(encoded)); err != nil {
+		return nil, err
 	}
-	return edited, merge.Skipped, nil
+	stored := make([]domain.PersonProfile, len(ids))
+	for i := range people {
+		stored[i] = people[i].Profile
+	}
+	var skipped []domain.SkippedWorkInfoValue
+	now := time.Now()
+	for i, id := range personIDs {
+		at, ok := index[id]
+		if !ok {
+			continue
+		}
+		var invalid []domain.SkippedWorkInfoValue
+		people[at].Profile, invalid = domain.FillFetchedPersonProfile(people[at].Profile, fetched[i], now)
+		skipped = append(skipped, invalid...)
+	}
+	for i, id := range ids {
+		if people[i].Profile.Equal(stored[i]) {
+			continue
+		}
+		if err := writePersonProfile(ctx, tx, id, people[i].Profile); err != nil {
+			return nil, err
+		}
+	}
+	return skipped, nil
 }
 
 // Names and external IDs are normalized and ownership checked before creating retained merged credits.
