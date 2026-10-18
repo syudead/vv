@@ -68,9 +68,15 @@ type ActivityDetail struct {
 	Pipelines []ActivityEntry
 }
 
-// StagesRecorded reports whether an import entry has stage rows; entries written before stage rows existed have none.
-func (e ActivityEntry) StagesRecorded() bool {
-	return e.Kind == ActivityImport && len(e.Stages) > 0
+// StagesRecorded reports whether an import entry kept its stage breakdown. An import written before stage rows
+// existed has none and belongs to no pipeline; every later import belongs to one, even a move that held no stage.
+func (d ActivityDetail) StagesRecorded() bool {
+	return d.Kind == ActivityImport && (len(d.Stages) > 0 || len(d.Pipelines) > 0)
+}
+
+// StagesRecorded is true for an import member: an import belongs to a pipeline only when stage rows existed.
+func (m ActivityMember) StagesRecorded() bool {
+	return m.Kind == ActivityImport
 }
 
 // A pipeline with no member yet is waiting for the member written in the same transaction.

@@ -211,7 +211,7 @@ func collectActivityIDs(rows *sql.Rows, err error) ([]int64, error) {
 }
 
 // RecoverInterruptedActivity marks processing entries interrupted before workers start; waiting entries remain
-// untouched, and pipelines follow their members.
+// untouched, and pipelines and stage rows follow their members.
 func (s *ActivityStore) RecoverInterruptedActivity(ctx context.Context) (int, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -226,6 +226,9 @@ func (s *ActivityStore) RecoverInterruptedActivity(ctx context.Context) (int, er
 	if err != nil {
 		return 0, fmt.Errorf("cannot recover the interrupted activity: %w", err)
 	}
+	if err := resetInterruptedStages(ctx, tx, ids, at); err != nil {
+		return 0, err
+	}
 	if err := rollUpPipelines(ctx, tx, ids, at); err != nil {
 		return 0, err
 	}
@@ -236,6 +239,21 @@ func (s *ActivityStore) RecoverInterruptedActivity(ctx context.Context) (int, er
 		s.db.publishEvents(domain.ActivityChanged{})
 	}
 	return len(ids), nil
+}
+
+// resetInterruptedStages returns an interrupted import's processing stage to waiting, as its job is queued again, so
+// the detail shows it as not run instead of in progress.
+func resetInterruptedStages(ctx context.Context, tx *sql.Tx, ids []int64, at int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	encoded, _ := json.Marshal(ids) // A slice of integers always encodes.
+	if _, err := tx.ExecContext(ctx, `update activity_entry_stages set state = ?, updated_at = ?
+		where entry_id in (select value from json_each(?)) and state = ?`,
+		string(domain.ActivityStageWaiting), at, string(encoded), string(domain.ActivityStageProcessing)); err != nil {
+		return fmt.Errorf("cannot reset the interrupted import stages: %w", err)
+	}
+	return nil
 }
 
 // A pair is a visible candidate only when it satisfies the same predicate as the candidate list.

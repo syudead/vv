@@ -246,8 +246,13 @@ func TestActivityDetailLinksPipelinesAndMembers(t *testing.T) {
 	if pair.Probability == nil || *pair.Probability != 0.9 {
 		t.Errorf("pair = %+v, want its probability", pair.ActivityEntry)
 	}
-	if imported := activityDetail(t, db, log.importA); imported.StagesRecorded() {
-		t.Errorf("stages of an import written without stage rows = %+v, want not recorded", imported.Stages)
+	if imported := activityDetail(t, db, log.importA); !imported.StagesRecorded() {
+		t.Errorf("an import of a pipeline without stage rows = not recorded, want recorded with no stage run")
+	}
+	older := writeActivity(t, db,
+		videoActivity(domain.ActivityImport, "key-c", "Garden.mp4", activityDone, domain.ActivityByRule), time.Now())
+	if imported := activityDetail(t, db, older); imported.StagesRecorded() {
+		t.Errorf("an import of no pipeline without stage rows = recorded, want not recorded")
 	}
 	if _, err := db.Activity().ActivityDetail(context.Background(), log.standalone+100); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("missing entry: err = %v, want ErrNotFound", err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -206,6 +207,11 @@ func TestImportActivityInterruptedEntryIsSupersededWhenItsJobRuns(t *testing.T) 
 	if len(interrupted) != 1 || interrupted[0].Status != domain.ActivityAttention ||
 		interrupted[0].Reason != domain.ActivityInterrupted {
 		t.Fatalf("entries after restart = %+v, want one attention/interrupted", interrupted)
+	}
+	stages := activityDetail(t, db, interrupted[0].ID).Stages
+	probe := slices.IndexFunc(stages, func(stage domain.ActivityStage) bool { return stage.Stage == domain.JobProbe })
+	if probe < 0 || stages[probe].State != domain.ActivityStageWaiting {
+		t.Errorf("stages after restart = %+v, want the claimed probe back to waiting", stages)
 	}
 
 	runImportStage(t, db, domain.JobProbe)
@@ -486,6 +492,10 @@ func TestImportActivityRecordsANewLocationWithoutJobs(t *testing.T) {
 	entry := entries[0]
 	if entryState(entry) != activityDone || entry.Decider != domain.ActivityByOwner || entry.Subject.Key != "key-clip" {
 		t.Errorf("entry = %+v, want done/completed by owner on key-clip", entry)
+	}
+	if detail := activityDetail(t, db, entry.ID); !detail.StagesRecorded() || len(detail.Stages) != 0 {
+		t.Errorf("move's stages = %+v (recorded %v), want recorded with no stage run", detail.Stages,
+			detail.StagesRecorded())
 	}
 
 	if _, err := db.ScanIndex().UpsertVideo(ctx, copied); err != nil {
