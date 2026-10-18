@@ -1,4 +1,11 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -169,13 +176,19 @@ describe("ライブラリのスマートフォルダのカード", () => {
   it("shows one inline folder and opens a preview with autoplay and folder playback context", async () => {
     install(items);
     renderLibrary();
-    const preview = await screen.findByRole("link", { name: 'Play "Harbour" from "猫"' });
+    const folder = await screen.findByRole("link", {
+      name: "猫, smart folder of 4 videos",
+    });
+    const art = folder.querySelector<HTMLElement>("[data-folder-art]")!;
+    art.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100);
     expect(screen.queryByRole("region", { name: "Shelves" })).toBeNull();
     expect(
       screen.getAllByRole("link", { name: "猫, smart folder of 4 videos" }),
     ).toHaveLength(1);
-    expect(preview.closest("article")?.querySelectorAll("a")).toHaveLength(3);
-    await userEvent.setup().click(preview);
+    expect(folder.closest("article")?.querySelectorAll("a")).toHaveLength(1);
+    fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 10 });
+    const preview = screen.getByRole("link", { name: 'Play "Harbour" from "猫"' });
+    fireEvent.click(preview);
     expect(
       await screen.findByText(
         'Opened /videos/10?smartFolder=9 {"from":"/","autoplay":true}',

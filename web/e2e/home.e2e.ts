@@ -35,7 +35,6 @@ const inProgress = "ホーム確認の途中";
 const allTitles = [...fillers, inProgress];
 // 受け入れ条件 8 で公開にする2本。ほかの e2e の動画はどれも非公開である。
 const publicTitles = fillers.slice(0, 2);
-const privateTitles = allTitles.filter((title) => !publicTitles.includes(title));
 const videos = new Map<string, Video>();
 let mediaFolder: MediaFolder | undefined;
 let shelfId: number | undefined;
@@ -182,13 +181,13 @@ test.describe.serial("home", () => {
     await page.goto("/");
     await expect(folderCard(page)).toHaveCount(1);
     await expect(page.getByRole("region", { name: "Shelves" })).toHaveCount(0);
-    const preview = folderCard(page)
-      .getByRole("link", { name: /^Play "/ })
-      .first();
-    await expect(preview).toBeVisible();
+    const art = folderCard(page).locator("[data-folder-art]");
+    await expect(art.locator("[data-folder-preview]").first()).toBeVisible();
+    await art.hover({ position: { x: 8, y: 30 } });
+    const preview = folderCard(page).getByRole("link", { name: /^Play / });
     const target = await preview.getAttribute("href");
     expect(target).toContain(`?smartFolder=${String(shelfId)}`);
-    await preview.click();
+    await art.click({ position: { x: 8, y: 30 } });
     await expect(page).toHaveURL(target as string);
     await page.waitForFunction(
       () => {
@@ -223,18 +222,24 @@ test.describe.serial("home", () => {
       const page = await context.newPage();
       await page.goto("/");
       const card = folderCard(page);
-      await expect(card.getByRole("link", { name: /^Play "/ })).toHaveCount(2);
-      for (const title of publicTitles) {
-        await expect(
-          card.getByRole("link", {
-            name: `Play "${title}" from "${shelfName}"`,
-            exact: true,
-          }),
-        ).toBeVisible();
+      const art = card.locator("[data-folder-art]");
+      await expect(art.locator("[data-folder-preview]")).toHaveCount(2);
+      const bounds = await art.boundingBox();
+      expect(bounds).not.toBeNull();
+      const names: string[] = [];
+      for (let index = 0; index < publicTitles.length; index++) {
+        await art.hover({
+          position: {
+            x: ((bounds?.width ?? 0) * (index + 0.5)) / publicTitles.length,
+            y: 30,
+          },
+        });
+        const link = card.getByRole("link", { name: /^Play / });
+        names.push((await link.getAttribute("aria-label")) ?? "");
       }
-      for (const title of privateTitles) {
-        await expect(card.getByText(title, { exact: true })).toHaveCount(0);
-      }
+      expect(names.sort()).toEqual(
+        publicTitles.map((title) => `Play "${title}" from "${shelfName}"`).sort(),
+      );
     } finally {
       await context.close();
       await setPublic(request, publicTitles, false);

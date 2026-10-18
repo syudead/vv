@@ -975,10 +975,13 @@ export const en = {
       progress: (watched: number, total: number) =>
         `${formatNumber(watched)} / ${formatNumber(total)}`,
     },
+    collection: {
+      more: "More",
+      remaining: (count: number) => `+${formatNumber(count)}`,
+      playPreview: (name: string, title?: string) =>
+        title ? `Play "${title}" from "${name}"` : `Play video from "${name}"`,
+    },
     smartFolder: {
-      playPreview: (title: string, folder: string) => `Play "${title}" from "${folder}"`,
-      previewTitle: (index: number) => `Video ${formatNumber(index)}`,
-
       label: (name: string, count: number, watched: number) =>
         watched >= 1
           ? `${name}, smart folder of ${videos(count)}, ${formatNumber(watched)} watched`

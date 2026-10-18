@@ -711,6 +711,7 @@ export default function LibraryPage() {
 
   const smartFolderProps = (folder: SmartFolderSummary) => ({
     folder,
+    selectionMode,
     backTo: listUrl,
     activePreviewId,
     previewResetEpoch,

@@ -20,10 +20,10 @@ import {
   VideoThumbnailMark,
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
-import { groupPagePath } from "../groups/groupPaths";
+import { groupPagePath, videoInGroupPath } from "../groups/groupPaths";
 import { type CardDragBinding, dragRowProps, RowDropMarks } from "../videoList/cardDrag";
-import { cardLinkState } from "../videoList/cardLink";
 import FolderArt from "../videoList/FolderArt";
+import { useCollectionLink } from "../videoList/useCollectionLink";
 
 export interface GroupCardProps<G extends LibraryGroupCard = LibraryGroup> {
   group: G;
@@ -144,6 +144,8 @@ function GroupAddToGroup({
 /** Keep count/duration and progress above foreground thumbnails without intercepting preview input. */
 export function CollectionThumbnail({
   previews,
+  totalCount,
+  onFrontChange,
   selected = false,
   selectionMode = false,
   activePreviewId,
@@ -153,6 +155,8 @@ export function CollectionThumbnail({
   face,
 }: {
   previews: LibraryGroup["previews"];
+  totalCount?: number;
+  onFrontChange?: (preview: LibraryGroup["previews"][number] | null) => void;
   selected?: boolean;
   selectionMode?: boolean;
   activePreviewId?: number | null;
@@ -165,6 +169,8 @@ export function CollectionThumbnail({
     <VideoThumbnail selected={selected}>
       <FolderArt
         previews={previews}
+        totalCount={totalCount}
+        onFrontChange={onFrontChange}
         selectionMode={selectionMode}
         activePreviewId={activePreviewId}
         previewResetEpoch={previewResetEpoch}
@@ -222,6 +228,15 @@ function GroupCardFor<G extends LibraryGroupCard>(props: GroupCardProps<G>) {
     favoriteOnly = false,
   } = props;
   const { state, ratio, duration, countText, label } = useGroupFacts(group);
+  const { linkProps, onFrontChange } = useCollectionLink({
+    to,
+    backTo,
+    name: group.name,
+    label,
+    selectionMode,
+    autoplay,
+    videoPath: (id) => videoInGroupPath(id, group.id),
+  });
   const owner = useAudience() === "owner";
   const tagsRowNode = tagsRow?.(group);
   const showTagsRow = tagsRow !== undefined && groupHasTags(group);
@@ -256,9 +271,7 @@ function GroupCardFor<G extends LibraryGroupCard>(props: GroupCardProps<G>) {
       )}
 
       <Link
-        to={to}
-        state={cardLinkState(backTo, autoplay)}
-        aria-label={label}
+        {...linkProps}
         onClick={(event) => {
           onPreviewReset?.();
           if (selectionMode && onSelect !== undefined) {
@@ -270,6 +283,8 @@ function GroupCardFor<G extends LibraryGroupCard>(props: GroupCardProps<G>) {
       >
         <CollectionThumbnail
           previews={group.previews}
+          totalCount={group.videoCount}
+          onFrontChange={onFrontChange}
           selected={selected}
           selectionMode={selectionMode}
           activePreviewId={activePreviewId}

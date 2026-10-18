@@ -454,6 +454,7 @@ function FolderItems(props: ItemsProps) {
   });
   const folderProps = (item: Extract<LibraryItem, { kind: "smartFolder" }>) => ({
     ...preview,
+    selectionMode,
     folder: item.smartFolder,
     backTo: listUrl,
     tagsRow: view === "grid" ? folderTags : undefined,

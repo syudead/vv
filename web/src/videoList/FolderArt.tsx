@@ -1,3 +1,4 @@
+import { EllipsisVertical, Play } from "lucide-react";
 import {
   type PointerEvent,
   useCallback,
@@ -8,6 +9,7 @@ import {
 } from "react";
 
 import type { FolderPreview } from "../api/client";
+import { t } from "../i18n";
 import { cn } from "../lib/cn";
 
 /**
@@ -39,6 +41,13 @@ const sheetLayout: Record<number, { left: number; top: number; rotate: number }[
     { left: 11, top: 12, rotate: -1.5 },
     { left: 20, top: 16, rotate: 1.5 },
     { left: 30, top: 12, rotate: 5 },
+  ],
+  5: [
+    { left: 0, top: 16, rotate: -6 },
+    { left: 8, top: 12, rotate: -3 },
+    { left: 16, top: 16, rotate: 0 },
+    { left: 24, top: 12, rotate: 3 },
+    { left: 32, top: 16, rotate: 6 },
   ],
 };
 
@@ -127,20 +136,26 @@ function SheetPreview({ src, onStart }: { src: string; onStart?: () => void }) {
  */
 export default function FolderArt({
   previews,
+  totalCount = previews.length,
+  onFrontChange,
   selectionMode = false,
   activePreviewId,
   previewResetEpoch,
   onPreviewStart,
 }: {
   previews: readonly FolderPreview[];
+  totalCount?: number;
+  onFrontChange?: (preview: FolderPreview | null) => void;
   selectionMode?: boolean;
   activePreviewId?: number | null;
   previewResetEpoch?: number;
   onPreviewStart?: (id: number) => void;
 }) {
   const shown = previews.slice(0, 4);
+  const remaining = Math.max(0, totalCount - shown.length);
+  const sheets = remaining > 0 ? [...shown, null] : shown;
   const keys = sheetKeys(shown);
-  const layout = sheetLayout[shown.length] ?? [];
+  const layout = sheetLayout[sheets.length] ?? [];
   // A refreshed shorter cover list can leave the old position out of range.
   const [front, setFront] = useState<number | null>(null);
   const [playingId, setPlayingId] = useState<number | null>(null);
@@ -150,7 +165,10 @@ export default function FolderArt({
   const putBack = useCallback(() => {
     setFront(null);
     setPlayingId(null);
-  }, []);
+    onFrontChange?.(null);
+  }, [onFrontChange]);
+
+  useEffect(() => putBack(), [previews, putBack]);
 
   useEffect(() => {
     const resetChanged = observedResetEpoch.current !== previewResetEpoch;
@@ -174,16 +192,17 @@ export default function FolderArt({
   ]);
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    if (selectionMode || shown.length === 0 || event.pointerType !== "mouse") {
+    if (selectionMode || sheets.length === 0 || event.pointerType !== "mouse") {
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
     if (rect.width <= 0) return;
     const ratio = (event.clientX - rect.left) / rect.width;
     const next = Math.min(
-      shown.length - 1,
-      Math.max(0, Math.floor(ratio * shown.length)),
+      sheets.length - 1,
+      Math.max(0, Math.floor(ratio * sheets.length)),
     );
+    onFrontChange?.(sheets[next] ?? null);
     if (next === front) return;
     setFront(next);
     setPlayingId(null);
@@ -199,14 +218,15 @@ export default function FolderArt({
     >
       <div className="absolute top-0 left-0 h-3 w-2/5 rounded-t-md bg-popover" />
       <div className="absolute inset-x-0 top-2 bottom-0 overflow-hidden rounded-md rounded-tl-none bg-popover">
-        {shown.map((preview, index) => {
+        {sheets.map((preview, index) => {
           const place = layout[index];
           if (place === undefined) return null;
           const isFront = front === index;
           return (
             <div
-              key={keys[index]}
-              data-folder-preview=""
+              key={preview === null ? "more" : keys[index]}
+              data-folder-preview={preview === null ? undefined : ""}
+              data-folder-more={preview === null ? "" : undefined}
               data-folder-front={isFront ? "" : undefined}
               className={cn(
                 "absolute aspect-video overflow-hidden rounded-sm border border-input bg-navbar transition-all duration-200 ease-out-quart motion-reduce:transition-none",
@@ -216,20 +236,32 @@ export default function FolderArt({
               // Use style for per-sheet positions and rotations; width comes from w-folder-preview.
               // Earlier sheets sit in front, with the promoted sheet above all.
               style={{
-                zIndex: isFront ? shown.length + 1 : shown.length - index,
+                zIndex: isFront ? sheets.length + 1 : sheets.length - index,
                 left: `${String(isFront ? frontPlace.left : place.left)}%`,
                 top: `${String(isFront ? frontPlace.top : place.top)}%`,
                 transform: isFront ? "scale(1.12)" : `rotate(${String(place.rotate)}deg)`,
               }}
             >
-              <img
-                src={preview.thumbnailUrl}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                className="h-full w-full object-contain"
-              />
-              {isFront && preview.previewUrl !== undefined && (
+              {preview === null ? (
+                <div className="flex size-full flex-col items-center justify-center gap-1 bg-card text-sm font-medium text-card-foreground">
+                  <span>{t.library.collection.more}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {t.library.collection.remaining(remaining)}
+                  </span>
+                  {!isFront && (
+                    <EllipsisVertical className="absolute top-1/2 right-1 size-4 -translate-y-1/2" />
+                  )}
+                </div>
+              ) : (
+                <img
+                  src={preview.thumbnailUrl}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full object-contain"
+                />
+              )}
+              {isFront && preview !== null && preview.previewUrl !== undefined && (
                 <SheetPreview
                   key={preview.videoId}
                   src={preview.previewUrl}
@@ -238,6 +270,12 @@ export default function FolderArt({
                     onPreviewStart?.(preview.videoId);
                   }}
                 />
+              )}
+              {isFront && preview !== null && onFrontChange !== undefined && (
+                <span className="absolute bottom-1 left-1 flex max-w-full items-center gap-1 rounded-sm bg-overlay px-1.5 py-0.5 text-2xs text-foreground">
+                  <Play className="size-3 shrink-0" />
+                  {preview.title && <span className="truncate">{preview.title}</span>}
+                </span>
               )}
             </div>
           );

@@ -363,7 +363,15 @@ the answer loses its card. The card's tags stay pressable while other cards are
 selected, since a folder card has no selection. A smart folder card cannot be
 dragged, and dropping on it shows `Can't drop here`.
 
-Pressing a smart folder card opens `/smart-folders/{id}`:
+Groups and smart folders share one-column cards and the same collection-link
+behaviour. A mouse-promoted cover opens that video with autoplay and its group
+or smart-folder context. The artwork shows at most four covers plus a More
+sheet if videos remain. More and the title open the collection; leaving the
+artwork restores that destination. Touch and keyboard activation also open the
+collection. During selection, promotion is disabled and group clicks retain
+their selection behaviour. Smart folders remain outside the selection model.
+
+Opening a smart folder leads to `/smart-folders/{id}`:
 a trail band of the folder's ancestors, the name, `12 videos · 1:32:10`, and
 for the owner one conditions line per folder on the path, then the child
 folders by name and the matching videos and groups in the folder's sort, in

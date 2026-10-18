@@ -121,6 +121,17 @@ describe("FolderArt の重なり", () => {
       Number(element.style.zIndex),
     );
 
+  it("adds a fifth More sheet only when videos remain beyond the four covers", () => {
+    const covers = [sheet(1), sheet(2), sheet(3), sheet(4)];
+    const view = render(<FolderArt previews={covers} totalCount={4} />);
+    expect(view.container.querySelector("[data-folder-more]")).toBeNull();
+    view.rerender(<FolderArt previews={covers} totalCount={5} />);
+    expect(view.container.querySelectorAll("[data-folder-preview]")).toHaveLength(4);
+    expect(view.container.querySelector("[data-folder-more]")?.textContent).toBe(
+      "More+1",
+    );
+  });
+
   it("指していないときは先頭の1枚ほど手前に重ね、指した1枚はどれよりも手前に出す", () => {
     const view = render(
       <FolderArt previews={[sheet(1), sheet(2), sheet(3), sheet(4)]} />,

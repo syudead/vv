@@ -11,12 +11,15 @@ among the other items when unfiltered; favorite-only listings include favorite
 folders at any depth. Folder cards follow the same sort order as other items,
 using their matching-video aggregates. No card is pinned to the top.
 
-In grid view a smart folder spans two existing columns, or one when only one
-column fits. Its name opens the folder page; up to two video thumbnail links
-open those videos with autoplay, the current return URL and smart-folder
-playback context. The existing card-values request supplies thumbnails and
-titles; no separate home/shelf read runs. List view retains the compact folder
-row. Former `/library` bookmarks redirect to `/`, preserving query and hash.
+In grid view smart folders use the same one-column card and stacked thumbnails
+as groups. Up to four video covers appear, followed by a More sheet when videos
+remain. Moving the mouse across the artwork brings a cover forward; clicking
+opens that video with autoplay, the current return URL and collection playback
+context. More, the title, a resting card, touch and keyboard activation open the
+collection page. Selection mode disables cover promotion and direct playback.
+The existing card-values request supplies thumbnails and titles; no separate
+home/shelf read runs. List view retains the compact folder row. Former
+`/library` bookmarks redirect to `/`, preserving query and hash.
 
 Onboarding at `/welcome` uses `StepsPage` outside the shell. Its stages are
 `folders`, `scan`, `interests` and `done`, stored as `onboarding.step` in `settings`
