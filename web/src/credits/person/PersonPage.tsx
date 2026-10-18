@@ -16,6 +16,7 @@ import { useDocumentTitle } from "../../videoList/pageHooks";
 import DeleteCreditDialog from "../DeleteCreditDialog";
 import MergeCreditDialog from "../MergeCreditDialog";
 import PersonFaceControl from "./PersonFaceControl";
+import { personPath } from "./personPath";
 import { PersonDetails, PersonIdentity } from "./PersonProfile";
 import {
   PersonVideosBody,
@@ -128,7 +129,7 @@ function PersonShown({
   function merged(target: Credit) {
     setMerging(false);
     toast(text.mergedInto(target.name));
-    void navigate(`/people/${String(target.id)}`);
+    void navigate(personPath(target.id));
   }
 
   async function performDelete() {

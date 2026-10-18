@@ -2,6 +2,7 @@ import { ExternalLink } from "lucide-react";
 import { Fragment, type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
+import { personImagePath } from "../api/credits";
 import {
   type WorkInfo as WorkInfoValue,
   type WorkOrganizationRole,
@@ -10,9 +11,11 @@ import {
   workOrganizationRoles,
   workPersonRoles,
 } from "../api/workInfo";
+import { personPath } from "../credits/person/personPath";
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { libraryFilterPath } from "../library/libraryPath";
+import { PersonFace } from "../ui/PersonFace";
 import { Button } from "../ui/shadcn/button";
 
 const foldLimit = 3;
@@ -65,20 +68,41 @@ export function Item({ label, children }: { label: UiText; children: ReactNode }
   );
 }
 
-function CreditLink({
-  kind,
-  credit,
+function OrganizationLink({
+  organization,
 }: {
-  kind: "person" | "organization";
-  credit: { id: number; name: string };
+  organization: { id: number; name: string };
 }) {
   return (
     <Link
-      to={libraryFilterPath(kind, credit.id)}
-      aria-label={t.player.workInfo.showVideosWith(credit.name)}
+      to={libraryFilterPath("organization", organization.id)}
+      aria-label={t.player.workInfo.showVideosWith(organization.name)}
       className="text-foreground hover:text-primary"
     >
-      {credit.name}
+      {organization.name}
+    </Link>
+  );
+}
+
+/** The chip face is as tall as the `text-sm` line, so `align-top` keeps the row height. */
+function PersonLink({ entry }: { entry: WorkInfoValue["people"][number] }) {
+  const { person, imageRevision } = entry;
+  return (
+    <Link
+      to={personPath(person.id)}
+      aria-label={t.player.workInfo.openPerson(person.name)}
+      className="inline-flex max-w-full items-center gap-1 align-top text-foreground hover:text-primary"
+    >
+      <PersonFace
+        shape="chip"
+        name={person.name}
+        src={
+          imageRevision === undefined
+            ? undefined
+            : personImagePath(person.id, imageRevision)
+        }
+      />
+      <span className="min-w-0 wrap-anywhere">{person.name}</span>
     </Link>
   );
 }
@@ -274,7 +298,7 @@ export default function WorkInfo({ info }: { info: WorkInfoValue | undefined }) 
               label={personRoleLabel(role, names.length)}
               entries={names.map((entry) => ({
                 key: String(entry.person.id),
-                node: <CreditLink kind="person" credit={entry.person} />,
+                node: <PersonLink entry={entry} />,
               }))}
             />
           ))}
@@ -284,7 +308,7 @@ export default function WorkInfo({ info }: { info: WorkInfoValue | undefined }) 
               label={organizationRoleLabel(role, names.length)}
               entries={names.map((entry) => ({
                 key: String(entry.organization.id),
-                node: <CreditLink kind="organization" credit={entry.organization} />,
+                node: <OrganizationLink organization={entry.organization} />,
               }))}
             />
           ))}

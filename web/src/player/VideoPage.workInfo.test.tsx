@@ -228,7 +228,7 @@ describe("VideoPage work information", () => {
     expect(more.textContent).toBe("+2 more");
     expect(within(workDetails()).queryByText("D")).toBeNull();
     await userEvent.setup().click(more);
-    const fourth = within(workDetails()).getByText("D");
+    const fourth = within(workDetails()).getByRole("link", { name: "Open D" });
     expect(document.activeElement).toBe(fourth);
     expect(within(workDetails()).getByText("E")).toBeDefined();
     expect(
