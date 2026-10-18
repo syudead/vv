@@ -106,6 +106,21 @@ An automatic bundle keeps the joined side's member keys and its former
 representative in `undo_keys`, the side whose representative did not become
 the bundle's.
 
+A pair entry that a fingerprint result opens joins the import pipelines of
+that run ([activity.md](activity.md#a-pipeline-groups-one-import-run)), so
+the owner reaches it from either video's import.
+
+| Pipeline | Joined |
+| --- | --- |
+| Every pipeline of the finishing fingerprint job's `import` entry | Always |
+| The other video's newest pipeline | When it is not `done`, or when the same scan opened it and the triggering pipeline |
+| An earlier, finished pipeline of either video from another scan or a re-probe | Never, so a later run does not reopen a past import |
+
+Only a new entry joins. An entry that a rebuild attaches again, or that a
+retry returns to waiting, keeps the pipelines it has, which return to
+`running` with it. Judging turned off opens no entry, so no pipeline waits for
+one; an entry that turning judging on opens later belongs to no pipeline.
+
 ## Undo of an automatic decision is held
 
 The owner undoes an automatic `same` or `different` from the activity log in

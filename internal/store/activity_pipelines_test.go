@@ -322,3 +322,151 @@ func TestImportRunningBeforeTheMigrationStaysWithoutAPipeline(t *testing.T) {
 		t.Errorf("pipelines = %d, want none", got)
 	}
 }
+
+// importMatchingVideo runs every stage of the oldest queued video with a fingerprint that matches every other such video.
+func importMatchingVideo(t *testing.T, db *DB) {
+	t.Helper()
+	ctx := context.Background()
+	for _, kind := range []domain.JobKind{domain.JobProbe, domain.JobThumbnail, domain.JobSeekThumbnail,
+		domain.JobPreview} {
+		runImportStage(t, db, kind)
+	}
+	job, err := db.Ingest().ClaimJob(ctx, domain.JobFingerprint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Ingest().ApplyFingerprintForJob(ctx, job, testFingerprint(1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Ingest().CompleteClaimedJob(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func pipelineOfVideo(t *testing.T, db *DB, key string) domain.ActivityEntry {
+	t.Helper()
+	for _, entry := range importEntries(t, db) {
+		if entry.Subject.Key == key {
+			return onlyPipeline(t, db, entry.ID)
+		}
+	}
+	t.Fatalf("no import entry for %s", key)
+	return domain.ActivityEntry{}
+}
+
+func enableJudging(t *testing.T, db *DB, enabled bool) {
+	t.Helper()
+	if err := db.Settings().SaveVersionJudgingEnabled(context.Background(), enabled); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// importInOneScan queues and imports each named video in turn within one scan, so each run finishes before the next
+// video's fingerprint finds the pair.
+func importInOneScan(t *testing.T, db *DB, names ...string) {
+	t.Helper()
+	if _, _, err := db.Scans().StartScan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range names {
+		queueNewFile(t, db, name, domain.ActivityByRule)
+		importMatchingVideo(t, db)
+	}
+}
+
+// importPairInOneScan imports a and then b in one scan with judging on; a's run finishes before b's fingerprint.
+func importPairInOneScan(t *testing.T, db *DB) (a, b domain.ActivityEntry) {
+	t.Helper()
+	enableJudging(t, db, true)
+	importInOneScan(t, db, "a")
+	if a = pipelineOfVideo(t, db, "key-a"); entryState(a) != activityDone {
+		t.Fatalf("a's pipeline before b's fingerprint = %+v, want done/completed", a)
+	}
+	queueNewFile(t, db, "b", domain.ActivityByRule)
+	importMatchingVideo(t, db)
+	return pipelineOfVideo(t, db, "key-a"), pipelineOfVideo(t, db, "key-b")
+}
+
+func TestPairEntryJoinsBothPipelinesOfOneScan(t *testing.T) {
+	db := migratedDB(t)
+	a, b := importPairInOneScan(t, db)
+
+	pair := onlyPairEntry(t, db)
+	if got := entryPipelines(t, db, pair.ID); !slices.Equal(got, []int64{a.ID, b.ID}) {
+		t.Errorf("pair entry's pipelines = %v, want [%d %d]", got, a.ID, b.ID)
+	}
+	for _, pipeline := range []domain.ActivityEntry{a, b} {
+		if entryState(pipeline) != activityWaiting {
+			t.Errorf("pipeline of %s = %+v, want running/waiting on the pair", pipeline.Subject.Key, pipeline)
+		}
+	}
+}
+
+func TestPairEntryLeavesTheImportOfAnEarlierScan(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	enableJudging(t, db, true)
+	importInOneScan(t, db, "a")
+	earlier, err := db.Scans().CurrentScan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Scans().FinishScan(ctx, earlier.ID, domain.ScanDone, nil, domain.ActivityByRule); err != nil {
+		t.Fatal(err)
+	}
+	importInOneScan(t, db, "b")
+
+	a, b := pipelineOfVideo(t, db, "key-a"), pipelineOfVideo(t, db, "key-b")
+	if got := entryPipelines(t, db, onlyPairEntry(t, db).ID); !slices.Equal(got, []int64{b.ID}) {
+		t.Errorf("pair entry's pipelines = %v, want only b's [%d]", got, b.ID)
+	}
+	if entryState(a) != activityDone {
+		t.Errorf("a's pipeline = %+v, want still done/completed", a)
+	}
+}
+
+func TestPairEntryOfJudgingTurnedOnLaterIsStandalone(t *testing.T) {
+	db := migratedDB(t)
+	importInOneScan(t, db, "a", "b")
+	if entries := pairEntries(t, db); len(entries) != 0 {
+		t.Fatalf("pair entries with judging off = %+v, want none", entries)
+	}
+	for _, key := range []string{"key-a", "key-b"} {
+		if got := pipelineOfVideo(t, db, key); entryState(got) != activityDone {
+			t.Errorf("pipeline of %s with judging off = %+v, want done/completed", key, got)
+		}
+	}
+
+	enableJudging(t, db, true)
+	if got := entryPipelines(t, db, onlyPairEntry(t, db).ID); len(got) != 0 {
+		t.Errorf("pair entry opened by the setting joined %v, want none", got)
+	}
+	for _, key := range []string{"key-a", "key-b"} {
+		if got := pipelineOfVideo(t, db, key); entryState(got) != activityDone {
+			t.Errorf("pipeline of %s after judging turned on = %+v, want still done/completed", key, got)
+		}
+	}
+}
+
+func TestRetriedPairReturnsItsPipelinesToRunning(t *testing.T) {
+	db := migratedDB(t)
+	importPairInOneScan(t, db)
+	failed := judgePair(t, db, domain.VersionJudgeResult{Verdict: domain.VersionFailed, Error: "timeout"})
+	for _, key := range []string{"key-a", "key-b"} {
+		if got := pipelineOfVideo(t, db, key); entryState(got) != activityFailed {
+			t.Fatalf("pipeline of %s after the failed pair = %+v, want attention/failed", key, got)
+		}
+	}
+
+	if err := db.Versions().RetryJudgement(context.Background(), failed.ID); err != nil {
+		t.Fatal(err)
+	}
+	if retried := onlyPairEntry(t, db); retried.ID != failed.ID {
+		t.Errorf("retried pair entry = %d, want the same entry %d", retried.ID, failed.ID)
+	}
+	for _, key := range []string{"key-a", "key-b"} {
+		if got := pipelineOfVideo(t, db, key); entryState(got) != activityWaiting {
+			t.Errorf("pipeline of %s after the retry = %+v, want running/waiting", key, got)
+		}
+	}
+}
