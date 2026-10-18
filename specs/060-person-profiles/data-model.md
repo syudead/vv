@@ -6,7 +6,7 @@ Organizations gain nothing.
 
 ## Migration
 
-`00064_person_profiles.sql` adds the profile columns to `people` and the tables `people_links` and `person_images`. Its Down
+`00064_person_profiles.sql` adds the profile columns to `people` and the tables `people_links`, `person_images` and `person_favorites`. Its Down
 section drops them. Existing people get every column `null`.
 
 ## `people` (added columns)
@@ -43,6 +43,13 @@ section drops them. Existing people get every column `null`.
 | `width`, `height` | integer | no | Pixel size of `image` |
 | `updated_at` | integer | no | Unix seconds |
 
+## `person_favorites`
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `person_id` | integer | no | Primary key, `references people(id) on delete cascade` |
+| `favorited_at` | integer | no | Unix seconds; kept when the favorite is set again |
+
 ## Rules
 
 | Rule | Enforced in |
@@ -55,6 +62,7 @@ section drops them. Existing people get every column `null`.
 | At most 20 links | `domain.NormalizePersonProfile` |
 | `birth_key` is written with `birth_date` in the same statement | `internal/store` |
 | A merge fills only the target's `null` fields, an empty link list and a missing image ([R-8](research.md#r-8-merge-fills-the-targets-empty-fields-from-the-sources)) | `mergeCreditsInto` |
+| A merge target becomes a favorite when any source is one ([R-13](research.md#r-13-person-favorites-join-the-existing-favorites)) | `mergeCreditsInto` |
 | A plugin value fills only a `null` field or an empty link list; a plugin image is stored only when the person has none ([R-10](research.md#r-10-plugin-data-only-fills-what-is-empty-after-the-apply-commits)) | `ApplyFetchedWorkInfo`, the post-commit image step |
 
 ## What does not change
