@@ -5327,6 +5327,9 @@ type PersonFilter = int64
 // PersonId defines model for PersonId.
 type PersonId = int64
 
+// PersonRoleFilter Person role in a video.
+type PersonRoleFilter = WorkPersonRole
+
 // PlaylistId defines model for PlaylistId.
 type PlaylistId = int64
 
@@ -5786,6 +5789,9 @@ type ListVideosParams struct {
 
 	// Person Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
 	Person *PersonFilter `form:"person,omitempty" json:"person,omitempty"`
+
+	// PersonRole Keeps only videos linked to `person` in this role, including total. Requires `person`; without it, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed.
+	PersonRole *PersonRoleFilter `form:"personRole,omitempty" json:"personRole,omitempty"`
 
 	// Organization Organization ID, matching any role; follows person filter semantics
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
@@ -10555,6 +10561,19 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "person"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "person", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "personRole" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "personRole", r.URL.Query(), &params.PersonRole, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "personRole"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "personRole", Err: err})
 		}
 		return
 	}

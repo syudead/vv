@@ -865,13 +865,15 @@ conditions, each ANDed with the others:
 | `playable` | Videos that play in the browser | Allowed |
 | `favorite` | Favorite videos and favorite groups | `400 guest_filter_not_allowed` |
 | `person` | Videos linked to that person in any role | `400 guest_filter_not_allowed` |
+| `personRole` | With `person`, only videos linked to that person in this role (`GET /api/videos` only) | `400 guest_filter_not_allowed` |
 | `organization` | Videos linked to that organization in any role | `400 guest_filter_not_allowed` |
 | `tagKind` | Videos with at least one tag of that kind, manual or from the folder | `400 guest_filter_not_allowed` |
 
 `query`, `tag`, `person` and `organization` apply to each group member, so a
 group matched only in part lists its matched members as video items. A
 `person` or `organization` id with no entity gives an empty list, and a value
-that is not a positive integer is `400 invalid_request`.
+that is not a positive integer is `400 invalid_request`. `personRole` without
+`person`, or with a role outside `WorkPersonRole`, is also `400 invalid_request`.
 
 For the owner, a search term matches a video when it appears in the title or
 relative path of one of its locations, in a name or synonym of one of its
