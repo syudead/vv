@@ -150,16 +150,6 @@ export function keepSmartFolders(
   return { ...selection, smartFolders: new Set(kept) };
 }
 
-export function fromSelectAll(
-  ids: readonly number[],
-  groups: readonly SelectedGroup[],
-  smartFolderIds: readonly number[] = [],
-): LibrarySelection {
-  const selected = new Map<number, SelectedGroup>();
-  for (const group of groups) selected.set(group.id, copyGroup(group));
-  return { ids: new Set(ids), groups: selected, smartFolders: new Set(smartFolderIds) };
-}
-
 /** Reconcile loaded groups without pruning video IDs or unloaded selections. Drop identities with standalone members or unselected new members; preserve the reference when unchanged. */
 export function reconcileGroups(
   selection: LibrarySelection,
@@ -193,20 +183,6 @@ export function reconcileGroups(
     }
   }
   return groups === null ? selection : { ...selection, groups };
-}
-
-export function sameSelection(a: LibrarySelection, b: LibrarySelection): boolean {
-  if (
-    a.ids.size !== b.ids.size ||
-    a.groups.size !== b.groups.size ||
-    a.smartFolders.size !== b.smartFolders.size
-  ) {
-    return false;
-  }
-  for (const id of a.ids) if (!b.ids.has(id)) return false;
-  for (const id of a.smartFolders) if (!b.smartFolders.has(id)) return false;
-  for (const key of a.groups.keys()) if (!b.groups.has(key)) return false;
-  return true;
 }
 
 /** Exclude video IDs already represented by selected group targets. */

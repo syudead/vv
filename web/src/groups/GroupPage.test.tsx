@@ -119,16 +119,14 @@ describe("GroupPage", () => {
     ).toBe("true");
   });
 
-  it("読み直しで外れた動画は選択から外れ、増えた動画は「Select all」でまた選べる", async () => {
+  it("読み直しで外れた動画は選択から外れる", async () => {
     seed();
     const user = userEvent.setup();
     renderPage("/groups/1");
     await screen.findByRole("heading", { level: 1, name: "Season" });
     await user.click(screen.getByRole("checkbox", { name: 'Select "Episode 1"' }));
-    const selectAll = screen.getByRole("button", { name: "Select all" });
-    await user.click(selectAll);
-    expect(screen.getByText("3 videos selected")).toBeDefined();
-    expect(selectAll).toHaveProperty("disabled", true);
+    await user.click(screen.getByRole("checkbox", { name: 'Select "Episode 2"' }));
+    expect(screen.getByText("2 videos selected")).toBeDefined();
 
     const stored = server.groups.get(1) as StoredGroup;
     stored.group = { ...stored.group, videoCount: 3, videoIds: [12, 11, 13] };
@@ -140,13 +138,7 @@ describe("GroupPage", () => {
     await emitServerEvent("group", { ids: [1] });
 
     await screen.findByRole("checkbox", { name: 'Select "Episode 3"' });
-    expect(await screen.findByText("2 videos selected")).toBeDefined();
-    expect(screen.getByRole("button", { name: "Select all" })).toHaveProperty(
-      "disabled",
-      false,
-    );
-    await user.click(screen.getByRole("button", { name: "Select all" }));
-    expect(screen.getByText("3 videos selected")).toBeDefined();
+    expect(await screen.findByText("1 video selected")).toBeDefined();
   });
 
   it("404 ならグループがもう無いと示し、名前を出さない", async () => {

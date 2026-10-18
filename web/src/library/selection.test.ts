@@ -4,12 +4,10 @@ import type { LibraryGroup, LibraryItem, Video } from "../api/client";
 import {
   emptySelection,
   favoriteTargets,
-  fromSelectAll,
   isGroupSelected,
   keepMembers,
   keepSmartFolders,
   reconcileGroups,
-  sameSelection,
   selectedCount,
   setGroup,
   setSmartFolder,
@@ -59,7 +57,7 @@ describe("LibrarySelection", () => {
     const back = toggleVideo(removed, 102);
     expect(back.ids.size).toBe(3);
     expect(back.groups.size).toBe(0);
-    expect(sameSelection(back, grouped)).toBe(false);
+    expect(back).not.toEqual(grouped);
   });
 
   it("タグの行の切り替えは、グループとして選んでいれば外し、そうでなければグループとして選ぶ", () => {
@@ -84,7 +82,7 @@ describe("LibrarySelection", () => {
       smartFolderIds: [],
     });
     const toggled = toggleGroup(both, g1);
-    expect(sameSelection(toggled, deselected)).toBe(true);
+    expect(toggled).toEqual(deselected);
   });
 
   it("共有するメンバーしか持たないグループを外しても、グループだけが外れて動画は残る", () => {
@@ -115,10 +113,10 @@ describe("LibrarySelection", () => {
     });
 
     const toggledOff = toggleGroup(both, g1);
-    expect(sameSelection(toggledOff, deselected)).toBe(true);
+    expect(toggledOff).toEqual(deselected);
     const reselected = toggleGroup(toggledOff, g1);
     expect(isGroupSelected(reselected, 1)).toBe(true);
-    expect(sameSelection(reselected, both)).toBe(true);
+    expect(reselected).toEqual(both);
   });
 
   it("メンバーを動画のチェックで全部選んでも、グループのカードは選んだと見えない", () => {
@@ -130,14 +128,6 @@ describe("LibrarySelection", () => {
     const grouped = toggleGroup(videos, series);
     expect(isGroupSelected(grouped, series.id)).toBe(true);
     expect(grouped.ids.size).toBe(3);
-  });
-
-  it("「すべて選択」の応答は ids と groups の両方が同じときだけ同じ選択とみなす", () => {
-    const all = fromSelectAll([1, 101, 102, 103], [{ id: 5, videoIds: series.videoIds }]);
-    expect(
-      sameSelection(all, setGroup(setVideo(emptySelection, 1, true), series, true)),
-    ).toBe(true);
-    expect(sameSelection(all, fromSelectAll([1, 101, 102, 103], []))).toBe(false);
   });
 
   it("取り直した一覧でメンバーが動画の項目なら、グループから外してメンバーを動画として送る", () => {
@@ -169,21 +159,6 @@ describe("LibrarySelection", () => {
     expect(favoriteTargets(grown).videoIds).toEqual([101, 102, 103]);
   });
 
-  it("「すべて選択」の groups は、読み込んでいないグループも id で送る", () => {
-    const all = fromSelectAll(
-      [101, 102, 103, 201],
-      [
-        { id: 5, videoIds: [101, 102, 103] },
-        { id: 6, videoIds: [201] },
-      ],
-    );
-    expect(favoriteTargets(all)).toEqual({
-      videoIds: [],
-      groupIds: [5, 6],
-      smartFolderIds: [],
-    });
-  });
-
   it("スマートフォルダは 1 件と数えて smartFolderIds で送り、動画やグループを外しても残る", () => {
     const selection = setGroup(setSmartFolder(emptySelection, 9, true), series, true);
     expect(selectedCount(selection)).toBe(4);
@@ -205,12 +180,6 @@ describe("LibrarySelection", () => {
     expect(keepSmartFolders(selection, new Set([8, 9]))).toBe(selection);
   });
 
-  it("「すべて選択」の smartFolderIds も比べ、スマートフォルダを 1 つ外すと別の選択になる", () => {
-    const all = fromSelectAll([1], [], [8, 9]);
-    expect(sameSelection(all, fromSelectAll([1], [], [9, 8]))).toBe(true);
-    expect(sameSelection(all, setSmartFolder(all, 8, false))).toBe(false);
-  });
-
   it("変化が無ければ同じ選択を返す", () => {
     const selection = setGroup(setVideo(emptySelection, 1, true), series, true);
     expect(reconcileGroups(selection, [videoItem(1), groupItem([101, 102, 103])])).toBe(
@@ -222,14 +191,18 @@ describe("LibrarySelection", () => {
 
 describe("keepMembers", () => {
   it("並ばなくなった動画を外し、その動画をメンバーに持つグループも外す", () => {
-    const selection = fromSelectAll([1, 2, 3], [{ id: 7, videoIds: [2, 3] }]);
+    const selection = setGroup(
+      setVideo(emptySelection, 1, true),
+      { id: 7, videoIds: [2, 3] },
+      true,
+    );
     const kept = keepMembers(selection, new Set([1, 2]));
     expect([...kept.ids]).toEqual([1, 2]);
     expect(kept.groups.size).toBe(0);
   });
 
   it("どれも並んでいれば同じ選択を返す", () => {
-    const selection = fromSelectAll([1, 2], [{ id: 7, videoIds: [1, 2] }]);
+    const selection = setGroup(emptySelection, { id: 7, videoIds: [1, 2] }, true);
     expect(keepMembers(selection, new Set([1, 2, 3]))).toBe(selection);
   });
 });

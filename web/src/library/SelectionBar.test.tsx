@@ -194,24 +194,20 @@ function barElement(
 }
 
 function renderBar(props: Partial<React.ComponentProps<typeof SelectionBar>> = {}) {
-  const onSelectAll = vi.fn();
   const onClear = vi.fn();
   const onTagRemoved = vi.fn();
   const onBundled = vi.fn();
   const result = render(
     barElement({
       count: 3,
-      allSelected: false,
       selectedIds: [1, 2, 3],
-      selectingAll: false,
-      onSelectAll,
       onClear,
       onTagRemoved,
       onBundled,
       ...props,
     }),
   );
-  return { ...result, onSelectAll, onClear, onTagRemoved, onBundled };
+  return { ...result, onClear, onTagRemoved, onBundled };
 }
 
 beforeEach(() => {
@@ -242,41 +238,12 @@ describe("SelectionBar", () => {
     expect(screen.queryByRole("region", { name: "Selection actions" })).toBeNull();
   });
 
-  it("件数・すべて選択・選択解除を出す。すべて選択は選択中…でdisabledになる", () => {
+  it("件数と選択解除を出し、すべて選択は出さない", () => {
     install();
-    renderBar({ selectingAll: true });
+    renderBar();
     expect(screen.getByText("3 videos selected")).toBeDefined();
-    const selectAll = screen.getByRole("button", { name: "Selecting…" });
-    expect((selectAll as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByRole("button", { name: "Clear selection (Esc)" })).toBeDefined();
-  });
-
-  it("選択が直前の「すべて選択」と同じ集合（allSelected）のときだけ、すべて選択がdisabled", () => {
-    install();
-    const { rerender } = renderBar({
-      count: 10,
-      allSelected: true,
-      selectedIds: Array.from({ length: 10 }, (_, i) => i + 1),
-    });
-    expect(
-      (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-    //
-    rerender(
-      barElement({
-        count: 9,
-        allSelected: false,
-        selectedIds: Array.from({ length: 9 }, (_, i) => i + 1),
-        selectingAll: false,
-        onSelectAll: vi.fn(),
-        onClear: vi.fn(),
-        onTagRemoved: vi.fn(),
-        onBundled: vi.fn(),
-      }),
-    );
-    expect(
-      (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement).disabled,
-    ).toBe(false);
+    expect(screen.queryByRole("button", { name: /Select all/ })).toBeNull();
   });
 
   // Atomic batch APIs reject oversized selections; disable instead of silently splitting requests.
@@ -284,7 +251,6 @@ describe("SelectionBar", () => {
     install();
     renderBar({
       count: 20001,
-      allSelected: false,
       selectedIds: Array.from({ length: 20001 }, (_, i) => i + 1),
     });
     const addButton = screen.getByRole("button", {
@@ -311,17 +277,12 @@ describe("SelectionBar", () => {
     expect(document.getElementById(addDescribedBy!)?.textContent).toBe(
       "Select between 1 and 20,000 videos.",
     );
-
-    expect(
-      (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement).disabled,
-    ).toBe(false);
   });
 
   it("選択が20,000件ちょうどなら、タグの一括操作はdisabledにならない", () => {
     install();
     renderBar({
       count: 20000,
-      allSelected: false,
       selectedIds: Array.from({ length: 20000 }, (_, i) => i + 1),
     });
     expect(
@@ -346,10 +307,7 @@ describe("SelectionBar", () => {
     rerender(
       barElement({
         count: 3,
-        allSelected: false,
         selectedIds: [1, 2, 3],
-        selectingAll: false,
-        onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
         onBundled: vi.fn(),
@@ -371,7 +329,6 @@ describe("SelectionBar", () => {
     install();
     const { rerender } = renderBar({
       count: 3,
-      allSelected: false,
       selectedIds: [1, 2, 3],
     });
 
@@ -381,10 +338,7 @@ describe("SelectionBar", () => {
     rerender(
       barElement({
         count: 20001,
-        allSelected: false,
         selectedIds: Array.from({ length: 20001 }, (_, i) => i + 1),
-        selectingAll: false,
-        onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
         onBundled: vi.fn(),
@@ -401,7 +355,6 @@ describe("SelectionBar", () => {
     const fetchMock = install();
     const { rerender } = renderBar({
       count: 3,
-      allSelected: false,
       selectedIds: [1, 2, 3],
     });
 
@@ -411,10 +364,7 @@ describe("SelectionBar", () => {
     rerender(
       barElement({
         count: 3,
-        allSelected: false,
         selectedIds: Array.from({ length: 20001 }, (_, i) => i + 1),
-        selectingAll: false,
-        onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
         onBundled: vi.fn(),
@@ -436,7 +386,6 @@ describe("SelectionBar", () => {
     server.attached.set(1, new Set([1]));
     const { rerender } = renderBar({
       count: 3,
-      allSelected: false,
       selectedIds: [1, 2, 3],
     });
 
@@ -450,10 +399,7 @@ describe("SelectionBar", () => {
     rerender(
       barElement({
         count: 3,
-        allSelected: false,
         selectedIds: Array.from({ length: 20001 }, (_, i) => i + 1),
-        selectingAll: false,
-        onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
         onBundled: vi.fn(),
@@ -703,14 +649,6 @@ describe("SelectionBar", () => {
     expect(await screen.findByRole("option", { name: /旅行/ })).toBeDefined();
   });
 
-  it("すべて選択を押すと onSelectAll を呼ぶ", async () => {
-    const user = userEvent.setup();
-    install();
-    const { onSelectAll } = renderBar();
-    await user.click(screen.getByRole("button", { name: "Select all" }));
-    expect(onSelectAll).toHaveBeenCalledTimes(1);
-  });
-
   it("選択を解除ボタンで onClear を呼ぶ", async () => {
     const user = userEvent.setup();
     install();
@@ -763,10 +701,7 @@ describe("SelectionBar", () => {
     rerender(
       barElement({
         count: 1,
-        allSelected: false,
         selectedIds: [1],
-        selectingAll: false,
-        onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
         onBundled: vi.fn(),
@@ -793,10 +728,7 @@ describe("SelectionBar", () => {
     rerender(
       barElement({
         count: 1,
-        allSelected: false,
         selectedIds: [1],
-        selectingAll: false,
-        onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
         onBundled: vi.fn(),
@@ -832,10 +764,7 @@ describe("SelectionBar", () => {
     rerender(
       barElement({
         count: 0,
-        allSelected: false,
         selectedIds: [],
-        selectingAll: false,
-        onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
         onBundled: vi.fn(),
@@ -846,10 +775,7 @@ describe("SelectionBar", () => {
     rerender(
       barElement({
         count: 2,
-        allSelected: false,
         selectedIds: [4, 5],
-        selectingAll: false,
-        onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
         onBundled: vi.fn(),
@@ -946,10 +872,7 @@ describe("SelectionBar の英語の文言", () => {
     rerender(
       barElement({
         count: 2,
-        allSelected: false,
         selectedIds: [1, 2],
-        selectingAll: false,
-        onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
         onBundled: vi.fn(),
@@ -1011,10 +934,7 @@ describe("SelectionBar の英語の文言", () => {
     rerender(
       barElement({
         count: 20_001,
-        allSelected: false,
         selectedIds: [1, 2, 3],
-        selectingAll: false,
-        onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
         onBundled: vi.fn(),
@@ -1050,10 +970,7 @@ describe("SelectionBar の束ねる操作", () => {
     rerender(
       barElement({
         count: 2,
-        allSelected: false,
         selectedIds: [1, 2],
-        selectingAll: false,
-        onSelectAll: vi.fn(),
         onClear: vi.fn(),
         onTagRemoved: vi.fn(),
         onBundled: vi.fn(),

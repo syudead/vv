@@ -1,11 +1,8 @@
 import type { GroupItem } from "../api/groups";
 import {
-  emptySelection,
   favoriteTargets,
   type LibrarySelection,
   type SelectedGroup,
-  selectedGroupOf,
-  setGroup,
 } from "../library/selection";
 
 /** Deduplicate IDs across page boundaries because concurrent reordering can return an item twice. */
@@ -15,22 +12,6 @@ export function appendItems(
 ): GroupItem[] {
   const known = new Set(current.map((item) => item.id));
   return [...current, ...page.filter((item) => !known.has(item.id))];
-}
-
-/** Select all descendant videos, including unloaded pages, but only loaded child-group entries. */
-export function selectAllInGroup(
-  videoIds: readonly number[],
-  items: readonly GroupItem[],
-): LibrarySelection {
-  let selection = emptySelection;
-  for (const item of items) {
-    if (item.kind === "group" && item.group !== undefined) {
-      selection = setGroup(selection, selectedGroupOf(item.group), true);
-    }
-  }
-  const ids = new Set(selection.ids);
-  for (const id of videoIds) ids.add(id);
-  return { ...selection, ids };
 }
 
 /**

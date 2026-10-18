@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { LibraryGroup, LibraryItem, Video } from "../api/client";
-import { bodyKind, missingParent, selectAllLoaded } from "./pageRules";
+import {
+  bodyKind,
+  loadedSmartFolderIds,
+  loadedVideoIds,
+  missingParent,
+} from "./pageRules";
 
 const child: LibraryItem = {
   kind: "smartFolder",
@@ -46,12 +51,14 @@ describe("missingParent", () => {
   });
 });
 
-describe("selectAllLoaded", () => {
-  it("並んだ動画・グループ・子フォルダを選ぶ", () => {
-    const selection = selectAllLoaded([child, video(1), group(2, [3, 4])]);
+describe("loadedVideoIds", () => {
+  it("並んだ動画とグループのメンバーを返し、子フォルダは含めない", () => {
+    expect([...loadedVideoIds([child, video(1), group(2, [3, 4])])]).toEqual([1, 3, 4]);
+  });
+});
 
-    expect([...selection.ids]).toEqual([1, 3, 4]);
-    expect([...selection.groups.keys()]).toEqual([2]);
-    expect([...selection.smartFolders]).toEqual([5]);
+describe("loadedSmartFolderIds", () => {
+  it("並んだ子フォルダだけを返す", () => {
+    expect([...loadedSmartFolderIds([child, video(1), group(2, [3, 4])])]).toEqual([5]);
   });
 });

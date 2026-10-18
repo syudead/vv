@@ -12,7 +12,6 @@ import { useLocation } from "react-router";
 import {
   type LibraryGroup,
   type LibraryItem,
-  listLibraryIds,
   type SmartFolderSummary,
   type TagRef,
   type Video,
@@ -29,7 +28,7 @@ import { refreshTags, revalidateTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
 import { GroupChangedContext } from "../groups/groupChanges";
-import { errorText, t } from "../i18n";
+import { t } from "../i18n";
 import {
   readViewPreferences,
   type ViewPreferences,
@@ -101,10 +100,8 @@ import LibraryToolbar from "./LibraryToolbar";
 import {
   emptySelection,
   favoriteTargets,
-  fromSelectAll,
   type LibrarySelection,
   reconcileGroups,
-  sameSelection,
   selectedCount,
   selectedGroupOf,
   isGroupSelected,
@@ -349,69 +346,27 @@ export default function LibraryPage() {
   // Selection retains video IDs and group identity; video mutations expand groups, while favorites target groups themselves.
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
   const selectedIds = selection.ids;
-  // Disable Select all only while both IDs and group identity still match its last response.
-  const [selectAllSelection, setSelectAllSelection] = useState<LibrarySelection | null>(
-    null,
-  );
-  const [selectingAll, setSelectingAll] = useState(false);
-  // Invalidate Select all on manual selection or condition changes so late responses cannot overwrite newer intent.
-  const selectAllSeq = useRef(0);
-  // Reset selectingAll immediately: the invalidated request's finally skips state changes.
-  const invalidateSelectAll = useCallback(() => {
-    selectAllSeq.current += 1;
-    setSelectingAll(false);
-  }, []);
   // Removing any member also removes the group's selected identity.
-  const changeSelection = useCallback(
-    (id: number, selected: boolean) => {
-      invalidateSelectAll();
-      setSelection((current) => setVideo(current, id, selected));
-    },
-    [invalidateSelectAll],
-  );
+  const changeSelection = useCallback((id: number, selected: boolean) => {
+    setSelection((current) => setVideo(current, id, selected));
+  }, []);
   // Functional updates preserve stable chip callbacks without capturing the current selection.
-  const toggleSelection = useCallback(
-    (id: number) => {
-      invalidateSelectAll();
-      setSelection((current) => toggleVideo(current, id));
-    },
-    [invalidateSelectAll],
-  );
-  const changeGroupSelection = useCallback(
-    (group: LibraryGroup, selected: boolean) => {
-      invalidateSelectAll();
-      setSelection((current) => setGroup(current, selectedGroupOf(group), selected));
-    },
-    [invalidateSelectAll],
-  );
-  const toggleGroupSelection = useCallback(
-    (group: LibraryGroup) => {
-      invalidateSelectAll();
-      setSelection((current) => toggleGroup(current, selectedGroupOf(group)));
-    },
-    [invalidateSelectAll],
-  );
-  const changeSmartFolderSelection = useCallback(
-    (id: number, selected: boolean) => {
-      invalidateSelectAll();
-      setSelection((current) => setSmartFolder(current, id, selected));
-    },
-    [invalidateSelectAll],
-  );
-  const toggleSmartFolderSelection = useCallback(
-    (id: number) => {
-      invalidateSelectAll();
-      setSelection((current) => toggleSmartFolder(current, id));
-    },
-    [invalidateSelectAll],
-  );
-  const clearSelection = useCallback(() => {
-    invalidateSelectAll();
-    setSelection(emptySelection);
-    // Clear the Select all comparison when selection empties; manually reselecting IDs may still omit unloaded items.
-    //
-    setSelectAllSelection(null);
-  }, [invalidateSelectAll]);
+  const toggleSelection = useCallback((id: number) => {
+    setSelection((current) => toggleVideo(current, id));
+  }, []);
+  const changeGroupSelection = useCallback((group: LibraryGroup, selected: boolean) => {
+    setSelection((current) => setGroup(current, selectedGroupOf(group), selected));
+  }, []);
+  const toggleGroupSelection = useCallback((group: LibraryGroup) => {
+    setSelection((current) => toggleGroup(current, selectedGroupOf(group)));
+  }, []);
+  const changeSmartFolderSelection = useCallback((id: number, selected: boolean) => {
+    setSelection((current) => setSmartFolder(current, id, selected));
+  }, []);
+  const toggleSmartFolderSelection = useCallback((id: number) => {
+    setSelection((current) => toggleSmartFolder(current, id));
+  }, []);
+  const clearSelection = useCallback(() => setSelection(emptySelection), []);
 
   const moves = useLibraryMoves(items, refreshInPlace, clearSelection);
   const undo = useUndoToast(refreshInPlace);
@@ -428,41 +383,6 @@ export default function LibraryPage() {
   });
   const shown = drops.shown;
 
-  const selectAll = useCallback(() => {
-    const seq = (selectAllSeq.current += 1);
-    setSelectingAll(true);
-    listLibraryIds({ query, watch, playable, favorite, tag: tagIds, ...libraryFilter })
-      .then((response) => {
-        // Ignore Select all responses superseded by manual selection, another request, or condition changes.
-        if (selectAllSeq.current !== seq) return;
-        const missing = response.missingTagIds ?? [];
-        if (missing.length > 0) {
-          // Apply missing-filter removals to current criteria, not the criteria captured when sending.
-          const { criteria: latestCriteria, tagIds: latestTagIds } =
-            latestConditions.current;
-          const remaining = latestTagIds.filter((id) => !missing.includes(id));
-          toast(t.library.deletedTagsRemoved);
-          refreshTags().catch(() => undefined);
-          applyTags(latestCriteria, "replace", remaining);
-          return;
-        }
-        const selected = fromSelectAll(
-          response.ids,
-          response.groups ?? [],
-          response.smartFolderIds ?? [],
-        );
-        setSelection(selected);
-        setSelectAllSelection(selected);
-      })
-      .catch((failure: unknown) => {
-        if (selectAllSeq.current !== seq) return;
-        toast(t.library.selectAllFailed(errorText(failure)));
-      })
-      .finally(() => {
-        if (selectAllSeq.current === seq) setSelectingAll(false);
-      });
-  }, [applyTags, libraryFilter, favorite, playable, query, tagIds, toast, watch]);
-
   // Removing an active filter tag in bulk clears selection and reloads matches, but retains the valid filter itself.
   const onTagRemoved = useCallback(
     (tagId: number) => {
@@ -473,8 +393,6 @@ export default function LibraryPage() {
     },
     [clearSelection, reload],
   );
-
-  // Never prune selected IDs to loaded items; Select all includes unloaded pages.
 
   // Reconcile selected group identity after refresh without removing selected video IDs.
   useEffect(() => {
@@ -643,10 +561,6 @@ export default function LibraryPage() {
   }, [restored]);
 
   const selectedIdsArray = useMemo(() => Array.from(selectedIds), [selectedIds]);
-  const allSelected = useMemo(
-    () => selectAllSelection !== null && sameSelection(selectAllSelection, selection),
-    [selectAllSelection, selection],
-  );
   const favoriteSelection = useMemo(() => favoriteTargets(selection), [selection]);
 
   const empty = !loading && error === null && items.length === 0;
@@ -885,13 +799,10 @@ export default function LibraryPage() {
           owner && (
             <SelectionBar
               count={selectedIds.size}
-              allSelected={allSelected}
               selectedIds={selectedIdsArray}
               favoriteVideoIds={favoriteSelection.videoIds}
               favoriteGroupIds={favoriteSelection.groupIds}
               smartFolderIds={favoriteSelection.smartFolderIds}
-              selectingAll={selectingAll}
-              onSelectAll={selectAll}
               onClear={clearSelection}
               onTagRemoved={onTagRemoved}
               onBundled={onBundled}

@@ -46,15 +46,6 @@ function install(items: LibraryItem[]) {
     if (url.pathname === "/api/library") {
       return Promise.resolve(json({ items, total: items.length }));
     }
-    if (url.pathname === "/api/library/ids") {
-      return Promise.resolve(
-        json({
-          ids: [1, 21],
-          groups: [{ id: 2, videoIds: [21] }],
-          smartFolderIds: [9],
-        }),
-      );
-    }
     if (url.pathname === "/api/favorites") {
       favoriteBodies.push(JSON.parse(String(init?.body)));
       return Promise.resolve(
@@ -297,23 +288,6 @@ describe("ライブラリのスマートフォルダのカード", () => {
       (
         await within(card).findByRole("button", { name: 'Favorite smart folder "猫"' })
       ).getAttribute("aria-pressed"),
-    ).toBe("true");
-  });
-
-  it("「すべて選択」は応答の smartFolderIds のフォルダも選ぶ", async () => {
-    const user = userEvent.setup();
-    install(items);
-    renderLibrary();
-    await screen.findByRole("link", { name: "猫, smart folder of 4 videos" });
-
-    await user.click(screen.getByRole("checkbox", { name: 'Select "Episode"' }));
-    await user.click(screen.getByRole("button", { name: "Select all" }));
-
-    expect(await screen.findByText("2 videos and 1 smart folder selected")).toBeTruthy();
-    expect(
-      screen
-        .getByRole("checkbox", { name: 'Select the smart folder "猫"' })
-        .getAttribute("aria-checked"),
     ).toBe("true");
   });
 });

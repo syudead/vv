@@ -121,16 +121,6 @@ function install(items: LibraryItem[], group?: LibraryGroup): Server {
         }),
       );
     }
-    if (url.pathname === "/api/library/ids") {
-      const ids = items.flatMap((item) =>
-        item.kind === "video" ? [item.video.id] : item.group.videoIds,
-      );
-      const groups =
-        server.group === undefined
-          ? []
-          : [{ id: server.group.id, videoIds: server.group.videoIds }];
-      return Promise.resolve(json({ ids: Array.from(new Set(ids)), groups }));
-    }
     if (url.pathname === "/api/video-visibility" && method === "PUT") {
       const body = JSON.parse(String(init?.body)) as { videoIds: number[] };
       server.visibilityRequests.push(body.videoIds);
@@ -718,34 +708,6 @@ describe("選択バーの一括のお気に入り", () => {
     ]);
   });
 
-  it("「すべて選択」のあとは、応答の groups を groupIds に、残りを videoIds に送る", async () => {
-    const group = seriesGroup();
-    const server = install(
-      [
-        { kind: "video", video: video(1) },
-        { kind: "group", group },
-        { kind: "video", video: video(2) },
-      ],
-      group,
-    );
-    const user = userEvent.setup();
-    renderLibrary();
-    await user.click(await screen.findByRole("checkbox", { name: 'Select "動画 1"' }));
-    await user.click(screen.getByRole("button", { name: "Select all" }));
-    expect(await screen.findByText("5 videos selected")).toBeDefined();
-    await waitFor(() =>
-      expect(
-        (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(true),
-    );
-    await favoriteSelection(user);
-    expect(await screen.findByText("Added 3 items to favorites")).toBeDefined();
-    expect(server.favoriteRequests).toEqual([
-      { videoIds: [1, 2], groupIds: [seriesGroupId], favorite: true },
-    ]);
-  });
-
   it("既にお気に入りのものを含めても誤りにならず、トーストは appliedVideos + appliedGroups を数える（Edge Case）", async () => {
     const group = seriesGroup({ favorite: true });
     install(
@@ -870,49 +832,6 @@ describe("選択バーの一括のお気に入り", () => {
     expect(document.getElementById(describedBy ?? "")?.textContent).toBe(
       "Select between 1 and 20,000 videos.",
     );
-  });
-
-  it("「すべて選択」のあとメンバーを 1 本外して戻すと「すべて選択」が押せ、押すとグループに戻る", async () => {
-    const group = seriesGroup();
-    const server = install(
-      [
-        { kind: "group", group },
-        { kind: "video", video: video(101) },
-        { kind: "video", video: video(1) },
-      ],
-      group,
-    );
-    const user = userEvent.setup();
-    renderLibrary();
-    await user.click(await screen.findByRole("checkbox", { name: 'Select "動画 1"' }));
-    const selectAll = () =>
-      screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement;
-    await user.click(selectAll());
-    await waitFor(() => expect(selectAll().disabled).toBe(true));
-
-    const member = screen.getByRole("checkbox", { name: 'Select "動画 101"' });
-    await user.click(member);
-    expect(selectAll().disabled).toBe(false);
-    await user.click(member);
-    expect(screen.getByText("4 videos selected")).toBeDefined();
-    expect(selectAll().disabled).toBe(false);
-    await favoriteSelection(user);
-    expect(await screen.findByText("Added 4 items to favorites")).toBeDefined();
-    expect(server.favoriteRequests[0]).toEqual({
-      videoIds: [102, 103, 1, 101],
-      groupIds: [],
-      favorite: true,
-    });
-
-    await user.click(selectAll());
-    await waitFor(() => expect(selectAll().disabled).toBe(true));
-    await favoriteSelection(user);
-    await waitFor(() => expect(server.favoriteRequests).toHaveLength(2));
-    expect(server.favoriteRequests[1]).toEqual({
-      videoIds: [1],
-      groupIds: [seriesGroupId],
-      favorite: true,
-    });
   });
 
   it("タグ・公開・束ねる操作は今までどおりメンバーを含む動画の id を送る", async () => {

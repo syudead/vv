@@ -9,7 +9,6 @@ import {
   listDirectories,
   listFolderVideos,
   listLibrary,
-  listLibraryIds,
   listVideos,
   beaconProgress,
   listMediaFolders,
@@ -890,7 +889,7 @@ describe("list API client", () => {
     });
   });
 
-  it("sends favorite=true and the favorited sorts to all four lists only when favorite is true", async () => {
+  it("sends favorite=true and the favorited sorts to all three lists only when favorite is true", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
       .mockImplementation(() =>
@@ -900,10 +899,8 @@ describe("list API client", () => {
 
     await listVideos({ favorite: true, sort: "favoritedDesc" });
     await listLibrary({ favorite: true, sort: "favoritedAsc" });
-    await listLibraryIds({ favorite: true });
     await listFolderVideos({ folder: { rootId: 3, path: "" }, favorite: true });
     await listVideos({ favorite: false });
-    await listLibraryIds({ favorite: false });
 
     const urls = fetch.mock.calls.map(
       ([input]) => new URL(String(input), "http://localhost"),
@@ -912,15 +909,13 @@ describe("list API client", () => {
       "true",
       "true",
       "true",
-      "true",
-      null,
       null,
     ]);
     expect(urls[0]?.searchParams.get("sort")).toBe("favoritedDesc");
     expect(urls[1]?.searchParams.get("sort")).toBe("favoritedAsc");
   });
 
-  // docs/design-docs/catalog-organization.md: added within and length go to the three library lists.
+  // docs/design-docs/catalog-organization.md: added within and length go to the library lists.
   it("sends addedWithin, minDuration and maxDuration to the library lists only when given", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
@@ -932,7 +927,6 @@ describe("list API client", () => {
 
     await listVideos(filter);
     await listLibrary(filter);
-    await listLibraryIds(filter);
     await listVideos({});
 
     const urls = fetch.mock.calls.map(
@@ -944,7 +938,6 @@ describe("list API client", () => {
       url.searchParams.get("maxDuration"),
     ]);
     expect(sent).toEqual([
-      ["7", "0", "600"],
       ["7", "0", "600"],
       ["7", "0", "600"],
       [null, null, null],
@@ -1018,27 +1011,6 @@ describe("list API client", () => {
     expect(requestedURL(fetch).searchParams.has("tag")).toBe(false);
   });
 
-  it("listLibraryIds sends query/watch/playable/tag and returns ids and missingTagIds", async () => {
-    const fetch = vi
-      .fn<typeof globalThis.fetch>()
-      .mockResolvedValueOnce(jsonResponse({ ids: [5, 1, 9], missingTagIds: [7] }));
-    vi.stubGlobal("fetch", fetch);
-
-    const result = await listLibraryIds({
-      query: "旅行",
-      watch: "unwatched",
-      playable: true,
-      tag: [3, 7],
-    });
-
-    expect(result).toEqual({ ids: [5, 1, 9], missingTagIds: [7] });
-    const url = requestedURL(fetch);
-    expect(url.pathname).toBe("/api/library/ids");
-    expect(url.searchParams.get("query")).toBe("旅行");
-    expect(url.searchParams.get("watch")).toBe("unwatched");
-    expect(url.searchParams.get("playable")).toBe("true");
-    expect(url.searchParams.getAll("tag")).toEqual(["3", "7"]);
-  });
   it("listLibrary keeps smart folder items as summaries", async () => {
     const video = { id: 1 };
     const smartFolder = { id: 9, name: "猫" };

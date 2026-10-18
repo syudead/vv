@@ -144,7 +144,6 @@ function install(entities: Entities) {
         json({ items: items.map((item) => videoItem(item)), total: items.length }),
       );
     }
-    if (path === "/api/library/ids") return Promise.resolve(json({ ids: [1] }));
     throw new Error(`unexpected request: ${url.toString()}`);
   });
 }
@@ -325,19 +324,6 @@ describe("人物・団体での絞り込み", () => {
     await user.click(screen.getByRole("button", { name: "Filter" }));
     await user.click(await screen.findByRole("button", { name: "Clear filters" }));
     await waitFor(() => expect(location()).toBe("?sort=titleAsc"));
-  });
-
-  it("「すべて選択」も人物・団体の条件で全件を取る", async () => {
-    const user = userEvent.setup();
-    renderAt("/?person=1");
-    await user.click(await screen.findByRole("checkbox", { name: /動画 1/ }));
-    await user.click(screen.getByRole("button", { name: "Select all" }));
-    await waitFor(() => {
-      const ids = fetchMock.mock.calls
-        .map((call) => new URL(String(call[0]), "http://localhost"))
-        .find((url) => url.pathname === "/api/library/ids");
-      expect(ids?.searchParams.get("person")).toBe("1");
-    });
   });
 
   it("/ の控えは /?person=1 には使われない（listSnapshot の鍵に person が要る）", async () => {

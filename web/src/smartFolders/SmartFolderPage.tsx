@@ -21,7 +21,6 @@ import {
   keepSmartFolders,
   type LibrarySelection,
   reconcileGroups,
-  sameSelection,
   selectedCount,
   selectedGroupOf,
   setGroup,
@@ -66,7 +65,13 @@ import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import VideoCard, { VideoRow } from "../videoList/VideoCard";
 import { SmartFolderCardsProvider } from "./cardValues";
 import ConditionLines from "./ConditionLines";
-import { type AncestorRule, bodyKind, missingParent, selectAllLoaded } from "./pageRules";
+import {
+  type AncestorRule,
+  bodyKind,
+  loadedSmartFolderIds,
+  loadedVideoIds,
+  missingParent,
+} from "./pageRules";
 import { SmartFolderCard, SmartFolderRow } from "./SmartFolderCard";
 import SmartFolderMenu, { type SmartFolderMenuDialog } from "./SmartFolderMenu";
 import {
@@ -100,22 +105,18 @@ export default function SmartFolderPage() {
  */
 function useFolderSelection(items: readonly LibraryItem[]) {
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
-  const all = useMemo(() => selectAllLoaded(items), [items]);
+  const loaded = useMemo(() => loadedVideoIds(items), [items]);
+  const folders = useMemo(() => loadedSmartFolderIds(items), [items]);
   useEffect(() => {
     setSelection((current) =>
-      reconcileGroups(
-        keepSmartFolders(keepMembers(current, all.ids), all.smartFolders),
-        items,
-      ),
+      reconcileGroups(keepSmartFolders(keepMembers(current, loaded), folders), items),
     );
-  }, [all, items]);
+  }, [folders, loaded, items]);
   const clear = useCallback(() => setSelection(emptySelection), []);
   useEscapeClearsSelection(selectedCount(selection) > 0, clear);
   return {
     selection,
-    allSelected: selectedCount(all) > 0 && sameSelection(all, selection),
     clear,
-    selectAll: useCallback(() => setSelection(all), [all]),
     changeVideo: useCallback(
       (videoId: number, selected: boolean) =>
         setSelection((current) => setVideo(current, videoId, selected)),
@@ -220,13 +221,10 @@ function SmartFolderScreen({ id }: { id: number | null }) {
           data !== null && (
             <SelectionBar
               count={selection.selection.ids.size}
-              allSelected={selection.allSelected}
               selectedIds={selectedIds}
               favoriteVideoIds={favorites.videoIds}
               favoriteGroupIds={favorites.groupIds}
               smartFolderIds={favorites.smartFolderIds}
-              selectingAll={false}
-              onSelectAll={selection.selectAll}
               onClear={selection.clear}
               onTagRemoved={reload}
               onBundled={afterBulk}
