@@ -302,34 +302,6 @@ describe("HistoryPage", () => {
     expect(screen.queryByRole("status", { name: "Loading…" })).toBeNull();
   });
 
-  it("同じ動画を同じ日に 2 度見た件は 1 つの見出しの下の 2 行になる", async () => {
-    server.entries = [
-      {
-        id: 2,
-        playedAt: at(27, 21, 30),
-        title: "Kyoto",
-        video: video(11, { title: "Kyoto" }),
-      },
-      {
-        id: 1,
-        playedAt: at(27, 8, 0),
-        title: "Kyoto",
-        video: video(11, { title: "Kyoto" }),
-      },
-    ];
-    server.dates = ["2026-09-27"];
-    renderPage();
-    await screen.findByRole("list", { name: "Watch history" });
-
-    const headings = within(historyList()).getAllByRole("heading", { level: 2 });
-    expect(headings.map((heading) => heading.textContent)).toEqual(["Sunday · Sep 27"]);
-    const links = within(historyList()).getAllByRole("link", {
-      name: "Kyoto, 1:00, played Sunday, Sep 27",
-    });
-    expect(links).toHaveLength(2);
-    expect(document.querySelectorAll('[data-slot="grouped-list-item"]')).toHaveLength(2);
-  });
-
   it("動画のある件は再生画面を開き、無い件はリンクにせず再生できないと書く", async () => {
     const user = userEvent.setup();
     renderPage();

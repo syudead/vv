@@ -10,7 +10,9 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-func TestCheckMediaFolderReturnsCleanedDirectory(t *testing.T) {
+// CheckMediaFolder が domain.NormalizeMediaFolderPath の結果を使っていることを確かめる
+// （規則そのものは internal/domain が検証する）。
+func TestCheckMediaFolderReturnsNormalizedDirectory(t *testing.T) {
 	root := t.TempDir()
 	got, err := New().CheckMediaFolder(root + string(os.PathSeparator) + ".")
 	if err != nil {

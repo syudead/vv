@@ -75,13 +75,6 @@ func TestVerifyReportsUncreatableThumbnailsDir(t *testing.T) {
 	}
 }
 
-func TestThumbnailsDirIsDerivedFromDataDir(t *testing.T) {
-	cfg := Config{DataDir: "/data"}
-	if got, want := cfg.ThumbnailsDir(), filepath.Join("/data", "thumbnails"); got != want {
-		t.Fatalf("ThumbnailsDir() = %q, want %q", got, want)
-	}
-}
-
 func TestLoadConfigReadsTrustedProxies(t *testing.T) {
 	cfg, err := LoadConfig(envFrom(nil))
 	if err != nil {

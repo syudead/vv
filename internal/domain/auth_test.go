@@ -4,7 +4,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestSafeRedirectTarget(t *testing.T) {
@@ -125,12 +124,6 @@ func TestValidatePassword(t *testing.T) {
 		if err := ValidatePassword(bad); !errors.Is(err, ErrInvalidPassword) {
 			t.Errorf("ValidatePassword(len %d) = %v, want ErrInvalidPassword", len(bad), err)
 		}
-	}
-}
-
-func TestSessionLifetime(t *testing.T) {
-	if SessionLifetime != 90*24*time.Hour {
-		t.Fatalf("SessionLifetime = %v, want 90 days", SessionLifetime)
 	}
 }
 

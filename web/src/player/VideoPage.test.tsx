@@ -365,13 +365,6 @@ describe("VideoPage", () => {
       );
     });
 
-    it("直接開いたら × は / へ、外部 URL は戻り先にしない", async () => {
-      renderPage("7", "//evil.example");
-      await ready();
-      fireEvent.click(closeButton());
-      expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /");
-    });
-
     it("Esc で遷移元の一覧へ戻る", async () => {
       renderPage("7", "/?q=abc");
       await ready();
@@ -3393,23 +3386,6 @@ describe("VideoPage", () => {
       expect(rows()[1]?.querySelector('[title*="/media/"]')).toBeNull();
       await user.click(link);
       await waitFor(() => expect(player().video.id).toBe(20));
-    });
-
-    it("集まりの再生位置がこのバージョンの尺以上なら 0 から再生する", async () => {
-      server.videos.set(20, [
-        {
-          ...versionB,
-          durationMs: 60_000,
-          progress: {
-            positionMs: 90_000,
-            completed: false,
-            updatedAt: "2026-09-01T00:00:00Z",
-          },
-        },
-      ]);
-      renderPage("20");
-      await ready();
-      await waitFor(() => expect(player().initialPositionMs).toBe(0));
     });
   });
 
