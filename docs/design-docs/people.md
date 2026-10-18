@@ -128,9 +128,9 @@ directory, and an 800 px JPEG of about 200 KiB costs little as a blob.
 
 `people.image_revision` increases on every change of the face: an upload, a
 removal and a merge that brings a face. `Person` and the video page's
-`WorkPerson` carry it as `imageRevision` only while the person has a face, the
-browser loads `/api/people/{id}/image?v={imageRevision}`, and `GET` answers
-`private, no-cache` with the revision as `ETag`. The counter lives on `people`,
+`WorkPerson` carry it as `imageRevision` only while the person has a face, a
+client loads the face from `/api/people/{id}/image?v={imageRevision}`, and
+`GET` answers `private, no-cache` with the revision as `ETag`. The counter lives on `people`,
 not on the image row, so removing a face does not reset it and a later face
 never answers `304` to the removed face's `ETag`.
 
