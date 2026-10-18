@@ -10,8 +10,9 @@ their hand-written descriptions name the profile.
 
 ## `Person` and `PersonProfile`
 
-`Person` gains `profile` (always present, each property optional) and
-`imageRevision` (present only when the person has a face). The external
+`Person` gains `profile` (always present, each property optional),
+`favorite` (always present) and `imageRevision` (present only when the
+person has a face). The external
 `Person` gains `profile` only.
 
 | `PersonProfile` property | Type | Meaning |
@@ -50,6 +51,17 @@ that changes nothing returns the current person without writing.
 | Status | `code` | When |
 | --- | --- | --- |
 | 400 | `invalid_request` | `ageAsc` or `ageDesc` on an organizations list |
+
+## `PUT /api/favorites`
+
+`FavoritesRequest` gains `personIds`, counted with the other arrays toward
+the 1–20,000 limit; missing people are ignored, as missing groups are
+([R-13](../research.md#r-13-person-favorites-join-the-existing-favorites)).
+
+## `GET /api/people?favorite=true`
+
+Owner-only like the rest of the list: keeps only favorite people, and `total`
+counts them. Organizations answer `favorite` with `400 invalid_request`.
 
 ## `POST /api/people/{id}/merge`
 

@@ -10,7 +10,7 @@ A person gains one face image and a fixed set of profile fields, both
 editable by the owner and filled by work-info plugins where empty. `/people`
 becomes a card grid, a new person page at `/people/:id` holds the person's
 details, videos by role and every edit, and the video page's cast shows faces
-that open it. Profiles are columns on `people`, the face is a fitted JPEG blob
+that open it, and the owner can mark people as favorites. Profiles are columns on `people`, the face is a fitted JPEG blob
 in SQLite, and the browser computes ages from the dates
 ([research.md](research.md)).
 
@@ -66,7 +66,7 @@ Checked against [ARCHITECTURE.md](../../ARCHITECTURE.md),
 ```text
 specs/060-person-profiles/
 ├── plan.md
-├── research.md                # R-1..R-12
+├── research.md                # R-1..R-13
 ├── data-model.md              # migration, profile columns, links, faces
 └── contracts/
     ├── people-api.md          # Person, profile, image endpoints, sorts, personRole
@@ -114,6 +114,10 @@ flowchart LR
   u6 --> u7[People grid]
   u3 --> u7
   u6 --> u8[Cast faces]
+  u6 --> u10[Edit page]
+  u1 --> u11[Favorites]
+  u11 --> u6
+  u11 --> u7
   u4 --> u9[Fetched profiles in comparison]
 ```
 
@@ -207,28 +211,56 @@ director in another returns one video and `total` 1 per role; HTTP tests show
 **Scope**: The `/people/:id` route and its owner guard and navigation
 highlight, the page with face, name, aliases, profile, external IDs and the
 age range (R-3), the videos list with the role filter, the link to the
-filtered library, rename, the details form extended with the profile, face
-upload and removal, merge and delete reusing the credit dialogs, and the
+filtered library, face upload and removal, the favorite heart, the `Edit`
+link to the edit page, merge and delete reusing the credit dialogs, and the
 loading, failed, gone and no-video states, as `ui-design.md` lays them out.
 
-**Dependencies**: Store people's profiles and expose them in the screen and external APIs; Store people's faces and serve them with a revision; Filter a person's videos by role
+**Dependencies**: Store people's profiles and expose them in the screen and external APIs; Store people's faces and serve them with a revision; Filter a person's videos by role; Let the owner mark people as favorites
 
 **Acceptance**: Web unit tests show the age range for a year-only birth date
-and the age at death, a profile edit sending only changed properties, a face
-upload updating the shown image, the role filter's request, and the gone state
-after a 404. Visual review of the page at desktop and mobile widths, with and
-without a face.
+and the age at death, a face upload updating the shown image, the heart's
+request and its state after the response, the role filter's request, and the
+gone state after a 404. Visual review of the page at desktop and mobile
+widths, with and without a face.
+
+### Edit a person's names, links and profile on one page
+
+**Scope**: `/people/:id/edit`, a `FormPage` that edits the name, aliases,
+external IDs, links and every profile field together and saves them with one
+`PATCH`, the discard confirmation, and the return to the person page, as
+`ui-design.md` lays it out. The organizations page keeps the details dialog.
+
+**Dependencies**: Open a person page with their face, profile, videos and edits
+
+**Acceptance**: Web unit tests show one save sending only the changed
+properties, a field error staying under its field with the other inputs kept,
+and `Discard changes?` on leaving with changes. Visual review of the page at
+desktop and mobile widths.
+
+### Let the owner mark people as favorites
+
+**Scope**: `person_favorites`, `personIds` on `PUT /api/favorites`,
+`favorite` on `Person`, the `favorite=true` filter on `GET /api/people`, and
+the merge and delete rules
+([people-api.md](contracts/people-api.md#put-apifavorites), R-13).
+
+**Dependencies**: Store people's profiles and expose them in the screen and external APIs
+
+**Acceptance**: HTTP tests show `personIds` setting and clearing the favorite,
+`favorite=true` listing only favorites, and a guest refused. A store test
+shows a merge target becoming a favorite when a source is one, and the row
+removed with its person.
 
 ### Replace the people list with a grid of face cards
 
 **Scope**: `/people` as `ListPage` with `CardGrid` and infinite scroll over
-the existing pages, cards with face or placeholder, name, age and video
-count, search, the existing sorts plus the age sorts, creating a person, and cards opening
+the existing pages, cards with face or placeholder, name, age, video
+count and the favorite heart, the favorites filter, search, the existing sorts plus the age sorts, creating a person, and cards opening
 the person page; the row actions leave the list. `/organizations` keeps
 `CreditsPage` (R-12). Update [library-ui.md](../../docs/design-docs/library-ui.md)
 and `people.md`.
 
-**Dependencies**: Open a person page with their face, profile, videos and edits; Sort people by age
+**Dependencies**: Open a person page with their face, profile, videos and edits; Sort people by age; Let the owner mark people as favorites
 
 **Acceptance**: Web unit tests show the grid paging on scroll, the age sort's
 request, a card linking to `/people/:id`, and no rename, merge or delete on a

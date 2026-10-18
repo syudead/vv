@@ -190,3 +190,19 @@ tag pieces. The design stage settles the card and the page layout.
 | **`ListPage` + `CardGrid`** | Chosen: the design system's skeleton for browsing items |
 | Cards inside `AdminTablePage` | Rejected: the design system forbids cards in that skeleton |
 | Virtualized grid | Rejected: library card grids are not virtualized, and the people list pages 100 at a time like the library |
+
+## R-13: Person favorites join the existing favorites
+
+**Decision**: A favorite person is a row in `person_favorites`, set and
+cleared through `personIds` on `PUT /api/favorites`, as videos, groups and
+smart folders are.
+
+| Option | Verdict |
+| --- | --- |
+| **`person_favorites` and `PUT /api/favorites`** | Chosen |
+| A `favorite` column on `people` | Rejected: every other favorite is a table of its own with its timestamp, and the shared endpoint already sets several kinds atomically |
+| `PUT /api/people/{id}/favorite` | Rejected: a second way to set favorites beside the shared endpoint |
+
+A merge makes the target a favorite when any source is one, so merging a
+duplicate never drops the mark; deleting a person removes its row.
+
