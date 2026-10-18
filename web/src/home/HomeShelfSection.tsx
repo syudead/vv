@@ -31,7 +31,7 @@ import { type HomeList, useHome } from "./useHome";
 import { useInView } from "./useInView";
 import { useShelfWrites } from "./useShelfWrites";
 
-export default function HomeShelves() {
+export default function HomeShelfSection() {
   const home = useHome();
   const owner = useAudience() === "owner";
   const writes = useShelfWrites(home.reload);

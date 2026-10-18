@@ -14,7 +14,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
-vi.mock("../home/HomeShelves", () => ({ default: () => null }));
+vi.mock("../home/HomeShelfSection", () => ({ default: () => null }));
 
 const fetchMock = vi.fn<typeof fetch>();
 let cardRequests: string[] = [];

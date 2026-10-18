@@ -30,7 +30,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
-vi.mock("../home/HomeShelves", () => ({ default: () => null }));
+vi.mock("../home/HomeShelfSection", () => ({ default: () => null }));
 
 // jsdom has no layout; place 200px cards in one row for pointer drag tests.
 

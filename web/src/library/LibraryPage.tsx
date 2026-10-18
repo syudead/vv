@@ -29,7 +29,7 @@ import { itemKey, itemVideo } from "../api/libraryItems";
 import { refreshTags, revalidateTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
-import HomeShelves from "../home/HomeShelves";
+import HomeShelfSection from "../home/HomeShelfSection";
 import { GroupChangedContext } from "../groups/groupChanges";
 import { errorText, t } from "../i18n";
 import {
@@ -889,7 +889,7 @@ export default function LibraryPage() {
           )
         }
       >
-        <HomeShelves />
+        <HomeShelfSection />
         <section aria-label={t.library.title} className="flex min-w-0 flex-col gap-3">
           <PageHeader
             title={t.library.title}

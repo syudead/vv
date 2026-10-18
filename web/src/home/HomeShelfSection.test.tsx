@@ -9,7 +9,7 @@ import { type Audience, AudienceProvider } from "../auth/audience";
 import { json, Probe, video } from "../testing/groupPage";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
-import HomeShelves from "./HomeShelves";
+import HomeShelfSection from "./HomeShelfSection";
 
 const travel: HomeShelf = {
   key: "folder:3",
@@ -91,7 +91,7 @@ function renderHome(audience: Audience = "owner") {
         <ToastProvider>
           <AudienceProvider audience={audience}>
             <Routes>
-              <Route path="/" element={<HomeShelves />} />
+              <Route path="/" element={<HomeShelfSection />} />
               <Route path="/videos/:id" element={<Probe />} />
             </Routes>
           </AudienceProvider>

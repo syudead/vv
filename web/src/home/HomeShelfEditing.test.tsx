@@ -9,7 +9,7 @@ import { type Audience, AudienceProvider } from "../auth/audience";
 import { json, video } from "../testing/groupPage";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
-import HomeShelves from "./HomeShelves";
+import HomeShelfSection from "./HomeShelfSection";
 
 // 所有者のホームの棚の操作（docs/design-docs/home.md「Home」、research.md R-7）。棚を
 // 動かす・外す・足すと、PUT /api/home/shelves にフォルダの棚の新しい並びを送る。
@@ -97,7 +97,7 @@ function renderHome(audience: Audience = "owner") {
         <ToastProvider>
           <AudienceProvider audience={audience}>
             <Routes>
-              <Route path="/" element={<HomeShelves />} />
+              <Route path="/" element={<HomeShelfSection />} />
             </Routes>
           </AudienceProvider>
         </ToastProvider>
