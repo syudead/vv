@@ -46,8 +46,7 @@ joins that entry's pipelines.
 | Scan, watch scan, re-probe, a move written as `done` | New |
 | Retry from the activity log (`import`, `auto_tag`) | The retried entry's pipelines |
 | Claim that reopens an interrupted entry (`import`, `auto_tag`) | The superseded entry's pipelines |
-| Auto-tagging queued after the seek stage | The pipeline of the finishing job's `import` entry ([R-4](#r-4-after-import-auto-tagging-is-queued-in-the-seek-stage-transaction)) |
-| A pair entry opened by a fingerprint result | [R-5](#r-5-a-pair-entry-joins-the-pipelines-of-the-run-that-found-it) |
+| A follow-up process started by a stage result (today auto-tagging and pair entries) | The pipeline of the finishing job's `import` entry ([R-11](#r-11-follow-up-processes-join-through-one-rule)) |
 | Settings or video page tagging, judging turned on, anything owner-started | None: listed standalone |
 
 **Rationale**: The parent Issue asks for one parent per run and forbids folding
@@ -57,6 +56,8 @@ Alternative rejected: grouping by video and time window, which is the inferred
 grouping the parent Issue rules out.
 
 ## R-4: After-import auto-tagging is queued in the seek stage transaction
+
+The first follow-up under [R-11](#r-11-follow-up-processes-join-through-one-rule).
 
 **Decision**: The transaction that finishes the seek stage for good (done, or
 failed with no retry left) queues the video for auto-tagging when
@@ -77,6 +78,8 @@ predecessor's result transaction. A disabled feature queues nothing, so the
 parent never waits for it.
 
 ## R-5: A pair entry joins the pipelines of the run that found it
+
+The second follow-up under [R-11](#r-11-follow-up-processes-join-through-one-rule); it adds the other video's pipeline on top of the rule.
 
 **Decision**: When the fingerprint transaction opens a new `version_judgement`
 entry, the entry joins the pipeline of the finishing fingerprint job, and the
@@ -164,3 +167,23 @@ detail of an earlier entry reports no stage rows instead of an empty breakdown.
 **Rationale**: The parent Issue forbids inferring groups for history and
 showing detail that was never recorded. Alternative rejected: backfilling
 pipelines from `jobs.activity_id`, which only covers unfinished jobs.
+
+## R-11: Follow-up processes join through one rule
+
+**Decision**: A follow-up process is one that an `import` entry's stage result
+starts. It decides whether it runs and writes its entry in that result's
+transaction, and joins the pipelines of the finishing job's `import` entry
+through one store helper; a follow-up that does not run writes nothing, so the
+parent never waits for it.
+
+| Option | Adding a follow-up | Verdict |
+| --- | --- | --- |
+| **One rule and one helper** | The new process calls the helper from the triggering stage's result transaction | Chosen |
+| Membership written separately for each process | Each process repeats the membership and timing decisions | Rejected: more follow-ups are expected |
+| An event subscriber that attaches after commit | Nothing to write per process | Rejected: the parent can show `done` before the follow-up joins (R-4) |
+
+**Rationale**: Auto-tagging (R-4) and duplicate judging (R-5) are the two
+follow-ups today, and more are expected. The pipeline, its roll-up, the list,
+the detail and the screen read any member kind, so a new follow-up adds only
+its entry kind, its result phrase and the call; a follow-up may join further
+pipelines by its own rule, as R-5 does.

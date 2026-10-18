@@ -53,8 +53,8 @@ has no row; that is how "not part of this run" differs from "waiting".
 | --- | --- |
 | A new `import` entry opens a pipeline unless it continues another entry ([R-3](research.md#r-3-a-new-import-entry-opens-a-pipeline-continuations-join-it)) | `internal/store` (`joinImportActivity`, `recordLocationImport`) |
 | An entry that continues another one (retry, claim reopen) joins every pipeline of the entry it continues | `internal/store`, next to `recordActivity` |
-| After-import auto-tagging joins the pipeline of the finishing seek job's `import` entry ([R-4](research.md#r-4-after-import-auto-tagging-is-queued-in-the-seek-stage-transaction)) | `internal/store` (seek result and seek failure transactions) |
-| A new pair entry joins the finishing fingerprint job's pipeline and the other key's newest pipeline when it is unfinished or of the same scan ([R-5](research.md#r-5-a-pair-entry-joins-the-pipelines-of-the-run-that-found-it)) | `internal/store` (`syncPairActivity`) |
+| A follow-up process writes its entry in the triggering stage result's transaction and joins the pipelines of the finishing job's `import` entry ([R-11](research.md#r-11-follow-up-processes-join-through-one-rule)) | `internal/store`, one helper beside the membership helpers; called today by the seek result and seek failure transactions (auto-tagging, R-4) and `syncPairActivity` (pair entries, R-5) |
+| A new pair entry also joins the other key's newest pipeline when it is unfinished or of the same scan ([R-5](research.md#r-5-a-pair-entry-joins-the-pipelines-of-the-run-that-found-it)) | `internal/store` (`syncPairActivity`) |
 | Every member write re-rolls its pipelines in the same transaction ([R-6](research.md#r-6-parent-status-is-stored-and-rolled-up-in-the-members-transaction)) | `internal/store` helper that writes entry states; the rule in `internal/domain` |
 | A pipeline is never a member, and is never retried or undone | `internal/domain` (`RetryOffered`, `UndoOffered`) |
 | Settling an `import` entry rewrites its stage rows from the jobs it holds | `internal/store` (`settleImportActivity`) |

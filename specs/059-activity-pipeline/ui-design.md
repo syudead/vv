@@ -82,6 +82,10 @@ A `CardListItem` with an expand button and member rows
 Member rows sit under the card's first line, inside its border, divided from
 it by one `border-t` and from each other by nothing, inset to the title
 column. Replaced members are left out of the card; the detail lists them.
+A member row is the same for every kind, so a follow-up process added later
+([R-11](research.md#r-11-follow-up-processes-join-through-one-rule)) appears
+as one more row with its kind word and result phrase, and the card and the
+detail need no change for it.
 
 | Part | Content |
 | --- | --- |
