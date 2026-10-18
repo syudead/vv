@@ -1,3 +1,4 @@
+import { Folder } from "lucide-react";
 import { memo } from "react";
 import { Link } from "react-router";
 
@@ -31,6 +32,13 @@ function FolderCard({ folder, backTo }: { folder: FolderSummary; backTo: string 
           totalCount={folder.videoCount}
           onFrontChange={onFrontChange}
           ratio={null}
+          face={
+            <>
+              <Folder aria-hidden="true" className="size-3 shrink-0" />
+              <span>{t.folders.card.videos(folder.videoCount)}</span>
+              <span>{t.folders.card.folders(folder.folderCount)}</span>
+            </>
+          }
         />
         <CollectionName name={folder.name} muted={false} />
       </Link>

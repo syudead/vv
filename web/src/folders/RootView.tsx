@@ -1,6 +1,6 @@
 import { FolderOpen } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation } from "react-router";
+import { Link } from "react-router";
 
 import { takeListSnapshot } from "../api/listSnapshot";
 import { useRootFolders } from "../api/useFolderListing";
@@ -15,7 +15,7 @@ import { Button } from "../ui/shadcn/button";
 import { hasConditions } from "../videoList/listCriteria";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import Breadcrumbs from "./Breadcrumbs";
-import FolderCard from "./FolderCard";
+import RootFolderCard from "./RootFolderCard";
 import TopBarPortal from "../shell/TopBarPortal";
 import FolderToolbar from "./FolderToolbar";
 import { type RootDisplay, rootFolderName } from "./folderPath";
@@ -39,10 +39,9 @@ export default function RootView() {
     clearAll,
     changeZoom: saveZoom,
   } = useConditions();
-  // Guests see no settings links.
+  // Guests see neither absolute root paths nor settings links.
+  //
   const owner = useAudience() === "owner";
-  const location = useLocation();
-  const backTo = `${location.pathname}${location.search}`;
   const { listRef, capture } = useZoomAnchor(zoom);
   const changeZoom = (next: typeof zoom) => {
     capture();
@@ -163,7 +162,7 @@ export default function RootView() {
             ) : (
               <CardGrid size={zoom}>
                 {folders.map((folder) => (
-                  <FolderCard key={folder.rootId} folder={folder} backTo={backTo} />
+                  <RootFolderCard key={folder.rootId} folder={folder} showPath={owner} />
                 ))}
               </CardGrid>
             )}

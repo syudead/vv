@@ -192,6 +192,19 @@ export const SmartFolderCard = memo(function SmartFolderCard(
           previewResetEpoch={props.previewResetEpoch}
           onPreviewStart={props.onPreviewStart}
           ratio={facts.ratio}
+          face={
+            <>
+              <SmartFolderMark />
+              {values === undefined ? (
+                <Skeleton aria-hidden="true" className="h-3 w-16" />
+              ) : (
+                <>
+                  <span>{facts.countText}</span>
+                  {facts.duration !== "" && <span>{facts.duration}</span>}
+                </>
+              )}
+            </>
+          }
         />
         <CollectionName name={folder.name} muted={facts.state === "watched" || empty} />
       </Link>

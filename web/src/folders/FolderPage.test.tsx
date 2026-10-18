@@ -35,6 +35,7 @@ import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import FolderCard from "./FolderCard";
+import RootFolderCard from "./RootFolderCard";
 import FolderPage from "./FolderPage";
 import { folderKey } from "./folderPath";
 
@@ -324,30 +325,45 @@ describe("FolderPage", () => {
     ).toEqual(["/p/2"]);
   });
 
-  it("最上位に登録フォルダを並べ、登録パスは出さない", async () => {
+  it("最上位に登録フォルダをパス付きで並べる", async () => {
     renderFolders("/folders");
     const a = await screen.findByRole("link", {
-      name: "movies, 0 videos, 9 folders",
+      name: "movies, 0 videos, 9 folders, /a/movies",
     });
     const b = screen.getByRole("link", {
-      name: "movies, 1 video, 0 folders",
+      name: "movies, 1 video, 0 folders, /b/movies",
     });
-    expect(screen.queryByText("/a/movies")).toBeNull();
     expect(a.getAttribute("href")).toBe("/folders/3");
     expect(b.getAttribute("href")).toBe("/folders/7");
     expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Media folders 2");
   });
 
-  it("長い名前を省略しても全体を確認できる", () => {
+  it("長い名前と登録パスを省略しても全体を確認でき、ゲストにパスを出さない", () => {
     const name = "長い日本語のフォルダ名 and a long English folder name";
-    render(
+    const rootPath = "/media/long/registered/path/to/long-folder";
+    const folder = summary({ name, rootPath });
+    const { rerender } = render(
       <MemoryRouter>
-        <FolderCard folder={summary({ name })} backTo="/folders" />
+        <RootFolderCard folder={folder} showPath />
       </MemoryRouter>,
     );
-    const card = screen.getByRole("link", { name: `${name}, 0 videos, 0 folders` });
+    const card = screen.getByRole("link", {
+      name: `${name}, 0 videos, 0 folders, ${rootPath}`,
+    });
     expect(card.querySelector("h3")?.getAttribute("title")).toBe(name);
-    expect(card.querySelector("h3")?.className).toContain("line-clamp-2");
+    expect(card.querySelector("h3 span")?.className).toContain("line-clamp-2");
+    expect(card.querySelector("p[dir=rtl]")?.getAttribute("title")).toBe(rootPath);
+    expect(card.className).toContain("border-border");
+
+    rerender(
+      <MemoryRouter>
+        <RootFolderCard folder={folder} showPath={false} />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole("link", { name: `${name}, 0 videos, 0 folders` }),
+    ).toBeDefined();
+    expect(screen.queryByText(rootPath)).toBeNull();
   });
 
   it("所有者の空の登録ルートに理由と取り込み操作を示す", async () => {
@@ -442,6 +458,7 @@ describe("FolderPage", () => {
     expect(five?.querySelectorAll("img").length).toBe(4);
     expect(five?.querySelector("[data-folder-more]")?.textContent).toContain("2");
     expect(deeper?.querySelectorAll("img").length).toBe(0);
+    expect(deeper?.textContent).toContain("0 videos");
   });
 
   it("フォルダの絵柄の上でマウスを横に動かすと、位置に応じたサムネイルを前に出す", () => {
@@ -471,6 +488,8 @@ describe("FolderPage", () => {
     expect(front()?.querySelector("img")?.getAttribute("src")).toBe(
       "/api/videos/1/thumbnail?v=x",
     );
+    // The promoted sheet shows the cover alone, without a play mark or title.
+    expect(front()?.querySelector("svg")).toBeNull();
 
     fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 290 });
     expect(front()?.querySelector("img")?.getAttribute("src")).toBe(
@@ -886,7 +905,7 @@ describe("FolderPage", () => {
     });
     renderFolders("/folders");
     await screen.findByRole("link", {
-      name: "movies, 0 videos, 9 folders",
+      name: "movies, 0 videos, 9 folders, /a/movies",
     });
     expect(requests.filter((url) => url === "/api/folders").length).toBe(1);
 

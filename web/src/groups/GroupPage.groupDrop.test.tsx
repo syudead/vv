@@ -96,9 +96,7 @@ describe("GroupPage group on group", () => {
     await user.click(screen.getByRole("menuitem", { name: "Merge" }));
 
     expect(cardTitles()).toEqual(["Episode 1", "Extras"]);
-    expect(
-      screen.getByRole("link", { name: /^Extras, group of 1 video\b/ }),
-    ).toBeDefined();
+    expect(screen.getByText(/^1 video\b/)).toBeDefined();
     await waitFor(() =>
       expect(writesTo("/api/organize/merge")).toEqual([
         {

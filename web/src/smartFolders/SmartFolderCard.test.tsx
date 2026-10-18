@@ -39,13 +39,14 @@ function card(name: string) {
 }
 
 describe("スマートフォルダのカード", () => {
-  it("要約から名前を出し、画面に入ったカードだけ値を読む", async () => {
+  it("要約から名前と骨組みの面を出し、画面に入ったカードだけ値を読む", async () => {
     server.cards.set(1, folderCard(1, "猫", { videoCount: 12 }));
     server.cards.set(2, folderCard(2, "犬"));
     renderCards();
 
     expect(screen.getByRole("link", { name: "猫, smart folder" })).toBeTruthy();
     expect(within(card("猫")).getByRole("heading", { name: "猫" })).toBeTruthy();
+    expect(card("猫").querySelector('[data-slot="skeleton"]')).not.toBeNull();
     expect(server.cardRequests).toEqual([]);
 
     await revealCards([1]);
@@ -53,6 +54,8 @@ describe("スマートフォルダのカード", () => {
     expect(
       await screen.findByRole("link", { name: "猫, smart folder of 12 videos" }),
     ).toBeTruthy();
+    expect(within(card("猫")).getByText("12 videos")).toBeTruthy();
+    expect(within(card("猫")).getByTitle("Smart folder")).toBeTruthy();
     expect(screen.getByRole("link", { name: "犬, smart folder" })).toBeTruthy();
     expect(server.cardRequests).toEqual([[1]]);
     expect(card("猫").querySelector("a")?.getAttribute("href")).toBe("/smart-folders/1");
@@ -111,14 +114,14 @@ describe("スマートフォルダのカード", () => {
     ).toBeTruthy();
   });
 
-  it("読めなかったカードは値なしのままで、つなぎ直すと求めたカードをすべて読み直す", async () => {
+  it("読めなかったカードは骨組みのままで、つなぎ直すと求めたカードをすべて読み直す", async () => {
     server.failCards = true;
     server.cards.set(1, folderCard(1, "猫", { videoCount: 4 }));
     server.cards.set(2, folderCard(2, "犬", { videoCount: 1 }));
     renderCards();
     await revealCards([1]);
     expect(server.cardRequests).toEqual([[1]]);
-    expect(screen.getByRole("link", { name: "猫, smart folder" })).toBeTruthy();
+    expect(card("猫").querySelector('[data-slot="skeleton"]')).not.toBeNull();
 
     server.failCards = false;
     await emitServerEvent("open");
