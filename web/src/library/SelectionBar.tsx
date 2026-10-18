@@ -1,5 +1,4 @@
 import {
-  CheckCheck,
   FolderMinus,
   FolderPlus,
   Group,
@@ -18,7 +17,6 @@ import { t, type UiText } from "../i18n";
 import PlaylistPicker from "../playlists/PlaylistPicker";
 import { SelectionBar as SelectionBarSection } from "../ui/patterns/selection-bar";
 import { Popover, PopoverTrigger } from "../ui/shadcn/popover";
-import { Separator } from "../ui/shadcn/separator";
 import BundleDialog from "../versions/BundleDialog";
 import AddTagPopover from "./AddTagPopover";
 import FavoriteMenu from "./FavoriteMenu";
@@ -64,14 +62,10 @@ function PickerAction({
 
 export interface SelectionBarProps {
   count: number;
-  /** Compare sets, not selected-video count with mixed-item total; groups count differently. */
-  allSelected: boolean;
   selectedIds: readonly number[];
   /** Send standalone video IDs plus selected group IDs; limits apply to that combined request count. */
   favoriteVideoIds: readonly number[];
   favoriteGroupIds: readonly number[];
-  selectingAll: boolean;
-  onSelectAll: () => void;
   onClear: () => void;
   /** Removing an active filter tag lets callers clear selection and reload matching rows. */
   onTagRemoved: (tagId: number) => void;
@@ -86,12 +80,9 @@ export interface SelectionBarProps {
 
 export default function SelectionBar({
   count,
-  allSelected,
   selectedIds,
   favoriteVideoIds,
   favoriteGroupIds,
-  selectingAll,
-  onSelectAll,
   onClear,
   onTagRemoved,
   onBundled,
@@ -160,10 +151,6 @@ export default function SelectionBar({
   }, [overLimit]);
 
   if (count === 0) return null;
-
-  const selectAllLabel = selectingAll
-    ? t.library.selection.selectingAll
-    : t.library.selection.selectAll;
 
   return (
     // Keep the region wrapper from changing the bar's bottom alignment.
@@ -345,17 +332,6 @@ export default function SelectionBar({
             }}
           />
         )}
-
-        <Separator orientation="vertical" className="h-5" />
-
-        <WithTooltip label={selectAllLabel}>
-          <SelectionAction
-            icon={<CheckCheck aria-hidden="true" />}
-            label={selectAllLabel}
-            onClick={onSelectAll}
-            disabled={selectingAll || allSelected}
-          />
-        </WithTooltip>
       </SelectionBarSection>
     </div>
   );

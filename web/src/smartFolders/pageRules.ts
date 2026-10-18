@@ -1,7 +1,6 @@
 import type { LibraryItem } from "../api/client";
 import type { GroupRef } from "../api/groups";
 import type { SmartRule, SmartRuleRef } from "../api/smartFolders";
-import { fromSelectAll, type LibrarySelection } from "../library/selection";
 import { conditionChips, hasMissing } from "./conditions";
 
 /**
@@ -45,16 +44,12 @@ export function missingParent(
   )?.folder;
 }
 
-/** Select loaded videos and all members of loaded groups; never select child-folder cards. */
-export function selectAllLoaded(items: readonly LibraryItem[]): LibrarySelection {
-  const ids: number[] = [];
-  const groups = [];
+/** Loaded videos and all members of loaded groups; the selection may hold only these. */
+export function loadedVideoIds(items: readonly LibraryItem[]): ReadonlySet<number> {
+  const ids = new Set<number>();
   for (const item of items) {
-    if (item.kind === "video") ids.push(item.video.id);
-    if (item.kind === "group") {
-      ids.push(...item.group.videoIds);
-      groups.push({ id: item.group.id, videoIds: item.group.videoIds });
-    }
+    if (item.kind === "video") ids.add(item.video.id);
+    if (item.kind === "group") for (const id of item.group.videoIds) ids.add(id);
   }
-  return fromSelectAll(ids, groups);
+  return ids;
 }

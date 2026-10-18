@@ -51,7 +51,6 @@ export type WatchFilter = components["schemas"]["WatchFilter"];
 export type TagRef = components["schemas"]["TagRef"];
 export type LibraryGroupIds = components["schemas"]["LibraryGroupIds"];
 export type VideoTag = components["schemas"]["VideoTag"];
-export type VideoIdsResponse = components["schemas"]["VideoIdsResponse"];
 export type FolderScope = components["schemas"]["FolderScope"];
 export type VideoFolder = components["schemas"]["VideoFolder"];
 export type Scan = components["schemas"]["Scan"];
@@ -415,35 +414,6 @@ export async function listLibrary(
     { signal: params.signal },
   );
   return { ...page, items: toLibraryItems(page.items) };
-}
-
-export interface ListLibraryIdsParams
-  extends CreditFilterParams, AddedLengthFilterParams {
-  query?: string;
-  watch?: WatchFilter;
-  playable?: boolean;
-  favorite?: boolean;
-  tag?: number[];
-  signal?: AbortSignal;
-}
-
-/** Fetch all matching video IDs without pagination, expanding groups to all members for Select all. */
-export function listLibraryIds(
-  params: ListLibraryIdsParams = {},
-): Promise<VideoIdsResponse> {
-  const query = new URLSearchParams();
-  if (params.query !== undefined && params.query !== "") {
-    query.set("query", Array.from(params.query).slice(0, MAX_QUERY_LENGTH).join(""));
-  }
-  if (params.watch !== undefined) query.set("watch", params.watch);
-  if (params.playable === true) query.set("playable", "true");
-  if (params.favorite === true) query.set("favorite", "true");
-  setTagFilter(query, params.tag);
-  setCreditFilter(query, params);
-  setAddedLengthFilter(query, params);
-  return request<VideoIdsResponse>(`/api/library/ids?${query.toString()}`, {
-    signal: params.signal,
-  });
 }
 
 /** Registered root ID plus a slash-separated relative path. */
