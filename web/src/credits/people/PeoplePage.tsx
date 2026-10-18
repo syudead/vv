@@ -9,10 +9,10 @@ import { creditNameReason } from "../../lib/creditName";
 import NameDialog from "../../library/NameDialog";
 import { writeListSortPreferences } from "../../preferences/tagListPreferences";
 import TopBarPortal from "../../shell/TopBarPortal";
-import { TagLoadFailed } from "../../tags/TagListNotices";
+import { TagLoadFailed, TagStaleList } from "../../tags/TagListNotices";
 import { useUrlCriteria } from "../../tags/tagListUrl";
 import { AdminListToolbar } from "../../tags/TagToolbar";
-import { usePagedRows, useSearchQuery } from "../../tags/useTagPage";
+import { moreIdle, usePagedRows, useSearchQuery } from "../../tags/useTagPage";
 import { CardGrid } from "../../ui/patterns/card-grid";
 import { EmptyState } from "../../ui/patterns/empty-state";
 import { ListPage } from "../../ui/patterns/list-page";
@@ -29,6 +29,7 @@ import { useLocalToday } from "../person/useLocalToday";
 import {
   type AgeSort,
   fetchPeoplePage,
+  isStalePeople,
   parsePeopleCriteria,
   peopleBody,
   peopleCountText,
@@ -113,8 +114,9 @@ export default function PeoplePage() {
   );
 
   const body = peopleBody(page, loadError, firstPending);
+  const stale = isStalePeople(page, loadError);
   const sentinel = useLoadMoreSentinel(
-    body === "cards" && page?.nextCursor !== undefined && more.kind === "idle",
+    body === "cards" && !stale && page?.nextCursor !== undefined && more.kind === "idle",
     loadMore,
     noPreviewReset,
   );
@@ -188,6 +190,14 @@ export default function PeoplePage() {
       {body === "loading" && (
         <LoadingState label={t.credits.loading} layout="grid" size="face" count={12} />
       )}
+      {stale && loadError !== null && (
+        <TagStaleList
+          reason={loadError}
+          pending={firstPending}
+          onRetry={() => void reload()}
+          message={texts.staleList}
+        />
+      )}
       {body === "failed" && loadError !== null && (
         <TagLoadFailed
           pending={firstPending}
@@ -231,7 +241,7 @@ export default function PeoplePage() {
           </CardGrid>
           <CreditListTail
             kind="person"
-            tail={more}
+            tail={stale ? moreIdle : more}
             onRetryMore={retryMore}
             onReload={() => void reload()}
           />

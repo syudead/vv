@@ -15,7 +15,7 @@ export function FaceGridExample({ loading = false }: { loading?: boolean }) {
       {p.faceGridPeople.map((person) => (
         <a
           key={person.name}
-          href="#face-grid"
+          href="#people-grid"
           className="flex min-w-0 flex-col items-center gap-2 rounded-md p-1 transition-shadow hover:shadow-card-hover motion-reduce:transition-none"
         >
           <PersonFace name={person.name} shape="card" />

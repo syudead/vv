@@ -77,18 +77,28 @@ export function fetchPeoplePage(
 export type PeopleBody =
   "loading" | "failed" | "noPeople" | "noMatches" | "noFavorites" | "cards";
 
-/** What the grid's body shows; the empty kinds follow the received page's conditions. */
+/**
+ * What the grid's body shows; the empty kinds follow the received page's conditions.
+ * A failed refresh keeps the received page, which `isStalePeople` marks with a notice.
+ */
 export function peopleBody(
   page: PeoplePageRows | undefined,
   loadError: UiText | null,
   firstPending: boolean,
 ): PeopleBody {
-  if (loadError !== null) return "failed";
-  if (page === undefined || firstPending) return "loading";
+  if (page === undefined) return loadError === null ? "loading" : "failed";
+  if (firstPending && loadError === null) return "loading";
   if (page.rows.length > 0 || page.nextCursor !== undefined) return "cards";
   if (page.totalAll === 0) return "noPeople";
   if (page.query.query !== "") return "noMatches";
   return page.query.favorite ? "noFavorites" : "noPeople";
+}
+
+export function isStalePeople(
+  page: PeoplePageRows | undefined,
+  loadError: UiText | null,
+): boolean {
+  return page !== undefined && loadError !== null;
 }
 
 export function peopleCountText(page: PeoplePageRows | undefined): UiText | null {
