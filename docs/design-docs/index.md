@@ -47,4 +47,5 @@ reference documents; retain lasting decisions here before deleting them.
 - [Complexity and duplication](complexity-and-duplication.md)
 - [Authentication and visibility](authentication.md)
 - [Catalog organization and persistent identity](catalog-organization.md)
+- [People: profiles](people.md)
 - [Import progress and recovery](import-pipeline.md)

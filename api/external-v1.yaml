@@ -1132,6 +1132,7 @@ components:
         - work_info_invalid_language
         - work_info_duplicate
         - work_info_empty
+        - work_info_out_of_range
         - person_not_found
         - organization_not_found
         - organization_parent_cycle
@@ -1964,7 +1965,7 @@ components:
 
     Person:
       type: object
-      required: [id, name, aliases, externalIds, videoCount, createdAt]
+      required: [id, name, aliases, externalIds, profile, videoCount, createdAt]
       additionalProperties: false
       description: "One person."
       properties:
@@ -1983,12 +1984,116 @@ components:
           description: "Ordered by (source, value); [] when empty."
           items:
             $ref: "#/components/schemas/ExternalId"
+        profile:
+          $ref: "#/components/schemas/PersonProfile"
         videoCount:
           type: integer
           description: "Visible videos linked to this person in any role."
         createdAt:
           type: string
           format: date-time
+
+    PersonProfile:
+      type: object
+      additionalProperties: false
+      description: "A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>."
+      properties:
+        gender:
+          type: string
+          enum: [female, male, other]
+        birthDate:
+          type: string
+          description: "YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC."
+          examples: ["1990", "1990-05", "1990-05-17"]
+        deathDate:
+          type: string
+          description: "Same format as birthDate; not before it at the precision both share."
+        birthplace:
+          type: string
+          description: "1-200 code points."
+        heightCm:
+          type: integer
+          description: "50-300."
+        bustCm:
+          type: integer
+          description: "30-300."
+        waistCm:
+          type: integer
+          description: "30-300."
+        hipsCm:
+          type: integer
+          description: "30-300."
+        cup:
+          type: string
+          description: "1-3 Latin letters, stored upper case."
+        bloodType:
+          type: string
+          enum: [A, B, O, AB]
+        careerStartYear:
+          type: integer
+          description: "1900-9999."
+        careerEndYear:
+          type: integer
+          description: "1900-9999; not before careerStartYear."
+        bio:
+          type: string
+          description: "1-5,000 code points; line breaks are kept."
+        links:
+          type: array
+          description: "HTTP(S) URLs in order, at most 20 and unique; omitted when empty."
+          items:
+            type: string
+
+    PersonProfilePatch:
+      type: object
+      additionalProperties: false
+      description: "Profile update: each property present replaces that field, null or an empty value clears it, and links replaces the list."
+      properties:
+        gender:
+          type: [string, "null"]
+          description: "female, male or other."
+        birthDate:
+          type: [string, "null"]
+          description: "YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC."
+          examples: ["1990", "1990-05", "1990-05-17"]
+        deathDate:
+          type: [string, "null"]
+          description: "Same format as birthDate; not before it at the precision both share."
+        birthplace:
+          type: [string, "null"]
+          description: "1-200 code points."
+        heightCm:
+          type: [integer, "null"]
+          description: "50-300."
+        bustCm:
+          type: [integer, "null"]
+          description: "30-300."
+        waistCm:
+          type: [integer, "null"]
+          description: "30-300."
+        hipsCm:
+          type: [integer, "null"]
+          description: "30-300."
+        cup:
+          type: [string, "null"]
+          description: "1-3 Latin letters, stored upper case."
+        bloodType:
+          type: [string, "null"]
+          description: "A, B, O or AB."
+        careerStartYear:
+          type: [integer, "null"]
+          description: "1900-9999."
+        careerEndYear:
+          type: [integer, "null"]
+          description: "1900-9999; not before careerStartYear."
+        bio:
+          type: [string, "null"]
+          description: "1-5,000 code points; line breaks are kept."
+        links:
+          type: [array, "null"]
+          description: "HTTP(S) URLs in order, at most 20 and unique; omitted when empty."
+          items:
+            type: string
 
     Organization:
       type: object
@@ -2033,7 +2138,7 @@ components:
       type: object
       required: [name]
       additionalProperties: false
-      description: "Person or organization creation body; parentId is organization-only."
+      description: "Person or organization creation body; parentId is organization-only and profile person-only."
       properties:
         name:
           type: string
@@ -2049,6 +2154,9 @@ components:
           type: integer
           format: int64
           description: "Parent organization ID; sending it for a person returns 400 invalid_request."
+        profile:
+          $ref: "#/components/schemas/PersonProfile"
+          description: "Person-only profile; sending it for an organization returns 400 invalid_request."
 
     CreditUpdateRequest:
       type: object
@@ -2074,6 +2182,9 @@ components:
           type: [integer, "null"]
           format: int64
           description: "Parent organization ID; null detaches it. Sending this for a person returns 400 invalid_request."
+        profile:
+          $ref: "#/components/schemas/PersonProfilePatch"
+          description: "Person-only; sending it for an organization returns 400 invalid_request. A profile that changes nothing writes nothing."
 
     CreditMergeRequest:
       type: object
