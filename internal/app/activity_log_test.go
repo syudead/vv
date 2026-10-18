@@ -27,6 +27,10 @@ func (f *fakeActivityLog) ActivityEntry(_ context.Context, id int64) (domain.Act
 	return entry, nil
 }
 
+func (f *fakeActivityLog) ActivityDetail(context.Context, int64) (domain.ActivityDetail, error) {
+	return domain.ActivityDetail{}, nil
+}
+
 func (f *fakeActivityLog) RecoverInterruptedActivity(context.Context) (int, error) {
 	return f.recovered, nil
 }

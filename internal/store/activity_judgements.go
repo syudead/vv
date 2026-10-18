@@ -623,12 +623,9 @@ func (s *ActivityStore) UndoVersionJudgement(ctx context.Context, id int64) (dom
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	entry, err := scanActivityEntry(tx.QueryRowContext(ctx, `select `+activityColumns+activityFrom+` where e.id = ?`, id))
-	if errors.Is(err, sql.ErrNoRows) {
-		return domain.ActivityEntry{}, fmt.Errorf("activity entry %d: %w", id, domain.ErrNotFound)
-	}
+	entry, err := scanOneActivityEntry(ctx, tx, id)
 	if err != nil {
-		return domain.ActivityEntry{}, fmt.Errorf("cannot read the activity entry (id=%d): %w", id, err)
+		return domain.ActivityEntry{}, err
 	}
 	if entry.Kind != domain.ActivityVersionJudgement || !entry.UndoOffered() {
 		return domain.ActivityEntry{}, domain.ErrActivityNotUndoable

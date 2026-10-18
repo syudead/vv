@@ -33,13 +33,44 @@ func PipelineState(members []PipelineMember) ActivityState {
 }
 
 func currentPipelineMembers(members []PipelineMember) []PipelineMember {
+	replaced := ReplacedPipelineMembers(members)
+	return slices.DeleteFunc(slices.Clone(members), func(member PipelineMember) bool { return replaced[member.ID] })
+}
+
+// ReplacedPipelineMembers returns the ids of one pipeline's members that another member of it superseded, such as
+// a failed import entry and its retry.
+func ReplacedPipelineMembers(members []PipelineMember) map[int64]bool {
 	ids := make(map[int64]bool, len(members))
 	for _, member := range members {
 		ids[member.ID] = true
 	}
-	return slices.DeleteFunc(slices.Clone(members), func(member PipelineMember) bool {
-		return member.SupersededBy != 0 && ids[member.SupersededBy]
-	})
+	replaced := map[int64]bool{}
+	for _, member := range members {
+		if member.SupersededBy != 0 && ids[member.SupersededBy] {
+			replaced[member.ID] = true
+		}
+	}
+	return replaced
+}
+
+// ActivityMember is a pipeline's member as the list and the detail read it.
+type ActivityMember struct {
+	ActivityEntry
+	Replaced bool
+	// Matched is nil when the list had no filter; otherwise it reports whether the member satisfies the filter.
+	Matched *bool
+}
+
+// ActivityDetail is one entry with what the list leaves out: a pipeline's members with replaced ones, a member's
+// pipelines newest first, and an import's stage rows with their messages.
+type ActivityDetail struct {
+	ActivityEntry
+	Pipelines []ActivityEntry
+}
+
+// StagesRecorded reports whether an import entry has stage rows; entries written before stage rows existed have none.
+func (e ActivityEntry) StagesRecorded() bool {
+	return e.Kind == ActivityImport && len(e.Stages) > 0
 }
 
 // A pipeline with no member yet is waiting for the member written in the same transaction.

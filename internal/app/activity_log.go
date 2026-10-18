@@ -18,6 +18,8 @@ type ActivityLogStore interface {
 	) (domain.ActivityPage, error)
 	// Missing IDs return domain.ErrNotFound.
 	ActivityEntry(ctx context.Context, id int64) (domain.ActivityEntry, error)
+	// ActivityDetail reads an entry with its members, pipelines and stage rows; missing IDs return domain.ErrNotFound.
+	ActivityDetail(ctx context.Context, id int64) (domain.ActivityDetail, error)
 	// Change processing/running records to attention/interrupted.
 	RecoverInterruptedActivity(ctx context.Context) (int, error)
 }
@@ -69,6 +71,10 @@ func (a *Activity) ListActivity(
 	ctx context.Context, audience domain.Audience, query domain.ActivityQuery, cursor string, limit int,
 ) (domain.ActivityPage, error) {
 	return a.store.ListActivity(ctx, audience, query, cursor, limit)
+}
+
+func (a *Activity) ActivityDetail(ctx context.Context, id int64) (domain.ActivityDetail, error) {
+	return a.store.ActivityDetail(ctx, id)
 }
 
 // RecoverInterrupted must run before workers start; see docs/design-docs/process-lifecycle.md.

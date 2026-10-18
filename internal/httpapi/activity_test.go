@@ -180,6 +180,14 @@ func TestRetryAndUndoAnswerConflictForEveryKind(t *testing.T) {
 	rec = e.serve(http.MethodPost, path+"/undo", `{"tag":3}`)
 	assertErrorBody(t, "undo with an unknown field", rec.Code, rec.Body.Bytes(), wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
 
+	pipeline := failedImport()
+	pipeline.Kind, pipeline.Stage, pipeline.Detail = domain.ActivityPipeline, "", ""
+	pipelinePath := "/api/activity/" + itoa(e.record(t, pipeline))
+	rec = e.serve(http.MethodPost, pipelinePath+"/retry", "")
+	assertErrorBody(t, "retry a pipeline", rec.Code, rec.Body.Bytes(), wantError{status: http.StatusConflict, code: gen.ErrorCodeActivityNotRetryable})
+	rec = e.serve(http.MethodPost, pipelinePath+"/undo", "{}")
+	assertErrorBody(t, "undo a pipeline", rec.Code, rec.Body.Bytes(), wantError{status: http.StatusConflict, code: gen.ErrorCodeActivityNotUndoable})
+
 	missing := "/api/activity/" + itoa(failed+10)
 	rec = e.serve(http.MethodPost, missing+"/retry", "")
 	assertErrorBody(t, "retry missing", rec.Code, rec.Body.Bytes(), wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound})
@@ -241,6 +249,7 @@ func TestActivityRoutesRefuseGuests(t *testing.T) {
 	env.setup()
 	for _, req := range []authRequest{
 		{method: http.MethodGet, target: "/api/activity"},
+		{method: http.MethodGet, target: "/api/activity/1"},
 		{method: http.MethodPost, target: "/api/activity/1/retry"},
 		{method: http.MethodPost, target: "/api/activity/1/undo", body: `{"tagId":1}`},
 	} {

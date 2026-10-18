@@ -12,8 +12,23 @@ import (
 
 func importEntries(t *testing.T, db *DB) []domain.ActivityEntry {
 	t.Helper()
-	page := listActivity(t, db, domain.ActivityQuery{Features: []domain.ActivityFeature{domain.ActivityFeatureImport}}, "", 50)
-	return page.Items
+	return entriesOfKind(t, db, domain.ActivityImport)
+}
+
+// entriesOfKind reads every entry of the kind newest first; the list shows pipeline members only inside their
+// pipelines.
+func entriesOfKind(t *testing.T, db *DB, kind domain.ActivityKind) []domain.ActivityEntry {
+	t.Helper()
+	ids, err := collectActivityIDs(db.sql.Query(`select id from activity_entries where kind = ? order by id desc`,
+		string(kind)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := make([]domain.ActivityEntry, 0, len(ids))
+	for _, id := range ids {
+		entries = append(entries, activityEntry(t, db, id))
+	}
+	return entries
 }
 
 func scanEntries(t *testing.T, db *DB) []domain.ActivityEntry {
