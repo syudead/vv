@@ -124,7 +124,7 @@ func (c *Client) Start(ctx context.Context, conn domain.ComfyUISettings, input d
 	}
 	// 最初の progress を取りこぼさないよう、送る前に WebSocket を開き、提供元に登録されるのを
 	// 上限つきで待つ。
-	watch := c.watchProgress(ctx, target, clientID)
+	watch := c.startProgress(ctx, target, clientID)
 	watch.waitReady(ctx)
 	id, err := target.submit(ctx, prompt, clientID)
 	if err != nil {
