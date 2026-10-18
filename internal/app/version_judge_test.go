@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -393,44 +394,48 @@ func TestVersionJudgeDiscardsAJudgementTurnedOffMidway(t *testing.T) {
 
 // 設定が切のあいだは何も取り出さず、入れると起こされて取り出す。
 func TestVersionJudgeIdlesWhileOff(t *testing.T) {
-	store := newFakeVersionJudgeStore(versionJudgeJob())
-	judge, settings, _ := newTestVersionJudge(store, &fakeClassifier{})
-	settings.enabled = false
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		judge.Run(ctx)
-		close(done)
-	}()
-	defer func() {
+	synctest.Test(t, func(t *testing.T) {
+		store := newFakeVersionJudgeStore()
+		judge, settings, _ := newTestVersionJudge(store, &fakeClassifier{})
+		settings.enabled = false
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() {
+			judge.Run(ctx)
+			close(done)
+		}()
+		defer func() {
+			cancel()
+			// Release the wait even if its cancellation branch regresses.
+			judge.Wake()
+			<-done
+		}()
+		claims := func() int {
+			store.mu.Lock()
+			defer store.mu.Unlock()
+			return store.claims
+		}
+
+		synctest.Wait()
+		if got := claims(); got != 0 {
+			t.Fatalf("claims while disabled = %d, want 0", got)
+		}
+		if err := judge.SaveEnabled(ctx, true); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		if got := claims(); got != 1 {
+			t.Fatalf("claims after enabling = %d, want 1", got)
+		}
+
 		cancel()
-		<-done
-	}()
-
-	time.Sleep(50 * time.Millisecond)
-	store.mu.Lock()
-	claims := store.claims
-	store.mu.Unlock()
-	if claims != 0 {
-		t.Fatalf("切のあいだに取り出した: %d 回", claims)
-	}
-
-	if err := judge.SaveEnabled(ctx, true); err != nil {
-		t.Fatal(err)
-	}
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		store.mu.Lock()
-		judged := len(store.results)
-		store.mu.Unlock()
-		if judged == 1 {
-			break
+		synctest.Wait()
+		select {
+		case <-done:
+		default:
+			t.Fatal("worker did not stop when cancelled while idle")
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("入れたあとに判定しない")
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
+	})
 }
 
 // 取り出せる組が無ければ、次の失敗した組の再試行の時刻まで待つ（R-5）。無ければ起こされるまで待つ。
