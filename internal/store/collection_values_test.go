@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,6 +53,81 @@ func TestLibraryPageUsesStoredValuesAndBoundedPreviews(t *testing.T) {
 	}
 	if len(page.Items) != 1 || page.Items[0].SmartFolder == nil || page.Items[0].SmartFolder.ID != folderID || page.NextCursor != "" {
 		t.Fatalf("second page = %+v", page)
+	}
+}
+
+func TestCollectionRefreshFailureRollsBackAndCanRetry(t *testing.T) {
+	for _, table := range []string{"group_values", "smart_folder_values"} {
+		t.Run(table, func(t *testing.T) {
+			db := migratedDB(t)
+			ctx := context.Background()
+			video := looseVideo(t, db, "one")
+			group := createGroup(t, db, "group", domain.GroupAdd{VideoIDs: []int64{video}})
+			folder := newSmartFolder(t, db, "folder", domain.SmartRule{}, domain.SortAddedDesc, 0)
+			// Model a write made while the application was stopped, awaiting startup recovery.
+			execSQL(t, db, `update videos set duration_ms = 2500`)
+			execSQL(t, db, `create trigger reject_refresh before insert on `+table+`
+				when new.audience = 0 begin select raise(abort, 'refresh rejected'); end`)
+			if err := db.RefreshCollectionValues(ctx); err == nil || !strings.Contains(err.Error(), "refresh rejected") {
+				t.Fatalf("refresh error = %v", err)
+			}
+			assertStoredDuration(t, db, group, folder, sql.NullInt64{})
+			var pending bool
+			if err := db.sql.QueryRow(`select exists(select 1 from collection_changes)`).Scan(&pending); err != nil || !pending {
+				t.Fatalf("recovery lost pending changes: %v, %v", pending, err)
+			}
+			execSQL(t, db, `drop trigger reject_refresh`)
+			if err := db.RefreshCollectionValues(ctx); err != nil {
+				t.Fatal(err)
+			}
+			assertStoredDuration(t, db, group, folder, sql.NullInt64{Int64: 2500, Valid: true})
+			if err := db.sql.QueryRow(`select exists(select 1 from collection_changes)`).Scan(&pending); err != nil || pending {
+				t.Fatalf("successful recovery left pending changes: %v, %v", pending, err)
+			}
+		})
+	}
+}
+
+func TestCollectionRefreshFailurePreventsSourceWriteAndEvents(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	video := looseVideo(t, db, "one")
+	group := createGroup(t, db, "group", domain.GroupAdd{VideoIDs: []int64{video}})
+	folder := newSmartFolder(t, db, "folder", domain.SmartRule{}, domain.SortAddedDesc, 0)
+	recorder := &eventRecorder{}
+	db.PublishTo(recorder)
+	execSQL(t, db, `create trigger reject_refresh before insert on smart_folder_values
+		begin select raise(abort, 'refresh rejected'); end`)
+	err := db.Ingest().ApplyProbe(ctx, video, domain.Probe{DurationMs: 2500}, domain.Playability{Playable: true})
+	if err == nil || !strings.Contains(err.Error(), "refresh rejected") {
+		t.Fatalf("write error = %v", err)
+	}
+	var duration sql.NullInt64
+	if err := db.sql.QueryRow(`select duration_ms from videos where id = ?`, video).Scan(&duration); err != nil || duration.Valid {
+		t.Fatalf("source write was committed: %v, %v", duration, err)
+	}
+	assertStoredDuration(t, db, group, folder, sql.NullInt64{})
+	if len(recorder.events) != 0 {
+		t.Fatalf("failed write published events: %+v", recorder.events)
+	}
+}
+
+func assertStoredDuration(t *testing.T, db *DB, group, folder int64, want sql.NullInt64) {
+	t.Helper()
+	for _, entry := range []struct {
+		table, key string
+		id         int64
+	}{
+		{"group_values", "group_id", group},
+		{"smart_folder_values", "folder_id", folder},
+	} {
+		var got sql.NullInt64
+		if err := db.sql.QueryRow(`select duration_ms from `+entry.table+` where `+entry.key+` = ? and audience = 1`, entry.id).Scan(&got); err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Fatalf("%s duration = %v, want %v", entry.table, got, want)
+		}
 	}
 }
 

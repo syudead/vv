@@ -84,3 +84,39 @@ it("同じ描画から連続して操作しても検索・フィルター・ソ�
     favorite: true,
   });
 });
+
+it("ランダムの再シャッフルは条件を保ち、保存順へ戻すとseedも除く", () => {
+  vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+  function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <MemoryRouter initialEntries={["/groups/1?trail=9&watch=unwatched"]}>
+        <AudienceProvider audience="owner">{children}</AudienceProvider>
+      </MemoryRouter>
+    );
+  }
+  const { result } = renderHook(
+    () => ({ ...useCollectionCriteria(), location: useLocation() }),
+    { wrapper: Wrapper },
+  );
+  act(() => result.current.toolbar.onSortChange("random"));
+  const firstSeed = result.current.conditions?.seed;
+  expect(firstSeed).toBeGreaterThan(0);
+  expect(result.current.customOrder).toBe(true);
+  act(() => result.current.toolbar.onShuffle());
+  expect(result.current.conditions).toMatchObject({ watch: "unwatched", sort: "random" });
+  expect(result.current.conditions?.seed).not.toBe(firstSeed);
+  expect(new URLSearchParams(result.current.location.search).get("seed")).toBe(
+    String(result.current.conditions?.seed),
+  );
+  act(() => result.current.toolbar.nativeOrder.onSelect());
+  const params = new URLSearchParams(result.current.location.search);
+  expect(params.has("sort")).toBe(false);
+  expect(params.has("seed")).toBe(false);
+  expect(params.get("trail")).toBe("9");
+  expect(result.current.conditions).toMatchObject({
+    watch: "unwatched",
+    seed: undefined,
+    sort: undefined,
+  });
+  expect(result.current.customOrder).toBe(false);
+});

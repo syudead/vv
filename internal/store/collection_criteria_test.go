@@ -106,3 +106,34 @@ func TestSmartFolderTemporaryFiltersRetainRulesAndScope(t *testing.T) {
 		t.Fatalf("cleared = %v", names)
 	}
 }
+
+func TestGroupPlayableFilterUsesOnlyVisibleDescendants(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	playable, blocked, private := looseVideo(t, db, "playable"), looseVideo(t, db, "blocked"), looseVideo(t, db, "private")
+	for _, id := range []int64{playable, private} {
+		if err := db.Ingest().ApplyProbe(ctx, id, domain.Probe{VideoCodec: "h264"}, domain.Playability{Playable: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Visibility().SetVideosPublic(ctx, []int64{playable, blocked}, true); err != nil {
+		t.Fatal(err)
+	}
+	child := createGroup(t, db, "child", domain.GroupAdd{VideoIDs: []int64{blocked, private}})
+	parent := createGroup(t, db, "parent", domain.GroupAdd{VideoIDs: []int64{playable}, GroupIDs: []int64{child}})
+	for _, tc := range []struct {
+		audience domain.Audience
+		want     []string
+	}{
+		{domain.AudienceOwner, []string{"playable", "group:child"}},
+		{domain.AudienceGuest, []string{"playable"}},
+	} {
+		page, err := db.Library().GroupItems(ctx, tc.audience, parent, "", 0, domain.VideoQuery{PlayableOnly: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := groupItemNames(page.Items); !slices.Equal(got, tc.want) || page.NextCursor != "" {
+			t.Fatalf("audience %v: items = %v, cursor = %q", tc.audience, got, page.NextCursor)
+		}
+	}
+}

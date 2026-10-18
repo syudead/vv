@@ -13,13 +13,14 @@ it("ページ送りと再読込は条件を維持し、フィルター・ソー�
   vi.spyOn(events, "subscribeServerEvents").mockReturnValue(() => undefined);
   const first: api.SmartFolderItem = { kind: "video", video: video(10) };
   const second: api.SmartFolderItem = { kind: "video", video: video(11) };
+  const criteria: CollectionCriteria = { watch: "unwatched", sort: "random", seed: 42 };
   const read = vi
     .spyOn(api, "readSmartFolderPage")
     .mockImplementation(async (_id, _signal, _limit, query, criteria) => ({
       smartFolder: folderCard(1, "Folder"),
       trail: [],
       items: [first],
-      nextCursor: criteria ? "new-next" : `${query}-next`,
+      nextCursor: criteria?.watch === "watched" ? "new-next" : `${query}-next`,
     }));
   const more = vi
     .spyOn(api, "listSmartFolderItems")
@@ -29,7 +30,7 @@ it("ページ送りと再読込は条件を維持し、フィルター・ソー�
     {
       initialProps: {
         query: "old",
-        criteria: undefined as CollectionCriteria | undefined,
+        criteria,
       },
     },
   );
@@ -44,6 +45,7 @@ it("ページ送りと再読込は条件を維持し、フィルター・ソー�
     expect.any(AbortSignal),
     undefined,
     "old",
+    criteria,
   );
   act(() => result.current.refresh());
   await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
@@ -54,6 +56,14 @@ it("ページ送りと再読込は条件を維持し、フィルター・ソー�
     }),
   );
   expect(more).toHaveBeenCalledTimes(2);
+  expect(more).toHaveBeenLastCalledWith(
+    1,
+    "old-next",
+    expect.any(AbortSignal),
+    undefined,
+    "old",
+    criteria,
+  );
   let finish: (page: api.SmartFolderItemPage) => void = () => undefined;
   more.mockImplementationOnce(
     () =>
