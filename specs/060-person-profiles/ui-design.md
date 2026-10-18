@@ -40,7 +40,7 @@ implementation unit that uses it.
 
 | Addition | What it is | First used by |
 | --- | --- | --- |
-| `card-portrait` spacing step | Minimum width of a portrait card, chosen so a 360px screen holds two columns | People grid |
+| `card-portrait` spacing step | Minimum width of a portrait card, chosen so a 360px screen holds three columns and 1280px about nine | People grid |
 | `aspect-portrait` | The 2:3 portrait ratio of a face | People grid |
 | `CardGrid size="portrait"` and `LoadingState` portrait cards | The grid at `card-portrait`, and its skeletons in the portrait ratio | People grid |
 | `PersonFace` (`ui/`) | A face image with the placeholder when there is none, in four shapes: `card` and `profile` (full width, `aspect-portrait`, `rounded-md`), `chip` (`size-5`, `rounded-full`, the height of a `text-sm` line), `compare` (`size-8`, `rounded-full`) | Person page |
@@ -140,7 +140,8 @@ the face.
 The main column holds `Videos` with the count (`PageHeader`, `h2`), the role
 filter as a single-choice `ToggleGroup` (`All` first and pressed by default,
 then the four roles), and the body: the library's `VideoCard`s in `CardGrid`
-at the library's default card size, then `LoadMoreRow`. The order is the
+at the smallest card size (`card-0`), so three columns fit beside the profile
+column at 1280px, then `LoadMoreRow`. The order is the
 library's default; `Show in library` is where the owner sorts and filters
 further.
 
@@ -203,14 +204,14 @@ person with a profile gets one `text-xs` muted line `Fills only empty fields:
 
 | Width | People grid | Person page |
 | --- | --- | --- |
-| 360px | Two portrait cards per row | The profile column stacks above the videos: the face at half the width beside the name, aliases and actions; the facts, bio and links full width under them; the role filter scrolls sideways in one line |
-| 768px | Four or more cards per row | As 360px, the face beside the name block at `card-portrait` width |
-| 1024px | Five or more cards per row | Two columns: the profile column `profile-aside` wide at the left, sticky under the top bar and scrolling inside itself when taller; the videos at the right |
-| 1280px | Six or more cards per row | As 1024px, with more video columns |
+| 360px | Three portrait cards per row | The profile column stacks above the videos: the face at half the width beside the name, aliases and actions; the facts, bio and links full width under them; the role filter scrolls sideways in one line |
+| 768px | Five or more cards per row | As 360px, the face beside the name block at `card-portrait` width |
+| 1024px | Six or more cards per row | Two columns: the profile column `profile-aside` wide at the left, sticky under the top bar and scrolling inside itself when taller; the videos at the right |
+| 1280px | Nine cards per row with the full sidebar | As 1024px, with more video columns |
 
 ## Review criteria
 
-1. On the people grid at 360px, two cards sit side by side, and a row mixing
+1. On the people grid at 360px, three cards sit side by side, and a row mixing
    faces and placeholders keeps one card height with the names on one line.
 2. A card reads face first, name second, meta third; nothing on the card
    competes with the face.
