@@ -18,6 +18,7 @@ sample text and data with the screen's own, keeping the structure.
 | Lists many items the viewer browses, filters and selects    | `ListPage`       | `list-page`        | `list-page-example`        |
 | Manages records in rows with bulk actions                   | `AdminTablePage` | `admin-table-page` | `admin-table-page-example` |
 | Changes settings, one value per row                         | `SettingsPage`   | `settings-page`    | `settings-page-example`    |
+| Shows one record to read, with its parts and full messages  | `RecordPage`     | `record-page`      | `record-page-example`      |
 | Shows one item to view, with its facts beside it            | `DetailPage`     | `detail-page`      | `detail-page-example`      |
 | Exists only to submit one form (sign-in, first setup)       | `CenteredForm`   | `centered-form`    | `centered-form-example`    |
 | Asks for a few values without leaving the current screen    | `FormDialog`     | `form-dialog`      | `form-dialog-example`      |
@@ -41,7 +42,7 @@ example block and a section here.
 - **No `className` on patterns**: skeletons and sections take no `className`.
   If a screen needs a different spacing, the pattern is wrong for it; change
   the pattern in the design system for every screen, or pick another one.
-- **Density**: `ListPage`, `AdminTablePage`, `SettingsPage`, `CenteredForm`,
+- **Density**: `ListPage`, `AdminTablePage`, `SettingsPage`, `RecordPage`, `CenteredForm`,
   `StepsPage` and the dialogs are library density (`sm` controls, `text-sm`, `p-3` rows).
   `DetailPage` is viewing density: its sections switch to `p-4` rows and
   `text-base` by themselves, and its controls use `default` and `lg`.
@@ -157,6 +158,37 @@ header and the sections, `gap-6` from both. Without `notice` nothing is drawn.
   and `Input` draw it as disabled. The attribute stops nothing by itself, so
   each handler returns without changing the value or sending a request.
 - Say the reason once, in the notice, not on each row.
+
+## Record page
+
+Item `record-page`. `RecordPage` shows one record to read inside the shell,
+such as an activity entry: what it is about, its state, its full messages and
+its parts. It is the `SettingsPage` column without `nav` (item `page-column`,
+shared, not copied): one column at most `max-w-3xl`, library density, the
+header, an optional `notice`, then `PageSection`s `gap-8` apart.
+
+| Prop          | Put in it                                                                                   | Never                                  |
+| ------------- | ------------------------------------------------------------------------------------------- | -------------------------------------- |
+| `back`        | A `ghost` `sm` `Button` around a router link, with `ArrowLeft` and the list's title         | A second navigation link               |
+| `title`       | The record's name; it wraps in full (`PageHeader`'s `wrapTitle`) instead of truncating      | A status or a count                    |
+| `description` | The record's kind, one word or two                                                          | The record's message                   |
+| `actions`     | At most one `outline` `sm` link that leaves for what the record is about, such as `Open`    | Retry, Undo or other record operations |
+| `notice`      | One `Alert` for the record's condition: the reason as its title, the full message under it  | A notice for the whole app             |
+| children      | `PageSection`s in a fixed order, each drawn only when the record has it; or one state block | Cards, a table, a toolbar              |
+
+- Show messages in full: keep their line breaks (`whitespace-pre-line`) and
+  break long words (`wrap-anywhere`), so a long message reads at 360px without
+  scrolling sideways.
+- Put an operation on the part it acts on: `Retry` in the notice's
+  `AlertAction`, `Undo` after the result it undoes, or as an `icon-sm` button
+  at the end of a part's row.
+- While the record loads, is missing or failed to load, keep `back` and pass
+  the title with `titleHidden`, then one `LoadingState`, `EmptyState` (with
+  the way back to the list) or `ErrorState` as the only child.
+
+Choose `DetailPage` instead for an item to view at viewing density outside
+the list, such as a video; a record has no media and the reader returns to the
+list it came from.
 
 ## Detail page
 
@@ -315,7 +347,7 @@ must be taken in order and the screen is nothing else; one form is a
 
 | Section        | Item            | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | -------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PageHeader`   | `page-header`   | The page title (`h1`, `text-xl`; `headingLevel={2}` for a section in an integrated page), a count, a one-line description, `leading` (Back, breadcrumb), actions; `titleRef` makes the title focusable for when nothing else can take the focus; `titleHidden` keeps the title for screen readers only, when a breadcrumb already shows the same name                                                                                                                                       |
+| `PageHeader`   | `page-header`   | The page title (`h1`, `text-xl`; `headingLevel={2}` for a section in an integrated page), a count, a one-line description, `leading` (Back, breadcrumb), actions; `titleRef` makes the title focusable for when nothing else can take the focus; `titleHidden` keeps the title for screen readers only, when a breadcrumb already shows the same name; `wrapTitle` wraps a record's long name in full instead of truncating it                                                              |
 | `Toolbar`      | `toolbar`       | Search, filter triggers, then view controls and actions; `page` wraps and collapses the view controls below `lg`, `topBar` is one row in the top bar that collapses them per control; `searchPlacement="end"` puts the search after the filters at the row's end                                                                                                                                                                                                                            |
 | `PageSection`  | `page-section`  | A titled card (`h2`, `text-lg`); each direct child is one row, divided by a line and padded by the section                                                                                                                                                                                                                                                                                                                                                                                  |
 | `FormRow`      | `form-row`      | A setting: label and description on the left, one control on the right; stacked below `sm`                                                                                                                                                                                                                                                                                                                                                                                                  |

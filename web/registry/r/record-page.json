@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "record-page",
+  "title": "RecordPage",
+  "description": "Page skeleton: one record to read inside the shell, with a back link, a title that wraps in full, an optional notice and its parts in sections.",
+  "files": [
+    {
+      "path": "src/ui/patterns/record-page.tsx",
+      "content": "import type { ReactNode } from \"react\";\n\nimport { PageColumn } from \"./page-column\";\nimport { PageHeader } from \"./page-header\";\n\n// See web/registry/rules/patterns.md, Record page.\n\nexport interface RecordPageProps {\n  /** The router link back to the list the record belongs to, as a `ghost` `sm` Button. */\n  back: ReactNode;\n  /** The record's name; it wraps in full instead of truncating. */\n  title: ReactNode;\n  /** Keep the title for screen readers only, while the record is loading or missing. */\n  titleHidden?: boolean;\n  /** The record's kind, one muted line under the title. */\n  description?: ReactNode;\n  /** At most one `outline` `sm` action that leaves for what the record is about. */\n  actions?: ReactNode;\n  /** One `Alert` for the record's condition, such as the full reason it failed. */\n  notice?: ReactNode;\n  /** `PageSection`s, or one state block. */\n  children: ReactNode;\n}\n\nexport function RecordPage({\n  back,\n  title,\n  titleHidden = false,\n  description,\n  actions,\n  notice,\n  children,\n}: RecordPageProps) {\n  return (\n    <PageColumn\n      slot=\"record-page\"\n      header={\n        <PageHeader\n          title={title}\n          titleHidden={titleHidden}\n          wrapTitle\n          description={description}\n          leading={back}\n          actions={actions}\n        />\n      }\n      notice={notice}\n    >\n      {children}\n    </PageColumn>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/patterns.md#record-page (item vv-rules).",
+  "type": "registry:ui"
+}

@@ -76,6 +76,7 @@ export function navEntries(): readonly NavEntry[] {
       label: t.shell.nav.activity,
       icon: Activity,
       to: "/activity",
+      matchDescendants: true,
       ownerOnly: true,
       attentionCount: true,
     },
