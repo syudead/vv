@@ -43,6 +43,14 @@ function uploadFailure(failure: unknown): UiText {
   return text.face.failed(errorText(failure));
 }
 
+/** Take only the face from an image response, so a heart pressed meanwhile keeps its state. */
+function withFaceOf(saved: Person) {
+  return (current: Person): Person => ({
+    ...current,
+    imageRevision: saved.imageRevision,
+  });
+}
+
 /** The face with its heart and its upload and removal; a missing person calls onGone. */
 export default function PersonFaceControl({
   person,
@@ -77,7 +85,7 @@ export default function PersonFaceControl({
     setError(null);
     setUploading(true);
     try {
-      onChanged(await uploadPersonImage(person.id, file));
+      onChanged(withFaceOf(await uploadPersonImage(person.id, file)));
     } catch (failure) {
       if (isCreditGone(failure)) {
         onGone();
@@ -100,7 +108,7 @@ export default function PersonFaceControl({
     setRemoveError(null);
     setRemoving(true);
     try {
-      onChanged(await removePersonImage(person.id));
+      onChanged(withFaceOf(await removePersonImage(person.id)));
       setConfirmRemove(false);
     } catch (failure) {
       if (isCreditGone(failure)) {

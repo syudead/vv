@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -40,7 +40,19 @@ interface Sent {
 const server = {
   person: null as Person | null,
   sent: [] as Sent[],
+  /** When set, the face upload answers only once this settles. */
+  uploadGate: null as Promise<void> | null,
 };
+
+async function respondLater(method: string, url: URL): Promise<Response> {
+  if (url.pathname === "/api/people/7/image" && method === "PUT" && server.uploadGate) {
+    // Answer with the person as it was when the upload was sent.
+    const saved = { ...server.person, imageRevision: 3 } as Person;
+    await server.uploadGate;
+    return jsonResponse(saved);
+  }
+  return respond(method, url);
+}
 
 function respond(method: string, url: URL): Response {
   if (url.pathname === "/api/videos") {
@@ -56,6 +68,7 @@ function respond(method: string, url: URL): Response {
     return jsonResponse(server.person);
   }
   if (url.pathname === "/api/favorites" && method === "PUT") {
+    server.person = { ...server.person, favorite: true };
     return jsonResponse({ appliedVideos: 0, appliedGroups: 0, appliedSmartFolders: 0 });
   }
   return jsonResponse({ code: "not_found" }, 404);
@@ -69,13 +82,14 @@ class IdleIntersectionObserver {
 beforeEach(() => {
   server.person = person();
   server.sent = [];
+  server.uploadGate = null;
   vi.stubGlobal(
     "fetch",
     vi.fn<typeof fetch>((input, init) => {
       const url = new URL(String(input), "http://localhost");
       const method = init?.method ?? "GET";
       server.sent.push({ method, url, body: init?.body });
-      return Promise.resolve(respond(method, url));
+      return respondLater(method, url);
     }),
   );
   vi.stubGlobal("IntersectionObserver", IdleIntersectionObserver);
@@ -83,6 +97,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -136,6 +151,42 @@ describe("PersonPage", () => {
       personIds: [7],
       favorite: true,
     });
+  });
+
+  it("keeps a heart pressed during an upload when the older upload response arrives", async () => {
+    let finishUpload = () => {};
+    server.uploadGate = new Promise((resolve) => {
+      finishUpload = resolve;
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole("button", { name: "Add a face" });
+
+    const file = new File(["face"], "face.png", { type: "image/png" });
+    await user.upload(screen.getByTestId("person-face-input"), file);
+    await user.click(screen.getByRole("button", { name: "Add to favorites" }));
+    await screen.findByRole("button", { name: "Remove from favorites" });
+    finishUpload();
+
+    const image = await screen.findByRole("img", { name: "Aoi" });
+    expect(image.getAttribute("src")).toBe("/api/people/7/image?v=3");
+    expect(
+      screen
+        .getByRole("button", { name: "Remove from favorites" })
+        .getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("renews the age when the viewer's local date passes midnight", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.setSystemTime(new Date(2026, 4, 1, 23, 59, 0));
+    server.person = person({ profile: { birthDate: "2000-05-02" } });
+    renderPage();
+    expect(await screen.findByText("2000-05-02 (age 25)")).toBeTruthy();
+
+    await act(() => vi.advanceTimersByTimeAsync(60_000));
+
+    expect(screen.getByText("2000-05-02 (age 26)")).toBeTruthy();
   });
 
   it("asks for the videos in the pressed role", async () => {

@@ -80,7 +80,12 @@ function Bio({ bio }: { bio: string }) {
   useLayoutEffect(() => {
     const node = ref.current;
     if (node === null || open) return;
-    setOverflows(node.scrollHeight > node.clientHeight);
+    const measure = () => setOverflows(node.scrollHeight > node.clientHeight);
+    measure();
+    // A narrower column wraps the same text onto more lines.
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
   }, [bio, open]);
   return (
     <div className="flex flex-col items-start gap-1">

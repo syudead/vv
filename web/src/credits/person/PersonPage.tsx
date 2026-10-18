@@ -23,6 +23,7 @@ import {
   RoleFilter,
   usePersonVideos,
 } from "./PersonVideos";
+import { useLocalToday } from "./useLocalToday";
 import { usePerson } from "./usePerson";
 
 const text = t.credits.personPage;
@@ -118,7 +119,7 @@ function PersonShown({
   const toast = useToast();
   const navigate = useNavigate();
   const { role, setRole, videos } = usePersonVideos(person.id);
-  const [today] = useState(() => new Date());
+  const today = useLocalToday();
   const [merging, setMerging] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
