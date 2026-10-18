@@ -134,6 +134,30 @@ export async function deleteCredit(
   if (!response.ok) throw await toRequestFailed(response);
 }
 
+/** The face URL; the revision only busts caches, so a changed face is fetched again. */
+export function personImagePath(id: number, revision: number): string {
+  return `/api/people/${String(id)}/image?v=${String(revision)}`;
+}
+
+/** Let the browser set the multipart boundary; the server fits and stores the image. */
+export function uploadPersonImage(
+  id: number,
+  image: Blob,
+  signal?: AbortSignal,
+): Promise<Person> {
+  const form = new FormData();
+  form.append("image", image, image instanceof File ? image.name : "image");
+  return request<Person>(`${itemPath("person", id)}/image`, {
+    method: "PUT",
+    body: form,
+    signal,
+  });
+}
+
+export function removePersonImage(id: number, signal?: AbortSignal): Promise<Person> {
+  return request<Person>(`${itemPath("person", id)}/image`, { method: "DELETE", signal });
+}
+
 /** Match missing target entities only; field-qualified missing parents are input errors. */
 export function isCreditGone(error: unknown): boolean {
   return (

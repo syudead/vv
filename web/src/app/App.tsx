@@ -23,7 +23,14 @@ const SettingsPage = await deferredRoute(
   "/settings",
 );
 const TagsPage = await deferredRoute(() => import("../tags/TagsPage"), "/tags");
-const PeoplePage = await deferredRoute(() => import("../credits/PeoplePage"), "/people");
+const PeoplePage = await deferredRoute(
+  () => import("../credits/PeoplePage"),
+  (pathname) => matchesExactPath(pathname, "/people"),
+);
+const PersonPage = await deferredRoute(
+  () => import("../credits/person/PersonPage"),
+  (pathname) => matchesBelowPath(pathname, "/people"),
+);
 const OrganizationsPage = await deferredRoute(
   () => import("../credits/OrganizationsPage"),
   "/organizations",
@@ -123,6 +130,14 @@ function AppRoutes() {
             element={
               <AppShell>
                 <PeoplePage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/people/:id"
+            element={
+              <AppShell>
+                <PersonPage />
               </AppShell>
             }
           />

@@ -146,6 +146,8 @@ export function withItemFavoriteSince<
 export interface UpdateFavoritesOptions {
   /** The local overlay covers videos/groups only; bulk callers announce smart folders with noteSmartFolderChanges. */
   smartFolderIds?: readonly number[];
+  /** No list overlays people; the caller applies the response to the person it shows. */
+  personIds?: readonly number[];
   signal?: AbortSignal;
 }
 
@@ -154,7 +156,7 @@ export function updateFavorites(
   videoIds: readonly number[],
   groupIds: readonly number[],
   favorite: boolean,
-  { smartFolderIds = [], signal }: UpdateFavoritesOptions = {},
+  { smartFolderIds = [], personIds = [], signal }: UpdateFavoritesOptions = {},
 ): Promise<FavoritesResponse> {
   sent += 1;
   const sequence = sent;
@@ -173,6 +175,7 @@ export function updateFavorites(
         videoIds: Array.from(videoIds),
         groupIds: Array.from(groupIds),
         ...smartFolderField(smartFolderIds),
+        ...(personIds.length === 0 ? {} : { personIds: Array.from(personIds) }),
         favorite,
       }),
       signal,

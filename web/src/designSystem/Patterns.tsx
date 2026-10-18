@@ -10,6 +10,7 @@ import { EditorDialogExample } from "./blocks/editor-dialog-example";
 import { FormDialogExample } from "./blocks/form-dialog-example";
 import { FormPageExample } from "./blocks/form-page-example";
 import { GroupedListExample } from "./blocks/grouped-list-example";
+import { ProfilePageExample } from "./blocks/profile-page-example";
 import { ListPageExample } from "./blocks/list-page-example";
 import { type ListState, ListStatesExample } from "./blocks/list-states-example";
 import { SettingsPageExample } from "./blocks/settings-page-example";
@@ -180,6 +181,13 @@ export default function Patterns() {
         items={["form-page", "form-page-example"]}
       >
         <FormPageExample />
+      </Pattern>
+      <Pattern
+        id="profile-page"
+        name={p.names.profilePage}
+        items={["profile-page", "profile-page-example", "person-face"]}
+      >
+        <ProfilePageExample />
       </Pattern>
     </div>
   );

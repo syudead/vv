@@ -26,30 +26,30 @@ set is fixed, so typed columns keep each check in one function and a list or a
 person page reads the profile without a join. Organizations have no profile;
 `profile` sent for an organization is `400 invalid_request`.
 
-| Rejected | Why |
-| --- | --- |
+| Rejected                                      | Why                                                            |
+| --------------------------------------------- | -------------------------------------------------------------- |
 | A `person_profiles` table, one row per person | One more join on every read and a missing-row case for nothing |
-| Key-value rows per field | Pivoting on read, and validation spread over the rows |
+| Key-value rows per field                      | Pivoting on read, and validation spread over the rows          |
 
 ## What a valid profile is
 
 `NormalizePersonProfile` trims every text field and stores an empty value as
 `null`. Errors carry a `work_info_*` reason and the field `profile.<name>`.
 
-| Field | Accepted | Error |
-| --- | --- | --- |
-| `gender` | `female`, `male`, `other` | `work_info_out_of_range` |
-| `birthDate`, `deathDate` | `YYYY`, `YYYY-MM` or `YYYY-MM-DD`, the work-date format | `work_info_invalid_date` |
-| `birthDate`, `deathDate` | Not after today in UTC | `work_info_out_of_range` |
-| `deathDate` | Not before `birthDate` at the precision both share, so `1990` and `1990-05` fit together | `work_info_out_of_range` |
-| `birthplace` | 1–200 code points | `work_info_too_long` |
-| `heightCm` | 50–300 | `work_info_out_of_range` |
-| `bustCm`, `waistCm`, `hipsCm` | 30–300 each | `work_info_out_of_range` |
-| `cup` | 1–3 Latin letters, stored upper case | `work_info_too_long`, `work_info_out_of_range` |
-| `bloodType` | `A`, `B`, `O`, `AB`, in any case | `work_info_out_of_range` |
-| `careerStartYear`, `careerEndYear` | 1900–9999, the end not before the start | `work_info_out_of_range` |
-| `bio` | 1–5,000 code points; line breaks kept | `work_info_too_long` |
-| `links` | Up to 20 unique HTTP(S) URLs, as work URLs | `work_info_invalid_url`, `work_info_duplicate`, `work_info_too_many` |
+| Field                              | Accepted                                                                                 | Error                                                                |
+| ---------------------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `gender`                           | `female`, `male`, `other`                                                                | `work_info_out_of_range`                                             |
+| `birthDate`, `deathDate`           | `YYYY`, `YYYY-MM` or `YYYY-MM-DD`, the work-date format                                  | `work_info_invalid_date`                                             |
+| `birthDate`, `deathDate`           | Not after today in UTC                                                                   | `work_info_out_of_range`                                             |
+| `deathDate`                        | Not before `birthDate` at the precision both share, so `1990` and `1990-05` fit together | `work_info_out_of_range`                                             |
+| `birthplace`                       | 1–200 code points                                                                        | `work_info_too_long`                                                 |
+| `heightCm`                         | 50–300                                                                                   | `work_info_out_of_range`                                             |
+| `bustCm`, `waistCm`, `hipsCm`      | 30–300 each                                                                              | `work_info_out_of_range`                                             |
+| `cup`                              | 1–3 Latin letters, stored upper case                                                     | `work_info_too_long`, `work_info_out_of_range`                       |
+| `bloodType`                        | `A`, `B`, `O`, `AB`, in any case                                                         | `work_info_out_of_range`                                             |
+| `careerStartYear`, `careerEndYear` | 1900–9999, the end not before the start                                                  | `work_info_out_of_range`                                             |
+| `bio`                              | 1–5,000 code points; line breaks kept                                                    | `work_info_too_long`                                                 |
+| `links`                            | Up to 20 unique HTTP(S) URLs, as work URLs                                               | `work_info_invalid_url`, `work_info_duplicate`, `work_info_too_many` |
 
 Owners and plugins often know a date only to the year, so a date keeps its own
 precision instead of being padded to a full date.
@@ -74,11 +74,11 @@ death date from one source before the target's birth date. A source value that
 would make the profile invalid is skipped, and the field takes the next
 source's value or stays empty, so a merge always stores a valid profile.
 
-| Rejected | Why |
-| --- | --- |
-| Keep only the target's profile | The duplicate's profile would be lost |
-| Reject the merge with `400` | A merge cannot be fixed by editing its request, only by editing the people first |
-| Let the owner choose per field | The merge stays one step |
+| Rejected                       | Why                                                                              |
+| ------------------------------ | -------------------------------------------------------------------------------- |
+| Keep only the target's profile | The duplicate's profile would be lost                                            |
+| Reject the merge with `400`    | A merge cannot be fixed by editing its request, only by editing the people first |
+| Let the owner choose per field | The merge stays one step                                                         |
 
 ## People sort by age, unknown birth dates last
 
@@ -93,10 +93,10 @@ sorts last in its direction, `0` for `ageAsc` and `99999999` for `ageDesc`, so
 the keyset cursor keeps an integer value and its comparison has no null
 branch. Ties use natural-name order, then ID, as every other sort does.
 
-| Rejected | Why |
-| --- | --- |
-| Add the sorts to `TagSort` for every list | Tags and organizations have no birth date |
-| Sort the loaded rows in the browser | The list is paged by keyset, so the browser holds only the first page |
+| Rejected                                  | Why                                                                   |
+| ----------------------------------------- | --------------------------------------------------------------------- |
+| Add the sorts to `TagSort` for every list | Tags and organizations have no birth date                             |
+| Sort the loaded rows in the browser       | The list is paged by keyset, so the browser holds only the first page |
 
 ## Favorites join the shared favorites
 
@@ -112,10 +112,10 @@ queues no smart-folder refresh.
 A merge makes the target a favorite when any source is one, so merging a
 duplicate never drops the mark. Deleting a person deletes its row.
 
-| Rejected | Why |
-| --- | --- |
+| Rejected                        | Why                                                                                                                     |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | A `favorite` column on `people` | Every other favorite is a table of its own with its time, and the shared endpoint already sets several kinds atomically |
-| `PUT /api/people/{id}/favorite` | A second way to set favorites beside the shared endpoint |
+| `PUT /api/people/{id}/favorite` | A second way to set favorites beside the shared endpoint                                                                |
 
 ## A face is one fitted JPEG in SQLite
 
@@ -128,20 +128,20 @@ animated-WebP refusal, described in
 [thumbnail-editing.md](thumbnail-editing.md#uploaded-images); the two kinds of
 upload share one gate, so they never decode at the same time.
 
-| Problem | Response |
-| --- | --- |
-| Body over 64 MiB | `413 person_image_too_large` with `limit` |
-| Not a readable PNG, JPEG or still WebP, or over 120 megapixels | `400 person_image_invalid` |
-| No face on `GET` | `404 person_image_not_found` |
+| Problem                                                        | Response                                  |
+| -------------------------------------------------------------- | ----------------------------------------- |
+| Body over 64 MiB                                               | `413 person_image_too_large` with `limit` |
+| Not a readable PNG, JPEG or still WebP, or over 120 megapixels | `400 person_image_invalid`                |
+| No face on `GET`                                               | `404 person_image_not_found`              |
 
 A face is user data, so it is not a file under the rebuildable thumbnails
 directory, and an 800 px JPEG of about 200 KiB costs little as a blob.
 
-| Rejected | Why |
-| --- | --- |
+| Rejected                               | Why                                                                                                |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | A file managed by `internal/artifacts` | The thumbnails directory is rebuildable, and artifacts are removed by video content, not by person |
-| Fitting through ffmpeg | Needs the media adapter for a still image, while `x/image/draw` scales without cgo |
-| Keeping the original upload | An upload may be 64 MiB, and the screens show at most a portrait card |
+| Fitting through ffmpeg                 | Needs the media adapter for a still image, while `x/image/draw` scales without cgo                 |
+| Keeping the original upload            | An upload may be 64 MiB, and the screens show at most a portrait card                              |
 
 ## The image revision never repeats
 
@@ -153,11 +153,44 @@ client loads the face from `/api/people/{id}/image?v={imageRevision}`, and
 not on the image row, so removing a face does not reset it and a later face
 never answers `304` to the removed face's `ETag`.
 
-| Rejected | Why |
-| --- | --- |
-| A revision on the `person_images` row | Removing the row resets it |
-| A boolean `hasImage` | A replaced face would stay cached under the same URL |
-| Data URLs in list responses | A page of 100 people would carry 100 faces |
+| Rejected                              | Why                                                  |
+| ------------------------------------- | ---------------------------------------------------- |
+| A revision on the `person_images` row | Removing the row resets it                           |
+| A boolean `hasImage`                  | A replaced face would stay cached under the same URL |
+| Data URLs in list responses           | A page of 100 people would carry 100 faces           |
 
 A merge keeps the target's face; a target without one takes the face of the
 first source in `sourceIds` order that has one.
+
+## The person page
+
+`/people/:id` shows one person in a `ProfilePage`
+([design-system.md](design-system.md#page-patterns)): the face, the name,
+aliases, the filled profile groups, links and external IDs in a column at the
+left, and the person's videos beside it, so the videos start at the top while
+the face and facts stay in view. The page reads the person with
+`GET /api/people/{id}` and the videos with `GET /api/videos?person={id}`, in
+the library's default order; the role filter adds `personRole`, so totals and
+paging stay the server's ([library-ui.md](library-ui.md)). The page is
+owner-only, as the rest of `/people`.
+
+The face, its upload and removal, the favorite heart, merging and deleting
+happen on the page. Each request that answers `404 person_not_found` turns the
+page into its gone state; a merge opens the target's page and a delete the
+people list, each with a toast. The person's own fields are edited on
+`/people/:id/edit`.
+
+### Ages are computed in the browser
+
+The API returns dates, not ages, because an age changes at midnight in the
+viewer's time zone and a cached response would show yesterday's age. The page
+computes the age on the viewer's local date, or on the death date when there
+is one ([`personFacts.ts`](../../web/src/credits/person/personFacts.ts)). A
+partial date stands for every day it allows, so the page shows the youngest
+and oldest ages the two dates allow, such as `1990 (age 34–35)`, and one age
+when both are equal.
+
+| Rejected                    | Why                                              |
+| --------------------------- | ------------------------------------------------ |
+| `age` in the response       | Stale after midnight in a cached response        |
+| No age at partial precision | A year alone still narrows the age to two values |
