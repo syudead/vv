@@ -26,10 +26,12 @@ column for tools read after the body, and `DetailPage` is outside the shell
 with media edge to edge.
 
 Every edit opens in place, as the parent Issue's `UI品質` asks: the name is
-renamed on the title, the profile is one `FormDialog`, and names, IDs and
-links are the existing details dialog. The video details editor's `FormPage`
-was rejected because it leaves the page; the profile's fields are all short
-values, so they fit a wide dialog two to a row.
+renamed on the title, each of the profile's three groups (`Profile`,
+`Measurements`, `Career and bio`) has its own `FormDialog` of three to five
+fields, and names, IDs and links are the existing details dialog. The video
+details editor's `FormPage` was rejected because it leaves the page, and one
+dialog for the whole profile because more than a dozen fields break the
+`FormDialog` rule of a few fields for one action.
 
 ## Design-system additions
 
@@ -59,13 +61,12 @@ viewer little.
 | People grid, new person dialog | `New person`, `Name`, `Create` | Existing `newButton`; the dialog replaces the inline create row |
 | Person page, document title | `{name}` | |
 | Person page, aliases | `Also known as {a} · {b}` | |
-| Person page, actions | `Edit profile`, `Show in library` | `Show in library` reuses the meaning of today's `t.credits.row.open` |
+| Person page, actions | `Show in library` | `Show in library` reuses the meaning of today's `t.credits.row.open` |
 | Person page, more menu | `Edit names and links…`, `Merge into another person…`, `Delete` | Second and third exist |
 | Person page, rename | `Rename` | Pencil on the title, as on the video page |
 | Person page, facts | `Born`, `Died`, `Gender`, `Birthplace`, `Height`, `Measurements`, `Cup`, `Blood type`, `Career` | Term column of the `FactList` |
 | Person page, fact values | `1990-05-01 (age 34)`, `1990 (age 34–35)`, `2060-01-01 (aged 69)`, `160 cm`, `85–58–86 cm`, `2010–2018`, `Since 2010`, `Until 2018` | Dates as stored, like work dates; a missing bust, waist or hips shows `–` in its place |
 | Person page, gender values | `Female`, `Male`, `Other` | |
-| Person page, no profile | `No profile yet.` | Muted line in place of the facts |
 | Person page, bio fold | `Show more`, `Show less` | |
 | Person page, links | The link's host, such as `x.com` | Opens in a new tab with the external-link mark |
 | Person page, face | `Add a face`, `Change face`, `Upload an image…`, `Remove face` | `Add a face` names the placeholder button |
@@ -76,7 +77,8 @@ viewer little.
 | Person page, gone | `This person no longer exists`, `Back to people` | |
 | Person page, after merge | `Merged into "{name}"` | Toast on the target's page |
 | Person page, after delete | `Deleted "{name}"` | Toast on the people grid |
-| Edit profile dialog | `Edit profile`, `Gender`, `Not set`, `Birth date`, `Death date`, `Birthplace`, `Height (cm)`, `Bust (cm)`, `Waist (cm)`, `Hips (cm)`, `Cup`, `Blood type`, `Career from`, `Career until`, `Bio`, `Save` | |
+| Person page, groups | `Profile`, `Measurements`, `Career and bio`, `Not set` | Group headings, and the line of an empty group |
+| Edit dialogs | `Edit profile`, `Edit measurements`, `Edit career and bio`, `Gender`, `Not set`, `Birth date`, `Death date`, `Birthplace`, `Blood type`, `Height (cm)`, `Bust (cm)`, `Waist (cm)`, `Hips (cm)`, `Cup`, `Career from`, `Career until`, `Bio`, `Save` | Titles name the group; the pencils carry the same names |
 | Edit profile, date hint | `YYYY-MM-DD, YYYY-MM or YYYY` | Under both date fields |
 | Edit names and links dialog | `Links`, `Add link`, `URL` | Added to the existing details dialog |
 | Video page cast link | `Open {name}` | Replaces `showVideosWith` for people only |
@@ -121,14 +123,18 @@ the face.
    lines), with the `Rename` pencil after it; renaming edits the title in
    place as the video page's title does.
 3. `Also known as …` (`text-sm`, muted, wrapping), when there are aliases.
-4. The actions row: `Edit profile` (`outline` `sm`), `Show in library`
-   (`ghost` `sm`, a link to the filtered library), and the more menu
-   (`ghost` `icon-sm` `Ellipsis`). There is no `default` button: nothing on the
-   page outranks viewing.
-5. The facts as a `FactList`, only the rows with a value, or `No profile yet.`
-6. The bio (`text-sm`, line breaks kept), folded to six lines with
-   `Show more`.
-7. The links, one per line with the external-link mark, then the external
+4. The actions row: `Show in library` (`ghost` `sm`, a link to the filtered
+   library) and the more menu (`ghost` `icon-sm` `Ellipsis`). There is no
+   `default` button: nothing on the page outranks viewing.
+5. Three groups, each under a small heading (`h2`, `text-sm font-semibold`)
+   with its edit pencil (`ghost` `icon-sm`) at the heading's end:
+   `Profile` (born, died, gender, birthplace, blood type), `Measurements`
+   (height, measurements, cup) and `Career and bio` (career, then the bio in
+   `text-sm` with line breaks kept, folded to six lines with `Show more`).
+   Each group is a `FactList` of its filled rows; an empty group shows its
+   heading, its pencil and one muted `Not set` line, so the first value is one
+   click away.
+6. The links, one per line with the external-link mark, then the external
    IDs as `source: value` in `text-xs` muted, as the video page shows them.
 
 The main column holds `Videos` with the count (`PageHeader`, `h2`), the role
@@ -138,12 +144,17 @@ at the library's default card size, then `LoadMoreRow`. The order is the
 library's default; `Show in library` is where the owner sorts and filters
 further.
 
-`Edit profile` opens a `FormDialog size="wide"` with two fields per row from
-`sm` (one below): gender and blood type (`Select`s with `Not set`), birth and
-death dates (text with the date hint), birthplace (full row), height and cup,
-bust, waist and hips (three in one row), career from and until, and the bio
-(`Textarea`, full row). `Save` sends only the changed properties; a field's
-error stays under it. `Edit names and links…` opens the existing details
+Each pencil opens a `FormDialog` of its group's fields, one per row, in the
+order the group shows them:
+
+| Dialog | Fields |
+| --- | --- |
+| `Edit profile` | Gender (`Select` with `Not set`), birth date and death date (text with the date hint), birthplace, blood type (`Select` with `Not set`) |
+| `Edit measurements` | Height, bust, waist, hips (numbers in cm), cup |
+| `Edit career and bio` | Career from, career until (years), bio (`Textarea`) |
+
+`Save` sends only the changed properties of that group; a field's error stays
+under it. `Edit names and links…` opens the existing details
 dialog with a `Links` list added after the external IDs. Merging opens the
 existing merge dialog and then the target's page with the `Merged into` toast;
 deleting confirms with the existing dialog and then opens `/people` with the
@@ -205,13 +216,15 @@ person with a profile gets one `text-xs` muted line `Fills only empty fields:
    competes with the face.
 3. On the person page at 1280px, the first row of videos is visible without
    scrolling, and the face and facts stay in view while the videos scroll.
-4. On the person page, `Edit profile`, `Show in library` and the more menu are
-   quieter than the name: no button on the page uses the `default` fill.
-5. The facts list shows only filled rows, each a short term and its value on
-   one line at 1280px; an age at partial precision reads as a range.
-6. Editing the profile, the names and links, the name and the face never
-   leaves the person page, and the page behind each dialog is unchanged when
-   it closes.
+4. On the person page, the group pencils, `Show in library` and the more menu
+   are quieter than the name: no button on the page uses the `default` fill.
+5. Each group shows only its filled rows, each a short term and its value on
+   one line at 1280px; an empty group is one muted line under its heading,
+   and an age at partial precision reads as a range.
+6. Each edit dialog fits a 360px-wide, 640px-high screen without scrolling,
+   and editing a group, the names and links, the name or the face never
+   leaves the person page, which is unchanged behind the dialog when it
+   closes.
 7. At 360px the role filter stays one line, and the face beside the name block
    leaves the name readable at three lines.
 8. On the video page, a cast face sits on the name's line without raising the
