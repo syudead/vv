@@ -387,7 +387,7 @@ function withGroup() {
 }
 
 describe("動画とグループの選択", () => {
-  it("グループを選び、Select all で並んだ動画とグループを選び、Esc で解く", async () => {
+  it("グループと動画を選び、Esc で解く", async () => {
     const user = userEvent.setup();
     withGroup();
     renderPage("/smart-folders/1");
@@ -412,9 +412,6 @@ describe("動画とグループの選択", () => {
     if (chip === undefined) throw new Error("no chip");
     await user.click(chip);
     expect(screen.getByText("2 videos selected")).toBeTruthy();
-
-    await user.click(screen.getByRole("button", { name: "Select all" }));
-    expect(screen.getByText("4 videos selected")).toBeTruthy();
 
     await user.keyboard("{Escape}");
     expect(screen.queryByText(/videos? selected/)).toBeNull();

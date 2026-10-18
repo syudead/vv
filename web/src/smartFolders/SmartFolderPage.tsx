@@ -20,7 +20,6 @@ import {
   keepMembers,
   type LibrarySelection,
   reconcileGroups,
-  sameSelection,
   selectedGroupOf,
   setGroup,
   setVideo,
@@ -62,7 +61,7 @@ import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import VideoCard, { VideoRow } from "../videoList/VideoCard";
 import { SmartFolderCardsProvider } from "./cardValues";
 import ConditionLines from "./ConditionLines";
-import { type AncestorRule, bodyKind, missingParent, selectAllLoaded } from "./pageRules";
+import { type AncestorRule, bodyKind, loadedVideoIds, missingParent } from "./pageRules";
 import { SmartFolderCard, SmartFolderRow } from "./SmartFolderCard";
 import SmartFolderMenu, { type SmartFolderMenuDialog } from "./SmartFolderMenu";
 import {
@@ -96,17 +95,15 @@ export default function SmartFolderPage() {
  */
 function useFolderSelection(items: readonly LibraryItem[]) {
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
-  const all = useMemo(() => selectAllLoaded(items), [items]);
+  const loaded = useMemo(() => loadedVideoIds(items), [items]);
   useEffect(() => {
-    setSelection((current) => reconcileGroups(keepMembers(current, all.ids), items));
-  }, [all, items]);
+    setSelection((current) => reconcileGroups(keepMembers(current, loaded), items));
+  }, [loaded, items]);
   const clear = useCallback(() => setSelection(emptySelection), []);
   useEscapeClearsSelection(selection.ids.size > 0, clear);
   return {
     selection,
-    allSelected: all.ids.size > 0 && sameSelection(all, selection),
     clear,
-    selectAll: useCallback(() => setSelection(all), [all]),
     changeVideo: useCallback(
       (videoId: number, selected: boolean) =>
         setSelection((current) => setVideo(current, videoId, selected)),
@@ -201,12 +198,9 @@ function SmartFolderScreen({ id }: { id: number | null }) {
           data !== null && (
             <SelectionBar
               count={selection.selection.ids.size}
-              allSelected={selection.allSelected}
               selectedIds={selectedIds}
               favoriteVideoIds={favorites.videoIds}
               favoriteGroupIds={favorites.groupIds}
-              selectingAll={false}
-              onSelectAll={selection.selectAll}
               onClear={selection.clear}
               onTagRemoved={reload}
               onBundled={afterBulk}

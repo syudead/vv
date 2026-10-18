@@ -920,7 +920,6 @@ export const en = {
       added: "Added",
     },
     deletedTagsRemoved: "Removed deleted tags from the filter",
-    selectAllFailed: (reason: string) => `Couldn't select everything: ${reason}`,
     activeTags: {
       label: "Filtering by",
       list: "Tags in the filter",
@@ -987,8 +986,6 @@ export const en = {
     selection: {
       region: "Selection actions",
       count: (count: number) => `${videos(count)} selected`,
-      selectAll: "Select all",
-      selectingAll: "Selecting…",
       clear: "Clear selection (Esc)",
       addTag: "Add tag",
       removeTag: "Remove tag",

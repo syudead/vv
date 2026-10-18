@@ -23,7 +23,6 @@ import LibraryToolbar from "../library/LibraryToolbar";
 import {
   emptySelection,
   type LibrarySelection,
-  sameSelection,
   selectedGroupOf,
   isGroupSelected,
   setGroup,
@@ -73,7 +72,7 @@ import {
   type MoveDestination,
 } from "./GroupDrag";
 import { type GroupItemEditing, GroupItemList } from "./GroupItemList";
-import { reconcileGroupSelection, selectAllInGroup, selectedItemIds } from "./groupItems";
+import { reconcileGroupSelection, selectedItemIds } from "./groupItems";
 import GroupMenu from "./GroupMenu";
 import {
   folderDisplayPath,
@@ -178,12 +177,6 @@ function useGroupSelection(data: GroupPageData | null, searching: boolean) {
     setSelection((current) => reconcileGroupSelection(current, videoIds, data.items));
   }, [data, videoIds]);
 
-  // Recompute Select all from current membership so newly added items make it available again.
-  const all = useMemo(() => {
-    if (data === null) return null;
-    return selectAllInGroup(videoIds, data.items);
-  }, [data, videoIds]);
-
   const clear = useCallback(() => setSelection(emptySelection), []);
   const changeVideo = useCallback(
     (videoId: number, selected: boolean) =>
@@ -214,22 +207,16 @@ function useGroupSelection(data: GroupPageData | null, searching: boolean) {
     },
     [changeGroup, changeVideo],
   );
-  const selectAll = useCallback(() => {
-    if (all !== null) setSelection(all);
-  }, [all]);
-
   useEscapeClearsSelection(selection.ids.size > 0, clear);
 
   return {
     selection,
-    allSelected: all !== null && sameSelection(all, selection),
     clear,
     changeVideo,
     changeGroup,
     changeItem,
     toggleVideoSelection,
     toggleGroupSelection,
-    selectAll,
   };
 }
 
@@ -400,12 +387,9 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
         data !== null && (
           <SelectionBar
             count={selection.selection.ids.size}
-            allSelected={selection.allSelected}
             selectedIds={selectedIds}
             favoriteVideoIds={favorites.videoIds}
             favoriteGroupIds={favorites.groupIds}
-            selectingAll={false}
-            onSelectAll={selection.selectAll}
             onClear={selection.clear}
             onTagRemoved={refresh}
             onBundled={afterBulk}

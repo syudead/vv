@@ -219,8 +219,7 @@ Clearing the query restores the current scope without changing saved settings.
 Search applies the video search expression before paging direct group items;
 child-group cards remain when any visible descendant matches. Group summaries
 and playback describe all visible descendants. While any temporary condition or explicit sort is active, drag reordering
-is disabled and Select all selects the loaded matching items, including the
-full membership of selected child-group cards.
+is disabled.
 Smart-folder pages apply the same video search expression to the videos that
 match the saved rules, including ancestor rules, before paging. Search uses
 the current viewer's searchable fields and hides child-folder navigation until
@@ -481,9 +480,9 @@ fit.
 
 Its items, in order, are clear, `N selected`, `Add tag`, `Remove tag`,
 `Favorite`, `Add to playlist`, `New group`, `Add to group`, `Visibility`,
-`Bundle as versions` (2 or more videos), a separator and `Select all`. The
-actions sit at the right end; those that do not fit move to the right end of
-the next line.
+and `Bundle as versions` (2 or more videos). There is no `Select all`:
+selection covers only the cards the viewer checks. The actions sit at the
+right end; those that do not fit move to the right end of the next line.
 
 The request shapes are in [the screen API schema](../../api/openapi.yaml).
 
@@ -498,7 +497,7 @@ flowchart LR
   all -->|yes| grp[Send as group]
 ```
 
-A group is selected through its card's check or through `Select all`. Members
+A group is selected through its card's check. Members
 appear as video items, or the group gains members, when the list is refetched
 with the selection kept, for example after an import.
 

@@ -487,28 +487,6 @@ describe("LibraryPage", () => {
       expect(last?.searchParams.getAll("tag")).toEqual(["3"]);
     });
 
-    it("「すべて選択」もお気に入りのみの条件で全件を取る", async () => {
-      const base = fetchMock.getMockImplementation();
-      fetchMock.mockImplementation((input, init) => {
-        const url = new URL(String(input), "http://localhost");
-        if (url.pathname === "/api/library/ids") {
-          return Promise.resolve(json({ ids: [1, 2, 3] }));
-        }
-        return base?.(input, init) ?? Promise.reject(new Error("unexpected"));
-      });
-      const user = userEvent.setup();
-      renderLibrary("/?fav=1&sort=addedDesc");
-      await screen.findByRole("link", { name: "動画 1" });
-
-      await user.click(screen.getByRole("checkbox", { name: 'Select "動画 1"' }));
-      await user.click(screen.getByRole("button", { name: "Select all" }));
-      expect(await screen.findByText("3 videos selected")).toBeDefined();
-      const ids = fetchMock.mock.calls
-        .map(([input]) => new URL(String(input), "http://localhost"))
-        .find((url) => url.pathname === "/api/library/ids");
-      expect(ids?.searchParams.get("favorite")).toBe("true");
-    });
-
     it("「Date favorited」は新しい順で読み、向きの切り替えで古い順になり、URL と端末の設定に残る（要件 10、受け入れ条件 8）", async () => {
       const user = userEvent.setup();
       renderLibrary();
@@ -1415,22 +1393,14 @@ describe("LibraryPage", () => {
     });
   });
 
-  describe("選択バーのタグ一括操作・すべて選択（issue 270）", () => {
+  describe("選択バーのタグ一括操作（issue 270）", () => {
     function installSelectionAwareList(options: {
       tags?: { id: number; name: string }[];
       total?: number;
-      allIds?: number[];
-      idsMissingTagIds?: number[];
-      idsFail?: boolean;
-      idsDelay?: boolean;
     }) {
       const tags = options.tags ?? [];
       const total = options.total ?? 3;
       const attached = new Map<number, Set<number>>();
-      let resolveIds: (() => void) | undefined;
-      const idsGate = new Promise<void>((resolve) => {
-        resolveIds = resolve;
-      });
       fetchMock.mockImplementation((input, init) => {
         const url = new URL(String(input), "http://localhost");
         const method = init?.method ?? "GET";
@@ -1445,18 +1415,6 @@ describe("LibraryPage", () => {
           return Promise.resolve(
             json({ items: tags.map((tag) => ({ ...tag, synonyms: [], videoCount: 1 })) }),
           );
-        }
-        if (url.pathname === "/api/library/ids") {
-          const respond = () => {
-            if (options.idsFail) return Promise.resolve(json({ code: "internal" }, 500));
-            if (options.idsMissingTagIds !== undefined) {
-              return Promise.resolve(
-                json({ ids: [], missingTagIds: options.idsMissingTagIds }),
-              );
-            }
-            return Promise.resolve(json({ ids: options.allIds ?? [] }));
-          };
-          return options.idsDelay === true ? idsGate.then(respond) : respond();
         }
         if (url.pathname === "/api/video-tags" && method === "POST") {
           const body = JSON.parse(String(init?.body)) as {
@@ -1519,97 +1477,7 @@ describe("LibraryPage", () => {
         }
         throw new Error(`unexpected request: ${url.toString()}`);
       });
-      return { resolveIds: () => resolveIds?.() };
     }
-
-    it("すべて選択で、読み込んでいないページを含む全件が選ばれる（受け入れ条件4）", async () => {
-      installSelectionAwareList({
-        total: 50,
-        allIds: Array.from({ length: 50 }, (_, i) => i + 1),
-      });
-      const user = userEvent.setup();
-      renderLibrary();
-      await screen.findByRole("link", { name: "動画 1" });
-
-      await user.click(screen.getByRole("checkbox", { name: 'Select "動画 1"' }));
-      expect(screen.getByText("1 video selected")).toBeDefined();
-
-      await user.click(screen.getByRole("button", { name: "Select all" }));
-      expect(await screen.findByText("50 videos selected")).toBeDefined();
-    });
-
-    it("すべて選択が失敗したら、選択を変えずにトーストで伝える", async () => {
-      installSelectionAwareList({ total: 50, idsFail: true });
-      const user = userEvent.setup();
-      renderLibrary();
-      await screen.findByRole("link", { name: "動画 1" });
-
-      await user.click(screen.getByRole("checkbox", { name: 'Select "動画 1"' }));
-      await user.click(screen.getByRole("button", { name: "Select all" }));
-
-      expect(
-        await screen.findByText(
-          "Couldn't select everything: Something went wrong on the server.",
-        ),
-      ).toBeDefined();
-      expect(screen.getByText("1 video selected")).toBeDefined();
-    });
-
-    // Manual selection invalidates Select all; its stale finally must not leave the loading state stuck.
-    it("すべて選択の要求中に選択を手動で変えると、選択中…のまま固まらない", async () => {
-      const { resolveIds } = installSelectionAwareList({
-        total: 50,
-        allIds: Array.from({ length: 50 }, (_, i) => i + 1),
-        idsDelay: true,
-      });
-      const user = userEvent.setup();
-      renderLibrary();
-      await screen.findByRole("link", { name: "動画 1" });
-
-      await user.click(screen.getByRole("checkbox", { name: 'Select "動画 1"' }));
-      await user.click(screen.getByRole("button", { name: "Select all" }));
-      expect(await screen.findByRole("button", { name: "Selecting…" })).toBeDefined();
-
-      await user.click(screen.getByRole("checkbox", { name: 'Select "動画 2"' }));
-
-      expect(await screen.findByRole("button", { name: "Select all" })).toBeDefined();
-      expect(screen.getByText("2 videos selected")).toBeDefined();
-
-      await act(async () => {
-        resolveIds();
-        await Promise.resolve();
-      });
-      expect(screen.getByText("2 videos selected")).toBeDefined();
-    });
-
-    it("絞り込み中のタグを別のタブで消してから「すべて選択」すると、選ばれず、もう無いことが伝わる", async () => {
-      const tag = {
-        id: 1,
-        name: "旅行",
-        manual: true,
-        fromFolder: false,
-        tentative: false,
-        kind: null,
-      };
-      installSelectionAwareList({ tags: [], total: 3, idsMissingTagIds: [1] });
-      const user = userEvent.setup();
-      renderLibrary("/?tag=1");
-      await screen.findByRole("link", { name: "動画 1" });
-
-      await user.click(screen.getByRole("checkbox", { name: 'Select "動画 1"' }));
-      await user.click(screen.getByRole("button", { name: "Select all" }));
-
-      expect(
-        await screen.findByText("Removed deleted tags from the filter"),
-      ).toBeDefined();
-      await waitFor(() =>
-        expect(screen.getByTestId("location").textContent).not.toContain("tag=1"),
-      );
-      await waitFor(() =>
-        expect(screen.queryByText(/^\d[\d,]* videos? selected$/)).toBeNull(),
-      );
-      void tag;
-    });
 
     it("選択バーでタグを付けると、読み込み済みのカードにすぐ出て、選択は残る", async () => {
       const tag = {
@@ -1659,92 +1527,6 @@ describe("LibraryPage", () => {
         ).toBeNull(),
       );
       expect(screen.getByText("1 video selected")).toBeDefined();
-    });
-
-    // Item-array replacements must preserve selected IDs from unloaded pages.
-    it("すべて選択のあとタグを付けても、選択の件数は変わらない（B1）", async () => {
-      installSelectionAwareList({
-        tags: [{ id: 1, name: "旅行" }],
-        total: 50,
-        allIds: Array.from({ length: 50 }, (_, i) => i + 1),
-      });
-      const user = userEvent.setup();
-      renderLibrary();
-      await screen.findByRole("link", { name: "動画 1" });
-
-      await user.click(screen.getByRole("checkbox", { name: 'Select "動画 1"' }));
-      await user.click(screen.getByRole("button", { name: "Select all" }));
-      expect(await screen.findByText("50 videos selected")).toBeDefined();
-
-      await user.click(screen.getByRole("button", { name: "Add tag" }));
-      const input = await screen.findByRole("combobox", { name: "Add tag" });
-      await user.type(input, "旅行");
-      await screen.findByRole("option", { name: /旅行/ });
-      await user.keyboard("{Enter}");
-
-      expect(await screen.findByText('Added "旅行" to 50 videos')).toBeDefined();
-      expect(screen.getByText("50 videos selected")).toBeDefined();
-    });
-
-    it("すべて選択のあと loadMore しても、選択の件数は変わらない（B1）", async () => {
-      let intersect: IntersectionObserverCallback | undefined;
-      vi.stubGlobal(
-        "IntersectionObserver",
-        class {
-          constructor(callback: IntersectionObserverCallback) {
-            intersect = callback;
-          }
-          observe() {}
-          disconnect() {}
-        },
-      );
-      let listCalls = 0;
-      fetchMock.mockImplementation((input) => {
-        const url = new URL(String(input), "http://localhost");
-        if (url.pathname === "/api/scans/current") return Promise.resolve(json({}, 404));
-        if (url.pathname === "/api/media-folders") return Promise.resolve(json([{}]));
-        if (url.pathname === "/api/processing") {
-          return Promise.resolve(
-            json({ probe: 0, thumbnail: 0, seekThumbnail: 0, preview: 0 }),
-          );
-        }
-        if (url.pathname === "/api/tags") return Promise.resolve(json({ items: [] }));
-        if (url.pathname === "/api/library/ids") {
-          return Promise.resolve(json({ ids: [1, 2, 3, 4, 5] }));
-        }
-        if (url.pathname === "/api/library") {
-          listCalls += 1;
-          return Promise.resolve(
-            json(
-              listCalls === 1
-                ? {
-                    items: [video(1), video(2), video(3)],
-                    total: 5,
-                    nextCursor: "next",
-                  }
-                : { items: [video(4), video(5)], total: 5 },
-            ),
-          );
-        }
-        throw new Error(`unexpected request: ${url.toString()}`);
-      });
-
-      const user = userEvent.setup();
-      renderLibrary();
-      await screen.findByRole("link", { name: "動画 1" });
-
-      await user.click(screen.getByRole("checkbox", { name: 'Select "動画 1"' }));
-      await user.click(screen.getByRole("button", { name: "Select all" }));
-      expect(await screen.findByText("5 videos selected")).toBeDefined();
-
-      act(() =>
-        intersect?.(
-          [{ isIntersecting: true } as IntersectionObserverEntry],
-          {} as IntersectionObserver,
-        ),
-      );
-      expect(await screen.findByRole("link", { name: "動画 4" })).toBeDefined();
-      expect(screen.getByText("5 videos selected")).toBeDefined();
     });
 
     // （docs/design-docs/library-ui.md）。
@@ -2090,14 +1872,6 @@ describe("LibraryPage", () => {
             }),
           );
         }
-        if (url.pathname === "/api/library/ids") {
-          return Promise.resolve(
-            json({
-              ids: [1, ...memberIds, 2],
-              groups: [{ id: server.group.id, videoIds: server.group.videoIds }],
-            }),
-          );
-        }
         if (url.pathname === "/api/groups/7") {
           return Promise.resolve(json({ group: server.group, trail: [], items: [] }));
         }
@@ -2221,10 +1995,6 @@ describe("LibraryPage", () => {
           ?.querySelector('[data-slot="video-thumbnail"]')
           ?.hasAttribute("data-selected"),
       ).toBe(true);
-      expect(
-        (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(false);
 
       await user.click(screen.getByRole("button", { name: "Add tag" }));
       const input = await screen.findByRole("combobox", { name: "Add tag" });
@@ -2256,61 +2026,6 @@ describe("LibraryPage", () => {
       await user.click(screen.getByRole("link", { name: ownerLabel }));
       expect(screen.getByText("13 videos selected")).toBeDefined();
       expect(screen.queryByText(/再生画面/)).toBeNull();
-    });
-
-    it("すべて選択は全メンバーを選び、選択がその応答と同じ集合の間だけ押せない", async () => {
-      installGroupList();
-      const user = userEvent.setup();
-      renderLibrary();
-      await screen.findByRole("link", { name: ownerLabel });
-      await user.click(screen.getByRole("checkbox", { name: 'Select "動画 1"' }));
-
-      await user.click(screen.getByRole("button", { name: "Select all" }));
-      expect(await screen.findByText("14 videos selected")).toBeDefined();
-      expect(
-        (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(true);
-      expect(
-        (
-          screen.getByRole("checkbox", {
-            name: 'Select the group "series"',
-          }) as HTMLButtonElement
-        ).getAttribute("aria-checked"),
-      ).toBe("true");
-
-      await user.click(screen.getByRole("checkbox", { name: 'Select "動画 2"' }));
-      expect(screen.getByText("13 videos selected")).toBeDefined();
-      expect(
-        (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(false);
-    });
-
-    it("選択が一度消えたら、同じ id を手で選び直しても「すべて選択」を押せる", async () => {
-      installGroupList();
-      const user = userEvent.setup();
-      renderLibrary();
-      await screen.findByRole("link", { name: ownerLabel });
-      await user.click(screen.getByRole("checkbox", { name: 'Select "動画 1"' }));
-      await user.click(screen.getByRole("button", { name: "Select all" }));
-      expect(await screen.findByText("14 videos selected")).toBeDefined();
-
-      await user.keyboard("{Escape}");
-      await waitFor(() =>
-        expect(screen.queryByText(/^\d[\d,]* videos? selected$/)).toBeNull(),
-      );
-
-      await user.click(screen.getByRole("checkbox", { name: 'Select "動画 1"' }));
-      await user.click(screen.getByRole("checkbox", { name: 'Select "動画 2"' }));
-      await user.click(
-        screen.getByRole("checkbox", { name: 'Select the group "series"' }),
-      );
-      expect(screen.getByText("14 videos selected")).toBeDefined();
-      expect(
-        (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(false);
     });
 
     it("リスト表示では同じ列にグループの値を出す", async () => {
