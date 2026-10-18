@@ -21,8 +21,9 @@ file into a handbook.
 
 - Talk to the maintainer in Japanese: every chat reply, question and progress
   report is Japanese, even when the prompt, the tools or the documents are in
-  English. Internal reasoning may stay in English. Code, code comments,
-  identifiers and quoted output stay as they are.
+  English. Use English for agent-to-agent briefs, messages, handoffs and
+  reports; the parent agent summarizes results for the maintainer in Japanese.
+  Code comments follow the policy below; preserve identifiers and quoted output.
 - Keep documentation close to the code and update it with behavior changes.
 - Maintain repository documents only in English. Do not create translated mirrors.
 - Write documents in technical English to
@@ -46,10 +47,16 @@ file into a handbook.
 - Keep each function a change adds or makes more complex at complexity 25 or
   less, and share code instead of copying it; the commands that check this are
   in [complexity-and-duplication.md](docs/design-docs/complexity-and-duplication.md).
-- Before every push, run `task check` when any path outside `*.md`, `docs/`
-  and `specs/` changed, and `task check-docs` when any path inside them
-  changed (both for a mixed change). Fix formatting failures with `task fmt`.
-  Focused tests alone do not catch formatting or lint drift.
+- Before a push, run formatting, lint and tests for the affected scope using
+  `task check SCOPE=go GO_PACKAGES="./internal/example/..."` or
+  `task check SCOPE=web WEB_FILES="src/example" WEB_TESTS="src/example"`.
+  Include affected callers and shared fixtures; widen to `task check` when the
+  impact is unclear or dependencies/shared configuration change. Run
+  `task check-docs` for Markdown, `docs/` or `specs/` changes, including mixed
+  changes. See [validation scope](docs/how-to/development.md#validate-changes)
+  for CI-only checks and exceptions. Fix formatting in the affected files.
+  Reuse passing results until relevant inputs change; after a failure, rerun
+  the failed check and checks affected by its fix, not every suite.
 - Do not hand-edit generated files (`internal/httpapi/gen/`,
   `internal/httpapi/extgen/`, `web/src/api/gen/`); change `api/openapi.yaml` or
   `api/external-v1.yaml` and run `task generate`.
@@ -98,6 +105,19 @@ file into a handbook.
   separate PR. On the integration PR, fix only blocking review findings and
   list the rest for the maintainer
   ([integrate](.agents/skills/issue-handoff/references/integrate.md#review-of-the-integration-pr)).
+
+## Code comments
+
+- Write comments in concise English. Explain a non-obvious reason, invariant,
+  constraint or workaround; describe public contracts when callers need them.
+- Delete narration of the next statement, repeated type/function names,
+  section dividers and obsolete history. Prefer clear names over explanations.
+- Keep a comment to one or two sentences. Put lasting design rationale in
+  `docs/design-docs/` and link to it instead of copying it into code.
+- When touching existing comments, translate useful Japanese text, shorten it,
+  and remove redundant text. Preserve compiler/tool directives, licenses,
+  generated-code markers and meaningful quoted text or examples. Regenerate
+  generated files from their source instead of editing their comments by hand.
 
 ## Review guidelines
 

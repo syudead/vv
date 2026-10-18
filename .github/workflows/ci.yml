@@ -1,23 +1,17 @@
-# 自動検証。最初に変更パスを判定し、コード変更には通常検査とビルド、
-# 文書だけの変更には文書検査を実行する。各検査は同じ Task タスクで手元から再現できる。
 name: CI
 
 on:
   pull_request: {}
   push:
     branches: [main]
-  # 任意のブランチで全検査と e2e を手で回す（PR では e2e が走らないため）。
-  # Docker イメージは作らない。
+  # Manual runs include E2E but do not build a Docker image.
   workflow_dispatch: {}
 
 permissions:
   contents: read
 
 concurrency:
-  # PR は新しい push で古い実行を取り消す。main は commit ごとに別の組にして、取り消しも
-  # 待ちの置き換え（待てるのは 1 つだけ）も起こさず、どの commit も最後まで流す。
-  # 取り消すと、その commit のカバレッジと E2E の結果が Codecov に届かず、後の PR が
-  # 比べる基準の commit も欠ける。
+  # Cancel superseded PR runs; keep every main commit for Codecov baselines.
   group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -30,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # push が複数 commit を含む場合も before..after を正しく比較する。
+          # Include every commit in a multi-commit push.
           fetch-depth: 0
 
       - name: コード変更かを調べる
@@ -53,10 +47,8 @@ jobs:
             base="$BEFORE"
           fi
 
-          # 一覧にないパスはコード扱いにする。--no-renames により、コードを
-          # 文書ディレクトリへ移した場合も削除側を検出できる。
-          # NUL 区切りで読み、日本語、空白、改行を含む名前も生のパスで判定する。
-          # git diff が失敗した場合は step 自体を失敗させ、検査を誤って飛ばさない。
+          # Treat unknown paths as code; detect deletions on renames and preserve arbitrary filenames.
+          # A failed diff must fail the step instead of skipping checks.
           changed_file=$(mktemp)
           trap 'rm -f "$changed_file"' EXIT
           git diff --no-renames --name-only -z "$base" HEAD > "$changed_file"
@@ -79,17 +71,8 @@ jobs:
             echo "code=false" >> "$GITHUB_OUTPUT"
           fi
 
-  # task check を 1 台で順に流すと 4 分かかるので、互いに依らない組に分けて並べて
-  # 流す。各組は task check の部分タスクを呼ぶので、手元の task check と同じ検査に
-  # なる。task check に検査を足したら、どれかの組にも足す。
-  # vitest は最も長いので、ファイルを 3 組に分けて流す（--shard）。分けるのは
-  # ファイル単位なので、1 つのファイルが長くなりすぎたら話題ごとに分ける
-  # （src/tags/TagsPage*.test.tsx）。SPA のビルド検査は web lint の組で 1 回だけ流す。
-  #
-  # Go のビルドキャッシュは Go を使う組（go: に名前）だけが復元し、main への push で
-  # その組自身が保存する。setup-go の cache: true では全組が同じキーを奪い合い、
-  # 最初に終わる Go を使わない組が空のキャッシュを保存して、go.sum が変わるたびに
-  # 以後の全実行が golangci-lint のビルドからやり直しになっていた。
+  # Run full local and CI-only tasks in independent groups; keep both represented here.
+  # Shard Vitest by file and build the SPA once. Only Go groups restore and save Go caches.
   check-group:
     name: Checks (${{ matrix.group }})
     needs: changes
@@ -97,25 +80,20 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # Codecov へ OIDC で送る（トークンを secret に置かない）。
       id-token: write
     strategy:
       fail-fast: false
       matrix:
         include:
-          # generate-check は shadcn（web）と openapi-typescript（tools）を使う。
+          # Generation needs shadcn from web/ and openapi-typescript from tools/.
           - group: go lint
-            tasks: fmt-check-go lint-go generate-check migrations-check e2e-groups-check build-windows-check
+            tasks: fmt-check-go lint-go lint-go-windows-desktop generate-check migrations-check e2e-groups-check build-windows-check
             web: true
             tools: true
             golangci: true
             go: lint
-          # テストの組は、手元の test-go / test-web-unit と同じテストを流し、
-          # カバレッジとテスト結果を reports/ に書く（report: に Codecov の flag）。
-          # internal/media のテストは ffmpeg と ffprobe が無いと飛ぶ（47 件）ので入れる。
-          # go test は結果をキャッシュし、exec.LookPath で ffmpeg を探したことは結果の
-          # 鍵に入らない。ffmpeg の無い環境で「飛ばした」結果を使い回さないよう、
-          # ビルドキャッシュも ffmpeg のある環境の分として名前を分ける（test-media）。
+          # Install FFmpeg before tests; cache keys separate runs that might have skipped media tests.
+          # Go test caching does not track exec.LookPath results.
           - group: go test
             tasks: test-go-report
             go: test-media
@@ -143,14 +121,10 @@ jobs:
         id: setup-go
         if: matrix.go
         with:
-          # 版は go.mod に合わせる。
           go-version-file: go.mod
           cache: false
 
-      # 組ごとに作るものが違う（lint は golangci-lint 本体と go build、test は
-      # テストの binary）ので、キャッシュも組ごとに分ける。キーには Go の版も
-      # 入れる。go.sum が同じまま版だけ上がると、古い compiler の分に完全一致して
-      # 保存が飛ばされ、以後ずっと冷えたままになるため。
+      # Separate compiler versions and job outputs so a cache hit cannot keep an obsolete cache cold.
       - name: Goのビルドキャッシュを復元する
         id: go-cache
         if: matrix.go
@@ -182,9 +156,7 @@ jobs:
         working-directory: tools
         run: npm ci
 
-      # golangci-lint の解析結果のキャッシュ。無いと lint-go が毎回 1 分以上かかる
-      # （温まっていれば数秒）。中身は入力の hash で引くので古い内容を戻しても
-      # 結果は変わらない。main への push でだけ保存し、PR は main の分を読む。
+      # PRs restore main caches; input hashes validate the cached analysis.
       - name: golangci-lintのキャッシュを復元する
         if: matrix.golangci
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -193,15 +165,12 @@ jobs:
           key: golangci-lint-${{ runner.os }}-${{ github.sha }}
           restore-keys: golangci-lint-${{ runner.os }}-
 
-      # migrations-check が origin/main との分岐点と比べるので、main と分岐点までの
-      # 履歴を取り寄せる。PR の base branch ではなく main と比べる理由は
-      # scripts/migrations-immutable.sh にある。push（main だけ）では checkout が
-      # origin/main を作り、分岐点は HEAD そのものなので取り寄せない。
+      # Compare migrations against main, including for feature-branch PRs.
+      # Main pushes already have origin/main at HEAD; see scripts/migrations-immutable.sh.
       - name: main を取得する
         if: matrix.golangci && github.event_name != 'push'
         run: git fetch --no-tags --unshallow origin main:refs/remotes/origin/main
 
-      # E2E の組と同じく、ffmpeg の .deb を runner のイメージ版ごとに取っておく。
       - name: runnerのイメージ版を調べる
         id: image
         if: matrix.ffmpeg
@@ -237,9 +206,7 @@ jobs:
           TASKS: ${{ matrix.tasks }}
         run: task $TASKS
 
-      # テストが落ちた実行の結果こそ、不安定なテストを見つける材料になるので、
-      # 失敗しても送る。Codecov が受け付けなくても、OIDC のトークンが取れなくても
-      # （Action が例外で止まり fail_ci_if_error: false では防げない）検査自体は落とさない。
+      # Upload failed-test evidence too; Codecov or OIDC failures must not fail checks.
       - name: テスト結果をCodecovへ送る
         if: ${{ !cancelled() && matrix.report }}
         continue-on-error: true
@@ -279,9 +246,7 @@ jobs:
             ~/go/pkg/mod
           key: go-${{ matrix.go }}-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
 
-  # 複雑度と重複を指標ごとに並列で測り、ツールの出力をそのまま artifact に残す
-  # （task complexity-go / complexity-web / duplication）。集計も比較もしない。
-  # 参考の出力なので、失敗しても CI は落とさず、必須チェックの Checks にも入れない。
+  # Quality reports are informational and excluded from the required Checks result.
   quality:
     name: Quality (${{ matrix.metric }})
     needs: changes
@@ -344,12 +309,11 @@ jobs:
           path: reports/quality/${{ matrix.metric }}/
           retention-days: 90
 
-  # ブランチ保護が求める「Checks」。コード変更では組に分けた検査のまとめを出し、
-  # 文書だけの変更では文書検査をここで流す。
+  # Aggregate code checks, or run document checks for documentation-only changes.
   check:
     name: Checks
     needs: [changes, check-group]
-    # 必須チェックなので変更判定が失敗しても起動し、自身も失敗として返す。
+    # Path detection failures must fail the required check.
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -378,7 +342,7 @@ jobs:
           go-version-file: go.mod
           cache: false
 
-      # 文書検査は Go のテストなので、go test の組が保存した分を読むだけにする。
+      # Reuse the test job cache without saving a document-only cache.
       - name: Goのビルドキャッシュを復元する
         if: needs.changes.outputs.code == 'false'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -398,13 +362,8 @@ jobs:
         if: needs.changes.outputs.code == 'false'
         run: task check-docs
 
-  # e2e はコード変更を含む main への push（PR のマージ）と手動実行（workflow_dispatch）で
-  # だけ回す。PR では回さない。ただし Renovate の PR（renovate/ ブランチ）では回す。メジャー更新も含めて
-  # renovate-triage ルーチンがマージするので、マージ前に実ブラウザで確かめる
-  # （docs/how-to/dependency-updates.md）。
-  # 1 台で全部を順に流すと 10 分かかるので、ファイルを 4 組に分けて並べて流す。
-  # ファイルで絞っても、依存の準備（未設定のサーバーとログイン）は各組で先に走る。
-  # e2e のファイルを足したら、どれかの組に入れる（task e2e-groups-check が確かめる）。
+  # Run E2E on main, manual runs and Renovate PRs (which may merge unattended).
+  # Every E2E file must belong to one group; e2e-groups-check enforces this.
   e2e:
     name: Browser E2E (${{ matrix.group }})
     needs: changes
@@ -432,9 +391,7 @@ jobs:
           go-version-file: go.mod
           cache: false
 
-      # サーバーの go build は go lint の組と同じ物を作るので、以前の実行で
-      # その組が保存した分を読む（同じ実行の組は並行なので間に合わない）。
-      # 保存はしない。
+      # Reuse a previous lint job cache for the server build; this job does not save it.
       - name: Goのビルドキャッシュを復元する
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -444,8 +401,7 @@ jobs:
           key: go-lint-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
           restore-keys: go-lint-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-
 
-      # run-e2e.mjs は GOCACHE が決まっていればそこを使う。復元した場所を渡し、
-      # ビルドをゼロからやり直さないようにする。
+      # Point the E2E runner at the restored Go build cache.
       - name: Goのビルドキャッシュの場所を渡す
         run: echo "GOCACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
 
@@ -462,8 +418,7 @@ jobs:
       - name: Web依存を取得する
         run: npm --prefix web ci
 
-      # ffmpeg は apt の索引の更新と取得に時間がかかるので、.deb を runner の
-      # イメージ版ごとに取っておく。同じイメージなら入る版も依存も変わらない。
+      # Cache FFmpeg packages by runner image, which pins their versions and dependencies.
       - name: runnerのイメージ版を調べる
         id: image
         run: echo "version=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
@@ -488,12 +443,10 @@ jobs:
             sudo rm -rf "$debs/partial" "$debs/lock"
             sudo chown -R "$USER" "$debs"
           fi
-          # イメージに初めから入っていれば取るものが無い。
           if compgen -G "$debs/*.deb" > /dev/null; then sudo dpkg -i "$debs"/*.deb; fi
           ffmpeg -version | head -n 1
 
-      # ubuntu-latest には Chrome とその依存ライブラリが入っているので、
-      # --with-deps（apt の更新と導入）は付けず、ブラウザ本体だけを版ごとに取っておく。
+      # The runner already has browser system dependencies; cache only Chromium.
       - name: Playwrightの版を調べる
         id: playwright
         working-directory: web
@@ -511,10 +464,7 @@ jobs:
         working-directory: web
         run: npx playwright install chromium
 
-      # テストの動画（web/e2e/media-fixtures.mjs が ffmpeg で作る）を
-      # 持ち越す。run-e2e.mjs は作り方（media-fixtures.mjs と run-e2e.mjs 自身）と
-      # ffmpeg の版から決めた名前の下に作り、同じ名前が
-      # あれば作らずに写す。ffmpeg の版は runner のイメージ版で決まる。
+      # Reuse generated media only when generator code and the runner image match.
       - name: テストの動画を復元する
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -526,9 +476,7 @@ jobs:
           E2E_FILES: ${{ matrix.files }}
         run: task test-e2e -- $E2E_FILES
 
-      # 1 回のリトライで通ったテストも結果に残るので、不安定なテストが Codecov で見える。
-      # flag は付けない。E2E はカバレッジを送らないので、flag を付けるとカバレッジ 0% の
-      # flag として Codecov に並ぶ。E2E のテストはファイル名（e2e/*.e2e.ts）で見分けられる。
+      # Omit coverage flags for E2E: it uploads test results, not coverage.
       - name: テスト結果をCodecovへ送る
         if: ${{ !cancelled() }}
         continue-on-error: true
@@ -550,9 +498,7 @@ jobs:
             web/test-results/
           retention-days: 7
 
-  # ブランチ保護が求める「Browser E2E」は、組に分けた e2e のまとめとしてここで出す。
-  # PR と文書だけの変更で e2e を飛ばしたときも通す。手動実行は e2e を回すための
-  # ものなので、changes の失敗などで e2e が飛んだら落とす。
+  # Manual runs require E2E success; other events may legitimately skip it.
   e2e-result:
     name: Browser E2E
     needs: [changes, e2e]
@@ -571,9 +517,7 @@ jobs:
             test "$RESULT" = success || test "$RESULT" = skipped
           fi
 
-  # イメージはコード変更を含む main への push（PR のマージ）でだけ作り、
-  # ghcr.io/syudead/vv へ公開する（docs/how-to/hosting-vv.md）。Renovate の PR では
-  # 土台イメージや依存の更新でビルドが壊れないかを確かめるため、公開せずに作る。
+  # Publish main builds; Renovate PRs validate dependency images without publishing.
   docker:
     name: Docker image
     needs: changes
@@ -585,20 +529,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # arm64 の NAS 向け。実行環境の段の apk だけがエミュレーションで動く。
+      # QEMU handles the runtime-stage apk commands for arm64 NAS images.
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         id: buildx
 
-      # type=gha が持ち越すのは層だけで、RUN --mount=type=cache の中身（Go の
-      # モジュールとビルドキャッシュ、npm のキャッシュ）は runner ごとに空になる。
-      # そのため Go のコードが変わるたびに go build が依存の取得とコンパイルを
-      # ゼロからやり直していた。中身を actions/cache に取っておき、ビルドの前に
-      # キャッシュマウントへ戻し、後で取り出す。キーは依存と Dockerfile から作り、
-      # 一致しない時だけ取り出して保存する。自分のコードの分は古くなるが、時間の
-      # 大半を占める依存のコンパイルは使い回せる。go build は VERSION が commit
-      # ごとに変わるので層が当たらず毎回走り、保存する中身は必ず埋まる。
+      # GHA layer caching excludes cache mounts. Restore compiled dependencies separately
+      # to avoid rebuilding them on each source change.
       - name: キャッシュマウントの中身を復元する
         id: mount-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -607,8 +545,7 @@ jobs:
           key: docker-mount-${{ runner.os }}-${{ hashFiles('Dockerfile', 'go.sum', 'web/package-lock.json') }}
           restore-keys: docker-mount-${{ runner.os }}-
 
-      # 対応は Dockerfile のキャッシュマウントの target と揃える。context に
-      # 入らないのは .dockerignore が許可リスト方式だからである。
+      # Keep targets aligned with Dockerfile cache mounts; .dockerignore excludes these files.
       - name: キャッシュマウントへ戻す
         uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
         with:
@@ -628,7 +565,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # latest は main の最新、sha-<commit> は版を固定したいときに使う。
       - name: タグを決める
         id: tags
         env:
@@ -643,7 +579,7 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      # /api/health の builtAt。task build の vcs.time と同じくコミットの時刻を渡す。
+      # Use the commit timestamp, matching task build, for /api/health builtAt.
       - name: コミットの時刻を求める
         id: commit-time
         run: echo "time=$(git log -1 --format=%cI)" >> "$GITHUB_OUTPUT"

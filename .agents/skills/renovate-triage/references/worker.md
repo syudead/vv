@@ -98,9 +98,10 @@ on the same PR.
 
 ## Before pushing
 
-Run the checks the AGENTS.md pre-push rule asks for: `task check` when a path
-outside `*.md`, `docs/` and `specs/` changed, and `task check-docs` when a path
-inside them changed. Fix formatting with `task fmt`. Run the `Browser E2E`
+Run the checks the AGENTS.md pre-push rule asks for: use `task check` for
+shared dependency changes, scope other fixes to affected packages/files,
+and run `task check-docs` for Markdown, `docs/` or `specs/` changes.
+Fix formatting in the affected files. Run the `Browser E2E`
 files that failed, if any; CI runs the whole suite on the PR.
 
 Commit with a Conventional Commit message (`fix(deps): ...` for a code fix,

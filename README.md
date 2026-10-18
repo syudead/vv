@@ -52,8 +52,8 @@ mise exec --command "task dev"
 ```
 
 The development UI is served at <http://localhost:5173>. Run
-`mise exec --command "task check"` before submitting a change; `task help`
-lists the remaining commands.
+the [scoped checks](docs/how-to/development.md#validate-changes) before submitting
+a change; `task help` lists the remaining commands.
 
 See [Development](docs/how-to/development.md) for the full local workflow and
 [AGENTS.md](AGENTS.md) for repository working agreements.
