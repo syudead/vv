@@ -23,11 +23,13 @@ are not listed on their own; a pair entry in two pipelines appears under both.
 | `items[].members` | New, pipelines only: `ActivityMemberSummary[]` in join order |
 
 `ActivityMemberSummary`: `id`, `kind`, `feature`, `subject`, `status`, `reason?`,
-`outcome?`, `stage?`, `progress?`, `retryRun`, `undoable`, `replaced` (a
-retried or reopened member kept for history), `matched`, and for an `import`
-member `stages` (`{stage, state}[]` in `JobKinds` order, absent when not
-recorded). It carries no `detail` and no `tags`. The stage states let the list
-show a running pipeline's members with their progress without a detail read.
+`outcome?`, `decider`, `probability?`, `stage?`, `progress?`, `retryAt?`,
+`retryRun`, `undoable`, `undone`, `replaced` (a retried or reopened member kept
+for history), `matched`, for an `auto_tag` member `tagCount` (the tags it
+added), and for an `import` member `stages` (`{stage, state}[]` in `JobKinds`
+order, absent when not recorded). It carries no `detail` and no `tags`. These
+are the fields the list's result phrase reads, so the list shows a pipeline's
+members, a running import by stage, without a detail read.
 
 `matched` uses the same predicate that selected the pipeline, minus the
 parent-only `status`, so a listed pipeline found through a member marks that

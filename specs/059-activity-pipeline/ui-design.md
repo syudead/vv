@@ -41,6 +41,7 @@ reused unchanged.
 | Card summary, needs attention | `{kind}: {reason}` | The member that gives the pipeline its reason; `{reason}` is that member's existing reason phrase |
 | Card summary, done | `Finished · {total} tasks`, `Finished · 1 task` | `gone` and `superseded` keep their existing outcome phrases |
 | Member row of a pair | `Duplicate check · with {label}` | `{label}`: the other video of the pair; needs the member summary's `subject` ([below](#data-this-design-needs)) |
+| Member row, finished `auto_tag` | `Added {count} tags`, `Added 1 tag` | No tags reads the existing `No tags added` |
 | Matched member | `Matches` | `Badge` `soft` on the member row |
 | Expand button | (icon only) | Tooltip `Show tasks` / `Hide tasks`; read aloud `Show tasks for {subject}` / `Hide tasks for {subject}` |
 | Card title link, read aloud | `Details of {kind} for {subject}` | |
@@ -157,11 +158,20 @@ A pair in two pipelines lists both under `Part of`.
 
 ## Data this design needs
 
-The member summary in
-[contracts/activity-api.md](contracts/activity-api.md#get-apiactivity) carries
-`subject`, added by this stage, so a pipeline with several duplicate checks
-tells them apart in the list. Everything else on the card and the page was
-already in the contract.
+A member row's result phrase is today's card phrase, computed from the
+member summary in
+[contracts/activity-api.md](contracts/activity-api.md#get-apiactivity), which
+carries no `detail` and no `tags`. This stage adds to the summary the fields
+that phrase reads: `subject` (a pipeline with several duplicate checks tells
+them apart), `decider`, `probability`, `retryAt`, `undone` and, for
+`auto_tag`, `tagCount`.
+
+| Card phrase that needs `detail` or `tags` | Member row reads instead |
+| --- | --- |
+| `Failed at {stage}: {detail}`, `Failed: {detail}` | `Failed at {stage}`, `Failed`; the message is on the detail page |
+| `+ {name} {percent}` per tag (`auto_tag`) | `Added {count} tags`, `Added 1 tag`, or the existing `No tags added` |
+
+Everything else on the card and the page was already in the contract.
 
 ## Changes to the design system
 
