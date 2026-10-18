@@ -176,7 +176,9 @@ external API's video and tag pairs are found inside SQLite, so a
 
 Before the workers start, every `running` entry with reason `processing`
 becomes `attention`/`interrupted`; a `waiting` entry was never started and
-stays as it is ([process-lifecycle.md](process-lifecycle.md)).
+stays as it is ([process-lifecycle.md](process-lifecycle.md)). An interrupted
+`import` entry's `processing` stage row returns to `waiting`, because its job
+is queued again, so the detail shows that stage as not run.
 
 ## The list pages by id and counts in the same read
 
@@ -216,7 +218,10 @@ feature of the entry it undid. The contract is
 out: a pipeline's members as full entries in join order, replaced members
 included; for a member, the pipelines it belongs to, newest first; for an
 `import` entry, its stage rows with their messages, or `stagesRecorded: false`
-for an entry written before stage rows existed. It is owner-only like the rest
+for an entry written before stage rows existed. Such an entry has no stage row
+and belongs to no pipeline; a later import belongs to one even when it held no
+stage, as a move does, and lists every stage as not part of its run. It is
+owner-only like the rest
 of the log, and resolves videos for the owner.
 
 ## Retry and undo are dispatched by kind
