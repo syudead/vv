@@ -36,7 +36,8 @@ member's transaction, and the list pages parents and standalone entries only
   carries the `ui` label. The maintainer has fixed two points for it: the
   detail is its own page, and a pipeline that is not finished is shown
   expanded in the list with each member's progress (the `import` member by
-  stage), collapsing once it finishes. The member summary carries the stage
+  stage), collapsing once it finishes; the owner can expand or collapse any
+  pipeline card. Everything beyond the member summary is on the detail page. The member summary carries the stage
   states this needs ([contract](contracts/activity-api.md#get-apiactivity)).
 - No new dependency. No open question.
 
@@ -226,7 +227,8 @@ from opening the video, and counts labelled as runs, per `ui-design.md`.
 **Acceptance**:
 
 - Component tests of the parent card: expanded with member and stage progress
-  while `running` or `attention`, collapsed when `done`; a member needing
+  while `running` or `attention`, collapsed when `done` and expandable by the
+  owner; a member needing
   attention visible on the parent; a `matched` member marked.
 - Page test: an `activity` event that finishes a pipeline collapses its card;
   filtering by "Needs attention" lists the parent and the detail link opens
