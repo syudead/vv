@@ -203,6 +203,26 @@ page into its gone state; a merge opens the target's page and a delete the
 people list, each with a toast. The person's own fields are edited on
 `/people/:id/edit`.
 
+### The edit page
+
+`/people/:id/edit` is a `FormPage` outside the shell that edits the name,
+aliases, external IDs, links and every profile field together, built and left
+as the video details editor is
+([library-ui.md](library-ui.md#details-editor)): the same band, the same
+`Discard changes?` on `Cancel`, the aside's link and the browser's Back, and
+the same return along the history when the person page opened it. Organizations
+keep the details dialog.
+
+`Save` sends one `PATCH /api/people/{id}` with only the properties that differ
+from the person as loaded, so a change made elsewhere to another property
+survives; an edited list replaces the whole list, and an emptied field is sent
+as `null`. With nothing changed, `Save` returns without a request. The
+response goes back to the person page in memory, so it shows the saved person
+without reading it again; opened by its URL, the page reads the person first.
+A reason with a `field` stays under that input with every other input kept.
+Number inputs keep only digits, so a value the server reads is always a whole
+number or empty.
+
 ### Ages are computed in the browser
 
 The API returns dates, not ages, because an age changes at midnight in the

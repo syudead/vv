@@ -7,6 +7,7 @@ import { cn } from "../../lib/cn";
 import { Badge } from "../../ui/shadcn/badge";
 import { Button } from "../../ui/shadcn/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../ui/shadcn/tooltip";
+import { PersonFace } from "../../ui/PersonFace";
 import TentativeMark from "../../ui/TentativeMark";
 import type { ChipMark } from "./detailRows";
 import { TAG_FOLD } from "./fetchRules";
@@ -19,6 +20,8 @@ export interface ChipItem {
   hint?: string;
   full?: string;
   numeric?: boolean;
+  /** A fetched person's face, shown before the chip. */
+  faceSrc?: string;
 }
 
 export function chipsOfVideo(tags: readonly VideoTag[]): ChipItem[] {
@@ -57,6 +60,8 @@ export function Chip({ item }: { item: ChipItem }) {
       className={cn(
         "max-w-full justify-start font-normal",
         muted && "text-muted-foreground",
+        // Beside a face the badge takes only the remaining width, so its name truncates.
+        item.faceSrc !== undefined && "min-w-0 shrink",
       )}
     >
       <span className={cn("min-w-0 truncate", item.numeric === true && "tabular-nums")}>
@@ -67,12 +72,48 @@ export function Chip({ item }: { item: ChipItem }) {
       {tentative && <span className="sr-only">{`, ${text.tentative}`}</span>}
     </Badge>
   );
-  if (hint === undefined) return badge;
+  const chip =
+    hint === undefined ? (
+      badge
+    ) : (
+      <Tooltip>
+        <TooltipTrigger asChild>{badge}</TooltipTrigger>
+        <TooltipContent>{hint}</TooltipContent>
+      </Tooltip>
+    );
+  if (item.faceSrc === undefined) return chip;
+  // The chip already names the person, so an empty alternative text keeps the face decorative.
+  // Only the chip takes part in baseline alignment, so faced and plain chips share one baseline.
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>{badge}</TooltipTrigger>
-      <TooltipContent>{hint}</TooltipContent>
-    </Tooltip>
+    <span className="inline-flex max-w-full items-baseline gap-1">
+      <span className="flex shrink-0 self-center">
+        <PersonFace shape="compare" name="" src={item.faceSrc} />
+      </span>
+      {chip}
+    </span>
+  );
+}
+
+/** The "+N more" toggle of a list that shows only its first entries until opened. */
+export function FoldButton({
+  hidden,
+  folded,
+  onToggle,
+}: {
+  hidden: number;
+  folded: boolean;
+  onToggle: () => void;
+}) {
+  const text = t.player.workInfoFetch;
+  return (
+    <Button
+      variant="link"
+      size="sm"
+      className="h-auto px-0 py-0 text-muted-foreground hover:text-primary"
+      onClick={onToggle}
+    >
+      {folded ? text.more(hidden) : text.showFewer}
+    </Button>
   );
 }
 
@@ -86,7 +127,6 @@ export default function TagChips({
   /** Checkbox description target for an unselectable row. */
   trailingId?: string;
 }) {
-  const text = t.player.workInfoFetch;
   const [open, setOpen] = useState(false);
   const folded = !open && items.length > TAG_FOLD;
   const shown = folded ? items.slice(0, TAG_FOLD) : items;
@@ -96,14 +136,11 @@ export default function TagChips({
         <Chip key={item.key ?? item.name} item={item} />
       ))}
       {items.length > TAG_FOLD && (
-        <Button
-          variant="link"
-          size="sm"
-          className="h-auto px-0 py-0 text-muted-foreground hover:text-primary"
-          onClick={() => setOpen(folded)}
-        >
-          {folded ? text.more(items.length - TAG_FOLD) : text.showFewer}
-        </Button>
+        <FoldButton
+          hidden={items.length - TAG_FOLD}
+          folded={folded}
+          onToggle={() => setOpen(folded)}
+        />
       )}
       {trailing !== undefined && (
         <span id={trailingId} className="text-xs text-muted-foreground">

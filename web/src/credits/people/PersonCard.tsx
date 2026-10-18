@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { Link } from "react-router";
 
-import { type Person, personImagePath } from "../../api/credits";
+import { type Person, personFaceSrc } from "../../api/credits";
 import { t } from "../../i18n";
 import FavoriteToggle from "../../ui/FavoriteToggle";
 import { PersonFace, PersonFaceMark } from "../../ui/PersonFace";
@@ -19,10 +19,7 @@ export const PersonCard = memo(function PersonCard({
   today: Date;
   onToggleFavorite: (person: Person) => Promise<unknown>;
 }) {
-  const src =
-    person.imageRevision === undefined
-      ? undefined
-      : personImagePath(person.id, person.imageRevision);
+  const src = personFaceSrc(person);
   return (
     <article className="group relative flex min-w-0 flex-col">
       <Link

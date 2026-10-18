@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +9,7 @@ import { video } from "../../testing/groupPage";
 import { ToastProvider } from "../../ui/Toast";
 import { TooltipProvider } from "../../ui/shadcn/tooltip";
 import PersonPage from "./PersonPage";
+import PersonEditPage from "./edit/PersonEditPage";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -102,12 +103,13 @@ afterEach(() => {
 });
 
 function renderPage() {
-  render(
+  return render(
     <TooltipProvider>
       <ToastProvider>
         <MemoryRouter initialEntries={["/people/7"]}>
           <Routes>
             <Route path="/people/:id" element={<PersonPage />} />
+            <Route path="/people/:id/edit" element={<PersonEditPage />} />
           </Routes>
         </MemoryRouter>
       </ToastProvider>
@@ -201,6 +203,39 @@ describe("PersonPage", () => {
       expect(last?.url.searchParams.get("person")).toBe("7");
       expect(last?.url.searchParams.get("personRole")).toBe("director");
     });
+  });
+
+  // A profile leaves one Edit link; an empty profile offers a second one.
+  const profiled = { profile: { birthplace: "Tokyo" } };
+
+  it("opens the editor from Edit with the shown person, without reading it again", async () => {
+    const user = userEvent.setup();
+    server.person = person(profiled);
+    renderPage();
+    await user.click(await screen.findByRole("link", { name: "Edit" }));
+
+    const name = await screen.findByRole<HTMLInputElement>("textbox", { name: "Name" });
+    expect(name.value).toBe("Aoi");
+    expect(sent("GET", "/api/people/7")).toHaveLength(1);
+  });
+
+  it("reads the person again on the next visit after Edit opened another tab", async () => {
+    server.person = person(profiled);
+    const first = renderPage();
+    const edit = await screen.findByRole("link", { name: "Edit" });
+    // jsdom cannot open a tab; stop its navigation after React has handled the click.
+    const stop = (event: Event) => event.preventDefault();
+    document.addEventListener("click", stop);
+    try {
+      fireEvent.click(edit, { ctrlKey: true });
+    } finally {
+      document.removeEventListener("click", stop);
+    }
+    first.unmount();
+    server.person = person({ ...profiled, name: "Aoi Sora" });
+
+    renderPage();
+    expect(await screen.findByRole("heading", { name: "Aoi Sora" })).toBeTruthy();
   });
 
   it("shows the gone state when the person no longer exists", async () => {

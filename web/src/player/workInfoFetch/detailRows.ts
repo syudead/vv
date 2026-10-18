@@ -8,9 +8,11 @@ import type {
 } from "../../api/workInfo";
 import type {
   WorkInfoFetch,
+  WorkInfoFetchedPerson,
   WorkInfoField,
   WorkInfoMatch,
 } from "../../api/workInfoPlugins";
+import { personFactGroups } from "../../credits/person/personFacts";
 import { t } from "../../i18n";
 import { foldForMatch } from "../../lib/foldForMatch";
 import { withoutScheme } from "../WorkInfo";
@@ -31,7 +33,15 @@ export interface DetailChip {
   /** Original fetched spelling when it differs from the matched entity's current name. */
   fetchedAs?: string;
   full?: string;
+  /** Position in the result's people of a face kept with the fetch. */
+  faceIndex?: number;
+  /** Fetched profile values; applying writes them only into the person's empty fields. */
+  profile?: FetchedProfile;
+  /** A person already on the video whose missing face or profile fields applying may fill. */
+  fills?: boolean;
 }
+
+export type FetchedProfile = NonNullable<WorkInfoFetchedPerson["profile"]>;
 
 export interface SingleRow {
   kind: "single";
@@ -136,10 +146,10 @@ function adds(chip: DetailChip): boolean {
   return chip.mark === undefined || chip.mark === "new";
 }
 
-/** Selectable when additions exist; unresolved-only rows are nothing, and fully present rows are same. */
+/** Selectable when additions or fills exist; unresolved-only rows are nothing, and fully present rows are same. */
 function listState(fetched: readonly DetailChip[]): RowState {
   if (fetched.length === 0) return "missing";
-  if (fetched.some(adds)) return "differs";
+  if (fetched.some((chip) => adds(chip) || chip.fills === true)) return "differs";
   return fetched.some((chip) => chip.mark === "notLinked") ? "nothing" : "same";
 }
 
@@ -151,7 +161,7 @@ function listRow(
   return { kind: "list", state: listState(fetched), now, fetched, fresh };
 }
 
-function creditChip(
+function matchChip(
   entry: { name: string; match: WorkInfoMatch },
   linked: ReadonlySet<number>,
   key: string,
@@ -169,7 +179,40 @@ function creditChip(
   };
 }
 
-type FetchedCredit = { name: string; externalIds: ExternalId[]; match: WorkInfoMatch };
+type FetchedCredit = {
+  name: string;
+  externalIds: ExternalId[];
+  match: WorkInfoMatch;
+  hasImage?: boolean;
+  profile?: FetchedProfile;
+  /** Position in the result's people; organizations have none. */
+  at?: number;
+};
+
+/** Applying the role writes a linked person's fetched face and profile only where the person has none. */
+function creditChip(
+  entry: FetchedCredit,
+  linked: ReadonlySet<number>,
+  faced: ReadonlySet<number>,
+  key: string,
+): DetailChip {
+  const chip = matchChip(entry, linked, key);
+  if (chip.mark === "notLinked") return chip;
+  const faceIndex = entry.hasImage === true ? entry.at : undefined;
+  const profile =
+    entry.profile !== undefined && Object.keys(entry.profile).length > 0
+      ? entry.profile
+      : undefined;
+  const id = entry.match.id;
+  const fillsFace = faceIndex !== undefined && id !== undefined && !faced.has(id);
+  const fills = chip.mark === "onVideo" && (fillsFace || profile !== undefined);
+  return {
+    ...chip,
+    ...(faceIndex === undefined ? {} : { faceIndex }),
+    ...(profile === undefined ? {} : { profile }),
+    ...(fills ? { fills } : {}),
+  };
+}
 
 interface NewCreditGroup {
   ids: Set<string>;
@@ -214,11 +257,16 @@ function freshCredits(
 }
 
 function creditRow(
-  stored: readonly { id: number; name: string }[],
+  stored: readonly { id: number; name: string; faced?: boolean }[],
   fetched: readonly FetchedCredit[],
 ): ListRow {
   const linked = new Set(stored.map((credit) => credit.id));
-  const chips = fetched.map((entry, index) => creditChip(entry, linked, String(index)));
+  const faced = new Set(
+    stored.filter((credit) => credit.faced === true).map((credit) => credit.id),
+  );
+  const chips = fetched.map((entry, index) =>
+    creditChip(entry, linked, faced, String(index)),
+  );
   return listRow(
     stored.map((credit) => ({ key: String(credit.id), name: credit.name })),
     chips,
@@ -280,8 +328,12 @@ function creditDetailRow(
   if (isPersonField(field)) {
     const role = PERSON_FIELDS[field];
     return creditRow(
-      info.people.filter((entry) => entry.role === role).map((entry) => entry.person),
-      result.people.filter((entry) => entry.role === role),
+      info.people
+        .filter((entry) => entry.role === role)
+        .map((entry) => ({ ...entry.person, faced: entry.imageRevision !== undefined })),
+      result.people
+        .map((entry, at) => ({ ...entry, at }))
+        .filter((entry) => entry.role === role),
     );
   }
   const role = ORGANIZATION_FIELDS[field];
@@ -307,4 +359,16 @@ export function detailRow(
     return singleRow(dateOf(info.dates, kind), dateOf(result.dates, kind));
   }
   return creditDetailRow(field, info, result);
+}
+
+/** A fetched profile written as on the person page, each value after its term so short values read alone. */
+export function fillValues(profile: FetchedProfile, today: Date): string[] {
+  const text = t.player.workInfoFetch;
+  const values = personFactGroups(profile, today).flatMap((group) =>
+    group.facts.map((fact) => text.fillFact(fact.term, fact.value)),
+  );
+  if (profile.bio !== undefined) values.push(text.fillBio);
+  if (profile.links !== undefined && profile.links.length > 0)
+    values.push(t.credits.personPage.links);
+  return values;
 }

@@ -153,6 +153,13 @@ export function personImagePath(id: number, revision: number): string {
   return `/api/people/${String(id)}/image?v=${String(revision)}`;
 }
 
+/** The person's face URL, or undefined without a face. */
+export function personFaceSrc(person: Person): string | undefined {
+  return person.imageRevision === undefined
+    ? undefined
+    : personImagePath(person.id, person.imageRevision);
+}
+
 /** Let the browser set the multipart boundary; the server fits and stores the image. */
 export function uploadPersonImage(
   id: number,

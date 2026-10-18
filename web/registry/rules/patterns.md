@@ -278,8 +278,10 @@ Item `form-page`. `FormPage` is a page of its own, not a dialog, that fills
 the window on `bg-background` for a form of many values saved together. A
 header band `navbar` high, sticky at the top at every width, with a bottom
 border and `bg-background/90 backdrop-blur-md`, holds the `title` (the page's
-`h1`, `text-lg font-semibold`), a muted `detail` after it (`text-sm`,
-truncated, hidden below `sm`) and the `actions` at its right end. Under the
+`h1`, `text-lg font-semibold`; truncated to one line when there is no
+`detail`, as a title that names the edited record), a muted `detail` after it
+(`text-sm`, truncated, hidden below `sm`) and the `actions` at its right end.
+Under the
 band sit the `notice` and then the body, `px-4` (`px-6` from `sm`) and `py-6`.
 
 | Width      | Layout                                                                                                                                                                                                         |
