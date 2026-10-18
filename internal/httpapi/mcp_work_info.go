@@ -79,7 +79,7 @@ func (t *mcpTools) registerCreditTools(server *mcp.Server, kind mcpCreditTools, 
 			"back as cursor, with the same q and sort, until it is absent. Give source and externalId together instead " +
 			"to look up the one " + kind.one + " holding that external ID: items is empty when there is none. Look up " +
 			"before creating, and use the returned id in update_video_work_info.",
-		InputSchema: creditListInputSchema(kind.list),
+		InputSchema: creditListInputSchema(kind),
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in mcpListCredits) (*mcp.CallToolResult, any, error) {
 		return t.call(ctx, http.MethodGet, kind.path, creditListQuery(in), nil)
@@ -146,8 +146,12 @@ func creditListQuery(in mcpListCredits) url.Values {
 	return query
 }
 
-func creditListInputSchema(tool string) *jsonschema.Schema {
-	return withListInputLimits(inputSchemaFor[mcpListCredits](tool), mcpListCreditsDefaultLimit,
-		string(extgen.CreditSortName), string(extgen.CreditSortCountDesc), string(extgen.CreditSortCountAsc),
-		string(extgen.CreditSortCreatedDesc), string(extgen.CreditSortCreatedAsc))
+// Age sorts are offered for people only, matching the REST API's rejection of them for organizations.
+func creditListInputSchema(kind mcpCreditTools) *jsonschema.Schema {
+	sorts := []any{string(extgen.CreditSortName), string(extgen.CreditSortCountDesc), string(extgen.CreditSortCountAsc),
+		string(extgen.CreditSortCreatedDesc), string(extgen.CreditSortCreatedAsc)}
+	if kind.one == "person" {
+		sorts = append(sorts, string(extgen.CreditSortAgeAsc), string(extgen.CreditSortAgeDesc))
+	}
+	return withListInputLimits(inputSchemaFor[mcpListCredits](kind.list), mcpListCreditsDefaultLimit, sorts...)
 }
