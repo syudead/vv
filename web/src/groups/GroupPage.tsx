@@ -393,6 +393,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
             onClear={selection.clear}
             onTagRemoved={refresh}
             onBundled={afterBulk}
+            onCollectionsDeleted={afterBulk}
             removeFromGroup={{
               count: removable.length,
               pending: edits.removingSelected,

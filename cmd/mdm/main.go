@@ -372,6 +372,7 @@ func run(opts runOptions) error {
 		FolderGroups:    db.FolderGroups(),
 		Groups:          db.Groups(),
 		SmartFolders:    db.SmartFolders(),
+		Collections:     db.Collections(),
 		// Keep drag undo records in memory for ten minutes.
 		Organizer:      app.NewOrganizer(app.OrganizerOptions{Store: db.Organize()}),
 		Library:        libraryStore,

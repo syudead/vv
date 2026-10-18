@@ -255,6 +255,8 @@ type Options struct {
 
 	SmartFolders SmartFolders
 
+	Collections Collections
+
 	Organizer Organizer
 
 	Library LibraryItems
@@ -344,6 +346,7 @@ type server struct {
 	folderGroups     FolderGroups
 	groups           Groups
 	smartFolders     SmartFolders
+	collections      Collections
 	organizer        Organizer
 	library          LibraryItems
 	transcoder       Transcoder
@@ -422,6 +425,7 @@ func NewRouter(opts Options) http.Handler {
 		folderGroups:           opts.FolderGroups,
 		groups:                 opts.Groups,
 		smartFolders:           opts.SmartFolders,
+		collections:            opts.Collections,
 		organizer:              opts.Organizer,
 		library:                opts.Library,
 		transcoder:             opts.Transcoder,
@@ -565,7 +569,7 @@ func requiresPostJSONBody(path string) bool {
 		"/api/video-tags", "/api/video-tags/summary",
 		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 		"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
-		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/onboarding/interests", "/api/playlists", "/api/groups", "/api/smart-folders",
+		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/onboarding/interests", "/api/playlists", "/api/groups", "/api/smart-folders", "/api/collections/delete",
 		"/api/organize/reorder", "/api/organize/group", "/api/organize/move", "/api/organize/bundle", "/api/organize/merge", "/api/organize/undo",
 		"/api/v1/video-work-info", "/api/v1/people", "/api/v1/people/update", "/api/v1/people/merge",
 		"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",

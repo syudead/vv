@@ -2491,6 +2491,24 @@ type CheckResult struct {
 	Missing *[]ComfyUIMissingItem `json:"missing,omitempty"`
 }
 
+// CollectionsDeleteRequest defines model for CollectionsDeleteRequest.
+type CollectionsDeleteRequest struct {
+	// GroupIds Group IDs to dissolve; member videos and child groups stay in the library.
+	GroupIds *[]int64 `json:"groupIds,omitempty"`
+
+	// SmartFolderIds Smart-folder IDs to delete together with their descendants.
+	SmartFolderIds *[]int64 `json:"smartFolderIds,omitempty"`
+}
+
+// CollectionsDeleteResponse defines model for CollectionsDeleteResponse.
+type CollectionsDeleteResponse struct {
+	// DeletedSmartFolders Distinct requested smart folders that existed and were deleted, including ones removed as descendants of another requested folder; unrequested descendants are not counted.
+	DeletedSmartFolders int `json:"deletedSmartFolders"`
+
+	// DissolvedGroups Distinct requested groups that existed and were dissolved, including ones dissolved because an earlier requested group left them empty.
+	DissolvedGroups int `json:"dissolvedGroups"`
+}
+
 // ComfyUIMissingItem Missing ComfyUI node type or model file.
 type ComfyUIMissingItem struct {
 	// Folder Model files only: directory under ComfyUI models.
@@ -5769,6 +5787,9 @@ type SetupAccountJSONRequestBody = SetupRequest
 // StartAutoTaggingJSONRequestBody defines body for StartAutoTagging for application/json ContentType.
 type StartAutoTaggingJSONRequestBody = StartAutoTaggingRequest
 
+// DeleteCollectionsJSONRequestBody defines body for DeleteCollections for application/json ContentType.
+type DeleteCollectionsJSONRequestBody = CollectionsDeleteRequest
+
 // UpdateFavoritesJSONRequestBody defines body for UpdateFavorites for application/json ContentType.
 type UpdateFavoritesJSONRequestBody = FavoritesRequest
 
@@ -6002,6 +6023,9 @@ type ServerInterface interface {
 	// StartAutoTagging Queue library videos for classification
 	// (POST /api/auto-tagging/runs)
 	StartAutoTagging(w http.ResponseWriter, r *http.Request)
+	// DeleteCollections Dissolve groups and delete smart folders in bulk
+	// (POST /api/collections/delete)
+	DeleteCollections(w http.ResponseWriter, r *http.Request)
 	// ListDirectories List immediate directories for the folder picker
 	// (GET /api/directories)
 	ListDirectories(w http.ResponseWriter, r *http.Request, params ListDirectoriesParams)
@@ -6795,6 +6819,20 @@ func (siw *ServerInterfaceWrapper) StartAutoTagging(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.StartAutoTagging(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteCollections operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCollections(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCollections(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -12200,6 +12238,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags", wrapper.UpdateVideoTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags/summary", wrapper.SummarizeVideoTags)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/video-visibility", wrapper.UpdateVideoVisibility)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/collections/delete", wrapper.DeleteCollections)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/favorites", wrapper.UpdateFavorites)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/playlists", wrapper.ListPlaylists)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/playlists", wrapper.CreatePlaylist)

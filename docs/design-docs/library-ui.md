@@ -480,9 +480,27 @@ fit.
 
 Its items, in order, are clear, `N selected`, `Add tag`, `Remove tag`,
 `Favorite`, `Add to playlist`, `New group`, `Add to group`, `Visibility`,
-and `Bundle as versions` (2 or more videos). There is no `Select all`:
-selection covers only the cards the viewer checks. The actions sit at the
-right end; those that do not fit move to the right end of the next line.
+`Bundle as versions` (2 or more videos), and, after a separator, `Delete…`.
+There is no `Select all`: selection covers only the cards the viewer checks.
+The actions sit at the right end; those that do not fit move to the right end
+of the next line.
+
+`Delete…` (`ghost-destructive`) removes the selected collections, never videos.
+It is disabled with the reason `Select a group or smart folder` until a group
+or a smart folder is selected, and over 20,000 collections with the limit
+message. It opens a confirmation that counts the groups to dissolve, whose
+videos and child groups stay in the library, and the smart folders to delete
+with the folders inside them. Confirming sends one request
+(`POST /api/collections/delete`) that dissolves each group as `Dissolve…` does
+and deletes each smart folder as `Delete…` in its `More` does, in one
+transaction; videos selected alongside stay. The server ignores IDs that no
+longer exist and publishes the same `group` and `smartFolder` events as the
+single operations, so other tabs refresh as after them. On success a toast
+counts what was removed, the selection is cleared and the list reloads in
+place: the library refreshes its loaded pages as after other group changes,
+and the group and smart-folder pages reload. A failure stays in the dialog,
+so the selection is kept. The group page and the smart-folder page offer the
+same action for their child groups and child smart folders.
 
 While smart folders are selected, the count names them separately
 (`3 videos and 1 smart folder selected`). `Favorite` and `Add to playlist`

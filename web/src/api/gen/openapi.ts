@@ -1884,6 +1884,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/collections/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dissolve groups and delete smart folders in bulk
+         * @description Owner-only. Dissolves groupIds as dissolveGroup does and deletes smartFolderIds with their descendants as deleteSmartFolder does, in one transaction; videos are never deleted. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing groups and smart folders are ignored. Emits the same group and smart-folder change events as the single operations.
+         */
+        post: operations["deleteCollections"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/favorites": {
         parameters: {
             query?: never;
@@ -3747,6 +3767,18 @@ export interface components {
             smartFolderIds?: number[];
             /** @description True makes videos public; false makes them private. */
             public: boolean;
+        };
+        CollectionsDeleteRequest: {
+            /** @description Group IDs to dissolve; member videos and child groups stay in the library. */
+            groupIds?: number[];
+            /** @description Smart-folder IDs to delete together with their descendants. */
+            smartFolderIds?: number[];
+        };
+        CollectionsDeleteResponse: {
+            /** @description Distinct requested groups that existed and were dissolved, including ones dissolved because an earlier requested group left them empty. */
+            dissolvedGroups: number;
+            /** @description Distinct requested smart folders that existed and were deleted, including ones removed as descendants of another requested folder; unrequested descendants are not counted. */
+            deletedSmartFolders: number;
         };
         FavoritesRequest: {
             /** @description Video IDs whose favorite state changes. */
@@ -8673,6 +8705,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VideoVisibilityResponse"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    deleteCollections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionsDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Removed collections */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionsDeleteResponse"];
                 };
             };
             400: components["responses"]["InvalidRequest"];

@@ -35,7 +35,7 @@ func changesMatches(events []domain.Event) bool {
 	return false
 }
 
-// Replace partial folder notices with one all-folder notice; preserve events unchanged when no folders exist.
+// Merge partial folder notices into one all-folder notice, keeping folders deleted in the same write named; preserve events unchanged when no folders exist.
 func withEveryFolderNotice(ctx context.Context, tx *sql.Tx, events []domain.Event) ([]domain.Event, error) {
 	ids, err := allSmartFolderIDs(ctx, tx)
 	if err != nil || len(ids) == 0 {
@@ -43,7 +43,9 @@ func withEveryFolderNotice(ctx context.Context, tx *sql.Tx, events []domain.Even
 	}
 	kept := make([]domain.Event, 0, len(events)+1)
 	for _, event := range events {
-		if _, ok := event.(domain.SmartFoldersChanged); !ok {
+		if notice, ok := event.(domain.SmartFoldersChanged); ok {
+			ids = append(ids, notice.IDs...)
+		} else {
 			kept = append(kept, event)
 		}
 	}
@@ -97,8 +99,16 @@ func (db *DB) commitEvents(ctx context.Context, tx *sql.Tx, events ...domain.Eve
 	return nil
 }
 
-// Read descendants before deletion and include affected parents, excluding the root sentinel.
 func smartFolderEditNotice(ctx context.Context, tx *sql.Tx, ids []int64, parents ...int64) ([]domain.Event, error) {
+	named, err := smartFolderNoticeIDs(ctx, tx, ids, parents...)
+	if err != nil {
+		return nil, err
+	}
+	return smartFoldersChangedEvents(named), nil
+}
+
+// Read descendants before deletion and include affected parents, excluding the root sentinel.
+func smartFolderNoticeIDs(ctx context.Context, tx *sql.Tx, ids []int64, parents ...int64) ([]int64, error) {
 	named, err := smartFolderSubtrees(ctx, tx, ids)
 	if err != nil {
 		return nil, err
@@ -108,7 +118,7 @@ func smartFolderEditNotice(ctx context.Context, tx *sql.Tx, ids []int64, parents
 			named = append(named, parent)
 		}
 	}
-	return smartFoldersChangedEvents(named), nil
+	return named, nil
 }
 
 // Keep requested IDs even if their folders are already absent.

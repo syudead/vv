@@ -19,6 +19,7 @@ import { SelectionBar as SelectionBarSection } from "../ui/patterns/selection-ba
 import { Popover, PopoverTrigger } from "../ui/shadcn/popover";
 import BundleDialog from "../versions/BundleDialog";
 import AddTagPopover from "./AddTagPopover";
+import DeleteCollectionsAction from "./DeleteCollectionsAction";
 import FavoriteMenu from "./FavoriteMenu";
 import RemoveTagPopover from "./RemoveTagPopover";
 import {
@@ -79,6 +80,8 @@ export interface SelectionBarProps {
   /** Removing an active filter tag lets callers clear selection and reload matching rows. */
   onTagRemoved: (tagId: number) => void;
   onBundled: (versions: VideoVersions) => void;
+  /** After selected groups were dissolved and smart folders deleted; callers clear the selection and reload. */
+  onCollectionsDeleted: () => void;
   /** Group-only removal; disable oversized batches instead of splitting them. */
   removeFromGroup?: {
     count: number;
@@ -117,6 +120,7 @@ export function selectionReasons({
   // A group alone cannot form a new group: that would only add another hierarchy level.
   const newGroupNeedsMore =
     favoriteGroupIds.length === 1 && favoriteVideoIds.length === 0;
+  const collectionCount = favoriteGroupIds.length + smartFolderIds.length;
   return {
     tag: count > maxVideoTagsSelection ? overLimitMessage() : undefined,
     favorite,
@@ -128,6 +132,13 @@ export function selectionReasons({
       (count > maxBundleSelection
         ? t.library.selection.bundleOverLimit(maxBundleSelection)
         : undefined),
+    // Only collections are deleted; videos selected alongside them stay.
+    deleteCollections:
+      collectionCount === 0
+        ? t.library.selection.deleteNeedsCollection
+        : collectionCount > maxVideoTagsSelection
+          ? overLimitMessage()
+          : undefined,
   };
 }
 
@@ -146,6 +157,7 @@ export default function SelectionBar({
   onClear,
   onTagRemoved,
   onBundled,
+  onCollectionsDeleted,
   removeFromGroup,
 }: SelectionBarProps) {
   const [addOpen, setAddOpen] = useState(false);
@@ -352,6 +364,13 @@ export default function SelectionBar({
             }}
           />
         )}
+
+        <DeleteCollectionsAction
+          groupIds={favoriteGroupIds}
+          smartFolderIds={smartFolderIds}
+          disabledReason={reasons.deleteCollections}
+          onDeleted={onCollectionsDeleted}
+        />
       </SelectionBarSection>
     </div>
   );
