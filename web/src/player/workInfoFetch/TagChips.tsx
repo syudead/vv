@@ -60,6 +60,8 @@ export function Chip({ item }: { item: ChipItem }) {
       className={cn(
         "max-w-full justify-start font-normal",
         muted && "text-muted-foreground",
+        // Beside a face the badge takes only the remaining width, so its name truncates.
+        item.faceSrc !== undefined && "min-w-0 shrink",
       )}
     >
       <span className={cn("min-w-0 truncate", item.numeric === true && "tabular-nums")}>
@@ -84,7 +86,7 @@ export function Chip({ item }: { item: ChipItem }) {
   // Only the chip takes part in baseline alignment, so faced and plain chips share one baseline.
   return (
     <span className="inline-flex max-w-full items-baseline gap-1">
-      <span className="flex self-center">
+      <span className="flex shrink-0 self-center">
         <PersonFace shape="compare" name="" src={item.faceSrc} />
       </span>
       {chip}
