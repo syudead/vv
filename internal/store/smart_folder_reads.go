@@ -14,7 +14,7 @@ import (
 )
 
 // SmartFolderContents reads one snapshot, prepending child folders on the first page; owners can read empty folders, guests cannot.
-func (s *SmartFolderStore) SmartFolderContents(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int, query string) (domain.SmartFolderPage, error) {
+func (s *SmartFolderStore) SmartFolderContents(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int, query domain.VideoQuery) (domain.SmartFolderPage, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.SmartFolderPage{}, fmt.Errorf("cannot start reading the smart folder: %w", err)
@@ -31,7 +31,7 @@ func (s *SmartFolderStore) SmartFolderContents(ctx context.Context, audience dom
 	}
 	now := listNow().Unix()
 	request := &smartFolderPageRequest{cursor: cursor, limit: limit}
-	if query != "" {
+	if hasCollectionConditions(query) {
 		request = nil
 	}
 	view, err := viewSmartFolder(ctx, tx, audience, folder, rules, now, request)
@@ -48,14 +48,14 @@ func (s *SmartFolderStore) SmartFolderContents(ctx context.Context, audience dom
 	if page.Trail, err = smartFolderTrail(ctx, tx, id); err != nil {
 		return domain.SmartFolderPage{}, err
 	}
-	if query != "" {
+	if hasCollectionConditions(query) {
 		filtered, err := searchSmartFolderPage(ctx, tx, audience, view.card, folder.Sort, cursor, limit, query)
 		if err != nil {
 			return domain.SmartFolderPage{}, err
 		}
 		view.items, page.NextCursor = filtered.Items, filtered.NextCursor
 	}
-	if cursor == "" && query == "" {
+	if cursor == "" && !hasCollectionConditions(query) {
 		if page.Items, err = smartFolderChildren(ctx, tx, audience, id, rules, now); err != nil {
 			return domain.SmartFolderPage{}, err
 		}
@@ -346,7 +346,7 @@ func smartFolderVideoGroup(ctx context.Context, tx *sql.Tx, audience domain.Audi
 
 // Search within the saved-rule result, preserving its visibility, summary and playback order.
 // In particular, a group watch filter must not be reevaluated against just the search matches.
-func searchSmartFolderPage(ctx context.Context, tx *sql.Tx, audience domain.Audience, card domain.LibrarySmartFolder, sort domain.VideoSort, cursor string, limit int, query string) (domain.LibraryPage, error) {
+func searchSmartFolderPage(ctx context.Context, tx *sql.Tx, audience domain.Audience, card domain.LibrarySmartFolder, sort domain.VideoSort, cursor string, limit int, query domain.VideoQuery) (domain.LibraryPage, error) {
 	ids := make([]int64, 0, len(card.Members))
 	for _, member := range card.Members {
 		ids = append(ids, member.ID)
@@ -355,7 +355,12 @@ func searchSmartFolderPage(ctx context.Context, tx *sql.Tx, audience domain.Audi
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
-	spec := libraryListSpec(audience, domain.VideoQuery{Query: query, Sort: sort, Cursor: cursor, Limit: limit}, nil)
+	if query.Sort == "" {
+		query.Sort = sort
+	}
+	query.Cursor, query.Limit = cursor, limit
+	spec := libraryListSpec(audience, query, nil)
 	spec.withinVideos = string(encoded)
+	spec.scope.withinVideos = string(encoded)
 	return listLibraryPageTx(ctx, tx, spec)
 }

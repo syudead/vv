@@ -1,3 +1,4 @@
+import { type CollectionCriteria, setCollectionCriteria } from "./collectionCriteria";
 import { t, type UiText } from "../i18n";
 import {
   apiFetch,
@@ -32,9 +33,11 @@ export function readGroupPage(
   trail: readonly number[],
   signal?: AbortSignal,
   searchQuery = "",
+  criteria?: CollectionCriteria,
 ): Promise<GroupDetail> {
   // Numeric IDs allow literal comma separators: form style with explode false.
   const params = new URLSearchParams();
+  setCollectionCriteria(params, criteria);
   if (trail.length > 0) params.set("trail", trail.map(String).join(","));
   if (searchQuery !== "") params.set("query", searchQuery);
   const query = params.size === 0 ? "" : `?${params.toString()}`;
@@ -48,8 +51,10 @@ export function listGroupItems(
   signal?: AbortSignal,
   limit?: number,
   searchQuery = "",
+  criteria?: CollectionCriteria,
 ): Promise<GroupItemPage> {
   const query = new URLSearchParams();
+  setCollectionCriteria(query, criteria);
   if (searchQuery !== "") query.set("query", searchQuery);
   if (cursor !== undefined) query.set("cursor", cursor);
   if (limit !== undefined) query.set("limit", String(limit));

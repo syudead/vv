@@ -19,7 +19,7 @@ type SmartFolders interface {
 	CreateSmartFolder(ctx context.Context, create domain.SmartFolderCreate) (domain.SmartFolder, error)
 	ChangeSmartFolder(ctx context.Context, id int64, change domain.SmartFolderChange) (domain.SmartFolder, error)
 	DeleteSmartFolder(ctx context.Context, id int64) error
-	SmartFolderContents(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int, query string) (domain.SmartFolderPage, error)
+	SmartFolderContents(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int, query domain.VideoQuery) (domain.SmartFolderPage, error)
 	// SmartFolderCards preserves requested order and skips missing/invisible folders.
 	SmartFolderCards(ctx context.Context, audience domain.Audience, ids []int64) ([]domain.SmartFolderCard, error)
 }
@@ -164,7 +164,10 @@ func (s *server) GetSmartFolder(w http.ResponseWriter, r *http.Request, id gen.S
 		return
 	}
 	audience := audienceFrom(r.Context())
-	query, ok := s.parseSearchQuery(w, params.Query)
+	query, ok := s.parseCollectionQuery(w, audienceFrom(r.Context()), videoQueryParams{
+		query: params.Query, watch: params.Watch, playable: params.Playable, favorite: params.Favorite,
+		sort: params.Sort, seed: params.Seed,
+	})
 	if !ok {
 		return
 	}
@@ -202,7 +205,10 @@ func (s *server) ListSmartFolderItems(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 	audience := audienceFrom(r.Context())
-	query, ok := s.parseSearchQuery(w, params.Query)
+	query, ok := s.parseCollectionQuery(w, audienceFrom(r.Context()), videoQueryParams{
+		query: params.Query, watch: params.Watch, playable: params.Playable, favorite: params.Favorite,
+		sort: params.Sort, seed: params.Seed,
+	})
 	if !ok {
 		return
 	}

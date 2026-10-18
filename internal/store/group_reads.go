@@ -167,7 +167,7 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 }
 
 // Group returns the first item page and valid parent trail; hidden and missing groups both return domain.ErrNotFound.
-func (s *LibraryStore) Group(ctx context.Context, audience domain.Audience, id int64, trail []int64, query string) (domain.GroupPage, error) {
+func (s *LibraryStore) Group(ctx context.Context, audience domain.Audience, id int64, trail []int64, query domain.VideoQuery) (domain.GroupPage, error) {
 	return s.readGroupPage(ctx, audience, id, func(tx *sql.Tx, page *domain.GroupPage) error {
 		var err error
 		page.Trail, err = groupTrail(ctx, tx, id, trail)
@@ -180,7 +180,7 @@ func (s *LibraryStore) Group(ctx context.Context, audience domain.Audience, id i
 }
 
 // GroupItems uses the same visibility as Group and rejects malformed cursors.
-func (s *LibraryStore) GroupItems(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int, query string) (domain.GroupPage, error) {
+func (s *LibraryStore) GroupItems(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int, query domain.VideoQuery) (domain.GroupPage, error) {
 	return s.readGroupPage(ctx, audience, id, func(tx *sql.Tx, page *domain.GroupPage) error {
 		var err error
 		page.Items, page.NextCursor, err = groupItemsPage(ctx, tx, audience, id, cursor, limit, query)
@@ -190,6 +190,9 @@ func (s *LibraryStore) GroupItems(ctx context.Context, audience domain.Audience,
 
 // Read the group, registered folders and page contents from one snapshot.
 func (s *LibraryStore) readGroupPage(ctx context.Context, audience domain.Audience, id int64, fill func(*sql.Tx, *domain.GroupPage) error) (domain.GroupPage, error) {
+	if err := s.db.RefreshCollectionValues(ctx); err != nil {
+		return domain.GroupPage{}, err
+	}
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.GroupPage{}, fmt.Errorf("cannot start reading the group: %w", err)
@@ -245,61 +248,12 @@ func groupTrail(ctx context.Context, tx *sql.Tx, id int64, trail []int64) ([]dom
 const groupItemsCursorKind = "group-items"
 
 // Page visible videos and child groups with visible descendants by item position.
-func groupItemsPage(ctx context.Context, tx *sql.Tx, audience domain.Audience, id int64, cursor string, limit int, query string) ([]domain.GroupItem, string, error) {
-	after := int64(-1)
-	if cursor != "" {
-		parts, err := unpackCursor(cursor, 2)
-		if err != nil {
-			return nil, "", err
-		}
-		position, err := strconv.ParseInt(parts[1], 10, 64)
-		if parts[0] != groupItemsCursorKind || err != nil || position < 0 {
-			return nil, "", fmt.Errorf("%w: not a group item cursor", domain.ErrInvalidCursor)
-		}
-		after = position
-	}
-	if limit <= 0 {
-		limit = domain.GroupItemsDefaultLimit
-	}
-	limit = min(limit, domain.GroupItemsMaxLimit)
-
-	cte, matched, args := groupItemSearch(audience, query)
-	args = append(args, id, id, after, limit+1)
-	rows, err := tx.QueryContext(ctx, cte+groupDescendantsCTE(`select child_id as id from group_items
-			where group_id = ? and child_id is not null`, audience)+`
-		select id, position, video_id, child_id from (
-			select gi.id, gi.position, gi.child_id,
-				case when gi.content_key is not null then `+shownVideoForKeyExpr("gi.content_key", audience)+` end as video_id
-			from group_items gi where gi.group_id = ? and gi.position > ?)
-		where `+matched+`
-		order by position limit ?`, args...)
+func groupItemsPage(ctx context.Context, tx *sql.Tx, audience domain.Audience, id int64, cursor string, limit int, query domain.VideoQuery) ([]domain.GroupItem, string, error) {
+	entries, next, err := readGroupItemKeys(ctx, tx, audience, id, cursor, limit, query)
 	if err != nil {
-		return nil, "", fmt.Errorf("cannot read the group items: %w", err)
+		return nil, "", err
 	}
-	defer func() { _ = rows.Close() }()
-	type entry struct {
-		id, position     int64
-		videoID, childID sql.NullInt64
-	}
-	var entries []entry
 	var videoIDs, childIDs []int64
-	for rows.Next() {
-		var e entry
-		if err := rows.Scan(&e.id, &e.position, &e.videoID, &e.childID); err != nil {
-			return nil, "", fmt.Errorf("cannot read the group items: %w", err)
-		}
-		entries = append(entries, e)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, "", fmt.Errorf("cannot read the group items: %w", err)
-	}
-	_ = rows.Close()
-
-	next := ""
-	if len(entries) > limit {
-		entries = entries[:limit]
-		next = packCursor(groupItemsCursorKind, strconv.FormatInt(entries[limit-1].position, 10))
-	}
 	for _, e := range entries {
 		if e.videoID.Valid {
 			videoIDs = append(videoIDs, e.videoID.Int64)
@@ -334,14 +288,4 @@ func groupItemsPage(ctx context.Context, tx *sql.Tx, audience domain.Audience, i
 		items = append(items, item)
 	}
 	return items, next, nil
-}
-
-func groupItemSearch(audience domain.Audience, query string) (string, string, []any) {
-	expr := domain.ParseSearchQuery(query)
-	if expr.Empty() {
-		return `with `, `video_id is not null or child_id in (select root_id from gdesc)`, nil
-	}
-	cte, args := chosenLocationsCTE(libraryScope(audience), expr)
-	return cte + `, `, `video_id in (select video_id from chosen) or child_id in (
-		select root_id from gdesc where video_id in (select video_id from chosen))`, args
 }

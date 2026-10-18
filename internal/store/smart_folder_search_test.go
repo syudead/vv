@@ -19,7 +19,7 @@ func TestSmartFolderSearchNarrowsSavedMembershipAndPages(t *testing.T) {
 	var got []int64
 	cursor := ""
 	for range 2 {
-		page, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceOwner, folder, cursor, 1, `"clip" -outside`)
+		page, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceOwner, folder, cursor, 1, domain.VideoQuery{Query: `"clip" -outside`})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -39,7 +39,7 @@ func TestSmartFolderSearchNarrowsSavedMembershipAndPages(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, query := range []string{"clip-outside", "private-label"} {
-		page, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceGuest, folder, "", 1, query)
+		page, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceGuest, folder, "", 1, domain.VideoQuery{Query: query})
 		if err != nil {
 			t.Fatalf("empty guest search must remain accessible: %v", err)
 		}
@@ -47,7 +47,7 @@ func TestSmartFolderSearchNarrowsSavedMembershipAndPages(t *testing.T) {
 			t.Fatalf("guest search %q = %+v", query, page)
 		}
 	}
-	original, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceOwner, folder, "", 10, "")
+	original, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceOwner, folder, "", 10, domain.VideoQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestSmartFolderSearchPreservesGroupWatchScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	folder := newSmartFolder(t, db, "in progress", domain.SmartRule{Watch: domain.WatchInProgress}, domain.SortTitleAsc, 0)
-	page, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceOwner, folder, "", 10, "watched")
+	page, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceOwner, folder, "", 10, domain.VideoQuery{Query: "watched"})
 	if err != nil {
 		t.Fatal(err)
 	}

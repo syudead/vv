@@ -31,7 +31,7 @@ it("URLの検索が0件でも検索欄と元の条件を残し、クリアする
   expect(search.value).toBe("missing");
   expect(screen.getByRole("button", { name: "How to search" })).toBeTruthy();
   expect(screen.getByRole("link", { name: 'Play "タグ: 猫"' })).toBeTruthy();
-  expect(screen.getByText("Tag: 猫")).toBeTruthy();
+  expect(await screen.findByText("Tag: 猫")).toBeTruthy();
   expect(read).toHaveBeenLastCalledWith(1, expect.any(AbortSignal), undefined, "missing");
   await user.click(screen.getByRole("button", { name: "Clear search" }));
   expect(await screen.findByRole("heading", { name: "Cat 1" })).toBeTruthy();

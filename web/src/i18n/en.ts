@@ -848,6 +848,7 @@ export const en = {
     },
     sort: {
       heading: "Sort by",
+      savedOrder: "Saved order",
       current: (label: string) => `Sort by: ${label}`,
       kinds: {
         added: "Date added",

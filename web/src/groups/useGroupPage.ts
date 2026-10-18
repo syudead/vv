@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 
+import type { CollectionCriteria } from "../api/collectionCriteria";
 import type { GroupDetail } from "../api/client";
 import { type GroupItem, listGroupItems, readGroupPage } from "../api/groups";
 import { readThrough } from "../api/readThrough";
@@ -24,11 +25,26 @@ async function readGroupThrough(
   atLeast: number,
   signal: AbortSignal,
   query: string,
+  criteria?: CollectionCriteria,
 ): Promise<GroupPageData> {
-  const detail = await readGroupPage(id, trail, signal, query);
+  const detail = await readGroupPage(
+    id,
+    trail,
+    signal,
+    query,
+    ...(criteria ? [criteria] : []),
+  );
   const { items, nextCursor } = await readThrough(
     detail,
-    (cursor) => listGroupItems(id, cursor, signal, undefined, query),
+    (cursor) =>
+      listGroupItems(
+        id,
+        cursor,
+        signal,
+        undefined,
+        query,
+        ...(criteria ? [criteria] : []),
+      ),
     appendItems,
     atLeast,
   );
@@ -39,7 +55,13 @@ async function readGroupThrough(
  * Keep visible data during background refreshes, except on 404; discard stale responses. Wait for
  * queued moves before reading, and retry if a move was sent during the read.
  */
-export function useGroupPage(id: number | null, trail: readonly number[], query = "") {
+export function useGroupPage(
+  id: number | null,
+  trail: readonly number[],
+  query = "",
+  criteria?: CollectionCriteria,
+) {
+  const criteriaKey = JSON.stringify([query, criteria]);
   /** Last server-confirmed order, used for rollback. */
   const confirmed = useRef<readonly GroupItem[]>([]);
   /** Serialize moves in drop order and count sent moves. */
@@ -62,10 +84,18 @@ export function useGroupPage(id: number | null, trail: readonly number[], query 
             atLeast,
             signal,
             query,
+            criteria,
           );
         },
         more: (groupId: number, cursor: string, signal: AbortSignal) =>
-          listGroupItems(groupId, cursor, signal, undefined, query),
+          listGroupItems(
+            groupId,
+            cursor,
+            signal,
+            undefined,
+            query,
+            ...(criteria ? [criteria] : []),
+          ),
         append: appendItems,
         beforeRead: (quiet: boolean) => {
           const sentBefore = movesSent.current;
@@ -83,7 +113,7 @@ export function useGroupPage(id: number | null, trail: readonly number[], query 
           confirmed.current = appendItems(confirmed.current, items);
         },
       },
-      query,
+      criteriaKey,
     );
 
   const reload = useCallback(() => read(false), [read]);
@@ -127,7 +157,7 @@ export function useGroupPage(id: number | null, trail: readonly number[], query 
       clearTimeout(videoTimer);
       stop();
     };
-  }, [id, query, refresh, reload, stateRef, stop]);
+  }, [id, criteriaKey, refresh, reload, stateRef, stop]);
 
   return {
     state,

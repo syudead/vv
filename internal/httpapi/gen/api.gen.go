@@ -5328,6 +5328,21 @@ type ListGroupsParams struct {
 
 // GetGroupParams defines parameters for GetGroup.
 type GetGroupParams struct {
+	// Watch Temporary list watch; omitted sort keeps the saved order.
+	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
+
+	// Sort Temporary list sort; omitted sort keeps the saved order.
+	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Playable Temporary playable-only filter; does not change saved settings.
+	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
+
+	// Favorite Temporary favorite-only filter; does not change saved settings.
+	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
+
+	// Seed Stable random-sort seed; continue with the same filters, sort and seed.
+	Seed *int64 `form:"seed,omitempty" json:"seed,omitempty"`
+
 	// Query Video search with the same terms, phrases, exclusions, OR and normalization as listVideos. Search all visible descendants; retain child-group cards with matching descendants. Group summaries and playback still describe all visible members.
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
 
@@ -5337,6 +5352,21 @@ type GetGroupParams struct {
 
 // ListGroupItemsParams defines parameters for ListGroupItems.
 type ListGroupItemsParams struct {
+	// Watch Temporary list watch; omitted sort keeps the saved order.
+	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
+
+	// Sort Temporary list sort; omitted sort keeps the saved order.
+	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Playable Temporary playable-only filter; does not change saved settings.
+	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
+
+	// Favorite Temporary favorite-only filter; does not change saved settings.
+	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
+
+	// Seed Stable random-sort seed; continue with the same filters, sort and seed.
+	Seed *int64 `form:"seed,omitempty" json:"seed,omitempty"`
+
 	// Query Video search with the same terms, phrases, exclusions, OR and normalization as listVideos. Search all visible descendants; retain child-group cards with matching descendants. Group summaries and playback still describe all visible members.
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
 
@@ -5499,6 +5529,21 @@ type ListSmartFolderCardsParams struct {
 
 // GetSmartFolderParams defines parameters for GetSmartFolder.
 type GetSmartFolderParams struct {
+	// Watch Temporary list watch; omitted sort keeps the saved order.
+	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
+
+	// Sort Temporary list sort; omitted sort keeps the saved order.
+	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Playable Temporary playable-only filter; does not change saved settings.
+	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
+
+	// Favorite Temporary favorite-only filter; does not change saved settings.
+	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
+
+	// Seed Stable random-sort seed; continue with the same filters, sort and seed.
+	Seed *int64 `form:"seed,omitempty" json:"seed,omitempty"`
+
 	// Query Temporary video search within the current saved-rule result. Uses the library video-query syntax and audience permissions. Does not change saved rules, folder summary or playback order. Search hides child-folder navigation; no matches returns an empty page, not 404. Continue with the same query.
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
 
@@ -5508,6 +5553,21 @@ type GetSmartFolderParams struct {
 
 // ListSmartFolderItemsParams defines parameters for ListSmartFolderItems.
 type ListSmartFolderItemsParams struct {
+	// Watch Temporary list watch; omitted sort keeps the saved order.
+	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
+
+	// Sort Temporary list sort; omitted sort keeps the saved order.
+	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Playable Temporary playable-only filter; does not change saved settings.
+	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
+
+	// Favorite Temporary favorite-only filter; does not change saved settings.
+	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
+
+	// Seed Stable random-sort seed; continue with the same filters, sort and seed.
+	Seed *int64 `form:"seed,omitempty" json:"seed,omitempty"`
+
 	// Query Temporary video search within the current saved-rule result. Uses the library video-query syntax and audience permissions. Does not change saved rules, folder summary or playback order. Search hides child-folder navigation; no matches returns an empty page, not 404. Continue with the same query.
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
 
@@ -7221,6 +7281,71 @@ func (siw *ServerInterfaceWrapper) GetGroup(w http.ResponseWriter, r *http.Reque
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetGroupParams
 
+	// ------------- Optional query parameter "watch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "playable" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "favorite" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "favorite", r.URL.Query(), &params.Favorite, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "seed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "seed", r.URL.Query(), &params.Seed, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "seed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "seed", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "query" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -7301,6 +7426,71 @@ func (siw *ServerInterfaceWrapper) ListGroupItems(w http.ResponseWriter, r *http
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListGroupItemsParams
+
+	// ------------- Optional query parameter "watch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "playable" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "favorite" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "favorite", r.URL.Query(), &params.Favorite, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "seed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "seed", r.URL.Query(), &params.Seed, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "seed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "seed", Err: err})
+		}
+		return
+	}
 
 	// ------------- Optional query parameter "query" -------------
 
@@ -9193,6 +9383,71 @@ func (siw *ServerInterfaceWrapper) GetSmartFolder(w http.ResponseWriter, r *http
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSmartFolderParams
 
+	// ------------- Optional query parameter "watch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "playable" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "favorite" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "favorite", r.URL.Query(), &params.Favorite, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "seed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "seed", r.URL.Query(), &params.Seed, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "seed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "seed", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "query" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -9273,6 +9528,71 @@ func (siw *ServerInterfaceWrapper) ListSmartFolderItems(w http.ResponseWriter, r
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListSmartFolderItemsParams
+
+	// ------------- Optional query parameter "watch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "playable" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "favorite" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "favorite", r.URL.Query(), &params.Favorite, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "seed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "seed", r.URL.Query(), &params.Seed, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "seed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "seed", Err: err})
+		}
+		return
+	}
 
 	// ------------- Optional query parameter "query" -------------
 

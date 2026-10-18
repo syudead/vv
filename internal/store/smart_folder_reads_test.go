@@ -25,7 +25,7 @@ func smartFolderPages(t *testing.T, db *DB, audience domain.Audience, id int64, 
 	var items []domain.LibraryItem
 	cursor := ""
 	for i := range 50 {
-		page, err := db.SmartFolders().SmartFolderContents(context.Background(), audience, id, cursor, limit, "")
+		page, err := db.SmartFolders().SmartFolderContents(context.Background(), audience, id, cursor, limit, domain.VideoQuery{})
 		if err != nil {
 			t.Fatalf("SmartFolderContents(%d, %q) error = %v", id, cursor, err)
 		}
@@ -232,15 +232,15 @@ func TestSmartFolderVisibility(t *testing.T) {
 		t.Errorf("ゲストのタグ名の検索 = %v, want [a]（所有者の意味で照合する）", got)
 	}
 	for _, id := range []int64{dogs, empty} {
-		if _, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceGuest, id, "", 0, ""); !errors.Is(err, domain.ErrNotFound) {
+		if _, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceGuest, id, "", 0, domain.VideoQuery{}); !errors.Is(err, domain.ErrNotFound) {
 			t.Errorf("ゲストの %d error = %v, want ErrNotFound", id, err)
 		}
 	}
-	page, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceOwner, empty, "", 0, "")
+	page, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceOwner, empty, "", 0, domain.VideoQuery{})
 	if err != nil || len(page.Items) != 0 || len(page.SmartFolder.Members) != 0 || page.SmartFolder.OpenVideoID != 0 {
 		t.Errorf("所有者の空のフォルダ = %+v, %v", page, err)
 	}
-	if _, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceOwner, 9999, "", 0, ""); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceOwner, 9999, "", 0, domain.VideoQuery{}); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("無いフォルダ error = %v, want ErrNotFound", err)
 	}
 }
@@ -267,7 +267,7 @@ func TestSmartFolderWithAMissingTagListsOnlyItsChildren(t *testing.T) {
 	if len(items) != 0 || !slices.Equal(page.Missing, want) {
 		t.Errorf("子の中身 = %v, missing = %v", smartItemNames(items), page.Missing)
 	}
-	if _, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceGuest, child, "", 0, ""); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceGuest, child, "", 0, domain.VideoQuery{}); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("ゲストの子 error = %v, want ErrNotFound", err)
 	}
 }
@@ -301,7 +301,7 @@ func TestSmartFolderWithAMissingTagRejectsAnInvalidCursor(t *testing.T) {
 	if err := db.Tags().DeleteTag(ctx, cat); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceOwner, folder, "not-a-cursor", 10, ""); !errors.Is(err, domain.ErrInvalidCursor) {
+	if _, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceOwner, folder, "not-a-cursor", 10, domain.VideoQuery{}); !errors.Is(err, domain.ErrInvalidCursor) {
 		t.Errorf("error = %v, want ErrInvalidCursor", err)
 	}
 }
@@ -310,7 +310,7 @@ func TestSmartFolderPlayOrderExpandsGroups(t *testing.T) {
 	db, ids := itemsFixture(t)
 	path := func(name string) int64 { return ids[fixturePath(name)] }
 	folder := newSmartFolder(t, db, "全部", domain.SmartRule{}, domain.SortTitleAsc, 0)
-	page, err := db.SmartFolders().SmartFolderContents(context.Background(), domain.AudienceOwner, folder, "", 2, "")
+	page, err := db.SmartFolders().SmartFolderContents(context.Background(), domain.AudienceOwner, folder, "", 2, domain.VideoQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +327,7 @@ func TestSmartFolderPlayOrderExpandsGroups(t *testing.T) {
 		card.WatchState != domain.WatchStateInProgress || card.WatchedCount != 2 || card.LastPlayedAt == nil {
 		t.Errorf("カード = %+v", card)
 	}
-	guest, err := db.SmartFolders().SmartFolderContents(context.Background(), domain.AudienceGuest, folder, "", 2, "")
+	guest, err := db.SmartFolders().SmartFolderContents(context.Background(), domain.AudienceGuest, folder, "", 2, domain.VideoQuery{})
 	if !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("公開の動画が無いときのゲスト = %+v, %v", guest.SmartFolder, err)
 	}

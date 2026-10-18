@@ -87,7 +87,7 @@ func listedFavorites(t *testing.T, db *DB) map[int64]bool {
 
 func folderGroupFavorite(t *testing.T, db *DB, dir string) bool {
 	t.Helper()
-	page, err := db.Library().Group(context.Background(), domain.AudienceOwner, groupIDOf(t, db, dir), nil, "")
+	page, err := db.Library().Group(context.Background(), domain.AudienceOwner, groupIDOf(t, db, dir), nil, domain.VideoQuery{})
 	if err != nil {
 		t.Fatalf("グループ %s を読めない: %v", dir, err)
 	}

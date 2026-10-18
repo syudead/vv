@@ -639,3 +639,12 @@ func thumbnailVersion(contentKey string) string {
 	}
 	return contentKey
 }
+
+// Collection reads keep their saved order until a temporary sort is explicitly supplied.
+func (s *server) parseCollectionQuery(w http.ResponseWriter, audience domain.Audience, params videoQueryParams) (domain.VideoQuery, bool) {
+	query, ok := s.parseVideoQuery(w, audience, params)
+	if params.sort == nil {
+		query.Sort = ""
+	}
+	return query, ok
+}

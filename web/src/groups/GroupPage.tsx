@@ -19,7 +19,7 @@ import { folderUrl } from "../folders/folderPath";
 import { t } from "../i18n";
 import { formatDuration } from "../lib/format";
 import { GroupCard } from "../library/GroupCard";
-import { viewControls } from "../library/LibraryToolbar";
+import LibraryToolbar from "../library/LibraryToolbar";
 import {
   emptySelection,
   type LibrarySelection,
@@ -42,10 +42,8 @@ import { ListPage } from "../ui/patterns/list-page";
 import { LoadMoreRow } from "../ui/patterns/load-more-row";
 import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
-import SearchBox from "../videoList/SearchBox";
-import { useSearchQuery } from "../videoList/useSearchQuery";
+import { useCollectionCriteria } from "../videoList/useCollectionCriteria";
 import { NoMatches } from "../videoList/states";
-import { Toolbar } from "../ui/patterns/toolbar";
 import { Button } from "../ui/shadcn/button";
 import { crumbKey, CrumbDropTarget, DraggableCard } from "../videoList/cardDrag";
 import { Grid } from "../videoList/Grid";
@@ -238,7 +236,9 @@ function useGroupSelection(data: GroupPageData | null, searching: boolean) {
 function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[] }) {
   const location = useLocation();
   const owner = useAudience() === "owner";
-  const { query, commitQuery, searchRef } = useSearchQuery();
+  const controls = useCollectionCriteria();
+  const { query } = controls.criteria;
+  const editable = owner && !controls.filtered && !controls.customOrder;
   const {
     state,
     more,
@@ -250,7 +250,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     moves,
     movesSent,
     markGone,
-  } = useGroupPage(id, trail, query);
+  } = useGroupPage(id, trail, query, controls.conditions);
   const data = state.kind === "ready" ? state.data : null;
   //
   const leave = useLeaveGroup(data?.trail ?? noTrail);
@@ -274,7 +274,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   const preview = usePreviewCoordination();
   const { resetPreview } = preview;
   const { view, zoom, changeView, changeZoom, listRef } = useViewControls(resetPreview);
-  const selection = useGroupSelection(data, query !== "");
+  const selection = useGroupSelection(data, controls.filtered);
   const listUrl = `${location.pathname}${location.search}`;
 
   useDocumentTitle(data?.group.name);
@@ -295,7 +295,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   const { clear } = selection;
   useEffect(() => {
     clear();
-  }, [query, clear]);
+  }, [controls.key, clear]);
 
   const { shownData, dropOnto, nameFieldFor } = useGroupPageDrops({
     data,
@@ -386,13 +386,12 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
       }
       toolbar={
         <TopBarPortal>
-          <Toolbar
-            placement="topBar"
-            search={
-              <SearchBox query={query} onCommit={commitQuery} inputRef={searchRef} />
-            }
-            view={viewControls(view, changeView, zoom, changeZoom)}
-            viewLabel={t.library.view.label}
+          <LibraryToolbar
+            {...controls.toolbar}
+            view={view}
+            onViewChange={changeView}
+            zoom={zoom}
+            onZoomChange={changeZoom}
           />
         </TopBarPortal>
       }
@@ -425,7 +424,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
         reload={reload}
         loadMore={loadMore}
         shownData={shownData}
-        searching={query !== ""}
+        searching={controls.filtered}
         id={id}
         listRef={listRef}
         sentinel={sentinel}
@@ -438,15 +437,14 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
           selectionMode,
           preview: preview.cardProps,
           onPressTag: pressTag,
-          editing:
-            owner && query === ""
-              ? {
-                  removing: edits.removing,
-                  onRemove: edits.removeOne,
-                  removeRef: edits.removeRef,
-                }
-              : undefined,
-          draggable: owner && query === "",
+          editing: editable
+            ? {
+                removing: edits.removing,
+                onRemove: edits.removeOne,
+                removeRef: edits.removeRef,
+              }
+            : undefined,
+          draggable: editable,
           nameFieldFor,
         }}
       />
@@ -457,7 +455,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   //
   return (
     <GroupChangedContext value={groupChanged}>
-      {owner && query === "" ? (
+      {editable ? (
         <GroupDragLayer
           items={shownData?.items ?? noItems}
           list={view === "list"}

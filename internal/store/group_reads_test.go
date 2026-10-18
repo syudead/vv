@@ -99,7 +99,7 @@ func TestListLibraryListsTopGroupsAndGroupShowsChildGroup(t *testing.T) {
 	if names, want := ownerLibraryNames(t, db, domain.VideoQuery{}), []string{"group:B", "group:pair", "group:show"}; !slices.Equal(names, want) {
 		t.Fatalf("項目 = %v, want %v", names, want)
 	}
-	page, err := db.Library().Group(ctx, domain.AudienceOwner, b, nil, "")
+	page, err := db.Library().Group(ctx, domain.AudienceOwner, b, nil, domain.VideoQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestGroupReadsDescendantsAtAnyDepth(t *testing.T) {
 	for range 80 {
 		top = insertGroup(t, db, "deep", top)
 	}
-	page, err := db.Library().Group(ctx, domain.AudienceOwner, top, nil, "")
+	page, err := db.Library().Group(ctx, domain.AudienceOwner, top, nil, domain.VideoQuery{})
 	if err != nil {
 		t.Fatalf("81 段のグループ: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestGroupReadsSharedChildGroupsOnce(t *testing.T) {
 		left, right = insertGroup(t, db, "left", left, right), insertGroup(t, db, "right", right, left)
 	}
 	top := insertGroup(t, db, "top", left, right)
-	page, err := db.Library().Group(ctx, domain.AudienceOwner, top, nil, "")
+	page, err := db.Library().Group(ctx, domain.AudienceOwner, top, nil, domain.VideoQuery{})
 	if err != nil {
 		t.Fatalf("ダイヤモンド状の 40 段のグループ: %v", err)
 	}
@@ -212,10 +212,10 @@ func TestGroupWithoutVisibleVideoIsNotShown(t *testing.T) {
 		t.Errorf("項目 = %v に見える動画の無いグループがある", names)
 	}
 	for _, id := range []int64{gone, empty, 9999} {
-		if _, err := db.Library().Group(ctx, domain.AudienceOwner, id, nil, ""); !errors.Is(err, domain.ErrNotFound) {
+		if _, err := db.Library().Group(ctx, domain.AudienceOwner, id, nil, domain.VideoQuery{}); !errors.Is(err, domain.ErrNotFound) {
 			t.Errorf("グループ %d = %v, want ErrNotFound", id, err)
 		}
-		if _, err := db.Library().GroupItems(ctx, domain.AudienceOwner, id, "", 0, ""); !errors.Is(err, domain.ErrNotFound) {
+		if _, err := db.Library().GroupItems(ctx, domain.AudienceOwner, id, "", 0, domain.VideoQuery{}); !errors.Is(err, domain.ErrNotFound) {
 			t.Errorf("グループ %d の項目 = %v, want ErrNotFound", id, err)
 		}
 	}
@@ -234,7 +234,7 @@ func TestGroupForGuestReadsPublicVideosOnly(t *testing.T) {
 	if names := itemNames(items); !slices.Equal(names, []string{"group:outer"}) {
 		t.Fatalf("ゲストの項目 = %v, want [group:outer]", names)
 	}
-	page, err := db.Library().Group(ctx, domain.AudienceGuest, outer, nil, "")
+	page, err := db.Library().Group(ctx, domain.AudienceGuest, outer, nil, domain.VideoQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func TestGroupForGuestReadsPublicVideosOnly(t *testing.T) {
 	if !slices.Equal(memberIDs(page.Group), []int64{ids[fixturePath("/media/solo.mp4")]}) {
 		t.Errorf("ゲストの outer の再生順 = %v", memberIDs(page.Group))
 	}
-	if _, err := db.Library().Group(ctx, domain.AudienceGuest, hidden, nil, ""); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := db.Library().Group(ctx, domain.AudienceGuest, hidden, nil, domain.VideoQuery{}); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("ゲストの hidden = %v, want ErrNotFound", err)
 	}
 }
@@ -267,7 +267,7 @@ func TestGroupTrailIsCutAtABrokenPair(t *testing.T) {
 		{[]int64{c, other}, []domain.GroupRef{}},
 		{[]int64{9999, c, b}, []domain.GroupRef{{ID: c, Name: "C"}, {ID: b, Name: "B"}}},
 	} {
-		page, err := db.Library().Group(ctx, domain.AudienceOwner, a, tc.trail, "")
+		page, err := db.Library().Group(ctx, domain.AudienceOwner, a, tc.trail, domain.VideoQuery{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -285,7 +285,7 @@ func TestGroupItemsPages(t *testing.T) {
 	var names []string
 	cursor := ""
 	for range 10 {
-		page, err := db.Library().GroupItems(ctx, domain.AudienceOwner, g, cursor, 1, "")
+		page, err := db.Library().GroupItems(ctx, domain.AudienceOwner, g, cursor, 1, domain.VideoQuery{})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -299,7 +299,7 @@ func TestGroupItemsPages(t *testing.T) {
 		t.Errorf("項目 = %v, want [solo x y]", names)
 	}
 	for _, bad := range []string{"not-a-cursor", packCursor("other", "1"), packCursor(groupItemsCursorKind, "x")} {
-		if _, err := db.Library().GroupItems(ctx, domain.AudienceOwner, g, bad, 1, ""); !errors.Is(err, domain.ErrInvalidCursor) {
+		if _, err := db.Library().GroupItems(ctx, domain.AudienceOwner, g, bad, 1, domain.VideoQuery{}); !errors.Is(err, domain.ErrInvalidCursor) {
 			t.Errorf("カーソル %q = %v, want ErrInvalidCursor", bad, err)
 		}
 	}
@@ -311,14 +311,14 @@ func TestGroupItemsSearchBeforePagingIncludesDescendants(t *testing.T) {
 	child := insertGroup(t, db, "child", itemKeyOf("/media/mixed/sub/y.mp4"))
 	id := insertGroup(t, db, "search", itemKeyOf("/media/solo.mp4"), child, itemKeyOf("/media/mixed/x.mp4"))
 	query := `"mixed" -missing`
-	first, err := db.Library().GroupItems(ctx, domain.AudienceOwner, id, "", 1, query)
+	first, err := db.Library().GroupItems(ctx, domain.AudienceOwner, id, "", 1, domain.VideoQuery{Query: query})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := groupItemNames(first.Items); !slices.Equal(got, []string{"group:child"}) || first.NextCursor == "" {
 		t.Fatalf("first page = %v, cursor = %q", got, first.NextCursor)
 	}
-	second, err := db.Library().GroupItems(ctx, domain.AudienceOwner, id, first.NextCursor, 1, query)
+	second, err := db.Library().GroupItems(ctx, domain.AudienceOwner, id, first.NextCursor, 1, domain.VideoQuery{Query: query})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +328,7 @@ func TestGroupItemsSearchBeforePagingIncludesDescendants(t *testing.T) {
 	if _, err := db.Visibility().SetVideosPublic(ctx, []int64{ids[fixturePath("/media/solo.mp4")]}, true); err != nil {
 		t.Fatal(err)
 	}
-	guest, err := db.Library().Group(ctx, domain.AudienceGuest, id, nil, query)
+	guest, err := db.Library().Group(ctx, domain.AudienceGuest, id, nil, domain.VideoQuery{Query: query})
 	if err != nil {
 		t.Fatal(err)
 	}

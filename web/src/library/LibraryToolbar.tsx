@@ -9,7 +9,11 @@ import FilterMenu from "../videoList/FilterMenu";
 import IconToggleGroup from "../videoList/IconToggleGroup";
 import type { HistoryMode } from "../videoList/listCriteria";
 import SearchBox from "../videoList/SearchBox";
-import { CompactSortControls, SortMenu } from "../videoList/SortControls";
+import {
+  CompactSortControls,
+  SortMenu,
+  type NativeOrder,
+} from "../videoList/SortControls";
 import ZoomSlider from "../videoList/ZoomSlider";
 
 function viewOptions() {
@@ -68,6 +72,7 @@ export function viewControls(
 }
 
 export interface LibraryToolbarProps {
+  nativeOrder?: NativeOrder;
   query: string;
   onQueryCommit: (next: string, mode: HistoryMode) => void;
   searchRef: RefObject<HTMLInputElement | null>;
@@ -113,15 +118,24 @@ export default function LibraryToolbar({
   extraFilter,
   extraFilterCount,
   onFilterOpen,
+  nativeOrder,
 }: LibraryToolbarProps) {
   const controls: ToolbarViewControl[] = [
     {
       id: "sort",
       label: t.list.sort.heading,
       inlineFrom: "md",
-      control: <SortMenu sort={sort} onSortChange={onSortChange} onShuffle={onShuffle} />,
+      control: (
+        <SortMenu
+          sort={sort}
+          onSortChange={onSortChange}
+          onShuffle={onShuffle}
+          nativeOrder={nativeOrder}
+        />
+      ),
       compact: (
         <CompactSortControls
+          nativeOrder={nativeOrder}
           name="compact-sort"
           sort={sort}
           onSortChange={onSortChange}

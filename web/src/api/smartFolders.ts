@@ -1,3 +1,4 @@
+import { type CollectionCriteria, setCollectionCriteria } from "./collectionCriteria";
 import { apiFetch, request, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
 import { dropSnapshotAfter } from "./groups";
@@ -41,8 +42,10 @@ export function readSmartFolderPage(
   signal?: AbortSignal,
   limit?: number,
   search = "",
+  criteria?: CollectionCriteria,
 ): Promise<SmartFolderDetail> {
   const query = new URLSearchParams();
+  setCollectionCriteria(query, criteria);
   if (limit !== undefined) query.set("limit", String(limit));
   if (search !== "") query.set("query", search);
   const suffix = query.size === 0 ? "" : `?${query.toString()}`;
@@ -56,8 +59,10 @@ export function listSmartFolderItems(
   signal?: AbortSignal,
   limit?: number,
   search = "",
+  criteria?: CollectionCriteria,
 ): Promise<SmartFolderItemPage> {
   const query = new URLSearchParams({ cursor });
+  setCollectionCriteria(query, criteria);
   if (search !== "") query.set("query", search);
   if (limit !== undefined) query.set("limit", String(limit));
   return request<SmartFolderItemPage>(

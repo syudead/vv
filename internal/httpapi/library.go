@@ -15,8 +15,8 @@ type LibraryItems interface {
 	// LibraryIDs shares list filters but ignores sorting, cursor, and limit, returning group playback members separately.
 	LibraryIDs(ctx context.Context, q domain.VideoQuery) (selection domain.LibrarySelection, missingTagIDs []int64, err error)
 	// Missing and invisible groups both return ErrNotFound.
-	Group(ctx context.Context, audience domain.Audience, id int64, trail []int64, query string) (domain.GroupPage, error)
-	GroupItems(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int, query string) (domain.GroupPage, error)
+	Group(ctx context.Context, audience domain.Audience, id int64, trail []int64, query domain.VideoQuery) (domain.GroupPage, error)
+	GroupItems(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int, query domain.VideoQuery) (domain.GroupPage, error)
 	ListGroups(ctx context.Context, audience domain.Audience, query, cursor string, limit int) (domain.GroupListPage, error)
 }
 

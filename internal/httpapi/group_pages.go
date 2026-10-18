@@ -20,7 +20,10 @@ func (s *server) GetGroup(w http.ResponseWriter, r *http.Request, id gen.GroupId
 	if params.Trail != nil {
 		trail = *params.Trail
 	}
-	query, ok := s.parseSearchQuery(w, params.Query)
+	query, ok := s.parseCollectionQuery(w, audienceFrom(r.Context()), videoQueryParams{
+		query: params.Query, watch: params.Watch, playable: params.Playable, favorite: params.Favorite,
+		sort: params.Sort, seed: params.Seed,
+	})
 	if !ok {
 		return
 	}
@@ -63,7 +66,10 @@ func (s *server) ListGroupItems(w http.ResponseWriter, r *http.Request, id gen.G
 	if params.Cursor != nil {
 		cursor = *params.Cursor
 	}
-	query, ok := s.parseSearchQuery(w, params.Query)
+	query, ok := s.parseCollectionQuery(w, audienceFrom(r.Context()), videoQueryParams{
+		query: params.Query, watch: params.Watch, playable: params.Playable, favorite: params.Favorite,
+		sort: params.Sort, seed: params.Seed,
+	})
 	if !ok {
 		return
 	}

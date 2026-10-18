@@ -22,8 +22,8 @@ type searchSmartFolders struct {
 	calls []smartFolderSearchCall
 }
 
-func (s *searchSmartFolders) SmartFolderContents(_ context.Context, audience domain.Audience, id int64, cursor string, limit int, query string) (domain.SmartFolderPage, error) {
-	s.calls = append(s.calls, smartFolderSearchCall{audience, id, cursor, limit, query})
+func (s *searchSmartFolders) SmartFolderContents(_ context.Context, audience domain.Audience, id int64, cursor string, limit int, query domain.VideoQuery) (domain.SmartFolderPage, error) {
+	s.calls = append(s.calls, smartFolderSearchCall{audience, id, cursor, limit, query.Query})
 	return domain.SmartFolderPage{}, domain.ErrNotFound
 }
 

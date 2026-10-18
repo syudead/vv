@@ -608,11 +608,11 @@ func TestListLibraryForGuestCountsPublicMembers(t *testing.T) {
 		t.Errorf("ゲストの ep2 の検索 = %v, want 空", names)
 	}
 
-	pair, err := db.Library().Group(ctx, domain.AudienceGuest, groupIDOf(t, db, fixturePath("/media/pair")), nil, "")
+	pair, err := db.Library().Group(ctx, domain.AudienceGuest, groupIDOf(t, db, fixturePath("/media/pair")), nil, domain.VideoQuery{})
 	if err != nil || len(pair.Group.Members) != 1 {
 		t.Errorf("ゲストの pair（公開1本）= %+v, %v", pair.Group, err)
 	}
-	group, err := db.Library().Group(ctx, domain.AudienceGuest, groupIDOf(t, db, fixturePath("/media/show")), nil, "")
+	group, err := db.Library().Group(ctx, domain.AudienceGuest, groupIDOf(t, db, fixturePath("/media/show")), nil, domain.VideoQuery{})
 	if err != nil || len(group.Group.Members) != 2 || len(group.Items) != 2 {
 		t.Errorf("ゲストの show = %+v, %v", group, err)
 	}

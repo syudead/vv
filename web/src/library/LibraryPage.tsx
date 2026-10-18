@@ -17,7 +17,6 @@ import {
   type TagRef,
   type Video,
   type VideoSort,
-  type WatchFilter,
 } from "../api/client";
 import {
   clearListSnapshot,
@@ -53,6 +52,7 @@ import {
   criteriaKey,
   type HistoryMode,
   type ListCriteria,
+  type ListCriteriaChange,
   newSeed,
 } from "../videoList/listCriteria";
 import { DraggableCard } from "../videoList/cardDrag";
@@ -61,6 +61,7 @@ import { useUndoToast } from "../videoList/undoToast";
 import { useVideoDrops } from "../videoList/useVideoDrops";
 import { useScrollTopOnChange } from "../videoList/useScrollTopOnChange";
 import { GuestEmpty, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
+import { useListActions } from "../videoList/useListActions";
 import { useListCriteria } from "../videoList/useListCriteria";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
@@ -214,7 +215,7 @@ export default function LibraryPage() {
   }, []);
 
   const update = useCallback(
-    (next: ListCriteria, mode: HistoryMode = "push") => {
+    (next: ListCriteriaChange, mode: HistoryMode = "push") => {
       resetPreview();
       apply(next, mode);
     },
@@ -223,35 +224,17 @@ export default function LibraryPage() {
 
   const changeSort = useCallback(
     (next: VideoSort) => {
-      update({
-        ...criteria,
+      update((current) => ({
+        ...current,
         sort: next,
-        seed: next === "random" ? newSeed(criteria.seed) : undefined,
-      });
+        seed: next === "random" ? newSeed(current.seed) : undefined,
+      }));
       savePreferences({ ...preferences, sort: next });
     },
-    [criteria, preferences, savePreferences, update],
+    [preferences, savePreferences, update],
   );
-  const shuffle = useCallback(
-    () => update({ ...criteria, seed: newSeed(criteria.seed) }),
-    [criteria, update],
-  );
-  const changeWatch = useCallback(
-    (next: WatchFilter) => update({ ...criteria, watch: next }),
-    [criteria, update],
-  );
-  const changePlayable = useCallback(
-    (next: boolean) => update({ ...criteria, playable: next }),
-    [criteria, update],
-  );
-  const changeFavorite = useCallback(
-    (next: boolean) => update({ ...criteria, favorite: next }),
-    [criteria, update],
-  );
-  const commitQuery = useCallback(
-    (next: string, mode: HistoryMode) => update({ ...criteria, query: next }, mode),
-    [criteria, update],
-  );
+  const { shuffle, changeWatch, changePlayable, changeFavorite, commitQuery } =
+    useListActions(update);
   const clearAll = useCallback(() => {
     resetPreview();
     const cleared = clearTagConditions(criteria);

@@ -403,7 +403,7 @@ func (failingSmartFolders) DeleteSmartFolder(context.Context, int64) error {
 	return errSmartFolderStore
 }
 
-func (failingSmartFolders) SmartFolderContents(context.Context, domain.Audience, int64, string, int, string) (domain.SmartFolderPage, error) {
+func (failingSmartFolders) SmartFolderContents(context.Context, domain.Audience, int64, string, int, domain.VideoQuery) (domain.SmartFolderPage, error) {
 	return domain.SmartFolderPage{}, errSmartFolderStore
 }
 
