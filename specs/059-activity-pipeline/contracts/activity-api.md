@@ -22,7 +22,7 @@ are not listed on their own; a pair entry in two pipelines appears under both.
 | `counts`, `features` | Count top-level entries; a pipeline counts once per status and once under each feature it or a member has |
 | `items[].members` | New, pipelines only: `ActivityMemberSummary[]` in join order |
 
-`ActivityMemberSummary`: `id`, `kind`, `feature`, `status`, `reason?`,
+`ActivityMemberSummary`: `id`, `kind`, `feature`, `subject`, `status`, `reason?`,
 `outcome?`, `stage?`, `progress?`, `retryRun`, `undoable`, `replaced` (a
 retried or reopened member kept for history), `matched`, and for an `import`
 member `stages` (`{stage, state}[]` in `JobKinds` order, absent when not
