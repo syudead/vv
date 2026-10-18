@@ -71,7 +71,7 @@ func TestListLibraryFiltersByPersonAndOrganization(t *testing.T) {
 	}
 }
 
-func TestListVideosAndLibraryIdsFilterByPerson(t *testing.T) {
+func TestListVideosFiltersByPerson(t *testing.T) {
 	f, person, _ := creditFilterFixture(t)
 	want := []int64{f.ids["ep1"], f.ids["solo"]}
 	slices.Sort(want)
@@ -89,22 +89,12 @@ func TestListVideosAndLibraryIdsFilterByPerson(t *testing.T) {
 	if !slices.Equal(listed, want) || videos.Total != len(want) {
 		t.Errorf("/api/videos = %v・total %d, want %v", listed, videos.Total, want)
 	}
-
-	rec = f.env.get("/api/library/ids?person="+person, f.owner)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("/api/library/ids: status = %d: %s", rec.Code, rec.Body)
-	}
-	ids := decode[gen.VideoIdsResponse](t, rec)
-	slices.Sort(ids.Ids)
-	if !slices.Equal(ids.Ids, want) {
-		t.Errorf("/api/library/ids = %v, want %v", ids.Ids, want)
-	}
 }
 
 func TestCreditFiltersRejectInvalidValuesAndGuests(t *testing.T) {
 	f, person, organization := creditFilterFixture(t)
 	invalid := wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}
-	for _, path := range []string{"/api/videos", "/api/library", "/api/library/ids"} {
+	for _, path := range []string{"/api/videos", "/api/library"} {
 		for _, query := range []string{"person=0", "person=-1", "person=abc", "organization=0", "organization=abc"} {
 			rec := f.env.get(path+"?"+query, f.owner)
 			assertErrorBody(t, path+"?"+query, rec.Code, rec.Body.Bytes(), invalid)

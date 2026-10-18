@@ -49,7 +49,6 @@ export function isTranscodeQuality(value: unknown): value is TranscodeQuality {
 }
 export type WatchFilter = components["schemas"]["WatchFilter"];
 export type TagRef = components["schemas"]["TagRef"];
-export type LibraryGroupIds = components["schemas"]["LibraryGroupIds"];
 export type VideoTag = components["schemas"]["VideoTag"];
 export type FolderScope = components["schemas"]["FolderScope"];
 export type VideoFolder = components["schemas"]["VideoFolder"];

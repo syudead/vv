@@ -3034,15 +3034,6 @@ type LibraryGroup struct {
 // LibraryGroupWatchState unwatched if none have started, watched if all are complete, otherwise inProgress; owner responses only.
 type LibraryGroupWatchState string
 
-// LibraryGroupIds One group entry in GET /api/library/ids.
-type LibraryGroupIds struct {
-	// Id Group ID
-	Id int64 `json:"id"`
-
-	// VideoIds Visible video IDs in group playback order.
-	VideoIds []int64 `json:"videoIds"`
-}
-
 // LibraryItem One library item containing exactly one of video, group or smartFolder according to kind. smartFolder summarizes a top-level folder, or a favorited folder in favorites-only mode; fetch card values with listSmartFolderCards.
 type LibraryItem struct {
 	// Group Group values aggregate visible descendant videos in playback order: depth-first through subgroups, deduplicating by first occurrence. Address groups by id; guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags.
@@ -4612,19 +4603,6 @@ type VideoGroupRef struct {
 	Position int `json:"position"`
 }
 
-// VideoIdsResponse defines model for VideoIdsResponse.
-type VideoIdsResponse struct {
-	// Groups Matching group entries with each group ID and playback-ordered video IDs, also included in ids. Only in listLibraryIds responses; omitted when none.
-	Groups *[]LibraryGroupIds `json:"groups,omitempty"`
-	Ids    []int64            `json:"ids"`
-
-	// MissingTagIds Missing IDs from tag; omitted when none.
-	MissingTagIds *[]int64 `json:"missingTagIds,omitempty"`
-
-	// SmartFolderIds Matching smart-folder item IDs; their videos are not included in ids. Only in listLibraryIds responses; omitted when none.
-	SmartFolderIds *[]int64 `json:"smartFolderIds,omitempty"`
-}
-
 // VideoLocation Representative location, only in GET /api/videos/{id}.
 type VideoLocation struct {
 	// Openable True when both request source and Host are loopback and the server environment can launch the default application.
@@ -5457,37 +5435,6 @@ type ListLibraryParams struct {
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
 }
 
-// ListLibraryIdsParams defines parameters for ListLibraryIds.
-type ListLibraryIdsParams struct {
-	Query    *string      `form:"query,omitempty" json:"query,omitempty"`
-	Watch    *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
-	Playable *bool        `form:"playable,omitempty" json:"playable,omitempty"`
-
-	// Favorite Restrict to favorited items using each item's own favorite state, combined with other filters by AND
-	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
-
-	// Tag At most 16; more returns 400. Unknown IDs are ignored and returned in `missingTagIds`.
-	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
-
-	// Person Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
-	Person *PersonFilter `form:"person,omitempty" json:"person,omitempty"`
-
-	// Organization Organization ID, matching any role; follows person filter semantics
-	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
-
-	// AddedWithin Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests.
-	AddedWithin *AddedWithinFilter `form:"addedWithin,omitempty" json:"addedWithin,omitempty"`
-
-	// MinDuration Inclusive minimum duration in whole seconds, rounded down; excludes unknown durations. Accepts 0–360000 and cannot exceed maxDuration, otherwise 400 invalid_request. Available to guests.
-	MinDuration *MinDurationFilter `form:"minDuration,omitempty" json:"minDuration,omitempty"`
-
-	// MaxDuration Inclusive maximum duration in seconds; follows minDuration semantics
-	MaxDuration *MaxDurationFilter `form:"maxDuration,omitempty" json:"maxDuration,omitempty"`
-
-	// TagKind Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
-	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
-}
-
 // DeleteMediaFolderParams defines parameters for DeleteMediaFolder.
 type DeleteMediaFolderParams struct {
 	Version int64 `form:"version" json:"version"`
@@ -6136,9 +6083,6 @@ type ServerInterface interface {
 	// ListLibrary List library items (videos and groups)
 	// (GET /api/library)
 	ListLibrary(w http.ResponseWriter, r *http.Request, params ListLibraryParams)
-	// ListLibraryIds Return video IDs for matching items
-	// (GET /api/library/ids)
-	ListLibraryIds(w http.ResponseWriter, r *http.Request, params ListLibraryIdsParams)
 	// ListMediaFolders List registered media folders
 	// (GET /api/media-folders)
 	ListMediaFolders(w http.ResponseWriter, r *http.Request)
@@ -7927,169 +7871,6 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListLibrary(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListLibraryIds operation middleware
-func (siw *ServerInterfaceWrapper) ListLibraryIds(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListLibraryIdsParams
-
-	// ------------- Optional query parameter "query" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "watch" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "playable" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "favorite" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "favorite", r.URL.Query(), &params.Favorite, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "tag" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "tag", r.URL.Query(), &params.Tag, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "person" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "person", r.URL.Query(), &params.Person, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "person"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "person", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "organization" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "organization", r.URL.Query(), &params.Organization, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organization"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "addedWithin" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "addedWithin", r.URL.Query(), &params.AddedWithin, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "addedWithin"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "addedWithin", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "minDuration" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "minDuration", r.URL.Query(), &params.MinDuration, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "minDuration"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "minDuration", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "maxDuration" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxDuration", r.URL.Query(), &params.MaxDuration, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxDuration"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxDuration", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "tagKind" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagKind", r.URL.Query(), &params.TagKind, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKind"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKind", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListLibraryIds(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -12346,7 +12127,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/logout", wrapper.Logout)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos", wrapper.ListVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/library", wrapper.ListLibrary)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/library/ids", wrapper.ListLibraryIds)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}", wrapper.GetVideo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/related", wrapper.GetRelatedVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/group-members", wrapper.ListVideoGroupMembers)
