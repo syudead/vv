@@ -4039,7 +4039,7 @@ type SkippedWorkInfoValue struct {
 	// Reason Apply skip reason: invalid values fail field validation; too_many entries exceed limits after existing entries; ambiguous people/organizations match multiple entities.
 	Reason SkippedWorkInfoReason `json:"reason"`
 
-	// Value Value shown in the comparison: date, URL, name, source: value, or the first 100 description characters.
+	// Value Value shown in the comparison: date, URL, name, source: value, or the first 100 description characters. A profile value is name: property value, such as Hanako: heightCm 1000.
 	Value string `json:"value"`
 }
 
@@ -5109,11 +5109,17 @@ type WorkInfoFetchedOrganization struct {
 
 // WorkInfoFetchedPerson defines model for WorkInfoFetchedPerson.
 type WorkInfoFetchedPerson struct {
-	ExternalIds []ExternalId  `json:"externalIds"`
-	Match       WorkInfoMatch `json:"match"`
+	ExternalIds []ExternalId `json:"externalIds"`
+
+	// HasImage Present and true when VV kept an image for this person, served by getWorkInfoFetchPersonImage at its index.
+	HasImage *bool         `json:"hasImage,omitempty"`
+	Match    WorkInfoMatch `json:"match"`
 
 	// Name Plugin-provided name.
 	Name string `json:"name"`
+
+	// Profile Plugin-provided profile values that pass validation; omitted when none. Applying the person's role fills only the linked person's empty fields.
+	Profile *PersonProfile `json:"profile,omitempty"`
 
 	// Role Person role in a video.
 	Role WorkPersonRole `json:"role"`
@@ -6671,6 +6677,9 @@ type ServerInterface interface {
 	// GetWorkInfoFetchCover Return the fetched cover image
 	// (GET /api/videos/{id}/work-info-fetches/{fetchId}/cover)
 	GetWorkInfoFetchCover(w http.ResponseWriter, r *http.Request, id VideoId, fetchId WorkInfoFetchId)
+	// GetWorkInfoFetchPersonImage Return a fetched person's image
+	// (GET /api/videos/{id}/work-info-fetches/{fetchId}/people/{index}/image)
+	GetWorkInfoFetchPersonImage(w http.ResponseWriter, r *http.Request, id VideoId, fetchId WorkInfoFetchId, index int)
 	// ClearWatchHistory Clear all watch history
 	// (DELETE /api/watch-history)
 	ClearWatchHistory(w http.ResponseWriter, r *http.Request)
@@ -11936,6 +11945,50 @@ func (siw *ServerInterfaceWrapper) GetWorkInfoFetchCover(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// GetWorkInfoFetchPersonImage operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkInfoFetchPersonImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "fetchId" -------------
+	var fetchId WorkInfoFetchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fetchId", r.PathValue("fetchId"), &fetchId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fetchId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "index" -------------
+	var index int
+
+	err = runtime.BindStyledParameterWithOptions("simple", "index", r.PathValue("index"), &index, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "index", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkInfoFetchPersonImage(w, r, id, fetchId, index)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ClearWatchHistory operation middleware
 func (siw *ServerInterfaceWrapper) ClearWatchHistory(w http.ResponseWriter, r *http.Request) {
 
@@ -12523,6 +12576,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches", wrapper.FetchWorkInfo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/apply", wrapper.ApplyWorkInfoFetch)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/cover", wrapper.GetWorkInfoFetchCover)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/people/{index}/image", wrapper.GetWorkInfoFetchPersonImage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tags", wrapper.ListTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags", wrapper.CreateTag)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tags/{id}", wrapper.DeleteTag)

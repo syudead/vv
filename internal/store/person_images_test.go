@@ -28,6 +28,22 @@ func TestDeletingAPersonRemovesItsFace(t *testing.T) {
 	}
 }
 
+func TestAddPersonImageKeepsAFaceAlreadySet(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	person := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "山田"})
+	if added, err := db.Credits().AddPersonImage(ctx, person.ID, face("first")); err != nil || !added {
+		t.Fatalf("AddPersonImage(faceless) = %v, %v; want stored", added, err)
+	}
+	if added, err := db.Credits().AddPersonImage(ctx, person.ID, face("second")); err != nil || added {
+		t.Fatalf("AddPersonImage(with a face) = %v, %v; want kept", added, err)
+	}
+	got, err := db.Credits().PersonImage(ctx, person.ID)
+	if err != nil || !bytes.Equal(got.JPEG, []byte("first")) || got.Revision != 1 {
+		t.Errorf("face = %q rev %d, %v; want first rev 1", got.JPEG, got.Revision, err)
+	}
+}
+
 func TestMergeGivesAFacelessTargetTheFirstSourceFace(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

@@ -2182,6 +2182,42 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/videos/{id}/work-info-fetches/{fetchId}/people/{index}/image:
+    get:
+      operationId: getWorkInfoFetchPersonImage
+      summary: "Return a fetched person's image"
+      description: "Owner-only. Returns the image VV fetched for the person at index in the result's people, kept with the result like the cover. Missing, expired or mismatched-video results return 404 not_found; an index without a kept image, or outside people, returns 404 person_image_not_found. Uses Cache-Control: no-store."
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+        - $ref: "#/components/parameters/WorkInfoFetchId"
+        - name: index
+          in: path
+          required: true
+          description: "Position in the result's people"
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: "Person image"
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/tags:
     get:
       operationId: listTags
@@ -5691,6 +5727,12 @@ components:
             $ref: "#/components/schemas/ExternalId"
         match:
           $ref: "#/components/schemas/WorkInfoMatch"
+        hasImage:
+          type: boolean
+          description: "Present and true when VV kept an image for this person, served by getWorkInfoFetchPersonImage at its index."
+        profile:
+          $ref: "#/components/schemas/PersonProfile"
+          description: "Plugin-provided profile values that pass validation; omitted when none. Applying the person's role fills only the linked person's empty fields."
 
     WorkInfoFetchedOrganization:
       type: object
@@ -5775,7 +5817,7 @@ components:
           $ref: "#/components/schemas/WorkInfoField"
         value:
           type: string
-          description: "Value shown in the comparison: date, URL, name, source: value, or the first 100 description characters."
+          description: "Value shown in the comparison: date, URL, name, source: value, or the first 100 description characters. A profile value is name: property value, such as Hanako: heightCm 1000."
         reason:
           $ref: "#/components/schemas/SkippedWorkInfoReason"
 

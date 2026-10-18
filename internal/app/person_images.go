@@ -16,6 +16,8 @@ import (
 type PersonImageStore interface {
 	PersonImage(ctx context.Context, id int64) (domain.PersonImage, error)
 	SetPersonImage(ctx context.Context, id int64, image domain.PersonImage) (domain.Credit, error)
+	// AddPersonImage stores image only when the person has no face, reporting whether it did.
+	AddPersonImage(ctx context.Context, id int64, image domain.PersonImage) (bool, error)
 	DeletePersonImage(ctx context.Context, id int64) (domain.Credit, error)
 }
 
@@ -35,16 +37,21 @@ const personImageJPEGQuality = 85
 // UploadPersonImage decodes, fits and stores a face. A body over the byte limit returns
 // ThumbnailUploadTooLargeError; any other unacceptable image returns ErrPersonImageInvalid; nothing is written on error.
 func (p *PersonImages) UploadPersonImage(ctx context.Context, id int64, data []byte) (domain.Credit, error) {
-	release, err := p.uploads.acquire(ctx)
-	if err != nil {
-		return domain.Credit{}, err
-	}
-	fitted, err := fitPersonImage(data)
-	release()
+	fitted, err := p.fit(ctx, data)
 	if err != nil {
 		return domain.Credit{}, err
 	}
 	return p.store.SetPersonImage(ctx, id, fitted)
+}
+
+// fit runs fitPersonImage under the upload gate.
+func (p *PersonImages) fit(ctx context.Context, data []byte) (domain.PersonImage, error) {
+	release, err := p.uploads.acquire(ctx)
+	if err != nil {
+		return domain.PersonImage{}, err
+	}
+	defer release()
+	return fitPersonImage(data)
 }
 
 func (p *PersonImages) PersonImage(ctx context.Context, id int64) (domain.PersonImage, error) {
