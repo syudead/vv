@@ -394,6 +394,12 @@ export default function LibraryPage() {
     [clearSelection, reload],
   );
 
+  // Deleted groups and smart folders leave the list, and a dissolved group's videos join it.
+  const onCollectionsDeleted = useCallback(() => {
+    clearSelection();
+    refreshInPlace();
+  }, [clearSelection, refreshInPlace]);
+
   // Reconcile selected group identity after refresh without removing selected video IDs.
   useEffect(() => {
     setSelection((current) => reconcileGroups(current, items));
@@ -806,6 +812,7 @@ export default function LibraryPage() {
               onClear={clearSelection}
               onTagRemoved={onTagRemoved}
               onBundled={onBundled}
+              onCollectionsDeleted={onCollectionsDeleted}
             />
           )
         }

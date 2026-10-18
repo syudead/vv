@@ -2965,6 +2965,27 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
 
+  /api/collections/delete:
+    post:
+      operationId: deleteCollections
+      summary: "Dissolve groups and delete smart folders in bulk"
+      description: "Owner-only. Dissolves groupIds as dissolveGroup does and deletes smartFolderIds with their descendants as deleteSmartFolder does, in one transaction; videos are never deleted. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing groups and smart folders are ignored. Emits the same group and smart-folder change events as the single operations."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CollectionsDeleteRequest"
+      responses:
+        "200":
+          description: "Removed collections"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionsDeleteResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+
   /api/favorites:
     put:
       operationId: updateFavorites
@@ -6714,6 +6735,35 @@ components:
         public:
           type: boolean
           description: "True makes videos public; false makes them private."
+
+    CollectionsDeleteRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        groupIds:
+          type: array
+          description: "Group IDs to dissolve; member videos and child groups stay in the library."
+          items:
+            type: integer
+            format: int64
+        smartFolderIds:
+          type: array
+          description: "Smart-folder IDs to delete together with their descendants."
+          items:
+            type: integer
+            format: int64
+
+    CollectionsDeleteResponse:
+      type: object
+      required: [dissolvedGroups, deletedSmartFolders]
+      additionalProperties: false
+      properties:
+        dissolvedGroups:
+          type: integer
+          description: "Distinct requested groups that existed and were dissolved, including ones dissolved because an earlier requested group left them empty."
+        deletedSmartFolders:
+          type: integer
+          description: "Distinct requested smart folders that existed and were deleted, including ones removed as descendants of another requested folder; unrequested descendants are not counted."
 
     FavoritesRequest:
       type: object

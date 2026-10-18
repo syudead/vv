@@ -91,6 +91,21 @@ function groupsCount(count: number): string {
   });
 }
 
+/** "Dissolve 2 groups and delete 1 smart folder", leaving out a zero part. */
+function collectionRemoval(
+  groupCount: number,
+  folderCount: number,
+  dissolve: string,
+  remove: string,
+): string {
+  const parts = [
+    ...(groupCount === 0 ? [] : [`${dissolve} ${groupsCount(groupCount)}`]),
+    ...(folderCount === 0 ? [] : [`${remove} ${smartFolders(folderCount)}`]),
+  ];
+  const text = parts.join(" and ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 function tagCount(count: number): string {
   return selectPlural(count, {
     one: `${formatNumber(count)} tag`,
@@ -1037,6 +1052,28 @@ export const en = {
       bundle: "Bundle as versions",
       bundleOverLimit: (limit: number) => `Bundle up to ${videos(limit)} at a time`,
       removeFromGroup: "Remove from group",
+      deleteCollections: "Delete…",
+      deleteNeedsCollection: "Select a group or smart folder",
+      deleteDialog: {
+        title: (groupCount: number, folderCount: number) =>
+          `${collectionRemoval(groupCount, folderCount, "dissolve", "delete")}?`,
+        groups: (count: number) =>
+          selectPlural(count, {
+            one: "The group is dissolved. Its videos and groups stay in the library.",
+            other: `The ${formatNumber(count)} groups are dissolved. Their videos and groups stay in the library.`,
+          }),
+        smartFolders: (count: number) =>
+          selectPlural(count, {
+            one: "The smart folder is deleted with the smart folders inside it. Its videos stay in the library.",
+            other: `The ${formatNumber(count)} smart folders are deleted with the smart folders inside them. Their videos stay in the library.`,
+          }),
+        submit: "Delete",
+        submitting: "Deleting…",
+        failed: (reason: string) => `Couldn't delete the selection: ${reason}`,
+      },
+      collectionsDeleted: (groupCount: number, folderCount: number) =>
+        collectionRemoval(groupCount, folderCount, "dissolved", "deleted"),
+      collectionsGone: "The selected groups and smart folders no longer existed",
     },
   },
   folders: {

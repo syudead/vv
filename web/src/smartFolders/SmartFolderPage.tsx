@@ -228,6 +228,7 @@ function SmartFolderScreen({ id }: { id: number | null }) {
               onClear={selection.clear}
               onTagRemoved={reload}
               onBundled={afterBulk}
+              onCollectionsDeleted={afterBulk}
             />
           )
         }

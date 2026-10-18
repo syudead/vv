@@ -81,6 +81,7 @@ interface Server {
   groups: LibraryGroup[];
   creates: CreateBody[];
   adds: { id: number; body: AddBody }[];
+  deletes: unknown[];
   libraryReads: number;
   /** Child-to-parent links model descendant-cycle rejection. */
   parents: Map<number, number>;
@@ -134,6 +135,7 @@ function install(items: LibraryItem[], groups: LibraryGroup[] = []): Server {
     groups,
     creates: [],
     adds: [],
+    deletes: [],
     libraryReads: 0,
     parents: new Map(),
   };
@@ -163,6 +165,19 @@ function install(items: LibraryItem[], groups: LibraryGroup[] = []): Server {
     if (add !== null && method === "POST") {
       const body = JSON.parse(String(init?.body)) as AddBody;
       return Promise.resolve(addToGroupIn(server, Number(add[1]), body));
+    }
+    if (url.pathname === "/api/collections/delete" && method === "POST") {
+      const body = JSON.parse(String(init?.body)) as { groupIds: number[] };
+      server.deletes.push(body);
+      server.items = server.items.flatMap((item) =>
+        item.kind === "group" && body.groupIds.includes(item.group.id)
+          ? item.group.videoIds.map((id) => ({
+              kind: "video" as const,
+              video: video(id),
+            }))
+          : [item],
+      );
+      return Promise.resolve(json({ dissolvedGroups: 1, deletedSmartFolders: 0 }));
     }
     throw new Error(`unexpected request: ${method} ${url.toString()}`);
   });
@@ -417,5 +432,32 @@ describe("ライブラリからグループを作る・足す", () => {
     renderLibrary("guest");
     await screen.findByRole("link", { name: "動画 1" });
     expect(screen.queryByRole("button", { name: /to a group$/ })).toBeNull();
+  });
+});
+
+describe("ライブラリで選んだグループを削除する", () => {
+  it("確認すると選んだグループだけを送り、選択を外して一覧を読み直す。動画は残る", async () => {
+    const server = install([
+      { kind: "video", video: video(1) },
+      { kind: "group", group: group(7, "series", [101, 102]) },
+    ]);
+    const user = userEvent.setup();
+    renderLibrary();
+    await user.click(
+      await screen.findByRole("checkbox", { name: 'Select the group "series"' }),
+    );
+    await user.click(screen.getByRole("checkbox", { name: 'Select "動画 1"' }));
+    const reads = server.libraryReads;
+
+    await user.click(within(selectionBar()).getByRole("button", { name: "Delete…" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Dissolve 1 group?" });
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    expect(await screen.findByText("Dissolved 1 group")).toBeDefined();
+    expect(server.deletes).toEqual([{ groupIds: [7], smartFolderIds: [] }]);
+    expect(screen.queryByRole("region", { name: "Selection actions" })).toBeNull();
+    expect(await screen.findByRole("link", { name: "動画 101" })).toBeDefined();
+    expect(server.libraryReads).toBeGreaterThan(reads);
+    expect(screen.getByRole("link", { name: "動画 1" })).toBeDefined();
   });
 });
