@@ -34,9 +34,11 @@ member's transaction, and the list pages parents and standalone entries only
   read is added: [contracts/activity-api.md](contracts/activity-api.md).
 - The screen layout is decided by the `design` stage, since the parent Issue
   carries the `ui` label. The maintainer has fixed two points for it: the
-  detail is its own page, and a pipeline that is not finished is shown
-  expanded in the list with each member's progress (the `import` member by
-  stage), collapsing once it finishes; the owner can expand or collapse any
+  detail is its own page, and a pipeline whose work is in progress (`running`
+  with reason `processing`) is shown expanded in the list with each member's
+  progress (the `import` member by stage), collapsing once nothing in it is
+  processing; a waiting pipeline stays collapsed, so a large scan lists many
+  collapsed cards and a few expanded ones; the owner can expand or collapse any
   pipeline card. Everything beyond the member summary is on the detail page. The member summary carries the stage
   states this needs ([contract](contracts/activity-api.md#get-apiactivity)).
 - No new dependency. No open question.
@@ -218,7 +220,7 @@ on the `activity` event, layout per `ui-design.md`.
 ### Group the Activity list by import pipeline
 
 **Scope**: Parent cards with their member summary, expanded with each
-member's progress while the pipeline is not finished and collapsed after it,
+member's progress while the pipeline is processing and collapsed otherwise,
 matched members under filters and search, the path from a parent or member to its detail separate
 from opening the video, and counts labelled as runs, per `ui-design.md`.
 
@@ -227,8 +229,8 @@ from opening the video, and counts labelled as runs, per `ui-design.md`.
 **Acceptance**:
 
 - Component tests of the parent card: expanded with member and stage progress
-  while `running` or `attention`, collapsed when `done` and expandable by the
-  owner; a member needing
+  while `running`/`processing`, collapsed when waiting, needing attention or
+  `done`, and expandable by the owner; a member needing
   attention visible on the parent; a `matched` member marked.
 - Page test: an `activity` event that finishes a pipeline collapses its card;
   filtering by "Needs attention" lists the parent and the detail link opens
