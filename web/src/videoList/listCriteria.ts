@@ -19,6 +19,8 @@ export interface ListCriteria {
   seed?: number;
 }
 
+export type ListCriteriaChange = ListCriteria | ((current: ListCriteria) => ListCriteria);
+
 export const MAX_SEED = 2147483647;
 
 export { isVideoSort, videoSorts };

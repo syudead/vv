@@ -250,7 +250,7 @@ func (s *server) presentWrittenGroup(ctx context.Context, audience domain.Audien
 	if s.library == nil {
 		return gen.LibraryGroup{}, errors.New("group queries are not configured")
 	}
-	page, err := s.library.GroupItems(ctx, audience, group.ID, "", 1)
+	page, err := s.library.GroupItems(ctx, audience, group.ID, "", 1, domain.VideoQuery{})
 	switch {
 	case err == nil:
 		lookup := s.itemLookups(ctx, nil, page.Group.Members)

@@ -28,6 +28,7 @@ export interface PagedSource<D extends ItemPage<I>, I> {
 export function usePagedDetail<D extends ItemPage<I>, I>(
   id: number | null,
   source: PagedSource<D, I>,
+  criteriaKey = "",
 ) {
   const [state, setState] = useState<PagedDetailState<D>>(
     id === null ? { kind: "gone" } : { kind: "loading" },
@@ -36,6 +37,7 @@ export function usePagedDetail<D extends ItemPage<I>, I>(
   const stateRef = useRef(state);
   const reading = useRef<AbortController | null>(null);
   const latest = useRef(source);
+  const lastCriteria = useRef(criteriaKey);
   useEffect(() => {
     latest.current = source;
   });
@@ -52,7 +54,11 @@ export function usePagedDetail<D extends ItemPage<I>, I>(
       const controller = new AbortController();
       reading.current = controller;
       const current = stateRef.current;
-      const atLeast = current.kind === "ready" ? current.data.items.length : 0;
+      const atLeast =
+        lastCriteria.current === criteriaKey && current.kind === "ready"
+          ? current.data.items.length
+          : 0;
+      lastCriteria.current = criteriaKey;
       if (!quiet) show({ kind: "loading" });
       setMore("idle");
       const accept = latest.current.beforeRead?.(quiet);
@@ -70,7 +76,7 @@ export function usePagedDetail<D extends ItemPage<I>, I>(
         },
       );
     },
-    [id, show],
+    [id, show, criteriaKey],
   );
 
   const loadMore = useCallback(() => {

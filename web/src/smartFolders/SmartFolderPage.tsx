@@ -13,7 +13,7 @@ import { t } from "../i18n";
 import { formatDuration } from "../lib/format";
 import { GroupCard, GroupRow } from "../library/GroupCard";
 import { LibraryTableHeader } from "../library/LibraryPage";
-import { viewControls } from "../library/LibraryToolbar";
+import LibraryToolbar from "../library/LibraryToolbar";
 import {
   emptySelection,
   isGroupSelected,
@@ -41,9 +41,10 @@ import { LoadMoreRow } from "../ui/patterns/load-more-row";
 import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
 import { Button } from "../ui/shadcn/button";
-import { Toolbar } from "../ui/patterns/toolbar";
 import { TableBody } from "../ui/shadcn/table";
 import { Grid } from "../videoList/Grid";
+import { NoMatches } from "../videoList/states";
+import { useCollectionCriteria } from "../videoList/useCollectionCriteria";
 import {
   useDocumentTitle,
   useLoadMoreSentinel,
@@ -136,7 +137,13 @@ const noItems: readonly LibraryItem[] = [];
 function SmartFolderScreen({ id }: { id: number | null }) {
   const location = useLocation();
   const owner = useAudience() === "owner";
-  const { state, more, reload, refresh, loadMore, markGone } = useSmartFolderPage(id);
+  const controls = useCollectionCriteria();
+  const { query } = controls.criteria;
+  const { state, more, reload, refresh, loadMore, markGone } = useSmartFolderPage(
+    id,
+    query,
+    controls.conditions,
+  );
   const data = state.kind === "ready" ? state.data : null;
   // Reload ancestor rules only on folder refresh, never when adding a page.
   const ancestors = useAncestorRules(data?.trail ?? noTrail, owner, data?.folder);
@@ -160,6 +167,7 @@ function SmartFolderScreen({ id }: { id: number | null }) {
   const pressTag = usePressTagToLibrary();
   const { favorites, selectedIds } = useSelectionTargets(selection.selection);
   const { clear } = selection;
+  useEffect(() => clear(), [controls.key, clear]);
   const afterBulk = useCallback(() => {
     clear();
     reload();
@@ -179,10 +187,12 @@ function SmartFolderScreen({ id }: { id: number | null }) {
         }
         toolbar={
           <TopBarPortal>
-            <Toolbar
-              placement="topBar"
-              view={viewControls(view, changeView, zoom, changeZoom)}
-              viewLabel={t.library.view.label}
+            <LibraryToolbar
+              {...controls.toolbar}
+              view={view}
+              onViewChange={changeView}
+              zoom={zoom}
+              onZoomChange={changeZoom}
             />
           </TopBarPortal>
         }
@@ -240,7 +250,11 @@ function SmartFolderScreen({ id }: { id: number | null }) {
                 onPressTag={pressTag}
               />
             )}
-            <EmptyBody data={data} ancestors={ancestors} onEdit={editConditions} />
+            {controls.filtered && data.items.length === 0 ? (
+              <NoMatches onSearch={() => controls.toolbar.searchRef.current?.focus()} />
+            ) : (
+              <EmptyBody data={data} ancestors={ancestors} onEdit={editConditions} />
+            )}
           </div>
         )}
         {more === "loading" && <LoadMoreRow status="loading" label={t.list.loading} />}

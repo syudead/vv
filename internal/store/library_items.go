@@ -26,6 +26,10 @@ func memberConditions(spec listSpec) ([]string, []any) {
 func matchConditions(spec listSpec) ([]string, []any) {
 	var conditions []string
 	var args []any
+	if spec.withinVideos != "" {
+		conditions = append(conditions, `videos.id in (select value from json_each(?))`)
+		args = append(args, spec.withinVideos)
+	}
 	userKey := spec.videoUserKey()
 	for _, level := range spec.levels() {
 		tags, tagArgs := tagConditions(level, userKey)
@@ -162,37 +166,37 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 			videoAlias + `.content_key <> ''`
 	}
 	folderItems, folderArgs := smartFolderItemsSQL(spec.smartFolders)
+	if spec.storedCollections {
+		folderItems, folderArgs = storedSmartFolderItemsSQL(spec), nil
+	}
 	roots := topGroupsSelect
 	videoFavorite := ""
 	if spec.anyLevel(func(level listSpec) bool { return level.favoriteOnly }) {
 		roots = favoriteGroupsSelect
 		videoFavorite = ` and fav.content_key is not null`
 	}
+	groupSQL := libraryGroupSQL(spec, roots, progressJoin("v"))
+	whole := `select hits.group_id from hits where hits.n = (` + groupSQL.count + `)` + groupPlayable
+	if spec.storedCollections && len(conditions) == 0 && spec.expr.Empty() {
+		whole = storedWholeGroupsSQL(spec, roots)
+	}
 	// Partial matches remain individual videos even when another whole group contains them; materialize whole and carded sets to avoid quadratic correlated scans.
 	cte += `,
 	matched as (
 		select videos.id as video_id, chosen.path as path
 		from chosen join videos on videos.id = chosen.video_id` + where + `),
-	` + groupDescendantsCTE(roots, audience) + `,
-	gm as materialized (select root_id as group_id, video_id, sort_key as position from gdesc),
+	` + groupSQL.members + `,
 	hits as (
 		select gm.group_id, count(*) as n from matched
 		join gm on gm.video_id = matched.video_id
 		group by gm.group_id),
 	whole as materialized (
-		select hits.group_id from hits
-		where hits.n = (select count(*) from gm c where c.group_id = hits.group_id)` + groupPlayable + `),
+		` + whole + `),
 	carded as materialized (
 		select video_id from gm where group_id in (select group_id from whole)
 		except
 		select video_id from gm where group_id not in (select group_id from whole)),
-	mv as (
-		select gm.group_id, gm.video_id, v.added_at, v.duration_ms,
-			rl.mtime as mtime, ` + fileCreatedAtExpr("rl") + ` as created_at, rl.size_bytes as size_bytes,
-			p.updated_at as played_at,
-			coalesce(p.completed, 0) as completed, coalesce(p.position_ms, 0) as position_ms
-		from gm join whole on whole.group_id = gm.group_id
-		join videos v on v.id = gm.video_id` + representativeLocationJoin("gm", audience) + progressJoin("v") + `),
+` + groupSQL.values + `,
 	items as (
 		select null as group_id, videos.id * 2 as id, videos.id as video_id, matched.path as path,
 			videos.added_at as added_at, loc.mtime as mtime, ` + fileCreatedAtExpr("loc") + ` as created_at,
@@ -205,14 +209,7 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		where matched.video_id not in (select video_id from carded)` +
 		videoPlayable + videoFavorite + `
 		union all
-		select g.id, g.id * 2 + 1, null, null,
-			max(mv.added_at), max(mv.mtime), max(mv.created_at), g.title_key,
-			sum(mv.duration_ms), sum(mv.size_bytes), max(mv.played_at), ` + groupFavoritedAtExpr("g") + `,
-			case when sum(mv.completed = 1 or mv.position_ms > 0) = 0 then 'unwatched'
-				when sum(mv.completed = 1) = count(*) then 'watched'
-				else 'inProgress' end
-		from mv join groups g on g.id = mv.group_id
-		group by g.id` + folderItems + `)`
+` + groupSQL.items + folderItems + `)`
 	return cte, append(args, folderArgs...)
 }
 
@@ -262,6 +259,9 @@ func itemOrder(sort domain.VideoSort) listOrder {
 
 // ListLibrary reads counts, items, members and registered folders from one snapshot; callers validate audience permissions for filters.
 func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.LibraryPage, error) {
+	if err := s.db.RefreshCollectionValues(ctx); err != nil {
+		return domain.LibraryPage{}, err
+	}
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.LibraryPage{}, fmt.Errorf("cannot start reading the list: %w", err)
@@ -273,9 +273,8 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 		return domain.LibraryPage{}, err
 	}
 	spec := libraryListSpec(audience, q, tagIDs)
-	if spec.smartFolders, err = librarySmartFolders(ctx, tx, audience, q, spec.now); err != nil {
-		return domain.LibraryPage{}, err
-	}
+	spec.storedCollections = true
+	spec.includeSmartFolders = q.ListsSmartFolders()
 	page, err := listLibraryPageTx(ctx, tx, spec)
 	if err != nil {
 		return domain.LibraryPage{}, err
@@ -389,7 +388,7 @@ func libraryPageItems(ctx context.Context, tx *sql.Tx, spec listSpec, order list
 			return nil, "", err
 		}
 	}
-	items, err := loadLibraryItems(ctx, tx, spec.scope.audience, keys, spec.smartFolders)
+	items, err := loadLibraryItems(ctx, tx, spec.scope.audience, keys, spec.smartFolders, spec.storedCollections)
 	if err != nil {
 		return nil, "", err
 	}
@@ -397,7 +396,7 @@ func libraryPageItems(ctx context.Context, tx *sql.Tx, spec listSpec, order list
 }
 
 // Video items use their chosen location; group values use all visible descendants and smart folders use prepared summaries.
-func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []itemRow, folders []librarySmartFolder) ([]domain.LibraryItem, error) {
+func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []itemRow, folders []librarySmartFolder, compact bool) ([]domain.LibraryItem, error) {
 	var pairs [][2]any
 	var groupIDs []int64
 	for _, key := range keys {
@@ -416,7 +415,13 @@ func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 	if err := attachVersionsIn(ctx, tx, audience, videos); err != nil {
 		return nil, err
 	}
-	groups, err := loadGroups(ctx, tx, audience, groupIDs)
+	if compact {
+		folders, err = readLibraryFolderSummaries(ctx, tx, audience, keys)
+		if err != nil {
+			return nil, err
+		}
+	}
+	groups, err := loadLibraryGroups(ctx, tx, audience, groupIDs, compact)
 	if err != nil {
 		return nil, err
 	}
@@ -446,6 +451,13 @@ func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 		items = append(items, domain.LibraryItem{Video: &video})
 	}
 	return items, nil
+}
+
+func loadLibraryGroups(ctx context.Context, tx *sql.Tx, audience domain.Audience, ids []int64, compact bool) (map[int64]domain.LibraryGroup, error) {
+	if compact {
+		return loadGroupCards(ctx, tx, audience, ids)
+	}
+	return loadGroups(ctx, tx, audience, ids)
 }
 
 func videosAtLocations(ctx context.Context, tx *sql.Tx, pairs [][2]any) (map[int64]domain.Video, error) {
@@ -556,4 +568,33 @@ func (s *LibraryStore) LibraryIDs(ctx context.Context, q domain.VideoQuery) (dom
 		return domain.LibrarySelection{}, nil, fmt.Errorf("cannot finish reading ids: %w", err)
 	}
 	return selection, missingTagIDs, nil
+}
+
+type groupListSQL struct{ members, count, values, items string }
+
+func libraryGroupSQL(spec listSpec, roots, progress string) groupListSQL {
+	audience := spec.scope.audience
+	if spec.storedCollections {
+		return storedGroupListSQL(roots, audience)
+	}
+	return groupListSQL{
+		members: groupDescendantsCTE(roots, audience) + `,
+		gm as materialized (select root_id as group_id, video_id, sort_key as position from gdesc)`,
+		count: `select count(*) from gm c where c.group_id = hits.group_id`,
+		values: `mv as (
+		select gm.group_id, gm.video_id, v.added_at, v.duration_ms,
+			rl.mtime as mtime, ` + fileCreatedAtExpr("rl") + ` as created_at, rl.size_bytes as size_bytes,
+			p.updated_at as played_at,
+			coalesce(p.completed, 0) as completed, coalesce(p.position_ms, 0) as position_ms
+		from gm join whole on whole.group_id = gm.group_id
+		join videos v on v.id = gm.video_id` + representativeLocationJoin("gm", audience) + progress + `)`,
+		items: `select g.id, g.id * 2 + 1, null, null,
+			max(mv.added_at), max(mv.mtime), max(mv.created_at), g.title_key,
+			sum(mv.duration_ms), sum(mv.size_bytes), max(mv.played_at), ` + groupFavoritedAtExpr("g") + `,
+			case when sum(mv.completed = 1 or mv.position_ms > 0) = 0 then 'unwatched'
+				when sum(mv.completed = 1) = count(*) then 'watched'
+				else 'inProgress' end
+		from mv join groups g on g.id = mv.group_id
+		group by g.id`,
+	}
 }

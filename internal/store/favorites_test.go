@@ -62,7 +62,7 @@ func libraryFavorites(t *testing.T, db *DB) (videos map[int64]bool, groups map[s
 	for _, item := range libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Limit: domain.MaxLimit}) {
 		if item.Group != nil {
 			groups[item.Group.Path] = item.Group.Favorite
-			for _, member := range item.Group.Members {
+			for _, member := range item.Group.Card.Previews {
 				members[member.ID] = member.Favorite
 			}
 			continue
@@ -87,7 +87,7 @@ func listedFavorites(t *testing.T, db *DB) map[int64]bool {
 
 func folderGroupFavorite(t *testing.T, db *DB, dir string) bool {
 	t.Helper()
-	page, err := db.Library().Group(context.Background(), domain.AudienceOwner, groupIDOf(t, db, dir), nil)
+	page, err := db.Library().Group(context.Background(), domain.AudienceOwner, groupIDOf(t, db, dir), nil, domain.VideoQuery{})
 	if err != nil {
 		t.Fatalf("グループ %s を読めない: %v", dir, err)
 	}
@@ -96,6 +96,7 @@ func folderGroupFavorite(t *testing.T, db *DB, dir string) bool {
 
 func TestSetFavoritesReflectsInReads(t *testing.T) {
 	db, ids := itemsFixture(t)
+	execSQL(t, db, `update videos set thumbnail_state = 'done'`)
 	solo := ids[fixturePath("/media/solo.mp4")]
 	p1 := ids[fixturePath("/media/pair/p1.mp4")]
 	show, pair := fixturePath("/media/show"), fixturePath("/media/pair")

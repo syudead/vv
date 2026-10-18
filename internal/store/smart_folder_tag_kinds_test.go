@@ -64,7 +64,7 @@ func TestDeletingATagKindMakesTheSmartFolderMatchNothing(t *testing.T) {
 	if got := smartFolderVideoIDs(t, f.db, folder); len(got) != 0 {
 		t.Errorf("中身 = %v, want 空", got)
 	}
-	page, err := f.db.SmartFolders().SmartFolderContents(ctx, domain.AudienceOwner, folder, "", domain.MaxLimit)
+	page, err := f.db.SmartFolders().SmartFolderContents(ctx, domain.AudienceOwner, folder, "", domain.MaxLimit, domain.VideoQuery{})
 	if err != nil {
 		t.Fatal(err)
 	}

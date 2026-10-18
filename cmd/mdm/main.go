@@ -121,41 +121,8 @@ func run(opts runOptions) error {
 	)
 	libraryStore := db.Library()
 
-	// Rebuild stale search keys before jobs or HTTP start; fail startup rather than serve stale
-	// results. Per-row versions make interrupted rebuilds resumable.
-	refreshed, err := libraryStore.RefreshSearchKeys(context.Background())
-	if err != nil {
-		return fmt.Errorf("cannot rebuild the search keys: %w", err)
-	}
-	logger.Info("rebuilt the search keys", slog.Int("locations", refreshed))
-
-	// Tag keys are independent of media folders, so no folder lock is needed; the count includes names
-	// and rejected names.
-	tagsRefreshed, err := db.Tags().RefreshSearchKeys(context.Background())
-	if err != nil {
-		return fmt.Errorf("cannot rebuild the tag search keys: %w", err)
-	}
-	logger.Info("rebuilt the tag search keys", slog.Int("names", tagsRefreshed))
-
-	creditsRefreshed, err := db.Credits().RefreshSearchKeys(context.Background())
-	if err != nil {
-		return fmt.Errorf("cannot rebuild the credit search keys: %w", err)
-	}
-	logger.Info("rebuilt the credit search keys", slog.Int("rows", creditsRefreshed))
-
-	// Backfill history title keys before serving searches for deleted videos; failure stops startup.
-	titleKeysFilled, err := db.Playback().RefreshWatchHistoryTitleKeys(context.Background())
-	if err != nil {
-		return fmt.Errorf("cannot fill the watch history title keys: %w", err)
-	}
-	logger.Info("filled the watch history title keys", slog.Int("entries", titleKeysFilled))
-
-	// Rebuild stale or failed folder indexes after search keys. Failure keeps the old index available
-	// and retries on the next relevant change or startup.
-	if rebuilt, err := db.ScanIndex().RefreshFolderIndex(context.Background()); err != nil {
-		logger.Warn("could not rebuild the folder index", slog.Any("error", err))
-	} else if rebuilt {
-		logger.Info("rebuilt the folder index")
+	if err := refreshLibraryInformation(context.Background(), db, logger); err != nil {
+		return err
 	}
 
 	authStore := db.Auth()
@@ -636,4 +603,48 @@ func resolveBuildInfo(release, fallbackCommit, fallbackTime string, settings []d
 		info.BuiltAt = at
 	}
 	return info
+}
+
+func refreshLibraryInformation(ctx context.Context, db *store.DB, logger *slog.Logger) error {
+	// Rebuild stale search keys before jobs or HTTP start; fail startup rather than serve stale
+	// results. Per-row versions make interrupted rebuilds resumable.
+	refreshed, err := db.Library().RefreshSearchKeys(ctx)
+	if err != nil {
+		return fmt.Errorf("cannot rebuild the search keys: %w", err)
+	}
+	logger.Info("rebuilt the search keys", slog.Int("locations", refreshed))
+
+	// Tag keys are independent of media folders, so no folder lock is needed; the count includes names
+	// and rejected names.
+	tagsRefreshed, err := db.Tags().RefreshSearchKeys(ctx)
+	if err != nil {
+		return fmt.Errorf("cannot rebuild the tag search keys: %w", err)
+	}
+	logger.Info("rebuilt the tag search keys", slog.Int("names", tagsRefreshed))
+
+	creditsRefreshed, err := db.Credits().RefreshSearchKeys(ctx)
+	if err != nil {
+		return fmt.Errorf("cannot rebuild the credit search keys: %w", err)
+	}
+	logger.Info("rebuilt the credit search keys", slog.Int("rows", creditsRefreshed))
+
+	// Backfill history title keys before serving searches for deleted videos; failure stops startup.
+	titleKeysFilled, err := db.Playback().RefreshWatchHistoryTitleKeys(ctx)
+	if err != nil {
+		return fmt.Errorf("cannot fill the watch history title keys: %w", err)
+	}
+	logger.Info("filled the watch history title keys", slog.Int("entries", titleKeysFilled))
+
+	// Rebuild stale or failed folder indexes after search keys. Failure keeps the old index available
+	// and retries on the next relevant change or startup.
+	if rebuilt, err := db.ScanIndex().RefreshFolderIndex(ctx); err != nil {
+		logger.Warn("could not rebuild the folder index", slog.Any("error", err))
+	} else if rebuilt {
+		logger.Info("rebuilt the folder index")
+	}
+	if err := db.RefreshCollectionValues(ctx); err != nil {
+		return fmt.Errorf("cannot update collection information: %w", err)
+	}
+
+	return nil
 }

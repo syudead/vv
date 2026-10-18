@@ -7,6 +7,7 @@ import {
   guestListCriteria,
   type HistoryMode,
   type ListCriteria,
+  type ListCriteriaChange,
   newSeed,
   ownerOnlySort,
   parseListCriteria,
@@ -21,7 +22,13 @@ export interface ListCriteriaState {
    * Preserve unmentioned extra parameters, including values written by an earlier apply before the
    * next render.
    */
-  apply: (next: ListCriteria, mode: HistoryMode, extra?: ExtraValues) => void;
+  apply: (
+    next: ListCriteriaChange,
+    mode: HistoryMode,
+    extra?: ExtraValues,
+    nativeOrder?: boolean,
+  ) => void;
+  nativeOrder: boolean;
 }
 
 const noExtraParams: readonly string[] = [];
@@ -35,6 +42,7 @@ export function useListCriteria(
   preferredSort: VideoSort,
   extraParams: readonly string[] = noExtraParams,
   guestParams: readonly string[] = noExtraParams,
+  nativeDefault = false,
 ): ListCriteriaState {
   const location = useLocation();
   const navigate = useNavigate();
@@ -74,13 +82,26 @@ export function useListCriteria(
     criteria,
     hasExplicitSort: parsed.hasExplicitSort,
     extra,
+    nativeOrder: nativeDefault && !parsed.hasExplicitSort,
   });
-  latest.current = { location, criteria, hasExplicitSort: parsed.hasExplicitSort, extra };
+  latest.current = {
+    location,
+    criteria,
+    hasExplicitSort: parsed.hasExplicitSort,
+    extra,
+    nativeOrder: nativeDefault && !parsed.hasExplicitSort,
+  };
 
   const write = useCallback(
-    (next: ListCriteria, mode: HistoryMode, extraValues?: ExtraValues) => {
+    (
+      next: ListCriteria,
+      mode: HistoryMode,
+      extraValues?: ExtraValues,
+      nativeOrder = latest.current.nativeOrder,
+    ) => {
       const { location: current } = latest.current;
       const params = serializeListCriteria(next);
+      if (nativeOrder) params.delete("sort");
       const written: Record<string, readonly string[]> = {};
       for (const name of extraParams) {
         const values = extraValues?.[name] ?? latest.current.extra[name] ?? [];
@@ -88,7 +109,13 @@ export function useListCriteria(
         for (const value of values) params.append(name, value);
       }
       // Remember writes immediately so multiple applies before rendering compose instead of overwriting each other.
-      latest.current = { ...latest.current, extra: written };
+      latest.current = {
+        ...latest.current,
+        criteria: next,
+        extra: written,
+        nativeOrder,
+        hasExplicitSort: params.has("sort"),
+      };
       const search = params.toString();
       navigate(
         { pathname: current.pathname, search: search === "" ? "" : `?${search}` },
@@ -104,14 +131,21 @@ export function useListCriteria(
   }, [needsSeed, guestLeftovers, location.search, write]);
 
   const apply = useCallback(
-    (next: ListCriteria, mode: HistoryMode, extraValues?: ExtraValues) => {
+    (
+      change: ListCriteriaChange,
+      mode: HistoryMode,
+      extraValues?: ExtraValues,
+      nativeOrder = latest.current.nativeOrder,
+    ) => {
       const { criteria: current, hasExplicitSort } = latest.current;
+      const next = typeof change === "function" ? change(current) : change;
       // Before pushing history, materialize the current sort in an implicit-sort URL so Back preserves the prior order after stored preferences change; retain extras.
-      if (mode === "push" && !hasExplicitSort) write(current, "replace");
-      write(next, mode, extraValues);
+      if (mode === "push" && !hasExplicitSort && !nativeDefault)
+        write(current, "replace");
+      write(next, mode, extraValues, nativeOrder);
     },
-    [write],
+    [write, nativeDefault],
   );
 
-  return { criteria, apply };
+  return { criteria, apply, nativeOrder: nativeDefault && !parsed.hasExplicitSort };
 }

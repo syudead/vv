@@ -15,8 +15,8 @@ type LibraryItems interface {
 	// LibraryIDs shares list filters but ignores sorting, cursor, and limit, returning group playback members separately.
 	LibraryIDs(ctx context.Context, q domain.VideoQuery) (selection domain.LibrarySelection, missingTagIDs []int64, err error)
 	// Missing and invisible groups both return ErrNotFound.
-	Group(ctx context.Context, audience domain.Audience, id int64, trail []int64) (domain.GroupPage, error)
-	GroupItems(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int) (domain.GroupPage, error)
+	Group(ctx context.Context, audience domain.Audience, id int64, trail []int64, query domain.VideoQuery) (domain.GroupPage, error)
+	GroupItems(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int, query domain.VideoQuery) (domain.GroupPage, error)
 	ListGroups(ctx context.Context, audience domain.Audience, query, cursor string, limit int) (domain.GroupListPage, error)
 }
 
@@ -49,7 +49,7 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 
 	// Use roots from the item read snapshot so concurrent unregistering cannot remove groups already counted by totals/cursors.
 	roots := page.Roots
-	// Fetch progress only for video items to avoid argument limits; group watch state is precomputed, but tag unions require all members.
+	// Compact group cards already carry their tag union; only ordinary videos need lookups.
 	var shown, tagged []domain.Video
 	for _, item := range page.Items {
 		if item.Video != nil {
@@ -153,21 +153,26 @@ func (l itemLookup) video(ctx context.Context, audience domain.Audience, roots [
 
 // Guest groups omit watch data and tags; automatic folders are exposed only under registered roots.
 func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots []domain.MediaFolder, group domain.LibraryGroup) (gen.LibraryGroup, bool) {
-	if len(group.Members) == 0 {
-		return gen.LibraryGroup{}, false
-	}
 	ids := make([]int64, 0, len(group.Members))
 	for _, member := range group.Members {
 		ids = append(ids, member.ID)
 	}
+	previews := groupPreviewMembers(group.Members)
+	tags := unionMemberTags(group.Members, l.tags)
+	if group.Card != nil {
+		ids, previews, tags = group.Card.VideoIDs, group.Card.Previews, group.Card.Tags
+	}
+	if len(ids) == 0 {
+		return gen.LibraryGroup{}, false
+	}
 	out := gen.LibraryGroup{
 		Id:          group.ID,
 		Name:        group.Name,
-		VideoCount:  len(group.Members),
+		VideoCount:  len(ids),
 		DurationMs:  group.DurationMs,
 		SizeBytes:   group.SizeBytes,
 		AddedAt:     group.AddedAt,
-		Previews:    l.s.folderPreviews(ctx, groupPreviewMembers(group.Members)),
+		Previews:    l.s.folderPreviews(ctx, previews),
 		OpenVideoId: group.OpenVideoID,
 		VideoIds:    ids,
 		Tags:        []gen.VideoTag{},
@@ -189,7 +194,7 @@ func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots [
 		played := *group.LastPlayedAt
 		out.LastPlayedAt = &played
 	}
-	for _, tag := range unionMemberTags(group.Members, l.tags) {
+	for _, tag := range tags {
 		out.Tags = append(out.Tags, toAPIVideoTag(tag))
 	}
 	return out, true

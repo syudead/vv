@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import type { CollectionCriteria } from "../api/collectionCriteria";
 import { type LibraryItem, toLibraryItems } from "../api/client";
 import type { GroupRef } from "../api/groups";
 import { itemKey } from "../api/libraryItems";
@@ -35,8 +36,21 @@ export function appendItems(
   return [...current, ...page.filter((item) => !known.has(itemKey(item)))];
 }
 
-async function readItems(id: number, cursor: string, signal: AbortSignal) {
-  const page = await listSmartFolderItems(id, cursor, signal);
+async function readItems(
+  id: number,
+  cursor: string,
+  signal: AbortSignal,
+  query: string,
+  criteria?: CollectionCriteria,
+) {
+  const page = await listSmartFolderItems(
+    id,
+    cursor,
+    signal,
+    undefined,
+    query,
+    ...(criteria ? [criteria] : []),
+  );
   return { items: toLibraryItems(page.items), nextCursor: page.nextCursor };
 }
 
@@ -45,11 +59,19 @@ async function readFolderThrough(
   id: number,
   atLeast: number,
   signal: AbortSignal,
+  query: string,
+  criteria?: CollectionCriteria,
 ): Promise<SmartFolderPageData> {
-  const detail = await readSmartFolderPage(id, signal);
+  const detail = await readSmartFolderPage(
+    id,
+    signal,
+    undefined,
+    query,
+    ...(criteria ? [criteria] : []),
+  );
   const { items, nextCursor } = await readThrough(
     { items: toLibraryItems(detail.items), nextCursor: detail.nextCursor },
-    (cursor) => readItems(id, cursor, signal),
+    (cursor) => readItems(id, cursor, signal, query, criteria),
     appendItems,
     atLeast,
   );
@@ -66,12 +88,23 @@ async function readFolderThrough(
  * Keep rows during event/reconnect refreshes and discard superseded reads. Any 404 becomes not-
  * found; other background failures retain content.
  */
-export function useSmartFolderPage(id: number | null) {
-  const { state, stateRef, more, read, loadMore, stop, markGone } = usePagedDetail(id, {
-    read: readFolderThrough,
-    more: readItems,
-    append: appendItems,
-  });
+export function useSmartFolderPage(
+  id: number | null,
+  query = "",
+  criteria?: CollectionCriteria,
+) {
+  const criteriaKey = JSON.stringify([query, criteria]);
+  const { state, stateRef, more, read, loadMore, stop, markGone } = usePagedDetail(
+    id,
+    {
+      read: (folderId, atLeast, signal) =>
+        readFolderThrough(folderId, atLeast, signal, query, criteria),
+      more: (folderId, cursor, signal) =>
+        readItems(folderId, cursor, signal, query, criteria),
+      append: appendItems,
+    },
+    criteriaKey,
+  );
   const reload = useCallback(() => read(false), [read]);
   const refresh = useCallback(() => read(true), [read]);
 

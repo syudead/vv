@@ -2350,7 +2350,7 @@ export interface paths {
         };
         /**
          * Return a group, its trail and first item page
-         * @description Returns LibraryGroup, the still-connected portion of trail and the first 100 items in position order. Omits invisible videos and child groups without visible videos; continue with listGroupItems. Group values count descendant videos in depth-first playback order, deduplicated at first occurrence, using public videos only for guests. Missing groups and groups with no visible videos return 404 not_found.
+         * @description Returns LibraryGroup, the still-connected portion of trail and the first 100 matching items. Omitted sort uses saved position order; temporary filters and explicit sort apply before paging and never modify positions. Omits invisible videos and child groups without visible videos; continue with listGroupItems. Group values count descendant videos in depth-first playback order, deduplicated at first occurrence, using public videos only for guests. Missing groups and groups with no visible videos return 404 not_found.
          */
         get: operations["getGroup"];
         put?: never;
@@ -2378,7 +2378,7 @@ export interface paths {
         };
         /**
          * Return the next page of group items
-         * @description Continues getGroup items after nextCursor in position order. Invalid cursors return 400 invalid_cursor. Missing or invisible groups return 404 not_found as in getGroup.
+         * @description Continues getGroup items after nextCursor using the same temporary filters, sort and seed. Omitted sort uses position order. Invalid cursors return 400 invalid_cursor. Missing or invisible groups return 404 not_found as in getGroup.
          */
         get: operations["listGroupItems"];
         put?: never;
@@ -9467,6 +9467,18 @@ export interface operations {
     getGroup: {
         parameters: {
             query?: {
+                /** @description Temporary list watch; omitted sort keeps the saved order. */
+                watch?: components["schemas"]["WatchFilter"];
+                /** @description Temporary list sort; omitted sort keeps the saved order. */
+                sort?: components["schemas"]["VideoSort"];
+                /** @description Temporary playable-only filter; does not change saved settings. */
+                playable?: boolean;
+                /** @description Temporary favorite-only filter; does not change saved settings. */
+                favorite?: boolean;
+                /** @description Stable random-sort seed; continue with the same filters, sort and seed. */
+                seed?: number;
+                /** @description Video search with the same terms, phrases, exclusions, OR and normalization as listVideos. Search all visible descendants; retain child-group cards with matching descendants. Group summaries and playback still describe all visible members. */
+                query?: string;
                 /** @description Comma-separated group IDs visited by the UI, outermost first. Response trail retains the connected parent-child chain outward from this group and drops ancestors beyond the first broken link. */
                 trail?: number[];
             };
@@ -9548,6 +9560,18 @@ export interface operations {
     listGroupItems: {
         parameters: {
             query?: {
+                /** @description Temporary list watch; omitted sort keeps the saved order. */
+                watch?: components["schemas"]["WatchFilter"];
+                /** @description Temporary list sort; omitted sort keeps the saved order. */
+                sort?: components["schemas"]["VideoSort"];
+                /** @description Temporary playable-only filter; does not change saved settings. */
+                playable?: boolean;
+                /** @description Temporary favorite-only filter; does not change saved settings. */
+                favorite?: boolean;
+                /** @description Stable random-sort seed; continue with the same filters, sort and seed. */
+                seed?: number;
+                /** @description Video search with the same terms, phrases, exclusions, OR and normalization as listVideos. Search all visible descendants; retain child-group cards with matching descendants. Group summaries and playback still describe all visible members. */
+                query?: string;
                 /** @description Opaque `nextCursor` from the previous response */
                 cursor?: string;
                 /** @description Page size */
@@ -9773,6 +9797,18 @@ export interface operations {
     getSmartFolder: {
         parameters: {
             query?: {
+                /** @description Temporary list watch; omitted sort keeps the saved order. */
+                watch?: components["schemas"]["WatchFilter"];
+                /** @description Temporary list sort; omitted sort keeps the saved order. */
+                sort?: components["schemas"]["VideoSort"];
+                /** @description Temporary playable-only filter; does not change saved settings. */
+                playable?: boolean;
+                /** @description Temporary favorite-only filter; does not change saved settings. */
+                favorite?: boolean;
+                /** @description Stable random-sort seed; continue with the same filters, sort and seed. */
+                seed?: number;
+                /** @description Temporary video search within the current saved-rule result. Uses the library video-query syntax and audience permissions. Does not change saved rules, folder summary or playback order. Search hides child-folder navigation; no matches returns an empty page, not 404. Continue with the same query. */
+                query?: string;
                 /** @description Page size excluding child folders */
                 limit?: number;
             };
@@ -9855,6 +9891,18 @@ export interface operations {
     listSmartFolderItems: {
         parameters: {
             query: {
+                /** @description Temporary list watch; omitted sort keeps the saved order. */
+                watch?: components["schemas"]["WatchFilter"];
+                /** @description Temporary list sort; omitted sort keeps the saved order. */
+                sort?: components["schemas"]["VideoSort"];
+                /** @description Temporary playable-only filter; does not change saved settings. */
+                playable?: boolean;
+                /** @description Temporary favorite-only filter; does not change saved settings. */
+                favorite?: boolean;
+                /** @description Stable random-sort seed; continue with the same filters, sort and seed. */
+                seed?: number;
+                /** @description Temporary video search within the current saved-rule result. Uses the library video-query syntax and audience permissions. Does not change saved rules, folder summary or playback order. Search hides child-folder navigation; no matches returns an empty page, not 404. Continue with the same query. */
+                query?: string;
                 /** @description Opaque `nextCursor` from the previous response */
                 cursor: string;
                 /** @description Page size */

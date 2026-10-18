@@ -3,15 +3,34 @@ package store
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"strconv"
 	"strings"
+
+	"modernc.org/sqlite"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
 // Reject cursors belonging to another list.
 const groupListCursorKind = "groups"
+
+const foldKeyFunction = "vv_fold_key"
+
+func init() {
+	err := sqlite.RegisterDeterministicScalarFunction(foldKeyFunction, 1,
+		func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+			value, ok := args[0].(string)
+			if !ok {
+				return nil, fmt.Errorf("%s: name is not text", foldKeyFunction)
+			}
+			return domain.FoldKey(value), nil
+		})
+	if err != nil {
+		panic(err)
+	}
+}
 
 type groupListCandidate struct {
 	id       int64
@@ -35,35 +54,24 @@ func (s *LibraryStore) ListGroups(ctx context.Context, audience domain.Audience,
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	candidates, err := groupListCandidates(ctx, tx, query, after)
+	candidates, err := groupListCandidates(ctx, tx, audience, query, after, limit+1)
 	if err != nil {
 		return domain.GroupListPage{}, err
 	}
-	// Fetch candidates in batches until enough audience-visible groups remain for a page and continuation.
-	var shown []groupListCandidate
-	page := domain.GroupListPage{}
-	for start := 0; start < len(candidates) && len(shown) <= limit; start += limit + 1 {
-		chunk := candidates[start:min(start+limit+1, len(candidates))]
-		ids := make([]int64, 0, len(chunk))
-		for _, candidate := range chunk {
-			ids = append(ids, candidate.id)
-		}
-		groups, err := loadGroups(ctx, tx, audience, ids)
-		if err != nil {
-			return domain.GroupListPage{}, err
-		}
-		for _, candidate := range chunk {
-			group, ok := groups[candidate.id]
-			if !ok || len(shown) > limit {
-				continue
-			}
-			shown = append(shown, candidate)
-			page.Groups = append(page.Groups, group)
-		}
+	ids := make([]int64, 0, len(candidates))
+	for _, candidate := range candidates[:min(limit, len(candidates))] {
+		ids = append(ids, candidate.id)
 	}
-	if len(shown) > limit {
-		last := shown[limit-1]
-		page.Groups = page.Groups[:limit]
+	groups, err := loadGroups(ctx, tx, audience, ids)
+	if err != nil {
+		return domain.GroupListPage{}, err
+	}
+	page := domain.GroupListPage{}
+	for _, id := range ids {
+		page.Groups = append(page.Groups, groups[id])
+	}
+	if len(candidates) > limit {
+		last := candidates[limit-1]
 		page.NextCursor = packCursor(groupListCursorKind, strconv.FormatInt(last.id, 10), last.titleKey)
 	}
 	if page.Roots, err = listMediaFolders(ctx, tx); err != nil {
@@ -90,32 +98,45 @@ func decodeGroupListCursor(cursor string) (*groupListCandidate, error) {
 	return &groupListCandidate{id: id, titleKey: parts[2]}, nil
 }
 
-// Use domain.FoldKey after reading names: SQLite lower() is ASCII-only and strings.ToLower does not unify sigma forms.
-func groupListCandidates(ctx context.Context, tx *sql.Tx, query string, after *groupListCandidate) ([]groupListCandidate, error) {
-	where, args := "", []any{}
+// Filter names and audience visibility before paging; load full members only for the returned page.
+func groupListCandidates(ctx context.Context, tx *sql.Tx, audience domain.Audience, query string, after *groupListCandidate, limit int) ([]groupListCandidate, error) {
+	where, args := ` where `+groupHasVisibleVideosCondition("g", audience), []any{}
+	if needle := domain.FoldKey(strings.TrimSpace(query)); needle != "" {
+		where += ` and instr(` + foldKeyFunction + `(name), ?) > 0`
+		args = append(args, needle)
+	}
 	if after != nil {
-		where = ` where title_key > ?1 or (title_key = ?1 and id > ?2)`
+		where += ` and (title_key, id) > (?, ?)`
 		args = append(args, after.titleKey, after.id)
 	}
-	rows, err := tx.QueryContext(ctx, `select id, name, title_key from groups`+where+` order by title_key, id`, args...)
+	args = append(args, limit)
+	rows, err := tx.QueryContext(ctx, `select id, title_key from groups g`+where+`
+		order by title_key, id limit ?`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the groups: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	needle := domain.FoldKey(strings.TrimSpace(query))
 	var out []groupListCandidate
 	for rows.Next() {
 		var candidate groupListCandidate
-		var name string
-		if err := rows.Scan(&candidate.id, &name, &candidate.titleKey); err != nil {
+		if err := rows.Scan(&candidate.id, &candidate.titleKey); err != nil {
 			return nil, fmt.Errorf("cannot read the groups: %w", err)
 		}
-		if needle == "" || strings.Contains(domain.FoldKey(name), needle) {
-			out = append(out, candidate)
-		}
+		out = append(out, candidate)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("cannot read the groups: %w", err)
 	}
 	return out, nil
+}
+
+// Visibility needs one accessible descendant, without computing every descendant's playback order.
+func groupHasVisibleVideosCondition(alias string, audience domain.Audience) string {
+	return `exists (with recursive visible_groups(id) as (
+		select ` + alias + `.id
+		union
+		select gi.child_id from visible_groups vg join group_items gi on gi.group_id = vg.id
+		where gi.child_id is not null)
+		select 1 from visible_groups vg join group_items gi on gi.group_id = vg.id
+		where gi.content_key is not null and ` + shownVideoForKeyExpr("gi.content_key", audience) + ` is not null)`
 }

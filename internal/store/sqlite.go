@@ -168,6 +168,9 @@ func (db *DB) commit(ctx context.Context, tx *sql.Tx, c *changes) error {
 		}
 		c.smartFolders = ids
 	}
+	if err := refreshCollectionValues(ctx, tx, listNow().Unix()); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}

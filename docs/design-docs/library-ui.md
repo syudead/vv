@@ -207,6 +207,35 @@ dialog.
 On the library and folder pages, changing the search, a filter, a tag or the
 sort order scrolls the page back to the top, so the new list starts from its
 first card. Returning from the player still restores the saved position.
+Home, folder, group and smart-folder pages keep the same search field in the
+top bar, including loading and empty results, at desktop and mobile widths.
+They share search, watch-state/favorite/playability filters and sort controls,
+including the compact layout on narrow screens. Guests see only playability
+filtering and sorts based on public data. Query and filter changes preserve
+the current scope. The controls share debounce, IME handling, syntax help and `q` URL state. IME input
+commits after composition ends. Changing a query, filter, sort or shuffle seed resets pagination and
+scrolls to the top; obsolete responses cannot append to the new results.
+Clearing the query restores the current scope without changing saved settings.
+Search applies the video search expression before paging direct group items;
+child-group cards remain when any visible descendant matches. Group summaries
+and playback describe all visible descendants. While any temporary condition or explicit sort is active, drag reordering
+is disabled and Select all selects the loaded matching items, including the
+full membership of selected child-group cards.
+Smart-folder pages apply the same video search expression to the videos that
+match the saved rules, including ancestor rules, before paging. Search uses
+the current viewer's searchable fields and hides child-folder navigation until
+cleared. It does not change saved rules, summaries or playback order. Both the
+detail and next-page requests carry the same `query`, `watch`, `favorite`,
+`playable`, `sort` and random `seed`; zero matches return an empty page,
+including for a guest who can still access the folder.
+Group and smart-folder sorts are temporary URL state. An omitted `sort` uses
+the saved order, exposed as `Saved order` in the shared sort menu. Clearing
+conditions keeps the chosen sort, as on home and folder pages; choosing
+`Saved order` restores group positions or the smart folder's configured sort.
+Group filters retain direct items and child cards; watch state and favorites
+apply to each displayed item, while playability and text search inspect its
+visible videos. SQL filters and sorts before taking the page. Group item IDs,
+full summaries and playback order retain their original meaning.
 The sidebar has two states (rail, drawer; see
 [Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception)).
 The rail is 68px (`sidebar-rail`) wide and shows each entry's icon above a
@@ -341,7 +370,8 @@ A folder card shows its name on up to two lines with the full name in `title`.
 The owner also sees the media folder path, truncated to favour its end, full in
 `title`. An empty registered root says to place files there and import.
 
-The library reads `GET /api/library`, which mixes folder groups in with videos;
+The library reads `GET /api/library`, which pages mixed video, group and smart-folder
+keys using [stored collection information](home.md#collection-information-and-paging);
 folder pages and their search results list videos one by one. A group card
 shows a panel with the count (`12 videos`) and total duration, a watched-share
 bar only while some members are in progress, the group name and the members'
@@ -818,6 +848,12 @@ linked to its work information. Matching uses the folded form
 matter. The description, dates, URLs and external IDs are not matched. A guest
 search matches only the title and relative path, so names a guest cannot see
 do not decide which public videos are returned.
+
+The group destination picker filters names and audience visibility in SQLite,
+then reads at most the page limit plus one candidate key. Full group members
+are loaded for the returned page, while the extra key determines continuation.
+Name matching uses Unicode case folding, preserving the picker's substring
+semantics independently of video search syntax.
 
 Only the server knows which videos and groups belong to a folder and match the
 filters, so a page that filtered locally would show a different set from

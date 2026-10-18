@@ -154,6 +154,9 @@ func findGroup(t *testing.T, items []domain.LibraryItem, name string) domain.Lib
 }
 
 func memberIDs(group domain.LibraryGroup) []int64 {
+	if group.Card != nil {
+		return group.Card.VideoIDs
+	}
 	ids := make([]int64, 0, len(group.Members))
 	for _, member := range group.Members {
 		ids = append(ids, member.ID)
@@ -213,7 +216,7 @@ func TestListLibraryShowsPartiallyMatchedMembersAsVideos(t *testing.T) {
 	if names := itemNames(items); !slices.Equal(names, []string{"group:show"}) {
 		t.Fatalf("show の検索 = %v, want [group:show]", names)
 	}
-	if got := len(items[0].Group.Members); got != 3 {
+	if got := len(memberIDs(*items[0].Group)); got != 3 {
 		t.Errorf("show の検索のグループの本数 = %d, want 3（全メンバー）", got)
 	}
 
@@ -285,7 +288,7 @@ func TestListLibraryFiltersTagsPerMember(t *testing.T) {
 }
 
 // Derive expected sort values from returned items, using fixture playback, creation and favorite times independently of SQL.
-func itemSortValue(sort domain.VideoSort, seed int64, item domain.LibraryItem, played, created, favorited map[int64]int64, groupFavorited map[string]int64) (isNull bool, num int64, text string) {
+func itemSortValue(sort domain.VideoSort, seed int64, item domain.LibraryItem, played, created, modified, favorited map[int64]int64, groupFavorited map[string]int64) (isNull bool, num int64, text string) {
 	lookup := func(value int64, ok bool) (bool, int64, string) {
 		if !ok {
 			return true, 0, ""
@@ -304,14 +307,14 @@ func itemSortValue(sort domain.VideoSort, seed int64, item domain.LibraryItem, p
 			return false, group.AddedAt.Unix(), ""
 		case domain.SortModifiedAsc, domain.SortModifiedDesc:
 			var latest int64
-			for _, member := range group.Members {
-				latest = max(latest, member.MTime.Unix())
+			for _, id := range memberIDs(*group) {
+				latest = max(latest, modified[id])
 			}
 			return false, latest, ""
 		case domain.SortCreatedAsc, domain.SortCreatedDesc:
 			var latest int64
-			for _, member := range group.Members {
-				latest = max(latest, created[member.ID])
+			for _, id := range memberIDs(*group) {
+				latest = max(latest, created[id])
 			}
 			return false, latest, ""
 		case domain.SortTitleAsc, domain.SortTitleDesc:
@@ -361,10 +364,12 @@ func TestListLibraryAllSortsPageInExpectedOrder(t *testing.T) {
 	db, ids := itemsFixture(t)
 	played := map[int64]int64{}
 	created := map[int64]int64{}
+	modified := map[int64]int64{}
 	for _, file := range itemFiles {
 		if file.progress != nil {
 			played[ids[file.path]] = file.played
 		}
+		modified[ids[file.path]] = fixedTime.Add(time.Duration(file.mtime) * time.Minute).Unix()
 		minutes := int64(file.mtime)
 		if file.created != nil {
 			minutes = *file.created
@@ -396,8 +401,8 @@ func TestListLibraryAllSortsPageInExpectedOrder(t *testing.T) {
 		want := slices.Clone(all)
 		desc := sort != domain.SortRandom && sort[len(sort)-4:] == "Desc"
 		slices.SortFunc(want, func(a, b domain.LibraryItem) int {
-			aNull, aNum, aText := itemSortValue(sort, seed, a, played, created, favorited, groupFavorited)
-			bNull, bNum, bText := itemSortValue(sort, seed, b, played, created, favorited, groupFavorited)
+			aNull, aNum, aText := itemSortValue(sort, seed, a, played, created, modified, favorited, groupFavorited)
+			bNull, bNum, bText := itemSortValue(sort, seed, b, played, created, modified, favorited, groupFavorited)
 			if aNull != bNull {
 				if aNull {
 					return 1
@@ -457,7 +462,7 @@ func TestListLibraryWatchStateMatchesDomain(t *testing.T) {
 			var state domain.WatchState
 			if item.Group != nil {
 				state = item.Group.WatchState
-				if filter == domain.WatchWatched && item.Group.OpenVideoID != item.Group.Members[0].ID {
+				if filter == domain.WatchWatched && item.Group.OpenVideoID != memberIDs(*item.Group)[0] {
 					t.Errorf("完了した %s の開くメンバー = %d, want 最初", item.Group.Name, item.Group.OpenVideoID)
 				}
 			} else {
@@ -496,9 +501,13 @@ func TestListLibraryWatchStateMatchesDomain(t *testing.T) {
 
 func groupProgress(t *testing.T, db *DB, group domain.LibraryGroup) []*domain.Progress {
 	t.Helper()
-	out := make([]*domain.Progress, 0, len(group.Members))
-	for _, member := range group.Members {
-		if p, err := db.Playback().Progress(context.Background(), member.ContentKey); err == nil {
+	out := make([]*domain.Progress, 0, len(memberIDs(group)))
+	for _, id := range memberIDs(group) {
+		var key string
+		if err := db.sql.QueryRow(`select content_key from videos where id = ?`, id).Scan(&key); err != nil {
+			t.Fatal(err)
+		}
+		if p, err := db.Playback().Progress(context.Background(), key); err == nil {
 			out = append(out, &p)
 		} else {
 			out = append(out, nil)
@@ -592,18 +601,18 @@ func TestListLibraryForGuestCountsPublicMembers(t *testing.T) {
 	items = libraryPages(t, db, domain.AudienceGuest, domain.VideoQuery{Query: "show"})
 	if names := itemNames(items); !slices.Equal(names, []string{"group:show"}) {
 		t.Errorf("ゲストの show の検索 = %v, want [group:show]", names)
-	} else if got := len(items[0].Group.Members); got != 2 {
+	} else if got := len(memberIDs(*items[0].Group)); got != 2 {
 		t.Errorf("ゲストの show の検索のグループの本数 = %d, want 2", got)
 	}
 	if names := itemNames(libraryPages(t, db, domain.AudienceGuest, domain.VideoQuery{Query: "ep2"})); len(names) != 0 {
 		t.Errorf("ゲストの ep2 の検索 = %v, want 空", names)
 	}
 
-	pair, err := db.Library().Group(ctx, domain.AudienceGuest, groupIDOf(t, db, fixturePath("/media/pair")), nil)
+	pair, err := db.Library().Group(ctx, domain.AudienceGuest, groupIDOf(t, db, fixturePath("/media/pair")), nil, domain.VideoQuery{})
 	if err != nil || len(pair.Group.Members) != 1 {
 		t.Errorf("ゲストの pair（公開1本）= %+v, %v", pair.Group, err)
 	}
-	group, err := db.Library().Group(ctx, domain.AudienceGuest, groupIDOf(t, db, fixturePath("/media/show")), nil)
+	group, err := db.Library().Group(ctx, domain.AudienceGuest, groupIDOf(t, db, fixturePath("/media/show")), nil, domain.VideoQuery{})
 	if err != nil || len(group.Group.Members) != 2 || len(group.Items) != 2 {
 		t.Errorf("ゲストの show = %+v, %v", group, err)
 	}

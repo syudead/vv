@@ -8,12 +8,12 @@ import {
   type Zoom,
 } from "../preferences/viewPreferences";
 import {
-  clearConditions,
   criteriaKey,
   type HistoryMode,
-  type ListCriteria,
+  type ListCriteriaChange,
   newSeed,
 } from "../videoList/listCriteria";
+import { useListActions } from "../videoList/useListActions";
 import { useListCriteria } from "../videoList/useListCriteria";
 import { useScrollTopOnChange } from "../videoList/useScrollTopOnChange";
 
@@ -30,45 +30,22 @@ export function useConditions() {
   }, []);
 
   const update = useCallback(
-    (next: ListCriteria, mode: HistoryMode = "push") => apply(next, mode),
+    (next: ListCriteriaChange, mode: HistoryMode = "push") => apply(next, mode),
     [apply],
   );
 
   const changeSort = useCallback(
     (next: VideoSort) => {
-      update({
-        ...criteria,
+      update((current) => ({
+        ...current,
         sort: next,
-        seed: next === "random" ? newSeed(criteria.seed) : undefined,
-      });
+        seed: next === "random" ? newSeed(current.seed) : undefined,
+      }));
       savePreferences({ ...preferences, sort: next });
     },
-    [criteria, preferences, savePreferences, update],
+    [preferences, savePreferences, update],
   );
-  const shuffle = useCallback(
-    () => update({ ...criteria, seed: newSeed(criteria.seed) }),
-    [criteria, update],
-  );
-  const changeWatch = useCallback(
-    (next: ListCriteria["watch"]) => update({ ...criteria, watch: next }),
-    [criteria, update],
-  );
-  const changePlayable = useCallback(
-    (next: boolean) => update({ ...criteria, playable: next }),
-    [criteria, update],
-  );
-  const changeFavorite = useCallback(
-    (next: boolean) => update({ ...criteria, favorite: next }),
-    [criteria, update],
-  );
-  const commitQuery = useCallback(
-    (next: string, mode: HistoryMode) => update({ ...criteria, query: next }, mode),
-    [criteria, update],
-  );
-  const clearAll = useCallback(
-    () => update(clearConditions(criteria)),
-    [criteria, update],
-  );
+  const actions = useListActions(update);
   const changeZoom = useCallback(
     (next: Zoom) => savePreferences({ ...preferences, zoom: next }),
     [preferences, savePreferences],
@@ -79,12 +56,7 @@ export function useConditions() {
     zoom: preferences.zoom,
     searchField,
     changeSort,
-    shuffle,
-    changeWatch,
-    changePlayable,
-    changeFavorite,
-    commitQuery,
-    clearAll,
+    ...actions,
     changeZoom,
   };
 }

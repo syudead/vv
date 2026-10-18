@@ -109,3 +109,23 @@ func TestListGroupsRejectsUnreadableCursor(t *testing.T) {
 		}
 	}
 }
+
+func TestGroupListCandidatesLimitsVisibleMatches(t *testing.T) {
+	db, _ := itemsFixture(t)
+	insertGroup(t, db, "Trip 1 hidden", "missing")
+	first := insertGroup(t, db, "Trip 2", itemKeyOf("/media/solo.mp4"))
+	insertGroup(t, db, "Trip 3", itemKeyOf("/media/mixed/x.mp4"))
+	ctx := context.Background()
+	tx, err := db.read.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	got, err := groupListCandidates(ctx, tx, domain.AudienceOwner, "TRIP", nil, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].id != first {
+		t.Fatalf("candidates = %+v, want only %d", got, first)
+	}
+}

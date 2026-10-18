@@ -27,7 +27,10 @@ const (
 
 // Every scope is restricted to audience-visible locations.
 type locationScope struct {
-	kind locationScopeKind
+	// Restrict collection reads before selecting representative locations.
+	withinGroup  int64
+	withinVideos string
+	kind         locationScopeKind
 	// Absolute folder path; unused for the library scope.
 	dir      string
 	audience domain.Audience
@@ -46,11 +49,21 @@ func folderScope(dir string, scope domain.FolderScope, audience domain.Audience)
 
 func (s locationScope) condition(alias string) (string, []any) {
 	visible := visibleLocationCondition(alias, s.audience)
+	var scopeArgs []any
+	if s.withinGroup != 0 {
+		visible += ` and ` + alias + `.video_id in (select video_id from group_members where group_id = ? and audience = ?)`
+		scopeArgs = append(scopeArgs, s.withinGroup, audienceValue(s.audience))
+	}
+	if s.withinVideos != "" {
+		visible += ` and ` + alias + `.video_id in (select value from json_each(?))`
+		scopeArgs = append(scopeArgs, s.withinVideos)
+	}
 	if s.kind == scopeLibrary {
-		return visible, nil
+		return visible, scopeArgs
 	}
 	prefix := folderPrefix(s.dir)
-	inFolder, args := folderPrefixCondition(alias, prefix)
+	inFolder, folderArgs := folderPrefixCondition(alias, prefix)
+	args := append(scopeArgs, folderArgs...)
 	clause := visible + ` and ` + inFolder
 	if s.kind == scopeDirect {
 		clause += ` and ` + directChildCondition(alias)
@@ -60,6 +73,8 @@ func (s locationScope) condition(alias string) (string, []any) {
 }
 
 type listSpec struct {
+	// Optional JSON IDs constrain a transient search to an already resolved collection.
+	withinVideos string
 	scope        locationScope
 	expr         domain.SearchExpr
 	watch        domain.WatchFilter
@@ -83,12 +98,14 @@ type listSpec struct {
 	// Smart-folder predicates use owner search semantics even for guests.
 	ownerSearch bool
 	// Use the precomputed smart_base user key when supplied, avoiding repeated derivation.
-	userKeyColumn string
-	smartFolders  []librarySmartFolder
-	sort          domain.VideoSort
-	seed          int64
-	cursor        string
-	limit         int
+	userKeyColumn       string
+	smartFolders        []librarySmartFolder
+	storedCollections   bool
+	includeSmartFolders bool
+	sort                domain.VideoSort
+	seed                int64
+	cursor              string
+	limit               int
 }
 
 // ListVideos uses keyset pagination and one snapshot for tag existence, counts and rows; callers validate audience filter permissions.

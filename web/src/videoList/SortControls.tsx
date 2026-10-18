@@ -10,6 +10,7 @@ import {
   FileClock,
   HardDrive,
   History,
+  ListOrdered,
   type LucideIcon,
   Shuffle,
   Timer,
@@ -75,7 +76,24 @@ function useSortOptions(): typeof sortOptions {
     : sortOptions.filter((option) => !ownerOnlySortKinds.includes(option.kind));
 }
 
+function useSortChoices(nativeOrder?: NativeOrder): SortOption<VideoSort | "saved">[] {
+  const choices: SortOption<VideoSort | "saved">[] = useSortOptions().map((option) => ({
+    value: option.value,
+    label: sortKindLabel(option.kind),
+    icon: option.icon,
+  }));
+  if (nativeOrder)
+    choices.unshift({ value: "saved", label: t.list.sort.savedOrder, icon: ListOrdered });
+  return choices;
+}
+
+export interface NativeOrder {
+  active: boolean;
+  onSelect: () => void;
+}
+
 export interface SortControlProps {
+  nativeOrder?: NativeOrder;
   sort: VideoSort;
   /** The caller creates a fresh seed when random is selected. */
   onSortChange: (value: VideoSort) => void;
@@ -83,8 +101,14 @@ export interface SortControlProps {
   disabled?: boolean;
 }
 
-export function SortMenu({ sort, onSortChange, onShuffle, disabled }: SortControlProps) {
-  const options = useSortOptions();
+export function SortMenu({
+  sort,
+  onSortChange,
+  onShuffle,
+  disabled,
+  nativeOrder,
+}: SortControlProps) {
+  const options = useSortChoices(nativeOrder);
   const active = sortKindOf(sort);
   const direction = sortDirection(sort);
   const toggleLabel =
@@ -92,34 +116,41 @@ export function SortMenu({ sort, onSortChange, onShuffle, disabled }: SortContro
 
   return (
     <SortMenuView
-      label={sortKindLabel(active.kind)}
-      currentLabel={t.list.sort.current(sortKindLabel(active.kind))}
+      label={nativeOrder?.active ? t.list.sort.savedOrder : sortKindLabel(active.kind)}
+      currentLabel={t.list.sort.current(
+        nativeOrder?.active ? t.list.sort.savedOrder : sortKindLabel(active.kind),
+      )}
       heading={t.list.sort.heading}
-      value={active.initial}
-      options={options.map((option) => ({
-        value: option.value,
-        label: sortKindLabel(option.kind),
-        icon: option.icon,
-      }))}
+      value={nativeOrder?.active ? "saved" : active.initial}
+      options={options}
       onValueChange={(value) => {
+        if (value === "saved") {
+          nativeOrder?.onSelect();
+          return;
+        }
         const next = sortKindOf(value);
-        if (next.kind !== active.kind) onSortChange(next.initial);
+        if (nativeOrder?.active || next.kind !== active.kind) onSortChange(next.initial);
       }}
-      toggle={{
-        label: toggleLabel,
-        icon:
-          direction === undefined ? (
-            <Dices />
-          ) : direction === "desc" ? (
-            <ArrowDownWideNarrow />
-          ) : (
-            <ArrowUpNarrowWide />
-          ),
-        onClick: () => {
-          if (direction === undefined) onShuffle();
-          else onSortChange(withDirection(sort, direction === "asc" ? "desc" : "asc"));
-        },
-      }}
+      toggle={
+        nativeOrder?.active
+          ? undefined
+          : {
+              label: toggleLabel,
+              icon:
+                direction === undefined ? (
+                  <Dices />
+                ) : direction === "desc" ? (
+                  <ArrowDownWideNarrow />
+                ) : (
+                  <ArrowUpNarrowWide />
+                ),
+              onClick: () => {
+                if (direction === undefined) onShuffle();
+                else
+                  onSortChange(withDirection(sort, direction === "asc" ? "desc" : "asc"));
+              },
+            }
+      }
       disabled={disabled}
     />
   );
@@ -131,10 +162,11 @@ export function CompactSortControls({
   onShuffle,
   disabled,
   name,
+  nativeOrder,
 }: SortControlProps & {
   /** Radio group name must be unique on the page. */ name: string;
 }) {
-  const options = useSortOptions();
+  const options = useSortChoices(nativeOrder);
   const active = sortKindOf(sort);
   const direction = sortDirection(sort);
 
@@ -142,16 +174,15 @@ export function CompactSortControls({
     <CompactSortView
       name={name}
       heading={t.list.sort.heading}
-      value={active.initial}
-      options={options.map((option) => ({
-        value: option.value,
-        label: sortKindLabel(option.kind),
-        icon: option.icon,
-      }))}
-      onValueChange={(value) => onSortChange(value)}
+      value={nativeOrder?.active ? "saved" : active.initial}
+      options={options}
+      onValueChange={(value) => {
+        if (value === "saved") nativeOrder?.onSelect();
+        else onSortChange(value);
+      }}
       disabled={disabled}
     >
-      {direction === undefined ? (
+      {nativeOrder?.active ? null : direction === undefined ? (
         <Button variant="outline" size="sm" onClick={onShuffle} disabled={disabled}>
           <Dices aria-hidden="true" />
           {t.list.sort.shuffle}
