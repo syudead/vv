@@ -29,6 +29,7 @@ var workInfoProblemReasons = map[domain.WorkInfoProblem]gen.ErrorReason{
 	domain.WorkInfoInvalidLanguage:   gen.ErrorReasonWorkInfoInvalidLanguage,
 	domain.WorkInfoDuplicate:         gen.ErrorReasonWorkInfoDuplicate,
 	domain.WorkInfoEmpty:             gen.ErrorReasonWorkInfoEmpty,
+	domain.WorkInfoOutOfRange:        gen.ErrorReasonWorkInfoOutOfRange,
 }
 
 var creditNotFoundReasons = map[domain.CreditKind]gen.ErrorReason{

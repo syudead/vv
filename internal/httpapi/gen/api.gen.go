@@ -654,6 +654,7 @@ const (
 	ErrorReasonWorkInfoInvalidDate           ErrorReason = "work_info_invalid_date"
 	ErrorReasonWorkInfoInvalidLanguage       ErrorReason = "work_info_invalid_language"
 	ErrorReasonWorkInfoInvalidUrl            ErrorReason = "work_info_invalid_url"
+	ErrorReasonWorkInfoOutOfRange            ErrorReason = "work_info_out_of_range"
 	ErrorReasonWorkInfoTooLong               ErrorReason = "work_info_too_long"
 	ErrorReasonWorkInfoTooMany               ErrorReason = "work_info_too_many"
 	ErrorReasonWorkflowRejected              ErrorReason = "workflow_rejected"
@@ -825,6 +826,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonWorkInfoInvalidLanguage:
 		return true
 	case ErrorReasonWorkInfoInvalidUrl:
+		return true
+	case ErrorReasonWorkInfoOutOfRange:
 		return true
 	case ErrorReasonWorkInfoTooLong:
 		return true
@@ -1083,6 +1086,51 @@ func (e OrganizeRefKind) Valid() bool {
 	case OrganizeRefKindGroup:
 		return true
 	case OrganizeRefKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PersonProfileBloodType.
+const (
+	A  PersonProfileBloodType = "A"
+	AB PersonProfileBloodType = "AB"
+	B  PersonProfileBloodType = "B"
+	O  PersonProfileBloodType = "O"
+)
+
+// Valid indicates whether the value is a known member of the PersonProfileBloodType enum.
+func (e PersonProfileBloodType) Valid() bool {
+	switch e {
+	case A:
+		return true
+	case AB:
+		return true
+	case B:
+		return true
+	case O:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PersonProfileGender.
+const (
+	Female PersonProfileGender = "female"
+	Male   PersonProfileGender = "male"
+	Other  PersonProfileGender = "other"
+)
+
+// Valid indicates whether the value is a known member of the PersonProfileGender enum.
+func (e PersonProfileGender) Valid() bool {
+	switch e {
+	case Female:
+		return true
+	case Male:
+		return true
+	case Other:
 		return true
 	default:
 		return false
@@ -2576,7 +2624,7 @@ type CreditIdRef struct {
 	Id int64 `json:"id"`
 }
 
-// CreditInput Person or organization creation body; parentId is organization-only.
+// CreditInput Person or organization creation body; parentId is organization-only and profile person-only.
 type CreditInput struct {
 	Aliases     *[]Alias      `json:"aliases,omitempty"`
 	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
@@ -2584,6 +2632,9 @@ type CreditInput struct {
 
 	// ParentId Parent organization ID; sending it for a person returns 400 invalid_request.
 	ParentId *int64 `json:"parentId,omitempty"`
+
+	// Profile Person-only profile; sending it for an organization returns 400 invalid_request.
+	Profile *PersonProfile `json:"profile,omitempty"`
 }
 
 // CreditMergeRequest defines model for CreditMergeRequest.
@@ -2600,6 +2651,9 @@ type CreditPatch struct {
 
 	// ParentId Parent organization ID; null detaches it. Sending this for a person returns 400 invalid_request.
 	ParentId *int64 `json:"parentId,omitempty"`
+
+	// Profile Person-only; sending it for an organization returns 400 invalid_request. A profile that changes nothing writes nothing.
+	Profile *PersonProfilePatch `json:"profile,omitempty"`
 }
 
 // CreditRef Reference to one person or organization; name is its current name.
@@ -3428,6 +3482,9 @@ type Person struct {
 	Id          int64        `json:"id"`
 	Name        string       `json:"name"`
 
+	// Profile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
+	Profile PersonProfile `json:"profile"`
+
 	// VideoCount Visible videos linked to this person in any role.
 	VideoCount int `json:"videoCount"`
 }
@@ -3453,6 +3510,102 @@ type PersonMergeResponse struct {
 
 	// Person One person.
 	Person Person `json:"person"`
+}
+
+// PersonProfile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
+type PersonProfile struct {
+	// Bio 1-5,000 code points; line breaks are kept.
+	Bio *string `json:"bio,omitempty"`
+
+	// BirthDate YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.
+	//
+	// Examples: 1990, 1990-05, 1990-05-17
+	BirthDate *string `json:"birthDate,omitempty"`
+
+	// Birthplace 1-200 code points.
+	Birthplace *string                 `json:"birthplace,omitempty"`
+	BloodType  *PersonProfileBloodType `json:"bloodType,omitempty"`
+
+	// BustCm 30-300.
+	BustCm *int `json:"bustCm,omitempty"`
+
+	// CareerEndYear 1900-9999; not before careerStartYear.
+	CareerEndYear *int `json:"careerEndYear,omitempty"`
+
+	// CareerStartYear 1900-9999.
+	CareerStartYear *int `json:"careerStartYear,omitempty"`
+
+	// Cup 1-3 Latin letters, stored upper case.
+	Cup *string `json:"cup,omitempty"`
+
+	// DeathDate Same format as birthDate; not before it at the precision both share.
+	DeathDate *string              `json:"deathDate,omitempty"`
+	Gender    *PersonProfileGender `json:"gender,omitempty"`
+
+	// HeightCm 50-300.
+	HeightCm *int `json:"heightCm,omitempty"`
+
+	// HipsCm 30-300.
+	HipsCm *int `json:"hipsCm,omitempty"`
+
+	// Links HTTP(S) URLs in order, at most 20 and unique; omitted when empty.
+	Links *[]string `json:"links,omitempty"`
+
+	// WaistCm 30-300.
+	WaistCm *int `json:"waistCm,omitempty"`
+}
+
+// PersonProfileBloodType defines model for PersonProfile.BloodType.
+type PersonProfileBloodType string
+
+// PersonProfileGender defines model for PersonProfile.Gender.
+type PersonProfileGender string
+
+// PersonProfilePatch Profile update: each property present replaces that field, null or an empty value clears it, and links replaces the list.
+type PersonProfilePatch struct {
+	// Bio 1-5,000 code points; line breaks are kept.
+	Bio *string `json:"bio,omitempty"`
+
+	// BirthDate YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.
+	//
+	// Examples: 1990, 1990-05, 1990-05-17
+	BirthDate *string `json:"birthDate,omitempty"`
+
+	// Birthplace 1-200 code points.
+	Birthplace *string `json:"birthplace,omitempty"`
+
+	// BloodType A, B, O or AB.
+	BloodType *string `json:"bloodType,omitempty"`
+
+	// BustCm 30-300.
+	BustCm *int `json:"bustCm,omitempty"`
+
+	// CareerEndYear 1900-9999; not before careerStartYear.
+	CareerEndYear *int `json:"careerEndYear,omitempty"`
+
+	// CareerStartYear 1900-9999.
+	CareerStartYear *int `json:"careerStartYear,omitempty"`
+
+	// Cup 1-3 Latin letters, stored upper case.
+	Cup *string `json:"cup,omitempty"`
+
+	// DeathDate Same format as birthDate; not before it at the precision both share.
+	DeathDate *string `json:"deathDate,omitempty"`
+
+	// Gender female, male or other.
+	Gender *string `json:"gender,omitempty"`
+
+	// HeightCm 50-300.
+	HeightCm *int `json:"heightCm,omitempty"`
+
+	// HipsCm 30-300.
+	HipsCm *int `json:"hipsCm,omitempty"`
+
+	// Links HTTP(S) URLs in order, at most 20 and unique; omitted when empty.
+	Links *[]string `json:"links,omitempty"`
+
+	// WaistCm 30-300.
+	WaistCm *int `json:"waistCm,omitempty"`
 }
 
 // Playlist PlaylistSummary fields plus visible items.

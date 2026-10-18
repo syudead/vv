@@ -152,17 +152,13 @@ func (s *server) createCredit(w http.ResponseWriter, r *http.Request, api credit
 	if !ok {
 		return
 	}
-	// People reject parentId even when explicitly null.
-	if present("parentId") && api.kind != domain.CreditOrganization {
-		s.invalidRequest(w, "parentId applies to organizations only.")
+	input, message, ok := creditInputOf(body, present, api.kind)
+	if !ok {
+		s.invalidRequest(w, message)
 		return
 	}
 	if !s.creditsConfigured(w) {
 		return
-	}
-	input := domain.CreditInput{
-		Name: body.Name, Aliases: fromAPIAliases(body.Aliases), ExternalIDs: fromAPIExternalIDs(body.ExternalIds),
-		ParentID: body.ParentId,
 	}
 	credit, err := s.credits.Create(r.Context(), api.kind, input)
 	if err != nil {
@@ -170,6 +166,24 @@ func (s *server) createCredit(w http.ResponseWriter, r *http.Request, api credit
 		return
 	}
 	s.writeCreditBody(w, http.StatusCreated, api.one(credit))
+}
+
+// creditInputOf is shared with external create requests; parentId and profile are rejected for the other kind even when null.
+func creditInputOf(body gen.CreditInput, present func(name string) bool, kind domain.CreditKind) (domain.CreditInput, string, bool) {
+	if present("parentId") && kind != domain.CreditOrganization {
+		return domain.CreditInput{}, "parentId applies to organizations only.", false
+	}
+	if present("profile") && kind != domain.CreditPerson {
+		return domain.CreditInput{}, "profile applies to people only.", false
+	}
+	input := domain.CreditInput{
+		Name: body.Name, Aliases: fromAPIAliases(body.Aliases), ExternalIDs: fromAPIExternalIDs(body.ExternalIds),
+		ParentID: body.ParentId,
+	}
+	if body.Profile != nil {
+		input.Profile = fromAPIProfile(*body.Profile)
+	}
+	return input, "", true
 }
 
 func (s *server) updateCredit(w http.ResponseWriter, r *http.Request, api creditKindAPI, id int64) {
@@ -188,19 +202,20 @@ func (s *server) updateCredit(w http.ResponseWriter, r *http.Request, api credit
 // PATCH distinguishes omitted fields from null: null lists clear, null parentId removes the parent, and null name is invalid.
 func (s *server) readCreditPatch(w http.ResponseWriter, r *http.Request, kind domain.CreditKind) (domain.CreditPatch, bool) {
 	var body gen.CreditPatch
-	present, ok := s.readJSONBodyFields(w, r, &body)
+	fields, ok := s.readJSONBodyProperties(w, r, &body)
 	if !ok {
 		return domain.CreditPatch{}, false
 	}
-	patch, message, ok := creditPatchOf(body, present, kind)
+	patch, message, ok := creditPatchOf(body, fields, kind)
 	if !ok {
 		s.invalidRequest(w, message)
 	}
 	return patch, ok
 }
 
-// creditPatchOf is shared with external update requests and receives top-level presence even for null.
-func creditPatchOf(body gen.CreditPatch, present func(name string) bool, kind domain.CreditKind) (domain.CreditPatch, string, bool) {
+// creditPatchOf is shared with external update requests and receives the raw top-level properties to see nulls.
+func creditPatchOf(body gen.CreditPatch, fields bodyFields, kind domain.CreditKind) (domain.CreditPatch, string, bool) {
+	present := fields.has
 	patch := domain.CreditPatch{Name: body.Name}
 	if present("name") && body.Name == nil {
 		return domain.CreditPatch{}, "name cannot be null.", false
@@ -219,24 +234,57 @@ func creditPatchOf(body gen.CreditPatch, present func(name string) bool, kind do
 		}
 		patch.ParentSet, patch.ParentID = true, body.ParentId
 	}
+	if present("profile") {
+		profile, message, ok := profilePatchOf(body.Profile, fields, kind)
+		if !ok {
+			return domain.CreditPatch{}, message, false
+		}
+		patch.Profile = profile
+	}
+	return patch, "", true
+}
+
+// profilePatchOf lists the profile properties present, including nulls, so each one replaces or clears its field.
+func profilePatchOf(body *gen.PersonProfilePatch, fields bodyFields, kind domain.CreditKind) (*domain.PersonProfilePatch, string, bool) {
+	if kind != domain.CreditPerson {
+		return nil, "profile applies to people only.", false
+	}
+	raw, _ := jsonProperty(fields, "profile")
+	var properties bodyFields
+	if body == nil || json.Unmarshal(raw, &properties) != nil {
+		return nil, "profile must be an object; send null for a property to clear it.", false
+	}
+	patch := &domain.PersonProfilePatch{Values: fromAPIProfilePatch(*body)}
+	for name := range properties {
+		for _, field := range domain.PersonProfileFields {
+			if strings.EqualFold(name, string(field)) {
+				patch.Fields = append(patch.Fields, field)
+			}
+		}
+	}
 	return patch, "", true
 }
 
 // Property-presence matching must use EqualFold to mirror encoding/json field matching.
 func (s *server) readJSONBodyFields(w http.ResponseWriter, r *http.Request, target any) (func(name string) bool, bool) {
+	fields, ok := s.readJSONBodyProperties(w, r, target)
+	if !ok {
+		return nil, false
+	}
+	return fields.has, true
+}
+
+func (s *server) readJSONBodyProperties(w http.ResponseWriter, r *http.Request, target any) (bodyFields, bool) {
 	raw, ok := s.readJSONBodyRaw(w, r, target)
 	if !ok {
 		return nil, false
 	}
-	var fields map[string]json.RawMessage
+	var fields bodyFields
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		s.invalidBody(w, err, "Cannot parse the JSON body.")
 		return nil, false
 	}
-	return func(name string) bool {
-		_, present := jsonProperty(fields, name)
-		return present
-	}, true
+	return fields, true
 }
 
 // Retain raw body bytes to recover field presence lost by generated types.
@@ -330,7 +378,8 @@ func (s *server) writeCreditBody(w http.ResponseWriter, status int, body any) {
 func toAPIPerson(credit domain.Credit) gen.Person {
 	return gen.Person{
 		Id: credit.ID, Name: credit.Name, Aliases: toAPIAliases(credit.Aliases),
-		ExternalIds: toAPIExternalIDs(credit.ExternalIDs), VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,
+		ExternalIds: toAPIExternalIDs(credit.ExternalIDs), Profile: toAPIProfile(credit.Profile),
+		VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,
 	}
 }
 

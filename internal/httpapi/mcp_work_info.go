@@ -62,9 +62,13 @@ func (t *mcpTools) registerWorkInfo(server *mcp.Server) {
 }
 
 func (t *mcpTools) registerCreditTools(server *mcp.Server, kind mcpCreditTools, destructive, notDestructive *bool) {
-	parent := ""
+	parent, profile, profileUpdate := "", "", ""
 	if kind.one == "organization" {
 		parent = " parentId sets the parent organization."
+	} else {
+		profile = " profile holds gender, birthDate and deathDate (YYYY, YYYY-MM or YYYY-MM-DD), birthplace, heightCm, " +
+			"bustCm, waistCm, hipsCm, cup, bloodType, careerStartYear, careerEndYear, bio and up to 20 links."
+		profileUpdate = profile + " Inside profile, each property given replaces that field and null clears it."
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name: kind.list,
@@ -83,7 +87,7 @@ func (t *mcpTools) registerCreditTools(server *mcp.Server, kind mcpCreditTools, 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: kind.create,
 		Description: "Create one " + kind.one + " with a name, aliases and external IDs (POST /api/v1" + kind.path + ")." +
-			parent + " An external ID held by another " + kind.one + " is a conflict with reason external_id_taken; " +
+			parent + profile + " An external ID held by another " + kind.one + " is a conflict with reason external_id_taken; " +
 			"look that " + kind.one + " up by the external ID and use its id instead. Each call creates a new " + kind.one + ".",
 		InputSchema: inputSchemaFor[extgen.CreditInput](kind.create),
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: notDestructive, IdempotentHint: false},
@@ -92,8 +96,8 @@ func (t *mcpTools) registerCreditTools(server *mcp.Server, kind mcpCreditTools, 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: kind.update,
 		Description: "Change the " + kind.one + " named by id (POST /api/v1" + kind.path + "/update). Only the properties given " +
-			"change; a given list replaces the stored one and null empties it." + parent + " Up to 50 aliases and 20 " +
-			"external IDs.",
+			"change; a given list replaces the stored one and null empties it." + parent + profileUpdate +
+			" Up to 50 aliases and 20 external IDs.",
 		InputSchema: inputSchemaFor[extgen.CreditUpdateRequest](kind.update),
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: destructive, IdempotentHint: true},
 	}, t.post(kind.path+"/update"))

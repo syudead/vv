@@ -584,13 +584,15 @@ that does not exist returns `404` (`person_not_found` or
 
 People live under `/api/v1/people` and organizations under
 `/api/v1/organizations`, with the same five operations. An organization also
-has `parent`, which is `null` at the root, and accepts `parentId`.
+has `parent`, which is `null` at the root, and accepts `parentId`. A person also
+has `profile`, which is `{}` when nothing is known, and accepts it on create and
+update.
 
 | Operation | Request | Response |
 | --- | --- | --- |
 | List | `GET …?q=&sort=&cursor=&limit=`, as [List tags](#list-tags) | `{ items, total, totalAll, nextCursor? }` |
 | Look up | `GET …?source=example&externalId=42` | The one entity holding that external ID in `items`, or empty `items` |
-| Create | `POST …` with `{ name, aliases?, externalIds?, parentId? }` | `200` and the entity |
+| Create | `POST …` with `{ name, aliases?, externalIds?, parentId?, profile? }` | `200` and the entity |
 | Update | `POST …/update` with `{ id, …fields }` | `200` and the entity; absent fields stay, a given list replaces the stored one, `null` empties it |
 | Merge | `POST …/merge` with `{ targetId, sourceIds }` | `{ person or organization, notFoundIds }`; sources become aliases of the target |
 | Delete | `POST …/delete` with `{ ids }` | `{ deletedIds, notFoundIds }` in `ids` order |
@@ -601,6 +603,15 @@ has `parent`, which is `null` at the root, and accepts `parentId`.
 - `sourceIds` and `ids` take 1 to 20000 ids; outside that range is `400`
   (`work_info_too_many`, `field`, `limit`). A merge whose sources include
   `targetId` is `400` (`merge_same_person` or `merge_same_organization`).
+- `profile` holds `gender`, `birthDate`, `deathDate`, `birthplace`,
+  `heightCm`, `bustCm`, `waistCm`, `hipsCm`, `cup`, `bloodType`,
+  `careerStartYear`, `careerEndYear`, `bio` and `links`. On update, each
+  property given replaces that field and `null` clears it. A value out of range
+  or format is `400` with a `work_info_*` reason and `field: profile.<name>`;
+  the ranges are in [People: profiles](../design-docs/people.md#what-a-valid-profile-is).
+  `profile` sent for an organization is `400` (`invalid_request`).
+- A merge fills each profile field the target lacks from the first source in
+  `sourceIds` that has it.
 
 ### Example: write what a scraper found
 

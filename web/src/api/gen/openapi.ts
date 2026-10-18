@@ -3662,10 +3662,83 @@ export interface components {
             aliases: components["schemas"]["Alias"][];
             /** @description Ordered by (source, value). */
             externalIds: components["schemas"]["ExternalId"][];
+            profile: components["schemas"]["PersonProfile"];
             /** @description Visible videos linked to this person in any role. */
             videoCount: number;
             /** Format: date-time */
             createdAt: string;
+        };
+        /** @description A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>. */
+        PersonProfile: {
+            /** @enum {string} */
+            gender?: "female" | "male" | "other";
+            /**
+             * @description YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.
+             * @example 1990
+             * @example 1990-05
+             * @example 1990-05-17
+             */
+            birthDate?: string;
+            /** @description Same format as birthDate; not before it at the precision both share. */
+            deathDate?: string;
+            /** @description 1-200 code points. */
+            birthplace?: string;
+            /** @description 50-300. */
+            heightCm?: number;
+            /** @description 30-300. */
+            bustCm?: number;
+            /** @description 30-300. */
+            waistCm?: number;
+            /** @description 30-300. */
+            hipsCm?: number;
+            /** @description 1-3 Latin letters, stored upper case. */
+            cup?: string;
+            /** @enum {string} */
+            bloodType?: "A" | "B" | "O" | "AB";
+            /** @description 1900-9999. */
+            careerStartYear?: number;
+            /** @description 1900-9999; not before careerStartYear. */
+            careerEndYear?: number;
+            /** @description 1-5,000 code points; line breaks are kept. */
+            bio?: string;
+            /** @description HTTP(S) URLs in order, at most 20 and unique; omitted when empty. */
+            links?: string[];
+        };
+        /** @description Profile update: each property present replaces that field, null or an empty value clears it, and links replaces the list. */
+        PersonProfilePatch: {
+            /** @description female, male or other. */
+            gender?: string | null;
+            /**
+             * @description YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.
+             * @example 1990
+             * @example 1990-05
+             * @example 1990-05-17
+             */
+            birthDate?: string | null;
+            /** @description Same format as birthDate; not before it at the precision both share. */
+            deathDate?: string | null;
+            /** @description 1-200 code points. */
+            birthplace?: string | null;
+            /** @description 50-300. */
+            heightCm?: number | null;
+            /** @description 30-300. */
+            bustCm?: number | null;
+            /** @description 30-300. */
+            waistCm?: number | null;
+            /** @description 30-300. */
+            hipsCm?: number | null;
+            /** @description 1-3 Latin letters, stored upper case. */
+            cup?: string | null;
+            /** @description A, B, O or AB. */
+            bloodType?: string | null;
+            /** @description 1900-9999. */
+            careerStartYear?: number | null;
+            /** @description 1900-9999; not before careerStartYear. */
+            careerEndYear?: number | null;
+            /** @description 1-5,000 code points; line breaks are kept. */
+            bio?: string | null;
+            /** @description HTTP(S) URLs in order, at most 20 and unique; omitted when empty. */
+            links?: string[] | null;
         };
         /** @description One organization, with Person fields plus a parent organization. */
         Organization: {
@@ -3683,7 +3756,7 @@ export interface components {
             /** @description Parent organization; omitted for roots. */
             parent?: components["schemas"]["CreditRef"];
         };
-        /** @description Person or organization creation body; parentId is organization-only. */
+        /** @description Person or organization creation body; parentId is organization-only and profile person-only. */
         CreditInput: {
             name: string;
             aliases?: components["schemas"]["Alias"][];
@@ -3693,6 +3766,8 @@ export interface components {
              * @description Parent organization ID; sending it for a person returns 400 invalid_request.
              */
             parentId?: number;
+            /** @description Person-only profile; sending it for an organization returns 400 invalid_request. */
+            profile?: components["schemas"]["PersonProfile"];
         };
         /** @description Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent. */
         CreditPatch: {
@@ -3704,6 +3779,8 @@ export interface components {
              * @description Parent organization ID; null detaches it. Sending this for a person returns 400 invalid_request.
              */
             parentId?: number | null;
+            /** @description Person-only; sending it for an organization returns 400 invalid_request. A profile that changes nothing writes nothing. */
+            profile?: components["schemas"]["PersonProfilePatch"];
         };
         CreditMergeRequest: {
             /** @description Source IDs: 1-20,000 entries. */
@@ -5186,7 +5263,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken";
     };
     responses: {
         /** @description Resource not found */

@@ -166,7 +166,7 @@ func readListedCredits(ctx context.Context, tx *sql.Tx, t creditTables, statemen
 	return items, keys, total, nil
 }
 
-// Batch aliases, external IDs and parent names for the page to avoid N+1 queries.
+// Batch aliases, external IDs, profiles and parent names for the page to avoid N+1 queries.
 func addCreditDetails(ctx context.Context, tx *sql.Tx, t creditTables, items []domain.Credit) error {
 	if len(items) == 0 {
 		return nil
@@ -200,6 +200,11 @@ func addCreditDetails(ctx context.Context, tx *sql.Tx, t creditTables, items []d
 		})
 	if err != nil {
 		return fmt.Errorf("cannot read the external IDs of %s entities: %w", t.kind, err)
+	}
+	if t.kind == domain.CreditPerson {
+		if err := addPersonProfiles(ctx, tx, items, index, string(encoded)); err != nil {
+			return err
+		}
 	}
 	for i := range items {
 		domain.SortAliases(items[i].Aliases)

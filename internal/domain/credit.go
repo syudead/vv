@@ -45,17 +45,20 @@ type Credit struct {
 	ExternalIDs []ExternalID
 	// Parent is nil for people and root organizations.
 	Parent *CreditRef
+	// Profile is empty for organizations.
+	Profile PersonProfile
 	// VideoCount counts visible video user-data keys linked in any role.
 	VideoCount int
 	CreatedAt  time.Time
 }
 
-// ParentID is used only for organizations.
+// ParentID is used only for organizations and Profile only for people.
 type CreditInput struct {
 	Name        string
 	Aliases     []Alias
 	ExternalIDs []ExternalID
 	ParentID    *int64
+	Profile     PersonProfile
 }
 
 // CreditPatch preserves nil fields and replaces whole lists; pointers to nil lists clear them, while ParentSet controls whether ParentID changes (nil removes the parent).
@@ -65,6 +68,8 @@ type CreditPatch struct {
 	ExternalIDs *[]ExternalID
 	ParentSet   bool
 	ParentID    *int64
+	// Profile is nil when no profile property changes; people only.
+	Profile *PersonProfilePatch
 }
 
 type CreditQuery struct {
@@ -124,7 +129,7 @@ func (e *CreditNotFoundError) Error() string {
 
 func (e *CreditNotFoundError) Unwrap() error { return ErrNotFound }
 
-// NormalizeCredit trims without case folding, drops blank aliases and fully blank external IDs, and returns the first InvalidWorkInfoError in name/alias/external-ID order; storage validates parent existence and cycles.
+// NormalizeCredit trims without case folding, drops blank aliases and fully blank external IDs, and returns the first InvalidWorkInfoError in name/alias/external-ID/profile order; storage validates parent existence and cycles.
 func NormalizeCredit(input CreditInput) (CreditInput, error) {
 	name, err := normalizeWorkInfoText("name", input.Name, CreditNameMaxLength, false)
 	if err != nil {
@@ -141,7 +146,11 @@ func NormalizeCredit(input CreditInput) (CreditInput, error) {
 	if err != nil {
 		return CreditInput{}, err
 	}
-	return CreditInput{Name: name, Aliases: aliases, ExternalIDs: externalIDs, ParentID: input.ParentID}, nil
+	profile, err := NormalizePersonProfile(input.Profile, time.Now())
+	if err != nil {
+		return CreditInput{}, err
+	}
+	return CreditInput{Name: name, Aliases: aliases, ExternalIDs: externalIDs, ParentID: input.ParentID, Profile: profile}, nil
 }
 
 func normalizeAliases(name string, aliases []Alias) ([]Alias, error) {
