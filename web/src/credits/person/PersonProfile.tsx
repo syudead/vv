@@ -6,6 +6,7 @@ import type { Person } from "../../api/credits";
 import { t } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { personEditPath } from "../../lib/personEditPath";
+import { isPlainClick } from "../../lib/plainClick";
 import { libraryFilterPath } from "../../library/libraryPath";
 import { FactList } from "../../ui/patterns/fact-list";
 import { Button } from "../../ui/shadcn/button";
@@ -22,13 +23,18 @@ import { handPerson } from "./personHandoff";
 
 const text = t.credits.personPage;
 
-/** Opens the edit page with this person, which returns along the history when it is left. */
+/**
+ * Opens the edit page with this person, which returns along the history when it is left. A click
+ * that opens another tab hands nothing, so this tab's next visit to the person reads it again.
+ */
 function EditLink({ person }: { person: Person }) {
   return (
     <Link
       to={personEditPath(person.id)}
       state={{ fromPage: true }}
-      onClick={() => handPerson(person)}
+      onClick={(event) => {
+        if (isPlainClick(event)) handPerson(person);
+      }}
     >
       {text.edit}
     </Link>

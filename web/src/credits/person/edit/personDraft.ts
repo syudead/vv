@@ -61,9 +61,13 @@ export function draftFromPerson(person: Person): PersonDraft {
   };
 }
 
+// Fifteen digits stay a safe integer and are far more than any accepted value has, so an overlong
+// paste still meets the server's range check instead of becoming Infinity, which JSON sends as null.
+const maxDigits = 15;
+
 /** Number inputs keep digits only, so a sent value is always a whole number or empty. */
 export function digitsOnly(value: string): string {
-  return value.replace(/\D/g, "");
+  return value.replace(/\D/g, "").slice(0, maxDigits);
 }
 
 function sentLinks(rows: readonly LinkRow[]): { values: string[]; keys: string[] } {
