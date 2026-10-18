@@ -287,27 +287,20 @@ func TestListLibraryResolvesGroupFoldersFromSameSnapshot(t *testing.T) {
 	}
 }
 
-func TestListLibraryIdsFollowItems(t *testing.T) {
+func TestListLibraryTagFilterLimits(t *testing.T) {
 	f := newLibraryFixture(t)
-	rec := f.env.get("/api/library/ids?query=ep10&tag=999", f.owner)
+	rec := f.env.get("/api/library?query=ep10&tag=999", f.owner)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
-	got := decode[gen.VideoIdsResponse](t, rec)
-	if !slices.Equal(got.Ids, []int64{f.ids["ep10"]}) {
-		t.Errorf("ep10 の ids = %v, want [%d]", got.Ids, f.ids["ep10"])
+	page := decode[gen.LibraryPage](t, rec)
+	if names := libraryItemNames(page); !slices.Equal(names, []string{"ep10"}) {
+		t.Errorf("無いタグを無視した ep10 の検索 = %v, want [ep10]", names)
 	}
-	whole := decode[gen.VideoIdsResponse](t, f.env.get("/api/library/ids?query=show", f.owner))
-	slices.Sort(whole.Ids)
-	want := []int64{f.ids["ep1"], f.ids["ep2"], f.ids["ep10"]}
-	slices.Sort(want)
-	if !slices.Equal(whole.Ids, want) {
-		t.Errorf("show の ids = %v, want %v", whole.Ids, want)
+	if page.MissingTagIds == nil || !slices.Equal(*page.MissingTagIds, []int64{999}) {
+		t.Errorf("missingTagIds = %v", page.MissingTagIds)
 	}
-	if got.MissingTagIds == nil || !slices.Equal(*got.MissingTagIds, []int64{999}) {
-		t.Errorf("missingTagIds = %v", got.MissingTagIds)
-	}
-	tags := "/api/library/ids?" + strings.Repeat("tag=1&", maxTagFilterCount+1)
+	tags := "/api/library?" + strings.Repeat("tag=1&", maxTagFilterCount+1)
 	rec = f.env.get(tags, f.owner)
 	assertErrorBody(t, "17 個のタグ", rec.Code, rec.Body.Bytes(), wantError{
 		status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyTagFilters, limit: maxTagFilterCount,
@@ -374,7 +367,6 @@ func TestListLibraryForGuest(t *testing.T) {
 			t.Errorf("所有者の %s: status = %d, want 200", query, rec.Code)
 		}
 	}
-	assertUnauthenticated(t, "ゲストの /api/library/ids", f.env.get("/api/library/ids"))
 }
 
 func TestGetGroup(t *testing.T) {

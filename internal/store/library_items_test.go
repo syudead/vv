@@ -253,14 +253,6 @@ func TestListLibraryFiltersTagsPerMember(t *testing.T) {
 	if names := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{two.ID}, Watch: domain.WatchUnwatched})); !slices.Equal(names, []string{"ep2"}) {
 		t.Errorf("タグ two の未視聴 = %v, want [ep2]", names)
 	}
-	selection, _, err := db.Library().LibraryIDs(ctx, domain.VideoQuery{TagIDs: []int64{two.ID}, Watch: domain.WatchUnwatched})
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := selection.AllVideoIDs()
-	if !slices.Equal(got, []int64{ep2}) {
-		t.Errorf("タグ two の未視聴の ids = %v, want [%d]", got, ep2)
-	}
 
 	folder, err := db.Tags().CreateTag(ctx, "show")
 	if err != nil {
@@ -516,55 +508,20 @@ func groupProgress(t *testing.T, db *DB, group domain.LibraryGroup) []*domain.Pr
 	return out
 }
 
-func TestLibraryIDsFollowLibraryItems(t *testing.T) {
-	db, ids := itemsFixture(t)
-	ep10 := ids[fixturePath("/media/show/ep10.mp4")]
-	selection, missing, err := db.Library().LibraryIDs(context.Background(), domain.VideoQuery{Query: "ep10 OR solo", TagIDs: []int64{999}})
+func TestListLibraryIgnoresMissingTagIDs(t *testing.T) {
+	db, _ := itemsFixture(t)
+	page, err := db.Library().ListLibrary(context.Background(), domain.AudienceOwner,
+		domain.VideoQuery{Query: "ep10 OR solo", TagIDs: []int64{999}, Limit: domain.MaxLimit})
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := selection.AllVideoIDs()
-	if !slices.Equal(missing, []int64{999}) {
-		t.Errorf("missing = %v", missing)
+	if !slices.Equal(page.MissingTagIDs, []int64{999}) {
+		t.Errorf("MissingTagIDs = %v, want [999]", page.MissingTagIDs)
 	}
-	slices.Sort(got)
-	want := []int64{ep10, ids[fixturePath("/media/solo.mp4")]}
-	slices.Sort(want)
-	if !slices.Equal(got, want) {
-		t.Errorf("ids = %v, want %v", got, want)
-	}
-
-	selection, _, err = db.Library().LibraryIDs(context.Background(), domain.VideoQuery{Query: "ep10"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	got = selection.AllVideoIDs()
-	if !slices.Equal(got, []int64{ep10}) {
-		t.Errorf("ep10 の ids = %v, want [%d]", got, ep10)
-	}
-
-	selection, _, err = db.Library().LibraryIDs(context.Background(), domain.VideoQuery{Query: "show"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	got = selection.AllVideoIDs()
-	slices.Sort(got)
-	want = []int64{ids[fixturePath("/media/show/ep1.mp4")], ids[fixturePath("/media/show/ep2.mp4")], ep10}
-	slices.Sort(want)
-	if !slices.Equal(got, want) {
-		t.Errorf("show の ids = %v, want %v", got, want)
-	}
-
-	selection, _, err = db.Library().LibraryIDs(context.Background(), domain.VideoQuery{Watch: domain.WatchUnwatched})
-	if err != nil {
-		t.Fatal(err)
-	}
-	got = selection.AllVideoIDs()
-	slices.Sort(got)
-	want = []int64{ids[fixturePath("/media/pair/p1.mp4")], ids[fixturePath("/media/pair/p2.mp4")], ids[fixturePath("/media/mixed/x.mp4")]}
-	slices.Sort(want)
-	if !slices.Equal(got, want) {
-		t.Errorf("未視聴の ids = %v, want %v", got, want)
+	names := itemNames(page.Items)
+	slices.Sort(names)
+	if want := []string{"ep10", "solo"}; !slices.Equal(names, want) {
+		t.Errorf("項目 = %v, want %v", names, want)
 	}
 }
 

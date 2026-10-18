@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"slices"
 	"strconv"
@@ -111,54 +110,6 @@ func TestListLibraryFavoriteOnly(t *testing.T) {
 	if names := orderedLibraryItemNames(f.libraryPage(t, "sort=favoritedAsc")); !slices.Equal(names, []string{"group:show", "solo", "group:pair"}) {
 		t.Errorf("古い順 = %v", names)
 	}
-}
-
-func TestListLibraryIdsGroups(t *testing.T) {
-	f := newFavoriteListFixture(t)
-
-	rec := f.env.get("/api/library/ids?favorite=true", f.owner)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
-	}
-	got := decode[gen.VideoIdsResponse](t, rec)
-	ids := slices.Clone(got.Ids)
-	slices.Sort(ids)
-	want := []int64{f.ids["ep1"], f.ids["ep2"], f.ids["ep10"], f.ids["p1"], f.ids["solo"]}
-	slices.Sort(want)
-	if !slices.Equal(ids, want) {
-		t.Errorf("ids = %v, want %v", ids, want)
-	}
-	if got.Groups == nil || len(*got.Groups) != 1 {
-		t.Fatalf("groups = %+v, want show の 1 件", got.Groups)
-	}
-	group := (*got.Groups)[0]
-	show := libraryGroupNamed(t, f.libraryPage(t, "favorite=true"), "show")
-	if group.Id != show.Id {
-		t.Errorf("groups の id = %d, want %d", group.Id, show.Id)
-	}
-	if !slices.Equal(group.VideoIds, show.VideoIds) {
-		t.Errorf("groups の videoIds = %v, want %v", group.VideoIds, show.VideoIds)
-	}
-	for _, id := range group.VideoIds {
-		if !slices.Contains(got.Ids, id) {
-			t.Errorf("groups のメンバー %d が ids に無い", id)
-		}
-	}
-
-	all := decode[gen.VideoIdsResponse](t, f.env.get("/api/library/ids", f.owner))
-	if all.Groups == nil || len(*all.Groups) != 2 {
-		t.Errorf("絞り込みなしの groups = %+v, want 2 件", all.Groups)
-	}
-	partial := f.env.get("/api/library/ids?query=ep10", f.owner)
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(partial.Body.Bytes(), &raw); err != nil {
-		t.Fatal(err)
-	}
-	if value, ok := raw["groups"]; ok {
-		t.Errorf("グループの項目が無いときの groups = %s, want 省略", value)
-	}
-
-	assertUnauthenticated(t, "ゲストの /api/library/ids?favorite=true", f.env.get("/api/library/ids?favorite=true"))
 }
 
 func TestListVideosFavoriteOnly(t *testing.T) {

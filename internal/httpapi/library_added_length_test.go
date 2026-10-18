@@ -9,7 +9,7 @@ import (
 
 // All fixture videos were added on 2026-01-01 and last sixty seconds.
 
-var addedLengthPaths = []string{"/api/videos", "/api/library", "/api/library/ids"}
+var addedLengthPaths = []string{"/api/videos", "/api/library"}
 
 // Check boundary filtering counts here; storage tests cover sort details.
 func TestListVideosFiltersByAddedWithinAndLength(t *testing.T) {
