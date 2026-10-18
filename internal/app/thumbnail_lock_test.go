@@ -15,7 +15,7 @@ func assertThumbnailLocksHeld(t *testing.T, artifacts *artifacts, key string) {
 	assertKeyedLockHeld(t, &artifacts.contents, key)
 }
 
-func assertKeyedLockHeld[K comparable](t *testing.T, locks *keyedLocks[K], key K) {
+func assertKeyedLockHeld[K comparable](t *testing.T, locks *keyedLocks[K], key K) *keyedLock {
 	t.Helper()
 	locks.mu.Lock()
 	entry := locks.locks[key]
@@ -27,6 +27,7 @@ func assertKeyedLockHeld[K comparable](t *testing.T, locks *keyedLocks[K], key K
 		entry.Unlock()
 		t.Fatalf("lock for %v is not held", key)
 	}
+	return entry
 }
 
 type thumbnailLockStore struct {
