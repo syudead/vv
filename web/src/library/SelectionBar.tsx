@@ -70,7 +70,10 @@ export interface SelectionBarProps {
   /** Send standalone video IDs plus selected group IDs; limits apply to that combined request count. */
   favoriteVideoIds: readonly number[];
   favoriteGroupIds: readonly number[];
-  /** Only favorites and playlists accept smart folders; the other actions are disabled while any is selected. */
+  /**
+   * Favorites and playlists take the folders themselves; tag and visibility actions reach their
+   * current members on the server. Group and bundle actions are disabled while any is selected.
+   */
   smartFolderIds?: readonly number[];
   onClear: () => void;
   /** Removing an active filter tag lets callers clear selection and reload matching rows. */
@@ -89,7 +92,8 @@ const noSmartFolders: readonly number[] = [];
 /**
  * Batch APIs are atomic, so oversized selections disable an action with a reason instead of
  * being split. Favorite limits count a group or smart folder as one target, unlike tag and
- * visibility operations on every member video.
+ * visibility operations on every member video. Smart-folder members are unknown here, so the
+ * server enforces the tag and visibility limit on their resolved total.
  */
 export function selectionReasons({
   count,
@@ -102,6 +106,7 @@ export function selectionReasons({
   favoriteGroupIds: readonly number[];
   smartFolderIds: readonly number[];
 }) {
+  // A smart folder cannot be placed in a group or bundled as a version.
   const videoOnly =
     smartFolderIds.length > 0 ? t.library.selection.smartFoldersUnsupported : undefined;
   const favoriteOverLimit =
@@ -113,7 +118,7 @@ export function selectionReasons({
   const newGroupNeedsMore =
     favoriteGroupIds.length === 1 && favoriteVideoIds.length === 0;
   return {
-    tag: count > maxVideoTagsSelection ? overLimitMessage() : videoOnly,
+    tag: count > maxVideoTagsSelection ? overLimitMessage() : undefined,
     favorite,
     group,
     newGroup:
@@ -221,6 +226,7 @@ export default function SelectionBar({
             open={addOpen}
             onOpenChange={setAddOpen}
             selectedIds={selectedIds}
+            smartFolderIds={smartFolderIds}
             onDone={() => addTriggerRef.current?.focus()}
           />
         </Popover>
@@ -239,6 +245,7 @@ export default function SelectionBar({
             open={removeOpen}
             onOpenChange={setRemoveOpen}
             selectedIds={selectedIds}
+            smartFolderIds={smartFolderIds}
             onRemoved={onTagRemoved}
           />
         </Popover>
@@ -316,6 +323,7 @@ export default function SelectionBar({
 
         <VisibilityMenu
           selectedIds={selectedIds}
+          smartFolderIds={smartFolderIds}
           disabledReason={reasons.tag}
           reasonId={tagReasonId}
         />

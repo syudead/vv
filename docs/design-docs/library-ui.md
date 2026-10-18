@@ -352,7 +352,7 @@ bottom edge and the title.
 | Video, folder search results | Location row under the title |
 | Folder | Video card's width and border, folder artwork, Folder icon in the title |
 | Group (library only) | Video card's box and size, folder artwork of up to 4 member thumbnails |
-| Smart folder (unfiltered library, smart folder page) | Group card's box, artwork, count panel, name and tag row, with a `FolderSearch` mark before the count; the owner's check selects it; no `Add to group`; the owner's heart and `Add to playlist` send the folder as one item (`smartFolderIds`) |
+| Smart folder (unfiltered library, smart folder page) | Group card's box, artwork, count panel, name and tag row, with a `FolderSearch` mark before the count; the owner's check selects it; no `Add to group`; the owner's heart and `Add to playlist` send the folder as one item (`smartFolderIds`), and tag and visibility actions reach its member videos |
 
 Video card behaviour:
 
@@ -486,9 +486,21 @@ right end; those that do not fit move to the right end of the next line.
 
 While smart folders are selected, the count names them separately
 (`3 videos and 1 smart folder selected`). `Favorite` and `Add to playlist`
-send each folder as one item (`smartFolderIds`); the other actions change
-videos or groups only, so they are disabled with the reason
-`Not available while smart folders are selected`.
+send each folder as one item (`smartFolderIds`). `Add tag`, `Remove tag`
+(its candidates included) and `Visibility` act on the folders' member videos,
+as they do on a selected group's: the client sends the folder IDs, and the
+server resolves each folder's current members at request time with the owner's
+view of the smart folder page, its rule plus every ancestor rule and groups
+expanded to their videos. A folder whose rule refers to a missing entity has
+no members. The client never expands a folder, because a folder can match many
+videos, so it checks the 20,000-video limit only on the videos it knows; the
+server applies the limit to the distinct resolved videos and rejects the whole
+request with `too_many_videos` when they exceed it. The toast counts the videos
+the server applied. After these actions and after `Favorite`, the shown cards
+of the selected folders read their values again. A smart folder cannot be
+placed in a group or bundled, so `New group`, `Add to group` and
+`Bundle as versions` are disabled with the reason
+`Not available for smart folders`.
 
 The request shapes are in [the screen API schema](../../api/openapi.yaml).
 

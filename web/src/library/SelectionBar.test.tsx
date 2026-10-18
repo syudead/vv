@@ -1042,9 +1042,9 @@ describe("SelectionBar の束ねる操作", () => {
 });
 
 describe("selectionReasons", () => {
-  const unsupported = "Not available while smart folders are selected";
+  const unsupported = "Not available for smart folders";
 
-  it("スマートフォルダを選んでいると、お気に入りとプレイリスト以外は押せない理由を返す", () => {
+  it("スマートフォルダを選んでいると、グループと版の操作だけ押せない理由を返す", () => {
     const reasons = selectionReasons({
       count: 2,
       favoriteVideoIds: [1, 2],
@@ -1052,7 +1052,7 @@ describe("selectionReasons", () => {
       smartFolderIds: [9],
     });
     expect(reasons).toEqual({
-      tag: unsupported,
+      tag: undefined,
       favorite: undefined,
       group: unsupported,
       newGroup: unsupported,

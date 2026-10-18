@@ -2900,7 +2900,7 @@ paths:
     post:
       operationId: updateVideoTags
       summary: "Add or remove a video tag"
-      description: "Applies action (add/remove) and tag to videoIds for single-video and bulk callers. Removal requires tag.id; name returns 400. Addition by name resolves synonyms and creates a missing tag. Accepts 1–20,000 distinct videoIds; all changes are atomic."
+      description: "Applies action (add/remove) and tag to videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. Removal requires tag.id; name returns 400. Addition by name resolves synonyms and creates a missing tag. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes; all changes are atomic."
       requestBody:
         required: true
         content:
@@ -2927,7 +2927,7 @@ paths:
     post:
       operationId: summarizeVideoTags
       summary: "Summarize tags on selected videos"
-      description: "total counts requested videos currently in the library; each tag's count counts assignments among them. count < total indicates partial assignment. items includes tags assigned to at least one video, in natural name order."
+      description: "Summarizes videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags. total counts those videos currently in the library; each tag's count counts assignments among them. count < total indicates partial assignment. items includes tags assigned to at least one video, in natural name order."
       requestBody:
         required: true
         content:
@@ -2948,7 +2948,7 @@ paths:
     put:
       operationId: updateVideoVisibility
       summary: "Change video visibility"
-      description: "Sets public on 1–20,000 distinct videoIds atomically, for single-video and bulk callers. Already-matching videos count as applied. Active guest streams are terminated when their video becomes private."
+      description: "Sets public atomically on videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes. Already-matching videos count as applied. Active guest streams are terminated when their video becomes private."
       requestBody:
         required: true
         content:
@@ -6664,7 +6664,14 @@ components:
       properties:
         videoIds:
           type: array
-          minItems: 1
+          description: "Video IDs to change. May be empty when smartFolderIds is not."
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+        smartFolderIds:
+          type: array
+          description: "Smart-folder IDs resolved at request time to their current member videos (the saved rule plus every ancestor rule, groups expanded to their videos) and added to videoIds. Missing folders are ignored."
           maxItems: 20000
           items:
             type: integer
@@ -6683,7 +6690,7 @@ components:
           $ref: "#/components/schemas/TagRef"
         applied:
           type: integer
-          description: "Number of videoIds currently in the library."
+          description: "Number of resolved videos (videoIds plus smart-folder members) currently in the library."
 
     VideoVisibilityRequest:
       type: object
@@ -6692,7 +6699,14 @@ components:
       properties:
         videoIds:
           type: array
-          minItems: 1
+          description: "Video IDs to change. May be empty when smartFolderIds is not."
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+        smartFolderIds:
+          type: array
+          description: "Smart-folder IDs resolved at request time to their current member videos (the saved rule plus every ancestor rule, groups expanded to their videos) and added to videoIds. Missing folders are ignored."
           maxItems: 20000
           items:
             type: integer
@@ -6900,7 +6914,7 @@ components:
       properties:
         applied:
           type: integer
-          description: "Number of videoIds currently in the library, including videos already in the requested state."
+          description: "Number of resolved videos (videoIds plus smart-folder members) currently in the library, including videos already in the requested state."
 
     VideoTagsSummaryRequest:
       type: object
@@ -6909,7 +6923,14 @@ components:
       properties:
         videoIds:
           type: array
-          minItems: 1
+          description: "Video IDs to summarize. May be empty when smartFolderIds is not."
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+        smartFolderIds:
+          type: array
+          description: "Smart-folder IDs resolved at request time to their current member videos (the saved rule plus every ancestor rule, groups expanded to their videos) and added to videoIds. Missing folders are ignored."
           maxItems: 20000
           items:
             type: integer

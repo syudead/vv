@@ -1,6 +1,11 @@
 import { request } from "./client";
 import type { components } from "./gen/openapi";
 import { applyVisibilityToListSnapshot, holdListSnapshot } from "./listSnapshot";
+import {
+  afterSmartFolderMembersChanged,
+  type VideoTargetOptions,
+  smartFolderField,
+} from "./smartFolderChanges";
 
 //
 export type VideoVisibilityResponse = components["schemas"]["VideoVisibilityResponse"];
@@ -97,7 +102,7 @@ export function withVisibilitySince<T extends { id: number; public: boolean }>(
 export function updateVideoVisibility(
   videoIds: readonly number[],
   isPublic: boolean,
-  signal?: AbortSignal,
+  { smartFolderIds = [], signal }: VideoTargetOptions = {},
 ): Promise<VideoVisibilityResponse> {
   sent += 1;
   const sequence = sent;
@@ -105,12 +110,21 @@ export function updateVideoVisibility(
     const result = await request<VideoVisibilityResponse>("/api/video-visibility", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ videoIds: Array.from(videoIds), public: isPublic }),
+      body: JSON.stringify({
+        videoIds: Array.from(videoIds),
+        ...smartFolderField(smartFolderIds),
+        public: isPublic,
+      }),
       signal,
     });
     const unique = Array.from(new Set(videoIds));
-    if (result.applied < unique.length) recordUncertain(unique, sequence);
-    else recordApplied(videoIds, isPublic, sequence);
+    // Applied also counts smart-folder members, so it cannot prove every explicit video changed.
+    if (smartFolderIds.length > 0 || result.applied < unique.length) {
+      recordUncertain(unique, sequence);
+    } else {
+      recordApplied(videoIds, isPublic, sequence);
+    }
+    afterSmartFolderMembersChanged(smartFolderIds);
     return result;
   };
   // Send immediately when idle so pending state begins with the click.

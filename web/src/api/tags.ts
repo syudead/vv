@@ -1,5 +1,10 @@
 import { apiFetch, RequestFailed, request, toRequestFailed } from "./client";
 import { clearListSnapshot } from "./listSnapshot";
+import {
+  afterSmartFolderMembersChanged,
+  type VideoTargetOptions,
+  smartFolderField,
+} from "./smartFolderChanges";
 import { nextVideoTagsSequence, recordAppliedVideoTags } from "./videoTagsEvents";
 import type { components } from "./gen/openapi";
 
@@ -378,17 +383,23 @@ async function updateVideoTags(
   videoIds: readonly number[],
   action: "add" | "remove",
   tag: { id: number } | { name: string },
-  signal?: AbortSignal,
+  { smartFolderIds = [], signal }: VideoTargetOptions,
 ): Promise<VideoTagsResponse> {
   // Allocate before sending so out-of-order responses can be rejected by sequence.
   const sequence = nextVideoTagsSequence();
   const result = await request<VideoTagsResponse>("/api/video-tags", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ videoIds: Array.from(videoIds), action, tag }),
+    body: JSON.stringify({
+      videoIds: Array.from(videoIds),
+      ...smartFolderField(smartFolderIds),
+      action,
+      tag,
+    }),
     signal,
   }).catch(refreshOnStaleTagError);
   recordAppliedVideoTags(videoIds, result.tag, action, sequence);
+  afterSmartFolderMembersChanged(smartFolderIds);
   return result;
 }
 
@@ -396,9 +407,9 @@ async function updateVideoTags(
 export function attachVideoTagByID(
   videoIds: readonly number[],
   tagId: number,
-  signal?: AbortSignal,
+  options: VideoTargetOptions = {},
 ): Promise<VideoTagsResponse> {
-  return updateVideoTags(videoIds, "add", { id: tagId }, signal).then((result) => {
+  return updateVideoTags(videoIds, "add", { id: tagId }, options).then((result) => {
     refreshTagCounts();
     return result;
   });
@@ -408,10 +419,10 @@ export function attachVideoTagByID(
 export function attachVideoTagByName(
   videoIds: readonly number[],
   name: string,
-  signal?: AbortSignal,
+  options: VideoTargetOptions = {},
 ): Promise<VideoTagsResponse> {
   const known = currentTags();
-  return updateVideoTags(videoIds, "add", { name }, signal).then((result) => {
+  return updateVideoTags(videoIds, "add", { name }, options).then((result) => {
     if (known?.some((tag) => tag.id === result.tag.id)) {
       refreshTagCounts();
     } else {
@@ -425,9 +436,9 @@ export function attachVideoTagByName(
 export function detachVideoTag(
   videoIds: readonly number[],
   tagId: number,
-  signal?: AbortSignal,
+  options: VideoTargetOptions = {},
 ): Promise<VideoTagsResponse> {
-  return updateVideoTags(videoIds, "remove", { id: tagId }, signal).then((result) => {
+  return updateVideoTags(videoIds, "remove", { id: tagId }, options).then((result) => {
     refreshTagCounts();
     return result;
   });
@@ -435,12 +446,15 @@ export function detachVideoTag(
 
 export function summarizeVideoTags(
   videoIds: readonly number[],
-  signal?: AbortSignal,
+  { smartFolderIds = [], signal }: VideoTargetOptions = {},
 ): Promise<VideoTagsSummary> {
   return request<VideoTagsSummary>("/api/video-tags/summary", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ videoIds: Array.from(videoIds) }),
+    body: JSON.stringify({
+      videoIds: Array.from(videoIds),
+      ...smartFolderField(smartFolderIds),
+    }),
     signal,
   });
 }

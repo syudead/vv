@@ -9,8 +9,8 @@ import {
   useState,
 } from "react";
 
-import { subscribeSmartFolderFavorites } from "../api/favorites";
 import { subscribeServerEvents } from "../api/serverEvents";
+import { subscribeSmartFolderChanges } from "../api/smartFolderChanges";
 import { readSmartFolderCards } from "../api/smartFolders";
 import { type CardValue, chunks, latestAnswer, withAnswer } from "./cardValueRules";
 
@@ -24,7 +24,7 @@ const CardValuesContext = createContext<CardValues | null>(null);
 const noValues: ReadonlyMap<number, CardValue> = new Map();
 
 /**
- * Batch visible-card IDs in groups of 60; events and favorite changes refresh previously
+ * Batch visible-card IDs in groups of 60; events and bulk-action changes refresh previously
  * requested IDs without skeletons, and reconnect refreshes all. Apply only each ID's latest request and retain values on
  * failure.
  */
@@ -84,7 +84,7 @@ export function SmartFolderCardsProvider({ children }: { children: ReactNode }) 
       const shown = ids.filter((id) => asked.current.has(id));
       if (shown.length > 0) read(shown);
     };
-    const unsubscribeFavorites = subscribeSmartFolderFavorites(readShown);
+    const unsubscribeChanges = subscribeSmartFolderChanges(readShown);
     const unsubscribe = subscribeServerEvents({
       smartFolder: readShown,
       open: (reconnected) => {
@@ -93,7 +93,7 @@ export function SmartFolderCardsProvider({ children }: { children: ReactNode }) 
     });
     const live = controllers.current;
     return () => {
-      unsubscribeFavorites();
+      unsubscribeChanges();
       unsubscribe();
       clearTimeout(flushTimer.current);
       for (const controller of live) controller.abort();

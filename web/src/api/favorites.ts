@@ -1,6 +1,7 @@
 import { type LibraryItemOf, request } from "./client";
 import type { components } from "./gen/openapi";
 import { applyFavoritesToListSnapshot, holdListSnapshot } from "./listSnapshot";
+import { smartFolderField } from "./smartFolderChanges";
 
 export type FavoritesResponse = components["schemas"]["FavoritesResponse"];
 
@@ -19,11 +20,6 @@ const listeners = new Set<Listener>();
 type StaleListener = (videoIds: readonly number[]) => Promise<void> | undefined;
 
 const staleListeners = new Set<StaleListener>();
-
-/** Smart-folder card values stay server-owned; listeners re-read the named cards. */
-type SmartFolderListener = (smartFolderIds: readonly number[]) => void;
-
-const smartFolderListeners = new Set<SmartFolderListener>();
 
 let sent = 0;
 
@@ -83,21 +79,6 @@ export function subscribeFavorites(listener: Listener): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
-  };
-}
-
-/** Bulk callers announce changed smart folders, since the server emits no event for favorites. */
-export function noteSmartFolderFavorites(smartFolderIds: readonly number[]): void {
-  if (smartFolderIds.length === 0) return;
-  const ids = Array.from(new Set(smartFolderIds));
-  for (const listener of smartFolderListeners) listener(ids);
-}
-
-/** Re-read smart-folder cards changed by a bulk favorite action. */
-export function subscribeSmartFolderFavorites(listener: SmartFolderListener): () => void {
-  smartFolderListeners.add(listener);
-  return () => {
-    smartFolderListeners.delete(listener);
   };
 }
 
@@ -163,7 +144,7 @@ export function withItemFavoriteSince<
 }
 
 export interface UpdateFavoritesOptions {
-  /** The local overlay covers videos/groups only; bulk callers announce smart folders with noteSmartFolderFavorites. */
+  /** The local overlay covers videos/groups only; bulk callers announce smart folders with noteSmartFolderChanges. */
   smartFolderIds?: readonly number[];
   signal?: AbortSignal;
 }
@@ -191,9 +172,7 @@ export function updateFavorites(
       body: JSON.stringify({
         videoIds: Array.from(videoIds),
         groupIds: Array.from(groupIds),
-        ...(smartFolderIds.length === 0
-          ? {}
-          : { smartFolderIds: Array.from(smartFolderIds) }),
+        ...smartFolderField(smartFolderIds),
         favorite,
       }),
       signal,

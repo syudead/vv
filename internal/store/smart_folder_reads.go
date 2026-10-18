@@ -364,3 +364,36 @@ func searchSmartFolderPage(ctx context.Context, tx *sql.Tx, audience domain.Audi
 	spec.scope.withinVideos = string(encoded)
 	return listLibraryPageTx(ctx, tx, spec)
 }
+
+// SmartFolderVideoIDs returns the distinct owner-visible member videos of the given folders in one snapshot, groups expanded.
+// Missing folders and folders with a missing referenced entity contribute nothing.
+func (s *SmartFolderStore) SmartFolderVideoIDs(ctx context.Context, ids []int64) ([]int64, error) {
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("cannot start reading the smart folder videos: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	videoIDs := []int64{}
+	seenFolders := make(map[int64]bool, len(ids))
+	seenVideos := map[int64]bool{}
+	for _, id := range ids {
+		if seenFolders[id] {
+			continue
+		}
+		seenFolders[id] = true
+		group, _, err := smartFolderVideoGroup(ctx, tx, domain.AudienceOwner, id)
+		if err != nil {
+			return nil, err
+		}
+		for _, videoID := range group.MemberIDs {
+			if !seenVideos[videoID] {
+				seenVideos[videoID] = true
+				videoIDs = append(videoIDs, videoID)
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("cannot finish reading the smart folder videos: %w", err)
+	}
+	return videoIDs, nil
+}

@@ -13,12 +13,17 @@ import { useToast } from "../ui/Toast";
 import { disabledProps, SelectionAction, WithTooltip } from "./SelectionAction";
 import { overLimitMessage } from "./selectionErrors";
 
+const noSmartFolders: readonly number[] = [];
+
+/** The server changes the selected smart folders' current members as well as selectedIds. */
 export default function VisibilityMenu({
   selectedIds,
+  smartFolderIds = noSmartFolders,
   disabledReason,
   reasonId,
 }: {
   selectedIds: readonly number[];
+  smartFolderIds?: readonly number[];
   disabledReason: UiText | undefined;
   reasonId: string;
 }) {
@@ -30,7 +35,7 @@ export default function VisibilityMenu({
       toast(overLimitMessage());
       return;
     }
-    void updateVideoVisibility(selectedIds, isPublic).then(
+    void updateVideoVisibility(selectedIds, isPublic, { smartFolderIds }).then(
       (result) => {
         toast(
           isPublic

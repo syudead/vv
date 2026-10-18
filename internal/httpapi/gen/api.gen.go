@@ -4675,14 +4675,19 @@ type VideoTagsAction string
 type VideoTagsRequest struct {
 	Action VideoTagsAction `json:"action"`
 
+	// SmartFolderIds Smart-folder IDs resolved at request time to their current member videos (the saved rule plus every ancestor rule, groups expanded to their videos) and added to videoIds. Missing folders are ignored.
+	SmartFolderIds *[]int64 `json:"smartFolderIds,omitempty"`
+
 	// Tag Tag reference with exactly one of id or name; both or neither return 400 invalid_request.
-	Tag      TagInput `json:"tag"`
-	VideoIds []int64  `json:"videoIds"`
+	Tag TagInput `json:"tag"`
+
+	// VideoIds Video IDs to change. May be empty when smartFolderIds is not.
+	VideoIds []int64 `json:"videoIds"`
 }
 
 // VideoTagsResponse defines model for VideoTagsResponse.
 type VideoTagsResponse struct {
-	// Applied Number of videoIds currently in the library.
+	// Applied Number of resolved videos (videoIds plus smart-folder members) currently in the library.
 	Applied int `json:"applied"`
 
 	// Tag One assigned tag; name is always the original name.
@@ -4710,6 +4715,10 @@ type VideoTagsSummaryItem struct {
 
 // VideoTagsSummaryRequest defines model for VideoTagsSummaryRequest.
 type VideoTagsSummaryRequest struct {
+	// SmartFolderIds Smart-folder IDs resolved at request time to their current member videos (the saved rule plus every ancestor rule, groups expanded to their videos) and added to videoIds. Missing folders are ignored.
+	SmartFolderIds *[]int64 `json:"smartFolderIds,omitempty"`
+
+	// VideoIds Video IDs to summarize. May be empty when smartFolderIds is not.
 	VideoIds []int64 `json:"videoIds"`
 }
 
@@ -4734,13 +4743,18 @@ type VideoVersionsRef struct {
 // VideoVisibilityRequest defines model for VideoVisibilityRequest.
 type VideoVisibilityRequest struct {
 	// Public True makes videos public; false makes them private.
-	Public   bool    `json:"public"`
+	Public bool `json:"public"`
+
+	// SmartFolderIds Smart-folder IDs resolved at request time to their current member videos (the saved rule plus every ancestor rule, groups expanded to their videos) and added to videoIds. Missing folders are ignored.
+	SmartFolderIds *[]int64 `json:"smartFolderIds,omitempty"`
+
+	// VideoIds Video IDs to change. May be empty when smartFolderIds is not.
 	VideoIds []int64 `json:"videoIds"`
 }
 
 // VideoVisibilityResponse defines model for VideoVisibilityResponse.
 type VideoVisibilityResponse struct {
-	// Applied Number of videoIds currently in the library, including videos already in the requested state.
+	// Applied Number of resolved videos (videoIds plus smart-folder members) currently in the library, including videos already in the requested state.
 	Applied int `json:"applied"`
 }
 

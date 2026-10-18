@@ -1,6 +1,7 @@
 import { ChevronDown, Heart, HeartOff } from "lucide-react";
 
-import { noteSmartFolderFavorites, updateFavorites } from "../api/favorites";
+import { updateFavorites } from "../api/favorites";
+import { noteSmartFolderChanges } from "../api/smartFolderChanges";
 import { maxVideoTagsSelection } from "../api/tags";
 import { errorText, t } from "../i18n";
 import {
@@ -43,7 +44,7 @@ export default function FavoriteMenu({
     void updateFavorites(videoIds, groupIds, favorite, { smartFolderIds }).then(
       (result) => {
         // Cards keep their own read of the favorite; make them read the new value.
-        noteSmartFolderFavorites(smartFolderIds);
+        noteSmartFolderChanges(smartFolderIds);
         const applied =
           result.appliedVideos + result.appliedGroups + result.appliedSmartFolders;
         toast(

@@ -998,7 +998,7 @@ export const en = {
         videoCount === 0
           ? `${smartFolders(folderCount)} selected`
           : `${videos(videoCount)} and ${smartFolders(folderCount)} selected`,
-      smartFoldersUnsupported: "Not available while smart folders are selected",
+      smartFoldersUnsupported: "Not available for smart folders",
       clear: "Clear selection (Esc)",
       addTag: "Add tag",
       removeTag: "Remove tag",
