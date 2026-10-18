@@ -53,8 +53,7 @@ func writePeopleJSON(path string, people []person) error {
 	for i, p := range people {
 		byVideo := map[string][][2]float64{}
 		for _, t := range p.tracks {
-			name := filepath.Base(t.video)
-			byVideo[name] = append(byVideo[name], [2]float64{t.times[0], t.times[len(t.times)-1]})
+			byVideo[t.video] = append(byVideo[t.video], [2]float64{t.times[0], t.times[len(t.times)-1]})
 		}
 		rows[i] = personJSON{ID: i, GoodSec: p.goodSec, Vector: p.centre}
 		for v, spans := range byVideo {

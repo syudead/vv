@@ -6,14 +6,12 @@ import (
 	"io"
 	"math"
 	"os/exec"
-	"strconv"
-	"strings"
 )
 
 // Sampling and track-linking constants measured in the Python POC.
 const (
 	sampleFPS   = 2.0
-	frameWidth  = 1280
+	frameSide   = 1280 // longer side of a sampled frame
 	minFaceSide = 48.0
 	trackGap    = 2    // sampled frames a track may miss before it closes
 	linkSim     = 0.45 // SFace similarity needed to continue a track
@@ -160,15 +158,12 @@ func bestTrack(active []*track, used map[*track]bool, f face, v []float32) *trac
 	return best
 }
 
-// ffmpegFrames decodes the video at sampleFPS, scaled to frameWidth, with the system ffmpeg.
+// ffmpegFrames decodes the video at sampleFPS into frameSide x frameSide frames: ffmpeg rotates by the
+// display matrix first, then the frame is fitted without distortion and padded with black.
 func ffmpegFrames(path string) (<-chan bgrImage, func() error, error) {
-	w, h, err := probeSize(path)
-	if err != nil {
-		return nil, nil, err
-	}
-	oh := int(math.Round(float64(h)*frameWidth/float64(w)/2)) * 2
-	cmd := exec.Command("ffmpeg", "-v", "error", "-i", path, "-vf",
-		fmt.Sprintf("fps=%g,scale=%d:%d", sampleFPS, frameWidth, oh), "-f", "rawvideo", "-pix_fmt", "bgr24", "-")
+	vf := fmt.Sprintf("fps=%g,scale=%d:%d:force_original_aspect_ratio=decrease,pad=%d:%d",
+		sampleFPS, frameSide, frameSide, frameSide, frameSide)
+	cmd := exec.Command("ffmpeg", "-v", "error", "-i", path, "-vf", vf, "-f", "rawvideo", "-pix_fmt", "bgr24", "-")
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, nil, err
@@ -181,32 +176,14 @@ func ffmpegFrames(path string) (<-chan bgrImage, func() error, error) {
 		defer close(ch)
 		r := bufio.NewReaderSize(stdout, 1<<20)
 		for {
-			buf := make([]byte, frameWidth*oh*3)
+			buf := make([]byte, frameSide*frameSide*3)
 			if _, err := io.ReadFull(r, buf); err != nil {
 				return
 			}
-			ch <- bgrImage{w: frameWidth, h: oh, pix: buf}
+			ch <- bgrImage{w: frameSide, h: frameSide, pix: buf}
 		}
 	}()
 	return ch, cmd.Wait, nil
-}
-
-func probeSize(path string) (int, int, error) {
-	out, err := exec.Command("ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-		"stream=width,height", "-of", "csv=p=0", path).Output()
-	if err != nil {
-		return 0, 0, fmt.Errorf("ffprobe %s: %w", path, err)
-	}
-	parts := strings.Split(strings.TrimSpace(string(out)), ",")
-	if len(parts) < 2 {
-		return 0, 0, fmt.Errorf("ffprobe %s: unexpected %q", path, out)
-	}
-	w, errW := strconv.Atoi(parts[0])
-	h, errH := strconv.Atoi(parts[1])
-	if errW != nil || errH != nil || w <= 0 || h <= 0 {
-		return 0, 0, fmt.Errorf("ffprobe %s: unexpected %q", path, out)
-	}
-	return w, h, nil
 }
 
 // cropThumb cuts a 96x96 square around the face with a quarter-side margin.
