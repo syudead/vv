@@ -256,5 +256,6 @@ In the comparison of a work-info fetch
 ([work-info-plugins.md](work-info-plugins.md#peoples-images-are-fetched-like-the-cover-and-become-faces-after-the-commit)),
 a fetched person with a kept image shows `PersonFace compare` before the name,
 and each fetched person with a profile adds one muted line `Fills only empty
-fields: …` under the chips, at most three, because the apply never replaces a
-stored value.
+fields: …` under the chips, because the apply never replaces a stored value.
+Three lines show at first and the rest fold behind `+N more`, which shows them
+all when expanded, so the chips stay the primary content of the row.
