@@ -5,32 +5,40 @@ import CardTagRow from "./CardTagRow";
 
 const ignoreToggle = () => undefined;
 
-// Smart folders have no selection mode, so their chips remain interactive.
-export function useFolderTagRow(onPressTag: (tag: TagRef) => void) {
+// Without a toggle a smart folder cannot be selected, so its chips remain interactive.
+export function useFolderTagRow(
+  onPressTag: (tag: TagRef) => void,
+  selectionMode = false,
+  toggleFolder?: (folderId: number) => void,
+) {
   return useCallback(
-    (tags: readonly VideoTag[]) => (
+    (tags: readonly VideoTag[], folderId: number) => (
       <CardTagRow
         tags={tags}
-        selectionMode={false}
+        selectionMode={selectionMode && toggleFolder !== undefined}
         onPress={onPressTag}
-        onToggleSelection={ignoreToggle}
+        onToggleSelection={
+          toggleFolder === undefined ? ignoreToggle : () => toggleFolder(folderId)
+        }
       />
     ),
-    [onPressTag],
+    [onPressTag, selectionMode, toggleFolder],
   );
 }
 
-// In selection mode, ordinary card chips toggle selection; smart folder chips stay interactive.
+// In selection mode, card chips toggle selection.
 export function useCardTagRows({
   selectionMode,
   onPressTag,
   toggleVideo,
   toggleGroup,
+  toggleSmartFolder,
 }: {
   selectionMode: boolean;
   onPressTag: (tag: TagRef) => void;
   toggleVideo: (videoId: number) => void;
   toggleGroup: (group: LibraryGroup) => void;
+  toggleSmartFolder?: (folderId: number) => void;
 }) {
   const videoTags = useCallback(
     (video: Video) => (
@@ -54,6 +62,6 @@ export function useCardTagRows({
     ),
     [onPressTag, selectionMode, toggleGroup],
   );
-  const folderTags = useFolderTagRow(onPressTag);
+  const folderTags = useFolderTagRow(onPressTag, selectionMode, toggleSmartFolder);
   return { videoTags, groupTags, folderTags };
 }

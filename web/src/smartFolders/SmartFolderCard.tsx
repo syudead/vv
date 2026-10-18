@@ -10,7 +10,9 @@ import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import {
+  CollectionCheck,
   CollectionName,
+  CollectionRowCheck,
   CollectionThumbnail,
   CollectionValueCells,
   useCollectionFacts,
@@ -38,12 +40,15 @@ export interface SmartFolderCardProps {
   folder: SmartFolderSummary;
   /** Return URL for the opened page. */
   backTo: string;
+  selected?: boolean;
   selectionMode?: boolean;
+  /** Omitted where smart folders cannot be selected, such as for guests. */
+  onSelect?: (folderId: number, selected: boolean) => void;
   activePreviewId?: number | null;
   previewResetEpoch?: number;
   onPreviewStart?: (id: number) => void;
   onPreviewReset?: () => void;
-  tagsRow?: (tags: readonly VideoTag[]) => ReactNode;
+  tagsRow?: (tags: readonly VideoTag[], folderId: number) => ReactNode;
   /** Inside an owner drag layer, this card neither lifts nor accepts drops. */
   refusesDrop?: boolean;
 }
@@ -122,14 +127,19 @@ function SmartFolderAddToPlaylist({
   );
 }
 
-/**
- * Smart folders cannot be selected, dragged or added to groups; omitted value responses hide the
- * card.
- */
+/** Smart folders cannot be dragged or added to groups; omitted value responses hide the card. */
 export const SmartFolderCard = memo(function SmartFolderCard(
   props: SmartFolderCardProps,
 ) {
-  const { folder, backTo, tagsRow, refusesDrop = false, selectionMode = false } = props;
+  const {
+    folder,
+    backTo,
+    tagsRow,
+    refusesDrop = false,
+    selected = false,
+    selectionMode = false,
+    onSelect,
+  } = props;
   const { gone, values, facts, label, ref } = useSmartFolderFacts(folder);
   const { linkProps, onFrontChange } = useCollectionLink({
     to: smartFolderPagePath(folder.id),
@@ -148,17 +158,35 @@ export const SmartFolderCard = memo(function SmartFolderCard(
     <article
       ref={ref}
       data-smart-folder-id={folder.id}
-      className="group relative flex min-w-0 flex-col gap-2"
+      className={cn(
+        "group relative flex min-w-0 flex-col gap-2",
+        selectionMode && "select-none",
+      )}
     >
+      {onSelect !== undefined && (
+        <CollectionCheck
+          selected={selected}
+          selectionMode={selectionMode}
+          label={t.library.smartFolder.select(folder.name)}
+          onSelect={(next) => onSelect(folder.id, next)}
+        />
+      )}
       <Link
         {...linkProps}
-        onClick={() => props.onPreviewReset?.()}
+        onClick={(event) => {
+          props.onPreviewReset?.();
+          if (selectionMode && onSelect !== undefined) {
+            event.preventDefault();
+            onSelect(folder.id, !selected);
+          }
+        }}
         className="flex min-w-0 flex-1 flex-col gap-2 rounded-md"
       >
         <CollectionThumbnail
           previews={values?.previews ?? []}
           totalCount={values?.videoCount}
           onFrontChange={onFrontChange}
+          selected={selected}
           selectionMode={selectionMode}
           activePreviewId={props.activePreviewId}
           previewResetEpoch={props.previewResetEpoch}
@@ -187,7 +215,7 @@ export const SmartFolderCard = memo(function SmartFolderCard(
         </VideoThumbnailMark>
       )}
       {tagsRow !== undefined && tags.length > 0 && (
-        <div className="flex min-w-0 flex-col gap-1">{tagsRow(tags)}</div>
+        <div className="flex min-w-0 flex-col gap-1">{tagsRow(tags, folder.id)}</div>
       )}
     </article>
   );
@@ -202,14 +230,30 @@ export const SmartFolderRow = memo(function SmartFolderRow({
   folder,
   backTo,
   owner,
+  selected = false,
+  selectionMode = false,
+  onSelect,
 }: SmartFolderCardProps & { owner: boolean }) {
   const { gone, values, facts, label, ref } = useSmartFolderFacts(folder);
   if (gone) return null;
   const cover = values?.previews[0];
   const empty = values?.videoCount === 0;
   return (
-    <TableRow ref={ref} data-smart-folder-id={folder.id}>
-      {owner && <TableCell className="w-10 pl-3" />}
+    <TableRow
+      ref={ref}
+      data-smart-folder-id={folder.id}
+      data-state={selected ? "selected" : undefined}
+    >
+      {onSelect !== undefined ? (
+        <CollectionRowCheck
+          selected={selected}
+          selectionMode={selectionMode}
+          label={t.library.smartFolder.select(folder.name)}
+          onSelect={(next) => onSelect(folder.id, next)}
+        />
+      ) : (
+        owner && <TableCell className="w-10 pl-3" />
+      )}
       <TableCell className="w-list-thumb-cell">
         <VideoThumbnail className="w-list-thumb rounded-sm">
           {cover !== undefined && <VideoThumbnailImage src={cover.thumbnailUrl} />}
@@ -220,6 +264,12 @@ export const SmartFolderRow = memo(function SmartFolderRow({
           to={smartFolderPagePath(folder.id)}
           state={{ from: backTo }}
           aria-label={label}
+          onClick={(event) => {
+            if (selectionMode && onSelect !== undefined) {
+              event.preventDefault();
+              onSelect(folder.id, !selected);
+            }
+          }}
           className={cn(
             "line-clamp-2 rounded-sm text-sm font-medium break-all hover:text-primary",
             facts.state === "watched" || empty

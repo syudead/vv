@@ -30,7 +30,7 @@ export function selectAllInGroup(
   }
   const ids = new Set(selection.ids);
   for (const id of videoIds) ids.add(id);
-  return { ids, groups: selection.groups };
+  return { ...selection, ids };
 }
 
 /**
@@ -62,7 +62,7 @@ export function reconcileGroupSelection(
     if (!sameIds(observed, group.videoIds)) changed = true;
     groups.set(key, { id: key, videoIds: observed });
   }
-  return changed ? { ids, groups } : selection;
+  return changed ? { ...selection, ids, groups } : selection;
 }
 
 function sameIds(a: readonly number[], b: readonly number[]): boolean {

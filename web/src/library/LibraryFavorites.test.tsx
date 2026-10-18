@@ -184,7 +184,11 @@ function install(items: LibraryItem[], group?: LibraryGroup): Server {
       const appliedGroups = server.appliedGroups ?? body.groupIds.length;
       server.appliedGroups = undefined;
       return Promise.resolve(
-        json({ appliedVideos: body.videoIds.length, appliedGroups }),
+        json({
+          appliedVideos: body.videoIds.length,
+          appliedGroups,
+          appliedSmartFolders: 0,
+        }),
       );
     }
     throw new Error(`unexpected request: ${method} ${url.toString()}`);
@@ -315,7 +319,8 @@ describe("ライブラリのお気に入りの付け外し", () => {
     fetchMock.mockImplementation((input, init) => {
       if (String(input) === "/api/favorites") {
         return new Promise<Response>((resolve) => {
-          answer = () => resolve(json({ appliedVideos: 1, appliedGroups: 0 }));
+          answer = () =>
+            resolve(json({ appliedVideos: 1, appliedGroups: 0, appliedSmartFolders: 0 }));
         });
       }
       return base!(input, init);
@@ -570,7 +575,7 @@ describe("ライブラリのお気に入りの付け外し", () => {
         }
         if (path === "/api/favorites" && server.favoriteRequests.length === 0) {
           return base!(input, init).then(() =>
-            json({ appliedVideos: 0, appliedGroups: 0 }),
+            json({ appliedVideos: 0, appliedGroups: 0, appliedSmartFolders: 0 }),
           );
         }
         return base!(input, init);

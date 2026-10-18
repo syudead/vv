@@ -13,15 +13,19 @@ import { useToast } from "../ui/Toast";
 import { SelectionAction, WithTooltip } from "./SelectionAction";
 import { overLimitMessage } from "./selectionErrors";
 
-/** Send selected groups and standalone videos once, preserving selection; member videos are excluded when their group is selected. */
+const noSmartFolders: readonly number[] = [];
+
+/** Send selected groups, smart folders and standalone videos once, preserving selection; member videos are excluded when their group is selected. */
 export default function FavoriteMenu({
   videoIds,
   groupIds,
+  smartFolderIds = noSmartFolders,
   overLimit,
   overLimitId,
 }: {
   videoIds: readonly number[];
   groupIds: readonly number[];
+  smartFolderIds?: readonly number[];
   overLimit: boolean;
   overLimitId: string;
 }) {
@@ -29,13 +33,17 @@ export default function FavoriteMenu({
 
   function apply(favorite: boolean) {
     // Recheck current counts before submitting to avoid an over-limit 400.
-    if (videoIds.length + groupIds.length > maxVideoTagsSelection) {
+    if (
+      videoIds.length + groupIds.length + smartFolderIds.length >
+      maxVideoTagsSelection
+    ) {
       toast(overLimitMessage());
       return;
     }
-    void updateFavorites(videoIds, groupIds, favorite).then(
+    void updateFavorites(videoIds, groupIds, favorite, { smartFolderIds }).then(
       (result) => {
-        const applied = result.appliedVideos + result.appliedGroups;
+        const applied =
+          result.appliedVideos + result.appliedGroups + result.appliedSmartFolders;
         toast(
           favorite
             ? t.library.selection.favoritesAdded(applied)

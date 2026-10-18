@@ -7,11 +7,15 @@ import {
   fromSelectAll,
   isGroupSelected,
   keepMembers,
+  keepSmartFolders,
   reconcileGroups,
   sameSelection,
+  selectedCount,
   setGroup,
+  setSmartFolder,
   setVideo,
   toggleGroup,
+  toggleSmartFolder,
   toggleVideo,
 } from "./selection";
 
@@ -40,6 +44,7 @@ describe("LibrarySelection", () => {
     expect(favoriteTargets(selection)).toEqual({
       videoIds: [1],
       groupIds: [5],
+      smartFolderIds: [],
     });
   });
 
@@ -49,6 +54,7 @@ describe("LibrarySelection", () => {
     expect(favoriteTargets(removed)).toEqual({
       videoIds: [101, 103],
       groupIds: [],
+      smartFolderIds: [],
     });
     const back = toggleVideo(removed, 102);
     expect(back.ids.size).toBe(3);
@@ -72,7 +78,11 @@ describe("LibrarySelection", () => {
     const deselected = setGroup(both, g1, false);
     expect(Array.from(deselected.ids).sort()).toEqual([12, 13]);
     expect(Array.from(deselected.groups.keys())).toEqual([2]);
-    expect(favoriteTargets(deselected)).toEqual({ videoIds: [], groupIds: [2] });
+    expect(favoriteTargets(deselected)).toEqual({
+      videoIds: [],
+      groupIds: [2],
+      smartFolderIds: [],
+    });
     const toggled = toggleGroup(both, g1);
     expect(sameSelection(toggled, deselected)).toBe(true);
   });
@@ -98,7 +108,11 @@ describe("LibrarySelection", () => {
     expect(Array.from(deselected.ids).sort()).toEqual([12, 13]);
     expect(isGroupSelected(deselected, 1)).toBe(false);
     expect(isGroupSelected(deselected, 2)).toBe(true);
-    expect(favoriteTargets(deselected)).toEqual({ videoIds: [], groupIds: [2] });
+    expect(favoriteTargets(deselected)).toEqual({
+      videoIds: [],
+      groupIds: [2],
+      smartFolderIds: [],
+    });
 
     const toggledOff = toggleGroup(both, g1);
     expect(sameSelection(toggledOff, deselected)).toBe(true);
@@ -137,6 +151,7 @@ describe("LibrarySelection", () => {
     expect(favoriteTargets(reconciled)).toEqual({
       videoIds: [1, 101, 102, 103],
       groupIds: [],
+      smartFolderIds: [],
     });
   });
 
@@ -147,6 +162,7 @@ describe("LibrarySelection", () => {
     expect(favoriteTargets(shrunk)).toEqual({
       videoIds: [103],
       groupIds: [5],
+      smartFolderIds: [],
     });
     const grown = reconcileGroups(selection, [groupItem([101, 102, 103, 104])]);
     expect(grown.groups.size).toBe(0);
@@ -161,7 +177,38 @@ describe("LibrarySelection", () => {
         { id: 6, videoIds: [201] },
       ],
     );
-    expect(favoriteTargets(all)).toEqual({ videoIds: [], groupIds: [5, 6] });
+    expect(favoriteTargets(all)).toEqual({
+      videoIds: [],
+      groupIds: [5, 6],
+      smartFolderIds: [],
+    });
+  });
+
+  it("スマートフォルダは 1 件と数えて smartFolderIds で送り、動画やグループを外しても残る", () => {
+    const selection = setGroup(setSmartFolder(emptySelection, 9, true), series, true);
+    expect(selectedCount(selection)).toBe(4);
+    expect(favoriteTargets(selection)).toEqual({
+      videoIds: [],
+      groupIds: [5],
+      smartFolderIds: [9],
+    });
+    const cleared = setGroup(selection, series, false);
+    expect(Array.from(cleared.smartFolders)).toEqual([9]);
+    expect(selectedCount(toggleSmartFolder(cleared, 9))).toBe(0);
+  });
+
+  it("並ばなくなったスマートフォルダを外し、変化が無ければ同じ選択を返す", () => {
+    const selection = setSmartFolder(setSmartFolder(emptySelection, 8, true), 9, true);
+    expect(Array.from(keepSmartFolders(selection, new Set([9])).smartFolders)).toEqual([
+      9,
+    ]);
+    expect(keepSmartFolders(selection, new Set([8, 9]))).toBe(selection);
+  });
+
+  it("「すべて選択」の smartFolderIds も比べ、スマートフォルダを 1 つ外すと別の選択になる", () => {
+    const all = fromSelectAll([1], [], [8, 9]);
+    expect(sameSelection(all, fromSelectAll([1], [], [9, 8]))).toBe(true);
+    expect(sameSelection(all, setSmartFolder(all, 8, false))).toBe(false);
   });
 
   it("変化が無ければ同じ選択を返す", () => {

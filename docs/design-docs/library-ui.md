@@ -353,7 +353,7 @@ bottom edge and the title.
 | Video, folder search results | Location row under the title |
 | Folder | Video card's width and border, folder artwork, Folder icon in the title |
 | Group (library only) | Video card's box and size, folder artwork of up to 4 member thumbnails |
-| Smart folder (unfiltered library, smart folder page) | Group card's box, artwork, count panel, name and tag row, with a `FolderSearch` mark before the count; no check or `Add to group`; the owner's heart and `Add to playlist` send the folder as one item (`smartFolderIds`) |
+| Smart folder (unfiltered library, smart folder page) | Group card's box, artwork, count panel, name and tag row, with a `FolderSearch` mark before the count; the owner's check selects it; no `Add to group`; the owner's heart and `Add to playlist` send the folder as one item (`smartFolderIds`) |
 
 Video card behaviour:
 
@@ -389,17 +389,16 @@ time through `GET /api/smart-folders/cards`.
 A `smartFolder` event reads the named cards again, keeping only the newest
 answer per card, and makes the unfiltered library reload its loaded pages, so
 a folder created, moved or renamed in another tab appears. A folder left out of
-the answer loses its card. The card's tags stay pressable while other cards are
-selected, since a folder card has no selection. A smart folder card cannot be
-dragged, and dropping on it shows `Can't drop here`.
+the answer loses its card. A smart folder card cannot be dragged, and dropping
+on it shows `Can't drop here`.
 
 Groups and smart folders share one-column cards and the same collection-link
 behaviour. A mouse-promoted cover opens that video with autoplay and its group
 or smart-folder context. The artwork shows at most four covers plus a More
 sheet if videos remain. More and the title open the collection; leaving the
 artwork restores that destination. Touch and keyboard activation also open the
-collection. During selection, promotion is disabled and group clicks retain
-their selection behaviour. Smart folders remain outside the selection model.
+collection. During selection, promotion is disabled and group and smart folder
+clicks retain their selection behaviour.
 
 Opening a smart folder leads to `/smart-folders/{id}`:
 a trail band of the folder's ancestors, the name, `12 videos · 1:32:10`, and
@@ -410,8 +409,8 @@ the library's grid or list. A video opens with `?smartFolder=<id>`. The owner's
 the page quietly, and deleting leaves for the parent folder or the library
 with a toast. An empty folder shows `EmptyState`, with `Edit conditions…` for
 the owner. The page reloads in place on a `smartFolder` event naming it or on
-a reconnect, and the selection drops videos that no longer match. Guests see
-the page without conditions, `More` or selection.
+a reconnect, and the selection drops videos and child folders that are no longer
+listed. Guests see the page without conditions, `More` or selection.
 
 Ungroup, group a folder's direct videos and turn a group into a tag are not on
 the card. They sit in the owner's menu at the right end of a folder page's
@@ -470,6 +469,8 @@ Selection is library- and owner-only. Its check shows on hover or focus in the
 grid (always where hover is impossible), always faintly in list view, and on
 every item during selection. A group's check selects that group; the selection
 bar below decides whether an operation sends the group or its selected videos.
+A smart folder's check selects the folder as one item, and `Select all` includes
+the matching smart folders.
 
 ### Selection bar
 
@@ -484,6 +485,12 @@ Its items, in order, are clear, `N selected`, `Add tag`, `Remove tag`,
 `Bundle as versions` (2 or more videos), a separator and `Select all`. The
 actions sit at the right end; those that do not fit move to the right end of
 the next line.
+
+While smart folders are selected, the count names them separately
+(`3 videos and 1 smart folder selected`). `Favorite` and `Add to playlist`
+send each folder as one item (`smartFolderIds`); the other actions change
+videos or groups only, so they are disabled with the reason
+`Not available while smart folders are selected`.
 
 The request shapes are in [the screen API schema](../../api/openapi.yaml).
 

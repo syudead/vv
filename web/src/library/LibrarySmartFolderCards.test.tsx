@@ -23,6 +23,7 @@ import LibraryPage from "./LibraryPage";
 
 const fetchMock = vi.fn<typeof fetch>();
 let cardRequests: string[] = [];
+let favoriteBodies: unknown[] = [];
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -32,7 +33,7 @@ function json(body: unknown, status = 200): Response {
 }
 
 function install(items: LibraryItem[]) {
-  fetchMock.mockImplementation((input) => {
+  fetchMock.mockImplementation((input, init) => {
     const url = new URL(String(input), "http://localhost");
     if (url.pathname === "/api/scans/current") return Promise.resolve(json({}, 404));
     if (url.pathname === "/api/media-folders") return Promise.resolve(json([{}]));
@@ -44,6 +45,21 @@ function install(items: LibraryItem[]) {
     if (url.pathname === "/api/tags") return Promise.resolve(json({ items: [] }));
     if (url.pathname === "/api/library") {
       return Promise.resolve(json({ items, total: items.length }));
+    }
+    if (url.pathname === "/api/library/ids") {
+      return Promise.resolve(
+        json({
+          ids: [1, 21],
+          groups: [{ id: 2, videoIds: [21] }],
+          smartFolderIds: [9],
+        }),
+      );
+    }
+    if (url.pathname === "/api/favorites") {
+      favoriteBodies.push(JSON.parse(String(init?.body)));
+      return Promise.resolve(
+        json({ appliedVideos: 0, appliedGroups: 0, appliedSmartFolders: 1 }),
+      );
     }
     if (url.pathname === "/api/smart-folders/cards") {
       cardRequests.push(url.searchParams.get("ids") ?? "");
@@ -141,6 +157,7 @@ beforeEach(() => {
   clearListSnapshot();
   localStorage.clear();
   cardRequests = [];
+  favoriteBodies = [];
   vi.stubGlobal("fetch", fetchMock);
   vi.stubGlobal("IntersectionObserver", RevealingObserver);
 });
@@ -157,9 +174,7 @@ describe("ライブラリのスマートフォルダのカード", () => {
     install(items);
     renderLibrary();
 
-    const folder = await screen.findByRole("link", {
-      name: "猫, smart folder of 4 videos",
-    });
+    await screen.findByRole("link", { name: "猫, smart folder of 4 videos" });
     const names = screen
       .getAllByRole("article")
       .map((card) => within(card).getAllByRole("link")[0]?.getAttribute("aria-label"));
@@ -169,8 +184,6 @@ describe("ライブラリのスマートフォルダのカード", () => {
       expect.stringContaining("Season"),
     ]);
     expect(cardRequests).toEqual(["9"]);
-    const card = folder.closest("article") as HTMLElement;
-    expect(within(card).queryByRole("checkbox")).toBeNull();
   });
 
   it("shows one inline folder and opens a preview with autoplay and folder playback context", async () => {
@@ -219,10 +232,13 @@ describe("ライブラリのスマートフォルダのカード", () => {
     });
     const row = link.closest("tr") as HTMLElement;
     await waitFor(() => expect(within(row).getByText("4 videos")).toBeTruthy());
-    expect(within(row).queryByRole("checkbox")).toBeNull();
+    await userEvent.click(
+      within(row).getByRole("checkbox", { name: 'Select the smart folder "猫"' }),
+    );
+    expect(screen.getByText("1 smart folder selected")).toBeTruthy();
   });
 
-  it("ほかのカードを選んでいる間も、フォルダのカードのタグを押すとそのタグで絞り込む", async () => {
+  it("ほかのカードを選んでいる間は、フォルダのカードのタグを押すとフォルダを選ぶ", async () => {
     const user = userEvent.setup();
     install(items);
     renderLibrary();
@@ -232,10 +248,64 @@ describe("ライブラリのスマートフォルダのカード", () => {
     const card = folder.closest("article") as HTMLElement;
 
     await user.click(screen.getByRole("checkbox", { name: 'Select "Episode"' }));
-    await user.click(within(card).getByRole("button", { name: "Filter by 旅行" }));
+    await user.click(within(card).getByRole("list", { name: "Tags" }));
 
-    await waitFor(() =>
-      expect(screen.getByTestId("location").textContent).toContain("tag=3"),
+    expect(
+      within(card)
+        .getByRole("checkbox", { name: 'Select the smart folder "猫"' })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(screen.getByText("1 video and 1 smart folder selected")).toBeTruthy();
+    expect(screen.getByTestId("location").textContent).not.toContain("tag=3");
+  });
+
+  it("選んだフォルダはお気に入りに smartFolderIds で送り、動画だけの操作は理由付きで押せない", async () => {
+    const user = userEvent.setup();
+    install(items);
+    renderLibrary();
+    const folder = await screen.findByRole("link", {
+      name: "猫, smart folder of 4 videos",
+    });
+    const card = folder.closest("article") as HTMLElement;
+
+    await user.click(
+      within(card).getByRole("checkbox", { name: 'Select the smart folder "猫"' }),
     );
+    const bar = screen.getByRole("region", { name: "Selection actions" });
+    expect(within(bar).getByText("1 smart folder selected")).toBeTruthy();
+    const addTag = within(bar).getByRole("button", { name: "Add tag" });
+    expect(addTag).toHaveProperty("disabled", true);
+    expect(addTag.getAttribute("title")).toBe(
+      "Not available while smart folders are selected",
+    );
+    expect(within(bar).getByRole("button", { name: "Add to playlist" })).toHaveProperty(
+      "disabled",
+      false,
+    );
+
+    await user.click(within(bar).getByRole("button", { name: "Favorite" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Add to favorites" }));
+
+    expect(await screen.findByText("Added 1 item to favorites")).toBeTruthy();
+    expect(favoriteBodies).toEqual([
+      { videoIds: [], groupIds: [], smartFolderIds: [9], favorite: true },
+    ]);
+  });
+
+  it("「すべて選択」は応答の smartFolderIds のフォルダも選ぶ", async () => {
+    const user = userEvent.setup();
+    install(items);
+    renderLibrary();
+    await screen.findByRole("link", { name: "猫, smart folder of 4 videos" });
+
+    await user.click(screen.getByRole("checkbox", { name: 'Select "Episode"' }));
+    await user.click(screen.getByRole("button", { name: "Select all" }));
+
+    expect(await screen.findByText("2 videos and 1 smart folder selected")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("checkbox", { name: 'Select the smart folder "猫"' })
+        .getAttribute("aria-checked"),
+    ).toBe("true");
   });
 });

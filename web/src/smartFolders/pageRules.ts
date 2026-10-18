@@ -45,16 +45,18 @@ export function missingParent(
   )?.folder;
 }
 
-/** Select loaded videos and all members of loaded groups; never select child-folder cards. */
+/** Select loaded videos, all members of loaded groups and loaded child-folder cards. */
 export function selectAllLoaded(items: readonly LibraryItem[]): LibrarySelection {
   const ids: number[] = [];
   const groups = [];
+  const smartFolderIds: number[] = [];
   for (const item of items) {
     if (item.kind === "video") ids.push(item.video.id);
+    if (item.kind === "smartFolder") smartFolderIds.push(item.smartFolder.id);
     if (item.kind === "group") {
       ids.push(...item.group.videoIds);
       groups.push({ id: item.group.id, videoIds: item.group.videoIds });
     }
   }
-  return fromSelectAll(ids, groups);
+  return fromSelectAll(ids, groups, smartFolderIds);
 }

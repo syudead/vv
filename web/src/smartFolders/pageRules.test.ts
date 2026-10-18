@@ -47,10 +47,11 @@ describe("missingParent", () => {
 });
 
 describe("selectAllLoaded", () => {
-  it("並んだ動画とグループを選び、子フォルダは選ばない", () => {
+  it("並んだ動画・グループ・子フォルダを選ぶ", () => {
     const selection = selectAllLoaded([child, video(1), group(2, [3, 4])]);
 
     expect([...selection.ids]).toEqual([1, 3, 4]);
     expect([...selection.groups.keys()]).toEqual([2]);
+    expect([...selection.smartFolders]).toEqual([5]);
   });
 });

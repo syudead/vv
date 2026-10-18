@@ -18,13 +18,17 @@ import {
   emptySelection,
   isGroupSelected,
   keepMembers,
+  keepSmartFolders,
   type LibrarySelection,
   reconcileGroups,
   sameSelection,
+  selectedCount,
   selectedGroupOf,
   setGroup,
+  setSmartFolder,
   setVideo,
   toggleGroup,
+  toggleSmartFolder,
   toggleVideo,
 } from "../library/selection";
 import SelectionBar from "../library/SelectionBar";
@@ -91,20 +95,25 @@ export default function SmartFolderPage() {
 }
 
 /**
- * Select only loaded videos and groups; exclude child folders. Remove unmatched videos on refresh
- * so bulk actions cannot affect hidden members.
+ * Select only loaded videos, groups and child folders. Remove unmatched items on refresh so bulk
+ * actions cannot affect hidden members.
  */
 function useFolderSelection(items: readonly LibraryItem[]) {
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
   const all = useMemo(() => selectAllLoaded(items), [items]);
   useEffect(() => {
-    setSelection((current) => reconcileGroups(keepMembers(current, all.ids), items));
+    setSelection((current) =>
+      reconcileGroups(
+        keepSmartFolders(keepMembers(current, all.ids), all.smartFolders),
+        items,
+      ),
+    );
   }, [all, items]);
   const clear = useCallback(() => setSelection(emptySelection), []);
-  useEscapeClearsSelection(selection.ids.size > 0, clear);
+  useEscapeClearsSelection(selectedCount(selection) > 0, clear);
   return {
     selection,
-    allSelected: all.ids.size > 0 && sameSelection(all, selection),
+    allSelected: selectedCount(all) > 0 && sameSelection(all, selection),
     clear,
     selectAll: useCallback(() => setSelection(all), [all]),
     changeVideo: useCallback(
@@ -115,6 +124,16 @@ function useFolderSelection(items: readonly LibraryItem[]) {
     changeGroup: useCallback(
       (group: LibraryGroup, selected: boolean) =>
         setSelection((current) => setGroup(current, selectedGroupOf(group), selected)),
+      [],
+    ),
+    changeSmartFolder: useCallback(
+      (folderId: number, selected: boolean) =>
+        setSelection((current) => setSmartFolder(current, folderId, selected)),
+      [],
+    ),
+    toggleSmartFolder: useCallback(
+      (folderId: number) =>
+        setSelection((current) => toggleSmartFolder(current, folderId)),
       [],
     ),
     toggleVideo: useCallback(
@@ -205,6 +224,7 @@ function SmartFolderScreen({ id }: { id: number | null }) {
               selectedIds={selectedIds}
               favoriteVideoIds={favorites.videoIds}
               favoriteGroupIds={favorites.groupIds}
+              smartFolderIds={favorites.smartFolderIds}
               selectingAll={false}
               onSelectAll={selection.selectAll}
               onClear={selection.clear}
@@ -442,12 +462,13 @@ interface ItemsProps {
 
 function FolderItems(props: ItemsProps) {
   const { id, items, view, zoom, listUrl, owner, selection, preview } = props;
-  const selectionMode = selection.selection.ids.size > 0;
+  const selectionMode = selectedCount(selection.selection) > 0;
   const { videoTags, groupTags, folderTags } = useCardTagRows({
     selectionMode,
     onPressTag: props.onPressTag,
     toggleVideo: selection.toggleVideo,
     toggleGroup: selection.toggleGroup,
+    toggleSmartFolder: owner ? selection.toggleSmartFolder : undefined,
   });
   const selected = selection.selection;
   const common = { backTo: listUrl, selectionMode, ...preview };
@@ -470,6 +491,8 @@ function FolderItems(props: ItemsProps) {
     ...preview,
     selectionMode,
     folder: item.smartFolder,
+    selected: selected.smartFolders.has(item.smartFolder.id),
+    onSelect: owner ? selection.changeSmartFolder : undefined,
     backTo: listUrl,
     tagsRow: view === "grid" ? folderTags : undefined,
   });
