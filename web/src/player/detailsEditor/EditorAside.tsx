@@ -76,25 +76,47 @@ export default function EditorAside({
           )}
         </>
       )}
-      <Button
-        asChild
-        variant="link"
-        size="sm"
-        className="self-start px-0 text-muted-foreground hover:text-primary has-[>svg]:px-0"
-      >
-        <Link
-          ref={backRef}
-          to={backTo}
-          onClick={(event: MouseEvent) => {
-            // Navigate only when unchanged or after explicit discard.
-            event.preventDefault();
-            onBack();
-          }}
-        >
-          <ArrowLeft aria-hidden="true" />
-          {t.player.detailsEditor.back}
-        </Link>
-      </Button>
+      <BackLink
+        to={backTo}
+        label={t.player.detailsEditor.back}
+        onBack={onBack}
+        backRef={backRef}
+      />
     </>
+  );
+}
+
+/** The aside's way back to the page being edited. */
+export function BackLink({
+  to,
+  label,
+  onBack,
+  backRef,
+}: {
+  to: string;
+  label: string;
+  onBack: () => void;
+  backRef?: Ref<HTMLAnchorElement>;
+}) {
+  return (
+    <Button
+      asChild
+      variant="link"
+      size="sm"
+      className="self-start px-0 text-muted-foreground hover:text-primary has-[>svg]:px-0"
+    >
+      <Link
+        ref={backRef}
+        to={to}
+        onClick={(event: MouseEvent) => {
+          // Navigate only when unchanged or after explicit discard.
+          event.preventDefault();
+          onBack();
+        }}
+      >
+        <ArrowLeft aria-hidden="true" />
+        {label}
+      </Link>
+    </Button>
   );
 }

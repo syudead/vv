@@ -10,16 +10,28 @@ export type PersonState =
   | { kind: "gone" }
   | { kind: "ready"; person: Person };
 
-/** Read one person; any action that meets a missing person calls markGone. */
-export function usePerson(id: number | null) {
-  const [state, setState] = useState<PersonState>(
-    id === null ? { kind: "gone" } : { kind: "loading" },
-  );
+/** The route's person id, or null when it is not a positive safe integer. */
+export function parsePersonId(value: string | undefined): number | null {
+  if (value === undefined || !/^[1-9]\d*$/.test(value)) return null;
+  const id = Number(value);
+  return Number.isSafeInteger(id) ? id : null;
+}
+
+/**
+ * Read one person, or start from `handed` without reading; any action that meets a missing person
+ * calls markGone.
+ */
+export function usePerson(id: number | null, handed?: Person) {
+  const [state, setState] = useState<PersonState>(() => {
+    if (id === null) return { kind: "gone" };
+    return handed === undefined ? { kind: "loading" } : { kind: "ready", person: handed };
+  });
   const [attempt, setAttempt] = useState(0);
   const gone = useRef(id === null);
+  const skipFirstRead = useRef(handed !== undefined);
 
   useEffect(() => {
-    if (id === null) return;
+    if (id === null || (attempt === 0 && skipFirstRead.current)) return;
     const controller = new AbortController();
     setState({ kind: "loading" });
     getCredit("person", id, controller.signal).then(

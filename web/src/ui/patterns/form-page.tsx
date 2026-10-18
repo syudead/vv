@@ -43,7 +43,18 @@ export function FormPage({
         className="sticky top-0 z-20 flex h-navbar shrink-0 items-center gap-3 border-b border-border bg-background/90 px-4 backdrop-blur-md sm:px-6"
       >
         <div className="flex min-w-0 flex-1 items-baseline gap-3">
-          <h1 className="shrink-0 text-lg leading-none font-semibold">{title}</h1>
+          {/* A title that names what is edited truncates; beside a detail it keeps its width. */}
+          <h1
+            className={cn(
+              "text-lg font-semibold",
+              // Clipping needs the full line height, or descenders are cut off.
+              detail === undefined
+                ? "min-w-0 truncate leading-normal"
+                : "shrink-0 leading-none",
+            )}
+          >
+            {title}
+          </h1>
           {detail !== undefined && (
             <p className="hidden min-w-0 truncate text-sm text-muted-foreground sm:block">
               {detail}

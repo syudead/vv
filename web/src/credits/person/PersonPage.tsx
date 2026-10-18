@@ -1,15 +1,12 @@
-import { UserRoundX } from "lucide-react";
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 
 import { type Credit, deleteCredit, isCreditGone, type Person } from "../../api/credits";
 import { errorText, t, type UiText } from "../../i18n";
-import { EmptyState } from "../../ui/patterns/empty-state";
 import { ErrorState } from "../../ui/patterns/error-state";
 import { LoadingState } from "../../ui/patterns/loading-state";
 import { PageHeader } from "../../ui/patterns/page-header";
 import { ProfilePage } from "../../ui/patterns/profile-page";
-import { Button } from "../../ui/shadcn/button";
 import { Skeleton } from "../../ui/shadcn/skeleton";
 import { useToast } from "../../ui/Toast";
 import { useDocumentTitle } from "../../videoList/pageHooks";
@@ -17,6 +14,8 @@ import DeleteCreditDialog from "../DeleteCreditDialog";
 import MergeCreditDialog from "../MergeCreditDialog";
 import PersonFaceControl from "./PersonFaceControl";
 import { personPath } from "./personPath";
+import PersonGone from "./PersonGone";
+import { useHandedPerson } from "./personHandoff";
 import { PersonDetails, PersonIdentity } from "./PersonProfile";
 import {
   PersonVideosBody,
@@ -25,26 +24,20 @@ import {
   usePersonVideos,
 } from "./PersonVideos";
 import { useLocalToday } from "./useLocalToday";
-import { usePerson } from "./usePerson";
+import { parsePersonId, usePerson } from "./usePerson";
 
 const text = t.credits.personPage;
-
-function parseId(value: string | undefined): number | null {
-  if (value === undefined || !/^[1-9]\d*$/.test(value)) return null;
-  const id = Number(value);
-  return Number.isSafeInteger(id) ? id : null;
-}
 
 /** `/people/:id`: the person's face and profile beside their videos. */
 export default function PersonPage() {
   const { id } = useParams();
-  const personId = parseId(id);
+  const personId = parsePersonId(id);
   // A new id (after a merge) starts from a fresh read.
   return <PersonScreen key={personId ?? "none"} id={personId} />;
 }
 
 function PersonScreen({ id }: { id: number | null }) {
-  const { state, reload, replace, markGone } = usePerson(id);
+  const { state, reload, replace, markGone } = usePerson(id, useHandedPerson(id));
   const person = state.kind === "ready" ? state.person : undefined;
   useDocumentTitle(person?.name);
 
@@ -55,17 +48,7 @@ function PersonScreen({ id }: { id: number | null }) {
         face={null}
         identity={null}
         header={null}
-        status={
-          <EmptyState
-            icon={<UserRoundX aria-hidden="true" />}
-            title={text.gone}
-            action={
-              <Button asChild variant="outline" size="sm">
-                <Link to="/people">{text.backToPeople}</Link>
-              </Button>
-            }
-          />
-        }
+        status={<PersonGone />}
       >
         {null}
       </ProfilePage>

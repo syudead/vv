@@ -13,6 +13,46 @@ export interface SaveFailure {
   field?: string;
 }
 
+export interface EditorSave {
+  saving: boolean;
+  failure: SaveFailure | null;
+  problem: FieldProblem | null;
+  save: () => void;
+}
+
+/**
+ * One save at a time for a full-page editor: each run clears the previous failure and gets a
+ * signal that aborts when the editor unmounts.
+ */
+export function useEditorSave(run: (signal: AbortSignal) => Promise<void>): EditorSave & {
+  setFailure: (failure: SaveFailure) => void;
+  setProblem: (problem: FieldProblem) => void;
+} {
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<SaveFailure | null>(null);
+  const [problem, setProblem] = useState<FieldProblem | null>(null);
+  const busy = useRef(false);
+  const controller = useRef<AbortController | null>(null);
+
+  useEffect(() => () => controller.current?.abort(), []);
+
+  const save = () => {
+    if (busy.current) return;
+    busy.current = true;
+    const mine = new AbortController();
+    controller.current = mine;
+    setSaving(true);
+    setFailure(null);
+    setProblem(null);
+    void run(mine.signal).finally(() => {
+      busy.current = false;
+      if (!mine.signal.aborted) setSaving(false);
+    });
+  };
+
+  return { saving, failure, problem, save, setFailure, setProblem };
+}
+
 /** Create new credits sequentially and retain their IDs before saving details once. Map field errors to inputs, report partial creation on failure, and abort when leaving. */
 export function useDetailsSave({
   videoId,
@@ -26,19 +66,8 @@ export function useDetailsSave({
   setDraft: (draft: Draft) => void;
   onSaved: (video: Video) => void;
   onGone: () => void;
-}): {
-  saving: boolean;
-  failure: SaveFailure | null;
-  problem: FieldProblem | null;
-  save: () => void;
-} {
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<SaveFailure | null>(null);
-  const [problem, setProblem] = useState<FieldProblem | null>(null);
-  const busy = useRef(false);
-  const controller = useRef<AbortController | null>(null);
-
-  useEffect(() => () => controller.current?.abort(), []);
+}): EditorSave {
+  const { saving, failure, problem, save, setFailure, setProblem } = useEditorSave(run);
 
   async function run(signal: AbortSignal): Promise<void> {
     const e = t.player.detailsEditor;
@@ -84,20 +113,6 @@ export function useDetailsSave({
     }
     onSaved(video);
   }
-
-  const save = () => {
-    if (busy.current) return;
-    busy.current = true;
-    const mine = new AbortController();
-    controller.current = mine;
-    setSaving(true);
-    setFailure(null);
-    setProblem(null);
-    void run(mine.signal).finally(() => {
-      busy.current = false;
-      if (!mine.signal.aborted) setSaving(false);
-    });
-  };
 
   return { saving, failure, problem, save };
 }
