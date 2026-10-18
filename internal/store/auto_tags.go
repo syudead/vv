@@ -122,7 +122,7 @@ func (s *SettingsStore) SaveOllamaSettings(ctx context.Context, settings domain.
 	})
 }
 
-func readBoolSetting(ctx context.Context, q *sql.DB, key string) (bool, error) {
+func readBoolSetting(ctx context.Context, q rowQueryer, key string) (bool, error) {
 	value, found, err := readSetting(ctx, q, key)
 	return found && value == strconv.FormatBool(true), err
 }
@@ -171,6 +171,19 @@ func writeSettings(ctx context.Context, q *sql.DB, values []settingValue) error 
 func (s *AutoTagStore) QueueVideos(
 	ctx context.Context, videoIDs []int64, mode domain.AutoTagQueueMode, decider domain.ActivityDecider,
 ) (int, error) {
+	return s.queueVideos(ctx, videoIDs, mode, decider, nil)
+}
+
+// RetryVideo queues the video again for the owner's retry of entryID, unless it is running; the new entry joins
+// every pipeline of the retried entry.
+func (s *AutoTagStore) RetryVideo(ctx context.Context, videoID, entryID int64) (int, error) {
+	return s.queueVideos(ctx, []int64{videoID}, domain.AutoTagQueueAgain, domain.ActivityByOwner, []int64{entryID})
+}
+
+func (s *AutoTagStore) queueVideos(
+	ctx context.Context, videoIDs []int64, mode domain.AutoTagQueueMode, decider domain.ActivityDecider,
+	continued []int64,
+) (int, error) {
 	if len(videoIDs) == 0 {
 		return 0, nil
 	}
@@ -180,13 +193,13 @@ func (s *AutoTagStore) QueueVideos(
 	}
 	return s.queue(ctx, `select v.content_key from videos v
 		where v.id in (select value from json_each(?)) and v.content_key <> '' and `+
-		registeredVideoCondition("v"), []any{string(encoded)}, mode, decider)
+		registeredVideoCondition("v"), []any{string(encoded)}, mode, decider, continued)
 }
 
 // QueueLibrary applies QueueVideos semantics to all registered content.
 func (s *AutoTagStore) QueueLibrary(ctx context.Context, mode domain.AutoTagQueueMode, decider domain.ActivityDecider) (int, error) {
 	return s.queue(ctx, `select v.content_key from videos v
-		where v.content_key <> '' and `+registeredVideoCondition("v"), nil, mode, decider)
+		where v.content_key <> '' and `+registeredVideoCondition("v"), nil, mode, decider, nil)
 }
 
 // An empty state represents a missing queue row.
@@ -206,6 +219,7 @@ func queueableStates(mode domain.AutoTagQueueMode) (string, error) {
 // Queue rows and their activities share a transaction; publish ActivityChanged after commit.
 func (s *AutoTagStore) queue(
 	ctx context.Context, selectKeys string, args []any, mode domain.AutoTagQueueMode, decider domain.ActivityDecider,
+	continued []int64,
 ) (int, error) {
 	states, err := queueableStates(mode)
 	if err != nil {
@@ -226,24 +240,72 @@ func (s *AutoTagStore) queue(
 	now := time.Now()
 	c := &changes{}
 	for _, subject := range subjects {
-		id, err := recordActivity(ctx, tx, c,
-			autoTagActivityEntry(subject.Key, subject.Label, domain.ActivityWaiting, decider), now)
-		if err != nil {
+		if _, err := queueAutoTagSubject(ctx, tx, c, subject, decider, continued, now); err != nil {
 			return 0, err
-		}
-		if _, err := tx.ExecContext(ctx, `
-			insert into auto_tag_queue (content_key, state, error, queued_at, updated_at, activity_id)
-			values (?, 'queued', '', ?, ?, ?)
-			on conflict (content_key) do update set state = 'queued', error = '', queued_at = excluded.queued_at,
-				updated_at = excluded.updated_at, activity_id = excluded.activity_id`,
-			subject.Key, now.UnixMilli(), now.UnixMilli(), id); err != nil {
-			return 0, fmt.Errorf("cannot queue videos for auto-tagging: %w", err)
 		}
 	}
 	if err := s.db.commit(ctx, tx, c); err != nil {
 		return 0, fmt.Errorf("cannot queue videos for auto-tagging: %w", err)
 	}
 	return len(subjects), nil
+}
+
+// queueAutoTagSubject writes the queue row and its waiting entry; an entry that continues others joins their pipelines.
+func queueAutoTagSubject(
+	ctx context.Context, tx *sql.Tx, c *changes, subject domain.ActivitySubject, decider domain.ActivityDecider,
+	continued []int64, now time.Time,
+) (int64, error) {
+	entry := autoTagActivityEntry(subject.Key, subject.Label, domain.ActivityWaiting, decider)
+	var (
+		id  int64
+		err error
+	)
+	if len(continued) > 0 {
+		id, err = recordContinuedActivity(ctx, tx, c, entry, continued, now)
+	} else {
+		id, err = recordActivity(ctx, tx, c, entry, now)
+	}
+	if err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		insert into auto_tag_queue (content_key, state, error, queued_at, updated_at, activity_id)
+		values (?, 'queued', '', ?, ?, ?)
+		on conflict (content_key) do update set state = 'queued', error = '', queued_at = excluded.queued_at,
+			updated_at = excluded.updated_at, activity_id = excluded.activity_id`,
+		subject.Key, now.UnixMilli(), now.UnixMilli(), id); err != nil {
+		return 0, fmt.Errorf("cannot queue videos for auto-tagging: %w", err)
+	}
+	return id, nil
+}
+
+// queueAfterImportAutoTag is the seek stage's follow-up process: the transaction that finishes the stage for good
+// queues a video with no queue row while after-import tagging is on, and the entry joins the pipelines of the job's
+// import entry. Otherwise it writes nothing, so no pipeline waits for tagging.
+func queueAfterImportAutoTag(ctx context.Context, tx *sql.Tx, c *changes, job domain.Job, now time.Time) error {
+	for _, key := range []string{autoTagFeatureKey, autoTagAfterImportKey} {
+		if on, err := readBoolSetting(ctx, tx, key); err != nil || !on {
+			return err
+		}
+	}
+	subjects, err := queueableAutoTagSubjects(ctx, tx, `select v.content_key, `+contentLabelExpr("v.content_key")+`
+		from videos v where v.id = ? and v.content_key = ? and v.content_key <> '' and v.location_generation = ?
+		and v.seek_thumbnail_state in ('done', 'failed') and `+registeredVideoCondition("v")+`
+		and not exists (select 1 from auto_tag_queue q where q.content_key = v.content_key)`,
+		[]any{job.VideoID, job.ContentKey, job.LocationGeneration})
+	if err != nil {
+		return err
+	}
+	for _, subject := range subjects {
+		id, err := queueAutoTagSubject(ctx, tx, c, subject, domain.ActivityByRule, nil, now)
+		if err != nil {
+			return err
+		}
+		if err := joinJobPipelines(ctx, tx, job.ID, id, now); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func queueableAutoTagSubjects(ctx context.Context, tx *sql.Tx, query string, args []any) ([]domain.ActivitySubject, error) {
