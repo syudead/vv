@@ -14,7 +14,7 @@ import {
 import { type ComponentProps, Fragment, useState } from "react";
 import { Link } from "react-router";
 
-import type { ActivityEntry, ActivityTag } from "../api/activity";
+import type { ActivityEntry, ActivityProgress, ActivityTag } from "../api/activity";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { CardListItem } from "../ui/patterns/card-list";
@@ -31,6 +31,7 @@ import { Spinner } from "../ui/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import {
   cardTone,
+  type EntryFields,
   type EntryResult,
   entryOperations,
   entryResult,
@@ -42,6 +43,7 @@ import {
   subjectParts,
   subjectText,
 } from "./activityEntry";
+import type { OperationTarget } from "./useActivityOperations";
 
 const markIcon: Record<StatusMark, { icon: LucideIcon; className: string }> = {
   running: { icon: LoaderCircle, className: "animate-spin text-primary" },
@@ -86,7 +88,7 @@ export function MarkIcon({ mark, warning = false, small = false }: MarkIconProps
   );
 }
 
-export function StatusIcon({ entry, small }: { entry: ActivityEntry; small?: boolean }) {
+export function StatusIcon({ entry, small }: { entry: EntryFields; small?: boolean }) {
   return (
     <MarkIcon
       mark={statusMark(entry)}
@@ -97,7 +99,7 @@ export function StatusIcon({ entry, small }: { entry: ActivityEntry; small?: boo
 }
 
 /** The card's title opens the entry's detail; the video opens from `Open` only. */
-function Subject({ entry, from }: { entry: ActivityEntry; from: string }) {
+export function Subject({ entry, from }: { entry: ActivityEntry; from: string }) {
   const parts = subjectParts(entry);
   return (
     <Link
@@ -146,12 +148,18 @@ export function ResultText({
   );
 }
 
-function Result({ entry, now }: { entry: ActivityEntry; now: Date }) {
-  const progress = entry.progress;
+/** The result phrase, then a running import's bar and count; the bar hides below `lg`. */
+export function ResultWithProgress({
+  result,
+  progress,
+}: {
+  result: EntryResult;
+  progress: ActivityProgress | undefined;
+}) {
   return (
     <>
-      <ResultText result={entryResult(entry, now)} />
-      {entry.status === "running" && progress !== undefined && (
+      <ResultText result={result} />
+      {progress !== undefined && (
         <>
           <span className="w-activity-bar shrink-0 max-lg:hidden">
             <Progress
@@ -166,6 +174,15 @@ function Result({ entry, now }: { entry: ActivityEntry; now: Date }) {
         </>
       )}
     </>
+  );
+}
+
+function Result({ entry, now }: { entry: ActivityEntry; now: Date }) {
+  return (
+    <ResultWithProgress
+      result={entryResult(entry, now)}
+      progress={entry.status === "running" ? entry.progress : undefined}
+    />
   );
 }
 
@@ -278,16 +295,16 @@ function UndoTagsMenu({
   );
 }
 
-interface ActionsProps {
-  entry: ActivityEntry;
+export interface ActionsProps {
+  entry: EntryFields;
   actions: OpenAction[];
   from: string;
-  onRetry: (entry: ActivityEntry) => Promise<void>;
-  onUndo: (entry: ActivityEntry, tagId?: number) => Promise<void>;
+  onRetry: (entry: OperationTarget) => Promise<void>;
+  onUndo: (entry: OperationTarget, tagId?: number) => Promise<void>;
 }
 
 /** Keep actions disabled until the refreshed card arrives to prevent duplicate requests. */
-function Actions({ entry, actions, from, onRetry, onUndo }: ActionsProps) {
+export function Actions({ entry, actions, from, onRetry, onUndo }: ActionsProps) {
   const [pending, setPending] = useState<Pending>(null);
   const operations = entryOperations(entry);
   const busy = pending !== null;
@@ -340,9 +357,9 @@ export interface ActivityCardProps {
   from: string;
   actions: OpenAction[];
   /** The caller reports failures; this promise never rejects. */
-  onRetry: (entry: ActivityEntry) => Promise<void>;
+  onRetry: (entry: OperationTarget) => Promise<void>;
   /** For auto_tag, pass the tag to undo; the caller reports failures. */
-  onUndo: (entry: ActivityEntry, tagId?: number) => Promise<void>;
+  onUndo: (entry: OperationTarget, tagId?: number) => Promise<void>;
 }
 
 export function ActivityCard({

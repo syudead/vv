@@ -4,6 +4,9 @@ import { clearListSnapshot } from "./listSnapshot";
 
 export type ActivityPage = components["schemas"]["ActivityPage"];
 export type ActivityEntry = components["schemas"]["ActivityEntry"];
+export type ActivityListItem = components["schemas"]["ActivityListItem"];
+export type ActivityMemberSummary = components["schemas"]["ActivityMemberSummary"];
+export type ActivityProgress = components["schemas"]["ActivityProgress"];
 export type ActivityKind = components["schemas"]["ActivityKind"];
 export type ActivityFeature = components["schemas"]["ActivityFeature"];
 export type ActivityStatus = components["schemas"]["ActivityStatus"];
