@@ -34,7 +34,7 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
 		addedWithin: params.AddedWithin, minDuration: params.MinDuration, maxDuration: params.MaxDuration,
-		tagKind: params.TagKind,
+		tagKind: params.TagKind, personRole: params.PersonRole,
 	})
 	if !ok {
 		return
@@ -72,6 +72,8 @@ type videoQueryParams struct {
 	minDuration *int
 	maxDuration *int
 	tagKind     *int64
+	// personRole is accepted only by listVideos and requires person.
+	personRole *gen.WorkPersonRole
 }
 
 // parseVideoQuery writes 400 and returns false for invalid or audience-restricted filters.
@@ -139,6 +141,14 @@ func (s *server) parseIDFilters(w http.ResponseWriter, params videoQueryParams, 
 			return false
 		}
 		*filter.out = *filter.value
+	}
+	if params.personRole != nil {
+		role := domain.PersonRole(*params.personRole)
+		if query.Person == 0 || !role.Valid() {
+			s.invalidRequest(w, "personRole must be a known role and requires person.")
+			return false
+		}
+		query.PersonRole = role
 	}
 	return true
 }

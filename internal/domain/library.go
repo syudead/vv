@@ -96,6 +96,8 @@ type VideoQuery struct {
 	// Person matches any role; zero disables filtering and nonexistent IDs match nothing.
 	Person       int64
 	Organization int64
+	// PersonRole narrows Person to one role; it requires Person and is empty when unset.
+	PersonRole PersonRole
 	// TagKindID matches manual or folder-derived tags; zero disables filtering and nonexistent IDs match nothing.
 	TagKindID int64
 	// AddedWithinDays is inclusive; zero disables filtering.
