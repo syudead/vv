@@ -2,7 +2,7 @@ import { ChevronDown, Globe, Lock } from "lucide-react";
 
 import { maxVideoTagsSelection } from "../api/tags";
 import { updateVideoVisibility } from "../api/visibility";
-import { errorText, t } from "../i18n";
+import { errorText, t, type UiText } from "../i18n";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,17 +10,22 @@ import {
   DropdownMenuTrigger,
 } from "../ui/shadcn/dropdown-menu";
 import { useToast } from "../ui/Toast";
-import { SelectionAction, WithTooltip } from "./SelectionAction";
+import { disabledProps, SelectionAction, WithTooltip } from "./SelectionAction";
 import { overLimitMessage } from "./selectionErrors";
 
+const noSmartFolders: readonly number[] = [];
+
+/** The server changes the selected smart folders' current members as well as selectedIds. */
 export default function VisibilityMenu({
   selectedIds,
-  overLimit,
-  overLimitId,
+  smartFolderIds = noSmartFolders,
+  disabledReason,
+  reasonId,
 }: {
   selectedIds: readonly number[];
-  overLimit: boolean;
-  overLimitId: string;
+  smartFolderIds?: readonly number[];
+  disabledReason: UiText | undefined;
+  reasonId: string;
 }) {
   const toast = useToast();
 
@@ -30,7 +35,7 @@ export default function VisibilityMenu({
       toast(overLimitMessage());
       return;
     }
-    void updateVideoVisibility(selectedIds, isPublic).then(
+    void updateVideoVisibility(selectedIds, isPublic, { smartFolderIds }).then(
       (result) => {
         toast(
           isPublic
@@ -50,9 +55,7 @@ export default function VisibilityMenu({
             icon={<Globe aria-hidden="true" />}
             label={t.library.selection.visibility}
             after={<ChevronDown aria-hidden="true" />}
-            disabled={overLimit}
-            title={overLimit ? overLimitMessage() : undefined}
-            aria-describedby={overLimit ? overLimitId : undefined}
+            {...disabledProps(disabledReason, reasonId)}
           />
         </DropdownMenuTrigger>
       </WithTooltip>

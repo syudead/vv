@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { subscribeServerEvents } from "../api/serverEvents";
+import { subscribeSmartFolderChanges } from "../api/smartFolderChanges";
 import { readSmartFolderCards } from "../api/smartFolders";
 import { type CardValue, chunks, latestAnswer, withAnswer } from "./cardValueRules";
 
@@ -23,8 +24,8 @@ const CardValuesContext = createContext<CardValues | null>(null);
 const noValues: ReadonlyMap<number, CardValue> = new Map();
 
 /**
- * Batch visible-card IDs in groups of 60; events refresh previously requested IDs without
- * skeletons, and reconnect refreshes all. Apply only each ID's latest request and retain values on
+ * Batch visible-card IDs in groups of 60; events and bulk-action changes refresh previously
+ * requested IDs without skeletons, and reconnect refreshes all. Apply only each ID's latest request and retain values on
  * failure.
  */
 export function SmartFolderCardsProvider({ children }: { children: ReactNode }) {
@@ -79,17 +80,20 @@ export function SmartFolderCardsProvider({ children }: { children: ReactNode }) 
   );
 
   useEffect(() => {
+    const readShown = (ids: readonly number[]) => {
+      const shown = ids.filter((id) => asked.current.has(id));
+      if (shown.length > 0) read(shown);
+    };
+    const unsubscribeChanges = subscribeSmartFolderChanges(readShown);
     const unsubscribe = subscribeServerEvents({
-      smartFolder: (ids) => {
-        const shown = ids.filter((id) => asked.current.has(id));
-        if (shown.length > 0) read(shown);
-      },
+      smartFolder: readShown,
       open: (reconnected) => {
         if (reconnected && asked.current.size > 0) read(Array.from(asked.current));
       },
     });
     const live = controllers.current;
     return () => {
+      unsubscribeChanges();
       unsubscribe();
       clearTimeout(flushTimer.current);
       for (const controller of live) controller.abort();

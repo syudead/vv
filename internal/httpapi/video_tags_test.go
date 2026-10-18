@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -169,4 +170,78 @@ func TestSummarizeVideoTagsRejectsEmptyVideoIDs(t *testing.T) {
 	assertErrorBody(t, "要約の 0件", rec.Code, rec.Body.Bytes(), wantError{
 		status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyVideos, limit: maxVideoTagsIDs,
 	})
+}
+
+// memberFolders resolves every requested smart folder to members and records the requested IDs.
+type memberFolders struct {
+	failingSmartFolders
+	members   []int64
+	requested []int64
+}
+
+func (f *memberFolders) SmartFolderVideoIDs(_ context.Context, ids []int64) ([]int64, error) {
+	f.requested = ids
+	return f.members, nil
+}
+
+func TestUpdateVideoTagsAppliesToSmartFolderMembers(t *testing.T) {
+	tags := &fakeTags{attachRef: domain.TagRef{ID: 2, Name: "旅行"}, attachApplied: 3}
+	folders := &memberFolders{members: []int64{3, 4}}
+	handler := newTestServer(t, Options{Tags: tags, SmartFolders: folders})
+
+	rec := postJSON(t, handler, "/api/video-tags", `{"videoIds":[1,3],"smartFolderIds":[7],"action":"add","tag":{"id":2}}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if got := decode[gen.VideoTagsResponse](t, rec); got.Applied != 3 {
+		t.Errorf("applied = %d, want 3", got.Applied)
+	}
+	if !reflect.DeepEqual(folders.requested, []int64{7}) {
+		t.Errorf("smart folders = %v, want [7]", folders.requested)
+	}
+	if !reflect.DeepEqual(tags.lastVideoIDs, []int64{1, 3, 4}) {
+		t.Errorf("videoIDs = %v, want [1 3 4]", tags.lastVideoIDs)
+	}
+}
+
+// The limit applies to distinct videos after resolution, not to the request's array lengths.
+func TestUpdateVideoTagsLimitCountsSmartFolderMembers(t *testing.T) {
+	full := make([]int64, maxVideoTagsIDs)
+	for i := range full {
+		full[i] = int64(i + 2)
+	}
+	for _, tc := range []struct {
+		name    string
+		members []int64
+		body    string
+	}{
+		{"解決後 20001件", full, `{"videoIds":[1],"smartFolderIds":[7],"action":"add","tag":{"id":2}}`},
+		{"解決後 0件", nil, `{"videoIds":[],"smartFolderIds":[7],"action":"add","tag":{"name":"新しいタグ"}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tags := &fakeTags{}
+			handler := newTestServer(t, Options{Tags: tags, SmartFolders: &memberFolders{members: tc.members}})
+
+			rec := postJSON(t, handler, "/api/video-tags", tc.body)
+			assertErrorBody(t, tc.name, rec.Code, rec.Body.Bytes(), wantError{
+				status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyVideos, limit: maxVideoTagsIDs,
+			})
+			if tags.operation != "" {
+				t.Errorf("request without a valid target reached the store: %q", tags.operation)
+			}
+		})
+	}
+}
+
+func TestSummarizeVideoTagsResolvesSmartFolders(t *testing.T) {
+	tags := &fakeTags{}
+	handler := newTestServer(t, Options{Tags: tags, SmartFolders: &memberFolders{members: []int64{5, 6}}})
+
+	rec := postJSON(t, handler, "/api/video-tags/summary", `{"videoIds":[],"smartFolderIds":[7]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if !reflect.DeepEqual(tags.lastVideoIDs, []int64{5, 6}) {
+		t.Errorf("videoIDs = %v, want [5 6]", tags.lastVideoIDs)
+	}
 }

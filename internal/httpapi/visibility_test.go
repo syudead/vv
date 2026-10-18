@@ -127,6 +127,23 @@ func TestVideoVisibilityRejectsGuestsAndInvalidBodies(t *testing.T) {
 	}
 }
 
+func TestVideoVisibilityResolvesSmartFolders(t *testing.T) {
+	var got []int64
+	visibility := visibilityFunc(func(_ context.Context, ids []int64, _ bool) ([]string, error) {
+		got = ids
+		return []string{"k5", "k6"}, nil
+	})
+	handler := newTestServer(t, Options{Visibility: visibility, SmartFolders: &memberFolders{members: []int64{5, 6}}})
+
+	rec := jsonRequest(t, handler, http.MethodPut, "/api/video-visibility", `{"videoIds":[],"smartFolderIds":[7],"public":true}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if !slices.Equal(got, []int64{5, 6}) {
+		t.Errorf("videoIDs = %v, want [5 6]", got)
+	}
+}
+
 type endlessTranscoder struct{}
 
 type zeroReader struct{}

@@ -15,7 +15,7 @@ import { __resetTagsForTest } from "../api/tags";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
-import SelectionBar from "./SelectionBar";
+import SelectionBar, { selectionReasons } from "./SelectionBar";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -176,9 +176,10 @@ function install() {
 
 type BarProps = React.ComponentProps<typeof SelectionBar>;
 
+type DefaultedProps = "favoriteVideoIds" | "favoriteGroupIds" | "onCollectionsDeleted";
+
 function barElement(
-  props: Omit<BarProps, "favoriteVideoIds" | "favoriteGroupIds"> &
-    Partial<Pick<BarProps, "favoriteVideoIds" | "favoriteGroupIds">>,
+  props: Omit<BarProps, DefaultedProps> & Partial<Pick<BarProps, DefaultedProps>>,
 ) {
   return (
     <TooltipProvider>
@@ -187,6 +188,7 @@ function barElement(
           {...props}
           favoriteVideoIds={props.favoriteVideoIds ?? []}
           favoriteGroupIds={props.favoriteGroupIds ?? []}
+          onCollectionsDeleted={props.onCollectionsDeleted ?? vi.fn()}
         />
       </ToastProvider>
     </TooltipProvider>
@@ -1038,5 +1040,73 @@ describe("SelectionBar の束ねる操作", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(onClear).not.toHaveBeenCalled();
     await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+});
+
+describe("SelectionBar の削除", () => {
+  it("グループを選ぶまで削除を押せず、理由を示す", () => {
+    const deleteButton = () =>
+      screen.getByRole<HTMLButtonElement>("button", { name: "Delete…" });
+    const { rerender } = renderBar();
+    expect(deleteButton().disabled).toBe(true);
+    expect(deleteButton().title).toBe("Select a group or smart folder");
+
+    rerender(
+      barElement({
+        count: 3,
+        selectedIds: [1, 2, 3],
+        onClear: vi.fn(),
+        onTagRemoved: vi.fn(),
+        onBundled: vi.fn(),
+        favoriteGroupIds: [5],
+      }),
+    );
+    expect(deleteButton().disabled).toBe(false);
+  });
+});
+
+describe("selectionReasons", () => {
+  const unsupported = "Not available for smart folders";
+
+  it("スマートフォルダを選んでいると、グループと版の操作だけ押せない理由を返す", () => {
+    const reasons = selectionReasons({
+      count: 2,
+      favoriteVideoIds: [1, 2],
+      favoriteGroupIds: [],
+      smartFolderIds: [9],
+    });
+    expect(reasons).toEqual({
+      tag: undefined,
+      favorite: undefined,
+      group: unsupported,
+      newGroup: unsupported,
+      bundle: unsupported,
+      deleteCollections: undefined,
+    });
+  });
+
+  it("グループもスマートフォルダも選んでいないと、削除できない理由を返す", () => {
+    const reasons = (favoriteGroupIds: number[], smartFolderIds: number[]) =>
+      selectionReasons({
+        count: 2,
+        favoriteVideoIds: [1, 2],
+        favoriteGroupIds,
+        smartFolderIds,
+      }).deleteCollections;
+    expect(reasons([], [])).toBe("Select a group or smart folder");
+    expect(reasons([5], [])).toBeUndefined();
+    expect(reasons([], [9])).toBeUndefined();
+  });
+
+  it("お気に入りの上限はスマートフォルダも 1 件と数える", () => {
+    const reasons = selectionReasons({
+      count: 0,
+      favoriteVideoIds: [],
+      favoriteGroupIds: Array.from({ length: 20_000 }, (_, i) => i + 1),
+      smartFolderIds: [9],
+    });
+    expect(reasons.favorite).toBe("Select between 1 and 20,000 videos.");
+    expect(reasons.group).toBe(reasons.favorite);
+    expect(reasons.deleteCollections).toBe(reasons.favorite);
   });
 });

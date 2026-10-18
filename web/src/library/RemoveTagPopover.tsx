@@ -16,15 +16,20 @@ import { isTagNotFound, overLimitMessage } from "./selectionErrors";
 import { buildRemoveOptions, removableSummary } from "./tagChoices";
 import TagCommand, { type TagChoice } from "../ui/TagCommand";
 
+const noSmartFolders: readonly number[] = [];
+
+/** Candidates and removal cover the selected smart folders' current members as well as selectedIds. */
 export default function RemoveTagPopover({
   open,
   onOpenChange,
   selectedIds,
+  smartFolderIds = noSmartFolders,
   onRemoved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedIds: readonly number[];
+  smartFolderIds?: readonly number[];
   onRemoved: (tagId: number) => void;
 }) {
   const toast = useToast();
@@ -44,7 +49,7 @@ export default function RemoveTagPopover({
   const summarySeq = useRef(0);
   const fetchSummary = useCallback(() => {
     // Empty selections are about to close; the summary endpoint requires at least one ID.
-    if (selectedIds.length === 0) return;
+    if (selectedIds.length === 0 && smartFolderIds.length === 0) return;
     if (selectedIds.length > maxVideoTagsSelection) {
       // Invalidate earlier summaries so they cannot replace the over-limit state.
       summarySeq.current += 1;
@@ -56,7 +61,7 @@ export default function RemoveTagPopover({
     const seq = (summarySeq.current += 1);
     setLoading(true);
     setFetchFailed(false);
-    summarizeVideoTags(selectedIds)
+    summarizeVideoTags(selectedIds, { smartFolderIds })
       .then((result) => {
         if (summarySeq.current !== seq) return;
         setSummary(removableSummary(result));
@@ -68,7 +73,7 @@ export default function RemoveTagPopover({
       .finally(() => {
         if (summarySeq.current === seq) setLoading(false);
       });
-  }, [selectedIds]);
+  }, [selectedIds, smartFolderIds]);
 
   // Hide stale candidates while refreshing for a changed selection.
   const wasOpenRef = useRef(false);
@@ -109,7 +114,7 @@ export default function RemoveTagPopover({
     setSubmitting(true);
     const tagId = Number(option.id);
     const displayName = option.label;
-    void detachVideoTag(selectedIds, tagId)
+    void detachVideoTag(selectedIds, tagId, { smartFolderIds })
       .then((result) => {
         toast(t.library.selection.removed(result.applied, displayName));
         setValue("");

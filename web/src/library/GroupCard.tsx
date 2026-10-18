@@ -190,6 +190,64 @@ export function CollectionThumbnail({
   );
 }
 
+interface CollectionCheckProps {
+  selected: boolean;
+  selectionMode: boolean;
+  label: UiText;
+  onSelect: (selected: boolean) => void;
+}
+
+/** A collection card's check, shown on hover or focus, always where hover is impossible, and during selection. */
+export function CollectionCheck({
+  selected,
+  selectionMode,
+  label,
+  onSelect,
+}: CollectionCheckProps) {
+  return (
+    <VideoThumbnailMark
+      corner="top-start"
+      className={cn(
+        "z-30 p-1 transition-opacity duration-150",
+        selectionMode || selected
+          ? "opacity-100"
+          : "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
+      )}
+    >
+      <Checkbox
+        checked={selected}
+        onCheckedChange={(next) => onSelect(next === true)}
+        aria-label={label}
+        onClick={(event: MouseEvent) => event.stopPropagation()}
+      />
+    </VideoThumbnailMark>
+  );
+}
+
+/** A collection row's check cell, always faintly visible in list view. */
+export function CollectionRowCheck({
+  selected,
+  selectionMode,
+  label,
+  onSelect,
+}: CollectionCheckProps) {
+  return (
+    <TableCell className="w-10 pl-3">
+      <Checkbox
+        checked={selected}
+        onCheckedChange={(next) => onSelect(next === true)}
+        aria-label={label}
+        className={cn(
+          "transition-opacity",
+          selectionMode || selected
+            ? "opacity-100"
+            : "opacity-50 group-focus-within:opacity-100 group-hover:opacity-100",
+        )}
+      />
+    </TableCell>
+  );
+}
+
 export function CollectionName({ name, muted }: { name: string; muted: boolean }) {
   return (
     <h3
@@ -252,22 +310,12 @@ function GroupCardFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
       )}
     >
       {onSelect !== undefined && (
-        <VideoThumbnailMark
-          corner="top-start"
-          className={cn(
-            "z-30 p-1 transition-opacity duration-150",
-            selectionMode || selected
-              ? "opacity-100"
-              : "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
-          )}
-        >
-          <Checkbox
-            checked={selected}
-            onCheckedChange={(next) => onSelect(group, next === true)}
-            aria-label={t.library.group.select(group.name)}
-            onClick={(event: MouseEvent) => event.stopPropagation()}
-          />
-        </VideoThumbnailMark>
+        <CollectionCheck
+          selected={selected}
+          selectionMode={selectionMode}
+          label={t.library.group.select(group.name)}
+          onSelect={(next) => onSelect(group, next)}
+        />
       )}
 
       <Link
@@ -343,19 +391,12 @@ function GroupRowFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
       data-state={selected ? "selected" : undefined}
     >
       {onSelect !== undefined && (
-        <TableCell className="w-10 pl-3">
-          <Checkbox
-            checked={selected}
-            onCheckedChange={(next) => onSelect(group, next === true)}
-            aria-label={t.library.group.select(group.name)}
-            className={cn(
-              "transition-opacity",
-              selectionMode || selected
-                ? "opacity-100"
-                : "opacity-50 group-focus-within:opacity-100 group-hover:opacity-100",
-            )}
-          />
-        </TableCell>
+        <CollectionRowCheck
+          selected={selected}
+          selectionMode={selectionMode}
+          label={t.library.group.select(group.name)}
+          onSelect={(next) => onSelect(group, next)}
+        />
       )}
       <TableCell className="w-list-thumb-cell">
         <VideoThumbnail className="w-list-thumb rounded-sm">

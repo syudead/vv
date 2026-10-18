@@ -189,9 +189,8 @@ The top bar ([`TopBar.tsx`](../../web/src/shell/TopBar.tsx)) holds ☰ (below
 pages and the admin pages (tags, people, organizations) insert their toolbar after them: the design-system
 `Toolbar` with
 `placement="topBar"`, rendered through
-[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx). The page body
-starts with the heading and the count, so the toolbar stays reachable at any
-scroll position. Folder pages are a design-system `ListPage`: the breadcrumb
+[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx), so the toolbar
+stays reachable at any scroll position. Folder pages are a design-system `ListPage`: the breadcrumb
 is a band stuck under the top bar, so the parent folders stay one click away at
 any scroll position. The breadcrumb's last segment names the folder, so the
 page's `h1` is for screen readers only and no visible title repeats it
@@ -265,7 +264,7 @@ the width where it joins the row.
 The tags page uses the same row with search, filter and sort; below `md` its
 sort moves into the icon-only `Sort` popover.
 
-The count sits in the row above the grid for the library and search results,
+The count sits in the row above the grid for search results,
 and in the section heading for a folder's direct contents.
 
 The sort orders are date added, date modified, date created, title, duration,
@@ -350,9 +349,10 @@ bottom edge and the title.
 | --- | --- |
 | Video, library and folder pages | Tag row under the title, none without tags  |
 | Video, folder search results | Location row under the title |
-| Folder | Video card's width and border, folder artwork, Folder icon in the title |
+| Folder (folder page) | Group card's box, artwork, count panel and name, with a Folder mark before the video and folder counts; no checks, actions or tag row |
+| Media folder (`/folders`) | Video card's width and border, folder artwork, Folder icon in the title; opens the folder only |
 | Group (library only) | Video card's box and size, folder artwork of up to 4 member thumbnails |
-| Smart folder (unfiltered library, smart folder page) | Group card's box, artwork, count panel, name and tag row, with a `FolderSearch` mark before the count; no check or `Add to group`; the owner's heart and `Add to playlist` send the folder as one item (`smartFolderIds`) |
+| Smart folder (unfiltered library, smart folder page) | Group card's box, artwork, count panel, name and tag row, with a `FolderSearch` mark before the count; the owner's check selects it; no `Add to group`; the owner's heart and `Add to playlist` send the folder as one item (`smartFolderIds`), and tag and visibility actions reach its member videos |
 
 Video card behaviour:
 
@@ -365,9 +365,10 @@ Video card behaviour:
 | Hover preview | One at a time on any screen |
 | Zoom changed | Returns to the card that was at the top |
 
-A folder card shows its name on up to two lines with the full name in `title`.
-The owner also sees the media folder path, truncated to favour its end, full in
-`title`. An empty registered root says to place files there and import.
+Folder, group and smart folder cards show the name on up to two lines with the
+full name in `title`. On `/folders` the owner also sees each media folder's
+path, truncated to favour its end, full in `title`. An empty registered root
+says to place files there and import.
 
 The library reads `GET /api/library`, which pages mixed video, group and smart-folder
 keys using [stored collection information](home.md#collection-information-and-paging);
@@ -388,17 +389,17 @@ time through `GET /api/smart-folders/cards`.
 A `smartFolder` event reads the named cards again, keeping only the newest
 answer per card, and makes the unfiltered library reload its loaded pages, so
 a folder created, moved or renamed in another tab appears. A folder left out of
-the answer loses its card. The card's tags stay pressable while other cards are
-selected, since a folder card has no selection. A smart folder card cannot be
-dragged, and dropping on it shows `Can't drop here`.
+the answer loses its card. A smart folder card cannot be dragged, and dropping
+on it shows `Can't drop here`.
 
-Groups and smart folders share one-column cards and the same collection-link
-behaviour. A mouse-promoted cover opens that video with autoplay and its group
-or smart-folder context. The artwork shows at most four covers plus a More
+Folders, groups and smart folders share one-column cards and the same
+collection-link behaviour. A mouse-promoted cover carries no title overlay and
+opens that video with autoplay and its group or smart-folder context; a
+folder's cover opens the video alone. The artwork shows at most four covers plus a More
 sheet if videos remain. More and the title open the collection; leaving the
 artwork restores that destination. Touch and keyboard activation also open the
-collection. During selection, promotion is disabled and group clicks retain
-their selection behaviour. Smart folders remain outside the selection model.
+collection. During selection, promotion is disabled and group and smart folder
+clicks retain their selection behaviour.
 
 Opening a smart folder leads to `/smart-folders/{id}`:
 a trail band of the folder's ancestors, the name, `12 videos · 1:32:10`, and
@@ -409,8 +410,8 @@ the library's grid or list. A video opens with `?smartFolder=<id>`. The owner's
 the page quietly, and deleting leaves for the parent folder or the library
 with a toast. An empty folder shows `EmptyState`, with `Edit conditions…` for
 the owner. The page reloads in place on a `smartFolder` event naming it or on
-a reconnect, and the selection drops videos that no longer match. Guests see
-the page without conditions, `More` or selection.
+a reconnect, and the selection drops videos and child folders that are no longer
+listed. Guests see the page without conditions, `More` or selection.
 
 Ungroup, group a folder's direct videos and turn a group into a tag are not on
 the card. They sit in the owner's menu at the right end of a folder page's
@@ -469,6 +470,7 @@ Selection is library- and owner-only. Its check shows on hover or focus in the
 grid (always where hover is impossible), always faintly in list view, and on
 every item during selection. A group's check selects that group; the selection
 bar below decides whether an operation sends the group or its selected videos.
+A smart folder's check selects the folder as one item.
 
 ### Selection bar
 
@@ -480,9 +482,45 @@ fit.
 
 Its items, in order, are clear, `N selected`, `Add tag`, `Remove tag`,
 `Favorite`, `Add to playlist`, `New group`, `Add to group`, `Visibility`,
-and `Bundle as versions` (2 or more videos). There is no `Select all`:
-selection covers only the cards the viewer checks. The actions sit at the
-right end; those that do not fit move to the right end of the next line.
+`Bundle as versions` (2 or more videos), and, after a separator, `Delete…`.
+There is no `Select all`: selection covers only the cards the viewer checks.
+The actions sit at the right end; those that do not fit move to the right end
+of the next line.
+
+`Delete…` (`ghost-destructive`) removes the selected collections, never videos.
+It is disabled with the reason `Select a group or smart folder` until a group
+or a smart folder is selected, and over 20,000 collections with the limit
+message. It opens a confirmation that counts the groups to dissolve, whose
+videos and child groups stay in the library, and the smart folders to delete
+with the folders inside them. Confirming sends one request
+(`POST /api/collections/delete`) that dissolves each group as `Dissolve…` does
+and deletes each smart folder as `Delete…` in its `More` does, in one
+transaction; videos selected alongside stay. The server ignores IDs that no
+longer exist and publishes the same `group` and `smartFolder` events as the
+single operations, so other tabs refresh as after them. On success a toast
+counts what was removed, the selection is cleared and the list reloads in
+place: the library refreshes its loaded pages as after other group changes,
+and the group and smart-folder pages reload. A failure stays in the dialog,
+so the selection is kept. The group page and the smart-folder page offer the
+same action for their child groups and child smart folders.
+
+While smart folders are selected, the count names them separately
+(`3 videos and 1 smart folder selected`). `Favorite` and `Add to playlist`
+send each folder as one item (`smartFolderIds`). `Add tag`, `Remove tag`
+(its candidates included) and `Visibility` act on the folders' member videos,
+as they do on a selected group's: the client sends the folder IDs, and the
+server resolves each folder's current members at request time with the owner's
+view of the smart folder page, its rule plus every ancestor rule and groups
+expanded to their videos. A folder whose rule refers to a missing entity has
+no members. The client never expands a folder, because a folder can match many
+videos, so it checks the 20,000-video limit only on the videos it knows; the
+server applies the limit to the distinct resolved videos and rejects the whole
+request with `too_many_videos` when they exceed it. The toast counts the videos
+the server applied. After these actions and after `Favorite`, the shown cards
+of the selected folders read their values again. A smart folder cannot be
+placed in a group or bundled, so `New group`, `Add to group` and
+`Bundle as versions` are disabled with the reason
+`Not available for smart folders`.
 
 The request shapes are in [the screen API schema](../../api/openapi.yaml).
 

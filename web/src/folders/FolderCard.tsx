@@ -4,56 +4,43 @@ import { Link } from "react-router";
 
 import type { FolderSummary } from "../api/client";
 import { t, type UiText } from "../i18n";
-import FolderArt from "../videoList/FolderArt";
+import { CollectionName, CollectionThumbnail } from "../library/GroupCard";
+import { useCollectionLink } from "../videoList/useCollectionLink";
 import { folderUrl } from "./folderPath";
 
-/** Guest responses omit absolute paths, so omit the path from their label. */
-export function folderLabel(folder: FolderSummary, withPath: boolean): UiText {
-  const label = t.folders.card.label(folder.name, folder.videoCount, folder.folderCount);
-  return withPath && folder.rootPath !== undefined
-    ? t.folders.card.labelWithPath(label, folder.rootPath)
-    : label;
+function folderLabel(folder: FolderSummary): UiText {
+  return t.folders.card.label(folder.name, folder.videoCount, folder.folderCount);
 }
 
-/** showPath distinguishes registered roots by their paths. */
-function FolderCard({ folder, showPath }: { folder: FolderSummary; showPath: boolean }) {
+/** Uses the group card's thumbnail and name so every collection grid looks the same. */
+function FolderCard({ folder, backTo }: { folder: FolderSummary; backTo: string }) {
+  const { linkProps, onFrontChange } = useCollectionLink({
+    to: folderUrl({ rootId: folder.rootId, path: folder.path }),
+    backTo,
+    name: folder.name,
+    label: folderLabel(folder),
+    videoPath: (id) => `/videos/${String(id)}`,
+  });
   return (
-    <article data-folder-path={folder.path} className="flex min-w-0 flex-col">
-      <Link
-        to={folderUrl({ rootId: folder.rootId, path: folder.path })}
-        aria-label={folderLabel(folder, showPath)}
-        className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-border bg-card text-card-foreground transition-shadow hover:shadow-card-hover motion-reduce:transition-none"
-      >
-        <div className="relative aspect-video w-full">
-          <FolderArt previews={folder.previews} />
-        </div>
-        <div className="flex min-w-0 flex-col gap-1 px-3 pt-2 pb-3">
-          <h3
-            title={folder.name}
-            className="flex min-w-0 items-start gap-1.5 text-sm font-medium"
-          >
-            <Folder
-              aria-hidden="true"
-              className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-            />
-            <span className="line-clamp-2 min-w-0 break-all">{folder.name}</span>
-          </h3>
-          <p className="text-xs text-muted-foreground tabular-nums">
-            {t.folders.card.videos(folder.videoCount)}
-            {" · "}
-            {t.folders.card.folders(folder.folderCount)}
-          </p>
-          {showPath && folder.rootPath !== undefined && (
-            // Truncate the beginning: path suffixes distinguish roots with the same name.
-            <p
-              title={folder.rootPath}
-              dir="rtl"
-              className="truncate text-left text-xs text-muted-foreground"
-            >
-              <bdi dir="ltr">{folder.rootPath}</bdi>
-            </p>
-          )}
-        </div>
+    <article
+      data-folder-path={folder.path}
+      className="group relative flex min-w-0 flex-col gap-2"
+    >
+      <Link {...linkProps} className="flex min-w-0 flex-1 flex-col gap-2 rounded-md">
+        <CollectionThumbnail
+          previews={folder.previews}
+          totalCount={folder.videoCount}
+          onFrontChange={onFrontChange}
+          ratio={null}
+          face={
+            <>
+              <Folder aria-hidden="true" className="size-3 shrink-0" />
+              <span>{t.folders.card.videos(folder.videoCount)}</span>
+              <span>{t.folders.card.folders(folder.folderCount)}</span>
+            </>
+          }
+        />
+        <CollectionName name={folder.name} muted={false} />
       </Link>
     </article>
   );

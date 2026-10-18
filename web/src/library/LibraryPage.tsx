@@ -102,11 +102,14 @@ import {
   favoriteTargets,
   type LibrarySelection,
   reconcileGroups,
+  selectedCount,
   selectedGroupOf,
   isGroupSelected,
   setGroup,
+  setSmartFolder,
   setVideo,
   toggleGroup,
+  toggleSmartFolder,
   toggleVideo,
 } from "./selection";
 import SelectionBar from "./SelectionBar";
@@ -357,6 +360,12 @@ export default function LibraryPage() {
   const toggleGroupSelection = useCallback((group: LibraryGroup) => {
     setSelection((current) => toggleGroup(current, selectedGroupOf(group)));
   }, []);
+  const changeSmartFolderSelection = useCallback((id: number, selected: boolean) => {
+    setSelection((current) => setSmartFolder(current, id, selected));
+  }, []);
+  const toggleSmartFolderSelection = useCallback((id: number) => {
+    setSelection((current) => toggleSmartFolder(current, id));
+  }, []);
   const clearSelection = useCallback(() => setSelection(emptySelection), []);
 
   const moves = useLibraryMoves(items, refreshInPlace, clearSelection);
@@ -385,6 +394,12 @@ export default function LibraryPage() {
     [clearSelection, reload],
   );
 
+  // Deleted groups and smart folders leave the list, and a dissolved group's videos join it.
+  const onCollectionsDeleted = useCallback(() => {
+    clearSelection();
+    refreshInPlace();
+  }, [clearSelection, refreshInPlace]);
+
   // Reconcile selected group identity after refresh without removing selected video IDs.
   useEffect(() => {
     setSelection((current) => reconcileGroups(current, items));
@@ -405,7 +420,7 @@ export default function LibraryPage() {
   }, [clearSelection, conditionsSignature]);
   useScrollTopOnChange(conditionsSignature);
 
-  useEscapeClearsSelection(selectedIds.size > 0, clearSelection);
+  useEscapeClearsSelection(selectedCount(selection) > 0, clearSelection);
 
   const pendingScroll = useRef(restored?.scrollY);
   useEffect(() => {
@@ -558,7 +573,7 @@ export default function LibraryPage() {
   const initialLoadFailed = !loading && error !== null && items.length === 0;
   const smartFolderFilter = { criteria, tagIds, credits, addedLength };
   const conditioned = libraryConditioned(smartFolderFilter);
-  const selectionMode = selectedIds.size > 0;
+  const selectionMode = selectedCount(selection) > 0;
   const resultStatus = loading ? t.list.loading : t.library.resultCount(total);
 
   // Stable tag-row render callbacks preserve memoized cards across preview and search updates.
@@ -588,8 +603,11 @@ export default function LibraryPage() {
     [pressTag, selectionMode, toggleGroupSelection, view],
   );
 
-  // Smart folders have no selection state, so their tag filters remain usable during other card selection.
-  const renderFolderTagsRow = useFolderTagRow(pressTag);
+  const renderFolderTagsRow = useFolderTagRow(
+    pressTag,
+    selectionMode,
+    toggleSmartFolderSelection,
+  );
 
   const groupProps = (group: LibraryGroup) => ({
     group,
@@ -620,7 +638,9 @@ export default function LibraryPage() {
 
   const smartFolderProps = (folder: SmartFolderSummary) => ({
     folder,
+    selected: selection.smartFolders.has(folder.id),
     selectionMode,
+    onSelect: owner ? changeSmartFolderSelection : undefined,
     backTo: listUrl,
     activePreviewId,
     previewResetEpoch,
@@ -788,30 +808,38 @@ export default function LibraryPage() {
               selectedIds={selectedIdsArray}
               favoriteVideoIds={favoriteSelection.videoIds}
               favoriteGroupIds={favoriteSelection.groupIds}
+              smartFolderIds={favoriteSelection.smartFolderIds}
               onClear={clearSelection}
               onTagRemoved={onTagRemoved}
               onBundled={onBundled}
+              onCollectionsDeleted={onCollectionsDeleted}
             />
           )
         }
       >
-        <section aria-label={t.library.title} className="flex min-w-0 flex-col gap-3">
-          <PageHeader
-            title={t.library.title}
-            headingLevel={2}
-            actions={saveSmartFolderAction(owner, conditioned, smartFolderFilter, sort)}
-            count={
-              initialLoadFailed ? undefined : (
-                <span
-                  role="status"
-                  aria-label={t.library.resultsLabel}
-                  aria-live="polite"
-                >
-                  {resultStatus}
-                </span>
-              )
-            }
-          />
+        <section
+          aria-label={conditioned ? t.library.resultsLabel : undefined}
+          className="flex min-w-0 flex-col gap-3"
+        >
+          {/* Home itself needs no heading or count; only filtered results get them. */}
+          {conditioned && (
+            <PageHeader
+              title={t.library.resultsLabel}
+              headingLevel={2}
+              actions={saveSmartFolderAction(owner, conditioned, smartFolderFilter, sort)}
+              count={
+                initialLoadFailed ? undefined : (
+                  <span
+                    role="status"
+                    aria-label={t.library.resultsLabel}
+                    aria-live="polite"
+                  >
+                    {resultStatus}
+                  </span>
+                )
+              }
+            />
+          )}
           {hasFilterChips(tagIds, credits) && (
             <ActiveTagFilters
               tagIds={tagIds}

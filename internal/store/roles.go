@@ -67,6 +67,9 @@ type GroupStore struct{ db *DB }
 // SmartFolderStore owns smart-folder edits and reference reads, publishing changes after commit.
 type SmartFolderStore struct{ db *DB }
 
+// CollectionStore removes groups and smart folders together through the group and smart-folder helpers.
+type CollectionStore struct{ db *DB }
+
 // OnboardingStore saves setup progress and explicitly chosen interest folders.
 type OnboardingStore struct{ db *DB }
 type OrganizeStore struct{ db *DB }
@@ -107,6 +110,7 @@ func (db *DB) Groups() *GroupStore             { return &GroupStore{db: db} }
 func (db *DB) Organize() *OrganizeStore        { return &OrganizeStore{db: db} }
 func (db *DB) SmartFolders() *SmartFolderStore { return &SmartFolderStore{db: db} }
 func (db *DB) Onboarding() *OnboardingStore    { return &OnboardingStore{db: db} }
+func (db *DB) Collections() *CollectionStore   { return &CollectionStore{db: db} }
 func (db *DB) Credits() *CreditStore           { return &CreditStore{sql: db.sql, read: db.read, db: db} }
 func (db *DB) WorkInfo() *WorkInfoStore        { return &WorkInfoStore{db: db} }
 func (db *DB) WorkInfoPlugins() *WorkInfoPluginStore {

@@ -19,25 +19,31 @@ import { SelectionBar as SelectionBarSection } from "../ui/patterns/selection-ba
 import { Popover, PopoverTrigger } from "../ui/shadcn/popover";
 import BundleDialog from "../versions/BundleDialog";
 import AddTagPopover from "./AddTagPopover";
+import DeleteCollectionsAction from "./DeleteCollectionsAction";
 import FavoriteMenu from "./FavoriteMenu";
 import RemoveTagPopover from "./RemoveTagPopover";
-import { SelectionAction, WithTooltip } from "./SelectionAction";
+import {
+  DisabledReason,
+  disabledProps,
+  SelectionAction,
+  WithTooltip,
+} from "./SelectionAction";
 import { overLimitMessage } from "./selectionErrors";
 import VisibilityMenu from "./VisibilityMenu";
 
 function PickerAction({
   icon,
   label,
-  overLimit,
-  overLimitId,
+  disabledReason,
+  reasonId,
   open,
   onOpenChange,
   children,
 }: {
   icon: ReactNode;
   label: UiText;
-  overLimit: boolean;
-  overLimitId: string;
+  disabledReason: UiText | undefined;
+  reasonId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: ReactNode;
@@ -49,9 +55,7 @@ function PickerAction({
           <SelectionAction
             icon={icon}
             label={label}
-            disabled={overLimit}
-            title={overLimit ? overLimitMessage() : undefined}
-            aria-describedby={overLimit ? overLimitId : undefined}
+            {...disabledProps(disabledReason, reasonId)}
           />
         </PopoverTrigger>
       </WithTooltip>
@@ -61,15 +65,23 @@ function PickerAction({
 }
 
 export interface SelectionBarProps {
+  /** Selected videos, counting each member of a selected group. */
   count: number;
   selectedIds: readonly number[];
   /** Send standalone video IDs plus selected group IDs; limits apply to that combined request count. */
   favoriteVideoIds: readonly number[];
   favoriteGroupIds: readonly number[];
+  /**
+   * Favorites and playlists take the folders themselves; tag and visibility actions reach their
+   * current members on the server. Group and bundle actions are disabled while any is selected.
+   */
+  smartFolderIds?: readonly number[];
   onClear: () => void;
   /** Removing an active filter tag lets callers clear selection and reload matching rows. */
   onTagRemoved: (tagId: number) => void;
   onBundled: (versions: VideoVersions) => void;
+  /** After selected groups were dissolved and smart folders deleted; callers clear the selection and reload. */
+  onCollectionsDeleted: () => void;
   /** Group-only removal; disable oversized batches instead of splitting them. */
   removeFromGroup?: {
     count: number;
@@ -78,14 +90,74 @@ export interface SelectionBarProps {
   };
 }
 
+const noSmartFolders: readonly number[] = [];
+
+/**
+ * Batch APIs are atomic, so oversized selections disable an action with a reason instead of
+ * being split. Favorite limits count a group or smart folder as one target, unlike tag and
+ * visibility operations on every member video. Smart-folder members are unknown here, so the
+ * server enforces the tag and visibility limit on their resolved total.
+ */
+export function selectionReasons({
+  count,
+  favoriteVideoIds,
+  favoriteGroupIds,
+  smartFolderIds,
+}: {
+  count: number;
+  favoriteVideoIds: readonly number[];
+  favoriteGroupIds: readonly number[];
+  smartFolderIds: readonly number[];
+}) {
+  // A smart folder cannot be placed in a group or bundled as a version.
+  const videoOnly =
+    smartFolderIds.length > 0 ? t.library.selection.smartFoldersUnsupported : undefined;
+  const favoriteOverLimit =
+    favoriteVideoIds.length + favoriteGroupIds.length + smartFolderIds.length >
+    maxVideoTagsSelection;
+  const favorite = favoriteOverLimit ? overLimitMessage() : undefined;
+  const group = favorite ?? videoOnly;
+  // A group alone cannot form a new group: that would only add another hierarchy level.
+  const newGroupNeedsMore =
+    favoriteGroupIds.length === 1 && favoriteVideoIds.length === 0;
+  const collectionCount = favoriteGroupIds.length + smartFolderIds.length;
+  return {
+    tag: count > maxVideoTagsSelection ? overLimitMessage() : undefined,
+    favorite,
+    group,
+    newGroup:
+      group ?? (newGroupNeedsMore ? t.library.selection.newGroupNeedsMore : undefined),
+    bundle:
+      videoOnly ??
+      (count > maxBundleSelection
+        ? t.library.selection.bundleOverLimit(maxBundleSelection)
+        : undefined),
+    // Only collections are deleted; videos selected alongside them stay.
+    deleteCollections:
+      collectionCount === 0
+        ? t.library.selection.deleteNeedsCollection
+        : collectionCount > maxVideoTagsSelection
+          ? overLimitMessage()
+          : undefined,
+  };
+}
+
+function countText(count: number, smartFolderCount: number): UiText {
+  return smartFolderCount === 0
+    ? t.library.selection.count(count)
+    : t.library.selection.countWithSmartFolders(count, smartFolderCount);
+}
+
 export default function SelectionBar({
   count,
   selectedIds,
   favoriteVideoIds,
   favoriteGroupIds,
+  smartFolderIds = noSmartFolders,
   onClear,
   onTagRemoved,
   onBundled,
+  onCollectionsDeleted,
   removeFromGroup,
 }: SelectionBarProps) {
   const [addOpen, setAddOpen] = useState(false);
@@ -94,26 +166,27 @@ export default function SelectionBar({
   const [groupOpen, setGroupOpen] = useState(false);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
   const addTriggerRef = useRef<HTMLButtonElement | null>(null);
-
-  // Batch APIs are atomic; disable oversized selections with a reason instead of silently splitting.
-  const overLimitId = useId();
-  const overLimit = count > maxVideoTagsSelection;
-  // Favorite limits count groups as one target, unlike tag/visibility operations on all members.
-  //
-  const favoriteOverLimitId = useId();
-  const favoriteOverLimit =
-    favoriteVideoIds.length + favoriteGroupIds.length > maxVideoTagsSelection;
+  const total = count + smartFolderIds.length;
+  const reasons = selectionReasons({
+    count,
+    favoriteVideoIds,
+    favoriteGroupIds,
+    smartFolderIds,
+  });
+  const tagReasonId = useId();
+  const favoriteReasonId = useId();
+  const groupReasonId = useId();
+  const newGroupReasonId = useId();
+  const bundleReasonId = useId();
 
   // Freeze dialog IDs at opening; inert background content prevents selection changes.
   const [bundleOpen, setBundleOpen] = useState(false);
-  const bundleOverLimitId = useId();
   const canBundle = count >= 2;
-  const bundleOverLimit = count > maxBundleSelection;
   const [bundleIds, setBundleIds] = useState<readonly number[]>([]);
 
   // SelectionBar survives returning null; close popovers at zero so reselecting cannot reopen them unexpectedly.
   useEffect(() => {
-    if (count === 0) {
+    if (total === 0) {
       setAddOpen(false);
       setRemoveOpen(false);
       setPlaylistOpen(false);
@@ -121,42 +194,32 @@ export default function SelectionBar({
       setNewGroupOpen(false);
       setBundleOpen(false);
     }
-  }, [count]);
+  }, [total]);
 
-  // Recheck picker limits as selection grows and close over-limit popovers.
+  // Disabling a trigger does not close its popover when the selection changes; close it here.
+  const tagBlocked = reasons.tag !== undefined;
+  const favoriteBlocked = reasons.favorite !== undefined;
+  const groupBlocked = reasons.group !== undefined;
   useEffect(() => {
-    if (favoriteOverLimit) {
-      setPlaylistOpen(false);
-      setGroupOpen(false);
-    }
-  }, [favoriteOverLimit]);
-
-  // A group alone cannot form a new group: that would only add another hierarchy level.
-  const newGroupNeedsMoreId = useId();
-  const newGroupNeedsMore =
-    favoriteGroupIds.length === 1 && favoriteVideoIds.length === 0;
-  const newGroupReason = favoriteOverLimit
-    ? overLimitMessage()
-    : newGroupNeedsMore
-      ? t.library.selection.newGroupNeedsMore
-      : undefined;
-
-  // Disabling a trigger does not close its popover when selection exceeds the limit.
-  // Guard the render before the closing effect runs.
-  useEffect(() => {
-    if (overLimit) {
+    if (tagBlocked) {
       setAddOpen(false);
       setRemoveOpen(false);
     }
-  }, [overLimit]);
+  }, [tagBlocked]);
+  useEffect(() => {
+    if (favoriteBlocked) setPlaylistOpen(false);
+  }, [favoriteBlocked]);
+  useEffect(() => {
+    if (groupBlocked) setGroupOpen(false);
+  }, [groupBlocked]);
 
-  if (count === 0) return null;
+  if (total === 0) return null;
 
   return (
     // Keep the region wrapper from changing the bar's bottom alignment.
     <div role="region" aria-label={t.library.selection.region} className="contents">
       <SelectionBarSection
-        count={t.library.selection.count(count)}
+        count={countText(count, smartFolderIds.length)}
         clearLabel={t.library.selection.clear}
         onClear={onClear}
       >
@@ -167,9 +230,7 @@ export default function SelectionBar({
                 ref={addTriggerRef}
                 icon={<Plus aria-hidden="true" />}
                 label={t.library.selection.addTag}
-                disabled={overLimit}
-                title={overLimit ? overLimitMessage() : undefined}
-                aria-describedby={overLimit ? overLimitId : undefined}
+                {...disabledProps(reasons.tag, tagReasonId)}
               />
             </PopoverTrigger>
           </WithTooltip>
@@ -177,6 +238,7 @@ export default function SelectionBar({
             open={addOpen}
             onOpenChange={setAddOpen}
             selectedIds={selectedIds}
+            smartFolderIds={smartFolderIds}
             onDone={() => addTriggerRef.current?.focus()}
           />
         </Popover>
@@ -187,9 +249,7 @@ export default function SelectionBar({
               <SelectionAction
                 icon={<Minus aria-hidden="true" />}
                 label={t.library.selection.removeTag}
-                disabled={overLimit}
-                title={overLimit ? overLimitMessage() : undefined}
-                aria-describedby={overLimit ? overLimitId : undefined}
+                {...disabledProps(reasons.tag, tagReasonId)}
               />
             </PopoverTrigger>
           </WithTooltip>
@@ -197,33 +257,26 @@ export default function SelectionBar({
             open={removeOpen}
             onOpenChange={setRemoveOpen}
             selectedIds={selectedIds}
+            smartFolderIds={smartFolderIds}
             onRemoved={onTagRemoved}
           />
         </Popover>
-        {overLimit && (
-          <span id={overLimitId} className="sr-only">
-            {overLimitMessage()}
-          </span>
-        )}
+        <DisabledReason id={tagReasonId} reason={reasons.tag} />
 
         <FavoriteMenu
           videoIds={favoriteVideoIds}
           groupIds={favoriteGroupIds}
-          overLimit={favoriteOverLimit}
-          overLimitId={favoriteOverLimitId}
+          smartFolderIds={smartFolderIds}
+          overLimit={favoriteBlocked}
+          overLimitId={favoriteReasonId}
         />
-        {favoriteOverLimit && (
-          <span id={favoriteOverLimitId} className="sr-only">
-            {overLimitMessage()}
-          </span>
-        )}
+        <DisabledReason id={favoriteReasonId} reason={reasons.favorite} />
 
-        {}
         <PickerAction
           icon={<ListPlus aria-hidden="true" />}
           label={t.library.selection.addToPlaylist}
-          overLimit={favoriteOverLimit}
-          overLimitId={favoriteOverLimitId}
+          disabledReason={reasons.favorite}
+          reasonId={favoriteReasonId}
           open={playlistOpen}
           onOpenChange={setPlaylistOpen}
         >
@@ -232,33 +285,21 @@ export default function SelectionBar({
             onOpenChange={setPlaylistOpen}
             videoIds={favoriteVideoIds}
             groupIds={favoriteGroupIds}
+            smartFolderIds={smartFolderIds}
             side="top"
             align="start"
           />
         </PickerAction>
 
-        {}
-        <WithTooltip label={newGroupReason ?? t.library.selection.newGroup}>
+        <WithTooltip label={reasons.newGroup ?? t.library.selection.newGroup}>
           <SelectionAction
             icon={<Group aria-hidden="true" />}
             label={t.library.selection.newGroup}
-            disabled={newGroupReason !== undefined}
-            title={newGroupReason}
-            aria-describedby={
-              favoriteOverLimit
-                ? favoriteOverLimitId
-                : newGroupNeedsMore
-                  ? newGroupNeedsMoreId
-                  : undefined
-            }
+            {...disabledProps(reasons.newGroup, newGroupReasonId)}
             onClick={() => setNewGroupOpen(true)}
           />
         </WithTooltip>
-        {newGroupNeedsMore && (
-          <span id={newGroupNeedsMoreId} className="sr-only">
-            {t.library.selection.newGroupNeedsMore}
-          </span>
-        )}
+        <DisabledReason id={newGroupReasonId} reason={reasons.newGroup} />
         {newGroupOpen && (
           <NewGroupDialog
             videoIds={favoriteVideoIds}
@@ -274,8 +315,8 @@ export default function SelectionBar({
         <PickerAction
           icon={<FolderPlus aria-hidden="true" />}
           label={t.library.selection.addToGroup}
-          overLimit={favoriteOverLimit}
-          overLimitId={favoriteOverLimitId}
+          disabledReason={reasons.group}
+          reasonId={groupReasonId}
           open={groupOpen}
           onOpenChange={setGroupOpen}
         >
@@ -288,14 +329,15 @@ export default function SelectionBar({
             align="start"
           />
         </PickerAction>
+        <DisabledReason id={groupReasonId} reason={reasons.group} />
 
-        {}
         {removeFromGroup !== undefined && <RemoveFromGroupAction {...removeFromGroup} />}
 
         <VisibilityMenu
           selectedIds={selectedIds}
-          overLimit={overLimit}
-          overLimitId={overLimitId}
+          smartFolderIds={smartFolderIds}
+          disabledReason={reasons.tag}
+          reasonId={tagReasonId}
         />
 
         {canBundle && (
@@ -303,13 +345,7 @@ export default function SelectionBar({
             <SelectionAction
               icon={<Layers aria-hidden="true" />}
               label={t.library.selection.bundle}
-              disabled={bundleOverLimit}
-              title={
-                bundleOverLimit
-                  ? t.library.selection.bundleOverLimit(maxBundleSelection)
-                  : undefined
-              }
-              aria-describedby={bundleOverLimit ? bundleOverLimitId : undefined}
+              {...disabledProps(reasons.bundle, bundleReasonId)}
               onClick={() => {
                 setBundleIds(selectedIds);
                 setBundleOpen(true);
@@ -317,11 +353,7 @@ export default function SelectionBar({
             />
           </WithTooltip>
         )}
-        {canBundle && bundleOverLimit && (
-          <span id={bundleOverLimitId} className="sr-only">
-            {t.library.selection.bundleOverLimit(maxBundleSelection)}
-          </span>
-        )}
+        {canBundle && <DisabledReason id={bundleReasonId} reason={reasons.bundle} />}
         {bundleOpen && (
           <BundleDialog
             videoIds={bundleIds}
@@ -332,6 +364,13 @@ export default function SelectionBar({
             }}
           />
         )}
+
+        <DeleteCollectionsAction
+          groupIds={favoriteGroupIds}
+          smartFolderIds={smartFolderIds}
+          disabledReason={reasons.deleteCollections}
+          onDeleted={onCollectionsDeleted}
+        />
       </SelectionBarSection>
     </div>
   );

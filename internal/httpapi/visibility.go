@@ -19,13 +19,14 @@ type Visibility interface {
 func (s *server) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
 	// Require public presence: the generated bool would decode a missing field as false and accidentally make videos private.
 	var body struct {
-		VideoIds []int64 `json:"videoIds"`
-		Public   *bool   `json:"public"`
+		VideoIds       []int64  `json:"videoIds"`
+		SmartFolderIds *[]int64 `json:"smartFolderIds"`
+		Public         *bool    `json:"public"`
 	}
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	if !validVideoTagsIDs(body.VideoIds) {
+	if !validVideoTargetCounts(body.VideoIds, body.SmartFolderIds) {
 		s.tooManyVideos(w)
 		return
 	}
@@ -38,11 +39,15 @@ func (s *server) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "Visibility storage is not configured.", nil)
 		return
 	}
+	videoIDs, ok := s.resolveVideoTargets(w, r, body.VideoIds, body.SmartFolderIds)
+	if !ok {
+		return
+	}
 
 	// Serialize commit through revocation so a concurrent republication cannot start guest streams that an earlier private transition would then terminate.
 	s.guests.lockSwitching()
 	defer s.guests.switching.Unlock()
-	keys, err := s.visibility.SetVideosPublic(r.Context(), body.VideoIds, public)
+	keys, err := s.visibility.SetVideosPublic(r.Context(), videoIDs, public)
 	if err != nil {
 		s.internalError(w, "Could not change the visibility.", err)
 		return

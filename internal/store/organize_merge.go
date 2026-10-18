@@ -270,22 +270,11 @@ func finishMerge(ctx context.Context, tx *sql.Tx, into int64, outcome mergeOutco
 	if err != nil {
 		return nil, err
 	}
-	automatic := outcome.automatic
-	for _, id := range emptied {
-		dissolved, wasAutomatic, err := dissolveGroupKeeping(ctx, tx, id, into)
-		if err != nil {
-			return nil, err
-		}
-		changed = append(changed, dissolved...)
-		automatic = automatic || wasAutomatic
+	dissolved, err := dissolveGroupsKeeping(ctx, tx, emptied, into, outcome.automatic)
+	if err != nil {
+		return nil, err
 	}
-	if automatic {
-		rebuilt, err := rebuildFolderIndex(ctx, tx)
-		if err != nil {
-			return nil, err
-		}
-		changed = append(changed, rebuilt...)
-	}
+	changed = append(changed, dissolved...)
 	kept, err := existingGroups(ctx, tx, normalizeIDs(append([]int64{into}, outcome.holders...)))
 	if err != nil {
 		return nil, err

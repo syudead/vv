@@ -433,17 +433,45 @@ func countGroupItems(ctx context.Context, tx *sql.Tx, id int64) (int, error) {
 	return count, nil
 }
 
-// Dissolving automatic groups writes ungroup overrides that must reach the index in the same transaction.
+// A missing group returns ErrGroupNotFound.
 func dissolveGroupAndRebuild(ctx context.Context, tx *sql.Tx, id int64) ([]int64, error) {
-	changed, automatic, err := dissolveGroup(ctx, tx, id)
-	if err != nil || !automatic {
-		return changed, err
-	}
-	rebuilt, err := rebuildFolderIndex(ctx, tx)
-	if err != nil {
+	if _, err := groupSummary(ctx, tx, id); err != nil {
 		return nil, err
 	}
-	return normalizeIDs(append(changed, rebuilt...)), nil
+	return dissolveGroupsAndRebuild(ctx, tx, []int64{id})
+}
+
+func dissolveGroupsAndRebuild(ctx context.Context, tx *sql.Tx, ids []int64) ([]int64, error) {
+	changed, err := dissolveGroupsKeeping(ctx, tx, ids, 0, false)
+	return normalizeIDs(changed), err
+}
+
+// Dissolving automatic groups writes ungroup overrides that must reach the index in the same transaction, so rebuild it
+// once when any dissolved group, or the caller's earlier work, was automatic. Groups an earlier dissolution in the list
+// already removed as newly empty ancestors are skipped.
+func dissolveGroupsKeeping(ctx context.Context, tx *sql.Tx, ids []int64, keep int64, automatic bool) ([]int64, error) {
+	var changed []int64
+	for _, id := range ids {
+		if _, err := groupSummary(ctx, tx, id); errors.Is(err, domain.ErrGroupNotFound) {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		dissolved, wasAutomatic, err := dissolveGroupKeeping(ctx, tx, id, keep)
+		if err != nil {
+			return nil, err
+		}
+		changed = append(changed, dissolved...)
+		automatic = automatic || wasAutomatic
+	}
+	if automatic {
+		rebuilt, err := rebuildFolderIndex(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
+		changed = append(changed, rebuilt...)
+	}
+	return changed, nil
 }
 
 // Dissolve newly empty ancestors recursively; the caller rebuilds the folder index when automatic groups were removed.

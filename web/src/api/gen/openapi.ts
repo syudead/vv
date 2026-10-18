@@ -1835,7 +1835,7 @@ export interface paths {
         put?: never;
         /**
          * Add or remove a video tag
-         * @description Applies action (add/remove) and tag to videoIds for single-video and bulk callers. Removal requires tag.id; name returns 400. Addition by name resolves synonyms and creates a missing tag. Accepts 1–20,000 distinct videoIds; all changes are atomic.
+         * @description Applies action (add/remove) and tag to videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. Removal requires tag.id; name returns 400. Addition by name resolves synonyms and creates a missing tag. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes; all changes are atomic.
          */
         post: operations["updateVideoTags"];
         delete?: never;
@@ -1855,7 +1855,7 @@ export interface paths {
         put?: never;
         /**
          * Summarize tags on selected videos
-         * @description total counts requested videos currently in the library; each tag's count counts assignments among them. count < total indicates partial assignment. items includes tags assigned to at least one video, in natural name order.
+         * @description Summarizes videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags. total counts those videos currently in the library; each tag's count counts assignments among them. count < total indicates partial assignment. items includes tags assigned to at least one video, in natural name order.
          */
         post: operations["summarizeVideoTags"];
         delete?: never;
@@ -1874,10 +1874,30 @@ export interface paths {
         get?: never;
         /**
          * Change video visibility
-         * @description Sets public on 1–20,000 distinct videoIds atomically, for single-video and bulk callers. Already-matching videos count as applied. Active guest streams are terminated when their video becomes private.
+         * @description Sets public atomically on videoIds plus the current member videos of smartFolderIds, for single-video and bulk callers. The union must hold 1–20,000 distinct videos after smart folders are resolved, or the request returns 400 too_many_videos without changes. Already-matching videos count as applied. Active guest streams are terminated when their video becomes private.
          */
         put: operations["updateVideoVisibility"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/collections/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dissolve groups and delete smart folders in bulk
+         * @description Owner-only. Dissolves groupIds as dissolveGroup does and deletes smartFolderIds with their descendants as deleteSmartFolder does, in one transaction; videos are never deleted. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing groups and smart folders are ignored. Emits the same group and smart-folder change events as the single operations.
+         */
+        post: operations["deleteCollections"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3748,19 +3768,37 @@ export interface components {
         /** @enum {string} */
         VideoTagsAction: "add" | "remove";
         VideoTagsRequest: {
+            /** @description Video IDs to change. May be empty when smartFolderIds is not. */
             videoIds: number[];
+            /** @description Smart-folder IDs resolved at request time to their current member videos (the saved rule plus every ancestor rule, groups expanded to their videos) and added to videoIds. Missing folders are ignored. */
+            smartFolderIds?: number[];
             action: components["schemas"]["VideoTagsAction"];
             tag: components["schemas"]["TagInput"];
         };
         VideoTagsResponse: {
             tag: components["schemas"]["TagRef"];
-            /** @description Number of videoIds currently in the library. */
+            /** @description Number of resolved videos (videoIds plus smart-folder members) currently in the library. */
             applied: number;
         };
         VideoVisibilityRequest: {
+            /** @description Video IDs to change. May be empty when smartFolderIds is not. */
             videoIds: number[];
+            /** @description Smart-folder IDs resolved at request time to their current member videos (the saved rule plus every ancestor rule, groups expanded to their videos) and added to videoIds. Missing folders are ignored. */
+            smartFolderIds?: number[];
             /** @description True makes videos public; false makes them private. */
             public: boolean;
+        };
+        CollectionsDeleteRequest: {
+            /** @description Group IDs to dissolve; member videos and child groups stay in the library. */
+            groupIds?: number[];
+            /** @description Smart-folder IDs to delete together with their descendants. */
+            smartFolderIds?: number[];
+        };
+        CollectionsDeleteResponse: {
+            /** @description Distinct requested groups that existed and were dissolved, including ones dissolved because an earlier requested group left them empty. */
+            dissolvedGroups: number;
+            /** @description Distinct requested smart folders that existed and were deleted, including ones removed as descendants of another requested folder; unrequested descendants are not counted. */
+            deletedSmartFolders: number;
         };
         FavoritesRequest: {
             /** @description Video IDs whose favorite state changes. */
@@ -3861,11 +3899,14 @@ export interface components {
             afterItemId: number | null;
         };
         VideoVisibilityResponse: {
-            /** @description Number of videoIds currently in the library, including videos already in the requested state. */
+            /** @description Number of resolved videos (videoIds plus smart-folder members) currently in the library, including videos already in the requested state. */
             applied: number;
         };
         VideoTagsSummaryRequest: {
+            /** @description Video IDs to summarize. May be empty when smartFolderIds is not. */
             videoIds: number[];
+            /** @description Smart-folder IDs resolved at request time to their current member videos (the saved rule plus every ancestor rule, groups expanded to their videos) and added to videoIds. Missing folders are ignored. */
+            smartFolderIds?: number[];
         };
         VideoTagsSummaryItem: {
             tag: components["schemas"]["TagRef"];
@@ -8758,6 +8799,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VideoVisibilityResponse"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    deleteCollections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CollectionsDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Removed collections */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionsDeleteResponse"];
                 };
             };
             400: components["responses"]["InvalidRequest"];
