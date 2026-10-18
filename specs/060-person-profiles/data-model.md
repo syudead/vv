@@ -24,6 +24,7 @@ section drops them. Existing people get every column `null`.
 | `blood_type` | text | yes | `A`, `B`, `O` or `AB` |
 | `career_start_year`, `career_end_year` | integer | yes | 1900–9999 |
 | `bio` | text | yes | 1–5,000 code points; line breaks kept |
+| `image_revision` | integer | no | Default `0`; increases on every change of the face (upload, removal, merge or plugin fill), so a revision is never reused for a different face ([R-6](research.md#r-6-the-image-is-addressed-by-person-and-revision)) |
 
 ## `people_links`
 
@@ -40,7 +41,6 @@ section drops them. Existing people get every column `null`.
 | `person_id` | integer | no | Primary key, `references people(id) on delete cascade` |
 | `image` | blob | no | JPEG, at most 800 px on its long side ([R-5](research.md#r-5-a-face-is-one-jpeg-blob-in-sqlite-fitted-on-the-server-in-pure-go)) |
 | `width`, `height` | integer | no | Pixel size of `image` |
-| `revision` | integer | no | Increases on each replacement of this person's image; the ETag and the `v` of its URL |
 | `updated_at` | integer | no | Unix seconds |
 
 ## Rules

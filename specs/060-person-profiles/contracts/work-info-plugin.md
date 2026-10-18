@@ -21,7 +21,7 @@ The diagram shows what happens to the `image` URLs of one run.
 
 ```mermaid
 flowchart LR
-  run[Run returns people] --> pick[First 8 images in result order]
+  run[Run returns people] --> pick[First 7 images in result order]
   pick --> get[GET through the plugin client]
   get -->|refused address| fail[Run fails: blocked_address]
   get -->|other failure or deadline| drop[No image for that person]

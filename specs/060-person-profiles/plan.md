@@ -150,8 +150,9 @@ R-8). Add the rule to `people.md` and cross-link
 
 **Acceptance**: An app test fits a 2000×3000 PNG to 533×800 and refuses an
 animated WebP. HTTP tests show `PUT` returning a new `imageRevision`, `GET`
-answering `304` on the same ETag and `404 person_image_not_found` after
-`DELETE`, `413` with the limit, and a guest refused. A store test shows the
+answering `304` on the same ETag, `404 person_image_not_found` after
+`DELETE`, a face uploaded after a `DELETE` getting a revision never used
+before, `413` with the limit, and a guest refused. A store test shows the
 face removed with its person and kept on a merge target that had none.
 
 ### Sort people by age
@@ -170,7 +171,7 @@ ones last each time; an HTTP test shows the organizations refusal.
 ### Let work-info plugins return people's faces and profiles
 
 **Scope**: `image` and `profile` on fetched people with lenient parsing, the
-post-run fetch of up to 8 images within the run's deadline and budget,
+post-run fetch of up to 7 images within the run's deadline and budget,
 `hasImage`, `profile` and the image endpoint on fetched people, the
 in-transaction fill of empty profile fields, and the post-commit face for
 people without one
@@ -181,7 +182,7 @@ and [work-info-plugins.md](../../docs/design-docs/work-info-plugins.md).
 **Dependencies**: Store people's profiles and expose them in the screen and external APIs; Store people's faces and serve them with a revision
 
 **Acceptance**: Domain tests drop a malformed `profile` property alone.
-wasmplugin tests with the probe fixture keep 8 of 10 images, drop a failed
+wasmplugin tests with the probe fixture keep 7 of 10 images, drop a failed
 one, and fail the run with `blocked_address` on a refused one. An HTTP test
 serves a kept image by index and answers `404 person_image_not_found` for a
 person without one. A store test

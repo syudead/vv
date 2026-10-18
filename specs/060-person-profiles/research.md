@@ -99,7 +99,8 @@ with the revision as ETag.
 
 | Option | Verdict |
 | --- | --- |
-| **Revision on the existing responses** | Chosen |
+| **Revision on the existing responses, kept on `people`** | Chosen: the counter survives a removal, so a face uploaded after a removal never reuses an old ETag |
+| Revision on the `person_images` row | Rejected: removing the row resets it, and the next face would answer `304` to the removed face's ETag |
 | Inline data URLs in list responses | Rejected: 100 faces in one JSON page |
 | A boolean `hasImage` | Rejected: a replaced face would stay cached under the same URL |
 
@@ -135,20 +136,22 @@ it has. A field the target lacks takes the first source's value in
 ## R-9: Plugins return a face URL and a profile per person, fetched like the cover
 
 **Decision**: A `people` entry may carry `image` (a URL) and `profile`, as
-optional fields under contract 1. After the run, VVMDM fetches at most 8 person
+optional fields under contract 1. After the run, VVMDM fetches at most 7 person
 images, in result order, with the cover's client, limits and format check,
 within the run's deadline. An image that cannot be fetched is dropped. A
 refused address fails the run with `blocked_address`, as a cover does.
 
 | Option | Verdict |
 | --- | --- |
-| **Fetch after the run, up to 8, kept with the fetch** | Chosen |
+| **Fetch after the run, up to 7, kept with the fetch** | Chosen |
 | Fetch at apply | Rejected: the site could return a different image than the one the run saw, the reason the cover is fetched after the run |
 | Fetch every person's image | Rejected: 100 people per role at 4 MiB each exceeds the 32 MiB result budget and the 30 s deadline |
 | Contract 2 | Rejected: the contract ignores unknown fields, and `cover` was added the same way |
 
-**Rationale**: Eight images at the 4 MiB cover limit fit the existing result
-budget, which now counts them with the cover.
+**Rationale**: The cover and seven images at the 4 MiB limit make 32 MiB, the
+existing result budget (`WorkInfoFetchCoverBudget`), which now counts them
+together; an eighth image would let one result exceed the budget and be
+evicted as soon as it is kept.
 
 ## R-10: Plugin data only fills what is empty, after the apply commits
 
