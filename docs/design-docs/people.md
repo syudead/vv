@@ -179,11 +179,12 @@ including `ageAsc` and `ageDesc`, are sent to the server and kept in the URL;
 the sort is also remembered per browser. `New person` asks for the name in a
 dialog and opens the new person's page. Organizations keep the table.
 
-| Rejected                      | Why                                                                          |
-| ----------------------------- | ---------------------------------------------------------------------------- |
-| Cards inside `AdminTablePage` | The design system keeps cards out of that skeleton                           |
-| A virtualized grid            | Library card grids are not virtualized, and the list pages 100 at a time     |
-| Row actions on a card         | A card is one link; the person page holds the actions with room to confirm |
+| Rejected                             | Why                                                                        |
+| ------------------------------------ | -------------------------------------------------------------------------- |
+| Cards inside `AdminTablePage`        | The design system keeps cards out of that skeleton                         |
+| A virtualized grid                   | Library card grids are not virtualized, and the list pages 100 at a time   |
+| Row actions on a card                | A card is one link; the person page holds the actions with room to confirm |
+| Portrait, square or horizontal cards | A round face shows more people per row and reads as a person, not a video  |
 
 ## The person page
 
@@ -223,6 +224,11 @@ A reason with a `field` stays under that input with every other input kept.
 Number inputs keep only digits, so a value the server reads is always a whole
 number or empty.
 
+| Rejected                         | Why                                                                                |
+| -------------------------------- | ---------------------------------------------------------------------------------- |
+| A dialog per group of fields     | The owner had to reopen the editor for each change                                 |
+| One `FormDialog` for every field | More than a dozen fields break that skeleton's rule of a few fields for one action |
+
 ### Ages are computed in the browser
 
 The API returns dates, not ages, because an age changes at midnight in the
@@ -237,3 +243,18 @@ when both are equal.
 | --------------------------- | ------------------------------------------------ |
 | `age` in the response       | Stale after midnight in a cached response        |
 | No age at partial precision | A year alone still narrows the age to two values |
+
+## Faces elsewhere on the screens
+
+On the video page, each person in the work details row is a `PersonFace chip`
+and the name inside one link to `/people/:id`, named `Open {name}`, so the
+cast opens the person page instead of the filtered library; the chip sits on
+the name's line and keeps the row's height. Organizations keep their text links
+to the filtered library, and the fold after three names is unchanged.
+
+In the comparison of a work-info fetch
+([work-info-plugins.md](work-info-plugins.md#peoples-images-are-fetched-like-the-cover-and-become-faces-after-the-commit)),
+a fetched person with a kept image shows `PersonFace compare` before the name,
+and each fetched person with a profile adds one muted line `Fills only empty
+fields: …` under the chips, at most three, because the apply never replaces a
+stored value.
