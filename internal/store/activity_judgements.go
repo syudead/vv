@@ -146,8 +146,16 @@ func keysJSON(keys []string) (any, error) {
 
 const keysCondition = `(?1 is null or c.key_a in (select value from json_each(?1)) or c.key_b in (select value from json_each(?1)))`
 
+// pairFinder is the fingerprint job whose result found the pairs; the zero value joins new pair entries to no pipeline.
+type pairFinder struct {
+	jobID int64
+	key   string
+}
+
 // Reattach orphan candidates to open pair activities; create missing activities only while judging is enabled.
-func syncPairActivities(ctx context.Context, tx *sql.Tx, c *changes, keys []string, now time.Time) error {
+func syncPairActivities(
+	ctx context.Context, tx *sql.Tx, c *changes, keys []string, finder pairFinder, now time.Time,
+) error {
 	filter, err := keysJSON(keys)
 	if err != nil {
 		return err
@@ -171,7 +179,7 @@ func syncPairActivities(ctx context.Context, tx *sql.Tx, c *changes, keys []stri
 		return err
 	}
 	for _, pair := range pairs {
-		if err := syncPairActivity(ctx, tx, c, pair, judgeable[pair], enabled, now); err != nil {
+		if err := syncPairActivity(ctx, tx, c, pair, judgeable[pair], enabled, finder, now); err != nil {
 			return err
 		}
 	}
@@ -179,7 +187,8 @@ func syncPairActivities(ctx context.Context, tx *sql.Tx, c *changes, keys []stri
 }
 
 func syncPairActivity(
-	ctx context.Context, tx *sql.Tx, c *changes, pair [2]string, judgeable, enabled bool, now time.Time,
+	ctx context.Context, tx *sql.Tx, c *changes, pair [2]string, judgeable, enabled bool, finder pairFinder,
+	now time.Time,
 ) error {
 	id, err := openPairActivityID(ctx, tx, pair)
 	if err != nil {
@@ -195,11 +204,41 @@ func syncPairActivity(
 		}
 		return nil
 	case judgeable && enabled:
-		_, err := pairActivityFor(ctx, tx, c, pair, 0, waitingUpdate.state, now)
-		return err
+		id, err := pairActivityFor(ctx, tx, c, pair, 0, waitingUpdate.state, now)
+		if err != nil {
+			return err
+		}
+		return joinFoundPairPipelines(ctx, tx, finder, pair, id, now)
 	default:
 		return nil
 	}
+}
+
+// joinFoundPairPipelines adds a new pair entry to the finder's import pipelines, and to the other video's newest
+// pipeline while it is unfinished or was opened by the same scan, so an earlier, separate import stays closed.
+func joinFoundPairPipelines(
+	ctx context.Context, tx *sql.Tx, finder pairFinder, pair [2]string, entryID int64, now time.Time,
+) error {
+	if finder.jobID == 0 {
+		return nil
+	}
+	other := pair[0]
+	if other == finder.key {
+		other = pair[1]
+	}
+	if _, err := tx.ExecContext(ctx, `insert into activity_pipeline_members (pipeline_id, entry_id, joined_at)
+		select p.id, ?1, ?2 from activity_entries p
+		where p.id = (select max(id) from activity_entries where kind = ?3 and subject_key = ?4)
+		  and (p.status <> ?5 or p.scan_id in (select t.scan_id from jobs j
+		         join activity_pipeline_members m on m.entry_id = j.activity_id
+		         join activity_entries t on t.id = m.pipeline_id
+		        where j.id = ?6 and t.scan_id is not null))
+		on conflict (pipeline_id, entry_id) do nothing`,
+		entryID, now.UnixMilli(), string(domain.ActivityPipeline), other, string(domain.ActivityDone),
+		finder.jobID); err != nil {
+		return fmt.Errorf("cannot join the other video's pipeline (entry=%d): %w", entryID, err)
+	}
+	return joinJobPipelines(ctx, tx, finder.jobID, entryID, now)
 }
 
 func queryKeyPairs(ctx context.Context, tx *sql.Tx, query string, args ...any) ([][2]string, error) {

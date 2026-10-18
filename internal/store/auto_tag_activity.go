@@ -31,9 +31,11 @@ func autoTagActivityEntry(key, label string, reason domain.ActivityReason, decid
 	}
 }
 
-// Create a new processing activity if the previous entry is no longer running, preserving its decider when available.
+// Create a new processing activity if the previous entry is no longer running, preserving its decider and pipelines
+// when available.
 func claimAutoTagActivity(ctx context.Context, tx *sql.Tx, c *changes, key string, activityID int64, now time.Time) error {
 	decider := domain.ActivityByRule
+	var continued []int64
 	if activityID != 0 {
 		var status, stored string
 		err := tx.QueryRowContext(ctx, `select status, decider from activity_entries where id = ?`, activityID).
@@ -44,6 +46,7 @@ func claimAutoTagActivity(ctx context.Context, tx *sql.Tx, c *changes, key strin
 				domain.ActivityState{Status: domain.ActivityRunning, Reason: domain.ActivityProcessing}, now)
 		case err == nil:
 			decider = domain.ActivityDecider(stored)
+			continued = []int64{activityID}
 		case !errors.Is(err, sql.ErrNoRows):
 			return fmt.Errorf("cannot read the auto-tagging activity (id=%d): %w", activityID, err)
 		}
@@ -52,7 +55,8 @@ func claimAutoTagActivity(ctx context.Context, tx *sql.Tx, c *changes, key strin
 	if err := tx.QueryRowContext(ctx, `select `+contentLabelExpr("?1"), key).Scan(&label); err != nil {
 		return fmt.Errorf("cannot read the label of the auto-tagging subject: %w", err)
 	}
-	id, err := recordActivity(ctx, tx, c, autoTagActivityEntry(key, label, domain.ActivityProcessing, decider), now)
+	id, err := recordContinuedActivity(ctx, tx, c,
+		autoTagActivityEntry(key, label, domain.ActivityProcessing, decider), continued, now)
 	if err != nil {
 		return err
 	}

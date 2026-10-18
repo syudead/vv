@@ -18,8 +18,8 @@ type eventSubscribers struct {
 	Screen           func(domain.Event)
 	Workers          map[domain.JobKind]waker
 	ReleaseArtifacts func(domain.ContentUnreferenced)
-	// Seek completion follows thumbnail completion, so available images are ready for automatic
-	// tagging; see docs/design-docs/auto-tagging.md.
+	// Wakes the auto-tagging worker after the seek stage, whose result transaction queued the video;
+	// see docs/design-docs/auto-tagging.md.
 	ImagesFinished func(videoID int64)
 	// Wake on processing or candidate changes; see docs/design-docs/duplicate-judging.md.
 	VersionJudge waker
@@ -72,7 +72,7 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 			}))
 	}
 	// Fingerprint jobs arrive through JobsQueued when sprites finish; they need no extra wakeup.
-	// Automatic tagging also accepts failed seek generation, using any remaining images and metadata.
+	// A failed seek stage also queues automatic tagging, which uses any remaining images and metadata.
 	if s.ImagesFinished != nil {
 		finished := s.ImagesFinished
 		stopWorkers = append(stopWorkers, eventbus.On(bus, "auto-tagging after seek thumbnails",
