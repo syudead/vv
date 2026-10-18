@@ -110,8 +110,8 @@ func (f *fakeLibrary) VideoLocations(_ context.Context, videoID int64) ([]domain
 	return []domain.VideoLocation{{ID: 1, VideoID: videoID, Path: video.Path, Version: 1}}, nil
 }
 
-// TranscodeProbe は保存済みの解析情報が無いと答える。保存と再利用は
-// transcode_test.go が本物の保存層で確かめる。
+// TranscodeProbe reports no stored metadata. Tests of metadata forwarding
+// override it through probeLibrary.
 func (f *fakeLibrary) TranscodeProbe(context.Context, int64) (*domain.StoredTranscodeProbe, error) {
 	return nil, nil
 }
