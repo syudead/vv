@@ -128,6 +128,19 @@ describe("memberTitle", () => {
     expect(memberTitle(pair, pipeline)).toBe("Duplicate check · with b.mp4");
     expect(memberTitle(detail({ kind: "auto_tag" }), pipeline)).toBe("Auto-tagging");
   });
+
+  it("tells the pipeline's video by its id when the other video has the same label and no id", () => {
+    const pipeline = detail({ kind: "pipeline" });
+    const pair: ActivityEntry = detail({
+      kind: "version_judgement",
+      feature: "duplicate_check",
+      subject: {
+        kind: "pair",
+        items: [{ label: "a.mp4" }, { label: "renamed.mp4", videoId: 7 }],
+      },
+    });
+    expect(memberTitle(pair, pipeline)).toBe("Duplicate check · with a.mp4");
+  });
 });
 
 describe("memberResult", () => {

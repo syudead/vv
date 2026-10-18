@@ -67,8 +67,12 @@ export function deciderText(entry: ActivityEntry): UiText {
   return t.activity.deciderValue[entry.decider];
 }
 
+/**
+ * A video resolves to the same `videoId`, or to none, in every entry of one response, so an id on
+ * only one side marks two videos; labels are snapshots and decide only when neither has an id.
+ */
 function sameItem(a: ActivitySubjectItem, b: ActivitySubjectItem): boolean {
-  if (a.videoId !== undefined && b.videoId !== undefined) return a.videoId === b.videoId;
+  if (a.videoId !== undefined || b.videoId !== undefined) return a.videoId === b.videoId;
   return a.label === b.label;
 }
 
