@@ -348,7 +348,8 @@ A folder card shows its name on up to two lines with the full name in `title`.
 The owner also sees the media folder path, truncated to favour its end, full in
 `title`. An empty registered root says to place files there and import.
 
-The library reads `GET /api/library`, which mixes folder groups in with videos;
+The library reads `GET /api/library`, which pages mixed video, group and smart-folder
+keys using [stored collection information](home.md#collection-information-and-paging);
 folder pages and their search results list videos one by one. A group card
 shows a panel with the count (`12 videos`) and total duration, a watched-share
 bar only while some members are in progress, the group name and the members'

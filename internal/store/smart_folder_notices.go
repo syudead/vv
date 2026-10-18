@@ -1,6 +1,6 @@
 package store
 
-// Read all folder IDs before commit and publish one event afterward; avoid reevaluating every folder's rules around each write.
+// Publish collection changes only after their stored information commits.
 
 import (
 	"context"
@@ -63,6 +63,9 @@ func (db *DB) commitMatchChange(ctx context.Context, tx *sql.Tx, events ...domai
 	if err != nil {
 		return err
 	}
+	if err := refreshCollectionValues(ctx, tx, listNow().Unix()); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -82,6 +85,9 @@ func (db *DB) commitMatchChangeIf(ctx context.Context, tx *sql.Tx, matched bool,
 func (db *DB) commitEvents(ctx context.Context, tx *sql.Tx, events ...domain.Event) error {
 	events, err := withMatchNotice(ctx, tx, events)
 	if err != nil {
+		return err
+	}
+	if err := refreshCollectionValues(ctx, tx, listNow().Unix()); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {

@@ -168,26 +168,7 @@ func tagsByContentKeys(ctx context.Context, q queryExecer, contentKeys []string)
 		return nil, fmt.Errorf("cannot build content_key values: %w", err)
 	}
 
-	rows, err := q.QueryContext(ctx, `
-		with selected(content_key) as (select value from json_each(?)),
-		keyed_videos(user_key, video_id) as (
-			select v.content_key, v.id from videos v
-			 where v.content_key in (select content_key from selected) and v.content_key <> ''
-			   and not exists (select 1 from video_bundle_members m where m.content_key = v.content_key)
-			union all
-			select b.user_key, v.id from video_bundles b
-			  join video_bundle_members m on m.bundle_id = b.id
-			  join videos v on v.content_key = m.content_key and v.content_key <> ''
-			 where b.user_key in (select content_key from selected)
-		),
-		tagged(content_key, tag_id, manual, from_folder, unconfirmed) as (
-			select vt.content_key, vt.tag_id, 1, 0, vt.tentative from video_tags vt
-			 where vt.content_key in (select content_key from selected)
-			union all
-			select k.user_key, folder_tn.tag_id, 0, 1, 0 from keyed_videos k
-			  join video_folder_names vfn on vfn.video_id = k.video_id
-			  join tag_names folder_tn on folder_tn.name = vfn.name
-		)
+	rows, err := q.QueryContext(ctx, taggedUserKeysCTE(`select value from json_each(?)`)+`
 		select t.content_key, t.tag_id, tn.name, tg.tentative, max(t.manual), max(t.from_folder), min(t.unconfirmed),
 		       `+tagKindColumns+`
 		  from tagged t
@@ -219,4 +200,26 @@ func tagsByContentKeys(ctx context.Context, q queryExecer, contentKeys []string)
 		domain.SortVideoTags(out[key])
 	}
 	return out, nil
+}
+
+func taggedUserKeysCTE(selected string) string {
+	return `with selected(content_key) as (` + selected + `),
+		keyed_videos(user_key, video_id) as (
+			select v.content_key, v.id from videos v
+			 where v.content_key in (select content_key from selected) and v.content_key <> ''
+			   and not exists (select 1 from video_bundle_members m where m.content_key = v.content_key)
+			union all
+			select b.user_key, v.id from video_bundles b
+			  join video_bundle_members m on m.bundle_id = b.id
+			  join videos v on v.content_key = m.content_key and v.content_key <> ''
+			 where b.user_key in (select content_key from selected)
+		),
+		tagged(content_key, tag_id, manual, from_folder, unconfirmed) as (
+			select vt.content_key, vt.tag_id, 1, 0, vt.tentative from video_tags vt
+			 where vt.content_key in (select content_key from selected)
+			union all
+			select k.user_key, folder_tn.tag_id, 0, 1, 0 from keyed_videos k
+			  join video_folder_names vfn on vfn.video_id = k.video_id
+			  join tag_names folder_tn on folder_tn.name = vfn.name
+		)`
 }

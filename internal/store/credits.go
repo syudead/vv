@@ -139,7 +139,7 @@ func (s *CreditStore) Create(ctx context.Context, kind domain.CreditKind, input 
 	if err != nil {
 		return domain.Credit{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitEvents(ctx, tx); err != nil {
 		return domain.Credit{}, fmt.Errorf("cannot create the %s: %w", kind, err)
 	}
 	return credit, nil

@@ -90,7 +90,7 @@ func (s *TagStore) CreateTagKind(ctx context.Context, name string) (domain.TagKi
 	if err != nil {
 		return domain.TagKind{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitEvents(ctx, tx); err != nil {
 		return domain.TagKind{}, fmt.Errorf("cannot create the tag kind: %w", err)
 	}
 	return kind, nil
@@ -122,7 +122,7 @@ func (s *TagStore) RenameTagKind(ctx context.Context, id int64, name string) (do
 	if _, err := tx.ExecContext(ctx, `update tag_kinds set name = ? where id = ?`, normalized, id); err != nil {
 		return domain.TagKind{}, fmt.Errorf("cannot rename the tag kind (id=%d): %w", id, err)
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitEvents(ctx, tx); err != nil {
 		return domain.TagKind{}, fmt.Errorf("cannot rename the tag kind: %w", err)
 	}
 	current.Name = normalized

@@ -83,12 +83,14 @@ type listSpec struct {
 	// Smart-folder predicates use owner search semantics even for guests.
 	ownerSearch bool
 	// Use the precomputed smart_base user key when supplied, avoiding repeated derivation.
-	userKeyColumn string
-	smartFolders  []librarySmartFolder
-	sort          domain.VideoSort
-	seed          int64
-	cursor        string
-	limit         int
+	userKeyColumn       string
+	smartFolders        []librarySmartFolder
+	storedCollections   bool
+	includeSmartFolders bool
+	sort                domain.VideoSort
+	seed                int64
+	cursor              string
+	limit               int
 }
 
 // ListVideos uses keyset pagination and one snapshot for tag existence, counts and rows; callers validate audience filter permissions.

@@ -47,7 +47,9 @@ type LibraryGroup struct {
 	Path string
 	Name string
 	// Members expands child groups depth-first, keeping each visible video once.
-	Members      []Video
+	Members []Video
+	// Card carries list-only information without expanding every member's video details.
+	Card         *LibraryGroupCard
 	WatchState   WatchState
 	WatchedCount int
 	OpenVideoID  int64
@@ -58,6 +60,12 @@ type LibraryGroup struct {
 	LastPlayedAt *time.Time
 	// Favorite belongs to the group independently of member favorites and is populated by storage.
 	Favorite bool
+}
+
+type LibraryGroupCard struct {
+	VideoIDs []int64
+	Previews []Video
+	Tags     []VideoTag
 }
 
 // progress must align with members; guests receive all-nil progress and therefore open the first member.

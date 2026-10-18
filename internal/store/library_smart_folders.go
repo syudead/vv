@@ -15,7 +15,8 @@ import (
 type librarySmartFolder struct {
 	summary domain.SmartFolderSummary
 	// Aggregate timestamps by maximum and sizes/durations by sum; no matches yields NULL values that sort last.
-	values [6]any
+	values    [6]any
+	expiresAt any
 }
 
 func librarySmartFolderIDs(ctx context.Context, tx *sql.Tx, q domain.VideoQuery) ([]int64, error) {
@@ -33,31 +34,11 @@ func librarySmartFolderIDs(ctx context.Context, tx *sql.Tx, q domain.VideoQuery)
 	return ids, nil
 }
 
-// Apply audience visibility and the list's captured time; guests cannot see empty playback-order folders.
-func librarySmartFolders(ctx context.Context, tx *sql.Tx, audience domain.Audience, q domain.VideoQuery, now int64) ([]librarySmartFolder, error) {
-	ids, err := librarySmartFolderIDs(ctx, tx, q)
-	if err != nil || len(ids) == 0 {
-		return nil, err
-	}
-	targets, err := shownSmartFolderTargets(ctx, tx, audience, ids, now)
-	if err != nil {
-		return nil, err
-	}
-	folders := make([]librarySmartFolder, len(targets))
-	for i, target := range targets {
-		folders[i].summary = target.summary
-	}
-	if err := readSmartFolderSortValues(ctx, tx, audience, targets, folders); err != nil {
-		return nil, err
-	}
-	return folders, nil
-}
-
 // Compute smart_base once while reading all folder sort values.
 func readSmartFolderSortValues(ctx context.Context, tx *sql.Tx, audience domain.Audience, targets []smartFolderTarget, folders []librarySmartFolder) error {
-	query := smartFolderBranches(targets, func(query *smartFolderQuery, index int, _ smartFolderTarget, match smartMatch) {
+	query := smartFolderBranches(targets, func(query *smartFolderQuery, index int, target smartFolderTarget, match smartMatch) {
 		query.parts = append(query.parts, `select `+strconv.Itoa(index)+`, max(added_at), max(mtime), max(created_at),
-			sum(duration_ms), sum(size_bytes), max(played_at) from smart_base videos where `+match.condition)
+			sum(duration_ms), sum(size_bytes), max(played_at), `+smartFolderExpiry(target.spec)+` from smart_base videos where `+match.condition)
 		query.partArgs = append(query.partArgs, match.args...)
 	})
 	rows, err := query.run(ctx, tx, audience)
@@ -71,8 +52,12 @@ func readSmartFolderSortValues(ctx context.Context, tx *sql.Tx, audience domain.
 	for rows.Next() {
 		var index int
 		var values [6]sql.NullInt64
-		if err := rows.Scan(&index, &values[0], &values[1], &values[2], &values[3], &values[4], &values[5]); err != nil {
+		var expires sql.NullInt64
+		if err := rows.Scan(&index, &values[0], &values[1], &values[2], &values[3], &values[4], &values[5], &expires); err != nil {
 			return fmt.Errorf("cannot read the smart folder sort values: %w", err)
+		}
+		if expires.Valid {
+			folders[index].expiresAt = expires.Int64
 		}
 		for i, value := range values {
 			if value.Valid {
@@ -85,6 +70,7 @@ func readSmartFolderSortValues(ctx context.Context, tx *sql.Tx, audience domain.
 	}
 	for index, earlier := range query.same {
 		folders[index].values = folders[earlier].values
+		folders[index].expiresAt = folders[earlier].expiresAt
 	}
 	return nil
 }

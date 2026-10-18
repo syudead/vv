@@ -273,11 +273,16 @@ func (s *ScanIndexStore) DeleteVideoLocations(ctx context.Context, ids []int64) 
 
 // UpdateLocationCreatedAt fixes location facts without edit timestamps, versions or events; zero restores the modification-time fallback.
 func (s *ScanIndexStore) UpdateLocationCreatedAt(ctx context.Context, locationID int64, createdAt time.Time) error {
-	if _, err := s.db.sql.ExecContext(ctx, `update video_locations set file_created_at = ? where id = ?`,
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `update video_locations set file_created_at = ? where id = ?`,
 		nullableUnix(createdAt), locationID); err != nil {
 		return fmt.Errorf("cannot update the file creation time (location=%d): %w", locationID, err)
 	}
-	return nil
+	return s.db.commitEvents(ctx, tx)
 }
 
 func (s *ScanIndexStore) IndexedVideosByPath(ctx context.Context) (map[string]domain.IndexedVideo, error) {
