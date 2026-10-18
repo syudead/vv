@@ -88,6 +88,9 @@ func (s *server) acceptTagListQuery(w http.ResponseWriter, problem tagListProble
 	case tagListLimitOutOfRange:
 		s.invalidRequest(w, fmt.Sprintf("limit must be between 1 and %d.", domain.MaxTagPageLimit))
 		return false
+	case tagListSortPeopleOnly:
+		s.invalidRequest(w, tagListSortPeopleOnlyMessage)
+		return false
 	case tagListSearchTooLong:
 		s.invalidRequestLimit(w, reasonSearchTooLong, maxQueryLength,
 			fmt.Sprintf("Search text must be at most %d characters.", maxQueryLength))
@@ -111,6 +114,7 @@ const (
 	tagListSortUnknown
 	tagListLimitOutOfRange
 	tagListSearchTooLong
+	tagListSortPeopleOnly
 )
 
 // UI and external tag lists share query rules: omitted sort means natural name order, and omitted limit returns all results while ignoring cursor.

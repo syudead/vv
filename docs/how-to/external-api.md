@@ -590,7 +590,7 @@ update.
 
 | Operation | Request | Response |
 | --- | --- | --- |
-| List | `GET …?q=&sort=&cursor=&limit=`, as [List tags](#list-tags) | `{ items, total, totalAll, nextCursor? }` |
+| List | `GET …?q=&sort=&cursor=&limit=`, as [List tags](#list-tags); people also take `sort=ageAsc` or `ageDesc` | `{ items, total, totalAll, nextCursor? }` |
 | Look up | `GET …?source=example&externalId=42` | The one entity holding that external ID in `items`, or empty `items` |
 | Create | `POST …` with `{ name, aliases?, externalIds?, parentId?, profile? }` | `200` and the entity |
 | Update | `POST …/update` with `{ id, …fields }` | `200` and the entity; absent fields stay, a given list replaces the stored one, `null` empties it |
@@ -610,6 +610,10 @@ update.
   or format is `400` with a `work_info_*` reason and `field: profile.<name>`;
   the ranges are in [People: profiles](../design-docs/people.md#what-a-valid-profile-is).
   `profile` sent for an organization is `400` (`invalid_request`).
+- `ageAsc` lists the youngest first (newest birth date) and `ageDesc` the
+  oldest first. A partial birth date counts as its first possible day, and
+  people without one come last in both. Either sort on organizations is `400`
+  (`invalid_request`).
 - A merge fills each profile field the target lacks from the first source in
   `sourceIds` that has it, skipping a value that contradicts the rest of the
   profile (a death date before the birth date, a career end before its start).

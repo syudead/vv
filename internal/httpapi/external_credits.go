@@ -103,12 +103,11 @@ func (e *externalServer) listCredits(w http.ResponseWriter, r *http.Request, api
 	if !e.acceptListQuery(w, problem) {
 		return
 	}
-	query, problem := buildTagListQuery(params.Q, nil, nil, sortParam(params.Sort), params.Cursor, limit)
+	query, problem := buildCreditListQuery(api.kind, params.Q, sortParam(params.Sort), params.Cursor, limit)
 	if !e.acceptListQuery(w, problem) || !e.creditsConfigured(w) {
 		return
 	}
-	page, err := e.s.credits.List(r.Context(), api.kind,
-		domain.CreditQuery{Q: query.Search, Sort: query.Sort, Cursor: query.Cursor, Limit: query.Limit})
+	page, err := e.s.credits.List(r.Context(), api.kind, query)
 	if errors.Is(err, domain.ErrInvalidCursor) {
 		reason := extgen.InvalidCursor
 		e.invalidRequest(w, &reason, "Cannot read the cursor. Read the list again from the start with the same q and sort.")

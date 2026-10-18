@@ -77,3 +77,21 @@ source's value or stays empty, so a merge always stores a valid profile.
 | Keep only the target's profile | The duplicate's profile would be lost |
 | Reject the merge with `400` | A merge cannot be fixed by editing its request, only by editing the people first |
 | Let the owner choose per field | The merge stays one step |
+
+## People sort by age, unknown birth dates last
+
+People lists take two sorts that tags and organizations do not: `ageAsc`
+puts the newest birth date first and `ageDesc` the oldest. An organization
+list answers either with `400 invalid_request`.
+
+The store keeps `birth_key` next to `birth_date` as `YYYYMMDD` with missing
+parts as `00`, and writes both in the same statement, so a partial date sorts
+as its first possible day. Each sort reads an unknown date as the value that
+sorts last in its direction, `0` for `ageAsc` and `99999999` for `ageDesc`, so
+the keyset cursor keeps an integer value and its comparison has no null
+branch. Ties use natural-name order, then ID, as every other sort does.
+
+| Rejected | Why |
+| --- | --- |
+| Add the sorts to `TagSort` for every list | Tags and organizations have no birth date |
+| Sort the loaded rows in the browser | The list is paged by keyset, so the browser holds only the first page |
