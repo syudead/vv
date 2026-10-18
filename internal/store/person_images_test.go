@@ -32,11 +32,11 @@ func TestAddPersonImageKeepsAFaceAlreadySet(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	person := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "山田"})
-	if added, err := db.Credits().AddPersonImage(ctx, person.ID, face("first")); err != nil || !added {
-		t.Fatalf("AddPersonImage(faceless) = %v, %v; want stored", added, err)
+	if revision, err := db.Credits().AddPersonImage(ctx, person.ID, face("first")); err != nil || revision != 1 {
+		t.Fatalf("AddPersonImage(faceless) = rev %d, %v; want stored at rev 1", revision, err)
 	}
-	if added, err := db.Credits().AddPersonImage(ctx, person.ID, face("second")); err != nil || added {
-		t.Fatalf("AddPersonImage(with a face) = %v, %v; want kept", added, err)
+	if revision, err := db.Credits().AddPersonImage(ctx, person.ID, face("second")); err != nil || revision != 0 {
+		t.Fatalf("AddPersonImage(with a face) = rev %d, %v; want kept", revision, err)
 	}
 	got, err := db.Credits().PersonImage(ctx, person.ID)
 	if err != nil || !bytes.Equal(got.JPEG, []byte("first")) || got.Revision != 1 {

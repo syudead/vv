@@ -228,7 +228,7 @@ func (p *WorkInfoPlugins) applyFetch(
 		video, coverSkipped = p.applyCover(ctx, fetch, video)
 	}
 	// Like the cover, faces follow the commit so a plugin the transaction found stale stores none.
-	p.applyPersonImages(ctx, fetch.details.People, applied.PersonIDs)
+	video = p.applyPersonImages(ctx, video, fetch.details.People, applied.PersonIDs)
 	skipped := append(coverSkipped, applied.Skipped...)
 	if skipped == nil {
 		skipped = []domain.SkippedWorkInfoValue{}

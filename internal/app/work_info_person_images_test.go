@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"image/jpeg"
+	"slices"
 	"testing"
 	"time"
 
@@ -28,13 +29,14 @@ func (s *faceStore) PersonImage(_ context.Context, id int64) (domain.PersonImage
 	return domain.PersonImage{JPEG: s.faces[id]}, nil
 }
 
-func (s *faceStore) AddPersonImage(_ context.Context, id int64, image domain.PersonImage) (bool, error) {
+// AddPersonImage stores a face at revision 5.
+func (s *faceStore) AddPersonImage(_ context.Context, id int64, image domain.PersonImage) (int64, error) {
 	if s.faces[id] != nil {
-		return false, nil
+		return 0, nil
 	}
 	s.faces[id] = image.JPEG
 	s.added = append(s.added, id)
-	return true, nil
+	return 5, nil
 }
 
 func (s *faceStore) SetPersonImage(context.Context, int64, domain.PersonImage) (domain.Credit, error) {
@@ -89,6 +91,10 @@ func TestApplyStoresAFetchedFaceOnlyForAPersonWithoutOne(t *testing.T) {
 	broken := pngOf(t, 2, 2)[:40]
 	result := fetchPeople(t, e, pngOf(t, 2, 2), pngOf(t, 5, 4), broken, pngOf(t, 2, 2))
 	e.applier.personIDs = []int64{1, 2, 3, 0}
+	performer := func(id, revision int64) domain.WorkPerson {
+		return domain.WorkPerson{Role: domain.PersonPerformer, Person: domain.CreditRef{ID: id}, ImageRevision: revision}
+	}
+	e.applier.workInfo = &domain.WorkInfo{People: []domain.WorkPerson{performer(1, 2), performer(2, 0), performer(3, 0)}}
 
 	applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
 		[]domain.WorkInfoField{domain.PersonField(domain.PersonPerformer)}, nil)
@@ -97,6 +103,10 @@ func TestApplyStoresAFetchedFaceOnlyForAPersonWithoutOne(t *testing.T) {
 	}
 	if len(faces.added) != 1 || faces.added[0] != 2 || !bytes.Equal(faces.faces[1], []byte("own face")) {
 		t.Fatalf("added faces for %v, person 1 has %q; want person 2 alone", faces.added, faces.faces[1])
+	}
+	want := []domain.WorkPerson{performer(1, 2), performer(2, 5), performer(3, 0)}
+	if applied.Video.WorkInfo == nil || !slices.Equal(applied.Video.WorkInfo.People, want) {
+		t.Errorf("applied people = %+v; want person 2 at the stored face's revision", applied.Video.WorkInfo)
 	}
 	config, err := jpeg.DecodeConfig(bytes.NewReader(faces.faces[2]))
 	if err != nil || config.Width != 5 || config.Height != 4 {

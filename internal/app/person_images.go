@@ -16,8 +16,8 @@ import (
 type PersonImageStore interface {
 	PersonImage(ctx context.Context, id int64) (domain.PersonImage, error)
 	SetPersonImage(ctx context.Context, id int64, image domain.PersonImage) (domain.Credit, error)
-	// AddPersonImage stores image only when the person has no face, reporting whether it did.
-	AddPersonImage(ctx context.Context, id int64, image domain.PersonImage) (bool, error)
+	// AddPersonImage stores image only when the person has no face, returning the new revision or 0 when it did not.
+	AddPersonImage(ctx context.Context, id int64, image domain.PersonImage) (int64, error)
 	DeletePersonImage(ctx context.Context, id int64) (domain.Credit, error)
 }
 

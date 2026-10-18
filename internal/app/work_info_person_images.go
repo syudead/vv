@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -13,9 +14,9 @@ import (
 
 // WorkInfoPersonImageFiller gives a person without a face a fetched image; implemented by PersonImages.
 type WorkInfoPersonImageFiller interface {
-	// FillPersonImage stores data as the face of a person who has none. An image that cannot be fitted, a person who
-	// has a face or no longer exists is not an error.
-	FillPersonImage(ctx context.Context, id int64, data []byte) error
+	// FillPersonImage stores data as the face of a person who has none and returns its revision, or 0 when it stored
+	// nothing. An image that cannot be fitted, a person who has a face or no longer exists is not an error.
+	FillPersonImage(ctx context.Context, id int64, data []byte) (int64, error)
 }
 
 // keepPersonImages attaches each header-checked image to the person it was fetched for; images aligns with people.
@@ -61,40 +62,62 @@ func (f *workInfoFetch) imageBytes() int {
 	return total
 }
 
-// applyPersonImages runs after the apply commits, for the people the apply linked; a failure drops that image
-// without failing the apply, which is already written.
-func (p *WorkInfoPlugins) applyPersonImages(ctx context.Context, people []domain.FetchedPerson, personIDs []int64) {
+// applyPersonImages runs after the apply commits, for the people the apply linked, and returns video with the
+// revisions of the faces it stored; a failure drops that image without failing the apply, which is already written.
+func (p *WorkInfoPlugins) applyPersonImages(
+	ctx context.Context, video domain.Video, people []domain.FetchedPerson, personIDs []int64,
+) domain.Video {
 	if p.personImages == nil {
-		return
+		return video
 	}
+	revisions := map[int64]int64{}
 	for i, id := range personIDs {
 		if id == 0 || i >= len(people) || people[i].Image == nil {
 			continue
 		}
-		_ = p.personImages.FillPersonImage(ctx, id, people[i].Image.Data)
+		if revision, err := p.personImages.FillPersonImage(ctx, id, people[i].Image.Data); err == nil && revision != 0 {
+			revisions[id] = revision
+		}
 	}
+	return withPersonImageRevisions(video, revisions)
+}
+
+// withPersonImageRevisions copies video's work information with the new face revisions of the people in revisions.
+func withPersonImageRevisions(video domain.Video, revisions map[int64]int64) domain.Video {
+	if len(revisions) == 0 || video.WorkInfo == nil {
+		return video
+	}
+	info := *video.WorkInfo
+	info.People = slices.Clone(info.People)
+	for i, person := range info.People {
+		if revision, ok := revisions[person.Person.ID]; ok {
+			info.People[i].ImageRevision = revision
+		}
+	}
+	video.WorkInfo = &info
+	return video
 }
 
 // FillPersonImage fits data only when the person has no face, and stores it only if none was set meanwhile.
-func (p *PersonImages) FillPersonImage(ctx context.Context, id int64, data []byte) error {
+func (p *PersonImages) FillPersonImage(ctx context.Context, id int64, data []byte) (int64, error) {
 	_, err := p.store.PersonImage(ctx, id)
 	switch {
 	case errors.Is(err, domain.ErrPersonImageNotFound):
 	case err == nil, errors.Is(err, domain.ErrNotFound):
-		return nil
+		return 0, nil
 	default:
-		return err
+		return 0, err
 	}
 	fitted, err := p.fit(ctx, data)
 	switch {
 	case ctx.Err() != nil:
-		return ctx.Err()
+		return 0, ctx.Err()
 	case err != nil:
-		return nil
+		return 0, nil
 	}
-	_, err = p.store.AddPersonImage(ctx, id, fitted)
+	revision, err := p.store.AddPersonImage(ctx, id, fitted)
 	if errors.Is(err, domain.ErrNotFound) {
-		return nil
+		return 0, nil
 	}
-	return err
+	return revision, err
 }

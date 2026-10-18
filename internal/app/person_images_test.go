@@ -21,8 +21,8 @@ func (f personImageStoreFunc) SetPersonImage(_ context.Context, id int64, image 
 	return f(id, image)
 }
 
-func (f personImageStoreFunc) AddPersonImage(context.Context, int64, domain.PersonImage) (bool, error) {
-	return false, errors.New("not used")
+func (f personImageStoreFunc) AddPersonImage(context.Context, int64, domain.PersonImage) (int64, error) {
+	return 0, errors.New("not used")
 }
 
 func (f personImageStoreFunc) DeletePersonImage(context.Context, int64) (domain.Credit, error) {

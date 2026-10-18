@@ -50,10 +50,10 @@ func (s *CreditStore) SetPersonImage(ctx context.Context, id int64, image domain
 }
 
 // AddPersonImage stores a fitted face only when the person has none, so it never replaces one set since the caller
-// looked; it reports whether it stored the face.
-func (s *CreditStore) AddPersonImage(ctx context.Context, id int64, image domain.PersonImage) (bool, error) {
+// looked; it returns the new revision, or 0 when the person kept a face.
+func (s *CreditStore) AddPersonImage(ctx context.Context, id int64, image domain.PersonImage) (int64, error) {
 	added := false
-	_, err := s.changePersonImage(ctx, id, func(tx *sql.Tx) (bool, error) {
+	person, err := s.changePersonImage(ctx, id, func(tx *sql.Tx) (bool, error) {
 		res, err := tx.ExecContext(ctx, `insert into person_images (person_id, image, width, height, updated_at)
 			 values (?, ?, ?, ?, ?) on conflict (person_id) do nothing`,
 			id, image.JPEG, image.Width, image.Height, time.Now().Unix())
@@ -64,7 +64,10 @@ func (s *CreditStore) AddPersonImage(ctx context.Context, id int64, image domain
 		added = n > 0
 		return added, err
 	})
-	return added, err
+	if err != nil || !added {
+		return 0, err
+	}
+	return person.ImageRevision, nil
 }
 
 // DeletePersonImage removes the face; a person without one is returned unchanged.

@@ -352,9 +352,10 @@ takes each person the apply linked and whose fetched entry has an image. A
 person who has a face keeps it. For the others, the image is fitted as an
 uploaded face under the thumbnail uploads' gate
 ([people.md](people.md#a-face-is-one-fitted-jpeg-in-sqlite)), and `AddPersonImage` stores it only if no face was
-set since. An image that does not decode, a person deleted since, or a write
-error drops that face and leaves the apply's result as it is, for the reason
-the cover gives.
+set since. The returned video carries each stored face's new revision, so the
+client can address the face without reading the video again. An image that does
+not decode, a person deleted since, or a write error drops that face and leaves
+the apply's result as it is, for the reason the cover gives.
 
 | Rejected | Why |
 | --- | --- |
