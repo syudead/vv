@@ -230,13 +230,19 @@ func (s *IngestStore) setStageStateForJob(
 		}
 		c.jobsQueued(next...)
 	}
+	if kind == domain.JobSeekThumbnail {
+		if err := queueAfterImportAutoTag(ctx, tx, &c, job, time.Now()); err != nil {
+			return false, err
+		}
+	}
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
-// SetSeekThumbnailStateForJob checks the claimed identity and queues fingerprints on completion, including rebuilt sprites.
+// SetSeekThumbnailStateForJob checks the claimed identity and queues fingerprints on completion, including rebuilt
+// sprites, and after-import auto-tagging when the stage finishes for good.
 func (s *IngestStore) SetSeekThumbnailStateForJob(
 	ctx context.Context, job domain.Job, state domain.SeekThumbnailState, substitution domain.Substitution,
 ) (bool, error) {
