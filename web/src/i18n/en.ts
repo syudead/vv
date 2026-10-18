@@ -2318,6 +2318,11 @@ export const en = {
       tagRemoved: (name: string) => `− ${name}`,
       suggested: "(suggested)",
       noTags: "No tags added",
+      tagsAdded: (count: number) =>
+        selectPlural(count, {
+          one: `Added ${formatNumber(count)} tag`,
+          other: `Added ${formatNumber(count)} tags`,
+        }),
       byYou: "by you",
       byYouAlone: "By you",
       folderRemoved: (count: number) =>
@@ -2390,6 +2395,28 @@ export const en = {
       description: "No entries match these filters.",
     },
     detailLink: (kind: string, subject: string) => `Details of ${kind} for ${subject}`,
+    pipeline: {
+      processing: (kind: string, done: number, total: number) =>
+        selectPlural(total, {
+          one: `${kind} in progress · ${formatNumber(done)} of ${formatNumber(total)} task done`,
+          other: `${kind} in progress · ${formatNumber(done)} of ${formatNumber(total)} tasks done`,
+        }),
+      waiting: (done: number, total: number) =>
+        selectPlural(total, {
+          one: `Waiting · ${formatNumber(done)} of ${formatNumber(total)} task done`,
+          other: `Waiting · ${formatNumber(done)} of ${formatNumber(total)} tasks done`,
+        }),
+      finished: (total: number) =>
+        selectPlural(total, {
+          one: `Finished · ${formatNumber(total)} task`,
+          other: `Finished · ${formatNumber(total)} tasks`,
+        }),
+      matches: "Matches",
+      showTasks: "Show tasks",
+      hideTasks: "Hide tasks",
+      showTasksFor: (subject: string) => `Show tasks for ${subject}`,
+      hideTasksFor: (subject: string) => `Hide tasks for ${subject}`,
+    },
     detail: {
       documentTitle: (subject: string) => `${subject} · Activity`,
       loading: "Loading this activity entry",

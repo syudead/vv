@@ -2,11 +2,19 @@ import type { ActivityEntry, ActivityTag } from "../api/activity";
 import { formatDateTime, formatMonthDay, formatTime, t, type UiText } from "../i18n";
 import { videoEditPath } from "../lib/videoEditPath";
 
+/**
+ * What the card helpers read: a list entry, or a pipeline member's summary, which carries
+ * `tagCount` instead of `tags` and no `detail`.
+ */
+export type EntryFields = Omit<ActivityEntry, "candidate" | "createdAt" | "updatedAt"> & {
+  tagCount?: number;
+};
+
 export type CardTone = "default" | "primary" | "destructive" | "warning";
 
 export type StatusMark = "running" | "waiting" | "attention" | "done" | "doneByYou";
 
-export function cardTone(entry: ActivityEntry): CardTone {
+export function cardTone(entry: EntryFields): CardTone {
   if (entry.status === "running")
     return entry.reason === "processing" ? "primary" : "default";
   if (entry.status !== "attention") return "default";
@@ -15,7 +23,7 @@ export function cardTone(entry: ActivityEntry): CardTone {
     : "destructive";
 }
 
-export function statusMark(entry: ActivityEntry): StatusMark {
+export function statusMark(entry: EntryFields): StatusMark {
   switch (entry.status) {
     case "running":
       return entry.reason === "processing" ? "running" : "waiting";
@@ -87,7 +95,7 @@ function retryTime(iso: string, now: Date): UiText {
   return sameDay ? time : t.activity.time.retryAtDay(formatMonthDay(at, now), time);
 }
 
-function attentionResult(entry: ActivityEntry, now: Date): ResultPart[] {
+function attentionResult(entry: EntryFields, now: Date): ResultPart[] {
   const detail = entry.detail ?? "";
   switch (entry.reason) {
     case "interrupted":
@@ -114,13 +122,21 @@ function attentionResult(entry: ActivityEntry, now: Date): ResultPart[] {
   }
 }
 
-function runningResult(entry: ActivityEntry): ResultPart[] {
+function runningResult(entry: EntryFields): ResultPart[] {
   if (entry.reason !== "processing") return [text(t.activity.result.waiting)];
   if (entry.progress !== undefined) return [text(t.activity.stage[entry.progress.stage])];
   return [text(t.activity.result.running)];
 }
 
-function autoTagResult(entry: ActivityEntry): ResultPart[] {
+function autoTagResult(entry: EntryFields): ResultPart[] {
+  if (entry.tags === undefined && entry.tagCount !== undefined)
+    return [
+      text(
+        entry.tagCount === 0
+          ? t.activity.result.noTags
+          : t.activity.result.tagsAdded(entry.tagCount),
+      ),
+    ];
   const tags = entry.tags ?? [];
   if (tags.length === 0) return [text(t.activity.result.noTags)];
   return tags.flatMap((tag, index) => [
@@ -131,7 +147,7 @@ function autoTagResult(entry: ActivityEntry): ResultPart[] {
   ]);
 }
 
-function undoResult(entry: ActivityEntry): ResultPart[] {
+function undoResult(entry: EntryFields): ResultPart[] {
   const undoes = entry.undoes;
   if (entry.outcome === "already_reverted")
     return [text(t.activity.result.alreadyReverted)];
@@ -146,7 +162,7 @@ function undoResult(entry: ActivityEntry): ResultPart[] {
   return [undid];
 }
 
-function ownerTagResult(entry: ActivityEntry, added: boolean): ResultPart[] {
+function ownerTagResult(entry: EntryFields, added: boolean): ResultPart[] {
   const name = entry.detail ?? "";
   return [
     text(added ? t.activity.result.tagAdded(name) : t.activity.result.tagRemoved(name)),
@@ -155,7 +171,7 @@ function ownerTagResult(entry: ActivityEntry, added: boolean): ResultPart[] {
   ];
 }
 
-function completedResult(entry: ActivityEntry): ResultPart[] {
+function completedResult(entry: EntryFields): ResultPart[] {
   switch (entry.kind) {
     case "auto_tag":
       return autoTagResult(entry);
@@ -176,7 +192,7 @@ function completedResult(entry: ActivityEntry): ResultPart[] {
   }
 }
 
-function doneResult(entry: ActivityEntry): ResultPart[] {
+function doneResult(entry: EntryFields): ResultPart[] {
   const ai = entry.decider === "ai";
   switch (entry.outcome) {
     case "same":
@@ -200,7 +216,7 @@ function doneResult(entry: ActivityEntry): ResultPart[] {
   }
 }
 
-function missingVideo(entry: ActivityEntry): boolean {
+function missingVideo(entry: EntryFields): boolean {
   return (
     entry.subject.kind === "video" &&
     entry.subject.items.every((item) => item.videoId === undefined) &&
@@ -208,7 +224,7 @@ function missingVideo(entry: ActivityEntry): boolean {
   );
 }
 
-export function entryResult(entry: ActivityEntry, now: Date): EntryResult {
+export function entryResult(entry: EntryFields, now: Date): EntryResult {
   if (entry.status === "running") return { parts: runningResult(entry), tone: "muted" };
   if (entry.status === "attention") {
     const tone = cardTone(entry) === "warning" ? "warning" : "destructive";
@@ -268,7 +284,7 @@ export interface EntryOperations {
 }
 
 /** Auto-tag entries undo remaining tags individually. */
-export function entryOperations(entry: ActivityEntry): EntryOperations {
+export function entryOperations(entry: EntryFields): EntryOperations {
   const autoTag = entry.kind === "auto_tag";
   return {
     retry: entry.retryRun,

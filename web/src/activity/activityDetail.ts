@@ -6,7 +6,13 @@ import type {
   ActivitySubjectItem,
 } from "../api/activity";
 import { t, type UiText } from "../i18n";
-import { cardTone, type EntryResult, entryResult } from "./activityEntry";
+import {
+  cardTone,
+  type EntryFields,
+  type EntryResult,
+  entryResult,
+} from "./activityEntry";
+import { attentionMember, pipelineAttentionResult } from "./activityPipeline";
 
 /** Ingest order of an import's stages, the order the server reports them in. */
 export const STAGE_ORDER: readonly ActivityStage[] = [
@@ -77,7 +83,10 @@ function sameItem(a: ActivitySubjectItem, b: ActivitySubjectItem): boolean {
 }
 
 /** A pair member names the video other than the pipeline's own. */
-export function memberTitle(member: ActivityEntry, pipeline: ActivityEntry): UiText {
+export function memberTitle(
+  member: Pick<ActivityEntry, "kind" | "subject">,
+  pipeline: Pick<ActivityEntry, "subject">,
+): UiText {
   if (member.subject.kind !== "pair") return t.activity.kind[member.kind];
   const own = pipeline.subject.items;
   const other =
@@ -90,7 +99,7 @@ export function memberTitle(member: ActivityEntry, pipeline: ActivityEntry): UiT
  * A member row reads its result phrase without the message, which its own detail shows in full; a
  * replaced member reads as replaced whatever its own outcome.
  */
-export function memberResult(member: ActivityEntry, now: Date): EntryResult {
+export function memberResult(member: EntryFields, now: Date): EntryResult {
   if (member.replaced === true)
     return { parts: [{ text: t.activity.result.superseded }], tone: "muted" };
   const { detail: _message, ...withoutMessage } = member;
@@ -105,14 +114,9 @@ export interface DetailNotice {
   retry: boolean;
 }
 
-/** The member that gives a pipeline its attention reason. */
 function attentionSource(entry: ActivityDetail): ActivityEntry {
   if (entry.kind !== "pipeline") return entry;
-  return (
-    entry.members?.find(
-      (member) => member.replaced !== true && member.status === "attention",
-    ) ?? entry
-  );
+  return attentionMember(entry.members) ?? entry;
 }
 
 /** The reason phrase goes in the title; the full message is shown once, under it. */
@@ -120,21 +124,10 @@ export function detailNotice(entry: ActivityDetail, now: Date): DetailNotice | n
   if (entry.status !== "attention") return null;
   const source = attentionSource(entry);
   const { detail, ...withoutDetail } = source;
-  const reason = entryResult(withoutDetail, now);
   const title: EntryResult =
     source === entry
-      ? reason
-      : {
-          parts: [
-            {
-              text: t.activity.detail.pipelineAttention(
-                t.activity.kind[source.kind],
-                reason.parts.map((part) => part.text).join(" "),
-              ),
-            },
-          ],
-          tone: reason.tone,
-        };
+      ? entryResult(withoutDetail, now)
+      : pipelineAttentionResult(source, now);
   return {
     title,
     ...(detail === undefined || detail === "" ? {} : { message: detail }),

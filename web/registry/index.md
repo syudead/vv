@@ -24,6 +24,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `centered-form`            | Page skeleton | A screen that is only one form: sign-in, setup                               |
 | `centered-form-example`    | Block         | Copy to start a centered form                                                |
 | `checkbox`                 | Component     | On or off inside a form, a filter or a selection                             |
+| `collapsible`              | Component     | Show or hide part of a section from a button, as an expandable card's rows   |
 | `combobox`                 | Component     | Pick one of many by typing; a `command` in a popover                         |
 | `command`                  | Component     | A list narrowed by typing; the inside of a combobox                          |
 | `confirm-dialog`           | Page skeleton | Confirm an action that cannot be undone                                      |

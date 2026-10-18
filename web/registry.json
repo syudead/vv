@@ -152,6 +152,20 @@
       ]
     },
     {
+      "name": "collapsible",
+      "type": "registry:ui",
+      "title": "Collapsible",
+      "description": "Shows or hides a part of a section from a button, such as the rows inside an expandable card.",
+      "docs": "Usage rules: web/registry/rules/components.md#collapsible (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/collapsible.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui"]
+    },
+    {
       "name": "combobox",
       "type": "registry:ui",
       "title": "Combobox",
@@ -902,7 +916,7 @@
       "name": "card-list",
       "type": "registry:ui",
       "title": "CardList",
-      "description": "Section: a stack of one-line bordered cards on muted, gap-2 apart, in four tones, with fixed columns at the end for the time and the actions; two lines below lg.",
+      "description": "Section: a stack of one-line bordered cards on muted, gap-2 apart, in four tones, with fixed columns at the end for the time and the actions; two lines below lg. A card with members has an expand button and shows its member rows inside its border. Uses collapsible, button and tooltip.",
       "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
       "files": [
         {

@@ -58,13 +58,13 @@ A video's import is one `import` entry for its five ingest stages.
 Each job row keeps the id of the entry it belongs to
 ([`internal/store/activity_import.go`](../../internal/store/activity_import.go)).
 
-| Event | Entry |
-| --- | --- |
-| A job is queued for a video with a pending job whose entry is `running` | The job joins that entry |
-| A job is queued for a video with no such entry | A new `running`/`waiting` entry, with the decider of whoever queued it |
+| Event                                                                                                   | Entry                                                                                        |
+| ------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| A job is queued for a video with a pending job whose entry is `running`                                 | The job joins that entry                                                                     |
+| A job is queued for a video with no such entry                                                          | A new `running`/`waiting` entry, with the decider of whoever queued it                       |
 | A job is claimed and its entry is not `running` (interrupted at startup, or queued before this feature) | A new entry by `rule`, which takes every pending job of the video and supersedes the old one |
-| A job of the entry finishes or fails | The entry is rolled up again |
-| The video is deleted, or its last pending job is dropped because the video lost its registered location | The entry closes as `done`/`gone` |
+| A job of the entry finishes or fails                                                                    | The entry is rolled up again                                                                 |
+| The video is deleted, or its last pending job is dropped because the video lost its registered location | The entry closes as `done`/`gone`                                                            |
 
 The roll-up (`ImportActivityState`) is `running` while any of the entry's jobs
 is pending (`waiting` until one is claimed), `attention`/`failed` when a stage
@@ -78,10 +78,10 @@ since a retry's entry holds only the jobs it queued again.
 
 The decider is the one who started the run.
 
-| Run | Decider |
-| --- | --- |
-| Manual scan, re-probe, retry from the activity log | `owner` |
-| Watch scan, startup resume, a claim that opens a new entry | `rule` |
+| Run                                                        | Decider |
+| ---------------------------------------------------------- | ------- |
+| Manual scan, re-probe, retry from the activity log         | `owner` |
+| Watch scan, startup resume, a claim that opens a new entry | `rule`  |
 
 The ingest queue port (`scanner.Queue`) takes the decider, and `app.Scans`
 passes it from the scan's start.
@@ -112,12 +112,12 @@ more than one pipeline. A pipeline has no stage, detail, probability or undo
 keys, its decider is its first member's, it is never a member itself, and it
 is never retried, undone or superseded.
 
-| New entry | Pipeline |
-| --- | --- |
-| A new `import` entry: scan, watch scan, re-probe, a move written as `done` | Opens a new pipeline as its first member; a scan's pipeline records the scan in `scan_id` |
+| New entry                                                                                                                                           | Pipeline                                                                                    |
+| --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| A new `import` entry: scan, watch scan, re-probe, a move written as `done`                                                                          | Opens a new pipeline as its first member; a scan's pipeline records the scan in `scan_id`   |
 | An entry that continues earlier ones: a retry from the activity log, or a new `import` entry that takes over the pending jobs of an interrupted one | Joins every pipeline of the entries it continues (`recordContinuedActivity`) and opens none |
-| A follow-up process started by an `import` entry's stage result | Joins every pipeline of the finishing job's `import` entry (`joinJobPipelines`) |
-| Anything the owner starts outside an import | None: the entry stays standalone |
+| A follow-up process started by an `import` entry's stage result                                                                                     | Joins every pipeline of the finishing job's `import` entry (`joinJobPipelines`)             |
+| Anything the owner starts outside an import                                                                                                         | None: the entry stays standalone                                                            |
 
 Entries written before pipelines existed belong to none, and the migration
 infers no grouping for them. A continuation or follow-up of such an entry
@@ -130,13 +130,13 @@ entry's `superseded_by`. The roll-up reads the members that are not replaced,
 a member being replaced when its `superseded_by` is a member of the same
 pipeline, such as a failed `import` entry and its retry.
 
-| Members | Pipeline |
-| --- | --- |
-| Any `running` | `running`, reason `processing` when any is `processing`, else `waiting` |
-| None `running`, any `attention` | `attention` with the reason of the oldest such member |
-| All `done`, the `import` member `gone` | `done`/`gone` |
-| All `done`, the `import` member superseded from outside the pipeline | `done`/`superseded` |
-| All `done` otherwise | `done`/`completed` |
+| Members                                                              | Pipeline                                                                |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| Any `running`                                                        | `running`, reason `processing` when any is `processing`, else `waiting` |
+| None `running`, any `attention`                                      | `attention` with the reason of the oldest such member                   |
+| All `done`, the `import` member `gone`                               | `done`/`gone`                                                           |
+| All `done`, the `import` member superseded from outside the pipeline | `done`/`superseded`                                                     |
+| All `done` otherwise                                                 | `done`/`completed`                                                      |
 
 A later, separately started run opens its own pipeline, so a finished
 pipeline returns to `running` only through its own members. A new follow-up
@@ -154,17 +154,17 @@ An owner operation that changes a video's tags or version bundle, removes a
 media folder, or fetches or applies work information writes `done` entries
 decided by `owner` in the operation's transaction.
 
-| Operation | Entries |
-| --- | --- |
-| Bundle (video page, Duplicates, drag-organize) | One `bundle` per member of the new bundle |
-| Make representative, remove from versions | One for the video |
-| "Different videos" | One `dismiss` for the pair |
-| Attach or detach a tag (video page, library selection, turning a group into a tag, `/api/v1`) | One per video and tag whose manual tag row changed; `detail` is the tag name |
-| Keep or reject a suggested tag | One `tag_keep` or `tag_reject`; `detail` is the tag name |
-| Apply fetched work information | One `work_info_apply`; its tags write no tag entries |
-| Fetch work information | One `work_info_fetch` per plugin run, `done`/`failed` with the plugin's message (else the failure code) when the run fails, never retried  |
-| Remove a media folder | One `media_folder_remove` for the folder path; `detail` is the number of videos it took out of the library |
-| Drag-organize undo | One `organize_undo` per video whose bundle it restored |
+| Operation                                                                                     | Entries                                                                                                                                   |
+| --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Bundle (video page, Duplicates, drag-organize)                                                | One `bundle` per member of the new bundle                                                                                                 |
+| Make representative, remove from versions                                                     | One for the video                                                                                                                         |
+| "Different videos"                                                                            | One `dismiss` for the pair                                                                                                                |
+| Attach or detach a tag (video page, library selection, turning a group into a tag, `/api/v1`) | One per video and tag whose manual tag row changed; `detail` is the tag name                                                              |
+| Keep or reject a suggested tag                                                                | One `tag_keep` or `tag_reject`; `detail` is the tag name                                                                                  |
+| Apply fetched work information                                                                | One `work_info_apply`; its tags write no tag entries                                                                                      |
+| Fetch work information                                                                        | One `work_info_fetch` per plugin run, `done`/`failed` with the plugin's message (else the failure code) when the run fails, never retried |
+| Remove a media folder                                                                         | One `media_folder_remove` for the folder path; `detail` is the number of videos it took out of the library                                |
+| Drag-organize undo                                                                            | One `organize_undo` per video whose bundle it restored                                                                                    |
 
 A tag is attached to a user key, so a bundle's entry names its representative.
 The video entries of one operation are written by one statement, and the
@@ -189,11 +189,11 @@ shift the next page. The page, the status counts and the feature counts come
 from one read-only snapshot
 ([`internal/store/activity_pipeline_reads.go`](../../internal/store/activity_pipeline_reads.go)).
 
-| Filter | Matches a top-level entry when | Status counts | Feature counts |
-| --- | --- | --- | --- |
-| `status` | The entry itself has it; a pipeline's status is its roll-up | Ignored | Applied |
-| `feature` | The entry, or one member of a pipeline, satisfies every given filter other than `status` | Applied | Ignored |
-| `decider`, `since`, `q` | As `feature` | Applied | Applied |
+| Filter                  | Matches a top-level entry when                                                           | Status counts | Feature counts |
+| ----------------------- | ---------------------------------------------------------------------------------------- | ------------- | -------------- |
+| `status`                | The entry itself has it; a pipeline's status is its roll-up                              | Ignored       | Applied        |
+| `feature`               | The entry, or one member of a pipeline, satisfies every given filter other than `status` | Applied       | Ignored        |
+| `decider`, `since`, `q` | As `feature`                                                                             | Applied       | Applied        |
 
 One filter builder (`activityFilter`) serves the page and both counts, so the
 counts are the number of entries the list shows. A pipeline counts once per
@@ -227,11 +227,11 @@ undo only for an automatic decision not yet undone, then hands the entry to the
 use case registered for its kind. A kind with nothing registered answers
 `409 activity_not_retryable` or `409 activity_not_undoable`.
 
-| Kind | Retry | Undo |
-| --- | --- | --- |
-| `import` | `IngestStore.RetryImport` queues the video's failed stages again, as a re-probe does, and the jobs still waiting after an interruption; the owner's new entry supersedes the old one. It reads the entry again in its transaction, so a second retry of the same entry, a video that is gone, or nothing to queue answers `409 activity_not_retryable` | — |
-| `scan` | `Scans.RetryActivity` starts a manual scan of every media folder; `409 scan_in_progress` while a scan runs | — |
-| `auto_tag` | `AutoTagger` queues the video again; `409 auto_tagging_off` while the feature is off | One tag at a time, in one `ActivityStore` transaction ([auto-tagging.md](auto-tagging.md#activity-entries-and-undo)) |
+| Kind       | Retry                                                                                                                                                                                                                                                                                                                                                  | Undo                                                                                                                 |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `import`   | `IngestStore.RetryImport` queues the video's failed stages again, as a re-probe does, and the jobs still waiting after an interruption; the owner's new entry supersedes the old one. It reads the entry again in its transaction, so a second retry of the same entry, a video that is gone, or nothing to queue answers `409 activity_not_retryable` | —                                                                                                                    |
+| `scan`     | `Scans.RetryActivity` starts a manual scan of every media folder; `409 scan_in_progress` while a scan runs                                                                                                                                                                                                                                             | —                                                                                                                    |
+| `auto_tag` | `AutoTagger` queues the video again; `409 auto_tagging_off` while the feature is off                                                                                                                                                                                                                                                                   | One tag at a time, in one `ActivityStore` transaction ([auto-tagging.md](auto-tagging.md#activity-entries-and-undo)) |
 
 ## The screen refreshes on an activity notification
 
@@ -253,7 +253,17 @@ confirmation (`web/src/activity/useActivityOperations.ts`) and, on success,
 start the same refetch without waiting for the notification. A failure leaves
 the card as it was and shows a toast.
 
-| Rejected | Why |
-| --- | --- |
-| Entries in the notification payload | Every other notification is re-read state; a payload would need its own ordering and paging |
-| An event-bus subscriber that writes entries | A crash after commit would lose the entry, and events carry no decider or probability |
+A pipeline is one card (`web/src/activity/ActivityPipelineCard.tsx`) whose
+members are rows inside it, replaced members left to the detail page. The
+card says, without being expanded, which member is processing or needs
+attention and how many members are done; `Retry` and `Undo` sit on the
+member rows only. A card starts expanded while the pipeline is processing or
+while a filter matched one of its members, and follows its state on each
+refetch until the owner presses its button; that choice then holds while the
+page stays open and is not kept in the URL. The title of every card and
+member row opens that entry's detail, and the video opens only from `Open`.
+
+| Rejected                                    | Why                                                                                         |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Entries in the notification payload         | Every other notification is re-read state; a payload would need its own ordering and paging |
+| An event-bus subscriber that writes entries | A crash after commit would lose the entry, and events carry no decider or probability       |
