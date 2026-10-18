@@ -681,8 +681,8 @@ func TestTranscodeHelperProcess(t *testing.T) {
 	}
 	if mode == "ffmpeg-data-then-fail" {
 		_, _ = io.WriteString(os.Stdout, "fragment")
-		_ = os.Stdout.Sync()
-		time.Sleep(100 * time.Millisecond)
+		// The parent closes stdin after Start returns the initial output.
+		_, _ = io.Copy(io.Discard, os.Stdin)
 		_, _ = fmt.Fprintln(os.Stderr, "device lost")
 		os.Exit(1)
 	}
@@ -846,6 +846,45 @@ func newScriptedTranscoder(ffmpegModes ...string) *scriptedTranscoder {
 		return cmd
 	}
 	return scripted
+}
+
+// os/exec starts copying a non-file Stdin only after the child process starts.
+// Cancelling here proves an in-flight process was cancelled, even on a slow host.
+func cancelAfterProcessStart(t *testing.T, scripted *scriptedTranscoder) context.Context {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	started := make(chan struct{})
+	onStart := sync.OnceFunc(func() {
+		close(started)
+		cancel()
+	})
+	commandContext := scripted.commandContext
+	scripted.commandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		cmd := commandContext(ctx, name, args...)
+		cmd.Stdin = processStartReader{onStart: func() {
+			onStart()
+			if !errors.Is(ctx.Err(), context.Canceled) {
+				t.Errorf("request cancellation did not reach the running command: %v", ctx.Err())
+			}
+		}}
+		return cmd
+	}
+	t.Cleanup(func() {
+		select {
+		case <-started:
+		default:
+			t.Error("child process never started")
+		}
+	})
+	return ctx
+}
+
+type processStartReader struct{ onStart func() }
+
+func (r processStartReader) Read([]byte) (int, error) {
+	r.onStart()
+	return 0, io.EOF
 }
 
 func (s *scriptedTranscoder) ffmpegCommands() []string {
@@ -1136,8 +1175,7 @@ func TestLiveTranscoderReturnsNoProbeWhenProbeIsCanceled(t *testing.T) {
 	path, stamp := sourceFile(t)
 	scripted := newScriptedTranscoder("ffmpeg")
 	scripted.probeMode = "probe-hang"
-	ctx, cancel := context.WithCancel(context.Background())
-	time.AfterFunc(50*time.Millisecond, cancel)
+	ctx := cancelAfterProcessStart(t, scripted)
 	started, err := scripted.Start(ctx, domain.LiveTranscodeRequest{
 		Path: path, Source: stamp, StartupDeadline: time.Now().Add(5 * time.Second),
 	})

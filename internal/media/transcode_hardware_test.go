@@ -2,6 +2,9 @@ package media
 
 import (
 	"context"
+	"io"
+	"os"
+	"os/exec"
 	"slices"
 	"strings"
 	"testing"
@@ -175,8 +178,7 @@ func TestLiveTranscoderDoesNotFallBackAfterHardwareTimeout(t *testing.T) {
 // 要求の取り消しでは切り替えない。
 func TestLiveTranscoderDoesNotFallBackAfterCancellation(t *testing.T) {
 	scripted := newScriptedTranscoder("ffmpeg-silent", "ffmpeg")
-	ctx, cancel := context.WithCancel(context.Background())
-	time.AfterFunc(100*time.Millisecond, cancel)
+	ctx := cancelAfterProcessStart(t, scripted)
 	_, err := startHardware(t, scripted, ctx, domain.LiveTranscodeRequest{
 		Normalize: true, VideoEncoder: domain.VideoEncoderNVENC,
 	})
@@ -191,13 +193,38 @@ func TestLiveTranscoderDoesNotFallBackAfterCancellation(t *testing.T) {
 // 最初のデータを出したあとの失敗は切り替えず、Wait が誤りを返す。
 func TestLiveTranscoderDoesNotFallBackAfterInitialData(t *testing.T) {
 	scripted := newScriptedTranscoder("ffmpeg-data-then-fail", "ffmpeg")
-	started, err := startHardware(t, scripted, context.Background(), domain.LiveTranscodeRequest{
+	input, release, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = input.Close() }()
+	defer func() { _ = release.Close() }()
+	commandContext := scripted.commandContext
+	scripted.commandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		cmd := commandContext(ctx, name, args...)
+		cmd.Stdin = input
+		return cmd
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	started, err := startHardware(t, scripted, ctx, domain.LiveTranscodeRequest{
 		Normalize: true, VideoEncoder: domain.VideoEncoderNVENC,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = started.Stream.Close() }()
+	defer func() {
+		started.Stop()
+		_ = started.Stream.Close()
+		_ = started.Wait()
+	}()
+	first := make([]byte, len("fragment"))
+	if _, err := io.ReadFull(started.Stream, first); err != nil || string(first) != "fragment" {
+		t.Fatalf("initial data = %q, error = %v", first, err)
+	}
+	if err := release.Close(); err != nil {
+		t.Fatal(err)
+	}
 	if started.VideoEncoder != domain.VideoEncoderNVENC || started.HardwareFailure != nil {
 		t.Errorf("VideoEncoder = %q, HardwareFailure = %v", started.VideoEncoder, started.HardwareFailure)
 	}
