@@ -89,9 +89,12 @@ func TestListVideosFiltersByPerson(t *testing.T) {
 
 func TestListVideosFiltersByPersonRole(t *testing.T) {
 	db, ids := itemsFixture(t)
-	hanako := createPerson(t, db, "山田花子")
+	hanako, taro := createPerson(t, db, "山田花子"), createPerson(t, db, "佐藤太郎")
 	performerVideo, directorVideo := ids[fixturePath("/media/show/ep1.mp4")], ids[fixturePath("/media/solo.mp4")]
-	setWorkInfo(t, db, performerVideo, domain.WorkInfo{People: []domain.WorkPerson{performer(hanako.ID)}})
+	// Another person's director credit on the performer video catches person and role matched on different rows.
+	setWorkInfo(t, db, performerVideo, domain.WorkInfo{People: []domain.WorkPerson{
+		performer(hanako.ID), {Role: domain.PersonDirector, Person: domain.CreditRef{ID: taro.ID}},
+	}})
 	setWorkInfo(t, db, directorVideo, domain.WorkInfo{
 		People: []domain.WorkPerson{{Role: domain.PersonDirector, Person: domain.CreditRef{ID: hanako.ID}}},
 	})
