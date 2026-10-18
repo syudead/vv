@@ -8946,8 +8946,14 @@ components:
           type: integer
 
     ActivityEntry:
-      type: object
       description: "One activity record."
+      allOf:
+        - $ref: "#/components/schemas/ActivityEntryFields"
+      unevaluatedProperties: false
+
+    ActivityEntryFields:
+      type: object
+      description: "The fields of one activity record, left open so ActivityEntry, ActivityListItem and ActivityDetail close them after adding their own."
       required:
         [
           id,
@@ -8963,7 +8969,6 @@ components:
           createdAt,
           updatedAt,
         ]
-      additionalProperties: false
       properties:
         id:
           type: integer
@@ -9028,8 +9033,9 @@ components:
 
     ActivityListItem:
       description: "One top-level record of the list."
+      unevaluatedProperties: false
       allOf:
-        - $ref: "#/components/schemas/ActivityEntry"
+        - $ref: "#/components/schemas/ActivityEntryFields"
         - type: object
           properties:
             members:
@@ -9142,8 +9148,9 @@ components:
 
     ActivityDetail:
       description: "One activity record with its full detail and probabilities, plus what the list leaves out."
+      unevaluatedProperties: false
       allOf:
-        - $ref: "#/components/schemas/ActivityEntry"
+        - $ref: "#/components/schemas/ActivityEntryFields"
         - type: object
           properties:
             members:

@@ -5046,7 +5046,9 @@ export interface components {
             organize: number;
         };
         /** @description One activity record. */
-        ActivityEntry: {
+        ActivityEntry: components["schemas"]["ActivityEntryFields"];
+        /** @description The fields of one activity record, left open so ActivityEntry, ActivityListItem and ActivityDetail close them after adding their own. */
+        ActivityEntryFields: {
             /** Format: int64 */
             id: number;
             kind: components["schemas"]["ActivityKind"];
@@ -5089,7 +5091,7 @@ export interface components {
             updatedAt: string;
         };
         /** @description One top-level record of the list. */
-        ActivityListItem: components["schemas"]["ActivityEntry"] & {
+        ActivityListItem: components["schemas"]["ActivityEntryFields"] & {
             /** @description Pipeline only: member summaries in join order, replaced members included. */
             members?: components["schemas"]["ActivityMemberSummary"][];
         };
@@ -5148,7 +5150,7 @@ export interface components {
             createdAt: string;
         };
         /** @description One activity record with its full detail and probabilities, plus what the list leaves out. */
-        ActivityDetail: components["schemas"]["ActivityEntry"] & {
+        ActivityDetail: components["schemas"]["ActivityEntryFields"] & {
             /** @description Pipeline only: its members in join order, replaced members included. */
             members?: components["schemas"]["ActivityEntry"][];
             /** @description A member only: the pipelines it belongs to, newest first. */

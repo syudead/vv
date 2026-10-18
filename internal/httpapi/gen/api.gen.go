@@ -2331,7 +2331,10 @@ type ActivityDetail struct {
 }
 
 // ActivityEntry One activity record.
-type ActivityEntry struct {
+type ActivityEntry = ActivityEntryFields
+
+// ActivityEntryFields The fields of one activity record, left open so ActivityEntry, ActivityListItem and ActivityDetail close them after adding their own.
+type ActivityEntryFields struct {
 	// Candidate Whether the pair remains on the duplicate-candidate screen.
 	Candidate bool      `json:"candidate"`
 	CreatedAt time.Time `json:"createdAt"`
