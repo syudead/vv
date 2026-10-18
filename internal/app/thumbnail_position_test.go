@@ -5,7 +5,6 @@ import (
 	"errors"
 	"slices"
 	"testing"
-	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -113,39 +112,24 @@ func TestSetThumbnailPositionRejectsBeforeGenerating(t *testing.T) {
 	}
 }
 
-// 位置の指定は生成の錠の中で行う。生成の途中で始めた同じ内容の削除は、記録を待ってから
-// 参照を確かめる。
+// Generation and recording must both exclude other thumbnail writes and deletion.
 func TestSetThumbnailPositionHoldsGenerationLock(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
-	hold := newHoldGeneration("thumbnail-at")
-	generator := &fakeGenerator{gate: hold.gate, recordPublish: true}
-	store.order = generator
+	generator := &fakeGenerator{}
 	ingest, _ := newTestIngest(store, generator)
-
-	done := make(chan error, 1)
-	go func() {
-		_, err := ingest.SetThumbnailPosition(context.Background(), video.ID, video.Path, video.Path, int64Ptr(5_000))
-		done <- err
-	}()
-	<-hold.started["thumbnail-at"]
-	store.mu.Lock()
-	delete(store.referenced, "a")
-	store.mu.Unlock()
-	ingest.ReleaseArtifacts(domain.ContentUnreferenced{ContentKeys: []string{"a"}})
-	time.Sleep(50 * time.Millisecond)
-	if _, removed := generator.snapshot(); len(removed) != 0 {
-		t.Fatalf("記録を待たずに消した: %v", removed)
+	var phases []string
+	check := func(phase string) {
+		assertThumbnailLocksHeld(t, ingest.artifacts, "a")
+		phases = append(phases, phase)
 	}
-
-	close(hold.release["thumbnail-at"])
-	if err := waitJob(t, done); err != nil {
+	generator.gate = check
+	ingest.store = &thumbnailLockStore{IngestStore: store, check: check}
+	if _, err := ingest.SetThumbnailPosition(context.Background(), video.ID, video.Path, video.Path, int64Ptr(5_000)); err != nil {
 		t.Fatal(err)
 	}
-	ingest.Wait()
-	calls, _ := generator.snapshot()
-	if !slices.Equal(calls, []string{"thumbnail-at", "publish-thumbnail", "set-position"}) {
-		t.Fatalf("呼び出し = %v", calls)
+	if want := []string{"thumbnail-at", "record-position"}; !slices.Equal(phases, want) {
+		t.Fatalf("phases = %v, want %v", phases, want)
 	}
 }
 
@@ -209,52 +193,34 @@ func TestIngestThumbnailAtPositionFailureKeepsPosition(t *testing.T) {
 	}
 }
 
-// job が錠の外で動画を読んだあと、錠を待つ間に SetThumbnailPosition が位置と done を記録
-// したら、job は錠の中で読み直して生成を飛ばす。記録された位置の画像が残る。
+// The initial read sees pending; the read under the lock sees the user's completed
+// selection. The job must not generate over that newer thumbnail.
 func TestIngestThumbnailRereadsInsideLock(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
-	hold := newHoldGeneration("thumbnail-at")
-	generator := &fakeGenerator{gate: hold.gate}
+	generator := &fakeGenerator{}
 	ingest, _ := newTestIngest(store, generator)
-
-	picked := make(chan error, 1)
-	go func() {
-		_, err := ingest.SetThumbnailPosition(context.Background(), video.ID, video.Path, video.Path, int64Ptr(9_000))
-		picked <- err
-	}()
-	<-hold.started["thumbnail-at"]
-
-	job := runJob(ingest, domain.JobThumbnail, video)
-	// job が錠の外で動画を読み（pending のまま）、錠を待つところまで進める。
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		store.mu.Lock()
-		reads := store.reads
-		store.mu.Unlock()
-		calls, _ := generator.snapshot()
-		if reads >= 2 && slices.Contains(calls, "check") {
-			break
+	store.afterRead = func(reads int) {
+		if reads == 1 {
+			current := video
+			current.ThumbnailPositionMs = int64Ptr(9_000)
+			current.ThumbnailState = domain.ThumbnailStateDone
+			store.videos[video.ID] = current
+		} else {
+			assertThumbnailLocksHeld(t, ingest.artifacts, "a")
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("job が錠の前まで進まない")
-		}
-		time.Sleep(5 * time.Millisecond)
 	}
-
-	close(hold.release["thumbnail-at"])
-	if err := waitJob(t, picked); err != nil {
+	if err := ingest.Thumbnail(context.Background(), jobFor(domain.JobThumbnail, video)); err != nil {
 		t.Fatal(err)
 	}
-	if err := waitJob(t, job); err != nil {
-		t.Fatal(err)
+	if store.reads != 2 {
+		t.Fatalf("video reads = %d, want 2", store.reads)
 	}
-	calls, _ := generator.snapshot()
-	if slices.Contains(calls, "thumbnail") || !slices.Equal(generator.positions, []int64{9_000}) {
-		t.Fatalf("job が画像を作り直した: 呼び出し %v, 位置 %v", calls, generator.positions)
+	if calls, _ := generator.snapshot(); !slices.Equal(calls, []string{"check"}) {
+		t.Fatalf("generation after completed thumbnail: %v", calls)
 	}
 	if len(store.thumbnailStates) != 0 {
-		t.Fatalf("job が状態を書いた: %v", store.thumbnailStates)
+		t.Fatalf("job recorded state: %v", store.thumbnailStates)
 	}
 }
 
