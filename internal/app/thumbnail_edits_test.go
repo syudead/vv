@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -30,6 +31,7 @@ type fakeImageEditor struct {
 	readJobs  []domain.ImageEditJob
 	cancels   []string
 	cancelErr error
+	onCancel  func()
 	// cancelHold が正なら、次の cancelHold 回の Cancel は、cancelEntered に実行の id を送ってから
 	// cancelRelease が閉じるまで返らない。
 	cancelHold    int
@@ -76,6 +78,9 @@ func (f *fakeImageEditor) Cancel(_ context.Context, job domain.ImageEditJob, _ d
 	}
 	err := f.cancelErr
 	f.mu.Unlock()
+	if f.onCancel != nil {
+		f.onCancel()
+	}
 	if hold {
 		f.cancelEntered <- job.ID
 		<-f.cancelRelease
@@ -195,17 +200,14 @@ type fakeApplier struct {
 	applied [][]byte
 	// origins は適用に渡された出どころである。
 	origins []domain.ThumbnailImageOrigin
-	// entered と release があれば、適用はそこで止まり、release が閉じるまで返らない。
-	entered chan struct{}
-	release chan struct{}
+	onApply func()
 }
 
 func (f *fakeApplier) ApplyThumbnailImage(
 	_ context.Context, videoID int64, _ string, image []byte, origin domain.ThumbnailImageOrigin,
 ) (domain.Video, error) {
-	if f.entered != nil {
-		close(f.entered)
-		<-f.release
+	if f.onApply != nil {
+		f.onApply()
 	}
 	if f.err != nil {
 		return domain.Video{}, f.err
@@ -407,6 +409,7 @@ func TestThumbnailEditHappyPath(t *testing.T) {
 		t.Fatalf("Result = %q, %v", result, err)
 	}
 
+	f.applier.onApply = func() { assertEditSessionHeld(t, f.edits, edit.ID) }
 	video, err := f.edits.Apply(context.Background(), edit.ID)
 	if err != nil || video.ID != 1 || len(f.applier.applied) != 1 || !bytes.Equal(f.applier.applied[0], f.editor.output) {
 		t.Fatalf("Apply = %+v, %v, applied %q", video, err, f.applier.applied)
@@ -666,6 +669,7 @@ func TestThumbnailEditSecondEditReplacesFirst(t *testing.T) {
 	f.editor.set(domain.ThumbnailEditRunning, nil)
 	f.get(t, first)
 
+	f.editor.onCancel = func() { assertEditSessionHeld(t, f.edits, first) }
 	second := f.start(t, 1).ID
 	if second == first {
 		t.Fatal("the second edit reused the id")
@@ -678,51 +682,24 @@ func TestThumbnailEditSecondEditReplacesFirst(t *testing.T) {
 	wantState(t, f.get(t, other), domain.ThumbnailEditReady)
 }
 
-// 同じ動画の新しい編集は、1 つ目で進んでいる適用が終わるまで載らない。1 つ目の id は、その後
-// どの要求にも 404 である。
-func TestThumbnailEditSecondEditWaitsForApply(t *testing.T) {
-	f := newEditsFixture(t)
-	first := f.start(t, 1).ID
-	f.run(t, first)
-	f.editor.set(domain.ThumbnailEditSucceeded, nil)
-	f.get(t, first)
-	f.applier.entered = make(chan struct{})
-	f.applier.release = make(chan struct{})
-
-	applied := make(chan error, 1)
-	go func() {
-		_, err := f.edits.Apply(context.Background(), first)
-		applied <- err
-	}()
-	<-f.applier.entered
-	started := make(chan domain.ThumbnailEdit, 1)
-	go func() {
-		started <- f.start(t, 1)
-	}()
-
-	deadline := time.Now().Add(100 * time.Millisecond)
-	for time.Now().Before(deadline) {
-		f.edits.mu.Lock()
-		active := f.edits.byVideo[1]
-		f.edits.mu.Unlock()
-		if active != first {
-			t.Fatalf("the second edit %s became active while the first was applying", active)
-		}
-		select {
-		case <-started:
-			t.Fatal("the second edit started while the first was applying")
-		default:
-		}
-		time.Sleep(5 * time.Millisecond)
+// Check the production session lock at the apply/cancel boundary. The old
+// session must remain active until that operation finishes.
+func assertEditSessionHeld(t *testing.T, edits *ThumbnailEdits, id string) {
+	t.Helper()
+	edits.mu.Lock()
+	session := edits.byID[id]
+	active := ""
+	if session != nil {
+		active = edits.byVideo[session.videoID]
 	}
-
-	close(f.applier.release)
-	if err := <-applied; err != nil {
-		t.Fatalf("Apply = %v", err)
+	edits.mu.Unlock()
+	if session == nil || active != id {
+		t.Fatalf("session %q is no longer active: %q", id, active)
 	}
-	second := <-started
-	f.wantEnded(t, first)
-	wantState(t, f.get(t, second.ID), domain.ThumbnailEditReady)
+	if session.mu.TryLock() {
+		session.mu.Unlock()
+		t.Fatal("session lock was released before the operation finished")
+	}
 }
 
 // 実行中に新しい実行を始めると、今の実行を中止してから送る。
@@ -875,107 +852,121 @@ func TestThumbnailEditFailedCancelIsRetried(t *testing.T) {
 // interrupt はアカウントの実行中の仕事をすべて止めるので、遅れて届いた片付けのやり直しが新しい
 // 実行を止めうる。StartRun は片付けのやり直しの終わりを待ち、同じ実行を重ねて中止しない。
 func TestThumbnailEditRunWaitsForInFlightCancelRetry(t *testing.T) {
-	f := newEditsFixture(t)
-	ctx := context.Background()
-	id := f.start(t, 1).ID
-	f.run(t, id)
-	f.editor.set(domain.ThumbnailEditRunning, nil)
-	f.get(t, id)
-	f.editor.mu.Lock()
-	f.editor.cancelErr = errors.New("the status endpoint timed out")
-	f.editor.mu.Unlock()
-	if _, err := f.edits.Cancel(ctx, id); err != nil {
-		t.Fatal(err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		f := newEditsFixture(t)
+		ctx := context.Background()
+		id := f.start(t, 1).ID
+		f.run(t, id)
+		f.editor.set(domain.ThumbnailEditRunning, nil)
+		f.get(t, id)
+		f.editor.mu.Lock()
+		f.editor.cancelErr = errors.New("the status endpoint timed out")
+		f.editor.mu.Unlock()
+		if _, err := f.edits.Cancel(ctx, id); err != nil {
+			t.Fatal(err)
+		}
 
-	f.editor.mu.Lock()
-	f.editor.cancelErr = nil
-	f.editor.cancelHold = 1
-	f.editor.cancelEntered = make(chan string, 1)
-	f.editor.cancelRelease = make(chan struct{})
-	f.editor.mu.Unlock()
-	swept := make(chan struct{})
-	go func() {
-		defer close(swept)
-		f.edits.Sweep(ctx)
-	}()
-	if got := <-f.editor.cancelEntered; got != "job-1" {
-		t.Fatalf("the sweep retried %s", got)
-	}
+		f.editor.mu.Lock()
+		f.editor.cancelErr = nil
+		f.editor.cancelHold = 1
+		f.editor.cancelEntered = make(chan string, 1)
+		f.editor.cancelRelease = make(chan struct{})
+		f.editor.mu.Unlock()
+		swept := make(chan struct{})
+		go func() {
+			defer close(swept)
+			f.edits.Sweep(ctx)
+		}()
+		releaseCancel := sync.OnceFunc(func() { close(f.editor.cancelRelease) })
+		defer func() {
+			releaseCancel()
+			<-swept
+		}()
+		synctest.Wait()
+		select {
+		case got := <-f.editor.cancelEntered:
+			if got != "job-1" {
+				t.Fatalf("the sweep retried %s", got)
+			}
+		default:
+			t.Fatal("the sweep did not retry job-1")
+		}
 
-	type result struct {
-		edit domain.ThumbnailEdit
-		err  error
-	}
-	ran := make(chan result, 1)
-	go func() {
-		edit, err := f.edits.StartRun(ctx, id, domain.ThumbnailEditRunInput{Instruction: "again"})
-		ran <- result{edit, err}
-	}()
-	select {
-	case r := <-ran:
-		close(f.editor.cancelRelease)
+		type result struct {
+			edit domain.ThumbnailEdit
+			err  error
+		}
+		ran := make(chan result, 1)
+		go func() {
+			edit, err := f.edits.StartRun(ctx, id, domain.ThumbnailEditRunInput{Instruction: "again"})
+			ran <- result{edit, err}
+		}()
+		synctest.Wait()
+		select {
+		case r := <-ran:
+			t.Fatalf("the run returned while the sweep was still cancelling job-1: %+v, %v", r.edit, r.err)
+		default:
+		}
+		releaseCancel()
 		<-swept
-		t.Fatalf("the run returned while the sweep was still cancelling job-1: %+v, %v", r.edit, r.err)
-	case <-time.After(100 * time.Millisecond):
-	}
-	close(f.editor.cancelRelease)
-	<-swept
-	r := <-ran
-	if r.err != nil {
-		t.Fatal(r.err)
-	}
-	wantState(t, r.edit, domain.ThumbnailEditQueued)
-	f.editor.mu.Lock()
-	defer f.editor.mu.Unlock()
-	if f.editor.startsWhileCancelling != 0 || len(f.editor.starts) != 2 {
-		t.Fatalf("starts = %d, while a cancel was in flight = %d", len(f.editor.starts), f.editor.startsWhileCancelling)
-	}
-	if got := f.editor.cancels; len(got) != 2 {
-		t.Fatalf("cancels = %v, want job-1 cancelled once by the sweep after the first attempt", got)
-	}
+		r := <-ran
+		if r.err != nil {
+			t.Fatal(r.err)
+		}
+		wantState(t, r.edit, domain.ThumbnailEditQueued)
+		f.editor.mu.Lock()
+		defer f.editor.mu.Unlock()
+		if f.editor.startsWhileCancelling != 0 || len(f.editor.starts) != 2 {
+			t.Fatalf("starts = %d, while a cancel was in flight = %d", len(f.editor.starts), f.editor.startsWhileCancelling)
+		}
+		if got := f.editor.cancels; len(got) != 2 {
+			t.Fatalf("cancels = %v, want job-1 cancelled once by the sweep after the first attempt", got)
+		}
+	})
 }
 
 // 片付けは、別々の実行の中止を同時にやり直す。1 つずつ待つと、届かない提供元の実行が多いほど
 // 次の片付け（読まれないセッションと時間切れの実行）が遅れる。
 func TestThumbnailEditSweepRetriesCancelsConcurrently(t *testing.T) {
-	f := newEditsFixture(t)
-	ctx := context.Background()
-	f.editor.mu.Lock()
-	f.editor.cancelErr = errors.New("unreachable")
-	f.editor.mu.Unlock()
-	for _, videoID := range []int64{1, 2} {
-		id := f.start(t, videoID).ID
-		f.run(t, id)
-		f.edits.Discard(ctx, id)
-	}
-
-	f.editor.mu.Lock()
-	f.editor.cancelErr = nil
-	f.editor.cancelHold = 2
-	f.editor.cancelEntered = make(chan string, 2)
-	f.editor.cancelRelease = make(chan struct{})
-	f.editor.mu.Unlock()
-	swept := make(chan struct{})
-	go func() {
-		defer close(swept)
-		f.edits.Sweep(ctx)
-	}()
-	for range 2 {
-		select {
-		case <-f.editor.cancelEntered:
-		case <-time.After(5 * time.Second):
-			close(f.editor.cancelRelease)
-			<-swept
-			t.Fatal("the sweep retried one cancel at a time")
+	synctest.Test(t, func(t *testing.T) {
+		f := newEditsFixture(t)
+		ctx := context.Background()
+		f.editor.mu.Lock()
+		f.editor.cancelErr = errors.New("unreachable")
+		f.editor.mu.Unlock()
+		for _, videoID := range []int64{1, 2} {
+			id := f.start(t, videoID).ID
+			f.run(t, id)
+			f.edits.Discard(ctx, id)
 		}
-	}
-	close(f.editor.cancelRelease)
-	<-swept
-	f.edits.Sweep(ctx)
-	if got := f.editor.cancelled(); len(got) != 4 {
-		t.Fatalf("cancels = %v, want each job retried once and then none", got)
-	}
+
+		f.editor.mu.Lock()
+		f.editor.cancelErr = nil
+		f.editor.cancelHold = 2
+		f.editor.cancelEntered = make(chan string, 2)
+		f.editor.cancelRelease = make(chan struct{})
+		f.editor.mu.Unlock()
+		swept := make(chan struct{})
+		go func() {
+			defer close(swept)
+			f.edits.Sweep(ctx)
+		}()
+		releaseCancel := sync.OnceFunc(func() { close(f.editor.cancelRelease) })
+		defer func() {
+			releaseCancel()
+			<-swept
+		}()
+		synctest.Wait()
+		if got := len(f.editor.cancelEntered); got != 2 {
+			t.Fatalf("concurrent cancels = %d, want 2", got)
+		}
+		releaseCancel()
+		<-swept
+		f.edits.Sweep(ctx)
+		if got := f.editor.cancelled(); len(got) != 4 {
+			t.Fatalf("cancels = %v, want each job retried once and then none", got)
+		}
+	})
 }
 
 // 終えたセッションの実行も中止をやり直し、1 時間たっても済まなければ諦める。
