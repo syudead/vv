@@ -214,6 +214,7 @@ paths:
               type: integer
               format: int64
         - $ref: "#/components/parameters/PersonFilter"
+        - $ref: "#/components/parameters/PersonRoleFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
         - $ref: "#/components/parameters/AddedWithinFilter"
         - $ref: "#/components/parameters/MinDurationFilter"
@@ -4474,6 +4475,12 @@ components:
         type: integer
         format: int64
         minimum: 1
+    PersonRoleFilter:
+      name: personRole
+      in: query
+      description: "Keeps only videos linked to `person` in this role, including total. Requires `person`; without it, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed."
+      schema:
+        $ref: "#/components/schemas/WorkPersonRole"
     OrganizationFilter:
       name: organization
       in: query

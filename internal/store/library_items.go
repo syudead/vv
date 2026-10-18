@@ -88,21 +88,26 @@ func addedAndLengthConditions(spec listSpec) ([]string, []any) {
 	return conditions, args
 }
 
-// Match credits on the user-data key regardless of role; missing entity IDs match nothing.
+// Match credits on the user-data key in any role unless personRole is set; missing entity IDs match nothing.
 func workInfoConditions(spec listSpec, userKey string) ([]string, []any) {
 	var conditions []string
 	var args []any
 	// Unidentified content has no user data.
-	link := func(table, alias, column string) string {
+	link := func(table, alias, column, extra string) string {
 		return `(videos.content_key <> '' and exists (select 1 from ` + table + ` ` + alias + ` where ` + alias +
-			`.content_key = ` + userKey + ` and ` + alias + `.` + column + ` = ?))`
+			`.content_key = ` + userKey + ` and ` + alias + `.` + column + ` = ?` + extra + `))`
 	}
 	if spec.personID != 0 {
-		conditions = append(conditions, link("video_work_people", "vp", "person_id"))
+		role := ""
 		args = append(args, spec.personID)
+		if spec.personRole != "" {
+			role = ` and vp.role = ?`
+			args = append(args, string(spec.personRole))
+		}
+		conditions = append(conditions, link("video_work_people", "vp", "person_id", role))
 	}
 	if spec.organizationID != 0 {
-		conditions = append(conditions, link("video_work_organizations", "vo", "organization_id"))
+		conditions = append(conditions, link("video_work_organizations", "vo", "organization_id", ""))
 		args = append(args, spec.organizationID)
 	}
 	return conditions, args
