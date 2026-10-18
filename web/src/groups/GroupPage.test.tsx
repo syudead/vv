@@ -41,7 +41,7 @@ describe("GroupPage", () => {
       "Extras",
       "Episode 2",
     ]);
-    expect(crumbs()).toEqual(["Library", "Season"]);
+    expect(crumbs()).toEqual(["Home", "Season"]);
     expect(document.title).toBe("Season");
   });
 
@@ -55,7 +55,7 @@ describe("GroupPage", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "Extras" }),
     ).toBeDefined();
-    expect(crumbs()).toEqual(["Library", "Season", "Extras"]);
+    expect(crumbs()).toEqual(["Home", "Season", "Extras"]);
     expect(screen.getByRole("link", { name: "Bonus" }).getAttribute("href")).toBe(
       "/videos/12?group=5",
     );
@@ -64,7 +64,7 @@ describe("GroupPage", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "Season" }),
     ).toBeDefined();
-    expect(crumbs()).toEqual(["Library", "Season"]);
+    expect(crumbs()).toEqual(["Home", "Season"]);
   });
 
   it("もう親でないグループの段は、何も言わずに帯から外す", async () => {
@@ -72,7 +72,7 @@ describe("GroupPage", () => {
     server.groups.set(9, { group: group(9, "Old parent"), items: [] });
     renderPage("/groups/5?trail=9,1");
     await screen.findByRole("heading", { level: 1, name: "Extras" });
-    expect(crumbs()).toEqual(["Library", "Season", "Extras"]);
+    expect(crumbs()).toEqual(["Home", "Season", "Extras"]);
   });
 
   it("ページから開いた動画と「Play」は ?group を運び、戻る先はこのページ", async () => {
@@ -107,7 +107,7 @@ describe("GroupPage", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "Season (renamed)" }),
     ).toBeDefined();
-    expect(crumbs()).toEqual(["Library", "Season (renamed)"]);
+    expect(crumbs()).toEqual(["Home", "Season (renamed)"]);
     const titles = Array.from(document.querySelectorAll("article h3")).map(
       (heading) => heading.textContent,
     );
@@ -147,8 +147,8 @@ describe("GroupPage", () => {
     expect(
       screen.getByRole("link", { name: "Back to library" }).getAttribute("href"),
     ).toBe("/");
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Library");
-    expect(crumbs()).toEqual(["Library"]);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Home");
+    expect(crumbs()).toEqual(["Home"]);
     expect(screen.queryByRole("link", { name: /^Play/ })).toBeNull();
   });
 
@@ -346,7 +346,7 @@ describe("GroupPage", () => {
     expect(server.writes).toEqual([
       { method: "POST", path: "/api/groups/5/items/remove", body: { itemIds: [201] } },
     ]);
-    expect(crumbs()).toEqual(["Library", "Season"]);
+    expect(crumbs()).toEqual(["Home", "Season"]);
   });
 
   it("「Remove from group」で全部の項目を外すとグループは解散され、ライブラリへ移る", async () => {
@@ -445,7 +445,7 @@ describe("GroupPage", () => {
     expect(server.writes).toEqual([
       { method: "PATCH", path: "/api/groups/5", body: { name: "Bonus clips" } },
     ]);
-    expect(crumbs()).toEqual(["Library", "Season", "Bonus clips"]);
+    expect(crumbs()).toEqual(["Home", "Season", "Bonus clips"]);
     expect(document.title).toBe("Bonus clips");
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole("button", { name: "More" })),
@@ -476,7 +476,7 @@ describe("GroupPage", () => {
     ).toBeDefined();
     expect(server.writes).toEqual([{ method: "DELETE", path: "/api/groups/5" }]);
     expect(screen.getByText('Dissolved "Extras"')).toBeDefined();
-    expect(crumbs()).toEqual(["Library", "Season"]);
+    expect(crumbs()).toEqual(["Home", "Season"]);
   });
 
   it("道筋の無い自動グループの解散は 2 文目を足し、ライブラリへ移る", async () => {

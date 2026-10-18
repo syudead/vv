@@ -88,7 +88,7 @@ describe("searchWithoutGroup", () => {
 });
 
 describe("trailCrumbs", () => {
-  it("Library、道筋のグループ（その手前で切った道筋付き）、開いているグループの順", () => {
+  it("Home、道筋のグループ（その手前で切った道筋付き）、開いているグループの順", () => {
     expect(
       trailCrumbs(
         [
@@ -98,7 +98,7 @@ describe("trailCrumbs", () => {
         "Bonus",
       ),
     ).toEqual([
-      { label: "Library", to: "/" },
+      { label: "Home", to: "/" },
       { label: "Season", to: "/groups/1" },
       { label: "Extras", to: "/groups/5?trail=1" },
       { label: "Bonus" },
@@ -107,7 +107,7 @@ describe("trailCrumbs", () => {
 
   it("読み込み中は道筋の段と開いているグループの段を名前の分からない段にする", () => {
     expect(loadingCrumbs([1, 5])).toEqual([
-      { label: "Library", to: "/" },
+      { label: "Home", to: "/" },
       undefined,
       undefined,
       undefined,

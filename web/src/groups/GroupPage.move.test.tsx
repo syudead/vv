@@ -148,12 +148,12 @@ describe("GroupPage move", () => {
     expect(screen.queryByRole("region", { name: "Selection actions" })).toBeNull();
   });
 
-  it("道筋の「Library」の段に落としたカードは from だけを送る", async () => {
+  it("道筋の「Home」の段に落としたカードは from だけを送る", async () => {
     await openSeason();
     lift("Episode 2", 2);
     moveTo(onCrumb(0));
     expect(document.querySelector('[data-crumb-drop="active"]')?.textContent).toBe(
-      "Library",
+      "Home",
     );
     release(onCrumb(0));
 

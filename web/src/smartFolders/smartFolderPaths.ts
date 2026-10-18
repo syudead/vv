@@ -33,7 +33,7 @@ export function videoInSmartFolderPath(videoId: number, folderId: number): strin
 
 export function smartFolderCrumbs(trail: readonly GroupRef[], name: string): Crumb[] {
   return [
-    { label: t.library.title, to: LIBRARY_PATH },
+    { label: t.home.title, to: LIBRARY_PATH },
     ...trail.map((folder) => ({
       label: folder.name,
       to: smartFolderPagePath(folder.id),
