@@ -32,7 +32,7 @@ export interface SubjectPart {
   videoId?: number;
 }
 
-export function subjectParts(entry: ActivityEntry): SubjectPart[] {
+export function subjectParts(entry: Pick<ActivityEntry, "subject">): SubjectPart[] {
   const { kind, items } = entry.subject;
   if (kind === "scan") {
     const label =
@@ -48,7 +48,7 @@ export function subjectParts(entry: ActivityEntry): SubjectPart[] {
   );
 }
 
-export function subjectText(entry: ActivityEntry): string {
+export function subjectText(entry: Pick<ActivityEntry, "subject">): string {
   const parts = subjectParts(entry);
   const [first, second] = parts;
   if (first === undefined) return "";

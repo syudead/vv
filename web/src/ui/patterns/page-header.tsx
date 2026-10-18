@@ -15,6 +15,15 @@ export interface PageHeaderProps {
   titleRef?: Ref<HTMLHeadingElement>;
   /** Hide visually when breadcrumbs already show the same title. */
   titleHidden?: boolean;
+  /** Wrap a long title in full instead of truncating it to one line, as a record's name. */
+  wrapTitle?: boolean;
+}
+
+function titleClass(hidden: boolean, wrap: boolean): string {
+  if (hidden) return "sr-only";
+  return wrap
+    ? "min-w-0 text-xl font-semibold wrap-anywhere"
+    : "min-w-0 truncate text-xl font-semibold";
 }
 
 export function PageHeader({
@@ -26,6 +35,7 @@ export function PageHeader({
   actions,
   titleRef,
   titleHidden = false,
+  wrapTitle = false,
 }: PageHeaderProps) {
   const Heading = headingLevel === 1 ? "h1" : "h2";
   return (
@@ -41,9 +51,7 @@ export function PageHeader({
             <Heading
               ref={titleRef}
               tabIndex={titleRef === undefined ? undefined : -1}
-              className={
-                titleHidden ? "sr-only" : "min-w-0 truncate text-xl font-semibold"
-              }
+              className={titleClass(titleHidden, wrapTitle)}
             >
               {title}
             </Heading>

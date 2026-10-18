@@ -402,6 +402,21 @@ describe("ActivityPage", () => {
     );
   });
 
+  it("opens the entry's detail from the card's title and the video only from Open", async () => {
+    renderPage();
+    await waitFor(() => expect(cards()).toHaveLength(4));
+    const failed = cards().find(
+      (card) => within(card).queryByText("file-2.mp4") !== null,
+    )!;
+    const links = within(failed).getAllByRole("link");
+    expect(
+      links.map((link) => [link.getAttribute("aria-label"), link.getAttribute("href")]),
+    ).toEqual([
+      ["Details of Import for file-2.mp4", "/activity/2"],
+      ["Open", "/videos/2"],
+    ]);
+  });
+
   it("draws only catalog text besides the file names", async () => {
     enablePseudoLocale();
     renderPage();

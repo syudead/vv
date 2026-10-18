@@ -308,7 +308,7 @@ to pick, what goes in each slot and what must not is in
 
 | Layer          | What it is                                                                                                                                                                                                                                   | Registry                     |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `DetailPage`, `CenteredForm`, `FormDialog`, `ConfirmDialog`, `EditorDialog`, `FormPage`, `StepsPage`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
+| Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `RecordPage`, `DetailPage`, `CenteredForm`, `FormDialog`, `ConfirmDialog`, `EditorDialog`, `FormPage`, `StepsPage`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
 | Sections       | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `CardList`, `DataTable`, `GroupedList`, `JumpList`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps                | `registry:ui`, one item each |
 | States         | `LoadingState`, `EmptyState`, `ErrorState`, `LoadMoreRow`: what the body shows instead of, or after, its data                                                                                                                                | `registry:ui`, one item each |
 
@@ -358,6 +358,13 @@ from named steps declared in an `@theme inline` block (`player-width`,
 `player-height`, `aspect-player`), because their values read the video's
 aspect ratio from the frame at run time and must be resolved on the element,
 not on `:root`.
+`RecordPage` shows one record to read inside the shell, such as an activity
+entry with its full messages and parts: a back link to the list it belongs to,
+a title that wraps in full (`PageHeader`'s `wrapTitle`), an optional `notice`,
+then `PageSection`s. It is the `SettingsPage` column without `nav`, kept once
+in `page-column.tsx` and used by both skeletons, at library density.
+`DetailPage` is a media page at viewing density, and a settings page holds
+values to change, so neither fits a record the reader only reads and leaves.
 `DataTable` is built on the shadcn/ui `Table`, which this tier adds as the
 `table` item.
 

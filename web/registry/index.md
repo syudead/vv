@@ -60,11 +60,14 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `list-states-example`      | Block         | The list body in every state                                                 |
 | `load-more-row`            | State         | The next page loading, or failed with Retry                                  |
 | `loading-state`            | State         | Skeleton shapes of the final layout: grid, table, grouped list or cards      |
+| `page-column`              | Pattern       | The reading column settings and record pages share; patterns only            |
 | `page-header`              | Section       | Page title, count and the main action                                        |
 | `page-section`             | Section       | A titled card of rows                                                        |
 | `popover`                  | Component     | Options or a short form anchored to a control                                |
 | `progress`                 | Component     | Progress of a known amount of work                                           |
 | `radio-group`              | Component     | Pick one of a few visible options                                            |
+| `record-page`              | Page skeleton | One record to read inside the shell: an entry's full detail                  |
+| `record-page-example`      | Block         | Copy to start a record page                                                  |
 | `scrub-preview`            | vv component  | The card scrub inside a thumbnail                                            |
 | `select`                   | Component     | Pick one value from a fixed list in a dropdown                               |
 | `selection-bar`            | Section       | Count and bulk actions while items are selected                              |

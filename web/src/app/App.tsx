@@ -51,7 +51,11 @@ const DuplicatesPage = await deferredRoute(
 );
 const ActivityPage = await deferredRoute(
   () => import("../activity/ActivityPage"),
-  "/activity",
+  (pathname) => matchesExactPath(pathname, "/activity"),
+);
+const ActivityDetailPage = await deferredRoute(
+  () => import("../activity/ActivityDetailPage"),
+  (pathname) => matchesBelowPath(pathname, "/activity"),
 );
 const VideoDetailsEditor = await deferredRoute(
   () => import("../player/detailsEditor/VideoDetailsEditor"),
@@ -187,6 +191,14 @@ function AppRoutes() {
             element={
               <AppShell>
                 <ActivityPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/activity/:id"
+            element={
+              <AppShell>
+                <ActivityDetailPage />
               </AppShell>
             }
           />

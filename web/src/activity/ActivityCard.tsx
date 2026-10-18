@@ -31,6 +31,7 @@ import { Spinner } from "../ui/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import {
   cardTone,
+  type EntryResult,
   entryOperations,
   entryResult,
   entryTime,
@@ -39,6 +40,7 @@ import {
   statusMark,
   type StatusMark,
   subjectParts,
+  subjectText,
 } from "./activityEntry";
 
 const markIcon: Record<StatusMark, { icon: LucideIcon; className: string }> = {
@@ -62,60 +64,93 @@ const actionIcon: Record<OpenAction["id"], LucideIcon> = {
   settings: Settings,
 };
 
-function StatusIcon({ entry }: { entry: ActivityEntry }) {
-  const mark = statusMark(entry);
+export interface MarkIconProps {
+  mark: StatusMark;
+  warning?: boolean;
+  /** `size-4` for a row inside a section; `size-5` on a card. */
+  small?: boolean;
+}
+
+export function MarkIcon({ mark, warning = false, small = false }: MarkIconProps) {
   const { icon: Icon, className } = markIcon[mark];
-  const warning = cardTone(entry) === "warning";
   return (
     <Icon
       role="img"
       aria-label={t.activity.statusIcon[mark]}
-      className={cn("size-5", warning ? "text-warning" : className)}
+      className={cn(
+        "shrink-0",
+        small ? "size-4" : "size-5",
+        warning ? "text-warning" : className,
+      )}
     />
   );
 }
 
+export function StatusIcon({ entry, small }: { entry: ActivityEntry; small?: boolean }) {
+  return (
+    <MarkIcon
+      mark={statusMark(entry)}
+      warning={cardTone(entry) === "warning"}
+      small={small}
+    />
+  );
+}
+
+/** The card's title opens the entry's detail; the video opens from `Open` only. */
 function Subject({ entry, from }: { entry: ActivityEntry; from: string }) {
   const parts = subjectParts(entry);
   return (
-    <>
+    <Link
+      to={`/activity/${String(entry.id)}`}
+      state={{ from }}
+      aria-label={t.activity.detailLink(t.activity.kind[entry.kind], subjectText(entry))}
+      className="hover:underline"
+    >
       {parts.map((part, index) => (
         <Fragment key={index}>
           {index > 0 && <span aria-hidden="true"> ↔ </span>}
-          {part.videoId === undefined ? (
-            <span>{part.label}</span>
+          <span>{part.label}</span>
+        </Fragment>
+      ))}
+    </Link>
+  );
+}
+
+/** Truncated on a card; `wrap` shows the phrase in full, as the detail page does. */
+export function ResultText({
+  result,
+  wrap = false,
+}: {
+  result: EntryResult;
+  wrap?: boolean;
+}) {
+  return (
+    <span
+      className={cn(
+        "min-w-0",
+        wrap ? "wrap-anywhere" : "truncate",
+        resultClass[result.tone],
+      )}
+    >
+      {result.parts.map((part, index) => (
+        <Fragment key={index}>
+          {index > 0 && " "}
+          {part.strong === true ? (
+            <span className="text-foreground">{part.text}</span>
           ) : (
-            <Link
-              to={`/videos/${String(part.videoId)}`}
-              state={{ from }}
-              className="hover:underline"
-            >
-              {part.label}
-            </Link>
+            part.text
           )}
         </Fragment>
       ))}
-    </>
+    </span>
   );
 }
 
 function Result({ entry, now }: { entry: ActivityEntry; now: Date }) {
   const progress = entry.progress;
-  const result = entryResult(entry, now);
   return (
     <>
-      <span className={cn("min-w-0 truncate", resultClass[result.tone])}>
-        {result.parts.map((part, index) => (
-          <Fragment key={index}>
-            {index > 0 && " "}
-            {part.strong === true ? (
-              <span className="text-foreground">{part.text}</span>
-            ) : (
-              part.text
-            )}
-          </Fragment>
-        ))}
-      </span>
+      <ResultText result={entryResult(entry, now)} />
       {entry.status === "running" && progress !== undefined && (
         <>
           <span className="w-activity-bar shrink-0 max-lg:hidden">
@@ -137,7 +172,15 @@ function Result({ entry, now }: { entry: ActivityEntry; now: Date }) {
 /** Disable all card actions while an operation is pending. */
 type Pending = "retry" | "undo" | null;
 
-function OpenLinks({ actions, busy }: { actions: OpenAction[]; busy: boolean }) {
+function OpenLinks({
+  actions,
+  busy,
+  from,
+}: {
+  actions: OpenAction[];
+  busy: boolean;
+  from: string;
+}) {
   return (
     <>
       {actions.map((action) => {
@@ -153,6 +196,7 @@ function OpenLinks({ actions, busy }: { actions: OpenAction[]; busy: boolean }) 
               >
                 <Link
                   to={action.to}
+                  state={{ from }}
                   aria-label={action.label}
                   aria-disabled={busy || undefined}
                   tabIndex={busy ? -1 : undefined}
@@ -176,7 +220,12 @@ type OperationButtonProps = Omit<ComponentProps<"button">, "children"> & {
 };
 
 /** Forward trigger attributes and refs to the button for Tooltip and DropdownMenu. */
-function OperationButton({ label, icon: Icon, pending, ...props }: OperationButtonProps) {
+export function OperationButton({
+  label,
+  icon: Icon,
+  pending,
+  ...props
+}: OperationButtonProps) {
   return (
     <Button
       variant="ghost"
@@ -232,12 +281,13 @@ function UndoTagsMenu({
 interface ActionsProps {
   entry: ActivityEntry;
   actions: OpenAction[];
+  from: string;
   onRetry: (entry: ActivityEntry) => Promise<void>;
   onUndo: (entry: ActivityEntry, tagId?: number) => Promise<void>;
 }
 
 /** Keep actions disabled until the refreshed card arrives to prevent duplicate requests. */
-function Actions({ entry, actions, onRetry, onUndo }: ActionsProps) {
+function Actions({ entry, actions, from, onRetry, onUndo }: ActionsProps) {
   const [pending, setPending] = useState<Pending>(null);
   const operations = entryOperations(entry);
   const busy = pending !== null;
@@ -278,7 +328,7 @@ function Actions({ entry, actions, onRetry, onUndo }: ActionsProps) {
           onUndo={(tagId) => run("undo", () => onUndo(entry, tagId))}
         />
       )}
-      <OpenLinks actions={actions} busy={busy} />
+      <OpenLinks actions={actions} busy={busy} from={from} />
     </>
   );
 }
@@ -286,7 +336,7 @@ function Actions({ entry, actions, onRetry, onUndo }: ActionsProps) {
 export interface ActivityCardProps {
   entry: ActivityEntry;
   now: Date;
-  /** Return URL for playback opened from this card. */
+  /** Return URL for the detail and the pages opened from this card. */
   from: string;
   actions: OpenAction[];
   /** The caller reports failures; this promise never rejects. */
@@ -314,7 +364,13 @@ export function ActivityCard({
       time={<span title={time.full}>{time.long}</span>}
       timeShort={<span title={time.full}>{time.short}</span>}
       actions={
-        <Actions entry={entry} actions={actions} onRetry={onRetry} onUndo={onUndo} />
+        <Actions
+          entry={entry}
+          actions={actions}
+          from={from}
+          onRetry={onRetry}
+          onUndo={onUndo}
+        />
       }
     />
   );
