@@ -5,6 +5,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -49,7 +50,7 @@ func racingAutoImport(t *testing.T) (*AutoImport, *fakeWatchScans, *stepClock, *
 	}
 	t.Cleanup(auto.Stop)
 	rig := &autoImportRig{auto: auto}
-	rig.waitState(t, domain.FolderWatchActive)
+	rig.assertStateAfterArming(t, domain.FolderWatchActive)
 	return auto, scans, clock, probe
 }
 
@@ -122,7 +123,7 @@ func TestAutoImportFolderChangeDuringSettleCheckHoldsBatch(t *testing.T) {
 	}
 
 	auto.FoldersChanged(context.Background())
-	(&autoImportRig{auto: auto}).waitState(t, domain.FolderWatchActive)
+	(&autoImportRig{auto: auto}).assertStateAfterArming(t, domain.FolderWatchActive)
 	// 確認はゲートが開いたままなので、すぐ戻る。
 	clock.Advance(2 * time.Second)
 	got := scans.started()
@@ -156,74 +157,50 @@ func (f *foldersByCall) ListMediaFolders(context.Context) ([]domain.MediaFolder,
 
 // 古い張り直しが一覧の取得で遅れても、そのあとで最新の監視を置き換えてはならない。
 func TestAutoImportStaleArmDoesNotReplaceLatestWatchSet(t *testing.T) {
-	gate := make(chan struct{})
-	folders := &foldersByCall{
-		lists: [][]domain.MediaFolder{
-			{{ID: 1, Path: fixturePath("/old")}},
-			{{ID: 2, Path: fixturePath("/new")}},
-		},
-		gates: []chan struct{}{gate, nil},
-		seen:  make(chan int, 4),
-	}
-	watcher := &fakeFolderWatcher{}
-	auto := NewAutoImport(AutoImportOptions{
-		Store:   &fakeAutoImportStore{enabled: true},
-		Folders: folders,
-		Watcher: watcher,
-		Scans:   &fakeWatchScans{},
-		Clock:   newStepClock(),
-		Logger:  discardLogger(),
+	synctest.Test(t, func(t *testing.T) {
+		gate := make(chan struct{})
+		releaseOld := sync.OnceFunc(func() { close(gate) })
+		defer releaseOld()
+		folders := &foldersByCall{
+			lists: [][]domain.MediaFolder{
+				{{ID: 1, Path: fixturePath("/old")}},
+				{{ID: 2, Path: fixturePath("/new")}},
+			},
+			gates: []chan struct{}{gate, nil},
+			seen:  make(chan int, 4),
+		}
+		watcher := &fakeFolderWatcher{}
+		auto := NewAutoImport(AutoImportOptions{
+			Store:   &fakeAutoImportStore{enabled: true},
+			Folders: folders,
+			Watcher: watcher,
+			Scans:   &fakeWatchScans{},
+			Clock:   newStepClock(),
+			Logger:  discardLogger(),
+		})
+		if err := auto.Start(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(auto.Stop)
+		<-folders.seen // 1 つ目の張り込みが一覧の取得で止まった。
+
+		auto.FoldersChanging(context.Background())
+		auto.FoldersChanged(context.Background())
+		synctest.Wait()
+		if status := auto.Status(); status.State != domain.FolderWatchActive {
+			t.Fatalf("latest watch state = %q, want active", status.State)
+		}
+
+		releaseOld()
+		auto.arms.Wait()
+		got := watcher.armed()
+		if len(got) == 0 || !slices.Equal(got[len(got)-1], []string{fixturePath("/new")}) {
+			t.Fatalf("最後に張った roots = %v, want [%s]", got, fixturePath("/new"))
+		}
+		if len(got) != 1 {
+			t.Fatalf("古い世代が張った: %v", got)
+		}
 	})
-	if err := auto.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(auto.Stop)
-	<-folders.seen // 1 つ目の張り込みが一覧の取得で止まった。
-
-	auto.FoldersChanging(context.Background())
-	auto.FoldersChanged(context.Background())
-	(&autoImportRig{auto: auto}).waitState(t, domain.FolderWatchActive)
-
-	close(gate)
-	auto.arms.Wait()
-	got := watcher.armed()
-	if len(got) == 0 || !slices.Equal(got[len(got)-1], []string{fixturePath("/new")}) {
-		t.Fatalf("最後に張った roots = %v, want [%s]", got, fixturePath("/new"))
-	}
-	if len(got) != 1 {
-		t.Fatalf("古い世代が張った: %v", got)
-	}
-}
-
-// 張り込みが終わらなくても、Stop は上限のあとで戻る。
-func TestAutoImportStopDoesNotWaitForeverForArming(t *testing.T) {
-	watcher := &fakeFolderWatcher{block: make(chan struct{})}
-	t.Cleanup(func() { close(watcher.block) })
-	auto := NewAutoImport(AutoImportOptions{
-		Store:    &fakeAutoImportStore{enabled: true},
-		Folders:  fakeActivityFolders{roots: []domain.MediaFolder{{ID: 1, Path: fixturePath("/media")}}},
-		Watcher:  watcher,
-		Scans:    &fakeWatchScans{},
-		Clock:    newStepClock(),
-		Logger:   discardLogger(),
-		StopWait: 20 * time.Millisecond,
-	})
-	if err := auto.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	for len(watcher.armed()) == 0 {
-		time.Sleep(time.Millisecond)
-	}
-	stopped := make(chan struct{})
-	go func() {
-		auto.Stop()
-		close(stopped)
-	}()
-	select {
-	case <-stopped:
-	case <-time.After(5 * time.Second):
-		t.Fatal("Stop が張り込みを待ち続けた")
-	}
 }
 
 // 張っている間に届いた問題は、張り終えたあとの active で上書きされない。
