@@ -5,6 +5,8 @@ import { Link } from "react-router";
 import type { Person } from "../../api/credits";
 import { t } from "../../i18n";
 import { cn } from "../../lib/cn";
+import { personEditPath } from "../../lib/personEditPath";
+import { isPlainClick } from "../../lib/plainClick";
 import { libraryFilterPath } from "../../library/libraryPath";
 import { FactList } from "../../ui/patterns/fact-list";
 import { Button } from "../../ui/shadcn/button";
@@ -17,12 +19,26 @@ import {
 } from "../../ui/shadcn/dropdown-menu";
 import { kindTexts } from "../creditRows";
 import { personFactGroups } from "./personFacts";
-import { personPath } from "./personPath";
+import { handPerson } from "./personHandoff";
 
 const text = t.credits.personPage;
 
-export function personEditPath(id: number): string {
-  return `${personPath(id)}/edit`;
+/**
+ * Opens the edit page with this person, which returns along the history when it is left. A click
+ * that opens another tab hands nothing, so this tab's next visit to the person reads it again.
+ */
+function EditLink({ person }: { person: Person }) {
+  return (
+    <Link
+      to={personEditPath(person.id)}
+      state={{ fromPage: true }}
+      onClick={(event) => {
+        if (isPlainClick(event)) handPerson(person);
+      }}
+    >
+      {text.edit}
+    </Link>
+  );
 }
 
 /** The name, aliases and actions; nothing on the page outranks viewing, so no default button. */
@@ -45,7 +61,7 @@ export function PersonIdentity({
       )}
       <div className="flex flex-wrap items-center gap-2">
         <Button asChild variant="outline" size="sm">
-          <Link to={personEditPath(person.id)}>{text.edit}</Link>
+          <EditLink person={person} />
         </Button>
         <Button asChild variant="ghost" size="sm">
           <Link to={libraryFilterPath("person", person.id)}>{text.showInLibrary}</Link>
@@ -123,7 +139,7 @@ export function PersonDetails({ person, today }: { person: Person; today: Date }
         <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           {text.noProfile}
           <Button asChild variant="link" size="sm">
-            <Link to={personEditPath(person.id)}>{text.edit}</Link>
+            <EditLink person={person} />
           </Button>
         </p>
       ) : (

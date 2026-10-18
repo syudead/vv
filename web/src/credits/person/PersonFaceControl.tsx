@@ -5,7 +5,7 @@ import { RequestFailed } from "../../api/client";
 import {
   isCreditGone,
   type Person,
-  personImagePath,
+  personFaceSrc,
   removePersonImage,
   uploadPersonImage,
 } from "../../api/credits";
@@ -127,10 +127,7 @@ export default function PersonFaceControl({
     onChanged((current) => ({ ...current, favorite }));
   }
 
-  const src =
-    person.imageRevision === undefined
-      ? undefined
-      : personImagePath(person.id, person.imageRevision);
+  const src = personFaceSrc(person);
 
   return (
     <div className="flex flex-col gap-2">
