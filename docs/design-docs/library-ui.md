@@ -190,9 +190,8 @@ The top bar ([`TopBar.tsx`](../../web/src/shell/TopBar.tsx)) holds ☰ (below
 pages and the admin pages (tags, people, organizations) insert their toolbar after them: the design-system
 `Toolbar` with
 `placement="topBar"`, rendered through
-[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx). The page body
-starts with the heading and the count, so the toolbar stays reachable at any
-scroll position. Folder pages are a design-system `ListPage`: the breadcrumb
+[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx), so the toolbar
+stays reachable at any scroll position. Folder pages are a design-system `ListPage`: the breadcrumb
 is a band stuck under the top bar, so the parent folders stay one click away at
 any scroll position. The breadcrumb's last segment names the folder, so the
 page's `h1` is for screen readers only and no visible title repeats it
@@ -266,7 +265,7 @@ the width where it joins the row.
 The tags page uses the same row with search, filter and sort; below `md` its
 sort moves into the icon-only `Sort` popover.
 
-The count sits in the row above the grid for the library and search results,
+The count sits in the row above the grid for search results,
 and in the section heading for a folder's direct contents.
 
 The sort orders are date added, date modified, date created, title, duration,
@@ -351,7 +350,8 @@ bottom edge and the title.
 | --- | --- |
 | Video, library and folder pages | Tag row under the title, none without tags  |
 | Video, folder search results | Location row under the title |
-| Folder | Video card's width and border, folder artwork, Folder icon in the title |
+| Folder (folder page) | Group card's box, artwork, count panel and name, with a Folder mark before the video and folder counts; no checks, actions or tag row |
+| Media folder (`/folders`) | Video card's width and border, folder artwork, Folder icon in the title; opens the folder only |
 | Group (library only) | Video card's box and size, folder artwork of up to 4 member thumbnails |
 | Smart folder (unfiltered library, smart folder page) | Group card's box, artwork, count panel, name and tag row, with a `FolderSearch` mark before the count; the owner's check selects it; no `Add to group`; the owner's heart and `Add to playlist` send the folder as one item (`smartFolderIds`), and tag and visibility actions reach its member videos |
 
@@ -366,9 +366,10 @@ Video card behaviour:
 | Hover preview | One at a time on any screen |
 | Zoom changed | Returns to the card that was at the top |
 
-A folder card shows its name on up to two lines with the full name in `title`.
-The owner also sees the media folder path, truncated to favour its end, full in
-`title`. An empty registered root says to place files there and import.
+Folder, group and smart folder cards show the name on up to two lines with the
+full name in `title`. On `/folders` the owner also sees each media folder's
+path, truncated to favour its end, full in `title`. An empty registered root
+says to place files there and import.
 
 The library reads `GET /api/library`, which pages mixed video, group and smart-folder
 keys using [stored collection information](home.md#collection-information-and-paging);
@@ -392,9 +393,10 @@ a folder created, moved or renamed in another tab appears. A folder left out of
 the answer loses its card. A smart folder card cannot be dragged, and dropping
 on it shows `Can't drop here`.
 
-Groups and smart folders share one-column cards and the same collection-link
-behaviour. A mouse-promoted cover opens that video with autoplay and its group
-or smart-folder context. The artwork shows at most four covers plus a More
+Folders, groups and smart folders share one-column cards and the same
+collection-link behaviour. A mouse-promoted cover carries no title overlay and
+opens that video with autoplay and its group or smart-folder context; a
+folder's cover opens the video alone. The artwork shows at most four covers plus a More
 sheet if videos remain. More and the title open the collection; leaving the
 artwork restores that destination. Touch and keyboard activation also open the
 collection. During selection, promotion is disabled and group and smart folder

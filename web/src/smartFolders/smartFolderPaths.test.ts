@@ -25,9 +25,9 @@ describe("smartFolderPaths", () => {
     expect(smartFolderContextOf("?smartFolder=x")).toBeUndefined();
   });
 
-  it("帯はライブラリ、祖先（そのページへのリンク）、現在地の順", () => {
+  it("帯はホーム、祖先（そのページへのリンク）、現在地の順", () => {
     expect(smartFolderCrumbs([{ id: 1, name: "タグ: 猫" }], "未視聴")).toEqual([
-      { label: "Library", to: "/" },
+      { label: "Home", to: "/" },
       { label: "タグ: 猫", to: "/smart-folders/1" },
       { label: "未視聴" },
     ]);

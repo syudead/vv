@@ -209,7 +209,9 @@ test.describe.serial("home", () => {
       (url) => url.pathname === "/" && url.searchParams.get("q") === query,
     );
     await expect
-      .poll(() => cardTitles(page.getByRole("region", { name: "Library", exact: true })))
+      .poll(() =>
+        cardTitles(page.getByRole("region", { name: "Search results", exact: true })),
+      )
       .toEqual([...allTitles].sort());
     await expect(folderCard(page)).toHaveCount(0);
   });

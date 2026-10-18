@@ -48,13 +48,13 @@ describe("スマートフォルダのページ", () => {
     seed();
     renderPage("/smart-folders/1");
     await screen.findByRole("heading", { level: 1, name: "タグ: 猫" });
-    expect(crumbs()).toEqual(["Library", "タグ: 猫"]);
+    expect(crumbs()).toEqual(["Home", "タグ: 猫"]);
     expect(screen.getByText("Tag: 猫")).toBeTruthy();
 
     await user.click(screen.getByRole("link", { name: "未視聴, smart folder" }));
 
     expect(await screen.findByRole("heading", { level: 1, name: "未視聴" })).toBeTruthy();
-    expect(crumbs()).toEqual(["Library", "タグ: 猫", "未視聴"]);
+    expect(crumbs()).toEqual(["Home", "タグ: 猫", "未視聴"]);
     expect(screen.getByText("Conditions:")).toBeTruthy();
     expect(screen.getByText("Unwatched")).toBeTruthy();
     const fromParent = screen.getByRole("link", { name: 'From "タグ: 猫":' });
@@ -136,11 +136,11 @@ describe("スマートフォルダのページ", () => {
     expect(screen.getByRole("link", { name: 'Play "タグ: 猫"' })).toBeTruthy();
   });
 
-  it("無いフォルダは無くなった状態で、帯はライブラリだけ", async () => {
+  it("無いフォルダは無くなった状態で、帯はホームだけ", async () => {
     renderPage("/smart-folders/40");
 
     expect(await screen.findByText("This smart folder no longer exists")).toBeTruthy();
-    expect(crumbs()).toEqual(["Library"]);
+    expect(crumbs()).toEqual(["Home"]);
     expect(screen.getByRole("link", { name: "Back to library" })).toBeTruthy();
   });
 
