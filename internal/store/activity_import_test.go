@@ -10,11 +10,17 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// importEntries reads every import entry newest first; the list shows them only inside their pipelines.
 func importEntries(t *testing.T, db *DB) []domain.ActivityEntry {
 	t.Helper()
+	return entriesOfKind(t, db, domain.ActivityImport)
+}
+
+// entriesOfKind reads every entry of the kind newest first; the list shows pipeline members only inside their
+// pipelines.
+func entriesOfKind(t *testing.T, db *DB, kind domain.ActivityKind) []domain.ActivityEntry {
+	t.Helper()
 	ids, err := collectActivityIDs(db.sql.Query(`select id from activity_entries where kind = ? order by id desc`,
-		string(domain.ActivityImport)))
+		string(kind)))
 	if err != nil {
 		t.Fatal(err)
 	}
