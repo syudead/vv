@@ -5,7 +5,6 @@ import {
   History,
   House,
   Layers,
-  Library,
   ListVideo,
   Tags,
   Users,
@@ -13,7 +12,6 @@ import {
 } from "lucide-react";
 
 import { t, type UiText } from "../i18n";
-import { LIBRARY_PATH } from "../library/libraryPath";
 
 export interface NavEntry {
   id: string;
@@ -30,7 +28,6 @@ export interface NavEntry {
 export function navEntries(): readonly NavEntry[] {
   return [
     { id: "home", label: t.shell.nav.home, icon: House, to: "/" },
-    { id: "library", label: t.shell.nav.library, icon: Library, to: LIBRARY_PATH },
     {
       id: "folders",
       label: t.shell.nav.folders,

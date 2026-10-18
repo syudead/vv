@@ -49,7 +49,7 @@ for (const width of [360, 640, 768]) {
 
     await failLogout(page);
 
-    await page.goto("/library");
+    await page.goto("/");
     const indicator = page.getByRole("button", {
       name: /^Scanning 4 of 10 videos done\./,
     });
@@ -119,7 +119,7 @@ for (const { width, height } of [
 
     await failLogout(page);
 
-    await page.goto("/library");
+    await page.goto("/");
     if (width < 640) await page.getByRole("button", { name: "Menu" }).click();
     // Wait for the failure toast before clicking logout again because the pending request disables it.
     const logoutButton = page.getByRole("button", { name: "Sign out" });

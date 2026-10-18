@@ -9,10 +9,7 @@ import { type Audience, AudienceProvider } from "../auth/audience";
 import { json, Probe, video } from "../testing/groupPage";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
-import HomePage from "./HomePage";
-
-// ホームの画面（docs/design-docs/home.md「Home」）。棚のカードを 1 回押すと再生し
-// （受け入れ条件 1）、検索欄で送るとライブラリで探す（受け入れ条件 2）。
+import HomeShelves from "./HomeShelves";
 
 const travel: HomeShelf = {
   key: "folder:3",
@@ -36,7 +33,6 @@ const server = {
   /** true の間、棚の項目の応答は頼んだ時点の中身で作り、held から返すまで待たせる。 */
   holdShelves: false,
   held: [] as (() => void)[],
-  onboardingWrites: [] as string[],
 };
 
 beforeEach(() => {
@@ -56,17 +52,12 @@ beforeEach(() => {
   server.failShelves = false;
   server.holdShelves = false;
   server.held = [];
-  server.onboardingWrites = [];
   installFakeEventSource();
   vi.stubGlobal(
     "fetch",
-    vi.fn<typeof fetch>((input, init) => {
+    vi.fn<typeof fetch>((input) => {
       const url = new URL(String(input), "http://localhost");
       if (url.pathname === "/api/home") return Promise.resolve(json(server.home));
-      if (url.pathname === "/api/onboarding") {
-        server.onboardingWrites.push(String(init?.body));
-        return Promise.resolve(json({ step: "folders" }));
-      }
       if (url.pathname === "/api/home/shelves") {
         const keys = (url.searchParams.get("keys") ?? "").split(",");
         server.shelfRequests.push(keys);
@@ -100,10 +91,8 @@ function renderHome(audience: Audience = "owner") {
         <ToastProvider>
           <AudienceProvider audience={audience}>
             <Routes>
-              <Route path="/" element={<HomePage />} />
+              <Route path="/" element={<HomeShelves />} />
               <Route path="/videos/:id" element={<Probe />} />
-              <Route path="/library" element={<Probe />} />
-              <Route path="/welcome" element={<Probe />} />
             </Routes>
           </AudienceProvider>
         </ToastProvider>
@@ -146,33 +135,6 @@ describe("ホーム（docs/design-docs/home.md「Home」）", () => {
     expect(
       screen.getByRole("link", { name: "See all: Nature" }).getAttribute("href"),
     ).toBe("/smart-folders/4");
-  });
-
-  it("検索欄で Enter を押すと /library?q= を開く", async () => {
-    const user = userEvent.setup();
-    renderHome();
-    await screen.findByRole("heading", { level: 2, name: "Travel" });
-
-    await user.type(
-      screen.getByRole("searchbox", { name: "Search the library" }),
-      "harbour{Enter}",
-    );
-
-    expect(await screen.findByText("Opened /library?q=harbour null")).toBeTruthy();
-  });
-
-  it("検索欄のクリアのボタンで Enter を押しても、ライブラリへは移らずに欄を空にする", async () => {
-    const user = userEvent.setup();
-    renderHome();
-    await screen.findByRole("heading", { level: 2, name: "Travel" });
-    const field = screen.getByRole("searchbox", { name: "Search the library" });
-
-    await user.type(field, "harbour");
-    screen.getByRole("button", { name: "Clear search" }).focus();
-    await user.keyboard("{Enter}");
-
-    expect(screen.queryByText(/^Opened \/library/)).toBeNull();
-    expect((field as HTMLInputElement).value).toBe("");
   });
 
   it("失敗した棚を読み直す間も、ほかの棚を描き続ける", async () => {
@@ -252,27 +214,5 @@ describe("ホーム（docs/design-docs/home.md「Home」）", () => {
     await waitFor(() => expect(server.held).toHaveLength(0));
     expect(screen.queryByRole("link", { name: "Harbour" })).toBeNull();
     expect(screen.getByRole("link", { name: "Lagoon" })).toBeTruthy();
-  });
-
-  it("動画が無ければ、所有者の Set up library は段階を folders に書いてオンボードを開く", async () => {
-    const user = userEvent.setup();
-    server.home = { shelves: [nature], empty: "noVideos" };
-    renderHome();
-
-    expect(
-      await screen.findByRole("heading", { level: 2, name: "No videos yet" }),
-    ).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Set up library" }));
-
-    expect(await screen.findByText(/^Opened \/welcome /)).toBeTruthy();
-    expect(server.onboardingWrites).toEqual([JSON.stringify({ step: "folders" })]);
-  });
-
-  it("動画が無ければ、閲覧者には空であることだけを出す", async () => {
-    server.home = { shelves: [nature], empty: "noVideos" };
-    renderHome("guest");
-
-    expect(await screen.findByText("There's nothing to watch here yet.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Set up library" })).toBeNull();
   });
 });

@@ -253,7 +253,7 @@ export function renderPage(initial: string, audience: Audience = "owner") {
               <Route path="/smart-folders/:id" element={<SmartFolderPage />} />
               <Route path="/videos/:id" element={<Probe />} />
               <Route path="/groups/:id" element={<Probe />} />
-              <Route path="/library" element={<p>Library</p>} />
+              <Route path="/" element={<p>Library</p>} />
             </Routes>
           </AudienceProvider>
         </ToastProvider>

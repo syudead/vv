@@ -98,7 +98,7 @@ describe("trailCrumbs", () => {
         "Bonus",
       ),
     ).toEqual([
-      { label: "Library", to: "/library" },
+      { label: "Library", to: "/" },
       { label: "Season", to: "/groups/1" },
       { label: "Extras", to: "/groups/5?trail=1" },
       { label: "Bonus" },
@@ -107,7 +107,7 @@ describe("trailCrumbs", () => {
 
   it("読み込み中は道筋の段と開いているグループの段を名前の分からない段にする", () => {
     expect(loadingCrumbs([1, 5])).toEqual([
-      { label: "Library", to: "/library" },
+      { label: "Library", to: "/" },
       undefined,
       undefined,
       undefined,
@@ -127,7 +127,7 @@ describe("folderDisplayPath", () => {
 
 describe("parentPagePath", () => {
   it("道筋の最後のグループをその手前の道筋付きで、道筋が無ければライブラリを返す", () => {
-    expect(parentPagePath([])).toBe("/library");
+    expect(parentPagePath([])).toBe("/");
     expect(
       parentPagePath([
         { id: 1, name: "A" },

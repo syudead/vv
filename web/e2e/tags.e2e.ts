@@ -409,7 +409,7 @@ test.describe.serial("video tags", () => {
     }) => {
       test.setTimeout(120_000);
       await page.setViewportSize({ width: 1280, height: 800 });
-      await page.goto("/library");
+      await page.goto("/");
       await expect(page.getByRole("article")).toHaveCount(videoCount);
 
       const lastId = await page.getByRole("article").last().getAttribute("data-video-id");
@@ -434,7 +434,7 @@ test.describe.serial("video tags", () => {
         { width: 390, height: 300, scrolls: true },
       ]) {
         await page.setViewportSize(viewport);
-        await page.goto("/library");
+        await page.goto("/");
         await expect(page.getByRole("article")).toHaveCount(videoCount);
         const card = page.locator(`article[data-video-id="${String(targetId)}"]`);
         // Scroll beyond the last card to place the final grid row at the viewport bottom.

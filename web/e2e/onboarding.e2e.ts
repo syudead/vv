@@ -220,7 +220,7 @@ test.describe.serial("onboarding", () => {
     await test.step("4: 1台目でフォルダを足して閉じる", async () => {
       const first = await deviceContext(browser);
       const page = await first.newPage();
-      await page.goto("/library");
+      await page.goto("/");
       await expect(page).toHaveURL("/welcome");
       await expect(
         page.getByRole("heading", { level: 1, name: "Where are your videos?" }),

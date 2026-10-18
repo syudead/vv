@@ -112,7 +112,7 @@ test.describe.serial("library search", () => {
   }) => {
     test.setTimeout(90_000);
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/library?sort=random");
+    await page.goto("/?sort=random");
     await expect(page).toHaveURL(/\?sort=random&seed=\d+$/);
     const url = page.url();
 
@@ -138,7 +138,7 @@ test.describe.serial("library search", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/library?sort=titleAsc");
+    await page.goto("/?sort=titleAsc");
     await expect(page.locator("[data-video-id]").first()).toBeVisible();
 
     const focused = () => page.locator(":focus");

@@ -4,6 +4,8 @@ import type { ReactNode, Ref } from "react";
 
 export interface PageHeaderProps {
   title: ReactNode;
+  /** Use level 2 for a section within a combined page. */
+  headingLevel?: 1 | 2;
   count?: ReactNode;
   description?: ReactNode;
   leading?: ReactNode;
@@ -17,6 +19,7 @@ export interface PageHeaderProps {
 
 export function PageHeader({
   title,
+  headingLevel = 1,
   count,
   description,
   leading,
@@ -24,6 +27,7 @@ export function PageHeader({
   titleRef,
   titleHidden = false,
 }: PageHeaderProps) {
+  const Heading = headingLevel === 1 ? "h1" : "h2";
   return (
     <header data-slot="page-header" className="flex flex-col gap-2">
       {leading && (
@@ -34,7 +38,7 @@ export function PageHeader({
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex min-w-0 items-baseline gap-2">
-            <h1
+            <Heading
               ref={titleRef}
               tabIndex={titleRef === undefined ? undefined : -1}
               className={
@@ -42,7 +46,7 @@ export function PageHeader({
               }
             >
               {title}
-            </h1>
+            </Heading>
             {count !== undefined && (
               <span
                 data-slot="page-header-count"

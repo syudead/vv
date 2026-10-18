@@ -21,11 +21,12 @@ import { __resetTagsForTest } from "../api/tags";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { formatBytes, formatDuration } from "../lib/format";
-import LibraryRedirect from "../app/LibraryRedirect";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
+
+vi.mock("../home/HomeShelves", () => ({ default: () => null }));
 
 function video(id: number, extra: Partial<Video> = {}): Video {
   return {
@@ -113,10 +114,8 @@ function renderLibrary(initial = "/", audience: Audience = "owner") {
           <AudienceProvider audience={audience}>
             <ScanProvider>
               <Routes>
-                {/* `/` は問い合わせごと `/library` へ送る（docs/design-docs/home.md）。 */}
-                <Route path="/" element={<LibraryRedirect />} />
                 <Route
-                  path="/library"
+                  path="/"
                   element={
                     <>
                       <LibraryPage />
@@ -1077,7 +1076,7 @@ describe("LibraryPage", () => {
       });
     }
 
-    it("/?tag=3 は /library?tag=3 へ移り、タグ 3 で絞ったライブラリを開く（specs/057-home R-15）", async () => {
+    it("keeps /?tag=3 on home and filters the list by tag 3", async () => {
       const tag = {
         id: 3,
         name: "旅行",
@@ -1094,7 +1093,7 @@ describe("LibraryPage", () => {
       renderLibrary("/?tag=3");
 
       await screen.findByRole("link", { name: "動画 1" });
-      expect(screen.getByTestId("pathname").textContent).toBe("/library");
+      expect(screen.getByTestId("pathname").textContent).toBe("/");
       expect(screen.getByTestId("location").textContent).toContain("tag=3");
       expect(requested.at(-1)).toEqual([3]);
       expect(
@@ -1996,7 +1995,7 @@ describe("LibraryPage", () => {
       expect(screen.getByText("Sign in to see all videos.")).toBeDefined();
       expect(screen.queryByRole("link", { name: "Scan" })).toBeNull();
       const login = screen.getByRole("link", { name: "Sign in" });
-      expect(login.getAttribute("href")).toBe("/login?next=%2Flibrary");
+      expect(login.getAttribute("href")).toBe("/login?next=%2F");
     });
   });
   describe("グループのカード", () => {
@@ -2046,8 +2045,7 @@ describe("LibraryPage", () => {
               <AudienceProvider audience={audience}>
                 <ScanProvider>
                   <Routes>
-                    <Route path="/" element={<LibraryRedirect />} />
-                    <Route path="/library" element={<LibraryPage />} />
+                    <Route path="/" element={<LibraryPage />} />
                     <Route path="/videos/:id" element={<PlayerStub />} />
                     <Route path="/groups/:id" element={<PlayerStub />} />
                   </Routes>
@@ -2129,7 +2127,11 @@ describe("LibraryPage", () => {
       const cards = document.querySelectorAll("article");
       expect(cards).toHaveLength(3);
       expect(cards[1]?.contains(link)).toBe(true);
-      expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
+      expect(
+        screen
+          .getAllByRole("heading", { level: 2 })
+          .map((heading) => heading.textContent),
+      ).toEqual(["Library"]);
       expect(screen.queryByRole("link", { name: "ep01" })).toBeNull();
       expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe(
         "3 items",
@@ -2171,9 +2173,7 @@ describe("LibraryPage", () => {
       renderWithPlayer("/?q=ser");
       await user.click(await screen.findByRole("link", { name: ownerLabel }));
       expect(await screen.findByText("再生画面 /groups/7")).toBeDefined();
-      expect(
-        screen.getByRole("button", { name: "一覧へ戻る /library?q=ser" }),
-      ).toBeDefined();
+      expect(screen.getByRole("button", { name: "一覧へ戻る /?q=ser" })).toBeDefined();
     });
 
     it("グループのページから戻ると、カードの視聴状態がメンバーの変化で変わる（受け入れ条件12）", async () => {

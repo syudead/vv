@@ -68,7 +68,7 @@ function videoOf(title: string): Video {
 }
 
 function librarySearch(query: string): string {
-  return `/library?q=${encodeURIComponent(query)}`;
+  return `/?q=${encodeURIComponent(query)}`;
 }
 
 async function waitForScan(request: APIRequestContext, scanId: number) {

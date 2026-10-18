@@ -13,6 +13,8 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
+vi.mock("../home/HomeShelves", () => ({ default: () => null }));
+
 function video(id: number, extra: Partial<Video> = {}): Video {
   return {
     id,

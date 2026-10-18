@@ -440,7 +440,7 @@ export function renderPage(initial: string, audience: Audience = "owner") {
               <Route path="/groups/:id" element={<GroupPage />} />
               <Route path="/videos/:id" element={<Probe />} />
               <Route path="/folders/*" element={<Probe />} />
-              <Route path="/library" element={<p>Library</p>} />
+              <Route path="/" element={<p>Library</p>} />
             </Routes>
           </AudienceProvider>
         </ToastProvider>

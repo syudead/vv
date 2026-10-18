@@ -11,8 +11,13 @@ removed. Existing shelves retain their names, rules and positions; old
 
 ## Home and onboarding
 
-`/` opens the shelves; `/library` keeps the searchable list. A legacy root
-URL with query parameters redirects to `/library` with those parameters.
+`/` is one integrated screen: manually arranged shelves followed by the full
+library list. One top-bar toolbar controls search, filters, sorting and display
+for the list below the shelves. Query updates stay on `/`; the shelves remain
+visible and retain their own saved rules. The list keeps selection, pagination
+and playback return state. Empty-library guidance appears once, in the list.
+There is no separate library navigation item or screen. Former `/library`
+bookmarks redirect to `/`, preserving their query parameters and hash.
 Pressing a shelf's video or group card opens playback with autoplay; the
 shelf heading and `See all` open the corresponding filtered list.
 

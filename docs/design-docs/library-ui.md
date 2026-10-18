@@ -331,7 +331,7 @@ Video card behaviour:
 | Case | Behaviour |
 | --- | --- |
 | Tag pressed in the library | Filters by the tag |
-| Tag pressed on a folder page or a group page | Opens `/library?tag=<id>` |
+| Tag pressed on a folder page or a group page | Opens `/?tag=<id>` |
 | Tags that do not fit the row | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full  |
 | Tag from a folder name only | Same size, no fill, dashed border, Folder marker; no × on the video page; not offered by `Remove tag`  |
 | Hover preview | One at a time on any screen |
@@ -473,14 +473,12 @@ avoid a double outline.
 
 ## Sidebar navigation
 
-Each sidebar item goes to its screen. `Home` opens `/` and sits above
-`Library`, which opens the library at `/library`
-([Home shelves](home.md)).
-The library keeps its query parameters at that address, and every in-app link
-that filters the library (a tag, a person, an organization) opens
-`/library?<parameter>=<id>`. A URL of the form `/?tag=<id>` from before the
-move opens `/library` with the same query. `/` without a query is the home
-([Home and onboarding](home.md)).
+Each sidebar item goes to its screen. `Home` opens `/`, which combines the
+manually arranged shelves and the searchable library list in one page
+([Home shelves](home.md)). Search, filters and sorting affect the list below
+the shelves. Every in-app library filter link (tag, person, organization) uses
+`/?<parameter>=<id>`. Old `/library` URLs redirect to `/` with their query and
+hash intact.
 
 While the owner's onboarding step is not `done`, every route replaces itself
 with `/welcome`, the onboarding page outside the shell, and the owner's

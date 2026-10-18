@@ -169,7 +169,7 @@ function footerButton(name: string) {
 }
 
 describe("オンボードのゲート", () => {
-  it.each(["/library", "/settings"])(
+  it.each(["/", "/settings"])(
     "段階が scan の所有者が %s を開くと、スキャンの手順に着く",
     async (path) => {
       server.step = "scan";
@@ -187,9 +187,9 @@ describe("オンボードのゲート", () => {
 
   it("閲覧者は送らず、段階も読まない", async () => {
     server.step = "folders";
-    renderApp("/library", "guest");
+    renderApp("/", "guest");
 
-    expect(await screen.findByText("Opened /library")).toBeTruthy();
+    expect(await screen.findByText("Opened /")).toBeTruthy();
     expect(server.requests).not.toContain("GET /api/onboarding");
   });
 

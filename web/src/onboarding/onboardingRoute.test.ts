@@ -8,7 +8,7 @@ import { onboardingRedirect } from "./onboardingRoute";
 describe("onboardingRedirect", () => {
   it("段階が done でない所有者は、どの経路からも /welcome へ送る", () => {
     for (const step of ["folders", "scan", "interests"] as const) {
-      expect(onboardingRedirect(true, step, "/library")).toBe("/welcome");
+      expect(onboardingRedirect(true, step, "/")).toBe("/welcome");
       expect(onboardingRedirect(true, step, "/settings")).toBe("/welcome");
       expect(onboardingRedirect(true, step, "/")).toBe("/welcome");
       expect(onboardingRedirect(true, step, "/welcome")).toBeNull();
@@ -17,11 +17,11 @@ describe("onboardingRedirect", () => {
 
   it("段階が done の所有者の /welcome はホームへ送り、ほかの経路は送らない", () => {
     expect(onboardingRedirect(true, "done", "/welcome")).toBe("/");
-    expect(onboardingRedirect(true, "done", "/library")).toBeNull();
+    expect(onboardingRedirect(true, "done", "/")).toBeNull();
   });
 
   it("閲覧者は送らない", () => {
-    expect(onboardingRedirect(false, "folders", "/library")).toBeNull();
+    expect(onboardingRedirect(false, "folders", "/")).toBeNull();
     expect(onboardingRedirect(false, "done", "/")).toBeNull();
   });
 });

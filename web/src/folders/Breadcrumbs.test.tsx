@@ -6,7 +6,7 @@ import Breadcrumbs from "./Breadcrumbs";
 
 // Assert responsive classes because breadcrumb collapsing is controlled entirely by CSS.
 const crumbs = [
-  { label: "Library", to: "/library" },
+  { label: "Library", to: "/" },
   { label: "A", to: "/groups/1" },
   { label: "B", to: "/groups/2?trail=1" },
   { label: "C" },

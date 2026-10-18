@@ -286,20 +286,23 @@ test.describe.serial("home", () => {
     );
   });
 
-  test("2: ホームの検索欄に入力すると、ライブラリの画面に検索の結果が出る", async ({
-    page,
-  }) => {
+  test("2: 検索しても棚を残し、その下の一覧を絞り込む", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByRole("region", { name: "Shelves" })).toBeVisible();
-    const field = page.getByRole("searchbox", { name: "Search the library" });
+    const field = page.getByRole("searchbox", { name: "Search videos" });
     await field.fill(query);
     await field.press("Enter");
 
-    await expect(page).toHaveURL(`/library?q=${encodeURIComponent(query)}`);
+    await expect(page).toHaveURL(
+      (url) => url.pathname === "/" && url.searchParams.get("q") === query,
+    );
     await expect(page.getByRole("searchbox", { name: "Search videos" })).toHaveValue(
       query,
     );
-    await expect.poll(() => cardTitles(page)).toEqual([...allTitles].sort());
+    await expect(page.getByRole("region", { name: "Shelves" })).toBeVisible();
+    await expect
+      .poll(() => cardTitles(page.getByRole("region", { name: "Library", exact: true })))
+      .toEqual([...allTitles].sort());
   });
 
   test("8: 閲覧者のホームには、非公開の動画がどの棚にも出ない", async ({
@@ -326,7 +329,7 @@ test.describe.serial("home", () => {
           .getByRole("region", { name: "Shelves" })
           .getByRole("button", { name: "Retry", exact: true }),
       ).toHaveCount(0);
-      const shown = await cardTitles(page);
+      const shown = await cardTitles(page.getByRole("region", { name: "Shelves" }));
       for (const title of publicTitles) expect(shown).toContain(title);
       for (const title of privateTitles) expect(shown).not.toContain(title);
     } finally {

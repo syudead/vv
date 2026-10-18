@@ -353,7 +353,7 @@ test.describe("live MP4 playback", () => {
     request,
   }) => {
     test.setTimeout(30_000);
-    await page.goto("/library");
+    await page.goto("/");
     await throttle(page, 128 * 1024);
     const item = video("long-gop");
     await saveProgress(request, item, 5000);

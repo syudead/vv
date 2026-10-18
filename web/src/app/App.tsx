@@ -16,7 +16,7 @@ import { isVideoEditPath } from "../lib/videoEditPath";
 import { OnboardingGate } from "../onboarding/OnboardingGate";
 import { ONBOARDING_PATH } from "../onboarding/onboardingRoute";
 import { deferredRoute, matchesBelowPath, matchesExactPath } from "./deferredRoute";
-import HomeRoute from "./HomeRoute";
+import LibraryRedirect from "./LibraryRedirect";
 const FolderPage = await deferredRoute(() => import("../folders/FolderPage"), "/folders");
 const SettingsPage = await deferredRoute(
   () => import("../settings/SettingsPage"),
@@ -79,9 +79,7 @@ function AppRoutes() {
           （docs/design-docs/home.md）。 */}
       <OnboardingGate>
         <Routes>
-          {/* `/` はホーム。ライブラリの問い合わせの付いた `/?tag=3` などは問い合わせごと
-            `/library` へ送る（docs/design-docs/home.md）。 */}
-          <Route path="/" element={<HomeRoute />} />
+          <Route path="/library" element={<LibraryRedirect />} />
           <Route
             path={LIBRARY_PATH}
             element={

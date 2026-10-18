@@ -213,7 +213,7 @@ test.describe("watch history", () => {
       .positionMs;
     expect(saved).toBeGreaterThanOrEqual(5000);
 
-    await page.goto("/library");
+    await page.goto("/");
     await openHistory(page);
     const row = entryRows(page, titleB).first();
     const shown = seconds((await positionText(row).textContent()) ?? "");

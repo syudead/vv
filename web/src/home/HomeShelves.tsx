@@ -1,25 +1,15 @@
-import { Film, FolderSearch } from "lucide-react";
-import { type KeyboardEvent, useRef } from "react";
-import { Link, useLocation, useNavigate } from "react-router";
+import { FolderSearch } from "lucide-react";
+import { Link, useLocation } from "react-router";
 
 import type { HomeShelf, HomeShelfItem } from "../api/home";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { GroupCard } from "../library/GroupCard";
-import { LIBRARY_PATH } from "../library/libraryPath";
-import { isComposingNativeKeyEvent } from "../lib/ime";
-import { useStartSetup } from "../onboarding/useStartSetup";
-import TopBarPortal from "../shell/TopBarPortal";
 import { ErrorState } from "../ui/patterns/error-state";
-import { ListPage } from "../ui/patterns/list-page";
 import { LoadingState } from "../ui/patterns/loading-state";
-import { PageHeader } from "../ui/patterns/page-header";
 import { ShelfRow, ShelfRows } from "../ui/patterns/shelf-row";
 import { Toolbar } from "../ui/patterns/toolbar";
 import { Button } from "../ui/shadcn/button";
-import { normalizeQuery } from "../videoList/listCriteria";
-import SearchBox from "../videoList/SearchBox";
-import { EmptyState } from "../videoList/states";
 import {
   usePreviewCoordination,
   type PreviewCardProps,
@@ -41,12 +31,7 @@ import { type HomeList, useHome } from "./useHome";
 import { useInView } from "./useInView";
 import { useShelfWrites } from "./useShelfWrites";
 
-/**
- * HomePage は `/` のホームである（docs/design-docs/home.md「Home」）。棚を上から 1 行ずつ
- * 並べ、カードを 1 回押すと再生する。トップバーには検索欄だけを置き、送るとライブラリで
- * 探す。
- */
-export default function HomePage() {
+export default function HomeShelves() {
   const home = useHome();
   const owner = useAudience() === "owner";
   const writes = useShelfWrites(home.reload);
@@ -56,67 +41,23 @@ export default function HomePage() {
       : undefined;
   const editing = order === undefined ? undefined : { order, writes };
   return (
-    <ListPage
-      header={
-        <PageHeader
-          title={t.home.title}
-          titleHidden
+    <>
+      {order !== undefined && (
+        <Toolbar
           actions={
-            order !== undefined && (
-              <AddShelfButton
-                onHome={order}
-                disabled={writes.busy}
-                onPick={(folder) => void writes.add(folder, order)}
-              />
-            )
+            <AddShelfButton
+              onHome={order}
+              disabled={writes.busy}
+              onPick={(folder) => void writes.add(folder, order)}
+            />
           }
         />
-      }
-      toolbar={
-        <TopBarPortal>
-          <Toolbar placement="topBar" search={<HomeSearch />} />
-        </TopBarPortal>
-      }
-    >
+      )}
       <HomeBody {...home} editing={editing} />
-    </ListPage>
+    </>
   );
 }
 
-/**
- * HomeSearch はトップバーの検索欄である。入力してもホームは絞らず、Enter で
- * `/library?q=` を開く（ui-design.md「Why this shape」）。
- */
-function HomeSearch() {
-  const navigate = useNavigate();
-  const field = useRef<HTMLInputElement | null>(null);
-  const submit = (event: KeyboardEvent<HTMLDivElement>) => {
-    // 送るのは入力欄での Enter だけである。クリアのボタンや検索の書き方の案内で押した Enter は
-    // そのボタンの操作に任せる。
-    if (event.target !== field.current) return;
-    if (event.key !== "Enter" || isComposingNativeKeyEvent(event.nativeEvent)) return;
-    const query = normalizeQuery(field.current?.value ?? "");
-    if (query === "") return;
-    event.preventDefault();
-    navigate(`${LIBRARY_PATH}?${new URLSearchParams({ q: query }).toString()}`);
-  };
-  return (
-    <div role="search" className="w-full" onKeyDown={submit}>
-      <SearchBox
-        query=""
-        onCommit={ignoreCommit}
-        inputRef={field}
-        label={t.home.search}
-        placeholder={t.home.search}
-      />
-    </div>
-  );
-}
-
-/** ignoreCommit は検索欄の打鍵の確定を捨てる。ホームは Enter で送るまで何もしない。 */
-function ignoreCommit() {}
-
-/** ShelfEditing は所有者の棚の操作である。見えているフォルダの棚の並びと、その書き込み。 */
 interface ShelfEditing {
   order: readonly number[];
   writes: ReturnType<typeof useShelfWrites>;
@@ -124,7 +65,6 @@ interface ShelfEditing {
 
 interface HomeBodyProps {
   list: HomeList;
-  /** 所有者だけが受け取る。 */
   editing: ShelfEditing | undefined;
   shelves: ShelfStates;
   loadMore: () => void;
@@ -132,7 +72,6 @@ interface HomeBodyProps {
   retryShelf: (key: string) => void;
 }
 
-/** HomeBody は本体である。一覧の状態ごとに、棚の行か状態のブロックを 1 つ出す。 */
 function HomeBody({
   list,
   editing,
@@ -141,7 +80,6 @@ function HomeBody({
   retryList,
   retryShelf,
 }: HomeBodyProps) {
-  const owner = useAudience() === "owner";
   const preview = usePreviewCoordination();
   const frontier = useInView(loadMore);
   if (list.status === "loading") {
@@ -156,7 +94,7 @@ function HomeBody({
       />
     );
   }
-  if (list.home.empty === "noVideos") return <EmptyHome owner={owner} />;
+  if (list.home.empty === "noVideos") return null;
   const drawn = drawnShelves(list.home.shelves, shelves);
   const rows = drawn.map((entry) => (
     <HomeShelfRow
@@ -171,7 +109,6 @@ function HomeBody({
   return <ShelfRows label={t.home.shelves}>{rows}</ShelfRows>;
 }
 
-/** FolderShelfMenu はフォルダの棚の所有者の「More」である。並びは見えている並びから作る。 */
 function FolderShelfMenu({
   shelf,
   editing,
@@ -192,29 +129,6 @@ function FolderShelfMenu({
   );
 }
 
-/**
- * EmptyHome は見る人に見える動画が 1 本も無いときの本体である。所有者にはオンボードへの入口を
- * 置く。「Set up library」は段階を `folders` に書いてから `/welcome` を開く。
- */
-function EmptyHome({ owner }: { owner: boolean }) {
-  const setup = useStartSetup();
-  return (
-    <EmptyState
-      icon={Film}
-      title={t.home.empty.title}
-      description={owner ? t.home.empty.owner : t.home.empty.guest}
-      action={
-        owner && (
-          <Button size="sm" disabled={setup.pending} onClick={() => void setup.start()}>
-            {t.home.empty.setUp}
-          </Button>
-        )
-      }
-    />
-  );
-}
-
-/** HomeShelfRow は棚 1 つの行である。見出し、「See all」、カードか状態を出す。 */
 function HomeShelfRow({
   drawn,
   frontierRef,
@@ -267,10 +181,6 @@ function HomeShelfRow({
   );
 }
 
-/**
- * ShelfCards は棚のカードである。ライブラリの動画とグループのカードを、タグの行・場所・選択の
- * チェックなしで並べ、押すと再生画面を autoplay で開く（research.md R-14）。
- */
 function ShelfCards({
   shelf,
   items,
@@ -311,7 +221,6 @@ function ShelfCards({
   );
 }
 
-/** useBackTo は再生画面の「戻る」が帰る場所（今のホームの URL）である。 */
 function useBackTo(): string {
   const location = useLocation();
   return `${location.pathname}${location.search}`;

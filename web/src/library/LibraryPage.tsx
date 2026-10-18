@@ -29,6 +29,7 @@ import { itemKey, itemVideo } from "../api/libraryItems";
 import { refreshTags, revalidateTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
+import HomeShelves from "../home/HomeShelves";
 import { GroupChangedContext } from "../groups/groupChanges";
 import { errorText, t } from "../i18n";
 import {
@@ -823,23 +824,7 @@ export default function LibraryPage() {
     // Group mutations can remove top-level items; refresh the list in place.
     <GroupChangedContext value={refreshInPlace}>
       <ListPage
-        header={
-          <PageHeader
-            title={t.library.title}
-            actions={saveSmartFolderAction(owner, conditioned, smartFolderFilter, sort)}
-            count={
-              initialLoadFailed ? undefined : (
-                <span
-                  role="status"
-                  aria-label={t.library.resultsLabel}
-                  aria-live="polite"
-                >
-                  {resultStatus}
-                </span>
-              )
-            }
-          />
-        }
+        header={<PageHeader title={t.home.title} titleHidden />}
         toolbar={
           <TopBarPortal>
             <LibraryToolbar
@@ -887,20 +872,6 @@ export default function LibraryPage() {
             />
           </TopBarPortal>
         }
-        band={
-          hasFilterChips(tagIds, credits) && (
-            <ActiveTagFilters
-              tagIds={tagIds}
-              onRemove={removeActiveTag}
-              credits={credits}
-              onRemoveCredit={removeCredit}
-              onCreditGone={creditGone}
-              tagKindName={tagKinds.name}
-              onRemoveTagKind={removeTagKind}
-              searchFieldRef={searchField}
-            />
-          )
-        }
         selectionBar={
           owner && (
             <SelectionBar
@@ -918,12 +889,43 @@ export default function LibraryPage() {
           )
         }
       >
-        {body}
-        {loadingMore && <LoadMoreRow status="loading" label={t.list.loading} />}
-        {error !== null && items.length > 0 && (
-          <LoadMoreFailed reason={error} onRetry={retryLoadMore} />
-        )}
-        <div ref={sentinel} aria-hidden="true" className="h-px" />
+        <HomeShelves />
+        <section aria-label={t.library.title} className="flex min-w-0 flex-col gap-3">
+          <PageHeader
+            title={t.library.title}
+            headingLevel={2}
+            actions={saveSmartFolderAction(owner, conditioned, smartFolderFilter, sort)}
+            count={
+              initialLoadFailed ? undefined : (
+                <span
+                  role="status"
+                  aria-label={t.library.resultsLabel}
+                  aria-live="polite"
+                >
+                  {resultStatus}
+                </span>
+              )
+            }
+          />
+          {hasFilterChips(tagIds, credits) && (
+            <ActiveTagFilters
+              tagIds={tagIds}
+              onRemove={removeActiveTag}
+              credits={credits}
+              onRemoveCredit={removeCredit}
+              onCreditGone={creditGone}
+              tagKindName={tagKinds.name}
+              onRemoveTagKind={removeTagKind}
+              searchFieldRef={searchField}
+            />
+          )}
+          {body}
+          {loadingMore && <LoadMoreRow status="loading" label={t.list.loading} />}
+          {error !== null && items.length > 0 && (
+            <LoadMoreFailed reason={error} onRetry={retryLoadMore} />
+          )}
+          <div ref={sentinel} aria-hidden="true" className="h-px" />
+        </section>
       </ListPage>
     </GroupChangedContext>
   );

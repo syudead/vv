@@ -199,7 +199,7 @@ function renderPage(path = "/playlists/7") {
             <Route path="/playlists" element={<p>Playlists screen</p>} />
             <Route path="/playlists/:id" element={<PlaylistPage />} />
             <Route path="/videos/:id" element={<VideoProbe />} />
-            <Route path="/library" element={<p>Library</p>} />
+            <Route path="/" element={<p>Library</p>} />
           </Routes>
         </ToastProvider>
       </TooltipProvider>
@@ -466,7 +466,7 @@ describe("PlaylistPage", () => {
 
     expect(await screen.findByText("No items yet")).toBeDefined();
     expect(screen.getByRole("link", { name: "Open library" }).getAttribute("href")).toBe(
-      "/library",
+      "/",
     );
     expect(screen.queryByRole("link", { name: /from the top/ })).toBeNull();
     expect(screen.getByText("0 items")).toBeDefined();

@@ -201,7 +201,7 @@ describe("VideoTags", () => {
     ]);
 
     const link = await screen.findByRole("link", { name: "Filter by 旅行" });
-    expect(link.getAttribute("href")).toBe("/library?tag=1");
+    expect(link.getAttribute("href")).toBe("/?tag=1");
   });
 
   it("外すのに失敗したら、そのチップの×へフォーカスを戻す", async () => {
@@ -343,7 +343,7 @@ describe("VideoTags", () => {
       const link = await screen.findByRole("link", {
         name: "Filter by 高画質 (tentative)",
       });
-      expect(link.getAttribute("href")).toBe("/library?tag=1");
+      expect(link.getAttribute("href")).toBe("/?tag=1");
       const icon = mark(link);
       expect(icon).not.toBeNull();
       expect(icon?.getAttribute("aria-hidden")).toBe("true");
@@ -457,7 +457,7 @@ describe("VideoTags", () => {
       const link = await screen.findByRole("link", {
         name: "Filter by 京都 (from the folder name)",
       });
-      expect(link.getAttribute("href")).toBe("/library?tag=4");
+      expect(link.getAttribute("href")).toBe("/?tag=4");
       expect(link.className).toContain("border-dashed");
       expect(link.className).not.toContain("bg-secondary");
       expect(link.querySelector("svg[aria-hidden='true']")).not.toBeNull();
