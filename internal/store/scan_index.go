@@ -180,11 +180,15 @@ func recordLocationImport(
 	if err != nil {
 		return err
 	}
-	_, err = recordActivity(ctx, tx, c, domain.ActivityEntry{
+	now := time.Now()
+	entry := domain.ActivityEntry{
 		Kind: domain.ActivityImport, Subject: subject, Status: domain.ActivityDone,
 		Outcome: domain.ActivityCompleted, Decider: decider,
-	}, time.Now())
-	return err
+	}
+	if entry.ID, err = recordActivity(ctx, tx, c, entry, now); err != nil {
+		return err
+	}
+	return openImportPipeline(ctx, tx, c, entry, 0, now)
 }
 
 // DeleteVideos ignores an empty selection rather than deleting all rows; job rows cascade.

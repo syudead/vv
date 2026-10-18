@@ -83,7 +83,7 @@ func closeAutoTagActivity(
 		}
 	}
 	c.activityChanged()
-	return nil
+	return rollUpPipelines(ctx, tx, []int64{id}, now.UnixMilli())
 }
 
 type autoTagWrite struct {

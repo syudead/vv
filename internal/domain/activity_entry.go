@@ -32,6 +32,8 @@ const (
 	ActivityWorkInfoApply      ActivityKind = "work_info_apply"
 	ActivityMediaFolderRemove  ActivityKind = "media_folder_remove"
 	ActivityOrganizeUndo       ActivityKind = "organize_undo"
+	// ActivityPipeline groups one video's import run with the follow-up processes that run started.
+	ActivityPipeline ActivityKind = "pipeline"
 	// ActivityUndo inherits the feature of the entry it reverses.
 	ActivityUndo ActivityKind = "undo"
 )
@@ -59,6 +61,7 @@ var ActivityFeatures = []ActivityFeature{
 
 var activityKindFeatures = map[ActivityKind]ActivityFeature{
 	ActivityImport:             ActivityFeatureImport,
+	ActivityPipeline:           ActivityFeatureImport,
 	ActivityScan:               ActivityFeatureScan,
 	ActivityVersionJudgement:   ActivityFeatureDuplicateCheck,
 	ActivityAutoTag:            ActivityFeatureAutoTagging,
@@ -199,8 +202,10 @@ type ActivityEntry struct {
 	Decider     ActivityDecider
 	Probability *float64
 	// UndoKeys stores JSON containing the joined members' keys and their former representative.
-	UndoKeys  string
-	UndoneBy  int64
+	UndoKeys string
+	UndoneBy int64
+	// ScanID is the scan whose queueing opened a pipeline; zero for other entries.
+	ScanID    int64
 	CreatedAt time.Time
 	UpdatedAt time.Time
 
@@ -273,9 +278,10 @@ func (e ActivityEntry) TagUndoOffered(tag ActivityEntryTag) bool {
 	return e.Kind == ActivityAutoTag && e.Decider.automatic() && tag.UndoneBy == 0
 }
 
-// Supersedes closes attention entries with the same kind and subject, except version_judgement, which retains one entry per pair.
+// Supersedes closes attention entries with the same kind and subject, except version_judgement, which retains one
+// entry per pair, and pipeline, whose state follows its members.
 func (e ActivityEntry) Supersedes(older ActivityEntry) bool {
-	return e.Kind != ActivityVersionJudgement && older.Status == ActivityAttention &&
+	return e.Kind != ActivityVersionJudgement && e.Kind != ActivityPipeline && older.Status == ActivityAttention &&
 		older.Kind == e.Kind && older.Subject.SameAs(e.Subject)
 }
 

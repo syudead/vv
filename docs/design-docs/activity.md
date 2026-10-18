@@ -86,11 +86,66 @@ The decider is the one who started the run.
 The ingest queue port (`scanner.Queue`) takes the decider, and `app.Scans`
 passes it from the scan's start.
 
+Settling an `import` entry also rewrites its stage rows
+(`activity_entry_stages`), one per stage the entry holds a job for, with the
+stage's state (`waiting`, `processing`, `done`, `failed`) and its last error
+message. A stage the entry never held has no row, which is how "not part of
+this run" differs from "waiting". When the entry closes as `gone`, its
+unfinished rows become `gone`. The rows carry no video foreign key, so the
+breakdown stays readable after the video is deleted.
+
 A scan writes a `scan` entry only when it ends `failed` for a reason other
 than `interrupted`; its subject is the scan id and its label the scan's
 origin. The next scan that ends `done` closes every open `scan` entry as
 `superseded`. A scan closed as `interrupted` at startup writes nothing, since
 startup resumes it.
+
+## A pipeline groups one import run
+
+A `pipeline` entry (feature `import`, subject the video) groups one video's
+import run with the follow-up processes that run starts. The code is
+[`internal/store/activity_pipelines.go`](../../internal/store/activity_pipelines.go)
+and the roll-up `PipelineState` in
+[`internal/domain/activity_pipeline.go`](../../internal/domain/activity_pipeline.go).
+Members are linked by `activity_pipeline_members`, so one entry can belong to
+more than one pipeline. A pipeline has no stage, detail, probability or undo
+keys, its decider is its first member's, it is never a member itself, and it
+is never retried, undone or superseded.
+
+| New entry | Pipeline |
+| --- | --- |
+| A new `import` entry: scan, watch scan, re-probe, a move written as `done` | Opens a new pipeline as its first member; a scan's pipeline records the scan in `scan_id` |
+| An entry that continues earlier ones: a retry from the activity log, or a new `import` entry that takes over the pending jobs of an interrupted one | Joins every pipeline of the entries it continues (`recordContinuedActivity`) and opens none |
+| A follow-up process started by an `import` entry's stage result | Joins every pipeline of the finishing job's `import` entry (`joinJobPipelines`) |
+| Anything the owner starts outside an import | None: the entry stays standalone |
+
+Entries written before pipelines existed belong to none, and the migration
+infers no grouping for them. A continuation or follow-up of such an entry
+therefore joins nothing.
+
+Every write of a member's state re-rolls its pipelines in the same transaction,
+through the helpers that write entry states, and the pipeline row stores the
+result. Writing an entry that supersedes another records it in the older
+entry's `superseded_by`. The roll-up reads the members that are not replaced,
+a member being replaced when its `superseded_by` is a member of the same
+pipeline, such as a failed `import` entry and its retry.
+
+| Members | Pipeline |
+| --- | --- |
+| Any `running` | `running`, reason `processing` when any is `processing`, else `waiting` |
+| None `running`, any `attention` | `attention` with the reason of the oldest such member |
+| All `done`, the `import` member `gone` | `done`/`gone` |
+| All `done`, the `import` member superseded from outside the pipeline | `done`/`superseded` |
+| All `done` otherwise | `done`/`completed` |
+
+A later, separately started run opens its own pipeline, so a finished
+pipeline returns to `running` only through its own members. A new follow-up
+process decides whether it runs and writes its entry in the transaction of the
+stage result that starts it, then calls `joinJobPipelines` with the finishing
+job; a process that does not run writes nothing, so its pipeline never waits
+for it. Startup recovery marks members interrupted and re-rolls their
+pipelines instead of marking a pipeline directly. The activity list does not
+show pipeline entries; their members are listed as before.
 
 ## Owner operations write a done entry per video
 

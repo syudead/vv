@@ -62,13 +62,13 @@ func recordActivity(ctx context.Context, tx activityWriter, c *changes, entry do
 	at := now.UnixMilli()
 	result, err := tx.ExecContext(ctx, `insert into activity_entries (kind, feature, subject_kind, subject_key,
 		subject_key_b, subject_label, subject_label_b, status, reason, outcome, detail, stage, undoes_id, decider,
-		probability, undo_keys, undone_by, created_at, updated_at)
-		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		probability, undo_keys, undone_by, scan_id, created_at, updated_at)
+		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		string(entry.Kind), string(entry.Feature), string(entry.Subject.Kind), entry.Subject.Key,
 		nullString(entry.Subject.KeyB), entry.Subject.Label, nullString(entry.Subject.LabelB),
 		string(entry.Status), nullString(string(entry.Reason)), nullString(string(entry.Outcome)),
 		nullString(entry.Detail), nullString(string(entry.Stage)), nullID(entry.UndoesID), string(entry.Decider),
-		entry.Probability, nullString(entry.UndoKeys), nullID(entry.UndoneBy), at, at)
+		entry.Probability, nullString(entry.UndoKeys), nullID(entry.UndoneBy), nullID(entry.ScanID), at, at)
 	if err != nil {
 		return 0, fmt.Errorf("cannot record the activity: %w", err)
 	}
@@ -82,6 +82,19 @@ func recordActivity(ctx context.Context, tx activityWriter, c *changes, entry do
 	}
 	c.activityChanged()
 	return id, nil
+}
+
+// recordContinuedActivity records an entry that continues earlier ones, such as a retry from the activity log or a
+// claim that reopens an interrupted run. It joins every pipeline of the entries it continues instead of opening one,
+// so the continuation stays inside the run it belongs to.
+func recordContinuedActivity(
+	ctx context.Context, tx activityWriter, c *changes, entry domain.ActivityEntry, continued []int64, now time.Time,
+) (int64, error) {
+	id, err := recordActivity(ctx, tx, c, entry, now)
+	if err != nil {
+		return 0, err
+	}
+	return id, joinPipelines(ctx, tx, id, continued, now)
 }
 
 func activityFeatureOf(ctx context.Context, tx activityWriter, entry domain.ActivityEntry) (domain.ActivityFeature, error) {
@@ -126,6 +139,10 @@ func supersedeActivity(ctx context.Context, tx activityWriter, entry domain.Acti
 	}
 	_ = rows.Close()
 	for _, id := range closing {
+		if _, err := tx.ExecContext(ctx, `update activity_entries set superseded_by = ? where id = ?`,
+			entry.ID, id); err != nil {
+			return fmt.Errorf("cannot record the superseding activity (id=%d): %w", id, err)
+		}
 		if err := writeActivityState(ctx, tx, id,
 			domain.ActivityState{Status: domain.ActivityDone, Outcome: domain.ActivitySuperseded}, at); err != nil {
 			return err
@@ -159,7 +176,15 @@ func setActivityState(ctx context.Context, tx activityWriter, c *changes, id int
 	return nil
 }
 
+// writeActivityState updates a member's state and re-rolls its pipelines in the same transaction.
 func writeActivityState(ctx context.Context, tx activityWriter, id int64, state domain.ActivityState, at int64) error {
+	if err := storeActivityState(ctx, tx, id, state, at); err != nil {
+		return err
+	}
+	return rollUpPipelines(ctx, tx, []int64{id}, at)
+}
+
+func storeActivityState(ctx context.Context, tx activityWriter, id int64, state domain.ActivityState, at int64) error {
 	_, err := tx.ExecContext(ctx, `update activity_entries set status = ?, reason = ?, outcome = ?, updated_at = ?
 		where id = ?`, string(state.Status), nullString(string(state.Reason)), nullString(string(state.Outcome)), at, id)
 	if err != nil {
@@ -168,23 +193,49 @@ func writeActivityState(ctx context.Context, tx activityWriter, id int64, state 
 	return nil
 }
 
-// RecoverInterruptedActivity marks processing entries interrupted before workers start; waiting entries remain untouched.
+// collectActivityIDs reads the ids an update's returning clause yields.
+func collectActivityIDs(rows *sql.Rows, err error) ([]int64, error) {
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// RecoverInterruptedActivity marks processing entries interrupted before workers start; waiting entries remain
+// untouched, and pipelines follow their members.
 func (s *ActivityStore) RecoverInterruptedActivity(ctx context.Context) (int, error) {
-	result, err := s.db.sql.ExecContext(ctx, `update activity_entries set status = ?, reason = ?, updated_at = ?
-		where status = ? and reason = ?`,
-		string(domain.ActivityAttention), string(domain.ActivityInterrupted), time.Now().UnixMilli(),
-		string(domain.ActivityRunning), string(domain.ActivityProcessing))
+	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("cannot recover the interrupted activity: %w", err)
 	}
-	affected, err := result.RowsAffected()
+	defer func() { _ = tx.Rollback() }()
+	at := time.Now().UnixMilli()
+	ids, err := collectActivityIDs(tx.QueryContext(ctx, `update activity_entries set status = ?, reason = ?,
+		updated_at = ? where status = ? and reason = ? and kind <> ? returning id`,
+		string(domain.ActivityAttention), string(domain.ActivityInterrupted), at,
+		string(domain.ActivityRunning), string(domain.ActivityProcessing), string(domain.ActivityPipeline)))
 	if err != nil {
 		return 0, fmt.Errorf("cannot recover the interrupted activity: %w", err)
 	}
-	if affected > 0 {
+	if err := rollUpPipelines(ctx, tx, ids, at); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("cannot recover the interrupted activity: %w", err)
+	}
+	if len(ids) > 0 {
 		s.db.publishEvents(domain.ActivityChanged{})
 	}
-	return int(affected), nil
+	return len(ids), nil
 }
 
 // A pair is a visible candidate only when it satisfies the same predicate as the candidate list.
@@ -300,8 +351,9 @@ func (s *ActivityStore) ListActivity(
 
 // Disable status or feature filtering when counting that facet.
 func activityFilter(query domain.ActivityQuery, withStatus, withFeatures bool) ([]string, []any) {
-	var conditions []string
-	var args []any
+	// Pipeline entries are not part of the list contract in api/openapi.yaml; their members are listed instead.
+	conditions := []string{`e.kind <> ?`}
+	args := []any{string(domain.ActivityPipeline)}
 	if withStatus && query.Status != "" {
 		conditions = append(conditions, `e.status = ?`)
 		args = append(args, string(query.Status))
