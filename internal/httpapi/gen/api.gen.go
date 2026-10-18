@@ -2768,6 +2768,9 @@ type FavoritesRequest struct {
 	// GroupIds Group IDs whose favorite state changes.
 	GroupIds *[]int64 `json:"groupIds,omitempty"`
 
+	// PersonIds Person IDs whose favorite state changes; missing people are ignored.
+	PersonIds *[]int64 `json:"personIds,omitempty"`
+
 	// SmartFolderIds Smart-folder IDs whose favorite state changes.
 	SmartFolderIds *[]int64 `json:"smartFolderIds,omitempty"`
 
@@ -3494,7 +3497,10 @@ type Person struct {
 
 	// ExternalIds Ordered by (source, value).
 	ExternalIds []ExternalId `json:"externalIds"`
-	Id          int64        `json:"id"`
+
+	// Favorite Whether the owner marked this person as a favorite.
+	Favorite bool  `json:"favorite"`
+	Id       int64 `json:"id"`
 
 	// ImageRevision Present only when the person has a face; changes with every change of the face and is never reused. Load the face from /api/people/{id}/image?v={imageRevision}.
 	ImageRevision *PersonImageRevision `json:"imageRevision,omitempty"`
@@ -3517,7 +3523,7 @@ type PersonList struct {
 	// NextCursor Next-page cursor, included only when limit is supplied and more results remain.
 	NextCursor *string `json:"nextCursor,omitempty"`
 
-	// Total Person count matching q, independent of pagination.
+	// Total Person count matching q and favorite, independent of pagination.
 	Total int `json:"total"`
 
 	// TotalAll Total person count.
@@ -5324,6 +5330,9 @@ type AddedWithinFilter = int
 // CreditCursor defines model for CreditCursor.
 type CreditCursor = string
 
+// CreditFavorite defines model for CreditFavorite.
+type CreditFavorite = bool
+
 // CreditLimit defines model for CreditLimit.
 type CreditLimit = int
 
@@ -5648,6 +5657,9 @@ type ListOrganizationsParams struct {
 
 	// Limit Page size; omit for all results without nextCursor
 	Limit *CreditLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Favorite People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request.
+	Favorite *CreditFavorite `form:"favorite,omitempty" json:"favorite,omitempty"`
 }
 
 // ListPeopleParams defines parameters for ListPeople.
@@ -5663,6 +5675,9 @@ type ListPeopleParams struct {
 
 	// Limit Page size; omit for all results without nextCursor
 	Limit *CreditLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Favorite People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request.
+	Favorite *CreditFavorite `form:"favorite,omitempty" json:"favorite,omitempty"`
 }
 
 // GetPersonImageParams defines parameters for GetPersonImage.
@@ -8312,6 +8327,19 @@ func (siw *ServerInterfaceWrapper) ListOrganizations(w http.ResponseWriter, r *h
 		return
 	}
 
+	// ------------- Optional query parameter "favorite" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "favorite", r.URL.Query(), &params.Favorite, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListOrganizations(w, r, params)
 	}))
@@ -8582,6 +8610,19 @@ func (siw *ServerInterfaceWrapper) ListPeople(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "favorite" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "favorite", r.URL.Query(), &params.Favorite, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
 		}
 		return
 	}

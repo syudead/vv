@@ -19,7 +19,7 @@ type creditFixture struct {
 
 func newCreditFixture(t *testing.T) *creditFixture {
 	t.Helper()
-	env := newAuthEnvWith(t, t.TempDir(), func(db *store.DB) Options { return Options{Credits: db.Credits()} })
+	env := newAuthEnvWith(t, t.TempDir(), func(db *store.DB) Options { return Options{Credits: db.Credits(), Favorites: db.Favorites()} })
 	return &creditFixture{env: env, owner: env.setup()}
 }
 

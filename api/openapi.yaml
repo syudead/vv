@@ -2628,12 +2628,13 @@ paths:
     get:
       operationId: listPeople
       summary: "List people"
-      description: "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches."
+      description: "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people."
       parameters:
         - $ref: "#/components/parameters/CreditQuery"
         - $ref: "#/components/parameters/CreditSort"
         - $ref: "#/components/parameters/CreditCursor"
         - $ref: "#/components/parameters/CreditLimit"
+        - $ref: "#/components/parameters/CreditFavorite"
       responses:
         "200":
           description: "People"
@@ -2826,12 +2827,13 @@ paths:
     get:
       operationId: listOrganizations
       summary: "List organizations"
-      description: "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches."
+      description: "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite returns 400 invalid_request."
       parameters:
         - $ref: "#/components/parameters/CreditQuery"
         - $ref: "#/components/parameters/CreditSort"
         - $ref: "#/components/parameters/CreditCursor"
         - $ref: "#/components/parameters/CreditLimit"
+        - $ref: "#/components/parameters/CreditFavorite"
       responses:
         "200":
           description: "Organizations"
@@ -3045,7 +3047,7 @@ paths:
     put:
       operationId: updateFavorites
       summary: "Set or clear favorites on videos and groups"
-      description: "Owner-only. Sets favorite on videoIds, groupIds and smartFolderIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events."
+      description: "Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events."
       requestBody:
         required: true
         content:
@@ -4779,6 +4781,13 @@ components:
         type: integer
         minimum: 1
         maximum: 200
+    CreditFavorite:
+      name: favorite
+      in: query
+      description: "People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request."
+      schema:
+        type: boolean
+        default: false
     FolderRootId:
       name: rootId
       in: path
@@ -6582,7 +6591,7 @@ components:
 
     Person:
       type: object
-      required: [id, name, aliases, externalIds, profile, videoCount, createdAt]
+      required: [id, name, aliases, externalIds, profile, favorite, videoCount, createdAt]
       additionalProperties: false
       description: "One person."
       properties:
@@ -6603,6 +6612,9 @@ components:
             $ref: "#/components/schemas/ExternalId"
         profile:
           $ref: "#/components/schemas/PersonProfile"
+        favorite:
+          type: boolean
+          description: "Whether the owner marked this person as a favorite."
         imageRevision:
           $ref: "#/components/schemas/PersonImageRevision"
         videoCount:
@@ -6816,7 +6828,7 @@ components:
             $ref: "#/components/schemas/Person"
         total:
           type: integer
-          description: "Person count matching q, independent of pagination."
+          description: "Person count matching q and favorite, independent of pagination."
         totalAll:
           type: integer
           description: "Total person count."
@@ -6988,6 +7000,12 @@ components:
         smartFolderIds:
           type: array
           description: "Smart-folder IDs whose favorite state changes."
+          items:
+            type: integer
+            format: int64
+        personIds:
+          type: array
+          description: "Person IDs whose favorite state changes; missing people are ignored."
           items:
             type: integer
             format: int64

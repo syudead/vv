@@ -47,6 +47,8 @@ type Credit struct {
 	Parent *CreditRef
 	// Profile is empty for organizations.
 	Profile PersonProfile
+	// Favorite is false for organizations.
+	Favorite bool
 	// ImageRevision is zero unless the person has a face.
 	ImageRevision int64
 	// VideoCount counts visible video user-data keys linked in any role.
@@ -97,6 +99,8 @@ type CreditQuery struct {
 	Cursor string
 	// Limit is 1–MaxTagPageLimit; zero returns all results and ignores Cursor.
 	Limit int
+	// FavoriteOnly keeps only favorite people; storage rejects it for organizations.
+	FavoriteOnly bool
 }
 
 type CreditPage struct {
