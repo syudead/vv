@@ -62,7 +62,10 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `loading-state`            | State         | Skeleton shapes of the final layout: grid, table, grouped list or cards      |
 | `page-header`              | Section       | Page title, count and the main action                                        |
 | `page-section`             | Section       | A titled card of rows                                                        |
+| `person-face`              | vv component  | A person's face or its placeholder: card, profile, chip, compare             |
 | `popover`                  | Component     | Options or a short form anchored to a control                                |
+| `profile-page`             | Page skeleton | One subject's profile beside its items, such as a person and their videos    |
+| `profile-page-example`     | Block         | Copy to start a profile page                                                 |
 | `progress`                 | Component     | Progress of a known amount of work                                           |
 | `radio-group`              | Component     | Pick one of a few visible options                                            |
 | `scrub-preview`            | vv component  | The card scrub inside a thumbnail                                            |

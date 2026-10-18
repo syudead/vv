@@ -160,6 +160,7 @@ export function useVideoPages({
         const listOnly = {
           tag: current.tag,
           person: current.person,
+          personRole: current.personRole,
           organization: current.organization,
           tagKind: current.tagKind,
           addedWithin: current.addedWithin,

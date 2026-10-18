@@ -24,6 +24,7 @@ sample text and data with the screen's own, keeping the structure.
 | Asks the viewer to confirm an action that cannot be undone  | `ConfirmDialog`  | `confirm-dialog`   | `confirm-dialog-example`   |
 | Works on one image that needs the whole window              | `EditorDialog`   | `editor-dialog`    | `editor-dialog-example`    |
 | Fills in many values saved together, on a screen of its own | `FormPage`       | `form-page`        | `form-page-example`        |
+| Shows one subject's profile beside the items it is on       | `ProfilePage`    | `profile-page`     | `profile-page-example`     |
 | Walks through fixed steps one at a time (the first setup)   | `StepsPage`      | `steps-page`       | `steps-page-example`       |
 
 The states of a list or table are shown in `list-states-example`.
@@ -284,6 +285,31 @@ band sit the `notice` and then the body, `px-4` (`px-6` from `sm`) and `py-6`.
 Library density: `sm` controls. Use it when a form has more than a few fields
 or holds lists of chips, so it would scroll inside a `FormDialog`. Leaving
 with unsaved changes asks first with a `ConfirmDialog`.
+
+## Profile page
+
+Item `profile-page`. `ProfilePage` is a shell page at library density for one
+subject, such as a person, beside the items it is on: a profile column and a
+main column, with `p-3` (`p-4` from `sm`) around them.
+
+| Width      | Layout                                                                                                                                                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| From `lg`  | `grid-cols-profile-page`: the profile column `profile-aside` wide at the left, sticky under the top bar and scrolling inside itself past `profile-aside-max`, `gap-6` from the main column; `face` above `identity` |
+| Below `lg` | The profile column stacks above the main column: `face` at half the width (a third from `md`) beside `identity`, then `details` full width                                                                          |
+
+| Slot       | Put in it                                                                                                                    | Never                                        |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `face`     | The subject's image (`PersonFace profile`) with its marks, and an error line under it                                        | Text about the subject                       |
+| `identity` | The name as the page's `h1` (`text-xl font-semibold`), a muted second line, then a row of `outline` and `ghost` `sm` actions | A `default` button; nothing outranks viewing |
+| `details`  | Groups under small headings (`h2`, `text-sm font-semibold`), each a `FactList`; links and IDs after them                     | A `PageSection` card                         |
+| `header`   | The main column's `PageHeader` with `headingLevel={2}` and the count                                                         | The subject's name                           |
+| `toolbar`  | One line of filters, such as a `ToggleGroup`; it scrolls sideways instead of wrapping                                        | Search or view controls                      |
+| children   | `CardGrid` then `LoadMoreRow`, or one state block                                                                            | A second header                              |
+| `status`   | One state block in place of both columns, such as the subject no longer existing                                             | Loading; draw `Skeleton`s in the slots       |
+
+Use it when the subject's facts must stay in view while its items scroll.
+`ListPage`'s `aside` is a right-hand column read after the body, and
+`DetailPage` is outside the shell with its media edge to edge.
 
 ## Steps page
 
