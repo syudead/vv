@@ -12,6 +12,7 @@ import {
   type FieldProblem,
   IdRows,
   invalidProps,
+  NameField,
   Problem,
   RemoveRow,
   type RowsProps,
@@ -51,24 +52,16 @@ export default function BasicsPanel({
   const onEnter = saveOnEnter(save);
   return (
     <>
-      <Field>
-        <FieldLabel htmlFor={controlId("name")}>{e.name}</FieldLabel>
-        <Input
-          ref={nameRef}
-          id={controlId("name")}
-          value={draft.name}
-          placeholder={namePlaceholder}
-          readOnly={saving}
-          onChange={(event) => {
-            const name = event.target.value;
-            update((current) => ({ ...current, name }));
-          }}
-          onKeyDown={onEnter}
-          className="h-8"
-          {...invalidProps(problem, "name")}
-        />
-        <Problem problem={problem} control="name" />
-      </Field>
+      <NameField
+        label={e.name}
+        value={draft.name}
+        onChange={(name) => update((current) => ({ ...current, name }))}
+        placeholder={namePlaceholder}
+        nameRef={nameRef}
+        saving={saving}
+        problem={problem}
+        onEnter={onEnter}
+      />
       <div className="flex flex-col gap-2">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field>
@@ -148,7 +141,14 @@ export default function BasicsPanel({
   );
 }
 
-function LinkRows({ rows, onChange, saving, problem, onEnter }: RowsProps<LinkRow>) {
+export function LinkRows({
+  rows,
+  onChange,
+  saving,
+  problem,
+  onEnter,
+  rowLabel = t.player.detailsEditor.link,
+}: RowsProps<LinkRow> & { rowLabel?: UiText }) {
   const e = t.player.detailsEditor;
   const focusAdded = useFocusAdded();
   return (
@@ -159,7 +159,7 @@ function LinkRows({ rows, onChange, saving, problem, onEnter }: RowsProps<LinkRo
           <div className="flex items-center gap-2">
             <Input
               id={controlId(`url-${row.key}`)}
-              aria-label={e.link}
+              aria-label={rowLabel}
               value={row.url}
               readOnly={saving}
               onChange={(event) =>
