@@ -189,9 +189,8 @@ The top bar ([`TopBar.tsx`](../../web/src/shell/TopBar.tsx)) holds ☰ (below
 pages and the admin pages (tags, people, organizations) insert their toolbar after them: the design-system
 `Toolbar` with
 `placement="topBar"`, rendered through
-[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx). The page body
-starts with the heading and the count, so the toolbar stays reachable at any
-scroll position. Folder pages are a design-system `ListPage`: the breadcrumb
+[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx), so the toolbar
+stays reachable at any scroll position. Folder pages are a design-system `ListPage`: the breadcrumb
 is a band stuck under the top bar, so the parent folders stay one click away at
 any scroll position. The breadcrumb's last segment names the folder, so the
 page's `h1` is for screen readers only and no visible title repeats it
@@ -265,7 +264,7 @@ the width where it joins the row.
 The tags page uses the same row with search, filter and sort; below `md` its
 sort moves into the icon-only `Sort` popover.
 
-The count sits in the row above the grid for the library and search results,
+The count sits in the row above the grid for search results,
 and in the section heading for a folder's direct contents.
 
 The sort orders are date added, date modified, date created, title, duration,
