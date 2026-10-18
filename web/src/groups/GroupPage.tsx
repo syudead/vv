@@ -8,7 +8,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { Link, useLocation, useParams, useSearchParams } from "react-router";
+import { Link, useLocation, useParams } from "react-router";
 
 import type { LibraryGroup, TagRef, Video, VideoFolder } from "../api/client";
 import type { GroupItem, GroupRef } from "../api/groups";
@@ -43,9 +43,8 @@ import { LoadMoreRow } from "../ui/patterns/load-more-row";
 import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
 import SearchBox from "../videoList/SearchBox";
-import { normalizeQuery, type HistoryMode } from "../videoList/listCriteria";
+import { useSearchQuery } from "../videoList/useSearchQuery";
 import { NoMatches } from "../videoList/states";
-import { useScrollTopOnChange } from "../videoList/useScrollTopOnChange";
 import { Toolbar } from "../ui/patterns/toolbar";
 import { Button } from "../ui/shadcn/button";
 import { crumbKey, CrumbDropTarget, DraggableCard } from "../videoList/cardDrag";
@@ -239,23 +238,7 @@ function useGroupSelection(data: GroupPageData | null, searching: boolean) {
 function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[] }) {
   const location = useLocation();
   const owner = useAudience() === "owner";
-  const [params, setParams] = useSearchParams();
-  const query = normalizeQuery(params.get("q") ?? "");
-  const commitQuery = useCallback(
-    (next: string, mode: HistoryMode) => {
-      setParams(
-        (current) => {
-          const updated = new URLSearchParams(current);
-          if (next === "") updated.delete("q");
-          else updated.set("q", next);
-          return updated;
-        },
-        { replace: mode === "replace" },
-      );
-    },
-    [setParams],
-  );
-  useScrollTopOnChange(query);
+  const { query, commitQuery, searchRef } = useSearchQuery();
   const {
     state,
     more,
@@ -405,7 +388,9 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
         <TopBarPortal>
           <Toolbar
             placement="topBar"
-            search={<SearchBox query={query} onCommit={commitQuery} className="w-full" />}
+            search={
+              <SearchBox query={query} onCommit={commitQuery} inputRef={searchRef} />
+            }
             view={viewControls(view, changeView, zoom, changeZoom)}
             viewLabel={t.library.view.label}
           />

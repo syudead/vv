@@ -44,6 +44,9 @@ import { Button } from "../ui/shadcn/button";
 import { Toolbar } from "../ui/patterns/toolbar";
 import { TableBody } from "../ui/shadcn/table";
 import { Grid } from "../videoList/Grid";
+import SearchBox from "../videoList/SearchBox";
+import { NoMatches } from "../videoList/states";
+import { useSearchQuery } from "../videoList/useSearchQuery";
 import {
   useDocumentTitle,
   useLoadMoreSentinel,
@@ -136,7 +139,11 @@ const noItems: readonly LibraryItem[] = [];
 function SmartFolderScreen({ id }: { id: number | null }) {
   const location = useLocation();
   const owner = useAudience() === "owner";
-  const { state, more, reload, refresh, loadMore, markGone } = useSmartFolderPage(id);
+  const { query, commitQuery, searchRef } = useSearchQuery();
+  const { state, more, reload, refresh, loadMore, markGone } = useSmartFolderPage(
+    id,
+    query,
+  );
   const data = state.kind === "ready" ? state.data : null;
   // Reload ancestor rules only on folder refresh, never when adding a page.
   const ancestors = useAncestorRules(data?.trail ?? noTrail, owner, data?.folder);
@@ -160,6 +167,7 @@ function SmartFolderScreen({ id }: { id: number | null }) {
   const pressTag = usePressTagToLibrary();
   const { favorites, selectedIds } = useSelectionTargets(selection.selection);
   const { clear } = selection;
+  useEffect(() => clear(), [query, clear]);
   const afterBulk = useCallback(() => {
     clear();
     reload();
@@ -181,6 +189,9 @@ function SmartFolderScreen({ id }: { id: number | null }) {
           <TopBarPortal>
             <Toolbar
               placement="topBar"
+              search={
+                <SearchBox query={query} onCommit={commitQuery} inputRef={searchRef} />
+              }
               view={viewControls(view, changeView, zoom, changeZoom)}
               viewLabel={t.library.view.label}
             />
@@ -240,7 +251,11 @@ function SmartFolderScreen({ id }: { id: number | null }) {
                 onPressTag={pressTag}
               />
             )}
-            <EmptyBody data={data} ancestors={ancestors} onEdit={editConditions} />
+            {query !== "" && data.items.length === 0 ? (
+              <NoMatches onSearch={() => searchRef.current?.focus()} />
+            ) : (
+              <EmptyBody data={data} ancestors={ancestors} onEdit={editConditions} />
+            )}
           </div>
         )}
         {more === "loading" && <LoadMoreRow status="loading" label={t.list.loading} />}

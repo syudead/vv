@@ -9777,6 +9777,8 @@ export interface operations {
     getSmartFolder: {
         parameters: {
             query?: {
+                /** @description Temporary video search within the current saved-rule result. Uses the library video-query syntax and audience permissions. Does not change saved rules, folder summary or playback order. Search hides child-folder navigation; no matches returns an empty page, not 404. Continue with the same query. */
+                query?: string;
                 /** @description Page size excluding child folders */
                 limit?: number;
             };
@@ -9859,6 +9861,8 @@ export interface operations {
     listSmartFolderItems: {
         parameters: {
             query: {
+                /** @description Temporary video search within the current saved-rule result. Uses the library video-query syntax and audience permissions. Does not change saved rules, folder summary or playback order. Search hides child-folder navigation; no matches returns an empty page, not 404. Continue with the same query. */
+                query?: string;
                 /** @description Opaque `nextCursor` from the previous response */
                 cursor: string;
                 /** @description Page size */

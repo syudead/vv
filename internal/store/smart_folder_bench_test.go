@@ -22,7 +22,7 @@ func BenchmarkSmartFolderReads(b *testing.B) {
 	}{{"third level", third}, {"root with a child", root}} {
 		b.Run(read.name, func(b *testing.B) {
 			for b.Loop() {
-				if _, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceOwner, read.id, "", 0); err != nil {
+				if _, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceOwner, read.id, "", 0, ""); err != nil {
 					b.Fatal(err)
 				}
 			}

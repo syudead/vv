@@ -58,6 +58,7 @@ export default function SearchBox({
   className,
 }: SearchBoxProps) {
   const [input, setInputState] = useState(query);
+  const [composing, setComposing] = useState(false);
   // Keep current input in a ref because blur may run before setInput renders.
   const latest = useRef(query);
   const setInput = useCallback((next: string) => {
@@ -89,11 +90,12 @@ export default function SearchBox({
 
   useEffect(() => {
     // Read the updated ref, not stale render input, after URL synchronization; otherwise changing onCommit identity can restore a cleared query.
+    if (composing) return;
     const next = normalizeQuery(latest.current, maxLength);
     if (next === committed.current) return;
     const timer = setTimeout(() => commit(next), debounceMs);
     return () => clearTimeout(timer);
-  }, [commit, input, debounceMs, maxLength]);
+  }, [commit, input, debounceMs, maxLength, composing]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -135,10 +137,22 @@ export default function SearchBox({
             ),
           )
         }
+        onCompositionStart={() => setComposing(true)}
+        onCompositionEnd={(event) => {
+          setComposing(false);
+          setInput(
+            limitQueryInput(
+              event.currentTarget.value,
+              latest.current,
+              undefined,
+              maxLength,
+            ),
+          );
+        }}
         onFocus={() => session.current.start()}
         onBlur={() => {
           // Flush any pending commit before ending the typing session.
-          commit(normalizeQuery(latest.current, maxLength));
+          if (!composing) commit(normalizeQuery(latest.current, maxLength));
           session.current.end();
         }}
         onKeyDown={(event) => {

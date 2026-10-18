@@ -40,9 +40,13 @@ export function readSmartFolderPage(
   id: number,
   signal?: AbortSignal,
   limit?: number,
+  search = "",
 ): Promise<SmartFolderDetail> {
-  const query = limit === undefined ? "" : `?limit=${String(limit)}`;
-  return request<SmartFolderDetail>(`${smartFolderPath(id)}${query}`, { signal });
+  const query = new URLSearchParams();
+  if (limit !== undefined) query.set("limit", String(limit));
+  if (search !== "") query.set("query", search);
+  const suffix = query.size === 0 ? "" : `?${query.toString()}`;
+  return request<SmartFolderDetail>(`${smartFolderPath(id)}${suffix}`, { signal });
 }
 
 /** Follow nextCursor without interpreting it. */
@@ -51,8 +55,10 @@ export function listSmartFolderItems(
   cursor: string,
   signal?: AbortSignal,
   limit?: number,
+  search = "",
 ): Promise<SmartFolderItemPage> {
   const query = new URLSearchParams({ cursor });
+  if (search !== "") query.set("query", search);
   if (limit !== undefined) query.set("limit", String(limit));
   return request<SmartFolderItemPage>(
     `${smartFolderPath(id)}/items?${query.toString()}`,

@@ -207,13 +207,23 @@ dialog.
 On the library and folder pages, changing the search, a filter, a tag or the
 sort order scrolls the page back to the top, so the new list starts from its
 first card. Returning from the player still restores the saved position.
-Group pages share the search field, debounce, IME handling, syntax help and
-`q` URL state. Changing the query resets pagination and scrolls to the top.
+Home, folder, group and smart-folder pages keep the same search field in the
+top bar, including loading and empty results, at desktop and mobile widths.
+They share debounce, IME handling, syntax help and `q` URL state. IME input
+commits after composition ends. Changing the query resets pagination and
+scrolls to the top; obsolete responses cannot append to the new results.
+Clearing the query restores the current scope without changing saved settings.
 Search applies the video search expression before paging direct group items;
 child-group cards remain when any visible descendant matches. Group summaries
 and playback describe all visible descendants. During search, drag reordering
 is disabled and Select all selects the loaded matching items, including the
 full membership of selected child-group cards.
+Smart-folder pages apply the same video search expression to the videos that
+match the saved rules, including ancestor rules, before paging. Search uses
+the current viewer's searchable fields and hides child-folder navigation until
+cleared. It does not change saved rules, summaries or playback order. Both the
+detail and next-page requests carry `query`; zero matches return an empty page,
+including for a guest who can still access the folder.
 The sidebar has two states (rail, drawer; see
 [Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception)).
 The rail is 68px (`sidebar-rail`) wide and shows each entry's icon above a

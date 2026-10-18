@@ -60,6 +60,8 @@ func (s locationScope) condition(alias string) (string, []any) {
 }
 
 type listSpec struct {
+	// Optional JSON IDs constrain a transient search to an already resolved collection.
+	withinVideos string
 	scope        locationScope
 	expr         domain.SearchExpr
 	watch        domain.WatchFilter

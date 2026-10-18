@@ -3974,6 +3974,12 @@ paths:
       description: "Returns LibrarySmartFolder values derived from playback order, ancestors outermost first, and the first page. Child-folder summaries come first by name, followed by up to limit library items matching this folder and all ancestors in the folder's sort order. Continue with listSmartFolderItems. Only owners receive settings (rule, sort and missing references). Missing entities referenced by path rules leave only child folders. Missing or guest-invisible folders return 404 not_found."
       parameters:
         - $ref: "#/components/parameters/SmartFolderId"
+        - name: query
+          in: query
+          description: "Temporary video search within the current saved-rule result. Uses the library video-query syntax and audience permissions. Does not change saved rules, folder summary or playback order. Search hides child-folder navigation; no matches returns an empty page, not 404. Continue with the same query."
+          schema:
+            type: string
+            maxLength: 100
         - name: limit
           in: query
           description: "Page size excluding child folders"
@@ -4044,6 +4050,12 @@ paths:
       description: "Continues getSmartFolder content after nextCursor; child folders appear only on the first page. Invalid cursors return 400 invalid_cursor. Missing or invisible folders return 404 not_found as in getSmartFolder."
       parameters:
         - $ref: "#/components/parameters/SmartFolderId"
+        - name: query
+          in: query
+          description: "Temporary video search within the current saved-rule result. Uses the library video-query syntax and audience permissions. Does not change saved rules, folder summary or playback order. Search hides child-folder navigation; no matches returns an empty page, not 404. Continue with the same query."
+          schema:
+            type: string
+            maxLength: 100
         - name: cursor
           in: query
           required: true

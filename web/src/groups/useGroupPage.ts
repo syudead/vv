@@ -50,40 +50,41 @@ export function useGroupPage(id: number | null, trail: readonly number[], query 
   /** Retry reads interrupted by moves after the move queue settles. */
   const requery = useRef<() => void>(() => undefined);
   const trailKey = trail.join(",");
-  const lastQuery = useRef(query);
 
   const { state, stateRef, more, read, loadMore, update, markGone, stop } =
-    usePagedDetail(id, {
-      read: (groupId: number, atLeast: number, signal: AbortSignal) => {
-        const count = lastQuery.current === query ? atLeast : 0;
-        lastQuery.current = query;
-        return readGroupThrough(
-          groupId,
-          trailKey === "" ? [] : trailKey.split(",").map(Number),
-          count,
-          signal,
-          query,
-        );
+    usePagedDetail(
+      id,
+      {
+        read: (groupId: number, atLeast: number, signal: AbortSignal) => {
+          return readGroupThrough(
+            groupId,
+            trailKey === "" ? [] : trailKey.split(",").map(Number),
+            atLeast,
+            signal,
+            query,
+          );
+        },
+        more: (groupId: number, cursor: string, signal: AbortSignal) =>
+          listGroupItems(groupId, cursor, signal, undefined, query),
+        append: appendItems,
+        beforeRead: (quiet: boolean) => {
+          const sentBefore = movesSent.current;
+          return (data: GroupPageData) => {
+            if (quiet && movesSent.current !== sentBefore) {
+              // This read may not include moves sent while it was in flight.
+              requery.current();
+              return false;
+            }
+            confirmed.current = data.items;
+            return true;
+          };
+        },
+        onMore: (items: readonly GroupItem[]) => {
+          confirmed.current = appendItems(confirmed.current, items);
+        },
       },
-      more: (groupId: number, cursor: string, signal: AbortSignal) =>
-        listGroupItems(groupId, cursor, signal, undefined, query),
-      append: appendItems,
-      beforeRead: (quiet: boolean) => {
-        const sentBefore = movesSent.current;
-        return (data: GroupPageData) => {
-          if (quiet && movesSent.current !== sentBefore) {
-            // This read may not include moves sent while it was in flight.
-            requery.current();
-            return false;
-          }
-          confirmed.current = data.items;
-          return true;
-        };
-      },
-      onMore: (items: readonly GroupItem[]) => {
-        confirmed.current = appendItems(confirmed.current, items);
-      },
-    });
+      query,
+    );
 
   const reload = useCallback(() => read(false), [read]);
   /** Wait for pending moves before silently refreshing. */

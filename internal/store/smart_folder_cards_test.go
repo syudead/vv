@@ -69,7 +69,7 @@ func TestSmartFolderCardsCountMatchingVideosOfMixedGroups(t *testing.T) {
 	folder := newSmartFolder(t, db, "未視聴のep", rule, domain.SortTitleAsc, 0)
 	twin := newSmartFolder(t, db, "同じ", rule, domain.SortTitleAsc, 0)
 
-	page, err := db.SmartFolders().SmartFolderContents(context.Background(), domain.AudienceOwner, folder, "", 0)
+	page, err := db.SmartFolders().SmartFolderContents(context.Background(), domain.AudienceOwner, folder, "", 0, "")
 	if err != nil || len(page.Items) != 0 {
 		t.Fatalf("ページ = %v, %v, want 空", smartItemNames(page.Items), err)
 	}

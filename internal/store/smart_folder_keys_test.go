@@ -10,7 +10,7 @@ import (
 
 func smartFolderCard(t *testing.T, db *DB, id int64) domain.LibrarySmartFolder {
 	t.Helper()
-	page, err := db.SmartFolders().SmartFolderContents(context.Background(), domain.AudienceOwner, id, "", domain.MaxLimit)
+	page, err := db.SmartFolders().SmartFolderContents(context.Background(), domain.AudienceOwner, id, "", domain.MaxLimit, "")
 	if err != nil {
 		t.Fatalf("SmartFolderContents(%d) error = %v", id, err)
 	}

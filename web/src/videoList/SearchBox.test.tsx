@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -10,7 +11,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MAX_QUERY_LENGTH } from "../api/client";
-import SearchBox, { limitQueryInput } from "./SearchBox";
+import SearchBox, { limitQueryInput, searchDebounceMs } from "./SearchBox";
 
 function renderBox(query = "京都") {
   const onCommit = vi.fn();
@@ -194,4 +195,23 @@ describe("SearchBox の入力", () => {
     expect(onCommit).not.toHaveBeenCalled();
     expect(input.value).toBe("");
   });
+});
+
+it("IME変換中は検索せず、確定した検索語だけを送る", async () => {
+  vi.useFakeTimers();
+  try {
+    const { onCommit, box } = renderBox("");
+    fireEvent.focus(box);
+    fireEvent.compositionStart(box);
+    fireEvent.change(box, { target: { value: "きょうと" } });
+    await act(async () => vi.advanceTimersByTimeAsync(searchDebounceMs));
+    expect(onCommit).not.toHaveBeenCalled();
+    fireEvent.change(box, { target: { value: "京都" } });
+    fireEvent.compositionEnd(box);
+    await act(async () => vi.advanceTimersByTimeAsync(searchDebounceMs));
+    expect(onCommit).toHaveBeenCalledExactlyOnceWith("京都", "push");
+  } finally {
+    cleanup();
+    vi.useRealTimers();
+  }
 });

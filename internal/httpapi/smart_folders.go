@@ -19,7 +19,7 @@ type SmartFolders interface {
 	CreateSmartFolder(ctx context.Context, create domain.SmartFolderCreate) (domain.SmartFolder, error)
 	ChangeSmartFolder(ctx context.Context, id int64, change domain.SmartFolderChange) (domain.SmartFolder, error)
 	DeleteSmartFolder(ctx context.Context, id int64) error
-	SmartFolderContents(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int) (domain.SmartFolderPage, error)
+	SmartFolderContents(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int, query string) (domain.SmartFolderPage, error)
 	// SmartFolderCards preserves requested order and skips missing/invisible folders.
 	SmartFolderCards(ctx context.Context, audience domain.Audience, ids []int64) ([]domain.SmartFolderCard, error)
 }
@@ -164,7 +164,11 @@ func (s *server) GetSmartFolder(w http.ResponseWriter, r *http.Request, id gen.S
 		return
 	}
 	audience := audienceFrom(r.Context())
-	page, err := s.smartFolders.SmartFolderContents(r.Context(), audience, id, "", limit)
+	query, ok := s.parseSearchQuery(w, params.Query)
+	if !ok {
+		return
+	}
+	page, err := s.smartFolders.SmartFolderContents(r.Context(), audience, id, "", limit, query)
 	if !s.smartFolderReadOK(w, err) {
 		return
 	}
@@ -198,7 +202,11 @@ func (s *server) ListSmartFolderItems(w http.ResponseWriter, r *http.Request, id
 		return
 	}
 	audience := audienceFrom(r.Context())
-	page, err := s.smartFolders.SmartFolderContents(r.Context(), audience, id, params.Cursor, limit)
+	query, ok := s.parseSearchQuery(w, params.Query)
+	if !ok {
+		return
+	}
+	page, err := s.smartFolders.SmartFolderContents(r.Context(), audience, id, params.Cursor, limit, query)
 	if !s.smartFolderReadOK(w, err) {
 		return
 	}

@@ -35,8 +35,8 @@ export function appendItems(
   return [...current, ...page.filter((item) => !known.has(itemKey(item)))];
 }
 
-async function readItems(id: number, cursor: string, signal: AbortSignal) {
-  const page = await listSmartFolderItems(id, cursor, signal);
+async function readItems(id: number, cursor: string, signal: AbortSignal, query: string) {
+  const page = await listSmartFolderItems(id, cursor, signal, undefined, query);
   return { items: toLibraryItems(page.items), nextCursor: page.nextCursor };
 }
 
@@ -45,11 +45,12 @@ async function readFolderThrough(
   id: number,
   atLeast: number,
   signal: AbortSignal,
+  query: string,
 ): Promise<SmartFolderPageData> {
-  const detail = await readSmartFolderPage(id, signal);
+  const detail = await readSmartFolderPage(id, signal, undefined, query);
   const { items, nextCursor } = await readThrough(
     { items: toLibraryItems(detail.items), nextCursor: detail.nextCursor },
-    (cursor) => readItems(id, cursor, signal),
+    (cursor) => readItems(id, cursor, signal, query),
     appendItems,
     atLeast,
   );
@@ -66,12 +67,17 @@ async function readFolderThrough(
  * Keep rows during event/reconnect refreshes and discard superseded reads. Any 404 becomes not-
  * found; other background failures retain content.
  */
-export function useSmartFolderPage(id: number | null) {
-  const { state, stateRef, more, read, loadMore, stop, markGone } = usePagedDetail(id, {
-    read: readFolderThrough,
-    more: readItems,
-    append: appendItems,
-  });
+export function useSmartFolderPage(id: number | null, query = "") {
+  const { state, stateRef, more, read, loadMore, stop, markGone } = usePagedDetail(
+    id,
+    {
+      read: (folderId, atLeast, signal) =>
+        readFolderThrough(folderId, atLeast, signal, query),
+      more: (folderId, cursor, signal) => readItems(folderId, cursor, signal, query),
+      append: appendItems,
+    },
+    query,
+  );
   const reload = useCallback(() => read(false), [read]);
   const refresh = useCallback(() => read(true), [read]);
 

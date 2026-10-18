@@ -5499,12 +5499,18 @@ type ListSmartFolderCardsParams struct {
 
 // GetSmartFolderParams defines parameters for GetSmartFolder.
 type GetSmartFolderParams struct {
+	// Query Temporary video search within the current saved-rule result. Uses the library video-query syntax and audience permissions. Does not change saved rules, folder summary or playback order. Search hides child-folder navigation; no matches returns an empty page, not 404. Continue with the same query.
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
+
 	// Limit Page size excluding child folders
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListSmartFolderItemsParams defines parameters for ListSmartFolderItems.
 type ListSmartFolderItemsParams struct {
+	// Query Temporary video search within the current saved-rule result. Uses the library video-query syntax and audience permissions. Does not change saved rules, folder summary or playback order. Search hides child-folder navigation; no matches returns an empty page, not 404. Continue with the same query.
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
+
 	// Cursor Opaque `nextCursor` from the previous response
 	Cursor string `form:"cursor" json:"cursor"`
 
@@ -9187,6 +9193,19 @@ func (siw *ServerInterfaceWrapper) GetSmartFolder(w http.ResponseWriter, r *http
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetSmartFolderParams
 
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "limit" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -9254,6 +9273,19 @@ func (siw *ServerInterfaceWrapper) ListSmartFolderItems(w http.ResponseWriter, r
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListSmartFolderItemsParams
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		}
+		return
+	}
 
 	// ------------- Required query parameter "cursor" -------------
 
