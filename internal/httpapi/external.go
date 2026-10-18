@@ -10,25 +10,16 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// 外部連携 API v1。正本は
-// api/external-v1.yaml で、経路とハンドラの口は internal/httpapi/extgen に生成する。
-//
-// ハンドラは画面の API の server とは別の型に置く。生成された ServerInterface の名前
-// （ListTags・StartScan など）が画面の API とぶつからないようにするためで、依存と
-// 応答の書き出しは server と共有する。
-//
-// 認証は境界（auth.go の bearerBoundary）が済ませていて、ここに届く要求は API トークンで
-// 確かめた所有者のものだけである。
+// External handlers use a separate generated interface to avoid UI-operation name collisions while
+// sharing dependencies; bearerBoundary authenticates all requests first (api/external-v1.yaml).
 
-// externalServer は生成された extgen.ServerInterface を満たす。契約に操作を足したら
-// この型がコンパイルエラーになるため、実装漏れに気付ける。
+// Generated interface conformance catches unimplemented schema operations at compile time.
 type externalServer struct {
 	s *server
 	// maxBody overrides readJSONBody's limit; zero uses externalBodyLimit.
 	maxBody int64
 }
 
-// registerExternalAPI は外部連携 API の経路を mux に載せる。
 func registerExternalAPI(mux *http.ServeMux, srv *server) {
 	extgen.HandlerWithOptions(&externalServer{s: srv}, extgen.StdHTTPServerOptions{
 		BaseURL:    externalAPIBase,
@@ -41,14 +32,12 @@ func registerExternalAPI(mux *http.ServeMux, srv *server) {
 	})
 }
 
-// writeExternalError は外部連携 API の誤りを書き出す。形は画面の API と同じで、
-// キャッシュさせない。
 func writeExternalError(w http.ResponseWriter, srv *server, status int, body extgen.Error) {
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, status, body, srv.logger)
 }
 
-// internalError は予期しない失敗を返す。原因は記録に残し、応答には出さない。
+// Log internal causes without exposing them in responses.
 func (e *externalServer) internalError(w http.ResponseWriter, message string, err error) {
 	e.s.logger.Error(message, slog.Any("error", err))
 	writeExternalError(w, e.s, http.StatusInternalServerError, extgen.Error{
@@ -56,11 +45,7 @@ func (e *externalServer) internalError(w http.ResponseWriter, message string, er
 	})
 }
 
-// ListTags はタグの一覧を返す（GET /api/v1/tags、
-// docs/design-docs/catalog-organization.md）。引数は画面の GET /api/tags と
-// 同じ規則（buildTagListQuery）で読み、画面と同じ TagStore.ListTags を呼ぶ。limit を省いた
-// 要求は今までどおり条件に合う全件を返し、nextCursor を付けない。kind は画面と同じ parseTagKindFilter で
-// 読む。
+// External tag lists share UI filters/storage; omitted limit returns all matches without a cursor.
 func (e *externalServer) ListTags(w http.ResponseWriter, r *http.Request, params extgen.ListTagsParams) {
 	sort := sortParam(params.Sort)
 	query, problem := buildTagListQuery(params.Q, params.Tentative, params.Unused, sort, params.Cursor, params.Limit)
@@ -101,8 +86,6 @@ func (e *externalServer) ListTags(w http.ResponseWriter, r *http.Request, params
 	writeJSON(w, http.StatusOK, body, e.s.logger)
 }
 
-// acceptListQuery は buildTagListQuery が断った理由を 400 invalid_request にして false を返す。タグと
-// 人物・団体の一覧が同じ規則で引数を読む。
 func (e *externalServer) acceptListQuery(w http.ResponseWriter, problem tagListProblem) bool {
 	switch problem {
 	case tagListSortUnknown:
@@ -118,7 +101,6 @@ func (e *externalServer) acceptListQuery(w http.ResponseWriter, problem tagListP
 	return true
 }
 
-// toExternalTag は domain.Tag を外部連携 API の形へ写す。シノニムが無ければ [] にする。
 func toExternalTag(tag domain.Tag) extgen.Tag {
 	synonyms := tag.Synonyms
 	if synonyms == nil {
@@ -130,10 +112,8 @@ func toExternalTag(tag domain.Tag) extgen.Tag {
 	}
 }
 
-// StartScan はスキャンを始める（POST /api/v1/scans）。
-// 新しく始めたら 201、実行中のものを返したら 200 にする。どちらかは、行を作るか実行中の
-// 行を返すかを 1 つのトランザクションで決めた app.Scans.StartScan の started で決め、
-// 応答の前に状態を読み直して決めることはしない（読む間に走査が始まる・終わる）。
+// Use StartScan's transactional started result for 201 versus 200; rereading before response would
+// introduce a race.
 func (e *externalServer) StartScan(w http.ResponseWriter, r *http.Request) {
 	if e.s.scans == nil {
 		e.internalError(w, "Scanning is not configured.", nil)
@@ -158,7 +138,6 @@ func (e *externalServer) StartScan(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, status, toExternalScan(scan), e.s.logger)
 }
 
-// GetCurrentScan は直近のスキャンの状態を返す（GET /api/v1/scans/current）。
 func (e *externalServer) GetCurrentScan(w http.ResponseWriter, r *http.Request) {
 	if e.s.scans == nil {
 		e.internalError(w, "Scanning is not configured.", nil)
@@ -180,9 +159,7 @@ func (e *externalServer) GetCurrentScan(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, toExternalScan(scan), e.s.logger)
 }
 
-// toExternalScan は domain.Scan を外部連携 API の形へ写す。本数は internal/app が
-// 数え終えたとき（Import.Counted）だけ入れ、finding のあいだは両方 null にする。画面の
-// API が videos を省くのと同じ判定で、対象 0 本で終わった走査の 0 と区別できる。
+// Counts remain null during enumeration, distinguishing unknown totals from a completed empty scan.
 func toExternalScan(scan domain.Scan) extgen.ExternalScan {
 	out := extgen.ExternalScan{
 		Id:        scan.ID,
@@ -197,7 +174,7 @@ func toExternalScan(scan domain.Scan) extgen.ExternalScan {
 		videos, settled := scan.Import.Total, scan.Import.Settled
 		out.Videos, out.SettledVideos = &videos, &settled
 	}
-	// コードは failed の行だけに出す。アップグレード前の失敗にはコードが無い（画面の API と同じ）。
+	// Only failed rows expose codes; older failures may lack one.
 	if scan.State == domain.ScanFailed && scan.ErrorCode != "" {
 		code := string(scan.ErrorCode)
 		out.ErrorCode = &code

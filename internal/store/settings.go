@@ -9,17 +9,14 @@ import (
 	"time"
 )
 
-// transcodeVideoEncoderKey は所有者が選んだライブ変換の映像エンコード方式のキーである
 const transcodeVideoEncoderKey = "transcode.video_encoder"
 
-// TranscodeEncoderChoice は保存したライブ変換の映像エンコード方式を、解釈せずに文字列の
-// まま返す。行が無ければ found は偽である。解釈は domain.ParseEncoderChoice が行う。
+// TranscodeEncoderChoice returns the raw value; domain.ParseEncoderChoice owns interpretation.
 func (s *SettingsStore) TranscodeEncoderChoice(ctx context.Context) (value string, found bool, err error) {
 	return readSetting(ctx, s.db.sql, transcodeVideoEncoderKey)
 }
 
-// SaveTranscodeEncoderChoice はライブ変換の映像エンコード方式を保存する。同時の保存は
-// 後に書いたものが残る。
+// SaveTranscodeEncoderChoice uses last-write-wins for concurrent saves.
 func (s *SettingsStore) SaveTranscodeEncoderChoice(ctx context.Context, value string) error {
 	return writeSetting(ctx, s.db.sql, transcodeVideoEncoderKey, value)
 }
@@ -47,11 +44,9 @@ func writeSetting(ctx context.Context, q queryExecer, key, value string) error {
 	return nil
 }
 
-// desktopLANAccessKey は Windows デスクトップ版で LAN からの接続を許可するかのキーである。
-// 値は "true" か "false"。
 const desktopLANAccessKey = "desktop.lan_access"
 
-// LANAccess は LAN からの接続を許可するかを返す。行が無いか "true" でなければ偽である。
+// LANAccess defaults to false unless the stored value is exactly true.
 func (s *SettingsStore) LANAccess(ctx context.Context) (bool, error) {
 	value, found, err := readSetting(ctx, s.db.sql, desktopLANAccessKey)
 	if err != nil {
@@ -60,16 +55,13 @@ func (s *SettingsStore) LANAccess(ctx context.Context) (bool, error) {
 	return found && value == strconv.FormatBool(true), nil
 }
 
-// SaveLANAccess は LAN からの接続を許可するかを保存する。
 func (s *SettingsStore) SaveLANAccess(ctx context.Context, allowed bool) error {
 	return writeSetting(ctx, s.db.sql, desktopLANAccessKey, strconv.FormatBool(allowed))
 }
 
-// libraryAutoImportKey はメディアフォルダの変更を検知して自動で取り込むかのキーである。
-// 値は "true" か "false" で、行が無ければ入である。
 const libraryAutoImportKey = "library.auto_import"
 
-// AutoImport は自動の取り込みが入かを返す。行が無いか "false" でなければ入である。
+// AutoImport defaults to true unless the stored value is exactly false.
 func (s *SettingsStore) AutoImport(ctx context.Context) (bool, error) {
 	value, found, err := readSetting(ctx, s.db.sql, libraryAutoImportKey)
 	if err != nil {
@@ -78,23 +70,19 @@ func (s *SettingsStore) AutoImport(ctx context.Context) (bool, error) {
 	return !found || value != strconv.FormatBool(false), nil
 }
 
-// SaveAutoImport は自動の取り込みの入と切を保存する。
 func (s *SettingsStore) SaveAutoImport(ctx context.Context, enabled bool) error {
 	return writeSetting(ctx, s.db.sql, libraryAutoImportKey, strconv.FormatBool(enabled))
 }
 
-// workInfoPluginProxyURLKey は作品情報プラグインの要求を送るプロキシの URL のキーである。行が無いか
-// "" ならプロキシを使わない。
 const workInfoPluginProxyURLKey = "work_info_plugins.proxy_url"
 
-// WorkInfoPluginProxyURL は保存したプロキシの URL を、解釈せずに返す。行が無ければ "" である。
-// 規則は domain.ParseWorkInfoPluginProxyURL が確かめる。
+// WorkInfoPluginProxyURL returns the raw value or empty; the domain validates it.
 func (s *SettingsStore) WorkInfoPluginProxyURL(ctx context.Context) (string, error) {
 	value, _, err := readSetting(ctx, s.db.sql, workInfoPluginProxyURLKey)
 	return value, err
 }
 
-// SaveWorkInfoPluginProxyURL はプロキシの URL を保存する。"" はプロキシなしである。
+// SaveWorkInfoPluginProxyURL uses an empty string to disable the proxy.
 func (s *SettingsStore) SaveWorkInfoPluginProxyURL(ctx context.Context, value string) error {
 	return writeSetting(ctx, s.db.sql, workInfoPluginProxyURLKey, value)
 }

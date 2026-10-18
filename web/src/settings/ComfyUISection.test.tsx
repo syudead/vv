@@ -123,7 +123,7 @@ describe("ComfyUISection", () => {
     ).toBeDefined();
     expect(document.body.innerHTML).not.toContain("secret-key");
 
-    // 空の欄のまま保存すれば apiKey を送らず、保存済みのキーを残す。
+    // An empty key input omits apiKey, preserving the stored secret.
     await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(puts).toHaveLength(2));
     expect(puts[1]).toEqual({ provider: "cloud", model: "flux2_klein_4b" });
@@ -196,7 +196,6 @@ describe("ComfyUISection", () => {
     expect(within(rows[1]!).getByText("Update ComfyUI to get this node")).toBeDefined();
     expect(screen.queryByText(/The connection test failed/)).toBeNull();
 
-    // 値を変えれば一覧は消える。
     await user.type(screen.getByLabelText("ComfyUI URL"), "/");
     expect(screen.queryByRole("alert")).toBeNull();
   });

@@ -4,8 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { installSettingsServer, json, renderSettings } from "../testing/settingsPage";
 
-// 「Library」のページの重複の判定の切り替えは、Ollama の接続先が保存されていないあいだも押せ、
-// その下に接続が要る旨と「Connections」へのリンクを添える
+// Duplicate judging remains available without Ollama; show a Connections link beneath it.
 //
 
 const ollamaURL = "/api/settings/ollama";
@@ -20,7 +19,6 @@ function judgingSwitch(): HTMLElement {
   return screen.getByRole("switch", { name: "Judge possible duplicates automatically" });
 }
 
-/** connectionNote は節の注記の `<p>` である。 */
 function connectionNote(): HTMLElement | null {
   return screen.queryByText(noteText, { selector: "p" });
 }
@@ -82,7 +80,6 @@ describe("SettingsPage: Library page duplicate judging and the Ollama connection
       name: "Judge possible duplicates automatically",
     });
     await waitFor(() => expect(server.requested).toContain(ollamaURL));
-    // 接続先の応答を描き終えるまで待つ。
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(connectionNote()).toBeNull();
     expect(screen.queryByText(/Couldn't read the Ollama connection/)).toBeNull();

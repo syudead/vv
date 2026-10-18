@@ -18,53 +18,40 @@ import { RemoveItemButton, ReorderHandle } from "../videoList/reorder";
 
 export interface GroupItemRowProps {
   item: GroupItem;
-  /** 1 始まりの番号。 */
   position: number;
-  /** 行が開く場所（動画は `?group` 付きの再生画面、子グループは道筋を伸ばしたページ）。 */
+  /** Videos retain group playback context; child groups extend the trail. */
   to: string;
-  /** 開いた先の「戻る」が帰るこのページの URL。 */
   backTo: string;
-  /** 動画なら選択に入っているとき、子グループなら全メンバーが入っているとき true。 */
+  /** Child groups are selected only when every member is selected. */
   selected: boolean;
   selectionMode: boolean;
-  /** 選択を入れる・外す。選択を持たない見る人（ゲスト）では省き、チェックを描かない。 */
+  /** Omit for guests to hide selection controls. */
   onSelect?: (item: GroupItem, selected: boolean) => void;
-  /** ドラッグの層に加わる行の値。所有者のリスト表示だけが渡し、ハンドルを描く。 */
+  /** Owner list rows supply drag metadata to show a handle. */
   drag?: CardDragBinding;
-  /** 行の `×`。所有者だけが渡す。 */
   remove?: GroupItemRemove;
-  /** 名前の位置に出す欄。「Make a group」で作ったばかりの子グループだけが持つ。 */
+  /** Only newly created child groups have an inline naming field. */
   nameField?: ReactNode;
 }
 
-/** GroupItemRemove は行の `×` に渡す値である。 */
 export interface GroupItemRemove {
-  /** 外す要求を送っている間 true。 */
   removing: boolean;
   onRemove: (item: GroupItem) => void;
   buttonRef: Ref<HTMLButtonElement>;
 }
 
-/** selectLabel はチェックの読み上げ名である。ライブラリの行と同じ文言。 */
 function selectLabel(item: GroupItem, title: string) {
   return item.kind === "group"
     ? t.library.group.select(title)
     : t.list.card.select(title);
 }
 
-/** linkLabel は子グループの行のリンクの読み上げ名である。動画は題名をそのまま読む。 */
 function linkLabel(item: GroupItem) {
   const group = item.group;
   if (item.kind !== "group" || group === undefined) return undefined;
   return t.library.group.label(group.name, group.videoCount, group.watchedCount ?? 0);
 }
 
-/**
- * GroupItemRow はグループのページのリスト表示の 1 行である。プレイリストの画面の行に、ライブラリの選択のチェックを前に足す: チェック、番号、
- * サムネイル、題名（子グループは「12 videos」の行）、`sm` から視聴済み、長さ。所有者には番号の
- * 前にハンドル、後ろに `×`「Remove from group」を描き、行のどこからでも持ち上げられる
- * （「Reordering」「Removing one item」、docs/design-docs/catalog-organization.md「Group page」）。
- */
 export const GroupItemRow = memo(function GroupItemRow({
   item,
   position,
@@ -121,8 +108,7 @@ export const GroupItemRow = memo(function GroupItemRow({
       </TableCell>
       <ItemThumbnailCell item={item} facts={facts} />
       <TableCell className="w-full max-w-0 pr-2 whitespace-normal sm:pr-4">
-        {/* リンクの after: を行（relative）いっぱいに広げ、行のどこを押しても開く。チェックは
-            z-10 でその上に置く。 */}
+        {/* Extend the link across the row; keep the checkbox above it with z-10. */}
         {nameField ?? (
           <Link
             to={to}
@@ -164,10 +150,7 @@ export const GroupItemRow = memo(function GroupItemRow({
   );
 });
 
-/**
- * DraggableGroupItemRow は所有者のリスト表示の、持ち上げられる 1 行である。ドラッグの層
- * （GroupDragLayer）の中で描く。
- */
+/** Render within GroupDragLayer. */
 export function DraggableGroupItemRow(props: Omit<GroupItemRowProps, "drag">) {
   const drag = useCardDrag(String(props.item.id));
   return <GroupItemRow {...props} drag={drag} />;

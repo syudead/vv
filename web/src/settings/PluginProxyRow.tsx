@@ -14,7 +14,6 @@ const INPUT_ID = "network-plugin-proxy";
 const DESCRIPTION_ID = "network-plugin-proxy-description";
 const ERROR_ID = "network-plugin-proxy-error";
 
-/** usePluginProxySave が返す、プロキシの欄の値と保存の状態である。 */
 interface PluginProxySave {
   value: string;
   saving: boolean;
@@ -26,10 +25,9 @@ interface PluginProxySave {
 }
 
 /**
- * usePluginProxySave は、プロキシの欄の値を、前に保存した値と違うときに保存する。保存は 1 度に 1 つで、保存中の
- * commit は何も送らず、保存が答えたあとに、そのとき欄にある値を送り直す。応答の `url` は、欄が送った
- * 値のままのときだけ欄を置き換えるので、保存中の編集は失われない。誤りも同じく、欄が送った値のままの
- * ときだけ出し、欄を編集すれば前の誤りは消える。規則に外れた値は送らない。
+ * Serialize saves and submit the latest draft after an in-flight commit. Apply normalized
+ * responses and errors only while the input still matches the submitted value, preserving
+ * concurrent edits.
  */
 function usePluginProxySave(initialURL: string): PluginProxySave {
   const [value, setValue] = useState(initialURL);
@@ -37,7 +35,7 @@ function usePluginProxySave(initialURL: string): PluginProxySave {
   const [saved, setSaved] = useState(false);
   const [invalid, setInvalid] = useState(false);
   const [saveError, setSaveError] = useState<UiText | null>(null);
-  // 非同期の保存の中から今の値を読むので、描画の値とは別に持つ。
+  // Async saves need the current input independently of render closures.
   const valueRef = useRef(initialURL);
   const savedURL = useRef(initialURL);
   const inFlight = useRef(false);
@@ -66,8 +64,7 @@ function usePluginProxySave(initialURL: string): PluginProxySave {
         setSaved(true);
       }
     } catch (failure) {
-      // 誤りは送った値のものなので、保存中に欄を打ち直していれば出さない（打ち直した値は次の
-      // commit が送る）。
+      // Do not show errors for an obsolete submitted value after the input changes.
       if (unchanged()) showFailure(failure);
     } finally {
       inFlight.current = false;
@@ -104,10 +101,7 @@ function usePluginProxySave(initialURL: string): PluginProxySave {
   return { value, saving, saved, invalid, saveError, edit, commit };
 }
 
-/**
- * PluginProxyRow は「Network」区画の、プラグインの要求を送るプロキシの行である。欄を離れるか Enter で、
- * 前に保存した値と違う値を保存する。保存ボタンは持たない。
- */
+/** Commit changed values on blur or Enter; there is no Save button. */
 export function PluginProxyRow({ initialURL }: { initialURL: string }) {
   const network = t.settings.network;
   const text = network.proxy;

@@ -48,7 +48,6 @@ describe("useHoverOpen", () => {
     act(() => result.current.contentHandlers.onPointerEnter(mouse));
     act(() => vi.advanceTimersByTime(1000));
     expect(result.current.open).toBe(true);
-    // 一覧から「+N」へ戻るときも同じ。
     act(() => result.current.contentHandlers.onPointerLeave(mouse));
     act(() => vi.advanceTimersByTime(150));
     act(() => result.current.triggerHandlers.onPointerEnter(mouse));
@@ -82,7 +81,6 @@ describe("useHoverOpen", () => {
     const { result } = renderHook(() => useHoverOpen());
     act(() => result.current.triggerHandlers.onPointerEnter(mouse));
     act(() => vi.advanceTimersByTime(100));
-    // 400ms を待たずに押した（クリック）。開く待ちは取り消され、押した開き方になる。
     act(() => result.current.setOpen(true));
     expect(result.current.open).toBe(true);
     expect(result.current.openedByHover).toBe(false);
@@ -98,9 +96,7 @@ describe("useHoverOpen", () => {
     act(() => vi.advanceTimersByTime(400));
     act(() => result.current.setOpen(false));
     expect(result.current.open).toBe(false);
-    // 閉じた直後も、閉じた一覧は留めて開いたものだったと分かる（フォーカスを返さない）。
     expect(result.current.lastOpenedByHover()).toBe(true);
-    // ポインタが「+N」に載ったままでも、勝手に開き直さない。
     act(() => vi.advanceTimersByTime(1000));
     expect(result.current.open).toBe(false);
     act(() => result.current.setOpen(true));

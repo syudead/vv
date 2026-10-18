@@ -26,7 +26,6 @@ function sent(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>) {
   }));
 }
 
-/** holdSnapshot はライブラリの一覧の控えを 1 つ置く（動画ページへ離れたときと同じ）。 */
 function holdSnapshot() {
   saveListSnapshot({ query: "" }, { items: [], total: 0, hasMore: false, scrollY: 0 });
 }

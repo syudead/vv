@@ -11,20 +11,17 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// thumbnailFixture は生成済みのサムネイルを1枚置いた状態を返す。
 func thumbnailFixture(t *testing.T) (*fakeArtifacts, domain.Video) {
 	t.Helper()
 
 	video := sampleVideo(1, "海辺の散歩")
 	path := filepath.Join(t.TempDir(), "thumbnail.jpg")
-	// JPEG の先頭バイト列。ServeContent が中身を読む。
 	if err := os.WriteFile(path, []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10}, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return &fakeArtifacts{thumbnails: map[string]string{video.ContentKey: path}}, video
 }
 
-// 生成済みのサムネイルを image/jpeg で返す。
 func TestGetThumbnail(t *testing.T) {
 	artifacts, video := thumbnailFixture(t)
 	handler := newTestServer(t, Options{
@@ -41,7 +38,6 @@ func TestGetThumbnail(t *testing.T) {
 	}
 }
 
-// 版の有無によらず、使うたびに確かめさせる。ETag が一致すれば 304 になる。
 func TestThumbnailCacheControlRevalidates(t *testing.T) {
 	artifacts, video := thumbnailFixture(t)
 	handler := newTestServer(t, Options{
@@ -74,8 +70,6 @@ func TestThumbnailCacheControlRevalidates(t *testing.T) {
 	}
 }
 
-// 作り直したサムネイルが前と同じ大きさ・更新時刻でも、内容が違えば ETag が
-// 変わり、古い ETag での確認には新しい画像を返す。
 func TestThumbnailETagFollowsContent(t *testing.T) {
 	artifacts, video := thumbnailFixture(t)
 	handler := newTestServer(t, Options{
@@ -110,8 +104,6 @@ func TestThumbnailETagFollowsContent(t *testing.T) {
 	}
 }
 
-// 成功の応答は ETag で確かめさせるが、失敗応答にキャッシュの指示が残ると壊れた
-// 結果が再利用される。416 では no-store に戻ることを固定する。
 func TestThumbnailUnsatisfiableRangeIsNotCached(t *testing.T) {
 	artifacts, video := thumbnailFixture(t)
 	handler := newTestServer(t, Options{
@@ -128,7 +120,6 @@ func TestThumbnailUnsatisfiableRangeIsNotCached(t *testing.T) {
 	}
 }
 
-// 未生成なら 404。クライアントは枠だけを描く。
 func TestThumbnailNotGenerated(t *testing.T) {
 	pending := sampleVideo(2, "解析前")
 	pending.ThumbnailState = domain.ThumbnailStatePending
@@ -144,7 +135,6 @@ func TestThumbnailNotGenerated(t *testing.T) {
 	}
 }
 
-// 動画そのものが無ければ 404。
 func TestThumbnailForMissingVideo(t *testing.T) {
 	handler := newTestServer(t, Options{
 		Videos: &fakeLibrary{}, Artifacts: &fakeArtifacts{},
@@ -159,8 +149,6 @@ func TestThumbnailForMissingVideo(t *testing.T) {
 	}
 }
 
-// 状態が done でも実体が無ければ 404 にする。壊れた応答を返すより、
-// 未生成と同じ扱いにして枠を描かせる方が利用者の損失が小さい。
 func TestThumbnailMissingFileOnDisk(t *testing.T) {
 	handler := newTestServer(t, Options{
 		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: sampleVideo(1, "a")}},
@@ -173,8 +161,6 @@ func TestThumbnailMissingFileOnDisk(t *testing.T) {
 	}
 }
 
-// If-Modified-Since だけの要求には、更新時刻が同じでも新しい画像を返す。更新時刻で
-// 304 にすると、同じ秒に作り直した画像が古いまま残る（Devin の指摘、PR 292）。
 func TestThumbnailIgnoresIfModifiedSince(t *testing.T) {
 	artifacts, video := thumbnailFixture(t)
 	handler := newTestServer(t, Options{
@@ -208,8 +194,6 @@ func TestThumbnailIgnoresIfModifiedSince(t *testing.T) {
 	}
 }
 
-// 位置が指定されている動画の thumbnailUrl の版は `<内容鍵の先頭>-r<改版番号>` で、位置の値を
-// 含まない。未指定なら今までどおり内容鍵の先頭だけ。
 func TestThumbnailURLVersionIncludesRevision(t *testing.T) {
 	position := int64(123_456)
 	for _, tc := range []struct {

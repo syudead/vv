@@ -12,8 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// fakeCatalogStore は動画の応答を組み立てるときの問い合わせ先の偽物である。
-// 消えたプレビューの作り直しは、保存層と同じく状態が done の間の1回だけ積む。
+// The fake mirrors storage's once-per-done-state repair enqueueing.
 type fakeCatalogStore struct {
 	mu sync.Mutex
 
@@ -29,14 +28,10 @@ type fakeCatalogStore struct {
 
 	candidates []domain.RelatedCandidate
 	videos     map[int64]domain.Video
-	// groups は動画 id ごとの、見る人に見せるグループ。
-	groups map[int64]domain.VideoGroup
-	// windows は VideoGroup に渡された窓を順に持つ。
-	windows []domain.GroupWindow
-	// contexts は VideoGroup に渡された文脈のグループの id を順に持つ。
-	contexts []int64
-	// audiences は関連動画の読み出しが受け取った見る人を、呼ばれた順に持つ。
-	audiences []domain.Audience
+	groups     map[int64]domain.VideoGroup
+	windows    []domain.GroupWindow
+	contexts   []int64
+	audiences  []domain.Audience
 }
 
 func (f *fakeCatalogStore) RequeueMissingPreview(_ context.Context, id int64, _ string) (bool, error) {
@@ -88,8 +83,7 @@ func (f *fakeCatalogStore) VideosByIDs(_ context.Context, audience domain.Audien
 	return out, nil
 }
 
-// VideoGroup は保存層と同じく、groups の全メンバー（Members）から id を並べ、window の
-// 範囲の詳細だけを返す。
+// Return IDs from all members but details only within the requested window, matching storage.
 func (f *fakeCatalogStore) VideoGroup(_ context.Context, audience domain.Audience, id int64, opened domain.VideoContext, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
 	f.audiences = append(f.audiences, audience)
 	f.contexts = append(f.contexts, opened.GroupID)
@@ -111,7 +105,6 @@ func (f *fakeCatalogStore) VideoGroup(_ context.Context, audience domain.Audienc
 	return group, true, nil
 }
 
-// fakeArtifactFiles は生成物のファイルの有無を決め打ちで答える。
 type fakeArtifactFiles struct {
 	previews map[string]bool
 	seek     map[string]bool
@@ -126,7 +119,6 @@ func donePreviewVideo() domain.Video {
 	return video
 }
 
-// ファイルがあれば URL を出せると答え、何も書かない。
 func TestPresentVideosWithPreviewFile(t *testing.T) {
 	video := donePreviewVideo()
 	store := &fakeCatalogStore{previewStates: map[int64]domain.PreviewState{1: domain.PreviewStateDone}}
@@ -141,8 +133,6 @@ func TestPresentVideosWithPreviewFile(t *testing.T) {
 	}
 }
 
-// 作り終えた記録があるのにファイルが無ければ、作り直しを積み、準備中として返す。
-// 同じ欠損を並行して見つけても、積むのは1回だけである。
 func TestPresentVideosRequeuesMissingPreviewOnce(t *testing.T) {
 	video := donePreviewVideo()
 	store := &fakeCatalogStore{previewStates: map[int64]domain.PreviewState{1: domain.PreviewStateDone}}
@@ -174,7 +164,6 @@ func TestPresentVideosRequeuesMissingPreviewOnce(t *testing.T) {
 	}
 }
 
-// 作り直しを積めなくても応答は返す。URL は出さず、状態は書き換えない。
 func TestPresentVideosKeepsStateWhenRequeueFails(t *testing.T) {
 	video := donePreviewVideo()
 	store := &fakeCatalogStore{requeueErr: errors.New("database is locked")}
@@ -186,7 +175,6 @@ func TestPresentVideosKeepsStateWhenRequeueFails(t *testing.T) {
 	}
 }
 
-// done でないプレビューは、ファイルを確かめず、積みもしない。
 func TestPresentVideosIgnoresUnfinishedPreview(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := &fakeCatalogStore{previewStates: map[int64]domain.PreviewState{}}
@@ -198,8 +186,6 @@ func TestPresentVideosIgnoresUnfinishedPreview(t *testing.T) {
 	}
 }
 
-// シーク用サムネイルの状態は保存した列から導き、置き場があれば done とする。
-// 代表サムネイルの状態は見ない。
 func TestSeekThumbnailState(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -236,7 +222,6 @@ func TestSeekThumbnailState(t *testing.T) {
 	}
 }
 
-// done と記録したのに置き場が無ければ pending として返し、作り直しは1回だけ頼む。
 func TestSeekThumbnailStateRequeuesMissingOnce(t *testing.T) {
 	video := probedVideo(1, "a")
 	video.SeekThumbnailState = domain.SeekThumbnailDone
@@ -257,7 +242,6 @@ func TestSeekThumbnailStateRequeuesMissingOnce(t *testing.T) {
 	}
 }
 
-// 作り直しを積めなくても、応答は pending で返す。
 func TestSeekThumbnailStateIgnoresRequeueFailure(t *testing.T) {
 	video := probedVideo(1, "a")
 	video.SeekThumbnailState = domain.SeekThumbnailDone
@@ -269,7 +253,6 @@ func TestSeekThumbnailStateIgnoresRequeueFailure(t *testing.T) {
 	}
 }
 
-// relatedFixture は動画と、その近さの手がかりを同じ id で作る。
 func relatedFixture(entries ...domain.RelatedCandidate) *fakeCatalogStore {
 	store := &fakeCatalogStore{videos: map[int64]domain.Video{}}
 	for _, entry := range entries {
@@ -296,8 +279,6 @@ func videoIDs(videos []domain.Video) []int64 {
 	return ids
 }
 
-// 関連動画は近さの点の順に並び、次の動画はその先頭である。前の動画は返さない。続きは
-// 返した位置から読み、続きのページは次の動画もグループの窓も持たない。
 func TestRelatedVideos(t *testing.T) {
 	store := relatedFixture(
 		relatedEntry(1, "/media/show/a.mp4", 7, 8),
@@ -335,7 +316,6 @@ func TestRelatedVideos(t *testing.T) {
 	}
 }
 
-// 他に見せる動画が無いとき、基準の動画が読む間に消えたときは、関連動画も次の動画も無い。
 func TestRelatedVideosEmpty(t *testing.T) {
 	store := relatedFixture(relatedEntry(1, "/media/a.mp4"))
 	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
@@ -352,14 +332,12 @@ func TestRelatedVideosEmpty(t *testing.T) {
 	}
 }
 
-// reverseIDScorer は id の小さい動画ほど近いとみなす、差し替えの確かめ用の付け方である。
 type reverseIDScorer struct{}
 
 func (reverseIDScorer) For(domain.RelatedCandidate) func(domain.RelatedCandidate) domain.RelatedScore {
 	return func(other domain.RelatedCandidate) domain.RelatedScore { return domain.RelatedScore(-other.VideoID) }
 }
 
-// 近さの付け方は差し替えられ、並びはその点だけで決まる（要件 6）。
 func TestRelatedVideosUsesTheGivenScorer(t *testing.T) {
 	store := relatedFixture(
 		relatedEntry(1, "/media/show/a.mp4", 7),
@@ -376,8 +354,7 @@ func TestRelatedVideosUsesTheGivenScorer(t *testing.T) {
 	}
 }
 
-// 関連動画は、受け取った見る人のまま3つの読み出しすべてに渡す。ゲストの関連動画に非公開の
-// 動画を混ぜないため。
+// Preserve audience across all three reads so guests cannot see private related videos.
 func TestRelatedVideosPassesAudience(t *testing.T) {
 	for _, audience := range []domain.Audience{domain.AudienceGuest, domain.AudienceOwner} {
 		store := relatedFixture(relatedEntry(1, "/media/show/a.mp4"), relatedEntry(2, "/media/show/b.mp4"))
@@ -391,7 +368,6 @@ func TestRelatedVideosPassesAudience(t *testing.T) {
 	}
 }
 
-// 読み取りのやり直しは、動画の id だけを保存層へ渡す。
 func TestRetryProbePassesVideoID(t *testing.T) {
 	store := &fakeCatalogStore{}
 	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
@@ -403,16 +379,13 @@ func TestRetryProbePassesVideoID(t *testing.T) {
 	}
 }
 
-// グループのメンバーでは、
-// グループを載せ、前後をグループの中の並びにする。関連動画は同じグループのメンバーを除いて
-// から並べるので、メンバーが多くても関連動画が残る（受け入れ条件 6）。
+// Exclude group members before ranking so large groups cannot crowd out related videos.
 func TestRelatedVideosForGroupMember(t *testing.T) {
 	const size = 25
 	var entries []domain.RelatedCandidate
 	for i := range size {
 		entries = append(entries, relatedEntry(int64(i+1), fmt.Sprintf("/media/big/%02d.mp4", i+1), 7))
 	}
-	// グループの外の動画。同じディレクトリに1本と、遠い動画が1本。
 	entries = append(entries, relatedEntry(100, "/media/big/zz.mp4", 7), relatedEntry(200, "/media/far/far.mp4"))
 	store := relatedFixture(entries...)
 	var members []domain.Video
@@ -458,7 +431,6 @@ func TestRelatedVideosForGroupMember(t *testing.T) {
 	}
 }
 
-// Catalog.VideoGroup は受け取った見る人・文脈のグループ・窓のまま保存層に問い合わせる。
 func TestVideoGroupPassesAudience(t *testing.T) {
 	group := domain.VideoGroup{Name: "g", Members: []domain.Video{probedVideo(1, "a"), probedVideo(2, "b")}}
 	store := &fakeCatalogStore{groups: map[int64]domain.VideoGroup{1: group}}
@@ -482,8 +454,7 @@ func TestVideoGroupPassesAudience(t *testing.T) {
 	}
 }
 
-// 大きなグループでは、関連動画のグループは基準の動画を中ほどに置いた窓だけを持ち、
-// 前後と本数はグループ全体で決まる（issue 674）。
+// Group windows limit details while counts and neighbors use the full membership.
 func TestRelatedVideosForLargeGroupCarriesAWindow(t *testing.T) {
 	const size = domain.GroupMemberWindow*2 + 50
 	videos := map[int64]domain.Video{}
@@ -502,7 +473,6 @@ func TestRelatedVideosForLargeGroupCarriesAWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 文脈のグループはそのまま保存層に渡す。
 	if !slices.Equal(store.contexts, []int64{7}) {
 		t.Errorf("contexts = %v, want [7]", store.contexts)
 	}

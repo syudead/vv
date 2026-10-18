@@ -23,8 +23,7 @@ const helperEncoderList = `Encoders:
  V....D h264_vaapi           H.264/AVC (VAAPI) (codec h264)
 `
 
-// scriptedEncoderCheck は -encoders を listMode、確認用のエンコードを -c:v の値ごとの
-// encodeModes で helper process に代わりに動かし、起動した引数を記録する。
+// Helper processes simulate discovery and per-encoder results while recording arguments.
 type scriptedEncoderCheck struct {
 	*EncoderCheck
 	mu          sync.Mutex
@@ -55,7 +54,6 @@ func newScriptedEncoderCheck(listMode string, encodeModes map[string]string) *sc
 	return s
 }
 
-// encodes は起動した確認用のエンコードの -c:v の値を返す。
 func (s *scriptedEncoderCheck) encodes() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -117,8 +115,6 @@ func checkAll(check *EncoderCheck, encoders ...domain.VideoEncoder) map[domain.V
 	return byEncoder
 }
 
-// 成功は available、失敗は check_failed で標準エラーの末尾を残す。
-// -encoders は並行する確認で 1 回だけ読む。
 func TestEncoderCheckRunsCheckEncodes(t *testing.T) {
 	scripted := newScriptedEncoderCheck("list", map[string]string{
 		"h264_nvenc": "encode-fail",
@@ -143,7 +139,6 @@ func TestEncoderCheckRunsCheckEncodes(t *testing.T) {
 	}
 }
 
-// -encoders に無い方式は確認用のエンコードを実行せずに encoder_missing。
 func TestEncoderCheckSkipsMissingEncoder(t *testing.T) {
 	scripted := newScriptedEncoderCheck("list", nil)
 	got := scripted.CheckEncoder(context.Background(), domain.VideoEncoderVideoToolbox)
@@ -170,8 +165,7 @@ func TestEncoderCheckReportsEncoderListTimeout(t *testing.T) {
 	}
 }
 
-// 確認用のエンコードは lavfi の合成入力を 8 フレームだけ、ライブ変換と同じ符号化器の
-// 指定で符号化して捨てる。
+// Trial encodes use eight synthetic frames and the same encoder selection as live transcoding.
 func TestEncoderCheckEncodeArgs(t *testing.T) {
 	for _, tc := range []struct {
 		encoder domain.VideoEncoder

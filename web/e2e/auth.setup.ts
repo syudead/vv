@@ -5,8 +5,7 @@ import { expect, test as setup } from "@playwright/test";
 
 import { ownerAccount, ownerStorageState } from "./owner-account";
 
-// 所有者のアカウントを作ってログインし、その Cookie を e2e すべてに渡す。CI の再試行で
-// アカウントがもうあるときは 409 を受けてログインに切り替える。
+// Share the owner session across e2e tests; an existing account returns 409 on CI retries.
 setup("所有者のアカウントを作ってログインする", async ({ request }) => {
   const created = await request.post("/api/auth/setup", { data: ownerAccount });
   if (created.status() === 409) {

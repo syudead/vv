@@ -19,7 +19,6 @@ import EditorAside from "./EditorAside";
 import { controlId } from "./fields";
 import { type SaveFailure, useDetailsSave } from "./useDetailsSave";
 
-/** EditorBand は帯の右端の `Cancel` と `Save` である。 */
 export function EditorBand({
   saving,
   saveDisabled,
@@ -66,7 +65,6 @@ export function EditorBand({
   );
 }
 
-/** FailureLine は帯の下の失敗の行である（動画ページの失敗の行と同じ形）。 */
 export function FailureLine({ children }: { children: ReactNode }) {
   return (
     <p role="alert" className="flex items-center gap-2 text-sm text-destructive">
@@ -85,11 +83,6 @@ function failureText(failure: SaveFailure): ReactNode {
   );
 }
 
-/**
- * DetailsForm は動画を読み終えた編集画面である。下書きを持ち、帯・左の列・`Basics`・`Credits` を FormPage で並べ、
- * `Save` で保存する。開いたときは Name にフォーカスを置き、文字は選ばない。
- * 下書きが変わったかを `onChangedChange` で外へ知らせる（離れるときの確かめに使う）。
- */
 export default function DetailsForm({
   video,
   backTo,
@@ -103,7 +96,6 @@ export default function DetailsForm({
 }: {
   video: Video;
   backTo: string;
-  /** Cancel と「Back to the video」。確かめるかは呼び手が決める。 */
   onLeave: () => void;
   onSaved: (video: Video) => void;
   onGone: () => void;
@@ -133,11 +125,10 @@ export default function DetailsForm({
     nameRef.current?.focus();
   }, []);
 
-  // 理由を出した入力を見えるところへ出し、フォーカスを移す。
   useLayoutEffect(() => {
     if (problem === null) return;
     const element = document.getElementById(controlId(problem.control));
-    // jsdom には scrollIntoView が無い。
+    // jsdom does not implement scrollIntoView.
     element?.scrollIntoView?.({ block: "nearest" });
     element?.focus();
   }, [problem]);

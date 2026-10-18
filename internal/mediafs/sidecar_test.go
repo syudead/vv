@@ -12,8 +12,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// sidecarTree は登録フォルダ media/ に動画と隣のファイルを置き、別のフォルダと
-// 外側にも字幕を置く。
 func sidecarTree(t *testing.T) (root, video, outsideVideo string) {
 	t.Helper()
 	base := t.TempDir()
@@ -81,7 +79,7 @@ func TestListSidecarFilesUsesTheLocationFolderOfALinkedVideo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 所在（link のあるフォルダ）の隣を探す。辿った先のフォルダではない。
+	// Search beside the symlink location, not the resolved target.
 	if got := sidecarNames(entries); !slices.Equal(got, []string{"movie.en.srt"}) {
 		t.Fatalf("names = %q, want the files next to the link", got)
 	}
@@ -116,7 +114,6 @@ func TestSidecarFilesRejectAVideoThatCannotBeOpened(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(video, 0o600) })
-	// stat はできても開けない所在は、配信（OpenMediaFile）と同じく字幕も探さない。
 	if _, err := New().ListSidecarFiles([]string{root}, video); !errors.Is(err, domain.ErrMediaFileUnavailable) {
 		t.Fatalf("ListSidecarFiles = %v, want ErrMediaFileUnavailable", err)
 	}

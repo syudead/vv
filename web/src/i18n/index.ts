@@ -1,4 +1,3 @@
-// 画面の文言と書式の入口である（docs/design-docs/i18n.md）。
 export { errorText, probeErrorText, scanErrorText } from "./errors";
 export {
   formatDate,

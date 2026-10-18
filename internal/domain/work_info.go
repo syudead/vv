@@ -11,49 +11,31 @@ import (
 	"unicode/utf8"
 )
 
-// 作品情報と人物・団体が共有する値と規則。動画ごとの作品情報の項目と、人物・団体の名前・別名・外部 ID は
-// 同じ誤りの型 InvalidWorkInfoError で拒み、Field に失敗したプロパティの経路を載せる。
+// Work-info and credit validation share InvalidWorkInfoError with the failing input property's path.
 
 const (
-	// ExternalIDsMaxCount は外部 ID の一覧の件数の上限である（動画も実体も同じ）。
-	ExternalIDsMaxCount = 20
-	// ExternalIDSourceMaxLength は外部 ID の source の上限（符号位置数）である。
+	ExternalIDsMaxCount       = 20
 	ExternalIDSourceMaxLength = 50
-	// ExternalIDValueMaxLength は外部 ID の value の上限（符号位置数）である。
-	ExternalIDValueMaxLength = 200
+	ExternalIDValueMaxLength  = 200
 )
 
-// ErrInvalidWorkInfo は作品情報か人物・団体の項目として受け付けられない入力を表す。API では
-// invalid_request（400）になる。正規化の関数はこれを直接は返さず、*InvalidWorkInfoError を返す。
 var ErrInvalidWorkInfo = errors.New("invalid work information")
 
-// WorkInfoProblem は項目の規則違反の種類である。internal/httpapi が API の reason
-// （work_info_*）に写す。
 type WorkInfoProblem int
 
 const (
-	// WorkInfoControlCharacters は制御文字を含むことを表す（description の改行は除く）。
+	// Description permits line feeds; other control characters are rejected.
 	WorkInfoControlCharacters WorkInfoProblem = iota + 1
-	// WorkInfoTooLong は文字列が上限の符号位置数を超えることを表す。
 	WorkInfoTooLong
-	// WorkInfoTooMany は一覧が上限の件数を超えることを表す。
 	WorkInfoTooMany
-	// WorkInfoInvalidDate は日付が YYYY・YYYY-MM・暦にある YYYY-MM-DD のどれでもないことを表す。
 	WorkInfoInvalidDate
-	// WorkInfoInvalidURL は URL が host を持つ絶対の http・https の URL でないことを表す。
 	WorkInfoInvalidURL
-	// WorkInfoInvalidLanguage は別名の language が BCP 47 の構文に合わないことを表す。
 	WorkInfoInvalidLanguage
-	// WorkInfoDuplicate は一覧の中で同じ値が重なることを表す。
 	WorkInfoDuplicate
-	// WorkInfoEmpty は空にできない値が前後の空白を除くと空になることを表す（実体の名前と、
-	// 片方だけ空の外部 ID）。
 	WorkInfoEmpty
 )
 
-// InvalidWorkInfoError は項目の規則違反の具体的な理由を運ぶ。Field は JSON のプロパティ名を
-// . でつなぎ、一覧の位置を [] で書いた経路（name・aliases[2].language・externalIds[0].source）で、
-// 一覧の位置は呼び手が送った一覧の位置である。Limit は TooLong と TooMany の上限で、それ以外は 0。
+// Field uses JSON paths with original input indices, including dropped entries; Limit applies only to TooLong/TooMany.
 type InvalidWorkInfoError struct {
 	Field   string
 	Problem WorkInfoProblem
@@ -89,22 +71,18 @@ func invalidWorkInfo(field string, problem WorkInfoProblem, limit int) error {
 	return &InvalidWorkInfoError{Field: field, Problem: problem, Limit: limit}
 }
 
-// ExternalID は外部の情報源での識別子 1 件である（動画にも実体にも付く）。
 type ExternalID struct {
 	Source string
 	Value  string
 }
 
-// CreditRef は人物か団体 1 件への参照である。読み出しでは今の名前を運び、書き込みでは ID だけを使う。
+// CreditRef reads carry current names; writes use only ID.
 type CreditRef struct {
 	ID   int64
 	Name string
 }
 
-// normalizeWorkInfoText は表示名と同じ手順で文字列を整える（029 R-10）。どこかに制御文字が
-// あれば誤り（allowLineFeed なら改行だけは許す）、前後の Unicode White_Space を除き、
-// maxLength 符号位置を超えたら誤り。空になった結果は誤りにせず空の文字列で返し、
-// 解除にするか落とすか誤りにするかは呼び手が決める。
+// normalizeWorkInfoText rejects controls before trimming and counts code points; empty results are left to callers to clear, drop, or reject.
 func normalizeWorkInfoText(field, input string, maxLength int, allowLineFeed bool) (string, error) {
 	for _, r := range input {
 		if unicode.Is(unicode.Cc, r) && (!allowLineFeed || r != '\n') {
@@ -118,15 +96,13 @@ func normalizeWorkInfoText(field, input string, maxLength int, allowLineFeed boo
 	return trimmed, nil
 }
 
-// trimWorkInfoText は文字列の前後の Unicode White_Space を除く。
 func trimWorkInfoText(input string) string {
 	return strings.TrimFunc(input, func(r rune) bool {
 		return unicode.Is(unicode.White_Space, r)
 	})
 }
 
-// normalizeExternalID は外部 ID 1 件を整える。両方が空になれば keep が偽（その件を落とす）、
-// 片方だけ空になれば空の側の WorkInfoEmpty である。
+// Drop fully blank external IDs; reject partially blank IDs on the missing side.
 func normalizeExternalID(field string, id ExternalID) (ExternalID, bool, error) {
 	source, err := normalizeWorkInfoText(field+".source", id.Source, ExternalIDSourceMaxLength, false)
 	if err != nil {
@@ -147,9 +123,7 @@ func normalizeExternalID(field string, id ExternalID) (ExternalID, bool, error) 
 	return ExternalID{Source: source, Value: value}, true, nil
 }
 
-// normalizeExternalIDs は外部 ID の一覧を整える。field は一覧の経路（externalIds）。各件を
-// 送られた順に確かめ、同じ (source, value) の 2 件目を WorkInfoDuplicate、落とした後の件数が
-// ExternalIDsMaxCount を超えれば一覧の WorkInfoTooMany にする。空の一覧は空の配列で返す。
+// Validate external IDs in input order, reject duplicate pairs, and enforce the count after dropping empty entries; return empty slices, not nil.
 func normalizeExternalIDs(field string, ids []ExternalID) ([]ExternalID, error) {
 	normalized := make([]ExternalID, 0, len(ids))
 	seen := make(map[ExternalID]bool, len(ids))
@@ -174,80 +148,64 @@ func normalizeExternalIDs(field string, ids []ExternalID) ([]ExternalID, error) 
 	return normalized, nil
 }
 
-// DateKind は動画の日付の種類である。1 つの動画は種類ごとに日付を 1 つ持つ。
 type DateKind string
 
 const (
-	// DateRelease は発売日。
-	DateRelease DateKind = "release"
-	// DateRecorded は収録日。
-	DateRecorded DateKind = "recorded"
-	// DatePublished は公開日（配信の日）。
+	DateRelease   DateKind = "release"
+	DateRecorded  DateKind = "recorded"
 	DatePublished DateKind = "published"
 )
 
-// DateKinds は日付の種類を読み出しの順（release・recorded・published）に並べたものである。
+// DateKinds defines read order.
 var DateKinds = []DateKind{DateRelease, DateRecorded, DatePublished}
 
-// Valid は k が既知の種類であることを返す。
 func (k DateKind) Valid() bool { return slices.Contains(DateKinds, k) }
 
-// PersonRole は動画に結ぶ人物の役割である。
 type PersonRole string
 
 const (
-	// PersonPerformer は出演者。
-	PersonPerformer PersonRole = "performer"
-	// PersonDirector は監督。
-	PersonDirector PersonRole = "director"
-	// PersonPhotographer は撮影。
+	PersonPerformer    PersonRole = "performer"
+	PersonDirector     PersonRole = "director"
 	PersonPhotographer PersonRole = "photographer"
-	// PersonStreamer は配信者。
-	PersonStreamer PersonRole = "streamer"
+	PersonStreamer     PersonRole = "streamer"
 )
 
-// PersonRoles は人物の役割を読み出しの順に並べたものである。
+// PersonRoles defines read order.
 var PersonRoles = []PersonRole{PersonPerformer, PersonDirector, PersonPhotographer, PersonStreamer}
 
-// Valid は r が既知の役割であることを返す。
 func (r PersonRole) Valid() bool { return slices.Contains(PersonRoles, r) }
 
-// OrganizationRole は動画に結ぶ団体の役割である。
 type OrganizationRole string
 
 const (
-	// OrganizationMaker はメーカー。
 	OrganizationMaker OrganizationRole = "maker"
-	// OrganizationLabel はレーベル。
 	OrganizationLabel OrganizationRole = "label"
 )
 
-// OrganizationRoles は団体の役割を読み出しの順に並べたものである。
+// OrganizationRoles defines read order.
 var OrganizationRoles = []OrganizationRole{OrganizationMaker, OrganizationLabel}
 
-// Valid は r が既知の役割であることを返す。
 func (r OrganizationRole) Valid() bool { return slices.Contains(OrganizationRoles, r) }
 
-// WorkDate は動画の日付 1 件である。Date は YYYY・YYYY-MM・YYYY-MM-DD の文字列で、送られた形のまま持つ。
+// WorkDate preserves YYYY, YYYY-MM, or YYYY-MM-DD precision as submitted.
 type WorkDate struct {
 	Kind DateKind
 	Date string
 }
 
-// WorkPerson は動画に結ぶ人物 1 件である。書き込みでは Person.ID だけを読む。
+// Writes use Person.ID only.
 type WorkPerson struct {
 	Role   PersonRole
 	Person CreditRef
 }
 
-// WorkOrganization は動画に結ぶ団体 1 件である。書き込みでは Organization.ID だけを読む。
+// Writes use Organization.ID only.
 type WorkOrganization struct {
 	Role         OrganizationRole
 	Organization CreditRef
 }
 
-// WorkInfo は動画 1 本の作品情報である。未設定の値は空の
-// 文字列か空の一覧で、項目の並びは API の WorkInfo スキーマと同じ。誤りはこの順で最初の 1 件を返す。
+// WorkInfo field order matches the API and determines the first validation error; empty strings/lists mean unset.
 type WorkInfo struct {
 	Code          string
 	Description   string
@@ -258,14 +216,12 @@ type WorkInfo struct {
 	ExternalIDs   []ExternalID
 }
 
-// IsEmpty はすべての項目が未設定であることを返す。
 func (w WorkInfo) IsEmpty() bool {
 	return w.Code == "" && w.Description == "" && len(w.Dates) == 0 && len(w.People) == 0 &&
 		len(w.Organizations) == 0 && len(w.URLs) == 0 && len(w.ExternalIDs) == 0
 }
 
-// Equal は 2 つの作品情報が同じ値かを返す。一覧は順番も比べ、nil と空の一覧は同じ。人物と団体は
-// id だけを比べる（読み出しは名前を運び、書き込みは運ばない）。
+// Equal compares list order, treats nil and empty lists equally, and compares credits by ID only.
 func (w WorkInfo) Equal(other WorkInfo) bool {
 	return w.Code == other.Code && w.Description == other.Description &&
 		slices.Equal(w.Dates, other.Dates) && slices.Equal(w.URLs, other.URLs) &&
@@ -278,7 +234,7 @@ func (w WorkInfo) Equal(other WorkInfo) bool {
 		})
 }
 
-// WorkInfoLimitSet は作品情報の各項目の上限である。長さは符号位置数、件数は落とした後の件数で数える。
+// Limits count code points and retained entries after normalization.
 type WorkInfoLimitSet struct {
 	CodeMaxLength                int
 	DescriptionMaxLength         int
@@ -291,7 +247,6 @@ type WorkInfoLimitSet struct {
 	OrganizationsPerRoleMaxCount int
 }
 
-// WorkInfoLimits は作品情報の上限。API が誤りの limit に載せる。
 var WorkInfoLimits = WorkInfoLimitSet{
 	CodeMaxLength:                100,
 	DescriptionMaxLength:         10_000,
@@ -304,17 +259,7 @@ var WorkInfoLimits = WorkInfoLimitSet{
 	OrganizationsPerRoleMaxCount: 20,
 }
 
-// NormalizeWorkInfo は入力を保存する作品情報に整える。empty は整えた結果の
-// すべての項目が空であることを表す。人物と団体の id があるかは保存層が確かめる。
-//
-// 文字列はどれも表示名と同じ手順を通り（制御文字は誤りで description の改行だけは許す、前後の空白を
-// 除く、空なら解除するか一覧から落とす）、そのあと項目ごとの規則を確かめる。誤りは WorkInfo の項目の
-// 順に、一覧は送られた順に確かめて最初の 1 件を *InvalidWorkInfoError で返し、Field の一覧の位置は
-// 送られた一覧（落とした件も数える）の位置である。種類か役割が既知の値でなければ ErrInvalidWorkInfo を
-// 包んだ誤りで、API の生成した検査が先に拒む。
-//
-// 返す値の一覧は読み出しの順に並べ直す。日付は DateKinds の順、人物と団体は役割の順（同じ役割の中は
-// 送られた順）、外部 ID は (source, value) の順で、URL は送られた順のまま。
+// NormalizeWorkInfo validates in schema/input order with original indices, then orders dates/roles/external IDs for reading while preserving URL order; storage checks referenced credit IDs.
 func NormalizeWorkInfo(input WorkInfo) (WorkInfo, bool, error) {
 	var out WorkInfo
 	var err error
@@ -344,8 +289,6 @@ func NormalizeWorkInfo(input WorkInfo) (WorkInfo, bool, error) {
 	return out, out.IsEmpty(), nil
 }
 
-// normalizeWorkDates は日付の一覧を整える。種類が既知でなければ誤り、日付が空になった件は落とし、
-// 同じ種類の 2 件目は dates[i].kind の Duplicate。返す一覧は DateKinds の順である。
 func normalizeWorkDates(dates []WorkDate) ([]WorkDate, error) {
 	byKind := make(map[DateKind]string, len(DateKinds))
 	for i, raw := range dates {
@@ -374,11 +317,9 @@ func normalizeWorkDates(dates []WorkDate) ([]WorkDate, error) {
 	return out, nil
 }
 
-// workDateLayouts は R-12 の 3 つの形の長さごとの time.Parse の形である。
 var workDateLayouts = map[int]string{len("2006"): "2006", len("2006-01"): "2006-01", len(time.DateOnly): time.DateOnly}
 
-// normalizeWorkDate は日付 1 件を整え、YYYY・YYYY-MM・YYYY-MM-DD のどれかで、年が 1〜9999、月が
-// 1〜12、日がその月にある日であることを確かめる（R-12）。形より長い値も形の誤りにする。
+// Dates must use YYYY, YYYY-MM, or real YYYY-MM-DD within years 1–9999; overlong values are format errors.
 func normalizeWorkDate(field, input string) (string, error) {
 	date, err := normalizeWorkInfoText(field, input, utf8.RuneCountInString(input), false)
 	if err != nil || date == "" {
@@ -390,8 +331,7 @@ func normalizeWorkDate(field, input string) (string, error) {
 	return date, nil
 }
 
-// isWorkDate は date が R-12 の 3 つの形のどれかの実在する日付であることを返す。数字と - の位置を
-// 先に確かめるので、time.Parse が許す 1 桁の月や日は通らない。
+// Check digits and separators first because time.Parse accepts unpadded months/days.
 func isWorkDate(date string) bool {
 	layout, ok := workDateLayouts[len(date)]
 	if !ok {
@@ -413,9 +353,7 @@ func isWorkDate(date string) bool {
 	return err == nil
 }
 
-// normalizeWorkPeople は人物の一覧を整える。役割が既知でなければ誤り、同じ役割に同じ人物の 2 件目は
-// people[i].person.id の Duplicate、役割ごとの件数が上限を超えれば people の TooMany。返す一覧は
-// PersonRoles の順（同じ役割の中は送られた順）で、名前は運ばない。
+// People are unique per role, bounded per role, and returned in role order with input order preserved within roles; names are dropped.
 func normalizeWorkPeople(people []WorkPerson) ([]WorkPerson, error) {
 	refs := make([]workRef[PersonRole], 0, len(people))
 	for _, p := range people {
@@ -432,8 +370,6 @@ func normalizeWorkPeople(people []WorkPerson) ([]WorkPerson, error) {
 	return out, nil
 }
 
-// normalizeWorkOrganizations は団体の一覧を normalizeWorkPeople と同じ規則で整える。Field は
-// organizations[i].organization.id と organizations である。
 func normalizeWorkOrganizations(organizations []WorkOrganization) ([]WorkOrganization, error) {
 	refs := make([]workRef[OrganizationRole], 0, len(organizations))
 	for _, o := range organizations {
@@ -451,14 +387,12 @@ func normalizeWorkOrganizations(organizations []WorkOrganization) ([]WorkOrganiz
 	return out, nil
 }
 
-// workRef は人物か団体の結び付き 1 件の役割と id である。
 type workRef[R ~string] struct {
 	role R
 	id   int64
 }
 
-// normalizeWorkRefs は人物と団体の一覧に共通の規則である。list は一覧の経路（people）、entity は
-// 参照のプロパティ名（person）、roles は既知の役割の読み出しの順、limit は役割ごとの件数の上限。
+// normalizeWorkRefs shares person/organization validation using per-role limits and read order.
 func normalizeWorkRefs[R ~string](list, entity string, roles []R, refs []workRef[R], limit int) ([]workRef[R], error) {
 	byRole := make(map[R][]workRef[R], len(roles))
 	seen := make(map[workRef[R]]bool, len(refs))
@@ -483,9 +417,7 @@ func normalizeWorkRefs[R ~string](list, entity string, roles []R, refs []workRef
 	return out, nil
 }
 
-// normalizeWorkURLs は URL の一覧を整える。空になった件は落とし、host を持つ絶対の http・https の URL で
-// なければ urls[i] の InvalidURL、同じ URL の 2 件目は urls[i] の Duplicate、落とした後の件数が上限を
-// 超えれば urls の TooMany。送られた順のまま返す。
+// URLs must be absolute HTTP(S) with a host; drop blanks, reject duplicates, enforce retained count, and preserve input order.
 func normalizeWorkURLs(urls []string) ([]string, error) {
 	limits := WorkInfoLimits
 	out := make([]string, 0, len(urls))
@@ -514,22 +446,19 @@ func normalizeWorkURLs(urls []string) ([]string, error) {
 	return out, nil
 }
 
-// isWorkURL は value が host を持つ絶対の http・https の URL であることを返す。
 func isWorkURL(value string) bool {
 	parsed, err := url.Parse(value)
 	return err == nil && (parsed.Scheme == "http" || parsed.Scheme == "https") && parsed.Opaque == "" &&
 		parsed.Hostname() != ""
 }
 
-// WorkInfoChange は外部連携の一括操作の 1 件である。WorkInfo は保存済みの値をまるごと置き換え、
-// 整えて空なら解除する。
+// WorkInfoChange replaces the whole value; normalized empty input clears it.
 type WorkInfoChange struct {
 	Video    VideoRef
 	WorkInfo WorkInfo
 }
 
-// WorkInfoAtError は一括操作の作品情報のうち、規則に合わなかったか無い実体を指したものの位置（0 から）と
-// 理由（*InvalidWorkInfoError か *CreditNotFoundError）を運ぶ。DisplayNameAtError と同じ形である。
+// WorkInfoAtError carries a zero-based input index and wraps validation or missing-credit errors.
 type WorkInfoAtError struct {
 	Index int
 	Err   error
@@ -541,18 +470,14 @@ func (e *WorkInfoAtError) Error() string {
 
 func (e *WorkInfoAtError) Unwrap() error { return e.Err }
 
-// VideoWorkInfoChanged は動画の作品情報が変わったことを表す。VideoIDs は
-// 変わった利用者データの鍵に属するすべての動画の id である。画面への知らせに写し、ワーカーの
-// 起床には結ばない。
+// VideoWorkInfoChanged includes all videos sharing changed user-data keys and notifies the UI without waking workers.
 type VideoWorkInfoChanged struct {
 	VideoIDs []int64
 }
 
 func (VideoWorkInfoChanged) event() {}
 
-// ExternalIDIndex は、整える前の一覧 raw のうち、整えると id になる最初の件の位置を返す。無ければ -1。
-// 整えた一覧の 1 件について誤り（他の実体が持つ外部 ID など）を返すとき、Field に呼び手が送った
-// 一覧の位置を載せるために使う。
+// ExternalIDIndex recovers the first original input position for errors on normalized IDs, or -1 if absent.
 func ExternalIDIndex(raw []ExternalID, id ExternalID) int {
 	for i, entry := range raw {
 		if normalized, ok := NormalizeExternalID(entry); ok && normalized == id {
@@ -562,10 +487,7 @@ func ExternalIDIndex(raw []ExternalID, id ExternalID) int {
 	return -1
 }
 
-// NormalizeExternalID は外部 ID 1 件を保存と同じ手順で整え、両方の半分が空でなく規則に合えば true を
-// 返す。外部 ID での検索（外部連携 API の GET /api/v1/people?source=…&externalId=…）が保存済みの綴りと
-// 同じ形で照らすのにも使う。規則に合わない外部 ID はどの実体も持ちえないので、呼び手は何にも当たらない
-// ものとして扱う。
+// NormalizeExternalID shares storage normalization with lookup; invalid IDs cannot belong to any entity and therefore match nothing.
 func NormalizeExternalID(id ExternalID) (ExternalID, bool) {
 	normalized, keep, err := normalizeExternalID("", id)
 	return normalized, keep && err == nil

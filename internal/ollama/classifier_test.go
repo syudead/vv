@@ -15,7 +15,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// fixedSettings は保存された接続先の代わりである。
 type fixedSettings struct {
 	settings domain.OllamaSettings
 	err      error
@@ -82,7 +81,6 @@ func TestClassifySendsSystemOneRequest(t *testing.T) {
 	}
 }
 
-// 質問が BatchSize を超えれば、同じ入力で分けて問い合わせ、答えを合わせる。
 func TestClassifySplitsQuestionsIntoBatches(t *testing.T) {
 	var mu sync.Mutex
 	var sizes []int
@@ -117,7 +115,6 @@ func TestClassifySplitsQuestionsIntoBatches(t *testing.T) {
 	}
 }
 
-// 接続先は問い合わせのたびに保存された設定から読む。読めなければ問い合わせない。
 func TestClassifyReadsSettingsEachTime(t *testing.T) {
 	_, err := New(fixedSettings{err: errors.New("disk")}).Classify(context.Background(), oneQuestion())
 	if err == nil || !strings.Contains(err.Error(), "Ollama settings") {
@@ -155,7 +152,6 @@ func TestClassifyReportsOllamaErrors(t *testing.T) {
 	}
 }
 
-// Ollama 以外の応答の本文は誤りの文に写さない。
 func TestClassifyDoesNotEchoNonOllamaBodies(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusForbidden)

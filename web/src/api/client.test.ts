@@ -83,7 +83,6 @@ describe("見る人が変わったときの読み直し", () => {
     await vi.waitFor(() => expect(calls).toBe(5));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(reloadPage).toHaveBeenCalledOnce();
-    // ゲストとして処理した応答を所有者の画面へ渡さない。
     expect(settled).not.toHaveBeenCalled();
   });
 
@@ -715,8 +714,7 @@ describe("progress API client", () => {
       );
     });
 
-    // ページが隠れるときの送信は待たずに出るので、応答の順が入れ替わりうる。
-    // その場合も、後から送った保存の位置を残す。
+    // Page-hidden saves bypass the queue, so their responses may arrive out of order.
     saveListSnapshot(key, {
       items: [videoItem(unwatched)],
       total: 1,
@@ -743,7 +741,7 @@ describe("progress API client", () => {
     );
     fetch.mockResolvedValueOnce(jsonResponse(newer));
     const first = saveProgress(7, 10_000);
-    // 保存は順番待ちを経て送られるので、送り始めてから次へ進む。
+    // Wait until queued saves actually start before proceeding.
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(callsBefore + 1));
     const hidden = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
     beaconProgress(7, 20_000);
@@ -755,7 +753,6 @@ describe("progress API client", () => {
     await first;
     expect(itemVideos(takeListSnapshot(key)?.items ?? [])[0]?.progress).toEqual(newer);
 
-    // 失敗した送信では控えを書き換えない。
     saveListSnapshot(key, {
       items: [videoItem(unwatched)],
       total: 1,
@@ -783,7 +780,6 @@ describe("progress API client", () => {
     const first = saveProgress(8, 10_000);
     const second = saveProgress(8, 20_000);
     beaconProgress(8, 30_000);
-    // 別の動画は待たない。
     await saveProgress(9, 5_000);
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
     expect(fetch.mock.calls.map(([url]) => String(url))).toEqual([
@@ -818,7 +814,6 @@ describe("progress API client", () => {
     hidden.mockRestore();
     expect(fetch).toHaveBeenCalledTimes(1);
 
-    // タブが再び表示されて始まった保存は、隠れたときの送信の完了を待つ。
     const next = saveProgress(10, 25_000);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetch).toHaveBeenCalledTimes(1);
@@ -1001,8 +996,6 @@ describe("list API client", () => {
     expect(requestedURL(fetch).searchParams.get("query")).toHaveLength(100);
   });
 
-  // issue 267: tag は listVideos に載るが listFolderVideos には載らない
-  // （フォルダ画面のタグ絞り込みは対象外）。
   it("sends tag ids to the library list, one per id, capped at 16", async () => {
     const fetch = stubFetch();
     await listVideos({ tag: Array.from({ length: 20 }, (_, i) => i + 1) });

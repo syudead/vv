@@ -52,8 +52,7 @@ function DeleteDialog({
   onClose: () => void;
   onDelete: () => void;
 }) {
-  // 確認の窓の型（ConfirmDialog）と同じ組み方で、削除が終わるまで窓を開いたままにし、
-  // 失敗を窓の中に出す。
+  // Keep the dialog open during deletion and show failures inside it.
   return (
     <AlertDialog
       open
@@ -101,11 +100,7 @@ function DeleteDialog({
   );
 }
 
-/**
- * MediaFoldersSection は「Library」のページの「Media folders」節と、そこから開く窓（フォルダの
- * 選択、削除の確認）である。メディアフォルダの数を取り込みの状態（ScanProvider）へ伝えるので、
- * ここで足したフォルダは「Scan」のページを開くと「Scan library」を押せるようにする。
- */
+/** Report media-folder counts to ScanProvider so newly added folders enable Scan library. */
 export default function MediaFoldersSection() {
   const scan = useScan();
   const { setFolderCount } = scan;

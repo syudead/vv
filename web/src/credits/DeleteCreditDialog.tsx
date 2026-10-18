@@ -4,11 +4,7 @@ import { DialogError } from "../tags/DialogError";
 import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
 import { Spinner } from "../ui/shadcn/spinner";
 
-/**
- * DeleteCreditDialog は人物・団体の削除の確認の窓である。本文に一覧の `videoCount` を出し（Issue の Edge Case
- * 「削除で件数を示す」）、団体では中の団体が親を失うことも書く。`ConfirmDialog`
- * （`AlertDialog`）に載せ、送っている間は閉じない。
- */
+/** Keep the confirmation dialog open while submitting. */
 export default function DeleteCreditDialog({
   kind,
   credit,

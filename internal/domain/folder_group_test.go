@@ -26,7 +26,6 @@ func TestBuildFolderIndexGroups(t *testing.T) {
 			},
 			want: []group{
 				{"/media/a", "a", []int64{1, 2}},
-				// 並びはファイル名の自然順（compareSiblings）。
 				{"/media/x/y/z", "z", []int64{5, 4, 3}},
 			},
 		},
@@ -80,7 +79,7 @@ func TestBuildFolderIndexGroups(t *testing.T) {
 				{1, "/media/b/1.mp4"}, {1, "/media/a/1.mp4"}, {2, "/media/a/2.mp4"},
 				{3, "/media/b/3.mp4"},
 			},
-			// b の直下を代表にするのは 3 だけなので b はグループにならない。
+			// Only video 3 has its representative directly in b, so b is not grouped.
 			want: []group{{"/media/a", "a", []int64{1, 2}}},
 		},
 		{
@@ -142,7 +141,6 @@ func TestBuildFolderIndexSwitchesOverrides(t *testing.T) {
 	count := func(overrides map[string]FolderGroupMode) int {
 		return len(buildFolderIndexFor(roots, locations, overrides, false, '/').Groups)
 	}
-	// 例外なし → 直下をまとめる → まとめを解除 → 例外なし、の順に切り替える。
 	steps := []struct {
 		mode FolderGroupMode
 		want int
@@ -171,7 +169,6 @@ func TestBuildFolderIndexWindowsKeys(t *testing.T) {
 	if g.Key != `c:\media\show` || g.Path != `C:\Media\Show` || g.Name != "Show" || !reflect.DeepEqual(g.VideoIDs, []int64{1, 2}) {
 		t.Errorf("group = %+v", g)
 	}
-	// 例外の鍵も同じ規則で整えたもので突き合わせる。
 	index = buildFolderIndexFor(roots, locations, map[string]FolderGroupMode{
 		folderKeyFor(`C:/MEDIA/SHOW/`, true, '\\'): FolderGroupUngroup,
 	}, true, '\\')
@@ -184,10 +181,8 @@ func TestBuildFolderIndexFolderNames(t *testing.T) {
 	roots := []MediaFolder{{ID: 1, Path: "/media"}}
 	locations := []FolderIndexLocation{
 		{1, "/media/Anime/Show/1.mp4"},
-		// 代表でない所在の祖先も入る。重複は除く。
 		{1, "/media/Movies/Show/1.mp4"},
 		{2, "/media/2.mp4"},
-		// 空白だけの段や制御文字の段はタグ名にならないので捨てる。
 		{3, "/media/ \t/bad\x01/ Trim /3.mp4"},
 	}
 	index := buildFolderIndexFor(roots, locations, nil, false, '/')
@@ -242,8 +237,6 @@ func TestLocateFolder(t *testing.T) {
 	if _, ok := locateFolderFor(roots[:1], "/elsewhere/a", false, '/'); ok {
 		t.Error("folder outside every root was located")
 	}
-	// グループのフォルダから求めた (rootId, path) は、同じフォルダの中の所在から
-	// LocateVideoFolder で求めたものと一致する。
 	index := buildFolderIndexFor(roots[:1], []FolderIndexLocation{
 		{1, "/media/a/b/1.mp4"}, {2, "/media/a/b/2.mp4"},
 	}, nil, false, '/')

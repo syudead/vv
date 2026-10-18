@@ -3,20 +3,15 @@ import type * as React from "react";
 import { cn } from "@/lib/cn";
 import { Progress } from "@/ui/shadcn/progress";
 
-// VideoThumbnail は vv 固有の部品で、動画・まとめ・フォルダのカードと一覧の行が共有する
-// サムネイルの枠である。shadcn/ui の部品と同じく、
-// 枠と、その上に重ねる部品（長さの印・視聴の進み・角の印・全面の知らせ）に分けて組む。
 //
-// 重ねる順（下から）: 画像（children）→ 長さの印 → 進みの縁 → 全面の知らせ → 角の印。
+// Layer order: image, duration, progress, full-frame notice, corner marks.
 
-/** VideoThumbnail は 16:9 の枠で、中身（画像・下見の動画）を children に受ける。 */
 function VideoThumbnail({
   className,
   selected = false,
   children,
   ...props
 }: React.ComponentProps<"div"> & {
-  /** 選択中なら枠を primary の輪で囲む。 */
   selected?: boolean;
 }) {
   return (
@@ -35,7 +30,6 @@ function VideoThumbnail({
   );
 }
 
-/** VideoThumbnailImage は枠いっぱいに収める画像である。縦長の絵は切り抜かず左右を空ける。 */
 function VideoThumbnailImage({
   className,
   alt = "",
@@ -53,10 +47,6 @@ function VideoThumbnailImage({
   );
 }
 
-/**
- * VideoThumbnailDuration は右下の長さの印である。公開の印などの小さなアイコンを前に並べられる。
- * 文字は thumbnails 用の `text-2xs`、面は `bg-overlay`。
- */
 function VideoThumbnailDuration({ className, ...props }: React.ComponentProps<"span">) {
   return (
     <span
@@ -70,10 +60,7 @@ function VideoThumbnailDuration({ className, ...props }: React.ComponentProps<"s
   );
 }
 
-/**
- * VideoThumbnailProgress は下端の視聴の進みの縁である。`value` は 0〜100。読み上げ名は
- * 呼び手が `aria-label` で渡す。
- */
+/** value is 0-100; callers supply aria-label. */
 function VideoThumbnailProgress({
   className,
   ...props
@@ -87,10 +74,7 @@ function VideoThumbnailProgress({
   );
 }
 
-/**
- * VideoThumbnailMark は角に置く印（選択のチェック、お気に入りのハート）の置き場である。
- * 画像の上でも読めるよう、中のアイコンには `drop-shadow-mark` を付ける。
- */
+/** Give overlaid icons drop-shadow-mark for contrast over images. */
 function VideoThumbnailMark({
   className,
   corner = "top-end",
@@ -109,7 +93,6 @@ function VideoThumbnailMark({
   );
 }
 
-/** VideoThumbnailNotice は枠全体を覆う知らせ（再生できない理由など）である。 */
 function VideoThumbnailNotice({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div

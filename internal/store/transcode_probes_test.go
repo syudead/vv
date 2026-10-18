@@ -18,7 +18,6 @@ func sampleTranscodeProbe(width int) domain.TranscodeProbe {
 	}
 }
 
-// usableTranscodeProbe は保存済みの行を読み、opened と比べて使える値を返す。
 func usableTranscodeProbe(t *testing.T, db *DB, videoID int64, opened domain.FileStamp) (domain.TranscodeProbe, bool) {
 	t.Helper()
 	stored, err := db.Library().TranscodeProbe(context.Background(), videoID)
@@ -28,8 +27,6 @@ func usableTranscodeProbe(t *testing.T, db *DB, videoID int64, opened domain.Fil
 	return domain.TranscodeProbeUsable(stored, opened)
 }
 
-// 取り込みの解析ジョブが終わった動画に行があり、読み取り直し（POST /api/videos/{id}/probe
-// が積むジョブ）でも書き直される。
 func TestProbeJobWritesAndRewritesTranscodeProbe(t *testing.T) {
 	db, videoID := failedVideoFixture(t)
 	ctx := context.Background()
@@ -67,7 +64,6 @@ func TestApplyProbeWritesTranscodeProbeInSameTransaction(t *testing.T) {
 	ctx := context.Background()
 	source := domain.FileStamp{SizeBytes: 2048, ModTimeNs: 42}
 
-	// 使える映像 stream の無い動画では行を書かない。
 	if err := db.Ingest().ApplyProbe(ctx, videoID, domain.Probe{DurationMs: 1000, AudioCodec: "mp3", Source: source}, domain.Playability{}); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +79,6 @@ func TestApplyProbeWritesTranscodeProbeInSameTransaction(t *testing.T) {
 		t.Fatalf("stored = %+v (usable=%v)", got, ok)
 	}
 
-	// 行の書き込みが失敗すれば、videos の更新も残らない。
 	if _, err := db.sql.Exec(`create trigger fail_transcode_probe before update on video_transcode_probes
 		begin select raise(abort, 'boom'); end`); err != nil {
 		t.Fatal(err)
@@ -100,7 +95,6 @@ func TestApplyProbeWritesTranscodeProbeInSameTransaction(t *testing.T) {
 	}
 }
 
-// 所在が変わって古くなったジョブの結果は、videos と同じく解析情報も書かない。
 func TestStaleProbeJobDoesNotWriteTranscodeProbe(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -124,8 +118,6 @@ func TestStaleProbeJobDoesNotWriteTranscodeProbe(t *testing.T) {
 	}
 }
 
-// SaveTranscodeProbe は upsert で、後に書いた値が残る。版が違う行と JSON が読めない行は
-// 「無い」と読まれ、動画の行が消えると連鎖で消える。
 func TestSaveTranscodeProbeUpsertsAndReadsAsMissingWhenStale(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()

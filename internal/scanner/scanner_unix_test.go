@@ -12,8 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 列挙の時点で通常のファイルでない対象（名前付きパイプ）は、途中で変わったのではなく
-// unreadable として報告する。
+// A named pipe discovered during enumeration is unreadable, not changed during import.
 func TestScanReportsNonRegularFileAsUnreadable(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a"})
 	pipe := filepath.Join(root, "pipe.mp4")

@@ -40,18 +40,16 @@ import {
   versionDetailsText,
 } from "../versions/VersionDetails";
 
-/** VersionsNavigation は、一覧の行から別のバージョンへ移るときに渡す値である。 */
 export interface VersionsNavigation {
-  /** 今の画面の戻り先。移った先の戻り先も変えない。 */
+  /** Preserve the current return destination. */
   backTo: string;
-  /** 再生中（または見終えた後）なら true。移った先で再生を続ける。 */
+  /** Continue playback on the destination when playing or ended. */
   autoplay: boolean;
 }
 
 type ListState =
   { kind: "loading" } | { kind: "ready"; versions: VideoVersions } | { kind: "failed" };
 
-/** failureIsStale は、別のタブで先に集まりが変わった失敗（取り直しが要る）かを返す。 */
 function failureIsStale(error: unknown): boolean {
   return (
     error instanceof RequestFailed &&
@@ -59,13 +57,7 @@ function failureIsStale(error: unknown): boolean {
   );
 }
 
-/**
- * VersionsFact は、集まり（同じ動画の別バージョン）に属する動画の情報の行に置く「3 versions」の
- * 項目と、押すと開くバージョンの一覧である。
- *
- * 一覧は開くたびに取り直す。行を押すとそのバージョンのページへ移る。所有者は行のメニューで
- * 代表を替え、集まりから外せる。失敗は一覧の下の 1 行で伝え、浮き出しは閉じない。
- */
+/** Reload versions on every open; keep the popover open and report mutation failures inline. */
 export default function VersionsFact({
   video,
   count,
@@ -76,15 +68,13 @@ export default function VersionsFact({
   onDissolved,
 }: {
   video: Video;
-  /** 情報の行に出す本数（`Video.versions.count`）。 */
   count: number;
   owner: boolean;
   navigation: VersionsNavigation;
-  /** 今の動画を外した応答で、手元の動画を差し替えさせる。 */
+  /** Replace local video data after removing the current version. */
   onReplace: (video: Video, mark: DetailMark) => void;
-  /** 動画を取り直させる。 */
   onRefresh: () => void;
-  /** 浮き出しが閉じて項目が消えるとき、フォーカスの行き先を呼び出し側に決めさせる。 */
+  /** Let the caller choose focus when closing also removes the trigger. */
   onDissolved: () => void;
 }) {
   const toast = useToast();
@@ -94,13 +84,12 @@ export default function VersionsFact({
   const [pending, setPending] = useState<ReadonlySet<number>>(() => new Set());
   const [failure, setFailure] = useState<UiText | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
-  // 応答が届いた時点の一覧。続けて外した行の応答が、前の行を消した結果の上に重なるようにする。
+  // Use the latest list so consecutive removal responses compose.
   const latestList = useRef(list);
   latestList.current = list;
   const request = useRef<AbortController | null>(null);
-  // 開いて最初に一覧が届いたとき、今の動画以外の最初の行へフォーカスを移す。
   const focusFirst = useRef(false);
-  // 閉じたあと項目が消えるとき、フォーカスを項目へ戻さない。
+  // Do not return focus to a trigger that is about to disappear.
   const dissolving = useRef(false);
   const alive = useRef(true);
   useEffect(() => {
@@ -111,9 +100,7 @@ export default function VersionsFact({
     };
   }, []);
 
-  // 取れた一覧が 2 本未満なら、開いた後に集まりが変わっている（別のタブで外した、見せてよい
-  // 範囲が変わった）。項目の本数は古い `Video.versions.count` なので、閉じて動画を取り直し、
-  // 項目を消す。
+  // Fewer than two versions means membership changed; close and refresh the stale count.
   const onDwindled = useRef<() => void>(() => undefined);
 
   const load = useCallback(
@@ -139,7 +126,6 @@ export default function VersionsFact({
     [video.id],
   );
 
-  // 開いている間に動画を取り直したら（`video` の知らせなど）、一覧も取り直す。
   const loadedFor = useRef<Video | null>(null);
   useEffect(() => {
     if (!open) {
@@ -200,7 +186,6 @@ export default function VersionsFact({
       if (!alive.current) return;
       done();
       setFailure(t.player.versions.changeFailed(errorText(error)));
-      // 動画を取り直すと、開いている一覧も取り直す（上の effect）。
       if (failureIsStale(error)) onRefresh();
     };
 
@@ -236,7 +221,7 @@ export default function VersionsFact({
         onRefresh();
         return;
       }
-      // 開いたままなら、消した行の位置に来た行（無ければ前の行）へフォーカスを移す。
+      // After removal, focus the replacement row or its predecessor.
       requestAnimationFrame(() => {
         const rows = listRef.current?.querySelectorAll<HTMLElement>(":scope > li");
         if (rows === undefined || rows.length === 0) return;
@@ -269,7 +254,6 @@ export default function VersionsFact({
           aria-labelledby={headingId}
           className="w-versions-popover gap-0 overflow-hidden p-0"
           onOpenAutoFocus={(event) => {
-            // 一覧が届いてから最初の別のバージョンの行へ移す。
             event.preventDefault();
           }}
           onCloseAutoFocus={(event) => {
@@ -354,7 +338,7 @@ function VersionRow({
   onRemove: () => void;
 }) {
   const details = versionDetails(item);
-  // 所有者は行の title で絶対パスを読める。ゲストは相対の置き場所だけ
+  // Owners can inspect absolute paths; guests see only relative locations.
   //
   const fullPlace = owner ? (item.location?.path ?? details.place) : details.place;
   const detailsTitle = versionDetailsText(details, " · ", fullPlace);
@@ -392,7 +376,7 @@ function VersionRow({
           to={`/videos/${String(item.id)}`}
           state={{ from: navigation.backTo, autoplay: navigation.autoplay }}
           aria-label={t.player.versions.play(item.title, spoken)}
-          // 浮き出しの端で輪が切れないよう、輪は内側に描く。
+          // Inset the focus ring to prevent clipping at the popover edge.
           className="flex min-w-0 flex-1 flex-col gap-0.5 py-2 pl-3 transition-colors hover:bg-accent focus-visible:-outline-offset-2"
         >
           {text}
@@ -426,7 +410,7 @@ function RowActions({
 }) {
   const label = t.player.versions.more(title);
   const [menuOpen, setMenuOpen] = useState(false);
-  // 送っている間も同じボタンを残し、フォーカスを失わせない。メニューは開かない。
+  // Keep the same button while submitting to retain focus without reopening its menu.
   return (
     <DropdownMenu
       open={menuOpen && !pending}

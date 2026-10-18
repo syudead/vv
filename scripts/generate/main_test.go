@@ -30,8 +30,7 @@ func TestChangedFindsStaleGeneratedFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 生成し直しても内容が同じなら差分ではない。手元で openapi.yaml を
-	// 編集中でも、生成物と整合していれば task check は通る必要がある。
+	// Uncommitted schema edits are valid when generated content already matches.
 	writeFile(t, root, "a.gen", "one")
 	after, err := snapshot(root, paths)
 	if err != nil {
@@ -70,9 +69,7 @@ func TestSnapshotTreatsMissingFileAsChange(t *testing.T) {
 	}
 }
 
-// TestGenerateStopsAtTheFirstFailure は、Go 側の生成に失敗したら
-// TypeScript 側を呼ばないことを確かめる。片方だけ新しい生成物が残ると、
-// 差分確認がどちらの原因で落ちたのか分からなくなる。
+// Stop at the first failure to avoid partially updated bindings and ambiguous stale-output errors.
 func TestGenerateStopsAtTheFirstFailure(t *testing.T) {
 	calls := []string{}
 	failing := func(dir string, name string, args ...string) error {

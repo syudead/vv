@@ -4,11 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { controlBarMenuOpen } from "./playerControls";
 import { registerSubtitlesButton, subtitlesButtonName } from "./subtitleMenu";
 
-/**
- * 再生速度のメニューが開いているかを、本物の video.js が作る DOM の印で確かめる。
- * 画質のメニューも同じ印で見分ける（qualityMenu.test.ts）。
- * video.js を上げて印の名前が変わると、ここが落ちて気付ける（Esc で画面を閉じてしまう）。
- */
+/** Verify video.js DOM markers so dependency changes cannot make Escape unexpectedly close the page. */
 describe("controlBarMenuOpen", () => {
   let player: ReturnType<typeof videojs> | undefined;
 

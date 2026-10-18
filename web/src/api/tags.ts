@@ -3,17 +3,13 @@ import { clearListSnapshot } from "./listSnapshot";
 import { nextVideoTagsSequence, recordAppliedVideoTags } from "./videoTagsEvents";
 import type { components } from "./gen/openapi";
 
-// 型は api/openapi.yaml からの生成物を使う。
 export type Tag = components["schemas"]["Tag"];
 export type TagRef = components["schemas"]["TagRef"];
 export type VideoTagsResponse = components["schemas"]["VideoTagsResponse"];
 export type VideoTagsSummary = components["schemas"]["VideoTagsSummary"];
 export type RejectedTagNameList = components["schemas"]["RejectedTagNameList"];
 export type TagBatchAction = components["schemas"]["TagBatchRequest"]["action"];
-/**
- * TagBatchCommand は `batchTags` に渡す操作である。`setKind` だけが付ける種類の `kindId` を持ち、
- * ほかの操作は `kindId` を送らない。
- */
+/** Only setKind sends kindId. */
 export type TagBatchCommand =
   Exclude<TagBatchAction, "setKind"> | { action: "setKind"; kindId: number };
 export type TagBatchResponse = components["schemas"]["TagBatchResponse"];
@@ -23,61 +19,33 @@ export type TagMergeResponse = components["schemas"]["TagMergeResponse"];
 export type TagList = components["schemas"]["TagList"];
 export type TagSort = components["schemas"]["TagSort"];
 
-/**
- * maxVideoTagsSelection は `POST /api/video-tags` の `videoIds` に許される上限。この要求は全部か無しか（1件でも上限を超えると
- * 400 になり、何も変わらない）なので、選択がこれを超えるときは画面側で
- * 静かに分割して送らず、選択バーの一括操作を disabled のままにする
- * （web/src/library/SelectionBar.tsx、docs/design-docs/library-ui.md）。
- */
+/** Batch updates are atomic: disable oversized selections instead of silently splitting requests. */
 export const maxVideoTagsSelection = 20000;
 
-/**
- * maxTagBatch は `POST /api/tags/batch`・`POST /api/tags/impact` の `ids` に許される上限。超えると 400 `too_many_tags` に
- * なるので、画面は読み込んだ行がこれを超えるときは先頭のチェック（読み込んだものを
- * すべて選ぶ）だけを、選んだ数がこれを超えるときはまとめての操作を disabled にする。
- */
+/** Disable Select all or batch actions when their respective counts exceed the API limit. */
 export const maxTagBatch = 20000;
 
-/**
- * listTags はタグを名前の自然順で取得する（本数0を含む）。
- *
- * 呼び出し元ごとの AbortSignal は受け取らない。この要求は複数の呼び出し元で
- * 共有するので（下の共有の保持）、1人が打ち切っても他の待ち手を巻き込んで
- * はならない（B2）。
- */
+/** Shared reads accept no per-caller AbortSignal so one caller cannot cancel other waiters. */
 function listTags(): Promise<Tag[]> {
   return request<TagList>("/api/tags").then((page) => page.items);
 }
 
-/**
- * tagPageLimit はタグ管理画面が 1 回に読むタグの数。
- */
 export const tagPageLimit = 100;
 
-/** TagPageQuery は `listTagPage` の条件である。 */
 export interface TagPageQuery {
-  /** 検索語。サーバーが照合形にして名前とシノニムに部分一致させる。空なら絞らない。 */
+  /** Match normalized names and synonyms; empty means no filter. */
   q?: string;
-  /** 仮のタグだけにする。 */
   tentative?: boolean;
-  /** 本数 0 のタグだけにする。 */
   unused?: boolean;
-  /**
-   * 種類で絞る。種類の id（正の整数の文字列）か、種類の無いタグの `none`。
-   */
+  /** Positive ID string, or none for tags without a kind. */
   kind?: string;
   sort?: TagSort;
-  /** 前回の応答の `nextCursor`。同じ条件で続けて使う。 */
+  /** Reuse nextCursor only with identical conditions. */
   cursor?: string;
-  /** 1 ページの件数（1〜200）。既定は `tagPageLimit`。 */
   limit?: number;
 }
 
-/**
- * listTagPage は条件に合うタグを 1 ページ読む（`GET /api/tags`）。
- * 検索・絞り込み・並び順はサーバーが全部のタグに掛ける。共有の保持（`getTags`）には触れず、
- * 呼び手ごとの `AbortSignal` で打ち切れる（条件を変えたら前の要求を打ち切るため）。
- */
+/** Server-side filtered pagination does not touch the shared cache and accepts caller-owned cancellation. */
 export function listTagPage(query: TagPageQuery, signal?: AbortSignal): Promise<TagList> {
   const params = new URLSearchParams();
   if (query.q !== undefined && query.q !== "") params.set("q", query.q);
@@ -91,67 +59,29 @@ export function listTagPage(query: TagPageQuery, signal?: AbortSignal): Promise<
   return request<TagList>(`/api/tags?${params.toString()}`, { signal });
 }
 
-/**
- * タグの一覧の共有の保持。
- *
- * 候補（combobox）・絞り込み中のタグの確かめ・管理画面が同じ控えを読む。画面ごとに
- * `GET /api/tags` を持つと、同じタブの中で「管理画面で作ったタグが開いたままの
- * 再生画面の候補に出ない」食い違いが起きる。**直近の1回分**だけを持ち、
- * 画面が開くとき・タグを変えたとき・`tag_not_found` か `missingTagIds` を受けたときに
- * `refreshTags` で取り直す（取り直しの呼び出し自体は、それぞれを扱う画面の単位で行う）。
- */
+/** Share the latest list so candidates and filters observe mutations consistently across mounted screens. */
 type TagsListener = (tags: Tag[]) => void;
 
 let held: Tag[] | undefined;
-/** generation は最後に始めた取得の通し番号。取得のたびに増える。 */
 let generation = 0;
-/**
- * latestFetch は、今の generation を持つ取得（進行中、または直近に held へ
- * 反映した取得）の Promise を指す。追い越された取得（下の startFetch の
- * stale 分岐）が「自分より新しい、今まさに勝っている取得」の結果を待つのに使う
- * （Devin の指摘: 追い越された取得は自分の――まだ変更を映していない――
- * 応答をそのまま返してはならない）。
- */
+/** Superseded requests await the winning fetch rather than return stale data, even before held exists. */
 let latestFetch: Promise<Tag[]> | undefined;
-/** pendingGet は getTags 同士（held がまだ無いときの同時呼び出し）だけをまとめる。 */
+/** Coalesce concurrent getTags calls only while the cache is empty. */
 let pendingGet: Promise<Tag[]> | undefined;
-/**
- * droppedGeneration は、`dropHeldTags` が保持を捨てた時点の generation である。これ以下の
- * 世代の取得（捨てる前に始まり、変更を映していないかもしれない）は、届いても `held` に
- * 入れない。
- */
+/** Requests at or before this invalidation generation must not repopulate held. */
 let droppedGeneration = 0;
-/** latestPending は `latestFetch` がまだ届いていないかである。 */
 let latestPending = false;
-/** heldAt は `held` を最後に取得で埋めた時刻（`Date.now()`）である。 */
 let heldAt = 0;
 const listeners = new Set<TagsListener>();
 
-/**
- * revalidateWindowMs は、画面を開いたときの取り直し（`revalidateTags`）で、直前に届いた
- * 一覧をそのまま使う時間である。同じ画面の部品がそれぞれ開いたときに取り直すと、
- * 同じ取得が続けて何本も送られる（issue 674）。
- */
+/** Reuse recent lists on mount to avoid redundant reads from components opening together. */
 const revalidateWindowMs = 2000;
 
 function notify(tags: Tag[]): void {
   for (const listener of listeners) listener(tags);
 }
 
-/**
- * startFetch は新しい取得を1つ必ず始める。呼んだ時点の generation より後で
- * 別の取得が始まっていれば（応答が届く順にかかわらず）、この結果は古いので
- * `held` に反映しない（B1）。取り直しのたびに独立した取得になるので、先に
- * 始まっていた取得（進行中の GET）を巻き込む・巻き込まれることもない（B1・B2）。
- *
- * 追い越された取得は、自分の（まだその後の変更を映していない）応答を
- * 呼び出し元へそのまま返さない。`held` がまだ一度も埋まっていない最初の
- * 取得の間は `held` が無いので、それで代えると古い応答がそのまま漏れて
- * しまう（Devin の指摘）。代わりに、そのとき勝っている最新の取得
- * （`latestFetch`）の結果を待って、それを返す。勝っている取得自身がさらに
- * 追い越されていれば、そちらも同じように次を待つので、最終的には常に
- * 「実際に held を更新した取得」の結果に行き着く。
- */
+/** Always start independently; superseded requests follow the winning fetch until one actually updates held. Never return an obsolete response directly. */
 function startFetch(): Promise<Tag[]> {
   generation += 1;
   const myGeneration = generation;
@@ -159,14 +89,10 @@ function startFetch(): Promise<Tag[]> {
   const fetchPromise: Promise<Tag[]> = listTags().then((tags): Tag[] | Promise<Tag[]> => {
     if (myGeneration === generation) latestPending = false;
     if (myGeneration !== generation) {
-      // startFetch は generation を上げた直後に必ず latestFetch を自分の
-      // Promise へ差し替えるので、ここに来た時点で latestFetch は必ず
-      // 埋まっている（自分より後の呼び出しが少なくとも1つある）。
+      // A newer startFetch installs latestFetch immediately after advancing generation.
       return latestFetch!;
     }
-    // 保持を捨てる前に始まった取得は、変更を映していないかもしれない。待っている
-    // 呼び手（シノニムの窓の統合元の確かめなど）へ古い一覧を返さず、取り直した結果を
-    // 返す（取り直しが届けば、それが `held` に入る）。
+    // Pre-invalidation reads must return a fresh result to waiting callers, not their obsolete response.
     if (myGeneration <= droppedGeneration) return startFetch();
     held = tags;
     heldAt = Date.now();
@@ -180,16 +106,12 @@ function startFetch(): Promise<Tag[]> {
   return fetchPromise;
 }
 
-/**
- * getTags は共有の保持を返す。すでに取得済みならそのまま返し、まだなければ
- * `GET /api/tags` を送る。held が無い間に複数箇所から呼ばれても、その分だけは
- * 同じ1つの要求にまとめる（`refreshTags` の取り直しはまとめない。B1）。
- */
+/** Reuse held or coalesce initial reads; explicit refreshTags calls remain independent. */
 export function getTags(): Promise<Tag[]> {
   if (held !== undefined) return Promise.resolve(held);
   if (pendingGet === undefined) {
     const fetching: Promise<Tag[]> = startFetch().finally(() => {
-      // `dropHeldTags` のあとに始まった別の取得のまとめは外さない。
+      // Do not clear coalescing state for a request started after invalidation.
       if (pendingGet === fetching) pendingGet = undefined;
     });
     pendingGet = fetching;
@@ -197,27 +119,16 @@ export function getTags(): Promise<Tag[]> {
   return pendingGet;
 }
 
-/** currentTags はまだ取得していなければ undefined を返す、同期の読み出しである。 */
 export function currentTags(): Tag[] | undefined {
   return held;
 }
 
-/**
- * refreshTags はサーバーから必ず新しく取り直し、共有の保持を差し替えて購読者に
- * 知らせる。進行中の（`getTags` などによる）取得があっても、それには乗らず
- * 別の要求を送る（B1）。
- */
+/** Always start a new request, even when another read is pending. */
 export function refreshTags(): Promise<Tag[]> {
   return startFetch();
 }
 
-/**
- * revalidateTags は、画面や部品を開いたときに共有の一覧を確かめ直す。取得の途中ならその
- * 結果を待ち、直前（`revalidateWindowMs` 以内）に届いた一覧があればそれを返し、どちらでも
- * なければ `refreshTags` と同じく取り直す。タグを変えた後の取り直しは、変更の後に始めた
- * 取得が要るので `refreshTags` を使う（変更の後の `refreshTags` は新しい取得を始めるので、
- * ここで待つ途中の取得も変更の後のものになる）。
- */
+/** Reuse pending/recent reads on mount; after mutations use refreshTags so the request starts after the change. */
 export function revalidateTags(): Promise<Tag[]> {
   if (latestPending && latestFetch !== undefined) return latestFetch;
   if (held !== undefined && Date.now() - heldAt < revalidateWindowMs) {
@@ -226,7 +137,6 @@ export function revalidateTags(): Promise<Tag[]> {
   return startFetch();
 }
 
-/** subscribeTags は共有の保持が取り直されるたびに呼ばれる。戻り値で購読をやめる。 */
 export function subscribeTags(listener: TagsListener): () => void {
   listeners.add(listener);
   return () => {
@@ -234,12 +144,7 @@ export function subscribeTags(listener: TagsListener): () => void {
   };
 }
 
-/**
- * __resetTagsForTest はテストだけで使う。モジュールは1つのタブに1つの共有の
- * 保持を持つ前提で、通常は画面が終わるまでリセットしない。Vitest はテスト
- * ファイル単位でモジュールを使い回すので、テストどうしで保持が残らないように
- * ここでだけ明示的に空へ戻す（N5）。
- */
+/** Reset shared state between tests only; production retains it for the tab's lifetime. */
 export function __resetTagsForTest(): void {
   held = undefined;
   generation = 0;
@@ -251,11 +156,7 @@ export function __resetTagsForTest(): void {
   listeners.clear();
 }
 
-/**
- * refreshOnStaleTagError は、古いタグを使った操作の誤り（`tag_not_found`・
- * `tag_merge_required`・`tag_not_tentative`）を受けたときに共有の一覧を取り直す（別のタブでの 削除・改名・統合・確定に、その場で気付けるようにする。docs/design-docs/catalog-organization.md/）。取り直しの完了は待たず、失敗しても揉み消して
- * 未処理の reject を残さない（B2）。誤りは常にそのまま投げ直す。
- */
+/** Refresh stale-tag errors asynchronously without unhandled rejections; always rethrow the original error. */
 function refreshOnStaleTagError(error: unknown): never {
   if (
     error instanceof RequestFailed &&
@@ -268,36 +169,17 @@ function refreshOnStaleTagError(error: unknown): never {
   throw error;
 }
 
-/**
- * afterTagCreated は、タグを新しく作る操作が成功した後に呼ぶ。作ったタグは
- * 同じ名前の祖先フォルダの下にある既存の動画にもすぐ付く（017 の）ので、改名などと同じく動画一覧の控えを捨て、共有の
- * タグの一覧も取り直す（Structural Decisions 7・8）。
- */
+/** New tags can match existing ancestor folders, so invalidate video snapshots as well as the tag cache. */
 function afterTagCreated(): void {
   afterTagChanged();
 }
 
-/**
- * afterTagsAppliedByName は、名前のタグを動画に付ける別の経路（作品情報の取得の反映。
- * docs/design-docs/work-info-plugins.md）が成功した後に呼ぶ。名前に当たる
- * タグが無ければサーバーが作るので、`attachVideoTagByName` で作られたときと同じく
- * 動画一覧の控えを捨て、共有のタグの一覧を取り直す（候補と本数を新しく保つ）。
- */
+/** Name-based application may create tags; refresh counts/candidates and invalidate snapshots for new folder-derived assignments. */
 export function afterTagsAppliedByName(): void {
   afterTagCreated();
 }
 
-/**
- * afterTagChanged は、既存のタグを書き換える操作（改名・削除・統合・シノニム
- * の変更・まとめての操作）が成功した後に呼ぶ。動画一覧の控え（`listSnapshot`）は、
- * 破棄して読み直す（メディアフォルダの変更と同じ扱い。Structural Decisions 7）。
- *
- * 共有のタグの一覧は、購読者（`subscribeTags`）がいれば今までどおり取り直し
- * （Structural Decisions 8）、いなければ取り直さずに `held` を捨てて次の `getTags` に
- * 取らせる。
- * タグ管理画面は購読しないので、そこでの操作のたびに全件を取り直さない。どちらも
- * 完了を待たなくてよい。
- */
+/** Invalidate snapshots and refresh tags only with subscribers; otherwise defer reads until the next getTags. */
 function afterTagChanged(): void {
   clearListSnapshot();
   if (listeners.size > 0) {
@@ -307,27 +189,18 @@ function afterTagChanged(): void {
   dropHeldTags();
 }
 
-/**
- * dropHeldTags は共有の保持を捨てる。進行中の取得は変更の前に始まったものなので、
- * 届いても `held` に入れず（`droppedGeneration`）、その取得を待つ呼び手には取り直した
- * 結果を返す（`startFetch`）。進行中の取得が無ければ何も送らず、次の `getTags` が取り直す。
- */
+/** Prevent pre-invalidation requests from repopulating held; their callers receive fresh results instead. */
 function dropHeldTags(): void {
   held = undefined;
   pendingGet = undefined;
   droppedGeneration = generation;
 }
 
-/**
- * refreshTagCounts は、付け外しで本数（`videoCount`）が変わったかもしれない
- * ときに呼ぶ。動画一覧やその控えには影響しないので `clearListSnapshot` は
- * 呼ばない。完了は待たず、失敗しても揉み消す（B2）。
- */
+/** Refresh counts without invalidating video snapshots; ignore background refresh failures. */
 function refreshTagCounts(): void {
   refreshTags().catch(() => undefined);
 }
 
-/** createTag はタグを1件作る。 */
 export async function createTag(name: string, signal?: AbortSignal): Promise<Tag> {
   const created = await request<Tag>("/api/tags", {
     method: "POST",
@@ -339,7 +212,6 @@ export async function createTag(name: string, signal?: AbortSignal): Promise<Tag
   return created;
 }
 
-/** renameTag はタグの元の名前を書き換える。今と同じ名前なら何も変えずに今の状態が返る。 */
 export async function renameTag(
   id: number,
   name: string,
@@ -355,7 +227,6 @@ export async function renameTag(
   return updated;
 }
 
-/** deleteTag はタグを1件削除する。 */
 export async function deleteTag(id: number, signal?: AbortSignal): Promise<void> {
   const response = await apiFetch(`/api/tags/${String(id)}`, {
     method: "DELETE",
@@ -367,11 +238,7 @@ export async function deleteTag(id: number, signal?: AbortSignal): Promise<void>
   afterTagChanged();
 }
 
-/**
- * mergeTag は sourceIds のタグを id のタグへ統合する（1 件の統合も `[sourceId]` で送る）。
- * 返るのは統合先の更新後のタグ（`tag`）と、もう無かった統合元（`notFoundIds`）である。統合元がすべて無かったときも
- * 成功で、`tag` は変わらない統合先になる。
- */
+/** Missing sources are reported but do not fail merging; all-missing sources leave the target unchanged. */
 export async function mergeTag(
   id: number,
   sourceIds: readonly number[],
@@ -387,13 +254,7 @@ export async function mergeTag(
   return merged;
 }
 
-/**
- * addTagSynonym は名前を id のタグのシノニムにする。
- *
- * 名前が別のタグ S の元の名前で、確認をとって承諾したタグの id を `mergeTagId` に
- * 渡すと、S を id へ統合する（承諾していなければ渡さない）。承諾していないタグと
- * 違えば 409 `tag_merge_required` になる。
- */
+/** Supply mergeTagId only after confirming the conflicting tag; unexpected conflicts return tag_merge_required. */
 export async function addTagSynonym(
   id: number,
   name: string,
@@ -410,7 +271,6 @@ export async function addTagSynonym(
   return updated;
 }
 
-/** removeTagSynonym は name を id のタグのシノニムから外す。 */
 export async function removeTagSynonym(
   id: number,
   name: string,
@@ -430,10 +290,7 @@ export async function removeTagSynonym(
   afterTagChanged();
 }
 
-/**
- * confirmTag は仮のタグを確定する（POST /api/tags/{id}/confirm、
- * docs/design-docs/catalog-organization.md）。既に確定していても今の状態が返る。
- */
+/** Confirming an already confirmed tag returns its current state. */
 export async function confirmTag(id: number, signal?: AbortSignal): Promise<Tag> {
   const confirmed = await request<Tag>(`/api/tags/${String(id)}/confirm`, {
     method: "POST",
@@ -443,12 +300,7 @@ export async function confirmTag(id: number, signal?: AbortSignal): Promise<Tag>
   return confirmed;
 }
 
-/**
- * rejectTag は仮のタグを却下する（POST /api/tags/{id}/reject）。
- * タグは消え、付いていた動画から外れ、名前が却下した名前の一覧に入る。確定したタグは
- * 409 `tag_not_tentative` になる。却下した名前の一覧は呼び出し側が
- * `listRejectedTagNamePage` で取り直す。
- */
+/** Rejecting deletes the tag and records its name; confirmed tags fail. Callers refresh the rejected-name list. */
 export async function rejectTag(id: number, signal?: AbortSignal): Promise<void> {
   const response = await apiFetch(`/api/tags/${String(id)}/reject`, {
     method: "POST",
@@ -460,13 +312,7 @@ export async function rejectTag(id: number, signal?: AbortSignal): Promise<void>
   afterTagChanged();
 }
 
-/**
- * batchTags は複数のタグをまとめて確定・却下・削除し、種類を付け外しする（POST /api/tags/batch、
- * docs/design-docs/catalog-organization.md、docs/design-docs/catalog-organization.md）。
- * `setKind` は `{ action: "setKind", kindId }` で渡す。働かない種類・無いタグは
- * サーバーが飛ばし、`notApplicableIds`・`notFoundIds` で返す。成功したら、1 件の操作と同じく
- * `afterTagChanged` を 1 回呼ぶ。却下のあとの却下した名前の一覧は呼び出し側が取り直す。
- */
+/** Report skipped/missing IDs and invalidate caches once after success; callers refresh rejected names after rejection. */
 export async function batchTags(
   command: TagBatchCommand,
   ids: readonly number[],
@@ -483,11 +329,7 @@ export async function batchTags(
   return result;
 }
 
-/**
- * tagImpact はまとめての却下・削除・統合の確認に出す、働くタグの数と影響を受ける動画の
- * 本数（重複なし）を返す（POST /api/tags/impact）。何も変えない
- * ので、共有の保持には触れない。
- */
+/** Read-only impact calculation; do not invalidate shared state. */
 export function tagImpact(
   action: TagImpactAction,
   ids: readonly number[],
@@ -501,13 +343,7 @@ export function tagImpact(
   });
 }
 
-/**
- * listRejectedTagNamePage は却下した名前の 1 ページを名前の自然順で返す
- * （GET /api/tags/rejected-names、docs/design-docs/catalog-organization.md）。
- * `cursor` は前のページの `nextCursor`、`limit` は 1 ページの件数（1〜200）。省くとサーバーの
- * 既定（先頭から 100 件）になる。応答の `total` は却下した名前の全部の数で、`nextCursor` は
- * 続きがあるときだけ入る。共有の保持には触れない。
- */
+/** Paginated rejected names bypass the shared cache. */
 export function listRejectedTagNamePage(
   cursor?: string,
   limit?: number,
@@ -523,11 +359,7 @@ export function listRejectedTagNamePage(
   );
 }
 
-/**
- * forgetRejectedTagName は名前を却下した名前の一覧から外す
- * （DELETE /api/tags/rejected-names?name=…）。一覧に無い名前でも
- * 成功する。外した名前は、次に自動で付けたとき再び仮のタグとして作られる。
- */
+/** Forgetting absent names succeeds; future automatic assignments may recreate the tentative tag. */
 export async function forgetRejectedTagName(
   name: string,
   signal?: AbortSignal,
@@ -542,19 +374,13 @@ export async function forgetRejectedTagName(
   }
 }
 
-/**
- * updateVideoTags は動画へタグを付ける・外す（POST /api/video-tags）。成功したら、読み込み済みの一覧の項目と
- * listSnapshot の控えの tags へ結果を反映する通知を送る（Structural
- * Decisions 7）。`tag_not_found` を受けたときは共有のタグの一覧も取り直す。
- */
 async function updateVideoTags(
   videoIds: readonly number[],
   action: "add" | "remove",
   tag: { id: number } | { name: string },
   signal?: AbortSignal,
 ): Promise<VideoTagsResponse> {
-  // 通し番号は送信の直前に払い出す。応答が届く順は送った順と限らないので、
-  // 反映するときにこの番号で古い応答を捨てる（N1）。
+  // Allocate before sending so out-of-order responses can be rejected by sequence.
   const sequence = nextVideoTagsSequence();
   const result = await request<VideoTagsResponse>("/api/video-tags", {
     method: "POST",
@@ -566,11 +392,7 @@ async function updateVideoTags(
   return result;
 }
 
-/**
- * attachVideoTagByID は id で指定したタグを videoIds の動画へ付ける。
- * 再生画面の1本も、選択バーの複数本も、これを使う。本数が変わるので、
- * 共有のタグの一覧も取り直す（自己レビュー B4／(5)。候補の本数を新しく保つ）。
- */
+/** Refresh shared tag counts after successful assignment. */
 export function attachVideoTagByID(
   videoIds: readonly number[],
   tagId: number,
@@ -582,14 +404,7 @@ export function attachVideoTagByID(
   });
 }
 
-/**
- * attachVideoTagByName は名前でタグを付ける。名前はシノニムを含めて引き、
- * 無ければ作る。新しいタグが作られているかも
- * しれないので、共有のタグの一覧を取り直す
- * （issue 268 の受け入れ条件1「別の動画の再生画面でタグを追加しようとすると、
- * そのタグが候補に出る」）。送る前の共有の一覧に無いタグが返ったときは
- * 作られたとみなし、`createTag` と同じく動画一覧の控えも捨てる（作った タグはフォルダ名から既存の動画にも付くため）。
- */
+/** Resolve aliases or create names; newly created tags also invalidate snapshots because folder matching can affect other videos. */
 export function attachVideoTagByName(
   videoIds: readonly number[],
   name: string,
@@ -606,11 +421,7 @@ export function attachVideoTagByName(
   });
 }
 
-/**
- * detachVideoTag は id で指定したタグを videoIds の動画から外す。外すときは
- * 常に id で指定する（画面が外す候補はいつも付いているタグで、id を 持っているため）。本数が変わるので、共有の
- * タグの一覧も取り直す。
- */
+/** Remove by ID and refresh shared counts. */
 export function detachVideoTag(
   videoIds: readonly number[],
   tagId: number,
@@ -622,10 +433,6 @@ export function detachVideoTag(
   });
 }
 
-/**
- * summarizeVideoTags は選んだ動画に付いたタグの要約を返す
- * （POST /api/video-tags/summary）。
- */
 export function summarizeVideoTags(
   videoIds: readonly number[],
   signal?: AbortSignal,

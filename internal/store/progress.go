@@ -11,23 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// SaveProgress は再生位置を記録し、記録後の状態を返す。
-//
-// 鍵は content_key（videos.id ではない）。動画の行が消えても記録が残り、
-// 同じ内容を置き直せば再生位置が戻る。
-// videos への外部キーを張らないのは、参照整合性より利用者データの保全を
-// 優先するためである。ファイルを一時的に外しただけで再生位置が消えると、
-// 利用者から見て復旧不能な損失になる。
-//
-// 競合は最後の書き込みが残る（upsert）。複数のタブ・端末での同時再生は
-// この単純化で割り切る。
-//
-// play があって ContentKey が空でないときは、同じ取引で視聴履歴を 1 件書く。playback_id が一意なので、同じ視聴の 2 回目以降の
-// 保存は何も足さず、時刻と題名は最初の保存のものに留まる。時刻はサーバーの現在時刻
-// （Unix ミリ秒）で、クライアントの時計は使わない。
-//
-// 保存で domain.WatchState が変わるときだけ、確定後に domain.SmartFoldersChanged を発行する。再生中は数秒ごとに保存されるので、視聴状態の
-// 変わらない保存は知らせない。
+// SaveProgress persists by content key without a video foreign key, using last-write-wins; record history once per playback and notify only watch-state changes.
 func (p *PlaybackStore) SaveProgress(
 	ctx context.Context, contentKey string, progress domain.Progress, play *domain.Play,
 ) (domain.Progress, error) {
@@ -69,7 +53,6 @@ func (p *PlaybackStore) SaveProgress(
 		}
 	}
 
-	// 視聴状態が変わったときだけ、スマートフォルダの一致も変わりうる。
 	if err := p.db.commitMatchChangeIf(ctx, tx, before != domain.ClassifyWatch(&progress)); err != nil {
 		return domain.Progress{}, fmt.Errorf("cannot save the playback position (%s): %w", contentKey, err)
 	}
@@ -78,7 +61,6 @@ func (p *PlaybackStore) SaveProgress(
 	return progress, nil
 }
 
-// storedWatchState は取引 tx の中で、content_key の今の記録の視聴状態を返す。記録が無ければ未視聴である。
 func storedWatchState(ctx context.Context, tx *sql.Tx, contentKey string) (domain.WatchState, error) {
 	var stored domain.Progress
 	var completed int
@@ -94,7 +76,6 @@ func storedWatchState(ctx context.Context, tx *sql.Tx, contentKey string) (domai
 	return domain.ClassifyWatch(&stored), nil
 }
 
-// Progress は再生位置を1件返す。記録が無ければ ErrNotFound を返す。
 func (p *PlaybackStore) Progress(ctx context.Context, contentKey string) (domain.Progress, error) {
 	var (
 		progress   domain.Progress
@@ -120,12 +101,7 @@ func (p *PlaybackStore) Progress(ctx context.Context, contentKey string) (domain
 	return progress, nil
 }
 
-// ProgressByContentKeys は複数の再生位置をまとめて引く。記録が無い鍵は
-// 結果に現れない。
-//
-// 一覧に載せるために要る。1件ずつ引くと、60 件の一覧で 60 回の問い合わせに
-// なる。鍵は JSON の配列 1 つで渡す（tagsByContentKeys と同じ）。鍵ごとに束縛変数を
-// 使うと、件数の上限が無いプレイリストの項目が SQLite の束縛変数の上限を超える。
+// Batch keys as JSON to avoid N+1 reads and SQLite's bind-variable limit for unbounded playlists.
 func (p *PlaybackStore) ProgressByContentKeys(
 	ctx context.Context, contentKeys []string,
 ) (map[string]domain.Progress, error) {

@@ -155,8 +155,7 @@ func (g *processGroup) attach(cmd *exec.Cmd) error {
 	return nil
 }
 
-// terminate は Job Object を閉じる。起動元が先に終了していても、同じ Job に
-// 属する MDM・Vite などの子孫は KILL_ON_JOB_CLOSE によりすべて終了する。
+// Closing the Job Object kills all descendants even if their original parent has exited.
 func (g *processGroup) terminate(*exec.Cmd) {
 	g.once.Do(func() {
 		_, _, _ = closeHandle.Call(g.handle)

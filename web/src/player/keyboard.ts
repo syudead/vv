@@ -2,35 +2,22 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 
 import type { PlayerControls } from "./playerControls";
 
-/**
- * 画面全体のキーボード操作（要件 7、plan の Structural Decisions 9）。
- *
- * video.js の操作バーの部品は、自分が受けたキーの伝播を止める（Tab 以外）。画面のどこに
- * フォーカスがあっても効くように、`window` の捕捉段階で受ける。そのため、部品自身の
- * 操作になるキーはここで見送る。
- */
+/** Listen in window capture because video.js stops bubbling keys; leave each control's own shortcuts untouched. */
 
 export type ShortcutAction =
   "togglePlay" | "fullscreen" | "mute" | "subtitles" | "start" | "close";
 
-/** 入力欄など、文字の入力を受ける要素。 */
 function isEditable(element: Element): boolean {
   if (element instanceof HTMLElement && element.isContentEditable) return true;
   return element.closest("input, textarea, select, [contenteditable='true']") !== null;
 }
 
-/** Space で自分の操作をする要素（ボタン・リンク・スライダー・メニュー項目）。 */
 const spaceOwners =
   "button, a[href], summary, [role='button'], [role='link'], [role='slider'], [role='checkbox'], [role='switch'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'], [role='option'], [role='tab']";
 
-/**
- * 吹き出し（Radix の Popover）やメニューの中身。中にフォーカスがある間のキーはその部品の
- * もので、再生を操作しない（例: 「Add to playlist」のピッカーの Retry や行の上で M を押しても
- * 消音しない）。Esc だけは通し、`isPopoverOpen` の判定で画面を閉じないようにする。
- */
+/** Popover content owns its keys; allow Escape through only to check whether the page may close. */
 const popperContent = "[data-radix-popper-content-wrapper]";
 
-/** shortcutFor は押されたキーが起こす操作を返す。この画面が扱わないキーは null。 */
 export function shortcutFor(event: KeyboardEvent): ShortcutAction | null {
   if (event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return null;
   const target = event.target instanceof Element ? event.target : null;
@@ -62,17 +49,11 @@ export function shortcutFor(event: KeyboardEvent): ShortcutAction | null {
   }
 }
 
-/** isDocumentFullscreen は、ブラウザが全画面を表示しているかを返す。 */
 function isDocumentFullscreen(): boolean {
   return typeof document !== "undefined" && document.fullscreenElement != null;
 }
 
-/**
- * isPopoverOpen は、画面のどこかで吹き出し（Radix の Popover）かメニュー（`DropdownMenu`、
- * role="menu"）が開いているかを返す。取り込み状況の概要のように、再生画面の外の部品が開く
- * 吹き出しや、Group line のまとめ方のメニューも含む。そのときの Esc はそれを閉じるためのもので、画面を閉じてはいけない。
- * ツールチップ（role="tooltip"）は含めない。
- */
+/** Any open popover or menu owns Escape, including controls outside the player; tooltips do not. */
 function isPopoverOpen(): boolean {
   return (
     typeof document !== "undefined" &&
@@ -82,25 +63,14 @@ function isPopoverOpen(): boolean {
   );
 }
 
-/**
- * useKeyboardShortcuts は Space・F・M・C・0・Esc を画面全体で受ける。
- *
- * - プレイヤーが無い（取り込み中・読み取り失敗など）ときは、Esc だけが効く。
- * - 全画面中の Esc は何もしない。全画面の解除はブラウザが行う。
- * - 再生速度のメニューや吹き出し・メニューが開いているときの Esc は、それを閉じるだけにする。
- * - Esc で呼ぶのは `onClose` なので、呼び出し側が別の操作を渡せる。再生画面は自動再生の
- *   予告が出ている間、画面を閉じる代わりに予告の取り消しを渡す。
- * - `suspended` の間はどのキーも受けない。画面全体を覆う編集画面（サムネイルの編集）が
- *   開いている間で、Space は欄に入り、Esc は編集画面のものになる。
- */
+/** Fullscreen and open menus own Escape; without a player only Escape works. Suspension leaves all keys to the editor. */
 export function useKeyboardShortcuts(
   controls: PlayerControls | null,
   onClose: () => void,
   suspended = false,
 ): void {
   const latest = useRef({ controls, onClose, suspended });
-  // 描画を確定した時点で最新の値にする。useEffect だと、プレイヤーの操作を
-  // 描いてから反映するまでの間の Esc が「プレイヤー無し」として画面を閉じる。
+  // Update at layout commit; a passive effect could briefly treat Escape as having no player.
   useLayoutEffect(() => {
     latest.current = { controls, onClose, suspended };
   }, [controls, onClose, suspended]);

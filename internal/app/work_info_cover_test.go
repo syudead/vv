@@ -14,9 +14,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインのカバー画像の確かめ、保持と反映（docs/design-docs/work-info-plugins.md のカバー画像の節）。
-
-// fakeCovers はカバー画像の適用を記録し、決めた誤りを返す。
 type fakeCovers struct {
 	images [][]byte
 	err    error
@@ -77,7 +74,7 @@ func TestFetchedCoverKeepsOnlyImagesItCanRead(t *testing.T) {
 	if err := gif.Encode(&animated, image.NewPaletted(image.Rect(0, 0, 2, 2), []color.Color{color.Black}), nil); err != nil {
 		t.Fatal(err)
 	}
-	// GIF は読めても、アップロードと同じく PNG・JPEG・WebP だけを受ける。
+	// Reject GIF even if decodable, matching upload format restrictions.
 	for _, data := range [][]byte{nil, []byte("<svg/>"), animated.Bytes(), make([]byte, domain.WorkInfoCoverMaxBytes+1)} {
 		if r := e.fetchCover(t, data); r.Cover != nil {
 			t.Fatalf("cover of %d bytes = %+v; want none", len(data), r.Cover)
@@ -105,7 +102,7 @@ func TestApplyCoverMakesItTheThumbnailAfterTheWorkInfo(t *testing.T) {
 	}
 }
 
-// 保存先が取引の中でプラグインの行を確かめ直して断れば、カバー画像も適用しない。
+// Do not apply covers when the transaction rejects changed plugin state.
 func TestApplyCoverIsNotAppliedWhenTheWorkInfoIsRefused(t *testing.T) {
 	for _, failure := range []error{domain.ErrWorkInfoFetchStale, errors.New("database is locked")} {
 		e, covers := newCoverEnv()
@@ -118,7 +115,7 @@ func TestApplyCoverIsNotAppliedWhenTheWorkInfoIsRefused(t *testing.T) {
 	}
 }
 
-// 作品情報が確定したあとでカバー画像を適用できなければ、誤りにせず飛ばした値として知らせる。
+// Report cover failures as skipped values after metadata commits.
 func TestApplyCoverThatCannotBeUsedIsSkippedAfterTheRestIsApplied(t *testing.T) {
 	for _, failure := range []error{domain.ErrContentChanged, domain.ErrThumbnailUploadInvalid, errors.New("disk full")} {
 		e, covers := newCoverEnv()
@@ -144,7 +141,7 @@ func TestApplyCoverIsRefusedWithoutACover(t *testing.T) {
 	}
 }
 
-// カバー画像が予算を越えれば、カバー画像を持つ古い結果から捨てる。
+// Evict the oldest cover-bearing results when the memory budget is exceeded.
 func TestFetchedCoversStayWithinTheBudget(t *testing.T) {
 	fetches := newWorkInfoFetches()
 	e := newFetchEnv()
@@ -166,7 +163,7 @@ func TestFetchedCoversStayWithinTheBudget(t *testing.T) {
 	}
 }
 
-// 作品情報が確定したあとで動画を読めないか、適用先が無ければ、カバー画像は飛ばした値として知らせる。
+// Report a skipped cover if the video or applier becomes unavailable after metadata commits.
 func TestApplyCoverIsSkippedWhenTheVideoOrTheApplierIsMissing(t *testing.T) {
 	for name, change := range map[string]func(e *fetchEnv){
 		"video gone": func(e *fetchEnv) { delete(e.plugins.videos.(fakeVideos), fetchVideo) },

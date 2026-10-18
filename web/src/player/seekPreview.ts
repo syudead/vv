@@ -13,18 +13,12 @@ import {
 
 export { seekSpriteCell, type SpriteCell };
 
-/** 取得に失敗した配置情報・シートを始め直すまでの待ち時間。 */
 const unavailableRetryMs = 5000;
 
 interface PreviewOptions {
   durationMs: number;
-  /**
-   * Video.seekThumbnailUrl。スプライトの配置情報を返す。無ければ枠もスプライトの取得も無い、
-   * 取得できなかったときの形（時刻の pill だけ）で出す（チャプターのある動画、
-   * docs/design-docs/media-information.md「Seek preview title」）。
-   */
+  /** Without a sprite URL, retain the time/chapter preview without fetching images. */
   thumbnailUrl: string | undefined;
-  /** 位置のチャプターのタイトル。時刻の上の行に出す。チャプターの外は undefined。 */
   chapterTitleAt?: (positionMs: number) => string | undefined;
   fetchSprite?: (url: string, signal: AbortSignal) => Promise<SeekThumbnailSprite>;
   fetchSheet?: (url: string, signal: AbortSignal) => Promise<Blob>;
@@ -51,13 +45,7 @@ export function seekPreviewTarget(
 
 type PreviewState = "hidden" | "loading" | "ready" | "unavailable";
 
-/**
- * attachSeekPreview はシークバーにプレビューを取り付ける。
- *
- * 最初に出すときに配置情報を取得し、必要になったシートを 1 回だけ取得して object URL
- * で持つ。持っているシートは取り付けの間ずっと保持し、取り外しで解放する。取得は
- * シートごとに高々 1 つで、進行中の取得を中断するのは取り外しのときだけである。
- */
+/** Fetch each needed sheet once and retain object URLs until cleanup. Only detaching aborts in-flight sheet requests. */
 export function attachSeekPreview(
   progress: HTMLElement,
   options: PreviewOptions,
@@ -72,7 +60,6 @@ export function attachSeekPreview(
   frame.className = "vv-seek-preview-frame";
   const image = document.createElement("div");
   image.className = "vv-seek-preview-image";
-  // 時刻の pill。チャプターのタイトルの行（無ければ空）を時刻の上に置く。
   const pill = document.createElement("span");
   pill.className = "vv-seek-preview-time";
   const title = document.createElement("span");
@@ -106,8 +93,6 @@ export function attachSeekPreview(
     image.style.removeProperty("background-image");
   };
 
-  // 表示中の位置のコマを出す。シートを持っていなければ取得を始め、進行中なら
-  // その完了を待つ。
   const render = () => {
     if (!visible) return;
     const spriteUrl = options.thumbnailUrl;
@@ -150,7 +135,6 @@ export function attachSeekPreview(
     loadSheet(sprite, cell.sheet);
   };
 
-  // 枠を 1 コマの箱とし、シートを敷いて列と行の分だけずらす（lib/seekSprite.ts）。
   const showCell = (url: string, cell: SpriteCell, layout: SeekThumbnailSprite) => {
     const background = spriteCellBackground(cell, layout);
     image.style.backgroundImage = `url("${url}")`;
@@ -194,7 +178,7 @@ export function attachSeekPreview(
         if (controller.signal.aborted || detached) return;
         pendingSheets.delete(sheet);
         sheets.set(sheet, URL.createObjectURL(blob));
-        // 表示中でないシートの取得が終わっても、表示は切り替えない。
+        // Completing a nonvisible sheet must not change the displayed frame.
         if (activeSheet === sheet) render();
       })
       .catch(() => {

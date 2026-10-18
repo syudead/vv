@@ -1,21 +1,13 @@
 import type { SmartRule, SmartRuleRef } from "../api/smartFolders";
 import { t } from "../i18n";
 
-// スマートフォルダのページの条件の行が、条件から決めるチップ。画面の部品から外し、ロジックのテストで確かめる。
-
-/** RefKind は名前を引いて見せる条件の種類である（欠けた参照の `kind` と同じ）。 */
 export type RefKind = SmartRuleRef["kind"];
 
-/**
- * ConditionChip は条件 1 つのチップである。文字の決まったもの（検索、視聴状態、お気に入り、
- * 再生可否、追加日、長さ）は `text`、タグ・種類・人物・団体は名前を引く `ref` で、欠けた
- * 参照なら `missing`。
- */
+/** Literal conditions use text; named references use ref, with missing marking deleted targets. */
 export type ConditionChip =
   | { kind: "text"; key: string; text: string }
   | { kind: "ref"; key: string; ref: RefKind; id: number; missing: boolean };
 
-/** refChip は名前を引くチップである。`missing` の参照なら欠けた印を付ける。 */
 function refChip(
   ref: RefKind,
   id: number,
@@ -30,15 +22,13 @@ function refChip(
   };
 }
 
-/** textChip は文字の決まったチップである。 */
 function textChip(key: string, text: string): ConditionChip {
   return { kind: "text", key, text };
 }
 
 /**
- * conditionChips は条件 `rule` のチップを、条件の編集の行の順（検索、視聴状態、お気に入り、
- * 再生可否、タグの種類、タグ、人物、団体、追加日、長さ）に返す。`missing` はフォルダと祖先の
- * 欠けた参照で、名指されたチップに欠けた印を付ける。空の条件はチップを持たない。
+ * Preserve editor field order, omit empty conditions and mark missing references from both folder
+ * and ancestor settings.
  */
 export function conditionChips(
   rule: SmartRule,
@@ -79,7 +69,6 @@ export function conditionChips(
   return chips;
 }
 
-/** refText は名前の分かった参照のチップの文字である（「Tag: 猫」）。 */
 export function refText(ref: RefKind, name: string): string {
   const words = t.smartFolders.condition;
   switch (ref) {
@@ -94,7 +83,6 @@ export function refText(ref: RefKind, name: string): string {
   }
 }
 
-/** hasMissing は条件のチップに欠けた参照があるかを返す。 */
 export function hasMissing(chips: readonly ConditionChip[]): boolean {
   return chips.some((chip) => chip.kind === "ref" && chip.missing);
 }

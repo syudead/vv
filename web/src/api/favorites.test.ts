@@ -14,11 +14,6 @@ import {
 import { videoItem } from "./libraryItems";
 import { clearListSnapshot, saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 
-/**
- * お気に入りの付け外し。
- * 要求は 1 回だけ送り、受け付けた結果だけを画面と控えへ知らせる。
- */
-
 function item(id: number, favorite = false): Video {
   return {
     id,
@@ -135,7 +130,6 @@ describe("updateFavorites", () => {
     await updateFavorites([5], [series], true);
     const snapshot = takeListSnapshot({ query: "" });
     expect(snapshot?.items[0]).toEqual(videoItem(item(5, true)));
-    // グループの値はそのままにし、戻ったときに取り直す。
     expect(snapshot?.items[1]).toEqual({ kind: "group", group: group() });
     expect(snapshot?.staleGroups).toEqual([7]);
   });
@@ -174,10 +168,8 @@ describe("updateFavorites", () => {
     const mark = favoriteMark();
     await updateFavorites([21], [8], true);
     expect(withFavoriteSince(item(21), mark).favorite).toBe(true);
-    // フォルダの無い（手で作った）グループも id で補正する。
     const { folder: _folder, ...handMade } = { ...group(), id: 8 };
     expect(withGroupFavoriteSince(handMade, mark).favorite).toBe(true);
-    // 付け外しの後に取った値はそのまま。
     expect(withFavoriteSince(item(21), favoriteMark()).favorite).toBe(false);
   });
 });
@@ -208,7 +200,6 @@ describe("noteFavoriteOf", () => {
   it("読む前に決着した付け外しの値は、読んだ値で上書きする", async () => {
     fetchMock.mockResolvedValueOnce(json({ appliedVideos: 1, appliedGroups: 0 }));
     await updateFavorites([31], [], true);
-    // 同じ集まりの別のバージョン（30）を外した後に、代表（31）を読んだ。
     fetchMock.mockResolvedValueOnce(json({ appliedVideos: 1, appliedGroups: 0 }));
     await updateFavorites([30], [], false);
     const read = favoriteReadMark();
@@ -225,7 +216,6 @@ describe("noteFavoriteOf", () => {
     const read = favoriteReadMark();
     const mark = favoriteMark();
     const pending = updateFavorites([32], [], true);
-    // GET は付け外しの前の値（false）を読んだ。
     noteFavoriteOf([32], false, read);
     answer!(json({ appliedVideos: 1, appliedGroups: 0 }));
     await pending;

@@ -2,13 +2,10 @@ import { type PointerEvent, useCallback, useLayoutEffect, useRef, useState } fro
 
 import type { Video } from "../api/client";
 
-/** 一覧のカードと同じく、マウスを乗せてから再生を始めるまでの待ち時間。 */
 export const hoverPreviewDelayMs = 400;
 
 export interface HoverPreview {
-  /** プレビューの video 要素を置くか。 */
   active: boolean;
-  /** 再生が始まり、サムネイルの代わりに見せてよいか。 */
   playing: boolean;
   previewUrl: string | undefined;
   onPointerEnter: (event: PointerEvent<HTMLElement>) => void;
@@ -16,33 +13,19 @@ export interface HoverPreview {
   videoRef: (element: HTMLVideoElement | null) => void;
   onPlaying: () => void;
   onError: () => void;
-  /**
-   * suspendPreview はスクラブの帯に入ったときに、400ms の待ちを止め、再生中・読み込み中の
-   * 動画を src と要素を保ったまま止める。
-   */
+  /** Cancel the hover delay and pause without discarding the element or source. */
   suspendPreview: () => void;
-  /**
-   * resumePreview は帯からサムネイルの中へ出たときに、待ちを 400ms から数え直し、止めた
-   * 動画をその場面から再生し直す。
-   */
+  /** Restart the hover delay, then resume from the paused frame. */
   resumePreview: () => void;
 }
 
-/**
- * useHoverPreview は、関連動画のサムネイルにマウスを乗せたときに一覧用プレビューを
- * 流す。一覧のカード（videoList/VideoCard）と同じ規則にそろえる。
- *
- * - プレビューが作成済み（previewState=done で previewUrl がある）の動画だけ。
- * - マウスだけ。タッチやペンでは流さない。
- * - 乗せて 400ms 後に、音を消して繰り返し流す。離したらすぐ止め、読み込みも捨てる。
- */
+/** Match library cards: play ready previews after 400ms of mouse hover; touch and pen never start them. */
 export function useHoverPreview(video: Video): HoverPreview {
   const eligible = video.previewState === "done" && video.previewUrl !== undefined;
   const [active, setActive] = useState(false);
   const [playing, setPlaying] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const element = useRef<HTMLVideoElement | null>(null);
-  // 帯にいる間の一時停止。waiting は待ちの途中で止めたことを表す。
   const suspended = useRef(false);
   const waiting = useRef(false);
 
@@ -63,7 +46,7 @@ export function useHoverPreview(video: Video): HoverPreview {
     setPlaying(false);
   }, []);
 
-  // 画面を移るときも、React が要素を外す前に止めて読み込みを捨てる。
+  // Stop and release loading before React removes the element during navigation.
   useLayoutEffect(() => () => release(), [release]);
 
   const scheduleStart = useCallback(() => {
@@ -126,9 +109,8 @@ export function useHoverPreview(video: Video): HoverPreview {
 
 function play(node: HTMLVideoElement) {
   try {
-    // 再生できなかったときは onError か、サムネイルのまま何も起きない。
     node.play()?.catch(() => undefined);
   } catch {
-    // jsdom など play を持たない環境では何もしない。
+    // Ignore environments such as jsdom without play support.
   }
 }

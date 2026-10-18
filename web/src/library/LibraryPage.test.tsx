@@ -56,7 +56,6 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-/** LocationProbe は今の URL を見せ、履歴を1つ戻る操作を置く（戻る/進むの確認）。 */
 function LocationProbe() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -76,11 +75,7 @@ function listRequests(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>): URL[] 
     .filter((url) => url.pathname === "/api/library");
 }
 
-/**
- * asLibraryResponse は、動画だけの一覧（VideoPage の形）で書いたテストの応答を
- * GET /api/library の形（items が LibraryItem）に包む。グループを含む応答は
- * 最初から LibraryItem で書くので、`kind` を持つ項目はそのまま通す。
- */
+/** Adapt video-only fixtures to mixed library items while preserving existing discriminated items. */
 async function asLibraryResponse(response: Response): Promise<Response> {
   if (!response.ok) return response;
   const body = (await response.clone().json()) as { items?: unknown[] };
@@ -98,11 +93,7 @@ async function asLibraryResponse(response: Response): Promise<Response> {
   );
 }
 
-/**
- * libraryFetch は fetchMock の GET /api/library の応答を asLibraryResponse で包む。
- * 絞り込みのポップオーバーを開くと読む種類の一覧（`GET /api/tag-kinds`）は、ここで空を
- * 返す（種類での絞り込みは LibraryTagKindFilter.test.tsx が確かめる）。
- */
+/** Return empty tag kinds here; LibraryTagKindFilter.test.tsx covers kind filtering. */
 function libraryFetch(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>): typeof fetch {
   return (input, init) => {
     const path = new URL(String(input), "http://localhost").pathname;
@@ -230,7 +221,6 @@ describe("LibraryPage", () => {
     );
     renderLibrary();
     expect(await screen.findByText("No videos yet")).toBeDefined();
-    // 押しても取り込みを始めず、開始の場所である設定の「Scan status」へ移る。
     expect(screen.getByRole("link", { name: "Scan" }).getAttribute("href")).toBe(
       "/settings/scan#scan-status",
     );
@@ -330,7 +320,6 @@ describe("LibraryPage", () => {
     );
     const requests = listRequests(fetchMock);
     expect(requests.at(-1)?.searchParams.get("watch")).toBe("unwatched");
-    // 選んだ瞬間に続きのページを読みに行かない。
     expect(requests.filter((url) => url.searchParams.has("cursor"))).toHaveLength(0);
     expect(screen.getByTestId("location").textContent).toBe(
       "?watch=unwatched&sort=addedDesc",
@@ -356,7 +345,6 @@ describe("LibraryPage", () => {
       (screen.getByRole("searchbox", { name: "Search videos" }) as HTMLInputElement)
         .value,
     ).toBe("京都");
-    // 視聴状態と「Playable only」を数え、検索語は数えない。
     expect(screen.getByRole("button", { name: "Filter (2 applied)" })).toBeDefined();
   });
 
@@ -417,8 +405,6 @@ describe("LibraryPage", () => {
       }),
     ).toBeDefined();
 
-    // 最初の URL（sort なし）も戻り先として並び順を持つので、保存した並び順が
-    // 変わっても戻ると前の並びになる。
     await user.click(screen.getByRole("button", { name: "テストで戻る" }));
     expect(screen.getByTestId("location").textContent).toBe("?sort=addedDesc");
     expect(
@@ -458,7 +444,6 @@ describe("LibraryPage", () => {
 
       await user.click(screen.getByRole("button", { name: "Filter" }));
       const filter = await screen.findByRole("dialog");
-      // 視聴状態の直下、「Playable only」の上に置く。
       const checks = within(filter)
         .getAllByRole("checkbox")
         .map((check) => (check as HTMLButtonElement).labels[0]?.textContent);
@@ -670,7 +655,6 @@ describe("LibraryPage", () => {
       ),
     );
 
-    // Esc で抜けると続きが閉じる。戻ると入力を始める前の一覧になる。
     await user.click(screen.getByRole("button", { name: "テストで戻る" }));
     expect(screen.getByTestId("location").textContent).toBe("?sort=addedDesc");
     expect((box as HTMLInputElement).value).toBe("");
@@ -811,7 +795,6 @@ describe("LibraryPage", () => {
 
     fireEvent.click(screen.getByRole("link", { name: "動画 2" }));
     await screen.findByText("再生画面");
-    // 再生画面での保存で見終えた（未視聴の条件から外れる）。
     act(() =>
       recordSavedProgress(
         2,
@@ -821,7 +804,6 @@ describe("LibraryPage", () => {
     );
     view.unmount();
 
-    // 戻ると一覧が控えから作り直される。その場では外さず、同じ位置に残す。
     renderLibrary("/?watch=unwatched&sort=titleDesc");
     await screen.findByRole("link", { name: "動画 2" });
     expect(titles()).toEqual(before);
@@ -840,7 +822,6 @@ describe("LibraryPage", () => {
       const url = String(input);
       if (url === "/api/video-visibility") return Promise.resolve(json({ applied: 1 }));
       if (url === "/api/videos/1") {
-        // 取り直しを止めておき、その間に動画を開く。
         return new Promise<Response>((resolve) => {
           finishRefetch = () => resolve(json(video(1, { public: true })));
         });
@@ -858,10 +839,8 @@ describe("LibraryPage", () => {
     fireEvent.click(screen.getByRole("link", { name: "動画 1" }));
     await screen.findByText("再生画面");
 
-    // 取り直す前の public: false の一覧を控えると、戻ったときに復元されてしまう。
     expect(takeListSnapshot({ query: "" })).toBeUndefined();
 
-    // 一覧を離れれば取り直しは打ち切られ、控えを止める印も解ける。
     finishRefetch?.();
     saveListSnapshot(
       { query: "" },
@@ -1101,7 +1080,6 @@ describe("LibraryPage", () => {
       renderLibrary("/?tag=1&sort=random");
       await screen.findByRole("link", { name: "動画 1" });
 
-      // 乱数の種は描いた後に URL へ足される。足されるのを待ち、ほかの条件が残ることを確かめる。
       const location = () => screen.getByTestId("location").textContent ?? "";
       await waitFor(() => expect(location()).toMatch(/seed=\d+/));
       expect(location()).toMatch(/tag=1/);
@@ -1128,8 +1106,6 @@ describe("LibraryPage", () => {
       await user.click(screen.getByRole("checkbox", { name: 'Select "動画 1"' }));
       expect(screen.getByText("1 video selected")).toBeDefined();
 
-      // 一覧の上のチップでタグの絞り込みを外すと、同じ動画がまだ見えていても
-      // 選択は解除する（検索語・視聴状態・再生可否と同じ扱い）。
       await user.click(
         screen.getByRole("button", { name: "Remove the filter for 旅行" }),
       );
@@ -1166,7 +1142,6 @@ describe("LibraryPage", () => {
         ),
       ).toBeDefined();
 
-      // すでに絞り込み中のタグをカードでもう一度押しても何も変わらない。
       const before = screen.getByTestId("location").textContent;
       await user.click(screen.getByRole("button", { name: "Filter by 旅行" }));
       expect(screen.getByTestId("location").textContent).toBe(before);
@@ -1195,7 +1170,6 @@ describe("LibraryPage", () => {
       await waitFor(() => expect(location()).toContain("tag=1"));
       expect(location()).toContain("q=abc");
       expect(location()).toContain("watch=unwatched");
-      // 一覧の要求にも、タグと一緒にほかの条件が残る。
       await waitFor(() => {
         const request = listRequests(fetchMock).at(-1);
         expect(request?.searchParams.get("query")).toBe("abc");
@@ -1286,14 +1260,12 @@ describe("LibraryPage", () => {
         await screen.findByText("Removed deleted tags from the filter"),
       ).toBeDefined();
 
-      // タグの一覧（/api/tags）を取り直す。
       await waitFor(() => {
         const tagRequests = fetchMock.mock.calls.filter((call) =>
           new URL(String(call[0]), "http://localhost").pathname.startsWith("/api/tags"),
         );
         expect(tagRequests.length).toBeGreaterThanOrEqual(2);
       });
-      // 一覧（/api/library）も、tag を外した条件で取り直す。
       await waitFor(() => {
         const videoRequests = fetchMock.mock.calls.filter((call) => {
           const url = new URL(String(call[0]), "http://localhost");
@@ -1309,13 +1281,10 @@ describe("LibraryPage", () => {
         { query: "", sort: "addedDesc", tags: [1] },
         { items: [videoItem(video(1))], total: 1, hasMore: false, scrollY: 0 },
       );
-      // 共有のタグの一覧にはもう id 1 が無い（別のタブで削除された想定）。
       installTagAwareList([], () => ({ items: [video(1)], total: 1 }));
-      // sort を明示し、端末に保存された並び順（前のテストの操作の影響）に
-      // 依らず控えの鍵を "addedDesc" に固定する。
+      // Set sort explicitly so earlier preference changes cannot alter the snapshot key.
       renderLibrary("/?tag=1&sort=addedDesc");
 
-      // 控えを使うので、最初の /api/library は要求しない。
       expect(
         fetchMock.mock.calls.filter(
           (call) =>
@@ -1330,8 +1299,6 @@ describe("LibraryPage", () => {
         await screen.findByText("Removed deleted tags from the filter"),
       ).toBeDefined();
 
-      // タグの一覧を取り直し（画面が開くとき + 突き合わせで最低2回）、条件が
-      // 変わったので一覧（/api/library）も取り直す。
       await waitFor(() => {
         const tagRequests = fetchMock.mock.calls.filter((call) =>
           new URL(String(call[0]), "http://localhost").pathname.startsWith("/api/tags"),
@@ -1349,7 +1316,6 @@ describe("LibraryPage", () => {
 
     it("/ の控えは /?tag=1 のマウントでは使われない（listSnapshot の鍵に tags が要る）", async () => {
       const { saveListSnapshot } = await import("../api/listSnapshot");
-      // tag の無い「/」の控えを残しておく。
       saveListSnapshot(
         { query: "", sort: "addedDesc" },
         {
@@ -1374,10 +1340,8 @@ describe("LibraryPage", () => {
 
       renderLibrary("/?tag=1");
 
-      // 控え（控えの動画）ではなく、要求した一覧（動画 1）が出る。
       expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
       expect(screen.queryByRole("link", { name: "控えの動画" })).toBeNull();
-      // 控えを使わないので、通常どおり /api/library を要求する。
       expect(
         fetchMock.mock.calls.some(
           (call) =>
@@ -1421,7 +1385,6 @@ describe("LibraryPage", () => {
       allIds?: number[];
       idsMissingTagIds?: number[];
       idsFail?: boolean;
-      /** true にすると /api/library/ids の応答を、呼び出し元が明示的に流すまで止める。 */
       idsDelay?: boolean;
     }) {
       const tags = options.tags ?? [];
@@ -1555,10 +1518,7 @@ describe("LibraryPage", () => {
       expect(screen.getByText("1 video selected")).toBeDefined();
     });
 
-    // Devin の指摘1: すべて選択の要求中に手動で選択を変えると、その要求は無効に
-    // なる（selectAllSeq が進む）。以前は、その無効になった要求の応答（や
-    // finally）が selectAllSeq の不一致で素通りし、selectingAll を false に
-    // 戻す機会が無いまま「選択中…」に固まっていた。
+    // Manual selection invalidates Select all; its stale finally must not leave the loading state stuck.
     it("すべて選択の要求中に選択を手動で変えると、選択中…のまま固まらない", async () => {
       const { resolveIds } = installSelectionAwareList({
         total: 50,
@@ -1573,14 +1533,11 @@ describe("LibraryPage", () => {
       await user.click(screen.getByRole("button", { name: "Select all" }));
       expect(await screen.findByRole("button", { name: "Selecting…" })).toBeDefined();
 
-      // 応答がまだ届かない間に、手動で選択を変える（この要求はもう当てはまらない）。
       await user.click(screen.getByRole("checkbox", { name: 'Select "動画 2"' }));
 
-      // ボタンは「選択中…」で固まらず、「すべて選択」に戻る。
       expect(await screen.findByRole("button", { name: "Select all" })).toBeDefined();
       expect(screen.getByText("2 videos selected")).toBeDefined();
 
-      // 遅れて届いた応答（もう無効）は、手動で選んだ2件を上書きしない。
       await act(async () => {
         resolveIds();
         await Promise.resolve();
@@ -1611,8 +1568,6 @@ describe("LibraryPage", () => {
       await waitFor(() =>
         expect(screen.getByTestId("location").textContent).not.toContain("tag=1"),
       );
-      // 選択は作られない。条件（tag）が変わったことで、押す前の選択も解除される
-      // （検索語・視聴状態・再生可否と同じ扱い）。
       await waitFor(() =>
         expect(screen.queryByText(/^\d[\d,]* videos? selected$/)).toBeNull(),
       );
@@ -1642,10 +1597,8 @@ describe("LibraryPage", () => {
       await user.keyboard("{Enter}");
 
       expect(await screen.findByText('Added "旅行" to 2 videos')).toBeDefined();
-      // 選択は残る。
       expect(screen.getByText("2 videos selected")).toBeDefined();
-      // 読み込み済みのカード（動画1）にタグがすぐ出る（#267 の通知）。可視の行
-      // （タグの一覧）だけを見る。オーバーフロー計測用の隠れた複製とは別に数える。
+      // Count visible chips only, excluding hidden overflow-measurement duplicates.
       const card = screen.getByText("動画 1").closest("article");
       expect(card).not.toBeNull();
       const tagList = within(card as HTMLElement).getByRole("list", { name: "Tags" });
@@ -1668,14 +1621,10 @@ describe("LibraryPage", () => {
           screen.queryByText("The selected videos have no tags that can be removed"),
         ).toBeNull(),
       );
-      // ポップオーバーだけが閉じ、選択バー自体（選択）は残る。
       expect(screen.getByText("1 video selected")).toBeDefined();
     });
 
-    // B1: 以前は items が変わるたびに、選択を items に無い id ごと刈り込んで
-    // いた。タグの付け外しも loadMore も items を新しい配列に置き換えるので、
-    // 「すべて選択」でまだ読み込んでいない id まで選んでいると、それらが
-    // 巻き込まれて消えていた。
+    // Item-array replacements must preserve selected IDs from unloaded pages.
     it("すべて選択のあとタグを付けても、選択の件数は変わらない（B1）", async () => {
       installSelectionAwareList({
         tags: [{ id: 1, name: "旅行" }],
@@ -1697,8 +1646,6 @@ describe("LibraryPage", () => {
       await user.keyboard("{Enter}");
 
       expect(await screen.findByText('Added "旅行" to 50 videos')).toBeDefined();
-      // 読み込み済みのカードにタグが反映されて items が新しい配列になっても、
-      // 選択の件数（読み込んでいない分を含む）はそのまま。
       expect(screen.getByText("50 videos selected")).toBeDefined();
     });
 
@@ -1760,12 +1707,9 @@ describe("LibraryPage", () => {
         ),
       );
       expect(await screen.findByRole("link", { name: "動画 4" })).toBeDefined();
-      // loadMore で items が伸びても、選択の件数はそのまま。
       expect(screen.getByText("5 videos selected")).toBeDefined();
     });
 
-    // Devin の指摘4: 一括で外したタグが今の絞り込みに含まれているときは、選択を
-    // 解除して一覧を取り直し、件数と一覧を条件に合わせ直す
     // （docs/design-docs/library-ui.md）。
     it("一括で外したタグが今の絞り込みに含まれるとき、選択を解除して一覧を取り直す（Devin の指摘4）", async () => {
       const tag = {
@@ -1847,7 +1791,6 @@ describe("LibraryPage", () => {
       await user.click(removeOption);
       expect(await screen.findByText('Removed "旅行" from 1 video')).toBeDefined();
 
-      // 選択は解除され、絞り込み（tag=1）に合う動画が無くなった一覧に取り直す。
       await waitFor(() =>
         expect(screen.queryByText(/^\d[\d,]* videos? selected$/)).toBeNull(),
       );
@@ -1856,7 +1799,6 @@ describe("LibraryPage", () => {
   });
   describe("ゲスト", () => {
     function guestPage(): VideoPage {
-      // ゲストの応答には progress が無く、tags は空である。
       return {
         items: [video(1, { public: true }), video(2, { public: true })],
         total: 2,
@@ -1895,7 +1837,6 @@ describe("LibraryPage", () => {
         ([input]) => new URL(String(input), "http://localhost").pathname,
       );
       expect(paths.every((path) => path === "/api/library")).toBe(true);
-      // /api/events はゲストにも group だけを送るので、グループの変化のために 1 本つなぐ
       //
       expect(FakeEventSource.instances).toHaveLength(1);
     });
@@ -2043,10 +1984,6 @@ describe("LibraryPage", () => {
       };
     }
 
-    /**
-     * PlayerStub は再生画面とグループのページの代わりに、開いた場所と、元の一覧へ戻る操作を
-     * 置く。
-     */
     function PlayerStub() {
       const location = useLocation();
       const navigate = useNavigate();
@@ -2117,7 +2054,6 @@ describe("LibraryPage", () => {
           );
         }
         if (url.pathname === "/api/library/ids") {
-          // グループの項目は `groups` にも入る。
           return Promise.resolve(
             json({
               ids: [1, ...memberIds, 2],
@@ -2149,19 +2085,16 @@ describe("LibraryPage", () => {
       renderLibrary();
       const link = await screen.findByRole("link", { name: ownerLabel });
 
-      // 動画・グループ・動画が同じ並びに、区画や見出しなしで3枚並ぶ。
       const cards = document.querySelectorAll("article");
       expect(cards).toHaveLength(3);
       expect(cards[1]?.contains(link)).toBe(true);
       expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
-      // メンバーは1本ずつのカードにならない。
       expect(screen.queryByRole("link", { name: "ep01" })).toBeNull();
       expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe(
         "3 items",
       );
 
       const card = cards[1] as HTMLElement;
-      // 本数と長さはフォルダの絵柄の上に重ね、見終えた本数は数字では出さない。
       expect(within(card).getByText("12 videos")).toBeDefined();
       expect(within(card).queryByText(/\/ 12/)).toBeNull();
       expect(within(card).getByText("12:00")).toBeDefined();
@@ -2207,7 +2140,6 @@ describe("LibraryPage", () => {
       await user.click(await screen.findByRole("link", { name: ownerLabel }));
       await screen.findByText("再生画面 /groups/7");
 
-      // 一覧を離れている間に 104 を見終えた。サーバーのグループも 4 本視聴済みになる。
       server.group = seriesGroup({ watchedCount: 4, openVideoId: 105 });
       act(() => {
         recordSavedProgress(
@@ -2228,7 +2160,6 @@ describe("LibraryPage", () => {
           .getAttribute("aria-valuenow"),
       ).toBe("33");
       expect(link.getAttribute("href")).toBe("/groups/7");
-      // 一覧は控えから戻し、グループだけを取り直す。
       const libraryRequests = listRequests(fetchMock);
       expect(libraryRequests).toHaveLength(1);
     });
@@ -2242,7 +2173,6 @@ describe("LibraryPage", () => {
       await user.click(
         screen.getByRole("checkbox", { name: 'Select the group "series"' }),
       );
-      // 選択バーの本数はメンバーを数える。
       expect(screen.getByText("12 videos selected")).toBeDefined();
       const card = screen.getByRole("link", { name: ownerLabel }).closest("article");
       expect(
@@ -2250,7 +2180,6 @@ describe("LibraryPage", () => {
           ?.querySelector('[data-slot="video-thumbnail"]')
           ?.hasAttribute("data-selected"),
       ).toBe(true);
-      // 選んだ本数（12）が項目の数（3）を超えても、「すべて選択」は押せる。
       expect(
         (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement)
           .disabled,
@@ -2268,7 +2197,6 @@ describe("LibraryPage", () => {
         memberIds,
       );
 
-      // 外すと全メンバーが選択から外れる。
       await user.click(
         screen.getByRole("checkbox", { name: 'Select the group "series"' }),
       );
@@ -2310,7 +2238,6 @@ describe("LibraryPage", () => {
         ).getAttribute("aria-checked"),
       ).toBe("true");
 
-      // 1本外すと、また押せる。
       await user.click(screen.getByRole("checkbox", { name: 'Select "動画 2"' }));
       expect(screen.getByText("13 videos selected")).toBeDefined();
       expect(
@@ -2328,7 +2255,6 @@ describe("LibraryPage", () => {
       await user.click(screen.getByRole("button", { name: "Select all" }));
       expect(await screen.findByText("14 videos selected")).toBeDefined();
 
-      // Esc で選択を解除する（条件の変更と同じく、選択が消える）。
       await user.keyboard("{Escape}");
       await waitFor(() =>
         expect(screen.queryByText(/^\d[\d,]* videos? selected$/)).toBeNull(),
@@ -2363,7 +2289,6 @@ describe("LibraryPage", () => {
     });
 
     it("ゲストのグループのカードには視聴状態と見終えた本数を出さない", async () => {
-      // ゲストの応答では watchedCount・watchState を省く。
       const guest = seriesGroup();
       delete guest.watchedCount;
       delete guest.watchState;
@@ -2383,7 +2308,6 @@ describe("LibraryPage", () => {
 
 describe("LibraryPage の英語の画面", () => {
   const fetchMock = vi.fn<typeof fetch>();
-  /** library は GET /api/library の応答を作る。テストごとに差し替える。 */
   let library: (url: URL) => Promise<Response>;
 
   const kyoto = video(1, {
@@ -2430,7 +2354,6 @@ describe("LibraryPage の英語の画面", () => {
     videoIds: [11, 12],
     tags: [],
   };
-  /** 画面に出る利用者のデータ（名前）と、ロケールに依らない書式（時間・容量）。 */
   const userData = [
     "京都の旅",
     "動画 2",
@@ -2657,7 +2580,6 @@ describe("LibraryPage の英語の画面", () => {
 
 describe("LibraryPage の束ねる操作", () => {
   const fetchMock = vi.fn<typeof fetch>();
-  /** 一覧に出る動画の id。束ねると代表以外が消える。 */
   let listed: number[];
   let bundleRequests: { videoIds: number[]; representativeId: number }[];
   const group: LibraryGroup = {
@@ -2748,7 +2670,6 @@ describe("LibraryPage の束ねる操作", () => {
     const user = userEvent.setup();
     renderLibrary();
     await user.click(await screen.findByRole("checkbox", { name: 'Select "動画 1"' }));
-    // 1 本の選択では出さない。
     expect(screen.queryByRole("button", { name: "Bundle as versions" })).toBeNull();
     await user.click(screen.getByRole("checkbox", { name: 'Select "動画 2"' }));
     await user.click(screen.getByRole("button", { name: "Bundle as versions" }));
@@ -2768,7 +2689,6 @@ describe("LibraryPage の束ねる操作", () => {
     expect(
       await screen.findByText('Bundled 2 videos as versions of "動画 2"'),
     ).toBeDefined();
-    // バーは消えるので、フォーカスは一覧の最初のカードへ移る。
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole("link", { name: "動画 2" })),
     );
@@ -2836,8 +2756,7 @@ describe("LibraryPage の束ねる操作", () => {
           .disabled,
       ).toBe(true),
     );
-    // ブラウザは disabled になったボタンからフォーカスを外し body に落とすので、Esc の
-    // 対象は body になる（jsdom はフォーカスを残すため、対象を body にして送る）。
+    // Browsers blur disabled buttons to body; jsdom retains focus, so dispatch Escape on body explicitly.
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(screen.getByRole("dialog", { name: "Bundle as versions" })).toBeDefined();
     expect(screen.getByText("2 videos selected")).toBeDefined();

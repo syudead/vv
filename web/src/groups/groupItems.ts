@@ -8,12 +8,7 @@ import {
   setGroup,
 } from "../library/selection";
 
-// グループのページが項目から決める規則。
-
-/**
- * appendItems は読んだ続きのページを今の項目の後ろへ足す。同じ項目（id）が前のページに
- * あれば足さない（読む間に並びが変わって、ページの境目で同じ項目が二度返ったとき）。
- */
+/** Deduplicate IDs across page boundaries because concurrent reordering can return an item twice. */
 export function appendItems(
   current: readonly GroupItem[],
   page: readonly GroupItem[],
@@ -22,11 +17,7 @@ export function appendItems(
   return [...current, ...page.filter((item) => !known.has(item.id))];
 }
 
-/**
- * selectAllInGroup はグループのページの「Select all」の選択である。動画はグループの
- * `videoIds`（子孫の動画のすべて、読んでいないページの分も）、選んだグループはここまでに
- * 並んだ子グループ。
- */
+/** Select all descendant videos, including unloaded pages, but only loaded child-group entries. */
 export function selectAllInGroup(
   videoIds: readonly number[],
   items: readonly GroupItem[],
@@ -43,17 +34,9 @@ export function selectAllInGroup(
 }
 
 /**
- * reconcileGroupSelection は読み直したグループを選択に映す。
- *
- * - 選んだ動画は、グループの `videoIds`（子孫の動画のすべて、読んでいないページの分も）に
- *   もう無いものを外す。読んでいないページの選択は残る。
- * - 選んだ子グループは、読み直した項目にもう無ければ外す。並んでいれば今のメンバーで
- *   覚え直し、メンバーが増えて全員が選択に入っていなければ外す（ライブラリの
- *   `reconcileGroups` と同じ考え方。外したグループのメンバーは選んだ動画として残る）。
- *
- * ライブラリの `reconcileGroups` をそのまま使わないのは、子グループのメンバーが直接の
- * 動画の項目としても並ぶ（Edge Case）ことがあり、その規則だと子グループの選択を誤って外すため。
- * 変化が無ければ同じ選択を返す。
+ * Retain selected videos on unloaded pages and reconcile child-group membership. Library
+ * reconciliation cannot be reused because child-group members may also appear as direct videos;
+ * preserve identity if unchanged.
  */
 export function reconcileGroupSelection(
   selection: LibrarySelection,
@@ -82,15 +65,13 @@ export function reconcileGroupSelection(
   return changed ? { ids, groups } : selection;
 }
 
-/** sameIds は 2 つの id の並びが同じとき true を返す。 */
 function sameIds(a: readonly number[], b: readonly number[]): boolean {
   return a.length === b.length && a.every((id, index) => b[index] === id);
 }
 
 /**
- * selectedItemIds は選択バーの「Remove from group」で外す項目の id である。選択を「Favorite」と同じに分け、選んだグループに当たる子グループの項目と、
- * 選んだグループのメンバーでない選んだ動画の項目を、ここまでに並んだ項目から並び順に返す。
- * 読んでいないページの項目は画面に id が無いので含めない。
+ * Return loaded selected items in display order, excluding videos covered by selected groups;
+ * unloaded item IDs are unavailable.
  */
 export function selectedItemIds(
   selection: LibrarySelection,

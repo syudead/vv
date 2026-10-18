@@ -5,63 +5,39 @@ import { cn } from "@/lib/cn";
 import { Button } from "@/ui/shadcn/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/ui/shadcn/popover";
 
-// ツールバー（区画）。検索、絞り込みの操作、表示の切り替えと操作を 1 行に並べる。
-// 置き場は 2 つ:
-// - page（既定）: ページの中。狭い幅では折り返し、lg より狭い幅では表示の切り替えを
-//   「View and sort」のポップオーバーに名前つきで畳む。
-// - topBar: 共通のトップバーの中央（動画を見て回る一覧と管理表。画面が shell の
-//   TopBarPortal で入れる）。折り返さず、検索欄が残りの幅を取り、表示の切り替えは
-//   それぞれの inlineFrom の幅から行に並ぶ。それより狭い幅ではアイコンだけの
-//   「View and sort」のポップオーバーに入る。
-// page の置き場で searchPlacement="end" にすると、検索欄を絞り込みの後ろ、行の端に max-w-sm
-// までの幅で置く（題で始まる行のため）。sm 未満では今まで通り 1 行を占める。
-// 規則は web/registry/rules/patterns.md の Sections。
+// Toolbar layout rules: web/registry/rules/patterns.md, Sections.
+// Top-bar placement never wraps; controls move into the compact popover below their inlineFrom breakpoint.
+// End search placement follows filters and caps at max-w-sm; below sm it occupies a full row.
 
-/** ToolbarBreakpoint は topBar の置き場で、表示の切り替えを行に並べ始める幅である。 */
 export type ToolbarBreakpoint = "md" | "lg" | "xl";
 
-/** ToolbarViewControl は表示の切り替えの 1 つで、畳んだときに見せる名前を持つ。 */
 export interface ToolbarViewControl {
-  /** 並びの中で一意な鍵。 */
   id: string;
-  /** 見える名前（「Card size」）。ポップオーバーの中で操作の上に出す。 */
   label: string;
-  /** 操作。行に並べるときは名前を出さないので、aria-label を付ける。id は付けない。 */
+  /** Supply aria-label because inline controls have no visible label; do not assign an id. */
   control: ReactNode;
-  /** topBar: ポップオーバーの中に置く形。省くと control をそのまま置く。 */
   compact?: ReactNode;
-  /** topBar: compact が自分で見出しを持つ（並べ替えのラジオ）。label を重ねて出さない。 */
+  /** Suppress the duplicate label when compact already includes its own heading. */
   compactLabelled?: boolean;
-  /** topBar: 行に並べ始める幅。既定は lg。 */
   inlineFrom?: ToolbarBreakpoint;
-  /** topBar: sm より狭い幅ではポップオーバーにも出さない（1 列で意味の無いカードの大きさ）。 */
+  /** Hide meaningless single-column sizing controls below sm, even in the popover. */
   hideBelowSm?: boolean;
 }
 
 export interface ToolbarProps {
-  /** 検索欄（Input）。sm より狭い幅では 1 行を占める。 */
   search?: ReactNode;
-  /** 絞り込みの操作（outline の sm のボタン、適用中の Toggle）。 */
   children?: ReactNode;
-  /** 表示の切り替え。lg から並べ、それより狭いと viewLabel のポップオーバーに名前つきで入る。 */
   view?: ToolbarViewControl[];
-  /** 畳んだ表示の切り替えを開くボタンの文言（「View and sort」）。view と一緒に渡す。 */
   viewLabel?: string;
-  /** 選択によらない操作。畳まない。 */
   actions?: ReactNode;
-  /** 置き場。既定は page。topBar は TopBarPortal で共通のトップバーへ入れる。 */
+  /** Wrap topBar placement in TopBarPortal. */
   placement?: "page" | "topBar";
-  /** page: 検索欄の位置。start（既定）は行の頭、end は絞り込みの後ろの行の端。 */
   searchPlacement?: "start" | "end";
-  /**
-   * page: true なら lg 未満では検索欄を描かない（画面が見出しの検索ボタンで開く）。lg からは
-   * いつも描く。
-   */
+  /** Let the page's search button expose the field below lg; keep it visible above lg. */
   searchHiddenBelowLg?: boolean;
   /**
-   * page: true なら折り返さず、入りきらない行は横に動かす。検索欄は md から描き、md 未満では
-   * 画面が children の頭に置く検索のボタン（md:hidden）で開く。行は relative なので、開いた欄を
-   * 行の上に重ねられる。
+   * Use horizontal overflow instead of wrapping; below md callers provide the search button and
+   * overlay input.
    */
   nowrap?: boolean;
 }
@@ -151,7 +127,7 @@ function PageToolbar({
   );
 }
 
-// クラスは静的な文字列でなければ生成されないので、幅ごとに書き出す。
+// Keep breakpoint class strings literal so Tailwind generates them.
 const inlineClass: Record<ToolbarBreakpoint, string> = {
   md: "hidden md:block",
   lg: "hidden lg:block",
@@ -168,12 +144,7 @@ function inlineStep(item: ToolbarViewControl): ToolbarBreakpoint {
   return item.inlineFrom ?? "lg";
 }
 
-/**
- * TopBarToolbar はトップバーの中央の 1 行である。検索欄が残りの幅を取り、操作は
- * 中央に寄せる。表示の切り替えはそれぞれの inlineFrom から行に並び、それより狭い幅では
- * アイコンだけの「View and sort」のポップオーバーに入る。ボタンは全部が行に並ぶ
- * 幅（いちばん広い inlineFrom）から隠す。
- */
+/** Hide the compact menu only at the widest inlineFrom breakpoint, when every control is inline. */
 function TopBarToolbar({ search, children, view, viewLabel, actions }: ToolbarProps) {
   const items = view ?? [];
   const widest = steps.reduce<ToolbarBreakpoint | undefined>(

@@ -14,7 +14,6 @@ import (
 	"testing"
 )
 
-// zip の <版> はタグ（v を除く）か、無ければ commit の sha-<12 桁>（contracts §1）。
 func TestReleaseVersion(t *testing.T) {
 	commit := "0123456789abcdef0123456789abcdef01234567\n"
 	cases := []struct {
@@ -37,7 +36,7 @@ func TestReleaseVersion(t *testing.T) {
 	}
 }
 
-// ファイル名に入る版なので、パスの区切りなどは受け付けない。
+// Reject path separators because the version becomes part of a filename.
 func TestReleaseVersionRejectsUnsafeNames(t *testing.T) {
 	for _, env := range []string{"v1/2", "..", "v", "1 2"} {
 		if _, err := releaseVersion(env, "0123456789abcdef"); err == nil {
@@ -65,7 +64,6 @@ func serve(t *testing.T, body []byte) (*httptest.Server, *int) {
 	return server, &calls
 }
 
-// 固定した SHA-256 と合えば取り、2 回目は取ってあるものを使う。
 func TestFetchFFmpegVerifiesAndCaches(t *testing.T) {
 	body := []byte("essentials")
 	server, calls := serve(t, body)
@@ -85,7 +83,7 @@ func TestFetchFFmpegVerifiesAndCaches(t *testing.T) {
 	}
 }
 
-// SHA-256 が合わない FFmpeg ではビルドが失敗し、合わないファイルを残さない（R-12）。
+// Reject mismatched downloads without leaving an invalid cache entry.
 func TestFetchFFmpegFailsOnMismatch(t *testing.T) {
 	server, _ := serve(t, []byte("tampered"))
 	cache := t.TempDir()
@@ -99,7 +97,7 @@ func TestFetchFFmpegFailsOnMismatch(t *testing.T) {
 	}
 }
 
-// 取ってあるファイルも毎回確かめる。
+// Verify cached archives on every use.
 func TestFetchFFmpegRechecksTheCache(t *testing.T) {
 	server, calls := serve(t, []byte("essentials"))
 	cache := t.TempDir()
@@ -153,7 +151,6 @@ func writeZip(t *testing.T, name string, files map[string]string) {
 	}
 }
 
-// essentials の zip から ffmpeg.exe・ffprobe.exe・LICENSE だけを取り出す（contracts §1）。
 func TestExtractFFmpegTakesOnlyTheBundledFiles(t *testing.T) {
 	dir := t.TempDir()
 	archive := filepath.Join(dir, "essentials.zip")
@@ -201,7 +198,6 @@ func TestExtractFFmpegFailsWhenAFileIsMissing(t *testing.T) {
 	}
 }
 
-// zip は VVMDM-<版>-windows-amd64/ を根に持ち、契約 §1 の並びになる。
 func TestZipDirKeepsTheFolderAsTheRoot(t *testing.T) {
 	dir := t.TempDir()
 	root := filepath.Join(dir, windowsAppName("1.2.3"))
@@ -247,7 +243,7 @@ func TestZipDirKeepsTheFolderAsTheRoot(t *testing.T) {
 	}
 }
 
-// README は Windows のメモ帳で読むので CRLF にし、版と FFmpeg のソースの入手先を書く。
+// Use CRLF for Notepad and include the version and FFmpeg source location.
 func TestReadmesUseCRLFAndNameTheVersions(t *testing.T) {
 	app := appReadme("1.2.3")
 	ff := ffmpegReadme("9.0.2")

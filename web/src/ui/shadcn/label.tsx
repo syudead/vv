@@ -3,7 +3,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の Label。押すと結び付いた部品にフォーカスが移る（Radix Label）。
+// Adapted from shadcn/ui Radix Label.
 function Label({ className, ...props }: ComponentProps<typeof LabelPrimitive.Root>) {
   return (
     <LabelPrimitive.Root

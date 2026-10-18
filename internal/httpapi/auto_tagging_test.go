@@ -13,7 +13,6 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// autoTagClassifier は判定モデルの代わりで、どの質問にも 0 と答える。
 type autoTagClassifier struct{}
 
 func (autoTagClassifier) Classify(_ context.Context, req domain.ClassifierRequest) (map[string]float64, error) {
@@ -24,7 +23,6 @@ func (autoTagClassifier) Classify(_ context.Context, req domain.ClassifierReques
 	return out, nil
 }
 
-// ollamaProbe は接続の確かめの代わりで、呼ばれた回数を数え、err があれば失敗を返す。
 type ollamaProbe struct {
 	err    error
 	checks *int
@@ -42,8 +40,7 @@ type autoTaggingFixture struct {
 	owner *http.Cookie
 }
 
-// newAutoTaggingFixture は本物の保存先と app.AutoTagger・app.OllamaConnection で経路を組む。
-// 判定モデルと接続の確かめだけが偽で、判定は動かさない（積むところまでを確かめる）。
+// The fixture tests queueing with real app/storage and fake classifier/connection probes; classification does not run.
 func newAutoTaggingFixture(t *testing.T, probe app.OllamaProbe) *autoTaggingFixture {
 	t.Helper()
 	f := &autoTaggingFixture{}
@@ -57,7 +54,6 @@ func newAutoTaggingFixture(t *testing.T, probe app.OllamaProbe) *autoTaggingFixt
 	return f
 }
 
-// turnOn は自動タグ付けの機能を入にする。
 func (f *autoTaggingFixture) turnOn(t *testing.T) {
 	t.Helper()
 	res := f.send(http.MethodPut, "/api/settings/auto-tagging",
@@ -127,7 +123,7 @@ func TestOllamaSettingsDefaultsAndSave(t *testing.T) {
 		got.Endpoint != domain.DefaultOllamaEndpoint || got.Model != domain.DefaultOllamaModel || got.Saved {
 		t.Fatalf("defaults = %d %+v", rec.Code, got)
 	}
-	// saved は応答だけの値で、要求に含めると拒む。
+	// saved is response-only and must be rejected in requests.
 	if res := f.send(http.MethodPut, "/api/settings/ollama", `{"endpoint":"http://gpu:11434","model":"clef","saved":true}`); res.StatusCode != http.StatusBadRequest {
 		t.Errorf("body with saved: status = %d", res.StatusCode)
 	}
@@ -150,8 +146,6 @@ func TestOllamaSettingsDefaultsAndSave(t *testing.T) {
 	}
 }
 
-// 確かめは要求の本文を使わず（保存した接続先で確かめるのは判定モデルのアダプタの仕事）、
-// 機能が切でも確かめられる。使えないことは 200 の available=false で返す。
 func TestCheckOllama(t *testing.T) {
 	var checks int
 	ok := newAutoTaggingFixture(t, ollamaProbe{checks: &checks})
@@ -170,7 +164,6 @@ func TestCheckOllama(t *testing.T) {
 	}
 }
 
-// 判定の確かめは機能が切でも 1 問を判定させ、答えが返れば使えると返す。
 func TestCheckAutoTaggingClassifier(t *testing.T) {
 	f := newAutoTaggingFixture(t, ollamaProbe{})
 	rec := f.env.serve(authRequest{method: http.MethodPost, target: "/api/auto-tagging/check", cookies: []*http.Cookie{f.owner}})
@@ -179,7 +172,6 @@ func TestCheckAutoTaggingClassifier(t *testing.T) {
 	}
 }
 
-// 機能が切なら、判定に回す要求は 409 で断る（動画 1 本の経路も同じ誤りを同じ応答にする）。
 func TestAutoTaggingRefusesWhileOff(t *testing.T) {
 	f := newAutoTaggingFixture(t, ollamaProbe{})
 	for _, req := range []authRequest{

@@ -12,10 +12,7 @@ import type { components } from "./gen/openapi";
 import { clearListSnapshot } from "./listSnapshot";
 import { refreshTags } from "./tags";
 
-// グループの一覧と編集の画面 API。型は
-// api/openapi.yaml からの生成物を使う。一覧はゲストも読め、書き込みは所有者だけである。
-// 一覧の項目の取り直しに使うグループ 1 つの読み出し（getGroup）は client.ts にあり、グループの
-// ページは道筋付きの readGroupPage と続きの listGroupItems で読む。
+// client.getGroup refreshes list cards; group pages use readGroupPage and listGroupItems with trail context.
 
 export type GroupItem = components["schemas"]["GroupItem"];
 export type GroupRef = components["schemas"]["GroupRef"];
@@ -29,26 +26,18 @@ function groupPath(id: number): string {
   return `/api/groups/${String(id)}`;
 }
 
-/**
- * readGroupPage はグループ 1 つと、その道筋と項目の最初のページを取得する
- * （GET /api/groups/{id}?trail=）。`trail` は画面が通ってきたグループの id で、外側から順に
- * 並べる。空なら送らない。応答の `trail` は、そのうち今も親と子の組が続く部分である。無いか見せないときは 404 の RequestFailed で失敗する。
- */
+/** Send trail IDs outermost first; the server returns only the still-valid parent-child chain. */
 export function readGroupPage(
   id: number,
   trail: readonly number[],
   signal?: AbortSignal,
 ): Promise<GroupDetail> {
-  // id は数字だけなので、区切りの `,` はそのまま載せる（style: form, explode: false）。
+  // Numeric IDs allow literal comma separators: form style with explode false.
   const query = trail.length === 0 ? "" : `?trail=${trail.map(String).join(",")}`;
   return request<GroupDetail>(`${groupPath(id)}${query}`, { signal });
 }
 
-/**
- * listGroupItems はグループの項目の続きを 1 ページ取得する（GET /api/groups/{id}/items）。
- * `cursor` は前の応答の `nextCursor` で、中身は解釈しない。省くと先頭のページ。`limit` を省くと
- * サーバーの既定の件数。
- */
+/** Follow nextCursor opaquely; omitted cursor starts at the first page. */
 export function listGroupItems(
   id: number,
   cursor: string | undefined,
@@ -62,15 +51,9 @@ export function listGroupItems(
   return request<GroupItemPage>(`${groupPath(id)}/items${search}`, { signal });
 }
 
-/** directItemPageSize は直接の項目を探すときの 1 ページの件数（api/openapi.yaml の上限）である。 */
 const directItemPageSize = 200;
 
-/**
- * findVideoItem はグループ `id` の直接の項目から動画 `videoId` の項目を探し、その項目の id を
- * 返す。`nextCursor` を追って全部を読み、無ければ undefined（子グループを通してだけ入っている
- * 動画も undefined。外す経路はグループ自身の項目しか取らない。docs/design-docs/catalog-organization.md
- * 「Video page」）。
- */
+/** Search direct items only, not descendants, because removal requires the group's own item ID. */
 export async function findVideoItem(
   id: number,
   videoId: number,
@@ -88,7 +71,7 @@ export async function findVideoItem(
   return undefined;
 }
 
-/** 作成と追加で項目にする動画とグループ。動画、次にグループの順に、それぞれこの順で足す。 */
+/** Append videos first, then groups, preserving each supplied order. */
 export interface GroupMembers {
   videoIds?: readonly number[];
   groupIds?: readonly number[];
@@ -102,20 +85,14 @@ function membersBody(members: GroupMembers): { videoIds: number[]; groupIds: num
 }
 
 export interface ListGroupsParams {
-  /** 名前に含む文字列。サーバーが前後の空白を取り除き、大文字小文字を区別せずに比べる。 */
+  /** The server trims and matches case-insensitively. */
   q?: string;
-  /** 前回の応答の `nextCursor`。中身は解釈しない。 */
+  /** Opaque nextCursor from the previous response. */
   cursor?: string;
-  /** 1 ページの件数。省けばサーバーの既定（100 件）。 */
   limit?: number;
   signal?: AbortSignal;
 }
 
-/**
- * listGroups は見る人に見せるグループを、どの深さのものも自然な名前の順に 1 ページ取得する
- * （GET /api/groups）。「Add to group」のピッカーが読む。読めないカーソルは 400 `invalid_cursor`
- * の RequestFailed になる。
- */
 export function listGroups({
   q,
   cursor,
@@ -132,13 +109,7 @@ export function listGroups({
   });
 }
 
-/**
- * listAllGroups は見る人に見せるグループの全部を、`nextCursor` が尽きるまで最大の件数
- * （MAX_PAGE_SIZE）のページで辿って取得する。名前で選ぶ「Add to group」のピッカーが、一覧の
- * 全部を手元で絞るのに使う。グループの数に
- * 上限は無いので、ページ数では打ち切らない。同じカーソルが二度返ったら、終わらない読みに
- * なるので欠けた一覧を返さずに失敗にする。
- */
+/** Read all pages without a page-count cap; reject repeated cursors instead of returning an incomplete list. */
 export async function listAllGroups(signal?: AbortSignal): Promise<LibraryGroup[]> {
   const groups: LibraryGroup[] = [];
   const seen = new Set<string>();
@@ -155,11 +126,7 @@ export async function listAllGroups(signal?: AbortSignal): Promise<LibraryGroup[
   return groups;
 }
 
-/**
- * createGroup は動画とグループからグループを作る（POST /api/groups）。名前が空か長すぎるか、
- * メンバーが無ければ 400 `invalid_request`、動画かグループのどれかが無くなっていれば 404
- * `group_target_not_found` の RequestFailed になり、何も作られない。
- */
+/** Creation is atomic; a missing video or group returns group_target_not_found. */
 export function createGroup(
   name: string,
   members: GroupMembers,
@@ -175,12 +142,7 @@ export function createGroup(
   );
 }
 
-/**
- * renameGroup はグループの名前を変え、前後を削った名前の値を返す（PATCH /api/groups/{id}）。
- * `undoToken` にこのグループを作った「Make a group」のトークンを渡すと、名前の変更がその取り消しに
- * 含まれる。トークンが使えなくても名前は変わる。
- * 成功したら一覧の控えを捨てる（ライブラリのカードの名前が変わる）。
- */
+/** A valid undoToken includes renaming in creation undo; invalid tokens do not prevent renaming. */
 export async function renameGroup(
   id: number,
   name: string,
@@ -196,22 +158,14 @@ export async function renameGroup(
   return group;
 }
 
-/**
- * dissolveGroup はグループを解散する（DELETE /api/groups/{id}）。子グループと動画は残る。
- * 無ければ 404 の RequestFailed。成功したら一覧の控えを捨てる（ライブラリのカードが変わる）。
- */
+/** Dissolving preserves child groups and videos. */
 export async function dissolveGroup(id: number, signal?: AbortSignal): Promise<void> {
   const response = await apiFetch(groupPath(id), { method: "DELETE", signal });
   if (!response.ok) throw await toRequestFailed(response);
   clearListSnapshot();
 }
 
-/**
- * addToGroup は動画とグループをグループの末尾に足し、足した後の値を返す
- * （POST /api/groups/{id}/items）。既にあるものは飛ばす。無くなった対象は 404
- * `group_target_not_found`、このグループかその祖先を入れようとすると 409 `group_cycle` の
- * RequestFailed になり、何も足されない。
- */
+/** Skip existing items; missing targets or cycles reject the entire addition. */
 export function addToGroup(
   id: number,
   members: GroupMembers,
@@ -227,12 +181,7 @@ export function addToGroup(
   );
 }
 
-/**
- * dropSnapshotAfter は作成と追加の後に一覧の控えを捨てる。足したものはライブラリのいちばん上から
- * 外れるが、控えは書き換えないので、動画ページや別のグループのページから足して戻ると古い一覧が
- * 戻ってしまう。404（途中で対象が無くなった）でも、控えにその項目が残るので捨てる。スマートフォルダの
- * 書き込み（api/smartFolders.ts）も、ライブラリのフォルダのカードが変わるので同じく使う。
- */
+/** Invalidate snapshots after mutations and 404s: detached lists may retain moved or missing items. Shared with smart-folder mutations. */
 export async function dropSnapshotAfter<T>(sent: Promise<T>): Promise<T> {
   try {
     const value = await sent;
@@ -244,13 +193,7 @@ export async function dropSnapshotAfter<T>(sent: Promise<T>): Promise<T> {
   }
 }
 
-/**
- * removeFromGroup は項目（動画やグループの id ではない）を外し、外した後の値を返す
- * （POST /api/groups/{id}/items/remove）。最後の項目を外すとサーバーはグループを解散して本文の
- * 無い `204` を返すので、そのときは `null` を返す。グループに無い項目があれば 404
- * `group_target_not_found` の RequestFailed になり、何も外されない。成功したら一覧の控えを
- * 捨てる（ライブラリのカードの本数とプレビューが変わり、外した項目が上に出ることもある）。
- */
+/** Remove item IDs, not video/group IDs. Return null when removing the final item dissolves the group with a 204 response. */
 export async function removeFromGroup(
   id: number,
   itemIds: readonly number[],
@@ -269,12 +212,7 @@ export async function removeFromGroup(
   return group;
 }
 
-/**
- * moveGroupItem は項目 `itemId` を項目 `after` のすぐ後ろへ移す。`null` なら先頭へ移す
- * （POST /api/groups/{id}/items/{itemId}/move）。項目か `after` がグループに無ければ 404
- * `group_target_not_found` の RequestFailed になる。成功したら一覧の控えを捨てる（ライブラリの
- * カードのプレビューと最初に開く動画が並びで決まる）。
- */
+/** Null moves to the front; invalidate snapshots because order determines previews and initial playback. */
 export async function moveGroupItem(
   id: number,
   itemId: number,
@@ -291,14 +229,7 @@ export async function moveGroupItem(
   clearListSnapshot();
 }
 
-/**
- * tagGroup はグループをタグにする（POST /api/groups/{id}/tag）。子孫の全動画にタグが手で付き、
- * グループは解散する。名前がタグ名に使えなければ 400 `invalid_request` の RequestFailed になり、
- * 何も変わらない。
- *
- * 成功したら一覧の控えを捨て（ライブラリのカードが変わる）、共有のタグの一覧も取り直す（タグが
- * 増えるか、本数が変わる）。404（途中で解散された）でも、控えにそのカードが残るので捨てる。
- */
+/** Tag every descendant video and dissolve the group atomically; refresh shared tags and invalidate snapshots, including on 404. */
 export async function tagGroup(
   id: number,
   signal?: AbortSignal,
@@ -310,7 +241,6 @@ export async function tagGroup(
   return result;
 }
 
-/** taggedMessage はグループをタグに変えたことを伝える文言である。 */
 export function taggedMessage(result: GroupTagResult): UiText {
   return t.groups.tagged(result.tag.name, result.created);
 }

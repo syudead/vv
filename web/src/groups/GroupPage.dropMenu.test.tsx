@@ -15,10 +15,6 @@ import { renderPage, seed, server, setUpGroupPageServer } from "../testing/group
 
 setUpGroupPageServer();
 
-// グループのページで動画を動画に落とす。「Season」は左から Episode 1、子グループ
-// Extras、Episode 2 を持つ。
-
-/** cardTitles は格子のカードの題名か名前の欄の値を左から返す。 */
 function cardTitles(): string[] {
   return Array.from(document.querySelectorAll("article")).map(
     (card) =>
@@ -74,7 +70,6 @@ describe("GroupPage drop a video on a video", () => {
     const field = await screen.findByRole("textbox", { name: "Group name" });
     await user.clear(field);
     await user.type(field, "Pilot");
-    // 開いているグループの知らせで読み直す。サーバーの項目は Episode 1 の位置に新しいグループを持つ。
     await emitServerEvent("group", { ids: [60, 1] });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 20));

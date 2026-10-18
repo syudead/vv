@@ -2,10 +2,7 @@ import { t } from "../i18n";
 import { Progress } from "../ui/shadcn/progress";
 import type { ScanPresentation } from "./scanPresentation";
 
-/**
- * ScanProgressBar は本数による1つの進み具合である。数字の出ない状態（開始中・finding）
- * では `aria-valuenow` を持たない不確定のバーにし、対象が 0 本の完了では何も出さない。shadcn/ui の Progress で描く。
- */
+/** Use indeterminate progress without numeric counts; hide the bar for zero-video completion. */
 export default function ScanProgressBar({
   presentation,
   className,

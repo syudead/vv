@@ -41,11 +41,10 @@ function json(body: unknown, status = 200): Response {
 
 const server = {
   videos: new Map<number, Video>(),
-  /** 取得に失敗させる id。 */
   failing: new Set<number>(),
   bundleRequests: [] as { videoIds: number[]; representativeId: number }[],
   bundleError: null as { status: number; body: unknown } | null,
-  /** 束ねる応答を止めておく（送信中の状態を見るため）。 */
+  /** Hold the bundle response to expose pending state. */
   holdBundle: null as ((response: Response) => void) | null,
   hold: false,
 };
@@ -178,7 +177,6 @@ describe("BundleDialog", () => {
       expect.stringContaining("劇場版"),
       expect.stringContaining("既に束ねた"),
     ]);
-    // 既定で先頭を選ばない。
     expect(radios.every((radio) => radio.getAttribute("aria-checked") === "false")).toBe(
       true,
     );
@@ -191,10 +189,8 @@ describe("BundleDialog", () => {
     )!;
     expect(within(first).getByText("1920×1080")).toBeDefined();
     expect(within(first).getByText("MATROSKA")).toBeDefined();
-    // 手で付けたタグだけを出し、フォルダ名からだけ付いたタグは出さない。
     expect(within(first).getByText("アニメ")).toBeDefined();
     expect(first.textContent).not.toContain("anime ·");
-    // 所有者の窓なので、2 行目の title に絶対パスを入れる。
     expect(
       first.querySelector('[title*="/media/movies/anime/劇場版.mkv"]'),
     ).not.toBeNull();
@@ -209,7 +205,6 @@ describe("BundleDialog", () => {
     const user = userEvent.setup();
     const { onBundled } = renderDialog({ videoIds: [1, 2] });
     await screen.findByRole("radio", { name: /TV 版/ });
-    // 最初のフォーカスは Cancel。
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Cancel" }));
     const submit = screen.getByRole("button", { name: "Bundle" }) as HTMLButtonElement;
     expect(submit.disabled).toBe(true);
@@ -283,7 +278,6 @@ describe("BundleDialog", () => {
     server.failing.add(2);
     renderDialog();
     const alert = await screen.findByRole("alert");
-    // 失敗の Alert は Retry を添える。
     expect(alert.textContent).toBe("Couldn't load the selected videosRetry");
     expect(
       (screen.getByRole("button", { name: "Bundle" }) as HTMLButtonElement).disabled,

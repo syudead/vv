@@ -1,8 +1,6 @@
 //go:build wasip1
 
-// probe は internal/wasmplugin のテストが使う作品情報プラグインである。search では query、
-// fetch では id で振る舞いを選び、どれにも当たらない要求には要求をそのまま映した
-// 応答を返す（echo）。作品情報を返す振る舞いは fetch で選ぶ。
+// The fixture selects search behavior by query and fetch behavior by ID, defaulting to echo.
 package main
 
 import (
@@ -32,7 +30,7 @@ type request struct {
 	Settings  map[string]string `json:"settings"`
 }
 
-// kept はメモリを手放さないように持つ。
+// Keep allocations reachable to prevent reclamation.
 var kept [][]byte
 
 func main() {
@@ -80,8 +78,7 @@ func main() {
 	}
 }
 
-// echo は search に query を映した候補を、fetch に id を題名とし設定を key=value のタグとした
-// 作品情報を返す。
+// echo mirrors search queries, or fetch IDs as titles with key=value setting tags.
 func echo(req request) {
 	if req.Operation == "search" {
 		reply(map[string]any{"candidates": []map[string]string{{
@@ -100,9 +97,8 @@ func echo(req request) {
 	reply(map[string]any{"workInfo": map[string]any{"title": req.ID, "tags": tags}})
 }
 
-// fetchPages は設定 request の http_send の要求を count 回（既定 1 回）送り、どの誤りも無視する。
-// 題名は最後に成功した応答の本文、タグは各回の http_send の戻り値（codes=）と、その応答の
-// http_meta の JSON（meta=）である。設定 fail が空でなければ、そのあと誤りを報告して失敗する。
+// fetchPages repeats HTTP requests while ignoring failures, returning the last successful body and
+// response codes/metadata; fail then forces a plugin error.
 func fetchPages(settings map[string]string) {
 	count, err := strconv.Atoi(settings["count"])
 	if err != nil {
@@ -130,7 +126,7 @@ func fetchPages(settings map[string]string) {
 	reply(map[string]any{"workInfo": info})
 }
 
-// readAll は http_meta か http_body を、まず空の buffer で呼んで長さを知り、その大きさで呼び直す。
+// Read once with an empty buffer for length, then again with sufficient capacity.
 func readAll(handle int32, read func(int32, unsafe.Pointer, uint32) int32) []byte {
 	var probe [1]byte
 	n := read(handle, unsafe.Pointer(&probe[0]), 0)

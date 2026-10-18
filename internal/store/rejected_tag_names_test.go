@@ -10,15 +10,13 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 却下した名前のページ読み。
-
 // Rejected names retain natural order across full and partial pages; forgetting one reduces the total.
 func TestListRejectedTagNamesPages(t *testing.T) {
 	db, _ := tentativeFixture(t)
 	ctx := context.Background()
 
 	want := []string{"name 1", "name 2", "name 3", "name 10", "name 11"}
-	// 挿入の順に依らないことを見るため、逆順に作る。
+	// Insert in reverse order to prove output does not depend on insertion.
 	created := slices.Clone(want)
 	slices.Reverse(created)
 	applyTentative(t, db, []domain.VideoRef{{ContentKey: "key-a"}}, domain.VideoTagsAdd, created...)
@@ -72,12 +70,10 @@ func TestListRejectedTagNamesPages(t *testing.T) {
 	}
 }
 
-// sort_key が同じ名前は name のバイト順で並び、ページの境目でも抜けない。解釈できないカーソルや
-// ほかの一覧のカーソルは ErrInvalidCursor になる。
 func TestListRejectedTagNamesTiesAndInvalidCursor(t *testing.T) {
 	db, _ := tentativeFixture(t)
 	ctx := context.Background()
-	// 照合形が同じ（全角と半角・大文字と小文字、先頭の 0）で sort_key が同じになる組。
+	// Use spellings that normalize to the same natural-sort key.
 	for _, name := range []string{"ＡＢＣ", "abc", "ABC", "x01", "x1"} {
 		rejectName(t, db, name)
 	}
@@ -111,8 +107,7 @@ func TestListRejectedTagNamesTiesAndInvalidCursor(t *testing.T) {
 	}
 }
 
-// 036 #727: 却下した名前のページ読みは書き込みの枠を取らない。別の書き込みが枠を持っている間も
-// 待たずに読める（読み取り用の接続で開く。listing.go の ListVideos と同じ）。
+// Deferred read snapshots must succeed while another connection holds the write slot.
 func TestListRejectedTagNamesDoesNotWaitForTheWriter(t *testing.T) {
 	db, _ := tentativeFixture(t)
 	ctx := context.Background()

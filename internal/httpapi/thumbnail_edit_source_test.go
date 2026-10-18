@@ -13,9 +13,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 今のサムネイルから始める編集を、本物の保存層の適用した画像で確かめる。
-
-// applySource は動画 name に元の画像 source を持つ画像を適用したことを保存層へ直接記録する。
 func (f *guestFixture) applySource(t *testing.T, name string, source []byte) {
 	t.Helper()
 	ctx := context.Background()
@@ -30,9 +27,6 @@ func (f *guestFixture) applySource(t *testing.T, name string, source []byte) {
 	}
 }
 
-// 画像を適用していない動画は自動の位置のコマから始め、その位置を返す。適用した動画は保存した
-// 元の画像の大きさで始め、位置を返さず、コマのルートはその PNG を返す。元の画像を読めなければ
-// 409 thumbnail_frame_unavailable である。
 func TestStartThumbnailEditFromThumbnail(t *testing.T) {
 	f := newGuestFixture(t, true)
 	f.saveConnection(t)
@@ -70,7 +64,6 @@ func TestStartThumbnailEditFromThumbnail(t *testing.T) {
 		wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonThumbnailFrameUnavailable})
 }
 
-// 動画のファイルを開けなくても、画像を適用していれば今のサムネイルから始められる。コマが要るときは従来どおり 404 file_unavailable である。
 func TestStartThumbnailEditFromThumbnailWithoutFile(t *testing.T) {
 	f := newGuestFixture(t, true)
 	f.saveConnection(t)

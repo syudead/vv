@@ -19,7 +19,6 @@ vi.mock("../auth/pageNavigation", async (importOriginal) => ({
 
 type SidebarMode = "rail" | "drawer";
 
-/** stubWidth は狭い幅（639px 以下）かどうかを matchMedia で決める。 */
 function stubWidth(phone: boolean) {
   vi.stubGlobal(
     "matchMedia",
@@ -58,7 +57,6 @@ function renderSidebar({
     </MemoryRouter>,
   );
   if (mode === "drawer") {
-    // ドロワーはトップバーの ☰ で開く。
     act(() => screen.getByRole("button", { name: /Toggle sidebar/ }).click());
   }
   return result;
@@ -128,7 +126,7 @@ describe("Sidebar", () => {
   it("ドロワーとその背面の幕はトップバーの下から始める", () => {
     renderSidebar();
 
-    // ドロワーの置き場は Sheet の data-[side=left]: で決まるため、同じ印で上端を下げる。
+    // Use Sheet's data-[side=left] selector to override its top position.
     const drawer = screen.getByRole("dialog");
     expect(drawer.getAttribute("data-side")).toBe("left");
     expect(drawer.className).toContain("data-[side=left]:top-navbar");
@@ -150,7 +148,6 @@ describe("Sidebar", () => {
     await user.click(settings);
 
     expect(settings.getAttribute("href")).toBe("/settings");
-    // 押すとドロワーを閉じる。
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 

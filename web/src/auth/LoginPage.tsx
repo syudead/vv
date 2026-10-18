@@ -15,24 +15,18 @@ import {
 } from "./CredentialScreen";
 import { assignPage } from "./pageNavigation";
 
-/** loginFailureMessage は、ログインの失敗を失敗の行の文言にする。 */
 function loginFailureMessage(error: unknown): UiText {
   if (error instanceof LoginThrottled && error.retryAfterSeconds !== null) {
     return t.auth.login.throttledFor(error.retryAfterSeconds);
   }
-  // どの欄が違うかは示さない（要件 12）。本文を読めない 401 も同じ文にする。
+  // Do not reveal which credential failed; use the same message for unreadable 401 responses.
   if (error instanceof RequestFailed && error.status === 401) {
     return t.errors.code.invalid_credentials;
   }
-  // 試行の制限（待ち時間なし）・その他の API エラー・届かなかった失敗は、API エラーの
-  // 表示（reason → code → message → HTTP 状態）に任せる。
   return errorText(error);
 }
 
-/**
- * LoginPage はログイン画面（/login）である。成功したら、サーバーが確かめた戻り先へ
- * ページごと移る。戻り先の候補は URL の next で、画面では判定しない。
- */
+/** Navigate to the server-validated next URL after login; do not validate redirects in the UI. */
 export default function LoginPage() {
   const location = useLocation();
   const next = new URLSearchParams(location.search).get("next") ?? undefined;
@@ -42,7 +36,7 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [throttled, setThrottled] = useState(false);
   const [failure, setFailure] = useState<UiText | null>(null);
-  // Enter の二重送信を、描き直しを待たずに止める。
+  // Prevent duplicate Enter submissions before React rerenders.
   const busy = useRef(false);
   const usernameRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -59,7 +53,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       const { redirectTo } = await login(username, password, next);
-      // ページが移るまで主操作は押せないままにする。
+      // Keep submission disabled until navigation completes.
       assignPage(redirectTo);
       return;
     } catch (error) {
@@ -76,7 +70,6 @@ export default function LoginPage() {
           return;
         }
       } else if (error instanceof RequestFailed && error.status === 401) {
-        // パスワードだけを空にしてそこへ移る。ユーザー名は残す。
         setPassword("");
         passwordRef.current?.focus();
       }

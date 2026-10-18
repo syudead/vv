@@ -5,9 +5,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
- * 見た目の値は src/ui/tokens.css の @theme にだけ置く。
- * 画面側に生の色が散ると、配色を変えるときに取りこぼす。shadcn が上流のテーマの CSS 変数を
- * index.css に書き足したときも、ここで落ちる。
+ * Keep visual values in src/ui/tokens.css @theme; reject raw colors and upstream theme additions
+ * elsewhere.
  */
 
 const root = join(__dirname, "..");
@@ -39,7 +38,7 @@ describe("design tokens", () => {
   });
 });
 
-/** relativeLuminance / contrast は WCAG 2 の定義。 */
+/** Use WCAG 2 relative luminance and contrast definitions. */
 function luminance(hex: string): number {
   const value = hex.length === 4 ? hex.replace(/[0-9a-f]/gi, (c) => c + c) : hex;
   const channel = (i: number) => {
@@ -65,23 +64,19 @@ describe("contrast", () => {
     return hex;
   };
 
-  // 面の 5 段階（暗い順）。どの面の上でも本文と補足の文字が読める。
   const surfaces = ["navbar", "background", "muted", "card", "popover"];
-  // 色の役割の割り当ては docs/design-docs/design-system.md の Foundations。
+  // Token roles are documented in design-system.md, Foundations.
   const pairs: [string, string, number][] = [
     ...surfaces.flatMap((surface): [string, string, number][] => [
       ["foreground", surface, 4.5],
       ["muted-foreground", surface, 4.5],
-      // 失敗・注意・完了の行と、お気に入りのオンのハートの塗り
       //
       ["destructive", surface, 4.5],
       ["warning", surface, 4.5],
       ["success", surface, 4.5],
       ["favorite", surface, 4.5],
-      // 共通の操作の境界とキーボードのフォーカス輪郭（非文字の対比）。
       ["input", surface, 3],
       ["ring", surface, 3],
-      // 主操作の塗り・選択の印・進行の帯（非文字の対比）。
       ["primary", surface, 4.5],
       ["primary-active", surface, 3],
     ]),
@@ -94,7 +89,6 @@ describe("contrast", () => {
     ["primary-foreground", "primary", 4.5],
     ["primary-foreground", "primary-hover", 4.5],
     ["primary-foreground", "primary-active", 4.5],
-    // 選んだ行・効いている絞り込みのチップの面の上の文字と印
     //
     ["foreground", "primary-soft", 4.5],
     ["muted-foreground", "primary-soft", 4.5],
@@ -107,11 +101,9 @@ describe("contrast", () => {
     ["destructive", "destructive-soft", 4.5],
     ["warning", "warning-soft", 4.5],
     ["success", "success-soft", 4.5],
-    // 動画詳細画面の段階表示・再生失敗（プレイヤーの上の不透明な面）のリンク。
     ["ring", "navbar", 4.5],
     ["ring", "background", 4.5],
     ["ring", "card", 4.5],
-    // ツールチップは明るい面に暗い文字で出す。
     ["background", "foreground", 4.5],
   ];
 

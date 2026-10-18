@@ -6,19 +6,17 @@ Thumbs.db
 .vscode/
 .idea/
 
-# エージェントが作る一時 worktree。中身は別チェックアウトなので版管理しない。
+# Agent worktrees are separate temporary checkouts.
 .claude/worktrees/
 
 # Dependencies and build output
 node_modules/
 dist/
-# 版管理の根の build/ だけを除く。scripts/build は task build の実体なので、
-# どの階層の build/ も除くと版管理から外れてしまう。
+# Anchor build/ at the root so scripts/build stays tracked.
 /build/
 /bin/
 
-# Windows 版の zip を組む間だけ置く、go-winres のアイコンと manifest
-# （scripts/build/windows_app.go）。
+# Temporary go-winres icon and manifest objects used during Windows packaging.
 /cmd/mdm/*.syso
 
 # web/dist is the embed target for the Go binary. Only .gitkeep is version
@@ -30,21 +28,21 @@ dist/
 web/dist/*
 !web/dist/.gitkeep
 
-# npm run test の出力先。web/dist を汚さないために分けてある。
+# Keep test output separate from web/dist.
 web/.vite-build-check/
 
-# 文書サイト（VitePress）のキャッシュ。出力の dist/ は上で除いている。
+# VitePress cache; dist output is excluded above.
 /docs-site/.vitepress/cache/
 
-# task が sources / generates の判定に使う作業領域
+# Task source/output freshness state.
 /.task/
 
-# task test-web のビルド検証の出力先
+# Web build-validation output.
 /web/.vite-build-check/
 /web/playwright-report/
 /web/test-results/
 
-# task dev が使う手元の作業場所
+# Local development state.
 /media/
 /.local/
 /worktrees/
@@ -63,6 +61,5 @@ __pycache__/
 # UI screenshots are not kept in the repository.
 /docs/screenshots/
 
-# task test-go-report / test-web-report が書くカバレッジとテスト結果（CI が Codecov へ送る）、
-# task mutation-go が書く変異テストの結果
+# Coverage, test reports and mutation results.
 /reports/

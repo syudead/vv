@@ -8,9 +8,8 @@ import (
 	"github.com/syudead/vv/internal/app"
 )
 
-// startTranscodeSettings はライブ変換の映像エンコード方式の設定を作り、保存値を読み、
-// 起動時の確認を背後で始めて待たずに戻る。
-// 確認が終わるまで、実際に使う方式は software である。確認は ctx の取り消しで止まる。
+// startTranscodeSettings starts encoder probing asynchronously; software remains effective until
+// completion, and ctx cancellation stops the probe.
 func startTranscodeSettings(
 	ctx context.Context,
 	store app.TranscodeSettingsStore,

@@ -6,7 +6,7 @@ import { t } from "@/i18n";
 import { cn } from "@/lib/cn";
 import { Button } from "@/ui/shadcn/button";
 
-// shadcn/ui の dialog（radix-nova）を vv のトークンで着せたもの。構造と部品の名前は上流のまま
+// Adapted from shadcn/ui radix-nova with shared tokens and upstream component structure.
 // （web/registry/rules/components.md「Dialog」）。
 
 function Dialog({ ...props }: React.ComponentProps<typeof DialogPrimitive.Root>) {

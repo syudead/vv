@@ -19,7 +19,6 @@ func TestListDirectoriesListsChildDirectoriesSortedIgnoringCase(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// ファイルはディレクトリ選択に並べない。
 	if err := os.WriteFile(filepath.Join(root, "file.mp4"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -73,7 +72,7 @@ func TestListDirectoriesNormalizesNameButKeepsFilesystemPath(t *testing.T) {
 	if entry.Name != norm.NFC.String("Café") {
 		t.Fatalf("Name = %q, want NFC %q", entry.Name, norm.NFC.String("Café"))
 	}
-	// Path はファイルシステム上の綴りのまま返し、そのまま開けるようにする。
+	// Preserve filesystem spelling so returned paths remain directly usable.
 	if _, err := os.Stat(entry.Path); err != nil {
 		t.Fatalf("Path %q cannot be opened: %v", entry.Path, err)
 	}
@@ -124,9 +123,9 @@ func TestListDirectoriesRejectsSymbolicLinks(t *testing.T) {
 		t.Skipf("symbolic links are unavailable: %v", err)
 	}
 	for name, path := range map[string]string{
-		// 末尾が symlink なら Lstat で断る。
+		// Lstat rejects a final symlink.
 		"末尾の段": link,
-		// 末尾は実ディレクトリなので Lstat を通り、EvalSymlinks による途中の段の検証が働く。
+		// A real final directory passes Lstat; EvalSymlinks detects a symlink ancestor.
 		"途中の段": filepath.Join(link, "child"),
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -169,9 +168,9 @@ func TestListDirectoriesReportsUnreadableDirectories(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(unreadable, 0o755) })
 
 	for name, path := range map[string]string{
-		// 自身は Lstat できるが中身を読めない。
+		// Lstat succeeds but reading contents fails.
 		"中身を読めない": unreadable,
-		// 親を辿れないので Lstat が権限の誤りになる。
+		// An inaccessible parent makes Lstat fail with permission denied.
 		"親を辿れない": filepath.Join(unreadable, "child"),
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -181,7 +180,6 @@ func TestListDirectoriesReportsUnreadableDirectories(t *testing.T) {
 		})
 	}
 
-	// 読めない子は選んでも開けないので並べない。
 	if err := os.Mkdir(filepath.Join(root, "readable"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +204,7 @@ func TestDirectoryRootsListsFilesystemRoots(t *testing.T) {
 		}
 		return
 	}
-	// Windows では一時ディレクトリのあるドライブが必ず並ぶ。
+	// Windows must include the temporary directory's drive.
 	drive := filepath.VolumeName(t.TempDir()) + `\`
 	for _, entry := range got.Directories {
 		if entry.Name != entry.Path {

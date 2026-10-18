@@ -7,42 +7,26 @@ import {
 } from "../api/client";
 import { t, type UiText } from "../i18n";
 
-/**
- * 一覧の条件と URL の相互変換。
- *
- * ライブラリとフォルダ画面は同じクエリパラメータで条件を表す。ここは React に依存しない純粋な関数だけを置き、
- * 画面との結び付けは useListCriteria が受け持つ。
- */
-
-/** ListCriteria は一覧を決める条件である。 */
 export interface ListCriteria {
-  /** 検索語。前後の空白を落とし、100 符号位置で切ったもの。空なら検索しない。 */
+  /** Trimmed query, capped at 100 code points; empty disables search. */
   query: string;
   watch: WatchFilter;
-  /** true なら再生できるものだけにする。 */
   playable: boolean;
-  /**
-   * true ならお気に入りの項目だけにする（URL は `fav=1`。所有者だけ。
-   * docs/design-docs/catalog-organization.md「Filter menu」）。
-   */
+  /** Owner-only; serialized as fav=1. */
   favorite: boolean;
   sort: VideoSort;
-  /** sort=random の並びを決める値。ほかの並び順では常に undefined。 */
+  /** Defined only for random sort. */
   seed?: number;
 }
 
-/** MAX_SEED は seed に許す最大値である。 */
 export const MAX_SEED = 2147483647;
 
-// 並び順の一覧は api/client が持つ。画面の部品からはここ経由でも使えるようにする。
 export { isVideoSort, videoSorts };
 
-/** DEFAULT_SORT は端末に何も保存していないときの並び順である。 */
 export const DEFAULT_SORT: VideoSort = "addedDesc";
 
 const watchValues: readonly WatchFilter[] = ["all", "unwatched", "inProgress", "watched"];
 
-/** SortKind は並べ替えの種類である（向きを除いたもの）。 */
 export type SortKind =
   | "added"
   | "modified"
@@ -58,17 +42,12 @@ export type SortDirection = "asc" | "desc";
 
 export interface SortKindInfo {
   kind: SortKind;
-  /** 種類を選んだときの並び順。 */
   initial: VideoSort;
-  /** 昇順と降順の値。ランダムは向きを持たない。 */
   asc?: VideoSort;
   desc?: VideoSort;
 }
 
-/**
- * sortKinds はメニューに並べる9つの種類である。順はメニューの順と同じ。表示名は
- * sortKindLabel で描画のたびにカタログから引く。
- */
+/** Keep menu order stable and read labels from the catalog during rendering. */
 export const sortKinds: readonly SortKindInfo[] = [
   { kind: "added", initial: "addedDesc", asc: "addedAsc", desc: "addedDesc" },
   { kind: "modified", initial: "modifiedDesc", asc: "modifiedAsc", desc: "modifiedDesc" },
@@ -87,9 +66,8 @@ export const sortKinds: readonly SortKindInfo[] = [
 ];
 
 /**
- * isListSort は、画面の一覧の条件（URL と端末の設定）に使える並び順かを返す。
- * API が受け付ける並び順のうち、メニューに種類があるものに限る。メニューに無い値を
- * 受け付けると、並べ替えの表示が別の種類（ランダム）になり、向きも切り替えられない。
+ * Accept only API sorts represented in the menu; others would display the wrong kind and break
+ * direction controls.
  */
 export function isListSort(value: unknown): value is VideoSort {
   return (
@@ -100,74 +78,57 @@ export function isListSort(value: unknown): value is VideoSort {
   );
 }
 
-/** sortKindLabel は並べ替えの種類の表示名である。 */
 export function sortKindLabel(kind: SortKind): UiText {
   return t.list.sort.kinds[kind];
 }
 
-/** directionWording は昇順／降順の言い換えである。無い種類（題名・ランダム）は undefined。 */
 function directionWording(kind: SortKind, direction: SortDirection): UiText | undefined {
   const wording: Partial<Record<SortKind, Record<SortDirection, UiText>>> =
     t.list.sort.wording;
   return wording[kind]?.[direction];
 }
 
-/** sortKindOf は並び順の種類の情報を返す。 */
 export function sortKindOf(sort: VideoSort): SortKindInfo {
   const found = sortKinds.find((info) => info.asc === sort || info.desc === sort);
-  // random は asc・desc を持たないので、見つからなければランダムである。
+  // Random has neither asc nor desc, so unmatched direction values belong to it.
   return found ?? (sortKinds[sortKinds.length - 1] as SortKindInfo);
 }
 
-/** sortDirection は並び順の向きを返す。ランダムは undefined。 */
 export function sortDirection(sort: VideoSort): SortDirection | undefined {
   if (sort === "random") return undefined;
   return sort.endsWith("Asc") ? "asc" : "desc";
 }
 
-/** withDirection は同じ種類で向きだけを変えた並び順を返す。ランダムはそのまま。 */
 export function withDirection(sort: VideoSort, direction: SortDirection): VideoSort {
   const info = sortKindOf(sort);
   return (direction === "asc" ? info.asc : info.desc) ?? sort;
 }
 
-/**
- * directionLabel は向きの読み上げ名を作る。
- * 例: 「Descending (newest first)」。言い換えの無い種類は「Descending」。
- */
 export function directionLabel(sort: VideoSort, direction: SortDirection): UiText {
   const wording = directionWording(sortKindOf(sort).kind, direction);
   const name = direction === "asc" ? t.list.sort.asc : t.list.sort.desc;
   return wording === undefined ? name : t.list.sort.withWording(name, wording);
 }
 
-/**
- * directionToggleLabel は向きの切り替えボタンの読み上げ名とツールチップである。
- * 例: 「Descending (newest first). Press for ascending」。
- */
 export function directionToggleLabel(sort: VideoSort): UiText {
   const current = sortDirection(sort) ?? "desc";
   const label = directionLabel(sort, current);
   return current === "asc" ? t.list.sort.toDesc(label) : t.list.sort.toAsc(label);
 }
 
-/**
- * normalizeQuery は検索語を URL と一覧の条件に使う形にする。maxLength は上限の符号位置の数で、
- * 既定は動画の一覧の `MAX_QUERY_LENGTH`。
- */
+/** maxLength counts code points and defaults to the video-list limit. */
 export function normalizeQuery(value: string, maxLength = MAX_QUERY_LENGTH): string {
-  // 上限の符号位置で切る（サーバーの []rune と同じ数え方。サロゲートペアを割らない）。
+  // Match Go's rune count without splitting surrogate pairs.
   return Array.from(value.trim()).slice(0, maxLength).join("").trim();
 }
 
-/** parseSeed は seed の値を読む。1 以上 MAX_SEED 以下の整数でなければ undefined。 */
 export function parseSeed(value: string | null): number | undefined {
   if (value === null || !/^\d{1,10}$/.test(value)) return undefined;
   const seed = Number(value);
   return seed >= 1 && seed <= MAX_SEED ? seed : undefined;
 }
 
-/** newSeed は新しい seed を作る。previous と同じ値は避ける（並べ直すで並びを変える）。 */
+/** Avoid the previous seed so reshuffling changes the order. */
 export function newSeed(previous?: number, random: () => number = Math.random): number {
   for (;;) {
     const seed = 1 + Math.floor(random() * MAX_SEED);
@@ -176,20 +137,16 @@ export function newSeed(previous?: number, random: () => number = Math.random): 
   }
 }
 
-/** ParsedCriteria は URL を読んだ結果である。 */
 export interface ParsedCriteria {
   criteria: ListCriteria;
-  /** sort=random なのに seed が無いか壊れている。画面が seed を作って URL を置き換える。 */
+  /** The screen must generate a missing or invalid random seed and replace the URL. */
   needsSeed: boolean;
-  /** URL に解釈できる sort が書かれている。 */
   hasExplicitSort: boolean;
 }
 
 /**
- * parseListCriteria は URL のクエリを一覧の条件にする。
- *
- * 解釈できない値は既定として扱い、誤りを出さない。sort が無いか解釈できない
- * （メニューに種類が無い値を含む）ときは、端末に保存した並び順（preferredSort）を使う。
+ * Invalid or omitted sort falls back to stored preferredSort, including API values absent from the
+ * menu.
  */
 export function parseListCriteria(
   params: URLSearchParams,
@@ -219,12 +176,8 @@ export function parseListCriteria(
 }
 
 /**
- * serializeListCriteria は条件を URL のクエリにする。
- *
- * watch=all と playable・favorite の偽は書かない。sort は書く — 省略すると「端末に
- * 保存した並び順」の意味になり、並べ替えを変えたあとに戻るで前の並びに
- * 戻れなくなるからである。seed は random のときだけ書く。
- * 順は q・watch・playable・fav・sort・seed で固定し、同じ条件は同じ文字列になる。
+ * Always serialize sort so browser Back restores order independently of changed preferences;
+ * serialize seed only for random. Omit filter defaults and keep stable parameter order.
  */
 export function serializeListCriteria(criteria: ListCriteria): URLSearchParams {
   const params = new URLSearchParams();
@@ -241,12 +194,11 @@ export function serializeListCriteria(criteria: ListCriteria): URLSearchParams {
 }
 
 /**
- * ownerOnlySortKinds は所有者だけの並べ替えの種類である。最近再生した順は再生位置に、
- * お気に入りにした日時はお気に入りに依る。ゲストには出さず、サーバーも受け付けない。
+ * Playback and favorite dates are owner data; guests and server guest requests cannot use these
+ * sorts.
  */
 export const ownerOnlySortKinds: readonly SortKind[] = ["played", "favorited"];
 
-/** ownerOnlySort は、所有者だけの並び順（最近再生した順・お気に入りにした日時）かを返す。 */
 export function ownerOnlySort(sort: VideoSort): boolean {
   return (
     sort === "playedAsc" ||
@@ -256,10 +208,7 @@ export function ownerOnlySort(sort: VideoSort): boolean {
   );
 }
 
-/**
- * guestListCriteria は、ゲストが使えない条件（視聴状態・お気に入りのみ・所有者だけの
- * 並び順）を既定に丸める。丸めるものが無ければ同じ値を返す。
- */
+/** Normalize owner-only conditions for guests; preserve object identity when unchanged. */
 export function guestListCriteria(criteria: ListCriteria): ListCriteria {
   if (criteria.watch === "all" && !criteria.favorite && !ownerOnlySort(criteria.sort)) {
     return criteria;
@@ -272,10 +221,6 @@ export function guestListCriteria(criteria: ListCriteria): ListCriteria {
   };
 }
 
-/**
- * hasConditions は「条件を解除」で外せる条件（検索語・視聴状態・再生可否・
- * お気に入りのみ）があるか。
- */
 export function hasConditions(criteria: ListCriteria): boolean {
   return (
     criteria.query !== "" ||
@@ -285,44 +230,31 @@ export function hasConditions(criteria: ListCriteria): boolean {
   );
 }
 
-/**
- * clearConditions は検索語・視聴状態・再生可否・お気に入りのみを外す。並べ替えと
- * seed は残す。
- */
+/** Clear filters while retaining sort and seed. */
 export function clearConditions(criteria: ListCriteria): ListCriteria {
   return { ...criteria, query: "", watch: "all", playable: false, favorite: false };
 }
 
-/** criteriaKey は条件を比較・依存配列に使う文字列にする。 */
 export function criteriaKey(criteria: ListCriteria): string {
   return serializeListCriteria(criteria).toString();
 }
 
-/** HistoryMode は URL の書き換え方である。 */
 export type HistoryMode = "push" | "replace";
 
-/**
- * SearchSession は検索欄の一続きの入力が履歴をどう増やすかを決める。
- *
- * フォーカスが入ってから外れるか Esc で抜けるまでを1つの続きとし、その中の
- * 最初の確定だけが履歴を1つ増やし、以後は置き換える。
- */
+/** A focus-to-blur/Escape session pushes history only on its first commit; later commits replace. */
 export class SearchSession {
   private pushed = false;
 
-  /** start は新しい続きを始める（検索欄にフォーカスが入った）。 */
   start(): void {
     this.pushed = false;
   }
 
-  /** commit は確定1回分の書き換え方を返す。 */
   commit(): HistoryMode {
     if (this.pushed) return "replace";
     this.pushed = true;
     return "push";
   }
 
-  /** end は続きを閉じる（フォーカスが外れた・Esc で抜けた）。 */
   end(): void {
     this.pushed = false;
   }

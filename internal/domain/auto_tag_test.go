@@ -61,13 +61,12 @@ func TestNormalizeOllamaSettings(t *testing.T) {
 	}
 }
 
-// フォルダは登録フォルダからの相対（区切りは /）で、登録フォルダより上は渡さない。
 func TestNewAutoTagSubjectUsesPathRelativeToMediaFolder(t *testing.T) {
 	root := filepath.FromSlash("/mnt/nas/videos")
 	for path, want := range map[string]AutoTagSubject{
 		"/mnt/nas/videos/旅行/京都/竹林.mp4": {Title: "t", FileName: "竹林.mp4", Folder: "旅行/京都"},
 		"/mnt/nas/videos/bare.mp4":     {Title: "t", FileName: "bare.mp4"},
-		// 登録フォルダの外（呼び出し側の誤り）でも絶対パスは渡さない。
+		// Even invalid out-of-folder input must not expose an absolute path.
 		"/elsewhere/secret/x.mp4": {Title: "t", FileName: "x.mp4"},
 	} {
 		if got := NewAutoTagSubject("t", root, filepath.FromSlash(path)); !reflect.DeepEqual(got, want) {
@@ -110,7 +109,6 @@ func TestSelectAutoTagsSplitsByThresholds(t *testing.T) {
 	if got := SelectAutoTags(candidates, probabilities, settings); !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
-	// 2 つの閾値が同じなら仮には付けない。
 	settings.TentativeThreshold = 0.8
 	if got := SelectAutoTags(candidates, probabilities, settings); len(got.Tentative) != 0 {
 		t.Fatalf("tentative = %v", got.Tentative)

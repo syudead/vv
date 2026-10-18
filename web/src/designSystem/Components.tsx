@@ -36,9 +36,7 @@ import { Textarea } from "../ui/shadcn/textarea";
 import { Toggle } from "../ui/shadcn/toggle";
 import { ToggleGroup, ToggleGroupItem } from "../ui/shadcn/toggle-group";
 
-// 見本の部品の節。部品ごとに
-// variant を行、状態を列に並べる。hover と押下は index.css の data-demo-state で、
-// キーボードのフォーカスは同じ輪を最初の子に描いて、触らずに見せる。
+// Show interaction states through data-demo-state without user input; focus uses the first child's ring.
 
 const states = ["normal", "hover", "focus", "pressed", "selected", "disabled"] as const;
 type State = (typeof states)[number];
@@ -52,7 +50,7 @@ function demoState(state: State): string | undefined {
 
 interface Row {
   variant: string;
-  /** その状態の見本。持たない状態（ボタンの選択など）は null。 */
+  /** Null denotes a state unsupported by this component. */
   render: (state: State) => ReactNode | null;
 }
 
@@ -426,7 +424,6 @@ function StateGrid({ demo }: { demo: Demo }) {
   );
 }
 
-/** FieldDemo は Field に Label・Input・説明・誤りをまとめた 1 欄である。 */
 function FieldDemo() {
   const c = t.designSystem.component;
   return (
@@ -459,7 +456,6 @@ function FieldDemo() {
   );
 }
 
-/** CommandDemo はポップオーバーに入れずに置いた Command（打って絞る一覧）である。 */
 function CommandDemo() {
   const c = t.designSystem.component;
   return (
@@ -486,10 +482,6 @@ function CommandDemo() {
   );
 }
 
-/**
- * Components は見本の部品の節である。操作と入力の部品を、通常・hover・キーボードの
- * フォーカス・押下・選択・無効の状態で並べ、メンテナーが確かめる。
- */
 export default function Components() {
   return (
     <div className="grid gap-8">

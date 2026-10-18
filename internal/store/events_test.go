@@ -9,7 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// eventRecorder は発行された変化を記録する。
 type eventRecorder struct {
 	events []domain.Event
 }
@@ -18,7 +17,6 @@ func (r *eventRecorder) Publish(events ...domain.Event) {
 	r.events = append(r.events, events...)
 }
 
-// 取引の中で変化を集めても、確定できなければ1件も発行しない。
 func TestCommitPublishesNothingWhenTransactionRollsBack(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	recorder := &eventRecorder{}
@@ -37,7 +35,6 @@ func TestCommitPublishesNothingWhenTransactionRollsBack(t *testing.T) {
 	var c changes
 	c.videosDeleted(deleted)
 	c.jobsQueued(domain.JobProbe)
-	// 確定の前に取り消すと、取引はロールバックする。
 	cancel()
 	if err := db.commit(ctx, tx, &c); err == nil {
 		t.Fatal("取り消した取引が確定した")
@@ -51,7 +48,6 @@ func TestCommitPublishesNothingWhenTransactionRollsBack(t *testing.T) {
 	}
 }
 
-// 途中で断った書き込み（ロールバックする取引）は発行しない。
 func TestRejectedWritesPublishNothing(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -79,7 +75,6 @@ func TestRejectedWritesPublishNothing(t *testing.T) {
 	}
 }
 
-// 1つの取引の中で同じ種類の変化が何度起きても、確定後の発行は種類ごとに1つにまとめる。
 func TestOneTransactionPublishesEachKindOfChangeOnce(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -102,7 +97,6 @@ func TestOneTransactionPublishesEachKindOfChangeOnce(t *testing.T) {
 	recorder := &eventRecorder{}
 	db.PublishTo(recorder)
 
-	// 付け替えで2本の動画が消え、すべての段階の仕事が取り出せるようになる。
 	if _, err := db.Settings().ReplaceMediaFolder(ctx, folders[0].ID, folders[0].Version, fixturePath("/other")); err != nil {
 		t.Fatal(err)
 	}

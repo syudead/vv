@@ -15,7 +15,6 @@ func newTestBus() *Bus {
 	return New(slog.New(slog.NewTextHandler(io.Discard, nil)))
 }
 
-// recorder は受け取った変化を記録する。
 type recorder struct {
 	mu     sync.Mutex
 	events []domain.Event
@@ -33,7 +32,6 @@ func (r *recorder) snapshot() []domain.Event {
 	return slices.Clone(r.events)
 }
 
-// 購読者は発行された順に受け取る。On は指定した種類だけを渡す。
 func TestPublishDeliversInOrderAndOnFiltersByType(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		bus := newTestBus()
@@ -60,7 +58,6 @@ func TestPublishDeliversInOrderAndOnFiltersByType(t *testing.T) {
 	})
 }
 
-// 遅い購読者も panic した購読者も、発行する側と他の購読者を止めない。
 func TestSlowOrPanickingSubscriberDoesNotBlockPublisher(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		bus := newTestBus()
@@ -107,7 +104,6 @@ func TestSlowOrPanickingSubscriberDoesNotBlockPublisher(t *testing.T) {
 	})
 }
 
-// 購読をやめた後は渡さない。やめる関数は、呼び出し中の処理が終わってから戻る。
 func TestUnsubscribeStopsDeliveryAndWaitsForHandler(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		bus := newTestBus()
@@ -152,7 +148,6 @@ func TestUnsubscribeStopsDeliveryAndWaitsForHandler(t *testing.T) {
 	})
 }
 
-// Close は積んである分を渡し終えるまで待ち、その後の発行は渡さない。
 func TestCloseDrainsPendingAndDropsLaterEvents(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		bus := newTestBus()
@@ -190,7 +185,6 @@ func TestCloseDrainsPendingAndDropsLaterEvents(t *testing.T) {
 	})
 }
 
-// 並行した発行も、すべての購読者に同じ順番で届く。
 func TestConcurrentPublishersKeepOneOrderForEverySubscriber(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		bus := newTestBus()

@@ -1,10 +1,6 @@
-// Package desktop は Windows デスクトップ版（VVMDM.exe）の OS 側を扱う adapter である。
-// Win32 のウィンドウ、WebView2 の埋め込み、ダイアログ、ジョブオブジェクトと、
-// データの置き場の解決を持つ。
-//
-// Windows の実装は _windows.go にあり、cmd/mdm の desktop タグのファイルだけが読む。
-// このファイルの引数の読み取りとデータの置き場の解決は OS に依らない純粋な手順で、
-// どの OS でも試験できる。他の internal/* は読まない。
+// Package desktop adapts Windows UI, WebView2, dialogs, process jobs, and data paths without other
+// internal dependencies. Windows calls live in _windows.go files; pure argument/path logic remains
+// testable on all platforms.
 package desktop
 
 import (
@@ -18,18 +14,14 @@ import (
 	"strings"
 )
 
-// AppName はウィンドウの題名・ダイアログの題名・データの置き場のフォルダ名である
 const AppName = "VVMDM"
 
-// DefaultPort は引数が無いときに待ち受けるポートである。
 const DefaultPort = 47880
 
-// UsageText は使えない引数のダイアログに添える使い方である。
 const UsageText = "Usage: VVMDM.exe [--port <1-65535>]"
 
-// ParseArgs は起動の引数（プログラム名を除く）を読み、待ち受けるポートを返す。
-// 引数なしは DefaultPort、`--port <1-65535>`（`--port=<番号>` も可）はその番号で、
-// それ以外は誤りを返す。
+// ParseArgs excludes the program name, defaults to DefaultPort, and accepts only --port values from
+// 1 through 65535.
 func ParseArgs(args []string) (int, error) {
 	switch {
 	case len(args) == 0:
@@ -51,22 +43,19 @@ func parsePort(value string) (int, error) {
 	return port, nil
 }
 
-// Paths はデスクトップ版のデータの置き場である。
 type Paths struct {
-	// Root は %LOCALAPPDATA%\VVMDM。
+	// Root is %LOCALAPPDATA%\\VVMDM.
 	Root string
-	// Data は MDM_DATA_DIR に当たる置き場（mdm.db と thumbnails\）。
+	// Data corresponds to MDM_DATA_DIR, containing mdm.db and thumbnails.
 	Data string
-	// WebView2 は WebView2 の利用者データ（Cookie・localStorage）。
+	// WebView2 stores cookies and localStorage.
 	WebView2 string
-	// Logs はログの置き場。
-	Logs string
-	// LogFile は今回のログ、PreviousLogFile は前回のログである。
+	Logs     string
+	// LogFile is the current run; PreviousLogFile is the prior run.
 	LogFile         string
 	PreviousLogFile string
 }
 
-// ResolvePaths は %LOCALAPPDATA% のパスからデータの置き場を決める。
 func ResolvePaths(localAppData string) (Paths, error) {
 	if localAppData == "" || !filepath.IsAbs(localAppData) {
 		return Paths{}, fmt.Errorf("the local application data folder %q is not an absolute path", localAppData)
@@ -83,8 +72,7 @@ func ResolvePaths(localAppData string) (Paths, error) {
 	}, nil
 }
 
-// UnwritableDirError はデータの置き場の下に書けなかったことを表す。ダイアログは
-// Dir を示す。
+// UnwritableDirError identifies the directory shown in the failure dialog.
 type UnwritableDirError struct {
 	Dir string
 	Err error
@@ -96,11 +84,9 @@ func (e *UnwritableDirError) Error() string {
 
 func (e *UnwritableDirError) Unwrap() error { return e.Err }
 
-// dirPerm はデータの置き場を作るときの許可属性である。
 const dirPerm os.FileMode = 0o755
 
-// PrepareDirs はデータの置き場のフォルダを作り、それぞれに書けることを確かめる。
-// 書けなかったら、そのフォルダを持つ *UnwritableDirError を返す。
+// PrepareDirs returns *UnwritableDirError identifying any unwritable directory.
 func PrepareDirs(paths Paths) error {
 	for _, dir := range []string{paths.Root, paths.Data, paths.WebView2, paths.Logs} {
 		if err := os.MkdirAll(dir, dirPerm); err != nil {
@@ -120,12 +106,8 @@ func PrepareDirs(paths Paths) error {
 	return nil
 }
 
-// OpenLog は前回のログを PreviousLogFile へ移し、今回のログを新しく開く。
-// 前々回のログは消える。
-//
-// 前々回のログは先に消さず、rename で置き換える（Go の os.Rename は Windows でも
-// 移し先を置き換える）。今回のログを移せなかったとき（別のプロセスが開いたままの
-// ときなど）は、前回のログがそのまま残る。
+// OpenLog rotates via rename without first deleting the previous log, preserving it if the current
+// log cannot be moved, including on Windows.
 func OpenLog(paths Paths) (*os.File, error) {
 	if _, err := os.Stat(paths.LogFile); err == nil {
 		if err := os.Rename(paths.LogFile, paths.PreviousLogFile); err != nil {
@@ -139,17 +121,15 @@ func OpenLog(paths Paths) (*os.File, error) {
 	return file, nil
 }
 
-// FFmpegDir は exe の隣の同梱の ffmpeg の置き場である。
 func FFmpegDir(exePath string) string {
 	return filepath.Join(filepath.Dir(exePath), "ffmpeg")
 }
 
-// ErrNotExtracted は exe が zip から直接（一時フォルダの下で）実行されたか、
-// 隣に同梱の ffmpeg が無いことを表す。
+// ErrNotExtracted indicates temporary-directory execution or a missing bundled ffmpeg.
 var ErrNotExtracted = errors.New("VVMDM.exe is not running from an extracted folder")
 
-// CheckBundle は exe が一時フォルダの下になく、隣に ffmpeg\ffmpeg.exe と
-// ffmpeg\ffprobe.exe があることを確かめる。tempDir が空なら一時フォルダの判定は省く。
+// CheckBundle requires adjacent ffmpeg.exe and ffprobe.exe; an empty tempDir skips the
+// temporary-directory check.
 func CheckBundle(exePath, tempDir string, exists func(path string) bool) error {
 	if tempDir != "" && isUnder(exePath, tempDir) {
 		return fmt.Errorf("%w: %s is under the temporary folder %s", ErrNotExtracted, exePath, tempDir)
@@ -163,8 +143,7 @@ func CheckBundle(exePath, tempDir string, exists func(path string) bool) error {
 	return nil
 }
 
-// isUnder は path が dir の下にあるかを、大文字と小文字を区別せずに判定する
-// （Windows のパスは大文字と小文字を区別しない）。
+// Compare case-insensitively to match Windows paths.
 func isUnder(path, dir string) bool {
 	path, dir = filepath.Clean(path), filepath.Clean(dir)
 	rel, err := filepath.Rel(strings.ToLower(dir), strings.ToLower(path))
@@ -174,7 +153,6 @@ func isUnder(path, dir string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
-// PrependPath は PATH の値の先頭に dir を足した値を返す。
 func PrependPath(dir, current string) string {
 	if current == "" {
 		return dir
@@ -182,10 +160,8 @@ func PrependPath(dir, current string) string {
 	return dir + string(os.PathListSeparator) + current
 }
 
-// InstanceNames は二重起動の判定に使う名前付きミューテックスの名前を返す。global はセッションをまたいで 1 つで、同じ利用者が同じ
-// データの置き場で 2 つ目を起動したことを知る。local はセッションごとで、持ち主が
-// 同じセッションにいるかを知る。どちらも利用者の SID とデータの置き場（大文字と
-// 小文字を区別しない）のハッシュで名付けるので、別の利用者の起動を妨げない。
+// InstanceNames hashes user SID and case-insensitive data path; global detects duplicates across
+// sessions, while local identifies same-session owners without blocking other users.
 func InstanceNames(sid, root string) (global, local string) {
 	sum := sha256.Sum256([]byte(strings.ToLower(filepath.Clean(root))))
 	suffix := AppName + "-" + sid + "-" + hex.EncodeToString(sum[:8])

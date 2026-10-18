@@ -9,9 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 外部連携 API の名前でのタグの一括操作。
-
-// tagNames は動画のタグを「名前:出所」の並びにする。出所は m（手）と f（フォルダ）。
 func tagNames(tags []domain.VideoTag) []string {
 	out := []string{}
 	for _, tag := range tags {
@@ -27,7 +24,6 @@ func tagNames(tags []domain.VideoTag) []string {
 	return out
 }
 
-// applyVideoTags は tentative を偽にした一括操作で、各動画の結果だけを返す。
 func applyVideoTags(ctx context.Context, db *DB, videos []domain.VideoRef, action domain.VideoTagsAction, names []string) ([]domain.VideoTagsResult, error) {
 	outcome, err := db.Tags().ApplyVideoTags(ctx, videos, action, names, false)
 	return outcome.Items, err
@@ -42,8 +38,6 @@ func countTags(t *testing.T, db *DB) int {
 	return count
 }
 
-// 受け入れ条件 4・5: パスで指定した動画に、無い名前とシノニムで add すると、タグが作られ、
-// シノニムは元のタグとして付く。同じ要求の繰り返しは状態を変えない。
 func TestApplyVideoTagsAddCreatesAndResolvesSynonyms(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -88,7 +82,6 @@ func TestApplyVideoTagsAddCreatesAndResolvesSynonyms(t *testing.T) {
 			t.Errorf("round %d: タグ %d 個, want 2（犬を 1 度だけ作る）", round, n)
 		}
 	}
-	// 画面の API の絞り込みにも出る。
 	if got := listIDs(t, db, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{cat.ID}}); len(got) != 2 {
 		t.Errorf("猫で絞り込み = %v", got)
 	}
@@ -116,7 +109,6 @@ func TestApplyVideoTagsRemoveIgnoresUnknownNames(t *testing.T) {
 	}
 }
 
-// replace は手で付けたタグだけをちょうど指定の集合にし、フォルダ由来のタグは残す。
 func TestApplyVideoTagsReplaceKeepsFolderTags(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -147,8 +139,6 @@ func TestApplyVideoTagsReplaceKeepsFolderTags(t *testing.T) {
 	}
 }
 
-// 動画とタグの組をまとめて書き換える文は、要求に含む動画だけに効き、含まない動画の手で
-// 付けたタグは変えない。
 func TestApplyVideoTagsChangesOnlyRequestedVideos(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -180,13 +170,10 @@ func TestApplyVideoTagsChangesOnlyRequestedVideos(t *testing.T) {
 	}
 }
 
-// 引けない動画を 1 つ含む要求は、その位置を持つ誤りで全体を失敗させ、何も反映しない
-// （タグも作らない）。
 func TestApplyVideoTagsFailsWholeRequestOnMissingVideo(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	upsertAll(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 0))
-	// 登録フォルダの外の所在だけの動画も引けない。
 	outside := upsertAll(t, db, listingFile(fixturePath("/elsewhere/b.mp4"), "b", "key-b", 1))
 
 	for _, tc := range []struct {

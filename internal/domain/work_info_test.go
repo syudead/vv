@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-// 動画の作品情報の規則。どの規則も、
-// 失敗したフィールドの経路と問題を名指しして入力を拒む。
 func TestNormalizeWorkInfoRefusesEachRule(t *testing.T) {
 	performers := func(n int) []WorkPerson {
 		out := make([]WorkPerson, n)
@@ -86,7 +84,6 @@ func TestNormalizeWorkInfoRefusesEachRule(t *testing.T) {
 	}
 }
 
-// 知らない種類と役割は ErrInvalidWorkInfo を包んだ誤りで拒む（API の生成した検査が先に拒む）。
 func TestNormalizeWorkInfoRefusesUnknownKindsAndRoles(t *testing.T) {
 	for name, input := range map[string]WorkInfo{
 		"日付の種類": {Dates: []WorkDate{{Kind: "birthday", Date: "2024"}}},
@@ -99,9 +96,6 @@ func TestNormalizeWorkInfoRefusesUnknownKindsAndRoles(t *testing.T) {
 	}
 }
 
-// 前後の空白を除き、空の値は解除するか一覧から落とし、改行は説明だけに許し、日付は 3 つの形がどれも
-// 通る。返す一覧は読み出しの順（日付は種類の順、人物と団体は役割の順、外部 ID は (source, value) の順）で、
-// 人物と団体は名前を運ばない。
 func TestNormalizeWorkInfoTrimsClearsAndOrders(t *testing.T) {
 	got, empty, err := NormalizeWorkInfo(WorkInfo{
 		Code:        "  ABC-123 ",
@@ -158,7 +152,6 @@ func TestNormalizeWorkInfoTrimsClearsAndOrders(t *testing.T) {
 	}
 }
 
-// 人物と団体は id だけを比べ、名前の有無と nil・空の一覧の違いは同じ値として扱う。
 func TestWorkInfoEqualComparesIDs(t *testing.T) {
 	stored := WorkInfo{Code: "A", People: []WorkPerson{{Role: PersonPerformer, Person: CreditRef{ID: 1, Name: "山田"}}}, URLs: []string{}}
 	written := WorkInfo{Code: "A", People: []WorkPerson{{Role: PersonPerformer, Person: CreditRef{ID: 1}}}}

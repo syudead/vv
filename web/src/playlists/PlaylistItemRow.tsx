@@ -14,13 +14,7 @@ import {
 import { RemoveItemButton, ReorderHandle, useSortableRow } from "../videoList/reorder";
 import { itemTitle, playTarget } from "./playlistItems";
 
-/**
- * PlaylistItemRow はプレイリストの画面の 1 行である。
- * ライブラリのリスト表示の行と同じ列と高さに、前へハンドルと番号、後ろへ外す `×` を足す。
- *
- * 行のリンク（サムネイルと題名）はその項目から再生を始める。行はハンドルからだけ持ち上がり
- * 、持ち上げている間はリンクを押せない。
- */
+/** Only the handle starts dragging; disable the playback link during a drag. */
 export default function PlaylistItemRow({
   playlistId,
   item,
@@ -31,9 +25,7 @@ export default function PlaylistItemRow({
 }: {
   playlistId: number;
   item: PlaylistItem;
-  /** 1 始まりの番号。 */
   position: number;
-  /** 外す要求を送っている間 true。 */
   removing: boolean;
   onRemove: (item: PlaylistItem) => void;
   removeRef: Ref<HTMLButtonElement>;
@@ -74,8 +66,7 @@ export default function PlaylistItemRow({
             {title}
           </span>
         ) : (
-          // リンクの after: を行（relative）いっぱいに広げ、行のどこを押しても再生を始める。
-          // ハンドルと × は z-10 でその上に置く。
+          // Extend the link across the row; place the handle and removal button above it with z-10.
           <Link
             to={target.to}
             state={target.state}

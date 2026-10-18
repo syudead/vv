@@ -12,8 +12,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// importIssues は直近の取り込みの問題と、それを数えて決めた状態を返す。internal/app の
-// Scans.withImport と同じ組み立てである。
 func importIssues(t *testing.T, db *DB) (domain.Scan, []domain.ScanIssue, domain.ImportProgress) {
 	t.Helper()
 	ctx := context.Background()
@@ -29,7 +27,6 @@ func importIssues(t *testing.T, db *DB) (domain.Scan, []domain.ScanIssue, domain
 	return scan, issues, scan.Tally(counts.Unregistered, counts.Failed).Progress(scan.SettledAt)
 }
 
-// failJobToLimit は kind の仕事をやり直しの上限まで失敗させる。
 func failJobToLimit(t *testing.T, db *DB, kind domain.JobKind) {
 	t.Helper()
 	for range domain.MaxJobAttempts {
@@ -37,7 +34,6 @@ func failJobToLimit(t *testing.T, db *DB, kind domain.JobKind) {
 	}
 }
 
-// failJobOnce は kind の仕事を1回取り出して失敗で記録する。
 func failJobOnce(t *testing.T, db *DB, kind domain.JobKind) {
 	t.Helper()
 	ctx := context.Background()
@@ -50,7 +46,6 @@ func failJobOnce(t *testing.T, db *DB, kind domain.JobKind) {
 	}
 }
 
-// runAllJobs は取り出せる仕事をすべて成功で終える。
 func runAllJobs(t *testing.T, db *DB) {
 	t.Helper()
 	for _, kind := range domain.JobKinds {
@@ -59,7 +54,6 @@ func runAllJobs(t *testing.T, db *DB) {
 	}
 }
 
-// startImport は走査を始め、名前ごとに動画を登録して解析の仕事を積み、走査を閉じる。
 func startImport(t *testing.T, db *DB, names ...string) (int64, []int64) {
 	t.Helper()
 	scan, _, err := db.Scans().StartScan(context.Background())
@@ -78,12 +72,10 @@ func startImport(t *testing.T, db *DB, names ...string) (int64, []int64) {
 	return scan.ID, ids
 }
 
-// 解析が上限まで失敗した動画は probe_failed の問題になり、取り込みは partial になる。
 func TestProbeFailureAtLimitBecomesIssue(t *testing.T) {
 	db := migratedDB(t)
 	_, ids := startImport(t, db, "a", "b")
 
-	// b の解析は成功させ、a だけを上限まで失敗させる。
 	ctx := context.Background()
 	for {
 		job, err := db.Ingest().ClaimJob(ctx, domain.JobProbe)
@@ -123,7 +115,6 @@ func TestProbeFailureAtLimitBecomesIssue(t *testing.T) {
 	}
 }
 
-// 上限の手前で失敗して後で成功した動画は、問題にならない（受け入れ条件 9）。
 func TestFailureBeforeLimitThenSuccessIsNotIssue(t *testing.T) {
 	db := migratedDB(t)
 	startImport(t, db, "a")
@@ -140,7 +131,6 @@ func TestFailureBeforeLimitThenSuccessIsNotIssue(t *testing.T) {
 	}
 }
 
-// 解析のやり直しで成功すると、その問題が消えて取り込みは done になる。
 func TestRetryProbeSuccessClearsIssue(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -169,7 +159,6 @@ func TestRetryProbeSuccessClearsIssue(t *testing.T) {
 	}
 }
 
-// 新しい走査を始めると、前の走査の問題は消える。
 func TestStartScanClearsPreviousIssues(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -200,8 +189,6 @@ func TestStartScanClearsPreviousIssues(t *testing.T) {
 	}
 }
 
-// 中断した走査の続きとして始めると、仕事の段階の問題と対象の動画の集合を持ち越し、
-// 取り込みは partial のままになる。走査が見つけ直す種類（unreadable）は持ち越さない
 func TestResumeScanCarriesJobIssuesOfInterruptedImport(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -211,7 +198,7 @@ func TestResumeScanCarriesJobIssuesOfInterruptedImport(t *testing.T) {
 	}
 	a := upsertForImport(t, db, "a")
 	upsertForImport(t, db, "b")
-	failJobToLimit(t, db, domain.JobProbe) // a の解析を上限まで失敗させる
+	failJobToLimit(t, db, domain.JobProbe)
 	runAllJobs(t, db)
 	if err := db.Scans().RecordScanIssue(ctx, domain.ScanFileIssue{
 		Path: fixturePath("/media/broken.mp4"), Kind: domain.IssueUnreadable,
@@ -246,8 +233,7 @@ func TestResumeScanCarriesJobIssuesOfInterruptedImport(t *testing.T) {
 	}
 }
 
-// 1本の動画に2つの種類が起きると、1件にまとまる。別の種類が加わっても件数は変わらず、
-// issues_revision は増える。
+// Adding another issue kind preserves grouped count but must advance revision.
 func TestIssuesOfOneVideoAreGroupedAndRevisionAdvances(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -279,8 +265,6 @@ func TestIssuesOfOneVideoAreGroupedAndRevisionAdvances(t *testing.T) {
 	}
 }
 
-// 走査が登録できなかったファイルは、分母と済みの本数に入り、取り込みを partial にする。
-// 同じパスと種類を2度記録しても1行である。
 func TestUnregisteredFileIssueCountsTowardImport(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -314,8 +298,6 @@ func TestUnregisteredFileIssueCountsTowardImport(t *testing.T) {
 	}
 }
 
-// 所在がどの登録フォルダにも含まれない件は、一覧にも本数にも入れない。メディアフォルダを
-// 外すと issues_revision が増え、画面が一覧を読み直せる。
 func TestIssuesOutsideMediaFoldersAreHidden(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -347,8 +329,7 @@ func TestIssuesOutsideMediaFoldersAreHidden(t *testing.T) {
 	}
 }
 
-// 問題のある動画の所在だけが変わっても（パスの小さい所在を足す・代表の所在を消す）、
-// 一覧に出るファイル名が変わるので issues_revision が増える。
+// Representative-location changes alter issue labels even when issue rows do not change.
 func TestIssueLocationChangeAdvancesRevision(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -359,7 +340,6 @@ func TestIssueLocationChangeAdvancesRevision(t *testing.T) {
 		t.Fatalf("問題 = %+v, want b.mp4", issues)
 	}
 
-	// 同じ内容の、パスの小さい所在を足すと代表が a.mp4 になる。
 	added, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "a", "key-b", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
@@ -375,7 +355,6 @@ func TestIssueLocationChangeAdvancesRevision(t *testing.T) {
 		t.Fatalf("所在を足したあとの issues_revision = %d → %d, want 増える", before.IssuesRevision, moved.IssuesRevision)
 	}
 
-	// 代表の所在を消すと、残った b.mp4 に戻る。
 	indexed, err := db.ScanIndex().IndexedVideosByPath(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -392,8 +371,6 @@ func TestIssueLocationChangeAdvancesRevision(t *testing.T) {
 	}
 }
 
-// 解析に失敗した動画がある状態から移行すると、その動画が probe_failed の問題になり、
-// 直近の取り込みは partial になる。
 func TestScanIssuesMigrationCarriesFailedVideos(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {

@@ -48,12 +48,6 @@ import VersionsFact, { type VersionsNavigation } from "./VersionsFact";
 import MediaInfoGroups from "./MediaInfoGroups";
 import WorkInfo from "./WorkInfo";
 
-/**
- * useOpenFile はサーバーの PC で動画ファイルを開き、開けなかったときの文言を持つ。
- * 文言は API エラーの表示（errorText）を埋め込む。ファイルが無い（`file_missing`）、
- * サーバーの PC からでない（`open_not_local`）などの理由がそこに出る。
- * 文言は、次に開く操作をしたとき、または別の動画へ移ったときに消える。
- */
 export function useOpenFile(videoId: number): {
   open: () => void;
   failure: UiText | null;
@@ -64,11 +58,7 @@ export function useOpenFile(videoId: number): {
   return { open, failure };
 }
 
-/**
- * useOpenFileRequest は「ファイルを開く」の要求を送り、始めるときに `report(null)`、
- * 開けなかったときにその文言を `report` へ渡す。失敗の行を他の操作と分け合う呼び出し側
- * （VideoFacts）が、行の中身を自分で持つために使う。
- */
+/** Report null when starting and the error on failure, allowing callers to share one error row. */
 function useOpenFileRequest(
   videoId: number,
   report: (failure: UiText | null) => void,
@@ -89,14 +79,7 @@ function useOpenFileRequest(
   }, [report, videoId]);
 }
 
-/**
- * useThumbnailPosition は代表サムネイルの位置の指定と解除と、適用した画像からコマへの戻し（`revert`、
- * docs/design-docs/thumbnail-editing.md「Generated thumbnail item」）を送る。送信中は次の
- * 要求を送らない。
- * 始めるときに `report(null)`、失敗したときにその文言を `report` へ渡し、`404`
- * （`video_not_found`・`file_unavailable`）では `onStale` で動画を取り直させる。
- * 成功したら応答の動画を、送る直前に取った detailMark と一緒に `onChanged` で渡す。
- */
+/** Serialize thumbnail mutations; refresh stale videos on 404. Return successful video data with the detail mark captured before submission. */
 function useThumbnailPosition(
   videoId: number,
   report: (failure: UiText | null) => void,
@@ -107,7 +90,7 @@ function useThumbnailPosition(
   send: (positionMs: number | null | "revert") => void;
 } {
   const [sending, setSending] = useState<"capture" | "clear" | "revert" | null>(null);
-  // 同じ瞬間の二度押しも止めるため、状態とは別に持つ。
+  // A ref also blocks two clicks within the same render.
   const busy = useRef(false);
   const request = useRef<AbortController | null>(null);
 
@@ -156,11 +139,7 @@ function useThumbnailPosition(
   return { sending, send };
 }
 
-/**
- * ThumbnailCapture は「今の場面を代表サムネイルにする」ボタンと編集の入口に渡すプレイヤーの
- * 状態である。`enabled` は押せるか、`positionMs` は押した瞬間の論理上の再生位置（ミリ秒）を
- * 返す。`pause` は再生を止める（編集を始めるとき）。
- */
+/** Read logical playback milliseconds at click time; pause playback before editing. */
 export interface ThumbnailCapture {
   enabled: boolean;
   positionMs: () => number | null;
@@ -185,11 +164,6 @@ function Fact({
   );
 }
 
-/**
- * DateFact は情報の行の日付の項目（追加日・更新日時・作成日時）である。値は日付だけで、名前と時刻は
- * `title` と、押して開く吹き出しで読む（ポイントできない端末でも届くように）。
- * 見た目は `Fact` と同じで、引き金であることは hover の地だけで示す。
- */
 function DateFact({
   icon: Icon,
   label,
@@ -207,8 +181,7 @@ function DateFact({
         <PopoverTrigger asChild>
           <Button
             variant="ghost"
-            // 読み上げ名は隠した名前 + 値（ui-design「Accessibility」）。中の文字の空白の扱いに
-            // 依らないよう、明示する。
+            // Set the accessible name explicitly so child whitespace cannot change it.
             aria-label={`${label} ${date}`}
             title={t.player.facts.dateDetail(label, dateTime)}
             className={factTrigger}
@@ -222,7 +195,7 @@ function DateFact({
           side="bottom"
           align="start"
           className="block w-auto px-3 py-2 text-sm whitespace-nowrap"
-          // 中にフォーカスできるものは無い。開いてもフォーカスは引き金に置いたままにする。
+          // With no focusable content, opening the popover leaves focus on its trigger.
           onOpenAutoFocus={(event) => event.preventDefault()}
         >
           <span>{label}</span>{" "}
@@ -235,10 +208,6 @@ function DateFact({
 
 type ThumbnailSending = ReturnType<typeof useThumbnailPosition>["sending"];
 
-/**
- * ThumbnailFacts は所有者に出すサムネイルの項目である。上げた画像や生成した画像なら元に戻す
- * 項目を、そうでなくコマの位置を選んでいればその位置と既定へ戻す項目を出す。
- */
 function ThumbnailFacts({
   video,
   sending,
@@ -273,11 +242,6 @@ function ThumbnailFacts({
   );
 }
 
-/**
- * ListActions は所有者に出す、動画を集める操作である。お気に入りのハートの直後に
- * 「Add to playlist」、その直後に
- * 「Add to group」を置く。
- */
 function ListActions({
   video,
   favorite,
@@ -312,33 +276,7 @@ function ListActions({
   );
 }
 
-/**
- * VideoFacts は題名とタグの下の 2 行である（ui-design「Video facts」）。
- *
- * 1 行目はファイルの情報（長さ・サイズ・追加日・更新日時・作成日時）をアイコンを添えて並べ、右端に
- * 「ファイルを開く」（開ける環境のときだけ）と「パスをコピー」を置く。2 行目は技術情報
- * （解像度・コンテナ・コーデック）で、いちばん小さく薄い文字にする。
- *
- * 所有者には、代表サムネイルの位置が指定されていれば 1 行目の項目の後ろにその画像・位置・
- * 解除の × を置き、`capture` があれば右端の操作の先頭近くに「今の場面を代表サムネイルにする」
- * ボタンを置く。その直後に
- * ComfyUI でサムネイルを編集する入口を、プレイヤーが出ていなくても置き
- * 、編集した画像がサムネイルの間は、位置の項目の
- * 代わりに生成した画像の項目を出す。
- * 編集の入口の直後（「ファイルを開く」の前）には、プレイヤーが出ていなくても、手元の画像を
- * サムネイルにする入口を置き、アップロードした画像がサムネイルの間はその項目を出す。サムネイルの操作は一度に 1 つで、どれかの
- * 送信中はほかの操作を `aria-disabled` にする。
- *
- * 集まり（同じ動画の別バージョン）に属し、見せてよいバージョンが 2 本以上あれば、1 行目の
- * 作成日時のあと（サムネイルの項目の前）に「3 versions」の項目を置く。所有者にもゲストにも出す。
- *
- * 所有者には、右端の操作の先頭にお気に入りの付け外しを置く。ゲストの応答には `favorite` が無く、出ない。
- * 付け外しは `onFavorite` に任せ、それが取り直しまで終えたら送信中を解く。
- *
- * 開けなかったとき・サムネイルを変えられなかったとき・お気に入りを変えられなかったときは、
- * 1 行目のすぐ下に 1 行だけ出す。
- * 後から起きた失敗が前の行を置き換える。帯やトーストは使わない。
- */
+/** Show owner-only file, favorite, and thumbnail actions alongside video facts. Serialize thumbnail operations and share one inline error row across actions. */
 export default function VideoFacts({
   video,
   owner = false,
@@ -352,22 +290,19 @@ export default function VideoFacts({
 }: {
   video: Video;
   owner?: boolean;
-  /** 所有者でプレイヤーが出ているときだけ渡す。 */
+  /** Supplied only for owners while the player is visible. */
   capture?: ThumbnailCapture;
   onChanged?: (video: Video, mark: DetailMark) => void;
   onStale?: () => void;
-  /** お気に入りを付け外しし、動画を取り直したら解決する。失敗は reject で返す。 */
+  /** Resolve after toggling and refreshing the video; reject on failure. */
   onFavorite?: (favorite: boolean) => Promise<void>;
-  /** バージョンの一覧から別のバージョンへ移るときの値と、集まりが変わったときの動作。 */
   versions?: {
     navigation: VersionsNavigation;
     onReplace: (video: Video, mark: DetailMark) => void;
     onRefresh: () => void;
   };
-  /** サムネイルの編集画面か作品情報の取得のダイアログを開いた・閉じた。開いている間、
-   *  動画ページのキーを止める。 */
+  /** Suspend page shortcuts while thumbnail editing or metadata fetching is open. */
   onEditingChange?: (open: boolean) => void;
-  /** 作品情報の編集画面の入口に載せる戻り先と、開いたときに入口へフォーカスを置くか。 */
   details?: DetailsEntryProps["details"];
 }) {
   const [failure, setFailure] = useState<UiText | null>(null);
@@ -387,7 +322,6 @@ export default function VideoFacts({
 
   const copyPath = () => {
     if (location === undefined) return;
-    // 前の失敗の行は、次の操作で消す。
     setFailure(null);
     copyText(location.path, {
       onCopied: () => toast(f.pathCopied),
@@ -417,7 +351,7 @@ export default function VideoFacts({
               navigation={versions.navigation}
               onReplace={versions.onReplace}
               onRefresh={versions.onRefresh}
-              // 項目が消えるので、フォーカスを右端の操作の先頭へ移す。
+              // Move focus to the first action because this fact disappears.
               onDissolved={() =>
                 actionsRef.current?.querySelector<HTMLElement>("button")?.focus()
               }
@@ -440,19 +374,15 @@ export default function VideoFacts({
                 favorite={favorite}
                 onFavorite={async (next) => {
                   setFailure(null);
-                  // 塗りは取り直した `favorite` で確かめる（R-6、033「Refresh after edits」）。
-                  // 取り直しが終わるまで送信中のままにし、前の状態から重ねて送らない。
+                  // Confirm favorite state from refreshed data and block further mutations until refresh completes.
                   await onFavorite?.(next);
                 }}
                 onFailed={(reason) => setFailure(f.favoriteFailed(reason))}
               />
             )}
-            {/* 「Add to group」の後、サムネイルの操作の前に置く。所有者にだけ、プレイヤーが
-                出ていなくても置く。 */}
+            {}
             <DetailsEntry video={video} owner={owner} details={details} />
-            {/* 「Edit details」の後、「Use current frame as thumbnail」の前に置き、詳細を埋める
-                2 つの道を並べる。所有者にだけ、承認済みのプラグインがあるときだけ出る
-                。 */}
+            {}
             {owner && (
               <FetchEntry
                 video={video}
@@ -469,8 +399,7 @@ export default function VideoFacts({
                 onCapture={(positionMs) => thumbnail.send(positionMs)}
               />
             )}
-            {/* 今のサムネイルの編集はプレイヤーに依らないので、プレイヤーが出ていない動画にも
-                置く。 */}
+            {/* Thumbnail editing remains available without a player. */}
             {owner && (
               <EditEntry
                 videoId={video.id}
@@ -522,19 +451,15 @@ export default function VideoFacts({
           {failure}
         </p>
       )}
-      {/* 作品情報の行は、ファイルの行（と失敗の行）の後、技術の行の前に置く。 */}
+      {}
       <WorkInfo info={video.workInfo} />
       <TechnicalLine summary={technical} />
-      {/* 動画の追加の情報のまとまりは、技術の行の後に置く。 */}
+      {}
       <MediaInfoGroups info={video.mediaInfo} />
     </div>
   );
 }
 
-/**
- * ThumbnailFact は情報の行の項目で、指定した代表サムネイルの小さな画像・位置・解除の × を
- * 並べる（ui-design「Item」）。画像を読み込めない間・失敗したときは空の箱にする。
- */
 function ThumbnailFact({
   url,
   positionMs,
@@ -545,7 +470,6 @@ function ThumbnailFact({
   url: string | undefined;
   positionMs: number;
   clearing: boolean;
-  /** ほかのサムネイルの操作の送信中。× を押せなくする。 */
   locked: boolean;
   onClear: () => void;
 }) {
@@ -587,11 +511,7 @@ function ThumbnailFact({
   );
 }
 
-/**
- * ImageThumbnailFact は情報の行の項目で、適用した画像のサムネイルの小さな画像と、コマから作る
- * サムネイルへ戻す × を並べる。生成した画像とアップロードした画像は `origin` で切り替わり、違うのはアイコンと名前だけ
- * である。画像は 1 つの位置から作ったものではないので時刻は出さない。
- */
+/** Uploaded and generated thumbnails have no single frame timestamp. */
 function ImageThumbnailFact({
   origin,
   url,
@@ -602,7 +522,6 @@ function ImageThumbnailFact({
   origin: NonNullable<Video["thumbnailImage"]>;
   url: string | undefined;
   reverting: boolean;
-  /** ほかのサムネイルの操作の送信中。× を押せなくする。 */
   locked: boolean;
   onRevert: () => void;
 }) {
@@ -647,11 +566,7 @@ function ImageThumbnailFact({
   );
 }
 
-/**
- * CaptureButton は、押した瞬間の論理上の再生位置を代表サムネイルにするボタンである
- * （ui-design「Capture button」）。再生は止めず、時刻を入力させない。押せないとき・
- * 送信中は `aria-disabled` にし、押しても送らない。
- */
+/** Capture the logical position at click time without pausing; aria-disabled actions must not submit. */
 function CaptureButton({
   capture,
   sending,
@@ -660,7 +575,6 @@ function CaptureButton({
 }: {
   capture: ThumbnailCapture;
   sending: boolean;
-  /** ほかのサムネイルの操作の送信中。押しても送らない。 */
   locked: boolean;
   onCapture: (positionMs: number) => void;
 }) {
@@ -702,8 +616,7 @@ function TechnicalLine({ summary }: { summary: ReturnType<typeof technicalSummar
     return <p className={cn(base, "text-warning")}>{t.player.facts.technicalFailed}</p>;
   }
   if (summary.values.length === 0) return null;
-  // どの項目も左に縦線と余白を持ち、並び全体をその幅（px-technical-x と線の 1px）だけ左へずらして
-  // 外側で切る。折り返した行の先頭の項目も、線と余白が切り落とされて行頭に残らない。
+  // Clip each row's leading separator by shifting the list left by its padding and border width.
   return (
     <div className="overflow-hidden">
       <div className="-ml-technical-x">

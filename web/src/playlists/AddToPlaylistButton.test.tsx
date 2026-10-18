@@ -8,11 +8,6 @@ import { TooltipProvider } from "../ui/shadcn/tooltip";
 import { ToastProvider } from "../ui/Toast";
 import AddToPlaylistButton from "./AddToPlaylistButton";
 
-/**
- * 「Add to playlist」のピッカー。
- * 動画ページの形の引き金で開き、偽のサーバーへ送る。
- */
-
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -26,15 +21,11 @@ function playlist(id: number, name: string): PlaylistSummary {
 
 interface Server {
   playlists: PlaylistSummary[];
-  /** 受け取った POST の経路と本文。 */
   posts: { path: string; body: unknown }[];
-  /** これまでに作ったプレイリストの数。 */
   made: number;
-  /** 次の GET /api/playlists を失敗にする。 */
   failList?: boolean;
-  /** POST …/items の応答を差し替える。 */
   addAnswer?: () => Response;
-  /** 与えると、POST はこれが解決するまで応答しない。 */
+  /** Gate POST responses until this promise resolves. */
   hold?: Promise<void>;
 }
 
@@ -59,7 +50,6 @@ function install(playlists: PlaylistSummary[]): Server {
       server.posts.push({ path, body });
       const answer = (): Response => {
         if (path === "/api/playlists") {
-          // 作った順に 90, 91, … と新しい id を振る。
           const created = playlist(
             90 + server.made,
             (body as { name: string }).name.trim(),
@@ -96,7 +86,6 @@ function renderButton() {
   return render(button([7]));
 }
 
-/** gate は、開けるまで POST の応答を止めておく門である。 */
 function gate(): { promise: Promise<void>; open: () => void } {
   let open = () => {};
   const promise = new Promise<void>((resolve) => {
@@ -157,7 +146,6 @@ describe("AddToPlaylistButton", () => {
     await user.type(field(), "night");
     expect(optionNames()).toEqual(['Create "night"', "Tonight"]);
     await user.clear(field());
-    // 同じ名前があれば作成の行は出さない（R-11）。
     await user.type(field(), "Tonight");
     expect(optionNames()).toEqual(["Tonight"]);
     await user.clear(field());
@@ -224,7 +212,7 @@ describe("AddToPlaylistButton", () => {
     renderButton();
     const dialog = await openPicker(user);
     await screen.findByText("No playlists yet. Type a name to create one.");
-    // 足すのに 1 度失敗させ、その後の静かな読み直しも失敗させて作成の行を残す。
+    // Fail both insertion and the silent reload so the creation option remains.
     let adds = 0;
     server.addAnswer = () => {
       adds += 1;
@@ -257,7 +245,7 @@ describe("AddToPlaylistButton", () => {
     renderButton();
     await openPicker(user);
     await screen.findByText("No playlists yet. Type a name to create one.");
-    // 足すのに 2 度失敗させ、そのたびの静かな読み直しも失敗させて作成の行を残す。
+    // Fail insertion and its silent reload twice, retaining the creation option.
     let adds = 0;
     server.addAnswer = () => {
       adds += 1;
@@ -298,7 +286,7 @@ describe("AddToPlaylistButton", () => {
     renderButton();
     const dialog = await openPicker(user);
     await screen.findByText("No playlists yet. Type a name to create one.");
-    // 別のタブが作ったばかりのプレイリストを消した形にする。
+    // Simulate another tab deleting the newly created playlist.
     let adds = 0;
     server.addAnswer = () => {
       adds += 1;
@@ -339,7 +327,7 @@ describe("AddToPlaylistButton", () => {
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-    // 開き直して B を作るが、足すのに失敗する。その後で A の作成が返る。
+    // Reopen and create B; resolve A's earlier creation after B's insertion fails.
     const second = gate();
     server.hold = second.promise;
     const dialog = await openPicker(user);
@@ -366,7 +354,6 @@ describe("AddToPlaylistButton", () => {
     first.open();
     await waitFor(() => expect(server.posts).toHaveLength(4));
 
-    // B をもう一度選ぶと、作った B（90）へ足し直す。
     await waitFor(() => expect(optionNames()).toEqual(['Create "B"']));
     await user.keyboard("{Enter}");
     expect(await screen.findByText('Added 1 item to "B"')).toBeDefined();
@@ -418,7 +405,6 @@ describe("AddToPlaylistButton", () => {
 
     const dialog = await openPicker(user);
     await waitFor(() => expect(optionNames()).toEqual(["Tonight", "Anime"]));
-    // 前の送信を待つ印は、開き直したピッカーに残らない。
     expect(
       screen.getByRole("option", { name: "Anime" }).getAttribute("aria-disabled"),
     ).not.toBe("true");

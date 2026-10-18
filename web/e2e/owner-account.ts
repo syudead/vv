@@ -1,8 +1,6 @@
 import path from "node:path";
 
-// e2e の所有者のアカウント。auth.setup.ts が作る。同じ送信元のログインの失敗は
-// 5 分に 5 回で制限されるので、e2e 全体の失敗の試行はそれより少なく収める
-//
+// Keep failed login attempts across the suite below the limit of five per source in five minutes.
 export const ownerAccount = {
   username: "e2e-owner",
   password: "e2e-owner-password",
@@ -11,6 +9,5 @@ export const ownerAccount = {
 const runRoot = process.env.MDM_E2E_RUN_ROOT;
 if (runRoot === undefined) throw new Error("MDM_E2E_RUN_ROOT is not configured");
 
-// 所有者としてログインした状態（Cookie）の置き場。auth.setup.ts が書き、既存の
-// e2e すべてが playwright.config.ts の storageState として読む。
+// auth.setup.ts writes this owner session; playwright.config.ts shares it with e2e tests.
 export const ownerStorageState = path.join(runRoot, "auth", "owner.json");

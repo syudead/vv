@@ -41,8 +41,6 @@ function video(extra: Partial<Video> = {}): Video {
   };
 }
 
-// 2 時間の動画の配置情報（12 秒間隔・600 コマ・10×10 の 6 シート）。帯の左半分は
-// シート 0〜2、真ん中から右はシート 3〜5 になる。
 function twoHourSprite(version = "c"): SeekThumbnailSprite {
   return {
     intervalMs: 12_000,
@@ -167,8 +165,7 @@ function parts() {
   return { card, band, above: screen.getByTestId("above") };
 }
 
-// 帯の位置（clientX）は 100〜500。真ん中の 300 から右はシート 3 以降。
-// React は React の要素どうしの移動を、出た側の pointerout から enter/leave にする。
+// React derives enter/leave between elements from pointerout on the source.
 function enterBand(clientX: number, pointerType = "mouse") {
   const { band, above } = parts();
   fireEvent.pointerOut(above, { pointerType, clientX, relatedTarget: band });
@@ -178,13 +175,11 @@ function moveBand(clientX: number, pointerType = "mouse") {
   fireEvent.pointerMove(parts().band, { pointerType, clientX });
 }
 
-/** 帯から上へ出て、カードの中に留まる。 */
 function leaveBandToCard() {
   const { band, above } = parts();
   fireEvent.pointerOut(band, { pointerType: "mouse", relatedTarget: above });
 }
 
-/** カードの外へ出る。 */
 function leaveCard() {
   fireEvent.pointerOut(parts().band, {
     pointerType: "mouse",
@@ -192,7 +187,6 @@ function leaveCard() {
   });
 }
 
-/** カードの外から入り直す（帯には入らない）。 */
 function enterCard() {
   fireEvent.pointerOver(parts().above, {
     pointerType: "mouse",
@@ -234,7 +228,6 @@ describe("useScrubPreview", () => {
     expect(sprites).toHaveLength(1);
     expect(sprites[0]?.url).toBe("/api/videos/1/seek-thumbnail?v=c");
     expect(sheets).toHaveLength(0);
-    // 取得待ちの間はコマの要素を出さない。
     expect(document.querySelector("[data-scrub-frame]")).toBeNull();
 
     await settle(sprites[0], twoHourSprite());
@@ -248,7 +241,6 @@ describe("useScrubPreview", () => {
     await settle(sheets[0], sheet());
     const image = frameImage();
     expect(image?.style.backgroundImage).toBe('url("blob:sheet-1")');
-    // 180_000ms = 15 コマ目（列 5・行 1）。
     expect(image?.style.backgroundPosition).toBe(
       `${String((5 / 9) * 100)}% ${String((1 / 9) * 100)}%`,
     );
@@ -298,16 +290,13 @@ describe("useScrubPreview", () => {
       "/api/videos/1/seek-thumbnail/0?v=c",
       "/api/videos/1/seek-thumbnail/3?v=c",
     ]);
-    // 次のシートが届くまではコマを出さない。
     expect(frameImage()).toBeNull();
-    // 取得中に同じシートの位置を動いても、2 回目は出さない。
     moveBand(310);
     expect(sheets).toHaveLength(2);
 
     await settle(sheets[1], sheet());
     expect(frameImage()?.style.backgroundImage).toBe('url("blob:sheet-2")');
 
-    // 持っているシートへ戻っても取り直さない。
     moveBand(110);
     expect(frameImage()?.style.backgroundImage).toBe('url("blob:sheet-1")');
     expect(fetchSeekThumbnailSheet).toHaveBeenCalledTimes(2);
@@ -319,7 +308,6 @@ describe("useScrubPreview", () => {
     moveBand(120);
     await settle(sprites[0], twoHourSprite());
     await settle(sheets[0], sheet());
-    // 120 → 360_000ms = 30 コマ目（列 0・行 3）。
     expect(screen.getByTestId("position").textContent).toBe("360000");
     expect(frameImage()?.style.backgroundPosition).toBe(`0% ${String((3 / 9) * 100)}%`);
   });
@@ -344,7 +332,6 @@ describe("useScrubPreview", () => {
     enterBand(110);
     leaveCard();
     expect(sprites[0]?.signal.aborted).toBe(true);
-    // 中断した取得が後から終わっても使わない。
     await settle(sprites[0], twoHourSprite());
     expect(sheets).toHaveLength(0);
 
@@ -365,7 +352,7 @@ describe("useScrubPreview", () => {
 
     enterCard();
     enterBand(110);
-    // 配置情報は持っているので、取り直すのはシートだけ。
+    // Reuse metadata; only the sheet needs refetching.
     expect(fetchSeekThumbnailSprite).toHaveBeenCalledTimes(1);
     expect(sheets).toHaveLength(2);
     await settle(sheets[1], sheet());
@@ -377,7 +364,7 @@ describe("useScrubPreview", () => {
     enterBand(110);
     await fail(sprites[0]);
     expect(document.querySelector("[data-scrub-frame]")).toBeNull();
-    // 時刻とバーのための位置は失敗に関わらず帯にいる間は持つ。
+    // Keep position for time and progress while hovering, even after image failure.
     expect(screen.getByTestId("position").textContent).toBe("180000");
 
     moveBand(300);
@@ -455,7 +442,6 @@ describe("useScrubPreview", () => {
     expect(document.querySelector("[data-scrub-band]")).toBeNull();
     rerender(<Harness item={video({ playable: false, probeState: "failed" })} />);
     expect(document.querySelector("[data-scrub-band]")).toBeNull();
-    // ループのプレビューが無くても、スプライトがあれば帯は働く。
     rerender(<Harness item={video({ previewState: "failed" })} />);
     const band = document.querySelector("[data-scrub-band]");
     expect(band).not.toBeNull();
@@ -490,7 +476,7 @@ describe("useScrubPreview", () => {
     await settle(sprites[0], twoHourSprite());
     await settle(sheets[0], sheet());
     expect(frameImage()?.style.backgroundImage).toBe('url("blob:sheet-1")');
-    // 新しい URL の取得が始まる前に、古いシートの取得を待つ状態にしておく。
+    // Keep the old request pending before starting the replacement URL.
     moveBand(300);
     const stale = sheets[1];
 
@@ -503,7 +489,6 @@ describe("useScrubPreview", () => {
     expect(sprites).toHaveLength(2);
     expect(sprites[1]?.url).toBe("/api/videos/1/seek-thumbnail?v=d");
 
-    // 古い取得が後から終わっても、新しい URL のシートに混ざらない。
     await settle(stale, sheet());
     expect(frameImage()).toBeNull();
 

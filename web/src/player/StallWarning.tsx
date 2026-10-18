@@ -4,20 +4,13 @@ import { t } from "../i18n";
 import { Button } from "../ui/shadcn/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 
-/**
- * StallWarning は、回線の遅さで再生が途切れているときにプレイヤーの左上に出す、知らせる
- * だけの帯である。
- *
- * 状態表示の入れ物（`data-overlay-layer`）とは別の層で、映像より上・状態表示と操作バーより
- * 下に置く。× 以外は下の操作（再生バー・映像・中央の操作）へ通す。画質を変える操作は
- * 置かない（親 Issue 要件 10）。知らせるだけなので、読み上げは `alert` でなく `status` にする。
- */
+/** A nonblocking status banner beneath controls and state overlays. Only its close button intercepts input. */
 export default function StallWarning({
   onDismiss,
   container,
 }: {
   onDismiss: () => void;
-  /** 全画面にしている入れ物。× のツールチップはその中に描かないと全画面の間に見えない。 */
+  /** Tooltips must render inside the fullscreen container to remain visible. */
   container: HTMLElement | null;
 }) {
   const text = t.player.stallWarning;

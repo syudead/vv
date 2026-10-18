@@ -9,12 +9,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// GetRelatedVideos は関連動画を返す（GET /api/videos/{id}/related）。
-//
-// 並べ方と問い合わせの流れはアプリケーション層（VideoCatalog）が持つ。ここは
-// ページの指定を読み、動画を引き、並んだ結果を契約の形へ写すだけである。グループの
-// メンバーなら、最初のページにこの動画を中ほどに置いたグループのメンバーの窓も関連動画と
-// 同じ形で載せる。
+// VideoCatalog owns ranking; the first page also includes a bounded group-member window around the current video.
 func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetRelatedVideosParams) {
 	opened := videoContext(params.Group, params.SmartFolder)
 	page := domain.RelatedPage{Limit: domain.DefaultRelatedPageSize, GroupID: opened.GroupID, SmartFolderID: opened.SmartFolderID}
@@ -49,7 +44,7 @@ func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen
 		return
 	}
 
-	// グループのメンバーにも関連動画と同じく再生位置とタグを載せるので、まとめて引く。
+	// Batch progress/tag reads for related and group-member videos together.
 	shown := related.Items
 	if related.Group != nil {
 		shown = append(slices.Clone(related.Items), related.Group.Members...)
@@ -82,9 +77,6 @@ func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen
 	writeJSON(w, http.StatusOK, payload, s.logger)
 }
 
-// ListVideoGroupMembers は動画の文脈のグループの動画を、再生順の範囲で返す
-// （GET /api/videos/{id}/group-members、docs/design-docs/catalog-organization.md）。関連動画の group の
-// 窓の外を、画面がスクロールに合わせて読む。
 func (s *server) ListVideoGroupMembers(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.ListVideoGroupMembersParams) {
 	window := domain.GroupWindow{Limit: domain.GroupMemberWindow}
 	if params.Offset != nil {
@@ -128,8 +120,6 @@ func (s *server) ListVideoGroupMembers(w http.ResponseWriter, r *http.Request, i
 	}, s.logger)
 }
 
-// presenter は動画たちを応答の形にする関数を返す。再生位置とタグは shown の分をまとめて
-// 引いておく。
 func (s *server) presenter(ctx context.Context, audience domain.Audience, shown []domain.Video) func(context.Context, []domain.Video) []gen.Video {
 	progress := s.progressFor(ctx, shown)
 	tags := s.tagsFor(ctx, shown)
@@ -143,8 +133,7 @@ func (s *server) presenter(ctx context.Context, audience domain.Audience, shown 
 	}
 }
 
-// videoContextRefs は動画 videoID の文脈 group を、動画の応答の group か smartFolder のどちらか一方に
-// する。文脈がスマートフォルダなら smartFolder、グループなら group である。
+// Return exactly one context reference, group or smartFolder.
 func videoContextRefs(group domain.VideoGroup, videoID int64) (*gen.VideoGroupRef, *gen.VideoSmartFolderRef) {
 	position, count := group.Position(videoID), group.Total()
 	if group.SmartFolder {
@@ -155,8 +144,7 @@ func videoContextRefs(group domain.VideoGroup, videoID int64) (*gen.VideoGroupRe
 	}, nil
 }
 
-// apiGroupFolder は文脈のグループのフォルダを応答の形にする。自動グループのフォルダが登録
-// フォルダの下に無いときと、手で作ったグループでは nil である。
+// Manual groups and unregistered automatic paths have no folder metadata.
 func apiGroupFolder(folder *domain.VideoFolder) *gen.VideoFolder {
 	if folder == nil {
 		return nil

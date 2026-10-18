@@ -10,9 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 所有者の操作の記録。
-
-// ownerEntry は所有者の記録 1 件の、比べる欄である。
 type ownerEntry struct {
 	kind   domain.ActivityKind
 	key    string
@@ -21,8 +18,6 @@ type ownerEntry struct {
 	detail string
 }
 
-// ownerEntries は decider owner の記録を古い順に返す。どれも done/completed か、work_info_fetch の失敗は
-// done/failed であることを確かめる。
 func ownerEntries(t *testing.T, db *DB) []ownerEntry {
 	t.Helper()
 	page := listActivity(t, db, domain.ActivityQuery{Decider: domain.ActivityByOwner}, "", 1000)
@@ -40,7 +35,6 @@ func ownerEntries(t *testing.T, db *DB) []ownerEntry {
 	return out
 }
 
-// expectOwnerEntries は前回から増えた所有者の記録が want であることを確かめ、今の件数を返す。
 func expectOwnerEntries(t *testing.T, db *DB, since int, want ...ownerEntry) int {
 	t.Helper()
 	got := ownerEntries(t, db)
@@ -50,7 +44,6 @@ func expectOwnerEntries(t *testing.T, db *DB, since int, want ...ownerEntry) int
 	return len(got)
 }
 
-// 束ねる・代表にする・版から外すは動画ごとに 1 件、「違う動画」は組の記録を 1 件書く。
 func TestOwnerVersionOperationsWriteEntries(t *testing.T) {
 	ctx := context.Background()
 	db, ids := versionFixture(t)
@@ -81,14 +74,12 @@ func TestOwnerVersionOperationsWriteEntries(t *testing.T) {
 	}
 }
 
-// 画面からタグを付ける・外すは、実際に変わった動画とタグごとに 1 件書く。集まりの鍵は代表を対象にする。
 func TestOwnerTagOperationsWriteOneEntryPerVideo(t *testing.T) {
 	ctx := context.Background()
 	db, ids := versionFixture(t)
 	bundle(t, db, ids["c"], ids["c"], ids["d"])
 	n := len(ownerEntries(t, db))
 
-	// 3 本に付けると 3 件。もう付いている動画は数えない。
 	cat := attachNamedTag(t, db, "cat", ids["a"], ids["b"], ids["d"])
 	n = expectOwnerEntries(t, db, n,
 		ownerEntry{domain.ActivityTagAttach, "key-a", "", "a", "cat"},
@@ -107,7 +98,6 @@ func TestOwnerTagOperationsWriteOneEntryPerVideo(t *testing.T) {
 		ownerEntry{domain.ActivityTagDetach, "key-b", "", "b", "cat"})
 }
 
-// グループをタグにすると、タグが実際に付いた動画ごとに tag_attach を書き、確定後に ActivityChanged を知らせる。
 func TestTagGroupWritesOneEntryPerTaggedVideo(t *testing.T) {
 	ctx := context.Background()
 	db, ids := versionFixture(t)
@@ -126,7 +116,6 @@ func TestTagGroupWritesOneEntryPerTaggedVideo(t *testing.T) {
 	}
 }
 
-// 外部 API /api/v1 のタグの操作も所有者の記録を、動画とタグごとに書く。
 func TestExternalVideoTagsWriteOwnerEntries(t *testing.T) {
 	ctx := context.Background()
 	db, _ := tentativeFixture(t)
@@ -139,7 +128,6 @@ func TestExternalVideoTagsWriteOwnerEntries(t *testing.T) {
 		ownerEntry{domain.ActivityTagAttach, "key-b", "", "b", "x"},
 		ownerEntry{domain.ActivityTagAttach, "key-b", "", "b", "y"})
 
-	// 置き換えは足したタグと外したタグを両方書く。
 	if _, err := db.Tags().ApplyVideoTags(ctx, bothVideos[:1], domain.VideoTagsReplace, []string{"y", "z"}, false); err != nil {
 		t.Fatal(err)
 	}
@@ -155,8 +143,7 @@ func TestExternalVideoTagsWriteOwnerEntries(t *testing.T) {
 		ownerEntry{domain.ActivityTagDetach, "key-b", "", "b", "y"})
 }
 
-// 外部 API の add で提案のまま付いているタグを確定するのは付与なので、tag_attach を書き、更新日時を進める。
-// 確定したタグがもう付いている動画は書かない。
+// Promoting a suggestion is a real owner attachment, unlike reattaching an already confirmed tag.
 func TestExternalVideoTagsRecordConfirmedSuggestion(t *testing.T) {
 	ctx := context.Background()
 	db, ids := tentativeFixture(t)
@@ -182,7 +169,6 @@ func TestExternalVideoTagsRecordConfirmedSuggestion(t *testing.T) {
 	}
 }
 
-// 提案のタグを残す・却下するは、その動画とタグの記録を 1 件書く。
 func TestKeepAndRejectSuggestedTagWriteEntries(t *testing.T) {
 	ctx := context.Background()
 	db, ids := itemsFixture(t)
@@ -204,7 +190,6 @@ func TestKeepAndRejectSuggestedTagWriteEntries(t *testing.T) {
 		ownerEntry{domain.ActivityTagReject, soloKey, "", label, "dog"})
 }
 
-// 作品情報の取得は 1 回ごとに、失敗ならプラグインの文を持つ done/failed で書き、適用は動画の記録を 1 件書く。
 func TestWorkInfoFetchAndApplyWriteEntries(t *testing.T) {
 	ctx := context.Background()
 	db, ids := overrideFixture(t)
@@ -223,7 +208,7 @@ func TestWorkInfoFetchAndApplyWriteEntries(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// 適用のタグは作品情報の適用の一部で、タグの記録は書かない。表示名は書いた時点のもの。
+	// Fetched tags belong to the single work-info application activity, not separate tag activities.
 	expectOwnerEntries(t, db, 0,
 		ownerEntry{domain.ActivityWorkInfoFetch, "key-alpha", "", "alpha", ""},
 		ownerEntry{domain.ActivityWorkInfoFetch, "key-alpha", "", "alpha", "no such work"},
@@ -236,8 +221,6 @@ func TestWorkInfoFetchAndApplyWriteEntries(t *testing.T) {
 	}
 }
 
-// ドラッグで束ねた 3 本は 3 件の bundle を書き、その取り消しは 3 本に organize_undo を書く。グループの並べ替えと
-// プレイリストの並べ替えは何も書かない。
 func TestOrganizeBundleUndoAndReordersWriteEntries(t *testing.T) {
 	ctx := context.Background()
 	db, ids := versionFixture(t)
@@ -272,8 +255,6 @@ func TestOrganizeBundleUndoAndReordersWriteEntries(t *testing.T) {
 	}
 }
 
-// メディアフォルダの登録を外すと、ライブラリから外れた動画の数を持つ記録を 1 件書く。登録外の所在だけが
-// 残る動画は数え、別の登録フォルダに所在が残る動画は数えない。
 func TestMediaFolderRemovalWritesOneEntry(t *testing.T) {
 	ctx := context.Background()
 	db, ids := versionFixture(t)
@@ -281,7 +262,7 @@ func TestMediaFolderRemovalWritesOneEntry(t *testing.T) {
 	if err != nil || len(folders) != 1 {
 		t.Fatalf("folders = %+v, %v", folders, err)
 	}
-	// a は登録外の所在も持つので行は残るが、ライブラリからは外れる。b は別の登録フォルダにも所在があるので残る。
+	// One video survives only outside registration; the other remains in another registered folder.
 	if _, err := db.Settings().AddMediaFolder(ctx, fixturePath("/other")); err != nil {
 		t.Fatal(err)
 	}

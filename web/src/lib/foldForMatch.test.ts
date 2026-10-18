@@ -6,10 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { foldForMatch, lowerCodePoint } from "./foldForMatch";
 
-/**
- * Go の FoldForMatch と同じ入力の組を読む。
- * Go 側は internal/domain/fold_for_match_test.go が同じファイルを読む。
- */
+/** Share fixtures with internal/domain/fold_for_match_test.go. */
 interface FoldForMatchFile {
   cases: { note: string; input: string; want: string }[];
   lower: { from: number; to: number }[];
@@ -43,8 +40,7 @@ describe("foldForMatch", () => {
 
   it("lowerCodePoint は表のすべての組で Go の unicode.ToLower と同じ符号位置を返す", () => {
     expect(file.lower.length).toBeGreaterThan(1000);
-    // この JavaScript の実行系の Unicode の版がまだ持たない符号位置（Go の版で
-    // 足された文字）は、R-3「残る差」の既知の例外として比べない。
+    // Skip code points added after this JavaScript runtime's Unicode version.
     const known = file.lower.filter(
       ({ from }) => !unassigned.test(String.fromCodePoint(from)),
     );

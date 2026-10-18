@@ -10,8 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// スマートフォルダのカードの読み出し。
-
 func smartFolderCards(t *testing.T, db *DB, audience domain.Audience, ids ...int64) []domain.SmartFolderCard {
 	t.Helper()
 	cards, err := db.SmartFolders().SmartFolderCards(context.Background(), audience, ids)
@@ -21,8 +19,6 @@ func smartFolderCards(t *testing.T, db *DB, audience domain.Audience, ids ...int
 	return cards
 }
 
-// カードの値は一致する動画の本数・合計・最大・視聴状態と、フォルダの並べ順の先頭からの絵柄と開く
-// 動画である。カードは求めた順に返り、無い id は飛ばす。
 func TestSmartFolderCardsReadValuesOverMatchingVideos(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo, x, y := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")], ids[fixturePath("/media/mixed/sub/y.mp4")]
@@ -42,7 +38,6 @@ func TestSmartFolderCardsReadValuesOverMatchingVideos(t *testing.T) {
 	if card.SmartFolderSummary != (domain.SmartFolderSummary{ID: folder, Name: "猫", Favorite: true}) {
 		t.Errorf("要約 = %+v", card.SmartFolderSummary)
 	}
-	// 追加の降順は solo(9)・y(6)・x(4)。見ている途中は y、見終えたのは solo。
 	if card.VideoCount != 3 || card.SizeBytes != 1400 || card.DurationMs == nil || *card.DurationMs != 6100 {
 		t.Errorf("本数・大きさ・長さ = %d %d %v", card.VideoCount, card.SizeBytes, card.DurationMs)
 	}
@@ -66,9 +61,7 @@ func TestSmartFolderCardsReadValuesOverMatchingVideos(t *testing.T) {
 	}
 }
 
-// 視聴状態の条件では、項目にならない混ざったグループの一致する動画も数える。show は ep2 だけが未視聴で、
-// フォルダのページ（再生順）は空だが、カードは ep2 の 1 本である。条件と並べ順が同じフォルダも、それぞれ
-// 自分の要約で同じ値を返す。
+// Card aggregates count individual matches even when group watch-state filtering leaves playback empty.
 func TestSmartFolderCardsCountMatchingVideosOfMixedGroups(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ep2 := ids[fixturePath("/media/show/ep2.mp4")]
@@ -92,8 +85,6 @@ func TestSmartFolderCardsCountMatchingVideosOfMixedGroups(t *testing.T) {
 	}
 }
 
-// ゲストには、再生順の空のフォルダのカードを返さない。見せるフォルダのカードは公開の動画だけから作り、
-// タグを載せない。
 func TestSmartFolderCardsLeaveOutFoldersHiddenFromGuests(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo, x := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")]
@@ -117,8 +108,6 @@ func TestSmartFolderCardsLeaveOutFoldersHiddenFromGuests(t *testing.T) {
 	}
 }
 
-// フォルダの一覧はどの深さのものも名前の順に親の id とともに返り、ゲストには再生順の空のフォルダが
-// 入らない（GET /api/smart-folders）。
 func TestListSmartFoldersByNameWithParents(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo, x := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")]
@@ -153,7 +142,6 @@ func TestListSmartFoldersByNameWithParents(t *testing.T) {
 	}
 }
 
-// 経路の条件が無い実体を名指すフォルダは、所有者には値の無いカードで返る。
 func TestSmartFolderCardsOfAFolderWithAMissingTag(t *testing.T) {
 	db, ids := itemsFixture(t)
 	cat := attachNamedTag(t, db, "猫", ids[fixturePath("/media/solo.mp4")])
@@ -171,8 +159,6 @@ func TestSmartFolderCardsOfAFolderWithAMissingTag(t *testing.T) {
 	}
 }
 
-// 再生可否とお気に入りのみの条件は、カードの一致する動画にも掛かる。再生できるのは調べ終えて再生
-// できる動画（ep2・p2 は調べていない）で、お気に入りのみは動画のお気に入りである。
 func TestSmartFolderCardsApplyPlayableAndFavoriteRules(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo, x, ep2, p2 := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")],
@@ -194,7 +180,6 @@ func TestSmartFolderCardsApplyPlayableAndFavoriteRules(t *testing.T) {
 		open  int64
 		size  int64
 	}{
-		// 題名の順は ep2・p2・solo・x で、開くのは見終えていない最初の動画（solo は見終えた）。
 		{4, ep2, 1050},
 		{2, x, 700},
 		{2, p2, 150},
@@ -208,9 +193,7 @@ func TestSmartFolderCardsApplyPlayableAndFavoriteRules(t *testing.T) {
 	}
 }
 
-// 集まりの動画のカードのタグは、ライブラリの項目のタグ（tagsByContentKeys）と同じである。フォルダ名の
-// 表（video_folder_names）は代表だけを持つので、代表で
-// ない B のフォルダ名 Y からはどちらにもタグが付かず、代表 A のフォルダ名 X からはどちらにも付く。
+// Folder tags come only from indexed representatives, so nonrepresentative folder names cannot contribute tags.
 func TestSmartFolderCardTagsOfABundleMatchTheLibraryItem(t *testing.T) {
 	db, ids := folderFixture(t,
 		sampleFile(fixturePath("/media/X/alpha.mp4"), "alpha", "key-a", 1, 0),

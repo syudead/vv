@@ -12,9 +12,6 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 人物と団体の管理の経路を、
-// 本物の認証・保存層・経路をつないで確かめる。
-
 type creditFixture struct {
 	env   *authEnv
 	owner *http.Cookie
@@ -46,7 +43,6 @@ func jsonBody(value any) string {
 	return string(out)
 }
 
-// createPerson は所有者として人物を作り、その人物を返す。
 func (f *creditFixture) createPerson(t *testing.T, body any) gen.Person {
 	t.Helper()
 	rec := f.owned(http.MethodPost, "/api/people", jsonBody(body))
@@ -56,7 +52,6 @@ func (f *creditFixture) createPerson(t *testing.T, body any) gen.Person {
 	return decode[gen.Person](t, rec)
 }
 
-// createOrganization は所有者として団体を作り、その団体を返す。
 func (f *creditFixture) createOrganization(t *testing.T, body any) gen.Organization {
 	t.Helper()
 	rec := f.owned(http.MethodPost, "/api/organizations", jsonBody(body))
@@ -66,7 +61,6 @@ func (f *creditFixture) createOrganization(t *testing.T, body any) gen.Organizat
 	return decode[gen.Organization](t, rec)
 }
 
-// assertFieldError は assertErrorBody に加えて、field が want であること（空なら無いこと）を確かめる。
 func assertFieldError(t *testing.T, label string, rec *httptest.ResponseRecorder, want wantError, field string) {
 	t.Helper()
 	assertErrorBody(t, label, rec.Code, rec.Body.Bytes(), want)
@@ -126,7 +120,6 @@ func TestPatchPersonAliasesKeepsName(t *testing.T) {
 		t.Errorf("書き換えの後 = %q・%v", got.Name, names)
 	}
 
-	// null は一覧を空にし、省いた名前は残る。
 	rec = f.owned(http.MethodPatch, creditPath("/api/people", person.Id, ""), `{"aliases":null}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("null の書き換え: status = %d: %s", rec.Code, rec.Body)
@@ -135,7 +128,6 @@ func TestPatchPersonAliasesKeepsName(t *testing.T) {
 		t.Errorf("null の書き換えの後 = %+v", got)
 	}
 
-	// encoding/json と同じく、プロパティ名の大文字小文字は区別しない（Aliases も黙って捨てない）。
 	rec = f.owned(http.MethodPatch, creditPath("/api/people", person.Id, ""), `{"Aliases":[{"name":"大文字"}]}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("Aliases の書き換え: status = %d: %s", rec.Code, rec.Body)
@@ -230,7 +222,6 @@ func TestCreditFieldErrors(t *testing.T) {
 		assertFieldError(t, tc.label, f.owned(tc.method, tc.target, tc.body), tc.want, tc.field)
 	}
 
-	// 上限を超える名前は limit を添える。
 	long := make([]byte, 201)
 	for i := range long {
 		long[i] = 'a'
@@ -312,7 +303,6 @@ func TestListPeoplePages(t *testing.T) {
 		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}, "")
 }
 
-// ゲストはどの経路でも 401 で、何も変わらない。
 func TestCreditsOwnerOnly(t *testing.T) {
 	f := newCreditFixture(t)
 	person := f.createPerson(t, map[string]any{"name": "人"})

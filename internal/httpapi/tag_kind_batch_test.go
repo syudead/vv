@@ -8,8 +8,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 種類のまとめての付け外しと、タグの一覧の kind。
-
 func TestBatchTagsPassesKindActionsToStore(t *testing.T) {
 	cases := []struct {
 		body       string
@@ -62,7 +60,7 @@ func TestBatchTagsSetKindWithMissingKindIsNotFound(t *testing.T) {
 		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonTagKindNotFound})
 }
 
-// 確認の数は種類の付け外しを受け付けない（変えても何も消えないので画面は確認をとらない）。
+// Kind changes need no destructive-action confirmation and are excluded from impact requests.
 func TestTagImpactRejectsKindActions(t *testing.T) {
 	for _, action := range []string{"setKind", "clearKind"} {
 		fake := &fakeTags{}

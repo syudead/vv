@@ -23,11 +23,8 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 解析と取り込みの失敗理由のコードが、失敗を作る adapter から保存層を通って API まで
-// 届くことを、本物の保存層・解析・走査と経路をつないで確かめる
-//
+// Verify adapter failure codes survive the real scanner, store, and API wiring.
 
-// japaneseText は日本語の固定文言が混ざっていないかを見る。
 var japaneseText = regexp.MustCompile(`[\p{Hiragana}\p{Katakana}\p{Han}]`)
 
 func newFailureCodesDB(t *testing.T) (context.Context, string, *store.DB) {
@@ -64,8 +61,6 @@ func getJSON[T any](t *testing.T, handler http.Handler, target string) T {
 	return out
 }
 
-// 動画でないファイルの解析が上限まで失敗すると、動画の応答が probe_failed のコードと
-// 英語の理由を返す。
 func TestProbeFailureOfNonVideoFileReturnsCode(t *testing.T) {
 	if _, err := exec.LookPath("ffprobe"); err != nil {
 		t.Skip("ffprobe is unavailable")
@@ -113,8 +108,6 @@ func TestProbeFailureOfNonVideoFileReturnsCode(t *testing.T) {
 	}
 }
 
-// 読めないメディアフォルダの取り込みは、取り込みの応答が media_folder_unreadable の
-// コードとそのフォルダのパスを返す。
 func TestScanOfUnreadableMediaFolderReturnsCodeAndPath(t *testing.T) {
 	ctx, _, db := newFailureCodesDB(t)
 	mediaDir := filepath.Join(t.TempDir(), "media")
@@ -125,7 +118,7 @@ func TestScanOfUnreadableMediaFolderReturnsCodeAndPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 登録後にフォルダが消えた（外付けのディスクを外したなど）。
+	// Simulate a removed external drive after registration.
 	if err := os.Remove(mediaDir); err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +153,6 @@ func TestScanOfUnreadableMediaFolderReturnsCodeAndPath(t *testing.T) {
 	}
 }
 
-// 停止で打ち切った取り込みと、起動時に閉じた中断の取り込みは interrupted になる。
 func TestInterruptedScanReturnsCode(t *testing.T) {
 	ctx, _, db := newFailureCodesDB(t)
 	if _, err := db.Settings().AddMediaFolder(ctx, t.TempDir()); err != nil {

@@ -6,8 +6,7 @@ import { t } from "@/i18n";
 import { cn } from "@/lib/cn";
 import { Button } from "@/ui/shadcn/button";
 
-// shadcn/ui の sheet（radix-nova）を vv のトークンで着せたもの。画面の端から出る面で、vv では
-// 狭い幅の Sidebar のドロワーに使う（web/registry/rules/components.md「Sheet」）。
+// Adapted from shadcn/ui radix-nova for the narrow-screen sidebar drawer.
 
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />;
@@ -51,7 +50,7 @@ function SheetContent({
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left";
   showCloseButton?: boolean;
-  /** overlayClassName は背面の幕に足すクラスで、幕を画面の一部（例: トップバーの下）に限るときに使う。 */
+  /** Use overlayClassName to constrain the backdrop, such as below the top bar. */
   overlayClassName?: string;
 }) {
   return (

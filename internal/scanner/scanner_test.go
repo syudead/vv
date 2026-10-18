@@ -17,30 +17,24 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// fakeIndex は保存層の代わりに、走査が何をしたかを覚えておく。
-// 走査規則そのものを検証したいので、SQLite には触れない。
+// Record scanner effects without SQLite to isolate scan rules.
 type fakeIndex struct {
 	folders []domain.MediaFolder
-	rows    map[string]domain.IndexedVideo // path -> 行
+	rows    map[string]domain.IndexedVideo // Path to indexed row.
 	nextID  int64
 	upserts []domain.VideoFile
 	deleted []int64
 	jobs    []jobCall
-	// deciders は EnqueueJobs が受け取った、取り込みを始めたものである（jobs と同じ順）。
-	deciders []domain.ActivityDecider
-	// enqueueCalls は EnqueueJobs の呼び出しの数である。
+	// Deciders align with jobs in enqueue order.
+	deciders     []domain.ActivityDecider
 	enqueueCalls int
-	// keyCalls は content_key を計算したパス。変わっていないファイルで
-	// 再計算していないことを確かめるために数える。
-	progress  []domain.ScanResult
-	reportErr error
-	ensureErr error
-	// issues は報告されたファイルの失敗、issueErr はその報告の失敗である。
-	issues   []domain.ScanFileIssue
-	issueErr error
-	// reports は進みと今のファイルの報告を、届いた順に並べたものである。
-	reports []string
-	// createdAtCalls は所在の作成日時だけを書き直した呼び出し、createdAtErr はその失敗である。
+	// Count paths hashed to detect unnecessary work on unchanged files.
+	progress       []domain.ScanResult
+	reportErr      error
+	ensureErr      error
+	issues         []domain.ScanFileIssue
+	issueErr       error
+	reports        []string
 	createdAtCalls []createdAtCall
 	createdAtErr   error
 }
@@ -64,7 +58,7 @@ func (f *fakeIndex) UpdateLocationCreatedAt(_ context.Context, locationID int64,
 	return nil
 }
 
-// indexedCreatedAt は保存層と同じく作成日時を秒で持つ。ゼロ値は null。
+// Match stored second precision; zero means null.
 func indexedCreatedAt(t time.Time) time.Time {
 	if t.IsZero() {
 		return time.Time{}
@@ -206,7 +200,6 @@ func (f *fakeIndex) ReportScanIssue(_ context.Context, issue domain.ScanFileIssu
 	return f.issueErr
 }
 
-// upsertedPaths は取り込もうとしたパスを並べて返す。
 func (f *fakeIndex) upsertedPaths() []string {
 	out := make([]string, 0, len(f.upserts))
 	for _, file := range f.upserts {
@@ -216,7 +209,6 @@ func (f *fakeIndex) upsertedPaths() []string {
 	return out
 }
 
-// mediaTree は検証用のファイルを一時ディレクトリに作る。
 func mediaTree(t *testing.T, files map[string]string) string {
 	t.Helper()
 
@@ -233,7 +225,6 @@ func mediaTree(t *testing.T, files map[string]string) string {
 	return root
 }
 
-// runScan は走査を1回実行する。
 func runScan(t *testing.T, root string, index *fakeIndex) domain.ScanResult {
 	t.Helper()
 
@@ -246,8 +237,7 @@ func runScan(t *testing.T, root string, index *fakeIndex) domain.ScanResult {
 	return result
 }
 
-// 対象の拡張子。再生できない形式も取り込む。一覧に出したうえで「再生できない」
-// と示すためで、一覧から消してしまうと利用者は手元に何があるか分からない。
+// Index unsupported formats so the library still shows all files.
 func TestScanIncludesAllSupportedExtensions(t *testing.T) {
 	files := map[string]string{}
 	for _, ext := range []string{
@@ -255,7 +245,6 @@ func TestScanIncludesAllSupportedExtensions(t *testing.T) {
 	} {
 		files["video"+ext] = "content" + ext
 	}
-	// 大文字の拡張子も同じ扱いにする。
 	files["大文字.MP4"] = "大文字"
 	root := mediaTree(t, files)
 
@@ -270,7 +259,6 @@ func TestScanIncludesAllSupportedExtensions(t *testing.T) {
 	}
 }
 
-// 除外の規則。走査の対象から外すものを1つずつ確かめる。
 func TestScanExcludesNonMediaAndHiddenEntries(t *testing.T) {
 	root := mediaTree(t, map[string]string{
 		"見える.mp4":            "ok",
@@ -309,7 +297,6 @@ func TestScanExcludesNonMediaAndHiddenEntries(t *testing.T) {
 	}
 }
 
-// 題名は拡張子を除いたファイル名。
 func TestScanDerivesTitleFromFileName(t *testing.T) {
 	root := mediaTree(t, map[string]string{
 		"夏休みの旅行.mp4":        "a",
@@ -326,15 +313,15 @@ func TestScanDerivesTitleFromFileName(t *testing.T) {
 	if got := titles["夏休みの旅行.mp4"]; got != "夏休みの旅行" {
 		t.Errorf("Title = %q, want 夏休みの旅行", got)
 	}
-	// 最後の拡張子だけを外す。"second.v2" は題名の一部である。
+	// Remove only the final extension; "second.v2" remains part of the title.
 	if got := titles["second.v2.mp4"]; got != "second.v2" {
 		t.Errorf("Title = %q, want second.v2", got)
 	}
 }
 
-// 実在pathはファイルシステムへ再入力できる綴りを保ち、表示用titleだけをNFC化する。
+// Preserve filesystem path spelling; normalize only display titles to NFC.
 func TestScanPreservesPathAndNormalizesTitleToNFC(t *testing.T) {
-	// "が" を NFD（か + 濁点）で作る。
+	// Construct U+304C as NFD: U+304B plus combining dakuten.
 	decomposed := norm.NFD.String("がっこう.mp4")
 	if decomposed == norm.NFC.String(decomposed) {
 		t.Skip("この環境では NFD と NFC が一致するため検証できない")
@@ -358,8 +345,6 @@ func TestScanPreservesPathAndNormalizesTitleToNFC(t *testing.T) {
 	}
 }
 
-// サイズも mtime も変わらず解析済みの既存行は何もしない。content_key の
-// 再計算もしないので、2 回目以降の走査は比較だけで済む。
 func TestScanSkipsUnchangedFiles(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
 
@@ -389,7 +374,7 @@ func TestScanSkipsUnchangedFiles(t *testing.T) {
 		t.Errorf("変わっていないファイルを取り込み直した: %d 回 -> %d 回",
 			upsertsAfterFirst, len(index.upserts))
 	}
-	// 解析のジョブも積み直さない。積むと毎回の走査で ffprobe が走る。
+	// Requeuing probes would invoke ffprobe on every scan.
 	jobsAfterFirst := 3
 	if len(index.jobs) != jobsAfterFirst {
 		t.Errorf("ジョブ = %d 件, want %d（変化が無ければ積み直さない）",
@@ -428,7 +413,7 @@ func TestScanRequeuesMissingJobsForUnchangedPendingVideo(t *testing.T) {
 	runScan(t, root, index)
 
 	upsertsAfterFirst := len(index.upserts)
-	index.jobs = nil // EnqueueJob が一時的に失敗して、DBにジョブが無い状態を再現する。
+	index.jobs = nil // Simulate a transient enqueue failure leaving no stored job.
 	runScan(t, root, index)
 
 	if len(index.upserts) != upsertsAfterFirst {
@@ -450,7 +435,6 @@ func TestScanCountsFailedPendingJobRepairAsTarget(t *testing.T) {
 	if result.Total != 1 || result.Completed() != 0 || result.Failed != 1 {
 		t.Fatalf("failed pending job repair should be 0 / 1 with one failure, got %+v", result)
 	}
-	// 走査が知っている既存の動画の問題になる。
 	path := filepath.Join(root, "a.mp4")
 	want := []domain.ScanFileIssue{{VideoID: index.rows[path].ID, Path: path, Kind: domain.IssueRegisterFailed}}
 	if !slices.Equal(index.issues, want) {
@@ -458,7 +442,6 @@ func TestScanCountsFailedPendingJobRepairAsTarget(t *testing.T) {
 	}
 }
 
-// 登録のあとで仕事を積めなかったファイルは、登録された動画の register_failed になる。
 func TestScanReportsEnqueueFailureWithRegisteredVideo(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a"})
 	index := newFakeIndex()
@@ -474,7 +457,6 @@ func TestScanReportsEnqueueFailureWithRegisteredVideo(t *testing.T) {
 	}
 }
 
-// failingQueue は仕事を積めない待ち行列である。
 type failingQueue struct{}
 
 func (failingQueue) EnqueueJobs(context.Context, int64, domain.ActivityDecider, ...domain.JobKind) error {
@@ -522,8 +504,6 @@ func TestScanDoesNotRequeueFailedJobsForUnchangedVideo(t *testing.T) {
 	}
 }
 
-// 代表サムネイルは終わり、シーク用サムネイルだけが pending の既存動画には、
-// シーク用サムネイルの仕事だけを積み直す。
 func TestScanRequeuesOnlySeekThumbnailForPendingSeekThumbnail(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
 	index := newFakeIndex()
@@ -546,8 +526,7 @@ func TestScanRequeuesOnlySeekThumbnailForPendingSeekThumbnail(t *testing.T) {
 	}
 }
 
-// スプライトが完成しているのに今の版の指紋が無い既存動画は、指紋の仕事だけを積み直す
-// （上限まで失敗した指紋も、次の走査で作り直す）。
+// Exhausted fingerprints are retried on the next scan because no terminal status column exists.
 func TestScanRequeuesMissingFingerprint(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
 	index := newFakeIndex()
@@ -571,7 +550,6 @@ func TestScanRequeuesMissingFingerprint(t *testing.T) {
 	}
 }
 
-// シーク用サムネイルだけが終端失敗した既存動画は、走査で積み直さない。
 func TestScanDoesNotRequeueFailedSeekThumbnail(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
 	index := newFakeIndex()
@@ -591,7 +569,6 @@ func TestScanDoesNotRequeueFailedSeekThumbnail(t *testing.T) {
 	}
 }
 
-// 新しい内容の取り込みでは、シーク用サムネイルの仕事も積む。
 func TestScanEnqueuesSeekThumbnailForNewContent(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
 	index := newFakeIndex()
@@ -606,7 +583,6 @@ func TestScanEnqueuesSeekThumbnailForNewContent(t *testing.T) {
 	}
 }
 
-// 内容が変われば取り込み直す。
 func TestScanUpdatesChangedFile(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
 
@@ -617,7 +593,6 @@ func TestScanUpdatesChangedFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte("差し替えた内容（長さも変える）"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// mtime も進める。
 	later := time.Now().Add(time.Hour)
 	if err := os.Chtimes(path, later, later); err != nil {
 		t.Fatal(err)
@@ -632,8 +607,6 @@ func TestScanUpdatesChangedFile(t *testing.T) {
 	}
 }
 
-// 移動・改名は、消えたパスと新しいパスの content_key が一致することで
-// 判定し、パスの更新として扱う。重複を作らない。
 func TestScanDetectsMoveWithoutDuplicating(t *testing.T) {
 	root := mediaTree(t, map[string]string{"海辺の散歩.mp4": "同じ内容"})
 
@@ -665,7 +638,6 @@ func TestScanDetectsMoveWithoutDuplicating(t *testing.T) {
 	}
 }
 
-// 消えたファイルは行を削除する。
 func TestScanRemovesMissingFiles(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a", "b.mp4": "b"})
 
@@ -787,7 +759,6 @@ func TestScanPreservesIndexWhenParentDisappearsAfterDiscovery(t *testing.T) {
 	}
 }
 
-// 新しく取り込んだ動画には、解析とサムネイルのジョブを積む。
 func TestScanEnqueuesJobsForNewVideos(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a"})
 
@@ -806,8 +777,6 @@ func TestScanEnqueuesJobsForNewVideos(t *testing.T) {
 	}
 }
 
-// 個別のファイルの失敗で走査全体を止めない。読めないファイルは
-// failed に数えて次へ進む。
 func TestScanContinuesAfterFileFailure(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a", "b.mp4": "b", "c.mp4": "c"})
 	index := newFakeIndex()
@@ -832,9 +801,6 @@ func TestScanContinuesAfterFileFailure(t *testing.T) {
 	}
 }
 
-// 読めないファイルを含むフォルダを走査すると、そのパスが unreadable として報告先に
-// 渡る。まだ登録されていないので、動画は
-// 結び付かない。
 func TestScanReportsUnreadableFileAsIssue(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a", "読めない.mp4": "b"})
 	broken := filepath.Join(root, "読めない.mp4")
@@ -856,7 +822,6 @@ func TestScanReportsUnreadableFileAsIssue(t *testing.T) {
 	}
 }
 
-// 情報を読めない対象も unreadable として報告する。
 func TestScanReportsFileWithUnreadableInfoAsIssue(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a"})
 	path := filepath.Join(root, "a.mp4")
@@ -880,7 +845,7 @@ func TestScanReportsFileWithUnreadableInfoAsIssue(t *testing.T) {
 	}
 }
 
-// 失敗を記録できなければ、走査を止める。記録されない失敗は利用者から見えなくなる。
+// Unrecorded failures would be invisible to users.
 func TestScanStopsWhenIssueCannotBeRecorded(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a"})
 	index := newFakeIndex()
@@ -896,7 +861,6 @@ func TestScanStopsWhenIssueCannotBeRecorded(t *testing.T) {
 func TestScanContinuesAfterPermissionFailure(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a", "壊れた.mp4": "b", "c.mp4": "c"})
 
-	// 読み取り権限を落として、鍵の計算を失敗させる。
 	broken := filepath.Join(root, "壊れた.mp4")
 	if err := os.Chmod(broken, 0o000); err != nil {
 		t.Fatal(err)
@@ -918,7 +882,6 @@ func TestScanContinuesAfterPermissionFailure(t *testing.T) {
 	}
 }
 
-// 動画ファイルは読み取りのみで扱う。変更・移動・削除をしない。
 func TestScanDoesNotModifyMediaFiles(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a", "入れ子/b.mkv": "b"})
 
@@ -942,7 +905,6 @@ func TestScanDoesNotModifyMediaFiles(t *testing.T) {
 	}
 }
 
-// 走査中に進捗を報告する。取り込みの規模と残りが見える。
 func TestScanReportsProgress(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a", "b.mp4": "b"})
 
@@ -962,7 +924,6 @@ func TestScanReportsProgress(t *testing.T) {
 	}
 }
 
-// 1ファイルごとに、登録を始めるファイルを知らせ、終えたら進みを知らせる。以前の20件ごとの報告ではない。
 func TestScanReportsProgressForEveryFile(t *testing.T) {
 	root := mediaTree(t, map[string]string{
 		"a.mp4": "a", "b.mp4": "b", "c.mp4": "c", "d.mp4": "d", "e.mp4": "e",
@@ -981,7 +942,6 @@ func TestScanReportsProgressForEveryFile(t *testing.T) {
 	}
 }
 
-// 既に知っている動画のファイルを登録し直すときは、その動画の id を添える。
 func TestScanReportsKnownVideoOfCurrentFile(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a"})
 	index := newFakeIndex()
@@ -1066,8 +1026,8 @@ func TestScanRejectsFileChangedWhileContentKeyIsCalculated(t *testing.T) {
 	}
 }
 
-// 内容を読んだあとにファイルの情報を読めなくなっただけなら、変わったとは言えないので
-// unreadable として報告する。消えたときは changed_during_import である。
+// An unreadable stat after hashing does not prove replacement; only disappearance is
+// changed_during_import.
 func TestScanClassifiesMetadataFailureAfterContentKey(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -1109,7 +1069,7 @@ func TestScanClassifiesMetadataFailureAfterContentKey(t *testing.T) {
 	}
 }
 
-// 読めないrootでは対象集合を確定できないため、走査全体を失敗させる。
+// An unreadable root prevents establishing the complete target set.
 func TestScanFailsWhenMediaDirIsUnreadable(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "missing")
 	index := newFakeIndex()
@@ -1188,7 +1148,6 @@ func TestScanDiscardsPartialCountsWhenDiscoveryLaterFails(t *testing.T) {
 	}
 }
 
-// context の取り消しで止まること。停止指示を受けたら走査も終える。
 func TestScanStopsOnCancel(t *testing.T) {
 	files := map[string]string{}
 	for i := 0; i < 50; i++ {
@@ -1239,7 +1198,6 @@ func TestSuccessfulScanPreservesMigratedLocationOutsideRegisteredRoots(t *testin
 	}
 }
 
-// snapshot はディレクトリ配下のパスと内容を読み取る。
 func snapshot(t *testing.T, root string) map[string]string {
 	t.Helper()
 
@@ -1264,7 +1222,6 @@ func snapshot(t *testing.T, root string) map[string]string {
 	return out
 }
 
-// assertScanFailure は走査の失敗が理由のコードと場所で包まれていることを確かめる
 func assertScanFailure(t *testing.T, err error, code domain.ScanErrorCode, path string) {
 	t.Helper()
 	gotCode, gotPath := domain.ScanFailureOf(err)
@@ -1273,7 +1230,6 @@ func assertScanFailure(t *testing.T, err error, code domain.ScanErrorCode, path 
 	}
 }
 
-// メディアフォルダがディレクトリでなければ media_folder_not_directory で、場所はそのフォルダ。
 func TestScanFailureCodeWhenMediaFolderIsNotDirectory(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "file.mp4")
 	if err := os.WriteFile(root, []byte("x"), 0o600); err != nil {
@@ -1289,8 +1245,6 @@ func TestScanFailureCodeWhenMediaFolderIsNotDirectory(t *testing.T) {
 	assertScanFailure(t, err, domain.ScanErrorMediaFolderNotDirectory, root)
 }
 
-// メディアフォルダそのものを読めない（一覧できない）ときは、途中の場所ではなく
-// media_folder_unreadable である。
 func TestScanFailureCodeWhenMediaFolderCannotBeListed(t *testing.T) {
 	root := t.TempDir()
 	index := newFakeIndex()
@@ -1307,7 +1261,8 @@ func TestScanFailureCodeWhenMediaFolderCannotBeListed(t *testing.T) {
 	assertScanFailure(t, err, domain.ScanErrorMediaFolderUnreadable, root)
 }
 
-// 途中の保存の失敗など、場所に結び付かない失敗は包まない（受け取る側で internal）。
+// Failures unrelated to a filesystem location remain unwrapped and become internal errors at the
+// boundary.
 func TestScanFailureCodeIsInternalForIndexFailure(t *testing.T) {
 	index := newFakeIndex()
 	index.folders = nil
@@ -1318,7 +1273,6 @@ func TestScanFailureCodeIsInternalForIndexFailure(t *testing.T) {
 	assertScanFailure(t, err, domain.ScanErrorInternal, "")
 }
 
-// 走査を始めたものを UpsertVideo に渡す。所在だけを足した取り込みの記録がそれを書く。
 func TestScanPassesTheDeciderToUpsertVideo(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
 	index := newFakeIndex()

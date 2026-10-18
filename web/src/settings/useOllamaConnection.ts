@@ -3,22 +3,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getOllamaSettings, isAborted } from "../api/client";
 import { errorText, type UiText } from "../i18n";
 
-/**
- * OllamaConnection は Ollama の接続先を読んだ結果である。
- * - `loading`: 読んでいる。
- * - `saved` / `unsaved`: 持ち主が接続先を保存したか（`OllamaSettings.saved`）。
- * - `failed`: 読めなかった。保存したかは分からない。
- */
+/** A failed connection read leaves saved/unsaved unknown. */
 export type OllamaConnection =
   | { status: "loading" }
   | { status: "saved" }
   | { status: "unsaved" }
   | { status: "failed"; reason: UiText };
 
-/**
- * useOllamaConnection は、接続先に頼るページ（「Auto-tagging」と「Library」）が開いたときに
- * `GET /api/settings/ollama` を 1 回読み、保存したかを返す。`retry` は読み直す。
- */
+/** Read once on page opening; retry explicitly rereads. */
 export function useOllamaConnection(): {
   connection: OllamaConnection;
   retry: () => void;

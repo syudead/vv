@@ -14,13 +14,10 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 作品情報の読み書きは、本物の認証・保存層・経路で確かめる。
-
 func (f *guestFixture) putVideo(name, suffix, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 	return f.env.serve(authRequest{method: http.MethodPut, target: f.videoPath(name, suffix), body: body, cookies: cookies})
 }
 
-// createWorkInfoPerson は保存層で人物を作り、その id を返す。
 func (f *guestFixture) createWorkInfoPerson(t *testing.T, name string) int64 {
 	t.Helper()
 	credit, err := f.env.db.Credits().Create(context.Background(), domain.CreditPerson, domain.CreditInput{Name: name})
@@ -30,7 +27,6 @@ func (f *guestFixture) createWorkInfoPerson(t *testing.T, name string) int64 {
 	return credit.ID
 }
 
-// subscribeVideoEvents は保存層の発行を /api/events へつなぎ、つないだ直後の送信を除いた購読を返す。
 func (f *guestFixture) subscribeVideoEvents(t *testing.T) *eventSubscriber {
 	t.Helper()
 	events := NewEvents()
@@ -41,7 +37,6 @@ func (f *guestFixture) subscribeVideoEvents(t *testing.T) *eventSubscriber {
 	return sub
 }
 
-// rawVideo は応答の動画を JSON のまま返す。省いた欄が無いことを確かめるのに使う。
 func rawVideo(t *testing.T, rec *httptest.ResponseRecorder) map[string]json.RawMessage {
 	t.Helper()
 	var raw map[string]json.RawMessage
@@ -51,8 +46,6 @@ func rawVideo(t *testing.T, rec *httptest.ResponseRecorder) map[string]json.RawM
 	return raw
 }
 
-// 所有者の PUT は 200 で保存した作品情報（人物は名前付き）を返し、その後の GET が同じものを返す。
-// 変更の後にその id の video が流れ、{} の PUT はすべてを解除する。ゲストは workInfo を受け取らない。
 func TestSetVideoWorkInfoSavesAndReads(t *testing.T) {
 	f := newGuestFixture(t, true)
 	sub := f.subscribeVideoEvents(t)
@@ -95,20 +88,17 @@ func TestSetVideoWorkInfoSavesAndReads(t *testing.T) {
 	if detail.WorkInfo == nil || !reflect.DeepEqual(*detail.WorkInfo, want) {
 		t.Errorf("詳細の workInfo = %+v, want %+v", detail.WorkInfo, want)
 	}
-	// 一覧の項目には載せない。
 	for _, item := range rawItems(t, f.env.get("/api/videos", f.owner).Body.Bytes(), "items") {
 		if value, ok := item["workInfo"]; ok {
 			t.Errorf("一覧の項目に workInfo = %s", value)
 		}
 	}
-	// ゲストの公開動画の詳細には workInfo が無い（R-10）。
 	guest := f.env.get(f.videoPath("a", ""))
 	if guest.Code != http.StatusOK {
 		t.Fatalf("ゲストの詳細: status = %d: %s", guest.Code, guest.Body)
 	}
 	assertGuestVideo(t, "ゲストの詳細", rawVideo(t, guest))
 
-	// {} はすべてを解除し、応答に workInfo が無い。
 	rec = f.putVideo("a", "/work-info", `{}`, f.owner)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("解除: status = %d: %s", rec.Code, rec.Body)
@@ -124,7 +114,6 @@ func TestSetVideoWorkInfoSavesAndReads(t *testing.T) {
 	}
 }
 
-// 規則に合わない項目は field 付きの誤りで、何も書かない。ゲストは 401、無い動画は 404 である。
 func TestSetVideoWorkInfoRejects(t *testing.T) {
 	f := newGuestFixture(t, true)
 	performer := f.createWorkInfoPerson(t, "出演者")
@@ -165,8 +154,6 @@ func TestSetVideoWorkInfoRejects(t *testing.T) {
 	}
 }
 
-// 一覧の件の必須のプロパティ（契約の WorkDate・WorkPersonInput・WorkOrganizationInput・ExternalId）が
-// 欠けているか null の本文は 400 で、保存済みの作品情報を消さない。空の文字列の date は今までどおり解除である。
 func TestSetVideoWorkInfoRejectsMissingRequiredProperties(t *testing.T) {
 	f := newGuestFixture(t, true)
 	performer := f.createWorkInfoPerson(t, "出演者")
@@ -199,7 +186,6 @@ func TestSetVideoWorkInfoRejectsMissingRequiredProperties(t *testing.T) {
 		t.Errorf("断った後の workInfo = %+v, want %+v", got, want)
 	}
 
-	// 空の文字列の date は欠けたものではなく、その日付の解除である。
 	rec := f.putVideo("a", "/work-info", `{"dates":[{"kind":"release","date":""}]}`, f.owner)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("空の date: status = %d: %s", rec.Code, rec.Body)
@@ -209,7 +195,6 @@ func TestSetVideoWorkInfoRejectsMissingRequiredProperties(t *testing.T) {
 	}
 }
 
-// 無い動画とゲストの保存。
 func TestSetVideoWorkInfoMissingVideoAndGuest(t *testing.T) {
 	f := newGuestFixture(t, true)
 
@@ -222,7 +207,6 @@ func TestSetVideoWorkInfoMissingVideoAndGuest(t *testing.T) {
 	})
 }
 
-// details は表示名と作品情報を 1 回で保存し、どちらかが規則に合わなければどちらも書かない。
 func TestSetVideoDetails(t *testing.T) {
 	f := newGuestFixture(t, true)
 	sub := f.subscribeVideoEvents(t)
@@ -249,7 +233,6 @@ func TestSetVideoDetails(t *testing.T) {
 		t.Errorf("詳細: title = %q, workInfo = %+v", detail.Title, detail.WorkInfo)
 	}
 
-	// 作品情報の誤りは workInfo の中の位置を field にし、表示名も書かない。
 	rec = f.putVideo("b", "/details", details("別の題名", map[string]any{
 		"dates": []map[string]string{{"kind": "release", "date": "2024-02-30"}},
 	}), f.owner)
@@ -260,7 +243,6 @@ func TestSetVideoDetails(t *testing.T) {
 		t.Errorf("断った後の題名 = %q, want b", got.Title)
 	}
 
-	// 表示名の誤りは field: displayName で、作品情報も書かない。
 	rec = f.putVideo("b", "/details", details(strings.Repeat("あ", domain.DisplayNameMaxLength+1), map[string]any{"code": "X"}), f.owner)
 	assertFieldError(t, "長すぎる表示名", rec, wantError{
 		status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonDisplayNameTooLong, limit: domain.DisplayNameMaxLength,
@@ -269,7 +251,6 @@ func TestSetVideoDetails(t *testing.T) {
 		t.Errorf("断った後の詳細に workInfo = %s", value)
 	}
 
-	// 表示名は作品情報の列挙と必須のプロパティより先に確かめる。
 	for label, info := range map[string]string{
 		"役割が列挙に無い": `{"people":[{"role":"actor","person":{"id":1}}]}`,
 		"date が無い": `{"dates":[{"kind":"release"}]}`,

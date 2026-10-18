@@ -10,7 +10,6 @@ import { Field, FieldError, FieldLabel } from "../ui/shadcn/field";
 import { Input } from "../ui/shadcn/input";
 import { Spinner } from "../ui/shadcn/spinner";
 
-/** NameDialogWords は名前を聞く窓の文言である。 */
 export interface NameDialogWords {
   title: UiText;
   submit: UiText;
@@ -18,14 +17,7 @@ export interface NameDialogWords {
   failed: (reason: string) => UiText;
 }
 
-/**
- * NameDialog は名前を 1 つ聞いて送る窓である。呼び出し元は開いている間だけ描き、閉じるたびに
- * 入れた名前を捨てる。プレイリストとグループの名前は同じ規則である。
- *
- * 名前は送る前に数え、空か 100 文字を超えるなら送らずに規則を欄の誤りとして出す（入れて
- * いる間は出さない）。送れたら `onDone` を呼び、閉じるのは呼び出し元に任せる。`400` は名前の
- * 誤りとして欄に、ほかの失敗は窓の中の `Alert` に出し、`onFailed` にも渡す。送信中は閉じない。
- */
+/** Mount only while open so drafts reset on close; validate on submit and block closing while pending. */
 export default function NameDialog<T>({
   words,
   description,

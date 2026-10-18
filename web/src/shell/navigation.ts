@@ -17,22 +17,14 @@ export interface NavEntry {
   id: string;
   label: UiText;
   icon: LucideIcon;
-  /** 行き先。 */
   to: string;
-  /** 行き先より下の URL（`/folders/3/A` など）でも選択中にする。 */
   matchDescendants?: boolean;
-  /**
-   * 所有者のデータ（タグ・人物と団体・視聴履歴・プレイリスト・候補）に依る項目。ゲストには出さない。
-   */
+  /** Hide owner-data navigation from guests. */
   ownerOnly?: boolean;
-  /** レールの右上に要対応の記録の数を出す（アクティビティの項目）。 */
   attentionCount?: boolean;
 }
 
-/**
- * navEntries はサイドバーの上段の項目である。文言はカタログから描画のたびに引く
- * （疑似ロケールへの差し替えが届くよう、モジュールの読み込み時に固めない）。
- */
+/** Read catalog copy during rendering so pseudo-locale replacements propagate. */
 export function navEntries(): readonly NavEntry[] {
   return [
     { id: "library", label: t.shell.nav.library, icon: Library, to: "/" },

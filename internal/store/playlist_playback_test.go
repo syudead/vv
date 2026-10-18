@@ -8,14 +8,11 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// プレイリストの連続再生の位置と次の動画。
-
-// playbackFixture は動画 A（mixed/x）、グループ G（show: メンバー 1〜3、メンバー 1 は視聴済み、
-// 2 と 3 は未視聴）、動画 B（mixed/sub/y）のプレイリストである。
+// Playback fixture: standalone A, group G with its first member watched, then standalone B.
 type playbackFixture struct {
 	db                  *DB
 	id                  int64
-	a, b                int64 // 動画の id
+	a, b                int64
 	members             []int64
 	itemA, itemG, itemB int64
 }
@@ -23,7 +20,7 @@ type playbackFixture struct {
 func newPlaybackFixture(t *testing.T) playbackFixture {
 	t.Helper()
 	db, ids := itemsFixture(t)
-	// fixture のメンバー 3（ep10）は途中なので、開くメンバーがメンバー 2 になるよう記録を消す。
+	// Clear member three's in-progress record so member two is the group's opening choice.
 	if _, err := db.sql.Exec(`delete from playback_progress where content_key = ?`,
 		"key"+fixturePath("/media/show/ep10.mp4")); err != nil {
 		t.Fatal(err)
@@ -55,7 +52,6 @@ func (f playbackFixture) playback(t *testing.T, itemID, videoID int64) domain.Pl
 	return playback
 }
 
-// stepOf は連続再生の 1 歩を（項目, 動画）で返す。無ければ（0, 0）。
 func stepOf(step *domain.PlaylistStep) [2]int64 {
 	if step == nil {
 		return [2]int64{}
@@ -63,7 +59,6 @@ func stepOf(step *domain.PlaylistStep) [2]int64 {
 	return [2]int64{step.ItemID, step.Video.ID}
 }
 
-// A からはグループの開くメンバー 2 へ、メンバー 2 から 3、3 から B へ進み、B で終わる。
 func TestPlaylistPlaybackFollowsTheOrder(t *testing.T) {
 	f := newPlaybackFixture(t)
 	m2, m3 := f.members[1], f.members[2]
@@ -93,7 +88,6 @@ func TestPlaylistPlaybackFollowsTheOrder(t *testing.T) {
 	}
 }
 
-// B を先頭へ動かすと、メンバー 3 が最後の項目の最後のメンバーになり、次は無い。
 func TestPlaylistPlaybackReadsTheLatestOrder(t *testing.T) {
 	f := newPlaybackFixture(t)
 	if err := f.db.Playlists().MovePlaylistItem(context.Background(), f.id, f.itemB, nil); err != nil {
@@ -104,7 +98,6 @@ func TestPlaylistPlaybackReadsTheLatestOrder(t *testing.T) {
 	}
 }
 
-// A のファイルが無くなると数えず、G の前の項目も無い。
 func TestPlaylistPlaybackSkipsAHiddenItem(t *testing.T) {
 	f := newPlaybackFixture(t)
 	if err := f.db.ScanIndex().DeleteVideos(context.Background(), []int64{f.a}); err != nil {
@@ -116,8 +109,6 @@ func TestPlaylistPlaybackSkipsAHiddenItem(t *testing.T) {
 	}
 }
 
-// 再生中にグループの動画がすべて無くなって今の項目が隠れると、位置は 0 で、前後と次はその位置の
-// 前後の見せる項目になる。
 func TestPlaylistPlaybackKeepsTheHiddenCurrentItemsPlace(t *testing.T) {
 	f := newPlaybackFixture(t)
 	if err := f.db.ScanIndex().DeleteVideos(context.Background(), f.members); err != nil {
@@ -133,7 +124,6 @@ func TestPlaylistPlaybackKeepsTheHiddenCurrentItemsPlace(t *testing.T) {
 	}
 }
 
-// 全部見終わったグループの項目は最初のメンバーから始まる。
 func TestPlaylistPlaybackStartsAWatchedGroupAtItsFirstMember(t *testing.T) {
 	f := newPlaybackFixture(t)
 	if _, err := f.db.sql.Exec(`insert into playback_progress (content_key, position_ms, duration_ms, completed, updated_at)
@@ -148,7 +138,7 @@ func TestPlaylistPlaybackStartsAWatchedGroupAtItsFirstMember(t *testing.T) {
 	}
 }
 
-// 動画 V がそれ自体の項目でもグループ G のメンバーでもあるとき、item が位置を決める。
+// Item identity disambiguates a video appearing both standalone and within a group.
 func TestPlaylistPlaybackUsesTheItemForAVideoInTwoItems(t *testing.T) {
 	f := newPlaybackFixture(t)
 	v := f.members[1]
@@ -156,7 +146,6 @@ func TestPlaylistPlaybackUsesTheItemForAVideoInTwoItems(t *testing.T) {
 	if err := f.db.Playlists().MovePlaylistItem(context.Background(), f.id, f.itemB, &f.itemA); err != nil {
 		t.Fatal(err)
 	}
-	// 並びは A、B、G、V。
 	ids := playlistItemIDs(t, f.db, f.id)
 	itemV := ids[len(ids)-1]
 	if len(ids) != 4 || ids[2] != f.itemG || itemV == f.itemG {
@@ -165,7 +154,6 @@ func TestPlaylistPlaybackUsesTheItemForAVideoInTwoItems(t *testing.T) {
 	if err := f.db.Playlists().MovePlaylistItem(context.Background(), f.id, itemV, &f.itemA); err != nil {
 		t.Fatal(err)
 	}
-	// 並びは A、V、B、G。
 
 	asMember := f.playback(t, f.itemG, v)
 	asItem := f.playback(t, itemV, v)
@@ -180,8 +168,6 @@ func TestPlaylistPlaybackUsesTheItemForAVideoInTwoItems(t *testing.T) {
 	}
 }
 
-// 外した項目と別のプレイリストの項目は ErrPlaylistItemNotFound、消したプレイリストは
-// ErrPlaylistNotFound。
 func TestPlaylistPlaybackNotFound(t *testing.T) {
 	f := newPlaybackFixture(t)
 	ctx := context.Background()

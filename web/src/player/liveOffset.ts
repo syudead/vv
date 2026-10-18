@@ -48,27 +48,14 @@ interface OffsetTech {
 
 type Player = ReturnType<typeof videojs>;
 
-/**
- * newAttempt は変換の要求ごとの識別子（`[A-Za-z0-9_-]{1,64}`）を作る。
- * crypto.randomUUID は安全でない文脈（LAN の http）で使えないので、乱数から作る。
- */
+/** Use random bytes for attempt IDs because randomUUID is unavailable over LAN HTTP. */
 function newAttempt(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-/**
- * liveSource は元動画の startMs からのライブ変換の source を作る。途中から始めるときは
- * attempt を付け、仲立ちが実際の開始位置を引けるようにする。コピーで始めた変換は
- * 直前のキーフレームから始まり、指定位置とずれるためである。quality は縮める
- * 画質で、source が vvQuality として持ち、未 buffer シークの作り直しが引き継ぐ。
- *
- * offsetSettled は、再生の時間軸の 0 が元動画のどの時刻か（offset、秒）が決まるたびに
- * 1 回呼ばれる。attempt の無い source は指定位置で直ちに、ある source は報告が 200 なら
- * 実際の開始位置、404 や誤りなら指定位置で呼ばれる。offsetPending は attempt のある source を
- * 設定して報告を待ち始めたときに呼ばれる。字幕はこの 2 つで付け直す。source を作り直すシークも同じ経路で知らせる。
- */
+/** Track actual transcode starts because copy mode begins at a prior keyframe. Offset callbacks coordinate subtitles, and vvQuality survives unbuffered seeks. */
 export function liveSource(
   videoId: number,
   durationMs: number,
@@ -105,8 +92,7 @@ export function createLiveOffsetMiddleware(player: Player) {
   let reloadGeneration = 0;
   let disposed = false;
   let startReport: AbortController | undefined;
-  // offsetNotifyDeferred は、未 buffer シークの予約中に届いた報告の通知を保留していることを表す。
-  // 予約が実行されれば選んだ位置を通知するので捨て、予約が取り消されたら通知する。
+  // Defer offset notifications during scheduled seeks; discard on execution, deliver on cancellation.
   let offsetNotifyDeferred = false;
 
   const clearReload = () => {
@@ -123,10 +109,7 @@ export function createLiveOffsetMiddleware(player: Player) {
     startReport?.abort();
   });
 
-  // awaitActualStart は source を設定した直後に呼び、実際の開始位置の報告を取りに行く。
-  // 届くまでは現在時刻に指定位置を返し、届いたら offset をその値に置き換える。404 か
-  // 誤りなら指定位置のまま（報告の無い変換と同じ表示）にする。source を差し替えたあとに
-  // 届いた古い attempt の報告は捨てる。
+  // Use the requested position until the report arrives; retain it on failure and ignore reports for replaced sources.
   const awaitActualStart = (current: SourceObject) => {
     startReport?.abort();
     startReport = undefined;
@@ -151,8 +134,7 @@ export function createLiveOffsetMiddleware(player: Player) {
         offsetSeconds = actual;
         current.vvOffsetSettled?.(actual);
         if (reloadTimer !== undefined) {
-          // 未 buffer シークの予約中は、選んだ位置を保存する位置として保つ。古い開始位置を
-          // 通知すると、予約の実行前に離れたとき選んだ位置ではなくその位置から再開する。
+          // Preserve the pending seek as the saved position so leaving before execution resumes where the user chose.
           if (actual !== requested) offsetNotifyDeferred = true;
           return;
         }

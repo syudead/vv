@@ -1,10 +1,7 @@
 import type { Tag } from "../api/tags";
 
-/**
- * 選択は読み込んだ行の id の部分集合である。改名中の行は選ばない。
- */
+/** Select loaded rows only, excluding rows being renamed. */
 
-/** withoutIds は選択から ids を外した集合を返す。 */
 export function withoutIds(
   current: ReadonlySet<number>,
   ids: ReadonlySet<number>,
@@ -14,10 +11,7 @@ export function withoutIds(
   return next;
 }
 
-/**
- * keepLoaded は、操作や取り直しで行から消えた id と改名中の行を選択から外す。
- * 何も外れなければ同じ集合を返す（描き直しを起こさない）。
- */
+/** Preserve the set reference when no IDs are removed. */
 export function keepLoaded(
   current: ReadonlySet<number>,
   rows: readonly Tag[],
@@ -32,16 +26,11 @@ export function keepLoaded(
   return next.size === current.size ? current : next;
 }
 
-/**
- * countSelectable は「読み込んだものをすべて選ぶ」の対象の数である。改名中の行は
- * 入らない。読み込んでいないタグは選ばない（要件 10）。
- */
 export function countSelectable(rows: readonly Tag[], renamingId: number | null): number {
   const renamingLoaded = renamingId !== null && rows.some((tag) => tag.id === renamingId);
   return rows.length - (renamingLoaded ? 1 : 0);
 }
 
-/** selectAllCheck は列の見出しの先頭のチェックの状態である。 */
 export function selectAllCheck(
   selectedCount: number,
   selectable: number,
@@ -50,28 +39,17 @@ export function selectAllCheck(
   return selectedCount >= selectable ? true : "indeterminate";
 }
 
-/** SelectionSummary は選んだ行のまとめである（選択バーが読む）。 */
 export interface SelectionSummary {
-  /** 仮のタグがある。 */
   tentative: boolean;
-  /** 確定したタグがある。 */
   confirmed: boolean;
-  /**
-   * 選んだタグがみな持つ種類の id の文字列。みな種類なしなら `none`、混ざっているか
-   * 選んでいなければ undefined。
-   */
+  /** Shared kind ID or none; undefined for mixed or empty selections. */
   kind: string | undefined;
 }
 
-/** kindValue はタグの種類の値（id の文字列か `none`）である。 */
 function kindValue(tag: Tag): string {
   return tag.kind === null ? "none" : String(tag.kind.id);
 }
 
-/**
- * selectedKinds は、選んだ行に仮のタグと確定したタグがそれぞれあるかと、みなが持つ
- * 種類である。選択の行は、無い種類の操作を押せなくする。
- */
 export function selectedKinds(
   rows: readonly Tag[],
   selected: ReadonlySet<number>,

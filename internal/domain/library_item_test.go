@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// 並んだメンバーの再生の記録の書き方: n は記録なし、0 は位置 0、m は途中、d は完了。
+// Progress notation: n = absent, 0 = zero position, m = in progress, d = complete.
 func progressOf(pattern string) []*Progress {
 	out := make([]*Progress, 0, len(pattern))
 	for _, c := range pattern {
@@ -23,7 +23,6 @@ func progressOf(pattern string) []*Progress {
 	return out
 }
 
-// グループの視聴状態・見終えた本数・開くメンバー。
 func TestGroupWatchAndOpenIndex(t *testing.T) {
 	tests := []struct {
 		pattern string
@@ -33,14 +32,11 @@ func TestGroupWatchAndOpenIndex(t *testing.T) {
 	}{
 		{"nn", WatchStateUnwatched, 0, 0},
 		{"n0", WatchStateUnwatched, 0, 0},
-		// 途中のメンバーがあれば、それが最初の未完了より先でも後でも開く。
 		{"nm", WatchStateInProgress, 0, 1},
 		{"dnm", WatchStateInProgress, 1, 2},
 		{"mdm", WatchStateInProgress, 1, 0},
-		// 途中のものが無ければ最初の未完了。
 		{"ddn", WatchStateInProgress, 2, 2},
 		{"d0d", WatchStateInProgress, 2, 1},
-		// 全部完了なら watched で、最初のメンバー。
 		{"ddd", WatchStateWatched, 3, 0},
 		{"", WatchStateUnwatched, 0, 0},
 	}
@@ -56,7 +52,6 @@ func TestGroupWatchAndOpenIndex(t *testing.T) {
 	}
 }
 
-// 合計と最大は、分かっている値だけから作る。
 func TestNewLibraryGroupAggregates(t *testing.T) {
 	base := time.Unix(1_000, 0)
 	duration := int64(1500)

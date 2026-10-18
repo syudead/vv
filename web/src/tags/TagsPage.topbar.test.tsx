@@ -25,7 +25,6 @@ describe("TagsPage トップバー・見出し・タブ", () => {
     return screen.getByTitle(name).closest("[data-tag-id]")!;
   }
 
-  /** chooseSortKind はトップバーの並び順のメニューから種類を選ぶ。 */
   async function chooseSortKind(user: ReturnType<typeof userEvent.setup>, kind: string) {
     await user.click(screen.getByRole("button", { name: /^Sort by: / }));
     await user.click(await screen.findByRole("menuitemradio", { name: kind }));
@@ -57,12 +56,9 @@ describe("TagsPage トップバー・見出し・タブ", () => {
     expect(
       filter.compareDocumentPosition(sort) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    // 「Name」に向きは無いので、向きのボタンは出さない。
     expect(within(topBar).queryByRole("button", { name: /Press for/ })).toBeNull();
-    // 本文の中に操作の行は無い。
     expect(screen.getAllByRole("searchbox")).toHaveLength(1);
 
-    // 「/」で検索欄へ移る。
     const user = userEvent.setup();
     await user.keyboard("/");
     expect(document.activeElement).toBe(search);
@@ -79,13 +75,11 @@ describe("TagsPage トップバー・見出し・タブ", () => {
     const unused = screen.getByRole("checkbox", { name: /^Unused only/ });
     expect(tentative.getAttribute("aria-checked")).toBe("false");
     expect(unused.getAttribute("aria-checked")).toBe("false");
-    // 何も効いていない間は「Clear filters」を出さない。
     expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
 
     await user.click(tentative);
     await user.click(unused);
     expect(filterButton().getAttribute("aria-label")).toBe("Filter (2 applied)");
-    // 効いている数は soft の Badge で添える。
     expect(filterButton().querySelector('[data-slot="badge"]')?.className).toContain(
       "bg-primary-soft",
     );
@@ -93,7 +87,6 @@ describe("TagsPage トップバー・見出し・タブ", () => {
     expect(await screen.findByText("1 of 4 tags")).toBeDefined();
     await user.keyboard("{Escape}");
 
-    // 見出しの下に、効いている絞り込みのチップが並ぶ。
     const chips = screen.getByRole("list", { name: "Active filters" });
     expect(
       within(chips)
@@ -101,7 +94,6 @@ describe("TagsPage トップバー・見出し・タブ", () => {
         .map((chip) => chip.textContent),
     ).toEqual(["Tentative only", "Unused only"]);
 
-    // チップの × でその絞り込みだけを外し、残るチップへフォーカスが移る。
     await user.click(
       within(chips).getByRole("button", { name: 'Remove the filter "Tentative only"' }),
     );
@@ -113,7 +105,6 @@ describe("TagsPage トップバー・見出し・タブ", () => {
     );
     expect(filterButton().getAttribute("aria-label")).toBe("Filter (1 applied)");
 
-    // 「Clear filters」で残りを外す。
     await user.click(filterButton());
     await user.click(await screen.findByRole("button", { name: "Clear filters" }));
     expect(await screen.findByText("4 tags")).toBeDefined();
@@ -140,8 +131,7 @@ describe("TagsPage トップバー・見出し・タブ", () => {
     server.tags = Array.from({ length: 150 }, (_, index) =>
       tag({ id: index + 1, name: `Tag ${String(index).padStart(3, "0")}` }),
     );
-    // 行の高さを置き、画面に近い数の行だけを描かせる。jsdom のままでは読み込んだ 100 行の
-    // 6 割ほどを描き、描画と役割での検索だけで 1 秒を超える。
+    // Supply row heights so virtualization renders only a realistic viewport in jsdom.
     onTestFinished(stubRowHeights());
     install();
     renderPage();
@@ -150,7 +140,6 @@ describe("TagsPage トップバー・見出し・タブ", () => {
     const heading = screen.getByRole("heading", { level: 1, name: "Tags" });
     const header = heading.closest("header")!;
     const status = within(header).getByRole("status");
-    // 150 件のうち 100 件だけを読んだ状態でも、全部の数だけを出す。
     expect(server.pageRequests.at(-1)?.get("limit")).toBe("100");
     expect(status.textContent).toBe("150 tags");
     expect(within(header).getByRole("button", { name: "New tag" })).toBeDefined();
@@ -174,7 +163,6 @@ describe("TagsPage トップバー・見出し・タブ", () => {
     ).toEqual(["", "Name", "Videos"]);
     const videos = within(columns).getByRole("columnheader", { name: "Videos" });
     expect(videos.className).toContain("text-right");
-    // 列の見出しは最初の行より前にある。
     expect(
       columns.compareDocumentPosition(rowOf("Alpha")) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -206,11 +194,10 @@ describe("TagsPage トップバー・見出し・タブ", () => {
       screen.queryByRole("link", { name: "Open the library filtered by Alpha" }),
     ).toBeNull();
 
-    // 左右の矢印でタブの間を動く。
     rejectedTab().focus();
     await user.keyboard("{ArrowLeft}");
     expect(document.activeElement).toBe(tagsTab());
-    // 選ぶのはフォーカスの後の描画なので、重い環境でも待って確かめる。
+    // Selection follows focus in a subsequent render; wait for that state.
     await waitFor(() => expect(tagsTab().getAttribute("aria-selected")).toBe("true"));
     expect(await screen.findByTitle("Alpha")).toBeDefined();
     expect(probe.search).not.toContain("tab=");
@@ -339,7 +326,6 @@ describe("TagsPage トップバー・見出し・タブ", () => {
     expect(params.get("sort")).toBe("countDesc");
     view.unmount();
 
-    // 開き直す（再読み込み）。
     server.pageRequests = [];
     renderPage({ url: `/tags${probe.search}&tab=rejected` });
     expect(await screen.findByRole("tabpanel", { name: /Rejected names/ })).toBeDefined();

@@ -10,10 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 種類のまとめての付け外しと、タグの一覧の種類での絞り込み
-//
-
-// presetKindID はプリセットの種類 name の id を返す。
 func presetKindID(t *testing.T, db *DB, name string) int64 {
 	t.Helper()
 	kinds, err := db.Tags().ListTagKinds(context.Background())
@@ -33,7 +29,6 @@ func setKindRequest(kindID int64) domain.TagBatchRequest {
 	return domain.TagBatchRequest{Action: domain.TagBatchSetKind, KindID: kindID}
 }
 
-// 受け入れ条件 2: 10 個のタグに種類をまとめて付けると、10 個すべてにその種類が付く。
 func TestBatchTagsSetKindGivesEveryTagTheKind(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -58,7 +53,6 @@ func TestBatchTagsSetKindGivesEveryTagTheKind(t *testing.T) {
 	assertTagInvariantsNow(t, db)
 }
 
-// 種類を付けても外しても、仮のタグは仮のまま残る（R-3）。
 func TestBatchTagsKindKeepsTentativeTagsTentative(t *testing.T) {
 	db, ids := batchFixture(t)
 	ctx := context.Background()
@@ -95,8 +89,6 @@ func TestBatchTagsKindKeepsTentativeTagsTentative(t *testing.T) {
 	assertTagInvariantsNow(t, db)
 }
 
-// すでにその種類のタグ（clearKind では種類の無いタグ）は notApplicableIds に入り、無い id は
-// notFoundIds に入る。
 func TestBatchTagsKindReportsTagsAlreadyInState(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -129,7 +121,6 @@ func TestBatchTagsKindReportsTagsAlreadyInState(t *testing.T) {
 	}
 }
 
-// 無い種類を付けると domain.ErrTagKindNotFound で、どのタグも変わらない。
 func TestBatchTagsSetKindWithMissingKindChangesNothing(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -150,7 +141,6 @@ func TestBatchTagsSetKindWithMissingKindChangesNothing(t *testing.T) {
 	}
 }
 
-// setKind は KindID を持ち、ほかの操作は持たない。
 func TestBatchTagsRejectsKindIDMismatch(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -177,8 +167,6 @@ func listedTagNames(page domain.TagPage) []string {
 	return names
 }
 
-// 受け入れ条件 1: 種類 Genre のタグは kind=<Genre の id> で一覧に出て、kind=none では出ない。
-// 絞り込みはほかの条件と AND で、total は数に入れ、totalAll は入れない（R-8）。
 func TestListTagsFiltersByKind(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -215,7 +203,6 @@ func TestListTagsFiltersByKind(t *testing.T) {
 		}
 	}
 
-	// 完全に一致するタグも、絞り込みに合うときだけ返す。
 	for _, tc := range []struct {
 		kind domain.TagKindFilter
 		want bool

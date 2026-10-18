@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-// 表示名はタグ名と同じ順で整え、空は解除、制御文字と上限超は理由つきの誤りにする
 func TestNormalizeDisplayName(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -48,7 +47,6 @@ func TestNormalizeDisplayName(t *testing.T) {
 	}
 }
 
-// 位置つきの誤りは、表示名の誤りとして判定でき、理由も取り出せる。
 func TestDisplayNameAtErrorUnwraps(t *testing.T) {
 	_, _, cause := NormalizeDisplayName("a\nb")
 	err := error(&DisplayNameAtError{Index: 3, Err: cause})
@@ -58,7 +56,6 @@ func TestDisplayNameAtErrorUnwraps(t *testing.T) {
 	}
 }
 
-// 位置は解析済みで尺の内側（0 以上、尺未満）だけを受け付け、解析前と尺の外を分けて返す
 func TestCheckThumbnailPosition(t *testing.T) {
 	duration := int64(60_000)
 	zero := int64(0)

@@ -9,12 +9,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 代表サムネイルの位置の指定。
-
 func int64Ptr(value int64) *int64 { return &value }
 
-// 指定では ThumbnailAt、解除では自動の位置の Thumbnail で画像を作り、公開してから位置を
-// 記録する。
+// Publish the selected or automatic frame before recording its position.
 func TestSetThumbnailPositionPublishesThenRecords(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -54,7 +51,6 @@ func TestSetThumbnailPositionPublishesThenRecords(t *testing.T) {
 	}
 }
 
-// 生成に失敗したら記録せず ErrThumbnailFrameUnavailable を返す。
 func TestSetThumbnailPositionGenerationFailure(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -80,7 +76,6 @@ func TestSetThumbnailPositionGenerationFailure(t *testing.T) {
 	}
 }
 
-// 解析前は ErrDurationUnknown、尺以上は ErrThumbnailPositionOutOfRange で、生成も記録もしない。
 func TestSetThumbnailPositionRejectsBeforeGenerating(t *testing.T) {
 	pending := probedVideo(1, "a")
 	pending.ProbeState = domain.ProbeStatePending
@@ -133,8 +128,7 @@ func TestSetThumbnailPositionHoldsGenerationLock(t *testing.T) {
 	}
 }
 
-// job は位置のある動画ではその位置で ThumbnailAt を、無い動画では Thumbnail を呼ぶ。指定の
-// 位置では先頭のコマの代用をしないので、代用なしとして記録する。
+// Selected positions never fall back to the first frame.
 func TestIngestThumbnailUsesRecordedPosition(t *testing.T) {
 	withPosition := probedVideo(1, "a")
 	withPosition.ThumbnailPositionMs = int64Ptr(7_000)
@@ -170,8 +164,8 @@ func TestIngestThumbnailUsesRecordedPosition(t *testing.T) {
 	}
 }
 
-// 指定の位置で取れなければ job は失敗を返し（再試行と failed の記録は待ち行列が持つ）、
-// 位置の行は消さない。
+// Failed selected-frame extraction leaves the position override intact; the queue owns retries and
+// failure state.
 func TestIngestThumbnailAtPositionFailureKeepsPosition(t *testing.T) {
 	video := probedVideo(1, "a")
 	video.ThumbnailPositionMs = int64Ptr(7_000)
@@ -224,8 +218,8 @@ func TestIngestThumbnailRereadsInsideLock(t *testing.T) {
 	}
 }
 
-// 公開のあとで記録に失敗したら（取引の失敗・要求の取り消し）、前の画像へ戻し、記録の位置と
-// 版に画像を揃える。記録できたときは写しを捨てる。
+// Restore the previous image when persistence fails after publication so file, position and
+// revision stay consistent.
 func TestSetThumbnailPositionRestoresPreviousImageWhenRecordingFails(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
@@ -251,10 +245,9 @@ func TestSetThumbnailPositionRestoresPreviousImageWhenRecordingFails(t *testing.
 	}
 }
 
-// 所在を決めたあとに走査がそれを別の内容へ付け替えたら、別の動画のコマをこの内容の画像として
-// 公開・記録せずに ErrMediaFileUnavailable を返す。生成の直前に付け替わっていれば生成しない。
-// 生成の間に付け替わっていれば、生成した画像を公開しない（並ぶ要求にも見せない）。公開と記録の
-// 間に付け替わっていれば、記録せずに前の画像へ戻す。
+// Reject location reassignment before generation, before publication, or before persistence; never
+// expose another video's frame. If reassigned after publication, restore the previous image and
+// return ErrMediaFileUnavailable.
 func TestSetThumbnailPositionRevalidatesSource(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -298,12 +291,12 @@ func TestSetThumbnailPositionRevalidatesSource(t *testing.T) {
 	}
 }
 
-// 生成の錠を待つ間に動画が消えていたら、所在の確かめ直しは ErrNotFound を返し、生成しない。
+// Deletion while waiting for the generation lock returns ErrNotFound before generation.
 func TestSetThumbnailPositionVideoGoneBeforeGenerating(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
 	store.staleSourceAt = 1
-	// 錠の外の最初の読み出しのあとに動画を消す。
+
 	store.afterRead = func(reads int) {
 		if reads == 1 {
 			delete(store.videos, video.ID)

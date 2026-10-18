@@ -8,26 +8,19 @@ import (
 	"strings"
 )
 
-// 生成物（サムネイル・シークプレビュー・ホバープレビュー）の成功の応答に付ける
-// キャッシュの指示と ETag。
-
-// setRevalidate は、使うたびにサーバーへ確かめさせる指示と ETag を付ける。
 func setRevalidate(w http.ResponseWriter, etag string) {
 	w.Header().Set("Cache-Control", cacheRevalidate)
 	w.Header().Set("ETag", etag)
 }
 
-// ETag は内容が変われば必ず変わるものから作る。更新時刻と大きさは、作り直した
-// 生成物でも前と同じになりうるので使わない。
+// Use content identity for ETags because rebuilt artifacts can retain size and modification time.
 
-// digestETag は、生成のときに記録した内容のダイジェストから ETag を作る。
-// 中身を読み直さずに済む（ホバープレビュー）。
+// Reuse generation-time digests to avoid rereading preview bytes.
 func digestETag(kind, digest string) string {
 	return hashETag([]byte(kind + "\x00" + digest))
 }
 
-// readerETag は内容を読み切って ETag を作り、読む位置を先頭へ戻す。小さな
-// 生成物（サムネイル）に使う。
+// readerETag consumes small artifacts and rewinds to the beginning.
 func readerETag(content io.ReadSeeker) (string, error) {
 	h := sha256.New()
 	if _, err := io.Copy(h, content); err != nil {
@@ -39,7 +32,6 @@ func readerETag(content io.ReadSeeker) (string, error) {
 	return hashETag(h.Sum(nil)), nil
 }
 
-// bytesETag は内容そのものから ETag を作る。
 func bytesETag(body []byte) string { return hashETag(body) }
 
 func hashETag(data []byte) string {
@@ -47,7 +39,7 @@ func hashETag(data []byte) string {
 	return `"` + hex.EncodeToString(sum[:16]) + `"`
 }
 
-// etagMatches は If-None-Match の値が etag に当たるかを返す（RFC 9110 §13.1.2 の弱い比較）。
+// Use weak If-None-Match comparison per RFC 9110 §13.1.2.
 func etagMatches(ifNoneMatch, etag string) bool {
 	for _, candidate := range strings.Split(ifNoneMatch, ",") {
 		candidate = strings.TrimSpace(candidate)

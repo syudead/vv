@@ -19,10 +19,8 @@ import { RadioGroup, RadioGroupItem } from "../ui/shadcn/radio-group";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { HARDWARE_ENCODING_GUIDE_URL } from "./docsLinks";
 
-/** 確認中の間に `GET` し直す間隔である。 */
 export const CHECKING_POLL_INTERVAL_MS = 3000;
 
-/** choiceOrder は選択肢の並びである（親 Issue 要件 1）。 */
 const choiceOrder: readonly VideoEncoderChoice[] = [
   "software",
   "nvenc",
@@ -61,11 +59,7 @@ function choiceState(
   return hardwareState(settings.encoders.find((item) => item.encoder === choice));
 }
 
-/**
- * TranscodingSection は設定画面の「動画の変換」区画である。所有者がライブ変換の映像
- * エンコード方式を選び、どれが使えて今どれが効いているかを見る。選んだ時点で保存し、
- * 表示は表示時の `GET` と `PUT` の応答で置き換える。確認中の間だけ数秒ごとに `GET` し直す。
- */
+/** Save on selection; poll only while hardware availability is being checked. */
 export default function TranscodingSection({
   pollIntervalMs = CHECKING_POLL_INTERVAL_MS,
 }: {
@@ -98,8 +92,7 @@ export default function TranscodingSection({
     return () => controller.abort();
   }, [load]);
 
-  // 確認中の間は、終わるまで読み直す。新しい応答（読み直しでも保存でも）で settings が
-  // 変わると、前の読み直しは取り消す。読み直しの失敗は表示を変えずに次の回へ回す。
+  // Cancel obsolete polls when settings change; retain visible settings on polling failure.
   const checking = settings?.checking === true;
   useEffect(() => {
     if (!checking) return;
@@ -126,13 +119,12 @@ export default function TranscodingSection({
       setSettings(await updateTranscodingSettings(choice));
     } catch (failure) {
       setSaveError(text.saveFailed(errorText(failure)));
-      // 確認の結果が画面の表示より新しいときは、使える方式の表示を合わせ直す。読み直しが
-      // 終わるまで選択肢は操作できないままにし、あとの保存の応答を古い応答で上書きしない。
+      // Keep choices disabled during an availability refresh so its response cannot overwrite a later save.
       if (failure instanceof RequestFailed && failure.reason === "encoder_unavailable") {
         try {
           setSettings(await getTranscodingSettings());
         } catch {
-          // 読み直しの失敗は表示を変えない。保存の失敗はすでに出している。
+          // Keep the display unchanged on refresh failure; the save failure is already visible.
         }
       }
     } finally {

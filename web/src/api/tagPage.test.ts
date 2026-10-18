@@ -45,7 +45,6 @@ describe("listTagPage", () => {
     await expect(listTagPage({})).resolves.toEqual(page);
     expect(fetch.mock.calls[0]?.[0]).toBe(`/api/tags?limit=${tagPageLimit}`);
     expect(tagPageLimit).toBe(100);
-    // 共有の保持には触れない。
     expect(currentTags()).toBeUndefined();
   });
 

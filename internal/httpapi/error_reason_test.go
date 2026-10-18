@@ -7,9 +7,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// wantError は、エラーの応答に期待する HTTP 状態・code・reason・limit・tagName
-// である。reason・tagName が
-// 空、limit が 0 のときは、その項目が応答に無いことを期待する。
+// Empty reason/tagName and zero limit mean those response fields must be absent.
 type wantError struct {
 	status  int
 	code    gen.ErrorCode
@@ -18,8 +16,6 @@ type wantError struct {
 	tagName string
 }
 
-// assertErrorBody は、エラーの応答が want のとおりで、message が空でないことを
-// 確かめる。
 func assertErrorBody(t *testing.T, label string, status int, body []byte, want wantError) {
 	t.Helper()
 	if status != want.status {

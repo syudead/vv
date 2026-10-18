@@ -9,41 +9,29 @@ import (
 	"unicode/utf8"
 )
 
-// APITokenNameMaxLength は API トークンの名前の上限（符号位置数）である。タグ名の上限と
-// そろえる。
+// APITokenNameMaxLength counts Unicode code points and matches the tag-name limit.
 const APITokenNameMaxLength = 100
 
-// APIToken は発行した API トークン 1 件である。
-// 平文とハッシュは持たない。平文は発行の応答にだけ現れ、どこにも保存しない。
+// APIToken contains neither plaintext nor a hash; plaintext is returned only at creation and never stored.
 type APIToken struct {
 	ID        int64
 	Name      string
 	CreatedAt time.Time
-	// LastUsedAt は最後に使った時刻である。未使用ならゼロ値。
+	// LastUsedAt is zero until first use.
 	LastUsedAt time.Time
 }
 
-// ErrInvalidAPITokenName は API トークンの名前として受け付けられない入力を表す。API では
-// invalid_request（400）になる。
-//
-// NormalizeAPITokenName はこれを直接は返さず、具体的な理由を運ぶ *InvalidAPITokenNameError を
-// 返す。errors.Is(err, ErrInvalidAPITokenName) は真のままで、errors.As で取り出した Problem から
-// internal/httpapi が API の reason を決める（タグ名の InvalidTagNameError と同じ形）。
+// ErrInvalidAPITokenName maps to invalid_request (400); NormalizeAPITokenName wraps it in InvalidAPITokenNameError so the API can report the specific problem.
 var ErrInvalidAPITokenName = errors.New("invalid API token name")
 
-// APITokenNameProblem は API トークンの名前の規則違反の種類である。
 type APITokenNameProblem int
 
 const (
-	// APITokenNameEmpty は前後の空白を取り除くと空になることを表す。
 	APITokenNameEmpty APITokenNameProblem = iota + 1
-	// APITokenNameControlCharacters は制御文字を含むことを表す。
 	APITokenNameControlCharacters
-	// APITokenNameTooLong は APITokenNameMaxLength 符号位置を超えることを表す。
 	APITokenNameTooLong
 )
 
-// InvalidAPITokenNameError は API トークンの名前の規則違反の具体的な理由を運ぶ。
 type InvalidAPITokenNameError struct {
 	Problem APITokenNameProblem
 }
@@ -63,10 +51,7 @@ func (e *InvalidAPITokenNameError) Error() string {
 
 func (e *InvalidAPITokenNameError) Unwrap() error { return ErrInvalidAPITokenName }
 
-// NormalizeAPITokenName は受け取った入力を API トークンの名前に整える。
-// 規則と手順の順番は NormalizeTagName と同じである。制御文字（Cc）を前後の空白の除去より
-// 先に調べ、前後の Unicode White_Space を除き、空と APITokenNameMaxLength 符号位置の超過を
-// 拒む。Unicode の正規化はしない。同じ名前は重複してよい。
+// NormalizeAPITokenName rejects control characters before trimming Unicode whitespace, then rejects empty or overlong names; it performs no Unicode normalization and permits duplicate names.
 func NormalizeAPITokenName(input string) (string, error) {
 	for _, r := range input {
 		if unicode.Is(unicode.Cc, r) {

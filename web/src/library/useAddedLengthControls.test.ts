@@ -4,8 +4,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { ApplyTagKind } from "./useLibraryTagKinds";
 import { useAddedLengthControls } from "./useAddedLengthControls";
 
-// 追加日と長さの絞り込みを URL へ書く操作。
-
 describe("useAddedLengthControls", () => {
   it("選んだ追加日と長さだけを、履歴を 1 つ増やして書く", () => {
     const apply = vi.fn<ApplyTagKind>();

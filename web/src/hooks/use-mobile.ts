@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 
-// shadcn/ui の use-mobile。vv の狭い幅（Sidebar がドロワーになる幅）は 639px 以下で、
-// library-ui.md「Width breakpoints in CSS」の sm に合わせる。
+// Match the shared sm breakpoint: mobile sidebar applies through 639px.
 const MOBILE_BREAKPOINT = 640;
 
 function query(): MediaQueryList | null {

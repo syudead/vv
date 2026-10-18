@@ -12,45 +12,29 @@ import { Kbd } from "../ui/shadcn/kbd";
 import { type HistoryMode, normalizeQuery, SearchSession } from "./listCriteria";
 import SearchSyntaxHelp from "./SearchSyntaxHelp";
 
-/** searchDebounceMs は入力が落ち着くのを待つ時間。打鍵ごとに一覧が入れ替わらないようにする。 */
+/** Debounce so each keystroke does not replace the list. */
 export const searchDebounceMs = 250;
 
 export interface SearchBoxProps {
-  /** URL から読んだ今の検索語。戻る・進むで変わると入力欄が追従する。 */
   query: string;
-  /**
-   * onCommit は検索語を確定する。mode は履歴の増やし方で、フォーカスが入ってから
-   * 外れるか Esc で抜けるまでの一続きで最初の確定だけが push になる。
-   */
+  /** Push only the first commit within a focus session; later commits replace until blur or Escape. */
   onCommit: (next: string, mode: HistoryMode) => void;
-  /** 入力欄を外から指す。 */
   inputRef?: RefObject<HTMLInputElement | null>;
-  /** 読み上げ名。 */
   label?: UiText;
   placeholder?: UiText;
-  /**
-   * 枠の右端に動画の検索の書き方の手引き（`SearchSyntaxHelp`）を置くか。動画の検索
-   * 構文を持たない一覧（タグ管理画面）は false にする。
-   */
+  /** Disable syntax help for lists without video search syntax, such as tag management. */
   syntaxHelp?: boolean;
-  /**
-   * 入力が落ち着くのを待つ時間（ms）。既定は `searchDebounceMs`。タグ管理画面は
-   * 打鍵ごとにサーバーへ引き直す（前の要求は打ち切る）ので 0 にする。
-   */
+  /** Zero permits per-keystroke server search with obsolete request cancellation. */
   debounceMs?: number;
-  /**
-   * 検索語の上限（符号位置の数）。既定は動画の一覧の `MAX_QUERY_LENGTH`。上限の違う契約を
-   * 持つ一覧（アクティビティの `q` は 200）はその数を渡す。
-   */
+  /** Count code points; override for endpoints with different limits, such as activity's 200. */
   maxLength?: number;
   disabled?: boolean;
   className?: string;
 }
 
 /**
- * limitQueryInput は入力を検索語の上限に収める。HTML の maxLength は UTF-16 の単位で
- * 数えるので使わず、URL・サーバーと同じく符号位置で数える。
- * 上限を超える貼り付けも、入る分だけが入る（Issue の Edge Case「語の長さの上限」）。
+ * Match server and URL code-point limits rather than HTML maxLength's UTF-16 units; truncate
+ * pasted insertions without splitting emoji.
  */
 export function limitQueryInput(
   next: string,
@@ -61,10 +45,6 @@ export function limitQueryInput(
   return limitCodePoints(next, maxLength, previous, caret);
 }
 
-/**
- * SearchBox は一覧の条件の `q` を入力する検索欄である。
- * `/` でフォーカス、Esc でクリアしてフォーカスを外す。枠の右端に検索の書き方の手引きを持つ。
- */
 export default function SearchBox({
   query,
   onCommit,
@@ -78,8 +58,7 @@ export default function SearchBox({
   className,
 }: SearchBoxProps) {
   const [input, setInputState] = useState(query);
-  // 最新の入力。blur は同じ操作の中の setInput より先に走ることがあるので、
-  // 描画を待たずに読める控えを持つ。
+  // Keep current input in a ref because blur may run before setInput renders.
   const latest = useRef(query);
   const setInput = useCallback((next: string) => {
     latest.current = next;
@@ -99,20 +78,17 @@ export default function SearchBox({
     [onCommit],
   );
 
-  // 戻る・進むなどで URL 側が変わったら入力欄を追従させる。
   useEffect(() => {
     if (query !== committed.current) {
       committed.current = query;
       setInput(query);
-      // 外から変わった検索語は、打鍵の一続きの外である。次の入力は履歴を1つ増やす。
+      // External query changes end the typing session; the next input pushes history.
       session.current.end();
     }
   }, [query, setInput]);
 
   useEffect(() => {
-    // `input` ではなく控えを読む。URL 側の変更に追従した描画では、上の effect が控えを
-    // 新しい語にしたあとも `input` はまだ前の語なので、それで確定し直すと消した検索語が
-    // 戻る（`onCommit` が描画ごとに変わると、この effect も同じ描画で走り直す）。
+    // Read the updated ref, not stale render input, after URL synchronization; otherwise changing onCommit identity can restore a cleared query.
     const next = normalizeQuery(latest.current, maxLength);
     if (next === committed.current) return;
     const timer = setTimeout(() => commit(next), debounceMs);
@@ -161,12 +137,12 @@ export default function SearchBox({
         }
         onFocus={() => session.current.start()}
         onBlur={() => {
-          // 待っている確定があれば、続きを閉じる前に済ませる。
+          // Flush any pending commit before ending the typing session.
           commit(normalizeQuery(latest.current, maxLength));
           session.current.end();
         }}
         onKeyDown={(event) => {
-          // IME の変換中の Esc は変換を取り消すためのもので、検索語を消さない。
+          // IME Escape cancels composition, not the query.
           if (isComposingKeyEvent(event)) return;
           if (event.key === "Escape") {
             event.preventDefault();
@@ -181,8 +157,6 @@ export default function SearchBox({
         autoComplete="off"
         spellCheck={false}
         className={cn(
-          // 右端のボタンの分だけ空ける。検索語が空で sm 未満なら手引きのボタンだけなので狭くてよい。
-          // 手引きを置かない検索欄は、クリアか `/` の1つ分だけ空ける。
           "h-8 pl-8 [&::-webkit-search-cancel-button]:hidden",
           !syntaxHelp ? "pr-8" : input === "" ? "pr-8 sm:pr-16" : "pr-16",
         )}
@@ -192,8 +166,7 @@ export default function SearchBox({
           <Button
             variant="ghost"
             size="icon-sm"
-            // 押した瞬間に入力欄のフォーカスを外さない。外すと blur が入力途中の語を
-            // 確定して履歴を1つ増やし、続くクリアがもう1つ増やしてしまう。
+            // Keep focus on mousedown so blur does not commit and add an extra history entry before Clear.
             onMouseDown={(event) => event.preventDefault()}
             onClick={clear}
             aria-label={t.list.search.clear}

@@ -7,7 +7,7 @@ const storageKey = "vv.playback-volume.v1";
 
 export const defaultPlaybackVolume: PlaybackVolume = { volume: 1, muted: false };
 
-/** 保存値が無い・壊れている・読めない場合も、安全な既定値を返す。 */
+/** Return safe defaults when storage is absent, invalid or unreadable. */
 export function readPlaybackVolume(storage?: Storage): PlaybackVolume {
   let raw: string | null;
   try {
@@ -38,11 +38,10 @@ export function readPlaybackVolume(storage?: Storage): PlaybackVolume {
   }
 }
 
-/** 音量をこのブラウザに保存する。保存領域が使えなくても再生操作は妨げない。 */
 export function writePlaybackVolume(value: PlaybackVolume, storage?: Storage): void {
   try {
     (storage ?? window.localStorage).setItem(storageKey, JSON.stringify(value));
   } catch {
-    // プライベートモードなどで保存できなくても、現在のプレイヤーでは設定を使える。
+    // Storage failures must not block the current player's controls.
   }
 }

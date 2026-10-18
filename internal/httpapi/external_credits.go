@@ -13,20 +13,15 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 外部連携 API の人物と団体。/api/v1/people と /api/v1/organizations の 5 つずつの経路は、
-// 種類（externalCreditKind）を添えて同じハンドラを呼ぶ。どの操作も画面の経路と同じ CreditStore の操作を
-// Credits 越しに呼び、本文は画面と同じ形の gen 型に読んで画面と同じ変換（creditPatchOf・fromAPIAliases）を
-// 通す。誤りは画面と同じ workInfoFailureOf で写す。実体は経路ではなく本文の id で指す（039 R-2 と同じ）。
+// External credit routes reuse UI conversions, validation, and storage; IDs are supplied in request bodies.
 
-// externalCreditKind は人物と団体で違う、応答の形と reason である。
 type externalCreditKind struct {
 	kind      domain.CreditKind
 	notFound  extgen.ErrorReason
 	mergeSame extgen.ErrorReason
-	// one・list・merged は実体・一覧・統合の結果を応答の本文にする。
-	one    func(domain.Credit) any
-	list   func(items []domain.Credit, total, totalAll int, nextCursor string) any
-	merged func(domain.CreditMergeOutcome) any
+	one       func(domain.Credit) any
+	list      func(items []domain.Credit, total, totalAll int, nextCursor string) any
+	merged    func(domain.CreditMergeOutcome) any
 }
 
 var externalPeople = externalCreditKind{
@@ -98,8 +93,7 @@ func (e *externalServer) DeleteOrganizations(w http.ResponseWriter, r *http.Requ
 	e.deleteCredits(w, r, externalOrganizations)
 }
 
-// listCredits は GET /api/v1/people と GET /api/v1/organizations である。source と externalId の組が
-// あれば外部 ID での検索で、そうでなければ画面の一覧と同じ規則（buildTagListQuery）で読む。
+// source plus externalId selects lookup; otherwise use shared list-query rules.
 func (e *externalServer) listCredits(w http.ResponseWriter, r *http.Request, api externalCreditKind, params extgen.ListPeopleParams) {
 	if params.Source != nil || params.ExternalId != nil {
 		e.lookupCredit(w, r, api, params.Source, params.ExternalId)
@@ -127,9 +121,7 @@ func (e *externalServer) listCredits(w http.ResponseWriter, r *http.Request, api
 	writeExternalBody(w, e.s, api.list(page.Items, page.Total, page.TotalAll, page.NextCursor))
 }
 
-// creditListLimit は一覧の limit を整数に読む。外部 ID での検索は limit を読まないので、生成型では文字列の
-// まま受け（api/external-v1.yaml の CreditLimit の x-go-type）、一覧のときだけここで読む。整数でなければ
-// 範囲の外と同じ誤りにする。
+// Keep limit as a generated string so external-ID lookups can ignore it; parse it only for list queries.
 func creditListLimit(raw *extgen.CreditLimit) (*int, tagListProblem) {
 	if raw == nil {
 		return nil, tagListOK
@@ -141,9 +133,7 @@ func creditListLimit(raw *extgen.CreditLimit) (*int, tagListProblem) {
 	return &limit, tagListOK
 }
 
-// lookupCredit は外部 ID (source, externalId) を持つ実体を一覧の形で返す。外部 ID は種類ごとに高々 1 つの
-// 実体が持つので、items は 0 件か 1 件である。保存と同じ手順で整えてから照らし、整えられない外部 ID は
-// どの実体も持ちえないので空の items にする。
+// Normalize lookup IDs as storage does; invalid IDs match nothing, and uniqueness limits results to zero or one.
 func (e *externalServer) lookupCredit(w http.ResponseWriter, r *http.Request, api externalCreditKind, source, value *string) {
 	if source == nil || value == nil {
 		e.invalidRequest(w, nil, "Give source and externalId together.")
@@ -152,7 +142,7 @@ func (e *externalServer) lookupCredit(w http.ResponseWriter, r *http.Request, ap
 	if !e.creditsConfigured(w) {
 		return
 	}
-	// totalAll は検索と独立に全部の実体の数を返す（一覧と同じ意味）。
+	// totalAll counts all credits independently of lookup.
 	all, err := e.s.credits.List(r.Context(), api.kind, domain.CreditQuery{Limit: 1})
 	if err != nil {
 		e.internalError(w, fmt.Sprintf("Could not look up the %s.", api.kind), err)
@@ -172,15 +162,13 @@ func (e *externalServer) lookupCredit(w http.ResponseWriter, r *http.Request, ap
 	writeExternalBody(w, e.s, api.list(found, len(found), all.TotalAll, ""))
 }
 
-// createCredit は POST /api/v1/people と POST /api/v1/organizations である。他の外部連携の書き込みと同じく
-// 200 を返す。
 func (e *externalServer) createCredit(w http.ResponseWriter, r *http.Request, api externalCreditKind) {
 	var body gen.CreditInput
 	fields, ok := e.readJSONBodyFields(w, r, &body)
 	if !ok || !e.requireProperties(w, fields, "name") {
 		return
 	}
-	// 人物の本文の parentId は null でも 400 である（人物に親は無い。画面の経路と同じ）。
+	// People reject parentId even when null.
 	if fields.has("parentId") && api.kind != domain.CreditOrganization {
 		e.invalidRequest(w, nil, "parentId applies to organizations only.")
 		return
@@ -199,13 +187,11 @@ func (e *externalServer) createCredit(w http.ResponseWriter, r *http.Request, ap
 	writeExternalBody(w, e.s, api.one(credit))
 }
 
-// creditUpdateBody は POST …/update の本文で、画面の PATCH と同じ gen.CreditPatch に id を足した形である。
 type creditUpdateBody struct {
 	ID *int64 `json:"id"`
 	gen.CreditPatch
 }
 
-// updateCredit は POST /api/v1/people/update と POST /api/v1/organizations/update である。
 func (e *externalServer) updateCredit(w http.ResponseWriter, r *http.Request, api externalCreditKind) {
 	var body creditUpdateBody
 	fields, ok := e.readJSONBodyFields(w, r, &body)
@@ -228,9 +214,6 @@ func (e *externalServer) updateCredit(w http.ResponseWriter, r *http.Request, ap
 	writeExternalBody(w, e.s, api.one(credit))
 }
 
-// mergeCredits は POST /api/v1/people/merge と POST /api/v1/organizations/merge である。sourceIds の件数が
-// 1〜domain.MaxTagBatch の外なら work_info_too_many（field: sourceIds）にする。統合先を含む統合元・親の輪・
-// 統合後の上限は保存層が断る（画面の経路と同じ）。
 func (e *externalServer) mergeCredits(w http.ResponseWriter, r *http.Request, api externalCreditKind) {
 	var body extgen.CreditMergeRequest
 	fields, ok := e.readJSONBodyFields(w, r, &body)
@@ -248,9 +231,7 @@ func (e *externalServer) mergeCredits(w http.ResponseWriter, r *http.Request, ap
 	writeExternalBody(w, e.s, api.merged(outcome))
 }
 
-// deleteCredits は POST /api/v1/people/delete と POST /api/v1/organizations/delete である。重複を除いた
-// ids を順に、画面の DELETE と同じ Credits.Delete で 1 件ずつ消し、無い id は notFoundIds に返す。途中の
-// 想定外の失敗では、それより前の id は消えたまま 500 を返す。
+// Delete deduplicated IDs in input order; an unexpected failure returns 500 without undoing earlier deletions.
 func (e *externalServer) deleteCredits(w http.ResponseWriter, r *http.Request, api externalCreditKind) {
 	var body extgen.CreditDeleteRequest
 	if !e.readJSONBody(w, r, &body) {
@@ -280,8 +261,6 @@ func (e *externalServer) deleteCredits(w http.ResponseWriter, r *http.Request, a
 	writeExternalBody(w, e.s, out)
 }
 
-// acceptCreditIDCount は id の一覧 field の件数が 1〜domain.MaxTagBatch の外なら work_info_too_many を書いて
-// false を返す。
 func (e *externalServer) acceptCreditIDCount(w http.ResponseWriter, field string, count int) bool {
 	if count >= 1 && count <= domain.MaxTagBatch {
 		return true
@@ -294,9 +273,6 @@ func (e *externalServer) acceptCreditIDCount(w http.ResponseWriter, field string
 	return false
 }
 
-// writeCreditError は保存層の誤りを写す。項目・参照・外部 ID・親の輪は workInfoFailureOf が、統合先そのものを
-// 含む統合元と、本文の id の実体が無いことはここが種類ごとの reason で写す（画面の writeCreditError と同じ
-// 振り分け）。
 func (e *externalServer) writeCreditError(w http.ResponseWriter, api externalCreditKind, err error) {
 	if failure, ok := workInfoFailureOf(err); ok {
 		e.writeWorkInfoFailure(w, failure, nil)
@@ -323,24 +299,19 @@ func (e *externalServer) creditsConfigured(w http.ResponseWriter) bool {
 	return true
 }
 
-// bodyFields は本文の最上位のプロパティである。生成型に読むと失われる、プロパティの有無と null を答える。
 type bodyFields map[string]json.RawMessage
 
-// has はプロパティ name が本文にあったか（値が null でも）を答える。
 func (f bodyFields) has(name string) bool {
 	_, present := jsonProperty(f, name)
 	return present
 }
 
-// given はプロパティ name が本文にあり、null でないかを答える。
 func (f bodyFields) given(name string) bool {
 	value, present := jsonProperty(f, name)
 	return present && !bytes.Equal(bytes.TrimSpace(value), []byte("null"))
 }
 
-// requireProperties は必須のプロパティが無いか null なら、形の誤りとして 400 invalid_request を書いて
-// false を返す。生成型では省略と null がゼロ値に変わり、項目の規則の誤り（work_info_empty）や無い実体
-// （404）に化けるためである。
+// Reject missing/null required properties before generated zero values can become semantic errors or misleading 404s.
 func (e *externalServer) requireProperties(w http.ResponseWriter, fields bodyFields, names ...string) bool {
 	for _, name := range names {
 		if !fields.given(name) {
@@ -351,8 +322,6 @@ func (e *externalServer) requireProperties(w http.ResponseWriter, fields bodyFie
 	return true
 }
 
-// readJSONBodyFields は readJSONBody と同じく本文を target に読み、加えて最上位のプロパティを返す。
-// 省いたプロパティと null を見分ける書き込みに使う。
 func (e *externalServer) readJSONBodyFields(w http.ResponseWriter, r *http.Request, target any) (bodyFields, bool) {
 	var raw json.RawMessage
 	if !e.readJSONBody(w, r, &raw) {
@@ -372,13 +341,12 @@ func (e *externalServer) readJSONBodyFields(w http.ResponseWriter, r *http.Reque
 	return fields, true
 }
 
-// writeExternalBody は 200 と本文を、キャッシュさせずに書く。
 func writeExternalBody(w http.ResponseWriter, srv *server, body any) {
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, body, srv.logger)
 }
 
-// mapCredits は実体の一覧を応答の要素へ写す。空でも [] にする。
+// Empty credit lists serialize as [], not null.
 func mapCredits[T any](credits []domain.Credit, convert func(domain.Credit) T) []T {
 	out := make([]T, 0, len(credits))
 	for _, credit := range credits {
@@ -394,7 +362,7 @@ func toExternalPerson(credit domain.Credit) extgen.Person {
 	}
 }
 
-// toExternalOrganization は団体を外部連携 API の形へ写す。根の団体の parent は null である。
+// Root organizations expose parent as null.
 func toExternalOrganization(credit domain.Credit) extgen.Organization {
 	person := toExternalPerson(credit)
 	out := extgen.Organization{

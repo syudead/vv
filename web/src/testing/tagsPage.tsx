@@ -1,8 +1,3 @@
-/**
- * tagsPage はタグ管理画面（src/tags/TagsPage.tsx）のテストが共有する偽のサーバーと
- * 操作の手順である。テストは画面の話題ごとのファイル（src/tags/TagsPage*.test.tsx）に
- * 分けてあり、vitest がファイルごとに並べて流す。
- */
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
@@ -28,11 +23,7 @@ export function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-/**
- * takenResponse は実際のサーバーと同じ形の tag_name_taken を返す。submitted が owner の元の名前なら name_is_tag、
- * そうでなければ name_is_synonym。画面がカタログの文を出す（サーバーの
- * message をそのまま出さない）ことを確かめるため、message は画面に出ない文にする。
- */
+/** Use server-shaped name conflicts but an undisplayable message to verify catalog copy wins. */
 export function takenResponse(submitted: string, ownerName: string): Response {
   return jsonResponse(
     {
@@ -56,12 +47,7 @@ export function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag
   };
 }
 
-/**
- * pageOf は `GET /api/tags` のページを
- * 偽のサーバーの側で作る。条件を全部のタグに掛け、並び順で並べ、カーソル（前のページの
- * 最後の行の並びの値）より後ろから `limit` 件を返す。カーソルは keyset と同じく、
- * 並びの値で「より後ろ」を決める（読み込んだあとで前へ動いた行は返さない）。
- */
+/** Apply filters and sorting before keyset pagination; rows moved before the cursor are not returned. */
 export function pageOf(tags: readonly Tag[], params: URLSearchParams) {
   const q = foldForMatch(params.get("q") ?? "").trim();
   const sort = (params.get("sort") ?? "name") as TagSort;
@@ -106,14 +92,12 @@ export function pageOf(tags: readonly Tag[], params: URLSearchParams) {
   };
 }
 
-/** kind は偽のサーバーの種類（`TagKind`）を作る。 */
 export function kind(
   overrides: Partial<TagKind> & { id: number; name: string },
 ): TagKind {
   return { tagCount: 0, createdAt: "2026-01-01T00:00:00Z", ...overrides };
 }
 
-/** presetKinds は新しいデータベースの 4 つの種類。 */
 export function presetKinds(): TagKind[] {
   return [
     kind({ id: 1, name: "Genre" }),
@@ -123,82 +107,48 @@ export function presetKinds(): TagKind[] {
   ];
 }
 
-/** server はタグの管理経路（GET・POST・PATCH・DELETE /api/tags*）を扱う偽のサーバーである。 */
 export const server = {
   tags: [] as Tag[],
   nextId: 100,
-  /** タグ管理画面のページの GET /api/tags（limit 付き）の回数。 */
   getCalls: 0,
-  /** タグ管理画面のページの要求のパラメータ（送った順）。 */
   pageRequests: [] as URLSearchParams[],
-  /** 共有の保持の全件の GET /api/tags（limit 無し）の回数。 */
   fullGetCalls: 0,
-  /** true にすると、共有の保持の全件の GET /api/tags（limit 無し）を 500 で失敗させる。 */
   failFullGets: false,
-  /** 設定すると、ページの GET /api/tags の limit の代わりにこの件数を返す。 */
+  /** Override the requested page limit. */
   pageLimitOverride: null as number | null,
-  /** true にすると、次の GET /api/tags を 500 で失敗させる（N6: 取り直しの失敗）。 */
   failNextGet: false,
-  /**
-   * true にすると、以後の GET /api/tags をすべて 500 で失敗させ続ける
-   * （自分では戻らない）。バックグラウンドの取り直し（`afterTagChanged` の
-   * `refreshTags`）が、確かめたいその場の反映を上書きしてしまわないように
-   * するためのもの。
-   */
+  /** Fail all subsequent reads so background refresh cannot overwrite the local mutation under test. */
   failAllGets: false,
-  /** true にすると、次のタグ作成を一般の理由で失敗させる。 */
   failNextCreate: false,
-  /** true にすると、次の PATCH /api/tags/{id} を tag_name_taken 以外の理由で失敗させる（N2）。 */
   failNextPatch: false,
-  /** true にすると、次の POST /api/tags/{id}/merge を一般の理由で失敗させる（N4）。 */
   failNextMerge: false,
-  /** true にすると、次の POST /api/tags/{id}/synonyms を一般の理由で失敗させる（N4）。 */
   failNextSynonymsPost: false,
   /**
-   * true にすると、次の POST /api/tags/{id}/synonyms を、実際の所有者に
-   * かかわらず tag_merge_required で1回だけ失敗させる（自分で消費して false
-   * に戻る）。「確認をとる時点ではもう誰も持っていない名前」を、タイミングを
-   * 作らずに再現するための仕掛け（N6b）。
+   * Fail once with tag_merge_required regardless of current ownership to simulate a stale
+   * confirmation without timing races.
    */
   forceMergeRequiredOnce: false,
-  /**
-   * 設定すると、次の変更の要求（POST・PATCH・DELETE）をこの応答で1回だけ失敗させる
-   * （自分で消費して null に戻る）。API エラーの英語の説明を確かめるためのもの。
-   */
+  /** Fail the next mutation once, then reset the override. */
   nextError: null as { status: number; body: Record<string, unknown> } | null,
-  /** 却下した名前の一覧（GET・DELETE /api/tags/rejected-names）。 */
   rejectedNames: [] as string[],
-  /** true にすると、以後の GET /api/tags/rejected-names をすべて 500 で失敗させる。 */
   failRejectedGets: false,
-  /** true にすると、以後の cursor 付きの GET /api/tags/rejected-names（続き）を 500 で失敗させる。 */
   failRejectedMoreGets: false,
-  /** GET /api/tags/rejected-names が受けたクエリ。 */
   rejectedGetRequests: [] as URLSearchParams[],
-  /** 確定・却下・却下した名前の取り外しの要求の回数。 */
   confirmCalls: 0,
-  /** POST /api/tags/batch・/api/tags/impact が受けた本文。 */
   batchCalls: [] as { action: string; ids: number[] }[],
   impactCalls: [] as { action: string; ids: number[] }[],
-  /** 設定すると、POST /api/tags/impact の videoCount をこの値にする（重複を除いた数の代わり）。 */
+  /** Override the deduplicated impact count. */
   impactVideoCount: null as number | null,
-  /** true にすると、以後の POST /api/tags/impact を 500 で失敗させる。 */
   failImpact: false,
-  /** true にすると、次の POST /api/tags/batch を 500 で失敗させる。 */
   failNextBatch: false,
-  /** 種類（GET・POST・PATCH・DELETE /api/tag-kinds）。サーバーと同じく id の順に返す。 */
+  /** Return kinds in server ID order. */
   tagKinds: [] as TagKind[],
-  /** GET /api/tag-kinds の回数。 */
   tagKindGets: 0,
-  /** true にすると、以後の GET /api/tag-kinds をすべて 500 で失敗させる。 */
   failTagKindGets: false,
-  /** true にすると、次の DELETE /api/tag-kinds/{id} を 500 で失敗させ、何も消さない。 */
   failNextKindDelete: false,
 };
 
-/**
- * tagKindRoute は `/api/tag-kinds` の 4 つの経路を扱う。種類を消すと、その種類のタグは
- * 種類なしで残る。経路でなければ undefined。
- */
+/** Deleting a kind preserves its tags without a kind; unrelated routes return undefined. */
 function tagKindRoute(
   path: string,
   method: string,
@@ -271,9 +221,8 @@ function tagKindRoute(
 }
 
 /**
- * kindBatch は `POST /api/tags/batch` の `setKind`・`clearKind` を扱う。既にその種類の（`clearKind` では種類の
- * 無い）タグは `notApplicableIds`、無い種類の `setKind` は 404 `tag_kind_not_found` で
- * 何も変えない。
+ * Already-matching tags are notApplicableIds; a missing destination kind returns 404 without
+ * mutation.
  */
 function kindBatch(body: { action: string; ids: number[]; kindId?: number }): Response {
   const target =
@@ -302,67 +251,40 @@ function kindBatch(body: { action: string; ids: number[]; kindId?: number }): Re
   return jsonResponse({ appliedIds, notFoundIds, notApplicableIds });
 }
 
-/**
- * hold.rejectedGets を true にした間の GET /api/tags/rejected-names は、release を
- * 呼ぶまで応答しない。応答の中身は要求を受けた時点の `server.rejectedNames` を
- * 写し取って持つ（取り外しの前に始まった取り直しの古い応答を再現する）。
- */
+/** Capture rejected names on request, then gate delivery to simulate a stale pre-removal refresh. */
 
 export const rejectedGetReleases: (() => void)[] = [];
 
-/**
- * hold.rejectedDeletes を true にした間の DELETE /api/tags/rejected-names は、release を
- * 呼ぶまでサーバーの並びを変えず、応答もしない。
- */
+/** Defer both mutation and response until release. */
 
 export const rejectedDeleteReleases: (() => void)[] = [];
 
-/** hold.confirms を true にした間の POST /api/tags/{id}/confirm は、release() を呼ぶまで応答しない。 */
-
 export const confirmReleases: (() => void)[] = [];
 
-/** hold.nextMutation を true にした次の POST・PATCH は、release() を呼ぶまで応答しない（B3）。 */
-
-/**
- * hold.synonymDeletes を true にした間の DELETE /api/tags/{id}/synonyms は、
- * それぞれの release を呼ぶまで応答しない。並行する複数の解除を、任意の
- * 順で・同じタイミングで解決させて確かめる（N5・並行する解除）。
- */
+/** Hold synonym deletions independently so tests can resolve concurrent removals in any order. */
 
 export const synonymDeleteReleases: (() => void)[] = [];
 
 /**
- * hold.getsFrom を GET /api/tags の何回目（1始まり）から止めるかに設定すると、
- * それ以降の GET は release を呼ぶまで応答しない。応答の中身は、要求を
- * 受けた時点の `server.tags` を写し取って持つ（release を呼んだ時点の
- * `server.tags` ではない。Devin の指摘4のテストで、追い越された古い取得の
- * 応答が「その要求を送った時点でのサーバーの状態」を持つようにするため）。
+ * Hold GETs from this one-based call onward; capture tags at request time, not release, to model
+ * stale snapshots.
  */
 
 export const heldGetReleases: (() => void)[] = [];
 
-/**
- * hold は、テストが応答を止める口である。各項目は止めている間の要求を、対応する
- * release を呼ぶまで応答させない。テストのファイルが書き換えられるように、
- * 1 つの対象にまとめて export する。
- */
+/** Export mutable request gates together so each test can control release order. */
 export const hold = {
   rejectedGets: false,
   rejectedDeletes: false,
   confirms: false,
-  /** true にした次の POST・PATCH は、hold.release() を呼ぶまで応答しない（B3）。 */
   nextMutation: false,
   release: null as (() => void) | null,
   synonymDeletes: false,
   getsFrom: null as number | null,
-  /** true にした間の DELETE /api/tag-kinds/{id} は、kindDeleteReleases を呼ぶまで応答しない。 */
   kindDeletes: false,
 };
 
-/**
- * hold.kindDeletes を true にした間の DELETE /api/tag-kinds/{id} の release である。
- * release を呼んだ時点で種類を消して応答する。
- */
+/** Delete and respond only when released. */
 export const kindDeleteReleases: (() => void)[] = [];
 
 export function install() {
@@ -383,7 +305,7 @@ export function install() {
     }
 
     if (path === "/api/tags" && method === "GET" && !url.searchParams.has("limit")) {
-      // 共有の保持（候補・絞り込みの確かめ）の全件。タグ管理画面は送らない。
+      // Unbounded reads belong to the shared candidates cache, not the management page.
       server.fullGetCalls += 1;
       if (server.failFullGets) {
         return Promise.resolve(
@@ -402,7 +324,7 @@ export function install() {
       const failed = () => jsonResponse({ code: "internal", message: "failed" }, 500);
       const fail = server.failAllGets || server.failNextGet;
       server.failNextGet = false;
-      // 応答の中身は要求を受けた時点のサーバーの状態で作る。
+      // Snapshot response content at request time.
       const params = new URLSearchParams(url.searchParams);
       if (server.pageLimitOverride !== null) {
         params.set("limit", String(server.pageLimitOverride));
@@ -433,8 +355,7 @@ export function install() {
           jsonResponse({ code: "internal", message: "failed" }, 500),
         );
       }
-      // 実際のサーバーと同じく、cursor は前のページの最後の名前の次から、limit 件ずつ返す
-      // （名前は昇順で持つ）。
+      // Match server keyset pagination after the previous page's final name.
       const snapshot = [...server.rejectedNames];
       const limit = Number(url.searchParams.get("limit") ?? "100");
       const start = cursor === null ? 0 : snapshot.findIndex((name) => name > cursor);
@@ -667,8 +588,7 @@ export function install() {
           jsonResponse({ code: "internal", message: "Could not merge." }, 500),
         );
       }
-      // 無い統合元は飛ばして notFoundIds に載せる。統合元がすべて無ければ統合先は
-      // 変わらない。
+      // Skip missing sources into notFoundIds; an entirely missing source set leaves the target unchanged.
       return maybeHold(() => {
         const notFoundIds: number[] = [];
         for (const sourceId of body.sourceIds) {
@@ -719,7 +639,7 @@ export function install() {
         mergeTagId?: number;
       };
       if (target.synonyms.includes(body.name)) {
-        // 既にこのタグのシノニムである名前の登録は、何も変えずに 200 を返す。
+        // Re-registering this tag's synonym is idempotent and returns 200.
         return maybeHold(() => jsonResponse(target));
       }
       if (target.name === body.name) {
@@ -730,7 +650,7 @@ export function install() {
       );
       if (ownedBy !== undefined) {
         if (ownedBy.name === body.name) {
-          // 別のタグの元の名前。承諾（mergeTagId が一致）していなければ
+          // A different tag owns the name; require matching mergeTagId consent.
           // tag_merge_required。
           if (body.mergeTagId !== ownedBy.id) {
             return maybeHold(() =>
@@ -753,7 +673,6 @@ export function install() {
             return jsonResponse(target);
           });
         }
-        // 別のタグの既存のシノニムとの衝突。
         return maybeHold(() => takenResponse(body.name, ownedBy.name));
       }
       return maybeHold(() => {
@@ -789,20 +708,16 @@ export function install() {
   return fetchMock;
 }
 
-/** probe.search は `LocationProbe` が最後に見た URL のクエリである。 */
 export const probe = { search: "" };
 
-/** historyNavigate はブラウザの戻る・進む（`navigate(-1)` など）である。 */
 let historyNavigate: NavigateFunction | null = null;
 
-/** LocationProbe は今の URL のクエリを `probe.search` に写し、履歴を動かす口を残す。 */
 export function LocationProbe() {
   probe.search = useLocation().search;
   historyNavigate = useNavigate();
   return null;
 }
 
-/** historyBack はブラウザの「戻る」を押す。 */
 export async function historyBack() {
   await act(async () => {
     void historyNavigate!(-1);
@@ -810,7 +725,6 @@ export async function historyBack() {
   });
 }
 
-/** historyForward はブラウザの「進む」を押す。 */
 export async function historyForward() {
   await act(async () => {
     void historyNavigate!(1);
@@ -818,10 +732,6 @@ export async function historyForward() {
   });
 }
 
-/**
- * renderPage はタグ管理画面を描く。`url` で開く URL（検索語・絞り込み・並び順・タブの
- * クエリ）を、`topBar` で共通トップバーの差し込み先（`TopBarPortal`）を置ける。
- */
 export function renderPage({
   url = "/tags",
   topBar = false,
@@ -843,20 +753,12 @@ export function renderPage({
   );
 }
 
-/**
- * filterButton はトップバーの「Filter」である。効いている間の読み上げ名は
- * 「Filter (1 applied)」になる。
- */
 export function filterButton(): HTMLElement {
   return screen.getByRole("button", { name: /^Filter/ });
 }
 
 export type FilterName = "Tentative only" | "Unused only";
 
-/**
- * toggleFilter は「Filter」の吹き出しを開いて、その絞り込みのチェックを押し、Esc で
- * 吹き出しを閉じる（フォーカスは「Filter」へ戻る）。
- */
 export async function toggleFilter(
   user: ReturnType<typeof userEvent.setup>,
   name: FilterName,
@@ -867,7 +769,6 @@ export async function toggleFilter(
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 }
 
-/** filterChecked は吹き出しを開いて、その絞り込みのチェックの状態を読み、閉じる。 */
 export async function filterChecked(
   user: ReturnType<typeof userEvent.setup>,
   name: FilterName,
@@ -880,32 +781,25 @@ export async function filterChecked(
   return checked;
 }
 
-/** rejectedTab は見出しの下の「Rejected names」のタブ（件数を添える）である。 */
 export function rejectedTab(): HTMLElement {
   return screen.getByRole("tab", { name: /Rejected names/ });
 }
 
-/** kindsTab は「Kinds」のタブ（件数を添える）である。 */
 export function kindsTab(): HTMLElement {
   return screen.getByRole("tab", { name: /^Kinds/ });
 }
 
-/** tagsTab は「Tags」のタブである。 */
 export function tagsTab(): HTMLElement {
   return screen.getByRole("tab", { name: /^Tags/ });
 }
 
-/** openRejectedTab は「Rejected names」のタブへ移り、却下した名前の並びを返す。 */
 export async function openRejectedTab(user: ReturnType<typeof userEvent.setup>) {
   await user.click(rejectedTab());
   const panel = await screen.findByRole("tabpanel", { name: /Rejected names/ });
   return within(panel).findByRole("table", { name: "Rejected names" });
 }
 
-/**
- * setUpTagsPageServer は各テストの前に偽のサーバーと保持を初期状態へ戻し、後で
- * fetch の差し替えを解く。テストのファイルの先頭で 1 回呼ぶ。
- */
+/** Call once at file scope to reset server and caches per test and restore fetch afterward. */
 export function setUpTagsPageServer() {
   beforeEach(() => {
     __resetTagsForTest();
@@ -957,8 +851,7 @@ export function setUpTagsPageServer() {
     rejectedGetReleases.length = 0;
     hold.rejectedDeletes = false;
     rejectedDeleteReleases.length = 0;
-    // 一覧の仮想化（useWindowVirtualizer）は文書をスクロールする。jsdom には
-    // window.scrollTo が無いので、何もしない実装に置き換える。
+    // Window virtualization scrolls the document; jsdom needs a scrollTo stub.
     vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   });
 

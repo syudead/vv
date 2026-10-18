@@ -15,11 +15,9 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// デスクトップ版の入口の引数で run を起動すると、保存した許可が待ち受けに効き、
-// /api/settings/network がつながる（404 でなく、ゲストには 401）。
 func TestDesktopRunOptionsApplySavedLANAccess(t *testing.T) {
-	// 起動前確認は ffmpeg・ffprobe の有無だけを見る。この試験は待ち受けと API を
-	// 確かめるので、ffmpeg の無いホスト（CI の Checks）でも動くよう代わりを置く。
+	// Only startup tool detection is needed; stub binaries keep this wiring test independent of host
+	// installations.
 	stubMediaCommands(t)
 	dataDir := t.TempDir()
 	db, err := store.OpenMigratedForTest(dataDir)
@@ -81,8 +79,7 @@ func TestDesktopRunOptionsApplySavedLANAccess(t *testing.T) {
 	}
 }
 
-// stubMediaCommands は起動前確認を通すだけの ffmpeg・ffprobe を PATH に置き、
-// ホストに入っている本物を使わない。代わりは何もせず失敗で終わる。
+// Stub commands pass executable discovery but fail if actually invoked.
 func stubMediaCommands(t *testing.T) {
 	t.Helper()
 	dir := t.TempDir()

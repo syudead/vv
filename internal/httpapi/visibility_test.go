@@ -21,9 +21,6 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 公開フラグの切り替えと、
-// 非公開にしたときの配信の打ち切り（§6）は、本物の認証・保存層で確かめる（#301）。
-
 func visibilityBody(public bool, ids ...int64) string {
 	body := `{"videoIds":[`
 	for index, id := range ids {
@@ -42,8 +39,6 @@ func (f *guestFixture) setVisibility(public bool, ids ...int64) *httptest.Respon
 	})
 }
 
-// 公開にするとゲストの一覧と詳細に現れ、Video.public が true になる。非公開に戻すと
-// 次の取得から現れない。
 func TestVideoVisibilityPublishesToGuests(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -55,7 +50,6 @@ func TestVideoVisibilityPublishesToGuests(t *testing.T) {
 		t.Fatalf("公開の a の public が false: %+v", video)
 	}
 
-	// 重複は1つとして、ライブラリに無い id は数えず、既に公開の a も誤りにしない。
 	rec := f.setVisibility(true, f.ids["b"], f.ids["b"], f.ids["a"], 9999)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("公開: status = %d: %s", rec.Code, rec.Body)
@@ -133,7 +127,6 @@ func TestVideoVisibilityRejectsGuestsAndInvalidBodies(t *testing.T) {
 	}
 }
 
-// endlessTranscoder は止められるまで変換の出力を返し続ける。
 type endlessTranscoder struct{}
 
 type zeroReader struct{}
@@ -147,8 +140,6 @@ func (endlessTranscoder) Start(context.Context, domain.LiveTranscodeRequest) (do
 	return domain.LiveTranscode{Stream: io.NopCloser(zeroReader{}), Wait: func() error { return nil }, Stop: func() {}}, nil
 }
 
-// 非公開に戻すと、ゲストとして処理中のその動画の Range 応答とライブ変換が終わり、
-// 次の要求は 404 になる。所有者として処理中の応答は終わらない。
 func TestVideoVisibilityEndsGuestResponsesInFlight(t *testing.T) {
 	ctx := context.Background()
 	mediaDir := t.TempDir()
@@ -256,7 +247,6 @@ func TestVideoVisibilityEndsGuestResponsesInFlight(t *testing.T) {
 	ended("ゲストの Range 応答", guestStream.Body, size)
 	ended("ゲストのライブ変換", guestTranscode.Body, size)
 
-	// 所有者の応答は続いている。
 	if _, err := io.ReadFull(ownerStream.Body, make([]byte, 4<<20)); err != nil {
 		t.Errorf("所有者の Range 応答が終わった: %v", err)
 	}
@@ -266,7 +256,6 @@ func TestVideoVisibilityEndsGuestResponsesInFlight(t *testing.T) {
 	}
 }
 
-// 動画を引いてから台帳に載るまでに打ち切りが挟まったら、載せずに引き直させる。
 func TestGuestLedgerRejectsTrackingAcrossRevocation(t *testing.T) {
 	ledger := newGuestLedger()
 	since := ledger.generation()
@@ -293,9 +282,7 @@ func TestGuestLedgerRejectsTrackingAcrossRevocation(t *testing.T) {
 	}
 }
 
-// orderedVisibility は1回目（非公開）の反映の中で、2回目（再公開）の切り替えが
-// 先の切り替えを待つ（contended）か、待たずに反映へ入ってくる（secondEntered）まで
-// 返さない。どちらが先かは時間ではなく出来事で決まる。
+// orderedVisibility holds the first private transition until the second transition either waits or enters, making ordering event-driven rather than timing-dependent.
 type orderedVisibility struct {
 	ledger        *guestLedger
 	entered       chan struct{}
@@ -313,7 +300,6 @@ func (v *orderedVisibility) SetVideosPublic(_ context.Context, _ []int64, public
 		select {
 		case <-v.contended:
 		case <-v.secondEntered:
-			// 並べていないと、再公開が非公開の確定から打ち切りまでの間に反映される。
 			v.overlapped.Store(true)
 		}
 		return []string{"key"}, nil
@@ -323,8 +309,7 @@ func (v *orderedVisibility) SetVideosPublic(_ context.Context, _ []int64, public
 	return []string{"key"}, nil
 }
 
-// 非公開の確定から打ち切りまでの間に再公開が割り込まない。割り込むと、再公開の後に
-// 始まったゲストの配信を先の非公開の打ち切りが止めてしまう。
+// Republication must not interleave between private commit and revocation, or newly started guest streams would be terminated.
 func TestVideoVisibilitySwitchesRunOneAtATime(t *testing.T) {
 	ledger := newGuestLedger()
 	visibility := &orderedVisibility{
@@ -335,7 +320,6 @@ func TestVideoVisibilitySwitchesRunOneAtATime(t *testing.T) {
 	}
 	var waits atomic.Int32
 	ledger.onSwitchWait = func() {
-		// 待つのは、非公開の反映の中にいる間に来た再公開の1回だけである。
 		if waits.Add(1) == 1 {
 			close(visibility.contended)
 		}
@@ -357,7 +341,6 @@ func TestVideoVisibilitySwitchesRunOneAtATime(t *testing.T) {
 	hidden := make(chan *httptest.ResponseRecorder, 1)
 	go func() { hidden <- put(false) }()
 	<-visibility.entered
-	// 非公開の反映が確定して打ち切りの前にいる間に、再公開を送る。
 	published := make(chan *httptest.ResponseRecorder, 1)
 	go func() { published <- put(true) }()
 

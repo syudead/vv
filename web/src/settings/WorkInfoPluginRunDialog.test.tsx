@@ -9,8 +9,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import WorkInfoPluginsSection from "./WorkInfoPluginsSection";
 
-// 設定の「Work-info plugins」節で、行のメニューから直近の実行の出力を開く流れのページのテストである。失敗の理由の文は
-// workInfoPluginRows.test.ts が確かめる。
+// Test the menu-to-output-dialog flow here; workInfoPluginRows.test.ts covers failure wording.
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -46,10 +45,9 @@ function run(values: Partial<WorkInfoPluginRun> = {}): WorkInfoPluginRun {
   };
 }
 
-/** LastRun は偽のサーバーが last-run に返す答えで、undefined は 500 の失敗である。 */
+/** Undefined represents a 500 response. */
 type LastRun = WorkInfoPluginRun | null | undefined;
 
-/** server は一覧と、呼ばれるたびに次の last-run の答えを返す偽のサーバーである。 */
 function server(plugins: WorkInfoPlugin[], lastRuns: LastRun[]) {
   const reads: string[] = [];
   const handler = (input: RequestInfo | URL): Promise<Response> => {
@@ -117,7 +115,7 @@ describe("WorkInfoPluginRunDialog", () => {
     expect(within(dialog).queryByText("The output was cut at 64 KB.")).toBeNull();
     expect(fake.reads).toEqual(["/api/work-info-plugins/4/last-run"]);
 
-    // 項目はメニューと一緒に消えるので、閉じたらその行の「More actions」へ戻る。
+    // The menu item unmounts on close, so restore focus to the row's More actions trigger.
     await user.click(within(dialog).getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     const more = screen.getByRole("button", { name: "More actions for example.works" });
@@ -144,8 +142,7 @@ describe("WorkInfoPluginRunDialog", () => {
 
     const output = await within(dialog).findByRole("region", { name: "Output" });
     expect(output.textContent).toBe(long);
-    // 長い行は折り返し、高さは max-h-run-output に抑えてこの区画だけを動かすので、ダイアログも
-    // ページも広がらない。ダイアログは FormDialog の wide の幅に留まる。
+    // Wrap long lines and bound output height so neither the dialog nor page expands.
     for (const name of [
       "whitespace-pre-wrap",
       "break-all",
@@ -261,7 +258,7 @@ describe("WorkInfoPluginRunDialog", () => {
     renderSection();
 
     await screen.findByText("example.works");
-    // 疑似ロケールでは文言が飾られるので、行の唯一のボタンとメニューの最初の項目で開く。
+    // Pseudo-locale labels are decorated; open via the row's unique button and first menu item.
     await user.click(screen.getByRole("button", { name: /example\.works/ }));
     const [lastRunItem] = await screen.findAllByRole("menuitem");
     if (lastRunItem === undefined) throw new Error("no menu item");

@@ -13,14 +13,11 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 視聴履歴の記録。
-
 const (
 	testPlaybackA = "0f8fad5b-d9cb-469f-a165-70867728950e"
 	testPlaybackB = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
 )
 
-// historyRow は watch_history の 1 行である。
 type historyRow struct {
 	contentKey string
 	playbackID string
@@ -28,7 +25,6 @@ type historyRow struct {
 	playedAt   int64
 }
 
-// historyRows は watch_history を id の順に読み切る。playback_id が null の行は空にする。
 func historyRows(t *testing.T, db *DB) []historyRow {
 	t.Helper()
 	rows, err := db.sql.Query(`select content_key, coalesce(playback_id, ''), title, played_at
@@ -59,7 +55,6 @@ func savePlay(t *testing.T, db *DB, userKey string, positionMs int64, play *doma
 	}
 }
 
-// 識別子の無い保存と、content_key が空の視聴は履歴を書かない。
 func TestSaveProgressWithoutPlayWritesNoHistory(t *testing.T) {
 	db := migratedDB(t)
 	savePlay(t, db, "key-a", 1000, nil)
@@ -72,7 +67,6 @@ func TestSaveProgressWithoutPlayWritesNoHistory(t *testing.T) {
 	}
 }
 
-// 同じ識別子の 2 回目以降の保存は何も足さず、時刻と題名は最初の保存のものに留まる。
 func TestSaveProgressRecordsOneEntryPerPlaybackID(t *testing.T) {
 	db := migratedDB(t)
 	savePlay(t, db, "key-a", 1000, &domain.Play{PlaybackID: testPlaybackA, ContentKey: "key-a", Title: "最初"})
@@ -93,8 +87,6 @@ func TestSaveProgressRecordsOneEntryPerPlaybackID(t *testing.T) {
 	}
 }
 
-// 1 つの動画を 2 つの識別子で保存すると 2 件。集まりの鍵で保存しても、履歴の鍵は視聴した
-// バージョンの content_key である。
 func TestSaveProgressRecordsEachPlayback(t *testing.T) {
 	db := migratedDB(t)
 	savePlay(t, db, "bundle:1", 1000, &domain.Play{PlaybackID: testPlaybackA, ContentKey: "key-a", Title: "a"})
@@ -110,8 +102,6 @@ func TestSaveProgressRecordsEachPlayback(t *testing.T) {
 	}
 }
 
-// 履歴を消しても再生位置は変わらず、同じ識別子の次の保存は新しい 1 件を書く
-// （Edge Case「再生中に消した場合」、要件 9）。
 func TestSaveProgressAfterHistoryDeleted(t *testing.T) {
 	db := migratedDB(t)
 	play := &domain.Play{PlaybackID: testPlaybackA, ContentKey: "key-a", Title: "a"}
@@ -128,7 +118,6 @@ func TestSaveProgressAfterHistoryDeleted(t *testing.T) {
 	}
 }
 
-// progressOf は鍵の再生位置を返す。
 func progressOf(t *testing.T, db *DB, key string) int64 {
 	t.Helper()
 	progress, err := db.Playback().Progress(context.Background(), key)
@@ -138,7 +127,6 @@ func progressOf(t *testing.T, db *DB, key string) int64 {
 	return progress.PositionMs
 }
 
-// 同じパスの引き継ぎで履歴は新しい鍵へ移り、新しい鍵にすでにある履歴も残る。
 func TestSuccessionMovesWatchHistory(t *testing.T) {
 	db, _ := taggedVideoFixture(t)
 	savePlay(t, db, "key-a", 40_000, &domain.Play{PlaybackID: testPlaybackA, ContentKey: "key-a", Title: "a"})
@@ -159,7 +147,6 @@ func TestSuccessionMovesWatchHistory(t *testing.T) {
 	}
 }
 
-// migrateTo は空のデータベースを version まで移行し、移行の操作を返す。
 func migrateTo(t *testing.T, version int64) (*DB, *goose.Provider) {
 	t.Helper()
 	db, err := Open(t.TempDir())
@@ -188,8 +175,6 @@ func execSQL(t *testing.T, db *DB, query string, args ...any) {
 	}
 }
 
-// 移行は再生位置の記録 1 行につき 1 件を、記録の時刻といまの題名で入れる。集まりの鍵は代表の
-// content_key になり、集まりの行が無い集まりの鍵と空の鍵は捨てる。Down は表を落とす（R-4）。
 func TestWatchHistoryMigrationBackfills(t *testing.T) {
 	db, provider := migrateTo(t, 33)
 	ctx := context.Background()
@@ -201,7 +186,7 @@ func TestWatchHistoryMigrationBackfills(t *testing.T) {
 			select id, ?, ?, 1, 1, 1, 1 from videos where content_key = ?`,
 			fixturePath("/media/"+title+".mp4"), title, "key-"+title)
 	}
-	// 束ねる操作は今のスキーマ（版 33 に無い表）を使うので、集まりの行を直接書く。
+	// Insert the bundle directly because production bundling requires tables absent from schema 33.
 	execSQL(t, db, `insert into video_bundles (user_key, representative_key, created_at, updated_at)
 		values ('bundle:1', 'key-a', 1, 1)`)
 	execSQL(t, db, `insert into video_bundle_members (content_key, bundle_id, added_at)
@@ -240,8 +225,6 @@ func TestWatchHistoryMigrationBackfills(t *testing.T) {
 	}
 }
 
-// 移行の時点で動画が無い記録も 1 件になり、題名は表示名、無ければ空。その内容が取り込み直される
-// と、その件は再び動画を持つ（R-4、Edge Case「動画ファイルが消えて戻る」）。
 func TestWatchHistoryMigrationKeepsRemovedContent(t *testing.T) {
 	db, provider := migrateTo(t, 33)
 	ctx := context.Background()
@@ -284,7 +267,6 @@ func TestWatchHistoryMigrationKeepsRemovedContent(t *testing.T) {
 	}
 }
 
-// insertHistory は視聴履歴を 1 行入れ、その id を返す。
 func insertHistory(t *testing.T, db *DB, contentKey, title string, playedAtMs int64) int64 {
 	t.Helper()
 	result, err := db.sql.Exec(`insert into watch_history (content_key, title, played_at) values (?, ?, ?)`,
@@ -316,8 +298,6 @@ func historyIDs(page domain.WatchHistoryPage) []int64 {
 	return ids
 }
 
-// 一覧は played_at の新しい順で、同じ時刻は id の大きい順。nextCursor からの次のページは重複なく続き、
-// 最後のページにはカーソルが無い。
 func TestListWatchHistoryOrderAndPages(t *testing.T) {
 	db := migratedDB(t)
 	oldest := insertHistory(t, db, "key-a", "a", 1000)
@@ -351,8 +331,6 @@ func TestListWatchHistoryOrderAndPages(t *testing.T) {
 	}
 }
 
-// 所在のある内容の件は動画を持ち、ライブラリに無い内容の件は持たない。読みは渡された見る人の条件で
-// 動画を結ぶ（ゲストには公開の動画だけ）。代表でない集まりのメンバーの件は、そのメンバーを持つ。
 func TestListWatchHistoryResolvesVideos(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -396,8 +374,6 @@ func TestListWatchHistoryResolvesVideos(t *testing.T) {
 	}
 }
 
-// 1 件の削除はあれば true、もう一度で false。全件の削除は空でも誤りにならない。どちらも再生位置を
-// 変えない（要件 9）。
 func TestDeleteAndClearWatchHistory(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

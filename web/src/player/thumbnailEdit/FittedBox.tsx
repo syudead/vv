@@ -2,11 +2,7 @@ import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 
 import { fitBox } from "./editRules";
 
-/**
- * FittedBox は自分が置かれた場所の大きさを測り、比率 `aspect` の箱を全体が見えるいちばん
- * 大きな大きさで中央に置く（ui-design「Compose」の object-contain、「Compare」の同じ大きさの
- * 箱）。大きさは実行時の値なので style で渡す。
- */
+/** Fit and center the aspect-ratio box within its measured container; runtime dimensions require inline styles. */
 export default function FittedBox({
   aspect,
   children,

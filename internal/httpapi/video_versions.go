@@ -10,39 +10,24 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 同じ動画の別バージョンの集まり。候補の一覧と却下は version_candidates.go。集まりは動画の id で指し、集まりの id は応答に出さない。どの操作も
-// 1 つの取引で済むので internal/app は通さず、internal/store の *VersionStore を直接呼ぶ。
-// 確定後の /api/events の video は、保存層が発行する domain.VideoBundleChanged から流れる
-// （events.go）。
+// Address bundles by video ID, never bundle ID. Store mutations are atomic; VideoBundleChanged publishes SSE after commit.
 
-// VersionStore は集まりの保存先である。internal/store の *VersionStore がこれを満たす。
 type VersionStore interface {
-	// Versions は videoID の動画の集まりのうち、見る人に見せてよいバージョンを実効の代表を
-	// 先頭に返す。集まりに属さなければその 1 本。見せられなければ domain.ErrNotFound。
+	// Versions filters by audience and puts the effective representative first; an unbundled video returns itself.
 	Versions(ctx context.Context, audience domain.Audience, videoID int64) (domain.VideoVersions, error)
-	// Bundle は videoIDs を 1 つの集まりに束ね、representativeID を代表にする。引けない id が
-	// あれば domain.ErrNotFound、2 本未満なら domain.ErrTooFewVersions、代表が含まれなければ
-	// domain.ErrRepresentativeNotSelected で、何も変えない。
+	// Validate the entire bundle before writing.
 	Bundle(ctx context.Context, videoIDs []int64, representativeID int64) (domain.VideoVersions, error)
-	// MakeRepresentative は videoID の動画をその集まりの代表にする。集まりに属さなければ
-	// domain.ErrNotBundled、引けなければ domain.ErrNotFound。
 	MakeRepresentative(ctx context.Context, videoID int64) (domain.VideoVersions, error)
-	// Unbundle は videoID の動画をその集まりから外し、外した動画を返す。集まりに属さなければ
-	// domain.ErrNotBundled、引けなければ domain.ErrNotFound。
 	Unbundle(ctx context.Context, videoID int64) (domain.Video, error)
-	// Candidates は「同じ動画かもしれない」候補のうち、どちらも登録フォルダの下に所在を持つ組を
-	// 新しい順に最大 domain.MaxVersionCandidates 組返す。所有者だけの経路が使う。
+	// Candidates require both videos to remain registered; return the newest pairs to owners only.
 	Candidates(ctx context.Context) (domain.VersionCandidatePage, error)
-	// Dismiss は 2 本を「違う動画」と記録し、その組の候補を消す。どちらかが引けなければ
-	// domain.ErrNotFound で、何も変えない。
+	// Dismiss candidates atomically; a missing candidate aborts the operation.
 	Dismiss(ctx context.Context, videoIDs [2]int64) error
 }
 
-// maxBundleVideoIDs は束ねる経路が受け付ける videoIds の最大件数である。
-// POST /api/video-tags と同じ上限。
+// Use the same ID limit as tag mutations.
 const maxBundleVideoIDs = maxVideoTagsIDs
 
-// ListVideoVersions は動画の集まりの全バージョンを返す（GET /api/videos/{id}/versions）。
 func (s *server) ListVideoVersions(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	if s.versions == nil {
 		s.internalError(w, "Version storage is not configured.", nil)
@@ -55,7 +40,6 @@ func (s *server) ListVideoVersions(w http.ResponseWriter, r *http.Request, id ge
 	s.writeVideoVersions(w, r, versions)
 }
 
-// BundleVideos は動画を 1 つの集まりに束ねる（POST /api/video-bundles）。
 func (s *server) BundleVideos(w http.ResponseWriter, r *http.Request) {
 	var body gen.VideoBundleRequest
 	if !s.readJSONBody(w, r, &body) {
@@ -77,8 +61,6 @@ func (s *server) BundleVideos(w http.ResponseWriter, r *http.Request) {
 	s.writeVideoVersions(w, r, versions)
 }
 
-// MakeRepresentativeVersion は動画をその集まりの代表にする
-// （POST /api/videos/{id}/make-representative）。
 func (s *server) MakeRepresentativeVersion(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	if s.versions == nil {
 		s.internalError(w, "Version storage is not configured.", nil)
@@ -91,8 +73,6 @@ func (s *server) MakeRepresentativeVersion(w http.ResponseWriter, r *http.Reques
 	s.writeVideoVersions(w, r, versions)
 }
 
-// UnbundleVideo は動画をその集まりから外す（POST /api/videos/{id}/unbundle）。応答は
-// GET /api/videos/{id} と同じ形の外した動画である。
 func (s *server) UnbundleVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	if s.versions == nil {
 		s.internalError(w, "Version storage is not configured.", nil)
@@ -105,8 +85,6 @@ func (s *server) UnbundleVideo(w http.ResponseWriter, r *http.Request, id gen.Vi
 	s.writeVideoDetail(w, r, video)
 }
 
-// checkVersionsError は集まりの保存層の誤りを契約の応答へ写す。
-// 誤りが無ければ true を返し、あれば応答を書いて false を返す。
 func (s *server) checkVersionsError(w http.ResponseWriter, err error, message string) bool {
 	switch {
 	case err == nil:
@@ -125,16 +103,13 @@ func (s *server) checkVersionsError(w http.ResponseWriter, err error, message st
 	return false
 }
 
-// writeVideoVersions は集まりの全バージョンを VideoVersions の形で書く（項目は versionItems）。
 func (s *server) writeVideoVersions(w http.ResponseWriter, r *http.Request, versions domain.VideoVersions) {
 	payload := gen.VideoVersions{RepresentativeId: versions.RepresentativeID, Items: s.versionItems(r, versions.Items)}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, payload, s.logger)
 }
 
-// versionItems は動画を GET /api/videos/{id} と同じ形の項目にする。再生位置・タグ・所在・置かれた
-// フォルダ（登録フォルダの表示名つき）・集まりの要約を持ち、見る人に合わせて省く（forAudience）。
-// グループとシーク用プレビューの状態は、項目ごとに問い合わせが要るので載せない。
+// Use the detail shape without group or seek-preview state to avoid per-item queries.
 func (s *server) versionItems(r *http.Request, videos []domain.Video) []gen.Video {
 	ctx := r.Context()
 	audience := audienceFrom(ctx)
@@ -154,7 +129,6 @@ func (s *server) versionItems(r *http.Request, videos []domain.Video) []gen.Vide
 	return items
 }
 
-// apiVersionsRef は集まりの要約を契約の形へ写す。集まりのメンバーでなければ nil。
 func apiVersionsRef(ref *domain.VideoVersionsRef) *gen.VideoVersionsRef {
 	if ref == nil {
 		return nil

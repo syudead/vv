@@ -4,56 +4,41 @@ import { type AutoImportSettings, getAutoImportSettings, isAborted } from "../ap
 import { errorText, type UiText } from "../i18n";
 import { inProgress, useScan } from "../shell/ScanProvider";
 
-/** pollMs は監視を張っている最中（starting）に状態を読み直す間隔である。 */
 const pollMs = 2000;
 
-/**
- * AutoImportReloads は、自動の取り込みの設定を読み直す契機である。開いたとき、ウィンドウへ
- * 戻ったとき、`reloadToken` が変わったときは、いつも読み直す（別のタブでの変更を拾う）。
- */
+/** Always reload on opening, window focus and reloadToken changes to pick up other-tab edits. */
 export interface AutoImportReloads {
-  /** 変わるたびに読み直す（メディアフォルダを変えたあとなど）。 */
   reloadToken?: number;
   /**
-   * 監視の状態を追う。直近の取り込みが終わったときに読み直し、監視を張っている最中
-   * （`starting`）は 2 秒ごとに読み直す。監視の状態を出す AutoImportState が要る。
-   * 切り替えだけを出す AutoImportSwitch は要らない。
+   * State displays follow import completion and poll starting every two seconds; switch-only
+   * displays need neither.
    */
   followWatch?: boolean;
 }
 
-/** AutoImportSource は、自動の取り込みの設定の読み込みと、保存との重なりの扱いである。 */
 export interface AutoImportSource {
-  /** 読めた設定。読み終えるまでは null。 */
   settings: AutoImportSettings | null;
-  /** 最初の読み込みの失敗の文。読めている状態があるあいだは null のまま。 */
+  /** Show initial errors only before any successful settings read. */
   loadError: UiText | null;
-  /** 読み直す。保存の最中は何もしない。 */
+  /** No-op while saving. */
   load: () => Promise<void>;
-  /** 保存を始める直前に呼ぶ。保存より前に始めた読み込みの応答を捨て、保存が終わるまで読み直さない。 */
+  /** Call immediately before saving to invalidate old reads and pause reloads. */
   beginSave: () => void;
-  /** 保存した設定を受け取る。 */
   saved: (settings: AutoImportSettings) => void;
-  /** 保存が成否を問わず終わったときに呼ぶ。 */
+  /** Call after both successful and failed saves. */
   endSave: () => void;
 }
 
-/**
- * useAutoImportSettings は、自動の取り込みの設定（GET /api/settings/auto-import）を読み、
- * `reloads` の契機で読み直す。監視の状態（AutoImportState）と切り替え（AutoImportSwitch）は、
- * それぞれ要る契機でこれを使う。
- */
 export function useAutoImportSettings({
   reloadToken = 0,
   followWatch = false,
 }: AutoImportReloads = {}): AutoImportSource {
   const [settings, setSettings] = useState<AutoImportSettings | null>(null);
   const [loadError, setLoadError] = useState<UiText | null>(null);
-  // 読み込みと保存は重なる。いちばん新しく始めたものの応答だけを使う。
+  // Only the latest-started load or save may apply its response.
   const revision = useRef(0);
   const controller = useRef<AbortController | null>(null);
-  // 保存（PUT）の最中は読み直さない。重なった読み込みの古い値が、保存の結果を上書きしたり
-  // 保存の応答を捨てさせたりしないよう、保存が終わるまで読み込みを止める。
+  // Pause reads during PUT so stale responses cannot overwrite or invalidate the save.
   const saveInFlight = useRef(false);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -72,7 +57,7 @@ export function useAutoImportSettings({
       setLoadError(null);
     } catch (failure) {
       if (isAborted(failure) || mine !== revision.current) return;
-      // 読めている状態は残す。読み直しの失敗で、区画を壊さない。
+      // Retain prior settings on background-read failure.
       if (settingsRef.current === null) setLoadError(errorText(failure));
     }
   }, []);
@@ -97,7 +82,7 @@ export function useAutoImportSettings({
   useWatchReloads(followWatch, settings?.watch.state === "starting", load);
 
   const beginSave = useCallback(() => {
-    // 保存より前に始めた読み込みの応答は使わない。
+    // Discard reads started before the save.
     controller.current?.abort();
     revision.current += 1;
     saveInFlight.current = true;
@@ -109,10 +94,7 @@ export function useAutoImportSettings({
   return { settings, loadError, load, beginSave, saved: setSettings, endSave };
 }
 
-/**
- * useWatchReloads は、監視の状態を追う読み直しである。`enabled` が偽なら何もしない。
- * 直近の取り込みが終わったときに読み直し、`starting` のあいだは 2 秒ごとに読み直す。
- */
+/** When enabled, reload after import completion and poll every two seconds while starting. */
 function useWatchReloads(enabled: boolean, starting: boolean, load: () => Promise<void>) {
   const scan = useScan();
 
@@ -122,8 +104,8 @@ function useWatchReloads(enabled: boolean, starting: boolean, load: () => Promis
     return () => window.clearInterval(timer);
   }, [enabled, load, starting]);
 
-  // 直近の取り込みが終わったら読み直す。問題は、手動の取り込みの完了で消えることがある。
-  // 最初に見た値は、開いたときの読み込みが担う。
+  // Manual import completion may clear watcher problems.
+  // The initial settings read already covers the first observed value.
   const endedId = scan.scan !== null && !inProgress(scan.scan) ? scan.scan.id : null;
   const seenEnded = useRef<number | null | undefined>(undefined);
   useEffect(() => {

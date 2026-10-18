@@ -12,7 +12,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 直近の実行の標準エラーの経路。実行の行は保存先に直接書く。
+// Write run records directly to storage when testing the latest-stderr endpoint.
 
 func TestWorkInfoPluginLastRunRoute(t *testing.T) {
 	e := newPluginEnv(t)

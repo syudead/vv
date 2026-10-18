@@ -8,7 +8,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// fakeActivityLog は id ごとの記録を返す。
 type fakeActivityLog struct {
 	entries   map[int64]domain.ActivityEntry
 	recovered int
@@ -32,7 +31,6 @@ func (f *fakeActivityLog) RecoverInterruptedActivity(context.Context) (int, erro
 	return f.recovered, nil
 }
 
-// recordingRetrier は渡された記録を覚える。
 type recordingRetrier struct{ retried []int64 }
 
 func (r *recordingRetrier) RetryActivity(_ context.Context, entry domain.ActivityEntry) error {
@@ -40,7 +38,6 @@ func (r *recordingRetrier) RetryActivity(_ context.Context, entry domain.Activit
 	return nil
 }
 
-// recordingUndoer は渡された記録とタグを覚え、undo の記録を返す。
 type recordingUndoer struct{ undone [][2]int64 }
 
 func (u *recordingUndoer) UndoActivity(_ context.Context, entry domain.ActivityEntry, tagID int64) (domain.ActivityEntry, error) {
@@ -58,7 +55,6 @@ func activityLogFixture() *fakeActivityLog {
 	return &fakeActivityLog{entries: map[int64]domain.ActivityEntry{1: failed, 2: done, 3: same, 4: tags}}
 }
 
-// 振り分け先の無い種類は、記録がやり直しを出しても 409 に当たる誤りを返す（この unit の状態）。
 func TestActivityRetryWithoutRetriers(t *testing.T) {
 	activity := NewActivity(ActivityOptions{Store: activityLogFixture()})
 	if err := activity.RetryActivity(context.Background(), 1); !errors.Is(err, domain.ErrActivityNotRetryable) {
@@ -72,7 +68,6 @@ func TestActivityRetryWithoutRetriers(t *testing.T) {
 	}
 }
 
-// やり直しと取り消しは、記録が出すときだけ種類の振り分け先へ渡す。
 func TestActivityDispatchesByKind(t *testing.T) {
 	retrier := &recordingRetrier{}
 	undoer := &recordingUndoer{}

@@ -22,8 +22,6 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
-// ライブラリで動画を動画に落とす。
-
 function video(id: number, title: string): Video {
   return {
     id,
@@ -80,21 +78,14 @@ interface Write {
 const server = {
   items: [] as LibraryItem[],
   writes: [] as Write[],
-  /** true の間、束ねる要求は 400 too_many_videos で失敗する。 */
   tooManyVideos: false,
-  /** 「Make a group」の前の一覧（取り消しで戻す）。 */
   before: [] as LibraryItem[],
-  /** 置くと次の束ねる要求は、これが解けるまで答えない。 */
   holdBundle: null as Promise<void> | null,
-  /** 置くと次の「Make a group」の要求は、これが解けるまで答えない。 */
   holdGroup: null as Promise<void> | null,
-  /** 次の「Make a group」が作るグループの id。 */
   nextGroupId: 90,
-  /** この動画に落とす「Make a group」は 500 で失敗する。 */
   failGroupOn: null as number | null,
 };
 
-/** organize は「Make a group」と「Bundle as versions」に契約どおり答える。 */
 function organize(path: string, body: unknown): Response | undefined {
   if (path === "/api/organize/group") {
     const { items, target } = body as { items: { id: number }[]; target: number };
@@ -147,7 +138,6 @@ function organize(path: string, body: unknown): Response | undefined {
   return undefined;
 }
 
-/** heldAnswer は `path` の要求に置いた待ちを返し、外す（次の要求は待たない）。 */
 function heldAnswer(path: string): Promise<void> | null {
   if (path === "/api/organize/bundle") {
     const hold = server.holdBundle;
@@ -204,7 +194,6 @@ function renderLibrary() {
   );
 }
 
-/** cardTitles は格子のカードの題名か名前の欄の値を左から返す。 */
 function cardTitles(): string[] {
   return Array.from(document.querySelectorAll("article")).map(
     (card) =>
@@ -212,7 +201,6 @@ function cardTitles(): string[] {
   );
 }
 
-/** open はライブラリを開き、動画 A、B、C を左から並べる。 */
 async function open() {
   server.items = [
     { kind: "video", video: video(1, "A") },
@@ -224,7 +212,6 @@ async function open() {
   await screen.findByRole("link", { name: "C" });
 }
 
-/** dropAOnB は A を B に落とし、開いたメニューを返す。 */
 async function dropAOnB() {
   dropOn("A", 0, 1);
   return openedMenu();
@@ -305,7 +292,6 @@ describe("LibraryPage drag a video onto a video", () => {
     await user.click(
       within(await dropAOnB()).getByRole("menuitem", { name: "Make a group" }),
     );
-    // A と B の要求が答える前に、C（左から 2 枚目）を D（3 枚目）に落とす。
     dropOn("C", 1, 2);
     await user.click(
       within(await openedMenu()).getByRole("menuitem", { name: "Make a group" }),
@@ -320,7 +306,6 @@ describe("LibraryPage drag a video onto a video", () => {
 
     const kept = screen.getByRole("textbox", { name: "Group name" });
     expect((kept as HTMLInputElement).value).toBe("D");
-    // 取り消しの通知は後の操作のもののまま（前の操作の遅れた答えで置き換えない）。
     expect(screen.getByText('Made the group "D"')).toBeDefined();
     expect(screen.queryByText('Made the group "B"')).toBeNull();
     await waitFor(() => expect(cardTitles()).toEqual(["B", "D"]));
@@ -415,8 +400,6 @@ describe("LibraryPage drag a video onto a video", () => {
     const field = await screen.findByRole("textbox", { name: "Group name" });
     await user.clear(field);
     await user.type(field, "Tri");
-    // 新しいグループの知らせで、ライブラリは一覧を読み直す（サーバーの一覧は A と B の代わりに
-    // グループを持つ）。
     await emitServerEvent("group", { ids: [90] });
     await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(0));
     await act(async () => {
@@ -539,7 +522,6 @@ describe("LibraryPage drag a video onto a video", () => {
         true,
       ),
     );
-    // 動画の画面へ移ると、ライブラリは消える（経路は無いので何も描かない）。
     await user.click(screen.getByRole("link", { name: "C" }));
     await waitFor(() => expect(screen.queryByRole("link", { name: "C" })).toBeNull());
     await act(async () => {

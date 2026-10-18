@@ -10,17 +10,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 動画の上書き。
-// 上書きは content_key に結ぶ video_overrides の1行で持ち、再スキャン・移動・改名・所在の
-// 追加を越えて残る。表示名・位置の両方が null になった行は消す。表示名を書き換えたら、
-// 同じ取引でその内容の動画の全所在の title_key・search_key を書き直す。
+// Content-keyed overrides survive rescans and location changes; display-name edits rebuild all location search and sort keys atomically.
 
-// overrideColumns は動画を返す読み出し（videoColumns・listColumns）の末尾に足す列で、
-// 並びは scanVideo と対応する。表示名・位置・改版番号・適用した画像の改版番号
-// ・適用した画像の出どころ
-// の順である。有効な題名
-// （coalesce(display_name, 所在の題名)）は scanVideo が決める。内容の識別子が空の動画には
-// 結ばない。
+// Column order matches scanVideo; unidentified content has no override and scanVideo resolves the effective title.
 const overrideColumns = `(select ov.display_name from video_overrides ov
 		where ov.content_key = videos.content_key and videos.content_key <> '') as display_name,
 	(select ov.thumbnail_position_ms from video_overrides ov
@@ -32,14 +24,7 @@ const overrideColumns = `(select ov.display_name from video_overrides ov
 	(select ti.origin from thumbnail_images ti
 		where ti.content_key = videos.content_key and videos.content_key <> '') as thumbnail_image_origin`
 
-// SetDisplayName は動画 videoID の表示名を name にし、有効な題名を含む動画を返す。name は
-// domain.NormalizeDisplayName で整え、空（空白だけを含む）なら解除する。規則に合わなければ
-// *domain.InvalidDisplayNameError で、何も書かない。
-//
-// videoID は content_key へ引き直し（registeredContentKeysForVideoIDs）、登録フォルダの下に
-// 所在を持たない動画と内容の識別子が空の動画は domain.ErrNotFound にする。確定後に
-// domain.VideoOverrideChanged を1回発行し、表示名が変わったならすべてのスマートフォルダを名指す
-// domain.SmartFoldersChanged も発行する。
+// SetDisplayName normalizes or clears the name and requires registered, identified content; notify overrides and affected smart folders after commit.
 func (s *OverrideStore) SetDisplayName(ctx context.Context, videoID int64, name string) (domain.Video, error) {
 	normalized, _, err := domain.NormalizeDisplayName(name)
 	if err != nil {
@@ -79,7 +64,6 @@ func (s *OverrideStore) SetDisplayName(ctx context.Context, videoID int64, name 
 	if err != nil {
 		return domain.Video{}, err
 	}
-	// 表示名は検索の対象なので、変わればスマートフォルダの一致も変わりうる。
 	if err := s.db.commitMatchChangeIf(ctx, tx, before[keys[0]] != normalized,
 		domain.VideoOverrideChanged{VideoID: videoID}); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot update the display name: %w", err)
@@ -87,14 +71,7 @@ func (s *OverrideStore) SetDisplayName(ctx context.Context, videoID int64, name 
 	return video, nil
 }
 
-// SetDisplayNames は外部連携の一括操作で、changes の各動画の表示名を書き換え、反映後の
-// 動画を changes の順に返す（同じ動画を2度指せば2度返し、表示名は後の指定が勝つ）。
-//
-// 全体を1つの取引で行い、1件でも失敗すれば何も残さない。表示名が規則に合わなければ
-// *domain.DisplayNameAtError、動画を引けなければ（内容を読めていない動画を含む）
-// *domain.VideoRefNotFoundError（domain.ErrNotFound を包む）で、どちらも位置を運ぶ。
-// 件数の上限は呼び出し側が確かめる。確定後に、変えた動画ごとに domain.VideoOverrideChanged を
-// 発行し、表示名が変わった内容があれば domain.SmartFoldersChanged も発行する。
+// SetDisplayNames is atomic and preserves input order; repeated references use the last name and indexed errors identify invalid entries.
 func (s *OverrideStore) SetDisplayNames(ctx context.Context, changes []domain.DisplayNameChange) ([]domain.Video, error) {
 	names := make([]string, 0, len(changes))
 	refs := make([]domain.VideoRef, 0, len(changes))
@@ -130,8 +107,7 @@ func (s *OverrideStore) SetDisplayNames(ctx context.Context, changes []domain.Di
 		}
 		final[target.contentKey] = names[i]
 	}
-	// 更新日時は取引の初めと最後に残る名前を比べて進める。1 回ずつの書き込みの前後では
-	// 比べないので、一括で A→B→A と書いた内容は進まない。
+	// Compare initial and final names so A-to-B-to-A within one batch does not advance edit time.
 	edited := make([]string, 0, len(keys))
 	for _, key := range keys {
 		if before[key] != final[key] {
@@ -161,15 +137,13 @@ func (s *OverrideStore) SetDisplayNames(ctx context.Context, changes []domain.Di
 	for _, id := range ids {
 		events = append(events, domain.VideoOverrideChanged{VideoID: id})
 	}
-	// 表示名は検索の対象なので、変わればスマートフォルダの一致も変わりうる。
 	if err := s.db.commitMatchChangeIf(ctx, tx, len(edited) > 0, events...); err != nil {
 		return nil, fmt.Errorf("cannot update the display names: %w", err)
 	}
 	return out, nil
 }
 
-// displayNamesOf は内容の識別子 keys の今の表示名を返す。未設定の内容は空文字になる
-// （書く側も未設定を空文字で表すので、そのまま比べられる）。
+// Represent an unset display name as empty, matching the write representation.
 func displayNamesOf(ctx context.Context, tx *sql.Tx, keys []string) (map[string]string, error) {
 	out := make(map[string]string, len(keys))
 	for _, key := range keys {
@@ -185,8 +159,6 @@ func displayNamesOf(ctx context.Context, tx *sql.Tx, keys []string) (map[string]
 	return out, nil
 }
 
-// writeDisplayName は内容 key の表示名を name（空なら解除）にし、表示名も位置も無くなった
-// 行を消す。name は整え済みである。
 func writeDisplayName(ctx context.Context, tx *sql.Tx, key, name string, now time.Time) error {
 	if _, err := tx.ExecContext(ctx,
 		`insert into video_overrides (content_key, display_name, updated_at) values (?, ?, ?)
@@ -201,7 +173,6 @@ func writeDisplayName(ctx context.Context, tx *sql.Tx, key, name string, now tim
 	return nil
 }
 
-// deleteEmptyOverride は内容 key の行が表示名も位置も持たなければ消す。
 func deleteEmptyOverride(ctx context.Context, tx *sql.Tx, key string) error {
 	if _, err := tx.ExecContext(ctx,
 		`delete from video_overrides where content_key = ? and display_name is null and thumbnail_position_ms is null`,
@@ -212,19 +183,7 @@ func deleteEmptyOverride(ctx context.Context, tx *sql.Tx, key string) error {
 	return nil
 }
 
-// SetThumbnailPosition は動画 videoID の代表サムネイルの位置を positionMs にし（nil は解除）、
-// 反映後の動画を返す。
-//
-// 呼ぶのは internal/app の Ingest だけで、その位置（解除なら自動の位置）の画像を公開した
-// あと、生成の錠の中で呼ぶ。1 つの取引で、行を書き（位置も表示名も無くなれば消す）、位置を
-// 書くときは thumbnail_revision を「今のミリ秒時刻と前の値 + 1 の大きい方」にし、適用した画像の
-// 行（thumbnail_images）を消し、その内容の
-// 動画の thumbnail_state を done にして、代表サムネイルの代用（thumbnail_first_frame）と
-// 失敗（thumbnail_failed）の問題を消す。画像はもう置き場にあるので、残すと状態と画像が
-// 食い違う。
-//
-// videoID は content_key へ引き直し、引けなければ domain.ErrNotFound にする。確定後に
-// domain.VideoOverrideChanged を1回発行し、問題を消したときは domain.ScanChanged も発行する。
+// SetThumbnailPosition runs under the generation lock after publishing the image, atomically updating revision, thumbnail state and related issues.
 func (s *OverrideStore) SetThumbnailPosition(
 	ctx context.Context, videoID int64, positionMs *int64,
 ) (domain.Video, error) {
@@ -249,14 +208,11 @@ func (s *OverrideStore) SetThumbnailPosition(
 	if err := s.db.writeThumbnailPosition(ctx, tx, keys[0], positionMs, now); err != nil {
 		return domain.Video{}, err
 	}
-	// 位置の画像を公開したので、適用した画像の行は同じ取引で消す
-	//
 	imageRemoved, err := deleteThumbnailImage(ctx, tx, keys[0])
 	if err != nil {
 		return domain.Video{}, err
 	}
-	// 同じ位置の指定し直しでも画像は作り直すが、更新日時は位置か適用した画像が変わったときだけ
-	// 進める。
+	// Regeneration at the same position does not advance edit time unless the position or applied image changes.
 	if positionChanged || imageRemoved {
 		if err := touchEditedAt(ctx, tx, keys, now); err != nil {
 			return domain.Video{}, err
@@ -275,25 +231,20 @@ func (s *OverrideStore) SetThumbnailPosition(
 	}
 	events := []domain.Event{domain.VideoOverrideChanged{VideoID: videoID}}
 	if issuesCleared {
-		// 問題を消すと直近の取り込みの問題の一覧と状態（partial など）が変わる。仕事の成否の
-		// 記録（ProcessingChanged）を通らないので、ここで scan の知らせを出させる。
+		// Clearing issues changes import status without a processing event, so emit ScanChanged explicitly.
 		events = append(events, domain.ScanChanged{})
 	}
 	s.db.publishEvents(events...)
 	return video, nil
 }
 
-// SetThumbnailPosition は OverrideStore.SetThumbnailPosition と同じである。代表サムネイルの
-// 生成と記録を受け持つ internal/app の Ingest が、取り込みの保存先（app.IngestStore）として
-// 呼ぶ。
+// Expose the same operation through the ingest port used by thumbnail generation.
 func (s *IngestStore) SetThumbnailPosition(
 	ctx context.Context, videoID int64, positionMs *int64,
 ) (domain.Video, error) {
 	return (&OverrideStore{db: s.db}).SetThumbnailPosition(ctx, videoID, positionMs)
 }
 
-// thumbnailPositionDiffers は内容 key の今の代表サムネイルの位置が positionMs（nil は解除）と
-// 違うかを返す。解除どうしは同じである。
 func thumbnailPositionDiffers(ctx context.Context, tx *sql.Tx, key string, positionMs *int64) (bool, error) {
 	var current sql.NullInt64
 	err := tx.QueryRowContext(ctx,
@@ -308,13 +259,7 @@ func thumbnailPositionDiffers(ctx context.Context, tx *sql.Tx, key string, posit
 	return !current.Valid || current.Int64 != *positionMs, nil
 }
 
-// writeThumbnailPosition は内容 key の代表サムネイルの位置を positionMs（nil は解除）にする。
-// 位置を書くときは改版番号を「今のミリ秒時刻と前の値 + 1 の大きい方」にし、同じ位置の
-// 指定し直しでも、行を消して作り直しても前の値と重ならないようにする（R-6）。解除では
-// 改版番号も null にし、表示名も無ければ行を消す。
-//
-// 解除で行を消すと前の値は残らないので、同じミリ秒の中で解除と指定が続くと、時刻だけでは
-// 解除の前の値と重なる。この接続で最後に配った番号より大きくもして、それを防ぐ。
+// Allocate revisions above both the previous row and connection-wide last value so clear-and-reset in one millisecond cannot reuse a revision.
 func (db *DB) writeThumbnailPosition(ctx context.Context, tx *sql.Tx, key string, positionMs *int64, now time.Time) error {
 	if positionMs == nil {
 		if _, err := tx.ExecContext(ctx,
@@ -349,9 +294,7 @@ func (db *DB) writeThumbnailPosition(ctx context.Context, tx *sql.Tx, key string
 	return nil
 }
 
-// nextThumbnailRevision は「今のミリ秒時刻・前の値 + 1・この接続で最後に配った番号 + 1」の
-// 最も大きい値を配り、最後に配った番号として覚える。取引が確定しなかった番号は使われずに
-// 飛ぶだけである。
+// Use the maximum of current milliseconds and both previous revisions plus one; rolled-back allocations merely leave gaps.
 func (db *DB) nextThumbnailRevision(now time.Time, previous int64) int64 {
 	db.revisionMu.Lock()
 	defer db.revisionMu.Unlock()
@@ -360,8 +303,7 @@ func (db *DB) nextThumbnailRevision(now time.Time, previous int64) int64 {
 	return revision
 }
 
-// markThumbnailDoneForContent は内容 key の動画すべての thumbnail_state を done にし、
-// 代表サムネイルの代用と失敗の問題を消す。問題を1件でも消したかを返す。
+// Mark all videos sharing the content done and clear thumbnail substitution/failure issues.
 func markThumbnailDoneForContent(ctx context.Context, tx *sql.Tx, key string, now time.Time) (bool, error) {
 	ids, err := videoIDsForContentKey(ctx, tx, key)
 	if err != nil {
@@ -384,7 +326,6 @@ func markThumbnailDoneForContent(ctx context.Context, tx *sql.Tx, key string, no
 	return cleared, nil
 }
 
-// videoIDsForContentKey は内容 key の動画の id を返す。
 func videoIDsForContentKey(ctx context.Context, tx *sql.Tx, key string) ([]int64, error) {
 	rows, err := tx.QueryContext(ctx, `select id from videos where content_key = ?`, key)
 	if err != nil {

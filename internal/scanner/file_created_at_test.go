@@ -14,7 +14,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// runScanWithCreatedAt は作成日時の読み取りを差し替えて走査を1回実行する。
 func runScanWithCreatedAt(
 	t *testing.T, root string, index *fakeIndex, createdAt func(string, fs.FileInfo) (time.Time, bool),
 ) domain.ScanResult {
@@ -36,7 +35,6 @@ func fixedCreatedAt(at time.Time) func(string, fs.FileInfo) (time.Time, bool) {
 
 func unreadableCreatedAt(string, fs.FileInfo) (time.Time, bool) { return time.Time{}, false }
 
-// 新しいファイルは、OS が返す作成日時を UpsertVideo に渡す（受け入れ条件 4）。
 func TestScanPassesFileCreatedAtOfNewFile(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
 	path := filepath.Join(root, "a.mp4")
@@ -60,7 +58,7 @@ func TestScanPassesFileCreatedAtOfNewFile(t *testing.T) {
 		}
 	}
 	if !ok {
-		// Linux でも tmpfs など作成日時を持たないファイルシステムでは取れない。
+		// Some Linux filesystems, including tmpfs, lack creation time.
 		t.Logf("このファイルシステムは作成日時を返さなかった: %s", root)
 		if !got.IsZero() {
 			t.Fatalf("FileCreatedAt = %v, want ゼロ値", got)
@@ -75,7 +73,6 @@ func TestScanPassesFileCreatedAtOfNewFile(t *testing.T) {
 	}
 }
 
-// 差し替えた読み取りの値が、そのまま新しいファイルの登録に渡る。
 func TestScanPassesInjectedCreatedAtToUpsert(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
 	created := time.Date(2024, 5, 6, 7, 8, 9, 500, time.UTC)
@@ -91,7 +88,6 @@ func TestScanPassesInjectedCreatedAtToUpsert(t *testing.T) {
 	}
 }
 
-// 作成日時を読めなくても走査は失敗せず、ゼロ値で登録する（受け入れ条件 5）。
 func TestScanRegistersFileWhenCreatedAtIsUnreadable(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
 
@@ -105,21 +101,20 @@ func TestScanRegistersFileWhenCreatedAtIsUnreadable(t *testing.T) {
 		t.Fatalf("FileCreatedAt = %v, want ゼロ値", index.upserts[0].FileCreatedAt)
 	}
 
-	// 2 回目も、索引に値が無いので書き直さない。
+	// Do not rewrite absent creation time repeatedly.
 	runScanWithCreatedAt(t, root, index, unreadableCreatedAt)
 	if len(index.createdAtCalls) != 0 {
 		t.Fatalf("UpdateLocationCreatedAt = %+v, want 呼ばない", index.createdAtCalls)
 	}
 }
 
-// 変わっていないファイルの作成日時が索引と違えば、所在の列だけを書き直す
-// （Edge Case「既に登録済みの動画」）。中身の識別子も job も触らない。
+// Creation-time changes update only the location, without hashing or queuing jobs.
 func TestScanUpdatesCreatedAtOfUnchangedFile(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
 	path := filepath.Join(root, "a.mp4")
 
 	index := newFakeIndex()
-	// この feature より前に登録した所在（作成日時が null）を再現する。
+	// Model a legacy location with null creation time.
 	runScanWithCreatedAt(t, root, index, unreadableCreatedAt)
 	markProcessed(index)
 	upserts, jobs := len(index.upserts), len(index.jobs)
@@ -139,14 +134,13 @@ func TestScanUpdatesCreatedAtOfUnchangedFile(t *testing.T) {
 		t.Fatalf("result = %+v, want 対象 0", result)
 	}
 
-	// 索引が新しい値になったので、次の走査では書き直さない。
 	runScanWithCreatedAt(t, root, index, fixedCreatedAt(created))
 	if len(index.createdAtCalls) != 1 {
 		t.Fatalf("UpdateLocationCreatedAt = %d 回, want 1", len(index.createdAtCalls))
 	}
 }
 
-// 秒が同じなら、端数だけ違っても書き直さない（列は秒で持つ）。
+// Ignore subsecond changes because storage keeps whole seconds.
 func TestScanIgnoresSubsecondCreatedAtDifference(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
 
@@ -161,7 +155,6 @@ func TestScanIgnoresSubsecondCreatedAtDifference(t *testing.T) {
 	}
 }
 
-// 索引に値があるのに読めなくなった所在は、ゼロ値で書き直して null に戻す。
 func TestScanClearsCreatedAtThatBecameUnreadable(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
 	path := filepath.Join(root, "a.mp4")
@@ -186,7 +179,6 @@ func TestScanClearsCreatedAtThatBecameUnreadable(t *testing.T) {
 	}
 }
 
-// 作成日時を書き直せなかったファイルは、既存の動画の register_failed として報告する。
 func TestScanReportsCreatedAtUpdateFailure(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
 	path := filepath.Join(root, "a.mp4")
@@ -207,7 +199,7 @@ func TestScanReportsCreatedAtUpdateFailure(t *testing.T) {
 	}
 }
 
-// markProcessed は索引の行を処理済みにし、変わっていないファイルで job を積み直さないようにする。
+// Mark fixtures processed so unchanged files do not requeue jobs.
 func markProcessed(index *fakeIndex) {
 	for path, row := range index.rows {
 		row.ProbeState = domain.ProbeStateDone

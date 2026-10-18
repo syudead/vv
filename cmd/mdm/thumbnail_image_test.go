@@ -26,12 +26,10 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 適用したサムネイルの画像を、
-// 本物の保存層・生成物の置き場・取り込み・経路をつないで確かめる。ffmpeg の代わりに
-// frameGenerator が、どのコマから作ったかを中身に書く。
+// Verify thumbnail image application through real stores, ingestion, and routes; frameGenerator
+// replaces ffmpeg.
 
-// frameGenerator は代表サムネイルの中身を "frame:auto"（自動の位置）か "frame:<ms>"（指定の
-// 位置）にし、適用する画像には "fitted:" を前に付ける。
+// Fake frames encode "frame:auto" or "frame:<ms>"; applied images receive a "fitted:" prefix.
 type frameGenerator struct {
 	probeOnlyGenerator
 }
@@ -66,8 +64,6 @@ type thumbnailImageFixture struct {
 
 const thumbnailImageKey = "cd34ef56ab:5"
 
-// newThumbnailImageFixture は、自動の位置の代表サムネイルを作り終えた動画が1本ある
-// MDM_DATA_DIR を用意し、main と同じ組み立てで取り込みと経路をつなぐ。
 func newThumbnailImageFixture(t *testing.T) *thumbnailImageFixture {
 	t.Helper()
 	ctx := context.Background()
@@ -106,7 +102,6 @@ func newThumbnailImageFixture(t *testing.T) *thumbnailImageFixture {
 	return f
 }
 
-// scanAndGenerate は動画を取り込み、解析を記録して代表サムネイルの仕事を1件処理する。
 func (f *thumbnailImageFixture) scanAndGenerate() int64 {
 	f.t.Helper()
 	path := filepath.Join(f.mediaDir, "movie.mp4")
@@ -175,7 +170,6 @@ func (f *thumbnailImageFixture) decodeVideo(rec *httptest.ResponseRecorder) gen.
 	return video
 }
 
-// thumbnailBytes は配信される代表サムネイルの中身を返す。
 func (f *thumbnailImageFixture) thumbnailBytes() string {
 	f.t.Helper()
 	file, err := f.artifacts.ThumbnailFile(thumbnailImageKey)
@@ -215,8 +209,8 @@ func thumbnailURLString(video gen.Video) string {
 	return *video.ThumbnailUrl
 }
 
-// 適用のあと、代表サムネイルのファイルは行と同じバイト列になり、thumbnailUrl が変わる。動画の行を
-// 消して同じ内容を取り込み直すと、代表サムネイルの仕事は同じバイト列を公開する。
+// Reimporting identical content must republish the applied bytes and retain the changed thumbnail
+// URL.
 func TestAppliedThumbnailImageSurvivesRescan(t *testing.T) {
 	f := newThumbnailImageFixture(t)
 	before := thumbnailURLString(f.video())
@@ -242,7 +236,6 @@ func TestAppliedThumbnailImageSurvivesRescan(t *testing.T) {
 		t.Fatalf("thumbnailImage = %v", applied.ThumbnailImage)
 	}
 
-	// 動画の行を消すと、参照の無くなった生成物も消える。
 	if err := f.db.ScanIndex().DeleteVideos(f.ctx, []int64{f.videoID}); err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +246,7 @@ func TestAppliedThumbnailImageSurvivesRescan(t *testing.T) {
 	}
 
 	f.videoID = f.scanAndGenerate()
-	// 代表サムネイルの仕事は行の image を公開し直し、元の画像は使わない。
+	// Republish the stored image rather than regenerating the source frame.
 	if got := f.thumbnailBytes(); got != "fitted:edited" {
 		t.Fatalf("取り込み直したあとの代表サムネイル = %q, want 適用した画像", got)
 	}
@@ -262,8 +255,8 @@ func TestAppliedThumbnailImageSurvivesRescan(t *testing.T) {
 	}
 }
 
-// 適用のあとに位置を設定すると画像の行が消え、ファイルはその場面のコマになる。取り消しは位置が
-// あればその場面のコマへ、無ければ自動の位置のコマへ戻す。
+// Position changes clear the applied image; reset restores the selected frame, or the automatic
+// frame when no position is set.
 func TestThumbnailPositionAndRevertReplaceAppliedImage(t *testing.T) {
 	f := newThumbnailImageFixture(t)
 	if _, err := f.ingest.ApplyThumbnailImage(f.ctx, f.videoID, thumbnailImageKey, []byte("edited"), domain.ThumbnailImageGenerated); err != nil {
@@ -278,7 +271,6 @@ func TestThumbnailPositionAndRevertReplaceAppliedImage(t *testing.T) {
 		t.Fatalf("位置の設定のあとの代表サムネイル = %q", got)
 	}
 
-	// 位置があるときの取り消しは、その場面のコマへ戻す。
 	if _, err := f.ingest.ApplyThumbnailImage(f.ctx, f.videoID, thumbnailImageKey, []byte("again"), domain.ThumbnailImageGenerated); err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +282,6 @@ func TestThumbnailPositionAndRevertReplaceAppliedImage(t *testing.T) {
 		t.Fatalf("取り消しで位置が消えた: %v", reverted.ThumbnailPositionMs)
 	}
 
-	// 位置が無いときの取り消しは、自動の位置のコマへ戻す。
 	f.decodeVideo(f.serve(http.MethodPut, f.videoPath("/thumbnail-position"), `{"positionMs":null}`))
 	if _, err := f.ingest.ApplyThumbnailImage(f.ctx, f.videoID, thumbnailImageKey, []byte("third"), domain.ThumbnailImageGenerated); err != nil {
 		t.Fatal(err)
@@ -301,7 +292,6 @@ func TestThumbnailPositionAndRevertReplaceAppliedImage(t *testing.T) {
 	}
 }
 
-// どの動画も持たない内容への適用は content_changed で、ファイルも行も変えない。
 func TestApplyThumbnailImageToGoneContentWritesNothing(t *testing.T) {
 	f := newThumbnailImageFixture(t)
 	before := thumbnailURLString(f.video())

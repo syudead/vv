@@ -18,8 +18,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// fakeFolders は所在の一覧を持ち、接頭辞で絞って返す。集計そのものは本物の
-// domain.SummarizeFolder が行う。
 type fakeFolders struct {
 	roots     []domain.MediaFolder
 	locations []domain.FolderLocation
@@ -192,7 +190,6 @@ func TestFolderRoutesReturnNotFound(t *testing.T) {
 			wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonFolderNotFound})
 	}
 
-	// 登録フォルダ自身は動画が無くても存在する。
 	if rec := do(t, handler, http.MethodGet, "/api/folders/9"); rec.Code != http.StatusOK {
 		t.Errorf("empty root: status = %d, want 200", rec.Code)
 	}
@@ -272,8 +269,6 @@ func TestFolderRoutesWithoutStoreFailClosed(t *testing.T) {
 	}
 }
 
-// TestFolderRoutesDoNotLogCanceledRequests は、画面が先へ進んで打ち切られた要求の
-// 失敗をエラーとして記録しないことを確かめる。
 func TestFolderRoutesDoNotLogCanceledRequests(t *testing.T) {
 	var logs bytes.Buffer
 	folders := folderFixture()
@@ -291,7 +286,6 @@ func TestFolderRoutesDoNotLogCanceledRequests(t *testing.T) {
 		t.Fatalf("打ち切られた要求を記録した: %s", logs.String())
 	}
 
-	// 打ち切られていない要求の失敗は、これまでどおり記録する。
 	folders.listErr = errors.New("disk on fire")
 	do(t, handler, http.MethodGet, "/api/folders/3/videos")
 	if !strings.Contains(logs.String(), "disk on fire") {
@@ -299,8 +293,6 @@ func TestFolderRoutesDoNotLogCanceledRequests(t *testing.T) {
 	}
 }
 
-// 受け入れ条件 17: 配下すべてを検索すると、孫のフォルダにある動画も返り、
-// folder.path は登録フォルダからその所在が置かれたフォルダまでの相対パスになる。
 func TestListFolderVideosSearchesSubtree(t *testing.T) {
 	if filepath.Separator != '/' {
 		t.Skip("fixture uses slash-separated absolute paths")
@@ -340,14 +332,12 @@ func TestListFolderVideosSearchesSubtree(t *testing.T) {
 	}
 }
 
-// フォルダが無ければ、scope・query に関係なく 404 を返す。
 func TestListFolderVideosMissingFolderIgnoresScope(t *testing.T) {
 	handler := newTestServer(t, Options{Folders: folderFixture()})
 	for _, target := range []string{
 		"/api/folders/99/videos?scope=subtree&query=x",
 		"/api/folders/3/videos?path=missing&scope=subtree",
 		"/api/folders/3/videos?path=missing&scope=subtree&query=x",
-		// 条件の値が不正でも、フォルダが無ければ 404 を先に返す。
 		"/api/folders/3/videos?path=missing&scope=everywhere",
 		"/api/folders/3/videos?path=missing&watch=never",
 	} {
@@ -386,7 +376,6 @@ func TestFolderPreviewsExposeOnlyServeablePreviewURL(t *testing.T) {
 	}
 	handler := newTestServer(t, Options{Folders: folders, Catalog: catalog})
 
-	// 子フォルダのカードとしても、フォルダ自身としても同じ扱いになる。
 	for _, target := range []string{"/api/folders/3", "/api/folders/3?path=A"} {
 		rec := do(t, handler, http.MethodGet, target)
 		if rec.Code != http.StatusOK {
@@ -403,7 +392,7 @@ func TestFolderPreviewsExposeOnlyServeablePreviewURL(t *testing.T) {
 				urls[preview.VideoId] = *preview.PreviewUrl
 			}
 		}
-		// 1 は done でファイルがある。2 は done でもファイルが無く、3 は pending。
+		// 1 has a ready file; 2 is marked done without a file; 3 is pending.
 		want := map[int64]string{1: "/api/videos/1/preview?v=1111111111111111:1"}
 		if len(previews) != 3 || !maps.Equal(urls, want) {
 			t.Errorf("GET %s previews = %+v, preview URLs = %v, want %v", target, previews, urls, want)
@@ -414,8 +403,7 @@ func TestFolderPreviewsExposeOnlyServeablePreviewURL(t *testing.T) {
 	}
 }
 
-// 所有者が代表サムネイルの位置を指定した動画は、フォルダカードでも動画一覧と同じく
-// 版に改版番号を足した URL にする。URL が変わらないと、ブラウザが前の画像を使い続ける
+// Revisioned URLs must invalidate browser caches for folder-card thumbnails too.
 func TestFolderPreviewThumbnailURLCarriesRevision(t *testing.T) {
 	if filepath.Separator != '/' {
 		t.Skip("fixture uses slash-separated absolute paths")

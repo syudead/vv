@@ -17,18 +17,11 @@ import { FormDialog } from "../ui/patterns/form-dialog";
 import { Spinner } from "../ui/shadcn/spinner";
 import { kindTexts } from "./creditRows";
 
-/** candidateLimit は統合先の候補に出す最大の行数である。 */
 const candidateLimit = 8;
 
 /**
- * MergeCreditDialog は人物・団体の統合の窓である。タグの統合の窓（036）の統合元 1 件の形で、統合先は
- * `CreditCommand` の `inline` で選ぶ。候補は入力のたびに `GET /api/people?q=&limit=…` で
- * 引き、統合元を除き、作成の行は出さない。統合先を選ぶと確認の文（統合元の
- * `videoCount`）と「統合元 → 統合先」を出し、「Merge」を押せるようにする。
- *
- * 統合先か統合元がもう無いときは `onStale`（窓を閉じて一覧を取り直す）。親の輪
- * （`organization_parent_cycle`）と別名・外部 ID の上限（`work_info_too_many`）は窓の中の
- * 失敗の 1 行に出し、何も変えない。
+ * Exclude the source and creation option from merge candidates. Missing records call onStale;
+ * cycles and limit errors stay in the dialog.
  */
 export default function MergeCreditDialog({
   kind,
@@ -40,7 +33,7 @@ export default function MergeCreditDialog({
   kind: CreditKind;
   source: Credit;
   onClose: () => void;
-  /** 統合が成功したときに、統合先の最新の状態と統合の前の統合先（選んだ候補）を渡す。 */
+  /** Pass both the updated merge target and the previously selected candidate. */
   onMerged: (merged: Credit, target: Credit) => void;
   onStale: () => void;
 }) {
@@ -54,11 +47,10 @@ export default function MergeCreditDialog({
   const [searchError, setSearchError] = useState<UiText | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<UiText | null>(null);
-  // 候補を選んだ直後だけ「Merge」へフォーカスを移す。
+  // Move focus to Merge only immediately after selecting a candidate.
   const justSelectedRef = useRef(false);
 
-  // 入力が変わるたびに候補を引く（開いた直後の空の入力も同じ経路）。統合元の分を多く引いて
-  // 8 件に保つ。進行中の要求は次の入力で打ち切る。
+  // Fetch one extra candidate to retain eight after excluding the source; abort obsolete searches.
   useEffect(() => {
     const controller = new AbortController();
     setSearching(true);
@@ -114,7 +106,7 @@ export default function MergeCreditDialog({
     }
   }, [target]);
 
-  // 統合が失敗した直後は、まだ押せる操作へフォーカスを戻す（タグの統合の窓と同じ）。
+  // Restore focus to an enabled action after a failed merge.
   const restoreFocus = useEffectEvent(() => {
     (target !== null ? mergeButton : cancel).current?.focus();
   });
@@ -144,7 +136,7 @@ export default function MergeCreditDialog({
       const { credit: merged, notFoundIds } = await mergeCredits(kind, target.id, [
         source.id,
       ]);
-      // 統合元がもう無かったときは何も統合されていない。
+      // A missing source means no merge occurred.
       if (notFoundIds.includes(source.id)) {
         onStale();
         return;

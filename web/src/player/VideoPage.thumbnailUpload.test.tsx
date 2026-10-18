@@ -12,7 +12,6 @@ import type { PlayerControls } from "./playerControls";
 import type { PlayerStatus } from "./VideoPlayer";
 import VideoPage from "./VideoPage";
 
-// 動画ページから手元の画像をプレビューで確かめてサムネイルにする流れ
 //
 
 interface PlayerProps {
@@ -24,7 +23,7 @@ const playerMock = vi.hoisted(() => ({
   props: undefined as PlayerProps | undefined,
 }));
 
-// jsdom には canvas も画像の復号も無いので、読む・描く・PNG にするところを差し替える。
+// jsdom lacks canvas rendering and image decoding; replace those boundaries.
 const compose = vi.hoisted(() => ({
   loadUploadImage: vi.fn(),
   drawComposition: vi.fn(),
@@ -105,9 +104,7 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-/** server は経路ごとの応答を差し替えられる偽のサーバーである。 */
 const server = {
-  /** GET /api/videos/7 の答え。 */
   video,
   upload: vi.fn<(form: FormData) => Response | Promise<Response>>(),
   revert: vi.fn<() => Response>(),
@@ -162,7 +159,6 @@ function png(name = "photo.png") {
   });
 }
 
-/** chooseAndApply は画像を選び、開いたプレビューでそのまま適用する。 */
 async function chooseAndApply(file = png()) {
   choose(file);
   const dialog = await screen.findByRole("dialog", { name: "Preview thumbnail" });
@@ -348,7 +344,6 @@ describe("VideoPage thumbnail upload", () => {
     expect(form?.get("contentVersion")).toBe("r1");
     expect(compose.encodeComposition.mock.calls[0]?.[2]).toEqual({ mode: "contain" });
 
-    // 送信中に押しても、ピッカーもキャプチャも動かない。
     const input = screen.getByTestId<HTMLInputElement>("thumbnail-upload-input");
     const click = vi.spyOn(input, "click");
     fireEvent.click(entry());

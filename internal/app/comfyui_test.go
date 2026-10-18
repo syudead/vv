@@ -23,7 +23,6 @@ func (s *fakeComfyUIStore) SaveComfyUISettings(_ context.Context, settings domai
 	return nil
 }
 
-// 保存は保存済みのキーに要求を当て、規則に合わなければ保存しない。確かめはアダプタに任せる。
 func TestComfyUIConnectionSaveAndCheck(t *testing.T) {
 	store := &fakeComfyUIStore{settings: domain.ComfyUISettings{Provider: domain.ComfyUICloud, APIKey: "k"}}
 	probe := &fakeProbe{err: errors.New("cannot reach ComfyUI")}

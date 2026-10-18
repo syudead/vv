@@ -10,9 +10,6 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// /api/settings/plugin-proxy。本物の設定の保存先と
-// app.WorkInfoPluginProxy で組み、デスクトップ版の設定（NetworkSettings）は渡さない。
-
 const pluginProxyPath = "/api/settings/plugin-proxy"
 
 type pluginProxyFixture struct {
@@ -44,7 +41,6 @@ func (f *pluginProxyFixture) stored(t *testing.T) string {
 	return value
 }
 
-// 保存の前の GET は ""、保存の後は保存した値で、"" を保存すれば "" に戻る。デスクトップ版でなくても答える。
 func TestPluginProxySettingsRoundTrip(t *testing.T) {
 	f := newPluginProxyFixture(t)
 
@@ -73,7 +69,6 @@ func TestPluginProxySettingsRoundTrip(t *testing.T) {
 	}
 }
 
-// url が無いか規則に外れれば 400 invalid_request で、何も書かない。
 func TestPutPluginProxySettingsRejectsInvalidURL(t *testing.T) {
 	f := newPluginProxyFixture(t)
 	const kept = "http://proxy.example:3128"
@@ -96,7 +91,6 @@ func TestPutPluginProxySettingsRejectsInvalidURL(t *testing.T) {
 	}
 }
 
-// ゲストは見られず変えられない。
 func TestPluginProxySettingsAreOwnerOnly(t *testing.T) {
 	f := newPluginProxyFixture(t)
 

@@ -5,10 +5,6 @@ import { CardDragFace } from "./cardDrag";
 import FolderArt from "./FolderArt";
 import { type OrderedItem, orderedItemTitle, rowFacts } from "./ItemRowCells";
 
-/**
- * OrderedItemFace は持ち上げた動画かグループの写しの中身である。格子では動画のサムネイルか
- * グループのフォルダの絵柄、リストでは行のサムネイル。ライブラリの項目とグループの項目が同じ形を持つ。
- */
 export function OrderedItemFace({ item, list }: { item: OrderedItem; list: boolean }) {
   const title = orderedItemTitle(item);
   if (!list && item.kind === "group" && item.group !== undefined) {
@@ -36,11 +32,6 @@ export function OrderedItemFace({ item, list }: { item: OrderedItem; list: boole
   );
 }
 
-/**
- * useOrderedItemDrag はドラッグの層に渡す、項目の鍵の並び（`order`）、鍵から項目（`byKey`）、
- * 読み上げの名前（`nameOf`）、写しの中身（`preview`）である。ライブラリ、グループのページ、
- * フォルダ画面が共有する。
- */
 export function useOrderedItemDrag<T extends OrderedItem>(
   items: readonly T[],
   keyOf: (item: T) => string,

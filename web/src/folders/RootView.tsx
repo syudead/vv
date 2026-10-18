@@ -25,7 +25,6 @@ import { CardsLoading, FolderEmpty, GuestEmpty, LoadFailed } from "./states";
 import { useArrival } from "./useArrival";
 import { useConditions } from "./useConditions";
 
-/** RootView はフォルダ画面の最上位で、登録済みメディアフォルダを並べる。 */
 export default function RootView() {
   const {
     criteria,
@@ -40,17 +39,15 @@ export default function RootView() {
     clearAll,
     changeZoom: saveZoom,
   } = useConditions();
-  // ゲストには登録フォルダの絶対パスも、設定への入口も出さない
+  // Guests see neither absolute root paths nor settings links.
   //
   const owner = useAudience() === "owner";
-  // 倍率を変えても読んでいた位置を保つ（ライブラリと同じ）。
   const { listRef, capture } = useZoomAnchor(zoom);
   const changeZoom = (next: typeof zoom) => {
     capture();
     saveZoom(next);
   };
-  // 再生画面から検索結果へ戻ったときは控えから復元する（FolderView と同じ扱い）。
-  // 検索していなければ動画の一覧を持たないので、控えを探さない。
+  // Restore root search results from the snapshot when returning from playback.
   const [restored] = useState(() =>
     criteria.query === ""
       ? undefined
@@ -59,8 +56,7 @@ export default function RootView() {
   const heading = useArrival<HTMLHeadingElement>(restored !== undefined);
   const roots = useRootFolders();
   const folders = useMemo(() => roots.data?.folders ?? [], [roots.data?.folders]);
-  // パンくずと同じ規則（rootFolderName）で表示名を作る。絶対パスがあれば
-  // rootDisplayName で、ゲストの応答のように無ければサーバーの FolderSummary.name を使う。
+  // Match breadcrumb naming: use rootDisplayName with an absolute path, otherwise the server's name.
   const rootNames = useMemo(
     () =>
       new Map<number, RootDisplay>(
@@ -73,7 +69,6 @@ export default function RootView() {
   );
   const searching = criteria.query !== "";
 
-  // 取り込みが終わったら登録フォルダの集計を読み直す（Edge Case「取り込み中」）。
   const scan = useScanControls();
   const { refresh: refreshScan } = scan;
   const knownScanId = useRef(scan.finished?.id);
@@ -98,7 +93,7 @@ export default function RootView() {
                 : [{ label: t.folders.title }]
             }
           />
-          {/* 現在地はパンくずが見せるので、題は読み上げだけに置く。 */}
+          {/* Breadcrumbs show the location visually; keep the title screen-reader-only. */}
           <PageHeader titleHidden titleRef={heading} title={t.folders.title} />
         </>
       }
@@ -128,7 +123,7 @@ export default function RootView() {
         </TopBarPortal>
       }
     >
-      {/* 倍率を変える前の位置の目印を探す入れ物。間隔は骨格が持つので箱を作らない。 */}
+      {/* The zoom anchor wrapper must not introduce a layout box. */}
       <div ref={listRef} className="contents">
         {searching ? (
           <RootSearchResults

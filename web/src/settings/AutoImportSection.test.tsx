@@ -10,8 +10,7 @@ import {
 } from "../testing/autoImportServer";
 import { AutoImportStateSection, AutoImportSwitchSection } from "./AutoImportSection";
 
-// 状態の言葉と問題は AutoImportState.test.tsx、保存の振る舞いは AutoImportSwitch.test.tsx が
-// 確かめる。ここでは「Scan」と「Library」の 2 つのページの節の組み方を確かめる。
+// State and saving contracts have dedicated tests; this file checks Scan and Library section composition.
 
 describe("AutoImportStateSection", () => {
   const server = installAutoImportServer();

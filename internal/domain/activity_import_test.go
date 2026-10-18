@@ -2,8 +2,6 @@ package domain
 
 import "testing"
 
-// running の import の進み具合は、走っている段階（無ければ段階の順で最初の待っている段階）と終わった仕事が
-// ある段階の数である。待つか走る仕事が無ければ進み具合は無い。
 func TestImportActivityProgress(t *testing.T) {
 	for _, tc := range []struct {
 		name string

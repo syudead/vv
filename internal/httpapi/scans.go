@@ -8,14 +8,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// StartScan は取り込みを開始する（POST /api/scans）。
-//
-// すでに実行中なら新しく始めず、実行中のものを返す。409 にしないのは、
-// 利用者の意図が「今の状態を進めたい」であり、進行中ならそれを返すのが
-// 素直だからである。
-//
-// 応答は即座に返り、取り込みは背後で進む。走査中も一覧・再生の経路は通常
-// どおり応答する。
+// StartScan returns the ongoing scan rather than rejecting duplicates, while scanning continues asynchronously.
 func (s *server) StartScan(w http.ResponseWriter, r *http.Request) {
 	var body struct{}
 	if !s.readJSONBody(w, r, &body) {
@@ -26,7 +19,7 @@ func (s *server) StartScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 画面は新しく始めたかを区別せず、どちらも 202 にする（外部連携 API は区別する）。
+	// The UI API always returns 202, unlike the external API's new/existing distinction.
 	scan, _, err := s.scans.StartScan(r.Context())
 	if errors.Is(err, domain.ErrNoMediaFolders) {
 		s.writeError(w, http.StatusConflict, codeMediaFoldersNotConfigured, "Add a media folder first.")
@@ -41,8 +34,6 @@ func (s *server) StartScan(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, toAPIScan(scan), s.logger)
 }
 
-// GetCurrentScan は直近のスキャンの状態を返す（GET /api/scans/current）。
-// 実行中のものがあればそれを、無ければ最後に終わったものを返す。
 func (s *server) GetCurrentScan(w http.ResponseWriter, r *http.Request) {
 	if s.scans == nil {
 		s.internalError(w, "Scanning is not configured.", nil)
@@ -63,15 +54,13 @@ func (s *server) GetCurrentScan(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toAPIScan(scan), s.logger)
 }
 
-// 問題の一覧の1ページの件数（api/openapi.yaml の limit と同じ値）。
+// Keep issue page limits aligned with api/openapi.yaml.
 const (
 	defaultScanIssueLimit = 50
 	maxScanIssueLimit     = 200
 )
 
-// ListCurrentScanIssues は直近の取り込みの問題の一覧を返す
-// （GET /api/scans/current/issues、docs/design-docs/import-pipeline.md）。
-// 所有者だけの経路で、ゲストに返す経路の表（accessRoutes）には入れない。
+// Scan issues remain owner-only by omission from accessRoutes (docs/design-docs/import-pipeline.md).
 func (s *server) ListCurrentScanIssues(w http.ResponseWriter, r *http.Request, params gen.ListCurrentScanIssuesParams) {
 	if s.scans == nil {
 		s.internalError(w, "Scanning is not configured.", nil)
@@ -133,7 +122,6 @@ func (s *server) ListCurrentScanIssues(w http.ResponseWriter, r *http.Request, p
 	writeJSON(w, http.StatusOK, out, s.logger)
 }
 
-// toAPIScan は domain.Scan を契約の形へ写す。
 func toAPIScan(scan domain.Scan) gen.Scan {
 	out := gen.Scan{
 		Id:     scan.ID,
@@ -144,7 +132,7 @@ func toAPIScan(scan domain.Scan) gen.Scan {
 		},
 		State: gen.ScanState(scan.State),
 	}
-	// 状態と本数は internal/app が組み立てたものを写すだけにする。
+	// Use app-computed state and counts without recomputing them here.
 	if scan.Import.Counted {
 		out.Videos = &gen.ScanVideos{Total: scan.Import.Total, Settled: scan.Import.Settled}
 	}
@@ -159,8 +147,7 @@ func toAPIScan(scan domain.Scan) gen.Scan {
 		reason := scan.Error
 		out.Error = &reason
 	}
-	// コードと場所は failed の行だけに出す。アップグレード前の失敗にはコードが無い
-	//
+	// Only failed rows expose error code/path; older failures may lack a code.
 	if scan.State == domain.ScanFailed && scan.ErrorCode != "" {
 		code := gen.ScanErrorCode(scan.ErrorCode)
 		out.ErrorCode = &code
@@ -172,8 +159,7 @@ func toAPIScan(scan domain.Scan) gen.Scan {
 	return out
 }
 
-// toAPIScanActivity は今の処理を契約の形へ写す。利用者の言葉は SPA が kind から
-// 組み立てる。
+// The SPA translates activity kind into user-facing text.
 func toAPIScanActivity(activity domain.ScanActivity) *gen.ScanActivity {
 	out := &gen.ScanActivity{Kind: gen.ScanActivityKind(activity.Kind), FileName: activity.FileName()}
 	if activity.Located {

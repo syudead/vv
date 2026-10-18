@@ -1,6 +1,5 @@
-# 外部連携 API（api/external-v1.yaml）の oapi-codegen の設定。生成器の版は tools/go.mod で固定する。
-# 生成物は版管理に含めるが手編集しない。型を変えるときは api/external-v1.yaml を直す。
-# 画面は外部連携 API を呼ばないので、TypeScript は生成しない。
+# Generate Go bindings from external-v1.yaml using the version in tools/go.mod.
+# Edit the schema, never generated files; the UI does not use this API, so no TypeScript is generated.
 package: extgen
 output: internal/httpapi/extgen/api.gen.go
 output-options:

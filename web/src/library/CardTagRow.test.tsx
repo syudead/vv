@@ -58,12 +58,7 @@ describe("CardTagRow", () => {
   });
 
   it("ResizeObserver が測り直しても、幅が 0 のあいだは「+N」を出さない", () => {
-    // available width が測れない（0）ときは全部表示するので、収まりきらない状況は
-    // computeVisibleTagCount 側の単体テストで確かめる。ここでは +N の配線
-    // （押すとポップオーバーが開き、選ぶと onPress される）だけを、手で visibleCount
-    // 相当の状態を作らずに、コンポーネントの実装が実際の DOM 幅で決める前提のまま
-    // 確かめるのは難しいので、ResizeObserver のコールバックを直接発火させて
-    // 強制的に測り直させる。
+    // Overflow math is covered by computeVisibleTagCount; trigger measurement through ResizeObserver for component wiring.
     const observers: ResizeObserverCallback[] = [];
     class FakeResizeObserver {
       constructor(callback: ResizeObserverCallback) {
@@ -76,8 +71,7 @@ describe("CardTagRow", () => {
     vi.stubGlobal("ResizeObserver", FakeResizeObserver);
 
     renderRow({ tags: tags("旅行", "2024", "Anime") });
-    // jsdom は幅を0で返すため、この実装では available<=0 のとき全部表示になる。
-    // つまりここでは「+N」は出ない — その前提を確かめる。
+    // jsdom reports zero width, which intentionally shows all tags and no overflow trigger.
     expect(screen.queryByRole("button", { name: /^Show \d+ more tags?$/ })).toBeNull();
 
     vi.unstubAllGlobals();
@@ -104,9 +98,6 @@ describe("CardTagRow", () => {
     ).toBeDefined();
   });
 
-  // 受け入れ条件 6:
-  // フォルダ名からだけ付いたタグは面の無い破線の枠と Folder の目印で出し、
-  // 読み上げ名に「フォルダ名から」を添える。手でも付いていれば今の形のまま。
   describe("フォルダ由来のタグ", () => {
     const mixed: VideoTag[] = [
       {
@@ -190,8 +181,6 @@ describe("CardTagRow", () => {
     });
   });
 
-  // 受け入れ条件 4・5: 仮のタグは名前の後ろに破線の丸を置き、
-  // 読み上げ名に「(tentative)」を添える。面・文字の色・高さは確定したタグと同じ。
   describe("仮のタグ", () => {
     const mixed: VideoTag[] = [
       {
@@ -237,7 +226,6 @@ describe("CardTagRow", () => {
       expect(icon?.getAttribute("class")).toContain("size-3");
       expect(icon?.getAttribute("class")).toContain("shrink-0");
       expect(icon?.getAttribute("class")).toContain("text-muted-foreground");
-      // 名前が先（主）で、目印はその後ろ。名前だけが省略される。
       const name = tentative.firstElementChild;
       expect(name?.textContent).toBe("高画質");
       expect(name?.className).toContain("truncate");
@@ -250,7 +238,6 @@ describe("CardTagRow", () => {
         expect(chip.className).toContain("text-xs");
         expect(chip.className).toContain("text-muted-foreground");
       }
-      // 確定したタグには何も足さない。
       expect(confirmed.querySelector("svg")).toBeNull();
       expect(confirmed.textContent).toBe("夏");
     });
@@ -294,15 +281,11 @@ describe("CardTagRow", () => {
       const { container } = renderRow({ tags: mixed });
       const measure = container.querySelector("div[aria-hidden='true']");
       expect(measure).not.toBeNull();
-      // 測るための並びは仮のタグ 2 つに目印を持つ（ポップオーバーの中は
-      // 見えているチップと同じ TagChip なので、上の試験で足りる）。
       expect(measure?.querySelectorAll("svg.lucide-circle-dashed")).toHaveLength(2);
     });
   });
 
-  // docs/design-docs/library-ui.md: 一覧は開いたときに写さず、行と
-  // 同じ tags と測った数から毎回導く。jsdom は幅を測れないので、行の幅を 100、
-  // どのチップの幅も 40 と答えさせる。先頭の1つと「+N」だけが行に収まる。
+  // Derive open overflow from current tags; mock 100px row and 40px chips so one tag plus the trigger fits.
   describe("「+N」の一覧", () => {
     afterEach(() => vi.restoreAllMocks());
 
@@ -394,8 +377,6 @@ describe("CardTagRow", () => {
       expect(screen.queryByRole("dialog")).toBeNull();
     });
 
-    // 留めて開いた一覧はフォーカスを動かさず、押して開いた
-    // 一覧は最初のチップへフォーカスを移す。
     describe("開き方", () => {
       const overflow = () => screen.getByRole("button", { name: "Show 3 more tags" });
 
@@ -420,7 +401,7 @@ describe("CardTagRow", () => {
         expect(document.activeElement).toBe(focused);
 
         openByHover();
-        // Radix は開いた次の tick から外の押下を聞く。
+        // Radix begins listening for outside clicks on the next tick.
         act(() => vi.advanceTimersByTime(0));
         fireEvent.pointerDown(document.body, { pointerType: "mouse", button: 0 });
         fireEvent.click(document.body);
@@ -449,7 +430,6 @@ describe("CardTagRow", () => {
         screen.getByRole("button", { name: "Filter by 旅行" }).focus();
         await user.tab();
         expect(document.activeElement).toBe(overflow());
-        // 留めて開くまでの時間が過ぎても、フォーカスだけでは開かない。
         await act(
           () => new Promise((resolve) => setTimeout(resolve, HOVER_OPEN_DELAY_MS + 100)),
         );

@@ -10,8 +10,6 @@ import {
   withLength,
 } from "./addedLengthCriteria";
 
-// ライブラリの追加日と長さの絞り込み。
-
 function parse(search: string) {
   return parseAddedLength(new URLSearchParams(search));
 }
@@ -51,7 +49,6 @@ describe("validAddedLength", () => {
     );
     expect(validAddedLength({ addedWithin: 0 })).toBe(false);
     expect(validAddedLength({ minDuration: 10, maxDuration: 9 })).toBe(false);
-    // 長さはどちらの端も 0 以上 360000 秒以下の整数。
     expect(validAddedLength({ minDuration: -1 })).toBe(false);
     expect(validAddedLength({ maxDuration: 360001 })).toBe(false);
     expect(validAddedLength({ maxDuration: 1.5 })).toBe(false);

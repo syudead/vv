@@ -5,36 +5,24 @@ import { Separator } from "@/ui/shadcn/separator";
 import { Skeleton } from "@/ui/shadcn/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/ui/shadcn/toggle-group";
 
-// 移り先の一覧（区画）。ListPage の aside に置き、本体の移り先（日と月など）を 1 つ選ばせる。
-// lg からは h2 の下の縦の一覧（ghost の sm の大きさ、幅いっぱいで左寄せ）で、最後の区切りの
-// 後ろに action を置く。lg 未満では見出しを読み上げだけにし、outline の sm のチップを横に
-// 送る 1 行にして、action は置かない。押している項目は届いたときに見える位置へ送る。
-// 規則は web/registry/rules/patterns.md の Sections。
+// Jump navigation for ListPage aside; see web/registry/rules/patterns.md, Sections.
+// On narrow screens, use a scrolling chip row without the action; reveal the selected item when loaded.
 
-/** JumpListItem は移り先の 1 つである。 */
 export interface JumpListItem {
-  /** 選んだときに onValueChange へ渡す値。一覧の中で一意。 */
   value: string;
-  /** 見える名前（「Tue, Oct 7」「September」）。 */
   label: ReactNode;
 }
 
 export interface JumpListProps {
-  /** 見出し（「Jump to date」）。lg からは h2、lg 未満では読み上げだけ。 */
   title: string;
-  /** 区切りで分けた項目のまとまり（日、月）。新しい順。空のまとまりは描かない。 */
   groups: readonly (readonly JumpListItem[])[];
-  /** 押している項目の値。無ければ null。 */
   value: string | null;
-  /** 項目を選ぶ。押している項目をもう一度押すと null。 */
+  /** Selecting the active item again returns null. */
   onValueChange: (value: string | null) => void;
-  /** lg からだけ、最後の区切りの後ろに置く操作（ghost-destructive の sm の Button）。 */
   action?: ReactNode;
-  /** 項目を読んでいる間。Skeleton の行を描く。 */
   loading?: boolean;
-  /** 項目が 1 つも無いときの文言。lg から項目の位置に出し、lg 未満では帯ごと描かない。 */
+  /** Hide the entire narrow-screen strip when empty. */
   emptyText?: ReactNode;
-  /** 項目の読み込みに失敗した。文言と「Retry」を項目の位置に出す。 */
   failed?: { message: ReactNode; retryLabel: ReactNode; onRetry: () => void };
 }
 
@@ -54,7 +42,7 @@ export function JumpList({
   const items = filled.flat();
   const itemsKey = items.map((item) => item.value).join(" ");
 
-  // 押している項目を帯の見える位置へ送る（lg 未満の横に送る帯だけ。縦の欄では動かない）。
+  // Scroll only the narrow horizontal strip, never the wide vertical aside.
   useEffect(() => {
     const root = strip.current;
     if (root === null || value === null) return;
@@ -69,7 +57,7 @@ export function JumpList({
   }, [value, itemsKey]);
 
   let content: ReactNode;
-  // lg 未満で帯を描かないとき（項目が無い）は、区画ごと lg からにする。
+  // Hide the entire section below lg when the strip has no items.
   let narrowHidden = false;
   if (failed !== undefined) {
     content = (

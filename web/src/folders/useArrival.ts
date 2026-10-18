@@ -1,12 +1,11 @@
 import { useEffectEvent, useLayoutEffect, useRef } from "react";
 
-/** hasMounted はこのタブで最初の表示が済んだかを覚える。最初の表示ではフォーカスを動かさない。 */
+/** Do not move focus on this tab's initial mount. */
 let hasMounted = false;
 
 /**
- * useArrival は別のフォルダへ移ったとき、見出し（の題）へフォーカスを移して先頭へ
- * スクロールする。読み上げソフトの利用者が移動と現在地を知れるようにする。
- * 控えから戻ってきたとき（restoring）は、元の位置へ戻すのでどちらもしない。
+ * Focus the heading and scroll on folder navigation for accessibility; skip both when restoring a
+ * snapshot.
  */
 export function useArrival<T extends HTMLElement = HTMLHeadingElement>(
   restoring = false,
@@ -19,7 +18,7 @@ export function useArrival<T extends HTMLElement = HTMLHeadingElement>(
     }
     hasMounted = true;
   });
-  // 到着はフォルダごとに1回だけ扱う（FolderView は key でフォルダごとに作り直す）。
+  // Handle arrival once per keyed folder mount.
   useLayoutEffect(() => {
     arrive();
   }, []);

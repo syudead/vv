@@ -9,24 +9,9 @@ import { Button } from "../ui/shadcn/button";
 import { Input } from "../ui/shadcn/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 
-/**
- * 題名の文字。狭い幅はページの題の段（`text-xl`）、sm からは動画の題名の段（`text-video-title`、
- * web/registry/rules/foundations.md の Type）。
- */
 const titleType = "text-xl leading-snug font-semibold sm:text-video-title";
 
-/**
- * VideoTitle は再生画面の題名（`h1`）である。所有者には、その場で表示名を編集する入口と、
- * 表示名があるときの元のファイル名の行を添える。
- * ゲストには今の `h1` だけを出す。
- *
- * 保存は `PUT /api/videos/{id}/display-name` を 1 回送り、応答の動画を、送る直前に取った
- * detailMark と一緒に `onSaved` で渡す（呼び出し側が手元の動画を差し替える）。失敗したら編集を続け、入力の下に理由を
- * 1 行出す。404 では `onStale` で動画を取り直させる。
- *
- * 別の動画へ移ったら編集と失敗の行を持ち越さないよう、呼び出し側が動画の id を `key` に
- * して作り直す。
- */
+/** Return saved data with its pre-submit detail mark; refresh on 404. Callers key by video ID to reset editing on navigation. */
 export default function VideoTitle({
   video,
   owner,
@@ -44,8 +29,7 @@ export default function VideoTitle({
   const [failure, setFailure] = useState<UiText | null>(null);
   const editButton = useRef<HTMLButtonElement | null>(null);
   const input = useRef<HTMLInputElement | null>(null);
-  // 編集を始めるたび・終えるたびに進める。取り消した後に届いた応答は、動画の差し替えに
-  // だけ使い、編集の状態（失敗の行・編集の終わり）には触れない。
+  // Responses after cancellation may update video data but must not change the current editing state.
   const session = useRef(0);
   const request = useRef<AbortController | null>(null);
   const returnFocus = useRef(false);
@@ -88,8 +72,7 @@ export default function VideoTitle({
   const save = (event: FormEvent) => {
     event.preventDefault();
     if (sending) return;
-    // ファイル名と同じ表示名は作らない。前後に空白のあるファイル名の題名は、変えずに
-    // 保存しても送らない（送るとサーバーが空白を除いた表示名を作る）。
+    // Avoid creating a display name when unchanged; the server would trim whitespace from the original filename.
     if (
       video.displayName === undefined &&
       (draft === video.title || draft.trim() === video.title)
@@ -141,8 +124,6 @@ export default function VideoTitle({
               readOnly={sending}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={onInputKeyDown}
-              // 文字の左端を題名の左端にそろえる（左の余白 px-2 の分だけ左へ出す）。高さは
-              // 題名の文字に合わせて伸ばす。
               className={cn(titleType, "-mx-2 h-auto px-2 py-1 sm:mr-0 sm:flex-1")}
             />
             <div className="flex shrink-0 items-center gap-2">
@@ -186,7 +167,6 @@ export default function VideoTitle({
                 size="icon-sm"
                 aria-label={t.player.title.edit}
                 onClick={start}
-                // 縦の中心を題名の 1 行目にそろえる。
                 className="-mt-0.5 shrink-0 text-muted-foreground sm:mt-0.5"
               >
                 <Pencil aria-hidden="true" />

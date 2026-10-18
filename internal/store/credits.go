@@ -13,22 +13,18 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 人物と団体の保存。
-// 2 つの種類は表の名前だけが違うので、SQL は 1 回だけ書き、creditTables で名前を埋める。
+// People and organizations share SQL with trusted table names supplied by creditTables.
 
-// creditTables は種類ごとの表と列の名前である。
 type creditTables struct {
 	kind domain.CreditKind
-	// entity は実体の表、names は名前と別名、externalIDs は外部 ID、links は動画との結び付きの表。
+	// Entity, name/alias, external-ID and video-link tables.
 	entity, names, externalIDs, links string
-	// idColumn は names・externalIDs・links が実体を指す列。
-	idColumn string
-	// cursorKind は一覧のカーソルの先頭に置く一覧の種類。
+	// The entity reference column shared by name, external-ID and link tables.
+	idColumn   string
 	cursorKind string
-	// hasParent は実体の表が parent_id を持つ（団体）こと。
+	// Organizations have parent_id; people do not.
 	hasParent bool
-	// smartRef はスマートフォルダの条件でこの実体を名指す種類。
-	smartRef domain.SmartRuleRefKind
+	smartRef  domain.SmartRuleRefKind
 }
 
 var creditTablesByKind = map[domain.CreditKind]creditTables{
@@ -44,7 +40,6 @@ var creditTablesByKind = map[domain.CreditKind]creditTables{
 	},
 }
 
-// creditTablesFor は kind の表の名前を返す。知らない種類は誤り。
 func creditTablesFor(kind domain.CreditKind) (creditTables, error) {
 	t, ok := creditTablesByKind[kind]
 	if !ok {
@@ -53,14 +48,13 @@ func creditTablesFor(kind domain.CreditKind) (creditTables, error) {
 	return t, nil
 }
 
-// q は statement の {entity}・{names}・{ext}・{links}・{id} を表と列の名前に置き換える。
 func (t creditTables) q(statement string) string {
 	return strings.NewReplacer(
 		"{entity}", t.entity, "{names}", t.names, "{ext}", t.externalIDs, "{links}", t.links, "{id}", t.idColumn,
 	).Replace(statement)
 }
 
-// parentColumn は listed の parent_id に置く式である。人物では null。
+// People expose a null parent in the common listed relation.
 func (t creditTables) parentColumn() string {
 	if t.hasParent {
 		return `e.parent_id`
@@ -68,7 +62,7 @@ func (t creditTables) parentColumn() string {
 	return `null`
 }
 
-// Get は kind の実体 id を返す。無ければ domain.ErrNotFound。
+// Get returns domain.ErrNotFound for a missing entity.
 func (s *CreditStore) Get(ctx context.Context, kind domain.CreditKind, id int64) (domain.Credit, error) {
 	t, err := creditTablesFor(kind)
 	if err != nil {
@@ -86,8 +80,7 @@ func (s *CreditStore) Get(ctx context.Context, kind domain.CreditKind, id int64)
 	return credit, tx.Commit()
 }
 
-// Lookup は外部 ID (source, value) を持つ kind の実体を返す。無ければ domain.ErrNotFound。
-// 外部 ID は種類ごとに 1 つの実体だけが持つので、答えは高々 1 つである。
+// Lookup returns at most one entity because external IDs are unique per kind.
 func (s *CreditStore) Lookup(ctx context.Context, kind domain.CreditKind, source, value string) (domain.Credit, error) {
 	t, err := creditTablesFor(kind)
 	if err != nil {
@@ -112,9 +105,7 @@ func (s *CreditStore) Lookup(ctx context.Context, kind domain.CreditKind, source
 	return credit, tx.Commit()
 }
 
-// Create は kind の実体を作って返す。入力は domain.NormalizeCredit で整え、他の実体が持つ外部 ID は
-// *domain.CreditExternalIDTakenError、無い親の団体は *domain.CreditNotFoundError（Field は parentId）。
-// 人物では ParentID を読まない。
+// Create normalizes input and validates external-ID ownership and organization parents; people ignore ParentID.
 func (s *CreditStore) Create(ctx context.Context, kind domain.CreditKind, input domain.CreditInput) (domain.Credit, error) {
 	t, err := creditTablesFor(kind)
 	if err != nil {
@@ -154,8 +145,7 @@ func (s *CreditStore) Create(ctx context.Context, kind domain.CreditKind, input 
 	return credit, nil
 }
 
-// insertCredit は整え済みの input で t の実体を 1 つ作り、その id を返す。parentID は団体の親の id か nil で、
-// 人物では読まない。外部 ID が空いていることと親があることは呼び出し側が確かめる。
+// The caller must normalize input and validate external-ID availability and parent existence.
 func insertCredit(ctx context.Context, tx *sql.Tx, t creditTables, input domain.CreditInput, parentID any) (int64, error) {
 	statement := `insert into {entity} (created_at) values (?)`
 	args := []any{time.Now().Unix()}
@@ -180,11 +170,7 @@ func insertCredit(ctx context.Context, tx *sql.Tx, t creditTables, input domain.
 	return id, nil
 }
 
-// Update は kind の実体 id のうち patch にあるフィールドを置き換えて返す。一覧は丸ごと置き換える。
-// 入力は今の値に patch を重ねてから domain.NormalizeCredit で整えるので、新しい名前が残す別名と
-// 同じ綴りなら name の WorkInfoDuplicate になる。何も変わらなければ書かずに今の実体を返す。無ければ
-// domain.ErrNotFound、他の実体が持つ外部 ID は *domain.CreditExternalIDTakenError、親の団体が
-// 自分か子孫なら domain.ErrCreditParentCycle（新しい親から根まで parent_id をたどる）。
+// Update replaces supplied fields and whole lists, validates the merged input and rejects parent cycles; unchanged values are not written.
 func (s *CreditStore) Update(ctx context.Context, kind domain.CreditKind, id int64, patch domain.CreditPatch) (domain.Credit, error) {
 	t, err := creditTablesFor(kind)
 	if err != nil {
@@ -221,9 +207,7 @@ func (s *CreditStore) Update(ctx context.Context, kind domain.CreditKind, id int
 	return updated, nil
 }
 
-// patchedCredit は今の実体 current に patch を重ね、domain.NormalizeCredit で整えた入力を返す。
-// 別名が patch に無いとき、保存してある別名どうしは重ならないので、別名の Duplicate は新しい名前と
-// 残す別名の重なりである。その誤りは呼び手が送った name に付け替える。
+// When aliases are unchanged, a duplicate can only come from the new name; report it against the submitted name field.
 func patchedCredit(current domain.Credit, patch domain.CreditPatch) (domain.CreditInput, error) {
 	merged := domain.CreditInput{Name: current.Name, Aliases: current.Aliases, ExternalIDs: current.ExternalIDs}
 	if current.Parent != nil {
@@ -251,15 +235,13 @@ func patchedCredit(current domain.Credit, patch domain.CreditPatch) (domain.Cred
 	return normalized, err
 }
 
-// creditChangeSet は更新で変わる部分である。
 type creditChangeSet struct {
 	names, externalIDs, parent bool
 }
 
 func (c creditChangeSet) any() bool { return c.names || c.externalIDs || c.parent }
 
-// creditChanges は今の実体 current と整えた入力 next を比べる。別名と外部 ID は読み出しと同じ順に
-// 並べてから比べる。人物では親を比べない。
+// Compare aliases and external IDs in read order; people have no parent to compare.
 func creditChanges(t creditTables, current domain.Credit, next domain.CreditInput) creditChangeSet {
 	aliases := slices.Clone(next.Aliases)
 	domain.SortAliases(aliases)
@@ -282,8 +264,6 @@ func creditChanges(t creditTables, current domain.Credit, next domain.CreditInpu
 	return changes
 }
 
-// applyCreditChanges は Update の書き込みである。外部 ID と親を確かめてから、変わった部分の行を
-// 書き直す。
 func applyCreditChanges(ctx context.Context, tx *sql.Tx, t creditTables, id int64, next domain.CreditInput,
 	patch domain.CreditPatch, changes creditChangeSet,
 ) error {
@@ -323,9 +303,7 @@ func applyCreditChanges(ctx context.Context, tx *sql.Tx, t creditTables, id int6
 	return nil
 }
 
-// Delete は kind の実体 id を消す。名前・外部 ID・結び付きの行は外部キーで連鎖して消え、団体の子は
-// parent_id が null になる。結び付きが外れた (content_key, role) の位置は詰め直す。無ければ
-// domain.ErrNotFound。
+// Delete cascades names, IDs and links, clears child parents, and compacts affected link positions.
 func (s *CreditStore) Delete(ctx context.Context, kind domain.CreditKind, id int64) error {
 	t, err := creditTablesFor(kind)
 	if err != nil {
@@ -360,14 +338,7 @@ func (s *CreditStore) Delete(ctx context.Context, kind domain.CreditKind, id int
 	return nil
 }
 
-// Merge は sourceIDs の実体を同じ種類の targetID へ 1 つの取引で統合する。
-// 統合元の結び付きは統合先がその場所を引き継ぎ（統合先が既に同じ動画の同じ役割にあれば統合元の行を
-// 捨てて詰め直す）、名前と別名は統合先の別名になり（統合先が既に持つ綴りは捨てる）、外部 ID は統合先へ
-// 移り、統合元の団体の子は統合先の下へ付け替わり、統合元は消える。
-//
-// 統合先が無ければ domain.ErrNotFound、統合元に統合先があれば domain.ErrMergeSameCredit、統合元の
-// 団体が統合先の親の連鎖にあれば domain.ErrCreditParentCycle。統合後の別名が 50 件か外部 ID が 20 件を
-// 超えれば aliases か externalIds の WorkInfoTooMany で、どれも何も変えない。無い統合元は NotFoundIDs。
+// Merge transfers links, aliases, external IDs and children atomically; reject self-merges, parent cycles and merged limits.
 func (s *CreditStore) Merge(ctx context.Context, kind domain.CreditKind, targetID int64, sourceIDs []int64) (domain.CreditMergeOutcome, error) {
 	t, err := creditTablesFor(kind)
 	if err != nil {
@@ -401,8 +372,7 @@ func (s *CreditStore) Merge(ctx context.Context, kind domain.CreditKind, targetI
 	return domain.CreditMergeOutcome{Credit: credit, NotFoundIDs: notFound}, nil
 }
 
-// mergeSources は Merge の前の確かめである。統合先の有無、統合先そのものを含む統合元、親の輪を
-// 確かめ、今ある統合元と無い統合元を（重複を除いて現れた順に）返す。
+// Validate the target, self-merges and parent cycles; deduplicate sources in input order and report missing IDs.
 func mergeSources(ctx context.Context, tx *sql.Tx, t creditTables, targetID int64, sourceIDs []int64) ([]int64, []int64, error) {
 	unique := uniqueTagIDs(sourceIDs)
 	existing, err := existingCreditIDs(ctx, tx, t, append([]int64{targetID}, unique...))
@@ -438,8 +408,7 @@ func mergeSources(ctx context.Context, tx *sql.Tx, t creditTables, targetID int6
 	return merged, notFound, nil
 }
 
-// mergeCreditsInto は同じ取引の中で sourceIDs の実体を targetID へ移して消す。統合元の数によらず
-// 決まった数の文で行う（詰め直しを除く）。
+// Use a fixed number of statements regardless of source count, excluding position compaction.
 func mergeCreditsInto(ctx context.Context, tx *sql.Tx, t creditTables, targetID int64, sourceIDs []int64) error {
 	encoded, err := json.Marshal(sourceIDs)
 	if err != nil {
@@ -450,15 +419,14 @@ func mergeCreditsInto(ctx context.Context, tx *sql.Tx, t creditTables, targetID 
 		return err
 	}
 	statements := []struct{ what, statement string }{
-		// 統合元の行は位置を保ったまま統合先を指す。統合先が既に同じ (content_key, role) にあれば
-		// 一意の制約で書き換えずに残し、次の文で消す。
+		// Preserve link positions; uniqueness leaves conflicting source rows for the following delete.
 		{"move the links", `update or ignore {links} set {id} = ?1 where {id} in (select value from json_each(?2))`},
 		{"drop the links", `delete from {links} where {id} in (select value from json_each(?2))`},
-		// 名前は別名として足す。統合先が既に持つ綴りは主キーで捨てる。
+		// Insert source names as aliases, deduplicating through the primary key.
 		{"move the names", `insert or ignore into {names} ({id}, name, canonical, language, search_key, sort_key, search_version)
 			select ?1, name, 0, language, search_key, sort_key, search_version from {names}
 			 where {id} in (select value from json_each(?2))`},
-		// (source, value) は種類ごとに一意なので、統合先が同じものを持つことは無い。
+		// External IDs are unique per kind, so the target cannot already own a source ID.
 		{"move the external IDs", `update {ext} set {id} = ?1 where {id} in (select value from json_each(?2))`},
 	}
 	if t.hasParent {
@@ -477,12 +445,10 @@ func mergeCreditsInto(ctx context.Context, tx *sql.Tx, t creditTables, targetID 
 	if err := renumberCreditLinks(ctx, tx, t, affected); err != nil {
 		return err
 	}
-	// スマートフォルダの条件が名指す統合元を統合先にする。
 	return rewriteSmartRuleRefs(ctx, tx, t.smartRef, targetID, sourceIDs)
 }
 
-// checkMergedCreditLimits は統合後の統合先の別名と外部 ID の件数を数え、上限を超えれば
-// *domain.InvalidWorkInfoError を返す（呼び手が取引を巻き戻す）。
+// Reject merged limits before commit so the caller can roll back the entire merge.
 func checkMergedCreditLimits(ctx context.Context, tx *sql.Tx, t creditTables, targetID int64) error {
 	var aliases, externalIDs int
 	if err := tx.QueryRowContext(ctx, t.q(`select
@@ -499,7 +465,6 @@ func checkMergedCreditLimits(ctx context.Context, tx *sql.Tx, t creditTables, ta
 	return nil
 }
 
-// existingCreditIDs は ids のうち今ある実体の id の集合を返す。
 func existingCreditIDs(ctx context.Context, tx *sql.Tx, t creditTables, ids []int64) (map[int64]bool, error) {
 	encoded, err := json.Marshal(ids)
 	if err != nil {
@@ -521,8 +486,7 @@ func existingCreditIDs(ctx context.Context, tx *sql.Tx, t creditTables, ids []in
 	return existing, rows.Err()
 }
 
-// organizationAncestors は団体 id から根まで parent_id をたどった祖先の集合を返す（id は含まない）。
-// 保存してある連鎖は輪にならない（invariants_test.go）が、念のため一度見た団体で止まる。
+// Stop at previously visited parents defensively, although stored hierarchies must be acyclic.
 func organizationAncestors(ctx context.Context, tx *sql.Tx, id int64) (map[int64]bool, error) {
 	ancestors := map[int64]bool{}
 	current := id
@@ -543,9 +507,7 @@ func organizationAncestors(ctx context.Context, tx *sql.Tx, id int64) (map[int64
 	}
 }
 
-// checkCreditParent は parentID が団体 id（作るときは 0）の親になれるかを確かめる。無い団体は
-// *domain.CreditNotFoundError（Field は parentId）、id そのものか、parentID から根までの連鎖に id が
-// あれば（parentID が id の子孫なら）domain.ErrCreditParentCycle。
+// Reject missing parents and any parent chain that reaches the child itself.
 func checkCreditParent(ctx context.Context, tx *sql.Tx, t creditTables, id, parentID int64) error {
 	existing, err := existingCreditIDs(ctx, tx, t, []int64{parentID})
 	if err != nil {
@@ -570,7 +532,6 @@ func checkCreditParent(ctx context.Context, tx *sql.Tx, t creditTables, id, pare
 	return nil
 }
 
-// externalIDHolder は外部 ID を持つ kind の実体の id を返す。exceptID（0 なら無し）の実体は数えない。
 func externalIDHolder(ctx context.Context, tx *sql.Tx, t creditTables, id domain.ExternalID, exceptID int64) (int64, bool, error) {
 	var holder int64
 	err := tx.QueryRowContext(ctx, t.q(`select {id} from {ext} where source = ? and value = ? and {id} <> ?`),
@@ -584,8 +545,7 @@ func externalIDHolder(ctx context.Context, tx *sql.Tx, t creditTables, id domain
 	return holder, true, nil
 }
 
-// checkExternalIDsFree は整えた外部 ID のどれかを selfID 以外の実体が持てば
-// *domain.CreditExternalIDTakenError を返す。Field の位置は呼び手が送った一覧 raw の位置である。
+// Report conflicts at the index in the caller's original external-ID list.
 func checkExternalIDsFree(ctx context.Context, tx *sql.Tx, t creditTables, selfID int64, normalized, raw []domain.ExternalID) error {
 	for _, id := range normalized {
 		holder, found, err := externalIDHolder(ctx, tx, t, id, selfID)
@@ -601,7 +561,6 @@ func checkExternalIDsFree(ctx context.Context, tx *sql.Tx, t creditTables, selfI
 	return nil
 }
 
-// writeCreditNames は実体 id の正規の名前と別名の行を書く。照合用の鍵と並びの鍵も同じ文で書く。
 func writeCreditNames(ctx context.Context, tx *sql.Tx, t creditTables, id int64, name string, aliases []domain.Alias) error {
 	statement := t.q(`insert into {names} ({id}, name, canonical, language, search_key, sort_key, search_version)
 		values (?, ?, ?, ?, ?, ?, ?)`)
@@ -627,7 +586,6 @@ func writeCreditNames(ctx context.Context, tx *sql.Tx, t creditTables, id int64,
 	return nil
 }
 
-// writeCreditExternalIDs は実体 id の外部 ID の行を書く。
 func writeCreditExternalIDs(ctx context.Context, tx *sql.Tx, t creditTables, id int64, ids []domain.ExternalID) error {
 	statement := t.q(`insert into {ext} ({id}, source, value) values (?, ?, ?)`)
 	for _, external := range ids {
@@ -638,12 +596,11 @@ func writeCreditExternalIDs(ctx context.Context, tx *sql.Tx, t creditTables, id 
 	return nil
 }
 
-// creditLinkList は結び付きの一覧 1 つ（動画の利用者データの鍵と役割）である。
 type creditLinkList struct {
 	contentKey, role string
 }
 
-// creditLinkLists は ids の実体が結び付いている一覧を返す。消すか統合した後に詰め直す対象である。
+// Return link lists requiring compaction after deletion or merge.
 func creditLinkLists(ctx context.Context, tx *sql.Tx, t creditTables, ids []int64) ([]creditLinkList, error) {
 	encoded, err := json.Marshal(ids)
 	if err != nil {
@@ -666,10 +623,7 @@ func creditLinkLists(ctx context.Context, tx *sql.Tx, t creditTables, ids []int6
 	return lists, rows.Err()
 }
 
-// renumberCreditLinks は一覧ごとに位置を今の並びのまま 0 から詰め直す。並びを先に読み切り、位置の
-// 小さい行から書く。詰めた位置はいつも今の位置以下で、それより小さい位置は書き終えているので、
-// (content_key, role, position) の主キーが途中で重ならない（renumberPlaylists と同じく、相関
-// 副問い合わせで数える 1 文の update は使わない）。
+// Compact positions in ascending order after reading them all; each destination is already free, avoiding primary-key collisions.
 func renumberCreditLinks(ctx context.Context, tx *sql.Tx, t creditTables, lists []creditLinkList) error {
 	update := t.q(`update {links} set position = ? where content_key = ? and role = ? and position = ?`)
 	for _, list := range lists {
@@ -707,9 +661,7 @@ func creditLinkPositions(ctx context.Context, tx *sql.Tx, t creditTables, list c
 	return positions, rows.Err()
 }
 
-// RefreshSearchKeys は search_version が現在の版より小さい人物・団体の名前の行の search_key と
-// sort_key、作品情報の行の code_key を作り直し、作り直した行の数を返す。
-// 起動時、TagStore.RefreshSearchKeys の後で呼ぶ。
+// RefreshSearchKeys upgrades credit name and work-code keys at startup after tag keys are refreshed.
 func (s *CreditStore) RefreshSearchKeys(ctx context.Context) (int, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -736,13 +688,11 @@ func (s *CreditStore) RefreshSearchKeys(ctx context.Context) (int, error) {
 	return refreshed, nil
 }
 
-// staleKeyRow は鍵を作り直す行 1 件（実体か作品情報の鍵と、畳み込む値）である。
 type staleKeyRow struct {
 	id    any
 	value string
 }
 
-// staleKeyRows は query（版を 1 つの引数で受け、鍵と値の 2 列を返す）の行を読み切る。
 func staleKeyRows(ctx context.Context, tx *sql.Tx, query string) ([]staleKeyRow, error) {
 	rows, err := tx.QueryContext(ctx, query, domain.SearchKeyVersion)
 	if err != nil {

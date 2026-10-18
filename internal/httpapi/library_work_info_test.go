@@ -11,10 +11,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 一覧の person と organization。
-
-// creditFilterFixture は newLibraryFixture に、花子を ep1 の出演者と solo の監督に、メーカー A を
-// ep1 と p1 に結んだものである。show の当たったメンバーは ep1 だけなので、show は動画の項目 ep1 になる。
+// The person links ep1 as performer and solo as director; the organization links ep1/p1, leaving only ep1 matched within show.
 func creditFilterFixture(t *testing.T) (f *libraryFixture, person, organization string) {
 	t.Helper()
 	f = newLibraryFixture(t)
@@ -74,7 +71,6 @@ func TestListLibraryFiltersByPersonAndOrganization(t *testing.T) {
 	}
 }
 
-// GET /api/videos と GET /api/library/ids も同じ動画に絞る。
 func TestListVideosAndLibraryIdsFilterByPerson(t *testing.T) {
 	f, person, _ := creditFilterFixture(t)
 	want := []int64{f.ids["ep1"], f.ids["solo"]}
@@ -105,7 +101,6 @@ func TestListVideosAndLibraryIdsFilterByPerson(t *testing.T) {
 	}
 }
 
-// 正の整数でない値は 400 invalid_request、ゲストからは 400 guest_filter_not_allowed である。
 func TestCreditFiltersRejectInvalidValuesAndGuests(t *testing.T) {
 	f, person, organization := creditFilterFixture(t)
 	invalid := wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}

@@ -11,8 +11,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ListMediaFolders は登録済みのメディアフォルダを返す。走査と設定と閲覧が
-// 同じものを読むので、SQL は listMediaFolders の1か所に置く。
 func (s *SettingsStore) ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error) {
 	return listMediaFolders(ctx, s.db.sql)
 }
@@ -69,25 +67,22 @@ func (s *SettingsStore) AddMediaFolder(ctx context.Context, path string) (domain
 	if err != nil {
 		return domain.MediaFolder{}, err
 	}
-	// 登録の無いまま残っていた所在は鍵が空なので、新しい登録の下にある分を作り直す。
+	// Previously unregistered locations have empty keys; rebuild those covered by the new root.
 	if err := refreshSearchKeysUnder(ctx, tx, cleaned); err != nil {
 		return domain.MediaFolder{}, err
 	}
-	// 新しい登録の下の所在がグループに入りうる。
 	changedGroups, err := rebuildFolderIndex(ctx, tx)
 	if err != nil {
 		return domain.MediaFolder{}, err
 	}
-	// 登録外の所在しか無かった待ちの仕事が、この登録で取り出せるようになる。
-	// その動画を直近の取り込みの対象に加える。
+	// Newly registered locations can make queued jobs claimable; include their videos in the latest import.
 	if err := addScanVideosWithRemainingJobs(ctx, tx); err != nil {
 		return domain.MediaFolder{}, err
 	}
-	// 眠っているワーカーを起こさないと、次に仕事が積まれるまで止まったままになる。
+	// Wake idle workers now rather than waiting for another enqueue.
 	var c changes
 	c.groupsChanged(changedGroups)
 	c.jobsQueued(domain.JobKinds...)
-	// 登録フォルダの中にあるかで、問題の一覧に出る件とライブラリにある動画が変わる。
 	c.issuesChanged()
 	c.matchesChanged()
 	if err := s.db.commit(ctx, tx, &c); err != nil {
@@ -139,7 +134,7 @@ func (s *SettingsStore) ReplaceMediaFolder(ctx context.Context, id, expectedVers
 	if err := syncLocationsUnder(ctx, tx, cleaned); err != nil {
 		return domain.MediaFolder{}, err
 	}
-	// 相対パスは登録フォルダからの位置なので、新しい登録の下の所在の鍵を作り直す。
+	// Relative-path keys depend on the registered root and must be rebuilt after relocation.
 	if err := refreshSearchKeysUnder(ctx, tx, cleaned); err != nil {
 		return domain.MediaFolder{}, err
 	}
@@ -147,16 +142,13 @@ func (s *SettingsStore) ReplaceMediaFolder(ctx context.Context, id, expectedVers
 	if err != nil {
 		return domain.MediaFolder{}, err
 	}
-	// 付け替え先で着手できるようになった仕事の動画を、直近の取り込みの対象に加える。
 	if err := addScanVideosWithRemainingJobs(ctx, tx); err != nil {
 		return domain.MediaFolder{}, err
 	}
 	var c changes
 	c.groupsChanged(changedGroups)
 	c.videosDeleted(released)
-	// 付け替え先に所在を持つ待ちの仕事が取り出せるようになる（AddMediaFolder と同じ）。
 	c.jobsQueued(domain.JobKinds...)
-	// 登録フォルダの中にあるかで、問題の一覧に出る件とライブラリにある動画が変わる。
 	c.issuesChanged()
 	c.matchesChanged()
 	if err := s.db.commit(ctx, tx, &c); err != nil {
@@ -190,7 +182,7 @@ func (s *SettingsStore) DeleteMediaFolder(ctx context.Context, id, expectedVersi
 	if err := domain.CheckMediaFolderMutation(running); err != nil {
 		return err
 	}
-	// 外れた動画の数（記録の detail）を数えるため、所在がこのフォルダの下にある動画を消す前に読む。
+	// Read affected videos before deleting locations to record how many leave the library.
 	_, underFolder, err := locationsUnder(ctx, tx, path)
 	if err != nil {
 		return err
@@ -206,37 +198,26 @@ func (s *SettingsStore) DeleteMediaFolder(ctx context.Context, id, expectedVersi
 	if err != nil {
 		return err
 	}
-	// 登録外になった所在はグループにもフォルダ名にも入らない。
 	changedGroups, err := rebuildFolderIndex(ctx, tx)
 	if err != nil {
 		return err
 	}
 	var c changes
 	c.groupsChanged(changedGroups)
-	// 登録を外して消えた動画の生成物を片付けさせる。
 	c.videosDeleted(released)
-	// 動画の行が残っても、登録外になった所在の仕事は残りとして数えなくなる。
+	// Jobs without registered locations no longer count as remaining, even if their video row survives.
 	c.processingChanged()
-	// 登録外になった所在の問題は、一覧にも本数にも入らなくなる。
 	c.issuesChanged()
-	// 登録外になった所在の動画はライブラリから出る。
 	c.matchesChanged()
-	// 取り出せる代表サムネイルの仕事が減ると、待っていたシーク用サムネイルが
-	// 取り出せるようになる（domain.ClaimConditionFor）。動画の行が残ると
-	// VideoIngestChanged も出ないので、ここで起こさないと次に仕事が積まれるまで
-	// 止まったままになる。
+	// Removing thumbnail work can unblock seek jobs; surviving videos emit no ingest event, so wake workers explicitly.
 	c.jobsQueued(domain.JobSeekThumbnail)
-	// 登録の解除は所有者の操作として、外れた動画の数とともに記録する。
 	if err := recordMediaFolderRemoval(ctx, tx, &c, path, removed, time.Now()); err != nil {
 		return err
 	}
 	return s.db.commit(ctx, tx, &c)
 }
 
-// ensureFolderPlacementAllowed は取引の中で走査の有無と登録済みのフォルダを
-// 読み、path へフォルダを置いてよいかを domain の規則で判断する。取引の外で
-// 同じ判断を済ませていても、ここで読み直す。その間に別の要求が走査を始めたり
-// フォルダを登録したりしうるためである。
+// Recheck scans and registered folders inside the transaction because concurrent requests can invalidate earlier placement checks.
 func ensureFolderPlacementAllowed(ctx context.Context, tx *sql.Tx, id int64, path string) error {
 	running, err := scanRunning(ctx, tx)
 	if err != nil {
@@ -249,7 +230,6 @@ func ensureFolderPlacementAllowed(ctx context.Context, tx *sql.Tx, id int64, pat
 	return domain.CheckMediaFolderPlacement(running, folders, id, path)
 }
 
-// scanRunning は実行中の走査があるかを返す。
 func scanRunning(ctx context.Context, tx *sql.Tx) (bool, error) {
 	var running int
 	if err := tx.QueryRowContext(ctx, `select count(*) from scans where state = 'running'`).Scan(&running); err != nil {
@@ -258,11 +238,7 @@ func scanRunning(ctx context.Context, tx *sql.Tx) (bool, error) {
 	return running != 0, nil
 }
 
-// locationsUnder は root 配下の場所の id と、その場所を持つ動画の id を返す。
-//
-// 反復の打ち切りを検査せずにこの集合を使うと、途中で失敗しても部分集合のまま
-// 成功として扱われ、フォルダの削除や同期が黙って一部にしか適用されない。
-// 呼び出し側ごとに書くと検査の漏れも各所に散るので、1か所に集める。
+// Check iteration errors centrally so callers never treat a partial location set as a successful deletion or synchronization.
 func locationsUnder(ctx context.Context, tx *sql.Tx, root string) (ids []int64, videoIDs map[int64]struct{}, err error) {
 	rows, err := tx.QueryContext(ctx, `select id, video_id, path from video_locations`)
 	if err != nil {
@@ -288,8 +264,7 @@ func locationsUnder(ctx context.Context, tx *sql.Tx, root string) (ids []int64, 
 	return ids, videoIDs, nil
 }
 
-// countVideosOutOfLibrary は動画 videoIDs のうち、登録フォルダの下の所在が 1 つも無い（ライブラリから外れた）
-// 動画の数を返す。行を消した動画も、登録外の所在だけが残った動画も数える。
+// Count both deleted videos and surviving videos left with only unregistered locations.
 func countVideosOutOfLibrary(ctx context.Context, tx *sql.Tx, videoIDs map[int64]struct{}) (int, error) {
 	ids := make([]int64, 0, len(videoIDs))
 	for id := range videoIDs {
@@ -308,8 +283,6 @@ func countVideosOutOfLibrary(ctx context.Context, tx *sql.Tx, videoIDs map[int64
 	return count, nil
 }
 
-// removeLocationsUnder は root 以下の所在を消し、所在が無くなった動画の行も消す。
-// 消した動画を返す。
 func removeLocationsUnder(ctx context.Context, tx *sql.Tx, root string) ([]domain.DeletedVideo, error) {
 	ids, affected, err := locationsUnder(ctx, tx, root)
 	if err != nil {

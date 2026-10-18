@@ -11,13 +11,11 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// groupItem はグループの動画の項目1件である。Folder は from_folder = 1 かどうか。
 type groupItem struct {
 	Key    string
 	Folder bool
 }
 
-// groupRow はグループ1つと、その項目を位置の順に持つ。
 type groupRow struct {
 	ID     int64
 	Name   string
@@ -25,7 +23,6 @@ type groupRow struct {
 	Items  []groupItem
 }
 
-// readGroups は groups と動画の項目を id と位置の順に読む。
 func readGroups(t *testing.T, db *DB) []groupRow {
 	t.Helper()
 	rows, err := db.sql.Query(`select g.id, g.name, g.title_key, coalesce(g.origin_folder, ''), i.content_key, i.from_folder
@@ -113,15 +110,12 @@ func rebuildIndex(t *testing.T, db *DB) {
 	}
 }
 
-// moveLocation は所在 from を to へ移す（to に所在を足し、from の所在を消す）。
 func moveLocation(t *testing.T, db *DB, from, to, key string) {
 	t.Helper()
 	id := upsertFolderVideo(t, db, to, key)
 	removeLocation(t, db, id, from)
 }
 
-// 移行は今のフォルダグループごとに、その名前、利用者データの鍵のメンバー、その順番を持つ
-// グループを 1 つ作る。Down は表を落とす。
 func TestGroupsMigrationSeedsFromFolderGroups(t *testing.T) {
 	db, provider := migrateTo(t, 42)
 	ctx := context.Background()
@@ -134,7 +128,6 @@ func TestGroupsMigrationSeedsFromFolderGroups(t *testing.T) {
 	execSQL(t, db, `insert into folder_groups (id, path_key, path, name, title_key) values
 		(10, '/m/show', '/m/Show', 'Show', ?), (20, '/m/other', '/m/Other', 'Other 2', ?)`,
 		domain.NaturalSortKey("Show"), domain.NaturalSortKey("Other 2"))
-	// 動画 4 は content_key が空なので写さず、位置は詰め直す。
 	execSQL(t, db, `insert into folder_group_members (video_id, group_id, position) values
 		(2, 10, 0), (4, 10, 1), (3, 10, 2), (1, 10, 3), (5, 20, 0)`)
 
@@ -171,8 +164,7 @@ func TestGroupsMigrationSeedsFromFolderGroups(t *testing.T) {
 	}
 }
 
-// 旧 folder_groups.name には長さの上限が無い。101 文字以上の名前は、同期が新しく作るときと同じく
-// 先頭 100 文字に切り、title_key も切った名前から作る。境目をまたぐ数字の並びも切った名前で数える。
+// Truncate legacy names before computing natural-sort keys, including digit runs crossing the boundary.
 func TestGroupsMigrationCutsLongFolderGroupNames(t *testing.T) {
 	db, provider := migrateTo(t, 42)
 	long := strings.Repeat("あ", 99) + "12 end"
@@ -191,8 +183,6 @@ func TestGroupsMigrationCutsLongFolderGroupNames(t *testing.T) {
 	}
 }
 
-// 規則がグループにする新しいフォルダにファイル名順のグループができ、フォルダに足したファイルは
-// 末尾に足され、フォルダの外へ移したファイルは外れる。直下の動画が 1 本になってもグループは残る。
 func TestSyncFolderGroupsFollowsTheFolder(t *testing.T) {
 	db := migratedDB(t)
 	show := fixturePath("/media/Show")
@@ -215,7 +205,6 @@ func TestSyncFolderGroupsFollowsTheFolder(t *testing.T) {
 	moveLocation(t, db, fixturePath("/media/Show/2.mp4"), fixturePath("/media/Elsewhere/2.mp4"), "k2")
 	moveLocation(t, db, fixturePath("/media/Show/10.mp4"), fixturePath("/media/Elsewhere/10.mp4"), "k10")
 	rebuildIndex(t, db)
-	// /media/Elsewhere は新しくグループになり、/media/Show は 1 本でもグループのまま残る。
 	groups = readGroups(t, db)
 	if len(groups) != 2 {
 		t.Fatalf("groups = %+v", groups)
@@ -226,8 +215,6 @@ func TestSyncFolderGroupsFollowsTheFolder(t *testing.T) {
 	})
 }
 
-// 手で足したメンバー、外したメンバー（除外）、新しい名前、新しい順番は再構築の後も残り、
-// フォルダに新しく置いたファイルは足される（受け入れ条件 5）。
 func TestSyncFolderGroupsKeepsOwnerEdits(t *testing.T) {
 	db := migratedDB(t)
 	k1 := upsertFolderVideo(t, db, fixturePath("/media/Show/1.mp4"), "k1")
@@ -237,7 +224,6 @@ func TestSyncFolderGroupsKeepsOwnerEdits(t *testing.T) {
 	rebuildIndex(t, db)
 	id := readGroups(t, db)[0].ID
 
-	// 所有者の編集: 名前を変え、k3 を先頭へ、k2 を外し（除外）、別のフォルダの動画を手で足す。
 	execSQL(t, db, `update groups set name = 'Renamed', title_key = ? where id = ?`, domain.NaturalSortKey("Renamed"), id)
 	execSQL(t, db, `delete from group_items where group_id = ? and content_key = 'k2'`, id)
 	execSQL(t, db, `insert into group_exclusions (group_id, content_key) values (?, 'k2')`, id)
@@ -253,7 +239,6 @@ func TestSyncFolderGroupsKeepsOwnerEdits(t *testing.T) {
 		t.Fatalf("exclusions = %v", got)
 	}
 
-	// 手で足したメンバーはフォルダから消えても残る。
 	removeLocation(t, db, k1, fixturePath("/media/Show/1.mp4"))
 	removeLocation(t, db, other, fixturePath("/media/other.mp4"))
 	rebuildIndex(t, db)
@@ -262,8 +247,6 @@ func TestSyncFolderGroupsKeepsOwnerEdits(t *testing.T) {
 	}}})
 }
 
-// メディアフォルダを外すとグループが空になり、足し直すと同じグループに戻る。ungroup の
-// フォルダにはグループができない。
 func TestSyncFolderGroupsOnMediaFolderChangesAndUngroup(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -300,8 +283,6 @@ func TestSyncFolderGroupsOnMediaFolderChangesAndUngroup(t *testing.T) {
 	assertGroupRows(t, db, []groupRow{{ID: id, Name: "Show", Origin: origin, Items: folderItems("k1", "k2")}})
 }
 
-// 束ねで 1 つのグループの中の 2 つのバージョンが 1 つの項目にまとまり、手で足した項目なら
-// まとまった項目も手で足した項目になる。除外も集まりの鍵へ付け替わる。
 func TestBundlingRekeysGroupItems(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -316,7 +297,6 @@ func TestBundlingRekeysGroupItems(t *testing.T) {
 	if groups[1].Name != "Show" {
 		show, other = other, show
 	}
-	// Show の kb を手で足した項目にし、Other の kd を外す（除外）。
 	execSQL(t, db, `update group_items set from_folder = 0 where group_id = ? and content_key = 'kb'`, show)
 	execSQL(t, db, `delete from group_items where group_id = ? and content_key = 'kd'`, other)
 	execSQL(t, db, `insert into group_exclusions (group_id, content_key) values (?, 'kd')`, other)
@@ -342,11 +322,10 @@ func TestBundlingRekeysGroupItems(t *testing.T) {
 			t.Errorf("group %s items = %+v, want %+v", group.Name, group.Items, want[group.ID])
 		}
 	}
-	// 除外の kd は集まりの鍵へ付け替わるが、その鍵の項目が見えているので消える。
+	// The rekeyed exclusion is obsolete because that bundle key now has a visible item.
 	if got := groupExclusions(t, db, other); len(got) != 0 {
 		t.Errorf("other exclusions = %v, want none", got)
 	}
-	// 再構築しても重ならない。
 	rebuildIndex(t, db)
 	if again := readGroups(t, db); !reflect.DeepEqual(again, got) {
 		t.Fatalf("after rebuild = %+v\nwant %+v", again, got)
@@ -365,7 +344,6 @@ func renumberPositionsForTest(db *DB, groupID int64) error {
 	return tx.Commit()
 }
 
-// 除外だけを持つ鍵も、束ねで集まりの鍵へ付け替わる。
 func TestBundlingRekeysGroupExclusions(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -386,11 +364,9 @@ func TestBundlingRekeysGroupExclusions(t *testing.T) {
 	if got := groupExclusions(t, db, id); !slices.Equal(got, []string{bundleKey}) {
 		t.Fatalf("exclusions = %v, want [%s]", got, bundleKey)
 	}
-	// 集まりの代表はフォルダの直下にあるが、除外したので足さない。
 	assertGroupRows(t, db, []groupRow{{ID: id, Name: "Show", Origin: domain.FolderKey(fixturePath("/media/Show")), Items: folderItems("kx")}})
 }
 
-// 同じパスの継承で、項目は新しい中身の鍵へ付け替わる。
 func TestSuccessionRekeysGroupItems(t *testing.T) {
 	db := migratedDB(t)
 	a := upsertOne(t, db, listingFile(fixturePath("/media/Show/a.mp4"), "a", "key-a", 1))
@@ -409,8 +385,7 @@ func TestSuccessionRekeysGroupItems(t *testing.T) {
 	assertGroupRows(t, db, []groupRow{{ID: id, Name: "Show", Origin: origin, Items: folderItems("key-b", "key-x")}})
 }
 
-// 束ねとその解除で項目を付け替えたグループは、作り直しで変わらなくても、祖先と合わせて
-// GroupsChanged で知らせる（R-13）。
+// Rekeyed groups need notifications even if the subsequent folder rebuild makes no changes.
 func TestBundlingPublishesRekeyedGroups(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -441,8 +416,6 @@ func TestBundlingPublishesRekeyedGroups(t *testing.T) {
 	}
 }
 
-// 同期で変わったグループとその祖先の id を、確定後に 1 つの GroupsChanged で知らせる。
-// 変わらない作り直しは知らせない。
 func TestSyncFolderGroupsPublishesGroupsChanged(t *testing.T) {
 	db := migratedDB(t)
 	recorder := &eventRecorder{}
@@ -462,7 +435,6 @@ func TestSyncFolderGroupsPublishesGroupsChanged(t *testing.T) {
 		t.Fatalf("unchanged rebuild published %+v", recorder.events)
 	}
 
-	// 手で作った親グループ（子に Show を持つ）と、その親も祖先として入る。
 	execSQL(t, db, `insert into groups (id, name, title_key, created_at, updated_at) values (100, 'Parent', 'parent', 1, 1), (200, 'Top', 'top', 1, 1)`)
 	execSQL(t, db, `insert into group_items (group_id, child_id, position) values (100, ?, 0), (200, 100, 0)`, id)
 	upsertFolderVideo(t, db, fixturePath("/media/Show/3.mp4"), "k3")

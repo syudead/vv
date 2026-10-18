@@ -5,7 +5,6 @@ import type { UiText } from "../i18n";
 import type { NameChoice, NameCommandLayout } from "../ui/NameCommand";
 import { Field, FieldError, FieldLabel } from "../ui/shadcn/field";
 
-/** MergeCommandProps は統合先の欄が名前の入力（TagCommand・CreditCommand）へ渡す props である。 */
 interface MergeCommandProps {
   layout: NameCommandLayout;
   label: UiText;
@@ -25,11 +24,6 @@ interface MergeCommandProps {
   describedBy: string | undefined;
 }
 
-/**
- * MergeTargetField は統合の窓の統合先の欄である。見える名札、入力の下に高さを固定して
- * 並べる候補（`inline`）、候補を引けなかったときの理由を持つ。名前の規則は `Command`（タグの窓は
- * `TagCommand`、人物・団体の窓は `CreditCommand`）が持つ。Esc は窓が閉じる。
- */
 export function MergeTargetField({
   Command,
   label,
@@ -52,14 +46,12 @@ export function MergeTargetField({
   onSelect: (choice: NameChoice) => void;
   chosenId: string | undefined;
   searching: boolean;
-  /** 候補を引けなかった理由の文（「Couldn't search tags: …」）。引けていれば null。 */
   searchError: UiText | null;
-  /** 候補が無いときの文。 */
   emptyText: UiText;
 }) {
   const searchErrorId = useId();
   const labelId = useId();
-  // 見える名札が指す入力の id。cmdk が入力に自分の id を付けるので、描いた入力から読む。
+  // cmdk owns the input ID; read it from the rendered input to connect the visible label.
   const [inputId, setInputId] = useState<string | undefined>(undefined);
   const inputRef = useCallback((node: HTMLInputElement | null) => {
     if (node !== null) setInputId(node.id);
@@ -96,7 +88,6 @@ export function MergeTargetField({
   );
 }
 
-/** MergeSummary は窓の下端の「統合元 → 統合先」である。 */
 export function MergeSummary({ source, target }: { source: string; target: string }) {
   return (
     <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">

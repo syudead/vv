@@ -57,7 +57,6 @@ func TestParseWorkInfoPluginManifestDefaultsSettingFlags(t *testing.T) {
 	}
 }
 
-// 設定の既定値と選択肢の規則に外れるマニフェストは manifest_invalid である
 func TestParseWorkInfoPluginManifestSettingChoices(t *testing.T) {
 	manifest := func(setting string) string {
 		return `{"contract":1,"name":"p","version":"1","operations":["fetch"],"settings":[` + setting + `]}`
@@ -118,7 +117,6 @@ func TestParseWorkInfoPluginManifestKeepsDefaultAndOptions(t *testing.T) {
 	}
 }
 
-// 拒んだマニフェストの理由は、反した項目と規則を名指す。
 func TestCheckWorkInfoPluginManifestNamesTheFieldAndTheRule(t *testing.T) {
 	const ok = `"contract":1,"name":"p","version":"1","operations":["fetch"]`
 	cases := []struct {
@@ -192,7 +190,7 @@ func TestWorkInfoRunRequestJSON(t *testing.T) {
 	if err != nil || string(b) != `{"contract":1,"operation":"fetch","id":"ABC-123","settings":{"k":"v"}}` {
 		t.Fatalf("fetch request = %s, %v", b, err)
 	}
-	// URL の形の ID もそのまま運び、vv が URL として読むことはない（親 Issue #1232 の要件 14）。
+	// URL-shaped IDs remain opaque to vv.
 	b, err = json.Marshal(WorkInfoRunRequest{Operation: WorkInfoFetch, ID: "https://e.test/w/1"})
 	if err != nil || string(b) != `{"contract":1,"operation":"fetch","id":"https://e.test/w/1","settings":{}}` {
 		t.Fatalf("fetch request with a URL-shaped id = %s, %v", b, err)
@@ -210,7 +208,7 @@ func TestParseWorkInfoResponseKeepsTheFirstCandidatesAndUniqueTags(t *testing.T)
 		t.Fatalf("search result = %d candidates (%+v), %v", len(got.Candidates), got.Candidates, err)
 	}
 
-	// 保持しない 51 件目以降は確かめないので、不正でも検索を失敗させない。
+	// Unretained candidates after the fiftieth cannot fail a search.
 	candidates = append(candidates[:WorkInfoPluginMaxCandidates], `{"id":"","title":""}`)
 	got, err = ParseWorkInfoResponse(WorkInfoSearch, []byte(`{"candidates":[`+strings.Join(candidates, ",")+`]}`))
 	if err != nil || len(got.Candidates) != WorkInfoPluginMaxCandidates {

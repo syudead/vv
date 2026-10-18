@@ -14,15 +14,13 @@ import (
 	"github.com/syudead/vv/internal/wasmplugin"
 )
 
-// mdm plugin pack のテスト。モジュールは手で組んだ
-// 小さなもので、実行はしない。
+// Pack tests use small hand-built modules without executing them.
 
 const packManifest = `{"contract":1,"name":"example-title","version":"0.1.0","description":"Reads titles.",` +
 	`"operations":["search","fetch"],"settings":[{"key":"token","label":"API token","secret":true,"required":true},` +
 	`{"key":"region","label":"Region","default":"jp","options":["jp","us"]}]}`
 
-// testModule は _start と memory を export する最小のモジュールである。importName が空でなければ
-// env.<importName> の関数を import する。
+// The minimal module exports _start and memory, with an optional env function import.
 func testModule(importName string) []byte {
 	section := func(id byte, payload ...byte) []byte {
 		return append(binary.AppendUvarint([]byte{id}, uint64(len(payload))), payload...)
@@ -49,7 +47,7 @@ type packRun struct {
 	stderr string
 }
 
-// runPack は mdm plugin pack を args で実行する。MDM_DATA_DIR を読めばテストを止める。
+// Fail if packing attempts to read MDM_DATA_DIR.
 func runPack(t *testing.T, args ...string) packRun {
 	t.Helper()
 	var stderr bytes.Buffer
@@ -65,7 +63,6 @@ func runPack(t *testing.T, args ...string) packRun {
 	return packRun{code: code, stderr: stderr.String()}
 }
 
-// writePackFiles はモジュールとマニフェストを一時ディレクトリに書き、そのパスを返す。
 func writePackFiles(t *testing.T, module []byte, manifest string) (modulePath, manifestPath string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -243,7 +240,7 @@ func TestPluginPackRefusesAnInputOverTheModuleLimit(t *testing.T) {
 			if what == "manifest" {
 				large = manifestPath
 			}
-			// 疎なファイルなので、上限を大きく超えてもディスクは使わない。コマンドは上限の 1 バイト先までしか読まない。
+			// Sparse files exercise oversized inputs without allocating disk space; reads stop at limit+1.
 			if err := os.Truncate(large, 1<<40); err != nil {
 				t.Skipf("cannot make a sparse file: %v", err)
 			}

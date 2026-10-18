@@ -7,25 +7,13 @@ import { errorText, t } from "../../i18n";
 import { type Draft, newEntries, toDetailsInput, withCreated } from "./draft";
 import type { FieldProblem } from "./fields";
 
-/** SaveFailure は帯の下の失敗の行の中身である。`field` は入力に写せなかった経路。 */
+/** field holds a server path that could not be mapped to an input. */
 export interface SaveFailure {
   text: ReactNode;
   field?: string;
 }
 
-/**
- * useDetailsSave は編集画面の `Save` である。
- *
- * 1. 下書きのまだ作っていない名前を、人物の役割の順、団体の役割の順に 1 件ずつ
- *    `POST /api/people`（`/api/organizations`）で作る。作れたものはその場で下書きの id にし、
- *    次の `Save` で作り直さない。失敗したらそこで止め、失敗の行を出す。
- * 2. 1 回の `PUT /api/videos/{id}/details` で表示名と作品情報の全体を送る。`200` なら
- *    `onSaved` に応答の動画を渡す。`field` のある `400`・`404` はその入力に理由を出し、
- *    入力が無い経路は失敗の行に経路と一緒に出す。`video_not_found` は `onGone`。
- *    ほかは失敗の行で、先に作ったものがあればその数を添える。
- *
- * 送信中は次の `Save` を受けない。画面を離れたら送信中の要求を打ち切る。
- */
+/** Create new credits sequentially and retain their IDs before saving details once. Map field errors to inputs, report partial creation on failure, and abort when leaving. */
 export function useDetailsSave({
   videoId,
   draftRef,
@@ -34,7 +22,6 @@ export function useDetailsSave({
   onGone,
 }: {
   videoId: number;
-  /** 最新の下書き。 */
   draftRef: RefObject<Draft>;
   setDraft: (draft: Draft) => void;
   onSaved: (video: Video) => void;

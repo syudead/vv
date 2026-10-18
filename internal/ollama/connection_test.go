@@ -10,7 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// fakeOllama は /api/version と /api/tags に答え、判定 API が呼ばれたら失敗にする。
 func fakeOllama(t *testing.T, tags string) *httptest.Server {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -32,8 +31,6 @@ func withModel(url, model string) fixedSettings {
 	return fixedSettings{settings: domain.OllamaSettings{Endpoint: url, Model: model}}
 }
 
-// 確かめは判定させずに、動いていることと模型があることだけを見る。タグを省いた名前は
-// :latest に当たる。
 func TestCheckFindsModelWithoutClassifying(t *testing.T) {
 	server := fakeOllama(t, `{"models":[{"name":"clef-flash:latest","model":"clef-flash:latest"},{"name":"qwen3:8b","model":"qwen3:8b"}]}`)
 	for _, model := range []string{"clef-flash", "clef-flash:latest", "qwen3:8b"} {
@@ -49,7 +46,6 @@ func TestCheckFindsModelWithoutClassifying(t *testing.T) {
 	}
 }
 
-// つながらない・Ollama でない（本文は写さない）を区別して伝える。
 func TestCheckReportsWhyItFailed(t *testing.T) {
 	closed := httptest.NewServer(http.NotFoundHandler())
 	url := closed.URL

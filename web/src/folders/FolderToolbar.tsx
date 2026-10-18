@@ -25,29 +25,18 @@ export interface FolderToolbarProps {
   onPlayableChange: (value: boolean) => void;
   favorite: boolean;
   onFavoriteChange: (value: boolean) => void;
-  /**
-   * 検索語・視聴状態・再生可否・お気に入りのみのどれかが効いているか
-   * （「条件を解除」を出す）。
-   */
+  /** Whether Clear conditions has any active query or filter to remove. */
   canClear: boolean;
   onClear: () => void;
   /**
-   * 最上位（`/folders`）で検索語が空のときは true。絞り込み・並べ替え・向きを
-   * 無効にする。検索欄と表示形式は無効にしない。
+   * Disable filtering and sorting at the root without a query; keep search and display controls
+   * enabled.
    */
   disabled?: boolean;
   zoom: Zoom;
   onZoomChange: (value: Zoom) => void;
 }
 
-/**
- * FolderToolbar はフォルダ画面（各フォルダ・最上位）の一覧ページのツールバーである。
- * ライブラリのツールバーから表示形式の切り替えを除いたもので、デザインシステムの
- * `Toolbar` の placement="topBar" に載せ、画面が TopBarPortal で共通のトップバーへ入れる
- * （web/registry/rules/patterns.md の Sections）。検索欄・絞り込み・並べ替え・向き・
- * 大きさの部品は、ライブラリと共有する `web/src/videoList/` のものを使う。並べ替えは
- * `md`、大きさは `xl` から並べ、それより狭いとアイコンだけの「表示と並び順」にまとめる。
- */
 export default function FolderToolbar({
   query,
   onQueryCommit,

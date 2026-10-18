@@ -130,7 +130,7 @@ func TestCompressResponsesFlushesWhatWasWritten(t *testing.T) {
 		if err := http.NewResponseController(w).Flush(); err != nil {
 			t.Fatal(err)
 		}
-		// 流した分だけで、まだ閉じていない gzip を読める。
+		// Flushed gzip bytes must be readable before closing the stream.
 		reader, err := gzip.NewReader(strings.NewReader(w.(*compressWriter).ResponseWriter.(*httptest.ResponseRecorder).Body.String()))
 		if err != nil {
 			t.Fatal(err)

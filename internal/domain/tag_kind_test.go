@@ -7,7 +7,6 @@ import (
 	"testing"
 )
 
-// 名前の重複は包まれても ErrTagKindNameTaken として判定でき、文はその名前を挙げる
 func TestTagKindNameConflictIsNameTaken(t *testing.T) {
 	err := fmt.Errorf("create: %w", &TagKindNameConflict{Kind: TagKindRef{ID: 1, Name: "Genre"}})
 	if !errors.Is(err, ErrTagKindNameTaken) {

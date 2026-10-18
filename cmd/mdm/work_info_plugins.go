@@ -10,10 +10,8 @@ import (
 	"github.com/syudead/vv/internal/wasmplugin"
 )
 
-// newWorkInfoPlugins は作品情報プラグインのランタイム（wazero）と登録・検索・取得・反映のユースケースを組み立て、
-// 画面の API に渡す登録と、ランタイムを閉じる関数を返す。
-// ランタイムを作れなければ記録に残して nil を返し、プラグインの経路は 500 を返す。プラグインが
-// 使えないだけで、ほかの機能の起動は止めない。各実行は network が返すプロキシを通す
+// Runtime creation failure is logged and leaves plugin routes returning 500 without blocking other
+// startup; each execution uses the configured proxy.
 func newWorkInfoPlugins(
 	ctx context.Context, db *store.DB, network app.WorkInfoRunNetworkSource, covers app.WorkInfoCoverApplier,
 	logger *slog.Logger,

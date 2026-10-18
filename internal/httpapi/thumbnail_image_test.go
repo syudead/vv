@@ -13,24 +13,17 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 適用したサムネイルの画像の取り消しと、thumbnailImage・thumbnailUrl の版
-// は、本物の認証・保存層で確かめる。
-// 画像の生成だけを fakeThumbnailPicker が代わりにする。
-
 func (f *guestFixture) revertThumbnailImage(name string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 	return f.env.serve(authRequest{
 		method: http.MethodDelete, target: f.videoPath(name, "/thumbnail-image"), cookies: cookies,
 	})
 }
 
-// applyImage は動画 name に生成画像を適用したことを保存層へ直接記録する（適用の経路は編集の
-// セッションのユニットが作る）。
 func (f *guestFixture) applyImage(t *testing.T, name string) {
 	t.Helper()
 	f.applyImageOf(t, name, domain.ThumbnailImageGenerated)
 }
 
-// applyImageOf は動画 name に出どころ origin の画像を適用したことを保存層へ直接記録する。
 func (f *guestFixture) applyImageOf(t *testing.T, name string, origin domain.ThumbnailImageOrigin) {
 	t.Helper()
 	ctx := context.Background()
@@ -45,10 +38,6 @@ func (f *guestFixture) applyImageOf(t *testing.T, name string, origin domain.Thu
 	}
 }
 
-// 画像を適用すると、所有者の応答に thumbnailImage: "generated" が入り、thumbnailUrl の版が
-// `-g<改版番号>` になる。ゲストは同じ URL を受け取り、thumbnailImage を受け取らない。
-// 取り消し（DELETE）は 200 で thumbnailImage の無い Video を返し、URL が元に戻る。
-// 画像が無くても 200 である。
 func TestRevertThumbnailImage(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -56,7 +45,6 @@ func TestRevertThumbnailImage(t *testing.T) {
 	if original.ThumbnailImage != nil {
 		t.Fatalf("前提: thumbnailImage = %v", *original.ThumbnailImage)
 	}
-	// 所有者の応答の内容の版は thumbnailUrl の版の先頭と同じである。
 	if original.ContentVersion == nil || !strings.Contains(thumbnailURLOf(original), "?v="+*original.ContentVersion) {
 		t.Errorf("contentVersion = %v, thumbnailUrl = %q", original.ContentVersion, thumbnailURLOf(original))
 	}
@@ -102,7 +90,6 @@ func TestRevertThumbnailImage(t *testing.T) {
 	}
 }
 
-// アップロードした画像を適用していれば、所有者の応答の thumbnailImage は "uploaded" になる。
 func TestThumbnailImageOriginUploaded(t *testing.T) {
 	f := newGuestFixture(t, true)
 	f.applyImageOf(t, "a", domain.ThumbnailImageUploaded)
@@ -112,7 +99,6 @@ func TestThumbnailImageOriginUploaded(t *testing.T) {
 	}
 }
 
-// ゲストの取り消しは 401、生成の失敗は 409 で画像が残り、無い動画は 404 になる。
 func TestRevertThumbnailImageRejects(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env

@@ -19,8 +19,7 @@ func groupRef(id int64) domain.OrganizeRef {
 	return domain.OrganizeRef{Kind: domain.OrganizeGroup, ID: id}
 }
 
-// organizeSnapshot はグループの表、お気に入り、プレイリストの項目、フォルダの例外を、更新日時を
-// 除いて並べる。取り消しで元に戻ったか、拒まれた操作が何も書かなかったかを確かめる。
+// Exclude edit timestamps when comparing restored state or detecting partial writes.
 func organizeSnapshot(t *testing.T, db *DB) []string {
 	t.Helper()
 	var out []string
@@ -67,8 +66,6 @@ func assertSnapshot(t *testing.T, db *DB, label string, want []string) {
 	}
 }
 
-// A から B へ動かした動画は B の末尾にあって A に無く（受け入れ条件 6）、知らせは両方を名指す。
-// 取り消すと A と B は同じ項目 id のまま元に戻る。
 func TestOrganizeMoveBetweenGroups(t *testing.T) {
 	db := migratedDB(t)
 	k1, k2, k3 := looseVideo(t, db, "k1"), looseVideo(t, db, "k2"), looseVideo(t, db, "k3")
@@ -90,8 +87,6 @@ func TestOrganizeMoveBetweenGroups(t *testing.T) {
 	assertSnapshot(t, db, "after undo", before)
 }
 
-// ライブラリから入れた動画とグループの 3 枚は、画面の順のまま末尾に入る（受け入れ条件 7）。既に
-// あるものは飛ばす。
 func TestOrganizeMoveKeepsScreenOrder(t *testing.T) {
 	db := migratedDB(t)
 	k1, k2, k3 := looseVideo(t, db, "k1"), looseVideo(t, db, "k2"), looseVideo(t, db, "k3")
@@ -105,7 +100,6 @@ func TestOrganizeMoveKeepsScreenOrder(t *testing.T) {
 	assertSnapshot(t, db, "after undo", before)
 }
 
-// to に既にある動画は足さず、from から外すだけになる。
 func TestOrganizeMoveSkipsItemsAlreadyInTarget(t *testing.T) {
 	db := migratedDB(t)
 	k1, k2 := looseVideo(t, db, "k1"), looseVideo(t, db, "k2")
@@ -117,9 +111,6 @@ func TestOrganizeMoveSkipsItemsAlreadyInTarget(t *testing.T) {
 	assertEntries(t, db, to, "v:k2", "v:k1")
 }
 
-// グループを自分の子孫へ、または自分自身へ動かすのは ErrGroupCycle で、何も書かない。無い
-// グループ・動画や from に無いカードは ErrGroupTargetNotFound、from と to がどちらも無いか同じなら
-// 誤りで、どれも何も書かない。
 func TestOrganizeMoveRefusals(t *testing.T) {
 	db := migratedDB(t)
 	k1, k2 := looseVideo(t, db, "k1"), looseVideo(t, db, "k2")
@@ -156,8 +147,6 @@ func TestOrganizeMoveRefusals(t *testing.T) {
 	assertSnapshot(t, db, "refused moves wrote", before)
 }
 
-// A の最後の項目を外へ出すと A は解散し、空になった親も解散する。取り消すと A と親は id、
-// お気に入り、プレイリストの項目ごと戻る。
 func TestOrganizeMoveOutDissolvesAndUndoRestores(t *testing.T) {
 	db := migratedDB(t)
 	k1, k2 := looseVideo(t, db, "k1"), looseVideo(t, db, "k2")
@@ -191,7 +180,6 @@ func TestOrganizeMoveOutDissolvesAndUndoRestores(t *testing.T) {
 	}
 }
 
-// 移動の後で戻すグループを別のグループに入れたなら、取り消しは ErrUndoConflict で何も書かない。
 func TestOrganizeMoveUndoConflicts(t *testing.T) {
 	db := migratedDB(t)
 	k1, k2 := looseVideo(t, db, "k1"), looseVideo(t, db, "k2")
@@ -207,8 +195,7 @@ func TestOrganizeMoveUndoConflicts(t *testing.T) {
 	assertSnapshot(t, db, "conflicting undo wrote", before)
 }
 
-// 移動の後で戻すグループを、操作の前には無かったプレイリストに入れたなら、取り消しは
-// ErrUndoConflict で、プレイリストの項目は連鎖削除で消えずに残る。
+// A later playlist reference must cause an undo conflict instead of disappearing through a cascade.
 func TestOrganizeMoveUndoConflictsWithLaterPlaylistItem(t *testing.T) {
 	db := migratedDB(t)
 	k1, k2 := looseVideo(t, db, "k1"), looseVideo(t, db, "k2")
@@ -225,9 +212,6 @@ func TestOrganizeMoveUndoConflictsWithLaterPlaylistItem(t *testing.T) {
 	assertSnapshot(t, db, "conflicting undo wrote", before)
 }
 
-// 自動グループのフォルダメンバーを外すと除外が書かれ、取り消すと除外が消えて同じ項目が戻る。
-// 最後のメンバーまで外すと解散して ungroup が書かれ、取り消すと例外が消えてグループが同じ id で
-// 戻り、作り直しでもそのまま残る。
 func TestOrganizeMoveFolderMemberAndUndo(t *testing.T) {
 	db := migratedDB(t)
 	k1 := upsertFolderVideo(t, db, fixturePath("/media/Show/1.mp4"), "k1")

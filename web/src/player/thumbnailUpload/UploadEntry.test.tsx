@@ -4,8 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Video } from "../../api/client";
 import { useThumbnailUpload } from "./UploadEntry";
 
-// プレビューの前後で失敗したとき、動画が替わったときの useThumbnailUpload の振る舞い。
-// 選んで適用して送る通常の流れはページの試験（VideoPage.thumbnailUpload.test.tsx）が見る。
+// Cover upload failures and navigation; VideoPage.thumbnailUpload.test.tsx covers successful application.
 
 const compose = vi.hoisted(() => ({
   loadUploadImage: vi.fn(),
@@ -78,7 +77,6 @@ describe("useThumbnailUpload", () => {
       aspect: 2,
       contentVersion: "abc",
     });
-    // 開いている間は、もう 1 枚は選べない。
     act(() => result.current.choose(png()));
     expect(compose.loadUploadImage).toHaveBeenCalledTimes(1);
   });
@@ -147,7 +145,6 @@ describe("useThumbnailUpload", () => {
     await waitFor(() => expect(result.current.preview).not.toBeNull());
     act(() => result.current.apply({ mode: "contain" }));
     expect(result.current.applying).toBe(true);
-    // 作っている間の二度目の適用とやめるは効かない。
     act(() => result.current.apply({ mode: "contain" }));
     act(() => result.current.cancel());
     await waitFor(() => expect(result.current.preview).toBeNull());

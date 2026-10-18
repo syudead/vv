@@ -1,20 +1,15 @@
 package domain
 
-// シーク用サムネイルの配置。1 本の動画を最大 81 コマの 9 × 9 シートにする。
-// 短い動画では SeekThumbnailInterval（1 秒）の間隔を保ち、長い動画では全体にコマを均等配置する。
+// Seek sprites use up to 81 frames in a 9×9 sheet, preserving one-second spacing for short videos and spreading frames across longer videos.
 const (
-	SeekSpriteColumns   = 9
-	SeekSpriteRows      = 9
-	SeekSpriteMaxSheets = 1
-	// SeekSpriteFramesPerSheet は 1 シートに並ぶコマの数である。
+	SeekSpriteColumns        = 9
+	SeekSpriteRows           = 9
+	SeekSpriteMaxSheets      = 1
 	SeekSpriteFramesPerSheet = SeekSpriteColumns * SeekSpriteRows
-	// SeekSpriteMaxFrames は 1 本の動画のコマの上限である。
-	SeekSpriteMaxFrames = SeekSpriteFramesPerSheet * SeekSpriteMaxSheets
+	SeekSpriteMaxFrames      = SeekSpriteFramesPerSheet * SeekSpriteMaxSheets
 )
 
-// SeekSpriteLayout は 1 本の動画のスプライトの配置である。コマ k は
-// [k*IntervalMs, (k+1)*IntervalMs) の位置を受け持ち、シート k/SeekSpriteFramesPerSheet の
-// 左上から行優先で並ぶ。生成（internal/media）と読み出しが同じ値を使う。
+// Frame k covers [k*IntervalMs, (k+1)*IntervalMs), laid out row-first; generation and reads share this layout.
 type SeekSpriteLayout struct {
 	IntervalMs int64
 	FrameCount int
@@ -23,8 +18,7 @@ type SeekSpriteLayout struct {
 	SheetCount int
 }
 
-// NewSeekSpriteLayout は動画の長さ durationMs からスプライトの配置を決める。
-// 長さが分からない（0 以下の）動画は、最小の間隔の 1 コマ・1 シートにする。
+// Unknown duration uses one frame and sheet at the minimum interval.
 func NewSeekSpriteLayout(durationMs int64) SeekSpriteLayout {
 	minInterval := SeekThumbnailInterval.Milliseconds()
 	intervalMs := minInterval
@@ -42,8 +36,6 @@ func NewSeekSpriteLayout(durationMs int64) SeekSpriteLayout {
 	}
 }
 
-// FrameAt は位置 positionMs を受け持つコマの番号を返す。範囲の外の位置は
-// 先頭または末尾のコマに寄せる。
 func (l SeekSpriteLayout) FrameAt(positionMs int64) int {
 	if positionMs <= 0 || l.IntervalMs <= 0 {
 		return 0
@@ -51,8 +43,7 @@ func (l SeekSpriteLayout) FrameAt(positionMs int64) int {
 	return int(min(positionMs/l.IntervalMs, int64(l.FrameCount-1)))
 }
 
-// ceilDiv は正の a, b について a/b の切り上げを返す。a+b-1 は a が int64 の上限に
-// 近いとあふれるため、商と余りから求める。
+// Compute ceiling division from quotient and remainder to avoid overflowing a+b-1.
 func ceilDiv(a, b int64) int64 {
 	q := a / b
 	if a%b != 0 {
@@ -61,9 +52,7 @@ func ceilDiv(a, b int64) int64 {
 	return q
 }
 
-// SeekSprite は公開したスプライトの配置情報である。配置に、
-// 出来上がったシートから読んだ 1 コマの大きさ（px）を加えたもので、1 本の中の
-// 全コマが同じ大きさになる。
+// Published sprite dimensions come from generated sheets; every frame has the same pixel size.
 type SeekSprite struct {
 	SeekSpriteLayout
 	FrameWidth  int

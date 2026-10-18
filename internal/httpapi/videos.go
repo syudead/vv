@@ -12,23 +12,16 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// maxQueryLength は検索語に許す長さである。api/openapi.yaml の
-// maxLength と同じ値で、越える要求は誤りとして断る。
+// Keep the search-length limit aligned with OpenAPI maxLength.
 const maxQueryLength = 100
 
-// maxTagFilterCount は一覧の絞り込みに使えるタグの id の最大個数である。
-// api/openapi.yaml の tag パラメータの maxItems と同じ値で、越える要求は
-// invalid_request にする。
+// Keep the tag-filter limit aligned with OpenAPI maxItems.
 const maxTagFilterCount = 16
 
-// thumbnailVersionLength はサムネイルの URL に付ける版の長さである。
-// content_key の先頭を使う。内容が変われば版も変わるので、長期キャッシュを
-// 安全に効かせられる。
+// Use a content-key prefix as the thumbnail URL version for safe long-lived caching.
 const thumbnailVersionLength = 12
 
-// ListVideos は動画の一覧を返す（GET /api/videos）。
-//
-// ページングはカーソル方式で、総件数はページとは独立に返る。
+// ListVideos uses cursor pagination and returns the total independently of the page.
 func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.ListVideosParams) {
 	if s.videos == nil {
 		s.internalError(w, "Library queries are not configured.", nil)
@@ -50,8 +43,7 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 	page, err := s.videos.ListVideos(r.Context(), audience, query)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
-		// 黙って先頭から返さない。無限スクロールが巻き戻って同じ内容を
-		// 延々と表示することになる。
+		// Reject invalid cursors: restarting would make infinite scrolling repeat the first page.
 		s.invalidRequestReason(w, reasonInvalidCursor, "Cannot read the cursor. Reload the list.")
 		return
 	case err != nil:
@@ -62,31 +54,27 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 	s.writeVideoPage(w, r, page, s.registeredRoots(r.Context()))
 }
 
-// videoQueryParams は一覧の経路（listVideos・listLibrary）が共通に受けるパラメータである。
+// videoQueryParams is shared by listVideos and listLibrary.
 type videoQueryParams struct {
-	query    *string
-	watch    *gen.WatchFilter
-	playable *bool
-	sort     *gen.VideoSort
-	seed     *int64
-	cursor   *string
-	limit    *int
-	tag      *[]int64
-	favorite *bool
-	// person と organization は人物・団体の id による絞り込み。
+	query        *string
+	watch        *gen.WatchFilter
+	playable     *bool
+	sort         *gen.VideoSort
+	seed         *int64
+	cursor       *string
+	limit        *int
+	tag          *[]int64
+	favorite     *bool
 	person       *int64
 	organization *int64
-	// addedWithin は追加日の日数、minDuration と maxDuration は長さの範囲（秒）である
-	//
+	// addedWithin is in days; duration bounds are in seconds.
 	addedWithin *int
 	minDuration *int
 	maxDuration *int
-	// tagKind はタグの種類の id による絞り込み。
-	tagKind *int64
+	tagKind     *int64
 }
 
-// parseVideoQuery は一覧のパラメータを検査して問い合わせにする。誤りなら 400 を書いて
-// false を返す。見る人が使えない条件も 400 にする（checkAudienceQuery）。
+// parseVideoQuery writes 400 and returns false for invalid or audience-restricted filters.
 func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience, params videoQueryParams) (domain.VideoQuery, bool) {
 	query := domain.VideoQuery{Sort: domain.SortAddedDesc}
 
@@ -99,9 +87,7 @@ func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience
 	query.Watch, query.PlayableOnly, query.Sort, query.Seed = filters.watch, filters.playableOnly, filters.sort, filters.seed
 	query.FavoriteOnly = params.favorite != nil && *params.favorite
 
-	// 件数は入口で丸める。ここで確定させておくと、応答の件数と問い合わせの
-	// 条件が一致し、「limit=1000 を渡したのに 200 件しか来ない」理由が
-	// 契約（api/openapi.yaml の maximum）だけで説明できる。
+	// Clamp the limit at the boundary so response metadata matches the query and schema maximum.
 	query.Limit = domain.DefaultLimit
 	if params.limit != nil {
 		limit := *params.limit
@@ -134,10 +120,7 @@ func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience
 	return query, true
 }
 
-// parseIDFilters は一覧の person・organization・tagKind を検査して query に書く。指定が無ければ
-// 0 のままにする。正の整数でない値は 400 を書いて false を返す。実体の有無は確かめない（当たらなければ
-// 空の一覧になる、docs/design-docs/catalog-organization.md、
-// docs/design-docs/catalog-organization.md の List parameter `tagKind`）。
+// parseIDFilters accepts positive IDs without checking existence; unmatched IDs produce an empty list. Missing filters remain zero.
 func (s *server) parseIDFilters(w http.ResponseWriter, params videoQueryParams, query *domain.VideoQuery) bool {
 	for _, filter := range []struct {
 		name  string
@@ -160,8 +143,7 @@ func (s *server) parseIDFilters(w http.ResponseWriter, params videoQueryParams, 
 	return true
 }
 
-// parseAddedAndLength は一覧の addedWithin・minDuration・maxDuration を検査して query に写す。
-// 範囲の外の値と、minDuration が maxDuration を越える組は 400 を書いて false を返す。ゲストも使える。
+// parseAddedAndLength rejects out-of-range values and inverted duration bounds; guests may use these filters.
 func (s *server) parseAddedAndLength(w http.ResponseWriter, params videoQueryParams, query *domain.VideoQuery) bool {
 	switch err := domain.CheckAddedAndLength(params.addedWithin, params.minDuration, params.maxDuration); {
 	case errors.Is(err, domain.ErrInvalidAddedWithin):
@@ -180,9 +162,7 @@ func (s *server) parseAddedAndLength(w http.ResponseWriter, params videoQueryPar
 	return true
 }
 
-// writeVideoPage は一覧1ページを応答に書く。各項目には再生位置・タグと、一覧に
-// 出す所在の置かれたフォルダ（Video.folder）を載せる。roots が無ければ folder は
-// 省く。page.MissingTagIDs があれば応答にもそのまま載せる
+// writeVideoPage includes progress, tags, and the selected location's folder when roots are available. Preserve MissingTagIDs in the response.
 func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page domain.VideoPage, roots []domain.MediaFolder) {
 	progress := s.progressFor(r.Context(), page.Items)
 	tags := s.tagsFor(r.Context(), page.Items)
@@ -210,8 +190,7 @@ func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page dom
 	writeJSON(w, http.StatusOK, payload, s.logger)
 }
 
-// checkAudienceQuery は、見る人がこの一覧の条件を使えるかを確かめる。ゲストが所有者の
-// データに依る条件を指定したら 400 を書いて false を返す。
+// checkAudienceQuery rejects guest filters that depend on owner data with 400.
 func (s *server) checkAudienceQuery(w http.ResponseWriter, audience domain.Audience, query domain.VideoQuery) bool {
 	if err := audience.CheckVideoQuery(query); err != nil {
 		s.invalidRequestReason(w, reasonGuestFilterNotAllowed, "Sign in to filter by watch status, tags, or favorites, or to sort by last played or date favorited.")
@@ -220,11 +199,7 @@ func (s *server) checkAudienceQuery(w http.ResponseWriter, audience domain.Audie
 	return true
 }
 
-// forAudience は応答に載せる動画を見る人に合わせる。ゲストには所在（絶対パス）・
-// 再生位置・読み取りの誤りとそのコード（誤りは絶対パスを含みうる）を出さず、タグを空の配列にする。ファイル名由来の題名・表示名・代表サムネイルの
-// 位置と適用した画像の有無も出さず、ゲストは title で表示名だけを受け取る。作品情報も出さない
-//
-// 所有者にはそのまま返す。
+// forAudience removes owner-only data from guest responses, including absolute paths, errors that may contain paths, progress, tags, overrides, and work information. Guests receive the display name through title.
 func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	if audience.IsOwner() {
 		return video
@@ -244,10 +219,7 @@ func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	return video
 }
 
-// registeredRoots は Video.folder を作るための登録フォルダの一覧を引く。
-//
-// 引けなかった場合は一覧を諦めず、folder を省く。folder は置き場所の手がかりで
-// あって、無いと動画を見渡せなくなるものではない（progressFor と同じ扱い）。
+// If registered roots cannot be read, omit folder metadata rather than fail the video list.
 func (s *server) registeredRoots(ctx context.Context) []domain.MediaFolder {
 	var list func(context.Context) ([]domain.MediaFolder, error)
 	switch {
@@ -266,7 +238,6 @@ func (s *server) registeredRoots(ctx context.Context) []domain.MediaFolder {
 	return roots
 }
 
-// listFilterParams は2つの一覧の経路が共通に受ける絞り込みと並び順である。
 type listFilterParams struct {
 	watch    *gen.WatchFilter
 	playable *bool
@@ -281,9 +252,7 @@ type listFilters struct {
 	seed         int64
 }
 
-// parseListFilters は絞り込みと並び順を検査して写す。未知の値と範囲外の seed は
-// 400 を書いて false を返す。黙って既定へ戻さないのは、
-// 画面の送り間違いを、条件と違う一覧として見せないためである。
+// Reject unknown filters and invalid seeds instead of silently returning a list with different criteria.
 func (s *server) parseListFilters(w http.ResponseWriter, params listFilterParams) (listFilters, bool) {
 	out := listFilters{watch: domain.WatchAll, sort: domain.SortAddedDesc}
 	if params.watch != nil {
@@ -316,7 +285,6 @@ func (s *server) parseListFilters(w http.ResponseWriter, params listFilterParams
 	return out, true
 }
 
-// parseSearchQuery は検索語の長さを検査する。越えていれば 400 を書いて false を返す。
 func (s *server) parseSearchQuery(w http.ResponseWriter, query *string) (string, bool) {
 	if query == nil {
 		return "", true
@@ -329,9 +297,7 @@ func (s *server) parseSearchQuery(w http.ResponseWriter, query *string) (string,
 	return *query, true
 }
 
-// parseTagFilter は絞り込みに使うタグの id の個数を検査する。17 個以上は 400 を
-// 書いて false を返す。存在しない id は誤りにせず、
-// 保存層（existingTagIDs）が落として応答の missingTagIds に返す。
+// parseTagFilter enforces the ID limit; the store removes nonexistent IDs and returns them in missingTagIds.
 func (s *server) parseTagFilter(w http.ResponseWriter, tag *[]int64) ([]int64, bool) {
 	if tag == nil {
 		return nil, true
@@ -344,21 +310,19 @@ func (s *server) parseTagFilter(w http.ResponseWriter, tag *[]int64) ([]int64, b
 	return *tag, true
 }
 
-// GetVideo は動画1件の詳細を返す（GET /api/videos/{id}）。group は動画を開いたグループ、smartFolder
-// は動画を開いたスマートフォルダで、応答の group か smartFolder をその文脈で答える
+// GetVideo uses group or smartFolder as the context in which the video was opened.
 func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetVideoParams) {
 	video, ok := s.lookupVideo(w, r, id)
 	if !ok {
 		return
 	}
-	// 作品情報は動画 1 件の応答にだけ載せる。一覧・関連動画・ライブラリの項目は読まない。
+	// Only video details load work information; lists and related videos do not.
 	video, err := s.workInfoForDetail(r.Context(), video)
 	if err != nil {
 		s.internalError(w, "Could not load the video.", err)
 		return
 	}
-	// 追加の情報も動画 1 件の応答にだけ載せ、所有者とゲストに同じ値を返す
-	//
+	// Additional media information is detail-only and identical for owners and guests.
 	video, err = s.mediaInfoForDetail(r.Context(), video)
 	if err != nil {
 		s.internalError(w, "Could not load the video.", err)
@@ -367,7 +331,7 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 	s.writeVideoDetailIn(w, r, video, videoContext(params.Group, params.SmartFolder))
 }
 
-// videoContext は問い合わせの group と smartFolder を動画を開いた文脈にする。省かれた方は 0 である。
+// videoContext uses zero for omitted group and smart-folder IDs.
 func videoContext(group *gen.VideoGroupContext, smartFolder *gen.VideoSmartFolderContext) domain.VideoContext {
 	var opened domain.VideoContext
 	if group != nil {
@@ -379,15 +343,12 @@ func videoContext(group *gen.VideoGroupContext, smartFolder *gen.VideoSmartFolde
 	return opened
 }
 
-// writeVideoDetail は動画1件の詳細を GET /api/videos/{id} の形で書く。表示名の設定の
-// 応答も同じ形にする。group は
-// 文脈の無い動画と同じく、id のいちばん小さいグループで答える。
+// writeVideoDetail uses the GET detail shape; without context, choose the group with the smallest ID.
 func (s *server) writeVideoDetail(w http.ResponseWriter, r *http.Request, video domain.Video) {
 	s.writeVideoDetailIn(w, r, video, domain.VideoContext{})
 }
 
-// writeVideoDetailIn は writeVideoDetail と同じ応答を、group か smartFolder を動画を開いた文脈 opened
-// で答えて書く。
+// writeVideoDetailIn uses the group or smart-folder context in opened.
 func (s *server) writeVideoDetailIn(w http.ResponseWriter, r *http.Request, video domain.Video, opened domain.VideoContext) {
 	payload, err := s.videoDetail(r, video, opened)
 	if err != nil {
@@ -398,32 +359,23 @@ func (s *server) writeVideoDetailIn(w http.ResponseWriter, r *http.Request, vide
 	writeJSON(w, http.StatusOK, payload, s.logger)
 }
 
-// videoDetail は動画1件の詳細を GET /api/videos/{id} の形にする。要求の見る人に合わせて項目を絞り、
-// group か smartFolder は動画を開いた文脈 opened で答える。作品情報の取得の結果の反映の応答も、
-// これを video に入れる。
-//
-// グループかシーク用プレビューの状態を読めなければ、その項目を除いた詳細と誤りを返す。書き込みが確定した
-// 後の応答は、誤りを記録して除いた詳細を返せる。
+// videoDetail filters fields by audience and uses opened for context. If group or seek-preview lookup fails, return partial details plus the error so committed mutations can still respond successfully.
 func (s *server) videoDetail(r *http.Request, video domain.Video, opened domain.VideoContext) (gen.Video, error) {
 	var errs []error
 	progress := s.progressFor(r.Context(), []domain.Video{video})
 	tags := s.tagsFor(r.Context(), []domain.Video{video})
 	payload := withTags(withProgress(s.apiVideo(r.Context(), video), progress, video.UserKey), tags, video.UserKey)
 
-	// 所在とシーク用プレビューの状態は、動画1件の応答にだけ載せる。一覧に載せると、
-	// 画面が使わない絶対パスを1ページ 60 件ぶん毎回送ることになる。所在は
-	// forAudience がゲストの応答から外す。
+	// Locations and seek-preview state are detail-only to avoid sending unused paths for every list item. forAudience removes locations for guests.
 	payload.Location = &gen.VideoLocation{Path: video.Path, Openable: s.canOpen(r)}
 	payload.Folder = detailFolder(s.registeredRoots(r.Context()), video.Path)
-	// 作品情報は、読んだ（または書いた）経路が video に埋めたときだけ載せる。
+	// Include work information only when the caller loaded or saved it into video.
 	payload.WorkInfo = toAPIWorkInfo(video.WorkInfo)
-	// 追加の情報も、GET /api/videos/{id} が video に埋めたときだけ載せる。
+	// Include additional media information only when GetVideo populated it.
 	payload.MediaInfo = toAPIMediaInfo(video.MediaInfo)
-	// グループも動画1件の応答にだけ載せる。文脈のグループの再生順で数え、ゲストには公開の
-	// 動画だけで数えたものが返る。文脈がスマートフォルダなら
-	// group の代わりに smartFolder をフォルダの再生順で載せる。
+	// Detail context uses playback order and audience-visible counts; smart-folder context replaces group context.
 	if s.catalog != nil {
-		// 位置と本数だけを使うので、メンバーの詳細は読まない。
+		// Only position and count are needed; avoid loading member details.
 		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video, opened, domain.GroupWindow{})
 		if err != nil {
 			errs = append(errs, err)
@@ -444,9 +396,7 @@ func (s *server) videoDetail(r *http.Request, video domain.Video, opened domain.
 	return forAudience(audienceFrom(r.Context()), payload), errors.Join(errs...)
 }
 
-// detailFolder は動画1件の応答に載せる、代表の所在が置かれたフォルダを作る。
-// 再生画面の見出しのパンくずに使うので、一覧と違って登録フォルダの表示名も載せる。
-// 所在がどの登録フォルダにも含まれない（登録を外した直後など）ときは nil を返す。
+// detailFolder includes the registered root's display name for breadcrumbs; return nil when the location lies outside all registered roots.
 func detailFolder(roots []domain.MediaFolder, locationPath string) *gen.VideoFolder {
 	folder, ok := domain.LocateVideoFolder(roots, locationPath)
 	if !ok {
@@ -463,13 +413,7 @@ func detailFolder(roots []domain.MediaFolder, locationPath string) *gen.VideoFol
 	return out
 }
 
-// progressFor は動画たちの再生位置をまとめて引く。1件ずつ引くと、60 件の
-// 一覧で 60 回の問い合わせになる。
-//
-// 引けなかった場合は一覧を諦めない。再生位置は一覧に「あると嬉しい」情報で
-// あって、無いと動画を見渡せなくなるものではない。
-//
-// ゲストには再生位置を出さないので、読みもしない。
+// progressFor batches reads to avoid per-video queries. Skip guests and tolerate read failures so the list remains available.
 func (s *server) progressFor(ctx context.Context, videos []domain.Video) map[string]domain.Progress {
 	if s.playback == nil || len(videos) == 0 || !audienceFrom(ctx).IsOwner() {
 		return nil
@@ -490,13 +434,7 @@ func (s *server) progressFor(ctx context.Context, videos []domain.Video) map[str
 	return progress
 }
 
-// tagsFor は動画たちのタグをまとめて引く（progressFor と同じ形）。1件ずつ引くと、60 件の一覧で 60 回の問い合わせに
-// なる。
-//
-// 引けなかった場合は一覧を諦めない。タグは「あると嬉しい」情報であって、
-// 無いと動画を見渡せなくなるものではない。
-//
-// ゲストにはタグを出さないので、読みもしない。
+// tagsFor batches reads to avoid per-video queries. Skip guests and tolerate read failures so the list remains available.
 func (s *server) tagsFor(ctx context.Context, videos []domain.Video) map[string][]domain.VideoTag {
 	if s.tags == nil || len(videos) == 0 || !audienceFrom(ctx).IsOwner() {
 		return nil
@@ -517,7 +455,7 @@ func (s *server) tagsFor(ctx context.Context, videos []domain.Video) map[string]
 	return tags
 }
 
-// withTags はタグを載せる。タグが1つも無い動画は空の配列にする（null にしない）。
+// Use an empty tags array, never null.
 func withTags(video gen.Video, tags map[string][]domain.VideoTag, contentKey string) gen.Video {
 	refs := tags[contentKey]
 	video.Tags = make([]gen.VideoTag, 0, len(refs))
@@ -527,10 +465,7 @@ func withTags(video gen.Video, tags map[string][]domain.VideoTag, contentKey str
 	return video
 }
 
-// withProgress は再生位置を載せる。記録の無い動画では省略する。
-//
-// 「記録が無い」ことを位置 0 で表さないのは、先頭まで戻した動画と一度も
-// 見ていない動画を、一覧で区別できなくなるためである。
+// Omit absent progress to distinguish never-watched videos from videos rewound to zero.
 func withProgress(video gen.Video, progress map[string]domain.Progress, contentKey string) gen.Video {
 	found, ok := progress[contentKey]
 	if !ok {
@@ -541,7 +476,6 @@ func withProgress(video gen.Video, progress map[string]domain.Progress, contentK
 	return video
 }
 
-// lookupVideo は id から動画を引く。見つからなければ応答を書いて false を返す。
 func (s *server) lookupVideo(w http.ResponseWriter, r *http.Request, id int64) (domain.Video, bool) {
 	if s.videos == nil {
 		s.internalError(w, "Library queries are not configured.", nil)
@@ -560,10 +494,7 @@ func (s *server) lookupVideo(w http.ResponseWriter, r *http.Request, id int64) (
 	return video, true
 }
 
-// toAPIVideo は応答に載せる動画を契約の形へ写す。
-//
-// 取得できていない値は省略する。0 で埋めると、一覧で「尺が 0 の動画」と
-// 「尺が分からない動画」を区別できなくなる。
+// Omit unavailable values so unknown duration remains distinct from zero duration.
 func toAPIVideo(view domain.VideoView) gen.Video {
 	video := view.Video
 	out := gen.Video{
@@ -578,18 +509,12 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 		ThumbnailState: gen.VideoThumbnailState(video.ThumbnailState),
 		PreviewState:   gen.VideoPreviewState(video.PreviewState),
 		Public:         video.Public,
-		// 集まりの要約は、集まりのメンバーならどの応答の項目にも載せる。ゲストには公開のバージョン
-		// だけで数えたものが返る。
+		// Include bundle summaries for all members, counting only public versions for guests.
 		Versions: apiVersionsRef(video.Versions),
 	}
-	// お気に入りは所有者の応答にだけ入る。ゲストの応答からは forAudience が外す
-	//
 	favorite := video.Favorite
 	out.Favorite = &favorite
 
-	// 上書きの項目。title は有効な
-	// 題名で、ファイル名由来の題名・表示名・代表サムネイルの位置は forAudience がゲストの
-	// 応答から外す。
 	if video.FileTitle != "" {
 		fileTitle := video.FileTitle
 		out.FileTitle = &fileTitle
@@ -602,13 +527,11 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 		position := *video.ThumbnailPositionMs
 		out.ThumbnailPositionMs = &position
 	}
-	// 内容の版はアップロードに添えて送り返す値で、所有者の応答にだけ入る
-	// （docs/design-docs/thumbnail-editing.md「Uploaded images」）。
+	// Content version is owner-only and is echoed with image uploads.
 	if video.ContentKey != "" {
 		contentVersion := thumbnailVersion(video.ContentKey)
 		out.ContentVersion = &contentVersion
 	}
-	// 適用した画像の出どころも所有者の応答にだけ入る。
 	if video.ThumbnailImageRevision != 0 && video.ThumbnailImageOrigin != "" {
 		origin := gen.VideoThumbnailImage(video.ThumbnailImageOrigin)
 		out.ThumbnailImage = &origin
@@ -645,14 +568,12 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 		reason := video.ProbeError
 		out.ProbeError = &reason
 	}
-	// コードは failed の行だけに出す。アップグレード前の失敗にはコードが無い
-	//
+	// Only failed rows expose error codes; failures predating the upgrade may lack a code.
 	if video.ProbeState == domain.ProbeStateFailed && video.ProbeErrorCode != "" {
 		code := gen.ProbeErrorCode(video.ProbeErrorCode)
 		out.ProbeErrorCode = &code
 	}
-	// サムネイルは生成済みのときだけ URL を出す。未生成の動画も一覧には
-	// 並べ、クライアントは枠だけを描く。
+	// Expose a thumbnail URL only after generation; clients render placeholders otherwise.
 	if video.HasThumbnail() {
 		url := thumbnailURL(video)
 		out.ThumbnailUrl = &url
@@ -669,9 +590,7 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 	return out
 }
 
-// presentVideos は動画たちを応答に載せる形にする。消えたプレビューの作り直しの
-// 予約はアプリケーション層（VideoCatalog）が行う。catalog が無ければ、
-// プレビューのファイルは無いものとして扱う。
+// VideoCatalog schedules missing previews for regeneration. Without a catalog, treat preview files as absent.
 func (s *server) presentVideos(ctx context.Context, videos []domain.Video) []domain.VideoView {
 	if s.catalog != nil {
 		return s.catalog.PresentVideos(ctx, videos)
@@ -683,7 +602,6 @@ func (s *server) presentVideos(ctx context.Context, videos []domain.Video) []dom
 	return views
 }
 
-// apiVideo は動画1件を契約の形へ写す。
 func (s *server) apiVideo(ctx context.Context, video domain.Video) gen.Video {
 	return toAPIVideo(s.presentVideos(ctx, []domain.Video{video})[0])
 }
@@ -692,12 +610,7 @@ func previewURL(video domain.Video) string {
 	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/preview?v=" + video.ContentKey
 }
 
-// thumbnailURL はサムネイルの取得先を組み立てる。版は content_key の先頭で、
-// 内容が変われば URL も変わる。所有者が画像を適用していれば、版に画像の改版番号を
-// 足して `<内容鍵の先頭>-g<改版番号>` にする。
-// 適用していなくて位置を指定していれば、位置の改版番号を足して `<内容鍵の先頭>-r<改版番号>`
-// にし、位置を記録し直すたびに URL を変える。
-// ゲストにも渡る URL なので、位置の値は入れない。
+// Version thumbnail URLs by content-key prefix plus image generation (-g) or position revision (-r). Never include the position itself because guests receive these URLs.
 func thumbnailURL(video domain.Video) string {
 	version := thumbnailVersion(video.ContentKey)
 	switch {
@@ -714,8 +627,7 @@ func seekThumbnailURL(video domain.Video) string {
 		thumbnailVersion(video.ContentKey)
 }
 
-// seekThumbnailSheetURL はスプライトのシート sheet の取得先を組み立てる。版は
-// 配置情報の URL（seekThumbnailURL）と同じく内容由来である。
+// Sprite sheets use the same content-derived version as the seek-thumbnail manifest.
 func seekThumbnailSheetURL(video domain.Video, sheet int) string {
 	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/seek-thumbnail/" + strconv.Itoa(sheet) +
 		"?v=" + thumbnailVersion(video.ContentKey)

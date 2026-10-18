@@ -1,5 +1,4 @@
-# task up の実体。
-# プロジェクト名を固定するので、データ用ボリュームの名前は vv_data になる
+# Pin the project name so the data volume is vv_data.
 
 name: vv
 
@@ -9,29 +8,26 @@ services:
       context: .
       args:
         VERSION: ${VV_VERSION:-dev}
-        # task up が git から求めて渡す。無ければ /api/health は commit / builtAt を省く。
+        # task up supplies Git metadata; absent values are omitted from /api/health.
         COMMIT: ${VV_COMMIT:-}
         BUILT_AT: ${VV_BUILT_AT:-}
     ports:
-      # ホスト側の公開ポートだけを差し替えられる。コンテナ内は 8080 のまま。
+      # Change only the host port; the container still listens on 8080.
       - "${MDM_HOST_PORT:-8080}:8080"
     environment:
       MDM_ADDR: ":8080"
       MDM_DATA_DIR: "/data"
       MDM_LOG_LEVEL: "${MDM_LOG_LEVEL:-info}"
-      # 転送ヘッダーを信じる逆プロキシのアドレス。空ならループバックとプライベート
-      # アドレスを信じる（docs/how-to/running-vv.md「Network exposure」）。
+      # Trusted forwarding proxies; empty trusts loopback and private addresses. See Network exposure in docs/how-to/running-vv.md.
       MDM_TRUSTED_PROXIES: "${MDM_TRUSTED_PROXIES:-}"
-      # サムネイルの編集で同梱の代わりに読ませる拡散モデルのファイル。空なら同梱のもの
-      # （docs/how-to/comfyui-thumbnails.md「Try a derived model」）。
+      # Optional replacement diffusion model; see Try a derived model in docs/how-to/comfyui-thumbnails.md.
       MDM_COMFYUI_DIFFUSION_MODEL: "${MDM_COMFYUI_DIFFUSION_MODEL:-}"
     volumes:
-      # 設定画面で選べるコンテナ内の候補。ホスト側は差し替えられる。
+      # Container paths selectable in settings; host paths are configurable.
       - "${MDM_MEDIA_HOST_DIR:-./media}:/media:ro"
-      # データベースは名前付きボリュームに置く。ボリュームを削除すると利用者データも失う。
-      # 復旧手順: docs/how-to/running-vv.md の「Data and recovery」。
+      # Deleting this volume loses user data; see Data and recovery in docs/how-to/running-vv.md.
       - "data:/data"
-    # 猶予 10 秒の停止処理が終わるまで待つ。
+    # Allow the ten-second graceful shutdown to complete.
     stop_grace_period: 15s
     restart: unless-stopped
 

@@ -11,8 +11,6 @@ import {
   validRule,
 } from "./smartRule";
 
-// スマートフォルダの条件と親の木。
-
 const unfiltered = {
   query: "",
   watch: "all" as const,
@@ -66,7 +64,6 @@ describe("条件の検査", () => {
     expect(validRule({ tags: Array.from({ length: 17 }, (_, i) => i + 1) })).toBe(false);
     expect(validRule({ minDuration: 601, maxDuration: 600 })).toBe(false);
     expect(validRule({ addedWithin: 0 })).toBe(false);
-    // 種類・人物・団体の id は正の整数だけ。
     expect(validRule({ tagKind: 0 })).toBe(false);
     expect(validRule({ person: -1 })).toBe(false);
     expect(validRule({ organization: 1.5 })).toBe(false);
@@ -86,7 +83,6 @@ describe("条件の検査", () => {
 });
 
 describe("親の木", () => {
-  // 猫 ─ 未視聴 ─ 最近、犬（名前の自然順に並べ直す）。
   const folders: SmartFolderSummary[] = [
     { id: 4, name: "犬" },
     { id: 3, parentId: 2, name: "最近" },

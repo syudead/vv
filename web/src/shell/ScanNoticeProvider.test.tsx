@@ -340,7 +340,6 @@ describe("ScanNoticeProvider", () => {
         issues: { failed, substituted: 0, revision: id },
       });
 
-    /** files は今の取り込みの問題の一覧（失敗の動画のファイル名）である。 */
     function serve(current: () => { id: number; files: string[] }) {
       fetchMock.mockImplementation((input) => {
         const url = String(input);
@@ -398,19 +397,16 @@ describe("ScanNoticeProvider", () => {
         expect(screen.getByTestId("tracking").textContent).toBeDefined(),
       );
 
-      // 前に読んだ一覧が無いので通知する。
       await emitServerEvent("scan", partial(62, 1));
       await waitFor(() => expect(screen.getByTestId("notice").textContent).toBe("62"));
       await act(async () => screen.getByRole("button", { name: "acknowledge" }).click());
       expect(screen.getByTestId("notice").textContent).toBe("none");
 
-      // 同じ失敗が持ち越されただけ。
       id = 63;
       await emitServerEvent("scan", partial(63, 1));
       await act(async () => new Promise((done) => setTimeout(done, 20)));
       expect(screen.getByTestId("notice").textContent).toBe("none");
 
-      // 新しい失敗が足された。
       id = 64;
       files = ["a.mp4", "b.mp4"];
       await emitServerEvent("scan", partial(64, 2));
@@ -437,7 +433,6 @@ describe("ScanNoticeProvider", () => {
       await act(async () => new Promise((done) => setTimeout(done, 20)));
       await act(async () => screen.getByRole("button", { name: "acknowledge" }).click());
 
-      // 同じ a.mp4 が持ち越されただけの partial。
       id = 81;
       await emitServerEvent("scan", partial(81, 1));
       await act(async () => new Promise((done) => setTimeout(done, 20)));

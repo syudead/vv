@@ -13,8 +13,8 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 中断した走査が残ったまま待ち受けを開けなかったとき、run は始め直した走査と
-// ワーカーを止めてから戻る。止めずに戻ると、それらが閉じたデータベースへ書く。
+// Listener failure must stop restarted scans and workers before run returns and closes their
+// database.
 func TestRunStopsResumedScanWhenPortIsInUse(t *testing.T) {
 	stubMediaCommands(t)
 	dataDir := t.TempDir()
@@ -34,7 +34,7 @@ func TestRunStopsResumedScanWhenPortIsInUse(t *testing.T) {
 	if _, err := db.Settings().AddMediaFolder(ctx, mediaDir); err != nil {
 		t.Fatal(err)
 	}
-	// 前回の停止で running のまま残った走査。起動時に閉じて始め直す。
+	// Simulate a scan left running at the previous shutdown.
 	if _, _, err := db.Scans().StartScan(ctx); err != nil {
 		t.Fatal(err)
 	}

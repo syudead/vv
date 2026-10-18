@@ -90,8 +90,6 @@ func TestListTagsWithoutParametersReturnsEverything(t *testing.T) {
 	}
 }
 
-// TestListTagsReturnsExactSpelling は、綴りが完全に一致するタグが 1 ページ目に入らなくても
-// 応答の exact に入ることを確かめる（統合の窓の統合先）。
 func TestListTagsReturnsExactSpelling(t *testing.T) {
 	env, cookie := newExternalEnv(t, Options{})
 	ctx := context.Background()
@@ -133,7 +131,6 @@ func TestListTagsRejectsInvalidParameters(t *testing.T) {
 			t.Errorf("%s: status = %d: %s", target, rec.Code, rec.Body)
 		}
 	}
-	// 別の並び順のカーソルも 400。
 	if _, err := env.db.Tags().CreateTag(context.Background(), "a"); err != nil {
 		t.Fatal(err)
 	}
@@ -148,13 +145,11 @@ func TestListTagsRejectsInvalidParameters(t *testing.T) {
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"invalid_request"`) {
 		t.Errorf("別の並び順のカーソル: status = %d: %s", rec.Code, rec.Body)
 	}
-	// 100 文字ちょうどは受ける。
 	if rec := env.get("/api/tags?q="+strings.Repeat("a", 100), cookie); rec.Code != http.StatusOK {
 		t.Errorf("100 文字の q: status = %d: %s", rec.Code, rec.Body)
 	}
 }
 
-// 外部連携 API の一覧は limit を省けば画面と同じ並びで全件を返し、nextCursor を持たない
 func TestExternalListTagsWithoutLimitMatchesScreenFullList(t *testing.T) {
 	fake := &fakeTags{tags: []domain.Tag{{ID: 1, Name: "a"}, {ID: 2, Name: "b"}, {ID: 3, Name: "c"}}}
 	env, cookie := newExternalEnv(t, Options{Tags: fake})
@@ -193,7 +188,6 @@ func TestExternalListTagsWithoutLimitMatchesScreenFullList(t *testing.T) {
 	}
 }
 
-// ゲストは 401 で、保存層に届かない。
 func TestListTagsIsOwnerOnly(t *testing.T) {
 	fake := &fakeTags{}
 	env := newAuthEnv(t, t.TempDir(), Options{Tags: fake})

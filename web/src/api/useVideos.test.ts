@@ -18,13 +18,6 @@ import {
 import { itemVideos, videoItem } from "./libraryItems";
 import type { VideosCriteria } from "./useVideos";
 
-/**
- * 一覧の読み込みの振る舞いを固定する。
- *
- * カーソルの引き継ぎと打ち切りは目で見て分かる形に現れない。画面を書き換えても
- * **このテストが同じ内容で通ること**が、既存の振る舞いを保った証拠になる。
- */
-
 const { listVideos, listLibrary, listFolderVideos, getVideo, getGroup } = vi.hoisted(
   () => ({
     listVideos: vi.fn(),
@@ -47,7 +40,6 @@ vi.mock("./client", async (importOriginal) => ({
 const { useVideos } = await import("./useVideos");
 const { nextProgressSequence, recordSavedProgress } = await import("./progressEvents");
 
-/** Pending は応答を後から決められる 1 回の呼び出しである。 */
 interface Pending {
   params: ListVideosParams;
   resolve: (page: VideoPage) => void;
@@ -57,7 +49,6 @@ interface Pending {
 
 let calls: Pending[] = [];
 
-/** item は一覧の 1 件を作る。 */
 function item(id: number): Video {
   return {
     id,
@@ -75,7 +66,6 @@ function item(id: number): Video {
   };
 }
 
-/** page は 1 ページ分の応答を作る。 */
 function page(ids: number[], nextCursor?: string): VideoPage {
   return { items: ids.map(item), total: 100, nextCursor };
 }
@@ -95,7 +85,7 @@ beforeEach(() => {
       fail = rej;
     });
 
-    // 本物の fetch と同じく、打ち切られた要求は AbortError で終わる。
+    // Match fetch cancellation with AbortError.
     params.signal?.addEventListener("abort", () => {
       fail?.(new DOMException("aborted", "AbortError"));
     });
@@ -112,7 +102,7 @@ beforeEach(() => {
 
 describe("useVideos（一覧の読み込み）", () => {
   it("ゲストは変化の知らせ（/api/events）のうち group だけを受け取る", async () => {
-    // AudienceProvider の外の既定はゲストである。
+    // The default audience outside AudienceProvider is guest.
     renderHook(() => useVideos({ sort: "addedDesc" }));
     await waitFor(() => {
       expect(calls).toHaveLength(1);
@@ -150,7 +140,6 @@ describe("useVideos（一覧の読み込み）", () => {
     });
     expect(calls[1]?.params.cursor).toBe("cursor-1");
 
-    // 続きは置き換えではなく連結である。
     await act(async () => {
       calls[1]?.resolve(page([3], "cursor-2"));
     });
@@ -175,14 +164,12 @@ describe("useVideos（一覧の読み込み）", () => {
 
     act(() => result.current.refreshInPlace());
     await waitFor(() => expect(calls).toHaveLength(3));
-    // 先頭から取り、読み込み中の表示にも空の枠にもしない。
     expect(calls[2]?.params.cursor).toBeUndefined();
     expect(result.current.loading).toBe(false);
     expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([
       1, 2, 3, 4,
     ]);
 
-    // 先頭に新しい動画が入った。4 件に届くまで続きを取る。
     await act(async () => {
       calls[2]?.resolve(page([9, 1, 2], "cursor-a"));
     });
@@ -233,15 +220,12 @@ describe("useVideos（一覧の読み込み）", () => {
     await waitFor(() => expect(calls).toHaveLength(2));
     act(() => result.current.loadMore());
     act(() => result.current.retryLoadMore());
-    // 取り直しは続き、続きの取得はまだ始めない。
     expect(calls).toHaveLength(2);
 
-    // 先頭に新しい動画が入った。
     await act(async () => {
       calls[1]?.resolve(page([9, 1], "cursor-2"));
     });
     expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([9, 1]);
-    // 取り直しで替わったあとのカーソルから続きを取る。
     await waitFor(() => expect(calls).toHaveLength(3));
     expect(calls[2]?.params.cursor).toBe("cursor-2");
   });
@@ -261,7 +245,6 @@ describe("useVideos（一覧の読み込み）", () => {
 
     act(() => result.current.refreshInPlace());
     await waitFor(() => expect(calls).toHaveLength(3));
-    // 1 ページ目の末尾と 2 ページ目の先頭が同じ動画（2）になった。
     await act(async () => {
       calls[2]?.resolve(page([1, 2], "cursor-a"));
     });
@@ -269,7 +252,6 @@ describe("useVideos（一覧の読み込み）", () => {
     await act(async () => {
       calls[3]?.resolve(page([2, 3], "cursor-b"));
     });
-    // 重なりを除くと 3 件。4 件に届くまで、さらに続きを取る。
     await waitFor(() => expect(calls).toHaveLength(5));
     expect(calls[4]?.params.cursor).toBe("cursor-b");
     await act(async () => {
@@ -307,7 +289,6 @@ describe("useVideos（一覧の読み込み）", () => {
     act(() => result.current.loadMore());
     await waitFor(() => expect(calls).toHaveLength(2));
 
-    // 続きの取得の途中で頼まれる。
     act(() => result.current.refreshInPlace());
     expect(calls).toHaveLength(2);
 
@@ -317,7 +298,6 @@ describe("useVideos（一覧の読み込み）", () => {
     await waitFor(() => expect(calls).toHaveLength(3));
     expect(calls[2]?.params.cursor).toBeUndefined();
 
-    // 4 件に届くまで取り、続きを加えた分を一覧から落とさない。
     await act(async () => {
       calls[2]?.resolve(page([1, 2], "cursor-1"));
     });
@@ -342,7 +322,6 @@ describe("useVideos（一覧の読み込み）", () => {
     await waitFor(() => expect(calls).toHaveLength(2));
     act(() => result.current.refreshInPlace());
 
-    // 続きは 2 と 3。2 は既に出ているので、一覧は 3 件になる。
     await act(async () => {
       calls[1]?.resolve(page([2, 3], "cursor-2"));
     });
@@ -356,7 +335,6 @@ describe("useVideos（一覧の読み込み）", () => {
       calls[3]?.resolve(page([3], "cursor-2"));
     });
 
-    // 3 件に届いたので、4 件目を探す要求は出さない。
     expect(calls).toHaveLength(4);
     expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([1, 2, 3]);
   });
@@ -548,7 +526,7 @@ describe("useVideos（一覧の読み込み）", () => {
       calls[0]?.resolve(page([1, 2], "cursor-1"));
     });
 
-    // カーソルは並び順と検索語に紐づく。引き継ぐと境界の意味が変わってしまう。
+    // Cursors belong to their sort and query; reusing them changes the boundary's meaning.
     rerender({ sort: "titleAsc", query: "" });
     await waitFor(() => {
       expect(calls).toHaveLength(2);
@@ -579,7 +557,6 @@ describe("useVideos（一覧の読み込み）", () => {
       expect(calls).toHaveLength(1);
     });
 
-    // 1 つ目が返る前に検索語が変わる。
     rerender({ query: "ねこ" });
     await waitFor(() => {
       expect(calls).toHaveLength(2);
@@ -591,7 +568,6 @@ describe("useVideos（一覧の読み込み）", () => {
     });
 
     expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([42]);
-    // 打ち切りは「利用者が先に進んだ」だけで、失敗ではない。
     expect(result.current.error).toBeNull();
     expect(result.current.hasMore).toBe(true);
     expect(result.current.loading).toBe(false);
@@ -651,7 +627,6 @@ describe("useVideos（条件と重複）", () => {
       expect(calls[0]?.aborted()).toBe(true);
 
       await act(async () => calls[1]?.resolve(page([9])));
-      // 打ち切られた要求の応答が後から届いても一覧を上書きしない。
       await act(async () => calls[0]?.resolve(page([1, 2, 3])));
       expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([9]);
       expect(result.current.error).toBeNull();
@@ -733,12 +708,11 @@ describe("useVideos の準備の反映", () => {
 
     expect(getVideo).toHaveBeenCalledTimes(1);
     expect(getVideo.mock.calls[0]?.[0]).toBe(2);
-    // 一覧は読み直さず、読み込んだページと続きの位置を保つ。
     expect(listVideos).toHaveBeenCalledTimes(1);
     expect(result.current.cursor).toBe("next");
     expect(itemVideos(result.current.items)[1]).toMatchObject({
       durationMs: 5000,
-      // 題名は一覧側の値を残す（フォルダ画面はそのフォルダの所在の題名を出す）。
+      // Folder listings use the title of the location in that folder, not necessarily the detail title.
       title: "動画 2",
     });
   });
@@ -753,7 +727,6 @@ describe("useVideos の準備の反映", () => {
     );
     await act(async () => calls[0]?.resolve(page([1, 2])));
 
-    // 前の一覧で動画 2 の取り直しを始め、応答はまだ返らない。
     let resolveOld: (video: Video) => void = () => {};
     getVideo.mockImplementationOnce(
       () =>
@@ -764,7 +737,6 @@ describe("useVideos の準備の反映", () => {
     await emitServerEvent("video", { id: 2 });
     await waitFor(() => expect(getVideo).toHaveBeenCalledTimes(1));
 
-    // 条件を変えると、新しいページには準備の済んだ動画 2 が入っている。
     rerender({ criteria: { sort: "addedDesc", query: "新" } });
     await waitFor(() => expect(calls).toHaveLength(2));
     await act(async () =>
@@ -772,7 +744,6 @@ describe("useVideos の準備の反映", () => {
     );
     expect(itemVideos(result.current.items)[0]?.previewState).toBe("done");
 
-    // 遅れて届いた古い取り直し（準備中）は新しい一覧に重ねない。
     await act(async () => resolveOld({ ...item(2), previewState: "pending" }));
     expect(itemVideos(result.current.items)[0]?.previewState).toBe("done");
   });
@@ -878,11 +849,9 @@ describe("useVideos の準備の反映", () => {
     });
     getVideo.mockResolvedValue({ ...item(2), previewState: "done" });
 
-    // 一覧の応答はまだ返っていない。その間に動画 2 の準備が終わる。
     await emitServerEvent("video", { id: 2 });
     expect(getVideo).not.toHaveBeenCalled();
 
-    // 応答は知らせより古い内容（準備中）を持っている。
     await act(async () => calls[0]?.resolve(page([1, 2])));
 
     await waitFor(() =>
@@ -898,13 +867,10 @@ describe("useVideos の準備の反映", () => {
     await act(async () => calls[0]?.resolve(page([1, 2], "next")));
     getVideo.mockResolvedValue({ ...item(2), previewState: "done" });
 
-    // 続きの応答がまだ返らない間に、表示中の動画 2 の準備が終わる。
     act(() => result.current.loadMore());
     await emitServerEvent("video", { id: 2 });
     await waitFor(() => expect(getVideo).toHaveBeenCalledTimes(1));
 
-    // 並べ替えの値が変わった動画は続きのページにも現れる。遅れて届いた応答は
-    // 知らせより古い内容（準備中）を持っている。
     await act(async () => calls[1]?.resolve(page([2, 3])));
 
     await waitFor(() => expect(getVideo).toHaveBeenCalledTimes(2));
@@ -951,8 +917,7 @@ describe("useVideos の準備の反映", () => {
     expect(calls).toHaveLength(1);
   });
 
-  // 代表がこの一覧のフォルダ・絞り込みに入るかは画面では分からないので、代表を
-  // 差し込まず、サーバーから一覧を読み直す（PR 612 のレビュー）。
+  // Only the server knows whether a new representative matches these conditions; resync rather than insert it.
   it("代表が一覧に出ていない動画が畳まれたら、代表を差し込まずに一覧を読み直す（030 R-9）", async () => {
     const { result } = renderHook(() => useVideos({ sort: "addedDesc" }), {
       wrapper: OwnerAudience,
@@ -976,8 +941,6 @@ describe("useVideos の準備の反映", () => {
     expect(result.current.total).toBe(2);
   });
 
-  // issue 267: useVideos は tag の条件を listVideos へ渡し、続きのページの取得でも
-  // 同じ条件を渡し続ける。
   it("tag の条件を最初の取得にも続きの取得にも渡す", async () => {
     const { result } = renderHook(() => useVideos({ sort: "addedDesc", tag: [3, 8] }), {
       wrapper: OwnerAudience,
@@ -992,8 +955,6 @@ describe("useVideos の準備の反映", () => {
     expect(calls[1]?.params.tag).toEqual([3, 8]);
   });
 
-  // issue 267: 付け外しの結果は、表示中の項目の tags へその場で反映される
-  // （一覧を取り直さない）。
   it("付け外しの通知を受けて、表示中の項目の tags を書き換える", async () => {
     const { nextVideoTagsSequence, recordAppliedVideoTags } =
       await import("./videoTagsEvents");
@@ -1040,11 +1001,7 @@ describe("useVideos の準備の反映", () => {
     ).toEqual([]);
   });
 
-  // Devin の指摘3: ページの取得中に届いた付け外しは、まだ読み込んでいない
-  // 動画には反映しようが無く、そのままだと後から届くページの古い（付け外し
-  // 前の）内容で上書きされて消えてしまう。取得中に届いた変更を覚えておき、
-  // その後に届いたページにその動画があれば重ねる（changedWhileLoading と
-  // 同じ仕組み）。
+  // Retain tag mutations received during page loading and overlay them when their videos arrive.
   it("ページの取得中に届いた付け外しは、その動画を含むページが届いたときに重ねる", async () => {
     const { nextVideoTagsSequence, recordAppliedVideoTags } =
       await import("./videoTagsEvents");
@@ -1054,7 +1011,6 @@ describe("useVideos の準備の反映", () => {
     await waitFor(() => expect(calls).toHaveLength(1));
     await act(async () => calls[0]?.resolve(page([1, 2], "next")));
 
-    // 続きのページ（動画3を含む）の取得中に、その動画3へタグが付く。
     act(() => result.current.loadMore());
     await waitFor(() => expect(calls).toHaveLength(2));
     act(() => {
@@ -1065,10 +1021,8 @@ describe("useVideos の準備の反映", () => {
         nextVideoTagsSequence(),
       );
     });
-    // まだ一覧に無いので、この時点では何も変わらない。
     expect(itemVideos(result.current.items).some((video) => video.id === 3)).toBe(false);
 
-    // 続きの応答は、その付け外しより古い（タグの付いていない）内容を持つ。
     await act(async () => calls[1]?.resolve(page([3])));
 
     await waitFor(() =>
@@ -1087,7 +1041,6 @@ describe("useVideos の準備の反映", () => {
     );
   });
 
-  // 動画1・2つ以上へまとめて付けたときも、取得中の動画の分だけを重ねる。
   it("取得中に届いた付け外しは、対象のうちそのページに現れた分だけ重ねる", async () => {
     const { nextVideoTagsSequence, recordAppliedVideoTags } =
       await import("./videoTagsEvents");
@@ -1107,7 +1060,6 @@ describe("useVideos の準備の反映", () => {
         nextVideoTagsSequence(),
       );
     });
-    // 動画1は表示中なので、その場で反映される（従来どおり）。
     expect(
       itemVideos(result.current.items).find((video) => video.id === 1)?.tags,
     ).toEqual([
@@ -1139,11 +1091,7 @@ describe("useVideos の準備の反映", () => {
     );
   });
 
-  // Devin の指摘3（2回目）: ページ2の取得中に届いた付け外しの対象が、
-  // ページ2ではなくさらに次のページ3に現れることがある。ページ2の到着で
-  // tagsChangedWhileLoading を空にしてしまうと、続くページ3の取得が始まる
-  // 前に消えてしまい、ページ3が届いても重ねられない。続きの取得
-  // （loadMore）をまたいで、実際にその動画を含むページが届くまで持ち越す。
+  // Mutated videos may appear several pages later; retain overlays until the matching page arrives.
   it("ページ2の取得中に届いた付け外しは、対象がページ3にあっても、ページ3が届いたときに重ねる", async () => {
     const { nextVideoTagsSequence, recordAppliedVideoTags } =
       await import("./videoTagsEvents");
@@ -1151,10 +1099,8 @@ describe("useVideos の準備の反映", () => {
       wrapper: OwnerAudience,
     });
     await waitFor(() => expect(calls).toHaveLength(1));
-    // ページ1: 動画1つだけ。続きがある。
     await act(async () => calls[0]?.resolve(page([1], "next-2")));
 
-    // ページ2の取得中に、まだどのページにも現れていない動画121へタグを付ける。
     act(() => result.current.loadMore());
     await waitFor(() => expect(calls).toHaveLength(2));
     act(() => {
@@ -1169,14 +1115,11 @@ describe("useVideos の準備の反映", () => {
       false,
     );
 
-    // ページ2が届く（動画121を含まない）。
     await act(async () => calls[1]?.resolve(page([2], "next-3")));
     expect(itemVideos(result.current.items).some((video) => video.id === 121)).toBe(
       false,
     );
 
-    // ページ3の取得が始まり、動画121を含む（付け外し前の、古いタグの
-    // ままの）内容で届く。
     act(() => result.current.loadMore());
     await waitFor(() => expect(calls).toHaveLength(3));
     await act(async () => calls[2]?.resolve(page([121])));
@@ -1197,8 +1140,6 @@ describe("useVideos の準備の反映", () => {
     );
   });
 
-  // N1: 応答が送った順と違う順で届いても、後から送った操作を古い応答で
-  // 巻き戻さない。
   it("古い応答が後から届いても、同じ動画・タグの新しい結果を巻き戻さない", async () => {
     const { nextVideoTagsSequence, recordAppliedVideoTags } =
       await import("./videoTagsEvents");
@@ -1211,7 +1152,6 @@ describe("useVideos の準備の反映", () => {
     const first = nextVideoTagsSequence();
     const second = nextVideoTagsSequence();
 
-    // 2番目に送った「外す」の応答が先に届く。
     act(() => {
       recordAppliedVideoTags(
         [1],
@@ -1224,7 +1164,6 @@ describe("useVideos の準備の反映", () => {
       itemVideos(result.current.items).find((video) => video.id === 1)?.tags,
     ).toEqual([]);
 
-    // 1番目に送った「付ける」の応答が遅れて届いても、2番目の結果を上書きしない。
     act(() => {
       recordAppliedVideoTags(
         [1],
@@ -1239,10 +1178,7 @@ describe("useVideos の準備の反映", () => {
   });
 });
 
-// 公開・非公開の切り替えの後の一覧（issue 305）。読み直さず、該当の項目の public を差し替える。
 describe("useVideos の公開の反映", () => {
-  // サーバーは要求したすべての動画に反映したと答える（applied は異なる id の数）。
-  // partial を渡すと、その本数だけに反映したと答える。
   function stubVisibility(partial?: number) {
     vi.stubGlobal(
       "fetch",
@@ -1292,7 +1228,6 @@ describe("useVideos の公開の反映", () => {
   it("一部にしか反映されなかった切り替えは、該当の項目を公開にせず取り直す", async () => {
     stubVisibility(1);
     const { updateVideoVisibility } = await import("./visibility");
-    // 動画 1 は反映され、動画 3（空の content_key）は反映されなかった。
     getVideo.mockImplementation((id: number) =>
       Promise.resolve({ ...item(id), public: id === 1 }),
     );
@@ -1326,7 +1261,6 @@ describe("useVideos の公開の反映", () => {
       await import("./listSnapshot");
     const { RequestFailed } = await import("./client");
     clearListSnapshot();
-    // 動画 3 の最初の取り直しは一時的に失敗し、古い public: false のまま残る。
     let failOnce = true;
     getVideo.mockImplementation((id: number) => {
       if (id === 3 && failOnce) {
@@ -1353,7 +1287,7 @@ describe("useVideos の公開の反映", () => {
       ]),
     );
 
-    // 動画 3 の公開状態はまだ確かでないので、控えを取ると戻ったときに古い状態が復元される。
+    // Unresolved visibility must block snapshots or returning would restore stale state.
     const snapshot = {
       items: [videoItem(item(3))],
       total: 1,
@@ -1363,7 +1297,6 @@ describe("useVideos の公開の反映", () => {
     saveListSnapshot({ query: "" }, snapshot);
     expect(takeListSnapshot({ query: "" })).toBeUndefined();
 
-    // 取り直しが成功すれば、控えを取れるようになる。
     await act(async () => {
       await updateVideoVisibility([3], true);
     });
@@ -1390,8 +1323,6 @@ describe("useVideos の公開の反映", () => {
       await import("./listSnapshot");
     const { RequestFailed } = await import("./client");
     clearListSnapshot();
-    // 動画 3 の1回目の取得（更新の知らせ）は切り替えの前に始まり、後から届く。
-    // 2回目（一部反映の取り直し）は一時的に失敗し、3回目（次の知らせ）は成功する。
     let answerFirst: ((video: Video) => void) | undefined;
     let attempts = 0;
     getVideo.mockImplementation((id: number) => {
@@ -1416,12 +1347,10 @@ describe("useVideos の公開の反映", () => {
     await act(async () => {
       await updateVideoVisibility([3], true);
     });
-    // 切り替える前に読んだ public: false が届き、続く取り直しは失敗する。
     await act(async () => answerFirst?.(item(3)));
     await waitFor(() => expect(getVideo).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(itemVideos(result.current.items)[2]?.public).toBe(false));
 
-    // 動画 3 の公開状態はまだ確かでないので、控えを取らせない。
     const snapshot = {
       items: [videoItem(item(3))],
       total: 1,
@@ -1431,7 +1360,6 @@ describe("useVideos の公開の反映", () => {
     saveListSnapshot({ query: "" }, snapshot);
     expect(takeListSnapshot({ query: "" })).toBeUndefined();
 
-    // 知らせの後に始めた取り直しが成功すれば確かになる。
     await emitServerEvent("video", { id: 3 });
     await waitFor(() => expect(itemVideos(result.current.items)[2]?.public).toBe(true));
     await waitFor(() => {
@@ -1450,7 +1378,6 @@ describe("useVideos の公開の反映", () => {
       await import("./listSnapshot");
     const { RequestFailed } = await import("./client");
     clearListSnapshot();
-    // 届いたページで動画 3 を取り直すが、一時的に失敗する。
     getVideo.mockImplementation((id: number) =>
       id === 3
         ? Promise.reject(new RequestFailed(500, "internal", "失敗"))
@@ -1467,7 +1394,6 @@ describe("useVideos の公開の反映", () => {
     await act(async () => {
       await updateVideoVisibility([3], true);
     });
-    // 切り替える前に読んだ public: false のページが届く。
     await act(async () => calls[1]?.resolve(page([3])));
     await waitFor(() => expect(getVideo).toHaveBeenCalledWith(3, expect.anything()));
     await waitFor(() => expect(itemVideos(result.current.items)).toHaveLength(3));
@@ -1517,7 +1443,6 @@ describe("useVideos の公開の反映", () => {
     saveListSnapshot({ query: "" }, snapshot);
     expect(takeListSnapshot({ query: "" })).toBeUndefined();
 
-    // 動画 3 だけを切り替え、全件に反映された。取り直さなくても確かである。
     stubVisibility();
     await act(async () => {
       await updateVideoVisibility([3], true);
@@ -1568,12 +1493,10 @@ describe("useVideos の公開の反映", () => {
 
     act(() => result.current.loadMore());
     await waitFor(() => expect(calls).toHaveLength(2));
-    // 続きの 60 件を取りに行っている間に、ID 1〜600 を公開にする。
     const ids = Array.from({ length: 600 }, (_, index) => index + 1);
     await act(async () => {
       await updateVideoVisibility(ids, true);
     });
-    // 切り替える前の内容（public: false）のページが後から届く。
     await act(async () =>
       calls[1]?.resolve(page(Array.from({ length: 60 }, (_, index) => index + 1))),
     );
@@ -1600,7 +1523,6 @@ describe("useVideos の公開の反映", () => {
     await waitFor(() => expect(calls).toHaveLength(1));
     await act(async () => calls[0]?.resolve(page([701, 702])));
 
-    // 動画 701 が変わった知らせで取り直しが始まる。
     await emitServerEvent("video", { id: 701 });
     await waitFor(() => expect(getVideo).toHaveBeenCalledOnce());
     await act(async () => {
@@ -1608,17 +1530,14 @@ describe("useVideos の公開の反映", () => {
     });
     expect(itemVideos(result.current.items)[0]?.public).toBe(true);
 
-    // 切り替える前に読んだ内容が遅れて届く。
     await act(async () => answer?.({ ...item(701), title: "新しい題名" }));
     expect(itemVideos(result.current.items)[0]?.public).toBe(true);
     vi.unstubAllGlobals();
   });
 });
 
-// グループの更新: グループの項目はメンバーの変化で1件取り直し、404 なら外す。
-// 今の一覧の経路はグループを返さないので、控えからの復元でグループの項目を入れる。
+// Restore group items from a snapshot because this list endpoint returns videos only.
 describe("useVideos のグループの項目", () => {
-  /** group はフォルダ A/B の自動グループ 7 で、動画 10・11・12 をメンバーに持つ。 */
   function group(overrides: Partial<LibraryGroup> = {}): LibraryGroup {
     return {
       id: 7,
@@ -1637,12 +1556,10 @@ describe("useVideos のグループの項目", () => {
     };
   }
 
-  /** ready は準備の済んだ動画である（復元したときに1件ずつ取り直さない）。 */
   function ready(id: number): Video {
     return { ...item(id), previewState: "done" };
   }
 
-  /** restoredWithGroup は動画 1、グループ、動画 2 の順の控えを作る。 */
   function restoredWithGroup(staleGroups?: number[]) {
     const items: LibraryItem[] = [
       videoItem(ready(1)),
@@ -1656,12 +1573,10 @@ describe("useVideos のグループの項目", () => {
     return items.flatMap((entry) => (entry.kind === "group" ? [entry.group] : []));
   }
 
-  /** detail は GET /api/groups/{id} の応答である。 */
   function detail(value: LibraryGroup) {
     return { group: value, trail: [], items: [] };
   }
 
-  /** deferredGroup は応答を後から決められる getGroup の1回分である。 */
   function deferredGroup() {
     let settle: (value: LibraryGroup) => void = () => undefined;
     let fail: (reason: unknown) => void = () => undefined;
@@ -1695,7 +1610,6 @@ describe("useVideos のグループの項目", () => {
 
     await waitFor(() => expect(getGroup).toHaveBeenCalledTimes(1));
     expect(getGroup.mock.calls[0]?.[0]).toBe(7);
-    // 取り直しの間、項目は変えない（骨組みにもしない）。
     expect(groups(result.current.items)[0]).toBe(before);
 
     await act(async () => {
@@ -1710,7 +1624,6 @@ describe("useVideos のグループの項目", () => {
       watchState: "inProgress",
       openVideoId: 11,
     });
-    // 一覧は読み直さず、読み込んだページと続きの位置を保つ。
     expect(listVideos).not.toHaveBeenCalled();
     expect(result.current.cursor).toBe("next");
     expect(result.current.total).toBe(40);
@@ -1757,7 +1670,6 @@ describe("useVideos のグループの項目", () => {
 
     await waitFor(() => expect(groups(result.current.items)[0]?.durationMs).toBe(9000));
     expect(getGroup).toHaveBeenCalledTimes(1);
-    // メンバーは動画の項目ではないので、動画1件の取り直しはしない。
     expect(getVideo).not.toHaveBeenCalled();
   });
 
@@ -1776,7 +1688,6 @@ describe("useVideos のグループの項目", () => {
   });
 
   it("ライブラリは group イベントで、表示中でないグループでも読み込み済みのページを条件を保ったまま読み直す", async () => {
-    // ライブラリの取得も calls に記録する（応答を後から決められる）。
     listLibrary.mockImplementation((params: ListVideosParams) => listVideos(params));
     const { result } = renderHook(
       () => useVideos({ sort: "addedDesc", query: "旅" }, undefined, "library"),
@@ -1788,13 +1699,11 @@ describe("useVideos のグループの項目", () => {
     });
     expect(result.current.items.map((entry) => entry.kind)).toEqual(["video", "video"]);
 
-    // 別の画面で動画 10 から新しいグループ 7 を作った。グループ 7 はまだ表示していない。
     await emitServerEvent("group", { ids: [7] });
     await waitFor(() => expect(calls).toHaveLength(2));
     expect(getGroup).not.toHaveBeenCalled();
     expect(calls[1]?.params).toMatchObject({ sort: "addedDesc", query: "旅" });
     expect(calls[1]?.params.cursor).toBeUndefined();
-    // 読み直しの間も今の項目を見せる。
     expect(result.current.items).toHaveLength(2);
 
     await act(async () => {
@@ -1823,7 +1732,6 @@ describe("useVideos のグループの項目", () => {
         calls[0]?.resolve(page([2]));
       });
 
-      // 別のタブでいちばん上のスマートフォルダ 9 を作った。
       await emitServerEvent("smartFolder", { ids: [9] });
       await waitFor(() => expect(calls).toHaveLength(2));
       expect(calls[1]?.params).toMatchObject({ sort: "addedDesc", favorite: true });
@@ -1960,15 +1868,7 @@ describe("useVideos のグループの項目", () => {
   it("控えの後にメンバーが変わったグループは、戻ったときに取り直す", async () => {
     getGroup.mockResolvedValueOnce(detail(group({ watchedCount: 1 })));
     const { result } = renderHook(
-      () =>
-        useVideos(
-          { sort: "addedDesc" },
-          restoredWithGroup([
-            7,
-            // 一覧に無いグループは取りに行かない。
-            99,
-          ]),
-        ),
+      () => useVideos({ sort: "addedDesc" }, restoredWithGroup([7, 99])),
       { wrapper: OwnerAudience },
     );
 
@@ -1986,7 +1886,6 @@ describe("useVideos のグループの項目", () => {
     );
     await waitFor(() => expect(getGroup).toHaveBeenCalledTimes(1));
 
-    // 取り直しの途中で動画を開いても、次の控えから戻ったときに取り直せる。
     expect(result.current.staleGroups()).toEqual([7]);
 
     await act(async () => {

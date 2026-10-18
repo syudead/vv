@@ -12,8 +12,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 動画の作品情報の保存。
-
 func setWorkInfo(t *testing.T, db *DB, id int64, info domain.WorkInfo) domain.Video {
 	t.Helper()
 	video, err := db.WorkInfo().Set(context.Background(), id, info)
@@ -23,7 +21,6 @@ func setWorkInfo(t *testing.T, db *DB, id int64, info domain.WorkInfo) domain.Vi
 	return video
 }
 
-// workInfoOf は動画の利用者データの鍵の作品情報を読む。行が無ければ ok が偽。
 func workInfoOf(t *testing.T, db *DB, id int64) (domain.WorkInfo, bool) {
 	t.Helper()
 	key := ownerVideo(t, db, id).UserKey
@@ -35,7 +32,6 @@ func workInfoOf(t *testing.T, db *DB, id int64) (domain.WorkInfo, bool) {
 	return info, ok
 }
 
-// workInfoRowCount は作品情報の 6 表の行の数の合計である。
 func workInfoRowCount(t *testing.T, db *DB) int {
 	t.Helper()
 	total := 0
@@ -57,8 +53,6 @@ func onlyDate(date string) domain.WorkInfo {
 	return domain.WorkInfo{Dates: []domain.WorkDate{{Kind: domain.DateRelease, Date: date}}}
 }
 
-// 書いた値を読み返すと、人物は役割の順・位置の順に今の名前を運び、日付は種類の順、URL は送った順、
-// 外部 ID は (source, value) の順で返る。書いた操作の戻り値の動画も同じ値を持つ。
 func TestSetWorkInfoReadsBackInOrderWithCurrentNames(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -112,8 +106,6 @@ func TestSetWorkInfoReadsBackInOrderWithCurrentNames(t *testing.T) {
 	}
 }
 
-// 同じ値で 2 回目に書くと更新日時も進めずイベントも出さない。値が変われば、その鍵の動画のイベントを
-// 1 回出して更新日時を進める。
 func TestSetWorkInfoSkipsUnchangedValues(t *testing.T) {
 	db, ids := versionFixture(t)
 	recorder := &eventRecorder{}
@@ -139,7 +131,6 @@ func TestSetWorkInfoSkipsUnchangedValues(t *testing.T) {
 	}
 }
 
-// 無い人物 id を指すとフィールドを示す CreditNotFoundError で失敗し、何も書かない。無い動画は ErrNotFound。
 func TestSetWorkInfoRefusesMissingReferences(t *testing.T) {
 	db, ids := versionFixture(t)
 	recorder := &eventRecorder{}
@@ -172,7 +163,6 @@ func TestSetWorkInfoRefusesMissingReferences(t *testing.T) {
 	}
 }
 
-// すべて消すとどの表にも行が残らない。日付だけの動画は video_work_info の行を持たない。
 func TestSetWorkInfoClearsEveryTable(t *testing.T) {
 	db, ids := versionFixture(t)
 	person := createPerson(t, db, "山田花子")
@@ -201,8 +191,6 @@ func TestSetWorkInfoClearsEveryTable(t *testing.T) {
 	}
 }
 
-// 2 本を束ねると束に代表の値が出て、日付だけの代表の値も残る。外すとメンバーに自分の値が戻り、
-// 解けて残った 1 本は束の値を持つ。束のメンバーへの書き込みは束の全員に出る。
 func TestWorkInfoFollowsTheBundle(t *testing.T) {
 	db, ids := versionFixture(t)
 	setWorkInfo(t, db, ids["a"], onlyDate("2020"))
@@ -234,7 +222,6 @@ func TestWorkInfoFollowsTheBundle(t *testing.T) {
 	}
 }
 
-// 内容が別のパスで索引し直されても、値は同じ鍵で読める。
 func TestWorkInfoSurvivesAMove(t *testing.T) {
 	db, a := taggedVideoFixture(t)
 	person := createPerson(t, db, "山田花子")
@@ -250,8 +237,7 @@ func TestWorkInfoSurvivesAMove(t *testing.T) {
 	}
 }
 
-// 同じパスの中身の引き継ぎは、作品情報を 6 表まとめて新しい鍵へ移す。新しい鍵に作品情報が無いとき、
-// 新しい鍵が前の鍵の持たない日付と URL を持つとき（引き継ぎで消える）、どちらも前の値だけが残る。
+// Replace all six work-info tables together, removing destination fields absent from the source.
 func TestSuccessionMovesWorkInfoAsOneObject(t *testing.T) {
 	for name, existing := range map[string]*domain.WorkInfo{
 		"新しい鍵に作品情報が無い":     nil,
@@ -290,8 +276,6 @@ func TestSuccessionMovesWorkInfoAsOneObject(t *testing.T) {
 	}
 }
 
-// 一括操作は全体を 1 つの取引で行い、同じ鍵は後の指定が勝ち、変わった鍵の動画のイベントを 1 回出す。
-// 誤りは位置を運び、何も書かない。
 func TestSetManyWorkInfo(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -351,8 +335,6 @@ func TestSetManyWorkInfo(t *testing.T) {
 	}
 }
 
-// SetDetails は表示名と作品情報を 1 つの取引で書き、両方読み返せる。更新日時は 1 回進み、
-// VideoOverrideChanged と VideoWorkInfoChanged が出る。
 func TestSetDetailsWritesBoth(t *testing.T) {
 	db, ids := versionFixture(t)
 	recorder := &eventRecorder{}
@@ -388,8 +370,7 @@ func TestSetDetailsWritesBoth(t *testing.T) {
 	}
 }
 
-// 束のメンバーへの SetDetails は、新しい作品情報なら束の全メンバーの更新日時を、新しい表示名だけなら
-// そのメンバーの更新日時だけを進める。
+// Work info is shared by all bundle members; the name changes only on the target video.
 func TestSetDetailsOnABundleMember(t *testing.T) {
 	db, ids := versionFixture(t)
 	bundle(t, db, ids["a"], ids["a"], ids["b"])
@@ -419,8 +400,6 @@ func TestSetDetailsOnABundleMember(t *testing.T) {
 	}
 }
 
-// 表示名か作品情報のどちらかが規則に合わなければ、保存済みの表示名と行を変えず何も発行しない。
-// どちらも変わらない SetDetails は更新日時を変えず何も発行しない。
 func TestSetDetailsWritesNothingOnErrorOrNoChange(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()

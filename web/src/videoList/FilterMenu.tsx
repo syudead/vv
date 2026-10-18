@@ -24,37 +24,22 @@ export interface FilterMenuProps {
   onWatchChange: (value: WatchFilter) => void;
   playable: boolean;
   onPlayableChange: (value: boolean) => void;
-  /** お気に入りのみ（所有者だけ。docs/design-docs/catalog-organization.md「Filter menu」）。 */
   favorite: boolean;
   onFavoriteChange: (value: boolean) => void;
-  /**
-   * 検索語・視聴状態・再生可否・お気に入りのみのどれかが効いているか
-   * （「条件を解除」を出す）。
-   */
   canClear: boolean;
-  /** 検索語・視聴状態・再生可否・お気に入りのみを外す。並べ替えは残す。 */
+  /** Clear conditions but retain sort. */
   onClear: () => void;
   disabled?: boolean;
-  /**
-   * 再生可否の後ろに足す画面固有の行（ライブラリのタグの種類。
-   * docs/design-docs/catalog-organization.md「Library」）。
-   */
   children?: ReactNode;
-  /** `children` の行で効いている絞り込みの数（ボタンの数字に足す）。 */
+  /** Include custom child-row filters in the button count. */
   extraCount?: number;
-  /** ポップオーバーを開いた（`children` の行が中身を読み始める）。 */
+  /** Allows child rows to defer loading until the popover opens. */
   onOpen?: () => void;
 }
 
 /**
- * FilterMenu は絞り込みのボタンとポップオーバーである。
- * ボタンの数字は視聴状態・お気に入りのみ・再生可否の数だけを数える。検索語は検索欄に
- * 見えている。
- *
- * ゲストには「視聴状態」と「お気に入りのみ」を出さない（再生位置とお気に入りは
- * 所有者のもの。docs/design-docs/authentication.md「Guest degradation」、
- * docs/design-docs/catalog-organization.md「Guest degradation」）。そのときボタンの数字は
- * 再生可否だけを数える。
+ * Exclude search from the badge because it is visible in the input; guests have only playability
+ * filtering because watch state and favorites are owner data.
  */
 export default function FilterMenu({
   watch,
@@ -104,10 +89,6 @@ export default function FilterMenu({
   );
 }
 
-/**
- * WatchStatusField は視聴状態の `ToggleGroup`（`All`・`Unwatched`・`In progress`・`Watched`）の
- * 行である。絞り込みのポップオーバーとスマートフォルダの条件の欄が同じ形で使う。
- */
 export function WatchStatusField({
   value,
   onValueChange,
@@ -118,7 +99,7 @@ export function WatchStatusField({
   return (
     <FieldSet>
       <FieldLegend variant="label">{t.list.filter.watch}</FieldLegend>
-      {/* 選ぶとすぐ効く排他の選択なので ToggleGroup にする（項目は radio として読まれる）。 */}
+      {/* Use radio semantics for mutually exclusive choices that apply immediately. */}
       <ToggleGroup
         type="single"
         size="sm"
@@ -130,7 +111,6 @@ export function WatchStatusField({
         className="grid w-full grid-cols-2 gap-1"
       >
         {watchValues.map((option) => (
-          // 2 列の格子に並べるので、項目はどれも角を丸める。
           <ToggleGroupItem key={option} value={option} className="rounded-md">
             {watchLabel(option)}
           </ToggleGroupItem>
@@ -141,25 +121,15 @@ export function WatchStatusField({
 }
 
 export interface FilterPopoverProps {
-  /** 効いている絞り込みの数。1 以上ならボタンを効いている形にし、数を添える。 */
   count: number;
   disabled?: boolean;
-  /** 「条件を解除」を出すか。 */
   canClear: boolean;
-  /** 「条件を解除」を押した。押すと吹き出しを閉じる。 */
   onClear: () => void;
-  /** ボタン（絞り込みを外したあとのフォーカスの行き先に使う）。 */
   triggerRef?: Ref<HTMLButtonElement>;
-  /** 吹き出しを開いた。 */
   onOpen?: () => void;
   children: ReactNode;
 }
 
-/**
- * FilterPopover はトップバーの「Filter」のボタンと吹き出しの枠である。ライブラリの
- * `FilterMenu` とタグ管理画面の絞り込みが同じ見た目を使う（ボタンの形・効いている
- * 間の色と数・吹き出しの位置・末尾の「Clear filters」）。中身の項目は呼び手が渡す。
- */
 export function FilterPopover({
   count,
   disabled,
@@ -203,7 +173,7 @@ export function FilterPopover({
             className="w-full"
             onClick={() => {
               onClear();
-              // 閉じるとフォーカスは絞り込みのボタンへ戻る（Radix の既定）。
+              // Radix restores focus to the filter button on close.
               setOpen(false);
             }}
           >
@@ -215,7 +185,6 @@ export function FilterPopover({
   );
 }
 
-/** FilterCheckbox は絞り込みの吹き出しの中のチェックの 1 行である。 */
 export function FilterCheckbox({
   checked,
   onCheckedChange,
@@ -225,7 +194,6 @@ export function FilterCheckbox({
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   label: UiText;
-  /** 行の下に添える説明。 */
   hint?: UiText;
 }) {
   const id = useId();

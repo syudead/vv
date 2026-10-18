@@ -1,9 +1,6 @@
 package store
 
-// ドラッグの操作と取り消し。OrganizeStore の
-// 操作はどれも 1 つの取引で、変える行の前後の像（organize_image.go）を同じ取引で読んで返し、確定後に
-// domain.GroupsChanged を発行する。要求が名指したグループや項目が無ければ
-// domain.ErrGroupTargetNotFound で、何も書かない。
+// Capture before/after images in each drag transaction; missing targets roll back and events publish only after commit.
 
 import (
 	"context"
@@ -16,10 +13,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// Reorder はグループ groupID の項目 itemIDs を、その順のまままとめて項目 afterItemID のすぐ後ろへ
-// 移し（nil なら先頭）、位置を 0 から詰め直す。取り消しの像（そのグループの group_items）を返す。
-// グループが無いか、項目か afterItemID がそのグループに無いか、afterItemID が itemIDs の中にあれば
-// domain.ErrGroupTargetNotFound で、何も書かない。
+// Reorder preserves selection order and rejects missing targets or insertion after a selected item.
 func (s *OrganizeStore) Reorder(ctx context.Context, groupID int64, itemIDs []int64, afterItemID *int64) ([]byte, error) {
 	var encoded []byte
 	err := writeGroups(ctx, s.db, "reorder the group", func(tx *sql.Tx) ([]int64, error) {
@@ -52,13 +46,7 @@ func (s *OrganizeStore) Reorder(ctx context.Context, groupID int64, itemIDs []in
 	return encoded, nil
 }
 
-// Move はカード move.Items を画面の順にグループ move.To の末尾へ足し（既にあるものは飛ばす）、
-// move.From があればそこから外す。To が無ければ外すだけである。
-// 外すのは RemoveGroupItems と同じで、フォルダ由来のメンバーには除外を書き、最後の項目を外した From は
-// 解散する（空になった祖先も）。取り消しの像（groupsImage。From・To と From の祖先）を返す。From か To
-// が無い、カードの動画やグループが無い、カードが From に無ければ domain.ErrGroupTargetNotFound、
-// ドラッグしたグループが To か To の祖先なら domain.ErrGroupCycle で、どれも何も書かない。From と To が
-// どちらも無いか同じなら誤りである（API はその要求を 400 にする）。
+// Move appends before removing source items, records folder exclusions, and dissolves empty source ancestors atomically.
 func (s *OrganizeStore) Move(ctx context.Context, move domain.OrganizeMove) ([]byte, error) {
 	switch {
 	case move.From == 0 && move.To == 0:
@@ -102,8 +90,6 @@ func (s *OrganizeStore) Move(ctx context.Context, move domain.OrganizeMove) ([]b
 	return encoded, nil
 }
 
-// resolveMove は Move の From と To があるかを確かめ、カードを項目にするもの（resolveGroupMembers）と、
-// From があればそれぞれの From の項目の id を返す。
 func resolveMove(ctx context.Context, tx *sql.Tx, move domain.OrganizeMove) ([]groupMember, []int64, error) {
 	for _, id := range nonZeroIDs(move.From, move.To) {
 		if err := ensureGroupTarget(ctx, tx, id); err != nil {
@@ -121,8 +107,6 @@ func resolveMove(ctx context.Context, tx *sql.Tx, move domain.OrganizeMove) ([]g
 	return members, itemIDs, nil
 }
 
-// groupMemberItemIDs はグループ id の中の members の項目の id を members の順に返す。どれかが
-// 無ければ domain.ErrGroupTargetNotFound。
 func groupMemberItemIDs(ctx context.Context, tx *sql.Tx, id int64, members []groupMember) ([]int64, error) {
 	itemIDs := make([]int64, 0, len(members))
 	for _, member := range members {
@@ -135,8 +119,6 @@ func groupMemberItemIDs(ctx context.Context, tx *sql.Tx, id int64, members []gro
 	return itemIDs, nil
 }
 
-// groupMemberItemID はグループ id の中の member の項目の id を返す。無ければ
-// domain.ErrGroupTargetNotFound。
 func groupMemberItemID(ctx context.Context, tx *sql.Tx, id int64, member groupMember) (int64, error) {
 	column, value := "content_key", any(member.Key)
 	if member.Child != 0 {
@@ -153,8 +135,7 @@ func groupMemberItemID(ctx context.Context, tx *sql.Tx, id int64, member groupMe
 	return itemID, nil
 }
 
-// applyMove は Move の書き込みで、To へ足してから From の項目 fromItems を外す。先に足すので、From を
-// 解散して To の項目が尽きても To は残る。変えたグループとその祖先の id を返す。
+// Append before removing so dissolving the source cannot remove the destination.
 func applyMove(ctx context.Context, tx *sql.Tx, move domain.OrganizeMove, members []groupMember, fromItems []int64) ([]int64, error) {
 	var changed []int64
 	if move.To != 0 {
@@ -178,14 +159,11 @@ func applyMove(ctx context.Context, tx *sql.Tx, move domain.OrganizeMove, member
 	return normalizeIDs(changed), nil
 }
 
-// nonZeroIDs は ids のうち 0 でないものを返す。
 func nonZeroIDs(ids ...int64) []int64 {
 	return slices.DeleteFunc(ids, func(id int64) bool { return id == 0 })
 }
 
-// Undo は操作が返した像 image の前の状態へ戻す。今の行が後の像と等しくなければ
-// domain.ErrUndoConflict で、何も書かない。確定後に、集まりを戻した動画を domain.VideoBundleChanged
-// で、戻したグループとその祖先を domain.GroupsChanged で知らせる。
+// Undo restores only if current rows match the after image; otherwise return domain.ErrUndoConflict without changes.
 func (s *OrganizeStore) Undo(ctx context.Context, image []byte) error {
 	decoded, err := decodeUndoImage(image)
 	if err != nil {
@@ -196,7 +174,6 @@ func (s *OrganizeStore) Undo(ctx context.Context, image []byte) error {
 		if err != nil {
 			return nil, err
 		}
-		// 束ねの取り消しが戻した候補の判定の記録を開き直す。
 		c := &changes{}
 		now := time.Now()
 		if err := reopenRestoredPairActivities(ctx, tx, c, now); err != nil {
@@ -213,9 +190,7 @@ func (s *OrganizeStore) Undo(ctx context.Context, image []byte) error {
 	})
 }
 
-// recordOrganizeUndo は取り消しが版の集まりを戻した動画 videoIDs のそれぞれに organize_undo の所有者の記録を
-// 書く。グループだけを戻した取り消しは動画のタグも集まりも
-// 変えないので、何も書かない。
+// Record owner undo only for changed bundles; group-only undo changes neither tags nor bundles.
 func recordOrganizeUndo(ctx context.Context, tx *sql.Tx, c *changes, videoIDs []int64, now time.Time) error {
 	keys, err := registeredContentKeysForVideoIDs(ctx, tx, videoIDs)
 	if err != nil {
@@ -226,8 +201,6 @@ func recordOrganizeUndo(ctx context.Context, tx *sql.Tx, c *changes, videoIDs []
 	return recordOwnerVideoActivity(ctx, tx, c, domain.ActivityOrganizeUndo, ownerVideoChanges(keys, ""), now)
 }
 
-// ensureGroupTarget は要求が名指したグループ id があるかを確かめる。無ければ
-// domain.ErrGroupTargetNotFound。
 func ensureGroupTarget(ctx context.Context, tx *sql.Tx, id int64) error {
 	_, err := groupSummary(ctx, tx, id)
 	if errors.Is(err, domain.ErrGroupNotFound) {
@@ -236,13 +209,7 @@ func ensureGroupTarget(ctx context.Context, tx *sql.Tx, id int64) error {
 	return err
 }
 
-// Group は動画 targetID に動画 videoIDs を落とした「グループにする」を行う。targetID の題名を domain.GroupNameFromTitle で名前に
-// した手で作るグループを作り、targetID、続いて videoIDs を要求の順に項目にする（同じ利用者データの
-// 鍵は 1 つにする）。fromID があれば、新しいグループがグループ fromID の中で targetID の項目の位置を
-// 取り、targetID と videoIDs の項目は fromID から抜ける（フォルダ由来の項目は除外を書く）。新しい
-// グループの id と取り消しの像を返す。像は新しいグループとそれを指す行（groupReferenceScopes）、
-// fromID の項目と除外である。動画か fromID が無いか、どれかの動画が fromID に無ければ
-// domain.ErrGroupTargetNotFound で、何も書かない。
+// Group creates a named group with target first and deduplicated user keys; within a source group it replaces the target's position.
 func (s *OrganizeStore) Group(ctx context.Context, videoIDs []int64, targetID int64, fromID *int64) (int64, []byte, error) {
 	var id int64
 	var encoded []byte
@@ -275,7 +242,7 @@ func (s *OrganizeStore) Group(ctx context.Context, videoIDs []int64, targetID in
 			return nil, err
 		}
 		image.Scopes = append(created, image.Scopes...)
-		// 新しいグループの行は像にあるので、更新日時を進めてから後の像を読む。
+		// Advance the new group's timestamp before capturing its after image.
 		changed, err := touchedGroupsWithAncestors(ctx, tx, image.Groups)
 		if err != nil {
 			return nil, err
@@ -291,9 +258,6 @@ func (s *OrganizeStore) Group(ctx context.Context, videoIDs []int64, targetID in
 	return id, encoded, nil
 }
 
-// groupOperationMembers は「グループにする」の新しいグループの名前と、項目にする利用者データの鍵を
-// targetID、続いて videoIDs の順に重複なく返す（resolveGroupMembers）。動画が無ければ
-// domain.ErrGroupTargetNotFound。
 func groupOperationMembers(ctx context.Context, tx *sql.Tx, videoIDs []int64, targetID int64) (string, []string, error) {
 	refs := make([]domain.OrganizeRef, 0, len(videoIDs)+1)
 	for _, videoID := range append([]int64{targetID}, videoIDs...) {
@@ -321,9 +285,7 @@ func groupOperationMembers(ctx context.Context, tx *sql.Tx, videoIDs []int64, ta
 	return name, keys, nil
 }
 
-// captureGroupSource は「グループにする」の fromID の項目と除外の前の像を読み、keys の項目の id を
-// keys の順に返す（先頭は落とした先の動画の項目）。fromID が nil なら空の像を返す。fromID が無いか、
-// keys のどれかの項目が fromID に無ければ domain.ErrGroupTargetNotFound。
+// No source yields an empty image; every selected key must exist in a supplied source.
 func captureGroupSource(ctx context.Context, tx *sql.Tx, fromID *int64, keys []string) (undoImage, []int64, error) {
 	if fromID == nil {
 		return undoImage{}, nil, nil
@@ -358,9 +320,7 @@ func captureGroupSource(ctx context.Context, tx *sql.Tx, fromID *int64, keys []s
 	return image, leaving, nil
 }
 
-// placeGroupAt はグループ fromID の項目 leaving（先頭は落とした先の動画の項目）を外し、先頭の項目が
-// あった位置にグループ childID の項目を入れて、fromID を 0 から詰め直す。フォルダ由来の項目を外すと
-// 除外を書く（removeGroupItem）。
+// Replace the target's position with the new child group, recording exclusions for removed folder members.
 func placeGroupAt(ctx context.Context, tx *sql.Tx, fromID, childID int64, leaving []int64) error {
 	order, err := positionOrder(ctx, tx, groupPositions, fromID)
 	if err != nil {
@@ -398,10 +358,7 @@ func placeGroupAt(ctx context.Context, tx *sql.Tx, fromID, childID int64, leavin
 	return writePositionOrder(ctx, tx, groupPositions, placed)
 }
 
-// RenameGroup はグループ id の名前を name にする。名前の規則と誤りは GroupStore.RenameGroup と
-// 同じである。image は取り消しのトークンが持つ「グループにする」の像で（nil なら持たない）、名前を
-// 変える直前の行がその後の像と等しければ、名前を変えた後の行で後の像を読み直した像を返す。等しくないか image が nil なら像を返さない。
-// 前の像は変えない。
+// RenameGroup refreshes only a still-current undo after image; preserve the before image and drop stale images.
 func (s *OrganizeStore) RenameGroup(ctx context.Context, id int64, name string, image []byte) (domain.Group, []byte, error) {
 	name, err := domain.ValidateGroupName(name)
 	if err != nil {
@@ -440,7 +397,6 @@ func (s *OrganizeStore) RenameGroup(ctx context.Context, id int64, name string, 
 	return group, encoded, nil
 }
 
-// imageIsCurrent は image（nil なら false）のどの範囲も今の行が後の像と等しいかを返す。
 func imageIsCurrent(ctx context.Context, tx *sql.Tx, image *undoImage) (bool, error) {
 	if image == nil {
 		return false, nil

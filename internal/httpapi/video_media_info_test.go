@@ -11,10 +11,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 動画の追加の情報は、
-// 本物の認証・保存層・経路で確かめる。
-
-// applyMediaInfo は動画 name の解析の結果に追加の情報を載せて書き、今の版の行を作る。
 func (f *guestFixture) applyMediaInfo(t *testing.T, name string, info domain.MediaInfo) {
 	t.Helper()
 	probe := domain.Probe{DurationMs: 60_000, Width: 1280, Height: 720, VideoCodec: "h264", AudioCodec: "aac", Media: &info}
@@ -43,12 +39,10 @@ func sampleMediaInfo() domain.MediaInfo {
 	}
 }
 
-// 公開動画では所有者とゲストが同じ mediaInfo を得て、ゲストは非公開動画で 404 のまま、行の無い動画には
-// mediaInfo が無い。一覧の項目と所有者の PUT の応答には決して載らない。
 func TestGetVideoMediaInfo(t *testing.T) {
 	f := newGuestFixture(t, true)
-	f.applyMediaInfo(t, "a", sampleMediaInfo()) // 公開
-	f.applyMediaInfo(t, "c", sampleMediaInfo()) // 非公開
+	f.applyMediaInfo(t, "a", sampleMediaInfo())
+	f.applyMediaInfo(t, "c", sampleMediaInfo())
 
 	owner := f.env.get(f.videoPath("a", ""), f.owner)
 	guest := f.env.get(f.videoPath("a", ""))
@@ -100,7 +94,6 @@ func TestGetVideoMediaInfo(t *testing.T) {
 	}
 }
 
-// 項目の無い object は丸ごと省き、撮影の日時はファイルの時差を保つ。
 func TestToAPIMediaInfo(t *testing.T) {
 	if got := toAPIMediaInfo(&domain.MediaInfo{}); got != nil {
 		t.Errorf("項目の無い MediaInfo = %+v, want nil", got)
@@ -124,7 +117,6 @@ func TestToAPIMediaInfo(t *testing.T) {
 	}
 }
 
-// 放送の情報だけの MediaInfo も応答に載り、局名と番組名の片方だけでも出す。
 func TestToAPIMediaInfoBroadcast(t *testing.T) {
 	if got := toAPIMediaInfo(&domain.MediaInfo{Broadcast: &domain.MediaBroadcast{}}); got != nil {
 		t.Errorf("空の放送の情報だけの MediaInfo = %+v, want nil", got)

@@ -11,9 +11,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 開いているグループ from からのマージの保存層のテスト。
-
-// mergeFrom は from を開いたまま items を into へマージし、取り消しの像を返す。
 func mergeFrom(t *testing.T, db *DB, into, from int64, items ...domain.OrganizeRef) []byte {
 	t.Helper()
 	image, err := db.Organize().Merge(context.Background(), items, into, from)
@@ -23,9 +20,6 @@ func mergeFrom(t *testing.T, db *DB, into, from int64, items ...domain.OrganizeR
 	return image
 }
 
-// 動画 V、グループ X、グループ Y を持つ G で、V と X を from G で Y にマージすると、G は Y だけを持ち、
-// Y は自分の項目、V、X の項目の順になる。1 つの取引で、変化の知らせも 1 回である。取り消すと V と X
-// が G の元の位置に戻り、X は id・項目・お気に入り・プレイリストの項目・親ごと戻り、Y も元のとおりになる。
 func TestOrganizeMergeFromLeavesTheOpenGroupAndUndoes(t *testing.T) {
 	db := migratedDB(t)
 	v, ya, xa, xb := looseVideo(t, db, "v"), looseVideo(t, db, "ya"), looseVideo(t, db, "xa"), looseVideo(t, db, "xb")
@@ -64,8 +58,6 @@ func TestOrganizeMergeFromLeavesTheOpenGroupAndUndoes(t *testing.T) {
 	}
 }
 
-// from にない動画かグループを持ち上げているか、from が無ければ ErrGroupTargetNotFound で、何も
-// 書かない。
 func TestOrganizeMergeFromRefusesCardsOutsideIt(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -92,8 +84,6 @@ func TestOrganizeMergeFromRefusesCardsOutsideIt(t *testing.T) {
 	}
 }
 
-// 自動グループの from からフォルダのメンバーが抜けると除外を書き、作り直しでも戻らない。取り消しは
-// 除外も消して元のとおりに戻す。
 func TestOrganizeMergeFromAnAutomaticGroupWritesExclusions(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

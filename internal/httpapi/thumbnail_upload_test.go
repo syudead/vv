@@ -16,18 +16,14 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// uploadContentVersion は試験の動画の内容（content-key-<名前>）の版で、どの動画にも合う。
 const uploadContentVersion = "content-key-"
 
-// uploadBody は image を image 部分、uploadContentVersion を contentVersion 部分（extra があればその
-// 部分も）にした multipart の本文と Content-Type を返す。
 func uploadBody(t *testing.T, image []byte, extra ...string) (*bytes.Buffer, string) {
 	t.Helper()
 	version := uploadContentVersion
 	return uploadBodyVersion(t, image, &version, extra...)
 }
 
-// uploadBodyVersion は uploadBody の contentVersion を version にする。nil なら送らない。
 func uploadBodyVersion(t *testing.T, image []byte, version *string, extra ...string) (*bytes.Buffer, string) {
 	t.Helper()
 	var buf bytes.Buffer

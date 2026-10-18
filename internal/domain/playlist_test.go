@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// プレイリストの一覧のカーソル。
-
-// カーソルは書いたものを読み戻せ、読めないものは ErrInvalidCursor になる。
 func TestPlaylistCursorRoundTrip(t *testing.T) {
 	want := PlaylistCursor{UpdatedAtMs: 1_760_000_000_123, ID: 42}
 	got, err := DecodePlaylistCursor(EncodePlaylistCursor(want))

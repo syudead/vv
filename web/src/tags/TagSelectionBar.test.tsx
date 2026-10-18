@@ -18,7 +18,6 @@ function renderBar(
     sharedKind,
     onSetKind = vi.fn(),
   }: {
-    /** null は種類をまだ読めていない状態（バーへは undefined で渡す）。 */
     kinds?: TagKind[] | null;
     sharedKind?: string;
     onSetKind?: (choice: KindChoice) => void;

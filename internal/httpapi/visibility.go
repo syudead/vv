@@ -9,23 +9,15 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 公開フラグの切り替えと、非公開にした動画のゲストへの配信の打ち切り
-//
-
-// Visibility は動画の公開フラグの保存先である。internal/store の *VisibilityStore が
-// これを満たす。1つのトランザクションで済むので、internal/app は通さない。
+// Visibility is implemented directly by the store because each operation fits in one transaction.
 type Visibility interface {
-	// SetVideosPublic は videoIDs のうちいまライブラリにある動画の公開フラグを
-	// public にそろえ、反映した動画の content_key を返す。
+	// SetVideosPublic updates videos still in the library and returns their content keys.
 	SetVideosPublic(ctx context.Context, videoIDs []int64, public bool) ([]string, error)
 }
 
-// UpdateVideoVisibility は動画の公開・非公開を切り替える（PUT /api/video-visibility）。
-// videoIds の数の上限・重複の扱い・applied の意味はタグの付け外しと同じにする。非公開にしたら、その動画をゲストとして処理中の
-// 応答を打ち切る（§6）。
+// UpdateVideoVisibility uses tag-mutation rules for ID limits, duplicates, and applied counts. Making videos private terminates their active guest responses.
 func (s *server) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
-	// gen.VideoVisibilityRequest の public は bool なので、欠けても false に読めてしまう。
-	// 欠けた本文で非公開にしないよう、有無を区別して読む。
+	// Require public presence: the generated bool would decode a missing field as false and accidentally make videos private.
 	var body struct {
 		VideoIds []int64 `json:"videoIds"`
 		Public   *bool   `json:"public"`
@@ -47,9 +39,7 @@ func (s *server) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 切り替えの確定と打ち切りを、切り替えどうしで1つずつ順に行う。並べないと、
-	// 非公開の確定から打ち切りまでの間に別の要求が再公開し、その後に始まった
-	// ゲストの配信を先の非公開の打ち切りが止めてしまう。
+	// Serialize commit through revocation so a concurrent republication cannot start guest streams that an earlier private transition would then terminate.
 	s.guests.lockSwitching()
 	defer s.guests.switching.Unlock()
 	keys, err := s.visibility.SetVideosPublic(r.Context(), body.VideoIds, public)
@@ -57,8 +47,7 @@ func (s *server) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "Could not change the visibility.", err)
 		return
 	}
-	// 反映を確定させてから打ち切る。確定の前に打ち切ると、その間に始まったゲストの
-	// 要求が公開のままの状態を読んで配信を続けうる。
+	// Revoke after commit; revoking earlier would let new guest requests observe the old public state and keep streaming.
 	if !public {
 		s.guests.revoke(keys)
 	}
@@ -67,10 +56,7 @@ func (s *server) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.VideoVisibilityResponse{Applied: len(keys)}, s.logger)
 }
 
-// lookupServedVideo は配信・ライブ変換・ホバープレビューの対象の動画を引く。
-// ゲストとして処理する要求は、その動画の content_key と一緒に guestLedger へ載せ、
-// 打ち切れる context を持つ要求と、処理を終えたときに呼ぶ release を返す。
-// 所有者として処理する要求は台帳に載せない（非公開にしても打ち切らない）。
+// lookupServedVideo tracks guest media requests by content key and returns a cancellable request plus release callback. Owner requests are never tracked or revoked.
 func (s *server) lookupServedVideo(
 	w http.ResponseWriter, r *http.Request, id int64,
 ) (domain.Video, *http.Request, func(), bool) {
@@ -79,8 +65,7 @@ func (s *server) lookupServedVideo(
 		return video, r, func() {}, ok
 	}
 	for {
-		// 引く前の世代を覚え、載せるときに打ち切りが挟まっていたら引き直す。
-		// 公開を読んでから台帳に載るまでの間に非公開へ切り替わった要求を逃さない。
+		// Capture the generation before lookup and retry if revocation occurred before tracking, closing the public-check race.
 		since := s.guests.generation()
 		video, ok := s.lookupVideo(w, r, id)
 		if !ok {
@@ -93,19 +78,14 @@ func (s *server) lookupServedVideo(
 	}
 }
 
-// guestLedger はゲストとして処理中の配信の応答を、動画の content_key ごとに覚える
-// 台帳である。非公開への切り替えは、その content_key の要求を打ち切る。
-// 打ち切りの仕組み（context の取り消しと書き込みの締め切り）はセッションの台帳と
-// 同じ trackedRequest を使う。
+// guestLedger tracks active guest responses by content key. Revocation reuses trackedRequest cancellation and write deadlines from session tracking.
 type guestLedger struct {
-	// switching は公開フラグの切り替え（確定から打ち切りまで）を1つずつにする。
-	// mu とは別で、切り替えの取引の間も配信の出入りを止めない。
+	// switching serializes commit through revocation separately from mu, allowing streams to enter and leave during the transaction.
 	switching sync.Mutex
-	// onSwitchWait はテストの差し込み口で、切り替えが先の切り替えの終わりを
-	// 待つときに、待ち始める前に呼ぶ。本番では nil。
+	// onSwitchWait runs before waiting on another switch; it is a test hook and nil in production.
 	onSwitchWait func()
 	mu           sync.Mutex
-	// gen は打ち切りのたびに進む世代である。
+	// gen advances on every revocation.
 	gen      uint64
 	requests map[string]map[*trackedRequest]struct{}
 }
@@ -114,9 +94,7 @@ func newGuestLedger() *guestLedger {
 	return &guestLedger{requests: map[string]map[*trackedRequest]struct{}{}}
 }
 
-// lockSwitching は switching を取る。先の切り替えが持っていて待つときは、
-// 待つ前に onSwitchWait を呼ぶ（テストが「後の切り替えが先の切り替えを待っている」
-// ことを時間に頼らず確かめるため）。
+// lockSwitching invokes onSwitchWait before blocking so tests can verify contention without timing assumptions.
 func (l *guestLedger) lockSwitching() {
 	if l.switching.TryLock() {
 		return
@@ -127,21 +105,18 @@ func (l *guestLedger) lockSwitching() {
 	l.switching.Lock()
 }
 
-// generation は今の世代を返す。track に渡す。
 func (l *guestLedger) generation() uint64 {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.gen
 }
 
-// track は要求を content_key と一緒に台帳に載せ、打ち切れる context を返す。
-// since の後に打ち切りがあったら載せずに ok = false を返し、呼び出し側は動画を
-// 引き直す。release は要求の処理を終えたとき（ハンドラから戻る前）に呼ぶ。
+// track returns ok=false if revocation occurred after since; callers must reload the video. Call release before the handler returns.
 func (l *guestLedger) track(
 	ctx context.Context, w http.ResponseWriter, contentKey string, since uint64,
 ) (context.Context, func(), bool) {
 	ctx, cancel := context.WithCancel(ctx)
-	// 公開を確かめてから載せるので、載せた時点で応答を書き始めてよい（serving）。
+	// Visibility was checked before tracking, so the response may start immediately.
 	req := &trackedRequest{cancel: cancel, controller: http.NewResponseController(w), serving: true}
 
 	l.mu.Lock()
@@ -169,7 +144,6 @@ func (l *guestLedger) track(
 	return ctx, release, true
 }
 
-// revoke は contentKeys の動画をゲストとして処理中の要求をすべて打ち切る。
 func (l *guestLedger) revoke(contentKeys []string) {
 	var requests []*trackedRequest
 	l.mu.Lock()

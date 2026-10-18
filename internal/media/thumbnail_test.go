@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// 位置を指定していない動画のコマは、自動の位置、次に先頭の順に取りに行く。サムネイルジョブと
-// 今のサムネイルからの編集が同じ規則を使う。
 func TestAutoThumbnailPositions(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -31,14 +29,8 @@ func TestAutoThumbnailPositions(t *testing.T) {
 	}
 }
 
-// 抽出位置は「尺の 10%、ただし下限 1 秒・上限 60 秒」。
-//
-// 下限が尺を越える短い動画だけは例外で、10% 地点をそのまま使う。下限へ
-// 丸めると末尾ちょうど（またはその先）を指し、ffmpeg が終了コード 0 のまま
-// 1枚も出力しない。1,000 本規模の検証で、1 秒の動画すべてがこれで
-// 失敗した。
-// 先頭が黒画面やロゴであることが多いので先頭は避け、長い動画でも待たされない
-// ように上限を切る。
+// Keep extraction inside short videos; clamping to one second can make ffmpeg succeed without
+// output at or beyond the end.
 func TestThumbnailOffset(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -48,8 +40,7 @@ func TestThumbnailOffset(t *testing.T) {
 		{"尺が不明なら下限", 0, 1},
 		{"3 秒の動画は下限に丸める", 3000, 1},
 		{"10 秒の動画はちょうど下限", 10000, 1},
-		// 下限より短い動画では、下限に丸めると尺の外（または末尾ちょうど）を
-		// 指してしまい、ffmpeg が1枚も取り出せない。そこだけは 10% 地点へ戻す。
+		// Use ten percent when the minimum reaches or exceeds duration.
 		{"1 秒の動画は下限より手前を採る", 1000, 0.1},
 		{"下限ちょうどの動画も末尾を指さない", 1000, 0.1},
 		{"0.5 秒の動画", 500, 0.05},
@@ -68,8 +59,6 @@ func TestThumbnailOffset(t *testing.T) {
 	}
 }
 
-// 抽出位置は必ず尺の内側になる。境界で1枚も取れないと、一覧に画像が
-// 出ない理由が「生成に失敗した」としか分からなくなる。
 func TestThumbnailOffsetStaysInsideDuration(t *testing.T) {
 	for _, durationMs := range []int64{100, 500, 999, 1000, 1001, 2000, 10_000, 600_000} {
 		offset := thumbnailOffset(durationMs)
@@ -82,8 +71,6 @@ func TestThumbnailOffsetStaysInsideDuration(t *testing.T) {
 	}
 }
 
-// 組み立てる引数が意図どおりであること。-ss を -i の前に置くと
-// キーフレーム単位の高速シークになり、長い動画でも一定時間で終わる。
 func TestThumbnailArgs(t *testing.T) {
 	got := thumbnailArgs("/media/a.mp4", 10, "/data/thumbnails/ab/ab.jpg")
 

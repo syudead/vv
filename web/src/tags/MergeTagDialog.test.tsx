@@ -30,14 +30,9 @@ function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
 
 const source = tag({ id: 1, name: "旅行", videoCount: 2 });
 
-/** serverTags は偽のサーバーが持つ全部のタグ（画面が読み込んでいないタグも含む）。 */
 let serverTags: Tag[] = [];
 
-/**
- * search はサーバーの `GET /api/tags?q=…&limit=…` を真似る。照合形で名前とシノニムに
- * 部分一致させ、名前の順のまま `limit` 件までを返す。前後の空白を落とした `q` と綴りが
- * 完全に一致するタグは、ページに入るかに関わらず `exact` に入れる。
- */
+/** Model server name/synonym matching; exact matches are returned even outside the limited page. */
 function search(query: TagPageQuery): TagList {
   const raw = (query.q ?? "").trim();
   const q = foldForMatch(query.q ?? "");
@@ -63,7 +58,7 @@ beforeEach(() => {
   vi.mocked(listTagPage).mockImplementation((query) => Promise.resolve(search(query)));
 });
 
-/** dialog は毎回新しい関数を渡す。親の描画し直しと同じ形にする。 */
+/** Fresh callbacks simulate parent rerenders. */
 function dialog(): ReactElement {
   return (
     <TooltipProvider>
@@ -85,11 +80,7 @@ function initialTags(): Tag[] {
   ];
 }
 
-/**
- * failOnce は統合先に Anime を選び、「統合する」を1回失敗させるところまで
- * 進める。クリックは fireEvent で送る（user-event のクリックは自分で focus()
- * を呼び、効果による focus() の回数が数えられなくなるため）。
- */
+/** Use fireEvent because user-event clicks call focus themselves, obscuring effect focus counts. */
 async function failOnce() {
   const user = userEvent.setup();
   const view = render(dialog());
@@ -134,7 +125,6 @@ describe("MergeTagDialog の失敗後のフォーカス", () => {
     await waitFor(() => expect(document.activeElement).toBe(mergeButton));
 
     cancelButton.focus();
-    // 親が描画し直して、新しい関数を渡してくる。
     view.rerender(dialog());
     view.rerender(dialog());
 
@@ -182,31 +172,25 @@ describe("MergeTagDialog の幅と候補の一覧", () => {
     render(dialog());
     const modal = await screen.findByRole("dialog");
     const combo = within(modal).getByRole("combobox");
-    // 見える名札（label 要素）が入力を指す。
     const label = within(modal).getByText(t.tags.mergeDialog.target, {
       selector: "label",
     });
     expect(label.getAttribute("for")).toBe(combo.id);
     expect(combo.parentElement!.querySelector("svg.lucide-search")).not.toBeNull();
 
-    // 入力に触れる前から一覧は開いていて、入力の上に重ねない（absolute ではない）。
     await within(modal).findByRole("option", { name: /Anime/ });
     const listbox = within(modal).getByRole("listbox");
     expect(combo.getAttribute("aria-expanded")).toBe("true");
     expect(listbox.className).not.toContain("absolute");
-    // 一覧の箱は高さが決まっていて、その中を縦にスクロールする。
     const box = listbox.parentElement!;
     expect(box.className).toContain("h-combobox-panel");
     expect(box.className).toContain("overflow-y-auto");
-    // 箱は窓の下端（ボタンの行）より前、本文の中にある。
     const footer = within(modal).getByRole("button", {
       name: t.common.cancel,
     }).parentElement!;
     expect(
       box.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    // 低い画面では、フォームダイアログ（FormDialog）の本文だけが縦にスクロールし、
-    // ボタンの行は窓の下端に残る（変更前と同じ）。
     expect(modal.className).toContain("max-h-full");
     expect(modal.className).toContain("overflow-hidden");
     const body = box.closest('[data-slot="form-dialog-body"]')!;
@@ -231,7 +215,6 @@ describe("MergeTagDialog の幅と候補の一覧", () => {
     const chosen = await within(modal).findByRole("option", { name: /Anime/ });
     expect(chosen.getAttribute("data-chosen")).toBe("true");
     expect(chosen.className).toContain("bg-primary-soft");
-    // 「統合元 → 統合先」は確認の文言の後、ボタンの行の前に出す。
     expect(modal.textContent).toContain("旅行 → Anime");
     await waitFor(() => expect(mergeButton).toHaveProperty("disabled", false));
   });
@@ -377,7 +360,6 @@ describe("MergeTagDialog の統合先の候補（サーバーの検索）", () =
 
   it("綴りが完全に一致するタグは、部分一致の上位 8 件に入らなくても先頭に出て Enter で選べる", async () => {
     const user = userEvent.setup();
-    // 名前の順では「cat」より前に、「cat」を含む名前が 8 件以上並ぶ。
     const longer = Array.from({ length: 10 }, (_, index) =>
       tag({ id: 10 + index, name: `a${String(index).padStart(2, "0")}cat` }),
     );
@@ -443,7 +425,6 @@ describe("MergeTagDialog の統合先の候補（サーバーの検索）", () =
     expect(pending[2]!.signal.aborted).toBe(false);
     expect(combo.getAttribute("aria-busy")).toBe("true");
 
-    // 打ち切った要求の応答が後から届いても候補にしない。
     await act(async () => {
       pending[0]!.resolve();
       pending[1]!.resolve();

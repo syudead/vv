@@ -12,15 +12,6 @@ import { Alert, AlertTitle } from "../ui/shadcn/alert";
 import { Button } from "../ui/shadcn/button";
 import { TableBody, TableCell, TableRow } from "../ui/shadcn/table";
 
-/**
- * RejectedNames はタグ管理画面の「Rejected names」のタブの中身である。却下した名前を
- * 表（`DataTable`）に 1 行ずつ並べ、行の「Allow again」でその名前を外す（規則は 031 のまま。
- * docs/design-docs/catalog-organization.md「Rejected names」）。一覧の取得・続き・
- * 取り直しは呼び出し元（TagsPage）が持ち、ここは行・取り外しと、並びの末尾が
- * 表示域に入ったことを伝える番兵を持つ。
- *
- * `page` が undefined の間は読み込み中（`error` があれば読み込み失敗）である。
- */
 export default function RejectedNames({
   page,
   error,
@@ -35,17 +26,13 @@ export default function RejectedNames({
   page: RejectedTagNameList | undefined;
   error: UiText | null;
   onRetry: () => void;
-  /** 続きの読み込みの送信中。 */
   morePending: boolean;
-  /** 続きの読み込みの失敗。 */
   moreError: UiText | null;
-  /** 続きを読む（失敗のあとの Retry も同じカーソルで読み直す）。 */
   onLoadMore: () => void;
-  /** 先頭のページを受け直すたびに変わる。番兵を見張り直す。 */
+  /** Changes on each first-page response to reobserve the sentinel. */
   resetKey: number;
-  /** 名前を外す。成功すれば呼び出し元が `page` からその名前を取り除く。 */
   onForget: (name: string) => Promise<void>;
-  /** 最後の名前を外したときのフォーカスの行き先（「Rejected names」のタブ）。 */
+  /** Focus the Rejected names tab after removing the final row. */
   onFocusFallback: () => void;
 }) {
   const names = page?.items;
@@ -55,11 +42,8 @@ export default function RejectedNames({
   onLoadMoreRef.current = onLoadMore;
   const loadedCount = names?.length ?? 0;
 
-  // 表示域を根にした番兵。並びの末尾が見えたら続きを読む。読み込みのたびに
-  // 見張り直すので、届いた分で末尾がまだ見えていればもう 1 ページ読む。
-  // 先頭のページを受け直したときも見張り直す（取り直しの間に見えた番兵の通知は
-  // 呼び出し元が無視するので、件数が変わらなければ次の通知が来ない）。
-  // 失敗の間は読まない（Retry を押すまで）。
+  // Reobserve after every page so a still-visible sentinel loads another page.
+  // Refreshes ignore sentinel events; reobserve even when the row count is unchanged.
   useEffect(() => {
     const target = sentinelRef.current;
     if (target === null || !hasMore || morePending || moreError !== null) return;
@@ -79,11 +63,6 @@ export default function RejectedNames({
   const removeButtons = useRef(new Map<string, HTMLButtonElement>());
   const removingRef = useRef(new Set<string>());
 
-  /**
-   * forget は「Allow again」の1回の押下を扱う。送信中の名前のボタンは二度押しを
-   * 無視する。成功したら、次の行の「Allow again」、無ければ前の行、最後の1つなら
-   * 「Rejected names」のタブへフォーカスを移す。
-   */
   async function forget(name: string) {
     if (removingRef.current.has(name) || names === undefined) return;
     const order = [...names];
@@ -102,8 +81,7 @@ export default function RejectedNames({
       }, 0);
     } catch (failure) {
       setRemoveError(t.tags.rejectedNames.removeFailed(name, errorText(failure)));
-      // 送信中に disabled にしたボタンはフォーカスを失うので、行を残したまま
-      // そのボタンへ戻す。
+      // Restore the same button after failure because disabling it lost focus.
       setTimeout(() => removeButtons.current.get(name)?.focus(), 0);
     } finally {
       removingRef.current.delete(name);
@@ -123,10 +101,7 @@ export default function RejectedNames({
           onRetry={onRetry}
         />
       )}
-      {/*
-        読み込んだ名前をすべて外しても続きが残っていれば、空の文言ではなく
-        続きの番兵（失敗の間は Retry）を置く。空の文言は続きも無いときだけ。
-      */}
+      {/* An empty loaded page may still have more results; keep pagination until the cursor is exhausted. */}
       {names !== undefined && names.length === 0 && !hasMore && (
         <EmptyState
           icon={<Ban aria-hidden="true" />}

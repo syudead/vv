@@ -8,19 +8,15 @@ import { foldForMatch } from "../../lib/foldForMatch";
 import CreditCommand, { type CreditChoice } from "../../ui/CreditCommand";
 import { type Chip, isNewChip, newRowKey } from "./draft";
 
-/** candidateLimit は、打つたびに読む候補の数である。 */
 const candidateLimit = 8;
 
-/** Candidates は 1 回の候補の読み込みの結果である。 */
 interface Candidates {
-  /** 読んだときの綴り（前後の空白を除いたもの）。 */
+  /** Trimmed spelling associated with this response. */
   q: string;
   items: Credit[];
-  /** 8 件より多く当たった（`nextCursor` があった）。 */
   more: boolean;
 }
 
-/** UnsavedName は下書きにある、まだ作っていない同じ種類の名前である。 */
 export interface UnsavedName {
   newKey: string;
   name: string;
@@ -33,22 +29,12 @@ function matchesExactly(credit: Credit, folded: string): boolean {
   );
 }
 
-/** aliasHint は、名前でなく別名で当たったときのその別名を返す。 */
 function aliasHint(credit: Credit, folded: string): string | undefined {
   if (folded === "" || foldForMatch(credit.name).includes(folded)) return undefined;
   return credit.aliases.find((alias) => foldForMatch(alias.name).includes(folded))?.name;
 }
 
-/**
- * CreditPicker は役割 1 つの、人物か団体を選ぶか作る入力である。CreditCommand の `dropdown` で、打つたびに `limit=8` で候補を読む
- * （前の要求は打ち切り、新しい行が届くまで前の行を残す）。この役割のチップにあるものは候補に
- * 出さず、下書きのまだ作っていない同じ種類の名前は `New` の行として出す。作成の行は、
- * 同じ綴りのまだ作っていない名前が無ければ、一致する人物がいても出す。
- *
- * 矢印を押さずに Enter を押したときは、完全一致があればそれを選び、8 件の外にあるかも
- * しれないとき（`nextCursor` があった、または読み終えていない）は `limit` なしで読み直して
- * 探し、どこにも無いときだけ作る。読めなかったら理由を出し、チップは足さない。
- */
+/** Show eight candidates, but resolve exact matches without a limit before creating on Enter. Keep prior rows while loading and abort obsolete requests. */
 export default function CreditPicker({
   kind,
   label,
@@ -58,13 +44,9 @@ export default function CreditPicker({
   onAdd,
 }: {
   kind: CreditKind;
-  /** 入力の名前と placeholder（「Add a performer」）。 */
   label: UiText;
-  /** この役割の今のチップ。 */
   chips: readonly Chip[];
-  /** 下書き全体の、まだ作っていない同じ種類の名前。 */
   unsaved: readonly UnsavedName[];
-  /** 保存の送信中。何も受け付けない。 */
   disabled: boolean;
   onAdd: (chip: Chip) => void;
 }) {
@@ -79,8 +61,7 @@ export default function CreditPicker({
   const folded = foldForMatch(trimmed);
 
   useEffect(() => {
-    // 新しい綴りは、Enter の後の読み直し（resolving）も打ち切る。その finally は打ち切られた
-    // 要求では resolving を戻さないので、ここで戻す。
+    // Typing aborts Enter resolution; its aborted finally cannot reset resolving, so reset it here.
     request.current?.abort();
     setResolving(false);
     if (trimmed === "") {
@@ -204,7 +185,7 @@ export default function CreditPicker({
         return;
       }
     }
-    // 8 件の外に完全一致があるかもしれない。limit なしで読み直して探す。
+    // An exact match may lie outside the first eight results; search without a limit.
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
@@ -250,7 +231,6 @@ export default function CreditPicker({
         searching={searching}
         locked={disabled}
         describedBy={failure === null ? undefined : failureId}
-        // 一覧が閉じているときの Esc は、入力を空にする（タグの入力と同じ）。
         onEscape={() => setValue("")}
       />
       {failure !== null && (

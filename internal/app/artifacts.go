@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-// artifactKind は生成物の種類である。種類ごとに生成を直列にする。
+// Serialize generation by artifact kind.
 type artifactKind int
 
 const (
@@ -15,18 +15,9 @@ const (
 	artifactPreview
 )
 
-// artifacts は内容ごとの生成物（代表サムネイル・シーク用プレビュー・一覧用
-// プレビュー）の削除と、作成との直列化を受け持つ。
-//
-// 作成と削除は内容の識別子ごとの読み書き錠で直列にする。錠が無いと、削除の側が
-// 「参照が無い」と確かめてからファイルを消すまでの間に同じ内容の動画が取り込まれ、
-// その動画のジョブが既存のファイルを採用して完了にした直後に、ファイルだけが
-// 消えることがある。錠の中で「参照を確かめて消す」と「生成して完了を記録する」を
-// 行えば、どちらが先でも状態とファイルが食い違わない。
-//
-// 生成は内容の錠を共有で、削除は専有で持つ。種類の違う生成は互いを待たず、
-// 同じ種類の生成（重複ファイルの別の動画など）は内容と種類の組ごとの錠で直列にする。
-// 錠は必ず種類、内容の順に取る。
+// Per-content shared generation locks and exclusive deletion locks keep files consistent with
+// references and completion records; per-kind locks serialize duplicate generation while allowing
+// different kinds concurrently. Always acquire kind before content.
 type artifacts struct {
 	index  ContentIndex
 	files  ArtifactRemover
@@ -35,7 +26,7 @@ type artifacts struct {
 	contents keyedLocks[string]
 	kinds    keyedLocks[artifactKey]
 
-	// releasing は背後で動いている削除である。停止時に待つ。
+	// Wait for background deletion during shutdown.
 	releasing sync.WaitGroup
 }
 
@@ -48,8 +39,7 @@ func newArtifacts(index ContentIndex, files ArtifactRemover, logger *slog.Logger
 	return &artifacts{index: index, files: files, logger: logger}
 }
 
-// lockGeneration は内容と種類の組の錠を取り、内容の錠を共有で取って、外す関数を
-// 返す。種類の違う生成とは並んで進み、削除とは重ならない。
+// Different kinds may generate concurrently, but none overlap deletion of the same content.
 func (a *artifacts) lockGeneration(contentKey string, kind artifactKind) func() {
 	unlockKind := a.kinds.lock(artifactKey{contentKey: contentKey, kind: kind})
 	unlockContent := a.contents.rlock(contentKey)
@@ -59,10 +49,8 @@ func (a *artifacts) lockGeneration(contentKey string, kind artifactKind) func() 
 	}
 }
 
-// lockGenerationContext は lockGeneration と同じ錠を取るが、取れる前に ctx が終われば待つのを
-// やめて ctx の誤りを返す。錠の順番には lockGeneration と同じく並ぶので、先に待っている生成や位置の
-// 指定との前後は変わらない。待つのをやめたあとで錠が取れたら、背後ですぐに外す。取れたときに ctx が
-// 終わっていれば、錠を外して ctx の誤りを返す。
+// Preserve lock queue order while allowing cancellation; release asynchronously acquired locks
+// immediately if the caller has already stopped waiting.
 func (a *artifacts) lockGenerationContext(ctx context.Context, contentKey string, kind artifactKind) (func(), error) {
 	acquired := make(chan func(), 1)
 	go func() {
@@ -84,18 +72,15 @@ func (a *artifacts) lockGenerationContext(ctx context.Context, contentKey string
 	}
 }
 
-// generate は、生成（既存のファイルの採用を含む）から完了の記録までの run を
-// 同じ内容の削除と重ならないように行う。run が後始末を求めたら、錠を外して
-// から参照の無くなった生成物を消す。後始末は削除として専有の錠で行うので、
-// 同じ内容の別の種類の生成の完了の記録とは重ならない。
+// Keep generation and completion under the content lock; requested cleanup runs afterward under an
+// exclusive lock so it cannot overlap another kind's completion.
 func (a *artifacts) generate(
 	ctx context.Context, contentKey string, kind artifactKind, run func() (cleanup bool, err error),
 ) error {
 	return a.runGeneration(ctx, contentKey, a.lockGeneration(contentKey, kind), run)
 }
 
-// generateContext は generate と同じだが、錠を待つ間に ctx が終われば run を行わずに ctx の誤りを
-// 返す（lockGenerationContext）。期限のある要求の中の適用が、錠を待って期限を越えないようにする。
+// Cancel lock waits without running generation, preserving request deadlines.
 func (a *artifacts) generateContext(
 	ctx context.Context, contentKey string, kind artifactKind, run func() (cleanup bool, err error),
 ) error {
@@ -106,7 +91,6 @@ func (a *artifacts) generateContext(
 	return a.runGeneration(ctx, contentKey, unlock, run)
 }
 
-// runGeneration は取った錠 unlock の中で run を行い、外してから、run が求めれば後始末をする。
 func (a *artifacts) runGeneration(
 	ctx context.Context, contentKey string, unlock func(), run func() (cleanup bool, err error),
 ) error {
@@ -122,9 +106,8 @@ func (a *artifacts) runGeneration(
 	return err
 }
 
-// removeIfUnreferencedAfterGeneration は生成の後始末として、参照が無ければ
-// 生成物を消す。まだ参照があれば錠を取らずに戻り、同じ内容の別の種類の生成を
-// 待たない。その後に参照が無くなれば、動画を消した側の release が消す。
+// Skip the exclusive lock while references remain so unrelated generation need not finish; a later
+// deletion event handles references removed afterward.
 func (a *artifacts) removeIfUnreferencedAfterGeneration(ctx context.Context, contentKey string) error {
 	referenced, err := a.index.ContentKeyReferenced(ctx, contentKey)
 	if err != nil || referenced {
@@ -133,8 +116,7 @@ func (a *artifacts) removeIfUnreferencedAfterGeneration(ctx context.Context, con
 	return a.removeIfUnreferenced(ctx, contentKey)
 }
 
-// removeIfUnreferencedLocked は、内容を参照する動画が無ければその生成物を消す。
-// 呼び出し側がその内容の錠を専有で持っていること。
+// Caller must hold the content lock exclusively.
 func (a *artifacts) removeIfUnreferencedLocked(ctx context.Context, contentKey string) error {
 	referenced, err := a.index.ContentKeyReferenced(ctx, contentKey)
 	if err != nil {
@@ -146,18 +128,14 @@ func (a *artifacts) removeIfUnreferencedLocked(ctx context.Context, contentKey s
 	return a.files.RemoveContent(contentKey)
 }
 
-// removeIfUnreferenced は内容の錠を専有で取ってから removeIfUnreferencedLocked を行う。
 func (a *artifacts) removeIfUnreferenced(ctx context.Context, contentKey string) error {
 	unlock := a.contents.lock(contentKey)
 	defer unlock()
 	return a.removeIfUnreferencedLocked(ctx, contentKey)
 }
 
-// release は、動画の行が消えたときに、参照の無くなった内容の生成物を消す。
-// 消えた動画の分だけを見るので、ライブラリ全体は読まない。
-//
-// ファイルの削除は呼び出し元（走査やフォルダ設定の要求）を待たせないよう背後で
-// 行い、停止時は wait で終わりを待つ。
+// Delete only the released content's unreferenced artifacts in the background; wait joins cleanup
+// during shutdown.
 func (a *artifacts) release(contentKeys []string) {
 	a.releasing.Add(1)
 	go func() {
@@ -172,12 +150,11 @@ func (a *artifacts) release(contentKeys []string) {
 	}()
 }
 
-// wait は背後で動いている削除の終わりを待つ。
 func (a *artifacts) wait() {
 	a.releasing.Wait()
 }
 
-// keyedLocks は鍵ごとの読み書き錠である。使い終わった錠は捨てる。
+// Discard unused keyed locks.
 type keyedLocks[K comparable] struct {
 	mu    sync.Mutex
 	locks map[K]*keyedLock
@@ -188,7 +165,6 @@ type keyedLock struct {
 	users int
 }
 
-// lock は鍵の錠を専有で取り、外す関数を返す。
 func (l *keyedLocks[K]) lock(key K) func() {
 	entry := l.acquire(key)
 	entry.Lock()
@@ -198,7 +174,6 @@ func (l *keyedLocks[K]) lock(key K) func() {
 	}
 }
 
-// rlock は鍵の錠を共有で取り、外す関数を返す。
 func (l *keyedLocks[K]) rlock(key K) func() {
 	entry := l.acquire(key)
 	entry.RLock()

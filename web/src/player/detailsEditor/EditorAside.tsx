@@ -8,7 +8,6 @@ import { formatBytes, formatDuration, formatResolution } from "../../lib/format"
 import { Button } from "../../ui/shadcn/button";
 import { Skeleton } from "../../ui/shadcn/skeleton";
 
-/** fileName はファイルの名前（所在のパスの最後）で、所在が無ければ元の題名である。 */
 function fileName(video: Video): string {
   const path = video.location?.path;
   if (path !== undefined) {
@@ -18,14 +17,12 @@ function fileName(video: Video): string {
   return video.fileTitle ?? video.title;
 }
 
-/** folderPath は、ファイルを置いたフォルダを登録フォルダの名前から書いたものである。 */
 function folderPath(video: Video): string | undefined {
   const folder = video.folder;
   if (folder?.rootName === undefined) return undefined;
   return folder.path === "" ? folder.rootName : `${folder.rootName}/${folder.path}`;
 }
 
-/** facts は「{長さ} · {サイズ} · {解像度}」で、分からない値は並べない。 */
 function facts(video: Video): string {
   const values = [
     formatDuration(video.durationMs),
@@ -35,10 +32,6 @@ function facts(video: Video): string {
   return values.filter((value) => value !== "").join(" · ");
 }
 
-/**
- * EditorAside は編集画面の左の列の中身で、どの動画を編集しているかを示す。サムネイル、ファイル名、長さ・サイズ・解像度、
- * 置き場所、「Back to the video」。どれも編集できない。`video` が無い間は形だけを出す。
- */
 export default function EditorAside({
   video,
   backTo,
@@ -47,7 +40,6 @@ export default function EditorAside({
 }: {
   video: Video | undefined;
   backTo: string;
-  /** 「Back to the video」を押した。移るかは呼び手が決める（Cancel と同じ）。 */
   onBack: () => void;
   backRef?: Ref<HTMLAnchorElement>;
 }) {
@@ -94,7 +86,7 @@ export default function EditorAside({
           ref={backRef}
           to={backTo}
           onClick={(event: MouseEvent) => {
-            // 移るのは、下書きが変わっていないか「Discard」を選んだときだけ（Leaving）。
+            // Navigate only when unchanged or after explicit discard.
             event.preventDefault();
             onBack();
           }}

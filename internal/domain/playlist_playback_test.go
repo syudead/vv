@@ -5,15 +5,11 @@ import (
 	"testing"
 )
 
-// プレイリストの連続再生の順序。
-
 func playbackVideo(id int64) PlaylistItem {
 	video := Video{ID: id}
 	return PlaylistItem{ID: id * 10, Video: &video}
 }
 
-// playbackGroup は id のグループの項目を、メンバー memberIDs と再生の記録 pattern
-// （progressOf の書き方）で作る。
 func playbackGroup(id int64, pattern string, memberIDs ...int64) PlaylistItem {
 	members := make([]Video, len(memberIDs))
 	for i, memberID := range memberIDs {
@@ -23,8 +19,6 @@ func playbackGroup(id int64, pattern string, memberIDs ...int64) PlaylistItem {
 	return PlaylistItem{ID: id * 10, Group: &group}
 }
 
-// playbackSmartFolder は id のスマートフォルダの項目を、読んだ時点の再生順 memberIDs と再生の記録
-// pattern で作る。
 func playbackSmartFolder(id int64, pattern string, memberIDs ...int64) PlaylistItem {
 	group := playbackGroup(id, pattern, memberIDs...).Group
 	group.ID = id
@@ -48,15 +42,11 @@ func stepItem(step *PlaylistStep) int64 {
 }
 
 func TestPlaylistPlaybackOf(t *testing.T) {
-	// 動画 A(1)、グループ G(2: メンバー 21〜23、21 は視聴済み)、動画 B(3)。
 	a, g, b := playbackVideo(1), playbackGroup(2, "dnn", 21, 22, 23), playbackVideo(3)
-	// 全部見終わったグループ W(4: メンバー 41・42)。
 	w := playbackGroup(4, "dd", 41, 42)
-	// 動画 V(5) は単体の項目でもあり、グループ H(6) のメンバーでもある。
 	v, h := playbackVideo(5), playbackGroup(6, "nn", 5, 61)
-	// スマートフォルダ F(7: 再生順 71〜73、71 は視聴済み)。
 	f := playbackSmartFolder(7, "dnn", 71, 72, 73)
-	// 再生順の空のスマートフォルダ E(8)。見せる項目として数えるが、開く動画は無い。
+	// An empty smart folder counts as visible but has no starting video.
 	e := playbackSmartFolder(8, "")
 
 	tests := []struct {
@@ -66,7 +56,7 @@ func TestPlaylistPlaybackOf(t *testing.T) {
 		video      int64
 		position   int
 		count      int
-		next       int64 // 0 は無し
+		next       int64 // Zero means absent.
 		nextItemID int64
 		previous   int64
 		nextItem   int64
@@ -138,7 +128,6 @@ func TestPlaylistPlaybackOf(t *testing.T) {
 	}
 }
 
-// 項目がスマートフォルダの項目の step だけがフォルダの id を持つ。フォルダの中の次の動画も持つ。
 func TestPlaylistPlaybackOfSmartFolderSteps(t *testing.T) {
 	a, f, g := playbackVideo(1), playbackSmartFolder(7, "dnn", 71, 72, 73), playbackGroup(2, "nn", 21, 22)
 	folderOf := func(step *PlaylistStep) int64 {
@@ -151,7 +140,7 @@ func TestPlaylistPlaybackOfSmartFolderSteps(t *testing.T) {
 		name                         string
 		items                        []PlaylistItem
 		item, video                  int64
-		next, previousItem, nextItem int64 // -1 は step 無し
+		next, previousItem, nextItem int64 // Minus one means no step.
 	}{
 		{name: "steps onto the folder item carry the folder", items: []PlaylistItem{a, f, g},
 			item: 10, video: 1, next: 7, previousItem: -1, nextItem: 7},

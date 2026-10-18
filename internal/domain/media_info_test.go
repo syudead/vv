@@ -130,12 +130,10 @@ func TestParseISO6709(t *testing.T) {
 	if got == nil || got.Latitude != -33.8688 || got.Longitude != 151.2093 || got.Altitude != nil {
 		t.Fatalf("高度なし = %+v", got)
 	}
-	// 度分（4 桁と 5 桁）。
 	got = ParseISO6709("+3530.0+13945.0/")
 	if got == nil || got.Latitude != 35.5 || got.Longitude != 139.75 {
 		t.Fatalf("度分 = %+v", got)
 	}
-	// 度分秒（6 桁と 7 桁）。
 	got = ParseISO6709("+353000+1394500/")
 	if got == nil || got.Latitude != 35.5 || got.Longitude != 139.75 {
 		t.Fatalf("度分秒 = %+v", got)
@@ -172,11 +170,9 @@ func TestNormalizeChapters(t *testing.T) {
 		}
 	}
 
-	// 1 つだけでも残る。
 	if got := NormalizeChapters([]MediaChapter{{StartMs: 0, EndMs: 10_000}}, 10_000); len(got) != 1 {
 		t.Errorf("1 つ = %+v", got)
 	}
-	// 重なりはそのまま。
 	overlapping := NormalizeChapters([]MediaChapter{{StartMs: 0, EndMs: 8_000}, {StartMs: 5_000, EndMs: 9_000}}, 10_000)
 	if len(overlapping) != 2 || overlapping[0].EndMs != 8_000 {
 		t.Errorf("重なり = %+v", overlapping)

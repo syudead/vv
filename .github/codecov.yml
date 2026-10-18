@@ -1,17 +1,9 @@
-# Codecov の設定。カバレッジとテスト結果は .github/workflows/ci.yml のテストの組が
-# 送る（task test-go-report / test-web-report と、main への push の E2E）。
-# PR の状態は情報として出すだけで、マージを止めない
-# （docs/design-docs/test-quality-monitoring.md）。
-#
-# 無料の Developer プランは Codecov の中で Team 区分として扱われ、PR コメントは
-# 固定の短い形（変更行のカバレッジ、テスト結果、テストの通らない行のあるファイル）になり、
-# comment.layout は効かない。状態も patch だけが出て、project は出ない。なので
-# コメントの layout と project の状態は書かない。
+# Codecov results are informational; see docs/design-docs/test-quality-monitoring.md.
+# The Developer plan fixes comment layout and reports patch status only.
 
 codecov:
   notify:
-    # コードを変えた push のカバレッジは go の 1 回と web の 3 つの shard で 4 回届く。
-    # 揃う前に比べると、届いていない分が欠けた途中の値でコメントと状態を出すので待つ。
+    # Wait for Go and all three Web shards before comparing coverage.
     after_n_builds: 4
 
 coverage:
@@ -20,15 +12,12 @@ coverage:
       default:
         informational: true
 
-# flag は ci.yml の送信に付けた名前（go、web）。flag ごとに対象のパスを決め、
-# Go と Web のどちらで変わったかを patch の状態で分けて出し、画面でも flag ごとに見る。
+# Match flags to CI uploads and report each language separately.
 flag_management:
   default_rules:
-    # 送信が欠けた回（取り消し、送信の失敗）は、前回の値を引き継いで全体が下がって
-    # 見えないようにする。
+    # Retain previous coverage when an upload is missing.
     carryforward: true
-  # 状態はカバレッジを送る go と web にだけ付ける。既定の規則に置くと、テスト結果だけに
-  # flag を付けた送信があったとき、カバレッジの無い flag の状態まで出る。
+  # Set statuses only for flags that upload coverage, not test-result-only flags.
   individual_flags:
     - name: go
       paths:
@@ -44,8 +33,7 @@ flag_management:
         - type: patch
           informational: true
 
-# 領域ごとのカバレッジ。ARCHITECTURE.md の層と web/src のディレクトリに合わせる。
-# 状態は出さず、Codecov の Components の画面で見る。
+# Components follow ARCHITECTURE.md and Web directories; they do not set statuses.
 component_management:
   individual_components:
     - component_id: go-domain
@@ -122,22 +110,18 @@ component_management:
         - web/src/i18n/**
 
 comment:
-  # 状態と同じく、4 回の送信が揃ってからコメントする（通知とは別の設定）。
+  # Comment upload gating is separate from status gating.
   after_n_builds: 4
 
-# 不安定なテスト（同じ commit で成否が変わるテスト）を見つけて、PR のコメントで知らせる。
 test_analytics:
   flake_detection: true
 
-# レポートの中のパスをリポジトリのパスに揃える。vitest は web/ からの相対パス、
-# go test はモジュールの import パスで書く。
+# Normalize Vitest-relative and Go import paths to repository paths.
 fixes:
   - "src/::web/src/"
   - "github.com/syudead/vv/::"
 
-# 生成したコードは測る対象から外す（手で書いたテストで覆うものではない）。
-# 開発時だけ開く部品の見本（web/src/designSystem、本番のビルドには入らない）と、
-# 別パッケージのテストのために本番のパッケージに置くテスト専用の関数も外す。
+# Exclude generated sources, development-only examples and test helpers.
 ignore:
   - "internal/httpapi/gen/**"
   - "internal/httpapi/extgen/**"

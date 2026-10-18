@@ -11,15 +11,13 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// storedGroup は自動グループ（origin_folder のあるグループ）1件である。Path は origin_folder
-// （domain.FolderKey）、Members は動画の項目を並びの順に動画の id にしたものである。
+// Path is the automatic folder key; Members resolves stored user keys to videos in item order.
 type storedGroup struct {
 	Path    string
 	Name    string
 	Members []int64
 }
 
-// storedGroups は自動グループとその動画の項目を origin_folder と並びの順に読む。
 func storedGroups(t *testing.T, db *DB) []storedGroup {
 	t.Helper()
 	rows, err := db.sql.Query(`select g.id, g.origin_folder, g.name, g.title_key, v.id
@@ -58,7 +56,6 @@ func storedGroups(t *testing.T, db *DB) []storedGroup {
 	return out
 }
 
-// storedFolderNames は video_folder_names を動画ごとに読む。
 func storedFolderNames(t *testing.T, db *DB) map[int64][]string {
 	t.Helper()
 	rows, err := db.sql.Query(`select video_id, name from video_folder_names order by video_id, name`)
@@ -100,7 +97,6 @@ func upsertFolderVideo(t *testing.T, db *DB, path, key string) int64 {
 	return result.ID
 }
 
-// スキャンを閉じる前の作り直しで、グループとフォルダ名の表が今の所在の形に置き換わる。
 func TestRebuildFolderIndexAfterScan(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -108,7 +104,6 @@ func TestRebuildFolderIndexAfterScan(t *testing.T) {
 	ten := upsertFolderVideo(t, db, fixturePath("/media/Show/10.mp4"), "k10")
 	two := upsertFolderVideo(t, db, fixturePath("/media/Show/2.mp4"), "k2")
 	loose := upsertFolderVideo(t, db, fixturePath("/media/loose.mp4"), "loose")
-	// 取り込みだけでは索引は変わらない。
 	assertGroups(t, db, nil)
 
 	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
@@ -119,7 +114,6 @@ func TestRebuildFolderIndexAfterScan(t *testing.T) {
 		t.Fatalf("folder names = %v (loose=%d)", names, loose)
 	}
 
-	// 次のスキャンで子フォルダができても、一度できた自動グループは残る。
 	nested := upsertFolderVideo(t, db, fixturePath("/media/Show/Extra/a.mp4"), "extra")
 	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
 		t.Fatal(err)
@@ -139,12 +133,10 @@ func TestRebuildFolderIndexAfterScan(t *testing.T) {
 	}
 }
 
-// メディアフォルダの追加と削除は、同じ取引で索引を作り直す。削除では、連鎖で
-// 消える行だけでなく、残った動画の代表の所在が移ってできるグループも入る。
+// Removing registration can move a surviving video's representative and create a new folder group in the same transaction.
 func TestRebuildFolderIndexOnMediaFolderChanges(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	// /aaa はまだ登録されていないので、その下の所在は索引に入らない。
 	shared := upsertFolderVideo(t, db, fixturePath("/aaa/c/1.mp4"), "shared")
 	onlyAAA := upsertFolderVideo(t, db, fixturePath("/aaa/c/3.mp4"), "only-aaa")
 	upsertFolderVideo(t, db, fixturePath("/media/b/1.mp4"), "shared")
@@ -158,8 +150,6 @@ func TestRebuildFolderIndexOnMediaFolderChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 共有する動画の代表の所在は /aaa/c/1.mp4 に移り、/aaa/c のグループができる。一度できた
-	// /media/b の自動グループは残る。
 	assertGroups(t, db, []storedGroup{
 		{Path: fixturePath("/aaa/c"), Name: "c", Members: []int64{shared, onlyAAA}},
 		{Path: fixturePath("/media/b"), Name: "b", Members: []int64{shared, onlyMedia}},
@@ -171,7 +161,6 @@ func TestRebuildFolderIndexOnMediaFolderChanges(t *testing.T) {
 	if err := db.Settings().DeleteMediaFolder(ctx, added.ID, added.Version); err != nil {
 		t.Fatal(err)
 	}
-	// /aaa の下の所在は索引から外れるので、/aaa/c のグループは空になって残る。
 	assertGroups(t, db, []storedGroup{
 		{Path: fixturePath("/aaa/c"), Name: "c", Members: []int64{}},
 		{Path: fixturePath("/media/b"), Name: "b", Members: []int64{shared, onlyMedia}},
@@ -181,7 +170,6 @@ func TestRebuildFolderIndexOnMediaFolderChanges(t *testing.T) {
 	}
 }
 
-// 例外の設定と解除は同じ取引で索引を作り直し、例外は再スキャンと再オープンの後も残る。
 func TestFolderGroupOverrides(t *testing.T) {
 	dir := t.TempDir()
 	db, err := Open(dir)
@@ -211,7 +199,6 @@ func TestFolderGroupOverrides(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertGroups(t, db, nil)
-	// 同じフォルダの例外は置き換わり、2つが同時に付くことはない。
 	if err := groups.SetOverride(ctx, fixturePath("/media/Show"), domain.FolderGroupDirect); err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +207,6 @@ func TestFolderGroupOverrides(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertGroups(t, db, []storedGroup{root, show})
-	// 例外を外しても、一度できた自動グループは残る。
 	if err := groups.ClearOverride(ctx, fixturePath("/media")); err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +214,6 @@ func TestFolderGroupOverrides(t *testing.T) {
 	if err := groups.SetOverride(ctx, fixturePath("/media/Show"), "both"); err == nil {
 		t.Fatal("unknown mode was accepted")
 	}
-	// 一致するフォルダの無い例外も保存する。
 	if err := groups.SetOverride(ctx, fixturePath("/media/Gone"), domain.FolderGroupUngroup); err != nil {
 		t.Fatal(err)
 	}
@@ -237,14 +222,12 @@ func TestFolderGroupOverrides(t *testing.T) {
 	}
 	assertGroups(t, db, []storedGroup{root})
 
-	// 再スキャン（取り込みと作り直し）の後も例外は効く。
 	c := upsertFolderVideo(t, db, fixturePath("/media/Show/c.mp4"), "c")
 	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
 		t.Fatal(err)
 	}
 	assertGroups(t, db, []storedGroup{root})
 
-	// 再オープンの後も例外は残り、索引は作り直さなくてよい。
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +249,6 @@ func TestFolderGroupOverrides(t *testing.T) {
 	if overrides != 2 {
 		t.Fatalf("overrides = %d, want 2", overrides)
 	}
-	// 例外の付いていたフォルダが一度消えて戻っても、例外が効く。
 	if err := db.ScanIndex().DeleteVideos(ctx, []int64{a, b, c}); err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +263,6 @@ func TestFolderGroupOverrides(t *testing.T) {
 	assertGroups(t, db, []storedGroup{root})
 }
 
-// 起動時の作り直しは、行が無いとき・版が違うとき・前回が失敗していたときだけ行う。
 func TestRefreshFolderIndex(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -317,7 +298,7 @@ func TestRefreshFolderIndex(t *testing.T) {
 	}
 }
 
-// 作り直しに失敗したら、その取引は巻き戻り、別の取引で索引を古いと記録する。
+// A failed rebuild preserves the old index and marks it stale in a separate transaction.
 func TestRebuildFolderIndexFailureMarksStale(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -332,7 +313,6 @@ func TestRebuildFolderIndexFailureMarksStale(t *testing.T) {
 	if err := db.ScanIndex().RebuildFolderIndex(ctx); err == nil {
 		t.Fatal("rebuild succeeded with a broken table")
 	}
-	// 前の索引は残る。
 	if groups := storedGroups(t, db); len(groups) != 1 {
 		t.Fatalf("groups after failed rebuild = %+v", groups)
 	}
@@ -348,7 +328,6 @@ func TestRebuildFolderIndexFailureMarksStale(t *testing.T) {
 	}
 }
 
-// BenchmarkRebuildFolderIndex は1万本・約3千フォルダの作り直しにかかる時間を測る。
 func BenchmarkRebuildFolderIndex(b *testing.B) {
 	db, err := Open(b.TempDir())
 	if err != nil {
@@ -368,7 +347,7 @@ func BenchmarkRebuildFolderIndex(b *testing.B) {
 	}
 	const videos = 10000
 	for i := range videos {
-		// 30 × 100 = 3000 フォルダに、1フォルダあたり約3本を置く。
+		// Distribute roughly three videos across each of 3,000 folders.
 		path := fmt.Sprintf(fixturePath("/media/series-%02d/season-%03d/episode-%d.mp4"), i%30, (i/30)%100, i)
 		res, err := tx.Exec(`insert into videos (added_at, indexed_at, content_key, playable, probe_state, thumbnail_state)
 			values (1, 1, ?, 0, 'pending', 'pending')`, fmt.Sprintf("key-%d", i))
@@ -395,7 +374,6 @@ func BenchmarkRebuildFolderIndex(b *testing.B) {
 	}
 }
 
-// まとめ方の読み出しは、例外と、そのフォルダの自動グループの id を返す
 func TestFolderGroupings(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {
@@ -431,20 +409,17 @@ func TestFolderGroupings(t *testing.T) {
 	}
 	grouping, err := groups.SetFolderGrouping(ctx, fixturePath("/media"), domain.FolderGroupDirect)
 	if err != nil || grouping != (domain.FolderGrouping{Mode: domain.FolderGroupDirect}) {
-		// /media の直下は x だけなので、1本ではグループにならない。
 		t.Fatalf("groupDirect = %+v, %v", grouping, err)
 	}
 	if grouping, err := groups.SetFolderGrouping(ctx, fixturePath("/media"), ""); err != nil || grouping != (domain.FolderGrouping{}) {
 		t.Fatalf("auto = %+v, %v", grouping, err)
 	}
-	// ungroup は自動グループを解散するので、id は消える。
 	if grouping, err := groups.SetFolderGrouping(ctx, fixturePath("/media/Show"), domain.FolderGroupUngroup); err != nil || grouping != (domain.FolderGrouping{Mode: domain.FolderGroupUngroup}) {
 		t.Fatalf("ungroup = %+v, %v", grouping, err)
 	}
 }
 
-// 移行 00045 はフォルダの索引のグループの表を落とす。Down は空の表を戻し、前の版が次の起動で
-// 索引を作り直すよう、索引を古いと記録する。
+// Rollback restores empty index tables and marks them stale for the older application's startup rebuild.
 func TestDropFolderGroupsMigration(t *testing.T) {
 	db, provider := migrateTo(t, 44)
 	ctx := context.Background()

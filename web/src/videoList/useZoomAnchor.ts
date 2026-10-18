@@ -2,7 +2,6 @@ import { useCallback, useLayoutEffect, useRef } from "react";
 
 import type { Zoom } from "../preferences/viewPreferences";
 
-/** 位置の目印にするカード（動画のカードとフォルダのカード）。 */
 const ANCHOR_SELECTOR = "[data-video-id],[data-folder-path]";
 
 function topOffset(): number {
@@ -13,13 +12,9 @@ function topOffset(): number {
   );
 }
 
-/**
- * Anchor は目印にしたカードである。動画のカードは id で探し直し、フォルダのカード
- * （最上位では path が重なる）は一覧の中の順番で探し直す。
- */
+/** Find video anchors by ID, folder anchors by list index because root paths may repeat. */
 type Anchor = { videoId: string } | { index: number };
 
-/** topmostAnchor は画面上端に最も近いカードを返す。 */
 function topmostAnchor(list: HTMLElement | null, top: number): Anchor | undefined {
   if (list === null) return undefined;
   const cards = Array.from(list.querySelectorAll<HTMLElement>(ANCHOR_SELECTOR));
@@ -38,9 +33,8 @@ function findAnchor(list: HTMLElement | null, anchor: Anchor): Element | undefin
 }
 
 /**
- * useZoomAnchor は表示倍率を変えたときに、読んでいた位置を保つ。
- * `listRef` をカードを包む要素に付け、倍率を変える直前に `capture` を呼ぶ。
- * 画面上端に最も近かったカードを、倍率を変えた後も上端へ戻す。
+ * Attach listRef and capture immediately before changing zoom; restore the nearest top card
+ * afterward.
  */
 export function useZoomAnchor(zoom: Zoom) {
   const listRef = useRef<HTMLDivElement | null>(null);

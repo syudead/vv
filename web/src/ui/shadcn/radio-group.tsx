@@ -4,8 +4,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の RadioGroup（radix）。選ぶと縁と点が primary になる。
-// 規則は web/registry/rules/components.md の Select and RadioGroup。
+// Adapted from shadcn/ui Radix; see web/registry/rules/components.md, Select and RadioGroup.
 
 function RadioGroup({
   className,

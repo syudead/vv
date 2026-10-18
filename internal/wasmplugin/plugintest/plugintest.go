@@ -15,8 +15,7 @@ var (
 	built = map[string][]byte{}
 )
 
-// Build は dir の Go の main パッケージを wasip1 向けにビルドし、モジュールのバイト列を返す。
-// 同じ dir のビルドはプロセスの中で 1 回だけ行う。
+// Build each Go WASI fixture directory once per process.
 func Build(tb testing.TB, dir string) []byte {
 	tb.Helper()
 	abs, err := filepath.Abs(dir)

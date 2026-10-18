@@ -19,14 +19,9 @@ import {
 import type { CardAttachment, CardDrop, HeldDrop } from "./cardDrag";
 import type { OntoAnswer } from "./cardDragRules";
 
-// 落とした先のカードに開くメニューである。
-// メニューは落とした先のカードの下に開き、ラベルは落とした先の名前を言う。Esc、外の押下、Tab で
-// 閉じると何も送らない。閉じることが取り消しなので「Cancel」の項目は無い。
+// Closing via Escape, outside click or Tab is cancellation; no separate Cancel item is needed.
 
-/**
- * DropMenuAnchor は落とした先のカードの下端に置く、メニューの位置の目印である。カードの箱
- * （`relative`）の中に置き、メニューはその下に開く。
- */
+/** Place inside the target card's relative box, with the menu below it. */
 function DropMenuAnchor() {
   return (
     <DropdownMenuTrigger asChild>
@@ -38,16 +33,11 @@ function DropMenuAnchor() {
   );
 }
 
-/**
- * DropMenu は落とした先のカードに開いたままのメニューの枠である。ラベル「Dropped on "{name}"」の
- * 下に `children`（DropdownMenuItem）を並べる。閉じたら（項目を選んだ後も）`onClose` を呼ぶ。
- */
 export function DropMenu({
   name,
   onClose,
   children,
 }: {
-  /** 落とした先のカードの題名か名前。 */
   name: string;
   onClose: () => void;
   children: ReactNode;
@@ -66,7 +56,7 @@ export function DropMenu({
       <DropdownMenuContent
         side="bottom"
         onKeyDown={closeOnTab}
-        // 位置の目印はフォーカスを受けない。閉じた後のフォーカスは画面に任せる。
+        // The anchor never receives focus; the screen owns close-time focus restoration.
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
         <DropdownMenuLabel>{t.organize.menu.label(name)}</DropdownMenuLabel>
@@ -76,21 +66,14 @@ export function DropMenu({
   );
 }
 
-/** DropChoice は落とした先のメニューで選んだ操作の値である。 */
 export interface DropChoice {
-  /** 持ち上げたカード（画面の順）。 */
   lifted: readonly string[];
-  /** 落とした先のカード。 */
   target: string;
 }
 
 /**
- * useDropMenu は落とした先のカードにメニューを開く。`hold` は落とし方を受け、`accepts` が true
- * なら印を保って（`held`）メニューを開き、true を返す（画面はほかの落とし方として扱わない）。
- * メニューの間は持ち上げたカードは半透明、落とした先は輪と札のまま残る。メニューは `menu` が
- * 選んだ操作の値と閉じる関数から描き、落とした先のカードに重ねる（`attached`）。落とした先が
- * `accepts` を満たさなくなったら（別の画面の操作や知らせで一覧が変わり、落とした先のカードが
- * 消えた）、メニューと印を外す。
+ * Accepting a drop retains marks and attaches its menu; return true so the screen stops other drop
+ * handling. Remove both when the target no longer satisfies accepts.
  */
 export function useDropMenu(
   accepts: (drop: CardDrop) => boolean,
@@ -118,11 +101,7 @@ export function useDropMenu(
   return { held, attached, hold };
 }
 
-/**
- * useGroupDropMenu はグループを含むカードをグループのカードに落としたときのメニューを開く。`hold` は落とし方を受け、`accepts` が true なら
- * メニューを開いて true を返す。項目は「Put in as a child group」（`onNest`）と「Merge」
- * （`onMerge`）の 2 つで、どちらも `destructive` にしない。閉じると何もしない。
- */
+/** Both nest and merge are normal actions; closing without selection does nothing. */
 function useGroupDropMenu({
   accepts,
   nameOf,
@@ -153,15 +132,8 @@ function useGroupDropMenu({
 }
 
 /**
- * useGroupDrops は、カードをグループのカードの上に落としたときの扱いを画面に渡す。画面はカードの鍵ごとの項目 `byKey`、項目が落とす先の
- * グループならその値を返す `groupOf`、項目がグループかを返す `isGroup` を渡す。
- *
- * - `onto` はグループのカードに「Put in」、持ち上げたカードにグループがあれば「Put in or merge…」の
- *   札を出す。グループでないカードは null（上に落とす先ではない）。
- * - `drop` は上に落とした落とし方を受ける。動画だけなら `onMove` を呼び、グループを含めば
- *   メニューを開き、選んだ項目で `onMove`（「Put in as a child group」）か `onMerge` を呼ぶ。
- *   どちらにも持ち上げたカードの項目を画面の順に渡す。
- * - `held` と `attached` は CardDragLayer に渡す（メニューの間の印と、メニューそのもの）。
+ * Video-only drops move directly; drops containing groups offer nesting or merging. Preserve
+ * display order and pass held/attached to CardDragLayer.
  */
 export function useGroupDrops<I, G>({
   byKey,
@@ -191,7 +163,6 @@ export function useGroupDrops<I, G>({
     },
     [byKey, groupOf, liftsGroup],
   );
-  /** chosen は選んだ操作 `run` に、持ち上げた項目と落とした先のグループを渡す。 */
   const chosen = useCallback(
     (run: (moved: readonly I[], to: G) => void) =>
       ({ lifted, target }: DropChoice) => {

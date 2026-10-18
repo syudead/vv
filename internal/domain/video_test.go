@@ -2,10 +2,6 @@ package domain
 
 import "testing"
 
-// 再生可否は許可リストで決める。未知の値を「再生できる」と
-// 誤るより「できない」と誤る方が、利用者の損失が小さいためである。
-//
-// この表がそのまま仕様であり、一覧は取り込み時に確定した結果を読むだけになる。
 func TestEvaluatePlayability(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -110,8 +106,6 @@ func TestEvaluatePlayability(t *testing.T) {
 			if got.Reason != tc.wantReason {
 				t.Errorf("Reason = %q, want %q", got.Reason, tc.wantReason)
 			}
-			// 再生できると判定したなら理由は空でなければならない。
-			// 両方が立っていると、一覧の表示が自己矛盾する。
 			if got.Playable && got.Reason != "" {
 				t.Errorf("再生できるのに理由が付いている: %q", got.Reason)
 			}
@@ -122,8 +116,6 @@ func TestEvaluatePlayability(t *testing.T) {
 	}
 }
 
-// 大文字・前後の空白が混ざっても判定が揺れないこと。ffprobe の出力も拡張子も
-// 表記が一定とは限らない。
 func TestEvaluatePlayabilityNormalizesCase(t *testing.T) {
 	got := EvaluatePlayability("MP4", Probe{VideoCodec: "H264", AudioCodec: "AAC"})
 	if !got.Playable {
@@ -131,8 +123,6 @@ func TestEvaluatePlayabilityNormalizesCase(t *testing.T) {
 	}
 }
 
-// コンテナは拡張子から決める。ffprobe の format_name は mp4 と mov を
-// 区別しないため、判定と配信の基準を拡張子に揃える。
 func TestContainerFromPath(t *testing.T) {
 	tests := []struct {
 		path string
@@ -153,8 +143,6 @@ func TestContainerFromPath(t *testing.T) {
 	}
 }
 
-// playable = 1 は probe_state = done のときだけ取り得る。
-// 解析前の動画が「再生できる」と表示されてはならない。
 func TestPlayableRequiresCompletedProbe(t *testing.T) {
 	tests := []struct {
 		state ProbeState
@@ -173,8 +161,7 @@ func TestPlayableRequiresCompletedProbe(t *testing.T) {
 	}
 }
 
-// 状態の値は api/openapi.yaml の enum と一致していなければならない。
-// 片方だけ変わると、契約に無い値が応答に混ざる。
+// State values must remain aligned with API enums.
 func TestStateConstantsMatchContract(t *testing.T) {
 	pairs := []struct{ got, want string }{
 		{string(ProbeStatePending), "pending"},

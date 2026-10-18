@@ -30,8 +30,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
-// ライブラリでグループのカードへ落とす。jsdom は配置を持たないので、格子のカードを横一列に 200px ずつ置き、
-// ポインタの出来事で持ち上げて落とす。
+// jsdom has no layout; place 200px cards in one row for pointer drag tests.
 
 function video(id: number): Video {
   return {
@@ -83,17 +82,13 @@ function json(body: unknown, status = 200): Response {
 interface Server {
   items: LibraryItem[];
   writes: { path: string; body: unknown }[];
-  /** 置くと POST /api/organize/move と /merge がこの応答を返す（一覧はこの関数が変えたとおり）。 */
   moveAnswer: (() => Response) | null;
-  /** 取り消しのトークンごとの、操作の前の一覧。 */
   undo: Map<string, LibraryItem[]>;
-  /** 置くと次の POST /api/organize/move 1 つは、これが解けるまで答えない。 */
   hold: Promise<void> | null;
 }
 
 const fetchMock = vi.fn<typeof fetch>();
 
-/** move は POST /api/organize/move を受け、動かした項目を一覧から外す。 */
 function move(server: Server, body: { items: { kind: string; id: number }[] }) {
   if (server.moveAnswer !== null) return server.moveAnswer();
   const token = `token-${body.items.map((ref) => String(ref.id)).join(",")}`;
@@ -135,7 +130,6 @@ function install(items: LibraryItem[]): Server {
     if (url.pathname === "/api/organize/merge") {
       server.writes.push({ path: url.pathname, body });
       if (server.moveAnswer !== null) return Promise.resolve(server.moveAnswer());
-      // マージしたグループと足した動画は、どちらもいちばん上から外れる。
       return Promise.resolve(move(server, body as Parameters<typeof move>[1]));
     }
     if (url.pathname === "/api/organize/move") {
@@ -180,7 +174,6 @@ function cardTitles(): string[] {
   );
 }
 
-/** held は次の move を止め、止めを解く関数を返す。 */
 function held(server: Server): () => Promise<void> {
   let open = () => {};
   server.hold = new Promise((resolve) => {
@@ -200,7 +193,6 @@ function moves(server: Server) {
     .map((each) => each.body);
 }
 
-/** library は「Clip 1」「Trip」（グループ 7）「Clip 2」「Clip 3」を並べる。 */
 function library() {
   return install([
     { kind: "video", video: video(1) },
@@ -358,7 +350,6 @@ describe("LibraryPage drag into a group", () => {
     lift("Clip 1", 0);
     moveTo(1);
     release(1);
-    // Clip 1 が隠れたので Trip が先頭、Clip 2 が 2 番目にある。
     lift("Clip 2", 1);
     moveTo(0);
     release(0);
@@ -492,7 +483,6 @@ describe("LibraryPage drop a group on a group", () => {
     await screen.findByRole("link", { name: "Clip 2" });
   }
 
-  /** twoGroups は「Clip 1」「Trip」（グループ 7）「Beach」（グループ 8）「Clip 2」を並べる。 */
   function twoGroups() {
     return install([
       { kind: "video", video: video(1) },
@@ -508,7 +498,6 @@ describe("LibraryPage drop a group on a group", () => {
       .map((each) => each.body);
   }
 
-  /** dropTripOnBeach は「Trip」を「Beach」に落とし、開いたメニューを返す。 */
   async function dropTripOnBeach() {
     lift(/^Trip/, 1);
     moveTo(2);
@@ -521,7 +510,7 @@ describe("LibraryPage drop a group on a group", () => {
 
   it("マージした後も一覧に残る動画（ほかのグループにも入っている）は、読み直しで見せる", async () => {
     const server = twoGroups();
-    // Clip 1 はほかのグループにも入っているので、Beach に足した後もいちばん上に残る
+    // Membership in another group can keep this video at the top level after adding it.
     //
     server.moveAnswer = () => {
       server.items = server.items.filter(
@@ -615,7 +604,6 @@ describe("LibraryPage drop a group on a group", () => {
         path,
         body: path === "/api/organize/merge" ? { items, into: 8 } : { items, to: 8 },
       });
-      // ライブラリは開いているグループを持たないので from を送らない。
       expect(server.writes[0]?.body).not.toHaveProperty("from");
       expect(
         await screen.findByText(

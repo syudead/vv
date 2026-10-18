@@ -34,11 +34,6 @@ import TagCommand, { type TagChoice } from "../ui/TagCommand";
 import TentativeMark from "../ui/TentativeMark";
 import { useToast } from "../ui/Toast";
 
-/**
- * VideoTags は再生画面の題名の下のタグの並びである（要件 1・2）。付け外しはサーバーの応答を受けてから
- * 反映するので、共有のタグの付け外しの通知（videoTagsEvents）を購読して
- * 一覧を直す。
- */
 export default function VideoTags({
   videoId,
   tags: initialTags,
@@ -47,43 +42,25 @@ export default function VideoTags({
 }: {
   videoId: number;
   tags: readonly VideoTag[];
-  /** タグがもう無い（tag_not_found）ときに、この動画を取り直すために呼ぶ。 */
   onStaleVideo: () => void;
-  /**
-   * 付け外しが成功したときに呼ぶ。更新日時が進むので、呼び出し側が動画を取り直す。
-   */
   onChanged?: () => void;
 }) {
   const toast = useToast();
 
-  // この画面で確定した付け外しを、動画の情報に重ねて持つ。付け外しの前に
-  // 始まった動画の取り直しが後から届いても、確定したタグを消さない。
-  // 届いた情報がその付け外しをすでに映していれば、重ねる必要は無いので捨てる。
+  // Overlay confirmed tag changes until refreshed video data includes them, preventing stale refreshes from erasing edits.
   //
-  // VideoPage は videoId ごとに VideoTags を作り直さず使い回すことがあるため
-  // （key を付けない再利用。Devin の指摘1）、videoId が変われば、重ねた分を
-  // 前の動画に残さず必ず捨てる。
+  // Clear overlays on video changes even when the component is reused without a key.
   //
-  // 重ねた各エントリは、記録した時点の tagsFetchSeqRef（下）の値も
-  // `asOfSeq` として持つ。allTags でその付与を蘇らせない判定（下）に使うのは
-  // 「その付与を記録した後に実際に届いた」allTags に限る。記録する前から
-  // 持っていた allTags（作ったばかりのタグがまだそこに無いだけ）で判定すると、
-  // 別画面での削除と誤認してしまう（Devin の指摘）。
+  // Compare removals only against tag lists received after the change; earlier lists may simply lack a newly created tag.
   const appliedRef = useRef(
     new Map<number, { tag: TagRef; action: "add" | "remove"; asOfSeq: number }>(),
   );
   const prevVideoIdRef = useRef(videoId);
   const [tags, setTags] = useState<readonly VideoTag[]>(initialTags);
 
-  // 画面が開くときは共有の保持を確かめ直す（plan の Structural Decisions 8「画面が開くとき
-  // …に取り直す」）。直前に届いた一覧があればそれを使い、取得の途中ならその結果を待つ
-  // （revalidateTags。開くたびに全部のタグを読み直さない。issue 674）。取り直す間は、
-  // あれば直近の保持を初期値として先に出す。
+  // Revalidate on mount, sharing recent or pending requests and showing cached tags while waiting.
   const [allTags, setAllTags] = useState<Tag[] | undefined>(currentTags());
-  // tagsFetchSeqRef は、実際に届いた（=取得が生きたまま tags.ts の held を
-  // 更新した）タグの一覧の回数を数える。マウント時点の allTags の初期値
-  // （currentTags()。今の付け外しより前に取れていたかもしれない）はこれに
-  // 数えない。
+  // Count completed live fetches only; the initial cache may predate local edits.
   const tagsFetchSeqRef = useRef(0);
   useEffect(() => {
     let alive = true;
@@ -108,7 +85,6 @@ export default function VideoTags({
   useEffect(() => {
     const applied = appliedRef.current;
     if (prevVideoIdRef.current !== videoId) {
-      // 動画が替わった（VideoTags を使い回した）。前の動画の重ねを持ち越さない。
       prevVideoIdRef.current = videoId;
       applied.clear();
       setTags(initialTags);
@@ -120,12 +96,7 @@ export default function VideoTags({
         applied.delete(tagId);
         continue;
       }
-      // 重ねたタグ自体が共有の一覧からもう消えていれば（別画面での削除・
-      // 統合）、その付与を蘇らせない（Devin の指摘1）。ただし、これを判定
-      // できるのは、その付与を記録した後に実際に取得が届いていて
-      // （tagsFetchSeqRef が進んでいて）、かつ allTags を取得済み
-      // （undefined でない）ときだけ。どちらか欠ければ確かめようが無いので、
-      // 今までどおり重ねる。
+      // A later fetched list can prove a tag was deleted or merged; otherwise retain the local overlay.
       if (
         allTags !== undefined &&
         tagsFetchSeqRef.current > change.asOfSeq &&
@@ -159,30 +130,24 @@ export default function VideoTags({
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const buttonRefs = useRef(new Map<number, HTMLButtonElement>());
-  // removedId は、外すのを待っているチップ。そのチップの手で付けた分が外れる
-  // （サーバーが外したと応えた）まで、フォーカスを動かさない。
+  // Keep focus on the removing chip until the server confirms removal.
   const pendingFocusRef = useRef<{
     target: { chipId: number } | "input";
     removedId?: number;
   } | null>(null);
 
-  // フォーカスは、チップが消えた（または押せるようになった）のと同じ描画の中で
-  // 移す。useEffect だと描画から効果までの間にフォーカスが body に落ち、
-  // その間に DOM を読んだ側（支援技術やテスト）には行き先が見えない。
+  // Move focus during layout to avoid a transient body focus visible to assistive technology.
   useLayoutEffect(() => {
     const pending = pendingFocusRef.current;
     if (pending === null) return;
-    // 外すのは手で付けた分だけで、フォルダ名からも付いているチップは残る
-    // 。待つのは手で付けた分が
-    // 外れるまでで、チップが消えるまでではない。
+    // Folder-derived chips remain after manual removal; wait for the manual assignment, not DOM removal.
     if (
       pending.removedId !== undefined &&
       !tagsReflectChange(tags, pending.removedId, "remove")
     ) {
       return;
     }
-    // 外せなかったときの戻し先は、まだ disabled のままの、そのチップ自身の ×
-    // かもしれない。再び押せるようになるまで（removingIds から消えるまで）待つ。
+    // After failure, wait until this chip's remove button is enabled before restoring focus.
     const target = pending.target;
     if (target !== "input" && removingIds.has(target.chipId)) return;
     pendingFocusRef.current = null;
@@ -193,8 +158,7 @@ export default function VideoTags({
     buttonRefs.current.get(target.chipId)?.focus();
   }, [tags, removingIds]);
 
-  // 候補から除くのは手で付けたタグだけ。フォルダ名からだけ付いているタグは
-  // 候補に出し、確定すると手でも付いて面のある形に変わる（「Folder-derived tag chip」）。
+  // Folder-only tags remain selectable because users can also assign them manually.
   const attachedIds = new Set(tags.filter((tag) => tag.manual).map((tag) => tag.id));
   const { options, exactOption } = buildOptions(allTags ?? [], attachedIds, inputValue);
 
@@ -206,7 +170,7 @@ export default function VideoTags({
     setOpError(null);
     setSubmitting(true);
     const displayName = tag.name;
-    // 応答を待つ間に次の名前を打っていたら、それは消さない。
+    // Preserve a new name entered while the previous request was pending.
     const submittedValue = inputValue;
     const request =
       "id" in tag
@@ -228,8 +192,7 @@ export default function VideoTags({
       .finally(() => setSubmitting(false));
   }
 
-  // 自動タグ付けが仮に付けたタグを確定・却下する。応答の後は動画を取り直し、取り直す前でも
-  // 確定は目印を消し、却下はチップを消す（docs/design-docs/auto-tagging.md）。
+  // Apply confirmation/rejection immediately after success, then refresh video data.
   function settleTag(tag: VideoTag, action: "confirm" | "reject") {
     setOpError(null);
     setRemovingIds((current) => new Set(current).add(tag.id));
@@ -247,7 +210,6 @@ export default function VideoTags({
       })
       .catch((error: unknown) => {
         if (error instanceof RequestFailed && error.status === 404) {
-          // 別の画面で確定・却下された。取り直して今の状態を出す。
           onStaleVideo();
           return;
         }
@@ -263,8 +225,7 @@ export default function VideoTags({
   }
 
   function removeTag(tag: TagRef, index: number) {
-    // 移す先は × を持つ（手で付けた）チップだけ。フォルダ名からだけ付いている
-    // 破線のチップは × を持たないので飛ばす（「Folder-derived tag chip」、014 と同じ次 → 前 → 入力の規則）。
+    // Focus only manually assigned chips with remove buttons; fall back next, previous, then input.
     const next =
       tags.slice(index + 1).find((candidate) => candidate.manual) ??
       tags
@@ -285,7 +246,6 @@ export default function VideoTags({
           onStaleVideo();
           return;
         }
-        // 外せなかったときは、次/前のチップではなく、このチップの × へ戻す。
         pendingFocusRef.current = { target: { chipId: tag.id } };
         setOpError(t.player.tags.detachFailed(errorText(error)));
       })
@@ -314,9 +274,7 @@ export default function VideoTags({
         {tags.map((tag, index) => (
           <li key={tag.id} className="min-w-0 max-w-full">
             {isFolderOnly(tag) ? (
-              // フォルダ名からだけ付いているタグは動画ごとには外せないので、×
-              // を出さず、破線の枠の Badge（outline）と Folder の目印で出す。大きさと
-              // 文字の色は面のあるチップと同じ（「Folder-derived tag chip」「Interaction states」）。
+              // Folder-derived assignments cannot be removed per video.
               <Badge
                 asChild
                 variant="outline"
@@ -337,15 +295,12 @@ export default function VideoTags({
                 </Link>
               </Badge>
             ) : (
-              // 手で付けたタグは secondary の Badge で、名前（絞り込みのリンク）と外す × を
-              // 中に並べる（web/registry/rules/components.md「Badge」）。
               <Badge
                 variant="secondary"
                 title={tag.name}
                 className="max-w-full justify-start gap-0 pr-0 font-normal"
               >
-                {/* 仮のタグは名前の後ろに目印を置く。名前が省略されても目印は
-                    残るよう、名前だけを truncate にする（「Video page」）。 */}
+                {/* Truncate only the name so the tentative marker remains visible. */}
                 <Link
                   to={`/?tag=${String(tag.id)}`}
                   aria-label={
@@ -369,7 +324,6 @@ export default function VideoTags({
                 </Link>
                 <span aria-hidden="true" className="ml-1.5 h-4 w-px shrink-0 bg-input" />
                 {tag.unconfirmed === true ? (
-                  // 自動タグ付けが仮に付けたタグは、外す × の代わりに確定（✓）と却下（×）を置く。
                   <>
                     <Button
                       variant="ghost"
@@ -409,7 +363,6 @@ export default function VideoTags({
                     aria-label={t.player.tags.remove(tag.name)}
                     disabled={removingIds.has(tag.id)}
                     onClick={() => removeTag(tag, index)}
-                    // チップの高さ（h-6）に合わせた × の的。
                     className="size-6 rounded-l-none rounded-r-sm [&_svg]:size-3"
                   >
                     <X aria-hidden="true" />
@@ -440,7 +393,6 @@ export default function VideoTags({
             }
             busy={submitting}
             inputRef={inputRef}
-            // 一覧が閉じているときの Esc は、入力を空にする
             //
             onEscape={() => setInputValue("")}
           />

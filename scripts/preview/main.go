@@ -1,10 +1,4 @@
-// preview はサンプル動画を登録した vv を1つ起動し、ブラウザから触れるようにする。
-// task preview の実体。GitHub Codespaces で PR を手元で確かめるための入口で、
-// .devcontainer から呼ばれる。手元でもそのまま動く。
-//
-// 流れは、単一バイナリのビルド → サンプル動画の生成 → vv の起動 → フォルダの
-// 登録と取り込み開始 → 中継の公開、である。データは .local/preview/ に置くので、
-// task dev の作業場所（.local/data）とは混ざらない。
+// preview builds and starts vv with sample media for Codespaces or local review. Data stays in .local/preview, separate from task dev.
 package main
 
 import (
@@ -28,21 +22,18 @@ import (
 	"github.com/syudead/vv/scripts/devtools"
 )
 
-// requiredCommands は build とサンプル生成と vv の起動前確認が使う外部コマンドである。
 var requiredCommands = []string{"go", "npm", "ffmpeg", "ffprobe"}
 
-// backendAddress は vv 本体の待ち受けである。外からは中継越しにしか触らせない。
+// Expose the backend only through the proxy.
 const backendAddress = "127.0.0.1:18080"
 
-// markerPath と markerHeader は、ポートで応答しているのが preview の中継かどうかを
-// 見分ける目印である。vv の /api/health は task dev でも同じように応答する。
+// Distinguish the preview proxy from other servers that also answer /api/health.
 const (
 	markerPath   = "/__vv-preview"
 	markerHeader = "X-Vv-Preview"
 )
 
-// sample はサンプル動画1本の作り方である。形式を散らしておくと、ブラウザで
-// 再生できるものとできないものの両方の表示を確かめられる。
+// Mix formats to exercise both directly playable and unsupported media.
 type sample struct {
 	path string
 	args []string
@@ -87,8 +78,7 @@ func main() {
 	if listen == "" {
 		listen = ":8080"
 	}
-	// Codespaces は開き直すたびに task preview を呼ぶ。前のものが動いていれば
-	// ビルドからやり直さずに案内だけする。
+	// Reuse a running preview when Codespaces reopens.
 	switch running, err := runningPreview(listen); {
 	case err != nil:
 		devtools.Fail(err)
@@ -121,8 +111,7 @@ func main() {
 	if err := backend.Start(); err != nil {
 		devtools.Fail(fmt.Errorf("VVMDM を起動できません: %w", err))
 	}
-	// 終了は起動待ちと停止処理と最後の select の3か所で見るので、値を送るのではなく
-	// close で知らせる。送った値は1か所でしか受け取れない。
+	// Close the channel to broadcast termination to all three waiters.
 	backendDone := make(chan struct{})
 	var backendErr error
 	go func() {
@@ -147,8 +136,7 @@ func main() {
 		stopBackend()
 		devtools.Fail(err)
 	}
-	// 8080 を開くと Codespaces がブラウザを開くので、先に取り込みを終えておく。
-	// 空の一覧が見えても、取り込み中なのか壊れているのか区別できない。
+	// Finish importing before opening the browser so an empty library cannot be mistaken for a failure.
 	if err := waitScan(backendURL); err != nil {
 		stopBackend()
 		devtools.Fail(err)
@@ -181,8 +169,7 @@ func main() {
 	}
 }
 
-// exitReason は vv の終了理由を表示用に返す。正常終了でも止まったこと自体が
-// 異常なので、呼び出し側はエラーとして扱う。
+// Any server exit is unexpected, even with status zero.
 func exitReason(err error) string {
 	if err == nil {
 		return "正常終了"
@@ -196,8 +183,7 @@ func shutdown(server *http.Server) {
 	_ = server.Shutdown(ctx)
 }
 
-// ensureSamples は足りないサンプル動画だけを作る。作り直したいときは
-// .local/preview を消せばよい。
+// Generate only missing samples; remove .local/preview to rebuild them.
 func ensureSamples(mediaDir string) error {
 	for _, s := range samples {
 		target := filepath.Join(mediaDir, filepath.FromSlash(s.path))
@@ -208,7 +194,7 @@ func ensureSamples(mediaDir string) error {
 			return err
 		}
 		fmt.Println("サンプル動画を作る:", s.path)
-		// 途中で止まっても半端なファイルを本物と取り違えないよう、別名で作ってから移す。
+		// Rename completed output atomically so interrupted files are never reused.
 		partial := target + ".partial" + filepath.Ext(target)
 		args := append([]string{"-hide_banner", "-loglevel", "error", "-y"}, s.args...)
 		args = append(args, partial)
@@ -247,9 +233,7 @@ func waitHealthy(backend *url.URL, exited <-chan struct{}, exitErr *error) error
 	}
 }
 
-// registerSamples はサンプルのフォルダが未登録なら登録し、取り込みを始める。
-// 取り込みは毎回始める。前回が途中で止まっていても、利用者がファイルを足して
-// いても、開いたときの一覧が手元のファイルと揃う。
+// Rescan on every launch to recover interrupted imports and include added files.
 func registerSamples(backend *url.URL, mediaDir string) error {
 	var folders []struct {
 		Path string `json:"path"`
@@ -275,9 +259,7 @@ func registerSamples(backend *url.URL, mediaDir string) error {
 	return nil
 }
 
-// waitScan は取り込みが終わるまで待つ。取り込み自体が失敗したら、一覧が欠けた
-// ままの preview を案内しないようにエラーを返す。待ちきれないだけなら vv は
-// 使えるので、失敗にはせず案内だけする。
+// Fail on scan errors rather than advertising an incomplete preview; timeouts only warn because the server remains usable.
 func waitScan(backend *url.URL) error {
 	deadline := time.Now().Add(2 * time.Minute)
 	for time.Now().Before(deadline) {
@@ -305,9 +287,7 @@ func waitScan(backend *url.URL) error {
 	return nil
 }
 
-// backendEnviron は vv に渡す環境から、ファイルを開く機能を有効にする変数を除く。
-// その機能はループバックからの要求にだけ許されるが、中継越しの要求はすべて
-// ループバックから届くので、preview では最初から使えなくしておく。
+// Disable local-file opening: every proxied request appears to come from loopback.
 func backendEnviron(environ []string) []string {
 	kept := make([]string, 0, len(environ))
 	for _, entry := range environ {
@@ -320,9 +300,7 @@ func backendEnviron(environ []string) []string {
 	return kept
 }
 
-// runningPreview は listen で preview の中継がすでに応答しているかを返す。
-// 空きなら空文字を返す。preview 以外のもの（task dev の vv など）が応答したら、
-// それを preview と取り違えないようエラーにする。
+// Reject unrelated servers on the requested port instead of mistaking them for an existing preview.
 func runningPreview(listen string) (string, error) {
 	host, port, err := net.SplitHostPort(listen)
 	if err != nil {
@@ -373,27 +351,18 @@ func callJSON(method string, target *url.URL, body, out any) error {
 	return json.NewDecoder(response.Body).Decode(out)
 }
 
-// newProxy は外からの要求を vv へ中継する。
-//
-// Codespaces のポート転送はブラウザの https を終端し、中へは http で渡す。vv の
-// 書き込み操作は Origin の scheme と host を自分の要求と突き合わせるので、そのまま
-// 通すと https と http が食い違って全部 403 になる。そこで、Origin がブラウザの
-// 見ている公開側の origin と同じときに限り、vv から見た origin（http と受けた
-// Host）へ書き換える。
-// 書き込みで公開側と一致しない Origin（別サイトからの要求や Origin の無い要求）は
-// vv へ渡さずに断る。vv 本体の確認は緩めない。
+// Codespaces terminates HTTPS before forwarding HTTP. Rewrite only matching public Origins to the backend origin; reject writes with missing or foreign Origins without weakening backend checks.
 func newProxy(backend *url.URL) http.Handler {
 	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.SetURL(backend)
-			// Host は書き換えない。vv はループバックの Host をローカルの操作と
-			// みなすので、外からの要求をループバック扱いにしてしまう。
+			// Preserve Host so remote requests never acquire loopback-only privileges.
 			r.Out.Host = r.In.Host
 			if sameSiteOrigin(r.In) {
 				r.Out.Header.Set("Origin", "http://"+r.In.Host)
 			}
 		},
-		// SSE（/api/events）を溜めずに流す。
+		// Flush SSE events immediately.
 		FlushInterval: -1,
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -402,9 +371,7 @@ func newProxy(backend *url.URL) http.Handler {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		// vv は Origin の無い書き込みを通す（同じ機械の CLI などのため）。preview の
-		// ポートは外から届くので、ブラウザが同一オリジンと示した書き込みだけを通す。
-		// ポートを Public にされても、別サイトのフォームからは変更できない。
+		// The public proxy accepts writes only with a same-origin browser signal, unlike the backend CLI path.
 		switch r.Method {
 		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
 			if !sameSiteOrigin(r) {
@@ -416,10 +383,7 @@ func newProxy(backend *url.URL) http.Handler {
 	})
 }
 
-// sameSiteOrigin は Origin がブラウザの見ている公開側の origin と同じかを返す。
-// ブラウザが Sec-Fetch-Site: same-origin を付けていればそれを信じる。付いて
-// いなければ、公開側の host を Host か転送元が付ける X-Forwarded-Host から取って
-// 比べる。scheme は転送元が終端するので比べない。
+// Trust Sec-Fetch-Site: same-origin when present; otherwise compare Host or X-Forwarded-Host without scheme because the proxy terminates TLS.
 func sameSiteOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
@@ -457,7 +421,7 @@ func listenPort(addr net.Addr) string {
 	return "8080"
 }
 
-// publicURL は開く先を案内する。Codespaces では転送先の URL を組み立てる。
+// publicURL builds the forwarded Codespaces URL when applicable.
 func publicURL(port string) string {
 	name := os.Getenv("CODESPACE_NAME")
 	domain := os.Getenv("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN")

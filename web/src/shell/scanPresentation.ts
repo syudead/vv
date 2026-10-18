@@ -2,10 +2,6 @@ import type { Scan, ScanActivity } from "../api/client";
 import { formatDateTime, t, type UiText } from "../i18n";
 import type { ScanContextValue } from "./ScanProvider";
 
-/**
- * ScanPresentationState は画面の状態である。取り込みの状態（`Scan.status`）に、
- * 未実行・開始中・取得の一時失敗を足したもの。
- */
 export type ScanPresentationState =
   | "not-run"
   | "starting"
@@ -16,41 +12,28 @@ export type ScanPresentationState =
   | "failed"
   | "fetch-failed";
 
-/** ScanDetailLine は3行目（今の処理、または完了の時刻）である。 */
 export interface ScanDetailLine {
   text: UiText;
-  /** 省略した全体（登録フォルダの表示名 / 相対パス / ファイル名）。今の処理のときだけ。 */
+  /** Full activity path for the truncated line's title. */
   title?: UiText;
 }
 
-/**
- * ScanPresentation は、右下の本体・概要・設定の「Scan status」が共有する表示モデルである。
- * `Scan` の status・videos・issues・settledAt・activity だけから作る。
- */
 export interface ScanPresentation {
   state: ScanPresentationState;
   scan: Scan | null;
-  /** 状態の言葉。未実行と取得の一時失敗では null。 */
   statusText: UiText | null;
-  /** 数字で示す進み具合。数字を出さない状態（finding など）と、対象が 0 本のときは null。 */
+  /** Null for states without numeric progress or zero affected videos. */
   videos: { settled: number; total: number } | null;
-  /** 進み具合の文。「M of N videos done」か「No changed files were found.」。 */
   progressText: UiText | null;
-  /** バーの形。 */
   bar: "determinate" | "indeterminate" | "none";
-  /** 今の処理、または完了の時刻の行。 */
   detail: ScanDetailLine | null;
   issues: { failed: number; substituted: number };
   error: UiText | null;
   refreshing: boolean;
-  /**
-   * フォルダの監視が始めた取り込み（`origin` が `watch`）である。走っているあいだは画面のどこにも
-   * 出さず（状態の言葉も進み具合も無い）、終わったあとだけ自動の取り込みの言葉で示す。開始の途中は手動の取り込みなので false。
-   */
+  /** Automatic scans remain invisible until completion; starting denotes a manual scan. */
   watch: boolean;
 }
 
-/** inProgressState は、取り込みがまだ終わっていない画面の状態かを返す。 */
 export function inProgressState(state: ScanPresentationState): boolean {
   return state === "starting" || state === "finding" || state === "running";
 }
@@ -93,11 +76,7 @@ function detailFor(
 
 const noIssues = { failed: 0, substituted: 0 };
 
-/**
- * presentWatchScan は自動の取り込みの表示である。走っているあいだは状態の言葉・進み具合・
- * 今の処理・本数を持たない。終わったあとは、状態の言葉だけを自動の取り込みのものにし、
- * 完了の時刻・本数・一覧は手動と同じに出す。進み具合は終わっても出さない。
- */
+/** Automatic scans never show progress; only terminal status, time and issue counts are visible. */
 function presentWatchScan(
   scan: Scan,
   state: ScanPresentationState,
@@ -126,8 +105,7 @@ function presentWatchScan(
 export function presentScan(value: ScanContextValue): ScanPresentation {
   const { scan } = value;
   const text = t.shell.scan;
-  // 開始の失敗は設定の「Scan status」が button のそばに出す。状態の取り直し（fetch-failed・
-  // refreshing）は、状態取得の失敗だけで決める。
+  // Start failures belong beside the settings button; fetch-failed/refreshing reflect only status-fetch failures.
   const loadError = value.startError === null ? value.error : null;
   if (value.starting) {
     return {
@@ -163,7 +141,7 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
 
   const state: ScanPresentationState = scan.status;
   if (scan.origin === "watch") return presentWatchScan(scan, state, loadError);
-  // finding のあいだは数字を出さない（割合も出さない）。
+  // Do not show counts or percentages during finding.
   const counted = state !== "finding" && scan.videos !== undefined;
   const total = counted ? (scan.videos?.total ?? 0) : 0;
   const videos =
@@ -199,7 +177,6 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
   };
 }
 
-/** issueCountTexts は問題の本数の言葉である。0 の方は出さない。 */
 export function issueCountTexts(presentation: ScanPresentation): UiText[] {
   const text = t.shell.scan;
   const out: UiText[] = [];
@@ -210,13 +187,10 @@ export function issueCountTexts(presentation: ScanPresentation): UiText[] {
   return out;
 }
 
-/**
- * statusAnnouncement は `role="status"` で読み上げる文である。完了・一部失敗・失敗の
- * 節目だけにし、今の処理や進み具合の変化では何も読み上げない。
- */
+/** Announce terminal milestones only, never individual activity or progress updates. */
 export function statusAnnouncement(presentation: ScanPresentation): UiText | null {
   if (presentation.watch) {
-    // 自動の取り込みは、終わりが失敗を伴うときだけ知らせる（完了は知らせない）。
+    // Automatic scans notify only terminal failures, never successful completion.
     const watch = t.shell.scan.watchAnnounce;
     if (presentation.state === "partial")
       return watch.partial(presentation.issues.failed);

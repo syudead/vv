@@ -16,11 +16,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// プロキシのテストは loopback に立てたプロキシを使う。プロキシは要求の接続先を記録し、どの
-// 接続先への要求もテストのサイトに届ける。CI はインターネットに出ないので、接続先の名前は
-// testNames で解決し、サーバー自身のアドレスは無いものとする。
+// Use loopback proxies and deterministic public DNS answers so no test needs internet access.
 
-// testProxy は loopback のプロキシである。answer が 0 でなければ、どの要求にもその状態で答える。
+// Nonzero answer forces that status for every request.
 type testProxy struct {
 	*httptest.Server
 	answer int
@@ -49,7 +47,6 @@ func newTestProxy(t *testing.T, site *testSite, answer int) *testProxy {
 	return p
 }
 
-// hosts はプロキシが要求を受けた接続先のホストを返す。
 func (p *testProxy) hosts() []string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -70,7 +67,7 @@ func mustURL(t *testing.T, raw string) *url.URL {
 	return u
 }
 
-// forward は絶対 URI の要求を、Host をそのままにサイトへ送り、応答を返す。
+// Preserve Host while forwarding absolute-URI requests to the fixture site.
 func forward(w http.ResponseWriter, r *http.Request, site *testSite) {
 	out, err := http.NewRequestWithContext(r.Context(), r.Method, site.URL+r.URL.RequestURI(), r.Body)
 	if err != nil {
@@ -94,7 +91,6 @@ func forward(w http.ResponseWriter, r *http.Request, site *testSite) {
 	_, _ = io.Copy(w, resp.Body)
 }
 
-// tunnel は CONNECT の接続をサイトにつなぐ。
 func tunnel(w http.ResponseWriter, site *testSite) {
 	conn, _, err := http.NewResponseController(w).Hijack()
 	if err != nil {
@@ -111,8 +107,7 @@ func tunnel(w http.ResponseWriter, site *testSite) {
 	_, _ = io.Copy(conn, upstream)
 }
 
-// newProxyTestRuntime は、testNames で名前を解決し、サーバー自身のアドレスを持たない Runtime を返す。
-// プロキシのない要求は実際の dialer を使うので、プロキシを通らない要求は届かない。
+// Direct requests use the real dialer and cannot reach fixtures, proving proxy use.
 func newProxyTestRuntime(t *testing.T) *Runtime {
 	t.Helper()
 	rt := newTestRuntime(t)
@@ -180,7 +175,7 @@ func TestProxyThatFailsReportsTheProxyHost(t *testing.T) {
 	closed := newTestProxy(t, site, 0)
 	closedURL := closed.URL
 	closed.Close()
-	// テストの TLS サーバーの証明書は vv が信頼しないので、プロキシとの TLS の検証が失敗する。
+	// The runtime does not trust the test server's certificate, so proxy TLS validation fails.
 	untrusted := httptest.NewUnstartedServer(http.NotFoundHandler())
 	untrusted.Config.ErrorLog = log.New(io.Discard, "", 0)
 	untrusted.StartTLS()

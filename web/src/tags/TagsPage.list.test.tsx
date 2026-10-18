@@ -20,7 +20,7 @@ import { stubRowHeights } from "../testing/virtualRows";
 setUpTagsPageServer();
 
 describe("TagsPage 見えている行だけ描く", () => {
-  /** jsdom には表示域の高さと要素の高さが無いので、試験用の高さを置く。 */
+  /** Supply dimensions because jsdom has no viewport or element layout. */
   const rowHeight = 40;
   const viewportHeight = 200;
   const tagCount = 60;
@@ -48,7 +48,6 @@ describe("TagsPage 見えている行だけ描く", () => {
     restoreHeights = stubRowHeights({
       rowHeight,
       viewportHeight,
-      // 上部バーの下に留める帯。
       otherHeight: (element) => (element.classList.contains("sticky") ? bandHeight : 0),
     });
   });
@@ -57,7 +56,6 @@ describe("TagsPage 見えている行だけ描く", () => {
     restoreHeights();
   });
 
-  /** tabPastRange は描いている範囲の最後の行の最後の操作から Tab で次の行へ進む。 */
   async function tabPastRange(user: ReturnType<typeof userEvent.setup>) {
     const last = Math.max(...drawnIndexes());
     expect(last).toBeLessThan(tagCount - 1);
@@ -84,19 +82,16 @@ describe("TagsPage 見えている行だけ描く", () => {
     renderPage();
     await screen.findByTitle(name(0));
 
-    // 描いた次の行のチェックへ移る。
     const next = await tabPastRange(user);
     expect(document.activeElement).toBe(
       screen.getByRole("checkbox", { name: `Select "${name(next)}"` }),
     );
 
-    // その行の最後の操作から、まだ描いていない次の行へ。
     within(wrapperOf(next)).getByRole("button", { name: "More actions" }).focus();
     await user.tab();
     expect(document.activeElement).toBe(
       screen.getByRole("checkbox", { name: `Select "${name(next + 1)}"` }),
     );
-    // フォーカスを移した行だけを描き続け、前の行は描いていない。
     expect(document.querySelector(`[data-index="${String(next)}"]`)).toBeNull();
 
     await user.tab({ shift: true });
@@ -112,13 +107,11 @@ describe("TagsPage 見えている行だけ描く", () => {
     await screen.findByTitle(name(0));
     const next = await tabPastRange(user);
 
-    // 同じ行の中の移動では描き続ける。
     await user.tab();
     expect(document.activeElement?.closest("[data-index]")).toBe(wrapperOf(next));
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(document.querySelector(`[data-index="${String(next)}"]`)).not.toBeNull();
 
-    // 一覧の外（ツールバー）へ移ると、その行は Tab の順に残らない。
     await user.click(screen.getByRole("searchbox", { name: "Search tags" }));
     await waitFor(() =>
       expect(document.querySelector(`[data-index="${String(next)}"]`)).toBeNull(),
@@ -144,7 +137,6 @@ describe("TagsPage 見えている行だけ描く", () => {
 
   it("並び順で改名中の行が描いている範囲の外へ移っても、その行を描き続け打っている途中の名前を失わない", async () => {
     const user = userEvent.setup();
-    // 先頭の行だけ 0 本にし、本数の多い順で末尾（描いている範囲の外）へ移す。
     server.tags = server.tags.map((item, index) => ({
       ...item,
       videoCount: index === 0 ? 0 : 1,
@@ -167,7 +159,6 @@ describe("TagsPage 見えている行だけ描く", () => {
     await waitFor(() => expect(wrapperOf(tagCount - 1)).not.toBeNull());
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    // 改名中の行は全件の末尾にあり、表示域の外でも描いたままで、値も入力も同じ。
     expect(drawnIndexes()).toContain(tagCount - 1);
     expect(drawnIndexes()).not.toContain(tagCount - 2);
     const still = screen.getByRole("textbox", { name: `New name for "${name(0)}"` });
@@ -178,9 +169,8 @@ describe("TagsPage 見えている行だけ描く", () => {
   describe("スクロールした位置から", () => {
     const scrolled = 1000;
 
-    /** scrollWindow は文書を scrolled までスクロールしたことにする。 */
     function scrollWindow() {
-      // スクロールの行き先が文書の高さで切り詰められないよう、文書に高さを置く。
+      // Give the document height so scrolling is not clamped.
       Object.defineProperty(document.documentElement, "scrollHeight", {
         configurable: true,
         value: 100_000,
@@ -213,8 +203,7 @@ describe("TagsPage 見えている行だけ描く", () => {
       expect(document.activeElement).toBe(
         within(wrapperOf(first - 1)).getByRole("button", { name: "More actions" }),
       );
-      // 行の上端（jsdom では一覧の上端が文書の 0、行の高さは rowHeight）から上部バーの
-      // 高さだけ上へ。行が上部バーの下に隠れない。
+      // Subtract the sticky header height so the target row remains visible.
       const start = (first - 1) * rowHeight;
       expect(start).toBeGreaterThan(bandHeight);
       expect(scrollTo).toHaveBeenCalledWith(
@@ -224,7 +213,6 @@ describe("TagsPage 見えている行だけ描く", () => {
 
     it("一覧の先頭が帯の下に隠れていれば、「新しいタグ」は先頭まで戻してから作成の行を出す", async () => {
       const user = userEvent.setup();
-      // 一覧の先頭は表示域の上の外（帯の下端より上）にある。
       const listTop = -300;
       const rect = vi
         .spyOn(Element.prototype, "getBoundingClientRect")
@@ -313,7 +301,6 @@ describe("TagsPage 見えている行だけ描く", () => {
 });
 
 describe("TagsPage 並び順と0本の絞り込み", () => {
-  /** rowNames は描いている行の名前を一覧の並びで返す。 */
   function rowNames(): string[] {
     return [...document.querySelectorAll("[data-index]")]
       .sort(
@@ -447,7 +434,6 @@ describe("TagsPage 並び順と0本の絞り込み", () => {
       expect(row.textContent).toContain("0 videos");
     }
 
-    // 並び順と重ねる。
     await chooseSort(user, "Name", "Date created");
     await waitFor(() => expect(rowNames()).toEqual(["Beta", "Delta"]));
     await user.click(
@@ -457,12 +443,10 @@ describe("TagsPage 並び順と0本の絞り込み", () => {
     );
     await waitFor(() => expect(rowNames()).toEqual(["Delta", "Beta"]));
 
-    // 「Tentative only」と重ねると両方を満たす行だけ。
     await toggleFilter(user, "Tentative only");
     expect(await screen.findByText("1 of 5 tags")).toBeDefined();
     expect(rowNames()).toEqual(["Delta"]);
 
-    // 検索と重ねる。
     await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "zz");
     expect(await screen.findByText('No unused tentative tags match "zz"')).toBeDefined();
     expect(screen.getByText("0 of 5 tags")).toBeDefined();
@@ -541,7 +525,6 @@ describe("TagsPage 並び順と0本の絞り込み", () => {
 
     await chooseSort(user, "Name", "Video count");
     await toggleFilter(user, "Unused only");
-    // Alpha は 5 本で「Unused only」に一致しないが、行は本数の順の位置に残る。
     expect(await screen.findByText("2 of 5 tags")).toBeDefined();
     const still = screen.getByRole("textbox", { name: 'New name for "Alpha"' });
     expect(still).toBe(input);
@@ -560,8 +543,7 @@ describe("TagsPage 並び順と0本の絞り込み", () => {
       (screen.getByRole("button", { name: "Sort by: Name" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
-    // 狭い幅のまとめ（「Sort」）の中の並び順も押せない。jsdom は <fieldset disabled> から
-    // 子孫への継承を実装しないので、fieldset 自身が disabled を持つことを確かめる。
+    // jsdom does not inherit disabled from fieldset; inspect the fieldset itself.
     await user.click(screen.getByRole("button", { name: "Sort" }));
     const group = await screen.findByRole("group", { name: "Sort by" });
     expect((group as HTMLFieldSetElement).disabled).toBe(true);
@@ -574,10 +556,8 @@ describe("TagsPage 並び順と0本の絞り込み", () => {
     renderPage();
     await screen.findByTitle("Alpha");
 
-    // md より狭い幅では、並び順はトップバーの「Sort」のポップオーバーにまとまる。
     await user.click(screen.getByRole("button", { name: "Sort" }));
     const compact = await screen.findByRole("dialog");
-    // Name のときは向きを出さない。
     expect(
       within(compact).queryByRole("radiogroup", { name: "Sort direction" }),
     ).toBeNull();

@@ -67,7 +67,7 @@ describe("isProcessing", () => {
     [{ previewState: "pending" }, true],
     [{ thumbnailState: "failed", previewState: "failed" }, false],
     [{}, false],
-    // 読み取りの失敗は終わりとして扱う。プレビューは読み取りの成功後にしか積まれない。
+    // Probe failure is terminal; preview jobs are queued only after successful probing.
     [{ probeState: "failed", previewState: "pending", thumbnailState: "pending" }, false],
   ] as [Partial<Video>, boolean][])("%j → %s", (overrides, expected) => {
     expect(isProcessing({ ...done, ...overrides })).toBe(expected);
@@ -111,7 +111,7 @@ describe("useVideoDetail", () => {
     );
     await flush();
 
-    // 変更の要求は group を受け取らず、応答は id のいちばん小さいグループを返す。
+    // Mutations ignore group context and return the smallest-ID group.
     act(() =>
       result.current.replace(
         { ...done, title: "新しい名前", group: series },
@@ -123,7 +123,6 @@ describe("useVideoDetail", () => {
       video: { title: "新しい名前", group: picks },
     });
 
-    // group が無ければ応答のまま。
     getVideo.mockResolvedValue({ ...done, group: series });
     rerender({ group: undefined });
     await flush();
@@ -136,7 +135,7 @@ describe("useVideoDetail", () => {
       ...done,
       group: { id: 9, name: "picks", position: 1, count: 3 },
     });
-    // AudienceProvider の外の既定はゲストである。
+    // The default audience outside AudienceProvider is guest.
     const { result } = renderHook(() => useVideoDetail(7));
     await flush();
     expect(result.current.state).toMatchObject({ kind: "ready" });
@@ -162,13 +161,11 @@ describe("useVideoDetail", () => {
     });
     await flush();
 
-    // 関わらないグループの知らせでは取り直さない。開いたグループ 4 は動画を持たず、表示中の
-    // グループ 9 はフォールバックなので、9 より id の大きいグループは文脈を替えない。
+    // A fallback group can change only to a lower-ID group or the explicitly opened group.
     await emitServerEvent("group", { ids: [12, 15] });
     await flush();
     expect(getVideo).toHaveBeenCalledTimes(1);
 
-    // 別の画面で並べ替えると、変わったグループ（祖先を含む）の id が届く。
     await emitServerEvent("group", { ids: [9, 2] });
     expect(result.current.state).toMatchObject({ kind: "ready" });
     await flush();
@@ -176,7 +173,6 @@ describe("useVideoDetail", () => {
     expect(getVideo).toHaveBeenLastCalledWith(7, expect.anything(), 4, undefined);
     expect(result.current.state).toMatchObject({ video: { group: { position: 2 } } });
 
-    // 開いたグループ（?group）の知らせでも取り直す。
     await emitServerEvent("group", { ids: [4] });
     await flush();
     expect(getVideo).toHaveBeenCalledTimes(3);
@@ -209,7 +205,7 @@ describe("useVideoDetail", () => {
       getVideo.mockResolvedValue({ ...done, smartFolder: inFolder });
       const { result } = renderHook(() => useVideoDetail(7, undefined, undefined, 5));
       await flush();
-      // 変更の要求は smartFolder を受け取らず、応答にフォルダは無い。
+      // Mutations omit smart-folder context from their responses.
       act(() =>
         result.current.replace({ ...done, title: "新しい名前" }, detailMark(), "keep"),
       );
@@ -275,7 +271,6 @@ describe("useVideoDetail", () => {
     await flush();
     expect(getVideo).toHaveBeenCalledTimes(1);
 
-    // グループ 3 に動画が足されると、文脈は id のいちばん小さいグループ 3 に替わる。
     await emitServerEvent("group", { ids: [3] });
     await flush();
     expect(getVideo).toHaveBeenCalledTimes(2);
@@ -324,7 +319,6 @@ describe("useVideoDetail", () => {
     await advance(10_000);
     expect(getVideo).toHaveBeenCalledTimes(1);
 
-    // 別の動画の知らせでは取り直さない。
     await emitServerEvent("video", { id: 8 });
     await flush();
     expect(getVideo).toHaveBeenCalledTimes(1);
@@ -367,7 +361,6 @@ describe("useVideoDetail", () => {
     await flush();
     expect(result.current.state).toMatchObject({ video: { title: "新しい名前" } });
 
-    // 別の動画の応答は捨てる。
     act(() =>
       result.current.replace({ ...done, id: 8, title: "別の動画" }, mark, "keep"),
     );
@@ -413,7 +406,6 @@ describe("useVideoDetail", () => {
   });
 
   it("replace の refetch は手元の作品情報を残さず、先に終わった取り直しの後でも取り直す", async () => {
-    // 束から外す: 束の作品情報（BUNDLE）を出している動画が、外すと固有の作品情報（OWN）に戻る。
     const own: Video = { ...done, workInfo: workInfoCoded("OWN") };
     let answer: ((video: Video) => void) | undefined;
     getVideo
@@ -423,13 +415,12 @@ describe("useVideoDetail", () => {
     const { result } = renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
     await flush();
 
-    // 外す要求を送り、その応答より先に `video` の知らせの取り直しが終わる。
     const mark = detailMark();
     await emitServerEvent("video", { id: 7 });
     await flush();
     expect(result.current.state).toMatchObject({ video: { workInfo: { code: "OWN" } } });
 
-    // 外した応答は `workInfo` を載せない。手元の作品情報を残さず、取り直す。
+    // Unbundle responses omit workInfo; reload instead of retaining bundle metadata.
     act(() => result.current.replace({ ...done, title: "外した" }, mark, "refetch"));
     const replaced = result.current.state;
     expect(
@@ -464,7 +455,6 @@ describe("useVideoDetail", () => {
     await flush();
     expect(result.current.state).toMatchObject({ video: { public: false } });
 
-    // 表示名の保存を送り、その応答の前に公開へ切り替わり、別の変化で取り直しが始まる。
     const mark = detailMark();
     await act(async () => {
       await updateVideoVisibility([7], true);
@@ -472,7 +462,6 @@ describe("useVideoDetail", () => {
     await emitServerEvent("video", { id: 7 });
     expect(getVideo).toHaveBeenCalledTimes(2);
 
-    // 表示名の応答は、切り替える前の public: false を読んでいる。
     act(() =>
       result.current.replace(
         { ...done, public: false, title: "新しい名前", displayName: "新しい名前" },
@@ -484,7 +473,6 @@ describe("useVideoDetail", () => {
       video: { public: true, title: "新しい名前" },
     });
 
-    // 保存の後に始めた取り直しは打ち切らない。
     await act(async () =>
       answer?.({
         ...done,
@@ -520,7 +508,6 @@ describe("useVideoDetail", () => {
     await flush();
     expect(result.current.state).toMatchObject({ video: { public: false } });
 
-    // 処理状態の知らせで取り直しが始まり、その応答の前に公開へ切り替わる。
     await emitServerEvent("video", { id: 7 });
     expect(getVideo).toHaveBeenCalledTimes(2);
     await act(async () => {
@@ -528,7 +515,6 @@ describe("useVideoDetail", () => {
     });
     expect(result.current.state).toMatchObject({ video: { public: true } });
 
-    // 切り替える前に読んだ内容（public: false）が遅れて届く。
     await act(async () => answer?.({ ...done, previewState: "pending" }));
     expect(result.current.state).toMatchObject({
       video: { public: true, previewState: "pending" },
@@ -748,7 +734,6 @@ describe("useVideoDetail", () => {
         ),
       ),
     );
-    // 前に別の動画の付け外しが決着していて、最初の取得はその後に読んだ。
     await updateFavorites([99], [], true);
     const changes: FavoritesChange[] = [];
     const unsubscribe = subscribeFavorites((change) => changes.push(change));
@@ -843,7 +828,6 @@ describe("useRelatedVideos", () => {
       4,
       undefined,
     );
-    // 読み直しの間も今の並びを見せる。
     expect(result.current.state).toMatchObject({ kind: "ready", related: { nextId: 8 } });
     await act(async () => {
       answer({ items: [], group: group([video(8), video(7)]), prevId: 8 });
@@ -851,7 +835,6 @@ describe("useRelatedVideos", () => {
     expect(result.current.state).toMatchObject({
       kind: "ready",
       related: { prevId: 8, group: { items: [{ id: 8 }, { id: 7 }] } },
-      // 同じグループのまま読み直したので、グループの並びの画面を作り直す印が進む。
       generation: 2,
     });
   });
@@ -933,7 +916,6 @@ describe("useRelatedVideos", () => {
     await emitServerEvent("group", { ids: [9] });
     await act(async () => undefined);
     expect(signal?.aborted).toBe(true);
-    // 読み直しは失敗したが、今の並びを残し、続きの読み込み中の印は外す。
     expect(result.current.state).toMatchObject({
       kind: "ready",
       related: { items: [{ id: 1 }], nextCursor: "c1" },
@@ -981,7 +963,6 @@ describe("useRelatedVideos", () => {
     expect(named?.map((item) => item.title)).toEqual(["夏の旅行", "ep02"]);
     expect(named?.[0]).toMatchObject({ fileTitle: "動画", displayName: "夏の旅行" });
 
-    // 解除では displayName を消す。別の動画の応答は写さない。
     act(() => result.current.rename({ ...done, fileTitle: "動画" }));
     act(() => result.current.rename({ ...other, title: "別の動画" }));
     const cleared =
@@ -1019,7 +1000,6 @@ describe("useRelatedVideos", () => {
     });
     expect(items()?.[1]).toBe(other);
 
-    // 解除では位置を消し、応答の URL にそろえる。別の動画の応答は写さない。
     act(() =>
       result.current.rethumb({ ...done, thumbnailUrl: "/api/videos/7/thumbnail?v=abc" }),
     );
@@ -1043,7 +1023,6 @@ describe("useRelatedVideos", () => {
         ? result.current.state.related.items.map((item) => item.id)
         : [];
 
-    // 失敗したら more が failed になり、もう一度 loadMore で読み直す。
     act(() => result.current.loadMore());
     expect(result.current.state).toMatchObject({ more: "loading" });
     await act(async () => undefined);
@@ -1071,7 +1050,6 @@ describe("useRelatedVideos", () => {
       undefined,
     );
     expect(ids()).toEqual([1, 2, 3, 4]);
-    // 最初のページの次の動画は残し、続きが無くなったら読まない。
     expect(result.current.state).toMatchObject({ related: { nextId: 1 }, more: "idle" });
     expect(
       result.current.state.kind === "ready" && result.current.state.related.nextCursor,

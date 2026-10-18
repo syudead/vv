@@ -10,10 +10,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// このファイルは AutoImport を、偽の watcher・時計・走査で確かめる。ファイルシステムも
-// SQLite も使わない。
+// Use fake watcher, clock, and scanner dependencies without filesystem or SQLite access.
 
-// stepClock は Advance で進める時計である。予約した関数は、時刻が来たら Advance の中で順に呼ぶ。
+// Advance invokes due callbacks serially.
 type stepClock struct {
 	mu     sync.Mutex
 	now    time.Time
@@ -54,8 +53,7 @@ func (c *stepClock) AfterFunc(d time.Duration, f func()) ClockTimer {
 	return t
 }
 
-// Advance は d だけ進め、その間に来た予約を、時刻の順に呼ぶ。呼んだ関数が足した予約も、
-// 時刻が来ていれば呼ぶ。
+// Advance also runs newly scheduled callbacks that fall within the advanced interval.
 func (c *stepClock) Advance(d time.Duration) {
 	c.mu.Lock()
 	target := c.now.Add(d)
@@ -85,7 +83,6 @@ func (c *stepClock) Advance(d time.Duration) {
 	}
 }
 
-// pending は、まだ来ていない予約の数である。
 func (c *stepClock) pending() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -98,13 +95,13 @@ func (c *stepClock) pending() int {
 	return n
 }
 
-// fakeFolderWatcher は張った roots を記録する。block が nil でなければ、Arm はそれが閉じるまで戻らない。
+// Non-nil block delays Arm until closure.
 type fakeFolderWatcher struct {
 	mu      sync.Mutex
 	arms    [][]string
 	disarms int
 	block   chan struct{}
-	// disarmBlock が nil でなければ、Disarm はそれが閉じるまで戻らない。
+	// Non-nil disarmBlock delays Disarm until closure.
 	disarmBlock chan struct{}
 }
 
@@ -135,7 +132,7 @@ func (f *fakeFolderWatcher) armed() [][]string {
 	return slices.Clone(f.arms)
 }
 
-// fakeWatchScans は監視の走査の始め方と止め方の偽物である。running が空でなければ、その主体の走査が走っている。
+// Nonempty running identifies the active scan initiator.
 type fakeWatchScans struct {
 	mu        sync.Mutex
 	running   domain.ScanOrigin
@@ -171,14 +168,12 @@ func (f *fakeWatchScans) started() [][]domain.DirtyDirectory {
 	return slices.Clone(f.starts)
 }
 
-// begin は手動の走査が走り始めたことにする。
 func (f *fakeWatchScans) begin(origin domain.ScanOrigin) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.running = origin
 }
 
-// end は走っている走査が閉じたことにして、その主体を返す。
 func (f *fakeWatchScans) end() domain.ScanOrigin {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -207,14 +202,13 @@ func (f *fakeAutoImportStore) SaveAutoImport(_ context.Context, enabled bool) er
 	return nil
 }
 
-// autoImportRig は AutoImport と、それを囲む偽物である。
 type autoImportRig struct {
 	auto    *AutoImport
 	clock   *stepClock
 	watcher *fakeFolderWatcher
 	scans   *fakeWatchScans
 	store   *fakeAutoImportStore
-	// newest は probe が返す、ディレクトリごとのいちばん新しい更新の時刻である。無ければゼロ値（止まっている）。
+	// Absent mtimes mean settled directories.
 	newest map[string]time.Time
 }
 
@@ -249,7 +243,6 @@ func newAutoImportRig(t *testing.T, enabled bool, roots ...string) *autoImportRi
 	return rig
 }
 
-// waitState は監視の状態が want になるまで待つ。
 func (r *autoImportRig) waitState(t *testing.T, want domain.FolderWatchState) domain.AutoImportStatus {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -269,8 +262,6 @@ func dirtyDir(path string, recursive bool) domain.DirtyDirectory {
 	return domain.DirtyDirectory{Path: fixturePath(path), Recursive: recursive}
 }
 
-// イベントが 2 秒以内に続く間は走査せず、静止したあとに、変わったディレクトリだけを
-// 1 回の監視の走査にする。
 func TestAutoImportWaitsForQuietThenScansOnlyDirtyDirectories(t *testing.T) {
 	rig := newAutoImportRig(t, true, fixturePath("/media"))
 	rig.waitState(t, domain.FolderWatchActive)
@@ -292,7 +283,6 @@ func TestAutoImportWaitsForQuietThenScansOnlyDirtyDirectories(t *testing.T) {
 		t.Fatalf("始めた走査 = %v, want [%v]", got, want)
 	}
 
-	// 閉じたあとに新しい変更が無ければ、もう走査しない。
 	origin := rig.scans.end()
 	rig.auto.ScanFinished(origin, domain.ScanDone)
 	rig.clock.Advance(time.Minute)
@@ -301,8 +291,6 @@ func TestAutoImportWaitsForQuietThenScansOnlyDirtyDirectories(t *testing.T) {
 	}
 }
 
-// 更新が止まっていないファイルのあるディレクトリは変わったまま残り、止まってから取り込む。
-// 止まったディレクトリは待たせない。
 func TestAutoImportKeepsUnsettledDirectoryDirtyUntilSettled(t *testing.T) {
 	rig := newAutoImportRig(t, true, fixturePath("/media"))
 	rig.waitState(t, domain.FolderWatchActive)
@@ -320,7 +308,7 @@ func TestAutoImportKeepsUnsettledDirectoryDirtyUntilSettled(t *testing.T) {
 	origin := rig.scans.end()
 	rig.auto.ScanFinished(origin, domain.ScanDone)
 
-	// まだ 10 秒たっていない間は、残ったままである。
+	// Ten seconds have not elapsed, so the directory remains pending.
 	rig.clock.Advance(5 * time.Second)
 	if got := rig.scans.started(); len(got) != 1 {
 		t.Fatalf("更新が止まる前に取り込んだ: %v", got)
@@ -333,7 +321,6 @@ func TestAutoImportKeepsUnsettledDirectoryDirtyUntilSettled(t *testing.T) {
 	}
 }
 
-// 走査が走っている間（手動の走査）に起きた変更は、その走査が閉じたあとで取り込む。
 func TestAutoImportImportsChangesMadeDuringManualScanAfterIt(t *testing.T) {
 	rig := newAutoImportRig(t, true, fixturePath("/media"))
 	rig.waitState(t, domain.FolderWatchActive)
@@ -357,8 +344,6 @@ func TestAutoImportImportsChangesMadeDuringManualScanAfterIt(t *testing.T) {
 	}
 }
 
-// メディアフォルダの変更は走っているバッチを止め、そのディレクトリを変わったものとして戻し、
-// 監視を張り直したあとで取り込む。変更の間は新しい走査を始めない。
 func TestAutoImportFolderChangeSupersedesBatchAndRequeuesIt(t *testing.T) {
 	rig := newAutoImportRig(t, true, fixturePath("/media"))
 	rig.waitState(t, domain.FolderWatchActive)
@@ -373,7 +358,6 @@ func TestAutoImportFolderChangeSupersedesBatchAndRequeuesIt(t *testing.T) {
 	if rig.scans.supersede != 1 {
 		t.Fatalf("止めた回数 = %d, want 1", rig.scans.supersede)
 	}
-	// 変更の間に起きた変更では、走査を始めない。
 	rig.auto.Changed(dirtyDir("/media/b", false))
 	rig.clock.Advance(time.Minute)
 	if got := rig.scans.started(); len(got) != 1 {
@@ -393,7 +377,6 @@ func TestAutoImportFolderChangeSupersedesBatchAndRequeuesIt(t *testing.T) {
 	}
 }
 
-// 走っているのが手動の走査なら、フォルダの変更は何も止めず、戻すものも無い。
 func TestAutoImportFolderChangeLeavesManualScanAlone(t *testing.T) {
 	rig := newAutoImportRig(t, true, fixturePath("/media"))
 	rig.waitState(t, domain.FolderWatchActive)
@@ -410,7 +393,6 @@ func TestAutoImportFolderChangeLeavesManualScanAlone(t *testing.T) {
 	}
 }
 
-// 自動の取り込みを入にしても、走査は始めない。保存して監視を張るだけである。
 func TestAutoImportEnablingStartsNoScan(t *testing.T) {
 	rig := newAutoImportRig(t, false, fixturePath("/media"))
 	if status := rig.auto.Status(); status.Enabled || status.State != domain.FolderWatchOff {
@@ -436,7 +418,6 @@ func TestAutoImportEnablingStartsNoScan(t *testing.T) {
 		t.Fatalf("張った回数 = %d, want 1", len(got))
 	}
 
-	// 同じ値は何もしない。
 	if _, err := rig.auto.SetEnabled(context.Background(), true); err != nil {
 		t.Fatal(err)
 	}
@@ -445,7 +426,6 @@ func TestAutoImportEnablingStartsNoScan(t *testing.T) {
 	}
 }
 
-// 切にすると、監視を外し、変わったディレクトリの集合を捨て、走っている取り込みを止める。
 func TestAutoImportDisablingDisarmsAndDropsDirtyDirectories(t *testing.T) {
 	rig := newAutoImportRig(t, true, fixturePath("/media"))
 	rig.waitState(t, domain.FolderWatchActive)
@@ -469,8 +449,6 @@ func TestAutoImportDisablingDisarmsAndDropsDirtyDirectories(t *testing.T) {
 	}
 }
 
-// 監視の状態は、張っている間は starting、張り終えれば active、問題があれば limited、
-// メディアフォルダが無ければ off である。
 func TestAutoImportStatus(t *testing.T) {
 	t.Run("starting から active へ", func(t *testing.T) {
 		rig := &autoImportRig{}
@@ -526,7 +504,6 @@ func TestAutoImportStatus(t *testing.T) {
 			status.Problem == nil || status.Problem.Path != fixturePath("/media/x") {
 			t.Fatalf("watch_limit は手動の走査では解けない: %+v", status)
 		}
-		// 入れ直すと解ける。
 		if _, err := rig.auto.SetEnabled(context.Background(), false); err != nil {
 			t.Fatal(err)
 		}
@@ -545,8 +522,8 @@ func TestAutoImportStatus(t *testing.T) {
 	})
 }
 
-// 手動の走査が走っている間に報告された取りこぼしは、その走査が閉じても解けない。走査が読み終えた
-// ディレクトリのものかもしれないからである。次の手動の走査が全体を読めば解ける。
+// A loss reported during a manual scan may concern already-read directories and requires a later
+// full scan to clear.
 func TestAutoImportKeepsEventsLostReportedDuringManualScan(t *testing.T) {
 	rig := newAutoImportRig(t, true, fixturePath("/media"))
 	rig.waitState(t, domain.FolderWatchActive)
@@ -566,7 +543,6 @@ func TestAutoImportKeepsEventsLostReportedDuringManualScan(t *testing.T) {
 	}
 }
 
-// 同じディレクトリの変更の報告が続いても、変わったディレクトリの集合は報告の数では増えない。
 func TestAutoImportDirtySetGrowsPerDirectoryNotPerNotification(t *testing.T) {
 	rig := newAutoImportRig(t, true, fixturePath("/media"))
 	rig.waitState(t, domain.FolderWatchActive)
@@ -589,7 +565,6 @@ func TestAutoImportDirtySetGrowsPerDirectoryNotPerNotification(t *testing.T) {
 	}
 }
 
-// Disarm が応答しないマウントを読む goroutine を待っていても、Stop は上限で戻る。
 func TestAutoImportStopDoesNotWaitForeverOnDisarm(t *testing.T) {
 	watcher := &fakeFolderWatcher{disarmBlock: make(chan struct{})}
 	t.Cleanup(func() { close(watcher.disarmBlock) })

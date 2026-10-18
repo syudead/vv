@@ -49,7 +49,6 @@ type CheckState =
   | { kind: "failed"; message: UiText }
   | { kind: "missing"; items: ComfyUIMissingItem[] };
 
-/** modelsFirst は足りないものをモデルファイル、ノードの順に並べる。 */
 function modelsFirst(items: readonly ComfyUIMissingItem[]): ComfyUIMissingItem[] {
   return [
     ...items.filter((item) => item.kind === "model"),
@@ -58,12 +57,8 @@ function modelsFirst(items: readonly ComfyUIMissingItem[]): ComfyUIMissingItem[]
 }
 
 /**
- * ComfyUISection は設定の「ComfyUI」区画である。動画の1コマをサムネイルへ編集する ComfyUI
- * の接続先（自前か Comfy Cloud か）を保存し、つながるかと、vv のワークフローに足りないノード
- * とモデルファイルを確かめる。API キーは書くだけで、画面には戻らない。
- *
- * 区画は `/settings/connections#comfyui` の行き先で、動画ページの編集の入口の「Open Settings」がここへ
- * 移る。
+ * API keys are write-only; this section is the playback editor's /settings/connections#comfyui
+ * destination.
  */
 export default function ComfyUISection() {
   const anchor = useSectionAnchor("comfyui");
@@ -85,7 +80,7 @@ function ComfyUISectionBody() {
   const [saveError, setSaveError] = useState<UiText | null>(null);
   const [check, setCheck] = useState<CheckState>({ kind: "idle" });
   const controller = useRef<AbortController | null>(null);
-  // 値を変えるたびに進める。テストは始めた時の値と同じ間だけ結果を出す。
+  // Advance on edits; display test results only for the same input generation.
   const edits = useRef(0);
 
   const load = useCallback(async () => {
@@ -113,10 +108,7 @@ function ComfyUISectionBody() {
 
   const busy = saving || forgetting;
 
-  /**
-   * persist は下書き sent から作った要求を保存する。保存できたら保存後の値を受け取り、入力欄の
-   * キーを空に戻す。保存の間に変えた値は残す（afterSave）。
-   */
+  /** After saving, clear the submitted key but preserve edits made while the request was pending. */
   const persist = async (sent: Draft, body: UpdateComfyUISettings): Promise<boolean> => {
     setSaveError(null);
     try {
@@ -142,7 +134,7 @@ function ComfyUISectionBody() {
     }
   };
 
-  // 自前の ComfyUI のまま残った Cloud のキーを、今の値と空のキーで保存して消す。
+  // Explicitly clear a leftover Cloud key when saving self-hosted settings.
   const forgetKey = async () => {
     if (draft === null || busy) return;
     setForgetting(true);
@@ -154,7 +146,7 @@ function ComfyUISectionBody() {
     }
   };
 
-  // サーバーは保存した接続先でしか確かめないので、編集中の値があれば先に保存する。
+  // Save draft changes before testing because the server tests only stored settings.
   const runCheck = async () => {
     if (draft === null || check.kind === "checking" || busy) return;
     const edit = edits.current;
@@ -162,7 +154,7 @@ function ComfyUISectionBody() {
     if (dirty) {
       setSaving(true);
       const saved = await persist(draft, bodyOf(draft)).finally(() => setSaving(false));
-      // 保存の間に値が変わったら、保存した値を確かめても今の値には当たらない。
+      // Do not test saved values if the draft changed while saving.
       if (!saved || edit !== edits.current) return;
       provider = draft.provider;
     }
@@ -183,8 +175,7 @@ function ComfyUISectionBody() {
     }
   };
 
-  // 値を変えたら前のテスト結果は今の値に当たらないので消す。
-  // 確かめている途中なら、その結果も捨てて次のテストを受け付ける。
+  // Edits invalidate both displayed and in-flight test results, allowing a new test.
   const update = (change: Partial<Draft>) => {
     edits.current += 1;
     setDraft((current) => (current === null ? current : { ...current, ...change }));
@@ -401,7 +392,6 @@ interface ChoiceRowProps<T extends string> {
   onChange: (value: T) => void;
 }
 
-/** ChoiceRow は設定の 1 行で、選択肢ごとに名前と説明を並べたラジオの組である。 */
 function ChoiceRow<T extends string>({
   name,
   title,

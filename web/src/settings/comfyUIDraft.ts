@@ -5,10 +5,9 @@ export type Model = ComfyUISettings["model"];
 
 export const providerOrder: readonly Provider[] = ["self_hosted", "cloud"];
 
-/** modelOrder は選べるモデルの並びで、既定のモデルが先頭である。 */
 export const modelOrder: readonly Model[] = ["flux2_klein_4b", "qwen_image_edit_2511"];
 
-/** Draft は画面で編集中の値である。`apiKey` は入力欄の値で、保存済みのキーは入らない。 */
+/** apiKey contains only newly entered text, never the stored secret. */
 export interface Draft {
   provider: Provider;
   url: string;
@@ -16,7 +15,6 @@ export interface Draft {
   model: Model;
 }
 
-/** draftOf は保存済みの値から下書きを作る。何も保存されていなければ自前の ComfyUI を選ぶ。 */
 export function draftOf(settings: ComfyUISettings): Draft {
   return {
     provider: settings.provider ?? "self_hosted",
@@ -26,7 +24,6 @@ export function draftOf(settings: ComfyUISettings): Draft {
   };
 }
 
-/** sameValues は 2 つの下書きの値がすべて同じかを返す。 */
 function sameValues(a: Draft, b: Draft): boolean {
   return (
     a.provider === b.provider &&
@@ -36,19 +33,13 @@ function sameValues(a: Draft, b: Draft): boolean {
   );
 }
 
-/**
- * afterSave は保存の応答を受けた後の下書きを返す。送った後に値が変わっていなければ保存後の値に
- * 戻す。変わっていれば送った後の編集を残し、キーの欄は送ったキーのままのときだけ空にする。
- */
+/** Preserve edits made after submission; clear the key only if it still equals the submitted key. */
 export function afterSave(current: Draft, sent: Draft, saved: ComfyUISettings): Draft {
   if (sameValues(current, sent)) return draftOf(saved);
   return current.apiKey === sent.apiKey ? { ...current, apiKey: "" } : current;
 }
 
-/**
- * bodyOf は下書きを保存の要求にする。キーの欄が空なら `apiKey` を省き、保存済みのキーを残す。
- * モデルはいつも送る。
- */
+/** Omit empty apiKey to retain the stored key; always send model. */
 export function bodyOf(draft: Draft): UpdateComfyUISettings {
   const body: UpdateComfyUISettings = { provider: draft.provider, model: draft.model };
   if (draft.provider === "self_hosted") body.url = draft.url;
@@ -56,10 +47,7 @@ export function bodyOf(draft: Draft): UpdateComfyUISettings {
   return body;
 }
 
-/**
- * isDirty は下書きに保存していない値があるかを返す。何も保存されていなければいつも真である。
- * 自前の ComfyUI でないときの URL は保存しないので比べない。
- */
+/** Unsaved settings are always dirty; ignore URL outside self-hosted mode because it is not persisted. */
 export function isDirty(draft: Draft, settings: ComfyUISettings): boolean {
   if (settings.provider === undefined) return true;
   return (

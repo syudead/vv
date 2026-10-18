@@ -39,7 +39,7 @@ import WorkInfoPluginSettingsDialog from "./WorkInfoPluginSettingsDialog";
 
 const text = () => t.settings.workInfoPlugins;
 
-/** Approving は開いている承認の確認である。changed は差し替えか使えなくなったことの知らせ。 */
+/** changed means the reviewed plugin was replaced or became unavailable. */
 interface Approving {
   plugin: WorkInfoPlugin;
   pending: boolean;
@@ -47,20 +47,15 @@ interface Approving {
   error: UiText | null;
 }
 
-/** Editing は開いている設定のダイアログか削除の確認である。 */
 interface Editing {
   plugin: WorkInfoPlugin;
   pending: boolean;
   error: UiText | null;
 }
 
-/**
- * FocusTarget は描いたあとにフォーカスを移す先である。行の id（その行の最初のボタン）、
- * `{ menu: id }`（その行の「More actions」）か「Add plugin」。
- */
+/** Focus the row's first button, its menu trigger, or Add plugin after rendering. */
 type FocusTarget = number | { menu: number } | "add";
 
-/** addedToast は追加の応答の状態と状態コードから、結果のトーストの文言を選ぶ。 */
 function addedToast(plugin: WorkInfoPlugin, replaced: boolean): UiText {
   const name = pluginName(plugin);
   if (plugin.state === "invalid") return text().addedUnusable(name);
@@ -187,14 +182,6 @@ function PluginList({
   );
 }
 
-/**
- * WorkInfoPluginsSection は設定の「Work-info plugins」節である。所有者が `.wasm` のプラグインを
- * 足し、状態を見て、承認・取り消し・削除し、設定の値を入れる。
- * 設定画面は所有者だけが開けるので、この節も所有者にだけ出る（受け入れ条件 7）。
- *
- * 節は `/settings/plugins#work-info-plugins` の行き先で、動画ページの取得ダイアログの「Open Settings」が
- * ここへ移る。
- */
 export default function WorkInfoPluginsSection() {
   const anchor = useSectionAnchor("work-info-plugins");
   return (
@@ -220,15 +207,13 @@ function WorkInfoPluginsSectionBody() {
   const addButton = useRef<HTMLButtonElement>(null);
   const rowRefs = useRef(new Map<number, HTMLDivElement>());
   const focusAfterRender = useRef<FocusTarget | null>(null);
-  // loads は始めた読み込みの数、changes は操作の応答で行を変えた数である。
+  // Track started loads separately from mutations applied to rows.
   const loads = useRef(0);
   const changes = useRef(0);
 
   /**
-   * load は一覧を読み直す。後から始めた読み込みがあれば、その結果に任せて何もしない。読む
-   * あいだに操作の応答が行を変えたなら、その一覧は操作の前の行を持ちうるので読み直す
-   * （遅れて届いた一覧が取り消しや削除の結果を巻き戻さないように）。quiet は失敗を節の
-   * 誤りにせず、今の一覧を残す。
+   * Discard superseded loads; reread if a mutation changed rows during the request to avoid
+   * undoing it. Quiet failures retain the current list without section errors.
    */
   const load = useCallback(
     async ({ signal, quiet = false }: { signal?: AbortSignal; quiet?: boolean } = {}) => {
@@ -261,8 +246,7 @@ function WorkInfoPluginsSectionBody() {
     return () => controller.abort();
   }, [load]);
 
-  // ダイアログが閉じたときの Radix のフォーカスの戻しより後に移すため、描いたあと次の
-  // タスクで移す。
+  // Defer until after rendering and Radix's close-time focus restoration.
   useEffect(() => {
     const target = focusAfterRender.current;
     if (target === null) return;
@@ -280,7 +264,6 @@ function WorkInfoPluginsSectionBody() {
     return () => window.clearTimeout(timer);
   });
 
-  /** changePlugins は操作の応答で一覧を変え、読みかけの一覧を古いものにする。 */
   const changePlugins = (change: (current: WorkInfoPlugin[]) => WorkInfoPlugin[]) => {
     changes.current++;
     setPlugins(change);
@@ -299,7 +282,7 @@ function WorkInfoPluginsSectionBody() {
     setAddError(null);
     try {
       const { plugin: added, replaced } = await uploadWorkInfoPlugin(file);
-      // 足した行は応答から先に一覧へ入れる。読み直しが失敗しても、足した行は見えたまま残る。
+      // Insert the uploaded row optimistically so it survives a failed refresh.
       changePlugins((current) =>
         current.some((plugin) => plugin.id === added.id)
           ? current.map((plugin) => (plugin.id === added.id ? added : plugin))
@@ -391,8 +374,7 @@ function WorkInfoPluginsSectionBody() {
     setWork({ id: target.id, kind: "delete" });
     try {
       await deleteWorkInfoPlugin(target.id);
-      // 削除を待つあいだに追加が終わり、一覧が読み直されていることがある。最新の一覧から
-      // 対象だけを除き、次の行（無ければ「Add plugin」）へフォーカスを移す。
+      // Remove from the latest list because concurrent uploads may have refreshed it; focus the next row or Add plugin.
       changePlugins((current) => {
         const index = current.findIndex((plugin) => plugin.id === target.id);
         const remaining = current.filter((plugin) => plugin.id !== target.id);
@@ -499,8 +481,7 @@ function WorkInfoPluginsSectionBody() {
         <WorkInfoPluginRunDialog
           plugin={reading}
           onClose={() => {
-            // 開いた項目はメニューと一緒に消えたので、FormDialog の「前のフォーカスへ戻す」には
-            // 頼らず、その行の「More actions」へ戻す（web/registry/rules/patterns.md）。
+            // Restore focus explicitly to More actions because the opening menu item has unmounted.
             focusAfterRender.current = { menu: reading.id };
             setReading(null);
           }}

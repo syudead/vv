@@ -9,8 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 統合がスマートフォルダの条件を統合先へ書き換える。
-
 func createRuleFolder(t *testing.T, db *DB, name string, rule domain.SmartRule) domain.SmartFolder {
 	t.Helper()
 	folder, err := db.SmartFolders().CreateSmartFolder(context.Background(),
@@ -21,7 +19,6 @@ func createRuleFolder(t *testing.T, db *DB, name string, rule domain.SmartRule) 
 	return folder
 }
 
-// smartRuleJSON は q から読んだスマートフォルダ id の smart_folders.rule である。
 func smartRuleJSON(t *testing.T, q queryRower, id int64) string {
 	t.Helper()
 	var rule string
@@ -64,7 +61,7 @@ func TestMergeTagsRewritesSmartFolderRules(t *testing.T) {
 			t.Errorf("folder %d rule = %s, want %s", id, got, rule)
 		}
 	}
-	// 統合による書き換えは所有者の編集ではないので、更新日時を進めない。
+	// Merge-driven reference rewrites are not owner edits and must not advance timestamps.
 	folder, err := db.SmartFolders().SmartFolder(ctx, onlyA.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -105,7 +102,7 @@ func TestMergeCreditsRewritesSmartFolderRules(t *testing.T) {
 	ctx := context.Background()
 	x, y := createPerson(t, db, "X"), createPerson(t, db, "Y")
 	ox, oy := createOrganization(t, db, "OX", nil), createOrganization(t, db, "OY", nil)
-	// 人物と団体の id が重なっても、統合した種類の項目だけを書き換える。
+	// Overlapping person/organization IDs must rewrite only the merged kind.
 	byPerson := createRuleFolder(t, db, "P", domain.SmartRule{Person: x.ID, Organization: ox.ID})
 	byOrganization := createRuleFolder(t, db, "O", domain.SmartRule{Organization: ox.ID})
 
@@ -148,7 +145,7 @@ func TestRefusedCreditMergeRewritesNoRule(t *testing.T) {
 	folder := createRuleFolder(t, db, "S", domain.SmartRule{Person: source.ID})
 	original := smartRuleJSON(t, db.sql, folder.ID)
 
-	// 別名の上限は条件を書き換えた後で確かめるので、巻き戻しが書き換えも消す。
+	// Limits are checked after rule rewrites, so rollback must restore the rules too.
 	_, err := db.Credits().Merge(ctx, domain.CreditPerson, target.ID, []int64{source.ID})
 	var invalid *domain.InvalidWorkInfoError
 	if !errors.As(err, &invalid) {

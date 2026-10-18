@@ -8,7 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ffprobe の JSON の fixture から domain.MediaInfo を読む。外部プロセスを起動せず、どの値をどこから読むかを固定する。
+// Use JSON fixtures to isolate field selection from external processes.
 
 func parseMediaFixture(t *testing.T, output string) *domain.MediaInfo {
 	t.Helper()
@@ -193,7 +193,6 @@ func TestParseMediaInfoNormalizesChapters(t *testing.T) {
 	}
 }
 
-// int64 に収まらない時刻は端の値にそろえ、尺の後の開始を冒頭のチャプターにしない。
 func TestParseMediaInfoClampsHugeChapterTimes(t *testing.T) {
 	info := parseMediaFixture(t, `{
 	  "streams": [{"index": 0, "codec_type": "video", "codec_name": "h264"}],
@@ -213,7 +212,6 @@ func TestParseMediaInfoClampsHugeChapterTimes(t *testing.T) {
 	}
 }
 
-// 何も持たないファイルは、映像の HDR = sdr だけの Media になる。
 func TestParseMediaInfoWithNothingGivesSDROnly(t *testing.T) {
 	info := parseMediaFixture(t, `{
 	  "streams": [{"index": 0, "codec_type": "video", "codec_name": "h264", "width": 640, "height": 360}],
@@ -226,7 +224,6 @@ func TestParseMediaInfoWithNothingGivesSDROnly(t *testing.T) {
 	}
 }
 
-// 型の揺れる値や tags の形が違っても、解析は失敗しない（項目を省くだけ）。
 func TestParseMediaInfoToleratesUnexpectedShapes(t *testing.T) {
 	info := parseMediaFixture(t, `{
 	  "streams": [{"index": 0, "codec_type": "video", "codec_name": "h264",
@@ -243,7 +240,6 @@ func TestParseMediaInfoToleratesUnexpectedShapes(t *testing.T) {
 	}
 }
 
-// 取り込みの解析は TS だけ長く読み、どれにもチャプターを足す。MP4 には上限を足さない。
 func TestImportProbeArgs(t *testing.T) {
 	for _, path := range []string{"/media/rec.ts", "/media/rec.M2TS", "/media/rec.mts"} {
 		joined := strings.Join(importProbeArgs(path), " ")

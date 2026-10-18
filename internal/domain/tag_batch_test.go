@@ -50,7 +50,6 @@ func TestTagBatchApplies(t *testing.T) {
 	}
 }
 
-// 種類を付けるのは種類の違うタグ、外すのは種類のあるタグに働き、仮かどうかによらない
 func TestTagBatchAppliesToKinds(t *testing.T) {
 	setGenre := TagBatchRequest{Action: TagBatchSetKind, KindID: 1}
 	clearKind := TagBatchRequest{Action: TagBatchClearKind}

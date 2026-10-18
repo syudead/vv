@@ -168,7 +168,8 @@ func TestGeneratePreviewSkipsSegmentsPastVideoEnd(t *testing.T) {
 
 	requireFFmpeg(t)
 	dir := t.TempDir()
-	// 映像 10 秒・音声 12 秒。容器の長さ 12 秒で区間を選ぶと、末尾の 2 区間は映像の後ろになる。
+	// Video ends at ten seconds while audio/container lasts twelve, placing the final intervals beyond
+	// video.
 	source := mediaFixture(t, "longer-container.mp4")
 	target := filepath.Join(dir, "preview.mp4")
 	if err := GeneratePreview(context.Background(), source, target, 12000); err != nil {
@@ -180,7 +181,7 @@ func TestGeneratePreviewSkipsSegmentsPastVideoEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	duration, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
-	// 区間の開始は 0, 1.02, ..., 9.20 秒の 10 本が映像の中にある。
+	// Ten starts from 0 through 9.20 seconds remain inside the video.
 	if err != nil || duration < 7.0 || duration > 8.2 {
 		t.Fatalf("duration = %q, err = %v, want about 10 segments", out, err)
 	}
@@ -207,8 +208,8 @@ func TestGeneratePreviewFailsWhenNoSegmentHasFrames(t *testing.T) {
 
 	requireFFmpeg(t)
 	dir := t.TempDir()
-	// 4fps・15 秒でキーフレームが先頭だけの MPEG-TS。索引が無いのでシークが
-	// キーフレームに着かず、どの区間もフレームを出さない。
+	// A fifteen-second 4fps MPEG-TS with only an initial keyframe makes every unindexed segment seek
+	// miss.
 	source := mediaFixture(t, "sparse-keyframes.ts")
 	if err := GeneratePreview(context.Background(), source, filepath.Join(dir, "preview.mp4"), 15000); err == nil {
 		t.Fatal("generation without any video frame unexpectedly succeeded")

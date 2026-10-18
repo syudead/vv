@@ -7,48 +7,33 @@ import (
 	"github.com/syudead/vv/internal/eventbus"
 )
 
-// waker は1つの段階のワーカーを起こす。internal/jobs の *Worker がこれを満たす。
 type waker interface {
 	Wake()
 }
 
-// eventSubscribers は状態の変化を受け取る側である。発行する側（保存層・
-// 取り込み・走査）はこれらを知らない。
+// Publishers do not depend on subscribers.
 type eventSubscribers struct {
-	// Screen は画面へ送る知らせ（/api/events）へ変化を渡す。動画の上書きの変化
-	// （domain.VideoOverrideChanged）もここで video の知らせになり、ワーカーの起床には
-	// 結ばない。束ねの変化
-	// （domain.VideoBundleChanged）は、影響した各動画の video の知らせになる。アクティビティの記録の変化（domain.ActivityChanged）は、
-	// 所有者への activity の知らせになる。
-	Screen func(domain.Event)
-	// Workers は段階ごとのワーカーである。
-	Workers map[domain.JobKind]waker
-	// ReleaseArtifacts は参照の無くなった内容の生成物を消す。
+	// Screen maps overrides and bundle changes to video events, and activity changes to owner-only
+	// activity events; overrides do not wake workers.
+	Screen           func(domain.Event)
+	Workers          map[domain.JobKind]waker
 	ReleaseArtifacts func(domain.ContentUnreferenced)
-	// ImagesFinished は動画のシーク用プレビューの段階の成否が決まったことを受け取る。
-	// 代表サムネイルはそれより前に終わっているので、自動タグ付けが判定に添える画像が揃っている。
-	// 入なら判定に回す（docs/design-docs/auto-tagging.md）。
+	// Seek completion follows thumbnail completion, so available images are ready for automatic
+	// tagging; see docs/design-docs/auto-tagging.md.
 	ImagesFinished func(videoID int64)
-	// VersionJudge は「同じ動画かもしれない」候補を判定するワーカーである。仕事の終わり
-	// （domain.ProcessingChanged。指紋の仕事が候補を書く）と候補の変化
-	// （domain.VersionCandidatesChanged。集まりから外すと候補が作り直される）で起こす
-	// （docs/design-docs/duplicate-judging.md）。
+	// Wake on processing or candidate changes; see docs/design-docs/duplicate-judging.md.
 	VersionJudge waker
 }
 
-// eventSubscriptions は、停止の順番に合わせて購読をやめる関数である。
 type eventSubscriptions struct {
-	// StopScreen は画面への知らせをやめる。閉じた接続へは書かない。
+	// Unsubscribe before closing screen connections.
 	StopScreen func()
-	// StopWorkers はワーカーを起こすのをやめる。止めたワーカーは起こさない。
+	// Unsubscribe before stopping workers.
 	StopWorkers func()
 }
 
-// subscribeEvents は、どの変化で何が起こるかを1か所で登録する。購読者を
-// 増やすときはここに加え、発行する側は変えない。
-//
-// 生成物の削除は購読をやめない。bus.Close が、積んである分を渡し終えるまで
-// 待つ。途中でやめると、消すはずの生成物が残り続ける。
+// Register subscribers here without changing publishers. Artifact cleanup stays subscribed until
+// bus.Close drains pending events to avoid leaking artifacts.
 func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 	var stops eventSubscriptions
 	stops.StopScreen = func() {}
@@ -58,8 +43,7 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 
 	var stopWorkers []func()
 	for kind, worker := range s.Workers {
-		// 仕事が積まれた段階のワーカーを起こす。ワーカーは待ち行列を一定間隔で
-		// 問い合わせない。
+		// Workers wake on events instead of polling queues.
 		stopWorkers = append(stopWorkers, eventbus.On(bus, "worker wake-up ("+string(kind)+")",
 			func(event domain.JobsQueued) {
 				if slices.Contains(event.Kinds, kind) {
@@ -67,8 +51,7 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 				}
 			}))
 	}
-	// サムネイルは解析が終わるまで取り出されない（抽出位置が動画の長さで
-	// 決まる）。解析の成否が決まったら、待っていたサムネイルのワーカーを起こす。
+	// Thumbnails wait for probe results because extraction position depends on duration.
 	if thumbnail, ok := s.Workers[domain.JobThumbnail]; ok {
 		stopWorkers = append(stopWorkers, eventbus.On(bus, "thumbnail after probe",
 			func(event domain.VideoIngestChanged) {
@@ -77,11 +60,8 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 				}
 			}))
 	}
-	// シーク用サムネイルは、解析が終わり、取り出せる代表サムネイルの仕事が無い
-	// ときだけ取り出される（domain.ClaimConditionFor）。解析か代表サムネイルの
-	// 1件の成否が決まったとき、または動画の行が消えたとき（Stage が空。残りの
-	// 代表サムネイルの仕事が減る）に、待っていたシーク用のワーカーを起こす。
-	// 条件は取り出しの時点だけで効き、走っているシーク用の生成は止めない。
+	// Wake seek workers when probing, thumbnail completion, or deletion can satisfy
+	// domain.ClaimConditionFor; these conditions do not cancel running jobs.
 	if seek, ok := s.Workers[domain.JobSeekThumbnail]; ok {
 		stopWorkers = append(stopWorkers, eventbus.On(bus, "seek thumbnail after thumbnail",
 			func(event domain.VideoIngestChanged) {
@@ -91,12 +71,8 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 				}
 			}))
 	}
-	// 指紋は完成したシーク用スプライトを待つ（domain.ClaimConditionFor）が、その仕事は
-	// シーク用サムネイルの完了を書く取引で積まれる（JobsQueued）ので、ほかの段階の成否で
-	// 起こし直す必要は無い。
-	// 自動タグ付けは代表サムネイルとシーク用プレビューのコマを手がかりにするので、シーク用
-	// プレビューの段階を終えた動画を判定に回す。失敗した動画も、読める画像と題名・ファイル名・
-	// フォルダで判定する。
+	// Fingerprint jobs arrive through JobsQueued when sprites finish; they need no extra wakeup.
+	// Automatic tagging also accepts failed seek generation, using any remaining images and metadata.
 	if s.ImagesFinished != nil {
 		finished := s.ImagesFinished
 		stopWorkers = append(stopWorkers, eventbus.On(bus, "auto-tagging after seek thumbnails",

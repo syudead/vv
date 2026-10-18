@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// 状態は上から順に最初に当てはまるものになる。
 func TestImportTallyStatusOrder(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -61,9 +60,6 @@ func TestImportTallyStatusOrder(t *testing.T) {
 	}
 }
 
-// 分母は集合の本数、登録できなかったファイルの問題の数、まだ登録を試していない
-// ファイルの数の和で、済みは集合のうち済みの本数と登録できなかったファイルの
-// 問題の数の和である。
 func TestImportTallyCounts(t *testing.T) {
 	for _, tc := range []struct {
 		name                 string
@@ -104,7 +100,6 @@ func TestImportTallyCounts(t *testing.T) {
 	}
 }
 
-// finding のあいだは本数を示さず、完了の時刻は done・partial のときだけ返す。
 func TestImportTallyProgress(t *testing.T) {
 	settledAt := time.Unix(1_700_000_000, 0)
 

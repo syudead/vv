@@ -9,11 +9,7 @@ import {
 } from "./addedLengthCriteria";
 import type { ApplyTagKind } from "./useLibraryTagKinds";
 
-/**
- * useAddedLengthControls はライブラリの追加日と長さの絞り込みを URL へ書く操作を返す。選ぶとその値だけを書き換えて
- * 履歴を 1 つ増やし、ほかの条件は残る。URL の送れない値（範囲の外、下限が上限を超える、
- * parsed.dropped）は、要求の前に履歴を増やさずに URL から落とす。
- */
+/** Replace invalid URL filters before requesting data; explicit changes push history and preserve other parameters. */
 export function useAddedLengthControls(
   parsed: ParsedAddedLength,
   apply: ApplyTagKind,

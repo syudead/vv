@@ -17,7 +17,6 @@ import {
   video,
 } from "../testing/smartFolderPage";
 
-// スマートフォルダのページの所有者の操作と、読み直しの間の振る舞い
 //
 
 setUpSmartFolderServer();
@@ -38,7 +37,6 @@ async function openMenuItem(name: string) {
   return user;
 }
 
-/** emptyFolder は一致するものの無いフォルダ（id 2）を置く。 */
 function emptyFolder(missing = false) {
   server.folders.set(2, {
     smartFolder: folderCard(2, "空", { videoCount: 0, openVideoId: undefined }),
@@ -63,8 +61,7 @@ describe("見出しの More（所有者）", () => {
     const dialog = await screen.findByRole("dialog", { name: "Edit smart folder" });
     const name = within(dialog).getByRole("textbox", { name: "Name" });
     await user.clear(name);
-    // 名前は貼り付けて 1 回で入れる。1 文字ずつ打つと条件の欄を持つ窓を打鍵ごとに
-    // 描き直し、CI の遅い走りで 5 秒の上限に近づく。
+    // Paste once to avoid rerendering the entire conditions dialog on every keystroke in slow CI.
     await user.paste("タグ: ねこ");
     await user.keyboard("{Enter}");
 
@@ -128,7 +125,6 @@ describe("見出しの More（所有者）", () => {
 
     const user = await openMenuItem("Delete…");
     const dialog = await screen.findByRole("alertdialog", { name: 'Delete "タグ: 猫"?' });
-    // 子孫の数を数え終わるまで押せない。
     await waitFor(() =>
       expect(
         within(dialog).getByRole("button", { name: "Delete" }).hasAttribute("disabled"),
@@ -199,7 +195,6 @@ describe("選択", () => {
     await user.click(screen.getByRole("checkbox", { name: 'Select "Cat 2"' }));
     expect(screen.getByText("1 video selected")).toBeTruthy();
 
-    // Cat 2 からタグが外れて条件に合わなくなった。
     const stored = server.folders.get(1);
     if (stored === undefined) throw new Error("no folder");
     stored.items = stored.items.filter(
@@ -261,7 +256,6 @@ describe("カードのタグ", () => {
 });
 
 describe("ページ送り", () => {
-  /** pagedChild は「未視聴」（id 5）に続きのページを 1 つ持たせる。 */
   function pagedChild() {
     seed();
     const child = server.folders.get(5);
@@ -348,7 +342,6 @@ describe("読めなかったとき", () => {
     renderPage("/smart-folders/1");
     await screen.findByRole("heading", { level: 1, name: "タグ: 猫" });
 
-    // 最初の接続では読み直さず、2 度目（つなぎ直し）で読み直す。
     await emitServerEvent("open");
     expect(server.reads.get(1)).toBe(1);
     await emitServerEvent("open");
@@ -356,7 +349,6 @@ describe("読めなかったとき", () => {
   });
 });
 
-/** withGroup は「タグ: 猫」（id 1）の動画の後にグループ「Season」（id 20、動画 30 と 31）を足す。 */
 function withGroup() {
   seed();
   const stored = server.folders.get(1);
@@ -404,7 +396,6 @@ describe("動画とグループの選択", () => {
     await user.click(screen.getByRole("checkbox", { name: 'Select the group "Season"' }));
     expect(screen.getByText("2 videos selected")).toBeTruthy();
 
-    // 選択中にグループのカードのタグを押すと、グループの選択を切り替える。
     const season = screen
       .getByRole("checkbox", { name: 'Select the group "Season"' })
       .closest("article") as HTMLElement;
@@ -414,7 +405,6 @@ describe("動画とグループの選択", () => {
     expect(screen.queryByText("2 videos selected")).toBeNull();
 
     await user.click(screen.getByRole("checkbox", { name: 'Select "Cat 1"' }));
-    // 選択中に動画のカードのタグを押すと、その動画の選択を切り替える。
     const cat2 = screen
       .getByRole("checkbox", { name: 'Select "Cat 2"' })
       .closest("article") as HTMLElement;

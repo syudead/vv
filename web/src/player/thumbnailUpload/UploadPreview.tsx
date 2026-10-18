@@ -26,28 +26,13 @@ import {
   zoomTo,
 } from "./framing";
 
-/** KEY_STEP は矢印キー 1 回で動かす量で、送る画像の長辺に対する割合である。 */
 const KEY_STEP = 0.02;
 
-/** ZOOM_STEP は +・- のキー 1 回で変える拡大率である。 */
 const ZOOM_STEP = 0.25;
 
-/** VIDEO_THUMBNAIL_ASPECT はカードのサムネイルの枠（VideoThumbnail）の比率である。 */
 const VIDEO_THUMBNAIL_ASPECT = 16 / 9;
 
-/**
- * UploadPreview は選んだ画像がサムネイルとしてどう見えるかを、適用する前に見せる編集画面である
- * （docs/design-docs/thumbnail-editing.md「Uploaded images」）。
- *
- * 段には、カードと同じ 16:9 の VideoThumbnail の枠に、送る画像と同じ drawComposition で描いた
- * canvas を object-contain で置き、縦長の動画ならカードと同じぼかした背景を敷く。既定は
- * 「Whole image」（全体を収める）で、「Fill frame」（枠いっぱいに広げる）では、段の画像を
- * マウスやタッチで引いて動かし、ホイールか Zoom のつまみ、キーボード（矢印で動かし、+・- で
- * 拡大率を変える）で見せる範囲を決める。動画の比率が分からなければ「Whole image」だけである。
- *
- * 「Use as thumbnail」は今の形を `onApply` へ渡し、Esc・×・「Cancel」は `onCancel` を呼ぶ。
- * どちらも閉じるのは呼び出し側である。`applying` の間は操作を止める。
- */
+/** Use the same composition as the upload inside the card's 16:9 frame. Without a video aspect ratio, only Whole image is available. */
 export default function UploadPreview({
   image,
   name,
@@ -58,11 +43,8 @@ export default function UploadPreview({
   onCancel,
 }: {
   image: UploadImage;
-  /** 選んだファイルの名前。題の後ろの詳細に出す。 */
   name: string;
-  /** 動画の表示上の縦横比。分からなければ `null`。 */
   aspect: number | null;
-  /** カードがぼかした背景を敷く縦長の動画か（isNarrowVideo）。 */
   narrow: boolean;
   applying: boolean;
   onApply: (fit: Fit) => void;
@@ -70,7 +52,7 @@ export default function UploadPreview({
 }) {
   const text = t.player.thumbnailUpload.preview;
   const [fit, setFit] = useState<Fit>({ mode: "contain" });
-  // Dialog は中身を後から差し込むので、描く先は差し込まれたときに受け取る。
+  // Dialog content mounts later; receive the canvas when it is inserted.
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
   const [backdrop, setBackdrop] = useState<HTMLCanvasElement | null>(null);
   const applyButton = useRef<HTMLButtonElement | null>(null);
@@ -241,10 +223,7 @@ function zoomOf(fit: Fit): number {
   return fit.mode === "cover" ? fit.zoom : 1;
 }
 
-/**
- * usePreviewDrag は段の canvas を引いて画像を動かす、ポインター（マウス・タッチ・ペン）の扱いを
- * 返す。画面上の移動は、object-contain で描かれた絵の大きさから送る画像の画素へ直す。
- */
+/** Convert pointer movement from the object-contain display rectangle to output-image pixels. */
 function usePreviewDrag(
   image: UploadImage,
   size: { width: number; height: number },
@@ -275,7 +254,7 @@ function usePreviewDrag(
   };
 }
 
-/** copyCanvas は `from` の絵を `to` へ小さく写す。ぼかした背景には細部が要らない。 */
+/** Downscale the blurred backdrop copy because fine detail is unnecessary. */
 function copyCanvas(from: HTMLCanvasElement, to: HTMLCanvasElement): void {
   const width = Math.max(1, Math.round(from.width / 8));
   const height = Math.max(1, Math.round(from.height / 8));

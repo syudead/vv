@@ -9,13 +9,6 @@ import { PageHeader } from "../ui/patterns/page-header";
 import { Button } from "../ui/shadcn/button";
 import { Skeleton } from "../ui/shadcn/skeleton";
 
-// 1 つのものを開いた一覧の画面（グループのページ、スマートフォルダのページ）の、道筋の帯と
-// 見出しが共有する部品。
-
-/**
- * LoadingTrailHeader は読み込み中の帯（名前の分からない段は骨組み）と、題の代わりの骨組みで
- * ある。帯の読み上げ名は `label`。
- */
 export function LoadingTrailHeader({
   label,
   crumbs,
@@ -38,10 +31,7 @@ export function LoadingTrailHeader({
   );
 }
 
-/**
- * UnavailableTrailHeader は読めなかったときと無くなったときの帯と見出しである。見せられない
- * ものの名前を出さず、「Library」だけにする。
- */
+/** Show only Library when content is unavailable; do not expose inaccessible names. */
 export function UnavailableTrailHeader({ label }: { label: UiText }) {
   return (
     <>
@@ -51,10 +41,6 @@ export function UnavailableTrailHeader({ label }: { label: UiText }) {
   );
 }
 
-/**
- * PlayLink は見出しの「Play」である。`to` の動画を自動再生で開き、戻る先を `from` にする。
- * 読み上げ名は「Play "{name}"」。
- */
 export function PlayLink({ to, from, name }: { to: string; from: string; name: string }) {
   return (
     <Button size="sm" asChild>
@@ -70,10 +56,6 @@ export function PlayLink({ to, from, name }: { to: string; from: string; name: s
   );
 }
 
-/**
- * GoneState は開いたものがもう無いとき（404）の本体である。「Back to library」でライブラリへ
- * 戻る。
- */
 export function GoneState({
   title,
   description,

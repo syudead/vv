@@ -14,12 +14,8 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 映像の指紋と「同じ動画かもしれない」候補。video_fingerprints と video_version_candidates は索引で、内容の参照が
-// 無くなるときに releaseContentIndex が消す。
+// Fingerprints and candidate pairs are rebuildable indexes removed when their content loses its last reference.
 
-// fingerprintMissingCondition は、別名 alias の videos の行のシーク用スプライトが完成して
-// いるのに、今の domain.FingerprintVersion の指紋が無い条件である。走査が指紋の仕事を
-// 積み直す判断（domain.IndexedVideo.FingerprintMissing と EnsureJob）に使う。
 func fingerprintMissingCondition(alias string) string {
 	return alias + `.seek_thumbnail_state = '` + string(domain.SeekThumbnailDone) + `' and ` +
 		alias + `.content_key <> '' and not exists (
@@ -27,9 +23,7 @@ func fingerprintMissingCondition(alias string) string {
 		strconv.Itoa(domain.FingerprintVersion) + `)`
 }
 
-// ApplyFingerprintForJob は専有した時点の内容鍵・所在・所在の世代が今も同じときだけ、
-// その内容の指紋を置き換え、反映したかを返す。同じ取引でその動画の fingerprint_failed を
-// 直近の取り込みの問題から消す。同じ取引でその内容の候補を作り直す。
+// ApplyFingerprintForJob writes only if the claimed content, location and generation still match, rebuilding candidates in the same transaction.
 func (s *IngestStore) ApplyFingerprintForJob(
 	ctx context.Context, job domain.Job, fingerprint domain.Fingerprint,
 ) (bool, error) {
@@ -67,13 +61,9 @@ func (s *IngestStore) ApplyFingerprintForJob(
 	return true, nil
 }
 
-// fingerprintDistanceFunction は 2 本の指紋の距離を SQLite から呼ぶ名前である。引数は (hashes_a, interval_a, hashes_b, interval_b) で、
-// どちらも今の domain.FingerprintVersion の指紋として読む（呼び出し側が版で絞る）。
-// domain.CompareFingerprints はコマを時刻で組にするので、保存の形のハッシュに加えて各指紋の
-// 間隔が要る。比べられない・読めないときは -1 を返す。
+// Compare current-version fingerprints using hashes and intervals; invalid or incomparable values return -1.
 const fingerprintDistanceFunction = "vv_fingerprint_distance"
 
-// 登録の仕方は vv_shuffle_key（listing.go）と同じで、パッケージの初期化で一度だけ行う。
 func init() {
 	err := sqlite.RegisterDeterministicScalarFunction(fingerprintDistanceFunction, 4,
 		func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
@@ -93,7 +83,6 @@ func init() {
 	}
 }
 
-// decodeFingerprintArgs は SQL の関数の引数 1 組（保存の形のハッシュと間隔）を指紋に読む。
 func decodeFingerprintArgs(hashes, interval driver.Value) (domain.Fingerprint, bool) {
 	var data []byte
 	switch value := hashes.(type) {
@@ -115,11 +104,7 @@ func decodeFingerprintArgs(hashes, interval driver.Value) (domain.Fingerprint, b
 	return fingerprint, true
 }
 
-// rebuildVersionCandidates は内容 key の候補をいったん消し、fingerprint と比べて作り直す。相手は同じ版の指紋を持ち、尺が domain.DurationsMatch の幅にある内容で、
-// 却下された組と同じ集まりの組を除き、距離が 0 以上 domain.FingerprintMatchMaxDistance 以下の
-// もの。key の動画の尺が分からなければ候補を作らない。作った候補は組の開いている記録に付き直し、判定が入なら
-// 判定できる組に記録を開く（syncPairActivities、docs/design-docs/activity.md「Rules」）。作り直しで候補から
-// 外れた組の開いている記録は閉じる（closeDroppedPairActivities）。
+// Rebuild candidates using matching durations and fingerprints, excluding dismissed or bundled pairs; reconnect activities and close superseded pairs.
 func rebuildVersionCandidates(ctx context.Context, tx *sql.Tx, c *changes, key string, fingerprint domain.Fingerprint) error {
 	if err := computeVersionCandidates(ctx, tx, key, fingerprint); err != nil {
 		return err
@@ -131,7 +116,6 @@ func rebuildVersionCandidates(ctx context.Context, tx *sql.Tx, c *changes, key s
 	return closeDroppedPairActivities(ctx, tx, c, key, now)
 }
 
-// computeVersionCandidates は rebuildVersionCandidates の候補の行を作り直す部分である。
 func computeVersionCandidates(ctx context.Context, tx *sql.Tx, key string, fingerprint domain.Fingerprint) error {
 	if _, err := tx.ExecContext(ctx,
 		`delete from video_version_candidates where key_a = ? or key_b = ?`, key, key); err != nil {
@@ -151,7 +135,7 @@ func computeVersionCandidates(ctx context.Context, tx *sql.Tx, key string, finge
 	if !duration.Valid || duration.Int64 <= 0 {
 		return nil
 	}
-	// 尺の条件は domain.DurationsMatch と同じ（差が 1 秒と長い方の 0.5% の大きい方以下）。
+	// Match domain.DurationsMatch: allow the greater of one second or 0.5% of the longer duration.
 	if _, err := tx.ExecContext(ctx, `insert or ignore into video_version_candidates (key_a, key_b, distance, created_at)
 		select min(?1, c.content_key), max(?1, c.content_key), c.distance, ?2
 		  from (select f.content_key,
@@ -175,8 +159,7 @@ func computeVersionCandidates(ctx context.Context, tx *sql.Tx, key string, finge
 	return nil
 }
 
-// pruneVersionCandidates は、却下された組と同じ集まりの 2 本の組を候補から消す。束ねる操作と、スキャン時の引き継ぎが集まりのメンバーや
-// 却下の鍵を付け替えたあとに呼ぶ。
+// Prune after bundling or succession changes membership or dismissal keys.
 func pruneVersionCandidates(ctx context.Context, tx *sql.Tx) error {
 	if _, err := tx.ExecContext(ctx, `delete from video_version_candidates
 		where exists (select 1 from video_version_dismissals d
@@ -190,16 +173,13 @@ func pruneVersionCandidates(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
-// candidatePairsFrom は候補の組 c と、その 2 つの鍵の動画 va・vb を結ぶ。content_key が空でない
-// 条件は結ぶ相手を変えない（候補の鍵は空でない）が、部分インデックス videos_content_key_idx
-// （空でない content_key だけの索引）を使わせるために要る。無いと va・vb を全件走査する総当たりになる。
+// The nonempty content-key predicate enables the partial index; without it SQLite scans both video tables.
 const candidatePairsFrom = `from video_version_candidates c
 	join videos va on va.content_key = c.key_a and va.content_key <> ''
 	join videos vb on vb.content_key = c.key_b and vb.content_key <> ''
 	where `
 
-// candidatePairsCondition は、候補の組 c の両方の鍵に登録の所在を持つ動画があり、却下されて
-// おらず、同じ集まりでもない条件である。
+// Both keys need registered locations; dismissed pairs and pairs in the same bundle are excluded.
 func candidatePairsCondition() string {
 	return registeredVideoCondition("va") + ` and ` + registeredVideoCondition("vb") + `
 	and not exists (select 1 from video_version_dismissals d where d.key_a = c.key_a and d.key_b = c.key_b)
@@ -207,10 +187,7 @@ func candidatePairsCondition() string {
 	                 where ma.content_key = c.key_a and mb.content_key = c.key_b)`
 }
 
-// Candidates は「同じ動画かもしれない」候補のうち、両方の鍵に登録の所在を持つ動画がある組を
-// 新しい順（created_at、同じなら鍵の順）に最大 domain.MaxVersionCandidates 組返し、Total に
-// 全件の数を入れる。各組の動画は所有者から見た詳細（GET /api/videos/{id}
-// と同じ値）で、id の小さい順に並べる。所有者だけの経路が使う。
+// Candidates returns newest eligible pairs with owner-visible details and an uncapped total; each pair orders videos by ID.
 func (s *VersionStore) Candidates(ctx context.Context) (domain.VersionCandidatePage, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -251,13 +228,11 @@ func (s *VersionStore) Candidates(ctx context.Context) (domain.VersionCandidateP
 	return page, nil
 }
 
-// candidatePair は候補の 1 組の動画の id（小さい順）と距離である。
 type candidatePair struct {
 	ids      [2]int64
 	distance int
 }
 
-// candidatePairIDs は候補の組を新しい順に最大 domain.MaxVersionCandidates 組読む。
 func candidatePairIDs(ctx context.Context, tx *sql.Tx, condition string) ([]candidatePair, error) {
 	rows, err := tx.QueryContext(ctx, `select va.id, vb.id, c.distance `+candidatePairsFrom+condition+`
 		order by c.created_at desc, c.key_a, c.key_b limit ?`, domain.MaxVersionCandidates)
@@ -285,9 +260,7 @@ func candidatePairIDs(ctx context.Context, tx *sql.Tx, condition string) ([]cand
 	return pairs, nil
 }
 
-// Dismiss は 2 本の動画を「違う動画」と記録し（video_version_dismissals、key_a < key_b）、その組の
-// 候補を消す。候補に無い組でも記録する。どちらかがいまライブラリに
-// 無ければ domain.ErrNotFound、2 本が同じ内容なら domain.ErrTooFewVersions で、何も変えない。
+// Dismiss persists the sorted pair even outside candidates; reject missing videos or identical content without changes.
 func (s *VersionStore) Dismiss(ctx context.Context, videoIDs [2]int64) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -309,7 +282,6 @@ func (s *VersionStore) Dismiss(ctx context.Context, videoIDs [2]int64) error {
 	if err := dismissPair(ctx, tx, keyA, keyB); err != nil {
 		return err
 	}
-	// 判定の記録が開いている組なら、所有者が決めたとして閉じる。
 	c := &changes{}
 	now := time.Now()
 	if err := closePairActivities(ctx, tx, c, []string{keyA, keyB}, domain.ActivityDecidedByOwner,
@@ -325,8 +297,7 @@ func (s *VersionStore) Dismiss(ctx context.Context, videoIDs [2]int64) error {
 	return nil
 }
 
-// dismissPair は内容の鍵の組 keyA < keyB を「違う動画」と記録し、その組の候補を消す。所有者の
-// 「違う動画」（Dismiss）と自動の判定の「違う」（ApplyJudgement）が共有する。
+// Owner and automatic dismissals share this path; keys must be sorted.
 func dismissPair(ctx context.Context, tx *sql.Tx, keyA, keyB string) error {
 	if _, err := tx.ExecContext(ctx, `insert or ignore into video_version_dismissals (key_a, key_b, created_at)
 		values (?, ?, ?)`, keyA, keyB, time.Now().Unix()); err != nil {

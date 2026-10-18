@@ -7,7 +7,7 @@ import {
   type UploadImage,
 } from "./composeImage";
 
-// jsdom には canvas の描画も画像の復号も無いので、2D の文脈と createImageBitmap を偽物にする。
+// jsdom lacks canvas and decoding; fake the 2D context and createImageBitmap.
 
 function pngHeader(width: number, height: number): Uint8Array {
   const bytes = new Uint8Array(24);
@@ -36,7 +36,7 @@ function animatedWebP(): Uint8Array {
   return bytes;
 }
 
-/** blob は先頭が source のファイルである。jsdom の Blob に無い arrayBuffer を足す。 */
+/** Add arrayBuffer, which jsdom's Blob lacks. */
 function blob(source: Uint8Array): Blob {
   const bytes = new Uint8Array(source);
   const file = new Blob([bytes]);
@@ -103,7 +103,6 @@ describe("loadUploadImage", () => {
   });
 });
 
-/** fakeContext は呼ばれた描画を記録する 2D の文脈である。 */
 function fakeContext(withFilter = true) {
   const calls: string[] = [];
   const context = {

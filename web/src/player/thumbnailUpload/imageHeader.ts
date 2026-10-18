@@ -1,25 +1,14 @@
-/**
- * ImageHeader は画像の見出しから読んだ大きさと、アニメーションの WebP かどうかである。
- * 大きさは向き（EXIF）を反映しない保存上の値で、画素数を数えるのに使う。
- */
+/** Header dimensions exclude EXIF orientation and are used for pixel-limit checks. */
 export interface ImageHeader {
   width: number;
   height: number;
   animated: boolean;
 }
 
-/**
- * HEADER_READ_BYTES は見出しを探す先頭のバイト数である。JPEG は EXIF などの前置きの後ろに
- * 大きさを置くので、前置きが長くても届くよう広めに読む。
- */
+/** Read enough header bytes to find JPEG dimensions after large EXIF prefixes. */
 export const HEADER_READ_BYTES = 1 << 20;
 
-/**
- * readImageHeader は PNG・JPEG・WebP の先頭 `bytes` から見出しを読む。形式が分からないか、
- * 先頭に大きさが見つからなければ `null` を返す。サーバーの確かめ（PNG の IHDR、JPEG の SOF、
- * WebP の VP8・VP8L・VP8X、VP8X のアニメーションの印）と同じところを読み、プレビューを出す前に
- * 断れるようにする。
- */
+/** Mirror the server's PNG/JPEG/WebP header checks; return null for unknown formats or absent dimensions. */
 export function readImageHeader(bytes: Uint8Array): ImageHeader | null {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47]) && bytes.length >= 24)
@@ -35,12 +24,12 @@ function readJpeg(bytes: Uint8Array, view: DataView): ImageHeader | null {
   while (offset + 9 <= bytes.length) {
     if (bytes[offset] !== 0xff) return null;
     const marker = bytes[offset + 1] ?? 0;
-    // 区切りの前の詰め物（0xFF の連続）は飛ばす。
+    // Skip repeated 0xFF marker padding.
     if (marker === 0xff) {
       offset += 1;
       continue;
     }
-    // SOF0〜SOF15 のうち、DHT（C4）・JPG（C8）・DAC（CC）を除いたものが大きさを持つ。
+    // SOF0-SOF15 carry dimensions except DHT (C4), JPG (C8), and DAC (CC).
     if (
       marker >= 0xc0 &&
       marker <= 0xcf &&

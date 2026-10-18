@@ -11,10 +11,6 @@ import {
   withVisibilitySince,
 } from "./visibility";
 
-/**
- * 公開・非公開の切り替え。要求は1回だけ送り、受け付けた結果だけを画面と控えへ知らせる。
- */
-
 function item(id: number, isPublic = false): Video {
   return {
     id,
@@ -66,7 +62,6 @@ describe("updateVideoVisibility", () => {
     expect(url).toBe("/api/video-visibility");
     expect(init?.method).toBe("PUT");
     expect(JSON.parse(String(init?.body))).toEqual({ videoIds: [3, 4], public: true });
-    // 応答の前は知らせない。
     await Promise.resolve();
     expect(listener).not.toHaveBeenCalled();
 
@@ -123,7 +118,7 @@ describe("updateVideoVisibility", () => {
     const first = updateVideoVisibility([9], true);
     const second = updateVideoVisibility([9], false);
     await Promise.resolve();
-    // 2つを同時に送ると、サーバーに届く順が押した順と入れ替わりうる。
+    // Concurrent requests can reach the server in a different order from user actions.
     expect(fetchMock).toHaveBeenCalledOnce();
 
     answers[0]!(json({ applied: 1 }));
@@ -136,7 +131,6 @@ describe("updateVideoVisibility", () => {
     answers[1]!(json({ applied: 1 }));
     await second;
 
-    // 最後に押した「非公開」が最後に反映される。
     expect(seen).toEqual([true, false]);
     unsubscribe();
   });
@@ -155,7 +149,6 @@ describe("updateVideoVisibility", () => {
 
 describe("一部にしか反映されなかった切り替え", () => {
   it("applied が異なる id の数より少なければ切り替え済みにせず、控えを捨て、取り直しを求める", async () => {
-    // 空の content_key の動画やライブラリから消えた id は数えない。
     fetchMock.mockResolvedValue(json({ applied: 1 }));
     saveListSnapshot(
       { query: "" },
@@ -176,9 +169,7 @@ describe("一部にしか反映されなかった切り替え", () => {
 
     expect(listener).not.toHaveBeenCalled();
     expect(stale).toHaveBeenCalledWith([21, 22]);
-    // どれが切り替わったか分からない控えは、再生画面から戻ったときに復元させない。
     expect(takeListSnapshot({ query: "" })).toBeUndefined();
-    // 取り直した内容をそのまま使う。
     expect(withVisibilitySince(item(21), before).public).toBe(false);
     unsubscribe();
     unsubscribeStale();
@@ -222,11 +213,8 @@ describe("withVisibilitySince", () => {
     await updateVideoVisibility([11], true);
     const after = visibilityMark();
 
-    // 切り替えの前に始めた取得は、切り替える前の値を読んでいることがある。
     expect(withVisibilitySince(item(11), before).public).toBe(true);
-    // 切り替えの後に始めた取得は、サーバーの値をそのまま使う。
     expect(withVisibilitySince(item(11), after).public).toBe(false);
-    // 切り替えていない動画は変えない。
     const other = item(12);
     expect(withVisibilitySince(other, before)).toBe(other);
   });

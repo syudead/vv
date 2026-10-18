@@ -13,8 +13,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 適用したサムネイルの画像。
-
 func applyThumbnailImage(t *testing.T, db *DB, id int64, key string, image []byte) domain.Video {
 	t.Helper()
 	video, err := db.Ingest().ApplyThumbnailImage(context.Background(), id, key, domain.AppliedThumbnailImage{
@@ -54,8 +52,6 @@ func editedAtOf(t *testing.T, db *DB, key string) int64 {
 	return editedAt
 }
 
-// 適用は行を書き、その内容の動画を done にして改版番号を返し、更新日時を進める。確定後に
-// VideoOverrideChanged を発行する。適用し直すと改版番号が増える。
 func TestApplyThumbnailImageRecordsRow(t *testing.T) {
 	db, ids := overrideFixture(t)
 	id := ids[fixturePath("/media/alpha.mp4")]
@@ -102,8 +98,6 @@ func TestApplyThumbnailImageRecordsRow(t *testing.T) {
 	}
 }
 
-// 適用は代表サムネイル・元の画像・出どころを 1 つの行に書き、動画は出どころを読める。適用し直すと
-// 3 つとも置き換わる。
 func TestApplyThumbnailImageRecordsSourceAndOrigin(t *testing.T) {
 	db, ids := overrideFixture(t)
 	ctx := context.Background()
@@ -149,7 +143,6 @@ func TestApplyThumbnailImageRecordsSourceAndOrigin(t *testing.T) {
 	}
 }
 
-// 空の画像・空の元の画像・未知の出どころは書かない。
 func TestApplyThumbnailImageRejectsIncompleteRow(t *testing.T) {
 	db, ids := overrideFixture(t)
 	id := ids[fixturePath("/media/alpha.mp4")]
@@ -170,7 +163,6 @@ func TestApplyThumbnailImageRejectsIncompleteRow(t *testing.T) {
 	}
 }
 
-// 動画が無いか、別の内容を持つなら content_changed で、何も書かない。
 func TestApplyThumbnailImageContentChanged(t *testing.T) {
 	db, ids := overrideFixture(t)
 	id := ids[fixturePath("/media/alpha.mp4")]
@@ -201,7 +193,6 @@ func TestApplyThumbnailImageContentChanged(t *testing.T) {
 	}
 }
 
-// 位置は画像の適用中も残り、位置を設定すると画像の行が消える。
 func TestThumbnailPositionAndAppliedImage(t *testing.T) {
 	db, ids := overrideFixture(t)
 	id := ids[fixturePath("/media/alpha.mp4")]
@@ -221,13 +212,12 @@ func TestThumbnailPositionAndAppliedImage(t *testing.T) {
 		t.Fatalf("位置の設定で画像の行（画像・元の画像・出どころ）が消えない: revision %d origin %q",
 			moved.ThumbnailImageRevision, moved.ThumbnailImageOrigin)
 	}
-	// 同じ位置の指定し直しでも、画像を外したので更新日時は進む。
+	// Removing an applied image is an edit even when the requested frame position stays unchanged.
 	if editedAtOf(t, db, "key-alpha") == 1 {
 		t.Fatal("画像を外したのに更新日時が進まない")
 	}
 }
 
-// 取り消しは行を消して位置を残し、done にする。画像が無くても成功し、どちらでも更新日時を進める。
 func TestRevertThumbnailImage(t *testing.T) {
 	db, ids := overrideFixture(t)
 	id := ids[fixturePath("/media/alpha.mp4")]
@@ -266,8 +256,6 @@ func TestRevertThumbnailImage(t *testing.T) {
 	}
 }
 
-// 画像は内容に結ぶので、動画の行を消して同じ内容を取り込み直しても残り、新しい行に改版番号が
-// 付く。フォルダのサムネイルにも改版番号が載る。
 func TestThumbnailImageSurvivesVideoDeletion(t *testing.T) {
 	db, ids := overrideFixture(t)
 	ctx := context.Background()
@@ -304,8 +292,7 @@ func TestThumbnailImageSurvivesVideoDeletion(t *testing.T) {
 	}
 }
 
-// 00041 の移行は、それより前に書いた行を元の画像なし（null）・出どころ generated として読めるように
-// し、Down は 2 列を落とす。不変条件の検査は空の元の画像と未知の出どころを見つける
+// Legacy images have NULL sources and generated origin; also exercise invariant rejection of empty sources and invalid origins.
 func TestThumbnailImageSourcesMigration(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {
@@ -377,8 +364,6 @@ func TestThumbnailImageSourcesMigration(t *testing.T) {
 	}
 }
 
-// 今の代表サムネイルの選び方は、適用した画像の元の画像（無い行では代表サムネイル）と指定した位置を
-// 1 つの文で読む。
 func TestCurrentThumbnailSelection(t *testing.T) {
 	db, ids := overrideFixture(t)
 	ctx := context.Background()

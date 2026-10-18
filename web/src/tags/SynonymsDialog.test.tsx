@@ -29,7 +29,7 @@ function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
 
 const other = tag({ id: 2, name: "anime", videoCount: 10 });
 
-/** dialog は毎回新しい関数を渡す。親の描画し直しと同じ形にする。 */
+/** Fresh callbacks simulate parent rerenders. */
 function dialog(current: Tag): ReactElement {
   return (
     <TooltipProvider>
@@ -44,12 +44,7 @@ function dialog(current: Tag): ReactElement {
   );
 }
 
-/**
- * failOnce は「anime」の登録から統合の確認を出し、確認の「統合する」を1回
- * 失敗させるところまで進める。クリックは fireEvent で送る（user-event の
- * クリックは自分で focus() を呼び、効果による focus() の回数が数えられなく
- * なるため）。
- */
+/** Use fireEvent because user-event clicks add focus calls that obscure effect counts. */
 async function failOnce() {
   const user = userEvent.setup();
   const view = render(dialog(tag({ id: 1, name: "Anime", videoCount: 2 })));
@@ -74,7 +69,6 @@ async function failOnce() {
   const mergeButton = within(modal).getByRole("button", {
     name: t.tags.synonymsDialog.merge,
   });
-  // 確認へ切り替わったときの最初のフォーカス（confirm の効果）は「戻る」。
   await waitFor(() => expect(document.activeElement).toBe(backButton));
 
   vi.mocked(addTagSynonym).mockRejectedValueOnce(new Error("failed"));
@@ -106,8 +100,6 @@ describe("SynonymsDialog の統合の失敗後のフォーカス", () => {
     await waitFor(() => expect(document.activeElement).toBe(mergeButton));
 
     backButton.focus();
-    // 親が描画し直して、新しい tag（別のタブで増えたシノニムを含む）と
-    // 新しい関数を渡してくる。
     view.rerender(dialog(tag({ id: 1, name: "Anime", videoCount: 2 })));
     view.rerender(
       dialog(tag({ id: 1, name: "Anime", videoCount: 2, synonyms: ["アニメ"] })),

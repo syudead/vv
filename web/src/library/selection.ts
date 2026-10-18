@@ -1,23 +1,12 @@
 import type { LibraryGroup, LibraryItem } from "../api/client";
 
-/**
- * SelectedGroup はグループのカードのチェック（または「すべて選択」の応答の `groups`）で
- * グループとして選んだものである。グループの id で
- * 指し、お気に入りとプレイリストへの追加もその id を `groupIds` で送る。
- */
+/** Group identities used by favorite and playlist requests. */
 export interface SelectedGroup {
   id: number;
   videoIds: readonly number[];
 }
 
-/**
- * LibrarySelection はライブラリの選択である。`ids` は選んだ動画の id の集合（グループは
- * メンバーを数える）で、タグ・公開・束ねる操作はこれを送る。`groups` はグループとして
- * 選んだもの（グループの id ごと）で、一括のお気に入りとプレイリストへの追加がこれを
- * `groupIds` として送る。
- * グループのメンバーを 1 本でも外したグループは `groups` から外れ、残ったメンバーは
- * 動画として扱われる。
- */
+/** Track member video IDs for tags/visibility and group identities for favorites/playlists. Removing a member drops its group identity; remaining members become standalone selections. */
 export interface LibrarySelection {
   ids: ReadonlySet<number>;
   groups: ReadonlyMap<number, SelectedGroup>;
@@ -25,7 +14,6 @@ export interface LibrarySelection {
 
 export const emptySelection: LibrarySelection = { ids: new Set(), groups: new Map() };
 
-/** removeIds は id を選択から外し、外した id をメンバーに含むグループも外す。 */
 function removeIds(
   selection: LibrarySelection,
   removed: readonly number[],
@@ -43,11 +31,7 @@ function removeIds(
   return { ids, groups };
 }
 
-/**
- * keepMembers は `members` に無い動画を選択から外し、外した動画をメンバーに含むグループも外す。
- * 並んだ項目だけを選べる一覧（スマートフォルダのページ）で、読み直して一覧から消えた動画に
- * 一括の操作が及ばないようにする。
- */
+/** Restrict selection to loaded items so vanished videos cannot be mutated in batches. */
 export function keepMembers(
   selection: LibrarySelection,
   members: ReadonlySet<number>,
@@ -58,7 +42,6 @@ export function keepMembers(
   );
 }
 
-/** setVideo は動画 1 本を選択に入れる・外す。 */
 export function setVideo(
   selection: LibrarySelection,
   id: number,
@@ -71,15 +54,11 @@ export function setVideo(
   return { ids, groups: selection.groups };
 }
 
-/** toggleVideo は動画 1 本の選択を切り替える。 */
 export function toggleVideo(selection: LibrarySelection, id: number): LibrarySelection {
   return setVideo(selection, id, !selection.ids.has(id));
 }
 
-/**
- * setGroup はグループの全メンバーを選択に入れて、グループとして覚える。外すときはグループを外し、
- * メンバーのうち、選んだままの別のグループのメンバーでもあるものを残して外す（deselectGroup）。
- */
+// Keep members still selected through another group.
 export function setGroup(
   selection: LibrarySelection,
   group: SelectedGroup,
@@ -93,10 +72,6 @@ export function setGroup(
   return { ids, groups };
 }
 
-/**
- * deselectGroup はグループを選択から外す。メンバーを 2 つのグループが共有するとき、選んだままの
- * 別のグループのメンバーは残すので、そのグループも選んだままになる。
- */
 function deselectGroup(
   selection: LibrarySelection,
   group: SelectedGroup,
@@ -116,27 +91,19 @@ function deselectGroup(
   return { ids: removed.ids, groups };
 }
 
-/** copyGroup は選んだグループを、呼び出し側の値と切り離して覚える。 */
 function copyGroup(group: SelectedGroup): SelectedGroup {
   return { id: group.id, videoIds: group.videoIds };
 }
 
-/** selectedGroupOf はグループの項目をグループとして選ぶときの値にする。 */
 export function selectedGroupOf(group: LibraryGroup): SelectedGroup {
   return copyGroup(group);
 }
 
-/**
- * isGroupSelected はグループのカードのチェックの状態である。グループとして選んだもの（`groups`）
- * にあるときだけ true で、メンバーの動画が選択に入っているかでは決めない。メンバーを共有する
- * 別のグループを選んだままこのグループを外すと、メンバーは選択に残るが、このカードは外れて
- * 見え、もう一度押せば選べる。
- */
+// Selection follows group identity, not whether every member remains selected through other groups.
 export function isGroupSelected(selection: LibrarySelection, groupId: number): boolean {
   return selection.groups.has(groupId);
 }
 
-/** toggleGroup はグループとして選んでいれば外し、そうでなければグループとして選ぶ。 */
 export function toggleGroup(
   selection: LibrarySelection,
   group: SelectedGroup,
@@ -144,7 +111,6 @@ export function toggleGroup(
   return setGroup(selection, group, !isGroupSelected(selection, group.id));
 }
 
-/** fromSelectAll は「すべて選択」の応答（`ids` と `groups`）を選択にする。 */
 export function fromSelectAll(
   ids: readonly number[],
   groups: readonly SelectedGroup[],
@@ -154,21 +120,7 @@ export function fromSelectAll(
   return { ids: new Set(ids), groups: selected };
 }
 
-/**
- * reconcileGroups は、読み込んだ項目から分かったグループの変化を選んだグループに映す。
- * 選択を解かずに一覧を取り直す（取り込みの完了など）と、選んだグループがいちばん上の項目で
- * なくなったり、メンバーが変わったりする。そのまま `groupIds` に載せると、メンバーは `videoIds`
- * から除かれているので、選んだ動画でなくグループに付いてしまう。
- *
- * - 選んだグループのメンバーが動画の項目として載っていれば、そのグループは今の一覧では
- *   グループの項目でない（同じグループのカードとそのメンバーの項目は同時に出ない。
- *   docs/design-docs/catalog-organization.md）。グループから外し、
- *   メンバーは選んだ動画として残す。
- * - 同じ id のグループの項目が載っていれば、そのメンバーで覚え直す。全メンバーが
- *   選択に入っていなければ（メンバーが増えた）グループから外す（removeIds と同じ考え方）。
- *
- * id の集合は変えない（読み込んでいない項目の選択を削らない）。変化が無ければ同じ選択を返す。
- */
+/** Reconcile loaded groups without pruning video IDs or unloaded selections. Drop identities with standalone members or unselected new members; preserve the reference when unchanged. */
 export function reconcileGroups(
   selection: LibrarySelection,
   items: readonly LibraryItem[],
@@ -203,7 +155,6 @@ export function reconcileGroups(
   return groups === null ? selection : { ids: selection.ids, groups };
 }
 
-/** sameSelection は動画の id の集合と選んだグループの両方が同じとき true を返す。 */
 export function sameSelection(a: LibrarySelection, b: LibrarySelection): boolean {
   if (a.ids.size !== b.ids.size || a.groups.size !== b.groups.size) return false;
   for (const id of a.ids) if (!b.ids.has(id)) return false;
@@ -211,10 +162,7 @@ export function sameSelection(a: LibrarySelection, b: LibrarySelection): boolean
   return true;
 }
 
-/**
- * favoriteTargets は一括のお気に入りとプレイリストへの追加で送るものである（R-7）。`groupIds` は
- * 選んだグループ、`videoIds` は選んだ id のうち選んだグループのメンバーでないもの。
- */
+/** Exclude video IDs already represented by selected group targets. */
 export function favoriteTargets(selection: LibrarySelection): {
   videoIds: number[];
   groupIds: number[];

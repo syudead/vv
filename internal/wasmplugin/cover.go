@@ -8,10 +8,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// coverImage はプラグインが返したカバー画像の URL rawURL を、プラグインの要求と同じクライアントで 1 回 GET し、
-// 2xx の本文を返す（docs/design-docs/work-info-plugins.md のカバー画像の節）。届かないか、2xx でないか、本文が
-// domain.WorkInfoCoverMaxBytes を越えれば nil で、カバー画像は無いものとする。拒んだアドレスはプラグインの
-// 要求と同じく記録し、実行は blocked_address で失敗する。要求の数には数えない。
+// Fetch covers once with the execution HTTP client, outside the request-count limit; unavailable,
+// oversized, or non-2xx responses omit the cover. Blocked addresses still fail execution; see
+// docs/design-docs/work-info-plugins.md.
 func (s *httpSession) coverImage(ctx context.Context, rawURL string) []byte {
 	if s.client == nil || rawURL == "" {
 		return nil

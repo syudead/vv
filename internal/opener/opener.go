@@ -8,27 +8,20 @@ import (
 	"runtime"
 )
 
-// ErrUnavailable は既定アプリを起動できない環境であることを表す。
 var ErrUnavailable = errors.New("this environment cannot launch the default app")
 
-// Opener は OS の既定アプリでファイルを開く。
 type Opener struct {
-	// command は起動時に解決した実行ファイルのパス。空なら開けない。
+	// Resolved at startup; empty means unavailable.
 	command string
 	start   func(name string, args ...string) error
 }
 
-// New は稼働中の OS と環境変数から Opener を組み立てる。
 func New() *Opener {
 	return newOpener(runtime.GOOS, os.Getenv, exec.LookPath, startDetached)
 }
 
-// newOpener は判定に使う値を差し替えられる形で Opener を組み立てる。
-//
-// 使うコマンドは OS ごとに決まっている（Windows は explorer.exe、macOS は open、
-// それ以外は xdg-open）。実行ファイルへ解決できたときだけ開けるとし、Linux 等では
-// さらに DISPLAY か WAYLAND_DISPLAY があることを求める。これでコンテナや画面の
-// 無いサーバーでは自動的に開けない扱いになる。
+// Require the OS opener executable and, on Linux-like hosts, DISPLAY or WAYLAND_DISPLAY so headless
+// hosts are unavailable automatically.
 func newOpener(
 	goos string,
 	getenv func(string) string,
@@ -59,12 +52,11 @@ func commandFor(goos string) string {
 	}
 }
 
-// Available は既定アプリを起動できる環境かどうかを返す。
 func (o *Opener) Available() bool {
 	return o != nil && o.command != ""
 }
 
-// Command は起動時に解決した実行ファイルのパスを返す。開けない環境では空。
+// Empty when unavailable.
 func (o *Opener) Command() string {
 	if o == nil {
 		return ""
@@ -72,10 +64,8 @@ func (o *Opener) Command() string {
 	return o.command
 }
 
-// Open は path を既定のアプリで開く子プロセスを起動する。アプリが開いたか
-// どうかは確かめず、起動に成功した時点で戻る。
-//
-// path はシェルを通さず、引数としてそのまま渡す。
+// Open passes path directly as an argument without a shell and returns after successful process
+// launch, without checking whether the application opened.
 func (o *Opener) Open(path string) error {
 	if !o.Available() {
 		return ErrUnavailable
@@ -86,8 +76,7 @@ func (o *Opener) Open(path string) error {
 	return nil
 }
 
-// startDetached は子プロセスを起動し、終了を待ち合わせて回収する。待ち合わせは
-// 背後で行うので、呼び出し側は起動の成否だけを受け取る。
+// Reap the child asynchronously; callers receive only launch errors.
 func startDetached(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	if err := cmd.Start(); err != nil {

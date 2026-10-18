@@ -5,9 +5,6 @@ import { RequestFailed } from "./client";
 import type { ItemPage } from "./readThrough";
 import { type PagedSource, usePagedDetail } from "./usePagedDetail";
 
-// 1 つのものを開いたページの読み込み（グループのページとスマートフォルダのページが共有する）。
-// 応答の順と中断を、答えを手で返す偽の読み方で確かめる。
-
 interface Data extends ItemPage<number> {
   name: string;
 }
@@ -126,7 +123,6 @@ describe("usePagedDetail", () => {
     expect(result.current.state).toMatchObject({ data: { items: [1, 2] } });
     expect(result.current.more).toBe("idle");
 
-    // 続きが無ければ読まない。
     await settle(() => result.current.loadMore());
     expect(pages).toHaveLength(1);
   });

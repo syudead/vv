@@ -1,18 +1,13 @@
-/**
- * プロキシの URL の最大の長さ（文字数。サーバーと同じく Unicode のコードポイントで数える）。
- * サーバーの domain.WorkInfoPluginProxyURLMaxLen と同じ。
- */
+/** Count Unicode code points, matching domain.WorkInfoPluginProxyURLMaxLen. */
 const MAX_CHARACTERS = 2048;
 
-/** scheme と、パスもクエリもフラグメントも無い残り（ユーザー情報とホストとポート）。 */
 const PROXY_URL = /^(?:https?|socks5):\/\/([^/?#\s]+)$/i;
 
-/** ホスト（[IPv6] か、コロンを含まない名前）と任意のポート。 */
 const HOST_PORT = /^(?:\[[^\]]+\]|[^:[\]@]+)(?::(\d+))?$/;
 
 /**
- * isPluginProxyURL は、値がサーバーの受け付けるプロキシの URL かを返す。`""` はプロキシなしで受け付ける。画面はこれに外れた値を
- * 送らず、サーバーの `400` と同じ誤りを出す。細部で食い違えばサーバーの `400` が同じ誤りを出す。
+ * Empty disables the proxy; reject invalid drafts locally and let server validation handle
+ * remaining differences.
  */
 export function isPluginProxyURL(value: string): boolean {
   if (value === "") return true;

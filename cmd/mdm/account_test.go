@@ -27,14 +27,12 @@ const (
 
 var accountTestNow = time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
-// accountRun は runCommand を、dataDir を MDM_DATA_DIR とする偽の外界で実行した結果である。
 type accountRun struct {
 	code   int
 	stderr string
 }
 
-// runAccountCommand は args を stdin と共に実行する。hidden が nil でなければ、
-// 標準入力を端末とみなし、エコーを止めた入力として hidden を順に返す。
+// Non-nil hidden input simulates terminal reads in order.
 func runAccountCommand(t *testing.T, dataDir string, args []string, stdin string, hidden []string) accountRun {
 	t.Helper()
 	var stderr bytes.Buffer
@@ -58,7 +56,6 @@ func runAccountCommand(t *testing.T, dataDir string, args []string, stdin string
 	return accountRun{code: code, stderr: stderr.String()}
 }
 
-// newMigratedDataDir はマイグレーション済みで、アカウントの無いデータディレクトリを作る。
 func newMigratedDataDir(t *testing.T) string {
 	t.Helper()
 	dataDir := t.TempDir()
@@ -70,7 +67,7 @@ func newMigratedDataDir(t *testing.T) string {
 	return dataDir
 }
 
-// newConfiguredDataDir は、初回設定と別のログインでセッションが2つあるデータディレクトリを作る。
+// Creates two sessions: one from setup and one from login.
 func newConfiguredDataDir(t *testing.T) string {
 	t.Helper()
 	dataDir := newMigratedDataDir(t)
@@ -126,8 +123,7 @@ func sessionValid(t *testing.T, dataDir, token string) bool {
 	return valid
 }
 
-// countRows は table の行数を返す。保存層の型には件数を数える操作が無いので、
-// データベースのファイルを直接読む。
+// Read SQLite directly because the store has no row-count operation.
 func countRows(t *testing.T, dataDir, table string) int {
 	t.Helper()
 	handle, err := sql.Open("sqlite", store.DatabasePath(dataDir))
@@ -142,8 +138,7 @@ func countRows(t *testing.T, dataDir, table string) int {
 	return count
 }
 
-// credentialsMatch はログインの照合と同じく、ユーザー名をバイト列で比べ、パスワードを
-// 保存されたハッシュで照合する。
+// Match usernames bytewise and passwords against their stored hashes, as login does.
 func credentialsMatch(t *testing.T, account domain.Account, username, secret string) bool {
 	t.Helper()
 	ok, err := password.Verify(secret, account.PasswordHash)
@@ -153,7 +148,6 @@ func credentialsMatch(t *testing.T, account domain.Account, username, secret str
 	return ok && username == account.Username
 }
 
-// assertNoPlaintext は、データディレクトリのどのファイルにも出力にも secret が無いことを確かめる。
 func assertNoPlaintext(t *testing.T, dataDir, secret string, outputs ...string) {
 	t.Helper()
 	for _, output := range outputs {
@@ -180,7 +174,7 @@ func assertNoPlaintext(t *testing.T, dataDir, secret string, outputs ...string) 
 }
 
 func TestAccountCommandsChangeCredentialsAndInvalidateSessions(t *testing.T) {
-	// ffmpeg・ffprobe が無いホストでも動く（起動前確認を行わない）。
+	// CLI commands work without ffmpeg or ffprobe.
 	t.Setenv("PATH", "")
 	dataDir := newConfiguredDataDir(t)
 	if !sessionValid(t, dataDir, oldSession) || !sessionValid(t, dataDir, otherLogin) {
@@ -202,7 +196,7 @@ func TestAccountCommandsChangeCredentialsAndInvalidateSessions(t *testing.T) {
 		t.Fatalf("sessions の行数 = %d", got)
 	}
 
-	// ユーザー名を変えた後に作ったセッションも、パスワードの再設定で無効になる。
+	// Password reset also invalidates sessions created after the username change.
 	withAuth(t, dataDir, func(auth *store.AuthStore) {
 		account, err := auth.Account(context.Background())
 		if err != nil {
@@ -375,7 +369,7 @@ func TestAccountCommandDoesNotCreateMissingDatabase(t *testing.T) {
 
 func TestAccountCommandReportsUnopenableDatabase(t *testing.T) {
 	dataDir := t.TempDir()
-	// データベースのパスがディレクトリなので、SQLite として開けない。
+	// A directory at the database path prevents SQLite from opening it.
 	if err := os.Mkdir(store.DatabasePath(dataDir), 0o755); err != nil {
 		t.Fatal(err)
 	}

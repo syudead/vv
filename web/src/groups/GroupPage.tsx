@@ -88,36 +88,25 @@ import { useLeaveGroup } from "./useLeaveGroup";
 
 const skeletonCount = 12;
 
-/** noTrail は読めていない間の道筋（ライブラリへ移る）。描画ごとに作らない。 */
+/** Keep the empty trail identity stable across renders. */
 const noTrail: readonly GroupRef[] = [];
 
-/** noItems は読めていない間の項目。描画ごとに作らない。 */
+/** Keep the empty items identity stable across renders. */
 const noItems: readonly GroupItem[] = [];
 
-/** itemVideo は項目が動画ならその動画である（ドラッグの落とし方を決める）。 */
 function itemVideo(item: GroupItem): Video | undefined {
   return item.kind === "video" ? item.video : undefined;
 }
 
-/** itemGroup は項目が子グループならそのグループである。 */
 function itemGroup(item: GroupItem): LibraryGroup | undefined {
   return item.kind === "group" ? item.group : undefined;
 }
 
-/** newGroupItem は「Make a group」の新しいグループを、仮の項目 `itemId` として置く。 */
 function newGroupItem(group: LibraryGroup, itemId: number): GroupItem {
   return { id: itemId, kind: "group", group };
 }
 
-/**
- * GroupPage はグループ 1 つを開いた画面（`/groups/{id}?trail=`）である。上のバーの下に道筋の帯、見出しにグループの
- * 名前と本数と「Play」、本体にその中の子グループと動画を並び順どおりにライブラリのカードか
- * 行で並べる。所有者とゲストの両方が開く。
- *
- * React Router は `:id` や問い合わせだけが変わる移動で同じ部品を使い回すので、画面は経路の
- * id と道筋ごとに作り直す。前のグループの名前・項目・選択が、別のグループと組み合わさって
- * 残らない。
- */
+/** Key by route ID and trail because React Router otherwise reuses state across group navigation. */
 export default function GroupPage() {
   const params = useParams();
   const location = useLocation();
@@ -128,10 +117,7 @@ export default function GroupPage() {
   );
 }
 
-/**
- * useGroupPageDrops は動画を動画に落としたときの「Make a group」と「Bundle as versions」である。
- * 新しいグループは落とした先の項目の位置を取る。`shownData` はサーバーが答える前の結果を重ねた中身である。
- */
+/** Place a new group at the drop target's position; shownData overlays optimistic changes. */
 function useGroupPageDrops({
   data,
   id,
@@ -173,15 +159,10 @@ function useGroupPageDrops({
   return { shownData, dropOnto, nameFieldFor: drops.nameFieldFor };
 }
 
-/**
- * useGroupSelection はグループのページの選択である。ライブラリと同じく、動画の id の集合と、
- * グループとして選んだ子グループを持つ。
- */
 function useGroupSelection(data: GroupPageData | null) {
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
 
-  // 読み直したグループにもう無い動画と子グループを選択から外し、選んだ子グループを今の
-  // メンバーで覚え直す。読んでいないページの選んだ動画は残す。
+  // Reconcile refreshed members while retaining selected videos on unloaded pages.
   useEffect(() => {
     if (data === null) return;
     setSelection((current) =>
@@ -189,8 +170,7 @@ function useGroupSelection(data: GroupPageData | null) {
     );
   }, [data]);
 
-  // 「Select all」が選ぶものは今のグループから決める。読み直しで動画や子グループが増えれば
-  // 選択と一致しなくなり、ボタンはまた押せる。
+  // Recompute Select all from current membership so newly added items make it available again.
   const all = useMemo(
     () => (data === null ? null : selectAllInGroup(data.group.videoIds, data.items)),
     [data],
@@ -245,7 +225,6 @@ function useGroupSelection(data: GroupPageData | null) {
   };
 }
 
-/** GroupScreen は経路の id と道筋 1 つのグループのページである。 */
 function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[] }) {
   const location = useLocation();
   const owner = useAudience() === "owner";
@@ -262,14 +241,13 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     markGone,
   } = useGroupPage(id, trail);
   const data = state.kind === "ready" ? state.data : null;
-  // 解散、タグ化、最後の項目を外したときは、道筋の親かライブラリへ移ってトーストを出す
   //
   const leave = useLeaveGroup(data?.trail ?? noTrail);
   const name = data?.group.name;
   const dissolvedByRemoval = useCallback(() => {
     if (name !== undefined) leave(t.groups.dissolved(name));
   }, [leave, name]);
-  // 取り消しの通知は画面を離れると閉じる。取り消したら静かに読み直す
+  // Dismiss undo notifications on leaving; successful undo refreshes silently.
   //
   const undo = useUndoToast(refresh);
   const edits = useGroupEdits({
@@ -298,7 +276,6 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     loadMore,
     resetPreview,
   );
-  // カードのタグを押すと、そのタグで絞ったライブラリを開く。
   const pressTag = usePressTagToLibrary();
 
   const selectionMode = selection.selection.ids.size > 0;
@@ -319,7 +296,6 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     refresh();
   }, [clear, refresh]);
 
-  // 「Remove from group」で外す項目。
   const removable = useMemo(
     () => (data === null ? [] : selectedItemIds(selection.selection, data.items)),
     [data, selection.selection],
@@ -336,7 +312,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     },
     [data, reorder],
   );
-  // 子グループ・祖先・ライブラリへ移したかマージした項目は画面から消えるので、選択を解く
+  // Clear selection for moved or merged items because they disappear from this page.
   //
   const moveItems = useCallback(
     (moved: readonly GroupItem[], to: MoveDestination) => {
@@ -362,8 +338,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     [focus, update],
   );
 
-  // 足した先がこのグループのときだけ、項目が末尾に増えるので読み直す。新しく作ったグループは
-  // いちばん上のグループで、このグループの項目は変わらない。
+  // Reload only when this group receives items; creating a top-level group does not change its contents.
   const groupChanged = useCallback(
     (targetId: number | null) => {
       if (targetId !== null && targetId === id) refresh();
@@ -488,7 +463,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     </ListPage>
   );
 
-  // 所有者の画面は道筋の帯から本体までをドラッグの層で包む。帯の段も落とす先になる
+  // Include breadcrumbs in the owner drag layer so ancestor crumbs accept drops.
   //
   return (
     <GroupChangedContext value={groupChanged}>
@@ -514,10 +489,6 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   );
 }
 
-/**
- * GroupHeader は道筋の帯と見出しである。帯は
- * フォルダ画面の Breadcrumbs を共有し、上のバーの下に貼り付く。
- */
 function GroupHeader({
   state,
   trail,
@@ -530,10 +501,8 @@ function GroupHeader({
   state: ReturnType<typeof useGroupPage>["state"];
   trail: readonly number[];
   id: number | null;
-  /** 所有者なら道筋の段を落とす先にする。 */
   owner: boolean;
   listUrl: string;
-  /** 所有者の「More」。ゲストには無い。 */
   menu: ReactNode;
   titleRef: Ref<HTMLHeadingElement>;
 }) {
@@ -541,7 +510,7 @@ function GroupHeader({
     return <LoadingTrailHeader label={t.groups.trail} crumbs={loadingCrumbs(trail)} />;
   }
   if (state.kind !== "ready" || id === null) {
-    // 読めなかったときと無くなったときは、見せられないものの名前を出さない。
+    // Do not expose names when loading failed or the group disappeared.
     return <UnavailableTrailHeader label={t.groups.trail} />;
   }
   const { group } = state.data;
@@ -556,7 +525,6 @@ function GroupHeader({
       />
       <PageHeader
         titleRef={titleRef}
-        // 長い名前は見出しの中で 2 行まで折り返し、全体は title に入れる。
         title={
           <span title={group.name} className="line-clamp-2 whitespace-normal break-words">
             {group.name}
@@ -564,8 +532,7 @@ function GroupHeader({
         }
         count={t.groups.detail.count(group.videoCount, formatDuration(group.durationMs))}
         description={group.folder !== undefined && <FolderLine folder={group.folder} />}
-        // 「Play」を先に、所有者の「More」を後に置く。項目の無い応答には「Play」を出さない
-        // （最後の項目を外したグループは解散されるので、所有者の画面には普段出ない）。
+        // Hide Play for empty responses; removing the final item normally dissolves an owner's group.
         actions={
           <>
             {state.data.items.length > 0 && (
@@ -583,10 +550,7 @@ function GroupHeader({
   );
 }
 
-/**
- * crumbTarget は所有者の道筋の段を落とす先にする口である。
- * 「Library」と祖先の段は受け、開いているグループの段 `current` と畳んだ「…」は拒否する。
- */
+/** Accept Library and ancestor crumbs; reject the current group and collapsed ellipsis. */
 function crumbTarget(current: number) {
   return (index: number | "ellipsis", content: ReactNode) => (
     <CrumbDropTarget
@@ -598,10 +562,6 @@ function crumbTarget(current: number) {
   );
 }
 
-/**
- * FolderLine は自動グループの見出しの下の 1 行「From the folder {path}」である。パスはその
- * フォルダのページへのリンクで、手で作ったグループには出さない。
- */
 function FolderLine({ folder }: { folder: VideoFolder }) {
   const root = useRootFolderName(folder.rootId, true);
   const path = folderDisplayPath(folder, root.status === "ready" ? root.name : undefined);
@@ -620,11 +580,6 @@ function FolderLine({ folder }: { folder: VideoFolder }) {
 
 type Selection = ReturnType<typeof useGroupSelection>;
 
-/**
- * GroupItems はグループの項目を並び順どおりに、格子ならライブラリのカード、リストなら
- * プレイリストの画面の行で並べる。動画は `?group` 付きで、子グループは
- * 道筋を 1 段伸ばして開く。
- */
 function GroupItems({
   id,
   data,
@@ -650,11 +605,8 @@ function GroupItems({
   selectionMode: boolean;
   preview: ReturnType<typeof usePreviewCoordination>["cardProps"];
   onPressTag: (tag: TagRef) => void;
-  /** 所有者のリスト表示の `×`。ゲストには無い。 */
   editing?: GroupItemEditing;
-  /** 所有者ならカードを持ち上げられる（GroupDragLayer の中で描く）。ゲストには無い。 */
   draggable: boolean;
-  /** 作ったばかりのグループの名前の欄（useVideoDrops）。所有者だけが渡す。 */
   nameFieldFor?: (groupId: number) => ReactNode;
 }) {
   const ids = selection.selection.ids;
@@ -701,7 +653,7 @@ function GroupItems({
     );
   }
   return (
-    // タグの行の幅の見張りは一覧に1つだけ（ライブラリと同じ）。
+    // Share one tag-row width observer across the list.
     <TagRowMeasureProvider>
       <Grid zoom={zoom}>
         {data.items.map((item) =>

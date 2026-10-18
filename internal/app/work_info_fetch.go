@@ -11,37 +11,29 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインの検索・取得と、取得の結果の反映。実行は WorkInfoPluginRuntime、反映の書き込みは
-// FetchedWorkInfoApplier が行う。取得の結果はメモリに WorkInfoFetchLifetime の間だけ、動画とプラグインの
-// ダイジェストに結び付けて持つ。取得では動画を変えない。
+// Search/fetch through WorkInfoPluginRuntime and apply through FetchedWorkInfoApplier. Results stay in memory for WorkInfoFetchLifetime, bound to video and plugin digest; fetching never mutates videos.
 
-// WorkInfoVideos は取得の前に動画があるかを確かめる読み出しである。internal/store の *LibraryStore が満たす。
+// WorkInfoVideos checks video existence before running plugins; implemented by store.LibraryStore.
 type WorkInfoVideos interface {
-	// GetVideo は audience から見た動画 id を返す。無ければ domain.ErrNotFound を返す。
+	// GetVideo returns the audience-visible video or ErrNotFound.
 	GetVideo(ctx context.Context, audience domain.Audience, id int64) (domain.Video, error)
 }
 
-// FetchedWorkInfoApplier は取得の結果を動画に書く保存先である。internal/store の *OverrideStore が満たす。
+// FetchedWorkInfoApplier persists fetched values; implemented by store.OverrideStore.
 type FetchedWorkInfoApplier interface {
-	// ApplyFetchedWorkInfo は選んだ題名を表示名に、選んだタグを仮のタグとして、選んだ作品の詳細を作品情報に
-	// 1 つの取引で書き、反映後の動画と、却下した名前なので付けなかったタグの名前と、作品の詳細のうち飛ばした
-	// 値を返す。取引の中でプラグインの行がまだあり、承認済みで、ダイジェストが変わっていないことを読み直し、
-	// 外れれば domain.ErrWorkInfoFetchStale で何も書かない。動画が無ければ domain.ErrNotFound を返す。
+	// Apply selected title, tentative tags and details atomically, returning the updated video, rejected tag names and skipped details. Recheck plugin existence, approval and digest in the transaction, returning ErrWorkInfoFetchStale without writes on mismatch or ErrNotFound for a missing video.
 	ApplyFetchedWorkInfo(ctx context.Context, apply domain.FetchedWorkInfoApply) (domain.FetchedWorkInfoApplied, error)
-	// RecordWorkInfoFetch は動画 videoID の取得 1 回を記録する。failure が空なら済み、そうでなければ失敗で、
-	// failure をプラグインの文として残す。
+	// RecordWorkInfoFetch records success for empty failure, otherwise preserves the plugin failure message.
 	RecordWorkInfoFetch(ctx context.Context, videoID int64, failure string) error
 }
 
-// WorkInfoCreditMatcher は取得した人物・団体を既存の実体と照合する読み出しである。internal/store の
-// *CreditStore が満たす。
+// WorkInfoCreditMatcher matches fetched people/organizations against stored entities; implemented by store.CreditStore.
 type WorkInfoCreditMatcher interface {
-	// Match は種類 kind の entries を照合し、各件の答えを同じ順に返す。
+	// Match preserves entry order.
 	Match(ctx context.Context, kind domain.CreditKind, entries []domain.CreditMatchEntry) ([]domain.CreditMatch, error)
 }
 
-// SearchWorkInfo は承認済みのプラグイン id の search で語 query を探し、候補を返す。語は前後の空白を除いて
-// 1〜200 文字でなければ domain.ErrWorkInfoRunInvalid を返す。実行の前の誤りと失敗は run と同じである。
+// SearchWorkInfo uses an approved plugin; trimmed queries must contain 1-200 characters or return ErrWorkInfoRunInvalid. Other validation and execution errors follow run.
 func (p *WorkInfoPlugins) SearchWorkInfo(ctx context.Context, id int64, query string) ([]domain.WorkInfoCandidate, error) {
 	normalized, err := domain.NormalizeWorkInfoSearchQuery(query)
 	if err != nil {
@@ -58,12 +50,7 @@ func (p *WorkInfoPlugins) SearchWorkInfo(ctx context.Context, id int64, query st
 	return candidates, nil
 }
 
-// FetchWorkInfo は承認済みのプラグイン pluginID の fetch で作品の ID id（品番など、検索の候補の ID を含む）から
-// 作品情報を取り、動画 videoID に結び付けてメモリに持ち、画面に見せる形を返す。ID を作品の URL に埋め込むのは
-// プラグインで、URL の形の ID もそのまま渡す（親 Issue #1232 の要件 14）。取得した人物・団体は既存の実体と
-// 照合し、その答えも題名・タグと同じ寿命で持つ。動画は
-// 変えない。ID が前後の空白を除いて 1〜200 文字でなければ domain.ErrWorkInfoRunInvalid、動画が無ければ
-// domain.ErrNotFound（プラグインより先に確かめる）を返す。実行の前の誤りと失敗は run と同じである。
+// FetchWorkInfo validates a trimmed 1-200-character ID and video existence before running an approved plugin, then keeps fetched values and entity matches in memory without changing the video. Pass URL-shaped IDs unchanged: only the plugin interprets them; invalid IDs return ErrWorkInfoRunInvalid, missing videos ErrNotFound, and other errors follow run.
 func (p *WorkInfoPlugins) FetchWorkInfo(
 	ctx context.Context, videoID, pluginID int64, id string,
 ) (domain.WorkInfoFetchResult, error) {
@@ -74,8 +61,7 @@ func (p *WorkInfoPlugins) FetchWorkInfo(
 	return p.keepFetched(ctx, videoID, pluginID, domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, ID: normalized})
 }
 
-// keepFetched は動画 videoID があることを確かめてから要求 req でプラグイン pluginID を動かし、取った作品情報を
-// 照合して動画に結び付けてメモリに持つ。
+// Check video existence before execution, then match and retain the result bound to that video.
 func (p *WorkInfoPlugins) keepFetched(
 	ctx context.Context, videoID, pluginID int64, req domain.WorkInfoRunRequest,
 ) (domain.WorkInfoFetchResult, error) {
@@ -92,7 +78,7 @@ func (p *WorkInfoPlugins) keepFetched(
 	if err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}
-	// 表示名の規則に合わない題名は値が無いものとして扱い、選べなくする。
+	// Invalid display names are absent and cannot be selected.
 	title := domain.KeptWorkInfoTitle(result.WorkInfo.Title)
 	tags := result.WorkInfo.Tags
 	if tags == nil {
@@ -120,9 +106,7 @@ func (p *WorkInfoPlugins) keepFetched(
 	}, nil
 }
 
-// recordFetch はプラグインを動かした取得をアクティビティに記録する。
-// runErr が nil なら済み、*domain.WorkInfoRunError ならその文（無ければ失敗の種類）を持つ失敗として残す。
-// 動かす前に断った取得（プラグインが無い・承認されていないなど）は記録しない。
+// Record only fetches that executed a plugin; preserve the WorkInfoRunError message, falling back to its kind. Preflight rejections produce no activity.
 func (p *WorkInfoPlugins) recordFetch(ctx context.Context, videoID int64, runErr error) error {
 	failure := ""
 	if runErr != nil {
@@ -138,7 +122,7 @@ func (p *WorkInfoPlugins) recordFetch(ctx context.Context, videoID int64, runErr
 	return p.applier.RecordWorkInfoFetch(ctx, videoID, failure)
 }
 
-// matchCredits は取得した件 entries を照合する。件が無ければ保存先を読まない。
+// Skip storage reads for empty entry lists.
 func (p *WorkInfoPlugins) matchCredits(
 	ctx context.Context, kind domain.CreditKind, entries []domain.CreditMatchEntry,
 ) ([]domain.CreditMatch, error) {
@@ -148,11 +132,7 @@ func (p *WorkInfoPlugins) matchCredits(
 	return p.matcher.Match(ctx, kind, entries)
 }
 
-// run はプラグイン id を確かめて要求 req で 1 回動かし、プラグインと結果を返す。無ければ domain.ErrNotFound、
-// 承認済みでなければ domain.ErrWorkInfoPluginNotApproved、操作を宣言しなければ
-// domain.ErrWorkInfoOperationUnsupported、必須の設定の値が無ければ *domain.WorkInfoSettingsMissingError を
-// 返し、どれもモジュールを動かさない。要求の settings にはこのプラグインの宣言にあって値のあるものだけを
-// 入れる。実行の失敗は *domain.WorkInfoRunError である。
+// Validate existence, approval, operation support and required settings before executing, returning ErrNotFound, ErrWorkInfoPluginNotApproved, ErrWorkInfoOperationUnsupported or WorkInfoSettingsMissingError respectively. Pass only declared settings with values; execution errors are WorkInfoRunError.
 func (p *WorkInfoPlugins) run(
 	ctx context.Context, id int64, req domain.WorkInfoRunRequest,
 ) (domain.WorkInfoPlugin, domain.WorkInfoRunResult, error) {
@@ -170,8 +150,7 @@ func (p *WorkInfoPlugins) run(
 	if err != nil {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, err
 	}
-	// プロキシは実行ごとに読むので、保存し直した値は次の実行から効き、この実行は読んだ値で終わる
-	//
+	// Snapshot proxy settings per run so changes affect only later executions.
 	network, err := p.runNetwork(ctx)
 	if err != nil {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, err
@@ -184,7 +163,7 @@ func (p *WorkInfoPlugins) run(
 	return plugin, result, nil
 }
 
-// runNetwork は次の実行のネットワークの選択肢を返す。読み先が無ければプロキシなしである。
+// Use no proxy when no network source is configured.
 func (p *WorkInfoPlugins) runNetwork(ctx context.Context) (domain.WorkInfoRunNetwork, error) {
 	if p.network == nil {
 		return domain.WorkInfoRunNetwork{}, nil
@@ -192,17 +171,7 @@ func (p *WorkInfoPlugins) runNetwork(ctx context.Context) (domain.WorkInfoRunNet
 	return p.network.RunNetwork(ctx)
 }
 
-// ApplyWorkInfoFetch は動画 videoID に、取得の結果 fetchID のうち fields の項目を反映し、反映後の動画と
-// 付けなかったタグの名前と、作品の詳細のうち飛ばした値を返す。結果は使い切りで、成功すると消える。tags が
-// nil でなければ、取得したタグのうちその名前（結果の綴りのまま）だけを付け、付けなかった名前もその中から
-// 報告する。nil なら取得したタグを全部付ける。
-//
-// 結果が無いか期限切れなら domain.ErrWorkInfoFetchStale、結果が別の動画のものなら domain.ErrNotFound、
-// fields が空か知らない項目か結果に値の無い項目を含むか、tags が空か結果に無い名前を含むか fields に
-// タグが無いのに nil でなければ domain.ErrWorkInfoApplyInvalid を返す。取得の後に
-// プラグインが差し替えられたか、承認を取り消されたか、消されていれば domain.ErrWorkInfoFetchStale で、
-// 保存先も取引の中で同じことを確かめ直す。タグはタグ名の規則で整え、外れた名前は
-// invalid、保存先が却下した名前として飛ばしたものは rejected として、取得の結果の順に報告する。失敗した反映は何も書かない。
+// Apply selected fields once, returning the updated video and skipped tags/details; nil tags selects all fetched tags, otherwise use the exact selected names. Missing/expired or changed-plugin results return ErrWorkInfoFetchStale, wrong-video results ErrNotFound, invalid fields/tag selections ErrWorkInfoApplyInvalid, and failed application writes nothing; the store rechecks plugin state transactionally, reporting invalid original names and normalized rejected names in fetched order.
 func (p *WorkInfoPlugins) ApplyWorkInfoFetch(
 	ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField, tags []string,
 ) (domain.WorkInfoApplied, error) {
@@ -215,7 +184,7 @@ func (p *WorkInfoPlugins) ApplyWorkInfoFetch(
 	}
 	applied, err := p.applyFetch(ctx, fetch, fields, tags)
 	if err != nil && !errors.Is(err, domain.ErrWorkInfoFetchStale) && !errors.Is(err, domain.ErrNotFound) {
-		// 書き込みの一時的な失敗では、所有者がもう一度反映できるように結果を戻す。
+		// Restore results after transient writes fail so the owner can retry.
 		p.fetches.restore(fetchID, fetch)
 	}
 	return applied, err
@@ -254,7 +223,7 @@ func (p *WorkInfoPlugins) applyFetch(
 	video := applied.Video
 	var coverSkipped []domain.SkippedWorkInfoValue
 	if slices.Contains(fields, domain.WorkInfoFieldCover) {
-		// 保存先がプラグインの行を確かめ直して作品情報を確定してから、カバー画像を代表サムネイルにする。
+		// Apply covers only after the transaction revalidates the plugin and commits metadata.
 		video, coverSkipped = p.applyCover(ctx, fetch, video)
 	}
 	skipped := append(coverSkipped, applied.Skipped...)
@@ -266,7 +235,7 @@ func (p *WorkInfoPlugins) applyFetch(
 	}, nil
 }
 
-// detailFields は fields のうち題名・タグ・カバー画像以外の項目を、WorkInfoFields の順に重複なく返す。
+// Return distinct detail fields in WorkInfoFields order, excluding title, tags and cover.
 func detailFields(fields []domain.WorkInfoField) []domain.WorkInfoField {
 	var out []domain.WorkInfoField
 	for _, field := range domain.WorkInfoFields {
@@ -278,8 +247,7 @@ func detailFields(fields []domain.WorkInfoField) []domain.WorkInfoField {
 	return out
 }
 
-// selectedTagNames は取得したタグの名前 fetched のうち、選んだ名前 selected にあるものを取得の結果の順に
-// 返す。selected が nil なら fetched を全部返す。
+// Preserve fetched order; nil selected returns all fetched names.
 func selectedTagNames(fetched, selected []string) []string {
 	if selected == nil {
 		return fetched
@@ -293,8 +261,7 @@ func selectedTagNames(fetched, selected []string) []string {
 	return out
 }
 
-// splitTagNames は取得したタグの名前を domain.NormalizeTagName で整え、整えた名前（重複なし）と、規則に
-// 合わない元の名前の集合を返す。
+// Normalize and deduplicate valid names, retaining a set of invalid original names.
 func splitTagNames(names []string) ([]string, map[string]bool) {
 	valid := make([]string, 0, len(names))
 	invalid := map[string]bool{}
@@ -311,8 +278,7 @@ func splitTagNames(names []string) ([]string, map[string]bool) {
 	return valid, invalid
 }
 
-// skippedTags は付けなかったタグの名前を、取得の結果の順に重複なく返す。規則に合わない名前は元の名前で
-// invalid、却下した名前は整えた名前で rejected である。
+// Report unique skipped names in fetched order: original invalid names and normalized rejected names.
 func skippedTags(names []string, invalid map[string]bool, rejected []string) []domain.SkippedTag {
 	out := []domain.SkippedTag{}
 	seen := map[string]bool{}
@@ -335,10 +301,7 @@ func skippedTags(names []string, invalid map[string]bool, rejected []string) []d
 	return out
 }
 
-// workInfoFetch はメモリに持つ取得の結果である。title は表示名の規則を通った題名で、空は値が無い。
-// digest と generation は取得した時のプラグインの行の値である。details は題名とタグ以外の
-// 作品の詳細で、personMatches と organizationMatches はその人物・団体の取得の時点の照合の答えである。反映は
-// 取引の中で照合し直すので、答えは画面に見せるためだけに持つ。
+// Retain validated title, plugin digest/generation and fetched details for the result lifetime. Entity matches are display snapshots only; application rechecks them transactionally.
 type workInfoFetch struct {
 	videoID             int64
 	pluginID            int64
@@ -349,12 +312,12 @@ type workInfoFetch struct {
 	details             domain.FetchedWorkInfo
 	personMatches       []domain.CreditMatch
 	organizationMatches []domain.CreditMatch
-	// cover は取ったカバー画像で、無ければ nil である。
+
 	cover     *domain.WorkInfoCover
 	expiresAt time.Time
 }
 
-// hasValue は結果に項目 field の値があるかを返す。知らない項目は偽である。
+// Unknown fields have no value.
 func (f *workInfoFetch) hasValue(field domain.WorkInfoField) bool {
 	switch field {
 	case domain.WorkInfoFieldTitle:
@@ -367,8 +330,7 @@ func (f *workInfoFetch) hasValue(field domain.WorkInfoField) bool {
 	return f.details.HasDetail(field)
 }
 
-// validTagSelection は選んだタグの名前 tags が使えるかを返す。nil は選ばなかったことで使える。nil でなければ
-// fields がタグを含み、tags が空でなく、どの名前も結果のタグに綴りのまま有らなければならない（R-7）。
+// Nil means all tags; otherwise require tags in fields and a nonempty exact-spelling subset of fetched tags.
 func (f *workInfoFetch) validTagSelection(fields []domain.WorkInfoField, tags []string) bool {
 	if tags == nil {
 		return true
@@ -384,7 +346,7 @@ func (f *workInfoFetch) validTagSelection(fields []domain.WorkInfoField, tags []
 	return true
 }
 
-// workInfoFetches は取得の結果を識別子で持つ。期限の過ぎた結果は、追加と取り出しのたびに捨てる。
+// Index results by ID and expire them on insert or retrieval.
 type workInfoFetches struct {
 	mu      sync.Mutex
 	entries map[string]*workInfoFetch
@@ -394,8 +356,7 @@ func newWorkInfoFetches() *workInfoFetches {
 	return &workInfoFetches{entries: map[string]*workInfoFetch{}}
 }
 
-// add は結果 fetch を持ち、その識別子（128 ビットの乱数）を返す。持っている結果のカバー画像が合わせて
-// domain.WorkInfoFetchCoverBudget を越えれば、カバー画像を持つ結果を古い（期限の早い）ものから捨てる。
+// Assign a random 128-bit ID; evict the earliest-expiring cover-bearing results when total covers exceed WorkInfoFetchCoverBudget.
 func (f *workInfoFetches) add(fetch *workInfoFetch, now time.Time) string {
 	id := rand.Text()
 	f.mu.Lock()
@@ -406,8 +367,7 @@ func (f *workInfoFetches) add(fetch *workInfoFetch, now time.Time) string {
 	return id
 }
 
-// trimCovers はカバー画像が予算に収まるまで、カバー画像を持つ結果を期限の早いものから捨てる。呼び出し側が
-// mu を持つ。
+// Caller holds mu; evict earliest-expiring cover-bearing results until within budget.
 func (f *workInfoFetches) trimCovers() {
 	total := 0
 	for _, entry := range f.entries {
@@ -427,7 +387,7 @@ func (f *workInfoFetches) trimCovers() {
 	}
 }
 
-// cover は識別子 id の、動画 videoID の結果のカバー画像を返す。無ければ domain.ErrNotFound である。
+// Return ErrNotFound for missing covers or video mismatches.
 func (f *workInfoFetches) cover(id string, videoID int64, now time.Time) (domain.WorkInfoCover, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -439,10 +399,7 @@ func (f *workInfoFetches) cover(id string, videoID int64, now time.Time) (domain
 	return *fetch.cover, nil
 }
 
-// claim は識別子 id の結果を確かめて取り出す。無いか期限切れなら domain.ErrWorkInfoFetchStale、別の動画の
-// ものなら domain.ErrNotFound、fields が空か値の無い項目を含むか、選んだタグの名前 tags が使えなければ
-// domain.ErrWorkInfoApplyInvalid を返し、どれも結果を残す（期限切れは捨てる）。同じ結果を 2 回反映しないよう、
-// 確かめた結果は取り出す。
+// Validate existence/expiry, video and selection before consuming a result once. ErrWorkInfoFetchStale, ErrNotFound and ErrWorkInfoApplyInvalid preserve it unless expired.
 func (f *workInfoFetches) claim(
 	id string, videoID int64, fields []domain.WorkInfoField, tags []string, now time.Time,
 ) (*workInfoFetch, error) {
@@ -467,14 +424,14 @@ func (f *workInfoFetches) claim(
 	return fetch, nil
 }
 
-// restore は取り出した結果を戻す。期限が過ぎていれば、次の追加か取り出しで捨てる。
+// Restore a claimed result; expiry is enforced on the next insert or retrieval.
 func (f *workInfoFetches) restore(id string, fetch *workInfoFetch) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.entries[id] = fetch
 }
 
-// prune は期限の過ぎた結果を捨てる。呼び出し側が mu を持つ。
+// Caller holds mu.
 func (f *workInfoFetches) prune(now time.Time) {
 	for id, fetch := range f.entries {
 		if !now.Before(fetch.expiresAt) {

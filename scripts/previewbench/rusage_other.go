@@ -2,5 +2,5 @@
 
 package main
 
-// childrenPeakRSS は Linux と macOS 以外（Windows など）ではピークメモリを測らない。
+// Peak RSS is unavailable outside Linux and macOS.
 func childrenPeakRSS() (int64, bool) { return 0, false }

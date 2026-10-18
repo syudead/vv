@@ -7,8 +7,6 @@ import (
 	"time"
 )
 
-// 閉じる操作の goroutine と WebView2 の失敗の処理が同時に待っても、どちらも
-// 終わりを受け取れる（片方が知らせを奪って、もう片方が待ち続けない）。
 func TestServerResultNotifiesEveryWaiter(t *testing.T) {
 	stop := make(chan struct{})
 	want := errors.New("stopped")

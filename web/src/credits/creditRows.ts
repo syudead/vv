@@ -15,22 +15,15 @@ import type { TagFieldError } from "../tags/tagNameField";
 import type { RowsPage } from "../tags/useTagPage";
 import { normalizeQuery } from "../videoList/listCriteria";
 
-/** creditPageLimit は一覧の 1 ページの件数である。 */
 export const creditPageLimit = 100;
 
-/** CreditPageRows は人物・団体の管理画面の読み込んだ行と件数である。 */
 export type CreditPageRows = PageRows<Credit, ListRowsQuery>;
 
-/** kindTexts は種類で言い分ける文言である。 */
 export function kindTexts(kind: CreditKind) {
   return kind === "person" ? t.credits.person : t.credits.organization;
 }
 
-/**
- * matchesCreditQuery は、人物・団体が検索に合うかである。サーバーの `GET /api/people` と
- * 同じく、検索語の照合形が名前か別名の照合形に部分一致する。操作のあとの 1 行を往復せずに
- * 判定するのに使う。
- */
+/** Match normalized names and aliases like the server, avoiding a refetch after mutations. */
 export function matchesCreditQuery(credit: Credit, query: ListRowsQuery): boolean {
   if (query.query === "") return true;
   return (
@@ -39,16 +32,13 @@ export function matchesCreditQuery(credit: Credit, query: ListRowsQuery): boolea
   );
 }
 
-/** parentOf は団体の親を返す。人物と根の団体は undefined。 */
 export function parentOf(credit: Credit) {
   return "parent" in credit ? credit.parent : undefined;
 }
 
 /**
- * reparentRows は、団体 `fromId` の改名・削除・統合のあと、読み込んだ行のうちその団体を親に
- * 持つ子の `parent` を書き換える。`to` は新しい親（改名ならその団体、統合なら統合先）で、
- * undefined なら親を外す（削除はサーバーが子の親を外す）。親は
- * 並び順と検索に関わらないので、行の位置と件数は変えない。子が無ければ同じ配列を返す。
+ * Parent changes do not affect filtering, sorting or counts; preserve the array identity when no
+ * children change.
  */
 export function reparentRows(
   rows: Credit[],
@@ -65,10 +55,6 @@ export function reparentRows(
   });
 }
 
-/**
- * secondLine は行の名前の下の 1 行である。親（団体）を先に、別名を言語つきで並べる。
- * どちらも無ければ null。
- */
 export function secondLine(credit: Credit): UiText | null {
   const parts: UiText[] = [];
   const parent = parentOf(credit);
@@ -86,10 +72,7 @@ export function secondLine(credit: Credit): UiText | null {
   return parts.length === 0 ? null : t.credits.row.secondLine(parts);
 }
 
-/**
- * creditNameError は作成・改名の失敗の分け方である。名前に向いた理由（`field: name`）は
- * 入力の下の小さな理由（`taken` の形）、それ以外は一般の失敗（`other`）にする。
- */
+/** Display name-field errors under the input; other failures use the general error. */
 export function creditNameError(failure: unknown): TagFieldError {
   const message = errorText(failure);
   if (failure instanceof RequestFailed && failure.field === "name") {
@@ -98,10 +81,6 @@ export function creditNameError(failure: unknown): TagFieldError {
   return { kind: "other", message };
 }
 
-/**
- * creditCountText は見出しの件数である。検索している間は `total` of `totalAll`。先頭の
- * ページを待つ間は出さない。
- */
 export function creditCountText(
   kind: CreditKind,
   page: CreditPageRows | undefined,
@@ -113,7 +92,6 @@ export function creditCountText(
     : texts.filteredCount(page.total, page.totalAll);
 }
 
-/** fetchCreditPage は種類の一覧の 1 ページを読む読み方を返す（`usePagedRows`）。 */
 export function fetchCreditPage(kind: CreditKind) {
   return (
     query: ListRowsQuery,
@@ -133,26 +111,20 @@ export function fetchCreditPage(kind: CreditKind) {
     );
 }
 
-/** CreditListCriteria は管理画面の URL に載せる条件である（`q` と `sort`）。 */
 export interface CreditListCriteria {
   query: string;
   sort: CreditSort;
 }
 
-/** sortStorageKey は種類ごとの、端末に残す並び順の鍵である。 */
 export function sortStorageKey(kind: CreditKind): string {
   return kind === "person" ? "vv.people.v1" : "vv.organizations.v1";
 }
 
-/** readCreditSort は端末に残した並び順を読む。無ければ名前の順。 */
 export function readCreditSort(kind: CreditKind): CreditSort {
   return readListSortPreferences(sortStorageKey(kind)).sort;
 }
 
-/**
- * parseCreditListCriteria は URL のクエリを条件にする。解釈できない値は既定とし、sort が
- * 無いか解釈できなければ端末に残した並び順を使う（タグの画面の `parseTagListCriteria`）。
- */
+/** Use the stored sort when the URL omits it or supplies an invalid value. */
 export function parseCreditListCriteria(
   params: URLSearchParams,
   preferredSort: CreditSort,
@@ -168,7 +140,7 @@ export function parseCreditListCriteria(
   };
 }
 
-/** serializeCreditListCriteria は条件を URL のクエリにする。順は q・sort で、sort は書く。 */
+/** Serialize q before sort and always include sort. */
 export function serializeCreditListCriteria(
   criteria: CreditListCriteria,
 ): URLSearchParams {

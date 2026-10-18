@@ -13,9 +13,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 適用する画像は動画の表示上の縦横比に合わせ、長辺 640px の JPEG にする
-//
-
 func squarePNG(t *testing.T, size int) []byte {
 	t.Helper()
 	return rectPNG(t, size, size)
@@ -63,9 +60,8 @@ func TestFitThumbnailImage(t *testing.T) {
 	}
 }
 
-// 提供元の出力の WebP も、PNG と同じく動画の縦横比の JPEG になる。
 func TestFitThumbnailImageWebP(t *testing.T) {
-	// 1×1 の可逆の WebP。
+	// One-pixel lossless WebP.
 	webp := []byte("RIFF\x1a\x00\x00\x00WEBPVP8L\x0d\x00\x00\x00\x2f\x00\x00\x00\x10\x07\x10\x11\x11\x88\x88\xfe\x07\x00")
 	fitted, err := FitThumbnailImage(context.Background(), webp, 16.0/9.0)
 	if err != nil {
@@ -103,8 +99,6 @@ func TestFitThumbnailSize(t *testing.T) {
 	}
 }
 
-// 元の画像は代表サムネイルと同じく動画の縦横比に中央で切り抜き、長辺を最大 2048px にする。
-// 小さい画像は拡大しない。
 func TestFitThumbnailSource(t *testing.T) {
 	t.Parallel()
 
@@ -156,15 +150,13 @@ func TestFitThumbnailSourceSize(t *testing.T) {
 		{width: 1920, height: 1080, aspect: 9.0 / 16.0, wantW: 607, wantH: 1080},
 		{width: 5000, height: 2500, aspect: 0, wantW: 2048, wantH: 1024},
 		{width: 640, height: 480, aspect: 0, wantW: 640, wantH: 480},
-		// 奇数の辺は偶数に丸めず、切り抜いた大きさを超えない整数に切り下げる。
 		{width: 1001, height: 1000, aspect: 0, wantW: 1001, wantH: 1000},
 		{width: 1001, height: 1001, aspect: 16.0 / 9.0, wantW: 1001, wantH: 563},
 		{width: 1125, height: 2001, aspect: 9.0 / 16.0, wantW: 1125, wantH: 2000},
-		// 動画と同じ比率の小さな画像は、行も列も欠けずにそのままの大きさで残る。
 		{width: 16, height: 9, aspect: 16.0 / 9.0, wantW: 16, wantH: 9},
 		{width: 9, height: 16, aspect: 9.0 / 16.0, wantW: 9, wantH: 16},
 		{width: 17, height: 9, aspect: 16.0 / 9.0, wantW: 16, wantH: 9},
-		// 1px に満たない辺は 1px にする。拡大しないので、その大きさでは aspect を表せない。
+		// A one-pixel minimum may make the requested aspect unrepresentable without upscaling.
 		{width: 1, height: 1, aspect: 16.0 / 9.0, wantW: 1, wantH: 1},
 		{width: 1, height: 1, aspect: 0, wantW: 1, wantH: 1},
 		{width: 3, height: 1, aspect: 9.0 / 16.0, wantW: 1, wantH: 1},

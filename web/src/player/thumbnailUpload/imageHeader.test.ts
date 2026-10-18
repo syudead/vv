@@ -131,7 +131,6 @@ describe("readImageHeader", () => {
   it("形式が分からないか大きさが見つからなければ null を返す", () => {
     expect(readImageHeader(bytes("GIF89a"))).toBeNull();
     expect(readImageHeader(bytes([0xff, 0xd8], [0xff, 0xe1], be16(100)))).toBeNull();
-    // 区切りが 0xFF で始まらない JPEG は壊れている。
     expect(
       readImageHeader(bytes([0xff, 0xd8], [0x00, 0xe1], be16(4), [0, 0, 0, 0, 0])),
     ).toBeNull();

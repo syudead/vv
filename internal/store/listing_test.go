@@ -12,8 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// listingFile は title を題名とする所在1件を組み立てる。追加時刻は offset 分
-// ずらし、追加順の並びが id 頼みにならないようにする。
+// Offset addition times so added order does not rely on IDs.
 func listingFile(path, title, key string, offset int) domain.VideoFile {
 	return domain.VideoFile{
 		Path: path, Title: title, ContentKey: key,
@@ -22,7 +21,6 @@ func listingFile(path, title, key string, offset int) domain.VideoFile {
 	}
 }
 
-// upsertAll は所在をすべて取り込み、パスごとの動画の id を返す。
 func upsertAll(t *testing.T, db *DB, files ...domain.VideoFile) map[string]int64 {
 	t.Helper()
 	ids := map[string]int64{}
@@ -36,7 +34,6 @@ func upsertAll(t *testing.T, db *DB, files ...domain.VideoFile) map[string]int64
 	return ids
 }
 
-// sortedTitles は全件の題名を並べ替えて返す。並びに依らない比較に使う。
 func sortedTitles(t *testing.T, db *DB, q domain.VideoQuery) []string {
 	t.Helper()
 	q.Limit = domain.MaxLimit
@@ -61,18 +58,15 @@ func sorted(values ...string) []string {
 	return out
 }
 
-// searchExprTitles は受け入れ条件 1〜7 の題名である。
 var searchExprTitles = []string{
 	"京都旅行 2024", "京都旅行 2023", "2024 奈良", "猫と散歩",
 	"ＡＢＣ１２３", "ABC", "ｶﾀｶﾅ", "たびにっき", "100% 達成", "a_b (test)",
 }
 
-// searchExprFixture は受け入れ条件 1〜7・9 の題名を、登録フォルダ
-// /media/videos の直下に取り込む。
 func searchExprFixture(t *testing.T) *DB {
 	t.Helper()
 	db := migratedDB(t)
-	// 鍵は取り込み時の登録フォルダから作るので、取り込む前に差し替える。
+	// Register the fixture root before ingestion because search keys depend on it.
 	if _, err := db.sql.Exec(`update media_folders set path = ?`, fixturePath("/media/videos")); err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +78,6 @@ func searchExprFixture(t *testing.T) *DB {
 	return db
 }
 
-// 親 Issue #195 の受け入れ条件 1〜7・9。
 func TestListVideosSearchExpressions(t *testing.T) {
 	db := searchExprFixture(t)
 	without := func(excluded ...string) []string {
@@ -101,20 +94,15 @@ func TestListVideosSearchExpressions(t *testing.T) {
 		query string
 		want  []string
 	}{
-		// 1. 複数語は AND。
 		{"京都 2024", sorted("京都旅行 2024")},
-		{"京都　2024", sorted("京都旅行 2024")}, // 全角の空白
-		// 2. フレーズ。途中で切ったフレーズでも当たる。
+		{"京都　2024", sorted("京都旅行 2024")},
 		{`"京都旅行 2024"`, sorted("京都旅行 2024")},
 		{`"旅行 20"`, sorted("京都旅行 2024", "京都旅行 2023")},
-		// 3. 除外。除外語だけでも、その語を含まないすべてを返す。
 		{"京都 -2023", sorted("京都旅行 2024")},
 		{"-京都", without("京都旅行 2024", "京都旅行 2023")},
-		// 4. OR は空白の AND より強く結び付く。
 		{"京都 OR 奈良", sorted("京都旅行 2024", "京都旅行 2023", "2024 奈良")},
 		{"京都 | 奈良", sorted("京都旅行 2024", "京都旅行 2023", "2024 奈良")},
 		{"2024 京都 OR 奈良", sorted("京都旅行 2024", "2024 奈良")},
-		// 5. 構文として読めない入力は字面の語として探す。
 		{`"京都`, sorted()},
 		{"OR", sorted()},
 		{"-", sorted()},
@@ -122,19 +110,15 @@ func TestListVideosSearchExpressions(t *testing.T) {
 		{"a_b", sorted("a_b (test)")},
 		{"(test)", sorted("a_b (test)")},
 		{"title:x", sorted()},
-		// 6. 1文字・2文字の語は、複数語や除外語に混じっていても当たる。
 		{"猫", sorted("猫と散歩")},
 		{"猫 散歩", sorted("猫と散歩")},
 		{"散歩 -犬", sorted("猫と散歩")},
-		// 7. 表記の揺れ。
 		{"abc123", sorted("ＡＢＣ１２３")},
 		{"ａｂｃ", sorted("ＡＢＣ１２３", "ABC")},
 		{"カタカナ", sorted("ｶﾀｶﾅ")},
 		{"タビ", sorted("たびにっき")},
-		// 9. 登録フォルダ自身のパスには当たらない。
 		{"media", sorted()},
 		{"videos", sorted()},
-		// 語が残らない入力は絞り込まない。
 		{"", without()},
 		{`""`, without()},
 		{"|", without()},
@@ -146,7 +130,6 @@ func TestListVideosSearchExpressions(t *testing.T) {
 	}
 }
 
-// 9. 登録フォルダより下のフォルダ名では当たる。拡張子も照合の対象である。
 func TestListVideosMatchesRelativeFolderNames(t *testing.T) {
 	db := migratedDB(t)
 	if _, err := db.sql.Exec(`update media_folders set path = ?`, fixturePath("/media/videos")); err != nil {
@@ -169,8 +152,7 @@ func TestListVideosMatchesRelativeFolderNames(t *testing.T) {
 	}
 }
 
-// 10. 語ごとに別の所在で満たした動画は当てない。当たった動画は1件として出て、
-// 当たった所在の題名とパスで出る。
+// All terms must match one location; returned attributes come from that matching location.
 func TestListVideosMatchesWithinOneLocation(t *testing.T) {
 	db := migratedDB(t)
 	upsertAll(t, db,
@@ -190,7 +172,7 @@ func TestListVideosMatchesWithinOneLocation(t *testing.T) {
 	for query, want := range map[string]string{
 		"京都":   fixturePath("/media/A/京都.mp4"),
 		"2024": fixturePath("/media/B/2024.mp4"),
-		"":     fixturePath("/media/A/京都.mp4"), // 検索語が無ければパスの最小の所在
+		"":     fixturePath("/media/A/京都.mp4"),
 	} {
 		page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Query: query})
 		if err != nil {
@@ -207,15 +189,13 @@ func TestListVideosMatchesWithinOneLocation(t *testing.T) {
 	}
 }
 
-// 受け入れ条件 17・18 の配置で、範囲ごとに当たる動画。照合は範囲にある所在だけを
-// 対象にする。
 func TestListingScopes(t *testing.T) {
 	db := migratedDB(t)
 	upsertAll(t, db,
 		listingFile(fixturePath("/media/A/x 京都.mp4"), "x 京都", "key-x", 0),
 		listingFile(fixturePath("/media/A/B/y 京都.mp4"), "y 京都", "key-y", 1),
 		listingFile(fixturePath("/media/C/z 京都.mp4"), "z 京都", "key-z", 2),
-		// 同じ内容が A の配下と C にある。A の配下の所在は「京都」を含まない。
+		// The same content exists in both scopes, but only the out-of-scope location matches the query.
 		listingFile(fixturePath("/media/A/B/w.mp4"), "w", "key-w", 3),
 		listingFile(fixturePath("/media/C/w 京都.mp4"), "w 京都", "key-w", 3),
 	)
@@ -252,7 +232,6 @@ func TestListingScopes(t *testing.T) {
 	}
 }
 
-// watchFixture は視聴状態と再生可否の組をすべて作る。題名は「状態-再生可否」。
 func watchFixture(t *testing.T) *DB {
 	t.Helper()
 	db := migratedDB(t)
@@ -289,8 +268,6 @@ func watchFixture(t *testing.T) *DB {
 	return db
 }
 
-// 視聴状態と再生可否で絞ると、Total は条件に合う全件の数になり、ページを
-// 繋ぐと条件に合う動画だけがすべて出る。
 func TestListVideosWatchAndPlayableFilters(t *testing.T) {
 	db := watchFixture(t)
 	ctx := context.Background()
@@ -332,13 +309,11 @@ func TestListVideosWatchAndPlayableFilters(t *testing.T) {
 		}
 	}
 
-	// 検索語とも AND で組み合わさる。
 	if got, want := sortedTitles(t, db, domain.VideoQuery{Query: "none OR done", Watch: domain.WatchWatched, PlayableOnly: true}), sorted("done-true"); !slices.Equal(got, want) {
 		t.Errorf("検索と絞り込み = %q, want %q", got, want)
 	}
 }
 
-// SQL の条件は domain.ClassifyWatch と同じ定義である。
 func TestWatchConditionMatchesDomainClassification(t *testing.T) {
 	db := watchFixture(t)
 	ctx := context.Background()
@@ -359,7 +334,6 @@ func TestWatchConditionMatchesDomainClassification(t *testing.T) {
 	}
 }
 
-// フォルダの一覧でも視聴状態と再生可否で絞れる。
 func TestListFolderVideosFilters(t *testing.T) {
 	db := watchFixture(t)
 	page, err := db.Library().ListFolderVideos(context.Background(), domain.AudienceOwner, domain.FolderVideoQuery{
@@ -373,8 +347,6 @@ func TestListFolderVideosFilters(t *testing.T) {
 	}
 }
 
-// ページを送る途中で別の動画の所在を足しても、1ページ目の時点で条件に合い、
-// 並べ替えの値が変わらない動画に重複と取りこぼしが無い。
 func TestListingPagingSurvivesAddedLocations(t *testing.T) {
 	for _, sort := range []domain.VideoSort{domain.SortAddedDesc, domain.SortTitleAsc} {
 		for _, query := range []string{"", "旅"} {
@@ -387,7 +359,6 @@ func TestListingPagingSurvivesAddedLocations(t *testing.T) {
 					stable = append(stable, title)
 					upsertAll(t, db, listingFile(fixturePath("/media/")+title+".mp4", title, "key-"+title, i))
 				}
-				// 当たらない動画も混ぜる。
 				upsertAll(t, db, listingFile(fixturePath("/media/花火.mp4"), "花火", "key-hanabi", 10))
 
 				var seen []string
@@ -399,9 +370,7 @@ func TestListingPagingSurvivesAddedLocations(t *testing.T) {
 					}
 					seen = append(seen, titlesOf(page)...)
 					if pageIndex == 0 {
-						// 後ろのページに出る動画に、パスが後ろに来る所在を足す（題名は
-						// 変わらない）。当たらなかった動画に、当たる所在を足す。新しい
-						// 動画も足す。
+						// Add a later path without changing the representative, then add newly matching and entirely new videos.
 						upsertAll(t, db,
 							listingFile(fixturePath("/media/旅4~copy.mp4"), "copy", "key-旅4", 0),
 							listingFile(fixturePath("/media/旅1~copy.mp4"), "copy", "key-旅1", 0),
@@ -439,9 +408,6 @@ func countOf(values []string, value string) int {
 	return count
 }
 
-// 検索式は所在1行に対する条件句になる。3文字以上は MATCH、1〜2文字は instr で、
-// 除外は not、OR は括弧で包んだ or、項どうしは and で結ぶ。語1つごとの条件は、
-// 所在の条件とタグ名・作品情報への instr の OR に広がる
 func TestSearchExprCondition(t *testing.T) {
 	clause, args := searchExprCondition(domain.ParseSearchQuery(`京都 -2023 夏休み OR 花 -"a b" ab"c`), "l", domain.AudienceOwner)
 
@@ -456,9 +422,7 @@ func TestSearchExprCondition(t *testing.T) {
 	if clause != want {
 		t.Errorf("clause =\n%s\nwant\n%s", clause, want)
 	}
-	// 所在の条件の引数の直後に、同じ語（FoldForMatch 済みでフレーズの引用は無い）が 9 つ続く。
-	// 鍵の集合（タグ名の手で付けた分、作品情報の品番・人物・団体）を
-	// 集まりに属さない動画と集まりの動画のために 2 回と、タグ名のフォルダ名の分（017 の）である（ownerFactsMatchCondition）。
+	// Each location term is followed by nine unquoted folded terms for owner facts across both user-key paths and folder tags.
 	nine := func(text string) []any {
 		return []any{text, text, text, text, text, text, text, text, text}
 	}
@@ -479,7 +443,6 @@ func TestSearchExprCondition(t *testing.T) {
 	}
 }
 
-// 語を 16 個より多く並べても誤りにならない。
 func TestListVideosWithManyTerms(t *testing.T) {
 	db := searchExprFixture(t)
 	query := strings.Repeat("京都 ", 40) + "OR 奈良"
@@ -487,7 +450,6 @@ func TestListVideosWithManyTerms(t *testing.T) {
 	if err != nil {
 		t.Fatalf("語の多い検索で失敗した: %v", err)
 	}
-	// 先頭 16 語（すべて「京都」）だけが効き、後ろの OR 奈良 は無視される。
 	want, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, domain.VideoQuery{Query: "京都"})
 	if err != nil {
 		t.Fatal(err)
@@ -497,8 +459,6 @@ func TestListVideosWithManyTerms(t *testing.T) {
 	}
 }
 
-// 除外語は所在ごとに評価する。除外語を含まない
-// 所在が1つでもあれば動画は当たり、項目の題名と所在はその所在から取る。
 func TestListVideosExclusionIsEvaluatedPerLocation(t *testing.T) {
 	db := migratedDB(t)
 	upsertAll(t, db,
@@ -517,8 +477,7 @@ func TestListVideosExclusionIsEvaluatedPerLocation(t *testing.T) {
 	}
 }
 
-// 内容の識別子が空の動画は、空の識別子で記録された再生位置があっても未視聴として
-// 絞る。API は空の識別子の再生位置を返さない（httpapi の progressFor）。
+// Unidentified content stays unwatched even if an empty-key progress row exists.
 func TestWatchFilterIgnoresProgressOfEmptyContentKey(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -543,9 +502,6 @@ func TestWatchFilterIgnoresProgressOfEmptyContentKey(t *testing.T) {
 	}
 }
 
-// タグ A と B で絞ると両方を持つ動画だけが返り、Total もその数になり、検索語・
-// 視聴状態と組み合わさる。無い tag_id は無視され、どれを無視したかが返る
-// （完了の条件）。
 func TestListVideosFiltersByTagIDsWithAndAndCombinesWithOtherFilters(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -580,7 +536,6 @@ func TestListVideosFiltersByTagIDsWithAndAndCombinesWithOtherFilters(t *testing.
 		t.Errorf("MissingTagIDs = %v, want 空", page.MissingTagIDs)
 	}
 
-	// 視聴状態と組み合わさる。
 	if _, err := db.Playback().SaveProgress(ctx, "key-both", domain.Progress{PositionMs: 100_000, Completed: true}, nil); err != nil {
 		t.Fatal(err)
 	}
@@ -592,7 +547,6 @@ func TestListVideosFiltersByTagIDsWithAndAndCombinesWithOtherFilters(t *testing.
 		t.Errorf("タグ AND + 未視聴 = %d 件, want 0 (both は視聴済み)", unwatched.Total)
 	}
 
-	// 検索語と組み合わさる。
 	searched, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{tagA.ID}, Query: "b-only"})
 	if err != nil {
 		t.Fatal(err)
@@ -601,7 +555,6 @@ func TestListVideosFiltersByTagIDsWithAndAndCombinesWithOtherFilters(t *testing.
 		t.Errorf("タグ A + 検索語 b-only = %d 件, want 0 (a-only と both だけが A を持つ)", searched.Total)
 	}
 
-	// 存在しない tag_id は無視され、どれを無視したかが返る。
 	missing, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{tagA.ID, 999999}})
 	if err != nil {
 		t.Fatal(err)
@@ -618,8 +571,6 @@ func TestListVideosFiltersByTagIDsWithAndAndCombinesWithOtherFilters(t *testing.
 	}
 }
 
-// タグで絞り込んだ一覧は、ページングを繋ぐと条件に合う動画を取りこぼしも重複も
-// なく返す。
 func TestListVideosPagesWithTagFilterCoverEveryMatch(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -636,14 +587,12 @@ func TestListVideosPagesWithTagFilterCoverEveryMatch(t *testing.T) {
 		tagged = append(tagged, id)
 		attachTag(t, db, key, tag.ID)
 	}
-	// タグが付かない動画も混ぜる。
 	upsertAll(t, db, listingFile(fixturePath("/media/untagged.mp4"), "untagged", "key-untagged", 100))
 
 	query := domain.VideoQuery{TagIDs: []int64{tag.ID}}
 	wantIDs := slices.Clone(tagged)
 	slices.Sort(wantIDs)
 
-	// ページングを繋いでも同じ集合になる。
 	var paged []int64
 	cursor := ""
 	query.Limit = 2
@@ -666,9 +615,6 @@ func TestListVideosPagesWithTagFilterCoverEveryMatch(t *testing.T) {
 		t.Errorf("全ページの id = %v, want %v (タグの付いた動画の集合)", paged, wantIDs)
 	}
 
-	// ランダム並び順でページングを繋いでも同じ集合になる（並びが seed・id
-	// だけで決まるので、タグの絞り込みと組み合わせても取りこぼし・重複が
-	// 無いことを確かめる）。
 	randomQuery := domain.VideoQuery{TagIDs: []int64{tag.ID}, Sort: domain.SortRandom, Seed: 12345, Limit: 2}
 	var randomPaged []int64
 	cursor = ""
@@ -692,9 +638,6 @@ func TestListVideosPagesWithTagFilterCoverEveryMatch(t *testing.T) {
 	}
 }
 
-// 所在を移して再スキャンした動画に同じタグが付いている（完了の条件）。
-// video_tags は content_key で結ぶので、動画の id や所在が変わっても付与は
-// 残る。
 func TestTagAttachmentSurvivesLocationMoveAndRescan(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -708,7 +651,6 @@ func TestTagAttachmentSurvivesLocationMoveAndRescan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 再スキャンで所在が移る。同じ content_key なので同じ動画として扱われる。
 	moved := listingFile(fixturePath("/media/new/a.mp4"), "a", "same-key", 1)
 	if _, err := db.ScanIndex().UpsertVideo(ctx, moved); err != nil {
 		t.Fatal(err)
@@ -738,10 +680,6 @@ func TestTagAttachmentSurvivesLocationMoveAndRescan(t *testing.T) {
 	}
 }
 
-// 題名に「旅行」を含まない動画に「旅行」タグを付けると、検索語 旅行 で
-// ライブラリ・フォルダ直下・フォルダ配下のどの範囲でも返り、-旅行 では返らない。
-// シノニムの名前でも返り、改名の後は新しい名前で返って古い名前では返らない。
-// ﾘｮｺｳ と りょこう のように照合形が同じ語は同じ結果になる（完了の条件）。
 func TestSearchMatchesTagNamesAcrossScopesAndFoldsSynonymsAndRenames(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -763,7 +701,6 @@ func TestSearchMatchesTagNamesAcrossScopesAndFoldsSynonymsAndRenames(t *testing.
 
 	assertMatches := func(t *testing.T, query string, want bool) {
 		t.Helper()
-		// ライブラリ。
 		page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Query: query})
 		if err != nil {
 			t.Fatal(err)
@@ -771,7 +708,6 @@ func TestSearchMatchesTagNamesAcrossScopesAndFoldsSynonymsAndRenames(t *testing.
 		if got := slices.Contains(titlesOf(page), "猫"); got != want {
 			t.Errorf("ライブラリで %q = %v, want %v", query, got, want)
 		}
-		// フォルダ直下。
 		direct, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/A"), Query: query})
 		if err != nil {
 			t.Fatal(err)
@@ -779,7 +715,6 @@ func TestSearchMatchesTagNamesAcrossScopesAndFoldsSynonymsAndRenames(t *testing.
 		if got := slices.Contains(titlesOf(direct), "猫"); got != want {
 			t.Errorf("フォルダ直下で %q = %v, want %v", query, got, want)
 		}
-		// フォルダ配下。
 		subtree, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media"), Scope: domain.FolderScopeSubtree, Query: query})
 		if err != nil {
 			t.Fatal(err)
@@ -792,13 +727,11 @@ func TestSearchMatchesTagNamesAcrossScopesAndFoldsSynonymsAndRenames(t *testing.
 	assertMatches(t, "旅行", true)
 	assertMatches(t, "-旅行", false)
 
-	// シノニムの名前でも当たる。
 	if _, err := db.Tags().AddSynonym(ctx, tag.ID, "たび", nil); err != nil {
 		t.Fatal(err)
 	}
 	assertMatches(t, "たび", true)
 
-	// 照合形が同じ語は同じ結果になる（NFKC 半角カナ・カタカナの畳み込み）。
 	assertMatches(t, "ﾀﾋﾞ", true)
 	if _, err := db.Tags().AddSynonym(ctx, tag.ID, "りょこう", nil); err != nil {
 		t.Fatal(err)
@@ -806,7 +739,6 @@ func TestSearchMatchesTagNamesAcrossScopesAndFoldsSynonymsAndRenames(t *testing.
 	assertMatches(t, "りょこう", true)
 	assertMatches(t, "ﾘｮｺｳ", true)
 
-	// 改名の後は新しい名前で返り、古い名前では返らない。
 	if _, err := db.Tags().RenameTag(ctx, tag.ID, "旅"); err != nil {
 		t.Fatal(err)
 	}
@@ -814,7 +746,6 @@ func TestSearchMatchesTagNamesAcrossScopesAndFoldsSynonymsAndRenames(t *testing.
 	assertMatches(t, "旅行", false)
 }
 
-// mustVideoID は path の動画の id を1件返す。
 func mustVideoID(t *testing.T, db *DB, path string) []int64 {
 	t.Helper()
 	var id int64

@@ -10,7 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 解析の失敗は、状況に応じた理由のコードで包まれる
 func TestProbeFailureCodes(t *testing.T) {
 	dir := t.TempDir()
 	missing := filepath.Join(dir, "missing.mp4")

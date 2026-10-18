@@ -10,16 +10,14 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 適用したサムネイルの画像。
-
 func sizedVideo(id int64, contentKey string, width, height int) domain.Video {
 	video := probedVideo(id, contentKey)
 	video.Width, video.Height = &width, &height
 	return video
 }
 
-// 適用は画像を動画の縦横比に合わせ、今のファイルを写してから公開し、公開したのと同じバイト列を
-// 記録する。
+// Fit to the video aspect ratio, snapshot the old file before publishing, and persist the exact
+// published bytes.
 func TestApplyThumbnailImageFitsPublishesThenRecords(t *testing.T) {
 	video := sizedVideo(1, "a", 1920, 1080)
 	store := newFakeIngestStore(video)
@@ -48,7 +46,7 @@ func TestApplyThumbnailImageFitsPublishesThenRecords(t *testing.T) {
 		saved.ThumbnailImageOrigin != domain.ThumbnailImageGenerated {
 		t.Fatalf("返した動画 = %+v", saved)
 	}
-	// 元の画像と出どころも、代表サムネイルと同じ 1 回の記録で書く。
+	// Persist the original and origin atomically with the thumbnail.
 	row := store.rows["a"]
 	if !bytes.Equal(row.Image, []byte("fitted:edited")) || !bytes.Equal(row.Source, []byte("source:edited")) ||
 		row.Origin != domain.ThumbnailImageGenerated {
@@ -59,7 +57,6 @@ func TestApplyThumbnailImageFitsPublishesThenRecords(t *testing.T) {
 	}
 }
 
-// アップロードした画像の出どころは uploaded として記録する。
 func TestApplyThumbnailImageRecordsOrigin(t *testing.T) {
 	video := sizedVideo(1, "a", 1920, 1080)
 	store := newFakeIngestStore(video)
@@ -75,7 +72,7 @@ func TestApplyThumbnailImageRecordsOrigin(t *testing.T) {
 	}
 }
 
-// 大きさの分からない動画では縦横比 0（画像自身の縦横比）で合わせる。
+// Unknown video dimensions use zero aspect ratio to retain the image ratio.
 func TestApplyThumbnailImageUnknownSize(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
@@ -90,7 +87,7 @@ func TestApplyThumbnailImageUnknownSize(t *testing.T) {
 	}
 }
 
-// 動画が消えたか別の内容を持つなら content_changed で、合わせも公開も記録もしない。
+// Reject changed content before fitting, publishing or recording.
 func TestApplyThumbnailImageContentChanged(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -121,7 +118,6 @@ func TestApplyThumbnailImageContentChanged(t *testing.T) {
 	}
 }
 
-// 読めない画像は ErrThumbnailImageInvalid で、公開も記録もしない。
 func TestApplyThumbnailImageInvalid(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
@@ -137,8 +133,7 @@ func TestApplyThumbnailImageInvalid(t *testing.T) {
 	}
 }
 
-// 公開に失敗すれば記録せず、写しを捨てる（置き場は前の画像のまま）。記録に失敗すれば前の
-// ファイルへ戻す。
+// Publishing failure leaves storage unchanged; recording failure restores the previous file.
 func TestApplyThumbnailImageFailures(t *testing.T) {
 	t.Run("公開の失敗", func(t *testing.T) {
 		video := probedVideo(1, "a")
@@ -177,7 +172,7 @@ func TestApplyThumbnailImageFailures(t *testing.T) {
 	})
 }
 
-// 取り消しは記録した位置があればその場面で、無ければ自動の位置で作り直し、画像の行を消す。
+// Reverting regenerates the selected or automatic frame and removes the image override.
 func TestRevertThumbnailImageRebuildsFrame(t *testing.T) {
 	withPosition := probedVideo(1, "a")
 	withPosition.ThumbnailPositionMs = int64Ptr(7_000)
@@ -218,8 +213,7 @@ func TestRevertThumbnailImageRebuildsFrame(t *testing.T) {
 	}
 }
 
-// 取り消しでコマを作れなければ何も記録せず ErrThumbnailFrameUnavailable を返し、画像の行は残る。
-// 記録に失敗すれば前のファイルへ戻す。
+// Failed regeneration preserves the override; failed recording restores the old file.
 func TestRevertThumbnailImageFailures(t *testing.T) {
 	t.Run("生成の失敗", func(t *testing.T) {
 		video := probedVideo(1, "a")
@@ -306,7 +300,7 @@ func TestApplyThumbnailImageHoldsGenerationLock(t *testing.T) {
 	}
 }
 
-// 画像を適用した内容の job は、コマを取らずにその画像を公開し直し、代用なしとして記録する。
+// Regenerate image overrides without extracting frames or recording a fallback.
 func TestIngestThumbnailRepublishesAppliedImage(t *testing.T) {
 	video := probedVideo(1, "a")
 	video.ThumbnailPositionMs = int64Ptr(7_000)
@@ -330,7 +324,7 @@ func TestIngestThumbnailRepublishesAppliedImage(t *testing.T) {
 	}
 }
 
-// 元の動画が読めなくなっていても、画像を適用した内容の job はその画像を公開し直す。
+// Image overrides remain usable when source media is unreadable.
 func TestIngestThumbnailRepublishesAppliedImageWithoutSource(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)

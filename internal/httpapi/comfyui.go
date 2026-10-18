@@ -9,16 +9,13 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// ComfyUIConnection は画像編集の提供元 ComfyUI への接続先の設定と確かめである。
-// internal/app の *ComfyUIConnection が満たす（docs/design-docs/ai-layer.md）。
 type ComfyUIConnection interface {
 	Settings(ctx context.Context) (domain.ComfyUISettings, error)
 	SaveSettings(ctx context.Context, update domain.ComfyUISettingsUpdate) (domain.ComfyUISettings, error)
 	Check(ctx context.Context) error
 }
 
-// GetComfyUISettings は ComfyUI の接続先を返す。API キーは返さず、保存されているかだけを
-// 返す。
+// Expose only API-key presence, never its value.
 func (s *server) GetComfyUISettings(w http.ResponseWriter, r *http.Request) {
 	if s.comfyUI == nil {
 		s.internalError(w, "ComfyUI settings are not configured.", nil)
@@ -33,8 +30,7 @@ func (s *server) GetComfyUISettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, comfyUISettingsBody(settings), s.logger)
 }
 
-// UpdateComfyUISettings は ComfyUI の接続先を確かめて保存する。apiKey が無ければ保存済みの
-// キーを残し、空文字列なら消す。model が無ければ保存済みのモデルを残す。
+// Omitted apiKey/model preserves saved values; an empty apiKey deletes it.
 func (s *server) UpdateComfyUISettings(w http.ResponseWriter, r *http.Request) {
 	if s.comfyUI == nil {
 		s.internalError(w, "ComfyUI settings are not configured.", nil)
@@ -80,10 +76,7 @@ func (s *server) UpdateComfyUISettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, comfyUISettingsBody(saved), s.logger)
 }
 
-// CheckComfyUI は保存した接続先に ComfyUI が応え、vv のワークフローに要るノードとモデル
-// ファイルが揃っているかを確かめる。使えないことは 200 の available=false で返し、足りない
-// ものは missing に挙げる。接続先は要求から
-// 取らず、保存した設定だけを使う。
+// Checks use saved settings only and report unavailability as 200/available=false with missing resources.
 func (s *server) CheckComfyUI(w http.ResponseWriter, r *http.Request) {
 	if s.comfyUI == nil {
 		s.internalError(w, "ComfyUI settings are not configured.", nil)
@@ -113,9 +106,7 @@ func (s *server) CheckComfyUI(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.CheckResult{Available: false, Message: &message, Missing: &items}, s.logger)
 }
 
-// GetThumbnailEditReadiness は動画のページが編集の入口を有効にできるかを返す。connection は
-// 接続先が保存されていることで、テストに通ったことではない（要件 14、
-// docs/design-docs/thumbnail-editing.md）。
+// Readiness requires a saved connection, not a successful probe (docs/design-docs/thumbnail-editing.md).
 func (s *server) GetThumbnailEditReadiness(w http.ResponseWriter, r *http.Request) {
 	if s.comfyUI == nil {
 		s.internalError(w, "ComfyUI settings are not configured.", nil)
@@ -130,7 +121,6 @@ func (s *server) GetThumbnailEditReadiness(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, gen.ThumbnailEditReadiness{Connection: settings.Saved()}, s.logger)
 }
 
-// comfyUISettingsBody は接続先を応答の形にする。API キーは入れない。
 func comfyUISettingsBody(settings domain.ComfyUISettings) gen.ComfyUISettings {
 	body := gen.ComfyUISettings{ApiKeySet: settings.APIKey != "", Model: gen.ComfyUIModel(settings.EffectiveModel())}
 	if settings.Saved() {

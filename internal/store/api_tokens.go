@@ -10,22 +10,11 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// API トークン。平文は発行の応答にだけ現れ、
-// 保存するのは SHA-256 だけである。セッション ID と同じ作りなので、ハッシュには
-// sessionTokenHash を使う。
+// Persist only SHA-256 token hashes; plaintext appears only in the issuance response.
 
-// apiTokenTouchInterval は最終使用日時を書き換える最小の間隔である。
 const apiTokenTouchInterval = 60 * time.Second
 
-// AddAPIToken は名前 name・平文 token の API トークンを 1 件足し、足した行を返す。
-//
-// 行に書く版は、発行を求めたセッション sessionToken の版である。同じ文の中で、その
-// セッションが今も有効（行があり、account.version と一致し、期限が now より後）かを確かめ、
-// 有効でなければ足さずに domain.ErrSessionNotValid を返す。account の行が無いときも同じである。
-// 境界でセッションを確かめた後、ここまでの間に mdm account が資格情報を変えても、新しい版の
-// トークンが古いセッションから生まれないようにする。
-//
-// name は domain.NormalizeAPITokenName を通した値を渡す（呼び出し側が確かめる）。
+// AddAPIToken atomically revalidates the issuing session and uses its account version to prevent issuance after credential changes.
 func (s *AuthStore) AddAPIToken(
 	ctx context.Context, sessionToken, name, token string, now time.Time,
 ) (domain.APIToken, error) {
@@ -62,8 +51,7 @@ func (s *AuthStore) AddAPIToken(
 	return domain.APIToken{ID: id, Name: name, CreatedAt: time.Unix(now.Unix(), 0)}, nil
 }
 
-// ListAPITokens は有効な API トークンを作成日時の降順（同じ時刻は id の降順）で返す。
-// 版の合わない行はアカウントの変更で消えるが、残っていても返さない。
+// ListAPITokens returns valid tokens newest first, excluding stale account versions.
 func (s *AuthStore) ListAPITokens(ctx context.Context) ([]domain.APIToken, error) {
 	rows, err := s.sql.QueryContext(ctx, `
 		select t.id, t.name, t.created_at, t.last_used_at
@@ -97,7 +85,6 @@ func (s *AuthStore) ListAPITokens(ctx context.Context) ([]domain.APIToken, error
 	return tokens, nil
 }
 
-// DeleteAPIToken は id の API トークンを消す。無ければ何もしない。
 func (s *AuthStore) DeleteAPIToken(ctx context.Context, id int64) error {
 	if _, err := s.sql.ExecContext(ctx, `delete from api_tokens where id = ?`, id); err != nil {
 		return fmt.Errorf("cannot delete the API token: %w", err)
@@ -105,11 +92,7 @@ func (s *AuthStore) DeleteAPIToken(ctx context.Context, id int64) error {
 	return nil
 }
 
-// APIToken は平文 token の API トークンが有効かを確かめ、有効ならその行を返す。
-//
-// 有効なのは、ハッシュが api_tokens にあり、account の行があり、発行時の版が
-// account.version と一致するときだけである。問い合わせが失敗したときは
-// 無効とせず、誤りを返す。
+// APIToken requires a matching hash and current account version; query errors remain errors.
 func (s *AuthStore) APIToken(ctx context.Context, token string) (domain.APIToken, bool, error) {
 	var (
 		found    domain.APIToken
@@ -136,8 +119,7 @@ func (s *AuthStore) APIToken(ctx context.Context, token string) (domain.APIToken
 	return found, true, nil
 }
 
-// TouchAPIToken は id の API トークンの最終使用日時を now にする。ただし、保存した値が
-// 空か 60 秒以上前のときだけ書く。行が無ければ何もしない。
+// TouchAPIToken writes at most once per minute; missing rows are ignored.
 func (s *AuthStore) TouchAPIToken(ctx context.Context, id int64, now time.Time) error {
 	at := now.Unix()
 	if _, err := s.sql.ExecContext(ctx, `

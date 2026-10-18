@@ -7,7 +7,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// runCover は probe に cover の URL を返させる。
 func runCover(t *testing.T, rt *Runtime, cover string) (domain.WorkInfoRunResult, error) {
 	t.Helper()
 	req := fetchMode("cover")
@@ -31,7 +30,6 @@ func TestCoverIsFetchedThroughVVAfterTheRun(t *testing.T) {
 	}
 }
 
-// 取れないカバー画像は、実行を失敗させずに無いものとする。
 func TestCoverThatCannotBeFetchedIsDropped(t *testing.T) {
 	site := newTestSite(t)
 	rt := newNetTestRuntime(t, site)
@@ -46,7 +44,6 @@ func TestCoverThatCannotBeFetchedIsDropped(t *testing.T) {
 	}
 }
 
-// LAN を指すカバー画像は、プラグインの要求と同じく実行を blocked_address にする。
 func TestCoverOnARefusedAddressFailsTheRun(t *testing.T) {
 	site := newTestSite(t)
 	rt := newNetTestRuntime(t, site)
@@ -59,7 +56,6 @@ func TestCoverOnARefusedAddressFailsTheRun(t *testing.T) {
 	}
 }
 
-// プラグインの実行を経ない URL でも、要求を組み立てられなければ何も送らない。
 func TestCoverImageSendsNothingForAURLItCannotRequest(t *testing.T) {
 	site := newTestSite(t)
 	rt := newNetTestRuntime(t, site)

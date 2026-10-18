@@ -1,10 +1,6 @@
 import { act } from "@testing-library/react";
 import { vi } from "vitest";
 
-/**
- * FakeEventSource はテストでサーバーからの変化の知らせを再現する。
- * `installFakeEventSource` で EventSource の代わりに置き、`emit` で知らせを送る。
- */
 export class FakeEventSource {
   static readonly CONNECTING = 0;
   static readonly OPEN = 1;
@@ -43,7 +39,6 @@ export class FakeEventSource {
   }
 }
 
-/** currentEventSource は開いている接続を返す。無ければ例外を投げる。 */
 export function currentEventSource(): FakeEventSource {
   const open = FakeEventSource.instances.filter(
     (source) => source.readyState !== FakeEventSource.CLOSED,
@@ -53,7 +48,6 @@ export function currentEventSource(): FakeEventSource {
   return source;
 }
 
-/** emitServerEvent は開いている接続へ知らせを1つ送る。 */
 export async function emitServerEvent(name: string, data?: unknown): Promise<void> {
   await act(async () => {
     const source = currentEventSource();
@@ -63,7 +57,6 @@ export async function emitServerEvent(name: string, data?: unknown): Promise<voi
   });
 }
 
-/** installFakeEventSource は EventSource を FakeEventSource へ差し替える。 */
 export function installFakeEventSource(): void {
   FakeEventSource.instances = [];
   vi.stubGlobal("EventSource", FakeEventSource);

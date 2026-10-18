@@ -6,7 +6,6 @@ import { TooltipProvider } from "../ui/shadcn/tooltip";
 import { GroupNameField } from "./GroupNameField";
 import { VideoDropMenu } from "./VideoDropMenu";
 
-// 新しいグループの名前の欄と、動画を動画に落としたメニュー
 //
 
 describe("GroupNameField", () => {

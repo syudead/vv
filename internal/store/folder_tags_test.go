@@ -9,9 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// フォルダ由来のタグの読み出しを確かめる。
-
-// rebuildIndexForTest はスキャンを閉じる前と同じ作り直しを行う。
 func rebuildIndexForTest(t *testing.T, db *DB) {
 	t.Helper()
 	if err := db.ScanIndex().RebuildFolderIndex(context.Background()); err != nil {
@@ -19,7 +16,6 @@ func rebuildIndexForTest(t *testing.T, db *DB) {
 	}
 }
 
-// listIDs はタグの絞り込みと検索式で一覧を引き、動画の id を小さい順に返す。
 func listIDs(t *testing.T, db *DB, audience domain.Audience, q domain.VideoQuery) []int64 {
 	t.Helper()
 	page, err := db.Library().ListVideos(context.Background(), audience, q)
@@ -34,7 +30,6 @@ func listIDs(t *testing.T, db *DB, audience domain.Audience, q domain.VideoQuery
 	return ids
 }
 
-// videoTagsOf は content_key の動画のタグを出所つきで返す。
 func videoTagsOf(t *testing.T, db *DB, key string) []domain.VideoTag {
 	t.Helper()
 	got, err := db.Tags().TagsByContentKeys(context.Background(), []string{key})
@@ -60,8 +55,6 @@ func tagVideoCount(t *testing.T, db *DB, id int64) int {
 	return 0
 }
 
-// 受け入れ条件 6・7: 既存のタグと同じ名前のフォルダの下の動画にそのタグが付き、
-// そのタグで絞り込むと出る。一致しない名前のフォルダからタグは作られない。
 func TestFolderNameMatchingExistingTagTagsVideos(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -87,7 +80,6 @@ func TestFolderNameMatchingExistingTagTagsVideos(t *testing.T) {
 		t.Errorf("videoCount = %d, want 1", got)
 	}
 
-	// 一致しないフォルダ名（Show・Drama）からタグは作られない。
 	tagsPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
@@ -98,8 +90,7 @@ func TestFolderNameMatchingExistingTagTagsVideos(t *testing.T) {
 	}
 }
 
-// 受け入れ条件 8 と Edge Cases: シノニムの登録・タグの削除・統合は再スキャン
-// （索引の作り直し）なしで次の読み出しから効く。
+// Folder-derived tags reflect synonym, deletion and merge edits immediately without a rescan.
 func TestFolderTagsFollowTagChangesWithoutRescan(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -124,7 +115,6 @@ func TestFolderTagsFollowTagChangesWithoutRescan(t *testing.T) {
 		t.Errorf("絞り込み = %v, want [%d]", got, video)
 	}
 
-	// 統合すると、統合先のタグとしてすぐ付く。
 	target, err := db.Tags().CreateTag(ctx, "Cartoon")
 	if err != nil {
 		t.Fatal(err)
@@ -137,7 +127,6 @@ func TestFolderTagsFollowTagChangesWithoutRescan(t *testing.T) {
 		t.Errorf("統合の後 = %+v, want %+v", got, want)
 	}
 
-	// タグを消すと、すぐ付かなくなる。
 	if err := db.Tags().DeleteTag(ctx, target.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -146,8 +135,6 @@ func TestFolderTagsFollowTagChangesWithoutRescan(t *testing.T) {
 	}
 }
 
-// Edge Cases: 同名のフォルダが別の場所にあればどちらの下の動画にも付き、同じ
-// 内容の複数の所在の祖先を両方使う。
 func TestFolderTagsUseEveryAncestorOfEveryLocation(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -161,7 +148,6 @@ func TestFolderTagsUseEveryAncestorOfEveryLocation(t *testing.T) {
 	}
 	first := upsertFolderVideo(t, db, fixturePath("/media/A/Travel/1.mp4"), "k1")
 	second := upsertFolderVideo(t, db, fixturePath("/media/B/Travel/2.mp4"), "k2")
-	// 同じ内容（k2）の別の所在。
 	if again := upsertFolderVideo(t, db, fixturePath("/media/Fav/2.mp4"), "k2"); again != second {
 		t.Fatalf("同じ内容が別の動画になった: %d != %d", again, second)
 	}
@@ -178,8 +164,6 @@ func TestFolderTagsUseEveryAncestorOfEveryLocation(t *testing.T) {
 	}
 }
 
-// 手で付けた分とフォルダ名の分は1件にまとまって出所を両方持ち、本数は重ねて
-// 数えない。取り外しで外れるのは手で付けた分だけ（受け入れ条件 9 のサーバー側）。
 func TestManualAndFolderTagsMergeAndDetachRemovesOnlyManual(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -234,8 +218,6 @@ func TestManualAndFolderTagsMergeAndDetachRemovesOnlyManual(t *testing.T) {
 	}
 }
 
-// 検索欄の語はフォルダ由来のタグの名前とシノニムにも当たる。ゲストの検索は
-// タグ名に照合しない。
 func TestSearchMatchesFolderTagNamesForOwnerOnly(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -251,7 +233,6 @@ func TestSearchMatchesFolderTagNamesForOwnerOnly(t *testing.T) {
 	rebuildIndexForTest(t, db)
 	setPublic(t, db, true, video, other)
 
-	// 元の名前で検索すると、シノニムと同じ名前のフォルダの下の動画に当たる。
 	if got := listIDs(t, db, domain.AudienceOwner, domain.VideoQuery{Query: "kyoto"}); !slices.Equal(got, []int64{video}) {
 		t.Errorf("所有者の検索 = %v, want [%d]", got, video)
 	}
@@ -260,8 +241,6 @@ func TestSearchMatchesFolderTagNamesForOwnerOnly(t *testing.T) {
 	}
 }
 
-// 既存のフォルダと同じ名前のタグを作ると、作成の応答の本数にもフォルダ由来の
-// 動画が入り、続く一覧の本数と食い違わない。
 func TestCreateTagCountsVideosUnderSameNamedFolder(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

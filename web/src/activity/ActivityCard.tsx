@@ -41,8 +41,6 @@ import {
   subjectParts,
 } from "./activityEntry";
 
-// アクティビティの記録 1 件のカード。
-
 const markIcon: Record<StatusMark, { icon: LucideIcon; className: string }> = {
   running: { icon: LoaderCircle, className: "animate-spin text-primary" },
   waiting: { icon: Clock, className: "text-muted-foreground" },
@@ -136,7 +134,7 @@ function Result({ entry, now }: { entry: ActivityEntry; now: Date }) {
   );
 }
 
-/** 要求を待っている操作。待つ間はカードのボタンをすべて止める。 */
+/** Disable all card actions while an operation is pending. */
 type Pending = "retry" | "undo" | null;
 
 function OpenLinks({ actions, busy }: { actions: OpenAction[]; busy: boolean }) {
@@ -177,10 +175,7 @@ type OperationButtonProps = Omit<ComponentProps<"button">, "children"> & {
   pending: boolean;
 };
 
-/**
- * OperationButton は要求を送る端のアイコンのボタンで、待つ間は Spinner を出す。Tooltip と
- * DropdownMenu の引き金が渡す属性と ref はそのまま button へ渡す。
- */
+/** Forward trigger attributes and refs to the button for Tooltip and DropdownMenu. */
 function OperationButton({ label, icon: Icon, pending, ...props }: OperationButtonProps) {
   return (
     <Button
@@ -241,11 +236,7 @@ interface ActionsProps {
   onUndo: (entry: ActivityEntry, tagId?: number) => Promise<void>;
 }
 
-/**
- * Actions はカードの端の操作である。やり直しと取り消しは確かめずに送り、待つ間はその
- * ボタンに Spinner を出してカードのボタンをすべて止める。成功した
- * 操作は読み直したカードが届くまで待つので、古いカードから同じ操作を二度送れない。
- */
+/** Keep actions disabled until the refreshed card arrives to prevent duplicate requests. */
 function Actions({ entry, actions, onRetry, onUndo }: ActionsProps) {
   const [pending, setPending] = useState<Pending>(null);
   const operations = entryOperations(entry);
@@ -295,16 +286,15 @@ function Actions({ entry, actions, onRetry, onUndo }: ActionsProps) {
 export interface ActivityCardProps {
   entry: ActivityEntry;
   now: Date;
-  /** 対象のリンクから開いた再生画面の戻り先（今の画面の URL）。 */
+  /** Return URL for playback opened from this card. */
   from: string;
   actions: OpenAction[];
-  /** やり直しを送る。失敗の知らせは呼び出し側が出し、拒否しない。 */
+  /** The caller reports failures; this promise never rejects. */
   onRetry: (entry: ActivityEntry) => Promise<void>;
-  /** 取り消しを送る。`auto_tag` は取り消すタグを渡す。失敗の知らせは呼び出し側が出す。 */
+  /** For auto_tag, pass the tag to undo; the caller reports failures. */
   onUndo: (entry: ActivityEntry, tagId?: number) => Promise<void>;
 }
 
-/** ActivityCard は記録 1 件の 1 行のカードである。 */
 export function ActivityCard({
   entry,
   now,

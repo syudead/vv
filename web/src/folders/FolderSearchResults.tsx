@@ -12,10 +12,6 @@ import { folderLocationLabel } from "./folderPath";
 import FolderVideoGrid from "./FolderVideoGrid";
 import { CardsLoading, LoadFailed, MoreRow, NoMatches, ResultCount } from "./states";
 
-/**
- * FolderSearchResults はフォルダ1件の中で検索語があるときの検索結果である。子フォルダの一群と「動画 N」の見出しを
- * 出さず、ライブラリと同じ要約行と1つの格子にする。
- */
 export default function FolderSearchResults({
   folder,
   videos,
@@ -27,11 +23,8 @@ export default function FolderSearchResults({
   folder: FolderRef;
   videos: VideosState;
   zoom: Zoom;
-  /** 再生画面から戻る先（今の一覧の URL）。 */
   backTo: string;
-  /** ホバープレビューを同時に 1 件に絞る調整（usePreviewCoordination）。 */
   preview: PreviewCardProps;
-  /** カードの題名の下に出すタグの行（useFolderTagsRow）。 */
   tagsRow: (video: Video) => ReactNode;
 }) {
   const noMatch = !videos.loading && videos.error === null && videos.items.length === 0;

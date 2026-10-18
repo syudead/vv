@@ -32,11 +32,8 @@ import type { PlaylistPanelState } from "./usePlaylistContext";
 const headingId = "playlist-panel-heading";
 
 /**
- * PlaylistPanel は動画ページの aside の先頭に置く、プレイリストの項目の並びである。項目は続けて再生と同じカードで、
- * 何本目かをサムネイルの左上に重ね、再生中の項目はリンクにせず枠と面で示す。広い画面では
- * 続けて再生・関連動画と同じ入れ物でスクロールし、狭い画面では一覧の高さを区切って中だけ
- * スクロールする。再生中のカードは `scrollTop` で見える位置に置く（ページと aside の列は動かさない）。
- * 並べ替えと外す操作はプレイリストの画面にあり、ここには置かない。
+ * Scroll only the panel's container to reveal playback; never move the page or aside column.
+ * Editing belongs on the playlist page.
  */
 export default function PlaylistPanel({
   playlistId,
@@ -52,21 +49,16 @@ export default function PlaylistPanel({
 }: {
   playlistId: number;
   panel: PlaylistPanelState;
-  /** 見出しの名前。パネルの応答が無いときは再生の応答の名前。分からなければ undefined。 */
+  /** Fall back to the playback response's name until the panel arrives. */
   name: string | undefined;
-  /** 再生の応答の位置と数。分からないか位置が 0 なら、見出しの右に何も出さない。 */
+  /** Hide position information when unknown or zero. */
   position: number;
   count: number;
   currentItemId: number | undefined;
   backTo: string;
-  /** 行を押して移った先で再生を始めるか（矢印と同じ規則）。 */
   autoplay: boolean;
   onRetry: () => void;
-  /**
-   * 埋まったときに再生中のカードが見える位置へ動かすか。広い画面では右の列の並びの入れ物を、
-   * 狭い画面ではパネル自身の一覧を動かす。続けて再生が下にあるときは、そちらが今のメンバーへ
-   * 動かすので false にする。
-   */
+  /** Disable auto-scroll when Up next below the panel owns scrolling to its current member. */
   scrollToCurrent?: boolean;
 }) {
   const shownName = panel.kind === "ready" ? panel.playlist.name : name;
@@ -74,11 +66,9 @@ export default function PlaylistPanel({
     <section
       aria-labelledby={shownName === undefined ? undefined : headingId}
       data-playlist-panel=""
-      // 広い画面の右の列は画面の右端まで伸びるので、右の余白は区切りの側が持つ（下の並びと揃える）。
+      // The section owns right padding so wide-screen rows align with the lists below.
       className="flex shrink-0 flex-col"
     >
-      {/* 広い画面では、続けて再生・関連動画と同じ入れ物でスクロールし、見出しはパネルが
-          見えている間だけ上に留まる。 */}
       <div className={stickyHeadingClass}>
         {shownName === undefined ? (
           <Skeleton aria-hidden="true" className="h-5 w-1/2" />
@@ -166,10 +156,8 @@ function PanelRows({
   const currentRef = useRef<HTMLLIElement | null>(null);
   const currentIndex = items.findIndex((item) => item.id === currentItemId);
 
-  // 埋まったとき、再生中の項目が変わったとき、読み直した並びで再生中のカードの位置が変わった
-  // ときに、再生中のカードを見える位置へ動かす。狭い画面ではパネル自身の一覧を、広い画面では
-  // 右の列の並びの入れ物を動かす（そこでは一覧は高さを区切らず、入れ物が位置の基準になる）。
-  // scrollIntoView はページと aside の列も動かすので使わない。
+  // Reveal the active item after mount, playback changes or reordered responses, using the panel on narrow screens and the shared list container on wide screens.
+  // Avoid scrollIntoView because it also scrolls the page and aside column.
   useLayoutEffect(() => {
     const list = listRef.current;
     const current = currentRef.current;
@@ -187,7 +175,7 @@ function PanelRows({
       list.scrollTop = top;
       return;
     }
-    // 上に留まる見出しの下から見えるよう、見出しの高さの分だけ戻す。
+    // Offset by the sticky heading height to keep the row visible beneath it.
     const heading = list.parentElement?.firstElementChild;
     const covered = heading instanceof HTMLElement ? heading.offsetHeight : 0;
     scroller.scrollTop = Math.max(0, top - covered);
@@ -198,7 +186,7 @@ function PanelRows({
       ref={listRef}
       aria-labelledby={headingId}
       data-playlist-panel-list=""
-      // 行の hover の面と輪郭が切れないよう、はみ出す分だけ内側に余白を取る。
+      // Allow padding for the hover surface and outline to avoid clipping.
       className={cn(
         cardListClass,
         "relative -mx-1.5 max-h-playlist-panel overflow-y-auto overscroll-contain scrollbar-on-hover px-1.5 py-1.5 lg:static lg:max-h-none lg:overflow-visible",
@@ -283,7 +271,6 @@ function PanelRow({
   );
 }
 
-/** VideoRow は動画の項目のカードで、関連動画のカードと同じく hover のプレビューとスクラブを持つ。 */
 function VideoRow({
   video,
   to,
@@ -324,10 +311,7 @@ function VideoRow({
   );
 }
 
-/**
- * ItemThumbnail は再生中のカードと、グループとスマートフォルダのカードのサムネイルである
- * （プレビューは流さない）。何本目かを左上に重ねる。
- */
+/** Current items, groups and smart folders do not play thumbnail previews. */
 function ItemThumbnail({ item, position }: { item: PlaylistItem; position: number }) {
   if (item.kind === "video" && item.video !== undefined) {
     return (
@@ -360,11 +344,6 @@ function ItemThumbnail({ item, position }: { item: PlaylistItem; position: numbe
   );
 }
 
-/**
- * ItemText は題名（グループとスマートフォルダは名前と本数）、視聴の印と再生できない理由である。
- * 動画の無いスマートフォルダの項目は名前を従の色にし、今の項目なら進み具合の欄に「0 videos」を
- * 出す。
- */
 function ItemText({ item, current = false }: { item: PlaylistItem; current?: boolean }) {
   const title = itemTitle(item);
   const group = orderedItemCollection(item);
@@ -372,7 +351,6 @@ function ItemText({ item, current = false }: { item: PlaylistItem; current?: boo
     group !== undefined
       ? group.watchState === "watched"
       : item.video?.progress?.completed === true;
-  // 今の項目が動画の無いフォルダなら、進み具合の欄に「0 videos」を出す。
   const groupProgress =
     group !== undefined && group.watchState === "inProgress"
       ? t.library.group.progress(group.watchedCount ?? 0, group.videoCount)

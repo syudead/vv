@@ -1,11 +1,8 @@
 -- +goose Up
--- 解析と取り込みの失敗理由のコード。画面は自由文の
--- probe_error・scans.error を出さず、このコードから英語の説明を作る。既存の行は null
--- （コードの無いアップグレード前の失敗）のまま残し、過去の自由文を解析して埋めない。
--- 自由文の列は形も値も変えない。
+-- Keep legacy free-form errors intact and leave new codes NULL rather than guessing structured reasons from text.
 alter table videos add column probe_error_code text;
 alter table scans add column error_code text;
--- 理由が特定の場所（メディアフォルダ、または読めなかった場所）に結び付くときだけ入る。
+-- Present only when the failure refers to a specific location.
 alter table scans add column error_path text;
 
 -- +goose Down

@@ -1,10 +1,4 @@
-/**
- * settingsPage は設定のページ（src/settings/SettingsPage.tsx）のテストが共有する偽のサーバーと
- * 描き方である。テストは話題ごとのファイル（src/settings/SettingsPage*.test.tsx）に分けてある。
- *
- * 各節の読み込みには既定の応答を返し、どれにも当たらない要求（メディアフォルダ、取り込み、
- * フォルダの選択など）は `fetchMock` へ通す。`routes` に URL を足すと、既定の応答を差し替える。
- */
+/** Provide default section reads; routes overrides them and unmatched requests pass to fetchMock. */
 import { render } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, vi } from "vitest";
@@ -49,9 +43,8 @@ const transcodingSettings: TranscodingSettings = {
 };
 
 /**
- * sectionResponses は各節の読み込みの既定の応答である。節の振る舞いはそれぞれの節のテストが
- * 確かめるので、ここでは節が描けるだけの値を返す。Network はデスクトップ版でない（404）で、
- * プラグインのプロキシは何も保存されていない。
+ * Keep section defaults minimal: section tests cover behavior; network defaults to non-desktop 404
+ * with no proxy.
  */
 function sectionResponses(): Record<string, () => Response> {
   return {
@@ -77,9 +70,8 @@ function sectionResponses(): Record<string, () => Response> {
 }
 
 /**
- * installSettingsServer は、各テストの前に偽のサーバーを fetch に差し込む。`requested` は
- * 既定の応答を返した要求の URL の記録で、ページが自分の読み込みだけをするかを確かめる。`routes` の
- * 応答は Promise でもよく、読み込みの途中を見るテストはそれを解かずにおく。
+ * Record default-read URLs to assert page-local loading; route promises can remain pending to test
+ * loading states.
  */
 export function installSettingsServer() {
   const server = {
@@ -113,10 +105,7 @@ export function installSettingsServer() {
   return server;
 }
 
-/**
- * LocationProbe は今のアドレス（パスとハッシュ）を `data-location` に置き、ブラウザの戻るの
- * 代わりのボタンを置く。疑似ロケールの検査に掛からないよう、文は持たない。
- */
+/** Expose location through an attribute, avoiding literal text in pseudo-locale checks. */
 function LocationProbe() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -131,7 +120,6 @@ function LocationProbe() {
   );
 }
 
-/** currentLocation は今のアドレス（パスとハッシュ）である。 */
 export function currentLocation(): string {
   return (
     document
@@ -140,12 +128,10 @@ export function currentLocation(): string {
   );
 }
 
-/** historyBack はブラウザの戻るの代わりに、ルーターの履歴を 1 つ戻る。 */
 export function historyBack(): void {
   document.querySelector<HTMLButtonElement>("[data-testid='history-back']")?.click();
 }
 
-/** renderSettings は App と同じ入れ子のルートで、`path` を開いた設定をシェルの中に描く。 */
 export function renderSettings(path = "/settings") {
   const page = (
     <AppShell>
@@ -159,7 +145,7 @@ export function renderSettings(path = "/settings") {
           <OwnerAudience>
             <ScanProvider>
               <ScanNoticeProvider>
-                {/* App と同じく、設定のルートを外側の `*` のルートの下に置く。 */}
+                {/* Match App's nested settings route beneath the outer splat. */}
                 <Routes>
                   <Route
                     path="*"

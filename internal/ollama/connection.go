@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// checkTimeout は接続の確かめの上限時間である。模型を読み込まないので短い。
+// Connection checks do not load models, so use a short deadline.
 const checkTimeout = 15 * time.Second
 
 type versionBody struct {
@@ -24,10 +24,9 @@ type tagsBody struct {
 	} `json:"models"`
 }
 
-// Check は保存した接続先に Ollama が動いていて、保存した模型があるかを確かめる。判定は
-// させず、模型も読み込まないので数秒で終わる。判定に使えるかは確かめない（それは判定の口を
-// 使う機能が確かめる）。使えなければ、つながらない・Ollama でない・模型が無いのどれかを
-// 述べた誤りを返す。接続先は保存した設定だけから取る。
+// Check verifies the saved endpoint and model listing without loading/classifying; feature callers
+// separately verify classification support, and connectivity, identity, and missing-model failures
+// remain distinct.
 func (c *Classifier) Check(ctx context.Context) error {
 	settings, err := c.settings.OllamaSettings(ctx)
 	if err != nil {
@@ -55,8 +54,7 @@ func (c *Classifier) Check(ctx context.Context) error {
 	return fmt.Errorf("ollama %s at %s has no model named %q; pull it first", version.Version, settings.Endpoint, settings.Model)
 }
 
-// sameModel は Ollama の模型名 listed が設定の名前 want と同じ模型かを返す。タグを省いた名前は
-// :latest を指す。
+// An omitted model tag means :latest.
 func sameModel(listed, want string) bool {
 	if listed == "" {
 		return false
@@ -67,8 +65,7 @@ func sameModel(listed, want string) bool {
 	return !strings.Contains(want, ":") && listed == want+":latest"
 }
 
-// getJSON は接続先の path を GET し、200 の JSON を out に読む。応答の本文そのものは、問い
-// 合わせ先が Ollama でないときに別のサービスの中身を画面へ写すことになるので誤りに含めない。
+// Never include raw response bodies in errors because the endpoint may be a different service.
 func (c *Classifier) getJSON(ctx context.Context, endpoint, path string, out any) error {
 	url := strings.TrimRight(endpoint, "/") + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

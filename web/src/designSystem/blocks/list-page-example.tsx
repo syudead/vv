@@ -36,15 +36,10 @@ import {
   VideoThumbnailMark,
 } from "@/ui/VideoThumbnail";
 
-// 一覧ページの型の見本（registry:block list-page-example）。トップバーの中のツールバーは、
-// 見本には shell が無いので代わりの帯（ExampleTopBar）に置く。見出し行・ツールバー・カードの
-// グリッド・末尾の追加読み込み・選択バーを、見本の動画で埋めて動かす。写した画面は見本の
-// データと文言を自分のものに、カードを自分のカードに差し替える
-// （web/registry/rules/patterns.md の List page）。
+// registry:block list-page-example. Replace sample data and cards; see web/registry/rules/patterns.md, List page.
 
 const durations = ["49:10", "3:12", "12:48", "27:05", "1:02:33", "8:40", "15:20", "4:55"];
 
-/** sampleVideos は見本の動画である。 */
 export function sampleVideos() {
   const p = t.designSystem.pattern;
   return Object.entries(p.videoTitles).map(([id, title], index) => ({
@@ -55,7 +50,6 @@ export function sampleVideos() {
   }));
 }
 
-/** SampleVideoCard は見本のカードである。写した画面は自分のカードに差し替える。 */
 export function SampleVideoCard({
   title,
   meta,
@@ -96,8 +90,8 @@ export function SampleVideoCard({
 }
 
 /**
- * ExampleTopBar は見本の中で shell のトップバーの代わりをする帯である。画面では使わず、
- * ツールバーを shell の TopBarPortal で包んで ListPage の toolbar に渡す。
+ * This demo substitutes for the shell top bar; real pages pass a TopBarPortal-wrapped toolbar to
+ * ListPage.
  */
 export function ExampleTopBar({ children }: { children: ReactNode }) {
   return (
@@ -107,10 +101,6 @@ export function ExampleTopBar({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * ExampleToolbar は見本のツールバー（トップバーの置き場）である。状態の見本でも同じものを
- * 使う。
- */
 export function ExampleToolbar({
   size = 1,
   onSizeChange,
@@ -235,7 +225,6 @@ function IconToggle({
   );
 }
 
-/** ExampleHeader は見本の見出し行である。 */
 export function ExampleHeader() {
   const p = t.designSystem.pattern;
   return (

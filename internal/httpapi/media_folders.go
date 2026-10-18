@@ -104,8 +104,7 @@ func (s *server) readJSONBody(w http.ResponseWriter, r *http.Request, target any
 	return s.decodeJSONBody(w, r, io.LimitReader(r.Body, 1<<20), target)
 }
 
-// readLargeJSONBody は readJSONBody と同じく本文を読むが、上限を limit バイトにする。
-// 上限を超えた本文は、途中で切れた JSON の誤りとしてではなく、上限を超えたことを示して断る。
+// Oversized JSON bodies report their limit rather than a truncated-JSON error.
 func (s *server) readLargeJSONBody(w http.ResponseWriter, r *http.Request, limit int64, target any) bool {
 	return s.decodeJSONBody(w, r, http.MaxBytesReader(w, r.Body, limit), target)
 }
@@ -130,7 +129,6 @@ func (s *server) decodeJSONBody(w http.ResponseWriter, r *http.Request, body io.
 	return true
 }
 
-// invalidBody は本文を読めなかったときの 400 invalid_request を書く。
 func (s *server) invalidBody(w http.ResponseWriter, err error, message string) {
 	if tooLarge := (*http.MaxBytesError)(nil); errors.As(err, &tooLarge) {
 		message = fmt.Sprintf("The body must be at most %d bytes. Split the items into smaller requests.", tooLarge.Limit)
@@ -148,8 +146,7 @@ func (s *server) acceptsSameOrigin(w http.ResponseWriter, r *http.Request) bool 
 		return true
 	}
 	parsed, err := url.Parse(origin)
-	// 期待するスキームは Cookie と同じ判定から取る。TLS を
-	// 終端する信頼するプロキシの後ろでは、X-Forwarded-Proto で https になる。
+	// Origin checks use the same scheme decision as cookies, including trusted TLS-terminating proxies.
 	expectedScheme := "http"
 	if s.clientOrigin(r).https {
 		expectedScheme = "https"

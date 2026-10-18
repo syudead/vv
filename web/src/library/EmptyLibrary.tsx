@@ -5,10 +5,7 @@ import { t } from "../i18n";
 import { Button } from "../ui/shadcn/button";
 import { EmptyState } from "../videoList/states";
 
-/**
- * EmptyLibrary はライブラリに動画が1本も無いときの状態で、取り込みを促す。
- * 「Scan」は取り込みを始めず、開始の場所である設定の「Scan status」へ移る（issue 830）。
- */
+/** Scan navigates to settings; it does not start ingestion directly. */
 export default function EmptyLibrary() {
   return (
     <EmptyState

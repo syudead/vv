@@ -22,7 +22,6 @@ func TestGenerateSeekThumbnailSetWritesSpriteIntoOutputDir(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 11 秒の動画は 5 秒間隔の 3 コマで、1 枚のシートに収まる。
 	if len(entries) != 1 || entries[0].Name() != "000.jpg" {
 		t.Fatalf("出力が %v（000.jpg の 1 個のはず）", entries)
 	}

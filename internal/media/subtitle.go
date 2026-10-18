@@ -14,21 +14,15 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 動画の隣の字幕ファイル（SRT・WebVTT）を、文字コードを判定して UTF-8 の WebVTT にし、
-// 時刻をずらす。外部プロセスは
-// 起動しない。
+// Convert sidecar SRT/WebVTT to shifted UTF-8 WebVTT without external processes.
 
-// SubtitleConverter は字幕ファイルを WebVTT に変換する。状態を持たないので、ゼロ値の
-// まま使える。
+// SubtitleConverter is stateless and its zero value is usable.
 type SubtitleConverter struct{}
 
-// NewSubtitleConverter は字幕ファイルの変換を返す。
 func NewSubtitleConverter() SubtitleConverter { return SubtitleConverter{} }
 
-// Convert は src（format の形式の字幕ファイルの中身）を UTF-8 の WebVTT にし、すべての
-// cue の時刻から offsetMs を引いて返す。終了時刻が 0 以下になる cue は返さず、開始
-// 時刻が負になる cue は 0 から始める。読めない入力には domain.ErrSubtitleUnreadable を
-// 包んだ誤りを返す。
+// Convert subtracts offsetMs, drops cues ending at or before zero, and clamps negative starts to
+// zero; unreadable input wraps domain.ErrSubtitleUnreadable.
 func (SubtitleConverter) Convert(src []byte, format domain.SubtitleFormat, offsetMs int64) ([]byte, error) {
 	text, err := decodeSubtitle(src)
 	if err != nil {
@@ -46,15 +40,14 @@ func (SubtitleConverter) Convert(src []byte, format domain.SubtitleFormat, offse
 	}
 }
 
-// subtitleScripts は、BOM の無い UTF-8 の字幕をそのまま UTF-8 と決めてよい文字体系である
+// Scripts accepted as unambiguous BOM-less UTF-8 subtitles.
 var subtitleScripts = []*unicode.RangeTable{
 	unicode.Common, unicode.Inherited, unicode.Latin, unicode.Greek, unicode.Cyrillic,
 	unicode.Hebrew, unicode.Arabic, unicode.Thai, unicode.Hangul, unicode.Han,
 	unicode.Hiragana, unicode.Katakana, unicode.Bopomofo,
 }
 
-// decodeSubtitle は字幕ファイルの文字コードを BOM → UTF-8 の妥当性 → Shift_JIS の順で
-// 決め、UTF-8 の文字列にする。
+// Detect encoding in order: BOM, valid UTF-8, then Shift_JIS.
 func decodeSubtitle(src []byte) (string, error) {
 	switch {
 	case len(src) == 0:
@@ -100,8 +93,8 @@ func inSubtitleScripts(src []byte) bool {
 	return true
 }
 
-// cleanShiftJIS は Shift_JIS の復号器の出力が「復号できた」ものかを確かめる。復号器は
-// 読めない列でエラーを返さず U+FFFD を出し、0x80 を U+0080 に通す。
+// The Shift_JIS decoder substitutes U+FFFD without error and passes 0x80 as U+0080; reject both
+// cases explicitly.
 func cleanShiftJIS(decoded []byte) bool {
 	for _, r := range string(decoded) {
 		if r == utf8.RuneError || (r >= 0x80 && r <= 0x9F) {
@@ -111,14 +104,12 @@ func cleanShiftJIS(decoded []byte) bool {
 	return true
 }
 
-// cueTiming は cue の時刻の行を読んだものである。
 type cueTiming struct {
 	startMs, endMs int64
-	// settings は終了時刻のあとに続く WebVTT の cue の設定（先頭の空白を含む）である。
+	// Preserve leading whitespace before WebVTT cue settings.
 	settings string
 }
 
-// shift は時刻から offsetMs を引く。返さない cue なら false を返す。
 func (c cueTiming) shift(offsetMs int64) (cueTiming, bool) {
 	c.startMs -= offsetMs
 	c.endMs -= offsetMs
@@ -133,8 +124,7 @@ func (c cueTiming) String() string {
 	return formatTimestamp(c.startMs) + " --> " + formatTimestamp(c.endMs) + c.settings
 }
 
-// parseTiming は `start --> end [settings]` の行を読む。時刻は `h:mm:ss` か `mm:ss` に、
-// `,` か `.` で区切った 1〜3 桁の小数が付いてよい。
+// Accept h:mm:ss or mm:ss with optional one-to-three decimal digits separated by comma or period.
 func parseTiming(line string) (cueTiming, bool) {
 	before, after, found := strings.Cut(line, "-->")
 	if !found {
@@ -207,7 +197,7 @@ func allDigits(s string) bool {
 	return s != ""
 }
 
-// blocks は空行で区切った行のまとまりに分ける。空白だけの行も区切りとみなす。
+// Whitespace-only lines also separate blocks.
 func blocks(text string) [][]string {
 	var result [][]string
 	var current []string
@@ -227,8 +217,7 @@ func blocks(text string) [][]string {
 	return result
 }
 
-// convertSRT は SRT を WebVTT にする。番号行を除き、時刻の行を
-// WebVTT の形に揃え、cue の本文はそのまま通す。時刻の行が読めない cue は落とす。
+// Remove SRT numbering, preserve cue text, and drop unreadable timings.
 func convertSRT(text string, offsetMs int64) ([]byte, error) {
 	var out strings.Builder
 	out.WriteString("WEBVTT\n")
@@ -245,7 +234,7 @@ func convertSRT(text string, offsetMs int64) ([]byte, error) {
 			continue
 		}
 		cues++
-		// SRT の終了時刻のあとの座標（X1: …）は WebVTT の設定ではないので捨てる。
+		// SRT trailing coordinates are not WebVTT cue settings.
 		timing.settings = ""
 		shifted, keep := timing.shift(offsetMs)
 		if !keep {
@@ -262,16 +251,14 @@ func convertSRT(text string, offsetMs int64) ([]byte, error) {
 	return []byte(out.String()), nil
 }
 
-// convertVTT は WebVTT のヘッダーを確かめ、cue の時刻だけを offsetMs ずらして通す。
-// offsetMs が 0 なら中身をそのまま返す。
-// NOTE・STYLE・REGION のブロックと、時刻の行が読めないブロックはそのまま残す。
+// Preserve NOTE/STYLE/REGION and unreadable blocks; zero offset leaves decoded content unchanged.
 func convertVTT(text string, offsetMs int64) ([]byte, error) {
 	text = strings.TrimPrefix(text, "\uFEFF")
 	header, _, _ := strings.Cut(text, "\n")
 	if header != "WEBVTT" && !strings.HasPrefix(header, "WEBVTT ") && !strings.HasPrefix(header, "WEBVTT\t") {
 		return nil, fmt.Errorf("%w: missing WEBVTT header", domain.ErrSubtitleUnreadable)
 	}
-	// ずらさないときは、復号と行末の統一のほかは手を入れずに通す。
+	// Without shifting, only decoding and line-ending normalization apply.
 	if offsetMs == 0 {
 		return []byte(text), nil
 	}
@@ -303,8 +290,7 @@ func isVTTMetadata(first string) bool {
 	return false
 }
 
-// shiftVTTCue は cue のブロック（識別子の行があってもよい）の時刻の行をずらす。
-// 時刻の行が無いブロックはそのまま返す。
+// Blocks without timing lines pass through unchanged.
 func shiftVTTCue(block []string, offsetMs int64) ([]string, bool) {
 	for i := 0; i < len(block) && i < 2; i++ {
 		timing, ok := parseTiming(strings.TrimSpace(block[i]))

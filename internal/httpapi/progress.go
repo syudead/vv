@@ -12,16 +12,9 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// maxProgressBody は再生位置の本文に許す大きさである。数十バイトで足りる
-// ものなので、これを越える要求は読み切らずに断る。
 const maxProgressBody = 1 << 10
 
-// PutVideoProgress は再生位置を記録する（PUT /api/videos/{id}/progress）。
-//
-// 視聴済みの判定はサーバー側で行い、クライアントの申告は採らない。
-// クライアントごとに判定が揺れると、一覧の表示と再生画面が食い違う。
-//
-// 呼び出し間隔はクライアントの責務で、サーバー側で頻度制限はしない。
+// Completion is server-derived for consistency; clients control write frequency without server throttling.
 func (s *server) PutVideoProgress(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	if s.playback == nil {
 		s.internalError(w, "Playback progress storage is not configured.", nil)
@@ -47,8 +40,7 @@ func (s *server) PutVideoProgress(w http.ResponseWriter, r *http.Request, id gen
 		durationMs = *video.DurationMs
 	}
 
-	// 記録の鍵は利用者データの鍵（videos.id ではない）。ファイルを移動・改名・
-	// 置き直しても再生位置が引き継がれ、束ねた動画では集まりの再生位置になる。尺は再生したバージョンのもの。
+	// Progress uses the shared user-data key across moves/bundles, but duration comes from the played version.
 	saved, err := s.playback.SaveProgress(
 		r.Context(), video.UserKey, domain.EvaluateProgress(update.positionMs, durationMs), playOf(video, update))
 	if err != nil {
@@ -60,7 +52,6 @@ func (s *server) PutVideoProgress(w http.ResponseWriter, r *http.Request, id gen
 	writeJSON(w, http.StatusOK, toAPIProgress(saved), s.logger)
 }
 
-// acceptsProgressBody は本文の型が受け付けられるかを確かめる。
 func (s *server) acceptsProgressBody(w http.ResponseWriter, r *http.Request) bool {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil {
@@ -74,13 +65,11 @@ func (s *server) acceptsProgressBody(w http.ResponseWriter, r *http.Request) boo
 	return true
 }
 
-// progressUpdate は再生位置の本文から読み取った値である。playbackID は送られなければ空。
 type progressUpdate struct {
 	positionMs int64
 	playbackID string
 }
 
-// readProgressUpdate は本文から位置と視聴の識別子を読み取る。
 func (s *server) readProgressUpdate(w http.ResponseWriter, r *http.Request) (progressUpdate, bool) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxProgressBody+1))
 	if err != nil {
@@ -92,8 +81,7 @@ func (s *server) readProgressUpdate(w http.ResponseWriter, r *http.Request) (pro
 		return progressUpdate{}, false
 	}
 
-	// positionMs と playbackId だけを読む。completed のような申告があっても採らない。
-	// playbackId は生のまま受け取り、明示の null を「送られていない」と区別して断る。
+	// Ignore client completion claims; distinguish omitted playbackId from invalid explicit null.
 	var update struct {
 		PositionMs *int64          `json:"positionMs"`
 		PlaybackID json.RawMessage `json:"playbackId"`
@@ -126,16 +114,13 @@ func (s *server) readProgressUpdate(w http.ResponseWriter, r *http.Request) (pro
 			s.invalidRequest(w, "playbackId must be an RFC 4122 id (8-4-4-4-12 hexadecimal).")
 			return progressUpdate{}, false
 		}
-		// 16 進の大文字と小文字は同じ識別子なので、小文字にそろえてから一意の鍵に渡す。
-		// そろえないと、大小だけ違う同じ識別子で履歴が 2 件になる。
+		// Lowercase hexadecimal playback IDs before uniqueness checks to avoid duplicate history entries for case variants.
 		out.playbackID = strings.ToLower(playbackID)
 	}
 	return out, true
 }
 
-// playOf は保存が視聴履歴に書く値を返す。識別子が無いか、動画の content_key が空なら nil で、
-// 履歴を書かない。鍵は再生したバージョンの
-// content_key で、集まりの鍵（UserKey）ではない。題名はいま動画のページが見せている有効な題名である。
+// History uses the played version's ContentKey, not UserKey; missing playback ID/content key suppresses history.
 func playOf(video domain.Video, update progressUpdate) *domain.Play {
 	if update.playbackID == "" || video.ContentKey == "" {
 		return nil
@@ -143,7 +128,6 @@ func playOf(video domain.Video, update progressUpdate) *domain.Play {
 	return &domain.Play{PlaybackID: update.playbackID, ContentKey: video.ContentKey, Title: video.Title}
 }
 
-// toAPIProgress は domain.Progress を契約の形へ写す。
 func toAPIProgress(progress domain.Progress) gen.Progress {
 	return gen.Progress{
 		PositionMs: progress.PositionMs,

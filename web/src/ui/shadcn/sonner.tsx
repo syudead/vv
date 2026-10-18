@@ -8,9 +8,8 @@ import {
 import type * as React from "react";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 
-// shadcn/ui の sonner（radix-nova）を vv のトークンで着せたもの。通知は `sonner` の
-// `toast()` で出し、Toaster はアプリに 1 つ置く（web/registry/rules/components.md「Sonner」）。
-// vv は暗い配色だけなので theme は dark に固定する。
+// Adapted from shadcn/ui radix-nova; mount one Toaster per app.
+// The app supports only the dark palette.
 
 const Toaster = ({ ...props }: ToasterProps) => {
   return (

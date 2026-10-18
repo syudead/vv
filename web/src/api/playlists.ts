@@ -1,15 +1,9 @@
 import { apiFetch, MAX_PAGE_SIZE, PAGE_SIZE, request, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
 
-// プレイリストの画面 API。
-// 型は api/openapi.yaml からの生成物を使う。どの経路も所有者だけである。
-
 export type PlaylistSummary = components["schemas"]["PlaylistSummary"];
 type ApiPlaylist = components["schemas"]["Playlist"];
 type ApiPlaylistItem = components["schemas"]["PlaylistItem"];
-/**
- * PlaylistItem は画面が描くプレイリストの項目（動画・グループ・スマートフォルダ）である。
- */
 export type PlaylistItem = ApiPlaylistItem;
 export type Playlist = ApiPlaylist;
 export type PlaylistItemsAdded = components["schemas"]["PlaylistItemsAdded"];
@@ -29,17 +23,12 @@ function playlistItemPath(id: number, itemId: number): string {
 export type PlaylistList = components["schemas"]["PlaylistList"];
 
 export interface ListPlaylistsParams {
-  /** 前回の応答の `nextCursor`。中身は解釈しない。 */
+  /** Opaque nextCursor from the previous response. */
   cursor?: string;
-  /** 1 ページの件数。省けばライブラリの一覧と同じ 60 件。 */
   limit?: number;
   signal?: AbortSignal;
 }
 
-/**
- * listPlaylists はプレイリストを更新日時の新しい順に 1 ページ取得する（GET /api/playlists）。
- * 続きがあれば `nextCursor` が入り、`total` はページングとは独立な全部の数である。
- */
 export function listPlaylists({
   cursor,
   limit = PAGE_SIZE,
@@ -51,22 +40,9 @@ export function listPlaylists({
   return request<PlaylistList>(`/api/playlists?${params.toString()}`, { signal });
 }
 
-/**
- * 辿っている間に一覧が変わり続けたときに、listAllPlaylists が最初のページから読み直す回数の上限。
- * 変わるのは所有者の操作だけなので、普段は 0 回か 1 回で済む。
- */
 export const MAX_LIST_RESTARTS = 3;
 
-/**
- * listAllPlaylists はプレイリストの全部を、`nextCursor` が尽きるまで最大の件数（MAX_PAGE_SIZE）の
- * ページで辿って取得する。名前で選ぶ「Add to playlist」のピッカーのように、一覧の全部を手元で
- * 絞る所が使う。
- *
- * 並びは更新日時の新しい順なので、辿っている間に変わったプレイリストは前のページの側へ動き、
- * カーソルの次からは返らない。応答の `version` が最初のページと違えばそれが起きたので、最初の
- * ページから読み直す。MAX_LIST_RESTARTS 回
- * 読み直しても揃わなければ、欠けた一覧を返さずに失敗にする。
- */
+/** Restart pagination when version changes because updated playlists can move before the cursor. Fail after bounded retries rather than return an incomplete list. */
 export async function listAllPlaylists(signal?: AbortSignal): Promise<PlaylistSummary[]> {
   for (let restarts = 0; ; restarts++) {
     const items: PlaylistSummary[] = [];
@@ -90,10 +66,6 @@ export async function listAllPlaylists(signal?: AbortSignal): Promise<PlaylistSu
   }
 }
 
-/**
- * createPlaylist は空のプレイリストを作る（POST /api/playlists）。名前は前後の空白を取り除いて
- * 1〜100 文字でなければ 400 `invalid_request` の RequestFailed になる。
- */
 export function createPlaylist(
   name: string,
   signal?: AbortSignal,
@@ -106,15 +78,11 @@ export function createPlaylist(
   });
 }
 
-/**
- * getPlaylist はプレイリスト 1 つと見せる項目を位置の順に取得する（GET /api/playlists/{id}）。
- * スマートフォルダの項目も、サーバーの位置のまま含む。
- */
+/** Preserve server item positions, including smart-folder items. */
 export function getPlaylist(id: number, signal?: AbortSignal): Promise<Playlist> {
   return request<Playlist>(playlistPath(id), { signal });
 }
 
-/** renamePlaylist はプレイリストの名前を変え、トリムした名前の要約を返す（PATCH /api/playlists/{id}）。 */
 export function renamePlaylist(
   id: number,
   name: string,
@@ -128,18 +96,12 @@ export function renamePlaylist(
   });
 }
 
-/** deletePlaylist はプレイリストを消す（DELETE /api/playlists/{id}）。無ければ 404 の RequestFailed。 */
 export async function deletePlaylist(id: number, signal?: AbortSignal): Promise<void> {
   const response = await apiFetch(playlistPath(id), { method: "DELETE", signal });
   if (!response.ok) throw await toRequestFailed(response);
 }
 
-/**
- * addToPlaylist は `videoIds` の動画、`groupIds` のグループ、`smartFolderIds` のスマートフォルダを、
- * この順でプレイリストの末尾に足す（POST /api/playlists/{id}/items、docs/design-docs/catalog-organization.md
- * R-10、docs/design-docs/catalog-organization.md）。既にあるものは `existing` に数えられ、
- * 何も変わらない。`smartFolderIds` が空なら本文に載せない。
- */
+/** Append videos, groups, then smart folders; count existing items without adding duplicates. */
 export function addToPlaylist(
   id: number,
   videoIds: readonly number[],
@@ -161,10 +123,6 @@ export function addToPlaylist(
   });
 }
 
-/**
- * movePlaylistItem は項目 `itemId` を項目 `afterItemId` のすぐ後ろへ移す。`null` なら先頭へ移す
- * （POST /api/playlists/{id}/items/{itemId}/move）。
- */
 export async function movePlaylistItem(
   id: number,
   itemId: number,
@@ -180,10 +138,7 @@ export async function movePlaylistItem(
   if (!response.ok) throw await toRequestFailed(response);
 }
 
-/**
- * removePlaylistItem は項目を 1 つ外す（DELETE /api/playlists/{id}/items/{itemId}）。動画・グループ、
- * そのお気に入りと再生位置は変わらない。
- */
+/** Remove only the playlist item, preserving the underlying entity, favorites, and progress. */
 export async function removePlaylistItem(
   id: number,
   itemId: number,
@@ -196,12 +151,7 @@ export async function removePlaylistItem(
   if (!response.ok) throw await toRequestFailed(response);
 }
 
-/**
- * getPlaylistPlayback は、動画ページがプレイリスト `playlistId` の項目 `itemId` の動画 `videoId` を
- * 再生しているときの位置と次の動画を、その時点の並びから取得する
- * （GET /api/playlists/{id}/playback）。プレイリストか項目が無くなっていれば
- * 404 の RequestFailed になり、画面はプレイリストの文脈を外す。
- */
+/** Read position/next from current order; missing playlists/items return 404 so callers drop playlist context. */
 export function getPlaylistPlayback(
   playlistId: number,
   itemId: number,

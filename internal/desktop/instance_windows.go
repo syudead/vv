@@ -9,19 +9,12 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// instanceHandles はプロセスの終わりまで持つミューテックスである。閉じないので、
-// プロセスが終わると OS が放す。
+// Keep mutex handles until process exit; the OS releases them.
 var instanceHandles []uintptr
 
-// AcquireInstance は、DB を開く前に、同じ利用者が同じデータの置き場で VVMDM を
-// 起動していないかを確かめる（手順は acquireInstance）。
-//
-// セッションをまたぐ名前付きミューテックスを、作った利用者だけが開ける DACL で
-// 取る。取れなければ、同じセッションの持ち主なら、表に出ているウィンドウを元の
-// 大きさに戻して前面に出すか、ミューテックスが放されるのを wait まで待つ（前の
-// プロセスが停止の途中でウィンドウを隠しているとき、まだウィンドウを出す前の
-// とき）。別のセッションの持ち主なら待たない。呼び出し元は UI のスレッドで呼ぶ
-// （ミューテックスは取ったスレッドが持つ）。
+// AcquireInstance must run on the UI thread before opening the database; a user-only DACL protects
+// the cross-session mutex. Activate a visible same-session window or wait up to wait for its owner;
+// other sessions fail immediately.
 func AcquireInstance(root string, wait time.Duration) (InstanceState, error) {
 	sid, err := currentUserSID()
 	if err != nil {
@@ -40,7 +33,6 @@ func AcquireInstance(root string, wait time.Duration) (InstanceState, error) {
 	return state, err
 }
 
-// winInstance は instanceOS の Win32 の実装である。
 type winInstance struct {
 	attrs *windows.SecurityAttributes
 }
@@ -59,14 +51,14 @@ func (winInstance) Wait(handle uintptr, d time.Duration) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	// 前のプロセスは放さずに終わるので、WAIT_ABANDONED も取れたことを表す。
+	// The previous process exits without releasing, so WAIT_ABANDONED also means ownership was
+	// acquired.
 	return event == windows.WAIT_OBJECT_0 || event == windows.WAIT_ABANDONED, nil
 }
 
 func (winInstance) ActivateWindow() bool { return activateExistingWindow() }
 
-// createMutex は名前付きミューテックスを作るか開く。既にあったら existed は真で、
-// owner を求めても持ち主にはならない。
+// An existing mutex never grants requested initial ownership.
 func createMutex(attrs *windows.SecurityAttributes, name string, owner bool) (handle windows.Handle, existed bool, err error) {
 	name16, err := windows.UTF16PtrFromString(name)
 	if err != nil {
@@ -82,8 +74,7 @@ func createMutex(attrs *windows.SecurityAttributes, name string, owner bool) (ha
 	return handle, false, nil
 }
 
-// mutexExists は名前付きミューテックスが今あるかを返す。開けなくても、名前が
-// 使われていれば（ERROR_ACCESS_DENIED）あるとみなす。
+// ERROR_ACCESS_DENIED still proves the mutex name exists.
 func mutexExists(name string) bool {
 	name16, err := windows.UTF16PtrFromString(name)
 	if err != nil {
@@ -97,9 +88,7 @@ func mutexExists(name string) bool {
 	return errors.Is(err, windows.ERROR_ACCESS_DENIED)
 }
 
-// activateExistingWindow は同じセッションの VVMDM のウィンドウが表に出ていれば、
-// 最小化を元に戻して前面に出し、真を返す。停止の途中で隠れているウィンドウや、
-// まだ出ていないウィンドウには何もしない。
+// Restore and activate visible same-session windows; ignore hidden shutdown/startup windows.
 func activateExistingWindow() bool {
 	className, err := windows.UTF16PtrFromString(ClassName)
 	if err != nil {
@@ -116,7 +105,6 @@ func activateExistingWindow() bool {
 	return true
 }
 
-// currentUserSID はこのプロセスの利用者の SID を文字列で返す。
 func currentUserSID() (string, error) {
 	user, err := windows.GetCurrentProcessToken().GetTokenUser()
 	if err != nil {

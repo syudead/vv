@@ -10,104 +10,77 @@ import (
 	"unicode/utf8"
 )
 
-// MaxFolderPreviews はフォルダカードに差し込むサムネイルの上限である。
 const MaxFolderPreviews = 4
 
-// ErrInvalidFolderPath はフォルダの相対パスが規則に反することを表す。
 var ErrInvalidFolderPath = errors.New("invalid folder path")
 
-// FolderLocation はフォルダの集計に要る所在1件である。フォルダは保存せず、
-// 取り込み済みの所在のパスから要求のたびに導く。
+// Folders are derived from imported locations on each request, not persisted.
 type FolderLocation struct {
-	// Path は所在の絶対パス。
 	Path           string
 	VideoID        int64
 	ContentKey     string
 	ThumbnailState ThumbnailState
 	PreviewState   PreviewState
-	// ThumbnailPositionMs と ThumbnailRevision は所有者が指定した代表サムネイルの位置と
-	// 改版番号である（Video の同名の項目と同じ。サムネイルの URL の版に使う）。
-	ThumbnailPositionMs *int64
-	ThumbnailRevision   int64
-	// ThumbnailImageRevision は適用したサムネイルの画像の改版番号である（Video の同名の項目）。
-	ThumbnailImageRevision int64
-}
-
-// FolderPreview はフォルダカードに差し込むサムネイル1件である。
-type FolderPreview struct {
-	VideoID      int64
-	ContentKey   string
-	PreviewState PreviewState
-	// ThumbnailPositionMs と ThumbnailRevision はサムネイルの URL の版に使う
-	// （FolderLocation の同名の項目）。
+	// ThumbnailPositionMs and ThumbnailRevision version thumbnail URLs, matching Video.
 	ThumbnailPositionMs    *int64
 	ThumbnailRevision      int64
 	ThumbnailImageRevision int64
 }
 
-// FolderSummary はフォルダカード1枚分の集計である。
+type FolderPreview struct {
+	VideoID                int64
+	ContentKey             string
+	PreviewState           PreviewState
+	ThumbnailPositionMs    *int64
+	ThumbnailRevision      int64
+	ThumbnailImageRevision int64
+}
+
 type FolderSummary struct {
 	RootID int64
-	// Path は登録フォルダからの `/` 区切りの相対パス。登録フォルダ自身は空文字。
+	// Path is /-separated relative to the registered root, or empty for the root itself.
 	Path     string
 	Name     string
 	RootPath string
-	// VideoCount は直下の動画の件数。孫以降のフォルダの動画は数えない。
-	VideoCount int
-	// FolderCount は直下の子フォルダの件数。
+	// VideoCount includes only direct children.
+	VideoCount  int
 	FolderCount int
-	// Previews は直下の動画のうちサムネイル生成済みのもの。
-	Previews []FolderPreview
+	Previews    []FolderPreview
 }
 
-// FolderListing は開いたフォルダと、その直下の子フォルダである。
 type FolderListing struct {
 	Folder  FolderSummary
 	Folders []FolderSummary
 }
 
-// FolderScope はフォルダの動画の問い合わせで対象にする所在の範囲である。
-// 値は api/openapi.yaml の scope パラメータに対応する。空は FolderScopeDirect と
-// 同じに扱う。
+// FolderScope matches the API scope parameter; empty means FolderScopeDirect.
 type FolderScope string
 
 const (
-	// FolderScopeDirect はフォルダ直下の所在だけを対象にする（既定）。
-	FolderScopeDirect FolderScope = "direct"
-	// FolderScopeSubtree はフォルダとその配下すべての所在を対象にする。
+	FolderScopeDirect  FolderScope = "direct"
 	FolderScopeSubtree FolderScope = "subtree"
 )
 
-// Valid は既知の値かどうかを返す。
 func (s FolderScope) Valid() bool {
 	return s == FolderScopeDirect || s == FolderScopeSubtree
 }
 
-// FolderVideoQuery はフォルダの動画の問い合わせ条件である。
 type FolderVideoQuery struct {
-	// Dir はフォルダの絶対パス。
-	Dir string
-	// Scope は対象にする所在の範囲。空は FolderScopeDirect と同じ。
+	Dir   string
 	Scope FolderScope
-	// Query は VideoQuery.Query と同じ書き方の検索語。照合は Scope の範囲に
-	// ある所在だけを対象にする。
+	// Query uses VideoQuery syntax but matches only locations within Scope.
 	Query string
-	// Watch は視聴状態の絞り込み。空は WatchAll と同じ。
-	Watch WatchFilter
-	// PlayableOnly はブラウザで再生できると確定した動画だけにする。
+	// An empty Watch means WatchAll.
+	Watch        WatchFilter
 	PlayableOnly bool
 	Sort         VideoSort
-	// Seed は VideoQuery.Seed と同じ。
-	Seed   int64
-	Cursor string
-	Limit  int
-	// FavoriteOnly はお気に入りの動画だけにする。
+	Seed         int64
+	Cursor       string
+	Limit        int
 	FavoriteOnly bool
 }
 
-// ValidateFolderPath は登録フォルダからの相対パスを検査する。空文字は登録
-// フォルダ自身を指す。空の段・先頭や末尾の `/`・`.`・`..`・NUL を断るので、
-// 検査を通ったパスを登録フォルダへ連結しても外へ出ることはない。
+// ValidateFolderPath rejects empty segments, leading/trailing slashes, dot segments, and NUL to prevent escaping the root; empty denotes the root itself.
 func ValidateFolderPath(rel string) error {
 	if rel == "" {
 		return nil
@@ -119,7 +92,7 @@ func ValidateFolderPath(rel string) error {
 		if segment == "" || segment == "." || segment == ".." {
 			return ErrInvalidFolderPath
 		}
-		// 区切りが `\` の OS では、段の中の `\` も区切りとして解釈されてしまう。
+		// On backslash-separator platforms, backslashes inside segments would also traverse directories.
 		if filepath.Separator != '/' && strings.ContainsRune(segment, filepath.Separator) {
 			return ErrInvalidFolderPath
 		}
@@ -127,8 +100,7 @@ func ValidateFolderPath(rel string) error {
 	return nil
 }
 
-// FolderDir は登録フォルダと相対パスからフォルダの絶対パスを作る。rel は
-// ValidateFolderPath を通っていること。
+// FolderDir requires rel to pass ValidateFolderPath.
 func FolderDir(root, rel string) string {
 	if rel == "" {
 		return root
@@ -136,9 +108,7 @@ func FolderDir(root, rel string) string {
 	return filepath.Join(root, filepath.FromSlash(rel))
 }
 
-// FolderName はフォルダの表示名を返す。相対パスの最後の段で、登録フォルダ
-// 自身は絶対パスの最後の段である。`/` のように最後の段が無い登録フォルダは
-// 絶対パスそのものを名前にする。
+// FolderName uses the final path segment, falling back to the absolute root when no segment exists.
 func FolderName(root, rel string) string {
 	if rel != "" {
 		return rel[strings.LastIndexByte(rel, '/')+1:]
@@ -150,12 +120,7 @@ func FolderName(root, rel string) string {
 	return base
 }
 
-// SummarizeFolder は所在の一覧から、フォルダ自身と直下の子フォルダの集計を
-// 作る。locations はフォルダ配下（深さを問わない）の所在で、パスの昇順で
-// なくてもよい。
-//
-// 2つ目の戻り値はフォルダが存在するかどうかである。登録フォルダ自身は所在が
-// 無くても存在し、それより下は配下に所在が1件以上あるときだけ存在する。
+// SummarizeFolder accepts unordered descendant locations; the root always exists, while subfolders exist only when they contain locations.
 func SummarizeFolder(root MediaFolder, rel string, locations []FolderLocation) (FolderListing, bool) {
 	dir := FolderDir(root.Path, rel)
 	sorted := slices.Clone(locations)
@@ -205,8 +170,7 @@ func SummarizeFolder(root MediaFolder, rel string, locations []FolderLocation) (
 	return listing, true
 }
 
-// SortFolders はフォルダを名前の自然順に並べる。同順位は元の文字列、最後に
-// 登録フォルダの絶対パスで決着させる。
+// SortFolders breaks natural-name ties by original spelling, then absolute root path.
 func SortFolders(folders []FolderSummary) {
 	slices.SortStableFunc(folders, func(a, b FolderSummary) int {
 		if order := CompareNatural(a.Name, b.Name); order != 0 {
@@ -219,9 +183,7 @@ func SortFolders(folders []FolderSummary) {
 	})
 }
 
-// CompareNatural は名前を自然順で比べる。数字の連続は数値として比べ
-// （`2` < `10`）、それ以外は大文字小文字を区別せずに比べる。数値が等しい
-// 数字の連続（`01` と `1`）は同順位とし、呼び出し側が元の文字列で決着させる。
+// CompareNatural compares digit runs numerically and other characters case-insensitively; equal numbers such as 01 and 1 require a caller-provided tie-breaker.
 func CompareNatural(a, b string) int {
 	for a != "" && b != "" {
 		ra, sizeA := utf8.DecodeRuneInString(a)
@@ -264,7 +226,6 @@ func splitDigits(s string) (digits, rest string) {
 	return s[:end], s[end:]
 }
 
-// compareDigits は数字の連続を、桁あふれせずに数値として比べる。
 func compareDigits(a, b string) int {
 	a = strings.TrimLeft(a, "0")
 	b = strings.TrimLeft(b, "0")
@@ -277,8 +238,6 @@ func compareDigits(a, b string) int {
 	return strings.Compare(a, b)
 }
 
-// relativeSegments は dir から path への相対パスを段に分ける。path が dir の
-// 下に無ければ false を返す。
 func relativeSegments(dir, path string) ([]string, bool) {
 	if !PathWithinRoot(dir, path) {
 		return nil, false
@@ -300,8 +259,7 @@ func newFolderAccumulator() *folderAccumulator {
 	return &folderAccumulator{videos: map[int64]struct{}{}, folders: map[string]struct{}{}}
 }
 
-// addVideo は直下の所在を1件数える。同じ動画の所在が同じフォルダに2つ
-// あっても1本と数え、プレビューはパスの昇順で先の所在の順番に入れる。
+// addVideo counts each video once per folder and orders previews by the first location path.
 func (f *folderAccumulator) addVideo(location FolderLocation) {
 	if _, seen := f.videos[location.VideoID]; seen {
 		return
@@ -332,40 +290,22 @@ func (f *folderAccumulator) summary(root MediaFolder, rel string) FolderSummary 
 	}
 }
 
-// VideoFolder は一覧に出す所在が置かれたフォルダである。値は api/openapi.yaml の
-// VideoFolder に対応する。
 type VideoFolder struct {
-	// RootID は所在を含む登録メディアフォルダの識別子。
 	RootID int64
-	// Path は登録フォルダから所在の置かれたフォルダまでの `/` 区切りの相対パス。
-	// 登録フォルダの直下なら空文字。
+	// Path is /-separated relative to the registered root and empty for direct children.
 	Path string
 }
 
-// LocateVideoFolder は所在の絶対パスから、それを含む登録フォルダと、そこから
-// 所在の置かれたフォルダまでの相対パスを求める。含む登録フォルダが無ければ
-// false を返す。登録フォルダは入れ子にならない（登録時に断る）ので、含むものは
-// 高々1つである。
-//
-// 含むかどうかは、保存側の「登録フォルダの下にある」条件
-// （internal/store の registeredLocationCondition）と同じ規則で決める。Windows では
-// `/` と `\` の両方を区切りとし、ASCII の大文字小文字を区別しない。ほかの OS では
-// その OS の区切りだけを使う。
+// LocateVideoFolder follows storage's registeredLocationCondition: Windows accepts both separators and folds ASCII case; other systems use their native separator.
 func LocateVideoFolder(roots []MediaFolder, locationPath string) (VideoFolder, bool) {
 	return locateVideoFolderFor(roots, locationPath, runtime.GOOS == "windows", filepath.Separator)
 }
 
 func locateVideoFolderFor(roots []MediaFolder, locationPath string, windows bool, separator rune) (VideoFolder, bool) {
-	// 最後の段は所在のファイル名で、フォルダには含めない。
 	return locateFor(roots, locationPath, windows, separator, true)
 }
 
-// LocateFolder はフォルダそのものの絶対パスから、それを含む登録フォルダと、
-// そこからそのフォルダまでの相対パスを求める。登録フォルダそのものなら相対パスは
-// 空文字である。含む登録フォルダが無ければ false を返す。
-//
-// LocateVideoFolder と同じ規則で含むかどうかを決め、違いは最後の段を落とさない
-// ことだけである。
+// LocateFolder follows LocateVideoFolder but retains the final segment; the root has an empty relative path.
 func LocateFolder(roots []MediaFolder, folderPath string) (VideoFolder, bool) {
 	return locateFolderFor(roots, folderPath, runtime.GOOS == "windows", filepath.Separator)
 }
@@ -374,10 +314,7 @@ func locateFolderFor(roots []MediaFolder, folderPath string, windows bool, separ
 	return locateFor(roots, folderPath, windows, separator, false)
 }
 
-// LocateFolderKey はフォルダの鍵（FolderKey、自動グループの origin_folder）から、そのフォルダを
-// 含む登録フォルダと相対パスを LocateFolder と同じに求める。鍵は末尾の区切りを落とすので、
-// 登録フォルダ `/` の鍵は空文字になり、LocateFolder では見つからない。そのときは鍵が同じ登録
-// フォルダそのものを返す。
+// LocateFolderKey also handles root keys whose trailing separators were stripped, including the empty key for /.
 func LocateFolderKey(roots []MediaFolder, key string) (VideoFolder, bool) {
 	return locateFolderKeyFor(roots, key, runtime.GOOS == "windows", filepath.Separator)
 }
@@ -410,8 +347,6 @@ func locateFor(roots []MediaFolder, path string, windows bool, separator rune, d
 	return VideoFolder{}, false
 }
 
-// registrationSeparatorsFor は登録フォルダの下かどうかを調べるときの区切りである。
-// Windows では `/` と `\` の両方、ほかの OS ではその OS の区切りだけを使う。
 func registrationSeparatorsFor(windows bool, separator rune) string {
 	if windows {
 		return `/\`
@@ -419,13 +354,10 @@ func registrationSeparatorsFor(windows bool, separator rune) string {
 	return string(separator)
 }
 
-// pathBelowRoot は path が root 自身か root の下にあるとき、root より後ろの部分を
-// 返す。root の末尾の区切りは落としてから比べる。
 func pathBelowRoot(root, path, separators string, windows bool) (string, bool) {
 	equal := func(a, b string) bool { return a == b }
 	if windows {
-		// SQLite の lower() と同じく ASCII だけを畳む。長さが変わらないので、
-		// 接頭辞の長さでそのまま切り出せる。
+		// ASCII-only folding matches SQLite lower() and preserves byte lengths for slicing.
 		equal = func(a, b string) bool { return LowerASCII(a) == LowerASCII(b) }
 	}
 	if equal(path, root) {
@@ -441,8 +373,7 @@ func pathBelowRoot(root, path, separators string, windows bool) (string, bool) {
 	return path[len(trimmed)+1:], true
 }
 
-// LowerASCII は ASCII の英大文字だけを小文字にする。SQLite の lower() と同じ
-// 扱いで、Windows で登録フォルダの下かどうかを SQL と Go で同じに判定するために使う。
+// LowerASCII matches SQLite lower() so Go and SQL agree on Windows root containment.
 func LowerASCII(s string) string {
 	b := []byte(s)
 	for i, c := range b {

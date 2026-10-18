@@ -9,8 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 鍵は content_key（videos.id ではない）。ファイルを移動・改名・置き直しても
-// 再生位置が引き継がれる。
 func TestSaveAndLoadProgressByContentKey(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -61,7 +59,6 @@ func TestPlaybackStoreSavesAndLoadsWithoutVideoRows(t *testing.T) {
 	}
 }
 
-// 記録が無ければ「無い」と分かる誤りを返す。一覧では省略される。
 func TestProgressWhenNeverPlayed(t *testing.T) {
 	db := migratedDB(t)
 
@@ -70,8 +67,6 @@ func TestProgressWhenNeverPlayed(t *testing.T) {
 	}
 }
 
-// upsert で最後の書き込みが残る。複数のタブ・端末の競合はこれで割り切る
-// （spec のエッジケース）。
 func TestSaveProgressKeepsLastWrite(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -99,8 +94,6 @@ func TestSaveProgressKeepsLastWrite(t *testing.T) {
 	}
 }
 
-// 動画の行を削除しても再生位置は残る。
-// 「再構築できる索引」と「再構築できない利用者データ」の分離そのものである。
 func TestProgressSurvivesVideoDeletion(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -126,8 +119,6 @@ func TestProgressSurvivesVideoDeletion(t *testing.T) {
 	}
 }
 
-// 同じ内容のファイルを別のパスに置き直しても、同じ再生位置が引き継がれる
-// content_key を鍵にした判断が実際に効いていることの確認。
 func TestProgressFollowsContentAcrossPaths(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -139,7 +130,6 @@ func TestProgressFollowsContentAcrossPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 消して、同じ内容を別の場所へ置き直す。
 	if err := db.ScanIndex().DeleteVideos(ctx, []int64{1}); err != nil {
 		t.Fatal(err)
 	}
@@ -161,8 +151,6 @@ func TestProgressFollowsContentAcrossPaths(t *testing.T) {
 	}
 }
 
-// 一覧に載せるため、複数の content_key をまとめて引ける。1件ずつ引くと
-// 60 件の一覧で 60 回の問い合わせになる。
 func TestProgressByContentKeys(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -184,7 +172,6 @@ func TestProgressByContentKeys(t *testing.T) {
 		t.Error("求めていない鍵が返った")
 	}
 
-	// 空の指定で全件を引かない。
 	empty, err := db.Playback().ProgressByContentKeys(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -194,8 +181,7 @@ func TestProgressByContentKeys(t *testing.T) {
 	}
 }
 
-// 件数の上限が無いプレイリストの詳細が引くので、SQLite の束縛変数の上限（32766）を超える鍵でも
-// 引ける。
+// Unbounded playlists can exceed SQLite's 32,766-variable limit, so this fixture exercises JSON key batching.
 func TestProgressByContentKeysBeyondVariableLimit(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -218,7 +204,6 @@ func TestProgressByContentKeysBeyondVariableLimit(t *testing.T) {
 	}
 }
 
-// 視聴済みの判定結果が保存され、読み直しても保たれること。
 func TestSaveProgressStoresCompletion(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

@@ -17,28 +17,20 @@ import (
 	"github.com/syudead/vv/internal/desktop"
 )
 
-// Windows デスクトップ版（VVMDM.exe）の入口。`go build -tags desktop -ldflags
-// "-H=windowsgui"` で組む。設定は環境変数（MDM_*）でなく自分で組み立て、run を同じ
-// プロセスで呼び、待ち受けまで済んだらウィンドウを出す。ウィンドウを閉じたら
-// run の停止手順を通して終わる。
-// 閉じる前の確認・二重起動・サインアウトの扱いは R-6〜R-8 による。
-// このファイルは組み立てと配線だけを持ち、Win32 と WebView2 は internal/desktop が扱う。
+// Windows desktop entry point: build with -tags desktop -ldflags "-H=windowsgui". This file wires
+// startup and shutdown; internal/desktop owns Win32 and WebView2.
 
-// fatalStopGrace は WebView2 が続けられなくなったときに停止を待つ上限である。
-// go-webview2 はそのあとプロセスを終わらせる。
+// Bound shutdown before go-webview2 terminates the process after a fatal error.
 const fatalStopGrace = 30 * time.Second
 
-// instanceWait は、同じセッションの前のプロセスが停止の途中（ウィンドウを隠した
-// あと）のときに、終わるのを待つ上限である。
+// Wait for a previous instance that has hidden its window but is still shutting down.
 const instanceWait = 30 * time.Second
 
-// busyCheckTimeout は閉じる前の確認で「取り込みの途中か」を読む上限である。
-// 読めなければ確認を出す。
+// Show confirmation if the busy-state query times out.
 const busyCheckTimeout = 3 * time.Second
 
 func init() {
-	// ウィンドウと WebView2 は作ったスレッドでしか扱えないので、main の goroutine を
-	// 最初のスレッドに固定する。
+	// Win32 and WebView2 must run on the thread that created them.
 	desktop.LockUIThread()
 }
 
@@ -46,11 +38,9 @@ func main() {
 	os.Exit(runDesktop())
 }
 
-// runDesktop は起動から終わりまでを行い、終了コードを返す。起動の確認は
-// 最初の失敗だけをダイアログで示す。
+// runDesktop returns an exit code and shows only the first startup failure in a dialog.
 func runDesktop() int {
-	// 子プロセス（ffmpeg）も同じジョブに入るよう、最初に入る。失敗しても起動は
-	// 続け、ログを開いてから記録する。
+	// Join the job first so child processes inherit it; log failures after opening the log.
 	jobErr := desktop.JoinKillOnCloseJob()
 
 	port, err := desktop.ParseArgs(os.Args[1:])
@@ -70,8 +60,7 @@ func runDesktop() int {
 		return 1
 	}
 
-	// 二重起動は DB を開く前、ログを開く前に判定する。ログを先に
-	// 開くと、起動中のプロセスのログを前回分へ移そうとしてしまう。
+	// Detect duplicate instances before opening the database or rotating the running instance's log.
 	instance, err := desktop.AcquireInstance(paths.Root, instanceWait)
 	if err != nil {
 		desktop.ShowError(desktop.MessageFailed(err, "(unavailable)"))
@@ -88,8 +77,7 @@ func runDesktop() int {
 		return 1
 	}
 
-	// データの置き場とログは先に用意し、失敗は確認の 2 番目として示す。1 番目の
-	// 失敗もログに残せるようにするため。
+	// Prepare logging first so even the first prerequisite failure is recorded.
 	logOutput := io.Discard
 	dirErr := desktop.PrepareDirs(paths)
 	if dirErr == nil {
@@ -106,7 +94,6 @@ func runDesktop() int {
 		logger.Warn("could not join a job object; ffmpeg may outlive a killed process", slog.Any("error", jobErr))
 	}
 
-	// 1. zip から直接でなく、隣に同梱の ffmpeg がある。
 	exe, err := os.Executable()
 	if err != nil {
 		logger.Error("cannot find the executable", slog.Any("error", err))
@@ -118,7 +105,6 @@ func runDesktop() int {
 		desktop.ShowError(desktop.MessageNotExtracted(paths.LogFile))
 		return 1
 	}
-	// 2. データの置き場に書ける。
 	if dirErr != nil {
 		var unwritable *desktop.UnwritableDirError
 		dir := paths.Root
@@ -128,7 +114,6 @@ func runDesktop() int {
 		desktop.ShowError(desktop.MessageUnwritable(dir))
 		return 1
 	}
-	// 3. WebView2 ランタイムがある。
 	webView2Version, err := desktop.WebView2Version()
 	if err != nil {
 		logger.Error("startup check failed", slog.Any("error", err))
@@ -137,7 +122,7 @@ func runDesktop() int {
 	}
 	logger.Info("found the WebView2 Runtime", slog.String("version", webView2Version))
 
-	// 同梱の ffmpeg を、利用者が入れた別の ffmpeg より先に使う。
+	// Prefer bundled ffmpeg over user-installed versions.
 	ffmpegDir := desktop.FFmpegDir(exe)
 	if err := os.Setenv("PATH", desktop.PrependPath(ffmpegDir, os.Getenv("PATH"))); err != nil {
 		logger.Error("cannot add ffmpeg to PATH", slog.Any("error", err))
@@ -145,16 +130,14 @@ func runDesktop() int {
 		return 1
 	}
 
-	// 4・5. データベースと待ち受けは run が行い、失敗の段階で示す文を選ぶ。
+	// run reports database and listener failures by startup stage.
 	cfg := desktopConfig(paths, port)
 	listening := make(chan struct{})
 	stopRequested := make(chan struct{})
 	var stopOnce sync.Once
 	requestStop := func() { stopOnce.Do(func() { close(stopRequested) }) }
-	// 閉じる前の確認が読む「取り込みの途中か」。run が走査を用意したら入る。
 	var busyProbe atomic.Pointer[func(context.Context) (bool, error)]
-	// 終わりは閉じる操作の goroutine と WebView2 の失敗の処理の両方が待つので、
-	// 1 つの値を受け合う channel でなく、全員に届く知らせにする。
+	// Broadcast completion because both window-close and WebView2 failure handlers wait for it.
 	server := startServer(func() error {
 		return run(desktopRunOptions(
 			cfg,
@@ -174,17 +157,16 @@ func runDesktop() int {
 		return 1
 	}
 
-	// 待ち受けまで済んだので、ウィンドウが空白のまま残ることはない（R-10）。
+	// Open the window only after the listener is ready, avoiding a blank window on startup failure.
 	url := "http://localhost:" + strconv.Itoa(port) + "/"
 	window, err := desktop.NewWindow(desktop.WindowOptions{
 		URL:      url,
 		DataPath: paths.WebView2,
-		// 取り込みの途中なら確認を出す。ライブ変換の配信は含めない（R-7）。
+		// Confirm active ingestion; live transcoding does not require confirmation.
 		ShouldConfirmClose: func() bool { return closeNeedsConfirmation(busyProbe.Load(), logger) },
-		// ウィンドウは先に隠れ、停止を終えてから壊す。
+		// Hide first, then destroy the window after shutdown.
 		OnClose: requestStop,
-		// サインアウト・シャットダウンでは確認なしに同じ停止手順を通し、終わるまで
-		// 戻らない（R-8）。
+		// Sign-out and system shutdown wait for the same cleanup without confirmation.
 		OnEndSession: func() {
 			requestStop()
 			if !waitAtMost(func() { <-server.Done() }, fatalStopGrace) {
@@ -211,7 +193,6 @@ func runDesktop() int {
 		return 1
 	}
 
-	// 停止を終えたら（閉じる操作でも、待ち受けを失ったときでも）ウィンドウを壊す。
 	go func() {
 		<-server.Done()
 		window.Destroy()
@@ -226,8 +207,7 @@ func runDesktop() int {
 	return 0
 }
 
-// closeNeedsConfirmation は閉じる前に確認を出すかを返す。取り込みの途中か読めない
-// ときは、中断を知らせずに閉じないよう確認を出す。
+// Confirm when busy-state lookup fails so ingestion cannot be silently interrupted.
 func closeNeedsConfirmation(probe *func(context.Context) (bool, error), logger *slog.Logger) bool {
 	if probe == nil {
 		return false
@@ -242,9 +222,8 @@ func closeNeedsConfirmation(probe *func(context.Context) (bool, error), logger *
 	return busy
 }
 
-// desktopConfig はデスクトップ版の設定を組み立てる。待ち受けのホストは run が LAN からの
-// 接続の許可の保存値で決め直す（既定はループバックだけ）。前に逆プロキシは無いので
-// 転送ヘッダを読まない（MDM_TRUSTED_PROXIES=none 相当、R-14）。
+// run chooses the listener host from saved LAN access; desktop mode ignores forwarded headers
+// because there is no reverse proxy.
 func desktopConfig(paths desktop.Paths, port int) Config {
 	return Config{
 		Addr:           net.JoinHostPort("127.0.0.1", strconv.Itoa(port)),
@@ -254,7 +233,6 @@ func desktopConfig(paths desktop.Paths, port int) Config {
 	}
 }
 
-// startupFailureMessage は run が待ち受けの前に返した誤りを、示す文にする。
 func startupFailureMessage(err error, port int, logFile string) string {
 	if err == nil {
 		err = errors.New("the server stopped before it started listening")

@@ -12,17 +12,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 同じ動画の別バージョンの集まり。集まりは利用者データの表 video_bundles・video_bundle_members に置き、
-// 集まりのタグ・再生位置・公開の設定・お気に入りは video_tags・playback_progress・public_videos・
-// video_favorites に集まりの user_key を鍵として置く。各メンバーの content_key の行は触らずに残すので、
-// 外したメンバーは束ねる前の値に戻る。
-//
-// 束ねる・代表を替える・外す操作は、見せる動画が変わり、代表の所在の
-// フォルダの直下の本数が変わるので、同じ取引の中でフォルダの索引を作り直す。
+// Bundles share user data while preserving members' original rows; membership and representative changes rebuild the folder index atomically.
 
-// userDataTables は利用者データの鍵で引く表と、鍵以外の列である。束ねる・解くときに
-// 値を別の鍵へ写すのに使う。作品情報の 6 表も表ごとに写す。束ねる先の鍵には行が無く、解いて残る 1 本へ戻すときは replaceUserData が
-// 6 表とも消してから写すので、2 本の動画の値が混ざらない。
+// Treat all work-info tables as one unit when copying or replacing keys so values from different videos cannot mix.
 var userDataTables = []struct{ table, columns string }{
 	{"playback_progress", "position_ms, duration_ms, completed, updated_at"},
 	{"video_tags", "tag_id, created_at"},
@@ -36,23 +28,13 @@ var userDataTables = []struct{ table, columns string }{
 	{"video_work_organizations", "role, position, organization_id"},
 }
 
-// bundleRef は動画が属する集まりである。
 type bundleRef struct {
 	id                int64
 	userKey           string
 	representativeKey string
 }
 
-// Bundle は videoIDs の動画を 1 つの集まりに束ね、representativeID を代表にする。id はいまライブラリにある動画の content_key へ引き直し、引けない id が
-// あれば domain.ErrNotFound。重複を除いて 2 本未満なら domain.ErrTooFewVersions、代表が
-// videoIDs に無ければ domain.ErrRepresentativeNotSelected。
-//
-// 既に集まりに属する動画は、その集まりの全メンバーごと新しい集まりへ移す。集まりの値は
-// 代表の利用者データの鍵（代表が集まりに属していればその集まりの鍵）の行を新しい鍵へ写す。
-// メンバーを移し終えた吸収した集まりの行は消すが、その鍵の値は消さない（Edge Case
-// 「集まり同士を束ねる」）。プレイリストとグループの項目は、吸い込んだ各鍵から新しい鍵へ移す（写さない）。
-// 同じ集まりになった組の候補を消す。全体を 1 つの取引で行い、確定後に domain.VideoBundleChanged を
-// 1 回発行する。
+// Bundle expands existing memberships and copies representative user data to a new key, moving references while preserving absorbed keys' data.
 func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representativeID int64) (domain.VideoVersions, error) {
 	ids := uniqueIDs(videoIDs)
 	if len(ids) < 2 {
@@ -90,12 +72,7 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 	return versions, nil
 }
 
-// bundlePlan は束ねる前に読んだ、束ねる内容である。members は新しい集まりの全メンバーの content_key
-// （重複なし、順に並ぶ）、absorbedKeys は新しい集まりの鍵へ項目を移す利用者データの鍵（メンバーの
-// content_key と吸い込む集まりの鍵）、absorbedBundles は吸い込んで消す集まりの id（初めに現れた順）、
-// representativeKey は代表の content_key、representativeUserKey は新しい集まりへ値を写す鍵である。
-// joined は所属が変わるメンバー（重複なし、順に並ぶ）: 集まりに属していなかった動画と、代表が属していた
-// 集まり以外の集まりのメンバーである。代表の集まりのメンバーは、集まりが大きくなるだけで所属は変わらない
+// joined excludes the representative's existing bundle members because their ownership has not changed.
 type bundlePlan struct {
 	members               []string
 	joined                []string
@@ -105,13 +82,10 @@ type bundlePlan struct {
 	representativeUserKey string
 }
 
-// planBundle は ids の動画（重複なし、2 本以上）を representativeID を代表に束ねる内容を読む
-// （VersionStore.Bundle と OrganizeStore.Bundle が共有する）。何も書かない。いまライブラリに無い
-// 動画があれば domain.ErrNotFound。
+// Read and validate the entire bundle plan without writing; every selected video must be in the library.
 func planBundle(ctx context.Context, tx *sql.Tx, ids []int64, representativeID int64) (bundlePlan, error) {
 	var plan bundlePlan
-	// absorbed は absorbedBundles の集合で、値はその集まりのメンバーである。POST /api/video-bundles は 20000 本を
-	// 受け付けるので、並びを走査すると二乗になる。representativeBundle は代表が属していた集まりの id（無ければ 0）。
+	// Use a map to avoid quadratic membership checks for selections of up to 20,000 videos.
 	absorbed := map[int64][]string{}
 	var representativeBundle int64
 	for _, id := range ids {
@@ -160,9 +134,6 @@ func planBundle(ctx context.Context, tx *sql.Tx, ids []int64, representativeID i
 	return plan, nil
 }
 
-// bundleOutcome は applyBundle が書いた結果である。bundleID と userKey は新しい集まりの id と鍵、
-// changedGroups は項目を付け替えたかフォルダの索引で変わったグループとその祖先、changedVideos は
-// 新しい集まりのメンバーの動画の id である。
 type bundleOutcome struct {
 	bundleID      int64
 	userKey       string
@@ -170,18 +141,13 @@ type bundleOutcome struct {
 	changedVideos []int64
 }
 
-// events は確定後に発行する知らせである。
 func (o bundleOutcome) events() []domain.Event {
 	return append([]domain.Event{domain.VideoBundleChanged{VideoIDs: o.changedVideos}},
 		groupsChangedEvents(o.changedGroups)...)
 }
 
-// applyBundle は planBundle の内容で束ねる。新しい集まりを作って代表の値を写し、
-// プレイリストとグループの項目を吸い込んだ各鍵から新しい鍵へ移し（写さない）、メンバーを移して
-// 吸い込んだ集まりの行を消す（その鍵の値は消さない）。同じ集まりになった組の候補を消し、フォルダの
-// 索引を作り直し、形の変わったプレイリストの更新日時を進める。呼び出し側の取引の中で行う。
+// Apply the plan in the caller's transaction, moving references, preserving absorbed user data and refreshing folders and changed playlist shapes.
 func applyBundle(ctx context.Context, tx *sql.Tx, plan bundlePlan) (bundleOutcome, error) {
-	// 項目がまとまった、見せるかが変わったプレイリストは、終わりに更新日時を進める。
 	shapes, err := snapshotPlaylistShapes(ctx, tx, plan.absorbedKeys)
 	if err != nil {
 		return bundleOutcome{}, err
@@ -205,7 +171,6 @@ func applyBundle(ctx context.Context, tx *sql.Tx, plan bundlePlan) (bundleOutcom
 	if err := moveBundleMembers(ctx, tx, plan, bundleID, now); err != nil {
 		return bundleOutcome{}, err
 	}
-	// 同じ集まりになった組は候補から消す。
 	if err := pruneVersionCandidates(ctx, tx); err != nil {
 		return bundleOutcome{}, err
 	}
@@ -224,7 +189,6 @@ func applyBundle(ctx context.Context, tx *sql.Tx, plan bundlePlan) (bundleOutcom
 		changedGroups: normalizeIDs(append(rekeyedGroups, changedGroups...)), changedVideos: changed}, nil
 }
 
-// createBundle は代表 representativeKey の新しい集まりの行を作り、その id と利用者データの鍵を返す。
 func createBundle(ctx context.Context, tx *sql.Tx, representativeKey string, now int64) (int64, string, error) {
 	result, err := tx.ExecContext(ctx,
 		`insert into video_bundles (user_key, representative_key, created_at, updated_at) values ('bundle:new', ?, ?, ?)`,
@@ -243,7 +207,6 @@ func createBundle(ctx context.Context, tx *sql.Tx, representativeKey string, now
 	return bundleID, userKey, nil
 }
 
-// moveBundleMembers は plan のメンバーを集まり bundleID へ移し、吸い込んだ集まりの行を消す。
 func moveBundleMembers(ctx context.Context, tx *sql.Tx, plan bundlePlan, bundleID, now int64) error {
 	for _, key := range plan.members {
 		if _, err := tx.ExecContext(ctx,
@@ -261,10 +224,7 @@ func moveBundleMembers(ctx context.Context, tx *sql.Tx, plan bundlePlan, bundleI
 	return nil
 }
 
-// MakeRepresentative は videoID の動画をその集まりの代表にする。
-// 集まりの値には触らない（要件 7）。動画がいまライブラリに無ければ domain.ErrNotFound、
-// 集まりに属さなければ domain.ErrNotBundled。確定後に domain.VideoBundleChanged を
-// 1 回発行する。
+// MakeRepresentative changes no shared user data; missing or unbundled videos fail.
 func (s *VersionStore) MakeRepresentative(ctx context.Context, videoID int64) (domain.VideoVersions, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -317,12 +277,7 @@ func (s *VersionStore) MakeRepresentative(ctx context.Context, videoID int64) (d
 	return versions, nil
 }
 
-// Unbundle は videoID の動画をその集まりから外す。外した動画は自分の
-// content_key の値に戻る。代表を外したときは、残りのうち実効の代表の規則で次の代表を選ぶ。残りが 1 本なら集まりを解き、集まりの鍵の値を残った
-// 1 本の content_key へ写す（既存の行は置き換える。Edge Case）。動画がいまライブラリに
-// 無ければ domain.ErrNotFound、集まりに属さなければ domain.ErrNotBundled。外した動画と残る各メンバーの
-// 組を video_version_unbundles に書き、外した動画の候補を作り直す。
-// 確定後に、元の全メンバーの domain.VideoBundleChanged と domain.VersionCandidatesChanged を発行する。
+// Unbundle restores the leaving video's own data; a final singleton inherits bundle data, and cross-side pairs are held from automatic bundling.
 func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Video, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -360,28 +315,17 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 	return video, nil
 }
 
-// bundleSplit は splitBundle が書いた結果である。changedVideos は元の集まりの全メンバーの動画の id、
-// changedGroups は項目を付け替えたかフォルダの索引で変わったグループとその祖先である。
 type bundleSplit struct {
 	changedVideos []int64
 	changedGroups []int64
 }
 
-// events は確定後に発行する知らせである。
 func (s bundleSplit) events() []domain.Event {
 	return append([]domain.Event{domain.VideoBundleChanged{VideoIDs: s.changedVideos}, domain.VersionCandidatesChanged{}},
 		groupsChangedEvents(s.changedGroups)...)
 }
 
-// splitBundle は集まり bundle からメンバー leaving（1 本以上、全メンバーより少ない）を外す。所有者の
-// Unbundle（1 本）と、自動の束ねの取り消し（加わった側、docs/design-docs/activity.md）が共有する。
-//
-// 外した各メンバーと残る各メンバーの組を video_version_unbundles に書く（側の中の組は書かない、
-// docs/design-docs/duplicate-judging.md）。1 本なら自分の content_key の値に戻る。2 本以上なら representative
-// （leaving に無ければ最初の鍵）を代表の 1 つの集まりとして外し、Unbundle が残るメンバーに渡すのと同じく
-// 元の集まりの値の写しを持たせる。残りが 1 本なら集まりを解き、集まりの鍵の値と項目を残った 1 本へ移す。
-// 代表が外れたら、残りから次の代表を選ぶ。外したメンバーの候補を作り直し、フォルダの索引を作り直す。
-// 呼び出し側の取引の中で行う。
+// Split one side atomically, recording only cross-side pairs; multiple leaving members retain copied bundle data and a singleton remainder inherits the original bundle data.
 func splitBundle(
 	ctx context.Context, tx *sql.Tx, c *changes, bundle bundleRef, leaving []string, representative string,
 ) (bundleSplit, error) {
@@ -393,7 +337,6 @@ func splitBundle(
 	if err != nil {
 		return bundleSplit{}, err
 	}
-	// 項目が見せるかが変わったプレイリストは、終わりに更新日時を進める。
 	shapes, err := snapshotPlaylistShapes(ctx, tx, append(slices.Clone(members), bundle.userKey))
 	if err != nil {
 		return bundleSplit{}, err
@@ -407,7 +350,6 @@ func splitBundle(
 	if err != nil {
 		return bundleSplit{}, err
 	}
-	// 外した動画の候補を作り直し、外した組を一覧に戻す（R-8）。その動画の他の判定も待ちに戻る（R-4）。
 	for _, key := range leaving {
 		if err := rebuildCandidatesOf(ctx, tx, c, key); err != nil {
 			return bundleSplit{}, err
@@ -423,13 +365,11 @@ func splitBundle(
 	return bundleSplit{changedVideos: changed, changedGroups: normalizeIDs(append(rekeyedGroups, changedGroups...))}, nil
 }
 
-// detachLeavingMembers は splitBundle の、leaving を集まり bundle から外す部分である。外した組を記録し、2 本以上
-// なら representative を代表の新しい集まりにして bundle の値を写す。
 func detachLeavingMembers(
 	ctx context.Context, tx *sql.Tx, bundle bundleRef, leaving, remaining []string, representative string, now int64,
 ) error {
 	for _, key := range leaving {
-		// 外した動画と残る各メンバーの組は自動では束ねない。
+		// Do not automatically rebundle members across the split.
 		if err := recordUnbundledPairs(ctx, tx, key, remaining, now); err != nil {
 			return err
 		}
@@ -453,9 +393,6 @@ func detachLeavingMembers(
 	return moveBundleMembers(ctx, tx, bundlePlan{members: leaving}, bundleID, now)
 }
 
-// settleRemainingMembers は splitBundle の、残ったメンバー remaining の集まりを整える部分である。1 本以下なら
-// 集まりを解き（1 本なら集まりの鍵の値と項目をその 1 本へ移す）、代表が leaving にあれば次の代表を選ぶ。
-// 項目を付け替えたグループの id を返す。
 func settleRemainingMembers(
 	ctx context.Context, tx *sql.Tx, bundle bundleRef, leaving, remaining []string, now int64,
 ) ([]int64, error) {
@@ -466,8 +403,7 @@ func settleRemainingMembers(
 			if err := replaceUserData(ctx, tx, bundle.userKey, remaining[0]); err != nil {
 				return nil, err
 			}
-			// プレイリストとグループの項目は集まりの鍵から残った 1 本へ移す。他のメンバーが残るときは集まりに
-			// 残し、外したメンバーには項目を持たせない。
+			// References move only to a singleton remainder; otherwise they remain on the bundle rather than following leaving members.
 			var err error
 			if rekeyedGroups, err = rekeyUserItems(ctx, tx, bundle.userKey, remaining[0]); err != nil {
 				return nil, err
@@ -490,9 +426,7 @@ func settleRemainingMembers(
 	return rekeyedGroups, nil
 }
 
-// Versions は videoID の動画の集まりの全バージョンのうち、見る人（audience）に見せてよい
-// 所在を持つものを、実効の代表を先頭に返す。動画が見せられなければ
-// domain.ErrNotFound。集まりに属さなければその 1 本だけを返す。
+// Versions returns audience-visible versions with the effective representative first, or the video alone when unbundled.
 func (s *VersionStore) Versions(ctx context.Context, audience domain.Audience, videoID int64) (domain.VideoVersions, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -509,7 +443,6 @@ func (s *VersionStore) Versions(ctx context.Context, audience domain.Audience, v
 	return versions, nil
 }
 
-// videoVersions は VersionStore.Versions の本体で、呼び出し側の取引の中で読む。
 func videoVersions(ctx context.Context, tx *sql.Tx, audience domain.Audience, videoID int64) (domain.VideoVersions, error) {
 	video, err := getVideo(ctx, tx, audience, videoID)
 	if err != nil {
@@ -549,15 +482,11 @@ func videoVersions(ctx context.Context, tx *sql.Tx, audience domain.Audience, vi
 	return domain.VideoVersions{RepresentativeID: representativeID, Items: items}, nil
 }
 
-// rowsQueryer は複数行を返す問い合わせを投げられるもの（*sql.DB と *sql.Tx）である。
 type rowsQueryer interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 }
 
-// bundleVersionsRefs は keys のうち集まりのメンバーである content_key ごとに、見る人（audience）から
-// 見た集まりの要約（見せてよい所在を持つメンバーの本数と実効の代表）を返す。
-// メンバーでない鍵と、見せてよいメンバーが 1 本も無い鍵は結果に入らない。鍵の集合は 1 回の
-// 問い合わせで読む。
+// Batch audience-visible bundle summaries; omit nonmembers and bundles without visible members.
 func bundleVersionsRefs(ctx context.Context, q rowsQueryer, audience domain.Audience, keys []string) (map[string]domain.VideoVersionsRef, error) {
 	out := map[string]domain.VideoVersionsRef{}
 	if len(keys) == 0 {
@@ -596,9 +525,7 @@ func bundleVersionsRefs(ctx context.Context, q rowsQueryer, audience domain.Audi
 	return out, nil
 }
 
-// attachVersions は videos のうち集まりのメンバーの Video.Versions を、見る人から見た集まりの要約で
-// 埋める。利用者データの鍵が内容の
-// 識別子と違うのは集まりのメンバーだけなので、メンバーが無ければ問い合わせを足さない。
+// Only bundle members have differing user/content keys, so skip the summary query when none are present.
 func attachVersions(ctx context.Context, q rowsQueryer, audience domain.Audience, videos []domain.Video) error {
 	var keys []string
 	for _, video := range videos {
@@ -621,8 +548,6 @@ func attachVersions(ctx context.Context, q rowsQueryer, audience domain.Audience
 	return nil
 }
 
-// attachVersionsEach は動画の並びのそれぞれに、まとめて 1 回の attachVersions を当てる。並びは
-// その場で書き換わる。
 func attachVersionsEach(ctx context.Context, q rowsQueryer, audience domain.Audience, lists [][]domain.Video) error {
 	var flat []domain.Video
 	for _, list := range lists {
@@ -638,7 +563,6 @@ func attachVersionsEach(ctx context.Context, q rowsQueryer, audience domain.Audi
 	return nil
 }
 
-// attachVersionsIn は鍵ごとの動画の表に attachVersions を当てる。
 func attachVersionsIn[K comparable](ctx context.Context, q rowsQueryer, audience domain.Audience, videos map[K]domain.Video) error {
 	keys := make([]K, 0, len(videos))
 	list := make([]domain.Video, 0, len(videos))
@@ -655,8 +579,7 @@ func attachVersionsIn[K comparable](ctx context.Context, q rowsQueryer, audience
 	return nil
 }
 
-// bundlableContentKey は id の動画の content_key を返す。いまライブラリ（登録フォルダの下）に
-// 所在を持たないか、内容を読めていない動画は domain.ErrNotFound。
+// Bundling requires identified content with a registered location.
 func bundlableContentKey(ctx context.Context, tx *sql.Tx, videoID int64) (string, error) {
 	var key string
 	err := tx.QueryRowContext(ctx, `select v.content_key from videos v
@@ -670,7 +593,6 @@ func bundlableContentKey(ctx context.Context, tx *sql.Tx, videoID int64) (string
 	return key, nil
 }
 
-// bundleOf は content_key が属する集まりを返す。属さなければ ok は false。
 func bundleOf(ctx context.Context, tx *sql.Tx, contentKey string) (bundleRef, bool, error) {
 	var ref bundleRef
 	err := tx.QueryRowContext(ctx, `select b.id, b.user_key, b.representative_key
@@ -685,14 +607,11 @@ func bundleOf(ctx context.Context, tx *sql.Tx, contentKey string) (bundleRef, bo
 	return ref, true, nil
 }
 
-// bundleMemberKeys は集まりの全メンバーの content_key を順に返す。
 func bundleMemberKeys(ctx context.Context, tx *sql.Tx, bundleID int64) ([]string, error) {
 	return queryStrings(ctx, tx, `select content_key from video_bundle_members where bundle_id = ? order by content_key`, bundleID)
 }
 
-// nextRepresentativeKey は代表を外した集まりの次の代表を選ぶ。所有者から見た実効の代表の
-// 規則どおり、登録フォルダの下に所在を持つメンバーのうち videos.id の
-// 最小のもの。1 本も無ければ content_key の最小のもの（代表はメンバーである、の不変条件を保つ）。
+// Prefer the lowest registered video ID, falling back to the smallest member key to preserve the representative-membership invariant.
 func nextRepresentativeKey(ctx context.Context, tx *sql.Tx, bundleID int64) (string, error) {
 	var key string
 	err := tx.QueryRowContext(ctx, `select v.content_key from video_bundle_members m
@@ -707,7 +626,6 @@ func nextRepresentativeKey(ctx context.Context, tx *sql.Tx, bundleID int64) (str
 	return key, nil
 }
 
-// videoIDsForContentKeys は content_key の動画の id を小さい順に返す。
 func videoIDsForContentKeys(ctx context.Context, tx *sql.Tx, keys []string) ([]int64, error) {
 	encoded, err := json.Marshal(keys)
 	if err != nil {
@@ -733,9 +651,7 @@ func videoIDsForContentKeys(ctx context.Context, tx *sql.Tx, keys []string) ([]i
 	return ids, nil
 }
 
-// copyUserData は利用者データの鍵 from の userDataTables の表の行を、鍵 to の行として写す。to に行が
-// あれば残す（新しい集まりの鍵には行が無い）。
-// 判定が付けたタグの行が to にもあることを記録に残す（copyAutoTagKeys、docs/design-docs/activity.md）。
+// Copy without overwriting destination rows and preserve auto-tag provenance for undo.
 func copyUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
 	for _, t := range userDataTables {
 		if _, err := tx.ExecContext(ctx,
@@ -747,8 +663,7 @@ func copyUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
 	return copyAutoTagKeys(ctx, tx, from, to)
 }
 
-// replaceUserData は鍵 to の userDataTables の表の行を消し、鍵 from の行で置き換える。消した to のタグの行は判定が
-// 付けたタグの記録からも外す（dropAutoTagKeys）。
+// Replace all destination user data and drop obsolete auto-tag provenance before copying.
 func replaceUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
 	for _, t := range userDataTables {
 		if _, err := tx.ExecContext(ctx, `delete from `+t.table+` where content_key = ?`, to); err != nil {
@@ -761,7 +676,6 @@ func replaceUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
 	return copyUserData(ctx, tx, from, to)
 }
 
-// queryStrings は 1 列の文字列の結果を読み切る。
 func queryStrings(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]string, error) {
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -782,7 +696,6 @@ func queryStrings(ctx context.Context, tx *sql.Tx, query string, args ...any) ([
 	return out, nil
 }
 
-// uniqueIDs は id の重複を除き、最初に現れた順で返す。
 func uniqueIDs(ids []int64) []int64 {
 	seen := make(map[int64]bool, len(ids))
 	out := make([]int64, 0, len(ids))

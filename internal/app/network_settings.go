@@ -12,50 +12,39 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// NetworkSettingsStore は LAN からの接続の許可の保存先である。internal/store の
-// *SettingsStore がこれを満たす。
 type NetworkSettingsStore interface {
 	SaveLANAccess(ctx context.Context, allowed bool) error
 }
 
-// NetworkListener はサーバーの待ち受けで、アドレスを変えて開き直せる。cmd/mdm の
-// 待ち受けの部品がこれを満たす。
 type NetworkListener interface {
-	// Reopen は待ち受けを addr で開き直す。開けなければ元のアドレスへ戻して誤りを返す。
-	// 確立済みの接続は切らない。
+	// Reopen rolls back on failure without disconnecting established connections.
 	Reopen(addr string) error
-	// Addr は今の待ち受けの実際のアドレスを返す。
 	Addr() string
 }
 
-// NetworkSettingsOptions は LAN からの接続の設定に必要な依存である。
 type NetworkSettingsOptions struct {
 	Store    NetworkSettingsStore
 	Listener NetworkListener
-	// LANAccess は起動時に読んだ保存値で、待ち受けはこれに合うアドレスで開いている。
+	// The listener must already match this saved startup value.
 	LANAccess bool
-	// Addresses は上がっている非ループバックの IPv4 アドレスを返す。許可中の GET と PUT の
-	// 応答で呼ぶ。
+	// Called only while LAN access is enabled; return active non-loopback IPv4 addresses.
 	Addresses func() ([]netip.Addr, error)
-	// Logger は nil なら slog の既定を使う。
+	// Nil uses slog.Default.
 	Logger *slog.Logger
 }
 
-// NetworkSettings は Windows デスクトップ版の LAN からの接続の許可を持ち、切り替えでは
-// 待ち受けを開き直してから保存する。
-// 待ち受けのアドレスと保存値を食い違わせない。
+// Reopen before saving so the persisted LAN setting and actual listener stay consistent.
 type NetworkSettings struct {
 	store     NetworkSettingsStore
 	listener  NetworkListener
 	addresses func() ([]netip.Addr, error)
 	logger    *slog.Logger
 
-	// mu は切り替えを 1 つずつにし、許可の値と待ち受けを一緒に読む。
+	// Read permission and listener state under the same lock used for changes.
 	mu        sync.Mutex
 	lanAccess bool
 }
 
-// NewNetworkSettings は起動時の保存値から設定を作る。
 func NewNetworkSettings(opts NetworkSettingsOptions) *NetworkSettings {
 	logger := opts.Logger
 	if logger == nil {
@@ -70,16 +59,14 @@ func NewNetworkSettings(opts NetworkSettingsOptions) *NetworkSettings {
 	}
 }
 
-// Current は今の許可・ポート・許可中に開けるアドレスを返す。
 func (n *NetworkSettings) Current() domain.NetworkSettings {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	return n.currentLocked()
 }
 
-// SetLANAccess は許可を切り替える。今と同じ値なら何もしない。新しいアドレスで待ち受けを
-// 開けなければ、保存値を変えずに domain.ErrListenFailed を包んで返す。開き直したあとの
-// 保存に失敗したら、待ち受けを元のアドレスへ戻して保存の誤りを返す
+// SetLANAccess leaves storage unchanged on bind failure; if saving fails after reopening, restore
+// the prior listener and return the save error.
 func (n *NetworkSettings) SetLANAccess(ctx context.Context, allowed bool) (domain.NetworkSettings, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -99,7 +86,8 @@ func (n *NetworkSettings) SetLANAccess(ctx context.Context, allowed bool) (domai
 		return domain.NetworkSettings{}, fmt.Errorf("%w: %w", domain.ErrListenFailed, err)
 	}
 
-	// 開き直したあとは、要求が切れても保存までを済ませ、待ち受けと保存値を食い違わせない。
+	// Finish persistence even after request cancellation once the listener changes, preventing
+	// divergent state.
 	if err := n.store.SaveLANAccess(context.WithoutCancel(ctx), allowed); err != nil {
 		if backErr := n.listener.Reopen(previous); backErr != nil {
 			n.logger.Error("could not listen on the previous address after the save failed",
@@ -123,7 +111,7 @@ func (n *NetworkSettings) currentLocked() domain.NetworkSettings {
 	}
 	addrs, err := n.addresses()
 	if err != nil {
-		// 許可は効いているので、アドレスを示せないだけにする。
+		// LAN permission is effective even when address discovery fails; omit only the addresses.
 		n.logger.Warn("cannot list the network addresses", slog.Any("error", err))
 		return settings
 	}
@@ -137,7 +125,6 @@ func (n *NetworkSettings) currentLocked() domain.NetworkSettings {
 	return settings
 }
 
-// portOf は "host:port" のポートを返す。
 func portOf(addr string) (int, error) {
 	_, portText, err := net.SplitHostPort(addr)
 	if err != nil {

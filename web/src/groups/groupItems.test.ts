@@ -91,7 +91,7 @@ describe("reconcileGroupSelection", () => {
 
 describe("selectedItemIds", () => {
   it("選んだグループの項目と、選んだグループのメンバーでない選んだ動画の項目を返す", () => {
-    // 動画 10 は直接の項目（1）でもあり、子グループ 20 のメンバーでもある（Edge Case）。
+    // Video 10 is both a direct item and a member of child group 20.
     const items = [videoItem(1, 10), groupItem(2, 20, [10]), videoItem(3, 11)];
     const onlyVideo = setVideo(emptySelection, 10, true);
     expect(selectedItemIds(onlyVideo, items)).toEqual([1]);

@@ -110,7 +110,7 @@ describe("App", () => {
     expect(indicator.closest(".fixed")?.classList.contains("bottom-4")).toBe(true);
 
     await user.click(screen.getByRole("link", { name: "フォルダへ" }));
-    // フォルダと設定の画面は使うときに読み込むので、出てくるのを待つ。
+    // These routes load lazily, so wait for their content.
     await user.click(await screen.findByRole("link", { name: "設定へ" }));
     expect(await screen.findByRole("link", { name: "動画へ" })).toBeDefined();
     expect(screen.getByRole("button", { name: /^Scanning 4 of 10 videos done\./ })).toBe(
@@ -124,7 +124,6 @@ describe("App", () => {
     });
     expect(playbackIndicator).toBe(indicator);
     const playbackPlacement = playbackIndicator.closest(".fixed")?.classList;
-    // 再生画面でも右下に置く。右上には閉じる × がある。
     expect(playbackPlacement?.contains("bottom-4")).toBe(true);
     expect(playbackPlacement?.contains("sm:bottom-5")).toBe(true);
     expect(playbackPlacement?.contains("sm:top-2")).toBe(false);
@@ -142,7 +141,6 @@ describe("App", () => {
     const toast = await screen.findByText("route toast");
     const toaster = () =>
       document.querySelector<HTMLElement>("[data-sonner-toaster]")?.style;
-    // 一覧の画面ではトップバーの下の右端に出す。
     expect(toaster()?.getPropertyValue("--offset-top")).toBe(
       "calc(var(--spacing-navbar) + 0.5rem)",
     );
@@ -153,7 +151,6 @@ describe("App", () => {
     await user.click(screen.getByRole("link", { name: "動画へ" }));
     expect(await screen.findByRole("link", { name: "ライブラリへ" })).toBeDefined();
     expect(screen.getByText("route toast").textContent).toBe(toast.textContent);
-    // 再生画面では上端の中央に出し、右上の閉じる × を覆わない。
     expect(toaster()?.getPropertyValue("--offset-top")).toBe("0.375rem");
     expect(
       document.querySelector("[data-sonner-toaster]")?.getAttribute("data-x-position"),
@@ -175,7 +172,7 @@ describe("App", () => {
     ).toBeDefined();
     expect(window.location.pathname).toBe("/setup");
     expect(screen.queryByRole("complementary", { name: "Main navigation" })).toBeNull();
-    // 取り込みの状態などプロバイダの要求を送らない。
+    // Avoid provider requests such as import status.
     expect(fetchMock).toHaveBeenCalledOnce();
   });
 

@@ -21,8 +21,6 @@ func seekThumbnailServer(t *testing.T, reader ArtifactReader) (http.Handler, dom
 	}), video
 }
 
-// assertRevalidated は、成功の応答が private, no-cache と ETag を持ち、
-// If-None-Match が一致すれば本文なしの 304 になることを確かめる。
 func assertRevalidated(t *testing.T, handler http.Handler, target string, rec *httptest.ResponseRecorder) {
 	t.Helper()
 	if got := rec.Header().Get("Cache-Control"); got != cacheRevalidate {
@@ -44,8 +42,6 @@ func assertRevalidated(t *testing.T, handler http.Handler, target string, rec *h
 	}
 }
 
-// 配置情報は契約の形で、シートの版付き URL を
-// 番号順に並べる。
 func TestSeekThumbnailReturnsSpriteDescription(t *testing.T) {
 	reader := &fakeArtifacts{sprite: testSprite()}
 	handler, video := seekThumbnailServer(t, reader)
@@ -77,14 +73,12 @@ func TestSeekThumbnailReturnsSpriteDescription(t *testing.T) {
 	}
 	assertRevalidated(t, handler, target, rec)
 
-	// 版が無くても、使うたびに確かめさせる。
 	bare := do(t, handler, http.MethodGet, "/api/videos/1/seek-thumbnail")
 	if bare.Code != http.StatusOK || bare.Header().Get("Cache-Control") != cacheRevalidate {
 		t.Errorf("版なし: status=%d cache=%q", bare.Code, bare.Header().Get("Cache-Control"))
 	}
 }
 
-// シートは JPEG を返し、private, no-cache と ETag で確かめさせる。
 func TestSeekThumbnailSheetReturnsJPEG(t *testing.T) {
 	reader := &fakeArtifacts{sprite: testSprite(), image: []byte{0xff, 0xd8, 0xff, 0xd9}}
 	handler, video := seekThumbnailServer(t, reader)
@@ -103,7 +97,6 @@ func TestSeekThumbnailSheetReturnsJPEG(t *testing.T) {
 	assertRevalidated(t, handler, target, rec)
 }
 
-// シートの番号は整数で、枚数以上なら 404 になる。
 func TestSeekThumbnailSheetRejectsInvalidAndOutOfRange(t *testing.T) {
 	handler, _ := seekThumbnailServer(t, &fakeArtifacts{sprite: testSprite(), image: []byte("jpeg")})
 	for target, want := range map[string]int{
@@ -122,7 +115,6 @@ func TestSeekThumbnailSheetRejectsInvalidAndOutOfRange(t *testing.T) {
 	}
 }
 
-// 解析が終わっていない・映像が無い動画は、どちらの経路も 409 になる。
 func TestSeekThumbnailRequiresProbe(t *testing.T) {
 	reader := &fakeArtifacts{sprite: testSprite(), image: []byte("jpeg")}
 	_, video := seekThumbnailServer(t, reader)
@@ -145,7 +137,6 @@ func TestSeekThumbnailRequiresProbe(t *testing.T) {
 	}
 }
 
-// 生成中（配置情報が無い）は 409、配置情報やシートを読めなければ 500 になる。
 func TestSeekThumbnailMapsFileFailures(t *testing.T) {
 	tests := []struct {
 		name   string

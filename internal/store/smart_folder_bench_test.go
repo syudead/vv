@@ -8,10 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// BenchmarkSmartFolderReads は 2 万本の動画で、3 段目のフォルダのページと、子フォルダを持つ根の
-// フォルダのページを読む時間を測る。予算 1 秒未満の対象は
-// 3 段目のフォルダのページで、根のフォルダのページは参考値である（R-13 のほかの予算は
-// BenchmarkLibraryWithSmartFolders で測る）。
+// Measure third-level pages against the one-second budget; root pages are a reference measurement.
 func BenchmarkSmartFolderReads(b *testing.B) {
 	db, cat := smartFolderBenchDB(b)
 	ctx := context.Background()
@@ -33,9 +30,7 @@ func BenchmarkSmartFolderReads(b *testing.B) {
 	}
 }
 
-// BenchmarkLibraryWithSmartFolders は 2 万本の動画で、親の無いフォルダ 50 個を持つ絞り込みの無い
-// ライブラリの最初のページと、そのうち 24 個のカードの読み出しの時間を測る。予算はどちらも 1 秒未満。フォルダは条件がタグ・視聴状態・長さ・追加日・検索の
-// ものを 10 個ずつ持つ。
+// Measure library and 24-card reads against a one-second budget using 20,000 videos and 50 varied-rule folders.
 func BenchmarkLibraryWithSmartFolders(b *testing.B) {
 	db, cat := smartFolderBenchDB(b)
 	ctx := context.Background()
@@ -47,7 +42,6 @@ func BenchmarkLibraryWithSmartFolders(b *testing.B) {
 			}
 		}
 	}
-	// 参考値: フォルダの無いライブラリ。
 	b.Run("no folders", read)
 	ids := make([]int64, 0, 50)
 	for i := range 50 {
@@ -76,8 +70,7 @@ func BenchmarkLibraryWithSmartFolders(b *testing.B) {
 	})
 }
 
-// smartFolderBenchDB は 2 万本の動画を 4 千のフォルダに 5 本ずつ置き（どのフォルダも自動グループに
-// なる）、半分にタグ 猫 を付け、3 本に 1 本に再生の記録を置いた索引を作り、猫 の id を返す。
+// Use 20,000 videos in 4,000 automatic groups, tagging half and recording progress for every third video.
 func smartFolderBenchDB(b *testing.B) (*DB, int64) {
 	b.Helper()
 	db, err := Open(b.TempDir())

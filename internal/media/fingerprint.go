@@ -11,18 +11,14 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 映像の指紋。完成した
-// シーク用スプライトのシートから作るので、ffmpeg を起動せず、元の動画も読み直さない。
+// Fingerprint completed sprites without rerunning ffmpeg or reading source video.
 
-// fingerprintBlackLevel は、平均の輝度がこれ未満の端の行と列を黒い帯として落とす値である。
 const fingerprintBlackLevel = 16
 
-// ErrSpriteMismatch はシートの枚数や大きさがスプライトの配置情報と合わないことを表す。
 var ErrSpriteMismatch = errors.New("the seek sprite sheets do not match its layout")
 
-// SpriteFingerprint はシーク用スプライトの各コマから映像の指紋を作る。sheets は
-// シート 0 から順の JPEG である。各コマを切り出し、上下左右の黒い帯を落として 32×32 の
-// 輝度に縮め、domain.HashFrame を並べる。
+// SpriteFingerprint crops each frame, removes black borders, and hashes 32x32 luma; sheets are
+// ordered from zero.
 func SpriteFingerprint(sprite domain.SeekSprite, sheets [][]byte) (domain.Fingerprint, error) {
 	perSheet := sprite.Columns * sprite.Rows
 	if sprite.IntervalMs <= 0 || sprite.FrameCount <= 0 || perSheet <= 0 ||
@@ -57,15 +53,14 @@ func SpriteFingerprint(sprite domain.SeekSprite, sheets [][]byte) (domain.Finger
 	return domain.Fingerprint{Version: domain.FingerprintVersion, IntervalMs: sprite.IntervalMs, Frames: frames}, nil
 }
 
-// luma は 1 枚のシートの輝度（0〜255）である。
+// Luma values range from 0 to 255.
 type luma struct {
 	rect   image.Rectangle
 	stride int
 	pix    []uint8
 }
 
-// lumaPlane はシートの輝度を取り出す。スプライトの JPEG（yuvj420p）は *image.YCbCr で、
-// その Y をそのまま使う。
+// Use JPEG's Y plane directly when available.
 func lumaPlane(img image.Image) luma {
 	bounds := img.Bounds()
 	switch typed := img.(type) {
@@ -88,7 +83,6 @@ func (l luma) at(x, y int) uint8 {
 	return l.pix[(y-l.rect.Min.Y)*l.stride+(x-l.rect.Min.X)]
 }
 
-// rowMean と columnMean は rect の中の 1 行・1 列の平均の輝度である。
 func (l luma) rowMean(rect image.Rectangle, y int) int {
 	total := 0
 	for x := rect.Min.X; x < rect.Max.X; x++ {
@@ -105,9 +99,8 @@ func (l luma) columnMean(rect image.Rectangle, x int) int {
 	return total / rect.Dy()
 }
 
-// trimBlackBands は rect の上下左右から、平均の輝度が fingerprintBlackLevel 未満の行と列を
-// 落とす。レターボックスやピラーボックスの有無が違う版どうしで同じ場面を比べるためである。
-// 全体が暗いコマは落とさずにそのまま返す（単色の印が付いて比較から外れる）。
+// Remove black borders to compare letterboxed and pillarboxed versions; leave wholly dark frames
+// intact so solid-frame detection excludes them.
 func (l luma) trimBlackBands(rect image.Rectangle) image.Rectangle {
 	trimmed := rect
 	for trimmed.Dy() > 0 && l.rowMean(trimmed, trimmed.Min.Y) < fingerprintBlackLevel {
@@ -131,8 +124,7 @@ func (l luma) trimBlackBands(rect image.Rectangle) image.Rectangle {
 	return trimmed
 }
 
-// shrink は rect を面積の平均で 32×32 の輝度に縮める。各升目は rect を 32 等分した区間の
-// 画素の平均で、区間が 1 画素に満たなければその位置の 1 画素を使う。
+// Area-average into 32x32 luma, using a single pixel where a cell is smaller than one pixel.
 func (l luma) shrink(rect image.Rectangle) [domain.FingerprintFrameSize][domain.FingerprintFrameSize]uint8 {
 	const size = domain.FingerprintFrameSize
 	var out [size][size]uint8
@@ -153,7 +145,6 @@ func (l luma) shrink(rect image.Rectangle) [domain.FingerprintFrameSize][domain.
 	return out
 }
 
-// span は長さ length を 32 等分した index 番目の区間 [start, end) を返す。
 func span(origin, length, index int) (int, int) {
 	start := origin + index*length/domain.FingerprintFrameSize
 	end := origin + (index+1)*length/domain.FingerprintFrameSize

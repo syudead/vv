@@ -24,43 +24,29 @@ import { errorText, t, type UiText } from "../i18n";
 
 export interface ScanContextValue {
   scan: Scan | null;
-  /** current scan の初回取得が完了している。 */
   loaded: boolean;
-  /**
-   * 今の処理。取り込み中に `Scan.activity` が一瞬無くなっても、同じ取り込みのあいだは
-   * 直前の値を残す。
-   */
+  /** Retain the previous activity across temporary gaps within the same running scan. */
   activity: ScanActivity | null;
-  /** 状態取得や開始の失敗。 */
   error: UiText | null;
-  /** 開始の失敗。設定の「Scan status」が button のそばに出す。 */
   startError: UiText | null;
   starting: boolean;
   running: boolean;
   canStart: boolean;
-  /** メディアフォルダが1つも無いと分かっている（件数が未取得のときは false）。 */
+  /** False while the folder count remains unknown. */
   noMediaFolders: boolean;
   start: () => void;
   refresh: () => void;
   setFolderCount: (count: number) => void;
-  /**
-   * 「終わったのを見た」スキャン。初回表示で既に終わっていたものは含めない
-   * （利用者が待っていたものではないため、一覧を勝手に入れ替えない）。
-   */
+  /** Exclude scans already finished on initial load so lists do not refresh unexpectedly. */
   finished: Scan | null;
   /**
-   * 「終わったのを見た」自動の取り込み（`origin` が `watch`）のスキャン。終わりは `status` で
-   * 決める。手動の `finished` とは分け、開いている一覧はこちらでその場で更新する。
+   * Track automatic completion separately for in-place list refreshes, using status after
+   * preparation finishes.
    */
   watchFinished: Scan | null;
 }
 
-/**
- * ScanControlsValue は、取り込みの進み（済みの本数・今の処理）を読まない画面が使う部分である。
- * 値は取り込みの始まりと終わり、フォルダの件数の変化でだけ変わる。取り込み中は1ファイルごとに
- * `scan` の知らせが届くので、`useScan` を読む一覧の画面は、そのたびに丸ごと描き直される
- * （issue 674）。一覧の画面はこちらを読む。
- */
+/** Lists use this stable control context to avoid rerendering on per-file scan events. */
 export type ScanControlsValue = Pick<
   ScanContextValue,
   | "running"
@@ -72,10 +58,7 @@ export type ScanControlsValue = Pick<
   | "watchFinished"
 >;
 
-/**
- * dedupeLoadMs は、取り直しの求めを途中の取得にまとめる時間である。これより前に始めた
- * 取得がまだ返らなければ、打ち切って取り直す。
- */
+/** Coalesce only recent in-flight reads; abort older hung reads and retry. */
 const dedupeLoadMs = 1000;
 
 const ScanContext = createContext<ScanContextValue | null>(null);
@@ -89,7 +72,6 @@ export function useScan(): ScanContextValue {
   return value;
 }
 
-/** useScanControls は取り込みの開始・取り直し・「終わったのを見た」だけを読む。 */
 export function useScanControls(): ScanControlsValue {
   const value = useContext(ScanControlsContext);
   if (value === null) {
@@ -98,23 +80,16 @@ export function useScanControls(): ScanControlsValue {
   return value;
 }
 
-/**
- * isWatchScan は、フォルダの監視が始めた取り込みかを返す。走っているあいだは画面のどこにも
- * 出さず、「取り込みを始められない」理由にもしない。
- */
+/** Running watcher scans neither display progress nor block manual-start availability. */
 export function isWatchScan(scan: Scan | null): boolean {
   return scan?.origin === "watch";
 }
 
-/** inProgress は、取り込みがまだ終わっていない（走査中か、準備が残る）かを返す。 */
 export function inProgress(scan: Scan): boolean {
   return scan.status === "finding" || scan.status === "running";
 }
 
-/**
- * nextActivity は、新しい `Scan` を受けたときに示す今の処理を決める。同じ取り込みが
- * 終わっていないあいだは、activity が無くても直前の値を残す。
- */
+/** Retain missing activity only within the same unfinished scan. */
 export function nextActivity(
   previous: { scanId: number; activity: ScanActivity } | null,
   current: Scan | null,
@@ -127,16 +102,8 @@ export function nextActivity(
 }
 
 /**
- * ScanProvider は取り込み状態をひとつ持つ。
- *
- * 状態は最初に1度取得し、その後はサーバーからの変化の知らせ（`/api/events`）で
- * 更新する。一定間隔では問い合わせない。つなぎ直したとき、ウィンドウへ戻った
- * とき、利用者が更新を求めたときは取り直す。設定の「Scan status」の開始ボタン・
- * 右下の表示・ライブラリの再読込が同じ状態を見る。
- *
- * 取り込みは所有者だけのものなので、ゲストとして描くときは状態を取りに行かず
- * （`GET /api/scans/current` を呼ばない）、`/api/events` も購読しない。取り込みの
- * 状態は「まだ取り込んでいない」のまま動かず、開始も取り直しも何もしない。
+ * Owners share one event-driven scan state, refreshed on reconnect, focus or explicit request.
+ * Guests neither fetch nor subscribe; their controls are no-ops.
  */
 export function ScanProvider({ children }: { children: ReactNode }) {
   const owner = useAudience() === "owner";
@@ -159,8 +126,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const observedRunningScanId = useRef<number | null>(null);
   const recoveryBaselineScanId = useRef<number | null | undefined>(undefined);
   const lastSeenScanId = useRef<number | null | undefined>(undefined);
-  // 取得と変化の知らせは並行する。知らせの方が新しいことがあるので、取得を
-  // 始めたあとに知らせを受けたら、その取得の応答は捨てる。
+  // Events can be newer than pending reads; discard a read if an event arrived after it started.
   const scanRevision = useRef(0);
 
   const updateFolderCount = useCallback((count: number) => {
@@ -168,10 +134,6 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     setFolderCount(count);
   }, []);
 
-  /**
-   * apply はサーバーから得たスキャンを取り込み、「終わったのを見た」を決める。
-   * 取得の応答と変化の知らせのどちらから来ても同じ規則で扱う。
-   */
   const apply = useCallback((current: Scan | null) => {
     const previousScanId = lastSeenScanId.current;
     lastSeenScanId.current = current?.id ?? null;
@@ -182,9 +144,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     if (current === null) return;
 
     if (current.origin === "watch") {
-      // 自動の取り込みの終わりは、開いている一覧のその場の更新だけに使う。終わりは
-      // 準備まで済んだ `status` で決め、取り込みが始まっていた時点を見たもの、または
-      // 最初の取得のあとに現れたものに限る（最初から終わっていたものは反映済み）。
+      // Automatic completion refreshes lists only after preparation and only for scans observed after initial load.
       if (inProgress(current)) {
         observedRunningWatchId.current = current.id;
       } else if (
@@ -228,7 +188,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     if (completedRequestedScan) requestedScanId.current = null;
   }, []);
 
-  // 直近の取得が失敗したか。最初の接続で取り直すかを決める。
+  // Track fetch failure to decide whether initial connection needs another read.
   const loadFailed = useRef(false);
 
   const loadFolders = useCallback(async (signal: AbortSignal) => {
@@ -243,7 +203,6 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  /** loadScan は直近の取り込みを取り直す。遅れて届いた古い応答は捨てる。 */
   const inFlight = useRef<AbortController | null>(null);
   const loadScan = useCallback(() => {
     inFlight.current?.abort();
@@ -258,7 +217,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         if (scanAt === scanRevision.current) apply(current);
       } catch (failure) {
         if (scanAt !== scanRevision.current || isAborted(failure)) return;
-        // 最後に得た状態は捨てない。つなぎ直しやウィンドウへの復帰で取り直す。
+        // Keep the last known state on failure; retry on reconnect or window focus.
         loadFailed.current = true;
         setLoadError(errorText(failure));
       } finally {
@@ -267,7 +226,6 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     })();
   }, [apply]);
 
-  /** load はフォルダの件数も含めて、今の状態をまとめて取り直す。 */
   const foldersInFlight = useRef<AbortController | null>(null);
   const loadStartedAt = useRef(0);
   const load = useCallback(() => {
@@ -283,15 +241,11 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   }, [loadFolders, loadScan]);
 
   /**
-   * loadUnlessLoading は、直前（`dedupeLoadMs` 以内）に始めた取得の途中でなければ取り直す。
-   * 途中なら、その応答が今の状態を運ぶ。画面を開いたときの取り直しと、この部品の最初の
-   * 取得が重なって、同じ取得を2回続けて送らないようにする（子の画面の effect は親より先に
-   * 走る。issue 674）。それより前に始めた取得がまだ返らないなら、返らないまま止まっている
-   * かもしれないので、`load` で打ち切って取り直す。
+   * Coalesce recent reads from child and parent mount effects; abort older hung requests before
+   * retrying.
    */
   const loadUnlessLoading = useCallback(() => {
-    // 打ち切った取得は応答を捨てるので、途中の取得に数えない（effect の後始末のすぐあとに
-    // もう一度走る StrictMode や、owner の切り替えで取り直しを落とさない）。
+    // Aborted reads are no longer pending, allowing StrictMode and audience-change effects to restart them.
     const pending = (controller: AbortController | null) =>
       controller !== null && !controller.signal.aborted;
     const loading = pending(inFlight.current) || pending(foldersInFlight.current);
@@ -301,15 +255,13 @@ export function ScanProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!owner) return;
-    // 購読してから取得する。取得のあとに起きた変化を取りこぼさない。
+    // Subscribe before reading to avoid missing changes after the snapshot.
     const unsubscribe = subscribeServerEvents({
       scan: (next) => {
         scanRevision.current += 1;
         apply(next);
       },
-      // つないだ直後にサーバーは今の状態を `scan` で送るので、最初の接続では、直前の取得が
-      // 失敗していなければ取り直さない。つなぎ直しでは、切れていた間のフォルダの件数の
-      // 変化も取り直す。
+      // Initial connection already sends current scan state; refetch only after a prior failure. Reconnect also refreshes folder counts missed while disconnected.
       open: (reconnected) => {
         if (reconnected || loadFailed.current) load();
       },
@@ -334,8 +286,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     setStarting(true);
     setStartError(null);
     recoveryBaselineScanId.current = undefined;
-    // 開始の応答より先に、変化の知らせが届くことがある（すぐ終わる小さな
-    // 取り込み）。そのときは知らせの方が新しいので、応答の状態で戻さない。
+    // Fast scans may emit events before start returns; never replace newer event state with the response.
     const requestedAt = scanRevision.current;
     void (async () => {
       try {
@@ -356,13 +307,12 @@ export function ScanProvider({ children }: { children: ReactNode }) {
           updateFolderCount(0);
         }
         setStartError(t.shell.scan.startFailed(errorText(failure)));
-        // 応答だけを失い、取り込み自体は始まっていることがある。変化の知らせか
-        // 次の取得でそれを見たら、失敗の表示を消して追跡する。
+        // A lost response may hide a successful start; clear the error when events or reads discover the scan.
         recoveryBaselineScanId.current = baselineScanId;
       } finally {
         setStarting(false);
       }
-      // 開始の直後に終わる小さな取り込みもある。知らせを待たずに1度取り直す。
+      // Refresh once immediately because a small scan may already have finished.
       loadScan();
     })();
   }, [apply, folderCount, loadScan, owner, scan?.id, updateFolderCount]);

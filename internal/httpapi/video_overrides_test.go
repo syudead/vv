@@ -12,9 +12,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 表示名の設定・解除は、本物の
-// 認証・保存層で確かめる（#557）。
-
 func displayNameBody(name string) string {
 	body, _ := json.Marshal(map[string]string{"displayName": name})
 	return string(body)
@@ -27,7 +24,6 @@ func (f *guestFixture) setDisplayName(name, body string, cookies ...*http.Cookie
 	})
 }
 
-// eventsPublisher は保存層が確定後に発行する変化を画面への知らせへ渡す（cmd/mdm の配線と同じ向き）。
 type eventsPublisher struct{ events *Events }
 
 func (p eventsPublisher) Publish(events ...domain.Event) {
@@ -36,7 +32,6 @@ func (p eventsPublisher) Publish(events ...domain.Event) {
 	}
 }
 
-// libraryVideoTitles はライブラリの応答の動画の項目の題名を並びのまま返す。
 func libraryVideoTitles(page gen.LibraryPage) []string {
 	var titles []string
 	for _, item := range page.Items {
@@ -47,9 +42,6 @@ func libraryVideoTitles(page gen.LibraryPage) []string {
 	return titles
 }
 
-// 所有者の PUT は 200 と反映済みの Video を返し、詳細・一覧・ライブラリ・関連動画・ゲストの
-// 詳細の title が表示名になる（受け入れ条件 1）。空文字で元の題名に戻る（受け入れ条件 2）。
-// 確定後に /api/events の video が流れる。
 func TestSetVideoDisplayNameAppliesAndClears(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -57,7 +49,7 @@ func TestSetVideoDisplayNameAppliesAndClears(t *testing.T) {
 	env.db.PublishTo(eventsPublisher{events: events})
 	sub, unsubscribe := events.subscribe()
 	defer unsubscribe()
-	sub.take() // つないだ直後の送信を除く。
+	sub.take()
 
 	rec := f.setDisplayName("a", displayNameBody("  My Movie  "), f.owner)
 	if rec.Code != http.StatusOK {
@@ -76,7 +68,6 @@ func TestSetVideoDisplayNameAppliesAndClears(t *testing.T) {
 	if saved.DisplayName == nil || *saved.DisplayName != "My Movie" {
 		t.Errorf("設定の応答の displayName = %v, want My Movie", saved.DisplayName)
 	}
-	// GET /api/videos/{id} と同じ形（所在・タグ・再生位置を含む）。
 	if saved.Location == nil || saved.Progress == nil || len(saved.Tags) != 1 {
 		t.Errorf("設定の応答が詳細と同じ形でない: %+v", saved)
 	}
@@ -101,7 +92,6 @@ func TestSetVideoDisplayNameAppliesAndClears(t *testing.T) {
 		t.Errorf("関連動画に表示名が無い: %v", titlesOf(related.Items))
 	}
 
-	// ゲストは title で表示名を受け取り、上書きの項目を受け取らない（受け入れ条件 9）。
 	guest := env.get(f.videoPath("a", ""))
 	if guest.Code != http.StatusOK {
 		t.Fatalf("ゲストの詳細: status = %d: %s", guest.Code, guest.Body)
@@ -115,12 +105,10 @@ func TestSetVideoDisplayNameAppliesAndClears(t *testing.T) {
 		t.Errorf("ゲストの詳細の title = %s, want \"My Movie\"", got)
 	}
 
-	// 他の動画と同じ表示名も受け付ける。
 	if rec := f.setDisplayName("b", displayNameBody("My Movie"), f.owner); rec.Code != http.StatusOK {
 		t.Errorf("同じ表示名: status = %d: %s", rec.Code, rec.Body)
 	}
 
-	// 空白だけは解除で、元の題名に戻る。
 	rec = f.setDisplayName("a", displayNameBody(" 　 "), f.owner)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("解除: status = %d: %s", rec.Code, rec.Body)
@@ -137,7 +125,6 @@ func TestSetVideoDisplayNameAppliesAndClears(t *testing.T) {
 	}
 }
 
-// ゲストの PUT は 401、規則に合わない名前は 400 と reason、無い動画は 404 になる。
 func TestSetVideoDisplayNameRejects(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env

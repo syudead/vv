@@ -7,21 +7,17 @@ import { Input } from "../ui/shadcn/input";
 import { Popover, PopoverAnchor, PopoverContent } from "../ui/shadcn/popover";
 import { nameFieldOutcome, nameTooLong } from "./videoDrop";
 
-/** GroupNameFieldProps は新しいグループの名前の欄の props である。 */
 export interface GroupNameFieldProps {
-  /** サーバーが付けた仮の名前。欄はこの値を選んだ状態で始まる。 */
+  /** Select the server's provisional name on opening. */
   provisional: string;
-  /** 変えた名前で Enter を押したときに呼ぶ。 */
   onRename: (name: string) => void;
-  /** 欄が閉じたら呼ぶ（Enter、Esc、フォーカスが離れた）。 */
   onClose: () => void;
   className?: string;
 }
 
 /**
- * GroupNameField は「Make a group」の後に新しいグループのカードの名前の位置に出す欄である。仮の名前を選んだ状態で
- * フォーカスを受け、変えた名前の Enter で `onRename`、変えない Enter・空・Esc・フォーカスが
- * 離れたら何も送らずに閉じる。100 文字を超えると規則を出し、Enter では閉じない。
+ * Rename only changed nonempty names on Enter; Escape, blur and unchanged Enter close without
+ * saving. Overlength input reports an error and keeps the field open.
  */
 export function GroupNameField({
   provisional,
@@ -82,10 +78,7 @@ export function GroupNameField({
   );
 }
 
-/**
- * GroupNamePopover は名前の欄を、落とした先のカードの下の Popover に出す。フォルダ画面は
- * グループのカードを描かないので、こちらを使う。カードの箱（`relative`）の中に置く。
- */
+/** Folders render no group card, so use this popover within the target card's relative box. */
 export function GroupNamePopover(props: GroupNameFieldProps) {
   return (
     <Popover

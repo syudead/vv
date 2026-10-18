@@ -14,10 +14,6 @@ import FolderCard from "./FolderCard";
 import { Section } from "./layout";
 import { CardsLoading, LoadFailed, MoreRow, NoMatches } from "./states";
 
-/**
- * FolderContents はフォルダ1件の直下（子フォルダと動画）を並べる通常表示である。
- * 絞り込みだけのときも同じ形にする。
- */
 export default function FolderContents({
   criteria,
   listingLoading,
@@ -30,21 +26,16 @@ export default function FolderContents({
   groupingMenu,
 }: {
   criteria: ListCriteria;
-  /** 子フォルダの一覧を読んでいる間は true。 */
   listingLoading: boolean;
-  /** 直下の子フォルダ。 */
   childFolders: FolderSummary[];
   videos: VideosState;
   zoom: Zoom;
-  /** 再生画面から戻る先（今の一覧の URL）。 */
+  /** Return URL for playback. */
   backTo: string;
-  /** ホバープレビューを同時に 1 件に絞る調整（usePreviewCoordination）。 */
+  /** Coordinate previews so only one plays at a time. */
   preview: PreviewCardProps;
-  /** カードの題名の下に出すタグの行（useFolderTagsRow）。 */
   tagsRow: (video: Video) => ReactNode;
-  /**
-   * 「動画 N」の見出しの行の右端に置く、まとめ方のメニュー。ゲストでは渡さない。
-   */
+  /** Owners only: grouping menu at the end of the video heading. */
   groupingMenu?: ReactNode;
 }) {
   const showFolders = listingLoading || childFolders.length > 0;
@@ -75,12 +66,9 @@ export default function FolderContents({
         </Section>
       )}
       {/*
-        件数の変化は、視覚的に隠した polite の状態の行で知らせる（子フォルダの
-        上に「動画 N」の見出しは出しても、見出しの文字の変化だけでは読み上げ
-        ソフトに伝わらないため）。分岐で作り直さず1つの要素の文字だけを
-        変えることで、更新が確実に読み上げに乗る（絞り込みが無いときと
-        読み込み中は空にする）。
-      */}
+       * Update one persistent polite live region so count changes are announced; heading text
+       * alone is insufficient.
+       */}
       {showVideos && (
         <p role="status" aria-live="polite" className="sr-only">
           {filterOnly && !videos.loading ? t.folders.directVideos(videos.total) : ""}

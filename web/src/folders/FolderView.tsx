@@ -39,7 +39,6 @@ import { useArrival } from "./useArrival";
 import { useConditions } from "./useConditions";
 import { useFolderTagsRow } from "./useFolderTagsRow";
 
-/** FolderView はフォルダ1件の中身（直下の子フォルダと動画、または検索結果）を並べる。 */
 export default function FolderView({ folder }: { folder: FolderRef }) {
   const location = useLocation();
   const {
@@ -59,12 +58,11 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   const owner = useAudience() === "owner";
   const { refresh: refreshScan } = scan;
   const searching = criteria.query !== "";
-  // 検索語があるときはフォルダとその配下すべてを対象にする。無ければ直下だけを絞る
-  // direct は既定なので
-  // 送らない（URL・要求を今までと同じ形に保つ）。
+  // Search recursively when a query exists; otherwise filter only direct children.
+  // Omit the default direct scope to preserve URL and request shapes.
   const scope: FolderScope | undefined = searching ? "subtree" : undefined;
 
-  // --- 再生画面から戻ったときは控えから復元する（要件 10） ---
+  // Restore the cached list when returning from playback.
   const key = folderKey(folder);
   const [restored] = useState(() => {
     const held = takeListSnapshot({ ...criteria, folder: key });
@@ -86,12 +84,11 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     folder,
   );
 
-  // ホバープレビューは同時に 1 件だけ（ライブラリと同じ）。一覧や倍率が変わったら止める。
+  // Allow one preview at a time; stop it when the list or zoom changes.
   const { resetPreview, cardProps: preview } = usePreviewCoordination();
   useEffect(() => {
     resetPreview();
   }, [resetPreview, videos.items, zoom]);
-  // 倍率を変えても読んでいた位置を保つ（ライブラリと同じ）。
   const { listRef, capture } = useZoomAnchor(zoom);
   const changeZoom = useCallback(
     (next: typeof zoom) => {
@@ -105,9 +102,8 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
 
   const summary = listing.data?.folder;
   const children = listing.data?.folders ?? [];
-  // 登録フォルダの表示名。絶対パスが無い（ゲストの）応答で子フォルダを開いているときは、
-  // この応答からは分からない（登録フォルダそのものなら name がそれである）ので、
-  // 登録フォルダそのものを別に読んで、その name を使う。
+  // Guest child-folder responses omit the registered root's name because they have no absolute path.
+  // Fetch the registered root separately for its display name.
   const knownFromSummary =
     summary !== undefined && (summary.rootPath !== undefined || folder.path === "");
   const rootLookup = useRootFolderName(
@@ -122,13 +118,12 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         : rootLookup.status === "ready"
           ? rootLookup.name
           : undefined;
-  // 登録フォルダの名前を読めなかったときは、その段を骨組みのまま残さずに省く。
+  // Omit an unavailable root name instead of leaving a permanent skeleton.
   const rootNameFailed = !knownFromSummary && rootLookup.status === "failed";
   const name =
     summary?.name ?? (folder.path === "" ? rootName : folder.path.split("/").at(-1));
   const backTo = `${location.pathname}${location.search}`;
 
-  // --- スクロール位置の復元 ---
   const pendingScroll = useRef(restored?.scrollY);
   useEffect(() => {
     const previous = history.scrollRestoration;
@@ -142,19 +137,15 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     if (top === undefined || (videos.items.length === 0 && children.length === 0)) return;
     pendingScroll.current = undefined;
     window.scrollTo({ top, behavior: "auto" });
-    // 初回の描画では TopBarPortal がツールバーを本文の流れに置き、直後にトップバーへ
-    // 移す。その分だけ本文が縮み、スクロールの追従で位置がずれるので、描画の前に
-    // もう一度合わせる。
+    // Realign before paint: TopBarPortal initially occupies body space, then moves and shifts scroll anchoring.
     requestAnimationFrame(() => window.scrollTo({ top, behavior: "auto" }));
   }, [children.length, videos.items.length]);
 
-  // --- 取り込みが終わったら控えを捨てて読み直す（Edge Case「取り込み中」） ---
-  // 表示を始めた時点で終わっていた取り込みは、読み込んだ中身に反映済みである。
+  // Imports completed before mounting are already reflected in loaded content.
   const knownScanId = useRef(
     restored === undefined ? scan.finished?.id : restored.scanId,
   );
-  // 読み直しの途中の中身は、終わった取り込みを反映していない。子フォルダと動画の
-  // 両方が読み終わるまでは控えを取らず、戻ったときに読み直させる。
+  // Do not snapshot until both folders and videos finish refreshing; intermediate data predates the completed import.
   const reloadPending = useRef(false);
   useEffect(() => {
     if (!listing.loading && !videos.loading) reloadPending.current = false;
@@ -162,7 +153,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   const { reload: reloadListing } = listing;
   const { reload: reloadVideos, refreshInPlace: refreshVideos } = videos;
   const { refresh: refreshListing } = listing;
-  // 自動の取り込みが終わったら、子フォルダと動画の一覧を消さずにその場で取り直す。
+  // Refresh in place after automatic imports, retaining visible rows.
   const refreshOpenLists = useCallback(() => {
     refreshListing();
     refreshVideos();
@@ -179,12 +170,9 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     reloadVideos();
   }, [reloadListing, reloadVideos, scan.finished]);
 
-  // --- まとめ方のメニュー ---
-  // タグ化の後は動画の一覧を読み直す（表示中のカードのタグは応答に含まれず古いため）。
-  // 読み直しの間は骨組みで背が縮むので、読み終えたら元のスクロール位置へ戻す。
-  // 読み直しは先頭のページだけを返すので、元の位置が続きのページにあったときは、
-  // 位置に届くまで続きを読み、ページごとに合わせ直す。一覧が尽きたか続きの取得に
-  // 失敗したら、届いたところで終える。
+  // Reload after tagging because existing cards carry stale tags.
+  // Restore scroll after skeletons shrink the list during refresh.
+  // Fetch successive pages until the previous position is reachable, pagination ends, or a page fails.
   const scrollAfterReload = useRef<number | undefined>(undefined);
   const { hasMore, loadMore } = videos;
   useLayoutEffect(() => {
@@ -201,8 +189,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     hasMore,
     loadMore,
     videos.error,
-    // 長さではなく一覧そのもので見る。読み直しの先頭のページが待たずに届くと、
-    // loading が true の描画を挟まず、長さも前と同じになることがある。
+    // Track list identity, not length: an immediate response may skip loading and preserve the length.
     videos.items,
     videos.loading,
     videos.loadingMore,
@@ -210,7 +197,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   const { update: updateListing } = listing;
   const grouping = summary?.grouping;
   const groupingMenu =
-    // ゲストの応答には grouping が無いので、引き金を出さない。
+    // Guest responses omit grouping, so hide the trigger.
     owner && grouping !== undefined ? (
       <FolderGroupingMenu
         folder={folder}
@@ -224,7 +211,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         }
         onTagged={() => {
           scrollAfterReload.current = window.scrollY;
-          // 読み直しの途中の空の一覧を控えに残さない（取り込み後の読み直しと同じ）。
+          // Do not cache an empty intermediate refresh state.
           reloadPending.current = true;
           reloadVideos();
         }}
@@ -256,7 +243,6 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     videos.total,
   ]);
 
-  // --- 無限スクロール（ライブラリと同じ観測点） ---
   const sentinel = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const target = sentinel.current;
@@ -283,13 +269,11 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
 
   let body: ReactNode;
   if (listing.notFound || videos.notFound) {
-    // 検索中にフォルダが無くなった（listFolderVideos が 404）ときも、一致なしでは
-    // なく「このフォルダは見つかりません」を出す。
+    // A search 404 means the folder is missing, not that no videos match.
     body = <FolderNotFound />;
   } else if (listing.error !== null) {
     body = <LoadFailed reason={listing.error} onRetry={listing.reload} />;
   } else if (searching) {
-    // 検索結果。
     body = (
       <FolderSearchResults
         folder={folder}
@@ -309,8 +293,6 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         }
         description={owner ? t.folders.empty.description : undefined}
         action={
-          // 取り込みは所有者だけの操作である。
-          // 押すと開始の場所である設定の「Scan status」へ移る（issue 830）。
           owner ? (
             <Button asChild size="sm">
               <Link to="/settings/scan#scan-status">{t.list.scan}</Link>
@@ -320,7 +302,6 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
       />
     );
   } else {
-    // 直下だけを対象にする通常表示（絞り込みだけのときも同じ形）。
     body = (
       <FolderContents
         criteria={criteria}
@@ -342,7 +323,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         <>
           <Breadcrumbs
             crumbs={
-              // 見つからなかったフォルダでは登録フォルダの名前が分からないので、その段を出さない。
+              // Omit the root crumb when a missing folder leaves its name unknown.
               listing.notFound ||
               videos.notFound ||
               listing.error !== null ||
@@ -352,7 +333,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
             }
             suffix={searching && !videos.notFound ? t.folders.searchingInside : undefined}
           />
-          {/* 現在地はパンくずが見せるので、題は読み上げだけに置く。 */}
+          {/* Breadcrumbs show the location visually; keep the title screen-reader-only. */}
           <PageHeader titleHidden titleRef={heading} title={name ?? t.folders.title} />
         </>
       }
@@ -381,10 +362,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         </TopBarPortal>
       }
     >
-      {/*
-        中身を押す直前（再生画面・子フォルダへ移る直前）の状態を控える。間隔は骨格が
-        持つので、この入れ物は箱を作らない（contents）。
-      */}
+      {/* Snapshot immediately before navigation; display: contents preserves the layout's spacing. */}
       <div ref={listRef} onClick={saveSnapshot} className="contents">
         {body}
       </div>

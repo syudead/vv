@@ -12,11 +12,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// ListVideoSubtitles は動画の隣に置いた字幕ファイルの一覧を返す
-// （GET /api/videos/{id}/subtitles、docs/design-docs/sidecar-subtitles.md）。
-//
-// 要求のたびに、配信が開く所在のフォルダを読む。中身は読まない
-// ので、壊れたファイルもここには載り、取得で 404 になる（R-7）。
+// List subtitles from the current stream location without reading contents; malformed files may list successfully and fail on retrieval (docs/design-docs/sidecar-subtitles.md).
 func (s *server) ListVideoSubtitles(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	video, r, release, ok := s.lookupServedVideo(w, r, id)
 	if !ok {
@@ -42,16 +38,11 @@ func (s *server) ListVideoSubtitles(w http.ResponseWriter, r *http.Request, id g
 			Format: gen.SubtitleTrackFormat(sidecar.Format),
 		})
 	}
-	// 開き直すたびにフォルダの今の状態を返す（親 Issue の要件 2）。
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.SubtitleTrackList{Subtitles: tracks}, s.logger)
 }
 
-// GetVideoSubtitle は字幕ファイル 1 つを UTF-8 の WebVTT にして返す
-// （GET /api/videos/{id}/subtitles/{file}）。
-//
-// file は一覧を作り直してその中の 1 つと完全に一致するときだけ開く。要求の文字列から
-// パスを組み立てないので、区切りや `..` の検査は要らない。
+// Open only exact names from a fresh sidecar listing; never construct paths from request strings.
 func (s *server) GetVideoSubtitle(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -110,13 +101,10 @@ func (s *server) GetVideoSubtitle(
 	}
 }
 
-// errSubtitleNotListed は、要求された名前が字幕の一覧に無いことを表す。
 var errSubtitleNotListed = errors.New("not a subtitle file of this video")
 
-// errSubtitleTooLarge は、字幕ファイルが一覧を作ったあとに上限を超えたことを表す。
 var errSubtitleTooLarge = errors.New("subtitle file exceeds the size limit")
 
-// readSubtitle は一覧 sidecars にある file を開いて読み、WebVTT に変換する。
 func (s *server) readSubtitle(
 	r *http.Request,
 	location string,
@@ -144,7 +132,7 @@ func (s *server) readSubtitle(
 		return nil, err
 	}
 	defer func() { _ = opened.Close() }()
-	// 一覧のあとにファイルが大きくなっても、上限を超えて読まない。
+	// Enforce the read cap even if the file grows after listing.
 	src, err := io.ReadAll(io.LimitReader(opened, domain.SubtitleFileLimit+1))
 	if err != nil {
 		return nil, err
@@ -155,9 +143,7 @@ func (s *server) readSubtitle(
 	return s.subtitles.Convert(src, sidecar.Format, offsetMs)
 }
 
-// subtitleSidecars は、openMediaFile と同じ順で所在を試し、最初に開けた所在と、その
-// フォルダにある字幕の一覧を返す。どの所在も開けなければ false。
-// フォルダを読めないときは、字幕が無いのと同じく空の一覧を返し、理由を記録に残す。
+// Try locations in streaming order; unreadable folders return an empty list and log the cause.
 func (s *server) subtitleSidecars(r *http.Request, video domain.Video) (string, []domain.SubtitleSidecar, bool) {
 	locations, err := s.videos.VideoLocations(r.Context(), video.ID)
 	if err != nil {

@@ -2,54 +2,28 @@ import { request } from "./client";
 import type { components } from "./gen/openapi";
 import { applyVisibilityToListSnapshot, holdListSnapshot } from "./listSnapshot";
 
-// 型は api/openapi.yaml からの生成物を使う
 //
 export type VideoVisibilityResponse = components["schemas"]["VideoVisibilityResponse"];
 
-/**
- * 公開・非公開の切り替えの結果を、タグの付け外し（videoTagsEvents）と同じ形で
- * 画面へ知らせる。読み込み済みの一覧の項目・listSnapshot の控え・再生画面の
- * 1件の `public` を、取り直さずに差し替える（issue 305「切り替えの後の一覧」）。
- */
 type Listener = (videoIds: readonly number[], isPublic: boolean) => void;
 
 const listeners = new Set<Listener>();
 
-/**
- * サーバーが要求より少ない本数にしか反映しなかった（`applied` が異なる id の数より
- * 少ない）とき、どの動画が切り替わったかは応答から分からない（空の content_key の 動画・ライブラリから消えた id は数えない）。そのときは
- * 手元で切り替え済みにせず、これで知らせて該当の動画を取り直させる（Devin の指摘、PR 292）。
- */
+/** Partial application cannot identify changed videos; request authoritative refreshes instead of applying optimistic values. */
 type StaleListener = (videoIds: readonly number[]) => Promise<void> | undefined;
 
 const staleListeners = new Set<StaleListener>();
 
-/** sent は要求を送る直前に払い出す通し番号で、送った順に増える。 */
 let sent = 0;
 
-/**
- * applied は動画ごとに、反映済みの要求の通し番号を持つ。要求は下の tail で
- * 1つずつ順に送るので応答も送った順に届くが、念のため、後から送った切り替えの
- * 結果を古い応答で巻き戻さない（videoTagsEvents と同じ仕組み）。
- */
+/** Track applied sequences defensively so stale responses cannot roll back later toggles. */
 const applied = new Map<number, number>();
 
-/**
- * changes は反映した切り替えの数で、latest は動画ごとの直近の切り替えの結果と、
- * それが何番目の反映だったかを持つ。切り替えの前に始まった GET の応答は、
- * サーバーが切り替える前の `public` を読んでいることがあるので、
- * visibilityMark と withVisibilitySince で直近の結果へ補正する（Devin の指摘、PR 328）。
- * 動画ごとに1つだけ持つので、大きさは切り替えた動画の数（ライブラリの本数）を超えない。
- */
+/** Overlay mutations onto older GETs; retain one latest result per video, bounded by library size. */
 let changes = 0;
 const latest = new Map<number, { isPublic: boolean; change: number }>();
 
-/**
- * tail は最後に送った（または送る順番を待っている）切り替えが決着する Promise で、
- * 何も送っていなければ undefined である。サーバーは届いた順に切り替えを確定するが、
- * 2つを同時に送ると届く順は送った順と限らない。前の要求が決着してから次を送り、
- * 最後に押した切り替えが最後に確定するようにする（Devin の指摘、PR 328）。
- */
+/** Serialize requests so server arrival order matches the user's final toggle. */
 let tail: Promise<void> | undefined;
 
 function recordApplied(
@@ -69,14 +43,7 @@ function recordApplied(
   for (const listener of listeners) listener(fresh, isPublic);
 }
 
-/**
- * recordUncertain は一部にしか反映されなかった要求の動画を、切り替え済みとして
- * 記録せずに取り直させる。前の切り替えの結果（latest）はもう確かでないので捨て、
- * 取り直した内容をそのまま表示させる。一覧の控えも、どの動画が切り替わったか
- * 分からないまま復元しないよう捨てる（戻ったときは1ページ目から読む）。購読者が
- * 取り直しの Promise を返したら、それが決着するまで控えを取らせない。取り直しの
- * 途中で動画を開くと、古い一覧が控えられて戻ったときに復元されるため（Devin の指摘、PR 338）。
- */
+/** Discard uncertain overlays and snapshots; block new snapshots until subscriber refreshes settle. */
 function recordUncertain(videoIds: readonly number[], sequence: number): void {
   const fresh = videoIds.filter((videoId) => {
     if (sequence <= (applied.get(videoId) ?? 0)) return false;
@@ -95,12 +62,7 @@ function recordUncertain(videoIds: readonly number[], sequence: number): void {
   release();
 }
 
-/**
- * subscribeVideoVisibilityStale は、切り替えが一部の動画にしか反映されず、
- * 該当の動画をサーバーから取り直すべきときに呼ばれる。一覧の購読者は、表示中の
- * 項目の取り直しが決着する（または一覧を離れる）と解決する Promise を返す。
- * それまでは一覧の控えを取らない。戻り値で購読をやめる。
- */
+/** List subscribers return a promise settling after refresh or unmount; snapshots remain blocked until then. */
 export function subscribeVideoVisibilityStale(listener: StaleListener): () => void {
   staleListeners.add(listener);
   return () => {
@@ -108,7 +70,6 @@ export function subscribeVideoVisibilityStale(listener: StaleListener): () => vo
   };
 }
 
-/** subscribeVideoVisibility は切り替えの結果を受け取る。戻り値で購読をやめる。 */
 export function subscribeVideoVisibility(listener: Listener): () => void {
   listeners.add(listener);
   return () => {
@@ -116,18 +77,12 @@ export function subscribeVideoVisibility(listener: Listener): () => void {
   };
 }
 
-/**
- * visibilityMark は動画を取りに行く直前に呼び、その時点までに反映した切り替えを
- * 表す印を返す。応答を受けたら、この印と一緒に withVisibilitySince へ渡す。
- */
+/** Capture before fetching and pass to withVisibilitySince when the response arrives. */
 export function visibilityMark(): number {
   return changes;
 }
 
-/**
- * withVisibilitySince は `mark` を取った後に反映した切り替えがあれば、取得した
- * 動画の `public` をその結果へ差し替える。取得の方が新しければそのまま返す。
- */
+/** Overlay only mutations newer than the read's mark. */
 export function withVisibilitySince<T extends { id: number; public: boolean }>(
   video: T,
   mark: number,
@@ -138,13 +93,7 @@ export function withVisibilitySince<T extends { id: number; public: boolean }>(
   return { ...video, public: change.isPublic };
 }
 
-/**
- * updateVideoVisibility は `videoIds` の公開フラグを `isPublic` にそろえる
- * （PUT /api/video-visibility）。再生画面の1本も、
- * 選択バーの複数本も、これを使う。前の切り替えが決着するまで送るのを待ち、
- * 成功したら、受け付けた結果を画面へ知らせる。`applied` が異なる id の数より
- * 少なければ、どれが切り替わったか分からないので、取り直しを求める。
- */
+/** Serialize toggles and publish confirmed results; partial application requests refresh because affected IDs are unknown. */
 export function updateVideoVisibility(
   videoIds: readonly number[],
   isPublic: boolean,
@@ -164,7 +113,7 @@ export function updateVideoVisibility(
     else recordApplied(videoIds, isPublic, sequence);
     return result;
   };
-  // 待っている切り替えが無ければすぐに送る（押した直後に送信中になる）。
+  // Send immediately when idle so pending state begins with the click.
   const run = tail === undefined ? send() : tail.then(send);
   const settled = run.then(
     () => undefined,

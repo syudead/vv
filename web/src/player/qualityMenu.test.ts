@@ -12,10 +12,6 @@ import {
   type QualitySelection,
 } from "./qualityMenu";
 
-/**
- * 画質のメニューを本物の video.js で組み、項目・ボタンの文字・選択の知らせ・開閉の印を
- * 確かめる。
- */
 describe("QualityMenuButton", () => {
   let player: ReturnType<typeof videojs> | undefined;
 

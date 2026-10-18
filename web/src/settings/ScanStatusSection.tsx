@@ -17,7 +17,7 @@ import { useSectionAnchor } from "./useSectionAnchor";
 
 function stateLabel(presentation: ScanPresentation): UiText | null {
   if (presentation.statusText !== null) return presentation.statusText;
-  // 走っている自動の取り込みには状態の言葉が無い（何も出さない）。
+  // Running automatic scans have no status copy.
   if (presentation.watch) return null;
   return presentation.state === "fetch-failed"
     ? t.settings.scanStatus.state.fetchFailed
@@ -25,19 +25,15 @@ function stateLabel(presentation: ScanPresentation): UiText | null {
 }
 
 /**
- * failureText は取り込みの失敗の説明である。`Scan.error`（自由文）は出さず、
- * `errorCode` と `errorPath` から作る。スキャンが無いときは状態取得の失敗を出す。
+ * Use errorCode and errorPath, never freeform Scan.error; without a scan, show the status-fetch
+ * failure.
  */
 function failureText(presentation: ScanPresentation): UiText {
   if (presentation.scan !== null) return scanErrorText(presentation.scan);
   return presentation.error ?? t.errors.scanUnknown;
 }
 
-/**
- * ScanStatusSection は設定の「Scan status」の概要である。概要（右下の popover）と同じ要素に、取り込みの開始・分母の
- * 意味・取り込み自体の失敗の理由・問題の一覧だけを足す。取り込みを始める場所はここだけで
- * ある（issue 830）。
- */
+/** This settings section is the sole scan-start entry point. */
 export default function ScanStatusSection() {
   const anchor = useSectionAnchor("scan-status");
   const scan = useScan();
@@ -45,8 +41,6 @@ export default function ScanStatusSection() {
   const text = t.settings.scanStatus;
   const issues = useScanIssues(scan.scan, scan.refresh);
   const issueCount = presentation.issues.failed + presentation.issues.substituted;
-  // 所有者はいつでもここから取り込みを始める。取り込み中とメディアフォルダが無いときは
-  // 押せず、理由を出す（issue 830）。
   const startBlockedReason = scan.running ? (
     text.runningReason
   ) : scan.noMediaFolders ? (
@@ -120,7 +114,7 @@ export default function ScanStatusSection() {
         )}
         {scan.startError !== null && (
           <div>
-            {/* 押した操作への応えなので、すぐ読み上げる。 */}
+            {/* Announce immediately because this responds to a user action. */}
             <Alert variant="destructive" role="alert">
               <CircleX aria-hidden="true" />
               <AlertTitle className="break-words">{scan.startError}</AlertTitle>
@@ -134,7 +128,7 @@ export default function ScanStatusSection() {
         )}
         {presentation.state === "failed" && (
           <div>
-            {/* 失敗は取り込みの通知が読み上げる。ここでは割り込ませない。 */}
+            {/* The scan notification announces failure; avoid a second interruption here. */}
             <Alert variant="destructive" role="note">
               <CircleX aria-hidden="true" />
               <AlertTitle className="break-words">{failureText(presentation)}</AlertTitle>

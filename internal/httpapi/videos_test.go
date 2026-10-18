@@ -13,7 +13,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 一覧は items・total・nextCursor を返す。
 func TestListVideosReturnsPage(t *testing.T) {
 	library := &fakeLibrary{page: domain.VideoPage{
 		Items:      []domain.Video{sampleVideo(1, "海辺の散歩"), sampleVideo(2, "京都の街並み")},
@@ -48,7 +47,6 @@ func TestListVideosReturnsPage(t *testing.T) {
 	if !first.Playable {
 		t.Error("playable = false")
 	}
-	// サムネイルは生成済みのときだけ URL を入れ、内容由来の版を付ける。
 	if first.ThumbnailUrl == nil {
 		t.Fatal("thumbnailUrl が入っていない")
 	}
@@ -63,7 +61,6 @@ func TestListVideosReturnsPage(t *testing.T) {
 	}
 }
 
-// 取り込み直後の動画も一覧に並ぶ。未取得の値は省略する。
 func TestListVideosOmitsUnknownValues(t *testing.T) {
 	pending := domain.Video{
 		ID: 7, Title: "解析前", SizeBytes: 10,
@@ -83,7 +80,6 @@ func TestListVideosOmitsUnknownValues(t *testing.T) {
 	if item.Width != nil || item.Height != nil {
 		t.Errorf("解像度が 0 で埋まっている: %v x %v", item.Width, item.Height)
 	}
-	// 未生成のサムネイルは URL を出さない。クライアントは枠だけを描く。
 	if item.ThumbnailUrl != nil {
 		t.Errorf("thumbnailUrl = %v, want 省略", *item.ThumbnailUrl)
 	}
@@ -121,7 +117,6 @@ func TestListVideosOmitsSeekThumbnailWithoutVideoStream(t *testing.T) {
 	}
 }
 
-// 再生できない動画は、理由まで一覧に出す。
 func TestListVideosExposesUnplayableReason(t *testing.T) {
 	unplayable := sampleVideo(3, "対応外の動画")
 	unplayable.Playable = false
@@ -141,7 +136,6 @@ func TestListVideosExposesUnplayableReason(t *testing.T) {
 	}
 }
 
-// limit は既定 60・上限 200。
 func TestListVideosLimitDefaultsAndCaps(t *testing.T) {
 	tests := []struct {
 		target string
@@ -168,8 +162,6 @@ func TestListVideosLimitDefaultsAndCaps(t *testing.T) {
 	}
 }
 
-// 数値として読めない limit は誤りにする。黙って既定へ倒すと、指定が効いて
-// いないことに気付けない。
 func TestListVideosRejectsMalformedLimit(t *testing.T) {
 	handler := newTestServer(t, Options{Videos: &fakeLibrary{}})
 
@@ -185,7 +177,6 @@ func TestListVideosRejectsMalformedLimit(t *testing.T) {
 	}
 }
 
-// 並び順を渡せること。未知の値は誤りにする。
 func TestListVideosSort(t *testing.T) {
 	for target, want := range map[string]domain.VideoSort{
 		"/api/videos":                domain.SortAddedDesc,
@@ -210,8 +201,6 @@ func TestListVideosSort(t *testing.T) {
 	}
 }
 
-// 壊れたカーソルは 400 + invalid_request。黙って先頭から返すと、無限
-// スクロールが巻き戻って同じ内容を延々と表示することになる。
 func TestListVideosRejectsBrokenCursor(t *testing.T) {
 	handler := newTestServer(t, Options{Videos: &fakeLibrary{
 		listErr: domain.ErrInvalidCursor,
@@ -222,7 +211,7 @@ func TestListVideosRejectsBrokenCursor(t *testing.T) {
 		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonInvalidCursor})
 }
 
-// 一覧・詳細は中間キャッシュに残さない。取り込みで内容が変わり続けるため。
+// Do not cache list or detail responses in intermediaries because ingestion continually changes them.
 func TestVideoResponsesAreNotCached(t *testing.T) {
 	library := &fakeLibrary{videos: map[int64]domain.Video{1: sampleVideo(1, "a")}}
 	handler := newTestServer(t, Options{Videos: library})
@@ -235,7 +224,6 @@ func TestVideoResponsesAreNotCached(t *testing.T) {
 	}
 }
 
-// 詳細を返せること。
 func TestGetVideo(t *testing.T) {
 	handler := newTestServer(t, Options{Videos: &fakeLibrary{
 		videos: map[int64]domain.Video{7: sampleVideo(7, "京都の街並み")},
@@ -252,8 +240,6 @@ func TestGetVideo(t *testing.T) {
 	}
 }
 
-// 動画1件の応答には、代表の所在が置かれたフォルダが登録フォルダの表示名つきで
-// 載る（再生画面の見出しのパンくず）。登録フォルダの外の所在なら folder は省く。
 func TestGetVideoReturnsFolderWithRootName(t *testing.T) {
 	if filepath.Separator != '/' {
 		t.Skip("fixture uses slash-separated absolute paths")
@@ -285,7 +271,6 @@ func TestGetVideoReturnsFolderWithRootName(t *testing.T) {
 	}
 }
 
-// 存在しない id は 404 + not_found。
 func TestGetVideoNotFound(t *testing.T) {
 	handler := newTestServer(t, Options{Videos: &fakeLibrary{}})
 
@@ -294,8 +279,6 @@ func TestGetVideoNotFound(t *testing.T) {
 		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonVideoNotFound})
 }
 
-// 保存層の予期しない失敗は 500 にする。400 や 404 に丸めると、利用者にも
-// 運用者にも原因が伝わらない。
 func TestListVideosReportsUnexpectedFailure(t *testing.T) {
 	handler := newTestServer(t, Options{Videos: &fakeLibrary{
 		listErr: errors.New("データベースが壊れています"),
@@ -310,7 +293,6 @@ func TestListVideosReportsUnexpectedFailure(t *testing.T) {
 	}
 }
 
-// 一覧の問い合わせ先が無い構成でも、500 を返して動き続ける。
 func TestListVideosWithoutStore(t *testing.T) {
 	handler := newTestServer(t, Options{})
 
@@ -319,7 +301,6 @@ func TestListVideosWithoutStore(t *testing.T) {
 	}
 }
 
-// 検索語を渡すと絞り込まれ、total は絞り込み後の件数になる。
 func TestListVideosPassesQuery(t *testing.T) {
 	library := &fakeLibrary{page: domain.VideoPage{
 		Items: []domain.Video{sampleVideo(1, "夏休みの旅行")},
@@ -341,8 +322,6 @@ func TestListVideosPassesQuery(t *testing.T) {
 	}
 }
 
-// 該当が無ければ items は空で total は 0。画面はここで「該当なし」と
-// 次に取れる操作を示す。
 func TestListVideosWithNoMatches(t *testing.T) {
 	handler := newTestServer(t, Options{Videos: &fakeLibrary{
 		page: domain.VideoPage{Items: []domain.Video{}, Total: 0},
@@ -357,13 +336,11 @@ func TestListVideosWithNoMatches(t *testing.T) {
 	if len(page.Items) != 0 || page.Total != 0 {
 		t.Errorf("items = %d 件, total = %d, want 0 と 0", len(page.Items), page.Total)
 	}
-	// null ではなく空配列で返す。クライアントが分岐を持たずに描ける。
 	if !strings.Contains(rec.Body.String(), `"items":[]`) {
 		t.Errorf("items が空配列で返っていない: %s", rec.Body)
 	}
 }
 
-// 検索語の長さの上限は契約（api/openapi.yaml の maxLength）と同じ 100 文字。
 func TestListVideosRejectsOverlongQuery(t *testing.T) {
 	handler := newTestServer(t, Options{Videos: &fakeLibrary{}})
 
@@ -379,7 +356,6 @@ func TestListVideosRejectsOverlongQuery(t *testing.T) {
 	})
 }
 
-// 検索とカーソルを併用できること。検索語はカーソルと一緒に渡し続ける。
 func TestListVideosCombinesQueryAndCursor(t *testing.T) {
 	library := &fakeLibrary{}
 	handler := newTestServer(t, Options{Videos: library})
@@ -400,8 +376,6 @@ func TestListVideosCombinesQueryAndCursor(t *testing.T) {
 	}
 }
 
-// 検索語・視聴状態・並び順は VideoQuery に渡り、応答は保存側が返した項目と
-// total をそのまま返す。各項目には置き場所（folder）が載る。
 func TestListVideosPassesFiltersAndReturnsFolders(t *testing.T) {
 	if filepath.Separator != '/' {
 		t.Skip("fixture uses slash-separated absolute paths")
@@ -423,8 +397,6 @@ func TestListVideosPassesFiltersAndReturnsFolders(t *testing.T) {
 	want := domain.VideoQuery{
 		Query: "京都 -2023", Watch: domain.WatchUnwatched, Sort: domain.SortDurationDesc, Limit: domain.DefaultLimit,
 	}
-	// domain.VideoQuery に TagIDs（[]int64）が足された（#265）ので struct の
-	// 比較演算子は使えない。reflect.DeepEqual で比較する。
 	if !reflect.DeepEqual(library.lastQuery, want) {
 		t.Errorf("query = %+v, want %+v", library.lastQuery, want)
 	}
@@ -439,7 +411,7 @@ func TestListVideosPassesFiltersAndReturnsFolders(t *testing.T) {
 	if got := page.Items[1].Folder; got == nil || *got != (gen.VideoFolder{RootId: 7, Path: "X/Y"}) {
 		t.Errorf("nested folder = %+v", got)
 	}
-	// 登録フォルダの外の所在は一覧に出ないはずだが、出ても folder は作らない。
+	// Even an unexpected location outside registered roots must not produce folder metadata.
 	if got := page.Items[2].Folder; got != nil {
 		t.Errorf("outside folder = %+v, want omitted", got)
 	}
@@ -453,7 +425,6 @@ func TestListVideosPassesFiltersAndReturnsFolders(t *testing.T) {
 	}
 }
 
-// 未知の watch・sort と範囲外の seed は 400 にする。
 func TestListVideosRejectsUnknownFilters(t *testing.T) {
 	library := &fakeLibrary{}
 	handler := newTestServer(t, Options{Videos: library})
@@ -464,13 +435,11 @@ func TestListVideosRejectsUnknownFilters(t *testing.T) {
 		"/api/videos?seed=2147483648",
 	} {
 		rec := do(t, handler, http.MethodGet, target)
-		// 画面が送らない値の誤りには reason を付けない。
 		assertErrorBody(t, target, rec.Code, rec.Body.Bytes(),
 			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
 	}
 }
 
-// 登録フォルダの問い合わせ先が無ければ folder を省き、一覧は返す。
 func TestListVideosOmitsFolderWithoutRoots(t *testing.T) {
 	library := &fakeLibrary{page: domain.VideoPage{Items: []domain.Video{sampleVideo(1, "x")}, Total: 1}}
 	handler := newTestServer(t, Options{Videos: library})
@@ -483,7 +452,6 @@ func TestListVideosOmitsFolderWithoutRoots(t *testing.T) {
 	}
 }
 
-// #267: Video.tags は必須で、タグの無い動画では空配列（null ではない）。
 func TestListVideosTagsIsEmptyArrayWithoutTags(t *testing.T) {
 	video := sampleVideo(1, "タグなし")
 	library := &fakeLibrary{page: domain.VideoPage{Items: []domain.Video{video}, Total: 1}}
@@ -499,7 +467,6 @@ func TestListVideosTagsIsEmptyArrayWithoutTags(t *testing.T) {
 	}
 }
 
-// タグの経路（Tags）が設定されていなくても一覧は諦めない（progressFor と同じ扱い）。
 func TestListVideosTagsOmittedWithoutTagsRoute(t *testing.T) {
 	video := sampleVideo(1, "x")
 	library := &fakeLibrary{page: domain.VideoPage{Items: []domain.Video{video}, Total: 1}}
@@ -511,7 +478,6 @@ func TestListVideosTagsOmittedWithoutTagsRoute(t *testing.T) {
 	}
 }
 
-// TagStore が返したタグが一覧・詳細・関連動画・読み取りのやり直しの応答に載る。
 func TestListVideosIncludesTagsFromTagStore(t *testing.T) {
 	video := sampleVideo(1, "京都旅行")
 	tags := &fakeTags{byContentKey: map[string][]domain.VideoTag{
@@ -527,7 +493,6 @@ func TestListVideosIncludesTagsFromTagStore(t *testing.T) {
 	}
 }
 
-// tag は VideoQuery.TagIDs に渡り、17個以上は 400 にする。
 func TestListVideosTagFilter(t *testing.T) {
 	library := &fakeLibrary{}
 	handler := newTestServer(t, Options{Videos: library})
@@ -547,7 +512,6 @@ func TestListVideosTagFilter(t *testing.T) {
 	})
 }
 
-// 存在しなかった tag の id は VideoPage.missingTagIds に返る。1つも無ければ省く。
 func TestListVideosMissingTagIDs(t *testing.T) {
 	library := &fakeLibrary{page: domain.VideoPage{
 		Items: []domain.Video{sampleVideo(1, "x")}, Total: 1, MissingTagIDs: []int64{9},

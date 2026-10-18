@@ -8,16 +8,13 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 管理画面の一覧（タグ・人物・団体）が共有する並び順とカーソル。どの一覧も listed に
-// id・sort_key・video_count・created_at の列を持ち、値が同じ行は名前の自然順（sort_key）、
-// それも同じなら id で並べる。
+// Admin lists share a value order, then natural name order and ID for stable ties.
 
-// adminListOrder は管理画面の一覧の並び順 1 つ分である。値の向きと名前の向きが違うので、
-// keyset の条件は行値の比較 1 つではなく展開した形で書く。
+// Expand keyset comparisons because the value and name can sort in opposite directions.
 type adminListOrder struct {
-	// value は名前の前に比べる listed の列。名前の順では空。
+	// The listed column preceding the name; empty for name ordering.
 	value string
-	// desc は value を降順に並べる。名前（sort_key, id）はいつも昇順。
+	// Only the value descends; name and ID always ascend.
 	desc    bool
 	orderBy string
 }
@@ -42,7 +39,6 @@ var adminListOrders = map[domain.TagSort]adminListOrder{
 	domain.TagSortCreatedAsc:  newAdminListOrder("created_at", false),
 }
 
-// adminListRow はカーソルに包む 1 行の値である。
 type adminListRow struct {
 	id         int64
 	videoCount int
@@ -50,7 +46,6 @@ type adminListRow struct {
 	sortKey    string
 }
 
-// cursorValue は名前の前に比べる値（本数・作った日の Unix 秒）である。
 func (o adminListOrder) cursorValue(row adminListRow) string {
 	switch o.value {
 	case "video_count":
@@ -62,14 +57,12 @@ func (o adminListOrder) cursorValue(row adminListRow) string {
 	}
 }
 
-// encodeCursor は「一覧の種類・並び順の名前・値・id・名前の鍵」を包む。名前の鍵は最後に置く。
-// 一覧の種類（tags・people・organizations）を先頭に置き、別の一覧のカーソルと取り違えないようにする。
+// Prefix cursors with the list kind to reject cursors from another list.
 func (o adminListOrder) encodeCursor(list string, sort domain.TagSort, last adminListRow) string {
 	return packCursor(list, string(sort), o.cursorValue(last), strconv.FormatInt(last.id, 10), last.sortKey)
 }
 
-// cursorCondition はカーソルより後ろだけを取る条件を返す。別の一覧・別の並び順のカーソルや
-// 解釈できないものは ErrInvalidCursor。
+// Reject malformed cursors or cursors for another list or order with ErrInvalidCursor.
 func (o adminListOrder) cursorCondition(list string, sort domain.TagSort, cursor string) (string, []any, error) {
 	parts, err := unpackCursor(cursor, 5)
 	if err != nil {
@@ -105,9 +98,7 @@ func (o adminListOrder) cursorCondition(list string, sort domain.TagSort, cursor
 	return clause, []any{value, value, sortKey, id}, nil
 }
 
-// pageStatement は listed（CTE）から columns と条件に合う数 total を 1 ページ読む文と引数を返す。
-// total は窓関数でカーソルを掛ける前の listed 全体について数え、ページの行と同じ問い合わせで
-// 返す（listed の本数の集計を 2 回走らせない）。limit が正なら、続きがあるかを知るために 1 件多く取る。
+// A window count shares the page query to avoid aggregating listed twice; fetch one extra row for pagination.
 func (o adminListOrder) pageStatement(listed string, listedArgs []any, columns, cursorClause string, cursorArgs []any, limit int) (string, []any) {
 	statement := listed + ` select ` + columns + `, total from (
 		select ` + columns + `, count(*) over () as total from listed

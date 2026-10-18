@@ -20,15 +20,10 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// サムネイルの編集のセッションの経路は、
-// 本物の認証・保存層と app.ThumbnailEdits で確かめる。提供元・コマの取り出し・適用だけが偽である。
-
-// editFakes は app.ThumbnailEdits の偽の部品である。
 type editFakes struct {
 	edits *app.ThumbnailEdits
 
-	mu sync.Mutex
-	// positions は FrameAt に渡された位置である。
+	mu        sync.Mutex
 	positions []int64
 	starts    int
 	startErr  error
@@ -107,12 +102,11 @@ func (e editFrames) FrameAt(_ context.Context, _ string, positionMs int64) (doma
 	return domain.ThumbnailFrame{PNG: editPNG(size, size), Width: size, Height: size}, nil
 }
 
-// AutoThumbnailPositions は自動の位置を 6 秒、次に先頭とする。
 func (e editFrames) AutoThumbnailPositions(int64) []int64 {
 	return []int64{6_000, 0}
 }
 
-// editApplier は画像を本物の保存層へ記録する。applyErr があればそれを返して何も書かない。
+// editApplier writes images to the real store unless applyErr is set.
 type editApplier struct {
 	f  *editFakes
 	db *store.DB
@@ -139,7 +133,6 @@ func editPNG(width, height int) []byte {
 	return buf.Bytes()
 }
 
-// saveConnection は ComfyUI の接続先を保存する。
 func (f *guestFixture) saveConnection(t *testing.T) {
 	t.Helper()
 	settings := domain.ComfyUISettings{Provider: domain.ComfyUISelfHosted, URL: "http://gpu:8188"}
@@ -165,7 +158,7 @@ func (f *guestFixture) editRequest(method, id, suffix string, cookies ...*http.C
 	return f.env.serve(authRequest{method: method, target: "/api/thumbnail-edits/" + id + suffix, cookies: cookies})
 }
 
-// runEdit は fields を multipart/form-data で送る。値は prompt なら文、mask と reference ならファイルである。
+// runEdit submits prompt as text and mask/reference as multipart files.
 func (f *guestFixture) runEdit(t *testing.T, id string, fields map[string][]byte, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 	t.Helper()
 	var buf bytes.Buffer
@@ -198,7 +191,6 @@ func (f *guestFixture) runEdit(t *testing.T, id string, fields map[string][]byte
 	return rec
 }
 
-// ゲストはどの経路でも 401 で、セッションに触れない。
 func TestThumbnailEditRoutesAreOwnerOnly(t *testing.T) {
 	f := newGuestFixture(t, true)
 	f.saveConnection(t)
@@ -222,7 +214,6 @@ func TestThumbnailEditRoutesAreOwnerOnly(t *testing.T) {
 	}
 }
 
-// 始めるときの契約の状態。
 func TestStartThumbnailEditStatuses(t *testing.T) {
 	f := newGuestFixture(t, true)
 	check := func(label string, rec *httptest.ResponseRecorder, want wantError) {
@@ -274,7 +265,6 @@ func TestStartThumbnailEditStatuses(t *testing.T) {
 		t.Fatalf("frame = %d %v", frame.Code, frame.Header())
 	}
 
-	// 同じ動画の 2 つ目の編集は 1 つ目を終える。
 	second := f.startedEdit(t, "a")
 	rec = f.editRequest(http.MethodGet, edit.Id, "", f.owner)
 	check("replaced", rec, wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonThumbnailEditNotFound})
@@ -283,7 +273,6 @@ func TestStartThumbnailEditStatuses(t *testing.T) {
 	}
 }
 
-// 実行の入力の誤りは何も上げる前に返し、接続先の消去と提供元の失敗は契約の状態で返す。
 func TestRunThumbnailEditStatuses(t *testing.T) {
 	f := newGuestFixture(t, true)
 	f.saveConnection(t)
@@ -357,7 +346,6 @@ func TestRunThumbnailEditStatuses(t *testing.T) {
 	}
 }
 
-// 成功した実行は結果の URL を持ち、適用は Video を返してセッションを終える。適用の誤りは契約の状態で返す。
 func TestApplyThumbnailEdit(t *testing.T) {
 	f := newGuestFixture(t, true)
 	f.saveConnection(t)
@@ -395,7 +383,6 @@ func TestApplyThumbnailEdit(t *testing.T) {
 		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonThumbnailEditNotFound})
 }
 
-// 捨てると実行を中止して 204 を返し、終わったセッションも 204 である。
 func TestDiscardThumbnailEdit(t *testing.T) {
 	f := newGuestFixture(t, true)
 	f.saveConnection(t)
@@ -417,7 +404,6 @@ func TestDiscardThumbnailEdit(t *testing.T) {
 	}
 }
 
-// succeededEdit は動画 name の編集を始めて実行し、成功させてその id を返す。
 func (f *guestFixture) succeededEdit(t *testing.T, name string) string {
 	t.Helper()
 	id := f.startedEdit(t, name).Id

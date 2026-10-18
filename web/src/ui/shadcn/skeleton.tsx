@@ -3,10 +3,7 @@ import type * as React from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の skeleton（radix-nova）を vv のトークンで着せたもの。読み込み中に、出来上がりの
-// 形を先に見せる（web/registry/rules/components.md「Skeleton」）。動きは上流の pulse でなく
-// vv の shimmer（tokens.css の bg-shimmer と animate-shimmer）。p の中のような句の中では
-// asChild で span を渡し、div を置かない。
+// Adapted from shadcn/ui radix-nova with shimmer instead of pulse. Use asChild with span inside phrasing content such as p.
 
 function Skeleton({
   className,

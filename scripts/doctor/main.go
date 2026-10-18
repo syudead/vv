@@ -1,5 +1,4 @@
-// doctor は手元の開発環境に必要な外部コマンドが揃っているかを調べる。
-// task doctor の実体。
+// doctor checks the commands required for local development.
 package main
 
 import (
@@ -9,18 +8,15 @@ import (
 	"strings"
 )
 
-// tool は1つの外部コマンドに対する検査項目である。
 type tool struct {
 	name string
-	// versionArgs は版を表示させる引数。存在確認だけでは PATH は通っているが
-	// 実行できない状態を見逃すので、実際に起動して1行目を読む。
+	// Run the version command to detect executables present on PATH that cannot start.
 	versionArgs []string
 	hint        string
 	required    bool
 }
 
-// tools は task が実際に呼ぶコマンドと対応する。task up しか使わない利用者は
-// ここに並ぶものを1つも必要としない（README の「必ず動く道」）。
+// These tools are required by development tasks, not by users running only task up.
 var tools = []tool{
 	{name: "git", versionArgs: []string{"--version"}, hint: "Git を導入して PATH へ通すこと。", required: true},
 	{name: "jq", versionArgs: []string{"--version"}, hint: "API 応答の JSON 確認に使う。mise で導入できる: mise install。", required: false},
@@ -35,14 +31,14 @@ var tools = []tool{
 	{name: "docker", versionArgs: []string{"--version"}, hint: "task up / task down に必要。", required: false},
 }
 
-// result は検査の結果である。detail には版か失敗の理由が入る。
+// detail contains either the version or the failure reason.
 type result struct {
 	tool
 	ok     bool
 	detail string
 }
 
-// firstLineFunc は外部コマンドの1行目を返す。テストから差し替える。
+// Replaceable in tests to avoid depending on installed commands.
 type firstLineFunc func(name string, args ...string) (string, error)
 
 func firstLine(name string, args ...string) (string, error) {
@@ -65,8 +61,7 @@ func inspect(t tool, run firstLineFunc) result {
 	return result{tool: t, ok: true, detail: version}
 }
 
-// inspectAll は docker だけ追加でデーモンの到達性も見る。docker が入っていても
-// デーモンが止まっていれば task up は動かないので、版だけでは足りない。
+// Check Docker daemon reachability as well as the CLI version; task up needs both.
 func inspectAll(list []tool, run firstLineFunc) []result {
 	results := make([]result, 0, len(list))
 	for _, t := range list {
@@ -83,7 +78,7 @@ func inspectAll(list []tool, run firstLineFunc) []result {
 	return results
 }
 
-// report は表示する文章と終了コードを返す。必須が欠けたときだけ 1 になる。
+// report returns exit code 1 only when a required tool is missing.
 func report(results []result) (string, int) {
 	var out strings.Builder
 	out.WriteString("Local development environment\n\n")

@@ -9,7 +9,6 @@ import { Field, FieldError, FieldLabel } from "../ui/shadcn/field";
 import { Input } from "../ui/shadcn/input";
 import { Spinner } from "../ui/shadcn/spinner";
 
-/** RenameDialogTexts は名前を変える窓の文言である。 */
 export interface RenameDialogTexts {
   title: UiText;
   submit: UiText;
@@ -20,12 +19,9 @@ export interface RenameDialogTexts {
 }
 
 /**
- * RenameDialog はプレイリストやグループの名前を変える窓である。
- * 今の名前を入れて選んだ状態で開く。`normalize` は送る名前（前後を削ったもの）を返し、規則に
- * 合わなければ null を返す。削った名前が今の名前と同じ間は「Save」を押せない。
- *
- * `rename` が値を返せば `onRenamed`、`404` なら `onGone` を呼ぶ。`400` は名前の規則を欄の誤りと
- * して出し、ほかの失敗は窓の中の `Alert` に出す。閉じるのは呼び出し元に任せる。送信中は閉じない。
+ * Normalize before comparing and saving; null means invalid, unchanged names cannot submit.
+ * Missing targets call onGone, 400 becomes a field error, and other failures stay inline; callers
+ * own closing.
  */
 export default function RenameDialog<T>({
   currentName,
@@ -115,7 +111,7 @@ export default function RenameDialog<T>({
           autoComplete="off"
           value={text}
           onFocus={(event) => {
-            // 開いて最初にフォーカスを受けたときだけ、今の名前を選ぶ。
+            // Select the initial name only on the first focus after opening.
             if (selected.current) return;
             selected.current = true;
             event.currentTarget.select();

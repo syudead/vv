@@ -14,10 +14,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 仮のタグと却下した名前の画面の APIは、
-// 本物の保存層と認証で確かめる（guest_test.go の guestFixture）。
-
-// addTentativeTag は動画 video に、tentative が真の一括操作で名前 name の仮のタグを作って付ける。
 func (f *guestFixture) addTentativeTag(t *testing.T, video, name string) int64 {
 	t.Helper()
 	outcome, err := f.env.db.Tags().ApplyVideoTags(context.Background(),
@@ -61,7 +57,6 @@ func videoTagIDs(tags []gen.VideoTag) []int64 {
 	return ids
 }
 
-// 要件 5: タグの一覧・動画のタグ・付与の応答・要約に tentative が出る。
 func TestTentativeIsCarriedOnTagReads(t *testing.T) {
 	f := newGuestFixture(t, true)
 	tentativeID := f.addTentativeTag(t, "b", "仮のタグ")
@@ -84,7 +79,6 @@ func TestTentativeIsCarriedOnTagReads(t *testing.T) {
 		t.Errorf("動画 b の tags に仮のタグが無い: %+v", video.Tags)
 	}
 
-	// 手での付与は、既存の仮のタグを仮のままにする。
 	attach := f.ownerRequest(http.MethodPost, "/api/video-tags",
 		`{"videoIds":[`+strconv.FormatInt(f.ids["c"], 10)+`],"action":"add","tag":{"id":`+strconv.FormatInt(tentativeID, 10)+`}}`)
 	if attach.Code != http.StatusOK {
@@ -105,7 +99,6 @@ func TestTentativeIsCarriedOnTagReads(t *testing.T) {
 	}
 }
 
-// 確定は 200 と tentative が偽の Tag を返し、既に確定していても 200 を返す。
 func TestConfirmTentativeTag(t *testing.T) {
 	f := newGuestFixture(t, true)
 	id := f.addTentativeTag(t, "b", "仮のタグ")
@@ -129,8 +122,6 @@ func TestConfirmTentativeTag(t *testing.T) {
 	}
 }
 
-// 受け入れ条件 8: 却下したタグは一覧と動画から消え、名前が却下した名前の一覧に出る。
-// 確定したタグの却下は 409 tag_not_tentative で何も変えない。
 func TestRejectTentativeTag(t *testing.T) {
 	f := newGuestFixture(t, true)
 	id := f.addTentativeTag(t, "b", "仮のタグ")
@@ -168,7 +159,6 @@ func TestRejectTentativeTag(t *testing.T) {
 	}
 }
 
-// 却下した名前の取り外しは 204 で一覧から消え、無い名前や整えられない入力でも 204 を返す。
 func TestForgetRejectedTagName(t *testing.T) {
 	f := newGuestFixture(t, true)
 	for _, name := range []string{"Beta", "Alpha"} {
@@ -182,7 +172,6 @@ func TestForgetRejectedTagName(t *testing.T) {
 		t.Fatalf("却下した名前 = %v, want [Alpha Beta]", names.Items)
 	}
 
-	// 登録時と同じく整えてから照合する。
 	for _, name := range []string{"  Beta  ", "無い名前", ""} {
 		rec := f.ownerRequest(http.MethodDelete, "/api/tags/rejected-names?name="+url.QueryEscape(name), "")
 		if rec.Code != http.StatusNoContent {
@@ -199,7 +188,6 @@ func TestForgetRejectedTagName(t *testing.T) {
 	}
 }
 
-// 受け入れ条件 11: 改名・シノニムの追加・統合先では、仮のタグが確定したタグになって返る。
 func TestManualEditsReturnConfirmedTag(t *testing.T) {
 	f := newGuestFixture(t, true)
 	cases := []struct {
@@ -226,7 +214,6 @@ func TestManualEditsReturnConfirmedTag(t *testing.T) {
 	}
 }
 
-// decodeTagOrMerged は応答のタグを読む。統合の応答は TagMergeResponse の tag にある。
 func decodeTagOrMerged(t *testing.T, rec *httptest.ResponseRecorder, merged bool) gen.Tag {
 	t.Helper()
 	if merged {
@@ -235,7 +222,6 @@ func decodeTagOrMerged(t *testing.T, rec *httptest.ResponseRecorder, merged bool
 	return decode[gen.Tag](t, rec)
 }
 
-// 受け入れ条件 4: ゲストは 4 つの経路とも 401 で、ゲストの Video.tags は仮のタグがあっても空のまま。
 func TestTentativeTagRoutesAreOwnerOnly(t *testing.T) {
 	f := newGuestFixture(t, true)
 	id := f.addTentativeTag(t, "a", "仮のタグ")

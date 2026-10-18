@@ -4,11 +4,9 @@ import { cn } from "@/lib/cn";
 
 import { useDensity } from "./density";
 
-// 事実の一覧（区画）。項目名と値の組を 2 列に並べる。詳細ページの情報欄や設定の
-// 読み取り専用の値に使う。規則は web/registry/rules/patterns.md の Fact list。
+// See web/registry/rules/patterns.md, Fact list.
 
 export interface Fact {
-  /** 一覧の中で一意な鍵。 */
   id: string;
   term: ReactNode;
   value: ReactNode;

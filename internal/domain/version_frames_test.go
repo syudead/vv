@@ -5,8 +5,7 @@ import (
 	"testing"
 )
 
-// frameRuleFingerprints は 1 秒間隔の 2 本の指紋を作る。distances[i] はコマ i の組の距離で、
-// b のコマ i は a のコマ i（ハッシュ 0）から下位 distances[i] ビットを立てたもの。
+// distances[i] sets that many low bits in b relative to a's zero hash at one-second intervals.
 func frameRuleFingerprints(distances []int) (Fingerprint, Fingerprint) {
 	a := Fingerprint{Version: FingerprintVersion, IntervalMs: 1000}
 	b := Fingerprint{Version: FingerprintVersion, IntervalMs: 1000}
@@ -17,7 +16,6 @@ func frameRuleFingerprints(distances []int) (Fingerprint, Fingerprint) {
 	return a, b
 }
 
-// shownFramesA はモデルに見せるコマの組の、a の側の番号である。
 func shownFramesA(rule VersionFrameRule) []int {
 	var indexes []int
 	for _, pair := range rule.Shown {
@@ -26,7 +24,6 @@ func shownFramesA(rule VersionFrameRule) []int {
 	return indexes
 }
 
-// 距離がすべて 12 以内なら、モデルに聞かずに同じ動画。
 func TestJudgeVersionFramesAllWithinCutOff(t *testing.T) {
 	distances := make([]int, 20)
 	for i := range distances {
@@ -39,7 +36,6 @@ func TestJudgeVersionFramesAllWithinCutOff(t *testing.T) {
 	}
 }
 
-// 20 コマ中 1 つだけ離れて食い違っても同じ動画（5% 以下で連続しない）。
 func TestJudgeVersionFramesOneIsolatedDifference(t *testing.T) {
 	distances := make([]int, 20)
 	distances[9] = 30
@@ -50,7 +46,6 @@ func TestJudgeVersionFramesOneIsolatedDifference(t *testing.T) {
 	}
 }
 
-// 4 つ連続で食い違えば、その連なりのコマをモデルに見せる。
 func TestJudgeVersionFramesRunOfFour(t *testing.T) {
 	distances := make([]int, 20)
 	for i := 8; i < 12; i++ {
@@ -66,7 +61,6 @@ func TestJudgeVersionFramesRunOfFour(t *testing.T) {
 	}
 }
 
-// 単色のコマを挟む 2 つの食い違いは連なりではない。比べられる組の 5% 以下なら同じ動画。
 func TestJudgeVersionFramesFlatFrameBreaksRun(t *testing.T) {
 	distances := make([]int, 41)
 	distances[10] = 30
@@ -79,7 +73,6 @@ func TestJudgeVersionFramesFlatFrameBreaksRun(t *testing.T) {
 	}
 }
 
-// b の側の単色のコマを挟む 2 つの食い違いも連なりではない。
 func TestJudgeVersionFramesFlatFrameOnBBreaksRun(t *testing.T) {
 	distances := make([]int, 41)
 	distances[10] = 30
@@ -92,8 +85,7 @@ func TestJudgeVersionFramesFlatFrameOnBBreaksRun(t *testing.T) {
 	}
 }
 
-// 間隔の違う 2 本の指紋（5 秒と 2.5 秒）で時刻 50 秒と 55 秒の組だけが食い違うとき、どちらを
-// a にしても連なりとしてモデルに聞く。細かい方を a にすると組の a の番号は 2 ずつ進む。
+// Both argument orders must detect the run even when the finer timeline advances two frame indices per pair.
 func TestJudgeVersionFramesRunAcrossIntervalsIsSymmetric(t *testing.T) {
 	coarse := Fingerprint{Version: FingerprintVersion, IntervalMs: 5000}
 	fine := Fingerprint{Version: FingerprintVersion, IntervalMs: 2500}
@@ -116,7 +108,6 @@ func TestJudgeVersionFramesRunAcrossIntervalsIsSymmetric(t *testing.T) {
 	}
 }
 
-// 2 つ連続の食い違いは、5% 以下でもモデルに聞く。複数の連なりのうち最も長いものを選ぶ。
 func TestJudgeVersionFramesLongestRun(t *testing.T) {
 	distances := make([]int, 60)
 	distances[3], distances[4] = 20, 20
@@ -133,7 +124,6 @@ func TestJudgeVersionFramesLongestRun(t *testing.T) {
 	}
 }
 
-// 連なりが 4 より長ければ、その中に等間隔に 4 コマを散らす。
 func TestJudgeVersionFramesSpreadsALongRun(t *testing.T) {
 	distances := make([]int, 20)
 	for i := 4; i < 12; i++ {
@@ -146,7 +136,6 @@ func TestJudgeVersionFramesSpreadsALongRun(t *testing.T) {
 	}
 }
 
-// 連続しない食い違いでも 5% を超えればモデルに聞き、食い違ったコマ全体から選ぶ。
 func TestJudgeVersionFramesScatteredOverShare(t *testing.T) {
 	distances := make([]int, 20)
 	distances[2], distances[10] = 25, 25
@@ -160,7 +149,6 @@ func TestJudgeVersionFramesScatteredOverShare(t *testing.T) {
 	}
 }
 
-// 単色のコマは比べず、組が足りなければ比べられない。
 func TestJudgeVersionFramesIncomparable(t *testing.T) {
 	a, b := frameRuleFingerprints([]int{0, 0, 0, 0})
 	for i := 1; i < 4; i++ {
@@ -171,7 +159,6 @@ func TestJudgeVersionFramesIncomparable(t *testing.T) {
 	}
 }
 
-// 0.8 以上は同じ、0.2 以下は違う、間は決められない。
 func TestVersionVerdictFor(t *testing.T) {
 	for _, c := range []struct {
 		probability float64

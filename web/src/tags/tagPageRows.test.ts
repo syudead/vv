@@ -76,7 +76,6 @@ describe("compareTagsForSort", () => {
     });
     expect(compareTagsForSort(a, b, "countDesc")).toBe(1);
     expect(compareTagsForSort(a, b, "countAsc")).toBe(-1);
-    // 同じ秒なので名前の順。
     expect(compareTagsForSort(a, b, "createdDesc")).toBe(1);
   });
 });
@@ -191,7 +190,6 @@ describe("操作のあとの反映", () => {
   });
 
   describe("countDesc で読み込んでいない統合先へ統合する", () => {
-    // サーバーには 6 個あり、本数の多い順の先頭の 3 個を読み込んである。
     const all = [
       tag({ id: 1, name: "A", videoCount: 10 }),
       tag({ id: 2, name: "B", videoCount: 8 }),
@@ -215,12 +213,9 @@ describe("操作のあとの反映", () => {
     }
 
     it("位置が読み込んだ範囲の中なら統合先を差し込み、続きを末尾まで読んでも二重に出ない", () => {
-      // E（2 本）を B（8 本）へではなく、D（4 本）へ B を統合すると D は 12 本で先頭へ。
       const result = merge(all[1]!, all[3]!);
       expect(names(result)).toEqual(["D", "A", "C"]);
       expect([result.total, result.totalAll]).toEqual([5, 5]);
-      // 続きはカーソル（C の鍵）より後ろを返す。サーバーでは D は前へ動いたので返さない
-      // が、返したとしても id で捨てる。
       const rest = appendUniqueTags(result.rows, [
         { ...all[3]!, videoCount: 12 },
         all[4]!,
@@ -230,7 +225,6 @@ describe("操作のあとの反映", () => {
     });
 
     it("位置が範囲の外なら差し込まず、件数だけを数え直す", () => {
-      // F（1 本）を E（2 本）へ統合すると E は 3 本で、C（6 本）より後ろ。
       const result = merge(all[5]!, all[4]!);
       expect(names(result)).toEqual(["A", "B", "C"]);
       expect([result.total, result.totalAll]).toEqual([5, 5]);

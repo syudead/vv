@@ -42,7 +42,6 @@ function progressElement(): HTMLElement {
 
 const twoHoursMs = 7_200_000;
 
-// 2 時間の動画の配置情報（12 秒間隔・600 コマ・6 シート）。
 function twoHourSprite(): SeekThumbnailSprite {
   return {
     intervalMs: 12_000,
@@ -64,7 +63,6 @@ interface Deferred<T> {
   reject: (error: unknown) => void;
 }
 
-// fakeFetchers は配置情報とシートの取得を控え、テストが好きな時に終わらせられるようにする。
 function fakeFetchers() {
   const sprites: Array<Deferred<SeekThumbnailSprite>> = [];
   const sheets: Array<Deferred<Blob>> = [];
@@ -138,7 +136,6 @@ describe("seek sprite cell", () => {
   it("配置情報の間隔でコマを決め、5秒を前提にしない", () => {
     const sprite = twoHourSprite();
     expect(seekSpriteCell(sprite, 0)).toEqual({ frame: 0, sheet: 0, column: 0, row: 0 });
-    // 5 秒間隔なら 1 コマ目だが、12 秒間隔では 0 コマ目のまま。
     expect(seekSpriteCell(sprite, 11_999).frame).toBe(0);
     expect(seekSpriteCell(sprite, 12_000)).toEqual({
       frame: 1,
@@ -158,7 +155,6 @@ describe("seek sprite cell", () => {
       column: 0,
       row: 5,
     });
-    // 末尾を越える位置は最後のコマに寄せる。
     expect(seekSpriteCell(sprite, twoHoursMs + 60_000)).toEqual({
       frame: 599,
       sheet: 5,
@@ -201,14 +197,12 @@ describe("seek preview controller", () => {
     expect(image.style.backgroundSize).toBe("1000% 1000%");
     expect(image.style.backgroundPosition).toBe("0% 0%");
 
-    // 同じシートの隣のコマ（301）へ。取得は起きず、1 列ずれる。
     progress.dispatchEvent(pointer("pointermove", 301));
     expect(preview.dataset.state).toBe("ready");
     expect(image.style.backgroundPosition).toMatch(/^11\.1+\d*% 0%$/);
     expect(fetchers.fetchSprite).toHaveBeenCalledTimes(1);
     expect(fetchers.fetchSheet).toHaveBeenCalledTimes(1);
 
-    // 隠して出し直しても、配置情報もシートも取り直さない。
     progress.dispatchEvent(pointer("pointerleave", 301));
     expect(preview.dataset.state).toBe("hidden");
     progress.dispatchEvent(pointer("pointerenter", 300));
@@ -234,7 +228,6 @@ describe("seek preview controller", () => {
       "/api/videos/1/seek-thumbnail/3?v=c",
     ]);
 
-    // シート 3 の取得が終わる前にシート 4 へ。シート 3 の取得は中断しない。
     progress.dispatchEvent(pointer("pointermove", 400));
     progress.dispatchEvent(pointer("pointermove", 401));
     expect(preview.dataset.state).toBe("loading");
@@ -244,18 +237,15 @@ describe("seek preview controller", () => {
     ]);
     expect(fetchers.sheets[0]?.signal.aborted).toBe(false);
 
-    // 表示中でないシート 3 の取得が終わっても、表示は切り替えない。
     fetchers.sheets[0]?.resolve(new Blob(["sheet-3"]));
     await flush();
     expect(preview.dataset.state).toBe("loading");
     expect(image.style.backgroundImage).toBe("");
 
-    // シート 3 へ戻れば、取り直さずに出す。
     progress.dispatchEvent(pointer("pointermove", 300));
     expect(preview.dataset.state).toBe("ready");
     expect(image.style.backgroundImage).toContain("blob:sheet-1");
 
-    // 取得中のシート 4 へ戻っても、2 回目の取得は起きず、完了を待って出す。
     progress.dispatchEvent(pointer("pointermove", 400));
     expect(preview.dataset.state).toBe("loading");
     fetchers.sheets[1]?.resolve(new Blob(["sheet-4"]));
@@ -319,7 +309,6 @@ describe("seek preview controller", () => {
     expect(preview.dataset.state).toBe("unavailable");
     expect(fetchers.fetchSheet).toHaveBeenCalledTimes(1);
 
-    // 別のシートは待たずに取る。
     progress.dispatchEvent(pointer("pointermove", 400));
     expect(preview.dataset.state).toBe("loading");
     expect(fetchers.fetchSheet).toHaveBeenCalledTimes(2);
@@ -354,7 +343,6 @@ describe("seek preview controller", () => {
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:sheet-1");
     expect(progress.querySelector(".vv-seek-preview")).toBeNull();
 
-    // 中断した取得の後始末で object URL を作らない。
     fetchers.sheets[1]?.resolve(new Blob(["late"]));
     await flush();
     expect(createObjectURL).toHaveBeenCalledTimes(1);

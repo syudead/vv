@@ -11,27 +11,16 @@ import TentativeMark from "../../ui/TentativeMark";
 import type { ChipMark } from "./detailRows";
 import { TAG_FOLD } from "./fetchRules";
 
-/** ChipItem は比較の行に並べるチップの 1 つ（タグ、人物・団体、リンク、ID）である。 */
 export interface ChipItem {
-  /** 並びの中で一意な鍵。無ければ名前。 */
   key?: string;
   name: string;
-  /** 仮のタグとして出す（破線の目印）。 */
   tentative?: boolean;
-  /**
-   * 取得した側の印。`onVideo` は薄いチップと Check、`new` は「New」、`notLinked` は薄いチップと
-   * 「Not linked」。
-   */
   mark?: ChipMark;
-  /** ツールチップ。無ければ `onVideo` のチップだけが「On the video」を出す。 */
   hint?: string;
-  /** 省略せずに見せる値（`title`）。無ければ名前。 */
   full?: string;
-  /** 品番・ID のように数字の幅を揃える。 */
   numeric?: boolean;
 }
 
-/** chipsOfVideo は動画のタグを比較の行のチップにする。 */
 export function chipsOfVideo(tags: readonly VideoTag[]): ChipItem[] {
   return tags.map((tag) => ({ name: tag.name, tentative: tag.tentative }));
 }
@@ -46,7 +35,7 @@ function MarkText({ mark }: { mark: ChipMark | undefined }) {
       </>
     );
   if (mark === undefined) return null;
-  // 名前を先に読ませる従の印。読み上げは「{name}, New」になる。
+  // Announce the name before the secondary marker.
   return (
     <span className="shrink-0 text-xs text-muted-foreground">
       <span className="sr-only">, </span>
@@ -55,12 +44,11 @@ function MarkText({ mark }: { mark: ChipMark | undefined }) {
   );
 }
 
-/** Chip は比較の行のチップ 1 つである。 */
 export function Chip({ item }: { item: ChipItem }) {
   const text = t.player.workInfoFetch;
   const muted = item.mark === "onVideo" || item.mark === "notLinked";
   const hint = item.hint ?? (item.mark === "onVideo" ? text.onVideo : undefined);
-  // 動画にある件は確定した値として出し、仮の印を付けない（049 の取得した側のチップ）。
+  // Existing video values are confirmed, without tentative markers.
   const tentative = item.tentative === true && item.mark !== "onVideo";
   const badge = (
     <Badge
@@ -88,10 +76,6 @@ export function Chip({ item }: { item: ChipItem }) {
   );
 }
 
-/**
- * TagChips はチップの並びで、11 以上なら先頭の 10 と「+{n} more」を出し、押すとその場で
- * 残りを出して「Show fewer」にする（ui-design「Compare」）。trailing は並びの後ろの添え書きである。
- */
 export default function TagChips({
   items,
   trailing,
@@ -99,7 +83,7 @@ export default function TagChips({
 }: {
   items: readonly ChipItem[];
   trailing?: string;
-  /** trailing の要素の id。選べない行の理由としてチェックボックスが指す。 */
+  /** Checkbox description target for an unselectable row. */
   trailingId?: string;
 }) {
   const text = t.player.workInfoFetch;

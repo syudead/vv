@@ -2,26 +2,17 @@ package domain
 
 import "path/filepath"
 
-// ScanActivityKind は取り込み中の今の処理が何をしているかである。値は
-// api/openapi.yaml の ScanActivityKind に対応する
 type ScanActivityKind string
 
 const (
-	// ActivityRegistering は走査がファイルを索引へ登録している。
-	ActivityRegistering ScanActivityKind = "registering"
-	// ActivityProbe は動画の情報を読んでいる。
-	ActivityProbe ScanActivityKind = "probe"
-	// ActivityThumbnail は代表サムネイルを作っている。
-	ActivityThumbnail ScanActivityKind = "thumbnail"
-	// ActivitySeekThumbnail はシーク用サムネイルを作っている。
+	ActivityRegistering   ScanActivityKind = "registering"
+	ActivityProbe         ScanActivityKind = "probe"
+	ActivityThumbnail     ScanActivityKind = "thumbnail"
 	ActivitySeekThumbnail ScanActivityKind = "seekThumbnail"
-	// ActivityPreview は一覧用プレビューを作っている。
-	ActivityPreview ScanActivityKind = "preview"
-	// ActivityFingerprint は別バージョンを探すための映像の指紋を作っている。
-	ActivityFingerprint ScanActivityKind = "fingerprint"
+	ActivityPreview       ScanActivityKind = "preview"
+	ActivityFingerprint   ScanActivityKind = "fingerprint"
 )
 
-// ActivityKindOf は仕事の種類を今の処理の種類にする。知らない種類なら false を返す。
 func ActivityKindOf(kind JobKind) (ScanActivityKind, bool) {
 	switch kind {
 	case JobProbe:
@@ -38,33 +29,25 @@ func ActivityKindOf(kind JobKind) (ScanActivityKind, bool) {
 	return "", false
 }
 
-// ScanActivity は取り込み中の今の処理である。保存せず、internal/app がメモリに持つ。Kind が空なら、何も動いていない。
+// ScanActivity is held only in internal/app memory; empty Kind means idle.
 type ScanActivity struct {
-	Kind ScanActivityKind
-	// VideoID は登録された動画の id。未登録のファイルは 0 である。
+	Kind    ScanActivityKind
 	VideoID int64
-	// Path はファイルの絶対パスである。
-	Path string
-	// Folder はファイルの置かれたフォルダで、Located のときだけ意味を持つ。
-	// internal/app が読み出しの時点で登録フォルダから求める。
-	Folder VideoFolder
-	// RootName は Folder を含む登録フォルダの表示名である。
+	Path    string
+	// Folder is valid only when Located and is resolved against current roots at read time.
+	Folder   VideoFolder
 	RootName string
 	Located  bool
 }
 
-// Active は何かが動いているかを返す。
 func (a ScanActivity) Active() bool {
 	return a.Kind != ""
 }
 
-// FileName はファイル名を返す。
 func (a ScanActivity) FileName() string {
 	return filepath.Base(a.Path)
 }
 
-// Locate は登録フォルダから、ファイルの置かれたフォルダを求めて返す。どの登録
-// フォルダにも含まれなければ、フォルダを持たないまま返す。
 func (a ScanActivity) Locate(roots []MediaFolder) ScanActivity {
 	folder, ok := LocateVideoFolder(roots, a.Path)
 	if !ok {

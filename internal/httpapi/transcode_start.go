@@ -10,44 +10,34 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// transcodeStartRetention は、変換の要求が終わってから台帳の行を残す時間である。
-// 再読み込みの直後に届いた報告の要求が、終わった変換の値をまだ引けるようにする
-//
-// テストが短くできるよう変数にしている。
+// Retain finished offsets briefly so reload-triggered reports can still retrieve them; tests can shorten the duration.
 var transcodeStartRetention = 60 * time.Second
 
-// transcodeAttemptPattern は attempt の形式である（契約 §1）。
 var transcodeAttemptPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
-// validTranscodeAttempt は attempt が契約の形式に合うかを返す。
 func validTranscodeAttempt(attempt string) bool {
 	return transcodeAttemptPattern.MatchString(attempt)
 }
 
-// transcodeStartKey は台帳の鍵である。動画の識別子も含め、別の動画の経路から
-// 同じ attempt を引けないようにする。
+// Include video ID in the key so attempts cannot be read through another video's route.
 type transcodeStartKey struct {
 	videoID int64
 	attempt string
 }
 
-// transcodeStartSlot は 1 つの attempt の状態である。changed は状態が変わるたびに
-// 閉じて作り直し、待っている報告の要求を起こす。
+// Close and replace changed on every state change to wake reporting requests.
 type transcodeStartSlot struct {
-	// active は進行中の変換の要求の数、waiters は待っている報告の要求の数である。
 	active  int
 	waiters int
-	// resolved は開始位置が決まったこと、failed は最初のデータの前に要求が終わった
-	// ことを表す。決まった値は後の要求の失敗で消さない。
+	// A later failed request must not erase an already-resolved offset.
 	resolved bool
 	failed   bool
 	startMs  int64
-	// generation は変換の要求が始まるたびに進み、古い消去の予約を無効にする。
+	// Increment generation on each start to invalidate old cleanup timers.
 	generation uint64
 	changed    chan struct{}
 }
 
-// transcodeStarts は attempt ごとの実際の開始位置の台帳である。
 type transcodeStarts struct {
 	mu    sync.Mutex
 	slots map[transcodeStartKey]*transcodeStartSlot
@@ -57,7 +47,7 @@ func newTranscodeStarts() *transcodeStarts {
 	return &transcodeStarts{slots: map[transcodeStartKey]*transcodeStartSlot{}}
 }
 
-// slotLocked は鍵の行を返し、無ければ作る。mu を持って呼ぶ。
+// Caller must hold mu.
 func (l *transcodeStarts) slotLocked(key transcodeStartKey) *transcodeStartSlot {
 	slot, ok := l.slots[key]
 	if !ok {
@@ -72,8 +62,7 @@ func (slot *transcodeStartSlot) notifyLocked() {
 	slot.changed = make(chan struct{})
 }
 
-// begin は変換の要求が始まったことを載せ、開始位置を記録する関数と、要求の終わりに
-// 呼ぶ関数を返す。終わりまでに記録が無ければ失敗として報告の要求を起こす。
+// begin returns resolve/finish callbacks; finishing before resolution wakes waiters with failure.
 func (l *transcodeStarts) begin(key transcodeStartKey) (resolve func(startMs int64), end func()) {
 	l.mu.Lock()
 	slot := l.slotLocked(key)
@@ -113,8 +102,7 @@ func (l *transcodeStarts) begin(key transcodeStartKey) (resolve func(startMs int
 	return resolve, end
 }
 
-// wait は開始位置が決まるまで待つ。attempt がまだ載っていなければ載るまで待つ。
-// 決まらずに要求が失敗したとき、期限を過ぎたとき、ctx が終わったときは false を返す。
+// wait also waits for not-yet-registered attempts and returns false on failure, timeout, or cancellation.
 func (l *transcodeStarts) wait(ctx context.Context, key transcodeStartKey, timeout time.Duration) (int64, bool) {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
@@ -126,7 +114,7 @@ func (l *transcodeStarts) wait(ctx context.Context, key transcodeStartKey, timeo
 		l.mu.Lock()
 		defer l.mu.Unlock()
 		slot.waiters--
-		// 報告の要求が作っただけの行（変換の要求が来なかった）は、待ち手が居なくなったら消す。
+		// Remove report-only slots when no waiters remain.
 		if slot.waiters == 0 && slot.active == 0 && slot.generation == 0 && l.slots[key] == slot {
 			delete(l.slots, key)
 		}
@@ -154,9 +142,8 @@ func (l *transcodeStarts) wait(ctx context.Context, key transcodeStartKey, timeo
 	}
 }
 
-// GetTranscodeStart は同じ attempt を付けた変換の実際の開始位置を返す
 func (s *server) GetTranscodeStart(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetTranscodeStartParams) {
-	// 公開でない動画へのゲストの要求は、変換の経路と同じ判定で 404 にする。
+	// Apply the same guest visibility checks as the transcode route.
 	video, r, release, ok := s.lookupServedVideo(w, r, id)
 	if !ok {
 		return

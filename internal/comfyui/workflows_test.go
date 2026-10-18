@@ -12,8 +12,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 埋め込んだ各ワークフローは、アダプタが埋める vv:* のノードを決まった型で 1 つずつ持つ。参考画像の vv:reference は
-// 参考画像ありの方だけが持つ。vv:prompt の型はモデルごとに違い、promptInputs に載っている。
 func TestWorkflowsHaveTheTitlesVVFills(t *testing.T) {
 	titles := func(prompt string, reference bool) map[string]string {
 		m := map[string]string{
@@ -54,7 +52,6 @@ func TestWorkflowsHaveTheTitlesVVFills(t *testing.T) {
 	}
 }
 
-// ローダーが名指すファイルはどれも Required files の表にあり、表のファイルはどれも使われる。
 func TestWorkflowLoadersNameTheRequiredFiles(t *testing.T) {
 	required, err := workflowRequirement(domain.ComfyUIModelFlux2Klein, "")
 	if err != nil {
@@ -75,7 +72,6 @@ func TestWorkflowLoadersNameTheRequiredFiles(t *testing.T) {
 	}
 }
 
-// 拡散モデルを差し替えると、確かめるファイルはそのファイルに代わり、入手先は空になる。
 func TestWorkflowRequirementWithDiffusionModel(t *testing.T) {
 	required, err := workflowRequirement(domain.ComfyUIModelFlux2Klein, "klein-4b-finetune.safetensors")
 	if err != nil {
@@ -97,8 +93,6 @@ func TestWorkflowRequirementWithDiffusionModel(t *testing.T) {
 	}
 }
 
-// どのモデルにもワークフローの組があり、ローダーが名指すファイルはそのモデルの必要なファイルの
-// 表にあり、表のファイルはどれも使われる。
 func TestEveryModelHasAPresetWhoseLoadersNameItsFiles(t *testing.T) {
 	for _, model := range domain.ComfyUIModels {
 		p, ok := presets[model]
@@ -136,7 +130,6 @@ func TestEveryModelHasAPresetWhoseLoadersNameItsFiles(t *testing.T) {
 	}
 }
 
-// 接続のテストは保存したモデルのワークフローに要るものだけを確かめる。
 func TestCheckUsesTheSavedModel(t *testing.T) {
 	var files []string
 	for _, f := range qwenRequiredFiles {
@@ -162,7 +155,6 @@ func TestCheckUsesTheSavedModel(t *testing.T) {
 	qwen := fixedSettings{settings: domain.ComfyUISettings{
 		Provider: domain.ComfyUISelfHosted, URL: url, Model: domain.ComfyUIModelQwenImageEdit,
 	}}
-	// klein の差し替えは Qwen では効かない。
 	if err := NewWithOptions(qwen, Options{DiffusionModel: "klein-4b-finetune.safetensors"}).Check(context.Background()); err != nil {
 		t.Fatalf("Check with Qwen files = %v", err)
 	}
@@ -181,9 +173,7 @@ func contains(list []string, s string) bool {
 	return false
 }
 
-// objectInfoFor はワークフローのノードの型すべてを持つ /object_info を作る。ローダーの入力は
-// files を選択肢に持つ。combo が真なら新しい ComfyUI の ["COMBO", {"options": …}] の形にする。
-// drop に挙げた型は省く。
+// combo selects the newer COMBO schema; drop omits node classes.
 func objectInfoFor(t *testing.T, files []string, combo bool, drop ...string) []byte {
 	t.Helper()
 	required, err := workflowRequirement(domain.ComfyUIModelFlux2Klein, "")
@@ -213,7 +203,6 @@ func objectInfoFor(t *testing.T, files []string, combo bool, drop ...string) []b
 	return data
 }
 
-// fullObjectInfo はワークフローに要るノードとファイルをすべて持つ /object_info である。
 func fullObjectInfo(t *testing.T) []byte {
 	t.Helper()
 	var files []string
@@ -223,7 +212,6 @@ func fullObjectInfo(t *testing.T) []byte {
 	return objectInfoFor(t, files, false)
 }
 
-// fakeProvider は接続の経路 path と /object_info（prefix の下）に答える偽の提供元を立てる。
 func fakeProvider(t *testing.T, path, reply, prefix string, objectInfo []byte, gotKey *string) string {
 	t.Helper()
 	server := serveRoutes(t, map[string]http.HandlerFunc{
@@ -240,7 +228,6 @@ func fakeProvider(t *testing.T, path, reply, prefix string, objectInfo []byte, g
 
 const systemStatsReply = `{"system":{"os":"posix","python_version":"3.12.3"},"devices":[]}`
 
-// 新しい ComfyUI の COMBO の形でも、すべてのノードとファイルがあれば使える。
 func TestCheckAvailableWithComboOptions(t *testing.T) {
 	var files []string
 	for _, f := range requiredFiles {
@@ -252,11 +239,9 @@ func TestCheckAvailableWithComboOptions(t *testing.T) {
 	}
 }
 
-// ローダーの選択肢に無いファイルごとにフォルダと入手先を持つ model の項目を、無い型ごとに node の
-// 項目を返す。自前の ComfyUI でも Comfy Cloud でも同じ確かめを行う。
 func TestCheckReportsMissingNodesAndFiles(t *testing.T) {
 	info := objectInfoFor(t, []string{"qwen_3_4b.safetensors"}, false, "Flux2Scheduler", "GetImageSize")
-	// モデルファイルが表の順に先、ノードの型が名前の順に後に並ぶ。
+	// Files follow table order, then node classes follow name order.
 	want := []domain.ComfyUIMissingItem{
 		{
 			Kind: domain.ComfyUIMissingModel, Name: "flux-2-klein-4b-fp8.safetensors", Folder: "diffusion_models",
@@ -294,7 +279,6 @@ func TestCheckReportsMissingNodesAndFiles(t *testing.T) {
 	}
 }
 
-// ローダーの型そのものが無ければ型だけを挙げ、そのファイルは挙げない。
 func TestCheckReportsMissingLoaderAsNodeOnly(t *testing.T) {
 	var files []string
 	for _, f := range requiredFiles {
@@ -312,7 +296,6 @@ func TestCheckReportsMissingLoaderAsNodeOnly(t *testing.T) {
 	}
 }
 
-// /object_info が JSON でなければ ComfyUI でないと伝え、本文は写さない。
 func TestCheckRejectsObjectInfoThatIsNotJSON(t *testing.T) {
 	url := fakeProvider(t, "/system_stats", systemStatsReply, "", []byte("<html>secret</html>"), nil)
 	err := New(selfHosted(url)).Check(context.Background())

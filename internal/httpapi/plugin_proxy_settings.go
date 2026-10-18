@@ -8,8 +8,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// GetPluginProxySettings は作品情報プラグインの要求を送るプロキシの URL を返す。保存が無ければ ""
-// である。/api/settings/network と違い、どのビルドでも答える
+// Proxy settings are available in every build; unsaved URL is empty.
 func (s *server) GetPluginProxySettings(w http.ResponseWriter, r *http.Request) {
 	if s.pluginProxy == nil {
 		s.internalError(w, "Plugin proxy settings are not configured.", nil)
@@ -24,14 +23,12 @@ func (s *server) GetPluginProxySettings(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, gen.PluginProxySettings{Url: url}, s.logger)
 }
 
-// UpdatePluginProxySettings は URL を確かめて保存し、保存した値を返す。url が無いか規則に外れれば
-// 400 invalid_request で、何も書かない（契約）。
 func (s *server) UpdatePluginProxySettings(w http.ResponseWriter, r *http.Request) {
 	if s.pluginProxy == nil {
 		s.internalError(w, "Plugin proxy settings are not configured.", nil)
 		return
 	}
-	// url は必須なので、無いことを "" と区別して読む。
+	// Distinguish missing required url from an explicit empty reset.
 	var body struct {
 		URL *string `json:"url"`
 	}

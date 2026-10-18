@@ -29,8 +29,6 @@ func cloud(key string) fixedSettings {
 	return fixedSettings{settings: domain.ComfyUISettings{Provider: domain.ComfyUICloud, APIKey: key}}
 }
 
-// serve は 1 つの経路と、その隣の /object_info に答える偽の提供元を立てる。/object_info は
-// ワークフローに要るものをすべて持つ。ほかの経路は失敗にする。
 func serve(t *testing.T, path string, handler http.HandlerFunc) *httptest.Server {
 	t.Helper()
 	info := fullObjectInfo(t)
@@ -42,7 +40,6 @@ func serve(t *testing.T, path string, handler http.HandlerFunc) *httptest.Server
 	})
 }
 
-// serveRoutes は routes の経路にだけ GET で答える偽の提供元を立てる。ほかの要求は失敗にする。
 func serveRoutes(t *testing.T, routes map[string]http.HandlerFunc) *httptest.Server {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +55,6 @@ func serveRoutes(t *testing.T, routes map[string]http.HandlerFunc) *httptest.Ser
 	return server
 }
 
-// 自前の ComfyUI は /system_stats に答えれば使える。キーは送らない。
 func TestCheckSelfHostedSystemStats(t *testing.T) {
 	server := serve(t, "/system_stats", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-API-Key") != "" {
@@ -73,7 +69,6 @@ func TestCheckSelfHostedSystemStats(t *testing.T) {
 	}
 }
 
-// Comfy Cloud は /jobs?limit=1 に X-API-Key を付けて問い合わせ、200 なら使える。
 func TestCheckCloudSendsKey(t *testing.T) {
 	server := serve(t, "/api/jobs", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("X-API-Key") != "secret" || r.URL.Query().Get("limit") != "1" {
@@ -87,8 +82,6 @@ func TestCheckCloudSendsKey(t *testing.T) {
 	}
 }
 
-// 使えない理由（つながらない、ComfyUI でない、キーが拒まれた、何も保存されていない）を
-// それぞれ別の文で伝え、相手の本文は写さない。
 func TestCheckReportsWhyItFailed(t *testing.T) {
 	closed := httptest.NewServer(http.NotFoundHandler())
 	closedURL := closed.URL
@@ -146,7 +139,6 @@ func TestCheckReportsWhyItFailed(t *testing.T) {
 	}
 }
 
-// 確かめは転送に従わず、転送先へキーを持ち出さない。
 func TestCheckDoesNotFollowRedirects(t *testing.T) {
 	var followed bool
 	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { followed = true }))

@@ -1,18 +1,16 @@
 -- +goose Up
--- 外部連携の API トークン。
--- 作り直せない設定のデータで、スキャンでは戻らない。失えば発行し直す（ARCHITECTURE.md
--- 「Rebuildable and user data」）。
+-- API tokens are persistent settings; lost tokens must be reissued, not rebuilt by scanning.
 create table api_tokens (
-    -- autoincrement で、失効した行の id を新しいトークンに再利用しない。
+    -- Never reuse revoked token IDs.
     id              integer primary key autoincrement,
-    -- 用途の名前。domain.NormalizeAPITokenName を通した値。重複してよい。
+    -- Normalized purpose label; duplicates are allowed.
     name            text    not null,
-    -- 平文の SHA-256（16進）。平文はどこにも保存しない。
+    -- Store only the hexadecimal SHA-256 hash, never plaintext.
     token_hash      text    not null unique,
-    -- 発行したときの account.version。一致しない行は無効である。
+    -- The account version at issuance; mismatches invalidate the token.
     account_version integer not null,
     created_at      integer not null,
-    -- 最後に使った時刻（Unix 秒）。未使用なら null。60 秒より細かくは書かない（R-9）。
+    -- Last use in Unix seconds, NULL until used; write no more often than once per minute.
     last_used_at    integer
 );
 

@@ -13,54 +13,45 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// MP4／MOV の索引（moov の sample table）から、シーク用スプライトの各コマに使う
-// キーフレームの位置と大きさを求める。ffmpeg に時刻シークさせるとコマごとに索引を
-// 読み直すので、索引を 1 回だけ読み、必要なキーフレームのバイトだけを取る
-// （docs/design-docs/seek-sprite-generation.md）。
+// Read the MP4/MOV index once and fetch only required keyframe bytes, avoiding repeated ffmpeg
+// index reads; see docs/design-docs/seek-sprite-generation.md.
 
 const (
-	// maxMovieBoxSize は読み込む moov の上限である。数時間の動画でも数十 MB に収まる。
-	maxMovieBoxSize = 256 << 20
-	// maxTopLevelBoxes は moov を探すときに読み飛ばす最上位の box の数の上限である。
-	maxTopLevelBoxes = 1024
-	// maxKeyframeSize は 1 枚のキーフレームとして読む大きさの上限である。
-	maxKeyframeSize = 64 << 20
-	// maxKeyframeTotalSize は 1 枚のスプライトのために読むキーフレームの合計の上限である。
+	// Even multi-hour movie indexes should fit within tens of megabytes.
+	maxMovieBoxSize      = 256 << 20
+	maxTopLevelBoxes     = 1024
+	maxKeyframeSize      = 64 << 20
 	maxKeyframeTotalSize = 512 << 20
-	// maxKeyframes は 1 トラックのキーフレームの数の上限である（1 秒に 1 枚で 12 日分）。
-	// 値を取り出すのはキーフレームの分だけなので、確保する量はこれで抑えられる。
+	// Bound keyframe allocations independently of total sample count; this allows twelve days at one
+	// keyframe per second.
 	maxKeyframes = 1 << 20
 )
 
-// errSeekIndexUnsupported は、入力が索引から抽出できる形（sample table を持つ
-// MP4／MOV の H.264／HEVC）でないことを表す。
+// Indexed extraction supports only H.264/HEVC MP4/MOV sample tables.
 var errSeekIndexUnsupported = errors.New("keyframes cannot be read from the index for this input")
 
-// keyframeTrack は映像トラックのうち、スプライトの生成に使う部分である。
 type keyframeTrack struct {
-	// format は ffmpeg の入力形式（h264 か hevc）である。
+	// Raw ffmpeg input format: h264 or hevc.
 	format string
-	// lengthSize は sample 内の NAL の長さの欄のバイト数である。
+	// NAL length-prefix width in bytes.
 	lengthSize int
-	// parameterSets はデコーダ設定（avcC／hvcC）にある NAL で、キーフレームの前に置く。
+	// Prepend decoder configuration NALs from avcC/hvcC to each keyframe.
 	parameterSets [][]byte
-	// displayFilter は表示行列（tkhd）の回転を復号後の画像に施す ffmpeg のフィルタで、
-	// 回転しないトラックでは空である。生の映像として復号すると表示行列は失われるので、
-	// ffmpeg が容器から読むときの自動回転と同じ向きにここで直す。
+	// Raw decoding loses tkhd display metadata, so reapply rotation to match ffmpeg container
+	// autorotation.
 	displayFilter string
-	// keyframes は表示時刻の昇順に並べたキーフレームである。
+	// Sorted by presentation time.
 	keyframes []keyframe
 }
 
-// keyframe は 1 枚のキーフレームの表示時刻（マイクロ秒）とファイル内の位置である。
+// Presentation time is in microseconds.
 type keyframe struct {
 	presentationUs int64
 	offset         int64
 	size           int64
 }
 
-// readMovieBox はファイルの最上位の box を先頭から順に見て、moov の中身を返す。
-// moov の前にある mdat などは header だけを読んで飛ばす。
+// Skip non-moov payloads using only their headers.
 func readMovieBox(ctx context.Context, r io.ReaderAt, fileSize int64) ([]byte, error) {
 	var position int64
 	header := make([]byte, 16)
@@ -106,8 +97,7 @@ func readMovieBox(ctx context.Context, r io.ReaderAt, fileSize int64) ([]byte, e
 	return nil, fmt.Errorf("%w: no moov", errSeekIndexUnsupported)
 }
 
-// parseKeyframeTrack は moov の中身から、ffmpeg が選ぶのと同じ最初の映像トラックの
-// キーフレームを読む。そのトラックが H.264／HEVC でなければ errSeekIndexUnsupported を返す。
+// Select the first video track like ffmpeg; unsupported codecs return errSeekIndexUnsupported.
 func parseKeyframeTrack(movie []byte) (*keyframeTrack, error) {
 	boxes, err := parseBoxes(movie)
 	if err != nil {
@@ -134,8 +124,7 @@ func parseKeyframeTrack(movie []byte) (*keyframeTrack, error) {
 	return nil, fmt.Errorf("%w: no video track", errSeekIndexUnsupported)
 }
 
-// errNotVideoTrack は、映像でない、または表紙のような 1 枚だけの画像のトラックを表す。
-// ffmpeg の 0:V:0 と同じく、こうしたトラックは飛ばして次を見る。
+// Skip nonvideo and single-image cover tracks, matching ffmpeg 0:V:0.
 var errNotVideoTrack = errors.New("not a video track")
 
 func parseVideoTrak(trak []mp4Box, movieTimescaleValue uint64) (*keyframeTrack, error) {
@@ -174,7 +163,7 @@ func parseVideoTrak(trak []mp4Box, movieTimescaleValue uint64) (*keyframeTrack, 
 
 	track := &keyframeTrack{}
 	if err := track.readDecoderConfig(boxes); err != nil {
-		// 表紙のような 1 枚だけの画像は、ffmpeg と同じく映像として選ばない。
+		// Skip cover-image tracks as ffmpeg does.
 		if table.count <= 1 {
 			return nil, errNotVideoTrack
 		}
@@ -215,8 +204,7 @@ func parseVideoTrak(trak []mp4Box, movieTimescaleValue uint64) (*keyframeTrack, 
 	sort.SliceStable(track.keyframes, func(i, j int) bool {
 		return track.keyframes[i].presentationUs < track.keyframes[j].presentationUs
 	})
-	// 編集で切り取られて再生されない後ろのキーフレームは選ばない。すべてが範囲の外なら
-	// 最初の 1 枚だけを残す。
+	// Exclude keyframes beyond the edit window; retain the first if all fall outside.
 	if endUs > 0 {
 		end := sort.Search(len(track.keyframes), func(i int) bool { return track.keyframes[i].presentationUs >= endUs })
 		track.keyframes = track.keyframes[:max(end, 1)]
@@ -224,15 +212,15 @@ func parseVideoTrak(trak []mp4Box, movieTimescaleValue uint64) (*keyframeTrack, 
 	return track, nil
 }
 
-// displayFilter は tkhd の表示行列を読み、ffmpeg の自動回転と同じ変換のフィルタを返す。
-// 行列の a・b・c・d（16.16 固定小数点）が 90 度単位の回転を表すときだけ扱い、
-// 反転や拡大縮小を含む行列は errSeekIndexUnsupported にして区間ごとの抽出に任せる。
+// Support only quarter-turn rotations in tkhd's 16.16 matrix; flips/scaling fall back to segment
+// extraction via errSeekIndexUnsupported.
 func displayFilter(trak []mp4Box) (string, error) {
 	tkhd, err := childPayload(trak, "tkhd")
 	if err != nil {
 		return "", nil
 	}
-	// 版 0 は作成・更新時刻と長さが 4 バイト、版 1 は 8 バイトで、行列はその後ろにある。
+	// Version 0 uses four-byte timestamps/duration; version 1 uses eight-byte fields before the
+	// matrix.
 	offset := 40
 	if len(tkhd) > 0 && tkhd[0] == 1 {
 		offset = 52
@@ -261,8 +249,7 @@ func displayFilter(trak []mp4Box) (string, error) {
 	return "", fmt.Errorf("%w: tkhd display matrix %v", errSeekIndexUnsupported, m)
 }
 
-// readDecoderConfig は sample description（stsd）の entry から形式とパラメータセットを
-// 読む。entry が複数ある（途中で解像度などが変わる）トラックは扱わない。
+// Reject multiple sample descriptions, which can change resolution mid-track.
 func (t *keyframeTrack) readDecoderConfig(table []mp4Box) error {
 	stsd, err := childPayload(table, "stsd")
 	if err != nil || len(stsd) < 8 {
@@ -276,7 +263,7 @@ func (t *keyframeTrack) readDecoderConfig(table []mp4Box) error {
 		return fmt.Errorf("%w: cannot read stsd entry", errSeekIndexUnsupported)
 	}
 	entry := entries[0]
-	// VisualSampleEntry の固定部分（78 バイト）の後ろに avcC などの box が続く。
+	// avcC and related boxes follow the 78-byte VisualSampleEntry prefix.
 	const visualSampleEntrySize = 78
 	var configType string
 	switch entry.boxType {
@@ -310,7 +297,7 @@ func (t *keyframeTrack) readAVCConfig(config []byte) error {
 	}
 	t.lengthSize = int(config[4]&3) + 1
 	rest := config[5:]
-	// SPS の数は下位 5 ビット、PPS の数は次の 1 バイトにある。
+	// The low five bits hold SPS count; the following byte holds PPS count.
 	for _, mask := range []byte{0x1f, 0xff} {
 		if len(rest) < 1 {
 			return fmt.Errorf("%w: avcC is truncated", errSeekIndexUnsupported)
@@ -354,7 +341,6 @@ func (t *keyframeTrack) readHEVCConfig(config []byte) error {
 	return nil
 }
 
-// lengthPrefixed は 2 バイトの長さに続く中身を切り出し、残りと一緒に返す。
 func lengthPrefixed(data []byte) ([]byte, []byte, error) {
 	if len(data) < 2 {
 		return nil, nil, fmt.Errorf("%w: parameter set is truncated", errSeekIndexUnsupported)
@@ -366,14 +352,13 @@ func lengthPrefixed(data []byte) ([]byte, []byte, error) {
 	return data[2 : 2+size], data[2+size:], nil
 }
 
-// sampleTable は stbl の表で、値はキーフレームの分だけ取り出す。sample の数だけの
-// 配列は作らないので、小さな表が大きな sample 数を名乗っても確保は増えない。
+// Decode only keyframe entries, avoiding allocations proportional to an untrusted total sample
+// count.
 type sampleTable struct {
 	count     int
 	fixedSize int64
-	// sizes は stsz の各 sample の大きさの並び（fixedSize が 0 のとき）である。
-	sizes []byte
-	// timeToSample・compositionToSample・sampleToChunk・chunkOffsets は各 box の entry である。
+	// Per-sample sizes when fixedSize is zero.
+	sizes               []byte
 	timeToSample        [][]byte
 	compositionToSample [][]byte
 	sampleToChunk       [][]byte
@@ -429,8 +414,7 @@ func (s *sampleTable) size(sample int) int64 {
 	return int64(binary.BigEndian.Uint32(s.sizes[4*sample:]))
 }
 
-// decodeTimes は stts から、昇順の samples それぞれの復号時刻（media timescale）を求める。
-// stts が stsz より多くの sample を数えていても、ffmpeg と同じく余りは使わない。
+// Ignore stts samples beyond stsz, matching ffmpeg.
 func (s *sampleTable) decodeTimes(samples []int) ([]int64, error) {
 	times := make([]int64, len(samples))
 	next, first := 0, 0
@@ -453,9 +437,7 @@ func (s *sampleTable) decodeTimes(samples []int) ([]int64, error) {
 	return times, nil
 }
 
-// compositionOffsets は ctts から、昇順の samples それぞれの表示時刻と復号時刻の差を
-// 求める。ctts が無い、または足りない sample の差は 0 である。版 0 の値も符号付きとして
-// 読む（ffmpeg と同じ）。
+// Missing ctts offsets default to zero; treat version 0 values as signed, matching ffmpeg.
 func (s *sampleTable) compositionOffsets(samples []int) []int64 {
 	offsets := make([]int64, len(samples))
 	next, first := 0, 0
@@ -473,7 +455,6 @@ func (s *sampleTable) compositionOffsets(samples []int) []int64 {
 	return offsets
 }
 
-// offsets は stsc と stco／co64 から、昇順の samples それぞれのファイル内の位置を求める。
 func (s *sampleTable) offsets(samples []int) ([]int64, error) {
 	positions := make([]int64, len(samples))
 	next, first := 0, 0
@@ -520,8 +501,7 @@ func (s *sampleTable) chunkOffset(chunk int) int64 {
 	return int64(binary.BigEndian.Uint32(entry))
 }
 
-// syncSamples は stss からキーフレームの sample 番号（0 始まり、昇順）を読む。stss が
-// 無いトラックでは、すべての sample がキーフレームである。
+// Absent stss means every sample is a keyframe.
 func syncSamples(boxes []mp4Box, count int) ([]int, error) {
 	stss, err := childPayload(boxes, "stss")
 	if err != nil {
@@ -549,16 +529,14 @@ func syncSamples(boxes []mp4Box, count int) ([]int, error) {
 		}
 		samples = append(samples, number-1)
 	}
-	// 後の表の読み取りは昇順で重複の無い並びを前提にする。
+	// Later table reads require sorted, unique sample indexes.
 	sort.Ints(samples)
 	return slices.Compact(samples), nil
 }
 
-// presentationWindow は edit list による時刻のずれ（media timescale）と、再生される
-// 範囲の終わりの表示時刻（マイクロ秒、終わりが無ければ 0）を返す。表示時刻は sample の
-// 時刻からずれを引いたものになる。空でない edit の media_time から始まり、先頭の空の
-// edit の長さだけ遅れ、その edit の長さで終わる。途中を切り取る（空でない edit が
-// 複数ある）トラックは扱わない。
+// presentationWindow returns the media-timescale shift and optional end in microseconds; subtract
+// the shift from sample time. Support one nonempty edit with optional leading delay, rejecting
+// tracks with multiple cuts.
 func presentationWindow(trak []mp4Box, timescale, movieTimescaleValue uint64) (int64, int64, error) {
 	edts, err := childPayload(trak, "edts")
 	if err != nil {
@@ -601,7 +579,6 @@ func presentationWindow(trak []mp4Box, timescale, movieTimescaleValue uint64) (i
 	return shift, endUs, nil
 }
 
-// fullBoxEntries は version・flags と entry の数に続く、固定長の entry の並びを切り出す。
 func fullBoxEntries(payload []byte, entrySize int, boxType string) ([][]byte, error) {
 	if len(payload) < 8 {
 		return nil, fmt.Errorf("%w: %s is too short", errSeekIndexUnsupported, boxType)
@@ -647,10 +624,8 @@ func ticksToMicroseconds(ticks, timescale int64) int64 {
 	return ticks/timescale*1_000_000 + ticks%timescale*1_000_000/timescale
 }
 
-// pick はスプライトのコマ k ごとに使うキーフレームの番号を返す。コマ k の区間
-// [k*IntervalMs, (k+1)*IntervalMs) の中の最初のキーフレームを選ぶ。区間の中に無ければ
-// 区間より前の最後のキーフレーム（直前の場面）を、それも無ければ最初のキーフレームを選ぶ。
-// 映像が容器より早く終わる末尾の区間も、こうして必ずどれかの場面になる。
+// For each sprite interval choose its first keyframe, otherwise the last preceding frame, otherwise
+// the first frame; this also fills intervals after video ends.
 func (t *keyframeTrack) pick(layout domain.SeekSpriteLayout) []int {
 	picks := make([]int, layout.FrameCount)
 	for k := range picks {
@@ -669,9 +644,8 @@ func (t *keyframeTrack) pick(layout domain.SeekSpriteLayout) []int {
 	return picks
 }
 
-// annexB は 1 枚のキーフレーム（長さの欄で区切った NAL の並び）を、パラメータセットを
-// 前に置いた開始コード区切りの並びにする。ffmpeg は -f h264／hevc で読む。
-// キーフレームが IDR かどうかも返す。
+// Convert length-prefixed NALs to Annex B with decoder parameters prepended, and report whether the
+// frame is IDR.
 func (t *keyframeTrack) annexB(sample []byte) ([]byte, bool, error) {
 	startCode := []byte{0, 0, 0, 1}
 	var out []byte
@@ -702,7 +676,7 @@ func (t *keyframeTrack) annexB(sample []byte) ([]byte, bool, error) {
 	return out, idr, nil
 }
 
-// isIDR は NAL の先頭バイトが IDR のスライス（H.264 は型 5、HEVC は型 19・20）かを返す。
+// H.264 IDR uses type 5; HEVC uses types 19 and 20.
 func (t *keyframeTrack) isIDR(header byte) bool {
 	if t.format == "h264" {
 		return header&0x1f == 5
@@ -711,9 +685,8 @@ func (t *keyframeTrack) isIDR(header byte) bool {
 	return nalType == 19 || nalType == 20
 }
 
-// readAt は r.ReadAt を行い、ctx が終わったら読み取りの終わりを待たずに戻る。
-// 応答しない置き場で、生成の期限や停止を過ぎてもジョブが止まり続けないようにする。
-// 戻った後も読み取りは続きうるので、呼び出し側は p を再利用しない。
+// readAt returns promptly on cancellation even if storage hangs; reads may continue afterward, so
+// callers must never reuse p.
 func readAt(ctx context.Context, r io.ReaderAt, p []byte, offset int64) (int, error) {
 	type result struct {
 		n   int

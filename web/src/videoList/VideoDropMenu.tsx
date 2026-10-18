@@ -9,11 +9,7 @@ import type { CardDrop } from "./cardDrag";
 import { type DropChoice, DropMenu, useDropMenu } from "./dropMenu";
 import { bundleOverLimit } from "./videoDrop";
 
-/**
- * VideoDropMenu は動画を動画に落としたときに、落とした先のカードに開くメニューである。「Make a group」と
- * 「Bundle as versions」の 2 つで、持ち上げたカードと落とした先が 20 枚を超えれば後者を押せなく
- * して理由を添える。Esc、外の押下、Tab で閉じると何も選ばずに `onClose` を呼ぶ。
- */
+/** Disable bundling above 20 cards including the target; dismissal without a choice sends no action. */
 export function VideoDropMenu({
   name,
   liftedCount,
@@ -21,13 +17,11 @@ export function VideoDropMenu({
   onBundle,
   onClose,
 }: {
-  /** 落とした先の動画の題名。 */
   name: string;
-  /** 持ち上げたカードの枚数。 */
   liftedCount: number;
   onGroup: () => void;
   onBundle: () => void;
-  /** メニューが閉じたら呼ぶ（項目を選んだ後も呼ぶ）。 */
+  /** Called on every close, including after selection. */
   onClose: () => void;
 }) {
   const overLimit = bundleOverLimit(liftedCount);
@@ -49,7 +43,7 @@ export function VideoDropMenu({
         {t.organize.menu.makeGroup}
       </DropdownMenuItem>
       {overLimit ? (
-        // 押せない項目はポインタを受けないので、包みでツールチップを出す。
+        // Disabled items receive no pointer events, so attach the tooltip to a wrapper.
         <Tooltip>
           <TooltipTrigger asChild>
             <span className="block">{bundle}</span>
@@ -70,14 +64,11 @@ export function VideoDropMenu({
   );
 }
 
-/** VideoDropChoice は動画を動画に落としたメニューで選んだ操作の値である。 */
 export type VideoDropChoice = DropChoice;
 
 /**
- * useVideoDropMenu は動画を動画に落としたときのメニューを開く。`hold` は落とし方を受け、
- * 落とした先が動画なら（`isVideo`）メニューを開いて true を返す。メニューの間は持ち上げた
- * カードと落とした先の印を保ち（`held`）、メニューを落とした先のカードに重ねる（`attached`）。
- * 項目を選ぶと `onGroup` か `onBundle`、閉じると何もしない。
+ * Retain lifted and target marks while the menu is open; only video targets are accepted, and
+ * dismissal performs no action.
  */
 export function useVideoDropMenu({
   isVideo,

@@ -185,7 +185,7 @@ func TestRunSeekCountsOutputsAndRemovesThem(t *testing.T) {
 			t.Errorf("出力に %q が無い:\n%s", want, stdout.String())
 		}
 	}
-	// 一時出力は生成のたびに消え、終了後は作業ディレクトリごと残らない。
+
 	for _, dir := range dirs {
 		if _, err := os.Stat(filepath.Dir(dir)); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("一時出力が残っている (%s): %v", filepath.Dir(dir), err)

@@ -1,12 +1,10 @@
 -- +goose Up
--- 同じ動画の別バージョンの集まり。
--- 作り直せない利用者データで、videos への外部キーを張らない。集まりのタグ・再生位置・公開の設定は
--- video_tags・playback_progress・public_videos に user_key を鍵として置く。
+-- Persistent bundles have no video foreign keys and store shared user data under their user_key.
 create table video_bundles (
     id                 integer primary key autoincrement,
-    -- 集まりの値の鍵。'bundle:' || id を書く側が作る。content_key（<16進>:<サイズ>）と重ならない。
+    -- The writer derives bundle:<id>, which cannot collide with hexadecimal content keys.
     user_key           text    not null unique,
-    -- 代表のバージョンの content_key。メンバーの1つである（不変条件）。
+    -- The representative content key must belong to this bundle.
     representative_key text    not null,
     created_at         integer not null,
     updated_at         integer not null
@@ -19,7 +17,7 @@ create table video_bundle_members (
 ) without rowid;
 create index video_bundle_members_bundle_idx on video_bundle_members (bundle_id, content_key);
 
--- 「違う動画」と判断した組（要件 10）。利用者データ。key_a < key_b に並べて 1 行。
+-- Persistent different-video decisions use one sorted key pair per row.
 create table video_version_dismissals (
     key_a      text    not null,
     key_b      text    not null,

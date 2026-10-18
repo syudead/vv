@@ -23,10 +23,7 @@ interface FolderCrumb {
   to: string;
 }
 
-/**
- * folderCrumbs は動画の置かれたフォルダまでの段を、登録フォルダから順に作る。
- * 登録フォルダの表示名が分からなければ段を作らない（途中からの道筋は出さない）。
- */
+/** Omit breadcrumbs when the registered folder's display name is unknown; do not show a partial path. */
 export function folderCrumbs(folder: VideoFolder | undefined): FolderCrumb[] {
   if (folder?.rootName === undefined) return [];
   const segments = folder.path === "" ? [] : folder.path.split("/");
@@ -42,16 +39,7 @@ export function folderCrumbs(folder: VideoFolder | undefined): FolderCrumb[] {
   ];
 }
 
-/**
- * VideoHeader は再生画面の上端の帯の中身で、詳細ページの型（DetailPage）の header に置く
- * （ui-design「Video header」、web/registry/rules/patterns.md の Detail page）。帯の高さ・下の
- * 線・上に留まる動きは型が持つ。
- *
- * 左から ロゴ（ホームへ）・動画の置かれたフォルダまでのパンくず（Breadcrumb）、右端に ×
- * （遷移元の一覧へ戻る）を置く。画面を閉じる × はここ 1 か所だけにする。パンくずの段は
- * すべてそのフォルダ画面へのリンクで、`md` より狭い幅では最後の段だけを残して途中を
- * 「…」に畳む（出し分けは CSS の幅の分岐だけで行う、library-ui.md 4）。
- */
+/** DetailPage owns header layout; CSS collapses intermediate breadcrumbs below md. */
 export default function VideoHeader({
   folder,
   onClose,

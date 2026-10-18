@@ -8,11 +8,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// ReprobeVideo は読み取りに失敗した動画を読み取り直す（POST /api/videos/{id}/probe）。
-//
-// 状態を戻すこととジョブを積むことは、保存層が1つの取引で行う。失敗していない
-// 動画への要求は 409 probe_not_failed で、連打や別タブからの二度目もこれになる。
-// 画面は 409 を「すでにやり直し中」とみなす。
+// Storage resets state and queues reprobe atomically; repeat/nonfailed requests return probe_not_failed so the UI can treat them as already retrying.
 func (s *server) ReprobeVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	video, ok := s.lookupVideo(w, r, id)
 	if !ok {

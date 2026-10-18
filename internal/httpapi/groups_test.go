@@ -14,10 +14,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// グループの一覧と編集の経路を、本物の
-// 認証・保存層・経路をつないで確かめる。中身は library_test.go の libraryFixture で、show と pair が
-// 自動グループ、solo がグループに入らない動画である。
-
 func groupWritePath(id int64, suffix string) string {
 	return "/api/groups/" + strconv.FormatInt(id, 10) + suffix
 }
@@ -34,7 +30,6 @@ func (f *libraryFixture) groupRequest(method, target, body string, cookies ...*h
 	return f.env.serve(authRequest{method: method, target: target, body: body, cookies: cookies})
 }
 
-// createGroup は所有者としてグループを作り、その値を返す。
 func (f *libraryFixture) createGroup(t *testing.T, name string, videoIDs, groupIDs []int64) gen.LibraryGroup {
 	t.Helper()
 	rec := f.groupRequest(http.MethodPost, "/api/groups",
@@ -45,7 +40,6 @@ func (f *libraryFixture) createGroup(t *testing.T, name string, videoIDs, groupI
 	return decode[gen.LibraryGroup](t, rec)
 }
 
-// groupItemIDs はグループ id の項目の id と名前（動画の題名か「group:名前」）を位置の順に返す。
 func (f *libraryFixture) groupItemIDs(t *testing.T, id int64) ([]int64, []string) {
 	t.Helper()
 	rec := f.env.get(groupWritePath(id, ""), f.owner)
@@ -84,8 +78,6 @@ var (
 	wantGroupInvalid        = wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}
 )
 
-// POST /api/groups: 201 で前後を削った名前の LibraryGroup。名前が空か長すぎるか、メンバーが無ければ
-// 400、存在しない動画かグループは 404 group_target_not_found で何も作らない。
 func TestCreateGroupStatuses(t *testing.T) {
 	f := newLibraryFixture(t)
 	pair := f.groupID(t, "pair")
@@ -122,8 +114,6 @@ func TestCreateGroupStatuses(t *testing.T) {
 	}
 }
 
-// PATCH /api/groups/{id}: 200 で前後を削った名前。無ければ 404 not_found、空の名前は 400。
-// DELETE /api/groups/{id}: 204 で解散し、子グループと動画は残る。無ければ 404 not_found。
 func TestRenameAndDissolveGroupStatuses(t *testing.T) {
 	f := newLibraryFixture(t)
 	pair := f.groupID(t, "pair")
@@ -153,8 +143,6 @@ func TestRenameAndDissolveGroupStatuses(t *testing.T) {
 	assertGroupError(t, "解散済みの解散", f.groupRequest(http.MethodDelete, groupWritePath(mix.Id, ""), "", f.owner), wantGroupNotFound)
 }
 
-// POST /api/groups/{id}/items: 200 で足した後の値。存在しない動画かグループは 404
-// group_target_not_found、自分か祖先は 409 group_cycle で、どちらも何も足さない。
 func TestAddGroupItemsStatuses(t *testing.T) {
 	f := newLibraryFixture(t)
 	pair := f.groupID(t, "pair")
@@ -198,9 +186,6 @@ func TestAddGroupItemsStatuses(t *testing.T) {
 	}
 }
 
-// POST /api/groups/{id}/items/remove: 200 で外した後の値。グループに無い項目は 404
-// group_target_not_found で何も外さない。全部外したグループは解散され、本文の無い 204 で、その後の
-// GET は 404。外した動画は残る。
 func TestRemoveGroupItemsStatuses(t *testing.T) {
 	f := newLibraryFixture(t)
 	pair := f.groupID(t, "pair")
@@ -237,8 +222,6 @@ func TestRemoveGroupItemsStatuses(t *testing.T) {
 	}
 }
 
-// POST /api/groups/{id}/items/{itemId}/move: 204。after が自分なら 400、項目か after がグループに
-// 無ければ 404 group_target_not_found。after が無ければ先頭へ移す。
 func TestMoveGroupItemStatuses(t *testing.T) {
 	f := newLibraryFixture(t)
 	mix := f.createGroup(t, "Mix", []int64{f.ids["solo"], f.ids["ep1"], f.ids["p1"]}, nil)
@@ -268,8 +251,6 @@ func TestMoveGroupItemStatuses(t *testing.T) {
 	}
 }
 
-// POST /api/groups/{id}/tag: 200 で { tag, created }、グループは解散する。名前がタグ名の規則に
-// 反すれば 400 で何も変えない。無ければ 404 not_found。
 func TestTagGroupStatuses(t *testing.T) {
 	f := newLibraryFixture(t)
 	mix := f.createGroup(t, "Mixed", []int64{f.ids["solo"]}, nil)
@@ -305,8 +286,6 @@ func groupListNames(page gen.GroupListPage) []string {
 	return names
 }
 
-// GET /api/groups: 見る人に見せるグループをどの深さでも自然な名前順に、q は大文字小文字を無視して
-// 名前に含むもの。ゲストは公開の動画のあるグループだけ。読めないカーソルは 400 invalid_cursor。
 func TestListGroupsStatuses(t *testing.T) {
 	f := newLibraryFixture(t)
 	pair := f.groupID(t, "pair")
@@ -366,7 +345,6 @@ func TestListGroupsStatuses(t *testing.T) {
 	}
 }
 
-// ゲストはどの書き込みでも 401 で、何も変わらない。
 func TestGroupWritesOwnerOnly(t *testing.T) {
 	f := newLibraryFixture(t)
 	mix := f.createGroup(t, "Mix", []int64{f.ids["solo"], f.ids["p1"]}, nil)
@@ -390,8 +368,6 @@ func TestGroupWritesOwnerOnly(t *testing.T) {
 	}
 }
 
-// videoIds・groupIds・itemIds の上限 20000 は、契約の maxItems どおり重複を除く前の配列の長さで
-// 数える。同じ id を 20001 個並べた本文も 400 too_many_videos である。
 func TestGroupWritesCountLimitBeforeDeduplicating(t *testing.T) {
 	f := newLibraryFixture(t)
 	mix := f.createGroup(t, "Mix", []int64{f.ids["solo"]}, nil)
@@ -415,8 +391,6 @@ func TestGroupWritesCountLimitBeforeDeduplicating(t *testing.T) {
 	}
 }
 
-// お気に入りの自動グループから項目を全部外すと、そのグループは解散されて（204）お気に入りからも
-// 消え、フォルダの grouping は ungroup になる。
 func TestRemovingEveryItemDissolvesGroup(t *testing.T) {
 	f := newLibraryFixture(t)
 	pair := f.groupID(t, "pair")

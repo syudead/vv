@@ -25,7 +25,6 @@ func TestScanIssueKindSeverity(t *testing.T) {
 	}
 }
 
-// 代用のある段階は代表サムネイルとシーク用サムネイルだけで、その種類は代用の重さである。
 func TestSubstitutedIssueKind(t *testing.T) {
 	want := map[JobKind]ScanIssueKind{
 		JobThumbnail: IssueThumbnailFirstFrame, JobSeekThumbnail: IssueSeekThumbnailFullDecode,
@@ -44,8 +43,6 @@ func TestSubstitutedIssueKind(t *testing.T) {
 	}
 }
 
-// 所在がどの登録フォルダにも含まれない件は除き、失敗を先に、同じ重さの中はファイル名、
-// 次にフォルダの順に並べる。種類は重い順に並び、失敗を1つでも含めば失敗になる。
 func TestScanIssuesGroupsFiltersAndSorts(t *testing.T) {
 	media := filepath.FromSlash("/media")
 	roots := []MediaFolder{{ID: 1, Path: media}}
@@ -81,7 +78,6 @@ func TestScanIssuesGroupsFiltersAndSorts(t *testing.T) {
 	}
 }
 
-// 走査の失敗でも、対象の集合に入っている動画は登録できなかったファイルに数えない。
 func TestScanIssueFromScanInImportIsNotUnregistered(t *testing.T) {
 	media := filepath.FromSlash("/media")
 	issues := ScanIssues([]MediaFolder{{ID: 1, Path: media}}, []ScanIssueRecord{
@@ -135,7 +131,6 @@ func TestPageScanIssues(t *testing.T) {
 		}
 	}
 
-	// カーソルは最後に返した件の位置なので、その件が消えても次の件から続く。
 	_, next, err := PageScanIssues(issues, "", 2)
 	if err != nil {
 		t.Fatal(err)

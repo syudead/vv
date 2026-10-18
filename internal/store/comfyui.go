@@ -7,8 +7,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ComfyUI の接続先の設定のキーである。
-// 空の値は保存されていないものとして読む。
+// Empty connection values are treated as unsaved.
 const (
 	comfyUIProviderKey = "comfyui.provider"
 	comfyUIURLKey      = "comfyui.url"
@@ -16,9 +15,7 @@ const (
 	comfyUIModelKey    = "comfyui.model"
 )
 
-// ComfyUISettings は保存した ComfyUI の接続先を返す。何も保存されていなければ
-// Provider が空のゼロ値になる。キーは 1 つの問い合わせで読み、同時の保存の前後の値が
-// 混ざらないようにする（SaveComfyUISettings はすべてを 1 つの取引で書く）。
+// ComfyUISettings reads all keys in one query to avoid mixing concurrent saves; no settings yields the zero value.
 func (s *SettingsStore) ComfyUISettings(ctx context.Context) (domain.ComfyUISettings, error) {
 	rows, err := s.db.sql.QueryContext(ctx, `select key, value from settings where key in (?, ?, ?, ?)`,
 		comfyUIProviderKey, comfyUIURLKey, comfyUIAPIKeyKey, comfyUIModelKey)
@@ -49,8 +46,7 @@ func (s *SettingsStore) ComfyUISettings(ctx context.Context) (domain.ComfyUISett
 	return settings, nil
 }
 
-// SaveComfyUISettings は ComfyUI の接続先を 1 つの取引で保存する。値は呼び出し側が
-// domain.ApplyComfyUISettingsUpdate で整えたものを渡す。
+// SaveComfyUISettings expects values prepared by domain.ApplyComfyUISettingsUpdate.
 func (s *SettingsStore) SaveComfyUISettings(ctx context.Context, settings domain.ComfyUISettings) error {
 	return writeSettings(ctx, s.db.sql, []settingValue{
 		{comfyUIProviderKey, string(settings.Provider)},

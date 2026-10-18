@@ -87,7 +87,6 @@ describe("editorReducer", () => {
     let state = editorReducer(at(started(), succeeded), { type: "change" });
     expect(state.view).toBe("compose");
     expect(hasResult(state)).toBe(true);
-    // 結果を持つ間の 60 秒ごとの読み取りは、見え方を変えない。
     state = at(state, succeeded);
     expect(state.view).toBe("compose");
     expect(editorReducer(state, { type: "showResult" }).view).toBe("compare");

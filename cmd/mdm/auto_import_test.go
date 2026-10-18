@@ -13,8 +13,7 @@ import (
 	"github.com/syudead/vv/internal/watcher"
 )
 
-// 本物の watcher・走査・保存層をつないで、メディアフォルダへ置いたファイルが走査を始めずに
-// 索引へ入り、消すと索引から消えることを確かめる
+// Verify automatic indexing and deletion through the real watcher, scanner, and store.
 func TestAutoImportImportsAndRemovesFilesWithoutManualScan(t *testing.T) {
 	ctx, db, mediaDir := openTestDB(t)
 	logger := slog.New(slog.DiscardHandler)

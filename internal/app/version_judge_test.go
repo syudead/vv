@@ -12,10 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 重複の自動判定のワーカー。
-
-// fakeVersionJudgeStore は候補の組を記憶だけで真似る。states は組ごとの判定（空は待ち）、results は
-// 反映した結果である。
+// Empty state means pending in the in-memory fake.
 type fakeVersionJudgeStore struct {
 	mu      sync.Mutex
 	jobs    []domain.VersionJudgeJob
@@ -23,7 +20,7 @@ type fakeVersionJudgeStore struct {
 	results []domain.VersionJudgeResult
 	claims  int
 	retryAt time.Time
-	// applyErr は ApplyJudgement が返す誤りである。
+
 	applyErr error
 }
 
@@ -55,7 +52,6 @@ func (s *fakeVersionJudgeStore) ApplyJudgement(_ context.Context, keys [2]string
 	return true, nil
 }
 
-// RecoverRunningJudgements は判定中（0）の組を待ちに戻す。
 func (s *fakeVersionJudgeStore) RecoverRunningJudgements(context.Context) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -86,7 +82,6 @@ func (s *fakeVersionJudgeStore) ResetNoConnectionJudgements(context.Context) (in
 	return reset, nil
 }
 
-// lastResult は最後に反映した結果である。
 func (s *fakeVersionJudgeStore) lastResult(t *testing.T) domain.VersionJudgeResult {
 	t.Helper()
 	s.mu.Lock()
@@ -97,7 +92,6 @@ func (s *fakeVersionJudgeStore) lastResult(t *testing.T) domain.VersionJudgeResu
 	return s.results[len(s.results)-1]
 }
 
-// fakeVersionJudgeSettings は入切と、Ollama の接続先を保存したかを持つ。
 type fakeVersionJudgeSettings struct {
 	mu        sync.Mutex
 	enabled   bool
@@ -123,7 +117,6 @@ func (s *fakeVersionJudgeSettings) OllamaConnectionSaved(context.Context) (bool,
 	return s.connected, nil
 }
 
-// fakeVersionFrames は頼まれた組を覚え、組ごとに 1 枚の画像を返す。
 type fakeVersionFrames struct {
 	keys  [2]string
 	pairs []domain.FramePair
@@ -138,7 +131,7 @@ func (f *fakeVersionFrames) SeekFramePairs(keyA, keyB string, pairs []domain.Fra
 	return images, nil
 }
 
-// versionJudgeJob は 20 コマの 2 本の指紋の組を作る。differing のコマだけ距離 33 で食い違う。
+// Only differing frame indexes have distance 33 in the twenty-frame fingerprints.
 func versionJudgeJob(differing ...int) domain.VersionJudgeJob {
 	a := domain.Fingerprint{Version: domain.FingerprintVersion, IntervalMs: 1000}
 	b := domain.Fingerprint{Version: domain.FingerprintVersion, IntervalMs: 1000}
@@ -155,7 +148,6 @@ func versionJudgeJob(differing ...int) domain.VersionJudgeJob {
 	return domain.VersionJudgeJob{Keys: [2]string{"key-a", "key-b"}, Fingerprints: [2]domain.Fingerprint{a, b}}
 }
 
-// newTestVersionJudge は入で接続を保存したワーカーを作る。
 func newTestVersionJudge(store *fakeVersionJudgeStore, classifier *fakeClassifier) (*VersionJudge, *fakeVersionJudgeSettings, *fakeVersionFrames) {
 	settings := &fakeVersionJudgeSettings{enabled: true, connected: true}
 	frames := &fakeVersionFrames{}
@@ -163,7 +155,6 @@ func newTestVersionJudge(store *fakeVersionJudgeStore, classifier *fakeClassifie
 	return judge, settings, frames
 }
 
-// 一致する組は分類器を呼ばずに束ねる（R-1）。
 func TestVersionJudgeMatchingPairBundlesWithoutClassifier(t *testing.T) {
 	store := newFakeVersionJudgeStore(versionJudgeJob())
 	classifier := &fakeClassifier{}
@@ -172,7 +163,7 @@ func TestVersionJudgeMatchingPairBundlesWithoutClassifier(t *testing.T) {
 	if wait := judge.step(context.Background()); wait != 0 {
 		t.Fatalf("判定のあとの待ち = %v, want 0", wait)
 	}
-	// コマの規則で決めた結果は rule で、確率を持たない。
+	// Rule-based results omit probability.
 	if got := store.lastResult(t); got.Verdict != domain.VersionSame || got.Decider != domain.ActivityByRule ||
 		got.Probability != nil {
 		t.Errorf("結果 = %+v, want rule の same", got)
@@ -182,7 +173,6 @@ func TestVersionJudgeMatchingPairBundlesWithoutClassifier(t *testing.T) {
 	}
 }
 
-// 食い違う組は連なりのコマを左右に並べて送り、確率で束ねる・却下する・残す（R-2・R-3・R-11）。
 func TestVersionJudgeDifferingPairAsksAboutTheRun(t *testing.T) {
 	for _, c := range []struct {
 		probability float64
@@ -203,7 +193,7 @@ func TestVersionJudgeDifferingPairAsksAboutTheRun(t *testing.T) {
 			if got.Verdict != c.want || got.Probability == nil || *got.Probability != c.probability {
 				t.Fatalf("結果 = %+v, want %v（確率 %v）", got, c.want, c.probability)
 			}
-			// モデルの答えで決めた結果は ai で、アクティビティの記録に確率と共に残る。
+			// AI decisions retain probabilities in activity records.
 			if got.Decider != domain.ActivityByAI {
 				t.Errorf("判断したもの = %q, want ai", got.Decider)
 			}
@@ -226,7 +216,6 @@ func TestVersionJudgeDifferingPairAsksAboutTheRun(t *testing.T) {
 	}
 }
 
-// 誤りや問いのキーのない返事は確率 0 ではなく失敗にする（R-3・R-5）。
 func TestVersionJudgeClassifierFailures(t *testing.T) {
 	for name, classifier := range map[string]*fakeClassifier{
 		"誤り":   {err: errors.New("cannot reach Ollama")},
@@ -243,8 +232,6 @@ func TestVersionJudgeClassifierFailures(t *testing.T) {
 	}
 }
 
-// 接続が保存されていなければ、モデルの要る組は分類器を呼ばずに no_connection になり、接続を
-// 保存したあとに判定される（R-13）。
 func TestVersionJudgeWaitsForASavedConnection(t *testing.T) {
 	store := newFakeVersionJudgeStore(versionJudgeJob(8, 9, 10, 11))
 	classifier := &fakeClassifier{answers: map[string]float64{domain.VersionJudgeQuestionKey: 0.9}}
@@ -276,8 +263,6 @@ func TestVersionJudgeWaitsForASavedConnection(t *testing.T) {
 	}
 }
 
-// 判定中に接続が保存されて、その組が後から no_connection を書いても、次の判定の前に待ちに戻る。
-// 保存の要求の context が取り消されていても戻る（R-13）。
 func TestVersionJudgeConnectionSavedDuringAJudgement(t *testing.T) {
 	store := newFakeVersionJudgeStore(versionJudgeJob(8, 9, 10, 11))
 	classifier := &fakeClassifier{answers: map[string]float64{domain.VersionJudgeQuestionKey: 0.9}}
@@ -285,7 +270,7 @@ func TestVersionJudgeConnectionSavedDuringAJudgement(t *testing.T) {
 	settings.connected = false
 	ctx := context.Background()
 
-	// 判定が接続の無いことを読んだあと、結果を反映する前に接続が保存された。
+	// Save connection settings between reading no_connection and applying that result.
 	job, err := store.ClaimJudgement(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -304,7 +289,6 @@ func TestVersionJudgeConnectionSavedDuringAJudgement(t *testing.T) {
 	}
 }
 
-// 起動時に接続が保存されていれば、前回 no_connection のまま残った組を待ちに戻す（R-13）。
 func TestVersionJudgeRecoverResumesPairsWaitingForAConnection(t *testing.T) {
 	store := newFakeVersionJudgeStore(versionJudgeJob(8, 9, 10, 11))
 	store.states[versionJudgeJob().Keys] = domain.VersionNoConnection
@@ -321,7 +305,6 @@ func TestVersionJudgeRecoverResumesPairsWaitingForAConnection(t *testing.T) {
 	}
 }
 
-// 結果を保存できなければ、組を判定中のまま残さず、次の判定の前に待ちに戻して判定し直す。
 func TestVersionJudgeRequeuesAJudgementItCannotRecord(t *testing.T) {
 	store := newFakeVersionJudgeStore(versionJudgeJob())
 	store.applyErr = errors.New("database is locked")
@@ -342,7 +325,7 @@ func TestVersionJudgeRequeuesAJudgementItCannotRecord(t *testing.T) {
 	}
 }
 
-// switchingClassifier は答える前に重複の自動判定を切る。判定のあいだに所有者が切ったことを真似る。
+// Disable judging immediately before returning an answer to simulate a concurrent owner change.
 type switchingClassifier struct {
 	fakeClassifier
 	judge *VersionJudge
@@ -355,7 +338,6 @@ func (c *switchingClassifier) Classify(ctx context.Context, req domain.Classifie
 	return c.fakeClassifier.Classify(ctx, req)
 }
 
-// 判定のあいだに切られたら、答えが「同じ」でも束ねず、組を待ちに戻し、入れ直すと判定し直す（要件 7）。
 func TestVersionJudgeDiscardsAJudgementTurnedOffMidway(t *testing.T) {
 	store := newFakeVersionJudgeStore(versionJudgeJob(8, 9, 10, 11))
 	answers := map[string]float64{domain.VersionJudgeQuestionKey: 0.9}
@@ -392,7 +374,6 @@ func TestVersionJudgeDiscardsAJudgementTurnedOffMidway(t *testing.T) {
 	}
 }
 
-// 設定が切のあいだは何も取り出さず、入れると起こされて取り出す。
 func TestVersionJudgeIdlesWhileOff(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		store := newFakeVersionJudgeStore()
@@ -438,7 +419,6 @@ func TestVersionJudgeIdlesWhileOff(t *testing.T) {
 	})
 }
 
-// 取り出せる組が無ければ、次の失敗した組の再試行の時刻まで待つ（R-5）。無ければ起こされるまで待つ。
 func TestVersionJudgeWaitsUntilTheNextRetry(t *testing.T) {
 	store := newFakeVersionJudgeStore()
 	now := time.Unix(1_700_000_000, 0)

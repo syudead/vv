@@ -79,7 +79,7 @@ func TestPlanTagsDistributionAndUniqueAssignments(t *testing.T) {
 			t.Errorf("scale %d: %d tentative tags, want %d", scale, tentative, scale/2)
 		}
 	}
-	// 動画が 10 本未満でも、本数 0 は unusedEvery 個に 1 個だけで、本数の多いタグは空にならない。
+	// Heavy tags remain nonempty even with fewer than ten videos.
 	for videos := 1; videos < 10; videos++ {
 		for i, plan := range planTags(22, videos) {
 			if wantUnused := i%unusedEvery == unusedEvery-1; (len(plan.videos) == 0) != wantUnused {

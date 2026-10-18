@@ -4,17 +4,14 @@ import type { ReactNode } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/ui/shadcn/alert";
 import { Button } from "@/ui/shadcn/button";
 
-// エラー（状態）。骨格の本体の位置に、destructive の Alert で何が失敗したかと、やり直しが
-// 効くときの Retry を出す。規則は web/registry/rules/patterns.md の States。
+// See web/registry/rules/patterns.md, States.
 
 export interface ErrorStateProps {
-  /** 何が失敗したか（「Couldn't load videos」）。 */
   title: ReactNode;
-  /** 理由と、見る人にできること。 */
   description?: ReactNode;
-  /** Retry の文言。onRetry と一緒に渡す。 */
+  /** Supply together with onRetry. */
   retryLabel?: ReactNode;
-  /** 同じ要求をもう一度送る。やり直しが効かない失敗では渡さない。 */
+  /** Omit retry for failures it cannot resolve. */
   onRetry?: () => void;
 }
 

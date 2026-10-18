@@ -6,24 +6,13 @@ import {
 } from "../videoList/listCriteria";
 import { type CreditFilter, hasCreditFilter } from "./creditCriteria";
 
-/**
- * tagCriteria は、ライブラリだけが持つタグ絞り込みの条件（URL の `tag`）の
- * 読み書きを行う。共有の `ListCriteria`（videoList/listCriteria.ts）には
- * `tag` を足さない — 足すとフォルダ画面も `tag` を読んで URL に残してしまい、
- * フォルダ画面の URL を変えない約束に反する。
- */
+/** Keep library-only tag filters out of shared ListCriteria and folder URLs. */
 
-/** MAX_TAG_COUNT はタグ絞り込みに使える id の最大個数である。 */
 export const MAX_TAG_COUNT = MAX_TAG_FILTER_COUNT;
 
-/** URL の `tag` パラメータの名前。useListCriteria の画面固有パラメータの口へ渡す。 */
 export const TAG_PARAM = "tag";
 
-/**
- * parseTagParam は URL の生の `tag` の値（`getAll("tag")` の結果）を、整えた
- * id の配列にする。数でない値、重複、17 個目以降は捨てる。
- * 誤りは出さない。
- */
+/** Ignore invalid IDs, duplicates, and entries beyond the 16-tag limit. */
 export function parseTagParam(raw: readonly string[]): number[] {
   const seen = new Set<number>();
   const ids: number[] = [];
@@ -38,10 +27,7 @@ export function parseTagParam(raw: readonly string[]): number[] {
   return ids;
 }
 
-/**
- * serializeTagIds は id の集まりを URL に書く形にする。書く順は id の昇順に
- * そろえる（listSnapshot の鍵の一致を保つため）。
- */
+// Sort IDs for stable snapshot keys.
 export function serializeTagIds(ids: readonly number[]): string[] {
   return Array.from(new Set(ids))
     .sort((a, b) => a - b)
@@ -49,23 +35,16 @@ export function serializeTagIds(ids: readonly number[]): string[] {
     .map(String);
 }
 
-/** addTagId は今の絞り込みにタグを1つ加える。すでにあれば変わらない。上限なら変わらない。 */
 export function addTagId(current: readonly number[], id: number): number[] {
   if (current.includes(id)) return [...current];
   if (current.length >= MAX_TAG_COUNT) return [...current];
   return [...current, id];
 }
 
-/** removeTagId は今の絞り込みからそのタグだけを外す。 */
 export function removeTagId(current: readonly number[], id: number): number[] {
   return current.filter((existing) => existing !== id);
 }
 
-/**
- * hasConditions は、共有の hasConditions（検索語・視聴状態・再生可否）に
- * タグ絞り込みと人物・団体の絞り込み（creditCriteria.ts）も加えた版である。
- * 「条件を解除」を出すかどうかに使う。
- */
 export function hasConditions(
   criteria: ListCriteria,
   tag: readonly number[],
@@ -74,10 +53,7 @@ export function hasConditions(
   return tag.length > 0 || hasCreditFilter(credits) || hasBaseConditions(criteria);
 }
 
-/**
- * clearConditions は、共有の clearConditions（検索語・視聴状態・再生可否を外す）に
- * タグ絞り込みを外すことも加えた版である。並べ替えと seed は残す。
- */
+/** Clear tag filters while preserving sort and shuffle seed. */
 export function clearConditions(criteria: ListCriteria): {
   criteria: ListCriteria;
   tag: number[];

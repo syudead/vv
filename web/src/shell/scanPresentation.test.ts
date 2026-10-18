@@ -79,7 +79,6 @@ describe("presentScan", () => {
     const presentation = presentScan(
       context(
         makeScan("running", {
-          // 走査は閉じ、準備だけが残っている。
           state: "done",
           activity: {
             kind: "thumbnail",

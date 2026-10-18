@@ -1,17 +1,13 @@
 -- +goose Up
--- お気に入り。どちらも作り直せない
--- 利用者データで、再スキャン・メディアフォルダの変更・フォルダの索引の作り直しで消えてはならない。
--- videos・folder_groups・media_folders への外部キーを張らない。
+-- Favorites are persistent user data and must survive index rebuilds and registration changes.
 
--- 動画のお気に入り。鍵は利用者データの鍵（集まりのメンバーなら 'bundle:<id>'、そうでなければ
--- content_key。public_videos と同じ）。favorited_at は Unix ミリ秒。
+-- Use a shared bundle key or content key; favorited_at is Unix milliseconds.
 create table video_favorites (
     content_key  text    primary key,
     favorited_at integer not null
 ) without rowid;
 
--- グループのお気に入り。鍵はフォルダの絶対パスを domain.FolderKey で整えたもの
--- （folder_group_overrides.path と同じ）。favorited_at は Unix ミリ秒。
+-- Use domain.FolderKey for folder identity; favorited_at is Unix milliseconds.
 create table folder_favorites (
     path         text    primary key,
     favorited_at integer not null

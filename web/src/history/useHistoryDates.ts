@@ -3,23 +3,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { isAborted } from "../api/client";
 import { listWatchHistoryDates, type WatchHistoryFilter } from "../api/history";
 
-// 日付へ移る一覧の元になる、件のある日の読み込み。
-
 export type HistoryDatesState =
   { kind: "loading" } | { kind: "failed" } | { kind: "ready"; days: readonly string[] };
 
 export interface HistoryDates {
   state: HistoryDatesState;
-  /** 読み直す。読んでいる間は読み込み中の表示にする。 */
   retry: () => void;
-  /** 全件を消した後の、日の無い一覧にする。読んでいる要求は捨てる。 */
+  /** Clear after deleting all history and discard in-flight responses. */
   clear: () => void;
 }
 
-/**
- * useHistoryDates は今の状態と検索語に合う件のある日を読む。開いたときと、状態か検索語が
- * 変わったときに読み、日（`date`）が変わったときには読まない（一覧がちらつかないように）。
- */
+/** Refetch on watch or query changes, but not date selection, to avoid flickering navigation. */
 export function useHistoryDates(watch: WatchHistoryFilter, query: string): HistoryDates {
   const [state, setState] = useState<HistoryDatesState>({ kind: "loading" });
   const controller = useRef<AbortController | null>(null);

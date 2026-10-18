@@ -11,16 +11,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 視聴履歴の一覧と削除。書き込みは
-// 再生位置と同じ取引で行うので SaveProgress（progress.go）にあり、ここは読みと削除だけを持つ。
-// どの操作もドメインイベントを出さない。
+// SaveProgress writes history in its transaction; history reads and deletes emit no domain events.
 
-// ListWatchHistory は query を満たす視聴履歴を (played_at desc, id desc) の順に、cursor の次から
-// limit 件返す。cursor が空なら先頭から。読めない cursor は domain.ErrInvalidCursor。条件は
-// ページを切る前に同じ SQL の文で掛けるので、カーソルは絞った並びの中を指す。
-//
-// 各件の Video は、同じ content_key の動画に audience が開ける所在があるときだけ入る
-// （visibleVideoCondition。集まりの代表の規則ではなく動画ごとの条件なので、代表でないメンバーも その動画を持つ）。audience は境界が分類した見る人で、ハンドラが渡す。
+// ListWatchHistory filters before keyset paging; attach a video only when audience-visible, including nonrepresentative bundle members.
 func (p *PlaybackStore) ListWatchHistory(
 	ctx context.Context, audience domain.Audience, query domain.WatchHistoryQuery, cursor string, limit int,
 ) (domain.WatchHistoryPage, error) {
@@ -40,7 +33,6 @@ func (p *PlaybackStore) ListWatchHistory(
 	}
 	statement := `select h.id, h.content_key, h.title, h.played_at` + from + whereClause(conditions) +
 		` order by h.played_at desc, h.id desc limit ?`
-	// 1 件多く読んで、続きがあるかを知る。
 	args = append(args, limit+1)
 
 	type row struct {
@@ -93,9 +85,7 @@ func (p *PlaybackStore) ListWatchHistory(
 	return page, nil
 }
 
-// ListWatchHistoryDays は query の絞り込みと検索を満たす件のある日を、loc の暦の YYYY-MM-DD で
-// 新しい順に返す。query.Before は見ない。SQLite は地域を知らないので、合う件の
-// played_at だけを読んで Go で日に分ける。日は時刻の順に並ぶので、隣と同じ日を捨てれば重複は残らない。
+// ListWatchHistoryDays ignores Before and groups matching timestamps in Go using the requested timezone, which SQLite does not know.
 func (p *PlaybackStore) ListWatchHistoryDays(
 	ctx context.Context, audience domain.Audience, query domain.WatchHistoryQuery, loc *time.Location,
 ) ([]string, error) {
@@ -123,12 +113,7 @@ func (p *PlaybackStore) ListWatchHistoryDays(
 	return days, nil
 }
 
-// watchHistoryFilter は視聴履歴（別名 h）の from 句と、query の絞り込みと検索の条件句と引数を返す。
-// 絞り込みも検索も無ければ動画を結ばない。
-//
-// 動画（別名 hv）は同じ content_key の、audience が開ける所在を持つ動画で、一覧の各件の Video と
-// 同じ条件である。再生位置（別名 p）は一覧と同じく利用者データの鍵（userKeyExpr）で結ぶので、
-// 集まりのメンバーの件は集まりの共有の位置で分類される。
+// Join videos only when filtering; shared bundle progress determines member watch-state classification.
 func watchHistoryFilter(audience domain.Audience, query domain.WatchHistoryQuery) (string, []string, []any) {
 	from := ` from watch_history h`
 	watch := watchCondition(query.Filter.WatchFilter())
@@ -142,12 +127,11 @@ func watchHistoryFilter(audience domain.Audience, query domain.WatchHistoryQuery
 	var conditions []string
 	var args []any
 	if watch != "" {
-		// 動画の無い件は「すべて」にだけ出る（Edge Case）。
+		// Entries without a current video appear only in the unfiltered view.
 		conditions = append(conditions, `hv.id is not null and `+watch)
 	}
 	if !query.Search.Empty() {
-		// 式全体を所在 1 行に対して評価する。語ごとに別の所在で満たした動画は当たらない
-		// （ライブラリの chosenLocationsCTE と同じ、要件 9）。
+		// The entire expression must match one location, as in library search.
 		locationExpr, locationArgs := titleSearchCondition(query.Search, func(text string) (string, []any) {
 			return `(instr(` + searchKeyTitleLine("sl") + `, ?) > 0 or instr(` +
 				searchKeyDisplayNameLine("sl") + `, ?) > 0)`, []any{text, text}
@@ -163,16 +147,13 @@ func watchHistoryFilter(audience domain.Audience, query domain.WatchHistoryQuery
 	return from, conditions, args
 }
 
-// titleSearchCondition は検索式を、語ごとに match が返す条件句でつないだ 1 つの条件句にする。
-// 節は and、節の中の語は or、除外の語は not でつなぐ（searchExprCondition と同じ）。
 func titleSearchCondition(expr domain.SearchExpr, match func(text string) (string, []any)) (string, []any) {
 	var args []any
 	clauses := make([]string, 0, len(expr.Clauses))
 	for _, clause := range expr.Clauses {
 		terms := make([]string, 0, len(clause.Terms))
 		for _, term := range clause.Terms {
-			// search_key と title_key の題名の中の改行は空白にしてあるので、語の側もそろえる
-			// （searchExprCondition と同じ）。
+			// Normalize term newlines to match stored title keys.
 			condition, termArgs := match(strings.ReplaceAll(term.Text, "\n", " "))
 			if term.Negated {
 				condition = `not ` + condition
@@ -185,22 +166,18 @@ func titleSearchCondition(expr domain.SearchExpr, match func(text string) (strin
 	return `(` + strings.Join(clauses, " and ") + `)`, args
 }
 
-// searchKeyTitleLine は所在（別名 alias）の search_key の 1 行目（題名の照合形）を返す式である。
-// search_key は「題名\n相対パス[\n表示名]」の形で、各部分の中の改行は空白にしてある
-// （locationSearchKey）。鍵が空なら空文字になる。
+// The first search-key line is the folded title; component newlines are already normalized to spaces.
 func searchKeyTitleLine(alias string) string {
 	return `substr(` + alias + `.search_key, 1, instr(` + alias + `.search_key, char(10)) - 1)`
 }
 
-// searchKeyDisplayNameLine は所在（別名 alias）の search_key の 3 行目（表示名の照合形）を返す式
-// である。表示名の無い所在では空文字になる。相対パスの行は含めない。
+// Read only the optional third display-name line, excluding the relative path.
 func searchKeyDisplayNameLine(alias string) string {
 	rest := `substr(` + alias + `.search_key, instr(` + alias + `.search_key, char(10)) + 1)`
 	return `(case when instr(` + alias + `.search_key, char(10)) > 0 and instr(` + rest + `, char(10)) > 0 ` +
 		`then substr(` + rest + `, instr(` + rest + `, char(10)) + 1) else '' end)`
 }
 
-// whereClause は条件句を and で結んだ where 句にする。条件が無ければ空。
 func whereClause(conditions []string) string {
 	if len(conditions) == 0 {
 		return ""
@@ -208,10 +185,7 @@ func whereClause(conditions []string) string {
 	return ` where ` + strings.Join(conditions, " and ")
 }
 
-// RefreshWatchHistoryTitleKeys は title_key が null の行（移行の前に書かれた行）に題名の照合形を
-// 書き、書いた行数を返す。起動時に、移行の後で受け付けより前に
-// 呼ぶ。null でない行は変えない。searchKeyBatchSize 行ずつのトランザクションで書くので、途中で
-// 止まっても次の起動で続きから埋まる。
+// RefreshWatchHistoryTitleKeys fills only NULL keys in resumable startup batches before requests are served.
 func (p *PlaybackStore) RefreshWatchHistoryTitleKeys(ctx context.Context) (int, error) {
 	total := 0
 	for {
@@ -249,13 +223,11 @@ func (p *PlaybackStore) refreshWatchHistoryTitleKeyBatch(ctx context.Context) (i
 	return len(batch), nil
 }
 
-// watchHistoryTitle は title_key を埋める行の id と題名である。
 type watchHistoryTitle struct {
 	id    int64
 	title string
 }
 
-// watchHistoryRowsWithoutTitleKey は title_key が null の行を id の順に searchKeyBatchSize 行まで読む。
 func watchHistoryRowsWithoutTitleKey(ctx context.Context, tx *sql.Tx) ([]watchHistoryTitle, error) {
 	rows, err := tx.QueryContext(ctx, `select id, title from watch_history where title_key is null order by id limit ?`,
 		searchKeyBatchSize)
@@ -277,9 +249,7 @@ func watchHistoryRowsWithoutTitleKey(ctx context.Context, tx *sql.Tx) ([]watchHi
 	return batch, nil
 }
 
-// visibleVideosByContentKey は content_key の集合から、audience が開ける所在を持つ動画を引く。
-// videos.content_key は空でなければ一意なので、鍵 1 つに動画は高々 1 本である。鍵の集合は
-// SQLite の引数の上限に掛からないよう、json_each に 1 つの引数で渡す。
+// Batch keys through JSON to avoid bind limits; nonempty content keys identify at most one video.
 func (p *PlaybackStore) visibleVideosByContentKey(
 	ctx context.Context, audience domain.Audience, keys []string,
 ) (map[string]domain.Video, error) {
@@ -315,8 +285,7 @@ func (p *PlaybackStore) visibleVideosByContentKey(
 	return out, nil
 }
 
-// DeleteWatchHistoryEntry は視聴履歴を 1 件消し、その件があったかを返す。ほかの表の行は変えない
-// （要件 9）。
+// DeleteWatchHistoryEntry changes no other tables and reports whether the entry existed.
 func (p *PlaybackStore) DeleteWatchHistoryEntry(ctx context.Context, id int64) (bool, error) {
 	result, err := p.sql.ExecContext(ctx, `delete from watch_history where id = ?`, id)
 	if err != nil {
@@ -329,7 +298,7 @@ func (p *PlaybackStore) DeleteWatchHistoryEntry(ctx context.Context, id int64) (
 	return affected > 0, nil
 }
 
-// ClearWatchHistory は視聴履歴をすべて消す。空でも誤りにしない。ほかの表の行は変えない（要件 9）。
+// ClearWatchHistory changes no other tables and succeeds when already empty.
 func (p *PlaybackStore) ClearWatchHistory(ctx context.Context) error {
 	if _, err := p.sql.ExecContext(ctx, `delete from watch_history`); err != nil {
 		return fmt.Errorf("cannot clear the watch history: %w", err)

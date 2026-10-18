@@ -13,11 +13,8 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 候補の一覧と「違う動画」の記録は、
-// 本物の認証・保存層で確かめる（#583）。guestFixture の a・b・c はどれも尺 60 秒で、a と b に
-// 一致する指紋、c に違う指紋を書く。
+// All three videos last 60 seconds; a and b match, while c has a different fingerprint.
 
-// candidateFingerprint は 12 コマの指紋を返す。seed が同じなら同じ場面で、flip のビットを反転する。
 func candidateFingerprint(seed, flip uint64) domain.Fingerprint {
 	frames := make([]domain.FrameHash, 12)
 	state := seed
@@ -28,8 +25,7 @@ func candidateFingerprint(seed, flip uint64) domain.Fingerprint {
 	return domain.Fingerprint{Version: domain.FingerprintVersion, IntervalMs: 5000, Frames: frames}
 }
 
-// writeFingerprints は取り込みの fingerprint の段階を本物の保存層で進める。fingerprints の動画に
-// シーク用サムネイルの完了を記録し、積まれた指紋の仕事で指紋を書く（候補はこの取引で作られる）。
+// writeFingerprints uses the real ingest-job completion transaction to create candidates.
 func (f *guestFixture) writeFingerprints(t *testing.T, fingerprints map[string]domain.Fingerprint) {
 	t.Helper()
 	ctx := context.Background()
@@ -61,7 +57,6 @@ func (f *guestFixture) writeFingerprints(t *testing.T, fingerprints map[string]d
 	f.runFingerprintJobs(t, byID)
 }
 
-// refingerprint は動画の指紋の仕事を積み直して書き直す（再スキャンの取り込みに当たる）。
 func (f *guestFixture) refingerprint(t *testing.T, fingerprints map[string]domain.Fingerprint) {
 	t.Helper()
 	byID := map[int64]domain.Fingerprint{}
@@ -131,8 +126,6 @@ func candidateIDs(page gen.VersionCandidatePage) [][]int64 {
 	return out
 }
 
-// 所有者の一覧は指紋が一致する a と b の組を、どちらも GET /api/videos/{id} と同じ形で返し、
-// 束ねると消える（受け入れ条件 3・4）。
 func TestVersionCandidatesListAndBundle(t *testing.T) {
 	f := newGuestFixture(t, true)
 	f.writeFingerprints(t, candidateFixtureFingerprints())
@@ -154,7 +147,6 @@ func TestVersionCandidatesListAndBundle(t *testing.T) {
 			t.Errorf("候補の動画 %d に所在・フォルダ・尺・題名が無い: %+v", video.Id, video)
 		}
 	}
-	// a は再生位置とタグを持つ（詳細と同じ値）。
 	for _, video := range item.Videos {
 		if video.Id == a && (video.Progress == nil || !slices.Contains(tagNames(video.Tags), guestSecretTag)) {
 			t.Errorf("候補の a に再生位置かタグが無い: progress = %+v, tags = %v", video.Progress, tagNames(video.Tags))
@@ -169,7 +161,6 @@ func TestVersionCandidatesListAndBundle(t *testing.T) {
 	}
 }
 
-// 「違う動画」と記録すると候補から消え、指紋を書き直しても（再スキャン）出ない（受け入れ条件 5）。
 func TestVersionCandidatesDismiss(t *testing.T) {
 	f := newGuestFixture(t, true)
 	f.writeFingerprints(t, candidateFixtureFingerprints())
@@ -186,13 +177,11 @@ func TestVersionCandidatesDismiss(t *testing.T) {
 	if page := f.listCandidates(t); page.Total != 0 || len(page.Items) != 0 {
 		t.Errorf("再スキャンのあとの候補 = %v", candidateIDs(page))
 	}
-	// 候補に無い組も記録できる。
 	if rec := f.dismiss([]int64{a, f.ids["c"]}, f.owner); rec.Code != http.StatusNoContent {
 		t.Errorf("候補に無い組の却下: status = %d: %s", rec.Code, rec.Body)
 	}
 }
 
-// id が 2 つでない・同じなら 400、無い動画なら 404。
 func TestVersionCandidatesDismissErrors(t *testing.T) {
 	f := newGuestFixture(t, true)
 	f.writeFingerprints(t, candidateFixtureFingerprints())
@@ -215,7 +204,6 @@ func TestVersionCandidatesDismissErrors(t *testing.T) {
 	}
 }
 
-// ゲストはどちらの経路も 401 で、何も変わらない。
 func TestVersionCandidatesForGuest(t *testing.T) {
 	f := newGuestFixture(t, true)
 	f.writeFingerprints(t, candidateFixtureFingerprints())

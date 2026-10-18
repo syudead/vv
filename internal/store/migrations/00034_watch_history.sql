@@ -1,23 +1,19 @@
 -- +goose Up
--- 視聴履歴。再生 1 回につき 1 行の、
--- 作り直せない利用者データである。鍵は再生したバージョンの content_key（集まりの user_key ではない）で、
--- videos・playback_progress への外部キーを張らない。動画が消えても行は残り、title はそのときの題名の写しである。
+-- History persists one row per viewing of a content version, without video/progress foreign keys; titles retain their original snapshot.
 create table watch_history (
     id          integer primary key autoincrement,
     content_key text    not null check (content_key <> ''),
-    -- クライアントが付けた視聴 1 回の識別子（R-2）。移行で入れた行は null。
+    -- Client viewing ID; migrated rows use NULL.
     playback_id text    unique,
-    -- 視聴を始めたときに動画のページが見せていた題名。
+    -- Title shown when viewing began.
     title       text    not null,
-    -- 視聴の最初の保存の時刻（Unix ミリ秒、R-3）。
+    -- First save time in Unix milliseconds.
     played_at   integer not null
 );
 create index watch_history_played_idx on watch_history (played_at desc, id desc);
 create index watch_history_content_idx on watch_history (content_key);
 
--- 既存の再生位置の記録 1 行につき 1 件を入れる（R-4）。集まりの鍵（'bundle:<id>'）は集まりの代表の
--- content_key に引き直し、集まりの行が無いものだけ捨てる。題名は表示名、無ければ代表の所在
--- （パスの順で最初の所在）の題名、どちらも無ければ空。移行の時点で動画が無い記録も入れる。
+-- Backfill one entry per progress row, resolving bundles to representatives and preserving entries for currently missing videos.
 insert into watch_history (content_key, playback_id, title, played_at)
 select k.content_key, null,
        coalesce(

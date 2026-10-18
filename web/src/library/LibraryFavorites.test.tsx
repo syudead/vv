@@ -15,10 +15,6 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
-/**
- * ライブラリのカードと行のお気に入りの付け外し。
- */
-
 function video(id: number, extra: Partial<Video> = {}): Video {
   return {
     id,
@@ -86,12 +82,9 @@ interface Server {
   group: LibraryGroup | undefined;
   favoriteRequests: FavoritesBody[];
   libraryRequests: number;
-  /** 次の PUT /api/favorites の appliedGroups を上書きする。 */
   appliedGroups?: number;
-  /** 受け取った `PUT /api/video-visibility`・`POST /api/video-tags` の videoIds。 */
   visibilityRequests: number[][];
   tagRequests: number[][];
-  /** `GET /api/videos/{id}`（束ねる窓）で取りに来た id。 */
   detailRequests: number[];
 }
 
@@ -129,7 +122,6 @@ function install(items: LibraryItem[], group?: LibraryGroup): Server {
       );
     }
     if (url.pathname === "/api/library/ids") {
-      // 「すべて選択」: 動画の項目とグループのメンバーの id、グループの項目の groups。
       const ids = items.flatMap((item) =>
         item.kind === "video" ? [item.video.id] : item.group.videoIds,
       );
@@ -200,7 +192,6 @@ function install(items: LibraryItem[], group?: LibraryGroup): Server {
   return server;
 }
 
-/** PlayerStub は再生画面の代わりに、元の一覧へ戻る操作を置く。 */
 function PlayerStub() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -276,11 +267,8 @@ describe("ライブラリのお気に入りの付け外し", () => {
     renderLibrary();
     const toggle = await screen.findByRole("button", { name: 'Favorite "動画 1"' });
     expect(pressed(toggle)).toBe("false");
-    // オフは hover・フォーカス・hover:none の端末でだけ見える（チェックと同じ条件）。
     expect(toggle.className).toContain("opacity-0");
     expect(toggle.className).toContain("[@media(hover:none)]:opacity-100");
-    // 面も枠も無く、size-8 の中に size-5 の白い線のハートを影付きで置く（「Mark」「Card」、
-    // ui/FavoriteToggle の card）。
     expect(toggle.className).toContain("size-8");
     expect(toggle.className).toContain("text-foreground");
     expect(toggle.className).not.toMatch(/\bbg-/);
@@ -289,7 +277,6 @@ describe("ライブラリのお気に入りの付け外し", () => {
     expect(heart.getAttribute("class")).toContain("drop-shadow-mark");
     expect(toggle.parentElement?.getAttribute("data-slot")).toBe("video-thumbnail-mark");
     expect(toggle.parentElement?.getAttribute("data-corner")).toBe("top-end");
-    // リンクの外、同じ article の中（チェック → リンク → 付け外し）。
     const card = toggle.closest("article") as HTMLElement;
     expect(toggle.closest("a")).toBeNull();
     const link = within(card).getByRole("link", { name: "動画 1" });
@@ -306,9 +293,7 @@ describe("ライブラリのお気に入りの付け外し", () => {
     expect(toggle.className).not.toContain("text-primary");
     expect(toggle.className).not.toContain("opacity-0");
     expect(toggle.querySelector("svg")?.getAttribute("class")).toContain("fill-current");
-    // 押しても再生画面は開かない。
     expect(screen.queryByText("再生画面")).toBeNull();
-    // ほかのカードは変わらない。
     expect(pressed(screen.getByRole("button", { name: 'Favorite "動画 2"' }))).toBe(
       "false",
     );
@@ -320,7 +305,6 @@ describe("ライブラリのお気に入りの付け外し", () => {
       groupIds: [],
       favorite: false,
     });
-    // 一覧は読み直さない（その場で差し替える）。
     expect(server.libraryRequests).toBe(1);
   });
 
@@ -346,7 +330,6 @@ describe("ライブラリのお気に入りの付け外し", () => {
       ([input]) => String(input) === "/api/favorites",
     );
     expect(puts).toHaveLength(1);
-    // 応答の前は印を変えない。
     expect(pressed(toggle)).toBe("false");
     act(() => answer?.());
     await waitFor(() => expect(pressed(toggle)).toBe("true"));
@@ -386,7 +369,6 @@ describe("ライブラリのお気に入りの付け外し", () => {
     expect(server.favoriteRequests).toEqual([
       { videoIds: [1], groupIds: [], favorite: true },
     ]);
-    // 行のオンもカードと同じ桃色の塗り。面も影も付けない（「List view row」）。
     expect(toggle.className).toContain("text-favorite");
     expect(toggle.className).toContain("size-6");
     expect(toggle.querySelector("svg")?.getAttribute("class")).not.toContain(
@@ -461,7 +443,6 @@ describe("ライブラリのお気に入りの付け外し", () => {
     const user = userEvent.setup();
     renderLibrary();
     const toggle = await screen.findByRole("button", { name: 'Favorite group "series"' });
-    // もうグループではない。
     server.group = undefined;
     server.appliedGroups = 0;
     await user.click(toggle);
@@ -488,7 +469,6 @@ describe("ライブラリのお気に入りの付け外し", () => {
     await user.click(toggle);
     await waitFor(() => expect(pressed(toggle)).toBe("true"));
     expect(server.favoriteRequests).toHaveLength(1);
-    // 選択は変わらず、動画 1 は選ばれない。
     expect(screen.getByText("1 video selected")).toBeDefined();
     expect(
       screen
@@ -526,7 +506,6 @@ describe("ライブラリのお気に入りの付け外し", () => {
     await user.click(await screen.findByRole("link", { name: "動画 1" }));
     await screen.findByText("再生画面");
 
-    // 再生画面にいる間に付ける（再生画面の付け外しと同じ経路）。
     await act(async () => {
       await updateFavorites([1], [7], true);
     });
@@ -534,7 +513,6 @@ describe("ライブラリのお気に入りの付け外し", () => {
 
     const toggle = await screen.findByRole("button", { name: 'Favorite "動画 1"' });
     expect(pressed(toggle)).toBe("true");
-    // 一覧は読み直さずに控えから戻し、グループは取り直す。
     expect(server.libraryRequests).toBe(1);
     await waitFor(() =>
       expect(
@@ -548,7 +526,6 @@ describe("ライブラリのお気に入りの付け外し", () => {
     let answerPage: (() => void) | undefined;
     fetchMock.mockImplementation((input, init) => {
       if (new URL(String(input), "http://localhost").pathname === "/api/library") {
-        // 付け外しの前に読まれた、古いグループを含むページ。
         return new Promise<Response>((resolve) => {
           answerPage = () =>
             resolve(json({ items: [{ kind: "group", group: seriesGroup() }], total: 1 }));
@@ -558,7 +535,6 @@ describe("ライブラリのお気に入りの付け外し", () => {
     });
     renderLibrary();
     await waitFor(() => expect(answerPage).toBeDefined());
-    // ページが届く前に、もうグループでないフォルダを付け外す（appliedGroups: 0）。
     server.group = undefined;
     server.appliedGroups = 0;
     await act(async () => {
@@ -593,7 +569,6 @@ describe("ライブラリのお気に入りの付け外し", () => {
           return Promise.resolve(json({ applied: 1 }));
         }
         if (path === "/api/favorites" && server.favoriteRequests.length === 0) {
-          // 最初の付け外しは反映の数が足りない（サーバーでは付いている）。
           return base!(input, init).then(() =>
             json({ appliedVideos: 0, appliedGroups: 0 }),
           );
@@ -634,7 +609,6 @@ describe("ライブラリのお気に入りの付け外し", () => {
         await updateVideoVisibility([1], true);
       });
       const toggle = await openAndReturn(user);
-      // 控えは取られず、一覧を読み直してサーバーの印を出す。
       await waitFor(() => expect(server.libraryRequests).toBe(2));
       await waitFor(() => expect(pressed(toggle)).toBe("true"));
     });
@@ -661,7 +635,6 @@ describe("選択バーの一括のお気に入り", () => {
   async function favoriteSelection(user: ReturnType<typeof userEvent.setup>, add = true) {
     await user.click(screen.getByRole("button", { name: "Favorite" }));
     const items = await screen.findAllByRole("menuitem");
-    // 今の状態は示さず、2 つとも常に押せる。
     expect(items.map((item) => item.textContent)).toEqual([
       "Add to favorites",
       "Remove from favorites",
@@ -690,13 +663,11 @@ describe("選択バーの一括のお気に入り", () => {
     await user.click(screen.getByRole("checkbox", { name: 'Select the group "series"' }));
     expect(screen.getByText("5 videos selected")).toBeDefined();
 
-    // 「Remove tag」の直後、「Visibility」の前。
     const bar = screen.getByRole("region", { name: "Selection actions" });
     const names = within(bar)
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label"));
     expect(names.indexOf("Favorite")).toBe(names.indexOf("Remove tag") + 1);
-    // 「Favorite」と「Visibility」の間は「Add to playlist」と
     // 「New group」「Add to group」。
     expect(names.indexOf("Visibility")).toBe(names.indexOf("Favorite") + 4);
 
@@ -716,7 +687,6 @@ describe("選択バーの一括のお気に入り", () => {
     expect(pressed(screen.getByRole("button", { name: 'Favorite "動画 2"' }))).toBe(
       "true",
     );
-    // 選択は残る。
     expect(screen.getByText("5 videos selected")).toBeDefined();
   });
 
@@ -883,13 +853,11 @@ describe("選択バーの一括のお気に入り", () => {
     await user.click(
       await screen.findByRole("checkbox", { name: 'Select the group "series"' }),
     );
-    // メンバーを 1 本外すと、残りの 20,000 本は動画として送るので上限に収まる。
     await user.click(screen.getByRole("checkbox", { name: 'Select "動画 100000"' }));
     const favorite = screen.getByRole("button", {
       name: "Favorite",
     }) as HTMLButtonElement;
     expect(favorite.disabled).toBe(false);
-    // 戻しても、グループとしては選ばれていないので 20,001 本の動画になり、押せない。
     await user.click(screen.getByRole("checkbox", { name: 'Select "動画 100000"' }));
     expect(favorite.disabled).toBe(true);
     expect(favorite.title).toBe("Select between 1 and 20,000 videos.");
@@ -921,7 +889,6 @@ describe("選択バーの一括のお気に入り", () => {
     await user.click(member);
     expect(selectAll().disabled).toBe(false);
     await user.click(member);
-    // id はそろったが、グループはグループとして選ばれていない。
     expect(screen.getByText("4 videos selected")).toBeDefined();
     expect(selectAll().disabled).toBe(false);
     await favoriteSelection(user);

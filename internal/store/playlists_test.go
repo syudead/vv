@@ -16,8 +16,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// プレイリスト。
-
 func createPlaylist(t *testing.T, db *DB, name string) int64 {
 	t.Helper()
 	playlist, err := db.Playlists().CreatePlaylist(context.Background(), name)
@@ -27,7 +25,6 @@ func createPlaylist(t *testing.T, db *DB, name string) int64 {
 	return playlist.ID
 }
 
-// listPlaylists は一覧の全部を、最大の件数のページで NextCursor が尽きるまで辿って読む。
 func listPlaylists(ctx context.Context, db *DB) ([]domain.Playlist, error) {
 	var items []domain.Playlist
 	cursor := ""
@@ -67,7 +64,6 @@ func readPlaylist(t *testing.T, db *DB, id int64) (domain.Playlist, []domain.Pla
 	if playlist.ItemCount != len(items) {
 		t.Errorf("ItemCount = %d, 見せる項目 = %d", playlist.ItemCount, len(items))
 	}
-	// 登録フォルダは項目と同じスナップショットから読むので、見せるグループはどれもその下にある。
 	for _, item := range items {
 		if item.Group != nil && item.Group.Path != "" {
 			if _, ok := domain.LocateFolder(roots, item.Group.Path); !ok {
@@ -78,8 +74,6 @@ func readPlaylist(t *testing.T, db *DB, id int64) (domain.Playlist, []domain.Pla
 	return playlist, items
 }
 
-// playlistEntries はプレイリストの見せる項目を、動画なら "v:<id>"、自動グループなら "g:<パス>"、
-// 手で作ったグループなら "g:#<id>" で返す。
 func playlistEntries(t *testing.T, db *DB, id int64) []string {
 	t.Helper()
 	_, items := readPlaylist(t, db, id)
@@ -108,7 +102,6 @@ func videoEntries(ids ...int64) []string {
 	return out
 }
 
-// playlistItemIDs はプレイリストの見せる項目の id を位置の順に返す。
 func playlistItemIDs(t *testing.T, db *DB, id int64) []int64 {
 	t.Helper()
 	_, items := readPlaylist(t, db, id)
@@ -128,8 +121,6 @@ func playlistRowsWithKey(t *testing.T, db *DB, key string) int {
 	return count
 }
 
-// 1 本の動画を 2 つのプレイリストに足すと両方で読め、同じ動画をもう一度足すと existing に
-// 数えられて項目は 1 つのまま（受け入れ条件 1・2）。
 func TestPlaylistAddsAVideoToTwoPlaylists(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo := ids[fixturePath("/media/solo.mp4")]
@@ -152,8 +143,6 @@ func TestPlaylistAddsAVideoToTwoPlaylists(t *testing.T) {
 	}
 }
 
-// 動画とグループは要求の順（動画、次にグループ）で末尾に並び、ライブラリに無い動画の id と無い
-// グループの id はどちらの数にも入らない。グループは所有者の値で読む。
 func TestPlaylistAppendsInRequestOrder(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo, x := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")]
@@ -180,8 +169,6 @@ func TestPlaylistAppendsInRequestOrder(t *testing.T) {
 	}
 }
 
-// 先頭へ、別の項目の後ろへ、末尾への移動が、その順で読み戻せる。項目かプレイリストが無ければ
-// 誤りになる。
 func TestPlaylistMovesItems(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -225,8 +212,6 @@ func TestPlaylistMovesItems(t *testing.T) {
 	}
 }
 
-// 項目を外すと残りが詰め直され、お気に入りと再生位置は変わらない（受け入れ条件 4）。プレイリストを
-// 消すと項目も消える。
 func TestPlaylistRemovesItemsAndPlaylists(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -268,8 +253,7 @@ func TestPlaylistRemovesItemsAndPlaylists(t *testing.T) {
 	}
 }
 
-// 並べ替えて項目 id と位置の順が食い違ったあとに外しても、残りは今の並びのまま 0 から重ならずに
-// 詰め直される。
+// Reorder first so item-ID order differs from position order before testing compaction.
 func TestPlaylistRemovesAfterAMove(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -308,8 +292,6 @@ func TestPlaylistRemovesAfterAMove(t *testing.T) {
 	}
 }
 
-// グループの全メンバーが消え、フォルダの索引を作り直すまでグループの行だけが残っても、その項目は
-// 一覧の件数にも Playlist の項目にも入らない。
 func TestPlaylistHidesAGroupWithoutMembers(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -344,9 +326,6 @@ func TestPlaylistHidesAGroupWithoutMembers(t *testing.T) {
 	}
 }
 
-// 動画の場所がなくなった項目は読み出しから外れ、中身を再スキャンすると元の位置で読める。グループの
-// 項目は、フォルダのグループ化を解くとグループの解散で消え、自動に戻して新しいグループができても
-// 戻らない（R-4、docs/design-docs/catalog-organization.md）。
 func TestPlaylistHidesItemsUntilTheyResolveAgain(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -390,7 +369,6 @@ func TestPlaylistHidesItemsUntilTheyResolveAgain(t *testing.T) {
 	}
 }
 
-// 同じパスの後継で項目が付け替わり、両方の鍵を持つプレイリストでは前の位置の方が残る（R-2）。
 func TestSuccessionCarriesPlaylistItems(t *testing.T) {
 	db, a := taggedVideoFixture(t)
 	d := upsertOne(t, db, listingFile(fixturePath("/media/d.mp4"), "d", "key-d", 4))
@@ -415,8 +393,6 @@ func TestSuccessionCarriesPlaylistItems(t *testing.T) {
 	}
 }
 
-// プレイリストに入っている 2 つのメンバーを束ねると前の位置に束の項目が 1 つ残り、代表でない
-// メンバーだけが入っているときはその項目が束の鍵で残る（R-2）。
 func TestBundleMergesPlaylistItems(t *testing.T) {
 	db, ids := versionFixture(t)
 	both, other := createPlaylist(t, db, "両方"), createPlaylist(t, db, "代表以外")
@@ -441,7 +417,6 @@ func TestBundleMergesPlaylistItems(t *testing.T) {
 		}
 	}
 
-	// 束同士を束ねると、吸い込んだ束の鍵の項目も新しい束へ移る。
 	bundle(t, db, ids["c"], ids["c"], ids["a"])
 	if got := playlistEntries(t, db, both); !slices.Equal(got, videoEntries(ids["c"], ids["d"])) {
 		t.Errorf("束同士を束ねたあと = %v", got)
@@ -451,8 +426,6 @@ func TestBundleMergesPlaylistItems(t *testing.T) {
 	}
 }
 
-// 他のメンバーが残るときにメンバーを外すと項目は束に残り、外したメンバーには項目が無い。束を
-// 解消すると、項目は残ったメンバーに移る（R-2）。
 func TestUnbundleKeepsPlaylistItemsWithTheBundle(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -482,8 +455,6 @@ func TestUnbundleKeepsPlaylistItemsWithTheBundle(t *testing.T) {
 	}
 }
 
-// トリム後 0 文字と 101 文字の名前は拒否され、日本語 100 文字は受け付け、同じ名前の 2 つの
-// プレイリストを作れる（R-11）。改名も同じ規則で、無いプレイリストは誤りになる。
 func TestPlaylistNames(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -517,7 +488,6 @@ func TestPlaylistNames(t *testing.T) {
 	}
 }
 
-// 一覧は更新日時の新しい順、同じなら id の大きい順で、名前か項目の変更で更新日時が進む。
 func TestListPlaylistsByUpdatedAt(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -560,9 +530,6 @@ func TestListPlaylistsByUpdatedAt(t *testing.T) {
 	}
 }
 
-// 一覧は cursor の次から limit 件を返し、続きがあるときだけ NextCursor を持つ。同じ更新日時の
-// プレイリストもページの境で重ならず漏れず、Total はどのページでも全部の数で、Covers は返した
-// ページの分だけ埋まる。読めない cursor は ErrInvalidCursor。
 func TestListPlaylistsPaged(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -571,7 +538,6 @@ func TestListPlaylistsPaged(t *testing.T) {
 	playlistNow = func() time.Time { return clock }
 	t.Cleanup(func() { playlistNow = previous })
 
-	// 同じ時刻に 3 つ、1 秒後に 2 つ。並びは [e d c b a]。
 	a, b, c := createPlaylist(t, db, "a"), createPlaylist(t, db, "b"), createPlaylist(t, db, "c")
 	clock = clock.Add(time.Second)
 	d, e := createPlaylist(t, db, "d"), createPlaylist(t, db, "e")
@@ -623,10 +589,6 @@ func TestListPlaylistsPaged(t *testing.T) {
 	}
 }
 
-// 一覧の Version はどのページでも同じで、プレイリストを作る・名前か項目を変える・消すたびに
-// 変わる。同じミリ秒に別のプレイリストを変えても変わる。何も変わらない操作（既にある動画を
-// 足す）では変わらない。ページを読んでいる間に変わったプレイリストはカーソルの次からは返らないので、
-// クライアントはこれを比べて最初のページから読み直す。
 func TestListPlaylistsVersion(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -657,7 +619,7 @@ func TestListPlaylistsVersion(t *testing.T) {
 		t.Errorf("2 ページ目の版 = %q, 1 ページ目 = %q", got, created)
 	}
 
-	// 同じミリ秒に、既に最大の更新日時を持つものとは別のプレイリストを変える。
+	// Edit a different playlist within the same millisecond while the previous maximum timestamp stays unchanged.
 	addVideos(t, db, first, ids["a"])
 	added := version("")
 	if added == created {
@@ -682,8 +644,7 @@ func TestListPlaylistsVersion(t *testing.T) {
 	}
 }
 
-// 同じミリ秒の変更でも、時計が戻っても、名前か項目を変えるたびに更新日時は前より進む。
-// 再生の応答とプレイリストの応答は更新日時が同じときだけ同じ並びとして使われる。
+// Equal edit timestamps must imply equal playback order, even during same-millisecond edits or clock rollback.
 func TestPlaylistUpdatedAtAdvancesOnEveryChange(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -722,8 +683,7 @@ func TestPlaylistUpdatedAtAdvancesOnEveryChange(t *testing.T) {
 	advanced("時計が戻った後に外す")
 }
 
-// 束ねて項目が 1 つにまとまったプレイリストは更新日時が進み、鍵を付け替えただけのプレイリストは
-// 並びが変わらないので進まない（R-2）。
+// Only shape changes advance playlist timestamps; pure key replacement must not reorder the list.
 func TestBundleAdvancesUpdatedAtOnlyWhereItemsMerge(t *testing.T) {
 	db, ids := versionFixture(t)
 	clock := time.UnixMilli(1_000_000)
@@ -747,8 +707,6 @@ func TestBundleAdvancesUpdatedAtOnlyWhereItemsMerge(t *testing.T) {
 	}
 }
 
-// 後継で隠れていた項目が見えるようになったプレイリストは更新日時が進み、項目の鍵が変わらない
-// プレイリストは進まない。
 func TestSuccessionAdvancesUpdatedAtWhenAnItemReappears(t *testing.T) {
 	db, a := taggedVideoFixture(t)
 	clock := time.UnixMilli(1_000_000)
@@ -783,7 +741,6 @@ func TestSuccessionAdvancesUpdatedAtWhenAnItemReappears(t *testing.T) {
 	}
 }
 
-// 移行は空の 2 表を作り、Down は表を落とす。
 func TestPlaylistsMigration(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {
@@ -823,9 +780,6 @@ func TestPlaylistsMigration(t *testing.T) {
 	}
 }
 
-// 一覧の Covers は、見せる項目を位置の順にたどり、動画の項目はその動画、グループの項目は並びの順で
-// 最初のサムネイル生成済みのメンバーを 1 枚ずつ、サムネイル生成済みのものだけ最大 4 件持つ。
-// 見せなくなった項目は飛ばし、空のプレイリストは空の配列になる。
 func TestListPlaylistsCovers(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -845,7 +799,6 @@ func TestListPlaylistsCovers(t *testing.T) {
 
 	empty := createPlaylist(t, db, "空")
 	id := createPlaylist(t, db, "絵柄")
-	// p2 にはサムネイルが無いので飛ばす。show はサムネイル生成済みのメンバーのうち並びの先頭。
 	addToPlaylist(t, db, id, domain.PlaylistAdd{VideoIDs: []int64{p2}, GroupIDs: []int64{groupIDOf(t, db, show)}})
 	addVideos(t, db, id, x, solo, y)
 
@@ -891,7 +844,6 @@ func TestListPlaylistsCovers(t *testing.T) {
 		t.Errorf("Covers = %v, want %v", got, want)
 	}
 
-	// 動画の場所が無くなった項目は飛ばし、次の項目が繰り上がる。4 件を超える分は入らない。
 	if err := db.ScanIndex().DeleteVideos(ctx, []int64{x}); err != nil {
 		t.Fatal(err)
 	}
@@ -905,7 +857,6 @@ func TestListPlaylistsCovers(t *testing.T) {
 		t.Errorf("5 件目を足したあとの Covers = %v, want %v", got, want)
 	}
 
-	// 一覧以外の読み出しは Covers を持たない。
 	playlist, _ := readPlaylist(t, db, id)
 	if playlist.Covers != nil {
 		t.Errorf("Playlist の Covers = %v, want nil", playlist.Covers)

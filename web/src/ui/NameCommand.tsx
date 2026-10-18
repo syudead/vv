@@ -17,24 +17,16 @@ import { isComposingKeyEvent } from "@/lib/ime";
 import { newlinePattern } from "@/lib/tagName";
 import { Command, CommandInput, CommandItem, CommandList } from "./shadcn/command";
 
-/** NameChoice は名前の候補の 1 行（タグ、人物、団体）である。 */
 export interface NameChoice {
   id: string;
-  /** 表示する名前（常に元の名前）。 */
+  /** Always display the original name. */
   label: string;
-  /** 行の下に添える 1 行（シノニム・別名で当たったときの「Synonym: …」「Alias: …」）。 */
   hint?: ReactNode;
-  /** 行の右に添える値（本数）。 */
   meta?: ReactNode;
-  /** 読み上げ名。省くと行の中の文字から決まる名前。 */
+  /** Defaults to the accessible name derived from row content. */
   ariaLabel?: string;
 }
 
-/**
- * NameRules は名前の規則である。打つたびに確かめる理由（`reason`）と、空のまま Enter を
- * 押したとき・改行を貼り付けたときの理由を持つ。タグ（lib/tagName）と人物・団体
- * （lib/creditName）がそれぞれ渡す。
- */
 export interface NameRules {
   reason: (raw: string) => UiText | null;
   required: UiText;
@@ -42,39 +34,23 @@ export interface NameRules {
 }
 
 /**
- * NameCommandLayout は候補の一覧の置き方である
- * （web/registry/rules/components.md「TagCommand」「CreditCommand」）。
- *
- * - `popover`: ポップオーバーの中身（選択バーの「タグを付ける」「タグを外す」）。一覧は
- *   いつも出し、作成の行は先頭。cmdk の既定どおり先頭の行が選ばれている。
- * - `dropdown`: 入力の下に重ねて開く一覧（再生画面の「Add tag」）。入力に触れると開き、
- *   Esc・Tab・フォーカスが外れると閉じる。閉じているときの Esc は `onEscape` を呼ぶ。
- * - `inline`: 入力の下の本文の中に、高さを固定して常に開いておく一覧（統合の窓の統合先）。
- *
- * `dropdown` と `inline` は、矢印を押すまでどの行も選ばない。作成の行は末尾に置く。
+ * Popover selects the first row and places creation first; dropdown and inline wait for arrow
+ * selection and place creation last. Escape closes dropdown before calling onEscape on a
+ * subsequent press.
  */
 export type NameCommandLayout = "popover" | "dropdown" | "inline";
 
 const createValue = "__create__";
 
-/** Row は一覧の 1 行（候補か作成の行）である。 */
 interface Row {
   value: string;
   choice: NameChoice | null;
 }
 
 /**
- * NameCommand は名前を打って候補から選ぶか作る入力で、shadcn/ui の Command（cmdk）に
- * 名前の規則（`rules`）を足したものである。TagCommand と CreditCommand の基底で、画面は
- * そのどちらかを使う（web/registry/rules/components.md「TagCommand」「CreditCommand」）。
- *
- * - 候補の絞り込みと並び替えは呼び手が行う（`shouldFilter={false}`）。綴りが完全に一致する
- *   名前・シノニムがあれば `exactChoice` に渡す。これが無く `createLabel` があるときだけ
- *   作成の行を出す。
- * - 矢印で行を選ばずに Enter を押すと、打った綴りで決める: 空なら理由を出し、
- *   `exactChoice` があればそれを、無ければ作成の行があれば作る。
- * - 名前は打つたびに確かめ、作れない間（と送信中）は Enter もクリックも受けない。
- *   改行を含む貼り付けと落とし込みは止めて理由を出す。IME の変換中のキーは扱わない。
+ * Callers filter and sort candidates; pass exactChoice for exact names or synonyms. Unselected
+ * Enter commits spelling, invalid or busy input rejects actions, and IME keys remain untouched;
+ * see NameCommandLayout.
  */
 export default function NameCommand({
   rules,
@@ -103,53 +79,42 @@ export default function NameCommand({
   locked = false,
 }: {
   rules: NameRules;
-  /** 入力と一覧の名前（「Add tag」）。 */
   label: UiText;
   value: string;
   onValueChange: (value: string) => void;
   choices: readonly NameChoice[];
   exactChoice: NameChoice | null;
   onSelect: (choice: NameChoice) => void;
-  /** 非 null のときだけ作成の行を出す（`exactChoice` があれば出さない）。 */
+  /** Creation requires a non-null label and no exactChoice. */
   createLabel?: ReactNode | null;
   onCreate?: (spelling: string) => void;
   icon: ReactNode;
   busy: boolean;
   inputRef?: Ref<HTMLInputElement>;
   layout?: NameCommandLayout;
-  /** 入力の placeholder。既定は `label`、null で出さない。 */
+  /** Defaults to label; null omits the placeholder. */
   placeholder?: UiText | null;
-  /** `dropdown` で一覧が閉じているときの Esc。 */
+  /** Called on Escape only when the dropdown is already closed. */
   onEscape?: () => void;
-  /** 理由を出していないときの入力の aria-describedby。 */
+  /** Used only while no validation error is shown. */
   describedBy?: string;
-  /** `dropdown`・`inline` の入力の枠の幅。既定は `w-combobox`。 */
   frameClassName?: string;
-  /** `inline` で選び終えた候補の id。その行を目立たせる。 */
   chosenId?: string;
-  /** `inline` の一覧に行が無いときに一覧の中に出す文言。 */
   emptyText?: ReactNode;
-  /**
-   * `dropdown`・`inline` で、入力の名前を見える名札（その id）から取る。cmdk の隠れた
-   * 名札は出さない（同じ文言の名札が二つにならないように）。
-   */
+  /** Use this visible label ID instead of cmdk's hidden duplicate label. */
   labelledBy?: string;
-  /** 綴りが完全に一致する候補があっても作成の行を出す（同名の人物を別に作れるように）。 */
+  /** Allow same-name creation for distinct people. */
   offerCreateWithExact?: boolean;
-  /**
-   * 矢印で行を選ばずに Enter を押したときの決め方を呼び手が持つ（空の名前の理由は
-   * ここで出す）。省くと `exactChoice`、無ければ作成の行。
-   */
+  /** Override unselected Enter handling; empty-input errors remain internal. */
   onCommitSpelling?: (spelling: string) => void;
-  /** 候補を読んでいる。輪を回すが、`busy` と違って Enter とクリックは止めない。 */
+  /** Loading shows a spinner but does not block actions, unlike busy. */
   searching?: boolean;
-  /** 周りの送信中。輪は回さずに、Enter とクリックを止める。 */
+  /** Block actions without showing a spinner. */
   locked?: boolean;
 }) {
   const reasonId = useId();
   const [reason, setReason] = useState<UiText | null>(null);
 
-  // 打つたびに確かめ直す（貼り付けで出した理由は次の変化で消える）。
   useEffect(() => {
     setReason(rules.reason(value));
   }, [rules, value]);
@@ -269,7 +234,6 @@ interface SharedProps {
   label: UiText;
   choices: readonly NameChoice[];
   onSelect: (choice: NameChoice) => void;
-  /** 出すときだけ非 null。 */
   createLabel: ReactNode | null;
   onCreate: () => void;
   commitSpelling: () => void;
@@ -278,7 +242,7 @@ interface SharedProps {
   blocked: boolean;
   inputRef?: Ref<HTMLInputElement>;
   inputProps: InputProps;
-  /** 打った値。変わるたびに、矢印で選んだ行を忘れる。 */
+  /** Input changes clear arrow-selected rows. */
   valueKey: string;
   reasonText: ReactNode;
 }
@@ -313,8 +277,8 @@ function ChoiceContent({
 }
 
 /**
- * PopoverNameCommand はポップオーバーの中身の形である。行の選択と矢印の移動は cmdk の
- * ままで、作成の行を先頭に置く。矢印を押していなければ Enter は綴りで決める。
+ * Keep cmdk selection/navigation, but unselected Enter commits spelling rather than the default
+ * first row.
  */
 function PopoverNameCommand({
   label,
@@ -331,7 +295,6 @@ function PopoverNameCommand({
   valueKey,
   reasonText,
 }: SharedProps) {
-  // 矢印で行を選んだか。選んでいなければ Enter は打った綴りで決める。
   const moved = useRef(false);
   const [selected, setSelected] = useState("");
 
@@ -350,7 +313,7 @@ function PopoverNameCommand({
       event.preventDefault();
       return;
     }
-    if (moved.current) return; // 選んだ行を cmdk が決める。
+    if (moved.current) return;
     event.preventDefault();
     commitSpelling();
   }
@@ -398,11 +361,8 @@ function PopoverNameCommand({
 }
 
 /**
- * ListNameCommand は入力の下に一覧を置く形（`dropdown`・`inline`）である。矢印を押すまで
- * どの行も選ばないので、行の選択（`aria-selected`・`aria-activedescendant`）・一覧の開閉
- * （`aria-expanded`）と矢印の移動は cmdk に任せずここで持ち、入力と行の属性を `asChild`
- * で上書きする（cmdk は先頭の行を自分で選び、入力を常に開いたものとして、その属性を
- * 後から付けるため）。
+ * Override cmdk through asChild to control selection and expanded state; cmdk otherwise selects
+ * the first row and forces the input open.
  */
 function ListNameCommand({
   label,
@@ -434,9 +394,8 @@ function ListNameCommand({
 }) {
   const baseId = useId();
   const [openState, setOpen] = useState(false);
-  // inline の一覧は常に開いている（閉じる操作は無い）。
   const open = inline || openState;
-  // 矢印かポインターで選んだ行。-1 はどの行も選んでいない。
+  // Minus one means no row selected.
   const [activeIndex, setActiveIndex] = useState(-1);
   const listRef = useRef<HTMLDivElement | null>(null);
 
@@ -455,7 +414,7 @@ function ListNameCommand({
   useEffect(() => {
     if (active < 0) return;
     const row = listRef.current?.querySelector(`[data-index="${String(active)}"]`);
-    // jsdom には scrollIntoView が無い。
+    // jsdom lacks scrollIntoView.
     row?.scrollIntoView?.({ block: "nearest" });
   }, [active]);
 
@@ -465,7 +424,7 @@ function ListNameCommand({
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    // Home と End は入力の中のカーソルを動かす。cmdk の先頭・末尾の行への移動へは渡さない。
+    // Home and End edit the input caret; do not pass them to cmdk row navigation.
     if (event.key === "Home" || event.key === "End") {
       event.stopPropagation();
       return;
@@ -479,7 +438,7 @@ function ListNameCommand({
     ) {
       return;
     }
-    // 下の preventDefault は、cmdk の Command の矢印と Enter の扱いも止める。
+    // preventDefault also blocks cmdk's arrow and Enter handling.
     if (event.key === "ArrowDown") {
       event.preventDefault();
       if (!open) {
@@ -496,7 +455,6 @@ function ListNameCommand({
         setOpen(true);
         return;
       }
-      // 先頭の行で止まる。まだ何も選んでいなければそのままにする。
       setActiveIndex(active <= 0 ? active : active - 1);
       return;
     }
@@ -516,7 +474,7 @@ function ListNameCommand({
     }
     if (event.key === "Escape") {
       event.preventDefault();
-      // inline の一覧は閉じないので、Esc はいつも「一覧が閉じているとき」の扱い。
+      // Inline never closes, so Escape always follows the closed-list behavior.
       if (open && !inline) {
         setOpen(false);
         return;
@@ -547,11 +505,10 @@ function ListNameCommand({
         <div
           id={rowId(index)}
           aria-selected={isActive}
-          // 選んだ統合先の行は、選択中でも primary-soft の面のまま輪だけを足す。
           data-selected={isActive && !chosen}
           data-chosen={chosen || undefined}
           data-index={index}
-          // 押してもフォーカスを入力に残す。
+          // Keep input focus on pointer selection.
           onMouseDown={(event) => event.preventDefault()}
           onMouseEnter={() => setActiveIndex(index)}
         >
@@ -602,8 +559,7 @@ function ListNameCommand({
           inline
             ? "rounded-md border bg-muted text-sm"
             : "h-6 gap-1 rounded-sm border bg-muted px-1.5 text-xs [&>svg]:size-3",
-          // フォーカスは入力そのものが共通の輪（index.css の :focus-visible）を出す。枠に
-          // 独自の輪は付けない（web/registry/rules/components.md の Focus）。
+          // Use the input's shared focus ring, not a second custom wrapper ring.
           "border-input",
           frameClassName ?? "w-combobox",
         )}
@@ -617,17 +573,16 @@ function ListNameCommand({
           )
         }
       >
-        {/* cmdk は入力を常に開いた一覧の combobox として描くので、開閉と選んだ行はここで渡す。 */}
+        {/* Override cmdk's always-expanded combobox state with actual visibility and selection. */}
         <input
           aria-expanded={open}
           aria-activedescendant={activeId}
           {...(labelledBy !== undefined && { "aria-labelledby": labelledBy })}
-          // Esc で一覧を閉じたあとも、打ち直せば一覧を開き直す。
           onChange={() => setOpen(true)}
         />
       </CommandInput>
       {inline ? (
-        // 一覧の箱は候補の数によらず同じ高さで、窓のボタンへ重ならない。
+        // Keep list height stable so candidates do not overlap dialog buttons.
         <div className="mt-2 h-combobox-panel max-h-combobox-panel-max overflow-y-auto rounded-md border border-border p-1">
           {list}
           {rowCount === 0 && emptyText !== undefined && (

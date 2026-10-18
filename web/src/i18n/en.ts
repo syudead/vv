@@ -1,15 +1,11 @@
 import type { components } from "../api/gen/openapi";
 import { formatDecimal, formatList, formatNumber, selectPlural } from "./intl";
 
-// 英語の文言カタログである。画面の文言はここに集め、コンポーネントは messages.ts の `t`
-// から引く。
+// Central UI catalog; components access it through messages.ts. See docs/design-docs/i18n.md.
 //
-// - 領域ごとの入れ子のオブジェクトにする。後続の単位が自分の領域の枝を足す。
-// - 埋め込みを持つ文言は引数を取る関数にする。数は formatNumber、単数・複数は
-//   selectPlural を通す（R-2）。
-// - 利用者のデータ（名前、パス）は翻訳せず、そのまま埋め込む。
-// - 既知のエラーの表は生成型の Record にするので、API に足したコードや理由の文が無いと
-//   型検査で落ちる（R-3）。
+// Use formatNumber and selectPlural for interpolated counts.
+// Insert user names and paths verbatim.
+// Generated Record types make missing API error translations fail type checking.
 
 type ErrorCode = components["schemas"]["Error"]["code"];
 type ErrorReason = components["schemas"]["ErrorReason"];
@@ -33,15 +29,12 @@ type ActivityDecider = components["schemas"]["ActivityDecider"];
 type ActivityStage = components["schemas"]["ActivityStage"];
 type MediaInfoHdr = components["schemas"]["MediaInfoVideo"]["hdr"];
 
-/** ErrorDetails は API エラーが文言へ渡す値である。 */
 export interface ErrorDetails {
   limit?: number;
   tagName?: string;
-  /** 作品情報プラグインの要求を拒んだか届かなかったホスト。 */
   host?: string;
 }
 
-/** ErrorEntry は既知のエラー 1 つの文である。値を埋め込む文は関数にする。 */
 export type ErrorEntry = string | ((details: ErrorDetails) => string);
 
 function characters(limit: number): string {
@@ -58,18 +51,13 @@ function items(count: number): string {
   });
 }
 
-/**
- * minutesText は秒数を、小数 1 桁までの分の数にする（90 秒は「1.5」）。0 秒でない値は
- * 0 に丸めず、いちばん小さい 0.1 にする。
- */
+/** Round minutes to one decimal, keeping nonzero durations at least 0.1. */
 function minutesText(secondsCount: number): string {
   const minutes = Math.round((secondsCount / 60) * 10) / 10;
   return formatNumber(secondsCount > 0 ? Math.max(minutes, 0.1) : minutes);
 }
 
-/**
- * lengthWords は長さの条件の語である。絞り込みのプリセットはその語、ほかは分の数で言う。上限 `max` は含む秒数。
- */
+/** max is inclusive, in seconds. */
 function lengthWords(min: number | undefined, max: number | undefined): string {
   const upper = max === undefined ? undefined : max + 1;
   const low = min ?? 0;
@@ -110,10 +98,7 @@ function tagCount(count: number): string {
   });
 }
 
-/**
- * reorderTexts は並べ替えのキーボードの案内と dnd-kit の読み上げ（持ち上げ・移動・置く・
- * 取り消し）である。位置は 1 始まり。プレイリストとグループのページが同じ文を使う。
- */
+/** Drag positions are one-based; share keyboard guidance across playlists and groups. */
 const reorderTexts = {
   reorderInstructions:
     "Press Space to pick up, the arrow keys to move, Space to drop and Esc to cancel.",
@@ -126,7 +111,6 @@ const reorderTexts = {
   cancelled: (title: string) => `Cancelled. "${title}" is back in its place.`,
 };
 
-/** selectedTags は「The 8 selected tags」（1 件は「The selected tag」）である。 */
 function selectedTags(count: number): string {
   return selectPlural(count, {
     one: "The selected tag",
@@ -134,7 +118,6 @@ function selectedTags(count: number): string {
   });
 }
 
-/** someOf は「8 of the 12 selected tags are」（働く数が 1 なら「is」）である。 */
 function someOf(applied: number, selected: number): string {
   return `${formatNumber(applied)} of the ${formatNumber(selected)} selected tags ${applied === 1 ? "is" : "are"}`;
 }
@@ -143,17 +126,13 @@ function pronoun(count: number): string {
   return count === 1 ? "It" : "They";
 }
 
-/**
- * removal はまとめての却下・削除の確認の動詞句である。count はその主語のタグの数、
- * videoCount は影響を受ける動画の本数で、0 なら「aren't on any videos」の形にする。
- */
+/** count counts subject tags; videoCount zero uses the no-videos wording. */
 function removal(count: number, videoCount: number): string {
   if (videoCount === 0)
     return count === 1 ? "isn't on any videos" : "aren't on any videos";
   return `will be removed from ${videos(videoCount)}`;
 }
 
-/** leftAsIs は「The 4 confirmed tags are left as they are.」である。 */
 function leftAsIs(count: number, kind: "confirmed" | "tentative"): string {
   return selectPlural(count, {
     one: `The ${kind} tag is left as it is.`,
@@ -175,10 +154,7 @@ function videos(count: number): string {
   });
 }
 
-/**
- * creditKindTexts は人物・団体の管理画面の、種類で言い分ける文言である。
- * `one`・`many` は数える名詞、`title` は見出しの名詞、`target` は統合先の欄の名札である。
- */
+/** one/many are count nouns, title is a heading noun, and target labels the merge destination. */
 function creditKindTexts(one: string, many: string, title: string, target: string) {
   const count = (n: number) =>
     selectPlural(n, {
@@ -364,7 +340,7 @@ const errorReasons = {
   run_failed: "The edit failed in ComfyUI",
   no_output: "ComfyUI returned no image",
   timed_out: "No result after 10 minutes",
-  // 作品情報と人物・団体の理由は項目名を入れない。画面が `field` の示す入力の下に出す
+  // Omit field names because the UI places these errors beneath the field.
   //
   work_info_control_characters: "Contains characters that can't be used.",
   work_info_too_long: ({ limit }) =>
@@ -385,7 +361,6 @@ const errorReasons = {
   merge_same_person: "A person can't be merged into themselves.",
   merge_same_organization: "An organization can't be merged into itself.",
   external_id_taken: "Another entry already has this ID.",
-  // 作品情報プラグインの実行の失敗。
   blocked_address: ({ host }) =>
     host === undefined
       ? "The plugin tried to reach VVMDM itself or a device on your network."
@@ -396,7 +371,6 @@ const errorReasons = {
       : `The plugin couldn't reach ${host}.`,
   memory_exceeded: "The plugin used more than 128 MB of memory and was stopped.",
   output_too_large: "The plugin's answer was over 1 MB.",
-  // タグの種類。名前の重複は tagName に種類の名前が入る。
   tag_kind_not_found: "This kind no longer exists.",
   tag_kind_name_taken: ({ tagName }) =>
     tagName === undefined
@@ -558,7 +532,6 @@ export const en = {
         count: "3",
         countLabel: "3 need attention",
       },
-      // 絞り込みのドロップダウンのボタン（FilterDropdownButton）の見本。
       filter: {
         status: "Status",
         period: "Period",
@@ -574,8 +547,6 @@ export const en = {
       favoriteOn: "Remove from favorites",
       tentativeTag: "kyoto",
     },
-    // 画面の型の見本（web/src/designSystem/blocks）。中身は見本のデータで、型を写した
-    // 画面は自分の文言に差し替える（web/registry/rules/patterns.md）。
     pattern: {
       intro:
         "Each page skeleton with its sections and states, filled with sample data. Copy the block of the skeleton a new screen needs.",
@@ -834,18 +805,16 @@ export const en = {
       playableOnly: "Playable only",
       favoritesOnly: "Favorites only",
       clear: "Clear filters",
-      // 追加日と長さの行。
       added: "Added",
       length: "Length",
       addedOptions: {
         any: "Any time",
-        // 選択肢の日数（1, 7, 30, 90, 365）の名前。
         preset: (days: number) => {
           if (days === 1) return "Last 24 hours";
           if (days === 365) return "Last year";
           return `Last ${formatNumber(days)} days`;
         },
-        // 選択肢に無い日数（URL や条件が持つ値）。
+        // Fallback for day counts outside the preset options.
         days: (days: number) =>
           selectPlural(days, {
             one: `Last ${formatNumber(days)} day`,
@@ -858,7 +827,7 @@ export const en = {
         from5to20: "5 to 20 minutes",
         from20to60: "20 to 60 minutes",
         overHour: "Over an hour",
-        // 選択肢に無い範囲。分は画面が整えた文字列で渡す。
+        // The caller supplies formatted minute bounds.
         between: (min: string, max: string) => `${min} to ${max} minutes`,
         under: (max: string) => `Under ${max} minutes`,
         over: (min: string) => `Over ${min} minutes`,
@@ -899,16 +868,13 @@ export const en = {
       select: (title: string) => `Select "${title}"`,
       withLocation: (title: string, location: string) => `${title}, ${location}`,
       public: "Public",
-      // お気に入りの付け外しの読み上げ名と、変えられなかったときのトースト
       //
       favorite: (title: string) => `Favorite "${title}"`,
       favoriteFailed: (reason: string) => `Couldn't change the favorite: ${reason}`,
-      // プレイリストに足す操作の読み上げ名。
       addToPlaylist: (title: string) => `Add "${title}" to a playlist`,
-      // グループに足す操作の読み上げ名。
       addToGroup: (title: string) => `Add "${title}" to a group`,
       watchedRatio: "Watched portion",
-      // 帯にいる間の時刻の表示。位置と長さは formatDuration で整えた文字列
+      // Position and duration are already formatted with formatDuration.
       //
       scrubTime: (position: string, duration: string) => `${position} / ${duration}`,
       watched: "Watched",
@@ -919,7 +885,7 @@ export const en = {
   library: {
     title: "Library",
     resultsLabel: "Search results",
-    // GET /api/library の total は項目（カード）の数で、グループのカードも 1 つと数える。動画の本数ではない。
+    // Library total counts cards, including one per group, not videos.
     resultCount: items,
     empty: {
       title: "No videos yet",
@@ -941,7 +907,6 @@ export const en = {
     deletedTagsRemoved: "Removed deleted tags from the filter",
     selectAllFailed: (reason: string) => `Couldn't select everything: ${reason}`,
     activeTags: {
-      // 人物・団体のチップも並ぶ。
       label: "Filtering by",
       list: "Tags in the filter",
       remove: "Remove the tag filter",
@@ -950,13 +915,11 @@ export const en = {
       removeOrganization: "Remove the organization filter",
       personGone: "Removed a person who no longer exists from the filter",
       organizationGone: "Removed an organization that no longer exists from the filter",
-      // タグの種類のチップ。
       kindChip: (name: string) => `Kind: ${name}`,
       removeKind: "Remove the kind filter",
       removeKindNamed: (name: string) => `Remove the filter for the kind "${name}"`,
       kindGone: "Removed a kind that no longer exists from the filter",
     },
-    // 絞り込みのポップオーバーのタグの種類の行。
     tagKindFilter: {
       label: "Tag kind",
       any: "Any kind",
@@ -991,7 +954,6 @@ export const en = {
       progress: (watched: number, total: number) =>
         `${formatNumber(watched)} / ${formatNumber(total)}`,
     },
-    // スマートフォルダのカードと行。
     smartFolder: {
       label: (name: string, count: number, watched: number) =>
         watched >= 1
@@ -1043,7 +1005,6 @@ export const en = {
       visibilityFailed: (reason: string) => `Couldn't change the visibility: ${reason}`,
       bundle: "Bundle as versions",
       bundleOverLimit: (limit: number) => `Bundle up to ${videos(limit)} at a time`,
-      // グループのページだけに出る。
       removeFromGroup: "Remove from group",
     },
   },
@@ -1112,26 +1073,21 @@ export const en = {
     count: tagCount,
     filteredCount: (shown: number, total: number) =>
       `${formatNumber(shown)} of ${tagCount(total)}`,
-    // 見出しの下のタブ。
     tabs: {
       label: "Tag lists",
       tags: "Tags",
     },
-    // 一覧の上の列の見出し。
     columns: {
       name: "Name",
       videos: "Videos",
     },
-    // 見出しの下の、効いている絞り込みのチップ。
     activeFilters: {
       label: "Active filters",
       remove: (name: string) => `Remove the filter "${name}"`,
     },
     loadFailed: "Couldn't load the tags",
-    // 一覧を持ったまま先頭のページを読めなかったとき。
     staleList: (reason: string) =>
       `Couldn't load tags: ${reason}. The list below may not match the current search, filters and sort.`,
-    // 一覧の末尾の続きの状態。
     loadingMore: "Loading more tags…",
     loadMoreFailed: (reason: string) => `Couldn't load more: ${reason}`,
     listChanged:
@@ -1144,7 +1100,6 @@ export const en = {
     },
     noMatches: (query: string) => `No tags match "${query}"`,
     clearSearch: "Show all tags",
-    // 仮のタグ。
     tentative: "Tentative",
     tentativeOnly: "Tentative only",
     tentativeOnlyHint: "Show only tags created by automatic tagging",
@@ -1154,8 +1109,7 @@ export const en = {
         "Tags created by automatic tagging appear here until you confirm or reject them.",
     },
     noTentativeMatches: (query: string) => `No tentative tags match "${query}"`,
-    // 0 本のタグの絞り込みと並び順。
-    // 0 本のタグは「Unused」と呼び、「empty」「orphan」は使わない。
+    // Call zero-video tags Unused, not empty or orphan.
     unusedOnly: "Unused only",
     unusedOnlyHint: "Show only tags that aren't on any videos",
     noUnused: {
@@ -1166,8 +1120,7 @@ export const en = {
     noUnusedMatches: (query: string) => `No unused tags match "${query}"`,
     noUnusedTentativeMatches: (query: string) =>
       `No unused tentative tags match "${query}"`,
-    // タグの種類の行の名札・絞り込み・チップ。
-    // 種類の名前は利用者のデータなので訳さずに埋め込む。
+    // Kind names are user data and remain untranslated.
     kindFilter: {
       label: "Kind",
       any: "Any kind",
@@ -1220,7 +1173,6 @@ export const en = {
       removeFailed: (name: string, reason: string) =>
         `Couldn't remove "${name}": ${reason}`,
     },
-    // 「Kinds」のタブ。
     kinds: {
       tab: "Kinds",
       table: "Kinds",
@@ -1269,7 +1221,7 @@ export const en = {
     gone: "This tag no longer exists, so the list was reloaded",
     deleted: (name: string) => `Deleted "${name}"`,
     merged: (source: string, target: string) => `Merged "${source}" into "${target}"`,
-    // タグ名の競合の説明。送った名前と、API の tagName（競合先のタグの元の名前）を合わせる
+    // Combine the submitted name with the API's original conflicting tagName.
     //
     nameIsTag: (tagName: string) => `A tag named "${tagName}" already exists.`,
     nameIsOwnName: (tagName: string) => `"${tagName}" is already this tag's name.`,
@@ -1298,7 +1250,6 @@ export const en = {
       select: (name: string) => `Select "${name}"`,
       actions: "Actions",
     },
-    // 行の選択とまとめての確定・却下・削除。
     selectAllLoaded: (count: number) =>
       selectPlural(count, {
         one: `Select the ${formatNumber(count)} loaded tag`,
@@ -1341,7 +1292,6 @@ export const en = {
       stale: "Some of the tags no longer existed, so the list was reloaded",
       merged: (count: number, target: string) =>
         `Merged ${tagCount(count)} into "${target}"`,
-      // 選択バーの「Set kind…」。
       setKind: "Set kind…",
       noKinds: "No kinds yet. Add them on the Kinds tab.",
       kindSet: (name: string, applied: number, skipped: number) =>
@@ -1359,7 +1309,7 @@ export const en = {
       deleteTitle: "Delete selected tags",
       counting: "Counting the affected videos…",
       countFailed: (reason: string) => `Couldn't count the affected videos: ${reason}`,
-      // 選んだすべてに働くとき。videoCount が 0 なら「removed from 0 videos」とは言わない。
+      // Avoid saying removed from 0 videos.
       rejectAll: (selected: number, videoCount: number) =>
         `${selectedTags(selected)} ${removal(selected, videoCount)}, and automatic tagging won't create ${selected === 1 ? "its name" : "their names"} again. You can allow a name again from Rejected names.`,
       rejectSome: (applied: number, selected: number, videoCount: number) =>
@@ -1392,17 +1342,13 @@ export const en = {
       title: (name: string) => `Merge "${name}"`,
       target: "Tag to merge into",
       synonymHint: (synonym: string) => `Synonym: ${synonym}`,
-      // 統合先の候補の一覧が空のとき。
       noCandidates: "No matching tags",
-      // 窓の下端の「統合元 → 統合先」。統合元が複数なら数で言う。
       summarySources: (count: number) => tagCount(count),
-      // 統合先の候補をサーバーで引けなかったとき。
       searchFailed: (reason: string) => `Couldn't search tags: ${reason}`,
       videoCount: videos,
       warning: (source: string, count: number, target: string) =>
         `The ${videos(count)} tagged "${source}" get the tag "${target}". "${source}" and its synonyms become synonyms of "${target}", and "${source}" leaves the tag list. This can't be undone.`,
-      // 統合元が複数のとき。count は統合先を
-      // 外した統合元の数で、選んだ数ではない。videoCount が 0 なら「0 videos」とは言わない。
+      // count excludes the merge target; it is not the selection size. Avoid zero-video wording.
       titleMany: (count: number) => `Merge ${tagCount(count)}`,
       sources: "Tags to merge",
       kept: "kept",
@@ -1440,7 +1386,6 @@ export const en = {
       merge: "Merge",
     },
   },
-  // 人物と団体の管理画面。並び順の文言はタグの画面（tags.sort）と同じものを使う。
   credits: {
     person: creditKindTexts("person", "people", "People", "Person to merge into"),
     organization: creditKindTexts(
@@ -1467,7 +1412,6 @@ export const en = {
       aliases: (list: string) => `Aliases: ${list}`,
       aliasWithLanguage: (alias: string, language: string) => `${alias} (${language})`,
       partOf: (parent: string) => `Part of ${parent}`,
-      // 名前の下の 1 行の、親と別名の区切り。
       secondLine: (parts: readonly string[]) => parts.join(" · "),
       videoCount: videos,
       renameLabel: (name: string) => `New name for "${name}"`,
@@ -1535,8 +1479,6 @@ export const en = {
       home: "Home",
       folder: "Folder",
     },
-    // 操作バー（video.js）の読み上げ名とツールチップ。キーボード操作を持つボタンには
-    // withKey でキーを添える。
     controls: {
       withKey: (label: string, key: string) => `${label} (${key})`,
       play: "Play",
@@ -1555,16 +1497,14 @@ export const en = {
       volumeLevel: "Volume",
       videoPlayer: "Video player",
       restart: "Restart",
-      /** 操作バーのメニュー（再生速度・字幕）で選んでいる項目に、読み上げ用に添える文言。 */
       menuItemSelected: ", selected",
       transcoding: "Converting for playback",
       transcodingDetail:
         "The browser can't play this format directly, so it's converted while it plays. Seeking takes a few seconds.",
-      // 画質の名前（480p など）は翻訳しない。
+      // Quality names such as 480p remain untranslated.
       transcodingTo: (quality: string) => `Converting to ${quality}`,
       transcodingToDetail: (quality: string) =>
         `Playing a ${quality} version converted while it plays, so it needs less bandwidth. Choose “Original” in the quality menu to go back. Seeking takes a few seconds.`,
-      // 操作バーの画質メニュー。
       quality: "Quality",
       qualityName: (quality: string) => quality,
       qualityOriginal: "Original",
@@ -1572,18 +1512,15 @@ export const en = {
       qualityOriginalShort: "Orig",
       qualityNoSmaller: "No smaller sizes for this video",
     },
-    // 字幕ボタンとメニュー。
     subtitles: {
       button: "Subtitles",
       off: "Off",
-      /** ラベルの無い字幕（`<名前>.srt`）の表示名。 */
       default: "Default",
     },
-    // チャプターのボタンとメニュー。チャプターの
-    // タイトルは利用者のデータで、訳さない。
+    // Chapter titles are user data and remain untranslated.
     chapters: {
       button: "Chapters",
-      /** タイトルの無いチャプターの名前。n は開始の順の 1 からの番号。 */
+      /** Untitled chapters use one-based chronological numbering. */
       untitled: (n: number) => `Chapter ${String(n)}`,
     },
     neighbors: {
@@ -1593,7 +1530,7 @@ export const en = {
     },
     loading: "Loading",
     reconnecting: "Connection lost · Reconnecting",
-    // 途切れの警告。知らせるだけで、画質を下げる勧めや切り替えは書かない
+    // Report interruptions without suggesting a quality change.
     //
     stallWarning: {
       message: "Slow connection is interrupting playback",
@@ -1681,15 +1618,12 @@ export const en = {
       watchedLink: (label: string) => `${label}, watched`,
       nowPlaying: "Now playing",
       watched: "Watched",
-      /** 窓より前のメンバーを読むボタン（狭い画面。広い画面ではスクロールで読む）。 */
       earlier: (count: number) =>
         count === 1
           ? "Show 1 earlier video"
           : `Show ${formatNumber(count)} earlier videos`,
       moreFailed: "Couldn't load more of the group",
     },
-    // プレイリストの文脈で開いた動画ページ。
-    // 名前と題名（利用者のデータ）はそのまま埋め込む。
     playlist: {
       line: (name: string, position: number, count: number) =>
         position > 0
@@ -1711,7 +1645,6 @@ export const en = {
       added: "Added",
       edited: "Edited",
       created: "Created",
-      /** 日付の項目の `title` と吹き出しの文字（例: Edited Sep 27, 2026, 3:04 PM）。 */
       dateDetail: (name: string, dateTime: string) => `${name} ${dateTime}`,
       openFile: "Open file",
       copyPath: "Copy path",
@@ -1722,7 +1655,6 @@ export const en = {
       useCurrentFrame: "Use current frame as thumbnail",
       useAutomaticThumbnail: "Use automatic thumbnail",
       thumbnailFailed: (reason: string) => `Couldn't change the thumbnail: ${reason}`,
-      // 右端の一群の先頭のお気に入りの付け外しと、変えられなかった 1 行
       //
       favorite: "Favorite",
       favoriteFailed: (reason: string) => `Couldn't change the favorite: ${reason}`,
@@ -1730,7 +1662,6 @@ export const en = {
       technicalPending: "Reading technical details…",
       technicalFailed: "Couldn't read the technical details",
     },
-    // ComfyUI でコマを編集してサムネイルにする入口・編集画面・生成した画像の項目
     //
     thumbnailEdit: {
       entry: "Edit thumbnail with ComfyUI",
@@ -1740,7 +1671,6 @@ export const en = {
       startFailed: (reason: string) => `Couldn't start editing the thumbnail: ${reason}`,
       title: "Edit thumbnail",
       frameAt: (time: string) => `Frame at ${time}`,
-      // 編集を何から始めるかのメニューと、今のサムネイルから始めたときの編集画面の文言
       //
       frameOnScreen: "Frame on screen",
       currentThumbnail: "Current thumbnail",
@@ -1799,7 +1729,6 @@ export const en = {
       generatedThumbnail: "Generated thumbnail",
       useFrameInstead: "Use the frame instead",
     },
-    // 手元の画像をサムネイルにする入口とアップロードした画像の項目
     //
     thumbnailUpload: {
       entry: "Upload an image as thumbnail",
@@ -1858,7 +1787,7 @@ export const en = {
       fileNameTitle: (name: string) => `File name: ${name}`,
       saveFailed: (reason: string) => `Couldn't save the name: ${reason}`,
     },
-    // 情報欄の作品情報の行と編集の入口。役割の名前は 1 人なら単数、2 人以上なら複数。
+    // Use singular roles for one person and plural for multiple people.
     workInfo: {
       label: "Work details",
       code: "Code",
@@ -1888,14 +1817,12 @@ export const en = {
       showLess: "Show less",
       edit: "Edit details",
     },
-    // 情報欄の技術情報の行の下の、動画の追加の情報のまとまり。言語の名前は formatLanguage、畳みの文言は workInfo のものを使う。
     mediaInfo: {
       video: "Video",
       audio: "Audio",
       subtitles: "Subtitles",
       embedded: "Embedded",
       broadcast: "Broadcast",
-      /** 畳んだトラックの `Show all {count} {group}` の group。 */
       audioTracks: "Audio tracks",
       subtitleTracks: "Subtitle tracks",
       hdr: {
@@ -1937,7 +1864,6 @@ export const en = {
       station: "Station",
       program: "Program",
     },
-    // 作品情報プラグインからの取得。
     workInfoFetch: {
       entry: "Fetch work info from a plugin",
       title: "Fetch work info",
@@ -1969,7 +1895,6 @@ export const en = {
       back: "Back to the matches",
       now: "Now",
       fetched: "Fetched",
-      // 比較の行のラベル。役割は複数形。
       fields: {
         title: "Title",
         tags: "Tags",
@@ -1989,12 +1914,10 @@ export const en = {
         externalIds: "IDs",
       } satisfies Record<WorkInfoField, string>,
       notInResult: "Not in the result",
-      // カバー画像の行の画像の名前。取得した側は、反映すると代表サムネイルになることも言う。
       nowThumbnail: "Current thumbnail",
       fetchedCover: (width: number, height: number) =>
         `Fetched cover, ${formatNumber(width)} × ${formatNumber(height)}. Becomes the thumbnail when you apply`,
       nothingToAdd: "Nothing to add",
-      // チップの中の従の印。読み上げは「{name}, New」になる。
       newMark: "New",
       newHint: "Created when you apply",
       notLinked: "Not linked",
@@ -2008,7 +1931,7 @@ export const en = {
       onVideo: "On the video",
       tentative: "Tentative",
       newCount: (count: number) => `${formatNumber(count)} new`,
-      // タグの行の数。m は動画にまだ無い、選べるタグの数。
+      // m counts selectable tags not already on the video.
       tagsSelected: (selected: number, selectable: number) =>
         `${formatNumber(selected)} of ${formatNumber(selectable)} selected`,
       more: (count: number) => `+${formatNumber(count)} more`,
@@ -2017,7 +1940,6 @@ export const en = {
       applying: "Applying…",
       applied: "Applied to the video.",
       resultTitle: "Applied, but some values were left out",
-      // 1 行は「{label}: {value} — {理由}」で、値だけを太くする。
       skippedLabel: (label: string) => `${label}: `,
       skipped: {
         rejected: "you rejected this tag before",
@@ -2034,7 +1956,6 @@ export const en = {
           organization: "matches more than one organization",
         },
       },
-      // 「over the limit for …」に入る、件数に上限のある行の名前。
       limitItems: {
         "people.performer": "performers",
         "people.director": "directors",
@@ -2056,7 +1977,6 @@ export const en = {
       applyFailed: (reason: string) => `Couldn't apply: ${reason}`,
       pluginSaid: (message: string) => `The plugin said: "${message}"`,
     },
-    // 全画面の編集画面。
     detailsEditor: {
       title: "Edit details",
       documentTitle: (title: string) => `Edit details · ${title}`,
@@ -2127,7 +2047,6 @@ export const en = {
       private: "Private",
       failed: (reason: string) => `Couldn't change the visibility: ${reason}`,
     },
-    // Group line と、その後のグループ操作。
     group: {
       line: (name: string, position: number, count: number) =>
         `Group "${name}", video ${formatNumber(position)} of ${formatNumber(count)}. Open the group`,
@@ -2138,7 +2057,6 @@ export const en = {
       removed: (name: string) => `Removed from "${name}"`,
       removeFailed: (reason: string) => `Couldn't remove from the group: ${reason}`,
     },
-    // スマートフォルダの行。
     smartFolder: {
       line: (name: string, position: number, count: number) =>
         `Smart folder "${name}", video ${formatNumber(position)} of ${formatNumber(count)}. Open the smart folder`,
@@ -2222,16 +2140,14 @@ export const en = {
     day: {
       today: "Today",
       yesterday: "Yesterday",
-      // 行の読み上げ名に入れる日: 見出しの 1 行目と 2 行目（「Today, Oct 10」）。
       full: (name: string, date: string) => `${name}, ${date}`,
     },
-    // 行の再生位置と長さ（「16:05 / 42:18」）。どちらも formatDuration で整えた文字列。
     position: (position: string, duration: string) => `${position} / ${duration}`,
     resume: "Resume",
     resumeFor: (title: string) => `Resume ${title}`,
     startOver: "Start over",
     startOverFor: (title: string) => `Start ${title} over`,
-    // 行のリンクと × の読み上げ名。日だけを入れ、時刻は入れない（日より細かく刻まない）。
+    // Accessible names include the date, never the time.
     entryLink: (title: string, duration: string, day: string) =>
       duration === ""
         ? `${title}, played ${day}`
@@ -2267,7 +2183,6 @@ export const en = {
       title: "No history matches these conditions",
     },
   },
-  // アクティビティ。
   activity: {
     title: "Activity",
     documentTitle: "Activity",
@@ -2286,7 +2201,6 @@ export const en = {
       period: "Period",
       all: "All",
       clear: "Clear filters",
-      // 機能を 2 つ以上選んだときのボタンの値（「Import +2」）。
       several: (first: string, rest: number) => `${first} +${formatNumber(rest)}`,
       count: (count: number) => formatNumber(count),
     },
@@ -2398,7 +2312,6 @@ export const en = {
       notInLibrary: "Not in the library",
     },
     percent: (value: number) => `${formatNumber(Math.round(value * 100))}%`,
-    // 結果の文の区切り（「Same video · bundled by rule」の「·」と同じ）。
     separator: "·",
     time: {
       justNow: "Just now",
@@ -2418,7 +2331,7 @@ export const en = {
       shortMinutes: (count: number) => `${formatNumber(count)}m`,
       shortHours: (count: number) => `${formatNumber(count)}h`,
       shortYesterday: "Yesterday",
-      // 失敗した重複の判定が次に試す時刻。今日なら時刻だけ、ほかの日は日と時刻。
+      // Use time only for today, date and time otherwise.
       retryAtDay: (date: string, time: string) => `${date}, ${time}`,
     },
     action: {
@@ -2452,11 +2365,9 @@ export const en = {
       description: "No entries match these filters.",
     },
   },
-  // プレイリスト。
   playlists: {
     title: "Playlists",
     documentTitle: "Playlists",
-    // 一覧のカードのリンクの読み上げ名（「Morning, 3 items」）。
     rowLabel: (name: string, count: number) => `${name}, ${items(count)}`,
     items,
     count: playlistCount,
@@ -2475,9 +2386,8 @@ export const en = {
         "Create a playlist, then add videos and groups to it from the library.",
     },
     loadFailed: "Couldn't load the playlists",
-    // プレイリストの画面（/playlists/{id}）。
     detail: {
-      // 見出しの件数（「12 items · 1:32:10」）。長さの分からない項目があれば長さを省く。
+      // Omit total duration if any item has an unknown duration.
       count: (count: number, duration: string) =>
         duration === "" ? items(count) : `${items(count)} · ${duration}`,
       play: "Play",
@@ -2521,7 +2431,6 @@ export const en = {
       failed: (reason: string) => `Couldn't delete the playlist: ${reason}`,
     },
     deleted: (name: string) => `Deleted "${name}"`,
-    // 動画とグループをプレイリストに足すピッカー。名前（利用者のデータ）はそのまま埋め込む。
     add: {
       label: "Add to playlist",
       search: "Search or create a playlist",
@@ -2540,20 +2449,15 @@ export const en = {
       failed: (reason: string) => `Couldn't add to the playlist: ${reason}`,
     },
   },
-  // スマートフォルダ。画面では条件を
-  // "conditions" と呼び、"rule" とは言わない。保存・編集・削除の語と、カードとページの語。
+  // Use conditions in the UI, not rule.
   smartFolders: {
-    // カードの印の Tooltip と title。
     kind: "Smart folder",
-    // 道筋の帯（Breadcrumb）の名前。
     trail: "Smart folder path",
     save: "Save as smart folder",
     created: (name: string) => `Created "${name}"`,
     saved: (name: string) => `Saved "${name}"`,
     deleted: (name: string) => `Deleted "${name}"`,
-    // 作ったトーストの、新しいフォルダのページを開く操作。
     open: "Open",
-    // `GET /api/smart-folders` の失敗（親の一覧、削除の窓の子孫の数）。
     listFailed: (reason: string) => `Couldn't load the smart folders: ${reason}`,
     dialog: {
       newTitle: "New smart folder",
@@ -2561,7 +2465,6 @@ export const en = {
       editTitle: "Edit smart folder",
       parent: "Parent",
       noParent: "None (top level)",
-      // 並べ順の選択肢（「Date added, newest first」）。言い換えの無い種類は向きの語を使う。
       sortOption: (kind: string, direction: string) => `${kind}, ${direction}`,
       ascending: "ascending",
       descending: "descending",
@@ -2583,7 +2486,6 @@ export const en = {
       createFailed: (reason: string) => `Couldn't create the smart folder: ${reason}`,
       saveFailed: (reason: string) => `Couldn't save the smart folder: ${reason}`,
     },
-    // 条件の行のチップ。視聴状態の語は絞り込みのポップオーバーのもの（list.filter.watchOptions）。
     condition: {
       search: (query: string) => `Search: ${query}`,
       favorite: "Favorites",
@@ -2592,7 +2494,6 @@ export const en = {
       tag: (name: string) => `Tag: ${name}`,
       person: (name: string) => `Person: ${name}`,
       organization: (name: string) => `Organization: ${name}`,
-      // もう無いタグ・種類・人物・団体の条件のチップ。
       deleted: (kind: "tag" | "tagKind" | "person" | "organization") =>
         ({
           tag: "Tag: deleted",
@@ -2606,17 +2507,14 @@ export const en = {
           : days === 365
             ? "Added in the last year"
             : `Added in the last ${formatNumber(days)} days`,
-      // 長さの区切りは分で言う。`max` は含む秒数なので、その次の秒を上限として言う
-      // （maxDuration=299 は「Under 5 minutes」）。
+      // max is inclusive seconds; describe its next second as an exclusive minute limit (299 means Under 5 minutes).
       length: (minSeconds: number | undefined, maxSeconds: number | undefined) =>
         lengthWords(minSeconds, maxSeconds),
     },
     detail: {
-      // 見出しの「More」の項目。
       edit: "Edit…",
       newChild: "New child smart folder…",
       delete: "Delete…",
-      // 空の状態と欠けた状態の、所有者の操作。直す窓を開く。
       editConditions: "Edit conditions…",
       conditions: "Conditions:",
       fromParent: (name: string) => `From "${name}":`,
@@ -2628,7 +2526,6 @@ export const en = {
         title: "A condition no longer works",
         description:
           "A tag, kind, person or organization in the conditions was deleted, so nothing matches.",
-        // 欠けた参照が祖先の条件にあるとき、説明に足す 1 文。
         inParent: (name: string) => `The condition is in "${name}".`,
       },
       gone: {
@@ -2641,7 +2538,7 @@ export const en = {
     deleteDialog: {
       title: (name: string) => `Delete "${name}"?`,
       description: "The smart folder is deleted. Its videos stay in the library.",
-      // 子孫の数（どの深さも数える）。2 つ目の文として説明に続ける。
+      // Count descendants at every depth.
       descendants: (count: number) =>
         selectPlural(count, {
           one: "The 1 smart folder inside it is deleted with it.",
@@ -2652,16 +2549,12 @@ export const en = {
       failed: (reason: string) => `Couldn't delete the smart folder: ${reason}`,
     },
   },
-  // グループのページ（/groups/{id}）と、グループをタグに変える窓。名前とパス（利用者のデータ）はそのまま埋め込む。
   groups: {
-    // 道筋の帯（Breadcrumb）の名前。
     trail: "Group path",
     nameLabel: "Name",
-    // プレイリストの名前と同じ規則。
     nameRule: "Use a name of 1 to 100 characters.",
     created: (name: string) => `Created "${name}"`,
-    // 選択バーの「New group」の窓。説明は何がグループになるかを言う。グループ 1 つだけの選択では
-    // 開かないので、「1 group becomes one group」は出ない。
+    // A single selected group cannot open this dialog, so no singular-group conversion text is needed.
     newDialog: {
       title: "New group",
       description: (videoCount: number, groupCount: number) => {
@@ -2675,7 +2568,6 @@ export const en = {
       submitting: "Creating…",
       failed: (reason: string) => `Couldn't create the group: ${reason}`,
     },
-    // 「Add to group」のピッカー（カード・行・動画ページ・選択バーで共有）。
     add: {
       label: "Add to group",
       search: "Search or create a group",
@@ -2685,17 +2577,15 @@ export const en = {
       nameTooLong: "Use a name of up to 100 characters",
       loading: "Loading…",
       loadFailed: "Couldn't load the groups",
-      // 既にあるものはサーバーが数えずに飛ばすので、件数は言わない。
+      // Do not report a count: the server skips existing members.
       added: (name: string) => `Added to "${name}"`,
       failed: (reason: string) => `Couldn't add to the group: ${reason}`,
     },
     detail: {
-      // 見出しの件数（「12 videos · 1:32:10」）。長さはサーバーの合計を formatDuration で
-      // 整えた文字列で、分からなければ空にして件数だけにする。
+      // Duration is preformatted; empty means unknown and shows only the count.
       count: (count: number, duration: string) =>
         duration === "" ? videos(count) : `${videos(count)} · ${duration}`,
-      // 自動グループのフォルダの行（「From the folder {path}」）。後ろのパスはフォルダの
-      // ページへのリンクとして画面が続ける。
+      // The caller appends the folder path as a link.
       fromFolder: "From the folder",
       play: "Play",
       playFor: (name: string) => `Play "${name}"`,
@@ -2736,7 +2626,6 @@ export const en = {
       failed: (reason: string) => `Couldn't dissolve the group: ${reason}`,
     },
     dissolved: (name: string) => `Dissolved "${name}"`,
-    // グループをタグに変える確認の窓と、その成功のトースト。グループページ、動画ページ、フォルダのメニューが共有する。
     tagDialog: {
       title: (name: string) => `Turn "${name}" into a tag?`,
       description: (name: string) =>
@@ -2750,7 +2639,6 @@ export const en = {
         ? `Created the tag "${name}" and dissolved the group`
         : `Added the tag "${name}" and dissolved the group`,
   },
-  // ドラッグで並べ替え・グループ化・マージ・バージョン化する操作と、その取り消しの通知
   //
   organize: {
     drop: {
@@ -2759,14 +2647,12 @@ export const en = {
       refused: "Can't drop here",
       groupOrBundle: "Group or bundle…",
     },
-    // 落とした先に開くメニュー。名前は落とした先のカードの題名か名前。
     menu: {
       label: (name: string) => `Dropped on "${name}"`,
       makeGroup: "Make a group",
       nest: "Put in as a child group",
       merge: "Merge",
     },
-    // 「Make a group」の後の、新しいグループの名前の欄。hint は仮の名前を埋め込む。
     name: {
       label: "Group name",
       hint: (name: string) => `Enter keeps the name, Esc keeps "${name}"`,
@@ -2776,7 +2662,7 @@ export const en = {
       grouped: (name: string) => `Made the group "${name}"`,
       moved: (count: number, name: string) => `Moved ${items(count)} to "${name}"`,
       movedOut: (count: number, name: string) => `Moved ${items(count)} out of "${name}"`,
-      // mixed は動画もいっしょにマージしたとき（数は項目で数える）。
+      // mixed includes merged videos; count items, not videos.
       merged: (count: number, name: string, mixed: boolean) =>
         `Merged ${mixed ? items(count) : groupsCount(count)} into "${name}"`,
     },
@@ -2786,8 +2672,7 @@ export const en = {
       move: (reason: string) => `Couldn't move: ${reason}`,
       merge: (reason: string) => `Couldn't merge: ${reason}`,
     },
-    // ドラッグの層の読み上げの案内（dnd-kit の screenReaderInstructions、描かない）。カードは
-    // キーボードでは持ち上がらず、キーボードでは 048 のメニューを使う。
+    // Cards cannot be lifted by keyboard; keyboard users use the action menus.
     instructions:
       "Press and move a card to pick it up, then drop it on another card or a group to organize. With the keyboard, use the card's buttons instead.",
     undo: "Undo",
@@ -2797,7 +2682,7 @@ export const en = {
       expired: "This can no longer be undone",
       other: (reason: string) => `Couldn't undo: ${reason}`,
     },
-    // dnd-kit の読み上げ。位置は 1 始まり。
+    // Positions are one-based.
     announce: {
       pickedUp: (title: string, count: number) =>
         count === 1 ? `Picked up "${title}"` : `Picked up ${items(count)}`,
@@ -2816,7 +2701,6 @@ export const en = {
     tooLong: (limit: number, length: number) =>
       `Use ${characters(limit)} or fewer (currently ${formatNumber(length)})`,
   },
-  // 人物・団体の名前を打つ CreditCommand の理由。
   creditName: {
     required: "Enter a name",
     controlCharacters: "Line breaks and tabs aren't allowed",
@@ -2871,7 +2755,6 @@ export const en = {
       playlists: "Playlists",
       duplicates: "Duplicates",
       activity: "Activity",
-      // 要対応の記録の数の読み上げ（見える文字は数だけ）。
       activityCount: (count: number) =>
         selectPlural(count, {
           one: `${formatNumber(count)} needs attention`,
@@ -2889,8 +2772,6 @@ export const en = {
     scan: {
       startFailed: (reason: string) => `Couldn't start the scan: ${reason}`,
       notRun: "No scan has run yet",
-      // 状態の言葉。走査と準備を
-      // 言い分けない。
       status: {
         starting: "Starting",
         finding: "Scanning",
@@ -2899,8 +2780,7 @@ export const en = {
         partial: "Some failed",
         failed: "Scan failed",
       },
-      // 進み具合。分母は変化のあったファイルと準備が残っていた動画で、済みには失敗して
-      // 終わった動画も入る。
+      // The denominator includes changed files and unfinished videos; done includes failures.
       videosDone: (settled: number, total: number) =>
         `${formatNumber(settled)} of ${videos(total)} done`,
       videosShort: (settled: number, total: number) =>
@@ -2908,7 +2788,6 @@ export const en = {
       denominator:
         "Counts changed files and videos that still needed preparing, not the whole library.",
       noChanges: "No changed files were found.",
-      // 今の処理の行。動作の言葉を先に置き、長いファイル名は末尾を省略する。
       lookingForFiles: "Looking for files…",
       activity: {
         registering: "Adding to the library",
@@ -2919,16 +2798,14 @@ export const en = {
         fingerprint: "Checking for duplicates",
       } satisfies Record<ScanActivityKind, string>,
       activityLine: (action: string, fileName: string) => `${action} · ${fileName}`,
-      /** 登録フォルダの表示名 / 相対パス / ファイル名。省略した行の全体を示す。 */
       location: (parts: readonly string[]) => parts.join(" / "),
       finishedAt: (when: string) => `Finished ${when}`,
       couldNotFinish: "The scan couldn't finish.",
       failedCount: (count: number) => `${formatNumber(count)} failed`,
       toCheckCount: (count: number) => `${formatNumber(count)} to check`,
       seeSettingsForList: "See Settings for the list.",
-      // 読み上げは完了・一部失敗・失敗の節目だけにする。
-      // 自動の取り込み（origin watch）の言葉。走っているあいだは何も出さないので、
-      // 終わったあとの状態だけがある。
+      // Announce only completion, partial failure, or failure milestones.
+      // Automatic imports are silent while running, so only terminal states have copy.
       watchStatus: {
         done: "Auto-imported",
         partial: "Auto-import: some failed",
@@ -2951,7 +2828,6 @@ export const en = {
           `The scan finished with some failures. ${videos(failed)} may not be usable.`,
         failed: "The scan failed.",
       },
-      /** 右下の本体の名前: 〈状態の言葉〉 M of N videos done, 〈問題の本数〉. */
       indicatorName: (status: string, progress: string | null, issues: string | null) =>
         `${progress === null ? status : `${status} ${progress}`}${issues === null ? "" : `, ${issues}`}`,
       issueCounts: (counts: readonly string[]) => formatList(counts),
@@ -2962,8 +2838,7 @@ export const en = {
   },
   settings: {
     title: "Settings",
-    // 設定のページ。一覧の項目、ページの h1、
-    // ブラウザの題に同じ 1 語を使う。キーは settingsPages.ts のスラッグである。
+    // Use the same label for navigation, h1 and browser title; keys match settingsPages.ts slugs.
     pages: {
       scan: "Scan",
       library: "Library",
@@ -2976,24 +2851,19 @@ export const en = {
     },
     scanStatus: {
       heading: "Scan status",
-      // 状態の言葉は shell.scan.status と同じものを使う。ここにはこの画面だけの状態を置く。
       state: {
         notRun: "Not run",
         fetchFailed: "Rechecking",
       },
       rechecking: "Rechecking the latest status",
-      // 取り込みを始める button と、押せない理由（issue 830）。
       start: "Scan library",
       starting: "Scanning…",
       runningReason: "A scan is running. You can start another when it finishes.",
-      // 「Library」はページへのリンクになる。
       needsMediaFolder: { before: "Add a media folder in ", after: " to scan." },
-      // 問題の一覧。
       issues: {
         heading: "Videos with problems",
         failed: "Failed",
         check: "Check",
-        // 影響（その動画がどうなっているか）と理由。種類の漏れは型検査で見つかる
         //
         kinds: {
           unreadable: {
@@ -3039,7 +2909,6 @@ export const en = {
         } satisfies Record<ScanIssueKind, { impact: string; reason: string }>,
         impactAndReason: (impact: string, reason: string) => `${impact} ${reason}`,
         also: (impacts: readonly string[]) => `Also: ${impacts.join(" ")}`,
-        /** 行のリンクの名前: ファイル名と目印と影響。 */
         openVideo: (fileName: string, marker: string, impact: string) =>
           `${fileName}. ${marker}: ${impact} Open the video`,
         showMore: "Show more",
@@ -3052,9 +2921,8 @@ export const en = {
       description:
         "Files added, removed, moved or renamed in a media folder are picked up as they happen, without a scan. Changes made while it's off or while VVMDM isn't running are picked up by “Scan library” on the Scan page.",
       label: "Pick up changes as they happen",
-      // 切り替えの行の説明。「Scan」はページへのリンクになる。
       switchDescription: { before: "The watch state is on the ", after: " page." },
-      // 監視の状態の 1 行。before と after のあるものは、その間のページの名前がリンクになる。
+      // Insert the linked page name between before and after.
       state: {
         off: {
           before: "Off. Changes are picked up by the next scan. Turn it on in ",
@@ -3069,7 +2937,7 @@ export const en = {
       saving: "Saving…",
       saveFailed: (reason: string) => `Couldn't change the setting: ${reason}`,
       loadFailed: (reason: string) => `Couldn't load the auto-import settings: ${reason}`,
-      // 問題の文。{path} の前と後に分け、道筋（利用者のデータ）は画面が <code> で挟む。
+      // Split around the user path so callers can render it as code.
       problem: {
         watch_limit: {
           title: "Some folders aren't watched",
@@ -3099,7 +2967,6 @@ export const en = {
         FolderWatchProblem,
         { title: string; before: string; after: string }
       >,
-      /** 問題が道筋を持たないときに、{path} の代わりに入れる言葉。 */
       unknownPath: "a media folder",
     },
     ollama: {
@@ -3122,12 +2989,10 @@ export const en = {
       loadFailed: (reason: string) => `Couldn't load the Ollama settings: ${reason}`,
     },
     autoTagging: {
-      // 「Auto-tagging」のページは「Progress」と「Classifier」の 2 つの節に分かれる。
       progressHeading: "Progress",
       off: "Auto-tagging is off.",
       offHint: "Turn on “Use auto-tagging” under Classifier to tag videos.",
       heading: "Classifier",
-      // 「Connections」はページへのリンクになる。
       description: {
         before: "Asks the classifier set in ",
         after:
@@ -3168,8 +3033,6 @@ export const en = {
               other: `${formatNumber(count)} videos were queued for auto-tagging`,
             }),
       startFailed: (reason: string) => `Couldn't start auto-tagging: ${reason}`,
-      // Ollama の接続先が保存されていないあいだ、ページの見出しの下に出す。「Connections」は
-      // ページへのリンクになる。
       lockTitle: "Ollama connection needed",
       lockBody: {
         before: "Save the Ollama URL and model in ",
@@ -3180,7 +3043,6 @@ export const en = {
     },
     versionJudging: {
       heading: "Duplicate judging",
-      // 「Connections」はページへのリンクになる。
       description: {
         before:
           "Judges each pair the scan lists as a possible duplicate: the two files are compared frame by frame, and the classifier set in ",
@@ -3194,8 +3056,6 @@ export const en = {
       saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
       loadFailed: (reason: string) =>
         `Couldn't load the duplicate judging settings: ${reason}`,
-      // Ollama の接続先が保存されていないあいだ、スイッチの下に出す。「Connections」は
-      // ページへのリンクになる。
       connectionNote: {
         before:
           "No Ollama connection is saved. Pairs with a differing part wait until you save one in ",

@@ -1,10 +1,8 @@
 import type { VideoSort } from "../api/client";
 import { isListSort } from "../videoList/listCriteria";
 
-/** Zoom はカードの大きさ。0 が最小、3 が最大の 4 段階。 */
 export type Zoom = 0 | 1 | 2 | 3;
 
-/** ViewMode は一覧の表示形式。 */
 export type ViewMode = "grid" | "list";
 
 export interface ViewPreferences {
@@ -17,8 +15,7 @@ const storageKey = "vv.view.v2";
 
 export const defaults: ViewPreferences = { zoom: 1, view: "grid", sort: "addedDesc" };
 
-// 保存から戻す並び順は、API の VideoSort の値のうちメニューに種類があるものに限る。random を保存しても
-// seed は保存しない。開くたびに画面が新しい seed を作る。
+// Restore only supported menu sorts; never persist random seeds so each opening creates a new one.
 const views: Record<ViewMode, true> = { grid: true, list: true };
 
 function isKeyOf<T extends string>(table: Record<T, true>, value: unknown): value is T {
@@ -29,10 +26,7 @@ function isZoom(value: unknown): value is Zoom {
   return value === 0 || value === 1 || value === 2 || value === 3;
 }
 
-/**
- * readViewPreferences はどの場合でも投げず、完全な値を返す。
- * 壊れている項目だけを既定値へ落とす（zoom が壊れても並び順は残す）。
- */
+/** Never throw; default only invalid fields so valid preferences survive partial corruption. */
 export function readViewPreferences(storage?: Storage): ViewPreferences {
   let raw: string | null;
   try {
@@ -69,6 +63,6 @@ export function writeViewPreferences(value: ViewPreferences, storage?: Storage):
     };
     (storage ?? window.localStorage).setItem(storageKey, JSON.stringify(stored));
   } catch {
-    // 保存できなくても今の画面では設定を使える
+    // Keep the current preferences even when persistence fails.
   }
 }

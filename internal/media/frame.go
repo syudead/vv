@@ -12,15 +12,12 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// frameScale は、コマの長辺を動画の長辺のまま、domain.ThumbnailFrameMaxSide を越えるときだけ
-// そこまで縮める。動画が枠より小さければ大きさを変えない。
+// Downscale only; never enlarge frames already within ThumbnailFrameMaxSide.
 var frameScale = "scale='min(" + strconv.Itoa(domain.ThumbnailFrameMaxSide) + ",iw)':'min(" +
 	strconv.Itoa(domain.ThumbnailFrameMaxSide) + ",ih)':force_original_aspect_ratio=decrease,setsar=1"
 
-// FrameAt は動画 videoPath の positionMs ミリ秒の場面を 1 枚、PNG で取り出す。サムネイルの編集で
-// 持ち主が塗り、提供元へ上げるコマである。長辺は
-// 動画の長辺で、上限は domain.ThumbnailFrameMaxSide である。指定の位置でコマが取れなくても先頭の
-// コマで作り直さない（ThumbnailAt と同じ）。
+// FrameAt returns a bounded PNG at positionMs for editing; like ThumbnailAt, it never substitutes
+// the first frame.
 func FrameAt(ctx context.Context, videoPath string, positionMs int64) (domain.ThumbnailFrame, error) {
 	ctx, cancel := context.WithTimeout(ctx, thumbnailTimeout)
 	defer cancel()
@@ -33,7 +30,7 @@ func FrameAt(ctx context.Context, videoPath string, positionMs int64) (domain.Th
 		}
 		return domain.ThumbnailFrame{}, fmt.Errorf("cannot run %s (%s): %w", thumbnailCommand, videoPath, err)
 	}
-	// 指定の位置にコマが無ければ、ffmpeg は終了コード 0 のまま何も書かない（runThumbnail）。
+	// ffmpeg may exit successfully without writing a frame at an unavailable position.
 	config, err := png.DecodeConfig(bytes.NewReader(output))
 	if err != nil {
 		return domain.ThumbnailFrame{}, fmt.Errorf("no frame was extracted (%s, at %d ms): %w", videoPath, positionMs, err)
@@ -41,8 +38,7 @@ func FrameAt(ctx context.Context, videoPath string, positionMs int64) (domain.Th
 	return domain.ThumbnailFrame{PNG: output, Width: config.Width, Height: config.Height}, nil
 }
 
-// frameArgs は FrameAt が ffmpeg に渡す引数を組み立てる。出力は標準出力の PNG 1 枚である。
-// -ss を -i の前に置くのは thumbnailArgs と同じ理由である。
+// Put -ss before -i for the same seeking behavior as thumbnailArgs.
 func frameArgs(videoPath string, positionMs int64) []string {
 	return []string{
 		"-nostdin",
@@ -57,12 +53,10 @@ func frameArgs(videoPath string, positionMs int64) []string {
 	}
 }
 
-// FrameAt は FrameAt を呼ぶ。
 func (a *Assets) FrameAt(ctx context.Context, path string, positionMs int64) (domain.ThumbnailFrame, error) {
 	return FrameAt(ctx, path, positionMs)
 }
 
-// AutoThumbnailPositions は AutoThumbnailPositions を呼ぶ。
 func (a *Assets) AutoThumbnailPositions(durationMs int64) []int64 {
 	return AutoThumbnailPositions(durationMs)
 }

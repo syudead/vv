@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { firstTarget, jumpTargets } from "./historyJump";
 
-// 日付へ移る一覧の項目。
-
 const now = new Date(2026, 9, 10, 12, 0);
 
 describe("jumpTargets", () => {
@@ -28,7 +26,6 @@ describe("jumpTargets", () => {
       ["2026-10-07", "Wed, Oct 7"],
       ["2026-09-27", "Sun, Sep 27"],
     ]);
-    // 9 月 26 日は 14 日より前なので、9 月の月の項目になる。
     expect(targets.months.map(({ value, label }) => [value, label])).toEqual([
       ["2026-09", "September"],
       ["2026-08", "August"],

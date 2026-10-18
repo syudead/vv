@@ -15,7 +15,6 @@ import (
 // Tag-list transport tests use store fakes for query and response mapping.
 // Invalid-cursor integration cases below retain a small real-store fixture.
 
-// addTentativeTags は名前 names の仮のタグを作り、動画 videoID に付ける。
 func addTentativeTags(t *testing.T, f mcpFixture, videoID int64, names []string) {
 	t.Helper()
 	_, err := f.env.db.Tags().ApplyVideoTags(context.Background(),
@@ -56,7 +55,6 @@ func TestExternalListTagsPassesFiltersAndReturnsPage(t *testing.T) {
 	}
 }
 
-// limit を省いた要求は今までどおり全件を返し、nextCursor を付けない。
 func TestExternalListTagsWithoutLimitReturnsEverything(t *testing.T) {
 	fake := &fakeTags{tags: []domain.Tag{{ID: 1, Name: "a"}, {ID: 2, Name: "b"}, {ID: 3, Name: "c"}}}
 	f := newMCPFixture(t, Options{Tags: fake, Scans: &fakeScans{}})
@@ -84,8 +82,6 @@ func TestExternalListTagsWithoutLimitReturnsEverything(t *testing.T) {
 	}
 }
 
-// sort が 5 値の外、limit が 1〜200 の外、q が 100 文字を超える要求、読めないカーソルと別の sort で
-// 作ったカーソルは 400 invalid_request で、カーソルは invalid_cursor。
 func TestExternalListTagsRejectsInvalidParameters(t *testing.T) {
 	f := newMCPFixture(t, Options{Scans: &fakeScans{}})
 	addTentativeTags(t, f, f.videoA, []string{"a", "b", "c"})
@@ -113,7 +109,6 @@ func TestExternalListTagsRejectsInvalidParameters(t *testing.T) {
 		rec := f.env.serve(authRequest{method: http.MethodGet, target: "/api/v1/tags" + tc.query, header: bearer(f.secret)})
 		assertExternalError(t, label, rec, tc.want)
 	}
-	// 100 文字ちょうどは通る。
 	f.getTags(t, "?q="+strings.Repeat("あ", 100))
 }
 

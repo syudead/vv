@@ -12,11 +12,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインの登録の判断。
-// 保存の規則（差し替え・値の引き継ぎ・削除の連鎖）は internal/store のテストが本物の SQLite で確かめる。
+// Test registration decisions; store tests cover replacement, settings inheritance and cascading deletion.
 
-// fakePluginRuntime はモジュールのバイト列をマニフェストの名前として読む検査である。"broken" は
-// not_wasm にする。
+// Interpret module bytes as the manifest name; broken returns not_wasm.
 type fakePluginRuntime struct {
 	settings []domain.WorkInfoPluginSetting
 }
@@ -37,8 +35,7 @@ func (r *fakePluginRuntime) Run(
 	return domain.WorkInfoRunResult{}, domain.WorkInfoRunLog{}, errors.New("not used")
 }
 
-// fakePluginStore は行を 1 つ持つ保存先で、書き込みの呼び出しを数える。runs は保存された実行で、
-// 世代の確かめはしない（本物の保存先の規則は internal/store のテストが確かめる）。
+// Single-row fake counting writes; store tests cover generation checks for run logs.
 type fakePluginStore struct {
 	plugin  *domain.WorkInfoPlugin
 	uploads []domain.WorkInfoPluginUpload
@@ -180,7 +177,7 @@ func TestApproveWorkInfoPluginChecksTheDigestAndProblem(t *testing.T) {
 	if err != nil || approved.State != domain.WorkInfoPluginApproved {
 		t.Fatalf("approve = %+v, %v; want approved", approved, err)
 	}
-	// 一覧を見たあとに差し替えられたモジュールは、見たダイジェストでは承認できない。
+	// Reject approval using a digest observed before module replacement.
 	store.plugin.Digest = "replaced"
 	writes := store.writes
 	if _, err := plugins.ApproveWorkInfoPlugin(ctx, listed.ID, listed.Digest); !errors.Is(err, domain.ErrWorkInfoPluginChanged) {
@@ -235,7 +232,7 @@ func TestSetWorkInfoPluginSettingsChecksDeclarationsAndHidesSecrets(t *testing.T
 	}
 }
 
-// 差し替えで保存済みの値が選択肢から外れても値は残り、一覧は set・value と同じ staleValue でそれを示す
+// Preserve values invalidated by changed choices and expose them through matching set, value and staleValue fields.
 func TestReplacedOptionsReportTheStoredValueAsStale(t *testing.T) {
 	ctx := context.Background()
 	runtime := &fakePluginRuntime{settings: []domain.WorkInfoPluginSetting{

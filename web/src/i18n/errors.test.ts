@@ -13,8 +13,7 @@ import {
 import { errorText, probeErrorText, scanErrorText } from "./errors";
 import { t } from "./messages";
 
-// すべてのコードと理由に文があることは型で確かめる。生成型に値が増えて表に無ければ、
-// ここ（と en.ts の satisfies）が型検査で落ちる。
+// Generated error additions must fail type checking until both tables include copy.
 const codeTable: Record<ErrorCode, unknown> = t.errors.code;
 const reasonTable: Record<ErrorReason, unknown> = t.errors.reason;
 const probeTable: Record<ProbeErrorCode, unknown> = t.errors.probe;

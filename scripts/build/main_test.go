@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-// prepareRoot は .gitkeep だけを持つ版管理の根を模す。
 func prepareRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -32,8 +31,7 @@ func distEntries(t *testing.T, root string) []string {
 	return names
 }
 
-// 前回の生成物は消すが、版管理された .gitkeep は残す。これが消えると
-// 埋め込み先が空になり、SPA をビルドしていない状態で go build ./... が通らなくなる。
+// Keep .gitkeep so go build works before the SPA has been built.
 func TestCleanDistRemovesArtefactsButKeepsThePlaceholder(t *testing.T) {
 	root := prepareRoot(t)
 	dist := filepath.Join(root, distPath)
@@ -54,8 +52,7 @@ func TestCleanDistRemovesArtefactsButKeepsThePlaceholder(t *testing.T) {
 	}
 }
 
-// 置き場所が無ければ作る。埋め込み先が無いまま Vite を呼ぶと、
-// 出力先の用意で失敗する経路が増える。
+// Create a missing embed directory before invoking Vite.
 func TestCleanDistCreatesTheDirectoryWhenItIsMissing(t *testing.T) {
 	root := t.TempDir()
 
@@ -72,7 +69,6 @@ func TestCleanDistCreatesTheDirectoryWhenItIsMissing(t *testing.T) {
 	}
 }
 
-// 掃除だけで済ませるので、既に .gitkeep しか無い状態は何も変えない。
 func TestCleanDistLeavesACleanDirectoryAlone(t *testing.T) {
 	root := prepareRoot(t)
 

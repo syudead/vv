@@ -207,9 +207,7 @@ export function generateMediaFixtures(mediaDir) {
     "-shortest",
     file("long-gop.mkv"),
   ]);
-  // コピーで途中から始める変換の確かめ。
-  // キーフレームは 0・8・16 秒だけで、その区間ごとに赤・緑・青にする。途中へシークすると
-  // 変換は直前のキーフレームから映像をコピーして始まり、映っている色で場面がわかる。
+  // Keyframes at 0, 8 and 16 seconds divide red, green and blue scenes, revealing which copied keyframe a seek actually starts from.
   ffmpeg([
     "-f",
     "lavfi",
@@ -248,8 +246,7 @@ export function generateMediaFixtures(mediaDir) {
     file("sparse-keyframes.mkv"),
   ]);
 
-  // 覚えた画質で直接再生できる動画を変換で始めることの確かめ。
-  // 画質の選択肢は短辺で決まるので、480p を選べる 1080p の直接再生できる動画にする。
+  // Use directly playable 1080p media so remembered 480p quality forces transcoding.
   ffmpeg([
     "-f",
     "lavfi",
@@ -288,8 +285,7 @@ export function generateMediaFixtures(mediaDir) {
     assertFixture(file(name), codecs);
   }
 
-  // 隣に置いた字幕。ラベルの無い字幕と `ja` の字幕で、
-  // どちらも 0.5 秒から動画の終わりまで 1 つの cue を出す。
+  // Provide unlabeled and ja sidecar subtitles, with one cue from 0.5 seconds to the end.
   writeFileSync(
     file("direct.srt"),
     "1\r\n00:00:00,500 --> 00:00:06,000\r\nDefault subtitle cue\r\n",
@@ -298,8 +294,7 @@ export function generateMediaFixtures(mediaDir) {
     file("direct.ja.srt"),
     "1\n00:00:00,500 --> 00:00:06,000\n日本語の字幕\n",
   );
-  // キーフレームが 0・8・16 秒の動画の隣の字幕。ライブ変換が 8 秒から始まったとき、
-  // 6〜7 秒の cue は出ず、9〜10 秒の cue が表示の 9〜10 秒台に出るかを見る（受け入れ条件 9）。
+  // For a transcode starting at 8 seconds, suppress the 6-7 second cue and show the 9-10 second cue at its original timestamp.
   writeFileSync(
     file("sparse-keyframes.srt"),
     [
@@ -310,11 +305,7 @@ export function generateMediaFixtures(mediaDir) {
   );
 }
 
-/**
- * generateFolderFixtures はフォルダ画面の検証用のフォルダ構成を作る
- * 。動画はどれも内容を変えた数秒の
- * H.264 で、同じ内容の複製だけが同じ動画になる。
- */
+/** Use distinct short H.264 clips; only explicit copies share content identity. */
 export function generateFolderFixtures(root) {
   let count = 0;
   const make = (relative) => {
@@ -356,21 +347,7 @@ export function generateFolderFixtures(root) {
   return count;
 }
 
-/**
- * generateTagsFixtures は再生画面のタグ（issue 268）、ライブラリのカードの
- * タグ・タグでの絞り込み（issue 269）、選択バーの一括操作・すべて選択
- * （issue 270、受け入れ条件3・4は3本以上の選択を要る）を確かめるための、
- * 短くて軽い動画を作る（web/e2e/tags.e2e.ts）。タグの付け外し自体は
- * 中身を見ないので、短い無音のクリップで足りる。3本目（タグ動画C）は、検索欄が
- * タグ名と題名を別々に扱うことを確かめるための、タグを持たない対照区である
- * （issue 269 の受け入れ条件7）。4本目（タグ動画D）は、選択バーの一括操作が
- * 3本の選択を要る（issue 270）ために足す、C とは別の動画である。
- *
- * 残りの「タグ埋め」の動画は、1280×800 でライブラリの格子の最後の行が画面の
- * 下端に来るよう本数を足すためだけのもので、どの試験も名指しでは使わない
- * 。
- * 全部の本数は TAGS_FIXTURE_VIDEO_COUNT である。
- */
+/** Short silent clips suffice for tag operations; filler videos place the final grid row near the viewport bottom at 1280 x 800. */
 export function generateTagsFixtures(root) {
   mkdirSync(root, { recursive: true });
   const file = (name) => path.join(root, name);
@@ -396,11 +373,7 @@ export function generateTagsFixtures(root) {
   }
 }
 
-/**
- * WORK_INFO_VIDEOS は generateWorkInfoFixtures が作る動画の題名で、作品情報の流れ
- * を web/e2e/work-info.e2e.ts で確かめる。
- * 作品情報は中身を見ないので、色合いだけを変えた短い無音のクリップで足りる。
- */
+/** Distinct short silent clips suffice for work-info tests. */
 export const WORK_INFO_VIDEOS = ["作品動画A", "作品動画B", "作品動画C", "作品動画D"];
 
 export function generateWorkInfoFixtures(root) {
@@ -420,17 +393,10 @@ export function generateWorkInfoFixtures(root) {
   );
 }
 
-/**
- * generateTagsFixtures が作る動画の本数（タグ動画A〜D と、タグ埋めの動画）。
- * web/e2e/tags.e2e.ts の videoCount と同じ数にする。
- */
+/** Keep the fixture count aligned with videoCount in tags.e2e.ts. */
 const TAGS_FIXTURE_VIDEO_COUNT = 16;
 
-/**
- * appendFreeBox は mp4 の末尾に中身の違う free ボックスを足す。再生にも解析にも
- * 影響しないまま末尾の内容が変わるので、同じ映像から別の動画を安く作れる
- * （内容の識別子は先頭と末尾から作る。internal/scanner/content_key.go）。
- */
+/** Append a distinct MP4 free box to change the sampled content key without affecting playback or probing; see internal/scanner/content_key.go. */
 function appendFreeBox(file, label) {
   const payload = Buffer.from(`vv-search-fixture:${label}`, "utf8");
   const header = Buffer.alloc(8);
@@ -439,13 +405,10 @@ function appendFreeBox(file, label) {
   appendFileSync(file, Buffer.concat([header, payload]));
 }
 
-/** SEARCH_FILLERS は一覧を2ページ以上にするための動画の数である。 */
+/** Ensure the library spans at least two pages. */
 export const SEARCH_FILLERS = 62;
 
-/**
- * prepareSearchFixtures は、検索の動画の更新時刻を実行した時刻から数えて付ける。
- * 作った動画はキャッシュから写すので、生成の時刻のままだと日がたつほどずれる。
- */
+/** Reset copied fixture mtimes relative to the current run so cached media does not age out of date filters. */
 export function prepareSearchFixtures(root) {
   const file = (name) => path.join(root, name);
   const now = Date.now() / 1000;
@@ -504,12 +467,7 @@ export function generateSearchFixtures(root) {
   writeFileSync(file("長さ不明.mp4"), "この中身は動画ではない\n".repeat(64));
 }
 
-/**
- * generateHistoryFixtures は、視聴履歴の流れを
- * 確かめるための動画を2本作る（web/e2e/history.e2e.ts）。数秒の再生と一時停止の後も
- * 見終わったことにならず進捗バーが残るよう、末尾とみなす 15 秒（internal/domain/progress.go
- * の CompletionTailMs）より十分長い 40 秒にし、中身で同じ動画とみなされないよう色合いを変える。
- */
+/** Use distinct 40-second clips so short playback remains outside the 15-second completion tail. */
 export const HISTORY_VIDEOS = ["履歴の確認A", "履歴の確認B"];
 
 export function generateHistoryFixtures(root) {
@@ -531,14 +489,7 @@ export function generateHistoryFixtures(root) {
   }
 }
 
-/**
- * DRAG_ORGANIZE_VIDEOS は、ドラッグでの整理を確かめる
- * 動画の題名である（web/e2e/drag-organize.e2e.ts）。e2e に残る並べ替え・「Make a group」・
- * タッチの長押しの 3 組の分だけを作る。どれも登録フォルダの直下に置くので、
- * 自動グループにはならない。テストの組ごとに題名の頭を変え、ライブラリの検索でその組だけを
- * 出せるようにする。中身で同じ動画とみなされないよう、ほかの組と違う長さとコマの速さにし、
- * 色合いを変える。
- */
+/** Distinct title prefixes isolate reorder, grouping and touch scenarios. Place files directly under the registered folder to avoid automatic groups and vary content to prevent deduplication. */
 export const DRAG_ORGANIZE_VIDEOS = [
   "並べ確認の1",
   "並べ確認の2",

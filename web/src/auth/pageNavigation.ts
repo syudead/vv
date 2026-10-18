@@ -1,18 +1,14 @@
-// 見る人が変わるとき（初回設定・ログイン・ログアウト）は、SPA の遷移にせず
-// ページごと移る。前の相手として読んだ控えをメモリに残さないためである。
-// テストで差し替えられるよう、ここに閉じる。
+// Audience changes require a full navigation to discard caches loaded for the previous audience.
+// Isolate navigation so tests can replace it.
 
-/** assignPage は url へページごと移る。 */
 export function assignPage(url: string): void {
   window.location.assign(url);
 }
 
-/** reloadPage は今の URL をページごと読み直す。 */
 export function reloadPage(): void {
   window.location.reload();
 }
 
-/** currentPath は今の URL のパス・問い合わせ・断片をつないだ値である。 */
 export function currentPath(location: {
   pathname: string;
   search: string;
@@ -21,7 +17,6 @@ export function currentPath(location: {
   return `${location.pathname}${location.search}${location.hash}`;
 }
 
-/** loginPath は、ログインの後に next へ戻るログイン画面の URL である。 */
 export function loginPath(next: string): string {
   return `/login?${new URLSearchParams({ next })}`;
 }

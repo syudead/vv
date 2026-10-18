@@ -12,10 +12,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// バージョンと束ねの画面の APIは、
-// 本物の認証・保存層で確かめる（#580）。guestFixture の a（公開、タグと再生位置あり）と
-// b（非公開）を束ねる。
-
 func bundleBody(videoIDs []int64, representativeID int64) string {
 	body, _ := json.Marshal(map[string]any{"videoIds": videoIDs, "representativeId": representativeID})
 	return string(body)
@@ -29,7 +25,6 @@ func (f *guestFixture) versionAction(name, action string, cookies ...*http.Cooki
 	return f.env.serve(authRequest{method: http.MethodPost, target: f.videoPath(name, "/"+action), cookies: cookies})
 }
 
-// attachNewTag は名前 name のタグを作って動画 video に付ける。
 func (f *guestFixture) attachNewTag(t *testing.T, video, name string) {
 	t.Helper()
 	ctx := context.Background()
@@ -42,7 +37,6 @@ func (f *guestFixture) attachNewTag(t *testing.T, video, name string) {
 	}
 }
 
-// versionIDs は VideoVersions の項目の id を並びのまま返す。
 func versionIDs(versions gen.VideoVersions) []int64 {
 	ids := make([]int64, 0, len(versions.Items))
 	for _, item := range versions.Items {
@@ -51,7 +45,6 @@ func versionIDs(versions gen.VideoVersions) []int64 {
 	return ids
 }
 
-// libraryVideo はライブラリの応答から id の動画の項目を探す。
 func libraryVideo(page gen.LibraryPage, id int64) (gen.Video, bool) {
 	for _, item := range page.Items {
 		if item.Video != nil && item.Video.Id == id {
@@ -69,8 +62,6 @@ func tagNames(tags []gen.VideoTag) []string {
 	return names
 }
 
-// 束ねる・代表を替える・外すの一巡（受け入れ条件 8・9）。どの操作も確定後に全メンバーの
-// video が /api/events に流れる。
 func TestVideoVersionsBundleChangeRepresentativeAndUnbundle(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -82,7 +73,7 @@ func TestVideoVersionsBundleChangeRepresentativeAndUnbundle(t *testing.T) {
 	env.db.PublishTo(eventsPublisher{events: events})
 	sub, unsubscribe := events.subscribe()
 	defer unsubscribe()
-	sub.take() // つないだ直後の送信を除く。
+	sub.take()
 
 	rec := f.bundle(bundleBody([]int64{b, a, b}, a), f.owner)
 	if rec.Code != http.StatusOK {
@@ -124,7 +115,6 @@ func TestVideoVersionsBundleChangeRepresentativeAndUnbundle(t *testing.T) {
 	if item, ok := libraryVideo(library, a); !ok || !slices.Contains(tagNames(item.Tags), "X") {
 		t.Errorf("束ねたあとのライブラリの a: found = %v, tags = %v", ok, tagNames(item.Tags))
 	}
-	// 一覧の項目にも、集まりの代表にだけ versions が入る。
 	videos := decode[gen.VideoPage](t, env.get("/api/videos", f.owner))
 	for _, item := range videos.Items {
 		switch {
@@ -138,7 +128,6 @@ func TestVideoVersionsBundleChangeRepresentativeAndUnbundle(t *testing.T) {
 		t.Errorf("ライブラリの a の versions = %+v, want count 2", item.Versions)
 	}
 
-	// 代表を b に替えると、ライブラリの 1 件が b になり、タグは集まりの値（X）のまま（受け入れ条件 8）。
 	rec = f.versionAction("b", "make-representative", f.owner)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("代表を替える: status = %d: %s", rec.Code, rec.Body)
@@ -150,7 +139,6 @@ func TestVideoVersionsBundleChangeRepresentativeAndUnbundle(t *testing.T) {
 	if videos := sub.take().videos; !slices.Equal(videos, []int64{a, b}) {
 		t.Errorf("代表を替えたあとの /api/events の video = %v, want [%d %d]", videos, a, b)
 	}
-	// 既に代表でも同じ応答。
 	if rec := f.versionAction("b", "make-representative", f.owner); rec.Code != http.StatusOK {
 		t.Errorf("既に代表: status = %d: %s", rec.Code, rec.Body)
 	}
@@ -166,7 +154,6 @@ func TestVideoVersionsBundleChangeRepresentativeAndUnbundle(t *testing.T) {
 		t.Errorf("代表を替えたあとの b のタグ = %v, want X を含み Y を含まない", names)
 	}
 
-	// b を外すと、b は束ねる前の値（Y）に戻って一覧に戻る（受け入れ条件 9）。
 	sub.take()
 	rec = f.versionAction("b", "unbundle", f.owner)
 	if rec.Code != http.StatusOK {
@@ -182,8 +169,7 @@ func TestVideoVersionsBundleChangeRepresentativeAndUnbundle(t *testing.T) {
 	if videos := sub.take().videos; !slices.Equal(videos, []int64{a, b}) {
 		t.Errorf("外したあとの /api/events の video = %v, want [%d %d]", videos, a, b)
 	}
-	// a と b が同じフォルダに並ぶとライブラリではフォルダのグループに畳まれるので、動画ごとの
-	// 一覧で確かめる。
+	// Query videos individually to avoid automatic folder aggregation in list assertions.
 	list := decode[gen.VideoPage](t, env.get("/api/videos", f.owner))
 	index := slices.IndexFunc(list.Items, func(v gen.Video) bool { return v.Id == b })
 	if index < 0 || !slices.Contains(tagNames(list.Items[index].Tags), "Y") {
@@ -197,7 +183,6 @@ func TestVideoVersionsBundleChangeRepresentativeAndUnbundle(t *testing.T) {
 	}
 }
 
-// 束ねた b の詳細の再生位置は集まりのもので、b の再生位置の記録が一覧の a を進める（受け入れ条件 7）。
 func TestVideoVersionsShareProgress(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -224,12 +209,10 @@ func TestVideoVersionsShareProgress(t *testing.T) {
 	}
 }
 
-// ゲストは公開の集まりの全バージョンを見られ、束ねの操作は 401 になる（受け入れ条件 12）。
 func TestVideoVersionsForGuest(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
 	a, b := f.ids["a"], f.ids["b"]
-	// 代表の a は公開なので、集まりが公開になる。
 	if rec := f.bundle(bundleBody([]int64{a, b}, a), f.owner); rec.Code != http.StatusOK {
 		t.Fatalf("束ねる: status = %d: %s", rec.Code, rec.Body)
 	}
@@ -251,7 +234,6 @@ func TestVideoVersionsForGuest(t *testing.T) {
 	if detail.Versions == nil || detail.Versions.Count != 2 {
 		t.Errorf("ゲストの b の詳細の versions = %+v", detail.Versions)
 	}
-	// 非公開の動画はゲストには無い動画と同じ。
 	hidden := env.get(f.videoPath("c", "/versions"))
 	assertErrorBody(t, "ゲストの非公開のバージョン", hidden.Code, hidden.Body.Bytes(),
 		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonVideoNotFound})
@@ -265,14 +247,11 @@ func TestVideoVersionsForGuest(t *testing.T) {
 			t.Errorf("ゲストの%s: status = %d, want 401: %s", label, rec.Code, rec.Body)
 		}
 	}
-	// ゲストの操作で何も変わっていない。
 	if got := decode[gen.VideoVersions](t, env.get(f.videoPath("a", "/versions"), f.owner)); got.RepresentativeId != a || len(got.Items) != 2 {
 		t.Errorf("ゲストの操作のあと: representativeId = %d, items = %v", got.RepresentativeId, versionIDs(got))
 	}
 }
 
-// 1 本だけ・代表が含まれない・上限を超える・無い動画・束ねていない動画への操作は契約の誤りになり、
-// 何も変えない。
 func TestVideoVersionsErrors(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
@@ -314,7 +293,6 @@ func TestVideoVersionsErrors(t *testing.T) {
 		assertErrorBody(t, c.label, c.rec.Code, c.rec.Body.Bytes(), c.want)
 	}
 
-	// 束ねていない動画のバージョンはその 1 本。
 	got := decode[gen.VideoVersions](t, env.get(f.videoPath("a", "/versions"), f.owner))
 	if got.RepresentativeId != a || !slices.Equal(versionIDs(got), []int64{a}) {
 		t.Errorf("誤りのあとの a のバージョン: representativeId = %d, items = %v", got.RepresentativeId, versionIDs(got))

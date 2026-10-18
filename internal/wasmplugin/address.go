@@ -5,9 +5,8 @@ import (
 	"net/netip"
 )
 
-// refusedPrefixes はプラグインの要求が届いてはならない範囲の表である。
-// IANA の IPv4 と IPv6 の Special-Purpose Address Registry のうち「Globally Reachable」が True で
-// ない範囲と、それに加えて vv が拒む範囲を並べる。テストはどの行からも 1 つのアドレスを確かめる。
+// Reject IANA special-purpose ranges not marked Globally Reachable, plus application-specific
+// exclusions; tests cover one address from every range.
 var refusedPrefixes = []netip.Prefix{
 	// IANA IPv4 Special-Purpose Address Registry
 	netip.MustParsePrefix("0.0.0.0/8"),          // This network
@@ -40,24 +39,22 @@ var refusedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("fc00::/7"),       // Unique-Local
 	netip.MustParsePrefix("fe80::/10"),      // Link-Local Unicast
 
-	// vv が加える範囲
-	netip.MustParsePrefix("fec0::/10"),    // 廃止された site-local。今も LAN で経路を持つことがある
-	netip.MustParsePrefix("64:ff9b::/96"), // IPv4 を埋め込む: IPv4-IPv6 Translation
-	netip.MustParsePrefix("2001::/32"),    // IPv4 を埋め込む: TEREDO
-	netip.MustParsePrefix("2002::/16"),    // IPv4 を埋め込む: 6to4
+	// Additional application exclusions.
+	netip.MustParsePrefix("fec0::/10"),    // Deprecated site-local addresses can still route within a LAN.
+	netip.MustParsePrefix("64:ff9b::/96"), // Embedded IPv4: translation.
+	netip.MustParsePrefix("2001::/32"),    // Embedded IPv4: Teredo.
+	netip.MustParsePrefix("2002::/16"),    // Embedded IPv4: 6to4.
 }
 
-// ipv6GlobalUnicast は IANA が IPv6 の Global Unicast に割り当てた範囲である。
 var ipv6GlobalUnicast = netip.MustParsePrefix("2000::/3")
 
-// addressRule はプラグインの要求が接続してよいアドレスかを決める。local はサーバー自身の
-// インターフェースのアドレスを返し、テストでは差し替える。
+// local is replaceable for tests of server-interface exclusions.
 type addressRule struct {
 	local func() []netip.Addr
 }
 
-// allows は、IPv4-mapped IPv6 を IPv4 に戻したアドレスが global unicast で、refusedPrefixes の
-// どれにも入らず、サーバー自身のアドレスでもないときだけ true を返す。
+// Unmap IPv4-mapped IPv6 before requiring global unicast and excluding denied prefixes and local
+// interfaces.
 func (r addressRule) allows(addr netip.Addr) bool {
 	addr = addr.Unmap().WithZone("")
 	if !addr.IsValid() || !addr.IsGlobalUnicast() || addr.Is6() && !ipv6GlobalUnicast.Contains(addr) {
@@ -76,8 +73,8 @@ func (r addressRule) allows(addr netip.Addr) bool {
 	return true
 }
 
-// interfaceAddrs はサーバーのインターフェースのアドレスを返す。インターフェースは実行の間にも
-// 変わりうるので、確かめるたびに読む。読めなければ何も返さず、表の規則だけが効く。
+// Reread interfaces for each check because they may change during execution; lookup failure leaves
+// prefix rules in effect.
 func interfaceAddrs() []netip.Addr {
 	addrs, err := net.InterfaceAddrs()
 	if err != nil {

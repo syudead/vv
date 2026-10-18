@@ -1,6 +1,4 @@
 -- +goose Up
--- シーク用サムネイルを代表サムネイルから独立した段階にする
---
 alter table videos add column seek_thumbnail_state text not null default 'pending'
     check (seek_thumbnail_state in ('pending', 'done', 'failed'));
 
@@ -30,8 +28,7 @@ create index jobs_state_id_idx on jobs (state, id);
 create unique index jobs_pending_kind_video_idx
     on jobs (kind, video_id) where state in ('queued', 'running');
 
--- thumbnail_state = done はシーク用の完成を意味しないので、既存の動画は全部
--- pending のまま積む。完成済みのものは置き場の確認だけで終わる。
+-- Completed representative thumbnails do not imply completed seek previews; queue all existing videos and reuse valid artifacts.
 insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
 select 'seek_thumbnail', id, 'queued', 0, unixepoch(), unixepoch()
 from videos where probe_state <> 'pending'

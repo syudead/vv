@@ -3,8 +3,7 @@ import type * as React from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の tooltip（radix-nova）を vv のトークンで着せたもの
-// （web/registry/rules/components.md「Tooltip」）。TooltipProvider はアプリに 1 つ置く。
+// Adapted from shadcn/ui radix-nova; mount one TooltipProvider per app.
 
 function TooltipProvider({
   delayDuration = 400,
@@ -38,7 +37,7 @@ function TooltipContent({
   children,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Content> & {
-  /** 描く先。全画面の要素の中から出すときに渡す。既定は body。 */
+  /** Pass the fullscreen element when rendering within fullscreen; defaults to body. */
   container?: HTMLElement | null;
 }) {
   return (

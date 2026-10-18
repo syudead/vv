@@ -1,12 +1,8 @@
 import type { TagSort } from "../api/tags";
 
-/**
- * TagListSort はタグ管理画面の一覧の並び順である。
- * `GET /api/tags` の `sort`（生成物の `TagSort`）と同じ値を持つ。「名前」に向きは無い。
- */
+/** Match API TagSort values; natural name order has no direction. */
 export type TagListSort = TagSort;
 
-/** TagSortKind は並び順の種類（メニューの項目）である。 */
 export type TagSortKind = "name" | "count" | "created";
 
 export type TagSortDirection = "asc" | "desc";
@@ -25,7 +21,6 @@ export function isTagListSort(value: unknown): value is TagListSort {
   return typeof value === "string" && Object.hasOwn(sorts, value);
 }
 
-/** tagSortKinds はメニューに並べる種類と、選んだときの既定の並び順である。 */
 export const tagSortKinds: readonly { kind: TagSortKind; initial: TagListSort }[] = [
   { kind: "name", initial: "name" },
   { kind: "count", initial: "countDesc" },
@@ -45,7 +40,6 @@ export function tagSortKind(sort: TagListSort): TagSortKind {
   }
 }
 
-/** tagSortDirection は並び順の向きである。「名前」は向きを持たない。 */
 export function tagSortDirection(sort: TagListSort): TagSortDirection | undefined {
   switch (sort) {
     case "name":
@@ -59,7 +53,6 @@ export function tagSortDirection(sort: TagListSort): TagSortDirection | undefine
   }
 }
 
-/** withTagSortDirection は種類を保ったまま向きを変える。「名前」はそのまま返す。 */
 export function withTagSortDirection(
   sort: TagListSort,
   direction: TagSortDirection,

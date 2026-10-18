@@ -11,32 +11,24 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// アクティビティの記録の一覧・やり直し・取り消し。3 つの経路は
-// /api/* の既定どおり所有者だけで、accessRoutes には入れない（受け入れ条件 8）。記録が書かれたか変わったことは
-// /api/events の activity で知らせる（events.go）。
+// Activity routes remain owner-only by omission from accessRoutes; changes are announced through /api/events.
 
-// Activity はアクティビティの記録の先である。internal/app の *Activity がこれを満たす。
 type Activity interface {
-	// ListActivity は query を満たす記録を id の降順に cursor の次から limit 件返す。読めない cursor は
-	// domain.ErrInvalidCursor。
+	// ListActivity orders by descending ID; malformed cursors return domain.ErrInvalidCursor.
 	ListActivity(
 		ctx context.Context, audience domain.Audience, query domain.ActivityQuery, cursor string, limit int,
 	) (domain.ActivityPage, error)
-	// RetryActivity は記録の処理を始め直す。無ければ domain.ErrNotFound、やり直しを出さなければ
-	// domain.ErrActivityNotRetryable。
 	RetryActivity(ctx context.Context, id int64) error
-	// UndoActivity は自動の判断を取り消し、所有者の undo の記録を返す。無い記録と付けていないタグは
-	// domain.ErrNotFound、取り消しを出さなければ domain.ErrActivityNotUndoable。
+	// UndoActivity returns ErrNotFound for missing entries/unassigned tags and ErrActivityNotUndoable when undo is unavailable.
 	UndoActivity(ctx context.Context, id, tagID int64) (domain.ActivityEntry, error)
 }
 
-// 記録の 1 ページの件数（api/openapi.yaml の limit と同じ値）。
+// Keep page limits aligned with api/openapi.yaml.
 const (
 	defaultActivityLimit = 50
 	maxActivityLimit     = 100
 )
 
-// ListActivity は記録を新しい順に返す（GET /api/activity）。絞り込みはページを切る前に保存層が掛ける。
 func (s *server) ListActivity(w http.ResponseWriter, r *http.Request, params gen.ListActivityParams) {
 	if s.activity == nil {
 		s.internalError(w, "Activity storage is not configured.", nil)
@@ -86,7 +78,6 @@ func (s *server) ListActivity(w http.ResponseWriter, r *http.Request, params gen
 	writeJSON(w, http.StatusOK, out, s.logger)
 }
 
-// parseActivityQuery は一覧の絞り込みを読む。知らない値、多すぎる feature と範囲の外の q は 400 invalid_request を書いて偽を返す。
 func (s *server) parseActivityQuery(w http.ResponseWriter, params gen.ListActivityParams) (domain.ActivityQuery, bool) {
 	var query domain.ActivityQuery
 	var err error
@@ -97,7 +88,7 @@ func (s *server) parseActivityQuery(w http.ResponseWriter, params gen.ListActivi
 		}
 	}
 	if params.Feature != nil {
-		// openapi の maxItems は機能の数（9）で、生成器は数を確かめない。
+		// The generator does not enforce OpenAPI maxItems, currently nine features.
 		if len(*params.Feature) > len(domain.ActivityFeatures) {
 			s.invalidRequest(w, "feature can be repeated at most 9 times.")
 			return domain.ActivityQuery{}, false
@@ -130,7 +121,6 @@ func (s *server) parseActivityQuery(w http.ResponseWriter, params gen.ListActivi
 	return query, true
 }
 
-// RetryActivity は記録の処理を始め直す（POST /api/activity/{id}/retry）。
 func (s *server) RetryActivity(w http.ResponseWriter, r *http.Request, id gen.ActivityId) {
 	if s.activity == nil {
 		s.internalError(w, "Activity storage is not configured.", nil)
@@ -143,8 +133,7 @@ func (s *server) RetryActivity(w http.ResponseWriter, r *http.Request, id gen.Ac
 	w.WriteHeader(http.StatusAccepted)
 }
 
-// isActivityUndoPost は POST /api/activity/{id}/undo かを返す。本文は JSON で、mutationBoundary が
-// Content-Type を確かめる。
+// mutationBoundary validates the JSON Content-Type.
 func isActivityUndoPost(r *http.Request) bool {
 	if r.Method != http.MethodPost {
 		return false
@@ -154,8 +143,7 @@ func isActivityUndoPost(r *http.Request) bool {
 	return found && undo && id != "" && !strings.Contains(id, "/")
 }
 
-// UndoActivity は自動の判断を取り消し、所有者の undo の記録を返す（POST /api/activity/{id}/undo）。本文は
-// JSON のオブジェクトで、auto_tag の記録では取り消すタグを tagId で渡す。ほかの種類では {} でよい。
+// UndoActivity requires tagId for auto_tag entries; other kinds accept an empty object.
 func (s *server) UndoActivity(w http.ResponseWriter, r *http.Request, id gen.ActivityId) {
 	var body gen.ActivityUndoRequest
 	if !s.readJSONBody(w, r, &body) {
@@ -178,7 +166,6 @@ func (s *server) UndoActivity(w http.ResponseWriter, r *http.Request, id gen.Act
 	writeJSON(w, http.StatusOK, toAPIActivityEntry(undo), s.logger)
 }
 
-// writeActivityError はやり直しと取り消しの誤りを契約の応答にする。
 func (s *server) writeActivityError(w http.ResponseWriter, err error, message string) {
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
@@ -196,7 +183,6 @@ func (s *server) writeActivityError(w http.ResponseWriter, err error, message st
 	}
 }
 
-// toAPIActivityFeatureCounts は機能ごとの数を契約の形にする。
 func toAPIActivityFeatureCounts(counts map[domain.ActivityFeature]int) gen.ActivityFeatureCounts {
 	return gen.ActivityFeatureCounts{
 		Import:         counts[domain.ActivityFeatureImport],
@@ -211,7 +197,6 @@ func toAPIActivityFeatureCounts(counts map[domain.ActivityFeature]int) gen.Activ
 	}
 }
 
-// toAPIActivityEntry は記録を契約の形にする。やり直しと取り消しを出すかは domain の規則で決める。
 func toAPIActivityEntry(entry domain.ActivityEntry) gen.ActivityEntry {
 	out := gen.ActivityEntry{
 		Id:          entry.ID,
@@ -275,8 +260,7 @@ func toAPIActivityEntry(entry domain.ActivityEntry) gen.ActivityEntry {
 	return out
 }
 
-// toAPIActivitySubject は対象を鍵ごとの項目にする。組は 2 項目、それ以外は 1 項目で、videoId は見る人が
-// 開ける今の動画があるときだけ入る。
+// Pairs produce two subject items; videoId appears only for currently accessible videos.
 func toAPIActivitySubject(entry domain.ActivityEntry) gen.ActivitySubject {
 	subject := gen.ActivitySubject{Kind: gen.ActivitySubjectKind(entry.Subject.Kind)}
 	item := func(label string, videoID int64) gen.ActivitySubjectItem {

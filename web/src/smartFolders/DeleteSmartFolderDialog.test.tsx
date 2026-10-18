@@ -4,8 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import DeleteSmartFolderDialog from "./DeleteSmartFolderDialog";
 
-// スマートフォルダの削除の窓。子孫の数を
-// 数え終わるまで「Delete」を押せない（子孫の警告の無いまま子孫ごと消さない）。
+// Disable deletion until descendant counts are known so the warning cannot be bypassed.
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -14,7 +13,6 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-/** 猫 ─ 未視聴 ─ 最近。 */
 const folders = [
   { id: 1, name: "猫" },
   { id: 2, parentId: 1, name: "未視聴" },
@@ -22,7 +20,6 @@ const folders = [
 ];
 
 const fetchMock = vi.fn<typeof fetch>();
-/** `GET /api/smart-folders` の答え（呼ばれた順）。 */
 let listAnswers: (() => Promise<Response>)[] = [];
 let deleteAnswer: () => Response = () => new Response(null, { status: 204 });
 

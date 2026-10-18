@@ -11,16 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ListTags は条件に合うタグを並び順に 1 ページ返す。本数 0 のタグも返す。本数は video_tags を
-// videos.content_key と結び、いまライブラリにある動画だけを数える
-// （taggedVideosSQL の集計）。query.Limit が 0 なら条件と並び順だけを掛けて
-// 全件を返し、カーソルは無視する（外部連携 API と候補の全件）。
-//
-// タグ・件数・シノニムは ListVideos と同じく読み取り用の接続（s.read、deferred）の
-// 1 つの読み取りの取引で読むので、Total とページの行は同じ時点のものになり、書き込みの
-// 枠を取らず走査やタグの書き込みを待たせない。本数の集計（taggedVideosSQL）は Total とページの行を 1 つの問い合わせで読んで
-// 1 回だけ掛ける。シノニムはページのタグの分だけを 1 回で読む
-// （N+1 にしない）。
+// ListTags reads counts, rows and batched synonyms in one deferred snapshot; zero limit returns all matches and ignores the cursor.
 func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (domain.TagPage, error) {
 	sort := query.Sort
 	if sort == "" {
@@ -63,8 +54,7 @@ func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (dom
 	}
 	page.Total = total
 	if len(items) == 0 && cursorClause != "" {
-		// カーソルより後ろに行が無いとき（読むあいだに後ろのタグが消えた）は、ページの
-		// 行から数を取れないので、条件に合う数だけを数える。
+		// An empty page cannot carry the window count, so count the filtered result separately.
 		if err := tx.QueryRowContext(ctx, listed+` select count(*) from listed`, listedArgs...).Scan(&page.Total); err != nil {
 			return domain.TagPage{}, fmt.Errorf("cannot count tags: %w", err)
 		}
@@ -90,10 +80,7 @@ func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (dom
 	return page, nil
 }
 
-// exactListedTag は検索語（前後の空白を落とした生の綴り）と元の名前かシノニムの綴りが
-// 完全に一致し、絞り込みにも合うタグを返す。無ければ nil。ページの行は名前の自然順の
-// 部分一致なので、完全に一致するタグが 1 ページ目に入るとは限らない（統合の窓の
-// 統合先、docs/design-docs/catalog-organization.md）。
+// An exact raw name/synonym match can fall outside the naturally sorted first page; retrieve it separately.
 func exactListedTag(ctx context.Context, tx *sql.Tx, query domain.TagListQuery) (*domain.Tag, error) {
 	name := strings.TrimSpace(query.Search)
 	if name == "" {
@@ -116,13 +103,10 @@ func exactListedTag(ctx context.Context, tx *sql.Tx, query domain.TagListQuery) 
 	return &tag, nil
 }
 
-// listedTagsCTE は条件に合うタグを listed（id・name・tentative・created_at・
-// sort_key・video_count・kind_id・kind_name）として返す CTE と、その引数を返す。条件はすべて AND。
 func listedTagsCTE(query domain.TagListQuery) (string, []any) {
 	var conditions []string
 	var args []any
 	if search := strings.TrimSpace(domain.FoldForMatch(query.Search)); search != "" {
-		// 元の名前かシノニムの照合形に部分一致する（と同じ照合形）。
 		conditions = append(conditions,
 			`exists (select 1 from tag_names sn where sn.tag_id = t.id and instr(sn.search_key, ?) > 0)`)
 		args = append(args, search)
@@ -157,8 +141,6 @@ func listedTagsCTE(query domain.TagListQuery) (string, []any) {
 		)`, args
 }
 
-// readListedTags は listed の行を読み、行ごとの名前の鍵（カーソルに包む）と、行が
-// 持つ条件に合う数を返す。行が無ければ数は 0。
 func readListedTags(ctx context.Context, tx *sql.Tx, statement string, args []any) ([]domain.Tag, []string, int, error) {
 	rows, err := tx.QueryContext(ctx, statement, args...)
 	if err != nil {
@@ -190,8 +172,7 @@ func readListedTags(ctx context.Context, tx *sql.Tx, statement string, args []an
 	return items, keys, total, nil
 }
 
-// addSynonymsToPage は items の各タグにシノニムを名前の自然順で足す。ページの
-// タグの id を json_each に 1 つの引数で渡し、1 回で読む。
+// Load all page synonyms in one JSON-keyed query to avoid N+1 reads.
 func addSynonymsToPage(ctx context.Context, tx *sql.Tx, items []domain.Tag) error {
 	if len(items) == 0 {
 		return nil
@@ -233,6 +214,5 @@ func addSynonymsToPage(ctx context.Context, tx *sql.Tx, items []domain.Tag) erro
 	return nil
 }
 
-// tagCursorKind はタグの一覧のカーソルの先頭に置き、動画の一覧や人物・団体の一覧のカーソルと
-// 取り違えないようにする。
+// Prefix tag cursors to reject video or credit cursors.
 const tagCursorKind = "tags"

@@ -4,29 +4,15 @@ import type { Video } from "../api/client";
 import { t } from "../i18n";
 import { formatDuration } from "../lib/format";
 
-/**
- * プレーヤーのチャプター。
- *
- * 詳細の `mediaInfo.chapters` から `chapters` の text track を作り、チャプターごとに cue を 1 つ
- * 足す。シークバーの印（attachChapterMarks）、シークプレビューのタイトル（chapterTitleAt）、
- * 操作バーのチャプターのボタン（registerChaptersButton）は同じ一覧を読む。チャプターの無い
- * 動画にはトラックも印もボタンも無い。
- */
-
 type ApiChapter = NonNullable<NonNullable<Video["mediaInfo"]>["chapters"]>[number];
 
-/** PlayerChapter はプレーヤーで使うチャプターである。title はタイトルの無いとき `Chapter {n}`。 */
 export interface PlayerChapter {
   startMs: number;
   endMs: number;
   title: string;
 }
 
-/**
- * playerChapters は、詳細のチャプター（開始の順）をプレーヤーのチャプターにする。タイトルの
- * 無いチャプターは開始の順の番号で呼ぶ。サーバーが長さで切った一覧を受けるが、念のため
- * 長さを過ぎる開始は落とし、終わりを長さで切る。
- */
+/** Name untitled chapters by order and defensively clip chapter bounds to the video duration. */
 export function playerChapters(
   chapters: readonly ApiChapter[] | undefined,
   durationMs: number | undefined,
@@ -45,11 +31,7 @@ export function playerChapters(
   return result;
 }
 
-/**
- * chapterIndexAt は位置 positionMs のチャプターの番号を返す。位置を含む（開始 ≦ 位置 < 終わり）
- * チャプターのうち開始がいちばん遅いもの、同じ開始なら開始の順で後のもので、無ければ -1。
- * シークプレビューのタイトルとメニューの選択の印はこの規則を共有する。
- */
+/** Choose the latest-starting chapter containing start <= position < end; later entries win ties. Return -1 outside chapters. */
 export function chapterIndexAt(
   chapters: readonly Pick<PlayerChapter, "startMs" | "endMs">[],
   positionMs: number,
@@ -61,7 +43,6 @@ export function chapterIndexAt(
   return found;
 }
 
-/** chapterTitleAt は位置 positionMs のチャプターのタイトルを返す。チャプターの外は undefined。 */
 export function chapterTitleAt(
   chapters: readonly PlayerChapter[],
   positionMs: number,
@@ -69,10 +50,7 @@ export function chapterTitleAt(
   return chapters[chapterIndexAt(chapters, positionMs)]?.title;
 }
 
-/**
- * chapterMarkPercents は印を描く位置（バーの幅に対する %）を返す。同じ開始のチャプターは
- * 印 1 つにまとめる。
- */
+/** Return unique chapter starts as percentages of the seek bar. */
 export function chapterMarkPercents(
   chapters: readonly PlayerChapter[],
   durationMs: number,
@@ -81,10 +59,7 @@ export function chapterMarkPercents(
   return starts.map((start) => (start / durationMs) * 100);
 }
 
-/**
- * attachChapterMarks はシークバー（`.vjs-progress-holder`）の中にチャプターの開始の印を描く。
- * 印は pointer を取らず、読み上げない（メニューが同じチャプターを並べる）。戻り値で外す。
- */
+/** Install noninteractive, aria-hidden chapter marks; the menu exposes the same chapters. Return cleanup. */
 export function attachChapterMarks(
   progress: HTMLElement,
   chapters: readonly PlayerChapter[],
@@ -114,7 +89,6 @@ interface ChaptersTextTrack {
   addCue(cue: CueLike): void;
 }
 
-/** ChaptersPlayer は、チャプターのトラックを付けるために触る video.js の Player の部分である。 */
 export interface ChaptersPlayer {
   addRemoteTextTrack(
     options: { kind: "chapters"; label: string; default: boolean },
@@ -129,7 +103,6 @@ interface ChapterState {
   cues: readonly CueLike[];
 }
 
-/** プレイヤーごとの今のチャプター。ボタンはここから項目を作る。 */
 const states = new WeakMap<object, ChapterState>();
 
 type CueConstructor = new (start: number, end: number, text: string) => CueLike;
@@ -142,10 +115,6 @@ function cueConstructor(): CueConstructor | undefined {
   return scope.VTTCue ?? scope.vttjs?.VTTCue;
 }
 
-/**
- * attachChaptersTrack はチャプターごとの cue を持つ `chapters` のトラックをプレイヤーに付け、
- * チャプターのボタンを作り直す。チャプターが無ければ何もしない。戻り値でトラックを外す。
- */
 export function attachChaptersTrack(
   player: ChaptersPlayer,
   chapters: readonly PlayerChapter[],
@@ -157,7 +126,7 @@ export function attachChaptersTrack(
     true,
   )?.track;
   if (track === undefined) return () => undefined;
-  // disabled のトラックは cue の一覧を持たない。チャプターのボタンも hidden にする。
+  // Disabled tracks have no cues; use hidden mode for chapter tracks.
   track.mode = "hidden";
   const cues = chapters.map(
     (chapter) => new Cue(chapter.startMs / 1000, chapter.endMs / 1000, chapter.title),
@@ -179,7 +148,6 @@ function updateButton(player: ChaptersPlayer) {
   button?.update();
 }
 
-/** chaptersButtonName は操作バーの `children` に書くチャプターのボタンの名前である。 */
 export const chaptersButtonName = "chaptersMenuButton";
 const chaptersButtonComponent = "ChaptersMenuButton";
 
@@ -208,15 +176,7 @@ type MenuItemClass = new (
 
 let registered = false;
 
-/**
- * registerChaptersButton はチャプターのボタンの部品を video.js に登録する。プレイヤーを作る前に
- * 呼ぶ。2 回目からは何もしない。
- *
- * video.js の `ChaptersButton` との違いは 2 つある。項目の文字を `{start} {title}` にする
- * （`ChaptersTrackMenuItem` は cue の文字だけを、しかも言語の表に通して出す）。選択の印を
- * chapterIndexAt の規則で付ける（video.js は重なるチャプターの先のものを選ぶ）。印は論理上の
- * 再生位置（player.currentTime）で決めるので、変換して再生している間も正しい。
- */
+/** Register before player creation. Preserve raw titles and choose overlapping chapters by logical time with chapterIndexAt. */
 export function registerChaptersButton(): void {
   if (registered) return;
   const ChaptersButton = videojs.getComponent(
@@ -240,7 +200,7 @@ export function registerChaptersButton(): void {
 
   class ChaptersMenuButton extends ChaptersButton {
     selectCurrentItem_: () => void;
-    /** 印を付けている項目の番号。timeupdate ごとに印を付け直さないために持つ。 */
+    /** Cache the selected index to avoid updating on every timeupdate. */
     playingIndex = -1;
 
     constructor(player: Player, options?: Record<string, unknown>) {

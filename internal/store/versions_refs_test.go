@@ -7,10 +7,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 一覧の項目にも集まりの要約（Video.Versions）を載せる。
-
-// checkVersionsRefs は videos のうち representative に本数 count・代表 representative の要約があり、
-// ほかの動画には要約が無いことを確かめる。
 func checkVersionsRefs(t *testing.T, where string, videos []domain.Video, representative int64, count int) {
 	t.Helper()
 	found := false
@@ -32,8 +28,6 @@ func checkVersionsRefs(t *testing.T, where string, videos []domain.Video, repres
 	}
 }
 
-// A と B を A を代表に束ねると、ライブラリ・動画一覧・フォルダの一覧で A に versions.count 2 が入り、
-// 束ねていない C・D には入らない。ゲストにも同じ規則で入る。
 func TestListsCarryTheVersionsSummary(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -65,8 +59,6 @@ func TestListsCarryTheVersionsSummary(t *testing.T) {
 	}
 }
 
-// 束ねた代表が自動グループの項目なら、グループのページの項目にも、グループのメンバー（再生の
-// 順番やプレイリストの再生の手順が選ぶ動画）にも要約が入る。
 func TestGroupItemsCarryTheVersionsSummary(t *testing.T) {
 	db, ids := folderFixture(t,
 		sampleFile(fixturePath("/media/A/a.mp4"), "a", "key-a", 1, 0),

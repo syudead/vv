@@ -8,7 +8,6 @@ import {
   type StallState,
 } from "./stallMonitor";
 
-/** run は [時刻（秒）, 出来事] の並びを順に渡した状態を返す。 */
 function run(steps: [number, StallEvent][], state: StallState = initialStallState) {
   return steps.reduce(
     (current, [s, event]) => stallStep(current, event, s * 1000),
@@ -16,7 +15,6 @@ function run(steps: [number, StallEvent][], state: StallState = initialStallStat
   );
 }
 
-/** 再生を始めて落ち着いた（最初の playing が来た）状態。 */
 const settled = run([
   [0, "loadstart"],
   [0, "play"],
@@ -24,7 +22,6 @@ const settled = run([
   [1, "playing"],
 ]);
 
-/** at 秒に始まり 1 秒で戻るデータ待ち。 */
 const wait = (at: number): [number, StallEvent][] => [
   [at, "waiting"],
   [at + 1, "playing"],
@@ -48,9 +45,7 @@ describe("stallMonitor", () => {
     expect(waitDeadlineMs(waiting)).toBe(30_000);
     expect(stallStep(waiting, "tick", 29_999).stalled).toBe(false);
     expect(stallStep(waiting, "tick", 30_000).stalled).toBe(true);
-    // タイマーが遅れても、戻ったときの長さで判断する。
     expect(stallStep(waiting, "playing", 31_000).stalled).toBe(true);
-    // 10 秒に届かずに戻れば判断しない。
     const back = stallStep(waiting, "playing", 29_000);
     expect(back.stalled).toBe(false);
     expect(waitDeadlineMs(back)).toBeNull();
@@ -70,7 +65,6 @@ describe("stallMonitor", () => {
       expect(state.waitStartsMs).toEqual([]);
       expect(state.stalled).toBe(false);
       expect(waitDeadlineMs(state)).toBeNull();
-      // 次の playing のあとの待ちは数える。
       expect(
         run(
           [
@@ -119,7 +113,6 @@ describe("stallMonitor", () => {
       );
       expect(stopped.waitStartsMs).toEqual([]);
       expect(stopped.stalled).toBe(false);
-      // 戻ってからの 1 回では、前の 2 回と合わせて判断しない。
       const resumed = run([[41, "play"], [42, "playing"], ...wait(45)], stopped);
       expect(resumed.stalled).toBe(false);
     },

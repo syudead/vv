@@ -15,11 +15,8 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 作品情報プラグインの検索・取得・反映の経路。判断は
-// internal/app のテストが確かめ、ここは誤りと結果を契約の状態コードと項目にすることを、決めた答えを返す
-// 偽の登録で確かめる。
+// These tests cover HTTP status and field mapping with scripted plugin results; application tests cover decisions.
 
-// scriptedPlugins は検索・取得・反映に決めた答えを返す登録である。ほかの操作は使わない。
 type scriptedPlugins struct {
 	WorkInfoPlugins
 	err        error
@@ -29,10 +26,8 @@ type scriptedPlugins struct {
 	calls      int
 	fields     []domain.WorkInfoField
 	tags       []string
-	// ids は FetchWorkInfo が受けた ID である。
-	ids []string
-	// cover は WorkInfoFetchCover が返すカバー画像で、nil なら domain.ErrNotFound である。
-	cover *domain.WorkInfoCover
+	ids        []string
+	cover      *domain.WorkInfoCover
 }
 
 func (p *scriptedPlugins) SearchWorkInfo(context.Context, int64, string) ([]domain.WorkInfoCandidate, error) {
@@ -96,10 +91,9 @@ func decodeErrorBody(t *testing.T, body []byte) gen.Error {
 func TestWorkInfoRunFailuresFollowTheContract(t *testing.T) {
 	e := newFetchRouteEnv(t)
 	for _, tc := range []struct {
-		name string
-		err  error
-		want wantError
-		// check は Error の追加の項目を確かめる。
+		name  string
+		err   error
+		want  wantError
 		check func(gen.Error) bool
 	}{
 		{"no plugin", domain.ErrNotFound, wantError{status: 404, code: gen.ErrorCodeNotFound}, nil},
@@ -167,7 +161,6 @@ func TestWorkInfoSearchAndFetchAnswer(t *testing.T) {
 		t.Fatalf("fetch = %d %s", status, body)
 	}
 
-	// URL を貼っても id としてそのまま登録へ渡す（親 Issue #1232 の要件 14）。url は受け付けない。
 	status, body = e.post(fetchPath, `{"pluginId":1,"id":"https://example.com/w"}`, e.owner)
 	if status != http.StatusCreated || json.Unmarshal(body, &fetch) != nil || fetch.FetchId != "abc" ||
 		!slices.Equal(e.plugins.ids, []string{"ABC-123", "https://example.com/w"}) {
@@ -227,8 +220,6 @@ func TestWorkInfoApplyAnswers(t *testing.T) {
 	}
 }
 
-// 反映の tags は選んだタグの名前として登録へ渡り、無ければ nil（全部のタグ）で渡る。空か、fields にタグが
-// 無いのに有るか null なら登録へ届かず 400、結果に無い名前は登録の答えで 400 である。
 func TestWorkInfoApplyPassesTheSelectedTags(t *testing.T) {
 	e := newFetchRouteEnv(t)
 	status, body := e.post(applyPath, `{"fields":["tags"],"tags":["drama","comedy"]}`, e.owner)
@@ -255,8 +246,6 @@ func TestWorkInfoApplyPassesTheSelectedTags(t *testing.T) {
 	assertErrorBody(t, "a name the result does not have", status, body, wantError{status: 400, code: gen.ErrorCodeInvalidRequest})
 }
 
-// 反映は確定しているので、応答の詳細のうちグループを読めなくても 200 と付けなかったタグを返し、
-// 読めなかったことを記録する。500 にすると、使い切った結果を画面が再送できない。
 func TestWorkInfoApplySucceedsWhenTheDetailIsPartlyUnreadable(t *testing.T) {
 	plugins := &scriptedPlugins{applied: domain.WorkInfoApplied{
 		Video:       domain.Video{ID: 7, Title: "Fetched", DisplayName: "Fetched"},
@@ -278,8 +267,6 @@ func TestWorkInfoApplySucceedsWhenTheDetailIsPartlyUnreadable(t *testing.T) {
 	}
 }
 
-// どの経路も所有者だけで、セッションの無い要求（ゲスト）はほかの所有者の経路と同じく 401 で断り、登録に
-// 届かない。
 func TestWorkInfoFetchRoutesAreOwnerOnly(t *testing.T) {
 	e := newFetchRouteEnv(t)
 	for _, req := range []struct{ path, body string }{
@@ -316,7 +303,6 @@ func TestWorkInfoFetchCoverServesTheImageWithItsType(t *testing.T) {
 		rec.Header().Get("X-Content-Type-Options") != "nosniff" || rec.Header().Get("Cache-Control") != cacheNoStore {
 		t.Fatalf("cover = %d %q %v", rec.Code, rec.Body.String(), rec.Header())
 	}
-	// ゲストには返さない。
 	rec = e.serve(authRequest{method: http.MethodGet, target: coverPath})
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("guest cover = %d, want 401", rec.Code)

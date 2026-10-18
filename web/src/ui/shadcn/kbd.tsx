@@ -2,8 +2,7 @@ import type * as React from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の kbd（radix-nova）を vv のトークンで着せたもの。検索の書き方やキー操作の案内で
-// キーと記号を示す（web/registry/rules/components.md「Kbd」）。
+// Adapted from shadcn/ui radix-nova; see web/registry/rules/components.md, Kbd.
 
 function Kbd({ className, ...props }: React.ComponentProps<"kbd">) {
   return (

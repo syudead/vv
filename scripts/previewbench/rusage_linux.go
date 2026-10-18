@@ -2,7 +2,7 @@ package main
 
 import "syscall"
 
-// childrenPeakRSS は Linux の maxrss（KiB）をバイトに直して返す。
+// Linux reports maxrss in KiB.
 func childrenPeakRSS() (int64, bool) {
 	var usage syscall.Rusage
 	if err := syscall.Getrusage(syscall.RUSAGE_CHILDREN, &usage); err != nil {

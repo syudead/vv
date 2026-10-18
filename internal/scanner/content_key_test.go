@@ -9,10 +9,8 @@ import (
 	"testing"
 )
 
-// wantKey は鍵の式をテスト側で独立に組み立てる。実装と同じ関数を
-// 呼んで比べても意味が無いので、式そのものをここに書き写す。
-//
-//	content_key = hex(sha256(先頭 1MiB ‖ 末尾 1MiB)) + ":" + ファイルサイズ
+// Compute the expected hash formula independently rather than calling the implementation under
+// test.
 func wantKey(t *testing.T, content []byte) string {
 	t.Helper()
 
@@ -32,7 +30,6 @@ func wantKey(t *testing.T, content []byte) string {
 	return hex.EncodeToString(sum.Sum(nil)) + ":" + fmt.Sprint(size)
 }
 
-// writeFile は一時ディレクトリに固定バイト列のファイルを作る。
 func writeFile(t *testing.T, name string, content []byte) string {
 	t.Helper()
 
@@ -46,7 +43,6 @@ func writeFile(t *testing.T, name string, content []byte) string {
 	return path
 }
 
-// pattern は長さ n の再現可能なバイト列を返す。
 func pattern(n int, seed byte) []byte {
 	out := make([]byte, n)
 	for i := range out {
@@ -55,7 +51,6 @@ func pattern(n int, seed byte) []byte {
 	return out
 }
 
-// 鍵は wantKey の式そのものであること。ファイルの大きさによらず成り立つ。
 func TestContentKeyMatchesFormula(t *testing.T) {
 	sizes := []struct {
 		name string
@@ -86,8 +81,6 @@ func TestContentKeyMatchesFormula(t *testing.T) {
 	}
 }
 
-// 内容が同じならパスが違っても同じ鍵になる。移動・改名を越えて同じ動画と
-// 判定できることが、移動を越えて再生位置を引き継ぐ前提である。
 func TestContentKeyIgnoresPath(t *testing.T) {
 	content := pattern(3*readWindow, 0x11)
 
@@ -107,9 +100,7 @@ func TestContentKeyIgnoresPath(t *testing.T) {
 	}
 }
 
-// 末尾だけが違うファイルで鍵が変わること。先頭だけを読む実装では区別できず、
-// 別の動画が同じ1本として扱われてしまう。多くの動画コンテナは末尾に索引を
-// 持つため、この確認が要である。
+// Tail differences matter because many containers store their index at the end.
 func TestContentKeyDetectsTailDifference(t *testing.T) {
 	base := pattern(4*readWindow, 0x22)
 
@@ -130,7 +121,6 @@ func TestContentKeyDetectsTailDifference(t *testing.T) {
 	}
 }
 
-// 先頭が違えば当然変わる。
 func TestContentKeyDetectsHeadDifference(t *testing.T) {
 	base := pattern(4*readWindow, 0x33)
 
@@ -151,8 +141,6 @@ func TestContentKeyDetectsHeadDifference(t *testing.T) {
 	}
 }
 
-// 同じ内容でも大きさが違えば別の動画である。サイズを鍵に含めることで、
-// 偶然の衝突を実質的に無視できる。
 func TestContentKeyIncludesSize(t *testing.T) {
 	short := pattern(1024, 0x44)
 	long := append(append([]byte{}, short...), short...)
@@ -170,8 +158,6 @@ func TestContentKeyIncludesSize(t *testing.T) {
 	}
 }
 
-// 2MiB 以下のファイルは全体を1度だけ読む。
-// 読み出し回数を数えて、先頭と末尾で2度読んでいないことを確かめる。
 func TestContentKeyReadsSmallFileOnce(t *testing.T) {
 	content := pattern(readWindow+512, 0x55)
 	counter := &countingReaderAt{data: content}
@@ -188,7 +174,6 @@ func TestContentKeyReadsSmallFileOnce(t *testing.T) {
 	}
 }
 
-// 2MiB を超えるファイルは先頭と末尾の2回だけ読む。間は読まない。
 func TestContentKeyReadsLargeFileTwice(t *testing.T) {
 	content := pattern(8*readWindow, 0x66)
 	counter := &countingReaderAt{data: content}
@@ -209,7 +194,6 @@ func TestContentKeyReadsLargeFileTwice(t *testing.T) {
 	}
 }
 
-// countingReaderAt は ReadAt の呼び出し回数と読み出した量を数える。
 type countingReaderAt struct {
 	data  []byte
 	calls int

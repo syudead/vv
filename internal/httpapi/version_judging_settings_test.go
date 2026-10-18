@@ -15,7 +15,6 @@ type versionJudgingFixture struct {
 	owner *http.Cookie
 }
 
-// newVersionJudgingFixture は本物の設定の保存先と app.VersionJudge で経路を組む。判定の処理は動かさない。
 func newVersionJudgingFixture(t *testing.T) *versionJudgingFixture {
 	t.Helper()
 	f := &versionJudgingFixture{}
@@ -97,7 +96,6 @@ func TestPutVersionJudgingSettingsRejectsInvalidBody(t *testing.T) {
 	}
 }
 
-// 所有者のセッションの無い要求には未認証が返り、何も変わらない。
 func TestVersionJudgingSettingsAreOwnerOnly(t *testing.T) {
 	f := newVersionJudgingFixture(t)
 

@@ -3,12 +3,10 @@ import type * as React from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の progress（radix-nova）を vv のトークンで着せたもの。取り込みや視聴の進み具合
+// Adapted from shadcn/ui radix-nova with shared tokens.
 // （web/registry/rules/components.md「Progress」）。
 //
-// 上流との違い: 帯の長さを `max` に対する割合で求める（上流は max を 100 と決めている）。
-// `value` が null のときは不確定のバー（Radix の data-state="indeterminate"）で、帯の 3 分の 1 を
-// 明滅させる。
+// Scale against max rather than upstream's fixed 100; null renders indeterminate progress.
 
 function Progress({
   className,

@@ -1,41 +1,32 @@
 package domain
 
-// FolderWatchState はフォルダの監視が今どうなっているかである
 type FolderWatchState string
 
 const (
-	// FolderWatchOff は自動の取り込みが切れているか、メディアフォルダが無くて監視するものが無い。
-	FolderWatchOff FolderWatchState = "off"
-	// FolderWatchStarting は監視を張っている最中である。
+	// FolderWatchOff also covers having no registered media folders.
+	FolderWatchOff      FolderWatchState = "off"
 	FolderWatchStarting FolderWatchState = "starting"
-	// FolderWatchActive はすべてのディレクトリを監視している。
-	FolderWatchActive FolderWatchState = "active"
-	// FolderWatchLimited は変更を取りこぼしうる問題がある。
+	FolderWatchActive   FolderWatchState = "active"
+	// FolderWatchLimited means changes may be missed.
 	FolderWatchLimited FolderWatchState = "limited"
 )
 
-// FolderWatchProblemKind は監視が変更をすべて見られると約束できない理由である。
 type FolderWatchProblemKind string
 
 const (
-	// FolderWatchProblemLimit は OS の監視の数の上限で、監視を足せなかった。
-	FolderWatchProblemLimit FolderWatchProblemKind = "watch_limit"
-	// FolderWatchProblemEventsLost は OS が通知を取りこぼした。
-	FolderWatchProblemEventsLost FolderWatchProblemKind = "events_lost"
-	// FolderWatchProblemFolderUnreachable はメディアフォルダに到達できない。
+	FolderWatchProblemLimit             FolderWatchProblemKind = "watch_limit"
+	FolderWatchProblemEventsLost        FolderWatchProblemKind = "events_lost"
 	FolderWatchProblemFolderUnreachable FolderWatchProblemKind = "folder_unreachable"
-	// FolderWatchProblemPermissionDenied はディレクトリを読めない。
-	FolderWatchProblemPermissionDenied FolderWatchProblemKind = "permission_denied"
+	FolderWatchProblemPermissionDenied  FolderWatchProblemKind = "permission_denied"
 )
 
-// FolderWatchProblem は監視の問題である。Path は問題が 1 つのディレクトリに関わるときだけ入る。
+// Path is set only for problems affecting a specific directory.
 type FolderWatchProblem struct {
 	Kind FolderWatchProblemKind
 	Path string
 }
 
-// AutoImportStatus は自動の取り込みの保存された選択と、監視の今の状態である。
-// Problem は State が FolderWatchLimited のときだけ入る。
+// Problem is set only in FolderWatchLimited state.
 type AutoImportStatus struct {
 	Enabled bool
 	State   FolderWatchState

@@ -5,8 +5,6 @@ import (
 	"time"
 )
 
-// TS の録画の番組の選び方。
-
 var broadcastZone = time.FixedZone("JST", 9*60*60)
 
 func broadcastClock(hour, minute int) time.Time {

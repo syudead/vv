@@ -39,31 +39,24 @@ import { Input } from "../ui/shadcn/input";
 import { Spinner } from "../ui/shadcn/spinner";
 import { parentOf } from "./creditRows";
 
-/** maxAliases・maxExternalIds は 1 件が持てる数である。 */
 const maxAliases = 50;
 const maxExternalIds = 20;
 
-/** noParent は親の団体の「None」の値である（Combobox の値は空にできない）。 */
+/** Combobox values cannot be empty, so None needs a sentinel. */
 const noParent = "none";
 
-/** AliasRow は別名の 1 行の値である。 */
 interface AliasRow {
   key: string;
   name: string;
   language: string;
 }
 
-/** Sent は送った一覧の位置から、その行の鍵への対応である（`field` を行へ戻す）。 */
+/** Map submitted array indexes back to stable row keys for field errors. */
 interface Sent {
   aliasKeys: string[];
   idKeys: string[];
 }
 
-/**
- * problemOf は保存の失敗を、出す場所（`control`）と文に分ける。`field` が行の入力を指せば
- * その入力の下、親の団体（`parentId` と親の輪）なら親の欄の下、一覧の数の上限なら欄の
- * 下に出す。どこも指さなければ null（窓の失敗の 1 行に出す）。
- */
 function problemOf(failure: unknown, sent: Sent): FieldProblem | null {
   if (!(failure instanceof RequestFailed)) return null;
   const text = errorText(failure);
@@ -86,23 +79,22 @@ function problemOf(failure: unknown, sent: Sent): FieldProblem | null {
   return null;
 }
 
-/** Edited は窓を開いてから手を入れた欄である。手を入れていない欄は送らない。 */
+/** Submit only fields edited since opening the dialog. */
 interface Edited {
   aliases: boolean;
   ids: boolean;
   parent: boolean;
 }
 
-/** blank は行の入力がすべて空白だけかである。そうした行は送らない（足しただけの行）。 */
+/** Ignore newly added rows whose inputs are all blank. */
 function blank(...values: string[]): boolean {
   return values.every((value) => value.trim() === "");
 }
 
 /**
- * buildPatch は窓の値から `PATCH` の本文を作る。手を入れた欄（`edited`）だけを送り、送る
- * 一覧は丸ごと送る。手を入れていない欄を開いたときの値で送ると、そのあと
- * ほかのタブで変えた値を消すため送らない（サーバーは省いた欄を残す）。空の行は送らず、
- * 言語が空の別名は言語を省く。親は団体のときだけ送り、「None」は `null`。
+ * Patch only edited fields to preserve concurrent changes in other tabs; edited lists replace
+ * their entire value. Omit blank rows and languages; only organizations send parent, with null for
+ * None.
  */
 function buildPatch(
   kind: CreditKind,
@@ -139,14 +131,7 @@ function buildPatch(
   };
 }
 
-/**
- * CreditDetailsDialog は人物・団体の詳細の窓 `Edit "{name}"` である。別名（言語つき、50 件まで）、外部 ID（20 件まで）、団体
- * だけ親の団体を持ち、1 回の「Save」で手を入れた一覧を丸ごと `PATCH` する。名前はここに
- * 無い（改名は行で行う）。
- *
- * `field` つきの `400` と `409 external_id_taken` はその行の入力の下か親の欄の下に出し、
- * 窓は開いたまま。対象がもう無ければ `onStale`。
- */
+/** Keep field errors in the open dialog; missing records call onStale. */
 export default function CreditDetailsDialog({
   kind,
   credit,
@@ -285,10 +270,6 @@ export default function CreditDetailsDialog({
   );
 }
 
-/**
- * AliasRows は別名の行（`Alias` と `Language` と ×）と「Add alias」である。`sm` 未満では
- * 2 つの入力を縦に重ねる。
- */
 function AliasRows({ rows, onChange, saving, problem, onEnter }: RowsProps<AliasRow>) {
   const d = t.credits.details;
   const focusAdded = useFocusAdded();
@@ -349,9 +330,8 @@ function AliasRows({ rows, onChange, saving, problem, onEnter }: RowsProps<Alias
 }
 
 /**
- * ParentField は団体の親を選ぶ registry の `Combobox` である。候補は窓を開いたときに
- * `GET /api/organizations`（`limit` なし）で読む、この団体のほかのすべての団体で、先頭に
- * 「None」を置く。読み終えるまでは今の親だけを候補にして押せなくする。
+ * Load all other organizations as parent candidates; until loaded, show only the current parent
+ * and disable selection.
  */
 function ParentField({
   credit,

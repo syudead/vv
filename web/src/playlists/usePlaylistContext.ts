@@ -17,18 +17,12 @@ import {
   type PlaylistQuery,
 } from "./playlistPlayback";
 
-/** PlaylistPanelState はパネルに出すプレイリストの応答の状態である。 */
 export type PlaylistPanelState =
   { kind: "loading" } | { kind: "ready"; playlist: Playlist } | { kind: "failed" };
 
 /**
- * PlaylistContextStatus は動画ページのプレイリストの文脈の段階である。
- *
- * - `off`: クエリが無いか、ゲスト。ページは今までどおり
- * - `reading`: 開いてから最初の応答まで。行と矢印は描かない
- * - `ready`: 再生の応答がある。行・矢印・予告・終わりはこれに従う
- * - `failed`: 最初の再生の読みが 404 以外で失敗した。パネルが Retry を出す
- * - `dropped`: どちらかの読みが 404。文脈を落とし、今の動画の後で止まる
+ * Missing context or guests stay off; either request's 404 drops context and stops after the
+ * current video. Initial failures expose Retry, while ready drives playback navigation.
  */
 export type PlaylistContextStatus = "off" | "reading" | "ready" | "failed" | "dropped";
 
@@ -36,9 +30,8 @@ export interface PlaylistContext {
   status: PlaylistContextStatus;
   playback: PlaylistPlayback | undefined;
   panel: PlaylistPanelState;
-  /** 最後に読み終えた `readKey`。ページが渡した値と違う間は、読み直しの途中である。 */
+  /** A mismatch with the current readKey means refresh is still pending. */
   settledKey: number;
-  /** パネルの Retry。2 つの応答を組として読み直す。 */
   retry: () => void;
 }
 
@@ -58,15 +51,9 @@ function isNotFound(reason: unknown): boolean {
 }
 
 /**
- * usePlaylistContext は、URL の `?playlist=&item=` と再生の応答から、動画ページの
- * プレイリストの文脈を作る（plan の Structure decision）。
- *
- * - 所有者だけが読む。ゲストとクエリの無いときは何も送らない（R-8）。
- * - 開いたとき・`readKey` が変わったとき（動画の終わり、予告が次の動画の消えたのを知ったとき）
- *   に `GET /api/playlists/{id}/playback` と `GET /api/playlists/{id}` を同時に読み、
- *   `updatedAt` のそろった組だけを使う。そろわなければ上限まで読み直す（One order）。
- * - どちらかが 404 なら文脈を落とし、トーストを 1 度出す。以後はその項目について読まない。
- * - 読み直しの間は前の応答を保つ。別の項目へ移っても、同じプレイリストならパネルの行を保つ。
+ * Owners read playback and panel together, retrying version mismatches up to the limit. A 404
+ * drops context until reload; retain prior responses during refresh and panel rows within the same
+ * playlist.
  */
 export function usePlaylistContext({
   query,
@@ -94,7 +81,7 @@ export function usePlaylistContext({
   useEffect(() => {
     if (!active) return;
     const current = latest.current;
-    // 落とした文脈は読み直さない（再読み込みで読み直す）。
+    // Do not reread dropped context until a page reload.
     if (current?.key === key && current.status === "dropped") return;
     const controller = new AbortController();
     const signal = controller.signal;
@@ -129,8 +116,7 @@ export function usePlaylistContext({
           return;
         }
         if (playback.status === "rejected") {
-          // 一時的な失敗。前の応答があれば保ち、無ければパネルが Retry を出す。Retry の読みが
-          // 失敗したときは、パネルを読み込み中のまま残さず、もう一度 Retry を出す。
+          // Retain previous responses on transient failure; otherwise show Retry again, including failed retries.
           commit((previous) =>
             previous?.playback !== undefined
               ? {
@@ -153,9 +139,7 @@ export function usePlaylistContext({
           return;
         }
         if (playlist.status === "rejected") {
-          // 再生とパネルは 1 つの組で示す（One order）。前の組がそろっていればそれを保ち、
-          // 新しい再生の応答だけを古いパネルの並びと合わせない。前の組が無ければ、新しい
-          // 再生の応答に従い、パネルは Retry を出す。
+          // Never combine new playback with an old panel order; retain an agreeing prior pair or show panel Retry.
           commit((previous) =>
             previous?.playback !== undefined && previous.panel.kind === "ready"
               ? { ...previous, settledKey: readKey }
@@ -187,11 +171,10 @@ export function usePlaylistContext({
     };
     void run();
     return () => controller.abort();
-    // retryToken はパネルの Retry で読み直すためだけに入れる。
+    // retryToken triggers reads only for the panel's Retry action.
   }, [active, itemId, key, playlistId, readKey, retryToken, videoId]);
 
   const retry = useCallback(() => {
-    // 読み直す間はパネルを読み込み中の形にする。再生の応答の無い失敗は、最初の読みと同じ段階へ戻す。
     setData((previous) =>
       previous === null
         ? null
@@ -222,7 +205,7 @@ export function usePlaylistContext({
       retry,
     };
   }
-  // 別の項目へ移った直後。同じプレイリストなら、応答が来るまでパネルの行を保つ。
+  // Retain panel rows while moving between items in the same playlist.
   return {
     status: "reading",
     playback: undefined,

@@ -1,10 +1,6 @@
 package store
 
-// グループの編集。GroupStore は書き込みの取引の中で
-// 入力を読み、domain の規則（ValidateGroupName・ValidateNesting）で決める。要求が名指した動画・
-// グループ・項目のどれかが無ければ domain.ErrGroupTargetNotFound で、取引を巻き戻すので何も
-// 書かない。どの操作も変えたグループの更新日時を進め、それらとその祖先の id を
-// 確定後に domain.GroupsChanged で知らせる（R-13）。
+// Group edits revalidate targets atomically, update changed groups, and notify them and their ancestors only after commit.
 
 import (
 	"context"
@@ -17,11 +13,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// groupNow は編集の時刻の元である。
 var groupNow = time.Now
 
-// CreateGroup は名前 name（domain.ValidateGroupName で整える）の手で作るグループを作り、add の
-// 動画、次にグループを要求の順に項目にする。origin_folder は持たない。
+// CreateGroup adds videos before child groups, preserving request order and leaving origin_folder unset.
 func (s *GroupStore) CreateGroup(ctx context.Context, name string, add domain.GroupAdd) (domain.Group, error) {
 	name, err := domain.ValidateGroupName(name)
 	if err != nil {
@@ -43,8 +37,6 @@ func (s *GroupStore) CreateGroup(ctx context.Context, name string, add domain.Gr
 	return s.summary(ctx, id)
 }
 
-// insertManualGroup は整えた名前 name の、項目の無い手で作るグループの行を入れ、その id を返す。
-// origin_folder は持たない。CreateGroup と「グループにする」（OrganizeStore.Group）が共有する。
 func insertManualGroup(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
 	now := groupNow().UnixMilli()
 	result, err := tx.ExecContext(ctx, `insert into groups (name, title_key, created_at, updated_at) values (?, ?, ?, ?)`,
@@ -59,8 +51,6 @@ func insertManualGroup(ctx context.Context, tx *sql.Tx, name string) (int64, err
 	return id, nil
 }
 
-// RenameGroup はグループ id の名前を name（domain.ValidateGroupName で整える）にし、title_key も
-// 合わせる。無ければ domain.ErrGroupNotFound。
 func (s *GroupStore) RenameGroup(ctx context.Context, id int64, name string) (domain.Group, error) {
 	name, err := domain.ValidateGroupName(name)
 	if err != nil {
@@ -75,9 +65,6 @@ func (s *GroupStore) RenameGroup(ctx context.Context, id int64, name string) (do
 	return s.summary(ctx, id)
 }
 
-// renameGroup はグループ id の名前を、整えた名前 name にし、title_key も合わせて更新日時を進め、
-// それとその祖先の id を返す。無ければ domain.ErrGroupNotFound。GroupStore.RenameGroup と、
-// 取り消しのトークン付きの名前変更（OrganizeStore.RenameGroup）が共有する。
 func renameGroup(ctx context.Context, tx *sql.Tx, id int64, name string) ([]int64, error) {
 	if _, err := groupSummary(ctx, tx, id); err != nil {
 		return nil, err
@@ -89,11 +76,7 @@ func renameGroup(ctx context.Context, tx *sql.Tx, id int64, name string) ([]int6
 	return touchedGroupsWithAncestors(ctx, tx, []int64{id})
 }
 
-// AddGroupItems は add の動画、次にグループを、グループ id の末尾に要求の順で足す。既に項目に
-// あるものは飛ばす。所有者が外したフォルダ由来のメンバーは除外を消し、手で足した項目
-// （from_folder = 0）として戻す。グループ id が無ければ domain.ErrGroupNotFound、add の動画か
-// グループが無ければ domain.ErrGroupTargetNotFound、add のグループが id 自身か id の祖先なら
-// domain.ErrGroupCycle で、どれも何も書かない。何も足さなければ更新日時も進めず、知らせない。
+// AddGroupItems skips existing members and restores excluded folder members as manual items; no additions means no timestamp or event.
 func (s *GroupStore) AddGroupItems(ctx context.Context, id int64, add domain.GroupAdd) (domain.Group, error) {
 	err := s.write(ctx, "add to the group", func(tx *sql.Tx) ([]int64, error) {
 		if _, err := groupSummary(ctx, tx, id); err != nil {
@@ -111,12 +94,7 @@ func (s *GroupStore) AddGroupItems(ctx context.Context, id int64, add domain.Gro
 	return s.summary(ctx, id)
 }
 
-// RemoveGroupItems はグループ id の項目 itemIDs を消して詰め直す。自動グループのフォルダ由来の
-// 項目（from_folder = 1）は除外を書き、作り直しで戻らないようにする。動画・子グループそのものには
-// 触れない。項目が 1 つも残らなければ、同じ取引でそのグループを解散し（DissolveGroup と同じ道筋。
-// 自動グループなら ungroup を書き、空になった親も解散する）、dissolved に true を返す。グループが無ければ
-// domain.ErrGroupNotFound、項目のどれかがそのグループに無ければ domain.ErrGroupTargetNotFound で、
-// 何も消さない。itemIDs が空なら更新日時も進めず、知らせない。
+// RemoveGroupItems records folder exclusions and dissolves empty groups and ancestors atomically, preserving the videos and child groups.
 func (s *GroupStore) RemoveGroupItems(ctx context.Context, id int64, itemIDs []int64) (group domain.Group, dissolved bool, err error) {
 	err = s.write(ctx, "remove the group items", func(tx *sql.Tx) ([]int64, error) {
 		if _, err := groupSummary(ctx, tx, id); err != nil {
@@ -137,10 +115,7 @@ func (s *GroupStore) RemoveGroupItems(ctx context.Context, id int64, itemIDs []i
 	return group, false, err
 }
 
-// MoveGroupItem はグループ id の項目 itemID を、項目 afterItemID のすぐ後ろへ移し（nil なら
-// 先頭）、詰め直す。グループが無ければ
-// domain.ErrGroupNotFound、どちらかの項目がそのグループに無ければ domain.ErrGroupTargetNotFound。
-// itemID の後ろへ自分を移すのは何も変えない（API はその要求を 400 にする）。
+// MoveGroupItem places an item after the target, or first for nil; moving after itself is a no-op.
 func (s *GroupStore) MoveGroupItem(ctx context.Context, id, itemID int64, afterItemID *int64) error {
 	return s.write(ctx, "move the group item", func(tx *sql.Tx) ([]int64, error) {
 		if _, err := groupSummary(ctx, tx, id); err != nil {
@@ -157,22 +132,14 @@ func (s *GroupStore) MoveGroupItem(ctx context.Context, id, itemID int64, afterI
 	})
 }
 
-// DissolveGroup はグループ id を解散する。グループの行と項目を消し、子グループと
-// 動画は残し、親からその項目を消して親を詰め直す。自動グループならそのフォルダに ungroup を書き、
-// 同じ取引で索引を作り直すので、作り直しでもう作られない。それで項目が 1 つも残らなくなった親も、
-// 祖先へ向かって同じ取引で解散する（dissolveGroup）。無ければ domain.ErrGroupNotFound。
+// DissolveGroup preserves children and videos, dissolves newly empty ancestors, and prevents automatic folder groups from reappearing.
 func (s *GroupStore) DissolveGroup(ctx context.Context, id int64) error {
 	return s.write(ctx, "dissolve the group", func(tx *sql.Tx) ([]int64, error) {
 		return dissolveGroupAndRebuild(ctx, tx, id)
 	})
 }
 
-// TagGroup はグループ id をタグにする。グループの名前を
-// domain.NormalizeTagName に通し、名前かシノニムで引けたタグを使うか新しく作り、子孫の全動画の
-// 項目の鍵に手で付け（video_tags）、グループを解散する。1 つの取引で行う。名前がタグ名の規則に
-// 合わなければ domain.ErrInvalidTagName、無ければ domain.ErrGroupNotFound で、何も書かない。
-// 解散で項目が 1 つも残らなくなった親も解散する（DissolveGroup と同じ）。動画のタグを変える所有者の操作なので、
-// タグが実際に付いた鍵ごとに tag_attach の記録を書き、確定後に domain.ActivityChanged も知らせる
+// TagGroup atomically tags all descendant videos with its normalized name, records owner edits, and dissolves the group and empty ancestors.
 func (s *GroupStore) TagGroup(ctx context.Context, id int64) (domain.GroupTag, error) {
 	var out domain.GroupTag
 	err := writeWithEvents(ctx, s.db, "turn the group into a tag", func(tx *sql.Tx) ([]domain.Event, error) {
@@ -213,14 +180,11 @@ func (s *GroupStore) TagGroup(ctx context.Context, id int64) (domain.GroupTag, e
 	return out, nil
 }
 
-// write は fn を 1 つの書き込み取引で行い、確定できたときだけ fn が返したグループの id を
-// domain.GroupsChanged で知らせる。fn が誤りを返せば巻き戻し、何も書かない。
+// Run the edit atomically and notify changed groups only after commit.
 func (s *GroupStore) write(ctx context.Context, verb string, fn func(*sql.Tx) ([]int64, error)) error {
 	return writeGroups(ctx, s.db, verb, fn)
 }
 
-// writeGroups は GroupStore.write の本体で、グループを変える役割（GroupStore・OrganizeStore）が
-// 共有する。
 func writeGroups(ctx context.Context, db *DB, verb string, fn func(*sql.Tx) ([]int64, error)) error {
 	return writeWithEvents(ctx, db, verb, func(tx *sql.Tx) ([]domain.Event, error) {
 		changed, err := fn(tx)
@@ -228,9 +192,7 @@ func writeGroups(ctx context.Context, db *DB, verb string, fn func(*sql.Tx) ([]i
 	})
 }
 
-// writeWithEvents は fn を 1 つの書き込み取引で行い、確定できたときだけ fn が返した知らせを
-// 発行する。知らせにスマートフォルダの一致を変えうるもの（グループの変化・束ね）があれば、すべての
-// フォルダを名指す知らせも発行する（commitEvents）。fn が誤りを返せば巻き戻し、何も書かない。
+// Publish events only after commit; match-changing edits also invalidate smart folders.
 func writeWithEvents(ctx context.Context, db *DB, verb string, fn func(*sql.Tx) ([]domain.Event, error)) error {
 	tx, err := db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -247,12 +209,10 @@ func writeWithEvents(ctx context.Context, db *DB, verb string, fn func(*sql.Tx) 
 	return nil
 }
 
-// summary はグループ id の要約を、確定した後の状態から読む。
 func (s *GroupStore) summary(ctx context.Context, id int64) (domain.Group, error) {
 	return committedGroupSummary(ctx, s.db, id)
 }
 
-// committedGroupSummary は GroupStore.summary の本体で、グループを変える役割が共有する。
 func committedGroupSummary(ctx context.Context, db *DB, id int64) (domain.Group, error) {
 	tx, err := db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -262,10 +222,9 @@ func committedGroupSummary(ctx context.Context, db *DB, id int64) (domain.Group,
 	return groupSummary(ctx, tx, id)
 }
 
-// groupSummary はグループ id の要約を読む。無ければ domain.ErrGroupNotFound。
 func groupSummary(ctx context.Context, tx *sql.Tx, id int64) (domain.Group, error) {
 	var group domain.Group
-	// 登録フォルダ `/` の自動グループの鍵は空文字なので、自動かどうかは NULL かどうかで分ける。
+	// The root folder's automatic key is empty, so distinguish automatic groups by NULL rather than an empty string.
 	err := tx.QueryRowContext(ctx, `select g.id, g.name, coalesce(g.origin_folder, ''), g.origin_folder is not null, `+
 		`g.updated_at, `+groupFavoritedAtExpr("g")+` is not null from groups g where g.id = ?`, id).
 		Scan(&group.ID, &group.Name, &group.OriginFolder, &group.Automatic, &group.UpdatedAt, &group.Favorite)
@@ -278,7 +237,6 @@ func groupSummary(ctx context.Context, tx *sql.Tx, id int64) (domain.Group, erro
 	return group, nil
 }
 
-// touchedGroupsWithAncestors はグループ ids の更新日時を進め、それらとその祖先の id を返す。
 func touchedGroupsWithAncestors(ctx context.Context, tx *sql.Tx, ids []int64) ([]int64, error) {
 	if err := touchGroups(ctx, tx, ids, groupNow().UnixMilli()); err != nil {
 		return nil, err
@@ -286,9 +244,7 @@ func touchedGroupsWithAncestors(ctx context.Context, tx *sql.Tx, ids []int64) ([
 	return groupsWithAncestors(ctx, tx, ids)
 }
 
-// appendGroupMembers は add の動画、次にグループを、グループ id の末尾に要求の順で足し、足した
-// 項目の数を返す（resolveGroupMembers・appendGroupMemberList）。引けない動画か無いグループは
-// domain.ErrGroupTargetNotFound、入れ子の循環は domain.ErrGroupCycle で、呼び出し側が取引を巻き戻す。
+// Resolve and append videos before groups in request order; missing targets or cycles roll back the transaction.
 func appendGroupMembers(ctx context.Context, tx *sql.Tx, id int64, add domain.GroupAdd) (int, error) {
 	refs := make([]domain.OrganizeRef, 0, len(add.VideoIDs)+len(add.GroupIDs))
 	for _, videoID := range add.VideoIDs {
@@ -304,16 +260,12 @@ func appendGroupMembers(ctx context.Context, tx *sql.Tx, id int64, add domain.Gr
 	return appendGroupMemberList(ctx, tx, id, members)
 }
 
-// groupMember は項目にする動画かグループ 1 つである。動画なら Key（利用者データの鍵）、グループ
-// なら Child（グループの id）を持つ。
 type groupMember struct {
 	Key   string
 	Child int64
 }
 
-// resolveGroupMembers はカード refs を並びの順に項目にするものへ引き直し、重複を除いて返す。動画の
-// id は利用者データの鍵へ引き直すので、1 つの集まりの 2 つのバージョンは 1 つになる。いまライブラリ
-// に無い動画か無いグループが 1 つでもあれば domain.ErrGroupTargetNotFound である。
+// Resolve and deduplicate in card order; bundle versions collapse to one user-data key, and any missing target fails the operation.
 func resolveGroupMembers(ctx context.Context, tx *sql.Tx, refs []domain.OrganizeRef) ([]groupMember, error) {
 	var videoIDs []int64
 	for _, ref := range refs {
@@ -340,8 +292,6 @@ func resolveGroupMembers(ctx context.Context, tx *sql.Tx, refs []domain.Organize
 	return members, nil
 }
 
-// resolveGroupMember はカード ref 1 枚を項目にするものへ引き直す。動画は keys（動画の id から鍵）で
-// 引く。
 func resolveGroupMember(ctx context.Context, tx *sql.Tx, ref domain.OrganizeRef, keys map[int64]string) (groupMember, error) {
 	switch ref.Kind {
 	case domain.OrganizeVideo:
@@ -359,9 +309,7 @@ func resolveGroupMember(ctx context.Context, tx *sql.Tx, ref domain.OrganizeRef,
 	return groupMember{}, fmt.Errorf("unknown card kind %q", ref.Kind)
 }
 
-// appendGroupMemberList は members を並びの順にグループ id の末尾に足し、足した項目の数を返す。
-// 既に項目にあるものは飛ばす。所有者が外したフォルダ由来のメンバーは除外を消し、手で足した項目と
-// して戻す。グループが id 自身か id の祖先なら domain.ErrGroupCycle で、呼び出し側が取引を巻き戻す。
+// Restore excluded folder members as manual items; skip duplicates and reject nesting cycles.
 func appendGroupMemberList(ctx context.Context, tx *sql.Tx, id int64, members []groupMember) (int, error) {
 	edges, err := groupEdges(ctx, tx)
 	if err != nil {
@@ -390,9 +338,6 @@ func appendGroupMemberList(ctx context.Context, tx *sql.Tx, id int64, members []
 	return next - start, nil
 }
 
-// appendGroupContent は利用者データの鍵 key の動画を、グループ id の位置 position に手で足す項目と
-// して入れ、次の位置を返す。所有者が外したフォルダ由来のメンバーなら除外を消す。既に項目にあれば
-// 何も足さず、position をそのまま返す。
 func appendGroupContent(ctx context.Context, tx *sql.Tx, id int64, key string, position int) (int, error) {
 	if _, err := tx.ExecContext(ctx, `delete from group_exclusions where group_id = ? and content_key = ?`, id, key); err != nil {
 		return 0, fmt.Errorf("cannot add to the group: %w", err)
@@ -400,9 +345,7 @@ func appendGroupContent(ctx context.Context, tx *sql.Tx, id int64, key string, p
 	return insertGroupItem(ctx, tx, id, "content_key", key, position)
 }
 
-// insertGroupItem はグループ id の位置 position に、列 column（content_key か child_id。定数で
-// 利用者の入力ではない）が value の手で足す項目を入れ、次の位置を返す。既に項目にあれば何も
-// 変えず、position をそのまま返す。
+// The column is a trusted constant, never user input; duplicates do not consume a position.
 func insertGroupItem(ctx context.Context, tx *sql.Tx, id int64, column string, value any, position int) (int, error) {
 	result, err := tx.ExecContext(ctx, `insert or ignore into group_items (group_id, `+column+`, position, from_folder)
 		values (?, ?, ?, 0)`, id, value, position)
@@ -416,7 +359,6 @@ func insertGroupItem(ctx context.Context, tx *sql.Tx, id int64, column string, v
 	return position + int(affected), nil
 }
 
-// groupEdges は今の入れ子（子グループの項目）をすべて読む。
 func groupEdges(ctx context.Context, tx *sql.Tx) ([]domain.GroupEdge, error) {
 	rows, err := tx.QueryContext(ctx, `select group_id, child_id from group_items where child_id is not null`)
 	if err != nil {
@@ -437,8 +379,7 @@ func groupEdges(ctx context.Context, tx *sql.Tx) ([]domain.GroupEdge, error) {
 	return edges, nil
 }
 
-// removeGroupItem はグループ id の項目 itemID を消す。フォルダ由来の項目なら除外を書く。その
-// グループに無ければ domain.ErrGroupTargetNotFound。詰め直しは呼び出し側が行う。
+// Record exclusions for folder members; the caller compacts positions after removal.
 func removeGroupItem(ctx context.Context, tx *sql.Tx, id, itemID int64) error {
 	var key sql.NullString
 	var fromFolder bool
@@ -462,10 +403,7 @@ func removeGroupItem(ctx context.Context, tx *sql.Tx, id, itemID int64) error {
 	return nil
 }
 
-// removeGroupItems はグループ id の項目 itemIDs を removeGroupItem で消す。項目が 1 つも残らなければ
-// そのグループを解散し（dissolveGroupAndRebuild）、dissolved に true を返す。残れば詰め直して更新日時を
-// 進める。変えたグループとその祖先の id を返す。項目のどれかがそのグループに無ければ
-// domain.ErrGroupTargetNotFound で、呼び出し側が取引を巻き戻す。
+// Dissolve empty groups atomically, otherwise compact positions; missing items roll back the operation.
 func removeGroupItems(ctx context.Context, tx *sql.Tx, id int64, itemIDs []int64) (changed []int64, dissolved bool, err error) {
 	for _, itemID := range itemIDs {
 		if err := removeGroupItem(ctx, tx, id, itemID); err != nil {
@@ -487,7 +425,6 @@ func removeGroupItems(ctx context.Context, tx *sql.Tx, id int64, itemIDs []int64
 	return changed, false, err
 }
 
-// countGroupItems はグループ id の項目の数を返す。
 func countGroupItems(ctx context.Context, tx *sql.Tx, id int64) (int, error) {
 	var count int
 	if err := tx.QueryRowContext(ctx, `select count(*) from group_items where group_id = ?`, id).Scan(&count); err != nil {
@@ -496,8 +433,7 @@ func countGroupItems(ctx context.Context, tx *sql.Tx, id int64) (int, error) {
 	return count, nil
 }
 
-// dissolveGroupAndRebuild はグループ id を解散し（dissolveGroup。空になった親も解散する）、自動
-// グループを解散したなら書いた ungroup をフォルダの索引に映すため同じ取引で作り直す。変えたグループとその祖先の id を返す。
+// Dissolving automatic groups writes ungroup overrides that must reach the index in the same transaction.
 func dissolveGroupAndRebuild(ctx context.Context, tx *sql.Tx, id int64) ([]int64, error) {
 	changed, automatic, err := dissolveGroup(ctx, tx, id)
 	if err != nil || !automatic {
@@ -510,17 +446,12 @@ func dissolveGroupAndRebuild(ctx context.Context, tx *sql.Tx, id int64) ([]int64
 	return normalizeIDs(append(changed, rebuilt...)), nil
 }
 
-// dissolveGroup はグループ id を dissolveOneGroup で解散し、それで項目が 1 つも残らなくなった親も
-// 同じ道筋で解散する。祖先へ向かって繰り返す（項目を取り除いて空になったグループと同じく、空の
-// グループは残さない。docs/design-docs/catalog-organization.md「Edits」）。解散したグループと、元の親とその
-// 祖先の id と、自動グループを 1 つでも解散したかを返す。id が無ければ domain.ErrGroupNotFound。
-// フォルダの索引の作り直しは呼び出し側が行う。
+// Dissolve newly empty ancestors recursively; the caller rebuilds the folder index when automatic groups were removed.
 func dissolveGroup(ctx context.Context, tx *sql.Tx, id int64) ([]int64, bool, error) {
 	return dissolveGroupKeeping(ctx, tx, id, 0)
 }
 
-// dissolveGroupKeeping は dissolveGroup と同じく解散するが、空になってもグループ keep（0 なら無し）は
-// 解散しない（マージ先を残すため）。
+// Preserve keep even when empty so a merge target survives dissolution.
 func dissolveGroupKeeping(ctx context.Context, tx *sql.Tx, id, keep int64) ([]int64, bool, error) {
 	var changed []int64
 	automatic := false
@@ -540,7 +471,6 @@ func dissolveGroupKeeping(ctx context.Context, tx *sql.Tx, id, keep int64) ([]in
 	return normalizeIDs(changed), automatic, nil
 }
 
-// emptyGroups はグループ ids のうち、項目が 1 つも無いものの id を返す。
 func emptyGroups(ctx context.Context, tx *sql.Tx, ids []int64) ([]int64, error) {
 	var out []int64
 	for _, id := range ids {
@@ -555,18 +485,13 @@ func emptyGroups(ctx context.Context, tx *sql.Tx, ids []int64) ([]int64, error) 
 	return out, nil
 }
 
-// dissolvedGroup は dissolveOneGroup が 1 つのグループを解散した結果である。
 type dissolvedGroup struct {
-	changed   []int64 // 解散したグループと、元の親とその祖先の id
-	parents   []int64 // 元の親の id
-	automatic bool    // 自動グループだったか
+	changed   []int64
+	parents   []int64
+	automatic bool
 }
 
-// dissolveOneGroup はグループ id の行と項目を消し（R-4）、子グループと動画は残す。親からその項目を
-// 消して親を詰め直し、親の更新日時を進める。グループのお気に入りとプレイリストの項目も外部キーで
-// 消え、項目を失ったプレイリストを詰め直して更新日時を進める。
-// 自動グループなら同じ取引でそのフォルダに ungroup を書く。無ければ domain.ErrGroupNotFound。
-// 項目を失った親の解散は dissolveGroup が行う。
+// Preserve child groups and videos, compact parent and playlist positions, and suppress recreation of automatic groups.
 func dissolveOneGroup(ctx context.Context, tx *sql.Tx, id int64) (dissolvedGroup, error) {
 	group, err := groupSummary(ctx, tx, id)
 	if err != nil {
@@ -584,8 +509,7 @@ func dissolveOneGroup(ctx context.Context, tx *sql.Tx, id int64) (dissolvedGroup
 	if err != nil {
 		return dissolvedGroup{}, fmt.Errorf("cannot read the playlists: %w", err)
 	}
-	// 子グループの項目（child_id）、このグループの項目、お気に入り、プレイリストの項目は外部キーの
-	// on delete cascade で消える。
+	// Foreign-key cascades remove child references, items, favorites and playlist entries.
 	if _, err := tx.ExecContext(ctx, `delete from groups where id = ?`, id); err != nil {
 		return dissolvedGroup{}, fmt.Errorf("cannot dissolve the group: %w", err)
 	}
@@ -611,8 +535,7 @@ func dissolveOneGroup(ctx context.Context, tx *sql.Tx, id int64) (dissolvedGroup
 	return dissolvedGroup{changed: normalizeIDs(append(changed, id)), parents: parents, automatic: group.Automatic}, nil
 }
 
-// dissolveFolderGroup はフォルダ folderPath の自動グループがあれば dissolveGroup で解散し、変えた
-// グループとその祖先の id を返す。無ければ何もしない。フォルダの索引の作り直しは呼び出し側が行う。
+// Dissolve the automatic folder group if present; the caller rebuilds the folder index.
 func dissolveFolderGroup(ctx context.Context, tx *sql.Tx, folderPath string) ([]int64, error) {
 	id, err := folderGroupID(ctx, tx, folderPath)
 	if err != nil || id == 0 {
@@ -622,7 +545,6 @@ func dissolveFolderGroup(ctx context.Context, tx *sql.Tx, folderPath string) ([]
 	return changed, err
 }
 
-// folderGroupID はフォルダ folderPath の自動グループの id を返す。無ければ 0。
 func folderGroupID(ctx context.Context, tx *sql.Tx, folderPath string) (int64, error) {
 	var id int64
 	err := tx.QueryRowContext(ctx, `select id from groups where origin_folder = ?`, domain.FolderKey(folderPath)).Scan(&id)
@@ -635,7 +557,6 @@ func folderGroupID(ctx context.Context, tx *sql.Tx, folderPath string) (int64, e
 	return id, nil
 }
 
-// descendantContentKeys はグループ id とその子孫のグループの動画の項目の鍵を、重複なく返す。
 func descendantContentKeys(ctx context.Context, tx *sql.Tx, id int64) ([]string, error) {
 	rows, err := tx.QueryContext(ctx, `with recursive down(id) as (
 			select ?1

@@ -10,14 +10,9 @@ import {
   type Tag,
 } from "../api/tags";
 
-// 絞り込みのチップとスマートフォルダの条件の欄が名前を引くための読み込み
-// （ライブラリの「Filtering by」の行と docs/design-docs/catalog-organization.md「Conditions」）。
-
-/** useTagNames は共有のタグの一覧を読み、絞り込み中のタグの名前を引けるようにする。 */
 export function useTagNames(tagIds: readonly number[]): Map<number, Tag> {
   const [allTags, setAllTags] = useState<Tag[] | undefined>(currentTags());
-  // 開いたときの確かめ直し（`revalidateTags`）が返ったか。それより前の一覧（古い保持）で
-  // 足りない id を数えると、確かめ直しの取得と並べて全件をもう一度取ってしまう。
+  // Wait for mount revalidation before treating cached missing IDs as deleted.
   const [revalidated, setRevalidated] = useState(false);
   useEffect(() => {
     let alive = true;
@@ -37,9 +32,8 @@ export function useTagNames(tagIds: readonly number[]): Map<number, Tag> {
     };
   }, []);
 
-  // 確かめ直しのあとも共有の一覧に無いタグで絞り込んでいたら（使い回した一覧より後に
-  // 別のタブや画面で作られたタグのカードを押したときなど）、一覧を取り直して名前を引く。消えたタグで取り直しを
-  // 繰り返さないよう、取り直しを求めた id は覚えておく。
+  // Refresh once per missing ID: it may have been created after the cached list loaded.
+  // Remember missing IDs to avoid refetch loops for deleted tags.
   const refreshedFor = useRef(new Set<number>());
   useEffect(() => {
     if (!revalidated || allTags === undefined) return;
@@ -55,11 +49,7 @@ export function useTagNames(tagIds: readonly number[]): Map<number, Tag> {
   return new Map((allTags ?? []).map((tag) => [tag.id, tag]));
 }
 
-/**
- * useCreditName は人物か団体の名前を `GET /api/people/{id}`・`GET /api/organizations/{id}`
- * で読む。届くまでは undefined。`404` なら `onGone` を呼ぶ（ほかの失敗では名前の代わりの
- * Skeleton のまま、タグの一覧が読めないときのタグのチップと同じ）。
- */
+/** Return undefined while loading; only a 404 calls onGone, while other failures keep the skeleton. */
 export function useCreditName(
   kind: CreditKind,
   id: number,

@@ -132,7 +132,7 @@ describe("VideoFacts", () => {
     let copied = "";
     const execCommand = vi.fn(() => {
       const field = document.querySelector("textarea");
-      // 実際のブラウザでは select() で入力欄にフォーカスが移る。jsdom は移さないので模す。
+      // jsdom does not focus inputs on select() as browsers do.
       field?.focus();
       copied = field?.value ?? "";
       return true;
@@ -148,7 +148,6 @@ describe("VideoFacts", () => {
     expect(execCommand).toHaveBeenCalledWith("copy");
     expect(copied).toBe("/media/a/b.mp4");
     expect(document.querySelector("textarea")).toBeNull();
-    // 選ぶために入力欄へ移ったフォーカスを、押したボタンへ戻す。
     expect(document.activeElement).toBe(button);
   });
 
@@ -196,7 +195,7 @@ describe("VideoFacts", () => {
   });
 
   describe("日付の項目", () => {
-    // 日時はブラウザのタイムゾーンで表すので、その日の正午を渡して日付が変わらないようにする。
+    // Use noon to avoid a date change when formatting in the browser's timezone.
     const added = new Date(2026, 8, 20, 12, 0).toISOString();
     const edited = new Date(2026, 8, 27, 15, 4).toISOString();
     const created = new Date(2026, 6, 3, 9, 30).toISOString();
@@ -232,7 +231,6 @@ describe("VideoFacts", () => {
       expect(dateButton("Created Jul 3, 2026").title).toBe(
         `Created ${formatDateTime(created)}`,
       );
-      // 長さとサイズは引き金にしない。
       expect(
         within(screen.getByRole("list", { name: "File details" })).getAllByRole("button"),
       ).toHaveLength(3);

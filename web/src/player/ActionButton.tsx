@@ -5,10 +5,7 @@ import { cn } from "../lib/cn";
 import { Button } from "../ui/shadcn/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 
-/**
- * ActionButton は情報の行の右端の、アイコンだけの操作である。お気に入り（Toggle の `sm`）と
- * 同じ大きさ（`icon-sm`）にそろえ、名前をツールチップでも出す。
- */
+/** Match the favorite toggle's icon size and expose the action name in a tooltip. */
 export default function ActionButton({
   label,
   className,

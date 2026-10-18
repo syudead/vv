@@ -131,28 +131,18 @@ import {
 
 const skeletonCount = 12;
 
-/** libraryGroupItem は「Make a group」の新しいグループの項目である。 */
 function libraryGroupItem(group: LibraryGroup): LibraryItem {
   return { kind: "group", group };
 }
 
-/** itemGroup は項目がグループならそのグループである。 */
 function itemGroup(item: LibraryItem): LibraryGroup | undefined {
   return item.kind === "group" ? item.group : undefined;
 }
 
-/**
- * withSmartFolderCards は一覧をスマートフォルダのカードの値の持ち主で包む。カードの値は
- * 画面に入ったカードだけを読む。
- */
 function withSmartFolderCards(content: ReactNode) {
   return <SmartFolderCardsProvider>{content}</SmartFolderCardsProvider>;
 }
 
-/**
- * libraryConditioned は一覧を条件で絞っているか（共有の条件・タグ・人物と団体・タグの種類と、
- * 追加日と長さ）を返す。
- */
 function libraryConditioned(filter: LibraryFilter): boolean {
   return (
     hasTagConditions(filter.criteria, filter.tagIds, filter.credits) ||
@@ -160,10 +150,6 @@ function libraryConditioned(filter: LibraryFilter): boolean {
   );
 }
 
-/**
- * saveSmartFolderAction は見出しの「Save as smart folder」である。所有者が条件で絞っている間だけ
- * 出す。
- */
 function saveSmartFolderAction(
   owner: boolean,
   conditioned: boolean,
@@ -175,7 +161,6 @@ function saveSmartFolderAction(
   ) : undefined;
 }
 
-/** ライブラリだけが URL に持つ条件（タグ、人物、団体、タグの種類、追加日と長さ）。 */
 const libraryParams = [
   TAG_PARAM,
   PERSON_PARAM,
@@ -187,25 +172,20 @@ const libraryParams = [
 export default function LibraryPage() {
   const location = useLocation();
   const toast = useToast();
-  // ゲストには所有者のデータに依る操作（選択・タグの絞り込み・選択バー）を出さない
+  // Hide owner-data actions from guests.
   //
   const owner = useAudience() === "owner";
   const [preferences, setPreferences] = useState(readViewPreferences);
-  // 一覧の条件は URL が持つ。端末に保存するのは sort だけ。
-  // タグ絞り込み（`tag`）はライブラリだけが持つ条件で、共有の ListCriteria には
-  // 含めない。useListCriteria の画面固有の
-  // パラメータの口へ渡し、URL のすべての書き換え経路でその値を残す。
-  // 人物・団体（`person`・`organization`）も同じ口で運ぶ。
-  // 追加日と長さはゲストも使える。
+  // URL owns criteria; only sort is persisted on the device.
+  // Pass library-specific filters through useListCriteria's extension so every URL update preserves them.
+  // Added-date and length filters are also available to guests.
   const { criteria, apply } = useListCriteria(
     preferences.sort,
     libraryParams,
     addedLengthParams,
   );
   const { query, watch, playable, favorite, sort } = criteria;
-  // タグの値が変わらない限り同じ配列を使い、タグと無関係な URL の変更でも
-  // タグの操作の関数とカードの memo を保つ。ゲストはタグ・人物・団体で絞り込めない
-  // （URL に残った値は useListCriteria が取り除く）。
+  // Preserve tag-array identity across unrelated URL changes so card callbacks and memoization remain stable.
   const rawTagKey = JSON.stringify(
     new URLSearchParams(location.search).getAll(TAG_PARAM),
   );
@@ -216,7 +196,6 @@ export default function LibraryPage() {
   const credits = useCreditFilter(location.search, owner);
   const parsedAddedLength = useAddedLength(location.search);
   const addedLength = parsedAddedLength.filter;
-  // 一覧の条件のうちライブラリだけのもの（人物・団体・タグの種類と、追加日と長さ）。
   const libraryFilter = useMemo(
     () => ({ ...credits, ...addedLength }),
     [credits, addedLength],
@@ -231,7 +210,6 @@ export default function LibraryPage() {
     writeViewPreferences(updated);
   }, []);
 
-  // --- 条件の変更（検索語の入力の続き以外は、それぞれ履歴を1つ増やす） ---
   const update = useCallback(
     (next: ListCriteria, mode: HistoryMode = "push") => {
       resetPreview();
@@ -281,9 +259,7 @@ export default function LibraryPage() {
     });
   }, [apply, criteria, resetPreview]);
 
-  // --- タグ絞り込み ---
-  // criteria は描画ごとに新しいオブジェクトになる。カードへ渡す pressTag は、
-  // 最新の条件を ref から読んで参照を保ち、無関係な描画でカードを描き直させない。
+  // Read current criteria through refs to keep card callbacks stable across unrelated renders.
   const latestConditions = useRef({ criteria, tagIds });
   latestConditions.current = { criteria, tagIds };
   const applyTags = useCallback(
@@ -292,8 +268,6 @@ export default function LibraryPage() {
     [apply],
   );
 
-  // --- 人物・団体の絞り込み ---
-  // チップを押すとそのパラメータだけを外す。タグともう一方の種類は残る。
   const removeCredit = useCallback(
     (kind: CreditKind) => {
       resetPreview();
@@ -301,8 +275,7 @@ export default function LibraryPage() {
     },
     [apply, resetPreview],
   );
-  // 名前を読んだら `404` だった（もう無い）人物・団体は、履歴を増やさずに URL から外して
-  // 知らせる。条件が変わるので一覧も読み直される。
+  // Remove missing credits with history replacement and notify; changed criteria reload the list.
   const creditGone = useCallback(
     (kind: CreditKind) => {
       toast(
@@ -314,8 +287,6 @@ export default function LibraryPage() {
     },
     [apply, toast],
   );
-  // --- タグの種類の絞り込み ---
-  // 選ぶ・チップで外す・もう無い種類を外すのは `tagKind` だけで、ほかの条件は残る。
   const applyTagKind = useCallback<ApplyTagKind>(
     (extra, mode) => {
       resetPreview();
@@ -324,7 +295,6 @@ export default function LibraryPage() {
     [apply, resetPreview],
   );
   const tagKinds = useLibraryTagKinds(credits.tagKind, applyTagKind);
-  // --- 追加日と長さ ---
   const { changeAdded, changeLength } = useAddedLengthControls(
     parsedAddedLength,
     applyTagKind,
@@ -335,7 +305,7 @@ export default function LibraryPage() {
   const pressTag = useCallback(
     (tag: TagRef) => {
       const { criteria: current, tagIds: currentTagIds } = latestConditions.current;
-      if (currentTagIds.includes(tag.id)) return; // すでに絞り込み中なら何も変わらない。
+      if (currentTagIds.includes(tag.id)) return;
       if (currentTagIds.length >= MAX_TAG_COUNT) {
         toast(t.errors.reason.too_many_tag_filters({ limit: MAX_TAG_COUNT }));
         return;
@@ -352,7 +322,6 @@ export default function LibraryPage() {
     },
     [applyTags, criteria, resetPreview, tagIds],
   );
-  // --- 大きさ切替で読んでいた位置を保つ ---
   const { listRef: list, capture: captureAnchor } = useZoomAnchor(zoom);
 
   const changeZoom = useCallback(
@@ -364,7 +333,6 @@ export default function LibraryPage() {
     [captureAnchor, preferences, resetPreview, savePreferences],
   );
 
-  // --- 一覧の取得（戻ってきたときはスナップショットから復元） ---
   const [restored] = useState(() =>
     takeListSnapshot({ ...criteria, tags: tagIds, ...libraryFilter }),
   );
@@ -384,39 +352,27 @@ export default function LibraryPage() {
     staleGroups,
   } = useVideos({ ...criteria, tag: tagIds, ...libraryFilter }, restored, "library");
 
-  // 絞り込みはサーバーが一覧の条件として適用する。
-  // 再生から戻って視聴状態が変わった項目も、その場では一覧から外さない。
+  // Keep newly nonmatching watched rows in place until the next reload.
   useEffect(() => {
     resetPreview();
   }, [favorite, items, playable, query, resetPreview, sort, view, watch, zoom]);
 
-  // --- 選択 ---
-  // 選択は動画の id の集合と、グループとして選んだグループ（フォルダとメンバー）を持つ。タグ・公開・束ねる操作は id の集合を送り、
-  // 一括のお気に入りだけが選んだグループを `folders` として送る。
+  // Selection retains video IDs and group identity; video mutations expand groups, while favorites target groups themselves.
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
   const selectedIds = selection.ids;
-  // selectAllSelection は直前の「すべて選択」（GET /api/library/ids）の応答の ids と groups
-  // である。選択がこれと同じ（id の集合も選んだグループも）間だけ「すべて選択」を押せなく
-  // する。
+  // Disable Select all only while both IDs and group identity still match its last response.
   const [selectAllSelection, setSelectAllSelection] = useState<LibrarySelection | null>(
     null,
   );
-  // 「すべて選択」の要求の間だけ true（下の selectAll が立てる）。
   const [selectingAll, setSelectingAll] = useState(false);
-  // 「すべて選択」の進行中の要求を、手動の選択操作や条件の変化が起きたら
-  // 無効にする通し番号（非ブロッキング指摘1）。あとから届く古い応答が、その
-  // あとに起きたもっと新しい選択や条件を上書きしないようにする。
+  // Invalidate Select all on manual selection or condition changes so late responses cannot overwrite newer intent.
   const selectAllSeq = useRef(0);
-  // 「すべて選択」の要求を無効にする（進行中なら selectingAll も戻す）。無効に
-  // した後は、その要求の応答が届いても selectingAll を戻す側の分岐
-  // （selectAll の finally）が selectAllSeq の不一致で素通りするので、ここで
-  // 戻しておかないと「選択中…」のまま固まる（Devin の指摘1）。
+  // Reset selectingAll immediately: the invalidated request's finally skips state changes.
   const invalidateSelectAll = useCallback(() => {
     selectAllSeq.current += 1;
     setSelectingAll(false);
   }, []);
-  // メンバーを 1 本でも外すと、そのグループはグループとしては選ばれていない扱いになる
-  // （selection.ts の removeIds）。
+  // Removing any member also removes the group's selected identity.
   const changeSelection = useCallback(
     (id: number, selected: boolean) => {
       invalidateSelectAll();
@@ -424,10 +380,7 @@ export default function LibraryPage() {
     },
     [invalidateSelectAll],
   );
-  // タグの行の選択切り替え（選択中にカードのタグを押したとき）は、今の選択を
-  // 読まずに関数形の更新で決める。CardTagRow へ渡す関数も再描画のたびに作り
-  // 直さないよう、依存は安定した invalidateSelectAll だけにする（N4、
-  // memo(VideoCard) を効かせる）。
+  // Functional updates preserve stable chip callbacks without capturing the current selection.
   const toggleSelection = useCallback(
     (id: number) => {
       invalidateSelectAll();
@@ -435,8 +388,6 @@ export default function LibraryPage() {
     },
     [invalidateSelectAll],
   );
-  // グループのカードのチェックは、全メンバー（videoIds）を選択に入れる・外し、
-  // グループとして覚える。
   const changeGroupSelection = useCallback(
     (group: LibraryGroup, selected: boolean) => {
       invalidateSelectAll();
@@ -444,8 +395,6 @@ export default function LibraryPage() {
     },
     [invalidateSelectAll],
   );
-  // 選択中にグループのカードのタグを押したときの切り替え。グループとして選んで
-  // いれば外し、そうでなければグループとして選ぶ（selection.ts の isGroupSelected）。
   const toggleGroupSelection = useCallback(
     (group: LibraryGroup) => {
       invalidateSelectAll();
@@ -456,15 +405,11 @@ export default function LibraryPage() {
   const clearSelection = useCallback(() => {
     invalidateSelectAll();
     setSelection(emptySelection);
-    // 選択が消えたら、前の「すべて選択」の応答はもう比べない。条件が変わった後に
-    // 同じ id を手で選び直しても、読んでいない項目が残りうるので押せるままにする
+    // Clear the Select all comparison when selection empties; manually reselecting IDs may still omit unloaded items.
     //
     setSelectAllSelection(null);
   }, [invalidateSelectAll]);
 
-  // --- ドラッグ ---
-  // グループへ落として移すかマージした項目はすぐ隠し、動画を動画に落とした結果はすぐ見せる。
-  // 取り消しの通知は画面を離れると閉じる。
   const moves = useLibraryMoves(items, refreshInPlace, clearSelection);
   const undo = useUndoToast(refreshInPlace);
   const drops = useVideoDrops({
@@ -480,24 +425,16 @@ export default function LibraryPage() {
   });
   const shown = drops.shown;
 
-  // --- 「すべて選択」 ---
-  // 読み込んでいないページを含む、今の条件の全件の id を選ぶ。応答の `groups` は
-  // 選んだグループにする。
   const selectAll = useCallback(() => {
     const seq = (selectAllSeq.current += 1);
     setSelectingAll(true);
     listLibraryIds({ query, watch, playable, favorite, tag: tagIds, ...libraryFilter })
       .then((response) => {
-        // 応答が届くまでの間に、手動の選択操作・別の「すべて選択」・条件の
-        // 変化（下の conditionsSignature の効果も selectAllSeq を進める）が
-        // 起きていたら、この応答はもう当てはまらないので捨てる（非ブロッキング
-        // 指摘1）。
+        // Ignore Select all responses superseded by manual selection, another request, or condition changes.
         if (selectAllSeq.current !== seq) return;
         const missing = response.missingTagIds ?? [];
         if (missing.length > 0) {
-          // 取り除く id は、要求を送った時点の tagIds・criteria ではなく、
-          // 応答が届いた時点の最新の値を使う（ref から読む。非ブロッキング
-          // 指摘1）。
+          // Apply missing-filter removals to current criteria, not the criteria captured when sending.
           const { criteria: latestCriteria, tagIds: latestTagIds } =
             latestConditions.current;
           const remaining = latestTagIds.filter((id) => !missing.includes(id));
@@ -519,11 +456,7 @@ export default function LibraryPage() {
       });
   }, [applyTags, libraryFilter, favorite, playable, query, tagIds, toast, watch]);
 
-  // 選択バーで一括して外したタグが、今の絞り込み（tagIds）に含まれているとき
-  // の方針（Devin の指摘4、docs/design-docs/library-ui.md）。外した動画は
-  // その絞り込みにもう合わなくなるかもしれないので、選択を解除し一覧を取り
-  // 直して、件数と一覧を条件に合わせ直す。タグの絞り込み自体は外さない
-  // （そのタグはまだ有効な絞り込み条件であり続ける）。
+  // Removing an active filter tag in bulk clears selection and reloads matches, but retains the valid filter itself.
   const onTagRemoved = useCallback(
     (tagId: number) => {
       if (!latestConditions.current.tagIds.includes(tagId)) return;
@@ -534,24 +467,14 @@ export default function LibraryPage() {
     [clearSelection, reload],
   );
 
-  // 選択は常に id の集合として持ち、読み込み済みの items に合わせて刈り込まない
-  // 以前はここで
-  // items に無い id を選択から落としていたが、items は タグの付け外し・
-  // loadMore・進捗の反映のたびに新しい配列になるため、「すべて選択」で選んだ
-  // まだ読み込んでいない id まで巻き込んで削ってしまっていた（B1）。条件
-  // （検索語・視聴状態・再生可否・タグ）が変わったときの解除は、下の
-  // conditionsSignature の効果が別に担う。
+  // Never prune selected IDs to loaded items; Select all includes unloaded pages.
 
-  // 選択を残したまま一覧を取り直したとき（取り込みの完了など）、選んだグループが
-  // もうグループでなくなっていたりメンバーが変わっていたりすれば、読み込んだ項目に
-  // 合わせて選んだグループだけを直す（selection.ts の reconcileGroups）。id は削らない。
+  // Reconcile selected group identity after refresh without removing selected video IDs.
   useEffect(() => {
     setSelection((current) => reconcileGroups(current, items));
   }, [items]);
 
-  // 検索語・視聴状態・再生可否・タグのどれかを変えると選択を解除する。条件の違う一覧で選んだ動画が、見えない
-  // まま選択に残らないようにするため。同じ動画がたまたま両方の条件に一致しても
-  // 解除する。
+  // Clear selection whenever conditions change, even when some videos match both views.
   const conditionsSignature = [
     criteriaKey(criteria),
     tagIds.join(","),
@@ -568,7 +491,6 @@ export default function LibraryPage() {
 
   useEscapeClearsSelection(selectedIds.size > 0, clearSelection);
 
-  // --- スクロール位置の復元 ---
   const pendingScroll = useRef(restored?.scrollY);
   useEffect(() => {
     const previous = history.scrollRestoration;
@@ -582,15 +504,12 @@ export default function LibraryPage() {
     if (top === undefined || items.length === 0) return;
     pendingScroll.current = undefined;
     window.scrollTo({ top, behavior: "auto" });
-    // 画像や行の高さが決まる前の 1 フレームで位置がずれることがあるので、次の描画の前に
-    // もう一度合わせる（フォルダ画面と同じ）。
+    // Restore scroll again before the next paint because image/row heights may settle a frame later.
     requestAnimationFrame(() => window.scrollTo({ top, behavior: "auto" }));
   }, [items.length]);
 
-  // 選択バーの「Bundle as versions」で束ね終えたら、選択を解除して一覧を取り直す。代表以外の
-  // バージョンが一覧から消える。取り直しても格子の位置は保つ（下のスクロールの復元に今の位置を渡す）。
-  // バーは消えるので、取り直した後のフォーカスは見えている最初の項目へ移す。
-  // 取り直しを待つ間は "requested"、読み込みが始まったら "loading" にし、読み終えたら移す。
+  // Bundling removes nonrepresentatives; reload while retaining grid scroll position.
+  // The selection bar disappears; focus the first visible refreshed item without scrolling.
   const focusFirstItem = useRef<"idle" | "requested" | "loading">("idle");
   const onBundled = useCallback(() => {
     clearSelection();
@@ -611,17 +530,14 @@ export default function LibraryPage() {
     );
     const target =
       links.find((link) => link.getBoundingClientRect().top >= 0) ?? links[0];
-    // 位置を保ったまま移す（見えている項目なのでスクロールは要らない）。
     target?.focus({ preventScroll: true });
   }, [items, list, loading]);
 
   const listUrl = `${location.pathname}${location.search}`;
 
-  // --- 取り込み完了で一覧を入れ替える ---
   const scan = useScanControls();
   const { refresh: refreshScan } = scan;
   const knownScanId = useRef(restored?.scanId);
-  // 自動の取り込みが終わったら、開いている一覧を消さずにその場で取り直す。
   useWatchScanRefresh(refreshInPlace);
   useEffect(() => refreshScan(), [refreshScan]);
   useEffect(() => {
@@ -633,8 +549,7 @@ export default function LibraryPage() {
   }, [reload, scan.finished]);
 
   const saveSnapshot = useCallback(() => {
-    // 落とした結果をまだ重ねている間（サーバーの答えか読み直しの前）の一覧は控えにしない。
-    // 操作の成功は控えを捨てるので、ここで古い並びを覚え直すと戻ったときにそれが出てしまう。
+    // Do not snapshot temporary drag overlays or restore stale order after successful mutations invalidated it.
     if (shown !== items) return;
     saveListSnapshot(
       { ...criteria, tags: tagIds, ...libraryFilter },
@@ -660,7 +575,6 @@ export default function LibraryPage() {
     total,
   ]);
 
-  // --- 無限スクロール ---
   const sentinel = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const target = sentinel.current;
@@ -678,11 +592,7 @@ export default function LibraryPage() {
     return () => observer.disconnect();
   }, [hasMore, loadMore, resetPreview]);
 
-  // --- もう無いタグ ---
-  // 一覧の応答の missingTagIds を受けたら、もう無いことを伝え、タグの一覧を取り直し、
-  // 履歴を増やさずに URL から取り除く。URL を書き換えて新しい一覧を取りに行くまでの
-  // 数フレームは、同じ missingTagIds を持つ再描画が起きうるので、内容が変わらない
-  // 限り1回だけ処理する。
+  // Remove missing tag filters once per response content; URL replacement can cause repeated intermediate renders.
   const handledMissingTagIds = useRef<string | null>(null);
   useEffect(() => {
     if (missingTagIds.length === 0) {
@@ -699,9 +609,7 @@ export default function LibraryPage() {
     applyTags(criteria, "replace", remaining);
   }, [applyTags, criteria, missingTagIds, tagIds, toast]);
 
-  // 控えから一覧を戻したときは一覧の要求をしないので missingTagIds が届かない。
-  // 画面が開くときに取り直す共有のタグの一覧と URL の tag を突き合わせ、無い id が
-  // あれば同じく伝えて取り除く。マウント時に1回だけ行う。
+  // Restored snapshots skip list requests, so validate URL tags against the refreshed shared tag list on mount.
   const mountRef = useRef({ criteria, tagIds, apply: applyTags, toast });
   mountRef.current = { criteria, tagIds, apply: applyTags, toast };
   useEffect(() => {
@@ -741,12 +649,7 @@ export default function LibraryPage() {
   const selectionMode = selectedIds.size > 0;
   const resultStatus = loading ? t.list.loading : t.library.resultCount(total);
 
-  // renderTagsRow は VideoCard へ渡す安定した関数である（N4）。VideoCard は
-  // memo で包まれており、props が前回と同じ参照であれば再描画しない。ここで
-  // 毎描画ごとに新しい ReactNode を組み立てて渡すと、プレビューの開始・検索の
-  // 入力など無関係な状態が変わるたびに全カードが作り直されてしまう。依存に
-  // 挙げた値（selectionMode・pressTag・toggleSelection・view）が変わらない
-  // 限り、この関数自体の参照は変わらない。
+  // Stable tag-row render callbacks preserve memoized cards across preview and search updates.
   const renderTagsRow = useCallback(
     (video: Video) =>
       view === "grid" ? (
@@ -773,8 +676,7 @@ export default function LibraryPage() {
     [pressTag, selectionMode, toggleGroupSelection, view],
   );
 
-  // スマートフォルダのカードのタグを押すと、グループのカードと同じくそのタグで絞り込む。
-  // カードは選択を持たないので、ほかのカードを選んでいる間も押せる。
+  // Smart folders have no selection state, so their tag filters remain usable during other card selection.
   const renderFolderTagsRow = useFolderTagRow(pressTag);
 
   const groupProps = (group: LibraryGroup) => ({
@@ -814,8 +716,7 @@ export default function LibraryPage() {
     tagsRow: view === "grid" ? renderFolderTagsRow : undefined,
   });
 
-  // 所有者のカードと行はドラッグの層に加わる。ゲストは今のまま。スマートフォルダのカードは
-  // 持ち上げず、上に落とすと拒否する。
+  // Only owner video/group cards are draggable; smart-folder cards reject drops.
   const card = (item: LibraryItem) => {
     if (item.kind === "smartFolder") {
       return (
@@ -897,11 +798,10 @@ export default function LibraryPage() {
       {withSmartFolderCards(
         withDrag(
           view === "grid" ? (
-            // タグの行の幅の見張りは一覧に1つだけ（B2）。
+            // Share one width observer for all tag rows in the list.
             <TagRowMeasureProvider>
               <Grid zoom={zoom}>
-                {/* グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
-                見出しは設けない。 */}
+                {}
                 {shown.map(card)}
               </Grid>
             </TagRowMeasureProvider>
@@ -917,8 +817,7 @@ export default function LibraryPage() {
   );
 
   return (
-    // 「New group」「Add to group」で足したものはいちばん上から外れるので、一覧をその場で
-    // 読み直す。
+    // Group mutations can remove top-level items; refresh the list in place.
     <GroupChangedContext value={refreshInPlace}>
       <ListPage
         header={
@@ -1027,10 +926,6 @@ export default function LibraryPage() {
   );
 }
 
-/**
- * LibraryEmpty は一覧が空のときの本体である。条件で絞って空なら検索へ戻る案内、
- * 条件が無ければ所有者には最初の手順、ゲストには空であることだけを出す。
- */
 function LibraryEmpty({
   conditioned,
   owner,
@@ -1044,10 +939,6 @@ function LibraryEmpty({
   return owner ? <EmptyLibrary /> : <GuestEmpty />;
 }
 
-/**
- * LibraryTableHeader はリスト表示の見出しの行である。選択とタグなどの列は所有者だけに出す。
- * スマートフォルダのページも同じ列で並べる。
- */
 export function LibraryTableHeader({ owner }: { owner: boolean }) {
   return (
     <TableHeader>

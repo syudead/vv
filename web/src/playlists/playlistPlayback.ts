@@ -6,11 +6,8 @@ import type {
 } from "../api/playlists";
 import { orderedItemCollection } from "../videoList/ItemRowCells";
 
-// 動画ページのプレイリストの文脈が URL と応答から決める規則
 //
-// 画面の部品から外し、ロジックのテストで確かめる（docs/design-docs/web-testing.md）。
 
-/** PlaylistQuery は動画ページの URL の `?playlist=<id>&item=<itemId>` である。 */
 export interface PlaylistQuery {
   playlistId: number;
   itemId: number;
@@ -22,10 +19,7 @@ function positiveId(value: string | null): number | null {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
-/**
- * parsePlaylistQuery は URL のクエリからプレイリストの文脈を読む。`playlist` と `item` の
- * どちらかが無いか正の整数でなければ null で、ページはクエリの無いときと同じになる。
- */
+/** Require both positive playlist and item IDs; otherwise omit playlist context. */
 export function parsePlaylistQuery(search: string): PlaylistQuery | null {
   const params = new URLSearchParams(search);
   const playlistId = positiveId(params.get("playlist"));
@@ -34,12 +28,7 @@ export function parsePlaylistQuery(search: string): PlaylistQuery | null {
   return { playlistId, itemId };
 }
 
-/**
- * stepPath はプレイリストの項目 `itemId` を動画 `videoId` から再生する動画ページの場所である。
- * ステップへ移るときは常に `playlist` を保ち、`item` をステップの項目にする（R-7）。項目が
- * スマートフォルダの項目なら `smartFolderId` にそのフォルダを渡し、`smartFolder` を付ける。
- * 省けば付けない。
- */
+/** Preserve playlist while updating item; include smartFolder only for smart-folder steps. */
 export function stepPath(
   playlistId: number,
   videoId: number,
@@ -54,52 +43,38 @@ export function stepPath(
   return `/videos/${String(videoId)}?${params.toString()}`;
 }
 
-/**
- * playlistStepPath は再生の応答のステップ（`next`・`previousItem`・`nextItem`）を開く場所である。
- * フォルダはステップ自身の `smartFolderId` から取り、パネルの応答には頼らない。
- */
+/** Read smartFolderId from the playback step itself, never the panel response. */
 export function playlistStepPath(playlistId: number, step: PlaylistStep): string {
   return stepPath(playlistId, step.video.id, step.itemId, step.smartFolderId);
 }
 
-/**
- * itemStartVideoId は項目を始める動画である。動画はその動画、グループとスマートフォルダは
- * `openVideoId`（動画の無いフォルダでは undefined）。
- */
 export function itemStartVideoId(item: PlaylistItem): number | undefined {
   if (item.kind === "video") return item.video?.id;
   return orderedItemCollection(item)?.openVideoId;
 }
 
-/** itemSmartFolderId はスマートフォルダの項目のフォルダの id である。ほかの項目では undefined。 */
 export function itemSmartFolderId(item: PlaylistItem): number | undefined {
   return item.kind === "smartFolder" ? item.smartFolder?.id : undefined;
 }
 
-/**
- * itemStepPath は項目 `item` を始める動画ページの場所である。始める動画が無ければ null。
- * スマートフォルダの項目は `smartFolder` を付ける。
- */
 export function itemStepPath(playlistId: number, item: PlaylistItem): string | null {
   const videoId = itemStartVideoId(item);
   if (videoId === undefined) return null;
   return stepPath(playlistId, videoId, item.id, itemSmartFolderId(item));
 }
 
-/** PlaylistPair は同時に読んだ再生の応答とプレイリストの応答の 1 組である。 */
 export interface PlaylistPair {
   playback: PlaylistPlayback;
   playlist: Playlist;
 }
 
-/** pairAgrees は 2 つの応答が同じ並びを表すか（`updatedAt` が同じか）である（One order）。 */
+/** Matching updatedAt values represent one shared order. */
 export function pairAgrees(pair: PlaylistPair): boolean {
   return (
     Date.parse(pair.playback.playlist.updatedAt) === Date.parse(pair.playlist.updatedAt)
   );
 }
 
-/** maxPairReads は、並びがそろわないときに組を読む回数の上限である（One order）。 */
 export const maxPairReads = 3;
 
 function pairTime(pair: PlaylistPair): number {
@@ -110,8 +85,8 @@ function pairTime(pair: PlaylistPair): number {
 }
 
 /**
- * choosePair は読んだ組から使う 1 組を選ぶ。そろった組があれば最後のそろった組、
- * 上限まで読んでもそろわなければ `updatedAt` の遅い組で、両方の部分をそれが代表する。組が無ければ null。
+ * Prefer the last agreeing pair; after exhausting retries use the later updatedAt pair as a whole,
+ * never mixed halves.
  */
 export function choosePair(pairs: readonly PlaylistPair[]): PlaylistPair | null {
   let agreed: PlaylistPair | null = null;
@@ -125,8 +100,8 @@ export function choosePair(pairs: readonly PlaylistPair[]): PlaylistPair | null 
 }
 
 /**
- * panelScrollTop は、パネルの一覧の `scrollTop` である。再生中の行を見える位置に置き、
- * 上の行の下端（高さの 3 分の 1）を残して、何が前に流れたかを読めるようにする。位置は一覧の上端からの値で、上の行が無ければ 0。
+ * Keep the lower third of the preceding row visible as playback context; scroll to zero for the
+ * first row.
  */
 export function panelScrollTop(previous: { top: number; height: number } | null): number {
   if (previous === null) return 0;

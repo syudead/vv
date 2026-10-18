@@ -9,9 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// スマートフォルダの中身。
-
-// newSmartFolder は条件 rule と並べ順 sort のフォルダを parent の下に作る。
 func newSmartFolder(t *testing.T, db *DB, name string, rule domain.SmartRule, sort domain.VideoSort, parent int64) int64 {
 	t.Helper()
 	folder, err := db.SmartFolders().CreateSmartFolder(context.Background(),
@@ -22,7 +19,6 @@ func newSmartFolder(t *testing.T, db *DB, name string, rule domain.SmartRule, so
 	return folder.ID
 }
 
-// smartFolderPages はフォルダ id を limit 件ずつ最後まで読み、最初のページと、出た項目を順に返す。
 func smartFolderPages(t *testing.T, db *DB, audience domain.Audience, id int64, limit int) (domain.SmartFolderPage, []domain.LibraryItem) {
 	t.Helper()
 	var first domain.SmartFolderPage
@@ -46,7 +42,6 @@ func smartFolderPages(t *testing.T, db *DB, audience domain.Audience, id int64, 
 	return first, items
 }
 
-// smartItemNames は項目を、子フォルダは "folder:名前"、グループは "group:名前"、動画は題名で返す。
 func smartItemNames(items []domain.LibraryItem) []string {
 	out := make([]string, 0, len(items))
 	for _, item := range items {
@@ -62,7 +57,6 @@ func smartItemNames(items []domain.LibraryItem) []string {
 	return out
 }
 
-// smartItemKeys は項目を ListLibrary と比べる鍵（itemKey）で返す。子フォルダは入れない。
 func smartItemKeys(items []domain.LibraryItem) []int64 {
 	keys := make([]int64, 0, len(items))
 	for _, item := range items {
@@ -79,8 +73,6 @@ func smartFolderNames(t *testing.T, db *DB, audience domain.Audience, id int64) 
 	return smartItemNames(items)
 }
 
-// 受け入れ条件 1: タグ 猫 のフォルダには、猫 を付けた動画がほかの書き込みなしで入り、外すと出る。
-// その間も動画はライブラリに出る。
 func TestSmartFolderFollowsTagsWithoutAnotherWrite(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -111,8 +103,6 @@ func TestSmartFolderFollowsTagsWithoutAnotherWrite(t *testing.T) {
 	}
 }
 
-// 受け入れ条件 3: part1 と part2 の両方に 猫 があるグループは 1 枚のカード、part1 だけなら part1
-// だけが出る。カードの値は再生順から作る。
 func TestSmartFolderShowsAGroupAsTheFilteredLibraryDoes(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -144,12 +134,9 @@ func TestSmartFolderShowsAGroupAsTheFilteredLibraryDoes(t *testing.T) {
 	}
 }
 
-// 受け入れ条件 4: タグ 猫 の下の 未視聴 の子には未視聴の 猫 の動画だけが入り、親は子を先に出す。
-// 子は親の中身をもう一度絞ったものである。
 func TestSmartFolderChildAndsItsParentsRule(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo, x, ep2 := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")], ids[fixturePath("/media/show/ep2.mp4")]
-	// solo は見終えた動画、x と ep2 は未視聴、y は見ている途中で、y には 猫 を付けない。
 	cat := attachNamedTag(t, db, "猫", solo, x, ep2)
 	parent := newSmartFolder(t, db, "猫", domain.SmartRule{Tags: []int64{cat}}, domain.SortTitleAsc, 0)
 	newSmartFolder(t, db, "未視聴", domain.SmartRule{Watch: domain.WatchUnwatched}, domain.SortTitleAsc, parent)
@@ -162,7 +149,6 @@ func TestSmartFolderChildAndsItsParentsRule(t *testing.T) {
 	if len(first.Items) != 4 || first.NextCursor == "" {
 		t.Errorf("最初のページ = %v（子フォルダ 2 つと項目 2 件）", smartItemNames(first.Items))
 	}
-	// 子フォルダは要約だけを持つ。
 	if got, want := *first.Items[0].SmartFolder, (domain.SmartFolderSummary{ID: child, ParentID: parent, Name: "Another"}); got != want {
 		t.Errorf("Another の要約 = %+v, want %+v", got, want)
 	}
@@ -180,7 +166,6 @@ func TestSmartFolderChildAndsItsParentsRule(t *testing.T) {
 	}
 }
 
-// 受け入れ条件 5: 中身は同じ絞り込みの ListLibrary と等しい。並べ順もフォルダのもの。
 func TestSmartFolderEqualsTheFilteredLibrary(t *testing.T) {
 	db, ids := itemsFixture(t)
 	var all []int64
@@ -211,7 +196,6 @@ func TestSmartFolderEqualsTheFilteredLibrary(t *testing.T) {
 	}
 }
 
-// バージョンとしてまとめた動画は 1 回だけ数える。
 func TestSmartFolderCountsABundleOnce(t *testing.T) {
 	db, ids := versionFixture(t)
 	cat := attachNamedTag(t, db, "猫", ids["a"], ids["b"])
@@ -227,8 +211,6 @@ func TestSmartFolderCountsABundleOnce(t *testing.T) {
 	}
 }
 
-// ゲストには公開の動画だけが見え、見える動画の無いフォルダは ErrNotFound である。所有者は空の
-// フォルダを読める。条件は所有者の事実で決める。
 func TestSmartFolderVisibility(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -263,7 +245,6 @@ func TestSmartFolderVisibility(t *testing.T) {
 	}
 }
 
-// 消したタグを名指す条件のフォルダは子フォルダだけを出し、その子も何も出さない。
 func TestSmartFolderWithAMissingTagListsOnlyItsChildren(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -291,8 +272,7 @@ func TestSmartFolderWithAMissingTagListsOnlyItsChildren(t *testing.T) {
 	}
 }
 
-// 祖先と子の検索式は同じ所在 1 行で満たす。束ねた動画で、祖先の語と子の語が別のバージョンに
-// だけ当たるなら、子には出ない（要件 9）。
+// Ancestor and child search expressions must match one location, not different versions in a bundle.
 func TestSmartFolderSearchesOfEveryLevelMatchOneLocation(t *testing.T) {
 	db := migratedDB(t)
 	paths := upsertAll(t, db,
@@ -313,7 +293,6 @@ func TestSmartFolderSearchesOfEveryLevelMatchOneLocation(t *testing.T) {
 	}
 }
 
-// 参照が欠けて中身を求めないフォルダでも、読めないカーソルは ErrInvalidCursor である。
 func TestSmartFolderWithAMissingTagRejectsAnInvalidCursor(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -327,8 +306,6 @@ func TestSmartFolderWithAMissingTagRejectsAnInvalidCursor(t *testing.T) {
 	}
 }
 
-// 再生順は項目の順で、グループのカードはそのグループの再生順に置き換え、各動画は最初に出たところ
-// だけに置く。カードの値は再生順から求める。
 func TestSmartFolderPlayOrderExpandsGroups(t *testing.T) {
 	db, ids := itemsFixture(t)
 	path := func(name string) int64 { return ids[fixturePath(name)] }

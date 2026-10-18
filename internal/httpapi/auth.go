@@ -17,70 +17,46 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 認証の HTTP 境界。
-
 const (
-	// sessionCookieHTTPS は HTTPS の要求で使うセッション Cookie の名前である。
-	sessionCookieHTTPS = "__Host-vv_session"
-	// sessionCookieHTTP は HTTP の要求で使うセッション Cookie の名前である。
-	sessionCookieHTTP = "vv_session"
-	// audienceHeader は /api/* の応答に、処理した見る人を載せるヘッダーである。
-	audienceHeader = "X-VV-Audience"
-	// maxAuthBodyBytes は初回設定とログインの本文の上限である。
-	maxAuthBodyBytes = 8 << 10
-	// defaultSessionRecheck は、長く続く所有者の要求のセッションを確かめ直す間隔である。
+	sessionCookieHTTPS    = "__Host-vv_session"
+	sessionCookieHTTP     = "vv_session"
+	audienceHeader        = "X-VV-Audience"
+	maxAuthBodyBytes      = 8 << 10
 	defaultSessionRecheck = 30 * time.Second
 )
 
-// AuthState は見る人の状態である。
 type AuthState string
 
-// 見る人の状態。
 const (
 	AuthStateOwner         AuthState = "owner"
 	AuthStateGuest         AuthState = "guest"
 	AuthStateSetupRequired AuthState = "setupRequired"
 )
 
-// IssuedSession は初回設定とログインで発行したセッションである。Token は Cookie に
-// 入れる値で、ExpiresAt はその期限である。
 type IssuedSession struct {
 	Token     string
 	ExpiresAt time.Time
 }
 
-// LoginAttempt はログインの要求である。
 type LoginAttempt struct {
 	Username string
 	Password string
-	// Source は送信元の IP アドレスである。解釈できなければゼロ値。
-	Source netip.Addr
-	// CurrentToken は要求に付いていたセッション Cookie の値である（無ければ空）。
+	// Source is zero when the remote IP cannot be parsed.
+	Source       netip.Addr
 	CurrentToken string
 }
 
-// Authenticator は初回設定・ログイン・ログアウト・セッションの確認を行う。
-// internal/app の *Auth を cmd/mdm が包んで渡す。
-//
-// 誤りは domain の値で返す。初回設定は domain.ErrAccountAlreadyConfigured・
-// ErrInvalidUsername・ErrInvalidPassword、ログインは domain.ErrInvalidCredentials と、
-// 試行の制限（errors.Is で domain.ErrLoginThrottled と一致し、RetryAfterSeconds() int を
-// 持つ誤り）である。
+// Authenticator returns domain errors; throttling matches ErrLoginThrottled and exposes RetryAfterSeconds() int.
 type Authenticator interface {
 	Setup(ctx context.Context, username, password string) (IssuedSession, error)
 	Login(ctx context.Context, attempt LoginAttempt) (IssuedSession, error)
-	// CheckSession は token のセッションが有効かを確かめ、有効なら期限を返す。
-	// 問い合わせが失敗したら、無効とせずに誤りを返す。
+	// CheckSession returns lookup errors separately from invalid sessions.
 	CheckSession(ctx context.Context, token string) (time.Time, bool, error)
 	Logout(ctx context.Context, token string) error
 	State(ctx context.Context, token string) (AuthState, error)
 }
 
-// access は要求の扱いである。ゼロ値は「所有者だけ」で、
-// 分類に挙がらない要求はここに倒れる。
-//
-// accessBearer は外部連携 API（/api/v1/…）と MCP（/mcp）の扱いで、Cookie を読まず
-// Authorization: Bearer の API トークンだけで所有者を決める。それ以外の扱いでは Authorization を読まない。
+// Unknown routes default to owner-only; bearer routes ignore cookies, and all other routes ignore Authorization.
 type access int
 
 const (
@@ -103,22 +79,17 @@ func (a access) String() string {
 	}
 }
 
-// externalAPIBase は外部連携 API の基底の経路である。正本は api/external-v1.yaml の
-// servers で、一致は openapi_routes_test.go が確かめる。
+// api/external-v1.yaml servers is authoritative; openapi_routes_test.go checks alignment.
 const externalAPIBase = "/api/v1"
 
-// mcpPath は MCP の経路である（親 Issue 要件 9）。
 const mcpPath = "/mcp"
 
-// bearerPath は path.Clean した経路が Bearer の扱いかを返す。/api/v1 の下の未定義の経路も
-// Bearer の扱いにし、認証の後に JSON の 404 を返す。
+// Undefined /api/v1 routes still require Bearer authentication before returning JSON 404.
 func bearerPath(cleaned string) bool {
 	return cleaned == externalAPIBase || strings.HasPrefix(cleaned, externalAPIBase+"/") || cleaned == mcpPath
 }
 
-// accessRoutes は「誰でも」と「ゲストも」の API 経路である。ここに無い /api/* は
-// すべて「所有者だけ」である。正本は api/openapi.yaml の各操作の security で、
-// 一致は openapi_routes_test.go が確かめる。
+// Routes omitted from accessRoutes are owner-only; API security definitions are authoritative and checked by openapi_routes_test.go.
 var accessRoutes = map[string]access{
 	"GET /api/health":                             accessPublic,
 	"GET /api/auth/session":                       accessPublic,
@@ -153,8 +124,7 @@ var accessRoutes = map[string]access{
 	"GET /api/events":                             accessGuest,
 }
 
-// accessMux は accessRoutes の模様を引き当てるためだけの ServeMux である。
-// {id} の解釈と GET に HEAD を含める規則を、実際の経路と同じ ServeMux に任せる。
+// Use ServeMux for access matching so wildcard and GET/HEAD semantics match actual routing.
 var accessMux = func() *http.ServeMux {
 	mux := http.NewServeMux()
 	for pattern := range accessRoutes {
@@ -163,30 +133,20 @@ var accessMux = func() *http.ServeMux {
 	return mux
 }()
 
-// classifyRequest は要求の扱いと、それが /api/ 以下かを返す。判定は path.Clean した
-// 復号済みの経路で行うので、//api/…・/./api/…・/%61pi/…・/api/../api/… も /api/ 以下になる。
-//
-// 実際に振り分ける ServeMux は、エスケープ済みの経路を段に分けてから段ごとに復号する。
-// %2F は区切りにならず、段の中の %2E%2E も畳まれない。エスケープ済みの経路の段が
-// 復号済みの経路の段と食い違う要求は、判定した経路と実際に動く操作がずれ得るので、
-// 「所有者だけ」に倒す（例: /api/videos/x%2F..%2F..%2Fa は復号すると /a だが、
-// ServeMux は GET /api/videos/{id} に振り分ける）。
-//
-// Bearer の扱いは、エスケープ済みの経路と復号済みの経路の段が一致するときだけ選ぶ。
-// 食い違う要求は今までの規則のまま、/api/ 以下なら「所有者だけ」に倒す。
+// classifyRequest fails closed when decoded path segments differ from ServeMux's escaped-segment interpretation; ambiguous API paths remain owner-only and never become Bearer routes.
 func classifyRequest(r *http.Request) (access, bool) {
 	cleaned := path.Clean("/" + r.URL.Path)
 	segmentsAgree := escapedSegmentsMatch(r.URL, cleaned)
 	if segmentsAgree && bearerPath(cleaned) {
 		return accessBearer, cleaned != mcpPath
 	}
-	// Clean は末尾の / を落とすので、/api/ そのものは /api になる。
+	// Clean removes the trailing slash from /api/.
 	if cleaned != "/api" && !strings.HasPrefix(cleaned, "/api/") {
 		if !segmentsAgree && escapedUnderAPI(r.URL) {
-			// 復号すると /api の外でも、ServeMux は /api/ 以下の操作に振り分け得る。
+			// ServeMux may route to an API operation even when the fully decoded path leaves /api.
 			return accessOwner, true
 		}
-		// SPA のビルド成果物は利用者データを含まないので、GET・HEAD だけ誰にでも配る。
+		// SPA assets contain no user data and are public only for GET/HEAD.
 		if r.Method == http.MethodGet || r.Method == http.MethodHead {
 			return accessPublic, false
 		}
@@ -204,9 +164,7 @@ func classifyRequest(r *http.Request) (access, bool) {
 	return accessOwner, true
 }
 
-// escapedSegmentsMatch は、ServeMux が照らすエスケープ済みの経路を path.Clean して段ごとに
-// 復号したものが、復号済みの経路 cleaned と同じ段に分かれるかを返す。段が / を含む
-// （%2F）、. か .. になる（%2E）、または復号できない経路は一致しない。
+// Reject escaped segments that decode to separators, dot segments, or invalid escapes.
 func escapedSegmentsMatch(u *url.URL, cleaned string) bool {
 	escaped := path.Clean("/" + u.EscapedPath())
 	segments := strings.Split(strings.TrimPrefix(escaped, "/"), "/")
@@ -220,8 +178,7 @@ func escapedSegmentsMatch(u *url.URL, cleaned string) bool {
 	return "/"+strings.Join(segments, "/") == cleaned
 }
 
-// escapedUnderAPI は、ServeMux が照らすエスケープ済みの経路の先頭の段が、復号すると
-// api になるかを返す。復号できなければ、狭い側に倒して真を返す。
+// Undecodable escaped prefixes fail closed as API routes.
 func escapedUnderAPI(u *url.URL) bool {
 	escaped := path.Clean("/" + u.EscapedPath())
 	first, _, _ := strings.Cut(strings.TrimPrefix(escaped, "/"), "/")
@@ -231,20 +188,17 @@ func escapedUnderAPI(u *url.URL) bool {
 
 type audienceKey struct{}
 
-// withAudience は見る人を要求の context に載せる。
 func withAudience(ctx context.Context, audience domain.Audience) context.Context {
 	return context.WithValue(ctx, audienceKey{}, audience)
 }
 
-// audienceFrom は境界が決めた見る人を返す。載っていなければゲスト（狭い側）である。
+// Missing audience context defaults to guest.
 func audienceFrom(ctx context.Context) domain.Audience {
 	audience, _ := ctx.Value(audienceKey{}).(domain.Audience)
 	return audience
 }
 
-// sessionCookieName は認証で読む Cookie の名前である。HTTPS では __Host-vv_session
-// だけを、HTTP では vv_session だけを読む。HTTPS かどうかは
-// clientOrigin で決める。
+// clientOrigin selects exactly one cookie name: __Host-vv_session for HTTPS, vv_session for HTTP.
 func sessionCookieName(https bool) string {
 	if https {
 		return sessionCookieHTTPS
@@ -252,7 +206,6 @@ func sessionCookieName(https bool) string {
 	return sessionCookieHTTP
 }
 
-// sessionToken は要求の認証に使う Cookie の値である。無ければ空を返す。
 func (s *server) sessionToken(r *http.Request) string {
 	cookie, err := r.Cookie(sessionCookieName(s.clientOrigin(r).https))
 	if err != nil {
@@ -261,10 +214,7 @@ func (s *server) sessionToken(r *http.Request) string {
 	return cookie.Value
 }
 
-// authBoundary は要求を3つの扱いに振り分け、見る人を決めて context に載せる
-// （Structural Decisions 1）。/api/* の応答には処理した見る人を X-VV-Audience で付ける。
-//
-// 「ゲストも」の要求は、有効なセッションが無ければゲストとして処理する。アカウントが未設定の間は未認証の応答を返す。
+// authBoundary sets X-VV-Audience for API responses; guest-capable routes still reject unauthenticated requests before account setup.
 func (s *server) authBoundary(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		class, api := classifyRequest(r)
@@ -293,10 +243,7 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 		}
 
 		token := s.sessionToken(r)
-		// 「誰でも」以外の要求は、セッションを確かめる前に台帳へ載せる。確かめてから
-		// 載せると、その間に届いたログアウトの打ち切りがこの要求を取りこぼし、失効した
-		// セッションのまま所有者として応答を続けてしまう（Devin の指摘、PR 292）。
-		// 確かめる前に届いた打ち切りは、確かめ自体が無効を返す。
+		// Register requests before session validation so logout cannot fall between validation and cancellation registration.
 		ctx := r.Context()
 		var tracked *trackedRequest
 		if class != accessPublic {
@@ -306,25 +253,22 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 		}
 		expiresAt, valid, err := s.auth.CheckSession(ctx, token)
 		if tracked != nil && tracked.revoked() {
-			// 確かめている間にログアウトされた。確かめの結果によらず、もう有効ではない。
+			// Logout during validation overrides its result.
 			valid, err = false, nil
 		}
 		if err != nil {
 			setAudience(domain.AudienceGuest)
 			if class == accessPublic {
-				// 誰でもの要求は見る人に依らないので、確かめられなくてもゲストとして続ける。
-				// 稼働確認がこの失敗で 500 にならないようにする。
+				// Public routes continue as guests after auth lookup failure so health checks remain available.
 				next.ServeHTTP(w, r.WithContext(withAudience(r.Context(), domain.AudienceGuest)))
 				return
 			}
-			// 所有者ともゲストともみなさない。
 			s.internalError(w, "Could not check the sign-in status.", err)
 			return
 		}
 
 		if valid && tracked != nil {
-			// 有効と確かめてから応答の打ち切りを効かせる。その直前にログアウトされて
-			// いれば、有効ではなかったものとして扱う。
+			// Enable write cancellation only after validation; a preceding logout makes the request invalid.
 			var served bool
 			ctx, served = s.sessions.serve(ctx, tracked, expiresAt)
 			if !served {
@@ -336,17 +280,14 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 		if valid {
 			audience = domain.AudienceOwner
 		} else {
-			// 所有者として処理しない要求は、セッションの台帳の context を使わない。
-			// ログアウトで打ち切られていると取り消し済みで、ゲストとして続ける処理の
-			// 問い合わせまで失敗させてしまう（Devin の指摘、PR 335）。
+			// Guest requests must not inherit the revoked session's canceled context or their public-data reads would fail.
 			ctx = r.Context()
 		}
 		setAudience(audience)
 		switch {
 		case valid || class == accessPublic:
 		case class == accessGuest:
-			// 「ゲストも」の要求はゲストとして処理する。ただしアカウントが未設定の間は
-			// 公開フラグも効かせず、未認証にする。
+			// Before account setup, public flags do not grant guest access.
 			configured, err := s.accountConfigured(r.Context())
 			if err != nil {
 				s.internalError(w, "Could not check the sign-in status.", err)
@@ -365,8 +306,6 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 	})
 }
 
-// accountConfigured はアカウントが設定済みかを返す。セッションを持たない状態を
-// 問い合わせ、未設定かどうかだけを読む。
 func (s *server) accountConfigured(ctx context.Context) (bool, error) {
 	state, err := s.auth.State(ctx, "")
 	if err != nil {
@@ -375,13 +314,7 @@ func (s *server) accountConfigured(ctx context.Context) (bool, error) {
 	return state != AuthStateSetupRequired, nil
 }
 
-// bearerBoundary は Bearer の扱いの要求を、API トークンで所有者と確かめてから通す。Cookie は読まない。トークンが無い・
-// 形式が違う・無効・失効済みなら、原因を区別せずに 401 と WWW-Authenticate: Bearer を返す。
-//
-// 要求はトークンの id ごとに台帳へ載せ、画面での失効（DeleteApiToken）で打ち切る。
-// id は確かめるまで分からないので、確かめて id を知り、台帳に載せ、もう一度確かめる。
-// 1 回目と台帳に載せる間に失効したトークンは 2 回目で無効になり、2 回目より後の失効は
-// 台帳の打ち切りが届く。
+// Bearer authentication ignores cookies and returns uniform 401 challenges; validate, register by token ID, then revalidate to close the revocation race.
 func (s *server) bearerBoundary(
 	w http.ResponseWriter, r *http.Request, next http.Handler, setAudience func(domain.Audience),
 ) {
@@ -420,7 +353,7 @@ func (s *server) bearerBoundary(
 		return
 	}
 	if valid {
-		// トークンに期限は無い。打ち切りは失効と確かめ直しだけで起きる。
+		// Tokens have no expiry; only revocation and revalidation cancel them.
 		ctx, valid = s.sessions.serve(ctx, tracked, time.Time{})
 	}
 	if !valid {
@@ -428,7 +361,7 @@ func (s *server) bearerBoundary(
 		return
 	}
 
-	// 最終使用日時は 60 秒に 1 回だけ書く。書けなくても要求は続ける。
+	// Last-use recording is throttled to sixty seconds and never blocks serving on failure.
 	if err := s.apiTokens.RecordAPITokenUse(ctx, token.ID); err != nil {
 		s.logger.Warn("could not record the API token use", slog.Any("error", err))
 	}
@@ -436,9 +369,7 @@ func (s *server) bearerBoundary(
 	next.ServeHTTP(w, r.WithContext(withAudience(ctx, domain.AudienceOwner)))
 }
 
-// bearerSecret は Authorization: Bearer <token> の token を返す。ヘッダーが無い・複数ある・
-// 方式が Bearer でない・値が空か空白を含むときは false を返す。方式の名前は大文字小文字を
-// 区別しない（RFC 9110 §11.1）。
+// bearerSecret accepts one case-insensitive Bearer header with a nonempty whitespace-free token (RFC 9110 §11.1).
 func bearerSecret(r *http.Request) (string, bool) {
 	values := r.Header.Values("Authorization")
 	if len(values) != 1 {
@@ -452,25 +383,21 @@ func bearerSecret(r *http.Request) (string, bool) {
 	return secret, true
 }
 
-// apiTokenLedgerKey は API トークンの要求を台帳に載せる鍵である。セッション ID は
-// base64url なので ":" を含まず、セッションの鍵とぶつからない。
+// The colon namespace cannot collide with base64url session IDs.
 func apiTokenLedgerKey(id int64) string {
 	return "api-token:" + strconv.FormatInt(id, 10)
 }
 
-// bearerUnauthenticated は Bearer の扱いの未認証の応答である。
 func (s *server) bearerUnauthenticated(w http.ResponseWriter) {
 	w.Header().Set("WWW-Authenticate", "Bearer")
 	s.writeError(w, http.StatusUnauthorized, gen.ErrorCodeUnauthenticated, "A valid API token is required.")
 }
 
-// unauthenticated は未認証の応答である。原因は区別せず、WWW-Authenticate は付けない。
+// Cookie authentication failures are uniform and omit WWW-Authenticate.
 func (s *server) unauthenticated(w http.ResponseWriter) {
 	s.writeError(w, http.StatusUnauthorized, gen.ErrorCodeUnauthenticated, "Sign-in required.")
 }
 
-// SetupAccount は初回設定である。
-// invalidUsernameMessage はユーザー名の規則を外れたときの英語の説明である。
 var invalidUsernameMessage = "Usernames must be 1 to " + strconv.Itoa(domain.MaxUsernameLength) +
 	" characters, with no control characters or leading or trailing spaces."
 
@@ -493,8 +420,7 @@ func (s *server) SetupAccount(w http.ResponseWriter, r *http.Request) {
 		s.invalidRequestLimit(w, reasonUsernameLength, domain.MaxUsernameLength, invalidUsernameMessage)
 		return
 	case errors.Is(err, domain.ErrInvalidUsername):
-		// 長さ以外（制御文字・前後の空白）の違反には対応する reason が無いので、
-		// username_length を付けない。
+		// Only length violations receive username_length; controls/whitespace have no corresponding reason.
 		s.invalidRequest(w, invalidUsernameMessage)
 		return
 	case errors.Is(err, domain.ErrInvalidPassword):
@@ -511,7 +437,6 @@ func (s *server) SetupAccount(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.AuthRedirect{RedirectTo: domain.DefaultRedirectTarget}, s.logger)
 }
 
-// Login はログインである。
 func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 	if s.auth == nil {
 		s.internalError(w, "Cannot sign in.", errors.New("authentication is not configured"))
@@ -549,7 +474,7 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "Could not sign in.", err)
 		return
 	}
-	// 付いていた古いセッションは Login が消した。それで処理中の要求も打ち切る。
+	// Login deleted the previous session; cancel its active requests too.
 	if current != "" {
 		s.sessions.revoke(current)
 	}
@@ -563,7 +488,6 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.AuthRedirect{RedirectTo: domain.SafeRedirectTarget(next)}, s.logger)
 }
 
-// GetAuthSession は見る人の状態を返す。
 func (s *server) GetAuthSession(w http.ResponseWriter, r *http.Request, params gen.GetAuthSessionParams) {
 	if s.auth == nil {
 		s.internalError(w, "Cannot check the sign-in status.", errors.New("authentication is not configured"))
@@ -574,8 +498,7 @@ func (s *server) GetAuthSession(w http.ResponseWriter, r *http.Request, params g
 		s.internalError(w, "Could not check the sign-in status.", err)
 		return
 	}
-	// 境界の確認のあとに別のタブでログアウトされると、ここでの確認は境界と食い違う。
-	// X-VV-Audience は本文と同じこの確認から付け直し、応答の中で矛盾させない。
+	// Recompute X-VV-Audience from the same state as the body to handle logout between boundary and handler checks.
 	audience := domain.AudienceGuest
 	if state == AuthStateOwner {
 		audience = domain.AudienceOwner
@@ -590,8 +513,7 @@ func (s *server) GetAuthSession(w http.ResponseWriter, r *http.Request, params g
 	writeJSON(w, http.StatusOK, body, s.logger)
 }
 
-// Logout はログアウトである。認証の読み分けと違い、届いた
-// 両方の名前の Cookie を見て、それぞれのセッションを消し、処理中の要求を打ち切る。
+// Logout revokes both cookie names and their active requests, unlike authentication's scheme-specific lookup.
 func (s *server) Logout(w http.ResponseWriter, r *http.Request) {
 	if s.auth == nil {
 		s.internalError(w, "Cannot sign out.", errors.New("authentication is not configured"))
@@ -608,7 +530,7 @@ func (s *server) Logout(w http.ResponseWriter, r *http.Request) {
 		s.sessions.revoke(cookie.Value)
 	}
 	s.logAuthEvent(r, "logout")
-	// __Host- の Cookie は Secure でなければ消せない。HTTP の名前は Secure を付けずに消す。
+	// Deleting __Host- cookies requires Secure; delete HTTP cookies without it.
 	http.SetCookie(w, &http.Cookie{
 		Name: sessionCookieHTTPS, Path: "/", MaxAge: -1,
 		HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode,
@@ -621,13 +543,11 @@ func (s *server) Logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// readAuthBody は初回設定とログインの本文を 8 KiB まで読む。
 func (s *server) readAuthBody(w http.ResponseWriter, r *http.Request, target any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)
 	return s.readJSONBody(w, r, target)
 }
 
-// setSessionCookie はセッションの Cookie を付ける。
 func (s *server) setSessionCookie(w http.ResponseWriter, r *http.Request, session IssuedSession) {
 	https := s.clientOrigin(r).https
 	maxAge := int(session.ExpiresAt.Sub(s.now()) / time.Second)
@@ -645,8 +565,7 @@ func (s *server) setSessionCookie(w http.ResponseWriter, r *http.Request, sessio
 	})
 }
 
-// logAuthEvent は認証の出来事を1行記録する。属性は出来事の
-// 種類と送信元だけで、送られたユーザー名・パスワード・セッション ID・Cookie は出さない。
+// Log only event type and source, never usernames, passwords, session IDs, or cookies.
 func (s *server) logAuthEvent(r *http.Request, event string) {
 	source := "unknown"
 	if addr := s.clientOrigin(r).source; addr.IsValid() {
@@ -656,44 +575,34 @@ func (s *server) logAuthEvent(r *http.Request, event string) {
 		slog.String("event", event), slog.String("source", source))
 }
 
-// sessionLedger は所有者として処理中の要求を、セッションごとに覚える台帳である
-// （Structural Decisions 5）。ログアウトは同じセッションの要求を打ち切り、長く続く
-// 要求は一定間隔でセッションを確かめ直して、別のプロセスによる再設定を見つける。
+// sessionLedger cancels requests on logout and periodically revalidates long requests to detect credential changes in other processes.
 type sessionLedger struct {
 	mu       sync.Mutex
 	requests map[string]map[*trackedRequest]struct{}
-	// recheck は確かめ直す間隔で、要求がこれより長く続いたときから確かめ始める。
-	recheck time.Duration
-	// check はセッションが今も有効かを返す。nil なら確かめ直さない。
-	check func(ctx context.Context, token string) (bool, error)
-	// logger は確かめ直しの失敗を記録する。
+	recheck  time.Duration
+	// Nil check disables periodic revalidation.
+	check  func(ctx context.Context, token string) (bool, error)
 	logger *slog.Logger
 }
 
 type trackedRequest struct {
 	token string
-	// check は確かめ直しに使う。nil なら台帳の check でセッション token を確かめる。
+	// Nil check uses the ledger's session validator.
 	check      func(ctx context.Context) (bool, error)
 	cancel     context.CancelFunc
 	controller *http.ResponseController
 
 	mu sync.Mutex
-	// serving は serve でセッションの期限と確かめ直しを付け、応答を書き始めてよい
-	// ことを表す。それより前の打ち切りは context を取り消すだけで、書き込みの締め切りは
-	// 触らない。境界はまだ未認証の応答を書けるので、それを壊さない。
+	// Before serving, revocation cancels context only, preserving the boundary's ability to write an authentication error.
 	serving bool
-	// finished はハンドラから戻ったことを表す。戻った後は接続が次の要求に使われうるので、
-	// 書き込みの締め切りを触らない。
-	finished bool
-	aborted  bool
-	timer    *time.Timer
-	// stopWatch は期限の見張りを止める。serve が付ける。
+	// Never alter deadlines after handler return because the connection may serve another request.
+	finished  bool
+	aborted   bool
+	timer     *time.Timer
 	stopWatch func() bool
 }
 
-// abort は要求を打ち切る。context を取り消し、応答を書き始めていれば書き込みの
-// 締め切りを今にする。http.ServeContent は context を見ずに書き続けるので、
-// 取り消しだけでは止まらない。
+// abort also expires the write deadline because http.ServeContent does not observe context cancellation.
 func (t *trackedRequest) abort() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -707,15 +616,12 @@ func (t *trackedRequest) abort() {
 	}
 }
 
-// revoked は打ち切られたかを返す。
 func (t *trackedRequest) revoked() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.aborted
 }
 
-// finish はハンドラから戻ったことを記し、確かめ直しと期限の見張りを止め、context を
-// 手放す。
 func (t *trackedRequest) finish() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -736,21 +642,14 @@ func newSessionLedger(recheck time.Duration, logger *slog.Logger) *sessionLedger
 	return &sessionLedger{requests: map[string]map[*trackedRequest]struct{}{}, recheck: recheck, logger: logger}
 }
 
-// open は要求を台帳に載せる。載せた時点から revoke の打ち切りが届き、届けば
-// 要求の context が取り消される。release は要求の処理を終えたとき（ハンドラから
-// 戻る前）に呼ぶ。
-//
-// セッションを確かめる前に載せる。確かめてから載せる間に届いた打ち切りを
-// 取りこぼさないためである。
+// open registers before validation to avoid missed revocation; call release before the handler returns.
 func (l *sessionLedger) open(
 	ctx context.Context, w http.ResponseWriter, token string,
 ) (context.Context, *trackedRequest, func()) {
 	return l.openWith(ctx, w, token, nil)
 }
 
-// openWith は open と同じで、鍵 key で台帳に載せ、確かめ直しに check を使う。API トークンの
-// 要求は、トークンの id から作った鍵とトークンを確かめる check で載せる。check が nil なら
-// 台帳の check で key をセッションとして確かめる。
+// openWith permits token-ID keys and token validation; nil check falls back to session validation.
 func (l *sessionLedger) openWith(
 	ctx context.Context, w http.ResponseWriter, key string, check func(ctx context.Context) (bool, error),
 ) (context.Context, *trackedRequest, func()) {
@@ -777,14 +676,7 @@ func (l *sessionLedger) openWith(
 	return ctx, req, release
 }
 
-// serve は、有効と確かめたセッションで要求を処理し始める。ctx は open が返した
-// context で、それにセッションの期限を締め切りとして付けて返し、期限と打ち切りで
-// 書き込みも止める。expiresAt がゼロ値なら期限を付けない（API トークン）。open の後に打ち切られていれば false を返し、呼び出し側は
-// 有効ではなかったものとして扱う。
-//
-// 要求が recheck より長く続いたら、そこから recheck ごとにセッションを確かめ直し、
-// 無効になっていたら打ち切る。ほとんどの要求は数秒で終わるので、確かめ直すのは
-// /api/events・ライブ変換・大きな Range 応答のような長く続くものだけになる。
+// serve rejects already-revoked requests, enforces expiry on context and writes, and revalidates only requests longer than the interval; zero expiry is unbounded for API tokens.
 func (l *sessionLedger) serve(
 	ctx context.Context, req *trackedRequest, expiresAt time.Time,
 ) (context.Context, bool) {
@@ -802,7 +694,6 @@ func (l *sessionLedger) serve(
 	}
 	parentCancel := req.cancel
 	req.cancel = func() { cancel(); parentCancel() }
-	// 期限を迎えたときにも書き込みを止める。
 	req.stopWatch = context.AfterFunc(ctx, req.abort)
 
 	check := req.check
@@ -815,7 +706,7 @@ func (l *sessionLedger) serve(
 		recheck := func() {
 			valid, err := check(checkCtx)
 			if err != nil {
-				// 確かめられないときは打ち切らず、次の間隔で確かめ直す。
+				// Transient validation failures defer to the next interval without canceling the request.
 				l.logger.Warn("could not recheck the session of an in-flight request", slog.Any("error", err))
 			} else if !valid {
 				req.abort()
@@ -832,7 +723,6 @@ func (l *sessionLedger) serve(
 	return ctx, true
 }
 
-// revoke は token のセッションで処理中の要求をすべて打ち切る。
 func (l *sessionLedger) revoke(token string) {
 	l.mu.Lock()
 	requests := make([]*trackedRequest, 0, len(l.requests[token]))

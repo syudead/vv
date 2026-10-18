@@ -39,8 +39,7 @@ func solidJPEG(t *testing.T, w, h int, c color.Color) []byte {
 	return buf.Bytes()
 }
 
-// relayTo は Workers AI の代わりの handler へ中継する clefrelay と、それを Ollama の接続先と
-// する製品の Ollama のプロバイダを作る。
+// relayTo connects the product Ollama provider through clefrelay to a fake Workers AI handler.
 func relayTo(t *testing.T, model string, workers http.HandlerFunc) *ollama.Classifier {
 	t.Helper()
 	upstream := httptest.NewServer(workers)
@@ -102,7 +101,7 @@ func TestRelayTranslatesTheOllamaProviderRequestAndAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 9 枚は 3×3 に、1 コマは最初の画像（サムネイル）の大きさで並ぶ。
+	// Nine images form a 3 x 3 grid sized from the first thumbnail.
 	if b := tiled.Bounds(); b.Dx() != 960 || b.Dy() != 540 {
 		t.Errorf("tiled size = %v, want 960x540", b.Size())
 	}
@@ -157,8 +156,7 @@ func TestRelayRejectsAModelWorkersAIDoesNotHave(t *testing.T) {
 	}
 }
 
-// 製品の接続の確かめ（GET /api/version・/api/tags）は Workers AI へ問い合わせずに通り、
-// Clef 以外の模型は「模型が無い」になる。
+// Connection checks stay local and reject models other than Clef.
 func TestRelayAnswersTheOllamaConnectionCheck(t *testing.T) {
 	for _, model := range []string{"clef", "clef-flash", "clef-flash:latest"} {
 		classifier := relayTo(t, model, func(http.ResponseWriter, *http.Request) {

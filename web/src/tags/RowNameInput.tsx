@@ -6,13 +6,7 @@ import type { NameRules } from "../ui/NameCommand";
 import { Input } from "../ui/shadcn/input";
 import { useTagNameField, type TagFieldError } from "./tagNameField";
 
-/**
- * RowNameInput は管理画面の行の、その場の改名の入力である。改名を始めると描かれ、今の名前を選んだ状態でフォーカスを持つ。Enter で
- * 送り、Esc で閉じる（送信中は閉じない）。理由は入力の下に出す: 名前の規則と
- * `taken` の失敗は `text-xs`、それ以外の失敗は `role="alert"` の `text-sm`。
- *
- * タグの行（`TagRow`）と人物・団体の行（`web/src/credits/CreditRow`）が使う。
- */
+/** Keep the rename input open while saving; distinguish inline validation from alert-level failures. */
 export default function RowNameInput({
   idPrefix,
   rowId,
@@ -25,25 +19,20 @@ export default function RowNameInput({
   onCancel,
   onDraftChange,
 }: {
-  /** 理由の要素の id の頭（`tag-rename`）。 */
   idPrefix: string;
   rowId: number;
-  /** 今の名前。改名を始めたときの値。 */
   name: string;
-  /** 名前の規則。省くとタグの名前の規則。 */
   rules?: NameRules;
   label: UiText;
   pending: boolean;
   error: TagFieldError | null;
   onSubmit: (name: string) => void;
   onCancel: () => void;
-  /** 値が変わるたびに呼ぶ。呼び出し元はこれで直前の失敗の表示を消す。 */
   onDraftChange?: () => void;
 }) {
   const field = useTagNameField(name, onDraftChange, rules);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // 改名を始めたときに今の名前を選んだ状態にする。
   useEffect(() => {
     inputRef.current?.focus();
     inputRef.current?.select();
@@ -56,8 +45,7 @@ export default function RowNameInput({
   }
 
   function cancel() {
-    // 送信中は、その応答が届くまで閉じない（Esc の場合。行に「キャンセル」のボタンは
-    // 無い）。閉じたあとに届いた応答が、もう無いこの行や別の行の状態を書き換えることを防ぐ。
+    // Block Escape while pending so late responses cannot affect removed or replacement rows.
     if (pending) return;
     onCancel();
   }

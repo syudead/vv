@@ -32,17 +32,13 @@ import {
 import TagKindSelect from "./TagKindSelect";
 import type { TagKindFilter } from "./tagListUrl";
 
-/**
- * tagSortIcons は種類ごとのアイコンである。「Date created」はライブラリのファイルの作成日（`FileClock`）と
- * 別のものなので、同じ絵にしない。
- */
+/** Tag creation differs from file creation, so use a distinct icon. */
 const tagSortIcons: Record<TagSortKind, LucideIcon> = {
   name: ArrowDownAZ,
   count: Hash,
   created: CalendarPlus,
 };
 
-/** tagSortOptions はメニューに並べる種類で、値は選んだときの既定の並び順である。 */
 function tagSortOptions(): SortOption<TagListSort>[] {
   return tagSortKinds.map((option) => ({
     value: option.initial,
@@ -51,7 +47,6 @@ function tagSortOptions(): SortOption<TagListSort>[] {
   }));
 }
 
-/** activeOption は今の並び順の種類の、メニューでの値（種類の既定の並び順）である。 */
 function activeOption(sort: TagListSort): TagListSort {
   const kind = tagSortKind(sort);
   return tagSortKinds.find((option) => option.kind === kind)!.initial;
@@ -66,12 +61,9 @@ export interface TagToolbarProps {
   onTentativeOnlyChange: (value: boolean) => void;
   unusedOnly: boolean;
   onUnusedOnlyChange: (value: boolean) => void;
-  /** 種類の絞り込み。 */
   kind: TagKindFilter;
-  /** 名前の自然順の種類。読み込み前は undefined。 */
   kinds: readonly TagKind[] | undefined;
   onKindChange: (kind: TagKindFilter) => void;
-  /** 「Tentative only」「Unused only」と種類を外す（吹き出しの「Clear filters」）。 */
   onClearFilters: () => void;
   filterDisabled: boolean;
   filterRef: Ref<HTMLButtonElement>;
@@ -80,14 +72,6 @@ export interface TagToolbarProps {
   sortDisabled: boolean;
 }
 
-/**
- * TagToolbar はタグ管理画面の操作を共通トップバーの中央に置く（デザインシステムの
- * `Toolbar` の placement="topBar"。TagsPage が `TopBarPortal` で入れる。
- * web/registry/rules/patterns.md の Sections）。並びはライブラリの `LibraryToolbar` と同じで、
- * 検索欄 → 絞り込み → 並び順（と向き）。検索欄・絞り込み・並び順の部品はライブラリと共有する
- * `web/src/videoList/` のもので、並び順は `md` から並べ、それより狭いとアイコンだけの
- * 「Sort」のまとめ（ライブラリの `CompactSortControls` と同じ形）に入れる。
- */
 export default function TagToolbar({
   query,
   onQueryCommit,
@@ -160,17 +144,11 @@ export interface AdminListToolbarProps {
   sort: TagListSort;
   onSortChange: (sort: TagListSort) => void;
   sortDisabled: boolean;
-  /** 狭い幅の「Sort」のまとめのラジオの name。画面ごとに変える。 */
+  /** Unique radio-group name per screen. */
   compactSortName: string;
-  /** 検索欄と並び順の間に置く絞り込み（タグの「Filter」）。 */
   children?: ReactNode;
 }
 
-/**
- * AdminListToolbar は管理表の画面の、共通トップバーの中央に置く検索欄と並び順である。
- * タグの画面（`TagToolbar`、「Filter」を足す）と人物・団体の画面（`web/src/credits/`）が
- * 使う。並び順の種類（Name・Video count・Date created）と向きは両方の画面で同じである。
- */
 export function AdminListToolbar({
   query,
   onQueryCommit,
@@ -199,7 +177,6 @@ export function AdminListToolbar({
           label={searchLabel}
           placeholder={searchPlaceholder}
           syntaxHelp={false}
-          // 打鍵ごとに引き直す（前の要求は打ち切る。docs/design-docs/catalog-organization.md）。
           debounceMs={0}
           disabled={searchDisabled}
         />
@@ -258,7 +235,7 @@ export function AdminListToolbar({
               onValueChange={(next) => {
                 if (tagSortKind(next) !== kind) onSortChange(next);
               }}
-              // 「Name」に向きは無いので、そのときは向きのボタンを出さない。
+              // Natural name order has no direction toggle.
               toggle={
                 direction === undefined || sort === "name"
                   ? undefined

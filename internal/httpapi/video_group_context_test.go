@@ -11,12 +11,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 動画ページのグループを、動画を開いたグループ（group の問い合わせ）で答えることを確かめる
-//
-
-// handMadeGroups は newVideoGroupFixture に手で作ったグループを足す。G1 は ep1・ep10（非公開）・
-// solo・ep2、G2 は solo・p1 で、solo は両方にある。C は solo・p2、P は ep1・C・p1 で、P の再生順は
-// 深さ優先の ep1・solo・p2・p1 になる。作った順に id が大きくなる。
+// IDs follow creation order; playback traverses nested groups depth-first.
 func handMadeGroups(t *testing.T, f *libraryFixture) (g1, g2, parent int64) {
 	t.Helper()
 	ctx := context.Background()
@@ -40,13 +35,10 @@ func handMadeGroups(t *testing.T, f *libraryFixture) (g1, g2, parent int64) {
 	return g1, g2, parent
 }
 
-// inGroup は経路 path に問い合わせ group を付ける。
 func inGroup(path string, group int64) string {
 	return path + "?group=" + strconv.FormatInt(group, 10)
 }
 
-// wantInGroup は動画 id を問い合わせ query で開いたときの、関連動画の前後と group、動画の
-// group を確かめる。
 func wantInGroup(t *testing.T, f *libraryFixture, label, query string, id int64, prev, next *int64, ref gen.VideoGroupRef, cookies ...*http.Cookie) {
 	t.Helper()
 	related, _ := getJSON[gen.RelatedVideos](t, f, relatedPath(id)+query, cookies...)
@@ -63,9 +55,6 @@ func wantInGroup(t *testing.T, f *libraryFixture, label, query string, id int64,
 	}
 }
 
-// 受け入れ条件 2（API 側）: G1 と G2 にある動画は、group=G1 なら G1 の再生順、group=G2 なら G2 の
-// 再生順で前後と group を答える。group が無ければ id の小さい G1 が答え、動画を持たないグループと
-// 無いグループは G1 にフォールバックする。手で作ったグループに folder は無い。
 func TestVideoGroupFollowsTheGroupItWasOpenedFrom(t *testing.T) {
 	f := newVideoGroupFixture(t)
 	g1, g2, _ := handMadeGroups(t, f)
@@ -83,15 +72,12 @@ func TestVideoGroupFollowsTheGroupItWasOpenedFrom(t *testing.T) {
 	if page.Total != 2 || !slices.Equal(videoIDs(page.Items), []int64{solo, p1}) {
 		t.Errorf("group=G2 のメンバー = total %d・%v, want 2・[solo p1]", page.Total, videoIDs(page.Items))
 	}
-	// 関連動画の items から除くのは文脈のグループの動画だけである。
 	related, _ := getJSON[gen.RelatedVideos](t, f, inGroup(relatedPath(solo), g2), f.owner)
 	if got := videoIDs(related.Items); slices.Contains(got, p1) || !slices.Contains(got, ep2) {
 		t.Errorf("group=G2 の関連動画 = %v, want p1 を除き ep2 を含む", got)
 	}
 }
 
-// 入れ子のグループ: group=P では、子グループ C の動画も P の深さ優先の再生順（ep1・solo・p2・p1）で
-// 前後と位置を答える。
 func TestVideoGroupFollowsNestedPlayOrder(t *testing.T) {
 	f := newVideoGroupFixture(t)
 	_, _, parent := handMadeGroups(t, f)
@@ -107,8 +93,6 @@ func TestVideoGroupFollowsNestedPlayOrder(t *testing.T) {
 	}
 }
 
-// ゲストでは、文脈のグループの位置と本数・前後を公開の動画だけで数える。G1 の ep10 は非公開
-// なので、solo は 4 本中 3 本目ではなく 3 本中 2 本目で、前は ep1 になる。
 func TestVideoGroupContextForGuestCountsPublicVideos(t *testing.T) {
 	f := newVideoGroupFixture(t)
 	g1, _, _ := handMadeGroups(t, f)

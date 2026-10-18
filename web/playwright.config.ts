@@ -23,8 +23,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: 1,
   outputDir: path.join(webRoot, "test-results"),
-  // CI では JUnit の結果も reports/ に書き、ci.yml が Codecov へ送る。
-  // includeRetries が無いと、リトライで通ったテストは成功だけが残り、不安定だと分からない。
+  // Include retries in JUnit reports so Codecov can identify flaky tests instead of seeing only the final pass.
   reporter: process.env.CI
     ? [
         ["html", { open: "never" }],
@@ -43,8 +42,7 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
-  // プロジェクトは依存の順に走る。アカウントを作ってログインした状態を保存 → その状態で
-  // e2e すべて。
+  // Run account setup before all projects that reuse its session.
   projects: [
     {
       name: "owner-setup",

@@ -1,8 +1,4 @@
-/**
- * workInfoFetchPage は動画ページの作品情報の取得のテスト（src/player/VideoPage.workInfoFetch*.test.tsx）
- * が共有する偽のサーバーと操作の手順である。プラグインの実行はサーバーのものなので、偽の
- * サーバーが検索・取得・反映に答える。プレイヤーの差し替え（vi.mock）は各ファイルが持つ。
- */
+/** Fake server-side plugin execution; each test file owns its player mock. */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
@@ -77,7 +73,6 @@ export function failure(status: number, body: Record<string, unknown>): Response
   return json({ message: "failed", ...body }, status);
 }
 
-/** fetchResult は取得の応答の本文で、作品の詳細の一覧は既定で空である。 */
 export function fetchResult(overrides: Partial<WorkInfoFetch> = {}): WorkInfoFetch {
   return {
     fetchId: "F1",
@@ -92,7 +87,6 @@ export function fetchResult(overrides: Partial<WorkInfoFetch> = {}): WorkInfoFet
   };
 }
 
-/** appliedResult は反映の応答の本文で、飛ばしたものは既定で無い。 */
 export function appliedResult(
   applied: Video,
   overrides: Partial<WorkInfoFetchApplied> = {},
@@ -100,13 +94,11 @@ export function appliedResult(
   return { video: applied, skippedTags: [], skipped: [], ...overrides };
 }
 
-/** workId は候補と取得に使う作品の ID である。 */
 export const workId = "W-1";
 
-/** workUrl は候補のページの URL である。画面がリンクに出すだけで、取得には送らない。 */
+/** Display-only candidate URL; never submitted for fetching. */
 export const workUrl = "https://works.example/w/1";
 
-/** server は経路ごとの応答を差し替えられる偽のサーバーである。 */
 export const server = {
   video,
   plugins: [works] as WorkInfoPlugin[],
@@ -150,7 +142,6 @@ export async function openDialog() {
   return { user, dialog };
 }
 
-/** fetchById は ID を選んで作品の ID を打って取得し、比較の段を開く。 */
 export async function fetchById() {
   const opened = await openDialog();
   await opened.user.click(within(opened.dialog).getByRole("radio", { name: "ID" }));
@@ -163,7 +154,7 @@ export async function fetchById() {
 }
 
 export function heading() {
-  // ダイアログが開いている間、後ろのページは読み上げから隠れる。
+  // The modal hides the background page from accessibility queries.
   return screen.getByRole("heading", { level: 1, hidden: true });
 }
 
@@ -181,10 +172,7 @@ function respond(url: string, body: unknown): Response {
   return json({});
 }
 
-/**
- * useFetchServer は各テストの前に偽のサーバーを既定の答え（題名と 2 つのタグの取得）に戻して
- * fetch を差し替え、後で戻す。describe の中で呼ぶ。
- */
+/** Call within describe to install default fetch responses per test and restore afterward. */
 export function useFetchServer() {
   const fetchMock = vi.fn<typeof fetch>();
 

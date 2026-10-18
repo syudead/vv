@@ -4,21 +4,16 @@ import { renameGroup } from "../api/groups";
 import { errorText, t } from "../i18n";
 import { useToast } from "../ui/Toast";
 
-/** GroupNaming は名前の欄を開いている新しいグループである。 */
 export interface GroupNaming {
   groupId: number;
-  /** サーバーが付けた仮の名前。 */
   provisional: string;
-  /** そのグループを作った「Make a group」の取り消しのトークン。 */
   undoToken: string;
 }
 
 /**
- * useGroupNaming は「Make a group」の後の名前の欄である。変えた名前は `onShowName` ですぐ見せてから、作ったときのトークン付きの
- * PATCH /api/groups/{id} で送る。失敗したら「Couldn't rename the group: {reason}」を出し、仮の名前を
- * 見せ直す。欄が閉じたら、送っている名前が答えてから閉じた欄を渡して `onClosed` を呼ぶ（画面は
- * そこで読み直す）。答えを待つ間に次の欄が開いていても、渡すのは閉じた欄である。
- * `discard` は欄を `onClosed` を呼ばずに閉じる（取り消しでグループが消えた）。
+ * Rename optimistically with the creation undo token and restore the provisional name on failure.
+ * Wait for pending rename before onClosed, passing that closed field even if another opened;
+ * discard skips onClosed.
  */
 export function useGroupNaming({
   onShowName,
@@ -30,7 +25,6 @@ export function useGroupNaming({
   const toast = useToast();
   const [naming, setNaming] = useState<GroupNaming | null>(null);
   const sending = useRef<Promise<void>>(Promise.resolve());
-  // 開いている欄（閉じたら null）。
   const open = useRef<GroupNaming | null>(null);
   const latest = useRef({ onShowName, onClosed });
   useEffect(() => {

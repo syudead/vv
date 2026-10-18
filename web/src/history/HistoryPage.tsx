@@ -79,17 +79,13 @@ import { firstTarget, jumpTargets } from "./historyJump";
 import { useHistoryDates } from "./useHistoryDates";
 import { type HistoryState, useWatchHistory } from "./useWatchHistory";
 
-/** 状態の切り替えの選択肢。 */
 const watchOptions: readonly WatchHistoryFilter[] = ["all", "inProgress", "watched"];
 
-/**
- * useNow は日の見出し（Today・Yesterday）を決める今の時刻である。見る人のローカルの 0 時と、
- * タブがまた見えたときに進める。一覧は読み直さない。
- */
+/** Update local-day headings at midnight and when the tab becomes visible, without refetching. */
 function useNow(): Date {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    // 0 時ちょうどより少し後に進め、時計の誤差で前の日のまま描かないようにする。
+    // Fire just after midnight to avoid rendering the previous day due to clock drift.
     const timer = setTimeout(() => setNow(new Date()), msUntilNextMidnight(now) + 1000);
     return () => clearTimeout(timer);
   }, [now]);
@@ -103,10 +99,6 @@ function useNow(): Date {
   return now;
 }
 
-/**
- * useHistoryCriteria は URL（`watch`・`q`・`date`）を画面の条件として読み、書き換える口を
- * 返す。
- */
 function useHistoryCriteria(): {
   criteria: HistoryCriteria;
   apply: (next: HistoryCriteria, mode: HistoryMode) => void;
@@ -135,18 +127,10 @@ function readyItems(state: HistoryState): WatchHistoryEntry[] {
   return state.kind === "ready" ? state.items : [];
 }
 
-/**
- * HistoryPage は所有者の視聴履歴を、日ごとの見出しの下に新しい順に並べる画面である。
- *
- * 見出しの行で視聴状態を切り替え、題名を検索し、横の欄で件のある日か月へ移る。条件は URL に
- * 持つ。行を押すと再生画面を開き、「Resume」「Start over」はその場で再生を始めさせる。行の ×
- * でその件を確かめずに消す。全件を消すのは lg からは横の欄の最後、lg 未満では見出しの
- * 「More」の奥にあり、確認の窓を通す。削除の 404 は一覧が古いということなので、行を残した
- * まま最初のページから読み直す。
- */
+/** A deletion 404 means stale data: retain rows while reloading the first page. */
 export default function HistoryPage() {
   const toast = useToast();
-  // 行から開いた再生画面の戻り先は、今の履歴の URL をクエリ文字列ごと。
+  // Preserve the full history query in playback's return URL.
   const here = useLocation();
   const from = `${here.pathname}${here.search}`;
   const { criteria, apply } = useHistoryCriteria();
@@ -163,10 +147,10 @@ export default function HistoryPage() {
   const [clearOpen, setClearOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearError, setClearError] = useState<UiText | null>(null);
-  // lg 未満の検索欄を開いているか。検索語があるあいだは閉じない。
+  // Keep narrow-screen search open while the query is nonempty.
   const [searchOpen, setSearchOpen] = useState(false);
   const searchShown = searchOpen || criteria.query !== "";
-  // 検索欄の blur から描画後の判定までの待ち。検索のボタンで開き直すときに取り消す。
+  // Cancel the deferred blur check when the search button reopens the field.
   const searchBlurTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useScrollTopOnChange(historyCriteriaKey(criteria));
@@ -179,8 +163,7 @@ export default function HistoryPage() {
     };
   }, []);
 
-  // lg 未満では検索欄が畳まれているので、`/` で開いてからフォーカスを入れる（入れるのは
-  // SearchBox の `/` と同じ。畳んだ欄には入らないので、開いた後にもう一度入れる）。
+  // On narrow screens, open search before focusing; SearchBox cannot focus a collapsed input.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
@@ -197,7 +180,6 @@ export default function HistoryPage() {
   const days = useMemo(() => groupByDay(items), [items]);
   const lastId = items.at(-1)?.id;
 
-  // 最後の行が画面の下から 1 画面分の内に来たら次のページを読む。
   const canLoadMore =
     state.kind === "ready" &&
     state.nextCursor !== undefined &&
@@ -218,7 +200,7 @@ export default function HistoryPage() {
       () => {
         settle();
         const nextId = history.remove(id);
-        // 行が抜けた後に、次の行（無ければ前の行、無ければ見出し）へフォーカスを移す。
+        // After removal, focus the next row, previous row, or heading.
         setTimeout(() => {
           const target =
             nextId === null ? heading.current : removeButtons.current.get(nextId);
@@ -228,7 +210,7 @@ export default function HistoryPage() {
       (error: unknown) => {
         settle();
         if (error instanceof RequestFailed && error.status === 404) {
-          // 別のタブで消えていた。知らせずに最初のページから読み直す（R-6）。
+          // Another tab deleted this record; silently reload from the first page.
           history.reload();
           return;
         }
@@ -251,7 +233,7 @@ export default function HistoryPage() {
         setClearOpen(false);
         history.clear();
         dates.clear();
-        // 空の表示を「該当なし」と取り違えないよう、条件を外す。
+        // Clear filters so the empty library is not mistaken for no matches.
         if (conditions) apply(DEFAULT_HISTORY_CRITERIA, "replace");
         setTimeout(() => heading.current?.focus(), 0);
       },
@@ -263,16 +245,13 @@ export default function HistoryPage() {
   }
 
   function openSearch() {
-    // 空の欄にフォーカスがあるまま検索のボタンを押すと、押した時点の blur が畳む判定を
-    // 待たせている。それより後の開く操作を優先する。
+    // A later open action must override the pending blur collapse.
     clearTimeout(searchBlurTimer.current);
     setSearchOpen(true);
     setTimeout(() => searchField.current?.focus(), 0);
   }
 
-  // 検索欄からフォーカスが外れ、欄が空なら畳む（Esc と × で空にした後を含む）。
-  // Esc は欄を空にする setState と同じ操作の中で blur するので、blur の時点の DOM には
-  // まだ消す前の語が残っている。描画が済んでから、空でフォーカスも戻っていないかを見る。
+  // Escape clears state and blurs before the DOM updates; check emptiness and focus after rendering.
   function onSearchBlur(event: FocusEvent<HTMLDivElement>) {
     const container = event.currentTarget;
     if (container.contains(event.relatedTarget)) return;
@@ -287,7 +266,7 @@ export default function HistoryPage() {
   const refilling = state.kind === "ready" && !hasRows && state.nextCursor !== undefined;
   const empty = state.kind === "ready" && !hasRows && state.nextCursor === undefined;
 
-  // 日付へ移る一覧。日は状態と検索語が変わったときだけ読み直す（R-11）。
+  // Reload dates only when watch state or query changes.
   const targets = useMemo(
     () => jumpTargets(dates.state.kind === "ready" ? dates.state.days : [], now),
     [dates.state, now],
@@ -298,11 +277,10 @@ export default function HistoryPage() {
       ? criteria.date
       : null;
   function jump(value: string | null) {
-    // 最初の項目は一覧の先頭なので、同じ表示に 2 つの URL を作らないよう date を外す。
+    // Omit date for the first target to avoid two URLs for the same list.
     const date = value === null || value === firstTarget(targets) ? undefined : value;
     if (date === criteria.date) {
-      // date の無い一覧で最初の項目を選んだ。URL は変わらないが、移る先は一覧の先頭なので
-      // 先頭へ戻す。
+      // Selecting the first target without date leaves the URL unchanged but must still scroll to the top.
       window.scrollTo({ top: 0, behavior: "auto" });
       return;
     }
@@ -387,7 +365,7 @@ export default function HistoryPage() {
             aria-label={t.list.filter.watch}
             value={criteria.watch}
             onValueChange={(value) => {
-              // 押している選択肢は外せない。いつも 1 つが押されている。
+              // One option must always remain selected.
               if (value === "" || value === criteria.watch) return;
               apply({ ...criteria, watch: value as WatchHistoryFilter }, "push");
             }}
@@ -542,16 +520,10 @@ export default function HistoryPage() {
   );
 }
 
-// 行の本体（サムネイルと文字）の並び。行の列を subgrid で受け継ぎ、lg 未満はサムネイルと
-// 文字の列の 2 段（下の段は文字の列の下の操作の場所）、lg からは 1 段。
 const mainLayout =
   "col-span-2 col-start-1 row-span-2 row-start-1 grid grid-cols-subgrid grid-rows-subgrid items-start lg:row-span-1 lg:items-center";
 
-/**
- * HistoryRow は日のまとまりの 1 件である。サムネイルと文字を 1 つのリンクにして再生画面を
- * 開き、その後ろに「Resume」か「Start over」、端に × を置く。時刻は書かない（日は見出しが
- * 持つ）。動画がライブラリに無い件はリンクにも操作にもせず、「Not in the library」と書く。
- */
+/** Missing videos have neither links nor playback actions; dates belong to group headings, not rows. */
 function HistoryRow({
   entry,
   dayText,
@@ -562,9 +534,8 @@ function HistoryRow({
   onRemove,
 }: {
   entry: WatchHistoryEntry;
-  /** 読み上げ名に入れる日（「Today, Oct 10」）。 */
   dayText: string;
-  /** 再生画面の戻り先（今の履歴の URL）。 */
+  /** Return URL for playback, including history filters. */
   from: string;
   pending: boolean;
   rowRef?: Ref<HTMLLIElement>;
@@ -685,10 +656,6 @@ function HistoryRow({
   );
 }
 
-/**
- * HistoryRowLayout は行の列である。lg 未満はサムネイル・文字・端の × の 3 列で、操作は
- * 文字の列の下、lg からはサムネイル・文字・操作・端の × の 1 行。
- */
 function HistoryRowLayout({
   rowRef,
   children,
@@ -705,17 +672,14 @@ function HistoryRowLayout({
   );
 }
 
-/** EntryMedia はサムネイルの列である。lg 未満は文字の列と操作の 2 段にまたがる。 */
 function EntryMedia({ children }: { children: ReactNode }) {
   return <span className="row-span-2 min-w-0 lg:row-span-1">{children}</span>;
 }
 
-/** EntryText は文字の列（題名と補いの行）である。 */
 function EntryText({ children }: { children: ReactNode }) {
   return <span className="flex min-w-0 flex-col gap-1">{children}</span>;
 }
 
-/** EntryTitle は行の題名である。ライブラリに無い件は弱い色で書く。 */
 function EntryTitle({ title, muted = false }: { title: string; muted?: boolean }) {
   return (
     <span
@@ -730,7 +694,6 @@ function EntryTitle({ title, muted = false }: { title: string; muted?: boolean }
   );
 }
 
-/** EntryWarning は再生できないことを知らせる行である。 */
 function EntryWarning({ text }: { text: UiText }) {
   return (
     <span className="flex items-center gap-1 text-xs text-warning">

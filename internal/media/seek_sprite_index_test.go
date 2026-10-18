@@ -30,8 +30,7 @@ func requireEncoder(t *testing.T, encoder string) {
 	}
 }
 
-// makeH264Clock は timeGraySource を 1 秒ごとのキーフレームで H.264 にする。B フレームを
-// 含むので、表示時刻は ctts と edit list で決まる。
+// B frames require ctts and edit lists to recover presentation times.
 func makeH264Clock(t *testing.T, name, seconds string, extra ...string) string {
 	t.Helper()
 	requireEncoder(t, "libx264")
@@ -73,7 +72,7 @@ func TestParseKeyframeTrackReadsKeyframeTimes(t *testing.T) {
 			if len(track.keyframes) != 10 {
 				t.Fatalf("キーフレームが %d 枚（10 枚のはず）", len(track.keyframes))
 			}
-			// B フレームの遅れは edit list で打ち消され、キーフレームは 0, 1, 2, ... 秒になる。
+			// The edit list cancels B-frame delay, placing keyframes at whole seconds.
 			for i, frame := range track.keyframes {
 				if want := int64(i) * 1_000_000; frame.presentationUs < want-50_000 || frame.presentationUs > want+50_000 {
 					t.Errorf("キーフレーム %d の表示時刻 %d µs（%d µs のはず）", i, frame.presentationUs, want)
@@ -105,8 +104,7 @@ func TestGenerateSeekSpriteFromIndexPicksKeyframeAtIntervalStart(t *testing.T) {
 	}
 }
 
-// 最後の区間の開始が映像の終わりと重なる（容器の長さが映像より僅かに長い）と、
-// その区間にはフレームが無い。索引からは直前のキーフレームを選び、失敗しない。
+// When the final interval starts at video end, reuse the preceding keyframe rather than failing.
 func TestGenerateSeekSpriteFromIndexUsesPreviousKeyframeAfterVideoEnds(t *testing.T) {
 	videoPath := makeH264Clock(t, "clock.mp4", "10")
 	layout := domain.NewSeekSpriteLayout(10_010)
@@ -123,7 +121,6 @@ func TestGenerateSeekSpriteFromIndexUsesPreviousKeyframeAfterVideoEnds(t *testin
 	}
 }
 
-// 区間より長い GOP では、キーフレームの無い区間は直前のキーフレームを複製する。
 func TestGenerateSeekSpriteFromIndexRepeatsKeyframeForLongGOP(t *testing.T) {
 	requireEncoder(t, "libx264")
 	videoPath := filepath.Join(t.TempDir(), "long-gop.mp4")
@@ -136,7 +133,7 @@ func TestGenerateSeekSpriteFromIndexRepeatsKeyframeForLongGOP(t *testing.T) {
 		t.Fatal(err)
 	}
 	sheets := readSheets(t, output)
-	// キーフレームは 0, 7, 14, 21, 28 秒。区間 15〜20 秒には無いので 14 秒の場面になる。
+	// Keyframes at 0, 7, 14, 21, and 28 seconds make the 15-20 interval use second 14.
 	for _, check := range []struct {
 		frame int
 		want  float64
@@ -147,9 +144,7 @@ func TestGenerateSeekSpriteFromIndexRepeatsKeyframeForLongGOP(t *testing.T) {
 	}
 }
 
-// キーフレームがコマに対して疎な動画（短い動画の多く）は、索引からは同じ場面が
-// 並ぶので errSeekIndexUnsupported になり、GenerateSeekSprite は区間ごとの抽出で
-// 各区間の先頭の場面を作る。
+// Sparse keyframes reject indexed extraction so segment seeks can produce distinct scenes.
 func TestGenerateSeekSpriteExtractsPerIntervalForSparseKeyframes(t *testing.T) {
 	t.Parallel()
 
@@ -200,8 +195,6 @@ func TestGenerateSeekSpriteFromIndexReadsHEVC(t *testing.T) {
 	}
 }
 
-// 索引から取れない入力（MP4 でない容器や、H.264／HEVC でない映像）は
-// errSeekIndexUnsupported になり、GenerateSeekSprite は区間ごとの抽出で作る。
 func TestGenerateSeekSpriteFromIndexRejectsUnsupportedInput(t *testing.T) {
 	t.Parallel()
 
@@ -226,7 +219,6 @@ func TestGenerateSeekSpriteFromIndexRejectsUnsupportedInput(t *testing.T) {
 	}
 }
 
-// 区間ごとの抽出でも、映像の終わりから始まる区間は失敗せず直前のコマを複製する。
 func TestGenerateSeekSpriteParallelRepeatsPreviousFrameAfterVideoEnds(t *testing.T) {
 	requireFFmpeg(t)
 	videoPath := filepath.Join(t.TempDir(), "clock.mp4")
@@ -243,8 +235,6 @@ func TestGenerateSeekSpriteParallelRepeatsPreviousFrameAfterVideoEnds(t *testing
 	}
 }
 
-// 壊れた索引（途中で切れた、値が化けた moov）でもパニックせず、エラーか何らかの
-// キーフレームの選択で終わる。
 func TestParseKeyframeTrackSurvivesDamagedIndex(t *testing.T) {
 	videoPath := makeH264Clock(t, "clock.mp4", "10")
 	file, err := os.Open(videoPath)
@@ -286,14 +276,13 @@ func TestParseKeyframeTrackSurvivesDamagedIndex(t *testing.T) {
 	}
 }
 
-// slowGraySource は 1 秒あたり 0.5 ずつ明るくなる入力で、400 秒で 216 に届く。
+// Brightness increases by 0.5 per second, reaching 216 at four hundred seconds.
 func slowGraySource(seconds string) string {
 	return "color=c=black:s=64x64:r=10:d=" + seconds + ",format=yuv420p,geq=lum='16+T/2':cb=128:cr=128"
 }
 
-// 離れたキーフレームを続けて復号しても、コマは時刻の順に並ぶ。IDR だけの動画
-// （1 本の列で復号する）と、open GOP の CRA や IDR でない I フレームを含む動画
-// （1 枚ずつ別の入力にする）の両方を、POC が巻き戻る間隔（90 秒）で確かめる。
+// Exercise ninety-second POC wraparound for both IDR streams and separately decoded open-GOP
+// keyframes.
 func TestGenerateSeekSpriteKeepsOrderOfDistantKeyframes(t *testing.T) {
 	t.Parallel()
 
@@ -372,7 +361,6 @@ func TestPresentationWindowFollowsEditList(t *testing.T) {
 			}
 		})
 	}
-	// 途中を切り取った（空でない edit が複数ある）トラックは扱わない。
 	cut := editBoxes(t,
 		editEntry{segmentDuration: 5000, mediaTime: 0, rate: normal},
 		editEntry{segmentDuration: 5000, mediaTime: 900_000, rate: normal})
@@ -398,8 +386,7 @@ func be32(values ...uint32) []byte {
 	return out
 }
 
-// 数十バイトの表が 1600 万個の sample を名乗っても、値を取り出すのはキーフレームの
-// 分だけで、sample の数だけの配列は作らない。
+// A tiny table claiming sixteen million samples must allocate only for actual keyframes.
 func TestSampleTableDoesNotAllocatePerSample(t *testing.T) {
 	const count = 1 << 24
 	stsz := append(be32(0, 1000), be32(count)...)
@@ -444,11 +431,11 @@ func TestAnnexBReportsIDR(t *testing.T) {
 		header []byte
 		want   bool
 	}{
-		{"h264", []byte{0x65, 0x88}, true},  // 型 5（IDR）
-		{"h264", []byte{0x41, 0x9a}, false}, // 型 1（IDR でないスライス）
-		{"hevc", []byte{0x26, 0x01}, true},  // 型 19（IDR_W_RADL）
-		{"hevc", []byte{0x28, 0x01}, true},  // 型 20（IDR_N_LP）
-		{"hevc", []byte{0x2a, 0x01}, false}, // 型 21（CRA）
+		{"h264", []byte{0x65, 0x88}, true},  // Type 5: IDR.
+		{"h264", []byte{0x41, 0x9a}, false}, // Type 1: non-IDR slice.
+		{"hevc", []byte{0x26, 0x01}, true},  // Type 19: IDR_W_RADL.
+		{"hevc", []byte{0x28, 0x01}, true},  // Type 20: IDR_N_LP.
+		{"hevc", []byte{0x2a, 0x01}, false}, // Type 21: CRA.
 	} {
 		track := &keyframeTrack{format: tc.format, lengthSize: 4, parameterSets: [][]byte{{0x67}}}
 		sample := append(be32(uint32(len(tc.header))), tc.header...)
@@ -462,11 +449,8 @@ func TestAnnexBReportsIDR(t *testing.T) {
 	}
 }
 
-// stss の重複や順不同、大きさの異なる sample、複数の stsc の並びでも、キーフレームの
-// 位置と時刻を正しく求める。
 func TestSampleTableFindsKeyframesAcrossChunks(t *testing.T) {
-	// sample 0〜5 の大きさは 10, 20, 30, 40, 50, 60。chunk 0（位置 1000）に 2 個、
-	// chunk 1（位置 5000）と chunk 2（位置 9000）に 2 個ずつ入る。
+	// Six samples have sizes 10 through 60; chunks at 1000, 5000, and 9000 each contain two samples.
 	boxes := []mp4Box{
 		{boxType: "stsz", payload: append(be32(0, 0, 6), be32(10, 20, 30, 40, 50, 60)...)},
 		{boxType: "stts", payload: fullBox(be32(6, 100))},
@@ -506,8 +490,7 @@ func TestSampleTableFindsKeyframesAcrossChunks(t *testing.T) {
 	}
 }
 
-// 表示行列で回転する動画のコマは、ffmpeg が容器から読んで自動回転したのと同じ向きになる。
-// 反転を含む表示行列は索引からは作らず、区間ごとの抽出に任せる。
+// Match container autorotation; unsupported flip matrices fall back to segment extraction.
 func TestGenerateSeekSpriteFromIndexAppliesDisplayRotation(t *testing.T) {
 	t.Parallel()
 
@@ -578,7 +561,6 @@ func abs(v int) int {
 	return v
 }
 
-// stalledReader は読み取りが戻らない置き場の代わりである。
 type stalledReader struct{ release chan struct{} }
 
 func (r stalledReader) ReadAt([]byte, int64) (int, error) {
@@ -586,7 +568,6 @@ func (r stalledReader) ReadAt([]byte, int64) (int, error) {
 	return 0, io.EOF
 }
 
-// 読み取りが止まっても、期限が来れば索引の読み取りを待たずに戻る。
 func TestReadMovieBoxReturnsWhenContextEnds(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		reader := stalledReader{release: make(chan struct{})}

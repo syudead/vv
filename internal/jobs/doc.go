@@ -1,9 +1,3 @@
-// Package jobs はプロセス内のジョブキューとワーカーを担う。
-//
-// 取り込みの段階（解析・サムネイル・プレビュー）ごとにワーカーを1本置く。サムネイル生成や
-// メタデータ取得など時間のかかる処理を非同期に実行するための境界であり、
-// 常駐する外部ミドルウェアは増やさない。
-//
-// 依存してよいのは internal/domain だけで、他の internal/* は参照しない。
-// 依存の向きは ARCHITECTURE.md を参照。
+// Package jobs runs in-process workers per ingestion stage without external queue middleware; only
+// domain is an internal dependency. See ARCHITECTURE.md.
 package jobs

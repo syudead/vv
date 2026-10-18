@@ -5,10 +5,7 @@ import (
 	"io"
 )
 
-// desktopRunOptions はデスクトップ版の入口（desktop_windows.go）が run へ渡す引数を
-// 組み立てる。Desktop を真にするので、待ち受けのホストは LAN からの接続の許可の保存値で
-// 決まり、/api/settings/network が使える。
-// desktop タグの無いビルドでも試験できるよう、タグなしのファイルに置く。
+// Keep desktop option assembly untagged so ordinary builds can test it.
 func desktopRunOptions(
 	cfg Config,
 	logOutput io.Writer,

@@ -8,20 +8,15 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインのカバー画像（docs/design-docs/work-info-plugins.md のカバー画像の節）。ランタイムが取った本文を
-// 見出しで確かめて取得の結果と一緒に持ち、反映で選ばれれば手元の画像のアップロードと同じ確かめと適用で
-// 動画の代表サムネイルにする。
+// Keep header-validated covers with fetch results; selected covers use the same full validation and application as uploads. See docs/design-docs/work-info-plugins.md.
 
-// WorkInfoCoverApplier はカバー画像を動画の代表サムネイルにする適用である。*Ingest が満たす。
+// WorkInfoCoverApplier installs a cover thumbnail; implemented by Ingest.
 type WorkInfoCoverApplier interface {
-	// UploadThumbnailImage は画像 image を動画 videoID の代表サムネイルにし、反映後の動画を返す。contentKey は
-	// 反映を始めたときの動画の内容である。
+	// UploadThumbnailImage returns the updated video; contentKey is the content observed when application began.
 	UploadThumbnailImage(ctx context.Context, videoID int64, contentKey string, image []byte) (domain.Video, error)
 }
 
-// fetchedCover は取った本文 data を、上限以下の PNG・JPEG・静止画の WebP で、見出しの画素数がアップロードの
-// 上限以下ならカバー画像にする。外れれば nil で、カバー画像は無いものとする。最後まで読むのは反映のときの
-// アップロードと同じ確かめである。
+// Accept bounded PNG, JPEG or static WebP covers by header, otherwise return nil. Full decoding happens only when applying through upload validation.
 func fetchedCover(data []byte) *domain.WorkInfoCover {
 	if len(data) == 0 || len(data) > domain.WorkInfoCoverMaxBytes || animatedWebP(data) {
 		return nil
@@ -39,16 +34,12 @@ func fetchedCover(data []byte) *domain.WorkInfoCover {
 	return &domain.WorkInfoCover{Data: data, ContentType: contentType, Width: config.Width, Height: config.Height}
 }
 
-// WorkInfoFetchCover は動画 videoID の取得の結果 fetchID のカバー画像を返す。結果が無いか期限切れか、別の動画の
-// ものか、カバー画像を持たなければ domain.ErrNotFound を返す。
+// WorkInfoFetchCover returns ErrNotFound for missing/expired results, wrong videos or absent covers.
 func (p *WorkInfoPlugins) WorkInfoFetchCover(videoID int64, fetchID string) (domain.WorkInfoCover, error) {
 	return p.fetches.cover(fetchID, videoID, p.now())
 }
 
-// applyCover は取得の結果 fetch のカバー画像を動画の代表サムネイルにし、反映後の動画を返す。作品情報の反映が
-// 確定したあとに呼ぶので、できなかったとき（動画の内容が変わった、画像を読めないか合わせられない、書けない）
-// は誤りにせず、反映前の動画 video と飛ばした値を返す。結果は使い切りで、誤りを返すと画面は作品情報を
-// 反映できたかを知れない。
+// Apply covers after work-info commits; failures return the prior video and a skipped value instead of an error. Results are single-use, so an error would hide whether metadata was already applied.
 func (p *WorkInfoPlugins) applyCover(
 	ctx context.Context, fetch *workInfoFetch, video domain.Video,
 ) (domain.Video, []domain.SkippedWorkInfoValue) {
@@ -66,7 +57,7 @@ func (p *WorkInfoPlugins) applyCover(
 	if err != nil {
 		return video, skipped
 	}
-	// サムネイルの適用が返す動画は作品情報を読まないので、確定した作品情報を写す。
+	// Thumbnail application omits work information; copy the committed value.
 	saved.WorkInfo = video.WorkInfo
 	return saved, nil
 }

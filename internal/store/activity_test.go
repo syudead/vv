@@ -10,9 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// アクティビティの記録の書き込み・一覧・回復。
-
-// activityClock は記録の作成時刻を 1 分ずつ進める。
 type activityClock struct{ now time.Time }
 
 func (c *activityClock) next() time.Time {
@@ -24,7 +21,6 @@ func newActivityClock() *activityClock {
 	return &activityClock{now: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)}
 }
 
-// writeActivity は記録 entry を 1 つの取引で書き、その id を返す。
 func writeActivity(t *testing.T, db *DB, entry domain.ActivityEntry, now time.Time) int64 {
 	t.Helper()
 	id, err := RecordActivityForTest(context.Background(), db, entry, now)
@@ -34,7 +30,6 @@ func writeActivity(t *testing.T, db *DB, entry domain.ActivityEntry, now time.Ti
 	return id
 }
 
-// videoActivity は動画 key の記録である。
 func videoActivity(kind domain.ActivityKind, key, label string, state domain.ActivityState, decider domain.ActivityDecider) domain.ActivityEntry {
 	return domain.ActivityEntry{
 		Kind: kind, Subject: domain.ActivitySubject{Kind: domain.ActivitySubjectVideo, Key: key, Label: label},
@@ -67,13 +62,11 @@ func activityIDs(page domain.ActivityPage) []int64 {
 	return ids
 }
 
-// activityLog は絞り込みを確かめる 5 件の記録の id である。
 type activityLog struct {
 	importDone, importFailed, tagByOwner, judgement, undo int64
 	since                                                 time.Time
 }
 
-// seedActivityLog は種類・状態・判断したもの・時刻・表示名の違う 5 件を古い順に書く。
 func seedActivityLog(t *testing.T, db *DB) activityLog {
 	t.Helper()
 	clock := newActivityClock()
@@ -103,7 +96,6 @@ func seedActivityLog(t *testing.T, db *DB) activityLog {
 	return log
 }
 
-// 受け入れ: 記録は新しい順に返り、status・feature・decider・since・q のそれぞれが一覧を絞る。
 func TestListActivityNewestFirstAndFilters(t *testing.T) {
 	db, _ := jobsFixture(t)
 	log := seedActivityLog(t, db)
@@ -128,7 +120,6 @@ func TestListActivityNewestFirstAndFilters(t *testing.T) {
 			[]int64{log.tagByOwner, log.importFailed, log.importDone}},
 		{"decider", domain.ActivityQuery{Decider: domain.ActivityByOwner}, []int64{log.undo, log.tagByOwner, log.importFailed}},
 		{"since", domain.ActivityQuery{Since: log.since}, []int64{log.undo, log.judgement, log.tagByOwner}},
-		// 大文字と小文字を区別せず、組の 2 本目の表示名にも当たる。
 		{"q", domain.ActivityQuery{Search: "BROKEN"}, []int64{log.importFailed}},
 		{"q on the second label", domain.ActivityQuery{Search: "été"}, []int64{log.undo, log.judgement}},
 		{"combined", domain.ActivityQuery{Status: domain.ActivityDone, Decider: domain.ActivityByRule, Search: "holiday"},
@@ -140,7 +131,6 @@ func TestListActivityNewestFirstAndFilters(t *testing.T) {
 	}
 }
 
-// 受け入れ: counts は status を、features は feature を無視し、どちらもほかの絞り込みには従う。
 func TestListActivityCountsIgnoreTheirOwnFilter(t *testing.T) {
 	db, _ := jobsFixture(t)
 	log := seedActivityLog(t, db)
@@ -151,17 +141,14 @@ func TestListActivityCountsIgnoreTheirOwnFilter(t *testing.T) {
 	if !slices.Equal(activityIDs(page), []int64{log.importFailed}) {
 		t.Fatalf("一覧 = %v, want [%d]", activityIDs(page), log.importFailed)
 	}
-	// status を外し、feature（import）には従う。
 	if want := (domain.ActivityCounts{Attention: 1, Done: 1}); page.Counts != want {
 		t.Errorf("counts = %+v, want %+v", page.Counts, want)
 	}
-	// feature を外し、status（attention）には従う。どの機能も 0 から入る。
 	if len(page.Features) != len(domain.ActivityFeatures) || page.Features[domain.ActivityFeatureImport] != 1 ||
 		page.Features[domain.ActivityFeatureTags] != 0 {
 		t.Errorf("features = %v, want import 1 and every other feature 0", page.Features)
 	}
 
-	// decider・since・q には両方が従う。
 	owner := listActivity(t, db, domain.ActivityQuery{Decider: domain.ActivityByOwner, Since: log.since}, "", 50)
 	if want := (domain.ActivityCounts{Done: 2}); owner.Counts != want {
 		t.Errorf("owner since counts = %+v, want %+v", owner.Counts, want)
@@ -176,7 +163,6 @@ func TestListActivityCountsIgnoreTheirOwnFilter(t *testing.T) {
 	}
 }
 
-// 受け入れ: undo の記録は、取り消した記録の feature の下に出る。取り消した記録の要約を添える。
 func TestListActivityUndoIsUnderTheUndoneFeature(t *testing.T) {
 	db, _ := jobsFixture(t)
 	log := seedActivityLog(t, db)
@@ -196,7 +182,6 @@ func TestListActivityUndoIsUnderTheUndoneFeature(t *testing.T) {
 	}
 }
 
-// 対象の鍵ごとに、所有者が開ける今の動画の id を添える。ライブラリに無い鍵は 0 で、記録は残る（R-10）。
 func TestListActivityResolvesSubjectVideos(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	log := seedActivityLog(t, db)
@@ -221,8 +206,7 @@ func TestListActivityResolvesSubjectVideos(t *testing.T) {
 	}
 }
 
-// 組の記録の candidate は、重複の候補の一覧に組があるときだけ真である。候補の行が残っていても、
-// 片方が登録の所在を失った組は一覧に出ないので偽になる（screen-api の candidate）。
+// A stored candidate row is insufficient when either video has lost its registered locations.
 func TestListActivityCandidateFollowsTheDuplicatesList(t *testing.T) {
 	db, ids := judgementFixture(t)
 	entry := domain.ActivityEntry{
@@ -259,7 +243,6 @@ func TestListActivityCandidateFollowsTheDuplicatesList(t *testing.T) {
 	}
 }
 
-// 受け入れ: 記録が足されている間も、cursor が重複なしに続きを返す。読めない cursor は ErrInvalidCursor。
 func TestListActivityCursorContinuesWhileEntriesAreAdded(t *testing.T) {
 	db, _ := jobsFixture(t)
 	clock := newActivityClock()
@@ -273,7 +256,6 @@ func TestListActivityCursorContinuesWhileEntriesAreAdded(t *testing.T) {
 	if !slices.Equal(activityIDs(first), []int64{written[4], written[3]}) || first.NextCursor == "" {
 		t.Fatalf("1 ページ目 = %v (cursor %q)", activityIDs(first), first.NextCursor)
 	}
-	// 新しい記録が先頭に足されても、続きはずれない。
 	added := writeActivity(t, db,
 		videoActivity(domain.ActivityImport, "key-a", "a.mp4", activityDone, domain.ActivityByRule), clock.next())
 	second := listActivity(t, db, domain.ActivityQuery{}, first.NextCursor, 2)
@@ -284,7 +266,6 @@ func TestListActivityCursorContinuesWhileEntriesAreAdded(t *testing.T) {
 	if !slices.Equal(activityIDs(third), []int64{written[0]}) || third.NextCursor != "" {
 		t.Fatalf("3 ページ目 = %v (cursor %q)", activityIDs(third), third.NextCursor)
 	}
-	// 足した記録は先頭から読み直すと出て、件数にも入る。
 	if top := listActivity(t, db, domain.ActivityQuery{}, "", 1); top.Items[0].ID != added || top.Counts.Done != 6 {
 		t.Errorf("読み直した先頭 = %v (counts %+v), want %d", activityIDs(top), top.Counts, added)
 	}
@@ -294,8 +275,6 @@ func TestListActivityCursorContinuesWhileEntriesAreAdded(t *testing.T) {
 	}
 }
 
-// 受け入れ: 新しい記録が、同じ kind と subject の古い attention の記録を閉じる（superseded）。別の対象・
-// 別の種類・attention でない記録は閉じない。version_judgement は組ごとに 1 件を保つので閉じない。
 func TestRecordActivitySupersedesOlderAttention(t *testing.T) {
 	db, _ := jobsFixture(t)
 	clock := newActivityClock()
@@ -340,7 +319,6 @@ func TestRecordActivitySupersedesOlderAttention(t *testing.T) {
 	}
 }
 
-// 受け入れ: reason processing の running の記録は、回復の後に attention/interrupted になる。waiting は残す。
 func TestRecoverInterruptedActivity(t *testing.T) {
 	db, _ := jobsFixture(t)
 	clock := newActivityClock()
@@ -368,7 +346,6 @@ func TestRecoverInterruptedActivity(t *testing.T) {
 		t.Errorf("waiting = %+v, done = %+v; want unchanged", states[waiting], states[done])
 	}
 
-	// 回復するものが無ければ知らせない。
 	recorder.events = nil
 	if recovered, err := db.Activity().RecoverInterruptedActivity(context.Background()); err != nil || recovered != 0 {
 		t.Fatalf("2 回目の RecoverInterruptedActivity = %d, %v; want 0", recovered, err)
@@ -378,7 +355,6 @@ func TestRecoverInterruptedActivity(t *testing.T) {
 	}
 }
 
-// 1 件の読み出しは一覧と同じ形で、無い id は ErrNotFound。auto_tag の記録には付けたタグを添える。
 func TestActivityEntryReadsOneEntryWithTags(t *testing.T) {
 	db, _ := jobsFixture(t)
 	clock := newActivityClock()
@@ -405,7 +381,6 @@ func TestActivityEntryReadsOneEntryWithTags(t *testing.T) {
 	}
 }
 
-// activityStates は記録ごとの状態と理由か結果である。
 func activityStates(t *testing.T, db *DB) map[int64]domain.ActivityState {
 	t.Helper()
 	rows, err := db.sql.Query(`select id, status, coalesce(reason, ''), coalesce(outcome, '') from activity_entries`)
@@ -430,8 +405,6 @@ func activityStates(t *testing.T, db *DB) map[int64]domain.ActivityState {
 	return states
 }
 
-// 記録の状態は、変える内容の取引の中で setActivityState が書き換え、確定後に ActivityChanged を発行する。
-// 確定しなかった取引の書き換えは残らず、知らせも出ない。
 func TestSetActivityStateInTheChangeTransaction(t *testing.T) {
 	db, _ := jobsFixture(t)
 	clock := newActivityClock()

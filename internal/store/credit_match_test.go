@@ -8,8 +8,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 取得した人物・団体と既存の実体の照合。
-
 func matchFetched(t *testing.T, db *DB, kind domain.CreditKind, entries ...domain.CreditMatchEntry) []domain.CreditMatch {
 	t.Helper()
 	matches, err := db.Credits().Match(context.Background(), kind, entries)

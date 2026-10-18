@@ -14,22 +14,16 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// fakeAuthStore は AuthStore の偽物である。セッションは渡された ID のまま覚える
-// （ハッシュにして保存するのは internal/store の役目で、そのテストが確かめる）。
+// Store raw tokens in the fake; persistence hashing belongs to store tests.
 type fakeAuthStore struct {
-	mu       sync.Mutex
-	account  *domain.Account
-	sessions map[string]fakeSession
-	// failSession が真なら Session が誤りを返す。
-	failSession bool
-	// failAccount が真なら Account が誤りを返す。
-	failAccount bool
-	// apiTokens は平文ごとの API トークンである（api_tokens_test.go）。
-	apiTokens map[string]fakeAPIToken
-	// apiTokenQueries は APIToken が呼ばれた回数である。
+	mu              sync.Mutex
+	account         *domain.Account
+	sessions        map[string]fakeSession
+	failSession     bool
+	failAccount     bool
+	apiTokens       map[string]fakeAPIToken
 	apiTokenQueries int
-	// failAPIToken が真なら APIToken が誤りを返す。
-	failAPIToken bool
+	failAPIToken    bool
 }
 
 type fakeSession struct {
@@ -103,8 +97,7 @@ func (f *fakeAuthStore) hasSession(token string) bool {
 	return ok
 }
 
-// fakeHasher は Argon2id の代わりに "hash:" を前に付けるだけのハッシュである。
-// Verify の呼び出しを数え、gate があればそこから値を受け取るまで照合を止める。
+// The fake prefixes passwords with hash:, counts verification, and optionally blocks on gate.
 type fakeHasher struct {
 	verifies atomic.Int64
 	gate     chan struct{}
@@ -124,7 +117,6 @@ func (h *fakeHasher) Verify(password, encoded string) (bool, error) {
 	return encoded == "hash:"+password, nil
 }
 
-// fakeClock はテストが進める時計である。
 type fakeClock struct {
 	mu  sync.Mutex
 	now time.Time
@@ -164,7 +156,6 @@ func newAuthFixture(t *testing.T, configure func(*AuthOptions)) authFixture {
 	return f
 }
 
-// configured はアカウント owner / correct-password を設定済みにする。
 func (f authFixture) configured(t *testing.T) authFixture {
 	t.Helper()
 	if _, err := f.auth.Setup(context.Background(), "owner", "correct-password"); err != nil {
@@ -204,7 +195,6 @@ func TestAuthSetupReturnsSessionOnlyOnce(t *testing.T) {
 	if _, err := f.auth.Setup(ctx, "other", "other-password"); !errors.Is(err, domain.ErrAccountAlreadyConfigured) {
 		t.Errorf("2回目の Setup = %v, want ErrAccountAlreadyConfigured", err)
 	}
-	// 設定済みなら値の規則より先に「設定済み」を返す。
 	if _, err := f.auth.Setup(ctx, "", ""); !errors.Is(err, domain.ErrAccountAlreadyConfigured) {
 		t.Errorf("設定済みで空の Setup = %v, want ErrAccountAlreadyConfigured", err)
 	}
@@ -256,8 +246,8 @@ func TestAuthLoginFailuresAreIndistinguishableAndVerifyOnce(t *testing.T) {
 				f.configured(t)
 			}
 			_, err := login(f, tc.username, tc.password, sourceA)
-			// 原因を区別しない同じ値であること（包んだ値ではないこと）を確かめる。
-			// 包みを辿る errors.Is では足りないので、値そのものを比べる。
+			// Compare exact errors, not errors.Is, so wrapped details cannot distinguish credential failure
+			// causes.
 			if any(err) != any(domain.ErrInvalidCredentials) {
 				t.Fatalf("Login = %v, want ErrInvalidCredentials そのもの", err)
 			}
@@ -323,7 +313,7 @@ func TestAuthLoginReplacesCurrentSession(t *testing.T) {
 func TestAuthLoginThrottlesSourceAfterFiveFailures(t *testing.T) {
 	f := newAuthFixture(t, nil).configured(t)
 	for i := range 5 {
-		// ユーザー名を変えても同じ送信元として数える。
+		// Changing usernames does not reset a source's throttle bucket.
 		if _, err := login(f, "user"+string(rune('a'+i)), "wrong", sourceA); !errors.Is(err, domain.ErrInvalidCredentials) {
 			t.Fatalf("%d 回目の Login = %v", i+1, err)
 		}
@@ -336,7 +326,7 @@ func TestAuthLoginThrottlesSourceAfterFiveFailures(t *testing.T) {
 	if !errors.As(err, &throttled) || !errors.Is(err, domain.ErrLoginThrottled) {
 		t.Fatalf("6回目の Login = %v, want *ThrottledError", err)
 	}
-	// 最初の失敗から 5 秒経っているので、残りは 4 分 55 秒。
+	// Five seconds have elapsed, leaving four minutes fifty-five seconds.
 	if got := throttled.RetryAfterSeconds(); got != 295 {
 		t.Errorf("RetryAfterSeconds = %d, want 295", got)
 	}
@@ -344,11 +334,10 @@ func TestAuthLoginThrottlesSourceAfterFiveFailures(t *testing.T) {
 		t.Errorf("制限中に照合した（%d → %d）", before, got)
 	}
 
-	// 制限の誤りは数えないので、何度送っても期限は延びない。
+	// Throttled attempts do not extend the deadline.
 	for range 3 {
 		_, _ = login(f, "owner", "wrong", sourceA)
 	}
-	// 別の送信元には掛からない。
 	if _, err := login(f, "owner", "correct-password", sourceB); err != nil {
 		t.Errorf("別の送信元の Login = %v", err)
 	}
@@ -357,7 +346,7 @@ func TestAuthLoginThrottlesSourceAfterFiveFailures(t *testing.T) {
 	if _, err := login(f, "owner", "correct-password", sourceA); err != nil {
 		t.Fatalf("5 分後の Login = %v", err)
 	}
-	// 成功で記録が消えるので、また 5 回まで照合する。
+	// Success clears failure history, allowing five new attempts.
 	for i := range 5 {
 		if _, err := login(f, "owner", "wrong", sourceA); !errors.Is(err, domain.ErrInvalidCredentials) {
 			t.Fatalf("成功の後の %d 回目の Login = %v", i+1, err)
@@ -433,7 +422,7 @@ func TestAuthLoginVerifyWaitTimeoutIsNotCounted(t *testing.T) {
 	f.hasher.gate = nil
 	f.hasher.entered = nil
 
-	// 待ち切れなかった要求は数えていないので、失敗は2回。あと3回照合できる。
+	// Slot-wait timeouts do not count; only two failures occurred, leaving three attempts.
 	for i := range 3 {
 		if _, err := login(f, "owner", "wrong", sourceA); !errors.Is(err, domain.ErrInvalidCredentials) {
 			t.Fatalf("%d 回目の追加の Login = %v", i+1, err)
@@ -494,7 +483,6 @@ func TestLoginThrottleBoundsSources(t *testing.T) {
 		t.Error("最も古い送信元が捨てられていない")
 	}
 
-	// 送信元ごとの失敗は上限の数だけ覚え、古いものから捨てる。
 	for i := range 8 {
 		throttle.fail("d", now.Add(time.Duration(i)*time.Second))
 	}
@@ -576,7 +564,6 @@ func TestAuthState(t *testing.T) {
 		}
 	}
 
-	// 資格情報が書き換えられると（版が進むと）、同じ Cookie はゲストになる。
 	f.store.mu.Lock()
 	f.store.account.Version++
 	f.store.mu.Unlock()

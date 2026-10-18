@@ -9,22 +9,16 @@ import {
   DropdownMenuTrigger,
 } from "@/ui/shadcn/dropdown-menu";
 
-// 絞り込みのドロップダウンのボタン（vv の部品）。ツールバーに同じ形で並べ、絞り込みの名前と
-// 今の値と山形の印を出し、押すと DropdownMenu を開く。既定の値でないときは primary-soft の面に
-// primary の文字にして、開かずに今の値が読めるようにする
 //
-// 規則は web/registry/rules/components.md の FilterDropdownButton。
+// See web/registry/rules/components.md, FilterDropdownButton.
 
 export interface FilterDropdownButtonProps {
-  /** 絞り込みの名前（「Status」）。 */
   name: ReactNode;
-  /** 今の値（「All」「Needs attention」「Import +2」）。 */
   value: ReactNode;
-  /** 既定の値でない。 */
   active: boolean;
-  /** メニューの中身: DropdownMenuRadioGroup か DropdownMenuCheckboxItem の並び。 */
+  /** Supply a radio group or checkbox menu items. */
   children: ReactNode;
-  /** メニューの幅の揃え。既定は start。 */
+  /** Menu alignment defaults to start. */
   align?: "start" | "end";
 }
 

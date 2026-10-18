@@ -82,7 +82,6 @@ func (f *fakeAuthStore) TouchAPIToken(_ context.Context, id int64, now time.Time
 	return nil
 }
 
-// ownerSession はアカウントを設定済みにし、所有者のセッションの平文を返す。
 func ownerSession(t *testing.T, f authFixture) string {
 	t.Helper()
 	session, err := f.auth.Setup(context.Background(), "owner", "correct-password")

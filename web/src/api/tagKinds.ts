@@ -4,48 +4,29 @@ import { compareNatural } from "./tagOrder";
 import { refreshTags } from "./tags";
 import type { components } from "./gen/openapi";
 
-// タグの種類。型は
-// api/openapi.yaml からの生成物を使う。
 export type TagKind = components["schemas"]["TagKind"];
 export type TagKindRef = components["schemas"]["TagKindRef"];
 export type TagKindList = components["schemas"]["TagKindList"];
 
-/**
- * sortTagKinds は種類を名前の自然順（同じなら id の順）に並べた新しい配列を返す。サーバーは
- * id の順に返す。自然順は
- * 大文字小文字を区別しないので、`Era` と `era` のように名前が違っても同順位になりうる。
- */
+/** Natural case-insensitive name order, then ID for ties; the server returns ID order. */
 export function sortTagKinds(kinds: readonly TagKind[]): TagKind[] {
   return [...kinds].sort((a, b) => compareNatural(a.name, b.name) || a.id - b.id);
 }
 
-/**
- * 種類の一覧の共有の保持。`api/tags.ts` のタグの一覧と同じく、種類の管理・タグの種類の
- * メニュー・ライブラリの絞り込みが同じ控えを読む。**直近の 1 回分**だけを持ち、種類を
- * 変えたとき（`tag_kind_not_found` を受けたときを含む）に取り直すか捨てる。
- */
+/** Share only the latest tag-kind list across management, menus, and filters; invalidate on mutations and missing-kind errors. */
 type TagKindsListener = (kinds: TagKind[]) => void;
 
 let held: TagKind[] | undefined;
-/** generation は最後に始めた取得、または保持を捨てた時点の通し番号である。 */
 let generation = 0;
-/** latestFetch は今の generation を持つ取得である。保持を捨てたあとは無い。 */
 let latestFetch: Promise<TagKind[]> | undefined;
 const listeners = new Set<TagKindsListener>();
 
-/**
- * listTagKinds は種類をすべて取得する（`GET /api/tag-kinds`）。サーバーは id の順に返す。
- * 呼び出し元ごとの AbortSignal は受け取らない。この要求は複数の呼び出し元で共有する。
- */
+/** Shared requests must not accept per-caller abort signals. */
 export function listTagKinds(): Promise<TagKind[]> {
   return request<TagKindList>("/api/tag-kinds").then((list) => list.items);
 }
 
-/**
- * startFetch は新しい取得を 1 つ始める。届くまでに別の取得が始まったか保持が捨てられたら、
- * この応答は古いので `held` に入れず、そのとき勝っている取得（無ければ新しく始める取得）の
- * 結果を返す。種類を変えた後の呼び手に、変更の前の一覧を返さないためである。
- */
+/** Superseded responses must neither populate the cache nor reach callers; return the current generation's result instead. */
 function startFetch(): Promise<TagKind[]> {
   generation += 1;
   const myGeneration = generation;
@@ -57,7 +38,7 @@ function startFetch(): Promise<TagKind[]> {
       return kinds;
     },
   );
-  // 失敗した取得を待ち続けないように外し、次の `getTagKinds` に取り直させる。
+  // Clear failed requests so the next reader can retry.
   fetching.catch(() => {
     if (latestFetch === fetching) latestFetch = undefined;
   });
@@ -65,26 +46,19 @@ function startFetch(): Promise<TagKind[]> {
   return fetching;
 }
 
-/**
- * getTagKinds は共有の保持を返す。まだ無ければ `GET /api/tag-kinds` を送り、取得の途中なら
- * その結果を待つ。
- */
 export function getTagKinds(): Promise<TagKind[]> {
   if (held !== undefined) return Promise.resolve(held);
   return latestFetch ?? startFetch();
 }
 
-/** currentTagKinds はまだ取得していなければ undefined を返す、同期の読み出しである。 */
 export function currentTagKinds(): TagKind[] | undefined {
   return held;
 }
 
-/** refreshTagKinds はサーバーから必ず取り直し、共有の保持を差し替えて購読者に知らせる。 */
 export function refreshTagKinds(): Promise<TagKind[]> {
   return startFetch();
 }
 
-/** subscribeTagKinds は共有の保持が取り直されるたびに呼ばれる。戻り値で購読をやめる。 */
 export function subscribeTagKinds(listener: TagKindsListener): () => void {
   listeners.add(listener);
   return () => {
@@ -92,11 +66,7 @@ export function subscribeTagKinds(listener: TagKindsListener): () => void {
   };
 }
 
-/**
- * afterTagKindsChanged は種類を変える操作の後に呼ぶ。購読者がいれば取り直し、いなければ
- * 保持を捨てて次の `getTagKinds` に取らせる（進行中の取得は届いても `held` に入れない）。
- * 完了は待たず、失敗しても揉み消す。
- */
+/** Refresh with subscribers, otherwise invalidate; stale in-flight results cannot repopulate the cache. Do not await refresh failures. */
 function afterTagKindsChanged(): void {
   held = undefined;
   latestFetch = undefined;
@@ -104,39 +74,22 @@ function afterTagKindsChanged(): void {
   if (listeners.size > 0) refreshTagKinds().catch(() => undefined);
 }
 
-/**
- * afterTagKindRenamedOrDeleted は種類の名前の変更と削除の後に呼ぶ。キャッシュしたタグは
- * どれも種類の名前を持つので、共有のタグの一覧を取り直し、動画一覧の控えを捨てる。
- */
+/** Cached tags embed kind names; refresh them and invalidate video-list snapshots after renaming or deletion. */
 function afterTagKindRenamedOrDeleted(): void {
   afterTagKindsChanged();
   clearListSnapshot();
   refreshTags().catch(() => undefined);
 }
 
-/**
- * tagKindCountsChanged はタグの操作で種類ごとのタグの数（`tagCount`）が変わったときに呼ぶ
- * （種類の付け外し、タグの削除・却下・統合。docs/design-docs/catalog-organization.md「Kind filter」）。
- * 共有の保持を古いものとし、購読者がいれば取り直す。
- */
 export function tagKindCountsChanged(): void {
   afterTagKindsChanged();
 }
 
-/**
- * tagKindGone は、ほかの経路（`POST /api/tags/batch` の `setKind`）で `tag_kind_not_found` を
- * 受けたときに呼ぶ。種類の削除の後と同じく、種類の一覧・タグの一覧・動画一覧の控えを新しくする。
- */
 export function tagKindGone(): void {
   afterTagKindRenamedOrDeleted();
 }
 
-/**
- * refreshOnStaleTagKindError は `tag_kind_not_found` を受けたときに種類の一覧を取り直す
- * （別のタブで消された種類に、その場で気付けるようにする）。種類が消えていればその種類の
- * タグはもう種類なしなので、削除の後と同じくタグの一覧と動画一覧の控えも新しくする。
- * 誤りは常にそのまま投げ直す。
- */
+/** Missing kinds also invalidate tag and video-list caches; always rethrow the original error. */
 function refreshOnStaleTagKindError(error: unknown): never {
   if (error instanceof RequestFailed && error.reason === "tag_kind_not_found") {
     afterTagKindRenamedOrDeleted();
@@ -144,7 +97,6 @@ function refreshOnStaleTagKindError(error: unknown): never {
   throw error;
 }
 
-/** createTagKind は種類を 1 件作る（`POST /api/tag-kinds`）。 */
 export async function createTagKind(
   name: string,
   signal?: AbortSignal,
@@ -159,10 +111,6 @@ export async function createTagKind(
   return created;
 }
 
-/**
- * renameTagKind は種類の名前を書き換える（`PATCH /api/tag-kinds/{id}`）。今と同じ名前なら
- * 何も変えずに今の状態が返る。
- */
 export async function renameTagKind(
   id: number,
   name: string,
@@ -178,9 +126,7 @@ export async function renameTagKind(
   return updated;
 }
 
-/**
- * deleteTagKind は種類を消す（`DELETE /api/tag-kinds/{id}`）。その種類のタグは種類なしで残る。
- */
+/** Tags survive kind deletion with no kind assigned. */
 export async function deleteTagKind(id: number, signal?: AbortSignal): Promise<void> {
   const response = await apiFetch(`/api/tag-kinds/${String(id)}`, {
     method: "DELETE",
@@ -192,10 +138,7 @@ export async function deleteTagKind(id: number, signal?: AbortSignal): Promise<v
   afterTagKindRenamedOrDeleted();
 }
 
-/**
- * __resetTagKindsForTest はテストだけで使う。Vitest はテストファイル単位でモジュールを
- * 使い回すので、テストどうしで保持が残らないようにここでだけ空へ戻す。
- */
+/** Reset shared module state between tests because Vitest reuses modules within a test file. */
 export function __resetTagKindsForTest(): void {
   held = undefined;
   generation = 0;

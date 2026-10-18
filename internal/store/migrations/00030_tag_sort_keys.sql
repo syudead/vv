@@ -1,17 +1,12 @@
 -- +goose Up
--- 名前の自然順の鍵。
--- タグ管理画面の一覧をサーバーのページで読むため、名前の順を SQL の order by と keyset の
--- カーソルで引けるようにする。sort_key は domain.NaturalSortKey(name) を Go が書く
--- （video_locations.title_key と同じ鍵）。作り直せる派生の値で、表の意味は変えない。
+-- Go-derived natural-sort keys support indexed ordering and keyset pagination without changing tag identity.
 alter table tag_names add column sort_key text not null default '';
 
--- 却下した名前にも同じ鍵と、鍵を作った規則の版を持たせる。search_version は
--- tag_names.search_version と同じ意味（domain.SearchKeyVersion）。既定の 0 で、既存の行は
--- 起動時の TagStore.RefreshSearchKeys の埋め直しに入る。
+-- Version zero schedules existing rejected names for startup key backfill.
 alter table rejected_tag_names add column sort_key text not null default '';
 alter table rejected_tag_names add column search_version integer not null default 0;
 
--- 既存のタグ名の行を埋め直しの対象に戻す。起動時に search_key と一緒に sort_key が埋まる。
+-- Mark existing names stale so startup fills sort keys alongside search keys.
 update tag_names set search_version = 0;
 
 -- +goose Down

@@ -12,7 +12,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// postJSON は POST/JSON 本文の要求を1つ投げて応答を返す。
 func postJSON(t *testing.T, handler http.Handler, target, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
@@ -22,7 +21,6 @@ func postJSON(t *testing.T, handler http.Handler, target, body string) *httptest
 	return rec
 }
 
-// タグを付与する。id での指定はそのまま AttachTagByID へ渡る。
 func TestUpdateVideoTagsAttachByID(t *testing.T) {
 	tags := &fakeTags{attachRef: domain.TagRef{ID: 2, Name: "旅行"}, attachApplied: 3}
 	handler := newTestServer(t, Options{Tags: tags})
@@ -46,7 +44,6 @@ func TestUpdateVideoTagsAttachByID(t *testing.T) {
 	}
 }
 
-// 名前での付与は名前を引いて作る側（AttachTagByName）に渡る。
 func TestUpdateVideoTagsAttachByName(t *testing.T) {
 	tags := &fakeTags{attachRef: domain.TagRef{ID: 9, Name: "新しいタグ"}, attachApplied: 1}
 	handler := newTestServer(t, Options{Tags: tags})
@@ -60,7 +57,6 @@ func TestUpdateVideoTagsAttachByName(t *testing.T) {
 	}
 }
 
-// 取り外しは id での指定だけを受け付ける。name を送ると 400 になる。
 func TestUpdateVideoTagsRemoveByID(t *testing.T) {
 	tags := &fakeTags{detachRef: domain.TagRef{ID: 2, Name: "旅行"}, detachApplied: 2}
 	handler := newTestServer(t, Options{Tags: tags})
@@ -78,7 +74,6 @@ func TestUpdateVideoTagsRemoveByID(t *testing.T) {
 	assertErrorCode(t, rec, http.StatusBadRequest, codeInvalidRequest)
 }
 
-// tag は id と name のちょうど一方でなければ 400。
 func TestUpdateVideoTagsRejectsInvalidTagInput(t *testing.T) {
 	handler := newTestServer(t, Options{Tags: &fakeTags{}})
 
@@ -92,7 +87,6 @@ func TestUpdateVideoTagsRejectsInvalidTagInput(t *testing.T) {
 	}
 }
 
-// videoIds は1件以上20000件以下。0件・20001件は400。
 func TestUpdateVideoTagsRejectsOutOfRangeVideoIDs(t *testing.T) {
 	handler := newTestServer(t, Options{Tags: &fakeTags{}})
 
@@ -114,7 +108,6 @@ func TestUpdateVideoTagsRejectsOutOfRangeVideoIDs(t *testing.T) {
 	assertErrorBody(t, "20001件", rec.Code, rec.Body.Bytes(), tooMany)
 }
 
-// 名前で付けるタグが規則を外れれば、その理由を reason で返す
 func TestUpdateVideoTagsInvalidTagNameReason(t *testing.T) {
 	cases := []struct {
 		problem domain.TagNameProblem
@@ -136,7 +129,6 @@ func TestUpdateVideoTagsInvalidTagNameReason(t *testing.T) {
 	}
 }
 
-// 存在しない tag.id は 404 tag_not_found になる。
 func TestUpdateVideoTagsTagNotFound(t *testing.T) {
 	tags := &fakeTags{err: domain.ErrTagNotFound}
 	handler := newTestServer(t, Options{Tags: tags})
@@ -145,7 +137,6 @@ func TestUpdateVideoTagsTagNotFound(t *testing.T) {
 	assertErrorCode(t, rec, http.StatusNotFound, codeTagNotFound)
 }
 
-// 要約は total・items を返す。
 func TestSummarizeVideoTags(t *testing.T) {
 	tags := &fakeTags{summary: domain.TagSummary{
 		Total: 3,
@@ -172,7 +163,6 @@ func TestSummarizeVideoTags(t *testing.T) {
 	}
 }
 
-// videoIds が空なら 400。
 func TestSummarizeVideoTagsRejectsEmptyVideoIDs(t *testing.T) {
 	handler := newTestServer(t, Options{Tags: &fakeTags{}})
 	rec := postJSON(t, handler, "/api/video-tags/summary", `{"videoIds":[]}`)

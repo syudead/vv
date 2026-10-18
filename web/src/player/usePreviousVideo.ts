@@ -2,17 +2,12 @@ import { useEffect, useState } from "react";
 
 import { getVideo, isAborted } from "../api/client";
 
-/** PreviousVideo は ‹ で戻れる、直前に見ていた動画である。 */
 export interface PreviousVideo {
   id: number;
   title: string;
 }
 
-/**
- * usePreviousVideo は、直前に見ていた動画 `id` がまだ見られるかを `GET /api/videos/{id}` で
- * 確かめ、見られれば題名と合わせて返す（issue 931）。削除された・ゲストに見せない動画に
- * なった・確かめられなかったときと、確かめている間は undefined を返し、‹ を出さない。
- */
+/** Return an accessible previous video, or undefined while checking, missing, inaccessible, or failed. */
 export function usePreviousVideo(id: number | undefined): PreviousVideo | undefined {
   const [found, setFound] = useState<PreviousVideo | undefined>(undefined);
   useEffect(() => {

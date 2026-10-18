@@ -16,7 +16,6 @@ import { attachSeekPreview } from "./seekPreview";
 
 const durationMs = 60_000;
 
-/** 3 つのチャプター。2 つ目はタイトルが無く、3 つ目は長さを過ぎて終わる。 */
 const threeChapters = [
   { startMs: 0, endMs: 12_000, title: "Opening" },
   { startMs: 12_000, endMs: 30_000 },
@@ -138,7 +137,6 @@ describe("シークプレビューのチャプターのタイトル", () => {
     const preview = progress.querySelector<HTMLElement>(".vv-seek-preview");
     const title = progress.querySelector(".vv-seek-preview-title");
 
-    // 600px のバーの 150px は 15 秒で、2 つ目のチャプターの中にある。
     hover(progress, 150);
     expect(preview?.dataset.state).toBe("unavailable");
     expect(title?.textContent).toBe("Chapter 2");
@@ -167,9 +165,6 @@ describe("シークプレビューのチャプターのタイトル", () => {
   });
 });
 
-/**
- * チャプターのボタンとメニューを本物の video.js で組む。
- */
 describe("ChaptersMenuButton", () => {
   let player: ReturnType<typeof videojs> | undefined;
 

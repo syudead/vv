@@ -6,12 +6,7 @@ import CardTagRow from "../library/CardTagRow";
 
 const noop = () => undefined;
 
-/**
- * useFolderTagsRow はフォルダ画面のカードへ渡すタグの行である（VideoCard の
- * `tagsRow`）。フォルダ画面は選択を持たないので、チップを押すと再生画面のタグと
- * 同じく、そのタグで絞ったライブラリ（`/?tag=<id>`）へ移る。参照を保つため
- * useCallback で包む（memo(VideoCard) を効かせる）。
- */
+/** Folder tags link to the filtered library; stabilize the callback for memoized VideoCard. */
 export function useFolderTagsRow(): (video: Video) => React.ReactNode {
   const navigate = useNavigate();
   const pressTag = useCallback(

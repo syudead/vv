@@ -10,13 +10,10 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// alternativesHint はテストが落ちた開発者に、次に読むべきものを示す。
-// 出力だけで代替手段の検討先が分かる状態にしておく。
 const alternativesHint = "この前提が崩れた場合の代替手段: " +
 	"mattn/go-sqlite3 + -tags sqlite_fts5 への切り替え（CGO が要る）、" +
 	"2文字検索を instr 経路へ寄せる範囲の見直し、外部の全文検索エンジンの導入。"
 
-// ftsFixture はマイグレーションを適用したデータベースに検証用の行を入れて返す。
 func ftsFixture(t *testing.T) *DB {
 	t.Helper()
 
@@ -29,7 +26,7 @@ func ftsFixture(t *testing.T) *DB {
 	if _, err := Migrate(context.Background(), db); err != nil {
 		t.Fatalf("マイグレーションに失敗した: %v\n%s", err, alternativesHint)
 	}
-	// 登録フォルダの下に無い所在は search_key が空で、索引に載らない。
+	// Locations outside registered folders have empty search keys and are not indexed.
 	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`, fixturePath("/media")); err != nil {
 		t.Fatalf("テスト用メディアフォルダを登録できない: %v", err)
 	}
@@ -55,8 +52,7 @@ func ftsFixture(t *testing.T) *DB {
 	return checkInvariants(t, db)
 }
 
-// countMatch は MATCH での一致件数を返す。search_key は照合形なので、語にも
-// 同じ変換を掛けてから引く。
+// Fold the query exactly as stored search keys are folded.
 func countMatch(t *testing.T, db *DB, query string) int {
 	t.Helper()
 
@@ -70,9 +66,6 @@ func countMatch(t *testing.T, db *DB, query string) int {
 	return count
 }
 
-// TestFTS5TrigramIsAvailable は trigram トークナイザの仮想表が作れることを固定する。
-// Phase 0 最大のリスクだった「CGO 不要のドライバで日本語の部分一致検索ができるか」の
-// 前提そのものである。
 func TestFTS5TrigramIsAvailable(t *testing.T) {
 	db := ftsFixture(t)
 
@@ -89,7 +82,6 @@ func TestFTS5TrigramIsAvailable(t *testing.T) {
 	}
 }
 
-// TestFTS5TrigramMatchesThreeCharacterQuery は3文字の語が MATCH で一致することを固定する。
 func TestFTS5TrigramMatchesThreeCharacterQuery(t *testing.T) {
 	db := ftsFixture(t)
 
@@ -99,8 +91,6 @@ func TestFTS5TrigramMatchesThreeCharacterQuery(t *testing.T) {
 	}
 }
 
-// TestFTS5TrigramMatchesThreeCharactersInsideWord は語中の3文字でも一致することを固定する。
-// 前方一致ではなく部分一致が効くことが、日本語の検索では要である。
 func TestFTS5TrigramMatchesThreeCharactersInsideWord(t *testing.T) {
 	db := ftsFixture(t)
 
@@ -110,12 +100,7 @@ func TestFTS5TrigramMatchesThreeCharactersInsideWord(t *testing.T) {
 	}
 }
 
-// TestFTS5TrigramDoesNotMatchTwoCharacterQuery は「2文字の語は MATCH で0件」という
-// 挙動そのものを期待値として固定する。trigram は3文字単位で索引を作るため、
-// 2文字以下の検索語は MATCH の対象になり得ない。
-//
-// 将来 SQLite 側の挙動が変わったらこのテストが落ちて気付ける。落ちた場合は
-// 検索の2経路（MATCH と instr）の切り替えを見直す契機になる。
+// Lock in the trigram minimum so a driver behavior change prompts review of MATCH/instr routing.
 func TestFTS5TrigramDoesNotMatchTwoCharacterQuery(t *testing.T) {
 	db := ftsFixture(t)
 
@@ -130,9 +115,6 @@ func TestFTS5TrigramDoesNotMatchTwoCharacterQuery(t *testing.T) {
 	}
 }
 
-// TestSearchKeyMatchesTwoCharacterQueryWithInstr は、2文字の語でも search_key への
-// instr なら一致することを固定する。日本語では「旅行」「花火」のような2文字の
-// 検索語が現実に多いため、この経路が成立していることが実装の前提になる。
 func TestSearchKeyMatchesTwoCharacterQueryWithInstr(t *testing.T) {
 	db := ftsFixture(t)
 
@@ -148,12 +130,10 @@ func TestSearchKeyMatchesTwoCharacterQueryWithInstr(t *testing.T) {
 	}
 }
 
-// TestFTS5RebuildRecoversIndex は、トリガの取りこぼしが疑われたときの復旧手段が
-// 実際に動くことを固定する。
 func TestFTS5RebuildRecoversIndex(t *testing.T) {
 	db := ftsFixture(t)
 
-	// トリガを外し、索引へ反映されない行を作る。取りこぼしの状況を再現する。
+	// Remove triggers to simulate rows missing from the FTS index.
 	if _, err := db.sql.Exec(`drop trigger location_search_fts_ai`); err != nil {
 		t.Fatalf("トリガを外せない: %v", err)
 	}
@@ -182,11 +162,6 @@ func TestFTS5RebuildRecoversIndex(t *testing.T) {
 	}
 }
 
-// 語の調べ方は2通りある。照合形で3文字以上なら MATCH、1〜2文字なら
-// search_key への instr で調べる。
-//
-// trigram は3文字単位で索引を作るため2文字以下は MATCH に一致せず、
-// 日本語では2文字の検索語が多い。この振り分けが検索の前提である。
 func TestSearchTermRouteSelection(t *testing.T) {
 	tests := []struct {
 		query     string
@@ -198,11 +173,10 @@ func TestSearchTermRouteSelection(t *testing.T) {
 		{"夏休みの旅行", true},
 		{"ab", false},
 		{"abc", true},
-		// 数えるのは照合形の文字である。NFD の「が」（か + 濁点）は照合形では
-		// 1文字に畳まれる。ここを取り違えると、2文字の入力が MATCH へ回って0件になる。
-		{"\u304b\u3099\u3063", false},      // が + っ = 2文字（符号位置では3）
-		{"\u304b\u3099\u3063\u3053", true}, // が + っ + こ = 3文字
-		// 絵文字も1文字として数える。
+		// Count normalized code points; decomposed kana can shrink below the trigram minimum.
+		{"\u304b\u3099\u3063", false},      // Two normalized characters, despite three input code points.
+		{"\u304b\u3099\u3063\u3053", true}, // Three normalized characters.
+		// Each emoji counts as one character.
 		{"🎆🎇", false},
 		{"🎆🎇🎈", true},
 	}
@@ -218,7 +192,6 @@ func TestSearchTermRouteSelection(t *testing.T) {
 	}
 }
 
-// searchFixture は検索の検証用に行を入れたデータベースを返す。
 func searchFixture(t *testing.T) *DB {
 	t.Helper()
 
@@ -249,7 +222,6 @@ func searchFixture(t *testing.T) *DB {
 	return db
 }
 
-// searchTitles は検索結果の題名を返す。
 func searchTitles(t *testing.T, db *DB, query string) []string {
 	t.Helper()
 
@@ -260,13 +232,12 @@ func searchTitles(t *testing.T, db *DB, query string) []string {
 	return titlesOf(page)
 }
 
-// 3文字以上は MATCH 経路で、先頭一致ではない部分一致が取れる。
 func TestSearchMatchRoute(t *testing.T) {
 	db := searchFixture(t)
 
 	for query, want := range map[string]string{
 		"夏休み":     "夏休みの旅行",
-		"みの旅":     "夏休みの旅行", // 語中の3文字
+		"みの旅":     "夏休みの旅行",
 		"の街並み":    "京都の街並み",
 		"holiday": "holiday trip",
 	} {
@@ -277,8 +248,6 @@ func TestSearchMatchRoute(t *testing.T) {
 	}
 }
 
-// 1〜2文字は instr 経路。日本語では2文字の検索語が多く、これが
-// 取れないと検索が実用にならない。
 func TestSearchInstrRoute(t *testing.T) {
 	db := searchFixture(t)
 
@@ -286,7 +255,7 @@ func TestSearchInstrRoute(t *testing.T) {
 		"旅行": "夏休みの旅行",
 		"花火": "花火大会",
 		"京都": "京都の街並み",
-		"海":  "海辺の散歩", // 1文字
+		"海":  "海辺の散歩",
 	} {
 		got := searchTitles(t, db, query)
 		if len(got) != 1 || got[0] != want {
@@ -295,7 +264,6 @@ func TestSearchInstrRoute(t *testing.T) {
 	}
 }
 
-// 検索語は照合形にする。macOS から送られる NFD の入力でも一致する。
 func TestSearchNormalizesQuery(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -307,15 +275,13 @@ func TestSearchNormalizesQuery(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// NFD（か + 濁点）で検索する。
 	decomposed := "がっこう"
 	if got := searchTitles(t, db, decomposed); len(got) != 1 {
 		t.Errorf("NFD の検索語で %d 件, want 1（照合形へ正規化していない）", len(got))
 	}
 }
 
-// FTS5 の特殊文字は無効化する。引用符で包まないと、構文誤りで検索そのものが
-// 失敗し、利用者には「検索が壊れた」ようにしか見えない。
+// Treat FTS punctuation as literal text rather than executable query syntax.
 func TestSearchEscapesSpecialCharacters(t *testing.T) {
 	db := searchFixture(t)
 
@@ -329,24 +295,21 @@ func TestSearchEscapesSpecialCharacters(t *testing.T) {
 			t.Errorf("検索 %q で失敗した: %v\n%s", query, err, alternativesHint)
 			continue
 		}
-		// 落ちなければよい。件数は問わない（特殊文字を字面として扱う）。
+		// Only successful execution matters here, not the number of literal matches.
 		_ = page
 	}
 
-	// 表が壊れていないことを確かめる。
 	if total, err := db.Library().CountVideos(context.Background(), domain.AudienceOwner, ""); err != nil || total != 5 {
 		t.Errorf("検索のあと total = %d (err=%v), want 5", total, err)
 	}
 }
 
-// 検索時の並び順は一覧と同じ規則を使う。関連度（bm25）にしないのは、
-// instr 経路に関連度が無く、2つの経路で並びが変わると利用者から見て
-// 不可解になるためである。
+// Use the same list order for MATCH and instr because short terms have no BM25 relevance.
 func TestSearchUsesSameOrderAsListing(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	// すべて「旅」を含む。追加順と題名順が食い違うように入れる。
+	// Insert in an order that differs from title order.
 	rows := []struct{ title, key string }{
 		{"ち旅", "key-1"},
 		{"あ旅", "key-2"},
@@ -379,7 +342,6 @@ func TestSearchUsesSameOrderAsListing(t *testing.T) {
 	}
 }
 
-// total は絞り込み後の件数である。
 func TestSearchTotalIsFiltered(t *testing.T) {
 	db := searchFixture(t)
 
@@ -400,7 +362,6 @@ func TestSearchTotalIsFiltered(t *testing.T) {
 	}
 }
 
-// 検索とカーソルを併用してもページングが破綻しないこと。
 func TestSearchPagesWithCursor(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -415,7 +376,6 @@ func TestSearchPagesWithCursor(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// 該当しない行も混ぜる。
 	if _, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
 		Path: fixturePath("/media/花火.mp4"), Title: "花火", ContentKey: "key-x",
 		SizeBytes: 99, MTime: fixedTime, AddedAt: fixedTime, Container: "mp4",
@@ -450,7 +410,6 @@ func TestSearchPagesWithCursor(t *testing.T) {
 	}
 }
 
-// 空白だけの検索語は絞り込まない。入力欄を消したときに0件にしない。
 func TestSearchWithBlankQuery(t *testing.T) {
 	db := searchFixture(t)
 

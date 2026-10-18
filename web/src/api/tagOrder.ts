@@ -1,13 +1,6 @@
 import type { TagRef, VideoTag } from "./client";
 
-/**
- * タグの名前の自然順。
- *
- * `internal/domain.CompareNatural` を写す: 数字の連続は数値として比べ
- * （`2` < `10`）、それ以外は大文字小文字を区別せずに比べる。サロゲート
- * ペア（絵文字など）も1つの文字として扱うため、`Array.from` で符号位置単位に
- * 区切る（`string[index]` は UTF-16 コード単位単位になってしまう）。
- */
+/** Match domain.CompareNatural with numeric digit runs and case-insensitive text; Array.from preserves Unicode code points. */
 export function compareNatural(a: string, b: string): number {
   const ca = Array.from(a);
   const cb = Array.from(b);
@@ -45,7 +38,7 @@ function isDigit(ch: string): boolean {
   return ch >= "0" && ch <= "9";
 }
 
-/** compareDigitRun は数字の連続を、桁あふれせずに数値として比べる。 */
+/** Compare digit runs numerically without overflow. */
 function compareDigitRun(a: string, b: string): number {
   const ta = a.replace(/^0+/, "");
   const tb = b.replace(/^0+/, "");
@@ -54,10 +47,7 @@ function compareDigitRun(a: string, b: string): number {
   return ta < tb ? -1 : 1;
 }
 
-/**
- * compareTagRefs は `TagRef` を名前の自然順で比べる。同順位は id で決着させる
- * （`internal/domain.SortTagRefs` と同じ規則）。
- */
+/** Match domain.SortTagRefs: natural name order, then ID. */
 export function compareTagRefs(a: TagRef, b: TagRef): number {
   const byName = compareNatural(a.name, b.name);
   if (byName !== 0) return byName;
@@ -65,19 +55,7 @@ export function compareTagRefs(a: TagRef, b: TagRef): number {
   return a.id - b.id;
 }
 
-/**
- * applyTagToTags は付け外しの結果を1件の `tags` 配列へ反映する。
- * listSnapshot.ts と useVideos.ts の両方がこれを使う（唯一の実装場所）。
- * 付け外しは手で付けた分（`manual`）だけを変え、フォルダ名から付いている分
- * （`fromFolder`）はそのまま残す。
- *
- * - `add`: 手で付けた分を立てる。既に付いていた（同じ id の）行は、サーバーが
- *   返した最新の name で差し替える（改名やシノニムからの付与直後に古い表示名が
- *   残らないようにする）。無ければ名前の自然順を保つ位置へ挿す。
- * - `remove`: 手で付けた分を外す。フォルダ名からも付いている行は同じ位置に残して
- *   サーバーが返した最新の name と tentative を映し、そうでなければ取り除く。
- *   無ければ変えない。
- */
+/** Change manual assignments only, preserving folder-derived tags and server-returned metadata. Share this implementation between snapshots and live lists. */
 export function applyTagToTags(
   tags: readonly VideoTag[],
   tag: TagRef,
@@ -87,8 +65,7 @@ export function applyTagToTags(
   const withoutExisting = tags.filter((candidate) => candidate.id !== tag.id);
   if (action === "remove") {
     if (existing?.fromFolder !== true) return withoutExisting;
-    // 残る行も同じ位置のまま、サーバーが返した最新の name・tentative・kind を映す
-    // （別のタブで確定された直後などに古い仮の表示が残らないようにする）。
+    // Refresh retained metadata so stale tentative/kind state cannot survive another tab's changes.
     return tags.map((candidate) =>
       candidate.id === tag.id
         ? {
@@ -109,8 +86,7 @@ export function applyTagToTags(
     tentative: tag.tentative,
     kind: tag.kind,
   };
-  // 既に付いていた同じ id の行も、いったん外してから挿し直す。改名やシノニムから
-  // の付与で名前が変わっていれば、その最新の名前が並びにも反映される。
+  // Reinsert existing IDs so renamed or alias-matched tags move to their correct natural-order position.
   const insertAt = withoutExisting.findIndex(
     (candidate) => compareTagRefs(candidate, added) > 0,
   );
@@ -118,12 +94,7 @@ export function applyTagToTags(
   return [...withoutExisting.slice(0, at), added, ...withoutExisting.slice(at)];
 }
 
-/**
- * tagsReflectChange は、動画の `tags` がすでに付け外しの結果を映しているかを
- * 返す。付け外しが変えるのは手で付けた分（`manual`）だけなので、同じ id の行が
- * あるかではなく、その行の `manual` で判断する。フォルダ名からだけ付いている行
- * （`manual: false`）は、手で付けた結果をまだ映していない。
- */
+/** Check manual assignment, not presence: folder-only tags do not yet reflect a manual add. */
 export function tagsReflectChange(
   tags: readonly VideoTag[],
   tagId: number,
@@ -133,14 +104,7 @@ export function tagsReflectChange(
   return manual === (action === "add");
 }
 
-/**
- * isFolderOnly は、フォルダ名からだけ付いている（手では付けていない）タグかを
- * 返す。この形だけを破線のチップにし、再生画面では × を出さない。
- */
-/**
- * showsTentative は目印（TentativeMark）を出すかである。仮のタグ（`tentative`）と、自動タグ付けが
- * 仮に付けた付与（`unconfirmed`）のどちらにも出す（docs/design-docs/auto-tagging.md）。
- */
+/** Both tentative tags and unconfirmed automatic assignments display a tentative marker. */
 export function showsTentative(tag: VideoTag): boolean {
   return tag.tentative || tag.unconfirmed === true;
 }

@@ -5,13 +5,12 @@ import {
 } from "../api/client";
 
 /**
- * 最後に読んだ、失敗の項目の一覧である。自動の取り込みの `partial` は、前の取り込みから
- * 持ち越した失敗も数えるので、状態だけでは古い失敗をまた知らせてしまう。新しい失敗かどうかは
- * 画面が、この一覧と比べて決める。
+ * Compare failure snapshots because partial status can include carried-over failures that should
+ * not notify again.
  */
 let lastRead: { scanId: number; keys: ReadonlySet<string> } | null = null;
 
-/** failureKeys は、失敗の項目の（道筋, 種類）の組である。種類が変われば別の失敗になる。 */
+/** A changed failure kind is a new failure even for the same path. */
 export function failureKeys(items: readonly ScanIssue[]): Set<string> {
   const keys = new Set<string>();
   for (const item of items) {
@@ -25,7 +24,7 @@ export function failureKeys(items: readonly ScanIssue[]): Set<string> {
   return keys;
 }
 
-/** hasNewFailure は、前に読んだ一覧に無い失敗があるかを返す。前の一覧が無ければ true。 */
+/** Without a previous snapshot, treat failures as new. */
 export function hasNewFailure(
   keys: ReadonlySet<string>,
   previous: ReadonlySet<string> | null,
@@ -36,9 +35,8 @@ export function hasNewFailure(
 }
 
 /**
- * readFailureKeys は直近の取り込みの問題を最後まで（すべてのカーソルを）読み、失敗の組を返す。
- * 読んでいる途中で取り込みが替わった（`scanId` が `expected` と違う）ときは null を返す。
- * 一部しか読めない一覧（カーソルが進まない）は、新しい失敗を見逃さないよう例外にする。
+ * Read all issue pages; return null if the scan changes. Reject stuck cursors instead of silently
+ * missing new failures.
  */
 export async function readFailureKeys(
   expected: number,
@@ -62,19 +60,16 @@ export async function readFailureKeys(
   return failureKeys(items);
 }
 
-/** previousFailureKeys は前に読んだ一覧を返す。 */
 export function previousFailureKeys(): ReadonlySet<string> | null {
   return lastRead?.keys ?? null;
 }
 
-/** rememberFailureKeys は読んだ一覧を、次の比べる相手として覚える。 */
 export function rememberFailureKeys(scanId: number, keys: ReadonlySet<string>): void {
-  // 遅れて届いた古い取り込みの読み込みで、新しい取り込みの一覧を上書きしない。
+  // Do not let an old scan's delayed response overwrite a newer failure snapshot.
   if (lastRead !== null && lastRead.scanId > scanId) return;
   lastRead = { scanId, keys };
 }
 
-/** forgetFailureKeys は覚えた一覧を捨てる（検査用）。 */
 export function forgetFailureKeys(): void {
   lastRead = null;
 }

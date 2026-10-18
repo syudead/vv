@@ -6,12 +6,7 @@ import {
   test,
 } from "@playwright/test";
 
-// 視聴履歴のうち、本物の再生でしか確かめられないものを実サーバーと実メディアに通す（docs/design-docs/web-testing.md）。履歴の
-// 「Resume」を押すと、そのまま再生できるファイルを Chromium が保存した位置から再生し始める。
-// 動画は run-e2e.mjs が generateHistoryFixtures で作る 40 秒の2本で、ほかの e2e の動画とは
-// 題名で分ける。履歴の件の作り方・削除・絞り込み・検索・位置の表示・「Start over」・ゲストの
-// 扱いは src/history/HistoryPage、src/player/useProgressSaving、src/auth/AuthGate のテストと、
-// Go のストアと httpapi のテストが確かめる。
+// Verify that Resume starts real Chromium playback at the saved position. Lower-level suites cover history behavior; see docs/design-docs/web-testing.md.
 
 interface MediaFolder {
   id: number;
@@ -31,7 +26,7 @@ interface Video {
 
 const origin = "http://127.0.0.1:15173";
 const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
-// media-fixtures.mjs の HISTORY_VIDEOS と同じ題名。
+// Keep titles aligned with HISTORY_VIDEOS in media-fixtures.mjs.
 const titleA = "履歴の確認A";
 const titleB = "履歴の確認B";
 const videos = new Map<string, Video>();
@@ -59,10 +54,7 @@ async function waitForScan(request: APIRequestContext, scanId: number) {
     .toBe("done");
 }
 
-/**
- * saveProgress は item の再生位置を positionMs にする。再生 ID を付けると、その ID の最初の
- * 保存が履歴の件を 1 件足す。
- */
+/** A playback ID creates a history entry on its first progress save. */
 async function saveProgress(
   request: APIRequestContext,
   item: Video,
@@ -77,15 +69,11 @@ async function saveProgress(
   return (await response.json()) as Progress;
 }
 
-/** historyList は履歴の画面の一覧（日のまとまりの全体）である。 */
 function historyList(page: Page): Locator {
   return page.getByRole("list", { name: "Watch history" });
 }
 
-/**
- * openHistory はサイドバーから履歴の画面を開き、一覧か空の表示が出るまで待つ。動画の画面には
- * サイドバーが無いので、そこからは見出しの × で戻ってから開く。
- */
+/** Leave the player through its close control before using the sidebar. */
 async function openHistory(page: Page) {
   if (/\/videos\/\d+$/.test(new URL(page.url()).pathname)) {
     await page.getByRole("button", { name: "Close", exact: true }).click();
@@ -101,11 +89,7 @@ async function openHistory(page: Page) {
   ).toBeVisible();
 }
 
-/**
- * pressPlayControl は操作バーの再生・一時停止を押す。再生が数秒続くと video.js は操作バーを
- * 隠して押せなくする（vjs-user-inactive）ので、人と同じくプレイヤーの上でマウスを動かして
- * 出してから押す。
- */
+/** Move over the player to reveal controls hidden by video.js inactivity handling. */
 async function pressPlayControl(page: Page) {
   const box = await page.locator(".video-js").boundingBox();
   if (box === null) throw new Error("player is not visible");
@@ -121,7 +105,6 @@ async function pause(page: Page) {
   );
 }
 
-/** entryRows は履歴の画面で、title の動画の行（日のまとまりの 1 件）である。 */
 function entryRows(page: Page, title: string): Locator {
   return historyList(page)
     .locator('[data-slot="grouped-list-item"]')
@@ -130,23 +113,16 @@ function entryRows(page: Page, title: string): Locator {
     });
 }
 
-/** positionText は行の「0:06 / 0:40」の文字である。 */
 function positionText(row: Locator): Locator {
   return row.getByText(/^\d+:\d{2} \/ \d+:\d{2}$/);
 }
 
-/** seconds は「0:06 / 0:40」の前半（今の位置）を秒にする。 */
 function seconds(text: string): number {
   const [minutes = "", rest = ""] = text.split(" / ")[0]?.split(":") ?? [];
   return Number(minutes) * 60 + Number(rest);
 }
 
-/**
- * recordFirstPlaying は、この後に開く動画が最初に実際に再生し始めた（playing）ときの位置を
- * 覚えさせる。自動再生は play をメタデータより先に呼ぶので、paused が外れた直後の位置は
- * 続きからのシークの前の 0 のことがある。playing はメタデータで位置を当てた後に届く。
- * 画面の移り変わりはクライアント側なので、ここで付けた待ち受けは動画の画面でも生きている。
- */
+/** Record playing rather than paused=false: autoplay may clear paused before the metadata-driven resume seek. The listener survives client-side navigation. */
 async function recordFirstPlaying(page: Page) {
   await page.evaluate(() => {
     const record = window as unknown as { firstPlayingAt?: number };
@@ -166,7 +142,7 @@ async function recordFirstPlaying(page: Page) {
   });
 }
 
-/** firstPlayingAt は recordFirstPlaying が覚えた位置（秒）を返し、まだ再生していなければ null。 */
+/** Return null until the first playing event. */
 async function firstPlayingAt(page: Page): Promise<number | null> {
   return page.evaluate(
     () => (window as unknown as { firstPlayingAt?: number }).firstPlayingAt ?? null,
@@ -211,15 +187,13 @@ test.describe("watch history", () => {
       )
       .toBe(true);
 
-    // ほかの e2e の再生が残した件を消し、空の履歴から始める。
     const cleared = await request.delete("/api/watch-history", {
       headers: { Origin: origin },
     });
     expect(cleared.status()).toBe(204);
   });
 
-  // 登録したフォルダは消す。失敗時の再試行で beforeAll をやり直せるようにし、後に続く e2e の
-  // ライブラリにこの 2 本を残さない。
+  // Unregister fixtures so retries can repeat setup and later suites do not inherit these videos.
   test.afterAll(async ({ request }) => {
     if (folder === undefined) return;
     const removed = await request.delete(
@@ -234,7 +208,7 @@ test.describe("watch history", () => {
     request,
   }) => {
     const item = video(titleB);
-    // 再生 ID を付けた保存が履歴の件を作る。先頭へ戻さない 5 秒（MinResumeMs）より先の途中に置く。
+    // Use a playback ID to create history and a position beyond MinResumeMs (5 seconds).
     const saved = (await saveProgress(request, item, 8000, crypto.randomUUID()))
       .positionMs;
     expect(saved).toBeGreaterThanOrEqual(5000);
@@ -248,7 +222,6 @@ test.describe("watch history", () => {
     await row.getByRole("link", { name: `Resume ${titleB}` }).click();
     await expect(page).toHaveURL(`/videos/${String(item.id)}`);
 
-    // 押しただけで再生が始まり、その最初の位置は行に出ていた位置である。
     await expect.poll(() => firstPlayingAt(page), { timeout: 15_000 }).not.toBeNull();
     const startedAt = (await firstPlayingAt(page)) ?? 0;
     expect(startedAt).toBeGreaterThanOrEqual(shown);

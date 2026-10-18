@@ -6,8 +6,6 @@ import (
 	"testing"
 )
 
-// 並び順は 一覧 API の 13 通りと、作成日（033）・お気に入りにした日時（035）の
-// 2 通りずつだけを受け付ける。
 func TestVideoSortValid(t *testing.T) {
 	for _, sort := range []VideoSort{
 		SortAddedAsc, SortAddedDesc, SortModifiedAsc, SortModifiedDesc,
@@ -26,7 +24,6 @@ func TestVideoSortValid(t *testing.T) {
 	}
 }
 
-// ShuffleKey は seed と id だけで決まり、負にならない。seed が違えば並びが変わる。
 func TestShuffleKey(t *testing.T) {
 	for _, seed := range []int64{0, 1, 42, MaxShuffleSeed} {
 		for _, id := range []int64{0, 1, 2, 1000, 1 << 40} {
@@ -62,7 +59,6 @@ func TestShuffleKey(t *testing.T) {
 	}
 }
 
-// スマートフォルダの項目は、検索も、お気に入りのみ以外の絞り込みも無い一覧にだけ出る。並べ替え・ページ・空白だけの検索は絞り込みではない。
 func TestVideoQueryListsSmartFolders(t *testing.T) {
 	zero := 0
 	for _, q := range []VideoQuery{

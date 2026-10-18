@@ -11,7 +11,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// fakeOpener は開いたパスを記録する。
 type fakeOpener struct {
 	available bool
 	opened    []string
@@ -31,8 +30,6 @@ func serve(handler http.Handler, req *http.Request) *httptest.ResponseRecorder {
 	return rec
 }
 
-// 動画1件の応答は代表の所在の絶対パスを返す。一覧の項目には所在も
-// シーク用プレビューの状態も載らない。
 func TestGetVideoReturnsLocationOnlyForSingleVideo(t *testing.T) {
 	video := sampleVideo(1, "海辺の散歩")
 	video.Path = "/media/旅行/海辺の散歩.mp4"
@@ -56,7 +53,6 @@ func TestGetVideoReturnsLocationOnlyForSingleVideo(t *testing.T) {
 	}
 }
 
-// 動画1件の応答にもタグが載り、タグが無ければ空配列になる（#267）。
 func TestGetVideoIncludesTags(t *testing.T) {
 	video := sampleVideo(1, "海辺の散歩")
 	library := &fakeLibrary{
@@ -74,8 +70,7 @@ func TestGetVideoIncludesTags(t *testing.T) {
 	}
 }
 
-// アプリケーション層が導いた状態を、そのまま契約の値へ写す。導き方は
-// internal/app の Catalog.SeekThumbnailState で検証する。
+// Catalog tests cover state inference; this test covers HTTP mapping.
 func TestGetVideoSeekThumbnailState(t *testing.T) {
 	cases := []struct {
 		state domain.SeekThumbnailState
@@ -101,7 +96,6 @@ func TestGetVideoSeekThumbnailState(t *testing.T) {
 	}
 }
 
-// 読み取り前の動画と映像の無い動画には seekThumbnailState が無い。
 func TestGetVideoOmitsSeekThumbnailStateWithoutSeekThumbnail(t *testing.T) {
 	pending := sampleVideo(1, "読み取り前")
 	pending.ProbeState = domain.ProbeStatePending
@@ -136,8 +130,6 @@ func TestGetVideoReportsThumbnailJobFailure(t *testing.T) {
 	}
 }
 
-// openable は、ループバックから、ループバックの Host で来た要求で、開ける環境の
-// ときだけ真になる。
 func TestGetVideoOpenable(t *testing.T) {
 	cases := []struct {
 		name      string

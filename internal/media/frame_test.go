@@ -8,9 +8,6 @@ import (
 	"testing"
 )
 
-// 編集するコマは指定の位置の場面の PNG で、長辺は動画の長辺、上限 2048px である
-//
-
 func TestFrameAtKeepsSmallVideoSizeAndPosition(t *testing.T) {
 	requireFFmpeg(t)
 	videoPath := mediaFixture(t, "frame-clock.mp4")
@@ -27,7 +24,7 @@ func TestFrameAtKeepsSmallVideoSizeAndPosition(t *testing.T) {
 		if err != nil {
 			t.Fatalf("not a PNG: %v", err)
 		}
-		// 制限範囲の 16+7t の輝度は、PNG の全範囲では (7t)*255/219 になる。
+		// Limited-range luma 16+7t becomes (7t)*255/219 in full-range PNG.
 		got := float64(grayAt(decoded)) * 219 / 255 / 7
 		want := float64(positionMs) / 1000
 		if got < want-0.6 || got > want+0.6 {
@@ -58,7 +55,6 @@ func TestFrameAtFailsPastTheEnd(t *testing.T) {
 	}
 }
 
-// grayAt は画像の中央の画素の明るさ（0〜255）を返す。
 func grayAt(img image.Image) uint8 {
 	bounds := img.Bounds()
 	r, g, b, _ := img.At(bounds.Dx()/2, bounds.Dy()/2).RGBA()

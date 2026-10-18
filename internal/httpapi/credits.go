@@ -14,15 +14,11 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 人物と団体の管理 API。/api/people と /api/organizations の 6 つずつの経路は、生成された
-// 操作から種類（creditKindAPI）を添えて同じハンドラを呼ぶ。どの経路も所有者だけ（accessRoutes の既定）。
-// internal/app は通さず、internal/store の CreditStore の 1 つの取引で済ませる。
+// People and organization routes share handlers and owner-only defaults; each operation completes through CreditStore without an app use case.
 
-// Credits は人物と団体の保存先である。internal/store の *CreditStore がこれを満たす。
 type Credits interface {
 	List(ctx context.Context, kind domain.CreditKind, query domain.CreditQuery) (domain.CreditPage, error)
 	Get(ctx context.Context, kind domain.CreditKind, id int64) (domain.Credit, error)
-	// Lookup は外部 ID (source, value) を持つ実体を返す。無ければ domain.ErrNotFound。
 	Lookup(ctx context.Context, kind domain.CreditKind, source, value string) (domain.Credit, error)
 	Create(ctx context.Context, kind domain.CreditKind, input domain.CreditInput) (domain.Credit, error)
 	Update(ctx context.Context, kind domain.CreditKind, id int64, patch domain.CreditPatch) (domain.Credit, error)
@@ -30,15 +26,13 @@ type Credits interface {
 	Delete(ctx context.Context, kind domain.CreditKind, id int64) error
 }
 
-// creditKindAPI は人物と団体で違う、応答の形と reason である。
 type creditKindAPI struct {
 	kind      domain.CreditKind
 	notFound  gen.ErrorReason
 	mergeSame gen.ErrorReason
-	// one・list・merged は実体・一覧・統合の結果を応答の本文にする。
-	one    func(domain.Credit) any
-	list   func(domain.CreditPage) any
-	merged func(domain.CreditMergeOutcome) any
+	one       func(domain.Credit) any
+	list      func(domain.CreditPage) any
+	merged    func(domain.CreditMergeOutcome) any
 }
 
 var peopleAPI = creditKindAPI{
@@ -120,8 +114,7 @@ func (s *server) MergeOrganizations(w http.ResponseWriter, r *http.Request, id g
 	s.mergeCredits(w, r, organizationsAPI, id)
 }
 
-// listCredits は GET /api/people と GET /api/organizations である。パラメータの規則はタグの一覧と同じ
-// （buildTagListQuery）で、limit を省けば全件を返す。
+// Omitted limit returns all matching credits under the shared tag-list query rules.
 func (s *server) listCredits(w http.ResponseWriter, r *http.Request, api creditKindAPI, params gen.ListPeopleParams) {
 	sort := sortParam(params.Sort)
 	tagQuery, problem := buildTagListQuery(params.Q, nil, nil, sort, params.Cursor, params.Limit)
@@ -159,7 +152,7 @@ func (s *server) createCredit(w http.ResponseWriter, r *http.Request, api credit
 	if !ok {
 		return
 	}
-	// 人物の本文の parentId は null でも 400 である（人物に親は無い）。
+	// People reject parentId even when explicitly null.
 	if present("parentId") && api.kind != domain.CreditOrganization {
 		s.invalidRequest(w, "parentId applies to organizations only.")
 		return
@@ -192,9 +185,7 @@ func (s *server) updateCredit(w http.ResponseWriter, r *http.Request, api credit
 	s.writeCreditBody(w, http.StatusOK, api.one(credit))
 }
 
-// readCreditPatch は PATCH の本文を domain.CreditPatch にする。省いたプロパティと null を見分けるため、
-// readJSONBodyFields でどのプロパティがあったかも読む。
-// 一覧の null は空の一覧、parentId の null は親を外すこと、name の null は 400 である。
+// PATCH distinguishes omitted fields from null: null lists clear, null parentId removes the parent, and null name is invalid.
 func (s *server) readCreditPatch(w http.ResponseWriter, r *http.Request, kind domain.CreditKind) (domain.CreditPatch, bool) {
 	var body gen.CreditPatch
 	present, ok := s.readJSONBodyFields(w, r, &body)
@@ -208,9 +199,7 @@ func (s *server) readCreditPatch(w http.ResponseWriter, r *http.Request, kind do
 	return patch, ok
 }
 
-// creditPatchOf は readCreditPatch の本体で、応答を書かずに誤りの文言と false を返す。present は本文の
-// 最上位にプロパティがあったか（値が null でも）を答える。外部連携 API の POST …/update も、本文を同じ形の
-// gen.CreditPatch に読んでこれを呼ぶ。
+// creditPatchOf is shared with external update requests and receives top-level presence even for null.
 func creditPatchOf(body gen.CreditPatch, present func(name string) bool, kind domain.CreditKind) (domain.CreditPatch, string, bool) {
 	patch := domain.CreditPatch{Name: body.Name}
 	if present("name") && body.Name == nil {
@@ -233,9 +222,7 @@ func creditPatchOf(body gen.CreditPatch, present func(name string) bool, kind do
 	return patch, "", true
 }
 
-// readJSONBodyFields は readJSONBody と同じく本文を target に読み、加えて最上位のプロパティが本文に
-// あったか（値が null でも）を答える関数を返す。encoding/json はプロパティ名を大文字小文字を区別せずに
-// target へ当てるので、有無も strings.EqualFold で比べる（Aliases は aliases として読まれ、有るとも答える）。
+// Property-presence matching must use EqualFold to mirror encoding/json field matching.
 func (s *server) readJSONBodyFields(w http.ResponseWriter, r *http.Request, target any) (func(name string) bool, bool) {
 	raw, ok := s.readJSONBodyRaw(w, r, target)
 	if !ok {
@@ -252,8 +239,7 @@ func (s *server) readJSONBodyFields(w http.ResponseWriter, r *http.Request, targ
 	}, true
 }
 
-// readJSONBodyRaw は readJSONBody と同じく本文を target に読み、読んだ本文そのものも返す。生成型では
-// 失われるプロパティの有無を、呼び出し側が本文から確かめるのに使う。
+// Retain raw body bytes to recover field presence lost by generated types.
 func (s *server) readJSONBodyRaw(w http.ResponseWriter, r *http.Request, target any) ([]byte, bool) {
 	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
@@ -266,8 +252,7 @@ func (s *server) readJSONBodyRaw(w http.ResponseWriter, r *http.Request, target 
 	return raw, true
 }
 
-// jsonProperty は JSON オブジェクトのプロパティ name の値と、あったか（値が null でも）を返す。
-// encoding/json と同じく名前の大文字小文字を区別しない。
+// jsonProperty matches names case-insensitively and reports explicit null as present.
 func jsonProperty(fields map[string]json.RawMessage, name string) (json.RawMessage, bool) {
 	for key, value := range fields {
 		if strings.EqualFold(key, name) {
@@ -289,8 +274,7 @@ func (s *server) deleteCredit(w http.ResponseWriter, r *http.Request, api credit
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// mergeCredits は POST …/{id}/merge である。sourceIds の件数が 1〜domain.MaxTagBatch の外なら
-// work_info_too_many（field: sourceIds）にする。統合先を含む統合元・親の輪・統合後の上限は保存層が断る。
+// Storage validates self-merges, parent cycles, and post-merge limits after boundary count checks.
 func (s *server) mergeCredits(w http.ResponseWriter, r *http.Request, api creditKindAPI, id int64) {
 	var body gen.CreditMergeRequest
 	if !s.readJSONBody(w, r, &body) {
@@ -315,8 +299,6 @@ func (s *server) mergeCredits(w http.ResponseWriter, r *http.Request, api credit
 	s.writeCreditBody(w, http.StatusOK, api.merged(outcome))
 }
 
-// writeCreditError は保存層の誤りを写す。項目・参照・外部 ID・親の輪は workInfoFailureOf が、
-// 統合先そのものを含む統合元と、経路の id の実体が無いことはここが種類ごとの reason で写す。
 func (s *server) writeCreditError(w http.ResponseWriter, api creditKindAPI, err error) {
 	if failure, ok := workInfoFailureOf(err); ok {
 		s.writeWorkInfoFailure(w, failure)
@@ -379,7 +361,6 @@ func toAPIExternalIDs(ids []domain.ExternalID) []gen.ExternalId {
 	return out
 }
 
-// fromAPIAliases は要求の別名を domain の形にする。無い一覧と null は空の一覧である。
 func fromAPIAliases(aliases *[]gen.Alias) []domain.Alias {
 	if aliases == nil {
 		return []domain.Alias{}
@@ -395,7 +376,6 @@ func fromAPIAliases(aliases *[]gen.Alias) []domain.Alias {
 	return out
 }
 
-// fromAPIExternalIDs は要求の外部 ID を domain の形にする。無い一覧と null は空の一覧である。
 func fromAPIExternalIDs(ids *[]gen.ExternalId) []domain.ExternalID {
 	if ids == nil {
 		return []domain.ExternalID{}

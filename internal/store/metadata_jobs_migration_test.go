@@ -10,9 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 00052 が積んだ metadata の仕事と metadata_failed の問題は、00053 が消す。00052 を適用済みの
-// データベースでは、対応するワーカーの無い仕事が直近の走査の残りに数えられ続けていたが、
-// 移行のあとの起動時の積み直しで直近の走査が完了する。
+// Remove obsolete metadata work so startup can settle scans that would otherwise wait for a nonexistent worker.
 func TestDropMetadataJobsMigrationSettlesLatestScan(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {
@@ -40,7 +38,6 @@ func TestDropMetadataJobsMigrationSettlesLatestScan(t *testing.T) {
 		`insert into scans(id, state, started_at, finished_at, total, completed, failed) values (1, 'done', 1, 5, 1, 1, 0)`,
 		`insert into scan_videos(scan_id, video_id) values (1, 1)`,
 	)
-	// 以前の 00052 は、解析が done の動画に metadata の仕事を積む。
 	if _, err := provider.UpTo(ctx, 52); err != nil {
 		t.Fatal(err)
 	}

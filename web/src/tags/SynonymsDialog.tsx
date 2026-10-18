@@ -28,40 +28,26 @@ function isMergeRequired(error: unknown): boolean {
   return error instanceof RequestFailed && error.code === "tag_merge_required";
 }
 
-/** mergeOwner は tag_merge_required が返した、名前を持つタグの元の名前である。 */
 function mergeOwner(error: unknown): string | undefined {
   return error instanceof RequestFailed ? error.tagName : undefined;
 }
 
-/** MergeConfirm は「シノニム登録に伴う統合」の確認である（要件6、受け入れ条件17）。 */
 interface MergeConfirm {
-  /** 登録しようとした、既存のタグ S の元の名前（≒入力していた綴り）。 */
   name: string;
-  /** タグ S の元の名前（API の tagName。確認の文言に出す）。 */
   sourceName: string;
   sourceId: number;
-  /**
-   * 確かめ直したときのタグ S（統合の前の状態）。統合したら呼び出し元へ渡し、読み込んで
-   * いない S でも今の条件に合っていたかで件数を数え直せるようにする（TagsPage）。
-   */
+  /** Preserve pre-merge source state so callers can update filtered counts even for unloaded sources. */
   source: Tag;
   videoCount: number;
   hasSynonyms: boolean;
 }
 
-/** FocusAfterRemoval は、解除したシノニムのチップが消えたあとの移動先を持つ。 */
 type FocusAfterRemoval = {
   target: { name: string } | "input";
-  /** 消えるのを待つシノニムの名前。無ければ即座に移す（失敗して戻すときなど）。 */
+  /** Wait for this chip to disappear; omit to restore focus immediately after failure. */
   removedName?: string;
 };
 
-/**
- * SynonymsDialog は「シノニム」で開く窓である。
- * 上に今のシノニムを Chip の並びで、下に追加の入力を持つ。追加しようとした
- * 名前が既存のタグの名前と一致すると、同じ窓の中を統合の確認に切り替える
- * （要件6「シノニム登録」、受け入れ条件17）。
- */
 export default function SynonymsDialog({
   tag,
   onClose,
@@ -71,20 +57,9 @@ export default function SynonymsDialog({
 }: {
   tag: Tag;
   onClose: () => void;
-  /**
-   * 登録・シノニム登録に伴う統合が成功したときに、タグの最新の状態を渡す。
-   * `removed` は統合元の統合の前の状態で、統合元がタグの一覧から消えたことを
-   * 呼び出し元へ伝える（渡さなければ何も消えていない。TagsPage 参照）。
-   */
   onTagUpdated: (tag: Tag, removed?: Tag) => void;
-  /**
-   * シノニムの解除が成功したときに呼ぶ。呼び出し元は、この呼び出し時点の
-   * 最新の一覧からその名前だけを取り除く（`tag` prop の閉じ込めではなく）。
-   * ほぼ同時に複数のシノニムを解除したとき、互いの結果を巻き戻さないため
-   * （N5）。
-   */
+  /** Remove from the caller's latest state, not captured props, so concurrent synonym removals compose. */
   onSynonymRemoved: (tagId: number, name: string) => void;
-  /** このタグがもう無い（tag_not_found）ときに呼ぶ。 */
   onStale: () => void;
 }) {
   const field = useTagNameField("", () => setAddError(null));
@@ -92,15 +67,11 @@ export default function SynonymsDialog({
   const backRef = useRef<HTMLButtonElement>(null);
   const confirmMergeButton = useRef<HTMLButtonElement>(null);
 
-  // fieldValueRef は常に最新の入力値を指す。応答が届いた時点で、送信した
-  // ときの値のままなら入力を空にするが、その間に打ち直していれば残す
-  // （N: 送信中に打ち直した名前を消さない）。
+  // Clear only the submitted spelling; preserve text entered while the request was pending.
   const fieldValueRef = useRef(field.value);
   fieldValueRef.current = field.value;
 
-  // tagRef は常に最新の tag（props）を指す。解除・統合の応答が届いた時点で
-  // シノニムの一覧を作るときは、要求を送った時点で閉じ込めた（古いかもしれ
-  // ない）`tag` ではなく、この ref 経由の最新の値を使う（N5）。
+  // Read the latest props when composing responses, not the tag captured at request time.
   const tagRef = useRef(tag);
   tagRef.current = tag;
 
@@ -115,9 +86,7 @@ export default function SynonymsDialog({
   const chipRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingFocusRef = useRef<FocusAfterRemoval | null>(null);
 
-  // confirm が変わるたびに、そちらのビューの最初のフォーカス先へ移す（開いた
-  // 直後の最初のフォーカスは DialogContent の onOpenAutoFocus に任せるので、ここでは
-  // 実際に切り替わったときだけ動かす）。
+  // Dialog owns initial focus; move focus here only when switching confirmation views.
   const mountedRef = useRef(false);
   useEffect(() => {
     if (!mountedRef.current) {
@@ -128,9 +97,7 @@ export default function SynonymsDialog({
     else inputRef.current?.focus();
   }, [confirm]);
 
-  // シノニムの解除が失敗した直後は「統合する」（または「戻る」）へ戻す
-  // MergeTagDialog の N4 と同じ扱いを、統合の確認の「統合する」にも適用する。
-  // きっかけは confirmError だけで、確認の表示が切り替わっても動かさない。
+  // Restore Merge or Back after confirmation failure; do not refocus just because the view changes.
   const restoreFocus = useEffectEvent(() => {
     (confirm !== null ? confirmMergeButton : backRef).current?.focus();
   });
@@ -138,10 +105,7 @@ export default function SynonymsDialog({
     if (confirmError !== null) restoreFocus();
   }, [confirmError]);
 
-  // 解除したチップが一覧から消えたら（tag.synonyms に反映されたら）、次の
-  // チップの ×、無ければ前のチップの ×、1つも無ければ入力へフォーカスを
-  // 移す（N2）。外せなかったとき（pendingFocusRef が removedName を持たない
-  // 形で積み直される）は、その場でそのチップ自身の × へ戻す。
+  // After removal, focus next, previous, then input; failures restore the original remove button.
   useEffect(() => {
     const pending = pendingFocusRef.current;
     if (pending === null) return;
@@ -176,17 +140,13 @@ export default function SynonymsDialog({
     setAddError(null);
     try {
       await removeTagSynonym(tag.id, name);
-      // 呼び出し元（TagsPage）の関数形の更新に任せる。ここで tagRef.current
-      // から組み立てると、ほぼ同時に解除したもう1件の結果を踏みつぶす
-      // （両方とも、送った時点の同じ古い一覧から組み立ててしまうため。N5）。
+      // Let the parent's functional update compose concurrent removals instead of rebuilding from stale props.
       onSynonymRemoved(tag.id, name);
     } catch (failure) {
       if (isTagNotFound(failure)) {
         onStale();
         return;
       }
-      // 外せなかったときは、次/前のチップではなく、このチップ自身の × へ戻す
-      // （`web/src/player/VideoTags.tsx` の removeTag と同じ扱い）。
       pendingFocusRef.current = { target: { name } };
       setAddError({ kind: "other", message: errorText(failure) });
     } finally {
@@ -198,34 +158,18 @@ export default function SynonymsDialog({
     }
   }
 
-  /**
-   * openConfirm は tag_merge_required を受けたときに呼ぶ。タグの一覧を取り直し
-   * （別のタブでの変更を拾うため）、その名前を元の名前として持つタグ S を
-   * 探して確認へ切り替える。契約どおり、承諾は S の id を
-   * 添えて送るので、ここで正しい S を確かめ直す（確認の後に別のタブでその
-   * 名前が移っていても、確認していないタグを統合しないため）。
-   *
-   * `attempt` は、`submitAdd` からの自動の再送信（一覧を取り直したら名前の
-   * 持ち主がもう無く、素の登録をやり直す）を1回までに区切る（N6b）。実際に
-   * 送り直した回数だけを数える。この関数を呼ぶこと自体は数えないので、
-   * `submitAdd` からの最初の呼び出しは常に `attempt = 0` で始まり、その中で
-   * 見つからなければ1回だけ送り直せる。それでも見つからなければ、ループを
-   * 続けず一般の失敗として見せる。
-   */
+  /** Revalidate the name's owner before confirming its ID so another tab cannot redirect the merge. Retry plain registration at most once if that owner disappeared. */
   async function openConfirm(name: string, attempt = 0, ownerName?: string) {
     try {
       const list = await refreshTags();
-      // S は API が tagName で返した元の名前で探す。
-      // tagName が無い応答では送った綴りで探す。
+      // Prefer the canonical tagName from the error, falling back to the submitted spelling.
       const found = list.find((item) => item.name === (ownerName ?? name));
       if (found === undefined) {
         if (attempt >= 1) {
           setAddError({ kind: "other", message: t.tags.synonymsDialog.addFailed });
           return;
         }
-        // 別のタブでの変更により、この名前を持つタグがもう無い。素の登録を
-        // やり直せば通るはずなので、確認は出さずにもう一度試す（これが
-        // 実際の送り直しなので、ここで attempt を1つ進める）。
+        // If the owner disappeared, retry plain registration and count this actual resend.
         await submitAdd(name, attempt + 1);
         return;
       }
@@ -245,8 +189,7 @@ export default function SynonymsDialog({
   async function submitAdd(spelling?: string, attempt = 0) {
     const name = spelling ?? field.trySpelling();
     if (name === null) return;
-    // 応答が届いたとき、まだこの値のままなら入力を空にする。届くまでの間に
-    // 打ち直していれば、その文字を消さない。
+    // Preserve edits made while the request was pending.
     const submittedValue = fieldValueRef.current;
     setAddError(null);
     setAddPending(true);
@@ -254,22 +197,18 @@ export default function SynonymsDialog({
       const updated = await addTagSynonym(tag.id, name);
       onTagUpdated(updated);
       if (fieldValueRef.current === submittedValue) field.setValue("");
-      // N6a: openConfirm の素の登録のやり直しが成功したときも含め、確認の
-      // ビューを出したままにしない。
+      // Successful automatic retries must also leave confirmation mode.
       setConfirm(null);
       setAddPending(false);
     } catch (failure) {
-      // 確認（統合）のビューへ切り替わる前に、いま出している入力の
-      // aria-busy を必ず下ろす。合流先の await の間そのままにすると、
-      // 入力が確認のビューに差し替わって消えるその瞬間の見た目に残る。
+      // Clear aria-busy before switching views so it cannot persist on the disappearing input.
       setAddPending(false);
       if (isTagNotFound(failure)) {
         onStale();
         return;
       }
       if (isMergeRequired(failure)) {
-        // openConfirm を呼ぶこと自体は送り直しではないので、attempt は
-        // そのまま渡す（N6b: 実際に送り直した回数だけを数える）。
+        // Opening confirmation does not count as a resend.
         await openConfirm(name, attempt, mergeOwner(failure));
         return;
       }
@@ -290,10 +229,7 @@ export default function SynonymsDialog({
     setConfirmPending(true);
     try {
       const updated = await addTagSynonym(tag.id, confirm.name, confirm.sourceId);
-      // 統合元（confirm.sourceId）は統合先のシノニムになって一覧から消える。
-      // 呼び出し元（TagsPage）へその id を渡し、一覧から取り除いてもらう
-      // （渡さないと、統合元が背景の取り直しか、それが失敗すれば永久に
-      // 一覧へ残ってしまう）。
+      // Tell the parent which source disappeared; background refresh may fail.
       onTagUpdated(updated, confirm.source);
       setConfirm(null);
       if (fieldValueRef.current === submittedValue) field.setValue("");
@@ -303,8 +239,7 @@ export default function SynonymsDialog({
         return;
       }
       if (isMergeRequired(failure)) {
-        // 確認の後に別のタブでこの名前がさらに別のタグへ移った。一覧を
-        // 取り直して確認をやり直す。
+        // Ownership changed after confirmation; refresh and ask to confirm the new owner.
         await openConfirm(confirm.name, 0, mergeOwner(failure));
         return;
       }
@@ -314,11 +249,7 @@ export default function SynonymsDialog({
     }
   }
 
-  /**
-   * handleClose は窓を閉じるすべての経路（×・Esc）が通る。統合の要求が
-   * 届いている間は、その応答がもう無いこの窓の状態を書き換えることを
-   * 防ぐため閉じない（cancelDelete・MergeTagDialog と同じ扱い。N3）。
-   */
+  /** Block closing while merging so late responses cannot update a removed dialog. */
   function handleClose() {
     if (confirmPending) return;
     onClose();
@@ -337,7 +268,7 @@ export default function SynonymsDialog({
       <DialogContent
         aria-describedby={undefined}
         onEscapeKeyDown={(event) => {
-          // IME の変換を取り消す Esc では閉じない。
+          // Escape cancelling IME composition must not close the dialog.
           if (isComposingNativeKeyEvent(event)) event.preventDefault();
         }}
         onOpenAutoFocus={(event) => {
@@ -357,7 +288,7 @@ export default function SynonymsDialog({
               >
                 {tag.synonyms.map((name) => (
                   <li key={name} className="max-w-full min-w-0">
-                    {/* 外せるチップは Badge の中に × のボタンを置く（components.md「Badge」）。 */}
+                    {}
                     <Badge variant="secondary" title={name} className="max-w-full pr-0.5">
                       <span className="min-w-0 truncate">{name}</span>
                       <Button
