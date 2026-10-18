@@ -18,15 +18,20 @@ import { isTagNotFound, overLimitMessage } from "./selectionErrors";
 import { buildAddOptions } from "./tagChoices";
 import TagCommand from "../ui/TagCommand";
 
+const noSmartFolders: readonly number[] = [];
+
+/** The server applies the tag to the selected smart folders' current members as well as selectedIds. */
 export default function AddTagPopover({
   open,
   onOpenChange,
   selectedIds,
+  smartFolderIds = noSmartFolders,
   onDone,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedIds: readonly number[];
+  smartFolderIds?: readonly number[];
   onDone: () => void;
 }) {
   const toast = useToast();
@@ -73,8 +78,8 @@ export default function AddTagPopover({
     const displayName = tag.name;
     const request =
       "id" in tag
-        ? attachVideoTagByID(selectedIds, tag.id)
-        : attachVideoTagByName(selectedIds, tag.name);
+        ? attachVideoTagByID(selectedIds, tag.id, { smartFolderIds })
+        : attachVideoTagByName(selectedIds, tag.name, { smartFolderIds });
     void request
       .then((result) => {
         toast(t.library.selection.added(result.applied, displayName));

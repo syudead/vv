@@ -1,6 +1,7 @@
 import { type LibraryItemOf, request } from "./client";
 import type { components } from "./gen/openapi";
 import { applyFavoritesToListSnapshot, holdListSnapshot } from "./listSnapshot";
+import { smartFolderField } from "./smartFolderChanges";
 
 export type FavoritesResponse = components["schemas"]["FavoritesResponse"];
 
@@ -143,7 +144,7 @@ export function withItemFavoriteSince<
 }
 
 export interface UpdateFavoritesOptions {
-  /** Smart-folder cards refresh through their own events; this local notification covers videos/groups only. */
+  /** The local overlay covers videos/groups only; bulk callers announce smart folders with noteSmartFolderChanges. */
   smartFolderIds?: readonly number[];
   signal?: AbortSignal;
 }
@@ -171,9 +172,7 @@ export function updateFavorites(
       body: JSON.stringify({
         videoIds: Array.from(videoIds),
         groupIds: Array.from(groupIds),
-        ...(smartFolderIds.length === 0
-          ? {}
-          : { smartFolderIds: Array.from(smartFolderIds) }),
+        ...smartFolderField(smartFolderIds),
         favorite,
       }),
       signal,

@@ -53,3 +53,10 @@ export function loadedVideoIds(items: readonly LibraryItem[]): ReadonlySet<numbe
   }
   return ids;
 }
+
+/** Loaded child-folder cards; the selection may hold only these smart folders. */
+export function loadedSmartFolderIds(items: readonly LibraryItem[]): ReadonlySet<number> {
+  const ids = new Set<number>();
+  for (const item of items) if (item.kind === "smartFolder") ids.add(item.smartFolder.id);
+  return ids;
+}

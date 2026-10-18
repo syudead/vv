@@ -221,7 +221,7 @@ describe("選択", () => {
 });
 
 describe("カードのタグ", () => {
-  it("動画を選んでいる間も、子フォルダのカードのタグを押すとそのタグで絞ったライブラリを開く", async () => {
+  it("動画を選んでいる間は、子フォルダのカードのタグを押すとそのフォルダを選ぶ", async () => {
     const user = userEvent.setup();
     seed();
     server.cards.set(
@@ -249,9 +249,9 @@ describe("カードのタグ", () => {
 
     await user.click(screen.getByRole("checkbox", { name: 'Select "Cat 1"' }));
     const card = folder.closest("article") as HTMLElement;
-    await user.click(within(card).getByRole("button", { name: "Filter by 猫" }));
+    await user.click(within(card).getByRole("list", { name: "Tags" }));
 
-    expect(await screen.findByText("Library")).toBeTruthy();
+    expect(screen.getByText("1 video and 1 smart folder selected")).toBeTruthy();
   });
 });
 
@@ -414,7 +414,7 @@ describe("動画とグループの選択", () => {
     expect(screen.getByText("2 videos selected")).toBeTruthy();
 
     await user.keyboard("{Escape}");
-    expect(screen.queryByText(/videos? selected/)).toBeNull();
+    expect(screen.queryByText(/selected/)).toBeNull();
   });
 });
 

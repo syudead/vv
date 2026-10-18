@@ -22,6 +22,8 @@ type SmartFolders interface {
 	SmartFolderContents(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int, query domain.VideoQuery) (domain.SmartFolderPage, error)
 	// SmartFolderCards preserves requested order and skips missing/invisible folders.
 	SmartFolderCards(ctx context.Context, audience domain.Audience, ids []int64) ([]domain.SmartFolderCard, error)
+	// SmartFolderVideoIDs returns the distinct owner-visible member videos of the folders; missing folders contribute nothing.
+	SmartFolderVideoIDs(ctx context.Context, ids []int64) ([]int64, error)
 }
 
 const (

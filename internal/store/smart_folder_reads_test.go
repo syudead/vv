@@ -332,3 +332,28 @@ func TestSmartFolderPlayOrderExpandsGroups(t *testing.T) {
 		t.Errorf("公開の動画が無いときのゲスト = %+v, %v", guest.SmartFolder, err)
 	}
 }
+
+func TestSmartFolderVideoIDsResolvesCurrentMembers(t *testing.T) {
+	db, ids := itemsFixture(t)
+	ctx := context.Background()
+	p1, p2 := ids[fixturePath("/media/pair/p1.mp4")], ids[fixturePath("/media/pair/p2.mp4")]
+	solo, x := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")]
+	cat := attachNamedTag(t, db, "猫", p1, p2, x)
+	dog := attachNamedTag(t, db, "犬", p1, p2, solo)
+	gone := attachNamedTag(t, db, "消える", solo)
+	parent := newSmartFolder(t, db, "猫", domain.SmartRule{Tags: []int64{cat}}, domain.SortTitleAsc, 0)
+	child := newSmartFolder(t, db, "犬", domain.SmartRule{Tags: []int64{dog}}, domain.SortTitleAsc, parent)
+	missing := newSmartFolder(t, db, "消える", domain.SmartRule{Tags: []int64{gone}}, domain.SortTitleAsc, 0)
+	if err := db.Tags().DeleteTag(ctx, gone); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := db.SmartFolders().SmartFolderVideoIDs(ctx, []int64{child, missing, 9999, parent, child})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The child keeps only the pair group's members (solo fails the parent's rule); the parent adds x once.
+	if want := []int64{p1, p2, x}; !slices.Equal(got, want) {
+		t.Errorf("SmartFolderVideoIDs = %v, want %v", got, want)
+	}
+}

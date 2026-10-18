@@ -43,7 +43,7 @@ export function reconcileGroupSelection(
     if (!sameIds(observed, group.videoIds)) changed = true;
     groups.set(key, { id: key, videoIds: observed });
   }
-  return changed ? { ids, groups } : selection;
+  return changed ? { ...selection, ids, groups } : selection;
 }
 
 function sameIds(a: readonly number[], b: readonly number[]): boolean {

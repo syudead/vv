@@ -6,13 +6,23 @@ export interface SelectedGroup {
   videoIds: readonly number[];
 }
 
-/** Track member video IDs for tags/visibility and group identities for favorites/playlists. Removing a member drops its group identity; remaining members become standalone selections. */
+/** Track member video IDs for tags/visibility and group identities for favorites/playlists. Removing a member drops its group identity; remaining members become standalone selections. Smart folders are separate items that only favorites and playlists accept. */
 export interface LibrarySelection {
   ids: ReadonlySet<number>;
   groups: ReadonlyMap<number, SelectedGroup>;
+  smartFolders: ReadonlySet<number>;
 }
 
-export const emptySelection: LibrarySelection = { ids: new Set(), groups: new Map() };
+export const emptySelection: LibrarySelection = {
+  ids: new Set(),
+  groups: new Map(),
+  smartFolders: new Set(),
+};
+
+/** Videos, groups and smart folders count as one item each, like the selection bar. */
+export function selectedCount(selection: LibrarySelection): number {
+  return selection.ids.size + selection.smartFolders.size;
+}
 
 function removeIds(
   selection: LibrarySelection,
@@ -28,7 +38,7 @@ function removeIds(
   for (const [key, group] of groups) {
     if (group.videoIds.some((id) => gone.has(id))) groups.delete(key);
   }
-  return { ids, groups };
+  return { ...selection, ids, groups };
 }
 
 /** Restrict selection to loaded items so vanished videos cannot be mutated in batches. */
@@ -51,7 +61,7 @@ export function setVideo(
   if (selection.ids.has(id)) return selection;
   const ids = new Set(selection.ids);
   ids.add(id);
-  return { ids, groups: selection.groups };
+  return { ...selection, ids };
 }
 
 export function toggleVideo(selection: LibrarySelection, id: number): LibrarySelection {
@@ -69,7 +79,7 @@ export function setGroup(
   for (const id of group.videoIds) ids.add(id);
   const groups = new Map(selection.groups);
   groups.set(group.id, copyGroup(group));
-  return { ids, groups };
+  return { ...selection, ids, groups };
 }
 
 function deselectGroup(
@@ -88,7 +98,7 @@ function deselectGroup(
   if (!removed.groups.has(group.id)) return removed;
   const groups = new Map(removed.groups);
   groups.delete(group.id);
-  return { ids: removed.ids, groups };
+  return { ...removed, groups };
 }
 
 function copyGroup(group: SelectedGroup): SelectedGroup {
@@ -109,6 +119,35 @@ export function toggleGroup(
   group: SelectedGroup,
 ): LibrarySelection {
   return setGroup(selection, group, !isGroupSelected(selection, group.id));
+}
+
+export function setSmartFolder(
+  selection: LibrarySelection,
+  id: number,
+  selected: boolean,
+): LibrarySelection {
+  if (selection.smartFolders.has(id) === selected) return selection;
+  const smartFolders = new Set(selection.smartFolders);
+  if (selected) smartFolders.add(id);
+  else smartFolders.delete(id);
+  return { ...selection, smartFolders };
+}
+
+export function toggleSmartFolder(
+  selection: LibrarySelection,
+  id: number,
+): LibrarySelection {
+  return setSmartFolder(selection, id, !selection.smartFolders.has(id));
+}
+
+/** Drop smart folders that are no longer listed; preserve the reference when unchanged. */
+export function keepSmartFolders(
+  selection: LibrarySelection,
+  listed: ReadonlySet<number>,
+): LibrarySelection {
+  const kept = [...selection.smartFolders].filter((id) => listed.has(id));
+  if (kept.length === selection.smartFolders.size) return selection;
+  return { ...selection, smartFolders: new Set(kept) };
 }
 
 /** Reconcile loaded groups without pruning video IDs or unloaded selections. Drop identities with standalone members or unselected new members; preserve the reference when unchanged. */
@@ -143,13 +182,14 @@ export function reconcileGroups(
       edit().set(key, copyGroup({ id: key, videoIds: observed }));
     }
   }
-  return groups === null ? selection : { ids: selection.ids, groups };
+  return groups === null ? selection : { ...selection, groups };
 }
 
 /** Exclude video IDs already represented by selected group targets. */
 export function favoriteTargets(selection: LibrarySelection): {
   videoIds: number[];
   groupIds: number[];
+  smartFolderIds: number[];
 } {
   const members = new Set<number>();
   const groupIds: number[] = [];
@@ -158,5 +198,5 @@ export function favoriteTargets(selection: LibrarySelection): {
     for (const id of group.videoIds) members.add(id);
   }
   const videoIds = Array.from(selection.ids).filter((id) => !members.has(id));
-  return { videoIds, groupIds };
+  return { videoIds, groupIds, smartFolderIds: Array.from(selection.smartFolders) };
 }

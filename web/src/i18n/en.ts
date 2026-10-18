@@ -147,6 +147,13 @@ function playlistCount(count: number): string {
   });
 }
 
+function smartFolders(count: number): string {
+  return selectPlural(count, {
+    one: `${formatNumber(count)} smart folder`,
+    other: `${formatNumber(count)} smart folders`,
+  });
+}
+
 function videos(count: number): string {
   return selectPlural(count, {
     one: `${formatNumber(count)} video`,
@@ -982,10 +989,16 @@ export const en = {
       labelLoading: (name: string) => `${name}, smart folder`,
       favorite: (name: string) => `Favorite smart folder "${name}"`,
       addToPlaylist: (name: string) => `Add smart folder "${name}" to a playlist`,
+      select: (name: string) => `Select the smart folder "${name}"`,
     },
     selection: {
       region: "Selection actions",
       count: (count: number) => `${videos(count)} selected`,
+      countWithSmartFolders: (videoCount: number, folderCount: number) =>
+        videoCount === 0
+          ? `${smartFolders(folderCount)} selected`
+          : `${videos(videoCount)} and ${smartFolders(folderCount)} selected`,
+      smartFoldersUnsupported: "Not available for smart folders",
       clear: "Clear selection (Esc)",
       addTag: "Add tag",
       removeTag: "Remove tag",

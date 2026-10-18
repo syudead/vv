@@ -24,6 +24,31 @@ export function SelectionAction({
   );
 }
 
+/** Disable an action with a reason that reads on hover and to screen readers through `reasonId`. */
+export function disabledProps(reason: UiText | undefined, reasonId: string) {
+  return {
+    disabled: reason !== undefined,
+    title: reason,
+    "aria-describedby": reason === undefined ? undefined : reasonId,
+  };
+}
+
+/** Screen-reader text for `disabledProps`; renders nothing while the action is enabled. */
+export function DisabledReason({
+  id,
+  reason,
+}: {
+  id: string;
+  reason: UiText | undefined;
+}) {
+  if (reason === undefined) return null;
+  return (
+    <span id={id} className="sr-only">
+      {reason}
+    </span>
+  );
+}
+
 export function WithTooltip({ label, children }: { label: UiText; children: ReactNode }) {
   return (
     <Tooltip>

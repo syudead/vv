@@ -1,5 +1,6 @@
 import { apiFetch, MAX_PAGE_SIZE, PAGE_SIZE, request, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
+import { smartFolderField } from "./smartFolderChanges";
 
 export type PlaylistSummary = components["schemas"]["PlaylistSummary"];
 type ApiPlaylist = components["schemas"]["Playlist"];
@@ -115,9 +116,7 @@ export function addToPlaylist(
     body: JSON.stringify({
       videoIds: Array.from(videoIds),
       groupIds: Array.from(groupIds),
-      ...(smartFolderIds.length === 0
-        ? {}
-        : { smartFolderIds: Array.from(smartFolderIds) }),
+      ...smartFolderField(smartFolderIds),
     }),
     signal,
   });

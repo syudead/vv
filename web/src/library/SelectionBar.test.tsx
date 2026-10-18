@@ -15,7 +15,7 @@ import { __resetTagsForTest } from "../api/tags";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
-import SelectionBar from "./SelectionBar";
+import SelectionBar, { selectionReasons } from "./SelectionBar";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -1038,5 +1038,36 @@ describe("SelectionBar の束ねる操作", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(onClear).not.toHaveBeenCalled();
     await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+});
+
+describe("selectionReasons", () => {
+  const unsupported = "Not available for smart folders";
+
+  it("スマートフォルダを選んでいると、グループと版の操作だけ押せない理由を返す", () => {
+    const reasons = selectionReasons({
+      count: 2,
+      favoriteVideoIds: [1, 2],
+      favoriteGroupIds: [],
+      smartFolderIds: [9],
+    });
+    expect(reasons).toEqual({
+      tag: undefined,
+      favorite: undefined,
+      group: unsupported,
+      newGroup: unsupported,
+      bundle: unsupported,
+    });
+  });
+
+  it("お気に入りの上限はスマートフォルダも 1 件と数える", () => {
+    const reasons = selectionReasons({
+      count: 0,
+      favoriteVideoIds: [],
+      favoriteGroupIds: Array.from({ length: 20_000 }, (_, i) => i + 1),
+      smartFolderIds: [9],
+    });
+    expect(reasons.favorite).toBe("Select between 1 and 20,000 videos.");
+    expect(reasons.group).toBe(reasons.favorite);
   });
 });
