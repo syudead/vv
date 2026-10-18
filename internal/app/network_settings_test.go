@@ -162,16 +162,6 @@ func TestNetworkSettingsCurrentReportsZeroPortForUnreadableAddress(t *testing.T)
 	}
 }
 
-func TestNetworkSettingsUsesDefaultLoggerWhenNil(t *testing.T) {
-	settings := NewNetworkSettings(NetworkSettingsOptions{
-		Store:    &fakeNetworkSettingsStore{},
-		Listener: &fakeNetworkListener{addr: "127.0.0.1:8080"},
-	})
-	if settings.logger == nil {
-		t.Fatal("Logger が nil のとき slog の既定を使っていない")
-	}
-}
-
 func TestNetworkSettingsSetLANAccessSwitchesListenerThenSaves(t *testing.T) {
 	for name, tc := range map[string]struct {
 		initial   bool

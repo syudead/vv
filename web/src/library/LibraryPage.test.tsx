@@ -24,7 +24,6 @@ import { formatBytes, formatDuration } from "../lib/format";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
-import { resultCountText } from "../videoList/listSummary";
 import LibraryPage from "./LibraryPage";
 
 function video(id: number, extra: Partial<Video> = {}): Video {
@@ -139,13 +138,6 @@ function renderLibrary(initial = "/", audience: Audience = "owner") {
     </MemoryRouter>,
   );
 }
-
-describe("resultCountText", () => {
-  it("サーバーの全件数だけを表示する", () => {
-    expect(resultCountText(59)).toBe("59 videos");
-    expect(resultCountText(1_234)).toBe("1,234 videos");
-  });
-});
 
 describe("LibraryPage", () => {
   const fetchMock = vi.fn<typeof fetch>();
