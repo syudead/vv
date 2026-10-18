@@ -351,6 +351,11 @@ func (s *server) toAPISmartFolderCard(ctx context.Context, audience domain.Audie
 		VideoCount: card.VideoCount, DurationMs: card.DurationMs, SizeBytes: card.SizeBytes,
 		Previews: s.folderPreviews(ctx, card.Previews), Tags: []gen.VideoTag{},
 	}
+	for i, preview := range card.Previews {
+		title := preview.Title
+		out.Previews[i].Title = &title
+	}
+
 	if card.VideoCount > 0 {
 		addedAt, openVideoID := card.AddedAt, card.OpenVideoID
 		out.AddedAt, out.OpenVideoId = &addedAt, &openVideoID

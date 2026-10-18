@@ -52,7 +52,6 @@ export const server = {
   failCards: false,
   failDetail: false,
   failPage: false,
-  homeShelves: [] as number[],
   writeAnswer: undefined as ((method: string, id: number) => Response) | undefined,
 };
 
@@ -65,14 +64,6 @@ function summaries(): SmartFolderSummary[] {
 }
 
 function writeResponse(method: string, url: URL, body: unknown): Response {
-  if (url.pathname === "/api/home/shelves") {
-    server.writes.push({ method, path: url.pathname, body });
-    server.homeShelves = (body as { folderIds: number[] }).folderIds;
-    for (const [id, detail] of server.folders) {
-      detail.onHome = server.homeShelves.includes(id);
-    }
-    return new Response(null, { status: 204 });
-  }
   const match = /^\/api\/smart-folders\/(\d+)$/.exec(url.pathname);
   const id = match === null ? 0 : Number(match[1]);
   server.writes.push({ method, path: url.pathname, body });
@@ -107,16 +98,6 @@ function folderResponse(url: URL): Response | undefined {
     });
   }
   if (url.pathname === "/api/smart-folders") return json({ smartFolders: summaries() });
-  if (url.pathname === "/api/home") {
-    return json({
-      shelves: server.homeShelves.map((id) => ({
-        key: `folder:${String(id)}`,
-
-        name: server.folders.get(id)?.smartFolder.name ?? "",
-        folderId: id,
-      })),
-    });
-  }
   const items = /^\/api\/smart-folders\/(\d+)\/items$/.exec(url.pathname);
   if (items !== null) {
     if (server.failPage) return json({ code: "internal", message: "x" }, 500);
@@ -225,7 +206,6 @@ export function setUpSmartFolderServer() {
     server.tags = [];
     server.pages = new Map();
     server.writes = [];
-    server.homeShelves = [];
     server.writeAnswer = undefined;
     server.failDetail = false;
     server.failPage = false;

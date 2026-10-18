@@ -22,8 +22,6 @@ export interface SmartFolderPageData {
   trail: readonly GroupRef[];
   items: readonly LibraryItem[];
   nextCursor?: string;
-  /** フォルダがホームの棚か。所有者の応答にだけ入る（docs/design-docs/home.md）。 */
-  onHome?: boolean;
 }
 
 export type SmartFolderPageState = PagedDetailState<SmartFolderPageData>;
@@ -61,7 +59,6 @@ async function readFolderThrough(
     trail: detail.trail,
     items,
     nextCursor,
-    onHome: detail.onHome,
   };
 }
 
@@ -85,10 +82,6 @@ export function useSmartFolderPage(id: number | null) {
         if (id !== null && ids.includes(id) && stateRef.current.kind !== "gone") {
           refresh();
         }
-      },
-      // ホームの棚の集合か並びが変わると、このフォルダの `onHome` も変わったかもしれない。
-      home: () => {
-        if (stateRef.current.kind === "ready") refresh();
       },
       open: (reconnected) => {
         if (reconnected && stateRef.current.kind === "ready") refresh();

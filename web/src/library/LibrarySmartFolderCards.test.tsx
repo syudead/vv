@@ -9,12 +9,10 @@ import { __resetTagsForTest } from "../api/tags";
 import { AudienceProvider } from "../auth/audience";
 import { ScanProvider } from "../shell/ScanProvider";
 import { folderCard, video } from "../testing/smartFolderPage";
-import { group } from "../testing/groupPage";
+import { group, Probe } from "../testing/groupPage";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
-
-vi.mock("../home/HomeShelfSection", () => ({ default: () => null }));
 
 const fetchMock = vi.fn<typeof fetch>();
 let cardRequests: string[] = [];
@@ -47,6 +45,10 @@ function install(items: LibraryItem[]) {
           cards: [
             folderCard(9, "猫", {
               videoCount: 4,
+              previews: [
+                { videoId: 10, thumbnailUrl: "/thumb10", title: "Harbour" },
+                { videoId: 11, thumbnailUrl: "/thumb11", title: "Ridge" },
+              ],
               tags: [
                 {
                   id: 3,
@@ -110,6 +112,7 @@ function renderLibrary() {
                     </>
                   }
                 />
+                <Route path="/videos/:id" element={<Probe />} />
                 <Route path="/smart-folders/:id" element={<p>Smart folder page</p>} />
               </Routes>
             </ScanProvider>
@@ -161,6 +164,23 @@ describe("ライブラリのスマートフォルダのカード", () => {
     expect(cardRequests).toEqual(["9"]);
     const card = folder.closest("article") as HTMLElement;
     expect(within(card).queryByRole("checkbox")).toBeNull();
+  });
+
+  it("shows one inline folder and opens a preview with autoplay and folder playback context", async () => {
+    install(items);
+    renderLibrary();
+    const preview = await screen.findByRole("link", { name: 'Play "Harbour" from "猫"' });
+    expect(screen.queryByRole("region", { name: "Shelves" })).toBeNull();
+    expect(
+      screen.getAllByRole("link", { name: "猫, smart folder of 4 videos" }),
+    ).toHaveLength(1);
+    expect(preview.closest("article")?.querySelectorAll("a")).toHaveLength(3);
+    await userEvent.setup().click(preview);
+    expect(
+      await screen.findByText(
+        'Opened /videos/10?smartFolder=9 {"from":"/","autoplay":true}',
+      ),
+    ).toBeTruthy();
   });
 
   it("カードはスマートフォルダのページを開く", async () => {

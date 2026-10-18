@@ -30,8 +30,6 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
-vi.mock("../home/HomeShelfSection", () => ({ default: () => null }));
-
 // jsdom has no layout; place 200px cards in one row for pointer drag tests.
 
 function video(id: number): Video {
@@ -316,7 +314,14 @@ describe("LibraryPage drag into a group", () => {
     await openLibrary();
     lift("Clip 1", 0);
     moveTo(1);
-    release(1);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      release(1);
+      // dnd-kit suppresses document clicks for 50ms after a drop.
+      await act(() => vi.advanceTimersByTimeAsync(50));
+    } finally {
+      vi.useRealTimers();
+    }
     await screen.findByText('Moved 1 item to "Trip"');
     await waitFor(() => expect(cardTitles()).toEqual(["Trip", "Clip 2", "Clip 3"]));
 

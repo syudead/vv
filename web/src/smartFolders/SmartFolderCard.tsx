@@ -1,4 +1,4 @@
-import { FolderSearch } from "lucide-react";
+import { FolderSearch, Play } from "lucide-react";
 import { memo, type ReactNode, useState } from "react";
 import { Link } from "react-router";
 
@@ -11,23 +11,19 @@ import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import {
   CollectionName,
-  CollectionThumbnail,
   CollectionValueCells,
   useCollectionFacts,
 } from "../library/GroupCard";
 import AddToPlaylistButton from "../playlists/AddToPlaylistButton";
 import FavoriteToggle from "../ui/FavoriteToggle";
+import { CardGridItem } from "../ui/patterns/card-grid";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { TableCell, TableRow } from "../ui/shadcn/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
-import {
-  VideoThumbnail,
-  VideoThumbnailImage,
-  VideoThumbnailMark,
-} from "../ui/VideoThumbnail";
+import { VideoThumbnail, VideoThumbnailImage } from "../ui/VideoThumbnail";
 import { RefusingDropCard } from "../videoList/cardDrag";
 import { useSmartFolderCardValue } from "./cardValues";
-import { smartFolderPagePath } from "./smartFolderPaths";
+import { smartFolderPagePath, videoInSmartFolderPath } from "./smartFolderPaths";
 
 /**
  * Summaries arrive with list items; SmartFolderCardsProvider loads values only when cards become
@@ -138,54 +134,102 @@ export const SmartFolderCard = memo(function SmartFolderCard(
     <article
       ref={ref}
       data-smart-folder-id={folder.id}
-      className="group relative flex min-w-0 flex-col gap-2"
+      className="group relative flex min-w-0 flex-col gap-2 rounded-md border border-border bg-card p-3"
     >
-      <Link
-        to={smartFolderPagePath(folder.id)}
-        state={{ from: backTo }}
-        aria-label={label}
-        onClick={() => props.onPreviewReset?.()}
-        className="flex min-w-0 flex-1 flex-col gap-2 rounded-md"
-      >
-        <CollectionThumbnail
-          previews={values?.previews ?? []}
-          activePreviewId={props.activePreviewId}
-          previewResetEpoch={props.previewResetEpoch}
-          onPreviewStart={props.onPreviewStart}
-          ratio={facts.ratio}
-          face={
-            <>
-              <SmartFolderMark />
-              {values === undefined ? (
-                <Skeleton aria-hidden="true" className="h-3 w-16" />
-              ) : (
-                <>
-                  <span>{facts.countText}</span>
-                  {facts.duration !== "" && <span>{facts.duration}</span>}
-                </>
-              )}
-            </>
-          }
-        />
-        <CollectionName name={folder.name} muted={facts.state === "watched" || empty} />
-      </Link>
-      {owner && (
-        <VideoThumbnailMark className="z-30">
-          <SmartFolderAddToPlaylist folder={folder} variant="card" />
-          <SmartFolderFavorite folder={folder} read={values ?? folder} variant="card" />
-        </VideoThumbnailMark>
-      )}
+      <div className="flex min-w-0 items-start gap-2">
+        <Link
+          to={smartFolderPagePath(folder.id)}
+          state={{ from: backTo }}
+          aria-label={label}
+          onClick={() => props.onPreviewReset?.()}
+          className="flex min-w-0 flex-1 flex-col gap-1 rounded-sm hover:text-primary"
+        >
+          <CollectionName name={folder.name} muted={facts.state === "watched" || empty} />
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <SmartFolderMark />
+            {values === undefined ? (
+              <Skeleton aria-hidden="true" className="h-3 w-16" />
+            ) : (
+              facts.countText
+            )}
+            {facts.duration !== "" && <span>{facts.duration}</span>}
+          </span>
+        </Link>
+        {owner && (
+          <div className="flex shrink-0">
+            <SmartFolderAddToPlaylist folder={folder} variant="row" />
+            <SmartFolderFavorite folder={folder} read={values ?? folder} variant="row" />
+          </div>
+        )}
+      </div>
+      <SmartFolderPreviews
+        folder={folder}
+        values={values}
+        backTo={backTo}
+        onOpen={props.onPreviewReset}
+      />
       {tagsRow !== undefined && tags.length > 0 && (
         <div className="flex min-w-0 flex-col gap-1">{tagsRow(tags)}</div>
       )}
     </article>
   );
-  return refusesDrop ? (
-    <RefusingDropCard id={smartFolderKey(folder.id)}>{card}</RefusingDropCard>
-  ) : (
-    card
+  return (
+    <CardGridItem span={2}>
+      {refusesDrop ? (
+        <RefusingDropCard id={smartFolderKey(folder.id)}>{card}</RefusingDropCard>
+      ) : (
+        card
+      )}
+    </CardGridItem>
   );
 });
+
+function SmartFolderPreviews({
+  folder,
+  values,
+  backTo,
+  onOpen,
+}: {
+  folder: SmartFolderSummary;
+  values: LibrarySmartFolder | undefined;
+  backTo: string;
+  onOpen?: () => void;
+}) {
+  if (values === undefined)
+    return (
+      <div className="grid grid-cols-2 gap-2" aria-busy="true">
+        <Skeleton className="aspect-video w-full" />
+        <Skeleton className="aspect-video w-full" />
+      </div>
+    );
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {values.previews.slice(0, 2).map((preview, index) => {
+        const title = preview.title ?? t.library.smartFolder.previewTitle(index + 1);
+        return (
+          <Link
+            key={preview.videoId}
+            to={videoInSmartFolderPath(preview.videoId, folder.id)}
+            state={{ from: backTo, autoplay: true }}
+            aria-label={t.library.smartFolder.playPreview(title, folder.name)}
+            onClick={onOpen}
+            className="group/preview flex min-w-0 flex-col gap-1 rounded-md hover:text-primary"
+          >
+            <VideoThumbnail>
+              <VideoThumbnailImage src={preview.thumbnailUrl} />
+              <span className="absolute right-2 bottom-2 rounded-full bg-overlay p-1.5 text-foreground">
+                <Play aria-hidden="true" className="size-4" />
+              </span>
+            </VideoThumbnail>
+            <span className="truncate text-xs" title={title}>
+              {title}
+            </span>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
 
 export const SmartFolderRow = memo(function SmartFolderRow({
   folder,

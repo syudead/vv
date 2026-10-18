@@ -976,6 +976,9 @@ export const en = {
         `${formatNumber(watched)} / ${formatNumber(total)}`,
     },
     smartFolder: {
+      playPreview: (title: string, folder: string) => `Play "${title}" from "${folder}"`,
+      previewTitle: (index: number) => `Video ${formatNumber(index)}`,
+
       label: (name: string, count: number, watched: number) =>
         watched >= 1
           ? `${name}, smart folder of ${videos(count)}, ${formatNumber(watched)} watched`
@@ -2204,34 +2207,7 @@ export const en = {
       title: "No history matches these conditions",
     },
   },
-  home: {
-    title: "Home",
-    shelves: "Shelves",
-    loading: "Loading your home",
-    seeAll: "See all",
-    seeAllFor: (name: string) => `See all: ${name}`,
-    previous: (name: string) => `Scroll ${name} back`,
-    next: (name: string) => `Scroll ${name} forward`,
-    loadingShelf: (name: string) => `Loading ${name}`,
-    shelfFailed: (reason: string) => `Couldn't load this shelf: ${reason}`,
-    loadFailed: (reason: string) => `Couldn't load your home: ${reason}`,
-    addShelf: "Add shelf",
-    addShelfSearch: "Find a smart folder",
-    addShelfList: "Smart folders not on your home",
-    addShelfNoMatch: "No smart folder matches.",
-    addShelfAllOnHome: "Every smart folder is already on your home.",
-    addShelfNone: "No smart folders yet. Save a library filter as a smart folder first.",
-    addShelfLoadFailed: (reason: string) => `Couldn't load the smart folders: ${reason}`,
-    shelfMore: (name: string) => `More actions for ${name}`,
-    moveUp: "Move up",
-    moveDown: "Move down",
-    removeFromHome: "Remove from home",
-    addToHome: "Add to home",
-    added: (name: string) => `Added "${name}" to your home.`,
-    removed: (name: string) => `Removed "${name}" from your home.`,
-    undo: "Undo",
-    writeFailed: (reason: string) => `Couldn't change your home: ${reason}`,
-  },
+  home: { title: "Home" },
   activity: {
     title: "Activity",
     documentTitle: "Activity",

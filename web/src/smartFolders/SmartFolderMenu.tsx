@@ -1,4 +1,4 @@
-import { Ellipsis, House, Minus, Pencil, Plus, Trash2 } from "lucide-react";
+import { Ellipsis, Pencil, Plus, Trash2 } from "lucide-react";
 import { type Ref, useState } from "react";
 
 import type { SmartFolderSettings, SmartFolderSummary } from "../api/smartFolders";
@@ -32,12 +32,6 @@ export interface SmartFolderMenuProps {
   /** Optional controlled dialog state lets the empty-state action share this dialog. */
   dialog?: SmartFolderMenuDialog;
   onDialogChange?: (dialog: SmartFolderMenuDialog) => void;
-  /**
-   * フォルダがホームの棚か（応答の `onHome`）と、その切り替え。渡すと「Edit…」の後に
-   * 「Add to home」か「Remove from home」を出す（docs/design-docs/home.md「Smart folder page
-   * and Settings」）。
-   */
-  home?: { onHome: boolean; busy: boolean; toggle: () => void };
 }
 
 /** The caller owns post-deletion navigation and notification. */
@@ -49,7 +43,6 @@ export default function SmartFolderMenu({
   onCreatedChild,
   onDeleted,
   onGone,
-  home,
   ...control
 }: SmartFolderMenuProps) {
   const toast = useToast();
@@ -81,12 +74,6 @@ export default function SmartFolderMenu({
             <Pencil aria-hidden="true" />
             {t.smartFolders.detail.edit}
           </DropdownMenuItem>
-          {home !== undefined && (
-            <DropdownMenuItem disabled={home.busy} onSelect={home.toggle}>
-              {home.onHome ? <Minus aria-hidden="true" /> : <House aria-hidden="true" />}
-              {home.onHome ? t.home.removeFromHome : t.home.addToHome}
-            </DropdownMenuItem>
-          )}
           <DropdownMenuItem onSelect={() => setDialog("newChild")}>
             <Plus aria-hidden="true" />
             {t.smartFolders.detail.newChild}

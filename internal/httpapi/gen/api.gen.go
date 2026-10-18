@@ -2787,7 +2787,10 @@ type FolderPreview struct {
 
 	// ThumbnailUrl Versioned URL matching Video.thumbnailUrl.
 	ThumbnailUrl string `json:"thumbnailUrl"`
-	VideoId      int64  `json:"videoId"`
+
+	// Title Video title for direct playback links in smart-folder cards.
+	Title   *string `json:"title,omitempty"`
+	VideoId int64   `json:"videoId"`
 }
 
 // FolderScope direct selects immediate locations; subtree includes all descendants

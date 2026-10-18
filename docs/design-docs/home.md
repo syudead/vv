@@ -1,25 +1,22 @@
-# Home shelves
+# Home library
 
-Home lists only smart-folder shelves in the order chosen by the owner.
-Shelf membership and order change only through owner actions, including
-choosing interests during setup. Scans and restarts do not create or reorganize
-shelves.
-
-The former automatic organizer and `POST /api/home/organize` have been
-removed. Existing shelves retain their names, rules and positions; old
-`home.organize.pending` and `home.organize.last` settings are ignored.
+Home is a single library list containing videos, groups and smart-folder cards.
+There is no separate shelf section and no Add to home/Remove from home action.
+Existing smart folders, rules and videos are retained.
 
 ## Home and onboarding
 
-`/` is one integrated screen: manually arranged shelves followed by the full
-library list. One top-bar toolbar controls search, filters, sorting and display
-for the list below the shelves. Query updates stay on `/`; the shelves remain
-visible and retain their own saved rules. The list keeps selection, pagination
-and playback return state. Empty-library guidance appears once, in the list.
-There is no separate library navigation item or screen. Former `/library`
-bookmarks redirect to `/`, preserving their query parameters and hash.
-Pressing a shelf's video or group card opens playback with autoplay; the
-shelf heading and `See all` open the corresponding filtered list.
+`/` uses the library's existing filtering and sorting. Root smart folders appear
+among the other items when unfiltered; favorite-only listings include favorite
+folders at any depth. Folder cards follow the same sort order as other items,
+using their matching-video aggregates. No card is pinned to the top.
+
+In grid view a smart folder spans two existing columns, or one when only one
+column fits. Its name opens the folder page; up to two video thumbnail links
+open those videos with autoplay, the current return URL and smart-folder
+playback context. The existing card-values request supplies thumbnails and
+titles; no separate home/shelf read runs. List view retains the compact folder
+row. Former `/library` bookmarks redirect to `/`, preserving query and hash.
 
 Onboarding at `/welcome` uses `StepsPage` outside the shell. Its stages are
 `folders`, `scan`, `interests` and `done`, stored as `onboarding.step` in `settings`
@@ -35,13 +32,12 @@ smart-folder shelf for its rule. These changes share a transaction. When
 auto-tagging is enabled, every video is queued again so the classifier can
 consider the new tags; otherwise picking interests still creates the shelves.
 
-Owners add, remove and reorder shelves, up to 50, through
-`PUT /api/home/shelves`. Empty folder shelves are hidden. Settings' `Library` page
-places the `Home` section after `Duplicate judging`, with
-`Start setup`, which saves `folders` and opens `/welcome`.
+Settings' `Library` page keeps `Start setup`, which saves `folders` and opens
+`/welcome`. Shelf-specific APIs and stored ordering remain compatible with
+existing clients, but the Web screen no longer reads or edits that ordering.
 
 The `home` server event carries an empty object to owners and guests. Readers
-reload the summary, shelf items or onboarding stage according to their screen.
+reload the onboarding stage. Legacy shelf API consumers can refresh their reads.
 The API contract is [openapi.yaml](../../api/openapi.yaml).
 
 ## Upgrading development databases

@@ -474,9 +474,9 @@ avoid a double outline.
 ## Sidebar navigation
 
 Each sidebar item goes to its screen. `Home` opens `/`, which combines the
-manually arranged shelves and the searchable library list in one page
-([Home shelves](home.md)). Search, filters and sorting affect the list below
-the shelves. Every in-app library filter link (tag, person, organization) uses
+searchable library list with inline smart-folder cards
+([Home shelves](home.md)). Smart-folder cards follow the list order and span two grid columns when
+space permits; their video thumbnails open playback directly. Every in-app library filter link (tag, person, organization) uses
 `/?<parameter>=<id>`. Old `/library` URLs redirect to `/` with their query and
 hash intact.
 

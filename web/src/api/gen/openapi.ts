@@ -4484,6 +4484,8 @@ export interface components {
         FolderPreview: {
             /** Format: int64 */
             videoId: number;
+            /** @description Video title for direct playback links in smart-folder cards. */
+            title?: string;
             /** @description Versioned URL matching Video.thumbnailUrl. */
             thumbnailUrl: string;
             /** @description Versioned URL matching Video.previewUrl, included only when the list preview is generated and its stored asset is available. */

@@ -7867,6 +7867,9 @@ components:
         videoId:
           type: integer
           format: int64
+        title:
+          type: string
+          description: "Video title for direct playback links in smart-folder cards."
         thumbnailUrl:
           type: string
           description: "Versioned URL matching Video.thumbnailUrl."

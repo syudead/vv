@@ -279,11 +279,22 @@ func TestSmartFolderCardsStatuses(t *testing.T) {
 		owner.Cards[1].OpenVideoId == nil || !slices.ContainsFunc(owner.Cards[1].Tags, func(tag gen.VideoTag) bool { return tag.Id == shown }) {
 		t.Errorf("所有者のカード = %+v", owner.Cards)
 	}
+	if err := f.env.db.Ingest().SetThumbnailState(context.Background(), f.ids["solo"], domain.ThumbnailStateDone); err != nil {
+		t.Fatal(err)
+	}
 	guest := decode[gen.SmartFolderCards](t, f.env.get(target))
 	if len(guest.Cards) != 1 || guest.Cards[0].Id != open.Id || guest.Cards[0].VideoCount != 1 ||
 		guest.Cards[0].WatchState != nil || guest.Cards[0].Favorite != nil || len(guest.Cards[0].Tags) != 0 {
 		t.Errorf("ゲストのカード = %+v", guest.Cards)
 	}
+	if len(guest.Cards) != 1 || len(guest.Cards[0].Previews) != 1 {
+		t.Fatalf("guest previews = %+v", guest.Cards)
+	}
+	preview := guest.Cards[0].Previews[0]
+	if preview.VideoId != f.ids["solo"] || preview.Title == nil || *preview.Title != "solo" {
+		t.Errorf("guest preview = %+v, want the public solo video's title and ID", preview)
+	}
+
 }
 
 func TestSmartFoldersInLibraryFavoritesAndPlaylists(t *testing.T) {
