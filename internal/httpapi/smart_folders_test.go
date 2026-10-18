@@ -311,10 +311,6 @@ func TestSmartFoldersInLibraryFavoritesAndPlaylists(t *testing.T) {
 	if len(items) != 1 || items[0].Id != folder.Id || items[0].Favorite == nil || *items[0].Favorite {
 		t.Errorf("ライブラリのフォルダ = %+v", items)
 	}
-	ids := decode[gen.VideoIdsResponse](t, f.env.get("/api/library/ids", f.owner))
-	if ids.SmartFolderIds == nil || !slices.Equal(*ids.SmartFolderIds, []int64{folder.Id}) {
-		t.Errorf("smartFolderIds = %v", ids.SmartFolderIds)
-	}
 
 	rec := f.groupRequest(http.MethodPut, "/api/favorites",
 		groupJSON(map[string]any{"smartFolderIds": []int64{folder.Id, 999999}, "favorite": true}), f.owner)

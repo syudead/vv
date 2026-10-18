@@ -12,8 +12,6 @@ import (
 
 type LibraryItems interface {
 	ListLibrary(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.LibraryPage, error)
-	// LibraryIDs shares list filters but ignores sorting, cursor, and limit, returning group playback members separately.
-	LibraryIDs(ctx context.Context, q domain.VideoQuery) (selection domain.LibrarySelection, missingTagIDs []int64, err error)
 	// Missing and invisible groups both return ErrNotFound.
 	Group(ctx context.Context, audience domain.Audience, id int64, trail []int64, query domain.VideoQuery) (domain.GroupPage, error)
 	GroupItems(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int, query domain.VideoQuery) (domain.GroupPage, error)
@@ -92,43 +90,6 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, payload, s.logger)
-}
-
-func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params gen.ListLibraryIdsParams) {
-	if s.library == nil {
-		s.internalError(w, "Library queries are not configured.", nil)
-		return
-	}
-	query, ok := s.parseIDsQuery(w, videoQueryParams{
-		query: params.Query, watch: params.Watch, playable: params.Playable, tag: params.Tag,
-		favorite: params.Favorite, person: params.Person, organization: params.Organization,
-		addedWithin: params.AddedWithin, minDuration: params.MinDuration, maxDuration: params.MaxDuration,
-		tagKind: params.TagKind,
-	})
-	if !ok {
-		return
-	}
-	selection, missingTagIDs, err := s.library.LibraryIDs(r.Context(), query)
-	if err != nil {
-		s.internalError(w, "Could not load the ids.", err)
-		return
-	}
-	s.writeVideoIDs(w, selection.AllVideoIDs(), missingTagIDs, libraryGroupIDs(selection.Groups), selection.SmartFolderIDs)
-}
-
-func libraryGroupIDs(groups []domain.LibraryGroupSelection) []gen.LibraryGroupIds {
-	if len(groups) == 0 {
-		return nil
-	}
-	out := make([]gen.LibraryGroupIds, 0, len(groups))
-	for _, group := range groups {
-		ids := group.VideoIDs
-		if ids == nil {
-			ids = []int64{}
-		}
-		out = append(out, gen.LibraryGroupIds{Id: group.ID, VideoIds: ids})
-	}
-	return out
 }
 
 type itemLookup struct {

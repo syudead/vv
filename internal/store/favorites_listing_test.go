@@ -85,47 +85,15 @@ func TestListLibraryFavoriteOnlyWithTags(t *testing.T) {
 	}
 }
 
-func TestLibraryIDsSplitsFavoriteItems(t *testing.T) {
+// A favorite video stays its own item when its group is not a favorite.
+func TestListLibraryFavoriteOnlySplitsFavoriteItems(t *testing.T) {
 	db, ids := itemsFixture(t)
-	ctx := context.Background()
-	ep1, ep2, ep10 := ids[fixturePath("/media/show/ep1.mp4")], ids[fixturePath("/media/show/ep2.mp4")], ids[fixturePath("/media/show/ep10.mp4")]
-	solo, p1 := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/pair/p1.mp4")]
-	show := fixturePath("/media/show")
-
-	setFavorites(t, db, domain.FavoriteChange{VideoIDs: []int64{solo, p1}, GroupIDs: []int64{groupIDOf(t, db, show)}, Favorite: true})
-	selection, _, err := db.Library().LibraryIDs(ctx, domain.VideoQuery{FavoriteOnly: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	videoIDs := slices.Clone(selection.VideoIDs)
-	slices.Sort(videoIDs)
-	want := []int64{solo, p1}
-	slices.Sort(want)
-	if !slices.Equal(videoIDs, want) {
-		t.Errorf("動画の項目の id = %v, want %v", videoIDs, want)
-	}
-	showID := groupIDOf(t, db, show)
-	if len(selection.Groups) != 1 || selection.Groups[0].ID != showID ||
-		!slices.Equal(selection.Groups[0].VideoIDs, []int64{ep1, ep2, ep10}) {
-		t.Errorf("グループ = %+v, want [{%d [%d %d %d]}]", selection.Groups, showID, ep1, ep2, ep10)
-	}
-
-	selection, _, err = db.Library().LibraryIDs(ctx, domain.VideoQuery{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var groupIDs []int64
-	for _, group := range selection.Groups {
-		groupIDs = append(groupIDs, group.ID)
-	}
-	slices.Sort(groupIDs)
-	wantIDs := []int64{groupIDOf(t, db, fixturePath("/media/pair")), showID}
-	slices.Sort(wantIDs)
-	if !slices.Equal(groupIDs, wantIDs) {
-		t.Errorf("グループの id = %v, want %v", groupIDs, wantIDs)
-	}
-	if len(selection.VideoIDs) != 3 {
-		t.Errorf("動画の項目の id = %v, want 3 本", selection.VideoIDs)
+	setFavorites(t, db, domain.FavoriteChange{
+		VideoIDs: []int64{ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/pair/p1.mp4")]},
+		GroupIDs: []int64{groupIDOf(t, db, fixturePath("/media/show"))}, Favorite: true,
+	})
+	if names := favoriteLibrary(t, db, domain.VideoQuery{}); !slices.Equal(names, []string{"group:show", "p1", "solo"}) {
+		t.Errorf("お気に入りのみ = %v, want [group:show p1 solo]", names)
 	}
 }
 

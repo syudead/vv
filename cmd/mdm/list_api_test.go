@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"path/filepath"
 	"slices"
@@ -69,16 +67,7 @@ func (f listAPIFixture) add(t *testing.T, rel, title string, durationMs int64) (
 
 func (f listAPIFixture) get(t *testing.T, target string) gen.VideoPage {
 	t.Helper()
-	rec := httptest.NewRecorder()
-	f.handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("%s: status = %d: %s", target, rec.Code, rec.Body)
-	}
-	var page gen.VideoPage
-	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
-		t.Fatal(err)
-	}
-	return page
+	return getJSON[gen.VideoPage](t, f.handler, target)
 }
 
 func titles(page gen.VideoPage) []string {
@@ -103,20 +92,6 @@ func (f listAPIFixture) attach(t *testing.T, videoID, tagID int64) {
 	if _, _, err := f.db.Tags().AttachTagByID(f.ctx, []int64{videoID}, tagID); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func (f listAPIFixture) getIDs(t *testing.T, target string) gen.VideoIdsResponse {
-	t.Helper()
-	rec := httptest.NewRecorder()
-	f.handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("%s: status = %d: %s", target, rec.Code, rec.Body)
-	}
-	var out gen.VideoIdsResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
-		t.Fatal(err)
-	}
-	return out
 }
 
 func tagNames(refs []gen.VideoTag) []string {
@@ -164,9 +139,9 @@ func TestListVideosFiltersByTagWithStore(t *testing.T) {
 		t.Fatalf("query=旅行: items = %+v, want 旅行記（タグ一致）", page.Items)
 	}
 
-	ids := f.getIDs(t, "/api/library/ids?tag="+strconv.FormatInt(epTen, 10)+"&tag="+strconv.FormatInt(epTwo, 10))
-	if want := []int64{tenID}; !slices.Equal(ids.Ids, want) {
-		t.Errorf("ids = %v, want %v", ids.Ids, want)
+	library := getJSON[gen.LibraryPage](t, f.handler, "/api/library?tag="+strconv.FormatInt(epTen, 10)+"&tag="+strconv.FormatInt(epTwo, 10))
+	if len(library.Items) != 1 || library.Items[0].Video == nil || library.Items[0].Video.Id != tenID {
+		t.Errorf("library items = %+v, want 10話 の動画 1 件", library.Items)
 	}
 }
 

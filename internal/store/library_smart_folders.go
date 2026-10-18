@@ -19,21 +19,6 @@ type librarySmartFolder struct {
 	expiresAt any
 }
 
-func librarySmartFolderIDs(ctx context.Context, tx *sql.Tx, q domain.VideoQuery) ([]int64, error) {
-	if !q.ListsSmartFolders() {
-		return nil, nil
-	}
-	query := `select id from smart_folders where parent_id is null order by id`
-	if q.FavoriteOnly {
-		query = `select smart_folder_id from smart_folder_favorites order by smart_folder_id`
-	}
-	ids, err := queryInt64s(ctx, tx, query)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read the library smart folders: %w", err)
-	}
-	return ids, nil
-}
-
 // Compute smart_base once while reading all folder sort values.
 func readSmartFolderSortValues(ctx context.Context, tx *sql.Tx, audience domain.Audience, targets []smartFolderTarget, folders []librarySmartFolder) error {
 	query := smartFolderBranches(targets, func(query *smartFolderQuery, index int, target smartFolderTarget, match smartMatch) {

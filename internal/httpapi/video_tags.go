@@ -98,47 +98,6 @@ func (s *server) SummarizeVideoTags(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.VideoTagsSummary{Total: summary.Total, Items: items}, s.logger)
 }
 
-func (s *server) parseIDsQuery(w http.ResponseWriter, params videoQueryParams) (domain.VideoQuery, bool) {
-	query := domain.VideoQuery{FavoriteOnly: params.favorite != nil && *params.favorite}
-	filters, ok := s.parseListFilters(w, listFilterParams{watch: params.watch, playable: params.playable})
-	if !ok {
-		return domain.VideoQuery{}, false
-	}
-	query.Watch, query.PlayableOnly = filters.watch, filters.playableOnly
-	if query.Query, ok = s.parseSearchQuery(w, params.query); !ok {
-		return domain.VideoQuery{}, false
-	}
-	if query.TagIDs, ok = s.parseTagFilter(w, params.tag); !ok {
-		return domain.VideoQuery{}, false
-	}
-	if !s.parseIDFilters(w, params, &query) {
-		return domain.VideoQuery{}, false
-	}
-	if !s.parseAddedAndLength(w, params, &query) {
-		return domain.VideoQuery{}, false
-	}
-	return query, true
-}
-
-// Omit group and smart-folder IDs when absent.
-func (s *server) writeVideoIDs(w http.ResponseWriter, ids, missingTagIDs []int64, groups []gen.LibraryGroupIds, smartFolderIDs []int64) {
-	if ids == nil {
-		ids = []int64{}
-	}
-	payload := gen.VideoIdsResponse{Ids: ids}
-	if len(missingTagIDs) > 0 {
-		payload.MissingTagIds = &missingTagIDs
-	}
-	if len(groups) > 0 {
-		payload.Groups = &groups
-	}
-	if len(smartFolderIDs) > 0 {
-		payload.SmartFolderIds = &smartFolderIDs
-	}
-	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, payload, s.logger)
-}
-
 func validVideoTagsIDs(videoIDs []int64) bool {
 	return len(videoIDs) >= 1 && len(videoIDs) <= maxVideoTagsIDs
 }

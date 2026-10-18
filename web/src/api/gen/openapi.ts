@@ -144,26 +144,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/library/ids": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Return video IDs for matching items
-         * @description Returns unpaginated video IDs for the same filters as `listLibrary`, including every member of matching group items. Partial group matches contribute only their matching videos. Order is unspecified; used for select-all. `groups` also includes each group folder and all member IDs. Smart folders appear in `smartFolderIds`; their videos are excluded from `ids`. Favorites use item state, so a favorite video in a non-favorite group appears individually.
-         */
-        get: operations["listLibraryIds"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/videos/{id}": {
         parameters: {
             query?: never;
@@ -3879,25 +3859,6 @@ export interface components {
             /** @description Tags assigned to at least one video, in natural-name order. */
             items: components["schemas"]["VideoTagsSummaryItem"][];
         };
-        VideoIdsResponse: {
-            ids: number[];
-            /** @description Missing IDs from tag; omitted when none. */
-            missingTagIds?: number[];
-            /** @description Matching group entries with each group ID and playback-ordered video IDs, also included in ids. Only in listLibraryIds responses; omitted when none. */
-            groups?: components["schemas"]["LibraryGroupIds"][];
-            /** @description Matching smart-folder item IDs; their videos are not included in ids. Only in listLibraryIds responses; omitted when none. */
-            smartFolderIds?: number[];
-        };
-        /** @description One group entry in GET /api/library/ids. */
-        LibraryGroupIds: {
-            /**
-             * Format: int64
-             * @description Group ID
-             */
-            id: number;
-            /** @description Visible video IDs in group playback order. */
-            videoIds: number[];
-        };
         DirectoryEntry: {
             name: string;
             path: string;
@@ -5597,47 +5558,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LibraryPage"];
-                };
-            };
-            400: components["responses"]["InvalidRequest"];
-        };
-    };
-    listLibraryIds: {
-        parameters: {
-            query?: {
-                query?: string;
-                watch?: components["schemas"]["WatchFilter"];
-                playable?: boolean;
-                /** @description Restrict to favorited items using each item's own favorite state, combined with other filters by AND */
-                favorite?: boolean;
-                /** @description At most 16; more returns 400. Unknown IDs are ignored and returned in `missingTagIds`. */
-                tag?: number[];
-                /** @description Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
-                person?: components["parameters"]["PersonFilter"];
-                /** @description Organization ID, matching any role; follows person filter semantics */
-                organization?: components["parameters"]["OrganizationFilter"];
-                /** @description Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests. */
-                addedWithin?: components["parameters"]["AddedWithinFilter"];
-                /** @description Inclusive minimum duration in whole seconds, rounded down; excludes unknown durations. Accepts 0–360000 and cannot exceed maxDuration, otherwise 400 invalid_request. Available to guests. */
-                minDuration?: components["parameters"]["MinDurationFilter"];
-                /** @description Inclusive maximum duration in seconds; follows minDuration semantics */
-                maxDuration?: components["parameters"]["MaxDurationFilter"];
-                /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
-                tagKind?: components["parameters"]["TagKindFilter"];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Video IDs for matching items */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["VideoIdsResponse"];
                 };
             };
             400: components["responses"]["InvalidRequest"];
