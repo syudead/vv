@@ -1093,11 +1093,8 @@ export const en = {
     searchingAll: "Searching all folders",
     searchingInside: "— searching inside",
     card: {
-      videos,
-      folders,
       label: (name: string, videoCount: number, folderCount: number) =>
         `${name}, ${videos(videoCount)}, ${folders(folderCount)}`,
-      labelWithPath: (label: string, path: string) => `${label}, ${path}`,
     },
     empty: {
       title: "No videos in this folder yet",

@@ -15,7 +15,6 @@ import { Checkbox } from "../ui/shadcn/checkbox";
 import { TableCell, TableRow } from "../ui/shadcn/table";
 import {
   VideoThumbnail,
-  VideoThumbnailDuration,
   VideoThumbnailImage,
   VideoThumbnailMark,
   VideoThumbnailProgress,
@@ -141,7 +140,7 @@ function GroupAddToGroup({
   );
 }
 
-/** Keep count/duration and progress above foreground thumbnails without intercepting preview input. */
+/** Keep progress above foreground thumbnails without intercepting preview input. */
 export function CollectionThumbnail({
   previews,
   totalCount,
@@ -152,7 +151,6 @@ export function CollectionThumbnail({
   previewResetEpoch,
   onPreviewStart,
   ratio,
-  face,
 }: {
   previews: LibraryGroup["previews"];
   totalCount?: number;
@@ -163,7 +161,6 @@ export function CollectionThumbnail({
   previewResetEpoch?: number;
   onPreviewStart?: (id: number) => void;
   ratio: number | null;
-  face: ReactNode;
 }) {
   return (
     <VideoThumbnail selected={selected}>
@@ -176,9 +173,6 @@ export function CollectionThumbnail({
         previewResetEpoch={previewResetEpoch}
         onPreviewStart={onPreviewStart}
       />
-      <VideoThumbnailDuration className="pointer-events-none z-20">
-        {face}
-      </VideoThumbnailDuration>
       {ratio !== null && (
         <VideoThumbnailProgress
           value={Math.round(ratio * 100)}
@@ -285,7 +279,7 @@ function GroupCardFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
     autoplay,
     favoriteOnly = false,
   } = props;
-  const { state, ratio, duration, countText, label } = useGroupFacts(group);
+  const { state, ratio, label } = useGroupFacts(group);
   const { linkProps, onFrontChange } = useCollectionLink({
     to,
     backTo,
@@ -339,12 +333,6 @@ function GroupCardFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
           previewResetEpoch={previewResetEpoch}
           onPreviewStart={onPreviewStart}
           ratio={ratio}
-          face={
-            <>
-              <span>{countText}</span>
-              {duration !== "" && <span>{duration}</span>}
-            </>
-          }
         />
 
         {nameField === undefined && (

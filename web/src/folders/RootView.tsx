@@ -1,6 +1,6 @@
 import { FolderOpen } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 
 import { takeListSnapshot } from "../api/listSnapshot";
 import { useRootFolders } from "../api/useFolderListing";
@@ -39,9 +39,10 @@ export default function RootView() {
     clearAll,
     changeZoom: saveZoom,
   } = useConditions();
-  // Guests see neither absolute root paths nor settings links.
-  //
+  // Guests see no settings links.
   const owner = useAudience() === "owner";
+  const location = useLocation();
+  const backTo = `${location.pathname}${location.search}`;
   const { listRef, capture } = useZoomAnchor(zoom);
   const changeZoom = (next: typeof zoom) => {
     capture();
@@ -162,7 +163,7 @@ export default function RootView() {
             ) : (
               <CardGrid size={zoom}>
                 {folders.map((folder) => (
-                  <FolderCard key={folder.rootId} folder={folder} showPath={owner} />
+                  <FolderCard key={folder.rootId} folder={folder} backTo={backTo} />
                 ))}
               </CardGrid>
             )}

@@ -324,45 +324,30 @@ describe("FolderPage", () => {
     ).toEqual(["/p/2"]);
   });
 
-  it("最上位に登録フォルダをパス付きで並べる", async () => {
+  it("最上位に登録フォルダを並べ、登録パスは出さない", async () => {
     renderFolders("/folders");
     const a = await screen.findByRole("link", {
-      name: "movies, 0 videos, 9 folders, /a/movies",
+      name: "movies, 0 videos, 9 folders",
     });
     const b = screen.getByRole("link", {
-      name: "movies, 1 video, 0 folders, /b/movies",
+      name: "movies, 1 video, 0 folders",
     });
+    expect(screen.queryByText("/a/movies")).toBeNull();
     expect(a.getAttribute("href")).toBe("/folders/3");
     expect(b.getAttribute("href")).toBe("/folders/7");
     expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Media folders 2");
   });
 
-  it("長い名前と登録パスを省略しても全体を確認でき、ゲストにパスを出さない", () => {
+  it("長い名前を省略しても全体を確認できる", () => {
     const name = "長い日本語のフォルダ名 and a long English folder name";
-    const rootPath = "/media/long/registered/path/to/long-folder";
-    const folder = summary({ name, rootPath });
-    const { rerender } = render(
+    render(
       <MemoryRouter>
-        <FolderCard folder={folder} showPath />
+        <FolderCard folder={summary({ name })} backTo="/folders" />
       </MemoryRouter>,
     );
-    const card = screen.getByRole("link", {
-      name: `${name}, 0 videos, 0 folders, ${rootPath}`,
-    });
+    const card = screen.getByRole("link", { name: `${name}, 0 videos, 0 folders` });
     expect(card.querySelector("h3")?.getAttribute("title")).toBe(name);
-    expect(card.querySelector("h3 span")?.className).toContain("line-clamp-2");
-    expect(card.querySelector("p[dir=rtl]")?.getAttribute("title")).toBe(rootPath);
-    expect(card.className).toContain("border-border");
-
-    rerender(
-      <MemoryRouter>
-        <FolderCard folder={folder} showPath={false} />
-      </MemoryRouter>,
-    );
-    expect(
-      screen.getByRole("link", { name: `${name}, 0 videos, 0 folders` }),
-    ).toBeDefined();
-    expect(screen.queryByText(rootPath)).toBeNull();
+    expect(card.querySelector("h3")?.className).toContain("line-clamp-2");
   });
 
   it("所有者の空の登録ルートに理由と取り込み操作を示す", async () => {
@@ -448,27 +433,27 @@ describe("FolderPage", () => {
     expect(list.className.split(" ")).not.toContain("wrap-break-word");
   });
 
-  it("プレビューは4件までで、サムネイルが無いフォルダは外形だけを描く", async () => {
+  it("プレビューは4件までで残りは続きの1枚にまとめ、サムネイルが無いフォルダは外形だけを描く", async () => {
     const { container } = renderFolders("/folders/3");
     await screen.findByRole("link", { name: "five, 6 videos, 0 folders" });
     const five = container.querySelector('[data-folder-path="five"]');
     const deeper = container.querySelector('[data-folder-path="only-deeper"]');
     expect(five?.querySelectorAll("[data-folder-preview]").length).toBe(4);
     expect(five?.querySelectorAll("img").length).toBe(4);
+    expect(five?.querySelector("[data-folder-more]")?.textContent).toContain("2");
     expect(deeper?.querySelectorAll("img").length).toBe(0);
-    expect(deeper?.textContent).toContain("0 videos");
   });
 
   it("フォルダの絵柄の上でマウスを横に動かすと、位置に応じたサムネイルを前に出す", () => {
     const folder = summary({
       path: "five",
       name: "five",
-      videoCount: 6,
+      videoCount: 4,
       previews: previews(4),
     });
     const { container } = render(
       <MemoryRouter>
-        <FolderCard folder={folder} showPath={false} />
+        <FolderCard folder={folder} backTo="/folders" />
       </MemoryRouter>,
     );
     const art = container.querySelector<HTMLElement>(
@@ -505,7 +490,7 @@ describe("FolderPage", () => {
     });
     const { container } = render(
       <MemoryRouter>
-        <FolderCard folder={one} showPath={false} />
+        <FolderCard folder={one} backTo="/folders" />
       </MemoryRouter>,
     );
     const art = container.querySelector<HTMLElement>("[data-folder-art]");
@@ -538,7 +523,7 @@ describe("FolderPage", () => {
       });
       const { container } = render(
         <MemoryRouter>
-          <FolderCard folder={folder} showPath={false} />
+          <FolderCard folder={folder} backTo="/folders" />
         </MemoryRouter>,
       );
       const art = container.querySelector<HTMLElement>("[data-folder-art]");
@@ -596,7 +581,7 @@ describe("FolderPage", () => {
       });
       const { container } = render(
         <MemoryRouter>
-          <FolderCard folder={folder} showPath={false} />
+          <FolderCard folder={folder} backTo="/folders" />
         </MemoryRouter>,
       );
       const art = container.querySelector<HTMLElement>("[data-folder-art]");
@@ -638,7 +623,7 @@ describe("FolderPage", () => {
       });
       const { container } = render(
         <MemoryRouter>
-          <FolderCard folder={folder} showPath={false} />
+          <FolderCard folder={folder} backTo="/folders" />
         </MemoryRouter>,
       );
       const art = container.querySelector<HTMLElement>("[data-folder-art]");
@@ -665,7 +650,7 @@ describe("FolderPage", () => {
     });
     const { container, rerender } = render(
       <MemoryRouter>
-        <FolderCard folder={four} showPath={false} />
+        <FolderCard folder={four} backTo="/folders" />
       </MemoryRouter>,
     );
     const art = container.querySelector<HTMLElement>("[data-folder-art]");
@@ -676,7 +661,7 @@ describe("FolderPage", () => {
 
     rerender(
       <MemoryRouter>
-        <FolderCard folder={{ ...four, previews: previews(2) }} showPath={false} />
+        <FolderCard folder={{ ...four, previews: previews(2) }} backTo="/folders" />
       </MemoryRouter>,
     );
     expect(art.querySelector("[data-folder-front]")).toBeNull();
@@ -901,7 +886,7 @@ describe("FolderPage", () => {
     });
     renderFolders("/folders");
     await screen.findByRole("link", {
-      name: "movies, 0 videos, 9 folders, /a/movies",
+      name: "movies, 0 videos, 9 folders",
     });
     expect(requests.filter((url) => url === "/api/folders").length).toBe(1);
 

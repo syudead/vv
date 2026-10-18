@@ -350,9 +350,9 @@ bottom edge and the title.
 | --- | --- |
 | Video, library and folder pages | Tag row under the title, none without tags  |
 | Video, folder search results | Location row under the title |
-| Folder | Video card's width and border, folder artwork, Folder icon in the title |
+| Folder | Group card's box, artwork and name; no checks, actions or tag row |
 | Group (library only) | Video card's box and size, folder artwork of up to 4 member thumbnails |
-| Smart folder (unfiltered library, smart folder page) | Group card's box, artwork, count panel, name and tag row, with a `FolderSearch` mark before the count; the owner's check selects it; no `Add to group`; the owner's heart and `Add to playlist` send the folder as one item (`smartFolderIds`), and tag and visibility actions reach its member videos |
+| Smart folder (unfiltered library, smart folder page) | Group card's box, artwork, name and tag row; the owner's check selects it; no `Add to group`; the owner's heart and `Add to playlist` send the folder as one item (`smartFolderIds`), and tag and visibility actions reach its member videos |
 
 Video card behaviour:
 
@@ -365,16 +365,16 @@ Video card behaviour:
 | Hover preview | One at a time on any screen |
 | Zoom changed | Returns to the card that was at the top |
 
-A folder card shows its name on up to two lines with the full name in `title`.
-The owner also sees the media folder path, truncated to favour its end, full in
-`title`. An empty registered root says to place files there and import.
+Folder, group and smart folder cards show the name on up to two lines with the
+full name in `title`. Their artwork carries no count or duration panel; the
+count stays in the link's accessible name. A folder card shows no media folder
+path. An empty registered root says to place files there and import.
 
 The library reads `GET /api/library`, which pages mixed video, group and smart-folder
 keys using [stored collection information](home.md#collection-information-and-paging);
 folder pages and their search results list videos one by one. A group card
-shows a panel with the count (`12 videos`) and total duration, a watched-share
-bar only while some members are in progress, the group name and the members'
-tags. Pressing it opens the group page (`/groups/{id}`), which lists the
+shows a watched-share bar only while some members are in progress, the group
+name and the members' tags. Pressing it opens the group page (`/groups/{id}`), which lists the
 group's child groups and videos in their saved order under a sticky trail band.
 On that page a child group opens with `?trail` one group longer, and a video
 opens with `?group`, so the video page follows that group.
@@ -382,8 +382,8 @@ Guests see no watch status, watched count or bar.
 
 Root smart folders stand among the groups and videos of the unfiltered library
 (favorites only keeps the favorited ones) and of a smart folder page's child
-list. The list carries only each folder's name; a card draws a `Skeleton` count
-panel until it scrolls into view, and the cards then on screen are read 60 at a
+list. The list carries only each folder's name; a card draws empty artwork
+until it scrolls into view, and the cards then on screen are read 60 at a
 time through `GET /api/smart-folders/cards`.
 A `smartFolder` event reads the named cards again, keeping only the newest
 answer per card, and makes the unfiltered library reload its loaded pages, so
@@ -391,9 +391,10 @@ a folder created, moved or renamed in another tab appears. A folder left out of
 the answer loses its card. A smart folder card cannot be dragged, and dropping
 on it shows `Can't drop here`.
 
-Groups and smart folders share one-column cards and the same collection-link
-behaviour. A mouse-promoted cover opens that video with autoplay and its group
-or smart-folder context. The artwork shows at most four covers plus a More
+Folders, groups and smart folders share one-column cards and the same
+collection-link behaviour. A mouse-promoted cover opens that video with
+autoplay and its group or smart-folder context; a folder's cover opens the
+video alone. The artwork shows at most four covers plus a More
 sheet if videos remain. More and the title open the collection; leaving the
 artwork restores that destination. Touch and keyboard activation also open the
 collection. During selection, promotion is disabled and group and smart folder

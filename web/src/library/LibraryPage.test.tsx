@@ -1910,9 +1910,9 @@ describe("LibraryPage", () => {
       );
 
       const card = cards[1] as HTMLElement;
-      expect(within(card).getByText("12 videos")).toBeDefined();
-      expect(within(card).queryByText(/\/ 12/)).toBeNull();
-      expect(within(card).getByText("12:00")).toBeDefined();
+      // Count and duration stay in the link name, not on the thumbnail.
+      expect(within(card).queryByText("12 videos")).toBeNull();
+      expect(within(card).queryByText("12:00")).toBeNull();
       expect(
         card.querySelectorAll("[data-folder-art] [data-folder-preview]"),
       ).toHaveLength(4);
@@ -1932,7 +1932,6 @@ describe("LibraryPage", () => {
         name: "series, group of 12 videos",
       });
       const card = link.closest("article") as HTMLElement;
-      expect(within(card).getByText("12 videos")).toBeDefined();
       expect(within(card).queryByRole("progressbar")).toBeNull();
       expect(
         screen.getByRole("checkbox", { name: 'Select the group "series"' }),
@@ -2054,7 +2053,6 @@ describe("LibraryPage", () => {
         name: "series, group of 12 videos",
       });
       const card = link.closest("article") as HTMLElement;
-      expect(within(card).getByText("12 videos")).toBeDefined();
       expect(within(card).queryByText(/^\d+ \/ 12$/)).toBeNull();
       expect(within(card).queryByRole("progressbar")).toBeNull();
       expect(screen.queryByRole("checkbox")).toBeNull();
