@@ -242,7 +242,7 @@ func (s *ActivityStore) RecoverInterruptedActivity(ctx context.Context) (int, er
 var activityColumns = `e.id, e.kind, e.feature, e.subject_kind, e.subject_key, coalesce(e.subject_key_b, ''),
 	e.subject_label, coalesce(e.subject_label_b, ''), e.status, coalesce(e.reason, ''), coalesce(e.outcome, ''),
 	coalesce(e.detail, ''), coalesce(e.stage, ''), coalesce(e.undoes_id, 0), e.decider, e.probability,
-	coalesce(e.undo_keys, ''), coalesce(e.undone_by, 0), e.created_at, e.updated_at,
+	coalesce(e.undo_keys, ''), coalesce(e.undone_by, 0), coalesce(e.scan_id, 0), e.created_at, e.updated_at,
 	c.key_a is not null and exists (select 1 ` + candidatePairsFrom + `c.key_a = e.subject_key
 		and c.key_b = e.subject_key_b and ` + candidatePairsCondition() + `),
 	coalesce(c.judgement, ''), c.retry_at, u.kind, u.outcome,
@@ -266,7 +266,8 @@ func scanActivityEntry(row rowScanner) (domain.ActivityEntry, error) {
 	)
 	err := row.Scan(&entry.ID, &kind, &feature, &subjectKind, &entry.Subject.Key, &entry.Subject.KeyB,
 		&entry.Subject.Label, &entry.Subject.LabelB, &status, &reason, &outcome, &entry.Detail, &stage,
-		&entry.UndoesID, &decider, &probability, &entry.UndoKeys, &entry.UndoneBy, &createdAt, &updatedAt,
+		&entry.UndoesID, &decider, &probability, &entry.UndoKeys, &entry.UndoneBy, &entry.ScanID, &createdAt,
+		&updatedAt,
 		&entry.Candidate, &judgement, &retryAt, &undoneKind, &undoneOutcome, &undoneTagName)
 	if err != nil {
 		return domain.ActivityEntry{}, err

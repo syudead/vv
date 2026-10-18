@@ -51,15 +51,6 @@ func pipelineCount(t *testing.T, db *DB) int {
 	return count
 }
 
-func pipelineScanID(t *testing.T, db *DB, id int64) int64 {
-	t.Helper()
-	var scanID int64
-	if err := db.sql.QueryRow(`select coalesce(scan_id, 0) from activity_entries where id = ?`, id).Scan(&scanID); err != nil {
-		t.Fatal(err)
-	}
-	return scanID
-}
-
 func TestScanOpensOnePipelinePerQueuedVideo(t *testing.T) {
 	db := migratedDB(t)
 	scan, _, err := db.Scans().StartScan(context.Background())
@@ -83,8 +74,8 @@ func TestScanOpensOnePipelinePerQueuedVideo(t *testing.T) {
 			t.Errorf("pipeline of %s = %+v, want a running/waiting owner pipeline on the same video",
 				entry.Subject.Key, pipeline)
 		}
-		if got := pipelineScanID(t, db, pipeline.ID); got != scan.ID {
-			t.Errorf("pipeline scan of %s = %d, want %d", entry.Subject.Key, got, scan.ID)
+		if pipeline.ScanID != scan.ID {
+			t.Errorf("pipeline scan of %s = %d, want %d", entry.Subject.Key, pipeline.ScanID, scan.ID)
 		}
 	}
 	if len(seen) != 2 {
