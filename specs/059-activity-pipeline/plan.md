@@ -27,6 +27,11 @@ member's transaction, and the list pages parents and standalone entries only
 
 - One migration (two tables, one column, one kind):
   [data-model.md](data-model.md#migration).
+- A process that an import's stage result starts (a follow-up) joins that
+  import's pipeline through one rule and one store helper, so later
+  follow-ups need no change to the pipeline, the list or the screen
+  ([R-11](research.md#r-11-follow-up-processes-join-through-one-rule)).
+  Auto-tagging and duplicate judging are the two today.
 - After-import auto-tagging moves from the `VideoIngestChanged` subscriber into
   the seek stage's result transaction
   ([R-4](research.md#r-4-after-import-auto-tagging-is-queued-in-the-seek-stage-transaction)).
@@ -112,10 +117,11 @@ flowchart LR
 
 **Scope**: The migration, the `pipeline` kind and `PipelineState`,
 `scan_id`, `superseded_by`, membership and roll-up helpers, opening a pipeline with a new
-`import` entry and joining continuations (activity retry, claim reopen), and
-the `import` entry's stage rows
-([data-model.md](data-model.md), R-1, R-2, R-3, R-6, R-8, R-10). Update
-[activity.md](../../docs/design-docs/activity.md) with the lasting rules.
+`import` entry and joining continuations (activity retry, claim reopen), the
+follow-up helper, and the `import` entry's stage rows
+([data-model.md](data-model.md), R-1, R-2, R-3, R-6, R-8, R-10, R-11). Update
+[activity.md](../../docs/design-docs/activity.md) with the lasting rules,
+including how a new follow-up process joins a pipeline.
 
 **Dependencies**: None
 
@@ -128,7 +134,9 @@ the `import` entry's stage rows
   queued in one scan get two pipelines; a rescan after the first run finished
   opens a second pipeline; `RetryImport` adds the new entry to the same
   pipeline and marks the old one replaced; a claim reopen joins the
-  superseded entry's pipeline; stage rows stay readable after the video is
+  superseded entry's pipeline; the follow-up helper called with a job's
+  `import` entry joins the new entry to that entry's pipelines, and to none
+  for a job of an entry from before the migration; stage rows stay readable after the video is
   deleted; an `import` entry already `running` before the migration stays
   without a pipeline.
 - Existing `activity_import_test.go` cases pass unchanged.
@@ -136,7 +144,8 @@ the `import` entry's stage rows
 ### Attach after-import auto-tagging runs to their import pipeline
 
 **Scope**: Queue after-import auto-tagging in the seek stage's final result
-transaction and join the pipeline of the job's `import` entry; the subscriber
+transaction and join the pipeline of the job's `import` entry through the
+follow-up helper (R-11); the subscriber
 only wakes the worker; auto-tag retry and claim reopen join through the rule
 from the first unit (R-4). Update
 [auto-tagging.md](../../docs/design-docs/auto-tagging.md#queue-and-when-a-video-is-judged).
@@ -158,7 +167,7 @@ activity log
 ### Attach duplicate judgements to the import pipelines of both videos
 
 **Scope**: A newly opened `version_judgement` entry joins the finishing
-fingerprint job's pipeline and the other key's newest pipeline when it is
+fingerprint job's pipeline through the follow-up helper (R-11) and the other key's newest pipeline when it is
 unfinished or of the same scan; reattach adds nothing (R-5). Update
 [duplicate-judging.md](../../docs/design-docs/duplicate-judging.md#each-pair-keeps-one-activity-entry).
 
