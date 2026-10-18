@@ -39,6 +39,8 @@ const server = {
 };
 
 let reveal = () => {};
+/** The sentinel observes in a passive effect, which can run after the cards are on screen. */
+let observing = false;
 
 class FakeIntersectionObserver {
   private readonly callback: IntersectionObserverCallback;
@@ -46,6 +48,7 @@ class FakeIntersectionObserver {
     this.callback = callback;
   }
   observe() {
+    observing = true;
     reveal = () =>
       this.callback(
         [{ isIntersecting: true } as IntersectionObserverEntry],
@@ -53,6 +56,7 @@ class FakeIntersectionObserver {
       );
   }
   disconnect() {
+    observing = false;
     reveal = () => {};
   }
 }
@@ -90,6 +94,8 @@ beforeEach(() => {
   server.totalAll = 2;
   server.sent = [];
   server.failSort = null;
+  reveal = () => {};
+  observing = false;
   vi.stubGlobal(
     "fetch",
     vi.fn<typeof fetch>((input, init) => {
@@ -169,6 +175,7 @@ describe("PeoplePage", () => {
     server.pages.set("c1", { items: [person(2)] });
     renderPage();
     await screen.findByRole("link", { name: /Person 1/ });
+    await waitFor(() => expect(observing).toBe(true));
 
     act(() => reveal());
 
