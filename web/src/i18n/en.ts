@@ -1975,6 +1975,7 @@ export const en = {
       ids: "IDs",
       externalId: (source: string, value: string) => `${source}: ${value}`,
       showVideosWith: (name: string) => `Show videos with ${name}`,
+      openPerson: (name: string) => `Open ${name}`,
       more: (count: number) => `+${formatNumber(count)} more`,
       showAll: (count: number, label: string) =>
         `Show all ${formatNumber(count)} ${label.toLowerCase()}`,

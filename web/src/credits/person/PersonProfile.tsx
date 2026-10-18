@@ -17,11 +17,12 @@ import {
 } from "../../ui/shadcn/dropdown-menu";
 import { kindTexts } from "../creditRows";
 import { personFactGroups } from "./personFacts";
+import { personPath } from "./personPath";
 
 const text = t.credits.personPage;
 
 export function personEditPath(id: number): string {
-  return `/people/${String(id)}/edit`;
+  return `${personPath(id)}/edit`;
 }
 
 /** The name, aliases and actions; nothing on the page outranks viewing, so no default button. */
