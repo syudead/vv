@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Video } from "../../api/client";
 import type { WorkInfo } from "../../api/workInfo";
 import type { WorkInfoFetch, WorkInfoMatch } from "../../api/workInfoPlugins";
-import { chipHint, creditKind, detailRow, type ListRow } from "./detailRows";
+import { chipHint, creditKind, detailRow, fillValues, type ListRow } from "./detailRows";
 import { comparedFields, initialSelection, skippedLines } from "./fetchRules";
 
 function info(overrides: Partial<WorkInfo> = {}): WorkInfo {
@@ -153,6 +153,78 @@ describe("detailRows", () => {
     expect(detailRow("people.director", stored, result({ people: [linked] })).state).toBe(
       "missing",
     );
+  });
+
+  it("取得した人物の顔は結果の people での位置で、プロフィールは結び付く人物にだけ持たせる", () => {
+    const row = list(
+      detailRow(
+        "people.performer",
+        stored,
+        result({
+          people: [
+            { ...performer("監督", { state: "new" }), role: "director", hasImage: true },
+            {
+              ...performer("新しい人", { state: "new" }),
+              hasImage: true,
+              profile: { heightCm: 160 },
+            },
+            { ...performer("同名の人", { state: "ambiguous" }), profile: { cup: "E" } },
+          ],
+        }),
+      ),
+    );
+    expect(row.fetched.map((chip) => [chip.name, chip.faceIndex, chip.profile])).toEqual([
+      ["新しい人", 1, { heightCm: 160 }],
+      ["同名の人", undefined, undefined],
+    ]);
+  });
+
+  it("動画にある人物の行は、顔の無い人物に顔があるか、プロフィールがあれば differs", () => {
+    const linked = performer("既存の人", { state: "existing", id: 9, name: "既存の人" });
+    const faced = info({
+      people: [
+        { role: "performer", person: { id: 9, name: "既存の人" }, imageRevision: 3 },
+      ],
+    });
+    const state = (people: WorkInfoFetch["people"], now = stored) =>
+      detailRow("people.performer", now, result({ people })).state;
+    expect(state([{ ...linked, hasImage: true }])).toBe("differs");
+    expect(state([{ ...linked, hasImage: true }], faced)).toBe("same");
+    expect(state([{ ...linked, profile: { heightCm: 160 } }], faced)).toBe("differs");
+    expect(state([{ ...linked, profile: {} }])).toBe("same");
+    const row = list(
+      detailRow(
+        "people.performer",
+        stored,
+        result({ people: [{ ...linked, profile: { heightCm: 160 } }] }),
+      ),
+    );
+    expect(row.fresh).toBe(0);
+  });
+
+  it("埋める値は人物ページの書き方に項目名を付け、紹介文とリンクは項目名だけを出す", () => {
+    expect(
+      fillValues(
+        {
+          birthDate: "1990-05-17",
+          gender: "female",
+          bustCm: 88,
+          waistCm: 60,
+          hipsCm: 90,
+          careerStartYear: 2010,
+          bio: "紹介",
+          links: ["https://example.com"],
+        },
+        new Date(2026, 9, 18),
+      ),
+    ).toEqual([
+      "Born 1990-05-17 (age 36)",
+      "Gender Female",
+      "Measurements 88–60–90 cm",
+      "Career Since 2010",
+      "Bio",
+      "Links",
+    ]);
   });
 
   it("リンクは scheme を除いて出し、保存済みの URL と ID の組を動画にある件にする", () => {
