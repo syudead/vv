@@ -319,12 +319,16 @@ func (s *IngestStore) CompleteClaimedJob(ctx context.Context, job domain.Job) er
 
 // Settle import activity and recompute remaining work in the job-state transaction.
 func (s *IngestStore) commitJobChange(ctx context.Context, tx *sql.Tx, jobID int64) error {
-	var c changes
-	if err := settleJobActivity(ctx, tx, &c, jobID, time.Now()); err != nil {
+	return s.commitJobChanges(ctx, tx, &changes{}, jobID)
+}
+
+// commitJobChanges settles the job's activity after the transaction's other changes in c.
+func (s *IngestStore) commitJobChanges(ctx context.Context, tx *sql.Tx, c *changes, jobID int64) error {
+	if err := settleJobActivity(ctx, tx, c, jobID, time.Now()); err != nil {
 		return err
 	}
 	c.remainingChanged()
-	return s.db.commit(ctx, tx, &c)
+	return s.db.commit(ctx, tx, c)
 }
 
 // CompleteJob skips claim-identity validation for callers without a claim, such as test setup.
@@ -408,12 +412,19 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 		return fmt.Errorf("cannot record a failure on the running job (id=%d, affected=%d)", job.ID, affected)
 	}
 
+	var c changes
 	if state == domain.JobFailed {
 		if err := recordTerminalFailure(ctx, tx, job, cause, now); err != nil {
 			return err
 		}
+		if job.Kind == domain.JobSeekThumbnail {
+			// Auto-tagging also runs on a failed seek stage, with the images that remain.
+			if err := queueAfterImportAutoTag(ctx, tx, &c, job, time.Now()); err != nil {
+				return err
+			}
+		}
 	}
-	if err := s.commitJobChange(ctx, tx, job.ID); err != nil {
+	if err := s.commitJobChanges(ctx, tx, &c, job.ID); err != nil {
 		return fmt.Errorf("cannot commit the job failure (id=%d): %w", job.ID, err)
 	}
 	return nil
