@@ -356,7 +356,7 @@ func (s *CreditStore) Delete(ctx context.Context, kind domain.CreditKind, id int
 	return nil
 }
 
-// Merge transfers links, aliases, external IDs and children and fills empty profile fields atomically; reject self-merges, parent cycles and merged limits.
+// Merge transfers links, aliases, external IDs and children and fills empty profile fields and a missing face atomically; reject self-merges, parent cycles and merged limits.
 func (s *CreditStore) Merge(ctx context.Context, kind domain.CreditKind, targetID int64, sourceIDs []int64) (domain.CreditMergeOutcome, error) {
 	t, err := creditTablesFor(kind)
 	if err != nil {
@@ -434,6 +434,9 @@ func mergeCreditsInto(ctx context.Context, tx *sql.Tx, t creditTables, targetID 
 	}
 	if t.kind == domain.CreditPerson {
 		if err := fillMergedPersonProfile(ctx, tx, targetID, sourceIDs); err != nil {
+			return err
+		}
+		if err := fillMergedPersonImage(ctx, tx, targetID, sourceIDs); err != nil {
 			return err
 		}
 	}

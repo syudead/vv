@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"image"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -43,22 +44,28 @@ func (i *Ingest) UploadThumbnailImage(
 	return i.ApplyThumbnailImage(ctx, videoID, contentKey, image, domain.ThumbnailImageUploaded)
 }
 
-// Reuse edit-image decoding with the higher upload pixel limit.
-func checkThumbnailUpload(image []byte) error {
-	if err := checkThumbnailUploadSize(len(image)); err != nil {
-		return err
+func checkThumbnailUpload(data []byte) error {
+	_, err := decodeUpload(data)
+	return err
+}
+
+// decodeUpload applies the upload limits, decode gate checks and animated-WebP refusal that thumbnail and person
+// image uploads share; the caller holds the upload gate.
+func decodeUpload(data []byte) (image.Image, error) {
+	if err := checkThumbnailUploadSize(len(data)); err != nil {
+		return nil, err
 	}
-	if animatedWebP(image) {
-		return domain.ErrThumbnailUploadInvalid
+	if animatedWebP(data) {
+		return nil, domain.ErrThumbnailUploadInvalid
 	}
-	err := checkImage(image, domain.ThumbnailUploadMaxPixels)
+	decoded, err := decodeImage(data, domain.ThumbnailUploadMaxPixels)
 	switch {
 	case errors.Is(err, errImageTooManyPixels):
-		return &domain.ThumbnailUploadTooLargeError{Limit: domain.ThumbnailUploadMaxPixels}
+		return nil, &domain.ThumbnailUploadTooLargeError{Limit: domain.ThumbnailUploadMaxPixels}
 	case err != nil:
-		return domain.ErrThumbnailUploadInvalid
+		return nil, domain.ErrThumbnailUploadInvalid
 	}
-	return nil
+	return decoded, nil
 }
 
 // checkThumbnailUploadSize checks the byte count before image decoding.

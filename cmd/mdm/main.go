@@ -390,6 +390,7 @@ func run(opts runOptions) error {
 		ComfyUI:           comfyUIConnection,
 		ThumbnailEdits:    thumbnailEdits,
 		ThumbnailUploads:  ingest,
+		PersonImages:      app.NewPersonImages(db.Credits(), ingest),
 		WorkInfoPlugins:   workInfoPlugins,
 		TranscodeProbes:   ingestStore,
 		Artifacts:         artifactStore,

@@ -282,6 +282,8 @@ type Options struct {
 	ThumbnailEdits ThumbnailEdits
 
 	ThumbnailUploads ThumbnailUploads
+	// Nil PersonImages makes the person image routes fail with 500.
+	PersonImages PersonImages
 
 	WorkInfoPlugins WorkInfoPlugins
 	// Nil TranscodeProbes disables persistence, requiring uncached videos to be probed on every
@@ -362,6 +364,7 @@ type server struct {
 	comfyUI           ComfyUIConnection
 	thumbnailEdits    ThumbnailEdits
 	thumbnailUploads  ThumbnailUploads
+	personImages      PersonImages
 	workInfoPlugins   WorkInfoPlugins
 	// thumbnailUploadBuffers bounds aggregate concurrent upload memory.
 	thumbnailUploadBuffers *semaphore.Weighted
@@ -441,6 +444,7 @@ func NewRouter(opts Options) http.Handler {
 		comfyUI:                opts.ComfyUI,
 		thumbnailEdits:         opts.ThumbnailEdits,
 		thumbnailUploads:       opts.ThumbnailUploads,
+		personImages:           opts.PersonImages,
 		workInfoPlugins:        opts.WorkInfoPlugins,
 		thumbnailUploadBuffers: newThumbnailUploadBuffers(),
 		transcodeStarts:        newTranscodeStarts(),
@@ -880,6 +884,9 @@ const (
 	reasonContentChanged                = gen.ErrorReasonContentChanged
 	reasonThumbnailUploadTooLarge       = gen.ErrorReasonThumbnailUploadTooLarge
 	reasonThumbnailUploadInvalid        = gen.ErrorReasonThumbnailUploadInvalid
+	reasonPersonImageNotFound           = gen.ErrorReasonPersonImageNotFound
+	reasonPersonImageInvalid            = gen.ErrorReasonPersonImageInvalid
+	reasonPersonImageTooLarge           = gen.ErrorReasonPersonImageTooLarge
 	reasonUndoConflict                  = gen.ErrorReasonUndoConflict
 	reasonUndoExpired                   = gen.ErrorReasonUndoExpired
 	reasonTagKindNotFound               = gen.ErrorReasonTagKindNotFound

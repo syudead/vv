@@ -1,9 +1,11 @@
-# People: profiles
+# People: profiles and faces
 
-A person carries a fixed profile next to the names, aliases and external IDs
-that people and organizations share. The rules live in
-[`person_profile.go`](../../internal/domain/person_profile.go) and the storage
-in [`person_profiles.go`](../../internal/store/person_profiles.go).
+A person carries a fixed profile and at most one face next to the names,
+aliases and external IDs that people and organizations share. The profile
+rules live in [`person_profile.go`](../../internal/domain/person_profile.go)
+and the storage in
+[`person_profiles.go`](../../internal/store/person_profiles.go) and
+[`person_images.go`](../../internal/store/person_images.go).
 
 The diagram shows where a profile is checked and written on the way in.
 
@@ -77,3 +79,48 @@ source's value or stays empty, so a merge always stores a valid profile.
 | Keep only the target's profile | The duplicate's profile would be lost |
 | Reject the merge with `400` | A merge cannot be fixed by editing its request, only by editing the people first |
 | Let the owner choose per field | The merge stays one step |
+
+## A face is one fitted JPEG in SQLite
+
+A person has at most one face, a row in `person_images` deleted with its
+person. `PUT /api/people/{id}/image` decodes the upload, fits it to 800 px on
+its long side without enlarging it, and stores it as JPEG
+([`person_images.go`](../../internal/app/person_images.go)). The upload uses the
+thumbnail upload's body budget, byte and pixel limits, decode gate and
+animated-WebP refusal, described in
+[thumbnail-editing.md](thumbnail-editing.md#uploaded-images); the two kinds of
+upload share one gate, so they never decode at the same time.
+
+| Problem | Response |
+| --- | --- |
+| Body over 64 MiB | `413 person_image_too_large` with `limit` |
+| Not a readable PNG, JPEG or still WebP, or over 120 megapixels | `400 person_image_invalid` |
+| No face on `GET` | `404 person_image_not_found` |
+
+A face is user data, so it is not a file under the rebuildable thumbnails
+directory, and an 800 px JPEG of about 200 KiB costs little as a blob.
+
+| Rejected | Why |
+| --- | --- |
+| A file managed by `internal/artifacts` | The thumbnails directory is rebuildable, and artifacts are removed by video content, not by person |
+| Fitting through ffmpeg | Needs the media adapter for a still image, while `x/image/draw` scales without cgo |
+| Keeping the original upload | An upload may be 64 MiB, and the screens show at most a portrait card |
+
+## The image revision never repeats
+
+`people.image_revision` increases on every change of the face: an upload, a
+removal and a merge that brings a face. `Person` and the video page's
+`WorkPerson` carry it as `imageRevision` only while the person has a face, the
+browser loads `/api/people/{id}/image?v={imageRevision}`, and `GET` answers
+`private, no-cache` with the revision as `ETag`. The counter lives on `people`,
+not on the image row, so removing a face does not reset it and a later face
+never answers `304` to the removed face's `ETag`.
+
+| Rejected | Why |
+| --- | --- |
+| A revision on the `person_images` row | Removing the row resets it |
+| A boolean `hasImage` | A replaced face would stay cached under the same URL |
+| Data URLs in list responses | A page of 100 people would carry 100 faces |
+
+A merge keeps the target's face; a target without one takes the face of the
+first source in `sourceIds` order that has one.

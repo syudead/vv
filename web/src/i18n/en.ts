@@ -382,6 +382,10 @@ const errorReasons = {
   organization_parent_cycle:
     "The parent can't be the organization itself or one inside it.",
   merge_same_person: "A person can't be merged into themselves.",
+  person_image_not_found: "This person has no photo.",
+  person_image_invalid:
+    "The file isn't a PNG, JPEG or still WebP up to 120 megapixels, or it can't be read.",
+  person_image_too_large: "The image is too large: up to 64 MB.",
   merge_same_organization: "An organization can't be merged into itself.",
   external_id_taken: "Another entry already has this ID.",
   blocked_address: ({ host }) =>

@@ -92,21 +92,22 @@ func writePersonProfile(ctx context.Context, tx *sql.Tx, id int64, profile domai
 	return nil
 }
 
-// addPersonProfiles reads the profiles and links of a page of people in two statements.
+// addPersonProfiles reads the profiles, image revisions and links of a page of people in two statements.
 func addPersonProfiles(ctx context.Context, tx *sql.Tx, items []domain.Credit, index map[int64]int, encodedIDs string) error {
-	rows, err := tx.QueryContext(ctx, `select id, `+personProfileColumns+` from people
+	rows, err := tx.QueryContext(ctx, `select id, `+personImageRevision("people.id")+`, `+personProfileColumns+` from people
 		 where id in (select value from json_each(?))`, encodedIDs)
 	if err != nil {
 		return fmt.Errorf("cannot read the profiles of people: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
-		var id int64
+		var id, revision int64
 		var scanned scannedProfile
-		if err := rows.Scan(append([]any{&id}, scanned.targets()...)...); err != nil {
+		if err := rows.Scan(append([]any{&id, &revision}, scanned.targets()...)...); err != nil {
 			return fmt.Errorf("cannot read the profiles of people: %w", err)
 		}
 		items[index[id]].Profile = scanned.profile()
+		items[index[id]].ImageRevision = revision
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("cannot read the profiles of people: %w", err)

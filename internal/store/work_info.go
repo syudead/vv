@@ -514,11 +514,12 @@ func workInfoReads(entry func(string) *domain.WorkInfo) []workInfoRead {
 				info.ExternalIDs = append(info.ExternalIDs, id)
 				return nil
 			}},
-		creditLinkRead(creditTablesByKind[domain.CreditPerson], func(key, role string, ref domain.CreditRef) {
+		creditLinkRead(creditTablesByKind[domain.CreditPerson], func(key, role string, ref domain.CreditRef, revision int64) {
 			info := entry(key)
-			info.People = append(info.People, domain.WorkPerson{Role: domain.PersonRole(role), Person: ref})
+			info.People = append(info.People,
+				domain.WorkPerson{Role: domain.PersonRole(role), Person: ref, ImageRevision: revision})
 		}),
-		creditLinkRead(creditTablesByKind[domain.CreditOrganization], func(key, role string, ref domain.CreditRef) {
+		creditLinkRead(creditTablesByKind[domain.CreditOrganization], func(key, role string, ref domain.CreditRef, _ int64) {
 			info := entry(key)
 			info.Organizations = append(info.Organizations,
 				domain.WorkOrganization{Role: domain.OrganizationRole(role), Organization: ref})
@@ -526,18 +527,24 @@ func workInfoReads(entry func(string) *domain.WorkInfo) []workInfoRead {
 	}
 }
 
-func creditLinkRead(t creditTables, add func(key, role string, ref domain.CreditRef)) workInfoRead {
+// creditLinkRead also reads each person's image revision; organizations read 0.
+func creditLinkRead(t creditTables, add func(key, role string, ref domain.CreditRef, revision int64)) workInfoRead {
+	revision := `0`
+	if t.kind == domain.CreditPerson {
+		revision = personImageRevision("l.person_id")
+	}
 	return workInfoRead{
-		query: t.q(`select l.content_key, l.role, l.{id}, n.name from {links} l
+		query: t.q(`select l.content_key, l.role, l.{id}, n.name, ` + revision + ` from {links} l
 			join {names} n on n.{id} = l.{id} and n.canonical = 1
 			where l.content_key in (select value from json_each(?)) order by l.content_key, l.position`),
 		scan: func(rows *sql.Rows) error {
 			var key, role string
 			var ref domain.CreditRef
-			if err := rows.Scan(&key, &role, &ref.ID, &ref.Name); err != nil {
+			var revision int64
+			if err := rows.Scan(&key, &role, &ref.ID, &ref.Name, &revision); err != nil {
 				return err
 			}
-			add(key, role, ref)
+			add(key, role, ref, revision)
 			return nil
 		},
 	}

@@ -47,6 +47,8 @@ type Credit struct {
 	Parent *CreditRef
 	// Profile is empty for organizations.
 	Profile PersonProfile
+	// ImageRevision is zero unless the person has a face.
+	ImageRevision int64
 	// VideoCount counts visible video user-data keys linked in any role.
 	VideoCount int
 	CreatedAt  time.Time
