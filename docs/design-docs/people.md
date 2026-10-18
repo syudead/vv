@@ -67,7 +67,13 @@ of the first source, in `sourceIds` order, that has one; an empty link list
 takes the first source's list. Merging a duplicate that a plugin created keeps
 the profile that the plugin brought.
 
+Fields filled from different people can contradict each other, such as a
+death date from one source before the target's birth date. A source value that
+would make the profile invalid is skipped, and the field takes the next
+source's value or stays empty, so a merge always stores a valid profile.
+
 | Rejected | Why |
 | --- | --- |
 | Keep only the target's profile | The duplicate's profile would be lost |
+| Reject the merge with `400` | A merge cannot be fixed by editing its request, only by editing the people first |
 | Let the owner choose per field | The merge stays one step |

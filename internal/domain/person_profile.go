@@ -115,6 +115,36 @@ func (p PersonProfilePatch) Apply(current PersonProfile) PersonProfile {
 	return next
 }
 
+// FillPersonProfile fills each empty target field from the first source whose value keeps the profile valid,
+// so a merge never pairs a death date before the birth date or a career end before its start.
+func FillPersonProfile(target PersonProfile, sources []PersonProfile, today time.Time) PersonProfile {
+	out := target
+	for _, field := range PersonProfileFields {
+		copyField := personProfileCopies[field]
+		if !profileFieldEmpty(out, copyField) {
+			continue
+		}
+		for _, source := range sources {
+			if profileFieldEmpty(source, copyField) {
+				continue
+			}
+			candidate := out
+			copyField(&candidate, source)
+			if _, err := NormalizePersonProfile(candidate, today); err == nil {
+				out = candidate
+				break
+			}
+		}
+	}
+	return out
+}
+
+func profileFieldEmpty(p PersonProfile, copyField func(*PersonProfile, PersonProfile)) bool {
+	var only PersonProfile
+	copyField(&only, p)
+	return only.Equal(PersonProfile{})
+}
+
 // NormalizePersonProfile trims text, clears empty values and returns the first InvalidWorkInfoError with a profile.<name> field.
 func NormalizePersonProfile(input PersonProfile, today time.Time) (PersonProfile, error) {
 	out := input

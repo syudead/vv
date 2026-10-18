@@ -611,7 +611,8 @@ update.
   the ranges are in [People: profiles](../design-docs/people.md#what-a-valid-profile-is).
   `profile` sent for an organization is `400` (`invalid_request`).
 - A merge fills each profile field the target lacks from the first source in
-  `sourceIds` that has it.
+  `sourceIds` that has it, skipping a value that contradicts the rest of the
+  profile (a death date before the birth date, a career end before its start).
 
 ### Example: write what a scraper found
 

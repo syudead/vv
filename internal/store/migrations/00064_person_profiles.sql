@@ -21,7 +21,21 @@ create table people_links (
     unique (person_id, url)
 ) without rowid;
 
+-- No smart rule or collection value reads a profile, so profile updates must not queue an all-folder refresh.
+drop trigger people_collection_u;
+-- +goose StatementBegin
+create trigger people_collection_u after update of id, created_at on people begin
+    insert into collection_changes values ('smart', 0);
+end;
+-- +goose StatementEnd
+
 -- +goose Down
+drop trigger people_collection_u;
+-- +goose StatementBegin
+create trigger people_collection_u after update on people begin
+    insert into collection_changes values ('smart', 0);
+end;
+-- +goose StatementEnd
 drop table people_links;
 alter table people drop column bio;
 alter table people drop column career_end_year;

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -121,30 +122,30 @@ func addPersonProfiles(ctx context.Context, tx *sql.Tx, items []domain.Credit, i
 	return nil
 }
 
-// fillMergedPersonProfile fills each empty target field from the first source in sourceIDs order that has a value,
-// and an empty link list from the first source with links; it must run before the sources are deleted.
+// fillMergedPersonProfile fills each empty target field and an empty link list from the first source in sourceIDs
+// order whose value keeps the profile valid; it must run before the sources are deleted.
 func fillMergedPersonProfile(ctx context.Context, tx *sql.Tx, targetID int64, sourceIDs []int64) error {
-	encoded, err := json.Marshal(sourceIDs)
+	ids := append([]int64{targetID}, sourceIDs...)
+	encoded, err := json.Marshal(ids)
 	if err != nil {
 		return fmt.Errorf("cannot build person ids: %w", err)
 	}
-	statement := `update people set `
-	for i, column := range personProfileColumnNames {
-		if i > 0 {
-			statement += `, `
-		}
-		statement += column + ` = coalesce(` + column + `, (select s.` + column + ` from people s
-			join json_each(?2) j on s.id = j.value where s.` + column + ` is not null order by j.key limit 1))`
+	people := make([]domain.Credit, len(ids))
+	index := make(map[int64]int, len(ids))
+	for i, id := range ids {
+		index[id] = i
 	}
-	if _, err := tx.ExecContext(ctx, statement+` where id = ?1`, targetID, string(encoded)); err != nil {
-		return fmt.Errorf("cannot merge the profiles into person %d: %w", targetID, err)
+	if err := addPersonProfiles(ctx, tx, people, index, string(encoded)); err != nil {
+		return err
 	}
-	if _, err := tx.ExecContext(ctx, `insert into people_links (person_id, position, url)
-		select ?1, position, url from people_links
-		 where person_id = (select l.person_id from people_links l join json_each(?2) j on l.person_id = j.value
-		                     order by j.key limit 1)
-		   and not exists (select 1 from people_links where person_id = ?1)`, targetID, string(encoded)); err != nil {
-		return fmt.Errorf("cannot merge the links into person %d: %w", targetID, err)
+	sources := make([]domain.PersonProfile, len(sourceIDs))
+	for i := range sources {
+		sources[i] = people[i+1].Profile
 	}
-	return nil
+	current := people[0].Profile
+	filled := domain.FillPersonProfile(current, sources, time.Now())
+	if filled.Equal(current) {
+		return nil
+	}
+	return writePersonProfile(ctx, tx, targetID, filled)
 }

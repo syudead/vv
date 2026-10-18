@@ -77,3 +77,46 @@ func TestMergePeopleFillsOnlyEmptyProfileFieldsFromTheFirstSource(t *testing.T) 
 		t.Errorf("リンクを持つ統合先のリンク = %v", got)
 	}
 }
+
+// Each source holds individually valid dates and career years; a filled pair must still hold together.
+func TestMergePeopleSkipsSourceValuesThatContradictTheTargetProfile(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	target := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "T", Profile: domain.PersonProfile{
+		BirthDate: "2000", CareerEndYear: intPtr(2010),
+	}})
+	contradicting := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "S1", Profile: domain.PersonProfile{
+		DeathDate: "1990", CareerStartYear: intPtr(2020), HeightCm: intPtr(150),
+	}})
+	fitting := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "S2", Profile: domain.PersonProfile{
+		DeathDate: "2005", CareerStartYear: intPtr(2001),
+	}})
+
+	outcome, err := db.Credits().Merge(ctx, domain.CreditPerson, target.ID, []int64{contradicting.ID, fitting.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := domain.PersonProfile{
+		BirthDate: "2000", DeathDate: "2005", CareerStartYear: intPtr(2001), CareerEndYear: intPtr(2010), HeightCm: intPtr(150),
+	}
+	if !reflect.DeepEqual(outcome.Credit.Profile, want) {
+		t.Errorf("統合先の profile = %+v, want %+v", outcome.Credit.Profile, want)
+	}
+}
+
+func TestProfileOnlyUpdateDoesNotRefreshSmartFolders(t *testing.T) {
+	db := migratedDB(t)
+	person := createCredit(t, db, domain.CreditPerson, domain.CreditInput{Name: "山田花子"})
+	newSmartFolder(t, db, "folder", domain.SmartRule{}, domain.SortAddedDesc, 0)
+	execSQL(t, db, `create trigger reject_refresh before insert on smart_folder_values
+		begin select raise(abort, 'refresh rejected'); end`)
+
+	_, err := db.Credits().Update(context.Background(), domain.CreditPerson, person.ID, domain.CreditPatch{
+		Profile: &domain.PersonProfilePatch{
+			Fields: []domain.PersonProfileField{domain.ProfileBio}, Values: domain.PersonProfile{Bio: "紹介文"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("profile だけの更新がスマートフォルダを再計算した: %v", err)
+	}
+}
