@@ -30,7 +30,7 @@ const pages: [string, string, string[]][] = [
   [
     "/settings/library",
     "Library",
-    ["Media folders", "Auto-import", "Duplicate judging", "Home"],
+    ["Media folders", "Auto-import", "Duplicate judging", "Setup"],
   ],
   ["/settings/auto-tagging", "Auto-tagging", ["Progress", "Classifier"]],
   ["/settings/connections", "Connections", ["Ollama", "ComfyUI"]],

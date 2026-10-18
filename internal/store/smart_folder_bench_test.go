@@ -93,8 +93,6 @@ func smartFolderBenchDB(b *testing.B) (*DB, int64) {
 	if err != nil {
 		b.Fatal(err)
 	}
-	// 所在は取り込みと同じ search_key を持ち、検索式の条件のフォルダはパスの series-NN に当たる。
-	roots := []string{fixturePath("/media")}
 	const videos = 20000
 	for i := range videos {
 		path := fmt.Sprintf(fixturePath("/media/series-%02d/season-%03d/episode-%d.mp4"), i%40, (i/40)%10, i)
@@ -108,8 +106,8 @@ func smartFolderBenchDB(b *testing.B) (*DB, int64) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		if _, err := tx.Exec(`insert into video_locations (video_id, path, version, title, search_key, size_bytes, mtime, created_at, updated_at)
-			values (?, ?, 1, ?, ?, 1, 1, 1, 1)`, id, path, path, locationSearchKey(roots, path, path, "")); err != nil {
+		if _, err := tx.Exec(`insert into video_locations (video_id, path, version, title, size_bytes, mtime, created_at, updated_at)
+			values (?, ?, 1, ?, 1, 1, 1, 1)`, id, path, path); err != nil {
 			b.Fatal(err)
 		}
 		if i%2 == 0 {

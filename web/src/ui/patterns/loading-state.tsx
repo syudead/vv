@@ -1,27 +1,24 @@
 import { Skeleton } from "@/ui/shadcn/skeleton";
 
 import { CardGrid, type CardSize } from "./card-grid";
-import { ShelfCardSkeletons } from "./shelf-row";
 
 // Match final content geometry with skeletons instead of a page-covering spinner; see web/registry/rules/patterns.md, States.
 
 export interface LoadingStateProps {
   label: string;
-  layout: "grid" | "table" | "grouped" | "cards" | "shelves";
+  layout: "grid" | "table" | "grouped" | "cards";
   size?: CardSize;
   count?: number;
 }
 
 export function LoadingState({ label, layout, size = 1, count }: LoadingStateProps) {
   const keys = Array.from(
-    { length: count ?? (layout === "grouped" || layout === "shelves" ? 3 : 8) },
+    { length: count ?? (layout === "grouped" ? 3 : 8) },
     (_, index) => index,
   );
   return (
     <div data-slot="loading-state" role="status" aria-label={label} aria-busy="true">
-      {layout === "shelves" ? (
-        <ShelfSkeletons keys={keys} />
-      ) : layout === "grid" ? (
+      {layout === "grid" ? (
         <CardGrid size={size}>
           {keys.map((key) => (
             <div key={key} className="flex flex-col gap-2">
@@ -73,23 +70,6 @@ export function LoadingState({ label, layout, size = 1, count }: LoadingStatePro
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-/**
- * ShelfSkeletons は ShelfRows と同じ形の骨組みである。見出しの大きさの棒の下に、card-0 の
- * 幅のカードの形を横に並べ、行の右端で切る。棚の間は gap-6。
- */
-function ShelfSkeletons({ keys }: { keys: number[] }) {
-  return (
-    <div className="flex flex-col gap-6">
-      {keys.map((key) => (
-        <div key={key} className="flex flex-col gap-2">
-          <Skeleton className="h-5 w-1/3" />
-          <ShelfCardSkeletons />
-        </div>
-      ))}
     </div>
   );
 }

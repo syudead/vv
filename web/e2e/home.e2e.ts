@@ -37,8 +37,8 @@ const allTitles = [...fillers, inProgress];
 const publicTitles = fillers.slice(0, 2);
 const videos = new Map<string, Video>();
 let mediaFolder: MediaFolder | undefined;
-let shelfId: number | undefined;
-const shelfName = "Home playback test";
+let folderId: number | undefined;
+const folderName = "Home playback test";
 
 function mediaRoot(): string {
   const root = process.env.MDM_E2E_HOME_MEDIA_DIR;
@@ -115,7 +115,7 @@ async function removeOwnMediaFolder(request: APIRequestContext) {
 }
 
 function folderCard(page: Page): Locator {
-  return page.locator(`article[data-smart-folder-id="${String(shelfId)}"]`);
+  return page.locator(`article[data-smart-folder-id="${String(folderId)}"]`);
 }
 
 /** cardTitles は locator の中の動画のカードの題名を、並びに依らず比べられるよう並べ替えて返す。 */
@@ -156,10 +156,10 @@ test.describe.serial("home", () => {
     for (const [title, item] of await readVideos(request)) videos.set(title, item);
     const folder = await request.post("/api/smart-folders", {
       headers: mutationHeaders,
-      data: { name: shelfName, rule: { q: query }, sort: "addedDesc" },
+      data: { name: folderName, rule: { q: query }, sort: "addedDesc" },
     });
     expect(folder.status()).toBe(201);
-    shelfId = ((await folder.json()) as { id: number }).id;
+    folderId = ((await folder.json()) as { id: number }).id;
     await setProgress(request, inProgress, 0);
   });
 
@@ -168,8 +168,8 @@ test.describe.serial("home", () => {
       await setPublic(request, allTitles, false);
       await setProgress(request, inProgress, 0);
     }
-    if (shelfId !== undefined) {
-      const removed = await request.delete(`/api/smart-folders/${String(shelfId)}`, {
+    if (folderId !== undefined) {
+      const removed = await request.delete(`/api/smart-folders/${String(folderId)}`, {
         headers: mutationHeaders,
       });
       expect(removed.ok()).toBe(true);
@@ -186,7 +186,7 @@ test.describe.serial("home", () => {
     await art.hover({ position: { x: 8, y: 30 } });
     const preview = folderCard(page).getByRole("link", { name: /^Play / });
     const target = await preview.getAttribute("href");
-    expect(target).toContain(`?smartFolder=${String(shelfId)}`);
+    expect(target).toContain(`?smartFolder=${String(folderId)}`);
     await art.click({ position: { x: 8, y: 30 } });
     await expect(page).toHaveURL(target as string);
     await page.waitForFunction(
@@ -238,7 +238,7 @@ test.describe.serial("home", () => {
         names.push((await link.getAttribute("aria-label")) ?? "");
       }
       expect(names.sort()).toEqual(
-        publicTitles.map((title) => `Play "${title}" from "${shelfName}"`).sort(),
+        publicTitles.map((title) => `Play "${title}" from "${folderName}"`).sort(),
       );
     } finally {
       await context.close();

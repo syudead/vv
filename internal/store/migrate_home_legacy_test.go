@@ -95,7 +95,7 @@ func TestMigrateReconcilesLegacyHomeWithoutLosingData(t *testing.T) {
 				`select count(*) from playback_progress where content_key = 'retained' and position_ms = 12345`,
 				`select count(*) from watch_history where playback_id = 'play-1' and title = 'My video'`,
 				`select count(*) from video_favorites where content_key = 'retained' and favorited_at = 100`,
-				`select count(*) from smart_folders where id = 1 and name = 'My shelf' and home_position = 1`,
+				`select count(*) from smart_folders where id = 1 and name = 'My shelf'`,
 				`select count(*) from settings where key = 'onboarding.step' and value = 'done'`,
 			} {
 				var count int

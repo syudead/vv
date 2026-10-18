@@ -2,7 +2,7 @@ import { Check, Folder } from "lucide-react";
 import { memo, type MouseEvent, type ReactNode } from "react";
 import { Link } from "react-router";
 
-import type { LibraryGroup, LibraryGroupCard } from "../api/client";
+import type { LibraryGroup } from "../api/client";
 import { updateFavorites } from "../api/favorites";
 import { useAudience } from "../auth/audience";
 import { formatRelative, t, type UiText } from "../i18n";
@@ -25,7 +25,7 @@ import { type CardDragBinding, dragRowProps, RowDropMarks } from "../videoList/c
 import FolderArt from "../videoList/FolderArt";
 import { useCollectionLink } from "../videoList/useCollectionLink";
 
-export interface GroupCardProps<G extends LibraryGroupCard = LibraryGroup> {
+export interface GroupCardProps<G extends LibraryGroup = LibraryGroup> {
   group: G;
   backTo: string;
   /** Default to the group page without a trail; group-page callers extend their current trail. */
@@ -70,7 +70,7 @@ export function useCollectionFacts(values: CollectionValues) {
   };
 }
 
-function useGroupFacts(group: LibraryGroupCard) {
+function useGroupFacts(group: LibraryGroup) {
   const facts = useCollectionFacts(group);
   return {
     ...facts,
@@ -95,7 +95,7 @@ function GroupFavorite({
   group,
   variant,
 }: {
-  group: LibraryGroupCard;
+  group: LibraryGroup;
   variant: "card" | "row";
 }) {
   const favorite = group.favorite === true;
@@ -113,7 +113,7 @@ function GroupAddToPlaylist({
   group,
   variant,
 }: {
-  group: LibraryGroupCard;
+  group: LibraryGroup;
   variant: "card" | "row";
 }) {
   return (
@@ -129,7 +129,7 @@ function GroupAddToGroup({
   group,
   variant,
 }: {
-  group: LibraryGroupCard;
+  group: LibraryGroup;
   variant: "card" | "row";
 }) {
   return (
@@ -206,11 +206,11 @@ export function CollectionName({ name, muted }: { name: string; muted: boolean }
 
 export const GroupCard = memo(GroupCardFor) as typeof GroupCardFor;
 
-function groupHasTags(group: LibraryGroupCard): boolean {
-  return "tags" in group && Array.isArray(group.tags) && group.tags.length > 0;
+function groupHasTags(group: LibraryGroup): boolean {
+  return group.tags.length > 0;
 }
 
-function GroupCardFor<G extends LibraryGroupCard>(props: GroupCardProps<G>) {
+function GroupCardFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
   const {
     group,
     backTo,
@@ -319,7 +319,7 @@ function GroupCardFor<G extends LibraryGroupCard>(props: GroupCardProps<G>) {
 
 export const GroupRow = memo(GroupRowFor) as typeof GroupRowFor;
 
-function GroupRowFor<G extends LibraryGroupCard>(props: GroupCardProps<G>) {
+function GroupRowFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
   const {
     group,
     backTo,

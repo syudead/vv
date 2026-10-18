@@ -67,8 +67,8 @@ type GroupStore struct{ db *DB }
 // SmartFolderStore owns smart-folder edits and reference reads, publishing changes after commit.
 type SmartFolderStore struct{ db *DB }
 
-// HomeStore reads shelves and applies owner edits and onboarding choices.
-type HomeStore struct{ db *DB }
+// OnboardingStore saves setup progress and explicitly chosen interest folders.
+type OnboardingStore struct{ db *DB }
 type OrganizeStore struct{ db *DB }
 
 // CreditStore shares SQL across people and organizations, with snapshot reads and smart-folder notifications after relevant edits.
@@ -106,7 +106,7 @@ func (db *DB) Versions() *VersionStore         { return &VersionStore{db: db} }
 func (db *DB) Groups() *GroupStore             { return &GroupStore{db: db} }
 func (db *DB) Organize() *OrganizeStore        { return &OrganizeStore{db: db} }
 func (db *DB) SmartFolders() *SmartFolderStore { return &SmartFolderStore{db: db} }
-func (db *DB) Home() *HomeStore                { return &HomeStore{db: db} }
+func (db *DB) Onboarding() *OnboardingStore    { return &OnboardingStore{db: db} }
 func (db *DB) Credits() *CreditStore           { return &CreditStore{sql: db.sql, read: db.read, db: db} }
 func (db *DB) WorkInfo() *WorkInfoStore        { return &WorkInfoStore{db: db} }
 func (db *DB) WorkInfoPlugins() *WorkInfoPluginStore {

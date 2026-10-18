@@ -38,7 +38,7 @@ reference documents; retain lasting decisions here before deleting them.
 - [vv design system](design-system.md)
 - [Library UI: visual rules and list layout](library-ui.md)
 - [Related videos and the previous and next video](related-videos.md)
-- [Home shelves](home.md)
+- [Home library and setup](home.md)
 - [Screen text and formatting (i18n)](i18n.md)
 - [Testing policy: shared rules](testing.md)
 - [Time and synchronization in tests](testing-time.md)

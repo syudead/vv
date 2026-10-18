@@ -11,10 +11,6 @@ import { Button } from "../ui/shadcn/button";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { SkipButton, StepNotice, type StepProps } from "./stepFrame";
 
-// オンボードの「Media folders」の手順（docs/design-docs/home.md「Onboarding」）。足した
-// フォルダの行と、メディアフォルダの選択ダイアログを開く「Add folder」。フォルダが無ければ
-// 「Continue」を押せない。Continue も Skip も段階を `scan` にする。
-
 type FolderList =
   | { status: "loading" }
   | { status: "failed"; reason: UiText }
@@ -52,7 +48,6 @@ export default function FoldersStep({ frame, write }: StepProps) {
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<UiText | null>(null);
 
-  // 一覧を変えるたびに増える。遅れて届いた読み込みが、足した直後の一覧と件数を巻き戻さない。
   const revision = useRef(0);
   const { setFolderCount } = scan;
 
@@ -65,7 +60,7 @@ export default function FoldersStep({ frame, write }: StepProps) {
         const loaded = await listMediaFolders(signal);
         if (at !== revision.current) return;
         setList({ status: "ready", folders: loaded });
-        // スキャンの手順はこの件数で押せるかを決める。一覧と同じ結果から揃える。
+
         setFolderCount(loaded.length);
       } catch (error) {
         if (signal?.aborted || at !== revision.current) return;

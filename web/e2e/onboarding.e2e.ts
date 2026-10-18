@@ -11,13 +11,7 @@ import {
 
 import { ownerAccount } from "./owner-account";
 
-// オンボード（specs/057-home、親 #1140 受け入れ条件 3・4、子 #1323）を実サーバーと実メディアに
-// 通す。playwright.config.ts の onboarding プロジェクトとして、ほかの e2e がフォルダを足す前の、
-// 動画のないライブラリで走る。動画は run-e2e.mjs が generateOnboardingFixtures で作る2本である。
-//
-// 自動タグ付けは e2e では切なので、分野の動画にタグが付くことは API でタグを付けて置き換える
-// （docs/design-docs/home.md の Project Structure）。手順ごとの規則（Skip の書く段階、ゲストを送らない
-// こと、失敗の表示）はページテストが確かめ、ここでは重ねない（docs/design-docs/web-testing.md）。
+// Exercise setup with a real server, media scan and ordinary smart-folder navigation.
 
 interface MediaFolder {
   id: number;
@@ -89,7 +83,7 @@ async function removeOwnMediaFolder(request: APIRequestContext) {
   }
 }
 
-/** removeInterests は、選んだ分野の棚（スマートフォルダ）とタグを消す。 */
+/** removeInterests は、選んだ分野のスマートフォルダ（スマートフォルダ）とタグを消す。 */
 async function removeInterests(request: APIRequestContext) {
   const folders = await request.get("/api/smart-folders");
   expect(folders.status()).toBe(200);
@@ -186,11 +180,10 @@ async function waitForVideos(request: APIRequestContext): Promise<Map<string, Vi
   return found;
 }
 
-/** shelfRow はホームの、見出しが title の棚の行である。 */
-function shelfRow(page: Page, title: string) {
+function interestCard(page: Page, title: string) {
   return page
-    .locator('[data-slot="shelf-row"]')
-    .filter({ has: page.getByRole("heading", { level: 2, name: title, exact: true }) });
+    .locator("article[data-smart-folder-id]")
+    .filter({ has: page.getByRole("heading", { name: title, exact: true }) });
 }
 
 test.describe.serial("onboarding", () => {
@@ -201,13 +194,13 @@ test.describe.serial("onboarding", () => {
   });
 
   test.afterAll(async ({ request }) => {
-    // ほかの e2e は、分野の棚もこのフォルダの動画も無いホームから始める。
+    // ほかの e2e は、分野のスマートフォルダもこのフォルダの動画も無いホームから始める。
     await removeInterests(request);
     await removeOwnMediaFolder(request);
     await writeStep(request, "done");
   });
 
-  test("3・4: 動画のない状態で始め、途中で閉じて別の端末で続け、選んだ分野がタグと棚になる", async ({
+  test("3・4: 動画のない状態で始め、途中で閉じて別の端末で続け、選んだ分野がタグとスマートフォルダになる", async ({
     browser,
     request,
   }) => {
@@ -268,7 +261,7 @@ test.describe.serial("onboarding", () => {
         }
         await page.getByRole("button", { name: "Finish", exact: true }).click();
         await expect(page).toHaveURL("/");
-        await expect(page.getByText("Added 2 shelves to your home.")).toBeVisible();
+        await expect(page.getByText("Added 2 smart folders.")).toBeVisible();
       });
 
       const videos = await waitForVideos(request);
@@ -286,11 +279,10 @@ test.describe.serial("onboarding", () => {
         }
       });
 
-      await test.step("3: 分野の動画にタグが付くと、ホームにその分野の棚が出る", async () => {
-        // 選んだ分野の棚は、中身が入るまでホームに出ない（親 #1140 Edge Cases）。
+      await test.step("3: 分野の動画にタグが付くと、ライブラリ内のスマートフォルダに表示される", async () => {
         await page.goto("/");
-        await expect(page.getByRole("region", { name: "Shelves" })).toBeVisible();
-        await expect(shelfRow(page, cooking)).toHaveCount(0);
+
+        await expect(interestCard(page, cooking)).toBeVisible();
 
         const [cookingTag] = await tagsNamed(request, cooking);
         expect(cookingTag).toBeDefined();
@@ -309,14 +301,16 @@ test.describe.serial("onboarding", () => {
         ]);
 
         await page.reload();
-        const shelf = shelfRow(page, cooking);
+        await interestCard(page, cooking)
+          .getByRole("heading", { name: cooking, exact: true })
+          .click();
+        const folder = page.locator("main");
         await expect(
-          shelf.getByRole("link", { name: taggedTitle, exact: true }),
+          folder.getByRole("link", { name: taggedTitle, exact: true }),
         ).toBeVisible();
         await expect(
-          shelf.getByRole("link", { name: untaggedTitle, exact: true }),
+          folder.getByRole("link", { name: untaggedTitle, exact: true }),
         ).toHaveCount(0);
-        await expect(shelfRow(page, travel)).toHaveCount(0);
       });
     } finally {
       await second.close();

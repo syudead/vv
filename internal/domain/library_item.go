@@ -46,10 +46,8 @@ type LibraryGroup struct {
 	// Path stores the automatic group's FolderKey; response folders are resolved only under registered roots.
 	Path string
 	Name string
-	// Home cards omit Members and carry only VideoCount and Previews.
+	// Members expands child groups depth-first, keeping each visible video once.
 	Members      []Video
-	VideoCount   int
-	Previews     []FolderPreview
 	WatchState   WatchState
 	WatchedCount int
 	OpenVideoID  int64
@@ -64,7 +62,7 @@ type LibraryGroup struct {
 
 // progress must align with members; guests receive all-nil progress and therefore open the first member.
 func NewLibraryGroup(id int64, path, name string, members []Video, progress []*Progress) LibraryGroup {
-	group := LibraryGroup{ID: id, Path: path, Name: name, Members: members, VideoCount: len(members), Previews: GroupPreviews(members)}
+	group := LibraryGroup{ID: id, Path: path, Name: name, Members: members}
 	group.WatchState, group.WatchedCount = GroupWatch(progress)
 	if index := GroupOpenIndex(progress); index < len(members) {
 		group.OpenVideoID = members[index].ID
@@ -91,25 +89,6 @@ func NewLibraryGroup(id int64, path, name string, members []Video, progress []*P
 	return group
 }
 
-func GroupPreviews(members []Video) []FolderPreview {
-	out := make([]FolderPreview, 0, MaxFolderPreviews)
-	for _, member := range members {
-		if len(out) == MaxFolderPreviews {
-			break
-		}
-		if member.HasThumbnail() {
-			out = append(out, member.Preview())
-		}
-	}
-	return out
-}
-func (v Video) Preview() FolderPreview {
-	return FolderPreview{
-		VideoID: v.ID, ContentKey: v.ContentKey, PreviewState: v.PreviewState,
-		ThumbnailPositionMs: v.ThumbnailPositionMs, ThumbnailRevision: v.ThumbnailRevision,
-		ThumbnailImageRevision: v.ThumbnailImageRevision,
-	}
-}
 func memberStarted(progress *Progress) bool {
 	return ClassifyWatch(progress) != WatchStateUnwatched
 }

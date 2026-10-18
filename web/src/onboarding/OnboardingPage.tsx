@@ -10,18 +10,12 @@ import { useOnboardingStep } from "./OnboardingGate";
 import ScanStep from "./ScanStep";
 import { stepFrame, type StepWrite } from "./stepFrame";
 
-// オンボードの画面（/welcome、docs/design-docs/home.md「Onboarding」）。シェルの外の
-// StepsPage で、ゲートが読んだ段階の手順を 1 つ出す。どの手順も段階を /api/onboarding に
-// 書いて次へ進み、書く間は下端のボタンを押せなくする。書けなければ Alert を出して段階を残す。
-// 段階が `done` になったらホームを開く。
-
 /** useStepWrite は段階の書き込みと、その途中か、失敗の理由を持つ。 */
 function useStepWrite(step: OnboardingStep): StepWrite {
   const navigate = useNavigate();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<UiText | null>(null);
 
-  // ほかの端末で段階が変わって手順が替わったら、前の手順の失敗は消す。
   useEffect(() => setError(null), [step]);
 
   const go = useCallback(

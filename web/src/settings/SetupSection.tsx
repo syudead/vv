@@ -10,8 +10,8 @@ import { Button } from "../ui/shadcn/button";
 import { Spinner } from "../ui/shadcn/spinner";
 import { useToast } from "../ui/Toast";
 
-export default function HomeSection() {
-  const text = t.settings.home;
+export default function SetupSection() {
+  const text = t.settings.setup;
   const toast = useToast();
   const navigate = useNavigate();
   const setupId = useId();
@@ -20,7 +20,6 @@ export default function HomeSection() {
   const startSetup = async () => {
     setStartingSetup(true);
     try {
-      // 購読を通して書き、書いた段階をすぐゲートに当てる（done のままの振り分けで戻されない）。
       await writeOnboarding("folders");
       void navigate(ONBOARDING_PATH);
     } catch (error) {

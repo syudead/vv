@@ -16,11 +16,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import { useToast } from "../ui/Toast";
 import { SkipButton, StepNotice, type StepProps } from "./stepFrame";
 
-// オンボードの「Interests」の手順（docs/design-docs/home.md「Onboarding」）。上に取り込みの行、
-// 自動タグ付けが切なら注意、その下に分野の ToggleGroup。ホームにもうある分野は押したまま押せ
-// なくし、tooltip で理由を言う。「Finish」は選んだ分野を足してから段階を `done` にしてホームを
-// 開く。足せなかったら選んだ分野を残す。Skip は何も足さずに `done` にする。
-
 type InterestList =
   | { status: "loading" }
   | { status: "failed"; reason: UiText }
@@ -65,9 +60,11 @@ function InterestChip({ interest }: { interest: Interest }) {
   const item = (
     <ToggleGroupItem
       value={interest.id}
-      disabled={interest.onHome}
+      disabled={interest.hasFolder}
       aria-label={
-        interest.onHome ? t.onboarding.interests.onHomeLabel(interest.name) : undefined
+        interest.hasFolder
+          ? t.onboarding.interests.hasFolderLabel(interest.name)
+          : undefined
       }
       title={interest.synonym}
       className="flex-none rounded-md px-3 data-[variant=outline]:border-l"
@@ -75,13 +72,13 @@ function InterestChip({ interest }: { interest: Interest }) {
       {interest.name}
     </ToggleGroupItem>
   );
-  if (!interest.onHome) return item;
+  if (!interest.hasFolder) return item;
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <span className="inline-flex">{item}</span>
       </TooltipTrigger>
-      <TooltipContent>{t.onboarding.interests.onHome}</TooltipContent>
+      <TooltipContent>{t.onboarding.interests.hasFolder}</TooltipContent>
     </Tooltip>
   );
 }
@@ -89,7 +86,7 @@ function InterestChip({ interest }: { interest: Interest }) {
 /** useInterestsData は分野の一覧と、自動タグ付けが入かを読む。 */
 function useInterestsData() {
   const [list, setList] = useState<InterestList>({ status: "loading" });
-  // autoTagging は自動タグ付けが入か。読めなければ null で、注意を出さない。
+
   const [autoTagging, setAutoTagging] = useState<boolean | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
@@ -129,8 +126,8 @@ async function madeAfterFailure(
 ): Promise<{ interests: Interest[]; made: string[] } | null> {
   try {
     const interests = await listInterests();
-    const onHome = new Set(interests.filter((i) => i.onHome).map(({ id }) => id));
-    return { interests, made: picked.filter((id) => onHome.has(id)) };
+    const hasFolder = new Set(interests.filter((i) => i.hasFolder).map(({ id }) => id));
+    return { interests, made: picked.filter((id) => hasFolder.has(id)) };
   } catch {
     return null;
   }
@@ -146,10 +143,10 @@ export default function InterestsStep({ frame, write }: StepProps) {
   const [pickError, setPickError] = useState<UiText | null>(null);
 
   const interests = list.status === "ready" ? list.interests : [];
-  const onHome = interests.filter((interest) => interest.onHome).map(({ id }) => id);
+  const hasFolder = interests
+    .filter((interest) => interest.hasFolder)
+    .map(({ id }) => id);
 
-  // 失敗のあと、棚ができていればそれを知らせ、自動タグ付けへ入れられなかったことだけを言う。
-  // 手順には残り、ホームに載った分野は押したまま押せなくなる。
   const settleFailedPick = async (error: unknown) => {
     const reason = errorText(error);
     const after = await madeAfterFailure(picked);
@@ -170,7 +167,7 @@ export default function InterestsStep({ frame, write }: StepProps) {
       setPicking(true);
       try {
         const result = await pickInterests(picked);
-        if (result.shelves.length > 0) toast(text.added(result.shelves.length));
+        if (result.folders.length > 0) toast(text.added(result.folders.length));
         setPicked([]);
       } catch (error) {
         await settleFailedPick(error);
@@ -227,9 +224,9 @@ export default function InterestsStep({ frame, write }: StepProps) {
           variant="outline"
           size="sm"
           aria-label={text.label}
-          value={[...onHome, ...picked]}
+          value={[...hasFolder, ...picked]}
           onValueChange={(values) =>
-            setPicked(values.filter((id) => !onHome.includes(id)))
+            setPicked(values.filter((id) => !hasFolder.includes(id)))
           }
           className="w-full flex-wrap gap-2"
         >

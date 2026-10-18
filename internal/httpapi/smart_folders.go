@@ -183,8 +183,6 @@ func (s *server) GetSmartFolder(w http.ResponseWriter, r *http.Request, id gen.S
 			return
 		}
 		payload.Settings = &settings
-		onHome := page.Folder.HomePosition != 0
-		payload.OnHome = &onHome
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, payload, s.logger)

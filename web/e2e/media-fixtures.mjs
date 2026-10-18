@@ -518,10 +518,7 @@ export function generateDragOrganizeFixtures(root) {
     ]);
   }
 }
-/**
- * ONBOARDING_VIDEOS は、オンボードの流れ（specs/057-home、子 #1323）で動画のないライブラリに
- * 足すフォルダの動画である（web/e2e/onboarding.e2e.ts）。
- */
+/** Small distinct videos for the setup scan and interest-folder flow. */
 export const ONBOARDING_VIDEOS = ["オンボード確認A", "オンボード確認B"];
 
 /**

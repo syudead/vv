@@ -284,7 +284,8 @@ func groupsChangedEvents(ids []int64) []domain.Event {
 	return []domain.Event{domain.GroupsChanged{GroupIDs: ids}}
 }
 
-func rekeyGroupItemsOnly(ctx context.Context, tx *sql.Tx, from, to string) ([]int64, error) {
+// Move keys rather than copying; keep the earliest duplicate as manual if either was manual, compact positions and clear obsolete exclusions.
+func rekeyGroupItems(ctx context.Context, tx *sql.Tx, from, to string) ([]int64, error) {
 	if from == "" || to == "" || from == to {
 		return nil, nil
 	}

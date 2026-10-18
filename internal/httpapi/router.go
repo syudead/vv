@@ -271,7 +271,6 @@ type Options struct {
 
 	AutoTagging    AutoTagging
 	Onboarding     Onboarding
-	Home           Home
 	VersionJudging VersionJudging
 
 	Ollama OllamaConnection
@@ -355,7 +354,6 @@ type server struct {
 	autoImport        AutoImportSettings
 	autoTagging       AutoTagging
 	onboarding        Onboarding
-	home              Home
 	versionJudging    VersionJudging
 	ollama            OllamaConnection
 	comfyUI           ComfyUIConnection
@@ -434,7 +432,6 @@ func NewRouter(opts Options) http.Handler {
 		autoImport:             opts.AutoImport,
 		autoTagging:            opts.AutoTagging,
 		onboarding:             opts.Onboarding,
-		home:                   opts.Home,
 		versionJudging:         opts.VersionJudging,
 		ollama:                 opts.Ollama,
 		comfyUI:                opts.ComfyUI,
@@ -618,7 +615,6 @@ var putJSONBodyPaths = map[string]bool{
 	"/api/settings/comfyui":         true,
 	"/api/settings/version-judging": true,
 	"/api/onboarding":               true,
-	"/api/home/shelves":             true,
 }
 
 func requiresPutJSONBody(path string) bool {

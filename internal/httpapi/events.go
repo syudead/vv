@@ -40,7 +40,7 @@ type eventSubscriber struct {
 	videos       map[int64]struct{}
 	groups       map[int64]struct{}
 	smartFolders map[int64]struct{}
-	home         bool
+	onboarding   bool
 	ready        chan struct{}
 }
 
@@ -61,7 +61,7 @@ type pendingEvents struct {
 	videos       []int64
 	groups       []int64
 	smartFolders []int64
-	home         bool
+	onboarding   bool
 }
 
 func (s *eventSubscriber) take() pendingEvents {
@@ -69,12 +69,12 @@ func (s *eventSubscriber) take() pendingEvents {
 	defer s.mu.Unlock()
 	pending := pendingEvents{
 		scan: s.scan, candidates: s.candidates, activity: s.activity, videos: sortedIDs(s.videos),
-		groups: sortedIDs(s.groups), smartFolders: sortedIDs(s.smartFolders), home: s.home,
+		groups: sortedIDs(s.groups), smartFolders: sortedIDs(s.smartFolders), onboarding: s.onboarding,
 	}
 	s.scan = false
 	s.candidates = false
 	s.activity = false
-	s.home = false
+	s.onboarding = false
 	clear(s.videos)
 	clear(s.groups)
 	clear(s.smartFolders)
@@ -169,8 +169,8 @@ func (e *Events) SmartFoldersChanged(ids []int64) {
 	})
 }
 
-func (e *Events) HomeChanged() {
-	e.publish(func(s *eventSubscriber) { s.home = true })
+func (e *Events) OnboardingChanged() {
+	e.publish(func(s *eventSubscriber) { s.onboarding = true })
 }
 func (e *Events) Handle(event domain.Event) {
 	switch event := event.(type) {
@@ -205,9 +205,9 @@ func (e *Events) Handle(event domain.Event) {
 		e.GroupsChanged(event.GroupIDs)
 	case domain.SmartFoldersChanged:
 		e.SmartFoldersChanged(event.IDs)
-	case domain.HomeChanged:
-		// ホームの変化は home の知らせにする。所有者にもゲストにも送る（docs/design-docs/home.md）。
-		e.HomeChanged()
+	case domain.OnboardingChanged:
+		// ホームの変化は onboarding の知らせにする。所有者にもゲストにも送る（docs/design-docs/onboarding.md）。
+		e.OnboardingChanged()
 	}
 }
 
@@ -224,7 +224,7 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	// Subscribe before sending headers so the browser's initial reload cannot race missed changes.
 	sub, unsubscribe := s.events.subscribe()
 	defer unsubscribe()
-	// Guests receive group, smartFolder and home events; other events expose owner activity or private videos.
+	// Guests receive group and smartFolder events; other events expose owner activity or private videos.
 	guest := !audienceFrom(r.Context()).IsOwner()
 
 	controller := http.NewResponseController(w)
@@ -319,9 +319,9 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 			return err
 		}
 	}
-	if pending.home {
+	if pending.onboarding && !guest {
 		// candidates と同じく中身の無い知らせで、data は空のオブジェクトにする。
-		if err := writeEvent(w, "home", struct{}{}); err != nil {
+		if err := writeEvent(w, "onboarding", struct{}{}); err != nil {
 			return err
 		}
 	}

@@ -5,11 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { json } from "../testing/groupPage";
 import { ToastProvider } from "../ui/Toast";
-import HomeSection from "./HomeSection";
-
-// 設定の「Home」の節（docs/design-docs/home.md「Smart folder page and Settings」）。
-// 「Start setup」は段階を
-// `folders` に書いてオンボードを開く。
+import SetupSection from "./SetupSection";
 
 const server = {
   requests: [] as { method: string; path: string; body?: unknown }[],
@@ -44,7 +40,7 @@ function renderSection() {
     <MemoryRouter initialEntries={["/settings"]}>
       <ToastProvider>
         <Routes>
-          <Route path="/settings" element={<HomeSection />} />
+          <Route path="/settings" element={<SetupSection />} />
           <Route path="/welcome" element={<p>Onboarding opened</p>} />
         </Routes>
       </ToastProvider>
@@ -52,7 +48,7 @@ function renderSection() {
   );
 }
 
-describe("設定の Home の節", () => {
+describe("設定の Setup の節", () => {
   it("Start setup は段階を folders にしてオンボードを開く", async () => {
     const user = userEvent.setup();
     renderSection();

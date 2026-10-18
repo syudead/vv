@@ -23,7 +23,7 @@ func createSmartFolder(t *testing.T, db *DB, name string, parent int64) domain.S
 
 func smartFolderRows(t *testing.T, db *DB) []string {
 	t.Helper()
-	rows, err := db.sql.Query(`select id || ':' || coalesce(parent_id, 0) || ':' || name || ':' || owner_kept
+	rows, err := db.sql.Query(`select id || ':' || coalesce(parent_id, 0) || ':' || name
 		from smart_folders order by id`)
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestCreateSmartFolderNestsUnderItsParent(t *testing.T) {
 	t.Cleanup(func() { smartFolderNow = groupNow })
 
 	root := createSmartFolder(t, db, "Root", 0)
-	if root.ParentID != 0 || root.Sort != domain.SortAddedDesc || !root.OwnerKept ||
+	if root.ParentID != 0 || root.Sort != domain.SortAddedDesc ||
 		root.CreatedAt != at.UnixMilli() || root.UpdatedAt != at.UnixMilli() {
 		t.Fatalf("root = %+v", root)
 	}
@@ -65,7 +65,7 @@ func TestCreateSmartFolderNestsUnderItsParent(t *testing.T) {
 	}
 	want := domain.SmartFolder{
 		ID: child.ID, ParentID: root.ID, Name: "Cats", Rule: domain.SmartRule{Watch: domain.WatchUnwatched, AddedWithin: &five},
-		Sort: domain.SortTitleAsc, OwnerKept: true, CreatedAt: at.UnixMilli(), UpdatedAt: at.UnixMilli(),
+		Sort: domain.SortTitleAsc, CreatedAt: at.UnixMilli(), UpdatedAt: at.UnixMilli(),
 	}
 	if !reflect.DeepEqual(child, want) {
 		t.Fatalf("child = %+v, want %+v", child, want)
@@ -139,13 +139,10 @@ func TestMoveSmartFolderUnderItsDescendantWritesNothing(t *testing.T) {
 	}
 }
 
-func TestChangeSmartFolderSetsEveryMemberAndOwnerKept(t *testing.T) {
+func TestChangeSmartFolderSetsEveryMember(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	folder := createSmartFolder(t, db, "A", 0)
-	if _, err := db.sql.Exec(`update smart_folders set owner_kept = 0 where id = ?`, folder.ID); err != nil {
-		t.Fatal(err)
-	}
 	later := time.UnixMilli(folder.UpdatedAt + 5000)
 	smartFolderNow = func() time.Time { return later }
 	t.Cleanup(func() { smartFolderNow = groupNow })
@@ -156,35 +153,12 @@ func TestChangeSmartFolderSetsEveryMemberAndOwnerKept(t *testing.T) {
 		t.Fatal(err)
 	}
 	if changed.Name != "B" || changed.Sort != sort || !reflect.DeepEqual(changed.Rule, rule) ||
-		!changed.OwnerKept || changed.UpdatedAt != later.UnixMilli() || changed.CreatedAt != folder.CreatedAt {
+		changed.UpdatedAt != later.UnixMilli() || changed.CreatedAt != folder.CreatedAt {
 		t.Fatalf("changed = %+v", changed)
 	}
 	random := domain.SortRandom
 	if _, err := db.SmartFolders().ChangeSmartFolder(ctx, folder.ID, domain.SmartFolderChange{Sort: &random}); !errors.Is(err, domain.ErrInvalidSmartRule) {
 		t.Fatalf("random sort error = %v", err)
-	}
-}
-
-func TestEverySmartFolderWriteSetsOwnerKept(t *testing.T) {
-	db := migratedDB(t)
-	ctx := context.Background()
-	parent := createSmartFolder(t, db, "Parent", 0)
-	folder := createSmartFolder(t, db, "A", 0)
-	name, sort, rule := "B", domain.SortTitleDesc, domain.SmartRule{Playable: true}
-	for _, change := range []domain.SmartFolderChange{
-		{Name: &name}, {Rule: &rule}, {Sort: &sort}, {ParentSet: true, ParentID: parent.ID}, {ParentSet: true},
-	} {
-		if _, err := db.sql.Exec(`update smart_folders set owner_kept = 0`); err != nil {
-			t.Fatal(err)
-		}
-		changed, err := db.SmartFolders().ChangeSmartFolder(ctx, folder.ID, change)
-		if err != nil || !changed.OwnerKept {
-			t.Fatalf("ChangeSmartFolder(%+v) = %+v, %v", change, changed, err)
-		}
-	}
-	var kept int
-	if err := db.sql.QueryRow(`select owner_kept from smart_folders where id = ?`, parent.ID).Scan(&kept); err != nil || kept != 0 {
-		t.Fatalf("an unchanged folder's owner_kept = %d, %v", kept, err)
 	}
 }
 
@@ -245,11 +219,7 @@ func TestDeleteSmartFolderRenumbersItsPlaylists(t *testing.T) {
 }
 
 func smartFolderRow(folder domain.SmartFolder) string {
-	kept := 0
-	if folder.OwnerKept {
-		kept = 1
-	}
-	return fmt.Sprintf("%d:%d:%s:%d", folder.ID, folder.ParentID, folder.Name, kept)
+	return fmt.Sprintf("%d:%d:%s", folder.ID, folder.ParentID, folder.Name)
 }
 
 func TestRuleNamingADeletedTagIsStoredAndReportedMissing(t *testing.T) {

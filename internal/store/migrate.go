@@ -64,10 +64,6 @@ func Migrate(ctx context.Context, db *DB) (MigrateResult, error) {
 	if err != nil {
 		return MigrateResult{}, fmt.Errorf("cannot apply migrations: %w", err)
 	}
-	// ホームの読み出しが引く表（根の値、棚への一致）を、マイグレーションの直後に埋める。
-	if err := db.maintainHomeIndexes(ctx); err != nil {
-		return MigrateResult{}, err
-	}
 
 	applied, err := recordedVersion(ctx, db.sql)
 	if err != nil {

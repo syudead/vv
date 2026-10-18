@@ -960,39 +960,6 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
-// Defines values for HomeEmpty.
-const (
-	NoVideos HomeEmpty = "noVideos"
-)
-
-// Valid indicates whether the value is a known member of the HomeEmpty enum.
-func (e HomeEmpty) Valid() bool {
-	switch e {
-	case NoVideos:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for HomeShelfItemKind.
-const (
-	HomeShelfItemKindGroup HomeShelfItemKind = "group"
-	HomeShelfItemKindVideo HomeShelfItemKind = "video"
-)
-
-// Valid indicates whether the value is a known member of the HomeShelfItemKind enum.
-func (e HomeShelfItemKind) Valid() bool {
-	switch e {
-	case HomeShelfItemKindGroup:
-		return true
-	case HomeShelfItemKindVideo:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for LibraryGroupWatchState.
 const (
 	LibraryGroupWatchStateInProgress LibraryGroupWatchState = "inProgress"
@@ -1008,27 +975,6 @@ func (e LibraryGroupWatchState) Valid() bool {
 	case LibraryGroupWatchStateUnwatched:
 		return true
 	case LibraryGroupWatchStateWatched:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for LibraryGroupCardValuesWatchState.
-const (
-	LibraryGroupCardValuesWatchStateInProgress LibraryGroupCardValuesWatchState = "inProgress"
-	LibraryGroupCardValuesWatchStateUnwatched  LibraryGroupCardValuesWatchState = "unwatched"
-	LibraryGroupCardValuesWatchStateWatched    LibraryGroupCardValuesWatchState = "watched"
-)
-
-// Valid indicates whether the value is a known member of the LibraryGroupCardValuesWatchState enum.
-func (e LibraryGroupCardValuesWatchState) Valid() bool {
-	switch e {
-	case LibraryGroupCardValuesWatchStateInProgress:
-		return true
-	case LibraryGroupCardValuesWatchStateUnwatched:
-		return true
-	case LibraryGroupCardValuesWatchStateWatched:
 		return true
 	default:
 		return false
@@ -2859,6 +2805,7 @@ type GroupCreate struct {
 
 // GroupDetail GET /api/groups/{id} response.
 type GroupDetail struct {
+	// Group Group values aggregate visible descendant videos in playback order: depth-first through subgroups, deduplicating by first occurrence. Address groups by id; guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags.
 	Group LibraryGroup `json:"group"`
 
 	// Items First item page in position order, including visible items only.
@@ -2873,6 +2820,7 @@ type GroupDetail struct {
 
 // GroupItem One group item containing exactly one of video or group according to kind.
 type GroupItem struct {
+	// Group Group values aggregate visible descendant videos in playback order: depth-first through subgroups, deduplicating by first occurrence. Address groups by id; guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags.
 	Group *LibraryGroup `json:"group,omitempty"`
 
 	// Id Item identifier, not a video or group ID.
@@ -2985,81 +2933,16 @@ type Health struct {
 // HealthStatus ok: storage reachable; degraded: process alive without storage connectivity
 type HealthStatus string
 
-// Home GET /api/home の応答
-type Home struct {
-	// Empty 見る人にライブラリの動画が 1 本も見えないときだけ入る
-	Empty *HomeEmpty `json:"empty,omitempty"`
-
-	// Shelves Smart-folder shelves in the saved order.
-	Shelves []HomeShelf `json:"shelves"`
-}
-
-// HomeEmpty 見る人にライブラリの動画が 1 本も見えないときだけ入る
-type HomeEmpty string
-
-// HomeShelf ホームの棚 1 つ（docs/design-docs/home.md）
-type HomeShelf struct {
-	// FolderId Smart-folder ID.
-	FolderId int64 `json:"folderId"`
-
-	// Key Smart-folder shelf key: `folder:<positive id>`
-	Key HomeShelfKey `json:"key"`
-
-	// Name Smart-folder name.
-	Name string `json:"name"`
-}
-
-// HomeShelfItem 棚の項目 1 件。`kind` に応じて `video`・`group` のちょうど 1 つが入る。グループはカードに要る値だけの
-// LibraryGroupCard で、ライブラリの LibraryGroup が持つ `videoIds`・`tags` は載せない
-// （docs/design-docs/home.md）
-type HomeShelfItem struct {
-	// Group Group card values for Home shelf items, without member IDs or tags.
-	Group *LibraryGroupCard `json:"group,omitempty"`
-	Kind  HomeShelfItemKind `json:"kind"`
-
-	// Video Guest responses omit location, progress, probeError, fileTitle, displayName, thumbnailPositionMs, thumbnailImage and workInfo, and return empty tags.
-	Video *Video `json:"video,omitempty"`
-}
-
-// HomeShelfItemKind defines model for HomeShelfItem.Kind.
-type HomeShelfItemKind string
-
-// HomeShelfItems 棚 1 つの最初の項目
-type HomeShelfItems struct {
-	// Items 動画とグループの項目だけ。フォルダの棚の子フォルダは入れない
-	Items []HomeShelfItem `json:"items"`
-
-	// Key Smart-folder shelf key: `folder:<positive id>`
-	Key HomeShelfKey `json:"key"`
-
-	// Total 棚の項目（動画とグループ）の数を、items の上限 + 1（25）を上限に数えたもの。25 なら 1 ページより多い。0 なら画面は棚を出さない
-	Total int `json:"total"`
-}
-
-// HomeShelfItemsList GET /api/home/shelves の応答
-type HomeShelfItemsList struct {
-	Shelves []HomeShelfItems `json:"shelves"`
-}
-
-// HomeShelfKey Smart-folder shelf key: `folder:<positive id>`
-type HomeShelfKey = string
-
-// HomeShelfOrder PUT /api/home/shelves の本文
-type HomeShelfOrder struct {
-	// FolderIds 棚にするフォルダの id を上から順に
-	FolderIds []int64 `json:"folderIds"`
-}
-
 // Interest defines model for Interest.
 type Interest struct {
+	// HasFolder An ordinary root smart folder already matches this interest tag.
+	HasFolder bool `json:"hasFolder"`
+
 	// Id 分野の変わらない識別子（docs/design-docs/home.md「Interest catalog」）
 	Id string `json:"id"`
 
 	// Name タグの名前（英語）
 	Name string `json:"name"`
-
-	// OnHome この分野のタグの条件の棚がもうホームにある
-	OnHome bool `json:"onHome"`
 
 	// Synonym タグの同義語（日本語）
 	Synonym string `json:"synonym"`
@@ -3077,14 +2960,14 @@ type InterestPick struct {
 
 // InterestPickResult defines model for InterestPickResult.
 type InterestPickResult struct {
+	// Folders New smart folders; excludes interests whose matching root folder already existed.
+	Folders []SmartFolderSummary `json:"folders"`
+
 	// Queued 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0
 	Queued int `json:"queued"`
-
-	// Shelves 足した棚。棚がもうホームにあった分野の分は含まない
-	Shelves []HomeShelf `json:"shelves"`
 }
 
-// LibraryGroup defines model for LibraryGroup.
+// LibraryGroup Group values aggregate visible descendant videos in playback order: depth-first through subgroups, deduplicating by first occurrence. Address groups by id; guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags.
 type LibraryGroup struct {
 	// AddedAt Latest member addition timestamp.
 	AddedAt time.Time `json:"addedAt"`
@@ -3092,7 +2975,7 @@ type LibraryGroup struct {
 	// DurationMs Sum of known member durations; omitted if none are known.
 	DurationMs *int64 `json:"durationMs,omitempty"`
 
-	// Favorite Whether the owner favorited the group, independently of member favorites; owner-only.
+	// Favorite Whether the owner favorited the group, independent of member favorites; owner responses only.
 	Favorite *bool `json:"favorite,omitempty"`
 
 	// Folder Folder for an automatic group, included only when that folder is under a registered folder. Absent for manual groups, allowing the UI to distinguish them.
@@ -3107,7 +2990,7 @@ type LibraryGroup struct {
 	// Name Group name.
 	Name string `json:"name"`
 
-	// OpenVideoId First in-progress member, otherwise first incomplete member, otherwise the first member.
+	// OpenVideoId Member opened on click: first in-progress member, otherwise first incomplete member, otherwise the first member.
 	OpenVideoId int64 `json:"openVideoId"`
 
 	// Previews Up to four generated member thumbnails in order, matching folder-card previews. List rows use the first thumbnail.
@@ -3120,7 +3003,7 @@ type LibraryGroup struct {
 	Tags       []VideoTag `json:"tags"`
 	VideoCount int        `json:"videoCount"`
 
-	// VideoIds All member IDs in playback order.
+	// VideoIds All member IDs in order.
 	VideoIds []int64 `json:"videoIds"`
 
 	// WatchState unwatched if none have started, watched if all are complete, otherwise inProgress; owner responses only.
@@ -3133,52 +3016,6 @@ type LibraryGroup struct {
 // LibraryGroupWatchState unwatched if none have started, watched if all are complete, otherwise inProgress; owner responses only.
 type LibraryGroupWatchState string
 
-// LibraryGroupCard Group card values for Home shelf items, without member IDs or tags.
-type LibraryGroupCard = LibraryGroupCardValues
-
-// LibraryGroupCardValues Values aggregate visible descendants in playback order, depth-first and deduplicated. Guest responses omit watchedCount, watchState, lastPlayedAt and favorite. Composing schemas close unevaluatedProperties so LibraryGroup can add videoIds and tags.
-type LibraryGroupCardValues struct {
-	// AddedAt Latest member addition timestamp.
-	AddedAt time.Time `json:"addedAt"`
-
-	// DurationMs Sum of known member durations; omitted if none are known.
-	DurationMs *int64 `json:"durationMs,omitempty"`
-
-	// Favorite Whether the owner favorited the group, independently of member favorites; owner-only.
-	Favorite *bool `json:"favorite,omitempty"`
-
-	// Folder Folder for an automatic group, included only when that folder is under a registered folder. Absent for manual groups, allowing the UI to distinguish them.
-	Folder *VideoFolder `json:"folder,omitempty"`
-
-	// Id Group ID
-	Id int64 `json:"id"`
-
-	// LastPlayedAt Latest member playback timestamp; omitted when absent.
-	LastPlayedAt *time.Time `json:"lastPlayedAt,omitempty"`
-
-	// Name Group name.
-	Name string `json:"name"`
-
-	// OpenVideoId First in-progress member, otherwise first incomplete member, otherwise the first member.
-	OpenVideoId int64 `json:"openVideoId"`
-
-	// Previews Up to four generated member thumbnails in order, matching folder-card previews. List rows use the first thumbnail.
-	Previews []FolderPreview `json:"previews"`
-
-	// SizeBytes Sum of representative-location sizes for members.
-	SizeBytes  int64 `json:"sizeBytes"`
-	VideoCount int   `json:"videoCount"`
-
-	// WatchState unwatched if none have started, watched if all are complete, otherwise inProgress; owner responses only.
-	WatchState *LibraryGroupCardValuesWatchState `json:"watchState,omitempty"`
-
-	// WatchedCount Completed member count; owner responses only.
-	WatchedCount *int `json:"watchedCount,omitempty"`
-}
-
-// LibraryGroupCardValuesWatchState unwatched if none have started, watched if all are complete, otherwise inProgress; owner responses only.
-type LibraryGroupCardValuesWatchState string
-
 // LibraryGroupIds One group entry in GET /api/library/ids.
 type LibraryGroupIds struct {
 	// Id Group ID
@@ -3190,6 +3027,7 @@ type LibraryGroupIds struct {
 
 // LibraryItem One library item containing exactly one of video, group or smartFolder according to kind. smartFolder summarizes a top-level folder, or a favorited folder in favorites-only mode; fetch card values with listSmartFolderCards.
 type LibraryItem struct {
+	// Group Group values aggregate visible descendant videos in playback order: depth-first through subgroups, deduplicating by first occurrence. Address groups by id; guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags.
 	Group *LibraryGroup   `json:"group,omitempty"`
 	Kind  LibraryItemKind `json:"kind"`
 
@@ -3627,6 +3465,7 @@ type Playlist struct {
 
 // PlaylistItem One playlist item containing exactly one of video, group or smartFolder according to kind. smartFolder reflects its playback order at read time, which playback also follows.
 type PlaylistItem struct {
+	// Group Group values aggregate visible descendant videos in playback order: depth-first through subgroups, deduplicating by first occurrence. Address groups by id; guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags.
 	Group *LibraryGroup `json:"group,omitempty"`
 
 	// Id Item identifier for reordering and removal.
@@ -4071,9 +3910,6 @@ type SmartFolderDetail struct {
 	// NextCursor Included only when more results remain; pass to listSmartFolderItems.
 	NextCursor *string `json:"nextCursor,omitempty"`
 
-	// OnHome Whether this folder is a Home shelf; owner responses only.
-	OnHome *bool `json:"onHome,omitempty"`
-
 	// Settings Folder filters and sort order; owner responses only.
 	Settings *SmartFolderSettings `json:"settings,omitempty"`
 
@@ -4086,6 +3922,7 @@ type SmartFolderDetail struct {
 
 // SmartFolderItem One smart-folder item containing exactly one of video, group or smartFolder according to kind.
 type SmartFolderItem struct {
+	// Group Group values aggregate visible descendant videos in playback order: depth-first through subgroups, deduplicating by first occurrence. Address groups by id; guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags.
 	Group *LibraryGroup       `json:"group,omitempty"`
 	Kind  SmartFolderItemKind `json:"kind"`
 
@@ -5504,12 +5341,6 @@ type ListGroupItemsParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
-// ListHomeShelfItemsParams defines parameters for ListHomeShelfItems.
-type ListHomeShelfItemsParams struct {
-	// Keys 棚の鍵（`HomeShelfKey`）を `,` で区切って並べたもの（1〜8 件）
-	Keys []HomeShelfKey `form:"keys" json:"keys"`
-}
-
 // ListLibraryParams defines parameters for ListLibrary.
 type ListLibraryParams struct {
 	// Query Search terms are ANDed. Double quotes form phrases, a leading `-` excludes a term, and standalone `OR` or `|` joins alternatives. Matching normalizes width, case and hiragana/katakana, and checks title and relative paths below registered folders by substring. Uses at most 16 terms; no remaining terms means no filter. Syntax errors are not reported.
@@ -5926,9 +5757,6 @@ type RemoveGroupItemsJSONRequestBody = GroupItemRemove
 // MoveGroupItemJSONRequestBody defines body for MoveGroupItem for application/json ContentType.
 type MoveGroupItemJSONRequestBody = GroupItemMove
 
-// SetHomeShelvesJSONRequestBody defines body for SetHomeShelves for application/json ContentType.
-type SetHomeShelvesJSONRequestBody = HomeShelfOrder
-
 // CreateMediaFolderJSONRequestBody defines body for CreateMediaFolder for application/json ContentType.
 type CreateMediaFolderJSONRequestBody = CreateMediaFolderRequest
 
@@ -6195,15 +6023,6 @@ type ServerInterface interface {
 	// GetHealth Return health and build information
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
-	// GetHome ホームの棚の要約を返す
-	// (GET /api/home)
-	GetHome(w http.ResponseWriter, r *http.Request)
-	// ListHomeShelfItems 画面に入った棚の最初の項目を返す
-	// (GET /api/home/shelves)
-	ListHomeShelfItems(w http.ResponseWriter, r *http.Request, params ListHomeShelfItemsParams)
-	// SetHomeShelves どのスマートフォルダを棚にするかとその並びを書く
-	// (PUT /api/home/shelves)
-	SetHomeShelves(w http.ResponseWriter, r *http.Request)
 	// ListLibrary List library items (videos and groups)
 	// (GET /api/library)
 	ListLibrary(w http.ResponseWriter, r *http.Request, params ListLibraryParams)
@@ -6231,7 +6050,7 @@ type ServerInterface interface {
 	// ListOnboardingInterests 分野の一覧を返す
 	// (GET /api/onboarding/interests)
 	ListOnboardingInterests(w http.ResponseWriter, r *http.Request)
-	// PickOnboardingInterests 選んだ分野をタグと棚にする
+	// PickOnboardingInterests Create tags and smart folders for selected interests
 	// (POST /api/onboarding/interests)
 	PickOnboardingInterests(w http.ResponseWriter, r *http.Request)
 	// ListOrganizations List organizations
@@ -7613,67 +7432,6 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetHome operation middleware
-func (siw *ServerInterfaceWrapper) GetHome(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetHome(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListHomeShelfItems operation middleware
-func (siw *ServerInterfaceWrapper) ListHomeShelfItems(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListHomeShelfItemsParams
-
-	// ------------- Required query parameter "keys" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", false, true, "keys", r.URL.Query(), &params.Keys, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "keys"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "keys", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListHomeShelfItems(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// SetHomeShelves operation middleware
-func (siw *ServerInterfaceWrapper) SetHomeShelves(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SetHomeShelves(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -12190,9 +11948,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/transcoding", wrapper.UpdateTranscodingSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/network", wrapper.GetNetworkSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/network", wrapper.UpdateNetworkSettings)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/home", wrapper.GetHome)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/home/shelves", wrapper.ListHomeShelfItems)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/home/shelves", wrapper.SetHomeShelves)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/onboarding", wrapper.GetOnboarding)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/onboarding", wrapper.UpdateOnboarding)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/onboarding/interests", wrapper.ListOnboardingInterests)

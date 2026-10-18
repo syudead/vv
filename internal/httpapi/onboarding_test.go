@@ -3,10 +3,10 @@ package httpapi
 import (
 	"context"
 	"net/http"
-	"strconv"
 	"testing"
 
 	"github.com/syudead/vv/internal/app"
+	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 	"github.com/syudead/vv/internal/store"
 )
@@ -16,12 +16,11 @@ type onboardingFixture struct {
 	owner *http.Cookie
 }
 
-// newOnboardingFixture は本物の保存先と app.Onboarding で経路を組む。自動タグ付けはつながない。
 func newOnboardingFixture(t *testing.T) *onboardingFixture {
 	t.Helper()
 	f := &onboardingFixture{}
 	f.env = newAuthEnvWith(t, t.TempDir(), func(db *store.DB) Options {
-		return Options{Onboarding: app.NewOnboarding(db.Home(), nil)}
+		return Options{Onboarding: app.NewOnboarding(db.Onboarding(), nil)}
 	})
 	f.owner = f.env.setup()
 	return f
@@ -40,7 +39,6 @@ func (f *onboardingFixture) send(method, target, body string, cookies ...*http.C
 	return f.env.serve(authRequest{method: method, target: target, body: body, cookies: cookies}).Code
 }
 
-// 段階は、メディアフォルダが無ければ folders、あれば done が既定である。
 func TestOnboardingStepDefaultsToTheMediaFolders(t *testing.T) {
 	f := newOnboardingFixture(t)
 	if got := f.step(t); got != gen.OnboardingStepFolders {
@@ -54,7 +52,6 @@ func TestOnboardingStepDefaultsToTheMediaFolders(t *testing.T) {
 	}
 }
 
-// 2 つの端末の PUT は、後の段階が残る（Edge Cases、research.md R-3）。
 func TestOnboardingKeepsTheLaterOfTwoWrites(t *testing.T) {
 	f := newOnboardingFixture(t)
 	for _, body := range []string{`{"step":"interests"}`, `{"step":"scan"}`} {
@@ -67,7 +64,6 @@ func TestOnboardingKeepsTheLaterOfTwoWrites(t *testing.T) {
 	}
 }
 
-// 知らない段階や分野の id は 400 invalid_request で、何も書かない。
 func TestOnboardingRejectsUnknownStepsAndInterests(t *testing.T) {
 	f := newOnboardingFixture(t)
 	for _, body := range []string{`{"step":"later"}`, `{}`} {
@@ -81,14 +77,13 @@ func TestOnboardingRejectsUnknownStepsAndInterests(t *testing.T) {
 	if got := f.step(t); got != gen.OnboardingStepFolders {
 		t.Fatalf("step = %q, want folders unchanged", got)
 	}
-	shelves, err := f.env.db.Home().Shelves(context.Background())
-	if err != nil || len(shelves) != 0 {
-		t.Fatalf("shelves = %+v, %v; want none", shelves, err)
+	folders, err := f.env.db.SmartFolders().ListSmartFolders(context.Background(), domain.AudienceOwner)
+	if err != nil || len(folders) != 0 {
+		t.Fatalf("folders = %+v, %v; want none", folders, err)
 	}
 }
 
-// 分野を選ぶと足した棚を返し、一覧の onHome が真になる。2 度目は棚を足さない。
-func TestOnboardingInterestsBecomeShelves(t *testing.T) {
+func TestOnboardingInterestsBecomeFolders(t *testing.T) {
 	f := newOnboardingFixture(t)
 	rec := f.env.serve(authRequest{method: http.MethodPost, target: "/api/onboarding/interests",
 		body: `{"ids":["anime","music"]}`, cookies: []*http.Cookie{f.owner}})
@@ -96,12 +91,12 @@ func TestOnboardingInterestsBecomeShelves(t *testing.T) {
 		t.Fatalf("POST status = %d: %s", rec.Code, rec.Body)
 	}
 	result := decode[gen.InterestPickResult](t, rec)
-	if len(result.Shelves) != 2 || result.Queued != 0 {
-		t.Fatalf("result = %+v, want 2 shelves and nothing queued", result)
+	if len(result.Folders) != 2 || result.Queued != 0 {
+		t.Fatalf("result = %+v, want 2 folders and nothing queued", result)
 	}
-	anime := result.Shelves[0]
-	if anime.Name != "Anime" || anime.Key != "folder:"+strconv.FormatInt(anime.FolderId, 10) {
-		t.Fatalf("shelf = %+v", anime)
+	anime := result.Folders[0]
+	if anime.Name != "Anime" || anime.Id <= 0 {
+		t.Fatalf("folder = %+v", anime)
 	}
 
 	list := decode[gen.InterestList](t, f.env.get("/api/onboarding/interests", f.owner))
@@ -109,19 +104,18 @@ func TestOnboardingInterestsBecomeShelves(t *testing.T) {
 		t.Fatalf("interests = %+v", list.Interests)
 	}
 	for _, interest := range list.Interests {
-		if want := interest.Id == "anime" || interest.Id == "music"; interest.OnHome != want {
-			t.Errorf("%s onHome = %t, want %t", interest.Id, interest.OnHome, want)
+		if want := interest.Id == "anime" || interest.Id == "music"; interest.HasFolder != want {
+			t.Errorf("%s hasFolder = %t, want %t", interest.Id, interest.HasFolder, want)
 		}
 	}
 
 	rec = f.env.serve(authRequest{method: http.MethodPost, target: "/api/onboarding/interests",
 		body: `{"ids":["anime"]}`, cookies: []*http.Cookie{f.owner}})
-	if again := decode[gen.InterestPickResult](t, rec); rec.Code != http.StatusOK || len(again.Shelves) != 0 {
-		t.Fatalf("second pick = %d %+v, want no shelf", rec.Code, again)
+	if again := decode[gen.InterestPickResult](t, rec); rec.Code != http.StatusOK || len(again.Folders) != 0 {
+		t.Fatalf("second pick = %d %+v, want no folder", rec.Code, again)
 	}
 }
 
-// 経路は所有者だけで、セッションの無い閲覧者は通らない。別オリジンからの書き込みは 403 である。
 func TestOnboardingIsForTheOwnerOnly(t *testing.T) {
 	f := newOnboardingFixture(t)
 	routes := []authRequest{

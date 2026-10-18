@@ -8,7 +8,7 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-func TestHomeIndexMigrationPreservesLibraryAndTracksProgress(t *testing.T) {
+func TestRemoveHomeShelvesPreservesLibrary(t *testing.T) {
 	ctx := context.Background()
 	db, err := Open(t.TempDir())
 	if err != nil {
@@ -23,7 +23,7 @@ func TestHomeIndexMigrationPreservesLibraryAndTracksProgress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := provider.UpTo(ctx, 60); err != nil {
+	if _, err := provider.UpTo(ctx, 61); err != nil {
 		t.Fatal(err)
 	}
 	execSQL(t, db, `insert into videos(id, content_key) values (1, 'kept')`)
@@ -34,31 +34,21 @@ func TestHomeIndexMigrationPreservesLibraryAndTracksProgress(t *testing.T) {
 	if _, err := Migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	var names string
-	err = db.sql.QueryRow(`select group_concat(name, ',') from
-		(select name from sqlite_schema where type = 'table' and name glob 'home_*' order by name)`).Scan(&names)
-	if err != nil || names != "home_index_state,home_search_hits" {
-		t.Fatalf("home tables = %v, %v", names, err)
+
+	var count int
+	if err := db.sql.QueryRow(`select count(*) from sqlite_schema where name glob 'home_*' or name glob 'group_closure*' or name glob 'group_root_values*' or name glob 'video_watch_*' or (type = 'trigger' and (sql like '%home_%' or sql like '%group_closure%' or sql like '%group_root_values%' or sql like '%video_watch_%'))`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("retired schema objects = %d, %v", count, err)
+	}
+	for _, column := range []string{"home_position", "owner_kept"} {
+		if _, exists := tableColumns(t, db, "smart_folders")[column]; exists {
+			t.Fatalf("retired column %s remains", column)
+		}
 	}
 	var position, folder int
-	if err := db.sql.QueryRow(`select p.position_ms, f.id from videos v
-		join playback_progress p on p.content_key = v.content_key
-		join smart_folders f on f.home_position = 1 where v.id = 1`).Scan(&position, &folder); err != nil || position != 12345 || folder != 1 {
+	if err := db.sql.QueryRow(`select p.position_ms, f.id from videos v join playback_progress p on p.content_key = v.content_key join smart_folders f on f.id = 1 where v.id = 1`).Scan(&position, &folder); err != nil || position != 12345 || folder != 1 {
 		t.Fatalf("preserved library = position %d, folder %d, %v", position, folder, err)
 	}
-	// Progress writes must still update the index after the migration replaces its triggers.
+	// Writes must not retain triggers referencing the removed indexes.
 	execSQL(t, db, `update playback_progress set completed = 1 where content_key = 'kept'`)
-	if err := db.maintainHomeIndexes(ctx); err != nil {
-		t.Fatal(err)
-	}
-	var state string
-	if err := db.sql.QueryRow(`select state from video_watch_states where content_key = 'kept'`).Scan(&state); err != nil || state != "watched" {
-		t.Fatalf("watch state = %q, %v", state, err)
-	}
-	// Renaming the shared state table must also update the existing search triggers.
 	execSQL(t, db, `update smart_folders set rule = '{"q":"kept"}' where id = 1`)
-	var dirty bool
-	if err := db.sql.QueryRow(`select search_dirty from home_index_state`).Scan(&dirty); err != nil || !dirty {
-		t.Fatalf("search dirty = %v, %v", dirty, err)
-	}
 }

@@ -1387,84 +1387,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /api/home:
-    get:
-      operationId: getHome
-      security:
-        - sessionCookie: []
-        - {}
-      summary: ホームの棚の要約を返す
-      description: |
-        Lists only saved smart-folder shelves in their chosen order. Read items with
-        `listHomeShelfItems`. Guests do not see empty shelves. When no library
-        videos are visible, `empty` is `noVideos`.
-      responses:
-        "200":
-          description: ホームの要約
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Home"
-
-  /api/home/shelves:
-    get:
-      operationId: listHomeShelfItems
-      security:
-        - sessionCookie: []
-        - {}
-      summary: 画面に入った棚の最初の項目を返す
-      description: |
-        Returns the first 24 video or group items for each smart-folder shelf,
-        in the requested order. Rules include ancestor filters and the folder sort.
-        Child folders are excluded. Missing shelves and shelves empty for guests
-        are omitted, and duplicate keys appear once. Missing keys, more than eight
-        keys or invalid keys return 400 `invalid_request`.
-      parameters:
-        - name: keys
-          in: query
-          required: true
-          description: 棚の鍵（`HomeShelfKey`）を `,` で区切って並べたもの（1〜8 件）
-          style: form
-          explode: false
-          schema:
-            type: array
-            minItems: 1
-            maxItems: 8
-            items:
-              $ref: "#/components/schemas/HomeShelfKey"
-      responses:
-        "200":
-          description: 棚の項目
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HomeShelfItemsList"
-        "400":
-          $ref: "#/components/responses/InvalidRequest"
-    put:
-      operationId: setHomeShelves
-      summary: どのスマートフォルダを棚にするかとその並びを書く
-      description: |
-        所有者だけ。`folderIds` のフォルダを上から順にホームの棚にし、位置を 1, 2, 3… と振り直す。
-        外したフォルダと、足したか動かしたフォルダは所有者のもの（owner_kept 1）にする
-        （docs/design-docs/home.md）。並びが変われば画面の知らせ `home` を出す。51 件以上か同じ id が
-        2 度あれば 400 `invalid_request`、どのフォルダでもない id があれば 404 `not_found` で、どれも何も
-        書かない。
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/HomeShelfOrder"
-      responses:
-        "204":
-          description: 書いた
-        "400":
-          $ref: "#/components/responses/InvalidRequest"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
   /api/onboarding:
     get:
       operationId: getOnboarding
@@ -1484,7 +1406,7 @@ paths:
       summary: オンボードの段階を書く
       description: |
         名前の段階をそのまま書くので、2 つの端末からの書き込みは後のものが残る。段階が変わったら
-        画面の知らせ `home` を出す（docs/design-docs/home.md）。
+        画面の知らせ `onboarding` を出す（docs/design-docs/home.md）。
       requestBody:
         required: true
         content:
@@ -1508,7 +1430,7 @@ paths:
       operationId: listOnboardingInterests
       summary: 分野の一覧を返す
       description: |
-        一覧の順に、それぞれの分野のタグの条件の棚がもうホームにあるか（`onHome`）を添える
+        Lists interests with `hasFolder` indicating an existing root smart folder matching the tag rule.
         （docs/design-docs/home.md）。
       responses:
         "200":
@@ -1519,12 +1441,11 @@ paths:
                 $ref: "#/components/schemas/InterestList"
     post:
       operationId: pickOnboardingInterests
-      summary: 選んだ分野をタグと棚にする
+      summary: Create tags and smart folders for selected interests
       description: |
-        1 つの取引で、分野ごとにタグを名前か同義語で探すか同義語付きで作り、種類の無いタグに `Genre` を
-        付け、そのタグの条件の所有者の棚をホームの後ろに作る。棚がもうある分野は棚を足さない。確定後、
-        自動タグ付けが入なら「Tag all videos again」と同じくすべての動画を判定に回し、その件数を
-        `queued` で返す（docs/design-docs/home.md）。
+        Creates or reuses interest tags and ordinary root smart folders in one transaction.
+        Existing root folders with the same tag rule are reused. Untyped tags receive Genre.
+        When auto-tagging is enabled, queues the library and returns its count as `queued`.
       requestBody:
         required: true
         content:
@@ -1533,7 +1454,7 @@ paths:
               $ref: "#/components/schemas/InterestPick"
       responses:
         "200":
-          description: 足した棚と、判定に回した動画の件数
+          description: Created smart folders and the number of queued videos
           content:
             application/json:
               schema:
@@ -1542,12 +1463,6 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "403":
           $ref: "#/components/responses/Forbidden"
-        "409":
-          description: 棚を足すとホームが 50 を超える（conflict）
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
 
   /api/settings/plugin-proxy:
     get:
@@ -4382,7 +4297,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "Stream import and video changes through Server-Sent Events"
-      description: "Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). home carries an empty object when shelves or onboarding change; refetch GET /api/home. candidates and activity carry empty objects after committed changes; refetch their lists/counts. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/home events. Guests receive only group, smartFolder and home; scan, video, candidates and activity are owner-only."
+      description: "Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding events. Guests receive only group and smartFolder; scan, video, onboarding, candidates and activity are owner-only."
       responses:
         "200":
           description: "Event stream"
@@ -4971,7 +4886,8 @@ components:
         problem:
           type: string
           description: "Latest problem, returned only in limited state"
-          enum: [watch_limit, events_lost, folder_unreachable, permission_denied]
+          enum:
+            [watch_limit, events_lost, folder_unreachable, permission_denied]
         path:
           type: string
           description: "Absolute path when the problem concerns one directory; user data, not translated"
@@ -5287,7 +5203,8 @@ components:
           description: "Stored value outside the current choices, included only in that case. set remains true and value matches, but execution receives the default instead."
     WorkInfoPlugin:
       type: object
-      required: [id, fileName, operations, digest, state, settings, network, updatedAt]
+      required:
+        [id, fileName, operations, digest, state, settings, network, updatedAt]
       additionalProperties: false
       description: "One work-info plugin."
       properties:
@@ -5455,7 +5372,17 @@ components:
 
     WorkInfoFetch:
       type: object
-      required: [fetchId, expiresAt, tags, dates, people, organizations, urls, externalIds]
+      required:
+        [
+          fetchId,
+          expiresAt,
+          tags,
+          dates,
+          people,
+          organizations,
+          urls,
+          externalIds,
+        ]
       additionalProperties: false
       description: "Fetch result held in memory."
       properties:
@@ -5774,7 +5701,7 @@ components:
 
     Interest:
       type: object
-      required: [id, name, synonym, onHome]
+      required: [id, name, synonym, hasFolder]
       additionalProperties: false
       properties:
         id:
@@ -5786,9 +5713,9 @@ components:
         synonym:
           type: string
           description: タグの同義語（日本語）
-        onHome:
+        hasFolder:
           type: boolean
-          description: この分野のタグの条件の棚がもうホームにある
+          description: An ordinary root smart folder already matches this interest tag.
 
     InterestList:
       type: object
@@ -5814,113 +5741,17 @@ components:
 
     InterestPickResult:
       type: object
-      required: [shelves, queued]
+      required: [folders, queued]
       additionalProperties: false
       properties:
-        shelves:
+        folders:
           type: array
-          description: 足した棚。棚がもうホームにあった分野の分は含まない
+          description: New smart folders; excludes interests whose matching root folder already existed.
           items:
-            $ref: "#/components/schemas/HomeShelf"
+            $ref: "#/components/schemas/SmartFolderSummary"
         queued:
           type: integer
           description: 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0
-
-    HomeShelfKey:
-      type: string
-      description: 'Smart-folder shelf key: `folder:<positive id>`'
-
-    HomeShelf:
-      type: object
-      required: [key, name, folderId]
-      additionalProperties: false
-      description: ホームの棚 1 つ（docs/design-docs/home.md）
-      properties:
-        key:
-          $ref: "#/components/schemas/HomeShelfKey"
-        name:
-          type: string
-          description: Smart-folder name.
-        folderId:
-          type: integer
-          format: int64
-          description: Smart-folder ID.
-
-    Home:
-      type: object
-      required: [shelves]
-      additionalProperties: false
-      description: GET /api/home の応答
-      properties:
-        shelves:
-          type: array
-          description: Smart-folder shelves in the saved order.
-          items:
-            $ref: "#/components/schemas/HomeShelf"
-        empty:
-          type: string
-          enum: [noVideos]
-          description: 見る人にライブラリの動画が 1 本も見えないときだけ入る
-
-    HomeShelfItems:
-      type: object
-      required: [key, items, total]
-      additionalProperties: false
-      description: 棚 1 つの最初の項目
-      properties:
-        key:
-          $ref: "#/components/schemas/HomeShelfKey"
-        items:
-          type: array
-          maxItems: 24
-          description: 動画とグループの項目だけ。フォルダの棚の子フォルダは入れない
-          items:
-            $ref: "#/components/schemas/HomeShelfItem"
-        total:
-          type: integer
-          description: 棚の項目（動画とグループ）の数を、items の上限 + 1（25）を上限に数えたもの。25 なら 1 ページより多い。0 なら画面は棚を出さない
-
-    HomeShelfItem:
-      type: object
-      required: [kind]
-      additionalProperties: false
-      description: |
-        棚の項目 1 件。`kind` に応じて `video`・`group` のちょうど 1 つが入る。グループはカードに要る値だけの
-        LibraryGroupCard で、ライブラリの LibraryGroup が持つ `videoIds`・`tags` は載せない
-        （docs/design-docs/home.md）
-      properties:
-        kind:
-          type: string
-          enum: [video, group]
-        video:
-          $ref: "#/components/schemas/Video"
-        group:
-          $ref: "#/components/schemas/LibraryGroupCard"
-
-    HomeShelfItemsList:
-      type: object
-      required: [shelves]
-      additionalProperties: false
-      description: GET /api/home/shelves の応答
-      properties:
-        shelves:
-          type: array
-          items:
-            $ref: "#/components/schemas/HomeShelfItems"
-
-    HomeShelfOrder:
-      type: object
-      required: [folderIds]
-      additionalProperties: false
-      description: PUT /api/home/shelves の本文
-      properties:
-        folderIds:
-          type: array
-          maxItems: 50
-          description: 棚にするフォルダの id を上から順に
-          items:
-            type: integer
-            format: int64
 
     AutoTaggingQueued:
       type: object
@@ -7137,16 +6968,22 @@ components:
         smartFolder:
           $ref: "#/components/schemas/SmartFolderSummary"
 
-    LibraryGroupCard:
-      allOf:
-        - $ref: "#/components/schemas/LibraryGroupCardValues"
-      unevaluatedProperties: false
-      description: "Group card values for Home shelf items, without member IDs or tags."
-
-    LibraryGroupCardValues:
+    LibraryGroup:
       type: object
-      required: [id, name, videoCount, sizeBytes, addedAt, previews, openVideoId]
-      description: "Values aggregate visible descendants in playback order, depth-first and deduplicated. Guest responses omit watchedCount, watchState, lastPlayedAt and favorite. Composing schemas close unevaluatedProperties so LibraryGroup can add videoIds and tags."
+      required:
+        [
+          id,
+          name,
+          videoCount,
+          sizeBytes,
+          addedAt,
+          previews,
+          openVideoId,
+          videoIds,
+          tags,
+        ]
+      additionalProperties: false
+      description: "Group values aggregate visible descendant videos in playback order: depth-first through subgroups, deduplicating by first occurrence. Address groups by id; guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags."
       properties:
         id:
           type: integer
@@ -7192,31 +7029,21 @@ components:
         openVideoId:
           type: integer
           format: int64
-          description: "First in-progress member, otherwise first incomplete member, otherwise the first member."
+          description: "Member opened on click: first in-progress member, otherwise first incomplete member, otherwise the first member."
+        videoIds:
+          type: array
+          description: "All member IDs in order."
+          items:
+            type: integer
+            format: int64
+        tags:
+          type: array
+          description: "Union of member tags, combining provenance for each tag."
+          items:
+            $ref: "#/components/schemas/VideoTag"
         favorite:
           type: boolean
-          description: "Whether the owner favorited the group, independently of member favorites; owner-only."
-
-    LibraryGroup:
-      unevaluatedProperties: false
-      allOf:
-        - $ref: "#/components/schemas/LibraryGroupCardValues"
-        - type: object
-          required: [videoIds, tags]
-          description: "Library groups add all member IDs and their combined tags to card values. Guests receive empty tags."
-          properties:
-            videoIds:
-              type: array
-              description: "All member IDs in playback order."
-              items:
-                type: integer
-                format: int64
-            tags:
-              type: array
-              description: "Union of member tags, combining provenance for each tag."
-              items:
-                $ref: "#/components/schemas/VideoTag"
-
+          description: "Whether the owner favorited the group, independent of member favorites; owner responses only."
     GroupMembers:
       type: object
       additionalProperties: false
@@ -7784,9 +7611,6 @@ components:
         nextCursor:
           type: string
           description: "Included only when more results remain; pass to listSmartFolderItems."
-        onHome:
-          type: boolean
-          description: "Whether this folder is a Home shelf; owner responses only."
 
     SmartFolderItemPage:
       type: object
@@ -8283,7 +8107,8 @@ components:
     SeekThumbnailSprite:
       type: object
       description: "Seek-thumbnail sprite layout; cells beyond frameCount on the final sheet are black and must not be addressed by clients."
-      required: [intervalMs, frameCount, columns, rows, frameWidth, frameHeight, sheets]
+      required:
+        [intervalMs, frameCount, columns, rows, frameWidth, frameHeight, sheets]
       additionalProperties: false
       properties:
         intervalMs:
@@ -9027,7 +8852,18 @@ components:
     ActivityFeatureCounts:
       type: object
       description: "Counts for all features among records matching every filter except feature."
-      required: [import, scan, duplicate_check, auto_tagging, work_info, tags, versions, media_folders, organize]
+      required:
+        [
+          import,
+          scan,
+          duplicate_check,
+          auto_tagging,
+          work_info,
+          tags,
+          versions,
+          media_folders,
+          organize,
+        ]
       additionalProperties: false
       properties:
         import:
@@ -9052,7 +8888,21 @@ components:
     ActivityEntry:
       type: object
       description: "One activity record."
-      required: [id, kind, feature, status, decider, subject, candidate, retryRun, undoable, undone, createdAt, updatedAt]
+      required:
+        [
+          id,
+          kind,
+          feature,
+          status,
+          decider,
+          subject,
+          candidate,
+          retryRun,
+          undoable,
+          undone,
+          createdAt,
+          updatedAt,
+        ]
       additionalProperties: false
       properties:
         id:

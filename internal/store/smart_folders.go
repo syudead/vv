@@ -1,6 +1,6 @@
 package store
 
-// Validate parent structure inside writes and mark owner_kept; missing rule references are reported on reads rather than rejected on writes.
+// Validate parent structure inside writes; missing rule references are reported on reads rather than rejected on writes.
 
 import (
 	"context"
@@ -36,7 +36,7 @@ func (s *SmartFolderStore) CreateSmartFolder(ctx context.Context, create domain.
 			return nil, err
 		}
 		var err error
-		id, err = insertSmartFolder(ctx, tx, folder, rule, true, 0)
+		id, err = insertSmartFolder(ctx, tx, folder, rule)
 		if err != nil {
 			return nil, err
 		}
@@ -48,7 +48,7 @@ func (s *SmartFolderStore) CreateSmartFolder(ctx context.Context, create domain.
 	return s.SmartFolder(ctx, id)
 }
 
-// ChangeSmartFolder applies supplied fields, advances edit time and marks owner_kept; root parent is zero and cycles are rejected.
+// ChangeSmartFolder applies supplied fields, advances edit time; root parent is zero and cycles are rejected.
 func (s *SmartFolderStore) ChangeSmartFolder(ctx context.Context, id int64, change domain.SmartFolderChange) (domain.SmartFolder, error) {
 	err := writeWithEvents(ctx, s.db, "change the smart folder", func(tx *sql.Tx) ([]domain.Event, error) {
 		folder, err := readSmartFolder(ctx, tx, id)
@@ -67,7 +67,7 @@ func (s *SmartFolderStore) ChangeSmartFolder(ctx context.Context, id int64, chan
 			}
 		}
 		if _, err := tx.ExecContext(ctx, `update smart_folders
-			set parent_id = ?, name = ?, title_key = ?, rule = ?, sort = ?, owner_kept = 1, updated_at = ?
+			set parent_id = ?, name = ?, title_key = ?, rule = ?, sort = ?, updated_at = ?
 			where id = ?`,
 			nullableID(folder.ParentID), folder.Name, domain.NaturalSortKey(folder.Name), rule, string(folder.Sort),
 			smartFolderNow().UnixMilli(), id); err != nil {
@@ -84,76 +84,47 @@ func (s *SmartFolderStore) ChangeSmartFolder(ctx context.Context, id int64, chan
 // DeleteSmartFolder cascades descendants, favorites and playlist entries, then compacts affected playlists.
 func (s *SmartFolderStore) DeleteSmartFolder(ctx context.Context, id int64) error {
 	return writeWithEvents(ctx, s.db, "delete the smart folder", func(tx *sql.Tx) ([]domain.Event, error) {
-		return deleteSmartFolder(ctx, tx, id)
-	})
-}
-func insertSmartFolder(ctx context.Context, tx *sql.Tx, folder domain.SmartFolder, rule string, ownerKept bool, homePosition int) (int64, error) {
-	now := smartFolderNow().UnixMilli()
-	var position any
-	if homePosition > 0 {
-		position = homePosition
-	}
-	result, err := tx.ExecContext(ctx, `insert into smart_folders
-		(parent_id, name, title_key, rule, sort, owner_kept, home_position, created_at, updated_at)
-		values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		nullableID(folder.ParentID), folder.Name, domain.NaturalSortKey(folder.Name), rule, string(folder.Sort),
-		ownerKept, position, now, now)
-	if err != nil {
-		return 0, fmt.Errorf("cannot create the smart folder: %w", err)
-	}
-	id, err := result.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("cannot create the smart folder: %w", err)
-	}
-	return id, nil
-}
-func deleteSmartFolder(ctx context.Context, tx *sql.Tx, id int64) ([]domain.Event, error) {
-	const subtree = `with recursive down (id) as (
-			select ?
-			union
-			select f.id from smart_folders f join down on f.parent_id = down.id) `
-	playlists, err := queryInt64s(ctx, tx, subtree+`select distinct playlist_id from playlist_items
-		where smart_folder_id in (select id from down) order by playlist_id`, id)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read the playlists: %w", err)
-	}
-	shelves, err := queryInt64s(ctx, tx, subtree+`select f.id from smart_folders f
-		where f.id in (select id from down) and f.home_position is not null`, id)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read the home shelves: %w", err)
-	}
-	folder, err := readSmartFolder(ctx, tx, id)
-	if err != nil {
-		return nil, err
-	}
-	events, err := smartFolderEditNotice(ctx, tx, []int64{id}, folder.ParentID)
-	if err != nil {
-		return nil, err
-	}
-	result, err := tx.ExecContext(ctx, `delete from smart_folders where id = ?`, id)
-	if err != nil {
-		return nil, fmt.Errorf("cannot delete the smart folder: %w", err)
-	}
-	deleted, err := result.RowsAffected()
-	if err != nil {
-		return nil, fmt.Errorf("cannot delete the smart folder: %w", err)
-	}
-	if deleted == 0 {
-		return nil, smartFolderMissing()
-	}
-	if err := renumberPlaylists(ctx, tx, playlists); err != nil {
-		return nil, err
-	}
-	for _, playlistID := range playlists {
-		if err := touchPlaylist(ctx, tx, playlistID); err != nil {
+		playlists, err := queryInt64s(ctx, tx, `with recursive down (id) as (
+				select ?
+				union
+				select f.id from smart_folders f join down on f.parent_id = down.id)
+			select distinct playlist_id from playlist_items
+			where smart_folder_id in (select id from down) order by playlist_id`, id)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read the playlists: %w", err)
+		}
+		folder, err := readSmartFolder(ctx, tx, id)
+		if err != nil {
 			return nil, err
 		}
-	}
-	if len(shelves) > 0 {
-		events = append(events, domain.HomeChanged{})
-	}
-	return events, nil
+		// Read affected descendants before foreign-key cascades remove them.
+		events, err := smartFolderEditNotice(ctx, tx, []int64{id}, folder.ParentID)
+		if err != nil {
+			return nil, err
+		}
+		result, err := tx.ExecContext(ctx, `delete from smart_folders where id = ?`, id)
+		if err != nil {
+			return nil, fmt.Errorf("cannot delete the smart folder: %w", err)
+		}
+		deleted, err := result.RowsAffected()
+		if err != nil {
+			return nil, fmt.Errorf("cannot delete the smart folder: %w", err)
+		}
+		if deleted == 0 {
+			return nil, smartFolderMissing()
+		}
+		if err := renumberPlaylists(ctx, tx, playlists); err != nil {
+			return nil, err
+		}
+		for _, playlistID := range playlists {
+			if err := touchPlaylist(ctx, tx, playlistID); err != nil {
+				return nil, err
+			}
+		}
+		return events, nil
+	})
 }
+
 func (s *SmartFolderStore) SmartFolder(ctx context.Context, id int64) (domain.SmartFolder, error) {
 	return readSmartFolder(ctx, s.db.read, id)
 }
@@ -195,7 +166,7 @@ func missingSmartRuleRefs(ctx context.Context, tx *sql.Tx, rules []domain.SmartR
 	return missing, nil
 }
 
-// Rewrite merged references atomically without changing owner_kept or edit timestamps, since this is not an owner edit.
+// Rewrite merged references atomically without changing edit timestamps, since this is not an owner edit.
 func rewriteSmartRuleRefs(ctx context.Context, tx queryExecer, kind domain.SmartRuleRefKind, targetID int64, sourceIDs []int64) error {
 	rules, err := smartFolderRules(ctx, tx)
 	if err != nil {
@@ -342,11 +313,9 @@ func smartFolderParents(ctx context.Context, tx *sql.Tx) (map[int64]int64, error
 func readSmartFolder(ctx context.Context, q queryRower, id int64) (domain.SmartFolder, error) {
 	var folder domain.SmartFolder
 	var rule, sort string
-	err := q.QueryRowContext(ctx, `select id, coalesce(parent_id, 0), name, rule, sort, owner_kept,
-			coalesce(home_position, 0), created_at, updated_at
+	err := q.QueryRowContext(ctx, `select id, coalesce(parent_id, 0), name, rule, sort, created_at, updated_at
 		from smart_folders where id = ?`, id).
-		Scan(&folder.ID, &folder.ParentID, &folder.Name, &rule, &sort, &folder.OwnerKept, &folder.HomePosition,
-			&folder.CreatedAt, &folder.UpdatedAt)
+		Scan(&folder.ID, &folder.ParentID, &folder.Name, &rule, &sort, &folder.CreatedAt, &folder.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.SmartFolder{}, smartFolderMissing()
 	}
@@ -369,4 +338,16 @@ func nullableID(id int64) any {
 		return nil
 	}
 	return id
+}
+
+// insertSmartFolder is shared by manual creation and onboarding.
+func insertSmartFolder(ctx context.Context, tx *sql.Tx, folder domain.SmartFolder, rule string) (int64, error) {
+	now := smartFolderNow().UnixMilli()
+	result, err := tx.ExecContext(ctx, `insert into smart_folders
+ (parent_id, name, title_key, rule, sort, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?)`,
+		nullableID(folder.ParentID), folder.Name, domain.NaturalSortKey(folder.Name), rule, string(folder.Sort), now, now)
+	if err != nil {
+		return 0, fmt.Errorf("cannot create the smart folder: %w", err)
+	}
+	return result.LastInsertId()
 }

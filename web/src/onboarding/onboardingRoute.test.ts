@@ -3,8 +3,6 @@ import { describe, expect, it } from "vitest";
 import { nextOnboardingStep, toOnboardingStep } from "../api/onboarding";
 import { onboardingRedirect } from "./onboardingRoute";
 
-// オンボードへ送る規則（docs/design-docs/home.md）と段階の順（R-3）。
-
 describe("onboardingRedirect", () => {
   it("段階が done でない所有者は、どの経路からも /welcome へ送る", () => {
     for (const step of ["folders", "scan", "interests"] as const) {

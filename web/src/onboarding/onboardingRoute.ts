@@ -1,6 +1,5 @@
 import type { OnboardingStep } from "../api/onboarding";
 
-/** ONBOARDING_PATH はオンボードの画面の場所である（docs/design-docs/home.md「Onboarding」）。 */
 export const ONBOARDING_PATH = "/welcome";
 
 /**

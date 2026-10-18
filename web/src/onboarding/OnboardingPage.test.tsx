@@ -13,14 +13,10 @@ import { TooltipProvider } from "../ui/shadcn/tooltip";
 import { OnboardingGate } from "./OnboardingGate";
 import OnboardingPage from "./OnboardingPage";
 
-// オンボードの画面とゲート（docs/design-docs/home.md「Onboarding」、research.md R-3・R-4）。
-// 段階が done でない所有者はどの経路からも手順に着き（受け入れ条件 4）、閲覧者は送られない。
-// どの手順も Skip で次の段階を書き、終えるとホームが開く（受け入れ条件 3）。
-
 const interests: Interest[] = [
-  { id: "anime", name: "Anime", synonym: "アニメ", onHome: false },
-  { id: "travel", name: "Travel", synonym: "旅行", onHome: true },
-  { id: "cooking", name: "Cooking", synonym: "料理", onHome: false },
+  { id: "anime", name: "Anime", synonym: "アニメ", hasFolder: false },
+  { id: "travel", name: "Travel", synonym: "旅行", hasFolder: true },
+  { id: "cooking", name: "Cooking", synonym: "料理", hasFolder: false },
 ];
 
 const runningScan = {
@@ -37,13 +33,13 @@ const server = {
   writes: [] as OnboardingStep[],
   failWrites: false,
   folders: [] as { id: number; path: string; version: number }[],
-  // folderReads は GET /api/media-folders の回数。emptyFirstRead なら最初の 1 回だけ空を返す。
+
   folderReads: 0,
   emptyFirstRead: false,
   failFolders: false,
   interests: [] as Interest[],
   failInterests: false,
-  // failQueue なら分野の追加は棚を作ってから失敗する（自動タグ付けへ入れられない）。
+
   failQueue: false,
   picks: [] as string[][],
   scans: 0,
@@ -85,12 +81,13 @@ function respond(url: URL, init: RequestInit | undefined): Response {
       const { ids } = body as { ids: string[] };
       server.picks.push(ids);
       server.interests = server.interests.map((interest) =>
-        ids.includes(interest.id) ? { ...interest, onHome: true } : interest,
+        ids.includes(interest.id) ? { ...interest, hasFolder: true } : interest,
       );
       if (server.failQueue) return json({ code: "internal", message: "x" }, 500);
       return json({
-        shelves: ids.map((id, index) => ({
-          key: `folder:${String(index + 20)}`,
+        folders: ids.map((id, index) => ({
+          id: index + 20,
+          parentId: null,
 
           name: id,
         })),
@@ -200,14 +197,14 @@ describe("オンボードのゲート", () => {
     expect(await screen.findByText("Opened /")).toBeTruthy();
   });
 
-  it("ほかの端末で段階が変わると、home の知らせでその手順へ移る", async () => {
+  it("ほかの端末で段階が変わると、onboarding の知らせでその手順へ移る", async () => {
     renderApp("/welcome");
     expect(
       await screen.findByRole("heading", { level: 1, name: "Where are your videos?" }),
     ).toBeTruthy();
 
     server.step = "interests";
-    await emitServerEvent("home");
+    await emitServerEvent("onboarding");
 
     expect(
       await screen.findByRole("heading", { level: 1, name: "What do you watch?" }),
@@ -269,11 +266,11 @@ describe("オンボードの手順", () => {
     const group = await screen.findByRole("toolbar", { name: "Interests" });
     expect(
       screen.getByText(
-        "Auto-tagging is off, so these shelves fill in only as you tag videos. You can turn it on in Settings.",
+        "Auto-tagging is off, so these smart folders fill in only as you tag videos. You can turn it on in Settings.",
       ),
     ).toBeTruthy();
-    // ホームにもうある分野は押したまま押せない。
-    const travel = within(group).getByRole("button", { name: "Travel, on your home" });
+
+    const travel = within(group).getByRole("button", { name: "Travel, already created" });
     expect(travel.getAttribute("aria-pressed")).toBe("true");
     expect(travel.hasAttribute("disabled")).toBe(true);
 
@@ -294,13 +291,13 @@ describe("オンボードの手順", () => {
 
     await waitFor(() => expect(server.folderReads).toBeGreaterThan(0));
     expect(footerButton("Scan library").hasAttribute("disabled")).toBe(true);
-    // 件数が 0 と分かったのではないので、フォルダを足すようには言わない。
+
     expect(screen.queryByText("Add a media folder first.")).toBeNull();
   });
 
   it("フォルダの手順で読んだフォルダでスキャンの手順も押せる", async () => {
     const user = userEvent.setup();
-    // 最初の共有の取得は 0 件、そのあと別の端末でフォルダが足された。
+
     server.emptyFirstRead = true;
     renderApp("/welcome");
     await screen.findByTitle("/media/videos");
@@ -322,7 +319,7 @@ describe("オンボードの手順", () => {
     expect(footerButton("Skip").hasAttribute("disabled")).toBe(false);
   });
 
-  it("棚ができて自動タグ付けへ入れるのだけが失敗したら、足した棚を知らせて手順に残る", async () => {
+  it("スマートフォルダ作成後にタグ付けのキューだけが失敗したら、作成済みと知らせて手順に残る", async () => {
     const user = userEvent.setup();
     server.step = "interests";
     server.failQueue = true;
@@ -334,16 +331,15 @@ describe("オンボードの手順", () => {
 
     expect(
       await screen.findByText(
-        /^Added the shelves, but couldn't queue your videos for auto-tagging: /,
+        /^Added the smart folders, but couldn't queue your videos for auto-tagging: /,
       ),
     ).toBeTruthy();
-    expect(await screen.findByText("Added 1 shelf to your home.")).toBeTruthy();
+    expect(await screen.findByText("Added 1 smart folder.")).toBeTruthy();
     expect(
-      within(group).getByRole("button", { name: "Anime, on your home" }),
+      within(group).getByRole("button", { name: "Anime, already created" }),
     ).toBeTruthy();
     expect(server.writes).toEqual([]);
 
-    // 選んだ分野はもう残っていないので、Finish は何も足さずに終える。
     await user.click(footerButton("Finish"));
     expect(await screen.findByText("Opened /")).toBeTruthy();
     expect(server.picks).toEqual([["anime"]]);

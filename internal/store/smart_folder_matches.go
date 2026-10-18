@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -37,42 +38,25 @@ type smartMatch struct {
 	search     string
 	searchArgs []any
 	condition  string
-	// filter excludes search expressions; args also bind its placeholders.
-	filter string
-	args   []any
+	args       []any
 }
 
 // Apply every rule to each video using owner search semantics; all search expressions must match one location and are materialized once.
 func smartMatchFor(spec listSpec, name string) smartMatch {
-	return smartMatchOf(spec, name, true)
-}
-
-// smartRuleMatch は smartMatchFor から、再生可否・お気に入りのみ・視聴状態の絞り込みを除いた条件、
-// つまりライブラリの項目の問い合わせの当たった動画（libraryItemsCTE の matched）の条件を作る。
-func smartRuleMatch(spec listSpec, name string) smartMatch {
-	return smartMatchOf(spec, name, false)
-}
-
-// smartMatchOf は smartMatchFor と smartRuleMatch の本体で、perVideo なら再生可否・お気に入りのみ・
-// 視聴状態の絞り込みも動画に掛ける。
-func smartMatchOf(spec listSpec, name string, perVideo bool) smartMatch {
 	spec.userKeyColumn = `videos.user_key`
 	conditions, args := matchConditions(spec)
-	if perVideo && spec.anyLevel(func(level listSpec) bool { return level.playableOnly }) {
+	if spec.anyLevel(func(level listSpec) bool { return level.playableOnly }) {
 		conditions = append(conditions, playableCondition)
 	}
-	if perVideo && spec.itemGroupsFavorite() {
+	if spec.anyLevel(func(level listSpec) bool { return level.favoriteOnly }) {
 		conditions = append(conditions, `videos.favorited_at is not null`)
 	}
-	if watch, watchArgs := itemWatchConditions(spec); perVideo && watch != "" {
+	if watch, watchArgs := itemWatchConditions(spec); watch != "" {
 		conditions = append(conditions, watch)
 		args = append(args, watchArgs...)
 	}
-	match := smartMatch{filter: `1`}
-	if len(conditions) > 0 {
-		match.filter = strings.Join(conditions, " and ")
-	}
-	if spec.hasSearch() {
+	var match smartMatch
+	if slices.ContainsFunc(spec.searchExprs(), func(expr domain.SearchExpr) bool { return !expr.Empty() }) {
 		search, searchArgs := chosenLocationsSelect(spec.scope, domain.AudienceOwner, spec.searchExprs())
 		match.search, match.searchArgs = name+` as materialized (`+search+`)`, searchArgs
 		conditions = append(conditions, `videos.id in (select video_id from `+name+`)`)
@@ -94,9 +78,22 @@ type smartFolderTarget struct {
 
 // Owners see empty folders; guests require at least one playback item.
 func smartFolderTargetOf(ctx context.Context, tx *sql.Tx, audience domain.Audience, folder domain.SmartFolder, rules []domain.SmartRule, now int64) (smartFolderTarget, bool, error) {
-	target, err := readSmartFolderTarget(ctx, tx, audience, folder, rules, now)
-	if err != nil || audience.IsOwner() {
-		return target, err == nil, err
+	target := smartFolderTarget{
+		summary: domain.SmartFolderSummary{ID: folder.ID, ParentID: folder.ParentID, Name: folder.Name},
+		sort:    folder.Sort,
+		spec:    smartFolderSpec(audience, rules, folder.Sort, now),
+	}
+	missing, err := missingSmartRuleRefs(ctx, tx, rules)
+	if err != nil {
+		return smartFolderTarget{}, false, err
+	}
+	target.missing = len(missing) > 0
+	if err := tx.QueryRowContext(ctx, `select exists (select 1 from smart_folder_favorites where smart_folder_id = ?)`,
+		folder.ID).Scan(&target.summary.Favorite); err != nil {
+		return smartFolderTarget{}, false, fmt.Errorf("cannot read the smart folder favorite: %w", err)
+	}
+	if audience.IsOwner() {
+		return target, true, nil
 	}
 	if target.missing {
 		return target, false, nil
@@ -105,22 +102,19 @@ func smartFolderTargetOf(ctx context.Context, tx *sql.Tx, audience domain.Audien
 	return target, shown, err
 }
 
-func readSmartFolderTarget(ctx context.Context, tx *sql.Tx, audience domain.Audience, folder domain.SmartFolder, rules []domain.SmartRule, now int64) (smartFolderTarget, error) {
-	target := smartFolderTarget{
-		summary: domain.SmartFolderSummary{ID: folder.ID, ParentID: folder.ParentID, Name: folder.Name},
-		sort:    folder.Sort,
-		spec:    smartFolderSpec(audience, rules, folder.Sort, now),
+func smartFolderTargetByID(ctx context.Context, tx *sql.Tx, audience domain.Audience, id int64, now int64) (smartFolderTarget, bool, error) {
+	folder, err := readSmartFolder(ctx, tx, id)
+	if errors.Is(err, domain.ErrNotFound) {
+		return smartFolderTarget{}, false, nil
 	}
-	missing, err := missingSmartRuleRefs(ctx, tx, rules)
 	if err != nil {
-		return smartFolderTarget{}, err
+		return smartFolderTarget{}, false, err
 	}
-	target.missing = len(missing) > 0
-	if err := tx.QueryRowContext(ctx, `select exists (select 1 from smart_folder_favorites where smart_folder_id = ?)`,
-		folder.ID).Scan(&target.summary.Favorite); err != nil {
-		return smartFolderTarget{}, fmt.Errorf("cannot read the smart folder favorite: %w", err)
+	rules, err := smartFolderPathRules(ctx, tx, id)
+	if err != nil {
+		return smartFolderTarget{}, false, err
 	}
-	return target, nil
+	return smartFolderTargetOf(ctx, tx, audience, folder, rules, now)
 }
 
 // Deduplicate and preserve input order while selecting existing audience-visible folders.
@@ -132,39 +126,15 @@ func shownSmartFolderTargets(ctx context.Context, tx *sql.Tx, audience domain.Au
 			continue
 		}
 		seen[id] = true
-		folder, err := readSmartFolder(ctx, tx, id)
-		if errors.Is(err, domain.ErrNotFound) {
-			continue
-		}
+		target, shown, err := smartFolderTargetByID(ctx, tx, audience, id, now)
 		if err != nil {
 			return nil, err
 		}
-		rules, err := smartFolderPathRules(ctx, tx, id)
-		if err != nil {
-			return nil, err
-		}
-		target, err := readSmartFolderTarget(ctx, tx, audience, folder, rules, now)
-		if err != nil {
-			return nil, err
-		}
-		if audience.IsOwner() || !target.missing {
+		if shown {
 			targets = append(targets, target)
 		}
 	}
-	if audience.IsOwner() || len(targets) == 0 {
-		return targets, nil
-	}
-	found, err := smartFoldersHaveItems(ctx, tx, audience, targets)
-	if err != nil {
-		return nil, err
-	}
-	shown := targets[:0]
-	for i, target := range targets {
-		if found[i] {
-			shown = append(shown, target)
-		}
-	}
-	return shown, nil
+	return targets, nil
 }
 
 func smartFolderHasItems(ctx context.Context, tx *sql.Tx, spec listSpec) (bool, error) {

@@ -11,8 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// SaveProgress persists by content key without a video foreign key and records history once per playback.
-// Notify watch-state changes, but invalidate the continue-watching cache on every save.
+// SaveProgress persists by content key without a video foreign key, using last-write-wins; record history once per playback and notify only watch-state changes.
 func (p *PlaybackStore) SaveProgress(
 	ctx context.Context, contentKey string, progress domain.Progress, play *domain.Play,
 ) (domain.Progress, error) {
@@ -57,6 +56,7 @@ func (p *PlaybackStore) SaveProgress(
 	if err := p.db.commitMatchChangeIf(ctx, tx, before != domain.ClassifyWatch(&progress)); err != nil {
 		return domain.Progress{}, fmt.Errorf("cannot save the playback position (%s): %w", contentKey, err)
 	}
+
 	progress.UpdatedAt = updatedAt.Truncate(time.Second)
 	return progress, nil
 }

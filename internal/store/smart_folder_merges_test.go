@@ -66,7 +66,7 @@ func TestMergeTagsRewritesSmartFolderRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if folder.UpdatedAt != onlyA.UpdatedAt || !folder.OwnerKept {
+	if folder.UpdatedAt != onlyA.UpdatedAt {
 		t.Errorf("folder after the merge = %+v, want updated_at %d kept", folder, onlyA.UpdatedAt)
 	}
 }

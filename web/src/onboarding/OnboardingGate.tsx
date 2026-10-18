@@ -20,11 +20,6 @@ import { useAudience } from "../auth/audience";
 import { routePath } from "../auth/AuthGate";
 import { ONBOARDING_PATH, onboardingRedirect } from "./onboardingRoute";
 
-// オンボードのゲート（docs/design-docs/home.md「Onboarding」、research.md R-3・R-4）。
-// 所有者の段階を読み、`done` でない間はどの経路も `/welcome` へ置き換える。段階は `home` の
-// 知らせとつなぎ直しで読み直し、ほかの端末での変化に合わせる。この画面から書いた段階は
-// api/onboarding.ts の知らせで、知らせを待たずに当てる。
-
 type GateState = { status: "loading" } | { status: "ready"; step: OnboardingStep };
 
 const StepContext = createContext<OnboardingStep>("done");
@@ -42,12 +37,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const owner = useAudience() === "owner";
   const location = useLocation();
   const [state, setState] = useState<GateState>({ status: "loading" });
-  // checkedKey は、段階が done のまま `/welcome` を開いたときに読み直した遷移の鍵である。
-  // 設定の「Start setup」のように別の所から段階を書いてから来たときに、古い done で
-  // ホームへ戻さない。
+
   const [checkedKey, setCheckedKey] = useState<string | null>(null);
-  // sequence は最後に始めた読み込み（か書いた段階の反映）の通し番号である。古い応答で
-  // 新しい段階を戻さない。
+
   const sequence = useRef(0);
 
   const load = useCallback(async (signal: AbortSignal) => {
@@ -67,9 +59,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!owner) return;
     const controller = new AbortController();
-    // 知らせを先に購読してから読む。読んだ後の変化を取りこぼさない。
+
     const unsubscribeServer = subscribeServerEvents({
-      home: () => void load(controller.signal),
+      onboarding: () => void load(controller.signal),
       open: (reconnected) => {
         if (reconnected) void load(controller.signal);
       },

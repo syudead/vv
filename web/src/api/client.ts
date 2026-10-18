@@ -80,11 +80,6 @@ export type VideoVersionsRef = components["schemas"]["VideoVersionsRef"];
 export type VersionCandidate = components["schemas"]["VersionCandidate"];
 export type VersionCandidatePage = components["schemas"]["VersionCandidatePage"];
 export type LibraryGroup = components["schemas"]["LibraryGroup"];
-/**
- * LibraryGroupCard はグループのカードの値で、LibraryGroup から `videoIds`・`tags` を除いたものである。
- * ホームの棚の項目はこの形で届く（docs/design-docs/home.md）。
- */
-export type LibraryGroupCard = components["schemas"]["LibraryGroupCard"];
 export type TranscodingSettings = components["schemas"]["TranscodingSettings"];
 export type NetworkSettings = components["schemas"]["NetworkSettings"];
 export type PluginProxySettings = components["schemas"]["PluginProxySettings"];

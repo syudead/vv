@@ -6,8 +6,6 @@ import type { StepsPageStep } from "../ui/patterns/steps-page";
 import { Alert, AlertDescription } from "../ui/shadcn/alert";
 import { Button } from "../ui/shadcn/button";
 
-// オンボードの手順が共有する部品。帯の手順、段階の書き込み、下端の Skip と失敗の行。
-
 /** StepFrame は StepsPage の、手順の帯に渡す値である。 */
 export interface StepFrame {
   steps: readonly StepsPageStep[];

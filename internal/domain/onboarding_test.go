@@ -22,7 +22,6 @@ func TestOnboardingStepValid(t *testing.T) {
 	}
 }
 
-// 一覧の id は重ならず、名前と同義語はタグの名前の規則で整えた形のままである。
 func TestInterestCatalogNamesAreTagNames(t *testing.T) {
 	if len(InterestCatalog) != 24 {
 		t.Fatalf("catalog = %d interests, want 24", len(InterestCatalog))

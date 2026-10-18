@@ -210,20 +210,25 @@ func TestStreamEventsSendsOnlyGroupToGuests(t *testing.T) {
 	expectNoEvent(t, stream)
 }
 
-func TestStreamEventsSendsHomeToGuests(t *testing.T) {
+func TestOnboardingEventsAreOwnerOnly(t *testing.T) {
 	events := NewEvents()
-	handler := newTestServer(t, Options{
-		Scans: &lockedScans{current: domain.Scan{ID: 1}}, Events: events, Auth: guestEventsAuth{},
-	})
-	stream, _ := openEvents(t, handler)
-	expectNoEvent(t, stream)
-
-	events.Handle(domain.HomeChanged{})
-	event := nextEvent(t, stream)
-	if event.name != "home" || event.data != `{}` {
-		t.Fatalf("ゲストへのイベント = %+v, want home {}", event)
+	sub, unsubscribe := events.subscribe()
+	defer unsubscribe()
+	server := &server{}
+	for _, guest := range []bool{false, true} {
+		events.Handle(domain.OnboardingChanged{})
+		response := httptest.NewRecorder()
+		if err := server.writePendingEvents(context.Background(), response, sub, guest); err != nil {
+			t.Fatal(err)
+		}
+		want := "event: onboarding\ndata: {}\n\n"
+		if guest {
+			want = ""
+		}
+		if response.Body.String() != want {
+			t.Fatalf("guest %t: %q, want %q", guest, response.Body.String(), want)
+		}
 	}
-	expectNoEvent(t, stream)
 }
 func TestStreamEventsCoalescesPendingChanges(t *testing.T) {
 	events := NewEvents()

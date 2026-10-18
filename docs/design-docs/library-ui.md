@@ -483,8 +483,9 @@ avoid a double outline.
 
 Each sidebar item goes to its screen. `Home` opens `/`, which combines the
 searchable library list with inline smart-folder cards
-([Home shelves](home.md)). Smart-folder cards follow the list order and span two grid columns when
-space permits; their video thumbnails open playback directly. Every in-app library filter link (tag, person, organization) uses
+([Home library and setup](home.md)). Smart-folder cards follow the list order and use the same one-column stacked
+artwork as groups. A promoted cover opens playback; the resting card, title
+and More sheet open the collection. Every in-app library filter link (tag, person, organization) uses
 `/?<parameter>=<id>`. Old `/library` URLs redirect to `/` with their query and
 hash intact.
 
@@ -492,10 +493,10 @@ While the owner's onboarding step is not `done`, every route replaces itself
 with `/welcome`, the onboarding page outside the shell, and the owner's
 `/welcome` with the step `done` goes to `/`. Guests are never sent there. The
 gate ([`OnboardingGate.tsx`](../../web/src/onboarding/OnboardingGate.tsx))
-reads the step before it draws a route, reads it again on the `home` event so
+reads the step before it draws a route, reads it again on the owner-only `onboarding` event so
 a step changed on another device takes effect, and treats a step it cannot
 read as `done`, so a failed read never locks the owner out
-([Home shelves](home.md)).
+([Home library and setup](home.md)).
 
 ## Video page layout
 

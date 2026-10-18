@@ -4,25 +4,20 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// Onboarding はオンボードの段階と分野の選び方である。internal/app の *Onboarding が満たす
-// （docs/design-docs/home.md）。経路はどれも所有者だけで、accessRoutes に載せない。
 type Onboarding interface {
 	Step(ctx context.Context) (domain.OnboardingStep, error)
-	// SetStep は段階を書き、書いた段階を返す。段階は呼ぶ側が確かめる。
+
 	SetStep(ctx context.Context, step domain.OnboardingStep) (domain.OnboardingStep, error)
 	Interests(ctx context.Context) ([]domain.InterestStatus, error)
-	// PickInterests は分野をタグと棚にする。id が規則に合わなければ domain.ErrInvalidInterestPick、
-	// 棚が上限を超えるなら domain.ErrHomeShelvesFull。
+
 	PickInterests(ctx context.Context, ids []string) (domain.InterestPickResult, error)
 }
 
-// GetOnboarding はオンボードの段階を返す。
 func (s *server) GetOnboarding(w http.ResponseWriter, r *http.Request) {
 	if s.onboarding == nil {
 		s.internalError(w, "Onboarding is not configured.", nil)
@@ -37,7 +32,6 @@ func (s *server) GetOnboarding(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.Onboarding{Step: gen.OnboardingStep(step)}, s.logger)
 }
 
-// UpdateOnboarding は名前の段階を書く（research.md R-3）。
 func (s *server) UpdateOnboarding(w http.ResponseWriter, r *http.Request) {
 	if s.onboarding == nil {
 		s.internalError(w, "Onboarding is not configured.", nil)
@@ -62,7 +56,6 @@ func (s *server) UpdateOnboarding(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.Onboarding{Step: gen.OnboardingStep(step)}, s.logger)
 }
 
-// ListOnboardingInterests は分野の一覧を一覧の順に返す。
 func (s *server) ListOnboardingInterests(w http.ResponseWriter, r *http.Request) {
 	if s.onboarding == nil {
 		s.internalError(w, "Onboarding is not configured.", nil)
@@ -75,13 +68,12 @@ func (s *server) ListOnboardingInterests(w http.ResponseWriter, r *http.Request)
 	}
 	interests := make([]gen.Interest, len(statuses))
 	for i, status := range statuses {
-		interests[i] = gen.Interest{Id: status.ID, Name: status.Name, Synonym: status.Synonym, OnHome: status.OnHome}
+		interests[i] = gen.Interest{Id: status.ID, Name: status.Name, Synonym: status.Synonym, HasFolder: status.HasFolder}
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.InterestList{Interests: interests}, s.logger)
 }
 
-// PickOnboardingInterests は選んだ分野をタグと棚にする（research.md R-6）。
 func (s *server) PickOnboardingInterests(w http.ResponseWriter, r *http.Request) {
 	if s.onboarding == nil {
 		s.internalError(w, "Onboarding is not configured.", nil)
@@ -102,23 +94,14 @@ func (s *server) PickOnboardingInterests(w http.ResponseWriter, r *http.Request)
 	case errors.Is(err, domain.ErrInvalidInterestPick):
 		s.invalidRequest(w, "ids must name known interests, each once.")
 		return
-	case errors.Is(err, domain.ErrHomeShelvesFull):
-		s.writeError(w, http.StatusConflict, codeConflict,
-			"The home holds at most "+strconv.Itoa(domain.MaxHomeShelves)+" shelves.")
-		return
 	case err != nil:
 		s.internalError(w, "Could not add the interests.", err)
 		return
 	}
-	shelves := make([]gen.HomeShelf, len(result.Shelves))
-	for i, folder := range result.Shelves {
-		shelves[i] = toAPIFolderShelf(folder)
+	folders := make([]gen.SmartFolderSummary, len(result.Folders))
+	for i, folder := range result.Folders {
+		folders[i] = gen.SmartFolderSummary{Id: folder.ID, Name: folder.Name, ParentId: parentIDRef(folder.ParentID)}
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.InterestPickResult{Shelves: shelves, Queued: result.Queued}, s.logger)
-}
-
-// toAPIFolderShelf はフォルダの棚を所有者への応答の形にする。
-func toAPIFolderShelf(folder domain.SmartFolder) gen.HomeShelf {
-	return toAPIHomeShelf(domain.FolderShelf(folder))
+	writeJSON(w, http.StatusOK, gen.InterestPickResult{Folders: folders, Queued: result.Queued}, s.logger)
 }

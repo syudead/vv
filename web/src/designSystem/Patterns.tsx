@@ -13,7 +13,6 @@ import { GroupedListExample } from "./blocks/grouped-list-example";
 import { ListPageExample } from "./blocks/list-page-example";
 import { type ListState, ListStatesExample } from "./blocks/list-states-example";
 import { SettingsPageExample } from "./blocks/settings-page-example";
-import { ShelfRowExample } from "./blocks/shelf-row-example";
 import { StepsPageExample } from "./blocks/steps-page-example";
 
 const listStates: ListState[] = [
@@ -102,13 +101,6 @@ export default function Patterns() {
         items={["list-page", "grouped-list", "grouped-list-example"]}
       >
         <GroupedListExample />
-      </Pattern>
-      <Pattern
-        id="shelf-row"
-        name={p.names.shelfRow}
-        items={["list-page", "shelf-row", "loading-state", "shelf-row-example"]}
-      >
-        <ShelfRowExample />
       </Pattern>
       <Pattern
         id="card-list"

@@ -198,7 +198,8 @@ func markFolderIndexStale(ctx context.Context, q queryExecer) error {
 	return nil
 }
 
-func rebuildFolderIndexOnly(ctx context.Context, tx *sql.Tx) ([]int64, error) {
+// Rebuild from database locations only, atomically synchronizing folder groups; callers notify changed groups after commit.
+func rebuildFolderIndex(ctx context.Context, tx *sql.Tx) ([]int64, error) {
 	roots, err := listMediaFolders(ctx, tx)
 	if err != nil {
 		return nil, err

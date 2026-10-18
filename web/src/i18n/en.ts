@@ -561,7 +561,6 @@ export const en = {
         editorDialog: "Editor dialog",
         formPage: "Form page",
         groupedList: "Grouped list",
-        shelfRow: "Shelf rows",
         stepsPage: "Steps page",
         cardList: "Card list",
         listState: (state: string) => `List page: ${state}`,
@@ -724,12 +723,6 @@ export const en = {
       formPageCode: "Code",
       save: "Save",
       home: "Home",
-      shelves: "Shelves",
-      seeAll: "See all",
-      seeAllFor: (name: string) => `See all: ${name}`,
-      scrollBack: (name: string) => `Scroll ${name} back`,
-      scrollForward: (name: string) => `Scroll ${name} forward`,
-      loadingShelf: (name: string) => `Loading ${name}`,
       steps: "Setup steps",
       stepNames: { folders: "Folders", topics: "Topics", finish: "Finish" },
       stepOf: (current: number, total: number) =>
@@ -2770,29 +2763,27 @@ export const en = {
     interests: {
       title: "What do you watch?",
       description:
-        "Pick what your videos are about. Each becomes a shelf on your home that fills in as videos get these tags.",
+        "Pick what your videos are about. Each becomes a smart folder in your library that fills in as videos get these tags.",
       label: "Interests",
       loading: "Loading the interests",
       loadFailed: (reason: string) => `Couldn't load the interests: ${reason}`,
       autoTaggingOff:
-        "Auto-tagging is off, so these shelves fill in only as you tag videos. You can turn it on in Settings.",
-      onHome: "On your home",
-      // ホームにもうある分野の切り替えの読み上げ名。押せない理由を名前に含める。
-      onHomeLabel: (name: string) => `${name}, on your home`,
+        "Auto-tagging is off, so these smart folders fill in only as you tag videos. You can turn it on in Settings.",
+      hasFolder: "Already created",
+      hasFolderLabel: (name: string) => `${name}, already created`,
       scanning: (settled: number, total: number) =>
         `Scanning: ${formatNumber(settled)} of ${formatNumber(total)}`,
       scanProgress: "Scan progress",
       scanFinished: "Scan finished",
       scanFailed: "Scan failed. See Settings.",
       finish: "Finish",
-      pickFailed: (reason: string) => `Couldn't add the shelves: ${reason}`,
-      // 棚はできたが自動タグ付けへ動画を入れられなかったとき。棚の追加の失敗とは言わない。
+      pickFailed: (reason: string) => `Couldn't add the smart folders: ${reason}`,
       queueFailed: (reason: string) =>
-        `Added the shelves, but couldn't queue your videos for auto-tagging: ${reason}`,
+        `Added the smart folders, but couldn't queue your videos for auto-tagging: ${reason}`,
       added: (count: number) =>
         selectPlural(count, {
-          one: `Added ${formatNumber(count)} shelf to your home.`,
-          other: `Added ${formatNumber(count)} shelves to your home.`,
+          one: `Added ${formatNumber(count)} smart folder.`,
+          other: `Added ${formatNumber(count)} smart folders.`,
         }),
     },
   },
@@ -3333,9 +3324,8 @@ export const en = {
         failed: (reason: string) => `Couldn't delete the plugin: ${reason}`,
       },
     },
-    // 設定の「Home」の節（docs/design-docs/home.md「Words」の Settings の行）。
-    home: {
-      heading: "Home",
+    setup: {
+      heading: "Setup",
       setup: "Setup",
       setupDescription: "Add media folders, scan and pick interests again.",
       startSetup: "Start setup",

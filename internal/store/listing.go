@@ -152,45 +152,12 @@ func chosenLocationsCTEFor(scope locationScope, searchAudience domain.Audience, 
 }
 
 func chosenLocationsSelect(scope locationScope, searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
-	from, args := chosenLocationsFrom(scope, searchAudience, exprs)
-	return `select l.video_id, min(l.path) as path ` + from + `
-		group by l.video_id`, args
-}
-
-// chosenLocationsFrom は chosenLocationsSelect の所在の候補（別名 l、動画は sv）を選ぶ from 句と
-// where 句とその引数を返す。呼び出し側は ` and ` に続けて条件を足せる。
-func chosenLocationsFrom(scope locationScope, searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
 	scopeClause, args := scope.condition("l")
 	clauses := []string{scopeClause, `(sbm.bundle_id is null or sv.id = ` +
 		effectiveRepresentativeExpr("sbm.bundle_id", scope.audience) + `)`}
-	if search, searchArgs := searchLocationCondition(searchAudience, exprs); search != "" {
-		clauses = append(clauses, search)
-		args = append(args, searchArgs...)
-	}
-	return `from video_locations l
-		join videos sv on sv.id = l.video_id
-		left join video_bundle_members sbm on sbm.content_key = sv.content_key and sv.content_key <> ''
-		where ` + strings.Join(clauses, " and "), args
-}
-func searchLocationCondition(searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
-	search := searchClausesFor(searchAudience, exprs)
-	if search.location == "" {
-		return "", nil
-	}
-	return `((sbm.bundle_id is null and ` + search.location + `) or (sbm.bundle_id is not null and ` + search.bundleExists() + `))`,
-		append(append([]any{}, search.locationArgs...), search.bundleArgs...)
-}
-
-type searchClauses struct {
-	location     string
-	locationArgs []any
-	bundle       string
-	bundleArgs   []any
-}
-
-func searchClausesFor(searchAudience domain.Audience, exprs []domain.SearchExpr) searchClauses {
+	// All expressions must match the same location row, including inside a bundle.
 	var exprClauses, bundleClauses []string
-	var search searchClauses
+	var exprArgs, bundleArgs []any
 	for _, expr := range exprs {
 		exprClause, eArgs := searchExprCondition(expr, "l", searchAudience)
 		if exprClause == "" {
@@ -198,23 +165,22 @@ func searchClausesFor(searchAudience domain.Audience, exprs []domain.SearchExpr)
 		}
 		bundleClause, bArgs := searchExprCondition(expr, "bl", searchAudience)
 		exprClauses, bundleClauses = append(exprClauses, exprClause), append(bundleClauses, bundleClause)
-		search.locationArgs, search.bundleArgs = append(search.locationArgs, eArgs...), append(search.bundleArgs, bArgs...)
+		exprArgs, bundleArgs = append(exprArgs, eArgs...), append(bundleArgs, bArgs...)
 	}
-	if len(exprClauses) == 0 {
-		return searchClauses{}
-	}
-	search.location, search.bundle = strings.Join(exprClauses, " and "), strings.Join(bundleClauses, " and ")
-	return search
-}
-
-// bundleExists は、集まりの行 sbm の集まりのどれかの動画が、登録の所在 bl で検索式のすべてに当たる
-// exists 句である。引数は bundleArgs である。
-func (s searchClauses) bundleExists() string {
-	return `exists (
+	if len(exprClauses) > 0 {
+		clauses = append(clauses, `((sbm.bundle_id is null and `+strings.Join(exprClauses, " and ")+`) or (sbm.bundle_id is not null and exists (
 			select 1 from video_bundle_members bm
 			join videos bv on bv.content_key = bm.content_key and bv.content_key <> ''
 			join video_locations bl on bl.video_id = bv.id
-			where bm.bundle_id = sbm.bundle_id and ` + registeredLocationCondition("bl") + ` and ` + s.bundle + `)`
+			where bm.bundle_id = sbm.bundle_id and `+registeredLocationCondition("bl")+` and `+strings.Join(bundleClauses, " and ")+`)))`)
+		args = append(args, exprArgs...)
+		args = append(args, bundleArgs...)
+	}
+	return `select l.video_id, min(l.path) as path from video_locations l
+		join videos sv on sv.id = l.video_id
+		left join video_bundle_members sbm on sbm.content_key = sv.content_key and sv.content_key <> ''
+		where ` + strings.Join(clauses, " and ") + `
+		group by l.video_id`, args
 }
 
 // Keep watch-state filtering equivalent to domain.ClassifyWatch.

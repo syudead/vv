@@ -48,7 +48,6 @@ func newLibraryFixtureWith(t *testing.T, adjust func(Options) Options) *libraryF
 			Playback: db.Playback(), Tags: db.Tags(), Visibility: db.Visibility(),
 			Favorites: db.Favorites(), Versions: db.Versions(), Playlists: db.Playlists(), Groups: db.Groups(),
 			SmartFolders:     db.SmartFolders(),
-			Home:             db.Home(),
 			PlaylistPlayback: db.Playlists(),
 			Organizer:        app.NewOrganizer(app.OrganizerOptions{Store: db.Organize()}),
 		})
@@ -139,8 +138,6 @@ func libraryItemNames(page gen.LibraryPage) []string {
 		switch item.Kind {
 		case gen.LibraryItemKindGroup:
 			names = append(names, "group:"+item.Group.Name)
-		case gen.LibraryItemKindSmartFolder:
-			names = append(names, "folder:"+item.SmartFolder.Name)
 		default:
 			names = append(names, item.Video.Title)
 		}

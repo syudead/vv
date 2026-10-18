@@ -812,60 +812,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/home": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * ホームの棚の要約を返す
-         * @description Lists only saved smart-folder shelves in their chosen order. Read items with
-         *     `listHomeShelfItems`. Guests do not see empty shelves. When no library
-         *     videos are visible, `empty` is `noVideos`.
-         */
-        get: operations["getHome"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/home/shelves": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * 画面に入った棚の最初の項目を返す
-         * @description Returns the first 24 video or group items for each smart-folder shelf,
-         *     in the requested order. Rules include ancestor filters and the folder sort.
-         *     Child folders are excluded. Missing shelves and shelves empty for guests
-         *     are omitted, and duplicate keys appear once. Missing keys, more than eight
-         *     keys or invalid keys return 400 `invalid_request`.
-         */
-        get: operations["listHomeShelfItems"];
-        /**
-         * どのスマートフォルダを棚にするかとその並びを書く
-         * @description 所有者だけ。`folderIds` のフォルダを上から順にホームの棚にし、位置を 1, 2, 3… と振り直す。
-         *     外したフォルダと、足したか動かしたフォルダは所有者のもの（owner_kept 1）にする
-         *     （docs/design-docs/home.md）。並びが変われば画面の知らせ `home` を出す。51 件以上か同じ id が
-         *     2 度あれば 400 `invalid_request`、どのフォルダでもない id があれば 404 `not_found` で、どれも何も
-         *     書かない。
-         */
-        put: operations["setHomeShelves"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/onboarding": {
         parameters: {
             query?: never;
@@ -882,7 +828,7 @@ export interface paths {
         /**
          * オンボードの段階を書く
          * @description 名前の段階をそのまま書くので、2 つの端末からの書き込みは後のものが残る。段階が変わったら
-         *     画面の知らせ `home` を出す（docs/design-docs/home.md）。
+         *     画面の知らせ `onboarding` を出す（docs/design-docs/home.md）。
          */
         put: operations["updateOnboarding"];
         post?: never;
@@ -901,17 +847,16 @@ export interface paths {
         };
         /**
          * 分野の一覧を返す
-         * @description 一覧の順に、それぞれの分野のタグの条件の棚がもうホームにあるか（`onHome`）を添える
+         * @description Lists interests with `hasFolder` indicating an existing root smart folder matching the tag rule.
          *     （docs/design-docs/home.md）。
          */
         get: operations["listOnboardingInterests"];
         put?: never;
         /**
-         * 選んだ分野をタグと棚にする
-         * @description 1 つの取引で、分野ごとにタグを名前か同義語で探すか同義語付きで作り、種類の無いタグに `Genre` を
-         *     付け、そのタグの条件の所有者の棚をホームの後ろに作る。棚がもうある分野は棚を足さない。確定後、
-         *     自動タグ付けが入なら「Tag all videos again」と同じくすべての動画を判定に回し、その件数を
-         *     `queued` で返す（docs/design-docs/home.md）。
+         * Create tags and smart folders for selected interests
+         * @description Creates or reuses interest tags and ordinary root smart folders in one transaction.
+         *     Existing root folders with the same tag rule are reused. Untyped tags receive Genre.
+         *     When auto-tagging is enabled, queues the library and returns its count as `queued`.
          */
         post: operations["pickOnboardingInterests"];
         delete?: never;
@@ -2789,7 +2734,7 @@ export interface paths {
         };
         /**
          * Stream import and video changes through Server-Sent Events
-         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). home carries an empty object when shelves or onboarding change; refetch GET /api/home. candidates and activity carry empty objects after committed changes; refetch their lists/counts. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/home events. Guests receive only group, smartFolder and home; scan, video, candidates and activity are owner-only.
+         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding events. Guests receive only group and smartFolder; scan, video, onboarding, candidates and activity are owner-only.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -3406,8 +3351,8 @@ export interface components {
             name: string;
             /** @description タグの同義語（日本語） */
             synonym: string;
-            /** @description この分野のタグの条件の棚がもうホームにある */
-            onHome: boolean;
+            /** @description An ordinary root smart folder already matches this interest tag. */
+            hasFolder: boolean;
         };
         InterestList: {
             interests: components["schemas"]["Interest"][];
@@ -3416,61 +3361,10 @@ export interface components {
             ids: string[];
         };
         InterestPickResult: {
-            /** @description 足した棚。棚がもうホームにあった分野の分は含まない */
-            shelves: components["schemas"]["HomeShelf"][];
+            /** @description New smart folders; excludes interests whose matching root folder already existed. */
+            folders: components["schemas"]["SmartFolderSummary"][];
             /** @description 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0 */
             queued: number;
-        };
-        /** @description Smart-folder shelf key: `folder:<positive id>` */
-        HomeShelfKey: string;
-        /** @description ホームの棚 1 つ（docs/design-docs/home.md） */
-        HomeShelf: {
-            key: components["schemas"]["HomeShelfKey"];
-            /** @description Smart-folder name. */
-            name: string;
-            /**
-             * Format: int64
-             * @description Smart-folder ID.
-             */
-            folderId: number;
-        };
-        /** @description GET /api/home の応答 */
-        Home: {
-            /** @description Smart-folder shelves in the saved order. */
-            shelves: components["schemas"]["HomeShelf"][];
-            /**
-             * @description 見る人にライブラリの動画が 1 本も見えないときだけ入る
-             * @enum {string}
-             */
-            empty?: "noVideos";
-        };
-        /** @description 棚 1 つの最初の項目 */
-        HomeShelfItems: {
-            key: components["schemas"]["HomeShelfKey"];
-            /** @description 動画とグループの項目だけ。フォルダの棚の子フォルダは入れない */
-            items: components["schemas"]["HomeShelfItem"][];
-            /** @description 棚の項目（動画とグループ）の数を、items の上限 + 1（25）を上限に数えたもの。25 なら 1 ページより多い。0 なら画面は棚を出さない */
-            total: number;
-        };
-        /**
-         * @description 棚の項目 1 件。`kind` に応じて `video`・`group` のちょうど 1 つが入る。グループはカードに要る値だけの
-         *     LibraryGroupCard で、ライブラリの LibraryGroup が持つ `videoIds`・`tags` は載せない
-         *     （docs/design-docs/home.md）
-         */
-        HomeShelfItem: {
-            /** @enum {string} */
-            kind: "video" | "group";
-            video?: components["schemas"]["Video"];
-            group?: components["schemas"]["LibraryGroupCard"];
-        };
-        /** @description GET /api/home/shelves の応答 */
-        HomeShelfItemsList: {
-            shelves: components["schemas"]["HomeShelfItems"][];
-        };
-        /** @description PUT /api/home/shelves の本文 */
-        HomeShelfOrder: {
-            /** @description 棚にするフォルダの id を上から順に */
-            folderIds: number[];
         };
         AutoTaggingQueued: {
             /** @description Number of queued videos. */
@@ -4057,10 +3951,8 @@ export interface components {
             group?: components["schemas"]["LibraryGroup"];
             smartFolder?: components["schemas"]["SmartFolderSummary"];
         };
-        /** @description Group card values for Home shelf items, without member IDs or tags. */
-        LibraryGroupCard: components["schemas"]["LibraryGroupCardValues"];
-        /** @description Values aggregate visible descendants in playback order, depth-first and deduplicated. Guest responses omit watchedCount, watchState, lastPlayedAt and favorite. Composing schemas close unevaluatedProperties so LibraryGroup can add videoIds and tags. */
-        LibraryGroupCardValues: {
+        /** @description Group values aggregate visible descendant videos in playback order: depth-first through subgroups, deduplicating by first occurrence. Address groups by id; guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags. */
+        LibraryGroup: {
             /**
              * Format: int64
              * @description Group ID
@@ -4102,17 +3994,15 @@ export interface components {
             previews: components["schemas"]["FolderPreview"][];
             /**
              * Format: int64
-             * @description First in-progress member, otherwise first incomplete member, otherwise the first member.
+             * @description Member opened on click: first in-progress member, otherwise first incomplete member, otherwise the first member.
              */
             openVideoId: number;
-            /** @description Whether the owner favorited the group, independently of member favorites; owner-only. */
-            favorite?: boolean;
-        };
-        LibraryGroup: components["schemas"]["LibraryGroupCardValues"] & {
-            /** @description All member IDs in playback order. */
+            /** @description All member IDs in order. */
             videoIds: number[];
             /** @description Union of member tags, combining provenance for each tag. */
             tags: components["schemas"]["VideoTag"][];
+            /** @description Whether the owner favorited the group, independent of member favorites; owner responses only. */
+            favorite?: boolean;
         };
         /** @description Videos and groups to append: videos first, then groups, preserving request order within each kind. */
         GroupMembers: {
@@ -4434,8 +4324,6 @@ export interface components {
             items: components["schemas"]["SmartFolderItem"][];
             /** @description Included only when more results remain; pass to listSmartFolderItems. */
             nextCursor?: string;
-            /** @description Whether this folder is a Home shelf; owner responses only. */
-            onHome?: boolean;
         };
         /** @description GET /api/smart-folders/{id}/items response. */
         SmartFolderItemPage: {
@@ -6928,75 +6816,6 @@ export interface operations {
             };
         };
     };
-    getHome: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description ホームの要約 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Home"];
-                };
-            };
-        };
-    };
-    listHomeShelfItems: {
-        parameters: {
-            query: {
-                /** @description 棚の鍵（`HomeShelfKey`）を `,` で区切って並べたもの（1〜8 件） */
-                keys: components["schemas"]["HomeShelfKey"][];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 棚の項目 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HomeShelfItemsList"];
-                };
-            };
-            400: components["responses"]["InvalidRequest"];
-        };
-    };
-    setHomeShelves: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["HomeShelfOrder"];
-            };
-        };
-        responses: {
-            /** @description 書いた */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: components["responses"]["InvalidRequest"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-        };
-    };
     getOnboarding: {
         parameters: {
             query?: never;
@@ -7076,7 +6895,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 足した棚と、判定に回した動画の件数 */
+            /** @description Created smart folders and the number of queued videos */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7087,15 +6906,6 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
-            /** @description 棚を足すとホームが 50 を超える（conflict） */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
         };
     };
     getPluginProxySettings: {
