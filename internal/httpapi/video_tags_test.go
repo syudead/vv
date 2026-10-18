@@ -206,19 +206,30 @@ func TestUpdateVideoTagsAppliesToSmartFolderMembers(t *testing.T) {
 
 // The limit applies to distinct videos after resolution, not to the request's array lengths.
 func TestUpdateVideoTagsLimitCountsSmartFolderMembers(t *testing.T) {
-	members := make([]int64, maxVideoTagsIDs)
-	for i := range members {
-		members[i] = int64(i + 2)
+	full := make([]int64, maxVideoTagsIDs)
+	for i := range full {
+		full[i] = int64(i + 2)
 	}
-	tags := &fakeTags{}
-	handler := newTestServer(t, Options{Tags: tags, SmartFolders: &memberFolders{members: members}})
+	for _, tc := range []struct {
+		name    string
+		members []int64
+		body    string
+	}{
+		{"解決後 20001件", full, `{"videoIds":[1],"smartFolderIds":[7],"action":"add","tag":{"id":2}}`},
+		{"解決後 0件", nil, `{"videoIds":[],"smartFolderIds":[7],"action":"add","tag":{"name":"新しいタグ"}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tags := &fakeTags{}
+			handler := newTestServer(t, Options{Tags: tags, SmartFolders: &memberFolders{members: tc.members}})
 
-	rec := postJSON(t, handler, "/api/video-tags", `{"videoIds":[1],"smartFolderIds":[7],"action":"add","tag":{"id":2}}`)
-	assertErrorBody(t, "解決後 20001件", rec.Code, rec.Body.Bytes(), wantError{
-		status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyVideos, limit: maxVideoTagsIDs,
-	})
-	if tags.operation != "" {
-		t.Errorf("over-limit request reached the store: %q", tags.operation)
+			rec := postJSON(t, handler, "/api/video-tags", tc.body)
+			assertErrorBody(t, tc.name, rec.Code, rec.Body.Bytes(), wantError{
+				status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyVideos, limit: maxVideoTagsIDs,
+			})
+			if tags.operation != "" {
+				t.Errorf("request without a valid target reached the store: %q", tags.operation)
+			}
+		})
 	}
 }
 

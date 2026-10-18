@@ -138,7 +138,8 @@ func (s *server) resolveVideoTargets(w http.ResponseWriter, r *http.Request, vid
 			resolved = append(resolved, id)
 		}
 	}
-	if len(resolved) > maxVideoTagsIDs {
+	// Folders that resolve to nothing leave no target, which would otherwise create an unused tag by name.
+	if len(resolved) < 1 || len(resolved) > maxVideoTagsIDs {
 		s.tooManyVideos(w)
 		return nil, false
 	}
