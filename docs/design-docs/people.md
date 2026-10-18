@@ -77,3 +77,22 @@ source's value or stays empty, so a merge always stores a valid profile.
 | Keep only the target's profile | The duplicate's profile would be lost |
 | Reject the merge with `400` | A merge cannot be fixed by editing its request, only by editing the people first |
 | Let the owner choose per field | The merge stays one step |
+
+## Favorites join the shared favorites
+
+A favorite person is a row in `person_favorites`, set and cleared through
+`personIds` on `PUT /api/favorites` together with videos, groups and smart
+folders. The IDs count toward the same 1–20,000 limit, missing people are
+ignored, and setting a favorite again keeps its time. `Person.favorite` is
+always present, and `GET /api/people?favorite=true` keeps only favorites, with
+`total` counting them; an organization list answers `favorite` with
+`400 invalid_request`. No smart rule reads a person favorite, so setting one
+queues no smart-folder refresh.
+
+A merge makes the target a favorite when any source is one, so merging a
+duplicate never drops the mark. Deleting a person deletes its row.
+
+| Rejected | Why |
+| --- | --- |
+| A `favorite` column on `people` | Every other favorite is a table of its own with its time, and the shared endpoint already sets several kinds atomically |
+| `PUT /api/people/{id}/favorite` | A second way to set favorites beside the shared endpoint |

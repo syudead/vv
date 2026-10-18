@@ -47,7 +47,12 @@ func (s *CreditStore) List(ctx context.Context, kind domain.CreditKind, query do
 	if err := tx.QueryRowContext(ctx, t.q(`select count(*) from {entity}`)).Scan(&page.TotalAll); err != nil {
 		return domain.CreditPage{}, fmt.Errorf("cannot count %s entities: %w", kind, err)
 	}
-	listed, listedArgs := listedCreditsCTE(t, strings.TrimSpace(domain.FoldForMatch(query.Q)), 0)
+	if query.FavoriteOnly && t.kind != domain.CreditPerson {
+		return domain.CreditPage{}, fmt.Errorf("the favorite filter applies to people only, not %s", kind)
+	}
+	listed, listedArgs := listedCreditsCTE(t, creditFilter{
+		search: strings.TrimSpace(domain.FoldForMatch(query.Q)), favoriteOnly: query.FavoriteOnly,
+	})
 	statement, args := order.pageStatement(listed, listedArgs, creditListedColumns, cursorClause, cursorArgs, limit)
 	items, keys, total, err := readListedCredits(ctx, tx, t, statement, args)
 	if err != nil {
@@ -81,7 +86,7 @@ func creditByID(ctx context.Context, tx *sql.Tx, t creditTables, id int64) (doma
 	if id <= 0 {
 		return domain.Credit{}, domain.ErrNotFound
 	}
-	listed, args := listedCreditsCTE(t, "", id)
+	listed, args := listedCreditsCTE(t, creditFilter{onlyID: id})
 	items, _, _, err := readListedCredits(ctx, tx, t,
 		listed+` select `+creditListedColumns+`, 1 from listed`, args)
 	if err != nil {
@@ -98,21 +103,31 @@ func creditByID(ctx context.Context, tx *sql.Tx, t creditTables, id int64) (doma
 
 const creditListedColumns = `id, name, created_at, sort_key, video_count, parent_id`
 
+// creditFilter narrows the listed relation; a zero onlyID means every entity.
+type creditFilter struct {
+	search       string
+	onlyID       int64
+	favoriteOnly bool
+}
+
 // Count visible representatives by user-data key so each bundle contributes one video.
-func listedCreditsCTE(t creditTables, search string, onlyID int64) (string, []any) {
+func listedCreditsCTE(t creditTables, filter creditFilter) (string, []any) {
 	var countFilter, where string
 	var countArgs, whereArgs []any
 	var conditions []string
-	if onlyID > 0 {
+	if filter.onlyID > 0 {
 		countFilter = ` and l.{id} = ?`
-		countArgs = []any{onlyID}
+		countArgs = []any{filter.onlyID}
 		conditions = append(conditions, `e.id = ?`)
-		whereArgs = append(whereArgs, onlyID)
+		whereArgs = append(whereArgs, filter.onlyID)
 	}
-	if search != "" {
+	if filter.search != "" {
 		conditions = append(conditions,
 			`exists (select 1 from {names} sn where sn.{id} = e.id and instr(sn.search_key, ?) > 0)`)
-		whereArgs = append(whereArgs, search)
+		whereArgs = append(whereArgs, filter.search)
+	}
+	if filter.favoriteOnly {
+		conditions = append(conditions, `exists (select 1 from person_favorites pf where pf.person_id = e.id)`)
 	}
 	if len(conditions) > 0 {
 		where = ` where ` + strings.Join(conditions, ` and `)

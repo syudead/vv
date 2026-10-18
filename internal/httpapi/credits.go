@@ -118,10 +118,20 @@ func (s *server) MergeOrganizations(w http.ResponseWriter, r *http.Request, id g
 func (s *server) listCredits(w http.ResponseWriter, r *http.Request, api creditKindAPI, params gen.ListPeopleParams) {
 	sort := sortParam(params.Sort)
 	tagQuery, problem := buildTagListQuery(params.Q, nil, nil, sort, params.Cursor, params.Limit)
-	if !s.acceptTagListQuery(w, problem) || !s.creditsConfigured(w) {
+	if !s.acceptTagListQuery(w, problem) {
 		return
 	}
-	query := domain.CreditQuery{Q: tagQuery.Search, Sort: tagQuery.Sort, Cursor: tagQuery.Cursor, Limit: tagQuery.Limit}
+	if params.Favorite != nil && api.kind != domain.CreditPerson {
+		s.invalidRequest(w, "favorite applies to people only.")
+		return
+	}
+	if !s.creditsConfigured(w) {
+		return
+	}
+	query := domain.CreditQuery{
+		Q: tagQuery.Search, Sort: tagQuery.Sort, Cursor: tagQuery.Cursor, Limit: tagQuery.Limit,
+		FavoriteOnly: params.Favorite != nil && *params.Favorite,
+	}
 	page, err := s.credits.List(r.Context(), api.kind, query)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
@@ -379,7 +389,7 @@ func toAPIPerson(credit domain.Credit) gen.Person {
 	return gen.Person{
 		Id: credit.ID, Name: credit.Name, Aliases: toAPIAliases(credit.Aliases),
 		ExternalIds: toAPIExternalIDs(credit.ExternalIDs), Profile: toAPIProfile(credit.Profile),
-		VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,
+		Favorite: credit.Favorite, VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,
 	}
 }
 

@@ -436,6 +436,13 @@ func mergeCreditsInto(ctx context.Context, tx *sql.Tx, t creditTables, targetID 
 		if err := fillMergedPersonProfile(ctx, tx, targetID, sourceIDs); err != nil {
 			return err
 		}
+		// A target that is not yet a favorite takes the earliest source favorite time; the sources' rows cascade below.
+		if _, err := tx.ExecContext(ctx, `insert or ignore into person_favorites (person_id, favorited_at)
+			select ?1, min(favorited_at) from person_favorites
+			 where person_id in (select value from json_each(?2)) having count(*) > 0`,
+			targetID, string(encoded)); err != nil {
+			return fmt.Errorf("cannot keep the favorite of person %d: %w", targetID, err)
+		}
 	}
 	affected, err := creditLinkLists(ctx, tx, t, sourceIDs)
 	if err != nil {
