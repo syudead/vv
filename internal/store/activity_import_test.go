@@ -10,10 +10,19 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
+// importEntries reads every import entry newest first; the list shows them only inside their pipelines.
 func importEntries(t *testing.T, db *DB) []domain.ActivityEntry {
 	t.Helper()
-	page := listActivity(t, db, domain.ActivityQuery{Features: []domain.ActivityFeature{domain.ActivityFeatureImport}}, "", 50)
-	return page.Items
+	ids, err := collectActivityIDs(db.sql.Query(`select id from activity_entries where kind = ? order by id desc`,
+		string(domain.ActivityImport)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries := make([]domain.ActivityEntry, 0, len(ids))
+	for _, id := range ids {
+		entries = append(entries, activityEntry(t, db, id))
+	}
+	return entries
 }
 
 func scanEntries(t *testing.T, db *DB) []domain.ActivityEntry {

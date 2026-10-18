@@ -13,7 +13,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-func (e *activityEnv) listActivityItems(t *testing.T, query string) []gen.ActivityEntry {
+func (e *activityEnv) listActivityItems(t *testing.T, query string) []gen.ActivityListItem {
 	t.Helper()
 	rec := e.serve(http.MethodGet, "/api/activity?"+query, "")
 	if rec.Code != http.StatusOK {
@@ -58,31 +58,42 @@ func (e *activityEnv) failImport(t *testing.T, name string) {
 func TestRetryFailedImportStartsANewRunningEntry(t *testing.T) {
 	e := newActivityEnv(t)
 	e.failImport(t, "broken")
-	items := e.listActivityItems(t, "feature=import")
-	if len(items) != 1 || items[0].Status != gen.ActivityStatusAttention || !items[0].RetryRun {
-		t.Fatalf("items = %+v, want one failed import offering retry", items)
+	members := e.onlyPipelineMembers(t)
+	if len(members) != 1 || members[0].Status != gen.ActivityStatusAttention || !members[0].RetryRun {
+		t.Fatalf("members = %+v, want one failed import offering retry", members)
 	}
-	failed := items[0].Id
+	failed := members[0].Id
 
 	rec := e.serve(http.MethodPost, "/api/activity/"+itoa(failed)+"/retry", "")
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("retry = %d: %s", rec.Code, rec.Body)
 	}
-	items = e.listActivityItems(t, "feature=import")
-	if len(items) != 2 {
-		t.Fatalf("items = %d, want 2", len(items))
+	members = e.onlyPipelineMembers(t)
+	if len(members) != 2 {
+		t.Fatalf("members = %d, want 2", len(members))
 	}
-	if items[0].Status != gen.ActivityStatusRunning || items[0].Decider != gen.ActivityDeciderOwner {
-		t.Errorf("new entry = %+v, want running by owner", items[0])
+	if members[0].Id != failed || members[0].Outcome == nil || *members[0].Outcome != gen.ActivityOutcomeSuperseded ||
+		!members[0].Replaced {
+		t.Errorf("failed member = %+v, want superseded and replaced", members[0])
 	}
-	if items[1].Id != failed || items[1].Outcome == nil || *items[1].Outcome != gen.ActivityOutcomeSuperseded {
-		t.Errorf("failed entry = %+v, want superseded", items[1])
+	if members[1].Status != gen.ActivityStatusRunning || members[1].Decider != gen.ActivityDeciderOwner {
+		t.Errorf("new member = %+v, want running by owner", members[1])
 	}
 
 	rec = e.serve(http.MethodPost, "/api/activity/"+itoa(failed)+"/retry", "")
 	assertErrorBody(t, "retry again", rec.Code, rec.Body.Bytes(), wantError{
 		status: http.StatusConflict, code: gen.ErrorCodeActivityNotRetryable,
 	})
+}
+
+// onlyPipelineMembers lists the import feature and returns the members of its only entry, a pipeline.
+func (e *activityEnv) onlyPipelineMembers(t *testing.T) []gen.ActivityMemberSummary {
+	t.Helper()
+	items := e.listActivityItems(t, "feature=import")
+	if len(items) != 1 || items[0].Kind != gen.ActivityKindPipeline || items[0].Members == nil {
+		t.Fatalf("items = %+v, want one pipeline", items)
+	}
+	return *items[0].Members
 }
 
 func (e *activityEnv) recordFailedScan(t *testing.T) int64 {

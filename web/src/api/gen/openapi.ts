@@ -2169,9 +2169,29 @@ export interface paths {
         };
         /**
          * List activity records, newest first
-         * @description Owner-only. Returns import, auto-tagging, duplicate judgement, work-info fetch, failed scan and owner tag/bundle actions in descending ID order. Filters are ANDed before pagination. counts applies every filter except status; features applies every filter except feature. Unknown status/feature/decider, unreadable cursor/since or out-of-range q/limit returns 400 invalid_request (invalid_cursor reason for unreadable cursors).
+         * @description Owner-only. Returns top-level records in descending ID order: import pipelines and records that belong to no pipeline. A pipeline's members are not listed on their own; they appear in its members, and a member of two pipelines appears under both. Filters are ANDed before pagination. status matches the top-level record's own status; feature, decider, since and q match a pipeline when the pipeline or any one of its members satisfies all of them. counts applies every filter except status; features applies every filter except feature and counts a pipeline once under each feature that it or a matching member has. Unknown status/feature/decider, unreadable cursor/since or out-of-range q/limit returns 400 invalid_request (invalid_cursor reason for unreadable cursors).
          */
         get: operations["listActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/activity/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read one activity record with its details
+         * @description Owner-only. Returns a record of any kind with what the list leaves out: a pipeline's members, a member's pipelines and an import's stage rows. Missing record returns 404 not_found.
+         */
+        get: operations["getActivity"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2191,7 +2211,7 @@ export interface paths {
         put?: never;
         /**
          * Retry an activity operation
-         * @description Owner-only. Starts a retry with 202, creating a new record and closing this one; version_judgement instead keeps its record and returns to running. import requeues failed stages; scan starts a manual scan of all folders. Missing record returns 404 not_found; unavailable retry or missing subject returns 409 activity_not_retryable; active scans return scan_in_progress; disabled auto-tagging returns auto_tagging_off.
+         * @description Owner-only. Starts a retry with 202, creating a new record and closing this one; version_judgement instead keeps its record and returns to running. import requeues failed stages; scan starts a manual scan of all folders. Missing record returns 404 not_found; unavailable retry, a pipeline record or missing subject returns 409 activity_not_retryable; active scans return scan_in_progress; disabled auto-tagging returns auto_tagging_off.
          */
         post: operations["retryActivity"];
         delete?: never;
@@ -2211,7 +2231,7 @@ export interface paths {
         put?: never;
         /**
          * Undo an automatic decision
-         * @description Owner-only. Reverts the decision and returns an owner undo record. If the owner already changed state, outcome is already_reverted. Missing activity or a tag not assigned by its auto_tag action returns 404 not_found. Unsupported, already-undone records/tags return 409 activity_not_undoable.
+         * @description Owner-only. Reverts the decision and returns an owner undo record. If the owner already changed state, outcome is already_reverted. Missing activity or a tag not assigned by its auto_tag action returns 404 not_found. Unsupported (including pipeline records), already-undone records/tags return 409 activity_not_undoable.
          */
         post: operations["undoActivity"];
         delete?: never;
@@ -4969,7 +4989,7 @@ export interface components {
          * @description Activity record kind.
          * @enum {string}
          */
-        ActivityKind: "import" | "scan" | "auto_tag" | "version_judgement" | "work_info_fetch" | "bundle" | "unbundle" | "make_representative" | "dismiss" | "tag_attach" | "tag_detach" | "tag_keep" | "tag_reject" | "work_info_apply" | "media_folder_remove" | "organize_undo" | "undo";
+        ActivityKind: "import" | "scan" | "auto_tag" | "version_judgement" | "work_info_fetch" | "bundle" | "unbundle" | "make_representative" | "dismiss" | "tag_attach" | "tag_detach" | "tag_keep" | "tag_reject" | "work_info_apply" | "media_folder_remove" | "organize_undo" | "pipeline" | "undo";
         /**
          * @description Kind grouping used for feature filters; undo belongs to the feature of the undone record.
          * @enum {string}
@@ -5001,19 +5021,19 @@ export interface components {
          */
         ActivityStage: "probe" | "thumbnail" | "seek_thumbnail" | "preview" | "fingerprint";
         ActivityPage: {
-            items: components["schemas"]["ActivityEntry"][];
+            items: components["schemas"]["ActivityListItem"][];
             /** @description Included only when more results remain. */
             nextCursor?: string;
             counts: components["schemas"]["ActivityCounts"];
             features: components["schemas"]["ActivityFeatureCounts"];
         };
-        /** @description Counts by status for records matching every filter except status. */
+        /** @description Counts by status for top-level records matching every filter except status. */
         ActivityCounts: {
             running: number;
             attention: number;
             done: number;
         };
-        /** @description Counts for all features among records matching every filter except feature. */
+        /** @description Counts for all features among top-level records matching every filter except feature; a pipeline counts once under each feature that it or a matching member has. */
         ActivityFeatureCounts: {
             import: number;
             scan: number;
@@ -5061,10 +5081,82 @@ export interface components {
             undoable: boolean;
             /** @description Undone by the owner. */
             undone: boolean;
+            /** @description Set only on a pipeline's members in ActivityDetail: a retried or reopened member kept for history. */
+            replaced?: boolean;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        /** @description One top-level record of the list. */
+        ActivityListItem: components["schemas"]["ActivityEntry"] & {
+            /** @description Pipeline only: member summaries in join order, replaced members included. */
+            members?: components["schemas"]["ActivityMemberSummary"][];
+        };
+        /** @description A pipeline member as the list shows it, without detail and tags. */
+        ActivityMemberSummary: {
+            /** Format: int64 */
+            id: number;
+            kind: components["schemas"]["ActivityKind"];
+            feature: components["schemas"]["ActivityFeature"];
+            subject: components["schemas"]["ActivitySubject"];
+            status: components["schemas"]["ActivityStatus"];
+            reason?: components["schemas"]["ActivityReason"];
+            outcome?: components["schemas"]["ActivityOutcome"];
+            decider: components["schemas"]["ActivityDecider"];
+            /** Format: double */
+            probability?: number;
+            stage?: components["schemas"]["ActivityStage"];
+            progress?: components["schemas"]["ActivityProgress"];
+            /** Format: date-time */
+            retryAt?: string;
+            retryRun: boolean;
+            undoable: boolean;
+            undone: boolean;
+            /** @description A retried or reopened member kept for history. */
+            replaced: boolean;
+            /** @description Omitted without filters. With status only, whether the member has that status; with feature, decider, since or q, whether it satisfies all of those given (status is not applied). */
+            matched?: boolean;
+            /** @description auto_tag only: the number of tags the run added. */
+            tagCount?: number;
+            /** @description import only, in ingest order; omitted when the stages were not recorded. */
+            stages?: components["schemas"]["ActivityStageSummary"][];
+        };
+        ActivityStageSummary: {
+            stage: components["schemas"]["ActivityStage"];
+            state: components["schemas"]["ActivityStageState"];
+        };
+        /**
+         * @description State of one ingest stage of an import; gone when the video was deleted or lost every location first.
+         * @enum {string}
+         */
+        ActivityStageState: "waiting" | "processing" | "done" | "failed" | "gone";
+        ActivityStageRow: {
+            stage: components["schemas"]["ActivityStage"];
+            state: components["schemas"]["ActivityStageState"];
+            /** @description The stage's last error message, untranslated. */
+            detail?: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ActivityPipelineRef: {
+            /** Format: int64 */
+            id: number;
+            subject: components["schemas"]["ActivitySubject"];
+            status: components["schemas"]["ActivityStatus"];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description One activity record with its full detail and probabilities, plus what the list leaves out. */
+        ActivityDetail: components["schemas"]["ActivityEntry"] & {
+            /** @description Pipeline only: its members in join order, replaced members included. */
+            members?: components["schemas"]["ActivityEntry"][];
+            /** @description A member only: the pipelines it belongs to, newest first. */
+            pipelines?: components["schemas"]["ActivityPipelineRef"][];
+            /** @description import with recorded stages: one row per stage the run held, in ingest order. */
+            stages?: components["schemas"]["ActivityStageRow"][];
+            /** @description import only: false for a record written before stages were recorded. */
+            stagesRecorded?: boolean;
         };
         /** @description Record targets, one per key: two for pairs and one otherwise. */
         ActivitySubject: {
@@ -9153,6 +9245,31 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
+        };
+    };
+    getActivity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Activity record ID */
+                id: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Activity record and its details */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityDetail"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     retryActivity: {

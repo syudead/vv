@@ -18,7 +18,7 @@ flowchart LR
   role -->|after commit| bus[ActivityChanged]
   bus --> sse[activity notification]
   sse --> screen[Owner's screen]
-  screen -->|list, retry, undo| api["/api/activity"]
+  screen -->|list, detail, retry, undo| api["/api/activity"]
   api --> app[app.Activity]
   app --> entries
 ```
@@ -30,7 +30,7 @@ updates its entry through one package-private helper inside its own
 transaction, and the commit publishes `ActivityChanged`. The entry and the
 change it records therefore always agree, and no role calls another role's
 methods.
-`ActivityStore` only lists, reads one entry and recovers at startup.
+`ActivityStore` only lists, reads one entry or its detail and recovers at startup.
 
 The table is user data: it is never rebuilt or pruned and names its subject by
 content key with the label as written, so an entry outlives its video.
@@ -144,8 +144,9 @@ process decides whether it runs and writes its entry in the transaction of the
 stage result that starts it, then calls `joinJobPipelines` with the finishing
 job; a process that does not run writes nothing, so its pipeline never waits
 for it. Startup recovery marks members interrupted and re-rolls their
-pipelines instead of marking a pipeline directly. The activity list does not
-show pipeline entries; their members are listed as before.
+pipelines instead of marking a pipeline directly. The activity list shows a
+pipeline in place of its members
+([the list](#the-list-pages-by-id-and-counts-in-the-same-read)).
 
 ## Owner operations write a done entry per video
 
@@ -179,20 +180,44 @@ stays as it is ([process-lifecycle.md](process-lifecycle.md)).
 
 ## The list pages by id and counts in the same read
 
-`GET /api/activity` returns entries by id descending with an opaque cursor, so
-entries written while the owner scrolls do not shift the next page.
-The page, the status counts and the feature counts come from one read-only
-snapshot.
+`GET /api/activity` lists **top-level entries**: pipelines and the entries that
+belong to no pipeline. A member is not listed on its own; it is a summary
+inside each of its pipelines, so a pair entry in two pipelines appears under
+both. Entries come by id descending with an opaque cursor, so entries written
+while the owner scrolls, members joining a listed pipeline included, do not
+shift the next page. The page, the status counts and the feature counts come
+from one read-only snapshot
+([`internal/store/activity_pipeline_reads.go`](../../internal/store/activity_pipeline_reads.go)).
 
-| Filter | Status counts | Feature counts |
-| --- | --- | --- |
-| `status` | Ignored | Applied |
-| `feature` | Applied | Ignored |
-| `decider`, `since`, `q` | Applied | Applied |
+| Filter | Matches a top-level entry when | Status counts | Feature counts |
+| --- | --- | --- | --- |
+| `status` | The entry itself has it; a pipeline's status is its roll-up | Ignored | Applied |
+| `feature` | The entry, or one member of a pipeline, satisfies every given filter other than `status` | Applied | Ignored |
+| `decider`, `since`, `q` | As `feature` | Applied | Applied |
+
+One filter builder (`activityFilter`) serves the page and both counts, so the
+counts are the number of entries the list shows. A pipeline counts once per
+status and once under each feature that it or a matching member has: the count
+under a feature is the length of the list with only that feature selected.
+
+A member summary carries what the card's result phrase reads, not `detail` or
+`tags`: an `auto_tag` member's tag count, an `import` member's stage states,
+whether a member of the same pipeline replaced it, and `matched`. With
+`feature`, `decider`, `since` or `q`, `matched` marks the members that satisfy
+all of them; with `status` alone, the members with that status; without a
+filter it is absent. The screen uses it to point at the member that brought
+the pipeline into the list.
 
 `q` matches the subject's labels without case. An `undo` entry carries the
 feature of the entry it undid. The contract is
 [the screen API schema](../../api/openapi.yaml).
+
+`GET /api/activity/{id}` reads one entry of any kind with what the list leaves
+out: a pipeline's members as full entries in join order, replaced members
+included; for a member, the pipelines it belongs to, newest first; for an
+`import` entry, its stage rows with their messages, or `stagesRecorded: false`
+for an entry written before stage rows existed. It is owner-only like the rest
+of the log, and resolves videos for the owner.
 
 ## Retry and undo are dispatched by kind
 

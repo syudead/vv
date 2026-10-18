@@ -220,6 +220,10 @@ type ActivityEntry struct {
 	RetryAt time.Time
 	// Progress describes a running import after the waiting stage.
 	Progress *ActivityImportProgress
+	// Members are a pipeline's members in join order.
+	Members []ActivityMember
+	// Stages are an import entry's stage rows in JobKinds order.
+	Stages []ActivityStage
 }
 
 type ActivityEntryTag struct {

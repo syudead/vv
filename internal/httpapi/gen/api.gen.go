@@ -84,6 +84,7 @@ const (
 	ActivityKindMakeRepresentative ActivityKind = "make_representative"
 	ActivityKindMediaFolderRemove  ActivityKind = "media_folder_remove"
 	ActivityKindOrganizeUndo       ActivityKind = "organize_undo"
+	ActivityKindPipeline           ActivityKind = "pipeline"
 	ActivityKindScan               ActivityKind = "scan"
 	ActivityKindTagAttach          ActivityKind = "tag_attach"
 	ActivityKindTagDetach          ActivityKind = "tag_detach"
@@ -112,6 +113,8 @@ func (e ActivityKind) Valid() bool {
 	case ActivityKindMediaFolderRemove:
 		return true
 	case ActivityKindOrganizeUndo:
+		return true
+	case ActivityKindPipeline:
 		return true
 	case ActivityKindScan:
 		return true
@@ -225,6 +228,33 @@ func (e ActivityStage) Valid() bool {
 	case ActivityStageSeekThumbnail:
 		return true
 	case ActivityStageThumbnail:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ActivityStageState.
+const (
+	ActivityStageStateDone       ActivityStageState = "done"
+	ActivityStageStateFailed     ActivityStageState = "failed"
+	ActivityStageStateGone       ActivityStageState = "gone"
+	ActivityStageStateProcessing ActivityStageState = "processing"
+	ActivityStageStateWaiting    ActivityStageState = "waiting"
+)
+
+// Valid indicates whether the value is a known member of the ActivityStageState enum.
+func (e ActivityStageState) Valid() bool {
+	switch e {
+	case ActivityStageStateDone:
+		return true
+	case ActivityStageStateFailed:
+		return true
+	case ActivityStageStateGone:
+		return true
+	case ActivityStageStateProcessing:
+		return true
+	case ActivityStageStateWaiting:
 		return true
 	default:
 		return false
@@ -2215,7 +2245,7 @@ type APITokenList struct {
 	Items []APIToken `json:"items"`
 }
 
-// ActivityCounts Counts by status for records matching every filter except status.
+// ActivityCounts Counts by status for top-level records matching every filter except status.
 type ActivityCounts struct {
 	Attention int `json:"attention"`
 	Done      int `json:"done"`
@@ -2224,6 +2254,81 @@ type ActivityCounts struct {
 
 // ActivityDecider Actor responsible for the recorded decision, otherwise the actor that started processing.
 type ActivityDecider string
+
+// ActivityDetail One activity record with its full detail and probabilities, plus what the list leaves out.
+type ActivityDetail struct {
+	// Candidate Whether the pair remains on the duplicate-candidate screen.
+	Candidate bool      `json:"candidate"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Decider Actor responsible for the recorded decision, otherwise the actor that started processing.
+	Decider ActivityDecider `json:"decider"`
+
+	// Detail Untranslated provider/stage error text, tags changed by owner actions, or number of videos removed by unregistering a media folder.
+	Detail *string `json:"detail,omitempty"`
+
+	// Feature Kind grouping used for feature filters; undo belongs to the feature of the undone record.
+	Feature ActivityFeature `json:"feature"`
+	Id      int64           `json:"id"`
+
+	// Kind Activity record kind.
+	Kind ActivityKind `json:"kind"`
+
+	// Members Pipeline only: its members in join order, replaced members included.
+	Members *[]ActivityEntry `json:"members,omitempty"`
+
+	// Outcome Outcome of done records.
+	Outcome *ActivityOutcome `json:"outcome,omitempty"`
+
+	// Pipelines A member only: the pipelines it belongs to, newest first.
+	Pipelines *[]ActivityPipelineRef `json:"pipelines,omitempty"`
+
+	// Probability Model answer for judged or inconclusive pairs and auto-tagging.
+	Probability *float64 `json:"probability,omitempty"`
+
+	// Progress Current stage and completed-stage count for a running import beyond waiting.
+	Progress *ActivityProgress `json:"progress,omitempty"`
+
+	// Reason Reason for running or attention records.
+	Reason *ActivityReason `json:"reason,omitempty"`
+
+	// Replaced Set only on a pipeline's members in ActivityDetail: a retried or reopened member kept for history.
+	Replaced *bool `json:"replaced,omitempty"`
+
+	// RetryAt Next retry timestamp for a failed version_judgement.
+	RetryAt *time.Time `json:"retryAt,omitempty"`
+
+	// RetryRun Show retry action.
+	RetryRun bool `json:"retryRun"`
+
+	// Stage Import stage, using jobs.kind values.
+	Stage *ActivityStage `json:"stage,omitempty"`
+
+	// Stages import with recorded stages: one row per stage the run held, in ingest order.
+	Stages *[]ActivityStageRow `json:"stages,omitempty"`
+
+	// StagesRecorded import only: false for a record written before stages were recorded.
+	StagesRecorded *bool `json:"stagesRecorded,omitempty"`
+
+	// Status Record status.
+	Status ActivityStatus `json:"status"`
+
+	// Subject Record targets, one per key: two for pairs and one otherwise.
+	Subject ActivitySubject `json:"subject"`
+
+	// Tags Tags assigned by auto_tag.
+	Tags *[]ActivityTag `json:"tags,omitempty"`
+
+	// Undoable Show undo action; auto_tag requires at least one undoable tag.
+	Undoable bool `json:"undoable"`
+
+	// Undoes Kind and outcome of the record undone by this undo record, plus the tag for per-tag undo.
+	Undoes *ActivityUndone `json:"undoes,omitempty"`
+
+	// Undone Undone by the owner.
+	Undone    bool      `json:"undone"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
 
 // ActivityEntry One activity record.
 type ActivityEntry struct {
@@ -2255,6 +2360,9 @@ type ActivityEntry struct {
 
 	// Reason Reason for running or attention records.
 	Reason *ActivityReason `json:"reason,omitempty"`
+
+	// Replaced Set only on a pipeline's members in ActivityDetail: a retried or reopened member kept for history.
+	Replaced *bool `json:"replaced,omitempty"`
 
 	// RetryAt Next retry timestamp for a failed version_judgement.
 	RetryAt *time.Time `json:"retryAt,omitempty"`
@@ -2288,7 +2396,7 @@ type ActivityEntry struct {
 // ActivityFeature Kind grouping used for feature filters; undo belongs to the feature of the undone record.
 type ActivityFeature string
 
-// ActivityFeatureCounts Counts for all features among records matching every filter except feature.
+// ActivityFeatureCounts Counts for all features among top-level records matching every filter except feature; a pipeline counts once under each feature that it or a matching member has.
 type ActivityFeatureCounts struct {
 	AutoTagging    int `json:"auto_tagging"`
 	DuplicateCheck int `json:"duplicate_check"`
@@ -2304,20 +2412,146 @@ type ActivityFeatureCounts struct {
 // ActivityKind Activity record kind.
 type ActivityKind string
 
+// ActivityListItem One top-level record of the list.
+type ActivityListItem struct {
+	// Candidate Whether the pair remains on the duplicate-candidate screen.
+	Candidate bool      `json:"candidate"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Decider Actor responsible for the recorded decision, otherwise the actor that started processing.
+	Decider ActivityDecider `json:"decider"`
+
+	// Detail Untranslated provider/stage error text, tags changed by owner actions, or number of videos removed by unregistering a media folder.
+	Detail *string `json:"detail,omitempty"`
+
+	// Feature Kind grouping used for feature filters; undo belongs to the feature of the undone record.
+	Feature ActivityFeature `json:"feature"`
+	Id      int64           `json:"id"`
+
+	// Kind Activity record kind.
+	Kind ActivityKind `json:"kind"`
+
+	// Members Pipeline only: member summaries in join order, replaced members included.
+	Members *[]ActivityMemberSummary `json:"members,omitempty"`
+
+	// Outcome Outcome of done records.
+	Outcome *ActivityOutcome `json:"outcome,omitempty"`
+
+	// Probability Model answer for judged or inconclusive pairs and auto-tagging.
+	Probability *float64 `json:"probability,omitempty"`
+
+	// Progress Current stage and completed-stage count for a running import beyond waiting.
+	Progress *ActivityProgress `json:"progress,omitempty"`
+
+	// Reason Reason for running or attention records.
+	Reason *ActivityReason `json:"reason,omitempty"`
+
+	// Replaced Set only on a pipeline's members in ActivityDetail: a retried or reopened member kept for history.
+	Replaced *bool `json:"replaced,omitempty"`
+
+	// RetryAt Next retry timestamp for a failed version_judgement.
+	RetryAt *time.Time `json:"retryAt,omitempty"`
+
+	// RetryRun Show retry action.
+	RetryRun bool `json:"retryRun"`
+
+	// Stage Import stage, using jobs.kind values.
+	Stage *ActivityStage `json:"stage,omitempty"`
+
+	// Status Record status.
+	Status ActivityStatus `json:"status"`
+
+	// Subject Record targets, one per key: two for pairs and one otherwise.
+	Subject ActivitySubject `json:"subject"`
+
+	// Tags Tags assigned by auto_tag.
+	Tags *[]ActivityTag `json:"tags,omitempty"`
+
+	// Undoable Show undo action; auto_tag requires at least one undoable tag.
+	Undoable bool `json:"undoable"`
+
+	// Undoes Kind and outcome of the record undone by this undo record, plus the tag for per-tag undo.
+	Undoes *ActivityUndone `json:"undoes,omitempty"`
+
+	// Undone Undone by the owner.
+	Undone    bool      `json:"undone"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// ActivityMemberSummary A pipeline member as the list shows it, without detail and tags.
+type ActivityMemberSummary struct {
+	// Decider Actor responsible for the recorded decision, otherwise the actor that started processing.
+	Decider ActivityDecider `json:"decider"`
+
+	// Feature Kind grouping used for feature filters; undo belongs to the feature of the undone record.
+	Feature ActivityFeature `json:"feature"`
+	Id      int64           `json:"id"`
+
+	// Kind Activity record kind.
+	Kind ActivityKind `json:"kind"`
+
+	// Matched Omitted without filters. With status only, whether the member has that status; with feature, decider, since or q, whether it satisfies all of those given (status is not applied).
+	Matched *bool `json:"matched,omitempty"`
+
+	// Outcome Outcome of done records.
+	Outcome     *ActivityOutcome `json:"outcome,omitempty"`
+	Probability *float64         `json:"probability,omitempty"`
+
+	// Progress Current stage and completed-stage count for a running import beyond waiting.
+	Progress *ActivityProgress `json:"progress,omitempty"`
+
+	// Reason Reason for running or attention records.
+	Reason *ActivityReason `json:"reason,omitempty"`
+
+	// Replaced A retried or reopened member kept for history.
+	Replaced bool       `json:"replaced"`
+	RetryAt  *time.Time `json:"retryAt,omitempty"`
+	RetryRun bool       `json:"retryRun"`
+
+	// Stage Import stage, using jobs.kind values.
+	Stage *ActivityStage `json:"stage,omitempty"`
+
+	// Stages import only, in ingest order; omitted when the stages were not recorded.
+	Stages *[]ActivityStageSummary `json:"stages,omitempty"`
+
+	// Status Record status.
+	Status ActivityStatus `json:"status"`
+
+	// Subject Record targets, one per key: two for pairs and one otherwise.
+	Subject ActivitySubject `json:"subject"`
+
+	// TagCount auto_tag only: the number of tags the run added.
+	TagCount *int `json:"tagCount,omitempty"`
+	Undoable bool `json:"undoable"`
+	Undone   bool `json:"undone"`
+}
+
 // ActivityOutcome Outcome of done records.
 type ActivityOutcome string
 
 // ActivityPage defines model for ActivityPage.
 type ActivityPage struct {
-	// Counts Counts by status for records matching every filter except status.
+	// Counts Counts by status for top-level records matching every filter except status.
 	Counts ActivityCounts `json:"counts"`
 
-	// Features Counts for all features among records matching every filter except feature.
+	// Features Counts for all features among top-level records matching every filter except feature; a pipeline counts once under each feature that it or a matching member has.
 	Features ActivityFeatureCounts `json:"features"`
-	Items    []ActivityEntry       `json:"items"`
+	Items    []ActivityListItem    `json:"items"`
 
 	// NextCursor Included only when more results remain.
 	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
+// ActivityPipelineRef defines model for ActivityPipelineRef.
+type ActivityPipelineRef struct {
+	CreatedAt time.Time `json:"createdAt"`
+	Id        int64     `json:"id"`
+
+	// Status Record status.
+	Status ActivityStatus `json:"status"`
+
+	// Subject Record targets, one per key: two for pairs and one otherwise.
+	Subject ActivitySubject `json:"subject"`
 }
 
 // ActivityProgress Current stage and completed-stage count for a running import beyond waiting.
@@ -2334,6 +2568,31 @@ type ActivityReason string
 
 // ActivityStage Import stage, using jobs.kind values.
 type ActivityStage string
+
+// ActivityStageRow defines model for ActivityStageRow.
+type ActivityStageRow struct {
+	// Detail The stage's last error message, untranslated.
+	Detail *string `json:"detail,omitempty"`
+
+	// Stage Import stage, using jobs.kind values.
+	Stage ActivityStage `json:"stage"`
+
+	// State State of one ingest stage of an import; gone when the video was deleted or lost every location first.
+	State     ActivityStageState `json:"state"`
+	UpdatedAt time.Time          `json:"updatedAt"`
+}
+
+// ActivityStageState State of one ingest stage of an import; gone when the video was deleted or lost every location first.
+type ActivityStageState string
+
+// ActivityStageSummary defines model for ActivityStageSummary.
+type ActivityStageSummary struct {
+	// Stage Import stage, using jobs.kind values.
+	Stage ActivityStage `json:"stage"`
+
+	// State State of one ingest stage of an import; gone when the video was deleted or lost every location first.
+	State ActivityStageState `json:"state"`
+}
 
 // ActivityStatus Record status.
 type ActivityStatus string
@@ -5955,6 +6214,9 @@ type ServerInterface interface {
 	// ListActivity List activity records, newest first
 	// (GET /api/activity)
 	ListActivity(w http.ResponseWriter, r *http.Request, params ListActivityParams)
+	// GetActivity Read one activity record with its details
+	// (GET /api/activity/{id})
+	GetActivity(w http.ResponseWriter, r *http.Request, id ActivityId)
 	// RetryActivity Retry an activity operation
 	// (POST /api/activity/{id}/retry)
 	RetryActivity(w http.ResponseWriter, r *http.Request, id ActivityId)
@@ -6572,6 +6834,32 @@ func (siw *ServerInterfaceWrapper) ListActivity(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListActivity(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetActivity operation middleware
+func (siw *ServerInterfaceWrapper) GetActivity(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ActivityId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetActivity(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -12204,6 +12492,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/version-candidates", wrapper.ListVersionCandidates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/version-candidates/dismiss", wrapper.DismissVersionCandidate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/activity", wrapper.ListActivity)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/activity/{id}", wrapper.GetActivity)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/activity/{id}/retry", wrapper.RetryActivity)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/activity/{id}/undo", wrapper.UndoActivity)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/directories", wrapper.ListDirectories)
