@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -76,7 +77,8 @@ func writePersonProfile(ctx context.Context, tx *sql.Tx, id int64, profile domai
 		}
 		statement += column + ` = ?`
 	}
-	args := append(personProfileArgs(profile), id)
+	statement += `, birth_key = ?`
+	args := append(personProfileArgs(profile), birthKeyArg(profile.BirthDate), id)
 	if _, err := tx.ExecContext(ctx, statement+` where id = ?`, args...); err != nil {
 		return fmt.Errorf("cannot save the profile of person %d: %w", id, err)
 	}
@@ -90,6 +92,19 @@ func writePersonProfile(ctx context.Context, tx *sql.Tx, id int64, profile domai
 		}
 	}
 	return nil
+}
+
+// birthKeyArg sorts a normalized partial date as its first possible day: YYYYMMDD with missing parts as 00.
+func birthKeyArg(date string) any {
+	digits := strings.ReplaceAll(date, "-", "")
+	if digits == "" {
+		return nil
+	}
+	key, err := strconv.ParseInt((digits + "0000")[:8], 10, 64)
+	if err != nil {
+		return nil
+	}
+	return key
 }
 
 // addPersonProfiles reads the profiles, image revisions and links of a page of people in two statements.

@@ -18,7 +18,7 @@ func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (dom
 		sort = domain.TagSortName
 	}
 	order, ok := adminListOrders[sort]
-	if !ok {
+	if !ok || !sort.Valid() {
 		return domain.TagPage{}, fmt.Errorf("unknown tag sort order: %q", sort)
 	}
 	limit := min(max(query.Limit, 0), domain.MaxTagPageLimit)
