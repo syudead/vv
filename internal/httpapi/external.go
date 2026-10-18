@@ -24,6 +24,8 @@ import (
 // この型がコンパイルエラーになるため、実装漏れに気付ける。
 type externalServer struct {
 	s *server
+	// maxBody overrides readJSONBody's limit; zero uses externalBodyLimit.
+	maxBody int64
 }
 
 // registerExternalAPI は外部連携 API の経路を mux に載せる。
