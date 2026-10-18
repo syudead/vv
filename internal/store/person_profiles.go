@@ -107,23 +107,24 @@ func birthKeyArg(date string) any {
 	return key
 }
 
-// addPersonProfiles reads the profiles, favorite marks and links of a page of people in two statements.
+// addPersonProfiles reads the profiles, favorite marks, image revisions and links of a page of people in two statements.
 func addPersonProfiles(ctx context.Context, tx *sql.Tx, items []domain.Credit, index map[int64]int, encodedIDs string) error {
 	rows, err := tx.QueryContext(ctx, `select id, exists (select 1 from person_favorites pf where pf.person_id = people.id), `+
-		personProfileColumns+` from people where id in (select value from json_each(?))`, encodedIDs)
+		personImageRevision("people.id")+`, `+personProfileColumns+` from people where id in (select value from json_each(?))`, encodedIDs)
 	if err != nil {
 		return fmt.Errorf("cannot read the profiles of people: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
-		var id int64
+		var id, revision int64
 		var favorite bool
 		var scanned scannedProfile
-		if err := rows.Scan(append([]any{&id, &favorite}, scanned.targets()...)...); err != nil {
+		if err := rows.Scan(append([]any{&id, &favorite, &revision}, scanned.targets()...)...); err != nil {
 			return fmt.Errorf("cannot read the profiles of people: %w", err)
 		}
 		items[index[id]].Profile = scanned.profile()
 		items[index[id]].Favorite = favorite
+		items[index[id]].ImageRevision = revision
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("cannot read the profiles of people: %w", err)

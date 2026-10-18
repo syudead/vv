@@ -49,6 +49,8 @@ type Credit struct {
 	Profile PersonProfile
 	// Favorite is false for organizations.
 	Favorite bool
+	// ImageRevision is zero unless the person has a face.
+	ImageRevision int64
 	// VideoCount counts visible video user-data keys linked in any role.
 	VideoCount int
 	CreatedAt  time.Time

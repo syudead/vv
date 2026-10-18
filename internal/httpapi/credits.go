@@ -407,7 +407,8 @@ func toAPIPerson(credit domain.Credit) gen.Person {
 	return gen.Person{
 		Id: credit.ID, Name: credit.Name, Aliases: toAPIAliases(credit.Aliases),
 		ExternalIds: toAPIExternalIDs(credit.ExternalIDs), Profile: toAPIProfile(credit.Profile),
-		Favorite: credit.Favorite, VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,
+		Favorite: credit.Favorite, ImageRevision: optionalPositive(credit.ImageRevision),
+		VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,
 	}
 }
 

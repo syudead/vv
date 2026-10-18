@@ -89,7 +89,7 @@ func (s *server) readThumbnailUpload(w http.ResponseWriter, r *http.Request) ([]
 	ok := s.readMultipart(w, r, thumbnailUploadMaxBody, tooLarge, func(name string, part *multipart.Part) bool {
 		switch name {
 		case "image":
-			data, ok := s.readUploadImagePart(w, part)
+			data, ok := s.readUploadImagePart(w, part, s.thumbnailUploadError)
 			image = data
 			return ok
 		case "contentVersion":
@@ -119,11 +119,12 @@ func (s *server) readThumbnailUpload(w http.ResponseWriter, r *http.Request) ([]
 	return image, string(contentVersion), true
 }
 
-func (s *server) readUploadImagePart(w http.ResponseWriter, part io.Reader) ([]byte, bool) {
+// readUploadImagePart reads an upload's image part, writing an oversized part through tooLarge.
+func (s *server) readUploadImagePart(w http.ResponseWriter, part io.Reader, tooLarge func(http.ResponseWriter, error)) ([]byte, bool) {
 	data, err := readUploadPart(part, domain.ThumbnailUploadMaxBytes)
 	switch {
 	case errors.Is(err, domain.ErrThumbnailUploadTooLarge):
-		s.thumbnailUploadError(w, err)
+		tooLarge(w, err)
 		return nil, false
 	case err != nil:
 		s.invalidRequest(w, "The request body could not be read.")

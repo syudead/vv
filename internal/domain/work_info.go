@@ -201,6 +201,8 @@ type WorkDate struct {
 type WorkPerson struct {
 	Role   PersonRole
 	Person CreditRef
+	// ImageRevision is zero unless the person has a face; writes ignore it.
+	ImageRevision int64
 }
 
 // Writes use Organization.ID only.

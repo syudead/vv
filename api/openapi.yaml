@@ -2718,6 +2718,75 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/people/{id}/image:
+    get:
+      operationId: getPersonImage
+      summary: "Return a person's face"
+      description: "Owner-only. Returns the stored JPEG (at most 800 px on its long side) with `Cache-Control: private, no-cache` and the person's imageRevision as `ETag`; a matching `If-None-Match` returns 304. `v` only changes the URL when the face changes. Missing person returns 404 person_not_found; a person without a face returns 404 person_image_not_found."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - name: v
+          in: query
+          description: "imageRevision from Person or WorkPerson; ignored by the server"
+          schema:
+            type: string
+      responses:
+        "200":
+          description: "Face"
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "304":
+          description: "`If-None-Match` matches `ETag`"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: uploadPersonImage
+      summary: "Set a person's face from an uploaded image"
+      description: "Owner-only. Accepts multipart `image` (PNG, JPEG or static WebP) under the thumbnail upload's limits: 64 MiB with 1 MiB additional multipart overhead, and 120 million pixels. Fits it to at most 800 px on its long side, stores it as JPEG, replacing any earlier face, and returns Person with a new imageRevision. A body over the byte limit returns 413 person_image_too_large with limit. Unsupported, animated, unreadable or over-pixel images return 400 person_image_invalid. Missing person returns 404 person_not_found. Errors write nothing. After the body arrives, fitting continues despite disconnect, with a five-minute limit."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/UploadPersonImageRequest"
+      responses:
+        "200":
+          description: "Updated person"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Person"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "413":
+          $ref: "#/components/responses/PersonImageTooLarge"
+    delete:
+      operationId: deletePersonImage
+      summary: "Remove a person's face"
+      description: "Owner-only; no body. Removes the face and returns Person without imageRevision; a person without a face is returned unchanged. A later upload gets a revision never used before. Missing person returns 404 person_not_found."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      responses:
+        "200":
+          description: "Updated person"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Person"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/organizations:
     get:
       operationId: listOrganizations
@@ -4739,6 +4808,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    PersonImageTooLarge:
+      description: "Uploaded person image body exceeds the byte limit (reason person_image_too_large, limit)"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     PluginFailed:
       description: "Plugin execution failed (reason, pluginMessage, host)"
       content:
@@ -5259,6 +5334,16 @@ components:
           type: string
           maxLength: 64
           description: "Video contentVersion held by the UI when the preview opened."
+
+    UploadPersonImageRequest:
+      type: object
+      additionalProperties: false
+      required: [image]
+      properties:
+        image:
+          type: string
+          format: binary
+          description: "Face image: PNG, JPEG or static WebP, at most 64 MiB and 120 million pixels."
 
     UploadWorkInfoPluginRequest:
       type: object
@@ -6333,6 +6418,14 @@ components:
           $ref: "#/components/schemas/WorkPersonRole"
         person:
           $ref: "#/components/schemas/CreditRef"
+        imageRevision:
+          $ref: "#/components/schemas/PersonImageRevision"
+
+    PersonImageRevision:
+      type: integer
+      format: int64
+      minimum: 1
+      description: "Present only when the person has a face; changes with every change of the face and is never reused. Load the face from /api/people/{id}/image?v={imageRevision}."
 
     WorkOrganization:
       type: object
@@ -6480,6 +6573,8 @@ components:
         favorite:
           type: boolean
           description: "Whether the owner marked this person as a favorite."
+        imageRevision:
+          $ref: "#/components/schemas/PersonImageRevision"
         videoCount:
           type: integer
           description: "Visible videos linked to this person in any role."
@@ -9457,6 +9552,9 @@ components:
         - organization_not_found
         - organization_parent_cycle
         - merge_same_person
+        - person_image_not_found
+        - person_image_invalid
+        - person_image_too_large
         - merge_same_organization
         - external_id_taken
         - blocked_address

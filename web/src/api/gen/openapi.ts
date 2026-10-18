@@ -1752,6 +1752,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/people/{id}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return a person's face
+         * @description Owner-only. Returns the stored JPEG (at most 800 px on its long side) with `Cache-Control: private, no-cache` and the person's imageRevision as `ETag`; a matching `If-None-Match` returns 304. `v` only changes the URL when the face changes. Missing person returns 404 person_not_found; a person without a face returns 404 person_image_not_found.
+         */
+        get: operations["getPersonImage"];
+        /**
+         * Set a person's face from an uploaded image
+         * @description Owner-only. Accepts multipart `image` (PNG, JPEG or static WebP) under the thumbnail upload's limits: 64 MiB with 1 MiB additional multipart overhead, and 120 million pixels. Fits it to at most 800 px on its long side, stores it as JPEG, replacing any earlier face, and returns Person with a new imageRevision. A body over the byte limit returns 413 person_image_too_large with limit. Unsupported, animated, unreadable or over-pixel images return 400 person_image_invalid. Missing person returns 404 person_not_found. Errors write nothing. After the body arrives, fitting continues despite disconnect, with a five-minute limit.
+         */
+        put: operations["uploadPersonImage"];
+        post?: never;
+        /**
+         * Remove a person's face
+         * @description Owner-only; no body. Removes the face and returns Person without imageRevision; a person without a face is returned unchanged. A later upload gets a revision never used before. Missing person returns 404 person_not_found.
+         */
+        delete: operations["deletePersonImage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations": {
         parameters: {
             query?: never;
@@ -3045,6 +3073,13 @@ export interface components {
             /** @description Video contentVersion held by the UI when the preview opened. */
             contentVersion: string;
         };
+        UploadPersonImageRequest: {
+            /**
+             * Format: binary
+             * @description Face image: PNG, JPEG or static WebP, at most 64 MiB and 120 million pixels.
+             */
+            image: string;
+        };
         UploadWorkInfoPluginRequest: {
             /**
              * Format: binary
@@ -3602,7 +3637,13 @@ export interface components {
         WorkPerson: {
             role: components["schemas"]["WorkPersonRole"];
             person: components["schemas"]["CreditRef"];
+            imageRevision?: components["schemas"]["PersonImageRevision"];
         };
+        /**
+         * Format: int64
+         * @description Present only when the person has a face; changes with every change of the face and is never reused. Load the face from /api/people/{id}/image?v={imageRevision}.
+         */
+        PersonImageRevision: number;
         WorkOrganization: {
             role: components["schemas"]["WorkOrganizationRole"];
             organization: components["schemas"]["CreditRef"];
@@ -3665,6 +3706,7 @@ export interface components {
             profile: components["schemas"]["PersonProfile"];
             /** @description Whether the owner marked this person as a favorite. */
             favorite: boolean;
+            imageRevision?: components["schemas"]["PersonImageRevision"];
             /** @description Visible videos linked to this person in any role. */
             videoCount: number;
             /** Format: date-time */
@@ -5267,7 +5309,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken";
     };
     responses: {
         /** @description Resource not found */
@@ -5308,6 +5350,15 @@ export interface components {
         };
         /** @description Plugin module exceeds limit */
         PluginTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Uploaded person image body exceeds the byte limit (reason person_image_too_large, limit) */
+        PersonImageTooLarge: {
             headers: {
                 [name: string]: unknown;
             };
@@ -8545,6 +8596,96 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getPersonImage: {
+        parameters: {
+            query?: {
+                /** @description imageRevision from Person or WorkPerson; ignored by the server */
+                v?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Face */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            /** @description `If-None-Match` matches `ETag` */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    uploadPersonImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["UploadPersonImageRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated person */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PersonImageTooLarge"];
+        };
+    };
+    deletePersonImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Updated person */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
