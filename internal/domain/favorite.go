@@ -4,6 +4,7 @@ type FavoriteChange struct {
 	VideoIDs       []int64
 	GroupIDs       []int64
 	SmartFolderIDs []int64
+	PersonIDs      []int64
 	Favorite       bool
 }
 

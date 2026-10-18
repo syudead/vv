@@ -1689,7 +1689,7 @@ export interface paths {
         };
         /**
          * List people
-         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches.
+         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people.
          */
         get: operations["listPeople"];
         put?: never;
@@ -1789,7 +1789,7 @@ export interface paths {
         };
         /**
          * List organizations
-         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches.
+         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite returns 400 invalid_request.
          */
         get: operations["listOrganizations"];
         put?: never;
@@ -1942,7 +1942,7 @@ export interface paths {
         get?: never;
         /**
          * Set or clear favorites on videos and groups
-         * @description Owner-only. Sets favorite on videoIds, groupIds and smartFolderIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events.
+         * @description Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events.
          */
         put: operations["updateFavorites"];
         post?: never;
@@ -3704,6 +3704,8 @@ export interface components {
             /** @description Ordered by (source, value). */
             externalIds: components["schemas"]["ExternalId"][];
             profile: components["schemas"]["PersonProfile"];
+            /** @description Whether the owner marked this person as a favorite. */
+            favorite: boolean;
             imageRevision?: components["schemas"]["PersonImageRevision"];
             /** @description Visible videos linked to this person in any role. */
             videoCount: number;
@@ -3831,7 +3833,7 @@ export interface components {
         /** @description Person form of the CreditList contract. */
         PersonList: {
             items: components["schemas"]["Person"][];
-            /** @description Person count matching q, independent of pagination. */
+            /** @description Person count matching q and favorite, independent of pagination. */
             total: number;
             /** @description Total person count. */
             totalAll: number;
@@ -3906,6 +3908,8 @@ export interface components {
             groupIds?: number[];
             /** @description Smart-folder IDs whose favorite state changes. */
             smartFolderIds?: number[];
+            /** @description Person IDs whose favorite state changes; missing people are ignored. */
+            personIds?: number[];
             /** @description True adds favorites; false removes them. */
             favorite: boolean;
         };
@@ -5460,6 +5464,8 @@ export interface components {
         CreditCursor: string;
         /** @description Page size; omit for all results without nextCursor */
         CreditLimit: number;
+        /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
+        CreditFavorite: boolean;
         /** @description Registered media-folder ID containing this folder */
         FolderRootId: number;
         /** @description Playlist item ID */
@@ -8437,6 +8443,8 @@ export interface operations {
                 cursor?: components["parameters"]["CreditCursor"];
                 /** @description Page size; omit for all results without nextCursor */
                 limit?: components["parameters"]["CreditLimit"];
+                /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
+                favorite?: components["parameters"]["CreditFavorite"];
             };
             header?: never;
             path?: never;
@@ -8693,6 +8701,8 @@ export interface operations {
                 cursor?: components["parameters"]["CreditCursor"];
                 /** @description Page size; omit for all results without nextCursor */
                 limit?: components["parameters"]["CreditLimit"];
+                /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
+                favorite?: components["parameters"]["CreditFavorite"];
             };
             header?: never;
             path?: never;

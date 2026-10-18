@@ -117,9 +117,17 @@ func (s *server) MergeOrganizations(w http.ResponseWriter, r *http.Request, id g
 // Omitted limit returns all matching credits under the shared tag-list query rules.
 func (s *server) listCredits(w http.ResponseWriter, r *http.Request, api creditKindAPI, params gen.ListPeopleParams) {
 	query, problem := buildCreditListQuery(api.kind, params.Q, sortParam(params.Sort), params.Cursor, params.Limit)
-	if !s.acceptTagListQuery(w, problem) || !s.creditsConfigured(w) {
+	if !s.acceptTagListQuery(w, problem) {
 		return
 	}
+	if params.Favorite != nil && api.kind != domain.CreditPerson {
+		s.invalidRequest(w, "favorite applies to people only.")
+		return
+	}
+	if !s.creditsConfigured(w) {
+		return
+	}
+	query.FavoriteOnly = params.Favorite != nil && *params.Favorite
 	page, err := s.credits.List(r.Context(), api.kind, query)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
@@ -399,7 +407,8 @@ func toAPIPerson(credit domain.Credit) gen.Person {
 	return gen.Person{
 		Id: credit.ID, Name: credit.Name, Aliases: toAPIAliases(credit.Aliases),
 		ExternalIds: toAPIExternalIDs(credit.ExternalIDs), Profile: toAPIProfile(credit.Profile),
-		ImageRevision: optionalPositive(credit.ImageRevision), VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,
+		Favorite: credit.Favorite, ImageRevision: optionalPositive(credit.ImageRevision),
+		VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,
 	}
 }
 

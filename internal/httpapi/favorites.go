@@ -31,6 +31,7 @@ func (s *server) UpdateFavorites(w http.ResponseWriter, r *http.Request) {
 		VideoIds       []int64 `json:"videoIds"`
 		GroupIds       []int64 `json:"groupIds"`
 		SmartFolderIds []int64 `json:"smartFolderIds"`
+		PersonIds      []int64 `json:"personIds"`
 		Favorite       *bool   `json:"favorite"`
 	}
 	if !s.readLargeJSONBody(w, r, s.favoriteBodyLimit(), &body) {
@@ -39,9 +40,10 @@ func (s *server) UpdateFavorites(w http.ResponseWriter, r *http.Request) {
 	videoIDs := uniqueInt64s(body.VideoIds)
 	groupIDs := uniqueInt64s(body.GroupIds)
 	smartFolderIDs := uniqueInt64s(body.SmartFolderIds)
-	if total := len(videoIDs) + len(groupIDs) + len(smartFolderIDs); total < 1 || total > maxVideoTagsIDs {
+	personIDs := uniqueInt64s(body.PersonIds)
+	if total := len(videoIDs) + len(groupIDs) + len(smartFolderIDs) + len(personIDs); total < 1 || total > maxVideoTagsIDs {
 		s.invalidRequestLimit(w, reasonTooManyVideos, maxVideoTagsIDs,
-			fmt.Sprintf("videoIds, groupIds and smartFolderIds must contain between 1 and %d items in total.", maxVideoTagsIDs))
+			fmt.Sprintf("videoIds, groupIds, smartFolderIds and personIds must contain between 1 and %d items in total.", maxVideoTagsIDs))
 		return
 	}
 	if body.Favorite == nil {
@@ -54,7 +56,8 @@ func (s *server) UpdateFavorites(w http.ResponseWriter, r *http.Request) {
 	}
 
 	applied, err := s.favorites.SetFavorites(r.Context(), domain.FavoriteChange{
-		VideoIDs: videoIDs, GroupIDs: groupIDs, SmartFolderIDs: smartFolderIDs, Favorite: *body.Favorite,
+		VideoIDs: videoIDs, GroupIDs: groupIDs, SmartFolderIDs: smartFolderIDs, PersonIDs: personIDs,
+		Favorite: *body.Favorite,
 	})
 	if err != nil {
 		s.internalError(w, "Could not change the favorites.", err)

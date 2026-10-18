@@ -98,6 +98,25 @@ branch. Ties use natural-name order, then ID, as every other sort does.
 | Add the sorts to `TagSort` for every list | Tags and organizations have no birth date |
 | Sort the loaded rows in the browser | The list is paged by keyset, so the browser holds only the first page |
 
+## Favorites join the shared favorites
+
+A favorite person is a row in `person_favorites`, set and cleared through
+`personIds` on `PUT /api/favorites` together with videos, groups and smart
+folders. The IDs count toward the same 1–20,000 limit, missing people are
+ignored, and setting a favorite again keeps its time. `Person.favorite` is
+always present, and `GET /api/people?favorite=true` keeps only favorites, with
+`total` counting them; an organization list answers `favorite` with
+`400 invalid_request`. No smart rule reads a person favorite, so setting one
+queues no smart-folder refresh.
+
+A merge makes the target a favorite when any source is one, so merging a
+duplicate never drops the mark. Deleting a person deletes its row.
+
+| Rejected | Why |
+| --- | --- |
+| A `favorite` column on `people` | Every other favorite is a table of its own with its time, and the shared endpoint already sets several kinds atomically |
+| `PUT /api/people/{id}/favorite` | A second way to set favorites beside the shared endpoint |
+
 ## A face is one fitted JPEG in SQLite
 
 A person has at most one face, a row in `person_images` deleted with its
