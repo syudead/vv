@@ -2098,6 +2098,10 @@ export const en = {
       onVideo: "On the video",
       tentative: "Tentative",
       newCount: (count: number) => `${formatNumber(count)} new`,
+      fillsEmpty: (name: string, values: readonly string[]) =>
+        `${name} — Fills only empty fields: ${values.join(" · ")}`,
+      fillFact: (term: string, value: string) => `${term} ${value}`,
+      fillBio: "Bio",
       // m counts selectable tags not already on the video.
       tagsSelected: (selected: number, selectable: number) =>
         `${formatNumber(selected)} of ${formatNumber(selectable)} selected`,

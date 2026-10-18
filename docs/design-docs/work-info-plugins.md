@@ -342,6 +342,13 @@ deadline, and the header check keeps each image with its person in the fetch.
 it to the comparison, and `hasImage` on the fetched person tells the screen
 which index has one.
 
+The comparison treats a people row as a change when a person already on the
+video would gain something: a fetched profile, or a kept image for a person
+without a face. The video carries each person's face revision but not the
+stored profile, so a fetched profile counts even when the person's fields are
+already filled; applying it then changes nothing, because the apply writes
+only empty fields.
+
 The limit of 7 keeps one fetch within the 32 MiB budget: the cover and seven
 images at 4 MiB make 32 MiB, and an eighth would let a single result exceed
 the budget and be evicted as soon as it is kept.
