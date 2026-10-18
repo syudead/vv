@@ -4,8 +4,11 @@ import type { CSSProperties, ReactNode } from "react";
 
 export type CardSize = 0 | 1 | 2 | 3;
 
+/** A video card size, or face for the people grid's round face cards. */
+export type CardGridSize = CardSize | "face";
+
 export interface CardGridProps {
-  size?: CardSize;
+  size?: CardGridSize;
   children: ReactNode;
 }
 

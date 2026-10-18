@@ -22,7 +22,6 @@ import {
 } from "../api/tags";
 import { type TagKind, tagKindCountsChanged, tagKindGone } from "../api/tagKinds";
 import { errorText, t, type UiText } from "../i18n";
-import { foldForMatch } from "../lib/foldForMatch";
 import {
   readTagListPreferences,
   writeTagListPreferences,
@@ -87,7 +86,7 @@ import { kindNameOf, useTagKindFilter } from "./useTagKindFilter";
 import TagListEmptyState from "./TagListEmptyState";
 import TagListHead from "./TagListHead";
 import TagsTabs, { tagsPanelId, tagsTabId } from "./TagsTabs";
-import { useTagPage } from "./useTagPage";
+import { useSearchQuery, useTagPage } from "./useTagPage";
 import { ROW_OVERSCAN, useVirtualTagRows } from "./useVirtualTagRows";
 import { useAdminTableBand, useListScrollMargin } from "./useAdminTableBand";
 import { virtualBodyRows } from "./virtualBodyRows";
@@ -310,11 +309,7 @@ export default function TagsPage() {
   }
 
   // Normalize only to detect empty/equivalent queries; the server searches the full tag set.
-  const normalizedQuery = foldForMatch(search).trim();
-  const searchRef = useRef(search);
-  useLayoutEffect(() => {
-    searchRef.current = search;
-  });
+  const { normalizedQuery, searchRef } = useSearchQuery(search);
 
   useEffect(() => {
     setSelected((current) => (current.size === 0 ? current : new Set()));
@@ -326,7 +321,7 @@ export default function TagsPage() {
       kind,
       sort,
     });
-  }, [normalizedQuery, tentativeOnly, unusedOnly, kind, sort, load]);
+  }, [normalizedQuery, tentativeOnly, unusedOnly, kind, sort, load, searchRef]);
 
   useLayoutEffect(() => {
     filtersRef.current = { tentativeOnly, unusedOnly, kind };

@@ -39,6 +39,8 @@ export interface CreditListQuery {
   /** 1..200 results; omit to retrieve every match. */
   limit?: number;
   cursor?: string;
+  /** People only: keep favorites. */
+  favorite?: boolean;
 }
 
 /** Truncate queries to the contract's 100-code-point limit; longer names still match their prefixes. */
@@ -56,10 +58,22 @@ export function listCredits(
   if (query.limit !== undefined) params.set("limit", String(query.limit));
   if (query.cursor !== undefined && query.cursor !== "")
     params.set("cursor", query.cursor);
+  if (query.favorite === true) params.set("favorite", "true");
   const search = params.toString();
   return request<CreditList>(`${basePath(kind)}${search === "" ? "" : `?${search}`}`, {
     signal,
   });
+}
+
+export interface PersonList extends CreditList {
+  items: Person[];
+}
+
+export function listPeople(
+  query: CreditListQuery = {},
+  signal?: AbortSignal,
+): Promise<PersonList> {
+  return listCredits("person", query, signal) as Promise<PersonList>;
 }
 
 export function createCredit(

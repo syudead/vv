@@ -68,6 +68,7 @@ const namedSizes = [
   "card-1",
   "card-2",
   "card-3",
+  "card-face",
   "list-thumb-cell",
   "list-thumb",
   "list-number",

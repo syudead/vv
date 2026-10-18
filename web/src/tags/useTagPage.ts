@@ -2,10 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 
 import { listTagPage, type Tag, tagPageLimit } from "../api/tags";
 import { errorText, type UiText } from "../i18n";
+import { foldForMatch } from "../lib/foldForMatch";
 import {
   appendUniqueTags,
   type ListRow,
-  type ListRowsQuery,
+  type PagedRowsQuery,
   type PageRows,
   type TagRowsQuery,
 } from "./tagPageRows";
@@ -68,8 +69,20 @@ export function useTagPage(onFirstPage: () => void) {
   return usePagedRows<Tag, TagRowsQuery>(fetchTagPage, initialTagQuery, onFirstPage);
 }
 
+/**
+ * The folded query that decides reloads, so whitespace-only edits do not reload, and a ref to the
+ * raw search sent with it.
+ */
+export function useSearchQuery(search: string) {
+  const searchRef = useRef(search);
+  useLayoutEffect(() => {
+    searchRef.current = search;
+  });
+  return { normalizedQuery: foldForMatch(search).trim(), searchRef };
+}
+
 /** Share pagination/local-update rules across admin lists; retain initial fetchPage and initialQuery. */
-export function usePagedRows<R extends ListRow, Q extends ListRowsQuery>(
+export function usePagedRows<R extends ListRow, Q extends PagedRowsQuery>(
   fetchPage: FetchRowsPage<R, Q>,
   initialQuery: Q & { search: string },
   onFirstPage: () => void,

@@ -29,35 +29,45 @@ export function readListSortPreferences(
   key: string,
   storage?: Storage,
 ): TagListPreferences {
+  return { sort: readStoredSort(key, isTagListSort, tagListDefaults.sort, storage) };
+}
+
+/** Never throw; return the fallback for unreadable storage or a sort isSort refuses. */
+export function readStoredSort<S extends string>(
+  key: string,
+  isSort: (value: unknown) => value is S,
+  fallback: S,
+  storage?: Storage,
+): S {
   let raw: string | null;
   try {
     raw = (storage ?? window.localStorage).getItem(key);
   } catch {
-    return { ...tagListDefaults };
+    return fallback;
   }
-  if (raw === null) return { ...tagListDefaults };
+  if (raw === null) return fallback;
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return { ...tagListDefaults };
+    return fallback;
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return { ...tagListDefaults };
+    return fallback;
   }
 
   const value = parsed as Record<string, unknown>;
-  return { sort: isTagListSort(value.sort) ? value.sort : tagListDefaults.sort };
+  return isSort(value.sort) ? value.sort : fallback;
 }
 
 export function writeListSortPreferences(
   key: string,
-  value: TagListPreferences,
+  value: { sort: string },
   storage?: Storage,
 ): void {
   try {
-    const stored: TagListPreferences = { sort: value.sort };
+    const stored = { sort: value.sort };
     (storage ?? window.localStorage).setItem(key, JSON.stringify(stored));
   } catch {
     // Keep the current sort even when persistence fails.
