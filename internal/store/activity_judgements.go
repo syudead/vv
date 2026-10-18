@@ -35,7 +35,7 @@ func updateActivity(ctx context.Context, tx *sql.Tx, c *changes, id int64, updat
 		return fmt.Errorf("cannot update the activity entry (id=%d): %w", id, err)
 	}
 	c.activityChanged()
-	return nil
+	return rollUpPipelines(ctx, tx, []int64{id}, now.UnixMilli())
 }
 
 func decideActivity(ctx context.Context, tx *sql.Tx, c *changes, id int64, update activityUpdate, now time.Time) error {
@@ -263,19 +263,18 @@ func closeActivities(
 	base := len(args)
 	args = append(args, string(outcome), string(decider), now.UnixMilli(), string(domain.ActivityVersionJudgement),
 		string(domain.ActivityDone))
-	result, err := tx.ExecContext(ctx, fmt.Sprintf(`update activity_entries
+	closed, err := collectActivityIDs(tx.QueryContext(ctx, fmt.Sprintf(`update activity_entries
 		set status = ?%[5]d, reason = null, outcome = ?%[1]d, decider = coalesce(nullif(?%[2]d, ''), decider),
 		    updated_at = ?%[3]d
-		where kind = ?%[4]d and status <> ?%[5]d and `, base+1, base+2, base+3, base+4, base+5)+condition, args...)
+		where kind = ?%[4]d and status <> ?%[5]d and `, base+1, base+2, base+3, base+4, base+5)+condition+
+		` returning id`, args...))
 	if err != nil {
 		return fmt.Errorf("cannot close the pair activity entries: %w", err)
 	}
-	if affected, err := result.RowsAffected(); err != nil {
-		return fmt.Errorf("cannot close the pair activity entries: %w", err)
-	} else if affected > 0 {
+	if len(closed) > 0 {
 		c.activityChanged()
 	}
-	return nil
+	return rollUpPipelines(ctx, tx, closed, now.UnixMilli())
 }
 
 // Return activities to waiting when recovery or connection changes reset their candidates.
@@ -300,7 +299,7 @@ func returnPairActivitiesToWaiting(
 	} else if affected > 0 {
 		c.activityChanged()
 	}
-	return nil
+	return rollUpPipelines(ctx, tx, ids, now.UnixMilli())
 }
 
 // Move active and completed activity keys with inherited user data so later undo finds the replacement rows.

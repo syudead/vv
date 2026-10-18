@@ -113,7 +113,7 @@ func (s *IngestStore) ApplyProbeForJob(
 		return false, err
 	}
 	var c changes
-	if err := requeueJob(ctx, tx, &c, domain.JobPreview, job.VideoID, now.Unix(), domain.ActivityByRule); err != nil {
+	if err := requeueJob(ctx, tx, &c, domain.JobPreview, job.VideoID, now.Unix(), ruleRun()); err != nil {
 		return false, err
 	}
 	// If probing finishes after the scan, resolve same-path succession here.
@@ -224,7 +224,7 @@ func (s *IngestStore) setStageStateForJob(
 	var c changes
 	if succeeded && len(next) > 0 {
 		for _, following := range next {
-			if err := requeueJob(ctx, tx, &c, following, job.VideoID, time.Now().Unix(), domain.ActivityByRule); err != nil {
+			if err := requeueJob(ctx, tx, &c, following, job.VideoID, time.Now().Unix(), ruleRun()); err != nil {
 				return false, err
 			}
 		}
@@ -371,7 +371,7 @@ func (s *IngestStore) RequeueMissingPreview(ctx context.Context, id int64, conte
 		return false, nil
 	}
 	var c changes
-	if err := requeueJob(ctx, tx, &c, domain.JobPreview, id, now, domain.ActivityByRule); err != nil {
+	if err := requeueJob(ctx, tx, &c, domain.JobPreview, id, now, ruleRun()); err != nil {
 		return false, err
 	}
 	c.jobsQueued(domain.JobPreview)
@@ -403,7 +403,7 @@ func (s *IngestStore) RequeueMissingSeekThumbnails(ctx context.Context, id int64
 		return false, nil
 	}
 	var c changes
-	if err := requeueJob(ctx, tx, &c, domain.JobSeekThumbnail, id, now, domain.ActivityByRule); err != nil {
+	if err := requeueJob(ctx, tx, &c, domain.JobSeekThumbnail, id, now, ruleRun()); err != nil {
 		return false, err
 	}
 	// Drop blocked fingerprint work so failed sprite rebuilds do not count forever; completion queues it again.
@@ -420,7 +420,7 @@ func (s *IngestStore) RequeueMissingSeekThumbnails(ctx context.Context, id int64
 
 // Replace finished jobs and join the running import activity; callers mark jobsQueued so commit recomputes completion.
 func requeueJob(
-	ctx context.Context, tx *sql.Tx, c *changes, kind domain.JobKind, id, now int64, decider domain.ActivityDecider,
+	ctx context.Context, tx *sql.Tx, c *changes, kind domain.JobKind, id, now int64, run importRun,
 ) error {
 	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and state in ('done', 'failed')`,
 		string(kind), id); err != nil {
@@ -432,7 +432,7 @@ func requeueJob(
 		string(kind), id, now, now); err != nil {
 		return fmt.Errorf("cannot queue the job (%s, video=%d): %w", kind, id, err)
 	}
-	if err := joinImportActivity(ctx, tx, c, id, decider, time.Now()); err != nil {
+	if err := joinImportActivity(ctx, tx, c, id, run, time.Now()); err != nil {
 		return err
 	}
 	return addScanVideos(ctx, tx, id)
@@ -474,7 +474,7 @@ func (s *IngestStore) RetryProbe(ctx context.Context, id int64) error {
 	kinds := append([]domain.JobKind{domain.JobProbe}, following...)
 	var c changes
 	for _, kind := range kinds {
-		if err := requeueJob(ctx, tx, &c, kind, id, now, domain.ActivityByOwner); err != nil {
+		if err := requeueJob(ctx, tx, &c, kind, id, now, importRun{decider: domain.ActivityByOwner}); err != nil {
 			return err
 		}
 	}
@@ -543,12 +543,13 @@ func (s *IngestStore) RetryImport(ctx context.Context, entryID int64, contentKey
 	}
 	var c changes
 	now := time.Now()
+	run := importRun{decider: domain.ActivityByOwner, retried: entryID}
 	for _, kind := range kinds {
-		if err := requeueJob(ctx, tx, &c, kind, id, now.Unix(), domain.ActivityByOwner); err != nil {
+		if err := requeueJob(ctx, tx, &c, kind, id, now.Unix(), run); err != nil {
 			return err
 		}
 	}
-	if err := joinImportActivity(ctx, tx, &c, id, domain.ActivityByOwner, now); err != nil {
+	if err := joinImportActivity(ctx, tx, &c, id, run, now); err != nil {
 		return err
 	}
 	var pending bool

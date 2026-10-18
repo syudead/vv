@@ -31,33 +31,34 @@ func videoActivitySubject(ctx context.Context, q rowQueryer, videoID int64) (dom
 	return subject, nil
 }
 
+// importRun describes who queued import work. A new entry opens a pipeline unless it continues earlier entries: the
+// retried entry, and the entries whose pending jobs it takes over after an interruption.
+type importRun struct {
+	decider domain.ActivityDecider
+	// scanID is the scan that queued the work, recorded on the pipeline it opens.
+	scanID int64
+	// retried is the activity-log entry this run retries.
+	retried int64
+}
+
+func ruleRun() importRun { return importRun{decider: domain.ActivityByRule} }
+
+// scanRun is the run of a scan's queueing (EnqueueJobs, EnsureJobs); the scan in progress, if any, opened it.
+func scanRun(ctx context.Context, q rowQueryer, decider domain.ActivityDecider) (importRun, error) {
+	id, err := runningScanID(ctx, q)
+	return importRun{decider: decider, scanID: id}, err
+}
+
 // Attach pending jobs to one running import activity; create a new entry instead of reviving a finished one.
-func joinImportActivity(
-	ctx context.Context, q activityWriter, c *changes, videoID int64, decider domain.ActivityDecider, now time.Time,
-) error {
+func joinImportActivity(ctx context.Context, q activityWriter, c *changes, videoID int64, run importRun, now time.Time) error {
 	var id int64
 	err := q.QueryRowContext(ctx, `select j.activity_id from jobs j join activity_entries e on e.id = j.activity_id
 		where j.video_id = ? and `+pendingJobCondition("j")+` and e.status = ? order by j.id limit 1`,
 		videoID, string(domain.ActivityRunning)).Scan(&id)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		var pending bool
-		if err := q.QueryRowContext(ctx, `select exists (select 1 from jobs j where j.video_id = ? and `+
-			pendingJobCondition("j")+`)`, videoID).Scan(&pending); err != nil {
-			return fmt.Errorf("cannot read the pending jobs (video=%d): %w", videoID, err)
-		}
-		if !pending {
-			return nil
-		}
-		subject, err := videoActivitySubject(ctx, q, videoID)
-		if err != nil {
-			return err
-		}
-		id, err = recordActivity(ctx, q, c, domain.ActivityEntry{
-			Kind: domain.ActivityImport, Subject: subject, Status: domain.ActivityRunning,
-			Reason: domain.ActivityWaiting, Decider: decider,
-		}, now)
-		if err != nil {
+		var opened bool
+		if id, opened, err = openImportActivity(ctx, q, c, videoID, run, now); err != nil || !opened {
 			return err
 		}
 	case err != nil:
@@ -68,6 +69,44 @@ func joinImportActivity(
 		return fmt.Errorf("cannot attach the jobs to the import activity (video=%d): %w", videoID, err)
 	}
 	return settleImportActivity(ctx, q, c, id, now)
+}
+
+// openImportActivity records a new running entry when the video has pending jobs; it reports false when there are none.
+func openImportActivity(
+	ctx context.Context, q activityWriter, c *changes, videoID int64, run importRun, now time.Time,
+) (int64, bool, error) {
+	continued, err := collectActivityIDs(q.QueryContext(ctx, `select distinct activity_id from jobs j
+		where j.video_id = ? and `+pendingJobCondition("j")+` and activity_id is not null`, videoID))
+	if err != nil {
+		return 0, false, fmt.Errorf("cannot read the pending jobs (video=%d): %w", videoID, err)
+	}
+	var pending bool
+	if err := q.QueryRowContext(ctx, `select exists (select 1 from jobs j where j.video_id = ? and `+
+		pendingJobCondition("j")+`)`, videoID).Scan(&pending); err != nil {
+		return 0, false, fmt.Errorf("cannot read the pending jobs (video=%d): %w", videoID, err)
+	}
+	if !pending {
+		return 0, false, nil
+	}
+	subject, err := videoActivitySubject(ctx, q, videoID)
+	if err != nil {
+		return 0, false, err
+	}
+	entry := domain.ActivityEntry{
+		Kind: domain.ActivityImport, Subject: subject, Status: domain.ActivityRunning,
+		Reason: domain.ActivityWaiting, Decider: run.decider,
+	}
+	if run.retried != 0 {
+		continued = append(continued, run.retried)
+	}
+	if len(continued) > 0 {
+		id, err := recordContinuedActivity(ctx, q, c, entry, continued, now)
+		return id, err == nil, err
+	}
+	if entry.ID, err = recordActivity(ctx, q, c, entry, now); err != nil {
+		return 0, false, err
+	}
+	return entry.ID, true, openImportPipeline(ctx, q, c, entry, run.scanID, now)
 }
 
 // Jobs queued before activity tracking have no entry to settle.
@@ -101,6 +140,9 @@ func settleImportActivity(ctx context.Context, q activityWriter, c *changes, id 
 	}
 	jobs, failure, err := importActivityJobs(ctx, q, id)
 	if err != nil {
+		return err
+	}
+	if err := writeImportStages(ctx, q, id, jobs, now.UnixMilli()); err != nil {
 		return err
 	}
 	states := make([]domain.JobState, 0, len(jobs))
@@ -153,20 +195,59 @@ func closeDeletedVideoImports(ctx context.Context, q activityWriter, c *changes,
 func closeGoneImports(
 	ctx context.Context, q activityWriter, c *changes, where string, now time.Time, args ...any,
 ) (bool, error) {
-	res, err := q.ExecContext(ctx, `update activity_entries as e set status = ?, reason = null, outcome = ?,
-		updated_at = ? where `+where+` and `+goneImportCondition,
-		append([]any{string(domain.ActivityDone), string(domain.ActivityGone), now.UnixMilli()}, args...)...)
+	at := now.UnixMilli()
+	closed, err := collectActivityIDs(q.QueryContext(ctx, `update activity_entries as e set status = ?, reason = null,
+		outcome = ?, updated_at = ? where `+where+` and `+goneImportCondition+` returning id`,
+		append([]any{string(domain.ActivityDone), string(domain.ActivityGone), at}, args...)...))
 	if err != nil {
 		return false, fmt.Errorf("cannot close the gone import activity: %w", err)
 	}
-	closed, err := res.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("cannot close the gone import activity: %w", err)
+	if len(closed) == 0 {
+		return false, nil
 	}
-	if closed > 0 {
-		c.activityChanged()
+	encoded, _ := json.Marshal(closed) // A slice of integers always encodes.
+	if _, err := q.ExecContext(ctx, `update activity_entry_stages set state = ?, updated_at = ?
+		where entry_id in (select value from json_each(?)) and state in (?, ?)`,
+		string(domain.ActivityStageGone), at, string(encoded), string(domain.ActivityStageWaiting),
+		string(domain.ActivityStageProcessing)); err != nil {
+		return false, fmt.Errorf("cannot close the gone import stages: %w", err)
 	}
-	return closed > 0, nil
+	if err := rollUpPipelines(ctx, q, closed, at); err != nil {
+		return false, err
+	}
+	c.activityChanged()
+	return true, nil
+}
+
+// Rewrite the entry's stage rows from the jobs it holds; a stage it never held keeps no row, and a later job of
+// the same stage wins. Rows outlive the jobs and the video.
+func writeImportStages(ctx context.Context, q activityWriter, id int64, jobs []importJob, at int64) error {
+	stages := map[domain.JobKind]importJob{}
+	for _, job := range jobs {
+		stages[job.Kind] = job
+	}
+	held := make([]string, 0, len(stages))
+	for _, kind := range domain.JobKinds {
+		job, ok := stages[kind]
+		if !ok {
+			continue
+		}
+		held = append(held, string(kind))
+		if _, err := q.ExecContext(ctx, `insert into activity_entry_stages (entry_id, stage, state, detail, updated_at)
+			values (?, ?, ?, ?, ?)
+			on conflict (entry_id, stage) do update set state = excluded.state, detail = excluded.detail,
+				updated_at = excluded.updated_at
+			where state is not excluded.state or detail is not excluded.detail`,
+			id, string(kind), string(domain.ImportStageState(job.State)), nullString(job.message), at); err != nil {
+			return fmt.Errorf("cannot record the import stage (id=%d, stage=%s): %w", id, kind, err)
+		}
+	}
+	encoded, _ := json.Marshal(held) // A slice of strings always encodes.
+	if _, err := q.ExecContext(ctx, `delete from activity_entry_stages where entry_id = ?
+		and stage not in (select value from json_each(?))`, id, string(encoded)); err != nil {
+		return fmt.Errorf("cannot drop the import stages no longer held (id=%d): %w", id, err)
+	}
+	return nil
 }
 
 type importFailure struct {
@@ -174,21 +255,26 @@ type importFailure struct {
 	message string
 }
 
-func importActivityJobs(ctx context.Context, q queryExecer, id int64) ([]domain.ImportJobState, importFailure, error) {
+type importJob struct {
+	domain.ImportJobState
+	message string
+}
+
+func importActivityJobs(ctx context.Context, q queryExecer, id int64) ([]importJob, importFailure, error) {
 	rows, err := q.QueryContext(ctx, `select kind, state, coalesce(last_error, '') from jobs where activity_id = ?
 		order by id`, id)
 	if err != nil {
 		return nil, importFailure{}, fmt.Errorf("cannot read the import activity's jobs (id=%d): %w", id, err)
 	}
 	defer func() { _ = rows.Close() }()
-	var jobs []domain.ImportJobState
+	var jobs []importJob
 	var failure importFailure
 	for rows.Next() {
 		var kind, state, message string
 		if err := rows.Scan(&kind, &state, &message); err != nil {
 			return nil, importFailure{}, fmt.Errorf("cannot read the import activity's jobs (id=%d): %w", id, err)
 		}
-		job := domain.ImportJobState{Kind: domain.JobKind(kind), State: domain.JobState(state)}
+		job := importJob{domain.ImportJobState{Kind: domain.JobKind(kind), State: domain.JobState(state)}, message}
 		if job.State == domain.JobFailed && failure.kind == "" {
 			failure = importFailure{kind: job.Kind, message: message}
 		}

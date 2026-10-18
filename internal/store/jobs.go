@@ -27,9 +27,13 @@ func (s *IngestStore) EnqueueJobs(
 		return fmt.Errorf("cannot start queueing the jobs (%v, video=%d): %w", kinds, videoID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	run, err := scanRun(ctx, tx, decider)
+	if err != nil {
+		return err
+	}
 	var c changes
 	for _, kind := range kinds {
-		if err := requeueJob(ctx, tx, &c, kind, videoID, time.Now().Unix(), decider); err != nil {
+		if err := requeueJob(ctx, tx, &c, kind, videoID, time.Now().Unix(), run); err != nil {
 			return err
 		}
 	}
@@ -76,7 +80,11 @@ func (s *IngestStore) EnsureJobs(
 	}
 	var c changes
 	if len(queued) > 0 {
-		if err := joinImportActivity(ctx, tx, &c, videoID, decider, time.Now()); err != nil {
+		run, err := scanRun(ctx, tx, decider)
+		if err != nil {
+			return err
+		}
+		if err := joinImportActivity(ctx, tx, &c, videoID, run, time.Now()); err != nil {
 			return err
 		}
 		if err := addScanVideos(ctx, tx, videoID); err != nil {
@@ -211,7 +219,7 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 	}
 	// Interrupted or legacy jobs start a new rule-owned processing activity.
 	var c changes
-	if err := joinImportActivity(ctx, conn, &c, job.VideoID, domain.ActivityByRule, time.Now()); err != nil {
+	if err := joinImportActivity(ctx, conn, &c, job.VideoID, ruleRun(), time.Now()); err != nil {
 		return domain.Job{}, err
 	}
 
