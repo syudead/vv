@@ -101,4 +101,23 @@ func TestPersonProfilePatchReplacesOnlyItsFields(t *testing.T) {
 	}
 }
 
+func TestFillFetchedPersonProfileFillsOnlyEmptyFieldsAndReportsInvalidValues(t *testing.T) {
+	target := PersonProfile{BirthDate: "1990-01-02", HipsCm: ptr(86)}
+	fetched := FetchedPerson{Role: PersonDirector, Name: "A", Profile: PersonProfile{
+		BirthDate: "1985", HeightCm: ptr(1000), WaistCm: ptr(58), HipsCm: ptr(90), BloodType: "ab",
+	}}
+
+	got, skipped := FillFetchedPersonProfile(target, fetched, profileToday)
+	want := PersonProfile{BirthDate: "1990-01-02", HipsCm: ptr(86), WaistCm: ptr(58), BloodType: "AB"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("profile = %+v, want %+v", got, want)
+	}
+	wantSkipped := []SkippedWorkInfoValue{
+		{Field: PersonField(PersonDirector), Value: "A: heightCm 1000", Reason: SkippedWorkInfoInvalid},
+	}
+	if !reflect.DeepEqual(skipped, wantSkipped) {
+		t.Errorf("skipped = %+v, want %+v", skipped, wantSkipped)
+	}
+}
+
 func ptr[T any](v T) *T { return &v }

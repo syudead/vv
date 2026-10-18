@@ -120,23 +120,39 @@ func (p PersonProfilePatch) Apply(current PersonProfile) PersonProfile {
 func FillPersonProfile(target PersonProfile, sources []PersonProfile, today time.Time) PersonProfile {
 	out := target
 	for _, field := range PersonProfileFields {
-		copyField := personProfileCopies[field]
-		if !profileFieldEmpty(out, copyField) {
-			continue
-		}
 		for _, source := range sources {
-			if profileFieldEmpty(source, copyField) {
-				continue
-			}
-			candidate := out
-			copyField(&candidate, source)
-			if _, err := NormalizePersonProfile(candidate, today); err == nil {
-				out = candidate
+			next, fill := fillProfileField(out, source, field, today)
+			if fill == profileFilled {
+				out = next
 				break
 			}
 		}
 	}
 	return out
+}
+
+type profileFill int
+
+const (
+	profileFillNone profileFill = iota
+	profileFilled
+	profileFillInvalid
+)
+
+// fillProfileField copies field from source when it is empty in target and set in source, and returns the
+// normalized result, or target unchanged when the copy would make the profile invalid.
+func fillProfileField(target, source PersonProfile, field PersonProfileField, today time.Time) (PersonProfile, profileFill) {
+	copyField := personProfileCopies[field]
+	if !profileFieldEmpty(target, copyField) || profileFieldEmpty(source, copyField) {
+		return target, profileFillNone
+	}
+	candidate := target
+	copyField(&candidate, source)
+	normalized, err := NormalizePersonProfile(candidate, today)
+	if err != nil {
+		return target, profileFillInvalid
+	}
+	return normalized, profileFilled
 }
 
 func profileFieldEmpty(p PersonProfile, copyField func(*PersonProfile, PersonProfile)) bool {
