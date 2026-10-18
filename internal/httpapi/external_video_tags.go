@@ -198,7 +198,7 @@ func (e *externalServer) readJSONBody(w http.ResponseWriter, r *http.Request, ta
 		e.invalidRequest(w, nil, "Content-Type must be application/json.")
 		return false
 	}
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, externalBodyLimit))
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, e.bodyLimit()))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		e.invalidBody(w, err, "Cannot parse the JSON body.")
@@ -225,3 +225,10 @@ func (e *externalServer) invalidBody(w http.ResponseWriter, err error, message s
 // パスで指定しても収まる大きさにする（1 件あたり 1.6 KB 程度、日本語の名前で 500 文字ほどまで）。
 // 超えた本文は invalidBody が上限を示して断る。
 const externalBodyLimit = 32 << 20
+
+func (e *externalServer) bodyLimit() int64 {
+	if e.maxBody > 0 {
+		return e.maxBody
+	}
+	return externalBodyLimit
+}
