@@ -163,8 +163,12 @@ func TestTranscodeSavesFreshProbeWithoutDelayingInitialData(t *testing.T) {
 		release := sync.OnceFunc(func() { close(writer.release) })
 		go func() { handler.ServeHTTP(rec, req); close(done) }()
 		defer func() { release(); <-done }()
-		<-writer.started
 		synctest.Wait()
+		select {
+		case <-writer.started:
+		default:
+			t.Fatal("probe save did not start")
+		}
 		select {
 		case <-rec.written:
 		default:
