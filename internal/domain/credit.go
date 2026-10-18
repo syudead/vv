@@ -74,10 +74,24 @@ type CreditPatch struct {
 	Profile *PersonProfilePatch
 }
 
+// People also sort by birth date; a partial date sorts as its first possible day and an unknown one comes last.
+const (
+	CreditSortAgeAsc  TagSort = "ageAsc"
+	CreditSortAgeDesc TagSort = "ageDesc"
+)
+
+// ValidCreditSort reports whether kind can be listed in sort; the age sorts apply to people only.
+func ValidCreditSort(kind CreditKind, sort TagSort) bool {
+	if sort == CreditSortAgeAsc || sort == CreditSortAgeDesc {
+		return kind == CreditPerson
+	}
+	return sort.Valid()
+}
+
 type CreditQuery struct {
 	// Q is folded and trimmed by storage, then matched as a substring of canonical names and aliases.
 	Q string
-	// Sort defaults to TagSortName and supports the five tag sort orders.
+	// Sort defaults to TagSortName; ValidCreditSort lists the orders each kind supports.
 	Sort TagSort
 	// Cursor must match the credit kind and sort order or yields ErrInvalidCursor.
 	Cursor string

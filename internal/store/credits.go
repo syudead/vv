@@ -62,6 +62,14 @@ func (t creditTables) parentColumn() string {
 	return `null`
 }
 
+// Only people have a birth date to sort by.
+func (t creditTables) birthKeyColumn() string {
+	if t.kind == domain.CreditPerson {
+		return `e.birth_key`
+	}
+	return `null`
+}
+
 // Get returns domain.ErrNotFound for a missing entity.
 func (s *CreditStore) Get(ctx context.Context, kind domain.CreditKind, id int64) (domain.Credit, error) {
 	t, err := creditTablesFor(kind)
