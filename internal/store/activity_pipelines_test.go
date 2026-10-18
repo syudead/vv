@@ -326,6 +326,13 @@ func TestImportRunningBeforeTheMigrationStaysWithoutAPipeline(t *testing.T) {
 // importMatchingVideo runs every stage of the oldest queued video with a fingerprint that matches every other such video.
 func importMatchingVideo(t *testing.T, db *DB) {
 	t.Helper()
+	completeJob(t, db, fingerprintMatchingVideo(t, db))
+}
+
+// fingerprintMatchingVideo runs the oldest queued video up to a saved matching fingerprint and returns its fingerprint
+// job still claimed, so the video's pipeline stays unfinished.
+func fingerprintMatchingVideo(t *testing.T, db *DB) domain.Job {
+	t.Helper()
 	ctx := context.Background()
 	for _, kind := range []domain.JobKind{domain.JobProbe, domain.JobThumbnail, domain.JobSeekThumbnail,
 		domain.JobPreview} {
@@ -338,7 +345,12 @@ func importMatchingVideo(t *testing.T, db *DB) {
 	if _, err := db.Ingest().ApplyFingerprintForJob(ctx, job, testFingerprint(1, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().CompleteClaimedJob(ctx, job); err != nil {
+	return job
+}
+
+func completeJob(t *testing.T, db *DB, job domain.Job) {
+	t.Helper()
+	if err := db.Ingest().CompleteClaimedJob(context.Background(), job); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -422,6 +434,31 @@ func TestPairEntryLeavesTheImportOfAnEarlierScan(t *testing.T) {
 	}
 	if entryState(a) != activityDone {
 		t.Errorf("a's pipeline = %+v, want still done/completed", a)
+	}
+}
+
+func TestPairEntryJoinsTheUnfinishedImportOfAnEarlierScan(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	enableJudging(t, db, true)
+	earlier, _, err := db.Scans().StartScan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	queueNewFile(t, db, "a", domain.ActivityByRule)
+	aJob := fingerprintMatchingVideo(t, db)
+	if err := db.Scans().FinishScan(ctx, earlier.ID, domain.ScanDone, nil, domain.ActivityByRule); err != nil {
+		t.Fatal(err)
+	}
+	importInOneScan(t, db, "b")
+
+	a, b := pipelineOfVideo(t, db, "key-a"), pipelineOfVideo(t, db, "key-b")
+	if got := entryPipelines(t, db, onlyPairEntry(t, db).ID); !slices.Equal(got, []int64{a.ID, b.ID}) {
+		t.Errorf("pair entry's pipelines = %v, want [%d %d]", got, a.ID, b.ID)
+	}
+	completeJob(t, db, aJob)
+	if got := pipelineOfVideo(t, db, "key-a"); entryState(got) != activityWaiting {
+		t.Errorf("a's pipeline after its last job = %+v, want running/waiting on the pair", got)
 	}
 }
 
