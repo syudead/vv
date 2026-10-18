@@ -32,8 +32,12 @@ member's transaction, and the list pages parents and standalone entries only
   ([R-4](research.md#r-4-after-import-auto-tagging-is-queued-in-the-seek-stage-transaction)).
 - The list changes its unit from entries to top-level entries, and a detail
   read is added: [contracts/activity-api.md](contracts/activity-api.md).
-- The screen layout (detail placement, parent card, narrow width) is decided by
-  the `design` stage, since the parent Issue carries the `ui` label.
+- The screen layout is decided by the `design` stage, since the parent Issue
+  carries the `ui` label. The maintainer has fixed two points for it: the
+  detail is its own page, and a pipeline that is not finished is shown
+  expanded in the list with each member's progress (the `import` member by
+  stage), collapsing once it finishes. The member summary carries the stage
+  states this needs ([contract](contracts/activity-api.md#get-apiactivity)).
 - No new dependency. No open question.
 
 ## Constitution Check
@@ -212,18 +216,21 @@ on the `activity` event, layout per `ui-design.md`.
 
 ### Group the Activity list by import pipeline
 
-**Scope**: Parent cards with their member summary, matched members under
-filters and search, the path from a parent or member to its detail separate
+**Scope**: Parent cards with their member summary, expanded with each
+member's progress while the pipeline is not finished and collapsed after it,
+matched members under filters and search, the path from a parent or member to its detail separate
 from opening the video, and counts labelled as runs, per `ui-design.md`.
 
 **Dependencies**: Show an activity entry's full detail on the Activity screen
 
 **Acceptance**:
 
-- Component tests of the parent card: member states, a member needing
-  attention visible on the parent, a `matched` member marked.
-- Page test: filtering by "Needs attention" lists the parent and the detail
-  link opens that member.
+- Component tests of the parent card: expanded with member and stage progress
+  while `running` or `attention`, collapsed when `done`; a member needing
+  attention visible on the parent; a `matched` member marked.
+- Page test: an `activity` event that finishes a pipeline collapses its card;
+  filtering by "Needs attention" lists the parent and the detail link opens
+  that member.
 - Visual review at desktop width and 360 px against `ui-design.md`: two runs of
   one video and a pipeline's members are told apart.
 - The steps of [quickstart.md](quickstart.md) pass on a local server.

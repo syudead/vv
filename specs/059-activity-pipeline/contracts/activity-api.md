@@ -24,8 +24,10 @@ are not listed on their own; a pair entry in two pipelines appears under both.
 
 `ActivityMemberSummary`: `id`, `kind`, `feature`, `status`, `reason?`,
 `outcome?`, `stage?`, `progress?`, `retryRun`, `undoable`, `replaced` (a
-retried or reopened member kept for history), `matched`. It carries no
-`detail` and no `tags`.
+retried or reopened member kept for history), `matched`, and for an `import`
+member `stages` (`{stage, state}[]` in `JobKinds` order, absent when not
+recorded). It carries no `detail` and no `tags`. The stage states let the list
+show a running pipeline's members with their progress without a detail read.
 
 `matched` uses the same predicate that selected the pipeline, minus the
 parent-only `status`, so a listed pipeline found through a member marks that
