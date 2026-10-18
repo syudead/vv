@@ -94,6 +94,9 @@ func (e *externalServer) acceptListQuery(w http.ResponseWriter, problem tagListP
 	case tagListLimitOutOfRange:
 		e.invalidRequest(w, nil, fmt.Sprintf("limit must be between 1 and %d.", domain.MaxTagPageLimit))
 		return false
+	case tagListSortPeopleOnly:
+		e.invalidRequest(w, nil, tagListSortPeopleOnlyMessage)
+		return false
 	case tagListSearchTooLong:
 		e.invalidRequest(w, nil, fmt.Sprintf("q must be at most %d characters.", maxQueryLength))
 		return false

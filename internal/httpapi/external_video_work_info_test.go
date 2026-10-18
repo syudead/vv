@@ -306,6 +306,11 @@ func TestExternalOrganizationsCarryParent(t *testing.T) {
 	}
 	badSort := f.get(t, "/api/v1/organizations?sort=unknown")
 	assertExternalError(t, "知らない並び順", badSort, wantExternalError{status: http.StatusBadRequest, code: extgen.ErrorCodeInvalidRequest, index: -1})
+	ageSort := f.get(t, "/api/v1/organizations?sort=ageDesc")
+	assertExternalError(t, "団体の年齢順", ageSort, wantExternalError{status: http.StatusBadRequest, code: extgen.ErrorCodeInvalidRequest, index: -1})
+	if rec := f.get(t, "/api/v1/people?sort=ageDesc&limit=1"); rec.Code != http.StatusOK {
+		t.Errorf("人物の年齢順: status = %d: %s", rec.Code, rec.Body)
+	}
 }
 
 func TestExternalCreditsRejectMalformedBodiesAndIgnoreLookupLimit(t *testing.T) {

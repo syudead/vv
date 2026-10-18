@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"fmt"
 	"strconv"
 	"time"
@@ -37,13 +38,24 @@ var adminListOrders = map[domain.TagSort]adminListOrder{
 	domain.TagSortCountAsc:    newAdminListOrder("video_count", false),
 	domain.TagSortCreatedDesc: newAdminListOrder("created_at", true),
 	domain.TagSortCreatedAsc:  newAdminListOrder("created_at", false),
+	// An unknown birth date reads as the value that sorts last, so the cursor stays an integer.
+	domain.CreditSortAgeAsc:  newAdminListOrder(ageAscValue, true),
+	domain.CreditSortAgeDesc: newAdminListOrder(ageDescValue, false),
 }
+
+const (
+	ageDescUnknown = "99999999"
+	ageAscValue    = `coalesce(birth_key, 0)`
+	ageDescValue   = `coalesce(birth_key, ` + ageDescUnknown + `)`
+)
 
 type adminListRow struct {
 	id         int64
 	videoCount int
 	createdAt  time.Time
 	sortKey    string
+	// birthKey is null for an unknown birth date and for every tag or organization.
+	birthKey sql.NullInt64
 }
 
 func (o adminListOrder) cursorValue(row adminListRow) string {
@@ -52,6 +64,13 @@ func (o adminListOrder) cursorValue(row adminListRow) string {
 		return strconv.Itoa(row.videoCount)
 	case "created_at":
 		return strconv.FormatInt(row.createdAt.Unix(), 10)
+	case ageAscValue:
+		return strconv.FormatInt(row.birthKey.Int64, 10)
+	case ageDescValue:
+		if !row.birthKey.Valid {
+			return ageDescUnknown
+		}
+		return strconv.FormatInt(row.birthKey.Int64, 10)
 	default:
 		return ""
 	}

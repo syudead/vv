@@ -116,12 +116,10 @@ func (s *server) MergeOrganizations(w http.ResponseWriter, r *http.Request, id g
 
 // Omitted limit returns all matching credits under the shared tag-list query rules.
 func (s *server) listCredits(w http.ResponseWriter, r *http.Request, api creditKindAPI, params gen.ListPeopleParams) {
-	sort := sortParam(params.Sort)
-	tagQuery, problem := buildTagListQuery(params.Q, nil, nil, sort, params.Cursor, params.Limit)
+	query, problem := buildCreditListQuery(api.kind, params.Q, sortParam(params.Sort), params.Cursor, params.Limit)
 	if !s.acceptTagListQuery(w, problem) || !s.creditsConfigured(w) {
 		return
 	}
-	query := domain.CreditQuery{Q: tagQuery.Search, Sort: tagQuery.Sort, Cursor: tagQuery.Cursor, Limit: tagQuery.Limit}
 	page, err := s.credits.List(r.Context(), api.kind, query)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
@@ -132,6 +130,28 @@ func (s *server) listCredits(w http.ResponseWriter, r *http.Request, api creditK
 		return
 	}
 	s.writeCreditBody(w, http.StatusOK, api.list(page))
+}
+
+const tagListSortPeopleOnlyMessage = "ageAsc and ageDesc apply to people only."
+
+// buildCreditListQuery is shared with external lists: the tag-list rules plus the age sorts, refused for organizations.
+func buildCreditListQuery(kind domain.CreditKind, q, sort, cursor *string, limit *int) (domain.CreditQuery, tagListProblem) {
+	shared := sort
+	if sort != nil && !domain.TagSort(*sort).Valid() && domain.ValidCreditSort(domain.CreditPerson, domain.TagSort(*sort)) {
+		if kind != domain.CreditPerson {
+			return domain.CreditQuery{}, tagListSortPeopleOnly
+		}
+		shared = nil
+	}
+	tagQuery, problem := buildTagListQuery(q, nil, nil, shared, cursor, limit)
+	if problem != tagListOK {
+		return domain.CreditQuery{}, problem
+	}
+	query := domain.CreditQuery{Q: tagQuery.Search, Sort: tagQuery.Sort, Cursor: tagQuery.Cursor, Limit: tagQuery.Limit}
+	if shared == nil && sort != nil {
+		query.Sort = domain.TagSort(*sort)
+	}
+	return query, tagListOK
 }
 
 func (s *server) getCredit(w http.ResponseWriter, r *http.Request, api creditKindAPI, id int64) {

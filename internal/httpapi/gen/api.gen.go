@@ -353,6 +353,8 @@ func (e ComfyUIProvider) Valid() bool {
 
 // Defines values for CreditSort.
 const (
+	CreditSortAgeAsc      CreditSort = "ageAsc"
+	CreditSortAgeDesc     CreditSort = "ageDesc"
 	CreditSortCountAsc    CreditSort = "countAsc"
 	CreditSortCountDesc   CreditSort = "countDesc"
 	CreditSortCreatedAsc  CreditSort = "createdAsc"
@@ -363,6 +365,10 @@ const (
 // Valid indicates whether the value is a known member of the CreditSort enum.
 func (e CreditSort) Valid() bool {
 	switch e {
+	case CreditSortAgeAsc:
+		return true
+	case CreditSortAgeDesc:
+		return true
 	case CreditSortCountAsc:
 		return true
 	case CreditSortCountDesc:
@@ -2662,7 +2668,7 @@ type CreditRef struct {
 	Name string `json:"name"`
 }
 
-// CreditSort Same five sort modes as TagSort; ties use natural-name order, then ID.
+// CreditSort The five TagSort modes, plus ageAsc (newest birth date first) and ageDesc (oldest first) for people only; organizations answer either with 400 invalid_request. A partial birth date sorts as its first possible day, and people without one come last in both age sorts. Ties use natural-name order, then ID.
 type CreditSort string
 
 // DirectoryEntry defines model for DirectoryEntry.
