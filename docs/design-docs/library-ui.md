@@ -836,10 +836,8 @@ and the page never filters the pages it has loaded
 ([`listCriteria.ts`](../../web/src/videoList/listCriteria.ts) keeps them in the
 URL).
 
-The list routes (`GET /api/videos`, `GET /api/library` and
-`GET /api/library/ids`) take these conditions, each ANDed with the others.
-`GET /api/library/ids` is owner-only and answers a guest `401`, so the Guest
-column applies to `GET /api/videos` and `GET /api/library`:
+The list routes (`GET /api/videos` and `GET /api/library`) take these
+conditions, each ANDed with the others:
 
 | Parameter | Keeps | Guest |
 | --- | --- | --- |

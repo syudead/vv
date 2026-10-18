@@ -19,27 +19,6 @@ type LibraryPage struct {
 	Roots []MediaFolder
 }
 
-// LibrarySelection is unpaginated and separates video IDs from group IDs and their playback-order members (docs/design-docs/catalog-organization.md).
-type LibrarySelection struct {
-	VideoIDs []int64
-	Groups   []LibraryGroupSelection
-	// Smart-folder videos are excluded from AllVideoIDs.
-	SmartFolderIDs []int64
-}
-
-type LibraryGroupSelection struct {
-	ID       int64
-	VideoIDs []int64
-}
-
-func (s LibrarySelection) AllVideoIDs() []int64 {
-	ids := append([]int64{}, s.VideoIDs...)
-	for _, group := range s.Groups {
-		ids = append(ids, group.VideoIDs...)
-	}
-	return ids
-}
-
 // LibraryGroup aggregates all visible descendants in playback order regardless of filters.
 type LibraryGroup struct {
 	ID int64

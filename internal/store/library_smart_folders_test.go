@@ -15,15 +15,6 @@ func favoriteSmartFolder(t *testing.T, db *DB, id, at int64) {
 	}
 }
 
-func libraryFolderIDs(t *testing.T, db *DB, q domain.VideoQuery) []int64 {
-	t.Helper()
-	selection, _, err := db.Library().LibraryIDs(context.Background(), q)
-	if err != nil {
-		t.Fatalf("LibraryIDs(%+v) error = %v", q, err)
-	}
-	return selection.SmartFolderIDs
-}
-
 func libraryOrder(t *testing.T, db *DB, audience domain.Audience, sort domain.VideoSort) []string {
 	t.Helper()
 	return itemNames(libraryPages(t, db, audience, domain.VideoQuery{Sort: sort, Limit: domain.MaxLimit}))
@@ -62,10 +53,6 @@ func TestListLibraryShowsRootSmartFoldersAmongItems(t *testing.T) {
 	newSmartFolder(t, db, "犬", domain.SmartRule{Tags: []int64{small}}, domain.SortTitleAsc, 0)
 	if got := libraryOrder(t, db, domain.AudienceOwner, domain.SortSizeAsc); len(got) != 7 || got[2] != "folder:犬" || got[5] != "folder:q猫" || got[6] != "y" {
 		t.Errorf("大きさの昇順 = %v, want folder:犬 at 2 and folder:q猫 before y", got)
-	}
-
-	if got := libraryFolderIDs(t, db, domain.VideoQuery{}); len(got) != 2 || got[0] != root {
-		t.Errorf("LibraryIDs のフォルダ = %v, want [%d 犬]", got, root)
 	}
 }
 
@@ -124,9 +111,6 @@ func TestListLibraryShowsSmartFoldersOnlyWithoutFilters(t *testing.T) {
 				t.Errorf("%+v にフォルダ %s が出た", q, item.SmartFolder.Name)
 			}
 		}
-		if got := libraryFolderIDs(t, db, q); len(got) != 0 {
-			t.Errorf("%+v の LibraryIDs のフォルダ = %v, want 空", q, got)
-		}
 	}
 
 	favoriteSmartFolder(t, db, child, 10)
@@ -141,12 +125,6 @@ func TestListLibraryShowsSmartFoldersOnlyWithoutFilters(t *testing.T) {
 	}
 	if got, want := *items[0].SmartFolder, (domain.SmartFolderSummary{ID: child, ParentID: root, Name: "見た", Favorite: true}); got != want {
 		t.Errorf("見た の要約 = %+v, want %+v", got, want)
-	}
-	if got := libraryFolderIDs(t, db, favorites); !slices.Equal(got, []int64{child}) {
-		t.Errorf("お気に入りのみの LibraryIDs のフォルダ = %v, want [%d]", got, child)
-	}
-	if got := libraryFolderIDs(t, db, domain.VideoQuery{}); !slices.Equal(got, []int64{root}) {
-		t.Errorf("絞り込みなしの LibraryIDs のフォルダ = %v, want [%d]", got, root)
 	}
 }
 
@@ -220,15 +198,12 @@ func TestListLibrarySortsTwinSmartFoldersByTheSameValues(t *testing.T) {
 func TestListLibraryShowsASmartFolderWithOnlyAMissingTag(t *testing.T) {
 	db, ids := itemsFixture(t)
 	gone := attachNamedTag(t, db, "消す", ids[fixturePath("/media/solo.mp4")])
-	folder := newSmartFolder(t, db, "消す", domain.SmartRule{Tags: []int64{gone}}, domain.SortTitleAsc, 0)
+	newSmartFolder(t, db, "消す", domain.SmartRule{Tags: []int64{gone}}, domain.SortTitleAsc, 0)
 	if err := db.Tags().DeleteTag(context.Background(), gone); err != nil {
 		t.Fatal(err)
 	}
 	items := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortSizeDesc, Limit: domain.MaxLimit})
 	if got := itemNames(items); len(got) != 6 || got[5] != "folder:消す" {
 		t.Errorf("大きさの降順 = %v, want folder:消す last", got)
-	}
-	if got := libraryFolderIDs(t, db, domain.VideoQuery{}); !slices.Equal(got, []int64{folder}) {
-		t.Errorf("LibraryIDs のフォルダ = %v, want [%d]", got, folder)
 	}
 }

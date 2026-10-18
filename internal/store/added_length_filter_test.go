@@ -103,14 +103,6 @@ func TestListFiltersByAddedWithinAndLength(t *testing.T) {
 			if !slices.Equal(listed, tc.want) || page.Total != len(tc.want) {
 				t.Errorf("ListVideos = %v（total %d）, want %v", listed, page.Total, tc.want)
 			}
-
-			selection, _, err := db.Library().LibraryIDs(context.Background(), tc.q)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got := len(selection.AllVideoIDs()); got != len(tc.want) {
-				t.Errorf("LibraryIDs = %d 本, want %d 本", got, len(tc.want))
-			}
 		})
 	}
 }

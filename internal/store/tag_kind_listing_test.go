@@ -81,17 +81,13 @@ func TestListVideosFiltersByTagKind(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if page.Total != len(tc.want) {
-				t.Errorf("ListLibrary の total = %d, want %d", page.Total, len(tc.want))
+			got := []int64{}
+			for _, item := range page.Items {
+				got = append(got, item.Video.ID)
 			}
-			selection, _, err := f.db.Library().LibraryIDs(context.Background(), tc.q)
-			if err != nil {
-				t.Fatal(err)
-			}
-			got := selection.AllVideoIDs()
 			slices.Sort(got)
-			if !slices.Equal(got, tc.want) {
-				t.Errorf("LibraryIDs = %v, want %v", got, tc.want)
+			if !slices.Equal(got, tc.want) || page.Total != len(tc.want) {
+				t.Errorf("ListLibrary = %v（total %d）, want %v", got, page.Total, tc.want)
 			}
 		})
 	}

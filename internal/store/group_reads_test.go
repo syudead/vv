@@ -135,7 +135,7 @@ func TestListLibraryMatchesOverDescendants(t *testing.T) {
 
 // A partial group can expose a standalone video even when a different whole-group card includes it.
 func TestListLibraryKeepsPartialMatchBesideWholeGroup(t *testing.T) {
-	db, ids := itemsFixture(t)
+	db, _ := itemsFixture(t)
 	ctx := context.Background()
 	insertGroup(t, db, "C", itemKeyOf("/media/solo.mp4"))
 	insertGroup(t, db, "D", itemKeyOf("/media/solo.mp4"), itemKeyOf("/media/pair/p2.mp4"))
@@ -150,13 +150,6 @@ func TestListLibraryKeepsPartialMatchBesideWholeGroup(t *testing.T) {
 	}
 	if page.Total != 2 {
 		t.Errorf("solo の検索の件数 = %d, want 2", page.Total)
-	}
-	selection, _, err := db.Library().LibraryIDs(ctx, q)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := []int64{ids[fixturePath("/media/solo.mp4")]}; !slices.Equal(selection.VideoIDs, want) || len(selection.Groups) != 1 {
-		t.Errorf("solo の検索の id = videos %v, groups %+v; want videos %v and 1 group", selection.VideoIDs, selection.Groups, want)
 	}
 }
 

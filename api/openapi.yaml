@@ -313,57 +313,6 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
 
-  /api/library/ids:
-    get:
-      operationId: listLibraryIds
-      summary: "Return video IDs for matching items"
-      description: "Returns unpaginated video IDs for the same filters as `listLibrary`, including every member of matching group items. Partial group matches contribute only their matching videos. Order is unspecified; used for select-all. `groups` also includes each group folder and all member IDs. Smart folders appear in `smartFolderIds`; their videos are excluded from `ids`. Favorites use item state, so a favorite video in a non-favorite group appears individually."
-      parameters:
-        - name: query
-          in: query
-          schema:
-            type: string
-            maxLength: 100
-        - name: watch
-          in: query
-          schema:
-            $ref: "#/components/schemas/WatchFilter"
-        - name: playable
-          in: query
-          schema:
-            type: boolean
-            default: false
-        - name: favorite
-          in: query
-          description: "Restrict to favorited items using each item's own favorite state, combined with other filters by AND"
-          schema:
-            type: boolean
-            default: false
-        - name: tag
-          in: query
-          description: "At most 16; more returns 400. Unknown IDs are ignored and returned in `missingTagIds`."
-          schema:
-            type: array
-            maxItems: 16
-            items:
-              type: integer
-              format: int64
-        - $ref: "#/components/parameters/PersonFilter"
-        - $ref: "#/components/parameters/OrganizationFilter"
-        - $ref: "#/components/parameters/AddedWithinFilter"
-        - $ref: "#/components/parameters/MinDurationFilter"
-        - $ref: "#/components/parameters/MaxDurationFilter"
-        - $ref: "#/components/parameters/TagKindFilter"
-      responses:
-        "200":
-          description: "Video IDs for matching items"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/VideoIdsResponse"
-        "400":
-          $ref: "#/components/responses/InvalidRequest"
-
   /api/videos/{id}:
     get:
       operationId: getVideo
@@ -6962,51 +6911,6 @@ components:
           description: "Tags assigned to at least one video, in natural-name order."
           items:
             $ref: "#/components/schemas/VideoTagsSummaryItem"
-
-    VideoIdsResponse:
-      type: object
-      required: [ids]
-      additionalProperties: false
-      properties:
-        ids:
-          type: array
-          items:
-            type: integer
-            format: int64
-        missingTagIds:
-          type: array
-          description: "Missing IDs from tag; omitted when none."
-          items:
-            type: integer
-            format: int64
-        groups:
-          type: array
-          description: "Matching group entries with each group ID and playback-ordered video IDs, also included in ids. Only in listLibraryIds responses; omitted when none."
-          items:
-            $ref: "#/components/schemas/LibraryGroupIds"
-        smartFolderIds:
-          type: array
-          description: "Matching smart-folder item IDs; their videos are not included in ids. Only in listLibraryIds responses; omitted when none."
-          items:
-            type: integer
-            format: int64
-
-    LibraryGroupIds:
-      type: object
-      required: [id, videoIds]
-      additionalProperties: false
-      description: "One group entry in GET /api/library/ids."
-      properties:
-        id:
-          type: integer
-          format: int64
-          description: "Group ID"
-        videoIds:
-          type: array
-          description: "Visible video IDs in group playback order."
-          items:
-            type: integer
-            format: int64
 
     DirectoryEntry:
       type: object

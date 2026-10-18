@@ -67,8 +67,8 @@ func TestListLibraryFiltersByPersonAndOrganization(t *testing.T) {
 	}
 }
 
-func TestListVideosAndLibraryIDsFilterByPerson(t *testing.T) {
-	db, ids, hanako, _, labelB := workInfoListingFixture(t)
+func TestListVideosFiltersByPerson(t *testing.T) {
+	db, ids, hanako, _, _ := workInfoListingFixture(t)
 	ctx := context.Background()
 	want := []int64{ids[fixturePath("/media/show/ep1.mp4")], ids[fixturePath("/media/pair/p1.mp4")], ids[fixturePath("/media/solo.mp4")]}
 	slices.Sort(want)
@@ -84,23 +84,5 @@ func TestListVideosAndLibraryIDsFilterByPerson(t *testing.T) {
 	slices.Sort(listed)
 	if !slices.Equal(listed, want) || page.Total != len(want) {
 		t.Errorf("ListVideos = %v（total %d）, want %v", listed, page.Total, want)
-	}
-
-	selection, _, err := db.Library().LibraryIDs(ctx, domain.VideoQuery{Person: hanako.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	got := selection.AllVideoIDs()
-	slices.Sort(got)
-	if !slices.Equal(got, want) || len(selection.Groups) != 0 {
-		t.Errorf("LibraryIDs = %v・グループ %+v, want %v・グループ無し", got, selection.Groups, want)
-	}
-
-	selection, _, err = db.Library().LibraryIDs(ctx, domain.VideoQuery{Organization: labelB.ID})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(selection.Groups) != 1 || selection.Groups[0].ID != groupIDOf(t, db, fixturePath("/media/show")) || len(selection.VideoIDs) != 0 {
-		t.Errorf("LibraryIDs（レーベル B） = %+v, want グループ show だけ", selection)
 	}
 }

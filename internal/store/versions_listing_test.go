@@ -74,15 +74,6 @@ func TestBundledVersionsFoldToTheRepresentative(t *testing.T) {
 	if got := tagVideoCount(t, db, y); got != 0 {
 		t.Errorf("タグ Y の本数 = %d, want 0（B の content_key の行は集まりでは使わない）", got)
 	}
-	selection, _, err := db.Library().LibraryIDs(ctx, domain.VideoQuery{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ids2 := selection.AllVideoIDs()
-	slices.Sort(ids2)
-	if !slices.Equal(ids2, want) {
-		t.Errorf("LibraryIDs = %v, want %v", ids2, want)
-	}
 	if b := ownerVideo(t, db, ids["b"]); b.ID != ids["b"] || b.Title != "b" {
 		t.Errorf("GetVideo(B) = %+v", b)
 	}
