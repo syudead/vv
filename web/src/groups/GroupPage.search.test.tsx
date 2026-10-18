@@ -62,6 +62,9 @@ it("検索条件を初回・次ページに渡し、検索の変更と解除をU
   await waitFor(() => expect(requests.at(-1)?.searchParams.get("query")).toBe("missing"));
   await screen.findByRole("heading", { name: t.list.noMatches });
   expect(screen.queryByRole("link", { name: "Episode 1" })).toBeNull();
+  expect(screen.getByRole("link", { name: 'Play "Season"' }).getAttribute("href")).toBe(
+    "/videos/10?group=1",
+  );
 
   await user.click(screen.getByRole("button", { name: "Clear search" }));
   await screen.findByRole("link", { name: "Extras, group of 1 video" });
@@ -71,4 +74,36 @@ it("検索条件を初回・次ページに渡し、検索の変更と解除をU
   );
   await user.click(screen.getByRole("link", { name: "Episode 1" }));
   await screen.findByText('Opened /videos/10?group=1 {"from":"/groups/1"}');
+});
+
+it("検索中の全選択は一致した動画と子グループだけを選ぶ", async () => {
+  seed();
+  const original = fetch;
+  const stored = server.groups.get(1)!;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn<typeof fetch>((input, init) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname === "/api/groups/1") {
+        return Promise.resolve(
+          json({
+            group: stored.group,
+            trail: [],
+            items: stored.items.slice(0, 2),
+          }),
+        );
+      }
+      return original(input, init);
+    }),
+  );
+  const user = userEvent.setup();
+  renderPage("/groups/1?q=matched");
+  await user.click(await screen.findByRole("checkbox", { name: 'Select "Episode 1"' }));
+  await user.click(screen.getByRole("button", { name: "Select all" }));
+
+  expect(screen.getByText("2 videos selected")).toBeDefined();
+  expect(
+    screen.getByRole("checkbox", { name: 'Select the group "Extras"', checked: true }),
+  ).toBeDefined();
+  expect(screen.queryByRole("checkbox", { name: 'Select "Episode 2"' })).toBeNull();
 });

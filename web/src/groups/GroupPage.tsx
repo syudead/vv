@@ -603,10 +603,9 @@ function GroupHeader({
         }
         count={t.groups.detail.count(group.videoCount, formatDuration(group.durationMs))}
         description={group.folder !== undefined && <FolderLine folder={group.folder} />}
-        // Hide Play for empty responses; removing the final item normally dissolves an owner's group.
         actions={
           <>
-            {state.data.items.length > 0 && (
+            {group.videoCount > 0 && (
               <PlayLink
                 to={videoInGroupPath(group.openVideoId, id)}
                 from={listUrl}
