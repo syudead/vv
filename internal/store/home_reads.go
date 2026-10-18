@@ -105,7 +105,7 @@ func readHomeShelves(ctx context.Context, tx *sql.Tx, audience domain.Audience, 
 			}
 			shelf.Items, shelf.Total = page.Items, page.Total
 		}
-		if shelf.Total == 0 && shelf.Key.Kind == domain.HomeShelfFolder && !audience.IsOwner() {
+		if shelf.Total == 0 && !audience.IsOwner() {
 			results[i].shown = false
 		}
 	}
@@ -115,11 +115,7 @@ func readHomeShelves(ctx context.Context, tx *sql.Tx, audience domain.Audience, 
 // homeShelfItemsSpec は棚 key の項目の絞り込みを返す。棚が無ければ found は偽で、フォルダの棚の
 // 経路の条件が無い実体を名指せば、何にも一致しないので spec は nil である。
 func homeShelfItemsSpec(ctx context.Context, tx *sql.Tx, audience domain.Audience, key domain.HomeShelfKey, now int64) (spec *listSpec, found bool, err error) {
-	switch key.Kind {
-	case domain.HomeShelfFolder:
-		return folderShelfSpec(ctx, tx, audience, key.FolderID, now)
-	}
-	return nil, false, nil
+	return folderShelfSpec(ctx, tx, audience, key.FolderID, now)
 }
 
 // folderShelfSpec はフォルダ id の棚の項目の絞り込みを、フォルダと祖先の条件とフォルダの並べ順で

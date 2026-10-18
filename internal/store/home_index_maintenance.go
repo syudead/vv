@@ -80,7 +80,7 @@ func refillSearchHits(ctx context.Context, tx *sql.Tx) error {
 			return fmt.Errorf("cannot refill the search hits: %w", err)
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `update home_shelved_state set search_dirty = 0`); err != nil {
+	if _, err := tx.ExecContext(ctx, `update home_index_state set search_dirty = 0`); err != nil {
 		return fmt.Errorf("cannot finish the search hits: %w", err)
 	}
 	return nil
@@ -89,7 +89,7 @@ func refillSearchHits(ctx context.Context, tx *sql.Tx) error {
 // searchHitsPending は、検索の当たりを求め直していないかを返す。
 func searchHitsPending(ctx context.Context, q queryRower) (bool, error) {
 	var pending bool
-	if err := q.QueryRowContext(ctx, `select search_dirty = 1 from home_shelved_state where id = 1`).Scan(&pending); err != nil {
+	if err := q.QueryRowContext(ctx, `select search_dirty = 1 from home_index_state where id = 1`).Scan(&pending); err != nil {
 		return false, fmt.Errorf("cannot read the search state: %w", err)
 	}
 	return pending, nil
@@ -98,22 +98,22 @@ func searchHitsPending(ctx context.Context, q queryRower) (bool, error) {
 // refillWatchStates updates watch states for marked content keys, including bundle aliases.
 func refillWatchStates(ctx context.Context, tx *sql.Tx) error {
 	var all bool
-	if err := tx.QueryRowContext(ctx, `select all_dirty from home_shelved_state where id = 1`).Scan(&all); err != nil {
-		return fmt.Errorf("cannot read the shelved state: %w", err)
+	if err := tx.QueryRowContext(ctx, `select watch_dirty from home_index_state where id = 1`).Scan(&all); err != nil {
+		return fmt.Errorf("cannot read the watch index state: %w", err)
 	}
 	var some bool
-	if err := tx.QueryRowContext(ctx, `select exists (select 1 from home_shelved_dirty)`).Scan(&some); err != nil {
-		return fmt.Errorf("cannot read the shelved marks: %w", err)
+	if err := tx.QueryRowContext(ctx, `select exists (select 1 from video_watch_dirty)`).Scan(&some); err != nil {
+		return fmt.Errorf("cannot read the watch index marks: %w", err)
 	}
 	if !all && !some {
 		return nil
 	}
 	// 印は動画の内容の鍵か集まりの鍵なので、どちらで付いても集まりの全部を求め直す。鍵の表は索引で引く。
-	const dirtyKeys = `with dirty_keys(content_key) as (select content_key from home_shelved_dirty
+	const dirtyKeys = `with dirty_keys(content_key) as (select content_key from video_watch_dirty
 		union select b.user_key from video_bundle_members m join video_bundles b on b.id = m.bundle_id
-			where m.content_key in (select content_key from home_shelved_dirty)
+			where m.content_key in (select content_key from video_watch_dirty)
 		union select m.content_key from video_bundle_members m join video_bundles b on b.id = m.bundle_id
-			where b.user_key in (select content_key from home_shelved_dirty))`
+			where b.user_key in (select content_key from video_watch_dirty))`
 	userKey := userKeyExpr("videos")
 	scope, marked := ``, ``
 	if !all {
@@ -131,10 +131,10 @@ func refillWatchStates(ctx context.Context, tx *sql.Tx) error {
 	statements = append(statements, struct {
 		sql  string
 		args []any
-	}{`delete from home_shelved_dirty`, nil}, struct {
+	}{`delete from video_watch_dirty`, nil}, struct {
 		sql  string
 		args []any
-	}{`update home_shelved_state set all_dirty = 0`, nil})
+	}{`update home_index_state set watch_dirty = 0`, nil})
 	for _, statement := range statements {
 		if _, err := tx.ExecContext(ctx, statement.sql, statement.args...); err != nil {
 			return fmt.Errorf("cannot refill watch states: %w", err)
@@ -146,9 +146,9 @@ func refillWatchStates(ctx context.Context, tx *sql.Tx) error {
 // watchMarksPending reports pending changes to the watch-state index.
 func watchMarksPending(ctx context.Context, q queryRower) (bool, error) {
 	var pending bool
-	if err := q.QueryRowContext(ctx, `select (select all_dirty from home_shelved_state where id = 1) = 1
-		or exists (select 1 from home_shelved_dirty)`).Scan(&pending); err != nil {
-		return false, fmt.Errorf("cannot read the shelved marks: %w", err)
+	if err := q.QueryRowContext(ctx, `select (select watch_dirty from home_index_state where id = 1) = 1
+		or exists (select 1 from video_watch_dirty)`).Scan(&pending); err != nil {
+		return false, fmt.Errorf("cannot read the watch index marks: %w", err)
 	}
 	return pending, nil
 }

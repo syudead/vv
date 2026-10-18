@@ -975,21 +975,6 @@ func (e HomeEmpty) Valid() bool {
 	}
 }
 
-// Defines values for HomeShelfKind.
-const (
-	HomeShelfKindFolder HomeShelfKind = "folder"
-)
-
-// Valid indicates whether the value is a known member of the HomeShelfKind enum.
-func (e HomeShelfKind) Valid() bool {
-	switch e {
-	case HomeShelfKindFolder:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for HomeShelfItemKind.
 const (
 	HomeShelfItemKindGroup HomeShelfItemKind = "group"
@@ -3011,19 +2996,15 @@ type HomeEmpty string
 
 // HomeShelf ホームの棚 1 つ（docs/design-docs/home.md）
 type HomeShelf struct {
-	// FolderId フォルダの棚だけ
-	FolderId *int64 `json:"folderId,omitempty"`
+	// FolderId Smart-folder ID.
+	FolderId int64 `json:"folderId"`
 
 	// Key Smart-folder shelf key: `folder:<positive id>`
-	Key  HomeShelfKey  `json:"key"`
-	Kind HomeShelfKind `json:"kind"`
+	Key HomeShelfKey `json:"key"`
 
 	// Name Smart-folder name.
 	Name string `json:"name"`
 }
-
-// HomeShelfKind defines model for HomeShelf.Kind.
-type HomeShelfKind string
 
 // HomeShelfItem 棚の項目 1 件。`kind` に応じて `video`・`group` のちょうど 1 つが入る。グループはカードに要る値だけの
 // LibraryGroupCard で、ライブラリの LibraryGroup が持つ `videoIds`・`tags` は載せない

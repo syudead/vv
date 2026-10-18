@@ -9,12 +9,7 @@ import { VideoThumbnail, VideoThumbnailDuration } from "@/ui/VideoThumbnail";
 
 import { sampleVideos } from "./list-page-example";
 
-// 棚の行の見本（registry:block shelf-row-example）。一覧ページの本体に ShelfRows を置き、
-// 棚ごとに ShelfRow を並べる。フォルダの棚は見出しがリンクで FolderSearch の印を前に置き、
-// 決まった棚の見出しは文字だけにする。どちらも右端に「See all」（link の sm）を置き、行には
-// card-0 のカードを並べる。2 つ目の棚は項目を読んでいる間の形である。写した画面は棚とカードを
-// 自分のものに差し替え、間隔・幅・送りのボタンは書かない（web/registry/rules/patterns.md の
-// Sections）。
+// ShelfRows contains linked smart-folder headings and cards; the second row shows loading.
 
 /** SampleShelfCard は見本の棚のカードである。写した画面は自分のカードに差し替える。 */
 function SampleShelfCard({ title, duration }: { title: string; duration: string }) {
@@ -47,6 +42,7 @@ export function ShelfRowExample() {
   const p = t.designSystem.pattern;
   const videos = sampleVideos();
   const travel = p.tagNames.travel;
+  const night = p.tagNames.night;
   return (
     <ListPage header={<PageHeader title={p.home} titleHidden />}>
       <ShelfRows label={p.shelves}>
@@ -67,11 +63,13 @@ export function ShelfRowExample() {
           ))}
         </ShelfRow>
         <ShelfRow
-          title={p.recentlyAdded}
-          actions={<SeeAll name={p.recentlyAdded} />}
-          previousLabel={p.scrollBack(p.recentlyAdded)}
-          nextLabel={p.scrollForward(p.recentlyAdded)}
-          loading={p.loadingShelf(p.recentlyAdded)}
+          title={night}
+          leading={<FolderSearch aria-hidden="true" />}
+          href="#shelf-row"
+          actions={<SeeAll name={night} />}
+          previousLabel={p.scrollBack(night)}
+          nextLabel={p.scrollForward(night)}
+          loading={p.loadingShelf(night)}
         />
       </ShelfRows>
     </ListPage>

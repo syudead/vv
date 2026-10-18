@@ -148,8 +148,5 @@ func (s *server) homeConfigured(w http.ResponseWriter) bool {
 
 // toAPIHomeShelf は棚の要約を応答の形にする。
 func toAPIHomeShelf(shelf domain.HomeShelf) gen.HomeShelf {
-	out := gen.HomeShelf{Key: shelf.Key.String(), Kind: gen.HomeShelfKind(shelf.Key.Kind), Name: shelf.Name}
-	id := shelf.Key.FolderID
-	out.FolderId = &id
-	return out
+	return gen.HomeShelf{Key: shelf.Key.String(), Name: shelf.Name, FolderId: shelf.Key.FolderID}
 }

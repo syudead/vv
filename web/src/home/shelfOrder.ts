@@ -7,9 +7,7 @@ import type { HomeShelf } from "../api/home";
 
 /** folderShelfIds はホームの棚の一覧から、フォルダの棚の id を上から順に取り出す。 */
 export function folderShelfIds(shelves: readonly HomeShelf[]): number[] {
-  return shelves.flatMap((shelf) =>
-    shelf.kind === "folder" && shelf.folderId !== undefined ? [shelf.folderId] : [],
-  );
+  return shelves.map((shelf) => shelf.folderId);
 }
 
 /**

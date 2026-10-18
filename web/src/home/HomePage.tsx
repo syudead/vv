@@ -180,7 +180,6 @@ function FolderShelfMenu({
   editing: ShelfEditing;
 }) {
   const id = shelf.folderId;
-  if (id === undefined) return null;
   const { order, writes } = editing;
   return (
     <ShelfMenu
@@ -236,20 +235,16 @@ function HomeShelfRow({
     <ShelfRow
       ref={frontierRef}
       title={title}
-      leading={shelf.kind === "folder" ? <FolderSearch aria-hidden="true" /> : undefined}
+      leading={<FolderSearch aria-hidden="true" />}
       href={shelfHeadingPath(shelf)}
       actions={
         <>
-          {all !== undefined && (
-            <Button variant="link" size="sm" asChild>
-              <Link to={all} aria-label={t.home.seeAllFor(title)}>
-                {t.home.seeAll}
-              </Link>
-            </Button>
-          )}
-          {editing !== undefined && shelf.kind === "folder" && (
-            <FolderShelfMenu shelf={shelf} editing={editing} />
-          )}
+          <Button variant="link" size="sm" asChild>
+            <Link to={all} aria-label={t.home.seeAllFor(title)}>
+              {t.home.seeAll}
+            </Link>
+          </Button>
+          {editing !== undefined && <FolderShelfMenu shelf={shelf} editing={editing} />}
         </>
       }
       previousLabel={t.home.previous(title)}

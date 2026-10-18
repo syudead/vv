@@ -15,7 +15,7 @@ import HomePage from "./HomePage";
 // 動かす・外す・足すと、PUT /api/home/shelves にフォルダの棚の新しい並びを送る。
 
 function folderShelf(id: number, name: string): HomeShelf {
-  return { key: `folder:${String(id)}`, kind: "folder", name, folderId: id };
+  return { key: `folder:${String(id)}`, name, folderId: id };
 }
 
 const travel = folderShelf(3, "Travel");

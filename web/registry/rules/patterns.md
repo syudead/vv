@@ -384,7 +384,7 @@ control }`: inline, the controls stand without a visible name, so each needs
 - `ShelfRow`: put the shelves in `ShelfRows` in a `ListPage` body, one
   `ShelfRow` each, and pass the cards as its children; the row sets their
   width, so a card fills it. A shelf that opens a page of its own passes `href`
-  and a `leading` icon; a fixed shelf passes neither. `See all` goes in
+  and a `leading` icon. `See all` goes in
   `actions` as a `link` `sm` `Button`. While the row's items load, pass
   `loading` with its name; when they failed, pass `failed` with the message and
   `Retry`; the heading stays in both. The previous and next buttons stay out of

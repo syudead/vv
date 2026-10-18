@@ -5832,22 +5832,19 @@ components:
 
     HomeShelf:
       type: object
-      required: [key, kind, name]
+      required: [key, name, folderId]
       additionalProperties: false
       description: ホームの棚 1 つ（docs/design-docs/home.md）
       properties:
         key:
           $ref: "#/components/schemas/HomeShelfKey"
-        kind:
-          type: string
-          enum: [folder]
         name:
           type: string
           description: Smart-folder name.
         folderId:
           type: integer
           format: int64
-          description: フォルダの棚だけ
+          description: Smart-folder ID.
 
     Home:
       type: object

@@ -42,8 +42,8 @@ The API contract is [openapi.yaml](../../api/openapi.yaml).
 ## Upgrading development databases
 
 The home feature used migration numbers 56–58 before merging main, which
-assigned 56 to keyframe spacing and 57 to location timestamps. Home now uses
-58–60. Goose records numbers rather than filenames, so a database from the
+assigned 56 to keyframe spacing and 57 to location timestamps. Home uses
+58–61. Goose records numbers rather than filenames, so a database from the
 old feature branch otherwise skips main's changes and tries to create
 `group_closure` again at version 59.
 
@@ -55,12 +55,8 @@ migrations in one transaction. A failure rolls back both schema and history;
 the next startup can retry. Normal main databases follow the usual migration
 path, and an ambiguous legacy schema or history stops without being repaired.
 Library entries, shelves, playback positions, watch history and favorites
-remain in place; no database reset or rescan is needed.
-
-The built-in continue-watching, recently-added, unshelved and recommended
-shelves have been removed, including their read keys, recommendation ranking
-and cache, and the unshelved library filter. The legacy `home_shelved_videos`
-table is unused; shelf membership is no longer computed after writes.
+remain in place; no database reset or rescan is needed. Migration 61 consolidates
+the search and watch index state and retains only the triggers those indexes need.
 
 ## Reading the shelves
 

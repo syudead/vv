@@ -13,7 +13,7 @@ import {
 
 const folder = (id: number): HomeShelf => ({
   key: `folder:${String(id)}`,
-  kind: "folder",
+
   name: `Folder ${String(id)}`,
   folderId: id,
 });

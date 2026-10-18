@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// Only canonical folder keys round-trip; retired fixed keys are rejected.
+// Canonical folder keys round-trip.
 func TestParseHomeShelfKey(t *testing.T) {
 	for _, value := range []string{"folder:12"} {
 		key, err := ParseHomeShelfKey(value)
@@ -17,7 +17,7 @@ func TestParseHomeShelfKey(t *testing.T) {
 	if key, _ := ParseHomeShelfKey("folder:12"); key != FolderShelfKey(12) {
 		t.Errorf("folder:12 = %+v", key)
 	}
-	for _, value := range []string{"continue", "recent", "unshelved", "recommended", "", "folder:", "folder:0", "folder:-1", "folder:01", "folder:x", "folder", "Recent", "later"} {
+	for _, value := range []string{"", "folder:", "folder:0", "folder:-1", "folder:01", "folder:x", "folder", "later"} {
 		if _, err := ParseHomeShelfKey(value); !errors.Is(err, ErrInvalidHomeShelfKey) {
 			t.Errorf("ParseHomeShelfKey(%q) error = %v, want ErrInvalidHomeShelfKey", value, err)
 		}

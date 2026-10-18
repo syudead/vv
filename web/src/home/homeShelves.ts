@@ -34,14 +34,12 @@ export function shelfTitle(shelf: HomeShelf): string {
 }
 
 /** shelfHeadingPath は見出しが開く場所である。フォルダの棚だけがフォルダのページを開く。 */
-export function shelfHeadingPath(shelf: HomeShelf): string | undefined {
-  return shelf.kind === "folder" && shelf.folderId !== undefined
-    ? smartFolderPagePath(shelf.folderId)
-    : undefined;
+export function shelfHeadingPath(shelf: HomeShelf): string {
+  return smartFolderPagePath(shelf.folderId);
 }
 
 /** The shelf heading and See all both open its smart folder. */
-export function seeAllPath(shelf: HomeShelf): string | undefined {
+export function seeAllPath(shelf: HomeShelf): string {
   return shelfHeadingPath(shelf);
 }
 
@@ -54,9 +52,7 @@ export function shelfItemPath(shelf: HomeShelf, item: HomeShelfItem): string {
   if (item.kind === "group") {
     return videoInGroupPath(item.group.openVideoId, item.group.id);
   }
-  return shelf.kind === "folder" && shelf.folderId !== undefined
-    ? videoInSmartFolderPath(item.video.id, shelf.folderId)
-    : `/videos/${String(item.video.id)}`;
+  return videoInSmartFolderPath(item.video.id, shelf.folderId);
 }
 
 /** shelfRowHeightPx は棚の行 1 つの高さの見積もり（見出し、card-0 のカード、棚の間）である。 */

@@ -3426,15 +3426,13 @@ export interface components {
         /** @description ホームの棚 1 つ（docs/design-docs/home.md） */
         HomeShelf: {
             key: components["schemas"]["HomeShelfKey"];
-            /** @enum {string} */
-            kind: "folder";
             /** @description Smart-folder name. */
             name: string;
             /**
              * Format: int64
-             * @description フォルダの棚だけ
+             * @description Smart-folder ID.
              */
-            folderId?: number;
+            folderId: number;
         };
         /** @description GET /api/home の応答 */
         Home: {

@@ -20,13 +20,13 @@ import {
 
 const folder: HomeShelf = {
   key: "folder:3",
-  kind: "folder",
+
   name: "Travel",
   folderId: 3,
 };
 const nature: HomeShelf = {
   key: "folder:4",
-  kind: "folder",
+
   name: "Nature",
   folderId: 4,
 };
@@ -52,7 +52,7 @@ function ready(items: HomeShelfItem[]): ShelfState {
 function folders(count: number): HomeShelf[] {
   return Array.from({ length: count }, (_, index) => ({
     key: `folder:${String(index + 1)}`,
-    kind: "folder" as const,
+
     name: `Folder ${String(index + 1)}`,
     folderId: index + 1,
   }));

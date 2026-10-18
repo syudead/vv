@@ -91,7 +91,7 @@ function respond(url: URL, init: RequestInit | undefined): Response {
       return json({
         shelves: ids.map((id, index) => ({
           key: `folder:${String(index + 20)}`,
-          kind: "folder",
+
           name: id,
         })),
         queued: 0,

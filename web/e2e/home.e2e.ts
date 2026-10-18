@@ -28,9 +28,8 @@ interface Video {
 
 interface HomeShelf {
   key: string;
-  kind: string;
   name: string;
-  folderId?: number;
+  folderId: number;
 }
 
 interface ShelfItem {
@@ -230,9 +229,7 @@ test.describe.serial("home", () => {
       )
       .toBe(true);
     for (const [title, item] of await readVideos(request)) videos.set(title, item);
-    previousShelfIds = (await readHome(request)).shelves.flatMap((shelf) =>
-      shelf.folderId === undefined ? [] : [shelf.folderId],
-    );
+    previousShelfIds = (await readHome(request)).shelves.map((shelf) => shelf.folderId);
     const folder = await request.post("/api/smart-folders", {
       headers: mutationHeaders,
       data: { name: shelfName, rule: { q: query }, sort: "addedDesc" },

@@ -16,17 +16,17 @@ import HomePage from "./HomePage";
 
 const travel: HomeShelf = {
   key: "folder:3",
-  kind: "folder",
+
   name: "Travel",
   folderId: 3,
 };
 const nature: HomeShelf = {
   key: "folder:4",
-  kind: "folder",
+
   name: "Nature",
   folderId: 4,
 };
-const empty: HomeShelf = { key: "folder:5", kind: "folder", name: "Empty", folderId: 5 };
+const empty: HomeShelf = { key: "folder:5", name: "Empty", folderId: 5 };
 
 const server = {
   home: { shelves: [] } as Home,

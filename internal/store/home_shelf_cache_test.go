@@ -43,31 +43,31 @@ func TestHomeShelfItemsAreHeldUntilANoticeOrTheTTL(t *testing.T) {
 	}
 
 	if got := shelfTotal(t, db, domain.AudienceGuest, folder.ID); got != 0 {
-		t.Fatalf("ゲストの最近追加 = %d, want 0", got)
+		t.Fatalf("ゲストの棚 = %d, want 0", got)
 	}
 	publish("key-0")
 	if got := shelfTotal(t, db, domain.AudienceGuest, folder.ID); got != 0 {
-		t.Errorf("知らせの前のゲストの最近追加 = %d, want 0（保持した値）", got)
+		t.Errorf("知らせの前のゲストの棚 = %d, want 0（保持した値）", got)
 	}
 	if got := shelfTotal(t, db, domain.AudienceOwner, folder.ID); got != 2 {
-		t.Errorf("所有者の最近追加 = %d, want 2（見る人ごとに保持する）", got)
+		t.Errorf("所有者の棚 = %d, want 2（見る人ごとに保持する）", got)
 	}
 
 	// スマートフォルダの知らせ（ホームの画面を読み直させる）で捨てる。
 	db.publishEvents(domain.SmartFoldersChanged{IDs: []int64{1}})
 	if got := shelfTotal(t, db, domain.AudienceGuest, folder.ID); got != 1 {
-		t.Errorf("知らせの後のゲストの最近追加 = %d, want 1", got)
+		t.Errorf("知らせの後のゲストの棚 = %d, want 1", got)
 	}
 
 	// 画面を読み直させない知らせでは捨てない。
 	publish("key-1")
 	db.publishEvents(domain.ScanChanged{})
 	if got := shelfTotal(t, db, domain.AudienceGuest, folder.ID); got != 1 {
-		t.Errorf("取り込みの知らせの後のゲストの最近追加 = %d, want 1（保持した値）", got)
+		t.Errorf("取り込みの知らせの後のゲストの棚 = %d, want 1（保持した値）", got)
 	}
 	clock = clock.Add(homeShelfCacheTTL)
 	if got := shelfTotal(t, db, domain.AudienceGuest, folder.ID); got != 2 {
-		t.Errorf("期限の後のゲストの最近追加 = %d, want 2", got)
+		t.Errorf("期限の後のゲストの棚 = %d, want 2", got)
 	}
 }
 
@@ -97,7 +97,7 @@ func TestHomeShelfCacheHoldsNoKeyThatNamesNoShelf(t *testing.T) {
 	}
 	ctx := context.Background()
 	for id := int64(1000); id < 1010; id++ {
-		page, err := db.Home().ShelfItems(ctx, domain.AudienceGuest, []domain.HomeShelfKey{{Kind: domain.HomeShelfFolder, FolderID: id}})
+		page, err := db.Home().ShelfItems(ctx, domain.AudienceGuest, []domain.HomeShelfKey{{FolderID: id}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -110,6 +110,6 @@ func TestHomeShelfCacheHoldsNoKeyThatNamesNoShelf(t *testing.T) {
 	held := len(db.homeShelves.entries)
 	db.homeShelves.mu.Unlock()
 	if held != 1 {
-		t.Errorf("保持した鍵の数 = %d, want 1（最近追加だけ）", held)
+		t.Errorf("保持した鍵の数 = %d, want 1（棚だけ）", held)
 	}
 }

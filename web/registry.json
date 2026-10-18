@@ -1040,7 +1040,7 @@
       "name": "shelf-row-example",
       "type": "registry:block",
       "title": "Shelf row example",
-      "description": "A list page body of shelf rows: a folder shelf whose heading is a link with a FolderSearch icon, and a fixed shelf with a plain heading still loading, each with See all at the end.",
+      "description": "A list page body of smart-folder shelves with linked headings, FolderSearch icons and See all actions, including a loading row.",
       "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#sections (item vv-rules).",
       "files": [
         {

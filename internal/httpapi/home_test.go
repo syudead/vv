@@ -87,7 +87,7 @@ func TestHomeListsOnlySavedShelvesInTheirOrder(t *testing.T) {
 		t.Fatalf("棚 = %v, want %v", got, want)
 	}
 	first := home.Shelves[0]
-	if first.Kind != gen.HomeShelfKindFolder || first.Name != "隠れ" || first.FolderId == nil || *first.FolderId != f.hidden {
+	if first.Name != "隠れ" || first.FolderId != f.hidden {
 		t.Errorf("フォルダの棚 = %+v", first)
 	}
 	if home.Empty != nil {
@@ -167,8 +167,6 @@ func TestHomeShelfItemsRejectsBadKeys(t *testing.T) {
 		"/api/home/shelves", "/api/home/shelves?keys=", "/api/home/shelves?keys=" + nine,
 		"/api/home/shelves?keys=folder:x", "/api/home/shelves?keys=folder:0", "/api/home/shelves?keys=folder:01",
 		"/api/home/shelves?keys=later",
-		"/api/home/shelves?keys=continue", "/api/home/shelves?keys=recent",
-		"/api/home/shelves?keys=unshelved", "/api/home/shelves?keys=recommended",
 	} {
 		rec := f.env.get(target, f.owner)
 		if rec.Code != http.StatusBadRequest || decode[gen.Error](t, rec).Code != codeInvalidRequest {

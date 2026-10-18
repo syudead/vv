@@ -13,22 +13,15 @@ const HomeShelfItemLimit = 24
 
 var ErrInvalidHomeShelfKey = errors.New("invalid home shelf key")
 
-type HomeShelfKind string
-
-const (
-	HomeShelfFolder HomeShelfKind = "folder"
-)
-
 const homeShelfFolderPrefix = "folder:"
 
 // HomeShelfKey identifies a saved smart-folder shelf.
 type HomeShelfKey struct {
-	Kind     HomeShelfKind
 	FolderID int64
 }
 
 func FolderShelfKey(id int64) HomeShelfKey {
-	return HomeShelfKey{Kind: HomeShelfFolder, FolderID: id}
+	return HomeShelfKey{FolderID: id}
 }
 
 func (k HomeShelfKey) String() string {

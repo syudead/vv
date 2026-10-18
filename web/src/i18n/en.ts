@@ -725,7 +725,6 @@ export const en = {
       save: "Save",
       home: "Home",
       shelves: "Shelves",
-      recentlyAdded: "Recently added",
       seeAll: "See all",
       seeAllFor: (name: string) => `See all: ${name}`,
       scrollBack: (name: string) => `Scroll ${name} back`,

@@ -111,7 +111,7 @@ function folderResponse(url: URL): Response | undefined {
     return json({
       shelves: server.homeShelves.map((id) => ({
         key: `folder:${String(id)}`,
-        kind: "folder",
+
         name: server.folders.get(id)?.smartFolder.name ?? "",
         folderId: id,
       })),
