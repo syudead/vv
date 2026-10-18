@@ -8,12 +8,15 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// recentTotal は見る人 audience の最近追加の棚の項目の数を読む。
-func recentTotal(t *testing.T, db *DB, audience domain.Audience) int {
+// shelfTotal treats an omitted guest shelf as empty.
+func shelfTotal(t *testing.T, db *DB, audience domain.Audience, id int64) int {
 	t.Helper()
-	page, err := db.Home().ShelfItems(context.Background(), audience, []domain.HomeShelfKey{{Kind: domain.HomeShelfRecent}})
+	page, err := db.Home().ShelfItems(context.Background(), audience, []domain.HomeShelfKey{domain.FolderShelfKey(id)})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(page.Shelves) == 0 {
+		return 0
 	}
 	if len(page.Shelves) != 1 {
 		t.Fatalf("shelves = %+v", page.Shelves)
@@ -25,6 +28,10 @@ func recentTotal(t *testing.T, db *DB, audience domain.Audience) int {
 // （ここでは公開の行を直接足す）は保持のあいだ見えない。
 func TestHomeShelfItemsAreHeldUntilANoticeOrTheTTL(t *testing.T) {
 	db, _ := homeFixture(t, "猫", "犬")
+	folder := createRuleFolder(t, db, "All", domain.SmartRule{})
+	if err := db.Home().SetShelves(context.Background(), []int64{folder.ID}); err != nil {
+		t.Fatal(err)
+	}
 	clock := time.Unix(1_000_000, 0)
 	homeShelfCacheNow = func() time.Time { return clock }
 	t.Cleanup(func() { homeShelfCacheNow = time.Now })
@@ -35,31 +42,31 @@ func TestHomeShelfItemsAreHeldUntilANoticeOrTheTTL(t *testing.T) {
 		}
 	}
 
-	if got := recentTotal(t, db, domain.AudienceGuest); got != 0 {
+	if got := shelfTotal(t, db, domain.AudienceGuest, folder.ID); got != 0 {
 		t.Fatalf("ゲストの最近追加 = %d, want 0", got)
 	}
 	publish("key-0")
-	if got := recentTotal(t, db, domain.AudienceGuest); got != 0 {
+	if got := shelfTotal(t, db, domain.AudienceGuest, folder.ID); got != 0 {
 		t.Errorf("知らせの前のゲストの最近追加 = %d, want 0（保持した値）", got)
 	}
-	if got := recentTotal(t, db, domain.AudienceOwner); got != 2 {
+	if got := shelfTotal(t, db, domain.AudienceOwner, folder.ID); got != 2 {
 		t.Errorf("所有者の最近追加 = %d, want 2（見る人ごとに保持する）", got)
 	}
 
 	// スマートフォルダの知らせ（ホームの画面を読み直させる）で捨てる。
 	db.publishEvents(domain.SmartFoldersChanged{IDs: []int64{1}})
-	if got := recentTotal(t, db, domain.AudienceGuest); got != 1 {
+	if got := shelfTotal(t, db, domain.AudienceGuest, folder.ID); got != 1 {
 		t.Errorf("知らせの後のゲストの最近追加 = %d, want 1", got)
 	}
 
 	// 画面を読み直させない知らせでは捨てない。
 	publish("key-1")
 	db.publishEvents(domain.ScanChanged{})
-	if got := recentTotal(t, db, domain.AudienceGuest); got != 1 {
+	if got := shelfTotal(t, db, domain.AudienceGuest, folder.ID); got != 1 {
 		t.Errorf("取り込みの知らせの後のゲストの最近追加 = %d, want 1（保持した値）", got)
 	}
 	clock = clock.Add(homeShelfCacheTTL)
-	if got := recentTotal(t, db, domain.AudienceGuest); got != 2 {
+	if got := shelfTotal(t, db, domain.AudienceGuest, folder.ID); got != 2 {
 		t.Errorf("期限の後のゲストの最近追加 = %d, want 2", got)
 	}
 }
@@ -67,7 +74,7 @@ func TestHomeShelfItemsAreHeldUntilANoticeOrTheTTL(t *testing.T) {
 // 捨てる前に読み始めた結果は、捨てた後にしまわない。
 func TestHomeShelfCacheKeepsNoResultReadBeforeADrop(t *testing.T) {
 	var cache homeShelfCache
-	key := homeShelfCacheKey{shelf: domain.HomeShelfKey{Kind: domain.HomeShelfRecent}, audience: domain.AudienceOwner}
+	key := homeShelfCacheKey{shelf: domain.FolderShelfKey(1), audience: domain.AudienceOwner}
 	generation := cache.start()
 	cache.dropFor([]domain.Event{domain.HomeChanged{}})
 	cache.put(generation, key, homeShelfCacheEntry{shelf: domain.HomeShelfItems{Key: key.shelf, Total: 3}, shown: true, isShelf: true})
@@ -84,6 +91,10 @@ func TestHomeShelfCacheKeepsNoResultReadBeforeADrop(t *testing.T) {
 // 鍵で保持が増え続けないためである。
 func TestHomeShelfCacheHoldsNoKeyThatNamesNoShelf(t *testing.T) {
 	db, _ := homeFixture(t, "猫", "犬")
+	folder := createRuleFolder(t, db, "All", domain.SmartRule{})
+	if err := db.Home().SetShelves(context.Background(), []int64{folder.ID}); err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
 	for id := int64(1000); id < 1010; id++ {
 		page, err := db.Home().ShelfItems(ctx, domain.AudienceGuest, []domain.HomeShelfKey{{Kind: domain.HomeShelfFolder, FolderID: id}})
@@ -94,7 +105,7 @@ func TestHomeShelfCacheHoldsNoKeyThatNamesNoShelf(t *testing.T) {
 			t.Fatalf("無いフォルダ %d の棚 = %+v", id, page.Shelves)
 		}
 	}
-	recentTotal(t, db, domain.AudienceGuest)
+	shelfTotal(t, db, domain.AudienceGuest, folder.ID)
 	db.homeShelves.mu.Lock()
 	held := len(db.homeShelves.entries)
 	db.homeShelves.mu.Unlock()

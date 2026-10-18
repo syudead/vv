@@ -405,9 +405,7 @@ export function toLibraryItems<G>(
   });
 }
 
-export interface ListLibraryParams extends ListVideosParams {
-  unshelved?: boolean;
-}
+export type ListLibraryParams = ListVideosParams;
 
 export async function listLibrary(
   params: ListLibraryParams = {},
@@ -417,7 +415,6 @@ export async function listLibrary(
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
   setAddedLengthFilter(query, params);
-  if (params.unshelved === true) query.set("unshelved", "true");
   const page = await request<components["schemas"]["LibraryPage"]>(
     `/api/library?${query.toString()}`,
     { signal: params.signal },

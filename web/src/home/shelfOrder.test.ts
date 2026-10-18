@@ -20,12 +20,7 @@ const folder = (id: number): HomeShelf => ({
 
 describe("folderShelfIds", () => {
   it("フォルダの棚の id だけを上から順に取り出す", () => {
-    const shelves: HomeShelf[] = [
-      folder(4),
-      folder(2),
-      { key: "continue", kind: "continue", name: "" },
-      { key: "recent", kind: "recent", name: "" },
-    ];
+    const shelves: HomeShelf[] = [folder(4), folder(2)];
     expect(folderShelfIds(shelves)).toEqual([4, 2]);
   });
 });

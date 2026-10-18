@@ -103,17 +103,13 @@ type VideoQuery struct {
 	// Duration bounds are inclusive seconds; nil leaves a side unbounded and any bound excludes unknown durations.
 	MinDurationSec *int
 	MaxDurationSec *int
-	// Unshelved は、ホームのどのフォルダの棚の実効の規則（祖先の条件を含む経路の条件）にも一致しない
-	// 動画だけにする。棚との対応は保存せず、読むたびに求める
-	// （docs/design-docs/home.md）。ライブラリの項目の一覧（GET /api/library）だけが読む。
-	Unshelved bool
 }
 
 // ListsSmartFolders allows only unfiltered or favorite-only listings; sort order does not count as a filter.
 func (q VideoQuery) ListsSmartFolders() bool {
 	return ParseSearchQuery(q.Query).Empty() && (q.Watch == "" || q.Watch == WatchAll) && !q.PlayableOnly &&
 		len(q.TagIDs) == 0 && q.Person == 0 && q.Organization == 0 && q.TagKindID == 0 &&
-		q.AddedWithinDays == 0 && q.MinDurationSec == nil && q.MaxDurationSec == nil && !q.Unshelved
+		q.AddedWithinDays == 0 && q.MinDurationSec == nil && q.MaxDurationSec == nil
 }
 
 const MaxAddedWithinDays = 36500

@@ -48,7 +48,7 @@ func newLibraryFixtureWith(t *testing.T, adjust func(Options) Options) *libraryF
 			Playback: db.Playback(), Tags: db.Tags(), Visibility: db.Visibility(),
 			Favorites: db.Favorites(), Versions: db.Versions(), Playlists: db.Playlists(), Groups: db.Groups(),
 			SmartFolders:     db.SmartFolders(),
-			Home:             app.NewHome(app.HomeOptions{Store: db.Home(), Catalog: library}),
+			Home:             db.Home(),
 			PlaylistPlayback: db.Playlists(),
 			Organizer:        app.NewOrganizer(app.OrganizerOptions{Store: db.Organize()}),
 		})
@@ -380,30 +380,6 @@ func TestListLibraryForGuest(t *testing.T) {
 	assertUnauthenticated(t, "ゲストの /api/library/ids", f.env.get("/api/library/ids"))
 }
 
-func TestListLibraryUnshelved(t *testing.T) {
-	f := newLibraryFixture(t)
-	ctx := context.Background()
-	shelf, err := f.env.db.SmartFolders().CreateSmartFolder(ctx, domain.SmartFolderCreate{
-		Name: "手", Rule: domain.SmartRule{Tags: []int64{f.manual}}, Sort: domain.SortTitleAsc})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := f.env.db.Home().SetShelves(ctx, []int64{shelf.ID}); err != nil {
-		t.Fatal(err)
-	}
-	rec := f.env.get("/api/library?unshelved=true")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("ゲストの unshelved: status = %d: %s", rec.Code, rec.Body)
-	}
-	page := decode[gen.LibraryPage](t, rec)
-	if names := libraryItemNames(page); !slices.Equal(names, []string{"ep2", "group:pair", "solo"}) || page.Total != 3 {
-		t.Errorf("ゲストの棚に無い項目 = %v・total %d", names, page.Total)
-	}
-	rec = f.env.get("/api/library?unshelved=false", f.owner)
-	if names := libraryItemNames(decode[gen.LibraryPage](t, rec)); !slices.Contains(names, "group:show") || !slices.Contains(names, "folder:手") {
-		t.Errorf("unshelved=false の所有者の項目 = %v, want show とフォルダを含む", names)
-	}
-}
 func TestGetGroup(t *testing.T) {
 	f := newLibraryFixture(t)
 	path := f.groupPath(t, "show")

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/syudead/vv/internal/domain"
@@ -190,10 +189,6 @@ func libraryItemsPart(spec listSpec) (string, []any) {
 	audience := spec.scope.audience
 	const chosen, matched, hits, whole, carded, mv, items = `chosen`, `matched`, `hits`, `whole`, `carded`, `mv`, `items`
 	conditions, args := matchConditions(spec)
-	if spec.unshelved {
-		conditions = append(conditions, `videos.id not in (select value from json_each(?))`)
-		args = append(args, spec.shelved)
-	}
 	where := ""
 	if len(conditions) > 0 {
 		where = ` where ` + strings.Join(conditions, " and ")
@@ -256,69 +251,6 @@ func libraryItemsPart(spec listSpec) (string, []any) {
 		from ` + mv + ` m join groups g on g.id = m.group_id
 		group by g.id` + folderItems + `)`
 	return part, append(args, folderArgs...)
-}
-
-// shelvedQueryMaxArgs は shelvedVideos の問い合わせ 1 回に並べる棚の条件の引数の数の目安である。
-// 棚ごとの経路の条件は祖先の段ごとに引数を持ち、棚の数と経路の深さが上限なら、すべてを 1 回に並べると
-// SQLite のホスト変数の上限（32766）を超える。1 つの棚はこれを超えても 1 回で読む。
-const shelvedQueryMaxArgs = 8000
-
-// shelvedVideos は、見る人 audience に見せる動画のうち棚の経路の条件 shelves（homeShelfSpecs）の
-// どれかに一致する動画の id を、JSON の配列にして返す（docs/design-docs/home.md）。棚ごとの
-// 一致はカードの読み出しと同じ smartMatchFor で求める。棚は引数が shelvedQueryMaxArgs に収まる
-// まとまりごとに 1 回の問い合わせで読み、smart_base はまとまりごとに 1 度求める。
-func shelvedVideos(ctx context.Context, tx *sql.Tx, audience domain.Audience, shelves []listSpec) (string, error) {
-	matches := make([]smartMatch, len(shelves))
-	for i, shelf := range shelves {
-		matches[i] = smartMatchFor(shelf, `us`+strconv.Itoa(i))
-	}
-	shelved := []int64{}
-	for start := 0; start < len(matches); {
-		cte, args := smartBaseCTE(audience)
-		var conditions []string
-		var conditionArgs []any
-		end := start
-		for ; end < len(matches); end++ {
-			match := matches[end]
-			if end > start && len(args)+len(conditionArgs)+len(match.searchArgs)+len(match.args) > shelvedQueryMaxArgs {
-				break
-			}
-			if match.search != "" {
-				cte += `, ` + match.search
-				args = append(args, match.searchArgs...)
-			}
-			conditions = append(conditions, `(`+match.condition+`)`)
-			conditionArgs = append(conditionArgs, match.args...)
-		}
-		ids, err := queryInt64s(ctx, tx, cte+` select id from smart_base videos where `+strings.Join(conditions, " or "),
-			append(args, conditionArgs...)...)
-		if err != nil {
-			return "", fmt.Errorf("cannot read the videos on the home shelves: %w", err)
-		}
-		shelved = append(shelved, ids...)
-		start = end
-	}
-	encoded, err := json.Marshal(shelved)
-	if err != nil {
-		return "", fmt.Errorf("cannot encode the videos on the home shelves: %w", err)
-	}
-	return string(encoded), nil
-}
-
-// fillShelved は spec が棚にない動画だけ（unshelved）を求めるとき、spec の見る人に見せる動画のうち
-// どれかの棚に一致するものを spec.shelved に入れる（docs/design-docs/home.md）。求めないときは
-// 何もしない。
-func fillShelved(ctx context.Context, tx *sql.Tx, spec *listSpec) error {
-	if !spec.unshelved {
-		return nil
-	}
-	audience := spec.scope.audience
-	shelves, err := homeShelfSpecs(ctx, tx, audience, spec.now)
-	if err != nil {
-		return err
-	}
-	spec.shelved, err = shelvedVideos(ctx, tx, audience, shelves)
-	return err
 }
 
 // homeShelfSpecs は、ホームのフォルダの棚ごとの経路の条件を、見る人 audience の範囲と基準時刻 now の
@@ -405,9 +337,6 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	}
 	spec := libraryListSpec(audience, q, tagIDs)
 	if spec.smartFolders, err = librarySmartFolders(ctx, tx, audience, q, spec.now); err != nil {
-		return domain.LibraryPage{}, err
-	}
-	if err := fillShelved(ctx, tx, &spec); err != nil {
 		return domain.LibraryPage{}, err
 	}
 	page, err := listLibraryPageTx(ctx, tx, spec)

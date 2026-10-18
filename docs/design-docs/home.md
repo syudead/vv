@@ -1,9 +1,9 @@
 # Home shelves
 
-Home lists smart-folder shelves in the order chosen by the owner, followed
-by fixed shelves. Shelf membership and order change only through owner
-actions, including choosing interests during setup. Scans and restarts do
-not create or reorganize shelves.
+Home lists only smart-folder shelves in the order chosen by the owner.
+Shelf membership and order change only through owner actions, including
+choosing interests during setup. Scans and restarts do not create or reorganize
+shelves.
 
 The former automatic organizer and `POST /api/home/organize` have been
 removed. Existing shelves retain their names, rules and positions; old
@@ -57,32 +57,10 @@ path, and an ambiguous legacy schema or history stops without being repaired.
 Library entries, shelves, playback positions, watch history and favorites
 remain in place; no database reset or rescan is needed.
 
-## The owner's fixed shelves
-
-After the folder shelves, the owner's home lists continue watching, recently
-added, unshelved and recommended; a guest gets only recently added and
-unshelved, because the watch history is the owner's only.
-
-- **Continue watching** is the library's `watch=inProgress` list sorted by
-  the latest play, read by [`internal/store/home_reads.go`](../../internal/store/home_reads.go).
-  Its held items are dropped on every saved playback position, because a play
-  that keeps a video in progress changes the order without any notice.
-- **Recommended** is listed only when a seed exists: up to 10 videos played
-  most in the last 90 days and up to 10 latest favorites
-  ([`internal/store/home_recommend.go`](../../internal/store/home_recommend.go)).
-  [`internal/app/home.go`](../../internal/app/home.go) ranks the shown videos
-  that are neither a seed nor completed by their highest closeness to any
-  seed, with the related videos' `RelatedScorer`, keeps the first 24, and
-  holds that order for 10 minutes. Scoring 20,000 videos against 20 seeds
-  takes seconds on one core, so the candidates are scored in parallel, and a
-  shelf read computes the ranking alongside the store's read of the other
-  shelves.
-
-| Rejected | Why |
-| --- | --- |
-| The sum of closeness to all seeds | Videos near one large cluster of seeds fill the whole shelf |
-| Ranking on every read | One pass reads every video's clues, which does not fit the home's 1 second |
-| Continue watching held until the next notice | Playing a video in progress publishes nothing, so the shelf would keep the old order for 10 minutes |
+The built-in continue-watching, recently-added, unshelved and recommended
+shelves have been removed, including their read keys, recommendation ranking
+and cache, and the unshelved library filter. The legacy `home_shelved_videos`
+table is unused; shelf membership is no longer computed after writes.
 
 ## Reading the shelves
 
@@ -100,7 +78,7 @@ and looks up everything else per walked row.
 ```mermaid
 flowchart LR
   write[Group writers] -->|same transaction| closure[(group_closure)]
-  triggers[Video, location, progress, search-related writes] -->|invalidate, mark| values[(group_root_values, home_shelved_videos, video_watch_states, home_search_hits)]
+  triggers[Video, location, progress, search-related writes] -->|invalidate, mark| values[(group_root_values, video_watch_states, home_search_hits)]
   maintain[Maintenance after each committed write] -->|refill, recompute the marked keys| values
   read[Shelf read] --> walk[Walk videos / locations / progress by the sort key, or the search hits or the watch state sets, keyset, limit]
   values --> decide
@@ -114,8 +92,7 @@ flowchart LR
 | --- | --- | --- |
 | `group_closure` | One per (group, descendant video item), with the play-order key | Every writer that changes groups rebuilds it in its transaction ([`group_closure.go`](../../internal/store/group_closure.go)); triggers on `groups` and `group_items` set a dirty flag, and the maintenance after the next committed write rebuilds the closure when it is set; a shelf read does not read the flag |
 | `group_root_values` | One per (group, viewer): the card values and, per sort key, the descendant with the largest value | Triggers on video, location, progress, public, folder and bundle writes delete the affected rows; the maintenance after the next committed write refills them |
-| `home_shelved_videos` | One per video on some folder shelf whose rule does not depend on the clock | Triggers mark a video's key (or flag every key when a shelf, tag or folder changes); the maintenance recomputes the marked keys, found by index |
-| `video_watch_states` | One per video key: its watch state | The same marks; recomputed with the shelved marks |
+| `video_watch_states` | One per video key: its watch state | Video and playback changes mark keys; maintenance recomputes their watch state |
 | `home_search_hits` | One per (search expression of a folder shelf, matching video) | Triggers on the tables a search reads set one flag; the maintenance reruns the shelves' full-text queries when it is set, so a probe or progress write never does |
 
 A shelf walks `videos` by `added_at`, `video_locations` by `mtime` or the
@@ -129,11 +106,7 @@ length counts as a non-match), so whole groups are decided only for the roots
 that appear, and the members of a group already decided are skipped in SQL.
 The walk stops after one more than a page, reading the ties of the last value
 so they sort as the library sorts them. `total` counts up to 25; the screen
-reads only whether it is 0. The unshelved shelf is an indexed `not exists`
-against `home_shelved_videos`
-plus, per walked row, the rules of the shelves that depend on the clock
-(added within N days), which the persisted set leaves out; only while marks
-are pending does it test every folder shelf's rule per walked row. A search
+reads only whether it is 0. A search
 shelf starts from its persisted hits (`home_search_hits`), and a shelf whose
 rule is a watch state alone starts from the groups with that state
 (`group_root_values.watch_state`) and the ungrouped videos with that state

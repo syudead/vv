@@ -35,8 +35,6 @@ export interface ListKey {
   addedWithin?: number;
   minDuration?: number;
   maxDuration?: number;
-  /** ライブラリの「棚に無い動画のみ」（docs/design-docs/home.md）。 */
-  unshelved?: boolean;
 }
 
 export interface ListSnapshot {
@@ -79,7 +77,6 @@ function normalize(key: ListKey): string {
     key.addedWithin === undefined ? "" : String(key.addedWithin),
     key.minDuration === undefined ? "" : String(key.minDuration),
     key.maxDuration === undefined ? "" : String(key.maxDuration),
-    key.unshelved === true ? "1" : "",
   ].join("\0");
   return key.folder === undefined ? list : `folder\0${key.folder}\0${list}`;
 }

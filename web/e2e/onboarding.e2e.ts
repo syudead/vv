@@ -290,7 +290,6 @@ test.describe.serial("onboarding", () => {
         // 選んだ分野の棚は、中身が入るまでホームに出ない（親 #1140 Edge Cases）。
         await page.goto("/");
         await expect(page.getByRole("region", { name: "Shelves" })).toBeVisible();
-        await expect(shelfRow(page, "Recently added")).toBeVisible();
         await expect(shelfRow(page, cooking)).toHaveCount(0);
 
         const [cookingTag] = await tagsNamed(request, cooking);

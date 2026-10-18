@@ -241,15 +241,7 @@ export function useVideos(
     // Smart-folder events do not distinguish structure from matching changes; refresh loaded pages while the provider refreshes card values.
     const smartFolder = () => {
       const current = criteriaRef.current;
-      if (
-        libraryRef.current &&
-        (listsSmartFolders(current) || current.unshelved === true)
-      ) {
-        refreshInPlaceRef.current();
-      }
-    };
-    const home = () => {
-      if (libraryRef.current && criteriaRef.current.unshelved === true) {
+      if (libraryRef.current && listsSmartFolders(current)) {
         refreshInPlaceRef.current();
       }
     };
@@ -268,7 +260,6 @@ export function useVideos(
           },
           group,
           smartFolder,
-          home,
           open: (reconnected) => {
             if (reconnected) {
               refreshItems(shownVideoIds(itemsRef.current));
@@ -281,7 +272,6 @@ export function useVideos(
       : subscribeServerEvents({
           group,
           smartFolder,
-          home,
           open: (reconnected) => {
             if (reconnected) regroup();
           },

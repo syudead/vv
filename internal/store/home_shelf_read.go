@@ -45,8 +45,6 @@ type homeShelfReader struct {
 	tx       *sql.Tx
 	audience domain.Audience
 	now      int64
-	// shelves はフォルダの棚ごとの経路の条件（棚にない動画の条件が読む）。nil なら未読。
-	shelves []listSpec
 	// searches は検索式の段の識別子ごとの、当たる動画の id の JSON の配列である。検索の当たりの表が求め直し
 	// 済みでないときだけ使い、検索式の段は全文索引から 1 度だけ読む（まとまりごとに読み直さない）。
 	searches map[string]string
@@ -55,15 +53,14 @@ type homeShelfReader struct {
 	// bundles は集まり（動画のバージョン）があるかである。無ければ利用者データの鍵は内容の鍵そのもので、
 	// 集まりの代表の判定も要らないので、なぞる行ごとの副問い合わせを省く。
 	bundles bool
-	// maintained は、棚への一致と視聴状態の表（home_shelved_videos、video_watch_states）が求め直し済みかで、
-	// nil なら未読。済んでいれば表を索引で引き、済んでいなければ規則を行ごとに掛ける。
+	// maintained records whether the watch-state index has pending marks.
 	maintained *bool
 }
 
-// marksMaintained は棚への一致と視聴状態の表が求め直し済みかを返す（1 度だけ読む）。
+// marksMaintained reads watch-state index freshness once per reader.
 func (r *homeShelfReader) marksMaintained() (bool, error) {
 	if r.maintained == nil {
-		pending, err := shelvedMarksPending(r.ctx, r.tx)
+		pending, err := watchMarksPending(r.ctx, r.tx)
 		if err != nil {
 			return false, err
 		}
@@ -71,21 +68,6 @@ func (r *homeShelfReader) marksMaintained() (bool, error) {
 		r.maintained = &maintained
 	}
 	return *r.maintained, nil
-}
-
-// shelfSpecs はフォルダの棚ごとの経路の条件を返す（1 度だけ読む）。
-func (r *homeShelfReader) shelfSpecs() ([]listSpec, error) {
-	if r.shelves == nil {
-		shelves, err := homeShelfSpecs(r.ctx, r.tx, r.audience, r.now)
-		if err != nil {
-			return nil, err
-		}
-		if shelves == nil {
-			shelves = []listSpec{}
-		}
-		r.shelves = shelves
-	}
-	return r.shelves, nil
 }
 
 // newHomeShelfReader は読み出しを始める。
@@ -202,40 +184,7 @@ func (r *homeShelfReader) searchDriven(spec listSpec) (string, []any, bool) {
 	return hits, args, true
 }
 
-// perVideoCondition は spec の実効の規則に動画として一致する条件（smartMatchFor と同じ。再生可否・お気に
-// 入りのみ・視聴状態も動画に掛ける）の句と引数を返す。
-func (r *homeShelfReader) perVideoCondition(spec listSpec) (string, []any, error) {
-	condition, args, err := r.matchedCondition(spec)
-	if err != nil {
-		return "", nil, err
-	}
-	conditions := []string{}
-	if condition != "" {
-		conditions = append(conditions, condition)
-	}
-	userKey := userKeyExpr("videos")
-	if spec.anyLevel(func(level listSpec) bool { return level.playableOnly }) {
-		conditions = append(conditions, playableCondition)
-	}
-	if spec.itemGroupsFavorite() {
-		conditions = append(conditions, videoFavoriteSQL(userKey))
-	}
-	for _, level := range spec.levels() {
-		if level.watch != "" {
-			conditions = append(conditions, videoWatchStateSQL(userKey)+` = ?`)
-			args = append(args, string(level.watch))
-		}
-	}
-	if len(conditions) == 0 {
-		return `1`, nil, nil
-	}
-	return strings.Join(conditions, " and "), args, nil
-}
-
-// ruleOf は棚 spec の条件を句にする。棚にない動画の棚は、どのフォルダの棚の実効の規則にも動画として一致
-// しない条件（R-11）を足す。維持済みなら home_shelved_videos を引き、時刻で一致が変わる棚（追加日からの
-// 日数）だけ規則を行ごとに掛ける。求め直していない動画があるときは全棚の規則を行ごとに掛ける（条件が NULL
-// の棚も一致しないと見る）。
+// ruleOf builds the saved folder rule and item filters.
 func (r *homeShelfReader) ruleOf(spec listSpec) (homeShelfRule, error) {
 	rule := homeShelfRule{spec: spec, favorite: spec.itemGroupsFavorite(), favoriteOnly: spec.itemGroupsFavorite(),
 		playable: spec.anyLevel(func(level listSpec) bool { return level.playableOnly })}
@@ -247,36 +196,6 @@ func (r *homeShelfReader) ruleOf(spec listSpec) (homeShelfRule, error) {
 		if level.watch != "" {
 			rule.watches = append(rule.watches, level.watch)
 		}
-	}
-	if spec.unshelved {
-		maintained, err := r.marksMaintained()
-		if err != nil {
-			return homeShelfRule{}, err
-		}
-		shelves, err := r.shelfSpecs()
-		if err != nil {
-			return homeShelfRule{}, err
-		}
-		conditions := []string{}
-		if rule.condition != "" {
-			conditions = append(conditions, rule.condition)
-		}
-		if maintained {
-			// 棚への一致は維持済みなので、表を引く（home_index_maintenance.go）。
-			conditions = append(conditions, `not exists (select 1 from home_shelved_videos sv where sv.content_key = `+r.userKey()+`)`)
-		}
-		for _, shelf := range shelves {
-			if maintained && !timeRelative(shelf) {
-				continue
-			}
-			condition, args, err := r.perVideoCondition(shelf)
-			if err != nil {
-				return homeShelfRule{}, err
-			}
-			conditions = append(conditions, `(`+condition+`) is not true`)
-			rule.args = append(rule.args, args...)
-		}
-		rule.condition = strings.Join(conditions, " and ")
 	}
 	return rule, nil
 }

@@ -23,11 +23,6 @@ export interface VideosCriteria {
   addedWithin?: number;
   minDuration?: number;
   maxDuration?: number;
-  /**
-   * true ならホームのどの棚にも一致しない動画だけにする（listLibrary だけが受け取る。
-   * docs/design-docs/home.md）。
-   */
-  unshelved?: boolean;
 }
 
 export function criteriaKey(criteria: VideosCriteria): string {
@@ -46,7 +41,6 @@ export function criteriaKey(criteria: VideosCriteria): string {
     criteria.addedWithin ?? null,
     criteria.minDuration ?? null,
     criteria.maxDuration ?? null,
-    criteria.unshelved === true,
   ]);
 }
 
@@ -62,7 +56,6 @@ export function listsSmartFolders(criteria: VideosCriteria): boolean {
     criteria.tagKind === undefined &&
     criteria.addedWithin === undefined &&
     criteria.minDuration === undefined &&
-    criteria.maxDuration === undefined &&
-    criteria.unshelved !== true
+    criteria.maxDuration === undefined
   );
 }

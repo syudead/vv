@@ -20,7 +20,6 @@ function folderShelf(id: number, name: string): HomeShelf {
 
 const travel = folderShelf(3, "Travel");
 const food = folderShelf(4, "Food");
-const recent: HomeShelf = { key: "recent", kind: "recent", name: "" };
 
 const server = {
   home: { shelves: [] } as Home,
@@ -37,15 +36,14 @@ function applyOrder(ids: readonly number[]) {
       (folder) => [folder.id, folder.name],
     ),
   );
-  const fixed = server.home.shelves.filter((shelf) => shelf.kind !== "folder");
   server.home = {
     ...server.home,
-    shelves: [...ids.map((id) => folderShelf(id, known.get(id) ?? "")), ...fixed],
+    shelves: ids.map((id) => folderShelf(id, known.get(id) ?? "")),
   };
 }
 
 beforeEach(() => {
-  server.home = { shelves: [travel, food, recent] };
+  server.home = { shelves: [travel, food] };
   server.puts = [];
   server.holdHome = undefined;
   server.folders = [
@@ -127,7 +125,7 @@ describe("ホームの棚の操作（docs/design-docs/home.md「Home」）", () 
     await user.click(screen.getByRole("menuitem", { name: "Move up" }));
 
     expect(server.puts).toEqual([[4, 3]]);
-    await waitFor(() => expect(headings()).toEqual(["Food", "Travel", "Recently added"]));
+    await waitFor(() => expect(headings()).toEqual(["Food", "Travel"]));
   });
 
   it("書いた後の読み直しが終わるまで、棚の操作を受け付けない", async () => {
@@ -159,7 +157,7 @@ describe("ホームの棚の操作（docs/design-docs/home.md「Home」）", () 
 
     server.holdHome = undefined;
     release();
-    await waitFor(() => expect(headings()).toEqual(["Food", "Recently added"]));
+    await waitFor(() => expect(headings()).toEqual(["Food"]));
     await waitFor(() =>
       expect(
         screen
@@ -180,14 +178,14 @@ describe("ホームの棚の操作（docs/design-docs/home.md「Home」）", () 
 
     expect(server.puts).toEqual([[4]]);
     const toast = await screen.findByText('Removed "Travel" from your home.');
-    await waitFor(() => expect(headings()).toEqual(["Food", "Recently added"]));
+    await waitFor(() => expect(headings()).toEqual(["Food"]));
 
     const notification = toast.closest("li") as HTMLElement;
     // Sonner の通知は押すと pointer capture を使い、jsdom に無いので click だけを送る。
     fireEvent.click(within(notification).getByRole("button", { name: "Undo" }));
 
     await waitFor(() => expect(server.puts.at(-1)).toEqual([3, 4]));
-    await waitFor(() => expect(headings()).toEqual(["Travel", "Food", "Recently added"]));
+    await waitFor(() => expect(headings()).toEqual(["Travel", "Food"]));
   });
 
   it("Add shelf はホームに無いフォルダを、最後のフォルダの棚の後に足す", async () => {
@@ -201,9 +199,7 @@ describe("ホームの棚の操作（docs/design-docs/home.md「Home」）", () 
 
     expect(server.puts).toEqual([[3, 4, 7]]);
     expect(await screen.findByText('Added "Cats" to your home.')).toBeTruthy();
-    await waitFor(() =>
-      expect(headings()).toEqual(["Travel", "Food", "Cats", "Recently added"]),
-    );
+    await waitFor(() => expect(headings()).toEqual(["Travel", "Food", "Cats"]));
   });
 
   it("どのフォルダももうホームにあれば、Add shelf はそう言う", async () => {

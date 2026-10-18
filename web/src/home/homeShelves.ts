@@ -7,8 +7,7 @@ import {
   MAX_HOME_SHELF_KEYS,
 } from "../api/home";
 import { videoInGroupPath } from "../groups/groupPaths";
-import { t, type UiText } from "../i18n";
-import { LIBRARY_PATH, UNSHELVED_PATH } from "../library/libraryPath";
+import type { UiText } from "../i18n";
 import {
   smartFolderPagePath,
   videoInSmartFolderPath,
@@ -30,9 +29,8 @@ export type ShelfState =
 /** ShelfStates は棚の鍵ごとの状態である。 */
 export type ShelfStates = ReadonlyMap<HomeShelfKey, ShelfState>;
 
-/** shelfTitle は棚の見出しの名前である。フォルダの棚はフォルダの名前、決まった棚は画面の名前。 */
 export function shelfTitle(shelf: HomeShelf): string {
-  return shelf.kind === "folder" ? shelf.name : t.home.fixed[shelf.kind];
+  return shelf.name;
 }
 
 /** shelfHeadingPath は見出しが開く場所である。フォルダの棚だけがフォルダのページを開く。 */
@@ -42,23 +40,9 @@ export function shelfHeadingPath(shelf: HomeShelf): string | undefined {
     : undefined;
 }
 
-/**
- * seeAllPath は棚の「See all」が開く場所である。おすすめには無い（undefined）。最近追加は
- * ライブラリの既定の並び（追加日の新しい順）をそのまま開く。
- */
+/** The shelf heading and See all both open its smart folder. */
 export function seeAllPath(shelf: HomeShelf): string | undefined {
-  switch (shelf.kind) {
-    case "folder":
-      return shelfHeadingPath(shelf);
-    case "continue":
-      return "/history";
-    case "recent":
-      return LIBRARY_PATH;
-    case "unshelved":
-      return UNSHELVED_PATH;
-    case "recommended":
-      return undefined;
-  }
+  return shelfHeadingPath(shelf);
 }
 
 /**

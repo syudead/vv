@@ -85,8 +85,6 @@ type listSpec struct {
 	// Use the precomputed smart_base user key when supplied, avoiding repeated derivation.
 	userKeyColumn string
 	smartFolders  []librarySmartFolder
-	unshelved     bool
-	shelved       string
 	sort          domain.VideoSort
 	seed          int64
 	cursor        string
@@ -124,7 +122,7 @@ func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int
 		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
 		personID: q.Person, organizationID: q.Organization, tagKindID: q.TagKindID,
 		addedWithinDays: q.AddedWithinDays, minDurationSec: q.MinDurationSec, maxDurationSec: q.MaxDurationSec,
-		unshelved: q.Unshelved, now: listNow().Unix(),
+		now:  listNow().Unix(),
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	}
 }

@@ -96,7 +96,6 @@ import {
   LibraryDragLayer,
   useLibraryMoves,
 } from "./LibraryDrag";
-import { readUnshelved, UNSHELVED_PARAM } from "./libraryPath";
 import LibraryToolbar from "./LibraryToolbar";
 import {
   emptySelection,
@@ -167,12 +166,11 @@ const libraryParams = [
   PERSON_PARAM,
   ORGANIZATION_PARAM,
   TAG_KIND_PARAM,
-  UNSHELVED_PARAM,
   ...addedLengthParams,
 ];
 
-/** ゲストも使える、ライブラリだけの条件（追加日と長さ、棚に無い動画のみ）。 */
-const libraryGuestParams = [UNSHELVED_PARAM, ...addedLengthParams];
+/** Added-date and length filters are available to guests. */
+const libraryGuestParams = addedLengthParams;
 
 export default function LibraryPage() {
   const location = useLocation();
@@ -201,7 +199,6 @@ export default function LibraryPage() {
   const credits = useCreditFilter(location.search, owner);
   const parsedAddedLength = useAddedLength(location.search);
   const addedLength = parsedAddedLength.filter;
-  const unshelved = readUnshelved(location.search);
   const libraryFilter = useMemo(
     () => ({ ...credits, ...addedLength }),
     [credits, addedLength],
@@ -340,7 +337,7 @@ export default function LibraryPage() {
   );
 
   const [restored] = useState(() =>
-    takeListSnapshot({ ...criteria, tags: tagIds, ...libraryFilter, unshelved }),
+    takeListSnapshot({ ...criteria, tags: tagIds, ...libraryFilter }),
   );
   const {
     items,
@@ -356,11 +353,7 @@ export default function LibraryPage() {
     reload,
     refreshInPlace,
     staleGroups,
-  } = useVideos(
-    { ...criteria, tag: tagIds, ...libraryFilter, unshelved },
-    restored,
-    "library",
-  );
+  } = useVideos({ ...criteria, tag: tagIds, ...libraryFilter }, restored, "library");
 
   // Keep newly nonmatching watched rows in place until the next reload.
   useEffect(() => {
@@ -490,7 +483,6 @@ export default function LibraryPage() {
     tagIds.join(","),
     creditSignature(credits),
     addedLengthSignature(addedLength),
-    unshelved ? "unshelved" : "",
   ].join("\u0000");
   const knownConditionsSignature = useRef(conditionsSignature);
   useEffect(() => {
@@ -563,7 +555,7 @@ export default function LibraryPage() {
     // Do not snapshot temporary drag overlays or restore stale order after successful mutations invalidated it.
     if (shown !== items) return;
     saveListSnapshot(
-      { ...criteria, tags: tagIds, ...libraryFilter, unshelved },
+      { ...criteria, tags: tagIds, ...libraryFilter },
       {
         items,
         total,
@@ -584,7 +576,6 @@ export default function LibraryPage() {
     staleGroups,
     tagIds,
     total,
-    unshelved,
   ]);
 
   const sentinel = useRef<HTMLDivElement | null>(null);

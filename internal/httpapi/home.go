@@ -51,7 +51,7 @@ func (s *server) GetHome(w http.ResponseWriter, r *http.Request) {
 func (s *server) ListHomeShelfItems(w http.ResponseWriter, r *http.Request, params gen.ListHomeShelfItemsParams) {
 	keys, err := domain.ParseHomeShelfKeys(params.Keys)
 	if err != nil {
-		s.invalidRequest(w, fmt.Sprintf("keys must name between 1 and %d shelves, each folder:<id>, continue, recent, unshelved or recommended.",
+		s.invalidRequest(w, fmt.Sprintf("keys must name between 1 and %d shelves, each folder:<id>.",
 			domain.MaxHomeShelfKeys))
 		return
 	}
@@ -149,9 +149,6 @@ func (s *server) homeConfigured(w http.ResponseWriter) bool {
 // toAPIHomeShelf は棚の要約を応答の形にする。
 func toAPIHomeShelf(shelf domain.HomeShelf) gen.HomeShelf {
 	out := gen.HomeShelf{Key: shelf.Key.String(), Kind: gen.HomeShelfKind(shelf.Key.Kind), Name: shelf.Name}
-	if shelf.Key.Kind != domain.HomeShelfFolder {
-		return out
-	}
 	id := shelf.Key.FolderID
 	out.FolderId = &id
 	return out

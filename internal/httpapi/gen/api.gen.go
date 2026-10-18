@@ -977,25 +977,13 @@ func (e HomeEmpty) Valid() bool {
 
 // Defines values for HomeShelfKind.
 const (
-	HomeShelfKindContinue    HomeShelfKind = "continue"
-	HomeShelfKindFolder      HomeShelfKind = "folder"
-	HomeShelfKindRecent      HomeShelfKind = "recent"
-	HomeShelfKindRecommended HomeShelfKind = "recommended"
-	HomeShelfKindUnshelved   HomeShelfKind = "unshelved"
+	HomeShelfKindFolder HomeShelfKind = "folder"
 )
 
 // Valid indicates whether the value is a known member of the HomeShelfKind enum.
 func (e HomeShelfKind) Valid() bool {
 	switch e {
-	case HomeShelfKindContinue:
-		return true
 	case HomeShelfKindFolder:
-		return true
-	case HomeShelfKindRecent:
-		return true
-	case HomeShelfKindRecommended:
-		return true
-	case HomeShelfKindUnshelved:
 		return true
 	default:
 		return false
@@ -3014,7 +3002,7 @@ type Home struct {
 	// Empty 見る人にライブラリの動画が 1 本も見えないときだけ入る
 	Empty *HomeEmpty `json:"empty,omitempty"`
 
-	// Shelves フォルダの棚を並びの順に、続けて決まった棚
+	// Shelves Smart-folder shelves in the saved order.
 	Shelves []HomeShelf `json:"shelves"`
 }
 
@@ -3026,11 +3014,11 @@ type HomeShelf struct {
 	// FolderId フォルダの棚だけ
 	FolderId *int64 `json:"folderId,omitempty"`
 
-	// Key `folder:<id>`、`continue`、`recent`、`unshelved` か `recommended`
+	// Key Smart-folder shelf key: `folder:<positive id>`
 	Key  HomeShelfKey  `json:"key"`
 	Kind HomeShelfKind `json:"kind"`
 
-	// Name フォルダの名前。固定の棚では空で、画面が名前を付ける
+	// Name Smart-folder name.
 	Name string `json:"name"`
 }
 
@@ -3057,7 +3045,7 @@ type HomeShelfItems struct {
 	// Items 動画とグループの項目だけ。フォルダの棚の子フォルダは入れない
 	Items []HomeShelfItem `json:"items"`
 
-	// Key `folder:<id>`、`continue`、`recent`、`unshelved` か `recommended`
+	// Key Smart-folder shelf key: `folder:<positive id>`
 	Key HomeShelfKey `json:"key"`
 
 	// Total 棚の項目（動画とグループ）の数を、items の上限 + 1（25）を上限に数えたもの。25 なら 1 ページより多い。0 なら画面は棚を出さない
@@ -3069,7 +3057,7 @@ type HomeShelfItemsList struct {
 	Shelves []HomeShelfItems `json:"shelves"`
 }
 
-// HomeShelfKey `folder:<id>`、`continue`、`recent`、`unshelved` か `recommended`
+// HomeShelfKey Smart-folder shelf key: `folder:<positive id>`
 type HomeShelfKey = string
 
 // HomeShelfOrder PUT /api/home/shelves の本文
@@ -5584,12 +5572,6 @@ type ListLibraryParams struct {
 
 	// TagKind Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
-
-	// Unshelved true ならホームのどのフォルダの棚の実効の規則（祖先の条件を含む経路の条件）にも
-	// 一致しない動画だけにする。ほかの絞り込みと AND で組み合わさり、スマートフォルダの
-	// 項目は出さない。動画と棚の対応は保存せず、読むたびに求める。ゲストも使える
-	// （docs/design-docs/home.md）
-	Unshelved *bool `form:"unshelved,omitempty" json:"unshelved,omitempty"`
 }
 
 // ListLibraryIdsParams defines parameters for ListLibraryIds.
@@ -7917,19 +7899,6 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKind"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKind", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "unshelved" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "unshelved", r.URL.Query(), &params.Unshelved, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "unshelved"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unshelved", Err: err})
 		}
 		return
 	}

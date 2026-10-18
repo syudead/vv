@@ -2210,12 +2210,6 @@ export const en = {
     shelves: "Shelves",
     loading: "Loading your home",
     search: "Search the library",
-    fixed: {
-      continue: "Continue watching",
-      recent: "Recently added",
-      unshelved: "Not on any shelf",
-      recommended: "Recommended",
-    },
     seeAll: "See all",
     seeAllFor: (name: string) => `See all: ${name}`,
     previous: (name: string) => `Scroll ${name} back`,

@@ -178,7 +178,6 @@ export function useVideoPages({
               ? listLibrary({
                   ...params,
                   ...listOnly,
-                  unshelved: current.unshelved,
                   cursor: cursorFrom,
                 })
               : listVideos({ ...params, ...listOnly, cursor: cursorFrom });

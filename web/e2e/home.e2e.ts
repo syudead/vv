@@ -64,6 +64,9 @@ const publicTitles = fillers.slice(0, 2);
 const privateTitles = allTitles.filter((title) => !publicTitles.includes(title));
 const videos = new Map<string, Video>();
 let mediaFolder: MediaFolder | undefined;
+let shelfId: number | undefined;
+let previousShelfIds: number[] = [];
+const shelfName = "Home playback test";
 
 function mediaRoot(): string {
   const root = process.env.MDM_E2E_HOME_MEDIA_DIR;
@@ -227,7 +230,20 @@ test.describe.serial("home", () => {
       )
       .toBe(true);
     for (const [title, item] of await readVideos(request)) videos.set(title, item);
-    // 視聴の記録は動画の中身に結び付き、登録フォルダを外しても残るので、未視聴に戻す。
+    previousShelfIds = (await readHome(request)).shelves.flatMap((shelf) =>
+      shelf.folderId === undefined ? [] : [shelf.folderId],
+    );
+    const folder = await request.post("/api/smart-folders", {
+      headers: mutationHeaders,
+      data: { name: shelfName, rule: { q: query }, sort: "addedDesc" },
+    });
+    expect(folder.status()).toBe(201);
+    shelfId = ((await folder.json()) as { id: number }).id;
+    const saved = await request.put("/api/home/shelves", {
+      headers: mutationHeaders,
+      data: { folderIds: [shelfId] },
+    });
+    expect(saved.status()).toBe(204);
     await setProgress(request, inProgress, 0);
   });
 
@@ -235,6 +251,17 @@ test.describe.serial("home", () => {
     if (videos.size > 0) {
       await setPublic(request, allTitles, false);
       await setProgress(request, inProgress, 0);
+    }
+    if (shelfId !== undefined) {
+      const restored = await request.put("/api/home/shelves", {
+        headers: mutationHeaders,
+        data: { folderIds: previousShelfIds },
+      });
+      expect(restored.status()).toBe(204);
+      const removed = await request.delete(`/api/smart-folders/${String(shelfId)}`, {
+        headers: mutationHeaders,
+      });
+      expect(removed.ok()).toBe(true);
     }
     if (mediaFolder !== undefined) await removeOwnMediaFolder(request);
   });
@@ -244,12 +271,14 @@ test.describe.serial("home", () => {
   }) => {
     await page.goto("/");
     await expect(page).toHaveURL("/");
-    const recent = shelfRow(page, "Recently added");
+    const recent = shelfRow(page, shelfName);
     const card = recent.getByRole("link", { name: inProgress, exact: true });
     await expect(card).toBeVisible();
 
     await card.click();
-    await expect(page).toHaveURL(`/videos/${String(video(inProgress).id)}`);
+    await expect(page).toHaveURL(
+      `/videos/${String(video(inProgress).id)}?smartFolder=${String(shelfId)}`,
+    );
     await page.waitForFunction(
       () => {
         const element = document.querySelector("video");
@@ -276,20 +305,6 @@ test.describe.serial("home", () => {
     await expect.poll(() => cardTitles(page)).toEqual([...allTitles].sort());
   });
 
-  test("6: 途中まで見た動画が「Continue watching」に出る", async ({ page, request }) => {
-    await setProgress(request, inProgress, 10_000);
-    await page.goto("/");
-    await showAllShelves(page);
-    const shelf = shelfRow(page, "Continue watching");
-    await expect(
-      shelf.getByRole("link", { name: inProgress, exact: true }),
-    ).toBeVisible();
-    // 見ていない動画は出ない。
-    await expect(
-      shelf.getByRole("link", { name: fillers.at(-1)!, exact: true }),
-    ).toHaveCount(0);
-  });
-
   test("8: 閲覧者のホームには、非公開の動画がどの棚にも出ない", async ({
     browser,
     request,
@@ -307,7 +322,7 @@ test.describe.serial("home", () => {
 
       await page.goto("/");
       await showAllShelves(page);
-      await expect(shelfRow(page, "Recently added")).toBeVisible();
+      await expect(shelfRow(page, shelfName)).toBeVisible();
       // 画面は読み損ねた棚を残さず、描いた棚にも非公開の動画を出さない。
       await expect(
         page
@@ -317,8 +332,6 @@ test.describe.serial("home", () => {
       const shown = await cardTitles(page);
       for (const title of publicTitles) expect(shown).toContain(title);
       for (const title of privateTitles) expect(shown).not.toContain(title);
-      // 閲覧者には所有者の棚が無い。
-      await expect(shelfRow(page, "Continue watching")).toHaveCount(0);
     } finally {
       await context.close();
       await setPublic(request, publicTitles, false);

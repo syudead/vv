@@ -57,10 +57,6 @@ func (p *PlaybackStore) SaveProgress(
 	if err := p.db.commitMatchChangeIf(ctx, tx, before != domain.ClassifyWatch(&progress)); err != nil {
 		return domain.Progress{}, fmt.Errorf("cannot save the playback position (%s): %w", contentKey, err)
 	}
-	// 続きから見る棚は最後に再生した順なので、視聴状態の変わらない保存でも並びが変わる
-	// （docs/design-docs/home.md）。
-	p.db.homeShelves.dropKind(domain.HomeShelfContinue)
-
 	progress.UpdatedAt = updatedAt.Truncate(time.Second)
 	return progress, nil
 }

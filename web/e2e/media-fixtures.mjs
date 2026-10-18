@@ -549,7 +549,7 @@ export function generateOnboardingFixtures(root) {
 
 /** HOME_FILLERS is the number of public, unwatched videos in the Home fixture. */
 export const HOME_FILLERS = 2;
-/** HOME_IN_PROGRESS は、途中まで見て「Continue watching」に出す動画である。 */
+/** A private video used by the home playback test. */
 export const HOME_IN_PROGRESS = "ホーム確認の途中";
 
 /**

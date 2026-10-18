@@ -20,8 +20,13 @@ const travel: HomeShelf = {
   name: "Travel",
   folderId: 3,
 };
-const recent: HomeShelf = { key: "recent", kind: "recent", name: "" };
-const unshelved: HomeShelf = { key: "unshelved", kind: "unshelved", name: "" };
+const nature: HomeShelf = {
+  key: "folder:4",
+  kind: "folder",
+  name: "Nature",
+  folderId: 4,
+};
+const empty: HomeShelf = { key: "folder:5", kind: "folder", name: "Empty", folderId: 5 };
 
 const server = {
   home: { shelves: [] } as Home,
@@ -35,17 +40,17 @@ const server = {
 };
 
 beforeEach(() => {
-  server.home = { shelves: [travel, recent, unshelved] };
+  server.home = { shelves: [travel, nature, empty] };
   server.items = new Map([
     [
       travel.key,
       { items: [{ kind: "video", video: video(5, { title: "Harbour" }) }], total: 1 },
     ],
     [
-      recent.key,
+      nature.key,
       { items: [{ kind: "video", video: video(6, { title: "Ridge" }) }], total: 1 },
     ],
-    [unshelved.key, { items: [], total: 0 }],
+    [empty.key, { items: [], total: 0 }],
   ]);
   server.shelfRequests = [];
   server.failShelves = false;
@@ -135,16 +140,12 @@ describe("ホーム（docs/design-docs/home.md「Home」）", () => {
   it("画面に入る棚をまとめて 1 回で読み、項目の無い棚は描かない", async () => {
     renderHome();
 
+    expect(await screen.findByRole("heading", { level: 2, name: "Nature" })).toBeTruthy();
+    expect(server.shelfRequests).toEqual([["folder:3", "folder:4", "folder:5"]]);
+    expect(screen.queryByRole("heading", { level: 2, name: "Empty" })).toBeNull();
     expect(
-      await screen.findByRole("heading", { level: 2, name: "Recently added" }),
-    ).toBeTruthy();
-    expect(server.shelfRequests).toEqual([["folder:3", "recent", "unshelved"]]);
-    expect(
-      screen.queryByRole("heading", { level: 2, name: "Not on any shelf" }),
-    ).toBeNull();
-    expect(
-      screen.getByRole("link", { name: "See all: Recently added" }).getAttribute("href"),
-    ).toBe("/library");
+      screen.getByRole("link", { name: "See all: Nature" }).getAttribute("href"),
+    ).toBe("/smart-folders/4");
   });
 
   it("検索欄で Enter を押すと /library?q= を開く", async () => {
@@ -185,9 +186,7 @@ describe("ホーム（docs/design-docs/home.md「Home」）", () => {
     await user.click(retries[0] as HTMLElement);
 
     expect(screen.getByRole("heading", { level: 2, name: "Travel" })).toBeTruthy();
-    expect(
-      screen.getByRole("heading", { level: 2, name: "Recently added" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 2, name: "Nature" })).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(2);
     server.held.splice(0).forEach((release) => release());
     expect(await screen.findByRole("link", { name: "Harbour" })).toBeTruthy();
@@ -211,11 +210,11 @@ describe("ホーム（docs/design-docs/home.md「Home」）", () => {
     renderHome();
     await screen.findByRole("link", { name: "Harbour" });
 
-    server.home = { shelves: [{ ...travel, name: "Trips" }, recent, unshelved] };
+    server.home = { shelves: [{ ...travel, name: "Trips" }, nature, empty] };
     await emitServerEvent("home");
 
     expect(await screen.findByRole("heading", { level: 2, name: "Trips" })).toBeTruthy();
-    expect(server.shelfRequests.at(-1)).toEqual(["folder:3", "recent", "unshelved"]);
+    expect(server.shelfRequests.at(-1)).toEqual(["folder:3", "folder:4", "folder:5"]);
   });
 
   it.each(["video", "group"] as const)(
@@ -224,7 +223,7 @@ describe("ホーム（docs/design-docs/home.md「Home」）", () => {
       renderHome();
       await screen.findByRole("link", { name: "Harbour" });
 
-      server.items.set(recent.key, {
+      server.items.set(nature.key, {
         items: [{ kind: "video", video: video(8, { title: "Dunes" }) }],
         total: 1,
       });
@@ -257,7 +256,7 @@ describe("ホーム（docs/design-docs/home.md「Home」）", () => {
 
   it("動画が無ければ、所有者の Set up library は段階を folders に書いてオンボードを開く", async () => {
     const user = userEvent.setup();
-    server.home = { shelves: [recent], empty: "noVideos" };
+    server.home = { shelves: [nature], empty: "noVideos" };
     renderHome();
 
     expect(
@@ -270,7 +269,7 @@ describe("ホーム（docs/design-docs/home.md「Home」）", () => {
   });
 
   it("動画が無ければ、閲覧者には空であることだけを出す", async () => {
-    server.home = { shelves: [recent], empty: "noVideos" };
+    server.home = { shelves: [nature], empty: "noVideos" };
     renderHome("guest");
 
     expect(await screen.findByText("There's nothing to watch here yet.")).toBeTruthy();

@@ -951,23 +951,6 @@ describe("list API client", () => {
     ]);
   });
 
-  // docs/design-docs/home.md: unshelved goes to the library items list only when true.
-  it("sends unshelved to the library list only when it is true", async () => {
-    const fetch = vi
-      .fn<typeof globalThis.fetch>()
-      .mockImplementation(() => Promise.resolve(jsonResponse({ items: [], total: 0 })));
-    vi.stubGlobal("fetch", fetch);
-
-    await listLibrary({ unshelved: true });
-    await listLibrary({ unshelved: false });
-    await listLibrary({});
-
-    const sent = fetch.mock.calls.map(([input]) =>
-      new URL(String(input), "http://localhost").searchParams.get("unshelved"),
-    );
-    expect(sent).toEqual(["true", null, null]);
-  });
-
   it("omits playable when it is false", async () => {
     const fetch = stubFetch();
     await listVideos({ playable: false });

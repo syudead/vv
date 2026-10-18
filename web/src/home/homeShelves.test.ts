@@ -24,10 +24,12 @@ const folder: HomeShelf = {
   name: "Travel",
   folderId: 3,
 };
-const recent: HomeShelf = { key: "recent", kind: "recent", name: "" };
-const unshelved: HomeShelf = { key: "unshelved", kind: "unshelved", name: "" };
-const continueShelf: HomeShelf = { key: "continue", kind: "continue", name: "" };
-const recommended: HomeShelf = { key: "recommended", kind: "recommended", name: "" };
+const nature: HomeShelf = {
+  key: "folder:4",
+  kind: "folder",
+  name: "Nature",
+  folderId: 4,
+};
 
 function videoItem(id: number): Extract<HomeShelfItem, { kind: "video" }> {
   return { kind: "video", video: { id, title: `Video ${String(id)}` } as Video };
@@ -62,28 +64,11 @@ describe("棚の見出しと行き先（docs/design-docs/home.md「Home」）", 
     expect(shelfHeadingPath(folder)).toBe("/smart-folders/3");
     expect(seeAllPath(folder)).toBe("/smart-folders/3");
   });
-
-  it("決まった棚は画面の名前で、見出しはリンクにしない", () => {
-    expect(shelfTitle(recent)).toBe("Recently added");
-    expect(shelfTitle(continueShelf)).toBe("Continue watching");
-    expect(shelfHeadingPath(recent)).toBeUndefined();
-  });
-
-  it("See all は続きから見るで履歴、最近追加でライブラリ、棚に無いもので unshelved、おすすめには無い", () => {
-    expect(seeAllPath(continueShelf)).toBe("/history");
-    expect(seeAllPath(recent)).toBe("/library");
-    expect(seeAllPath(unshelved)).toBe("/library?unshelved=1");
-    expect(seeAllPath(recommended)).toBeUndefined();
-  });
 });
 
 describe("棚のカードが開く場所（research.md R-14）", () => {
   it("フォルダの棚の動画は ?smartFolder 付きの再生画面を開く", () => {
     expect(shelfItemPath(folder, videoItem(5))).toBe("/videos/5?smartFolder=3");
-  });
-
-  it("決まった棚の動画はその再生画面を開く", () => {
-    expect(shelfItemPath(recent, videoItem(5))).toBe("/videos/5");
   });
 
   it("グループは開いている動画を ?group 付きで開く", () => {
@@ -168,22 +153,23 @@ describe("描く棚（ui-design.md「Home」）", () => {
   it("応答に無い鍵の棚は項目 0 件として描かない", () => {
     const states = withShelfItems(
       new Map(),
-      ["folder:1", "recent"],
-      [{ key: "recent", items: [videoItem(9)], total: 1 }],
+      ["folder:1", "folder:4"],
+      [{ key: "folder:4", items: [videoItem(9)], total: 1 }],
     );
     expect(
-      drawnShelves([folders(1)[0] as HomeShelf, recent], states).map((d) => d.shelf.key),
-    ).toEqual(["recent"]);
+      drawnShelves([folders(1)[0] as HomeShelf, nature], states).map((d) => d.shelf.key),
+    ).toEqual(["folder:4"]);
   });
 });
 
 describe("お気に入りの付け外し", () => {
   it("反映された動画と要求に含めたグループの印だけを変える", () => {
     const states = new Map<string, ShelfState>([
-      ["recent", ready([videoItem(1), videoItem(2), groupItem(7, 21)])],
+      ["folder:4", ready([videoItem(1), videoItem(2), groupItem(7, 21)])],
     ]);
     const next = withFavorites(states, { videoIds: [2], groupIds: [7], favorite: true });
-    const items = (next.get("recent") as Extract<ShelfState, { status: "ready" }>).items;
+    const items = (next.get("folder:4") as Extract<ShelfState, { status: "ready" }>)
+      .items;
     expect(
       items.map((item) =>
         item.kind === "video"
@@ -201,7 +187,7 @@ describe("読んでいる間のお気に入りの付け外し", () => {
     const mark = favoriteMark();
     noteFavoriteOf([4101], true, Number.MAX_SAFE_INTEGER);
     const [shelf] = withFavoritesSince(
-      [{ key: "recent", items: [videoItem(4101), videoItem(4102)], total: 2 }],
+      [{ key: "folder:4", items: [videoItem(4101), videoItem(4102)], total: 2 }],
       mark,
     );
     expect(

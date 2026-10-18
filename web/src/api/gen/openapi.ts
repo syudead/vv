@@ -821,10 +821,9 @@ export interface paths {
         };
         /**
          * ホームの棚の要約を返す
-         * @description ホームの位置を持つスマートフォルダの棚を並びの順に、続けて決まった棚（`recent`、`unshelved`）を
-         *     並べる（docs/design-docs/home.md）。棚の項目は `listHomeShelfItems` で読む。
-         *     ゲストには見せる動画の無いフォルダの棚を入れない。見る人にライブラリの動画が 1 本も見えなければ
-         *     `empty` が `noVideos` である。
+         * @description Lists only saved smart-folder shelves in their chosen order. Read items with
+         *     `listHomeShelfItems`. Guests do not see empty shelves. When no library
+         *     videos are visible, `empty` is `noVideos`.
          */
         get: operations["getHome"];
         put?: never;
@@ -844,12 +843,11 @@ export interface paths {
         };
         /**
          * 画面に入った棚の最初の項目を返す
-         * @description `keys` の棚それぞれの最初の 24 件の項目と項目の数を、`keys` の順に返す
-         *     （docs/design-docs/home.md）。読むのはフォルダの棚（`folder:<id>`、フォルダと祖先の条件で
-         *     フォルダの並べ順）、`unshelved` と `recent`（どちらも新しい順）で、項目はライブラリの項目
-         *     （動画とグループ）である。フォルダの棚の子フォルダは入れない（R-14）。もう棚でないフォルダ、
-         *     無いフォルダ、ゲストに見せる項目の無いフォルダの棚と、ほかの棚の鍵は落とし、同じ鍵は 1 回だけ
-         *     返す。`keys` が無いか、9 件以上か、形の誤った鍵があれば 400 `invalid_request`。
+         * @description Returns the first 24 video or group items for each smart-folder shelf,
+         *     in the requested order. Rules include ancestor filters and the folder sort.
+         *     Child folders are excluded. Missing shelves and shelves empty for guests
+         *     are omitted, and duplicate keys appear once. Missing keys, more than eight
+         *     keys or invalid keys return 400 `invalid_request`.
          */
         get: operations["listHomeShelfItems"];
         /**
@@ -3423,14 +3421,14 @@ export interface components {
             /** @description 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0 */
             queued: number;
         };
-        /** @description `folder:<id>`、`continue`、`recent`、`unshelved` か `recommended` */
+        /** @description Smart-folder shelf key: `folder:<positive id>` */
         HomeShelfKey: string;
         /** @description ホームの棚 1 つ（docs/design-docs/home.md） */
         HomeShelf: {
             key: components["schemas"]["HomeShelfKey"];
             /** @enum {string} */
-            kind: "folder" | "continue" | "recent" | "unshelved" | "recommended";
-            /** @description フォルダの名前。固定の棚では空で、画面が名前を付ける */
+            kind: "folder";
+            /** @description Smart-folder name. */
             name: string;
             /**
              * Format: int64
@@ -3440,7 +3438,7 @@ export interface components {
         };
         /** @description GET /api/home の応答 */
         Home: {
-            /** @description フォルダの棚を並びの順に、続けて決まった棚 */
+            /** @description Smart-folder shelves in the saved order. */
             shelves: components["schemas"]["HomeShelf"][];
             /**
              * @description 見る人にライブラリの動画が 1 本も見えないときだけ入る
@@ -5697,13 +5695,6 @@ export interface operations {
                 maxDuration?: components["parameters"]["MaxDurationFilter"];
                 /** @description Positive tag-kind ID, matching any manual or folder-derived tag of that kind, ANDed with other filters including total. Unknown IDs return an empty list without errors/reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 tagKind?: components["parameters"]["TagKindFilter"];
-                /**
-                 * @description true ならホームのどのフォルダの棚の実効の規則（祖先の条件を含む経路の条件）にも
-                 *     一致しない動画だけにする。ほかの絞り込みと AND で組み合わさり、スマートフォルダの
-                 *     項目は出さない。動画と棚の対応は保存せず、読むたびに求める。ゲストも使える
-                 *     （docs/design-docs/home.md）
-                 */
-                unshelved?: boolean;
             };
             header?: never;
             path?: never;

@@ -417,7 +417,7 @@ func run(opts runOptions) error {
 		AutoImport:        autoImport,
 		AutoTagging:       autoTagger,
 		Onboarding:        app.NewOnboarding(db.Home(), autoTagger),
-		Home:              app.NewHome(app.HomeOptions{Store: db.Home(), Catalog: libraryStore}),
+		Home:              db.Home(),
 		VersionJudging:    versionJudge,
 		Ollama:            ollamaConnection,
 		ComfyUI:           comfyUIConnection,

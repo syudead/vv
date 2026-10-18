@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"slices"
@@ -9,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 	"github.com/syudead/vv/internal/store"
 )
@@ -79,21 +77,18 @@ func homeShelfKeys(home gen.Home) []string {
 	return keys
 }
 
-// 棚は並べた順に出て、決まった棚（所有者には continue、recent、unshelved）がそのあとに来る。再生もお気に入りも無いので recommended は出ない。
-func TestHomeListsShelvesInTheirOrderThenTheFixedShelves(t *testing.T) {
+// Saved shelf order is the complete home summary for the owner.
+func TestHomeListsOnlySavedShelvesInTheirOrder(t *testing.T) {
 	f := newHomeFixture(t)
 	f.setShelves(t, f.hidden, f.all, f.manual)
 	home := f.home(t, f.owner)
-	want := []string{folderKey(f.hidden), folderKey(f.all), folderKey(f.manual), "continue", "recent", "unshelved"}
+	want := []string{folderKey(f.hidden), folderKey(f.all), folderKey(f.manual)}
 	if got := homeShelfKeys(home); !slices.Equal(got, want) {
 		t.Fatalf("棚 = %v, want %v", got, want)
 	}
 	first := home.Shelves[0]
 	if first.Kind != gen.HomeShelfKindFolder || first.Name != "隠れ" || first.FolderId == nil || *first.FolderId != f.hidden {
 		t.Errorf("フォルダの棚 = %+v", first)
-	}
-	if fixed := home.Shelves[4]; fixed.Kind != gen.HomeShelfKindRecent || fixed.Name != "" || fixed.FolderId != nil {
-		t.Errorf("決まった棚 = %+v", fixed)
 	}
 	if home.Empty != nil {
 		t.Errorf("empty = %v, want none", *home.Empty)
@@ -105,7 +100,7 @@ func TestHomeListsShelvesInTheirOrderThenTheFixedShelves(t *testing.T) {
 func TestHomeHidesOwnerStateAndEmptyShelvesFromGuests(t *testing.T) {
 	f := newHomeFixture(t)
 	home := f.home(t)
-	want := []string{folderKey(f.all), folderKey(f.manual), "recent", "unshelved"}
+	want := []string{folderKey(f.all), folderKey(f.manual)}
 	if got := homeShelfKeys(home); !slices.Equal(got, want) {
 		t.Fatalf("ゲストの棚 = %v, want %v", got, want)
 	}
@@ -128,46 +123,38 @@ func TestHomeReportsNoVideos(t *testing.T) {
 	if rec.Code != http.StatusOK || home.Empty == nil || *home.Empty != gen.NoVideos {
 		t.Fatalf("動画の無いホーム = %d %+v", rec.Code, home)
 	}
-	if got := homeShelfKeys(home); !slices.Equal(got, []string{"continue", "recent", "unshelved"}) {
+	if got := homeShelfKeys(home); len(got) != 0 {
 		t.Errorf("棚 = %v", got)
 	}
 }
 
-// フォルダの棚の項目に子フォルダは入らない（research.md R-14）。recent は新しい順で、unshelved は
-// どの棚にも一致しない項目である。項目の数はライブラリの項目と同じに数える。
+// Shelf pages contain videos and groups without child-folder items.
 func TestHomeShelfItemsHoldVideosAndGroupsOnly(t *testing.T) {
 	f := newHomeFixture(t)
-	shelves := f.shelfItems(t, folderKey(f.manual)+",recent,unshelved,"+folderKey(f.manual), f.owner)
+	shelves := f.shelfItems(t, folderKey(f.manual)+","+folderKey(f.all)+","+folderKey(f.manual), f.owner)
 	manual := shelves[folderKey(f.manual)]
 	if manual.Total != 1 || len(manual.Items) != 1 || manual.Items[0].Kind != gen.HomeShelfItemKindVideo ||
 		manual.Items[0].Video.Id != f.ids["ep1"] {
 		t.Fatalf("手の棚 = %+v, want ep1 only and no child folder", manual)
 	}
-	recent := shelves["recent"]
-	names := make([]string, 0, len(recent.Items))
-	for _, item := range recent.Items {
+	all := shelves[folderKey(f.all)]
+	names := make([]string, 0, len(all.Items))
+	for _, item := range all.Items {
 		switch item.Kind {
 		case gen.HomeShelfItemKindGroup:
 			names = append(names, "group:"+item.Group.Name)
 		case gen.HomeShelfItemKindVideo:
 			names = append(names, item.Video.Title)
 		default:
-			t.Errorf("recent に %s の項目がある", item.Kind)
+			t.Errorf("all shelf: %s の項目がある", item.Kind)
 		}
 	}
-	if want := []string{"solo", "group:pair", "group:show"}; !slices.Equal(names, want) || recent.Total != 3 {
-		t.Errorf("recent = %v (total %d), want %v", names, recent.Total, want)
+	if want := []string{"solo", "group:pair", "group:show"}; !slices.Equal(names, want) || all.Total != 3 {
+		t.Errorf("all = %v (total %d), want %v", names, all.Total, want)
 	}
-	if unshelved := shelves["unshelved"]; unshelved.Total != 0 || len(unshelved.Items) != 0 {
-		t.Errorf("すべての棚があるときの unshelved = %+v", unshelved)
-	}
-
 	f.setShelves(t, f.manual, f.hidden)
-	if unshelved := f.shelfItems(t, "unshelved", f.owner)["unshelved"]; unshelved.Total != 4 {
-		t.Errorf("unshelved = %+v, want ep2, ep10, p1 and solo", unshelved)
-	}
-	// 棚から外したフォルダの鍵と、種の無いおすすめの鍵は落とす。
-	if got := f.shelfItems(t, folderKey(f.all)+","+folderKey(f.child)+",recommended", f.owner); len(got) != 0 {
+	// Removed shelves and child folders are omitted.
+	if got := f.shelfItems(t, folderKey(f.all)+","+folderKey(f.child), f.owner); len(got) != 0 {
 		t.Errorf("棚でない鍵の項目 = %v", got)
 	}
 }
@@ -175,18 +162,20 @@ func TestHomeShelfItemsHoldVideosAndGroupsOnly(t *testing.T) {
 // keys が無いか 9 件以上か形が誤っていれば 400 invalid_request である。
 func TestHomeShelfItemsRejectsBadKeys(t *testing.T) {
 	f := newHomeFixture(t)
-	nine := strings.TrimSuffix(strings.Repeat("recent,", 9), ",")
+	nine := strings.TrimSuffix(strings.Repeat("folder:1,", 9), ",")
 	for _, target := range []string{
 		"/api/home/shelves", "/api/home/shelves?keys=", "/api/home/shelves?keys=" + nine,
 		"/api/home/shelves?keys=folder:x", "/api/home/shelves?keys=folder:0", "/api/home/shelves?keys=folder:01",
 		"/api/home/shelves?keys=later",
+		"/api/home/shelves?keys=continue", "/api/home/shelves?keys=recent",
+		"/api/home/shelves?keys=unshelved", "/api/home/shelves?keys=recommended",
 	} {
 		rec := f.env.get(target, f.owner)
 		if rec.Code != http.StatusBadRequest || decode[gen.Error](t, rec).Code != codeInvalidRequest {
 			t.Errorf("%s: status = %d: %s", target, rec.Code, rec.Body)
 		}
 	}
-	eight := strings.TrimSuffix(strings.Repeat("recent,", 8), ",")
+	eight := strings.TrimSuffix(strings.Repeat("folder:1,", 8), ",")
 	if rec := f.env.get("/api/home/shelves?keys="+eight, f.owner); rec.Code != http.StatusOK {
 		t.Errorf("8 件の keys: status = %d", rec.Code)
 	}
@@ -216,7 +205,7 @@ func TestSetHomeShelvesStatuses(t *testing.T) {
 	if rec := f.groupRequest(http.MethodPut, "/api/home/shelves", `{"folderIds": []}`); rec.Code != http.StatusUnauthorized {
 		t.Errorf("ゲストの PUT: status = %d, want 401", rec.Code)
 	}
-	want := []string{folderKey(f.all), folderKey(f.manual), folderKey(f.hidden), "continue", "recent", "unshelved"}
+	want := []string{folderKey(f.all), folderKey(f.manual), folderKey(f.hidden)}
 	if got := homeShelfKeys(f.home(t, f.owner)); !slices.Equal(got, want) {
 		t.Errorf("失敗した PUT のあとの棚 = %v, want %v", got, want)
 	}
@@ -236,44 +225,5 @@ func TestSmartFolderOnHome(t *testing.T) {
 	}
 	if guest := decode[gen.SmartFolderDetail](t, f.env.get(smartFolderPath(f.manual, ""))); guest.OnHome != nil {
 		t.Errorf("ゲストの onHome = %v", *guest.OnHome)
-	}
-}
-
-// 続きから見るとおすすめは所有者だけの棚である（research.md R-13）。お気に入り（ep10）が種になると
-// おすすめが最後の棚に出て、種と見終わった動画（ep1）を除き、種と同じフォルダの ep2 が先頭に来る。
-// ゲストのホームと棚の項目にはどちらも出ない。
-func TestHomeShowsContinueAndRecommendedToTheOwnerOnly(t *testing.T) {
-	f := newHomeFixture(t)
-	if _, err := f.env.db.Favorites().SetFavorites(context.Background(),
-		domain.FavoriteChange{VideoIDs: []int64{f.ids["ep10"]}, Favorite: true}); err != nil {
-		t.Fatal(err)
-	}
-	want := []string{folderKey(f.all), folderKey(f.manual), folderKey(f.hidden), "continue", "recent", "unshelved", "recommended"}
-	if got := homeShelfKeys(f.home(t, f.owner)); !slices.Equal(got, want) {
-		t.Fatalf("所有者の棚 = %v, want %v", got, want)
-	}
-	shelves := f.shelfItems(t, "recommended,continue,recent", f.owner)
-	recommended := shelves["recommended"]
-	var ids []int64
-	for _, item := range recommended.Items {
-		if item.Kind != gen.HomeShelfItemKindVideo {
-			t.Fatalf("おすすめに %s の項目がある", item.Kind)
-		}
-		ids = append(ids, item.Video.Id)
-	}
-	if len(ids) == 0 || ids[0] != f.ids["ep2"] || slices.Contains(ids, f.ids["ep10"]) || slices.Contains(ids, f.ids["ep1"]) ||
-		recommended.Total != len(ids) {
-		t.Errorf("おすすめ = %v (total %d), want ep2 first and neither ep10 nor ep1", ids, recommended.Total)
-	}
-	// ep2 は途中まで見たので、そのグループ show が続きから見るに出る。
-	if cont := shelves["continue"]; cont.Total != 1 || cont.Items[0].Kind != gen.HomeShelfItemKindGroup || cont.Items[0].Group.Name != "show" {
-		t.Errorf("続きから見る = %+v, want the group show", cont)
-	}
-
-	if got := homeShelfKeys(f.home(t)); slices.Contains(got, "continue") || slices.Contains(got, "recommended") {
-		t.Errorf("ゲストの棚 = %v, want neither continue nor recommended", got)
-	}
-	if got := f.shelfItems(t, "continue,recommended"); len(got) != 0 {
-		t.Errorf("ゲストの続きから見るとおすすめの項目 = %v", got)
 	}
 }
