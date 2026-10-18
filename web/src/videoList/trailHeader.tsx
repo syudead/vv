@@ -36,8 +36,8 @@ export function LoadingTrailHeader({
 export function UnavailableTrailHeader({ label }: { label: UiText }) {
   return (
     <>
-      <Breadcrumbs label={label} crumbs={[{ label: t.library.title }]} keepFirst />
-      <PageHeader title={t.library.title} />
+      <Breadcrumbs label={label} crumbs={[{ label: t.home.title }]} keepFirst />
+      <PageHeader title={t.home.title} />
     </>
   );
 }
