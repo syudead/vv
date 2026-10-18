@@ -110,11 +110,12 @@ export type CreatedAPIToken = components["schemas"]["CreatedAPIToken"];
 /** Card values are fetched separately when a smart-folder card becomes visible. */
 export type SmartFolderSummary = components["schemas"]["SmartFolderSummary"];
 
-/** Narrow generated optional payloads into a kind-discriminated union. */
-export type LibraryItem =
+export type LibraryItemOf<G> =
   | { kind: "video"; video: Video }
-  | { kind: "group"; group: LibraryGroup }
+  | { kind: "group"; group: G }
   | { kind: "smartFolder"; smartFolder: SmartFolderSummary };
+
+export type LibraryItem = LibraryItemOf<LibraryGroup>;
 export type VideoChanged = components["schemas"]["VideoChanged"];
 export type GroupChanged = components["schemas"]["GroupChanged"];
 export type GroupDetail = components["schemas"]["GroupDetail"];
@@ -372,13 +373,12 @@ export type LibraryPageResponse = Omit<components["schemas"]["LibraryPage"], "it
   items: LibraryItem[];
 };
 
-/** Narrow generated payloads by kind; discard malformed items missing their required payload. */
-export function toLibraryItem(item: {
+export function toLibraryItem<G>(item: {
   kind: LibraryItem["kind"];
   video?: Video;
-  group?: LibraryGroup;
+  group?: G;
   smartFolder?: SmartFolderSummary;
-}): LibraryItem | null {
+}): LibraryItemOf<G> | null {
   if (item.kind === "video" && item.video !== undefined) {
     return { kind: "video", video: item.video };
   }
@@ -391,18 +391,19 @@ export function toLibraryItem(item: {
   return null;
 }
 
-export function toLibraryItems(
-  items: readonly Parameters<typeof toLibraryItem>[0][],
-): LibraryItem[] {
+export function toLibraryItems<G>(
+  items: readonly Parameters<typeof toLibraryItem<G>>[0][],
+): LibraryItemOf<G>[] {
   return items.flatMap((item) => {
     const converted = toLibraryItem(item);
     return converted === null ? [] : [converted];
   });
 }
 
-/** Unfiltered library pages may also contain smart-folder summaries. */
+export type ListLibraryParams = ListVideosParams;
+
 export async function listLibrary(
-  params: ListVideosParams = {},
+  params: ListLibraryParams = {},
 ): Promise<LibraryPageResponse> {
   const query = new URLSearchParams();
   setListFilters(query, params);

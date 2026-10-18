@@ -3,6 +3,8 @@ import { useNavigate } from "react-router";
 
 import type { TagRef, Video } from "../api/client";
 import CardTagRow from "../library/CardTagRow";
+import { libraryFilterPath } from "../library/libraryPath";
+import { TAG_PARAM } from "../library/tagCriteria";
 
 const noop = () => undefined;
 
@@ -10,7 +12,7 @@ const noop = () => undefined;
 export function useFolderTagsRow(): (video: Video) => React.ReactNode {
   const navigate = useNavigate();
   const pressTag = useCallback(
-    (tag: TagRef) => void navigate(`/?tag=${String(tag.id)}`),
+    (tag: TagRef) => void navigate(libraryFilterPath(TAG_PARAM, tag.id)),
     [navigate],
   );
   return useCallback(

@@ -240,7 +240,8 @@ export function useVideos(
     };
     // Smart-folder events do not distinguish structure from matching changes; refresh loaded pages while the provider refreshes card values.
     const smartFolder = () => {
-      if (libraryRef.current && listsSmartFolders(criteriaRef.current)) {
+      const current = criteriaRef.current;
+      if (libraryRef.current && listsSmartFolders(current)) {
         refreshInPlaceRef.current();
       }
     };
@@ -259,7 +260,6 @@ export function useVideos(
           },
           group,
           smartFolder,
-          // On reconnect, refresh all visible items for missed removals; initial connection needs only processing items.
           open: (reconnected) => {
             if (reconnected) {
               refreshItems(shownVideoIds(itemsRef.current));

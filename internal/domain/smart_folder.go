@@ -298,8 +298,6 @@ type SmartFolder struct {
 	Name     string
 	Rule     SmartRule
 	Sort     VideoSort
-	// OwnerKept records owner creation or edits to name, rule, sort, or parent.
-	OwnerKept bool
 	// CreatedAt and UpdatedAt use Unix milliseconds.
 	CreatedAt int64
 	UpdatedAt int64
@@ -377,3 +375,14 @@ type SmartFoldersChanged struct {
 }
 
 func (SmartFoldersChanged) event() {}
+
+// SameSmartRule compares rules independently of tag order.
+func SameSmartRule(a, b SmartRule) bool {
+	a.Tags = slices.Clone(a.Tags)
+	b.Tags = slices.Clone(b.Tags)
+	slices.Sort(a.Tags)
+	slices.Sort(b.Tags)
+	left, errA := json.Marshal(a)
+	right, errB := json.Marshal(b)
+	return errA == nil && errB == nil && string(left) == string(right)
+}

@@ -20,28 +20,31 @@ import {
   VideoThumbnailMark,
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
-import { groupPagePath } from "../groups/groupPaths";
+import { groupPagePath, videoInGroupPath } from "../groups/groupPaths";
 import { type CardDragBinding, dragRowProps, RowDropMarks } from "../videoList/cardDrag";
 import FolderArt from "../videoList/FolderArt";
+import { useCollectionLink } from "../videoList/useCollectionLink";
 
-export interface GroupCardProps {
-  group: LibraryGroup;
+export interface GroupCardProps<G extends LibraryGroup = LibraryGroup> {
+  group: G;
   backTo: string;
   /** Default to the group page without a trail; group-page callers extend their current trail. */
   to?: string;
   /** True only when every member is selected. */
   selected: boolean;
   selectionMode: boolean;
-  /** Toggle all members and retain group identity; omit for guests to hide selection. */
-  onSelect?: (group: LibraryGroup, selected: boolean) => void;
+  onSelect?: (group: G, selected: boolean) => void;
   activePreviewId?: number | null;
   previewResetEpoch?: number;
   onPreviewStart?: (id: number) => void;
   onPreviewReset?: () => void;
-  tagsRow?: (group: LibraryGroup) => ReactNode;
-  /** Newly created groups may edit their name outside the navigation link. */
+  tagsRow?: (group: G) => ReactNode;
   nameField?: ReactNode;
   drag?: CardDragBinding;
+  /** 格子のカードが開く再生画面で再生を始める（VideoCard の autoplay と同じ）。 */
+  autoplay?: boolean;
+  /** 格子のカードの右上に、所有者のお気に入りの付け外しだけを置く（VideoCard と同じ）。 */
+  favoriteOnly?: boolean;
 }
 
 export type CollectionValues = Pick<
@@ -141,6 +144,8 @@ function GroupAddToGroup({
 /** Keep count/duration and progress above foreground thumbnails without intercepting preview input. */
 export function CollectionThumbnail({
   previews,
+  totalCount,
+  onFrontChange,
   selected = false,
   selectionMode = false,
   activePreviewId,
@@ -150,6 +155,8 @@ export function CollectionThumbnail({
   face,
 }: {
   previews: LibraryGroup["previews"];
+  totalCount?: number;
+  onFrontChange?: (preview: LibraryGroup["previews"][number] | null) => void;
   selected?: boolean;
   selectionMode?: boolean;
   activePreviewId?: number | null;
@@ -162,6 +169,8 @@ export function CollectionThumbnail({
     <VideoThumbnail selected={selected}>
       <FolderArt
         previews={previews}
+        totalCount={totalCount}
+        onFrontChange={onFrontChange}
         selectionMode={selectionMode}
         activePreviewId={activePreviewId}
         previewResetEpoch={previewResetEpoch}
@@ -195,7 +204,13 @@ export function CollectionName({ name, muted }: { name: string; muted: boolean }
   );
 }
 
-export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
+export const GroupCard = memo(GroupCardFor) as typeof GroupCardFor;
+
+function groupHasTags(group: LibraryGroup): boolean {
+  return group.tags.length > 0;
+}
+
+function GroupCardFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
   const {
     group,
     backTo,
@@ -209,11 +224,22 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
     onPreviewReset,
     tagsRow,
     nameField,
+    autoplay,
+    favoriteOnly = false,
   } = props;
   const { state, ratio, duration, countText, label } = useGroupFacts(group);
+  const { linkProps, onFrontChange } = useCollectionLink({
+    to,
+    backTo,
+    name: group.name,
+    label,
+    selectionMode,
+    autoplay,
+    videoPath: (id) => videoInGroupPath(id, group.id),
+  });
   const owner = useAudience() === "owner";
   const tagsRowNode = tagsRow?.(group);
-  const showTagsRow = tagsRow !== undefined && group.tags.length > 0;
+  const showTagsRow = tagsRow !== undefined && groupHasTags(group);
 
   return (
     <article
@@ -245,9 +271,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
       )}
 
       <Link
-        to={to}
-        state={{ from: backTo }}
-        aria-label={label}
+        {...linkProps}
         onClick={(event) => {
           onPreviewReset?.();
           if (selectionMode && onSelect !== undefined) {
@@ -259,6 +283,8 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
       >
         <CollectionThumbnail
           previews={group.previews}
+          totalCount={group.videoCount}
+          onFrontChange={onFrontChange}
           selected={selected}
           selectionMode={selectionMode}
           activePreviewId={activePreviewId}
@@ -281,17 +307,19 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
       {owner && (
         //
         <VideoThumbnailMark className="z-30">
-          <GroupAddToGroup group={group} variant="card" />
-          <GroupAddToPlaylist group={group} variant="card" />
+          {!favoriteOnly && <GroupAddToGroup group={group} variant="card" />}
+          {!favoriteOnly && <GroupAddToPlaylist group={group} variant="card" />}
           <GroupFavorite group={group} variant="card" />
         </VideoThumbnailMark>
       )}
       {showTagsRow && <div className="flex min-w-0 flex-col gap-1">{tagsRowNode}</div>}
     </article>
   );
-});
+}
 
-export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
+export const GroupRow = memo(GroupRowFor) as typeof GroupRowFor;
+
+function GroupRowFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
   const {
     group,
     backTo,
@@ -391,7 +419,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
       />
     </TableRow>
   );
-});
+}
 
 export function CollectionValueCells({
   state,

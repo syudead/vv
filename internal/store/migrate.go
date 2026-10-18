@@ -16,7 +16,7 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// Only goose writes its version table; application code reads it.
+// Goose owns this history, except for the atomic legacy Home repair in migrate_home_legacy.go.
 const versionTableName = "goose_db_version"
 
 // ErrFutureSchema prevents startup writes when the database is newer than this application.
@@ -56,6 +56,10 @@ func Migrate(ctx context.Context, db *DB) (MigrateResult, error) {
 		)
 	}
 
+	repaired, err := repairLegacyHomeMigrations(ctx, db.sql, current)
+	if err != nil {
+		return MigrateResult{}, fmt.Errorf("cannot reconcile legacy home migrations: %w", err)
+	}
 	results, err := provider.Up(ctx)
 	if err != nil {
 		return MigrateResult{}, fmt.Errorf("cannot apply migrations: %w", err)
@@ -66,7 +70,7 @@ func Migrate(ctx context.Context, db *DB) (MigrateResult, error) {
 		return MigrateResult{}, err
 	}
 
-	return MigrateResult{Applied: len(results), Version: applied}, nil
+	return MigrateResult{Applied: repaired + len(results), Version: applied}, nil
 }
 
 func latestKnownVersion(provider *goose.Provider) (int64, error) {

@@ -13,6 +13,7 @@ import { GroupedListExample } from "./blocks/grouped-list-example";
 import { ListPageExample } from "./blocks/list-page-example";
 import { type ListState, ListStatesExample } from "./blocks/list-states-example";
 import { SettingsPageExample } from "./blocks/settings-page-example";
+import { StepsPageExample } from "./blocks/steps-page-example";
 
 const listStates: ListState[] = [
   "loading",
@@ -141,6 +142,13 @@ export default function Patterns() {
         items={["centered-form", "centered-form-example"]}
       >
         <CenteredFormExample />
+      </Pattern>
+      <Pattern
+        id="steps-page"
+        name={p.names.stepsPage}
+        items={["steps-page", "toggle-group", "steps-page-example"]}
+      >
+        <StepsPageExample />
       </Pattern>
       <Pattern
         id="dialogs"

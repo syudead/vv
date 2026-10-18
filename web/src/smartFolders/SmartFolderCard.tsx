@@ -26,8 +26,9 @@ import {
   VideoThumbnailMark,
 } from "../ui/VideoThumbnail";
 import { RefusingDropCard } from "../videoList/cardDrag";
+import { useCollectionLink } from "../videoList/useCollectionLink";
 import { useSmartFolderCardValue } from "./cardValues";
-import { smartFolderPagePath } from "./smartFolderPaths";
+import { smartFolderPagePath, videoInSmartFolderPath } from "./smartFolderPaths";
 
 /**
  * Summaries arrive with list items; SmartFolderCardsProvider loads values only when cards become
@@ -37,6 +38,7 @@ export interface SmartFolderCardProps {
   folder: SmartFolderSummary;
   /** Return URL for the opened page. */
   backTo: string;
+  selectionMode?: boolean;
   activePreviewId?: number | null;
   previewResetEpoch?: number;
   onPreviewStart?: (id: number) => void;
@@ -127,8 +129,16 @@ function SmartFolderAddToPlaylist({
 export const SmartFolderCard = memo(function SmartFolderCard(
   props: SmartFolderCardProps,
 ) {
-  const { folder, backTo, tagsRow, refusesDrop = false } = props;
+  const { folder, backTo, tagsRow, refusesDrop = false, selectionMode = false } = props;
   const { gone, values, facts, label, ref } = useSmartFolderFacts(folder);
+  const { linkProps, onFrontChange } = useCollectionLink({
+    to: smartFolderPagePath(folder.id),
+    backTo,
+    name: folder.name,
+    label,
+    selectionMode,
+    videoPath: (id) => videoInSmartFolderPath(id, folder.id),
+  });
   const owner = useAudience() === "owner";
   if (gone) return null;
   const empty = values?.videoCount === 0;
@@ -141,14 +151,15 @@ export const SmartFolderCard = memo(function SmartFolderCard(
       className="group relative flex min-w-0 flex-col gap-2"
     >
       <Link
-        to={smartFolderPagePath(folder.id)}
-        state={{ from: backTo }}
-        aria-label={label}
+        {...linkProps}
         onClick={() => props.onPreviewReset?.()}
         className="flex min-w-0 flex-1 flex-col gap-2 rounded-md"
       >
         <CollectionThumbnail
           previews={values?.previews ?? []}
+          totalCount={values?.videoCount}
+          onFrontChange={onFrontChange}
+          selectionMode={selectionMode}
           activePreviewId={props.activePreviewId}
           previewResetEpoch={props.previewResetEpoch}
           onPreviewStart={props.onPreviewStart}

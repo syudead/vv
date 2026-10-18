@@ -99,7 +99,7 @@ describe("Sidebar", () => {
 
     expect(screen.queryByRole("complementary", { name: "Main navigation" })).toBeNull();
     act(() => screen.getByRole("button", { name: "Toggle sidebar" }).click());
-    expect(screen.getByRole("dialog").textContent).toContain("Library");
+    expect(screen.getByRole("dialog").textContent).toContain("Home");
   });
 
   it.each([true, false])(
@@ -212,7 +212,7 @@ describe("Sidebar", () => {
       .getAllByRole("link")
       .map((link) => link.textContent);
     expect(names.slice(0, 8)).toEqual([
-      "Library",
+      "Home",
       "Folders",
       "History",
       "Playlists",
@@ -221,6 +221,10 @@ describe("Sidebar", () => {
       "Organizations",
       "Duplicates",
     ]);
+    expect(within(main).getByRole("link", { name: "Home" }).getAttribute("href")).toBe(
+      "/",
+    );
+    expect(within(main).queryByRole("link", { name: "Library" })).toBeNull();
     expect(within(main).getByRole("link", { name: "People" }).getAttribute("href")).toBe(
       "/people",
     );
@@ -245,7 +249,7 @@ describe("Sidebar", () => {
         .getAllByRole("link")
         .map((link) => link.textContent)
         .slice(0, 2),
-    ).toEqual(["Library", "Folders"]);
+    ).toEqual(["Home", "Folders"]);
     expect(screen.queryByRole("link", { name: "History" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Playlists" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Duplicates" })).toBeNull();

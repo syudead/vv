@@ -12,6 +12,7 @@ import {
 } from "../api/workInfo";
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
+import { libraryFilterPath } from "../library/libraryPath";
 import { Button } from "../ui/shadcn/button";
 
 const foldLimit = 3;
@@ -73,7 +74,7 @@ function CreditLink({
 }) {
   return (
     <Link
-      to={`/?${kind}=${String(credit.id)}`}
+      to={libraryFilterPath(kind, credit.id)}
       aria-label={t.player.workInfo.showVideosWith(credit.name)}
       className="text-foreground hover:text-primary"
     >

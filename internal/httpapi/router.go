@@ -269,8 +269,8 @@ type Options struct {
 
 	AutoImport AutoImportSettings
 
-	AutoTagging AutoTagging
-
+	AutoTagging    AutoTagging
+	Onboarding     Onboarding
 	VersionJudging VersionJudging
 
 	Ollama OllamaConnection
@@ -353,6 +353,7 @@ type server struct {
 	pluginProxy       PluginProxySettings
 	autoImport        AutoImportSettings
 	autoTagging       AutoTagging
+	onboarding        Onboarding
 	versionJudging    VersionJudging
 	ollama            OllamaConnection
 	comfyUI           ComfyUIConnection
@@ -430,6 +431,7 @@ func NewRouter(opts Options) http.Handler {
 		pluginProxy:            opts.PluginProxy,
 		autoImport:             opts.AutoImport,
 		autoTagging:            opts.AutoTagging,
+		onboarding:             opts.Onboarding,
 		versionJudging:         opts.VersionJudging,
 		ollama:                 opts.Ollama,
 		comfyUI:                opts.ComfyUI,
@@ -563,7 +565,7 @@ func requiresPostJSONBody(path string) bool {
 		"/api/video-tags", "/api/video-tags/summary",
 		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 		"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
-		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/playlists", "/api/groups", "/api/smart-folders",
+		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/onboarding/interests", "/api/playlists", "/api/groups", "/api/smart-folders",
 		"/api/organize/reorder", "/api/organize/group", "/api/organize/move", "/api/organize/bundle", "/api/organize/merge", "/api/organize/undo",
 		"/api/v1/video-work-info", "/api/v1/people", "/api/v1/people/update", "/api/v1/people/merge",
 		"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",
@@ -612,6 +614,7 @@ var putJSONBodyPaths = map[string]bool{
 	"/api/settings/ollama":          true,
 	"/api/settings/comfyui":         true,
 	"/api/settings/version-judging": true,
+	"/api/onboarding":               true,
 }
 
 func requiresPutJSONBody(path string) bool {

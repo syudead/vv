@@ -12,6 +12,8 @@ import { Link } from "react-router";
 
 import type { Tag } from "../api/tags";
 import { t } from "../i18n";
+import { libraryFilterPath } from "../library/libraryPath";
+import { TAG_PARAM } from "../library/tagCriteria";
 import { Button } from "../ui/shadcn/button";
 import { Checkbox } from "../ui/shadcn/checkbox";
 import {
@@ -129,7 +131,7 @@ function TagRow({
             <span className="relative flex min-w-0 items-center gap-1">
               <Link
                 ref={(node) => registerRefs(tag.id, { nameLink: node })}
-                to={`/?tag=${String(tag.id)}`}
+                to={libraryFilterPath(TAG_PARAM, tag.id)}
                 title={tag.name}
                 aria-label={t.tags.row.open(tag.name)}
                 className="block min-w-0 truncate font-medium text-foreground after:absolute after:inset-0 hover:text-primary"

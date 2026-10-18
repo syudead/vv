@@ -12,6 +12,7 @@ export type SettingsSectionId =
   | "media-folders"
   | "auto-import-switch"
   | "version-judging"
+  | "setup"
   | "auto-tagging"
   | "ollama"
   | "comfyui"
@@ -35,7 +36,8 @@ export const settingsPages: readonly SettingsPageEntry[] = [
   },
   {
     slug: "library",
-    sections: ["media-folders", "auto-import-switch", "version-judging"],
+
+    sections: ["media-folders", "auto-import-switch", "version-judging", "setup"],
     anchors: [],
   },
   { slug: "auto-tagging", sections: ["auto-tagging"], anchors: [] },

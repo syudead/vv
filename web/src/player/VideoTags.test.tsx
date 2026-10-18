@@ -187,7 +187,7 @@ describe("VideoTags", () => {
     await waitFor(() => expect(screen.queryByTitle("旅行")).toBeNull());
   });
 
-  it("タグの名前は /?tag=<id> へのリンクで、読み上げ名は「<名>で絞り込む」（issue 269）", async () => {
+  it("タグの名前は /library?tag=<id> へのリンクで、読み上げ名は「<名>で絞り込む」（issue 269）", async () => {
     install();
     renderTags(7, [
       {

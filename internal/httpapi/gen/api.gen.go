@@ -1047,6 +1047,30 @@ func (e MediaInfoVideoHdr) Valid() bool {
 	}
 }
 
+// Defines values for OnboardingStep.
+const (
+	OnboardingStepDone      OnboardingStep = "done"
+	OnboardingStepFolders   OnboardingStep = "folders"
+	OnboardingStepInterests OnboardingStep = "interests"
+	OnboardingStepScan      OnboardingStep = "scan"
+)
+
+// Valid indicates whether the value is a known member of the OnboardingStep enum.
+func (e OnboardingStep) Valid() bool {
+	switch e {
+	case OnboardingStepDone:
+		return true
+	case OnboardingStepFolders:
+		return true
+	case OnboardingStepInterests:
+		return true
+	case OnboardingStepScan:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OrganizeRefKind.
 const (
 	OrganizeRefKindGroup OrganizeRefKind = "group"
@@ -2709,7 +2733,10 @@ type FolderPreview struct {
 
 	// ThumbnailUrl Versioned URL matching Video.thumbnailUrl.
 	ThumbnailUrl string `json:"thumbnailUrl"`
-	VideoId      int64  `json:"videoId"`
+
+	// Title Video title for direct playback links in smart-folder cards.
+	Title   *string `json:"title,omitempty"`
+	VideoId int64   `json:"videoId"`
 }
 
 // FolderScope direct selects immediate locations; subtree includes all descendants
@@ -2905,6 +2932,40 @@ type Health struct {
 
 // HealthStatus ok: storage reachable; degraded: process alive without storage connectivity
 type HealthStatus string
+
+// Interest defines model for Interest.
+type Interest struct {
+	// HasFolder An ordinary root smart folder already matches this interest tag.
+	HasFolder bool `json:"hasFolder"`
+
+	// Id 分野の変わらない識別子（docs/design-docs/home.md「Interest catalog」）
+	Id string `json:"id"`
+
+	// Name タグの名前（英語）
+	Name string `json:"name"`
+
+	// Synonym タグの同義語（日本語）
+	Synonym string `json:"synonym"`
+}
+
+// InterestList defines model for InterestList.
+type InterestList struct {
+	Interests []Interest `json:"interests"`
+}
+
+// InterestPick defines model for InterestPick.
+type InterestPick struct {
+	Ids []string `json:"ids"`
+}
+
+// InterestPickResult defines model for InterestPickResult.
+type InterestPickResult struct {
+	// Folders New smart folders; excludes interests whose matching root folder already existed.
+	Folders []SmartFolderSummary `json:"folders"`
+
+	// Queued 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0
+	Queued int `json:"queued"`
+}
 
 // LibraryGroup Group values aggregate visible descendant videos in playback order: depth-first through subgroups, deduplicating by first occurrence. Address groups by id; guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags.
 type LibraryGroup struct {
@@ -3211,6 +3272,15 @@ type OllamaSettings struct {
 	// Saved Whether the owner has saved connection settings. Until then, endpoint and model are server defaults; save responses always return true.
 	Saved bool `json:"saved"`
 }
+
+// Onboarding defines model for Onboarding.
+type Onboarding struct {
+	// Step オンボードの段階（docs/design-docs/home.md）
+	Step OnboardingStep `json:"step"`
+}
+
+// OnboardingStep オンボードの段階（docs/design-docs/home.md）
+type OnboardingStep string
 
 // Organization One organization, with Person fields plus a parent organization.
 type Organization struct {
@@ -5693,6 +5763,12 @@ type CreateMediaFolderJSONRequestBody = CreateMediaFolderRequest
 // UpdateMediaFolderJSONRequestBody defines body for UpdateMediaFolder for application/json ContentType.
 type UpdateMediaFolderJSONRequestBody = UpdateMediaFolderRequest
 
+// UpdateOnboardingJSONRequestBody defines body for UpdateOnboarding for application/json ContentType.
+type UpdateOnboardingJSONRequestBody = Onboarding
+
+// PickOnboardingInterestsJSONRequestBody defines body for PickOnboardingInterests for application/json ContentType.
+type PickOnboardingInterestsJSONRequestBody = InterestPick
+
 // CreateOrganizationJSONRequestBody defines body for CreateOrganization for application/json ContentType.
 type CreateOrganizationJSONRequestBody = CreditInput
 
@@ -5965,6 +6041,18 @@ type ServerInterface interface {
 	// UpdateMediaFolder Change a media folder path
 	// (PUT /api/media-folders/{id})
 	UpdateMediaFolder(w http.ResponseWriter, r *http.Request, id MediaFolderId)
+	// GetOnboarding オンボードの段階を返す
+	// (GET /api/onboarding)
+	GetOnboarding(w http.ResponseWriter, r *http.Request)
+	// UpdateOnboarding オンボードの段階を書く
+	// (PUT /api/onboarding)
+	UpdateOnboarding(w http.ResponseWriter, r *http.Request)
+	// ListOnboardingInterests 分野の一覧を返す
+	// (GET /api/onboarding/interests)
+	ListOnboardingInterests(w http.ResponseWriter, r *http.Request)
+	// PickOnboardingInterests Create tags and smart folders for selected interests
+	// (POST /api/onboarding/interests)
+	PickOnboardingInterests(w http.ResponseWriter, r *http.Request)
 	// ListOrganizations List organizations
 	// (GET /api/organizations)
 	ListOrganizations(w http.ResponseWriter, r *http.Request, params ListOrganizationsParams)
@@ -7818,6 +7906,62 @@ func (siw *ServerInterfaceWrapper) UpdateMediaFolder(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateMediaFolder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOnboarding operation middleware
+func (siw *ServerInterfaceWrapper) GetOnboarding(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOnboarding(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateOnboarding operation middleware
+func (siw *ServerInterfaceWrapper) UpdateOnboarding(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateOnboarding(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListOnboardingInterests operation middleware
+func (siw *ServerInterfaceWrapper) ListOnboardingInterests(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOnboardingInterests(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PickOnboardingInterests operation middleware
+func (siw *ServerInterfaceWrapper) PickOnboardingInterests(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PickOnboardingInterests(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -11804,6 +11948,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/transcoding", wrapper.UpdateTranscodingSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/network", wrapper.GetNetworkSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/network", wrapper.UpdateNetworkSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/onboarding", wrapper.GetOnboarding)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/onboarding", wrapper.UpdateOnboarding)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/onboarding/interests", wrapper.ListOnboardingInterests)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/onboarding/interests", wrapper.PickOnboardingInterests)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/plugin-proxy", wrapper.GetPluginProxySettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/plugin-proxy", wrapper.UpdatePluginProxySettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/auto-import", wrapper.GetAutoImportSettings)

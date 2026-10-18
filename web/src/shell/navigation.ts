@@ -3,8 +3,8 @@ import {
   Building2,
   Folder,
   History,
+  House,
   Layers,
-  Library,
   ListVideo,
   Tags,
   Users,
@@ -27,7 +27,7 @@ export interface NavEntry {
 /** Read catalog copy during rendering so pseudo-locale replacements propagate. */
 export function navEntries(): readonly NavEntry[] {
   return [
-    { id: "library", label: t.shell.nav.library, icon: Library, to: "/" },
+    { id: "home", label: t.shell.nav.home, icon: House, to: "/" },
     {
       id: "folders",
       label: t.shell.nav.folders,

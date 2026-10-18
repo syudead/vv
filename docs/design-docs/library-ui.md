@@ -216,7 +216,7 @@ Card width follows the zoom level. Guest rules are in
 
 | Part | Owner | Guest |
 | --- | --- | --- |
-| Sidebar, upper | All entries | `Library` and `Folders` only |
+| Sidebar, upper | All entries | `Home`, `Library` and `Folders` only |
 | Sidebar, lower | `Settings`, `Sign out` | `Sign in` |
 | `Scan library` button and import progress | Shown | Hidden |
 | Sort orders | 9 | 7 |
@@ -270,17 +270,21 @@ the `Created "{name}"` toast carries `Open` to the new folder's page.
 
 ### Scan entry and progress
 
-A scan starts only from `Scan library` in the `Scan status` section of the
+A scan starts from `Scan library` in the `Scan status` section of the
 Settings `Scan` page
-([`ScanStatusSection.tsx`](../../web/src/settings/ScanStatusSection.tsx)),
+([`ScanStatusSection.tsx`](../../web/src/settings/ScanStatusSection.tsx)) or
+on the `Scan` step of onboarding at `/welcome`
+([Home and onboarding](home.md)),
 because scanning is occasional and a permanent button in the top bar repeated
 the bottom-right indicator. The button is present in every scan state. It is
 disabled while a scan runs (including one started in another tab) and while
 no media folder exists, with the reason in a line it references through
 `aria-describedby`. A failed start request appears as an alert in the same
 section, and the button stays available to try again. The `Scan` action of an
-empty library or empty folder is a link to `/settings/scan#scan-status` and starts
-nothing.
+empty folder is a link to `/settings/scan#scan-status` and starts nothing. The
+owner's action on an empty library, and on a home with no video, is `Set up
+library`: it sets the onboarding step to `folders` and opens `/welcome`
+([`useStartSetup.ts`](../../web/src/onboarding/useStartSetup.ts)).
 
 The bottom-right indicator
 ([`ScanProgressIndicator.tsx`](../../web/src/shell/ScanProgressIndicator.tsx))
@@ -359,7 +363,15 @@ the answer loses its card. The card's tags stay pressable while other cards are
 selected, since a folder card has no selection. A smart folder card cannot be
 dragged, and dropping on it shows `Can't drop here`.
 
-Pressing a smart folder card opens `/smart-folders/{id}`:
+Groups and smart folders share one-column cards and the same collection-link
+behaviour. A mouse-promoted cover opens that video with autoplay and its group
+or smart-folder context. The artwork shows at most four covers plus a More
+sheet if videos remain. More and the title open the collection; leaving the
+artwork restores that destination. Touch and keyboard activation also open the
+collection. During selection, promotion is disabled and group clicks retain
+their selection behaviour. Smart folders remain outside the selection model.
+
+Opening a smart folder leads to `/smart-folders/{id}`:
 a trail band of the folder's ancestors, the name, `12 videos · 1:32:10`, and
 for the owner one conditions line per folder on the path, then the child
 folders by name and the matching videos and groups in the folder's sort, in
@@ -469,7 +481,22 @@ avoid a double outline.
 
 ## Sidebar navigation
 
-Each sidebar item goes to its screen.
+Each sidebar item goes to its screen. `Home` opens `/`, which combines the
+searchable library list with inline smart-folder cards
+([Home library and setup](home.md)). Smart-folder cards follow the list order and use the same one-column stacked
+artwork as groups. A promoted cover opens playback; the resting card, title
+and More sheet open the collection. Every in-app library filter link (tag, person, organization) uses
+`/?<parameter>=<id>`. Old `/library` URLs redirect to `/` with their query and
+hash intact.
+
+While the owner's onboarding step is not `done`, every route replaces itself
+with `/welcome`, the onboarding page outside the shell, and the owner's
+`/welcome` with the step `done` goes to `/`. Guests are never sent there. The
+gate ([`OnboardingGate.tsx`](../../web/src/onboarding/OnboardingGate.tsx))
+reads the step before it draws a route, reads it again on the owner-only `onboarding` event so
+a step changed on another device takes effect, and treats a step it cannot
+read as `done`, so a failed read never locks the owner out
+([Home library and setup](home.md)).
 
 ## Video page layout
 

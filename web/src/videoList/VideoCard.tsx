@@ -41,6 +41,7 @@ import {
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
 import { type CardDragBinding, dragRowProps, RowDropMarks } from "./cardDrag";
+import { cardLinkState } from "./cardLink";
 import { CardMedia, useCardPreview } from "./cardPreview";
 import { shownVersionsCount, VersionsMark } from "./VersionsMark";
 
@@ -70,6 +71,17 @@ export interface VideoCardProps {
   tagsRow?: (video: Video) => ReactNode;
   /** Owner library rows supply drag metadata; grid cards use DraggableCard wrappers. */
   drag?: CardDragBinding;
+  /**
+   * 格子のカードが開く再生画面で再生を始める（`state.autoplay`）。ホームの棚のカードが渡す
+   * （docs/design-docs/home.md）。
+   */
+  autoplay?: boolean;
+  /**
+   * 格子のカードの右上に、所有者のお気に入りの付け外しだけを置く（「Add to group」と
+   * 「Add to playlist」を置かない）。ホームの棚の card-0 のカードが渡す
+   * （docs/design-docs/home.md「Home」）。
+   */
+  favoriteOnly?: boolean;
 }
 
 function useCardState(video: Video) {
@@ -257,6 +269,8 @@ function VideoCard(props: VideoCardProps) {
     onPreviewReset,
     location,
     tagsRow,
+    autoplay,
+    favoriteOnly = false,
   } = props;
   const { duration, unplayable: rawUnplayable, state, ratio } = useCardState(video);
   // Keep bottom padding identical with and without tags to avoid inconsistent card spacing.
@@ -307,7 +321,7 @@ function VideoCard(props: VideoCardProps) {
       {/* Stretch the link to align tags at the card bottom and keep intervening whitespace clickable. */}
       <Link
         to={to ?? `/videos/${String(video.id)}`}
-        state={{ from: backTo }}
+        state={cardLinkState(backTo, autoplay)}
         aria-label={
           location === undefined
             ? video.title
@@ -407,8 +421,8 @@ function VideoCard(props: VideoCardProps) {
       {owner && (
         // Stop previews on entry and never start them from these actions.
         <VideoThumbnailMark data-preview-checkbox="true" onPointerEnter={release}>
-          <VideoAddToGroup video={video} variant="card" />
-          <VideoAddToPlaylist video={video} variant="card" />
+          {!favoriteOnly && <VideoAddToGroup video={video} variant="card" />}
+          {!favoriteOnly && <VideoAddToPlaylist video={video} variant="card" />}
           <VideoFavorite video={video} variant="card" />
         </VideoThumbnailMark>
       )}

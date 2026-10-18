@@ -416,6 +416,7 @@ func run(opts runOptions) error {
 		PluginProxy:       pluginProxy,
 		AutoImport:        autoImport,
 		AutoTagging:       autoTagger,
+		Onboarding:        app.NewOnboarding(db.Onboarding(), autoTagger),
 		VersionJudging:    versionJudge,
 		Ollama:            ollamaConnection,
 		ComfyUI:           comfyUIConnection,
@@ -427,14 +428,13 @@ func run(opts runOptions) error {
 		Catalog:           catalog,
 		Opener:            fileOpener,
 		Files:             mediaFiles,
-		// Subtitles are converted within one request and bypass app, like streaming.
-		Subtitles:      media.NewSubtitleConverter(),
-		Events:         events,
-		Assets:         web.Dist(),
-		Logger:         logger,
-		Auth:           httpAuthenticator,
-		APITokens:      apiTokens,
-		TrustedProxies: cfg.TrustedProxies,
+		Subtitles:         media.NewSubtitleConverter(),
+		Events:            events,
+		Assets:            web.Dist(),
+		Logger:            logger,
+		Auth:              httpAuthenticator,
+		APITokens:         apiTokens,
+		TrustedProxies:    cfg.TrustedProxies,
 	})
 
 	// SSE has no natural end; unsubscribe screen events and close connections before waiting for HTTP

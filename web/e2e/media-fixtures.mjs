@@ -518,3 +518,78 @@ export function generateDragOrganizeFixtures(root) {
     ]);
   }
 }
+/** Small distinct videos for the setup scan and interest-folder flow. */
+export const ONBOARDING_VIDEOS = ["オンボード確認A", "オンボード確認B"];
+
+/**
+ * generateOnboardingFixtures は、オンボードで足すフォルダの動画を2本作る。中身で同じ動画と
+ * みなされないよう、ほかの組と違う長さにして色合いを変える。
+ */
+export function generateOnboardingFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  for (const [index, name] of ONBOARDING_VIDEOS.entries()) {
+    ffmpeg([
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=320x180:rate=8:duration=7",
+      "-vf",
+      `hue=h=${String(25 + index * 170)}`,
+      ...h264,
+      "-an",
+      "-movflags",
+      "+faststart",
+      path.join(root, `${name}.mp4`),
+    ]);
+  }
+}
+
+/** HOME_FILLERS is the number of public, unwatched videos in the Home fixture. */
+export const HOME_FILLERS = 2;
+/** A private video used by the home playback test. */
+export const HOME_IN_PROGRESS = "ホーム確認の途中";
+
+/**
+ * generateHomeFixtures は、ホーム（docs/design-docs/home.md）を確かめる動画を作る
+ * （web/e2e/home.e2e.ts）。どれもフォルダの直下に置き、グループにしない。
+ *
+ * - 「ホーム確認 NN」は公開・未視聴の確認用の 2 本。4 秒の同じ映像に中身の違う free ボックスを足す
+ * - 「ホーム確認の途中」は途中まで見たことにする 40 秒の 1 本。末尾とみなす 15 秒
+ *   （internal/domain/progress.go の CompletionTailMs）より十分長い
+ */
+export function generateHomeFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  const base = path.join(root, "base.tmp.mp4");
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=9:duration=4",
+    "-vf",
+    "hue=h=300",
+    ...h264,
+    "-an",
+    "-movflags",
+    "+faststart",
+    base,
+  ]);
+  for (let index = 1; index <= HOME_FILLERS; index += 1) {
+    const file = path.join(root, `ホーム確認 ${String(index).padStart(2, "0")}.mp4`);
+    copyFileSync(base, file);
+    appendFreeBox(file, `home:${String(index)}`);
+  }
+  rmSync(base);
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=9:duration=40",
+    "-vf",
+    "hue=h=200",
+    ...h264,
+    "-an",
+    "-movflags",
+    "+faststart",
+    path.join(root, `${HOME_IN_PROGRESS}.mp4`),
+  ]);
+}

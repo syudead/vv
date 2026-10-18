@@ -2,6 +2,7 @@ import type { VideoFolder } from "../api/client";
 import type { GroupRef } from "../api/groups";
 import type { Crumb } from "../folders/folderPath";
 import { t } from "../i18n";
+import { LIBRARY_PATH } from "../library/libraryPath";
 
 export const TRAIL_PARAM = "trail";
 
@@ -73,7 +74,7 @@ export function searchWithoutGroup(search: string): string {
 /** After dissolution or tagging, return to the final ancestor or the library. */
 export function parentPagePath(trail: readonly GroupRef[]): string {
   const parent = trail[trail.length - 1];
-  if (parent === undefined) return "/";
+  if (parent === undefined) return LIBRARY_PATH;
   return groupPagePath(
     parent.id,
     trail.slice(0, -1).map((each) => each.id),
@@ -82,7 +83,7 @@ export function parentPagePath(trail: readonly GroupRef[]): string {
 
 export function trailCrumbs(trail: readonly GroupRef[], name: string): Crumb[] {
   return [
-    { label: t.library.title, to: "/" },
+    { label: t.library.title, to: LIBRARY_PATH },
     ...trail.map((group, index) => ({
       label: group.name,
       to: groupPagePath(
@@ -96,7 +97,11 @@ export function trailCrumbs(trail: readonly GroupRef[], name: string): Crumb[] {
 
 /** Render unresolved URL trail segments as skeleton crumbs. */
 export function loadingCrumbs(trail: readonly number[]): (Crumb | undefined)[] {
-  return [{ label: t.library.title, to: "/" }, ...trail.map(() => undefined), undefined];
+  return [
+    { label: t.library.title, to: LIBRARY_PATH },
+    ...trail.map(() => undefined),
+    undefined,
+  ];
 }
 
 /** Until the root name is known, use only the relative path, or empty for the root itself. */

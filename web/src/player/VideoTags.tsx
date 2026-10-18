@@ -28,6 +28,8 @@ import {
 import { subscribeVideoTags } from "../api/videoTagsEvents";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
+import { libraryFilterPath } from "../library/libraryPath";
+import { TAG_PARAM } from "../library/tagCriteria";
 import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
 import TagCommand, { type TagChoice } from "../ui/TagCommand";
@@ -281,7 +283,7 @@ export default function VideoTags({
                 className="max-w-full justify-start border-dashed border-input font-normal hover:border-solid"
               >
                 <Link
-                  to={`/?tag=${String(tag.id)}`}
+                  to={libraryFilterPath(TAG_PARAM, tag.id)}
                   title={tag.name}
                   aria-label={
                     tag.tentative
@@ -302,7 +304,7 @@ export default function VideoTags({
               >
                 {/* Truncate only the name so the tentative marker remains visible. */}
                 <Link
-                  to={`/?tag=${String(tag.id)}`}
+                  to={libraryFilterPath(TAG_PARAM, tag.id)}
                   aria-label={
                     showsTentative(tag)
                       ? t.player.tags.filterByTentative(tag.name)

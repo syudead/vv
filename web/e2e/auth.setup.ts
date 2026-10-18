@@ -22,6 +22,12 @@ setup("所有者のアカウントを作ってログインする", async ({ requ
   expect(videos.status()).toBe(200);
   expect(videos.headers()["x-vv-audience"]).toBe("owner");
 
+  // 既存の e2e は自分でメディアフォルダを足すので、オンボードを終えた所有者として走る。
+  // 終えていなければ、フォルダの無い間はどの画面も /welcome へ送られる
+  // （docs/design-docs/home.md・R-4）。
+  const onboarding = await request.put("/api/onboarding", { data: { step: "done" } });
+  expect(onboarding.status()).toBe(200);
+
   await mkdir(path.dirname(ownerStorageState), { recursive: true });
   await request.storageState({ path: ownerStorageState });
 });

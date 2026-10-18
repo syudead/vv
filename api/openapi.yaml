@@ -1387,6 +1387,83 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/onboarding:
+    get:
+      operationId: getOnboarding
+      summary: オンボードの段階を返す
+      description: |
+        段階は設定 `onboarding.step` に 1 つで持つ。無ければ、メディアフォルダがあれば `done`、
+        無ければ `folders` である（docs/design-docs/home.md）。所有者だけ。
+      responses:
+        "200":
+          description: 今の段階
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Onboarding"
+    put:
+      operationId: updateOnboarding
+      summary: オンボードの段階を書く
+      description: |
+        名前の段階をそのまま書くので、2 つの端末からの書き込みは後のものが残る。段階が変わったら
+        画面の知らせ `onboarding` を出す（docs/design-docs/home.md）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Onboarding"
+      responses:
+        "200":
+          description: 書いた段階
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Onboarding"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/onboarding/interests:
+    get:
+      operationId: listOnboardingInterests
+      summary: 分野の一覧を返す
+      description: |
+        Lists interests with `hasFolder` indicating an existing root smart folder matching the tag rule.
+        （docs/design-docs/home.md）。
+      responses:
+        "200":
+          description: 分野の一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterestList"
+    post:
+      operationId: pickOnboardingInterests
+      summary: Create tags and smart folders for selected interests
+      description: |
+        Creates or reuses interest tags and ordinary root smart folders in one transaction.
+        Existing root folders with the same tag rule are reused. Untyped tags receive Genre.
+        When auto-tagging is enabled, queues the library and returns its count as `queued`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InterestPick"
+      responses:
+        "200":
+          description: Created smart folders and the number of queued videos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterestPickResult"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/settings/plugin-proxy:
     get:
       operationId: getPluginProxySettings
@@ -4220,7 +4297,7 @@ paths:
         - sessionCookie: []
         - {}
       summary: "Stream import and video changes through Server-Sent Events"
-      description: "Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). candidates and activity carry empty objects after committed changes; refetch their lists/counts. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity events. Guests receive only group and smartFolder; scan, video, candidates and activity are owner-only."
+      description: "Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding events. Guests receive only group and smartFolder; scan, video, onboarding, candidates and activity are owner-only."
       responses:
         "200":
           description: "Event stream"
@@ -4809,7 +4886,8 @@ components:
         problem:
           type: string
           description: "Latest problem, returned only in limited state"
-          enum: [watch_limit, events_lost, folder_unreachable, permission_denied]
+          enum:
+            [watch_limit, events_lost, folder_unreachable, permission_denied]
         path:
           type: string
           description: "Absolute path when the problem concerns one directory; user data, not translated"
@@ -5125,7 +5203,8 @@ components:
           description: "Stored value outside the current choices, included only in that case. set remains true and value matches, but execution receives the default instead."
     WorkInfoPlugin:
       type: object
-      required: [id, fileName, operations, digest, state, settings, network, updatedAt]
+      required:
+        [id, fileName, operations, digest, state, settings, network, updatedAt]
       additionalProperties: false
       description: "One work-info plugin."
       properties:
@@ -5293,7 +5372,17 @@ components:
 
     WorkInfoFetch:
       type: object
-      required: [fetchId, expiresAt, tags, dates, people, organizations, urls, externalIds]
+      required:
+        [
+          fetchId,
+          expiresAt,
+          tags,
+          dates,
+          people,
+          organizations,
+          urls,
+          externalIds,
+        ]
       additionalProperties: false
       description: "Fetch result held in memory."
       properties:
@@ -5599,6 +5688,70 @@ components:
         scope:
           type: string
           enum: [missing, all]
+
+    Onboarding:
+      type: object
+      required: [step]
+      additionalProperties: false
+      properties:
+        step:
+          type: string
+          enum: [folders, scan, interests, done]
+          description: オンボードの段階（docs/design-docs/home.md）
+
+    Interest:
+      type: object
+      required: [id, name, synonym, hasFolder]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: 分野の変わらない識別子（docs/design-docs/home.md「Interest catalog」）
+        name:
+          type: string
+          description: タグの名前（英語）
+        synonym:
+          type: string
+          description: タグの同義語（日本語）
+        hasFolder:
+          type: boolean
+          description: An ordinary root smart folder already matches this interest tag.
+
+    InterestList:
+      type: object
+      required: [interests]
+      additionalProperties: false
+      properties:
+        interests:
+          type: array
+          items:
+            $ref: "#/components/schemas/Interest"
+
+    InterestPick:
+      type: object
+      required: [ids]
+      additionalProperties: false
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 24
+          items:
+            type: string
+
+    InterestPickResult:
+      type: object
+      required: [folders, queued]
+      additionalProperties: false
+      properties:
+        folders:
+          type: array
+          description: New smart folders; excludes interests whose matching root folder already existed.
+          items:
+            $ref: "#/components/schemas/SmartFolderSummary"
+        queued:
+          type: integer
+          description: 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0
 
     AutoTaggingQueued:
       type: object
@@ -6817,7 +6970,18 @@ components:
 
     LibraryGroup:
       type: object
-      required: [id, name, videoCount, sizeBytes, addedAt, previews, openVideoId, videoIds, tags]
+      required:
+        [
+          id,
+          name,
+          videoCount,
+          sizeBytes,
+          addedAt,
+          previews,
+          openVideoId,
+          videoIds,
+          tags,
+        ]
       additionalProperties: false
       description: "Group values aggregate visible descendant videos in playback order: depth-first through subgroups, deduplicating by first occurrence. Address groups by id; guest responses omit watchedCount, watchState, lastPlayedAt and favorite, and return empty tags."
       properties:
@@ -7527,6 +7691,9 @@ components:
         videoId:
           type: integer
           format: int64
+        title:
+          type: string
+          description: "Video title for direct playback links in smart-folder cards."
         thumbnailUrl:
           type: string
           description: "Versioned URL matching Video.thumbnailUrl."
@@ -7940,7 +8107,8 @@ components:
     SeekThumbnailSprite:
       type: object
       description: "Seek-thumbnail sprite layout; cells beyond frameCount on the final sheet are black and must not be addressed by clients."
-      required: [intervalMs, frameCount, columns, rows, frameWidth, frameHeight, sheets]
+      required:
+        [intervalMs, frameCount, columns, rows, frameWidth, frameHeight, sheets]
       additionalProperties: false
       properties:
         intervalMs:
@@ -8684,7 +8852,18 @@ components:
     ActivityFeatureCounts:
       type: object
       description: "Counts for all features among records matching every filter except feature."
-      required: [import, scan, duplicate_check, auto_tagging, work_info, tags, versions, media_folders, organize]
+      required:
+        [
+          import,
+          scan,
+          duplicate_check,
+          auto_tagging,
+          work_info,
+          tags,
+          versions,
+          media_folders,
+          organize,
+        ]
       additionalProperties: false
       properties:
         import:
@@ -8709,7 +8888,21 @@ components:
     ActivityEntry:
       type: object
       description: "One activity record."
-      required: [id, kind, feature, status, decider, subject, candidate, retryRun, undoable, undone, createdAt, updatedAt]
+      required:
+        [
+          id,
+          kind,
+          feature,
+          status,
+          decider,
+          subject,
+          candidate,
+          retryRun,
+          undoable,
+          undone,
+          createdAt,
+          updatedAt,
+        ]
       additionalProperties: false
       properties:
         id:

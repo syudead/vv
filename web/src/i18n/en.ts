@@ -561,6 +561,7 @@ export const en = {
         editorDialog: "Editor dialog",
         formPage: "Form page",
         groupedList: "Grouped list",
+        stepsPage: "Steps page",
         cardList: "Card list",
         listState: (state: string) => `List page: ${state}`,
       },
@@ -721,6 +722,18 @@ export const en = {
       formPageNotesHint: "Shown under the video's details.",
       formPageCode: "Code",
       save: "Save",
+      home: "Home",
+      steps: "Setup steps",
+      stepNames: { folders: "Folders", topics: "Topics", finish: "Finish" },
+      stepOf: (current: number, total: number) =>
+        `Step ${formatNumber(current)} of ${formatNumber(total)}`,
+      stepDone: (name: string) => `${name}, done`,
+      stepCurrent: (name: string) => `${name}, current step`,
+      stepsTitle: "What do you watch?",
+      stepsDescription: "Pick a few topics. You can change them later.",
+      topics: "Topics",
+      skip: "Skip",
+      continue: "Continue",
     },
   },
   app: {
@@ -890,6 +903,7 @@ export const en = {
     empty: {
       title: "No videos yet",
       description: "Put videos in a media folder and scan to see them here.",
+      setUp: "Set up library",
     },
     view: {
       label: "View",
@@ -953,6 +967,12 @@ export const en = {
       watchedRatio: "Share of videos watched",
       progress: (watched: number, total: number) =>
         `${formatNumber(watched)} / ${formatNumber(total)}`,
+    },
+    collection: {
+      more: "More",
+      remaining: (count: number) => `+${formatNumber(count)}`,
+      playPreview: (name: string, title?: string) =>
+        title ? `Play "${title}" from "${name}"` : `Play video from "${name}"`,
     },
     smartFolder: {
       label: (name: string, count: number, watched: number) =>
@@ -2183,6 +2203,7 @@ export const en = {
       title: "No history matches these conditions",
     },
   },
+  home: { title: "Home" },
   activity: {
     title: "Activity",
     documentTitle: "Activity",
@@ -2706,6 +2727,66 @@ export const en = {
     controlCharacters: "Line breaks and tabs aren't allowed",
     tooLong: (limit: number) => `Up to ${characters(limit)}`,
   },
+  // オンボード（docs/design-docs/home.md「Words」の Onboarding の行）。
+  onboarding: {
+    documentTitle: "Set up your library",
+    steps: "Setup steps",
+    stepNames: {
+      folders: "Media folders",
+      scan: "Scan",
+      interests: "Interests",
+    },
+    stepOf: (current: number, total: number) =>
+      `Step ${formatNumber(current)} of ${formatNumber(total)}`,
+    stepDone: (name: string) => `${name}, done`,
+    stepCurrent: (name: string) => `${name}, current step`,
+    skip: "Skip",
+    saveFailed: (reason: string) => `Couldn't save your progress: ${reason}`,
+    folders: {
+      title: "Where are your videos?",
+      description:
+        "Add the folders on the server that hold your videos. You can change them later in Settings.",
+      add: "Add folder",
+      list: "Added folders",
+      loading: "Loading the media folders",
+      loadFailed: (reason: string) => `Couldn't load the media folders: ${reason}`,
+      addFailed: (reason: string) => `Couldn't add the folder: ${reason}`,
+      continue: "Continue",
+    },
+    scan: {
+      title: "Scan your library",
+      description:
+        "VVMDM reads the folders and makes thumbnails. It keeps going in the background, so you can continue while it runs.",
+      start: "Scan library",
+      noFolder: "Add a media folder first.",
+    },
+    interests: {
+      title: "What do you watch?",
+      description:
+        "Pick what your videos are about. Each becomes a smart folder in your library that fills in as videos get these tags.",
+      label: "Interests",
+      loading: "Loading the interests",
+      loadFailed: (reason: string) => `Couldn't load the interests: ${reason}`,
+      autoTaggingOff:
+        "Auto-tagging is off, so these smart folders fill in only as you tag videos. You can turn it on in Settings.",
+      hasFolder: "Already created",
+      hasFolderLabel: (name: string) => `${name}, already created`,
+      scanning: (settled: number, total: number) =>
+        `Scanning: ${formatNumber(settled)} of ${formatNumber(total)}`,
+      scanProgress: "Scan progress",
+      scanFinished: "Scan finished",
+      scanFailed: "Scan failed. See Settings.",
+      finish: "Finish",
+      pickFailed: (reason: string) => `Couldn't add the smart folders: ${reason}`,
+      queueFailed: (reason: string) =>
+        `Added the smart folders, but couldn't queue your videos for auto-tagging: ${reason}`,
+      added: (count: number) =>
+        selectPlural(count, {
+          one: `Added ${formatNumber(count)} smart folder.`,
+          other: `Added ${formatNumber(count)} smart folders.`,
+        }),
+    },
+  },
   auth: {
     gate: {
       unreachable: "Can't connect to the server",
@@ -2746,6 +2827,7 @@ export const en = {
     nav: {
       main: "Main navigation",
       account: "Account and settings",
+      home: "Home",
       library: "Library",
       folders: "Folders",
       tags: "Tags",
@@ -3241,6 +3323,13 @@ export const en = {
         deleted: (name: string) => `Deleted ${name}.`,
         failed: (reason: string) => `Couldn't delete the plugin: ${reason}`,
       },
+    },
+    setup: {
+      heading: "Setup",
+      setup: "Setup",
+      setupDescription: "Add media folders, scan and pick interests again.",
+      startSetup: "Start setup",
+      setupFailed: (reason: string) => `Couldn't start setup: ${reason}`,
     },
     mediaFolders: {
       heading: "Media folders",

@@ -16,6 +16,8 @@ import {
   generateDragOrganizeFixtures,
   generateFolderFixtures,
   generateHistoryFixtures,
+  generateHomeFixtures,
+  generateOnboardingFixtures,
   generateMediaFixtures,
   generateSearchFixtures,
   generateTagsFixtures,
@@ -37,6 +39,8 @@ function fixtureDirs(root) {
     tagsMediaDir: path.join(root, "tags-media"),
     dragOrganizeMediaDir: path.join(root, "drag-organize-media"),
     historyMediaDir: path.join(root, "history-media"),
+    homeMediaDir: path.join(root, "home-media"),
+    onboardingMediaDir: path.join(root, "onboarding-media"),
     workInfoMediaDir: path.join(root, "work-info-media"),
   };
 }
@@ -48,6 +52,8 @@ function generateFixtures(dirs) {
   generateTagsFixtures(dirs.tagsMediaDir);
   generateDragOrganizeFixtures(dirs.dragOrganizeMediaDir);
   generateHistoryFixtures(dirs.historyMediaDir);
+  generateHomeFixtures(dirs.homeMediaDir);
+  generateOnboardingFixtures(dirs.onboardingMediaDir);
   generateWorkInfoFixtures(dirs.workInfoMediaDir);
 }
 
@@ -139,6 +145,8 @@ function run() {
           MDM_E2E_TAGS_MEDIA_DIR: fixtures.tagsMediaDir,
           MDM_E2E_DRAG_ORGANIZE_MEDIA_DIR: fixtures.dragOrganizeMediaDir,
           MDM_E2E_HISTORY_MEDIA_DIR: fixtures.historyMediaDir,
+          MDM_E2E_HOME_MEDIA_DIR: fixtures.homeMediaDir,
+          MDM_E2E_ONBOARDING_MEDIA_DIR: fixtures.onboardingMediaDir,
           MDM_E2E_WORK_INFO_MEDIA_DIR: fixtures.workInfoMediaDir,
         },
         stdio: "inherit",

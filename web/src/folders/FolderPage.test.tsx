@@ -459,9 +459,18 @@ describe("FolderPage", () => {
     expect(deeper?.textContent).toContain("0 videos");
   });
 
-  it("フォルダの絵柄の上でマウスを横に動かすと、位置に応じたサムネイルを前に出す", async () => {
-    const { container } = renderFolders("/folders/3");
-    await screen.findByRole("link", { name: "five, 6 videos, 0 folders" });
+  it("フォルダの絵柄の上でマウスを横に動かすと、位置に応じたサムネイルを前に出す", () => {
+    const folder = summary({
+      path: "five",
+      name: "five",
+      videoCount: 6,
+      previews: previews(4),
+    });
+    const { container } = render(
+      <MemoryRouter>
+        <FolderCard folder={folder} showPath={false} />
+      </MemoryRouter>,
+    );
     const art = container.querySelector<HTMLElement>(
       '[data-folder-path="five"] [data-folder-art]',
     );

@@ -301,7 +301,6 @@ function useFolderMenu(
   return { menu, editConditions };
 }
 
-/** Keep the empty trail identity stable across renders. */
 const noTrail: SmartFolderPageData["trail"] = [];
 
 /** Missing ancestor references add their ancestor name; show Edit conditions only to owners. */
@@ -455,6 +454,7 @@ function FolderItems(props: ItemsProps) {
   });
   const folderProps = (item: Extract<LibraryItem, { kind: "smartFolder" }>) => ({
     ...preview,
+    selectionMode,
     folder: item.smartFolder,
     backTo: listUrl,
     tagsRow: view === "grid" ? folderTags : undefined,

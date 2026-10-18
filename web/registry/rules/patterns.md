@@ -24,6 +24,7 @@ sample text and data with the screen's own, keeping the structure.
 | Asks the viewer to confirm an action that cannot be undone  | `ConfirmDialog`  | `confirm-dialog`   | `confirm-dialog-example`   |
 | Works on one image that needs the whole window              | `EditorDialog`   | `editor-dialog`    | `editor-dialog-example`    |
 | Fills in many values saved together, on a screen of its own | `FormPage`       | `form-page`        | `form-page-example`        |
+| Walks through fixed steps one at a time (the first setup)   | `StepsPage`      | `steps-page`       | `steps-page-example`       |
 
 The states of a list or table are shown in `list-states-example`.
 
@@ -40,14 +41,15 @@ example block and a section here.
 - **No `className` on patterns**: skeletons and sections take no `className`.
   If a screen needs a different spacing, the pattern is wrong for it; change
   the pattern in the design system for every screen, or pick another one.
-- **Density**: `ListPage`, `AdminTablePage`, `SettingsPage`, `CenteredForm`
-  and the dialogs are library density (`sm` controls, `text-sm`, `p-3` rows).
+- **Density**: `ListPage`, `AdminTablePage`, `SettingsPage`, `CenteredForm`,
+  `StepsPage` and the dialogs are library density (`sm` controls, `text-sm`, `p-3` rows).
   `DetailPage` is viewing density: its sections switch to `p-4` rows and
   `text-base` by themselves, and its controls use `default` and `lg`.
 - **Text**: patterns hold no text. Every title, label, count and message comes
   from the caller through `t`.
 - **One primary action per area**: the header's `actions`, a dialog footer, an
-  empty state and a centered form each hold at most one `default` button.
+  empty state, a centered form and a steps page's footer each hold at most one
+  `default` button.
 
 ## List page
 
@@ -283,16 +285,42 @@ Library density: `sm` controls. Use it when a form has more than a few fields
 or holds lists of chips, so it would scroll inside a `FormDialog`. Leaving
 with unsaved changes asks first with a `ConfirmDialog`.
 
+## Steps page
+
+Item `steps-page`. `StepsPage` is a page of its own outside the shell for
+steps taken in a fixed order, one at a time, such as the first setup. A header
+band `navbar` high, sticky at the top, with a bottom border, holds
+`BrandHomeLink` at the left and the step strip in the middle: each step's name
+after its number, the current one in `primary` with `aria-current="step"`,
+done ones with a check. Below `sm` the strip is the `progress` text
+(`Step 2 of 3`) and the current name only. Under the band one column, at most
+`max-w-2xl` and centered, `p-4` (`p-6` from `sm`), holds the step's `title`
+(the page's `h1`, `text-xl`), its `description`, the `content` `gap-4` apart,
+the `notice` and the footer row.
+
+| Slot      | Put in it                                                                                                     | Never                                          |
+| --------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `steps`   | Every step in order, each with its `name` and a `label` for screen readers that says done or current          | Steps that appear or vanish as the viewer goes |
+| `content` | The step's own controls and lines: rows, an `outline` `sm` button that adds to them, toggles, an `Alert` note | The step's main action; it goes in the footer  |
+| `notice`  | The `destructive` `Alert` of a failed save, so it sits right above the buttons that retry it                  | Field errors; they go under their field        |
+| `skip`    | `Skip` (`ghost` `sm`), on every step, so skipping is never hidden                                             | A link out of the steps                        |
+| `action`  | The one `default` `sm` button that finishes the step                                                          | A second `default` button                      |
+
+While a step is saved, disable both footer buttons. Use it only when the steps
+must be taken in order and the screen is nothing else; one form is a
+`CenteredForm`, and settings the viewer changes in any order are a
+`SettingsPage`.
+
 ## Sections
 
 | Section        | Item            | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | -------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PageHeader`   | `page-header`   | The page title (`h1`, `text-xl`), a count, a one-line description, `leading` (Back, breadcrumb), actions; `titleRef` makes the title focusable for when nothing else can take the focus; `titleHidden` keeps the title for screen readers only, when a breadcrumb already shows the same name                                                                                                                                                                                               |
+| `PageHeader`   | `page-header`   | The page title (`h1`, `text-xl`; `headingLevel={2}` for a section in an integrated page), a count, a one-line description, `leading` (Back, breadcrumb), actions; `titleRef` makes the title focusable for when nothing else can take the focus; `titleHidden` keeps the title for screen readers only, when a breadcrumb already shows the same name                                                                                                                                       |
 | `Toolbar`      | `toolbar`       | Search, filter triggers, then view controls and actions; `page` wraps and collapses the view controls below `lg`, `topBar` is one row in the top bar that collapses them per control; `searchPlacement="end"` puts the search after the filters at the row's end                                                                                                                                                                                                                            |
 | `PageSection`  | `page-section`  | A titled card (`h2`, `text-lg`); each direct child is one row, divided by a line and padded by the section                                                                                                                                                                                                                                                                                                                                                                                  |
 | `FormRow`      | `form-row`      | A setting: label and description on the left, one control on the right; stacked below `sm`                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `FactList`     | `fact-list`     | Term and value pairs in two columns                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `CardGrid`     | `card-grid`     | Cards at least `card-0` to `card-3` wide, stretched to fill the row, so both edges line up with the toolbar                                                                                                                                                                                                                                                                                                                                                                                 |
+| `CardGrid`     | `card-grid`     | Cards at least `card-0` to `card-3` wide, stretched to fill the row. Each card occupies one column, including groups and smart folders                                                                                                                                                                                                                                                                                                                                                      |
 | `GroupedList`  | `grouped-list`  | Rows under headings (`h2`, `text-sm font-semibold`, with an optional `detail` after a `·` in `text-xs` muted on the same line) that stick under the top bar while their group scrolls; each row `py-2` on the page background with no card, no line and no horizontal padding, `gap-2` between a heading and its rows, and groups `gap-6` apart                                                                                                                                             |
 | `CardList`     | `card-list`     | One-line cards stacked `gap-2` apart, each on `muted` with a `border` line, `rounded-lg`, `px-4`, at least `activity-card` high, in one of four tones (`default`, `primary`, `destructive`, `warning`); an icon, a title truncated first, a `badge` never truncated, a `detail` pushed right and truncated after the title, then a time column at least `activity-time` wide that never wraps and an actions column of fixed width; below `lg` two lines with a short time after the detail |
 | `JumpList`     | `jump-list`     | A `ToggleGroup type="single"` of jump targets in groups divided by `Separator`s; from `lg` a vertical list of full-width, left-aligned `sm` toggles in the muted colour under an `h2` (`text-sm font-semibold`) with an optional `action` after a last divider, and below `lg` one horizontally scrolling line of outlined `sm` chips with the heading for screen readers only and no `action`                                                                                              |
@@ -366,13 +394,13 @@ control }`: inline, the controls stand without a visible name, so each needs
 Every list, table and section shows its data or exactly one of these blocks,
 in the body slot of its skeleton, so the header and the toolbar never move.
 
-| State            | Block                            | Shows                                                                                                                        |
-| ---------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Loading          | `LoadingState` (`loading-state`) | `Skeleton` shapes of the final layout: `grid` cards, `table` rows, `grouped` rows under a heading or `cards` of a `CardList` |
-| Empty            | `EmptyState` (`empty-state`)     | An icon, a title saying why, a description, and the action that fills it when the viewer can take it                         |
-| Error            | `ErrorState` (`error-state`)     | A `destructive` `Alert`: what failed, and `Retry` when retrying can help                                                     |
-| Loading more     | `LoadMoreRow` (`load-more-row`)  | The content, then a `Spinner` row at the end                                                                                 |
-| Load more failed | `LoadMoreRow` (`load-more-row`)  | The content kept, then an `Alert` row with `Retry`, which requests the same page again                                       |
+| State            | Block                            | Shows                                                                                                                      |
+| ---------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Loading          | `LoadingState` (`loading-state`) | `Skeleton` shapes of the final layout: `grid` cards, `table` rows, `grouped` rows under a heading, `cards` of a `CardList` |
+| Empty            | `EmptyState` (`empty-state`)     | An icon, a title saying why, a description, and the action that fills it when the viewer can take it                       |
+| Error            | `ErrorState` (`error-state`)     | A `destructive` `Alert`: what failed, and `Retry` when retrying can help                                                   |
+| Loading more     | `LoadMoreRow` (`load-more-row`)  | The content, then a `Spinner` row at the end                                                                               |
+| Load more failed | `LoadMoreRow` (`load-more-row`)  | The content kept, then an `Alert` row with `Retry`, which requests the same page again                                     |
 
 ```mermaid
 stateDiagram-v2

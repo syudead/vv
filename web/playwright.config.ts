@@ -42,15 +42,22 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
-  // Run account setup before all projects that reuse its session.
+  // Onboarding needs an empty library and runs after account setup, before the other tests.
   projects: [
     {
       name: "owner-setup",
       testMatch: "auth.setup.ts",
     },
     {
+      name: "onboarding",
+      testMatch: "onboarding.e2e.ts",
+      dependencies: ["owner-setup"],
+      use: { storageState: ownerStorageState },
+    },
+    {
       name: "e2e",
       testMatch: "**/*.e2e.ts",
+      testIgnore: "onboarding.e2e.ts",
       dependencies: ["owner-setup"],
       use: { storageState: ownerStorageState },
     },

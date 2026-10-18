@@ -4,6 +4,7 @@ import { Link } from "react-router";
 
 import type { Credit, CreditKind } from "../api/credits";
 import { t } from "../i18n";
+import { libraryFilterPath } from "../library/libraryPath";
 import RowNameInput from "../tags/RowNameInput";
 import type { TagFieldError } from "../tags/tagNameField";
 import { RowIconButton, RowMoreMenu, type TagRowRefs } from "../tags/TagRow";
@@ -95,7 +96,7 @@ function CreditRow({
             <span className="relative flex min-w-0 items-center">
               <Link
                 ref={(node) => registerRefs(credit.id, { nameLink: node })}
-                to={`/?${parameter}=${String(credit.id)}`}
+                to={libraryFilterPath(parameter, credit.id)}
                 title={credit.name}
                 aria-label={t.credits.row.open(credit.name)}
                 className="block min-w-0 truncate font-medium text-foreground after:absolute after:inset-0 hover:text-primary"

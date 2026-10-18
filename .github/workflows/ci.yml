@@ -378,6 +378,8 @@ jobs:
         include:
           - group: playback
             files: e2e/playback.e2e.ts
+          - group: home
+            files: e2e/home.e2e.ts e2e/onboarding.e2e.ts
           - group: library
             files: e2e/folders.e2e.ts e2e/search.e2e.ts e2e/tags.e2e.ts
           - group: pages

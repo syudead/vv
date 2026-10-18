@@ -812,6 +812,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * オンボードの段階を返す
+         * @description 段階は設定 `onboarding.step` に 1 つで持つ。無ければ、メディアフォルダがあれば `done`、
+         *     無ければ `folders` である（docs/design-docs/home.md）。所有者だけ。
+         */
+        get: operations["getOnboarding"];
+        /**
+         * オンボードの段階を書く
+         * @description 名前の段階をそのまま書くので、2 つの端末からの書き込みは後のものが残る。段階が変わったら
+         *     画面の知らせ `onboarding` を出す（docs/design-docs/home.md）。
+         */
+        put: operations["updateOnboarding"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onboarding/interests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 分野の一覧を返す
+         * @description Lists interests with `hasFolder` indicating an existing root smart folder matching the tag rule.
+         *     （docs/design-docs/home.md）。
+         */
+        get: operations["listOnboardingInterests"];
+        put?: never;
+        /**
+         * Create tags and smart folders for selected interests
+         * @description Creates or reuses interest tags and ordinary root smart folders in one transaction.
+         *     Existing root folders with the same tag rule are reused. Untyped tags receive Genre.
+         *     When auto-tagging is enabled, queues the library and returns its count as `queued`.
+         */
+        post: operations["pickOnboardingInterests"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/plugin-proxy": {
         parameters: {
             query?: never;
@@ -2681,7 +2734,7 @@ export interface paths {
         };
         /**
          * Stream import and video changes through Server-Sent Events
-         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). candidates and activity carry empty objects after committed changes; refetch their lists/counts. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity events. Guests receive only group and smartFolder; scan, video, candidates and activity are owner-only.
+         * @description Sends changes only, except connection-keeping comments. scan carries Scan when scanning, job results or current work change; video carries VideoChanged for detail refetch; group carries GroupChanged IDs for the changed group and ancestors; smartFolder carries SmartFolderChanged IDs for edited folders, descendants and parent, or all folders when matching may change (tags, people, organizations, favorites, watch state, library videos, bundles or groups). onboarding carries an empty object to owners when setup progress changes; refetch GET /api/onboarding. candidates and activity carry empty objects after committed changes; refetch their lists/counts. Sends one current scan on connection when available, but does not replay missed video/group/smartFolder/candidates/activity/onboarding events. Guests receive only group and smartFolder; scan, video, onboarding, candidates and activity are owner-only.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -3283,6 +3336,35 @@ export interface components {
         StartAutoTaggingRequest: {
             /** @enum {string} */
             scope: "missing" | "all";
+        };
+        Onboarding: {
+            /**
+             * @description オンボードの段階（docs/design-docs/home.md）
+             * @enum {string}
+             */
+            step: "folders" | "scan" | "interests" | "done";
+        };
+        Interest: {
+            /** @description 分野の変わらない識別子（docs/design-docs/home.md「Interest catalog」） */
+            id: string;
+            /** @description タグの名前（英語） */
+            name: string;
+            /** @description タグの同義語（日本語） */
+            synonym: string;
+            /** @description An ordinary root smart folder already matches this interest tag. */
+            hasFolder: boolean;
+        };
+        InterestList: {
+            interests: components["schemas"]["Interest"][];
+        };
+        InterestPick: {
+            ids: string[];
+        };
+        InterestPickResult: {
+            /** @description New smart folders; excludes interests whose matching root folder already existed. */
+            folders: components["schemas"]["SmartFolderSummary"][];
+            /** @description 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0 */
+            queued: number;
         };
         AutoTaggingQueued: {
             /** @description Number of queued videos. */
@@ -4290,6 +4372,8 @@ export interface components {
         FolderPreview: {
             /** Format: int64 */
             videoId: number;
+            /** @description Video title for direct playback links in smart-folder cards. */
+            title?: string;
             /** @description Versioned URL matching Video.thumbnailUrl. */
             thumbnailUrl: string;
             /** @description Versioned URL matching Video.previewUrl, included only when the list preview is generated and its stored asset is available. */
@@ -6730,6 +6814,98 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    getOnboarding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 今の段階 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Onboarding"];
+                };
+            };
+        };
+    };
+    updateOnboarding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Onboarding"];
+            };
+        };
+        responses: {
+            /** @description 書いた段階 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Onboarding"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listOnboardingInterests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 分野の一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterestList"];
+                };
+            };
+        };
+    };
+    pickOnboardingInterests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InterestPick"];
+            };
+        };
+        responses: {
+            /** @description Created smart folders and the number of queued videos */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterestPickResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getPluginProxySettings: {

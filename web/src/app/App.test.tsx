@@ -104,7 +104,7 @@ describe("App", () => {
     const indicator = await screen.findByRole("button", {
       name: /^Scanning 4 of 10 videos done\./,
     });
-    const home = screen.getByRole("link", { name: "VVMDM home" });
+    const home = await screen.findByRole("link", { name: "VVMDM home" });
     expect(home.getAttribute("href")).toBe("/");
     expect(home.querySelectorAll('img[alt=""]')).toHaveLength(2);
     expect(indicator.closest(".fixed")?.classList.contains("bottom-4")).toBe(true);
@@ -132,12 +132,29 @@ describe("App", () => {
     );
   });
 
+  it("keeps root filter URLs on the integrated home", async () => {
+    window.history.replaceState({}, "", "/?tag=3");
+    render(<App />);
+
+    expect(await screen.findByRole("button", { name: "通知する" })).toBeDefined();
+    expect(`${window.location.pathname}${window.location.search}`).toBe("/?tag=3");
+  });
+
+  it("redirects former library bookmarks with their query and hash intact", async () => {
+    window.history.replaceState({}, "", "/library?tag=3#results");
+    render(<App />);
+    expect(await screen.findByRole("button", { name: "通知する" })).toBeDefined();
+    expect(
+      `${window.location.pathname}${window.location.search}${window.location.hash}`,
+    ).toBe("/?tag=3#results");
+  });
+
   it("keeps an active toast while a real link changes to playback placement", async () => {
     render(<App />);
     const user = userEvent.setup();
     await screen.findByRole("button", { name: /^Scanning 4 of 10 videos done\./ });
 
-    await user.click(screen.getByRole("button", { name: "通知する" }));
+    await user.click(await screen.findByRole("button", { name: "通知する" }));
     const toast = await screen.findByText("route toast");
     const toaster = () =>
       document.querySelector<HTMLElement>("[data-sonner-toaster]")?.style;
@@ -211,7 +228,7 @@ describe("App", () => {
     const names = Array.from(main.querySelectorAll("a, button")).map((node) =>
       node.textContent?.trim(),
     );
-    expect(names).toEqual(["Library", "Folders", "Sign in"]);
+    expect(names).toEqual(["Home", "Folders", "Sign in"]);
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
@@ -220,15 +237,32 @@ describe("App", () => {
     expect(FakeEventSource.instances).toHaveLength(0);
   });
 
+  it("段階が done でない所有者の設定画面は、シェルの外のオンボードへ置き換える", async () => {
+    window.history.replaceState({}, "", "/settings");
+    const original = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input, init) =>
+      String(input) === "/api/onboarding"
+        ? Promise.resolve(json({ step: "scan" }))
+        : original!(input, init),
+    );
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Scan your library" }),
+    ).toBeDefined();
+    expect(window.location.pathname).toBe("/welcome");
+    expect(screen.queryByRole("complementary", { name: "Main navigation" })).toBeNull();
+  });
+
   it("所有者にはサイドバーの全項目を出し、トップバーに取り込みの button を出さない", async () => {
     render(<App />);
     await screen.findByRole("button", { name: /^Scanning 4 of 10 videos done\./ });
-    const main = screen.getByRole("complementary", { name: "Main navigation" });
+    const main = await screen.findByRole("complementary", { name: "Main navigation" });
     const names = Array.from(main.querySelectorAll("a, button")).map((node) =>
       node.textContent?.trim(),
     );
     expect(names).toEqual([
-      "Library",
+      "Home",
       "Folders",
       "History",
       "Playlists",

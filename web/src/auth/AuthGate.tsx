@@ -38,6 +38,7 @@ function ownerOnlyPath(pathname: string): boolean {
       "/playlists",
       "/duplicates",
       "/activity",
+      "/welcome",
     ].some((path) => pathname === path || pathname.startsWith(`${path}/`)) ||
     isVideoEditPath(pathname)
   );

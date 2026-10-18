@@ -17,6 +17,7 @@ export interface ServerEventHandlers {
   smartFolder?: (ids: readonly number[]) => void;
   candidates?: () => void;
   activity?: () => void;
+  onboarding?: () => void;
   open?: (reconnected: boolean) => void;
 }
 
@@ -80,6 +81,7 @@ function connect(): void {
   });
   current.addEventListener("candidates", () => dispatch("candidates"));
   current.addEventListener("activity", () => dispatch("activity"));
+  current.addEventListener("onboarding", () => dispatch("onboarding"));
   current.addEventListener("error", () => {
     // CLOSED means browser retries stopped; check audience explicitly because EventSource hides HTTP status.
     // Reload once after owner access expires; otherwise reconnect after a delay.

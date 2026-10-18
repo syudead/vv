@@ -7,7 +7,6 @@ import { CardGrid, type CardSize } from "./card-grid";
 export interface LoadingStateProps {
   label: string;
   layout: "grid" | "table" | "grouped" | "cards";
-  /** Match the loaded CardGrid size. */
   size?: CardSize;
   count?: number;
 }

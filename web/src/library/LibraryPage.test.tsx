@@ -62,6 +62,7 @@ function LocationProbe() {
   return (
     <>
       <span data-testid="location">{location.search}</span>
+      <span data-testid="pathname">{location.pathname}</span>
       <button type="button" onClick={() => void navigate(-1)}>
         テストで戻る
       </button>
@@ -209,7 +210,7 @@ describe("LibraryPage", () => {
     expect(within(dialog).getByRole("slider", { name: "Card size" })).toBeDefined();
   });
 
-  it("空なら取り込みを促す", async () => {
+  it("空なら所有者をオンボードへ案内する", async () => {
     fetchMock.mockImplementation((input) =>
       Promise.resolve(
         String(input).startsWith("/api/scans/current")
@@ -221,8 +222,17 @@ describe("LibraryPage", () => {
     );
     renderLibrary();
     expect(await screen.findByText("No videos yet")).toBeDefined();
-    expect(screen.getByRole("link", { name: "Scan" }).getAttribute("href")).toBe(
-      "/settings/scan#scan-status",
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Set up library" }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input) === "/api/onboarding" &&
+            init?.method === "PUT" &&
+            init.body === JSON.stringify({ step: "folders" }),
+        ),
+      ).toBe(true),
     );
   });
 
@@ -1063,6 +1073,33 @@ describe("LibraryPage", () => {
         throw new Error(`unexpected request: ${url.toString()}`);
       });
     }
+
+    it("keeps /?tag=3 on home and filters the list by tag 3", async () => {
+      const tag = {
+        id: 3,
+        name: "旅行",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+        kind: null,
+      };
+      const requested: number[][] = [];
+      installTagAwareList([tag], (tags) => {
+        requested.push(tags);
+        return { items: [video(1, { tags: [tag] })], total: 1 };
+      });
+      renderLibrary("/?tag=3");
+
+      await screen.findByRole("link", { name: "動画 1" });
+      expect(screen.getByTestId("pathname").textContent).toBe("/");
+      expect(screen.getByTestId("location").textContent).toContain("tag=3");
+      expect(requested.at(-1)).toEqual([3]);
+      expect(
+        within(screen.getByRole("list", { name: "Tags in the filter" })).getByText(
+          "旅行",
+        ),
+      ).toBeDefined();
+    });
 
     it("/?tag=1&sort=random は seed を補い、tag=1 を残す", async () => {
       const tag = {
@@ -2088,7 +2125,11 @@ describe("LibraryPage", () => {
       const cards = document.querySelectorAll("article");
       expect(cards).toHaveLength(3);
       expect(cards[1]?.contains(link)).toBe(true);
-      expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
+      expect(
+        screen
+          .getAllByRole("heading", { level: 2 })
+          .map((heading) => heading.textContent),
+      ).toEqual(["Library"]);
       expect(screen.queryByRole("link", { name: "ep01" })).toBeNull();
       expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe(
         "3 items",

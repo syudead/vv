@@ -27,7 +27,11 @@ function pageList(): HTMLElement {
 
 const pages: [string, string, string[]][] = [
   ["/settings/scan", "Scan", ["Scan status", "Auto-import"]],
-  ["/settings/library", "Library", ["Media folders", "Auto-import", "Duplicate judging"]],
+  [
+    "/settings/library",
+    "Library",
+    ["Media folders", "Auto-import", "Duplicate judging", "Setup"],
+  ],
   ["/settings/auto-tagging", "Auto-tagging", ["Progress", "Classifier"]],
   ["/settings/connections", "Connections", ["Ollama", "ComfyUI"]],
   ["/settings/plugins", "Plugins", ["Work-info plugins"]],
