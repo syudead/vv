@@ -392,6 +392,9 @@ type Options struct {
 // server は生成された gen.ServerInterface を満たす。契約（api/openapi.yaml）に
 // 経路を足したらこの型がコンパイルエラーになるため、実装漏れに気付ける。
 type server struct {
+	// favoritesMaxBody overrides the default byte limit for this server instance.
+	favoritesMaxBody int64
+
 	build        domain.BuildInfo
 	pinger       Pinger
 	videos       Library

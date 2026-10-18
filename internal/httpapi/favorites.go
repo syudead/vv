@@ -23,6 +23,13 @@ type Favorites interface {
 // groupIds の合計の上限 20000 件が収まるよう、外部連携 API の externalBodyLimit と同じ大きさにする。
 const favoritesBodyLimit = externalBodyLimit
 
+func (s *server) favoriteBodyLimit() int64 {
+	if s.favoritesMaxBody > 0 {
+		return s.favoritesMaxBody
+	}
+	return favoritesBodyLimit
+}
+
 // UpdateFavorites は動画・グループ・スマートフォルダのお気に入りを付け外しする（PUT /api/favorites）。
 // videoIds・groupIds・smartFolderIds の合計（重複は 1 つ）の上限はタグの付け外しと同じにする。
 // 無い動画・グループ・フォルダの id は誤りにせず、保存層が数えない。
@@ -36,7 +43,7 @@ func (s *server) UpdateFavorites(w http.ResponseWriter, r *http.Request) {
 		SmartFolderIds []int64 `json:"smartFolderIds"`
 		Favorite       *bool   `json:"favorite"`
 	}
-	if !s.readLargeJSONBody(w, r, favoritesBodyLimit, &body) {
+	if !s.readLargeJSONBody(w, r, s.favoriteBodyLimit(), &body) {
 		return
 	}
 	videoIDs := uniqueInt64s(body.VideoIds)
