@@ -12,11 +12,6 @@ import {
 import { registerSubtitlesButton, subtitlesButtonName } from "./subtitleMenu";
 import { playerDictionary, playerLanguage } from "./VideoPlayer";
 
-/**
- * 字幕ボタンとメニューを、本物の video.js が作る DOM で確かめる（受け入れ条件 2・3・6〜8・12）。
- * 操作バーは VideoPlayer と同じ設定（字幕ボタン、`textTrackSettings: false`、独自言語）にする。
- */
-
 const storageKey = "vv.subtitles.v1";
 const ja: SubtitleTrack = { file: "movie.ja.srt", label: "ja", format: "srt" };
 const en: SubtitleTrack = { file: "movie.en.vtt", label: "en", format: "vtt" };
@@ -28,7 +23,7 @@ let player: Player | undefined;
 let tracks: SubtitleTracks | undefined;
 
 beforeEach(() => {
-  // 字幕ファイルの取得（XHR）は jsdom では届かないので、送らずに止めておく。
+  // Prevent subtitle XHRs because jsdom cannot fetch these files.
   vi.spyOn(XMLHttpRequest.prototype, "send").mockImplementation(() => undefined);
 });
 
@@ -93,7 +88,7 @@ function itemTexts(wrapper: HTMLElement | null): string[] {
   );
 }
 
-/** video.js は TextTrackList の change を次の tick にまとめて出す。 */
+/** video.js batches TextTrackList changes until the next tick. */
 async function flush() {
   await new Promise((resolve) => window.setTimeout(resolve, 5));
 }
@@ -112,7 +107,6 @@ describe("字幕ボタンとメニュー", () => {
     expect(root.querySelector(".vjs-texttrack-settings")).toBeNull();
     const button = root.querySelector<HTMLElement>("button.vjs-subs-caps-button");
     expect(button?.getAttribute("title")).toBe("Subtitles (C)");
-    // 字幕ボタンは再生速度の前に並ぶ。
     const bar = root.querySelector(".vjs-control-bar");
     const order = Array.from(bar?.children ?? []).map((child) =>
       child.classList.contains("vjs-subs-caps-button")
@@ -181,7 +175,7 @@ describe("字幕の選択と記憶", () => {
     tracks?.dispose();
     player?.dispose();
 
-    // 保存値は NFD の「が」、字幕は NFC の「が」。
+    // Compare an NFD saved label with its NFC track label.
     save({ enabled: true, label: "\u304b\u3099" });
     const second = create([
       en,
@@ -231,12 +225,11 @@ describe("ライブ変換の offset に合わせた付け直し", () => {
   it("報告を待つ間はトラックを外し、届いたらその offset の URL で付け直して表示を保つ", async () => {
     save({ enabled: true, label: "en" });
     const { player: created, controller, wrapper } = create([ja, en]);
-    // 見る人がメニューで ja を選んでいる（保存値も ja になる）。
     menuItems(wrapper)[1]?.click();
     await flush();
     expect(showing(created)).toEqual(["ja"]);
     expect(saved()).toEqual({ enabled: true, label: "ja" });
-    // 保存値だけを en に戻し、付け直しが保存値ではなく直前の表示に従うかを見る。
+    // Change only storage to verify reattachment preserves the current selection.
     save({ enabled: true, label: "en" });
 
     controller.setOffset(null);

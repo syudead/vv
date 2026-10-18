@@ -15,7 +15,7 @@ import { pluginName, runFailureText, unixDate } from "./workInfoPluginRows";
 
 const text = () => t.settings.workInfoPlugins.runDialog;
 
-/** Loaded は読み込みの結果である。run が null なら今のモジュールの実行が残っていない。 */
+/** A null run means no execution is retained for the current module. */
 type Loaded =
   | { kind: "loading" }
   | { kind: "failed"; reason: UiText }
@@ -61,7 +61,7 @@ function RunOutput({ run }: { run: WorkInfoPluginRun }) {
       <span id={labelId} className="sr-only">
         {text().output}
       </span>
-      {/* 長い行は折り返してダイアログを広げず、高い出力はこの区画の中だけで動かす。 */}
+      {/* Wrap long lines and scroll only this output region. */}
       <pre
         role="region"
         aria-labelledby={labelId}
@@ -107,9 +107,8 @@ function RunBody({ loaded, onRetry }: { loaded: Loaded; onRetry: () => void }) {
 }
 
 /**
- * WorkInfoPluginRunDialog はプラグインの直近の実行が標準エラーに書いたものを見せる。開くたびに
- * `GET …/{id}/last-run` を読むので、設定画面を開いている間に終わった実行も出る。秘密の設定の
- * 値はサーバーが `[secret]` に置き換えてある。
+ * Fetch on every opening to include runs completed since the settings page loaded; the server
+ * already redacts secrets.
  */
 export default function WorkInfoPluginRunDialog({
   plugin,

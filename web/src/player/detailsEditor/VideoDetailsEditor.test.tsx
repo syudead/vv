@@ -10,7 +10,7 @@ import { ToastProvider } from "../../ui/Toast";
 import { TooltipProvider } from "../../ui/shadcn/tooltip";
 import VideoDetailsEditor from "./VideoDetailsEditor";
 
-// URL で開いた編集画面と、選び手・離れ方。ページから開く流れは player/VideoPage.workInfo.test.tsx。
+// Direct editor routing and leaving; player/VideoPage.workInfo.test.tsx covers entry from the video page.
 
 const video: Video = {
   id: 7,
@@ -307,7 +307,6 @@ describe("VideoDetailsEditor", () => {
     await user.click(screen.getByRole("button", { name: "Browser back" }));
     const again = await screen.findByRole("alertdialog", { name: "Discard changes?" });
     await user.click(within(again).getByRole("button", { name: "Discard" }));
-    // URL で開いたので、動画ページへ置き換える。
     await waitFor(() => expect(where()).toBe("/videos/7"));
     expect(server.details).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Browser back" }));
@@ -332,7 +331,6 @@ describe("VideoDetailsEditor", () => {
     expect(server.details).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole("button", { name: "Browser back" }));
     expect(where()).toBe("/");
-    // 前へ進むと動画ページに戻り、編集画面は開き直さない。
     await user.click(screen.getByRole("button", { name: "Browser forward" }));
     expect(where()).toBe("/videos/7");
   });
@@ -366,7 +364,6 @@ describe("VideoDetailsEditor", () => {
       const url = new URL(String(input), "http://localhost");
       if (url.pathname !== "/api/people" || url.searchParams.has("limit"))
         return answer(input, init);
-      // limit なしの読み直しは答えないまま、次の綴りで打ち切られる。
       return new Promise<Response>((_, reject) => {
         init?.signal?.addEventListener("abort", () =>
           reject(new DOMException("aborted", "AbortError")),

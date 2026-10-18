@@ -1,31 +1,11 @@
 import { sendRequest } from "../api/client";
 
-/**
- * PlaybackFailureKind は、再試行を使い切ったあとに見る人へ伝える失敗の種類である。
- *
- * - `network`: サーバーに届かない（回線が切れた・遅すぎて途切れた）。
- * - `decode`: データは届いたが、映像として読めなかった（ファイルが壊れている）。
- * - `source`: サーバーには届くが、動画を出せなかった（ファイルが動いた・消えた、
- *   変換を始められなかった、ブラウザが形式に対応していない）。
- */
 export type PlaybackFailureKind = "network" | "decode" | "source";
 
-/**
- * MediaErrorClass は `video` 要素の誤りの分け方である。`ambiguous` は誤りの番号だけでは
- * 決まらず、サーバーに届くかを確かめて `network` か `source` に分ける。
- */
+/** Ambiguous media errors require a reachability probe to distinguish network from source failure. */
 export type MediaErrorClass = "network" | "decode" | "ambiguous";
 
-/**
- * classifyMediaError は MediaError の番号を分ける。
- *
- * 2（MEDIA_ERR_NETWORK）は読み込みの途中で通信が切れたこと、3（MEDIA_ERR_DECODE）は
- * 届いたデータが読めなかったことを表す。1（MEDIA_ERR_ABORTED）は読み込みを打ち切られた
- * ことで、ページが自分で打ち切ったのではないので通信の失敗と同じく扱う。
- * 4（MEDIA_ERR_SRC_NOT_SUPPORTED）は形式に対応していないときだけでなく、読み込みの最初の
- * 要求が届かなかったとき（Chrome）や、サーバーが誤りを返したときにも出るので決めない。
- * video.js 自身の番号（負の値）や番号の無い誤りも同じく決めない。
- */
+/** Treat aborted loads as network failures. Unsupported-source, custom, and missing codes need probing because browsers also use them for request failures. */
 export function classifyMediaError(code: number | undefined): MediaErrorClass {
   switch (code) {
     case 1:
@@ -38,48 +18,25 @@ export function classifyMediaError(code: number | undefined): MediaErrorClass {
   }
 }
 
-/**
- * reconnectDelaysMs は通信が切れたときに同じ位置から読み込み直すまでの待ちである。
- * 間を広げながら合わせて約 30 秒試し、それでもつながらなければ失敗を伝える。
- */
+/** Back off over roughly 30 seconds before reporting a connection failure. */
 export const reconnectDelaysMs: readonly number[] = [1000, 2000, 4000, 8000, 15000];
 
-/** reconnectDelay は count 回目（0 から）の読み込み直しまでの待ちで、使い切ったら null。 */
 export function reconnectDelay(count: number): number | null {
   return reconnectDelaysMs[count] ?? null;
 }
 
-/**
- * recoveredAfterMs は、読み込み直したあとにこれだけ実際に再生したら（シークで動いた分は
- * 数えない）、回線が戻ったとみなして読み込み直しの回数を数え直す長さである。すぐにまた
- * 切れる回線で、待ちが短いまま読み込み直しを繰り返さないためである。
- */
+/** Reset retries only after sustained actual playback, excluding seeks, to prevent rapid loops on unstable connections. */
 export const recoveredAfterMs = 10_000;
 
-/**
- * reloadTimeoutMs は読み込み直した要求がメタデータを返すまでの期限である。回線が詰まると
- * 要求は誤りも出さずに止まったままになるので、期限を過ぎたら次の読み込み直しへ進む。
- */
+/** Advance retries if metadata never arrives, even without an explicit network error. */
 export const reloadTimeoutMs = 15_000;
 
-/** probeTimeoutMs は、誤りの原因を確かめる要求の期限である。 */
 const probeTimeoutMs = 5000;
 
-/**
- * ProbeResult は誤りの原因を確かめた結果である。`unreachable` はサーバーに届かない
- * （端末がオフライン・要求の失敗・期限切れ）、`ok` は確かめた先が中身を返した、`error` は
- * サーバーには届いたが誤りの状態（404・500 など）を返したことを表す。
- */
+/** Distinguish unreachable servers, successful content, and reachable HTTP errors. */
 export type ProbeResult = "unreachable" | "ok" | "error";
 
-/**
- * probeMediaSource は誤りの原因を確かめる。直接再生では動画本体の先頭 1 バイトを要求し、
- * ファイルを出せるか（出せるなら形式の問題）まで分ける。変換は要求すると変換が始まって
- * しまうので、`/api/health` でサーバーに届くかだけを確かめる。
- *
- * 端末が回線につながっていないと分かっているときは要求を出さない。signal で打ち切ったときは
- * `unreachable` で解決する（呼ぶ側は打ち切った結果を使わない）。
- */
+/** Probe one byte for direct files; use health for transcodes to avoid starting a conversion. Offline or aborted probes resolve unreachable. */
 export async function probeMediaSource(
   streamUrl: string | null,
   signal?: AbortSignal,

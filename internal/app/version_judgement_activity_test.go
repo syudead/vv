@@ -8,9 +8,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 重複の候補の判定の記録のやり直しと取り消し。
-
-// fakeJudgementActivityStore はやり直しと取り消しを頼まれた記録を覚える。err は両方が返す誤りである。
 type fakeJudgementActivityStore struct {
 	retried, undone []int64
 	err             error
@@ -29,13 +26,11 @@ func (s *fakeJudgementActivityStore) UndoVersionJudgement(_ context.Context, id 
 	return domain.ActivityEntry{ID: 50, Kind: domain.ActivityUndo, UndoesID: id, Outcome: domain.ActivityCompleted}, nil
 }
 
-// countingWaker は起こされた回数を数える。
 type countingWaker struct{ woken int }
 
 func (w *countingWaker) Wake() { w.woken++ }
 
-// 失敗した組のやり直しと自動の束ねの取り消しは、Activity の振り分けから保存層を呼び、判定のワーカーを起こす。
-// 保存層が断ればワーカーを起こさない。
+// Wake only after storage accepts retry or undo.
 func TestVersionJudgementActivityRetriesAndUndoes(t *testing.T) {
 	log := activityLogFixture()
 	log.entries[5] = domain.ActivityEntry{ID: 5, Kind: domain.ActivityVersionJudgement, Status: domain.ActivityAttention,

@@ -8,7 +8,7 @@ export interface PlaybackAttempt {
   videoId: number;
   durationMs: number;
   route: PlaybackRoute;
-  /** 再生する画質。「元の画質」以外は直接再生できる動画でもライブ変換で縮める（R-5）。 */
+  /** Non-original qualities always use live transcoding. */
   quality: PlaybackQuality;
   state: PlaybackState;
   fallbackTried: boolean;
@@ -17,11 +17,7 @@ export interface PlaybackAttempt {
   playIntended: boolean;
 }
 
-/**
- * createPlaybackAttempt は再生の最初の経路を決める。quality は動画に使えると確かめた画質
- * （quality.ts の effectiveQuality）で、「元の画質」以外なら経路は変換、「元の画質」なら
- * 直接再生できる動画だけ直接再生にする。
- */
+/** Quality must already be validated by effectiveQuality; only original quality can use direct playback. */
 export function createPlaybackAttempt(
   video: Video,
   resumePositionMs: number,
@@ -79,12 +75,7 @@ export function fallbackToTranscode(
   };
 }
 
-/**
- * switchQuality は再生中の画質を quality に変えた attempt を返す。
- * 「元の画質」は直接再生できる動画なら直接再生に戻す。直接再生が読めず変換へ切り替えた
- * 動画（fallbackTried）は、元の画質でも変換のままにする。変換は positionMs から始め、
- * 直接再生は 0 から読み込むので、呼ぶ側がメタデータのあとで positionMs へシークする。
- */
+/** Preserve transcode fallback when returning to original quality. Direct sources start at zero, so callers seek after metadata. */
 export function switchQuality(
   attempt: PlaybackAttempt,
   quality: PlaybackQuality,

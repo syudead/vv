@@ -14,8 +14,6 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
-// タグの種類でのライブラリの絞り込み。
-
 function video(id: number): Video {
   return {
     id,
@@ -49,7 +47,6 @@ function kind(id: number, name: string) {
   return { id, name, tagCount: 1, createdAt: "2026-10-01T00:00:00Z" };
 }
 
-/** 種類 1 の動画は 1 だけ、種類 2 の動画は 2 だけ、ほかの種類は無し。 */
 const videosByKind = new Map<string, number[]>([
   ["1", [1]],
   ["2", [2]],
@@ -59,7 +56,6 @@ function LocationProbe() {
   return <span data-testid="location">{useLocation().search}</span>;
 }
 
-/** NavigateProbe は同じ画面のまま `to` へ移る（リンクや履歴で戻ってくる操作の代わり）。 */
 function NavigateProbe({ to }: { to: string }) {
   const navigate = useNavigate();
   return (
@@ -132,7 +128,6 @@ function requests(pathname: string): URL[] {
     .filter((url) => url.pathname === pathname);
 }
 
-/** location は今の URL の問い合わせ部分である（既定の並び順を書き足した分は除く）。 */
 function location(): string {
   const params = new URLSearchParams(screen.getByTestId("location").textContent);
   if (params.get("sort") === "addedDesc") params.delete("sort");
@@ -153,7 +148,7 @@ describe("タグの種類での絞り込み", () => {
         disconnect() {}
       },
     );
-    // Radix Select はポインタの捕捉を使う。jsdom には無いので何もしない実装を置く。
+    // Radix uses pointer capture, which jsdom needs to stub.
     Element.prototype.hasPointerCapture ??= () => false;
     Element.prototype.releasePointerCapture ??= () => undefined;
     install([kind(1, "Work"), kind(2, "Genre"), kind(3, "Place")]);
@@ -170,13 +165,11 @@ describe("タグの種類での絞り込み", () => {
     const user = userEvent.setup();
     renderAt("/");
     expect(await screen.findByRole("link", { name: "動画 3" })).toBeDefined();
-    // 開く前は種類の一覧を読まない。
     expect(requests("/api/tag-kinds")).toHaveLength(0);
 
     await user.click(screen.getByRole("button", { name: "Filter" }));
     await user.click(await screen.findByRole("combobox", { name: "Tag kind" }));
     const options = await screen.findAllByRole("option");
-    // Any kind の後に名前の自然順。No kind は無い。
     expect(options.map((option) => option.textContent)).toEqual([
       "Any kind",
       "Genre",
@@ -195,7 +188,6 @@ describe("タグの種類での絞り込み", () => {
         .textContent,
     ).toContain("Kind: Genre");
     expect(screen.getByRole("button", { name: "Filter (1 applied)" })).toBeDefined();
-    // 一覧は 1 回だけ読む。
     expect(requests("/api/tag-kinds")).toHaveLength(1);
   });
 
@@ -293,10 +285,8 @@ describe("タグの種類での絞り込み", () => {
 
   it("古い保持で見つからず取り直しにも失敗したら外さず、ポップオーバーを開くと取り直す", async () => {
     const user = userEvent.setup();
-    // 画面を開く前の保持には種類 3 が無い。
     install([kind(1, "Work")]);
     await getTagKinds();
-    // 取り直しの 1 回目は失敗し、2 回目で種類 3 が届く。
     let refreshes = 0;
     const base = fetchMock.getMockImplementation();
     fetchMock.mockImplementation((input, init) => {

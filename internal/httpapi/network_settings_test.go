@@ -17,8 +17,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// fakeNetworkListener は待ち受けの代わりで、開き直したアドレスを覚える。fail に入った
-// アドレスは開けない。開き直しが重なったら overlapped を立てる。
 type fakeNetworkListener struct {
 	mu         sync.Mutex
 	addr       string
@@ -41,7 +39,7 @@ func (l *fakeNetworkListener) Reopen(addr string) error {
 	}
 	l.mu.Unlock()
 
-	// 開き直しの途中で他の goroutine に譲り、重なりがあれば見つけられるようにする。
+	// Yield during reopening to expose overlapping calls.
 	runtime.Gosched()
 
 	l.mu.Lock()
@@ -65,7 +63,6 @@ func (l *fakeNetworkListener) reopens() []string {
 	return slices.Clone(l.reopened)
 }
 
-// memoryLANStore は保存値をメモリに持つ。
 type memoryLANStore struct {
 	mu      sync.Mutex
 	value   bool
@@ -92,8 +89,7 @@ func (s *memoryLANStore) stored() (bool, int) {
 
 const testNetworkPort = "47880"
 
-// testInterfaceAddrs は上がっているインターフェースのアドレスとして、ループバックと IPv6 を
-// 混ぜて返す。応答には非ループバックの IPv4 だけが入る。
+// Mix loopback/IPv6 addresses into the fixture; only active non-loopback IPv4 addresses should survive.
 func testInterfaceAddrs() ([]netip.Addr, error) {
 	return []netip.Addr{
 		netip.MustParseAddr("127.0.0.1"),
@@ -105,7 +101,6 @@ func testInterfaceAddrs() ([]netip.Addr, error) {
 
 var testLANAddresses = []string{"http://192.168.1.20:47880/", "http://10.0.0.5:47880/"}
 
-// newTestNetworkSettings は本物の app.NetworkSettings を、偽の待ち受けと保存先で作る。
 func newTestNetworkSettings(store *memoryLANStore, listener *fakeNetworkListener) *app.NetworkSettings {
 	return app.NewNetworkSettings(app.NetworkSettingsOptions{
 		Store: store, Listener: listener, LANAccess: store.value, Addresses: testInterfaceAddrs, Logger: discardLogger(),
@@ -133,7 +128,6 @@ func assertNetworkResponse(t *testing.T, label string, rec *httptest.ResponseRec
 	if got := rec.Header().Get("Cache-Control"); got != cacheNoStore {
 		t.Errorf("%s: Cache-Control = %q", label, got)
 	}
-	// addresses は偽のときも空の配列で、null にしない。
 	if !strings.Contains(rec.Body.String(), `"addresses":[`) {
 		t.Errorf("%s: addresses が配列でない: %s", label, rec.Body)
 	}
@@ -143,7 +137,6 @@ func assertNetworkResponse(t *testing.T, label string, rec *httptest.ResponseRec
 	}
 }
 
-// §2・§3: デスクトップ版でなければ 404 not_found（reason なし）。
 func TestNetworkSettingsOutsideDesktopIsNotFound(t *testing.T) {
 	handler := newTestServer(t, Options{Logger: discardLogger()})
 	for _, tc := range []struct {
@@ -152,14 +145,12 @@ func TestNetworkSettingsOutsideDesktopIsNotFound(t *testing.T) {
 	}{
 		{"GET", do(t, handler, http.MethodGet, "/api/settings/network")},
 		{"PUT", putNetwork(t, handler, `{"lanAccess":true}`)},
-		// 本文の確認より、デスクトップ版でないことの判定が先。
 		{"PUT の不正な本文", putNetwork(t, handler, `{}`)},
 	} {
 		assertErrorBody(t, tc.label, tc.rec.Code, tc.rec.Body.Bytes(), wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound})
 	}
 }
 
-// §2: 許可していなければ addresses は空、許可中は非ループバックの IPv4 だけが入る。
 func TestGetNetworkSettings(t *testing.T) {
 	denied := newTestServer(t, Options{NetworkSettings: newTestNetworkSettings(&memoryLANStore{}, loopbackListener())})
 	assertNetworkResponse(t, "許可していない", do(t, denied, http.MethodGet, "/api/settings/network"), gen.NetworkSettings{
@@ -173,7 +164,6 @@ func TestGetNetworkSettings(t *testing.T) {
 	})
 }
 
-// §3: 切り替えでは待ち受けを開き直してから保存し、開き直したあとの値を返す。
 func TestUpdateNetworkSettingsSwitchesListenerThenSaves(t *testing.T) {
 	store := &memoryLANStore{}
 	listener := loopbackListener()
@@ -200,7 +190,6 @@ func TestUpdateNetworkSettingsSwitchesListenerThenSaves(t *testing.T) {
 	}
 }
 
-// §3: 今と同じ値なら何もせず 200。
 func TestUpdateNetworkSettingsSameValueDoesNothing(t *testing.T) {
 	store := &memoryLANStore{}
 	listener := loopbackListener()
@@ -217,7 +206,6 @@ func TestUpdateNetworkSettingsSameValueDoesNothing(t *testing.T) {
 	}
 }
 
-// §3: 本文が不正なら 400 で、待ち受けも保存値も変えない。
 func TestUpdateNetworkSettingsRejectsInvalidBody(t *testing.T) {
 	store := &memoryLANStore{}
 	listener := loopbackListener()
@@ -241,8 +229,6 @@ func TestUpdateNetworkSettingsRejectsInvalidBody(t *testing.T) {
 	}
 }
 
-// §3: 新しいアドレスで開けなければ 409 listen_failed。待ち受けは元のアドレスのまま、
-// 保存値も変えない。
 func TestUpdateNetworkSettingsListenFailure(t *testing.T) {
 	store := &memoryLANStore{}
 	listener := loopbackListener()
@@ -267,7 +253,6 @@ func TestUpdateNetworkSettingsListenFailure(t *testing.T) {
 	})
 }
 
-// §3: 開き直せたが保存に失敗したら 500 で、待ち受けを元のアドレスへ開き直す。
 func TestUpdateNetworkSettingsSaveFailureRestoresListener(t *testing.T) {
 	store := &memoryLANStore{saveErr: errors.New("disk I/O error")}
 	listener := loopbackListener()
@@ -289,7 +274,6 @@ func TestUpdateNetworkSettingsSaveFailureRestoresListener(t *testing.T) {
 	})
 }
 
-// §3: 同時の PUT は 1 つずつ処理し、終わったあとの待ち受けは保存値と一致する。
 func TestUpdateNetworkSettingsSerializesConcurrentRequests(t *testing.T) {
 	store := &memoryLANStore{}
 	listener := loopbackListener()
@@ -318,7 +302,6 @@ func TestUpdateNetworkSettingsSerializesConcurrentRequests(t *testing.T) {
 	}
 }
 
-// ゲストは見られず変えられず、別サイトからの PUT は 403（§2・§3、/api/settings/transcoding と同じ境界）。
 func TestNetworkSettingsAreOwnerOnly(t *testing.T) {
 	store := &memoryLANStore{}
 	listener := loopbackListener()

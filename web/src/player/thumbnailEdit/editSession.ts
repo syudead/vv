@@ -2,12 +2,8 @@ import type { ThumbnailEdit, ThumbnailEditFailure } from "../../api/client";
 import { t, type UiText } from "../../i18n";
 import { isRunning } from "./editRules";
 
-// 編集画面の見え方の移り変わり。サーバーのセッションを読むたび、操作の応答を受けるたびに、どの見え方
-// （Compose・Running・Compare）にするかをここで決める。
-
 export type EditorView = "compose" | "running" | "compare";
 
-/** RunFailure は実行の失敗の Alert の題と、提供元の文（あれば）である。 */
 export interface RunFailure {
   title: UiText;
   message?: string;
@@ -15,21 +11,14 @@ export interface RunFailure {
 
 export interface EditorState {
   session: ThumbnailEdit;
-  /** session を受け取った時刻（ミリ秒）。経過時間をここから進める。 */
   receivedAt: number;
   view: EditorView;
-  /** 最後の実行の失敗。次の実行を始めるまで出す。 */
   failure: RunFailure | null;
-  /** 最後の実行が中止で終わった。 */
   cancelled: boolean;
-  /** 実行を 1 度でも送った（主な操作が Generate again になる）。 */
   ran: boolean;
-  /**
-   * 前の結果を画面から外した。実行を送ったら、その結果は二度と出さない（適用できるのは
-   * `succeeded` のセッションだけで、失敗や中止の後に適用できない画像を残さないため）。
-   */
+  /** Never restore an old result after another run; failed or cancelled sessions cannot apply it. */
   resultGone: boolean;
-  /** セッションが終わった（404 か `content_changed`）。閉じる × のほかは押せない。 */
+  /** Ended sessions allow only closing. */
   ended: boolean;
 }
 
@@ -41,7 +30,6 @@ export type EditorAction =
   | { type: "showResult" }
   | { type: "ended" };
 
-/** initialEditorState は始めたばかりのセッションの見え方（Compose）である。 */
 export function initialEditorState(session: ThumbnailEdit, at: number): EditorState {
   return {
     session,
@@ -55,16 +43,11 @@ export function initialEditorState(session: ThumbnailEdit, at: number): EditorSt
   };
 }
 
-/** failureReasonText は実行が失敗した理由の文言である。 */
 export function failureReasonText(reason: ThumbnailEditFailure | undefined): UiText {
   if (reason === undefined) return t.errors.unexpected;
   return t.errors.reason[reason];
 }
 
-/**
- * hasResult は Compare を出せる結果があるかを返す。セッションが `succeeded` で、その後に
- * 実行を送っていないときである。
- */
 export function hasResult(state: EditorState): boolean {
   return (
     !state.ended &&
@@ -74,10 +57,7 @@ export function hasResult(state: EditorState): boolean {
   );
 }
 
-/**
- * needsConfirmation は閉じる前に確かめるかを返す。実行が進んでいるか、適用していない結果が
- * あるときで、生成した画像は取り戻せず、実行は時間と（Comfy Cloud では）クレジットを使う。
- */
+/** Confirm before losing an unapplied result or an active run that consumes time and cloud credits. */
 export function needsConfirmation(state: EditorState): boolean {
   if (state.ended) return false;
   return isRunning(state.session.state) || hasResult(state);
@@ -86,7 +66,7 @@ export function needsConfirmation(state: EditorState): boolean {
 function read(state: EditorState, session: ThumbnailEdit, at: number): EditorState {
   const next = { ...state, session, receivedAt: at };
   if (isRunning(session.state)) return { ...next, view: "running" };
-  // 実行を見守っていないとき（Compose・Compare）の読み取りは、見え方を変えない。
+  // Heartbeat polls outside Running must not change the editor stage.
   if (state.view !== "running") return next;
   switch (session.state) {
     case "succeeded":

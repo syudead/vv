@@ -13,13 +13,7 @@ import { cn } from "../../lib/cn";
 import FittedBox from "./FittedBox";
 import { drawStroke, type Stroke } from "./mask";
 
-/**
- * PaintStage は編集画面の段で、コマを全体が見えるいちばん大きな大きさで出し、同じ大きさの
- * 塗りの層を重ねる（ui-design「Compose」）。マウス・ペン・指 1 本で塗り、塗りの下で段は
- * スクロールも拡大もしない（touch-none）。ポイントできる入力ではブラシの輪郭を出す。
- * Ctrl+Z・⌘+Z は層にフォーカスがあるとき最後の筆跡を取り消す。`locked` の間は塗れず、
- * 塗りは見えたまま残る。
- */
+/** Paint in frame coordinates without scrolling or zooming the stage. Locking preserves paint but disables input. */
 export default function PaintStage({
   frameUrl,
   frameWidth,
@@ -36,7 +30,7 @@ export default function PaintStage({
   frameHeight: number;
   strokes: readonly Stroke[];
   mode: Stroke["mode"];
-  /** ブラシの直径（コマの画素）。 */
+  /** Brush diameter in frame pixels. */
   brushSize: number;
   locked: boolean;
   onStroke: (stroke: Stroke) => void;
@@ -51,7 +45,6 @@ export default function PaintStage({
   const paintColor = useCallback(() => {
     const element = canvas.current;
     if (element === null) return "white";
-    // 塗りの色は primary（canvas の text-primary）で、層ごと opacity-50 で重ねる。
     return getComputedStyle(element).color || "white";
   }, []);
 
@@ -69,7 +62,7 @@ export default function PaintStage({
 
   useLayoutEffect(redraw, [redraw, frameWidth, frameHeight]);
 
-  // 筆跡の途中で層が固まったら（実行が始まった、セッションが終わった）、その筆跡は捨てる。
+  // Discard an unfinished stroke if generation or session termination locks the layer.
   useEffect(() => {
     if (!locked) return;
     current.current = null;

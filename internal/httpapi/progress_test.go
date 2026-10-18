@@ -12,13 +12,10 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// fakePlayback は再生位置の保存先を差し替える。
 type fakePlayback struct {
-	saved map[string]domain.Progress
-	// lastKey は最後に書き込んだ鍵。content_key で記録していることの確認に使う。
+	saved   map[string]domain.Progress
 	lastKey string
-	// plays は保存のたびに渡された視聴の値（nil を含む）である。
-	plays []*domain.Play
+	plays   []*domain.Play
 }
 
 func newFakePlayback() *fakePlayback {
@@ -30,7 +27,6 @@ func (f *fakePlayback) SaveProgress(
 ) (domain.Progress, error) {
 	f.lastKey = contentKey
 	f.plays = append(f.plays, play)
-	// 実際の保存先と同じく、記録した時刻を入れて返す。
 	progress.UpdatedAt = time.Now()
 	f.saved[contentKey] = progress
 	return progress, nil
@@ -48,7 +44,6 @@ func (f *fakePlayback) ProgressByContentKeys(
 	return out, nil
 }
 
-// putProgress は再生位置を送る。
 func putProgress(
 	t *testing.T, handler http.Handler, target, contentType, body string,
 ) *httptest.ResponseRecorder {
@@ -63,8 +58,7 @@ func putProgress(
 	return rec
 }
 
-// progressServer は再生位置の経路を組み立てる。動画の尺は 10 分にして、
-// 「残り 15 秒」の規則が途中の位置で成立しないようにする。
+// Use ten-minute duration so mid-video positions do not satisfy the fifteen-second tail rule.
 func progressServer(t *testing.T, playback *fakePlayback) http.Handler {
 	t.Helper()
 
@@ -78,7 +72,6 @@ func progressServer(t *testing.T, playback *fakePlayback) http.Handler {
 	})
 }
 
-// 位置を受けて、記録後の状態を返す。
 func TestPutProgress(t *testing.T) {
 	playback := newFakePlayback()
 	handler := progressServer(t, playback)
@@ -99,20 +92,15 @@ func TestPutProgress(t *testing.T) {
 		t.Error("updatedAt が入っていない")
 	}
 
-	// 鍵は content_key（videos.id ではない）。ファイルを移動・改名しても
-	// 引き継がれることの前提である。
 	if playback.lastKey != "abcdef0123456789abcdef:1024" {
 		t.Errorf("記録の鍵 = %q, want content_key", playback.lastKey)
 	}
 }
 
-// 視聴済みの判定はサーバー側で行い、クライアントの申告は採らない。
-// 契約にも completed の入力は無い。
 func TestPutProgressIgnoresClientCompletionClaim(t *testing.T) {
 	playback := newFakePlayback()
 	handler := progressServer(t, playback)
 
-	// 途中の位置に completed: true を添えて送る。
 	rec := putProgress(t, handler, "/api/videos/1/progress", "application/json",
 		`{"positionMs": 1000, "completed": true}`)
 	if rec.Code != http.StatusOK {
@@ -124,7 +112,6 @@ func TestPutProgressIgnoresClientCompletionClaim(t *testing.T) {
 	}
 }
 
-// 尺の 95% 以降を送るとサーバー側で視聴済みになる（S5）。
 func TestPutProgressMarksCompletion(t *testing.T) {
 	playback := newFakePlayback()
 	handler := progressServer(t, playback)
@@ -135,7 +122,6 @@ func TestPutProgressMarksCompletion(t *testing.T) {
 	}
 }
 
-// POST/PUTはJSONだけを受理する。離脱時のkeepalive PUTも同じ契約を使う。
 func TestPutProgressAcceptsJSONContentType(t *testing.T) {
 	for _, contentType := range []string{
 		"application/json",
@@ -151,7 +137,6 @@ func TestPutProgressAcceptsJSONContentType(t *testing.T) {
 	}
 }
 
-// 受け付けない Content-Type は誤りにする。
 func TestPutProgressRejectsUnsupportedContentType(t *testing.T) {
 	for _, contentType := range []string{"application/x-www-form-urlencoded", "text/plain", ""} {
 		handler := progressServer(t, newFakePlayback())
@@ -162,7 +147,6 @@ func TestPutProgressRejectsUnsupportedContentType(t *testing.T) {
 	}
 }
 
-// 壊れた本文と負の値は 400 + invalid_request。
 func TestPutProgressRejectsInvalidBody(t *testing.T) {
 	tests := []struct {
 		name string
@@ -197,7 +181,6 @@ func TestPutProgressRejectsInvalidBody(t *testing.T) {
 	}
 }
 
-// 存在しない id は 404。
 func TestPutProgressForMissingVideo(t *testing.T) {
 	handler := newTestServer(t, Options{Videos: &fakeLibrary{}, Playback: newFakePlayback()})
 
@@ -210,8 +193,6 @@ func TestPutProgressForMissingVideo(t *testing.T) {
 	}
 }
 
-// 一覧と詳細に再生位置を載せる。一覧で視聴済みと途中まで見た動画を
-// 区別できるようにするため。
 func TestVideosIncludeProgress(t *testing.T) {
 	playback := newFakePlayback()
 	playback.saved["abcdef0123456789abcdef:1024"] = domain.Progress{
@@ -241,8 +222,6 @@ func TestVideosIncludeProgress(t *testing.T) {
 	}
 }
 
-// 再生位置を持たない動画では省略する。0 を入れると「先頭まで戻した」と
-// 「一度も見ていない」が区別できなくなる。
 func TestVideosOmitProgressWhenNeverPlayed(t *testing.T) {
 	video := sampleVideo(1, "海辺の散歩")
 	handler := newTestServer(t, Options{
@@ -259,7 +238,6 @@ func TestVideosOmitProgressWhenNeverPlayed(t *testing.T) {
 	}
 }
 
-// 再生位置の保存先が無い構成でも、一覧は動く。progress が載らないだけである。
 func TestVideosWithoutPlayback(t *testing.T) {
 	video := sampleVideo(1, "海辺の散歩")
 	handler := newTestServer(t, Options{
@@ -272,12 +250,10 @@ func TestVideosWithoutPlayback(t *testing.T) {
 	}
 }
 
-// 視聴の識別子があれば、再生したバージョンの content_key と有効な題名で視聴履歴を渡す。
-// 応答は識別子の有無で変わらない。
 func TestPutProgressPassesPlay(t *testing.T) {
 	playback := newFakePlayback()
 	video := sampleVideo(1, "京都の街並み")
-	// 集まりのメンバー。履歴の鍵は集まりの鍵ではなく、再生したバージョンの content_key である。
+	// This bundle member's history must use its version key, not the bundle key.
 	video.UserKey = "bundle:7"
 	handler := newTestServer(t, Options{
 		Videos:   &fakeLibrary{videos: map[int64]domain.Video{1: video}},
@@ -295,7 +271,6 @@ func TestPutProgressPassesPlay(t *testing.T) {
 	if playback.lastKey != "bundle:7" {
 		t.Errorf("再生位置の鍵 = %q, want bundle:7", playback.lastKey)
 	}
-	// 大文字で送られた識別子は小文字にそろえて渡す。大小だけ違う同じ識別子で 2 件にしない。
 	want := domain.Play{
 		PlaybackID: "0f8fad5b-d9cb-469f-a165-70867728950e",
 		ContentKey: "abcdef0123456789abcdef:1024",
@@ -306,7 +281,6 @@ func TestPutProgressPassesPlay(t *testing.T) {
 	}
 }
 
-// 識別子が無い保存と、content_key が空の動画の保存は履歴を書かない。
 func TestPutProgressWithoutPlay(t *testing.T) {
 	t.Run("識別子が無い", func(t *testing.T) {
 		playback := newFakePlayback()

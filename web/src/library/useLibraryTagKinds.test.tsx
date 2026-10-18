@@ -6,9 +6,6 @@ import { __resetTagKindsForTest, refreshTagKinds } from "../api/tagKinds";
 import { ToastProvider } from "../ui/Toast";
 import { useLibraryTagKinds } from "./useLibraryTagKinds";
 
-// URL の `tagKind` の種類が無いときの確かめ。
-// 種類の一覧は URL が書き換わる前にも届き直すが、URL から外すのは 1 度だけにする。
-
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -47,7 +44,7 @@ describe("useLibraryTagKinds", () => {
     await waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
     expect(apply).toHaveBeenCalledWith(expect.anything(), "replace");
 
-    // apply は URL を変えない偽物なので、tagKind は 9 のまま一覧だけが新しくなる。
+    // This fake records changes without updating the URL.
     await act(async () => {
       await refreshTagKinds();
     });
@@ -57,7 +54,6 @@ describe("useLibraryTagKinds", () => {
   it("古い保持で見つからないときの取り直しは、StrictMode の二度の実行でも 1 度だけ", async () => {
     await refreshTagKinds();
     fetchMock.mockClear();
-    // 取り直しは失敗させ、一覧を古い保持のままにする（外さずに待つ）。
     fetchMock.mockImplementation(() => Promise.resolve(json({}, 500)));
     const apply = vi.fn();
 

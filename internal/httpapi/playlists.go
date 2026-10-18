@@ -11,40 +11,24 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// プレイリストの管理。どの経路も /api/* の既定どおり
-// 所有者だけで、accessRoutes には入れない。
+// Playlist routes remain owner-only by omission from accessRoutes.
 
-// Playlists はプレイリストの保存先である。internal/store の *PlaylistStore がこれを満たす。
-// どの操作も 1 つの取引で済むので、internal/app は通さない。
 type Playlists interface {
-	// ListPlaylists はプレイリストを更新日時の新しい順（同じなら id の大きい順）に cursor の次から
-	// limit 件返す。Covers は返したページの分だけ埋まる。読めない cursor は domain.ErrInvalidCursor。
+	// ListPlaylists orders by newest update then largest ID and populates covers only for the returned page.
 	ListPlaylists(ctx context.Context, cursor string, limit int) (domain.PlaylistPage, error)
-	// CreatePlaylist は名前 name の空のプレイリストを作る。名前の規則違反は
-	// *domain.InvalidPlaylistNameError。
 	CreatePlaylist(ctx context.Context, name string) (domain.Playlist, error)
-	// RenamePlaylist はプレイリスト id の名前を変える。無ければ domain.ErrPlaylistNotFound。
 	RenamePlaylist(ctx context.Context, id int64, name string) (domain.Playlist, error)
-	// DeletePlaylist はプレイリスト id とその項目を消す。無ければ domain.ErrPlaylistNotFound。
 	DeletePlaylist(ctx context.Context, id int64) error
-	// Playlist はプレイリスト id の要約と見せる項目を位置の順に、それらと同じ読み取りスナップショットの
-	// 登録フォルダの一覧とともに返す。無ければ domain.ErrPlaylistNotFound。
+	// Playlist returns visible position-ordered items and roots from the same read snapshot.
 	Playlist(ctx context.Context, id int64) (domain.Playlist, []domain.PlaylistItem, []domain.MediaFolder, error)
-	// AddPlaylistItems は add の動画とグループをプレイリスト id の末尾に足す。
 	AddPlaylistItems(ctx context.Context, id int64, add domain.PlaylistAdd) (domain.PlaylistAdded, error)
-	// MovePlaylistItem は項目 itemID を項目 afterItemID のすぐ後ろ（nil なら先頭）へ移す。
 	MovePlaylistItem(ctx context.Context, id, itemID int64, afterItemID *int64) error
-	// RemovePlaylistItem は項目 itemID を外す。
 	RemovePlaylistItem(ctx context.Context, id, itemID int64) error
 }
 
-// playlistsBodyLimit は POST /api/playlists/{id}/items が読む本文の上限（バイト）である。
-// PUT /api/favorites と同じ形と件数の上限なので、同じ大きさにする。
+// Use the favorites body cap because request shape and item limits match.
 const playlistsBodyLimit = favoritesBodyLimit
 
-// ListPlaylists はプレイリストを更新日時の新しい順に、cursor の次から limit 件返す
-// （GET /api/playlists）。limit の既定と上限はライブラリの一覧と同じ（domain.DefaultLimit・
-// domain.MaxLimit）で、範囲の外は 400 invalid_request、読めない cursor は 400 invalid_cursor。
 func (s *server) ListPlaylists(w http.ResponseWriter, r *http.Request, params gen.ListPlaylistsParams) {
 	if s.playlists == nil {
 		s.internalError(w, "Playlist storage is not configured.", nil)
@@ -77,7 +61,6 @@ func (s *server) ListPlaylists(w http.ResponseWriter, r *http.Request, params ge
 	}
 	for _, playlist := range page.Items {
 		summary := toAPIPlaylistSummary(playlist)
-		// 一覧のカードの絵柄のサムネイル。previewUrl はグループのカードと同じ folderPreviews を通す。
 		covers := s.folderPreviews(ctx, previewVideos(playlist.Covers))
 		summary.Covers = &covers
 		out.Items = append(out.Items, summary)
@@ -90,7 +73,6 @@ func (s *server) ListPlaylists(w http.ResponseWriter, r *http.Request, params ge
 	writeJSON(w, http.StatusOK, out, s.logger)
 }
 
-// CreatePlaylist は空のプレイリストを作る（POST /api/playlists）。
 func (s *server) CreatePlaylist(w http.ResponseWriter, r *http.Request) {
 	var body gen.PlaylistName
 	if !s.readJSONBody(w, r, &body) {
@@ -109,7 +91,6 @@ func (s *server) CreatePlaylist(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, toAPIPlaylistSummary(playlist), s.logger)
 }
 
-// RenamePlaylist はプレイリストの名前を変える（PATCH /api/playlists/{id}）。
 func (s *server) RenamePlaylist(w http.ResponseWriter, r *http.Request, id gen.PlaylistId) {
 	if !s.validPlaylistID(w, id) {
 		return
@@ -131,7 +112,6 @@ func (s *server) RenamePlaylist(w http.ResponseWriter, r *http.Request, id gen.P
 	writeJSON(w, http.StatusOK, toAPIPlaylistSummary(playlist), s.logger)
 }
 
-// DeletePlaylist はプレイリストを消す（DELETE /api/playlists/{id}）。
 func (s *server) DeletePlaylist(w http.ResponseWriter, r *http.Request, id gen.PlaylistId) {
 	if !s.validPlaylistID(w, id) {
 		return
@@ -148,8 +128,6 @@ func (s *server) DeletePlaylist(w http.ResponseWriter, r *http.Request, id gen.P
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// GetPlaylist はプレイリスト 1 つと見せる項目を返す（GET /api/playlists/{id}）。動画とグループは
-// ライブラリの項目と同じ形で、所有者の再生位置・視聴の値・お気に入り・タグを載せる。
 func (s *server) GetPlaylist(w http.ResponseWriter, r *http.Request, id gen.PlaylistId) {
 	if !s.validPlaylistID(w, id) {
 		return
@@ -190,14 +168,13 @@ func (s *server) GetPlaylist(w http.ResponseWriter, r *http.Request, id gen.Play
 		case item.Group != nil:
 			group, ok := lookup.group(ctx, audience, roots, *item.Group)
 			if !ok {
-				// 見せる動画の無いグループは項目にならない。黙って落とすと items が itemCount と
-				// 食い違うので、要求を失敗させる（一覧と同じ）。
+				// Fail instead of dropping empty groups so items stays consistent with itemCount.
 				s.internalError(w, "Could not load the playlist.", fmt.Errorf("group %d has no video", item.Group.ID))
 				return
 			}
 			out.Items = append(out.Items, gen.PlaylistItem{Id: item.ID, Kind: gen.PlaylistItemKindGroup, Group: &group})
 		case item.SmartFolder != nil:
-			// スマートフォルダの項目は空の再生順でも項目である（フォルダは動画が無くても残る）。
+			// Empty smart folders remain visible playlist items.
 			folder := lookup.smartFolder(ctx, audience, *item.SmartFolder)
 			out.Items = append(out.Items, gen.PlaylistItem{Id: item.ID, Kind: gen.PlaylistItemKindSmartFolder, SmartFolder: &folder})
 		}
@@ -206,9 +183,6 @@ func (s *server) GetPlaylist(w http.ResponseWriter, r *http.Request, id gen.Play
 	writeJSON(w, http.StatusOK, out, s.logger)
 }
 
-// AddPlaylistItems はプレイリストの末尾に動画・グループ・スマートフォルダを足す
-// （POST /api/playlists/{id}/items、docs/design-docs/catalog-organization.md）。本文の形と件数の上限は PUT /api/favorites と同じで、合計が 0 なら
-// invalid_request、20000 を超えれば too_many_videos にする。
 func (s *server) AddPlaylistItems(w http.ResponseWriter, r *http.Request, id gen.PlaylistId) {
 	if !s.validPlaylistID(w, id) {
 		return
@@ -252,14 +226,11 @@ func (s *server) AddPlaylistItems(w http.ResponseWriter, r *http.Request, id gen
 	writeJSON(w, http.StatusOK, gen.PlaylistItemsAdded{Added: added.Added, Existing: added.Existing}, s.logger)
 }
 
-// MovePlaylistItem はプレイリストの項目 1 つを afterItemId のすぐ後ろへ移す
-// （POST /api/playlists/{id}/items/{itemId}/move）。null なら先頭へ移す。
 func (s *server) MovePlaylistItem(w http.ResponseWriter, r *http.Request, id gen.PlaylistId, itemID gen.PlaylistItemId) {
 	if !s.validPlaylistID(w, id) || !s.validPlaylistItemID(w, itemID) {
 		return
 	}
-	// gen.PlaylistItemMove の afterItemId はポインタなので、欠けても null に読めてしまう。
-	// 欠けた本文で先頭へ移さないよう、有無を区別して読む。
+	// Track afterItemId presence so omission cannot silently move an item to the beginning.
 	var body struct {
 		AfterItemID json.RawMessage `json:"afterItemId"`
 	}
@@ -291,8 +262,7 @@ func (s *server) MovePlaylistItem(w http.ResponseWriter, r *http.Request, id gen
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// RemovePlaylistItem はプレイリストから項目を 1 つ外す（DELETE /api/playlists/{id}/items/{itemId}）。
-// 動画・グループ、そのお気に入りと再生位置は変えない。
+// Removing a playlist item preserves its video/group, favorites, and playback progress.
 func (s *server) RemovePlaylistItem(w http.ResponseWriter, r *http.Request, id gen.PlaylistId, itemID gen.PlaylistItemId) {
 	if !s.validPlaylistID(w, id) || !s.validPlaylistItemID(w, itemID) {
 		return
@@ -325,8 +295,6 @@ func (s *server) validPlaylistItemID(w http.ResponseWriter, id int64) bool {
 	return true
 }
 
-// writePlaylistError は保存層の誤りを応答にする。無いプレイリストと項目は 404 not_found、
-// 名前の規則違反は 400 invalid_request、それ以外は message の 500 である。
 func (s *server) writePlaylistError(w http.ResponseWriter, err error, message string) {
 	var invalidName *domain.InvalidPlaylistNameError
 	switch {
@@ -341,7 +309,6 @@ func (s *server) writePlaylistError(w http.ResponseWriter, err error, message st
 	}
 }
 
-// playlistNameMessage は名前の規則違反の種類を、画面に出してよい英語の文にする。
 func playlistNameMessage(problem domain.PlaylistNameProblem) string {
 	switch problem {
 	case domain.PlaylistNameEmpty:

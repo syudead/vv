@@ -1,29 +1,25 @@
 -- +goose Up
--- 単一アカウントの認証。
--- account は作り直せない利用者データ、sessions は消えても再ログインで戻る一時的な状態である
--- （ARCHITECTURE.md「Two kinds of data」）。
+-- The account is persistent user data; sessions are temporary and recoverable through login.
 
--- 唯一のアカウント。行が無ければ「未設定」、あれば「設定済み」である。
--- 行を作るのは初回設定だけで、作った後は消さない。
+-- Absence means setup is incomplete; only initial setup creates the singleton row.
 create table account (
     id            integer primary key check (id = 1),
-    -- 照合は既定の BINARY。大文字と小文字を区別した完全一致になる。
+    -- BINARY comparison is exact and case-sensitive.
     username      text    not null,
-    -- Argon2id の PHC 文字列（$argon2id$v=19$m=…,t=…,p=…$<salt>$<hash>）。平文は持たない。
+    -- Store the Argon2id PHC string, never plaintext.
     password_hash text    not null,
-    -- ユーザー名かパスワードを書き換えるたびに 1 増やす。
+    -- Increment on every username or password change.
     version       integer not null default 1 check (version >= 1),
     updated_at    integer not null
 );
 
--- ログインと初回設定で発行したセッション。
 create table sessions (
-    -- セッション ID の SHA-256（16進）。ID そのものは Cookie にだけあり、DB には無い。
+    -- Store only the hexadecimal SHA-256 hash; the session token itself stays in the cookie.
     token_hash      text    primary key,
-    -- 発行したときの account.version。一致しない行は無効である。
+    -- The account version at issuance; mismatches invalidate the session.
     account_version integer not null,
     created_at      integer not null,
-    -- created_at + 90 日。延長しない。
+    -- Fixed 90-day lifetime, never extended.
     expires_at      integer not null
 ) without rowid;
 

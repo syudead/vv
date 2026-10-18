@@ -2,31 +2,22 @@ import { HEADER_READ_BYTES, readImageHeader } from "./imageHeader";
 import { compositionSize, type Fit, placeImage, type Size } from "./framing";
 import { UPLOAD_MAX_PIXELS } from "./uploadRules";
 
-/**
- * 選んだ画像を読み、サムネイルの枠に収めた絵を描く。プレビューの canvas と送る画像は同じ
- * drawComposition で描く（docs/design-docs/thumbnail-editing.md「Uploaded images」）。
- * jsdom には canvas も画像の復号も無いので、ページの試験はこのモジュールを差し替える。
- */
+/** Share drawComposition between preview and output; page tests replace this boundary because jsdom lacks canvas and decoding. */
 
-/** UploadImage は復号した元の画像で、大きさは向き（EXIF）を反映した表示上の値である。 */
+/** Decoded dimensions include EXIF orientation. */
 export interface UploadImage extends Size {
   bitmap: ImageBitmap;
 }
 
-/** LoadRefusal はプレビューを出す前に画像を断る理由で、サーバーの理由の名前と同じである。 */
 export type LoadRefusal = "thumbnail_upload_invalid" | "thumbnail_upload_too_large";
 
 export type LoadResult = { image: UploadImage } | { refusal: LoadRefusal };
 
-/**
- * loadUploadImage はファイルを復号する。見出しが PNG・JPEG・WebP と読めないか、アニメーションの
- * WebP を名乗るか、復号できなければ `thumbnail_upload_invalid`、見出しか復号した画像が 1 億 2000 万画素を越えれば
- * `thumbnail_upload_too_large` で断る。見出しで断れるものは復号の前に断る。
- */
+/** Validate headers before decoding; reject unknown formats, animated WebP, and images exceeding 120 million pixels. */
 export async function loadUploadImage(file: Blob): Promise<LoadResult> {
   const head = new Uint8Array(await file.slice(0, HEADER_READ_BYTES).arrayBuffer());
   const header = readImageHeader(head);
-  // サーバーには描いた PNG しか届かないので、PNG・JPEG・WebP と確かめられない画像はここで断る。
+  // The server sees only the composed PNG, so validate the original format here.
   if (header === null || header.animated) return { refusal: "thumbnail_upload_invalid" };
   if (header.width * header.height > UPLOAD_MAX_PIXELS)
     return { refusal: "thumbnail_upload_too_large" };
@@ -43,12 +34,7 @@ export async function loadUploadImage(file: Blob): Promise<LoadResult> {
   return { image: { bitmap, width: bitmap.width, height: bitmap.height } };
 }
 
-/**
- * drawComposition は `canvas` を送る画像の大きさにし、比率 `aspect`（`null` は画像自身）の枠へ
- * 画像を形 `fit` で描く。描く前に全体を黒で塗る。余白は黒の上に、枠を覆うまで広げてぼかした画像を半分の濃さで重ねる。
- * サムネイルは透けない JPEG になり、明るいテーマにも暗いテーマにも同じファイルを出すので、
- * テーマの色は使わない。ぼかしを描けないブラウザーでは黒だけになり、プレビューも同じになる。
- */
+/** Draw an opaque, theme-independent image matching the final JPEG. Use a blurred backdrop when supported, otherwise black. */
 export function drawComposition(
   canvas: HTMLCanvasElement,
   image: UploadImage,
@@ -62,7 +48,7 @@ export function drawComposition(
   if (context === null) return;
   context.imageSmoothingQuality = "high";
   const placed = placeImage(image, size, fit);
-  // 毎回黒で塗り直し、前の描画を残さない。透ける画像の透けた部分も、保存する JPEG と同じく黒になる。
+  // Clear previous content and composite transparency onto black, matching the saved JPEG.
   context.fillStyle = "black";
   context.fillRect(0, 0, size.width, size.height);
   if (placed.width < size.width || placed.height < size.height)
@@ -70,7 +56,6 @@ export function drawComposition(
   context.drawImage(image.bitmap, placed.x, placed.y, placed.width, placed.height);
 }
 
-/** drawBackdrop は余白に、枠を覆うまで 1.25 倍に広げてぼかした画像を半分の濃さで描く。 */
 function drawBackdrop(
   context: CanvasRenderingContext2D,
   image: UploadImage,
@@ -85,7 +70,6 @@ function drawBackdrop(
   context.restore();
 }
 
-/** encodeComposition は drawComposition と同じ絵を PNG にする。 */
 export function encodeComposition(
   image: UploadImage,
   aspect: number | null,

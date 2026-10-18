@@ -6,10 +6,7 @@ import { describe, expect, it } from "vitest";
 
 import { compareNaturalSortKeys, naturalSortKey } from "./naturalSortKey";
 
-/**
- * Go の NaturalSortKey と同じ入力の組を読む。Go 側は internal/domain/foldcheck/natural_sort_key_test.go が
- * 同じファイルを読み、組が鍵の strings.Compare の順に並んでいることも確かめる。
- */
+/** Share fixtures with Go's natural_sort_key_test.go, which also checks key ordering. */
 interface NaturalSortKeyFile {
   cases: { note: string; input: string; want: string }[];
 }
@@ -66,7 +63,7 @@ describe("compareNaturalSortKeys", () => {
       ["a￿", "a\u{10000}"],
     ];
     for (const [low, high] of pairs) {
-      // UTF-16 のコード単位の順（`<`）では、サロゲートペアの側が前に来る。
+      // UTF-16 comparison places surrogate pairs before some BMP characters.
       expect(high < low).toBe(true);
       expect(compareNaturalSortKeys(low, high)).toBe(-1);
       expect(compareNaturalSortKeys(high, low)).toBe(1);

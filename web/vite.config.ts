@@ -1,29 +1,24 @@
-// defineConfig は vitest/config から取る。Vite のものは test の項を型として知らない。
+// vitest/config includes types for the test options.
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
-// 開発時は Go サーバー（既定 :8080）へ /api を中継する。task dev がこの構成で動く。
+// task dev proxies /api to the Go server.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
-    // tsconfig.json の paths と同じ。shadcn/ui の部品が @/ で import する。
+    // Keep this alias aligned with tsconfig.json for shadcn imports.
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
   build: {
-    // Go 側が embed する出力先。web/dist は版管理に .gitkeep だけを置いてあり、
-    // これが Go の埋め込み対象を空にしないので、SPA をビルドしていなくても
-    // go build ./... が通る。emptyOutDir を切っているのは、これが .git 以外を
-    // 区別せず消して .gitkeep まで持っていくため。前回の生成物の掃除は
-    // scripts/build が .gitkeep を残して行う。
+    // Preserve tracked .gitkeep so Go builds work without a built SPA; scripts/build removes old output without deleting the embed placeholder.
     outDir: "dist",
     emptyOutDir: false,
   },
   server: {
     port: 5173,
-    // task test-web のビルド成果物で開発中のページを再読み込みしない。
-    // 再読み込みは再生中の動画と API リクエストを中断する。
+    // Ignore test build output so development reloads do not interrupt playback or API requests.
     watch: { ignored: ["**/.vite-build-check/**"] },
     proxy: {
       "/api": {
@@ -34,23 +29,15 @@ export default defineConfig({
       },
     },
   },
-  // 単体テスト（task test-web が npm run test 経由で vitest run を呼ぶ）。
-  // DOM を伴う検証があるので環境は jsdom。css: false で Tailwind の変換を挟まない
-  // ── 見た目の検査（対比）は CSS をファイルとして読むので、描画する必要が無い。
-  // テストが揃ったので passWithNoTests は外した。テストが
-  // 1 件も集まらない状態は、いまは設定か置き場所の誤りなので失敗でよい。
+  // Use jsdom for DOM tests without Tailwind transforms; contrast tests read CSS directly.
   test: {
     environment: "jsdom",
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
     css: false,
-    // 既定の threads はファイルごとに worker を作り直し、jsdom と node_modules の読み込みを
-    // 毎回やり直す（全体の CPU 時間の 3 割ほど）。vmThreads は worker を使い回し、ファイル
-    // ごとに新しい VM の文脈と jsdom を作るので、モジュールの状態も DOM もファイルの間で
-    // 共有しない（isolate: false とは違う）。
+    // vmThreads reuses workers while giving each file a fresh VM and DOM, avoiding repeated dependency loading without sharing module state.
     pool: "vmThreads",
-    // --coverage を付けたときだけ測る（task test-web-report）。生成した API の型と
-    // テスト用の部品は、測る対象から外す。
+    // Measure only with --coverage, excluding generated bindings and test helpers.
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],

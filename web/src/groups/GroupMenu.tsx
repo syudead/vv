@@ -21,13 +21,8 @@ import GroupTagDialog from "./GroupTagDialog";
 type Dialog = "rename" | "tag" | "dissolve" | null;
 
 /**
- * GroupMenu は所有者のグループのページの見出しの「More」である。「Rename…」「Turn the group into a tag…」、区切り、「Dissolve…」を開き、それぞれの
- * 窓を持つ。
- *
- * 改名できたら `onRenamed` に新しい値を渡し、フォーカスは「More」へ戻す。グループが終わったら
- * （解散、タグ化）`onLeave` で道筋の親かライブラリへ移り、そこでトーストを出す。もう無かった
- * （`404`）とき、解散は同じく移ってトーストを出さず、改名とタグ化は `onGone` で無くなった状態を
- * 見せる。
+ * After rename, restore focus to More; after dissolution or tagging, leave for the parent. Missing
+ * groups during dissolution leave silently; other missing-group operations call onGone.
  */
 export default function GroupMenu({
   group,
@@ -39,7 +34,6 @@ export default function GroupMenu({
   group: LibraryGroup;
   moreRef: Ref<HTMLButtonElement>;
   onRenamed: (group: LibraryGroup) => void;
-  /** 解散かタグ化の後に画面を離れる（useLeaveGroup）。 */
   onLeave: (message?: UiText) => void;
   onGone: () => void;
 }) {
@@ -96,7 +90,6 @@ export default function GroupMenu({
             nameLabel: t.groups.nameLabel,
             nameRule: t.groups.nameRule,
           }}
-          // グループの名前の規則はプレイリストと同じ。
           normalize={playlistName}
           rename={(name) => renameGroup(group.id, name)}
           onClose={() => setDialog(null)}

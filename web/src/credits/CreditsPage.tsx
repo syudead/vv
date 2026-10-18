@@ -58,19 +58,11 @@ import {
 import DeleteCreditDialog from "./DeleteCreditDialog";
 import MergeCreditDialog from "./MergeCreditDialog";
 
-/** columnCount は表の列の数（名前・本数・操作）。 */
 const columnCount = 3;
 
 /**
- * CreditsPage は人物か団体の管理画面である。1 つの部品が種類（`kind`）を受けて `/people` と
- * `/organizations` の両方を描く。
- *
- * タグの管理画面（036）と同じ作法で、一覧はサーバーから 100 件ずつ読み、見えている行だけを
- * 描き、操作の結果は取り直さずに読み込んだ行へ反映する。読み方・行の置き直し・帯の測り方・
- * 仮想化・トップバーの検索と並び順は `web/src/tags/` の部品を共有する。違いは「Filter」・
- * タブ・チェックの列・選択のバーが無いことと、シノニムの窓の代わりに詳細の窓があること。
- * 対象がもう無い（`person_not_found`・`organization_not_found`）ときは、窓を閉じてトーストを
- * 出し、一覧を先頭から読み直す。
+ * Share paging and virtualization with tags; reflect mutations in loaded rows without refetching.
+ * Missing records close the dialog and reload from the first page.
  */
 export default function CreditsPage({ kind }: { kind: CreditKind }) {
   const toast = useToast();
@@ -103,7 +95,7 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
   const [creating, setCreating] = useState(false);
   const [createPending, setCreatePending] = useState(false);
   const [createError, setCreateError] = useState<TagFieldError | null>(null);
-  /** renaming は改名中の行（始めた時点の状態）である。読み直した行に無くても残す。 */
+  /** Preserve the initial renaming row even if it disappears from refreshed results. */
   const [renaming, setRenaming] = useState<Credit | null>(null);
   const renamingId = renaming?.id ?? null;
   const [renamePending, setRenamePending] = useState(false);
@@ -131,15 +123,13 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
     scrollBoxToTop(listBoxRef.current);
   }
 
-  /** fallbackFocus は行へ移せないときの行き先（「New person」）である。 */
   function fallbackFocus() {
     const create = createButtonRef.current;
     if (create?.isConnected === true && !create.disabled) create.focus();
     releasePinIfFocusOutside();
   }
 
-  // 検索はサーバーが全部に掛ける。照合形は、空白だけの検索を絞り込み中と数えないためと、
-  // 同じ照合形になる打ち直しで読み直さないために使う。
+  // Normalize queries to ignore whitespace-only filters and avoid reloading equivalent queries.
   const normalizedQuery = foldForMatch(search).trim();
   const searchRef = useRef(search);
   useLayoutEffect(() => {
@@ -155,7 +145,7 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
   }
 
   const rows = useMemo(() => page?.rows ?? [], [page]);
-  /** visibleRows は並べる行で、改名中の行は読み直した行に無くても並び順の位置に残す。 */
+  /** Keep a renaming row in sort order even when refreshed results exclude it. */
   const visibleRows = useMemo(() => {
     if (renaming === null || page === undefined) return rows;
     if (rows.some((credit) => credit.id === renaming.id)) return rows;
@@ -183,7 +173,7 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
     rowIdAttribute: creditRowIdAttribute,
   });
 
-  // 描く最後の行が読み込んだ行の末尾から overscan 行以内に入ったら続きを読む。
+  // Prefetch when the final rendered row reaches the overscan boundary.
   const lastRendered = virtualItems.at(-1)?.index ?? -1;
   const nextCursor = page?.nextCursor;
   useEffect(() => {
@@ -227,7 +217,6 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
     setRenaming(null);
   }
 
-  /** replaceLoaded は書き換わった 1 件を読み込んだ行へ反映する。 */
   function replaceLoaded(updated: Credit, before?: Credit) {
     applyLocal((current) => {
       if (current === undefined) return current;
@@ -244,10 +233,7 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
     });
   }
 
-  /**
-   * reparentLoaded は団体 `fromId` を親に持つ読み込んだ子の親を `to` へ書き換え、`to` が
-   * undefined なら外す（改名・削除・統合のあと。サーバーは子の親を同じように変える）。
-   */
+  /** Mirror server reparenting after rename, delete or merge; undefined removes the parent. */
   function reparentLoaded(fromId: number, to?: Credit) {
     if (kind !== "organization") return;
     const parent = to === undefined ? undefined : { id: to.id, name: to.name };
@@ -258,10 +244,7 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
     });
   }
 
-  /**
-   * gone は対象がもう無かったときの扱いである。窓を閉じたあとで呼び、トーストを出して
-   * 一覧を先頭から読み直し、消えた行の次の行へ移す。
-   */
+  /** Call after closing the dialog; reload and focus the row after the missing record. */
   async function gone(id: number) {
     const order = visibleRows;
     toast(texts.gone);
@@ -341,7 +324,7 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
     const target = deleting;
     setDeleting(null);
     setDeleteError(null);
-    // 窓はメニューの項目から開いたので、その行の「More actions」へ明示的に戻す。
+    // Return focus explicitly to the row's menu trigger.
     focusRow(target.id, "menu");
   }
 
@@ -353,9 +336,8 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
   }
 
   /**
-   * performMerge は統合の成功を反映する。統合元は行から外れ、統合先は応答で書き換えて
-   * 並び順の位置へ置く（読み込んだ範囲の外なら外す。036 の Merge dialog）。フォーカスは
-   * 統合先の名前、無ければ統合元の次の行、前の行、「New person」の順。
+   * Place the merge target in loaded sort order, or omit it outside the loaded range. Focus its
+   * name, then the source's next row, previous row, or create button.
    */
   function performMerge(merged: Credit, target: Credit) {
     if (merging === null) return;
@@ -366,7 +348,6 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
     reparentLoaded(source.id, merged);
     setMerging(null);
     toast(t.credits.merged(source.name, merged.name));
-    // 統合先が読み込んだ範囲（続きのカーソルの境まで）に入るなら、その名前へ移す。
     const current = pageRef.current;
     const placed =
       current?.boundary === undefined ||
@@ -397,7 +378,6 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
     const order = visibleRows;
     replaceLoaded(updated, details);
     setDetails(null);
-    // 別名を変えて検索に合わなくなれば行から外れる。
     if (shown(updated)) focusRow(updated.id, "synonyms");
     else focusAfterRemoval(order, updated.id);
   }
@@ -409,10 +389,7 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
     void gone(id);
   }
 
-  /**
-   * rowHandlersRef は行の操作の今の実体である。行へは同じ関数を渡し続ける包みを渡し、
-   * `React.memo` の行が操作のたびに描き直されないようにする。
-   */
+  /** Stable wrappers read current handlers so memoized rows do not rerender on every operation. */
   const rowHandlersRef = useRef<CreditRowHandlers | null>(null);
   useLayoutEffect(() => {
     rowHandlersRef.current = {

@@ -2,7 +2,6 @@ package domain
 
 import "testing"
 
-// 仕事の種類ごとに今の処理の種類があり、知らない種類には無い。
 func TestActivityKindOf(t *testing.T) {
 	want := map[JobKind]ScanActivityKind{
 		JobProbe: ActivityProbe, JobThumbnail: ActivityThumbnail,

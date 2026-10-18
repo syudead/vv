@@ -9,25 +9,18 @@ import (
 	"sync"
 )
 
-// reopenableListener は HTTP サーバーの待ち受けを作り、アドレスを変えて開き直せる
-// 部品である。
-//
-// 開き直しでは今の待ち受けを閉じてから、同じ http.Server で新しい待ち受けを
-// Serve する。http.Server は接続ごとに別の goroutine で応答するので、待ち受けを
-// 閉じても確立済みの接続（SSE など）はそのまま続く。同じポートのループバックと
-// ワイルドカードを同時には待ち受けないので、新しい待ち受けは古いものを閉じてから開く。
+// Reopening replaces the listener on the same http.Server, preserving established connections such
+// as SSE. Close the old listener before binding the same port to loopback or wildcard.
 type reopenableListener struct {
 	mu sync.Mutex
-	// srv は Serve で渡されたサーバー。Serve の前は nil。
+	// Nil until Serve.
 	srv *http.Server
-	// current は今の待ち受け。開き直しの途中と閉じたあとは nil で、そのあいだに
-	// 終わった Serve の失敗は知らせない。
+	// Nil during reopening and after closure; ignore Serve failures from superseded listeners.
 	current net.Listener
-	// addr は今の待ち受けの実際のアドレス（ポート 0 で開いたら決まったポート）である。
-	// 開き直しに失敗したら、ここへ戻す。
+	// Actual bound address, including an assigned ephemeral port; used for rollback.
 	addr   string
 	closed bool
-	// failed は今の待ち受けの Serve が終わった理由を 1 度だけ送る。
+	// Reports the current listener's terminal result once.
 	failed chan error
 }
 
@@ -35,7 +28,7 @@ func newReopenableListener() *reopenableListener {
 	return &reopenableListener{failed: make(chan error, 1)}
 }
 
-// Listen は addr で待ち受けを開く。Serve より前に 1 度だけ呼ぶ。
+// Listen must be called once before Serve.
 func (l *reopenableListener) Listen(addr string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -50,8 +43,7 @@ func (l *reopenableListener) Listen(addr string) error {
 	return nil
 }
 
-// Serve は srv で今の待ち受けの接続を受け始め、すぐに戻る。今の待ち受けの
-// Serve が終わると、その理由を Failed へ送る。
+// Serve starts accepting asynchronously and reports termination through Failed.
 func (l *reopenableListener) Serve(srv *http.Server) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -61,22 +53,19 @@ func (l *reopenableListener) Serve(srv *http.Server) {
 	}
 }
 
-// Failed は今の待ち受けの Serve が終わった理由を受け取る。停止の Shutdown で
-// 終わったときは http.ErrServerClosed が届く。
+// Failed reports http.ErrServerClosed on server shutdown.
 func (l *reopenableListener) Failed() <-chan error {
 	return l.failed
 }
 
-// Addr は今の待ち受けの実際のアドレスを返す。
 func (l *reopenableListener) Addr() string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.addr
 }
 
-// Reopen は待ち受けを addr で開き直す。開けなければ元のアドレスで待ち受けを
-// 開き直し、addr を開けなかった理由を返す。元のアドレスも開けなければ、その理由も
-// 添えて返し、待ち受けは無くなる（Failed へ知らせる）。
+// Reopen restores the old address on failure; if rollback also fails, report both errors and notify
+// Failed.
 func (l *reopenableListener) Reopen(addr string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -87,7 +76,7 @@ func (l *reopenableListener) Reopen(addr string) error {
 	previous := l.addr
 	if l.current != nil {
 		old := l.current
-		// 先に current を外すので、閉じた待ち受けの Serve の終わりは知らせない。
+		// Clear current before closing so its Serve completion is ignored.
 		l.current = nil
 		_ = old.Close()
 	}
@@ -111,15 +100,12 @@ func (l *reopenableListener) Reopen(addr string) error {
 	return reopenErr
 }
 
-// listenTCP は addr で TCP の待ち受けを開く。ホストが IPv4 のアドレスなら IPv4 だけで
-// 待ち受ける。"tcp" のままだと、IPv6 の使える機械では 0.0.0.0 が IPv4 と IPv6 の両方を
-// 受ける [::] の待ち受けになり、許可の切り替えが決める 0.0.0.0／127.0.0.1（R-14）から
-// 外れる。
+// Use tcp4 for IPv4 addresses; "tcp" can bind 0.0.0.0 as dual-stack [::], violating the configured
+// access scope.
 func listenTCP(addr string) (net.Listener, error) {
 	return net.Listen(listenNetwork(addr), addr)
 }
 
-// listenNetwork は addr を待ち受ける net.Listen のネットワークを選ぶ。
 func listenNetwork(addr string) string {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -131,8 +117,7 @@ func listenNetwork(addr string) string {
 	return "tcp"
 }
 
-// Close は今の待ち受けを閉じ、以後の開き直しを断る。確立済みの接続は閉じない
-// （それは http.Server の Shutdown が行う）。
+// Close prevents reopening but leaves existing connections to http.Server.Shutdown.
 func (l *reopenableListener) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -145,7 +130,6 @@ func (l *reopenableListener) Close() error {
 	return ln.Close()
 }
 
-// serve は ln の接続を受け、終わったのが今の待ち受けなら理由を知らせる。
 func (l *reopenableListener) serve(ln net.Listener) {
 	err := l.srv.Serve(ln)
 	l.mu.Lock()
@@ -156,8 +140,7 @@ func (l *reopenableListener) serve(ln net.Listener) {
 	l.notify(err)
 }
 
-// notify は Serve の終わりの理由を送る。受け取りは 1 度だけなので、先に送った
-// 理由があれば捨てる。
+// Keep the first terminal result.
 func (l *reopenableListener) notify(err error) {
 	select {
 	case l.failed <- err:

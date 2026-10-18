@@ -14,14 +14,12 @@ import {
 
 setUpGroupPageServer();
 
-// ドラッグでの並べ替えと取り消しの通知。jsdom は配置を持たないので、格子のカードを横一列に 200px ずつ置き、
-// ポインタの出来事で持ち上げて落とす。
+// Supply 200px-wide card positions because jsdom has no layout.
 
 const cardWidth = 190;
 const cardHeight = 150;
 const step = 200;
 
-/** layoutCards は格子のカード（ドラッグの包み）を左から 200px ずつ、同じ高さに置く。 */
 function layoutCards() {
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (
     this: Element,
@@ -44,21 +42,18 @@ function layoutCards() {
   });
 }
 
-/** middleOf は左から `index` 番目（0 始まり）のカードの、横の位置 `ratio` の点である。 */
 function pointOn(index: number, ratio: number) {
   return { clientX: index * step + cardWidth * ratio, clientY: cardHeight / 2 };
 }
 
 const mouse = { pointerType: "mouse", isPrimary: true, button: 0, pointerId: 1 };
 
-/** lift はカード `title` のリンクを押し、持ち上がるまで動かす。 */
 function lift(title: string, index: number) {
   const link = screen.getByRole("link", { name: title });
   fireEvent.pointerDown(link, { ...mouse, ...pointOn(index, 0.5) });
   fireEvent.pointerMove(document, { ...mouse, ...pointOn(index, 0.4) });
 }
 
-/** moveTo はポインタをカード `index` の位置 `ratio` へ動かす。 */
 function moveTo(index: number, ratio: number) {
   fireEvent.pointerMove(document, { ...mouse, ...pointOn(index, ratio) });
 }
@@ -67,21 +62,18 @@ function release(index: number, ratio: number) {
   fireEvent.pointerUp(document, { ...mouse, ...pointOn(index, ratio) });
 }
 
-/** cardTitles は格子のカードの題名を左から返す。 */
 function cardTitles(): string[] {
   return Array.from(document.querySelectorAll("article")).map(
     (card) => card.querySelector("h3")?.textContent ?? "",
   );
 }
 
-/** reorders は送った並べ替えの本文である。 */
 function reorders() {
   return server.writes
     .filter((each) => each.path === "/api/organize/reorder")
     .map((each) => each.body);
 }
 
-/** openGrid はページを開き、カードを並べる。 */
 async function openGrid() {
   seed();
   layoutCards();
@@ -121,7 +113,7 @@ describe("GroupPage drag", () => {
 
   it("選んだ子グループのメンバーの直接の動画は、チェックが見えていてもそれだけが動く", async () => {
     seed();
-    // 「Bonus」（動画 12）は子グループ「Extras」のメンバーで、Season の直接の項目でもある。
+    // Bonus is both a direct video and a member of Extras.
     server.groups.get(1)?.items.push({
       id: 104,
       kind: "video",
@@ -151,7 +143,7 @@ describe("GroupPage drag", () => {
   it("カードの隙間でも、いちばん近いカードの間に落とせる", async () => {
     await openGrid();
     lift("Episode 2", 2);
-    // 1 枚目の右端から 6px（カードの間の gap-3 の中央）。
+    // Six pixels beyond the card edge is the midpoint of gap-3.
     moveTo(0, 1 + 6 / cardWidth);
     expect(document.querySelector('[data-drop-bar="before"]')).not.toBeNull();
     release(0, 1 + 6 / cardWidth);

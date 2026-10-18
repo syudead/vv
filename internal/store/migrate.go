@@ -11,35 +11,23 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-// migrationsFS はマイグレーション SQL をバイナリへ同梱する。外部ツール（goose CLI）を
-// 導入しなくても起動時に適用できるようにするため。
+// Embed migrations so startup needs no goose CLI.
 //
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// versionTableName は goose が適用済みの版を記録する表である。
-// アプリケーションは読み取り専用で扱い、直接書き換えない。
+// Only goose writes its version table; application code reads it.
 const versionTableName = "goose_db_version"
 
-// ErrFutureSchema はデータベースがアプリケーションの知らない将来の版を
-// 持っていた場合に返る。この場合は何も書き換えずに起動を中止する
-// （ダウングレードによる破壊を防ぐため）。
+// ErrFutureSchema prevents startup writes when the database is newer than this application.
 var ErrFutureSchema = errors.New("the database schema is newer than this application")
 
-// MigrateResult はマイグレーションの結果である。記録に出す用途を想定している。
 type MigrateResult struct {
-	// Applied はこの呼び出しで適用したマイグレーションの数。
 	Applied int
-	// Version は適用後のスキーマ版。
 	Version int64
 }
 
-// Migrate は未適用のマイグレーションを適用する。
-//
-//  1. 未適用があれば適用する。
-//  2. データベースが埋め込み済みより新しい版を持っていた場合は、何も書き換えずに
-//     ErrFutureSchema を返す。
-//  3. データベースファイルが無い場合は Open が作成しているので、そのまま適用する。
+// Migrate applies pending embedded migrations and refuses future schema versions before writing.
 func Migrate(ctx context.Context, db *DB) (MigrateResult, error) {
 	fsys, err := fs.Sub(migrationsFS, "migrations")
 	if err != nil {
@@ -56,7 +44,6 @@ func Migrate(ctx context.Context, db *DB) (MigrateResult, error) {
 		return MigrateResult{}, err
 	}
 
-	// 適用の前に将来の版を検出する。ここで止めれば何も書き換えずに済む。
 	current, err := recordedVersion(ctx, db.sql)
 	if err != nil {
 		return MigrateResult{}, err
@@ -82,7 +69,6 @@ func Migrate(ctx context.Context, db *DB) (MigrateResult, error) {
 	return MigrateResult{Applied: len(results), Version: applied}, nil
 }
 
-// latestKnownVersion は埋め込み済みマイグレーションの最大の版を返す。
 func latestKnownVersion(provider *goose.Provider) (int64, error) {
 	sources := provider.ListSources()
 	if len(sources) == 0 {
@@ -98,8 +84,7 @@ func latestKnownVersion(provider *goose.Provider) (int64, error) {
 	return latest, nil
 }
 
-// recordedVersion はデータベースが記録しているスキーマ版を返す。
-// 記録表がまだ無い場合は 0 を返す（未適用とみなす）。
+// A missing version table means version zero.
 func recordedVersion(ctx context.Context, db *sql.DB) (int64, error) {
 	var exists int
 	err := db.QueryRowContext(ctx,
@@ -126,11 +111,7 @@ func recordedVersion(ctx context.Context, db *sql.DB) (int64, error) {
 	return version.Int64, nil
 }
 
-// Down は直近に適用したマイグレーションを1つ取り消す。
-//
-// 起動経路からは呼ばない。スキーマ変更を取り消せることを検証で確かめるための
-// 出口であり、適用を自動化している以上（起動時に適用する）、戻せることまで
-// 含めて機械的に確認できる状態にしておく。
+// Down reverts one migration for verification; startup never calls it.
 func Down(ctx context.Context, db *DB) error {
 	fsys, err := fs.Sub(migrationsFS, "migrations")
 	if err != nil {

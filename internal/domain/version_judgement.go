@@ -5,49 +5,40 @@ import (
 	"time"
 )
 
-// 「同じ動画かもしれない」候補の自動の判定。
-// 判定は候補の行の列に置き、結果は所有者の操作と同じ行（集まり・「違う動画」の記録）を書く。
+// Automatic version judgements write the same bundles/different-video records as owner actions.
 
-// VersionJudgement は候補の行の判定の状態である。待っている行は状態を持たない（null）。
+// Waiting candidates have a null judgement.
 type VersionJudgement string
 
 const (
-	// VersionJudgementRunning は判定中である。同時に 1 行だけ。
+	// Only one candidate may be running at a time.
 	VersionJudgementRunning VersionJudgement = "running"
-	// VersionJudgementUndecided は決められなかった組で、候補の一覧に残り、取り出されない。
+	// Undecided candidates remain visible but are not claimed again.
 	VersionJudgementUndecided VersionJudgement = "undecided"
-	// VersionJudgementFailed は判定に失敗した組で、RetryAt を過ぎると取り出せる。
+	// Failed candidates become claimable after RetryAt.
 	VersionJudgementFailed VersionJudgement = "failed"
-	// VersionJudgementNoConnection はモデルが要るのに Ollama の接続が保存されていない組で、要求を送らず、
-	// 接続が保存されるまで取り出されない。
+	// NoConnection candidates send no request and wait for saved Ollama settings.
 	VersionJudgementNoConnection VersionJudgement = "no_connection"
 )
 
-// VersionJudgeJob は取り出した候補の 1 組である。Keys は key_a < key_b の内容の鍵、Fingerprints は
-// その順の 2 本の指紋（コマごとの規則が読む）。Attempts はこれまでの失敗の数。
+// Keys are ordered key_a < key_b, Fingerprints aligns with them, and Attempts counts prior failures.
 type VersionJudgeJob struct {
 	Keys         [2]string
 	Fingerprints [2]Fingerprint
 	Attempts     int
 }
 
-// VersionVerdict は判定の結果の種類である。
 type VersionVerdict int
 
 const (
-	// VersionSame は同じ動画で、2 つの側を束ねる（衝突すれば決められないにする、R-6）。
+	// Bundle conflicts turn a same verdict into undecided.
 	VersionSame VersionVerdict = iota + 1
-	// VersionDifferent は違う動画で、所有者の「違う動画」と同じ記録を書く。
 	VersionDifferent
-	// VersionUndecided は決められなかった。Probability を持つ。
 	VersionUndecided
-	// VersionFailed は判定に失敗した。Error を持つ。
 	VersionFailed
-	// VersionNoConnection はモデルが要るのに接続が保存されていない。
 	VersionNoConnection
 )
 
-// String はログに出す名前である。
 func (v VersionVerdict) String() string {
 	switch v {
 	case VersionSame:
@@ -65,10 +56,7 @@ func (v VersionVerdict) String() string {
 	}
 }
 
-// VersionJudgeResult は取り出した組の判定の結果である。Probability はモデルが答えたときのその答え（無ければ
-// nil）、Error は VersionFailed のときの提供元のメッセージ。Decider は結果を決めたもので、モデルの答えで
-// 決めたなら ActivityByAI、コマの規則・接続なし・失敗なら ActivityByRule（空も rule とみなす）。
-// アクティビティの記録に残す。
+// Probability is present only for model responses; Decider defaults to rule and records AI only for model decisions in the activity log.
 type VersionJudgeResult struct {
 	Verdict     VersionVerdict
 	Probability *float64
@@ -76,18 +64,16 @@ type VersionJudgeResult struct {
 	Decider     ActivityDecider
 }
 
-// VersionCandidatesChanged は候補の一覧が変わったかもしれないことを表す。
-// 判定の結果の反映と、集まりから外す操作が確定後に発行する。
+// VersionCandidatesChanged is published after judgement application or detachment commits.
 type VersionCandidatesChanged struct{}
 
 func (VersionCandidatesChanged) event() {}
 
-// versionJudgeRetryDelays は 1・2・3 回目の失敗の後に待つ時間で、4 回目からは versionJudgeRetryDaily
 var versionJudgeRetryDelays = []time.Duration{10 * time.Minute, time.Hour, 6 * time.Hour}
 
 const versionJudgeRetryDaily = 24 * time.Hour
 
-// VersionJudgeRetryAt は attempts 回目の失敗を now に記録した組を、再び取り出せる時刻である。10 分、1 時間、6 時間、以後は毎日。attempts が 1 未満なら 1 回目とみなす。
+// Retry delays are ten minutes, one hour, six hours, then daily; attempts below one use the first delay.
 func VersionJudgeRetryAt(attempts int, now time.Time) time.Time {
 	delay := versionJudgeRetryDaily
 	if index := max(attempts, 1) - 1; index < len(versionJudgeRetryDelays) {
@@ -96,8 +82,7 @@ func VersionJudgeRetryAt(attempts int, now time.Time) time.Time {
 	return now.Add(delay)
 }
 
-// VersionSidesConflict は、側 a と側 b（それぞれ集まりの全メンバーか、束ねていない 1 本の内容の鍵）を
-// 束ねると、違うと分かっている組（「違う動画」の記録と、集まりから外した組）をまたぐかを返す。同じ側の中の組はまたがない。differing の組の鍵の順は問わない。
+// VersionSidesConflict checks known-different pairs crossing sides, ignoring within-side pairs and key order.
 func VersionSidesConflict(a, b []string, differing [][2]string) bool {
 	side := make(map[string]int, len(a)+len(b))
 	for _, key := range a {
@@ -115,19 +100,14 @@ func VersionSidesConflict(a, b []string, differing [][2]string) bool {
 	return false
 }
 
-// VersionSide は「同じ」の組の片側の、代表の候補である。Video はその側の代表の
-// 候補の動画（集まりに属せばその実効の代表、属さなければその動画）で、所有者から見た値。
-// OwnerData はその側の利用者データの鍵にタグ・再生位置・公開の設定・表示名・適用したサムネイル画像・
-// 作品情報のどれかがあるか、Bundled はその側が集まりに属するかである。
+// OwnerData includes tags, progress, visibility, display name, applied thumbnail, or work info on the side's user-data key.
 type VersionSide struct {
 	Video     Video
 	OwnerData bool
 	Bundled   bool
 }
 
-// ChooseVersionRepresentative は「同じ」の組を束ねるとき代表にする側（0 か 1）を返す。片側だけが集まりに属せばその側。そうでなければ、所有者のデータを片側だけが
-// 持つ、ブラウザーで再生できる、音声がある、画素が多い、ビットレートが高い、動画の id が小さい、の
-// 順に最初に差の付いた規則で選ぶ。
+// ChooseVersionRepresentative prefers a bundled side, then owner data, browser playback, audio, pixels, bitrate, and lower ID.
 func ChooseVersionRepresentative(sides [2]VersionSide) int {
 	if sides[0].Bundled != sides[1].Bundled {
 		return pickSide(sides[0].Bundled)
@@ -148,7 +128,6 @@ func ChooseVersionRepresentative(sides [2]VersionSide) int {
 	return 0
 }
 
-// pickSide は first が真なら側 0、偽なら側 1 を返す。
 func pickSide(first bool) int {
 	if first {
 		return 0
@@ -156,7 +135,6 @@ func pickSide(first bool) int {
 	return 1
 }
 
-// compareTrue は a だけが真なら -1、b だけが真なら 1、同じなら 0 を返す（真の側を先にする）。
 func compareTrue(a, b bool) int {
 	switch {
 	case a == b:
@@ -168,7 +146,6 @@ func compareTrue(a, b bool) int {
 	}
 }
 
-// videoPixels は動画の画素数（幅 × 高さ）で、分からなければ 0。
 func videoPixels(v Video) int64 {
 	if v.Width == nil || v.Height == nil {
 		return 0
@@ -176,8 +153,7 @@ func videoPixels(v Video) int64 {
 	return int64(*v.Width) * int64(*v.Height)
 }
 
-// compareBitrate はビットレート（大きさ ÷ 尺）の高い方を先にする順を返す。尺の分からない動画は
-// 低い側に倒す。割り算をせず、大きさと尺を掛け合わせて比べる。
+// Compare bitrate by cross multiplication; unknown duration ranks lower.
 func compareBitrate(a, b Video) int {
 	aKnown := a.DurationMs != nil && *a.DurationMs > 0
 	bKnown := b.DurationMs != nil && *b.DurationMs > 0

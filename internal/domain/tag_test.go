@@ -17,9 +17,7 @@ func TestNormalizeTagNameTrimsSurroundingWhitespace(t *testing.T) {
 }
 
 func TestNormalizeTagNameRejectsBlank(t *testing.T) {
-	// タブ・改行など Cc に属す White_Space は、先に制御文字として拒む
-	// （TestNormalizeTagNameRejectsControlCharactersBeforeTrimming）。ここでは
-	// Cc を含まない空白（半角スペース・全角スペースなど）だけを確かめる。
+	// Control whitespace is tested separately because it must be rejected before trimming.
 	for _, input := range []string{"", " ", "　"} {
 		if got := normalizeTagNameProblem(t, input); got != TagNameEmpty {
 			t.Errorf("NormalizeTagName(%q) problem = %v, want TagNameEmpty", input, got)
@@ -28,8 +26,7 @@ func TestNormalizeTagNameRejectsBlank(t *testing.T) {
 }
 
 func TestNormalizeTagNameRejectsControlCharactersBeforeTrimming(t *testing.T) {
-	// 前後に付いた改行・タブは、White_Space として黙って取り除かれてはならない。
-	// 取り除いてしまうと "旅行\n" と "旅行" が同じ名前になる。
+	// Leading/trailing tabs and newlines must not silently normalize into an accepted name.
 	for _, input := range []string{"旅行\n", "\t旅行", "旅行\r", "旅\n行", "a\tb"} {
 		if got := normalizeTagNameProblem(t, input); got != TagNameControlCharacters {
 			t.Errorf("NormalizeTagName(%q) problem = %v, want TagNameControlCharacters", input, got)
@@ -48,9 +45,6 @@ func TestNormalizeTagNameRejectsOverLongNames(t *testing.T) {
 	}
 }
 
-// normalizeTagNameProblem は誤りを返すことを確かめたうえでその理由を返す。
-// errors.Is(err, ErrInvalidTagName) が保たれていることと、Error() が空でない
-// ことも確かめる。
 func normalizeTagNameProblem(t *testing.T, input string) TagNameProblem {
 	t.Helper()
 	_, err := NormalizeTagName(input)

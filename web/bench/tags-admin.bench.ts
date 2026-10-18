@@ -2,12 +2,7 @@ import { writeFile } from "node:fs/promises";
 
 import { expect, test, type Locator, type Page, type Response } from "@playwright/test";
 
-// タグ管理画面（/tags）を規模のデータで測る。`go run ./scripts/tagsbench` から呼ばれ、場面ごとの値を Markdown の表で
-// TAGSBENCH_RESULT に書く。
-//
-// Long Task とフレーム時間はページの中から読む（PerformanceObserver の longtask と
-// requestAnimationFrame の間隔）。画面の要素は読み上げ名で引くので、一覧の描き方
-// （仮想化など）が変わっても同じ場面を測れる。
+// Write per-scenario Markdown results to TAGSBENCH_RESULT. Measure long tasks and frame intervals in-page, using accessible names to remain independent of virtualization.
 
 const scale = process.env.TAGSBENCH_SCALE ?? "?";
 const videos = process.env.TAGSBENCH_VIDEOS ?? "?";
@@ -15,13 +10,13 @@ const resultPath = process.env.TAGSBENCH_RESULT;
 
 const account = { username: "tagsbench", password: "tagsbench-password" } as const;
 
-/** 行の名前のリンクの読み上げ名の頭（web/src/i18n/en.ts の tags.row.open）。 */
+/** Accessible-name prefix from tags.row.open in src/i18n/en.ts. */
 const rowLinkPrefix = "Open the library filtered by ";
-/** 最初の行を開いてから何回測るか。 */
+
 const loadRuns = 3;
-/** 待つ上限。3,000 個の規模で遅い変更前の画面でも収まる長さにする。 */
+/** Allow the slower baseline screen to finish at 3,000 tags. */
 const waitTimeout = 120_000;
-/** スクロールで、位置も読み込んだ行も変わらないままこれだけ経ったら末尾を待つのをやめる。 */
+/** Stop when neither scroll position nor loaded-row count advances for this duration. */
 const scrollStallTimeout = 60_000;
 
 interface LongTaskEntry {
@@ -42,7 +37,7 @@ declare global {
   }
 }
 
-/** installProbes はページの読み込みの前に計測の仕掛けを置く（addInitScript で走る）。 */
+/** Install probes with addInitScript before page loading. */
 function installProbes(prefix: string) {
   const state: BenchState = {
     longTasks: [],
@@ -70,7 +65,7 @@ async function now(page: Page): Promise<number> {
   return page.evaluate(() => performance.now());
 }
 
-/** settle は描画を 2 回と少し待ち、遅れて届く Long Task の記録を拾えるようにする。 */
+/** Wait two frames plus a delay so late long-task entries are collected. */
 async function settle(page: Page) {
   await page.evaluate(
     () =>
@@ -111,14 +106,12 @@ function longTaskText(tasks: readonly LongTaskEntry[]): string {
 }
 
 interface Interaction {
-  /** 操作から結果が見えるまで（Playwright の往復を含む参考の値）。 */
+  /** Time to visible result, including Playwright round trips. */
   elapsed: number;
   longTasks: LongTaskEntry[];
 }
 
-/**
- * interact は action（操作と、その結果を待つところまで）の間の Long Task を集める。
- */
+/** Collect long tasks during the action and its result wait. */
 async function interact(page: Page, action: () => Promise<void>): Promise<Interaction> {
   const start = await now(page);
   const started = Date.now();
@@ -128,7 +121,7 @@ async function interact(page: Page, action: () => Promise<void>): Promise<Intera
   return { elapsed, longTasks: await longTasksSince(page, start) };
 }
 
-/** isTagList は、タグの一覧（`GET /api/tags`。統合の窓の候補の検索 `q` を除く）の応答か。 */
+/** Exclude merge-candidate searches containing q from list responses. */
 function isTagList(response: Response): boolean {
   const url = new URL(response.url());
   return (
@@ -152,20 +145,14 @@ function rows(page: Page): Locator {
   return page.getByRole("link", { name: new RegExp(`^${rowLinkPrefix}`) });
 }
 
-/**
- * filteredCount は絞った件数（「12 of 1,000 tags」。036 の初めの形では続きがあれば
- * 「 · 100 loaded」が添わる）である。
- */
+/** Accept filtered counts with the optional legacy loaded-count suffix. */
 function filteredCount(page: Page): Locator {
   return page
     .getByRole("status")
     .filter({ hasText: / of [\d,]+ tags?( · [\d,]+ loaded)?$/ });
 }
 
-/**
- * countLine は件数（「1,000 tags」「12 of 1,000 tags」。036 の初めの形では続きがあれば
- * 「 · 100 loaded」が添わる）である。
- */
+/** Accept total or filtered counts with the optional legacy loaded-count suffix. */
 function countLine(page: Page): Locator {
   return page
     .getByRole("status")
@@ -173,14 +160,7 @@ function countLine(page: Page): Locator {
     .first();
 }
 
-/**
- * listFullyRendered は、画面が最後のページを描いたかを返す。応答が届いたことと、その行が
- * 一覧に描かれたことは別で、描かれる前に下端を読むと最後のページの行を送らずに末尾と
- * 見なしてしまう。件数の行の数（条件に合う全部の数）と、列の見出しの「Select all N loaded
- * tags」の読み込んだ数が等しくなったら描き終えている。件数の行に「 · N loaded」を添える
- * 画面（036 の初めの形）はそれが消えたかで見る。どちらも無い画面（ページが無い）は描き終えて
- * いるものとする。
- */
+/** A completed response does not imply rendered rows. Compare the loaded and total counts (or the legacy suffix) before deciding the bottom is reached. */
 async function listFullyRendered(page: Page): Promise<boolean> {
   const text = (await countLine(page).textContent({ timeout: waitTimeout })) ?? "";
   if (/ · [\d,]+ loaded$/.test(text)) return false;
@@ -211,18 +191,16 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
   } else {
     expect(created.status()).toBe(200);
   }
-  // ページで返すサーバーは limit=1 で 1 件と totalAll を返す。変更前（ページが無い）は
-  // limit を無視して全件を返すので、件数をそこから取る。
+  // Paginated servers expose totalAll at limit=1; older servers ignore limit, so use their full result length.
   const listed = await page.request.get("/api/tags?limit=1");
   expect(listed.status()).toBe(200);
   const listedBody = (await listed.json()) as TagListBody;
   const tagTotal = listedBody.totalAll ?? listedBody.items.length;
-  // 規模のデータが崩れていないこと（タグの数が規模と同じ）を先に確かめる。
+  // Verify the seed tag count before measuring.
   if (scale !== "?") expect(tagTotal).toBe(Number(scale));
 
   await page.addInitScript(installProbes, rowLinkPrefix);
 
-  // 1. 開いてから最初の行が出るまで（受け入れ条件 1）。読み込みごとに測り直す。
   const loads: {
     firstRow: number;
     api: number;
@@ -267,8 +245,7 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
     note: `最初の行までの最長のタスク ${loads.map((load) => load.longTask).join(" / ")}`,
   });
 
-  // 2. 開いたときに受け取るタグ（受け入れ条件 2）。応答の大きさは本文（展開後）の
-  // バイト数で、補足に転送の大きさ（圧縮されていれば圧縮後）を添える。
+  // Report decompressed body bytes separately from transferred bytes, which may be compressed.
   const opened = loads.at(-1);
   if (opened !== undefined) {
     results.push({
@@ -281,8 +258,7 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
     });
   }
 
-  // 内訳: 開いたときの GET /api/tags の応答時間を
-  // 描画と分けて出す。
+  // Separate API response time from rendering time.
   results.push({
     scene: "GET /api/tags の応答（開いたとき・内訳）",
     value: `${ms(median(loads.map((load) => load.api)))}（中央値）`,
@@ -292,7 +268,6 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
       .join(" / ")}`,
   });
 
-  // 3. 検索の 1 文字目（受け入れ条件 3）。
   const search = page.getByRole("searchbox", { name: "Search tags" });
   await search.focus();
   const typed = await interact(page, async () => {
@@ -306,7 +281,6 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
     note: `一覧が変わるまで ${ms(typed.elapsed)}`,
   });
 
-  // 4. Esc での取り消し（受け入れ条件 3）。
   const cleared = await interact(page, async () => {
     await page.keyboard.press("Escape");
     await filteredCount(page).waitFor({ state: "detached", timeout: waitTimeout });
@@ -318,14 +292,10 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
     note: `一覧が戻るまで ${ms(cleared.elapsed)}`,
   });
 
-  // 5. 1 件の確定（受け入れ条件 3）。
   const confirmButton = page
     .getByRole("button", { name: "Confirm", exact: true })
     .first();
-  // 一覧が見えている行だけを描くときは、先頭の付近に仮の行が無いと「確定する」が
-  // DOM に無い。仮の行が描かれるまで文書を送る（送る間は計測に含めない）。名前の順では
-  // 英字の語のタグ（すべて確定）が先に並び、30,000 個の規模では仮の行が 15,000 行目の
-  // あたりまで出ないので、大きく送り、続きを読み込む間も送り続ける。
+  // Scroll outside the measured interval until a tentative virtual row mounts; at 30,000 tags the first may be near row 15,000.
   const searchDeadline = Date.now() + scrollStallTimeout * 5;
   while ((await confirmButton.count()) === 0 && Date.now() < searchDeadline) {
     await page.evaluate(() => window.scrollBy(0, 2_000));
@@ -343,8 +313,7 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
     note: `行が差し替わるまで ${ms(confirmed.elapsed)}`,
   });
 
-  // 6. 1 件の改名（受け入れ条件 3）。名前の後ろに語を足し、並びの位置を変えない
-  // （ページで読む画面は、読み込んだ範囲の外へ動いた行を一覧から外す）。
+  // Append to the name to preserve sort position; paginated lists drop renamed rows that move outside the loaded range.
   await page.getByRole("button", { name: "Rename", exact: true }).first().click();
   const renameInput = page.getByRole("textbox", { name: /^New name for "/ });
   const renameLabel = (await renameInput.getAttribute("aria-label")) ?? "";
@@ -364,11 +333,9 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
     note: `行が差し替わるまで ${ms(renamed.elapsed)}`,
   });
 
-  // 7. スクロール（受け入れ条件 4）。開き直した一覧の先頭から、続きを読み込みながら
-  // 末尾までホイールで送る。
+  // Start from a fresh first page and wheel through all remaining pages.
   results.push(await measureScroll(page));
 
-  // 8. まとめての確定（受け入れ条件 10）。
   results.push(await measureBulkConfirm(page));
 
   const header = [
@@ -383,7 +350,7 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
       (row) => `| ${row.scene} | ${row.value} | ${row.expected} | ${row.note} |`,
     ),
   ].join("\n");
-  // tagsbench から呼ばれたときは表をファイルに書き、tagsbench が最後に出す。
+  // Let the tagsbench parent print the saved table at the end.
   if (resultPath === undefined || resultPath === "") console.log(`\n${table}\n`);
   else await writeFile(resultPath, `${table}\n`);
 });
@@ -393,10 +360,7 @@ interface ScrollPosition {
   atEnd: boolean;
 }
 
-/**
- * scrollPosition は一覧を送っている要素の位置を、2 フレーム続けて動かなくなるまで
- * （上限 2 秒）待ってから返す。atEnd は下端に届いているか。
- */
+/** Wait for two stable frames, up to two seconds, before reading scroll position and atEnd. */
 async function scrollPosition(page: Page): Promise<ScrollPosition> {
   return page.evaluate(
     (prefix) =>
@@ -438,21 +402,18 @@ async function scrollPosition(page: Page): Promise<ScrollPosition> {
   );
 }
 
-/**
- * ListLoads は、一覧の応答（先頭のページと続き）を数え、続きが尽きたか（最後の応答に
- * `nextCursor` が無い）を持つ。変更前の画面（ページが無い）は最初の応答で尽きる。
- */
+/** Track loaded rows and exhaustion from nextCursor; nonpaginated servers finish on their first response. */
 interface ListLoads {
   responses: number;
   loaded: number;
   totalAll: number | undefined;
   exhausted: boolean;
-  /** 続きのページの応答時間（`response.timing`）。 */
+  /** Continuation response timings from response.timing. */
   moreTimes: number[];
 }
 
 async function measureScroll(page: Page): Promise<Row> {
-  // 開き直して、先頭のページだけを読んだ状態から始める（前の場面で読んだ続きを持ち越さない）。
+  // Reload so this scenario starts with only the first page.
   const loads: ListLoads = {
     responses: 0,
     loaded: 0,
@@ -502,13 +463,7 @@ async function measureScroll(page: Page): Promise<Row> {
     requestAnimationFrame(tick);
   });
 
-  // 続きが尽きて下端に着くまで送る。page.mouse.wheel はスクロールが済むのを待たないので、
-  // 送るたびに位置が 2 フレーム続けて動かなくなるまで待ってから読む。仮想化した一覧は
-  // 送るたびに高さが変わりうるので、末尾は「続きが尽き、下端に届いている」ことで決める。
-  // 下端で続きを待つ間も送り続ける（利用者がホイールを回し続ける場面）。位置も読み込んだ
-  // 行も変わらないまま scrollStallTimeout が経ったら諦める。
-  // 続きが尽きたことは応答で分かるが、最後のページの行が描かれるのはその後なので、尽きて
-  // 描き終えたことを位置を読む前に確かめ、その後に読んだ位置が下端のときだけ末尾とする。
+  // Wheel does not await scrolling, and virtualization can change list height. Declare the end only after pagination is exhausted, final rows are rendered, and the stable position reaches the bottom; stop stalled progress at scrollStallTimeout.
   let previous = -1;
   let previousResponses = loads.responses;
   let lastProgress = Date.now();
@@ -530,7 +485,7 @@ async function measureScroll(page: Page): Promise<Row> {
   }
   page.off("response", onResponse);
 
-  // 最後のスクロールの描画を含むフレームまで記録してから止める。
+  // Include the frame that renders the final scroll.
   const frames = await page.evaluate(
     () =>
       new Promise<number[]>((resolve) => {
@@ -564,13 +519,11 @@ async function measureScroll(page: Page): Promise<Row> {
 async function measureBulkConfirm(page: Page): Promise<Row> {
   const scene = "まとめての確定";
   const expected = "0.2 秒を超えない";
-  // 開き直す。スクロールの場面で全部の行を読み込んだままだと、読み込んだ行をすべて
-  // 選ぶ操作が上限で使えない。
+  // Reload to avoid exceeding the bulk-selection limit after loading every row.
   await page.goto("about:blank");
   await page.goto("/tags");
   await rows(page).first().waitFor({ state: "attached", timeout: waitTimeout });
-  // 「Tentative only」はトップバーの「Filter」の吹き出しの中のチェック（変更前は操作の行の
-  // 押すボタン）。
+  // Support Tentative only in either the Filter popover or the legacy action row.
   const tentativeButton = page.getByRole("button", { name: "Tentative only" });
   if ((await tentativeButton.count()) > 0) {
     await tentativeButton.click();
@@ -580,7 +533,7 @@ async function measureBulkConfirm(page: Page): Promise<Row> {
     await page.keyboard.press("Escape");
   }
   await filteredCount(page).waitFor({ timeout: waitTimeout });
-  // 変更前は「見えているものをすべて選ぶ」、ページで読む画面は「読み込んだ行をすべて選ぶ」。
+  // Support both legacy visible-row and current loaded-row selection labels.
   const selectAll = page.getByRole("checkbox", {
     name: /^Select (all shown tags|all [\d,]+ loaded tags|the [\d,]+ loaded tag)$/,
   });
@@ -601,8 +554,7 @@ async function measureBulkConfirm(page: Page): Promise<Row> {
     .getByRole("button", { name: "Confirm", exact: true });
   const bulk = await interact(page, async () => {
     await confirm.click();
-    // 変更前は全部の仮のタグを読み込んでいるので空の表示が出る。ページで読む画面は
-    // 読み込んだ分だけを確定し、結果の通知が出る。
+    // Legacy screens confirm every tentative tag and become empty; paginated screens confirm loaded rows and show a result toast.
     await page
       .getByText("No tentative tags", { exact: true })
       .or(page.getByText(/^Confirmed [\d,]+ tags?/))

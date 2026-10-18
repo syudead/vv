@@ -14,9 +14,7 @@ import { resultText } from "./pickerRules";
 
 const noSmartFolders: readonly number[] = [];
 
-/**
- * createOnce は名前 name のプレイリストを作り、memory に覚える。memory に既にあればそれを返す。
- */
+/** Reuse a playlist already created under this name in the current memory map. */
 async function createOnce(
   memory: Map<string, PlaylistSummary>,
   name: string,
@@ -29,14 +27,8 @@ async function createOnce(
 }
 
 /**
- * PlaylistPicker は「Add to playlist」のポップオーバーの中身である。カード・行・動画ページ・選択バーの
- * 4 か所が、それぞれの `Popover` の中に置く。形と読み込みは NamedPicker が持つ。
- *
- * - 開くたびに `GET /api/playlists` を `nextCursor` が尽きるまで読む（listAllPlaylists）。
- * - 行を選ぶと `videoIds` と `groupIds`（と `smartFolderIds`）を `POST /api/playlists/{id}/items` で送る。作成の行は
- *   `POST /api/playlists` の後に、その新しいプレイリストへ足す。足すのに失敗した後に同じ名前で
- *   作成の行をもう一度選ぶと、開いている間に作ったその名前のプレイリストへ足し直す（別の名前を
- *   挟んでも同じ）。そのプレイリストが消えていた（404）なら覚えを捨て、次は作り直す。
+ * Reload all playlists on opening; remember newly created playlists so failed additions retry
+ * without creating duplicates. Forget a missing playlist so the next attempt can recreate it.
  */
 export default function PlaylistPicker({
   open,
@@ -51,22 +43,17 @@ export default function PlaylistPicker({
   onOpenChange: (open: boolean) => void;
   videoIds: readonly number[];
   groupIds: readonly number[];
-  /** 足すスマートフォルダの id。フォルダのカードと行の「Add to playlist」だけが渡す。 */
   smartFolderIds?: readonly number[];
   side?: "top" | "bottom";
   align?: "start" | "end";
 }) {
-  // 作成の行で作ったプレイリストを名前ごとに覚える。同じ名前でもう一度押したら、作り直さずに
-  // これへ足す。名前は重ねてよいので、作り直すと空のプレイリストが残る。開くたびに新しい Map に
-  // 替え、送信は始めたときの Map にだけ書くので、閉じたピッカーの返事が開き直した後の覚えを
-  // 書き換えることはない。
+  // Use a fresh name-to-playlist map on each opening; in-flight requests write only to their original map. Reusing created playlists avoids leaving duplicates empty after failed additions.
   const created = useRef(new Map<string, PlaylistSummary>());
   useEffect(() => {
     if (open) created.current = new Map();
   }, [open]);
 
-  // 送るものは、この描画の props（videoIds・groupIds）で決まる。送っている間に選択が
-  // 変わっても、この呼び出しの値は変わらない。
+  // Capture this render's selection so pending submissions do not change with later props.
   async function submit(choice: PickerChoice<PlaylistSummary>) {
     const memory = created.current;
     let playlist: { id: number; name: string } | null = null;
@@ -82,7 +69,7 @@ export default function PlaylistPicker({
       );
       return resultText(result, playlist.name);
     } catch (error: unknown) {
-      // 作ったプレイリストが別のタブで消されていれば、次の作成の行で作り直す。
+      // Forget a playlist deleted in another tab so creation can retry.
       if (error instanceof RequestFailed && error.status === 404 && playlist !== null) {
         const gone = playlist.id;
         for (const [name, kept] of memory) {

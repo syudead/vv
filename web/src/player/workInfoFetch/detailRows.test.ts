@@ -115,7 +115,7 @@ describe("detailRows", () => {
         }),
       ),
     );
-    // チップは取得した件ごとに出し、数は実体ごと（別の人・あたらしい・ID の人・違う人）。
+    // Render every fetched entry but count additions by distinct entity.
     expect(row.fetched).toHaveLength(7);
     expect(row.fresh).toBe(4);
   });

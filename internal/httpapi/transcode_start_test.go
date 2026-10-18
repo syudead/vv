@@ -38,13 +38,11 @@ func TestTranscodeStartReportsActualStartAfterTranscode(t *testing.T) {
 	if rec.Code != http.StatusOK || fake.startMs != 7_000 {
 		t.Fatalf("transcode = %d startMs=%d", rec.Code, fake.startMs)
 	}
-	// 変換の要求が終わってもしばらく引ける（契約 §2）。
 	if got := transcodeStartOf(t, do(t, handler, http.MethodGet, "/api/videos/1/transcode-start?attempt=a-1_B")); got != 5_000 {
 		t.Errorf("startMs = %d, want 5000", got)
 	}
 }
 
-// 報告の要求が変換の要求より先に届いても、載るまで待って値を返す。
 func TestTranscodeStartWaitsForAttemptToAppear(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		fake := &fakeTranscoder{body: "fragmented-mp4", actualStartMs: 4_000}
@@ -71,7 +69,6 @@ func TestTranscodeStartWaitsForAttemptToAppear(t *testing.T) {
 	})
 }
 
-// 載っていて未決の間は待ち、最初のデータとともに決まった値を返す。
 func TestTranscodeStartWaitsUntilStartIsResolved(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		release := make(chan struct{})
@@ -113,7 +110,6 @@ func TestTranscodeStartWaitsUntilStartIsResolved(t *testing.T) {
 	})
 }
 
-// 変換が最初のデータを出せずに終わったら、上限を待たずに 404 を返す。
 func TestTranscodeStartNotFoundWhenTranscodeFails(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -140,7 +136,6 @@ func TestTranscodeStartNotFoundWhenTranscodeFails(t *testing.T) {
 	}
 }
 
-// 上限までに attempt が現れなければ 404。別の動画の経路からは同じ attempt を引けない。
 func TestTranscodeStartNotFoundForUnknownAttempt(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		mediaDir, first, _ := streamFixture(t, "a.mkv", 128)
@@ -188,7 +183,6 @@ func TestTranscodeStartRejectsMalformedAttempt(t *testing.T) {
 	}
 }
 
-// 同じ attempt で 2 度来たら後の値で上書きする。
 func TestTranscodeStartKeepsLatestValue(t *testing.T) {
 	fake := &fakeTranscoder{body: "fragmented-mp4", actualStartMs: 4_000}
 	handler := transcodeServer(t, false, fake)
@@ -200,7 +194,6 @@ func TestTranscodeStartKeepsLatestValue(t *testing.T) {
 	}
 }
 
-// 変換の要求が終わってから保持時間が過ぎた行は消える。attempt の無い要求は載らない。
 func TestTranscodeStartForgetsAfterRetention(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		fake := &fakeTranscoder{body: "fragmented-mp4", actualStartMs: 1_000}
@@ -213,8 +206,6 @@ func TestTranscodeStartForgetsAfterRetention(t *testing.T) {
 	})
 }
 
-// 決まらずに終わった要求は失敗として返り、報告の要求だけが作った行は待ち手が居なく
-// なれば消える。
 func TestTranscodeStartLedgerFailureAndPlaceholders(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ledger := newTranscodeStarts()

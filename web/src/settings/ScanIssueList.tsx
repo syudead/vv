@@ -10,7 +10,6 @@ import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
 import type { ScanIssueList as ScanIssueListState } from "./useScanIssues";
 
-/** issueLocation は「登録フォルダの表示名 / 相対パス」である。 */
 function issueLocation(issue: ScanIssue): string {
   const parts: string[] = [];
   if (issue.folder.rootName !== undefined) parts.push(issue.folder.rootName);
@@ -18,7 +17,6 @@ function issueLocation(issue: ScanIssue): string {
   return t.shell.scan.location(parts);
 }
 
-/** issueWords は行の影響と理由、ほかの種類の影響である。 */
 export function issueWords(issue: ScanIssue): {
   impact: UiText;
   impactAndReason: UiText;
@@ -94,10 +92,7 @@ function IssueRow({ issue }: { issue: ScanIssue }) {
   );
 }
 
-/**
- * ScanIssueList は設定の「Scan status」の問題の一覧である。高さに上限のある縦スクロールの領域に置き、何件あっても下の section を
- * 押し流さない。
- */
+/** Bound the issue list's height so large results cannot push subsequent sections away. */
 export default function ScanIssueList({
   list,
   failed,
@@ -110,7 +105,7 @@ export default function ScanIssueList({
   const text = t.settings.scanStatus.issues;
   const region = useRef<HTMLDivElement>(null);
 
-  // 新しい取り込みの一覧に入れ替わったら先頭へ戻す。同じ取り込みの読み直しでは保つ。
+  // Reset scroll only for a new scan, retaining position on same-scan refresh.
   useEffect(() => {
     if (region.current !== null) region.current.scrollTop = 0;
   }, [list.scanId]);
@@ -127,7 +122,7 @@ export default function ScanIssueList({
           className="text-xs text-muted-foreground"
         />
       </div>
-      {/* 読み上げる節目は完了・一部失敗・失敗の3つだけにする。 */}
+      {/* Announce only completion, partial failure and failure. */}
       {list.error !== null && (
         <p className="text-warning">{text.loadFailed(list.error)}</p>
       )}

@@ -33,7 +33,6 @@ func (p *fakeProbe) Check(context.Context) error {
 	return p.err
 }
 
-// 接続先は整えて保存し、規則に合わなければ保存しない。確かめは判定モデルのアダプタに任せる。
 func TestOllamaConnectionSaveAndCheck(t *testing.T) {
 	store := &fakeOllamaStore{settings: domain.DefaultOllamaSettings()}
 	probe := &fakeProbe{err: errors.New("cannot reach Ollama")}
@@ -62,7 +61,6 @@ func TestOllamaConnectionSaveAndCheck(t *testing.T) {
 	}
 }
 
-// 保存に成功したときだけ、登録した関数を呼ぶ（重複の判定の再開、docs/design-docs/duplicate-judging.md）。
 func TestOllamaConnectionOnSaved(t *testing.T) {
 	conn := NewOllamaConnection(&fakeOllamaStore{}, &fakeProbe{})
 	calls := 0

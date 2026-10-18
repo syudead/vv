@@ -1,9 +1,9 @@
 import type { Video } from "../api/client";
 import { t, type UiText } from "../i18n";
 
-// ロケールに依存しない書式（長さ、容量、解像度）である。日時・相対時刻・数は i18n/ にある。
+// Locale-independent media formats; dates, relative times and numbers live in i18n/.
 
-/** formatDuration は尺を m:ss（1 時間以上は h:mm:ss）で表す。不明なら空。 */
+/** Return empty when duration is unknown. */
 export function formatDuration(durationMs: number | undefined): string {
   if (durationMs === undefined || durationMs < 0) {
     return "";
@@ -16,7 +16,7 @@ export function formatDuration(durationMs: number | undefined): string {
   return h > 0 ? `${String(h)}:${pad(m)}:${pad(s)}` : `${String(m)}:${pad(s)}`;
 }
 
-/** formatBytes は大きさを読みやすい単位で表す（1024 進）。 */
+/** Use base-1024 units. */
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) {
     return "";
@@ -32,7 +32,7 @@ export function formatBytes(bytes: number): string {
   return `${value.toFixed(digits)} ${units[index]}`;
 }
 
-/** formatResolution は 1920×1080 のように表す。片方でも欠けていれば空。 */
+/** Return empty if either dimension is missing. */
 export function formatResolution(video: Pick<Video, "width" | "height">): string {
   if (video.width === undefined || video.height === undefined) {
     return "";
@@ -40,7 +40,6 @@ export function formatResolution(video: Pick<Video, "width" | "height">): string
   return `${String(video.width)}×${String(video.height)}`;
 }
 
-/** qualityLabel は 4K / 1080p / 720p のような短い品質表記。 */
 export function qualityLabel(video: Pick<Video, "width" | "height">): string {
   const h = video.height;
   const w = video.width;
@@ -56,7 +55,6 @@ export function qualityLabel(video: Pick<Video, "width" | "height">): string {
   return `${String(shorter)}p`;
 }
 
-/** unplayableText は解析中または解析失敗を利用者に伝える。再生を試せる動画は null。 */
 export function unplayableText(video: Video): UiText | null {
   if (video.playable) {
     return null;
@@ -79,7 +77,6 @@ export function unplayableText(video: Video): UiText | null {
 
 export type WatchState = "unwatched" | "inProgress" | "watched";
 
-/** watchState は視聴状態を 3 値に畳む。 */
 export function watchState(video: Pick<Video, "progress">): WatchState {
   const p = video.progress;
   if (p === undefined) return "unwatched";
@@ -87,7 +84,7 @@ export function watchState(video: Pick<Video, "progress">): WatchState {
   return p.positionMs > 0 ? "inProgress" : "unwatched";
 }
 
-/** watchedRatio は途中まで見た割合（0..1）。途中でなければ null。 */
+/** Return null unless partially watched; otherwise return a ratio in [0, 1]. */
 export function watchedRatio(
   video: Pick<Video, "progress" | "durationMs">,
 ): number | null {
@@ -98,8 +95,8 @@ export function watchedRatio(
 }
 
 /**
- * isNarrowVideo は、16:9 の枠に入れると左右の余白が大きく目立つ動画（縦長・正方形に近いもの）
- * かどうかを返す。表示の比率が分からない既存の動画は解像度の比で判断し、どちらも無ければ偽。
+ * Prefer display aspect ratio, falling back to resolution for legacy videos; unknown dimensions
+ * are not narrow.
  */
 export function isNarrowVideo(
   video: Pick<Video, "width" | "height" | "displayAspectRatio">,

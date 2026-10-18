@@ -31,12 +31,10 @@ function renderSaving(initial: Partial<HookProps> = {}) {
   );
 }
 
-/** leave はページが隠れたときの離脱時の送信を起こす。 */
 function leave() {
   window.dispatchEvent(new Event("pagehide"));
 }
 
-/** savedIds は送った保存の視聴の識別子を、送った順に返す。 */
 function savedIds(): (string | undefined)[] {
   return save.mock.calls.map((call) => call[2]);
 }
@@ -60,16 +58,13 @@ describe("useProgressSaving の視聴の識別子", () => {
   it("positioned の前の最初の再生では、報告まで送らず、報告後に落ち着いた位置で 1 回すぐ送る", () => {
     const { result, rerender } = renderSaving();
 
-    // 自動再生は位置が 0 のまま play を出す。
     result.current.rememberProgress(0);
     result.current.markPlayed();
     expect(save).not.toHaveBeenCalled();
 
-    // その間に離れても、識別子を付けない。
     leave();
     expect(beacon).toHaveBeenCalledWith(7, 0, undefined);
 
-    // 続きからの位置へシークし終えてから positioned になる。
     result.current.rememberProgress(42_000);
     rerender({ id: 7, owner: true, status: positioned });
 
@@ -125,11 +120,9 @@ describe("useProgressSaving の視聴の識別子", () => {
     result.current.markPlayed();
     const playbackId = save.mock.calls[0]?.[2];
 
-    // 5 秒ごとの保存、一時停止時の保存、離脱時の送信。
     result.current.savePlayerProgress(6_000, false);
     result.current.savePlayerProgress(8_000, true);
     leave();
-    // 一時停止のあと再び play しても、同じ視聴のままである。
     result.current.markPlayed();
     result.current.savePlayerProgress(15_000, false);
 
@@ -143,7 +136,6 @@ describe("useProgressSaving の視聴の識別子", () => {
     result.current.markPlayed();
     const playbackId = save.mock.calls[0]?.[2];
 
-    // 回復の作り直しでは、新しいプレイヤーが positioned を下ろしてから立て直し、再び play を出す。
     rerender({ id: 7, owner: true, status: notPositioned });
     result.current.rememberProgress(20_000);
     result.current.markPlayed();
@@ -159,16 +151,14 @@ describe("useProgressSaving の視聴の識別子", () => {
     result.current.markPlayed();
     const first = save.mock.calls[0]?.[2];
 
-    // プレイヤーは ended の状態を知らせたのと同じ出来事の中で、描画より先に保存を送る。
+    // The player saves ended synchronously before the subsequent render.
     result.current.savePlayerProgress(90_000, true);
     rerender({ id: 7, owner: true, status: ended });
     expect(savedIds()).toEqual([first, first]);
 
-    // 終わったあとの離脱時の送信は、もう識別子を付けない。
     leave();
     expect(beacon).toHaveBeenLastCalledWith(7, 90_000, undefined);
 
-    // Replay は先頭へ戻して play する。
     rerender({ id: 7, owner: true, status: positioned });
     result.current.rememberProgress(0);
     result.current.markPlayed();
@@ -194,7 +184,6 @@ describe("useProgressSaving の視聴の識別子", () => {
     const second = save.mock.calls.at(-1)?.[2];
     expect(second).not.toBe(first);
 
-    // 前の動画へ戻っても、前の視聴は続けない。
     rerender({ id: 7, owner: true, status: notPositioned });
     result.current.rememberProgress(3_000);
     result.current.markPlayed();

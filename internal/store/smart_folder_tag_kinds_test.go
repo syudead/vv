@@ -10,9 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// タグの種類で当てるスマートフォルダ。
-
-// smartFolderVideoIDs はフォルダ id の中身の動画の id を小さい順に返す。子フォルダは入れない。
 func smartFolderVideoIDs(t *testing.T, db *DB, id int64) []int64 {
 	t.Helper()
 	_, items := smartFolderPages(t, db, domain.AudienceOwner, id, domain.MaxLimit)
@@ -26,8 +23,6 @@ func smartFolderVideoIDs(t *testing.T, db *DB, id int64) []int64 {
 	return ids
 }
 
-// `tagKind: ジャンル, watch: unwatched` のフォルダには、ジャンルのタグ（手で付けたかフォルダ名から
-// 付いたか）を持つ未視聴の動画だけが入り、見終えると外れる（受け入れ条件 2）。
 func TestSmartFolderMatchesTagKindAndWatchState(t *testing.T) {
 	f := tagKindListingFixture(t)
 	ctx := context.Background()
@@ -53,8 +48,6 @@ func TestSmartFolderMatchesTagKindAndWatchState(t *testing.T) {
 	}
 }
 
-// 種類を消すと、その種類を名指すフォルダは何も一致させず、欠けた参照として報告される。条件は
-// 書き換えない。消す取引の確定後にすべてのフォルダを名指す知らせが出る。
 func TestDeletingATagKindMakesTheSmartFolderMatchNothing(t *testing.T) {
 	f := tagKindListingFixture(t)
 	ctx := context.Background()
@@ -95,7 +88,6 @@ func TestDeletingATagKindMakesTheSmartFolderMatchNothing(t *testing.T) {
 	}
 }
 
-// 無い種類を消そうとしても何も書かず、知らせも出ない。
 func TestDeletingAMissingTagKindPublishesNothing(t *testing.T) {
 	f := tagKindListingFixture(t)
 	newSmartFolder(t, f.db, "すべて", domain.SmartRule{}, domain.SortTitleAsc, 0)
@@ -110,8 +102,6 @@ func TestDeletingAMissingTagKindPublishesNothing(t *testing.T) {
 	}
 }
 
-// タグに種類を付ける・外すまとめての操作は、確定後にすべてのフォルダを名指す知らせを出し、中身は
-// 新しい種類で当たる。
 func TestSettingATagKindNamesEverySmartFolder(t *testing.T) {
 	f := tagKindListingFixture(t)
 	ctx := context.Background()

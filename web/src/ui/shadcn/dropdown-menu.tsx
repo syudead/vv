@@ -4,7 +4,7 @@ import type * as React from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の dropdown-menu（radix-nova）を vv のトークンで着せたもの
+// Adapted from shadcn/ui radix-nova with shared tokens.
 // （web/registry/rules/components.md「DropdownMenu」）。
 
 const itemClassName =

@@ -30,19 +30,10 @@ import {
 export type VideoDetailState =
   | { kind: "loading"; id: number }
   | { kind: "ready"; id: number; video: Video }
-  /** 動画が無い（404、または id の形が正しくない）。取り直しで消えたときもこれになる。 */
   | { kind: "missing"; id: number }
-  /** 最初の取得が 404 以外で失敗した。 */
   | { kind: "failed"; id: number; reason: UiText };
 
-/**
- * isProcessing は、取り込みの処理が残っているかを返す（plan の Structural
- * Decisions 7・11）。
- *
- * 読み取りに失敗した動画は、そこで終わりとして扱う。一覧用プレビューのジョブは読み取りの
- * 成功後にしか積まれないので、失敗した動画の `previewState` は `pending` のまま残る。
- * それを「処理中」と読むと、処理中の表示が終わらない。
- */
+/** Probe failures are terminal: preview jobs never start, so their pending state must not keep processing active. */
 export function isProcessing(video: Video): boolean {
   if (video.probeState === "pending") return true;
   if (video.probeState !== "done") return false;
@@ -53,21 +44,12 @@ export function isProcessing(video: Video): boolean {
   );
 }
 
-/**
- * VideoReadContext は動画を開いた文脈で、動画の読み取りに渡す。`group` は開いたグループ
- * （`?group`）、`smartFolder` は開いたスマートフォルダ（`?smartFolder`）の id である。
- */
 export interface VideoReadContext {
   group?: number;
   smartFolder?: number;
 }
 
-/**
- * withGroupOf は、変更の要求の応答 `saved` のグループとスマートフォルダを手元の 1 件 `current` の
- * ものに揃える。変更の要求は `group` も `smartFolder` も受け取らないので、応答のグループはいつも
- * id のいちばん小さいもので、スマートフォルダは無い。動画を開いた文脈（`opened`）があるときに
- * それを採ると、グループかフォルダの行が関連動画の再生順と食い違う。文脈が無ければ応答のまま。
- */
+/** Preserve opened group/folder context because mutation responses ignore it and return default membership. */
 function withGroupOf(
   saved: Video,
   current: Video | undefined,
@@ -83,19 +65,7 @@ function withGroupOf(
   return video;
 }
 
-/**
- * groupEventConcerns は、`group` の知らせ（変わったグループとその祖先の id、ids）が動画ページの
- * グループの行や関連動画のグループの並びに関わるかを返す。
- * shown は表示中のグループ、group は動画を開いたグループ（`?group`）の id である。
- *
- * サーバーは、開いたグループが動画を持てばそれを、そうでなければ動画を直接の項目に持つ
- * グループのうち id のいちばん小さいものを文脈にする。
- * - 表示中のグループが無い: 動画がどこかのグループに足されたかもしれないので、いつも関わる。
- * - 開いたグループが知らせにある: 中身が変わったか、動画が足されて文脈になったかもしれない。
- * - 開いたグループを表示中: 文脈は他のグループの変化では替わらないので、それだけを見る。
- * - それ以外（フォールバック中）: 表示中のグループか、それより id の小さいグループが知らせに
- *   あれば関わる。より小さいグループに動画が足されると、文脈がそちらへ替わる。
- */
+/** Opened groups win while they contain the video; otherwise the lowest-ID direct group wins. Refresh when events can change that choice. */
 function groupEventConcerns(
   ids: readonly number[],
   shown: number | undefined,
@@ -107,84 +77,30 @@ function groupEventConcerns(
   return ids.some((changed) => changed <= shown);
 }
 
-/** loadsStarted は、どの画面でも動画 1 件の取得を始めるたびに進める通し番号である。 */
 let loadsStarted = 0;
 
-/**
- * DetailMark は、変更の要求を送る直前の時点を表す印である。応答で動画を差し替える
- * `replace` に渡し、要求より前に始まったものと後に起きたものを分ける。
- */
+/** Capture before mutations so replace can distinguish earlier reads from later refreshes. */
 export type DetailMark = { load: number; visibility: number; favorite: number };
 
-/** detailMark は変更の要求（表示名の保存）を送る直前に呼び、その時点の印を返す。 */
 export function detailMark(): DetailMark {
   return { load: loadsStarted, visibility: visibilityMark(), favorite: favoriteMark() };
 }
 
-/**
- * ReplaceWorkInfo は、`workInfo` を載せない変更の応答で動画を差し替えるときの作品情報の扱いである。
- * - `keep`: 手元の作品情報を残す。作品情報を変えない変更（表示名・代表サムネイル）の応答に使う。
- * - `refetch`: 手元の作品情報を残さず、差し替えた後に動画を取り直して作品情報を読む。作品情報が
- *   変わる変更（束から外すと、外した動画は束ねる前の固有の作品情報に戻る）の応答に使う。
- */
+/** Keep omitted metadata for unrelated mutations; refetch after unbundling because the video's own metadata replaces the bundle's. */
 export type ReplaceWorkInfo = "keep" | "refetch";
 
-/**
- * withWorkInfoOf は、`workInfo` を載せない変更の応答 saved に、手元の動画 current の作品情報を
- * 戻す。応答が `workInfo` を持つとき、手元に無いときは saved のままである。
- */
 function withWorkInfoOf(saved: Video, current: Video | undefined): Video {
   if (saved.workInfo !== undefined || current?.workInfo === undefined) return saved;
   return { ...saved, workInfo: current.workInfo };
 }
 
-/**
- * withMediaInfoOf は、`mediaInfo` を載せない変更の応答 saved に、手元の動画 current の追加の
- * 情報を戻す。追加の情報は `GET /api/videos/{id}` にだけ載り、表示名やサムネイルの変更では変わらない。応答が持つとき、手元に無いときは saved のまま。
- */
+/** Preserve mediaInfo omitted by mutation responses; only detail reads include it. */
 function withMediaInfoOf(saved: Video, current: Video | undefined): Video {
   if (saved.mediaInfo !== undefined || current?.mediaInfo === undefined) return saved;
   return { ...saved, mediaInfo: current.mediaInfo };
 }
 
-/**
- * useVideoDetail は動画 1 件を取得し、その動画が変わったという知らせを受けたら
- * 取り直す。一定間隔では問い合わせない。
- *
- * - 知らせの接続をつなぎ直したときは、切れていた間の変化を取り戻すために取り直す。
- * - 別の動画へ移ったとき、画面を離れたときは、送信中の要求を打ち切って止める。
- * - 取り直しが 404 を返したら `missing` にする（表示中の動画がライブラリから消えた）。
- *   それ以外の一時的な失敗では、手元の控えを残す。
- *
- * `refresh` はすぐに取り直し、その取得が終わったら解決する。
- *
- * `replace` は、変更の要求の応答で受け取った動画を手元の 1 件にする（表示名の保存。
- * docs/design-docs/catalog-organization.md「Save」）。`mark` は要求を送る直前に取った
- * detailMark である。
- * - 要求より前に始めた取り直しは打ち切る。その応答で、変更した値を巻き戻さないため。
- *   要求の後に始めた取り直しは残す（公開の一部反映で始めた取り直しなど）。
- * - 要求の間に反映した公開の切り替えとお気に入りの付け外しは、応答の `public`・`favorite`
- *   より優先する。どちらもサーバーから知らせが来ないので、ここで巻き戻すと直らない。
- * - replace に渡る応答（表示名・代表サムネイル・束から外す）は契約上 `workInfo` を載せない。`workInfo` が
- *   `keep` なら、応答に無い作品情報は手元の値を残す（そのまま置くと情報欄から作品情報が消える）。
- *   `refetch` なら手元の値を残さず、差し替えた後に取り直す。束から外した動画は束の作品情報から
- *   固有の作品情報に戻るので、手元の値を残すと別の作品情報を出し、詳細の保存で上書きしかねない。
- * - 応答は `mediaInfo` も載せないので、手元の追加の情報をいつも残す（withMediaInfoOf）。
- * - 別の動画の応答は捨てる。
- * - 動画を開いたグループ（`group`）があるときは、応答のグループではなく手元のグループを残す
- *   （withGroupOf）。
- *
- * `setFavorite` は表示中の動画のお気に入りを `PUT /api/favorites` で付け外しし、成功したら
- * 取り直して、その取得が終わったら解決する。
- * 塗りは取り直した `favorite` で変える。付け外しの結果の知らせはこの 1 件へ重ねないので、
- * 取り直しの間と取り直しに失敗したときは前の状態のままである。失敗は reject で返す。
- *
- * `group` は動画を開いたグループの id で、取得のたびに渡す。
- * 同じ動画のまま `group` だけが変わったら、読み込み中に戻さずに取り直す（グループの操作の後に
- * `group` なしで読み直すとき、再生を止めない）。`smartFolder` は動画を開いたスマートフォルダの id
- * で、`group` と同じく取得のたびに渡し、変われば取り直す。そのフォルダを名指した `smartFolder` の
- * 知らせでも取り直す。
- */
+/** Refresh from events, retaining data on transient failure and rejecting stale responses with detail marks. Preserve playback across context changes and confirm local favorites from refreshed data. */
 export function useVideoDetail(
   id: number,
   group?: number,
@@ -201,9 +117,7 @@ export function useVideoDetail(
       ? { kind: "ready", id, video: initial }
       : { kind: "loading", id },
   );
-  // 手元にある応答（編集画面の保存の応答）から始める。最初の取得までの間もそれを出し、
-  // 古い値や読み込み中を挟まない。
-  // 使うのは最初の 1 回だけで、別の動画へ移ったら使わない。
+  // Seed from the editor's saved response without flashing stale data or a loading state.
   const seed = useRef(initial);
   const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const replaceRef = useRef<
@@ -212,10 +126,10 @@ export function useVideoDetail(
   const setFavoriteRef = useRef<(favorite: boolean) => Promise<void>>(() =>
     Promise.resolve(),
   );
-  // 変化の知らせ（/api/events）のうち video は所有者だけのもので、ゲストには group だけが届く。
+  // Only owners receive video events; guests may receive group events.
   const owner = useAudience() === "owner";
 
-  // 取得に渡すグループ。下の取得の効果より先に置き、動画が変わったときもその取得から新しい値を使う。
+  // Update context before the fetch effect so video changes use the new context immediately.
   const contextRef = useRef({ id, group, smartFolder });
   useEffect(() => {
     const previous = contextRef.current;
@@ -228,7 +142,7 @@ export function useVideoDetail(
   }, [id, group, smartFolder]);
 
   useEffect(() => {
-    // StrictMode が効果を 2 度走らせても同じ動画には使えるよう、別の動画へ移ったときに捨てる。
+    // Keep the seed across StrictMode replay, discarding it only when the video changes.
     const seeded = seed.current?.id === id ? seed.current : undefined;
     if (seeded === undefined) seed.current = undefined;
     setState(
@@ -246,14 +160,11 @@ export function useVideoDetail(
 
     let alive = true;
     let controller: AbortController | null = null;
-    // 送信中の取り直しを始めたときの loadsStarted の値。
     let started = 0;
     let current: Video | undefined = seeded;
-    // current を読んだ取得を始めたときの loadsStarted の値と favoriteReadMark の値。
     let currentLoad = 0;
     let currentRead = 0;
     const waiters: (() => void)[] = [];
-    // この画面の付け外しを送っている数。その間に届く付け外しの結果の知らせは重ねない。
     let ownFavorites = 0;
 
     const settle = () => {
@@ -266,9 +177,7 @@ export function useVideoDetail(
       controller = mine;
       loadsStarted += 1;
       started = loadsStarted;
-      // 取得の間に公開を切り替えたら、切り替える前の `public` を読んだ応答で
-      // 表示を巻き戻さない（切り替えはサーバーから知らせが来ない。PR 328）。
-      // お気に入りの付け外しも同じ。
+      // Preserve confirmed visibility/favorite changes over older reads; no server event would repair a rollback.
       const mark = visibilityMark();
       const favorite = favoriteMark();
       const read = favoriteReadMark();
@@ -336,10 +245,10 @@ export function useVideoDetail(
         mark.favorite,
       );
       current = video;
-      // 保存の応答はいつ読んだ値か分からないので、代表へは知らせない（setFavorite）。
+      // Mutation responses have no read timestamp, so do not propagate them to the representative.
       currentLoad = 0;
       setState({ kind: "ready", id, video });
-      // 先に終わった `video` の知らせの取り直しを、この応答で上書きしたかもしれないので取り直す。
+      // Refresh after replacing data that may have overwritten an already-completed event refresh.
       if (workInfo === "refetch") void load();
     };
 
@@ -350,12 +259,10 @@ export function useVideoDetail(
       } finally {
         ownFavorites -= 1;
       }
-      // 付け外しの後に始めた取得で読んだ値だけを代表へ知らせる。取り直しが失敗したときの
-      // current は付け外しの前の値なので、知らせると代表を古い値で上書きしてしまう。
+      // Propagate only post-mutation reads; failed refreshes leave current holding the pre-mutation value.
       const after = loadsStarted;
       await refreshRef.current();
-      // 代表以外のバージョンの付け外しは集まりの値を変えるが、一覧に出ているのは代表なので、
-      // 取り直した値で代表の項目と一覧の控えを揃える（noteFavoriteOf）。
+      // Versions share favorites; update the visible representative and snapshot from the refreshed value.
       const representative = current?.versions?.representativeId;
       if (
         alive &&
@@ -369,25 +276,21 @@ export function useVideoDetail(
       }
     };
 
-    // 公開・非公開の切り替えの結果は、取り直さずに手元の1件へ重ねる
-    // （issue 305。再生画面の切り替えは応答を受けてからこれで状態が変わる）。
     const unsubscribeVisibility = subscribeVideoVisibility((videoIds, isPublic) => {
       if (current === undefined || !videoIds.includes(id)) return;
       if (current.public === isPublic) return;
       current = { ...current, public: isPublic };
       setState({ kind: "ready", id, video: current });
     });
-    // 一部にしか反映されなかった切り替えは、どれが切り替わったか分からないので、
-    // この1件を取り直してサーバーの状態を表示する（Devin の指摘、PR 292）。
-    // 再生画面は一覧の控えを取らないので、取り直しの決着は知らせない。
+    // Partial application cannot identify changed videos; reload this video's authoritative state.
+    // Detail pages take no list snapshots, so they need not report refresh settlement.
     const unsubscribeStale = subscribeVideoVisibilityStale((videoIds) => {
       if (videoIds.includes(id)) void load();
       return undefined;
     });
 
-    // お気に入りの付け外しの結果も、取り直さずに手元の1件へ重ねる。ゲストの応答には
-    // `favorite` が無いので、無いものは足さない。
-    // この画面の付け外しは setFavorite の取り直しで確かめるので、ここでは重ねない。
+    // Do not add favorite fields absent from guest responses.
+    // Local favorite changes are confirmed by setFavorite's refresh, not by this overlay.
     const unsubscribeFavorites = subscribeFavorites((change) => {
       if (ownFavorites > 0) return;
       if (current === undefined || !change.videoIds.includes(id)) return;
@@ -400,10 +303,8 @@ export function useVideoDetail(
       return undefined;
     });
 
-    // グループの名前・項目・並び順が変わったら、グループの行（位置・本数・前後）を取り直す
     //
-    // スマートフォルダを文脈に開いたときは、どのグループの知らせでも取り直す。文脈がフォルダから
-    // グループへ戻っているかもしれず、関連動画の並びがフォルダかグループかを区別できないからである。
+    // Smart-folder context may have fallen back to a group, so every group event can affect navigation.
     const onGroup = (ids: readonly number[]) => {
       const opened = contextRef.current;
       if (
@@ -412,14 +313,12 @@ export function useVideoDetail(
       )
         void load();
     };
-    // 開いたスマートフォルダの中身が変わったら、フォルダの行（位置・本数）を取り直す
     //
     const onSmartFolder = (ids: readonly number[]) => {
       const opened = contextRef.current.smartFolder;
       if (opened !== undefined && ids.includes(opened)) void load();
     };
-    // 購読してから取得する。取得のあとに起きた変化を取りこぼさない。ゲストには group だけが
-    // 届くので、group だけを購読する。
+    // Subscribe before fetching to avoid missed changes; guests subscribe only to group events.
     const unsubscribe = owner
       ? subscribeServerEvents({
           video: (changed) => {
@@ -427,9 +326,8 @@ export function useVideoDetail(
           },
           group: onGroup,
           smartFolder: onSmartFolder,
-          // つなぎ直したときは、切れていた間の知らせを受け取っていないので取り直す。
-          // 最初の接続では、開いたときの取得と同じ内容を2回続けて取らないよう、まだ準備中
-          // （取得とつながるまでの間に準備が済んだかもしれない）のときだけ取り直す（issue 674）。
+          // Reconnection requires refresh because events may have been missed.
+          // Avoid duplicate initial reads unless processing could have completed before the event connection opened.
           open: (reconnected) => {
             if (reconnected || (current !== undefined && isProcessing(current)))
               void load();
@@ -473,36 +371,14 @@ export type RelatedState =
   | {
       kind: "ready";
       id: number;
-      /** 読んだページを合わせた関連動画。`nextCursor` は最後に読んだページのもの。 */
       related: RelatedVideos;
-      /** 続きのページの読み込み。省くと `idle`。 */
       more?: "idle" | "loading" | "failed";
-      /**
-       * 最初のページを読んだ回数（同じ動画・同じ開いたグループの間で数える）。グループの知らせで
-       * 読み直すたびに増える。グループの並びの画面はこれで作り直し、窓の外に読み足した古い
-       * メンバーと読み足し中の要求を捨てる。省くと 0。
-       */
+      /** Increment first-page generations to reset appended member windows and their pending requests. */
       generation?: number;
     }
   | { kind: "failed"; id: number };
 
-/**
- * useRelatedVideos は関連動画の最初のページを取得する。失敗したら `retry` で取り直せる。
- *
- * `loadMore` は続きのページ（`nextCursor` の後）を読み、並びの後ろに足す（issue 931）。
- * 読み込み中と続きが無いときは何もしない。すでにある動画は足さないので、読む間に並びが
- * 変わっても同じ動画が二重に出ない。失敗したら `more` が `failed` になり、もう一度
- * `loadMore` で読み直せる。
- *
- * `rename` は、基準の動画の表示名を保存した応答を、グループのメンバーの並びにある
- * 同じ動画へ写す（並びは基準の動画も含む）。取り直さずに、並びの題名を画面の題名とそろえる。
- * `rethumb` は、基準の動画の代表サムネイルを指定・解除した応答を同じように写し、
- * 並びのサムネイル（URL の版が変わる）を画面のサムネイルとそろえる。
- *
- * `group` は動画を開いたグループの id で、どのページの取得にも渡す。
- * 変われば最初のページから読み直す。`smartFolder` は動画を開いたスマートフォルダの id で、
- * 同じく渡し、そのフォルダを名指した `smartFolder` の知らせでも読み直す。
- */
+/** Paginate with deduplication and shared context; patch saved titles/thumbnails into member rows without reloading. */
 export function useRelatedVideos(
   id: number,
   group?: number,
@@ -533,8 +409,7 @@ export function useRelatedVideos(
       return;
     }
     let controller = new AbortController();
-    // 一度でも並びを出したか。出した後の読み直しは、読み込み中に戻さず今の並びを見せ続け、
-    // 失敗しても今の並びを残す。
+    // After first display, quiet refreshes retain the current list even on failure.
     let shownOnce = false;
     let generation = 0;
     const show = (related: RelatedVideos) => {
@@ -563,9 +438,7 @@ export function useRelatedVideos(
         if (!shownOnce) setState({ kind: "failed", id });
       }
     };
-    // 開いたグループか並びのグループの名前・項目・並び順が変わったら、最初のページから読み直す。送信中の取得と続きの取得は打ち切る。続きの取得を
-    // 打ち切ったら、その読み込み中の印も外す。読み直しが失敗して今の並びを残しても、続きを
-    // もう一度読めるようにする。
+    // Restart at page one and clear aborted load-more state so pagination remains retryable if refresh fails.
     const reload = () => {
       controller.abort();
       if (moreAbort.current !== null) {
@@ -580,9 +453,7 @@ export function useRelatedVideos(
       controller = new AbortController();
       void load();
     };
-    // ゲストにも group は届く。
-    // スマートフォルダを文脈に開いたときは、どのグループの知らせでも、開いたフォルダを名指した
-    // `smartFolder` の知らせでも読み直す（useVideoDetail の onGroup と同じ理由）。
+    // Refresh for group changes or the opened smart folder, matching useVideoDetail's fallback handling.
     const unsubscribe = subscribeServerEvents({
       group: (ids) => {
         const current = stateRef.current;
@@ -650,8 +521,6 @@ export function useRelatedVideos(
   }, []);
 
   const retry = useCallback(() => setAttempt((value) => value + 1), []);
-  // patchMember は、グループのメンバーの並びにある基準の動画 video.id の項目を patch で
-  // 書き換える。並びに無ければ何も変えない。
   const patchMember = useCallback((video: Video, patch: (item: Video) => Video) => {
     setState((previous) => {
       if (previous.kind !== "ready" || previous.id !== video.id) return previous;

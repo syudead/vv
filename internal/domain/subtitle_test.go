@@ -27,9 +27,7 @@ func TestSubtitleSidecarsMatchesNames(t *testing.T) {
 		{"movie.mp4", "movie.en.forced.vtt", []SubtitleSidecar{{File: "movie.en.forced.vtt", Label: "en.forced", Format: SubtitleFormatVTT}}},
 		{"movie.mp4", "MOVIE.JA.Vtt", []SubtitleSidecar{{File: "MOVIE.JA.Vtt", Label: "JA", Format: SubtitleFormatVTT}}},
 		{"my.movie.2024.mp4", "my.movie.2024.ja.srt", []SubtitleSidecar{{File: "my.movie.2024.ja.srt", Label: "ja", Format: SubtitleFormatSRT}}},
-		// 動画と字幕で正規化の形が違っても（macOS の NFD）照合する。File は元の名前のまま。
 		{norm.NFD.String("café.mp4"), norm.NFC.String("café.fr.srt"), []SubtitleSidecar{{File: norm.NFC.String("café.fr.srt"), Label: "fr", Format: SubtitleFormatSRT}}},
-		// ラベルはファイル名に書かれたままの形（ここでは NFD）で返す。
 		{"movie.mp4", norm.NFD.String("movie.café.srt"), []SubtitleSidecar{{File: norm.NFD.String("movie.café.srt"), Label: norm.NFD.String("café"), Format: SubtitleFormatSRT}}},
 		{norm.NFD.String("é.mp4"), norm.NFC.String("É.ÉN.srt"), []SubtitleSidecar{{File: norm.NFC.String("É.ÉN.srt"), Label: norm.NFC.String("ÉN"), Format: SubtitleFormatSRT}}},
 		{"movie.mp4", "movie2.srt", nil},
@@ -67,7 +65,7 @@ func TestSubtitleSidecarsDedupesAndOrders(t *testing.T) {
 }
 
 func TestSubtitleSidecarsDedupesLabelsWithUnicodeCaseFolding(t *testing.T) {
-	// strings.ToLower では Σ と ς が別の鍵になる。単純な case folding では同じラベルである。
+	// Lowercasing distinguishes Σ and ς, but simple case folding must merge their labels.
 	got := SubtitleSidecars("movie.mp4", sidecarEntries("movie.Σ.srt", "movie.ς.vtt"))
 	want := []SubtitleSidecar{
 		{File: "movie.ς.vtt", Label: "ς", Format: SubtitleFormatVTT},
@@ -94,7 +92,6 @@ func TestSubtitleSidecarsSkipsFilesOverTheLimit(t *testing.T) {
 	})
 	want := []SubtitleSidecar{
 		{File: "movie.srt", Label: "", Format: SubtitleFormatSRT},
-		// 上限を超える .vtt は候補にならないので、同じラベルの .srt を隠さない。
 		{File: "movie.ja.srt", Label: "ja", Format: SubtitleFormatSRT},
 	}
 	if !slices.Equal(got, want) {

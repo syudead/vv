@@ -19,75 +19,57 @@ import (
 
 var ErrNoMediaFolders = errors.New("no media folders are configured")
 
-// errNotDirectory はメディアフォルダ・親ディレクトリがディレクトリでない（シンボリック
-// リンクを含む）ことを表す。
+// Includes symlink roots or parents.
 var errNotDirectory = errors.New("not a directory")
 
-// errNotRegular は、対象のファイルが通常のファイルでなくなったことを表す。
 var errNotRegular = errors.New("not a regular file")
 
-// mediaExtensions は取り込みの対象にする拡張子である。
-//
-// 再生できない形式（mkv・avi など）も取り込む。一覧に出したうえで「再生でき
-// ない」と示すためで、一覧から消してしまうと利用者は手元に何があるか分から
-// なくなる。
+// Index unsupported playback formats too, so users can still see everything in their library.
 var mediaExtensions = map[string]struct{}{
 	".mp4": {}, ".m4v": {}, ".webm": {}, ".mkv": {}, ".mov": {}, ".avi": {},
 	".wmv": {}, ".flv": {}, ".ts": {}, ".m2ts": {}, ".mts": {}, ".mpg": {}, ".mpeg": {},
 }
 
-// excludedNames は名前が一致したら丸ごと飛ばすものである。NAS が作る管理用の
-// ディレクトリと、ファイルシステムの復旧領域を対象にする。
+// Skip NAS metadata and filesystem recovery directories entirely.
 var excludedNames = map[string]struct{}{
-	"@eaDir":     {}, // Synology のサムネイル置き場
-	"#recycle":   {}, // Synology のごみ箱
-	"lost+found": {}, // fsck の置き場
+	"@eaDir":     {}, // Synology thumbnail storage.
+	"#recycle":   {}, // Synology recycle bin.
+	"lost+found": {}, // fsck recovery storage.
 }
 
-// partialExtensions は書き込み途中のファイルが持つ拡張子である。
-// 取り込むと、途中の内容で content_key を計算してしまう。
+// Exclude incomplete writes to avoid deriving content keys from partial bytes.
 var partialExtensions = map[string]struct{}{
 	".part": {}, ".crdownload": {}, ".tmp": {},
 }
 
-// Index は走査結果の保存先である。scanner は保存の手段を知らない。
+// Index hides persistence from the scanner.
 type Index interface {
 	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
-	// IndexedVideosByPath は索引に入っているものをパスで引ける形で返す。
 	IndexedVideosByPath(ctx context.Context) (map[string]domain.IndexedVideo, error)
-	// UpsertVideo は1件を索引に反映する。
 	UpsertVideo(ctx context.Context, file domain.VideoFile) (domain.UpsertResult, error)
 	// DeleteVideoLocations removes missing filesystem locations and orphan videos.
 	DeleteVideoLocations(ctx context.Context, ids []int64) error
-	// UpdateLocationCreatedAt は所在のファイルの作成日時だけを書き直す。ゼロ値は取れなかった
-	// （null に戻す）。変わっていないファイルの作成日時が索引と違うときに呼ぶ
-	//
+	// A zero creation time clears the stored value to null.
 	UpdateLocationCreatedAt(ctx context.Context, locationID int64, createdAt time.Time) error
 }
 
-// Queue は重い処理の積み先である。nil でもよい（積まないだけ）。decider は取り込みを始めたもので、
-// 積んだ仕事の import の記録に残る。1 本の動画に要る仕事は 1 回の
-// 呼び出しでまとめて積み、1 件の記録にする（R-3）。
+// Queue all jobs for one video in one call so they share one import activity and decider; nil
+// disables queuing.
 type Queue interface {
 	EnqueueJobs(ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind) error
 	EnsureJobs(ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind) error
 }
 
-// Reporter は走査の進捗・今のファイル・ファイルごとの失敗の報告先である。nil でも
-// よい（報告しないだけ）。失敗は直近の取り込みの問題として記録される。scanner は記録の手段を知らない。
+// Reporter is optional and hides progress/error persistence from the scanner.
 type Reporter interface {
-	// ReportScanProgress は進みを報告する。登録の対象を数え終えたときと、
-	// 1ファイルを終えるごとに呼ばれる。
+	// Called after target enumeration and after each processed file.
 	ReportScanProgress(ctx context.Context, result domain.ScanResult) error
 	ReportScanIssue(ctx context.Context, issue domain.ScanFileIssue) error
-	// ReportScanFile は登録を始めるファイルを知らせる。videoID は走査が知っている
-	// 既存の動画（知らなければ 0）である。path が空なら、ファイルの登録をすべて
-	// 終えたことを表す。
+	// videoID is zero when unknown; an empty path marks registration completion.
 	ReportScanFile(path string, videoID int64)
 }
 
-// fileError は1つのファイルを取り込めなかった理由である。kind は問題の種類、
-// videoID は走査が知っている既存の動画（知らなければ 0）である。
+// videoID is zero when the existing video is unknown.
 type fileError struct {
 	kind    domain.ScanIssueKind
 	videoID int64
@@ -97,21 +79,18 @@ type fileError struct {
 func (e *fileError) Error() string { return e.err.Error() }
 func (e *fileError) Unwrap() error { return e.err }
 
-// failFile は err を kind の失敗として包む。
 func failFile(kind domain.ScanIssueKind, videoID int64, err error) error {
 	return &fileError{kind: kind, videoID: videoID, err: err}
 }
 
-// Options は走査の組み立てに必要な依存である。
 type Options struct {
 	Index    Index
 	Queue    Queue
 	Reporter Reporter
-	// Logger は nil なら slog の既定を使う。
+	// Nil uses slog.Default.
 	Logger *slog.Logger
 }
 
-// Scanner は登録済みメディアフォルダを走査して索引を実際のファイルに合わせる。
 type Scanner struct {
 	index      Index
 	queue      Queue
@@ -120,7 +99,7 @@ type Scanner struct {
 	contentKey func(string) (string, error)
 	walkDir    func(string, fs.WalkDirFunc) error
 	lstat      func(string) (fs.FileInfo, error)
-	// createdAt はファイルの作成日時を読む。試験で差し替える。
+	// Replaceable creation-time reader for tests.
 	createdAt func(string, fs.FileInfo) (time.Time, bool)
 }
 
@@ -128,7 +107,6 @@ type scanTarget struct {
 	path string
 }
 
-// New は走査を組み立てる。
 func New(opts Options) *Scanner {
 	logger := opts.Logger
 	if logger == nil {
@@ -146,57 +124,32 @@ func New(opts Options) *Scanner {
 	}
 }
 
-// scanPass は1回の走査が集めるものである。
 type scanPass struct {
 	indexed map[string]domain.IndexedVideo
 	result  domain.ScanResult
-	// seen は走査で見つけたパス。ここに無い索引の行が「消えたファイル」になる。
+	// Unseen indexed paths become deletion candidates.
 	seen map[string]struct{}
-	// targets は metadata の比較で変更なしを除いた、実際に取り込むファイル。
-	// 全ルートを列挙してから処理し、進捗の分母を先に確定させる。
+	// Collect all roots before processing to establish the progress denominator; unchanged files are
+	// excluded.
 	targets []scanTarget
-	// decider は走査を始めたもので、積む仕事の記録に渡す。
 	decider domain.ActivityDecider
-	// scoped は範囲を絞った走査（監視の走査）であることを表す。取り込みの途中で変わった・
-	// 消えたファイルを失敗にせず、変更の知らせで始まる次の走査に任せる。
+	// Scoped scans defer files changed or removed mid-ingestion to the next watcher event.
 	scoped bool
-	// vanished は監視の走査が歩いている途中で消えたディレクトリである。その下の所在は
-	// 今回は消さず、消えた知らせで始まる次の監視の走査に任せる。
+	// Keep locations under directories that vanish mid-scan until the next watcher scan handles their
+	// move/deletion.
 	vanished []domain.DirtyDirectory
 }
 
-// Scan は全体の走査を1回行い、集計を返す。
-//
-// 手順は次のとおり。
-//
-//  1. 索引に入っているものをパスで引ける形で読み出す
-//  2. 登録済みの全ルート以下を再帰的に走り、取り込み対象を確定する
-//  3. パスが一致する行は、サイズと mtime を比べる。変化が無ければ何もしない
-//     （content_key の再計算もしない）
-//  4. 対象数を進捗として報告してから、新しい・変わったファイルだけ
-//     content_key を計算して反映する。内容が
-//     同じでパスが違うものは移動・改名として扱われる（重複を作らない）
-//  5. 走査で見つからなかった行を消す
-//
-// 動画ファイルは読み取りのみで扱う。変更・移動・削除・変換は行わない。
-// 個別のファイルの失敗では中止せず、失敗として数えて次へ進む。
-//
-// decider は走査を始めたもの（手動の走査は所有者、起動時の再開は規則）で、積む仕事の記録に渡す。
+// Scan updates only the index, never source files; unchanged size/mtime avoids rehashing, and
+// content identity preserves moves. Individual file failures do not stop the pass, and decider
+// propagates to queued work.
 func (s *Scanner) Scan(ctx context.Context, decider domain.ActivityDecider) (domain.ScanResult, error) {
 	return s.scan(ctx, nil, false, decider)
 }
 
-// ScanScoped は dirs のディレクトリだけを読む走査を1回行い、集計を返す
-//
-// Scan と手順は同じだが、歩くのは dirs だけで、消すのは「パスが dirs の読む範囲に
-// あり、今回の走査で見つからなかった」所在だけである。範囲の外は、索引にあっても
-// 見ていないので何も変えない。追加をすべて終えてから削除するので、dirs の間で動かした
-// 動画は同じ動画のまま所在が付け替わる。
-//
-// 走査の context が domain.ErrScanSuperseded を理由に取り消されたら、次のファイルの
-// 前で止め、何も消さずに domain.ErrScanSuperseded を返す。
-//
-// 監視の走査は規則が始めたものとして仕事を積む。
+// ScanScoped adds all discovered locations before deleting unseen ones within its actual scope,
+// preserving moves between directories and leaving outside locations untouched. Superseded scans
+// stop between files without deleting and return ErrScanSuperseded.
 func (s *Scanner) ScanScoped(ctx context.Context, dirs []domain.DirtyDirectory) (domain.ScanResult, error) {
 	return s.scan(ctx, domain.NormalizeDirtyDirectories(dirs), true, domain.ActivityByRule)
 }
@@ -229,8 +182,7 @@ func (s *Scanner) scanOnce(
 	pass := &scanPass{
 		indexed: indexed, seen: map[string]struct{}{}, targets: []scanTarget{}, scoped: scoped, decider: decider,
 	}
-	// scanned は今回の走査が読むメディアフォルダ。全体の走査は全部、範囲を絞った走査は
-	// 読むディレクトリを持つものだけである（ほかのフォルダが読めなくても止めない）。
+	// Ignore unrelated unreadable media folders during scoped scans.
 	scanned := folders
 	if scoped {
 		scanned = nil
@@ -243,8 +195,8 @@ func (s *Scanner) scanOnce(
 		}
 	}
 
-	// collected は実際に歩いたディレクトリ。削除の範囲はここから決める。メディアフォルダの
-	// 外にある項目や、メディアフォルダの祖先の項目は歩かないので、範囲に入れない。
+	// Derive deletion scope only from directories actually traversed, excluding out-of-root and
+	// ancestor entries.
 	var collected []domain.DirtyDirectory
 	for _, folder := range scanned {
 		root := folder.Path
@@ -279,7 +231,7 @@ func (s *Scanner) scanOnce(
 	result := pass.result
 	seen := pass.seen
 	result.Total += len(pass.targets)
-	// 対象列挙中は total=0 の不確定表示で、ここから確定した 0 / total を示す。
+	// Enumeration uses indeterminate total=0; processing starts with a fixed denominator.
 	if err := s.report(ctx, result); err != nil {
 		return result, err
 	}
@@ -290,7 +242,7 @@ func (s *Scanner) scanOnce(
 		return result, err
 	}
 
-	// 取って代わられた走査は、ここまでに足したものを残し、何も消さない。
+	// Superseded scans keep additions and perform no deletions.
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
@@ -310,7 +262,6 @@ func (s *Scanner) scanOnce(
 	return result, nil
 }
 
-// ingestTargets は pass の取り込み対象を1つずつ索引に反映し、result を進める。
 func (s *Scanner) ingestTargets(ctx context.Context, pass *scanPass, result *domain.ScanResult) error {
 	for _, target := range pass.targets {
 		if err := ctx.Err(); err != nil {
@@ -329,8 +280,7 @@ func (s *Scanner) ingestTargets(ctx context.Context, pass *scanPass, result *dom
 			result.Processed++
 		}
 
-		// 1ファイルごとに進みを知らせる。画面への送信は接続ごとにまとまるので、
-		// 遅い接続に古い値は積もらない。
+		// Connections coalesce progress so slow consumers do not accumulate stale updates.
 		if err := s.report(ctx, *result); err != nil {
 			return err
 		}
@@ -339,11 +289,8 @@ func (s *Scanner) ingestTargets(ctx context.Context, pass *scanPass, result *dom
 	return nil
 }
 
-// recordIngestFailure は1件の取り込みの失敗を数え、取り込みの問題として報告する。1件の
-// 失敗で全体は止めない。
-//
-// 監視の走査では、途中で変わった・消えたファイルは失敗にせず対象から外す。その変更は
-// 変更の知らせになって、ディレクトリを次の監視の走査へ回すからである
+// Individual failures do not stop scanning; watcher scans defer changed/vanished files to
+// subsequent events rather than counting failures.
 func (s *Scanner) recordIngestFailure(
 	ctx context.Context, pass *scanPass, result *domain.ScanResult, path string, videoID int64, err error,
 ) error {
@@ -366,12 +313,8 @@ func (s *Scanner) recordIngestFailure(
 	return s.reportIssue(ctx, issue)
 }
 
-// dropVanished は、列挙のあとに消えたファイルを pass.seen から外す。発見済みという理由
-// だけで索引へ残さないためである。
-//
-// 親ディレクトリごと消えた場合は列挙結果を信頼できないため、全体の走査は失敗にする。
-// 監視の走査では、消えたディレクトリは移動か削除の知らせで次の監視の走査に回るので、
-// その所在を今は残し（消さず）、走査は続ける。移動先の追加を先に行ってから消すためである
+// Remove vanished files from seen; an unreadable parent invalidates a full scan, while watcher
+// scans preserve its locations until the next event so moved targets can be added first.
 func (s *Scanner) dropVanished(pass *scanPass, scanned []domain.MediaFolder) error {
 	checkedDirs := map[string]struct{}{}
 	for _, folder := range scanned {
@@ -410,9 +353,7 @@ func (s *Scanner) dropVanished(pass *scanPass, scanned []domain.MediaFolder) err
 	return nil
 }
 
-// checkVanishedParent は消えたファイルの親 parent を確かめる。親が読めればファイルだけが
-// 消えたので keep は偽である。監視の走査で親ごと消えていれば、所在を残すので keep は真である。
-// 確かめた結果は checkedDirs と keptDirs に覚える。
+// Cache parent checks; scoped scans retain locations when the parent vanished too.
 func (s *Scanner) checkVanishedParent(
 	scoped bool, parent string, checkedDirs, keptDirs map[string]struct{},
 ) (keep bool, err error) {
@@ -437,7 +378,6 @@ func (s *Scanner) checkVanishedParent(
 		fmt.Errorf("could not check the parent directory after the scan (%s): %w", parent, parentErr))
 }
 
-// checkMediaFolder はメディアフォルダ root が読めるディレクトリかを確かめる。
 func checkMediaFolder(root string) error {
 	rootInfo, rootErr := os.Lstat(root)
 	if rootErr != nil {
@@ -451,9 +391,7 @@ func checkMediaFolder(root string) error {
 	return nil
 }
 
-// collectDirectory はメディアフォルダ root の中の読み直すディレクトリ dir を歩く。
-// 消えたディレクトリ（と、シンボリックリンクやファイルに変わったもの）は空として扱う。
-// 除外するディレクトリの中は読まない。
+// Treat vanished or replaced directories as empty and skip excluded subtrees.
 func (s *Scanner) collectDirectory(ctx context.Context, pass *scanPass, root string, dir domain.DirtyDirectory) error {
 	if rel, err := filepath.Rel(root, dir.Path); err == nil && rel != "." {
 		for _, name := range strings.Split(rel, string(filepath.Separator)) {
@@ -492,9 +430,7 @@ func (s *Scanner) collectDirectory(ctx context.Context, pass *scanPass, root str
 	return nil
 }
 
-// visit は走査の1つの入口（ファイルかディレクトリ）を見て、取り込み対象を pass に集める。
-// walkRoot は歩き始めた場所で、除外の判定の対象にしない。recursive が偽なら、その下の
-// ディレクトリには入らない。
+// walkRoot itself bypasses exclusions; recursive=false skips child directories.
 func (s *Scanner) visit(
 	ctx context.Context, pass *scanPass, folderRoot, walkRoot string, recursive bool,
 	path string, entry fs.DirEntry, err error,
@@ -526,18 +462,15 @@ func (s *Scanner) visit(
 	pass.seen[path] = struct{}{}
 	info, infoErr := entry.Info()
 	if infoErr != nil && pass.scoped && errors.Is(infoErr, fs.ErrNotExist) {
-		// 列挙のあとに消えた。取り込みの対象にはせず、消えた知らせが次の監視の走査に回す。
-		// seen には残すので、親ごと消えたかは dropVanished が確かめる。
+		// Keep vanished entries in seen until dropVanished checks whether their parent also vanished.
 		return nil
 	}
 	if infoErr == nil && !info.Mode().IsRegular() {
-		// 列挙の時点で通常のファイルでない（名前付きパイプなど）。途中で変わったのではなく、
-		// 動画として読めないファイルである。
+		// A nonregular entry discovered during enumeration is an invalid video, not a mid-scan change.
 		infoErr = fmt.Errorf("%w (%s)", errNotRegular, path)
 	}
 	if infoErr != nil {
-		// media file だと判定できた時点で取り込み候補である。metadata を
-		// 読めない場合も対象件数と失敗件数に含める。
+		// Count media candidates and failures even if metadata cannot be read.
 		pass.result.Total++
 		pass.result.Failed++
 		s.logger.Warn("could not read the file information of a scan target",
@@ -550,9 +483,8 @@ func (s *Scanner) visit(
 	if existing, ok := pass.indexed[path]; ok &&
 		existing.SizeBytes == info.Size() &&
 		existing.MTime.Equal(info.ModTime()) {
-		// 変わっていないファイルは取り込み対象に含めない。作成日時が索引と
-		// 違えば所在の列だけを直し、欠落した pending jobだけを補い、terminal
-		// failureは復活させない。
+		// For unchanged files, update creation time and repair missing pending jobs without reviving
+		// terminal failures.
 		createdErr := s.refreshCreatedAt(ctx, path, info, existing)
 		jobsErr := s.ensurePendingJobs(ctx, existing, pass.decider)
 		if err := errors.Join(createdErr, jobsErr); err != nil {
@@ -574,8 +506,7 @@ func (s *Scanner) visit(
 	return nil
 }
 
-// visitError は歩いている途中で読めなかった場所 path の失敗を返す。監視の走査で、途中で
-// 消えたディレクトリは失敗にせず pass.vanished に覚え、その下を歩かない。
+// Watcher scans remember vanished directories and skip their subtrees instead of failing.
 func (s *Scanner) visitError(pass *scanPass, folderRoot, path string, err error) error {
 	if pass.scoped && path != folderRoot && errors.Is(err, fs.ErrNotExist) {
 		s.logger.Info("a directory vanished during a watch scan; the next watch scan reads it again",
@@ -585,7 +516,7 @@ func (s *Scanner) visitError(pass *scanPass, folderRoot, path string, err error)
 	}
 	s.logger.Warn("could not read a location during the scan",
 		slog.String("path", path), slog.Any("error", err))
-	// メディアフォルダそのものが読めなければ、途中の場所ではなくフォルダの失敗である。
+	// An unreadable root is a media-folder failure, not a nested-path failure.
 	code := domain.ScanErrorLocationUnreadable
 	if path == folderRoot {
 		code = domain.ScanErrorMediaFolderUnreadable
@@ -613,7 +544,6 @@ func ensureReadableDirectory(path string) error {
 	return closeErr
 }
 
-// ingest は1つのファイルを索引に反映する。
 func (s *Scanner) ingest(
 	ctx context.Context,
 	target scanTarget,
@@ -647,7 +577,7 @@ func (s *Scanner) ingest(
 		Container:  domain.ContainerFromPath(target.path),
 		Decider:    decider,
 	}
-	// 読めなかった作成日時はゼロ値のまま登録する（失敗にしない）。
+	// Missing creation time is optional and remains zero.
 	if createdAt, ok := s.createdAt(target.path, info); ok {
 		file.FileCreatedAt = createdAt
 	}
@@ -674,9 +604,8 @@ func (s *Scanner) ingest(
 	return nil
 }
 
-// unreadableKind は対象のファイルを読めなかった理由 err を問題の種類にする。列挙のあとで
-// 消えたか通常のファイルでなくなったときだけ、途中で変わったと言える。それ以外の読めなさ
-// （I/O の失敗や権限）は、読めなかったとして報告する。
+// Only disappearance or replacement by a nonregular file proves a mid-import change; permission and
+// I/O failures remain unreadable.
 func unreadableKind(err error) domain.ScanIssueKind {
 	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, errNotRegular) {
 		return domain.IssueChangedDuringImport
@@ -695,9 +624,8 @@ func (s *Scanner) stableTargetInfo(path string) (fs.FileInfo, error) {
 	return info, nil
 }
 
-// refreshCreatedAt は変わっていないファイルの作成日時を読み、索引の値と秒で違うときだけ
-// 所在の列を書き直す。読めなかったときはゼロ値として比べるので、索引に値があれば null に
-// 戻る。中身の識別子も job も触らない。
+// Compare creation time at stored second precision, clearing unavailable values to null without
+// touching content keys or jobs.
 func (s *Scanner) refreshCreatedAt(
 	ctx context.Context, path string, info fs.FileInfo, existing domain.IndexedVideo,
 ) error {
@@ -715,7 +643,6 @@ func (s *Scanner) refreshCreatedAt(
 	return s.index.UpdateLocationCreatedAt(ctx, locationID, createdAt)
 }
 
-// sameCreatedAt は作成日時を、索引が持つ秒で比べる。ゼロ値どうしは同じである。
 func sameCreatedAt(a, b time.Time) bool {
 	if a.IsZero() || b.IsZero() {
 		return a.IsZero() == b.IsZero()
@@ -733,11 +660,10 @@ func (s *Scanner) ensurePendingJobs(ctx context.Context, video domain.IndexedVid
 	}{
 		{kind: domain.JobProbe, pending: video.ProbeState == domain.ProbeStatePending},
 		{kind: domain.JobThumbnail, pending: video.ThumbnailState == domain.ThumbnailStatePending},
-		// failed は積み直さない。やり直しは読み取りのやり直し（RetryProbe）が受け持つ。
+		// Only RetryProbe revives failed stages.
 		{kind: domain.JobSeekThumbnail, pending: video.SeekThumbnailState == domain.SeekThumbnailPending},
 		{kind: domain.JobPreview, pending: video.ProbeState == domain.ProbeStateDone && video.PreviewState == domain.PreviewStatePending},
-		// 指紋は状態の列を持たないので、上限まで失敗した分もここで積み直す
-		//
+		// Fingerprints have no status column, so scans also requeue exhausted fingerprint jobs.
 		{kind: domain.JobFingerprint, pending: video.FingerprintMissing},
 	}
 	var kinds []domain.JobKind
@@ -752,7 +678,6 @@ func (s *Scanner) ensurePendingJobs(ctx context.Context, video domain.IndexedVid
 	return s.queue.EnsureJobs(ctx, video.ID, decider, kinds...)
 }
 
-// enqueue は解析・サムネイル・シーク用サムネイル・プレビューのうち要るジョブを積む。
 func (s *Scanner) enqueue(ctx context.Context, result domain.UpsertResult, decider domain.ActivityDecider) error {
 	if s.queue == nil {
 		return nil
@@ -776,14 +701,8 @@ func (s *Scanner) enqueue(ctx context.Context, result domain.UpsertResult, decid
 	return s.queue.EnqueueJobs(ctx, result.ID, decider, kinds...)
 }
 
-// removeMissing は走査で見つからなかった行を消す。
-//
-// 移動・改名の場合は、新しいパスの取り込みで content_key が一致し、既存の行が
-// そちらへ付け替わっている。その結果このパスは索引から消えているので、ここで
-// 「消えたファイル」として扱われることはない。
-//
-// inScope が偽を返すパスは、今回の走査が見ていないので消さない。全体の走査は全部を
-// 見ているので常に真である。
+// Additions already relocate matching content keys before deletion; never remove paths outside
+// inScope.
 func (s *Scanner) removeMissing(
 	ctx context.Context, folders []domain.MediaFolder, seen map[string]struct{}, inScope func(string) bool,
 ) (int, error) {
@@ -823,7 +742,7 @@ func (s *Scanner) removeMissing(
 	return len(missing), nil
 }
 
-// report は進捗を報告する。進捗と処理結果の整合性を守るため、報告の失敗時は走査を止める。
+// Stop on reporting failure to keep recorded progress consistent with results.
 func (s *Scanner) report(ctx context.Context, result domain.ScanResult) error {
 	if s.reporter == nil {
 		return nil
@@ -834,15 +753,14 @@ func (s *Scanner) report(ctx context.Context, result domain.ScanResult) error {
 	return nil
 }
 
-// reportFile は登録を始めるファイルを知らせる。path が空なら登録を終えたことを表す。
+// An empty path marks registration completion.
 func (s *Scanner) reportFile(path string, videoID int64) {
 	if s.reporter != nil {
 		s.reporter.ReportScanFile(path, videoID)
 	}
 }
 
-// reportIssue はファイルの失敗を報告する。報告の失敗時は、進捗と同じく走査を止める。
-// 記録できなかった失敗は、利用者から見えなくなるためである。
+// Stop if a failure cannot be recorded; otherwise it becomes invisible to users.
 func (s *Scanner) reportIssue(ctx context.Context, issue domain.ScanFileIssue) error {
 	if s.reporter == nil {
 		return nil
@@ -853,16 +771,14 @@ func (s *Scanner) reportIssue(ctx context.Context, issue domain.ScanFileIssue) e
 	return nil
 }
 
-// isMediaFile は取り込みの対象かどうかを返す。
 func isMediaFile(name string) bool {
-	// 名前が "." で始まるものは隠しファイルとして飛ばす。
 	if strings.HasPrefix(name, ".") {
 		return false
 	}
 
 	ext := strings.ToLower(filepath.Ext(name))
 
-	// 書き込み途中のファイルは、途中の内容で content_key を計算してしまう。
+	// Do not hash partially written contents.
 	if _, ok := partialExtensions[ext]; ok {
 		return false
 	}
@@ -871,7 +787,6 @@ func isMediaFile(name string) bool {
 	return ok
 }
 
-// isExcludedDir は丸ごと飛ばすディレクトリかどうかを返す。
 func isExcludedDir(name string) bool {
 	if strings.HasPrefix(name, ".") {
 		return true
@@ -880,8 +795,7 @@ func isExcludedDir(name string) bool {
 	return ok
 }
 
-// titleOf は表示名を決める。拡張子を除いたファイル名で、空になる場合は
-// ファイル名をそのまま使う。
+// Use the full filename if removing its extension would leave an empty title.
 func titleOf(path string) string {
 	name := filepath.Base(path)
 	title := strings.TrimSuffix(name, filepath.Ext(name))

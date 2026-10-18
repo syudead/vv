@@ -140,7 +140,7 @@ func TestValidateSmartSortRejectsRandom(t *testing.T) {
 }
 
 func TestValidateSmartFolderParent(t *testing.T) {
-	// 1 ─ 2 ─ 3、4 は別の根。
+	// 1 → 2 → 3; 4 is a separate root.
 	parents := map[int64]int64{2: 1, 3: 2}
 	cases := []struct {
 		id, parent int64
@@ -160,7 +160,7 @@ func TestValidateSmartFolderParent(t *testing.T) {
 			t.Errorf("ValidateSmartFolderParent(%d, %d) = %v, want %v", c.id, c.parent, err, c.want)
 		}
 	}
-	// 輪になった親（壊れたデータ）でも止まる。
+	// Malformed parent cycles must terminate.
 	if err := ValidateSmartFolderParent(9, 5, map[int64]int64{5: 6, 6: 5}); err != nil {
 		t.Errorf("loop error = %v", err)
 	}
@@ -198,7 +198,6 @@ func TestSmartRuleReplaceRefs(t *testing.T) {
 	if !reflect.DeepEqual(rule.Tags, []int64{3, 1, 2}) {
 		t.Errorf("ReplaceRefs changed the receiver's tags: %v", rule.Tags)
 	}
-	// 省いた項目（0）は書き換えない。
 	if got, changed := (SmartRule{}).ReplaceRefs(SmartRefPerson, []int64{0}, 7); changed || got.Person != 0 {
 		t.Errorf("empty rule = %+v, %v", got, changed)
 	}

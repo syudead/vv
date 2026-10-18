@@ -1,11 +1,10 @@
 -- +goose Up
--- 取り込みの解析で読む動画の追加の情報。
--- 索引であり、消えても走査とそれが積む仕事で埋まる。
+-- Rebuildable media information comes from ingest probing.
 create table video_media_info (
     video_id   integer primary key references videos (id) on delete cascade,
-    -- domain.MediaInfoVersion。違えば「無い」と読む。
+    -- A mismatched domain.MediaInfoVersion is read as absent.
     version    integer not null,
-    -- domain.MediaInfo の JSON。
+    -- Serialized domain.MediaInfo.
     info       text    not null,
     updated_at integer not null
 ) without rowid;

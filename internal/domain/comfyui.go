@@ -7,52 +7,38 @@ import (
 	"strings"
 )
 
-// 画像編集の提供元 ComfyUI の接続先の設定である。提供元のアダプタ（internal/comfyui）が
-// 読み、サムネイルの編集の機能とは別に持つ（docs/design-docs/ai-layer.md、
-// docs/design-docs/thumbnail-editing.md）。
+// ComfyUI connection settings belong to the provider adapter; see docs/design-docs/ai-layer.md and docs/design-docs/thumbnail-editing.md.
 
-// ComfyUIProvider は ComfyUI の提供元の種類である。
 type ComfyUIProvider string
 
 const (
-	// ComfyUISelfHosted は所有者が自分で動かす ComfyUI で、保存した URL へ接続する。
 	ComfyUISelfHosted ComfyUIProvider = "self_hosted"
-	// ComfyUICloud は Comfy Cloud で、保存した API キーで接続する。
-	ComfyUICloud ComfyUIProvider = "cloud"
+	ComfyUICloud      ComfyUIProvider = "cloud"
 )
 
-// ComfyUIModel は画像編集に使うモデルである。モデルごとに vv が同梱するワークフローの組が
-// 決まる（docs/design-docs/ai-layer.md の Image-edit provider）。
+// ComfyUIModel selects the bundled workflow set (docs/design-docs/ai-layer.md).
 type ComfyUIModel string
 
 const (
-	// ComfyUIModelFlux2Klein は FLUX.2 [klein] 4B fp8 で、既定のモデルである。
+	// ComfyUIModelFlux2Klein is the default FLUX.2 [klein] 4B fp8 model.
 	ComfyUIModelFlux2Klein ComfyUIModel = "flux2_klein_4b"
-	// ComfyUIModelQwenImageEdit は Qwen-Image-Edit-2511 fp8mixed に Lightning の 4 ステップの
-	// LoRA を当てたものである。参考画像の雰囲気をよく取り込むが、重い。
+	// ComfyUIModelQwenImageEdit uses Qwen-Image-Edit-2511 fp8mixed with Lightning four-step LoRA.
 	ComfyUIModelQwenImageEdit ComfyUIModel = "qwen_image_edit_2511"
 )
 
-// ComfyUIModels は選べるモデルの全部で、既定のモデルが先頭である。
+// ComfyUIModels lists the default first.
 var ComfyUIModels = []ComfyUIModel{ComfyUIModelFlux2Klein, ComfyUIModelQwenImageEdit}
 
-// comfyUIMaxAPIKeyLength は API キーの長さの上限である。
 const comfyUIMaxAPIKeyLength = 1000
 
 var (
-	// ErrInvalidComfyUISettings は、ComfyUI の接続先の設定が規則に合わないことを表す。
-	// 下の 2 つの誤りもこれを包む。
+	// The URL and missing-key errors wrap ErrInvalidComfyUISettings.
 	ErrInvalidComfyUISettings = errors.New("invalid ComfyUI settings")
-	// ErrComfyUIURLInvalid は、自前の ComfyUI に正しい http か https の URL が無いことを表す。
-	ErrComfyUIURLInvalid = fmt.Errorf("%w: a self-hosted ComfyUI needs an http or https URL", ErrInvalidComfyUISettings)
-	// ErrComfyUIAPIKeyMissing は、Comfy Cloud の API キーが保存も送信もされていないことを表す。
-	ErrComfyUIAPIKeyMissing = fmt.Errorf("%w: Comfy Cloud needs an API key", ErrInvalidComfyUISettings)
+	ErrComfyUIURLInvalid      = fmt.Errorf("%w: a self-hosted ComfyUI needs an http or https URL", ErrInvalidComfyUISettings)
+	ErrComfyUIAPIKeyMissing   = fmt.Errorf("%w: Comfy Cloud needs an API key", ErrInvalidComfyUISettings)
 )
 
-// ComfyUISettings は ComfyUI の接続先である。Provider が空なら何も保存されていない。
-// URL は自前の ComfyUI だけが、APIKey は Comfy Cloud だけが使う。もう一方の値は
-// 提供元を切り替えて戻したときのために保存したままにする。APIKey は API から返さない。
-// Model は使うモデルで、空なら既定のモデル（EffectiveModel）を使う。
+// ComfyUISettings retains inactive provider values for switching back and never returns APIKey through the API; empty Provider means unsaved and empty Model selects the default.
 type ComfyUISettings struct {
 	Provider ComfyUIProvider
 	URL      string
@@ -60,12 +46,10 @@ type ComfyUISettings struct {
 	Model    ComfyUIModel
 }
 
-// Saved は接続先が保存されているかを返す。
 func (s ComfyUISettings) Saved() bool {
 	return s.Provider != ""
 }
 
-// EffectiveModel は使うモデルを返す。保存されていなければ既定のモデルである。
 func (s ComfyUISettings) EffectiveModel() ComfyUIModel {
 	if s.Model == "" {
 		return ComfyUIModels[0]
@@ -73,8 +57,7 @@ func (s ComfyUISettings) EffectiveModel() ComfyUIModel {
 	return s.Model
 }
 
-// ComfyUISettingsUpdate は接続先の保存の要求である。APIKey が nil なら保存済みのキーを
-// 残し、空文字列ならキーを消す（R-9）。Model が nil なら保存済みのモデルを残す。
+// ComfyUISettingsUpdate preserves nil fields; an empty APIKey deletes the saved key.
 type ComfyUISettingsUpdate struct {
 	Provider ComfyUIProvider
 	URL      string
@@ -82,10 +65,7 @@ type ComfyUISettingsUpdate struct {
 	Model    *ComfyUIModel
 }
 
-// ApplyComfyUISettingsUpdate は保存済みの接続先 current に update を当てて整え、保存する値を
-// 返す。規則に合わなければ ErrInvalidComfyUISettings を包んだ誤り（自前の URL が正しく
-// なければ ErrComfyUIURLInvalid、Cloud のキーが無ければ ErrComfyUIAPIKeyMissing）を返す。
-// Comfy Cloud を選んだ要求の URL は使わず、保存済みの URL を残す。
+// ApplyComfyUISettingsUpdate wraps ErrInvalidComfyUISettings for invalid URLs or missing cloud keys and preserves the saved URL when selecting cloud.
 func ApplyComfyUISettingsUpdate(current ComfyUISettings, update ComfyUISettingsUpdate) (ComfyUISettings, error) {
 	next := current
 	next.Provider = update.Provider
@@ -119,18 +99,14 @@ func ApplyComfyUISettingsUpdate(current ComfyUISettings, update ComfyUISettingsU
 	return next, nil
 }
 
-// ComfyUIMissingKind は接続先に足りないものの種類である。
 type ComfyUIMissingKind string
 
 const (
-	// ComfyUIMissingNode は vv のワークフローが使うノードの型（class_type）が無いことを表す。
-	ComfyUIMissingNode ComfyUIMissingKind = "node"
-	// ComfyUIMissingModel はローダーノードが読むモデルファイルが無いことを表す。
+	ComfyUIMissingNode  ComfyUIMissingKind = "node"
 	ComfyUIMissingModel ComfyUIMissingKind = "model"
 )
 
-// ComfyUIMissingItem は接続先に足りないノードかモデルファイルの 1 つである。Folder と Source は
-// モデルファイルだけが持ち、ComfyUI の models の下の置き場所と入手先のページである
+// Folder and Source apply only to models and identify the models subdirectory and download page.
 type ComfyUIMissingItem struct {
 	Kind   ComfyUIMissingKind
 	Name   string
@@ -138,13 +114,12 @@ type ComfyUIMissingItem struct {
 	Source string
 }
 
-// ComfyUIMissingError は、接続先は応えたが vv のワークフローに要るノードかモデルファイルが
-// 足りないことを表す。Items は足りないものの一覧で、空ではない。
+// ComfyUIMissingError means the server responded but required nodes or models are missing; Items is nonempty.
 type ComfyUIMissingError struct {
 	Items []ComfyUIMissingItem
 }
 
-// Error は足りないものの数と直し方を述べる。名前は Items で返すので文には入れない。
+// Error omits names because Items carries them.
 func (e *ComfyUIMissingError) Error() string {
 	nodes, models := 0, 0
 	for _, item := range e.Items {

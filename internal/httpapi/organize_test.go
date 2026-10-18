@@ -9,15 +9,10 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// ドラッグの操作と取り消しの経路を、
-// 本物の認証・保存層・internal/app の Organizer をつないで確かめる。中身は library_test.go の
-// libraryFixture である。
-
 func (f *libraryFixture) organize(route string, body map[string]any, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 	return f.groupRequest(http.MethodPost, "/api/organize/"+route, groupJSON(body), cookies...)
 }
 
-// reorder は所有者として並べ替え、取り消しのトークンを返す。
 func (f *libraryFixture) reorder(t *testing.T, body map[string]any) string {
 	t.Helper()
 	rec := f.organize("reorder", body, f.owner)
@@ -31,7 +26,6 @@ func (f *libraryFixture) reorder(t *testing.T, body map[string]any) string {
 	return result.UndoToken
 }
 
-// mixGroup は 5 本の動画（solo・p1・p2・ep1・ep2）を順に持つグループを作り、その id と項目の id を返す。
 func (f *libraryFixture) mixGroup(t *testing.T) (int64, []int64) {
 	t.Helper()
 	mix := f.createGroup(t, "Mix", []int64{f.ids["solo"], f.ids["p1"], f.ids["p2"], f.ids["ep1"], f.ids["ep2"]}, nil)
@@ -46,8 +40,6 @@ func (f *libraryFixture) assertGroupNames(t *testing.T, label string, id int64, 
 	}
 }
 
-// 200 で並べ替えてトークンを返し、取り消しは 204 で元の順に戻す。同じトークンの 2 回目と知らない
-// トークンは 410 undo_expired、後から並べ替えたグループの取り消しは 409 undo_conflict で何も変えない。
 func TestOrganizeReorderAndUndoStatuses(t *testing.T) {
 	f := newLibraryFixture(t)
 	id, items := f.mixGroup(t)
@@ -70,8 +62,6 @@ func TestOrganizeReorderAndUndoStatuses(t *testing.T) {
 	f.assertGroupNames(t, "拒まれた取り消しのあと", id, "ep2", "p1", "p2", "ep1", "solo")
 }
 
-// 本文の誤りは 400 invalid_request、無いグループ・ほかのグループの項目・無い目印は 404
-// group_target_not_found で、どれも何も変えない。
 func TestOrganizeReorderErrors(t *testing.T) {
 	f := newLibraryFixture(t)
 	id, items := f.mixGroup(t)
@@ -108,7 +98,6 @@ func TestOrganizeReorderErrors(t *testing.T) {
 	}
 }
 
-// ゲストはどちらの経路も 401 で、何も変わらず、トークンも使われない。
 func TestOrganizeOwnerOnly(t *testing.T) {
 	f := newLibraryFixture(t)
 	id, items := f.mixGroup(t)
@@ -129,7 +118,6 @@ func videoRefs(ids ...int64) []map[string]any {
 	return refs
 }
 
-// makeGroup は所有者として「グループにする」を行い、結果を返す。
 func (f *libraryFixture) makeGroup(t *testing.T, body map[string]any) gen.OrganizeResult {
 	t.Helper()
 	rec := f.organize("group", body, f.owner)
@@ -143,8 +131,6 @@ func (f *libraryFixture) makeGroup(t *testing.T, body map[string]any) gen.Organi
 	return result
 }
 
-// 200 で新しいグループの id とトークンを返す。from があればグループが落とした先の位置を取る。
-// 取り消しは 204 でグループを消し、from を元に戻す。
 func TestOrganizeGroupAndUndoStatuses(t *testing.T) {
 	f := newLibraryFixture(t)
 	id, _ := f.mixGroup(t)
@@ -162,8 +148,6 @@ func TestOrganizeGroupAndUndoStatuses(t *testing.T) {
 	f.assertGroupNames(t, "from の無いグループ", *loose.GroupId, "ep1", "solo")
 }
 
-// 本文の誤りとグループを含む items は 400 invalid_request、無い動画・無い from・from に無い動画は
-// 404 group_target_not_found で、どれも何も変えない。ゲストは 401。
 func TestOrganizeGroupErrors(t *testing.T) {
 	f := newLibraryFixture(t)
 	id, _ := f.mixGroup(t)
@@ -189,9 +173,6 @@ func TestOrganizeGroupErrors(t *testing.T) {
 	f.assertGroupNames(t, "拒まれたあとの pair", pair, "p1", "p2")
 }
 
-// undoToken なしの PATCH /api/groups/{id} は 048 と同じに答え、ありでも同じに答える。そのグループを
-// 作ったトークンなら、取り消しは名前を変えたグループを消す。知らないトークンや別の操作のトークンは
-// 名前変更を失敗させない。
 func TestRenameGroupWithAnUndoToken(t *testing.T) {
 	f := newLibraryFixture(t)
 	id, items := f.mixGroup(t)
@@ -217,7 +198,7 @@ func TestRenameGroupWithAnUndoToken(t *testing.T) {
 	assertGroupError(t, "トークン付きの無いグループ", f.groupRequest(http.MethodPatch, groupWritePath(999999, ""),
 		groupJSON(map[string]any{"name": "x", "undoToken": result.UndoToken}), f.owner), wantGroupNotFound)
 
-	// トークンなしで名前を変えたので、取り消しは 409。新しい操作で、トークン付きの改名を確かめる。
+	// The tokenless rename prevents undo; use a new operation to test a token-associated rename.
 	conflict := wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonUndoConflict}
 	assertGroupError(t, "トークンなしの改名のあと", f.organize("undo", map[string]any{"token": result.UndoToken}, f.owner), conflict)
 
@@ -231,7 +212,6 @@ func TestRenameGroupWithAnUndoToken(t *testing.T) {
 	f.assertGroupMissing(t, "取り消しのあと", *second.GroupId)
 }
 
-// moved は所有者としてカードを動かし、取り消しのトークンを返す。
 func (f *libraryFixture) moved(t *testing.T, body map[string]any) string {
 	t.Helper()
 	rec := f.organize("move", body, f.owner)
@@ -252,8 +232,6 @@ func (f *libraryFixture) undone(t *testing.T, label, token string) {
 	}
 }
 
-// 200 でカードを A から B へ動かしてトークンを返し、取り消しは 204 で元に戻す。to が無ければ外す
-// だけで、最後の項目を外した B は解散し、取り消すと同じ id で戻る。
 func TestOrganizeMoveAndUndo(t *testing.T) {
 	f := newLibraryFixture(t)
 	a := f.createGroup(t, "A", []int64{f.ids["solo"], f.ids["p1"]}, nil)
@@ -273,9 +251,6 @@ func TestOrganizeMoveAndUndo(t *testing.T) {
 	f.assertGroupNames(t, "解散の取り消しのあと", b.Id, "ep1")
 }
 
-// 本文の誤りは 400 invalid_request、無いグループ（明示した 0 以下の id も）・from に無いカードは
-// 404 group_target_not_found、自分の子孫へ動かすグループは 409 group_cycle で、どれも何も変えない。
-// ゲストは 401 である。
 func TestOrganizeMoveErrors(t *testing.T) {
 	f := newLibraryFixture(t)
 	inner := f.createGroup(t, "Inner", []int64{f.ids["solo"]}, nil)
@@ -316,8 +291,6 @@ func organizeCard(kind string, id int64) map[string]any {
 	return map[string]any{"kind": kind, "id": id}
 }
 
-// マージは 200 でトークンを返し、マージ先が自分の項目、続いて動画、ドラッグしたグループの項目の順に
-// なり、ドラッグしたグループは消える。取り消しは 204 で両方のグループを元に戻す。
 func TestOrganizeMergeAndUndo(t *testing.T) {
 	f := newLibraryFixture(t)
 	into := f.createGroup(t, "Into", []int64{f.ids["solo"]}, nil)
@@ -344,8 +317,6 @@ func TestOrganizeMergeAndUndo(t *testing.T) {
 	f.assertGroupNames(t, "戻ったグループ", dragged.Id, "ep1", "ep2")
 }
 
-// from 付きのマージは 200 で、カードは開いているグループから同じ取引で外れ、取り消しは 204 で
-// カードを開いているグループの元の位置へ戻す（要件 9）。
 func TestOrganizeMergeFromAndUndo(t *testing.T) {
 	f := newLibraryFixture(t)
 	into := f.createGroup(t, "Into", []int64{f.ids["solo"]}, nil)
@@ -371,8 +342,6 @@ func TestOrganizeMergeFromAndUndo(t *testing.T) {
 	f.assertGroupNames(t, "取り消しのあと Into", into.Id, "solo")
 }
 
-// from 付きでも契約のステータスが成り立つ。0 以下・無い from とそこに無いカードは 404
-// group_target_not_found、グループの無い items は 400、祖先のグループは 409 で、どれも何も変えない。
 func TestOrganizeMergeFromErrors(t *testing.T) {
 	f := newLibraryFixture(t)
 	into := f.createGroup(t, "Into", []int64{f.ids["solo"]}, nil)
@@ -400,9 +369,6 @@ func TestOrganizeMergeFromErrors(t *testing.T) {
 	f.assertGroupNames(t, "拒まれたマージのあと Into", into.Id, "solo")
 }
 
-// 本文の誤りとグループの無い items は 400 invalid_request、無いマージ先・グループ・動画は 404
-// group_target_not_found、マージ先そのものか祖先のグループは 409 group_cycle で、どれも何も変えない。
-// ゲストは 401。
 func TestOrganizeMergeErrors(t *testing.T) {
 	f := newLibraryFixture(t)
 	into := f.createGroup(t, "Into", []int64{f.ids["solo"]}, nil)

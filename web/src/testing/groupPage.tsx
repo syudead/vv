@@ -1,7 +1,3 @@
-/**
- * groupPage はグループのページ（src/groups/GroupPage.tsx）のテストが共有する偽のサーバーと
- * 操作の手順である。テストは話題ごとのファイル（src/groups/GroupPage*.test.tsx）に分ける。
- */
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
@@ -60,7 +56,6 @@ export function group(
   };
 }
 
-/** StoredImage は取り消しで戻すグループ 1 つの、操作の前の値である。 */
 interface StoredImage {
   groupId: number;
   stored: StoredGroup;
@@ -69,25 +64,19 @@ interface StoredImage {
 export interface StoredGroup {
   group: LibraryGroup;
   items: GroupItem[];
-  /** 最初のページの続き。置くと GET /api/groups/{id}/items?cursor= がそのページを返す。 */
   nextCursor?: string;
 }
 
 export const server = {
   groups: new Map<number, StoredGroup>(),
-  /** GET /api/groups/{id} の回数（id ごと）。 */
   reads: new Map<number, number>(),
-  /** 続きのページ（cursor ごと）。 */
   pages: new Map<string, { items: GroupItem[]; nextCursor?: string }>(),
-  /** 続きのページの要求の cursor。 */
   pageRequests: [] as string[],
-  /** true の間、続きのページは 500 で失敗する。 */
   pagesFail: false,
-  /** 書き込みの要求（メソッド、パス、本文）。 */
   writes: [] as { method: string; path: string; body?: unknown }[],
-  /** 取り消しのトークンごとの、操作の前のグループ（解散したグループも戻す）。 */
+  /** Snapshots include dissolved groups so undo can restore them. */
   undo: new Map<string, StoredImage[]>(),
-  /** 置くと POST /api/organize/undo がこの応答を返し、何も戻さない。 */
+  /** Override undo without restoring state. */
   undoAnswer: null as (() => Response) | null,
 };
 
@@ -106,7 +95,7 @@ function isChild(parent: number, child: number): boolean {
   );
 }
 
-/** trailOf は契約どおり、このグループから外へ向かって親と子の組が続く部分を返す。 */
+/** Retain only the contiguous valid parent-child trail outward from this group. */
 function trailOf(id: number, requested: number[]) {
   const chain = [...requested, id];
   const kept: number[] = [];
@@ -121,7 +110,6 @@ function trailOf(id: number, requested: number[]) {
   }));
 }
 
-/** summarize は項目からグループの動画の id と本数を数え直した値を返す。 */
 export function summarize(stored: StoredGroup): LibraryGroup {
   const videoIds = stored.items.flatMap((item) =>
     item.kind === "group" ? (item.group?.videoIds ?? []) : [item.video?.id ?? 0],
@@ -130,7 +118,7 @@ export function summarize(stored: StoredGroup): LibraryGroup {
   return stored.group;
 }
 
-// サーバーは code を not_found にし、どの 404 かを reason に入れる（writeGroupError）。
+// Match writeGroupError: code is not_found and reason distinguishes the target.
 export const targetGone = () =>
   Promise.resolve(
     json({ code: "not_found", reason: "group_target_not_found", message: "x" }, 404),
@@ -138,10 +126,7 @@ export const targetGone = () =>
 export const groupNotFound = () =>
   Promise.resolve(json({ code: "not_found", message: "x" }, 404));
 
-/**
- * makeGroup は POST /api/organize/group に答える。新しいグループ（id 60）は落とした先の動画、
- * 続いて持ち上げた動画を持ち、`from` の中で落とした先の項目の位置を取る（R-6）。
- */
+/** New groups place the target video before dragged videos and replace the target item within from. */
 function makeGroup(body: unknown): Promise<Response> {
   const { items, target, from } = body as {
     items: { id: number }[];
@@ -173,7 +158,6 @@ function makeGroup(body: unknown): Promise<Response> {
   return Promise.resolve(json({ undoToken: "token-group", groupId: 60 }));
 }
 
-/** keepImage は操作の前のグループ `ids` を、新しいトークンで覚えてそのトークンを返す。 */
 function keepImage(ids: readonly number[]): string {
   const token = `token-${String(server.undo.size + 1)}`;
   server.undo.set(
@@ -192,17 +176,13 @@ interface MoveBody {
   to?: number;
 }
 
-/** refMatches は項目が操作の指す動画かグループかを返す。 */
 function refMatches(item: GroupItem, ref: MoveBody["items"][number]): boolean {
   return ref.kind === "video"
     ? item.kind === "video" && item.video?.id === ref.id
     : item.kind === "group" && item.group?.id === ref.id;
 }
 
-/**
- * moveRefs は POST /api/organize/move に答える。`from` から外し、`to` の末尾へ足す（すでに
- * ある動画は足さない）。`from` が空になったら解散する。
- */
+/** Move to the destination's end, skip duplicate videos, and dissolve an empty source. */
 function moveRefs({ items, from, to }: MoveBody): Promise<Response> {
   const source = from === undefined ? undefined : server.groups.get(from);
   const target = to === undefined ? undefined : server.groups.get(to);
@@ -245,9 +225,8 @@ interface MergeBody {
 }
 
 /**
- * mergeRefs は POST /api/organize/merge に答える。`from` があれば、カードはまずそこから外れる
- * （どれかが `from` に無ければ 404）。グループは項目を `into` の末尾へ渡し、親の項目から消えて
- * なくなる。動画は `into` の末尾へ足す（どちらもすでにある動画は足さない）。
+ * Reject missing source items; merge child contents and videos into the target without duplicates,
+ * then dissolve merged groups.
  */
 function mergeRefs({ items, into, from }: MergeBody) {
   const target = server.groups.get(into);
@@ -294,7 +273,6 @@ function mergeRefs({ items, into, from }: MergeBody) {
   return Promise.resolve(json({ undoToken: token }));
 }
 
-/** organize は POST /api/organize/reorder・/move・/merge・/group・/undo に、メモリ上のグループを変えて答える。 */
 function organize(path: string, body: unknown): Promise<Response> | undefined {
   if (path === "/api/organize/move") return moveRefs(body as MoveBody);
   if (path === "/api/organize/merge") {
@@ -370,7 +348,7 @@ function write(url: URL, method: string, body: unknown): Promise<Response> | und
       return targetGone();
     }
     stored.items = stored.items.filter((item) => !itemIds.includes(item.id));
-    // 最後の項目を外したグループは解散され、本文の無い 204 で答える。
+    // Removing the final item dissolves the group and returns bodyless 204.
     if (stored.items.length === 0) {
       server.groups.delete(id);
       return Promise.resolve(new Response(null, { status: 204 }));
@@ -445,7 +423,6 @@ function install() {
   vi.stubGlobal("fetch", fetchMock);
 }
 
-/** Probe は開いた場所と state を書き出す（再生画面とフォルダ画面の代わり）。 */
 export function Probe() {
   const location = useLocation();
   return (
@@ -472,7 +449,6 @@ export function renderPage(initial: string, audience: Audience = "owner") {
   );
 }
 
-/** seed は「Season」（id 1）の中に子グループ「Extras」（id 5）と動画 2 本を置く。 */
 export function seed() {
   const extras = group(5, "Extras", {
     videoCount: 1,
@@ -509,10 +485,8 @@ export function crumbs(): string[] {
     .filter((text) => text !== "");
 }
 
-/** 番兵の見張り。`reveal` で見える範囲に来たことにする。 */
 let revealNow: () => void = () => undefined;
 
-/** reveal は番兵が見える範囲に来たことにする。 */
 export function reveal() {
   revealNow();
 }
@@ -534,10 +508,7 @@ class FakeIntersectionObserver {
   }
 }
 
-/**
- * setUpGroupPageServer は各テストの前に偽のサーバーを初期状態へ戻し、後で差し替えを解く。
- * テストのファイルの先頭で 1 回呼ぶ。
- */
+/** Call once at file scope to reset fixtures before each test and restore overrides afterward. */
 export function setUpGroupPageServer() {
   beforeEach(() => {
     server.groups = new Map();
@@ -559,8 +530,7 @@ export function setUpGroupPageServer() {
   });
 }
 
-// jsdom は配置を持たないので、行の位置を上から 48px ずつに置く。dnd-kit のキーボードの
-// 移動は行の位置から次の行を探す。
+// Supply 48px row geometry because dnd-kit keyboard navigation needs layout absent from jsdom.
 export function layoutRows() {
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (
     this: Element,
@@ -583,7 +553,6 @@ export function layoutRows() {
   });
 }
 
-/** listTitles はリスト表示の行の題名を上から返す。 */
 export function listTitles(): string[] {
   const table = screen.getByRole("table", { name: "Items" });
   return within(table)
@@ -593,7 +562,6 @@ export function listTitles(): string[] {
 
 export type User = ReturnType<typeof userEvent.setup>;
 
-/** openList はページを開いてリスト表示に切り替える。 */
 export async function openList(user: User, initial = "/groups/1") {
   renderPage(initial);
   await screen.findByRole("heading", { level: 1 });
@@ -601,13 +569,11 @@ export async function openList(user: User, initial = "/groups/1") {
   return screen.getByRole("table", { name: "Items" });
 }
 
-/** openMenu は見出しの「More」から項目を選ぶ。 */
 export async function openMenu(user: User, item: string) {
   await user.click(await screen.findByRole("button", { name: "More" }));
   await user.click(await screen.findByRole("menuitem", { name: item }));
 }
 
-/** moveFirstDown はキーボードで「Episode 1」を 1 つ下へ動かす。 */
 export async function moveFirstDown(user: User) {
   screen.getByRole("button", { name: 'Reorder "Episode 1"' }).focus();
   await user.keyboard("[Space]");

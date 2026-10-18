@@ -10,12 +10,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 仮のタグの確定・却下と、却下した名前。
-// 仮のタグを作るのは tentative が真の一括操作（external_video_tags.go の resolveTagNames）で、
-// 名前を tag_names に書く入口（insertTagName・RenameTag）が却下した名前から外す。
+// Tentative bulk edits create tentative tags; name-writing paths remove matching rejected names.
 
-// ConfirmTag はタグ id を確定したタグにする。既に確定していれば何も変えない。名前と付与は
-// 変えない。id が無ければ domain.ErrTagNotFound を返す。
+// ConfirmTag preserves names and attachments and is a no-op for confirmed tags.
 func (s *TagStore) ConfirmTag(ctx context.Context, id int64) (domain.Tag, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -39,9 +36,7 @@ func (s *TagStore) ConfirmTag(ctx context.Context, id int64) (domain.Tag, error)
 	return tag, nil
 }
 
-// RejectTag は仮のタグ id を消し、その元の名前を却下した名前として覚え、その名前を返す。
-// tag_names と video_tags は外部キーの ON DELETE CASCADE で連鎖して消える。id が無ければ
-// domain.ErrTagNotFound、仮でなければ domain.ErrTagNotTentative を返し、何も変えない
+// RejectTag removes only tentative tags and remembers their canonical name; names and attachments cascade.
 func (s *TagStore) RejectTag(ctx context.Context, id int64) (string, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -72,13 +67,9 @@ func (s *TagStore) RejectTag(ctx context.Context, id int64) (string, error) {
 	return ref.Name, nil
 }
 
-// rejectedTagNameCursorSort はカーソルの並び順の項目に入れる名前で、ほかの一覧のカーソルと取り違えない。
 const rejectedTagNameCursorSort = "rejectedTagName"
 
-// ListRejectedTagNames は却下した名前を名前の自然順（sort_key、同じなら name のバイト順）で、
-// cursor より後ろから limit 件返す。limit が 0 以下なら
-// cursor より後ろをすべて返し、NextCursor は空にする。Total は却下した名前の全部の数。
-// 解釈できないカーソルや別の一覧のカーソルは domain.ErrInvalidCursor を返す。
+// ListRejectedTagNames uses natural order; nonpositive limits return all remaining rows and no continuation cursor.
 func (s *TagStore) ListRejectedTagNames(ctx context.Context, cursor string, limit int) (domain.RejectedTagNamePage, error) {
 	where, args := "", []any{}
 	if cursor != "" {
@@ -95,9 +86,7 @@ func (s *TagStore) ListRejectedTagNames(ctx context.Context, cursor string, limi
 		args = append(args, limit+1)
 	}
 
-	// 件数とページを同じ読み取りスナップショットで読み、間の却下・取り外しで Total と Items が
-	// 食い違わないようにする。s.read（deferred）で開き、SQLite の唯一の書き込みの枠を取らない
-	// （listing.go の ListVideos と同じ）。読むだけなので最後は rollback で閉じる。
+	// Read count and page in one deferred snapshot without taking the write slot.
 	tx, err := s.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.RejectedTagNamePage{}, fmt.Errorf("cannot read rejected tag names: %w", err)
@@ -133,14 +122,11 @@ func (s *TagStore) ListRejectedTagNames(ctx context.Context, cursor string, limi
 	return page, nil
 }
 
-// encodeRejectedTagNameCursor は sort_key と name を listing.go と同じ包み方で包む。値の項目に
-// 「sort_key、区切り、name」を入れる。sort_key は制御文字を含まない名前（domain.NormalizeTagName）から
-// 作るので、区切りの文字を含まない。
+// Normalized names contain no control characters, so their sort keys cannot contain the cursor separator.
 func encodeRejectedTagNameCursor(sortKey, name string) string {
 	return encodeCursorFields(cursorFields{sort: rejectedTagNameCursorSort, value: sortKey + cursorSeparator + name})
 }
 
-// decodeRejectedTagNameCursor は encodeRejectedTagNameCursor の包みを解く。
 func decodeRejectedTagNameCursor(cursor string) (sortKey, name string, err error) {
 	c, err := decodeCursor(cursor)
 	if err != nil {
@@ -156,10 +142,7 @@ func decodeRejectedTagNameCursor(cursor string) (sortKey, name string, err error
 	return sortKey, name, nil
 }
 
-// ForgetRejectedTagName は name を却下した名前から外し、外したかどうかを返す（外部連携 API が
-// 応答の removed に載せる。docs/design-docs/catalog-organization.md）。無ければ何も変えずに
-// false を返す。name は domain.NormalizeTagName で整えてから照合し、整えられない入力はそのまま
-// 照合する（RemoveSynonym と同じ扱い）。
+// ForgetRejectedTagName returns whether a row was removed; normalize valid input and otherwise match the raw spelling.
 func (s *TagStore) ForgetRejectedTagName(ctx context.Context, name string) (bool, error) {
 	if normalized, err := domain.NormalizeTagName(name); err == nil {
 		name = normalized

@@ -1,6 +1,4 @@
-/**
- * SubtitlePreference は、このブラウザで最後に選んだ字幕である。label はラベルの無い字幕なら `""`。
- */
+/** An unlabeled subtitle uses an empty label. */
 export interface SubtitlePreference {
   enabled: boolean;
   label: string;
@@ -13,7 +11,7 @@ export const defaultSubtitlePreference: SubtitlePreference = {
   label: "",
 };
 
-/** 保存値が無い・壊れている・読めない場合も、既定値（オフ）を返す。 */
+/** Return off if storage is absent, invalid or unreadable. */
 export function readSubtitlePreference(storage?: Storage): SubtitlePreference {
   let raw: string | null;
   try {
@@ -38,7 +36,6 @@ export function readSubtitlePreference(storage?: Storage): SubtitlePreference {
   }
 }
 
-/** 字幕の選択をこのブラウザに保存する。保存領域が使えなくても再生は妨げない。 */
 export function writeSubtitlePreference(
   value: SubtitlePreference,
   storage?: Storage,
@@ -49,6 +46,6 @@ export function writeSubtitlePreference(
       JSON.stringify({ enabled: value.enabled, label: value.label }),
     );
   } catch {
-    // プライベートモードなどで保存できなくても、今のプレイヤーでは選んだ字幕が出る。
+    // Storage failures must not block the current player's subtitle selection.
   }
 }

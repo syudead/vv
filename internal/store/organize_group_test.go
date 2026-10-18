@@ -12,7 +12,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// groupName はグループ id の名前を読む。
 func groupName(t *testing.T, db *DB, id int64) string {
 	t.Helper()
 	var name string
@@ -22,7 +21,6 @@ func groupName(t *testing.T, db *DB, id int64) string {
 	return name
 }
 
-// groupOp は「グループにする」を行い、新しいグループの id と像を返す。
 func groupOp(t *testing.T, db *DB, videoIDs []int64, target int64, from *int64) (int64, []byte) {
 	t.Helper()
 	id, image, err := db.Organize().Group(context.Background(), videoIDs, target, from)
@@ -32,8 +30,6 @@ func groupOp(t *testing.T, db *DB, videoIDs []int64, target int64, from *int64) 
 	return id, image
 }
 
-// A を B に落とすと、B の題名の名前で B、A の順に入ったグループが、親の無いグループとしてでき、
-// それを知らせる。取り消すとグループが消える。
 func TestOrganizeGroupMakesAGroupOfTargetThenDragged(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -62,8 +58,6 @@ func TestOrganizeGroupMakesAGroupOfTargetThenDragged(t *testing.T) {
 	}
 }
 
-// from があると、新しいグループが B の位置を取り、A と B は from から抜ける。取り消すと新しい
-// グループが消え、A と B が同じ項目 id のまま元の位置に戻る。
 func TestOrganizeGroupInsideFromTakesTheTargetsPlace(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -89,7 +83,6 @@ func TestOrganizeGroupInsideFromTakesTheTargetsPlace(t *testing.T) {
 	}
 }
 
-// 自動グループから抜けたフォルダ由来の項目は除外を書き、作り直しで戻らない。取り消すと除外も消える。
 func TestOrganizeGroupInsideAnAutomaticGroupWritesExclusions(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -115,7 +108,6 @@ func TestOrganizeGroupInsideAnAutomaticGroupWritesExclusions(t *testing.T) {
 	assertEntries(t, db, show, "v:k1", "v:k2", "v:k3")
 }
 
-// 120 文字の題名は 100 文字に切った名前になる。
 func TestOrganizeGroupCutsALongTitle(t *testing.T) {
 	db := migratedDB(t)
 	a, b := looseVideo(t, db, "ka"), looseVideo(t, db, "kb")
@@ -129,7 +121,6 @@ func TestOrganizeGroupCutsALongTitle(t *testing.T) {
 	}
 }
 
-// 無い動画、無い from、from に無い動画は ErrGroupTargetNotFound で、何も書かない。
 func TestOrganizeGroupRefusesMissingTargets(t *testing.T) {
 	db := migratedDB(t)
 	from, _ := fiveItemGroup(t, db)
@@ -157,8 +148,6 @@ func TestOrganizeGroupRefusesMissingTargets(t *testing.T) {
 	}
 }
 
-// 新しいグループをお気に入りにした、プレイリストに足した、別のグループに入れた、トークンなしで
-// 名前を変えたあとの取り消しは ErrUndoConflict で、何も変えない。
 func TestOrganizeGroupUndoConflictsAfterLaterChanges(t *testing.T) {
 	for name, change := range map[string]func(t *testing.T, db *DB, id int64){
 		"お気に入り": func(t *testing.T, db *DB, id int64) {
@@ -207,9 +196,6 @@ func TestOrganizeGroupUndoConflictsAfterLaterChanges(t *testing.T) {
 	}
 }
 
-// トークンの像を付けた名前変更は名前を変え、名前を変えた後の像を返す。その像の取り消しは名前を
-// 変えたグループを消し、A と B を from に戻す。後から変わっていた像を付けた名前変更は、名前を
-// 変えるが像を返さない。像の無い名前変更は GroupStore.RenameGroup と同じに名前を変える。
 func TestOrganizeRenameUnderTheToken(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -258,7 +244,6 @@ func TestOrganizeRenameUnderTheToken(t *testing.T) {
 	}
 }
 
-// videoIDForKey は鍵 key の動画の id を読む。
 func videoIDForKey(t *testing.T, db *DB, key string) int64 {
 	t.Helper()
 	var id int64
@@ -268,8 +253,7 @@ func videoIDForKey(t *testing.T, db *DB, key string) int64 {
 	return id
 }
 
-// withoutUpdatedAt は groupTablesSnapshot のグループの行から更新日時を除く。取り消しは
-// グループの更新日時を進めるので、それ以外が元どおりかを比べるのに使う。
+// Ignore timestamps because undo deliberately advances them while restoring all other state.
 func withoutUpdatedAt(snapshot string) string {
 	lines := strings.Split(snapshot, "\n")
 	for i, line := range lines {

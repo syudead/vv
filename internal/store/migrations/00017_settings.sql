@@ -1,5 +1,5 @@
 -- +goose Up
--- 所有者が設定画面で選ぶ値。設定のデータで、走査では戻らない。行が無いキーは「一度も選んでいない」。
+-- Persistent owner settings; a missing key means it has never been chosen.
 create table settings (
     key        text primary key,
     value      text    not null,

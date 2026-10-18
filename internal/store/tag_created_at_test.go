@@ -8,10 +8,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// タグの作った日。
-
-// TestCreateTagReturnsCreatedAtMatchingListTags は、CreateTag の戻り値に作った時刻（秒）が
-// 載り、続く ListTags の同じタグと等しいことを確かめる。
 func TestCreateTagReturnsCreatedAtMatchingListTags(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -46,9 +42,6 @@ func TestCreateTagReturnsCreatedAtMatchingListTags(t *testing.T) {
 	}
 }
 
-// TestTagOperationsReturnCreatedAt は、ListTags の全件と、改名・確定・シノニム・統合の
-// 戻り値に、保存した tags.created_at がそのまま載ることを確かめる。統合は MergeTags の
-// 統合先。
 func TestTagOperationsReturnCreatedAt(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -61,7 +54,7 @@ func TestTagOperationsReturnCreatedAt(t *testing.T) {
 			t.Fatal(err)
 		}
 		ids[name] = tag.ID
-		// 区別できるよう、作った時刻をタグごとに別の値にする。
+		// Give each tag a distinct creation time to detect accidental replacements.
 		if _, err := db.sql.Exec(`update tags set created_at = ? where id = ?`, 1_700_000_000+int64(i)*86400, tag.ID); err != nil {
 			t.Fatal(err)
 		}

@@ -23,18 +23,13 @@ import type { VideoPlaylist } from "./useVideoPlaylist";
 import type { ThumbnailCapture } from "./VideoFacts";
 import { canStartPlayback, type PlayerStatus } from "./VideoPlayer";
 
-// 動画ページのプレイヤーの上に重ねる層の決め方（同時に 1 つだけ。plan の Structural
-// Decisions 12）。状態表示と再生終了は同じ入れ物に出す。
+// Status and ended overlays share one container; display at most one.
 
-/** isPlayable は動画を読み終え、プレイヤーで再生を始められるかである。 */
 export function isPlayable(video: Video | undefined): video is Video {
   return video !== undefined && video.probeState === "done" && canStartPlayback(video);
 }
 
-/**
- * isUnplayable は再生のできない状態（読み取りの失敗・再生できない・動画が無い）かである。
- * この状態は終わらない。
- */
+/** Unplayable states never complete automatically. */
 export function isUnplayable(detail: VideoDetailState): boolean {
   if (detail.kind === "missing") return true;
   if (detail.kind !== "ready") return false;
@@ -42,7 +37,6 @@ export function isUnplayable(detail: VideoDetailState): boolean {
   return probeState === "failed" || (probeState === "done" && !isPlayable(detail.video));
 }
 
-/** statusLayer は動画の状態と再生の失敗の層である。何も伝えないときは null。 */
 export function statusLayer({
   detail,
   failure,
@@ -53,7 +47,6 @@ export function statusLayer({
   detail: VideoDetailState;
   failure: { positionMs: number; kind: PlaybackFailureKind } | null;
   onRetryLoad: () => Promise<void>;
-  /** 読み取りのやり直し。所有者でなければ undefined。 */
   onReprobe: (() => Promise<void>) | undefined;
   onRetryPlayback: () => void;
 }): ReactNode {
@@ -77,34 +70,26 @@ export function statusLayer({
   return null;
 }
 
-/** EndLayerArgs は再生の終わりと読み込み中の層を決める値である。 */
 export interface EndLayerArgs {
   status: PlayerStatus;
   pageKey: string;
   videoId: number;
   playlist: VideoPlaylist;
-  /** 基準の動画が属するグループ（関連動画の応答）。 */
   group: unknown;
-  /** 関連動画の次の動画。 */
   nextVideo: Video | undefined;
   autoplayPhase: AutoplayPhase;
   linkState: VideoLinkState;
   takeFocus: boolean;
   owner: boolean;
   controls: PlayerControls | null;
-  /** 予告を取り消す。 */
   onCancel: () => void;
-  /** 関連動画の次を自動再生で開く。 */
   onPlayNext: () => void;
-  /** グループの次のメンバーが消えた。 */
   onGroupGone: () => void;
-  /** プレイリストの次の動画が消えた。再生の応答を読み直す。 */
   onPlaylistGone: () => void;
   videoTo: (videoId: number) => string;
   nextTo: (next: { id: number } | undefined) => string | undefined;
 }
 
-/** PlayerLayer は重ねる層と、それが次の予告か（予告の間の Esc は取り消し）である。 */
 export interface PlayerLayer {
   layer: ReactNode;
   noticeShown: boolean;
@@ -112,11 +97,6 @@ export interface PlayerLayer {
 
 const noLayer: PlayerLayer = { layer: null, noticeShown: false };
 
-/**
- * endLayer は状態の層が無いときの層である。プレイリストの文脈では、次の動画があれば予告を、
- * 無ければ終わりの層を出す。それ以外は
- * groupEndLayer が決める。
- */
 export function endLayer(args: EndLayerArgs): PlayerLayer {
   const { status, playlist } = args;
   if (playlist.reading)
@@ -171,11 +151,6 @@ export function endLayer(args: EndLayerArgs): PlayerLayer {
   return groupEndLayer(args);
 }
 
-/**
- * groupEndLayer はプレイリストの層の外の終わりと読み込み中の層である。グループのメンバーで
- * 次のメンバーがあるときは、今の再生終了の層の代わりに予告を出す。グループに属さない動画は
- * 今のまま（受け入れ条件 17）。
- */
 function groupEndLayer(args: EndLayerArgs): PlayerLayer {
   const { status, playlist, nextVideo } = args;
   const outsidePlaylist = !playlist.inPlaylist && !playlist.dropped;
@@ -206,7 +181,7 @@ function groupEndLayer(args: EndLayerArgs): PlayerLayer {
   return {
     layer: (
       <EndedOverlay
-        // プレイリストの文脈（落とした後を含む）では、関連動画の次を出さない（R-7）。
+        // Playlist context, even after dropping it, must not advance into related videos.
         next={args.autoplayPhase === "gone" || !outsidePlaylist ? undefined : nextVideo}
         to={args.nextTo(nextVideo)}
         linkState={args.linkState}
@@ -219,7 +194,6 @@ function groupEndLayer(args: EndLayerArgs): PlayerLayer {
   };
 }
 
-/** loadingLayer は再生中の再接続とデータ待ちの輪である。 */
 function loadingLayer(status: PlayerStatus): PlayerLayer {
   if (status.reconnecting)
     return {
@@ -231,19 +205,11 @@ function loadingLayer(status: PlayerStatus): PlayerLayer {
   return noLayer;
 }
 
-/**
- * playerLayer はプレイヤーの上に重ねる層である。状態の層（statusLayer）があればそれを出し、
- * 無ければ endLayer が決める。
- */
 export function playerLayer(status: ReactNode, args: EndLayerArgs): PlayerLayer {
   return status === null ? endLayer(args) : { layer: status, noticeShown: false };
 }
 
-/**
- * stallWarningShown は途切れの警告を出すかである。警告は入れ物とは別の層で、失敗・再生終了・
- * 次の予告・再接続中・取り込み中の層が出ている間は出さない。データ待ちの読み込み中の輪とは
- * 並べて出す。
- */
+/** Suppress stall warnings behind terminal, autoplay, reconnecting, or processing overlays; loading spinners may coexist. */
 export function stallWarningShown({
   showPlayer,
   status,
@@ -252,9 +218,7 @@ export function stallWarningShown({
 }: {
   showPlayer: boolean;
   status: PlayerStatus;
-  /** 今の動画で警告を閉じた。 */
   dismissed: boolean;
-  /** 状態の層が出ている。 */
   statusShown: boolean;
 }): boolean {
   return (
@@ -267,18 +231,13 @@ export function stallWarningShown({
   );
 }
 
-/**
- * thumbnailCapture は今の場面を代表サムネイルにするボタンである。所有者でプレイヤーが出て
- * いるときだけ置く。押せるのは、最初の読み込みで論理上の位置が確定し、映像を覆う状態の層・
- * 再生終了の層（と次の予告）が無いときである。
- */
+/** Enable owner-only capture after positioning, with no status, ended, or autoplay overlay obscuring the frame. */
 export function thumbnailCapture({
   shown,
   controls,
   status,
   statusShown,
 }: {
-  /** 所有者でプレイヤーが出ている。 */
   shown: boolean;
   controls: PlayerControls | null;
   status: PlayerStatus;

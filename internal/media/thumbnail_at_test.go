@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-// 指定の位置の場面を書く。時刻を明るさで
-// 描いた動画から 2 つの位置で取り出し、それぞれの明るさがその秒の場面のものであること。
 func TestThumbnailAtWritesFrameAtPosition(t *testing.T) {
 	requireFFmpeg(t)
 	dir := t.TempDir()
@@ -30,7 +28,6 @@ func TestThumbnailAtWritesFrameAtPosition(t *testing.T) {
 	}
 }
 
-// 指定の位置にコマが無ければ失敗を返し、先頭のコマで作り直さない（R-5）。
 func TestThumbnailAtFailsWithoutFrameAtPosition(t *testing.T) {
 	requireFFmpeg(t)
 	dir := t.TempDir()
@@ -46,8 +43,7 @@ func TestThumbnailAtFailsWithoutFrameAtPosition(t *testing.T) {
 	}
 }
 
-// jpegSeconds は timeGraySource の場面の JPEG から、中央の輝度で時刻（秒）を読む。
-// mjpeg は全範囲の輝度で書くので、制限範囲の 16+7t を全範囲へ戻して読む。
+// Interpret full-range JPEG luma using the source's limited-range 16+7t time encoding.
 func jpegSeconds(t *testing.T, path string) float64 {
 	t.Helper()
 	file, err := os.Open(path)

@@ -10,41 +10,25 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// グループの一覧と編集。一覧
-// （GET /api/groups）は所有者とゲストが読め（accessRoutes）、書き込みは /api/* の既定どおり所有者
-// だけである。
+// Group reads allow guests; writes remain owner-only by default.
 
-// Groups はグループの編集の保存先である。internal/store の *GroupStore がこれを満たす。どの操作も
-// 1 つの取引で済むので、internal/app は通さない。グループが無ければ
-// domain.ErrGroupNotFound、要求が名指した動画・グループ・項目が無ければ
-// domain.ErrGroupTargetNotFound で、どちらも何も書かない。
+// GroupStore operations are atomic and write nothing on missing-group or missing-target errors.
 type Groups interface {
-	// CreateGroup は名前 name の手で作るグループを作り、add を項目にする。名前の規則違反は
-	// *domain.InvalidGroupNameError。
 	CreateGroup(ctx context.Context, name string, add domain.GroupAdd) (domain.Group, error)
-	// RenameGroup はグループ id の名前を変える。名前の規則違反は *domain.InvalidGroupNameError。
 	RenameGroup(ctx context.Context, id int64, name string) (domain.Group, error)
-	// AddGroupItems は add をグループ id の末尾に足す。add のグループが id 自身か id の祖先なら
-	// domain.ErrGroupCycle。
+	// Adding self or an ancestor returns ErrGroupCycle.
 	AddGroupItems(ctx context.Context, id int64, add domain.GroupAdd) (domain.Group, error)
-	// RemoveGroupItems はグループ id の項目 itemIDs を外す。項目が 1 つも残らなければグループを
-	// 解散し、dissolved に true を返す。
+	// Removing the final item dissolves the group and returns dissolved=true.
 	RemoveGroupItems(ctx context.Context, id int64, itemIDs []int64) (group domain.Group, dissolved bool, err error)
-	// MoveGroupItem は項目 itemID を項目 afterItemID のすぐ後ろ（nil なら先頭）へ移す。
+	// Nil afterItemID moves to the beginning.
 	MoveGroupItem(ctx context.Context, id, itemID int64, afterItemID *int64) error
-	// DissolveGroup はグループ id を解散する。
 	DissolveGroup(ctx context.Context, id int64) error
-	// TagGroup はグループ id をタグにして解散する。名前がタグ名の規則に合わなければ
-	// domain.ErrInvalidTagName。
 	TagGroup(ctx context.Context, id int64) (domain.GroupTag, error)
 }
 
-// groupsBodyLimit はグループの作成・追加・項目の除去が読む本文の上限（バイト）である。
-// PUT /api/favorites と同じ件数の上限なので、同じ大きさにする。
+// Use the same body cap as favorites because item limits match.
 const groupsBodyLimit = favoritesBodyLimit
 
-// ListGroups は見る人に見せるグループを名前の順に 1 ページ返す（GET /api/groups）。「Add to group」
-// のピッカーが読む。
 func (s *server) ListGroups(w http.ResponseWriter, r *http.Request, params gen.ListGroupsParams) {
 	if s.library == nil {
 		s.internalError(w, "Group queries are not configured.", nil)
@@ -95,7 +79,6 @@ func (s *server) ListGroups(w http.ResponseWriter, r *http.Request, params gen.L
 	writeJSON(w, http.StatusOK, out, s.logger)
 }
 
-// CreateGroup は動画とグループからグループを作る（POST /api/groups）。
 func (s *server) CreateGroup(w http.ResponseWriter, r *http.Request) {
 	var body gen.GroupCreate
 	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
@@ -109,8 +92,7 @@ func (s *server) CreateGroup(w http.ResponseWriter, r *http.Request) {
 	s.writeGroup(w, r, http.StatusCreated, group, err, "Could not create the group.")
 }
 
-// RenameGroup はグループの名前を変える（PATCH /api/groups/{id}）。undoToken があり、ドラッグの操作の
-// 先があれば、名前の変更をそのトークンの取り消しに含めるため internal/app の Organizer を通す。応答と誤りはどちらでも同じである。
+// Renames carrying undoToken pass through Organizer so they join the drag operation's undo history.
 func (s *server) RenameGroup(w http.ResponseWriter, r *http.Request, id gen.GroupId) {
 	var body gen.GroupRename
 	if !s.readJSONBody(w, r, &body) || !s.groupsConfigured(w) {
@@ -126,7 +108,6 @@ func (s *server) RenameGroup(w http.ResponseWriter, r *http.Request, id gen.Grou
 	s.writeGroup(w, r, http.StatusOK, group, err, "Could not rename the group.")
 }
 
-// DissolveGroup はグループを解散する（DELETE /api/groups/{id}）。
 func (s *server) DissolveGroup(w http.ResponseWriter, r *http.Request, id gen.GroupId) {
 	if !s.groupsConfigured(w) {
 		return
@@ -139,7 +120,6 @@ func (s *server) DissolveGroup(w http.ResponseWriter, r *http.Request, id gen.Gr
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// AddGroupItems はグループの末尾に動画とグループを足す（POST /api/groups/{id}/items）。
 func (s *server) AddGroupItems(w http.ResponseWriter, r *http.Request, id gen.GroupId) {
 	var body gen.GroupMembers
 	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
@@ -153,14 +133,13 @@ func (s *server) AddGroupItems(w http.ResponseWriter, r *http.Request, id gen.Gr
 	s.writeGroup(w, r, http.StatusOK, group, err, "Could not add to the group.")
 }
 
-// RemoveGroupItems はグループから項目を外す（POST /api/groups/{id}/items/remove）。最後の項目を外して
-// 空になったグループは解散されるので、本文の無い 204 を返す。
+// Removing the final group item dissolves it and returns a bodyless 204.
 func (s *server) RemoveGroupItems(w http.ResponseWriter, r *http.Request, id gen.GroupId) {
 	var body gen.GroupItemRemove
 	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
 		return
 	}
-	// 上限は契約の maxItems どおり、重複を除く前の配列の長さで数える。
+	// OpenAPI maxItems counts the raw array length before deduplication.
 	if len(body.ItemIds) > maxVideoTagsIDs {
 		s.invalidRequestLimit(w, reasonTooManyVideos, maxVideoTagsIDs,
 			fmt.Sprintf("itemIds must contain at most %d items.", maxVideoTagsIDs))
@@ -183,8 +162,6 @@ func (s *server) RemoveGroupItems(w http.ResponseWriter, r *http.Request, id gen
 	s.writeGroup(w, r, http.StatusOK, group, err, "Could not remove the group items.")
 }
 
-// MoveGroupItem はグループの項目 1 つを after の項目のすぐ後ろへ移す。after が無ければ先頭へ移す
-// （POST /api/groups/{id}/items/{itemId}/move）。
 func (s *server) MoveGroupItem(w http.ResponseWriter, r *http.Request, id gen.GroupId, itemID gen.GroupItemId) {
 	var body gen.GroupItemMove
 	if !s.readJSONBody(w, r, &body) {
@@ -205,7 +182,6 @@ func (s *server) MoveGroupItem(w http.ResponseWriter, r *http.Request, id gen.Gr
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// TagGroup はグループをタグに変える（POST /api/groups/{id}/tag）。
 func (s *server) TagGroup(w http.ResponseWriter, r *http.Request, id gen.GroupId) {
 	if !s.groupsConfigured(w) {
 		return
@@ -223,7 +199,6 @@ func (s *server) TagGroup(w http.ResponseWriter, r *http.Request, id gen.GroupId
 	writeJSON(w, http.StatusOK, gen.GroupTagResult{Tag: toAPITagRef(result.Tag), Created: result.Created}, s.logger)
 }
 
-// groupsConfigured は保存先が無ければ 500 を書いて false を返す。
 func (s *server) groupsConfigured(w http.ResponseWriter) bool {
 	if s.groups == nil {
 		s.internalError(w, "Group storage is not configured.", nil)
@@ -232,8 +207,6 @@ func (s *server) groupsConfigured(w http.ResponseWriter) bool {
 	return true
 }
 
-// groupAdd は作成と追加の本文の動画とグループを、重複を除いて保存先の入力にする。両方が空なら
-// 400 invalid_request、どちらかが 20000 件を超えれば 400 too_many_videos を書いて false を返す。
 func (s *server) groupAdd(w http.ResponseWriter, videoIDs, groupIDs *[]int64) (domain.GroupAdd, bool) {
 	var add domain.GroupAdd
 	if videoIDs != nil {
@@ -242,7 +215,7 @@ func (s *server) groupAdd(w http.ResponseWriter, videoIDs, groupIDs *[]int64) (d
 	if groupIDs != nil {
 		add.GroupIDs = *groupIDs
 	}
-	// 上限は契約の maxItems どおり、重複を除く前の配列の長さで数える。
+	// OpenAPI maxItems counts the raw array length before deduplication.
 	if len(add.VideoIDs) > maxVideoTagsIDs || len(add.GroupIDs) > maxVideoTagsIDs {
 		s.invalidRequestLimit(w, reasonTooManyVideos, maxVideoTagsIDs,
 			fmt.Sprintf("videoIds and groupIds must each contain at most %d items.", maxVideoTagsIDs))
@@ -256,10 +229,7 @@ func (s *server) groupAdd(w http.ResponseWriter, videoIDs, groupIDs *[]int64) (d
 	return add, true
 }
 
-// writeGroup は書き込んだあとのグループを LibraryGroup にして返す。err があれば writeGroupError で
-// 応答にし、failure はその 500 の文である。値は GET /api/groups/{id} と
-// 同じく子孫の動画から作る。見せる動画の無いグループ（子グループの解散で項目を失った親など）は、
-// ライブラリには出ないが書き込みの結果としては返すので、本数 0 の値にする。
+// Write results return zero-count groups even when they have no visible videos and therefore do not appear in library reads.
 func (s *server) writeGroup(w http.ResponseWriter, r *http.Request, status int, group domain.Group, err error, failure string) {
 	if err != nil {
 		s.writeGroupError(w, err, failure)
@@ -276,7 +246,6 @@ func (s *server) writeGroup(w http.ResponseWriter, r *http.Request, status int, 
 	writeJSON(w, status, out, s.logger)
 }
 
-// presentWrittenGroup は writeGroup の応答の値を作る。
 func (s *server) presentWrittenGroup(ctx context.Context, audience domain.Audience, group domain.Group) (gen.LibraryGroup, error) {
 	if s.library == nil {
 		return gen.LibraryGroup{}, errors.New("group queries are not configured")
@@ -294,9 +263,7 @@ func (s *server) presentWrittenGroup(ctx context.Context, audience domain.Audien
 	return s.emptyGroup(ctx, audience, group)
 }
 
-// emptyGroup は見せる動画の無いグループの値である。folder は自動グループのフォルダが登録フォルダの
-// 下にあるときだけ載せる（ほかのグループの値と同じ）。お気に入りは動画が無くても残るので、保存層の
-// 値を載せる。
+// Empty groups retain favorites; include folder only when the automatic group's path is under registered roots.
 func (s *server) emptyGroup(ctx context.Context, audience domain.Audience, group domain.Group) (gen.LibraryGroup, error) {
 	out := gen.LibraryGroup{
 		Id: group.ID, Name: group.Name, Previews: []gen.FolderPreview{}, VideoIds: []int64{}, Tags: []gen.VideoTag{},
@@ -317,9 +284,6 @@ func (s *server) emptyGroup(ctx context.Context, audience domain.Audience, group
 	return out, nil
 }
 
-// writeGroupError は保存層の誤りを応答にする。要求が名指した
-// 対象が無ければ 404 group_target_not_found、グループが無ければ 404 not_found、入れ子の循環は
-// 409 group_cycle、名前の規則違反は 400 invalid_request、それ以外は message の 500 である。
 func (s *server) writeGroupError(w http.ResponseWriter, err error, message string) {
 	var invalidName *domain.InvalidGroupNameError
 	switch {
@@ -336,7 +300,6 @@ func (s *server) writeGroupError(w http.ResponseWriter, err error, message strin
 	}
 }
 
-// groupNameMessage は名前の規則違反の種類を、画面に出してよい英語の文にする。
 func groupNameMessage(problem domain.GroupNameProblem) string {
 	switch problem {
 	case domain.GroupNameEmpty:

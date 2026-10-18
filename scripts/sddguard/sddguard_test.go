@@ -189,16 +189,7 @@ func TestDocumentsAreLinkedFromTheirIndex(t *testing.T) {
 	}
 }
 
-// guardedMarkdown は web/ の外にある、版管理された Markdown を返す。prettier は
-// `npm --prefix web run format:check` で web/ だけを整形検査するので、
-// specs/ と docs/ とリポジトリ直下はどの検査にもかかっていない。
-//
-// 走査ではなく git の追跡一覧を使う。ディレクトリを辿ると、無視されている作業用の
-// チェックアウト（エージェントが作る .claude/worktrees/ など）まで拾い、そこにある
-// 古い内容を現在の違反として報告してしまう。
-// vendoredSkill は上流の shadcn スキルの写しで、リポジトリの文書規則では書かれていない
-// （.agents/skills/shadcn/VENDORED.md）。手元の変更は CLI の置き換えだけに保つので、
-// 見出しや書き方の検査から外す。
+// Use tracked paths so ignored worktrees cannot introduce stale violations. Exclude the vendored shadcn skill, which follows upstream documentation rules.
 const vendoredSkill = ".agents/skills/shadcn/"
 
 func guardedMarkdown(t *testing.T) []string {
@@ -223,9 +214,6 @@ func guardedMarkdown(t *testing.T) []string {
 	return files
 }
 
-// TestMarkdownHasNoTrailingWhitespace は行末の空白を落とす。PR #72 では
-// PR 本文に `git diff --check` 済みと書いてあったが実際には違反しており、
-// レビューが指摘して1往復かかった。
 func TestMarkdownHasNoTrailingWhitespace(t *testing.T) {
 	for _, path := range guardedMarkdown(t) {
 		body, err := os.ReadFile(path)
@@ -240,11 +228,9 @@ func TestMarkdownHasNoTrailingWhitespace(t *testing.T) {
 	}
 }
 
-// markdownLink は Markdown の相対リンクを拾う。外部 URL と純粋な anchor は除く。
+// Match relative Markdown links, excluding external URLs and fragment-only links.
 var markdownLink = regexp.MustCompile(`\]\(([^)\s]+)\)`)
 
-// TestMarkdownRelativeLinksResolve は解決できない相対リンクを落とす。PR #76 は
-// 実行計画を active/ から completed/ へ移した結果、参照元のリンクが切れていた。
 func TestMarkdownRelativeLinksResolve(t *testing.T) {
 	for _, path := range guardedMarkdown(t) {
 		body, err := os.ReadFile(path)

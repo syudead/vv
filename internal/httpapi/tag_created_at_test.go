@@ -9,8 +9,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 画面の API の Tag.createdAtを、
-// 本物の保存先で確かめる。外部連携 API の listTags にも同じ値が載る
 func TestTagCreatedAtOnScreenAndExternalAPI(t *testing.T) {
 	env, cookie := newExternalEnv(t, Options{})
 
@@ -64,7 +62,6 @@ func TestTagCreatedAtOnScreenAndExternalAPI(t *testing.T) {
 	}
 }
 
-// rawCreatedAt は Tag 1 件の JSON から createdAt の文字列を取り出し、RFC 3339 であることを確かめる。
 func rawCreatedAt(t *testing.T, body []byte) string {
 	t.Helper()
 	var tag struct {

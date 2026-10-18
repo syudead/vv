@@ -7,8 +7,6 @@ import (
 	"testing"
 )
 
-// 取得した作品の詳細を保存済みの作品情報に重ねる。
-
 var (
 	matchNew       = CreditMatch{State: CreditMatchNew}
 	matchAmbiguous = CreditMatch{State: CreditMatchAmbiguous}
@@ -154,7 +152,6 @@ func TestMergeChecksNewEntitiesBeforeKeepingThem(t *testing.T) {
 	if !reflect.DeepEqual(got.Skipped, wantSkipped) {
 		t.Errorf("skipped = %+v, want %+v", got.Skipped, wantSkipped)
 	}
-	// 同じ照合形の名前は役割が違っても 1 つの実体にまとめ、両方の位置に結ぶ。
 	wantNew := []NewCredit{{
 		Input: CreditInput{Name: "Rin", Aliases: []Alias{}, ExternalIDs: []ExternalID{{Source: "fanza", Value: "r-1"}}},
 		Links: []int{0, 1},
@@ -182,10 +179,8 @@ func TestMergeKeepsTheExternalIDsOfEveryEntryFoldedIntoANewEntity(t *testing.T) 
 			{Role: PersonPerformer, Name: "Rin", ExternalIDs: []ExternalID{id("a")}},
 			{Role: PersonPerformer, Name: "Other", ExternalIDs: []ExternalID{id("x")}},
 			{Role: PersonPerformer, Name: "Full", ExternalIDs: many},
-			// 名前でまとめた件の ID も、すでに結んだ役割の件の ID も同じ実体に足す。
 			{Role: PersonDirector, Name: "ＲＩＮ", ExternalIDs: []ExternalID{id("b")}},
 			{Role: PersonPerformer, Name: "rin", ExternalIDs: []ExternalID{id("a"), id("c")}},
-			// ほかの作る実体が持つ ID と、実体の上限を超える ID は飛ばす。
 			{Role: PersonDirector, Name: "Rin", ExternalIDs: []ExternalID{id("a"), id("x")}},
 			{Role: PersonDirector, Name: "Full", ExternalIDs: []ExternalID{id("over")}},
 		}},

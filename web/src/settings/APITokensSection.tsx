@@ -36,7 +36,7 @@ import { Skeleton } from "../ui/shadcn/skeleton";
 import { useToast } from "../ui/Toast";
 import { EXTERNAL_API_GUIDE_URL } from "./docsLinks";
 
-/** Revealed は発行直後の平文の表示である。ページの読み直しや「Done」で消え、二度と出ない。 */
+/** Plaintext is shown only once; Done or a page reload discards it. */
 interface Revealed {
   token: APIToken;
   secret: string;
@@ -56,8 +56,7 @@ function RevokeDialog({
   onRevoke: () => void;
 }) {
   const text = t.settings.revokeTokenDialog;
-  // 確認の窓の型（ConfirmDialog）と同じ組み方で、失効が終わるまで窓を開いたままにし、
-  // 失敗を窓の中に出す。
+  // Keep the confirmation open until revocation completes and display failures inside it.
   return (
     <AlertDialog
       open
@@ -109,7 +108,7 @@ function TokenReveal({ revealed, onDone }: { revealed: Revealed; onDone: () => v
   const toast = useToast();
   const copyButton = useRef<HTMLButtonElement>(null);
 
-  // 発行の間は入力と button が無効で、focus の行き場が無い。結果の主操作へ移す。
+  // Issuance disables every focus target; move to the result's primary action.
   useEffect(() => copyButton.current?.focus(), []);
 
   const copy = () =>
@@ -143,11 +142,6 @@ function TokenReveal({ revealed, onDone }: { revealed: Revealed; onDone: () => v
   );
 }
 
-/**
- * APITokensSection は設定画面の「API tokens」節である。所有者が外部連携 API と MCP の
- * トークンを発行し、発行直後に一度だけ平文を見てコピーし、一覧で名前と日時を確かめ、
- * 確認の後に失効する。
- */
 export default function APITokensSection() {
   const text = t.settings.apiTokens;
   const toast = useToast();
@@ -188,7 +182,7 @@ export default function APITokensSection() {
     return () => controller.abort();
   }, [load]);
 
-  // 失効や「Done」の後の focus は、行や入力が描かれてから移す。
+  // Wait for rows and inputs to render before restoring focus after revoke or Done.
   useEffect(() => {
     const target = focusAfterRender.current;
     if (target === null) return;
@@ -232,8 +226,7 @@ export default function APITokensSection() {
     setRevokeError(null);
     try {
       await revokeAPIToken(target.id);
-      // 失効を待つあいだに発行が終わり、一覧の先頭に足されていることがある。
-      // 失効を始めたときの一覧ではなく最新の一覧から、対象の 1 本だけを除く。
+      // Remove only the revoked token from the latest list; concurrent issuance may have prepended another.
       setTokens((current) => {
         const index = current.findIndex((token) => token.id === target.id);
         const remaining = current.filter((token) => token.id !== target.id);
@@ -241,7 +234,7 @@ export default function APITokensSection() {
         focusAfterRender.current = next === undefined ? "name" : next.id;
         return remaining;
       });
-      // 失効したトークンの平文は残さない。
+      // Discard revoked-token plaintext.
       setRevealed((current) => (current?.token.id === target.id ? null : current));
       setRevoking(null);
       toast(text.revoked);

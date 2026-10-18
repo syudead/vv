@@ -1,11 +1,6 @@
 package store
 
-// フォルダの索引（動画ごとの祖先フォルダ名）と、フォルダごとの例外。グループそのものは groups と group_items が持ち、作り直しの同期（syncFolderGroups）が
-// フォルダとそろえる。
-// 例外の書き換えは FolderGroupStore、スキャンの後と起動時の作り直しは ScanIndexStore、
-// メディアフォルダの変更に伴う作り直しは SettingsStore、束ねの変更に伴う作り直しは
-// VersionStoreが受け持ち、どれも
-// rebuildFolderIndex を自分の取引の中で呼ぶ。
+// Folder index rebuilds run inside each owning store's transaction; groups are synchronized from the resulting index.
 
 import (
 	"context"
@@ -18,9 +13,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// SetOverride はフォルダ folderPath（絶対パス）に例外 mode を付け、同じ取引で
-// 索引を作り直す。既に例外があれば置き換える。1つのフォルダに付く例外は1つだけ
-// である。folderPath に一致するフォルダが今無くても例外は保存する。
+// SetOverride persists one override per absolute path, even if the folder is currently absent, and rebuilds atomically.
 func (s *FolderGroupStore) SetOverride(ctx context.Context, folderPath string, mode domain.FolderGroupMode) error {
 	if !mode.Valid() {
 		return fmt.Errorf("invalid folder grouping: %q", mode)
@@ -29,17 +22,13 @@ func (s *FolderGroupStore) SetOverride(ctx context.Context, folderPath string, m
 	return err
 }
 
-// ClearOverride はフォルダ folderPath（絶対パス）の例外を外し、同じ取引で索引を
-// 作り直す。例外が無ければ何も変えずに作り直す。
+// ClearOverride rebuilds the index atomically even if no override exists.
 func (s *FolderGroupStore) ClearOverride(ctx context.Context, folderPath string) error {
 	_, err := s.SetFolderGrouping(ctx, folderPath, "")
 	return err
 }
 
-// SetFolderGrouping はフォルダ folderPath（絶対パス）の例外を mode にし、同じ取引で
-// 索引を作り直して、変更後のまとめ方を返す（PUT /api/folders/{rootId}/grouping、
-// docs/design-docs/catalog-organization.md）。mode が空なら例外を
-// 外す（自動）。同じ値の再設定も誤りにしない。
+// SetFolderGrouping atomically updates the override and index; an empty mode restores automatic grouping.
 func (s *FolderGroupStore) SetFolderGrouping(ctx context.Context, folderPath string, mode domain.FolderGroupMode) (domain.FolderGrouping, error) {
 	if mode != "" && !mode.Valid() {
 		return domain.FolderGrouping{}, fmt.Errorf("invalid folder grouping: %q", mode)
@@ -66,8 +55,7 @@ func (s *FolderGroupStore) SetFolderGrouping(ctx context.Context, folderPath str
 	return groupings[0], nil
 }
 
-// FolderGroupings はフォルダ folderPaths（絶対パス）それぞれのまとめ方を、同じ
-// 読み取りのスナップショットから folderPaths と同じ順で返す（FolderSummary.grouping）。
+// FolderGroupings preserves input order and reads one snapshot.
 func (s *FolderGroupStore) FolderGroupings(ctx context.Context, folderPaths []string) ([]domain.FolderGrouping, error) {
 	if len(folderPaths) == 0 {
 		return []domain.FolderGrouping{}, nil
@@ -87,8 +75,6 @@ func (s *FolderGroupStore) FolderGroupings(ctx context.Context, folderPaths []st
 	return groupings, nil
 }
 
-// folderGroupings はフォルダそれぞれの例外と、そのフォルダの自動グループ（groups.origin_folder）の
-// id を引く。
 func folderGroupings(ctx context.Context, tx *sql.Tx, folderPaths []string) ([]domain.FolderGrouping, error) {
 	keys := make([]string, len(folderPaths))
 	for i, path := range folderPaths {
@@ -128,10 +114,7 @@ func folderGroupings(ctx context.Context, tx *sql.Tx, folderPaths []string) ([]d
 	return out, nil
 }
 
-// dissolveUngroupedAndRebuild は、例外 mode が ungroup ならフォルダ folderPath の自動グループを
-// 解散と同じ経路（dissolveFolderGroup）で消し、索引を作り直して、変わったグループとその祖先の id を
-// 返す。auto と groupDirect は作り直しの同期が、規則が成り立てば
-// 新しいグループを作る。
+// Ungroup dissolves through the normal path; automatic/groupDirect modes allow synchronization to recreate eligible groups.
 func dissolveUngroupedAndRebuild(ctx context.Context, tx *sql.Tx, folderPath string, mode domain.FolderGroupMode) ([]int64, error) {
 	var dissolved []int64
 	if mode == domain.FolderGroupUngroup {
@@ -147,7 +130,6 @@ func dissolveUngroupedAndRebuild(ctx context.Context, tx *sql.Tx, folderPath str
 	return normalizeIDs(append(dissolved, rebuilt...)), nil
 }
 
-// writeOverride はフォルダ folderPath の例外を mode にする。mode が空なら外す。
 func writeOverride(ctx context.Context, tx *sql.Tx, folderPath string, mode domain.FolderGroupMode) error {
 	var err error
 	if mode == "" {
@@ -163,11 +145,7 @@ func writeOverride(ctx context.Context, tx *sql.Tx, folderPath string, mode doma
 	return nil
 }
 
-// RebuildFolderIndex はフォルダの索引を作り直す。スキャンを閉じる直前と、起動時に
-// 中断したスキャンを閉じたときに呼ぶ。
-//
-// 作り直しに失敗したら、その取引は巻き戻して前の索引を残し、別の取引で索引を
-// 古い（stale）と記録してから失敗を返す。次の起動で RefreshFolderIndex が作り直す。
+// RebuildFolderIndex preserves the previous index on failure and marks it stale in a separate transaction for startup recovery.
 func (s *ScanIndexStore) RebuildFolderIndex(ctx context.Context) error {
 	err := s.rebuildFolderIndexTx(ctx)
 	if err == nil {
@@ -179,9 +157,7 @@ func (s *ScanIndexStore) RebuildFolderIndex(ctx context.Context) error {
 	return err
 }
 
-// RefreshFolderIndex は、索引を作った規則の版が今の値と違うとき、前回の作り直しが
-// 失敗していたとき、まだ一度も作っていないときだけ索引を作り直し、作り直したか
-// どうかを返す。起動時、RefreshSearchKeys の後で、HTTP とワーカーの開始より前に呼ぶ。
+// RefreshFolderIndex rebuilds only absent, stale or outdated indexes before HTTP and workers start.
 func (s *ScanIndexStore) RefreshFolderIndex(ctx context.Context) (bool, error) {
 	var version, searchVersion, stale int
 	err := s.db.sql.QueryRowContext(ctx,
@@ -213,8 +189,7 @@ func (s *ScanIndexStore) rebuildFolderIndexTx(ctx context.Context) error {
 	return s.db.commitEvents(ctx, tx, groupsChangedEvents(changedGroups)...)
 }
 
-// markFolderIndexStale は索引が古いことを記録する。行が無ければ版 0 で作るので、
-// 次の起動でも作り直す。
+// A missing state row is inserted at version zero to force the next startup rebuild.
 func markFolderIndexStale(ctx context.Context, q queryExecer) error {
 	if _, err := q.ExecContext(ctx, `insert into folder_index_state (id, version, search_version, stale) values (1, 0, 0, 1)
 		on conflict (id) do update set stale = 1`); err != nil {
@@ -223,12 +198,7 @@ func markFolderIndexStale(ctx context.Context, q queryExecer) error {
 	return nil
 }
 
-// rebuildFolderIndex は、登録フォルダの下の全所在と例外を読み、
-// domain.BuildFolderIndex を通して、フォルダ名の表を丸ごと書き直す。同じ取引で自動グループをフォルダとそろえ
-// （syncFolderGroups、docs/design-docs/catalog-organization.md「Automatic group sync」）、変わった
-// グループとその祖先の id を返す。呼び出し側は確定の後に groupsChangedEvents で知らせる。
-// 呼び出し側の書き込み取引の中で行うので、読み出しは作り直しの前か後のどちらかだけを見る。
-// ファイルシステムは読まない。
+// Rebuild from database locations only, atomically synchronizing folder groups; callers notify changed groups after commit.
 func rebuildFolderIndex(ctx context.Context, tx *sql.Tx) ([]int64, error) {
 	roots, err := listMediaFolders(ctx, tx)
 	if err != nil {
@@ -253,9 +223,7 @@ func rebuildFolderIndex(ctx context.Context, tx *sql.Tx) ([]int64, error) {
 	return changed, nil
 }
 
-// folderIndexLocations は索引の入力にする所在を返す。所有者から見た見せる動画
-// （shownVideoCondition、docs/design-docs/catalog-organization.md）の所在
-// だけで、集まりの代表以外のバージョンはグループにもフォルダ名の表にも入らない。
+// Only visible representatives contribute locations; nonrepresentative versions never enter the folder index.
 func folderIndexLocations(ctx context.Context, tx *sql.Tx) ([]domain.FolderIndexLocation, error) {
 	rows, err := tx.QueryContext(ctx, `select l.video_id, l.path from video_locations l
 		join videos on videos.id = l.video_id

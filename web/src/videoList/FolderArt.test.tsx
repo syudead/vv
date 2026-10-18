@@ -77,12 +77,10 @@ describe("FolderArt の一覧のプレビューの調整", () => {
     rerender({ activePreviewId: 2, previewResetEpoch: 0 });
     expect(videos()).toBe(1);
 
-    // ほかのカード（動画 9）が流し始めた。
     rerender({ activePreviewId: 9, previewResetEpoch: 0 });
     expect(front()).toBeNull();
     expect(videos()).toBe(0);
 
-    // もう一度流し、表示倍率の変更などで止める指示が来た。
     fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 10 });
     act(() => vi.advanceTimersByTime(500));
     expect(onPreviewStart).toHaveBeenLastCalledWith(1);

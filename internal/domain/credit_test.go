@@ -8,8 +8,6 @@ import (
 	"testing"
 )
 
-// 人物・団体の入力の規則。どの規則も、
-// 失敗したフィールドの経路と問題を名指しして入力を拒む。
 func TestNormalizeCreditRefusesEachRule(t *testing.T) {
 	manyAliases := make([]Alias, CreditAliasesMaxCount+1)
 	for i := range manyAliases {
@@ -66,8 +64,6 @@ func TestNormalizeCreditRefusesEachRule(t *testing.T) {
 	}
 }
 
-// 整えた入力は前後の空白を除き、空の別名（言語があっても）と両方空の外部 ID を落とし、綴りは
-// 畳み込まない。
 func TestNormalizeCreditTrimsAndDrops(t *testing.T) {
 	parent := int64(7)
 	got, err := NormalizeCredit(CreditInput{
@@ -75,7 +71,6 @@ func TestNormalizeCreditTrimsAndDrops(t *testing.T) {
 		Aliases: []Alias{
 			{Name: " Hanako ", Language: " en "},
 			{Name: "  ", Language: "ja"},
-			// 名前の無い別名は、言語が誤っていても（形・長さ・制御文字）拒まずに落とす。
 			{Name: "", Language: "x"},
 			{Name: " ", Language: strings.Repeat("a", CreditLanguageMaxLength+1)},
 			{Name: "", Language: "ja\x00"},
@@ -130,7 +125,6 @@ func TestExternalIDIndexFindsTheSentPosition(t *testing.T) {
 	}
 }
 
-// NormalizeExternalID は保存と同じく前後の空白を落とし、片方が空か規則に合わない外部 ID を false にする。
 func TestNormalizeExternalIDForLookup(t *testing.T) {
 	if got, ok := NormalizeExternalID(ExternalID{Source: " example ", Value: "　 42 "}); !ok || got != (ExternalID{Source: "example", Value: "42"}) {
 		t.Errorf("NormalizeExternalID = %+v, %v", got, ok)

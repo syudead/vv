@@ -16,7 +16,6 @@ import {
 
 setUpSmartFolderServer();
 
-/** cardNames は格子のカードの読み上げ名を上から返す。 */
 function cardNames(): string[] {
   return screen
     .getAllByRole("article")
@@ -60,7 +59,6 @@ describe("スマートフォルダのページ", () => {
     expect(screen.getByText("Unwatched")).toBeTruthy();
     const fromParent = screen.getByRole("link", { name: 'From "タグ: 猫":' });
     expect(fromParent.getAttribute("href")).toBe("/smart-folders/1");
-    // 祖先の条件はその祖先を読んで引く。
     expect(await screen.findByText("Tag: 猫")).toBeTruthy();
   });
 

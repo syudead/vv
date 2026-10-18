@@ -13,16 +13,12 @@ import {
   CommandList,
 } from "@/ui/shadcn/command";
 
-// shadcn/ui の Combobox（Popover の中の Command）。多くの候補から 1 つを、打って絞って選ぶ。
-// 浮く層は Radix Popover をここで直に組む（Popover の部品は重ね表示の単位が作る）。
-// 一覧の幅と原点は Radix の CSS 変数で決まるので、その変数を読むクラスだけを
-// web/design-exceptions.js の special で許す。
-// 規則は web/registry/rules/components.md の Combobox and Command。
+// Adapted from shadcn/ui Combobox using Radix Popover and Command.
+// Radix positioning variables are explicitly allowed in web/design-exceptions.js.
 
 export interface ComboboxOption {
   value: string;
   label: string;
-  /** 絞り込みで label のほかに当てる語（シノニムなど）。 */
   keywords?: string[];
   disabled?: boolean;
 }
@@ -39,13 +35,10 @@ function Combobox({
   "aria-label": ariaLabel,
 }: {
   options: readonly ComboboxOption[];
-  /** 選んでいる値。何も選んでいなければ空文字。 */
   value: string;
   onValueChange: (value: string) => void;
-  /** 何も選んでいないときにボタンに出す文言。 */
   placeholder: ReactNode;
   searchPlaceholder?: string;
-  /** 打った文字に合う候補が無いときの文言。 */
   emptyText: ReactNode;
   disabled?: boolean;
   className?: string;

@@ -11,14 +11,9 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// タグの管理API。
-//
-// internal/app は通さない。どの操作も
-// internal/store.TagStore の1つのトランザクションで済み、httpapi は要求の
-// 解釈と契約の形への変換だけを持つ。
+// Tag operations use one TagStore transaction; this layer only parses and presents.
 
-// ListTags はタグの一覧を返す（GET /api/tags、docs/design-docs/catalog-organization.md）。
-// limit を省けば条件に合う全件を返し、nextCursor は入らない（候補・絞り込みの確かめの経路）。
+// Omitted limit returns all matching tags without nextCursor.
 func (s *server) ListTags(w http.ResponseWriter, r *http.Request, params gen.ListTagsParams) {
 	query, ok := s.parseTagListQuery(w, params)
 	if !ok {
@@ -53,9 +48,7 @@ func (s *server) ListTags(w http.ResponseWriter, r *http.Request, params gen.Lis
 	writeJSON(w, http.StatusOK, body, s.logger)
 }
 
-// parseTagListQuery は GET /api/tags のパラメータを検査する。sort が 5 値でない、
-// limit が 1〜200 の外、q が 100 文字を超えるときは 400 を書いて false を返す。
-// カーソルの中身は保存層が解く（解けなければ ErrInvalidCursor）。
+// Storage decodes cursor contents; this boundary validates other query constraints.
 func (s *server) parseTagListQuery(w http.ResponseWriter, params gen.ListTagsParams) (domain.TagListQuery, bool) {
 	sort := sortParam(params.Sort)
 	query, problem := buildTagListQuery(params.Q, params.Tentative, params.Unused, sort, params.Cursor, params.Limit)
@@ -73,7 +66,6 @@ func (s *server) parseTagListQuery(w http.ResponseWriter, params gen.ListTagsPar
 	return query, true
 }
 
-// parseTagKindFilter は GET /api/tags の kind（正の整数か none）を domain.TagKindFilter にする。どちらでもなければ false を返す。
 func parseTagKindFilter(raw string) (domain.TagKindFilter, bool) {
 	if raw == "none" {
 		return domain.TagKindFilter{None: true}, true
@@ -88,8 +80,6 @@ func parseTagKindFilter(raw string) (domain.TagKindFilter, bool) {
 	return domain.TagKindFilter{ID: id}, true
 }
 
-// acceptTagListQuery は buildTagListQuery の断った理由を 400 として書き、断っていれば false を返す。
-// タグの一覧と人物・団体の一覧（credits.go）が同じ書き方を使う。
 func (s *server) acceptTagListQuery(w http.ResponseWriter, problem tagListProblem) bool {
 	switch problem {
 	case tagListSortUnknown:
@@ -106,7 +96,6 @@ func (s *server) acceptTagListQuery(w http.ResponseWriter, problem tagListProble
 	return true
 }
 
-// sortParam は生成された並び順の引数を buildTagListQuery の文字列にする。省いたものは nil。
 func sortParam[T ~string](sort *T) *string {
 	if sort == nil {
 		return nil
@@ -115,7 +104,6 @@ func sortParam[T ~string](sort *T) *string {
 	return &value
 }
 
-// tagListProblem は buildTagListQuery が断った理由である。
 type tagListProblem int
 
 const (
@@ -125,10 +113,7 @@ const (
 	tagListSearchTooLong
 )
 
-// buildTagListQuery はタグの一覧のパラメータを domain.TagListQuery にする。画面の
-// GET /api/tags と外部連携 API の GET /api/v1/tags が同じ規則で使い、誤りの書き方だけを
-// それぞれが持つ。sort の省略は
-// 名前の順、limit の省略は全件で、そのときカーソルは無視する。
+// UI and external tag lists share query rules: omitted sort means natural name order, and omitted limit returns all results while ignoring cursor.
 func buildTagListQuery(q *string, tentative, unused *bool, sort, cursor *string, limit *int) (domain.TagListQuery, tagListProblem) {
 	query := domain.TagListQuery{
 		TentativeOnly: tentative != nil && *tentative,
@@ -216,9 +201,7 @@ func (s *server) MergeTag(w http.ResponseWriter, r *http.Request, id gen.TagId) 
 	if !s.validTagBatchIDs(w, "sourceIds", body.SourceIds) {
 		return
 	}
-	// store.MergeTags は統合元に混じった統合先を黙って飛ばす。API はそれより先に
-	// 400 invalid_request にする — 統合は違うタグを 1 つにする操作であり、統合先を
-	// 統合元に送るのは要求の誤りだからである。
+	// Reject self-merges at the API boundary even though storage silently skips the target among sources.
 	if slices.Contains(body.SourceIds, id) {
 		s.invalidRequestReason(w, reasonMergeSameTag, "The source and target of a merge must be different tags.")
 		return
@@ -262,12 +245,7 @@ func (s *server) RemoveTagSynonym(w http.ResponseWriter, r *http.Request, id gen
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
-	// store.RemoveSynonymは受け取ったnameをそのまま照合する。前後の空白などで
-	// 登録時と食い違うと黙って何も変えないので、登録時と同じ整え方
-	// （domain.NormalizeTagName）にそろえてから渡す（#264 レビューの持ち越し）。
-	// 整えられない入力（空・制御文字・上限超）は、そもそもどのタグのシノニムにも
-	// なりえないので、整える前の文字列のまま渡す。何にも一致しないだけで、タグ
-	// 自体が無ければ RemoveSynonym が domain.ErrTagNotFound を返す。
+	// Normalize synonym removal exactly like creation; invalid raw names cannot match, while storage still reports a missing tag.
 	name, err := domain.NormalizeTagName(params.Name)
 	if err != nil {
 		name = params.Name
@@ -280,9 +258,7 @@ func (s *server) RemoveTagSynonym(w http.ResponseWriter, r *http.Request, id gen
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ConfirmTag は仮のタグを確定する（POST /api/tags/{id}/confirm、
-// docs/design-docs/catalog-organization.md）。既に確定したタグでも
-// 何も変えずに今の状態を返す。
+// Confirming an already-confirmed tag is a no-op returning its current state.
 func (s *server) ConfirmTag(w http.ResponseWriter, r *http.Request, id gen.TagId) {
 	if s.tags == nil {
 		s.internalError(w, "Tag storage is not configured.", nil)
@@ -297,10 +273,6 @@ func (s *server) ConfirmTag(w http.ResponseWriter, r *http.Request, id gen.TagId
 	writeJSON(w, http.StatusOK, toAPITag(tag), s.logger)
 }
 
-// RejectTag は仮のタグを却下する（POST /api/tags/{id}/reject、
-// docs/design-docs/catalog-organization.md）。確定したタグは
-// 409 tag_not_tentative で何も変えない。却下した名前は応答に載せず、画面は
-// 却下した名前の一覧を取り直す。
 func (s *server) RejectTag(w http.ResponseWriter, r *http.Request, id gen.TagId) {
 	if s.tags == nil {
 		s.internalError(w, "Tag storage is not configured.", nil)
@@ -314,10 +286,7 @@ func (s *server) RejectTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// BatchTags は複数のタグをまとめて確定・却下・削除し、種類を付け外しする（POST /api/tags/batch、
-// docs/design-docs/catalog-organization.md、docs/design-docs/catalog-organization.md）。
-// 働かない種類・無いタグは何も変えずに数えて返し、残りを 1 つの取引で処理する。1 件の経路
-// （confirm・reject・DELETE）は変えない。
+// BatchTags applies eligible IDs atomically and reports missing/inapplicable IDs unchanged (docs/design-docs/catalog-organization.md).
 func (s *server) BatchTags(w http.ResponseWriter, r *http.Request) {
 	var body gen.TagBatchRequest
 	present, ok := s.readJSONBodyFields(w, r, &body)
@@ -352,8 +321,6 @@ func (s *server) BatchTags(w http.ResponseWriter, r *http.Request) {
 	}, s.logger)
 }
 
-// tagBatchRequest は本文の action と kindId を tagBatchRequestOf で検査して domain.TagBatchRequest に
-// する。断ったら 400 を書いて false を返す。
 func (s *server) tagBatchRequest(w http.ResponseWriter, body gen.TagBatchRequest, kindPresent bool) (domain.TagBatchRequest, bool) {
 	req, problem := tagBatchRequestOf(string(body.Action), body.KindId, kindPresent)
 	if problem != "" {
@@ -363,11 +330,7 @@ func (s *server) tagBatchRequest(w http.ResponseWriter, body gen.TagBatchRequest
 	return req, true
 }
 
-// tagBatchRequestOf は POST /api/tags/batch と POST /api/v1/tags/batch の action と kindId を
-// domain.TagBatchRequest にする。知らない action、
-// 正の kindId の無い setKind、kindId を付けたほかの action は、誤りの文を返す（通れば ""）。
-// kindPresent は本文に kindId があったか（値が null でも）で、生成型では null と省略を区別できない
-// ため呼び出し側が本文から渡す。null の kindId もほかの action では断る。
+// setKind requires a positive kindId; every other action rejects any present kindId, including null, so callers must preserve field presence.
 func tagBatchRequestOf(action string, kindID *int64, kindPresent bool) (domain.TagBatchRequest, string) {
 	req := domain.TagBatchRequest{Action: domain.TagBatchAction(action)}
 	switch {
@@ -384,9 +347,6 @@ func tagBatchRequestOf(action string, kindID *int64, kindPresent bool) (domain.T
 	return req, ""
 }
 
-// TagImpact はまとめての却下・削除・統合の確認に出す、働くタグの数と影響を受ける動画の
-// 本数を返す（POST /api/tags/impact、docs/design-docs/catalog-organization.md）。
-// 何も変えない。
 func (s *server) TagImpact(w http.ResponseWriter, r *http.Request) {
 	var body gen.TagImpactRequest
 	if !s.readJSONBody(w, r, &body) {
@@ -413,9 +373,6 @@ func (s *server) TagImpact(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.TagImpactResponse{TagCount: impact.TagCount, VideoCount: impact.VideoCount}, s.logger)
 }
 
-// validTagBatchIDs は本文の項目 field の ids が 1 件以上 domain.MaxTagBatch 件以下かを確かめ、
-// 違えば 400 を書いて false を返す。0 件と多すぎるときのどちらも reason too_many_tags と
-// limit を付ける（一括操作の videoIds の too_many_videos と同じ扱い）。
 func (s *server) validTagBatchIDs(w http.ResponseWriter, field string, ids []int64) bool {
 	if len(ids) == 0 || len(ids) > domain.MaxTagBatch {
 		s.invalidRequestLimit(w, reasonTooManyTags, domain.MaxTagBatch,
@@ -425,7 +382,6 @@ func (s *server) validTagBatchIDs(w http.ResponseWriter, field string, ids []int
 	return true
 }
 
-// nonNilIDs は応答の配列を null でなく [] にする。
 func nonNilIDs(ids []int64) []int64 {
 	if ids == nil {
 		return []int64{}
@@ -433,12 +389,8 @@ func nonNilIDs(ids []int64) []int64 {
 	return ids
 }
 
-// rejectedTagNamePageDefaultLimit は limit を省いた GET /api/tags/rejected-names の 1 ページの件数
 const rejectedTagNamePageDefaultLimit = 100
 
-// ListRejectedTagNames は却下した名前を名前の自然順でページに分けて返す
-// （GET /api/tags/rejected-names、docs/design-docs/catalog-organization.md）。
-// limit が 1〜domain.MaxTagPageLimit の外、cursor が解釈できないときは 400 invalid_request。
 func (s *server) ListRejectedTagNames(w http.ResponseWriter, r *http.Request, params gen.ListRejectedTagNamesParams) {
 	if s.tags == nil {
 		s.internalError(w, "Tag storage is not configured.", nil)
@@ -478,10 +430,7 @@ func (s *server) ListRejectedTagNames(w http.ResponseWriter, r *http.Request, pa
 	writeJSON(w, http.StatusOK, body, s.logger)
 }
 
-// ForgetRejectedTagName は名前を却下した名前の一覧から外す
-// （DELETE /api/tags/rejected-names?name=…、docs/design-docs/catalog-organization.md）。
-// 一覧に無い名前や整えられない入力でも、何も変えずに 204 を返す。整え方は
-// store.ForgetRejectedTagName が登録時と同じ domain.NormalizeTagName で行う。
+// Forgetting absent or invalid names is a no-op returning 204; storage normalizes valid input.
 func (s *server) ForgetRejectedTagName(w http.ResponseWriter, r *http.Request, params gen.ForgetRejectedTagNameParams) {
 	if s.tags == nil {
 		s.internalError(w, "Tag storage is not configured.", nil)
@@ -506,13 +455,11 @@ func toAPITag(tag domain.Tag) gen.Tag {
 	}
 }
 
-// toAPITagRef は動画に付いたタグ1件を応答の形にする。仮かどうかも載せる
 func toAPITagRef(ref domain.TagRef) gen.TagRef {
 	return gen.TagRef{Id: ref.ID, Name: ref.Name, Tentative: ref.Tentative, Kind: toAPITagKindRef(ref.Kind)}
 }
 
-// toAPIVideoTag は動画に付いたタグ1件を出所つきで応答の形にする。フォルダ由来だけで
-// 付いているタグも、そのタグの仮かどうかを出す。
+// Folder-only assignments still expose the tag's tentative state.
 func toAPIVideoTag(tag domain.VideoTag) gen.VideoTag {
 	out := gen.VideoTag{
 		Id: tag.ID, Name: tag.Name, Manual: tag.Manual, FromFolder: tag.FromFolder, Tentative: tag.Tentative,
@@ -525,12 +472,7 @@ func toAPIVideoTag(tag domain.VideoTag) gen.VideoTag {
 	return out
 }
 
-// normalizedTagNameOrRaw は writeTagNameTaken の比較に使う、要求で送られた
-// 名前の整えた形を返す。domain.TagNameConflict.Tag.Name は常に整えた形
-// （domain.NormalizeTagName の結果）で保存されているので、比較する側もそろえる
-// 必要がある。整えられない入力（空・制御文字・上限超）は、その時点で
-// domain.ErrInvalidTagName になり TagNameConflict は返らないので、ここでの
-// フォールバックは使われない。
+// Normalize submitted names before comparing with stored canonical spelling to avoid misclassifying a canonical-name conflict as a synonym conflict.
 func normalizedTagNameOrRaw(name string) string {
 	normalized, err := domain.NormalizeTagName(name)
 	if err != nil {
@@ -563,12 +505,7 @@ func (s *server) writeTagError(w http.ResponseWriter, err error, submittedName s
 	}
 }
 
-// writeTagNameTaken は tag_name_taken を返す。owner はその名前を既に持つタグ
-// （元の名前としてでもシノニムとしてでも。domain.TagNameConflict.Tag）で、Name は
-// 常にそのタグの元の名前である。submittedName が owner.Name と一致すれば、それはその
-// タグ自身の元の名前（自分のシノニムとして自分の元の名前を送った場合を含む）で
-// reason は name_is_tag、一致しなければ owner の既存のシノニムで name_is_synonym
-// になる。tagName はどちらも owner の元の名前を翻訳せずに返す
+// Canonical-name equality selects name_is_tag, otherwise name_is_synonym; tagName always preserves the owner's canonical spelling.
 func (s *server) writeTagNameTaken(w http.ResponseWriter, submittedName string, owner domain.TagRef) {
 	tagName := owner.Name
 	body := gen.Error{Code: codeTagNameTaken, TagName: &tagName}
@@ -584,9 +521,6 @@ func (s *server) writeTagNameTaken(w http.ResponseWriter, submittedName string, 
 	s.writeErrorBody(w, http.StatusConflict, body)
 }
 
-// invalidTagName は domain.NormalizeTagName の失敗を、その理由に応じた reason の
-// invalid_request へ写す。
-// prefix は message の前に置く英語の説明で、要らなければ空にする。
 func (s *server) invalidTagName(w http.ResponseWriter, err error, prefix string) {
 	var invalid *domain.InvalidTagNameError
 	if !errors.As(err, &invalid) {

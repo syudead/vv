@@ -1,12 +1,6 @@
 import type { Video } from "../api/client";
 import { formatResolution } from "../lib/format";
 
-/**
- * 題名の下の技術情報の行に並べる値（ui-design「Video facts」）。
- *
- * 解像度・コンテナ・映像・音声の順に、大文字の表記で並べる。分からない値は並べない。
- * 読み取り前・読み取り失敗は、値の代わりにその状態を 1 つだけ返す。
- */
 export type TechnicalSummary =
   { kind: "values"; values: string[] } | { kind: "pending" } | { kind: "failed" };
 
@@ -18,12 +12,10 @@ const codecNames: Record<string, string> = {
   h265: "H.265",
 };
 
-/** formatCodec は `h264` を `H.264`、`aac` を `AAC` のように書く。 */
 export function formatCodec(codec: string): string {
   return codecNames[codec.toLowerCase()] ?? codec.toUpperCase();
 }
 
-/** technicalSummary は技術情報の行の中身を返す。 */
 export function technicalSummary(video: Video): TechnicalSummary {
   if (video.probeState === "failed") return { kind: "failed" };
   if (video.probeState === "pending") return { kind: "pending" };

@@ -10,20 +10,12 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// EnqueueJob はジョブを積む。同じ (kind, video_id) の未完了ジョブが既に
-// あれば何もしない（部分ユニーク索引がその状態を保証する）。
-//
-// 一度諦めた行は消してから積み直す。内容が変わった動画を解析し直せないと、
-// 差し替えたファイルが永久に未解析のままになる。諦めた行を残さないのは、
-// 再スキャンのたびに履歴が積み上がるのを避けるためである。
-//
-// 積んだ仕事は動画の running の import の記録に加わり、無ければ decider が始めた記録を開く
+// EnqueueJob replaces terminal failures but preserves unfinished work through a partial unique index, joining one import activity.
 func (s *IngestStore) EnqueueJob(ctx context.Context, kind domain.JobKind, videoID int64, decider domain.ActivityDecider) error {
 	return s.EnqueueJobs(ctx, videoID, decider, kind)
 }
 
-// EnqueueJobs は動画 videoID の kinds の仕事を、EnqueueJob と同じく 1 つの取引で積む。確定の前にワーカーが
-// 前の段階を終えて記録を閉じないよう、走査が新しい動画に要る仕事をまとめて 1 件の記録に入れるために使う
+// EnqueueJobs queues all required stages atomically so a worker cannot finish and close the activity between stages.
 func (s *IngestStore) EnqueueJobs(
 	ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind,
 ) error {
@@ -48,7 +40,6 @@ func (s *IngestStore) EnqueueJobs(
 	return nil
 }
 
-// jobStateColumns は仕事の種類ごとに、その結果を持つ動画の列である。
 var jobStateColumns = map[domain.JobKind]string{
 	domain.JobProbe:         "probe_state",
 	domain.JobThumbnail:     "thumbnail_state",
@@ -56,27 +47,12 @@ var jobStateColumns = map[domain.JobKind]string{
 	domain.JobPreview:       "preview_state",
 }
 
-// EnsureJob は、状態が pending の動画に欠けている仕事を積み直す。走査が
-// 見つけた pending の動画に対して呼ぶ。
-//
-// 終端の失敗は動画側の状態へ同じ取引で記録する（recordTerminalFailure）ので、
-// 動画が failed なら積まない。動画が pending のまま failed の行だけが残って
-// いるのは、失敗を行にだけ記録していた旧版の名残である。その行は捨てて積み
-// 直す。残すと、次の手動の取り込みでも直らない。
-//
-// 指紋は videos に状態の列を持たないので、pending の代わりに「シーク用スプライトが
-// 完成しているのに今の版の指紋が無い」を条件にする（fingerprintMissingCondition）。
-// 上限まで失敗した failed の行も、完了した done の行も捨てて積み直す（queued・running の
-// 行があれば積まない）。失敗した指紋は次の走査で作り直され、版を上げたときも前の版の
-// done の行に妨げられずに追いつく。
-//
-// 積んだ仕事の記録は EnqueueJob と同じく決める。
+// EnsureJob repairs missing pending work and stale terminal rows; missing current-version fingerprints are retried after sprites complete.
 func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64, decider domain.ActivityDecider) error {
 	return s.EnsureJobs(ctx, videoID, decider, kind)
 }
 
-// EnsureJobs は動画 videoID の kinds の欠けた仕事を、EnsureJob と同じく 1 つの取引で積み直す。走査が動画に
-// 要る仕事をまとめて 1 件の記録に入れるために使う（EnqueueJobs と同じ）。
+// EnsureJobs repairs all required stages in one transaction and one import activity.
 func (s *IngestStore) EnsureJobs(
 	ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind,
 ) error {
@@ -114,7 +90,6 @@ func (s *IngestStore) EnsureJobs(
 	return nil
 }
 
-// ensureJob は取引 tx で、動画 videoID に欠けた kind の仕事を積み直し、積んだかを返す（EnsureJob）。
 func ensureJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, videoID int64) (bool, error) {
 	var pending string
 	discarded := `state = 'failed'`
@@ -148,13 +123,7 @@ func ensureJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, videoID int
 	return inserted > 0, nil
 }
 
-// ClaimJob は待ち行列から kind の仕事を1件専有する。
-//
-// 取り出しと状態の書き換えを begin immediate のトランザクションで囲む。
-// select と update を分けると、同じ行を二重に処理する余地が残る。段階ごとに
-// ワーカーを置くので、種類の違う仕事は別々のワーカーが同時に取り出す。
-//
-// その種類の待ち行列が空なら ErrNoJob を返す。
+// ClaimJob uses BEGIN IMMEDIATE to prevent duplicate claims across workers; an empty queue returns ErrNoJob.
 func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain.Job, error) {
 	conn, err := s.db.sql.Conn(ctx)
 	if err != nil {
@@ -175,8 +144,7 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 	var job domain.Job
 	var kindName string
 	var previousPath sql.NullString
-	// 取り出してよい条件は domain が決める（domain.ClaimConditionFor）。ここでは
-	// それを SQL の条件へ写すだけにする。
+	// Keep SQL eligibility equivalent to domain.ClaimConditionFor.
 	queuedJobSQL := `select j.id, j.kind, j.video_id, j.attempts, j.location_path from jobs j
 		where j.state = 'queued' and j.kind = ?` + claimConditionSQL(domain.ClaimConditionFor(kind), "j") + `
 		order by j.id limit 1`
@@ -190,8 +158,7 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 	job.Kind = domain.JobKind(kindName)
 	var locationID, locationVersion int64
 	var locationPath, contentKey string
-	// 直前に試した所在があれば、その続き（path の順で後ろ）から探す。後ろに
-	// 無ければ先頭へ戻り、新しい巡回として試行回数を数える。
+	// Resume after the previous location in path order; wrapping starts a new attempt cycle.
 	selectLocation := `select l.id, l.version, l.path, v.content_key
 		from video_locations l join videos v on v.id = l.video_id
 		where l.video_id = ? and ` + registeredLocationCondition("l")
@@ -242,8 +209,7 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 	if err := refreshScanSettled(ctx, conn, time.Now().Unix()); err != nil {
 		return domain.Job{}, err
 	}
-	// 取り出した仕事の記録が running でなければ（再起動で中断した記録、この機能より前に積んだ仕事）、
-	// 新しい記録を開く。起動時の再開と同じく、始めたのは規則である。
+	// Interrupted or legacy jobs start a new rule-owned processing activity.
 	var c changes
 	if err := joinImportActivity(ctx, conn, &c, job.VideoID, domain.ActivityByRule, time.Now()); err != nil {
 		return domain.Job{}, err
@@ -258,8 +224,7 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 	return job, nil
 }
 
-// dropUnplacedJob は登録の所在が無くなった動画の仕事 id を、begin immediate で始めた conn の取引で捨て、
-// その記録を閉じるかまとめ直して確定する。
+// Drop an unplaced job and settle its activity inside the claim's BEGIN IMMEDIATE transaction.
 func (s *IngestStore) dropUnplacedJob(ctx context.Context, conn *sql.Conn, id int64) error {
 	var activityID sql.NullInt64
 	if err := conn.QueryRowContext(ctx, `select activity_id from jobs where id = ?`, id).Scan(&activityID); err != nil {
@@ -271,8 +236,7 @@ func (s *IngestStore) dropUnplacedJob(ctx context.Context, conn *sql.Conn, id in
 	if err := refreshScanSettled(ctx, conn, time.Now().Unix()); err != nil {
 		return err
 	}
-	// 最後に待っていた仕事を捨てた記録は、動画が登録の所在を失ったので done/gone で閉じる。まだ待つ仕事が
-	// あれば状態をまとめ直す。
+	// The last pending job closes as gone rather than completed when registered locations disappear.
 	var c changes
 	if activityID.Valid {
 		closed, err := closeGoneImportActivity(ctx, conn, &c, activityID.Int64, time.Now())
@@ -292,9 +256,7 @@ func (s *IngestStore) dropUnplacedJob(ctx context.Context, conn *sql.Conn, id in
 	return nil
 }
 
-// claimConditionSQL は domain.JobClaimCondition を、jobs の行（別名 alias）に
-// 対する SQL の条件へ写す。条件が無ければ空文字、あれば先頭に " and " を付けて
-// 返す。どの条件も domain.JobClaimCondition.Allows と同じ判断になるように書く。
+// Keep each SQL predicate equivalent to domain.JobClaimCondition.Allows.
 func claimConditionSQL(c domain.JobClaimCondition, alias string) string {
 	var cond string
 	if c.RegisteredLocation {
@@ -310,8 +272,7 @@ func claimConditionSQL(c domain.JobClaimCondition, alias string) string {
 			string(domain.SeekThumbnailDone) + `')`
 	}
 	if c.NoClaimableThumbnail {
-		// 取り出せる thumbnail の仕事は残りの仕事（remainingJobCondition）と同じ範囲で、解析待ちで
-		// 今は取り出せないものも含める。
+		// Include thumbnail work waiting on probes, matching remainingJobCondition.
 		cond += ` and not exists (select 1 from jobs t where t.kind = '` + string(domain.JobThumbnail) +
 			`' and t.state in ('queued', 'running') and exists (
 				select 1 from video_locations tl where tl.video_id = t.video_id and ` +
@@ -320,8 +281,7 @@ func claimConditionSQL(c domain.JobClaimCondition, alias string) string {
 	return cond
 }
 
-// CompleteClaimedJob はジョブを完了にする。専有した時点の所在と内容が今も同じなら
-// done に、変わっていれば queued へ戻す。
+// CompleteClaimedJob requeues when the claimed location or content changed.
 func (s *IngestStore) CompleteClaimedJob(ctx context.Context, job domain.Job) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -349,8 +309,7 @@ func (s *IngestStore) CompleteClaimedJob(ctx context.Context, job domain.Job) er
 	return nil
 }
 
-// commitJobChange は仕事 jobID の状態を変えた取引 tx で、その仕事の import の記録をまとめ直し、残りの仕事を
-// 決め直して確定する。
+// Settle import activity and recompute remaining work in the job-state transaction.
 func (s *IngestStore) commitJobChange(ctx context.Context, tx *sql.Tx, jobID int64) error {
 	var c changes
 	if err := settleJobActivity(ctx, tx, &c, jobID, time.Now()); err != nil {
@@ -360,8 +319,7 @@ func (s *IngestStore) commitJobChange(ctx context.Context, tx *sql.Tx, jobID int
 	return s.db.commit(ctx, tx, &c)
 }
 
-// CompleteJob は専有時点の所在を確かめずに完了を記録する。専有の控えを
-// 持たない呼び出し（テストの準備など）のために残している。
+// CompleteJob skips claim-identity validation for callers without a claim, such as test setup.
 func (s *IngestStore) CompleteJob(ctx context.Context, id int64) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -375,8 +333,7 @@ func (s *IngestStore) CompleteJob(ctx context.Context, id int64) error {
 	return s.commitJobChange(ctx, tx, id)
 }
 
-// FailJob は専有時点の所在を確かめずに失敗を記録する。専有の控えを持たない
-// 呼び出し（テストの準備など）のために残している。
+// FailJob skips claim-identity validation for callers without a claim, such as test setup.
 func (s *IngestStore) FailJob(ctx context.Context, id int64, reason string) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -399,12 +356,7 @@ func (s *IngestStore) FailJob(ctx context.Context, id int64, reason string) erro
 	return s.commitJobChange(ctx, tx, id)
 }
 
-// FailClaimedJob は失敗を記録する。queued へ戻すか failed で止めるかは
-// domain.JobStateAfterFailure が決め、ここではその結果を書く。failed なら、
-// 動画側の状態へも同じ取引で記録する（recordTerminalFailure）。
-//
-// cause の文を jobs.last_error に書く。解析の終端失敗では、domain.ProbeFailure で
-// 包まれた理由のコードも動画側へ書く。
+// FailClaimedJob applies the domain retry decision and records terminal video failure in the same transaction.
 func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause error) error {
 	reason := cause.Error()
 	tx, err := s.db.sql.BeginTx(ctx, nil)
@@ -459,14 +411,7 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 	return nil
 }
 
-// recordTerminalFailure はジョブの終端失敗を、同じ取引の中で動画側の状態へ
-// 記録する。ハンドラが自分で書くと、前段（ファイルの確認など）で上限まで
-// 失敗したときに状態が pending のまま残り、また動画が failed になってから
-// ジョブが failed になるまでの間に読み取りのやり直しが来ると、新しいジョブの
-// 挿入が running の古いジョブとの重複防止で省かれる。ここで記録すれば、
-// 「状態が failed なら、その種類のジョブは終わっている」が成り立つ。
-//
-// どの種類も、claim 時点の内容鍵・所在の世代・所在が今も一致するときに限る。
+// Record terminal failure atomically with job completion so a failed video always has a finished stage job; require the claimed identity to match.
 func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, cause error, now int64) error {
 	const identity = `id = ? and content_key = ? and location_generation = ? and exists (
 			select 1 from video_locations where id = ? and video_id = ? and version = ? and path = ?
@@ -474,12 +419,10 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 	identityArgs := []any{job.VideoID, job.ContentKey, job.LocationGeneration,
 		job.LocationID, job.VideoID, job.LocationVersion, job.LocationPath}
 
-	// updated は動画の段階を failed にした文の結果である。書いたときだけ問題を記録する。
 	var updated sql.Result
 	switch job.Kind {
 	case domain.JobProbe:
-		// pending のときだけ書く。解析の結果を保存して done にしたあとの失敗
-		// （仕事の完了の記録など）で、保存済みの結果を失敗で上書きしないためである。
+		// Only replace pending state so a later completion-recording failure cannot overwrite a saved probe result.
 		res, err := tx.ExecContext(ctx, `update videos set probe_state = 'failed', probe_error = ?, probe_error_code = ?,
 			playable = 0, indexed_at = ?
 			where probe_state = 'pending' and `+identity,
@@ -489,8 +432,7 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 		}
 		updated = res
 	case domain.JobThumbnail:
-		// 代表サムネイルの後でシーク用プレビューだけが失敗した動画は done のまま残す。
-		// seek_thumbnail_state はシーク用の仕事が自分で記録するので、ここでは変えない。
+		// A seek-preview failure must not replace a completed representative thumbnail's state.
 		res, err := tx.ExecContext(ctx, `update videos set thumbnail_state = 'failed', indexed_at = ?
 			where thumbnail_state <> 'done' and `+identity,
 			append([]any{now}, identityArgs...)...)
@@ -499,7 +441,7 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 		}
 		updated = res
 	case domain.JobSeekThumbnail:
-		// seek_thumbnail_state だけを failed にする。代表サムネイルは別の仕事の結果である。
+		// The representative thumbnail is a separate job; change only seek-thumbnail state.
 		res, err := tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'failed', indexed_at = ?
 			where seek_thumbnail_state <> 'done' and `+identity,
 			append([]any{now}, identityArgs...)...)
@@ -508,8 +450,7 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 		}
 		updated = res
 	case domain.JobFingerprint:
-		// 指紋は動画に状態の列を持たない。専有した時点の内容と所在が今も同じときだけ、
-		// 問題として記録する。積み直しは次の走査が行う（EnsureJob）。
+		// Fingerprints have no video-state column; record an issue only for the current identity and let the next scan retry.
 		var current int
 		if err := tx.QueryRowContext(ctx, `select exists (select 1 from videos where `+identity+`)`,
 			identityArgs...).Scan(&current); err != nil {
@@ -547,9 +488,7 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 	return recordFailedIssue(ctx, tx, job, now)
 }
 
-// recordFailedIssue は、動画の段階を failed にした取引で、その段階の *_failed を直近の
-// 取り込みの問題として記録する。上限の
-// 手前の失敗は記録しない。
+// Record import issues only after terminal failure, never for intermediate retries.
 func recordFailedIssue(ctx context.Context, tx *sql.Tx, job domain.Job, now int64) error {
 	issue, ok := domain.FailedIssueKind(job.Kind)
 	if !ok {
@@ -558,13 +497,11 @@ func recordFailedIssue(ctx context.Context, tx *sql.Tx, job domain.Job, now int6
 	return recordScanIssue(ctx, tx, job.VideoID, job.LocationPath, issue, now)
 }
 
-// JobIdentityCurrent は、専有したときの内容鍵・所在・所在の世代が今も
-// 一致するかを返す。
+// JobIdentityCurrent checks the claimed content key, location and location generation.
 func (s *IngestStore) JobIdentityCurrent(ctx context.Context, job domain.Job) (bool, error) {
 	return jobIdentityCurrent(ctx, s.db.sql, job)
 }
 
-// rowQueryer は *sql.DB と *sql.Tx の共通部分のうち、1行を読むものである。
 type rowQueryer interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
@@ -579,8 +516,6 @@ func jobIdentityCurrent(ctx context.Context, q rowQueryer, job domain.Job) (bool
 	return current == 1, err
 }
 
-// HasUnfinishedJobs は queued か running の仕事が 1 件以上あるかを返す。デスクトップ版の
-// 閉じる確認が、取り込みの途中かを判断するのに使う。
 func (s *IngestStore) HasUnfinishedJobs(ctx context.Context) (bool, error) {
 	var found bool
 	err := s.db.sql.QueryRowContext(ctx,
@@ -591,15 +526,7 @@ func (s *IngestStore) HasUnfinishedJobs(ctx context.Context) (bool, error) {
 	return found, nil
 }
 
-// RequeueRunningJobs は running のまま残っている行を queued へ戻し、その数を
-// 返す。起動時に1度だけ呼ぶ。
-//
-// これがあるので、取り込みの途中でプロセスを止めても次の起動で再開でき、
-// 同じ処理を二重に行うこともない。
-//
-// 戻す行が無くても、直近の取り込みの完了の時刻は実行時の条件で決め直す。移行
-// （00018_scan_import.sql）は着手できるかを OS に依らない条件で判定するので、
-// その後に書き込みが無くても、起動のたびにここで揃う。
+// RequeueRunningJobs recovers interrupted work at startup and recomputes completion using runtime OS-specific eligibility.
 func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {

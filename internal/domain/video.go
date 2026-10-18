@@ -7,38 +7,24 @@ import (
 	"time"
 )
 
-// ErrUnprocessableMedia は動画をbrowser互換streamへ変換するための情報または
-// 本編映像が得られないことを表す。HTTP層は409へ写す。
 var ErrUnprocessableMedia = errors.New("video cannot be transcoded live")
 
-// ErrSeekFrameUnavailable は指定時刻から許容範囲内の本編映像を
-// 取り出せないことを表す。HTTP層は409へ写す。
 var ErrSeekFrameUnavailable = errors.New("cannot extract frames for the seek preview")
 
-// ProbeState はメタデータ取得（ffprobe）の状態である。
-// 値は api/openapi.yaml の Video.probeState に対応する。
 type ProbeState string
 
 const (
-	// ProbeStatePending は取得がまだ終わっていない状態。
 	ProbeStatePending ProbeState = "pending"
-	// ProbeStateDone は取得できた状態。
-	ProbeStateDone ProbeState = "done"
-	// ProbeStateFailed は取得に失敗し、再試行の上限に達した状態。
-	ProbeStateFailed ProbeState = "failed"
+	ProbeStateDone    ProbeState = "done"
+	ProbeStateFailed  ProbeState = "failed"
 )
 
-// ThumbnailState はサムネイル生成の状態である。
-// 値は api/openapi.yaml の Video.thumbnailState に対応する。
 type ThumbnailState string
 
 const (
-	// ThumbnailStatePending は生成がまだ終わっていない状態。
 	ThumbnailStatePending ThumbnailState = "pending"
-	// ThumbnailStateDone は画像が置かれている状態。
-	ThumbnailStateDone ThumbnailState = "done"
-	// ThumbnailStateFailed は生成に失敗し、再試行の上限に達した状態。
-	ThumbnailStateFailed ThumbnailState = "failed"
+	ThumbnailStateDone    ThumbnailState = "done"
+	ThumbnailStateFailed  ThumbnailState = "failed"
 )
 
 // PreviewState is the lifecycle of the content-keyed hover preview asset.
@@ -50,87 +36,58 @@ const (
 	PreviewStateFailed  PreviewState = "failed"
 )
 
-// UnplayableReason はブラウザで再生できないと判定した理由である。
-// 値は api/openapi.yaml の Video.unplayableReason に対応する。
 type UnplayableReason string
 
 const (
-	// ReasonContainer はコンテナ（拡張子）が許可リストに無い。
-	ReasonContainer UnplayableReason = "container"
-	// ReasonVideoCodec は映像コーデックが許可リストに無い。
+	ReasonContainer  UnplayableReason = "container"
 	ReasonVideoCodec UnplayableReason = "video_codec"
-	// ReasonAudioCodec は音声コーデックが許可リストに無い。
 	ReasonAudioCodec UnplayableReason = "audio_codec"
 )
 
-// 許可リスト。拒否リストにしないのは、未知の値を「再生できる」と
-// 誤ると再生して初めて失敗するためである。「再生できない」と誤る方が、
-// 利用者の損失が小さい。
-//
-// hevc（H.265）や mkv はブラウザによっては再生できることがあるが、確実では
-// ないので許可しない。
+// Use allowlists to avoid promising playback for unknown formats; HEVC and MKV remain excluded despite support in some browsers.
 var (
-	// allowedContainers は拡張子から決めたコンテナの許可リストである。
 	allowedContainers = map[string]struct{}{
 		"mp4": {}, "m4v": {}, "webm": {},
 	}
-	// allowedVideoCodecs は映像コーデックの許可リストである。
 	allowedVideoCodecs = map[string]struct{}{
 		"h264": {}, "vp8": {}, "vp9": {}, "av1": {},
 	}
-	// allowedAudioCodecs は音声コーデックの許可リストである。
-	// 音声が無い（空）場合も許可する。
+	// An absent audio stream is allowed.
 	allowedAudioCodecs = map[string]struct{}{
 		"aac": {}, "mp3": {}, "opus": {}, "vorbis": {},
 	}
 )
 
-// Probe は ffprobe から取り出した事実である。解釈を含まず、判定は
-// EvaluatePlayability が行う。外部プロセスの実行は internal/media に閉じる。
+// Probe contains ffprobe facts; domain rules interpret them while external execution remains in internal/media.
 type Probe struct {
-	// DurationMs は尺（ミリ秒）。取得できなかった場合は 0 で、
-	// 保存側はこれを null として扱う（0 で代用しない）。
+	// Unknown duration is zero here and stored as null, preserving the distinction from a known zero duration.
 	DurationMs int64
-	// Width / Height は表示される向きの映像の解像度（回転の印を反映済み）。取得できなければ 0。
+	// Dimensions reflect rotation, or zero when unknown.
 	Width  int
 	Height int
-	// DisplayAspectRatio は表示される横÷縦の比率（回転と画素の縦横比を反映済み）。
-	// 取得できなければ 0。
+	// DisplayAspectRatio includes rotation and pixel aspect, or zero when unknown.
 	DisplayAspectRatio float64
-	// VideoCodec は先頭の映像ストリームの codec_name。映像が無ければ空。
-	VideoCodec string
-	// AudioCodec は先頭の音声ストリームの codec_name。音声が無ければ空。
-	AudioCodec string
-	// FormatName は ffprobe の format.format_name。記録用に持つ。
-	// mov,mp4,m4a,3gp,3g2,mj2 のようにまとめて返るため、再生可否の判定には
-	// 使わない。
+	VideoCodec         string
+	AudioCodec         string
+	// FormatName is diagnostic only because ffprobe groups MOV/MP4 and related formats together.
 	FormatName string
-	// Transcode はライブ変換に要る stream の情報。使える映像 stream（非添付で寸法が
-	// ある）が無い動画では nil で、保存しない。
+	// Transcode is nil without a non-attached video stream with valid dimensions and is then not persisted.
 	Transcode *TranscodeProbe
-	// Source は ffprobe の直前に取ったファイルの大きさと更新時刻。Transcode を
-	// 保存するときの同一性に使う。
+	// Source is the pre-probe file stamp used to validate persisted transcode metadata.
 	Source FileStamp
 	// Keyframes is an optional bounded sample for live-transcode seek decisions.
 	Keyframes *KeyframeProbe
-	// Media は同じ ffprobe の出力から読んだ追加の情報。
-	// 取り込みの解析では必ず埋まり、video_media_info に保存する。
+	// Import probes always populate Media from the same ffprobe output.
 	Media *MediaInfo
 }
 
-// Playability は再生可否の判定結果である。Playable が true のとき Reason は空、
-// false のとき Reason は必ず埋まる。
+// Reason is empty exactly when Playable is true.
 type Playability struct {
 	Playable bool
 	Reason   UnplayableReason
 }
 
-// EvaluatePlayability はコンテナと ffprobe の結果から、ブラウザでそのまま
-// 再生できるかを判定する。
-//
-// コンテナ → 映像 → 音声 の順に見て、最初に外れたものを理由にする。判定は
-// 取り込み時に1度だけ行い、一覧では列を読むだけにする。
-// 外部プロセスには触れないので、この規則は単体テストだけで検証できる。
+// EvaluatePlayability reports the first failed check in container/video/audio order; import persists the result for later listing.
 func EvaluatePlayability(container string, probe Probe) Playability {
 	if _, ok := allowedContainers[normalizeCodecName(container)]; !ok {
 		return Playability{Reason: ReasonContainer}
@@ -138,7 +95,6 @@ func EvaluatePlayability(container string, probe Probe) Playability {
 	if _, ok := allowedVideoCodecs[normalizeCodecName(probe.VideoCodec)]; !ok {
 		return Playability{Reason: ReasonVideoCodec}
 	}
-	// 音声が無い動画は再生できる。無いことと、対応していない形式であることは違う。
 	if audio := normalizeCodecName(probe.AudioCodec); audio != "" {
 		if _, ok := allowedAudioCodecs[audio]; !ok {
 			return Playability{Reason: ReasonAudioCodec}
@@ -147,26 +103,16 @@ func EvaluatePlayability(container string, probe Probe) Playability {
 	return Playability{Playable: true}
 }
 
-// ContainerFromPath は拡張子からコンテナ名を決める（先頭の "." を除いた小文字）。
-//
-// ffprobe の format_name ではなく拡張子を見るのは、format_name が
-// mov,mp4,m4a,3gp,3g2,mj2 のようにまとめて返り mp4 と mov を区別できないため
-// である。ブラウザに渡す Content-Type も拡張子から決めるので、判定と配信で
-// 基準が揃う。
+// Use the extension because ffprobe format_name conflates MOV and MP4; delivery Content-Type uses the same source.
 func ContainerFromPath(path string) string {
 	return normalizeCodecName(strings.TrimPrefix(filepath.Ext(path), "."))
 }
 
-// normalizeCodecName は比較のために表記を揃える。ffprobe の出力も拡張子も
-// 表記が一定とは限らないため、判定の入口で1度だけ正規化する。
 func normalizeCodecName(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
 
-// Video は videos の行と 1 対 1 で対応する値である。永続化の手段は知らない。
-//
-// 取得できなかった数値は nil で持つ。0 で代用すると「尺が 0 の動画」と
-// 「尺が分からない動画」を一覧で区別できなくなる。
+// Unknown numeric values stay nil so listings distinguish unknown values from zero.
 type Video struct {
 	ID        int64
 	Path      string
@@ -174,37 +120,27 @@ type Video struct {
 	SizeBytes int64
 	MTime     time.Time
 	AddedAt   time.Time
-	// IndexedAt は索引の行（videos.indexed_at）を最後に書き換えた時刻。取り込み・解析・
-	// サムネイル作成などの裏方の処理でも進む内部用の値で、API には出さない。
+	// IndexedAt changes during background processing and is never exposed through the API.
 	IndexedAt time.Time
-	// EditedAt は vv 上で動画の情報を最後に編集した日時（更新日時。docs/design-docs/catalog-organization.md/）。保存層が coalesce(video_edits.edited_at, videos.added_at) で埋める。
-	// API の updatedAt はこの値で、IndexedAt（索引の行の更新時刻）とは別の値である。
+	// EditedAt backs API updatedAt and is coalesced from video_edits.edited_at and videos.added_at, independently of IndexedAt.
 	EditedAt time.Time
-	// FileCreatedAt は一覧に出す所在のファイルの作成日時。
-	// 保存層が coalesce(video_locations.file_created_at, mtime) で埋めるので、作成日時が
-	// 取れなかった所在では MTime と同じになる。
+	// FileCreatedAt falls back to MTime when creation time is unavailable.
 	FileCreatedAt time.Time
 
-	// ContentKey は内容由来の識別子。移動・改名を越えて同じ動画と判定する鍵で、
-	// 再生位置とサムネイルの名前もこれで決まる。
+	// ContentKey preserves identity across moves/renames and keys progress and thumbnail names.
 	ContentKey string
-	// UserKey は利用者データ（タグ・再生位置・公開の設定）の鍵である。集まりのメンバーなら集まりの
-	// user_key、そうでなければ ContentKey と同じ。保存層が埋め、空の ContentKey の動画では空。
+	// UserKey is the bundle's user_key for members, otherwise ContentKey; it is empty without ContentKey.
 	UserKey string
-	// Versions は集まりのメンバーのときだけ、詳細の読み出しが埋める集まりの要約である。
-	// 一覧の読み出しでは nil。
+	// Versions is populated only by detail reads for bundle members, never listings.
 	Versions *VideoVersionsRef
-	// WorkInfo は利用者データの鍵の作品情報である。
-	// 詳細と外部連携の読み出し、作品情報を書いた操作の戻り値が埋め、一覧の読み出しと行の無い動画では nil。
+	// WorkInfo is populated by detail/external reads and work-info write results, not listings.
 	WorkInfo *WorkInfo
-	// MediaInfo は取り込みの解析で読んだ追加の情報である。
-	// 動画 1 件の詳細の読み出しだけが埋め、一覧の読み出し・書いた操作の戻り値・今の版の行の無い動画では nil。
+	// MediaInfo is populated only by single-video detail reads with a current-version stored row.
 	MediaInfo *MediaInfo
 
-	DurationMs *int64
-	Width      *int
-	Height     *int
-	// DisplayAspectRatio は表示される横÷縦の比率。解析前・取得不能なら nil。
+	DurationMs         *int64
+	Width              *int
+	Height             *int
 	DisplayAspectRatio *float64
 
 	Container  string
@@ -216,77 +152,55 @@ type Video struct {
 
 	ProbeState ProbeState
 	ProbeError string
-	// ProbeErrorCode は ProbeState が failed のときの理由のコード。アップグレード前の
-	// 行では空である。
+	// Older failed rows may have no ProbeErrorCode.
 	ProbeErrorCode ProbeErrorCode
 	ThumbnailState ThumbnailState
-	// SeekThumbnailState は videos.seek_thumbnail_state の値である。置き場の
-	// 有無で裏づける前の、保存された状態をそのまま持つ。
+	// SeekThumbnailState is the persisted state before artifact-existence verification.
 	SeekThumbnailState SeekThumbnailState
 	PreviewState       PreviewState
 
-	// Public は公開フラグが立っているか。
-	// 保存層が public_videos から埋める。空の content_key の動画は常に false である。
+	// Public is always false without ContentKey.
 	Public bool
 
-	// Favorite はお気に入りか。保存層が利用者データの鍵で
-	// video_favorites から埋める。空の content_key の動画は常に false である。
+	// Favorite uses the user-data key and is always false without ContentKey.
 	Favorite bool
 
-	// FileTitle はファイル名由来の題名（代表の所在の video_locations.title）である。
-	// Title は有効な題名で、表示名があればそれ、無ければ FileTitle と同じになる
-	//
-	FileTitle string
-	// DisplayName は所有者が付けた表示名。未設定は空である。
-	DisplayName string
-	// ThumbnailPositionMs は代表サムネイルにする場面の位置（ミリ秒）。未設定は nil。
+	// FileTitle comes from the representative location; Title prefers DisplayName when set.
+	FileTitle           string
+	DisplayName         string
 	ThumbnailPositionMs *int64
-	// ThumbnailRevision は位置を記録するたびに書く改版番号（R-6）。未設定は 0。
-	// thumbnailUrl の版だけに使い、応答の項目にはしない。
+	// ThumbnailRevision versions URLs only and is not a response field; zero means unset.
 	ThumbnailRevision int64
-	// ThumbnailImageRevision は適用したサムネイルの画像（thumbnail_images）の改版番号。適用していなければ 0。設定されていれば
-	// thumbnailUrl の版は位置の改版番号の代わりにこれを使う。
+	// A nonzero ThumbnailImageRevision replaces the position revision in thumbnail URLs.
 	ThumbnailImageRevision int64
-	// ThumbnailImageOrigin は適用した画像の出どころ（thumbnail_images.origin。
-	// docs/design-docs/thumbnail-editing.md）。適用していなければ空である。
-	ThumbnailImageOrigin ThumbnailImageOrigin
+	ThumbnailImageOrigin   ThumbnailImageOrigin
 }
 
-// PlayableInBrowser はブラウザでそのまま再生できると確定しているかを返す。
-//
-// playable が立っていても、解析が終わっていなければ「確定していない」ものとして
-// 扱う（playable = 1 は probe_state = done のときだけ取り得る）。
-// 解析前の動画を「再生できる」と見せると、「再生を試みる前に判別できる」
-// が成り立たなくなる。
+// PlayableInBrowser requires completed probing even when Playable is set.
 func (v Video) PlayableInBrowser() bool {
 	return v.Playable && v.ProbeState == ProbeStateDone
 }
 
-// HasThumbnail はサムネイルが生成済みかを返す。一覧はこれが false のとき
-// 枠だけを描く。
 func (v Video) HasThumbnail() bool {
 	return v.ThumbnailState == ThumbnailStateDone
 }
 
-// VideoFile は走査で分かる事実である。解析（ffprobe）で分かる事実は含まない。
-// 走査と保存の間でやり取りする値なので、どちらの都合も持ち込まない。
+// VideoFile contains scan facts only, excluding ffprobe metadata.
 type VideoFile struct {
 	Path       string
 	Title      string
 	ContentKey string
 	SizeBytes  int64
 	MTime      time.Time
-	// FileCreatedAt は走査が読んだファイルの作成日時。ゼロ値は取れなかった。
+	// Zero FileCreatedAt means unavailable.
 	FileCreatedAt time.Time
 	Container     string
-	// AddedAt はゼロ値なら取り込み時刻を使う。新規のときだけ効く。
+	// AddedAt applies only to new videos and defaults to import time when zero.
 	AddedAt time.Time
-	// Decider は走査を始めたもので、所在だけを足した取り込みの記録に書く。空なら rule。
+	// Decider records the scan initiator for location-only imports; empty means rule.
 	Decider ActivityDecider
 }
 
-// IndexedVideo は差分判定に要る最小限の値である。走査は実際のファイルと
-// これを突き合わせる。
 type IndexedVideo struct {
 	ID              int64
 	ContentKey      string
@@ -294,15 +208,13 @@ type IndexedVideo struct {
 	LocationVersion int64
 	SizeBytes       int64
 	MTime           time.Time
-	// FileCreatedAt は索引に入っているファイルの作成日時。ゼロ値は null（取れなかった）。
+	// Zero FileCreatedAt maps to null.
 	FileCreatedAt      time.Time
 	ProbeState         ProbeState
 	ThumbnailState     ThumbnailState
 	SeekThumbnailState SeekThumbnailState
 	PreviewState       PreviewState
-	// FingerprintMissing は、シーク用スプライトが完成しているのに今の FingerprintVersion の
-	// 指紋が無いことを表す。走査はこれで指紋の
-	// 仕事を積み直す。
+	// FingerprintMissing schedules rebuilding a missing/current-version fingerprint for an already-complete sprite.
 	FingerprintMissing bool
 }
 
@@ -324,79 +236,57 @@ type VideoLocation struct {
 	Title     string
 	SizeBytes int64
 	MTime     time.Time
-	// FileCreatedAt はファイルの作成日時。ゼロ値は null（取れなかった）。
+	// Zero FileCreatedAt maps to null.
 	FileCreatedAt time.Time
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 }
 
-// UpsertOutcome は取り込み1件の結果である。走査の集計（ScanResult）になる。
 type UpsertOutcome string
 
 const (
-	// OutcomeAdded は新しく取り込んだ。
-	OutcomeAdded UpsertOutcome = "added"
-	// OutcomeUpdated は既存の行の内容が変わった。
-	OutcomeUpdated UpsertOutcome = "updated"
-	// OutcomeMoved は既知の内容を新しいpathで発見した。
-	OutcomeMoved UpsertOutcome = "moved"
-	// OutcomeUnchanged は何も変わらなかった。
+	OutcomeAdded     UpsertOutcome = "added"
+	OutcomeUpdated   UpsertOutcome = "updated"
+	OutcomeMoved     UpsertOutcome = "moved"
 	OutcomeUnchanged UpsertOutcome = "unchanged"
 )
 
-// UpsertResult は取り込み1件の結果である。
 type UpsertResult struct {
-	ID             int64
-	Outcome        UpsertOutcome
-	NeedsProbe     bool
-	NeedsThumbnail bool
-	// NeedsSeekThumbnail は seek_thumbnail_state が done でないことを表す。
+	ID                 int64
+	Outcome            UpsertOutcome
+	NeedsProbe         bool
+	NeedsThumbnail     bool
 	NeedsSeekThumbnail bool
 	NeedsPreview       bool
 }
 
-// HasSeekThumbnail はシーク用プレビューを持ちうる動画かを返す。応答の
-// seekThumbnailUrl と seekThumbnailState は、これが true のときだけ載る。
+// Seek-thumbnail URL and state are exposed only when HasSeekThumbnail is true.
 func (v Video) HasSeekThumbnail() bool {
 	return v.ProbeState == ProbeStateDone && v.DurationMs != nil &&
 		*v.DurationMs > 0 && v.VideoCodec != "" && v.ContentKey != ""
 }
 
-// SeekThumbnailState はシーク用プレビューの状態である。値は
-// videos.seek_thumbnail_state に保存する値でもある。
 type SeekThumbnailState string
 
 const (
-	// SeekThumbnailPending は作成中、または作成を待っている。
 	SeekThumbnailPending SeekThumbnailState = "pending"
-	// SeekThumbnailDone は置き場があり、読み出せる。
-	SeekThumbnailDone SeekThumbnailState = "done"
-	// SeekThumbnailFailed は置き場が無く、作る予定も無い。
-	SeekThumbnailFailed SeekThumbnailState = "failed"
+	SeekThumbnailDone    SeekThumbnailState = "done"
+	SeekThumbnailFailed  SeekThumbnailState = "failed"
 )
 
-// VideoView は動画1件を応答に載せるときの形である。PreviewAvailable は
-// 一覧用プレビューのファイルが今あるかで、true のときだけ previewUrl を出す。
-// ファイルが消えていて作り直しを積んだ場合、Video.PreviewState は pending に
-// 読み替えてある。
+// PreviewAvailable reflects current file existence; missing artifacts queued for regeneration change PreviewState to pending.
 type VideoView struct {
 	Video            Video
 	PreviewAvailable bool
 }
 
-// DeletedVideo は行を消した動画である。生成物の片付けと、画面への知らせに使う。
 type DeletedVideo struct {
 	ID         int64
 	ContentKey string
 }
 
-// ErrPreviewStale は、プレビューの生成中に元の動画の所在や内容が変わったことを
-// 表す。生成物は公開されていないので、ジョブをやり直してよい。
+// ErrPreviewStale means nothing was published and the job may safely retry after source changes.
 var ErrPreviewStale = errors.New("preview source identity changed")
 
-// SeekThumbnailInterval はシーク用プレビューのフレームの間隔の最小値である。
-// スプライトの配置（NewSeekSpriteLayout）は、これで上限のコマ数に収まらない
-// 長さの動画だけ間隔を広げる。短い動画でもシークバーの上でコマが切り替わるよう、
-// 1 秒にする（以前の 5 秒では 30 秒の動画が 6 コマにしかならなかった）。公開済みの
-// スプライトは配置情報に間隔を持つので、間隔の違う古いものもそのまま読める。
+// The one-second minimum provides useful short-video previews; long videos spread frames, and persisted layout intervals keep older sprites readable.
 const SeekThumbnailInterval = 1 * time.Second

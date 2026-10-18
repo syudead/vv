@@ -7,9 +7,7 @@ import { Field, FieldDescription, FieldLabel } from "@/ui/shadcn/field";
 import { Input } from "@/ui/shadcn/input";
 import { Textarea } from "@/ui/shadcn/textarea";
 
-// 入力画面の型の見本（registry:block form-page-example）。帯に題・詳細・Cancel と Save、
-// 左の列に何を編集しているか、2 つの欄に入力を置く。写した画面は欄の中身と値を差し替える
-// （web/registry/rules/patterns.md の Form page）。
+// registry:block form-page-example. See web/registry/rules/patterns.md, Form page.
 
 export function FormPageExample() {
   const p = t.designSystem.pattern;

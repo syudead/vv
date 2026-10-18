@@ -18,21 +18,17 @@ import {
 } from "./videoDrop";
 import { useVideoDropMenu, type VideoDropChoice } from "./VideoDropMenu";
 
-// 動画を動画に落としたときの「Make a group」と「Bundle as versions」である。ライブラリ、グループのページ、フォルダ画面が共有する。
-
-/** Shown はサーバーが答える前に見せる落とした結果である。 */
 interface Shown {
-  /** 結果を見せている操作（落とすたびに増える）。答えはこれと照合してから結果に触れる。 */
+  /** Monotonic operation ID guards async result application. */
   op: number;
   target: string;
   lifted: ReadonlySet<string>;
-  /** 落とした先に置く新しいグループ。null は持ち上げたカードだけが消える（束ねた）。 */
+  /** Null removes only lifted cards for bundling; otherwise replace the target with the group. */
   group: LibraryGroup | null;
-  /** 新しいグループの仮の項目の id（答えの前後で変わらない）。 */
+  /** Keep the provisional item ID stable before and after the response. */
   itemId: number;
 }
 
-/** Naming は「Make a group」の操作 `op` が落とした先 `target` に開く名前の欄である。 */
 interface Naming {
   op: number;
   target: string;
@@ -40,36 +36,27 @@ interface Naming {
 }
 
 export interface VideoDropsOptions<T> {
-  /** 画面の並び（サーバーの値）。 */
   items: readonly T[];
   keyOf: (item: T) => string;
-  /** 項目が動画ならその動画。 */
   videoOf: (item: T) => Video | undefined;
-  /** 項目がグループならそのグループ。グループのカードを置く画面（`groupItem` のある画面）が渡す。 */
   groupOf?: (item: T) => LibraryGroup | undefined;
-  /** 開いているグループ（グループのページ）。新しいグループはその中で落とした先の位置を取る。 */
+  /** A new group replaces the target's position inside the current group. */
   from: number | null;
-  /**
-   * 新しいグループの項目を作る。`itemId` は答えの前後で変わらない仮の項目の id。null の画面
-   * （フォルダ画面）は落とした先にグループを置かず、名前の欄を落とした先の下の窓に出す。
-   */
+  /** Null means folders keep the target card and show naming in an attached popover. */
   groupItem: ((group: LibraryGroup, itemId: number) => T) | null;
-  /** 一覧を静かに読み直す。 */
   reread: () => void;
-  /** サーバーが操作を受け付けたら呼ぶ（選択を解く）。失敗した操作では呼ばず、選択は残る。 */
+  /** Call only for accepted operations to clear selection; failures retain it. */
   onAccepted?: () => void;
   undo: UndoToast;
 }
 
-/** isTargetGone は落とした先か持ち上げた動画がもう無い（404）かを返す。 */
 function isTargetGone(error: unknown): boolean {
   return error instanceof RequestFailed && error.status === 404;
 }
 
 /**
- * overlayOf は見せている結果 `shown` を並びに重ねる値を返す。読み直した並びがもう落とした先を
- * 持たず、代わりに答えで分かった新しいグループを持てば（知らせで読み直した）、仮の項目がその
- * サーバーの項目の位置と中身を取る。項目の鍵が変わらないので、名前の欄は入力ごと残る。
+ * When refreshed server data replaces the target, reuse the provisional item's stable key with the
+ * real group's position and content so naming input survives.
  */
 function overlayOf<T>(
   shown: Shown,
@@ -106,15 +93,9 @@ function overlayOf<T>(
 }
 
 /**
- * useVideoDrops は動画を動画に落としたときのメニューと 2 つの操作である。結果はすぐ見せ
- * （`shown`）、失敗したら戻して理由を出し、受け付けたら取り消しの通知を出す。「Make a group」の
- * 後は新しいグループの名前の欄を開き（`nameFieldFor` か、フォルダ画面では `attached` の窓）、
- * 欄が閉じたら読み直す。束ねた後はすぐ読み直す。取り消したら見せていた結果と名前の欄を外す。
- * 画面を離れた後に答えた要求は何も見せない（トークンは忘れる。の Gone）。
- * 見せる結果・名前の欄・取り消しの通知は、失敗していない最後の操作のものである。前の操作の答え・
- * 失敗・取り消しや前の名前の欄の閉じが後から届いても、後の操作の結果・名前の欄・通知には触れない
- * （前の操作のグループは読み直しで並びに出る）。後の操作の答えを待つ間に答えた「Make a group」は、
- * 後の操作がすべて失敗したら名前の欄を開く。
+ * Only the latest nonfailed operation owns optimistic content, naming and undo UI; late responses
+ * must not modify newer operations. Ignore responses after unmount, and defer an earlier accepted
+ * group's naming until every newer pending operation fails.
  */
 export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
   const { items, keyOf, videoOf, groupOf, from, groupItem, reread, onAccepted, undo } =
@@ -123,15 +104,13 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
   const [shownDrop, setShownDrop] = useState<Shown | null>(null);
   const [nameTarget, setNameTarget] = useState<string | null>(null);
   const tempId = useRef(0);
-  // 最後に落とした操作の番号と、失敗した操作。見せる結果と名前の欄は失敗していない最後の操作
-  // だけが持つ。前の操作の答えが後から届いても、後の操作の結果や名前の欄を書き換えない。
+  // Track failed generations so late older responses cannot overwrite the latest nonfailed operation's UI.
   const latestOp = useRef(0);
   const failedOps = useRef(new Set<number>());
-  // 受け付けられた最後の操作。取り消しの通知はこれより前の操作の答えで置き換えない。
+  // Older accepted responses must not replace a newer undo notification.
   const acceptedOp = useRef(0);
-  // 名前の欄を開いた操作とそのグループ、読み直しを待って結果を外す操作。
   const namingOp = useRef<{ op: number; groupId: number } | null>(null);
-  // 後の操作の答えを待つ間に答えた「Make a group」の名前の欄。後の操作がすべて失敗したら開く。
+  // Defer earlier accepted naming while newer operations are pending; show it only if all newer operations fail.
   const deferred = useRef<Naming | null>(null);
   const awaitingRead = useRef<number | null>(null);
   const alive = useRef(true);
@@ -142,8 +121,7 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
     };
   }, []);
 
-  // 読み直した一覧が届いたら、待っていた操作の見せていた結果を外す（サーバーの値がそれを持つ）。
-  // 後の操作の結果を見せていれば、それはまだ答えを待っているので残す。
+  // Remove the waiting overlay when refreshed server data arrives; retain any newer pending overlay.
   useEffect(() => {
     const op = awaitingRead.current;
     if (op === null) return;
@@ -151,7 +129,7 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
     setShownDrop((current) => (current?.op === op ? null : current));
   }, [items]);
 
-  /** isLatest は `op` より後に落とした操作がすべて失敗したかを返す。 */
+  /** True only if every operation after op failed. */
   const isLatest = useCallback((op: number) => {
     for (let later = latestOp.current; later > op; later -= 1) {
       if (!failedOps.current.has(later)) return false;
@@ -159,8 +137,7 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
     return true;
   }, []);
 
-  // readAgain は一覧を読み直し、`op` が最後の操作なら読み直しで結果を外す。前の操作は後の操作が
-  // 待っている読み直しを横取りしない。
+  // Only the latest operation may claim refresh-driven overlay cleanup.
   const readAgain = useCallback(
     (op: number | null) => {
       if (op !== null && isLatest(op)) awaitingRead.current = op;
@@ -188,7 +165,7 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
           ? { ...current, group: { ...current.group, name } }
           : current,
       ),
-    // 閉じたのが今の欄でなければ（その名前の答えを待つ間に次の欄が開いた）、次の欄には触れない。
+    // A delayed close must not affect a newer naming field.
     onClosed: (closed) => {
       const current = namingOp.current;
       if (current === null || current.groupId !== closed.groupId) {
@@ -235,9 +212,7 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
     [videoAt],
   );
 
-  // 操作 `op` の取り消しの要求が答えたら、その操作の名前の欄を何も送らずに閉じる。取り消せたら
-  // その操作の見せていた結果も外す（読み直しが元の並びを持ってくる）。取り消せなかったら読み直しを
-  // 待つ。後の操作の結果と名前の欄には触れない。
+  // Undo closes only this operation's naming field; success removes its overlay, failure waits for refresh. Never affect newer operations.
   const undoneFor = useCallback(
     (op: number) => (ok: boolean) => {
       if (deferred.current?.op === op) deferred.current = null;
@@ -251,14 +226,12 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
     },
     [discard, isLatest],
   );
-  /** nextOp は落とした操作に番号を振り、最後の操作にする。 */
   const nextOp = useCallback(() => {
     latestOp.current += 1;
     return latestOp.current;
   }, []);
   const { offer } = undo;
-  // accepted はサーバーが操作 `op` を受け付けたときの共通の後始末である。後の操作の通知が出ていなければ
-  // 取り消しの通知を出し、待たせていた前の名前の欄を捨てる。
+  // Show Undo only if no newer accepted operation owns it, then discard older deferred naming.
   const accepted = useCallback(
     (op: number, message: UiText, token: string) => {
       onAccepted?.();
@@ -304,9 +277,7 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
               undoToken,
             },
           };
-          // 後に落とした操作がまだ失敗していなければ、この操作は名前の欄を開かず、読み直しで
-          // サーバーの並びに出る（グループはサーバーが付けた仮の名前のまま）。後の操作がまだ
-          // 答えていなければ、それがすべて失敗したときに開く欄として残す。
+          // Do not open naming over a newer nonfailed operation; retain it only while newer outcomes are still pending.
           if (!isLatest(op)) {
             if (acceptedOp.current === op) deferred.current = next;
             readAgain(op);
@@ -418,7 +389,6 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
     };
   }, [field, groupItem, menu.attached, nameTarget, naming.close, naming.rename]);
 
-  /** hold は落とし方を受け、動画の上ならメニューを開いて true を返す。 */
   const hold: (drop: CardDrop) => boolean = menu.hold;
 
   return { shown, onto, hold, held: menu.held, attached, nameFieldFor };

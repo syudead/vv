@@ -6,8 +6,7 @@ import (
 	"time"
 )
 
-// fakeKernel は名前付きミューテックスの名前空間を真似る。Local\ の名前はセッション
-// ごと、Global\ の名前はセッションをまたいで 1 つである。
+// Model Local names per session and Global names across sessions.
 type fakeKernel struct {
 	objects map[string]*fakeMutex
 	handles map[uintptr]*fakeMutex
@@ -24,7 +23,7 @@ func newFakeKernel() *fakeKernel {
 	return &fakeKernel{objects: map[string]*fakeMutex{}, handles: map[uintptr]*fakeMutex{}}
 }
 
-// fakeProcess は 1 つのプロセスの OS の呼び出しで、呼び出しのたびに after を呼ぶ。
+// Call after following each simulated OS operation.
 type fakeProcess struct {
 	k       *fakeKernel
 	session int
@@ -94,9 +93,8 @@ func (p *fakeProcess) ActivateWindow() bool {
 	return false
 }
 
-// 2 つ目の起動が、1 つ目の起動のどの呼び出しの間に割り込んでも、1 つだけが起動し、
-// 同じセッションなら別のセッションと取り違えず、別のセッションならそう判定する。
-// 1 つ目が global を作って local を作る前に止まっていた場合を含む。
+// Exercise interleavings throughout acquisition so only one process starts and session identity is
+// never misclassified.
 func TestAcquireInstanceInterleaving(t *testing.T) {
 	const globalName, localName = `Global\VVMDM-x`, `Local\VVMDM-x`
 	for _, sameSession := range []bool{true, false} {

@@ -30,8 +30,6 @@ func claimProbeJob(t *testing.T, db *DB, videoID int64) domain.Job {
 	return job
 }
 
-// 取り込みの解析の仕事が終わると行があり、詳細の読み出しが今の版の行を読む。版が違う行と
-// JSON が読めない行は「無い」と読まれ、動画の行を消すと連鎖で消える。
 func TestApplyProbeForJobWritesMediaInfo(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -78,7 +76,6 @@ func TestApplyProbeForJobWritesMediaInfo(t *testing.T) {
 	}
 }
 
-// 仕事を専有したあとに所在の版が変わっていれば、videos と同じく行を書かない。
 func TestStaleProbeJobDoesNotWriteMediaInfo(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -101,7 +98,6 @@ func TestStaleProbeJobDoesNotWriteMediaInfo(t *testing.T) {
 	}
 }
 
-// 行の書き込みが失敗すれば、videos の更新も残らない。
 func TestApplyProbeForJobRollsBackWhenMediaInfoFails(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()

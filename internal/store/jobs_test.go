@@ -13,7 +13,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// jobsFixture は動画を1本入れた状態を返す。ジョブは videos を参照する。
 func jobsFixture(t *testing.T) (*DB, int64) {
 	t.Helper()
 
@@ -26,7 +25,6 @@ func jobsFixture(t *testing.T) (*DB, int64) {
 	return db, added.ID
 }
 
-// 状態遷移 queued → running → done。
 func TestJobLifecycle(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -43,7 +41,6 @@ func TestJobLifecycle(t *testing.T) {
 		t.Errorf("取り出したジョブ = %+v", job)
 	}
 
-	// 専有したので、2 度目の取り出しでは何も返らない。
 	if _, err := db.Ingest().ClaimJob(ctx, domain.JobProbe); !errors.Is(err, domain.ErrNoJob) {
 		t.Errorf("同じジョブが二重に取り出せた: %v", err)
 	}
@@ -56,7 +53,6 @@ func TestJobLifecycle(t *testing.T) {
 	}
 }
 
-// 待ち行列が空なら ErrNoJob。ワーカーはこれを見て待機に入る。
 func TestClaimJobOnEmptyQueue(t *testing.T) {
 	db := migratedDB(t)
 
@@ -65,8 +61,6 @@ func TestClaimJobOnEmptyQueue(t *testing.T) {
 	}
 }
 
-// 失敗は attempts を +1 して queued に戻し、3 回で failed にして止める。
-// 止めないと、壊れたファイル1つがワーカーを永久に占有する。
 func TestFailJobRetriesThenGivesUp(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -96,7 +90,6 @@ func TestFailJobRetriesThenGivesUp(t *testing.T) {
 		}
 	}
 
-	// 諦めたジョブは二度と取り出されない。
 	if _, err := db.Ingest().ClaimJob(ctx, domain.JobProbe); !errors.Is(err, domain.ErrNoJob) {
 		t.Errorf("failed なジョブが取り出せた: %v", err)
 	}
@@ -106,7 +99,6 @@ func TestFailJobRetriesThenGivesUp(t *testing.T) {
 	}
 }
 
-// 失敗の理由は残す。何が起きたかを後から追えるようにする。
 func TestFailJobRecordsReason(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -132,8 +124,6 @@ func TestFailJobRecordsReason(t *testing.T) {
 	}
 }
 
-// 同じ (kind, video_id) の未完了ジョブは1件だけ。再スキャンを繰り返しても
-// 待ち行列が膨らまない。
 func TestEnqueueJobIsIdempotentWhilePending(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -148,7 +138,6 @@ func TestEnqueueJobIsIdempotentWhilePending(t *testing.T) {
 		t.Errorf("ジョブ = %d 件, want 1", got)
 	}
 
-	// 種類が違えば別のジョブである。
 	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
@@ -157,8 +146,6 @@ func TestEnqueueJobIsIdempotentWhilePending(t *testing.T) {
 	}
 }
 
-// 一度諦めたジョブは、再投入で取り直せる。内容が変わった動画を解析し直せ
-// なければ、差し替えたファイルが永久に未解析のままになる。
 func TestEnqueueJobRetriesAfterFailure(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -182,13 +169,11 @@ func TestEnqueueJobRetriesAfterFailure(t *testing.T) {
 	if _, err := db.Ingest().ClaimJob(ctx, domain.JobProbe); err != nil {
 		t.Errorf("再投入したジョブを取り出せない: %v", err)
 	}
-	// 諦めた行は積み上げない。
 	if got := countJobs(t, db); got != 1 {
 		t.Errorf("ジョブ = %d 件, want 1（諦めた行を残さない）", got)
 	}
 }
 
-// 終端の失敗は動画の状態に記録されるので、積み直さない。
 func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -219,8 +204,7 @@ func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
 	}
 }
 
-// 旧版は失敗を行にだけ記録し、動画を pending のまま残すことがあった。走査が
-// その動画を見つけたら、失敗の行を捨てて積み直す。
+// Simulate legacy terminal jobs that left the video's stage pending; scans must replace those rows.
 func TestEnsureJobRequeuesLegacyFailureOfPendingVideo(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -232,7 +216,6 @@ func TestEnsureJobRequeuesLegacyFailureOfPendingVideo(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// 旧版と同じく、行にだけ失敗を記録する。
 		if err := db.Ingest().FailJob(ctx, job.ID, "unreadable location"); err != nil {
 			t.Fatal(err)
 		}
@@ -257,8 +240,6 @@ func TestEnsureJobRequeuesLegacyFailureOfPendingVideo(t *testing.T) {
 	}
 }
 
-// 起動時に running のまま残っている行は queued へ戻す。取り込み中に止めても
-// 次の起動で再開でき、重複も生まない。
 func TestRequeueRunningJobs(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -270,7 +251,6 @@ func TestRequeueRunningJobs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// ここでプロセスが落ちた状況を作る（running のまま放置）。
 
 	restored, err := db.Ingest().RequeueRunningJobs(ctx)
 	if err != nil {
@@ -288,7 +268,6 @@ func TestRequeueRunningJobs(t *testing.T) {
 	}
 }
 
-// 未完了の仕事は queued と running で、done と failed は数えない。
 func TestHasUnfinishedJobs(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -399,7 +378,7 @@ func TestClaimJobWaitsForMigratedLocationToBeRegistered(t *testing.T) {
 	if _, err := db.sql.Exec(`delete from media_folders`); err != nil {
 		t.Fatal(err)
 	}
-	// サムネイルは解析の後に取り出すので、解析は済ませておく。
+	// Complete probing first because thumbnails depend on its duration.
 	probeDone(t, db, video.ID)
 	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, video.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
@@ -415,8 +394,6 @@ func TestClaimJobWaitsForMigratedLocationToBeRegistered(t *testing.T) {
 	if _, err := db.Settings().AddMediaFolder(ctx, root); err != nil {
 		t.Fatal(err)
 	}
-	// 眠っているワーカーを起こす知らせが出ること。登録で取り出せるようになった
-	// 待ちの仕事は、次に仕事が積まれるのを待たずに処理される。
 	if got := recorder.take(); !slices.Contains(got, domain.JobThumbnail) {
 		t.Fatalf("フォルダ登録の知らせ = %v, want thumbnail を含む", got)
 	}
@@ -813,8 +790,6 @@ func countJobs(t *testing.T, db *DB) int {
 	return count
 }
 
-// ClaimJob は指定した段階の仕事だけを取り出す。段階ごとのワーカーが、別の
-// 段階の仕事を横取りしない。
 func TestClaimJobTakesOnlyTheRequestedKind(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -834,7 +809,6 @@ func TestClaimJobTakesOnlyTheRequestedKind(t *testing.T) {
 	}
 }
 
-// queuedRecorder は発行のうち、仕事が積まれた段階を記録する。calls は発行の回数である。
 type queuedRecorder struct {
 	kinds  []domain.JobKind
 	events []domain.Event
@@ -851,7 +825,6 @@ func (r *queuedRecorder) Publish(events ...domain.Event) {
 	r.calls++
 }
 
-// publisherFunc は関数を発行先にする。
 type publisherFunc func(events ...domain.Event)
 
 func (f publisherFunc) Publish(events ...domain.Event) { f(events...) }
@@ -862,14 +835,12 @@ func (r *queuedRecorder) take() []domain.JobKind {
 	return kinds
 }
 
-// 仕事を積んだら、確定したあとでその段階を知らせる。ワーカーはこれで起きる。
-// 何も積まなかったときは知らせない。
 func TestJobsQueuedNotification(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 	recorder := &queuedRecorder{}
 	db.PublishTo(publisherFunc(func(events ...domain.Event) {
-		// 知らせを受けた時点で、積んだ行が別の接続から見えていること。
+		// An event must observe committed queue rows from another connection.
 		var queued int
 		if err := db.sql.QueryRow(`select count(*) from jobs where state = 'queued'`).Scan(&queued); err != nil {
 			t.Error(err)
@@ -893,7 +864,6 @@ func TestJobsQueuedNotification(t *testing.T) {
 	if got := recorder.take(); fmt.Sprint(got) != "[thumbnail]" {
 		t.Errorf("EnsureJob の知らせ = %v, want [thumbnail]", got)
 	}
-	// 既にあるので何も積まない。
 	if err := db.Ingest().EnsureJob(ctx, domain.JobThumbnail, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
@@ -922,7 +892,6 @@ func TestJobsQueuedNotification(t *testing.T) {
 	}
 }
 
-// remainingByKind は残りの仕事（remainingJobCondition）を段階ごとに数える。
 func remainingByKind(t *testing.T, db *DB) map[domain.JobKind]int {
 	t.Helper()
 	rows, err := db.sql.Query(`select j.kind, count(*) from jobs j where ` + remainingJobCondition("j") + ` group by j.kind`)
@@ -945,8 +914,6 @@ func remainingByKind(t *testing.T, db *DB) map[domain.JobKind]int {
 	return out
 }
 
-// 残りの仕事は queued と running を数え、終わった仕事と、登録外の所在しか
-// ない動画の仕事は数えない。
 func TestRemainingJobsCountQueuedAndRunningPerStage(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -970,12 +937,10 @@ func TestRemainingJobsCountQueuedAndRunningPerStage(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// 処理中も残りに数える（サムネイルは解析の後に取り出すので、解析は済ませておく）。
 	probeDone(t, db, videoID)
 	if _, err := db.Ingest().ClaimJob(ctx, domain.JobThumbnail); err != nil {
 		t.Fatal(err)
 	}
-	// 終わった仕事は数えない。
 	preview, err := db.Ingest().ClaimJob(ctx, domain.JobPreview)
 	if err != nil {
 		t.Fatal(err)
@@ -991,8 +956,7 @@ func TestRemainingJobsCountQueuedAndRunningPerStage(t *testing.T) {
 	}
 }
 
-// サムネイルは解析が終わるまで取り出さない。段階ごとのワーカーは並行して動くので、
-// 解析より先に作ると、動画の長さが分からないまま抽出位置が決まってしまう。
+// Thumbnail claims wait for probes so extraction positions use known duration.
 func TestClaimThumbnailWaitsForProbe(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -1016,7 +980,6 @@ func TestClaimThumbnailWaitsForProbe(t *testing.T) {
 	}
 }
 
-// probeDone は解析を済ませた状態にする。サムネイルは解析の後に取り出す。
 func probeDone(t *testing.T, db *DB, videoID int64) {
 	t.Helper()
 	probe := domain.Probe{DurationMs: 100_000, VideoCodec: "h264", AudioCodec: "aac"}
@@ -1025,9 +988,7 @@ func probeDone(t *testing.T, db *DB, videoID int64) {
 	}
 }
 
-// 登録を外しても、登録外の所在が残る動画の行は消えない。それでもその仕事は
-// 残りとして数えなくなるので、変わったことを知らせる。画面の残りの数が古いまま
-// 残らない。
+// Surviving unregistered locations keep video rows alive but must no longer contribute remaining work.
 func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -1055,8 +1016,6 @@ func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T)
 		t.Fatal(err)
 	}
 
-	// 動画は消えず（登録外の所在が残る）、仕事も積まない。残りの変化と、待っていた
-	// シーク用サムネイルが取り出せるようになりうることと、登録の解除の記録を知らせる。
 	want := []domain.Event{
 		domain.JobsQueued{Kinds: []domain.JobKind{domain.JobSeekThumbnail}},
 		domain.ProcessingChanged{},
@@ -1073,9 +1032,7 @@ func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T)
 	}
 }
 
-// 登録を外して、取り出せる代表サムネイルの仕事が無くなったら、別の動画の
-// シーク用サムネイルが取り出せるようになる。動画の行が残る（登録外の所在がある）
-// ときも、シーク用のワーカーを起こす知らせを出す。
+// Unregistering thumbnail work can unblock seek jobs even when the video survives, so workers need an explicit wakeup.
 func TestDeleteMediaFolderWakesSeekThumbnailWhenThumbnailWorkLeaves(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -1127,8 +1084,6 @@ func TestDeleteMediaFolderWakesSeekThumbnailWhenThumbnailWorkLeaves(t *testing.T
 	}
 }
 
-// 作り終えたプレビューのファイルが無い動画は、状態を戻して作り直しを1回だけ
-// 積む。何度見つけても重ねて積まない。
 func TestRequeueMissingPreview(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()

@@ -30,20 +30,16 @@ import {
   type RunOperation,
 } from "./fetchRules";
 
-/** WORK_INFO_PLUGIN_SETTINGS は Settings の Plugins のページの「Work-info plugins」の節である。 */
 export const WORK_INFO_PLUGIN_SETTINGS = "/settings/plugins#work-info-plugins";
 
-/** MAX_CANDIDATES は出す候補の数の上限である（ui-design「Candidates」）。 */
 const MAX_CANDIDATES = 50;
 
-/** RunFailure は検索か取得の失敗と、そのときのプラグインである。 */
 export interface RunFailure {
   operation: RunOperation;
   error: unknown;
   plugin: WorkInfoPlugin | undefined;
 }
 
-/** Running は走っている検索か取得で、`id` は候補の行から取っているときのその候補の作品 ID である。 */
 export interface Running {
   operation: RunOperation;
   id?: string;
@@ -97,10 +93,6 @@ function PluginField({
 
 const FIND_BY: readonly FindBy[] = ["words", "id"];
 
-/**
- * FindByField は語を検索の語にするか、取得に渡す作品の ID にするかの選択で、search と fetch の両方を
- * 宣言するプラグインにだけ出す。押している選択肢は外せない。
- */
 function FindByField({
   by,
   disabled,
@@ -134,7 +126,6 @@ function FindByField({
   );
 }
 
-/** FailureAlert は検索か取得の失敗である（ui-design「Failures」）。 */
 function FailureAlert({ failure }: { failure: RunFailure }) {
   const text = t.player.workInfoFetch;
   const { error, plugin } = failure;
@@ -191,11 +182,7 @@ function CandidateText({ candidate }: { candidate: WorkInfoCandidate }) {
   );
 }
 
-/**
- * CandidateRow は候補の 1 行である。行を押すとその作品 ID で取得するので、取得できない
- * （検索だけの）プラグインでは行を押せる形にせず、文と `Open page` だけを出す。`Open page` は候補の
- * ページへのリンクで、VVMDM がその URL を取得することはない。
- */
+/** Fetch candidates by work ID; search-only plugins expose links without selectable rows. Candidate URLs are navigation only. */
 function CandidateRow({
   candidate,
   choosable,
@@ -282,10 +269,6 @@ function Candidates({
   );
 }
 
-/**
- * FindStep は取得のダイアログの最初の段で、プラグインの選択、語と ID の選択（両方できるプラグインだけ）、
- * 語か ID の 1 つの欄、失敗、候補の一覧を縦に並べる（ui-design「Find」「Candidates」「Failures」）。
- */
 export default function FindStep({
   plugins,
   plugin,
@@ -315,7 +298,7 @@ export default function FindStep({
 }) {
   const text = t.player.workInfoFetch;
   const queryId = useId();
-  // 開いて最初にフォーカスを受けたときだけ、題名を選んだ状態にして打てば置き換わるようにする。
+  // Select the initial title once so typing replaces it without reselecting on later focus.
   const selectedOnce = useRef(false);
   const busy = running !== null;
   return (

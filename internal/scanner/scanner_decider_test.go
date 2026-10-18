@@ -8,7 +8,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 走査は始めたもの（decider）を、積む仕事ごとに待ち行列へ渡す。監視の走査は規則が始めたものとして積む
 func TestScanQueuesJobsWithItsDecider(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -44,8 +43,8 @@ func TestScanQueuesJobsWithItsDecider(t *testing.T) {
 	}
 }
 
-// 新しい動画に要る仕事は 1 回の呼び出しでまとめて積む。別々に確定すると、その間に前の段階が終わって記録が
-// 閉じ、残りの段階が 2 件目の import の記録を開く。
+// Queue stages together so an early completion cannot close one import activity before later stages
+// create another.
 func TestScanQueuesANewVideosJobsInOneCall(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a"})
 	index := newFakeIndex()

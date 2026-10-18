@@ -13,16 +13,9 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// 作品情報と人物・団体の MCP のツール。
-// 他のツールと同じく、外部連携 API の同じ操作を call で呼ぶ。
-//
-// 本文を取るツールは入力を json.RawMessage のまま REST へ渡す。生成型に読み直すと null と省略の区別が
-// 失われ、update_person の aliases: null（一覧を空にする）や parentId: null（親を外す）が「今のまま」に
-// 変わってしまうためである。入力の形（inputSchema）は本文の型から導く。
+// Forward work-info tool bodies as RawMessage; decoding through generated structs would turn null clears/removals into omitted fields.
 
-// mcpListCredits は list_people と list_organizations の入力で、GET /api/v1/people の問い合わせと同じ形である。
-// 生成型の extgen.ListPeopleParams は limit を文字列で受ける（外部 ID での検索では読まないため）ので、
-// ツールの入力では整数の limit を持つこの形にする。
+// MCP accepts integer limits, unlike REST's string parameter used to bypass parsing during external-ID lookup.
 type mcpListCredits struct {
 	Q          *extgen.CreditQuery      `json:"q,omitempty"`
 	Sort       *extgen.CreditSort       `json:"sort,omitempty"`
@@ -32,15 +25,10 @@ type mcpListCredits struct {
 	ExternalID *extgen.CreditExternalId `json:"externalId,omitempty"`
 }
 
-// mcpListCreditsDefaultLimit は list_people・list_organizations が limit を省かれたときに入れる 1 ページの
-// 件数である（list_tags と同じ）。
 const mcpListCreditsDefaultLimit = 100
 
-// mcpCreditTools は人物と団体で違う、ツールの名前・経路・説明の言葉である。
 type mcpCreditTools struct {
-	// path は経路の頭（/people・/organizations）。
-	path string
-	// one と many は説明に使う単数・複数の名前、list・create・update・merge・remove はツールの名前。
+	path                                string
 	one, many                           string
 	list, create, update, merge, remove string
 }
@@ -53,7 +41,6 @@ var mcpCreditKinds = []mcpCreditTools{
 		merge: "merge_organizations", remove: "delete_organizations"},
 }
 
-// registerWorkInfo は update_video_work_info と、人物・団体の 5 つずつのツールを載せる。
 func (t *mcpTools) registerWorkInfo(server *mcp.Server) {
 	destructive, notDestructive := true, false
 	mcp.AddTool(server, &mcp.Tool{
@@ -129,15 +116,13 @@ func (t *mcpTools) registerCreditTools(server *mcp.Server, kind mcpCreditTools, 
 	}, t.post(kind.path+"/delete"))
 }
 
-// post は入力をそのまま本文にして POST する、ツールの処理である。
 func (t *mcpTools) post(path string) mcp.ToolHandlerFor[json.RawMessage, any] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in json.RawMessage) (*mcp.CallToolResult, any, error) {
 		return t.call(ctx, http.MethodPost, path, nil, in)
 	}
 }
 
-// creditListQuery は list_people・list_organizations の入力を問い合わせにする。limit を省けば
-// mcpListCreditsDefaultLimit にする（REST の既定の全件は変えない、list_tags と同じ）。
+// MCP credit lists default to one page while REST keeps its all-results default.
 func creditListQuery(in mcpListCredits) url.Values {
 	query := url.Values{}
 	for name, value := range map[string]*string{"q": in.Q, "cursor": in.Cursor, "source": in.Source, "externalId": in.ExternalID} {
@@ -156,7 +141,6 @@ func creditListQuery(in mcpListCredits) url.Values {
 	return query
 }
 
-// creditListInputSchema は list_people・list_organizations の入力の形である（list_tags と同じ規則）。
 func creditListInputSchema(tool string) *jsonschema.Schema {
 	return withListInputLimits(inputSchemaFor[mcpListCredits](tool), mcpListCreditsDefaultLimit,
 		string(extgen.CreditSortName), string(extgen.CreditSortCountDesc), string(extgen.CreditSortCountAsc),

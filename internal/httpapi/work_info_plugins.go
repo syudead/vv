@@ -11,48 +11,36 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 作品情報プラグインの追加・承認・取り消し・削除と設定の値の書き込みの経路。どれも所有者だけで、accessRoutes に載せない。
-// 検査・規則・保存は internal/app と internal/store が持ち、ここは要求の解釈と契約の形への変換だけを持つ。
-// 応答の型は秘密の設定の値を持たない（domain.WorkInfoPluginEntry が値を落としてある）。
+// Plugin management is owner-only and excluded from accessRoutes. Domain entries already omit secret setting values.
 
-// workInfoPluginUploadMaxBody はアップロードの要求の本文全体の上限である。module 部分の上限に、部分の
-// 区切りと見出しのぶんの 1 MiB を足す。
+// Allow 1 MiB above the module limit for multipart headers and boundaries.
 const workInfoPluginUploadMaxBody = domain.WorkInfoPluginModuleMaxBytes + 1<<20
 
-// WorkInfoPlugins は作品情報プラグインの登録である。internal/app の *WorkInfoPlugins が満たす。
 type WorkInfoPlugins interface {
-	// ListWorkInfoPlugins はすべてのプラグインを、名前、次にファイル名の順で返す。
+	// ListWorkInfoPlugins sorts by name, then filename.
 	ListWorkInfoPlugins(ctx context.Context) ([]domain.WorkInfoPluginEntry, error)
-	// UploadWorkInfoPlugin はモジュールを検査して保存し、保存したプラグインと、新しい行かを返す。
-	// 上限を超えれば domain.ErrWorkInfoPluginTooLarge を返す。
+	// UploadWorkInfoPlugin validates and stores the module, returning whether the row is new; oversized modules return ErrWorkInfoPluginTooLarge.
 	UploadWorkInfoPlugin(ctx context.Context, fileName string, module []byte) (domain.WorkInfoPluginEntry, bool, error)
-	// ApproveWorkInfoPlugin はダイジェスト digest のモジュールを承認する。domain.ErrNotFound・
-	// domain.ErrWorkInfoPluginChanged・domain.ErrWorkInfoPluginUnusable を返しうる。
+	// ApproveWorkInfoPlugin approves the specified digest; it may return ErrNotFound, ErrWorkInfoPluginChanged, or ErrWorkInfoPluginUnusable.
 	ApproveWorkInfoPlugin(ctx context.Context, id int64, digest string) (domain.WorkInfoPluginEntry, error)
-	// RevokeWorkInfoPluginApproval は承認を取り消す。無ければ domain.ErrNotFound を返す。
+	// RevokeWorkInfoPluginApproval returns ErrNotFound when absent.
 	RevokeWorkInfoPluginApproval(ctx context.Context, id int64) (domain.WorkInfoPluginEntry, error)
-	// SetWorkInfoPluginSettings は設定の値を書く。domain.ErrNotFound・domain.ErrWorkInfoPluginUnusable・
-	// domain.ErrWorkInfoPluginSettingInvalid を返しうる。
+	// SetWorkInfoPluginSettings may return ErrNotFound, ErrWorkInfoPluginUnusable, or ErrWorkInfoPluginSettingInvalid.
 	SetWorkInfoPluginSettings(ctx context.Context, id int64, values map[string]*string) (domain.WorkInfoPluginEntry, error)
-	// DeleteWorkInfoPlugin はプラグインとその設定の値を消す。無ければ domain.ErrNotFound を返す。
+	// DeleteWorkInfoPlugin removes settings too; an absent plugin returns ErrNotFound.
 	DeleteWorkInfoPlugin(ctx context.Context, id int64) error
-	// WorkInfoPluginLastRun は直近の実行の標準エラー（秘密の値を伏せたもの）と、それが残っているかを返す。
-	// 無ければ domain.ErrNotFound を返す。
+	// WorkInfoPluginLastRun returns redacted stderr and whether it was retained; an absent plugin returns ErrNotFound.
 	WorkInfoPluginLastRun(ctx context.Context, id int64) (domain.WorkInfoPluginRun, bool, error)
-	// SearchWorkInfo は承認済みのプラグイン id の search で語 query を探す。誤りは workInfoRunError が
-	// 契約の応答にする。
+	// SearchWorkInfo requires an approved plugin; workInfoRunError maps failures to the API contract.
 	SearchWorkInfo(ctx context.Context, id int64, query string) ([]domain.WorkInfoCandidate, error)
-	// FetchWorkInfo は承認済みのプラグイン pluginID の fetch で作品の ID から作品情報を取り、動画 videoID に
-	// 結び付けてメモリに持つ。動画は変えない。
+	// FetchWorkInfo caches fetched work information for the video without modifying it; the plugin must be approved.
 	FetchWorkInfo(ctx context.Context, videoID, pluginID int64, id string) (domain.WorkInfoFetchResult, error)
-	// ApplyWorkInfoFetch は取得の結果 fetchID のうち fields の項目を動画 videoID に反映する。
-	// domain.ErrWorkInfoApplyInvalid・domain.ErrNotFound・domain.ErrWorkInfoFetchStale を返しうる。
+	// ApplyWorkInfoFetch applies selected fields and may return ErrWorkInfoApplyInvalid, ErrNotFound, or ErrWorkInfoFetchStale.
 	ApplyWorkInfoFetch(ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField, tags []string) (domain.WorkInfoApplied, error)
-	// WorkInfoFetchCover は動画 videoID の取得の結果 fetchID のカバー画像を返す。無ければ domain.ErrNotFound。
+	// WorkInfoFetchCover returns ErrNotFound when no cover is available.
 	WorkInfoFetchCover(videoID int64, fetchID string) (domain.WorkInfoCover, error)
 }
 
-// workInfoPluginsConfigured は登録がつながっているかを確かめ、無ければ 500 を書いて偽を返す。
 func (s *server) workInfoPluginsConfigured(w http.ResponseWriter) bool {
 	if s.workInfoPlugins == nil {
 		s.internalError(w, "Work-info plugins are not configured.", nil)
@@ -61,7 +49,6 @@ func (s *server) workInfoPluginsConfigured(w http.ResponseWriter) bool {
 	return true
 }
 
-// ListWorkInfoPlugins はプラグインの一覧を返す（GET /api/work-info-plugins）。
 func (s *server) ListWorkInfoPlugins(w http.ResponseWriter, r *http.Request) {
 	if !s.workInfoPluginsConfigured(w) {
 		return
@@ -79,8 +66,7 @@ func (s *server) ListWorkInfoPlugins(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.WorkInfoPluginList{Plugins: plugins}, s.logger)
 }
 
-// UploadWorkInfoPlugin は multipart の module を追加するか、同じ名前のプラグインと差し替える
-// （POST /api/work-info-plugins）。
+// UploadWorkInfoPlugin adds a multipart module or replaces the plugin with the same name.
 func (s *server) UploadWorkInfoPlugin(w http.ResponseWriter, r *http.Request) {
 	if !s.workInfoPluginsConfigured(w) {
 		return
@@ -101,9 +87,7 @@ func (s *server) UploadWorkInfoPlugin(w http.ResponseWriter, r *http.Request) {
 	s.writeWorkInfoPlugin(w, status, entry)
 }
 
-// readWorkInfoPluginUpload はアップロードの multipart/form-data から module を 1 つ読み、そのファイル名と
-// 中身を返す。module が無いかほかの部分を送れば 400、2 つ送れば readMultipart が 400、module か本文全体が
-// 上限を越えれば 413 plugin_too_large である。
+// Require exactly one module part. Missing, extra, or duplicate parts return 400; exceeding module or body limits returns 413 plugin_too_large.
 func (s *server) readWorkInfoPluginUpload(w http.ResponseWriter, r *http.Request) (string, []byte, bool) {
 	var (
 		fileName string
@@ -137,8 +121,7 @@ func (s *server) readWorkInfoPluginUpload(w http.ResponseWriter, r *http.Request
 	return fileName, module, true
 }
 
-// readWorkInfoPluginPart は module 部分を上限まで読む。部分か本文全体が上限を越えれば
-// domain.ErrWorkInfoPluginTooLarge を返す。空の部分も nil でない空の値として返す。
+// readWorkInfoPluginPart enforces module and body limits and returns a non-nil slice even for an empty part.
 func readWorkInfoPluginPart(part io.Reader) ([]byte, error) {
 	data, err := io.ReadAll(io.LimitReader(part, domain.WorkInfoPluginModuleMaxBytes+1))
 	var bodyTooLarge *http.MaxBytesError
@@ -153,7 +136,6 @@ func readWorkInfoPluginPart(part io.Reader) ([]byte, error) {
 	return data, nil
 }
 
-// ApproveWorkInfoPlugin は所有者が見たモジュールを承認する（PUT /api/work-info-plugins/{id}/approval）。
 func (s *server) ApproveWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
 	var body gen.ApproveWorkInfoPluginRequest
 	if !s.readJSONBody(w, r, &body) {
@@ -174,7 +156,6 @@ func (s *server) ApproveWorkInfoPlugin(w http.ResponseWriter, r *http.Request, i
 	s.writeWorkInfoPlugin(w, http.StatusOK, entry)
 }
 
-// RevokeWorkInfoPluginApproval は承認を取り消す（DELETE /api/work-info-plugins/{id}/approval）。
 func (s *server) RevokeWorkInfoPluginApproval(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
 	if !s.workInfoPluginsConfigured(w) {
 		return
@@ -187,7 +168,6 @@ func (s *server) RevokeWorkInfoPluginApproval(w http.ResponseWriter, r *http.Req
 	s.writeWorkInfoPlugin(w, http.StatusOK, entry)
 }
 
-// SetWorkInfoPluginSettings は設定の値を書く（PUT /api/work-info-plugins/{id}/settings）。
 func (s *server) SetWorkInfoPluginSettings(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
 	var body gen.SetWorkInfoPluginSettingsRequest
 	if !s.readJSONBody(w, r, &body) {
@@ -208,7 +188,6 @@ func (s *server) SetWorkInfoPluginSettings(w http.ResponseWriter, r *http.Reques
 	s.writeWorkInfoPlugin(w, http.StatusOK, entry)
 }
 
-// DeleteWorkInfoPlugin はプラグインを消す（DELETE /api/work-info-plugins/{id}）。
 func (s *server) DeleteWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
 	if !s.workInfoPluginsConfigured(w) {
 		return
@@ -221,8 +200,7 @@ func (s *server) DeleteWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// GetWorkInfoPluginLastRun は直近の実行の標準エラーを返す（GET /api/work-info-plugins/{id}/last-run、
-// docs/design-docs/work-info-plugins.md）。残っていなければ {} を返す。
+// GetWorkInfoPluginLastRun returns {} when stderr was not retained.
 func (s *server) GetWorkInfoPluginLastRun(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
 	if !s.workInfoPluginsConfigured(w) {
 		return
@@ -252,7 +230,6 @@ func (s *server) writeWorkInfoPlugin(w http.ResponseWriter, status int, entry do
 	writeJSON(w, status, toWorkInfoPlugin(entry), s.logger)
 }
 
-// workInfoPluginError はプラグインの誤りを契約の応答にする。
 func (s *server) workInfoPluginError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrWorkInfoPluginTooLarge):
@@ -273,7 +250,7 @@ func (s *server) workInfoPluginError(w http.ResponseWriter, err error) {
 	}
 }
 
-// toWorkInfoPlugin は画面に見せるプラグインを契約の形にする。秘密の設定は値を持たない。
+// Secret settings never include values in API responses.
 func toWorkInfoPlugin(entry domain.WorkInfoPluginEntry) gen.WorkInfoPlugin {
 	operations := make([]gen.WorkInfoOperation, 0, len(entry.Operations))
 	for _, op := range entry.Operations {
@@ -304,7 +281,7 @@ func toWorkInfoPlugin(entry domain.WorkInfoPluginEntry) gen.WorkInfoPlugin {
 		Digest:      entry.Digest,
 		State:       gen.WorkInfoPluginState(entry.State),
 		Settings:    settings,
-		// 取り決めの版 1 のプラグインはどれもインターネットのサイトに届く（要件 2）。
+		// All version 1 plugins can access internet sites.
 		Network:   true,
 		UpdatedAt: entry.UpdatedAt.Unix(),
 	}

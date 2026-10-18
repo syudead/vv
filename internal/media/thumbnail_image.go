@@ -6,35 +6,27 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	_ "image/gif"  // 適用する画像の形式として読めるようにする。
-	_ "image/jpeg" // 同上。
-	"image/png"    // 同上。ComfyUI の出力は PNG である。
+	_ "image/gif" // Register supported image decoders.
+	_ "image/jpeg"
+	"image/png" // ComfyUI outputs PNG.
 	"math"
 	"os/exec"
 	"strconv"
 
-	_ "golang.org/x/image/webp" // 同上。参考画像と同じく、提供元の出力に WebP を受け付ける。
+	_ "golang.org/x/image/webp" // Accept provider WebP output like reference images.
 
 	"github.com/syudead/vv/internal/domain"
 )
 
-// thumbnailLongSide は代表サムネイルの長辺（px）である。抽出したサムネイル（thumbnailScale）と
-// 同じにする。
+// Match thumbnailScale's extracted-thumbnail size.
 const thumbnailLongSide = 640
 
-// thumbnailSourceLongSide は適用した画像の元の画像の長辺の上限（px）である
 const thumbnailSourceLongSide = 2048
 
-// FitThumbnailImage は、所有者が適用する画像 data を動画の表示上の縦横比 aspect（横÷縦）に
-// 合わせ、代表サムネイルの JPEG を返す。
-//
-// aspect が正なら、長辺 640px のその比率の枠を覆うまで拡大縮小し、はみ出した分を中央で
-// 切り抜く。帯を足すと、カードの object-contain の枠の中に2つ目の縁が出る。aspect が 0 なら
-// 画像自身の縦横比を保ち、長辺を 640px にする。品質は抽出したサムネイル（thumbnailArgs）と
-// 同じ -q:v 4 である。
-//
-// data を画像として読めなければ domain.ErrThumbnailImageInvalid を返す。WebP は Go で読んだ画像を
-// PNG にして ffmpeg へ渡し、ffmpeg の WebP の読み手の有無に左右されないようにする。
+// FitThumbnailImage center-crops to the positive display aspect at 640px, avoiding nested
+// letterboxing; zero keeps the image aspect, and quality matches thumbnail extraction. Invalid
+// images return domain.ErrThumbnailImageInvalid; WebP is decoded to PNG locally so ffmpeg need not
+// support it.
 func FitThumbnailImage(ctx context.Context, data []byte, aspect float64) ([]byte, error) {
 	_, data, err := decodeThumbnailImage(data)
 	if err != nil {
@@ -47,12 +39,8 @@ func FitThumbnailImage(ctx context.Context, data []byte, aspect float64) ([]byte
 	return runFitThumbnail(ctx, data, filter, "4")
 }
 
-// FitThumbnailSource は、所有者が適用する画像 data を FitThumbnailImage と同じく動画の表示上の
-// 縦横比 aspect（横÷縦、0 は画像自身の比率）に中央で切り抜き、長辺を最大 2048px にした JPEG を
-// 返す。今のサムネイルからの編集の元になる。
-//
-// 切り抜いた大きさが 2048px 以下なら拡大しない。品質は -q:v 2 である。読めない画像は
-// domain.ErrThumbnailImageInvalid を返す。
+// FitThumbnailSource center-crops to the display aspect and limits the longest side to 2048px
+// without upscaling, using JPEG q=2; invalid input returns domain.ErrThumbnailImageInvalid.
 func FitThumbnailSource(ctx context.Context, data []byte, aspect float64) ([]byte, error) {
 	img, data, err := decodeThumbnailImage(data)
 	if err != nil {
@@ -63,8 +51,7 @@ func FitThumbnailSource(ctx context.Context, data []byte, aspect float64) ([]byt
 	return runFitThumbnail(ctx, data, fitThumbnailFilter(width, height), "2")
 }
 
-// decodeThumbnailImage は適用する画像 data を読み、ffmpeg に渡すバイト列とともに返す。WebP は
-// PNG にする。読めなければ domain.ErrThumbnailImageInvalid を返す。
+// Convert WebP to PNG for ffmpeg; unreadable input returns domain.ErrThumbnailImageInvalid.
 func decodeThumbnailImage(data []byte) (image.Image, []byte, error) {
 	img, format, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
@@ -80,7 +67,6 @@ func decodeThumbnailImage(data []byte) (image.Image, []byte, error) {
 	return img, data, nil
 }
 
-// runFitThumbnail は data を ffmpeg の絵の加工 filter に通し、品質 quality（-q:v）の JPEG を返す。
 func runFitThumbnail(ctx context.Context, data []byte, filter, quality string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, thumbnailTimeout)
 	defer cancel()
@@ -101,8 +87,6 @@ func runFitThumbnail(ctx context.Context, data []byte, filter, quality string) (
 	return output, nil
 }
 
-// fitThumbnailArgs は runFitThumbnail が ffmpeg に渡す引数を組み立てる。入力は標準入力、
-// 出力は標準出力の JPEG 1枚である。
 func fitThumbnailArgs(filter, quality string) []string {
 	return []string{
 		"-v", "error",
@@ -116,15 +100,12 @@ func fitThumbnailArgs(filter, quality string) []string {
 	}
 }
 
-// fitThumbnailFilter は width×height の枠を覆うまで拡大縮小し、はみ出した分を中央で切り抜く
-// ffmpeg の絵の加工である。
 func fitThumbnailFilter(width, height int) string {
 	w, h := strconv.Itoa(width), strconv.Itoa(height)
 	return "scale=" + w + ":" + h + ":force_original_aspect_ratio=increase,crop=" + w + ":" + h + ",setsar=1"
 }
 
-// fitThumbnailSize は縦横比 aspect（正）の、長辺 640px の大きさを返す。短辺は偶数に丸める
-// （thumbnailScale の force_divisible_by=2 と同じ）。
+// Round the shorter side to even pixels, matching thumbnailScale.
 func fitThumbnailSize(aspect float64) (width, height int) {
 	short := func(value float64) int {
 		even := int(math.Round(value/2)) * 2
@@ -136,12 +117,9 @@ func fitThumbnailSize(aspect float64) (width, height int) {
 	return short(thumbnailLongSide * aspect), thumbnailLongSide
 }
 
-// fitThumbnailSourceSize は width×height の画像を縦横比 aspect（0 以下は画像自身の比率）に中央で
-// 切り抜き、長辺が 2048px を超えれば 2048px に縮めた大きさを返す。拡大はしないので、辺は
-// 切り抜いた大きさを超えない整数に切り下げる。偶数には丸めない。偶数にすると 16×9 の画像が
-// 16×8 になるように、小さな画像では縦横比がずれ、表示しているサムネイルより狭い範囲から編集が
-// 始まる（ffmpeg の JPEG は奇数の辺も書ける）。1px に満たない辺は 1px にする。その大きさでは
-// aspect を表せないので、元の画像は画像の画素を拡大せずそのまま残す。
+// Crop without upscaling or even-pixel rounding, which distorts small images such as 16x9; JPEG
+// supports odd dimensions. Clamp subpixel sides to one pixel, accepting aspect mismatch rather than
+// enlarging source pixels.
 func fitThumbnailSourceSize(width, height int, aspect float64) (int, int) {
 	w, h := float64(width), float64(height)
 	if aspect > 0 && w/h > aspect {
@@ -155,18 +133,15 @@ func fitThumbnailSourceSize(width, height int, aspect float64) (int, int) {
 	return sideAtMost(w), sideAtMost(h)
 }
 
-// sideAtMost は value を超えない最大の整数を返す。value が 1 に満たなければ 1 を返す。
-// 浮動小数の誤差で整数をわずかに下回った値は、その整数として扱う。
+// Floor to at least one pixel, tolerating floating-point error just below an integer.
 func sideAtMost(value float64) int {
 	return max(int(math.Floor(value+1e-9)), 1)
 }
 
-// FitThumbnailImage は FitThumbnailImage を呼ぶ。
 func (a *Assets) FitThumbnailImage(ctx context.Context, data []byte, aspect float64) ([]byte, error) {
 	return FitThumbnailImage(ctx, data, aspect)
 }
 
-// FitThumbnailSource は FitThumbnailSource を呼ぶ。
 func (a *Assets) FitThumbnailSource(ctx context.Context, data []byte, aspect float64) ([]byte, error) {
 	return FitThumbnailSource(ctx, data, aspect)
 }

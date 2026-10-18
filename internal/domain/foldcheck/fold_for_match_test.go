@@ -1,10 +1,4 @@
-// Package foldcheck_test は、Go の domain.FoldForMatch と画面の foldForMatch
-// （web/src/lib/foldForMatch.ts）が共有する入力の組
-// internal/domain/testdata/fold_for_match.json を確かめ、-update で書き直す。domain.NaturalSortKey と画面の
-// naturalSortKey（web/src/lib/naturalSortKey.ts）が共有する
-// internal/domain/testdata/natural_sort_key.json も確かめる（R-12）。ファイルを読み書きするので、
-// os を import できない internal/domain の外（depguard の
-// domain-is-the-end-of-the-dependency-chain）に置く。
+// Package foldcheck_test validates shared Go/Web folding and sorting fixtures; it lives outside domain so fixture I/O does not violate depguard.
 package foldcheck_test
 
 import (
@@ -20,16 +14,12 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// updateFoldTable は testdata/fold_for_match.json の小文字化の表を
-// unicode.ToLower から書き直す（`go test ./internal/domain/foldcheck -update`）。
+// Regenerate Unicode lowercase mappings with go test ./internal/domain/foldcheck -update.
 var updateFoldTable = flag.Bool("update", false, "rewrite testdata/fold_for_match.json's lower table")
 
-// foldForMatchFile は、Go の FoldForMatch と画面の foldForMatch
-// （web/src/lib/foldForMatch.ts）が同じ照合形を返すことを確かめる共有の入力の組である
 type foldForMatchFile struct {
-	// Cases は入力と期待の照合形の組である。
 	Cases []foldForMatchCase `json:"cases"`
-	// Lower は unicode.ToLower(r) != r となるすべての符号位置の組である。
+	// Lower contains every code point changed by unicode.ToLower.
 	Lower []foldLowerPair `json:"lower"`
 }
 
@@ -59,7 +49,6 @@ func readFoldForMatchFile(t *testing.T) foldForMatchFile {
 	return file
 }
 
-// goLowerTable は unicode.ToLower が符号位置を変えるすべての組を、符号位置の順に返す。
 func goLowerTable() []foldLowerPair {
 	var pairs []foldLowerPair
 	for r := rune(0); r <= unicode.MaxRune; r++ {
@@ -70,7 +59,7 @@ func goLowerTable() []foldLowerPair {
 	return pairs
 }
 
-// writeFoldForMatchFile は 1 組を 1 行に書く。差分が読めるよう、組の並びと形を固定する。
+// Use one case per line and stable formatting for readable diffs.
 func writeFoldForMatchFile(t *testing.T, file foldForMatchFile) {
 	t.Helper()
 	var b bytes.Buffer

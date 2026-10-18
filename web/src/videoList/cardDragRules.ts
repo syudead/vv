@@ -1,30 +1,20 @@
-// カードのドラッグ層（cardDrag.tsx）が、ポインタの場所から落とした先を決める規則である。カードは画面の順に
-// 並んだ文字列の鍵で呼ぶ。
-
-/** Side は「間」がカードの前か後ろかである。 */
 export type Side = "before" | "after";
 
-/** Axis は並びの向きである。x は 2 列以上の格子、y は 1 列の格子とリスト。 */
+/** x means a multi-column grid; y means one column or a list. */
 export type Axis = "x" | "y";
 
-/** Zone はカードの中のポインタの場所である。 */
 export type Zone = Side | "middle";
 
-/** OntoAnswer は画面がカードの上に落とせるかに答えた値である。null は上に落とす先ではない。 */
+/** Null means the card is not an onto target. */
 export type OntoAnswer<L> = { label: L } | "refused" | null;
 
-/** DropSign は落とす先の印である（上、間、道筋の段、拒否）。 */
 export type DropSign<L> =
   | { kind: "onto"; key: string; label: L }
   | { kind: "between"; key: string; side: Side }
   | { kind: "crumb"; key: string }
   | { kind: "refused"; key: string };
 
-/**
- * zoneOf は、カードの始まり `start` と長さ `size` に対するポインタの位置 `at` の場所を返す。
- * `quarters` では内側の 50 % が middle、両側の 25 % が前と後ろ、`halves` では半分ずつが
- * 前と後ろで middle は無い。
- */
+/** quarters uses a middle 50% and 25% edges; halves has no middle zone. */
 export function zoneOf(
   at: number,
   start: number,
@@ -39,26 +29,18 @@ export function zoneOf(
   return "middle";
 }
 
-/** SignInput は signFor が決めるのに使う値である。 */
 export interface SignInput<L> {
-  /** ポインタの下のカード。 */
   target: string;
-  /** 持ち上げたカード。 */
   lifted: ReadonlySet<string>;
-  /** 間に落として並べ替えられる画面か。 */
   reorder: boolean;
-  /** 画面がそのカードの上に落とせるかに答えた値。 */
   onto: OntoAnswer<L>;
-  /** ポインタの場所。`onto` が null で並べ替えられる画面では、半分ずつで測った場所を渡す。 */
+  /** Use half-card zones when onto is null but reordering is allowed. */
   zone: Zone;
 }
 
 /**
- * signFor はポインタの下のカードに出す印を返す。null は何も出さない（落としても何も起きない）。
- *
- * - 持ち上げたカードの上は拒否。
- * - 並べ替えられる画面では、端（`onto` が null なら半分ずつ）が間になる。
- * - そうでなければ、画面の答えのとおり上か拒否か何もなし。並べ替えない画面では端も上として扱う。
+ * Reject lifted targets; reorderable edges become insertion targets, otherwise use the screen's
+ * onto decision. Non-reorderable screens treat edges as onto too.
  */
 export function signFor<L>({
   target,
@@ -75,9 +57,8 @@ export function signFor<L>({
 }
 
 /**
- * normalizeBetween は「X の後ろ」を「次のカードの前」に言い換える。行の終わりの後ろは次の行の
- * 始まりの前なので、印が行の端の外に立たない。最後の
- * カードの後ろはそのまま。
+ * Normalize after to before the next card so row-end markers do not fall outside the grid; keep
+ * after on the final card.
  */
 export function normalizeBetween(
   order: readonly string[],
@@ -89,22 +70,18 @@ export function normalizeBetween(
   return next === undefined ? { key, side } : { key: next, side: "before" };
 }
 
-/** ReorderDrop は間に落とした結果である。 */
 export interface ReorderDrop {
-  /** 落とした後の並び。 */
   order: string[];
-  /** 持ち上げたカード（画面の順）。 */
   moved: string[];
-  /** 持ち上げたカードがすぐ後ろに続くカード。null は先頭。 */
+  /** Predecessor of the moved block; null means the start. */
   after: string | null;
-  /** 置いた位置（1 始まり、落とした後の並びで持ち上げたカードの先頭）。 */
+  /** One-based position of the first moved card in the resulting order. */
   position: number;
 }
 
 /**
- * reorderDrop は持ち上げたカード `lifted` を、カード `target` の前か後ろの間に画面の順のまま
- * まとめて置いた結果を返す。並びが変わらなければ null。並びに無い鍵は無視する。`target` が
- * 持ち上げたカードでもよい（「X の後ろ」を言い換えた「次のカードの前」がそれに当たる）。
+ * Preserve lifted display order, ignore unknown keys and return null for no change. A normalized
+ * target may itself be lifted.
  */
 export function reorderDrop(
   order: readonly string[],
@@ -125,9 +102,8 @@ export function reorderDrop(
 }
 
 /**
- * moveAfter は `items` のうち鍵が `moved` にあるものを、画面の順のまま鍵 `after` の項目の
- * すぐ後ろへまとめて移した並びを返す。`after` が null か見つからなければ先頭へ移す
- * （POST /api/organize/reorder と同じ規則）。
+ * Match server reorder semantics: preserve display order and use the start when after is null or
+ * missing.
  */
 export function moveAfter<T, K>(
   items: readonly T[],
@@ -142,9 +118,8 @@ export function moveAfter<T, K>(
 }
 
 /**
- * liftedKeys は押したカード `pressed` から持ち上げるカードを返す。押したカードが選択した
- * カード `selected`（「Favorite」と同じ分け方で、選んだグループのメンバーの動画は入らない）に
- * あれば選択したすべてを画面の順で、無ければそれだけ。
+ * Lift all selected items only when the pressed card belongs to that partition; exclude videos
+ * covered by selected groups.
  */
 export function liftedKeys(
   order: readonly string[],
@@ -156,7 +131,6 @@ export function liftedKeys(
   return order.filter((key) => keys.has(key));
 }
 
-/** Rect はカードの画面上の箱である。 */
 export interface Rect {
   left: number;
   top: number;
@@ -164,10 +138,7 @@ export interface Rect {
   height: number;
 }
 
-/**
- * axisOf は格子の並びの向きを返す。同じ高さに左の位置が違うカードが 1 組でもあれば 2 列以上の
- * 格子（x）、無ければ 1 列の格子かリスト（y）。最後の行に 1 枚しか無くても格子全体で決める。
- */
+/** Infer axis from the whole grid so a final single-card row does not imply one column. */
 export function axisOf(rects: Iterable<Rect>): Axis {
   const leftByRow = new Map<number, number>();
   for (const rect of rects) {
@@ -179,23 +150,18 @@ export function axisOf(rects: Iterable<Rect>): Axis {
   return "y";
 }
 
-/** Point は画面上の点である。 */
 export interface Point {
   x: number;
   y: number;
 }
 
-/** distanceToRect は点 `at` から箱 `rect` までの距離である。箱の中なら 0。 */
 export function distanceToRect(at: Point, rect: Rect): number {
   const dx = Math.max(rect.left - at.x, 0, at.x - (rect.left + rect.width));
   const dy = Math.max(rect.top - at.y, 0, at.y - (rect.top + rect.height));
   return Math.hypot(dx, dy);
 }
 
-/**
- * nearestWithin は点 `at` から `reach` 以内でいちばん近い箱の鍵を返す（無ければ null）。
- * カードの隙間（`gap-3`）に置いた棒の上でもポインタが落とす先を失わないための規則である。
- */
+/** Keep insertion markers in card gaps droppable by accepting the nearest rectangle within reach. */
 export function nearestWithin<K>(
   at: Point,
   rects: Iterable<readonly [K, Rect]>,

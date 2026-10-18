@@ -4,8 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import Breadcrumbs from "./Breadcrumbs";
 
-// 狭い幅の畳み方は CSS の幅の分岐だけで決まるので、md 未満で隠す段（`hidden md:inline-flex`）を
-// クラスで読む。
+// Assert responsive classes because breadcrumb collapsing is controlled entirely by CSS.
 const crumbs = [
   { label: "Library", to: "/" },
   { label: "A", to: "/groups/1" },

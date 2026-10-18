@@ -96,7 +96,6 @@ describe("GroupPage", () => {
     await user.click(screen.getByRole("checkbox", { name: 'Select "Episode 1"' }));
     expect(server.reads.get(1)).toBe(1);
 
-    // 別のグループの知らせでは読まない。
     await emitServerEvent("group", { ids: [99] });
     expect(server.reads.get(1)).toBe(1);
 
@@ -131,7 +130,6 @@ describe("GroupPage", () => {
     expect(screen.getByText("3 videos selected")).toBeDefined();
     expect(selectAll).toHaveProperty("disabled", true);
 
-    // 別のタブで Episode 1 が外れ、Episode 3 が加わった。
     const stored = server.groups.get(1) as StoredGroup;
     stored.group = { ...stored.group, videoCount: 3, videoIds: [12, 11, 13] };
     stored.items = [
@@ -172,7 +170,6 @@ describe("GroupPage", () => {
     expect(screen.queryByRole("button", { name: /to a playlist$/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
 
-    // リスト表示も番号つきの行だけで、チェックを描かない。
     const user = userEvent.setup();
     await user.click(screen.getByRole("radio", { name: "List" }));
     const table = screen.getByRole("table", { name: "Items" });
@@ -327,7 +324,7 @@ describe("GroupPage", () => {
 
     await moveFirstDown(user);
     await waitFor(() => expect(answer).not.toBeNull());
-    // 移動はまだサーバーに届いていない。その間に知らせが届く。
+    // Deliver a notification before the queued move reaches the server.
     await emitServerEvent("group", { ids: [1] });
     expect(server.reads.get(1)).toBe(1);
     expect(listTitles()).toEqual(["Extras", "Episode 1", "Episode 2"]);
@@ -413,7 +410,6 @@ describe("GroupPage", () => {
     seed();
     const user = userEvent.setup();
     await openList(user);
-    // 別のタブが Episode 2 を外した。
     const stored = server.groups.get(1) as StoredGroup;
     stored.items = stored.items.filter((item) => item.id !== 103);
     summarize(stored);
@@ -576,13 +572,11 @@ describe("GroupPage", () => {
     expect(within(list).queryByRole("option", { name: "Extras" })).toBeNull();
     await user.keyboard("{Escape}");
 
-    // 別のグループへ足しても、このグループの項目は変わらないので読み直さない。
     await user.click(screen.getByRole("button", { name: 'Add "Episode 1" to a group' }));
     await user.click(await screen.findByRole("option", { name: "Extras" }));
     expect(await screen.findByText('Added to "Extras"')).toBeDefined();
     expect(server.reads.get(1)).toBe(1);
 
-    // このグループへ足すと、末尾に増えるので読み直す。
     await user.click(screen.getByRole("button", { name: 'Add "Episode 2" to a group' }));
     await user.click(await screen.findByRole("option", { name: "Season" }));
     await waitFor(() => expect(server.reads.get(1)).toBe(2));

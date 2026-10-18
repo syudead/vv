@@ -7,13 +7,9 @@ import { Kbd } from "../ui/shadcn/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/shadcn/popover";
 import { Separator } from "../ui/shadcn/separator";
 
-/** maxSearchTerms はサーバーが検索に使う語の数の上限である（手引きの説明に出す）。 */
 const maxSearchTerms = 16;
 
-/**
- * syntaxRows は手引きの4行の対応表である。描画のたびに
- * カタログから作る。
- */
+/** Build syntax copy from the current catalog on each render. */
 function syntaxRows(): { examples: UiText[]; meaning: ReactNode }[] {
   const help = t.list.searchHelp;
   return [
@@ -45,11 +41,7 @@ function syntaxRows(): { examples: UiText[]; meaning: ReactNode }[] {
   ];
 }
 
-/**
- * SearchSyntaxHelp は検索欄の枠の内側に置く、検索の書き方の手引きである。
- * 読むだけの従の情報なので、開いてもフォーカスはボタンに残し、モーダルにしない。
- * Tab で外へ出るか Esc で閉じる。例は押しても検索欄に入らない。
- */
+/** Nonmodal help keeps trigger focus and closes on Tab or Escape; examples never modify the query. */
 export default function SearchSyntaxHelp() {
   const [open, setOpen] = useState(false);
   const bodyId = useId();
@@ -77,9 +69,8 @@ export default function SearchSyntaxHelp() {
         <h2 id={headingId} className="text-sm font-medium text-foreground">
           {t.list.searchHelp.title}
         </h2>
-        {/* ボタンの説明は見出しを除いた中身にする（名前と同じ語を二度読ませない）。 */}
+        {/* Exclude the heading from the description to avoid repeating the trigger name. */}
         <div id={bodyId} className="flex flex-col gap-3">
-          {/* 例の列は中身の幅、説明の列は残り（grid-cols-term）。 */}
           <dl className="grid grid-cols-term gap-x-3 gap-y-2">
             {syntaxRows().map((row) => (
               <div key={row.examples.join()} className="contents">

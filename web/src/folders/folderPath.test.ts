@@ -16,7 +16,6 @@ describe("folderUrl と parseFolderPathname", () => {
     (path) => {
       const url = folderUrl({ rootId: 3, path });
       expect(url.startsWith("/folders/3/")).toBe(true);
-      // URL として解釈しても、パス部分がそのまま残る（# や ? が区切りにならない）。
       const parsed = new URL(url, "http://localhost");
       expect(parsed.search).toBe("");
       expect(parsed.hash).toBe("");

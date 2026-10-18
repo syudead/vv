@@ -14,8 +14,7 @@ import (
 	"time"
 )
 
-// ownNonLoopbackIPv4 はこの機械の、ループバックでない IPv4 アドレスを 1 つ返す。
-// 無ければ試験を飛ばす。
+// Skip when the host has no non-loopback IPv4 address.
 func ownNonLoopbackIPv4(t *testing.T) string {
 	t.Helper()
 	addrs, err := net.InterfaceAddrs()
@@ -35,7 +34,6 @@ func ownNonLoopbackIPv4(t *testing.T) string {
 	return ""
 }
 
-// freePort は今は使われていない TCP のポートを返す。
 func freePort(t *testing.T) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -52,8 +50,6 @@ func freePort(t *testing.T) string {
 	return port
 }
 
-// sseHandler は /events で最初の知らせを書き、next に値が来るたびに次の知らせを
-// 書く。それ以外の経路は ok を返す。
 func sseHandler(next <-chan string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/events" {
@@ -76,7 +72,6 @@ func sseHandler(next <-chan string) http.Handler {
 	})
 }
 
-// startReopenable は addr で待ち受けて handler で応答し、試験の終わりに閉じる。
 func startReopenable(t *testing.T, addr string, handler http.Handler) *reopenableListener {
 	t.Helper()
 	listener := newReopenableListener()
@@ -92,7 +87,6 @@ func startReopenable(t *testing.T, addr string, handler http.Handler) *reopenabl
 	return listener
 }
 
-// getOK は url に GET し、ok が返るかを確かめる。接続できなければその失敗を返す。
 func getOK(url string) error {
 	client := &http.Client{Timeout: 2 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
 	resp, err := client.Get(url)
@@ -110,7 +104,6 @@ func getOK(url string) error {
 	return nil
 }
 
-// readEvent は SSE の次の data 行を読む。
 func readEvent(t *testing.T, reader *bufio.Reader) string {
 	t.Helper()
 	for {
@@ -124,8 +117,7 @@ func readEvent(t *testing.T, reader *bufio.Reader) string {
 	}
 }
 
-// ループバックから全てのアドレスへ開き直すと、ループバックでない自分のアドレスから
-// 接続でき、戻すと拒まれる。そのあいだ、確立済みの SSE の接続は切れない
+// Established SSE must survive both expansions and restrictions of listener access.
 func TestReopenableListenerSwitchesAddressAndKeepsConnections(t *testing.T) {
 	lanIP := ownNonLoopbackIPv4(t)
 	port := freePort(t)
@@ -143,7 +135,6 @@ func TestReopenableListenerSwitchesAddressAndKeepsConnections(t *testing.T) {
 		t.Fatal("ループバックだけの待ち受けに、ループバックでないアドレスから接続できた")
 	}
 
-	// 確立済みの SSE の接続。
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+loopback+"/events", nil)
@@ -196,12 +187,10 @@ func TestReopenableListenerSwitchesAddressAndKeepsConnections(t *testing.T) {
 	}
 }
 
-// 開き直しに失敗したら、元のアドレスで待ち受けが残る。
 func TestReopenableListenerKeepsPreviousAddressWhenReopenFails(t *testing.T) {
 	listener := startReopenable(t, "127.0.0.1:0", sseHandler(nil))
 	previous := listener.Addr()
 
-	// 他が使っているアドレスへは開き直せない。
 	busy, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -228,7 +217,6 @@ func TestReopenableListenerKeepsPreviousAddressWhenReopenFails(t *testing.T) {
 	}
 }
 
-// 停止のために閉じたあとは開き直さない。
 func TestReopenableListenerRefusesReopenAfterClose(t *testing.T) {
 	listener := startReopenable(t, "127.0.0.1:0", sseHandler(nil))
 	if err := listener.Close(); err != nil {
@@ -239,8 +227,7 @@ func TestReopenableListenerRefusesReopenAfterClose(t *testing.T) {
 	}
 }
 
-// IPv4 のアドレスは IPv4 だけで待ち受ける。"tcp" では IPv6 の使える機械で 0.0.0.0 が
-// [::] の両方の待ち受けになり、許可の切り替えの 0.0.0.0（R-14）から外れる。
+// IPv4 wildcard listeners must not silently accept IPv6.
 func TestListenNetworkKeepsIPv4HostsOnIPv4(t *testing.T) {
 	for addr, want := range map[string]string{
 		"0.0.0.0:47880":   "tcp4",

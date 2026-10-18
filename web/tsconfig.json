@@ -5,11 +5,10 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    // node は対比の検査（src/theme/tokens.test.ts）が src/index.css を
-    // ファイルとして読むために要る。実行時の依存は増やさない。
+    // Node types let contrast tests read CSS from disk without adding a runtime dependency.
     "types": ["vite/client", "vitest/globals", "node"],
 
-    // shadcn/ui の部品とその規則は @/ で書かれている（components.json）。既存の相対 import は変えない。
+    // Match the @/ imports used by shadcn components and registry rules.
     "paths": { "@/*": ["./src/*"] },
 
     "noEmit": true,

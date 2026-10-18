@@ -8,10 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 「同じ動画かもしれない」候補と「違う動画」の記録。
-
-// testFingerprint は 12 コマの指紋を返す。コマ i のハッシュは seed から決まり、flip のビットを
-// 反転する（flip が小さければ同じ場面の再エンコードに当たる）。
+// Small flipped bit sets model re-encodings of the same scene.
 func testFingerprint(seed, flip uint64) domain.Fingerprint {
 	frames := make([]domain.FrameHash, 12)
 	state := seed
@@ -22,7 +19,6 @@ func testFingerprint(seed, flip uint64) domain.Fingerprint {
 	return domain.Fingerprint{Version: domain.FingerprintVersion, IntervalMs: 5000, Frames: frames}
 }
 
-// probeWithDuration は尺 durationMs で解析の完了を記録する。
 func probeWithDuration(t *testing.T, db *DB, videoID, durationMs int64) {
 	t.Helper()
 	probe := domain.Probe{DurationMs: durationMs, VideoCodec: "h264", AudioCodec: "aac"}
@@ -31,7 +27,6 @@ func probeWithDuration(t *testing.T, db *DB, videoID, durationMs int64) {
 	}
 }
 
-// applyFingerprint は動画の指紋の仕事を積んで専有し、指紋を書いて完了を記録する。
 func applyFingerprint(t *testing.T, db *DB, videoID int64, fingerprint domain.Fingerprint) {
 	t.Helper()
 	ctx := context.Background()
@@ -53,7 +48,6 @@ func applyFingerprint(t *testing.T, db *DB, videoID int64, fingerprint domain.Fi
 	}
 }
 
-// fingerprintVideo は尺と指紋を持つ動画にする（解析・シーク用サムネイル・指紋）。
 func fingerprintVideo(t *testing.T, db *DB, videoID, durationMs int64, fingerprint domain.Fingerprint) {
 	t.Helper()
 	probeWithDuration(t, db, videoID, durationMs)
@@ -61,7 +55,6 @@ func fingerprintVideo(t *testing.T, db *DB, videoID, durationMs int64, fingerpri
 	applyFingerprint(t, db, videoID, fingerprint)
 }
 
-// candidatePairs は候補の一覧の各組の動画の id を返す。
 func candidatePairs(t *testing.T, db *DB) ([][2]int64, domain.VersionCandidatePage) {
 	t.Helper()
 	page, err := db.Versions().Candidates(context.Background())
@@ -75,7 +68,6 @@ func candidatePairs(t *testing.T, db *DB) ([][2]int64, domain.VersionCandidatePa
 	return pairs, page
 }
 
-// candidateRows は候補の表の行の数である。
 func candidateRows(t *testing.T, db *DB) int {
 	t.Helper()
 	var count int
@@ -85,8 +77,7 @@ func candidateRows(t *testing.T, db *DB) int {
 	return count
 }
 
-// candidateFixture は a と b が尺の幅の内で指紋が一致し、c は尺だけ a と同じで指紋が違い、d は
-// 指紋が a と同じで尺が幅の外である 4 本を作る。
+// Separate duration mismatch from fingerprint mismatch in the candidate fixture.
 func candidateFixture(t *testing.T) (*DB, map[string]int64) {
 	t.Helper()
 	db, ids := versionFixture(t)
@@ -97,8 +88,6 @@ func candidateFixture(t *testing.T) (*DB, map[string]int64) {
 	return db, ids
 }
 
-// 尺が幅の内で指紋が一致する 2 本は候補の 1 組になり（受け入れ条件 3）、尺だけ同じで指紋が違う
-// 動画と、指紋が同じで尺が違う動画は候補にならない（受け入れ条件 4）。
 func TestVersionCandidatesFromFingerprints(t *testing.T) {
 	db, ids := candidateFixture(t)
 	a, b := ids["a"], ids["b"]
@@ -120,20 +109,16 @@ func TestVersionCandidatesFromFingerprints(t *testing.T) {
 		t.Errorf("候補の行 = %d, want 1", rows)
 	}
 
-	// 指紋を書き直しても組は 1 つのまま。
 	applyFingerprint(t, db, a, testFingerprint(1, 0))
 	if pairs, _ := candidatePairs(t, db); len(pairs) != 1 {
 		t.Errorf("書き直したあとの候補 = %v", pairs)
 	}
-	// 指紋が変わって一致しなくなれば組は消える。
 	applyFingerprint(t, db, b, testFingerprint(3, 0))
 	if pairs, _ := candidatePairs(t, db); len(pairs) != 0 {
 		t.Errorf("一致しなくなったあとの候補 = %v", pairs)
 	}
 }
 
-// 「違う動画」と記録した組は候補から消え、指紋を書き直しても候補にならない（受け入れ条件 5）。
-// 候補に無い組も記録でき、無い動画は domain.ErrNotFound。
 func TestDismissVersionCandidate(t *testing.T) {
 	db, ids := candidateFixture(t)
 	ctx := context.Background()
@@ -158,7 +143,6 @@ func TestDismissVersionCandidate(t *testing.T) {
 		t.Errorf("却下した組の指紋を書き直したら候補の行が %d できた", rows)
 	}
 
-	// 候補に無い組も記録する。2 度目も成功する。
 	for range 2 {
 		if err := db.Versions().Dismiss(ctx, [2]int64{ids["c"], ids["d"]}); err != nil {
 			t.Fatal(err)
@@ -176,7 +160,6 @@ func TestDismissVersionCandidate(t *testing.T) {
 	}
 }
 
-// 束ねると同じ集まりになった組の候補が消え、同じ集まりの 2 本は指紋を書き直しても候補にならない。
 func TestBundleRemovesVersionCandidate(t *testing.T) {
 	db, ids := candidateFixture(t)
 	a, b := ids["a"], ids["b"]
@@ -191,7 +174,6 @@ func TestBundleRemovesVersionCandidate(t *testing.T) {
 	}
 }
 
-// 片方の動画の行が消えると、その鍵の候補が消える（Edge Case）。
 func TestDeletedVideoRemovesVersionCandidate(t *testing.T) {
 	db, ids := candidateFixture(t)
 	if err := db.ScanIndex().DeleteVideos(context.Background(), []int64{ids["b"]}); err != nil {
@@ -202,7 +184,6 @@ func TestDeletedVideoRemovesVersionCandidate(t *testing.T) {
 	}
 }
 
-// 片方が登録フォルダの下に所在を持たない組は一覧に出ない。
 func TestVersionCandidatesNeedRegisteredLocations(t *testing.T) {
 	db, _ := candidateFixture(t)
 	if _, err := db.sql.Exec(`delete from media_folders`); err != nil {

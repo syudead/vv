@@ -14,8 +14,6 @@ import {
 
 setUpGroupPageServer();
 
-// 子グループを含むカードを子グループに落としたときのメニュー。
-
 function cardTitles(): string[] {
   return Array.from(document.querySelectorAll("article")).map(
     (card) => card.querySelector("h3")?.textContent ?? "",
@@ -26,7 +24,6 @@ function writesTo(path: string) {
   return server.writes.filter((each) => each.path === path).map((each) => each.body);
 }
 
-/** openSeason は「Season」（Episode 1、Extras、Episode 2、Clips）を開く。 */
 async function openSeason() {
   seed();
   const clips = group(6, "Clips", { videoCount: 1, videoIds: [14], openVideoId: 14 });
@@ -40,7 +37,6 @@ async function openSeason() {
   await screen.findByRole("heading", { level: 1, name: "Season" });
 }
 
-/** dropClipsOnExtras は「Clips」を「Extras」に落とし、開いたメニューを返す。 */
 async function dropClipsOnExtras() {
   lift(/^Clips/, 3);
   moveTo(1);

@@ -14,10 +14,6 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
-/**
- * ライブラリのスマートフォルダのカード。
- */
-
 const fetchMock = vi.fn<typeof fetch>();
 let cardRequests: string[] = [];
 
@@ -68,7 +64,6 @@ function install(items: LibraryItem[]) {
   });
 }
 
-/** RevealingObserver は見張った要素をすぐ画面に入ったことにする。 */
 class RevealingObserver {
   private readonly callback: IntersectionObserverCallback;
   constructor(callback: IntersectionObserverCallback) {
@@ -162,7 +157,6 @@ describe("ライブラリのスマートフォルダのカード", () => {
       expect.stringContaining("Season"),
     ]);
     expect(cardRequests).toEqual(["9"]);
-    // チェックは持たない。
     const card = folder.closest("article") as HTMLElement;
     expect(within(card).queryByRole("checkbox")).toBeNull();
   });
@@ -203,7 +197,6 @@ describe("ライブラリのスマートフォルダのカード", () => {
     const card = folder.closest("article") as HTMLElement;
 
     await user.click(screen.getByRole("checkbox", { name: 'Select "Episode"' }));
-    // 選択中は動画のカードのタグはボタンでなくなるが、フォルダのカードのタグは押せる。
     await user.click(within(card).getByRole("button", { name: "Filter by 旅行" }));
 
     await waitFor(() =>

@@ -35,28 +35,19 @@ function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
   };
 }
 
-/** server はタグの一覧・付け外し・要約の経路だけを扱う偽のサーバーである。 */
 const server = {
   tags: [] as Tag[],
-  /** videoId ごとに付いているタグの id（要約の作成に使う）。 */
   attached: new Map<number, Set<number>>(),
-  /** videoId ごとに、フォルダ名から付いているタグの id（手で付けた分とは別）。 */
   fromFolder: new Map<number, Set<number>>(),
   addFails: false,
-  /** 付ける要求に返す失敗の応答（addFails より先に見る）。 */
   addError: null as { status: number; body: unknown } | null,
   removeFails: false,
   summaryFails: false,
   summaryDelay: null as (() => void) | null,
-  /**
-   * true の間、/api/video-tags/summary への要求は resolveNow を呼ばず
-   * summaryQueue に積む。順不同の応答（古い要求が新しい要求より後に届く）を
-   * 再現するテスト専用（Devin の指摘2）。
-   */
+  /** Queue summaries for tests that resolve requests out of order. */
   summaryHold: false,
   summaryQueue: [] as (() => void)[],
   visibilityFails: false,
-  /** 受け取った `PUT /api/video-visibility` の本文。 */
   visibilityRequests: [] as { videoIds: number[]; public: boolean }[],
 };
 
@@ -128,7 +119,7 @@ function install() {
         if (server.summaryFails) {
           return jsonResponse({ code: "internal", message: "internal error" }, 500);
         }
-        // count はどちらかの出所で付いている本数、manualCount は手で付けた本数
+        // count includes either source; manualCount includes only manual assignments.
         // 。
         const counts = new Map<number, { count: number; manualCount: number }>();
         for (const videoId of body.videoIds) {
@@ -185,7 +176,6 @@ function install() {
 
 type BarProps = React.ComponentProps<typeof SelectionBar>;
 
-/** barElement はお気に入りの送る先を省くと、空にする（お気に入りを扱わない試験）。 */
 function barElement(
   props: Omit<BarProps, "favoriteVideoIds" | "favoriteGroupIds"> &
     Partial<Pick<BarProps, "favoriteVideoIds" | "favoriteGroupIds">>,
@@ -271,7 +261,6 @@ describe("SelectionBar", () => {
     expect(
       (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement).disabled,
     ).toBe(true);
-    // 選んだ本数が項目の数（total）を超えていても、集合が違えば押せる
     //
     rerender(
       barElement({
@@ -290,9 +279,7 @@ describe("SelectionBar", () => {
     ).toBe(false);
   });
 
-  // POST /api/video-tags は videoIds を全部か無しかでしか受け付けず、20000件を
-  // 超えると400になる。静かに分割して送らず、
-  // 一括操作を disabled にして理由を伝える（Devin の指摘2）。
+  // Atomic batch APIs reject oversized selections; disable instead of silently splitting requests.
   it("選択が20,000件を超えると、タグの一括操作はdisabledで理由が読める", () => {
     install();
     renderBar({
@@ -311,7 +298,6 @@ describe("SelectionBar", () => {
     }) as HTMLButtonElement;
     expect(addButton.disabled).toBe(true);
     expect(removeButton.disabled).toBe(true);
-    // 公開の一括の切り替えも同じ上限で、同じ理由を添える。
     expect(visibilityButton.disabled).toBe(true);
     expect(visibilityButton.title).toBe("Select between 1 and 20,000 videos.");
     expect(visibilityButton.getAttribute("aria-describedby")).toBe(
@@ -326,8 +312,6 @@ describe("SelectionBar", () => {
       "Select between 1 and 20,000 videos.",
     );
 
-    // すべて選択はこの上限と無関係なので、ちょうど全件選び終わっていなければ
-    // 引き続き押せる。
     expect(
       (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement).disabled,
     ).toBe(false);
@@ -381,9 +365,7 @@ describe("SelectionBar", () => {
     );
   });
 
-  // トリガを disabled にするだけでは、すでに開いているポップオーバーから
-  // 送れてしまう。選択が上限を超えたら、開いているポップオーバー自体を
-  // 閉じる（Devin の指摘）。
+  // Disabling a trigger cannot block an already-open popover; close it when over limit.
   it("開いているポップオーバーは、選択が上限を超えると自動で閉じる", async () => {
     const user = userEvent.setup();
     install();
@@ -413,10 +395,7 @@ describe("SelectionBar", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  // 親の自動で閉じる効果が走るまでのごく短い間の保険として、ポップオーバー
-  // 自身も送る直前に selectedIds の最新の件数を確かめる。ここでは親の count
-  // をわざと上限内のままにし（自動では閉じない）、selectedIds だけが上限を
-  // 超えた状況を作って、その保険が単独で効くことを確かめる（Devin の指摘）。
+  // Keep parent count below the limit to isolate the popover's submission-time guard.
   it("タグを付ける: 開いたまま selectedIds が上限を超えると、送らず理由を示す", async () => {
     const user = userEvent.setup();
     const fetchMock = install();
@@ -507,7 +486,6 @@ describe("SelectionBar", () => {
       expect(screen.queryByRole("combobox", { name: "Add tag" })).toBeNull(),
     );
     expect(document.activeElement).toBe(addButton);
-    // 反映されたことをサーバー側で確認する。
     expect(server.attached.get(1)?.has(1)).toBe(true);
     expect(server.attached.get(2)?.has(1)).toBe(true);
     expect(server.attached.get(3)?.has(1)).toBe(true);
@@ -561,7 +539,6 @@ describe("SelectionBar", () => {
     const input = await screen.findByRole("combobox", { name: "Add tag" });
     await user.type(input, "旅行");
     const option = await screen.findByRole("option", { name: /旅行/ });
-    // 選ぶ直前にタグが消える。
     server.tags = server.tags.filter((t) => t.id !== 1);
     fireEvent.click(option);
 
@@ -583,7 +560,7 @@ describe("SelectionBar", () => {
     renderBar();
 
     await user.click(screen.getByRole("button", { name: "Remove tag" }));
-    // role=status は選択件数の行にもあるので、「読み込み中…」の方だけを見る。
+    // Scope the loading status separately from the selection count's status region.
     const status = await screen.findByText("Loading…");
     expect(status.getAttribute("role")).toBe("status");
 
@@ -623,7 +600,6 @@ describe("SelectionBar", () => {
     expect(server.attached.get(1)?.has(1)).toBe(false);
     expect(server.attached.get(2)?.has(1)).toBe(false);
     expect(server.attached.get(3)?.has(1)).toBe(false);
-    // 外した後もポップオーバーは開いたまま、要約を取り直して残りの候補を見せる。
     expect(
       await screen.findByRole("option", { name: "Drama, only some videos, 1 of 3" }),
     ).toBeDefined();
@@ -666,8 +642,6 @@ describe("SelectionBar", () => {
     ).toBeDefined();
   });
 
-  // フォルダ名から付いているだけの
-  // タグは外せないので候補に出さず、「一部」の判定と本数は手で付けた本数で行う。
   it("タグを外す: 候補は手で付けたタグだけで、一部の本数は手で付けた本数で数える", async () => {
     const user = userEvent.setup();
     install();
@@ -676,9 +650,6 @@ describe("SelectionBar", () => {
       tag({ id: 2, name: "Drama" }),
       tag({ id: 3, name: "京都" }),
     ];
-    // 旅行: 3本ともフォルダ名から付き、手では1本だけ。
-    // 京都: フォルダ名からだけ（3本とも）。
-    // Drama: 手で3本。
     for (const id of [1, 2, 3]) server.fromFolder.set(id, new Set([1, 3]));
     server.attached.set(1, new Set([1, 2]));
     server.attached.set(2, new Set([2]));
@@ -748,9 +719,6 @@ describe("SelectionBar", () => {
     expect(onClear).toHaveBeenCalledTimes(1);
   });
 
-  // 候補の一覧はポップオーバーの中に常に出ている（Command）。Esc はポップオーバーだけを
-  // 閉じ、一覧の画面の Esc（選択の解除）には「使った」と伝える（defaultPrevented）ので、
-  // 選択は残る。
   it.each([
     ["Add tag", false],
     ["Remove tag", true],
@@ -792,8 +760,6 @@ describe("SelectionBar", () => {
     await user.click(screen.getByRole("button", { name: "Remove tag" }));
     await screen.findByRole("option", { name: "旅行, only some videos, 2 of 3" });
 
-    // ポップオーバーを開いたまま、選択が動画1だけに変わる（動画2・3の選択を
-    // 外した想定。LibraryPage が selectedIds を新しい配列で渡し直す）。
     rerender(
       barElement({
         count: 1,
@@ -807,10 +773,8 @@ describe("SelectionBar", () => {
       }),
     );
 
-    // 取り直している間は候補ごと消え、古い候補（一部2/3件）を選べない。
     await waitFor(() => expect(screen.queryByRole("option")).toBeNull());
 
-    // 新しい選択（動画1だけ）では「旅行」は全部に付いていて、もう一部ではない。
     const option = await screen.findByRole("option", { name: /旅行/ });
     expect(within(option).getByText("1 video")).toBeDefined();
     expect(screen.queryByText(/Some:/)).toBeNull();
@@ -826,7 +790,6 @@ describe("SelectionBar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove tag" }));
     await waitFor(() => expect(server.summaryQueue).toHaveLength(1));
 
-    // 開いている間に選択が変わり、2回目の要求も止められる。
     rerender(
       barElement({
         count: 1,
@@ -841,7 +804,6 @@ describe("SelectionBar", () => {
     );
     await waitFor(() => expect(server.summaryQueue).toHaveLength(2));
 
-    // 新しい方（2番目）を先に、古い方（1番目）を後から届かせる。
     const [first, second] = server.summaryQueue;
     await act(async () => {
       second?.();
@@ -854,14 +816,11 @@ describe("SelectionBar", () => {
       first?.();
       await Promise.resolve();
     });
-    // 古い応答（選択が[1,2]だった頃、2件中2件）が後から届いても上書きしない。
     const optionAfterStale = screen.getByRole("option", { name: /旅行/ });
     expect(within(optionAfterStale).getByText("1 video")).toBeDefined();
   });
 
-  // Devin の指摘3: addOpen・removeOpen は SelectionBar 自身の状態で、選択が
-  // 0 件になって count===0 return null になっても SelectionBar はアンマウント
-  // しない（呼び出し元は常に描画している）ので、以前はそのまま残った。
+  // Returning null does not unmount SelectionBar, so open state must reset explicitly at zero selection.
   it("選択が0件になって消えたあと選び直すと、ポップオーバーは開いた状態で戻らない（Devin の指摘3）", async () => {
     const user = userEvent.setup();
     install();
@@ -870,7 +829,6 @@ describe("SelectionBar", () => {
     await user.click(screen.getByRole("button", { name: "Add tag" }));
     await screen.findByRole("combobox", { name: "Add tag" });
 
-    // 選択が0件になる（バーは何も描かなくなる）。
     rerender(
       barElement({
         count: 0,
@@ -885,7 +843,6 @@ describe("SelectionBar", () => {
     );
     expect(screen.queryByRole("region", { name: "Selection actions" })).toBeNull();
 
-    // 選び直す（バーがまた出る）。
     rerender(
       barElement({
         count: 2,
@@ -899,15 +856,12 @@ describe("SelectionBar", () => {
       }),
     );
 
-    // ポップオーバーは勝手に開いた状態で戻らない。押せば開く（表示自体は壊れて
-    // いない）ことも確かめる。
     expect(screen.queryByRole("combobox", { name: "Add tag" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "Add tag" }));
     expect(await screen.findByRole("combobox", { name: "Add tag" })).toBeDefined();
   });
 });
 
-// 公開の一括の切り替え。
 describe("SelectionBar の公開", () => {
   it("「公開にする」で選んだ動画を1回で送り、applied の件数をトーストで伝えて選択を残す", async () => {
     const user = userEvent.setup();
@@ -916,7 +870,6 @@ describe("SelectionBar の公開", () => {
 
     await user.click(screen.getByRole("button", { name: "Visibility" }));
     const items = await screen.findAllByRole("menuitem");
-    // 今の状態は示さず、2つとも常に押せる。
     expect(items.map((item) => item.textContent)).toEqual([
       "Make public",
       "Make private",
@@ -966,8 +919,6 @@ describe("SelectionBar の公開", () => {
     expect(screen.getByText("3 videos selected")).toBeDefined();
   });
 
-  // ui/Menu（Radix）はキーボードで開くと先頭の項目にフォーカスを置く。↓ で
-  // 「非公開にする」へ、↑ で「公開にする」へ戻る。
   it("キーボードだけで「公開」を開き、「公開にする」を選べる", async () => {
     const user = userEvent.setup();
     install();
@@ -1126,7 +1077,6 @@ describe("SelectionBar の束ねる操作", () => {
     expect(document.getElementById(describedBy!)?.textContent).toBe(
       "Bundle up to 20 videos at a time",
     );
-    // タグと公開の操作は上限（20,000 本）の内なので押せる。
     expect(
       (screen.getByRole("button", { name: /Add tag/ }) as HTMLButtonElement).disabled,
     ).toBe(false);

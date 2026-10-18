@@ -7,26 +7,18 @@ import (
 	"strings"
 )
 
-// WorkInfoPluginProxyURLMaxLen はプラグインの要求を送るプロキシの URL の最大の長さ（文字数）である。
 const WorkInfoPluginProxyURLMaxLen = 2048
 
-// ErrWorkInfoPluginProxyURLInvalid はプロキシの URL が規則に外れることを表す。
 var ErrWorkInfoPluginProxyURLInvalid = errors.New("work-info plugin proxy URL is invalid")
 
-// proxySchemes はプロキシの URL に使える scheme である。どれも Go の transport がプロキシとして扱える。
 var proxySchemes = map[string]bool{"http": true, "https": true, "socks5": true}
 
-// WorkInfoRunNetwork は 1 回の実行のネットワークの選択肢である。
-// ゼロ値はプロキシを使わない実行である。
+// WorkInfoRunNetwork's zero value uses no proxy.
 type WorkInfoRunNetwork struct {
-	// Proxy はプラグインの要求を送るプロキシである。nil ならプロキシを使わない。
 	Proxy *url.URL
 }
 
-// ParseWorkInfoPluginProxyURL はプロキシの URL を確かめて返す。URL は http、https、socks5 の scheme、
-// ホスト、任意のポートと任意のユーザー情報からなり、パスもクエリもフラグメントも持たず、
-// WorkInfoPluginProxyURLMaxLen 以内である。
-// "" はプロキシなしで、nil を返す。規則に外れれば ErrWorkInfoPluginProxyURLInvalid を返す。
+// ParseWorkInfoPluginProxyURL accepts bounded HTTP(S)/SOCKS5 URLs with host and optional port/credentials but no path, query, or fragment; empty means no proxy.
 func ParseWorkInfoPluginProxyURL(raw string) (*url.URL, error) {
 	if raw == "" {
 		return nil, nil
@@ -34,8 +26,7 @@ func ParseWorkInfoPluginProxyURL(raw string) (*url.URL, error) {
 	if !runeCountBetween(raw, 1, WorkInfoPluginProxyURLMaxLen) {
 		return nil, ErrWorkInfoPluginProxyURLInvalid
 	}
-	// url.Parse は "#" や ":" だけを書いた空のフラグメントとポートを、書かなかったときと
-	// 区別しないので、生の URL で拒む。
+	// Reject bare fragment/port delimiters in raw input because url.Parse treats them like absence.
 	if strings.Contains(raw, "#") {
 		return nil, ErrWorkInfoPluginProxyURLInvalid
 	}
@@ -48,7 +39,6 @@ func ParseWorkInfoPluginProxyURL(raw string) (*url.URL, error) {
 	return u, nil
 }
 
-// validProxyPort は、ポートが無いか、1 から 65535 の数かを確かめる。
 func validProxyPort(port string) bool {
 	if port == "" {
 		return true

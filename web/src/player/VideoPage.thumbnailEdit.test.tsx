@@ -16,8 +16,6 @@ import type { PlayerControls } from "./playerControls";
 import type { PlayerStatus } from "./VideoPlayer";
 import VideoPage from "./VideoPage";
 
-// 動画ページから ComfyUI でサムネイルを編集する流れ。
-
 interface PlayerProps {
   onControls: (controls: PlayerControls | null) => void;
   onStatus: (status: PlayerStatus) => void;
@@ -91,20 +89,16 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-/** server は経路ごとの応答を差し替えられる偽のサーバーである。 */
 const server = {
   ready: true,
-  /** GET /api/thumbnail-edits/e1 の答え。先頭から 1 つずつ返し、最後の 1 つを返し続ける。 */
+  /** Consume responses in order, then repeat the last response. */
   reads: [] as ThumbnailEdit[],
   run: vi.fn<(form: FormData) => Response>(),
   apply: vi.fn<() => Response>(),
   cancel: vi.fn<() => Response>(),
   revert: vi.fn<() => Response>(),
-  /** POST /api/videos/7/thumbnail-edits の答え。 */
   start: vi.fn<() => Response>(),
-  /** POST /api/videos/7/thumbnail-edits で送った本文。 */
   starts: [] as unknown[],
-  /** GET /api/videos/7 の答え。 */
   video,
   requests: [] as string[],
 };
@@ -142,7 +136,6 @@ function renderPage(audience: Audience = "owner") {
   );
 }
 
-/** positioned はプレイヤーの最初の読み込みで位置が確定したことにする（入口を押せる）。 */
 function positioned() {
   act(() =>
     playerMock.props?.onStatus({
@@ -161,12 +154,11 @@ function entry() {
   return screen.getByRole("button", { name: "Edit thumbnail with ComfyUI" });
 }
 
-/** pressEntry は入口を押す（Radix のメニューの引き金は click ではなくキーで開く）。 */
+/** Open Radix triggers with the keyboard rather than click. */
 function pressEntry() {
   fireEvent.keyDown(entry(), { key: "Enter" });
 }
 
-/** openMenu は入口を押して元の選択のメニューを開く。 */
 async function openMenu() {
   await waitFor(() => expect(entry().getAttribute("aria-disabled")).toBeNull());
   pressEntry();
@@ -215,9 +207,8 @@ describe("VideoPage thumbnail edit", () => {
     server.video = video;
     server.requests = [];
     installFakeEventSource();
-    // 前の検査で描いた見る人を忘れる。
     forgetAudience(null);
-    // jsdom は canvas を描かない。塗りの層は描けないまま扱う。
+    // jsdom cannot draw the canvas; keep the mask layer unavailable.
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
     fetchMock.mockReset();
     fetchMock.mockImplementation((input, init) => {
@@ -318,7 +309,6 @@ describe("VideoPage thumbnail edit", () => {
       video.thumbnailUrl,
     );
     expect(thumbnailItem.querySelector("img")?.getAttribute("alt")).toBe("");
-    // メニューを開いている間に再生が進んでも、項目が名指した位置を送る。
     vi.mocked(playerMock.controls!.positionMs).mockReturnValue(99_000);
     fireEvent.click(frameItem);
     let dialog = await screen.findByRole("dialog", { name: "Edit thumbnail" });
@@ -342,7 +332,6 @@ describe("VideoPage thumbnail edit", () => {
     };
     server.start.mockImplementation(() => json(saved, 201));
     server.reads = [saved];
-    // ページのサムネイルの種類は文言に使わない。
     server.video = { ...video, thumbnailImage: "generated" };
     const dialog = await openEditor("Current thumbnail");
     expect(within(dialog).getByText("Current thumbnail, saved image")).toBeDefined();
@@ -386,7 +375,6 @@ describe("VideoPage thumbnail edit", () => {
   it("画面にコマが無くても入口は薄くならず、コマの項目だけ押せない", async () => {
     renderPage();
     await screen.findByTestId("video-player");
-    // 位置が確定していない（キャプチャのボタンは押せない）。
     await waitFor(() =>
       expect(server.requests).toContain("GET /api/thumbnail-edits/readiness"),
     );
@@ -460,7 +448,6 @@ describe("VideoPage thumbnail edit", () => {
     expect(runArea(dialog).textContent).toContain("Elapsed 0:00");
     const form = server.run.mock.calls[0]?.[0];
     expect(form?.get("prompt")).toBe("remove the caption");
-    // 何も塗っていなければマスクを送らない。
     expect(form?.has("mask")).toBe(false);
     expect(within(dialog).queryByRole("progressbar")).toBeNull();
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDefined();
@@ -494,7 +481,6 @@ describe("VideoPage thumbnail edit", () => {
       within(dialog).getByRole("button", { name: "Use as thumbnail" }),
     ).toBeDefined();
 
-    // 適用すると閉じ、情報の行が生成した画像の項目になる。× でコマのサムネイルへ戻る。
     server.apply.mockReturnValueOnce(
       json({
         ...video,
@@ -517,7 +503,6 @@ describe("VideoPage thumbnail edit", () => {
       ).toBeNull(),
     );
     expect(server.revert).toHaveBeenCalledTimes(1);
-    // 適用で終わったセッションは捨て直さない。
     expect(server.requests).not.toContain("DELETE /api/thumbnail-edits/e1");
   });
 

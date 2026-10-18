@@ -27,7 +27,7 @@ describe("counts", () => {
 });
 
 describe("dates", () => {
-  // 日時はブラウザのタイムゾーンで表すので、その日の正午を渡して日付が変わらないようにする。
+  // Use local noon to keep the intended date in browser-timezone formatting.
   const noon = new Date(2026, 8, 27, 12, 0);
 
   it("formats a date in English", () => {

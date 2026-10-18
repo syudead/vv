@@ -1,4 +1,4 @@
-// design-exceptions.js の項目の型。欄の意味は design-exceptions.js の先頭にある。
+// Types for design-exceptions.js; field semantics are documented there.
 export type DesignRule =
   | "no-restricted-syntax"
   | "better-tailwindcss/no-restricted-classes"

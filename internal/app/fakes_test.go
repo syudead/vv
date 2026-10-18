@@ -14,14 +14,12 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// このファイルの偽物は、アプリケーション層が宣言した interface を満たすだけの
-// 決め打ちである。SQLite・ffmpeg/ffprobe・HTTP サーバーのどれも起動しない。
+// Fakes implement application interfaces without starting SQLite, media tools, or HTTP servers.
 
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// fakePublisher は発行された変化を記録する。
 type fakePublisher struct {
 	mu     sync.Mutex
 	events []domain.Event
@@ -39,52 +37,42 @@ func (f *fakePublisher) published() []domain.Event {
 	return append([]domain.Event(nil), f.events...)
 }
 
-// fakeIngestStore は取り込みのジョブが読み書きする保存先の偽物である。
 type fakeIngestStore struct {
 	mu sync.Mutex
 
 	videos map[int64]domain.Video
-	// stale が真なら、専有した時点から所在や内容が変わったものとして答える。
+	// stale simulates location/content replacement after claiming.
 	stale bool
-	// gone が真なら、結果を反映する時点で動画が消えていたものとして答える。
-	gone bool
-	// referenced は内容の識別子を参照する動画があるか。
+	// gone simulates deletion before results apply.
+	gone       bool
 	referenced map[string]bool
 
-	appliedProbes   []domain.Probe
-	thumbnailStates []domain.ThumbnailState
-	seekStates      []domain.SeekThumbnailState
-	// thumbnailSubstitutions と seekSubstitutions は、成功とともに渡された代用。
+	appliedProbes          []domain.Probe
+	thumbnailStates        []domain.ThumbnailState
+	seekStates             []domain.SeekThumbnailState
 	thumbnailSubstitutions []domain.Substitution
 	seekSubstitutions      []domain.Substitution
 	previewsDone           int
-	// fingerprints は ApplyFingerprintForJob に渡された指紋。
-	fingerprints []domain.Fingerprint
-	// positions は SetThumbnailPosition に渡された位置（nil は解除）。
+	fingerprints           []domain.Fingerprint
+	// nil position clears the override.
 	positions []*int64
-	// setPositionErr があれば SetThumbnailPosition は記録せずにそれを返す。
+	// Return setPositionErr without recording changes.
 	setPositionErr error
-	// images は内容ごとに適用した画像（thumbnail_images の行）である。applyImageErr・
-	// revertImageErr があれば、ApplyThumbnailImage・RevertThumbnailImage は記録せずにそれを返す。
+	// Injected apply/revert errors leave stored images unchanged.
 	images        map[string][]byte
 	applyImageErr error
-	// rows は内容ごとに ApplyThumbnailImage が書いた行（代表サムネイル・元の画像・出どころ）で、
-	// 位置の設定と取り消しで images と一緒に消える。
+	// Position changes and reset remove these source/provenance rows together with images.
 	rows           map[string]domain.AppliedThumbnailImage
 	revertImageErr error
-	// imageRevision は適用のたびに増やす改版番号。
-	imageRevision int64
-	// sourceChecks は ThumbnailSourceCurrent の呼び出しで、sourceLocations はそれに渡された所在。
-	// staleSourceAt が正なら、その回目の呼び出しから所在が別の内容へ付け替わったと答える。
+	imageRevision  int64
+	// From staleSourceAt onward, source checks report content replacement.
 	sourceChecks    int
 	sourceLocations []string
 	staleSourceAt   int
-	// reads は GetVideo の呼び出し回数。afterRead があれば、読んだあとに錠を持ったまま
-	// 呼び出し回数で呼ぶ。
+	// afterRead runs with the mutex held and receives the read count.
 	reads     int
 	afterRead func(reads int)
-	// order は、nil でなければシーク用サムネイルの状態の記録を生成の呼び出しと
-	// 同じ列へ書く。生成と記録の順を確かめるのに使う。
+	// Record generation and state writes together to assert ordering.
 	order *fakeGenerator
 }
 
@@ -198,8 +186,6 @@ func (f *fakeIngestStore) ApplyFingerprintForJob(
 	return true, nil
 }
 
-// SetThumbnailPosition は位置を記録し、その内容の動画を done にする。order が nil でなければ
-// 記録を生成の呼び出しと同じ列へ書く。
 func (f *fakeIngestStore) SetThumbnailPosition(
 	_ context.Context, videoID int64, positionMs *int64,
 ) (domain.Video, error) {
@@ -236,9 +222,6 @@ func (f *fakeIngestStore) SetThumbnailPosition(
 	return f.videos[videoID], nil
 }
 
-// ApplyThumbnailImage は画像の行を書き、その内容の動画を done にする。動画が無いか内容が
-// 違えば domain.ErrContentChanged を返す。order が nil でなければ記録を生成の呼び出しと同じ列へ
-// 書く。
 func (f *fakeIngestStore) ApplyThumbnailImage(
 	_ context.Context, videoID int64, contentKey string, image domain.AppliedThumbnailImage,
 ) (domain.Video, error) {
@@ -261,7 +244,6 @@ func (f *fakeIngestStore) ApplyThumbnailImage(
 	return f.videos[videoID], nil
 }
 
-// RevertThumbnailImage は画像の行を消し、その内容の動画を done にする。
 func (f *fakeIngestStore) RevertThumbnailImage(_ context.Context, videoID int64) (domain.Video, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -281,8 +263,7 @@ func (f *fakeIngestStore) RevertThumbnailImage(_ context.Context, videoID int64)
 	return f.videos[videoID], nil
 }
 
-// setImageRevision は内容 key の動画を done にし、画像の改版番号を revision、出どころを origin に
-// する。f.mu を持って呼ぶ。
+// Caller must hold f.mu.
 func (f *fakeIngestStore) setImageRevision(key string, revision int64, origin domain.ThumbnailImageOrigin) {
 	for id, other := range f.videos {
 		if other.ContentKey != key {
@@ -316,64 +297,46 @@ func (f *fakeIngestStore) CompletePreviewForContent(_ context.Context, job domai
 	return true, nil
 }
 
-// fakeGenerator は生成の呼び出しを記録し、決め打ちの結果を返す。生成物の置き場
-// （ArtifactStore）も兼ね、公開は write を呼ぶだけにする。
+// The fake doubles as ArtifactStore; publication invokes write without real generation.
 type fakeGenerator struct {
 	mu sync.Mutex
 
-	sourceErr    error
-	probe        domain.Probe
-	probeErr     error
-	previewErr   error
-	thumbnailErr error
-	seekErr      error
-	// thumbnailAtErr は指定の位置の代表サムネイルの生成が返す誤り。
+	sourceErr      error
+	probe          domain.Probe
+	probeErr       error
+	previewErr     error
+	thumbnailErr   error
+	seekErr        error
 	thumbnailAtErr error
-	// recordPublish が真なら、代表サムネイルの公開も呼び出しの列に書く。
-	recordPublish bool
-	// positions は ThumbnailAt に渡された位置。
-	positions []int64
-	// fitErr は FitThumbnailImage が返す誤り。aspects はそれに渡された縦横比である。
-	fitErr  error
-	aspects []float64
-	// fitImages は FitThumbnailImage に渡された画像（文字列にしたもの）。
-	fitImages []string
-	// publishErr があれば代表サムネイルの公開は書いたあとにそれを返す（公開の失敗）。
+	recordPublish  bool
+	positions      []int64
+	fitErr         error
+	aspects        []float64
+	fitImages      []string
+	// Return publishErr after writing to simulate publication failure.
 	publishErr error
-	// thumbnailDir があれば、代表サムネイルの書き出し先をその下の実在するパスにする。
-	// 空なら書き出せない決め打ちのパスを渡す。
+	// A nonempty thumbnailDir supplies real output paths; otherwise use unwritable fixture paths.
 	thumbnailDir string
-	// published は内容ごとに公開した代表サムネイルの中身（書き出し先にあったもの）。
-	published map[string][]byte
-	// firstFrame と fullDecode は、代表サムネイルとシーク用サムネイルの生成が返す代用。
-	firstFrame bool
-	fullDecode bool
-	// seekPublished は、置き場に完成したシーク用サムネイルがあり、生成しないことを表す。
-	seekPublished bool
-	// publishedSubstitution は、採用したシーク用サムネイルに置き場が残した代用の記録。
+	published    map[string][]byte
+	firstFrame   bool
+	fullDecode   bool
+	// Complete seek artifacts bypass generation.
+	seekPublished         bool
 	publishedSubstitution domain.Substitution
-	// validated はプレビューの公開の直前に確かめた元の同一性。
-	validated []bool
-	// outputs は生成に渡した書き出し先。置き場が渡したものと同じであること。
-	outputs []string
-	// seekLayouts と publishedLayouts は、シーク用サムネイルの生成と公開に渡した配置。
-	seekLayouts      []domain.SeekSpriteLayout
-	publishedLayouts []domain.SeekSpriteLayout
+	validated             []bool
+	outputs               []string
+	seekLayouts           []domain.SeekSpriteLayout
+	publishedLayouts      []domain.SeekSpriteLayout
 
-	// sprites は置き場にある完成したシーク用スプライトの配置情報、sheets はそのシートで、
-	// どちらも内容の識別子ごとである。
-	sprites map[string]domain.SeekSprite
-	sheets  map[string][][]byte
-	// fingerprintSheets は SpriteFingerprint に渡されたシート。
+	sprites           map[string]domain.SeekSprite
+	sheets            map[string][][]byte
 	fingerprintSheets [][][]byte
 
-	// gate は生成（thumbnail・seek・preview）の途中で呼ばれる。生成を止めておく
-	// テストが使う。
+	// The gate can pause generation to exercise interleavings.
 	gate func(call string)
 
 	calls   []string
 	removed []string
-	// stashes は代表サムネイルの写し（stash）・戻し（restore）・捨て（discard）の列である。
 	stashes []string
 }
 
@@ -451,7 +414,7 @@ func (f *fakeGenerator) PublishThumbnail(contentKey string, write func(string) e
 		return f.publishErr
 	}
 	if f.thumbnailDir != "" {
-		// 偽物のコマの生成は何も書かないので、無ければ空の中身として扱う。
+		// Fake frame generation writes nothing, so absent output is treated as empty.
 		data, err := os.ReadFile(output)
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
@@ -469,7 +432,7 @@ func (f *fakeGenerator) PublishThumbnail(contentKey string, write func(string) e
 	return nil
 }
 
-// FitThumbnailSource は "source:" を前に付けた画像を返す。fitErr を FitThumbnailImage と共有する。
+// Prefix source bytes with source: and share fitErr with thumbnail fitting.
 func (f *fakeGenerator) FitThumbnailSource(_ context.Context, image []byte, _ float64) ([]byte, error) {
 	f.record("fit-source")
 	if f.fitErr != nil {
@@ -478,14 +441,14 @@ func (f *fakeGenerator) FitThumbnailSource(_ context.Context, image []byte, _ fl
 	return append([]byte("source:"), image...), nil
 }
 
-// FitThumbnailImage は "fitted:" を前に付けた画像を返す。gate は "fit:<画像>" で呼ぶ。
+// Prefix fitted bytes with fitted:; the gate name includes the image.
 func (f *fakeGenerator) FitThumbnailImage(_ context.Context, image []byte, aspect float64) ([]byte, error) {
 	f.record("fit")
 	f.mu.Lock()
 	f.aspects = append(f.aspects, aspect)
 	f.fitImages = append(f.fitImages, string(image))
 	f.mu.Unlock()
-	// 画像ごとに止めておけるよう、合わせる画像を名前に添えて gate を通る。
+	// Include image identity so tests can block one particular fit.
 	f.pass("fit:" + string(image))
 	if f.fitErr != nil {
 		return nil, f.fitErr
@@ -550,8 +513,7 @@ func (f *fakeGenerator) PublishPreview(
 	return nil
 }
 
-// fakeArtifactStore は fakeGenerator を生成物の置き場として使う。スプライトの読み出しは
-// 生成（Generator.SeekSprite）と名前が重なるので、ここで置き場の側を答える。
+// Separate artifact reads because SeekSprite conflicts with the generator method name.
 type fakeArtifactStore struct {
 	*fakeGenerator
 }
@@ -576,7 +538,7 @@ func (f fakeArtifactStore) SeekSpriteSheet(contentKey string, sheet int) ([]byte
 	return sheets[sheet], nil
 }
 
-// SpriteFingerprint はシートの数だけコマを持つ指紋を返す。コマのハッシュはシートの長さ。
+// Use one fingerprint frame per sheet, with its byte length as the hash.
 func (f *fakeGenerator) SpriteFingerprint(sprite domain.SeekSprite, sheets [][]byte) (domain.Fingerprint, error) {
 	f.record("fingerprint")
 	f.mu.Lock()
@@ -602,7 +564,6 @@ func (f *fakeGenerator) snapshot() (calls, removed []string) {
 	return append([]string(nil), f.calls...), append([]string(nil), f.removed...)
 }
 
-// probedVideo は解析済みの動画を1件返す。
 func probedVideo(id int64, contentKey string) domain.Video {
 	duration := int64(60_000)
 	return domain.Video{

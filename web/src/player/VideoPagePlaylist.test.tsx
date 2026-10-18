@@ -21,8 +21,7 @@ import type { PlayerControls } from "./playerControls";
 import type { PlayerStatus } from "./VideoPlayer";
 import VideoPage from "./VideoPage";
 
-// 動画ページのプレイリストの文脈のページテスト。URL・応答の組・移動の流れを確かめる。規則そのもの
-// （クエリの読み方、組の選び方、スクロールの位置）は playlistPlayback.test.ts が確かめる。
+// Page tests cover routing and response coordination; playlistPlayback.test.ts covers the underlying rules.
 
 interface PlayerProps {
   video: Video;
@@ -106,7 +105,6 @@ function summary(updatedAt = early) {
   return { id: 5, name: "Tonight", itemCount: 3, updatedAt };
 }
 
-/** playbackFor は項目 `itemId`（first・second・third の順）の再生の応答である。 */
 function playbackFor(itemId: number, updatedAt = early): PlaylistPlayback {
   const order = [step(21, first), step(22, second), step(23, third)];
   const index = order.findIndex((entry) => entry.itemId === itemId);
@@ -144,7 +142,6 @@ function json(body: unknown, status = 200): Response {
 
 const notFound = () => json({ code: "not_found", message: "x" }, 404);
 
-/** server は経路ごとの応答を差し替えられる偽のサーバーである。 */
 const server = {
   videos: new Map<number, () => Response>(),
   related: new Map<number, RelatedVideos>(),
@@ -323,7 +320,6 @@ describe("VideoPage のプレイリストの文脈", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     renderPage();
     await line();
-    // 終わる前に別の画面で並べ替えられ、次は fourth になった。
     server.playback.mockImplementation(() =>
       json({
         ...playbackFor(22, late),
@@ -350,7 +346,6 @@ describe("VideoPage のプレイリストの文脈", () => {
       "/videos/14?playlist=5&item=24",
     );
     expect(calls("/api/playlists/5/playback")).toBe(2);
-    // パネルの行も読み直した並びになる。
     expect(panelRows().map((row) => rowTitle(row))).toEqual([
       "first",
       "second",
@@ -388,7 +383,6 @@ describe("VideoPage のプレイリストの文脈", () => {
     server.videos.set(13, notFound);
     setStatus(true);
     await screen.findByRole("button", { name: "Cancel" });
-    // 消えた後の読み直しでは、次は fourth。
     server.playback.mockImplementation(() =>
       json({ ...playbackFor(22), next: step(24, fourth), nextItem: step(24, fourth) }),
     );
@@ -401,7 +395,6 @@ describe("VideoPage のプレイリストの文脈", () => {
       ),
     );
     expect(calls("/api/playlists/5/playback")).toBe(3);
-    // fourth も消えていて、読み直すと次は無い。
     server.videos.set(14, notFound);
     server.playback.mockImplementation(() =>
       json({ ...playbackFor(22), next: undefined, nextItem: undefined }),
@@ -432,7 +425,7 @@ describe("VideoPage のプレイリストの文脈", () => {
   });
 
   it("動画が同じで別の項目へ進むと、その動画を始めから再生し直し、行に新しい位置を出す", async () => {
-    // second が単体の項目 22 と、second から始まるグループの項目 23 の両方にある。
+    // The same video appears both as item 22 and as the first member of group item 23.
     server.playback.mockImplementation((item) =>
       item === 22
         ? json({ ...playbackFor(22), next: step(23, second), nextItem: step(23, second) })
@@ -469,7 +462,6 @@ describe("VideoPage のプレイリストの文脈", () => {
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Play next" })).toBeNull();
     expect(screen.queryByText("End of playlist")).toBeNull();
-    // 落とした後は読み直さず、URL のクエリは残す。
     expect(calls("/api/playlists/5/playback")).toBe(1);
     expect(location()).toBe("/videos/12?playlist=5&item=22");
   });
@@ -507,9 +499,7 @@ describe("VideoPage のプレイリストの文脈", () => {
         .getAttribute("href"),
     ).toBe("/playlists/5");
     expect(within(panel()).getByText("2 / 3")).toBeDefined();
-    // aside の先頭はパネルで、その後に関連動画が続く。
     const aside = document.querySelector('[data-slot="detail-page-aside"]');
-    // パネルは右の列の並びの入れ物（続けて再生・関連動画と同じ入れ物）の先頭にある。
     expect(aside?.firstElementChild?.firstElementChild).toBe(panel());
     const rows = panelRows();
     expect(rows.map((row) => row.getAttribute("aria-current"))).toEqual([
@@ -535,7 +525,6 @@ describe("VideoPage のプレイリストの文脈", () => {
       offset: 0,
       total: 3,
     };
-    // second は項目 22（グループ）の 2 番目のメンバーで、次は同じ項目の member-three。
     server.videos.set(41, () => json(member1));
     server.related.set(12, { items: [videoOf(31, "related-next")], group });
     server.playback.mockImplementation(() =>
@@ -545,7 +534,6 @@ describe("VideoPage のプレイリストの文脈", () => {
     await line();
     const memberLink = await screen.findByRole("link", { name: /^member-three/ });
     expect(memberLink.getAttribute("href")).toBe("/videos/43?playlist=5&item=22");
-    // 関連動画の行はプレイリストの外のまま。
     expect(screen.getByRole("link", { name: /^related-next/ }).getAttribute("href")).toBe(
       "/videos/31",
     );
@@ -578,7 +566,6 @@ describe("VideoPage のプレイリストの文脈", () => {
     let reads = 0;
     server.playlist.mockImplementation(() => {
       reads += 1;
-      // 最初の組はまだ古い並び（updatedAt が違う）。
       return reads === 1
         ? json(defaultPlaylist)
         : json(
@@ -634,7 +621,6 @@ describe("VideoPage のプレイリストの文脈", () => {
     fireEvent.click(within(panel()).getByRole("button", { name: "Retry" }));
     expect(await within(panel()).findByRole("button", { name: "Retry" })).toBeDefined();
     expect(calls("/api/playlists/5/playback")).toBe(2);
-    // 行と矢印は前の再生の応答のまま。
     expect((await line()).textContent).toBe("Tonight·2 / 3");
     expect(screen.getByRole("button", { name: "Next item: third" })).toBeDefined();
   });
@@ -643,7 +629,6 @@ describe("VideoPage のプレイリストの文脈", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     renderPage();
     await line();
-    // 別の画面で並べ替えられたが、プレイリストの読みは一時的に失敗する。
     server.playback.mockImplementation(() =>
       json({
         ...playbackFor(22, late),
@@ -657,7 +642,6 @@ describe("VideoPage のプレイリストの文脈", () => {
     setStatus(true);
     expect(await screen.findByText("Up next")).toBeDefined();
     await waitFor(() => expect(calls("/api/playlists/5/playback")).toBe(2));
-    // 予告・矢印・パネルは同じ組（前の並び）に従う。
     expect(screen.getByRole("link", { name: /^third/ }).getAttribute("href")).toBe(
       "/videos/13?playlist=5&item=23",
     );
@@ -666,7 +650,7 @@ describe("VideoPage のプレイリストの文脈", () => {
   });
 
   it("読み直した並びで再生中の行の位置が変わると、一覧の scrollTop を合わせ直す", async () => {
-    // jsdom は配置を計算しないので、行の位置を兄弟の順から与える。
+    // jsdom has no layout; derive row offsets from sibling order.
     const top = vi
       .spyOn(HTMLElement.prototype, "offsetTop", "get")
       .mockImplementation(function (this: HTMLElement) {
@@ -684,7 +668,6 @@ describe("VideoPage のプレイリストの文脈", () => {
       const list = () =>
         screen.getByRole("list", { name: 'Playlist "Tonight". Open the playlist' });
       await waitFor(() => expect(list().scrollTop).toBe(60));
-      // 別の画面で second が最後へ動いた。再生中の項目（22）は同じ。
       server.playback.mockImplementation(() =>
         json({
           ...playbackFor(22, late),
@@ -791,7 +774,6 @@ describe("VideoPage のプレイリストの文脈", () => {
     );
     await waitFor(() => expect(location()).toBe("/videos/13?playlist=5&item=23"));
     await waitFor(() => expect(player().video.id).toBe(13));
-    // 再生中に前の矢印で戻ると、自動再生で着くので、もう一度飛ばす。
     setStatus(false, true);
     fireEvent.click(await screen.findByRole("button", { name: "Previous item: second" }));
     await waitFor(() => expect(location()).toBe("/videos/13?playlist=5&item=23"));
@@ -810,7 +792,6 @@ describe("VideoPage のプレイリストの文脈", () => {
 
   describe("スマートフォルダの項目", () => {
     const member3 = videoOf(43, "member-three");
-    /** folderItem はフォルダ 7 の項目 22（再生順 second・member-three）である。 */
     const folderItem = (videoCount = 2) => ({
       id: 22,
       kind: "smartFolder" as const,
@@ -884,12 +865,10 @@ describe("VideoPage のプレイリストの文脈", () => {
       await line();
       expect(calls("/api/videos/12?smartFolder=7")).toBeGreaterThan(0);
       expect(calls("/api/videos/12/related?smartFolder=7")).toBe(1);
-      // 行はプレイリスト、スマートフォルダ、題名の順。
       const folderLine = await screen.findByRole("link", {
         name: 'Smart folder "タグ: 猫", video 1 of 2. Open the smart folder',
       });
       expect(folderLine.getAttribute("href")).toBe("/smart-folders/7");
-      // パネルの今の行はフォルダの項目。
       const rows = panelRows();
       expect(rows.map((row) => row.getAttribute("aria-current"))).toEqual([
         null,
@@ -897,12 +876,10 @@ describe("VideoPage のプレイリストの文脈", () => {
         null,
       ]);
       expect(within(rows[1]!).getByText("2 videos")).toBeDefined();
-      // Up next のメンバーの行は今のページの smartFolder を保つ。
       const memberLink = await screen.findByRole("link", { name: /^member-three/ });
       expect(memberLink.getAttribute("href")).toBe(
         "/videos/43?playlist=5&item=22&smartFolder=7",
       );
-      // 動画の項目への矢印は smartFolder を運ばない。
       expect(screen.getByRole("button", { name: "Previous item: first" })).toBeDefined();
       setStatus(true);
       await screen.findByText(
@@ -917,8 +894,7 @@ describe("VideoPage のプレイリストの文脈", () => {
     });
 
     it("今の動画がフォルダから外れると、フォルダの行を出さず、動画のグループのメンバーの行は項目の外として開く", async () => {
-      // 条件かタグが変わり、フォルダ 7 はもう second を持たない。サーバーは smartFolder を無視し、
-      // 動画のグループ（series）で答え、再生の応答の next は次の項目へ進む。
+      // The folder no longer contains this video; the server falls back to its group and advances to the next item.
       server.videos.set(12, () => json(second));
       server.related.set(12, {
         items: [],
@@ -938,7 +914,6 @@ describe("VideoPage のプレイリストの文脈", () => {
       const memberLink = await screen.findByRole("link", { name: /^member-one/ });
       expect(memberLink.getAttribute("href")).toBe("/videos/41");
       expect(screen.queryByRole("link", { name: /^Smart folder/ })).toBeNull();
-      // パネルの今の行はフォルダの項目のまま。
       expect(panelRows().map((row) => row.getAttribute("aria-current"))).toEqual([
         null,
         "true",
@@ -979,7 +954,6 @@ describe("VideoPage のプレイリストの文脈", () => {
       expect(empty.getByText("0 videos")).toBeDefined();
       expect(empty.getByText("タグ: 猫").className).toContain("text-muted-foreground");
 
-      // URL が空のフォルダの項目を名指すと、その行が今の行になり、進み具合の欄にも「0 videos」。
       cleanup();
       server.playback.mockImplementation(() =>
         json({ ...playbackFor(22), next: step(23, third), nextItem: step(23, third) }),

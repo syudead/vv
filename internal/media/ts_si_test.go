@@ -16,18 +16,16 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// テストの中で TS（PAT、PMT、ARIB の文字列を持つ SDT と EIT、TOT、その前の padding packet）を
-// 組み立て、SI の reader が放送局名と番組名を読むことを確かめる
-//
+// Build TS packets directly to test SI decoding without external recordings.
 
 const (
 	testServiceID = 0x0400
-	testNetworkID = 0x7FE0 // 地上波の original_network_id
+	testNetworkID = 0x7FE0 // Terrestrial original_network_id.
 	testPMTPID    = 0x0100
 	paddingPID    = 0x1FFF
 )
 
-// aribKanji は全角の文字列を ARIB の漢字の集合（GL の G0）の符号にする。
+// Encode full-width text in ARIB G0 Kanji invoked in GL.
 func aribKanji(t *testing.T, text string) []byte {
 	t.Helper()
 	encoded, err := japanese.EUCJP.NewEncoder().String(text)
@@ -41,7 +39,6 @@ func aribKanji(t *testing.T, text string) []byte {
 	return out
 }
 
-// longSection は CRC を持つ section を組み立てる。
 func longSection(table byte, extension uint16, number byte, body []byte) []byte {
 	length := 5 + len(body) + 4
 	section := []byte{
@@ -57,7 +54,7 @@ func appendCRC(section []byte) []byte {
 	return append(section, byte(crc>>24), byte(crc>>16), byte(crc>>8), byte(crc))
 }
 
-// siClock は日本標準時の時刻を MJD と BCD の 5 バイトにする。
+// Encode JST as five bytes of MJD and BCD.
 func siClock(at time.Time) []byte {
 	at = at.In(broadcastZone)
 	base := time.Date(1858, time.November, 17, 0, 0, 0, 0, broadcastZone)
@@ -72,7 +69,7 @@ func bcd(value int) byte {
 
 func patSection() []byte {
 	return longSection(tablePAT, 1, 0, []byte{
-		0x00, 0x00, 0xE0, 0x10, // program 0 は NIT
+		0x00, 0x00, 0xE0, 0x10, // Program zero denotes NIT.
 		byte(testServiceID >> 8), byte(testServiceID & 0xFF), 0xE0 | testPMTPID>>8, testPMTPID & 0xFF,
 	})
 }
@@ -93,7 +90,6 @@ func eitSection(networkID uint16, number byte, language string, name []byte, sta
 	return serviceEITSection(testServiceID, networkID, number, language, name, start, duration)
 }
 
-// serviceEITSection は serviceID の service の EIT present/following の section である。
 func serviceEITSection(serviceID, networkID uint16, number byte, language string, name []byte, start time.Time, duration time.Duration) []byte {
 	descriptor := []byte{descriptorShortEvent, byte(5 + len(name))}
 	descriptor = append(descriptor, language...)
@@ -116,7 +112,7 @@ func totSection(at time.Time) []byte {
 	return appendCRC(section)
 }
 
-// sectionPackets は section を pid の TS packet に分ける。最初の packet は pointer_field 0 で始まる。
+// The first packet starts with pointer_field zero.
 func sectionPackets(pid uint16, section []byte) []byte {
 	var out []byte
 	payload := append([]byte{0}, section...)
@@ -151,7 +147,6 @@ var (
 	testRecording  = time.Date(2026, 10, 16, 20, 55, 0, 0, broadcastZone)
 )
 
-// broadcastTS は padding の後に PAT・PMT・SDT・EIT present/following・TOT を並べた TS である。
 func broadcastTS(t *testing.T, networkID uint16, language string) []byte {
 	t.Helper()
 	ts := paddingPackets(8)
@@ -199,7 +194,7 @@ func TestScanTransportStreamSIReadsEvents(t *testing.T) {
 	}
 }
 
-// .m2ts・.mts は各 packet の前に 4 バイトの時刻を持つ。
+// M2TS prefixes each packet with a four-byte timestamp.
 func TestScanTransportStreamSIReadsM2TSPackets(t *testing.T) {
 	ts := broadcastTS(t, testNetworkID, "jpn")
 	var m2ts []byte
@@ -224,7 +219,7 @@ func TestReadBroadcastIgnoresSIAfterTheReadLimit(t *testing.T) {
 	}
 }
 
-// failAfterReader は読まれたら誤りを返す。名前と時刻がそろった後に読み進めていないことを示す。
+// Fail on further reads to prove collection stops once names and time are complete.
 type failAfterReader struct{ read *bool }
 
 func (r failAfterReader) Read([]byte) (int, error) {
@@ -258,8 +253,8 @@ func TestScanTransportStreamSIReturnsReadErrors(t *testing.T) {
 	}
 }
 
-// ffmpeg が作る TS は original_network_id 1 の SDT（DVB の文字列）を持ち、EIT を持たない。
-// 名前を ARIB として decode せずに省き、前に ARIB の SI を足せば Probe がその名前を読む。
+// ffmpeg emits DVB SDT with network ID 1 and no EIT; reject those names unless actual ARIB SI is
+// present.
 func TestProbeReadsBroadcastOfTransportStream(t *testing.T) {
 	requireFFmpeg(t)
 	dir := t.TempDir()
@@ -304,7 +299,7 @@ func TestReadBroadcastOmitsDVBNames(t *testing.T) {
 }
 
 func TestReadBroadcastIgnoresLanguageOfOtherServices(t *testing.T) {
-	// 同じ TS のほかの service の英語の EIT が、PAT の最初の番組の日本語の名前を消さない。
+	// Other services' English EIT must not suppress the selected service's Japanese names.
 	const otherService = testServiceID + 1
 	other := serviceEITSection(otherService, testNetworkID, 0, "eng", []byte("News"), testNewsStart, time.Hour)
 	ts := paddingPackets(1)
@@ -329,7 +324,7 @@ func TestReadBroadcastOmitsNamesWhenCancelled(t *testing.T) {
 
 func TestReadBroadcastWithoutTimeOmitsProgramme(t *testing.T) {
 	ts := broadcastTS(t, testNetworkID, "jpn")
-	// TOT の packet（最後の 1 つ）を padding にする。
+	// Replace the final TOT packet with padding.
 	ts = append(ts[:len(ts)-tsPacketSize], paddingPackets(1)...)
 	path := writeTS(t, "notime.ts", ts)
 

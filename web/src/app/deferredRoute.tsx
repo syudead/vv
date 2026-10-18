@@ -7,30 +7,22 @@ import { EmptyState } from "../videoList/states";
 
 type PageModule = { default: ComponentType };
 
-/**
- * matchesPath は pathname が path そのものか、その下の場所かを返す。React Router
- * の route と同じく、大文字と小文字を区別しない。
- */
+/** Match paths case-insensitively, like React Router. */
 export function matchesPath(pathname: string, path: string) {
   const normalized = pathname.toLowerCase();
   const target = path.toLowerCase();
   return normalized === target || normalized.startsWith(`${target}/`);
 }
 
-/**
- * matchesExactPath は pathname が path そのもの（末尾の / は問わない）かを返す。下の場所に
- * 別の画面がある一覧の route に使い、その下の場所を開いたときに一覧の部品を読まない。
- */
+/** Match only this path, ignoring trailing slashes, to avoid loading a parent page for child routes. */
 export function matchesExactPath(pathname: string, path: string) {
   return pathname.toLowerCase().replace(/\/$/, "") === path.toLowerCase();
 }
 
-/** matchesBelowPath は pathname が path の下の場所（path そのものは含まない）かを返す。 */
 export function matchesBelowPath(pathname: string, path: string) {
   return matchesPath(pathname, path) && !matchesExactPath(pathname, path);
 }
 
-/** RouteLoadFailed は画面の部品を読み込めなかったときに画面の代わりに出す。 */
 export function RouteLoadFailed({ onReload }: { onReload: () => void }) {
   return (
     <EmptyState
@@ -48,18 +40,9 @@ export function RouteLoadFailed({ onReload }: { onReload: () => void }) {
 }
 
 /**
- * deferredRoute は、画面の部品を使うときにだけ読み込む route の component を返す。
- *
- * ページを読み込むたびに App の import 先はすべて取り直されるので、ほかの画面の
- * 部品を一覧や再生画面の読み込みに加えない。起動したときの URL が path に当たる
- * ときは、読み終えてから返す。最初の描画から画面とキー操作がそろう（React.lazy
- * だと Suspense の表示の間引きで数百ミリ秒遅れる）。ただし、この待ちはページの
- * load イベントを遅らせないので、直接開いたときに画面が出るのは、import した
- * ときより数十ミリ秒遅れることがある。アプリの中で移ってきたときは、読み終えたところで
- * 画面を出す。読み込めなければ、空白にせず再読み込みを促す。
- *
- * path は文字列なら matchesPath で当て、関数ならそれで当てる。同じ接頭辞の下に別の画面が
- * あるときは関数で分け、直接開いた 1 つの画面のほかの部品を待たない。
+ * Load only the requested route; preload direct entries so content and keyboard actions appear
+ * together without Suspense delay. Use a predicate to distinguish routes sharing a prefix;
+ * failures offer reload.
  */
 export async function deferredRoute(
   load: () => Promise<PageModule>,
@@ -73,7 +56,7 @@ export async function deferredRoute(
   };
   const pathname = window.location.pathname;
   if (typeof path === "string" ? matchesPath(pathname, path) : path(pathname)) {
-    // 失敗したときは描画の側で読み直し、それでも駄目なら失敗の表示を出す。
+    // Retry at render time before displaying a load failure.
     await loadPage().catch(() => undefined);
   }
 

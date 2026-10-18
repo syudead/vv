@@ -9,19 +9,16 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// Summary は videoIDs のうちいまライブラリにある動画の数（Total）と、1本以上に
-// 付いているタグごとの本数（Items）を、名前の自然順で返す
+// Summary reports selected library videos and tag counts in natural-name order.
 func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSummary, error) {
-	// videoIDs → 利用者データの鍵の解決と本数の集計を同じ読み取りスナップショットで
-	// 行う。別々に読むと、その間の付け外しで Total と Items の本数が食い違いうる。
+	// Resolve user keys and count attachments in one snapshot so totals cannot disagree during concurrent edits.
 	tx, err := s.sql.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.TagSummary{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// 動画の数は利用者データの鍵の数で、同じ集まりの動画は 1 本と数える
-	//
+	// Count shared bundle user keys as one video.
 	keys, err := userKeysForVideoIDs(ctx, tx, videoIDs)
 	if err != nil {
 		return domain.TagSummary{}, err
@@ -36,8 +33,7 @@ func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSum
 		return domain.TagSummary{}, fmt.Errorf("cannot build video ids: %w", err)
 	}
 
-	// count はどちらかの出所で、manualCount は手で付けた分だけで数える（017 の）。1本の動画に同じタグが複数のフォルダ名（元の名前と
-	// シノニムなど）から当たりうるので、content_key の重複を除いて数える。
+	// Deduplicate content keys across matching folder names and synonyms; manualCount includes manual attachments only.
 	rows, err := tx.QueryContext(ctx, `
 		with selected(video_id, content_key) as (
 			select v.id, `+userKeyExpr("v")+` from videos v

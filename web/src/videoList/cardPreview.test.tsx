@@ -122,7 +122,7 @@ describe("useCardPreview suspend and resume", () => {
   });
 
   it("読み込み中に止めるとsrcと要素を保ち、再開まで再生を始めない", async () => {
-    // pause() が読み込み中の play() を打ち切ったときのブラウザの振る舞い（AbortError）。
+    // Simulate the AbortError caused by pause interrupting a pending play call.
     let abortPlay: ((error: Error) => void) | undefined;
     play.mockImplementationOnce(
       () =>
@@ -166,7 +166,6 @@ describe("useCardPreview suspend and resume", () => {
     expect(previewVideo()).toBeNull();
     expect(load).toHaveBeenCalled();
 
-    // 解放の後の再開では何も始めない。
     act(() => preview().resumePreview());
     act(() => vi.advanceTimersByTime(1000));
     expect(previewVideo()).toBeNull();

@@ -5,8 +5,7 @@ import type { UploadImage } from "./composeImage";
 import type { Fit } from "./framing";
 import UploadPreview from "./UploadPreview";
 
-// プレビューの操作（収め方の切り替え、引く・ホイール・キー・つまみ）が、描く形をどう変えるか。
-// jsdom には canvas の描画が無いので、描画は差し替えて、渡された形を見る。
+// jsdom cannot render canvas; verify the composition passed to the drawing boundary.
 
 const compose = vi.hoisted(() => ({ drawComposition: vi.fn() }));
 vi.mock("./composeImage", () => compose);
@@ -17,7 +16,6 @@ const image = {
   height: 2000,
 } as unknown as UploadImage;
 
-/** lastFit は最後に描いた形である。 */
 function lastFit(): Fit {
   const call = compose.drawComposition.mock.calls.at(-1) as unknown[] | undefined;
   return call?.[3] as Fit;
@@ -52,7 +50,7 @@ function fillFrame() {
 describe("UploadPreview", () => {
   beforeEach(() => {
     compose.drawComposition.mockReset();
-    // 段の canvas は 1024×576 に描かれ、送る画像（2048×1152）の半分の大きさで見える。
+    // The 1024x576 preview is half the 2048x1152 output size.
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
       x: 0,
       y: 0,
@@ -93,13 +91,12 @@ describe("UploadPreview", () => {
     expect(stage().getAttribute("tabindex")).toBe("0");
 
     fireEvent.pointerDown(stage(), { pointerId: 1, clientX: 500, clientY: 300 });
-    // 画面で 100px 下へ引くと、送る画像では 200px 動く（動かせる幅は (4096-1152)/2）。
+    // A 100px display drag therefore moves 200 output pixels.
     fireEvent.pointerMove(stage(), { pointerId: 1, clientX: 500, clientY: 400 });
     expect(lastFit()).toMatchObject({ panX: 0 });
     const moved = lastFit() as Extract<Fit, { mode: "cover" }>;
     expect(moved.panY).toBeCloseTo(-200 / 1472);
 
-    // 別の指の動きと、離した後の動きは無視する。
     fireEvent.pointerMove(stage(), { pointerId: 2, clientX: 500, clientY: 0 });
     fireEvent.pointerUp(stage(), { pointerId: 1 });
     fireEvent.pointerMove(stage(), { pointerId: 1, clientX: 500, clientY: 0 });

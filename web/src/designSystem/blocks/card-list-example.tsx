@@ -17,10 +17,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/shadcn/tooltip";
 
 import { sampleVideos } from "./list-page-example";
 
-// 1 行のカードの一覧の見本（registry:block card-list-example）。一覧ページの本体に CardList を
-// 置き、4 つの色（実行中の primary、失敗の destructive、AI 待ちの warning、ほかの default）の
-// カードを並べる。写した画面はカードの中身を自分のものに差し替え、間隔・面・線・列の幅は
-// 書かない（web/registry/rules/patterns.md の Sections）。
+// registry:block card-list-example. Replace card content while retaining the shared spacing, surfaces and columns.
 
 export function CardListExample() {
   const a = t.activity;

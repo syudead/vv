@@ -12,32 +12,17 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 動画の表示名の設定・解除。1つの取引で済むので internal/app は通さず、
-// internal/store の *OverrideStore を直接呼ぶ。
-//
-// 代表サムネイルの位置の設定・解除と、
-// 適用した画像の取り消しは、画像の生成と
-// 記録を取り込みの job と同じ生成の錠の中で行うので、internal/app の *Ingest（ThumbnailPicker）を
-// 呼ぶ。
+// Display names use one store transaction. Thumbnail mutations go through Ingest under the same generation lock as background jobs.
 
-// OverrideStore は動画の上書きの保存先である。internal/store の *OverrideStore が
-// これを満たす。
 type OverrideStore interface {
-	// SetDisplayName は動画 videoID の表示名を name にし（整えて空なら解除）、反映後の
-	// 動画を返す。規則に合わなければ *domain.InvalidDisplayNameError、動画が無いか
-	// 登録フォルダの下に所在が無ければ domain.ErrNotFound を返す。
+	// SetDisplayName clears normalized empty names and returns ErrNotFound for missing or unregistered videos.
 	SetDisplayName(ctx context.Context, videoID int64, name string) (domain.Video, error)
-	// SetDisplayNames は外部連携の一括操作で、changes の各動画の表示名を 1 つの取引で
-	// 書き換え、反映後の動画を changes の順に返す。規則に合わなければ
-	// *domain.DisplayNameAtError、動画を引けなければ *domain.VideoRefNotFoundError で、
-	// どちらも何も書かない。
+	// SetDisplayNames is atomic; indexed errors preserve input order and prevent all writes.
 	SetDisplayNames(ctx context.Context, changes []domain.DisplayNameChange) ([]domain.Video, error)
 }
 
-// SetVideoDisplayName は動画の表示名を設定・解除する（PUT /api/videos/{id}/display-name）。
 func (s *server) SetVideoDisplayName(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
-	// gen.DisplayNameUpdate の displayName は string なので、欠けても空（解除）に読めて
-	// しまう。欠けた本文で表示名を消さないよう、有無を区別して読む。
+	// Require displayName presence to prevent accidental clearing.
 	var body struct {
 		DisplayName *string `json:"displayName"`
 	}
@@ -68,7 +53,6 @@ func (s *server) SetVideoDisplayName(w http.ResponseWriter, r *http.Request, id 
 	s.writeVideoDetail(w, r, video)
 }
 
-// invalidDisplayName は表示名の規則違反を reason 付きの 400 にする。この経路は field を付けない。
 func (s *server) invalidDisplayName(w http.ResponseWriter, err error) {
 	failure, ok := displayNameFailureOf(err)
 	if !ok {
@@ -78,8 +62,7 @@ func (s *server) invalidDisplayName(w http.ResponseWriter, err error) {
 	s.writeWorkInfoFailure(w, failure)
 }
 
-// displayNameFailureOf は *domain.InvalidDisplayNameError を API の形にする。field は空のまま返し、
-// 付けるかどうかは経路が決める（PUT /api/videos/{id}/details だけが displayName を付ける）。
+// displayNameFailureOf leaves field empty; only the details endpoint adds it.
 func displayNameFailureOf(err error) (workInfoFailure, bool) {
 	var invalid *domain.InvalidDisplayNameError
 	if !errors.As(err, &invalid) {
@@ -99,31 +82,18 @@ func displayNameFailureOf(err error) (workInfoFailure, bool) {
 	return failure, true
 }
 
-// ThumbnailPicker は代表サムネイルの位置の設定先である。internal/app の *Ingest が
-// これを満たす。
 type ThumbnailPicker interface {
-	// SetThumbnailPosition は動画 videoID の代表サムネイルを path の positionMs の場面で
-	// 作り直して公開し、位置を記録して反映後の動画を返す。location は path を辿る前の所在で、
-	// path が今もその動画のものかを確かめ直すのに使う。positionMs が nil なら解除し、
-	// 自動の位置で作り直す。解析前は domain.ErrDurationUnknown、尺の外は
-	// domain.ErrThumbnailPositionOutOfRange、生成の失敗は domain.ErrThumbnailFrameUnavailable、
-	// 所在が消えたか別の内容へ付け替わっていれば domain.ErrMediaFileUnavailable、
-	// 動画が無ければ domain.ErrNotFound を返す。
+	// SetThumbnailPosition receives the resolved source path and original location for ownership rechecks. A nil position restores automatic selection.
 	SetThumbnailPosition(
 		ctx context.Context, videoID int64, location, path string, positionMs *int64,
 	) (domain.Video, error)
-	// RevertThumbnailImage は動画 videoID に適用した画像を外し、代表サムネイルを path の記録した
-	// 位置（無ければ自動の位置）の場面で作り直して公開し、反映後の動画を返す。location と誤りは
-	// SetThumbnailPosition と同じである。画像を適用していなくても作り直して成功する
-	//
+	// Reverting regenerates the thumbnail even without an applied image.
 	RevertThumbnailImage(ctx context.Context, videoID int64, location, path string) (domain.Video, error)
 }
 
-// SetVideoThumbnailPosition は動画の代表サムネイルの位置を設定・解除する
-// （PUT /api/videos/{id}/thumbnail-position）。応答は画像の生成が終わってから返す。
+// Wait for generation to finish before responding.
 func (s *server) SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
-	// gen.ThumbnailPositionUpdate の positionMs は *int64 なので、欠けても null（解除）に
-	// 読めてしまう。欠けた本文で位置を消さないよう、有無を区別して読む。
+	// Distinguish an omitted position from null, which clears it.
 	var body struct {
 		PositionMs json.RawMessage `json:"positionMs"`
 	}
@@ -148,8 +118,7 @@ func (s *server) SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	// 所在を開く前に位置を確かめる。解析前や尺の外の指定で、読めない所在の 404 を返さない。
-	// 生成の錠の中でも internal/app が確かめ直す。
+	// Validate position before source errors; the application revalidates under the generation lock.
 	if positionMs != nil {
 		if err := domain.CheckThumbnailPosition(video, *positionMs); err != nil {
 			s.thumbnailPositionError(w, video, err)
@@ -160,9 +129,7 @@ func (s *server) SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Reques
 		s.internalError(w, "Media file access is not configured.", nil)
 		return
 	}
-	// 読む元は配信（getVideoStream）と同じ規則で決め、symlink を辿った先のパスを渡す。
-	// 辿る前のパスを渡すと、確かめた後に symlink を差し替えられたとき、ffmpeg が
-	// 登録フォルダの外や別の動画を読みうる。
+	// Pass the resolved path to prevent a symlink swap from reading another file or escaping the root.
 	location, path, ok := s.resolveMediaFile(r, video)
 	if !ok {
 		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
@@ -177,8 +144,6 @@ func (s *server) SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Reques
 	s.writeVideoDetail(w, r, saved)
 }
 
-// RevertThumbnailImage は動画に適用したサムネイルの画像を外し、コマから作り直す
-// （DELETE /api/videos/{id}/thumbnail-image）。応答は画像の生成が終わってから返す。
 func (s *server) RevertThumbnailImage(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	if s.thumbnails == nil {
 		s.internalError(w, "Thumbnail generation is not configured.", nil)
@@ -192,7 +157,6 @@ func (s *server) RevertThumbnailImage(w http.ResponseWriter, r *http.Request, id
 		s.internalError(w, "Media file access is not configured.", nil)
 		return
 	}
-	// 読む元は位置の設定（SetVideoThumbnailPosition）と同じ規則で決める。
 	location, path, ok := s.resolveMediaFile(r, video)
 	if !ok {
 		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
@@ -207,7 +171,7 @@ func (s *server) RevertThumbnailImage(w http.ResponseWriter, r *http.Request, id
 	s.writeVideoDetail(w, r, saved)
 }
 
-// thumbnailPositionError は代表サムネイルの位置の設定の失敗を応答にする。尺の外の limit には video の尺を載せる。
+// Use duration as the limit for out-of-range positions.
 func (s *server) thumbnailPositionError(w http.ResponseWriter, video domain.Video, err error) {
 	switch {
 	case errors.Is(err, domain.ErrDurationUnknown):
@@ -220,12 +184,12 @@ func (s *server) thumbnailPositionError(w http.ResponseWriter, video domain.Vide
 		s.invalidRequestLimit(w, reasonThumbnailPositionOutOfRange, int(*video.DurationMs),
 			"The position must be at least 0 and less than "+strconv.FormatInt(*video.DurationMs, 10)+" ms.")
 	case errors.Is(err, domain.ErrThumbnailFrameUnavailable):
-		// 生成の失敗の理由（ffmpeg の出力など）は記録にだけ残す。
+		// Log external ffmpeg failures without exposing their details.
 		s.logger.Warn("cannot extract a frame for the thumbnail",
 			slog.Int64("video", video.ID), slog.Any("error", err))
 		s.conflictReason(w, reasonThumbnailFrameUnavailable, "Cannot make a thumbnail from this position.")
 	case errors.Is(err, domain.ErrMediaFileUnavailable):
-		// 所在を決めたあとに、走査がそれを別の内容へ付け替えたか消した。
+		// The location may have been reassigned or removed during generation.
 		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
 	case errors.Is(err, domain.ErrNotFound):
 		s.notFoundReason(w, reasonVideoNotFound, "Video not found.")

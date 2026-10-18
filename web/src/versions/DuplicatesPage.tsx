@@ -25,10 +25,9 @@ import { useToast } from "../ui/Toast";
 import BundleDialog from "./BundleDialog";
 import { VersionDetailsLine, versionDetails, versionDetailsText } from "./VersionDetails";
 
-/** 候補の画面から開いた再生画面の戻り先。 */
 const backTo = "/duplicates";
 
-/** Pair は候補の 1 組である。`videos` は id の昇順。 */
+/** Videos are in ascending ID order. */
 interface Pair {
   key: string;
   videos: readonly [Video, Video];
@@ -39,7 +38,7 @@ type Page =
   | { kind: "failed" }
   | { kind: "ready"; items: Pair[]; total: number };
 
-/** toPair は応答の組を画面の形にする。2 本でない組は並べない。 */
+/** Ignore malformed pairs with other than two videos. */
 function toPair(candidate: VersionCandidate): Pair | null {
   const [first, second] = candidate.videos;
   if (first === undefined || second === undefined || candidate.videos.length !== 2)
@@ -52,13 +51,8 @@ function pairIds(pair: Pair): [number, number] {
 }
 
 /**
- * DuplicatesPage は「同じ動画かもしれない」候補の組を並べ、所有者に「同じ動画」（代表を選んで
- * 束ねる）か「違う動画」（二度と出さない）かを決めさせる画面である。
- *
- * 開いたときに候補を読み、取り込みが終わったという `scan` の知らせと、判定の結果や版の取り外しで候補が
- * 変わったという `candidates` の知らせで取り直す。取り直しの間は一覧の見た目を変えず、
- * 届いたら差し替える。取り直しが重なったら、今の取得が終わってからもう 1 度だけ取る。
- * 決めた組はその場で一覧から消し、フォーカスを次の組（無ければ前の組、無ければ見出し）へ移す。
+ * Retain rows during refresh and coalesce overlap into one trailing read. Remove decided pairs
+ * immediately and restore focus to the next pair, previous pair, or heading.
  */
 export default function DuplicatesPage() {
   const toast = useToast();
@@ -67,9 +61,7 @@ export default function DuplicatesPage() {
   const [bundling, setBundling] = useState<Pair | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const differentButtons = useRef(new Map<string, HTMLButtonElement>());
-  // 送信の応答は後から届くので、そのときの一覧を読めるようにする。描画を待たずに ref も
-  // 更新するので、同じ描画の前に重なって届いた決定（別々の組の「Different videos」）も
-  // 互いの結果の上に重なり、先に消した組を戻さない。
+  // Update the latest-list ref synchronously so concurrent decision responses before one render cannot resurrect removed pairs.
   const pageRef = useRef(page);
   const showPage = useCallback((next: Page) => {
     pageRef.current = next;
@@ -84,10 +76,10 @@ export default function DuplicatesPage() {
     };
   }, []);
 
-  // 取得は 1 本ずつ。重なった取り直しは again に畳む。
+  // Serialize reads; coalesce overlapping refreshes into again.
   const fetching = useRef<AbortController | null>(null);
   const again = useRef(false);
-  // 取得の間に決めた組。取得が決める前の一覧を返しても、その組を戻さない。
+  // Remember decisions during reads so stale snapshots cannot restore pairs.
   const decidedDuringFetch = useRef(new Set<string>());
 
   const load = useCallback(() => {
@@ -111,8 +103,7 @@ export default function DuplicatesPage() {
         const dropped = pairs.length - items.length;
         let total = Math.max(0, result.total - dropped);
         if (items.length === 0 && total > 0) {
-          // 見せる組が尽きたが、上限 200 件の外に組が残っている。取得の間に決めた組で
-          // 尽きたのなら取り直して補う。応答が組を返さなかったのなら、見せる組は無い。
+          // Refill when local decisions exhaust the visible subset but total exceeds the 200-pair limit; an empty server response needs no refill.
           if (dropped > 0) again.current = true;
           else total = 0;
         }
@@ -122,7 +113,7 @@ export default function DuplicatesPage() {
       (error: unknown) => {
         if (isAborted(error) || controller.signal.aborted) return;
         fetching.current = null;
-        // 取り直しの失敗では今の一覧を残す。見せる組が無いときの失敗だけを画面に出す。
+        // Keep rows on refresh failure; show full-page failure only without visible pairs.
         const current = pageRef.current;
         if (current.kind !== "ready" || current.items.length === 0)
           showPage({ kind: "failed" });
@@ -132,15 +123,9 @@ export default function DuplicatesPage() {
   }, [showPage]);
 
   useEffect(() => {
-    // 取り込みの知らせは、取り込み中は1ファイルごとに届き、つないだ直後にも届く。候補は
-    // 取り込みが終わったときに1度取り直せば足りるので、終わったとき（進行中から終わりへ、
-    // または別の取り込みが終わった状態で届いたとき）だけ取り直す。購読して最初の知らせは
-    // 開いたときの取得と同じ内容なので取り直さない（issue 674）。
+    // Refresh on scan completion only, not per-file events or the initial subscription snapshot.
     let lastScan: { id: number; active: boolean } | undefined;
-    // 購読してから最初の取得をすると、取得のあとに起きた変化を取りこぼさない。ただし
-    // つながる前に始めた取得は、サーバーが受け口を作る前の一覧を読みうる。その間に決まった
-    // 組の candidates は届かず、つないだ直後の知らせも候補を運ばないので、つながったとき
-    // （初回もつなぎ直しも）に取り直す。すでにつながった接続に加わったときは open が来ない。
+    // Subscribe before reading, then reread on connection open to cover the server subscription gap. Existing shared connections emit no new open event.
     const unsubscribe = subscribeServerEvents({
       scan: (scan) => {
         const active = inProgress(scan);
@@ -166,12 +151,8 @@ export default function DuplicatesPage() {
   }
 
   /**
-   * removePair は決めた組を一覧から消し、件数を減らし、フォーカスを次の組の「Different
-   * videos」へ移す。無ければ前の組、1 組も無ければ見出しへ。窓を閉じたときの戻りのフォーカス
-   * （Dialog が閉じたときに戻す）より後に移すため、タイマーで待つ。
-   *
-   * 見せていた組が尽きても `total` が残っていれば（候補が上限 200 件を超えていた）、一覧を
-   * 取り直して残りの組を出す。取り直しの間は読み込み中と同じ見え方にする。
+   * Defer focus until dialog restoration completes; refill when visible pairs are exhausted but
+   * total remains beyond the server limit.
    */
   function removePair(key: string) {
     decidedDuringFetch.current.add(key);
@@ -211,7 +192,6 @@ export default function DuplicatesPage() {
       (error: unknown) => {
         settle();
         if (error instanceof RequestFailed && error.status === 404) {
-          // 確かめている間に片方がスキャンで消えた（Edge Case）。
           toast(t.versions.duplicates.gone);
           load();
           return;
@@ -221,7 +201,6 @@ export default function DuplicatesPage() {
     );
   }
 
-  // 見せていた組が尽き、上限の外に残る組を取り直している間。
   const refilling = page.kind === "ready" && page.items.length === 0 && page.total > 0;
   const loading = page.kind === "loading" || refilling;
   const count = loading
@@ -237,7 +216,6 @@ export default function DuplicatesPage() {
         <PageHeader
           titleRef={heading}
           title={t.versions.duplicates.title}
-          // 0 組のときは件数を空にし、空の状態の題が件数の代わりになる。
           count={
             <span role="status" aria-live="polite">
               {empty ? "" : count}
@@ -291,7 +269,7 @@ export default function DuplicatesPage() {
         </ul>
       )}
 
-      {/* 開いている窓の組が取り直しで消えても窓は閉じない。「Bundle」の 404 で伝える。 */}
+      {/* Keep an open pair dialog even if refresh removes the pair; Bundle's 404 reports the conflict. */}
       {bundling !== null && (
         <BundleDialog
           videoIds={pairIds(bundling)}
@@ -326,7 +304,7 @@ function PairRow({
     <li className="flex flex-col gap-3 p-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-xs text-muted-foreground">{t.versions.duplicates.reason}</p>
-        {/* 判断が先、動画の中身は後。DOM の順もこの順にする。 */}
+        {/* Place decisions before video details in DOM order too. */}
         <div className="ml-auto flex gap-2">
           <Button
             ref={differentRef}
@@ -359,13 +337,9 @@ function PairRow({
   );
 }
 
-/**
- * CandidateVideo は組の 1 本である。サムネイルと、題名・違い・置き場所の 3 行を並べ、全体を
- * 再生画面へのリンクにする。2 本のどちらも強調しない。
- */
+/** Give both videos equal visual emphasis. */
 function CandidateVideo({ video }: { video: Video }) {
   const details = versionDetails(video);
-  // 置き場所は 3 行目に分ける。2 行目は解像度・コンテナ・コーデック・サイズだけ。
   const specs = { specs: details.specs, place: "" };
   const absolute = video.location?.path ?? details.place;
   return (
@@ -385,7 +359,7 @@ function CandidateVideo({ video }: { video: Video }) {
         </span>
         <VersionDetailsLine details={specs} title={versionDetailsText(specs, " · ")} />
         {details.place !== "" && (
-          // 末尾（ファイルに近い側）を優先して残す。
+          // Preserve the path suffix nearest the file.
           <span
             dir="rtl"
             className="truncate text-left text-xs text-muted-foreground"

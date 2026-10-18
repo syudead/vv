@@ -19,7 +19,6 @@ import {
 setUpTagsPageServer();
 
 describe("TagsPage 却下した名前のページ", () => {
-  /** 見張っている番兵（IntersectionObserver）。窓の中身を末尾までスクロールしたことにする。 */
   const observers = new Set<{
     callback: IntersectionObserverCallback;
     target: Element | null;
@@ -42,9 +41,7 @@ describe("TagsPage 却下した名前のページ", () => {
     });
   }
 
-  // 100〜250 行を描き、1 行ずつ外したり足したりするテストは、カバレッジを取る CI の
-  // 2 コアの実行で 5 秒の既定を超えることがある（手元では 1〜2 秒）。中身を確かめる重さ
-  // なので、それらのテストだけ上限を延ばす。
+  // Large rendered-row cases need extra time under two-core CI coverage.
   const heavyTimeout = 15_000;
 
   const names = Array.from(
@@ -56,16 +53,11 @@ describe("TagsPage 却下した名前のページ", () => {
     return screen.getByTitle(name).closest("[data-tag-id]")!;
   }
 
-  /**
-   * rows は並びの行である。役割での検索（getAllByRole("row")）は 100〜250 行で 1 回
-   * 0.2 秒ほどかかり、waitFor が繰り返すと CI の遅い走りで上限に届く。行が役割 row で
-   * あることは最初のテストが役割で確かめる。
-   */
+  /** Avoid repeated global role queries across hundreds of rows; the first case verifies row semantics. */
   function rows(list: HTMLElement): HTMLElement[] {
     return [...list.querySelectorAll<HTMLElement>("tbody > tr")];
   }
 
-  /** allowButton はその名前の行の「Allow again」である。行の中だけを役割で探す。 */
   function allowButton(list: HTMLElement, name: string): HTMLElement {
     return within(within(list).getByTitle(name)).getByRole("button", {
       name: `Allow "${name}" again`,
@@ -103,7 +95,6 @@ describe("TagsPage 却下した名前のページ", () => {
 
   const openRejected = openRejectedTab;
 
-  /** backToTags は「Tags」のタブへ戻り、行が描かれるのを待つ。 */
   async function backToTags(user: ReturnType<typeof userEvent.setup>) {
     await user.click(tagsTab());
     await screen.findByTitle("Alpha");
@@ -141,14 +132,12 @@ describe("TagsPage 却下した名前のページ", () => {
       expect(server.rejectedGetRequests[1]?.get("limit")).toBe("100");
       expect(list.getAttribute("aria-busy")).toBeNull();
 
-      // 足した行を描いたあと、番兵を見張り直す effect が走るまでは、送っても続きを読まない。
-      // 見張り直すまで送り直す（読み込み中は画面が重ねて送らない）。
+      // Wait until the effect reobserves the sentinel after rendering the new page.
       await waitFor(() => {
         scrollRejectedToEnd();
         expect(rows(list)).toHaveLength(250);
       });
       expect(within(list).getByTitle("Name249")).toBeDefined();
-      // 末尾まで読んだら、もう番兵は見張らない。
       expect(observers.size).toBe(0);
       const requests = server.rejectedGetRequests.length;
 
@@ -232,7 +221,6 @@ describe("TagsPage 却下した名前のページ", () => {
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toBe("Couldn't load more rejected namesRetry");
     expect(rows(list)).toHaveLength(100);
-    // 失敗の間は番兵で読み直さない。
     expect(observers.size).toBe(0);
 
     server.failRejectedMoreGets = false;
@@ -257,8 +245,7 @@ describe("TagsPage 却下した名前のページ", () => {
       expect((await screen.findByRole("alert")).textContent).toBe(
         "Couldn't load more rejected namesRetry",
       );
-      // 100 回の押下を 1 つの act にまとめる。押すたびに 100 行を描き直す（送信中の印）
-      // と O(n²) になり、どの押下も応答を待たずに続けて押すので、その間の描画は誰も見ない。
+      // Batch clicks in one act to avoid quadratic rerenders of intermediate states nobody observes.
       act(() => {
         for (const name of names.slice(0, 100)) {
           fireEvent.click(within(list).getByTitle(name).querySelector("button")!);
@@ -284,8 +271,7 @@ describe("TagsPage 却下した名前のページ", () => {
       await screen.findByTitle("Alpha");
       const list = await openRejected(user);
 
-      // 100 回の押下を 1 つの act にまとめる。押すたびに 100 行を描き直す（送信中の印）
-      // と O(n²) になり、どの押下も応答を待たずに続けて押すので、その間の描画は誰も見ない。
+      // Batch clicks in one act to avoid quadratic rerenders of intermediate states nobody observes.
       act(() => {
         for (const name of names.slice(0, 100)) {
           fireEvent.click(within(list).getByTitle(name).querySelector("button")!);
@@ -308,7 +294,6 @@ describe("TagsPage 却下した名前のページ", () => {
     const list = await openRejected(user);
     await backToTags(user);
 
-    // 却下で先頭のページの取り直しが始まり、その応答は止まる。
     hold.rejectedGets = true;
     await user.click(within(rowOf("Beta")).getByRole("button", { name: "More actions" }));
     await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
@@ -318,15 +303,13 @@ describe("TagsPage 却下した名前のページ", () => {
 
     const entry = rejectedTab();
     const reopened = await openRejected(user);
-    // 取り直しの間の通知は無視される。
     scrollRejectedToEnd();
     expect(
       server.rejectedGetRequests.filter((params) => params.has("cursor")),
     ).toHaveLength(0);
     expect(list.isConnected).toBe(false);
 
-    // 取り直しの応答も 100 件で、件数は変わらない。番兵は見えたままなので、今の
-    // 見張りにはもう通知が来ない。見張り直したときの最初の通知だけで続きを読む。
+    // Unchanged row counts leave the visible sentinel without another event unless it is reobserved.
     const watching = new Set(observers);
     act(() => rejectedGetReleases.forEach((resolve) => resolve()));
     await waitFor(() => expect(entry.textContent).toContain("251"));
@@ -350,7 +333,6 @@ describe("TagsPage 却下した名前のページ", () => {
       await waitFor(() => expect(rows(list)).toHaveLength(200));
       await backToTags(user);
 
-      // 却下で先頭のページの取り直しが始まり、その応答（取り外しの前の 251 件）は止まる。
       hold.rejectedGets = true;
       await user.click(
         within(rowOf("Beta")).getByRole("button", { name: "More actions" }),
@@ -360,14 +342,12 @@ describe("TagsPage 却下した名前のページ", () => {
       await waitFor(() => expect(rejectedGetReleases).toHaveLength(1));
       hold.rejectedGets = false;
 
-      // 古い続きに残る名前を外す。DELETE の応答も止める。
       const reopened = await openRejected(user);
       hold.rejectedDeletes = true;
       await user.click(allowButton(reopened, "Name150"));
       await waitFor(() => expect(rejectedDeleteReleases).toHaveLength(1));
       hold.rejectedDeletes = false;
 
-      // 取り直しの応答が DELETE の応答より先に届く。
       act(() => rejectedGetReleases.forEach((resolve) => resolve()));
       await waitFor(() => expect(entry.textContent).toContain("251"));
       const before = server.rejectedGetRequests.length;

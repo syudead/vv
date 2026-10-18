@@ -8,9 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ffprobe を起動せずに解析部分だけを検証する。外部プロセスに依存しない形で
-// 「JSON からどの値を取り出すか」を固定しておくと、ffprobe の出力が変わった
-// ときに壊れ方が分かりやすい。
+// Parse fixtures without ffprobe so output-schema changes have focused failures.
 func TestParseProbeOutput(t *testing.T) {
 	const output = `{
 	  "streams": [
@@ -34,7 +32,6 @@ func TestParseProbeOutput(t *testing.T) {
 	if got.FormatName != "mov,mp4,m4a,3gp,3g2,mj2" {
 		t.Errorf("FormatName = %q", got.FormatName)
 	}
-	// 添付画像を飛ばし、最初の非添付映像を本編として採る。
 	if got.VideoCodec != "h264" {
 		t.Errorf("VideoCodec = %q, want h264", got.VideoCodec)
 	}
@@ -64,10 +61,8 @@ func TestParseProbeOutputDoesNotTreatAttachedPictureAsVideo(t *testing.T) {
 	}
 }
 
-// 索引のコーデックは codec_name が空の stream を飛ばして次の同種の stream を採る。
-// 名前の無い先頭の音声のために後ろの ac3 を見落とすと、再生できない動画を
-// 直接再生できると判定してしまう。ライブ変換用の値は
-// 最初の非添付映像・最初の音声のままである。
+// Skip unnamed index codecs so later unsupported AC3 is not overlooked; transcoding still uses the
+// first audio stream.
 func TestParseProbeOutputSkipsStreamsWithoutCodecName(t *testing.T) {
 	const output = `{
 	  "streams": [
@@ -97,7 +92,6 @@ func TestParseProbeOutputSkipsStreamsWithoutCodecName(t *testing.T) {
 	}
 }
 
-// ffprobe の前後でファイルの印が変わったら、ライブ変換用の解析情報もメディア情報も持たせない。
 func TestStampProbeDropsTranscodeWhenFileChanged(t *testing.T) {
 	probe := domain.Probe{Transcode: &domain.TranscodeProbe{}, Media: &domain.MediaInfo{}, Keyframes: &domain.KeyframeProbe{}}
 	before := domain.FileStamp{SizeBytes: 10, ModTimeNs: 1}
@@ -112,7 +106,6 @@ func TestStampProbeDropsTranscodeWhenFileChanged(t *testing.T) {
 	}
 }
 
-// 回転の印が付いた動画は、表示される向きの解像度を記録する。
 func TestParseProbeOutputAppliesRotation(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -144,7 +137,6 @@ func TestParseProbeOutputAppliesRotation(t *testing.T) {
 	}
 }
 
-// 表示の縦横比は、画素の縦横比（SAR）と回転を反映する。
 func TestParseProbeOutputDisplayAspectRatio(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -174,7 +166,6 @@ func TestParseProbeOutputDisplayAspectRatio(t *testing.T) {
 	}
 }
 
-// 音声が無い動画も取り込める。音声コーデックが空になるだけで、失敗ではない。
 func TestParseProbeOutputWithoutAudio(t *testing.T) {
 	const output = `{
 	  "streams": [{"codec_type": "video", "codec_name": "vp9", "width": 640, "height": 360}],
@@ -193,8 +184,6 @@ func TestParseProbeOutputWithoutAudio(t *testing.T) {
 	}
 }
 
-// 解析できない出力は、その1件の失敗として返す。取り込み全体は止めない
-// ので、呼び出し側は次のファイルへ進める。
 func TestParseProbeOutputRejectsBrokenInput(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -217,8 +206,7 @@ func TestParseProbeOutputRejectsBrokenInput(t *testing.T) {
 	}
 }
 
-// 組み立てる引数が1回分であること。値ごとに複数回起動すると、
-// プロセス起動が支配的なコストなので取り込みが遅くなる。
+// Single-process probing avoids repeated process startup overhead.
 func TestProbeArgs(t *testing.T) {
 	got := probeArgs("/media/夏休みの旅行.mp4")
 	joined := strings.Join(got, " ")
@@ -231,8 +219,7 @@ func TestProbeArgs(t *testing.T) {
 		}
 	}
 
-	// パスは -- の後ろに置く。"-" で始まる名前のファイルを選択肢と
-	// 取り違えないため。
+	// The -- separator protects dash-prefixed filenames.
 	if got[len(got)-2] != "--" {
 		t.Errorf("パスの直前が -- ではない: %v", got)
 	}
@@ -241,8 +228,7 @@ func TestProbeArgs(t *testing.T) {
 	}
 }
 
-// タイムアウトは 30 秒。壊れたファイルで ffprobe が戻らない場合に取り込み
-// 全体を止めないための上限である。
+// Bound corrupt-file probing to thirty seconds so the ingestion queue can advance.
 func TestProbeTimeout(t *testing.T) {
 	if probeTimeout.Seconds() != 30 {
 		t.Errorf("probeTimeout = %v, want 30s", probeTimeout)

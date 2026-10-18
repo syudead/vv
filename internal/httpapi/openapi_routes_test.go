@@ -12,16 +12,11 @@ import (
 	"testing"
 )
 
-// requiresJSONBody は本文を必須にする経路を持っている。その集合の正本は
-// api/openapi.yaml で requestBody を持つ操作であり、router.go の実装はその写しで
-// ある。写しがずれると、本文検証が本来かかるべき経路から外れたり、かからない
-// はずの経路にかかったりする（PR #81）。
-//
-// ここでは openapi.yaml 側を読み直して突き合わせ、片側だけ変えた状態を落とす。
+// Compare requiresJSONBody with OpenAPI requestBody declarations so routing and validation cannot drift independently.
 func TestRequiresJSONBodyMatchesOpenAPI(t *testing.T) {
 	withBody, withoutBody := openAPIOperations(t)
 
-	// 走査が何も拾えないまま成功すると、検査が黙って空振りする。
+	// Reject an empty parse to prevent a vacuous check.
 	if len(withBody) == 0 || len(withoutBody) == 0 {
 		t.Fatalf("openapi.yaml から操作を読み取れていない (本文あり %d / 本文なし %d)", len(withBody), len(withoutBody))
 	}
@@ -32,9 +27,7 @@ func TestRequiresJSONBodyMatchesOpenAPI(t *testing.T) {
 				"router.go の経路判定に足すこと", op.method, op.path)
 		}
 	}
-	// 宣言された操作だけを見ると、openapi に無い method と経路の組を router.go が
-	// 主張していても素通りする。経路ごとに全 method を当てて、本文を持つと宣言された
-	// 組以外はすべて false であることを確かめる。
+	// Check every method, not just declared operations, to detect extra router claims.
 	required := map[operation]bool{}
 	for _, op := range withBody {
 		required[op] = true
@@ -58,7 +51,6 @@ type operation struct {
 	path   string
 }
 
-// request は openapi の経路テンプレートを具体的な要求にする。
 func operationRequest(op operation) *http.Request {
 	concrete := regexp.MustCompile(`\{[^}]+\}`).ReplaceAllString(op.path, "1")
 	return httptest.NewRequest(op.method, concrete, nil)
@@ -75,17 +67,13 @@ var (
 	}
 )
 
-// openAPIOperations は api/openapi.yaml の操作を、JSON の本文を持つものとそれ以外に
-// 分けて返す。multipart/form-data の本文（runThumbnailEdit）は JSON の本文の検証に
-// かけないので、本文を持たないものの側に入れる。YAML ライブラリを足さずに済ませるため、この文書の固定した字下げを
-// 読む。字下げが変わって何も拾えなくなった場合は、呼び出し側が失敗させる。
+// Parse fixed YAML indentation without another dependency; multipart operations do not require JSON, and callers reject empty results after format changes.
 func openAPIOperations(t *testing.T) (withBody, withoutBody []operation) {
 	t.Helper()
 	return openAPIOperationsIn(t, "openapi.yaml", "")
 }
 
-// openAPIOperationsIn は api/ の下の文書 file の操作を、経路の前に base を付けて返す。
-// 外部連携 API（external-v1.yaml）の経路は servers の /api/v1 からの相対で書く。
+// External paths are relative to servers' /api/v1 base.
 func openAPIOperationsIn(t *testing.T, file, base string) (withBody, withoutBody []operation) {
 	t.Helper()
 
@@ -139,10 +127,7 @@ func repositoryRoot(t *testing.T) string {
 	return root
 }
 
-// TestErrorResponsesAreNotCached は API のエラー応答に no-store が付くことを
-// 確かめる。付け忘れると、状態が変わったあとも古い失敗が返りうる。PR #74 は
-// directory 一覧の 404 についてこれを指摘したが、writeError を通る全経路が
-// 同じ状態だったので、経路ごとではなく writeError 側で付けている。
+// Central error no-store behavior prevents stale failures after state changes.
 func TestErrorResponsesAreNotCached(t *testing.T) {
 	handler := newTestServer(t, Options{})
 
@@ -178,10 +163,7 @@ func TestErrorResponsesAreNotCached(t *testing.T) {
 	}
 }
 
-// TestAccessClassificationMatchesOpenAPISecurity は、境界の3つの扱い（auth.go の
-// classifyRequest）が api/openapi.yaml の各操作の security と一致することを確かめる。`security: []` は誰でも、
-// `[{sessionCookie: []}, {}]` はゲストも、宣言が無いものは全体の既定（所有者だけ）である。
-// 宣言の無い method と経路の組が「所有者だけ」に倒れることも確かめる。
+// Security maps empty declarations to public, session-or-empty alternatives to guest-capable, and absent overrides to owner-only; undeclared methods must also fail closed.
 func TestAccessClassificationMatchesOpenAPISecurity(t *testing.T) {
 	declared := openAPISecurity(t)
 	if len(declared) == 0 {
@@ -207,13 +189,12 @@ func TestAccessClassificationMatchesOpenAPISecurity(t *testing.T) {
 			}
 		}
 	}
-	// どれかの扱いが1つも拾えないまま成功すると、検査が黙って空振りする。
+	// Require all access classes to avoid vacuous parsing success.
 	for _, class := range []access{accessPublic, accessGuest, accessOwner} {
 		if counts[class] == 0 {
 			t.Errorf("openapi.yaml から %s の操作を1つも読み取れていない", class)
 		}
 	}
-	// accessRoutes に openapi.yaml に無い模様が残っていないこと。
 	for pattern, class := range accessRoutes {
 		method, route, _ := strings.Cut(pattern, " ")
 		if class == accessOwner {
@@ -231,8 +212,7 @@ var (
 	openAPISecurityItem  = regexp.MustCompile(`^        - (.+?)\s*$`)
 )
 
-// openAPISecurity は api/openapi.yaml の各操作の扱いを、操作ごとの security から読む。
-// 字下げの固定した書き方を前提にするのは openAPIOperations と同じである。
+// Like openAPIOperations, this parser assumes fixed indentation.
 func openAPISecurity(t *testing.T) map[operation]access {
 	t.Helper()
 
@@ -288,16 +268,12 @@ func openAPISecurity(t *testing.T) map[operation]access {
 	return result
 }
 
-// TestExternalAPIOperationsAreBearer は、外部連携 API（api/external-v1.yaml）のすべての操作が
-// bearerAuth で、境界がそれを Bearer の扱いに分類することを確かめる。文書の基底が境界の externalAPIBase と同じで、操作ごとの security の上書きが
-// 無いことも確かめる。宣言の無い method も Bearer の扱いである（/api/v1 の下はすべて Bearer）。
-// 本文を取る操作と requiresJSONBody の一致も、画面の API と同じく確かめる。
 func TestExternalAPIOperationsAreBearer(t *testing.T) {
 	body, err := os.ReadFile(filepath.Join(repositoryRoot(t), "api", "external-v1.yaml"))
 	if err != nil {
 		t.Fatalf("api/external-v1.yaml を読めない: %v", err)
 	}
-	// core.autocrlf で CRLF に変わった作業ツリーでも、LF の文書として確かめる。
+	// Normalize CRLF worktrees to LF for schema checks.
 	text := strings.ReplaceAll(string(body), "\r\n", "\n")
 	if !strings.Contains(text, "\nservers:\n  - url: "+externalAPIBase+"\n") {
 		t.Errorf("external-v1.yaml の servers が %s ではない", externalAPIBase)
@@ -335,7 +311,6 @@ func TestExternalAPIOperationsAreBearer(t *testing.T) {
 	}
 }
 
-// Bearer の扱いの経路（/api/v1 の下と /mcp）と、そうでない経路の分類を確かめる。
 func TestClassifyBearerPaths(t *testing.T) {
 	cases := []struct {
 		target string
@@ -348,10 +323,8 @@ func TestClassifyBearerPaths(t *testing.T) {
 		{"/api/v1/unknown/route", accessBearer, true},
 		{"//api/./v1/tags", accessBearer, true},
 		{"/mcp", accessBearer, false},
-		// 符号化した区切りで段が食い違う要求は、今までの規則のまま所有者だけに倒す。
 		{"/api/v1%2Ftags", accessOwner, true},
 		{"/api/v1/x%2F..%2F..%2Fvideos", accessOwner, true},
-		// 似た名前は Bearer ではない。
 		{"/api/v10/tags", accessOwner, true},
 		{"/api/videos", accessGuest, true},
 		{"/mcpx", accessPublic, false},
@@ -364,8 +337,6 @@ func TestClassifyBearerPaths(t *testing.T) {
 	}
 }
 
-// /api/tags/rejected-names は /api/tags/{id} と字面の段で区別される。GET と DELETE の
-// この経路が {id} の操作（タグの削除など）に取られないことを確かめる
 func TestRejectedTagNamesRouteIsNotTagID(t *testing.T) {
 	fake := &fakeTags{rejectedNames: []string{"Blocked"}}
 	handler := newTestServer(t, Options{Tags: fake})
@@ -374,7 +345,6 @@ func TestRejectedTagNamesRouteIsNotTagID(t *testing.T) {
 	if rec.Code != http.StatusOK || fake.operation != "list-rejected" {
 		t.Fatalf("GET: status = %d operation = %q: %s", rec.Code, fake.operation, rec.Body)
 	}
-	// パラメータが無ければ先頭から 100 件まで。
 	if fake.lastCursor != "" || fake.lastLimit != 100 {
 		t.Errorf("GET: cursor = %q limit = %d, want 空と 100", fake.lastCursor, fake.lastLimit)
 	}
@@ -385,7 +355,6 @@ func TestRejectedTagNamesRouteIsNotTagID(t *testing.T) {
 		t.Fatalf("DELETE: status = %d operation = %q name = %q: %s", rec.Code, fake.operation, fake.lastName, rec.Body)
 	}
 
-	// name が無ければ 400 で、タグの削除にも却下した名前の操作にも届かない。
 	fake.operation = ""
 	rec = do(t, handler, http.MethodDelete, "/api/tags/rejected-names")
 	if rec.Code != http.StatusBadRequest || fake.operation != "" {
@@ -393,8 +362,6 @@ func TestRejectedTagNamesRouteIsNotTagID(t *testing.T) {
 	}
 }
 
-// /api/tags/batch と /api/tags/impact は /api/tags/{id} と字面の段で区別される。どちらの POST も
-// {id} の操作に取られず、それぞれの経路に届くことを確かめる
 func TestTagBatchRoutesAreNotTagID(t *testing.T) {
 	fake := &fakeTags{}
 	handler := newTestServer(t, Options{Tags: fake})
@@ -410,7 +377,6 @@ func TestTagBatchRoutesAreNotTagID(t *testing.T) {
 		t.Fatalf("POST /api/tags/impact: status = %d operation = %q: %s", rec.Code, fake.operation, rec.Body)
 	}
 
-	// {id} の経路（PATCH・DELETE）として解釈されない。
 	for _, target := range []string{"/api/tags/batch", "/api/tags/impact"} {
 		fake.operation = ""
 		rec = do(t, handler, http.MethodDelete, target)

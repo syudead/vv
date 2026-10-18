@@ -1,18 +1,16 @@
 -- +goose Up
--- 「同じ動画かもしれない」候補の自動の判定。
--- 候補は索引なので、作り直すと判定も null と 0 に戻り、もう一度判定する。
--- judgement は null（待ち）か running・undecided・failed・no_connection。
+-- Candidate judgements are rebuildable; rebuilding resets state to waiting and attempts to zero.
 alter table video_version_candidates add column judgement text;
--- これまでの失敗の数。取り出しと起動時の回復を越えて残す。
+-- Failure count survives claims and startup recovery.
 alter table video_version_candidates add column attempts integer not null default 0;
--- failed の行を再び取り出せる時刻（Unix 秒）。それ以外は null。
+-- Earliest retry time in Unix seconds for failed rows; otherwise NULL.
 alter table video_version_candidates add column retry_at integer;
--- failed の行の提供元のメッセージ。
+-- Provider failure detail.
 alter table video_version_candidates add column judgement_error text;
--- undecided の行のモデルの答え。衝突で決められなかったときは null。
+-- Model probability for undecided results; rule conflicts use NULL.
 alter table video_version_candidates add column probability real;
 
--- 集まりから外した組。利用者データで、自動では束ねない。key_a < key_b に並べて 1 行。
+-- Persistent sorted unbundled pairs must not be automatically bundled again.
 create table video_version_unbundles (
     key_a      text    not null,
     key_b      text    not null,

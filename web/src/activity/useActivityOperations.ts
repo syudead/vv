@@ -4,19 +4,14 @@ import { type ActivityEntry, retryActivity, undoActivity } from "../api/activity
 import { errorText, t } from "../i18n";
 import { useToast } from "../ui/Toast";
 
-// アクティビティのカードのやり直しと取り消し。
-
 export interface ActivityOperations {
   retry: (entry: ActivityEntry) => Promise<void>;
   undo: (entry: ActivityEntry, tagId?: number) => Promise<void>;
 }
 
 /**
- * useActivityOperations はカードのやり直しと取り消しを送る口を返す。どちらも確かめずに送り、
- * 成功したら一覧を読み直す（サーバーの `activity` の知らせより先に見せる）。取り消しの後は
- * 結果に応じた通知を、失敗ではカードをそのままに理由の通知を出す。返す Promise は拒否せず、
- * 成功したときは読み直しが終わってから解決する。それまでカードは古い `retryRun`・`undoable`
- * のままなので、カードはボタンを止めたままにして同じ操作を二度送らせない。
+ * Resolve successful operations only after refreshing the list, preventing duplicate actions on
+ * stale cards. Report failures without rejecting the promise.
  */
 export function useActivityOperations(refresh: () => Promise<void>): ActivityOperations {
   const toast = useToast();

@@ -1,8 +1,6 @@
 package store
 
-// 任意のグループ。この段では、フォルダの索引を作り直すたびに
-// 自動グループをフォルダとそろえる同期（syncFolderGroups）と、同じパスの引き継ぎと束ねで項目と
-// 除外を付け替える rekeyGroupItems を持つ。どちらも呼び出し側の書き込み取引の中で行う。
+// Folder synchronization and succession/bundle rekeying run inside the caller's write transaction.
 
 import (
 	"context"
@@ -17,10 +15,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// naturalSortKeyFunction は domain.NaturalSortKey を SQLite から呼ぶ名前である。移行
-// 00043_groups.sql が、100 文字に切ったフォルダグループの名前の title_key を作るのに使う
-// （SQL では照合形を作れない）。登録の仕方は vv_shuffle_key（listing.go）と同じで、select の
-// 中でしか使わず、スキーマには残らない。
+// Migration 00043 uses the Go natural-sort function for truncated folder names; it appears only in SELECTs, never persisted schema.
 const naturalSortKeyFunction = "vv_natural_sort_key"
 
 func init() {
@@ -40,9 +35,7 @@ func init() {
 	}
 }
 
-// syncFolderGroups は、作り直したフォルダの索引 index と例外 overrides から
-// domain.PlanFolderGroupSync で変更を決め、自動グループに書く。変わったグループとその祖先の id を小さい順に返す。呼び出し側は確定の後に
-// domain.GroupsChanged で知らせる（groupsChangedEvents）。
+// Use the domain sync plan and return changed groups with ancestors; the caller publishes after commit.
 func syncFolderGroups(ctx context.Context, tx *sql.Tx, index domain.FolderIndex, overrides map[string]domain.FolderGroupMode) ([]int64, error) {
 	folders, err := folderSyncFolders(ctx, tx, index)
 	if err != nil {
@@ -74,8 +67,7 @@ func syncFolderGroups(ctx context.Context, tx *sql.Tx, index domain.FolderIndex,
 	return groupsWithAncestors(ctx, tx, changed)
 }
 
-// folderSyncFolders は索引のフォルダの直下の動画を、利用者データの鍵（userKeyExpr）へ引き直す。
-// 空の content_key の動画は除き、同じ鍵は最初の 1 つだけ残す。
+// Exclude unidentified content and deduplicate user-data keys in first occurrence order.
 func folderSyncFolders(ctx context.Context, tx *sql.Tx, index domain.FolderIndex) ([]domain.FolderSyncFolder, error) {
 	var ids []int64
 	for _, folder := range index.Folders {
@@ -102,9 +94,7 @@ func folderSyncFolders(ctx context.Context, tx *sql.Tx, index domain.FolderIndex
 	return folders, nil
 }
 
-// userKeysByVideoID は動画の id ごとの利用者データの鍵を返す。無い id と空の content_key の
-// 動画は入らない。registeredOnly なら、いまライブラリにある動画（registeredVideoCondition、
-// userKeysForVideoIDs と同じ条件）だけを引く。
+// Exclude missing IDs and unidentified content; registeredOnly also requires a registered location.
 func userKeysByVideoID(ctx context.Context, tx *sql.Tx, ids []int64, registeredOnly bool) (map[int64]string, error) {
 	keys := make(map[int64]string, len(ids))
 	if len(ids) == 0 {
@@ -138,8 +128,6 @@ func userKeysByVideoID(ctx context.Context, tx *sql.Tx, ids []int64, registeredO
 	return keys, nil
 }
 
-// autoGroups は自動グループ（origin_folder を持つグループ）を、その動画の項目と除外とともに
-// id の順に読む。
 func autoGroups(ctx context.Context, tx *sql.Tx) ([]domain.AutoGroup, error) {
 	rows, err := tx.QueryContext(ctx, `select id, origin_folder from groups where origin_folder is not null order by id`)
 	if err != nil {
@@ -212,7 +200,6 @@ func readAutoGroupExclusions(ctx context.Context, tx *sql.Tx, groups []domain.Au
 	return nil
 }
 
-// createFolderGroup はフォルダの自動グループを作り、その id を返す。
 func createFolderGroup(ctx context.Context, tx *sql.Tx, create domain.FolderGroupCreate, now int64) (int64, error) {
 	result, err := tx.ExecContext(ctx, `insert into groups (name, title_key, origin_folder, created_at, updated_at)
 		values (?, ?, ?, ?, ?)`, create.Name, domain.NaturalSortKey(create.Name), create.OriginFolder, now, now)
@@ -226,8 +213,6 @@ func createFolderGroup(ctx context.Context, tx *sql.Tx, create domain.FolderGrou
 	return id, appendFolderItems(ctx, tx, id, 0, create.ContentKeys)
 }
 
-// applyFolderGroupChange は自動グループ1つから直下でなくなったフォルダ由来の項目を外して詰め
-// 直し、新しい直下の動画を末尾に足して、更新日時を進める。
 func applyFolderGroupChange(ctx context.Context, tx *sql.Tx, change domain.FolderGroupChange, now int64) error {
 	if len(change.Remove) > 0 {
 		encoded, err := json.Marshal(change.Remove)
@@ -252,7 +237,6 @@ func applyFolderGroupChange(ctx context.Context, tx *sql.Tx, change domain.Folde
 	return touchGroups(ctx, tx, []int64{change.GroupID}, now)
 }
 
-// appendFolderItems は鍵 keys の動画を、位置 start から順にフォルダ由来の項目として足す。
 func appendFolderItems(ctx context.Context, tx *sql.Tx, groupID int64, start int, keys []string) error {
 	for i, key := range keys {
 		if _, err := tx.ExecContext(ctx, `insert into group_items (group_id, content_key, position, from_folder)
@@ -263,7 +247,7 @@ func appendFolderItems(ctx context.Context, tx *sql.Tx, groupID int64, start int
 	return nil
 }
 
-// touchGroups はグループ ids の更新日時を now に、前の値より必ず後へ進める。
+// Group edit timestamps always advance beyond their previous value.
 func touchGroups(ctx context.Context, tx *sql.Tx, ids []int64, now int64) error {
 	for _, id := range ids {
 		if _, err := tx.ExecContext(ctx, `update groups set updated_at = max(?, updated_at + 1) where id = ?`, now, id); err != nil {
@@ -273,8 +257,7 @@ func touchGroups(ctx context.Context, tx *sql.Tx, ids []int64, now int64) error 
 	return nil
 }
 
-// groupsWithAncestors はグループ ids とその祖先（子グループの項目をたどった親）の id を、小さい
-// 順に重複なく返す。親はその子の名前と子孫の本数を見せるので、子が変われば親も変わる（R-13）。
+// Include ancestors because they display descendant names and counts.
 func groupsWithAncestors(ctx context.Context, tx *sql.Tx, ids []int64) ([]int64, error) {
 	if len(ids) == 0 {
 		return nil, nil
@@ -294,7 +277,6 @@ func groupsWithAncestors(ctx context.Context, tx *sql.Tx, ids []int64) ([]int64,
 	return out, nil
 }
 
-// groupsChangedEvents は変わったグループの id を、確定後に発行する変化にする。
 func groupsChangedEvents(ids []int64) []domain.Event {
 	if len(ids) == 0 {
 		return nil
@@ -302,11 +284,7 @@ func groupsChangedEvents(ids []int64) []domain.Event {
 	return []domain.Event{domain.GroupsChanged{GroupIDs: ids}}
 }
 
-// rekeyGroupItems は利用者データの鍵 from の動画の項目と除外を鍵 to へ付け替える。行は写さずに移す。1 つのグループに鍵 to の
-// 項目が 2 つになるときは位置の大きい方を消してそのグループを詰め直し、どちらかが手で足した
-// 項目（from_folder = 0）なら残す項目も 0 にする。付け替えの後で鍵 to の項目を持つグループの
-// 鍵 to の除外は、項目が見えているので消す。変えたグループとその祖先の id を返し、呼び出し側が
-// 確定後に GroupsChanged で知らせる（R-13）。
+// Move keys rather than copying; keep the earliest duplicate as manual if either was manual, compact positions and clear obsolete exclusions.
 func rekeyGroupItems(ctx context.Context, tx *sql.Tx, from, to string) ([]int64, error) {
 	if from == "" || to == "" || from == to {
 		return nil, nil
@@ -349,9 +327,7 @@ func rekeyGroupItems(ctx context.Context, tx *sql.Tx, from, to string) ([]int64,
 	return groupsWithAncestors(ctx, tx, affected)
 }
 
-// rekeyUserItems はプレイリストとグループの項目を、利用者データの鍵 from から to へ付け替え、
-// 変えたグループとその祖先の id を返す。同じパスの引き継ぎと束ねの各経路が、ほかの利用者データを
-// 付け替える取引の中で呼ぶ。
+// Rekey playlists and groups alongside other user data in the caller's transaction.
 func rekeyUserItems(ctx context.Context, tx *sql.Tx, from, to string) ([]int64, error) {
 	if err := rekeyPlaylistItems(ctx, tx, from, to); err != nil {
 		return nil, err

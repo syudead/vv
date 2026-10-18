@@ -13,10 +13,8 @@ type SubtitleTrack = components["schemas"]["MediaInfoSubtitleTrack"];
 type Embedded = components["schemas"]["MediaInfoEmbedded"];
 type Broadcast = components["schemas"]["MediaInfoBroadcast"];
 
-/** trackFoldLimit は、トラックの多いまとまりを畳んだときに出しておくトラックの数である。 */
 const trackFoldLimit = 6;
 
-/** trackSeparator はトラックの項目の部分をつなぐ文字である。 */
 const trackSeparator = " · ";
 
 const audioCodecNames: Record<string, string> = {
@@ -45,19 +43,17 @@ const subtitleCodecNames: Record<string, string> = {
   eia_608: "EIA-608",
 };
 
-/** audioCodecName は音声の `codec_name` を表の名前にする。`pcm_*` は PCM、表に無いものは formatCodec。 */
+/** Normalize pcm_* to PCM; use formatCodec for unknown codecs. */
 export function audioCodecName(codec: string): string {
   const key = codec.toLowerCase();
   if (key.startsWith("pcm_")) return "PCM";
   return audioCodecNames[key] ?? formatCodec(codec);
 }
 
-/** subtitleCodecName は字幕の `codec_name` を表の名前にする。表に無いものは formatCodec。 */
 export function subtitleCodecName(codec: string): string {
   return subtitleCodecNames[codec.toLowerCase()] ?? formatCodec(codec);
 }
 
-/** channelLayoutName は音声の並びを `Mono`・`Stereo`・`5.1`・`{n} ch` のように書く。 */
 function channelLayoutName(track: AudioTrack): string | undefined {
   const m = t.player.mediaInfo;
   const layout = track.channelLayout?.trim();
@@ -79,10 +75,6 @@ function language(code: string | undefined): string | undefined {
   return code === undefined ? undefined : (formatLanguage(code) ?? undefined);
 }
 
-/**
- * audioTrackText は音声トラック 1 本の項目の文字である。番号（2 本以上のとき）、コーデック、
- * 並び、言語の名前、題名、Default の順につなぎ、無い部分は飛ばす。
- */
 export function audioTrackText(track: AudioTrack, number?: number): string {
   const m = t.player.mediaInfo;
   return present([
@@ -95,7 +87,6 @@ export function audioTrackText(track: AudioTrack, number?: number): string {
   ]);
 }
 
-/** subtitleTrackText は字幕トラック 1 本の項目の文字である。Default・Forced・Hearing impaired の順に足す。 */
 export function subtitleTrackText(track: SubtitleTrack, number?: number): string {
   const m = t.player.mediaInfo;
   return present([
@@ -109,7 +100,6 @@ export function subtitleTrackText(track: SubtitleTrack, number?: number): string
   ]);
 }
 
-/** videoItems は Video のまとまりの項目（HDR の種類、コマ数、深さ、ビットレート、…）である。 */
 export function videoItems(video: MediaInfoVideo): string[] {
   const m = t.player.mediaInfo;
   return [
@@ -123,13 +113,8 @@ export function videoItems(video: MediaInfoVideo): string[] {
   ].filter((item): item is UiText => item !== undefined);
 }
 
-/** groupNameClass はまとまりの名前の形（技術情報の行と同じ小さな大文字）である。 */
 const groupNameClass = "text-xs tracking-wider uppercase";
 
-/**
- * Group はまとまり 1 つの行である。ファイルの行と同じ折り返す並びで、先頭に技術情報の行の形の
- * まとまりの名前を置き、その名前で `ul` に名前を付ける。全体を薄い色にする。
- */
 function Group({ name, children }: { name: UiText; children: ReactNode }) {
   const id = useId();
   return (
@@ -158,10 +143,7 @@ function LabelledItem({ label, value }: { label: UiText; value: string | undefin
   );
 }
 
-/**
- * TrackItems はトラックの項目の並びである。7 本以上あれば先頭の 6 本と「+{n} more」を出し、
- * 押すとすべてを出してフォーカスを 7 本目へ移す（作品情報の長いリストと同じ畳み方）。
- */
+/** Show six tracks when collapsed; expanding focuses the seventh. */
 function TrackItems({ texts, label }: { texts: readonly string[]; label: UiText }) {
   const fold = useFold<HTMLLIElement>(texts.length, trackFoldLimit);
   const shown = fold.folded ? texts.slice(0, trackFoldLimit) : texts;
@@ -169,7 +151,7 @@ function TrackItems({ texts, label }: { texts: readonly string[]; label: UiText 
     <>
       {shown.map((text, index) => (
         <li
-          // 同じ文字のトラックもあるので、位置を鍵にする（並びは変わらない）。
+          // Track labels may repeat; their stable order makes indices suitable keys.
           key={index}
           ref={index === trackFoldLimit ? fold.nextRef : undefined}
           tabIndex={index === trackFoldLimit ? -1 : undefined}
@@ -207,7 +189,6 @@ function locationText(location: NonNullable<Embedded["location"]>): string {
     : `${coordinates}${trackSeparator}${m.altitude(location.altitude)}`;
 }
 
-/** embeddedItems は Embedded の行の `label value` の組（値のあるものだけ）である。 */
 function embeddedItems(embedded: Embedded): [UiText, string][] {
   const m = t.player.mediaInfo;
   const items: [UiText, string | undefined][] = [
@@ -228,10 +209,7 @@ function embeddedItems(embedded: Embedded): [UiText, string][] {
   return items.filter((item): item is [UiText, string] => (item[1] ?? "") !== "");
 }
 
-/**
- * EmbeddedGroup は Embedded のまとまりである。行に項目が無く、コメントか説明だけのときは、
- * 空の `ul` を描かず、まとまりの名前を段落の上に見出しの形で置く。
- */
+/** Avoid an empty list when only a comment or description is present. */
 function EmbeddedGroup({ embedded }: { embedded: Embedded }) {
   const m = t.player.mediaInfo;
   const items = embeddedItems(embedded);
@@ -271,11 +249,7 @@ function BroadcastGroup({ broadcast }: { broadcast: Broadcast }) {
   );
 }
 
-/**
- * MediaInfoGroups は情報欄の技術情報の行の下の、動画の追加の情報のまとまりである。Video・Audio・Subtitles・
- * Embedded・Broadcast の順に、項目のあるまとまりだけを出す。`mediaInfo` の無い動画では何も
- * 描かない（情報欄は今までどおり）。チャプターはプレーヤーに渡し、ここには出さない。
- */
+/** Render populated media groups; chapters belong to the player. */
 export default function MediaInfoGroups({ info }: { info: MediaInfo | undefined }) {
   if (info === undefined) return null;
   const m = t.player.mediaInfo;

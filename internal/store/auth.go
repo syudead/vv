@@ -12,18 +12,16 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// accountID は唯一のアカウントの行の主キーである。表の check (id = 1) と合わせる。
+// Match the singleton table constraint CHECK (id = 1).
 const accountID = 1
 
-// sessionTokenHash はセッション ID を保存する形（SHA-256 の16進）にする。
-// ID そのものは Cookie にだけあり、DB には書かない。DB を読まれても、そのまま
-// 使えるセッション ID は漏れない。
+// Persist only SHA-256 hashes so reading the database does not expose usable session tokens.
 func sessionTokenHash(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
 }
 
-// Account は唯一のアカウントを返す。行が無ければ domain.ErrAccountNotConfigured を返す。
+// Account returns domain.ErrAccountNotConfigured when no account exists.
 func (s *AuthStore) Account(ctx context.Context) (domain.Account, error) {
 	var account domain.Account
 	err := s.sql.QueryRowContext(ctx,
@@ -38,11 +36,7 @@ func (s *AuthStore) Account(ctx context.Context) (domain.Account, error) {
 	return account, nil
 }
 
-// Setup は初回設定である。アカウントの行と最初のセッションを1つの取引で足す。
-// 行が既にあれば主キーの衝突で何も書かず、domain.ErrAccountAlreadyConfigured を返す。
-// 同時に走った初回設定は、書き込みの錠で順に並ぶので一方だけが成立する。
-//
-// username と passwordHash の規則（domain.ValidateUsername など）は呼び出し側が確かめる。
+// Setup creates the account and session atomically; the primary key permits only one concurrent setup to succeed.
 func (s *AuthStore) Setup(
 	ctx context.Context, username, passwordHash, sessionToken string, now time.Time,
 ) error {
@@ -77,25 +71,17 @@ func (s *AuthStore) Setup(
 	return nil
 }
 
-// ChangeUsername はユーザー名を書き換え、版を 1 増やし、セッションと API トークンを全件消す。
-// 行が無ければ domain.ErrAccountNotConfigured を返す。
+// ChangeUsername increments the account version and revokes all sessions and API tokens.
 func (s *AuthStore) ChangeUsername(ctx context.Context, username string, now time.Time) error {
 	return s.changeCredentials(ctx, "username", username, now)
 }
 
-// ChangePassword はパスワードのハッシュを書き換え、版を 1 増やし、セッションと API トークンを
-// 全件消す。
-// 行が無ければ domain.ErrAccountNotConfigured を返す。
+// ChangePassword increments the account version and revokes all sessions and API tokens.
 func (s *AuthStore) ChangePassword(ctx context.Context, passwordHash string, now time.Time) error {
 	return s.changeCredentials(ctx, "password_hash", passwordHash, now)
 }
 
-// changeCredentials は資格情報の列 column を value に書き換える。column は
-// ChangeUsername と ChangePassword が渡す固定の列名だけである。
-//
-// 既存のセッションを無効にするのは版の一致で、sessions の
-// 全件削除は後片付けである。API トークンも同じ取引で全件消し、設定ページの一覧から
-// 使えないトークンを消す。
+// Only fixed column names are accepted; version checks invalidate sessions before cleanup removes their rows.
 func (s *AuthStore) changeCredentials(ctx context.Context, column, value string, now time.Time) error {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -129,12 +115,7 @@ func (s *AuthStore) changeCredentials(ctx context.Context, column, value string,
 	return nil
 }
 
-// AddSession はログインの成功で新しいセッションを足す。同じ取引で期限切れの行を
-// 消し、replaceToken が空でなければその行も消す（有効なセッションの Cookie を持って
-// ログインし直したとき、古い行を残さないため）。
-//
-// accountVersion には、照合に使った domain.Account.Version を読んだ値のまま渡す。
-// 照合と追加の間に資格情報が書き換えられていれば、足した行は版が合わずに無効になる。
+// AddSession uses the account version read during authentication so concurrent credential changes invalidate the new session.
 func (s *AuthStore) AddSession(
 	ctx context.Context, sessionToken string, accountVersion int64, replaceToken string, now time.Time,
 ) error {
@@ -162,8 +143,7 @@ func (s *AuthStore) AddSession(
 	return nil
 }
 
-// insertSession はセッションを1行足す。期限は now から domain.SessionLifetime 後で、
-// 延長しない。
+// Session expiry is fixed at creation and never extended.
 func insertSession(ctx context.Context, tx *sql.Tx, sessionToken string, accountVersion int64, now time.Time) error {
 	created := now.Unix()
 	expires := now.Add(domain.SessionLifetime).Unix()
@@ -176,14 +156,7 @@ func insertSession(ctx context.Context, tx *sql.Tx, sessionToken string, account
 	return nil
 }
 
-// Session は sessionToken のセッションが有効かを確かめ、有効なら期限を返す。
-//
-// 有効なのは、ハッシュが sessions にあり、account の行があり、発行時の版が
-// account.version と一致し、期限が now より後のときだけである。
-// これを1回の問い合わせで確かめ、判定は読むだけで決める。期限切れの行に当たったら
-// その行の削除を試みるが、削除の失敗は判定を変えない。
-//
-// 問い合わせが失敗したときは無効とせず、誤りを返す。
+// Session checks hash, account version and expiry in one query; cleanup failures cannot change validity.
 func (s *AuthStore) Session(ctx context.Context, sessionToken string, now time.Time) (time.Time, bool, error) {
 	hash := sessionTokenHash(sessionToken)
 	var (
@@ -205,8 +178,7 @@ func (s *AuthStore) Session(ctx context.Context, sessionToken string, now time.T
 	}
 
 	if expiresAt <= now.Unix() {
-		// 掃除は判定の副作用にとどめる。失敗しても期限切れの判定は変わらず、
-		// 残った行は次のログインか起動時の掃除で消える。
+		// Best-effort cleanup does not affect the expired verdict; later login or startup can remove the row.
 		_, _ = s.sql.ExecContext(ctx,
 			`delete from sessions where token_hash = ? and expires_at <= ?`, hash, now.Unix())
 		return time.Time{}, false, nil
@@ -217,7 +189,6 @@ func (s *AuthStore) Session(ctx context.Context, sessionToken string, now time.T
 	return time.Unix(expiresAt, 0), true, nil
 }
 
-// DeleteSession はログアウトで sessionToken のセッションを消す。無ければ何もしない。
 func (s *AuthStore) DeleteSession(ctx context.Context, sessionToken string) error {
 	if _, err := s.sql.ExecContext(ctx,
 		`delete from sessions where token_hash = ?`, sessionTokenHash(sessionToken)); err != nil {
@@ -226,8 +197,7 @@ func (s *AuthStore) DeleteSession(ctx context.Context, sessionToken string) erro
 	return nil
 }
 
-// DeleteExpiredSessions は期限が now 以前のセッションを消し、消した件数を返す。
-// 起動時に呼ぶ。
+// DeleteExpiredSessions removes expired sessions at startup and returns their count.
 func (s *AuthStore) DeleteExpiredSessions(ctx context.Context, now time.Time) (int64, error) {
 	res, err := s.sql.ExecContext(ctx, `delete from sessions where expires_at <= ?`, now.Unix())
 	if err != nil {

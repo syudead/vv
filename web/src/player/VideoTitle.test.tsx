@@ -34,7 +34,6 @@ const video: Video = {
 
 const named: Video = { ...video, title: "Summer trip", displayName: "Summer trip" };
 
-/** Harness は呼び出し側（VideoPage）と同じく、保存の応答で動画を差し替える。 */
 function Harness({
   initial,
   owner = true,

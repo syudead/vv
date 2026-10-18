@@ -9,11 +9,8 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 反映で選んだタグの名前。
-
 var titleAndTags = []domain.WorkInfoField{domain.WorkInfoFieldTitle, domain.WorkInfoFieldTags}
 
-// 取得した 3 個のうち 2 個を選んだ反映は、その 2 個だけを付ける。
 func TestApplyWorkInfoFetchAttachesOnlyTheSelectedTags(t *testing.T) {
 	e := newFetchEnv()
 	result := e.fetch(t, "Title", "drama", "comedy", "action")
@@ -30,7 +27,7 @@ func TestApplyWorkInfoFetchAttachesOnlyTheSelectedTags(t *testing.T) {
 	}
 }
 
-// skippedTags は選んだ名前のうち付けなかったものだけを報告する。
+// Report skipped tags only within the selected subset.
 func TestApplyWorkInfoFetchReportsOnlySelectedSkippedTags(t *testing.T) {
 	e := newFetchEnv()
 	e.applier.rejected = []string{"spoiler", "gore"}
@@ -49,8 +46,7 @@ func TestApplyWorkInfoFetchReportsOnlySelectedSkippedTags(t *testing.T) {
 	}
 }
 
-// 使えない選び方は domain.ErrWorkInfoApplyInvalid で、何も書かず結果を残す。tags の無い反映は取得した
-// タグを全部付ける。
+// Invalid selections preserve the result without writes; omitted tags selects every fetched tag.
 func TestApplyWorkInfoFetchRefusesABadTagSelection(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

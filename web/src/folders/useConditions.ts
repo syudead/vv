@@ -17,12 +17,7 @@ import {
 import { useListCriteria } from "../videoList/useListCriteria";
 import { useScrollTopOnChange } from "../videoList/useScrollTopOnChange";
 
-/**
- * useConditions は一覧の条件（検索語・視聴状態・再生可否・お気に入りのみ・並べ替え・seed）を
- * URL から読み書きする口である。ライブラリと同じ `videoList/listCriteria`・
- * `useListCriteria` を使う。端末に保存するのは
- * 並べ替えだけで、フォルダ画面もライブラリと同じ保存値を読み書きする。
- */
+/** Persist only sort order, shared with the library. */
 export function useConditions() {
   const [preferences, setPreferences] = useState(readViewPreferences);
   const { criteria, apply } = useListCriteria(preferences.sort);

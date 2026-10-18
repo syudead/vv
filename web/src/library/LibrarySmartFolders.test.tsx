@@ -14,8 +14,6 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
-// ライブラリの追加日と長さの絞り込みと「Save as smart folder」。
-
 function video(id: number): Video {
   return {
     id,
@@ -77,7 +75,6 @@ function renderAt(initial: string, audience: Audience = "owner") {
 }
 
 const fetchMock = vi.fn<typeof fetch>();
-/** POST /api/smart-folders に送った本文。 */
 let created: unknown[] = [];
 
 function install() {
@@ -116,7 +113,6 @@ function requests(pathname: string): URL[] {
     .filter((url) => url.pathname === pathname);
 }
 
-/** location は今の URL の問い合わせ部分である（既定の並び順を書き足した分は除く）。 */
 function location(): string {
   const params = new URLSearchParams(screen.getByTestId("location").textContent);
   if (params.get("sort") === "addedDesc") params.delete("sort");
@@ -146,7 +142,7 @@ describe("ライブラリの追加日と長さ", () => {
     );
     Element.prototype.hasPointerCapture ??= () => false;
     Element.prototype.releasePointerCapture ??= () => undefined;
-    // トーストの操作（sonner）もポインタを捕捉する。
+    // Sonner actions also use pointer capture.
     Element.prototype.setPointerCapture ??= () => undefined;
     Element.prototype.scrollIntoView ??= () => undefined;
     install();
@@ -209,7 +205,6 @@ describe("ライブラリの追加日と長さ", () => {
   it("ゲストも追加日と長さで絞り込める", async () => {
     renderAt("/?addedWithin=30&tag=1", "guest");
     await screen.findByRole("link", { name: "動画 1" });
-    // タグは所有者のものなので外れ、追加日は残る。
     await waitFor(() => expect(location()).toBe("?addedWithin=30"));
     expect(lastLibrary().get("addedWithin")).toBe("30");
   });
@@ -231,7 +226,7 @@ describe("Save as smart folder", () => {
     );
     Element.prototype.hasPointerCapture ??= () => false;
     Element.prototype.releasePointerCapture ??= () => undefined;
-    // トーストの操作（sonner）もポインタを捕捉する。
+    // Sonner actions also use pointer capture.
     Element.prototype.setPointerCapture ??= () => undefined;
     Element.prototype.scrollIntoView ??= () => undefined;
     install();
@@ -251,7 +246,6 @@ describe("Save as smart folder", () => {
 
     await user.click(screen.getByRole("button", { name: "Save as smart folder" }));
     const dialog = await screen.findByRole("dialog", { name: "New smart folder" });
-    // 窓は今の絞り込みを同じ形で出す。
     expect(
       within(dialog)
         .getByRole("radio", { name: "Unwatched" })
@@ -274,10 +268,8 @@ describe("Save as smart folder", () => {
     });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(await screen.findByText('Created "タグ: 猫"')).toBeDefined();
-    // 絞り込んだ一覧はそのまま。
     expect(location()).toBe("?tag=1&watch=unwatched&sort=titleAsc");
 
-    // トーストの「Open」は新しいフォルダ（id 9）のページを開く。
     await user.click(screen.getByRole("button", { name: "Open" }));
     expect(await screen.findByText("Smart folder page")).toBeDefined();
   });

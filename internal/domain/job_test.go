@@ -6,11 +6,9 @@ func TestClaimAttemptsCountsOnlyNewRounds(t *testing.T) {
 	if got := ClaimAttempts(0, true); got != 1 {
 		t.Errorf("first claim = %d, want 1", got)
 	}
-	// 同じ巡回の次の所在を試すときは数えない。
 	if got := ClaimAttempts(1, false); got != 1 {
 		t.Errorf("next location in the same round = %d, want 1", got)
 	}
-	// 最後の所在から先頭へ戻ると、新しい巡回として数える。
 	if got := ClaimAttempts(1, true); got != 2 {
 		t.Errorf("wrapped round = %d, want 2", got)
 	}
@@ -43,8 +41,6 @@ func TestJobStateAfterFailureStopsAtLimitOnLastLocation(t *testing.T) {
 	}
 }
 
-// 一連の専有と失敗で、MaxJobAttempts 巡目の最後の所在で失敗したときに初めて
-// failed になることを確かめる。
 func TestJobRetriesUntilLimitAcrossLocations(t *testing.T) {
 	const locations = 2
 	attempts := 0

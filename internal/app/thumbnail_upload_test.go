@@ -16,9 +16,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 手元の画像のアップロード。
-
-// stillWebP は 1×1 の可逆の WebP である。
+// A 1 x 1 lossless WebP.
 var stillWebP = []byte("RIFF\x1a\x00\x00\x00WEBPVP8L\x0d\x00\x00\x00\x2f\x00\x00\x00\x10\x07\x10\x11\x11\x88\x88\xfe\x07\x00")
 
 func uploadPNG(t *testing.T) []byte {
@@ -35,7 +33,7 @@ func uploadJPEG(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
-// animatedWebPImage は、拡張形式の見出しでアニメーションの印を立てた WebP である。
+// WebP with the VP8X animation flag set.
 func animatedWebPImage() []byte {
 	chunks := []byte("VP8X\x0a\x00\x00\x00\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00")
 	chunks = append(chunks, []byte("ANIM\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00")...)
@@ -45,8 +43,7 @@ func animatedWebPImage() []byte {
 	return data
 }
 
-// 確かめは PNG・JPEG・静止画の WebP を通し、ほかの形式・途中で切れた画像・アニメーションの WebP を
-// 読めないもの、画素数か大きさの上限を越える画像をその上限を添えた大きすぎるものとして断る。
+// Distinguish invalid formats/data from size and pixel-limit failures.
 func TestCheckThumbnailUpload(t *testing.T) {
 	jpegImage := uploadJPEG(t)
 	for _, tc := range []struct {
@@ -96,14 +93,13 @@ func TestCheckThumbnailUploadSize(t *testing.T) {
 	}
 }
 
-// 編集の画像の確かめは、アップロードと読み方を共有したまま 8192×8192 の上限を保つ。
+// Shared decoding must retain the edit-specific 8192 x 8192 limit.
 func TestCheckThumbnailEditImageKeepsItsPixelCap(t *testing.T) {
 	if err := checkThumbnailEditImage(pngHeaderSized(t, 8193, 8192)); !errors.Is(err, errThumbnailEditImageUnreadable) {
 		t.Fatalf("err = %v", err)
 	}
 }
 
-// 確かめた画像は出どころ uploaded で適用する。断った画像は合わせも記録もしない。
 func TestUploadThumbnailImageAppliesAsUploaded(t *testing.T) {
 	video := sizedVideo(1, "a", 1920, 1080)
 	store := newFakeIngestStore(video)
@@ -158,7 +154,6 @@ func uploadAsync(ingest *Ingest, videoID int64, key, image string) <-chan error 
 	return done
 }
 
-// fitted は画像 image を合わせ始めたかを返す。
 func fitted(generator *fakeGenerator, image string) bool {
 	generator.mu.Lock()
 	defer generator.mu.Unlock()
@@ -184,8 +179,8 @@ func (c *uploadLockWaitContext) Done() <-chan struct{} {
 	return c.Context.Done()
 }
 
-// 錠を待っているアップロードを取り消すと、錠が空くのを待たずに取り消しの誤りを返し、
-// 何も書かない。待つのをやめたあとも錠は空き、後の位置の指定とアップロードは進む。
+// Cancellation returns without waiting for the video lock and leaves no writes or leaked lock
+// acquisition.
 func TestUploadCancelsWhileWaitingOnLock(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)

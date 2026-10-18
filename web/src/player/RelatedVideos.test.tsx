@@ -139,7 +139,6 @@ describe("RelatedVideos", () => {
         ],
       },
     });
-    // リンクの名前は題名と長さだけで、割合は進捗バーとして別に読める。
     expect(screen.getByRole("link", { name: "関連 2 1:05" })).toBeDefined();
     expect(screen.getByRole("progressbar", { name: "Watched portion" })).toBeDefined();
   });
@@ -265,7 +264,6 @@ describe("RelatedVideos", () => {
         "1:053Now playingep03",
         "1:054ep04",
       ]);
-      // 境目は「関連動画」の見出しの前にある。
       const separator = screen.getByRole("separator");
       const related = screen.getByRole("heading", { level: 2, name: "Related videos" });
       expect(
@@ -388,9 +386,8 @@ describe("関連動画のスクラブの帯", () => {
     return band;
   }
 
-  // React は要素の間の移動を pointerout から pointerenter / pointerleave にするので、
-  // リンクから帯へ移る pointerout を送る。帯の矩形は左 100px・幅 400px で、
-  // clientX 300 は真ん中（65 秒の動画の 0:32）。
+  // React derives pointerenter/pointerleave from pointerout between elements.
+  // The scrub band starts at 100px and spans 400px; x=300 selects 0:32 of 65 seconds.
   function enterBand(link: HTMLElement, clientX: number): HTMLElement {
     const band = bandOf(link);
     fireEvent.pointerEnter(link, { pointerType: "mouse" });
@@ -464,10 +461,8 @@ describe("関連動画のスクラブの帯", () => {
     expect(within(link).getByText("0:32 / 1:05")).toBeDefined();
     expect(scrubBar()?.getAttribute("aria-hidden")).toBe("true");
     expect(scrubBar()?.firstElementChild?.getAttribute("style")).toContain("width: 50%");
-    // 視聴位置のバーは値を保ったまま見た目だけ隠す。
     expect(progress.classList.contains("opacity-0")).toBe(true);
     expect(progress.getAttribute("aria-valuenow")).toBe("20");
-    // リンクの読み上げ名は変わらない。
     expect(link.getAttribute("aria-label")).toBe("関連 2 1:05");
     expect(band.getAttribute("aria-hidden")).toBe("true");
 
@@ -525,7 +520,6 @@ describe("関連動画のスクラブの帯", () => {
     fireEvent.pointerLeave(band, { pointerType: "mouse", relatedTarget: link });
     expect(play).toHaveBeenCalledTimes(2);
 
-    // 帯から下へリンクの外に出たときは再開せずに解放する。
     fireEvent.pointerOut(link, {
       pointerType: "mouse",
       clientX: 200,
@@ -570,7 +564,6 @@ describe("関連動画のスクラブの帯", () => {
     expect(scrubBar()).toBeNull();
     expect(progress.classList.contains("opacity-0")).toBe(false);
     expect(document.querySelector("video")).toBeNull();
-    // 解放したので、帯に残ったままでも止めたループを再開しない。
     act(() => vi.advanceTimersByTime(400));
     expect(play).toHaveBeenCalledTimes(1);
   });
@@ -641,7 +634,7 @@ describe("関連動画のスクラブの帯", () => {
   describe("大きなグループの窓（issue 674）", () => {
     const member = (position: number) =>
       item(position, { title: `ep ${String(position)}` });
-    // 6,000 本のうち、今の動画 3000 を中ほどに置いた 2950〜3049 本目の窓。
+    // Center video 3000 in the 2950-3049 window of 6,000 members.
     const window = Array.from({ length: 100 }, (_, index) => member(2950 + index));
     let intersect: Map<Element, IntersectionObserverCallback>;
 
@@ -688,7 +681,7 @@ describe("関連動画のスクラブの帯", () => {
       return within(screen.getAllByRole("list")[0]!).getAllByRole("listitem");
     }
 
-    // 端の目印（読み足しの目印）だけ。行のサムネイルも IntersectionObserver を使う。
+    // Select pagination sentinels only; thumbnails also use IntersectionObserver.
     function edges() {
       return [...intersect.entries()].filter(
         ([element]) => element.isConnected && element.classList.contains("h-px"),
@@ -723,7 +716,6 @@ describe("関連動画のスクラブの帯", () => {
       expect(memberRows()).toHaveLength(100);
       expect(memberRows()[0]?.textContent).toContain("2950");
 
-      // 狭い画面では、後ろだけを目印で読む。
       expect(edges()).toHaveLength(1);
       await reachEdge(0);
       expect(listVideoGroupMembers).toHaveBeenCalledWith(
@@ -802,12 +794,10 @@ describe("関連動画のスクラブの帯", () => {
       await reachEdge(0);
       expect(memberRows()).toHaveLength(102);
 
-      // グループの知らせで読み直した（別の画面で ep 3051 を外した）。
       rerender(tree(stateOf(2)));
       expect(memberRows()).toHaveLength(100);
       expect(screen.queryByText("ep 3051")).toBeNull();
 
-      // 読み足し中に読み直したら、その要求を打ち切り、応答を足さない。
       let signal: AbortSignal | undefined;
       vi.mocked(listVideoGroupMembers).mockImplementationOnce(
         (_id, _start, _limit, s) => {
@@ -856,7 +846,6 @@ describe("関連動画のスクラブの帯", () => {
       try {
         renderWindow();
         const scroller = document.querySelector("[data-related-scroller]") as HTMLElement;
-        // 行1本を 10px と見なした高さ。
         Object.defineProperty(scroller, "scrollHeight", {
           get: () => scroller.querySelectorAll("li").length * 10,
         });
@@ -871,7 +860,6 @@ describe("関連動画のスクラブの帯", () => {
           undefined,
           undefined,
         );
-        // 2 本増えた分（20px）だけ下へずらす。
         expect(scroller.scrollTop).toBe(60);
         expect(memberRows()[0]?.textContent).toContain("ep 2948");
       } finally {

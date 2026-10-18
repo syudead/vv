@@ -1,10 +1,6 @@
 package store
 
-// スマートフォルダの保存。
-// SmartFolderStore は書き込みの取引の中で親と入れ子を読み、domain の規則（ValidateGroupName・
-// SmartRule.Encode・ValidateSmartSort・ValidateSmartFolderParent）で決める。どの書き込みも
-// owner_kept を 1 にする。条件が名指す実体の有無は書き込みでは確かめず、
-// 読み出し（MissingRefs）が欠けた参照として返す（R-9）。
+// Validate parent structure inside writes and mark owner_kept; missing rule references are reported on reads rather than rejected on writes.
 
 import (
 	"context"
@@ -15,10 +11,8 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// smartFolderNow は編集の時刻の元である。
 var smartFolderNow = groupNow
 
-// smartRuleRefTables は欠けた参照を確かめる表である。消したタグの種類も欠けた参照になる
 var smartRuleRefTables = map[domain.SmartRuleRefKind]string{
 	domain.SmartRefTag:          "tags",
 	domain.SmartRefTagKind:      "tag_kinds",
@@ -26,9 +20,7 @@ var smartRuleRefTables = map[domain.SmartRuleRefKind]string{
 	domain.SmartRefOrganization: "organizations",
 }
 
-// CreateSmartFolder はスマートフォルダを作り、その行を返す。名前は domain.ValidateGroupName で整え、
-// 並べ順が空なら domain.SortAddedDesc にする。親が無ければ domain.ErrSmartFolderNotFound で、何も
-// 書かない。
+// CreateSmartFolder defaults to added-descending order and rejects a missing parent atomically.
 func (s *SmartFolderStore) CreateSmartFolder(ctx context.Context, create domain.SmartFolderCreate) (domain.SmartFolder, error) {
 	if create.Sort == "" {
 		create.Sort = domain.SortAddedDesc
@@ -62,10 +54,7 @@ func (s *SmartFolderStore) CreateSmartFolder(ctx context.Context, create domain.
 	return s.SmartFolder(ctx, id)
 }
 
-// ChangeSmartFolder はスマートフォルダ id の名前・条件・並べ順・親のうち change が持つものを変え、
-// 更新日時を進め、owner_kept を 1 にする。親を変えるのが移動で、ParentID が 0 なら根にする。
-// フォルダが無ければ domain.ErrNotFound、親が無ければ domain.ErrSmartFolderNotFound、親が自分か
-// 自分の子孫なら domain.ErrSmartFolderCycle で、どれも何も書かない。
+// ChangeSmartFolder applies supplied fields, advances edit time and marks owner_kept; root parent is zero and cycles are rejected.
 func (s *SmartFolderStore) ChangeSmartFolder(ctx context.Context, id int64, change domain.SmartFolderChange) (domain.SmartFolder, error) {
 	err := writeWithEvents(ctx, s.db, "change the smart folder", func(tx *sql.Tx) ([]domain.Event, error) {
 		folder, err := readSmartFolder(ctx, tx, id)
@@ -98,9 +87,7 @@ func (s *SmartFolderStore) ChangeSmartFolder(ctx context.Context, id int64, chan
 	return s.SmartFolder(ctx, id)
 }
 
-// DeleteSmartFolder はスマートフォルダ id を消す。子孫とそれらのお気に入り・プレイリストの項目は
-// 外部キーで消え、項目を失ったプレイリストを詰め直して更新日時を進める（グループの解散と同じ）。
-// 無ければ domain.ErrNotFound。
+// DeleteSmartFolder cascades descendants, favorites and playlist entries, then compacts affected playlists.
 func (s *SmartFolderStore) DeleteSmartFolder(ctx context.Context, id int64) error {
 	return writeWithEvents(ctx, s.db, "delete the smart folder", func(tx *sql.Tx) ([]domain.Event, error) {
 		playlists, err := queryInt64s(ctx, tx, `with recursive down (id) as (
@@ -116,7 +103,7 @@ func (s *SmartFolderStore) DeleteSmartFolder(ctx context.Context, id int64) erro
 		if err != nil {
 			return nil, err
 		}
-		// 子孫は外部キーで消えるので、名指すフォルダは消す前に読む。
+		// Read affected descendants before foreign-key cascades remove them.
 		events, err := smartFolderEditNotice(ctx, tx, []int64{id}, folder.ParentID)
 		if err != nil {
 			return nil, err
@@ -144,14 +131,11 @@ func (s *SmartFolderStore) DeleteSmartFolder(ctx context.Context, id int64) erro
 	})
 }
 
-// SmartFolder はスマートフォルダ id の行を返す。無ければ domain.ErrNotFound。
 func (s *SmartFolderStore) SmartFolder(ctx context.Context, id int64) (domain.SmartFolder, error) {
 	return readSmartFolder(ctx, s.db.read, id)
 }
 
-// MissingRefs は、スマートフォルダ id とその祖先の条件が名指す実体のうち今無いものを、外側の祖先から
-// 順に、同じものは 1 度だけ返す。フォルダが無ければ
-// domain.ErrNotFound。
+// MissingRefs deduplicates missing references in outermost-ancestor order.
 func (s *SmartFolderStore) MissingRefs(ctx context.Context, id int64) ([]domain.SmartRuleRef, error) {
 	tx, err := s.db.read.BeginTx(ctx, nil)
 	if err != nil {
@@ -165,8 +149,6 @@ func (s *SmartFolderStore) MissingRefs(ctx context.Context, id int64) ([]domain.
 	return missingSmartRuleRefs(ctx, tx, rules)
 }
 
-// missingSmartRuleRefs は条件 rules が名指す実体のうち今無いものを、rules の順に、同じものは
-// 1 度だけ返す。
 func missingSmartRuleRefs(ctx context.Context, tx *sql.Tx, rules []domain.SmartRule) ([]domain.SmartRuleRef, error) {
 	missing := []domain.SmartRuleRef{}
 	seen := map[domain.SmartRuleRef]bool{}
@@ -190,9 +172,7 @@ func missingSmartRuleRefs(ctx context.Context, tx *sql.Tx, rules []domain.SmartR
 	return missing, nil
 }
 
-// rewriteSmartRuleRefs は、統合の取引 tx の中で、kind の実体 sourceIDs を名指すすべての条件を統合先
-// targetID へ書き換える。所有者の編集ではないので
-// owner_kept と updated_at は変えない。統合を巻き戻せば書き換えも残らない。
+// Rewrite merged references atomically without changing owner_kept or edit timestamps, since this is not an owner edit.
 func rewriteSmartRuleRefs(ctx context.Context, tx queryExecer, kind domain.SmartRuleRefKind, targetID int64, sourceIDs []int64) error {
 	rules, err := smartFolderRules(ctx, tx)
 	if err != nil {
@@ -214,13 +194,11 @@ func rewriteSmartRuleRefs(ctx context.Context, tx queryExecer, kind domain.Smart
 	return nil
 }
 
-// smartFolderRule はスマートフォルダ 1 つの id と条件である。
 type smartFolderRule struct {
 	id   int64
 	rule domain.SmartRule
 }
 
-// smartFolderRules はすべてのスマートフォルダの条件を id の順に返す。
 func smartFolderRules(ctx context.Context, tx queryExecer) ([]smartFolderRule, error) {
 	rows, err := tx.QueryContext(ctx, `select id, rule from smart_folders order by id`)
 	if err != nil {
@@ -245,7 +223,6 @@ func smartFolderRules(ctx context.Context, tx queryExecer) ([]smartFolderRule, e
 	return rules, nil
 }
 
-// smartFolderPathRules はスマートフォルダ id とその祖先の条件を、外側の祖先から順に返す。
 func smartFolderPathRules(ctx context.Context, tx *sql.Tx, id int64) ([]domain.SmartRule, error) {
 	rows, err := tx.QueryContext(ctx, `with recursive up (id, depth) as (
 			select id, 0 from smart_folders where id = ?
@@ -277,7 +254,6 @@ func smartFolderPathRules(ctx context.Context, tx *sql.Tx, id int64) ([]domain.S
 	return rules, nil
 }
 
-// applySmartFolderChange は change が持つ項目を folder に写す。
 func applySmartFolderChange(folder *domain.SmartFolder, change domain.SmartFolderChange) {
 	if change.Name != nil {
 		folder.Name = *change.Name
@@ -293,8 +269,6 @@ func applySmartFolderChange(folder *domain.SmartFolder, change domain.SmartFolde
 	}
 }
 
-// checkSmartFolder は folder の名前を整え、並べ順と条件を確かめ、smart_folders.rule に置く JSON を
-// 返す。
 func checkSmartFolder(folder *domain.SmartFolder) (string, error) {
 	name, err := domain.ValidateGroupName(folder.Name)
 	if err != nil {
@@ -307,8 +281,7 @@ func checkSmartFolder(folder *domain.SmartFolder) (string, error) {
 	return folder.Rule.Encode()
 }
 
-// ensureSmartFolderParent は、フォルダ id（作成なら 0）を親 parent（根なら 0）の下へ置けるかを確かめる。
-// 親が無ければ domain.ErrSmartFolderNotFound、自分か自分の子孫なら domain.ErrSmartFolderCycle である。
+// Zero denotes root or a new folder; reject absent parents and self/descendant cycles.
 func ensureSmartFolderParent(ctx context.Context, tx *sql.Tx, id, parent int64) error {
 	if parent == 0 {
 		return nil
@@ -323,7 +296,6 @@ func ensureSmartFolderParent(ctx context.Context, tx *sql.Tx, id, parent int64) 
 	return domain.ValidateSmartFolderParent(id, parent, parents)
 }
 
-// smartFolderParents はすべてのスマートフォルダの id から親の id（根は 0）を返す。
 func smartFolderParents(ctx context.Context, tx *sql.Tx) (map[int64]int64, error) {
 	rows, err := tx.QueryContext(ctx, `select id, coalesce(parent_id, 0) from smart_folders`)
 	if err != nil {
@@ -344,7 +316,6 @@ func smartFolderParents(ctx context.Context, tx *sql.Tx) (map[int64]int64, error
 	return parents, nil
 }
 
-// readSmartFolder はスマートフォルダ id の行を読む。無ければ domain.ErrNotFound を包む誤りである。
 func readSmartFolder(ctx context.Context, q queryRower, id int64) (domain.SmartFolder, error) {
 	var folder domain.SmartFolder
 	var rule, sort string
@@ -364,12 +335,10 @@ func readSmartFolder(ctx context.Context, q queryRower, id int64) (domain.SmartF
 	return folder, nil
 }
 
-// smartFolderMissing はスマートフォルダそのものが無いことを表す誤りである。
 func smartFolderMissing() error {
 	return fmt.Errorf("smart folder %w", domain.ErrNotFound)
 }
 
-// nullableID は 0 を NULL にする。
 func nullableID(id int64) any {
 	if id == 0 {
 		return nil

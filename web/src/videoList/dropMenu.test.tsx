@@ -6,14 +6,11 @@ import { asUiText } from "../i18n/uiText";
 import type { CardDrop } from "./cardDrag";
 import { useDropMenu } from "./dropMenu";
 
-// 落とした先のメニューを保つ印。
-
 const drop: CardDrop = {
   lifted: ["a"],
   sign: { kind: "onto", key: "b", label: asUiText("Put in") },
 };
 
-/** renderMenu は、一覧 `present` にあるカードを落とした先として受けるメニューを描く。 */
 function renderMenu(present: readonly string[]) {
   return renderHook(
     ({ keys }: { keys: readonly string[] }) =>
@@ -37,7 +34,6 @@ describe("useDropMenu", () => {
     expect(result.current.held).toEqual({ lifted: ["a"], sign: drop.sign });
     expect(result.current.attached?.key).toBe("b");
 
-    // 別の画面の操作や知らせで一覧が変わり、落とした先のカードが消えた。
     rerender({ keys: ["a"] });
 
     expect(result.current.held).toBeNull();

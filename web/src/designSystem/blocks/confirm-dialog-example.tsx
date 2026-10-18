@@ -5,9 +5,7 @@ import { t } from "@/i18n";
 import { ConfirmDialog } from "@/ui/patterns/confirm-dialog";
 import { Button } from "@/ui/shadcn/button";
 
-// 確認ダイアログの型の見本（registry:block confirm-dialog-example）。タグを消す前の確認で、
-// 写した画面は題・説明・動詞と、確かめた後の処理を差し替える
-// （web/registry/rules/patterns.md の Confirm dialog）。
+// registry:block confirm-dialog-example. Replace the copy and confirmed action.
 
 export function ConfirmDialogExample({ defaultOpen = false }: { defaultOpen?: boolean }) {
   const p = t.designSystem.pattern;

@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-// OS・環境変数・コマンドの有無の組ごとに、開けるかどうかと実行ファイルが決まる。
 func TestNewOpenerResolvesCommandPerEnvironment(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -28,7 +27,7 @@ func TestNewOpenerResolvesCommandPerEnvironment(t *testing.T) {
 		{name: "linux with display but no xdg-open", goos: "linux", env: map[string]string{"DISPLAY": ":0"}, want: ""},
 		{name: "freebsd follows xdg-open", goos: "freebsd", env: map[string]string{"DISPLAY": ":0"},
 			installed: map[string]string{"xdg-open": "/usr/local/bin/xdg-open"}, want: "/usr/local/bin/xdg-open"},
-		// macOS と Windows では画面の環境変数を見ない。
+		// macOS and Windows do not require display environment variables.
 		{name: "macOS ignores DISPLAY", goos: "darwin", env: map[string]string{},
 			installed: map[string]string{"open": "/usr/bin/open"}, want: "/usr/bin/open"},
 	}
@@ -52,7 +51,6 @@ func TestNewOpenerResolvesCommandPerEnvironment(t *testing.T) {
 	}
 }
 
-// 解決した実行ファイルへ、パスを1つの引数としてそのまま渡す。
 func TestOpenPassesPathAsSingleArgument(t *testing.T) {
 	var gotName string
 	var gotArgs []string
@@ -88,7 +86,6 @@ func TestOpenReportsUnavailableAndStartFailure(t *testing.T) {
 	}
 }
 
-// 実際の起動は子プロセスを回収する。存在しない実行ファイルは起動の誤りになる。
 func TestStartDetached(t *testing.T) {
 	if err := startDetached("/nonexistent/opener-test-command"); err == nil {
 		t.Fatal("存在しないコマンドの起動が成功した")

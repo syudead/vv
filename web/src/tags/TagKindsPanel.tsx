@@ -30,28 +30,19 @@ import RowNameInput from "./RowNameInput";
 import { RowIconButton, RowMoreMenu } from "./TagRow";
 import type { TagKindsTab } from "./useTagKindsTab";
 
-/** kindColumnCount は表の列の数（名前・タグの数・操作）。 */
 const kindColumnCount = 3;
 
-/**
- * TagKindsPanel はタグ管理画面の「Kinds」のタブの中身である。種類を名前の自然順にすべて並べ、
- * 作成の行・その場の改名・削除の確認の窓を持つ。状態は `useTagKindsTab` が持つ。
- * チェックと選択バーは無い（種類にまとめての操作は無い）。
- */
 export default function TagKindsPanel({
   state,
   hrefFor,
   onOpenKind,
 }: {
   state: TagKindsTab;
-  /** 種類の名前のリンクの先（その種類で絞った「Tags」のタブ）。 */
   hrefFor: (kind: TagKind) => string;
-  /** 種類の名前を押したとき。履歴の規則に沿って URL を書き換える。 */
   onOpenKind: (kind: TagKind) => void;
 }) {
   const { loadError, creating } = state;
-  // 読み込みに失敗したら、前に読んだ並びがあっても描かない。数が古いかもしれず、削除の
-  // 確認の窓の文もその数を読むため。
+  // Hide stale lists after read failure because deletion confirmation relies on their counts.
   const kinds = loadError === null ? state.kinds : undefined;
   return (
     <>
@@ -124,11 +115,6 @@ export default function TagKindsPanel({
   );
 }
 
-/**
- * KindRow は種類の 1 行である。名前はその種類で絞った「Tags」のタブへのリンクで、改名中は
- * 名前の列だけを入力に置き換える。操作はタグの行と同じ `RowIconButton` と `RowMoreMenu` で、
- * タッチの端末と `sm` 未満では「Actions」1 つにまとめる（CSS だけで出し分ける）。
- */
 function KindRow({
   kind,
   state,
@@ -145,7 +131,7 @@ function KindRow({
   const register = state.registerRefs;
 
   function open(event: MouseEvent<HTMLAnchorElement>) {
-    // 新しいタブで開く押し方はブラウザに任せる。
+    // Let the browser handle modified clicks that open another tab.
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     onOpen(kind);
@@ -232,7 +218,6 @@ function KindRow({
   );
 }
 
-/** DeleteItem は行のメニューの「Delete…」である。 */
 function DeleteItem({ disabled, onSelect }: { disabled: boolean; onSelect: () => void }) {
   return (
     <DropdownMenuItem variant="destructive" onSelect={onSelect} disabled={disabled}>
@@ -242,10 +227,7 @@ function DeleteItem({ disabled, onSelect }: { disabled: boolean; onSelect: () =>
   );
 }
 
-/**
- * DeleteKindDialog は種類の削除の確認の窓である。その種類のタグは種類なしで残るので、
- * 文言は `tagCount` が 0 かどうかで変える。
- */
+/** Kind deletion preserves tags without a kind; confirmation depends on whether any tags are affected. */
 function DeleteKindDialog({ state, kind }: { state: TagKindsTab; kind: TagKind }) {
   const pending = state.deletePending;
   return (

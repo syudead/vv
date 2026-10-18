@@ -12,9 +12,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 動画の表示名。
-
-// overrideFixture は題名 alpha・beta・gamma の3本を /media の下に取り込む。
 func overrideFixture(t *testing.T) (*DB, map[string]int64) {
 	t.Helper()
 	db := migratedDB(t)
@@ -54,8 +51,6 @@ func titlesInOrder(t *testing.T, db *DB, q domain.VideoQuery) []string {
 	return titlesOf(page)
 }
 
-// 表示名を付けた動画は、どの読み出しでも Title が表示名、FileTitle が所在の題名になり、
-// 題名順では表示名の位置に並び、表示名でもファイル名でも検索に出る（受け入れ条件 4）。
 func TestSetDisplayNameAppliesToTitleSortAndSearch(t *testing.T) {
 	db, ids := overrideFixture(t)
 	ctx := context.Background()
@@ -100,7 +95,6 @@ func TestSetDisplayNameAppliesToTitleSortAndSearch(t *testing.T) {
 	}
 	check("ListLibrary", *library.Items[0].Video)
 
-	// 表示名の無い動画は FileTitle と Title が同じ。
 	alpha, err := db.Library().GetVideo(ctx, domain.AudienceOwner, ids[fixturePath("/media/alpha.mp4")])
 	if err != nil {
 		t.Fatal(err)
@@ -130,16 +124,12 @@ func TestSetDisplayNameAppliesToTitleSortAndSearch(t *testing.T) {
 	}
 }
 
-// 表示名は content_key に結ぶので、所在を別のパスへ移しても（改名・移動の再スキャン）
-// 残り、新しい所在の鍵にも入る（受け入れ条件 3）。同じ内容の2つ目の所在からも同じ
-// Title が返る。
 func TestDisplayNameSurvivesMoveAndAppliesToEveryLocation(t *testing.T) {
 	db, ids := overrideFixture(t)
 	ctx := context.Background()
 	betaID := ids[fixturePath("/media/beta.mp4")]
 	setDisplayName(t, db, betaID, "表示名")
 
-	// 2つ目の所在（同じ内容）。
 	second := fixturePath("/media/copy/beta-copy.mp4")
 	upsertAll(t, db, listingFile(second, "beta-copy", "key-beta", 4))
 	searchKey, titleKey, _ := locationKeys(t, db, second)
@@ -154,7 +144,6 @@ func TestDisplayNameSurvivesMoveAndAppliesToEveryLocation(t *testing.T) {
 		t.Errorf("2つ目の所在の動画 = Title %q FileTitle %q", got.Title, got.FileTitle)
 	}
 
-	// 元の所在を消し、別のパスへ移す。
 	moved := fixturePath("/media/moved/renamed.mp4")
 	upsertAll(t, db, listingFile(moved, "renamed", "key-beta", 5))
 	var locationIDs []int64
@@ -183,8 +172,6 @@ func TestDisplayNameSurvivesMoveAndAppliesToEveryLocation(t *testing.T) {
 	}
 }
 
-// 空・空白だけの名前は解除で、行が消え、鍵は表示名の無い値に戻る。制御文字と
-// 201 符号位置は *domain.InvalidDisplayNameError で何も書かない。
 func TestSetDisplayNameClearsAndRejects(t *testing.T) {
 	db, ids := overrideFixture(t)
 	ctx := context.Background()
@@ -221,7 +208,6 @@ func TestSetDisplayNameClearsAndRejects(t *testing.T) {
 		t.Errorf("解除後に表示名で %v が当たった", got)
 	}
 
-	// 無い行の解除も誤りにしない。
 	setDisplayName(t, db, betaID, "")
 	if _, err := db.Overrides().SetDisplayName(ctx, 9999, "x"); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("無い動画 err = %v, want ErrNotFound", err)
@@ -231,8 +217,6 @@ func TestSetDisplayNameClearsAndRejects(t *testing.T) {
 	}
 }
 
-// 表示名を付けた動画のあるメディアフォルダを登録し直しても（AddMediaFolder・
-// ReplaceMediaFolder）、鍵は表示名を含む。
 func TestMediaFolderChangesKeepDisplayNameInKeys(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -247,7 +231,6 @@ func TestMediaFolderChangesKeepDisplayNameInKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 同じ内容の所在を3つ置く。登録の下にあるのは first の1つだけである。
 	inFirst := filepath.Join(first, "clip.mp4")
 	inAdded := filepath.Join(added, "season", "copy.mp4")
 	inReplacement := filepath.Join(replacement, "deep", "other.mp4")
@@ -287,7 +270,6 @@ func TestMediaFolderChangesKeepDisplayNameInKeys(t *testing.T) {
 	}
 }
 
-// 起動時の埋め直し（RefreshSearchKeys）も表示名を読む。
 func TestRefreshSearchKeysReadsDisplayName(t *testing.T) {
 	db, ids := overrideFixture(t)
 	ctx := context.Background()
@@ -307,7 +289,6 @@ func TestRefreshSearchKeysReadsDisplayName(t *testing.T) {
 	}
 }
 
-// 確定後に VideoOverrideChanged が1回発行され、誤りでは発行しない。
 func TestSetDisplayNamePublishesAfterCommit(t *testing.T) {
 	db, ids := overrideFixture(t)
 	ctx := context.Background()
@@ -330,8 +311,6 @@ func TestSetDisplayNamePublishesAfterCommit(t *testing.T) {
 	}
 }
 
-// 一括の表示名は1つの取引で、引けない動画か規則に合わない名前が1件でもあれば位置を返して
-// 何も残さない。成功すれば指定の順に反映後の動画を返す。
 func TestSetDisplayNamesIsAtomic(t *testing.T) {
 	db, ids := overrideFixture(t)
 	ctx := context.Background()
@@ -375,7 +354,6 @@ func TestSetDisplayNamesIsAtomic(t *testing.T) {
 		t.Errorf("events = %v, want 2 件", recorder.events)
 	}
 
-	// 解除（空）も一括でできる。
 	if _, err := db.Overrides().SetDisplayNames(ctx, []domain.DisplayNameChange{{Video: alpha}, {Video: beta, DisplayName: " "}}); err != nil {
 		t.Fatal(err)
 	}

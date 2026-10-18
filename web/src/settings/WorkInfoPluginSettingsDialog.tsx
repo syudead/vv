@@ -72,14 +72,13 @@ function SecretHint({
   );
 }
 
-/** firstItem は選択肢の欄の先頭の項目の値である。選択肢は添字で呼ぶので重ならない。 */
+/** Index-based option values cannot collide with the first item's sentinel. */
 const firstItem = "default";
 
 function optionItem(index: number): string {
   return `option-${index}`;
 }
 
-/** firstItemText は選択肢の欄の先頭の項目の文言で、既定値の無い設定では `Not set` である。 */
 function firstItemText(setting: WorkInfoPluginSetting): string {
   const text = t.settings.workInfoPlugins.settingsDialog;
   return setting.default === undefined
@@ -87,9 +86,6 @@ function firstItemText(setting: WorkInfoPluginSetting): string {
     : text.defaultItem(setting.default);
 }
 
-/**
- * isStale は欄の値が選択肢の外の保存値のままかである。先頭の項目か選択肢を選べば外れる。
- */
 function isStale(setting: WorkInfoPluginSetting, draft: SettingDraft): boolean {
   return (
     setting.staleValue !== undefined &&
@@ -98,10 +94,7 @@ function isStale(setting: WorkInfoPluginSetting, draft: SettingDraft): boolean {
   );
 }
 
-/**
- * OptionSelect は選択肢を宣言した設定の欄である。先頭の項目は既定値か Not set で `null` を
- * 保存し、選択肢はマニフェストの順に続く。選択肢の外の保存値では何も選ばない。
- */
+/** The first option saves null for default or Not set; out-of-options stored values select nothing. */
 function OptionSelect({
   id,
   setting,
@@ -166,7 +159,7 @@ function OptionSelect({
   );
 }
 
-/** TextInput は自由に入力する設定の欄である。既定値は欄に書かず placeholder に出す。 */
+/** Show defaults as placeholders, never as entered values. */
 function TextInput({
   id,
   setting,
@@ -206,7 +199,6 @@ function TextInput({
   );
 }
 
-/** StaleNote は選択肢の外の保存値の注記である。 */
 function StaleNote({ setting, id }: { setting: WorkInfoPluginSetting; id: string }) {
   const text = t.settings.workInfoPlugins.settingsDialog;
   const value = setting.staleValue ?? "";
@@ -223,10 +215,8 @@ function StaleNote({ setting, id }: { setting: WorkInfoPluginSetting; id: string
 }
 
 /**
- * SettingField は設定 1 つの欄である。値の上限はサーバーと同じく符号位置で数える（maxLength は
- * UTF-16 の単位で数え、絵文字では上限より早く止まる）。disabled は保存を送っている間で、送った
- * 後の入力が保存されないまま閉じないよう、欄と補助の操作を止める。選択肢を宣言した設定は
- * Select、既定値は欄の下に `Default: {default}` を出す。
+ * Use server-compatible code-point limits, not HTML maxLength. Disable fields and helper actions
+ * during saving to avoid closing over unsaved edits.
  */
 function SettingField({
   setting,
@@ -299,10 +289,8 @@ function SettingField({
 }
 
 /**
- * WorkInfoPluginSettingsDialog は「Settings」が開く設定の値のダイアログである。宣言の順に欄を
- * 並べ、「Save」は変わったキーだけを送る（消す値は null）。秘密の欄は常に空で始まり、保存済みの
- * 値を欄に戻さない。既定値に戻した
- * 欄は null を送る。
+ * Submit only changed keys, using null to clear or restore defaults; secret fields always start
+ * empty.
  */
 export default function WorkInfoPluginSettingsDialog({
   plugin,

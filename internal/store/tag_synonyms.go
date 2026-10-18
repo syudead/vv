@@ -7,15 +7,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// AddSynonym は名前 name をタグ tagID のシノニムにする。
-//
-//   - name が無ければ canonical = 0 で1行足し、tagID を確定したタグにする。
-//   - name が既に tagID のシノニムなら何も変えない。
-//   - name が tagID 自身の元の名前なら *domain.TagNameConflict を返す。
-//   - name が別のタグ S のシノニムなら *domain.TagNameConflict を返す（S を示す）。
-//   - name が別のタグ S の元の名前なら、mergeTagID が S の id と一致すれば
-//     S を tagID へ統合して tagID を確定したタグにし、一致しなければ（無い場合を含む）
-//     *domain.TagMergeRequired を返す（S を示す）。
+// AddSynonym confirms the target; canonical-name conflicts require an explicit matching merge ID, while other conflicts are rejected.
 func (s *TagStore) AddSynonym(ctx context.Context, tagID int64, name string, mergeTagID *int64) (domain.Tag, error) {
 	normalized, err := domain.NormalizeTagName(name)
 	if err != nil {
@@ -42,14 +34,12 @@ func (s *TagStore) AddSynonym(ctx context.Context, tagID int64, name string, mer
 		if err := insertTagName(ctx, tx, normalized, tagID, false); err != nil {
 			return domain.Tag{}, err
 		}
-		// シノニムを足したタグは確定したタグになる。
 		if err := confirmTagInTx(ctx, tx, tagID); err != nil {
 			return domain.Tag{}, err
 		}
 	case lookup.tagID == tagID && lookup.isCanonical:
 		return domain.Tag{}, &domain.TagNameConflict{Tag: lookup.ref()}
 	case lookup.tagID == tagID:
-		// 既にこのタグのシノニム。何も変えない。
 	case !lookup.isCanonical:
 		return domain.Tag{}, &domain.TagNameConflict{Tag: lookup.ref()}
 	case mergeTagID == nil || *mergeTagID != lookup.tagID:
@@ -70,10 +60,7 @@ func (s *TagStore) AddSynonym(ctx context.Context, tagID int64, name string, mer
 	return tag, nil
 }
 
-// RemoveSynonym はタグ tagID のシノニム name を解除し、同じトランザクションで読んだ変更後の
-// タグを返す（外部連携 API が応答に載せる。docs/design-docs/catalog-organization.md）。
-// name が tagID のシノニムでなければ何も変えずに今のタグを返す。tagID が無ければ
-// domain.ErrTagNotFound を返す。
+// RemoveSynonym returns the changed tag from the same transaction; absent synonyms are no-ops and missing tags fail.
 func (s *TagStore) RemoveSynonym(ctx context.Context, tagID int64, name string) (domain.Tag, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {

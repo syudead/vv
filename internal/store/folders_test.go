@@ -14,8 +14,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// folderFixture は /media の下にフォルダ構成を取り込む。鍵が同じファイルは
-// 同じ動画の別の所在になる。
 func folderFixture(t *testing.T, files ...domain.VideoFile) (*DB, map[string]int64) {
 	t.Helper()
 	db := migratedDB(t)
@@ -215,8 +213,7 @@ func TestListFolderVideosRejectsBrokenCursor(t *testing.T) {
 	}
 }
 
-// Unix では `\` はファイル名の一部なので、`A\` という名前のフォルダを `A` と
-// 取り違えない。
+// Unix backslashes are filename characters, so A-backslash must not match folder A.
 func TestFolderNamesEndingWithBackslashOnUnix(t *testing.T) {
 	if os.PathSeparator != '/' {
 		t.Skip("`\\` is a path separator on this OS")
@@ -238,8 +235,7 @@ func TestFolderNamesEndingWithBackslashOnUnix(t *testing.T) {
 	}
 }
 
-// TestDirectChildConditionOnWindows は Windows 用の条件を Linux でも実際の SQLite で
-// 確かめる。以前は接頭辞の `?` が2回現れ、Windows でだけ引数が足りなくなっていた。
+// Exercise Windows SQL on Linux to catch duplicate prefix placeholders and missing bind arguments.
 func TestDirectChildConditionOnWindows(t *testing.T) {
 	for _, windows := range []bool{false, true} {
 		condition := directChildConditionFor("l", windows)
@@ -258,10 +254,10 @@ func TestDirectChildConditionOnWindows(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, path := range []string{
-		`C:\Media\A\x.mp4`,   // 直下
-		`C:\Media\A\B\y.mp4`, // 孫（\ 区切り）
-		`C:\Media\A\B/z.mp4`, // 孫（/ 区切りが混ざる）
-		`C:\Media\AB\w.mp4`,  // 接頭辞が似ているだけの別フォルダ
+		`C:\Media\A\x.mp4`,
+		`C:\Media\A\B\y.mp4`,
+		`C:\Media\A\B/z.mp4`,
+		`C:\Media\AB\w.mp4`,
 	} {
 		if _, err := handle.ExecContext(ctx, `insert into l (path) values (?)`, path); err != nil {
 			t.Fatal(err)
@@ -292,8 +288,7 @@ func TestDirectChildConditionOnWindows(t *testing.T) {
 	}
 }
 
-// Windows の接頭辞は、SQL の lower() と同じく ASCII の英字だけを小文字にする。
-// 非 ASCII の大文字（`Ä`）を含むフォルダでも、直下と配下の所在に一致する。
+// Match SQLite's ASCII-only lower() even for non-ASCII uppercase folder names.
 func TestFolderPrefixOnWindowsFoldsASCIIOnly(t *testing.T) {
 	prefix := folderPrefixFor(`C:\Media\Ä`, true)
 	if want := `c:\media\Ä\`; prefix != want {

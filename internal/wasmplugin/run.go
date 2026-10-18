@@ -17,11 +17,10 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// memoryLimitBytes は 1 回の実行の線形メモリの上限である。
 const memoryLimitBytes = domain.WorkInfoPluginMemoryLimitPages * 65536
 
-// compileWorkers は実行の前のコンパイルで並べる数である。wazero は 2 以上のときだけ関数ごとに
-// ctx を確かめるので、1 にすると実行の時間の上限でコンパイルを止められない。
+// wazero checks context between compiled functions only with at least two workers; one worker would
+// make compilation uncancelable.
 const compileWorkers = 2
 
 var (
@@ -30,15 +29,10 @@ var (
 	errMemoryExceeded = errors.New("work-info plugin memory exceeded its limit")
 )
 
-// Run はモジュールを新しいインスタンスで 1 回動かす。要求の JSON を標準入力に書いて閉じ、
-// 標準出力の応答を読む。プラグインの要求は network のとおりに送る。同時に動く実行は 1 本で、2 本目は枠を最大 domain.WorkInfoPluginBusyWait 待つ。時間の上限は枠を取ったときから数え、コンパイルも含む。失敗は *domain.WorkInfoRunError で返し、呼び出し元の ctx が
-// 終わったときはその誤りを返す。
-//
-// 成功でも失敗でも、残した標準エラーを実行のログとして返す。モジュールを起動し、それが成功か実行の失敗で
-// 終わったときは、同じログを、枠を空ける前に record に渡す。record が nil なら
-// 渡さない。record の誤りはサーバーのログに残し、実行の結果は変えない。枠を取れなかった実行、コンパイルの
-// 失敗か時間切れでモジュールを起動しなかった実行、呼び出し元の ctx が終わった実行は record を呼ばず、
-// 前の実行のログを残す。
+// Run serializes fresh instances and includes compilation in the execution deadline; contention
+// waits at most WorkInfoPluginBusyWait. Return stderr on every outcome, but record it before
+// releasing the slot only after a started module completes without caller cancellation; recording
+// errors never alter the run result.
 func (r *Runtime) Run(
 	ctx context.Context, digest string, module []byte, req domain.WorkInfoRunRequest, network domain.WorkInfoRunNetwork,
 	record func(domain.WorkInfoRunLog) error,
@@ -81,9 +75,8 @@ func (r *Runtime) Run(
 	return result, log, nil
 }
 
-// outcome は実行の誤り err に、実行の HTTP で起きたことを重ねる。
-// 呼び出し元の ctx の誤りはそのまま返す。要求を拒んでいれば、プラグインが何を返しても
-// blocked_address にする。届かなかった要求があってプラグインが失敗したなら network_error にする。
+// Caller cancellation wins; blocked HTTP destinations override plugin output, while unreachable
+// requests become network_error only when the plugin fails.
 func (s *httpSession) outcome(err error) error {
 	var runErr *domain.WorkInfoRunError
 	if err != nil && !errors.As(err, &runErr) {
@@ -100,7 +93,6 @@ func (s *httpSession) outcome(err error) error {
 	return err
 }
 
-// acquire は実行の枠を取り、返す関数で空ける。
 func (r *Runtime) acquire(ctx context.Context) (func(), error) {
 	timer := time.NewTimer(domain.WorkInfoPluginBusyWait)
 	defer timer.Stop()
@@ -114,8 +106,7 @@ func (r *Runtime) acquire(ctx context.Context) (func(), error) {
 	}
 }
 
-// runner は実行の wazero のランタイムと、コンパイル済みのモジュールを持つ。Runtime の枠を
-// 取ったときだけ使うので、それ自身は排他を持たない。
+// The Runtime execution slot serializes runner access, so no separate mutex is needed.
 type runner struct {
 	logger *slog.Logger
 	rt     wazero.Runtime
@@ -125,10 +116,8 @@ type runner struct {
 }
 
 func newRunner(ctx context.Context, logger *slog.Logger, nc *netClient) (*runner, error) {
-	// ランタイムのページの上限は wazero の既定（4 GiB）のままにする。wazero は上限を超える
-	// memory.grow をメモリの確保に渡さずに断るので、上限を 128 MiB に置くと、超えたことを
-	// cappedMemory が記録できない。実際に使える大きさは cappedMemory が
-	// domain.WorkInfoPluginMemoryLimitPages で止める。
+	// Leave wazero's page limit at 4 GiB so cappedMemory can observe and record excess growth; the
+	// allocator enforces the actual WorkInfoPluginMemoryLimitPages bound.
 	rt := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfig().
 		WithCloseOnContextDone(true))
 	if _, err := wasi_snapshot_preview1.Instantiate(ctx, rt); err != nil {
@@ -147,10 +136,8 @@ func (rn *runner) close(ctx context.Context) error {
 	return rn.rt.Close(ctx)
 }
 
-// run はモジュールを 1 回動かす。parent は呼び出し元の ctx、deadline はそれに実行の時間の上限を
-// 付けたもので、コンパイルとインスタンスの両方を止める。vv のホスト関数は session を使う。標準エラーの
-// 残した部分は、失敗でも返す。started はモジュールを起動したかで、コンパイルの失敗か時間切れでは false
-// である（そのとき標準エラーは空である）。
+// The execution deadline covers compilation and instantiation; retain stderr on failure, and
+// started=false distinguishes failures before module startup.
 func (rn *runner) run(
 	parent, deadline context.Context, digest string, module, input []byte, session *httpSession,
 ) (output []byte, stderr *keptOutput, started bool, err error) {
@@ -190,9 +177,8 @@ func (rn *runner) run(
 	return stdout.buf.Bytes(), stderr, true, nil
 }
 
-// runFailure は実行の終わり方を失敗に対応させる。出力とメモリの上限は、超えたときに runCtx を
-// その理由で止めるので、最初に当たった上限が runCtx の cause に残る。どちらも、プラグインが
-// 書き込みの誤りや memory.grow の -1 を受け流して成功で終わっても失敗にする。
+// The first output/memory limit becomes the cancellation cause and fails execution even if the
+// plugin ignores write errors or failed memory.grow.
 func runFailure(parent, runCtx context.Context, err error) error {
 	cause := context.Cause(runCtx)
 	switch {
@@ -209,8 +195,7 @@ func runFailure(parent, runCtx context.Context, err error) error {
 	return &domain.WorkInfoRunError{Failure: domain.WorkInfoRunFailed}
 }
 
-// stopped は、呼び出し元の ctx が終わっていればその誤りを、実行の時間の上限に当たっていれば
-// timed_out を返す。どちらでもなければ nil を返す。
+// Caller cancellation takes precedence over execution timeout.
 func stopped(parent, runCtx context.Context) error {
 	switch {
 	case parent.Err() != nil:
@@ -222,8 +207,7 @@ func stopped(parent, runCtx context.Context) error {
 	}
 }
 
-// compiled はダイジェストのコンパイル済みのモジュールを返す。無ければコンパイルして持ち、
-// 持つ数が compiledCacheSize を超えたら最も古いものを閉じる。
+// Cache compiled modules by digest and close the oldest when capacity is exceeded.
 func (rn *runner) compiled(ctx context.Context, digest string, module []byte) (wazero.CompiledModule, error) {
 	if c, ok := rn.cache[digest]; ok {
 		return c, nil
@@ -241,8 +225,8 @@ func (rn *runner) compiled(ctx context.Context, digest string, module []byte) (w
 		rn.logger.Info("work-info plugin did not compile", "digest", digest, "error", err)
 		return nil, &domain.WorkInfoRunError{Failure: domain.WorkInfoRunFailed}
 	}
-	// 初めの大きさが上限を超えるメモリは cappedMemory が用意できない。検査では上限を
-	// ちょうどに置いたランタイムでコンパイルが失敗するので、ここに来るのは検査を経ないモジュールだけである。
+	// Oversized initial memory reaches this path only for modules bypassing inspection, which already
+	// rejects it at compile time.
 	if mem, ok := c.ExportedMemories()[memoryExport]; !ok || mem.Min() > domain.WorkInfoPluginMemoryLimitPages {
 		_ = c.Close(ctx)
 		return nil, &domain.WorkInfoRunError{Failure: domain.WorkInfoRunFailed}
@@ -266,8 +250,7 @@ func (rn *runner) logStderr(digest string, stderr *keptOutput) {
 		"digest", digest, "stderr", stderr.buf.String(), "truncated", stderr.dropped)
 }
 
-// sleep はプラグインの眠りを実行の終わりで打ち切る。打ち切らないと、眠っている実行が時間の
-// 上限を過ぎても止まらない。
+// Interrupt plugin sleep on execution completion so sleeping cannot evade the deadline.
 func sleep(ctx context.Context, d time.Duration) {
 	if d <= 0 {
 		return
@@ -280,8 +263,7 @@ func sleep(ctx context.Context, d time.Duration) {
 	}
 }
 
-// limitedOutput は標準出力を limit バイトまで持つ。超える書き込みが来たら exceed を呼んで
-// 実行を止め、以後の書き込みを断る。
+// Excess stdout stops execution and rejects later writes.
 type limitedOutput struct {
 	buf      bytes.Buffer
 	limit    int
@@ -300,8 +282,7 @@ func (w *limitedOutput) Write(p []byte) (int, error) {
 	return w.buf.Write(p)
 }
 
-// keptOutput は標準エラーの先頭 limit バイトを持ち、残りを捨てる。プラグインには
-// 書けたように見せる。
+// Retain only the stderr prefix while reporting successful writes for discarded bytes.
 type keptOutput struct {
 	buf     bytes.Buffer
 	limit   int
@@ -319,8 +300,8 @@ func (w *keptOutput) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// cappedMemory はプラグインの線形メモリを limit バイトまで確保する。超える大きさを求められたら
-// 断り（memory.grow は -1 を返す）、exceed を呼んで実行を止める。wazero が実行ごとに 1 つ使う。
+// Excess memory growth returns -1 and stops execution; each wazero instance receives its own
+// allocator.
 type cappedMemory struct {
 	limit    uint64
 	buf      []byte

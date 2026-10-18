@@ -8,8 +8,6 @@ import { json } from "../testing/groupPage";
 import { PageHeader } from "../ui/patterns/page-header";
 import ConditionLines from "./ConditionLines";
 
-// 条件の行のチップが名前を引く。
-
 const fetchMock = vi.fn<typeof fetch>();
 
 function install() {

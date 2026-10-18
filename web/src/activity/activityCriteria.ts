@@ -6,24 +6,19 @@ import type {
 } from "../api/activity";
 import { normalizeQuery } from "../videoList/listCriteria";
 
-/**
- * アクティビティの画面の絞り込みと URL の相互変換。既定値は書かず、読めない値は既定値として扱う。React に依存しない純粋な関数
- * だけを置く。
- */
+/** Omit defaults from URLs and normalize invalid values to defaults. */
 
-/** ActivityPeriod は期間の絞り込みである。any は絞り込まない。 */
 export type ActivityPeriod = "any" | "today" | "week" | "month";
 
-/** ActivityCriteria は一覧を決める絞り込みである。 */
 export interface ActivityCriteria {
-  /** 状態。undefined は All。 */
+  /** Undefined means All. */
   status?: ActivityStatus;
-  /** 機能。空は All。並びは機能の表の順。 */
+  /** Empty means All; order follows the feature catalog. */
   features: readonly ActivityFeature[];
-  /** 決めたもの。undefined は All。 */
+  /** Undefined means All. */
   decider?: ActivityDecider;
   period: ActivityPeriod;
-  /** 対象の表示名の検索語。前後の空白を落とし、200 文字で切ったもの。 */
+  /** Trimmed query, capped at 200 characters. */
   q: string;
 }
 
@@ -39,7 +34,7 @@ export const activityStatuses: readonly ActivityStatus[] = [
   "done",
 ];
 
-/** 自動の処理の機能。メニューでは区切りの前に置く。 */
+/** Automatic features appear before the menu separator. */
 export const runFeatures: readonly ActivityFeature[] = [
   "import",
   "scan",
@@ -47,7 +42,7 @@ export const runFeatures: readonly ActivityFeature[] = [
   "auto_tagging",
 ];
 
-/** 所有者の操作の機能。メニューでは区切りの後に置く。 */
+/** Owner actions appear after the menu separator. */
 export const ownerFeatures: readonly ActivityFeature[] = [
   "work_info",
   "tags",
@@ -70,7 +65,6 @@ export const activityPeriods: readonly ActivityPeriod[] = [
   "month",
 ];
 
-/** 検索語の上限（契約の `q` の 1–200 文字）。 */
 export const ACTIVITY_QUERY_LIMIT = 200;
 
 function oneOf<T extends string>(
@@ -82,12 +76,10 @@ function oneOf<T extends string>(
     : undefined;
 }
 
-/** normalizeActivityQuery は検索語の前後の空白を落とし、上限の文字数で切る。 */
 export function normalizeActivityQuery(value: string): string {
   return normalizeQuery(value, ACTIVITY_QUERY_LIMIT);
 }
 
-/** parseActivityCriteria は URL のクエリを絞り込みにする。読めない値は既定にする。 */
 export function parseActivityCriteria(params: URLSearchParams): ActivityCriteria {
   const chosen = new Set(params.getAll("feature"));
   const status = oneOf(activityStatuses, params.get("status"));
@@ -101,10 +93,7 @@ export function parseActivityCriteria(params: URLSearchParams): ActivityCriteria
   };
 }
 
-/**
- * serializeActivityCriteria は絞り込みを URL のクエリにする。既定の値は書かない。順は
- * status・feature・decider・period・q で固定し、同じ絞り込みは同じ文字列になる。
- */
+/** Omit defaults and keep a stable status, feature, decider, period, q order. */
 export function serializeActivityCriteria(criteria: ActivityCriteria): URLSearchParams {
   const params = new URLSearchParams();
   if (criteria.status !== undefined) params.set("status", criteria.status);
@@ -118,22 +107,17 @@ export function serializeActivityCriteria(criteria: ActivityCriteria): URLSearch
   return params;
 }
 
-/** activityCriteriaKey は絞り込みを比較・依存配列に使う文字列にする。 */
 export function activityCriteriaKey(criteria: ActivityCriteria): string {
   return serializeActivityCriteria(criteria).toString();
 }
 
-/** hasActivityConditions は「Clear filters」で外せる絞り込みがあるか。 */
 export function hasActivityConditions(criteria: ActivityCriteria): boolean {
   return activityCriteriaKey(criteria) !== "";
 }
 
 const dayMs = 24 * 60 * 60 * 1000;
 
-/**
- * periodSince は期間の始まりの時刻を返す。Today は見る人のローカルの 0 時、Last 7 days と
- * Last 30 days は今からその日数だけ前。any は undefined。
- */
+/** Today starts at local midnight; other periods subtract elapsed days; any has no boundary. */
 export function periodSince(period: ActivityPeriod, now: Date): Date | undefined {
   switch (period) {
     case "any":
@@ -147,7 +131,6 @@ export function periodSince(period: ActivityPeriod, now: Date): Date | undefined
   }
 }
 
-/** activityConditions は絞り込みを一覧の要求の条件にする。 */
 export function activityConditions(
   criteria: ActivityCriteria,
   now: Date,

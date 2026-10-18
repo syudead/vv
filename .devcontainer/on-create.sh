@@ -1,6 +1,5 @@
 #!/bin/bash
-# Codespaces の作成時に1回だけ動く。vv の起動に要るものを入れる。
-# Go・Node・task の版は mise.toml が単一の出どころなので、mise で入れる。
+# Install runtime requirements once when Codespaces is created; mise.toml pins tool versions.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -14,7 +13,6 @@ echo 'eval "$(~/.local/bin/mise activate bash)"' >>~/.bashrc
 
 mise trust
 mise install
-# task preview に要るのは Go の依存と web の npm 依存だけである。
-# golangci-lint などの検査ツールまで入れる task setup は、作成を待たせるので呼ばない。
+# Preview needs Go and web dependencies only; installing lint tools would delay creation.
 mise exec -- go mod download
 mise exec -- npm --prefix web ci

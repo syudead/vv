@@ -1,37 +1,32 @@
 -- +goose Up
--- フォルダのグループ。
 
--- 利用者データ。再スキャン・メディアフォルダの変更・再起動で消えてはならない。
--- 登録フォルダにも videos にも外部キーを張らない。
+-- Persistent overrides have no foreign keys to registrations or videos.
 create table folder_group_overrides (
-    -- フォルダの絶対パスを domain.FolderKey で整えたもの。
+    -- Absolute folder path normalized by domain.FolderKey.
     path       text    primary key,
     mode       text    not null check (mode in ('ungroup', 'group_direct')),
     updated_at integer not null
 ) without rowid;
 
--- 以下は索引。作り直し（rebuildFolderIndex）が丸ごと置き換える。
+-- The following indexes are replaced completely by rebuildFolderIndex.
 create table folder_groups (
     id              integer primary key,
-    -- フォルダを指す鍵。domain.FolderKey。グループの同一性はこれで決める。
+    -- Stable folder identity from domain.FolderKey.
     path_key        text    not null unique,
-    -- フォルダの絶対パスの綴り（そのフォルダの下の所在のうちパスの最小のものから取る）。
+    -- Use the spelling from the smallest location path beneath the folder.
     path            text    not null,
-    -- フォルダ名（domain.FolderName と同じ最後の段）。
     name            text    not null,
-    -- 題名順の並べ替えの鍵。domain.NaturalSortKey(name)。
+    -- Natural-sort key from domain.NaturalSortKey(name).
     title_key       text    not null
 );
 
 create table folder_group_members (
     video_id  integer primary key references videos (id) on delete cascade,
     group_id  integer not null references folder_groups (id) on delete cascade,
-    -- グループの中の並び（0 始まり）。
     position  integer not null,
     unique (group_id, position)
 );
 
--- 動画ごとの祖先フォルダ名。
 create table video_folder_names (
     video_id integer not null references videos (id) on delete cascade,
     name     text    not null,
@@ -39,13 +34,12 @@ create table video_folder_names (
 ) without rowid;
 create index video_folder_names_name_idx on video_folder_names (name, video_id);
 
--- 索引を作った規則の版。どちらかが今の値と違えば起動時に作り直す。
--- title_key は domain.NaturalSortKey で作るので、その版（SearchKeyVersion）も持つ。
+-- Rebuild at startup when either folder rules or search-key normalization versions change.
 create table folder_index_state (
     id             integer primary key check (id = 1),
     version        integer not null,   -- domain.FolderIndexVersion
     search_version integer not null,   -- domain.SearchKeyVersion
-    -- 1 は「前回の作り直しが失敗した」。作り直しが成功すると 0 に戻る。
+    -- Set after a failed rebuild and cleared after success.
     stale          integer not null default 0 check (stale in (0, 1))
 );
 

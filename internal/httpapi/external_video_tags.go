@@ -13,11 +13,8 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// UpdateVideoTags は複数の動画に名前で指定したタグを付ける・外す・置き換える
-// （POST /api/v1/video-tags、docs/how-to/external-api.md）。
-// 本文の形と件数の上限をここで確かめ、名前の規則と動画の引き当ては 1 つのトランザクションで
-// 行う保存先（TagStore.ApplyVideoTags）に任せる。internal/app は通さない。
-// tentative が真の add・replace で却下した名前に当たって飛ばした名前は skippedTags に返す
+// TagStore.ApplyVideoTags validates names/resolves all videos atomically; skipped rejected
+// tentative names are reported in skippedTags.
 func (e *externalServer) UpdateVideoTags(w http.ResponseWriter, r *http.Request) {
 	var request videoTagsRequestBody
 	if !e.readJSONBody(w, r, &request) {
@@ -93,16 +90,14 @@ func (e *externalServer) UpdateVideoTags(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, out, e.s.logger)
 }
 
-// videoTagsRequestBody は POST /api/v1/video-tags の本文である。生成した
-// extgen.VideoTagsRequest の Tentative（*bool）は省略と明示の null を区別できないので、
-// tentative だけ生のまま読み、tentative() で確かめる。外側の Tentative が埋め込んだ型の同名の
-// 項目を隠すので、知らない項目を誤りにする readJSONBody の扱いはそのまま効く。
+// Read tentative as raw JSON because generated *bool conflates omitted and null; shadowing
+// preserves unknown-field rejection.
 type videoTagsRequestBody struct {
 	extgen.VideoTagsRequest
 	Tentative json.RawMessage `json:"tentative"`
 }
 
-// tentative は本文の tentative を返す。省略は偽。null を含め真偽値でない値は ok = false にし、呼び出し側が 400 invalid_request を返す。
+// Omitted tentative defaults false; explicit null and nonbooleans are invalid.
 func (b videoTagsRequestBody) tentative() (value, ok bool) {
 	if b.Tentative == nil {
 		return false, true
@@ -116,9 +111,8 @@ func (b videoTagsRequestBody) tentative() (value, ok bool) {
 	return value, true
 }
 
-// externalVideoRef は本文の動画の指定を domain.VideoRef にする。id・contentKey・path の
-// ちょうど 1 つを持たない、または contentKey・path が空なら ok = false。1 未満の id は形の
-// 誤りにせず、どの動画にも当たらない指定として保存先が 404 にする（lookup と同じ）。
+// Require exactly one nonempty reference; nonpositive IDs are lookup misses (404), not shape
+// errors.
 func externalVideoRef(video extgen.VideoRef) (domain.VideoRef, bool) {
 	var ref domain.VideoRef
 	given := 0
@@ -143,7 +137,6 @@ func externalVideoRef(video extgen.VideoRef) (domain.VideoRef, bool) {
 	return ref, given == 1
 }
 
-// writeVideoTagsError はタグの一括操作の保存先の誤りを応答へ写す。
 func (e *externalServer) writeVideoTagsError(w http.ResponseWriter, err error) {
 	var notFound *domain.VideoRefNotFoundError
 	if errors.As(err, &notFound) {
@@ -181,17 +174,14 @@ func (e *externalServer) writeVideoTagsError(w http.ResponseWriter, err error) {
 	e.internalError(w, "Could not update the video tags.", err)
 }
 
-// invalidRequestLimit は上限を添えた 400 invalid_request を返す。
 func (e *externalServer) invalidRequestLimit(w http.ResponseWriter, reason extgen.ErrorReason, limit int, message string) {
 	writeExternalError(w, e.s, http.StatusBadRequest, extgen.Error{
 		Code: extgen.ErrorCodeInvalidRequest, Reason: &reason, Limit: &limit, Message: message,
 	})
 }
 
-// readJSONBody は本文を 1 つの JSON の値として target に読む。読めなければ 400
-// invalid_request を書いて false を返す。Content-Type は境界（mutationBoundary）も確かめるが、
-// 画面の API の readJSONBody と同じくここでも確かめる。知らない項目は、画面の API と同じく
-// 誤りにする（綴りの誤りを黙って無視しない）。
+// readJSONBody accepts exactly one value, rejects unknown fields, and rechecks Content-Type at the
+// handler boundary.
 func (e *externalServer) readJSONBody(w http.ResponseWriter, r *http.Request, target any) bool {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
@@ -212,8 +202,7 @@ func (e *externalServer) readJSONBody(w http.ResponseWriter, r *http.Request, ta
 	return true
 }
 
-// invalidBody は本文を読めなかったときの 400 invalid_request を返す。上限を超えた本文は、
-// 途中で切れた JSON の誤りとしてではなく、上限を超えたことを示す。
+// Oversized bodies report the limit rather than a misleading truncated-JSON error.
 func (e *externalServer) invalidBody(w http.ResponseWriter, err error, message string) {
 	if tooLarge := (*http.MaxBytesError)(nil); errors.As(err, &tooLarge) {
 		message = fmt.Sprintf("The body must be at most %d bytes. Split the videos into smaller requests.", tooLarge.Limit)
@@ -221,9 +210,8 @@ func (e *externalServer) invalidBody(w http.ResponseWriter, err error, message s
 	e.invalidRequest(w, nil, message)
 }
 
-// externalBodyLimit は外部連携 API が読む本文の上限（バイト）である。videos の上限 20000 件を
-// パスで指定しても収まる大きさにする（1 件あたり 1.6 KB 程度、日本語の名前で 500 文字ほどまで）。
-// 超えた本文は invalidBody が上限を示して断る。
+// The body cap accommodates 20,000 path references at roughly 1.6KB each, including multibyte
+// names.
 const externalBodyLimit = 32 << 20
 
 func (e *externalServer) bodyLimit() int64 {

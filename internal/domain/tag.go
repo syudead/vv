@@ -11,33 +11,20 @@ import (
 	"unicode/utf8"
 )
 
-// TagNameMaxLength はタグ名（元の名前・シノニムとも）の上限（符号位置数）で
-// ある。検索語の上限（domain.SearchKeyMaxRunes 相当）とそろえ、利用者が覚える
-// 上限を1つにする。
+// TagNameMaxLength counts code points for canonical names and synonyms, matching the search-name limit.
 const TagNameMaxLength = 100
 
-// ErrInvalidTagName はタグ名として受け付けられない入力を表す。API では
-// invalid_request（400）になる。
-//
-// NormalizeTagName はこれを直接は返さず、具体的な理由（空・制御文字・長さ超過）を
-// 運ぶ *InvalidTagNameError を返す。errors.Is(err, ErrInvalidTagName) は真のまま
-// になり、errors.As で取り出した Problem から internal/httpapi が API の reason を
-// 決める。
+// NormalizeTagName wraps ErrInvalidTagName in InvalidTagNameError so the API can report the specific violation.
 var ErrInvalidTagName = errors.New("invalid tag name")
 
-// TagNameProblem はタグ名の規則違反の種類である。
 type TagNameProblem int
 
 const (
-	// TagNameEmpty は前後の空白を取り除くと空になることを表す。
 	TagNameEmpty TagNameProblem = iota + 1
-	// TagNameControlCharacters は制御文字を含むことを表す。
 	TagNameControlCharacters
-	// TagNameTooLong は TagNameMaxLength 符号位置を超えることを表す。
 	TagNameTooLong
 )
 
-// InvalidTagNameError はタグ名の規則違反の具体的な理由を運ぶ。
 type InvalidTagNameError struct {
 	Problem TagNameProblem
 }
@@ -61,91 +48,58 @@ func invalidTagName(problem TagNameProblem) error {
 	return &InvalidTagNameError{Problem: problem}
 }
 
-// ErrTagNotFound は指定したタグがもう無いことを表す。API では tag_not_found
-// （404）になる。
 var ErrTagNotFound = errors.New("tag not found")
 
-// ErrTagNameTaken はその名前が既に別のタグの元の名前かシノニムであることを
-// 表す。API では tag_name_taken（409）になる。errors.As で *TagNameConflict を
-// 取り出すと、その名前を持つタグが分かる。
+// TagNameConflict identifies the existing canonical-name or synonym owner via errors.As.
 var ErrTagNameTaken = errors.New("name is already in use")
 
-// ErrTagMergeRequired は、シノニムにしようとした名前が既存のタグの元の名前で、
-// その統合の承諾が無い（無効な承諾を含む）ことを表す。API では
-// tag_merge_required（409）になる。errors.As で *TagMergeRequired を取り出すと、
-// 統合の承諾が要るタグが分かる。
+// TagMergeRequired identifies the canonical-name owner whose merge consent is missing or invalid.
 var ErrTagMergeRequired = errors.New("merge confirmation is required")
 
-// ErrTagNotTentative は仮でないタグを却下しようとしたことを表す。API では
-// tag_not_tentative（409）になる。
 var ErrTagNotTentative = errors.New("tag is not tentative")
 
-// TagRef は動画に付いたタグ1件である。Name は常に元の名前
+// TagRef.Name is always the canonical name.
 type TagRef struct {
-	ID   int64
-	Name string
-	// Tentative は仮のタグ（自動の付与で新しく作られ、まだ確定していないタグ）である
-	// こと。
+	ID        int64
+	Name      string
 	Tentative bool
-	// Kind はタグの種類。nil は種類の無いタグ。
-	Kind *TagKindRef
+	Kind      *TagKindRef
 }
 
-// VideoTag は動画に付いたタグ1件と、その出所である（017 の の VideoTag）。同じタグが手でもフォルダ名
-// からも付いていれば、1件にまとめて両方を真にする。
+// VideoTag merges manual and folder-derived assignments into one entry with both flags set.
 type VideoTag struct {
 	TagRef
-	// Manual は手で付けた分（video_tags の行）があること。
-	Manual bool
-	// FromFolder は祖先のフォルダ名がこのタグの名前かシノニムに一致すること
-	// 。
+	Manual     bool
 	FromFolder bool
-	// Unconfirmed は、自動タグ付けが確率の中間の帯で仮に付け、所有者がまだ確定していない
-	// 付与であること（docs/design-docs/auto-tagging.md）。フォルダ名からも付いていれば偽。
-	// タグそのものの仮の状態（TagRef.Tentative）とは別である。
+	// Unconfirmed describes a tentative assignment, independently of TagRef.Tentative; folder-derived assignments are always confirmed (docs/design-docs/auto-tagging.md).
 	Unconfirmed bool
 }
 
-// Tag は管理画面と候補に出す1件である。
 type Tag struct {
-	ID   int64
-	Name string
-	// Synonyms は名前の自然順（SortTagNames）。
-	Synonyms []string
-	// VideoCount はいまライブラリにある動画の本数。
+	ID         int64
+	Name       string
+	Synonyms   []string
 	VideoCount int
-	// Tentative は仮のタグであること。
-	Tentative bool
-	// Kind はタグの種類。nil は種類の無いタグ。
-	Kind *TagKindRef
-	// CreatedAt は tags.created_at（Unix 秒。docs/design-docs/catalog-organization.md）。
+	Tentative  bool
+	Kind       *TagKindRef
+	// CreatedAt uses Unix seconds.
 	CreatedAt time.Time
 }
 
-// TagSummaryItem は選んだ動画のタグの要約1件である
 type TagSummaryItem struct {
 	Tag TagRef
-	// Count は選んだ動画のうちこのタグが付いている本数。Count が
-	// TagSummary.Total より小さいタグが「一部にだけ付いている」。手で付けた分と
-	// フォルダ名から付いている分のどちらかで数える。
-	Count int
-	// ManualCount は選んだ動画のうちこのタグを手で付けた本数。
+	// Count includes either manual or folder-derived assignments; values below Total indicate partial assignment.
+	Count       int
 	ManualCount int
 }
 
-// TagSummary は選んだ動画のタグの要約である。
 type TagSummary struct {
-	// Total は選んだ動画のうちいまライブラリにある動画の数。
 	Total int
-	// Items は1本以上に付いているタグだけで、名前の自然順
-	// （SortTagSummaryItems）。
+	// Items contains only assigned tags in natural-name order.
 	Items []TagSummaryItem
 }
 
-// TagNameConflict はその名前を既に持つタグを運ぶ。errors.Is(err,
-// ErrTagNameTaken) が真になる。
 type TagNameConflict struct {
-	// Tag はその名前を持つタグ（元の名前としてでもシノニムとしてでも）。
 	Tag TagRef
 }
 
@@ -155,9 +109,6 @@ func (e *TagNameConflict) Error() string {
 
 func (e *TagNameConflict) Unwrap() error { return ErrTagNameTaken }
 
-// TagMergeRequired は、統合の承諾が要るタグ（シノニムにしようとした名前を
-// いま元の名前として持つタグ）を運ぶ。errors.Is(err, ErrTagMergeRequired) が
-// 真になる。
 type TagMergeRequired struct {
 	Tag TagRef
 }
@@ -168,20 +119,7 @@ func (e *TagMergeRequired) Error() string {
 
 func (e *TagMergeRequired) Unwrap() error { return ErrTagMergeRequired }
 
-// NormalizeTagName は受け取った入力をタグ名に整える。
-// 手順の順番に意味がある。
-//
-//  1. 入力のどこかに制御文字（一般カテゴリ Cc。改行・タブ・CR を含む）が
-//     あれば誤り。前後の空白を取り除く前に調べる。改行・タブ・CR は
-//     Unicode の White_Space でもあるので、先に手順2を掛けると
-//     "旅行\n" や "\t旅行" の前後の制御文字が黙って取り除かれ、拒むべき
-//     入力が別の名前として作られてしまう。
-//  2. 前後の Unicode White_Space を取り除く。内側の空白は残す。
-//  3. 空になったら誤り。
-//  4. TagNameMaxLength 符号位置を超えたら誤り。
-//
-// Unicode の正規化・大文字小文字の畳み込みはしない。Anime と anime は
-// 別の名前である。
+// NormalizeTagName rejects controls before trimming Unicode whitespace so tabs/newlines cannot silently become another name; it then rejects empty or overlong names without normalization or case folding.
 func NormalizeTagName(input string) (string, error) {
 	for _, r := range input {
 		if unicode.Is(unicode.Cc, r) {
@@ -200,8 +138,7 @@ func NormalizeTagName(input string) (string, error) {
 	return trimmed, nil
 }
 
-// SortTagNames はタグ名（シノニムの一覧など）を名前の自然順に並べる。
-// 同順位は元の文字列で決着させる（folder.go の SortFolders と同じ規則）。
+// SortTagNames breaks natural-order ties by original spelling.
 func SortTagNames(names []string) {
 	slices.SortStableFunc(names, func(a, b string) int {
 		if order := CompareNatural(a, b); order != 0 {
@@ -211,15 +148,11 @@ func SortTagNames(names []string) {
 	})
 }
 
-// SortTagRefs は動画に付いたタグ（TagRef）を Name の自然順に並べる。同順位は
-// ID で決着させる（元の名前は tag_names の主キーで一意なので、実際には
-// CompareNatural だけで決まる。ID の比較は同順位が起き得る呼び出し側の入力
-// でも決定的な並びにするための保険である）。
+// SortTagRefs breaks natural-name ties by ID for deterministic order even with noncanonical caller input.
 func SortTagRefs(refs []TagRef) {
 	slices.SortStableFunc(refs, compareTagRefs)
 }
 
-// SortVideoTags は動画に付いたタグ（VideoTag）を SortTagRefs と同じ規則で並べる。
 func SortVideoTags(tags []VideoTag) {
 	slices.SortStableFunc(tags, func(a, b VideoTag) int {
 		return compareTagRefs(a.TagRef, b.TagRef)
@@ -236,8 +169,6 @@ func compareTagRefs(a, b TagRef) int {
 	return cmp.Compare(a.ID, b.ID)
 }
 
-// SortTagSummaryItems は要約を Tag.Name の自然順に並べる（同順位の決着は
-// SortTagRefs と同じ）。
 func SortTagSummaryItems(items []TagSummaryItem) {
 	slices.SortStableFunc(items, func(a, b TagSummaryItem) int {
 		return compareTagRefs(a.Tag, b.Tag)

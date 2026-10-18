@@ -25,11 +25,10 @@ describe("FavoriteToggle page", () => {
     const button = screen.getByRole("button", {
       name: t.designSystem.overlay.favoriteOn,
     });
-    // ツールチップの起点の data-state（closed）が、Toggle の押した状態の "on" を上書きしない。
+    // Tooltip's closed data-state must not replace the toggle's on state.
     expect(button.getAttribute("aria-pressed")).toBe("true");
     expect(button.getAttribute("data-state")).toBe("on");
-    // ツールチップが開いて data-state が置き換わっても、ハートは aria-pressed で
-    // text-favorite のまま（Toggle の既定の aria-pressed:text-primary は残らない）。
+    // Use aria-pressed to preserve favorite color while tooltip state replaces data-state.
     expect(button.className).toContain("aria-pressed:text-favorite");
     expect(button.className).not.toContain("aria-pressed:text-primary");
 

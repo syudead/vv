@@ -14,7 +14,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// callTrace は待ち受けと保存先の呼び出しを 1 本の順序で記録する。
 type callTrace struct{ calls []string }
 
 func (c *callTrace) record(call string) {
@@ -23,8 +22,7 @@ func (c *callTrace) record(call string) {
 	}
 }
 
-// fakeNetworkSettingsStore は保存した値と、保存時の ctx が切れていたかを覚える。
-// trace があれば、失敗した保存の試みも含めて記録する。
+// Record failed saves too, including whether their context was canceled.
 type fakeNetworkSettingsStore struct {
 	saved      []bool
 	saveErr    error
@@ -42,8 +40,7 @@ func (f *fakeNetworkSettingsStore) SaveLANAccess(ctx context.Context, allowed bo
 	return nil
 }
 
-// fakeNetworkListener は今のアドレスを持ち、Reopen の呼び出しを記録する。failOn に
-// 含むアドレスでは開けずに元のアドレスのままにする。
+// Failed target addresses leave the original listener unchanged.
 type fakeNetworkListener struct {
 	addr    string
 	reopens []string
@@ -99,7 +96,7 @@ func TestNetworkSettingsCurrentListsOnlyReachableIPv4Addresses(t *testing.T) {
 		Store:     &fakeNetworkSettingsStore{},
 		Listener:  &fakeNetworkListener{addr: "0.0.0.0:8080"},
 		LANAccess: true,
-		// ループバック・未指定・IPv6 は LAN から開けるアドレスとして示さない。
+
 		Addresses: staticAddresses("192.168.1.10", "127.0.0.1", "0.0.0.0", "fe80::1", "10.0.0.5"),
 		Logger:    discardLogger(),
 	})
@@ -197,7 +194,7 @@ func TestNetworkSettingsSetLANAccessSwitchesListenerThenSaves(t *testing.T) {
 			if !reflect.DeepEqual(got, want) {
 				t.Fatalf("SetLANAccess() = %+v, want %+v", got, want)
 			}
-			// 待ち受けを開き直してから保存する。逆順だと開けなかったときに保存値と食い違う。
+			// Reopen before saving so bind failure cannot leave a misleading persisted setting.
 			wantCalls := []string{"reopen " + tc.wantAddr, fmt.Sprintf("save %v", tc.allowed)}
 			if !reflect.DeepEqual(trace.calls, wantCalls) {
 				t.Fatalf("calls = %v, want %v", trace.calls, wantCalls)
@@ -248,7 +245,7 @@ func TestNetworkSettingsSetLANAccessKeepsSettingWhenListenFails(t *testing.T) {
 	if !errors.Is(err, domain.ErrListenFailed) || !errors.Is(err, listenErr) {
 		t.Fatalf("error = %v, want domain.ErrListenFailed wrapping %v", err, listenErr)
 	}
-	// 開けなかったら保存を試みない。
+
 	if want := []string{"reopen 0.0.0.0:8080"}; !reflect.DeepEqual(trace.calls, want) {
 		t.Fatalf("calls = %v, want %v", trace.calls, want)
 	}
@@ -273,7 +270,7 @@ func TestNetworkSettingsSetLANAccessRestoresListenerWhenSaveFails(t *testing.T) 
 	if errors.Is(err, domain.ErrListenFailed) {
 		t.Fatalf("保存の失敗を待ち受けの失敗として返した: %v", err)
 	}
-	// 新しいアドレスで開き直し、保存に失敗してから元のアドレスへ戻す。
+
 	wantCalls := []string{"reopen 0.0.0.0:8080", "save true", "reopen 127.0.0.1:8080"}
 	if !reflect.DeepEqual(trace.calls, wantCalls) {
 		t.Fatalf("calls = %v, want %v", trace.calls, wantCalls)

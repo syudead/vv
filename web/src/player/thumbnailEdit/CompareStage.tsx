@@ -3,13 +3,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { t, type UiText } from "../../i18n";
 import { fitBox } from "./editRules";
 
-/**
- * CompareStage は始めた画像（コマか今のサムネイル、名前は `sourceLabel`）と生成した画像を、動画の形で同じ大きさの箱に並べる（ui-design
- * 「Compare」）。md 未満は縦に積み、コマを上にする（並べ方は CSS が決め、ここは並んだ向きを
- * 読んで箱の大きさを測るだけ）。箱は名前と注記の分を除いた段に収まるいちばん大きな大きさで、
- * 名前は箱のすぐ上に置く。生成した画像はサムネイルと同じく箱を覆うように切り抜いて出し、
- * 形が違えば注記を箱の下に添える。
- */
+/** Size comparison images to the largest matching boxes within available space; CSS controls stacking below md. */
 export default function CompareStage({
   frameUrl,
   resultUrl,
@@ -20,7 +14,6 @@ export default function CompareStage({
 }: {
   frameUrl: string;
   resultUrl: string;
-  /** 最初の箱の名前と `alt`（`Frame` か `Thumbnail`）。 */
   sourceLabel: UiText;
   aspect: number;
   cropNote: boolean;

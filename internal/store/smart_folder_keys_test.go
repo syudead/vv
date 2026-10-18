@@ -8,10 +8,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// スマートフォルダのお気に入り・プレイリストの項目・動画の文脈
-//
-
-// smartFolderCard はフォルダ id のカードを所有者として読む。
 func smartFolderCard(t *testing.T, db *DB, id int64) domain.LibrarySmartFolder {
 	t.Helper()
 	page, err := db.SmartFolders().SmartFolderContents(context.Background(), domain.AudienceOwner, id, "", domain.MaxLimit)
@@ -21,7 +17,6 @@ func smartFolderCard(t *testing.T, db *DB, id int64) domain.LibrarySmartFolder {
 	return page.SmartFolder
 }
 
-// お気に入りにしたフォルダは、カードでお気に入りになる。無いフォルダの id は数えない。
 func TestSmartFolderFavoriteShowsOnItsCard(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -47,7 +42,6 @@ func TestSmartFolderFavoriteShowsOnItsCard(t *testing.T) {
 	}
 }
 
-// フォルダのプレイリスト項目は、再生する時点のフォルダの再生順で流れ、あとでタグが付いた動画も入る。
 func TestPlaylistSmartFolderItemPlaysTheFolderAtPlayTime(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -97,8 +91,6 @@ func TestPlaylistSmartFolderItemPlaysTheFolderAtPlayTime(t *testing.T) {
 	}
 }
 
-// フォルダの中の動画の文脈は、smartFolder ならフォルダの再生順、group ならグループの再生順で、
-// 両方あれば group を優先し、動画を持たないフォルダは無視する。
 func TestVideoContextFollowsTheSmartFolderOrTheGroup(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -163,7 +155,7 @@ func TestVideoContextFollowsTheSmartFolderOrTheGroup(t *testing.T) {
 		})
 	}
 
-	// 両方あれば group が勝つので、group が動画を持たなくてもフォルダの文脈にはならない。
+	// An explicit group takes precedence even if it does not contain the video; do not fall through to the smart folder.
 	if group, found := read(solo, domain.VideoContext{GroupID: pair, SmartFolderID: folder}); found && group.SmartFolder {
 		t.Errorf("group と両方のとき solo の文脈がフォルダ = %+v", group)
 	}
@@ -175,7 +167,6 @@ func TestVideoContextFollowsTheSmartFolderOrTheGroup(t *testing.T) {
 	}
 }
 
-// フォルダを消すと、そのお気に入りとプレイリストの項目が消え、プレイリストの位置が詰め直される。
 func TestDeletingASmartFolderRemovesItsFavoriteAndPlaylistItem(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -211,7 +202,6 @@ func TestDeletingASmartFolderRemovesItsFavoriteAndPlaylistItem(t *testing.T) {
 	}
 }
 
-// videoIDsOf は動画の id を順に返す。
 func videoIDsOf(videos []domain.Video) []int64 {
 	out := make([]int64, 0, len(videos))
 	for _, video := range videos {

@@ -9,8 +9,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 036 #727: GET /api/tags/rejected-names はページで返し、total と続きがあるときだけ nextCursor を
-// 載せる。limit が範囲外・cursor が解釈できないときは 400 invalid_request
 func TestListRejectedTagNamesPages(t *testing.T) {
 	f := newGuestFixture(t, true)
 	for _, name := range []string{"name 10", "name 2", "name 1"} {

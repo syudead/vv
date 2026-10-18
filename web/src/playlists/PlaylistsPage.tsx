@@ -15,7 +15,6 @@ import { Button } from "../ui/shadcn/button";
 import NewPlaylistDialog from "./NewPlaylistDialog";
 import { PlaylistCard } from "./PlaylistCard";
 
-/** More は続きのページ、または古くなった一覧の最初のページの読み直しの状態である。 */
 type More = { kind: "idle" } | { kind: "loading" } | { kind: "failed"; error: unknown };
 
 type Page =
@@ -24,21 +23,16 @@ type Page =
   | {
       kind: "ready";
       items: readonly PlaylistSummary[];
-      /** 全部のプレイリストの数（ページングとは独立）。見出しの件数に出す。 */
+      /** Total count is independent of loaded pages. */
       total: number;
-      /** 続きのページの鍵。無ければもう続きは無い。 */
       nextCursor?: string;
-      /** 読んだページの一覧の版。続きのページの版がこれと違えば、並びが変わっている。 */
+      /** A mismatching next-page version means the order changed. */
       version: string;
-      /**
-       * 読んだページが古い（作った後、または続きのページの版が違った後）。次の読みは最初の
-       * ページで、読んだページと置き換える。
-       */
+      /** Stale pages require replacement from page one. */
       stale: boolean;
       more: More;
     };
 
-/** readyPage は応答の 1 ページ目を、読んだページとして表す。 */
 function readyPage(list: PlaylistList): Page {
   return {
     kind: "ready",
@@ -52,22 +46,9 @@ function readyPage(list: PlaylistList): Page {
 }
 
 /**
- * PlaylistsPage は所有者のプレイリストを最後に変えた順にカードの格子で並べ、新しく作らせる画面である。カードはライブラリのグループのカードの形
- * （PlaylistCard）で、格子はライブラリと同じ CardGrid である。
- *
- * 一覧はライブラリと同じく 1 ページずつ読む。格子の末尾の見張りが画面に
- * 近づいたら `nextCursor` で続きを読み、読んでいる間は LoadMoreRow の Spinner、失敗したら今の
- * カードを残して Retry つきの LoadMoreRow を出す。見出しの件数は応答の `total`（全部の数）である。
- *
- * 並びは更新日時の新しい順なので、読んでいる間に変わったプレイリストは前のページの側へ動き、
- * `nextCursor` の次からは返らない。続きのページの `version` が読んだページと違えばそれが起きたので、
- * 足さずに最初のページから読み直して置き換える。作った後も同じで、最初のページを読み直す。
- * 読み直しに失敗したら今のカードを残して Retry つきの LoadMoreRow を出し、Retry は最初のページを
- * もう一度求める。読み直しが終わるか失敗すると見張りは付け直され、続きはそこから読まれる。
- *
- * 最初のページは開いたときと作った後に読む。開いている間は自分では取り直さない。
- * 作ったプレイリストは応答で先頭に置いてから最初のページを読み直し、フォーカスをそのカードのリンクへ
- * 移す。同じ名前のプレイリストもそれぞれ 1 枚に出す。
+ * Restart from page one on version changes to avoid missing playlists moved before the cursor.
+ * Keep cards on refresh failure and make Retry restart the first page; prepend creations
+ * optimistically before refreshing.
  */
 export default function PlaylistsPage() {
   const [page, setPage] = useState<Page>({ kind: "loading" });
@@ -75,7 +56,7 @@ export default function PlaylistsPage() {
   const [focusId, setFocusId] = useState<number | null>(null);
   const links = useRef(new Map<number, HTMLAnchorElement>());
   const pageRef = useRef(page);
-  // 進行中の一覧の要求。同時に 1 つだけで、新しい要求や作った後の読み直しが来たら打ち切る。
+  // Allow one list request at a time; new reads and post-create refreshes abort the previous request.
   const inflight = useRef<AbortController | null>(null);
 
   const showPage = useCallback((next: Page) => {
@@ -98,7 +79,6 @@ export default function PlaylistsPage() {
     return controller;
   }, []);
 
-  /** load は何も出していないときに最初のページを読む（開いたとき、Load failed の Retry）。 */
   const load = useCallback(() => {
     const controller = begin();
     listPlaylists({ signal: controller.signal }).then(
@@ -123,9 +103,8 @@ export default function PlaylistsPage() {
   }, [load]);
 
   /**
-   * loadMore は、読んだページが古ければ最初のページを読み直して置き換え、そうでなければ
-   * `nextCursor` の続きのページを読んで今のカードの後ろに足す。続きも読み直しも要らないとき、
-   * 読んでいる間は何もしない。失敗した読みは Retry がもう一度求める。
+   * Replace from page one when stale, otherwise append the next page; no-op while loading or
+   * exhausted.
    */
   const loadMore = useCallback(() => {
     const read = (cursor: string | undefined) => {
@@ -140,8 +119,7 @@ export default function PlaylistsPage() {
             return;
           }
           if (list.version !== now.version) {
-            // 読んでいる間に並びが変わった。足すと動いたプレイリストが欠けるので、最初のページから
-            // 読み直す。
+            // The order changed during pagination; restart to avoid missing moved playlists.
             showPage({ ...now, stale: true, more: { kind: "loading" } });
             read(undefined);
             return;
@@ -172,7 +150,6 @@ export default function PlaylistsPage() {
     read(current.stale ? undefined : current.nextCursor);
   }, [begin, showPage]);
 
-  // --- 無限スクロール（ライブラリと同じ見張り） ---
   const sentinel = useRef<HTMLDivElement | null>(null);
   const canLoadMore =
     page.kind === "ready" &&
@@ -190,12 +167,10 @@ export default function PlaylistsPage() {
     );
     observer.observe(target);
     return () => observer.disconnect();
-    // ページを読み終えるたび（nextCursor が変わる、読みが終わる・失敗する）に見張りを付け直し、
-    // 見えたままならすぐ次のページを読む。
+    // Reattach observation after success or failure so a still-visible sentinel can load more.
   }, [canLoadMore, loadMore, nextCursor]);
 
-  // 窓を閉じた後で新しいカードのリンクへフォーカスを移す。窓は閉じるときに開く前の要素へ
-  // フォーカスを戻すので（setTimeout 0）、それより後に移す。
+  // Focus the new card after the dialog finishes restoring its trigger's focus.
   useEffect(() => {
     if (focusId === null) return;
     const timer = setTimeout(() => {
@@ -211,7 +186,7 @@ export default function PlaylistsPage() {
       current.kind === "ready"
         ? current.items.filter((item) => item.id !== playlist.id)
         : [];
-    // 読んだページは古くなった。先頭に置いて見せながら、最初のページを読み直して置き換える。
+    // Prepend optimistically while replacing stale pages with a fresh first page.
     showPage({
       kind: "ready",
       items: [playlist, ...rest],
@@ -247,7 +222,7 @@ export default function PlaylistsPage() {
           count={
             page.kind === "ready" && !empty ? t.playlists.count(page.total) : undefined
           }
-          // 空のときは本体の「New playlist」だけを出し、主操作を 1 つにする。
+          // In the empty state, expose only one primary creation action.
           actions={empty ? undefined : newButton}
         />
       }

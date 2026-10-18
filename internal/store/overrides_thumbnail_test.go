@@ -11,8 +11,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 代表サムネイルの位置。
-
 func setThumbnailPosition(t *testing.T, db *DB, id int64, positionMs *int64) domain.Video {
 	t.Helper()
 	video, err := db.Ingest().SetThumbnailPosition(context.Background(), id, positionMs)
@@ -43,9 +41,6 @@ func readOverrideRow(t *testing.T, db *DB, id int64) (overrideRow, bool) {
 	return row, true
 }
 
-// 記録の取引は位置と改版番号を書き、thumbnail_state を done にして、代表サムネイルの
-// 代用と失敗の問題を消す。確定後に VideoOverrideChanged を1回発行し、問題を消したので
-// 取り込みの画面に読み直させる ScanChanged も発行する。
 func TestSetThumbnailPositionMarksDoneAndClearsSubstitution(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -84,7 +79,6 @@ func TestSetThumbnailPositionMarksDoneAndClearsSubstitution(t *testing.T) {
 		t.Errorf("events = %v, want %v", recorder.events, want)
 	}
 
-	// 消す問題が無ければ、取り込みの知らせは出さない。
 	recorder.events = nil
 	setThumbnailPosition(t, db, id, &position)
 	if want := []domain.Event{domain.VideoOverrideChanged{VideoID: id}}; !slices.Equal(recorder.events, want) {
@@ -92,8 +86,7 @@ func TestSetThumbnailPositionMarksDoneAndClearsSubstitution(t *testing.T) {
 	}
 }
 
-// 同じミリ秒の中で指定・解除（行が消える）・指定と続いても、改版番号は解除の前の値と
-// 重ならない。重なると、知らせがまとまった画面は同じ URL を受け取り、古い画像を出し続ける。
+// Clear-and-reset in one millisecond must not reuse revisions or clients can keep showing a cached old image.
 func TestThumbnailRevisionAcrossClearWithinOneMillisecond(t *testing.T) {
 	db, ids := overrideFixture(t)
 	ctx := context.Background()
@@ -132,8 +125,6 @@ func TestThumbnailRevisionAcrossClearWithinOneMillisecond(t *testing.T) {
 	}
 }
 
-// 同じ位置を指定し直しても改版番号は増える。解除すると位置と改版番号が null になり、
-// 表示名も無ければ行が消える。表示名があれば行は残る。
 func TestSetThumbnailPositionRevisionAndClear(t *testing.T) {
 	db, ids := overrideFixture(t)
 	alphaID := ids[fixturePath("/media/alpha.mp4")]
@@ -156,7 +147,6 @@ func TestSetThumbnailPositionRevisionAndClear(t *testing.T) {
 		t.Fatal("表示名も位置も無い行が残った")
 	}
 
-	// 行を消して作り直しても、改版番号は前の値と重ならない。
 	again := setThumbnailPosition(t, db, alphaID, &position)
 	if again.ThumbnailRevision <= second.ThumbnailRevision {
 		t.Fatalf("作り直した改版番号 %d（%d より大きいはず）", again.ThumbnailRevision, second.ThumbnailRevision)
@@ -174,7 +164,6 @@ func TestSetThumbnailPositionRevisionAndClear(t *testing.T) {
 	}
 }
 
-// 引けない動画は domain.ErrNotFound で、何も書かず発行しない。
 func TestSetThumbnailPositionUnknownVideo(t *testing.T) {
 	db, _ := overrideFixture(t)
 	recorder := &eventRecorder{}
@@ -188,8 +177,7 @@ func TestSetThumbnailPositionUnknownVideo(t *testing.T) {
 	}
 }
 
-// ThumbnailSourceCurrent は、所在が今も動画の内容のものかを答える。走査が所在を別の内容へ
-// 付け替えたら、元の内容が別の所在に残っていても偽にする。
+// A reassigned location invalidates the source even if the old content survives at another location.
 func TestThumbnailSourceCurrentRejectsReassignedLocation(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -219,8 +207,6 @@ func TestThumbnailSourceCurrentRejectsReassignedLocation(t *testing.T) {
 	}
 }
 
-// フォルダカードの所在にも位置と改版番号を載せ、サムネイルの URL の版を動画一覧と
-// そろえる。解除すれば載らない。
 func TestFolderLocationsCarryThumbnailRevision(t *testing.T) {
 	db, ids := overrideFixture(t)
 	alphaID := ids[fixturePath("/media/alpha.mp4")]

@@ -1,16 +1,13 @@
-// 塗りの層の筆跡と、送るマスクの組み立て。座標と太さはコマの画素で持つので、
-// 窓の大きさが変わっても筆跡はコマの同じ場所に残る。
+// Keep strokes in frame pixels so resizing preserves their positions.
 
-/** Stroke は 1 回の筆跡である。`erase` は塗りを消す。 */
 export interface Stroke {
   mode: "paint" | "erase";
-  /** ブラシの直径（コマの画素）。 */
+  /** Brush diameter in frame pixels. */
   size: number;
-  /** 通った点（コマの画素）。1 点だけなら丸い点になる。 */
+  /** Frame-pixel points; a single point draws a circular dot. */
   points: { x: number; y: number }[];
 }
 
-/** PaintContext は筆跡を描くのに使う CanvasRenderingContext2D の部分である。 */
 export type PaintContext = Pick<
   CanvasRenderingContext2D,
   | "beginPath"
@@ -27,10 +24,7 @@ export type PaintContext = Pick<
   | "lineJoin"
 >;
 
-/**
- * drawStroke は筆跡を `context` に描く。塗りは `color` で重ね、消しは
- * `eraseColor` で消す（null なら表示の層として destination-out で抜き、マスクは黒で上塗りする）。
- */
+/** Erase with destination-out for display, or a supplied color for exported masks. */
 export function drawStroke(
   context: PaintContext,
   stroke: Stroke,
@@ -60,15 +54,12 @@ export function drawStroke(
   context.stroke();
 }
 
-/** hasPaint は塗りの筆跡が 1 つでもあるかを返す（消しで覆われたかは見ない）。 */
+/** Checks for paint strokes without accounting for later erasure. */
 export function hasPaint(strokes: readonly Stroke[]): boolean {
   return strokes.some((stroke) => stroke.mode === "paint" && stroke.points.length > 0);
 }
 
-/**
- * buildMask はコマの大きさの PNG を作る。塗った画素が不透明な白、残りが不透明な黒である。
- * 塗りが無い（消しで全部消えた場合も含む）ときは `undefined` を返し、マスクを送らない。
- */
+/** Export opaque white paint over black; return undefined when no paint survives erasure. */
 export async function buildMask(
   strokes: readonly Stroke[],
   width: number,
@@ -83,7 +74,7 @@ export async function buildMask(
   context.fillStyle = "black";
   context.fillRect(0, 0, width, height);
   for (const stroke of strokes) drawStroke(context, stroke, "white", "black");
-  // 消しで塗りが全部消えたなら送らない。縁のぼかしで生じた中間の色は白か黒に寄せる。
+  // Skip fully erased masks and threshold antialiased edge pixels to black or white.
   const image = context.getImageData(0, 0, width, height);
   const data = image.data;
   let painted = false;

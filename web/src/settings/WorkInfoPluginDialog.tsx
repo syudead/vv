@@ -5,11 +5,7 @@ import { t, type UiText } from "../i18n";
 import { FormDialog } from "../ui/patterns/form-dialog";
 import { Alert, AlertTitle } from "../ui/shadcn/alert";
 
-/**
- * WorkInfoPluginDialog は「Work-info plugins」節の承認の確認と設定のダイアログが共有する
- * `FormDialog` である。開いたまま描き、送っている間は閉じず、失敗を本文の最後の
- * `destructive` の `Alert` に出す。
- */
+/** Keep open while submitting and show failures within the dialog. */
 export default function WorkInfoPluginDialog({
   title,
   description,
@@ -28,7 +24,6 @@ export default function WorkInfoPluginDialog({
   submitDisabled: boolean;
   failure: UiText | null;
   onClose: () => void;
-  /** 送れるとき（送っていず、押せないわけでもない）にだけ呼ぶ。 */
   onSubmit: () => void;
   children: ReactNode;
 }) {

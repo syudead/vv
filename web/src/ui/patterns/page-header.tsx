@@ -1,29 +1,17 @@
 import type { ReactNode, Ref } from "react";
 
-// ページ見出し（区画）。題・件数・説明と、ページの主操作を 1 行に置く。前に戻る操作や
-// パンくずは leading に入れる。外の余白は骨格が持つので、この区画は持たない。
-// 規則は web/registry/rules/patterns.md の Page header。
+// The skeleton owns outer spacing; see web/registry/rules/patterns.md, Page header.
 
 export interface PageHeaderProps {
-  /** ページの題。h1 になる。 */
   title: ReactNode;
-  /** 件数（「128 videos」）。題の後ろに小さく置く。 */
   count?: ReactNode;
-  /** 題の下の 1 行の説明。 */
   description?: ReactNode;
-  /** 題の上に置く戻る操作やパンくず。 */
   leading?: ReactNode;
-  /** ページの主操作。default のボタンは 1 つまで。 */
+  /** At most one default primary button. */
   actions?: ReactNode;
-  /**
-   * 題の h1。渡すと h1 をフォーカスできるようにする（tabIndex -1）。一覧の最後の項目を
-   * 片付けた後など、ほかにフォーカスを置く先が無いときに使う。
-   */
+  /** Makes h1 programmatically focusable as a fallback after the last item is removed. */
   titleRef?: Ref<HTMLHeadingElement>;
-  /**
-   * 題を読み上げだけにする（sr-only）。パンくずの最後の段が同じ名前を見せる画面で、
-   * 同じ名前を 2 度見せないために使う。
-   */
+  /** Hide visually when breadcrumbs already show the same title. */
   titleHidden?: boolean;
 }
 

@@ -11,13 +11,7 @@ import { SaveStatus } from "./SaveStatus";
 import type { AutoImportSource } from "./useAutoImportSettings";
 import { useSwitchSave } from "./useSwitchSave";
 
-/**
- * AutoImportSwitch は自動の取り込みのオン・オフの切り替えである。押すとすぐに保存し、保存中の文と
- * 失敗の Alert を出す。オンにしても、バーも通知も出さない。
- *
- * 読み込みの最中は Skeleton、最初の読み込みに失敗すると Retry 付きの ErrorState を行に出す。
- * `source` は監視の状態を追わなくてよい。`description` は行の説明である。
- */
+/** Saving immediately does not start progress notifications; the source need not follow watcher state. */
 export default function AutoImportSwitch({
   source,
   description,

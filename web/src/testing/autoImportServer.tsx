@@ -1,7 +1,4 @@
-/**
- * autoImportServer は「Auto-import」の部品のテスト（src/settings/AutoImport*.test.tsx）が共有する
- * 偽のサーバーと描き方である。設定の保存（PUT）は、オンなら `starting`、オフなら `off` を返す。
- */
+/** PUT returns starting when enabled and off otherwise. */
 import { render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router";
@@ -37,10 +34,7 @@ export function deferred<T>() {
   return { promise, resolve };
 }
 
-/**
- * renderWithScan は、所有者として取り込みの状態の文脈の中に描き、描き直しも返す。部品の文が
- * ほかの設定のページへリンクするので、ルーターの中に描く。
- */
+/** Include a router because settings descriptions contain links. */
 export function renderWithScan(ui: ReactNode) {
   const wrap = (node: ReactNode) => (
     <MemoryRouter>
@@ -53,10 +47,6 @@ export function renderWithScan(ui: ReactNode) {
   return { ...view, rerenderWith: (next: ReactNode) => view.rerender(wrap(next)) };
 }
 
-/**
- * installAutoImportServer は、各テストの前に偽のサーバーを fetch に差し込む。`current` は
- * 読み込みが返す設定で、テストが書き換える。
- */
 export function installAutoImportServer() {
   const server = {
     fetchMock: vi.fn<typeof fetch>(),
@@ -77,13 +67,11 @@ export function installAutoImportServer() {
       if (url === autoImportURL) return Promise.resolve(json(server.current));
       return Promise.reject(new Error(`unexpected request: ${url}`));
     },
-    /** 設定の読み込み（GET）の回数。 */
     gets(): number {
       return server.fetchMock.mock.calls.filter(
         ([input, init]) => String(input) === autoImportURL && init?.method !== "PUT",
       ).length;
     },
-    /** 設定の保存（PUT）の回数。 */
     puts(): number {
       return server.fetchMock.mock.calls.filter(([, init]) => init?.method === "PUT")
         .length;

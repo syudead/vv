@@ -7,10 +7,7 @@ import { t, type UiText } from "../i18n";
 import FolderArt from "../videoList/FolderArt";
 import { folderUrl } from "./folderPath";
 
-/**
- * folderLabel はフォルダカードの読み上げ名である（親 Issue のアクセシビリティ）。
- * 絶対パスが無い（ゲストの）応答では、パスを添えない。
- */
+/** Guest responses omit absolute paths, so omit the path from their label. */
 export function folderLabel(folder: FolderSummary, withPath: boolean): UiText {
   const label = t.folders.card.label(folder.name, folder.videoCount, folder.folderCount);
   return withPath && folder.rootPath !== undefined
@@ -18,12 +15,7 @@ export function folderLabel(folder: FolderSummary, withPath: boolean): UiText {
     : label;
 }
 
-/**
- * FolderCard はフォルダ1件のカードである。動画カードと同じ格子の枡と境界を使い、
- * フォルダの絵柄と名前の目印で動画から区別する。カード全体が1つのリンクで、
- * キーボードのフォーカスは共通の輪郭でカードの縁に出る。
- * showPath は最上位（登録フォルダ）でパスを添えるとき。
- */
+/** showPath distinguishes registered roots by their paths. */
 function FolderCard({ folder, showPath }: { folder: FolderSummary; showPath: boolean }) {
   return (
     <article data-folder-path={folder.path} className="flex min-w-0 flex-col">
@@ -52,7 +44,7 @@ function FolderCard({ folder, showPath }: { folder: FolderSummary; showPath: boo
             {t.folders.card.folders(folder.folderCount)}
           </p>
           {showPath && folder.rootPath !== undefined && (
-            // 同名の登録フォルダを見分けるのはパスの末尾なので、先頭の側を省略する。
+            // Truncate the beginning: path suffixes distinguish roots with the same name.
             <p
               title={folder.rootPath}
               dir="rtl"

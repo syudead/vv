@@ -22,28 +22,19 @@ const (
 	seekThumbnailCommand = "ffmpeg"
 	seekThumbnailTimeout = 30 * time.Minute
 	seekSpriteFastScale  = "scale=min(320\\,iw):min(320\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2"
-	// seekSpriteQuality はシートの JPEG の量子化の値（-q:v）である。小さいほど高画質で、
-	// 一覧のカードで数倍に引き伸ばしてもブロックが目立たないよう 2 にする。
-	seekSpriteQuality  = "2"
-	seekSpriteParallel = 4
-	// seekSpriteReadParallel は索引から求めたキーフレームを同時に読む数である。
+	// Use JPEG q=2 to limit blocking when cards enlarge sprite frames.
+	seekSpriteQuality      = "2"
+	seekSpriteParallel     = 4
 	seekSpriteReadParallel = 8
-	// seekIndexMinDistinct は、索引から作るときに別々のキーフレームを持つべきコマの
-	// 割合（分子／分母）である。キーフレームの間隔がコマの間隔より長い動画（短い
-	// 動画の多く）では、索引からは同じ場面が並ぶので、区間ごとの抽出で正確に作る。
+	// Require enough distinct indexed keyframes; sparse GOPs need segment extraction to avoid
+	// repeating the same scene.
 	seekIndexMinDistinctNum = 3
 	seekIndexMinDistinctDen = 4
 )
 
-// GenerateSeekSprite はシーク用スプライトのシートを生成する。
-// MP4／MOV の H.264／HEVC は索引から各区間のキーフレームだけを読んで作る。
-// それ以外の入力は区間ごとに時刻シークし、それもできない入力では全編復号へ戻る。
-// 一時データは outputDir 内で片付け、完成物の公開は呼び出し側が受け持つ。
-//
-// fullDecode は、区間ごとの抽出にも失敗して全編の復号から作ったかである。呼び出し側は
-// これを代用として記録する。索引から
-// 作れない入力が区間ごとの抽出で作れた場合は、通常の経路なので代用に数えない
-// （docs/design-docs/seek-sprite-generation.md）。
+// GenerateSeekSprite tries indexed keyframes, segment seeking, then full decoding; only the last
+// path counts as substitution. Temporary files stay under outputDir and callers publish results;
+// see docs/design-docs/seek-sprite-generation.md.
 func GenerateSeekSprite(
 	ctx context.Context, videoPath, outputDir string, layout domain.SeekSpriteLayout,
 ) (fullDecode bool, err error) {
@@ -83,10 +74,8 @@ func generateSeekSprite(ctx context.Context, videoPath, outputDir string, layout
 	return true, nil
 }
 
-// generateSeekSpriteFromIndex は MP4／MOV の索引を 1 回だけ読み、各コマに使う
-// キーフレームを決めてから、そのバイトだけを読んで 1 回の ffmpeg で復号する。
-// 索引から取れない入力と、キーフレームがコマに対して疎で同じ場面が多く並ぶ入力では
-// errSeekIndexUnsupported を返す。
+// Read the movie index once and only selected keyframe bytes; reject unsupported or overly
+// repetitive selections.
 func generateSeekSpriteFromIndex(ctx context.Context, videoPath, outputDir string, layout domain.SeekSpriteLayout) error {
 	file, err := os.Open(videoPath)
 	if err != nil {
@@ -106,8 +95,7 @@ func generateSeekSpriteFromIndex(ctx context.Context, videoPath, outputDir strin
 		return err
 	}
 
-	// 同じキーフレームを受け持つコマ（長い GOP や映像の後ろの区間）は、1 回だけ読んで
-	// 復号し、画像を複製する。
+	// Read and decode repeated keyframes once, then copy their images.
 	picks := track.pick(layout)
 	decodeOrder := make(map[int]int, len(picks))
 	var unique []int
@@ -127,7 +115,7 @@ func generateSeekSpriteFromIndex(ctx context.Context, videoPath, outputDir strin
 		return err
 	}
 	defer func() { _ = os.RemoveAll(temporary) }()
-	// 復号の ffmpeg は keys を作業ディレクトリにして動くので、出力先は絶対パスにする。
+	// ffmpeg runs in the keys directory, so make the output path absolute.
 	if temporary, err = filepath.Abs(temporary); err != nil {
 		return err
 	}
@@ -145,8 +133,7 @@ func generateSeekSpriteFromIndex(ctx context.Context, videoPath, outputDir strin
 	if _, err := runSeekFFmpegIn(ctx, keys, keyframeDecodeArgs(track, len(unique), allIDR, decoded)); err != nil {
 		return err
 	}
-	// 復号できなかったキーフレームがあると、後ろのコマが 1 つずつずれる。枚数が
-	// 合わないときは使わない。
+	// Missing decoded frames shift later scene positions; reject count mismatches.
 	if _, err := os.Stat(filepath.Join(decoded, fmt.Sprintf("%03d.bmp", len(unique)))); err == nil {
 		return fmt.Errorf("got more images than the %d keyframes", len(unique))
 	}
@@ -159,15 +146,8 @@ func generateSeekSpriteFromIndex(ctx context.Context, videoPath, outputDir strin
 	return tileSeekSprite(ctx, temporary, outputDir, layout)
 }
 
-// keyframeDecodeArgs は、作業ディレクトリに書いた count 枚のキーフレームを順に復号し、
-// decoded へ 000.bmp から書く ffmpeg の引数を返す。
-//
-// IDR は表示順の番号とデコーダの状態を初期化するので、IDR だけなら 1 本の列に
-// つないで 1 つのデコーダで復号できる。IDR でないキーフレーム（open GOP の CRA や
-// I フレーム）を 1 本の列にすると、番号が前のキーフレームから続けて計算され、
-// デコーダが前後を入れ替える。その場合は 1 枚ずつ別の入力にしてデコーダを分け、
-// concat で入力の順につなぐ。入力ごとの初期化の分だけ遅い。I フレームは単独で
-// 完結するので、IDR でなくても出力させる（showall）。
+// IDR resets decoder order/state and can share one input; non-IDR keyframes need separate decoders
+// and concat to avoid POC reordering. showall allows standalone I frames to produce output.
 func keyframeDecodeArgs(track *keyframeTrack, count int, allIDR bool, decoded string) []string {
 	format := track.format
 	filter := seekSpriteFastScale
@@ -193,13 +173,11 @@ func keyframeDecodeArgs(track *keyframeTrack, count int, allIDR bool, decoded st
 	return append(args, output...)
 }
 
-// keyframeFileName は i 番目に読むキーフレームを書くファイルの名前である。
 func keyframeFileName(i int, format string) string {
 	return fmt.Sprintf("%03d.%s", i, format)
 }
 
-// readKeyframes は indexes のキーフレームを並列に読み、ffmpeg が読める形にして
-// dir へ 1 枚ずつ書く。すべてが IDR だったかを返す。
+// readKeyframes writes ffmpeg-ready frames concurrently and reports whether all are IDR.
 func readKeyframes(ctx context.Context, r io.ReaderAt, track *keyframeTrack, indexes []int, dir string) (bool, error) {
 	var total int64
 	for _, index := range indexes {
@@ -248,9 +226,8 @@ func readKeyframes(ctx context.Context, r io.ReaderAt, track *keyframeTrack, ind
 	return !slices.Contains(idr, false), firstErr
 }
 
-// generateSeekSpriteParallel は各区間の先頭へ時刻シークしてコマを並列に取り、シートにする。
-// 区間の中にフレームが無い（映像が容器より早く終わるなど）コマは、近いコマの画像を
-// 複製する。ffmpeg が失敗したときと、どの区間からも画像が取れないときはエラーを返す。
+// generateSeekSpriteParallel duplicates nearby frames for empty intervals, failing only on ffmpeg
+// errors or wholly empty output.
 func generateSeekSpriteParallel(ctx context.Context, videoPath, outputDir string, layout domain.SeekSpriteLayout) error {
 	temporary, err := os.MkdirTemp(outputDir, ".seek-sprite-")
 	if err != nil {
@@ -318,7 +295,7 @@ frames:
 	return tileSeekSprite(ctx, temporary, outputDir, layout)
 }
 
-// fillMissingFrames は画像の無いコマに、直前のコマ（無ければ直後のコマ）の画像を置く。
+// Prefer the preceding frame, falling back to the following frame if needed.
 func fillMissingFrames(dir string, missing []bool) error {
 	for frame, isMissing := range missing {
 		if !isMissing {
@@ -345,7 +322,6 @@ func fillMissingFrames(dir string, missing []bool) error {
 	return nil
 }
 
-// tileSeekSprite は frameDir のコマ（000.bmp から順に）を並べて outputDir/000.jpg を書く。
 func tileSeekSprite(ctx context.Context, frameDir, outputDir string, layout domain.SeekSpriteLayout) error {
 	_, err := runSeekFFmpeg(ctx, []string{
 		"-nostdin", "-v", "error", "-framerate", "1", "-i", filepath.Join(frameDir, "%03d.bmp"),
@@ -367,8 +343,7 @@ func runSeekFFmpeg(ctx context.Context, args []string) ([]byte, error) {
 	return runSeekFFmpegIn(ctx, "", args)
 }
 
-// runSeekFFmpegIn は dir を作業ディレクトリにして ffmpeg を動かす。入力が多いとき、
-// 相対パスで渡してコマンドラインを短く保つ。
+// Use relative inputs from dir to keep multi-input command lines short.
 func runSeekFFmpegIn(ctx context.Context, dir string, args []string) ([]byte, error) {
 	cmd := command(ctx, seekThumbnailCommand, args...)
 	cmd.Dir = dir
@@ -409,11 +384,8 @@ func seekSpriteArgs(videoPath, outputPattern string, layout domain.SeekSpriteLay
 	}
 }
 
-// GenerateSeekThumbnailSet はシーク用サムネイルの一式を outputDir（既にある
-// ディレクトリ）へ書く。scripts/previewbench がシーク用の生成を測る境界で、
-// 生成方式を変えるときはこの関数の中身を変える。今は durationMs から
-// domain.NewSeekSpriteLayout で配置を決め、GenerateSeekSprite でシートを書く。
-// 測るのは生成の時間だけなので、全編から作ったかは捨てる。
+// GenerateSeekThumbnailSet is previewbench's generation-only boundary; it requires an existing
+// outputDir and ignores substitution provenance.
 func GenerateSeekThumbnailSet(ctx context.Context, videoPath, outputDir string, durationMs int64) error {
 	_, err := GenerateSeekSprite(ctx, videoPath, outputDir, domain.NewSeekSpriteLayout(durationMs))
 	return err

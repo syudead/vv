@@ -19,16 +19,14 @@ import (
 	"github.com/syudead/vv/internal/wasmplugin/plugintest"
 )
 
-// mdm plugin run のテスト。
-// 実行には plugintest の WASI fixture、引数検証には testdata/minimal.wasm を使う。CI はインターネットに
-// 出ないので、site.test を公開のアドレスに解決し、その接続を loopback に立てたサイトへつなぐ。
+// Use WASI execution fixtures and minimal validation modules; map public site.test resolution to
+// loopback so tests need no internet.
 
 const runManifest = `{"contract":1,"name":"run-test","version":"0.1.0","operations":["search","fetch"],` +
 	`"settings":[{"key":"token","label":"API token","secret":true,"required":true},` +
 	`{"key":"region","label":"Region","default":"jp","options":["jp","us"]}]}`
 
-// runModulePath は CLI fixture にマニフェストを足したモジュールを一時ファイルに書き、そのパスを返す。
-// manifest が空ならマニフェストを足さない。
+// Empty manifest leaves the module unchanged.
 func runModulePath(t *testing.T, manifest string) string {
 	t.Helper()
 	return writeRunModulePath(t, plugintest.CLI(), manifest)
@@ -49,7 +47,6 @@ func writeRunModulePath(t *testing.T, module []byte, manifest string) string {
 	return path
 }
 
-// newRunSite は /page に hello と答える loopback のサイトを立てる。
 func newRunSite(t *testing.T) *httptest.Server {
 	t.Helper()
 	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -59,7 +56,7 @@ func newRunSite(t *testing.T) *httptest.Server {
 	return site
 }
 
-// siteOptions は site.test を公開のアドレスに解決し、規則の許した接続を site へつなぐ選択肢である。
+// Resolve site.test publicly, then route approved connections to the local fixture.
 func siteOptions(site *httptest.Server) wasmplugin.Options {
 	return wasmplugin.Options{
 		Resolve: func(_ context.Context, host string) ([]netip.Addr, error) {
@@ -81,7 +78,7 @@ type pluginRunResult struct {
 	stderr string
 }
 
-// runPluginCommand は mdm plugin run を args で実行する。MDM_DATA_DIR を読めばテストを止める。
+// Fail if CLI execution attempts to read MDM_DATA_DIR.
 func runPluginCommand(t *testing.T, opts wasmplugin.Options, args ...string) pluginRunResult {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
@@ -140,7 +137,7 @@ func TestPluginRunFetchPrintsTheKeptWorkInfoAndThePluginStderr(t *testing.T) {
 	if !strings.HasPrefix(got.stdout, "{\n  \"workInfo\": {") {
 		t.Errorf("stdout %q is not indented JSON with workInfo", got.stdout)
 	}
-	// region は値を渡していないので、要求は既定値 jp を運ぶ。秘密の値は伏せない。
+	// Unset region uses its jp default; secret values remain visible.
 	kept := decodeFetch(t, got.stdout)
 	if kept.WorkInfo.Title != "hello" || !slices.Equal(kept.WorkInfo.Tags, []string{"region=jp", "token=s3cret"}) {
 		t.Fatalf("workInfo = %+v, want the page and the effective settings", kept.WorkInfo)
@@ -202,7 +199,7 @@ func TestPluginRunSendsTheRequestsThroughTheProxy(t *testing.T) {
 		_, _ = w.Write([]byte("proxied"))
 	}))
 	t.Cleanup(proxy.Close)
-	// Connect は無いので、プロキシを通らない要求はどこにも届かない。
+	// Without Connect, requests bypassing the proxy cannot reach any site.
 	opts := siteOptions(newRunSite(t))
 	opts.Connect = nil
 

@@ -20,13 +20,10 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// key は実際の形（"<16進>:<サイズ>"）の content key である。
 const key = "ab12cd34:5678"
 
-// 既存の MDM_DATA_DIR にある生成物のパスである。frame0・frame1 はスプライトに
-// する前の形式（個別 JPEG）のシーク用プレビューである。規則を通さず文字列で書く。
-// 規則の実装からパスを作ると、規則を変えたときにテストも一緒に変わり、
-// 既存の生成物が読めなくなったことに気付けない。
+// Use literal legacy paths so changes to path-generation logic cannot silently update the
+// compatibility expectations; frame0/frame1 are pre-sprite JPEGs.
 func existingLayout(root string) (thumbnail, frame0, frame1, preview, manifest string) {
 	return filepath.Join(root, "ab", "ab12cd34_5678.jpg"),
 		filepath.Join(root, "seek", "ab", "ab12cd34_5678", "000000.jpg"),
@@ -51,7 +48,6 @@ func manifestFor(t *testing.T, payload []byte, size int64) []byte {
 	return fmt.Appendf(nil, `{"version":1,"size":%d,"sha256":%q}`+"\n", size, hex.EncodeToString(digest[:]))
 }
 
-// sheetJPEG は width × height の JPEG を返す。
 func sheetJPEG(t *testing.T, width, height int) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -61,11 +57,8 @@ func sheetJPEG(t *testing.T, width, height int) []byte {
 	return buf.Bytes()
 }
 
-// spriteLayout は 2 シートにまたがる 150 コマの配置である。
 var spriteLayout = domain.SeekSpriteLayout{IntervalMs: 5000, FrameCount: 150, Columns: 10, Rows: 10, SheetCount: 2}
 
-// sheetWriter は受け取ったディレクトリへ、1 コマ 32 × 18 のシートを sheets 枚書く
-// 生成の代わりである。
 func sheetWriter(t *testing.T, sheets int) func(string) error {
 	t.Helper()
 	return func(dir string) error {
@@ -78,8 +71,7 @@ func sheetWriter(t *testing.T, sheets int) func(string) error {
 	}
 }
 
-// publishSeek は、代用を問わない検査のために、全編の復号を使わない生成として
-// シーク用プレビューを公開する。
+// Tests unrelated to substitution publish without full decoding.
 func publishSeek(s *Store, contentKey string, layout domain.SeekSpriteLayout, write func(string) error) error {
 	_, err := s.PublishSeekThumbnails(contentKey, layout, func(dir string) (bool, error) {
 		return false, write(dir)
@@ -87,12 +79,10 @@ func publishSeek(s *Store, contentKey string, layout domain.SeekSpriteLayout, wr
 	return err
 }
 
-// seekDirOf は key のシーク用プレビューの置き場（既存の並べ方）である。
 func seekDirOf(root string) string {
 	return filepath.Join(root, "seek", "ab", "ab12cd34_5678")
 }
 
-// writer は受け取ったパスへ data を書く生成の代わりである。
 func writer(data []byte) func(string) error {
 	return func(output string) error { return os.WriteFile(output, data, 0o644) }
 }
@@ -111,7 +101,6 @@ func temporaryEntries(t *testing.T, root string) []string {
 	return entries
 }
 
-// この変更より前に作った生成物は、そのままの場所で確認・配信・削除できる。
 func TestReadsExistingLayout(t *testing.T) {
 	root := t.TempDir()
 	thumbnail, frame0, frame1, preview, manifest := existingLayout(root)
@@ -126,7 +115,7 @@ func TestReadsExistingLayout(t *testing.T) {
 	if !store.PreviewAvailable(key) {
 		t.Fatal("既存の生成物を無いと答えた")
 	}
-	// 配置情報の無い旧形式のシーク用プレビューは未完成で、配信しない。
+	// Legacy previews without layout metadata remain incomplete.
 	if store.SeekThumbnailsAvailable(key) {
 		t.Fatal("旧形式のシーク用プレビューを完成と答えた")
 	}
@@ -153,7 +142,6 @@ func TestReadsExistingLayout(t *testing.T) {
 		t.Fatalf("プレビューのダイジェスト = %q", digest)
 	}
 
-	// 別の内容の生成物には触れない。
 	other := filepath.Join(root, "cd", "cd00_1.jpg")
 	writeFile(t, other, []byte("x"))
 	if err := store.RemoveContent(key); err != nil {
@@ -167,13 +155,11 @@ func TestReadsExistingLayout(t *testing.T) {
 	if !exists(other) {
 		t.Error("別の内容の生成物が消えた")
 	}
-	// 2回目は何も無いが失敗しない。
 	if err := store.RemoveContent(key); err != nil {
 		t.Fatal(err)
 	}
 }
 
-// 公開した生成物は既存と同じ場所に置かれる。
 func TestPublishesIntoExistingLayout(t *testing.T) {
 	root := t.TempDir()
 	store := New(root)
@@ -208,7 +194,6 @@ func TestPublishesIntoExistingLayout(t *testing.T) {
 	}
 }
 
-// 置き場の外や置き場自身の名前を指しうる content key からはパスを作らない。
 func TestRejectsKeysOutsideTheStore(t *testing.T) {
 	parent := t.TempDir()
 	root := filepath.Join(parent, "thumbnails")
@@ -252,7 +237,6 @@ func TestRejectsKeysOutsideTheStore(t *testing.T) {
 	}
 }
 
-// 根が設定されていなければ、どの生成物も無く、公開もしない。
 func TestEmptyRootHasNothing(t *testing.T) {
 	store := New("")
 	if store.PreviewAvailable(key) || store.SeekThumbnailsAvailable(key) {
@@ -275,7 +259,6 @@ func TestEmptyRootHasNothing(t *testing.T) {
 	}
 }
 
-// 表示と配信は、manifest があり大きさが一致するプレビューだけを完成とみなす。
 func TestPreviewCompleteness(t *testing.T) {
 	payload := []byte("preview-mp4")
 	tests := []struct {
@@ -337,7 +320,6 @@ func TestPreviewCompleteness(t *testing.T) {
 	}
 }
 
-// 生成のときは、digest まで一致する既存のプレビューだけを採用する。
 func TestPublishPreviewAdoptsOnlyVerifiedAsset(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
@@ -355,7 +337,7 @@ func TestPublishPreviewAdoptsOnlyVerifiedAsset(t *testing.T) {
 		t.Fatal("完成したプレビューを作り直した")
 	}
 
-	// 大きさは同じで中身が壊れている。
+	// Corrupt bytes without changing file size.
 	writeFile(t, preview, []byte("preview-mpX"))
 	if err := store.PublishPreview(ctx, key, writer([]byte("regenerated")), nil); err != nil {
 		t.Fatal(err)
@@ -368,8 +350,6 @@ func TestPublishPreviewAdoptsOnlyVerifiedAsset(t *testing.T) {
 	}
 }
 
-// 生成に失敗したり、公開の直前に元が変わっていたりしたら、何も公開せず、
-// 一時置き場にも残さない。
 func TestPublishFailureLeavesNothing(t *testing.T) {
 	ctx := context.Background()
 	failure := errors.New("ffmpeg exited 1")
@@ -458,8 +438,6 @@ func TestPublishFailureLeavesNothing(t *testing.T) {
 	}
 }
 
-// シーク用プレビューは、配置情報のある完成した置き場があれば作り直さない。
-// サムネイルは呼ばれるたびに置き換える。
 func TestPublishReusesCompletedSeekThumbnails(t *testing.T) {
 	root := t.TempDir()
 	store := New(root)
@@ -484,10 +462,8 @@ func TestPublishReusesCompletedSeekThumbnails(t *testing.T) {
 	}
 }
 
-// シーク用プレビューを全編の復号から作ったかは sprite.json に残り、完成したものを
-// 採用したときにも読み戻せる。公開と完了の記録の間で止まった後の再実行や、同じ内容の
-// 別の動画でも、代用を取りこぼさない。
-// 記録の無い旧い sprite.json は、代用したかが分からない。
+// Persist substitution provenance across reuse and restart; older sprite.json files have unknown
+// provenance.
 func TestPublishSeekThumbnailsKeepsSubstitution(t *testing.T) {
 	for _, tc := range []struct {
 		name       string
@@ -551,8 +527,6 @@ func TestPublishSeekThumbnailsKeepsSubstitution(t *testing.T) {
 	})
 }
 
-// 生成途中の成果物は1か所にまとまっていて、起動時にそこだけを消せる。
-// 公開した生成物には触れず、生成途中のものは確認にも配信にも見えない。
 func TestRemoveTemporaryKeepsPublishedArtifacts(t *testing.T) {
 	root := t.TempDir()
 	store := New(root)
@@ -592,8 +566,7 @@ func TestRemoveTemporaryKeepsPublishedArtifacts(t *testing.T) {
 	}
 }
 
-// 同じ置き場を使う別の Store（別のプロセスに相当）でも、プレビューの公開は
-// 直列になり、後の側は先に公開されたものを採用する。
+// Separate stores model separate processes sharing the publication lock.
 func TestPublishPreviewSerializesAcrossStores(t *testing.T) {
 	root := t.TempDir()
 	entered := make(chan struct{})
@@ -642,8 +615,6 @@ func TestPublishPreviewSerializesAcrossStores(t *testing.T) {
 	}
 }
 
-// 公開したスプライトの配置情報は、配置とシート 000.jpg の寸法から決まり、
-// シートは番号で読める。
 func TestSeekSpriteDescribesPublishedSheets(t *testing.T) {
 	root := t.TempDir()
 	store := New(root)
@@ -683,8 +654,6 @@ func TestSeekSpriteDescribesPublishedSheets(t *testing.T) {
 	}
 }
 
-// 公開は、旧形式の個別 JPEG や配置情報の無い壊れた置き場を消して、シートと
-// sprite.json に置き換える。
 func TestPublishSeekSpriteReplacesIncompleteDirectory(t *testing.T) {
 	for name, prepare := range map[string]func(t *testing.T, root string){
 		"旧形式": func(t *testing.T, root string) {
@@ -741,7 +710,7 @@ func TestPublishSeekSpriteReplacesIncompleteDirectory(t *testing.T) {
 	}
 }
 
-// 形の違う配置情報は、無いものではなく読めないものとして返す（配信は 500）。
+// Malformed metadata is unreadable, not missing, and serving returns 500.
 func TestSeekSpriteRejectsMalformedDescription(t *testing.T) {
 	for name, body := range map[string]string{
 		"壊れている":       "{",
@@ -766,7 +735,6 @@ func TestSeekSpriteRejectsMalformedDescription(t *testing.T) {
 	}
 }
 
-// RemoveContent はスプライトの置き場を丸ごと消す。
 func TestRemoveContentRemovesSeekSprite(t *testing.T) {
 	root := t.TempDir()
 	store := New(root)
@@ -781,8 +749,6 @@ func TestRemoveContentRemovesSeekSprite(t *testing.T) {
 	}
 }
 
-// StashThumbnail の restore は、置き換えた代表サムネイルを前の画像へ戻す。前の画像が無ければ
-// 置き換えた画像を消す。discard は写しだけを捨て、置き換えた画像を残す。
 func TestStashThumbnailRestoresPreviousImage(t *testing.T) {
 	root := t.TempDir()
 	store := New(root)

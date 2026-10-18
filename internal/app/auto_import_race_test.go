@@ -10,10 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// このファイルは、取り込みの開始・張り直し・停止が重なったときの順序を確かめる。
-
-// gatedProbe は、更新が止まったかの確認をゲートが開くまで止める ChangeProbe である。
-// 確認は AutoImport の状態の外で走るので、その間に切り替えが起きうる。
+// The settling probe runs outside the state lock, allowing settings changes while blocked.
 type gatedProbe struct {
 	entered chan struct{}
 	gate    chan struct{}
@@ -29,7 +26,6 @@ func (p *gatedProbe) probe(domain.DirtyDirectory) (time.Time, error) {
 	return time.Time{}, nil
 }
 
-// racingAutoImport は gatedProbe つきの AutoImport を起動して、監視が張られるまで待つ。
 func racingAutoImport(t *testing.T) (*AutoImport, *fakeWatchScans, *stepClock, *gatedProbe) {
 	t.Helper()
 	probe := newGatedProbe()
@@ -53,8 +49,7 @@ func racingAutoImport(t *testing.T) (*AutoImport, *fakeWatchScans, *stepClock, *
 	return auto, scans, clock, probe
 }
 
-// fireBlockedInProbe は変更を 1 つ報告し、取り込みの判断が確認の途中で止まるところまで進める。
-// 返す関数は、確認を再開して判断が終わるまで待つ。
+// The returned release function resumes probing and waits for the decision to finish.
 func fireBlockedInProbe(t *testing.T, auto *AutoImport, clock *stepClock, probe *gatedProbe) (resume func()) {
 	t.Helper()
 	auto.Changed(dirtyDir(fixturePath("/media/a"), false))
@@ -78,7 +73,6 @@ func fireBlockedInProbe(t *testing.T, auto *AutoImport, clock *stepClock, probe 
 	}
 }
 
-// 取り込みの判断が確認の途中にある間に切にしたら、そのあとで走査を始めてはならない。
 func TestAutoImportDisableDuringSettleCheckStartsNoScan(t *testing.T) {
 	auto, scans, clock, probe := racingAutoImport(t)
 	resume := fireBlockedInProbe(t, auto, clock, probe)
@@ -98,7 +92,6 @@ func TestAutoImportDisableDuringSettleCheckStartsNoScan(t *testing.T) {
 	}
 }
 
-// 停止のあとで走査を始めてはならない。
 func TestAutoImportStopDuringSettleCheckStartsNoScan(t *testing.T) {
 	auto, scans, clock, probe := racingAutoImport(t)
 	resume := fireBlockedInProbe(t, auto, clock, probe)
@@ -110,7 +103,6 @@ func TestAutoImportStopDuringSettleCheckStartsNoScan(t *testing.T) {
 	}
 }
 
-// フォルダの変更の途中に走査を始めてはならない。始めずに待たせたものは、変更が終わったあとで取り込む。
 func TestAutoImportFolderChangeDuringSettleCheckHoldsBatch(t *testing.T) {
 	auto, scans, clock, probe := racingAutoImport(t)
 	resume := fireBlockedInProbe(t, auto, clock, probe)
@@ -123,7 +115,7 @@ func TestAutoImportFolderChangeDuringSettleCheckHoldsBatch(t *testing.T) {
 
 	auto.FoldersChanged(context.Background())
 	(&autoImportRig{auto: auto}).waitState(t, domain.FolderWatchActive)
-	// 確認はゲートが開いたままなので、すぐ戻る。
+	// The probe gate remains open, so the next check returns immediately.
 	clock.Advance(2 * time.Second)
 	got := scans.started()
 	want := []domain.DirtyDirectory{dirtyDir(fixturePath("/media/a"), false)}
@@ -132,8 +124,7 @@ func TestAutoImportFolderChangeDuringSettleCheckHoldsBatch(t *testing.T) {
 	}
 }
 
-// foldersByCall は呼び出しごとに決まった一覧を返す。gates[i] が nil でなければ、i 回目の呼び出しは
-// それが閉じるまで戻らない。
+// Each non-nil gate blocks that indexed folder-list call until closure.
 type foldersByCall struct {
 	mu    sync.Mutex
 	calls int
@@ -154,7 +145,6 @@ func (f *foldersByCall) ListMediaFolders(context.Context) ([]domain.MediaFolder,
 	return f.lists[i], nil
 }
 
-// 古い張り直しが一覧の取得で遅れても、そのあとで最新の監視を置き換えてはならない。
 func TestAutoImportStaleArmDoesNotReplaceLatestWatchSet(t *testing.T) {
 	gate := make(chan struct{})
 	folders := &foldersByCall{
@@ -178,7 +168,7 @@ func TestAutoImportStaleArmDoesNotReplaceLatestWatchSet(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(auto.Stop)
-	<-folders.seen // 1 つ目の張り込みが一覧の取得で止まった。
+	<-folders.seen
 
 	auto.FoldersChanging(context.Background())
 	auto.FoldersChanged(context.Background())
@@ -195,7 +185,6 @@ func TestAutoImportStaleArmDoesNotReplaceLatestWatchSet(t *testing.T) {
 	}
 }
 
-// 張り込みが終わらなくても、Stop は上限のあとで戻る。
 func TestAutoImportStopDoesNotWaitForeverForArming(t *testing.T) {
 	watcher := &fakeFolderWatcher{block: make(chan struct{})}
 	t.Cleanup(func() { close(watcher.block) })
@@ -226,7 +215,6 @@ func TestAutoImportStopDoesNotWaitForeverForArming(t *testing.T) {
 	}
 }
 
-// 張っている間に届いた問題は、張り終えたあとの active で上書きされない。
 func TestAutoImportProblemDuringArmStaysLimited(t *testing.T) {
 	t.Run("Arm の途中で届いた問題", func(t *testing.T) {
 		var auto *AutoImport

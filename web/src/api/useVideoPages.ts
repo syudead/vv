@@ -26,7 +26,6 @@ import type { VideosCriteria } from "./videosCriteria";
 import { shownVideoIds, type VideosDataAction, type VideosSeed } from "./videosData";
 import { visibilityMark, withVisibilitySince } from "./visibility";
 
-/** VideoPagesParams は useVideoPages が useVideos から受け取るものである。 */
 interface VideoPagesParams {
   key: string;
   seed: VideosSeed | undefined;
@@ -59,10 +58,6 @@ interface VideoPagesParams {
   itemRefresh: ReturnType<typeof useItemRefresh>;
 }
 
-/**
- * useVideoPages は useVideos の一覧のページを取りに行く（条件が変わったときの
- * 先頭からの読み直しと、無限スクロールの続きの取得）。
- */
 export function useVideoPages({
   key,
   seed,
@@ -92,15 +87,12 @@ export function useVideoPages({
   groups: { groupQueue, groupRefreshing, staleGroups, unsettledGroups, refreshGroups },
   itemRefresh: { refreshQueue, refreshing, uncertain, notifyIfIdle, refreshItems },
 }: VideoPagesParams) {
-  // 読み込み中の要求を覚えておく。条件を変えた直後に古い応答が届いても、
-  // 新しい一覧を上書きしないようにする。
+  // Retain request identity so obsolete responses cannot overwrite new conditions.
   const inFlight = useRef<AbortController | null>(null);
-  // その場の更新（keep）の要求。1つだけ走らせ、条件の変更や続きの取得が来たら打ち切る。
+  // Keep one in-place refresh and coordinate it with page requests.
   const keepInFlight = useRef<AbortController | null>(null);
-  // ページの取得の途中で更新を求められたとき、その取得が終わってからやり直す。
   const refreshAfterPage = useRef(false);
-  // その場の更新の途中で続きの取得を求められたとき、更新が終わってから続きを取る。
-  // 更新を打ち切ると、先頭のページが置き換わらない。
+  // Queue load-more behind refresh so the first page replacement is not lost to cancellation.
   const moreAfterRefresh = useRef(false);
   const cursorRef = useRef(cursor);
   useEffect(() => {
@@ -110,12 +102,7 @@ export function useVideoPages({
     ((from: string | undefined, replace: boolean, keep?: number) => Promise<void>) | null
   >(null);
 
-  /**
-   * fetchPage は1ページを取る。`keep` を与えると、条件の変更ではなく取り込みの結果を
-   * その場で取り込む更新になる。読み込み済みの件数に届くまで先頭からページを取り直して
-   * 置き換え、置き換わるまで今の項目を見せ続ける（一覧を消さず、読み込み中の表示も出さない。
-   * スクロールの位置と選択はそのまま）。失敗は静かに捨てて今の一覧を残す。
-   */
+  /** In-place refresh refills the loaded count while retaining content, scroll, and selection; transient failures preserve the current list. */
   const fetchPage = useCallback(
     async (from: string | undefined, replace: boolean, keep?: number) => {
       inFlight.current?.abort();
@@ -129,7 +116,6 @@ export function useVideoPages({
       groupsChangedWhileLoading.current.clear();
       progressChangedWhileLoading.current.clear();
       if (replace) {
-        // 前の一覧のために始めた取り直しは捨てる。新しいページの内容の方が新しい。
         refreshing.current?.abort();
         refreshing.current = null;
         refreshQueue.current.clear();
@@ -138,16 +124,12 @@ export function useVideoPages({
         groupQueue.current.clear();
         staleGroups.current = [];
         unsettledGroups.current.clear();
-        // 条件やフォルダを変えた一から読み直し（または不整合からの再同期）
-        // でだけ、それまでに記録した付け外しを捨てる。古い条件のときの変更は
-        // 新しい一覧に持ち越さない。続きの取得（loadMore、replace===false）
-        // ではここを通らないので、まだどのページにも現れていない動画への
-        // 変更は消さずに残す（Devin の指摘3。次に読み込まれたページで重ねる）。
+        // Clear mutation overlays only when replacing conditions; retain unseen-video changes across later pages.
         tagsChangedWhileLoading.current.clear();
       }
 
       if (keep !== undefined) {
-        // 表示中の項目はそのままにする。
+        // Keep the visible items during an in-place refresh.
       } else if (replace) {
         setLoading(true);
         setError(null);
@@ -156,11 +138,8 @@ export function useVideoPages({
         setLoadingMore(true);
       }
 
-      // その場の更新が終わったあとに続きを取るときの、続きのカーソル。
       let resumeCursor: string | undefined;
-      // このページを反映した直後の件数。itemsRef は描画で更新されるので、dispatch の直後は
-      // まだ前の件数のままである。ページの取得の途中で頼まれたその場の更新が、少ない件数で
-      // 一覧を置き換えないよう、ここで数える。
+      // Count immediately after dispatch because itemsRef still reflects the previous render; queued refreshes must retain appended rows.
       let loadedAfter: number | undefined;
       const mark = visibilityMark();
       const favoriteSince = favoriteMark();
@@ -177,7 +156,7 @@ export function useVideoPages({
           cursor: from,
           signal: controller.signal,
         };
-        // フォルダの一覧（listFolderVideos）は受け取らない、一覧だけの条件。
+        // Folder listings do not accept library-only filters.
         const listOnly = {
           tag: current.tag,
           person: current.person,
@@ -222,10 +201,7 @@ export function useVideoPages({
         });
         let page = toPage(await fetchOne(from));
         if (keep !== undefined) {
-          // 読み込み済みの件数に届くまで続きを取り、1つの先頭からの一覧にまとめる。
-          // 取っている間にずれてページの境で重なった項目は、1つにする。
-          // 重なりはその場で除き、重ならない項目が件数に届くまで取る（重なった分を
-          // 数えて早く止めると、続きがあるのに件数が足りなくなる）。
+          // Count unique items while refilling; counting overlaps would stop before the requested row count.
           const seen = new Set<string>();
           const gathered: LibraryItem[] = [];
           const gather = (items: LibraryItem[]) => {
@@ -243,11 +219,10 @@ export function useVideoPages({
           }
           page = { ...page, items: gathered };
         }
-        // 打ち切った要求の応答は捨てる。fetch は打ち切りで reject するが、
-        // 応答の本文を読み終えた後に打ち切られた場合はここに来る。
+        // Abort may occur after body parsing, when fetch no longer rejects.
         if (controller.signal.aborted || inFlight.current !== controller) return;
         if (keep !== undefined && page.items.length > page.total) {
-          // 取っている間にライブラリが変わり、ページを結べなかった。今の一覧を残す。
+          // Keep the coherent current list if pages changed too much to combine.
           resumeCursor = cursorRef.current;
           return;
         }
@@ -265,8 +240,7 @@ export function useVideoPages({
         if (replace) resyncAttempted.current = false;
         if (keep !== undefined) resumeCursor = page.nextCursor;
         const shownBefore = new Set(shownVideoIds(itemsRef.current));
-        // 続きのページが既に出ている項目と重なると、reducer（appendUnique）は捨てる。
-        // 同じ itemKey の重複排除で数え、取り直しの件数を実際の件数に合わせる。
+        // Match reducer deduplication when tracking the count for later refreshes.
         loadedAfter = replace
           ? page.items.length
           : new Set([...itemsRef.current, ...page.items].map(itemKey)).size;
@@ -274,37 +248,27 @@ export function useVideoPages({
         const changed = shownVideoIds(page.items).filter((id) =>
           changedWhileLoading.current.has(id),
         );
-        // ページの取得中にメンバーが変わったグループは、ページを反映したあとで取り直す。
-        // 再生位置の保存も同じく、ページの内容より新しいことがある。
+        // Refresh groups whose members changed while this page loaded.
         refreshGroups(
           groupsWithMembers(page.items, [
             ...changedWhileLoading.current,
             ...progressChangedWhileLoading.current,
           ]),
         );
-        // group の知らせ（名前・項目の変化）と、取得中にお気に入りを付け外したグループも、
-        // このページに初めて現れたなら取り直す。付け外しの前に読まれたかもしれず、反映の数が 0 の
-        // （もう無い）グループは withGroupFavoriteSince では直せない（404 で外す）。
+        // Refresh newly encountered changed groups too; deleted groups cannot be corrected by favorite overlays alone.
         refreshGroups(groupsIn(page.items, groupsChangedWhileLoading.current));
         groupsChangedWhileLoading.current.clear();
         changedWhileLoading.current.clear();
         progressChangedWhileLoading.current.clear();
-        // 公開状態が確かでない動画のうち、このページで取り直す（changed）ものと、
-        // 続きの取得で残る表示中のものだけを uncertain に残す。一から読み直した
-        // ページは切り替えの後に取ったものなので、それ以外はもう確かである。
-        // ページの取得中に届いた知らせの対象は changedWhileLoading に入っている
-        // ので、切り替えの前に読まれたかもしれないページで確かになることはない。
+        // Settle only uncertainty confirmed by this page; changes received while loading still require refresh.
         const stillShown = new Set(changed);
         if (!replace) for (const id of shownBefore) stillShown.add(id);
         for (const id of uncertain.current.keys()) {
           if (!stillShown.has(id)) uncertain.current.delete(id);
         }
         if (changed.length > 0) refreshItems(changed);
-        // このページの取得中に届いたタグの付け外しのうち、このページで
-        // ちょうど読み込んだ動画のものは、取り直さずここで直接重ねる
-        // （サーバーがすでに教えてくれている内容なので、getVideo で1件ずつ
-        // 取り直す必要が無い。Devin の指摘3）。
-        // グループのメンバーへの付け外しは、そのグループを取り直す。
+        // Overlay known tag mutations on newly loaded videos instead of refetching each video.
+        // Member tag changes require refreshing their group summary.
         if (tagsChangedWhileLoading.current.size > 0) {
           const pageIds = new Set(shownVideoIds(page.items));
           const memberIds = new Set(
@@ -333,8 +297,7 @@ export function useVideoPages({
         setError(null);
         setNotFound(false);
       } catch (failure) {
-        // 打ち切った要求や、条件を変えた後に届いた古い要求の失敗は、新しい一覧に
-        // 404 や失敗を持ち込まないよう捨てる。
+        // Ignore errors from aborted or obsolete requests so they cannot replace the current list's state.
         if (
           isAborted(failure) ||
           controller.signal.aborted ||
@@ -342,7 +305,6 @@ export function useVideoPages({
         ) {
           return;
         }
-        // その場の更新の失敗は、今の一覧を残して静かに捨てる。
         if (keep !== undefined) {
           resumeCursor = cursorRef.current;
           return;
@@ -352,17 +314,15 @@ export function useVideoPages({
           failure instanceof RequestFailed &&
           failure.status === 404
         ) {
-          // フォルダが無くなった（検索中に配下が削除された等）。一致なしではなく
-          // 「このフォルダは見つかりません」を出す。
           setNotFound(true);
           setError(null);
           dispatch({ type: "stop" });
           return;
         }
         setError(errorText(failure));
-        // 前の要求の 404 を残すと、取得の失敗が「見つかりません」に隠れて再試行できない。
+        // Clear prior 404 state so a new failure remains visible and retryable.
         setNotFound(false);
-        // 続きが読めない状態で観測点を残すと、同じ要求を繰り返してしまう。
+        // Remove the pagination sentinel on failure to avoid repeated automatic requests.
         dispatch({ type: "stop" });
       } finally {
         if (!controller.signal.aborted) {
@@ -386,9 +346,7 @@ export function useVideoPages({
         }
       }
     },
-    // どれも useVideos から渡る変わらない値（ref・set 関数・dispatch）か、それだけに
-    // 依る関数である。条件とフォルダは呼んだ時点の criteriaRef・folderRef から読むので、
-    // 条件が変わっても作り直さない（読み直しは下の effect が key・folderKey で起こす）。
+    // Dependencies are stable refs/setters; read current criteria at call time and reload through the key effect.
     [
       changedWhileLoading,
       groupsChangedWhileLoading,
@@ -423,16 +381,11 @@ export function useVideoPages({
     fetchPageRef.current = fetchPage;
   }, [fetchPage]);
 
-  // seeded は「いま持っている中身が復元で埋まったものか」を覚える。
+  // Track restored content by key rather than consuming a flag so StrictMode replay preserves restoration.
   //
-  // 効果を 1 回で消費する印にしないのは、React が開発時に効果を 2 回走らせる
-  // ためである（1 回目で消費すると 2 回目が復元を捨てて読み直してしまう）。
-  // 鍵（条件・フォルダ・読み直しの世代）ごと覚えておけば、何度走っても
-  // 同じ判断になる。
   const seeded = useRef(seed === undefined ? null : { key, folderKey, generation: 0 });
 
-  // 異なる時点のページを結合できなかったときは、古い整合した一覧を保ったまま
-  // 世代を進め、通常の先頭ページ取得へ戻す。
+  // When pages cannot be combined, retain coherent content and restart with a new generation.
   useEffect(() => {
     if (!inconsistent) return;
     if (!resyncAttempted.current) {
@@ -445,11 +398,8 @@ export function useVideoPages({
     setError(t.list.inconsistentPage);
   }, [dispatch, inconsistent, resyncAttempted, setError, setGeneration]);
 
-  // 条件・フォルダが変わったら先頭から読み直す。カーソルはそれらに紐づくので、
-  // 引き継ぐと境界の意味が変わってしまう。
+  // Cursors belong to their conditions/folder and cannot survive a key change.
   //
-  // 前の要求は fetchPage が AbortController で打ち切る。入力が連続しても、
-  // 古い応答が新しい一覧を上書きすることはない。
   useEffect(() => {
     const held = seeded.current;
     if (
@@ -458,9 +408,7 @@ export function useVideoPages({
       held.folderKey === folderKey &&
       held.generation === generation
     ) {
-      // 取りに行かなくても打ち切りは要る。復元した一覧で続きを読んでいる
-      // 途中に画面を離れると、この経路が後片付けを残さないかぎり要求が
-      // 最後まで走ってしまう。
+      // Restored lists still need cleanup to abort load-more requests when leaving.
       return () => inFlight.current?.abort();
     }
     seeded.current = null;
@@ -496,8 +444,6 @@ export function useVideoPages({
     setGeneration((value) => value + 1);
   }, [resyncAttempted, setGeneration]);
 
-  // refreshInPlace は、読み込み済みのページを取り直して置き換える。reload と違い、一覧を
-  // 消さずに今の項目を見せ続ける。ほかのページの取得の途中なら、それが終わってからやり直す。
   const refreshInPlace = useCallback(() => {
     if (pageLoading.current && keepInFlight.current === null) {
       refreshAfterPage.current = true;

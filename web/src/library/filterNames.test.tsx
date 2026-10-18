@@ -4,8 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __resetTagsForTest } from "../api/tags";
 import { useCreditName, useTagNames } from "./filterNames";
 
-// 絞り込みのチップとスマートフォルダの条件の欄が名前を引く読み込み（filterNames.ts）。
-
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,

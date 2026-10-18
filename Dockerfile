@@ -1,55 +1,42 @@
 # syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 
-# task up と公開イメージ（ghcr.io/syudead/vv）の実体。SPA のビルド → 単一バイナリの
-# ビルド → 実行環境の 3 段に分ける。前の 2 段はビルドする側のアーキテクチャで動かし、
-# 別アーキテクチャ向けのイメージでもエミュレーションを使わずにクロスビルドする。
+# Build SPA and Go stages on the builder architecture to cross-compile without emulation; the final stage runs the published image.
 
-# 1) SPA をビルドする。
 FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS web
 WORKDIR /src/web
-# 依存の取得だけを先に行い、ソースの変更でこの層が無駄にならないようにする。
-# npm のキャッシュはキャッシュマウントに置き、lockfile が変わっても取得し直さずに済ませる。
+# Cache dependency downloads independently of source changes and retain npm downloads across lockfile updates.
 COPY web/package.json web/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci
 COPY web/ ./
 RUN npm run build
 
-# 2) 単一バイナリをビルドする。
 FROM --platform=$BUILDPLATFORM golang:1.27-alpine@sha256:f92b6ef800e499660581efdabdf25d9d817a9d124eaf900924f0504e7e27e12d AS build
 WORKDIR /src
 COPY go.mod go.sum ./
-# モジュールとビルドのキャッシュはキャッシュマウントに置き、依存やコードが変わっても
-# 前回の結果を使い回す。キャッシュマウントは層に残らないので、go build でも同じ場所を
-# マウントする。
+# Reuse module and build cache mounts in every Go step; mounts are not persisted in layers.
 RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download
-# バイナリが読むものだけをコピーし、文書や SPA のソースの変更で go build の層が
-# やり直しにならないようにする。
+# Copy only binary inputs so documentation and SPA source changes do not invalidate Go compilation.
 COPY cmd/ cmd/
 COPY internal/ internal/
 COPY web/embed.go web/
-# 埋め込み先へ SPA の成果物を置く。手元の web/dist は .dockerignore で除いてあるので、
-# ここで入るのは web ステージが作ったものだけである。
+# Embed only output from the web stage; .dockerignore excludes local dist files.
 COPY --from=web /src/web/dist ./web/dist
 ARG VERSION=dev
-# ビルド元のコミットとその時刻（RFC 3339）。task up と CI が git から求めて渡す。
-# 渡さなければ空のままビルドし、/api/health は commit / builtAt を省く（契約上省略可）。
-# 値はこの段の最後でだけ使うので、変わっても go build の層しかやり直さない。
+# task up and CI supply commit and RFC 3339 timestamp; omitted values stay absent from /api/health. Late use limits cache invalidation to compilation.
 ARG COMMIT=
 ARG BUILT_AT=
 ARG TARGETOS
 ARG TARGETARCH
-# CGO_ENABLED=0 を維持する（modernc.org/sqlite は CGO を必要としない）。
-# .dockerignore が .git を除くので Go はコミット情報を読めない。-buildvcs=false で
-# その読み取りを止め、代わりに上の値を ldflags で渡す。
+# Keep CGO disabled; modernc.org/sqlite does not need it. With .git excluded, disable VCS probing and inject metadata through ldflags.
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -buildvcs=false \
     -ldflags "-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.builtAt=${BUILT_AT}" \
     -o /out/mdm ./cmd/mdm
 
-# 3) 実行する。ffmpeg／ffprobe を同梱し、起動前確認が通る状態にする。
+# Include ffmpeg and ffprobe for startup checks.
 FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 RUN apk add --no-cache ffmpeg ca-certificates tzdata \
     && mkdir -p /media /data
@@ -62,7 +49,6 @@ ENV MDM_ADDR=":8080" \
 EXPOSE 8080
 VOLUME ["/data"]
 
-# 稼働確認はアプリケーション自身の経路を使う。
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget -qO- http://127.0.0.1:8080/api/health >/dev/null || exit 1
 

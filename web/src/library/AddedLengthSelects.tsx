@@ -16,10 +16,6 @@ import {
   lengthOptions,
 } from "./addedLengthCriteria";
 
-/**
- * PresetSelect は追加日か長さの、ラベル付きの `Select` 1 行である。ライブラリの絞り込みの
- * ポップオーバーの `Tag kind` の行と同じ形（`Field`、`h-8` の `Select`、ポップオーバーの幅）。
- */
 function PresetSelect<T>({
   label,
   options,
@@ -57,10 +53,7 @@ function PresetSelect<T>({
   );
 }
 
-/**
- * AddedSelect は `Added` の行である。
- * 選択肢に無い日数は `Last {N} days` として最後に出し、選んだ形にする。
- */
+/** Append custom day counts as a selected option. */
 export function AddedSelect({
   value,
   onValueChange,
@@ -79,10 +72,7 @@ export function AddedSelect({
   );
 }
 
-/**
- * LengthSelect は `Length` の行である。選択肢に無い範囲は
- * その範囲の名前で最後に出し、選んだ形にする。
- */
+/** Append custom ranges as a selected option. */
 export function LengthSelect({
   value,
   onValueChange,

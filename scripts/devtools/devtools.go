@@ -1,7 +1,4 @@
-// Package devtools は scripts/ 配下の開発者コマンドが共有する土台である。
-// 各コマンドは task から go run で呼ばれる。検査のためだけに別のランタイムを
-// 足さないという決まりは
-// Taskfile.yml にある（task help で一覧が出る）。
+// Package devtools shares helpers for task commands run with go run; see Taskfile.yml.
 package devtools
 
 import (
@@ -13,8 +10,7 @@ import (
 	"strings"
 )
 
-// RepositoryRoot はこのソースの位置から版管理の根を求める。go run の作業
-// ディレクトリに依存させないため、呼び出し側の cwd ではなくソース位置を使う。
+// RepositoryRoot uses the source location so callers need not run from the repository root.
 func RepositoryRoot() (string, error) {
 	_, sourceFile, _, ok := runtime.Caller(0)
 	if !ok {
@@ -27,8 +23,7 @@ func RepositoryRoot() (string, error) {
 	return root, nil
 }
 
-// GoToolPath は tools/go.mod の tool directive が固定する実行ファイルを解決する。
-// 呼び出し側の作業ディレクトリは変えず、ツールだけ分離 module から選べる。
+// GoToolPath resolves tools/go.mod tool directives without changing the caller working directory.
 func GoToolPath(root, name string) (string, error) {
 	cmd := exec.Command("go", "-C", "tools", "tool", "-n", name)
 	cmd.Dir = root
@@ -43,7 +38,7 @@ func GoToolPath(root, name string) (string, error) {
 	return path, nil
 }
 
-// NodeToolPath は tools/package.json に分離した Node 製ツールを解決する。
+// NodeToolPath resolves Node tools isolated in tools/package.json.
 func NodeToolPath(root, name string) (string, error) {
 	if runtime.GOOS == "windows" {
 		name += ".cmd"
@@ -55,13 +50,12 @@ func NodeToolPath(root, name string) (string, error) {
 	return path, nil
 }
 
-// Run は外部コマンドを実行し、出力をそのまま親へ流す。開発者コマンドの出力は
-// 利用者が読むものなので、握り潰さずに素通しする。
+// Run streams command output to the user.
 func Run(dir string, name string, args ...string) error {
 	return RunEnv(dir, nil, name, args...)
 }
 
-// RunEnv は環境変数を足して Run する。足した変数は親の環境に重ねる。
+// RunEnv overlays additional environment variables on the parent environment.
 func RunEnv(dir string, env []string, name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
@@ -75,7 +69,7 @@ func RunEnv(dir string, env []string, name string, args ...string) error {
 	return nil
 }
 
-// Fail はエラーを表示して終了する。各コマンドの main を短く保つための入口。
+// Fail prints an error and exits.
 func Fail(err error) {
 	fmt.Fprintln(os.Stderr, err)
 	os.Exit(1)

@@ -11,34 +11,22 @@ import (
 	"time"
 )
 
-// 抽出位置の規則。先頭が黒画面やロゴであることが多いので 10% 地点を
-// 採り、長い動画で待たされないよう上限を切る。
+// Prefer ten percent to avoid opening logos/black frames, capped to keep long-video seeks short.
 const (
-	// thumbnailFraction は尺に対する抽出位置の割合。
 	thumbnailFraction = 0.10
-	// thumbnailMinOffset は抽出位置の下限（秒）。
+	// Seconds.
 	thumbnailMinOffset = 1.0
-	// thumbnailMaxOffset は抽出位置の上限（秒）。
+	// Seconds.
 	thumbnailMaxOffset = 60.0
 )
 
-// thumbnailTimeout は ffmpeg 1回に与える上限である。解析（Probe）と同じく、
-// 1件で取り込み全体を止めないための上限である。
+// Bound each extraction so one input cannot stall ingestion.
 const thumbnailTimeout = 60 * time.Second
 
-// thumbnailCommand は実行する外部コマンドである。
 const thumbnailCommand = "ffmpeg"
 
-// Thumbnail は動画から静止画を1枚取り出し、output へ書く。output の置き場所は
-// 呼び出し側（internal/artifacts の一時置き場）が用意する。
-//
-// 形式は JPEG にする。WebP の方が小さいが、libwebp を含む ffmpeg ビルドを
-// 前提にすると実行環境の差で失敗しうる。mjpeg エンコーダはどのビルドにも
-// 含まれる。幅 640px でおおむね 30〜60KB であり、一覧 60 件でも 2〜4MB に収まる。
-//
-// firstFrame は、指定位置でコマを取れず、先頭のコマで作り直したかである。呼び出し側は
-// これを代用として記録する。ここは
-// 報告先を知らず、値として返すだけである。
+// Thumbnail uses universally available mjpeg rather than requiring libwebp; the caller supplies its
+// temporary output path. It reports first-frame substitution as a value for the caller to persist.
 func Thumbnail(ctx context.Context, videoPath string, durationMs int64, output string) (firstFrame bool, err error) {
 	ctx, cancel := context.WithTimeout(ctx, thumbnailTimeout)
 	defer cancel()
@@ -48,9 +36,8 @@ func Thumbnail(ctx context.Context, videoPath string, durationMs int64, output s
 	if err == nil {
 		return false, nil
 	}
-	// 指定した位置でフレームが取れないことがある（可変フレームレート、
-	// 索引の壊れたファイル）。1枚も無いより先頭の1枚の方がよいので、
-	// 一度だけ先頭から取り直す。
+	// If the selected position has no frame, retry once from the beginning rather than leave the
+	// thumbnail absent.
 	if len(positions) < 2 {
 		return false, err
 	}
@@ -60,11 +47,8 @@ func Thumbnail(ctx context.Context, videoPath string, durationMs int64, output s
 	return true, nil
 }
 
-// AutoThumbnailPositions は、位置を指定していない動画の代表サムネイルのコマを取りに行く位置
-// （ミリ秒）を試す順に返す。尺 durationMs（0 以下は不明）に対する自動の位置と、そこでコマが
-// 取れなかったときの先頭（0）である。自動の位置が先頭なら 1 つだけである。サムネイルジョブ
-// （Thumbnail）と、今のサムネイルからの編集が
-// この 1 か所の規則を使う。
+// AutoThumbnailPositions shares extraction order between jobs and editing: automatic position, then
+// zero, with duplicates removed; nonpositive duration means unknown.
 func AutoThumbnailPositions(durationMs int64) []int64 {
 	auto := int64(math.Round(thumbnailOffset(durationMs) * 1000))
 	if auto <= 0 {
@@ -73,17 +57,13 @@ func AutoThumbnailPositions(durationMs int64) []int64 {
 	return []int64{auto, 0}
 }
 
-// positionSeconds は位置 positionMs（ミリ秒）を ffmpeg に渡す秒にする。負の位置は先頭である。
+// Negative positions map to zero.
 func positionSeconds(positionMs int64) float64 {
 	return float64(max(positionMs, 0)) / 1000
 }
 
-// ThumbnailAt は動画の positionMs ミリ秒の場面を1枚取り出し、output へ書く。所有者が
-// 指定した位置の代表サムネイルに使う。
-//
-// Thumbnail と違い、指定の位置で取れなくても先頭のコマで作り直さない。利用者が指した
-// 場面と違う画像を黙って置かず、失敗として返す。位置が尺の内側かは呼び出し側
-// （domain.CheckThumbnailPosition）が確かめる。
+// ThumbnailAt fails instead of silently substituting a different scene; callers validate duration
+// bounds with domain.CheckThumbnailPosition.
 func ThumbnailAt(ctx context.Context, videoPath string, positionMs int64, output string) error {
 	ctx, cancel := context.WithTimeout(ctx, thumbnailTimeout)
 	defer cancel()
@@ -91,10 +71,8 @@ func ThumbnailAt(ctx context.Context, videoPath string, positionMs int64, output
 	return runThumbnail(ctx, videoPath, positionSeconds(positionMs), output)
 }
 
-// runThumbnail は ffmpeg を1回実行し、画像が実際に書かれたことまで確かめる。
-//
-// ffmpeg は指定した位置にフレームが無いとき、終了コード 0 のまま何も出力せずに
-// 終わる。出力の有無まで見ないと、生成できていないのに成功として記録される。
+// Check output existence because ffmpeg can exit zero without producing a frame at the requested
+// position.
 func runThumbnail(ctx context.Context, videoPath string, offsetSec float64, output string) error {
 	args := thumbnailArgs(videoPath, offsetSec, output)
 	if _, err := command(ctx, thumbnailCommand, args...).Output(); err != nil {
@@ -109,19 +87,15 @@ func runThumbnail(ctx context.Context, videoPath string, offsetSec float64, outp
 	}
 
 	if info, err := os.Stat(output); err != nil || info.Size() == 0 {
-		// 途中まで書かれた画像を残さない。半端な JPEG を配信すると、
-		// 生成済みなのか壊れているのかが利用者から区別できない。
+		// Remove partial output so readers cannot mistake a truncated JPEG for a finished thumbnail.
 		_ = os.Remove(output)
 		return fmt.Errorf("thumbnail was not generated (%s, at %.3f s)", videoPath, offsetSec)
 	}
 	return nil
 }
 
-// thumbnailOffset は抽出位置（秒）を返す。尺が不明・不正な場合は下限を使う。
-//
-// 下限（1 秒）が尺を越える短い動画では、丸めずに 10% 地点を使う。下限へ
-// 丸めると末尾ちょうど、あるいはその先を指すことになり、ffmpeg は終了コード 0
-// のまま1枚も出力しない（失敗として現れないので、原因が分かりにくい）。
+// For videos shorter than the minimum offset, use ten percent instead of clamping beyond the final
+// frame; unknown duration uses the minimum.
 func thumbnailOffset(durationMs int64) float64 {
 	if durationMs <= 0 {
 		return thumbnailMinOffset
@@ -131,20 +105,16 @@ func thumbnailOffset(durationMs int64) float64 {
 	offset := min(max(seconds*thumbnailFraction, thumbnailMinOffset), thumbnailMaxOffset)
 
 	if offset >= seconds {
-		// 10% 地点は必ず尺の内側にある。
+		// Ten percent is always inside a positive duration.
 		return seconds * thumbnailFraction
 	}
 	return offset
 }
 
-// thumbnailScale は、向きを問わず長辺を 640px に揃える。縦長の動画でも横長と同じ
-// 大きさの枠に収まるので、縦長だけ画像が大きくなることがない。
+// Bound the longest side to 640px in either orientation.
 const thumbnailScale = "scale=640:640:force_original_aspect_ratio=decrease:force_divisible_by=2"
 
-// thumbnailArgs は ffmpeg に渡す1回分の引数を組み立てる。
-//
-// -ss を -i の前に置くとキーフレーム単位の高速シークになり、長い動画でも
-// 一定時間で終わる。後ろに置くと先頭から復号することになる。
+// Place -ss before -i for fast input seeking instead of decoding from the beginning.
 func thumbnailArgs(videoPath string, offsetSec float64, output string) []string {
 	return []string{
 		"-nostdin",

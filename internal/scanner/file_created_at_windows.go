@@ -6,8 +6,7 @@ import (
 	"time"
 )
 
-// fileCreatedAt はファイルの作成日時を返す。Windows は走査が既に読んだ fs.FileInfo の
-// CreationTime に持つ。
+// Reuse Windows FileInfo.CreationTime already read during scanning.
 func fileCreatedAt(_ string, info fs.FileInfo) (time.Time, bool) {
 	if info == nil {
 		return time.Time{}, false

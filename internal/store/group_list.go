@@ -10,20 +10,15 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// groupListCursorKind はグループの一覧のカーソルの最初の項目である。ほかの一覧のカーソルを
-// 渡されたときに読めないカーソルとして断る。
+// Reject cursors belonging to another list.
 const groupListCursorKind = "groups"
 
-// groupListCandidate は一覧の候補のグループ 1 つである。
 type groupListCandidate struct {
 	id       int64
 	titleKey string
 }
 
-// ListGroups は見る人（audience）に見せるグループを、どの深さのものも自然な名前の順（title_key、
-// 同じなら id の順）に、cursor の次から limit 件返す（GET /api/groups、
-// docs/design-docs/catalog-organization.md）。query は前後の空白を取り除き、名前が大文字小文字を
-// 区別せずにそれを含むものだけに絞る（空なら全部）。見せる動画の無いグループは入らない。読めない cursor は domain.ErrInvalidCursor である。
+// ListGroups returns visible nonempty groups at any depth in natural-name order, with case-insensitive name filtering.
 func (s *LibraryStore) ListGroups(ctx context.Context, audience domain.Audience, query, cursor string, limit int) (domain.GroupListPage, error) {
 	after, err := decodeGroupListCursor(cursor)
 	if err != nil {
@@ -44,8 +39,7 @@ func (s *LibraryStore) ListGroups(ctx context.Context, audience domain.Audience,
 	if err != nil {
 		return domain.GroupListPage{}, err
 	}
-	// 見せる動画の無いグループを除くため、候補を limit+1 件ずつ読み、見せるものが limit+1 件
-	// たまるまで続ける。
+	// Fetch candidates in batches until enough audience-visible groups remain for a page and continuation.
 	var shown []groupListCandidate
 	page := domain.GroupListPage{}
 	for start := 0; start < len(candidates) && len(shown) <= limit; start += limit + 1 {
@@ -81,7 +75,6 @@ func (s *LibraryStore) ListGroups(ctx context.Context, audience domain.Audience,
 	return page, nil
 }
 
-// decodeGroupListCursor は一覧のカーソルを、その位置のグループに戻す。空なら nil である。
 func decodeGroupListCursor(cursor string) (*groupListCandidate, error) {
 	if cursor == "" {
 		return nil, nil
@@ -97,9 +90,7 @@ func decodeGroupListCursor(cursor string) (*groupListCandidate, error) {
 	return &groupListCandidate{id: id, titleKey: parts[2]}, nil
 }
 
-// groupListCandidates は、after より後ろ（nil なら最初から）のグループのうち名前が query を含む
-// ものを、一覧の順に返す。大文字小文字の区別は SQLite の lower() では ASCII にしか効かないので、
-// 名前を読んでから domain.FoldKey で比べる（strings.ToLower では `Σ` と `ς` が同じにならない）。
+// Use domain.FoldKey after reading names: SQLite lower() is ASCII-only and strings.ToLower does not unify sigma forms.
 func groupListCandidates(ctx context.Context, tx *sql.Tx, query string, after *groupListCandidate) ([]groupListCandidate, error) {
 	where, args := "", []any{}
 	if after != nil {

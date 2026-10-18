@@ -64,7 +64,6 @@ type Page =
   | { kind: "gone" }
   | { kind: "ready"; name: string; items: readonly PlaylistItem[] };
 
-/** parseId は経路の id を正の整数として読む。読めなければ null（無いプレイリストとして扱う）。 */
 function parseId(raw: string | undefined): number | null {
   if (raw === undefined || !/^[1-9]\d*$/.test(raw)) return null;
   const id = Number(raw);
@@ -72,26 +71,15 @@ function parseId(raw: string | undefined): number | null {
 }
 
 /**
- * PlaylistPage はプレイリスト 1 つの項目を持ち主の決めた順に並べ、そこから再生を始め、並べ替え、
- * 外し、名前を変え、消す画面である。
- *
- * 開いたとき、移動か外すの `404` の後に読み、自分では取り直さない。
- * 並べ替えは置いたときに番号を変えてから `move` を 1 回送る。送る要求は置いた順に 1 つずつ
- * 送り、失敗したらサーバーが最後に認めた並びへ戻す。
- *
- * 読み直しは移動と同じ鎖に並べる。送った移動が答えるまで読まず、読み終えるまで次の移動を
- * 送らないので、読んだ並びがどの移動より古いということがない。読み直しを決めた時点で
- * 待っている移動は古い並びに対するものなので捨てる。
- *
- * React Router は `:id` だけが変わる移動で同じ部品を使い回すので、画面は経路の id ごとに
- * 作り直す。前のプレイリストの名前・行・操作が、別の id と組み合わさって残らない。
+ * Serialize reads with moves and discard queued moves when reloading; rollback failures to
+ * confirmed order. Key by playlist ID to prevent React Router from retaining another playlist's
+ * state.
  */
 export default function PlaylistPage() {
   const params = useParams();
   return <PlaylistScreen key={params.id ?? ""} id={parseId(params.id)} />;
 }
 
-/** PlaylistScreen は経路の id 1 つのプレイリスト画面である。id が変われば作り直される。 */
 function PlaylistScreen({ id }: { id: number | null }) {
   const navigate = useNavigate();
   const toast = useToast();
@@ -102,16 +90,15 @@ function PlaylistScreen({ id }: { id: number | null }) {
   const [dialog, setDialog] = useState<"rename" | "delete" | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteFailure, setDeleteFailure] = useState<UiText | null>(null);
-  /** 外した後にフォーカスを移す先（行の id、見出しは "title"）。 */
   const [focusTarget, setFocusTarget] = useState<number | "title" | "more" | null>(null);
   const pageRef = useRef(page);
-  /** サーバーが最後に認めた並び。移動の失敗でここへ戻す。 */
+  /** Last server-confirmed order, used for rollback. */
   const confirmed = useRef<readonly PlaylistItem[]>([]);
-  /** 送る移動を置いた順に 1 つずつ流す鎖と、失敗で残りを捨てるための世代。 */
+  /** Serialize moves in drop order; advance the generation to discard the queue after failure. */
   const moves = useRef<Promise<void>>(Promise.resolve());
   const generation = useRef(0);
   const fetching = useRef<AbortController | null>(null);
-  /** 読み直しを送った後に外せた項目。読んだ応答がその削除より古くても行に戻さない。 */
+  /** Remember removals after a read starts so stale responses cannot restore them. */
   const removedSinceRead = useRef(new Set<number>());
   const titleRef = useRef<HTMLHeadingElement>(null);
   const moreRef = useRef<HTMLButtonElement>(null);
@@ -132,7 +119,7 @@ function PlaylistScreen({ id }: { id: number | null }) {
       (playlist) => {
         if (controller.signal.aborted) return;
         fetching.current = null;
-        // 読み直した並びが新しい基準になる。待っている移動は古い並びに対するものなので捨てる。
+        // The new snapshot replaces the baseline; discard queued moves based on the old order.
         generation.current += 1;
         const items = playlist.items.filter(
           (item) => !removedSinceRead.current.has(item.id),
@@ -148,14 +135,13 @@ function PlaylistScreen({ id }: { id: number | null }) {
           showPage({ kind: "gone" });
           return;
         }
-        // 読み直しの失敗も読み込みの失敗として Retry を出す。
-        // 古いかもしれない行を残すと、サーバーが退けた並びを認めたように見せる。
+        // Show Retry on refresh failure rather than implying the server accepted stale rows.
         showPage({ kind: "failed" });
       },
     );
   }, [id, showPage]);
 
-  /** reread は待っている移動を捨て、送った移動が答えてから読み直す。 */
+  /** Discard queued moves and wait for sent moves before rereading. */
   const reread = useCallback(() => {
     generation.current += 1;
     const ticket = generation.current;
@@ -167,13 +153,13 @@ function PlaylistScreen({ id }: { id: number | null }) {
   useEffect(() => {
     void load();
     return () => {
-      // 鎖で待っている移動と読み直しも、画面を離れたら送らない。
+      // Do not send queued moves or refreshes after leaving.
       generation.current += 1;
       fetching.current?.abort();
     };
   }, [load]);
 
-  /** 画面が出ている間だけ true。離れた後に答えた削除は、移った先の画面を動かさない。 */
+  /** Ignore delete responses after unmount so they cannot navigate another page. */
   const shown = useRef(true);
   useEffect(() => {
     shown.current = true;
@@ -191,7 +177,7 @@ function PlaylistScreen({ id }: { id: number | null }) {
     };
   }, [documentName]);
 
-  // 窓やメニューが閉じてフォーカスを戻した後（setTimeout 0）に移す。
+  // Defer until dialogs and menus finish restoring focus.
   useEffect(() => {
     if (focusTarget === null) return;
     const timer = setTimeout(() => {
@@ -298,11 +284,11 @@ function PlaylistScreen({ id }: { id: number | null }) {
   }
 
   const ready = page.kind === "ready" ? page : null;
-  // 「Play」は始める動画のある最初の項目から始める。動画の無いスマートフォルダの項目は飛ばす
+  // Play starts at the first playable item, skipping empty smart folders.
   //
   const firstTarget = id === null ? null : firstPlayTarget(id, ready?.items ?? []);
 
-  // dnd-kit の読み上げ。位置は今の並びでの 1 始まり。
+  // Positions are one-based in the current order.
   const announcements = reorderAnnouncements(
     ready?.items ?? [],
     itemTitle,
@@ -326,7 +312,6 @@ function PlaylistScreen({ id }: { id: number | null }) {
     return (
       <PageHeader
         titleRef={titleRef}
-        // 長い名前は見出しの中で 2 行まで折り返す。
         title={
           <span title={ready.name} className="line-clamp-2 whitespace-normal break-words">
             {ready.name}

@@ -15,7 +15,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// streamFixture は MediaDir の内側に実体を持つ動画を1件用意する。
 func streamFixture(t *testing.T, name string, size int) (string, domain.Video, []byte) {
 	t.Helper()
 
@@ -38,7 +37,6 @@ func streamFixture(t *testing.T, name string, size int) (string, domain.Video, [
 	return mediaDir, video, content
 }
 
-// streamServer は配信の経路だけを組み立てる。
 func streamServer(t *testing.T, mediaDir string, video domain.Video) http.Handler {
 	t.Helper()
 
@@ -47,7 +45,6 @@ func streamServer(t *testing.T, mediaDir string, video domain.Video) http.Handle
 	})
 }
 
-// rangeRequest は Range 付きの要求を投げる。
 func rangeRequest(t *testing.T, handler http.Handler, target, rangeHeader string) *httptest.ResponseRecorder {
 	t.Helper()
 
@@ -60,9 +57,7 @@ func rangeRequest(t *testing.T, handler http.Handler, target, rangeHeader string
 	return rec
 }
 
-// Range の解釈は http.ServeContent に任せる。ここで確かめるのは標準実装の
-// 再テストではなく、ハンドラが正しい io.ReadSeeker と ModTime を渡している
-// ことである（技術選定文書 3.3）。
+// Test that the handler passes the right seeker and modification time; standard-library Range semantics are not reimplemented here.
 func TestStreamServesRanges(t *testing.T) {
 	const size = 4096
 	mediaDir, video, content := streamFixture(t, "a.mp4", size)
@@ -98,7 +93,6 @@ func TestStreamServesRanges(t *testing.T) {
 	}
 }
 
-// Range 無しなら全体を返し、Range に対応していることを示す。
 func TestStreamServesWholeFile(t *testing.T) {
 	const size = 2048
 	mediaDir, video, content := streamFixture(t, "a.mp4", size)
@@ -116,7 +110,6 @@ func TestStreamServesWholeFile(t *testing.T) {
 	}
 }
 
-// 範囲外の要求は 416。シーク先が尺を越えたときにブラウザがこれを見る。
 func TestStreamRejectsUnsatisfiableRange(t *testing.T) {
 	mediaDir, video, _ := streamFixture(t, "a.mp4", 1024)
 	handler := streamServer(t, mediaDir, video)
@@ -125,15 +118,13 @@ func TestStreamRejectsUnsatisfiableRange(t *testing.T) {
 	if rec.Code != http.StatusRequestedRangeNotSatisfiable {
 		t.Errorf("status = %d, want 416", rec.Code)
 	}
-	// ServeContent は成功用のヘッダを設定したあとで 416 を返すので、
-	// 失敗応答に配信用の Cache-Control が残らないことを固定する。
+	// ServeContent can replace success with 416, so success cache headers must not survive.
 	if got := rec.Header().Get("Cache-Control"); got != cacheNoStore {
 		t.Errorf("416 の Cache-Control = %q, want %q", got, cacheNoStore)
 	}
 }
 
-// readerFromRecorder は、下の ResponseWriter の ReadFrom が呼ばれたかを記録する。
-// 本物の http.response では ReadFrom が sendfile の入口になる。
+// ReaderFrom is the real HTTP response's sendfile entry point.
 type readerFromRecorder struct {
 	*httptest.ResponseRecorder
 	readFromCalls int
@@ -144,8 +135,7 @@ func (r *readerFromRecorder) ReadFrom(src io.Reader) (int64, error) {
 	return io.Copy(r.ResponseRecorder, src)
 }
 
-// 応答を包む層が io.ReaderFrom を塞ぐと、ServeContent のコピーが sendfile を
-// 使えず 32KB ずつユーザー空間を通る。包みの下の ReadFrom まで届くことを固定する。
+// Ensure wrappers preserve ReaderFrom to avoid userspace copies.
 func TestStreamPassesReadFromToUnderlyingWriter(t *testing.T) {
 	const size = 64 * 1024
 	mediaDir, video, content := streamFixture(t, "a.mp4", size)
@@ -172,7 +162,6 @@ func TestStreamPassesReadFromToUnderlyingWriter(t *testing.T) {
 	}
 }
 
-// ReadFrom を持たない ResponseWriter でも、包みの ReadFrom は自分へ戻らずに写す。
 func TestErrorCacheWriterReadFromWithoutReaderFrom(t *testing.T) {
 	rec := httptest.NewRecorder()
 	writer := &errorCacheWriter{ResponseWriter: struct{ http.ResponseWriter }{rec}}
@@ -182,14 +171,11 @@ func TestErrorCacheWriterReadFromWithoutReaderFrom(t *testing.T) {
 	}
 }
 
-// If-Range が一致すれば部分応答、一致しなければ全体を返す。シーク中に
-// ファイルが差し替わった場合に、混ざった内容を返さないための仕組みである。
 func TestStreamHonorsIfRange(t *testing.T) {
 	const size = 2048
 	mediaDir, video, _ := streamFixture(t, "a.mp4", size)
 	handler := streamServer(t, mediaDir, video)
 
-	// まず Last-Modified を得る。
 	first := rangeRequest(t, handler, "/api/videos/1/stream", "")
 	lastModified := first.Header().Get("Last-Modified")
 	if lastModified == "" {
@@ -217,8 +203,6 @@ func TestStreamHonorsIfRange(t *testing.T) {
 	}
 }
 
-// Content-Type は拡張子から決める。ffprobe の format_name は mp4 と mov を
-// 区別できないので、判定と配信で基準を揃える。
 func TestStreamContentType(t *testing.T) {
 	tests := []struct {
 		name string
@@ -244,7 +228,6 @@ func TestStreamContentType(t *testing.T) {
 	}
 }
 
-// 内容が同じでも、別の利用者に共有キャッシュさせない。
 func TestStreamCacheControl(t *testing.T) {
 	mediaDir, video, _ := streamFixture(t, "a.mp4", 512)
 	handler := streamServer(t, mediaDir, video)
@@ -255,8 +238,6 @@ func TestStreamCacheControl(t *testing.T) {
 	}
 }
 
-// 再生できない形式でも配信自体は行う。ブラウザが再生できるかどうかと、
-// ファイルを取得できるかは別の話である。
 func TestStreamServesUnplayableFormats(t *testing.T) {
 	mediaDir, video, _ := streamFixture(t, "a.mkv", 512)
 	video.Playable = false
@@ -269,8 +250,6 @@ func TestStreamServesUnplayableFormats(t *testing.T) {
 	}
 }
 
-// DB に入っているパスをそのまま開かない。登録rootの外を指す行は 404
-// にする。403 にしないのは、存在そのものを漏らさないためである。
 func TestStreamRefusesPathsOutsideMediaDir(t *testing.T) {
 	mediaDir, video, _ := streamFixture(t, "a.mp4", 512)
 
@@ -307,8 +286,6 @@ func TestStreamRefusesPathsOutsideMediaDir(t *testing.T) {
 	}
 }
 
-// シンボリックリンクで外へ出る行も 404。Clean だけでは辿り着けるため、
-// EvalSymlinks のあとにも同じ検証を行う。
 func TestStreamRefusesSymlinkEscape(t *testing.T) {
 	mediaDir, video, _ := streamFixture(t, "a.mp4", 512)
 
@@ -332,7 +309,6 @@ func TestStreamRefusesSymlinkEscape(t *testing.T) {
 	}
 }
 
-// MediaDir の内側を指すシンボリックリンクは配信してよい。
 func TestStreamAllowsSymlinkInsideMediaDir(t *testing.T) {
 	mediaDir, video, _ := streamFixture(t, "a.mp4", 512)
 
@@ -349,7 +325,6 @@ func TestStreamAllowsSymlinkInsideMediaDir(t *testing.T) {
 	}
 }
 
-// 通常ファイルでないものは開かない（ディレクトリ・デバイスファイル）。
 func TestStreamRefusesNonRegularFiles(t *testing.T) {
 	mediaDir, video, _ := streamFixture(t, "a.mp4", 512)
 
@@ -366,8 +341,6 @@ func TestStreamRefusesNonRegularFiles(t *testing.T) {
 	}
 }
 
-// 実体が無くなっていても 404 にする。再生中にファイルが失われた場合、
-// アプリケーション全体は使い続けられなければならない。
 func TestStreamHandlesMissingFile(t *testing.T) {
 	mediaDir, video, _ := streamFixture(t, "a.mp4", 512)
 	if err := os.Remove(video.Path); err != nil {
@@ -380,7 +353,6 @@ func TestStreamHandlesMissingFile(t *testing.T) {
 		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonFileUnavailable})
 }
 
-// 存在しない id は 404。
 func TestStreamForMissingVideo(t *testing.T) {
 	handler := newTestServer(t, Options{Videos: &fakeLibrary{roots: []string{t.TempDir()}}})
 
@@ -389,7 +361,6 @@ func TestStreamForMissingVideo(t *testing.T) {
 	}
 }
 
-// MediaDir が設定されていない構成では、何も開かない。
 func TestStreamWithoutMediaDir(t *testing.T) {
 	_, video, _ := streamFixture(t, "a.mp4", 512)
 	handler := newTestServer(t, Options{
@@ -402,8 +373,6 @@ func TestStreamWithoutMediaDir(t *testing.T) {
 	}
 }
 
-// 経路が /api/ の外へ漏れていないこと。SPA のフォールバックが動画本体を
-// index.html で返してしまうと、再生の失敗が「JSON でない」形で現れる。
 func TestStreamPathStaysUnderAPI(t *testing.T) {
 	mediaDir, video, _ := streamFixture(t, "a.mp4", 512)
 	handler := streamServer(t, mediaDir, video)
@@ -417,7 +386,6 @@ func TestStreamPathStaysUnderAPI(t *testing.T) {
 	}
 }
 
-// MediaFiles をつなぎ忘れたら、実体が無いこと（404）と見分けられるよう 500 を返す。
 func TestStreamWithoutMediaFilesIsInternalError(t *testing.T) {
 	mediaDir, video, _ := streamFixture(t, "movie.mp4", 16)
 	handler := NewRouter(Options{

@@ -12,25 +12,21 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 自動タグ付けと Ollama の設定のキーである（docs/design-docs/auto-tagging.md）。
 const (
-	// autoTagFeatureKey は自動タグ付けの機能を使うかで、"true" か "false"。行が無ければ切。
-	autoTagFeatureKey = "auto_tag.feature_enabled"
-	// autoTagAfterImportKey は取り込みのあとに自動で判定するかで、"true" か "false"。
+	// Stored as true or false; absent means disabled.
+	autoTagFeatureKey            = "auto_tag.feature_enabled"
 	autoTagAfterImportKey        = "auto_tag.after_import"
 	autoTagThresholdKey          = "auto_tag.threshold"
 	autoTagTentativeThresholdKey = "auto_tag.tentative_threshold"
 
 	ollamaEndpointKey = "ollama.endpoint"
 	ollamaModelKey    = "ollama.model"
-	// legacyOllamaEndpointKey と legacyOllamaModelKey は、接続先を自動タグ付けの設定と一緒に
-	// 持っていた版のキーである。新しいキーが無ければ読む。
+	// Read legacy connection keys only when the current keys are absent.
 	legacyOllamaEndpointKey = "auto_tag.endpoint"
 	legacyOllamaModelKey    = "auto_tag.model"
 )
 
-// AutoTagSettings は保存した自動タグ付けの設定を返す。行の無い項目は既定値
-// （domain.DefaultAutoTagSettings）になる。読めない確率も既定値に倒す。
+// AutoTagSettings uses domain defaults for missing or invalid values.
 func (s *SettingsStore) AutoTagSettings(ctx context.Context) (domain.AutoTagSettings, error) {
 	settings := domain.DefaultAutoTagSettings()
 	var err error
@@ -47,13 +43,12 @@ func (s *SettingsStore) AutoTagSettings(ctx context.Context) (domain.AutoTagSett
 		settings.TentativeThreshold); err != nil {
 		return domain.AutoTagSettings{}, err
 	}
-	// 仮の確率だけが保存されていないときなどに、確定の確率を越えないようにする。
+	// A missing tentative threshold must not exceed the confirmed threshold.
 	settings.TentativeThreshold = min(settings.TentativeThreshold, settings.Threshold)
 	return settings, nil
 }
 
-// SaveAutoTagSettings は自動タグ付けの設定を 1 つの取引で保存する。値は呼び出し側が
-// domain.ValidateAutoTagSettings で確かめたものを渡す。
+// SaveAutoTagSettings expects values validated by domain.ValidateAutoTagSettings.
 func (s *SettingsStore) SaveAutoTagSettings(ctx context.Context, settings domain.AutoTagSettings) error {
 	return writeSettings(ctx, s.db.sql, []settingValue{
 		{autoTagFeatureKey, strconv.FormatBool(settings.Enabled)},
@@ -63,22 +58,19 @@ func (s *SettingsStore) SaveAutoTagSettings(ctx context.Context, settings domain
 	})
 }
 
-// OllamaSettings は保存した Ollama の接続先を返す。行が無ければ既定値
-// （domain.DefaultOllamaSettings）になる。
+// OllamaSettings uses domain defaults when no connection is saved.
 func (s *SettingsStore) OllamaSettings(ctx context.Context) (domain.OllamaSettings, error) {
 	settings, _, err := ollamaConnection(ctx, s.db.sql)
 	return settings, err
 }
 
-// OllamaConnectionSaved は所有者が Ollama の接続先を保存したか（接続先の行があるか）を返す。
-// OllamaSettings は行が無ければ既定の接続先に倒すので、こちらで行の有無を見る。前の版のキーの行も保存とみなす。
+// OllamaConnectionSaved distinguishes saved settings, including legacy keys, from default values.
 func (s *SettingsStore) OllamaConnectionSaved(ctx context.Context) (bool, error) {
 	_, saved, err := ollamaConnection(ctx, s.db.sql)
 	return saved, err
 }
 
-// SavedOllamaSettings は接続先と、それを保存したか（OllamaConnectionSaved と同じ答え）を
-// 1 つの読み取りの取引で返す。同時の保存があっても、両者は同じ時点の値になる
+// SavedOllamaSettings reads the settings and saved flag in one snapshot.
 func (s *SettingsStore) SavedOllamaSettings(ctx context.Context) (domain.OllamaSettings, bool, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -95,8 +87,7 @@ func (s *SettingsStore) SavedOllamaSettings(ctx context.Context) (domain.OllamaS
 	return settings, saved, nil
 }
 
-// ollamaConnection は接続先と、接続先の行（前の版のキーを含む）があるかを読む。行が無い値は
-// 既定値（domain.DefaultOllamaSettings）になる。
+// Include legacy keys when detecting a saved connection; use defaults for absent values.
 func ollamaConnection(ctx context.Context, q rowQueryer) (domain.OllamaSettings, bool, error) {
 	settings := domain.DefaultOllamaSettings()
 	saved := false
@@ -123,8 +114,7 @@ func ollamaConnection(ctx context.Context, q rowQueryer) (domain.OllamaSettings,
 	return settings, saved, nil
 }
 
-// SaveOllamaSettings は Ollama の接続先を 1 つの取引で保存する。値は呼び出し側が
-// domain.NormalizeOllamaSettings で確かめたものを渡す。
+// SaveOllamaSettings expects values normalized by domain.NormalizeOllamaSettings.
 func (s *SettingsStore) SaveOllamaSettings(ctx context.Context, settings domain.OllamaSettings) error {
 	return writeSettings(ctx, s.db.sql, []settingValue{
 		{ollamaEndpointKey, settings.Endpoint},
@@ -137,7 +127,6 @@ func readBoolSetting(ctx context.Context, q *sql.DB, key string) (bool, error) {
 	return found && value == strconv.FormatBool(true), err
 }
 
-// readFloatSetting は数の設定を読む。行が無いか読めなければ fallback を返す。
 func readFloatSetting(ctx context.Context, q *sql.DB, key string, fallback float64) (float64, error) {
 	value, found, err := readSetting(ctx, q, key)
 	if err != nil || !found {
@@ -150,14 +139,13 @@ func readFloatSetting(ctx context.Context, q *sql.DB, key string, fallback float
 	return parsed, nil
 }
 
-// settingValue は保存する設定の 1 つである。キーと値を別のフィールドに持ち、誤りの文に入れる
-// キーが値（Comfy Cloud の API キーなど）と同じ配列の要素にならないようにする。
+// Keep keys separate from values so diagnostics cannot accidentally expose secrets.
 type settingValue struct {
 	key   string
 	value string
 }
 
-// writeSettings は複数の設定を 1 つの取引で保存する。誤りの文にはキーだけを入れ、値は入れない。
+// Write settings atomically; errors include keys but never values.
 func writeSettings(ctx context.Context, q *sql.DB, values []settingValue) error {
 	tx, err := q.BeginTx(ctx, nil)
 	if err != nil {
@@ -179,9 +167,7 @@ func writeSettings(ctx context.Context, q *sql.DB, values []settingValue) error 
 	return nil
 }
 
-// QueueVideos は videoIDs のうち、登録フォルダの下に所在を持つ動画の内容を待ち行列へ積み、
-// 積んだ件数を返す。既にある行の扱いは mode で決まり、判定中の行は動かさない。積んだ内容ごとに、decider が
-// 始めた running/waiting の auto_tag の記録を開く。
+// QueueVideos queues registered content and opens activities; mode controls existing rows, but running rows never move.
 func (s *AutoTagStore) QueueVideos(
 	ctx context.Context, videoIDs []int64, mode domain.AutoTagQueueMode, decider domain.ActivityDecider,
 ) (int, error) {
@@ -197,14 +183,13 @@ func (s *AutoTagStore) QueueVideos(
 		registeredVideoCondition("v"), []any{string(encoded)}, mode, decider)
 }
 
-// QueueLibrary は登録フォルダの下に所在を持つすべての動画の内容を待ち行列へ積み、積んだ件数を
-// 返す。既にある行の扱いと記録は QueueVideos と同じ。
+// QueueLibrary applies QueueVideos semantics to all registered content.
 func (s *AutoTagStore) QueueLibrary(ctx context.Context, mode domain.AutoTagQueueMode, decider domain.ActivityDecider) (int, error) {
 	return s.queue(ctx, `select v.content_key from videos v
 		where v.content_key <> '' and `+registeredVideoCondition("v"), nil, mode, decider)
 }
 
-// queueableStates は積み方 mode が積む行の状態である。空文字は行が無いことを表す。
+// An empty state represents a missing queue row.
 func queueableStates(mode domain.AutoTagQueueMode) (string, error) {
 	switch mode {
 	case domain.AutoTagQueueIfNew:
@@ -218,8 +203,7 @@ func queueableStates(mode domain.AutoTagQueueMode) (string, error) {
 	}
 }
 
-// queue は selectKeys が返す内容の識別子を mode に従って 1 つの取引で積み、内容ごとに記録を開いて行の
-// activity_id に持たせる。確定後に domain.ActivityChanged を発行する。
+// Queue rows and their activities share a transaction; publish ActivityChanged after commit.
 func (s *AutoTagStore) queue(
 	ctx context.Context, selectKeys string, args []any, mode domain.AutoTagQueueMode, decider domain.ActivityDecider,
 ) (int, error) {
@@ -262,7 +246,6 @@ func (s *AutoTagStore) queue(
 	return len(subjects), nil
 }
 
-// queueableAutoTagSubjects は積む内容の鍵と表示名を読む。
 func queueableAutoTagSubjects(ctx context.Context, tx *sql.Tx, query string, args []any) ([]domain.ActivitySubject, error) {
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -283,8 +266,7 @@ func queueableAutoTagSubjects(ctx context.Context, tx *sql.Tx, query string, arg
 	return subjects, nil
 }
 
-// Claim は積んだ順にいちばん古い判定を判定中にして返す。無ければ domain.ErrNoJob。行の記録を processing に
-// し、記録が running でなければ新しい記録を開く。
+// Claim takes the oldest queued item or returns domain.ErrNoJob, creating a processing activity if necessary.
 func (s *AutoTagStore) Claim(ctx context.Context) (domain.AutoTagJob, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -315,8 +297,7 @@ func (s *AutoTagStore) Claim(ctx context.Context) (domain.AutoTagJob, error) {
 	return domain.AutoTagJob{ContentKey: key}, nil
 }
 
-// Subject は内容の識別子の動画を所有者の見え方で、代表の所在を含む登録フォルダ（入れ子なら
-// 最も深いもの）とともに返す。登録フォルダの下に所在を持つ動画が無ければ domain.ErrNotFound。
+// Subject returns the owner view with the deepest registered folder containing its representative location.
 func (s *AutoTagStore) Subject(ctx context.Context, contentKey string) (domain.AutoTagVideo, error) {
 	id, err := videoIDForContent(ctx, s.db.sql, contentKey)
 	if err != nil {
@@ -342,10 +323,7 @@ func (s *AutoTagStore) Subject(ctx context.Context, contentKey string) (domain.A
 	return subject, nil
 }
 
-// Candidates は内容の動画に聞く既存のタグを名前の順で返す。仮タグ、その動画（集まりの
-// メンバーなら集まり）に確定して付いているタグ、その動画で所有者が却下したタグは除く。
-// 仮に付いているタグは、判定し直して確定することがあるので含める。動画がライブラリに
-// 無ければ domain.ErrNotFound。
+// Candidates excludes tentative tag definitions, confirmed attachments and rejected tags; tentative attachments remain eligible for promotion.
 func (s *AutoTagStore) Candidates(ctx context.Context, contentKey string) ([]domain.AutoTagCandidate, error) {
 	videoID, err := videoIDForContent(ctx, s.db.sql, contentKey)
 	if err != nil {
@@ -393,12 +371,7 @@ func (s *AutoTagStore) Candidates(ctx context.Context, contentKey string) ([]dom
 	return candidates, nil
 }
 
-// Finish は判定中の行を終え、selection のタグ（今もあるもの）をその内容の動画へ付ける。
-// Confirmed は確定した付与として付け、仮に付いていれば確定する。Tentative は仮に付け、既に
-// 付いていれば（手で付けた分も）そのままにする。所有者がこの動画で却下したタグは付けない。
-// 行が判定中でなくなっていた（積み直された）なら何もしない。動画が消えていれば行を消す。
-// 同じ取引で行の記録を done/completed にし、decider が空でなければそれを判断したものとして書き、付けたタグを
-// 確率とともに残す。確定の後に domain.AutoTagApplied と domain.ActivityChanged を発行する。
+// Finish applies only to a still-running item, preserves owner attachments and rejections, and records activity in the same transaction.
 func (s *AutoTagStore) Finish(
 	ctx context.Context, contentKey string, selection domain.AutoTagSelection, decider domain.ActivityDecider,
 ) error {
@@ -465,8 +438,7 @@ func (s *AutoTagStore) Finish(
 			return err
 		}
 	}
-	// 集まりのメンバーなら、タグは集まりの鍵に付き、すべてのメンバーに見える。メンバーの
-	// どの動画を開いている画面にも知らせる。
+	// Bundle tags belong to every member; notify screens showing any member.
 	affected, err := videoIDsSharingUserKey(ctx, tx, videoID)
 	if err != nil {
 		return err
@@ -477,8 +449,6 @@ func (s *AutoTagStore) Finish(
 	return nil
 }
 
-// attachableAutoTags は tagIDs のうち、今もあり、利用者データの鍵 userKey の動画で所有者が
-// 却下していないタグの id を渡した順で返す。
 func attachableAutoTags(ctx context.Context, tx *sql.Tx, userKey string, tagIDs []int64) ([]int64, error) {
 	existing, _, err := existingTagIDs(ctx, tx, tagIDs)
 	if err != nil || len(existing) == 0 {
@@ -509,14 +479,12 @@ func attachableAutoTags(ctx context.Context, tx *sql.Tx, userKey string, tagIDs 
 	return out, nil
 }
 
-// ConfirmTentative は動画 videoID に仮に付いたタグ tagID を確定する。仮に付いていなければ
-// domain.ErrNotFound。確定の後に domain.AutoTagApplied を発行する。
+// ConfirmTentative returns domain.ErrNotFound unless the attachment is tentative.
 func (s *AutoTagStore) ConfirmTentative(ctx context.Context, videoID, tagID int64) error {
 	return s.settleTentative(ctx, videoID, tagID, false)
 }
 
-// RejectTentative は動画 videoID に仮に付いたタグ tagID を外し、この動画にこのタグを自動
-// タグ付けで付け直さないよう覚える。仮に付いていなければ domain.ErrNotFound。
+// RejectTentative removes the suggestion and prevents automatic reattachment; missing suggestions return domain.ErrNotFound.
 func (s *AutoTagStore) RejectTentative(ctx context.Context, videoID, tagID int64) error {
 	return s.settleTentative(ctx, videoID, tagID, true)
 }
@@ -559,7 +527,6 @@ func (s *AutoTagStore) settleTentative(ctx context.Context, videoID, tagID int64
 	if err := touchEditedAtForUserKeys(ctx, tx, []string{userKey}, now); err != nil {
 		return err
 	}
-	// 提案のタグを残すか却下するのは所有者の操作である。
 	kind := domain.ActivityTagKeep
 	if reject {
 		kind = domain.ActivityTagReject
@@ -578,8 +545,7 @@ func (s *AutoTagStore) settleTentative(ctx context.Context, videoID, tagID int64
 	return nil
 }
 
-// Fail は判定中の行を失敗にし、理由を残す。同じ取引で行の記録を attention/failed にし、理由を detail に書く。
-// 行が判定中でなくなっていれば何もしない。
+// Fail ignores items no longer running and records the failure with their activity atomically.
 func (s *AutoTagStore) Fail(ctx context.Context, contentKey, reason string) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -608,8 +574,7 @@ func (s *AutoTagStore) Fail(ctx context.Context, contentKey, reason string) erro
 	return nil
 }
 
-// RequeueRunning は判定中のまま残った行（前回の終了で途切れたもの）を積み直し、件数を返す。
-// 起動時に、判定を始める前に呼ぶ。
+// RequeueRunning recovers interrupted items before judging starts at startup.
 func (s *AutoTagStore) RequeueRunning(ctx context.Context) (int, error) {
 	result, err := s.db.sql.ExecContext(ctx, `update auto_tag_queue set state = 'queued', updated_at = ?
 		where state = 'running'`, time.Now().UnixMilli())
@@ -623,7 +588,6 @@ func (s *AutoTagStore) RequeueRunning(ctx context.Context) (int, error) {
 	return int(affected), nil
 }
 
-// Counts は待ち行列の状態ごとの件数と、直近の失敗の理由を返す。
 func (s *AutoTagStore) Counts(ctx context.Context) (domain.AutoTagCounts, error) {
 	var counts domain.AutoTagCounts
 	err := s.db.sql.QueryRowContext(ctx, `
@@ -641,8 +605,7 @@ func (s *AutoTagStore) Counts(ctx context.Context) (domain.AutoTagCounts, error)
 	return counts, nil
 }
 
-// videoIDForContent は内容の識別子の動画のうち、登録フォルダの下に所在を持つものの id を返す。
-// 無ければ domain.ErrNotFound。
+// Only videos with a registered location qualify; otherwise return domain.ErrNotFound.
 func videoIDForContent(ctx context.Context, q rowQueryer, contentKey string) (int64, error) {
 	var id int64
 	err := q.QueryRowContext(ctx, `select v.id from videos v where v.content_key = ? and v.content_key <> '' and `+
@@ -656,19 +619,14 @@ func videoIDForContent(ctx context.Context, q rowQueryer, contentKey string) (in
 	return id, nil
 }
 
-// videoIDsSharingUserKey は videoID の動画と利用者データの鍵が同じ動画（集まりのメンバー、
-// 束ねていなければその動画だけ）の id を、id の順で返す。
 func videoIDsSharingUserKey(ctx context.Context, tx *sql.Tx, videoID int64) ([]int64, error) {
 	return videoIDsWithUserKey(ctx, tx, `(select `+userKeyExpr("t")+` from videos t where t.id = ?)`, videoID)
 }
 
-// videoIDsForUserKey は利用者データの鍵 userKey を持つ動画（集まりならすべてのメンバー）の id を、id の順で返す。
 func videoIDsForUserKey(ctx context.Context, tx *sql.Tx, userKey string) ([]int64, error) {
 	return videoIDsWithUserKey(ctx, tx, `?`, userKey)
 }
 
-// videoIDsWithUserKey は利用者データの鍵が式 keyExpr（引数 arg を 1 つ取る）の値である動画の id を、id の順で
-// 返す。
 func videoIDsWithUserKey(ctx context.Context, tx *sql.Tx, keyExpr string, arg any) ([]int64, error) {
 	rows, err := tx.QueryContext(ctx, `select v.id from videos v
 		where v.content_key <> '' and `+userKeyExpr("v")+` = `+keyExpr+`

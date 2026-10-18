@@ -9,8 +9,6 @@ import { __resetTagsForTest } from "../api/tags";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import ConditionsFields from "./ConditionsFields";
 
-// スマートフォルダの窓の「Conditions」の欄。各行が条件をどう変えて返すか。
-
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -34,9 +32,7 @@ const tags = Array.from({ length: 17 }, (_, index) => ({
 }));
 
 const fetchMock = vi.fn<typeof fetch>();
-/** `GET /api/tag-kinds` の答え（呼ばれた順。尽きたら最後のもの）。 */
 let kindLists: ReturnType<typeof kind>[][] = [];
-/** 人物の候補の答え。q ごとに、答えを止めておける。 */
 let peopleAnswer: (q: string) => Promise<Response> = () =>
   Promise.resolve(json({ items: [] }));
 
@@ -152,7 +148,7 @@ describe("ConditionsFields", () => {
     });
 
     it("開いた時点の保持に無い種類は取り直して確かめ、あれば削除扱いにしない", async () => {
-      // このタブは Genre だけを持ち、別のタブで Mood（id 2）が作られた。
+      // Simulate a kind created in another tab after this tab cached Genre.
       kindLists = [[kind(1, "Genre")], [kind(1, "Genre"), kind(2, "Mood")]];
       await getTagKinds();
       renderFields({ tagKind: 2 });
@@ -216,7 +212,6 @@ describe("ConditionsFields", () => {
       renderFields({});
       const input = screen.getByRole("combobox", { name: "Add tag" });
       await user.type(input, "犬");
-      // 1 度目の Esc は候補の一覧を閉じ、閉じているときの Esc が語を消す。
       await user.keyboard("{Escape}{Escape}");
       expect((input as HTMLInputElement).value).toBe("");
     });
@@ -291,7 +286,6 @@ describe("ConditionsFields", () => {
     it("もう無い人物や団体は警告のチップで出す", async () => {
       renderFields({ person: 3, organization: 5 }, [{ kind: "person", id: 3 }]);
       expect(await screen.findByText("Person: deleted")).toBeDefined();
-      // 団体は名前を読んで 404 だった。
       expect(await screen.findByText("Organization: deleted")).toBeDefined();
       expect(
         screen.getAllByRole("button", { name: "Remove the deleted condition" }),

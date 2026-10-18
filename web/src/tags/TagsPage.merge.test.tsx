@@ -65,7 +65,6 @@ describe("TagsPage 統合", () => {
     await user.click(mergeButton);
 
     expect(await screen.findByText('Merged "旅行" into "Anime"')).toBeDefined();
-    // 1 件の統合も sourceIds で送る。
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/tags/2/merge",
       expect.objectContaining({
@@ -198,7 +197,6 @@ describe("TagsPage 統合", () => {
     await user.type(combo, "A");
     expect(combo.getAttribute("aria-expanded")).toBe("true");
 
-    // 候補の一覧は窓の本文の一部で、閉じる段は無い。Esc で窓が閉じる。
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
@@ -253,7 +251,6 @@ describe("TagsPage 統合", () => {
     await user.keyboard("{Escape}");
     expect(screen.getByRole("dialog", { name: 'Merge "旅行"' })).toBeDefined();
 
-    // 送っている間は「Cancel」も押せない。
     expect(
       within(dialog).getByRole("button", { name: "Cancel" }).hasAttribute("disabled"),
     ).toBe(true);
@@ -423,8 +420,7 @@ describe("TagsPage シノニム", () => {
     await user.click(within(dialog).getByRole("button", { name: "Back" }));
 
     expect(within(dialog).queryByText(/is a tag on/)).toBeNull();
-    // 「戻る」で確認のビューから入力のビューに戻ると、入力は作り直される
-    // （確認のビューには入力が無い）ので、あらためて取得する。
+    // Returning from confirmation recreates the input, so query it again.
     const inputAfterBack = within(dialog).getByRole("textbox", {
       name: "Add synonym",
     }) as HTMLInputElement;
@@ -452,7 +448,6 @@ describe("TagsPage シノニム", () => {
     await user.keyboard("{Enter}");
     await within(dialog).findByText(/is a tag on 10 videos/);
 
-    // 確認を出したあと、別のタブで id2 を改名し、新しく「anime」（id3）を作る。
     server.tags[1]!.name = "anime-old";
     server.tags.push(tag({ id: 3, name: "anime", videoCount: 20 }));
 
@@ -512,7 +507,6 @@ describe("TagsPage シノニム", () => {
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
 
-    // 中間（B）を解除すると、次（C）の×へ移る。
     await user.click(
       within(dialog).getByRole("button", { name: 'Remove the synonym "B"' }),
     );
@@ -523,7 +517,6 @@ describe("TagsPage シノニム", () => {
       ),
     );
 
-    // 残りの最後（C）を解除すると、前（A）の×へ移る。
     await user.click(
       within(dialog).getByRole("button", { name: 'Remove the synonym "C"' }),
     );
@@ -534,7 +527,6 @@ describe("TagsPage シノニム", () => {
       ),
     );
 
-    // 最後の1つ（A）を解除すると、入力へ移る。
     await user.click(
       within(dialog).getByRole("button", { name: 'Remove the synonym "A"' }),
     );
@@ -587,8 +579,7 @@ describe("TagsPage シノニム", () => {
     await user.keyboard("{Enter}");
     await within(dialog).findByText(/is a tag on/);
 
-    // バックグラウンドの取り直し（afterTagChanged の refreshTags）が失敗しても、
-    // その場での反映（統合元を一覧から消す）は変わらないことを確かめる。
+    // Background refresh failure must not prevent local source removal.
     server.failNextGet = true;
 
     await user.click(within(dialog).getByRole("button", { name: "Merge" }));
@@ -636,8 +627,6 @@ describe("TagsPage シノニム", () => {
     await user.type(input, "anime");
     await user.keyboard("{Enter}");
 
-    // 確認には切り替わらず、素の登録として直接付く（送り直しが1回だけ
-    // 許される。N6b）。
     expect(await within(dialog).findByText("anime")).toBeDefined();
     expect(within(dialog).queryByText(/is a tag on/)).toBeNull();
     expect(input.value).toBe("");
@@ -661,14 +650,12 @@ describe("TagsPage シノニム", () => {
     await user.keyboard("{Enter}");
     await waitFor(() => expect(input.getAttribute("aria-busy")).toBe("true"));
 
-    // 応答を待つ間に、別の名前へ打ち直す。
     await user.clear(input);
     await user.type(input, "別の下書き");
 
     hold.release?.();
 
     await within(dialog).findByText("ドラマ");
-    // 追加した「ドラマ」は付いたが、その後に打ち直した文字は消えない。
     expect(input.value).toBe("別の下書き");
   });
 
@@ -683,10 +670,7 @@ describe("TagsPage シノニム", () => {
     await user.click(within(row).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
 
-    // バックグラウンドの取り直し（各解除の afterTagChanged による
-    // refreshTags）がサーバーの正しい状態で上書きして、クライアント側の
-    // 巻き戻りを覆い隠してしまわないようにする。ここで確かめたいのは、
-    // その場（サーバーの応答を待たない側）の反映が正しいことである。
+    // Prevent authoritative refreshes from masking stale local-state overwrites.
     server.failAllGets = true;
     hold.synonymDeletes = true;
     await user.click(
@@ -697,9 +681,7 @@ describe("TagsPage シノニム", () => {
     );
     expect(synonymDeleteReleases).toHaveLength(2);
 
-    // 両方の応答を、同じタイミングで（間に描画を挟まず）解決させる。片方の
-    // 結果がもう片方の閉じ込めた古い一覧で上書きされると、どちらか一方が
-    // 生き残ってしまう。
+    // Resolve both removals without an intervening render to expose stale-closure overwrites.
     synonymDeleteReleases[0]!();
     synonymDeleteReleases[1]!();
 
@@ -772,10 +754,8 @@ describe("TagsPage まとめての統合", () => {
     expect(combo.parentElement!.className).toContain("w-full");
     expect(combo.parentElement!.className).not.toContain("w-40");
     await user.type(combo, "A");
-    // 候補の一覧は入力の下の本文の中にあり、入力に重ねない。
     const listbox = await within(dialog).findByRole("listbox");
     expect(listbox.className).not.toContain("absolute");
-    // 統合先の候補は全タグ（選んだ中からも、選んでいないタグからも）。
     expect(within(listbox).getByRole("option", { name: /^Action/ })).toBeDefined();
     expect(within(listbox).getByRole("option", { name: /^Alpha/ })).toBeDefined();
   });
@@ -810,7 +790,6 @@ describe("TagsPage まとめての統合", () => {
     for (const name of ["Alpha", "Beta", "Cat", "Gamma"]) {
       expect(screen.queryByTitle(name)).toBeNull();
     }
-    // 本数は応答の tag の videoCount（このモックでは合算の 21）。
     expect(within(rowOf("Action")).getByText("21 videos")).toBeDefined();
     expect(screen.queryByRole("region", { name: "Selected tags" })).toBeNull();
     await waitFor(() =>
@@ -899,7 +878,6 @@ describe("TagsPage まとめての統合", () => {
     await user.click(within(dialog).getByRole("button", { name: "Retry" }));
     await within(dialog).findByText(/these 2 tags/);
 
-    // 別のタブで Cat と Gamma が消えていた。
     server.tags = server.tags.filter((item) => item.id !== 4 && item.id !== 5);
     const gets = server.getCalls;
     await user.click(mergeButton);

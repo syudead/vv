@@ -3,9 +3,7 @@ import { type ComponentProps, useMemo } from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の Slider（radix）。上流に加えて aria-label をつまみへ渡す（つまみが
-// フォーカスを受けるので、読み上げ名はつまみに要る）。
-// 規則は web/registry/rules/components.md の Slider。
+// Pass aria-label to the focusable thumb, unlike the upstream Slider wrapper.
 function Slider({
   className,
   defaultValue,

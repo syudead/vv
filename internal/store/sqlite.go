@@ -12,101 +12,68 @@ import (
 
 	"github.com/syudead/vv/internal/domain"
 
-	// CGO を必要としない SQLite ドライバ。CGO_ENABLED=0 を維持するために採用した。
+	// The pure-Go driver keeps CGO_ENABLED=0 builds supported.
 	_ "modernc.org/sqlite"
 )
 
-// DatabaseFileName はデータベースのファイル名である。置き場所を1箇所に固定すると
-// バックアップと削除の手順が単純になるため、設定項目にはしない。
+// DatabaseFileName is fixed to keep backup and removal procedures simple.
 const DatabaseFileName = "mdm.db"
 
-// busyTimeout は書き込みが競合したときに待つ上限（ミリ秒）である。
 const busyTimeout = 5000
 
-// DatabasePath はデータディレクトリからデータベースファイルのパスを組み立てる。
 func DatabasePath(dataDir string) string {
 	return filepath.Join(dataDir, DatabaseFileName)
 }
 
-// DB は SQLite への接続を保持する土台である。業務の操作は持たず、役割ごとの型
-// （roles.go）がこの接続と知らせの発行先を使って行う。
+// DB owns connections and event publication; role types own business operations.
 type DB struct {
 	sql      *sql.DB
 	read     *sql.DB
 	path     string
 	folderMu sync.Mutex
 
-	// lastThumbnailRevision はこの接続で最後に配った代表サムネイルの改版番号である
-	// （nextThumbnailRevision）。
 	revisionMu            sync.Mutex
 	lastThumbnailRevision int64
 
-	// publisher は取引が確定した後に、その取引で起きた変化を受け取る。
 	publisherMu sync.RWMutex
 	publisher   Publisher
 }
 
-// Publisher は確定した変化の発行先である。保存層は誰がそれを受け取るかを
-// 知らない。
 type Publisher interface {
 	Publish(events ...domain.Event)
 }
 
-// PublishTo は確定した変化の発行先を設定する。nil なら発行しない。
-//
-// 発行するのは、仕事が積まれたこと（domain.JobsQueued）、段階ごとの残りが
-// 変わったこと（domain.ProcessingChanged）、動画の行が消えたこと
-// （domain.VideoIngestChanged）と、それで内容の識別子の参照が無くなったこと
-// （domain.ContentUnreferenced）、動画の上書きが変わったこと
-// （domain.VideoOverrideChanged）、フォルダの索引の作り直しで自動グループが変わったこと
-// （domain.GroupsChanged）、スマートフォルダの一致が変わりうること（domain.SmartFoldersChanged）、
-// アクティビティの記録を書いたか変えたこと（domain.ActivityChanged）である。どれも取引が確定した後にだけ発行し、
-// ロールバックした取引からは発行しない。
+// PublishTo sets an optional publisher; only committed transactions emit events.
 func (db *DB) PublishTo(publisher Publisher) {
 	db.publisherMu.Lock()
 	defer db.publisherMu.Unlock()
 	db.publisher = publisher
 }
 
-// changes は1つの取引の中で起きた変化を集める。確定した後に commit が
-// まとめて発行し、確定しなければ捨てる。同じ種類の変化は1つにまとめるので、
-// 取引の中で何度起きても、確定後の知らせは重ならない。
-//
-// 残りの仕事が変わりうる変化（settle）を記録した取引では、commit が確定の前に
-// 直近の取り込みの完了の時刻を決め直す（refreshScanSettled）。
+// Coalesce transaction changes and publish after commit; recalculate import completion before committing relevant job changes.
 type changes struct {
 	queued     []domain.JobKind
 	processing bool
 	deleted    []domain.DeletedVideo
-	// settle は残りの仕事の数が変わりうることを表す。発行する知らせには出ない。
+	// Internal marker that remaining work may have changed; not an event.
 	settle bool
-	// issues は、問題の行を直接書かずに問題の一覧が変わりうることを表す（動画の行の
-	// 削除による連鎖、メディアフォルダの変更）。発行する知らせには出ない。
+	// Issue presentation may change through cascades or registration changes without direct issue writes.
 	issues bool
-	// groups は、フォルダの索引の作り直しで変わったグループとその祖先の id である
-	// （rebuildFolderIndex）。
 	groups []int64
-	// matches は、スマートフォルダの一致が変わりうることを表す（動画がライブラリに入る・出る、
-	// グループが変わる）。commit が確定の前にすべてのフォルダの id を smartFolders に読み、確定後に
-	// domain.SmartFoldersChanged で知らせる。
+	// Read all affected folder IDs before commit and notify afterward.
 	matches      bool
 	smartFolders []int64
-	// activity は、アクティビティの記録を書いたか変えたことを表す（activity.go）。確定後に
-	// domain.ActivityChanged で知らせる。
-	activity bool
+	activity     bool
 }
 
-// activityChanged は、アクティビティの記録を書いたか変えたことを記録する。
 func (c *changes) activityChanged() {
 	c.activity = true
 }
 
-// matchesChanged は、スマートフォルダの一致が変わりうることを記録する。
 func (c *changes) matchesChanged() {
 	c.matches = true
 }
 
-// groupsChanged は、変わったグループの id を記録する。確定後に domain.GroupsChanged で知らせる。
 func (c *changes) groupsChanged(ids []int64) {
 	c.groups = normalizeIDs(append(c.groups, ids...))
 	if len(ids) > 0 {
@@ -114,20 +81,16 @@ func (c *changes) groupsChanged(ids []int64) {
 	}
 }
 
-// issuesChanged は、問題の一覧に出る件が変わりうることを記録する。commit が直近の
-// 走査の issues_revision を増やし、画面に一覧を読み直させる。
+// Advance issue revision so the UI refreshes even when issue counts remain unchanged.
 func (c *changes) issuesChanged() {
 	c.issues = true
 }
 
-// remainingChanged は、知らせは出さないが、残りの仕事の数が変わりうることを
-// 記録する（仕事の専有・成否の記録・走査の終了など）。
+// Mark remaining-work changes without publishing an event.
 func (c *changes) remainingChanged() {
 	c.settle = true
 }
 
-// jobsQueued は仕事を積んだ（または取り出せるようにした）段階を記録する。
-// 残りの仕事も変わる。
 func (c *changes) jobsQueued(kinds ...domain.JobKind) {
 	for _, kind := range kinds {
 		if !slices.Contains(c.queued, kind) {
@@ -138,14 +101,12 @@ func (c *changes) jobsQueued(kinds ...domain.JobKind) {
 	c.settle = true
 }
 
-// processingChanged は、仕事は積んでいないが、残りの仕事として数える範囲が
-// 変わったことを記録する（メディアフォルダの登録を外したなど）。
+// Remaining-work eligibility can change without enqueueing jobs, such as after unregistering a folder.
 func (c *changes) processingChanged() {
 	c.processing = true
 	c.settle = true
 }
 
-// videosDeleted は消した動画の行を記録する。その動画の仕事も残りから消える。
 func (c *changes) videosDeleted(deleted []domain.DeletedVideo) {
 	if len(deleted) == 0 {
 		return
@@ -157,7 +118,6 @@ func (c *changes) videosDeleted(deleted []domain.DeletedVideo) {
 	c.matchesChanged()
 }
 
-// events は集めた変化を発行する形にする。
 func (c *changes) events() []domain.Event {
 	var events []domain.Event
 	var keys []string
@@ -183,11 +143,7 @@ func (c *changes) events() []domain.Event {
 	return append(events, smartFoldersChangedEvents(c.smartFolders)...)
 }
 
-// commit は取引を確定し、確定できたときだけ集めた変化を発行する。確定前に
-// 発行すると、ワーカーがまだ見えない行を探して空振りし、そのまま眠る。
-//
-// 残りの仕事が変わりうる変化があれば、確定の前に同じ取引で直近の取り込みの
-// 完了の時刻を決め直す。問題の一覧が変わりうる変化があれば、その番号を増やす。
+// Publish only after commit so workers can see queued rows; refresh completion and issue revision in the same transaction.
 func (db *DB) commit(ctx context.Context, tx *sql.Tx, c *changes) error {
 	if err := settle(ctx, tx, c); err != nil {
 		return err
@@ -195,7 +151,6 @@ func (db *DB) commit(ctx context.Context, tx *sql.Tx, c *changes) error {
 	if err := closeDeletedPairActivities(ctx, tx, c); err != nil {
 		return err
 	}
-	// 消した動画の取り込みの記録は、仕事が連鎖して消えたので閉じる。
 	if c != nil {
 		if err := closeDeletedVideoImports(ctx, tx, c, c.deleted); err != nil {
 			return err
@@ -220,11 +175,7 @@ func (db *DB) commit(ctx context.Context, tx *sql.Tx, c *changes) error {
 	return nil
 }
 
-// commitWith は取引 tx を commit で確定し、確定できたときだけ集めた変化 c と、changes に載らない
-// 知らせ events（domain.VideoBundleChanged、domain.AutoTagApplied など）を発行する。events に
-// スマートフォルダの一致を変えうる知らせがあれば（changesMatches）、c にもそれを記録し、すべての
-// フォルダを名指す知らせを commit が出す。所有者の記録を書く取引が、記録の知らせと操作そのものの
-// 知らせを 1 回の確定で出すために使う。
+// Commit collected changes and extra role events together, adding smart-folder notices for match-changing events.
 func (db *DB) commitWith(ctx context.Context, tx *sql.Tx, c *changes, events ...domain.Event) error {
 	if changesMatches(events) {
 		c.matchesChanged()
@@ -236,14 +187,11 @@ func (db *DB) commitWith(ctx context.Context, tx *sql.Tx, c *changes, events ...
 	return nil
 }
 
-// publish は集めた変化を発行する。commit を通らない書き込みから呼ぶときは、
-// 残りの仕事が変わる変化を含めないこと（完了の時刻が決め直されない）。
+// Direct publication must not include remaining-work changes, which require commit-time completion recalculation.
 func (db *DB) publish(c *changes) {
 	db.publishEvents(c.events()...)
 }
 
-// publishEvents は確定した取引で起きた変化をそのまま発行する。changes に載らない変化
-// （domain.VideoOverrideChanged）を発行する役割が、取引の確定後に呼ぶ。
 func (db *DB) publishEvents(events ...domain.Event) {
 	if len(events) == 0 {
 		return
@@ -256,8 +204,7 @@ func (db *DB) publishEvents(events ...domain.Event) {
 	}
 }
 
-// deleteOrphanVideos は所在が1つも無くなった動画の行を消し、消した動画を返す。消した内容の
-// 索引の行も同じ取引で消す（releaseContentIndex）。
+// Delete orphan videos and their unreferenced content indexes in the same transaction.
 func deleteOrphanVideos(ctx context.Context, tx *sql.Tx) ([]domain.DeletedVideo, error) {
 	released, err := collectDeletedVideos(tx.QueryContext(ctx, `delete from videos where not exists (
 		select 1 from video_locations where video_locations.video_id = videos.id)
@@ -271,7 +218,6 @@ func deleteOrphanVideos(ctx context.Context, tx *sql.Tx) ([]domain.DeletedVideo,
 	return released, nil
 }
 
-// collectDeletedVideos は returning id, content_key の結果を読み切る。
 func collectDeletedVideos(rows *sql.Rows, err error) ([]domain.DeletedVideo, error) {
 	if err != nil {
 		return nil, err
@@ -288,13 +234,10 @@ func collectDeletedVideos(rows *sql.Rows, err error) ([]domain.DeletedVideo, err
 	return deleted, rows.Err()
 }
 
-// dsn は接続時に適用する PRAGMA を含む DSN を組み立てる。
-// modernc.org/sqlite は _pragma クエリを接続ごとに適用する。
+// The driver applies _pragma parameters to every connection.
 func dsn(path string, txLock string) string {
 	q := url.Values{}
-	// 書き込み用には immediate、一覧のスナップショット用には deferred を渡す。
-	// 書き込みを deferred にすると、読み取り後に worker の書き込みが割り込んだ際の
-	// write への昇格が SQLITE_BUSY_SNAPSHOT になり、busy_timeout の待機対象にならない。
+	// Use immediate writes and deferred snapshots; upgrading a deferred read can fail with SQLITE_BUSY_SNAPSHOT without honoring busy_timeout.
 	q.Set("_txlock", txLock)
 	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeout))
@@ -302,14 +245,12 @@ func dsn(path string, txLock string) string {
 	return "file:" + path + "?" + q.Encode()
 }
 
-// Open はデータディレクトリ配下のデータベースを開く。ファイルが無ければ作成される。
-// 呼び出し側は必ず Close を呼ぶこと。
+// Open creates the database under the data directory if needed; callers must Close it.
 func Open(dataDir string) (*DB, error) {
 	return OpenContext(context.Background(), dataDir)
 }
 
-// OpenContext は Open と同じだが、開いた直後の疎通の確認に ctx を使う。
-// 要求や操作の context を持つ呼び出し側はこちらを使う。
+// OpenContext uses the caller's context for the initial connectivity check.
 func OpenContext(ctx context.Context, dataDir string) (*DB, error) {
 	path := DatabasePath(dataDir)
 
@@ -334,13 +275,10 @@ func OpenContext(ctx context.Context, dataDir string) (*DB, error) {
 	return db, nil
 }
 
-// Path はデータベースファイルのパスを返す。記録に出す用途を想定している。
 func (db *DB) Path() string {
 	return db.path
 }
 
-// Ping は保存層への疎通を確認する。稼働確認（/api/health）が ok / degraded を
-// 判定するために使う。
 func (db *DB) Ping(ctx context.Context) error {
 	if err := db.sql.PingContext(ctx); err != nil {
 		return fmt.Errorf("cannot reach the database (%s): %w", db.path, err)
@@ -351,7 +289,6 @@ func (db *DB) Ping(ctx context.Context) error {
 	return nil
 }
 
-// Close は接続を閉じる。
 func (db *DB) Close() error {
 	return errors.Join(db.read.Close(), db.sql.Close())
 }

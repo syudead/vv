@@ -26,7 +26,7 @@ flowchart LR
 The registry is built into the repository and read by path: `web/registry.json`
 declares the items, and `task generate` runs `shadcn build` into
 `web/registry/r/`, which is version controlled and never edited by hand.
-`task check` (`generate-check`) fails when the built items are older than their
+`task generate-check` (run in CI) fails when the built items are older than their
 sources.
 
 The shadcn CLI and MCP server cannot search a registry on disk, so the `vv`

@@ -1,17 +1,7 @@
-// デザインシステムの検査（web/eslint.config.js）の例外の一覧。noInlineConfig のため
-// 例外はコメントでなくここに置く。
-//
-// 項目の欄:
-// - file: web/src からのパス。
-// - rules: 外す規則。no-restricted-syntax は生の部品の選択子だけを外し、訳し漏れの
-//   検査は残す。
-// - classes: 任意。許すクラスだけを正規表現で並べる。無ければ rules をファイル全体で外す。
-// - kind: "special"（残る）。移行中に使った "migration" は、全画面の移行とテーマの
-//   リセットの後は src/theme/designExceptions.test.ts が落とす。
-// - reason: "special" では必須。デザインシステムでその見た目を表せない理由。
-//
-// 型は design-exceptions.d.ts、一覧の検査は src/theme/designExceptions.test.ts にある。
-// classes は検査するクラス全体に当てる正規表現で、no-restricted-syntax には効かない。
+// Design-system exceptions live here because ESLint disallows inline overrides.
+// file is relative to web/src; rules lists overrides; optional classes regexes match whole class names but do not affect no-restricted-syntax.
+// no-restricted-syntax overrides remove only raw-component restrictions, preserving translation checks.
+// Only kind "special" remains valid and requires a reason; types live in design-exceptions.d.ts and validation in src/theme/designExceptions.test.ts.
 
 /** @type {import("./design-exceptions").DesignException[]} */
 export default [

@@ -7,11 +7,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// RefreshSearchKeys は search_version が現在の版より小さいタグ名の行の search_key と
-// sort_key、却下した名前の行の sort_key を作り直し、作り直した行の数（両方の表の合計）を
-// 返す。
-// 起動時、LibraryStore.RefreshSearchKeys の隣で呼ぶ。所在の鍵と違ってメディア
-// フォルダに依らないので、folderMu は取らない。
+// RefreshSearchKeys upgrades tag and rejected-name keys at startup; these keys do not depend on media folders or require folderMu.
 func (s *TagStore) RefreshSearchKeys(ctx context.Context) (int, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -51,8 +47,6 @@ func (s *TagStore) RefreshSearchKeys(ctx context.Context) (int, error) {
 	return len(names) + len(rejected), nil
 }
 
-// staleNames は query（版を 1 つの引数で受け、name を 1 列返す）で、現在の版より小さい行の
-// 名前を読む。
 func staleNames(ctx context.Context, q queryExecer, query string) ([]string, error) {
 	rows, err := q.QueryContext(ctx, query, domain.SearchKeyVersion)
 	if err != nil {

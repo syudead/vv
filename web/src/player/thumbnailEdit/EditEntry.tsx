@@ -35,14 +35,9 @@ import ActionButton from "../ActionButton";
 import type { ThumbnailCapture } from "../VideoFacts";
 import ThumbnailEditor from "./ThumbnailEditor";
 
-/** COMFYUI_SETTINGS は Settings の Connections のページの ComfyUI の節である。 */
 export const COMFYUI_SETTINGS = "/settings/connections#comfyui";
 
-/**
- * useReadiness は編集の入口を有効にできるか（ComfyUI の接続先が保存されているか）を読む。
- * 読めない間・読めなかったときは `null` で、入口は準備ができていないときと同じに見せる。
- * 読み直すときは読みかけを捨て、最後に送った読み取りの答えだけを反映する。
- */
+/** Treat unknown readiness as unavailable; only the latest settings request may update it. */
 function useReadiness(): {
   ready: boolean | null;
   reread: () => Promise<boolean>;
@@ -67,10 +62,6 @@ function useReadiness(): {
   return { ready, reread: read };
 }
 
-/**
- * framePosition は、キャプチャのボタンと同じ条件で画面にコマがあるときのプレイヤーの位置
- * （ミリ秒、整数）を返し、無ければ null を返す。
- */
 function framePosition(capture: ThumbnailCapture | undefined): number | null {
   if (capture === undefined || !capture.enabled) return null;
   const raw = capture.positionMs();
@@ -78,17 +69,7 @@ function framePosition(capture: ThumbnailCapture | undefined): number | null {
   return Math.max(0, Math.round(raw));
 }
 
-/**
- * EditEntry は情報の行の右端の「Edit thumbnail with ComfyUI」と、それが開く元の選択のメニューと
- * 編集画面である。所有者に置き、プレイヤーが出ていない動画にも置く。
- *
- * - 準備ができていれば、押すと元の選択のメニューを開く。コマの項目はメニューを開いた時点の
- *   プレイヤーの位置を名指して送り、画面にコマが無いとき（`capture` が無いか押せない）は
- *   押せない。今のサムネイルの項目はいつも押せる。どちらも再生を止め、編集を始め、画像を
- *   取り出す間は入口が回る。始められなければ情報の行の失敗の 1 行に理由を出す。
- * - 準備ができていなければ薄く出し（フォーカスは受ける）、押すと読み直し、まだなら Settings
- *   への案内の吹き出しを開く。読み直して準備ができていればメニューを開く。
- */
+/** Capture frame position when opening the source menu and pause before editing. Unavailable connections recheck settings before offering setup guidance. */
 export default function EditEntry({
   videoId,
   capture,
@@ -99,15 +80,13 @@ export default function EditEntry({
   onEditingChange,
 }: {
   videoId: number;
-  /** プレイヤーが出ているときだけ渡す。 */
   capture?: ThumbnailCapture;
-  /** 今のサムネイルの画像。メニューの項目に小さく出す。 */
   thumbnailUrl: string | undefined;
-  /** 情報の行の失敗の 1 行。始めるときに null を渡す。 */
+  /** Clear the shared error row with null before starting. */
   report: (failure: UiText | null) => void;
   onApplied: (video: Video, mark: DetailMark) => void;
   onStale?: () => void;
-  /** 編集画面を開いた・閉じた。開いている間、動画ページのキーを止める。 */
+  /** Suspend video-page shortcuts while the editor is open. */
   onEditingChange?: (open: boolean) => void;
 }) {
   const text = t.player.thumbnailEdit;
@@ -115,7 +94,7 @@ export default function EditEntry({
   const [pending, setPending] = useState(false);
   const busy = useRef(false);
   const [hintOpen, setHintOpen] = useState(false);
-  // メニューを開いた時点のコマの位置。null ならコマの項目は押せない。
+  // Freeze the selected frame position when the menu opens; null disables frame selection.
   const [menu, setMenu] = useState<{ positionMs: number | null } | null>(null);
   const [edit, setEdit] = useState<ThumbnailEdit | null>(null);
   const mounted = useRef(true);
@@ -134,7 +113,6 @@ export default function EditEntry({
   const wasOpen = useRef(false);
   useEffect(() => {
     editingChange.current?.(open);
-    // 編集画面を閉じたら、フォーカスを入口へ戻す（ui-design「Closing」）。
     if (wasOpen.current && !open) button.current?.focus();
     wasOpen.current = open;
   }, [open]);
@@ -142,7 +120,6 @@ export default function EditEntry({
 
   const openMenu = () => setMenu({ positionMs: framePosition(capture) });
 
-  /** press は入口が押された。準備ができていればメニューを開き、無ければ読み直す。 */
   const press = async () => {
     if (busy.current) return;
     if (ready === true) {
@@ -165,7 +142,6 @@ export default function EditEntry({
     }
   };
 
-  /** begin は選んだ元で再生を止めて編集を始める。 */
   const begin = async (start: ThumbnailEditStart) => {
     setMenu(null);
     if (busy.current) return;
@@ -176,7 +152,7 @@ export default function EditEntry({
       capture?.pause();
       const session = await startThumbnailEdit(videoId, start);
       if (mounted.current) setEdit(session);
-      // 始める間にページを離れたら、始めたセッションをすぐ捨てる。
+      // Discard newly started sessions immediately if navigation occurred while starting.
       else void discardThumbnailEdit(session.id).catch(() => undefined);
     } catch (error) {
       if (isAborted(error) || !mounted.current) return;
@@ -270,10 +246,7 @@ export default function EditEntry({
   );
 }
 
-/**
- * ThumbnailImage はメニューの今のサムネイルの項目の小さな画像で、情報の行のサムネイルの項目と
- * 同じ形にする。項目の文字が名前を持つので `alt` は空にする。読めない間は空の箱にする。
- */
+/** Use empty alt because the menu item supplies the name; preserve an empty box while loading. */
 function ThumbnailImage({ url }: { url: string | undefined }) {
   const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
   return (

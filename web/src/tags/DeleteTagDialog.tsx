@@ -4,10 +4,6 @@ import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
 import { Spinner } from "../ui/shadcn/spinner";
 import { DialogError } from "./DialogError";
 
-/**
- * DeleteTagDialog はタグ削除の確認の窓である。本数は `GET /api/tags` の `videoCount`。
- * デザインシステムの `ConfirmDialog`（`AlertDialog`）に載せ、送っている間は閉じない。
- */
 export default function DeleteTagDialog({
   tag,
   pending,

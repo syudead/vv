@@ -16,22 +16,17 @@ import {
 } from "./CredentialScreen";
 import { assignPage } from "./pageNavigation";
 
-/** MAX_USERNAME_LENGTH はユーザー名の文字数（コードポイント数）の上限。 */
+/** Count Unicode code points, not UTF-16 code units. */
 const MAX_USERNAME_LENGTH = 128;
 
 type SetupField = "username" | "password" | "confirm";
 
-/**
- * usernameBreaksRule は、ユーザー名が 規則（128 文字まで、
- * 前後の空白と制御文字なし）を外れるかを返す。空かどうかは別に確かめる。
- * 正本はサーバー（internal/domain）で、ここは送る前の案内である。
- */
+/** Client validation is advisory; internal/domain owns the username rules. Check emptiness separately. */
 function usernameBreaksRule(username: string): boolean {
   return (
     Array.from(username).length > MAX_USERNAME_LENGTH ||
     /\p{Cc}/u.test(username) ||
-    // 空白の判定はサーバーの unicode.IsSpace と同じ Unicode の White_Space にそろえる。
-    // JavaScript の \s は U+FEFF も含み、サーバーが通す名前を止めてしまう。
+    // Match the server's Unicode White_Space property; JavaScript \s also includes U+FEFF.
     /^\p{White_Space}|\p{White_Space}$/u.test(username)
   );
 }
@@ -41,7 +36,6 @@ interface Invalid {
   message: UiText;
 }
 
-/** validateSetup は送る前の検証である。名指しする欄と理由を返す。 */
 export function validateSetup(
   username: string,
   password: string,
@@ -65,10 +59,6 @@ export function validateSetup(
   return null;
 }
 
-/**
- * SetupPage は初回設定画面（/setup）である。最初のアカウントを作り、成功したら
- * 所有者の一覧へページごと移る。
- */
 export default function SetupPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -84,7 +74,7 @@ export default function SetupPage() {
   const refs = { username: usernameRef, password: passwordRef, confirm: confirmRef };
   const loginLink = useRef<HTMLAnchorElement>(null);
 
-  // 初回だけ。ref は描き直しても同じものなので、依存に書いても一度しか動かない。
+  // The stable ref makes this run only on mount.
   useEffect(() => {
     usernameRef.current?.focus();
   }, [usernameRef]);
@@ -114,7 +104,7 @@ export default function SetupPage() {
       return;
     } catch (error) {
       if (error instanceof RequestFailed && error.status === 409) {
-        // 同時の初回設定で負けた側。入力を空にし、ログインへ進ませる。
+        // Another initial setup won; clear credentials and offer login.
         setFailure(t.errors.code.account_already_configured);
         setUsername("");
         setPassword("");
@@ -161,8 +151,7 @@ export default function SetupPage() {
       }
       footer={
         configured && (
-          // SPA の遷移にしない。ゲートが setupRequired を覚えたままなので、
-          // ページごと読み直して状態を確かめ直させる。
+          // Reload the page to replace the gate's cached setupRequired state.
           <Button variant="link" size="sm" asChild>
             <a ref={loginLink} href="/login">
               {t.auth.setup.goToLogin}

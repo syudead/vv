@@ -10,10 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// naturalSortKeyFile は、Go の NaturalSortKey と画面の naturalSortKey
-// （web/src/lib/naturalSortKey.ts）が同じ鍵を返すことを確かめる共有の入力の組である。組は鍵の
-// strings.Compare の順に並べ、画面の compareNaturalSortKeys が同じ順を返すことを
-// Vitest が同じファイルで確かめる。
+// The shared fixture is ordered by Go string comparison; Vitest verifies the same order with compareNaturalSortKeys.
 type naturalSortKeyFile struct {
 	Cases []naturalSortKeyCase `json:"cases"`
 }

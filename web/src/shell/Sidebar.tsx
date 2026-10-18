@@ -23,7 +23,6 @@ import { useToast } from "../ui/Toast";
 import { navEntries, type NavEntry } from "./navigation";
 
 function settingsEntry(): NavEntry {
-  // 設定の下のページ（`/settings/library` など）でも選択中にする。
   return {
     id: "settings",
     label: t.shell.nav.settings,
@@ -33,7 +32,6 @@ function settingsEntry(): NavEntry {
   };
 }
 
-/** useCloseDrawer は狭い幅のドロワーを閉じる関数を返す。ドロワーでなければ何もしない。 */
 function useCloseDrawer(): () => void {
   const { isMobile, setOpenMobile } = useSidebar();
   return () => {
@@ -41,10 +39,6 @@ function useCloseDrawer(): () => void {
   };
 }
 
-/**
- * Entry はサイドバーの 1 項目である。`count` があれば（アクティビティの要対応の数）、
- * レールではアイコンの右上、ドロワーでは行の端に出す。
- */
 function Entry({ entry, count }: { entry: NavEntry; count?: number }) {
   const location = useLocation();
   const closeDrawer = useCloseDrawer();
@@ -73,10 +67,7 @@ function Entry({ entry, count }: { entry: NavEntry; count?: number }) {
   );
 }
 
-/**
- * LogoutEntry はログアウトの項目である。確認の窓は出さず、成功したら今の URL を
- * ページごと読み直す。読み直した画面はゲストとして描かれる。
- */
+/** Reload the current URL after logout to clear owner state and render as guest. */
 function LogoutEntry() {
   const toast = useToast();
   const [pending, setPending] = useState(false);
@@ -103,7 +94,6 @@ function LogoutEntry() {
   );
 }
 
-/** AccountEntries はサイドバーの下段の「アカウントと設定」である。 */
 function AccountEntries() {
   const audience = useAudience();
   const location = useLocation();
@@ -125,28 +115,18 @@ function AccountEntries() {
   );
 }
 
-// レールでは 68px の幅に 56px の項目（アイコンの下に名前）を中央に置く。
 const railPadding = "group-data-[collapsible=icon]:px-1.5";
 const railItems = "group-data-[collapsible=icon]:items-center";
 
-/**
- * Sidebar は左のナビである。shadcn/ui の Sidebar の 2 態を使う: 640px 以上はアイコンの下に
- * 名前を出す 68px のレール（展開しない）、639px 以下は Sheet のドロワー
- * （web/registry/rules/components.md「Sidebar」）。開閉は AppShell の SidebarProvider が持つ。
- * 上段は画面の移動、下段は「アカウントと設定」で、それぞれ別の nav にする。
- */
 export default function Sidebar() {
   const audience = useAudience();
   const all = navEntries();
   const entries = audience === "owner" ? all : all.filter((entry) => !entry.ownerOnly);
-  // 要対応の数は所有者だけが読む。どの画面でも `activity` の知らせで読み直す。
+  // Only owners fetch attention counts; activity events refresh them on every page.
   const totals = useActivityTotals(audience === "owner");
 
   return (
-    // 上端はトップバーの下から始める（トップバーが全幅にあるため）。狭い幅のドロワーと
-    // その背面の幕も同じで、トップバーを覆わない。ドロワー（Sheet）は置き場を
-    // data-[side=left]: で決めるので、同じ印を付けてそれより優先させる（広い幅の入れ物も
-    // data-side を持つため、どちらの幅にも効く）。
+    // Keep both drawer and backdrop below the full-width top bar; match Sheet's data-side specificity for narrow and wide layouts.
     <SidebarRoot
       collapsible="icon"
       className="data-[side=left]:top-navbar data-[side=left]:h-auto"

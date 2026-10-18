@@ -24,11 +24,6 @@ type CheckState =
   | { kind: "ok" }
   | { kind: "failed"; message: UiText };
 
-/**
- * OllamaSection は設定の「Ollama」区画である。判定モデル（Clef）を動かす Ollama の接続先と
- * 模型名を設定し、つながるかを確かめる。自動タグ付けの機能の入切は AutoTaggingSection が持ち、
- * ここでは扱わない（docs/design-docs/auto-tagging.md）。
- */
 export default function OllamaSection() {
   const text = t.settings.ollama;
   const toast = useToast();
@@ -66,7 +61,6 @@ export default function OllamaSection() {
     settings !== null &&
     (draft.endpoint !== settings.endpoint || draft.model !== settings.model);
 
-  /** persist は下書きを保存する。保存できたら true を返す。 */
   const persist = async (): Promise<boolean> => {
     if (draft === null) return false;
     setSaveError(null);
@@ -91,7 +85,7 @@ export default function OllamaSection() {
     }
   };
 
-  // サーバーは保存した接続先でしか確かめないので、編集中の値があれば先に保存する。
+  // Save draft changes first because the server tests only stored settings.
   const runCheck = async () => {
     if (draft === null || check.kind === "checking" || saving) return;
     if (dirty) {

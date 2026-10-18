@@ -13,19 +13,10 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/ui/shadcn/sheet"
 import { Skeleton } from "@/ui/shadcn/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/shadcn/tooltip";
 
-// shadcn/ui の sidebar（radix-nova）を vv のトークンで着せたもの
-// （web/registry/rules/components.md「Sidebar」）。vv のサイドバーは上流の形のうち 2 つを使う:
-// 640px 以上は collapsible="icon" で畳んだ形のレールに固定し（展開しない）、狭い幅（use-mobile）は
-// Sheet のドロワー。幅は tokens.css の sidebar と sidebar-rail（68px）で、レールの項目は
-// rail-item の正方形にアイコンと小さな名前を縦に積む（docs/design-docs/library-ui.md「Sidebar」）。
+// Adapted from shadcn/ui radix-nova: a fixed desktop rail and narrow-screen Sheet drawer; see web/registry/rules/components.md, Sidebar.
 //
-// 上流との違い:
-// - 色は sidebar-* の別トークンを作らず、foundations の役割（navbar・accent・secondary・
-//   border・ring）を使う。
-// - 幅は CSS 変数でなく名前つきの段（w-sidebar）で持ち、任意の値を書かない。
-// - フォーカスは上流の ring-3 でなく、全部品で同じ index.css の :focus-visible の輪を出す。
-// - Ctrl/⌘+B の切り替えは keyboardShortcut={false} で外せる。開閉しない呼び手が、
-//   キーを奪ってブラウザの機能を塞がないため。
+// Use shared foundation roles, named widths and the global focus ring rather than separate sidebar tokens.
+// Disable keyboardShortcut for fixed rails to preserve the browser's Ctrl/Meta+B action.
 
 const SIDEBAR_KEYBOARD_SHORTCUT = "b";
 
@@ -50,11 +41,7 @@ function useSidebar() {
   return context;
 }
 
-/**
- * SidebarProvider はサイドバーの開閉を持つ。`open` と `onOpenChange` を渡すと外から制御でき、
- * 保存するかどうかは呼び手が決める（vv は 640px 以上を `open={false}` に固定し、保存しない）。
- * 上流の cookie への保存は持たない。
- */
+/** Callers own controlled state and persistence; unlike upstream, this provider writes no cookie. */
 function SidebarProvider({
   defaultOpen = true,
   open: openProp,
@@ -67,7 +54,7 @@ function SidebarProvider({
   defaultOpen?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  /** keyboardShortcut が false のときは Ctrl/⌘+B を聞かず、キーをブラウザに残す。 */
+  /** False leaves Ctrl/Meta+B to the browser. */
   keyboardShortcut?: boolean;
 }) {
   const isMobile = useIsMobile();
@@ -144,7 +131,6 @@ function Sidebar({
   side?: "left" | "right";
   variant?: "sidebar" | "floating";
   collapsible?: "offcanvas" | "icon" | "none";
-  /** overlayClassName は狭い幅のドロワーの背面の幕に足すクラスである（例: トップバーの下から始める）。 */
   overlayClassName?: string;
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar();
@@ -198,7 +184,6 @@ function Sidebar({
       data-side={side}
       data-slot="sidebar"
     >
-      {/* 中身の側に、サイドバーの幅だけの空きを取る */}
       <div
         data-slot="sidebar-gap"
         className={cn(
@@ -526,12 +511,8 @@ function SidebarMenuBadge({ className, ...props }: React.ComponentProps<"div">) 
 }
 
 /**
- * SidebarMenuCount は項目の件数である（vv が足した部品。docs/design-docs/activity.md
- * 「Changes to the design system」）。上流の SidebarMenuBadge はアイコンだけのレールでは
- * 隠れるので、レールではアイコンの右上に destructive の丸い印として描き、狭い幅のドロワーでは
- * 行の端の SidebarMenuBadge として描く。0 なら何も描かない。見える文字（`text`、99 を超えれば
- * 「99+」）とは別に、読み上げの文（`label`）を持つ。SidebarMenuItem の中、
- * SidebarMenuButton の後ろに置く。
+ * Place after SidebarMenuButton; show a rail badge or drawer count, hiding zero. Keep accessible
+ * label separate from truncated visible text; see docs/design-docs/activity.md.
  */
 function SidebarMenuCount({
   count,

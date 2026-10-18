@@ -1,9 +1,8 @@
 import { type RefObject, useEffect } from "react";
 
 /**
- * useLoadMoreWhenNear は、`target` の要素が画面の下から 1 画面分の内に来たら `loadMore` を
- * 呼ぶ。`enabled` が false の間（読んでいる間、続きが無いとき）は見ない。`version` が変わる
- * たび（行が増えたとき）に見直す。視聴履歴とアクティビティの一覧が使う。
+ * Prefetch within one viewport of target; version reattaches observation after row changes, while
+ * enabled gates loading.
  */
 export function useLoadMoreWhenNear(
   target: RefObject<Element | null>,

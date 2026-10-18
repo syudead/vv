@@ -11,8 +11,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// previewUrl は、状態が done で、アプリケーション層がファイルがあると答えた
-// ときだけ出す。
 func TestVideoResponsesExposePreviewStateAndOnlyServeableDoneURL(t *testing.T) {
 	video := sampleVideo(1, "movie")
 	video.PreviewState = domain.PreviewStateDone
@@ -36,7 +34,6 @@ func TestVideoResponsesExposePreviewStateAndOnlyServeableDoneURL(t *testing.T) {
 		t.Fatalf("done preview URL missing: %s", rec.Body.String())
 	}
 
-	// 状態が done でなければ、ファイルがあっても URL は出さない。
 	video.PreviewState = domain.PreviewStatePending
 	fake.videos[video.ID] = video
 	if rec := do(t, handler, http.MethodGet, "/api/videos/1"); strings.Contains(rec.Body.String(), "previewUrl") {
@@ -93,7 +90,6 @@ func TestGetVideoPreviewServesRangesAndCachePolicies(t *testing.T) {
 		t.Errorf("unsatisfiable Content-Range = %q, want %q", got, "bytes */12")
 	}
 
-	// 版の無い要求・古い版の要求も、同じく使うたびに確かめさせる。
 	for _, target := range []string{"/api/videos/1/preview?v=stale", "/api/videos/1/preview"} {
 		rec := do(t, handler, http.MethodGet, target)
 		if rec.Code != 200 || rec.Header().Get("Cache-Control") != cacheRevalidate {
@@ -104,7 +100,6 @@ func TestGetVideoPreviewServesRangesAndCachePolicies(t *testing.T) {
 		}
 	}
 
-	// ETag が一致すれば 304 で、本文を送らない。
 	conditional := httptest.NewRequest(http.MethodGet, "/api/videos/1/preview?v="+video.ContentKey, nil)
 	conditional.Header.Set("If-None-Match", full.Header().Get("ETag"))
 	notModified := httptest.NewRecorder()
@@ -114,8 +109,6 @@ func TestGetVideoPreviewServesRangesAndCachePolicies(t *testing.T) {
 	}
 }
 
-// 置き場が「無い」と答えたもの（無い・空・manifest と合わない・生成途中）は、
-// no-store の 404 にする。置き場が無い場合も同じである。
 func TestGetVideoPreviewReturnsNoStore404ForUnavailableAssets(t *testing.T) {
 	video := sampleVideo(1, "movie")
 	video.PreviewState = domain.PreviewStateDone
@@ -156,8 +149,6 @@ func TestGetVideoPreviewRejectsNonDoneStatesWithoutFallback(t *testing.T) {
 	}
 }
 
-// アプリケーション層が作り直しを積んで準備中と読み替えた動画は、一覧・詳細・
-// 関連動画のどれでも previewState が pending になり、URL は出ない。
 func TestRequeuedPreviewIsReportedAsPending(t *testing.T) {
 	video := sampleVideo(1, "movie")
 	video.PreviewState = domain.PreviewStateDone
@@ -176,8 +167,6 @@ func TestRequeuedPreviewIsReportedAsPending(t *testing.T) {
 	}
 }
 
-// If-Modified-Since だけの要求には、更新時刻が同じでも本文を返す。確かめは内容の
-// ダイジェストの ETag だけで行う（Devin の指摘、PR 292）。
 func TestGetVideoPreviewIgnoresIfModifiedSince(t *testing.T) {
 	video := sampleVideo(1, "movie")
 	video.PreviewState = domain.PreviewStateDone

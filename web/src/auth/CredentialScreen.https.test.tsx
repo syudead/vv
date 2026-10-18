@@ -8,7 +8,6 @@ import { describe, expect, it } from "vitest";
 import LoginPage from "./LoginPage";
 import SetupPage from "./SetupPage";
 
-// HTTPS では警告の行そのものを出さず、肯定の文も出さない
 //
 describe("HTTPS の接続", () => {
   it("ページが https: なら前提を確かめる", () => {

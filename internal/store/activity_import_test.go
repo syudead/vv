@@ -10,28 +10,23 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 取り込みと失敗した走査の記録。
-
-// importEntries は import の記録を新しい順に返す。
 func importEntries(t *testing.T, db *DB) []domain.ActivityEntry {
 	t.Helper()
 	page := listActivity(t, db, domain.ActivityQuery{Features: []domain.ActivityFeature{domain.ActivityFeatureImport}}, "", 50)
 	return page.Items
 }
 
-// scanEntries は scan の記録を新しい順に返す。
 func scanEntries(t *testing.T, db *DB) []domain.ActivityEntry {
 	t.Helper()
 	page := listActivity(t, db, domain.ActivityQuery{Features: []domain.ActivityFeature{domain.ActivityFeatureScan}}, "", 50)
 	return page.Items
 }
 
-// entryState は記録の状態と理由か結果である。
 func entryState(entry domain.ActivityEntry) domain.ActivityState {
 	return domain.ActivityState{Status: entry.Status, Reason: entry.Reason, Outcome: entry.Outcome}
 }
 
-// queueNewFile は新しいファイルを登録し、走査と同じく解析・サムネイル・シーク用サムネイルの仕事をまとめて積む。
+// Queue all initial stages together, matching scan behavior.
 func queueNewFile(t *testing.T, db *DB, name string, decider domain.ActivityDecider) int64 {
 	t.Helper()
 	ctx := context.Background()
@@ -46,8 +41,7 @@ func queueNewFile(t *testing.T, db *DB, name string, decider domain.ActivityDeci
 	return video.ID
 }
 
-// runImportStage は kind の仕事を 1 件取り出し、ワーカーと同じく結果を書いて完了にする。取り出せる仕事が
-// 無ければ失敗にする。
+// Claim and persist stage results through the same sequence as a worker.
 func runImportStage(t *testing.T, db *DB, kind domain.JobKind) {
 	t.Helper()
 	ctx := context.Background()
@@ -77,7 +71,6 @@ func runImportStage(t *testing.T, db *DB, kind domain.JobKind) {
 	}
 }
 
-// giveUpStage は kind の仕事を上限まで取り出して失敗させる。
 func giveUpStage(t *testing.T, db *DB, kind domain.JobKind, cause error) {
 	t.Helper()
 	ctx := context.Background()
@@ -92,7 +85,6 @@ func giveUpStage(t *testing.T, db *DB, kind domain.JobKind, cause error) {
 	}
 }
 
-// 新しいファイルは 1 件の import の記録になり、指紋の仕事が終わるまで running、終わると done になる。
 func TestImportActivityRunsUntilFingerprintFinishes(t *testing.T) {
 	db := migratedDB(t)
 	queueNewFile(t, db, "clip", domain.ActivityByOwner)
@@ -131,7 +123,6 @@ func TestImportActivityRunsUntilFingerprintFinishes(t *testing.T) {
 	}
 }
 
-// 諦めた段階は記録を attention/failed にし、stage にその段階、detail にその文が入る。
 func TestImportActivityRecordsTheStageThatGaveUp(t *testing.T) {
 	db := migratedDB(t)
 	queueNewFile(t, db, "broken", domain.ActivityByRule)
@@ -160,7 +151,6 @@ func TestImportActivityRecordsTheStageThatGaveUp(t *testing.T) {
 	}
 }
 
-// 同じファイルの取り込みを積み直すと 2 つ目の記録が開き、終わった記録は変わらない。
 func TestImportActivityRescanOpensASecondEntry(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -184,8 +174,6 @@ func TestImportActivityRescanOpensASecondEntry(t *testing.T) {
 	}
 }
 
-// 再起動で中断した記録は attention/interrupted になり、積み直した仕事が走ると新しい記録が開いてそれを
-// superseded で閉じる。新しい記録を始めたのは規則である。
 func TestImportActivityInterruptedEntryIsSupersededWhenItsJobRuns(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -218,7 +206,6 @@ func TestImportActivityInterruptedEntryIsSupersededWhenItsJobRuns(t *testing.T) 
 		t.Errorf("old entry = %+v, want done/superseded", entries[1])
 	}
 
-	// 残りの段階も新しい記録に加わり、終えると新しい記録が done になる。
 	for _, kind := range []domain.JobKind{domain.JobThumbnail, domain.JobSeekThumbnail, domain.JobPreview, domain.JobFingerprint} {
 		runImportStage(t, db, kind)
 	}
@@ -228,7 +215,6 @@ func TestImportActivityInterruptedEntryIsSupersededWhenItsJobRuns(t *testing.T) 
 	}
 }
 
-// やり直しは失敗した段階を積み直し、所有者が始めた新しい記録を開いて失敗した記録を閉じる。
 func TestRetryImportOpensANewEntryForTheFailedStages(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -248,7 +234,7 @@ func TestRetryImportOpensANewEntryForTheFailedStages(t *testing.T) {
 	if err := db.Ingest().RetryImport(ctx, failed[0].ID, "key-retry"); err != nil {
 		t.Fatal(err)
 	}
-	// 同時に届いた 2 つ目のやり直しは、1 つ目が閉じた記録を読み直して断る。1 つ目の仕事が待っていても受けない。
+	// The second retry must recheck the closed activity even while the first retry's jobs are still waiting.
 	if err := db.Ingest().RetryImport(ctx, failed[0].ID, "key-retry"); !errors.Is(err, domain.ErrActivityNotRetryable) {
 		t.Errorf("second retry of the same entry = %v, want ErrActivityNotRetryable", err)
 	}
@@ -274,7 +260,6 @@ func TestRetryImportOpensANewEntryForTheFailedStages(t *testing.T) {
 	}
 }
 
-// 中断した記録のやり直しは、待っている仕事を所有者が始めた新しい記録にまとめる。
 func TestRetryImportOfAnInterruptedEntryAdoptsTheWaitingJobs(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -303,7 +288,7 @@ func TestRetryImportOfAnInterruptedEntryAdoptsTheWaitingJobs(t *testing.T) {
 	}
 }
 
-// やり直しの記録の進み具合は、前の記録で済んだ段階も数える。やり直しの記録に属するのは積み直した仕事だけである。
+// Retry progress includes stages completed under the previous activity.
 func TestRetriedImportProgressCountsTheStagesAlreadyDone(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -330,7 +315,6 @@ func TestRetriedImportProgressCountsTheStagesAlreadyDone(t *testing.T) {
 	}
 }
 
-// 取り込みの途中で動画が消えると、その import の記録は done/gone で閉じる。
 func TestImportActivityOfADeletedVideoIsGone(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -353,7 +337,6 @@ func TestImportActivityOfADeletedVideoIsGone(t *testing.T) {
 	}
 }
 
-// 登録の所在を失った動画の最後の待つ仕事を捨てると、その import の記録は完了ではなく done/gone で閉じる。
 func TestImportActivityOfAnUnplacedVideoIsGone(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -378,7 +361,7 @@ func TestImportActivityOfAnUnplacedVideoIsGone(t *testing.T) {
 	}
 }
 
-// dropJob は仕事 id を、取り出しと同じく begin immediate の取引で所在の無い仕事として捨てる。
+// Use the claim path's BEGIN IMMEDIATE transaction when dropping an unplaced job.
 func dropJob(t *testing.T, db *DB, id int64) {
 	t.Helper()
 	ctx := context.Background()
@@ -396,8 +379,6 @@ func dropJob(t *testing.T, db *DB, id int64) {
 	}
 }
 
-// interrupted 以外の理由で failed に終わった走査だけが記録を書き、次に done で終わった走査がそれを閉じる。
-// 起動時に interrupted で閉じた走査は書かない。
 func TestScanActivityRecordsFailedScansUntilOneSucceeds(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -454,7 +435,6 @@ func TestScanActivityRecordsFailedScansUntilOneSucceeds(t *testing.T) {
 	}
 }
 
-// finishImport は queueNewFile で積んだ 5 つの段階をすべて終える。
 func finishImport(t *testing.T, db *DB) {
 	t.Helper()
 	for _, kind := range []domain.JobKind{
@@ -464,8 +444,7 @@ func finishImport(t *testing.T, db *DB) {
 	}
 }
 
-// 取り込み済みの内容を新しいパスで見つけ（完全に同じファイルの複製・移動・改名）、積む仕事が無ければ、
-// 始めたものの done/completed の import の記録を 1 件書く。変わらないパスの再走査は書かない。
+// Location-only imports create activity only for new paths without remaining stage work.
 func TestImportActivityRecordsANewLocationWithoutJobs(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -502,7 +481,6 @@ func TestImportActivityRecordsANewLocationWithoutJobs(t *testing.T) {
 	}
 }
 
-// queueUntilFingerprint は新しいファイルを積み、指紋の手前の 4 つの段階を終える。
 func queueUntilFingerprint(t *testing.T, db *DB) {
 	t.Helper()
 	queueNewFile(t, db, "clip", domain.ActivityByRule)
@@ -511,7 +489,6 @@ func queueUntilFingerprint(t *testing.T, db *DB) {
 	}
 }
 
-// requireNoLocationEntry は、同じ内容を新しいパスで見つけても import の記録が増えないことを確かめる。
 func requireNoLocationEntry(t *testing.T, db *DB) {
 	t.Helper()
 	before := len(importEntries(t, db))
@@ -524,14 +501,14 @@ func requireNoLocationEntry(t *testing.T, db *DB) {
 	}
 }
 
-// 指紋の仕事が待っている動画を新しいパスで見つけたときは書かない。その仕事の記録が取り込みを表す。
+// Pending fingerprint activity already represents this import.
 func TestImportActivityNewLocationWithQueuedFingerprintWritesNothing(t *testing.T) {
 	db := migratedDB(t)
 	queueUntilFingerprint(t, db)
 	requireNoLocationEntry(t, db)
 }
 
-// 指紋を諦めた動画を新しいパスで見つけたときも書かない。走査が積み直す指紋の仕事の記録が取り込みを表す。
+// The scan's fingerprint retry supplies the activity.
 func TestImportActivityNewLocationWithMissingFingerprintWritesNothing(t *testing.T) {
 	db := migratedDB(t)
 	queueUntilFingerprint(t, db)
@@ -539,7 +516,7 @@ func TestImportActivityNewLocationWithMissingFingerprintWritesNothing(t *testing
 	requireNoLocationEntry(t, db)
 }
 
-// 段階が残っている動画を新しいパスで見つけたときは、ここでは書かない。走査が積む仕事の記録になる。
+// Remaining stage jobs supply the import activity.
 func TestImportActivityNewLocationWithPendingStagesWritesNothing(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -555,8 +532,7 @@ func TestImportActivityNewLocationWithPendingStagesWritesNothing(t *testing.T) {
 	}
 }
 
-// 所在だけを足した記録を書けなければ UpsertVideo は失敗し、所在も足さない。残りの仕事の読み出しと記録の
-// 書き込みのどちらで失敗しても同じである。
+// Failure to read remaining jobs or write activity must roll back the new location too.
 func TestImportActivityNewLocationFailureRollsBack(t *testing.T) {
 	for name, breakage := range map[string]string{
 		"remaining work": `alter table jobs rename to jobs_broken`,
@@ -575,8 +551,6 @@ func TestImportActivityNewLocationFailureRollsBack(t *testing.T) {
 	}
 }
 
-// requireLocationRollback は、同じ内容を新しいパスで見つけた UpsertVideo が失敗し、その所在が残らないことを
-// 確かめる。
 func requireLocationRollback(t *testing.T, db *DB) {
 	t.Helper()
 	copied := fixturePath("/media/copy/clip.mp4")

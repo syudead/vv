@@ -15,7 +15,7 @@ import (
 	"github.com/syudead/vv/internal/wasmplugin/plugintest"
 )
 
-// 実行のテストは小さな WASI fixture を使い、要求の query で振る舞いを選ぶ。
+// Use small WASI fixtures selected by request query.
 
 const probeDigest = "probe"
 
@@ -32,13 +32,10 @@ func fetch() domain.WorkInfoRunRequest {
 	return domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, ID: "W-1"}
 }
 
-// fetchMode は probe に振る舞い mode を選ばせる fetch の要求である。
 func fetchMode(mode string) domain.WorkInfoRunRequest {
 	return domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, ID: mode}
 }
 
-// wantFailure は err が失敗 want の *domain.WorkInfoRunError であることを確かめ、
-// プラグインが報告した誤りの文を返す。
 func wantFailure(t *testing.T, err error, want domain.WorkInfoRunFailure) string {
 	t.Helper()
 	var runErr *domain.WorkInfoRunError
@@ -48,7 +45,6 @@ func wantFailure(t *testing.T, err error, want domain.WorkInfoRunFailure) string
 	return runErr.PluginMessage
 }
 
-// wantEchoWorks は次の実行が成功することを確かめる。
 func wantEchoWorks(t *testing.T, rt *Runtime, module []byte) {
 	t.Helper()
 	got, _, err := rt.Run(context.Background(), probeDigest, module, search("next"), domain.WorkInfoRunNetwork{}, nil)
@@ -144,7 +140,6 @@ func TestRunReportsPluginFailures(t *testing.T) {
 	}
 }
 
-// syncBuffer は複数の goroutine から書かれるログの受け皿である。
 type syncBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
@@ -194,7 +189,6 @@ func TestRunKeepsTheStartOfStderrInTheServerLogAndTheRunLog(t *testing.T) {
 	}
 }
 
-// sleb は i32.const の符号付き LEB128 を符号化する。
 func sleb(v int32) []byte {
 	var out []byte
 	for {
@@ -207,9 +201,8 @@ func sleb(v int32) []byte {
 	}
 }
 
-// tableGrowSpec は最大値を宣言しない空のテーブルを持ち、_start でそれを 100,000 要素増やしてから
-// さらに 1 要素増やすモジュールである。2 回目の table.grow が -1 を返したときだけ標準出力に
-// 応答を書き、そうでなければ trap する。
+// Grow an uncapped table by 100,000 then one; succeed only if the second grow fails, proving the
+// inserted maximum is enforced.
 func tableGrowSpec() moduleSpec {
 	s := goodSpec()
 	s.imports = []testImport{funcImport("wasi_snapshot_preview1", "fd_write", typeFdWrite)}
@@ -249,13 +242,13 @@ func TestRunCapsATableWithoutAMaximum(t *testing.T) {
 	}
 }
 
-// memoryGrowSpec は _start で線形メモリを上限を超える大きさに増やし、memory.grow が -1 を
-// 返したら標準出力に正しい応答を書いて成功で終わるモジュールである。
+// Attempt oversized memory.grow, then emit success despite its -1 return to verify host-side limit
+// failure wins.
 func memoryGrowSpec() moduleSpec {
 	s := goodSpec()
 	s.imports = []testImport{funcImport("wasi_snapshot_preview1", "fd_write", typeFdWrite)}
 	var code []byte
-	// メモリは 1 ページで始まるので、上限のページ数だけ増やすと上限を 1 ページ超える。
+	// Starting with one page and adding the full limit exceeds it by one page.
 	code = append(append(code, 0x41), sleb(domain.WorkInfoPluginMemoryLimitPages)...)
 	code = append(code, 0x40, 0x00) // memory.grow
 	code = append(append(code, 0x41), sleb(-1)...)
@@ -362,8 +355,7 @@ func TestRunRecordsBeforeReleasingTheSlot(t *testing.T) {
 	wantEchoWorks(t, rt, module)
 }
 
-// コンパイルに失敗した実行はモジュールを起動しないので、record を呼ばず、前の実行のログを残す
-// 。
+// Compilation failure must preserve the previous execution log because no module started.
 func TestRunDoesNotRecordARunWhoseModuleDidNotCompile(t *testing.T) {
 	rt := newTestRuntime(t)
 	recorded := false

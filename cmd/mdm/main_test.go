@@ -37,7 +37,7 @@ func TestServeDoesNotRunStartupHookWhenPortIsInUse(t *testing.T) {
 	if !strings.Contains(err.Error(), "cannot listen on") {
 		t.Fatalf("err = %v", err)
 	}
-	// デスクトップ版は、この段階でポートの案内のダイアログを選ぶ。
+	// Desktop uses this stage to select the port-error dialog.
 	if stage := startupStageOf(err); stage != stageListen {
 		t.Fatalf("startupStageOf = %v; want stageListen", stage)
 	}
@@ -68,7 +68,6 @@ func TestServeCancelsTranscodesBeforeShutdown(t *testing.T) {
 	}
 }
 
-// 停止の指示で戻るとき、受け取りをやめる関数は 1 度だけ呼ばれる。
 func TestServeReleasesStopNotifierOnce(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	var released atomic.Int32
@@ -99,8 +98,6 @@ func TestServeStopsCleanlyAfterServingARequest(t *testing.T) {
 	}
 }
 
-// serveOneRequestAndStop は serveUntil を起動し、要求に 1 度応答してから
-// 停止を指示し、serveUntil の戻り値を返す。
 func serveOneRequestAndStop(t *testing.T) error {
 	t.Helper()
 	stop := make(chan struct{})
@@ -131,8 +128,7 @@ func serveOneRequestAndStop(t *testing.T) error {
 	return <-returned
 }
 
-// 待ち受けを失って戻るときも、処理中の要求を待ってから戻り、待ち受けを失った
-// 理由を返す。戻ったあとに呼び出し元はデータベースを閉じる。
+// Drain requests before returning on listener failure because the caller closes the database next.
 func TestServeWaitsForInFlightRequestsWhenListenerIsLost(t *testing.T) {
 	started := make(chan struct{})
 	finish := make(chan struct{})
@@ -175,7 +171,7 @@ func TestServeWaitsForInFlightRequestsWhenListenerIsLost(t *testing.T) {
 	}()
 	<-started
 
-	// 開き直しで元のアドレスも開けなかったときと同じく、待ち受けの終わりを知らせる。
+	// Simulate loss of both the requested listener and its rollback address.
 	cause := errors.New("cannot listen on the previous address again")
 	listener.notify(cause)
 

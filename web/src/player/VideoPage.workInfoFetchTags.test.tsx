@@ -13,8 +13,6 @@ import {
 } from "../testing/workInfoFetchPage";
 import type { PlayerControls } from "./playerControls";
 
-// 比較の段で取得したタグを 1 つずつ選ぶ。
-
 vi.mock("./VideoPlayer", () => ({
   default: function VideoPlayerMock(props: {
     onControls: (controls: PlayerControls | null) => void;
@@ -39,7 +37,6 @@ function checkbox(dialog: HTMLElement, name: string | RegExp) {
   return within(dialog).getByRole("checkbox", { name });
 }
 
-/** tagBox は取得したタグ name のチェックボックスで、名前は「{name}, Tentative」である。 */
 function tagBox(dialog: HTMLElement, name: string) {
   return checkbox(dialog, `${name}, Tentative`);
 }
@@ -111,7 +108,6 @@ describe("VideoPage work-info fetch tag selection", () => {
     expect(row).toHaveProperty("ariaChecked", "false");
     await user.click(tagBox(dialog, "喜劇"));
     expect(row).toHaveProperty("ariaChecked", "mixed");
-    // 一部が選ばれているときに押すと、全部を選ぶ。
     await user.click(row);
     expect(tagBox(dialog, "ドラマ")).toHaveProperty("ariaChecked", "true");
     expect(tagBox(dialog, "喜劇")).toHaveProperty("ariaChecked", "true");

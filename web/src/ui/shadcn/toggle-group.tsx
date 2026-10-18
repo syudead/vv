@@ -5,9 +5,7 @@ import { type ComponentProps, createContext, useContext } from "react";
 import { cn } from "@/lib/cn";
 import { toggleVariants } from "@/ui/shadcn/toggle";
 
-// shadcn/ui の ToggleGroup（radix）。type="single" は排他の選択（項目は role=radio）、
-// type="multiple" は独立した切り替えの並び。variant と size は項目へ伝わる。
-// 規則は web/registry/rules/components.md の Toggle and ToggleGroup。
+// Adapted from shadcn/ui Radix ToggleGroup; single items expose radio semantics.
 
 const ToggleGroupContext = createContext<VariantProps<typeof toggleVariants>>({
   size: "default",

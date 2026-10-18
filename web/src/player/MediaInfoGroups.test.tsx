@@ -182,7 +182,7 @@ describe("MediaInfoGroups", () => {
         }}
       />,
     );
-    // コーデックの名前は訳さない表記なので、利用者のデータと同じく除く。
+    // Codec names are untranslated identifiers, like user content.
     expectCatalogTextOnly(document.body, ["AAC", "撮影メモ"]);
   });
 });

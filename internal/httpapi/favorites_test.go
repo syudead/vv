@@ -9,15 +9,11 @@ import (
 	"testing"
 )
 
-// お気に入りの付け外しを、本物の認証・
-// 保存層・経路をつないで確かめる。中身は library_test.go の libraryFixture と同じ。
-
 func newFavoritesFixture(t *testing.T) *libraryFixture {
 	t.Helper()
 	return newLibraryFixture(t)
 }
 
-// favoritesBody は PUT /api/favorites の本文を作る。groupIDs はグループの id。
 func favoritesBody(favorite bool, videoIDs []int64, groupIDs ...int64) string {
 	body := map[string]any{"favorite": favorite}
 	if videoIDs != nil {
@@ -42,7 +38,6 @@ func TestFavoritesHiddenFromGuests(t *testing.T) {
 	f := newFavoritesFixture(t)
 	show := f.groupID(t, "show")
 
-	// 公開の動画と、公開のメンバーが 2 本あるグループをお気に入りにしても、ゲストには出さない。
 	if rec := f.putFavorites(favoritesBody(true, []int64{f.ids["ep1"], f.ids["solo"]}, show), f.owner); rec.Code != http.StatusOK {
 		t.Fatalf("付ける: status = %d: %s", rec.Code, rec.Body)
 	}
@@ -74,7 +69,6 @@ func TestFavoritesHiddenFromGuests(t *testing.T) {
 	}
 }
 
-// 所有者には動画を返すどの応答にも favorite が入る。
 func TestFavoriteInOwnerVideoResponses(t *testing.T) {
 	f := newFavoritesFixture(t)
 	if rec := f.putFavorites(favoritesBody(true, []int64{f.ids["solo"]}), f.owner); rec.Code != http.StatusOK {
@@ -127,7 +121,6 @@ func TestFavoriteInOwnerVideoResponses(t *testing.T) {
 	}
 }
 
-// 関連動画の応答にも所有者には favorite が入り、ゲストには入らない。
 func TestFavoriteInRelatedVideos(t *testing.T) {
 	f := newGuestFixture(t, true)
 	rec := f.env.serve(authRequest{

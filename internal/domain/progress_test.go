@@ -2,12 +2,6 @@ package domain
 
 import "testing"
 
-// 視聴済みの判定はサーバー側で行う。クライアントの申告は採らない。
-//
-//	position_ms >= duration_ms - 15000  または  position_ms / duration_ms >= 0.95
-//
-// 2つの条件があるのは、短い動画では 15 秒が尺の大半を占め、長い動画では
-// 5% が数分になるためである。どちらか一方だけでは片側が破綻する。
 func TestEvaluateProgressCompletion(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -17,10 +11,10 @@ func TestEvaluateProgressCompletion(t *testing.T) {
 	}{
 		{"先頭は未完了", 0, 600_000, false},
 		{"途中は未完了", 300_000, 600_000, false},
-		// 100 秒の動画では 95% が 95 秒なので、15 秒の残りだけが効く。
+		// For 100 seconds, only the 15-second tail applies at this position.
 		{"残り 15 秒ちょうどで完了", 85_000, 100_000, true},
 		{"残り 16 秒は未完了", 84_000, 100_000, false},
-		// 10 分の動画では 15 秒の残りが厳しすぎるので、割合が効く。
+		// For ten minutes, the ratio permits completion before the fixed tail.
 		{"95% ちょうどで完了", 570_000, 600_000, true},
 		{"94% は未完了", 564_000, 600_000, false},
 		{"長い動画は 95% で完了（残りは 6 分）", 6_840_000, 7_200_000, true},
@@ -40,8 +34,6 @@ func TestEvaluateProgressCompletion(t *testing.T) {
 	}
 }
 
-// 位置は 0 以上に、尺が既知なら尺以下に丸める。
-// 壊れた値をそのまま保存すると、再開位置が尺の外へ飛ぶ。
 func TestEvaluateProgressClampsPosition(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -64,8 +56,6 @@ func TestEvaluateProgressClampsPosition(t *testing.T) {
 	}
 }
 
-// 再開位置。見終わった動画と、ほとんど見ていない動画は先頭から始める。
-// 見終わった動画を末尾から再開させても、利用者にできることが無い。
 func TestResumePosition(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -88,8 +78,7 @@ func TestResumePosition(t *testing.T) {
 	}
 }
 
-// 判定に使う値を固定する。ここが視聴済み判定の唯一の基準なので、
-// 数字を変えるときは意図的に変えていることをこのテストで示す。
+// Changing these constants must be an intentional change to the completion contract.
 func TestProgressThresholds(t *testing.T) {
 	if CompletionTailMs != 15_000 {
 		t.Errorf("CompletionTailMs = %d, want 15000", CompletionTailMs)

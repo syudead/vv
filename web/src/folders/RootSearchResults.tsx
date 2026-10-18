@@ -22,17 +22,9 @@ import { type RootDisplay, topLevelLocationLabel } from "./folderPath";
 import { CardsLoading, LoadFailed, MoreRow, NoMatches, ResultCount } from "./states";
 import { useFolderTagsRow } from "./useFolderTagsRow";
 
-/**
- * ROOT_SEARCH_KEY は最上位の検索結果の控えの鍵である。実在するフォルダの鍵
- * （folderKey、`<id>\0<path>` の形）とは衝突しない文字列を選ぶ。
- */
+/** Must not collide with real folder keys, which use <id>\\0<path>. */
 export const ROOT_SEARCH_KEY = "root-search";
 
-/**
- * RootSearchResults は最上位（`/folders`）で検索語があるときの検索結果である。
- * ライブラリ全体を `listVideos` で検索し、置き場所は登録フォルダの表示名から
- * 始める。
- */
 export default function RootSearchResults({
   criteria,
   rootNames,
@@ -42,10 +34,9 @@ export default function RootSearchResults({
 }: {
   criteria: ListCriteria;
   rootNames: Map<number, RootDisplay>;
-  /** 登録フォルダ一覧の取得の状態。置き場所の行はこれが揃ってから出す。 */
+  /** Wait for registered folders before showing location labels. */
   roots: { loading: boolean; error: UiText | null; reload: () => void };
   zoom: Zoom;
-  /** 呼び出し側（RootView）が取り出した控え。無ければ1ページ目から読む。 */
   restored: ReturnType<typeof takeListSnapshot>;
 }) {
   const location = useLocation();
@@ -65,7 +56,6 @@ export default function RootSearchResults({
     staleGroups,
   } = useVideos(criteria, restored);
 
-  // ホバープレビューは同時に 1 件だけ（ライブラリと同じ）。一覧や倍率が変わったら止める。
   const { resetPreview, cardProps: preview } = usePreviewCoordination();
   const tagsRow = useFolderTagsRow();
   useEffect(() => {
@@ -100,8 +90,7 @@ export default function RootSearchResults({
     );
   }, [criteria, cursor, hasMore, items, staleGroups, total]);
 
-  // 置き場所を描けるのは登録フォルダ一覧が揃ったときだけ。それまでは位置の復元も
-  // 続きの読み込みもしない（失敗中に観測点が見え続けて全件を読みに行かないように）。
+  // Wait for roots before restoring scroll or loading more; otherwise a visible sentinel can fetch every page during failure.
   const rootsReady = !roots.loading && roots.error === null;
   const pendingScroll = useRef(restored?.scrollY);
   useEffect(() => {
@@ -113,7 +102,7 @@ export default function RootSearchResults({
   }, []);
   useLayoutEffect(() => {
     const top = pendingScroll.current;
-    // 登録フォルダ一覧を待つ間や失敗中はカードが無いので、揃ってから戻す。
+    // Restore only after registered folders arrive and cards exist.
     if (top === undefined || !rootsReady || items.length === 0) return;
     pendingScroll.current = undefined;
     window.scrollTo({ top, behavior: "auto" });
@@ -134,11 +123,10 @@ export default function RootSearchResults({
     return () => observer.disconnect();
   }, [hasMore, loadMore, rootsReady]);
 
-  // 置き場所は登録フォルダの表示名から始まるので、一覧が揃うまでは結果を確定させない。
-  // 取得に失敗したら、同名の動画を見分けられないまま出さず、再試行を促す。
+  // Location labels require root names; offer retry rather than indistinguishable same-name results.
   const waiting = loading || roots.loading;
   const failure = error ?? roots.error;
-  // 失敗した側だけを取り直す。両方が失敗していれば両方を取り直す。
+  // Retry only the failed request, or both if both failed.
   const retry = () => {
     if (error !== null) reload();
     if (roots.error !== null) roots.reload();
@@ -148,7 +136,7 @@ export default function RootSearchResults({
     !waiting && failure !== null && (items.length === 0 || roots.error !== null);
   const summaryText = waiting ? t.list.loading : resultCountText(total);
 
-  // 本体の間隔は一覧ページの骨格が持つので、控えを取るための入れ物は箱を作らない（contents）。
+  // Use display: contents so the snapshot wrapper does not affect ListPage spacing.
   return (
     <div onClick={saveSnapshot} className="contents">
       <h2 className="sr-only">{t.folders.searchResults}</h2>

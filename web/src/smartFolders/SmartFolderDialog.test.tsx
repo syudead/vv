@@ -7,8 +7,6 @@ import { __resetTagsForTest } from "../api/tags";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import SmartFolderDialog, { type SmartFolderDialogTarget } from "./SmartFolderDialog";
 
-// スマートフォルダを作る・直す窓。送る前の確かめと、送った結果の失敗の振り分け。
-
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -20,7 +18,6 @@ function failure(status: number, code: string): Response {
   return json({ code, message: code }, status);
 }
 
-/** 猫 ─ 未視聴、犬。 */
 const folders = [
   { id: 1, name: "猫" },
   { id: 2, parentId: 1, name: "未視聴" },
@@ -28,7 +25,6 @@ const folders = [
 ];
 
 const fetchMock = vi.fn<typeof fetch>();
-/** 書き込みの要求（メソッド、パス、本文）。 */
 let writes: { method: string; path: string; body: unknown }[] = [];
 let writeAnswer: () => Response = () => json({ id: 9, name: "保存" });
 let listAnswer: () => Response = () => json({ smartFolders: folders });
@@ -136,7 +132,6 @@ describe("SmartFolderDialog", () => {
 
       await user.type(search, "  ");
       expect(button(dialog, "Save").disabled).toBe(true);
-      // Enter で窓を送っても、変わっていなければ送らない。
       await user.type(within(dialog).getByRole("textbox", { name: "Name" }), "{Enter}");
       expect(writes).toHaveLength(0);
 

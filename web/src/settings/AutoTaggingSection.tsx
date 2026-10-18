@@ -23,10 +23,9 @@ import { useToast } from "../ui/Toast";
 
 import { PageLinkText } from "./PageLink";
 
-/** pollMs は判定が待ち行列に残っている間に件数を読み直す間隔である。 */
 const pollMs = 3000;
 
-/** Draft は画面で編集中の値である。閾値は入力の文字列のまま持つ。 */
+/** Keep thresholds as input strings while editing. */
 interface Draft {
   enabled: boolean;
   afterImport: boolean;
@@ -43,7 +42,6 @@ function toDraft(settings: AutoTaggingSettings): Draft {
   };
 }
 
-/** parseThreshold は入力を 0 より大きく 1 以下の数として読む。読めなければ null。 */
 export function parseThreshold(value: string): number | null {
   if (value.trim() === "") return null;
   const parsed = Number(value);
@@ -56,11 +54,6 @@ type CheckState =
   | { kind: "ok" }
   | { kind: "failed"; message: UiText };
 
-/**
- * ProgressSection は「Auto-tagging」のページの「Progress」節である。見出しの説明は待ち行列の
- * 件数で、中身は判定に回すボタンと直近の失敗である。保存した設定で機能が切なら、切である旨と
- * 入れる場所を出し、ボタンは出さない。
- */
 function ProgressSection({
   settings,
   starting,
@@ -122,10 +115,6 @@ function ProgressSection({
   );
 }
 
-/**
- * SectionsLoading は 2 つの節を読んでいる間の形である。読めなければ「Classifier」の節に
- * 読めなかった旨と `Retry` を出す。
- */
 function SectionsLoading({
   description,
   loadError,
@@ -163,7 +152,6 @@ function SectionsLoading({
   );
 }
 
-/** ClassifierFeedback は「Test judging」の結果と保存の失敗の行である。 */
 function ClassifierFeedback({
   check,
   saveError,
@@ -212,17 +200,9 @@ function ClassifierFeedback({
 }
 
 /**
- * AutoTaggingSection は「Auto-tagging」のページの「Progress」と「Classifier」の 2 つの節である。
- * 「Classifier」で機能の入切、取り込みのあとの自動の判定と 2 つの確率を設定し、機能が入なら
- * 「Progress」でライブラリの動画を判定に回す
- * （docs/design-docs/auto-tagging.md）。Ollama の接続先は OllamaSection が持つ。判定が
- * 待ち行列に残っている間は件数を読み直す。「Test judging」は判定の口に 1 問を判定させ、
- * 機能の入切に関係なく使えるかを確かめる。
- *
- * `locked` は Ollama の接続先が保存されていないことである。そのあいだ切り替え、入力、ボタンは値を見せたまま `aria-disabled` にし、`aria-disabled` は
- * それだけでは何も止めないので、各ハンドラは下書きを変えず要求も送らずに返す。`pending` は
- * 接続先をまだ読んでいることで、保存したかが分かるまでは操作を描かず読み込み中の形を出す（R-5 の
- * Loading）。
+ * locked retains visible values with aria-disabled, so handlers must explicitly reject edits and
+ * requests. While connection status is pending, show loading placeholders; see docs/design-
+ * docs/auto-tagging.md.
  */
 export default function AutoTaggingSection({
   locked,
@@ -252,7 +232,7 @@ export default function AutoTaggingSection({
       const next = await getAutoTaggingSettings(abort.signal);
       if (abort.signal.aborted) return;
       setSettings(next);
-      // 編集中の値は読み直しで消さない。初めて読めたときだけ下書きを作る。
+      // Initialize the draft only on the first successful read; refresh must not overwrite edits.
       setDraft((current) => current ?? toDraft(next));
       setLoadError(null);
     } catch (failure) {
@@ -276,13 +256,12 @@ export default function AutoTaggingSection({
   const threshold = draft === null ? null : parseThreshold(draft.threshold);
   const tentativeThreshold =
     draft === null ? null : parseThreshold(draft.tentativeThreshold);
-  // 仮に付ける確率は、確定して付ける確率以下でなければならない。
+  // Tentative confidence must not exceed confirmed confidence.
   const tentativeValid =
     tentativeThreshold !== null &&
     (threshold === null || tentativeThreshold <= threshold);
   const valid = threshold !== null && tentativeThreshold !== null && tentativeValid;
 
-  /** persist は下書きを保存する。保存できたら true を返す。 */
   const persist = async (): Promise<boolean> => {
     if (draft === null || threshold === null || tentativeThreshold === null || !valid)
       return false;

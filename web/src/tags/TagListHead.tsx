@@ -5,11 +5,7 @@ import { t } from "../i18n";
 import { Checkbox } from "../ui/shadcn/checkbox";
 import { TableHead, TableHeader, TableRow } from "../ui/shadcn/table";
 
-/**
- * TagListHead は表の列の見出しである。先頭のチェックは
- * 「読み込んだものをすべて選ぶ」。読み込んだ行が上限を超えると押せず、理由を包みの
- * title と sr-only で添える。
- */
+/** Select loaded rows only; disable over-limit selection with a visible and accessible reason. */
 export default function TagListHead({
   headRef,
   selectAllRef,

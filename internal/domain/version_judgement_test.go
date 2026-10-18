@@ -5,7 +5,6 @@ import (
 	"time"
 )
 
-// 失敗した判定は 10 分、1 時間、6 時間、以後は毎日あとに取り出せる。
 func TestVersionJudgeRetryAt(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	for _, c := range []struct {
@@ -25,7 +24,6 @@ func TestVersionJudgeRetryAt(t *testing.T) {
 	}
 }
 
-// 側をまたぐ「違う」と分かっている組だけが束ねるのを妨げる。
 func TestVersionSidesConflict(t *testing.T) {
 	a, b := []string{"a", "c"}, []string{"b"}
 	for _, c := range []struct {
@@ -45,7 +43,6 @@ func TestVersionSidesConflict(t *testing.T) {
 	}
 }
 
-// 代表は集まりの側、所有者のデータ、再生できる、音声、画素、ビットレート、id の順に選ぶ。
 func TestChooseVersionRepresentative(t *testing.T) {
 	ptr := func(v int) *int { return &v }
 	ms := func(v int64) *int64 { return &v }

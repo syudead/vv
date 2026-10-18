@@ -11,37 +11,19 @@ import {
 } from "../smartFolders/smartFolderPaths";
 import type { MemberTarget } from "./RelatedVideos";
 
-/**
- * VideoGroupContext は、動画ページを開いたグループ（`?group`）かスマートフォルダ（`?smartFolder`）に
- * 従う場所と操作である。
- */
 export type VideoGroupContext = {
-  /** 読み取りに渡すグループの id。`?group` が無いか、プレイリストの文脈の間は undefined。 */
+  /** Omitted when absent or overridden by playlist context. */
   group: number | undefined;
-  /**
-   * 読み取りに渡すスマートフォルダの id。`?smartFolder` が無いか、`?group` があれば undefined
-   * （`group` が勝つ）。プレイリストの文脈の間も読む。フォルダの項目の中で、フォルダの行と
-   * フォルダの `Up next` を出すためである。
-   */
+  /** Group wins over smartFolder; playlists still read folder context for member navigation. */
   smartFolder: number | undefined;
-  /** この画面から別の動画を開く場所。`?group` か `?smartFolder` があれば残す。 */
   videoTo: (videoId: number) => string;
-  /** 次の動画を開く場所。次が無ければ undefined。 */
   nextTo: (next: { id: number } | undefined) => string | undefined;
-  /**
-   * `?group` か `?smartFolder` で開いた動画のメンバーの行の開き方。どちらも無いか、プレイリストの
-   * 文脈の間は undefined（ふつうの行か、ページが決める行）。
-   */
+  /** Omitted for ordinary navigation or playlist-controlled member links. */
   memberTarget: (linkState: unknown) => MemberTarget | undefined;
-  /**
-   * グループの操作（外す・タグ化・解散）の後に、動画と関連動画を `group` なしで読み直す。
-   * `?group` があれば URL から外し（読み取りは問い合わせに従って読み直す）、無ければ `reread`
-   * でそのまま取り直す。どちらも再生は止めない。
-   */
+  /** Drop group context and refresh after membership changes without stopping playback. */
   readWithoutGroup: (reread: () => void) => void;
 };
 
-/** contextVideoPath は、開いた文脈を保って動画 `videoId` を開く場所である。 */
 function contextVideoPath(
   videoId: number,
   group: number | undefined,
@@ -52,11 +34,7 @@ function contextVideoPath(
   return `/videos/${String(videoId)}`;
 }
 
-/**
- * useVideoGroupContext は動画ページの `?group` と `?smartFolder` を読む。プレイリストの文脈
- * （`inPlaylist`）はグループより優先するので、その間は `?group` を使わず、運ばない。
- * `?smartFolder` はその間も読み取りに渡すが、開く場所はプレイリストのステップが決める。
- */
+/** Playlist context overrides group navigation; smart-folder reads still apply while playlist steps own destinations. */
 export function useVideoGroupContext(inPlaylist: boolean): VideoGroupContext {
   const location = useLocation();
   const navigate = useNavigate();

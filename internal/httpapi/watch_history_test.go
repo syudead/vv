@@ -15,17 +15,13 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 視聴履歴の一覧と削除を、本物の認証と保存層で
-// 確かめる。
-
 const (
 	historyPlaybackA    = "0f8fad5b-d9cb-469f-a165-70867728950e"
 	historyPlaybackB    = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
 	historyPlaybackGone = "16fd2706-8baf-433b-82eb-8c7fada847da"
 )
 
-// recordHistory は guestFixture の a、b、ライブラリに無い内容の順に 1 件ずつ視聴を記録し、
-// 新しい順の id を返す（ライブラリに無い内容、b、a）。
+// recordHistory records a, b, then unavailable content and returns IDs newest first.
 func (f *guestFixture) recordHistory(t *testing.T) []int64 {
 	t.Helper()
 	ctx := context.Background()
@@ -59,8 +55,6 @@ func historyEntryPath(id int64) string {
 	return "/api/watch-history/" + strconv.FormatInt(id, 10)
 }
 
-// 一覧は新しい順で、nextCursor からの 2 ページ目は重複なく続く。ライブラリに無い内容の件は video を
-// 持たず、ある内容の件は再生位置・タグ・お気に入りの入った video を持つ。
 func TestListWatchHistory(t *testing.T) {
 	f := newGuestFixture(t, true)
 	ids := f.recordHistory(t)
@@ -116,8 +110,6 @@ func TestListWatchHistory(t *testing.T) {
 	}
 }
 
-// limit の範囲外、読めないカーソル、未知の watch・tz、tz の無い date、形の違う date、101 文字の
-// query は 400 invalid_request。日付の一覧は tz の欠けにも 400。
 func TestListWatchHistoryRejectsBadParameters(t *testing.T) {
 	f := newGuestFixture(t, true)
 	for target, want := range map[string]wantError{
@@ -149,7 +141,6 @@ func TestListWatchHistoryRejectsBadParameters(t *testing.T) {
 	}
 }
 
-// 1 件の削除は 204、もう一度で 404。全件の削除は 204 で、空の履歴でも 204。
 func TestDeleteWatchHistory(t *testing.T) {
 	f := newGuestFixture(t, true)
 	ids := f.recordHistory(t)
@@ -174,7 +165,6 @@ func TestDeleteWatchHistory(t *testing.T) {
 	}
 }
 
-// 1 未満の id は 400 で、何も消えない。
 func TestDeleteWatchHistoryEntryRejectsInvalidID(t *testing.T) {
 	f := newGuestFixture(t, true)
 	ids := f.recordHistory(t)
@@ -189,7 +179,6 @@ func TestDeleteWatchHistoryEntryRejectsInvalidID(t *testing.T) {
 	}
 }
 
-// ゲストには 4 つの経路とも 401 で、何も消えない。
 func TestWatchHistoryRequiresOwner(t *testing.T) {
 	f := newGuestFixture(t, true)
 	ids := f.recordHistory(t)
@@ -217,10 +206,9 @@ func historyItemIDs(page gen.WatchHistoryPage) []int64 {
 	return ids
 }
 
-// watch と query は一覧と日付の一覧の両方で件を絞る。動画の無い件は inProgress に出ない。
 func TestListWatchHistoryFilterAndSearch(t *testing.T) {
 	f := newGuestFixture(t, true)
-	ids := f.recordHistory(t) // ライブラリに無い内容、b、a。a と b は視聴途中。
+	ids := f.recordHistory(t)
 	gone, b, a := ids[0], ids[1], ids[2]
 
 	for target, want := range map[string][]int64{
@@ -263,7 +251,6 @@ func TestListWatchHistoryFilterAndSearch(t *testing.T) {
 	}
 }
 
-// date はその日か月の終わりより前の件から始め、nextCursor で古い件へ続く。前の月なら件は無い。
 func TestListWatchHistoryDate(t *testing.T) {
 	f := newGuestFixture(t, true)
 	ids := f.recordHistory(t)

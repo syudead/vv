@@ -11,16 +11,13 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// lanAccessStore は LAN からの接続の許可の保存先である。internal/store の
-// *SettingsStore がこれを満たす。
 type lanAccessStore interface {
 	LANAccess(ctx context.Context) (bool, error)
 	app.NetworkSettingsStore
 }
 
-// startNetworkSettings はデスクトップ版の LAN からの接続の許可を、DB を開いたあと待ち受けの
-// 前に読み、待ち受けるアドレスと切り替えの設定を返す。許可していれば 0.0.0.0、
-// していないか保存値が無ければ 127.0.0.1 で、addr のポートで待ち受ける。切り替えは listener を開き直してから保存する。
+// startNetworkSettings binds the saved LAN host, defaulting to loopback, with addr's port; updates
+// reopen the listener before saving.
 func startNetworkSettings(
 	ctx context.Context,
 	store lanAccessStore,
@@ -51,8 +48,7 @@ func startNetworkSettings(
 	return domain.LANListenAddr(allowed, port), settings, nil
 }
 
-// lanAddresses は上がっているネットワークインターフェースの、ループバックでない IPv4
-// アドレスを返す。許可中に LAN の端末から開く URL を示すのに使う。
+// Return active non-loopback IPv4 addresses for LAN access URLs.
 func lanAddresses() ([]netip.Addr, error) {
 	interfaces, err := net.Interfaces()
 	if err != nil {
@@ -72,7 +68,6 @@ func lanAddresses() ([]netip.Addr, error) {
 	return out, nil
 }
 
-// lanIPv4 はインターフェースのアドレスから、ループバックでない IPv4 だけを取り出す。
 func lanIPv4(addrs []net.Addr) []netip.Addr {
 	var out []netip.Addr
 	for _, addr := range addrs {

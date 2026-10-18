@@ -1,10 +1,6 @@
-// Package password は Argon2id によるパスワードのハッシュ化と照合を受け持つ
-// アダプタである。
-//
-// ハッシュは PHC 文字列 `$argon2id$v=19$m=<KiB>,t=<回数>,p=<並列度>$<ソルト>$<鍵>`
-// で表す。ソルトと鍵はパディングの無い標準の Base64 である。照合は文字列に
-// 書かれたパラメータで行うので、新しく作るハッシュのパラメータを後で強めても、
-// 既存のハッシュはそのまま照合できる。
+// Package password hashes and verifies Argon2id PHC strings using unpadded standard Base64 salt/key
+// fields. Verification uses stored parameters, so stronger defaults do not invalidate existing
+// hashes.
 package password
 
 import (
@@ -20,8 +16,7 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-// 新しく作るハッシュのパラメータ。OWASP の Argon2id の最低推奨（19 MiB・2 回・
-// 並列度 1）に合わせる。
+// OWASP minimum Argon2id parameters: 19 MiB, two iterations, parallelism one.
 const (
 	memoryKiB  = 19456
 	iterations = 2
@@ -30,10 +25,9 @@ const (
 	keyLength  = 32
 )
 
-// 照合で受け入れるパラメータの上限。壊れた、または悪意のある保存値で、照合が
-// 過大なメモリや時間を使わないようにする。メモリは RFC 9106 の第2推奨（64 MiB）
-// までとする。照合は同時に2つまで行うので（plan の Structural Decisions 6）、
-// 小型機でも 128 MiB に収まり、既定より強いパラメータへ上げる余地も残る。
+// Cap untrusted stored parameters to prevent resource exhaustion; the RFC 9106 secondary memory
+// recommendation keeps two concurrent verifications within 128 MiB while allowing stronger
+// defaults.
 const (
 	maxMemoryKiB  = 1 << 16 // 64 MiB
 	maxIterations = 64
@@ -42,11 +36,9 @@ const (
 	maxKeyLength  = 1024
 )
 
-// ErrMalformedHash は保存されたハッシュが Argon2id の PHC 文字列として
-// 解釈できないことを表す。
 var ErrMalformedHash = errors.New("cannot parse the password hash")
 
-// Hash はパスワードを、ランダムなソルトと既定のパラメータで Argon2id の PHC 文字列にする。
+// Hash uses a random salt and default Argon2id parameters.
 func Hash(password string) (string, error) {
 	salt := make([]byte, saltLength)
 	if _, err := rand.Read(salt); err != nil {
@@ -57,8 +49,7 @@ func Hash(password string) (string, error) {
 	return encode(p, salt, key), nil
 }
 
-// Verify はパスワードが PHC 文字列のハッシュと一致するかを返す。照合には文字列に
-// 書かれたパラメータを使う。文字列を解釈できなければ ErrMalformedHash を返す。
+// Verify uses PHC-encoded parameters and returns ErrMalformedHash for invalid encodings.
 func Verify(password, encoded string) (bool, error) {
 	p, salt, key, err := decode(encoded)
 	if err != nil {
@@ -85,7 +76,7 @@ func encode(p params, salt, key []byte) string {
 func decode(encoded string) (params, []byte, []byte, error) {
 	var p params
 	parts := strings.Split(encoded, "$")
-	// 先頭の `$` の前の空文字列と、5つの欄。
+	// Leading empty component before $, followed by five fields.
 	if len(parts) != 6 || parts[0] != "" || parts[1] != "argon2id" {
 		return p, nil, nil, ErrMalformedHash
 	}
@@ -106,8 +97,7 @@ func decode(encoded string) (params, []byte, []byte, error) {
 	return p, salt, key, nil
 }
 
-// parseParams は `m=…,t=…,p=…` をこの順で読む。各値は型に変換する前に、
-// 定数の上限と比べる。
+// Check bounds before narrowing parsed parameter types.
 func parseParams(s string, p *params) error {
 	fields := strings.Split(s, ",")
 	if len(fields) != 3 {
@@ -125,7 +115,7 @@ func parseParams(s string, p *params) error {
 	if !ok || par > math.MaxUint8 {
 		return ErrMalformedHash
 	}
-	// Argon2 はメモリを並列度の 8 倍以上に求める。
+	// Argon2 requires memory of at least eight times parallelism.
 	if m < 8*par {
 		return ErrMalformedHash
 	}
@@ -135,8 +125,8 @@ func parseParams(s string, p *params) error {
 	return nil
 }
 
-// parseField は `<prefix><10進の数>` を読み、32 ビットに収まる 1 以上の数なら返す。
-// 先頭の 0 や符号は受け付けない。上限は呼び出し側が確かめる。
+// Accept positive uint32 decimal values without signs or leading zeros; callers enforce parameter
+// limits.
 func parseField(field, prefix string) (uint64, bool) {
 	digits, ok := strings.CutPrefix(field, prefix)
 	if !ok || digits == "" || (len(digits) > 1 && digits[0] == '0') {

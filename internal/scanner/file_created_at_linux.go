@@ -7,8 +7,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// fileCreatedAt はファイルの作成日時を返す。Linux の lstat（fs.FileInfo）は作成日時を
-// 持たないので statx に STATX_BTIME を求め、ファイルシステムが返したときだけ使う。読めなかったことは失敗にしない。
+// Linux FileInfo lacks birth time, so request STATX_BTIME and tolerate unsupported filesystems or
+// read failures.
 func fileCreatedAt(path string, _ fs.FileInfo) (time.Time, bool) {
 	var stx unix.Statx_t
 	if err := unix.Statx(unix.AT_FDCWD, path, unix.AT_SYMLINK_NOFOLLOW|unix.AT_STATX_SYNC_AS_STAT,

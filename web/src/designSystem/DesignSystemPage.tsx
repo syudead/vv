@@ -29,9 +29,6 @@ const sections: { id: string; title: () => string; body?: () => ReactNode }[] = 
   },
 ];
 
-/**
- * DesignSystemPage は開発時だけの見本で、デザインシステムの段階ごとの確認に使う。各段階の実装が自分の節を埋める。
- */
 export default function DesignSystemPage() {
   return (
     <main data-showcase="design-system" className="mx-auto grid max-w-6xl gap-8 p-6">

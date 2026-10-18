@@ -9,9 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 追加日と長さによる一覧の絞り込み。
-
-// addedLengthFile は追加日と長さの絞り込みの検証用の動画1本である。duration が nil なら長さが分からない。
 type addedLengthFile struct {
 	name     string
 	addedAgo time.Duration
@@ -19,7 +16,7 @@ type addedLengthFile struct {
 	tagged   bool
 }
 
-// addedLengthFiles の len600 は 600.999 秒で、秒未満を切り捨てると 600 秒になる。
+// 600.999 seconds floors to the inclusive 600-second boundary.
 var addedLengthFiles = []addedLengthFile{
 	{name: "added6days", addedAgo: 6 * 24 * time.Hour, duration: ptr(30_000), tagged: true},
 	{name: "added8days", addedAgo: 8 * 24 * time.Hour, duration: ptr(30_000), tagged: true},
@@ -31,8 +28,6 @@ var addedLengthFiles = []addedLengthFile{
 	{name: "len300untagged", addedAgo: time.Hour, duration: ptr(300_000)},
 }
 
-// addedLengthFixture は addedLengthFiles を登録フォルダの直下に取り込み、tagged の動画にタグを付けて
-// そのタグの id を返す。追加日はいまの時刻から数える。
 func addedLengthFixture(t *testing.T) (*DB, int64) {
 	t.Helper()
 	db := migratedDB(t)
@@ -67,9 +62,6 @@ func addedLengthFixture(t *testing.T) (*DB, int64) {
 
 func seconds(v int) *int { return &v }
 
-// addedWithin はその日数前以後に追加した動画、minDuration と maxDuration は秒未満を切り捨てた長さが
-// 両端を含む範囲にある動画だけにし、長さの分からない動画は当てない。どちらもタグと AND になる。
-// ListLibrary・ListVideos・LibraryIDs が同じ動画を返す。
 func TestListFiltersByAddedWithinAndLength(t *testing.T) {
 	db, tagID := addedLengthFixture(t)
 
@@ -123,9 +115,7 @@ func TestListFiltersByAddedWithinAndLength(t *testing.T) {
 	}
 }
 
-// addedWithin の境界は一覧を読み始めた時刻で一度だけ決まる。ちょうどその日数前に追加した動画は
-// 当たり、その1秒前に追加した動画は当たらず、ListVideos の件数とページが同じ基準で数える
-// （SQL の unixepoch() を文ごとに評価すると、件数とページの間に秒が進んで食い違う）。
+// Capture one age boundary so count and page queries cannot disagree if the clock advances between statements.
 func TestAddedWithinCutoffIsFixedPerRead(t *testing.T) {
 	now := fixedTime
 	previous := listNow

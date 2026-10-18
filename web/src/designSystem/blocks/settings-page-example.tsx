@@ -18,12 +18,7 @@ import {
 } from "@/ui/shadcn/select";
 import { Switch } from "@/ui/shadcn/switch";
 
-// 設定ページの型の見本（registry:block settings-page-example）。見本のデータで埋めた
-// 動く組み合わせで、写した画面は文言と値を自分のものに差し替える
-// （web/registry/rules/patterns.md の Settings page）。ページの一覧（nav）を持つ設定の
-// 3 ページを見せる。見本はページの切り替えを状態で持つが、写した画面は一覧の項目と戻るリンクを
-// ルーターのリンクにし、一覧の住所を view="list"、各ページの住所を view="page" にする。
-// 「Server」のページは、ページ全体に効く状態の 1 行を notice に置く。
+// registry:block settings-page-example. Real pages use router links with view="list" for the index and view="page" for individual pages.
 
 const pageIds = ["library", "playback", "server"] as const;
 type PageId = (typeof pageIds)[number];
@@ -117,7 +112,7 @@ const pageRows: Record<PageId, ReactNode> = {
 
 export function SettingsPageExample() {
   const p = t.designSystem.pattern;
-  // null は一覧の住所。sm からは最初のページを出し、sm 未満は一覧だけを出す。
+  // Null denotes the index: show the first page from sm upward, only navigation below sm.
   const [open, setOpen] = useState<PageId | null>(null);
   const shown = open ?? pageIds[0];
   const go = (next: PageId | null) => (event: MouseEvent) => {

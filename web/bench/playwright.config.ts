@@ -3,10 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "@playwright/test";
 
-// タグ管理画面の規模の計測。
-// `go run ./scripts/tagsbench` が規模のデータで本番ビルドを起動し、その URL を
-// TAGSBENCH_BASE_URL で渡して呼ぶ。web/e2e/ の試験とは別の設定で、task test-e2e と
-// CI には入れない。手順は docs/how-to/tags-admin-benchmark.md。
+// Benchmark the production build started by scripts/tagsbench via TAGSBENCH_BASE_URL, outside e2e and CI; see docs/how-to/tags-admin-benchmark.md.
 
 const benchRoot = path.dirname(fileURLToPath(import.meta.url));
 const baseURL = process.env.TAGSBENCH_BASE_URL;
@@ -23,7 +20,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  // 30,000 個の規模で、続きを読み込みながら末尾まで送ると数十分かかる。
+  // Scrolling all 30,000 tags can take tens of minutes.
   timeout: 90 * 60_000,
   outputDir: path.join(benchRoot, "..", "test-results", "bench"),
   reporter: "list",

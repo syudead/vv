@@ -10,7 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 走っている監視の走査は、取り込みの途中（Busy）に数えない。
 func TestBusyIgnoresRunningWatchScan(t *testing.T) {
 	scanner := &fakeScanner{release: make(chan struct{}), started: make(chan struct{})}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
@@ -28,7 +27,6 @@ func TestBusyIgnoresRunningWatchScan(t *testing.T) {
 	scans.Wait()
 }
 
-// 手動の走査の開始は、走っている監視の走査を止めてから始まる。
 func TestStartScanSupersedesRunningWatchScan(t *testing.T) {
 	scanner := &fakeScanner{release: make(chan struct{}), started: make(chan struct{})}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
@@ -37,7 +35,7 @@ func TestStartScanSupersedesRunningWatchScan(t *testing.T) {
 	}
 	<-scanner.started
 
-	// fakeScanner は started を 1 度しか閉じられないので、手動の走査の前に外す。
+	// Clear the one-shot started channel before beginning the manual scan.
 	scanner.mu.Lock()
 	scanner.started = nil
 	scanner.mu.Unlock()
@@ -55,7 +53,6 @@ func TestStartScanSupersedesRunningWatchScan(t *testing.T) {
 	scans.Wait()
 }
 
-// 走査を閉じるたびに、始めた主体と閉じた状態を知らせる。
 func TestOnFinishReportsOriginAndState(t *testing.T) {
 	scanner := &fakeScanner{result: domain.ScanResult{Total: 1, Processed: 1}}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
@@ -90,7 +87,6 @@ func TestOnFinishReportsOriginAndState(t *testing.T) {
 	}
 }
 
-// 走査を始めるたびに、始めた主体を知らせる。
 func TestOnStartReportsOrigin(t *testing.T) {
 	scanner := &fakeScanner{result: domain.ScanResult{Total: 1, Processed: 1}}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
@@ -121,8 +117,7 @@ func TestOnStartReportsOrigin(t *testing.T) {
 	}
 }
 
-// 閉じる知らせの最中に次の手動の走査は始められず、開始の知らせは閉じる知らせのあとに届く。
-// 錠を放してから閉じる知らせを呼ぶと、その隙に次の走査の開始の知らせが先に届く。
+// Completion callbacks must precede the next start callback under the same lock.
 func TestOnFinishRunsBeforeNextScanStarts(t *testing.T) {
 	scanner := &fakeScanner{result: domain.ScanResult{Total: 1, Processed: 1}}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
@@ -143,7 +138,7 @@ func TestOnFinishRunsBeforeNextScanStarts(t *testing.T) {
 					t.Error(err)
 				}
 			}()
-			// 次の走査が割り込めるなら、ここで開始の知らせが届く。
+			// An unsynchronized next scan would publish its start here.
 			select {
 			case <-nextStarted:
 			case <-time.After(200 * time.Millisecond):

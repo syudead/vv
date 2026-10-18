@@ -14,19 +14,12 @@ import { Button } from "../ui/shadcn/button";
 import type { TagKindFilter } from "./tagListUrl";
 import type { TagListEmpty } from "./tagListView";
 
-/**
- * noKindTitle は種類の絞り込みだけで行が無いときの見出しである。種類の名前をまだ読んでいなければ、
- * 組み合わせの見出しを使う。
- */
 function noKindTitle(kind: TagKindFilter, kindName: string | undefined): UiText {
   if (kind === "none") return t.tags.noKindlessTags;
   return kindName === undefined ? t.tags.noFilterMatches : t.tags.noKindTags(kindName);
 }
 
-/**
- * TagListEmptyState は一覧の代わりに出す空の状態である。
- * 文言は届いた行の条件（`appliedSearch`・`appliedTentative`・`appliedKind`）で決める。
- */
+/** Describe the conditions of the received rows, not a pending query. */
 export default function TagListEmptyState({
   empty,
   appliedSearch,
@@ -41,17 +34,11 @@ export default function TagListEmptyState({
   empty: TagListEmpty;
   appliedSearch: string;
   appliedTentative: boolean;
-  /** 届いた行の種類の絞り込み。 */
   appliedKind: TagKindFilter;
-  /** `appliedKind` の種類の名前。読み込み前（と `none`）は undefined。 */
   kindName: string | undefined;
-  /** 「新しいタグ」。 */
   onCreate: () => void;
-  /** 絞り込みを外す「Show all tags」。 */
   onShowAll: () => void;
-  /** 絞り込みと検索を外す「Show all tags」。 */
   onShowAllAndSearch: () => void;
-  /** 検索を外す「Show all tags」。 */
   onClearSearch: () => void;
 }) {
   const showAll = (onClick: () => void) => (
@@ -139,10 +126,7 @@ export default function TagListEmptyState({
   }
 }
 
-/**
- * TagsEmpty は見出しつきの空の状態である。題は見出し（h2）にし、読み上げソフトで
- * 見出しから状態へ飛べるようにする（状態の部品の題は見出しの要素を持たないため）。
- */
+/** Use h2 because the shared state title has no heading semantics. */
 export function TagsEmpty({
   icon,
   title,

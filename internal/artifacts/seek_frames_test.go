@@ -15,8 +15,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// numberedSheetWriter は 1 コマ 32 × 18 の 10 × 10 のシートを sheets 枚書く。コマ k は
-// 明るさ k の一色で塗るので、切り出したコマの明るさからどのコマかが分かる。
+// Encode frame indexes as solid brightness values in 32x18 cells of 10x10 sheets.
 func numberedSheetWriter(t *testing.T, sheets int) func(string) error {
 	t.Helper()
 	return func(dir string) error {
@@ -43,7 +42,6 @@ func numberedSheetWriter(t *testing.T, sheets int) func(string) error {
 	}
 }
 
-// 2 シートにまたがるコマから等間隔に選び、1 コマずつ切り出す。
 func TestSeekFramesSpreadAcrossSheets(t *testing.T) {
 	store := New(t.TempDir())
 	if err := publishSeek(store, key, spriteLayout, numberedSheetWriter(t, 2)); err != nil {
@@ -53,7 +51,7 @@ func TestSeekFramesSpreadAcrossSheets(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 150 コマから 3 つ: 25, 75, 125（2 枚目のシートの 25 番目）。
+	// Even spacing selects indexes 25, 75, and 125 across two sheets.
 	want := []int{25, 75, 125}
 	if len(frames) != len(want) {
 		t.Fatalf("コマの数 = %d", len(frames))
@@ -73,7 +71,6 @@ func TestSeekFramesSpreadAcrossSheets(t *testing.T) {
 	}
 }
 
-// 指定した組のコマを、a のコマを左、b のコマを右に並べた 1 コマの 2 倍の幅の JPEG で返す
 func TestSeekFramePairsSideBySide(t *testing.T) {
 	const other = "ef56ab78:1234"
 	store := New(t.TempDir())
@@ -110,7 +107,6 @@ func TestSeekFramePairsSideBySide(t *testing.T) {
 	}
 }
 
-// 片方のシーク用プレビューが無ければ fs.ErrNotExist、範囲外のコマは誤り。
 func TestSeekFramePairsErrors(t *testing.T) {
 	store := New(t.TempDir())
 	if err := publishSeek(store, key, spriteLayout, numberedSheetWriter(t, 2)); err != nil {

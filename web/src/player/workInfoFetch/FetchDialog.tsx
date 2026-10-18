@@ -31,7 +31,6 @@ import {
 } from "./fetchRules";
 import FindStep, { type RunFailure, type Running } from "./FindStep";
 
-/** 一覧を読み直す失敗（プラグインが承認を外されたか消された）。 */
 const PLUGIN_GONE = new Set(["plugin_not_approved", "not_found"]);
 
 type Step = "find" | "compare" | "result";
@@ -66,11 +65,7 @@ function busyLabel(label: string): ReactNode {
   );
 }
 
-/**
- * useFetchFlow は取得のダイアログの状態と動きである（ui-design「Fetch dialog」の図）。検索と取得は
- * 1 つずつ走らせ、ダイアログを閉じれば答えを捨てる。反映は動画を変える唯一の要求で、送っている
- * 間はダイアログを閉じない。
- */
+/** Serialize search/fetch and discard responses after closing. Applying is the only mutation and prevents closing until complete. */
 function useFetchFlow({
   video,
   plugins,
@@ -91,8 +86,7 @@ function useFetchFlow({
   const [query, setQuery] = useState(() => initialQuery(plugins[0], "words", video));
   const [candidates, setCandidates] = useState<WorkInfoCandidate[] | null>(null);
   if (plugin?.id !== pluginId) {
-    // 選んでいたプラグインが一覧から消えた（承認を外されたか消された）ので、先頭へ移る。
-    // 候補は消えたプラグインの答えなので、プラグインを選び直したときと同じく捨てる。
+    // Losing plugin approval invalidates its candidates; return to plugin selection.
     setPluginId(plugin?.id);
     setCandidates(null);
   }
@@ -101,7 +95,6 @@ function useFetchFlow({
   const [step, setStep] = useState<Step>("find");
   const [fetched, setFetched] = useState<Fetched | null>(null);
   const [selection, setSelection] = useState<WorkInfoField[]>([]);
-  // 選んだタグの名前。1 つでも選ばれていれば selection が `tags` を含む（056 R-7）。
   const [tags, setTags] = useState<string[]>([]);
   const [stale, setStale] = useState(false);
   const [applyFailure, setApplyFailure] = useState<unknown>(null);
@@ -142,7 +135,7 @@ function useFetchFlow({
         setCandidates(await searchWorkInfo(target.id, input.trim(), signal));
         return;
       }
-      // 入れた文字列は URL の形でも作品の ID としてそのまま送る（親 Issue 1232 の要件 14）。
+      // Treat URL-shaped text as an opaque work ID, never as a fetchable URL.
       const source = input.trim();
       const result = await fetchWorkInfo(video.id, target.id, source, signal);
       if (signal.aborted) return;
@@ -223,7 +216,7 @@ function useFetchFlow({
       setFailure(null);
     },
     chooseBy: (next: FindBy) => {
-      // 入れたままの最初の値は、語と ID で違う（題名と品番）ので入れ替える。打った語は残す。
+      // Switch untouched defaults between title and code, but preserve user-entered text.
       if (plugin !== undefined && query === initialQuery(plugin, by, latestVideo.current))
         setQuery(initialQuery(plugin, next, latestVideo.current));
       setBy(next);
@@ -232,18 +225,16 @@ function useFetchFlow({
     },
     changeQuery: setQuery,
     choose: (id: string) => {
-      // 候補を選ぶことはその作品 ID の取得なので、取得できないプラグインでは走らせない。
+      // Selecting a search result requires fetch capability.
       if (plugin !== undefined && canFetch(plugin) && running === null)
         void run(plugin, "fetch", id, true);
     },
     toggle: (field: WorkInfoField, on: boolean) => {
-      // タグの行のチェックボックスは、選べるタグを全部選ぶか全部外す。
       if (field === "tags" && fetched !== null)
         setTags(on ? selectableTags(latestVideo.current, fetched.result) : []);
       setSelection((current) => withField(current, field, on));
     },
     toggleTag: (name: string, on: boolean) => {
-      // 1 つも選ばれていなければ、反映の項目からタグを外す。
       const next = on
         ? [...new Set([...tags, name])]
         : tags.filter((item) => item !== name);
@@ -252,8 +243,6 @@ function useFetchFlow({
     },
     back: () => setStep("find"),
     fetchAgain: () => {
-      // 同じプラグインと作品 ID で取り直す。プラグインが承認を外されていれば、その失敗が
-      // 見つける段に出る。
       if (fetched === null || running !== null) return;
       void run(fetched.plugin, "fetch", fetched.source, fetched.fromSearch);
     },
@@ -283,11 +272,6 @@ function submitDisabled(flow: Flow): boolean {
   return flow.plugin === undefined || flow.running !== null || flow.query.trim() === "";
 }
 
-/**
- * FetchDialog は取得のダイアログである。見つける段（検索の候補を含む）、比較の段、付けなかったタグと飛ばした値を知らせる
- * 結果の段を
- * 1 つの窓で切り替える。反映が成功するまで動画は変わらない。
- */
 export default function FetchDialog(props: {
   video: Video;
   plugins: readonly WorkInfoPlugin[];

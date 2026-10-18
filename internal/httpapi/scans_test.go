@@ -15,8 +15,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 取り込みの開始は 202 とスキャンを返す。応答は即座に返り、取り込みは
-// 背後で進む。
 func TestStartScanReturnsAccepted(t *testing.T) {
 	scans := &fakeScans{}
 	handler := newTestServer(t, Options{Scans: scans})
@@ -35,8 +33,6 @@ func TestStartScanReturnsAccepted(t *testing.T) {
 	}
 }
 
-// 実行中に呼んでも新しく始めず、実行中のものを返す。409 にしないのは、
-// 利用者の意図が「今の状態を進めたい」だからである。
 func TestStartScanReturnsRunningInsteadOfConflict(t *testing.T) {
 	scans := &fakeScans{
 		hasScan: true,
@@ -64,8 +60,6 @@ func TestStartScanReturnsRunningInsteadOfConflict(t *testing.T) {
 	}
 }
 
-// 直近の状態を返す。古い項目（startedAt・finishedAt・total・completed・failed）は
-// 返さない。
 func TestGetCurrentScan(t *testing.T) {
 	handler := newTestServer(t, Options{Scans: &fakeScans{
 		hasScan: true,
@@ -95,8 +89,6 @@ func TestGetCurrentScan(t *testing.T) {
 	}
 }
 
-// 取り込みの状態・本数・完了の時刻は、internal/app が組み立てた値をそのまま返す。
-// finding のあいだは本数を、done・partial 以外では完了の時刻を省く
 func TestGetCurrentScanReturnsImportProgress(t *testing.T) {
 	settledAt := time.Unix(1_700_000_100, 0).UTC()
 	for _, tc := range []struct {
@@ -161,8 +153,6 @@ func TestGetCurrentScanReturnsImportProgress(t *testing.T) {
 	}
 }
 
-// 走査そのものが失敗した理由は応答に出す。利用者が次の一手を取れるように
-// するため（対象ディレクトリの権限を直す等）。
 func TestGetCurrentScanExposesError(t *testing.T) {
 	handler := newTestServer(t, Options{Scans: &fakeScans{
 		hasScan: true,
@@ -177,7 +167,6 @@ func TestGetCurrentScanExposesError(t *testing.T) {
 	}
 }
 
-// 一度もスキャンしていなければ 404。
 func TestGetCurrentScanWhenNeverScanned(t *testing.T) {
 	handler := newTestServer(t, Options{Scans: &fakeScans{}})
 
@@ -186,7 +175,6 @@ func TestGetCurrentScanWhenNeverScanned(t *testing.T) {
 		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonNoScan})
 }
 
-// スキャンの経路も中間キャッシュに残さない。
 func TestScanResponsesAreNotCached(t *testing.T) {
 	handler := newTestServer(t, Options{Scans: &fakeScans{
 		hasScan: true, current: domain.Scan{ID: 1, State: domain.ScanRunning},
@@ -203,7 +191,6 @@ func TestScanResponsesAreNotCached(t *testing.T) {
 	}
 }
 
-// 開始に失敗した場合は 500。取り込みが始まっていないことが分かる必要がある。
 func TestStartScanReportsFailure(t *testing.T) {
 	handler := newTestServer(t, Options{Scans: &fakeScans{
 		startErr: errors.New("走査を始められません"),
@@ -248,7 +235,6 @@ func TestStartScanRejectsInvalidJSONBody(t *testing.T) {
 	}
 }
 
-// 取り込みの経路が組み込まれていない構成でも 500 で応える。
 func TestScansWithoutController(t *testing.T) {
 	handler := newTestServer(t, Options{})
 
@@ -260,7 +246,6 @@ func TestScansWithoutController(t *testing.T) {
 	}
 }
 
-// scanIssueFixture は並びを確かめるための問題である。domain.ScanIssues が並べる。
 func scanIssueFixture() []domain.ScanIssue {
 	media := filepath.FromSlash("/media")
 	return domain.ScanIssues([]domain.MediaFolder{{ID: 7, Path: media}}, []domain.ScanIssueRecord{
@@ -271,8 +256,6 @@ func scanIssueFixture() []domain.ScanIssue {
 	})
 }
 
-// 問題の一覧は、失敗を先に、同じ重さの中はファイル名の順に返し、続きがあるときだけ
-// nextCursor を返す。
 func TestListCurrentScanIssuesOrderAndCursor(t *testing.T) {
 	handler := newTestServer(t, Options{Scans: &fakeScans{
 		hasScan: true, current: domain.Scan{ID: 9, State: domain.ScanDone}, issues: scanIssueFixture(),
@@ -307,7 +290,6 @@ func TestListCurrentScanIssuesOrderAndCursor(t *testing.T) {
 		t.Fatalf("2ページ目 = %+v, want 代用の b.mp4 だけで続きなし", second)
 	}
 
-	// 既定の件数は 50 で、すべて入れば nextCursor を返さない。
 	all := decode[gen.ScanIssuePage](t, do(t, handler, http.MethodGet, "/api/scans/current/issues"))
 	if len(all.Items) != 3 || all.NextCursor != nil {
 		t.Fatalf("既定の件数 = %+v", all)
@@ -328,7 +310,6 @@ func TestListCurrentScanIssuesRejectsInvalidRequests(t *testing.T) {
 	}
 }
 
-// 一度も走査していなければ 404。
 func TestListCurrentScanIssuesWhenNeverScanned(t *testing.T) {
 	handler := newTestServer(t, Options{Scans: &fakeScans{}})
 	rec := do(t, handler, http.MethodGet, "/api/scans/current/issues")
@@ -336,7 +317,6 @@ func TestListCurrentScanIssuesWhenNeverScanned(t *testing.T) {
 		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonNoScan})
 }
 
-// 問題の一覧は所有者だけの経路で、ゲストには未認証を返し、中身を出さない（要件 11）。
 func TestListCurrentScanIssuesIsOwnerOnly(t *testing.T) {
 	if _, ok := accessRoutes["GET /api/scans/current/issues"]; ok {
 		t.Fatal("問題の一覧がゲストにも返す経路の表に入っている")
@@ -356,7 +336,6 @@ func TestListCurrentScanIssuesIsOwnerOnly(t *testing.T) {
 	}
 }
 
-// Scan.issues は internal/app が数えた本数と、保存された番号を返す。
 func TestGetCurrentScanReturnsIssueCounts(t *testing.T) {
 	handler := newTestServer(t, Options{Scans: &fakeScans{
 		hasScan: true,

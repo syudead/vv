@@ -4,9 +4,7 @@ import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の Command（cmdk）。打った文字で絞り込む一覧で、Combobox の中身になる。
-// 窓で開く CommandDialog は Dialog を待つので、この単位では持たない。
-// 規則は web/registry/rules/components.md の Combobox and Command。
+// Adapted from shadcn/ui Command (cmdk); see web/registry/rules/components.md, Combobox and Command.
 
 function Command({ className, ...props }: ComponentProps<typeof CommandPrimitive>) {
   return (
@@ -21,11 +19,7 @@ function Command({ className, ...props }: ComponentProps<typeof CommandPrimitive
   );
 }
 
-// 入力は共通のフォーカスの輪（index.css の :focus-visible）を出す。上流の outline-hidden は
-// その輪を消すので外し、輪が Command の overflow-hidden で切れないよう入力を行より低い
-// h-6 にしている。
-// 入力を囲む枠は wrapperClassName で、入力の後ろに置く印（送信中の回転など）は trailing で
-// 足せる（ui/TagCommand の dropdown・inline。web/registry/rules/components.md の
+// Remove upstream outline-hidden and shrink the input to h-6 so the shared focus ring is not hidden or clipped.
 // TagCommand）。
 function CommandInput({
   className,
@@ -34,11 +28,8 @@ function CommandInput({
   trailing,
   ...props
 }: ComponentProps<typeof CommandPrimitive.Input> & {
-  /** 入力の先頭の印。既定は虫眼鏡。 */
   icon?: ReactNode;
-  /** 入力を囲む枠のクラス。既定の枠に重ねる。 */
   wrapperClassName?: string;
-  /** 入力の後ろ、枠の中に置くもの。 */
   trailing?: ReactNode;
 }) {
   return (
@@ -101,8 +92,7 @@ function CommandGroup({
     <CommandPrimitive.Group
       data-slot="command-group"
       className={cn("overflow-hidden p-1 text-foreground", className)}
-      // 見出しは cmdk の [cmdk-group-heading] の中に入る。属性の選択子は入れ子の [] に
-      // なって lint で落ちるので、見出しの見た目はここで包んで付ける。
+      // Wrap heading styling because cmdk's nested attribute selectors fail the class lint rule.
       heading={
         heading === undefined ? undefined : (
           <span className="block px-2 py-1.5 text-xs font-medium text-muted-foreground">

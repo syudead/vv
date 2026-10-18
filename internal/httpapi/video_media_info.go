@@ -8,18 +8,12 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 動画の追加の情報を、動画 1 件の詳細（GET /api/videos/{id}）に載せる部分
-//
-
-// MediaInfoReader は動画の追加の情報の読み出し先である。
 type MediaInfoReader interface {
-	// MediaInfo は動画 videoID の追加の情報を返す。今の版の行が無ければ nil である。
+	// Return nil when the current version is absent.
 	MediaInfo(ctx context.Context, videoID int64) (*domain.MediaInfo, error)
 }
 
-// mediaInfoForDetail は動画 1 件の詳細に載せる追加の情報を video に埋める。所有者とゲストを
-// 分けない。一覧・関連動画・ライブラリの項目・所有者の
-// PUT の応答は呼ばないので、そこには載らない。
+// Media information appears only in video details, identically for owners and guests.
 func (s *server) mediaInfoForDetail(ctx context.Context, video domain.Video) (domain.Video, error) {
 	if s.mediaInfo == nil {
 		return video, nil
@@ -32,8 +26,7 @@ func (s *server) mediaInfoForDetail(ctx context.Context, video domain.Video) (do
 	return video, nil
 }
 
-// toAPIMediaInfo は追加の情報を契約の MediaInfo にする。nil、または項目が 1 つも無いときは
-// nil を返し、応答から丸ごと省く。
+// Omit nil or empty media information.
 func toAPIMediaInfo(info *domain.MediaInfo) *gen.MediaInfo {
 	if info == nil {
 		return nil
@@ -136,7 +129,6 @@ func toAPIMediaEmbedded(embedded *domain.MediaEmbedded) *gen.MediaInfoEmbedded {
 	return &out
 }
 
-// toAPIMediaBroadcast は TS の録画の局名と番組名を契約の形にする。どちらも無ければ nil（省く）。
 func toAPIMediaBroadcast(broadcast *domain.MediaBroadcast) *gen.MediaInfoBroadcast {
 	if broadcast == nil {
 		return nil
@@ -148,8 +140,7 @@ func toAPIMediaBroadcast(broadcast *domain.MediaBroadcast) *gen.MediaInfoBroadca
 	return &out
 }
 
-// recordedAt は保存した RFC 3339 の撮影の日時を読む。ファイルの時差は time.Time が保ち、
-// JSON にもそのまま出る。読めなければ nil（省く）。
+// Preserve the RFC3339 offset in recordedAt; omit invalid values.
 func recordedAt(value string) *time.Time {
 	if value == "" {
 		return nil
@@ -174,7 +165,6 @@ func toAPIChapters(chapters []domain.MediaChapter) *[]gen.MediaInfoChapter {
 	return &out
 }
 
-// optionalPositive は正の数だけを返し、0 以下（無い）は省く。
 func optionalPositive[T int | int64 | float64](value T) *T {
 	if value <= 0 {
 		return nil
@@ -182,7 +172,6 @@ func optionalPositive[T int | int64 | float64](value T) *T {
 	return &value
 }
 
-// optionalTrue は true だけを返し、false（無い）は省く。
 func optionalTrue(value bool) *bool {
 	if !value {
 		return nil

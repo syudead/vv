@@ -8,16 +8,12 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// フォルダ由来のタグを、
-// 本物の保存層と経路をつないで確かめる。所有者には出所つきで出て、ゲストの
-// Video.tags は空のまま、ゲストの検索はフォルダ名のタグに当たらない。
 func TestFolderTagsForOwnerAndGuest(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
 	ctx := context.Background()
 	db := env.db
 
-	// a と b は pub/ の下にある。フォルダ名 pub をシノニムに持つタグを作る。
 	const folderTag = "フォルダの秘密"
 	tag, err := db.Tags().CreateTag(ctx, folderTag)
 	if err != nil {

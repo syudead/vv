@@ -13,12 +13,7 @@ import { useToast } from "../ui/Toast";
 import { SelectionAction, WithTooltip } from "./SelectionAction";
 import { overLimitMessage } from "./selectionErrors";
 
-/**
- * FavoriteMenu は選択バーの「Favorite」である。選んだ項目の今の状態は示さず、「Add to favorites」「Remove from
- * favorites」の両方を常に押せる。`videoIds` は選んだ id のうち選んだグループのメンバーで
- * ないもの、`groupIds` は選んだグループで、1 回の `PUT /api/favorites` で送る。確定したらトーストで結果を伝え、選択は残す。カードの
- * 印は応答の通知（api/favorites.ts）で一覧が差し替える。
- */
+/** Send selected groups and standalone videos once, preserving selection; member videos are excluded when their group is selected. */
 export default function FavoriteMenu({
   videoIds,
   groupIds,
@@ -27,14 +22,13 @@ export default function FavoriteMenu({
 }: {
   videoIds: readonly number[];
   groupIds: readonly number[];
-  /** 送る数（`videoIds` と `groupIds` の合計）が上限を超えるとき true。 */
   overLimit: boolean;
   overLimitId: string;
 }) {
   const toast = useToast();
 
   function apply(favorite: boolean) {
-    // 送る直前に最新の数を確かめる（タグ・公開と同じ理由。上限を超えると 400 になる）。
+    // Recheck current counts before submitting to avoid an over-limit 400.
     if (videoIds.length + groupIds.length > maxVideoTagsSelection) {
       toast(overLimitMessage());
       return;

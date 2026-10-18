@@ -10,11 +10,8 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 取得した作品の詳細の反映。
-
 var performerField = domain.PersonField(domain.PersonPerformer)
 
-// applyDetails は動画 videoID に、承認済みのプラグインの取得として fetched のうち fields を反映する。
 func applyDetails(
 	t *testing.T, db *DB, videoID int64, fetched domain.FetchedWorkInfo, fields ...domain.WorkInfoField,
 ) domain.FetchedWorkInfoApplied {
@@ -56,8 +53,6 @@ func fetchedPerformer(name string, ids ...domain.ExternalID) domain.FetchedPerso
 	return domain.FetchedPerson{Role: domain.PersonPerformer, Name: name, ExternalIDs: ids}
 }
 
-// 受け入れ条件 2・3: 保存済みの出演者の横に 2 人目が足され、既存の人物の外部 ID を持つ件は新しい行を作らずに
-// 結び付き、何にも当たらない件は取得した外部 ID を持つ人物を作る。
 func TestApplyFetchedDetailsLinksAndCreatesPeople(t *testing.T) {
 	db, ids := overrideFixture(t)
 	alpha := ids[fixturePath("/media/alpha.mp4")]
@@ -94,8 +89,7 @@ func TestApplyFetchedDetailsLinksAndCreatesPeople(t *testing.T) {
 	}
 }
 
-// 結果に 2 回ある人物と、その役割にすでに結び付いている人物は 1 回だけ結び付く。取得と反映の間に作られた
-// 人物には結び付き、重複して作られない。
+// Reuse people created between fetch and apply to avoid duplicates.
 func TestApplyFetchedDetailsLinksEachPersonOnce(t *testing.T) {
 	db, ids := overrideFixture(t)
 	alpha := ids[fixturePath("/media/alpha.mp4")]
@@ -103,7 +97,7 @@ func TestApplyFetchedDetailsLinksEachPersonOnce(t *testing.T) {
 	setWorkInfo(t, db, alpha, domain.WorkInfo{People: []domain.WorkPerson{
 		{Role: domain.PersonPerformer, Person: domain.CreditRef{ID: linked.ID}},
 	}})
-	// 取得の時には無かった人物が、反映の前に作られた。
+	// Simulate a person created after fetch but before apply.
 	late := createPerson(t, db, "Late")
 	before := personCount(t, db)
 
@@ -120,8 +114,6 @@ func TestApplyFetchedDetailsLinksEachPersonOnce(t *testing.T) {
 	}
 }
 
-// Edge Cases: 曖昧な件は結び付かず作られず報告され、100 人いる動画への新しい出演者は too_many で人物の
-// 行を残さない。
 func TestApplyFetchedDetailsSkipsAmbiguousAndOverTheLimit(t *testing.T) {
 	db, ids := overrideFixture(t)
 	alpha := ids[fixturePath("/media/alpha.mp4")]
@@ -151,7 +143,6 @@ func TestApplyFetchedDetailsSkipsAmbiguousAndOverTheLimit(t *testing.T) {
 	}
 }
 
-// 受け入れ条件 5: 名前が実体の上限を超える新しい出演者は invalid で報告され、選んだ品番は書かれる。
 func TestApplyFetchedDetailsWritesTheCodeBesideAnInvalidPerformer(t *testing.T) {
 	db, ids := overrideFixture(t)
 	alpha := ids[fixturePath("/media/alpha.mp4")]
@@ -174,7 +165,6 @@ func TestApplyFetchedDetailsWritesTheCodeBesideAnInvalidPerformer(t *testing.T) 
 	}
 }
 
-// 動画が無いときは、新しい人物も作品情報の行も残らない。
 func TestApplyFetchedDetailsOnAMissingVideoLeavesNothing(t *testing.T) {
 	db, _ := overrideFixture(t)
 	plugin := approvedPlugin(t, db, "details", "dd")
@@ -197,7 +187,6 @@ func TestApplyFetchedDetailsOnAMissingVideoLeavesNothing(t *testing.T) {
 	}
 }
 
-// VideoWorkInfoChanged は作品情報が変わったとき確定後に 1 回出て、題名だけが変わったときは出ない。
 func TestApplyFetchedDetailsPublishesWorkInfoChangedOnlyForDetails(t *testing.T) {
 	db, ids := overrideFixture(t)
 	alpha := ids[fixturePath("/media/alpha.mp4")]

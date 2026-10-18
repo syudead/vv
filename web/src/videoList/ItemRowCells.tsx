@@ -20,15 +20,7 @@ import {
 } from "../ui/VideoThumbnail";
 import { shownVersionsCount, VersionsMark } from "./VersionsMark";
 
-// 順に並ぶ項目（動画・グループ・スマートフォルダ）の行の共通の列である。プレイリストの画面の行
-// と、それを使うグループのページのリスト表示
-// が、サムネイル・題名の下の行・視聴済み・長さを
-// ここから描く。
-
-/**
- * OrderedItem は順に並ぶ項目である。プレイリストとグループの項目が同じ形を持つ。スマートフォルダの
- * 項目はプレイリストにだけあり、グループの項目の行と同じ値で描く。
- */
+/** Smart-folder items occur only in playlists but share the collection row shape. */
 export interface OrderedItem {
   kind: "video" | "group" | "smartFolder";
   video?: Video;
@@ -36,19 +28,14 @@ export interface OrderedItem {
   smartFolder?: LibrarySmartFolder;
 }
 
-/** OrderedCollection はグループとスマートフォルダの項目が行に出す、共通の値である。 */
 export type OrderedCollection = Pick<
   LibraryGroup,
   "name" | "videoCount" | "watchedCount" | "watchState" | "durationMs" | "previews"
 > & {
-  /** 押したときに開く動画。動画の無いスマートフォルダには無い。 */
+  /** Absent for smart folders with no videos. */
   openVideoId?: number;
 };
 
-/**
- * orderedItemCollection はグループかスマートフォルダの項目の値である。動画の項目と、中身の無い
- * 項目（契約上は起きない）では undefined。
- */
 export function orderedItemCollection(item: OrderedItem): OrderedCollection | undefined {
   if (item.kind === "group") return item.group;
   if (item.kind === "smartFolder") return item.smartFolder;
@@ -59,15 +46,11 @@ interface RowFacts {
   thumbnailUrl: string | undefined;
   narrow: boolean;
   state: "unwatched" | "inProgress" | "watched";
-  /** 進み具合の棒の割合（0〜1）。見ている途中でなければ null。 */
+  /** Ratio in [0, 1], or null when not partially watched. */
   ratio: number | null;
-  /** グループの「3 / 12」。グループでなければ null。 */
   groupProgress: string | null;
-  /** グループの 2 行目（「12 videos」）。 */
   groupCount: string | null;
-  /** 2 行目の印をスマートフォルダの `FolderSearch` にするとき true（グループは `Folder`）。 */
   smartFolder: boolean;
-  /** 動画の無いスマートフォルダの項目のとき true。名前を従の色にする。 */
   empty: boolean;
   unplayable: string | null;
 }
@@ -84,10 +67,6 @@ const emptyFacts: RowFacts = {
   unplayable: null,
 };
 
-/**
- * rowFacts は行に出す値を、動画とグループで同じ形にそろえる（library のリスト表示と同じ値）。
- * スマートフォルダの項目はグループの項目と同じ値で、2 行目の印だけが違う。
- */
 export function rowFacts(item: OrderedItem): RowFacts {
   const group = orderedItemCollection(item);
   if (group !== undefined) {
@@ -123,22 +102,17 @@ export function rowFacts(item: OrderedItem): RowFacts {
   };
 }
 
-/**
- * orderedItemTitle は項目の名前である。動画は題名、グループは名前。応答に中身が無い項目
- * （契約上は起きない）は空にする。
- */
+/** Return empty for a contract-violating item with no content. */
 export function orderedItemTitle(item: OrderedItem): string {
   if (item.kind === "video") return item.video?.title ?? "";
   return orderedItemCollection(item)?.name ?? "";
 }
 
-/** orderedItemDurationMs は項目の長さである。動画の長さか、グループとスマートフォルダの合計。 */
 export function orderedItemDurationMs(item: OrderedItem): number | undefined {
   if (item.kind === "video") return item.video?.durationMs;
   return orderedItemCollection(item)?.durationMs;
 }
 
-/** ItemThumbnailCell は行のサムネイルの列である。長さと進み具合を重ねる。 */
 export function ItemThumbnailCell({
   item,
   facts,
@@ -181,16 +155,11 @@ export function ItemThumbnailCell({
   );
 }
 
-/**
- * CollectionCountIcon はグループとスマートフォルダの本数の行の印である。スマートフォルダは
- * `FolderSearch`、グループは `Folder`。
- */
 export function CollectionCountIcon({ smartFolder }: { smartFolder: boolean }) {
   const Icon = smartFolder ? FolderSearch : Folder;
   return <Icon aria-hidden="true" className="size-3 shrink-0" />;
 }
 
-/** ItemTitleExtras は題名の下の行（グループの本数、再生できない理由）である。 */
 export function ItemTitleExtras({ facts }: { facts: RowFacts }) {
   return (
     <>
@@ -211,8 +180,8 @@ export function ItemTitleExtras({ facts }: { facts: RowFacts }) {
 }
 
 /**
- * ItemWatchedAndDurationCells は視聴済み（`sm` から）と長さ（`sm` から）の 2 列である。
- * 狭い幅ではサムネイルの長さだけを出し、題名の幅を残す。
+ * Hide watch state and duration columns below sm to preserve title width; the thumbnail retains
+ * duration.
  */
 export function ItemWatchedAndDurationCells({
   item,

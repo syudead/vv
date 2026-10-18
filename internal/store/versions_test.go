@@ -9,9 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 同じ動画の別バージョンの集まりと利用者データの鍵。
-
-// versionFixture は題名 a〜d の 4 本を /media の下に取り込み、題名から id を引ける形で返す。
 func versionFixture(t *testing.T) (*DB, map[string]int64) {
 	t.Helper()
 	db := migratedDB(t)
@@ -55,7 +52,6 @@ func ownerVideo(t *testing.T, db *DB, id int64) domain.Video {
 	return video
 }
 
-// manualTagNames は利用者データの鍵 key に手で付いたタグの名前を返す。
 func manualTagNames(t *testing.T, db *DB, key string) []string {
 	t.Helper()
 	tags, err := db.Tags().TagsByContentKeys(context.Background(), []string{key})
@@ -95,9 +91,6 @@ func listedIDs(t *testing.T, db *DB, q domain.VideoQuery) []int64 {
 	return ids
 }
 
-// タグ X の A とタグ Y の B を A を代表に束ねると、どちらの UserKey も同じ集まりの鍵になり、
-// その鍵のタグは X だけで、B の content_key の行にはタグ Y が残る（受け入れ条件 6 の保存の部分）。
-// タグの絞り込みも集まりの鍵で判定し、一覧には代表の A だけが出る。
 func TestBundleKeysUserDataByTheBundle(t *testing.T) {
 	db, ids := versionFixture(t)
 	x := attachNamedTag(t, db, "X", ids["a"])
@@ -135,14 +128,12 @@ func TestBundleKeysUserDataByTheBundle(t *testing.T) {
 			if item.ID == ids["b"] && item.UserKey != a.UserKey {
 				t.Errorf("一覧の B の UserKey = %q", item.UserKey)
 			}
-			// 一覧の項目にも集まりの要約が入る。
 			if item.ID == ids["a"] && (item.Versions == nil || item.Versions.Count != 2) {
 				t.Errorf("一覧の A の Versions = %+v, want count 2", item.Versions)
 			}
 		}
 	}
 
-	// タグの付け外しと要約は集まりを 1 本として扱う。
 	summary, err := db.Tags().Summary(context.Background(), []int64{ids["a"], ids["b"]})
 	if err != nil {
 		t.Fatal(err)
@@ -158,7 +149,6 @@ func TestBundleKeysUserDataByTheBundle(t *testing.T) {
 	}
 }
 
-// 代表を B に替えても集まりの鍵とタグは変わらない（受け入れ条件 8 の保存の部分）。
 func TestMakeRepresentativeKeepsBundleValues(t *testing.T) {
 	db, ids := versionFixture(t)
 	attachNamedTag(t, db, "X", ids["a"])
@@ -186,8 +176,6 @@ func TestMakeRepresentativeKeepsBundleValues(t *testing.T) {
 	}
 }
 
-// B を外すと B の UserKey が content_key に戻りタグ Y が引け、集まりのタグは X のまま
-// （受け入れ条件 9）。代表を外したときは残りから次の代表を選ぶ。
 func TestUnbundleRestoresOwnValues(t *testing.T) {
 	db, ids := versionFixture(t)
 	attachNamedTag(t, db, "X", ids["a"])
@@ -212,7 +200,6 @@ func TestUnbundleRestoresOwnValues(t *testing.T) {
 	if _, err := db.Versions().Unbundle(context.Background(), ids["a"]); err != nil {
 		t.Fatal(err)
 	}
-	// 代表 A を外したので、残りは C の 1 本になり集まりが解けた。
 	if bundleCount(t, db) != 0 {
 		t.Errorf("集まりが残っている")
 	}
@@ -221,7 +208,6 @@ func TestUnbundleRestoresOwnValues(t *testing.T) {
 	}
 }
 
-// 代表を外しても残りが 2 本以上なら、残りのうち id の最小の動画が代表になる。
 func TestUnbundleRepresentativeChoosesNext(t *testing.T) {
 	db, ids := versionFixture(t)
 	bundle(t, db, ids["b"], ids["a"], ids["b"], ids["c"])
@@ -237,8 +223,6 @@ func TestUnbundleRepresentativeChoosesNext(t *testing.T) {
 	}
 }
 
-// 残りが 1 本になると集まりの行が消え、残った 1 本の content_key に集まりの値が写る
-// （既存の行は置き換える）。
 func TestUnbundleDissolvesAndCopiesValues(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -275,8 +259,6 @@ func TestUnbundleDissolvesAndCopiesValues(t *testing.T) {
 	}
 }
 
-// 集まり同士を束ねると 1 つの集まりになり、値は選んだ代表の集まりのもので、吸収した集まりの
-// 行は消える。吸収した集まりの鍵の値は残る（Edge Case「集まり同士を束ねる」）。
 func TestBundleMergesBundles(t *testing.T) {
 	db, ids := versionFixture(t)
 	attachNamedTag(t, db, "X", ids["a"])
@@ -310,8 +292,6 @@ func TestBundleMergesBundles(t *testing.T) {
 	}
 }
 
-// SaveProgress を B の UserKey に書くと A の再生位置が進む（受け入れ条件 7 の保存の部分）。
-// 視聴状態の絞り込みも集まりの鍵で判定し、一覧には代表の A だけが出る。
 func TestSaveProgressOnBundleMember(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -333,8 +313,6 @@ func TestSaveProgressOnBundleMember(t *testing.T) {
 	}
 }
 
-// SetVideosPublic は集まりの鍵に書き、返す鍵に全メンバーの content_key が入る。ゲストには
-// 集まりの全バージョンが見える。
 func TestSetVideosPublicWritesBundleKey(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -368,7 +346,6 @@ func TestSetVideosPublicWritesBundleKey(t *testing.T) {
 	}
 }
 
-// 束ねの操作は確定後に VideoBundleChanged を 1 回（解除は VersionCandidatesChanged も）発行し、誤りでは何も残さず発行しない。
 func TestBundlePublishesOnceAndRejectsInvalidInput(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -393,7 +370,6 @@ func TestBundlePublishesOnceAndRejectsInvalidInput(t *testing.T) {
 	}
 
 	bundle(t, db, ids["b"], ids["b"], ids["a"])
-	// 所有者の操作の記録の知らせは確定の直後に先に届く。
 	bundled := domain.VideoBundleChanged{VideoIDs: []int64{ids["a"], ids["b"]}}
 	want := []domain.Event{domain.ActivityChanged{}, bundled}
 	if !slices.EqualFunc(recorder.events, want, eventsEqual) {
@@ -404,7 +380,6 @@ func TestBundlePublishesOnceAndRejectsInvalidInput(t *testing.T) {
 	if _, err := db.Versions().Unbundle(ctx, ids["a"]); err != nil {
 		t.Fatal(err)
 	}
-	// 解除は外した組の候補を作り直すので、候補の一覧の変化も知らせる。
 	want = []domain.Event{domain.ActivityChanged{}, bundled, domain.VersionCandidatesChanged{}}
 	if !slices.EqualFunc(recorder.events, want, eventsEqual) {
 		t.Errorf("解除の events = %v, want %v", recorder.events, want)
@@ -420,7 +395,6 @@ func eventsEqual(a, b domain.Event) bool {
 	return !okA && !okB && a == b
 }
 
-// 外部連携 API のタグの一括操作と一覧も利用者データの鍵で読み書きする。
 func TestExternalVideoTagsUseBundleKey(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()

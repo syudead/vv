@@ -73,7 +73,6 @@ describe("ActiveTagFilters", () => {
       await screen.findByRole("button", { name: "Remove the filter for 旅行" }),
     ).toBeDefined();
 
-    // 届いた直後（取り直しを省く間）に、その一覧より後に作られたタグで絞り込む。
     rerender(
       <ActiveTagFilters
         tagIds={[2]}
@@ -105,7 +104,6 @@ describe("ActiveTagFilters", () => {
     ).toBeDefined();
     first.unmount();
 
-    // 保持は使い回す間（2 秒）より古い。開いたときの確かめ直しが取り直す。
     const now = Date.now();
     vi.spyOn(Date, "now").mockReturnValue(now + 10_000);
     render(

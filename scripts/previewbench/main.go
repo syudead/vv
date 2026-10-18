@@ -1,17 +1,5 @@
-// previewbench は動くプレビューとシーク用サムネイルの生成にかかる壁時計時間と
-// ffmpeg のピークメモリを測る。シーク用では出力のファイル数と合計バイト数も出す。
-// 生成方式を変える前後で、同じ入力と環境の数字を比べるために使う。手順は
-// docs/how-to/preview-benchmark.md にある。
-//
-// 測るのは本番の生成コードそのもの（動くプレビューは media.GeneratePreview、
-// シーク用は media.GenerateSeekThumbnailSet）である。ffmpeg の引数をここへ写すと
-// 本番とずれるので写さない。
-// シーク用の生成方式を変えるときは GenerateSeekThumbnailSet の中身だけを変え、
-// ここには触れない。
-//
-// ピークメモリは終了した子プロセス全体の最大（RUSAGE_CHILDREN の maxrss）なので、
-// 複数の入力を1回の実行に渡すと前の入力の値を引き継ぐ。比べるときは入力ごとに
-// 実行を分ける。
+// previewbench measures production preview and seek-thumbnail generation; see docs/how-to/preview-benchmark.md.
+// Run each input separately when comparing peak RSS: RUSAGE_CHILDREN retains the maximum across completed children.
 package main
 
 import (
@@ -33,22 +21,20 @@ import (
 
 const defaultRuns = 2
 
-// kind は測る生成の種類である。
 type kind string
 
 const (
-	kindPreview kind = "preview" // 動くプレビュー
-	kindSeek    kind = "seek"    // シーク用サムネイル
+	kindPreview kind = "preview"
+	kindSeek    kind = "seek"
 )
 
-// config はコマンドラインの解釈結果である。
 type config struct {
 	kind   kind
 	runs   int
 	videos []string
 }
 
-// errUsage は使い方の誤りを表す。終了コードを分けるために使う。
+// Separate usage errors from runtime failures by exit code.
 var errUsage = errors.New("使い方の誤り")
 
 func parseArgs(args []string, stderr io.Writer) (config, error) {
@@ -76,14 +62,13 @@ func parseArgs(args []string, stderr io.Writer) (config, error) {
 	return config{kind: k, runs: *runs, videos: flags.Args()}, nil
 }
 
-// deps は外部プロセスに触れる処理である。テストから差し替える。
+// Replace process dependencies in tests.
 type deps struct {
 	probeDuration func(ctx context.Context, path string) (int64, error)
 	generate      func(ctx context.Context, videoPath, output string, durationMs int64) error
-	// generateSeek はシーク用サムネイルの一式を既にある outputDir へ書く。
+	// generateSeek writes into an existing outputDir.
 	generateSeek func(ctx context.Context, videoPath, outputDir string, durationMs int64) error
-	// peakRSS は終了した子プロセス全体のピークメモリ（バイト）を返す。
-	// 取れない OS では ok が false になる。
+	// peakRSS reports completed-child peak memory in bytes, or ok=false on unsupported systems.
 	peakRSS func() (bytes int64, ok bool)
 }
 
@@ -102,7 +87,6 @@ func productionDeps() deps {
 	}
 }
 
-// result は1つの入力の計測結果である。
 type result struct {
 	kind       kind
 	video      string
@@ -110,17 +94,16 @@ type result struct {
 	runs       []time.Duration
 	peakBytes  int64
 	peakOK     bool
-	// outputs は回ごとの出力の集計である。シーク用だけが持つ。
+	// Only seek-thumbnail generation reports output counts.
 	outputs []outputStats
 }
 
-// outputStats は1回の生成が書いた出力のファイル数と合計バイト数である。
 type outputStats struct {
 	files int
 	bytes int64
 }
 
-// countOutputs は dir の下の通常ファイルを全部数え、合計バイト数を足す。
+// Count regular files recursively.
 func countOutputs(dir string) (outputStats, error) {
 	var stats outputStats
 	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
@@ -141,7 +124,7 @@ func countOutputs(dir string) (outputStats, error) {
 	return stats, err
 }
 
-// runOnce は1回の生成を走らせて壁時計時間を返し、出力を消す。
+// runOnce measures wall time and removes generated output afterward.
 func runOnce(ctx context.Context, cfg config, d deps, workDir, video string, durationMs int64) (time.Duration, *outputStats, error) {
 	if cfg.kind == kindSeek {
 		outputDir := filepath.Join(workDir, "seek")
@@ -259,9 +242,7 @@ func run(ctx context.Context, args []string, d deps, stdout, stderr io.Writer) i
 	return 0
 }
 
-// stopSignals はベンチマークを中断する信号である。SIGTERM も受けないと、Go の既定の
-// 動作で親だけが終わり、GeneratePreview の ffmpeg が動き続けて一時出力も残る。
-// どちらもコンテキストのキャンセルに変えて、ffmpeg を止め一時ディレクトリを消す。
+// Convert SIGTERM and interrupt to context cancellation so FFmpeg and temporary files are cleaned up too.
 var stopSignals = []os.Signal{os.Interrupt, syscall.SIGTERM}
 
 func signalContext(parent context.Context) (context.Context, context.CancelFunc) {

@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-// 包まれた理由のコードは、さらに包まれても取り出せる。包まれていなければ internal。
 func TestFailureCodesOf(t *testing.T) {
 	probe := fmt.Errorf("job: %w", NewProbeFailure(ProbeErrorInvalidMetadata, errors.New("bad duration")))
 	if got := ProbeErrorCodeOf(probe); got != ProbeErrorInvalidMetadata {

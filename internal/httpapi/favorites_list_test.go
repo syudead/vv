@@ -11,13 +11,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 一覧の favorite・favorited* の並び順・GET /api/library/ids の groups
-// を、本物の認証・保存層・経路をつないで
-// 確かめる。中身は library_test.go の libraryFixture と同じ。
-
-// newFavoriteListFixture は show のグループ、p1、solo の順にお気に入りにした
-// libraryFixture を作る。お気に入りでない pair のグループに属する p1 は動画の項目になる。
-// 手のタグは ep1（既定）に加えて、お気に入りの solo とお気に入りでない p2 に付ける。
+// Favorite p1 belongs to an unfavorited group and must remain a video item; manual tags span favorite and nonfavorite videos.
 func newFavoriteListFixture(t *testing.T) *libraryFixture {
 	t.Helper()
 	f := newLibraryFixture(t)
@@ -37,7 +31,6 @@ func newFavoriteListFixture(t *testing.T) *libraryFixture {
 	return f
 }
 
-// orderedLibraryItemNames は項目を「group:名前」か動画の題名にして、応答の順のまま返す。
 func orderedLibraryItemNames(page gen.LibraryPage) []string {
 	names := make([]string, 0, len(page.Items))
 	for _, item := range page.Items {
@@ -76,9 +69,6 @@ func (f *libraryFixture) videoPage(t *testing.T, target string) gen.VideoPage {
 	return decode[gen.VideoPage](t, rec)
 }
 
-// 所有者の GET /api/library?favorite=true はお気に入りの項目だけを返し、total が合う
-// （受け入れ条件 4・5）。お気に入りでないグループに属するお気に入りの動画は動画の項目で、
-// tag と同時に使うと両方に当たる項目だけになる（受け入れ条件 9）。
 func TestListLibraryFavoriteOnly(t *testing.T) {
 	f := newFavoriteListFixture(t)
 
@@ -90,29 +80,25 @@ func TestListLibraryFavoriteOnly(t *testing.T) {
 		t.Errorf("show の favorite = %v", show.Favorite)
 	}
 
-	// 2 件ずつのページでも total は絞り込み後の項目の数である。
 	first := f.libraryPage(t, "favorite=true&limit=2")
 	if first.Total != 3 || len(first.Items) != 2 || first.NextCursor == nil {
 		t.Errorf("1 ページ目 = %d 件・total %d・nextCursor %v", len(first.Items), first.Total, first.NextCursor)
 	}
 
-	// 手のタグは ep1（show の一部だけ）・p2・solo にある。お気に入りでもあるのは solo だけ。
+	// Only solo has both the manual tag and favorite state.
 	tagged := f.libraryPage(t, "favorite=true&tag="+strconv.FormatInt(f.manual, 10))
 	if names := libraryItemNames(tagged); !slices.Equal(names, []string{"solo"}) || tagged.Total != 1 {
 		t.Errorf("お気に入りのみ・手のタグ = %v・total %d", names, tagged.Total)
 	}
-	// フォルダ由来の show のタグは show の全メンバーに当たり、show はお気に入りである。
 	folder := f.libraryPage(t, "favorite=true&tag="+strconv.FormatInt(f.folder, 10))
 	if names := libraryItemNames(folder); !slices.Equal(names, []string{"group:show"}) {
 		t.Errorf("お気に入りのみ・show のタグ = %v", names)
 	}
 
-	// favorite=false は絞り込まない。
 	if names := libraryItemNames(f.libraryPage(t, "favorite=false")); !slices.Equal(names, []string{"group:pair", "group:show", "solo"}) {
 		t.Errorf("favorite=false = %v", names)
 	}
 
-	// お気に入りにした日時の順。お気に入りでない項目は向きに関係なく末尾に来る。
 	if names := orderedLibraryItemNames(f.libraryPage(t, "favorite=true&sort=favoritedDesc")); !slices.Equal(names, []string{"solo", "p1", "group:show"}) {
 		t.Errorf("お気に入りのみ・新しい順 = %v", names)
 	}
@@ -127,8 +113,6 @@ func TestListLibraryFavoriteOnly(t *testing.T) {
 	}
 }
 
-// GET /api/library/ids?favorite=true の ids と groups は同じ項目から作り、グループの folder は
-// GET /api/library の group.folder と一致する。
 func TestListLibraryIdsGroups(t *testing.T) {
 	f := newFavoriteListFixture(t)
 
@@ -161,7 +145,6 @@ func TestListLibraryIdsGroups(t *testing.T) {
 		}
 	}
 
-	// 絞り込みが無ければ show と pair の 2 つ。一部のメンバーだけが当たったグループは入らない。
 	all := decode[gen.VideoIdsResponse](t, f.env.get("/api/library/ids", f.owner))
 	if all.Groups == nil || len(*all.Groups) != 2 {
 		t.Errorf("絞り込みなしの groups = %+v, want 2 件", all.Groups)
@@ -175,12 +158,9 @@ func TestListLibraryIdsGroups(t *testing.T) {
 		t.Errorf("グループの項目が無いときの groups = %s, want 省略", value)
 	}
 
-	// 所有者だけの経路なので、ゲストは条件によらず 401 のまま。
 	assertUnauthenticated(t, "ゲストの /api/library/ids?favorite=true", f.env.get("/api/library/ids?favorite=true"))
 }
 
-// GET /api/videos と GET /api/folders/{rootId}/videos でも favorite=true と favorited* が効く
-// （要件 11、受け入れ条件 8）。動画の一覧はグループのお気に入りに関係なく動画のお気に入りで判定する。
 func TestListVideosFavoriteOnly(t *testing.T) {
 	f := newFavoriteListFixture(t)
 
@@ -202,7 +182,6 @@ func TestListVideosFavoriteOnly(t *testing.T) {
 	}
 }
 
-// ゲストは favorite=true と favorited* を、読める 3 経路のどれでも使えない（受け入れ条件 10）。
 func TestGuestRejectsFavoriteListConditions(t *testing.T) {
 	f := newFavoriteListFixture(t)
 	folder := "/api/folders/" + strconv.FormatInt(f.rootID, 10) + "/videos?"

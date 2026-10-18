@@ -8,13 +8,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// OpenVideoFile は代表の所在をサーバーの PC の既定アプリで開く
-// （POST /api/videos/{id}/open）。
-//
-// 開くのはサーバーが持っているその動画の代表の所在だけで、要求からパスは
-// 受け取らない。判定は 404 → 409 open_unavailable → 403 → 409 file_missing →
-// 500 の順である。起動できない環境かどうかはサーバー全体で決まる事実なので、
-// 要求元を問わず先に返す。
+// Open only the server-selected representative path; precedence is not-found, unavailable environment, forbidden source, missing file, then internal failure.
 func (s *server) OpenVideoFile(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	video, ok := s.lookupVideo(w, r, id)
 	if !ok {
@@ -50,11 +44,7 @@ func (s *server) OpenVideoFile(w http.ResponseWriter, r *http.Request, id gen.Vi
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// openablePath は、代表の所在が開いてよい実体を指すときだけ、symlink を
-// 辿った先のパスを返す。判定は配信と同じく MediaFiles が行う。既定アプリで
-// 開くのは配信より強い操作なので、同じ判定を省かない。外を指している場合も
-// 「見つからない」と同じに扱い、どのパスが存在するかを漏らさない。確かめた
-// パスと開くパスを揃えるため、辿った先のパスを opener へ渡す。
+// Reuse streaming's symlink/root checks, mask outside-root paths as missing, and pass the validated resolved path to the opener.
 func (s *server) openablePath(r *http.Request, path string) (string, bool, error) {
 	roots, err := s.mediaFolderPaths(r)
 	if err != nil {
@@ -67,22 +57,11 @@ func (s *server) openablePath(r *http.Request, path string) (string, bool, error
 	return resolved, true, nil
 }
 
-// canOpen は location.openable を決める。POST /api/videos/{id}/open の 403 と
-// 409 open_unavailable に当たらないときだけ true である。
 func (s *server) canOpen(r *http.Request) bool {
 	return s.opener != nil && s.opener.Available() && s.loopbackRequest(r)
 }
 
-// loopbackRequest は要求がループバックから、ループバックの Host で来たかを返す。
-//
-// 要求元（RemoteAddr）だけでは足りない。既存の POST の同一オリジン確認は Origin と
-// Host を比べるだけなので、DNS rebinding で 127.0.0.1 を指させた他サイトの
-// ページを通してしまう。Host をループバックの名前に限ってこれを塞ぐ。
-//
-// 要求元は clientOrigin で決める。信頼するプロキシが同じ PC にあっても、転送元が
-// 外部なら拒む。直接の接続元もループバックに限る。既定では LAN のアドレスも信頼する
-// プロキシに含まれるので、LAN の機器が X-Forwarded-For に 127.0.0.1 と書いて
-// ループバックに見せかけるのをここで塞ぐ。
+// Require loopback source, direct peer, and Host to block DNS rebinding and LAN proxies spoofing loopback X-Forwarded-For.
 func (s *server) loopbackRequest(r *http.Request) bool {
 	if !parseForwardedAddr(r.RemoteAddr).IsLoopback() {
 		return false
@@ -94,8 +73,7 @@ func (s *server) loopbackRequest(r *http.Request) bool {
 	return loopbackHostName(r.Host)
 }
 
-// loopbackHostName は Host が localhost・127.0.0.1・[::1] のいずれかかを返す。
-// ポートは問わない。
+// Accept localhost, 127.0.0.1, or [::1] regardless of port.
 func loopbackHostName(hostHeader string) bool {
 	name := hostHeader
 	if host, _, err := net.SplitHostPort(hostHeader); err == nil {

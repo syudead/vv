@@ -49,9 +49,8 @@ func TestAddressRuleAcceptsPublicAddresses(t *testing.T) {
 	}
 }
 
-// TestAddressRuleRangesEndWhereTheTableSays は、global unicast の中にある行の境界のすぐ外側が
-// 許されることを確かめる。先頭アドレスの検査だけでは、行の長さが広すぎても気づけない。
-// 2000::/3 の外の IPv6 の行は global unicast の判定でも拒まれるので、ここには並べない。
+// Check addresses just outside each global-unicast exclusion so overly broad masks cannot pass by
+// rejecting only the first address; IPv6 outside 2000::/3 is already rejected.
 func TestAddressRuleRangesEndWhereTheTableSays(t *testing.T) {
 	rule := addressRule{local: func() []netip.Addr { return nil }}
 	for _, s := range []string{
@@ -68,7 +67,7 @@ func TestAddressRuleRangesEndWhereTheTableSays(t *testing.T) {
 		"198.17.255.255", "198.20.0.0", // 198.18.0.0/15
 		"198.51.99.255", "198.51.101.0", // 198.51.100.0/24
 		"203.0.112.255", "203.0.114.0", // 203.0.113.0/24
-		"2000:ffff:ffff:ffff:ffff:ffff:ffff:ffff", "2001:200::", // 2001::/23 と 2001::/32
+		"2000:ffff:ffff:ffff:ffff:ffff:ffff:ffff", "2001:200::", // 2001::/23 and 2001::/32.
 		"2001:db7:ffff:ffff:ffff:ffff:ffff:ffff", "2001:db9::", // 2001:db8::/32
 		"2001:ffff:ffff:ffff:ffff:ffff:ffff:ffff", "2003::", // 2002::/16
 		"3ffe:ffff:ffff:ffff:ffff:ffff:ffff:ffff", "3fff:1000::", // 3fff::/20
@@ -79,7 +78,6 @@ func TestAddressRuleRangesEndWhereTheTableSays(t *testing.T) {
 	}
 }
 
-// lastAddr は p の最後のアドレスを返す。
 func lastAddr(p netip.Prefix) netip.Addr {
 	b := p.Masked().Addr().AsSlice()
 	for i := p.Bits(); i < len(b)*8; i++ {

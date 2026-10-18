@@ -8,8 +8,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// completeStageJob は kind（代表サムネイルかシーク用サムネイル）の仕事を1件取り出し、
-// substitution とともに成功を書いて完了にする。取り出した仕事を返す。
 func completeStageJob(t *testing.T, db *DB, kind domain.JobKind, substitution domain.Substitution) domain.Job {
 	t.Helper()
 	ctx := context.Background()
@@ -24,7 +22,6 @@ func completeStageJob(t *testing.T, db *DB, kind domain.JobKind, substitution do
 	return job
 }
 
-// setStageDone は job の段階の成功を substitution とともに書く。
 func setStageDone(t *testing.T, db *DB, job domain.Job, substitution domain.Substitution) {
 	t.Helper()
 	ctx := context.Background()
@@ -45,8 +42,6 @@ func setStageDone(t *testing.T, db *DB, job domain.Job, substitution domain.Subs
 	}
 }
 
-// importWithStages は動画を1本取り込み、解析のあとに代表サムネイルとシーク用
-// サムネイルの仕事を積んで返す。
 func importWithStages(t *testing.T, db *DB) int64 {
 	t.Helper()
 	ctx := context.Background()
@@ -60,8 +55,6 @@ func importWithStages(t *testing.T, db *DB) int64 {
 	return ids[0]
 }
 
-// 代表サムネイルを先頭のコマで代用しただけの取り込みは done のまま、代用の本数が 1 に
-// なり、一覧にその動画の種類が出る（受け入れ条件 8）。
 func TestThumbnailFirstFrameIsSubstitutedIssue(t *testing.T) {
 	db := migratedDB(t)
 	id := importWithStages(t, db)
@@ -87,8 +80,6 @@ func TestThumbnailFirstFrameIsSubstitutedIssue(t *testing.T) {
 	}
 }
 
-// シーク用サムネイルを全編から作り直したことも代用で、代表サムネイルの代用と同じ
-// 動画の1件にまとまる。
 func TestSeekThumbnailFullDecodeJoinsTheSameVideo(t *testing.T) {
 	db := migratedDB(t)
 	id := importWithStages(t, db)
@@ -107,8 +98,6 @@ func TestSeekThumbnailFullDecodeJoinsTheSameVideo(t *testing.T) {
 	}
 }
 
-// 同じ段階が代用なしで作り直されたら、代用の行を消して番号を増やす。既存の生成物を
-// 採用して代用したかが分からないときは、行を変えない。
 func TestSubstitutionClearedWhenRebuiltWithoutIt(t *testing.T) {
 	db := migratedDB(t)
 	importWithStages(t, db)
@@ -133,14 +122,13 @@ func TestSubstitutionClearedWhenRebuiltWithoutIt(t *testing.T) {
 	}
 
 	setStageDone(t, db, thumbnail, domain.SubstitutionNone)
-	// シーク用サムネイルの完了の記録は指紋の仕事を積み直すので、それを済ませてから確かめる。
+	// Seek completion queues fingerprints again; finish them before checking settled status.
 	runAllJobs(t, db)
 	if _, issues, progress := importIssues(t, db); len(issues) != 0 || progress.Status != domain.ImportDone {
 		t.Fatalf("問題 = %+v, 状態 = %+v, want なし・done", issues, progress)
 	}
 }
 
-// 代用と失敗が同じ動画にあれば、失敗が主になる。
 func TestSubstitutionWithFailureIsFailed(t *testing.T) {
 	db := migratedDB(t)
 	id := importWithStages(t, db)

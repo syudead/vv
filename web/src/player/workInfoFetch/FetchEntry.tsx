@@ -10,10 +10,7 @@ import type { ThumbnailCapture } from "../VideoFacts";
 import { approvedPlugins } from "./fetchRules";
 import FetchDialog from "./FetchDialog";
 
-/**
- * useApprovedPlugins は作品情報プラグインの一覧を読み、承認済みのものを返す（R-11）。読んで
- * いる間と読めなかったときは空で、入口を置かない。読み直しは前の読みかけを捨てる。
- */
+/** Show approved plugins only; abort obsolete reads and hide the entry until an initial list is available. */
 function useApprovedPlugins(): {
   plugins: WorkInfoPlugin[];
   reload: () => Promise<void>;
@@ -29,8 +26,7 @@ function useApprovedPlugins(): {
       const list = await listWorkInfoPlugins(controller.signal);
       if (!controller.signal.aborted) setPlugins(approvedPlugins(list));
     } catch {
-      // 一覧を読めなければ、取得の入口についてページは何も言わない（ui-design「Video page:
-      // fetch entry」）。前に読めた一覧はそのまま使う。
+      // Keep the last successful list silently when refresh fails.
     }
   }, []);
 
@@ -41,12 +37,7 @@ function useApprovedPlugins(): {
   return { plugins, reload };
 }
 
-/**
- * FetchEntry は情報の行の操作群の「Fetch work info from a plugin」と、それが開く取得の
- * ダイアログである。
- * 所有者にだけ置かれ、承認済みのプラグインが一覧にあるときだけ入口を出す。押すと再生を止めて
- * ダイアログを開く。ダイアログを開いている間に入口の条件が外れても、閉じるまではダイアログを残す。
- */
+/** Pause on open and retain an open dialog even if the entry later becomes unavailable. */
 export default function FetchEntry({
   video,
   capture,
@@ -54,10 +45,9 @@ export default function FetchEntry({
   onDialogChange,
 }: {
   video: Video;
-  /** プレイヤーが出ているときだけ渡す。開くときに再生を止める。 */
   capture?: ThumbnailCapture;
   onApplied: (video: Video, mark: DetailMark) => void;
-  /** ダイアログを開いた・閉じた。開いている間、動画ページのキーを止める。 */
+  /** Suspend video-page shortcuts while the dialog is open. */
   onDialogChange?: (open: boolean) => void;
 }) {
   const { plugins, reload } = useApprovedPlugins();

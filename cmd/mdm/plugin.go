@@ -14,29 +14,26 @@ import (
 	"github.com/syudead/vv/internal/wasmplugin"
 )
 
-// plugin の下位コマンドは作品情報プラグインの作者のためのホスト側のコマンドである。MDM_DATA_DIR を読まず、
-// データベースも ffmpeg も使わない。マニフェストの規則は internal/domain、モジュールの検査と
-// セクションの書き換えは internal/wasmplugin が持ち、ここはファイルの読み書きだけを行う。
+// Plugin-author commands need no MDM_DATA_DIR, database, or ffmpeg; domain owns manifest rules and
+// wasmplugin owns module validation and rewriting.
 
-// inspectionProblemHints は、詰めたモジュールが検査に通らないときに問題に添える説明である。
 var inspectionProblemHints = map[domain.WorkInfoPluginProblem]string{
 	domain.WorkInfoPluginNotWasm:           "the module is not a WebAssembly module that compiles",
 	domain.WorkInfoPluginImportUnsupported: "the module imports something other than WASI and vv functions, or uses another signature",
 	domain.WorkInfoPluginExportInvalid:     "_start or memory is missing or has another type",
 	domain.WorkInfoPluginTableTooLarge:     fmt.Sprintf("the module's tables exceed %d elements", domain.WorkInfoPluginTableMaxElements),
-	// 次の 3 つは mdm plugin run だけが出す。pack はマニフェストを先に確かめる。
+	// Only plugin run emits these errors; pack validates manifests first.
 	domain.WorkInfoPluginManifestMissing:     "the module has no vv.plugin section; write the manifest into it with mdm plugin pack",
 	domain.WorkInfoPluginManifestInvalid:     "the module's vv.plugin section breaks a manifest rule; mdm plugin pack names the field and the rule",
 	domain.WorkInfoPluginContractUnsupported: "the manifest's contract is not 1",
 }
 
-// operationNames は操作を設定画面と同じ言葉で表す。
 var operationNames = map[domain.WorkInfoOperation]string{
 	domain.WorkInfoSearch: "Search",
 	domain.WorkInfoFetch:  "Fetch by ID",
 }
 
-// runPlugin は plugin の下位コマンドを実行する。args は "plugin" の後ろの引数である。
+// args excludes the leading "plugin" argument.
 func runPlugin(ctx context.Context, args []string, env accountEnv) *accountFailure {
 	if len(args) == 0 {
 		return usageFailure("Specify a plugin subcommand.")
@@ -51,16 +48,13 @@ func runPlugin(ctx context.Context, args []string, env accountEnv) *accountFailu
 	}
 }
 
-// refusedFailure は終了コード 2 で、使い方を添えない失敗である。入力のファイルの中身が規則に
-// 反したときに使う。
+// Input-content failures use exit code 2 without usage text.
 func refusedFailure(format string, args ...any) *accountFailure {
 	return &accountFailure{code: exitAccountUsage, message: fmt.Sprintf(format, args...)}
 }
 
-// runPluginPack は mdm plugin pack <module.wasm> <manifest.json> を実行する。マニフェストを確かめ、
-// モジュールの vv.plugin のセクションを置き換え、詰めたモジュールをアップロードと同じ検査にかけてから、
-// 一時ファイルと rename でモジュールに書く。どの失敗でもモジュールは元のままである。
-// モジュールがシンボリックリンクなら、リンクの先を読んで同じリンクの先へ書く。
+// runPluginPack validates with the upload rules and atomically replaces the resolved module target;
+// every failure preserves the original, including when given a symlink.
 func runPluginPack(ctx context.Context, args []string, stderr io.Writer) *accountFailure {
 	if len(args) != 2 {
 		return usageFailure("pack takes exactly two arguments: the module and the manifest.")
@@ -90,9 +84,8 @@ func runPluginPack(ctx context.Context, args []string, stderr io.Writer) *accoun
 	return nil
 }
 
-// readPackInputs はモジュールの実体のパスを解決し、モジュールとマニフェストを読む。どちらも詰めたモジュールの
-// 上限（WorkInfoPluginModuleMaxBytes）を超えれば、全体を読まずに終了コード 2 で拒む。上限を超える入力は
-// どう詰めても検査に通らないからである。
+// Reject oversized inputs before reading them fully; no packing can make them pass the module
+// limit.
 func readPackInputs(modulePath, manifestPath, unchanged string) (target string, module, manifest []byte, failure *accountFailure) {
 	target, err := filepath.EvalSymlinks(modulePath)
 	if err != nil {
@@ -109,7 +102,7 @@ func readPackInputs(modulePath, manifestPath, unchanged string) (target string, 
 	return target, module, manifest, nil
 }
 
-// readPackInput は path を上限の 1 バイト先までだけ読む。読んでいる間に大きくなったファイルも上限で止まる。
+// Read at most limit+1 bytes, even if the file grows during reading.
 func readPackInput(path, what, unchanged string) ([]byte, *accountFailure) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -126,7 +119,6 @@ func readPackInput(path, what, unchanged string) ([]byte, *accountFailure) {
 	return data, nil
 }
 
-// inspectPacked は詰めたモジュールをサーバーと同じランタイムで検査する。
 func inspectPacked(ctx context.Context, packed []byte, unchanged string) (domain.WorkInfoPluginManifest, *accountFailure) {
 	runtime, failure := newPluginRuntime(ctx, wasmplugin.Options{})
 	if failure != nil {
@@ -136,8 +128,7 @@ func inspectPacked(ctx context.Context, packed []byte, unchanged string) (domain
 	return inspectModule(ctx, runtime, packed, "packed module", unchanged, refusedFailure)
 }
 
-// newPluginRuntime はサーバーと同じ制限のランタイムを作る。プラグインの標準エラーはサーバーのログに書かず、
-// 呼び出し元が実行のログとして扱う。
+// Use server runtime limits but leave plugin stderr to the caller's execution log.
 func newPluginRuntime(ctx context.Context, opts wasmplugin.Options) (*wasmplugin.Runtime, *accountFailure) {
 	opts.Logger = slog.New(slog.DiscardHandler)
 	runtime, err := wasmplugin.New(ctx, opts)
@@ -147,8 +138,6 @@ func newPluginRuntime(ctx context.Context, opts wasmplugin.Options) (*wasmplugin
 	return runtime, nil
 }
 
-// inspectModule はモジュールをアップロードと同じ検査にかける。what はモジュールの呼び名、suffix は
-// 理由の後ろに足す文で、refuse は検査に通らないときの終了コード 2 の失敗を作る。
 func inspectModule(
 	ctx context.Context, runtime *wasmplugin.Runtime, module []byte, what, suffix string,
 	refuse func(string, ...any) *accountFailure,
@@ -165,8 +154,8 @@ func inspectModule(
 	return manifest, nil
 }
 
-// replaceFile は path を data で置き換える。同じディレクトリの一時ファイルに書いてから rename するので、
-// rename の前に失敗すれば path は元のままである。元のファイルの権限を引き継ぐ。
+// Write and rename a same-directory temporary file, preserving permissions; failures before rename
+// leave the target unchanged.
 func replaceFile(path string, data []byte) (err error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -198,7 +187,6 @@ func writeAndClose(f *os.File, data []byte) error {
 	return errors.Join(err, f.Close())
 }
 
-// writePackedManifest は書いたプラグインを、設定画面が一覧に出すとおりに標準エラーへ出す。
 func writePackedManifest(w io.Writer, modulePath string, m domain.WorkInfoPluginManifest) {
 	ops := make([]string, 0, len(m.Operations))
 	for _, op := range m.Operations {
@@ -223,7 +211,7 @@ func writePackedManifest(w io.Writer, modulePath string, m domain.WorkInfoPlugin
 	_, _ = fmt.Fprintln(w, strings.Join(lines, "\n"))
 }
 
-// describeSetting は設定 1 つを、承認の確認の行と同じ順（ラベル、Secret、Required、既定値）で表す。
+// Match the approval screen's field order: label, Secret, Required, default.
 func describeSetting(s domain.WorkInfoPluginSetting) string {
 	facts := []string{}
 	if s.Secret {

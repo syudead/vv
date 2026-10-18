@@ -3,38 +3,21 @@ import type { LibraryGroup, LibraryItem, TagRef, Video } from "./client";
 import { itemKey, itemVideos, videoItem } from "./libraryItems";
 import { applyTagToTags } from "./tagOrder";
 
-/**
- * mergeRefreshed は取り直した1件を、一覧に出ている項目へ重ねる。
- *
- * 題名と大きさは一覧側の値を残す。フォルダ画面の項目は、そのフォルダにある
- * 所在の題名と大きさを持ち、1件の取得（代表の所在）とは違うことがあるためである。
- */
+/** Preserve list titles and sizes because folder locations may differ from the detail endpoint's representative location. */
 function mergeRefreshed(current: Video, refreshed: Video): Video {
   return { ...current, ...refreshed, title: current.title, sizeBytes: current.sizeBytes };
 }
 
-/**
- * VideosSeed は復元された一覧の初期状態である。
- *
- * 与えると 1 ページ目を**取りに行かない**。再生画面から戻るたびに読み直すと、
- * 300 件まで読んだ状態を戻すのに 5 ページ分の往復が要る。
- */
+/** Restored data skips the first fetch, avoiding refetching every previously loaded page on return. */
 export interface VideosSeed {
   items: LibraryItem[];
   total: number;
   cursor?: string;
   hasMore: boolean;
-  /**
-   * 控えを取った後にメンバーが変わったグループの項目の id（ListSnapshot.staleGroups）。
-   * 戻ったときにこれを取り直す。
-   */
+  /** Refresh groups whose members changed after snapshot capture. */
   staleGroups?: readonly number[];
 }
 
-/**
- * appendUnique は続きのページから、既に出ている項目を捨てて足す。
- * 動画の項目は動画の id、グループの項目はグループの id で比べる（itemKey）。
- */
 function appendUnique(current: LibraryItem[], next: LibraryItem[]): LibraryItem[] {
   const seen = new Set(current.map(itemKey));
   const added: LibraryItem[] = [];
@@ -47,10 +30,7 @@ function appendUnique(current: LibraryItem[], next: LibraryItem[]): LibraryItem[
   return added.length === 0 ? current : [...current, ...added];
 }
 
-/**
- * mapVideos は動画の項目のうち `match` に当たるものだけを `update` で書き換える。
- * 当たる項目が無ければ受け取った配列をそのまま返す（描画し直さないため）。
- */
+/** Preserve the original array reference when nothing matches to avoid rerendering. */
 function mapVideos(
   items: LibraryItem[],
   match: (video: Video) => boolean,
@@ -62,7 +42,7 @@ function mapVideos(
   );
 }
 
-/** shownVideoIds は動画の項目の id である（グループのメンバーは含まない）。 */
+/** Visible video rows only, excluding group members. */
 export function shownVideoIds(items: readonly LibraryItem[]): number[] {
   return itemVideos(items).map((video) => video.id);
 }
@@ -72,12 +52,8 @@ export interface VideosData {
   total: number;
   cursor: string | undefined;
   hasMore: boolean;
-  /** inconsistent は異なる時点のページを安全に結合できなかったことを表す。 */
   inconsistent: boolean;
-  /**
-   * missingTagIds は、直近の要求で `tag` に指定したがもう無かった id である。folder を渡す（`tag` を
-   * 送らない）ときは常に空。
-   */
+  /** Missing requested tag IDs; folder listings never send tags and return none. */
   missingTagIds: number[];
 }
 
@@ -124,8 +100,7 @@ export function videosDataReducer(
       };
     case "stop":
       return state.hasMore ? { ...state, hasMore: false } : state;
-    // 再生位置・タグ・公開・取り直しは動画の項目にだけ直接重ねる。グループの値は
-    // メンバーから数えるので、メンバーの変化ではグループを1件取り直す（useVideos の refreshGroups）。
+    // Overlay changes on video rows; aggregated group values require a group refresh.
     case "progress": {
       const items = mapVideos(
         state.items,
@@ -155,7 +130,7 @@ export function videosDataReducer(
       );
       return items === state.items ? state : { ...state, items };
     }
-    // お気に入りは動画そのものの印で、メンバーの付け外しはグループの値を変えない。グループの項目の付け外しは useVideos が取り直す。
+    // Member favorites do not alter group favorites; explicit group toggles refresh separately.
     case "favorite": {
       const targets = new Set(action.videoIds);
       const items = mapVideos(
@@ -198,7 +173,7 @@ export function videosDataReducer(
       const isTarget = (item: LibraryItem) =>
         item.kind === "group" && item.group.id === action.groupId;
       if (!state.items.some(isTarget)) return state;
-      // total は次に一覧を読むまでそのままにする。
+      // Keep total until the next list read.
       return { ...state, items: state.items.filter((item) => !isTarget(item)) };
     }
     case "page": {
@@ -214,8 +189,7 @@ export function videosDataReducer(
         };
       }
       const items = appendUnique(state.items, action.page.items);
-      // ページ間で索引が縮むと、前のページにだけ残る項目と最新の total を
-      // 安全に結合できない。古い整合した状態を保ち、先頭からの再読込を求める。
+      // If the index shrinks between pages, preserve the coherent list and request a restart.
       if (items.length > action.page.total) {
         return { ...state, hasMore: false, inconsistent: true };
       }
@@ -231,48 +205,22 @@ export function videosDataReducer(
   }
 }
 
-/** VideosState は一覧の状態である。 */
 export interface VideosState {
-  /**
-   * 読み込み済みの項目。動画の項目とグループの項目がある（グループはライブラリの一覧にだけ現れる）。
-   */
   items: LibraryItem[];
   total: number;
-  /** cursor は次のページの続き位置。控えを取るときに使う。 */
   cursor: string | undefined;
-  /** hasMore は次のページがあるかどうか。 */
   hasMore: boolean;
-  /** loading は最初の1ページを待っている間だけ true になる。 */
   loading: boolean;
-  /** loadingMore は続きを読んでいる間 true になる。 */
   loadingMore: boolean;
   error: UiText | null;
-  /**
-   * notFound は folder を渡したときに、そのフォルダの動画の要求が 404 で
-   * 返ったことを表す（検索中にフォルダが無くなった場合）。
-   */
   notFound: boolean;
-  /**
-   * missingTagIds は、直近の要求の `tag` のうちもう無かった id である。画面はこれを受けて、
-   * もう無いことを伝え、タグの一覧を取り直し、URL から取り除く。
-   */
+  /** Callers report missing tags, refresh their list, and remove these IDs from the URL. */
   missingTagIds: number[];
-  /** loadMore は次のページを読む。無限スクロールの観測点から呼ぶ。 */
   loadMore: () => void;
-  /** retryLoadMore は失敗した続きのページを同じカーソルから再要求する。 */
   retryLoadMore: () => void;
-  /** reload は先頭から読み直す。取り込みのあとに使う。 */
   reload: () => void;
-  /**
-   * refreshInPlace は読み込み済みのページを取り直して置き換える。reload と違い、一覧を消さず、
-   * 置き換わるまで今の項目を見せ続ける（スクロールの位置と選択は変わらない）。自動の取り込みが
-   * 終わったときに使う。失敗は静かに捨てて今の一覧を残す。
-   */
+  /** Replace loaded pages in place while preserving scroll and selection; transient errors retain current content. */
   refreshInPlace: () => void;
-  /**
-   * staleGroups は、取り直しを求めたがまだ済んでいない表示中のグループの項目の
-   * id を返す（取り直しの待ち・途中・一時的な失敗）。一覧の控えを取るときに
-   * ListSnapshot.staleGroups へ渡し、戻ったときに取り直させる。
-   */
+  /** Persist unsettled group IDs, including failed refreshes, so restoration retries them. */
   staleGroups: () => number[];
 }

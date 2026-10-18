@@ -9,7 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 走査を始めたものは、手動の走査なら所有者、監視の走査と起動時の再開なら規則で、走査と閉じる記録に渡る
 func TestScansPassTheDeciderOfTheirOrigin(t *testing.T) {
 	ctx := context.Background()
 	for _, tc := range []struct {
@@ -56,7 +55,6 @@ func TestScansPassTheDeciderOfTheirOrigin(t *testing.T) {
 	}
 }
 
-// 失敗した走査の記録のやり直しは手動の走査を始め、走査中なら domain.ErrScanRunning を返す。
 func TestScansRetryActivityStartsAManualScan(t *testing.T) {
 	ctx := context.Background()
 	scanner := &fakeScanner{started: make(chan struct{}), release: make(chan struct{})}
@@ -81,7 +79,6 @@ func TestScansRetryActivityStartsAManualScan(t *testing.T) {
 	}
 }
 
-// fakeImportRetryStore は受け取った記録の id と内容の鍵を残す。
 type fakeImportRetryStore struct {
 	ids  []int64
 	keys []string
@@ -93,7 +90,6 @@ func (f *fakeImportRetryStore) RetryImport(_ context.Context, entryID int64, con
 	return nil
 }
 
-// import の記録のやり直しは、記録の id を添えて、対象の内容の鍵の動画の失敗した段階を積み直す。
 func TestImportRetrierRetriesTheSubjectVideo(t *testing.T) {
 	store := &fakeImportRetryStore{}
 	entry := domain.ActivityEntry{ID: 7, Kind: domain.ActivityImport, Subject: domain.ActivitySubject{Key: "key-a"}}

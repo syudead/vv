@@ -9,7 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// tagCount は content_key に tagID が付いているかを数える。
 func tagCount(t *testing.T, db *DB, contentKey string, tagID int64) int {
 	t.Helper()
 	var count int
@@ -20,9 +19,6 @@ func tagCount(t *testing.T, db *DB, contentKey string, tagID int64) int {
 	return count
 }
 
-// TestAttachTagByIDAppliesToAllRequestedVideos は、3本に付けると3本すべてに
-// 付き、既に付いていた動画があっても誤りにならないことを確かめる
-// （完了の条件）。
 func TestAttachTagByIDAppliesToAllRequestedVideos(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -38,7 +34,6 @@ func TestAttachTagByIDAppliesToAllRequestedVideos(t *testing.T) {
 	)
 	videoIDs := []int64{ids[fixturePath("/media/a.mp4")], ids[fixturePath("/media/b.mp4")], ids[fixturePath("/media/c.mp4")]}
 
-	// b には先に付けておく。
 	if _, applied, err := db.Tags().AttachTagByID(ctx, []int64{ids[fixturePath("/media/b.mp4")]}, tag.ID); err != nil || applied != 1 {
 		t.Fatalf("先に付ける: applied=%d err=%v", applied, err)
 	}
@@ -60,8 +55,6 @@ func TestAttachTagByIDAppliesToAllRequestedVideos(t *testing.T) {
 	}
 }
 
-// TestAttachTagByIDSkipsUnresolvableVideoIDs は、いまライブラリに無い id
-// （消えた動画）を飛ばし、反映した本数だけを数えることを確かめる。
 func TestAttachTagByIDSkipsUnresolvableVideoIDs(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -81,8 +74,6 @@ func TestAttachTagByIDSkipsUnresolvableVideoIDs(t *testing.T) {
 	}
 }
 
-// TestAttachTagByIDCountsDuplicateVideoIDsOnce は、videoIDs に同じ id が
-// 重複していても applied が1つとして数えることを確かめる。
 func TestAttachTagByIDCountsDuplicateVideoIDsOnce(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -106,8 +97,6 @@ func TestAttachTagByIDCountsDuplicateVideoIDsOnce(t *testing.T) {
 	}
 }
 
-// TestAttachTagByIDRejectsMissingTag は、id のタグが無ければ
-// domain.ErrTagNotFound を返すことを確かめる。
 func TestAttachTagByIDRejectsMissingTag(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -118,8 +107,6 @@ func TestAttachTagByIDRejectsMissingTag(t *testing.T) {
 	}
 }
 
-// TestAttachTagByNameUsesSynonymToFindOriginalTag は、シノニムの名前で付けると
-// 元のタグが付くことを確かめる（完了の条件）。
 func TestAttachTagByNameUsesSynonymToFindOriginalTag(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -148,8 +135,6 @@ func TestAttachTagByNameUsesSynonymToFindOriginalTag(t *testing.T) {
 	}
 }
 
-// TestAttachTagByNameCreatesTagWhenMissing は、名前が無ければ同じトランザクション
-// で作ることを確かめる（要件 1）。
 func TestAttachTagByNameCreatesTagWhenMissing(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -175,8 +160,6 @@ func TestAttachTagByNameCreatesTagWhenMissing(t *testing.T) {
 	}
 }
 
-// TestDetachTagIgnoresAlreadyUnassignedVideos は、付いていないタグを外しても
-// 誤りにならないことを確かめる（完了の条件）。
 func TestDetachTagIgnoresAlreadyUnassignedVideos(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -193,7 +176,6 @@ func TestDetachTagIgnoresAlreadyUnassignedVideos(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// b には付いていないが、外しても誤りにならない。
 	ref, applied, err := db.Tags().DetachTag(ctx, []int64{ids[fixturePath("/media/a.mp4")], ids[fixturePath("/media/b.mp4")]}, tag.ID)
 	if err != nil {
 		t.Fatalf("DetachTag() error = %v", err)
@@ -208,14 +190,11 @@ func TestDetachTagIgnoresAlreadyUnassignedVideos(t *testing.T) {
 		t.Error("key-a にまだ付いている")
 	}
 
-	// もう一度外しても誤りにならない。
 	if _, applied, err := db.Tags().DetachTag(ctx, []int64{ids[fixturePath("/media/a.mp4")]}, tag.ID); err != nil || applied != 1 {
 		t.Errorf("再度の DetachTag: applied=%d err=%v, want 1 と nil", applied, err)
 	}
 }
 
-// TestDetachTagCountsDuplicateVideoIDsOnce は、videoIDs に同じ id が重複して
-// いても applied が1つとして数えることを確かめる。
 func TestDetachTagCountsDuplicateVideoIDsOnce(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -242,8 +221,6 @@ func TestDetachTagCountsDuplicateVideoIDsOnce(t *testing.T) {
 	}
 }
 
-// TestDetachTagRejectsMissingTag は、tagID が無ければ domain.ErrTagNotFound を
-// 返すことを確かめる。
 func TestDetachTagRejectsMissingTag(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -252,9 +229,6 @@ func TestDetachTagRejectsMissingTag(t *testing.T) {
 	}
 }
 
-// TestAttachTagByIDRollsBackEverythingOnMidTransactionFailure は、途中で失敗
-// させると1本にも付いていないことを確かめる（完了の条件、Edge Case
-// 「一括操作・統合の途中失敗」）。
 func TestAttachTagByIDRollsBackEverythingOnMidTransactionFailure(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -286,8 +260,6 @@ func TestAttachTagByIDRollsBackEverythingOnMidTransactionFailure(t *testing.T) {
 	}
 }
 
-// TestSummaryCountsOnlyRegisteredVideosAndPartiallyTaggedTags は、要約で
-// 1本だけに付いたタグの数が1、全体が3になることを確かめる（完了の条件）。
 func TestSummaryCountsOnlyRegisteredVideosAndPartiallyTaggedTags(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -313,7 +285,6 @@ func TestSummaryCountsOnlyRegisteredVideosAndPartiallyTaggedTags(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 消えた動画への付与は数に入らない。
 	attachTag(t, db, "key-gone", all.ID)
 
 	summary, err := db.Tags().Summary(ctx, append(videoIDs, 999999))
@@ -326,7 +297,6 @@ func TestSummaryCountsOnlyRegisteredVideosAndPartiallyTaggedTags(t *testing.T) {
 	if len(summary.Items) != 2 {
 		t.Fatalf("len(Items) = %d, want 2: %+v", len(summary.Items), summary.Items)
 	}
-	// 名前の自然順（一部 → 全部）。
 	if summary.Items[0].Tag.ID != one.ID || summary.Items[0].Count != 1 {
 		t.Errorf("Items[0] = %+v, want id=%d count=1", summary.Items[0], one.ID)
 	}
@@ -335,8 +305,6 @@ func TestSummaryCountsOnlyRegisteredVideosAndPartiallyTaggedTags(t *testing.T) {
 	}
 }
 
-// TestSummaryCountsDuplicateVideoIDsOnce は、videoIDs に同じ id が重複して
-// いても Total とタグの count が1つとして数えることを確かめる。
 func TestSummaryCountsDuplicateVideoIDsOnce(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -363,8 +331,6 @@ func TestSummaryCountsDuplicateVideoIDsOnce(t *testing.T) {
 	}
 }
 
-// TestSummaryOfEmptyVideoIDsIsEmpty は、videoIDs が空なら要約も空になることを
-// 確かめる。
 func TestSummaryOfEmptyVideoIDsIsEmpty(t *testing.T) {
 	db := migratedDB(t)
 	summary, err := db.Tags().Summary(context.Background(), nil)
@@ -376,9 +342,6 @@ func TestSummaryOfEmptyVideoIDsIsEmpty(t *testing.T) {
 	}
 }
 
-// TestTagsByContentKeysReturnsOriginalNamesInNaturalOrder は、content_key の
-// 集合からタグをまとめて引く操作が、元の名前を自然順で返すことを確かめる
-// （PlaybackStore.ProgressByContentKeys と同じ形）。
 func TestTagsByContentKeysReturnsOriginalNamesInNaturalOrder(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -418,8 +381,6 @@ func TestTagsByContentKeysReturnsOriginalNamesInNaturalOrder(t *testing.T) {
 	}
 }
 
-// TestTagsByContentKeysOfEmptySetIsEmpty は、content_key の集合が空なら空の
-// map を返すことを確かめる。
 func TestTagsByContentKeysOfEmptySetIsEmpty(t *testing.T) {
 	db := migratedDB(t)
 	got, err := db.Tags().TagsByContentKeys(context.Background(), nil)

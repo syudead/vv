@@ -125,10 +125,10 @@ describe("SetupPage", () => {
   });
 
   it("前後の空白の判定はサーバーの unicode.IsSpace にそろえる", () => {
-    // U+FEFF はサーバーでは空白でないので、先頭・末尾にあっても止めない。
+    // The server does not treat U+FEFF as whitespace.
     expect(validateSetup("\uFEFFowner", "p", "p")).toBeNull();
     expect(validateSetup("owner\uFEFF", "p", "p")).toBeNull();
-    // U+00A0・U+3000・U+2028 はサーバーでも空白なので止める。
+    // The server treats U+00A0, U+3000 and U+2028 as whitespace.
     for (const space of ["\u00A0", "\u3000", "\u2028"]) {
       expect(validateSetup(`${space}owner`, "p", "p")?.field).toBe("username");
       expect(validateSetup(`owner${space}`, "p", "p")?.field).toBe("username");

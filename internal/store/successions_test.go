@@ -9,8 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 同じパスの中身の引き継ぎ。
-
 func probeDuration(t *testing.T, db *DB, videoID, durationMs int64) {
 	t.Helper()
 	probe := domain.Probe{DurationMs: durationMs, VideoCodec: "h264", AudioCodec: "aac"}
@@ -57,7 +55,6 @@ func saveTestProgress(t *testing.T, db *DB, key string, positionMs int64) {
 	}
 }
 
-// progressAt は動画の利用者データの鍵の再生位置を返す。記録が無ければ -1。
 func progressAt(t *testing.T, db *DB, videoID int64) int64 {
 	t.Helper()
 	progress, err := db.Playback().Progress(context.Background(), ownerVideo(t, db, videoID).UserKey)
@@ -70,7 +67,6 @@ func progressAt(t *testing.T, db *DB, videoID int64) int64 {
 	return progress.PositionMs
 }
 
-// taggedVideoFixture は /media/a.mp4 に尺 100 秒の動画 A を取り込み、タグと再生位置を付ける。
 func taggedVideoFixture(t *testing.T) (*DB, int64) {
 	t.Helper()
 	db := migratedDB(t)
@@ -81,8 +77,6 @@ func taggedVideoFixture(t *testing.T) (*DB, int64) {
 	return db, a
 }
 
-// 尺がほぼ同じ新しい中身は、走査が done で閉じて解析が終わると前の動画のタグと再生位置を
-// 引き継ぐ（受け入れ条件 1）。尺が幅の外なら何も付かない（受け入れ条件 2）。
 func TestSuccessionCarriesUserDataWhenDurationsMatch(t *testing.T) {
 	for name, c := range map[string]struct {
 		durationMs int64
@@ -114,7 +108,6 @@ func TestSuccessionCarriesUserDataWhenDurationsMatch(t *testing.T) {
 	}
 }
 
-// 前の尺が分からない（解析前・失敗）動画は記録しない。
 func TestSuccessionNotRecordedWithoutPreviousDuration(t *testing.T) {
 	db := migratedDB(t)
 	upsertOne(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 1))
@@ -124,7 +117,6 @@ func TestSuccessionNotRecordedWithoutPreviousDuration(t *testing.T) {
 	}
 }
 
-// 同じ走査で前の中身が別のパスに現れると記録は消え、引き継がない（Edge Case「ファイルの入れ替え」）。
 func TestSuccessionCancelledWhenPreviousContentMoves(t *testing.T) {
 	db, _ := taggedVideoFixture(t)
 	scan := startTestScan(t, db)
@@ -146,8 +138,6 @@ func TestSuccessionCancelledWhenPreviousContentMoves(t *testing.T) {
 	}
 }
 
-// 解析が走査の途中で終わっても、走査が done で閉じるまで引き継がない。その後に前の中身が
-// 別のパスで見つかる順序でも引き継がない。failed で閉じた走査は判定しない。
 func TestSuccessionWaitsForTheScanToFinish(t *testing.T) {
 	t.Run("途中の解析のあと前の中身が現れる", func(t *testing.T) {
 		db, _ := taggedVideoFixture(t)
@@ -180,7 +170,6 @@ func TestSuccessionWaitsForTheScanToFinish(t *testing.T) {
 	})
 }
 
-// 解析が失敗しても記録は残り、やり直しで成功したときに判定する。
 func TestSuccessionSurvivesProbeFailureUntilRetrySucceeds(t *testing.T) {
 	db, _ := taggedVideoFixture(t)
 	ctx := context.Background()
@@ -209,8 +198,6 @@ func TestSuccessionSurvivesProbeFailureUntilRetrySucceeds(t *testing.T) {
 	}
 }
 
-// 前の中身が集まりの代表なら新しい中身が代表になり、代表以外なら同じ集まりのメンバーになる。
-// 引き継ぐと、その集まりの全メンバーの VideoBundleChanged が発行される。
 func TestSuccessionKeepsTheBundlePosition(t *testing.T) {
 	for name, representative := range map[string]bool{"代表": true, "代表以外": false} {
 		t.Run(name, func(t *testing.T) {
@@ -247,7 +234,6 @@ func TestSuccessionKeepsTheBundlePosition(t *testing.T) {
 			if versions.RepresentativeID != wantRep || len(versions.Items) != 3 {
 				t.Errorf("集まり = 代表 %d, %d 本, want 代表 %d, 3 本", versions.RepresentativeID, len(versions.Items), wantRep)
 			}
-			// 所有者が束ねた記録の対象の鍵も新しい鍵に付け替わるので、記録の知らせも出る。
 			want := []domain.Event{domain.VideoBundleChanged{VideoIDs: normalizeIDs([]int64{ids["b"], ids["c"], x})},
 				domain.ActivityChanged{}}
 			if !slices.EqualFunc(recorder.events, want, eventsEqual) {
@@ -257,7 +243,6 @@ func TestSuccessionKeepsTheBundlePosition(t *testing.T) {
 	}
 }
 
-// 新しい中身の参照が無くなると、判定前の記録も消える。
 func TestSuccessionReleasedWithTheNewContent(t *testing.T) {
 	db, _ := taggedVideoFixture(t)
 	b := upsertOne(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-b", 2))

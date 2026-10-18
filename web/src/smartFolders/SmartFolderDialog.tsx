@@ -30,16 +30,13 @@ import { normalizeQuery, sortKinds, sortKindLabel } from "../videoList/listCrite
 import ConditionsFields from "./ConditionsFields";
 import { cleanRule, hasRuleMember, parentChoices, ruleKey, validRule } from "./smartRule";
 
-/** SmartFolderDialogTarget は窓が作るか直すものである。 */
 export type SmartFolderDialogTarget =
   | {
       kind: "create";
-      /** 条件の初めの値（ライブラリの今の絞り込み、新しい子なら空）。 */
       rule: SmartRule;
       sort: VideoSort;
-      /** ランダムの並べ順を追加日の新しい順に置き換えた（並べ順の欄に添え書きを出す）。 */
+      /** Random sort was replaced with newest-added; show the accompanying note. */
       randomReplaced?: boolean;
-      /** 新しい子の親（フォルダのページの「New child smart folder…」）。 */
       parent?: { id: number; name: string };
     }
   | {
@@ -47,23 +44,19 @@ export type SmartFolderDialogTarget =
       folder: { id: number; name: string; parentId?: number };
       rule: SmartRule;
       sort: VideoSort;
-      /** もう無い参照（SmartFolderSettings.missing）。 */
       missing: readonly SmartRuleRef[];
     };
 
-/**
- * indentClasses は親の `Select` の行の字下げで、深さ 1 段ごとに `pl-4` ずつ増やす。4 段より深いものは 4 段目にそろえる。
- */
+/** Cap indentation at four levels. */
 const indentClasses = ["pl-2", "pl-6", "pl-10", "pl-14", "pl-18"] as const;
 
 function indentClass(depth: number): string {
   return indentClasses[Math.min(depth, indentClasses.length - 1)] ?? "pl-2";
 }
 
-/** noParentValue は親の `Select` の「None (top level)」の値である（id は正の整数）。 */
+/** Use a non-positive sentinel because real IDs are positive. */
 const noParentValue = "none";
 
-/** sortChoices は並べ順の選択肢（種類と向き、ランダムを除く）である。 */
 function sortChoices(): { value: VideoSort; label: UiText }[] {
   const words: Partial<Record<string, Record<"asc" | "desc", UiText>>> =
     t.list.sort.wording;
@@ -86,7 +79,6 @@ function sortChoices(): { value: VideoSort; label: UiText }[] {
   );
 }
 
-/** FieldErrors は欄ごとの誤りである。 */
 interface FieldErrors {
   name: boolean;
   parent: UiText | null;
@@ -95,9 +87,6 @@ interface FieldErrors {
 
 const noErrors: FieldErrors = { name: false, parent: null, conditions: null };
 
-/**
- * failureErrors は送った結果の失敗を、どの欄の誤りかに振り分ける。欄の無い失敗は null。
- */
 function failureErrors(error: unknown): FieldErrors | null {
   if (!(error instanceof RequestFailed)) return null;
   if (error.status === 400 && error.code === "invalid_smart_rule") {
@@ -113,10 +102,7 @@ function failureErrors(error: unknown): FieldErrors | null {
   return null;
 }
 
-/**
- * useParentFolders は親の `Select` に並べるフォルダを `GET /api/smart-folders` で読む。
- * `reload` で読み直す（無い親を選んで `404` だったとき）。
- */
+/** Reload parent candidates after a selected parent returns 404. */
 function useParentFolders() {
   const [folders, setFolders] = useState<SmartFolderSummary[] | undefined>();
   const [failure, setFailure] = useState<UiText | null>(null);
@@ -138,7 +124,6 @@ function useParentFolders() {
   return { folders, failure, reload: () => setRound((value) => value + 1) };
 }
 
-/** dialogTitle は窓の題である。 */
 function dialogTitle(target: SmartFolderDialogTarget): UiText {
   if (target.kind === "edit") return t.smartFolders.dialog.editTitle;
   return target.parent === undefined
@@ -150,10 +135,7 @@ function initialParent(target: SmartFolderDialogTarget): number | undefined {
   return target.kind === "edit" ? target.folder.parentId : target.parent?.id;
 }
 
-/**
- * editChange は直す窓の、元から変わった欄だけの変更である。`draft.rule` は送る形に
- * 整えた条件（sentRule）なので、整えて元と同じになる編集は変更にならない。
- */
+/** Compare normalized submitted rules so equivalent edits do not produce patches. */
 function editChange(
   target: Extract<SmartFolderDialogTarget, { kind: "edit" }>,
   draft: { name: string; parentId: number | undefined; sort: VideoSort; rule: SmartRule },
@@ -166,27 +148,19 @@ function editChange(
   return change;
 }
 
-/**
- * sentRule は送る条件である。検索語は手で変えたときだけライブラリと同じく整える（契約が
- * 許す 500 文字の値を、触らずに切らない）。
- */
+/** Normalize search only when edited; preserve untouched contract-valid queries up to 500 characters. */
 function sentRule(rule: SmartRule, original: SmartRule): SmartRule {
   const q = rule.q === original.q ? rule.q : normalizeQuery(rule.q ?? "");
   return cleanRule({ ...rule, q });
 }
 
-/** submitWords は送るボタンの、待っていないときと送っている間の言葉である。 */
 function submitWords(target: SmartFolderDialogTarget): { idle: UiText; busy: UiText } {
   return target.kind === "create"
     ? { idle: t.smartFolders.dialog.submit, busy: t.smartFolders.dialog.submitting }
     : { idle: t.smartFolders.dialog.saveSubmit, busy: t.smartFolders.dialog.saving };
 }
 
-/**
- * ParentField は親を選ぶ欄である。直す窓では
- * フォルダ自身とその子孫を選べない（parentChoices）。欄の誤り error が無いときは、親の一覧を
- * 読めなかったことを出す。
- */
+/** Exclude this folder and descendants; prefer field errors over parent-list loading errors. */
 function ParentField({
   target,
   parent,
@@ -198,7 +172,6 @@ function ParentField({
   target: SmartFolderDialogTarget;
   parent: number | undefined;
   parents: { folders: SmartFolderSummary[] | undefined; failure: UiText | null };
-  /** 直す窓のフォルダの id（作る窓は undefined）。 */
   editing: number | undefined;
   error: UiText | null;
   onChange: (parent: number | undefined) => void;
@@ -219,7 +192,7 @@ function ParentField({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={noParentValue}>{t.smartFolders.dialog.noParent}</SelectItem>
-          {/* 一覧が届く前も、今の親を選んだ形で出せるように 1 行置く。 */}
+          {/* Keep the current parent selectable before candidate loading completes. */}
           {parent !== undefined &&
             parents.folders === undefined &&
             target.kind === "create" &&
@@ -249,15 +222,8 @@ function ParentField({
 }
 
 /**
- * SmartFolderDialog はスマートフォルダを作るか直す窓である。名前・親・並べ順と条件を持つ。
- * 呼び出し元は開いている間だけ描く。
- *
- * - 名前（1〜100 文字）と条件の 1 つ（直すときは、元から空の条件はそのまま）を送る前に
- *   確かめ、足りなければ送らずに欄の誤りを出す。範囲の外の条件も送らない。
- * - 直すときは何かが変わるまで「Save」を押せない。変わった欄だけを送る。
- * - `400`・`404`・`409` はその欄の誤りに、ほかの失敗は窓の中の `Alert` に出し、窓は開いたまま。
- *   無い親（`404 smart_folder_not_found`）のときは親の一覧を読み直す。
- * - 直す窓でフォルダ自身が無い（`404 not_found`）ときは `onGone` を呼ぶ。
+ * Mount only while open and patch changed fields only. Missing parents reload choices; a missing
+ * edited folder calls onGone, while other errors remain in the dialog.
  */
 export default function SmartFolderDialog({
   target,
@@ -288,14 +254,12 @@ export default function SmartFolderDialog({
   const randomHint =
     target.kind === "create" && target.randomReplaced === true && sort === target.sort;
 
-  // 直す窓は名前を選んだ状態で開く。
   useEffect(() => {
     if (target.kind === "edit") nameInput.current?.select();
   }, [target.kind]);
 
   const trimmedName = playlistName(name);
-  // 確かめるのも、変わったかを比べるのも、送る形に整えた条件で行う（空白だけの検索語は
-  // 条件にならず、整えて元と同じ検索語は変更にならない）。
+  // Validate and compare the normalized submitted rule; whitespace-only queries are neither conditions nor changes.
   const cleaned = sentRule(rule, target.rule);
   const draft = { name: trimmedName ?? name, parentId: parent, sort, rule: cleaned };
   const unchanged =

@@ -7,39 +7,16 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 検索式を所在1行に対する SQL の条件句に組み立てる。どの所在を範囲にし、動画ごとにどうまとめるかは
-// listing.go の chosenLocationsCTE が決める。
+// Build predicates for one location; listing.go owns scope and per-video grouping.
 
-// matchMinLength は MATCH で調べる語の最小の文字数（照合形の符号位置の数）である。
-//
-// trigram は3文字単位で索引を作るため、2文字以下の語は MATCH に一致しない。
-// 日本語では「旅行」「花火」のような2文字の語が現実に多いので、そこは instr で
-// 調べる。照合形は NFKC を掛けてあるので、NFD の「が」（か + 濁点）は1文字に
-// 畳まれている。
+// Trigram MATCH needs at least three normalized code points; shorter terms use instr.
 const matchMinLength = 3
 
-// termUsesMatch は語を location_search_fts の MATCH で調べるかを返す。
 func termUsesMatch(text string) bool {
 	return utf8.RuneCountInString(text) >= matchMinLength
 }
 
-// searchExprCondition は検索式を、所在（別名 alias）1行に対する条件句と引数に
-// 組み立てる（Structural Decisions 2）。式が空なら空の句を返す。
-//
-// 3文字以上の語は location_search_fts の MATCH、1〜2文字の語は search_key への
-// instr で部分一致を調べる。instr は LIKE と違ってワイルドカードを持たないので、
-// 利用者が打った % や _ を逃がす必要が無い。AND・OR・NOT は SQL の and・or・not で
-// 結ぶ。
-//
-// 語1つごとの条件は、所在の条件（MATCH か instr）と、その所在の動画に付いた
-// タグ名（元の名前・シノニムの両方）への instr の OR に広げる。除外語はこの OR 全体の否定にする。
-// タグは動画の単位なので、語の長さに関係なく instr で調べ、全文索引は足さない。
-// 所有者の OR には作品情報の品番と、結び付いた人物・団体の名前と別名への instr も
-// 加える。
-//
-// ゲストの検索はタグの名前とシノニムにも作品情報にも照合せず、所在の条件だけにする
-//
-// ゲストに見せないタグの名前や作品情報が、当たる動画の有無から漏れないようにするため。
+// Use MATCH for long terms and literal instr for short terms; guests search locations only to avoid leaking private tags or work information.
 func searchExprCondition(expr domain.SearchExpr, alias string, audience domain.Audience) (string, []any) {
 	if expr.Empty() {
 		return "", nil
@@ -49,8 +26,7 @@ func searchExprCondition(expr domain.SearchExpr, alias string, audience domain.A
 	for _, clause := range expr.Clauses {
 		terms := make([]string, 0, len(clause.Terms))
 		for _, term := range clause.Terms {
-			// search_key は題名と相対パスを改行でつないでいる。フレーズの中の改行は
-			// 空白にそろえ、2つの境目をまたいで当たらないようにする。
+			// Normalize phrase newlines to spaces so a term cannot cross the search key's title/path boundary.
 			text := strings.ReplaceAll(term.Text, "\n", " ")
 			var locationCondition string
 			if termUsesMatch(text) {
@@ -63,8 +39,7 @@ func searchExprCondition(expr domain.SearchExpr, alias string, audience domain.A
 			condition := `(` + locationCondition + `)`
 			if audience.IsOwner() {
 				condition = `(` + locationCondition + ` or ` + ownerFactsMatchCondition(alias) + `)`
-				// 鍵の集合（タグ名の手で付けた分、作品情報の品番・人物・団体）を 2 回と、タグのフォルダ名の
-				// 分で、同じ語を 9 つ渡す。
+				// Bind the same term nine times for both user-key sets and the folder-tag source.
 				args = append(args, text, text, text, text, text, text, text, text, text)
 			}
 			if term.Negated {
@@ -81,20 +56,7 @@ func searchExprCondition(expr domain.SearchExpr, alias string, audience domain.A
 	return strings.Join(clauses, " and "), args
 }
 
-// ownerFactsMatchCondition は、所在（別名 alias）の動画に付いたタグの元の名前かシノニムのどれか、
-// または作品情報の品番・人物・団体のどれかが語に当たるかの条件句を返す。呼び出し側が FoldForMatch
-// 済みの語を 9 つ（タグの手で付けた分と作品情報の品番・人物・団体の鍵の集合を userKeyVideosSQL の
-// 2 か所に 1 回ずつ、タグのフォルダ名の分を 1 つ）引数として渡す。語に当たる鍵の集合を動画の id に
-// 引き直してから所在の動画を照らすので、所在 1 行ごとに鍵を求めない。
-//
-// タグは手で付けた分（video_tags）とフォルダ名から付いている分（video_folder_names、017 の）のどちらでもよい。手で付けた分と作品情報は利用者データの鍵（userKeyExpr、
-// docs/design-docs/catalog-organization.md）で結び、作品情報は品番の照合形（code_key）か、結び付いた
-// 人物・団体の名前か別名の照合形（search_key）を照らす。名前の照合形は名前の行にあるので、人物の改名や統合では動画側の鍵を書き直さない
-// （R-6）。説明・日付・URL・外部 ID は照合しない。内容の識別子が空の動画は再生位置を持たない
-// （listing.go の playback_progress の join）のと同じ理由で照合から除く。空文字列どうしが一致して
-// 無関係な行を拾わないためで、フォルダ名の分も同じ扱いにして Video.tags（content_key で引く）と
-// 食い違わないようにする。フォルダ名の分は語に当たるタグの名前から引く（cross join で結ぶ順を
-// 決める）。フォルダ名の行を全部読むと、2 万本では検索 1 回に十数 ms かかる。
+// Resolve matching owner facts to video sets once, avoiding per-location user-key lookups; exclude unidentified content and never search private facts for guests.
 func ownerFactsMatchCondition(alias string) string {
 	keys := `select vt.content_key from video_tags vt join tag_names tn on tn.tag_id = vt.tag_id where instr(tn.search_key, ?) > 0 ` +
 		`union select wi.content_key from video_work_info wi where instr(wi.code_key, ?) > 0 ` +
@@ -110,12 +72,7 @@ func ownerFactsMatchCondition(alias string) string {
 		`where instr(tn.search_key, ?) > 0))`
 }
 
-// quoteMatchPhrase は語を FTS5 の1つのフレーズとして渡せる形にする。
-//
-// FTS5 の問い合わせ構文では " * : ^ - ( ) や AND / OR / NEAR が演算子に
-// なる。包まないと、利用者が打った記号が構文誤りになって検索そのものが
-// 失敗し、画面には「検索が壊れた」ようにしか見えない。全体を二重引用符で
-// 包み、中の二重引用符は2つ重ねて字面に戻す。
+// Quote the entire FTS phrase and double embedded quotes so user punctuation cannot become query syntax.
 func quoteMatchPhrase(text string) string {
 	return `"` + strings.ReplaceAll(text, `"`, `""`) + `"`
 }

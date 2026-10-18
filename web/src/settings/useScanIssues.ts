@@ -11,16 +11,12 @@ import {
 } from "../api/client";
 import { errorText, type UiText } from "../i18n";
 
-/** ScanIssueList は設定の「Videos with problems」に出す、読めた分の一覧である。 */
 export interface ScanIssueList {
-  /** 読めた一覧がどの取り込みのものか。まだ何も読めていなければ null。 */
   scanId: number | null;
   items: ScanIssue[];
-  /** 続きがあるときだけ入る。 */
   nextCursor: string | undefined;
-  /** 続きを読んでいるあいだ true。 */
   loadingMore: boolean;
-  /** 直近の読み込みの失敗。読めた一覧はそのまま残す。 */
+  /** Retain the last successful list on failure. */
   error: UiText | null;
   loadMore: () => void;
 }
@@ -33,13 +29,10 @@ interface Loaded {
 
 const empty: Loaded = { scanId: null, items: [], nextCursor: undefined };
 
-/** 応答の scanId が今の Scan.id と違ったときに、同じ版で読み直す回数の上限。 */
+/** Limit same-revision retries when response scanId differs from current Scan.id. */
 const MISMATCH_RETRIES = 2;
 
-/**
- * loadPages は一覧を先頭から、`count` 件に届くか続きが無くなるまで読む。同じ取り込みの
- * 中で版が変わったとき、「Show more」で読んだ分まで読み直して行とスクロールを保つ。
- */
+/** Reload through the existing count on same-scan revisions to retain rows and scroll. */
 async function loadPages(
   count: number,
   signal: AbortSignal,
@@ -60,7 +53,7 @@ async function loadPages(
       cursor,
       signal,
     });
-    // 読んでいる途中で取り込みが替わった。新しい方の1ページ目から読み直させる。
+    // The scan changed mid-read; restart at the new scan's first page.
     if (page === null || page.scanId !== first.scanId) return page;
     items.push(...page.items);
     cursor = page.nextCursor;
@@ -69,14 +62,9 @@ async function loadPages(
 }
 
 /**
- * useScanIssues は直近の取り込みの問題の一覧を読む。
- *
- * - 一覧は SSE では届かない。`Scan.id` か `Scan.issues.revision` が変わったら読み直す。
- *   つながり直したあとの取り直しで版が変わっていれば、切れていた間の問題も反映される。
- * - 新しい取り込みでは先頭から読み直す。同じ取り込みの中では、読めた件数まで読み直す。
- * - 応答の `scanId` が今の `Scan.id` と違えば、状態を取り直し（`refreshScan`）、読み直す。
- * - 読めなかったときは、最後に読めた一覧を残す。状態を取り直せたら、
- *   版が同じでも読み直す。
+ * Issues are not streamed: reload on scan ID or revision changes, preserving the loaded count
+ * within one scan. Mismatched IDs refresh scan status; failures retain rows and retry on status
+ * refresh even at the same revision.
  */
 export function useScanIssues(scan: Scan | null, refreshScan: () => void): ScanIssueList {
   const [loaded, setLoaded] = useState<Loaded>(empty);
@@ -85,7 +73,7 @@ export function useScanIssues(scan: Scan | null, refreshScan: () => void): ScanI
   const [retry, setRetry] = useState(0);
   const loadedRef = useRef(loaded);
   loadedRef.current = loaded;
-  // 走っている読み込み（読み直しか続き）。同時に1つだけにする。
+  // Allow only one refresh or pagination request at a time.
   const controller = useRef<AbortController | null>(null);
   const mismatches = useRef(0);
   const refreshRef = useRef(refreshScan);
@@ -131,7 +119,7 @@ export function useScanIssues(scan: Scan | null, refreshScan: () => void): ScanI
           return;
         }
         if (page.scanId !== scanId) {
-          // 今の状態より新しい（か古い）取り込みの一覧である。捨てて、状態から取り直す。
+          // Discard issues for a different scan and refresh status first.
           if (mismatches.current < MISMATCH_RETRIES) {
             mismatches.current += 1;
             refreshRef.current();
@@ -154,8 +142,7 @@ export function useScanIssues(scan: Scan | null, refreshScan: () => void): ScanI
     return () => abort.abort();
   }, [scanId, revision, hasIssues, retry]);
 
-  // 読めなかった後に状態を取り直せたら（つながり直し・ウィンドウへの復帰・更新の求め）、
-  // 版が同じでも読み直す。取り込みの状態と同じく、一時的な失敗から戻れるようにする。
+  // After a failure, successful status refresh retries issues even if the revision is unchanged.
   useEffect(() => {
     if (scan === null || errorRef.current === null || controller.current !== null) return;
     setRetry((value) => value + 1);
@@ -163,7 +150,6 @@ export function useScanIssues(scan: Scan | null, refreshScan: () => void): ScanI
 
   const loadMore = useCallback(() => {
     const current = loadedRef.current;
-    // 読み直しや続きの読み込みの途中では重ねない。
     if (current.nextCursor === undefined || controller.current !== null) return;
     const abort = new AbortController();
     controller.current = abort;
@@ -177,7 +163,6 @@ export function useScanIssues(scan: Scan | null, refreshScan: () => void): ScanI
         if (abort.signal.aborted) return;
         settle();
         if (page === null || page.scanId !== current.scanId) {
-          // 取り込みが替わった。状態を取り直し、先頭から読み直す。
           refreshRef.current();
           setRetry((value) => value + 1);
           return;

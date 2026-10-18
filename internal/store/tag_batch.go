@@ -11,20 +11,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// タグ管理画面のまとめての確定・却下・削除と、確認に出す数
-//
-//
-// どちらも ids を json_each に 1 つの引数で渡し、id の数によらず決まった数の文で行う
-// （external_video_tags.go の applyManualTags と同じ）。確定後に domain.SmartFoldersChanged だけを発行する。
+// Batch IDs through json_each to keep statement count fixed; notify smart folders after commit.
 
-// BatchTags は ids のタグに action を 1 つの取引で行う。ids の重複は 1 つとして扱い、無い id は
-// NotFoundIDs、domain.TagBatchApplies が偽の id は何も変えずに NotApplicableIDs、処理した id は
-// AppliedIDs に、それぞれ ids に現れた順で入れる。確定は仮のタグを確定にし
-// 、却下は元の名前を却下した名前に入れてから消し、
-// 削除は消す（tag_names と video_tags は ON DELETE CASCADE で消える）。種類を付ける・外すのは
-// tags.kind_id だけを書き、仮かどうかは変えない。
-// 種類を付けるときは同じ取引で先に種類を読み、無ければ domain.ErrTagKindNotFound で何も
-// 変えない。取引が失敗したら何も変えない。
+// BatchTags is atomic and preserves input order in each result category; kind edits retain tentative state and require an existing kind.
 func (s *TagStore) BatchTags(ctx context.Context, req domain.TagBatchRequest, ids []int64) (domain.TagBatchOutcome, error) {
 	action := req.Action
 	if !action.Valid() {
@@ -83,7 +72,6 @@ func (s *TagStore) BatchTags(ctx context.Context, req domain.TagBatchRequest, id
 	return outcome, nil
 }
 
-// applyTagBatch は JSON の配列 encodedIDs のタグに操作 req を書く。どの id も操作が働くタグである。
 func applyTagBatch(ctx context.Context, tx *sql.Tx, req domain.TagBatchRequest, encodedIDs string) error {
 	switch req.Action {
 	case domain.TagBatchConfirm:
@@ -93,7 +81,7 @@ func applyTagBatch(ctx context.Context, tx *sql.Tx, req domain.TagBatchRequest, 
 			return fmt.Errorf("cannot confirm the tags: %w", err)
 		}
 	case domain.TagBatchReject:
-		// 名前は消す前に写す。消したあとでは tag_names の行が連鎖して消えている。
+		// Copy names before deletion cascades through tag_names.
 		if err := rememberRejectedNames(ctx, tx, encodedIDs); err != nil {
 			return err
 		}
@@ -101,7 +89,6 @@ func applyTagBatch(ctx context.Context, tx *sql.Tx, req domain.TagBatchRequest, 
 	case domain.TagBatchDelete:
 		return deleteTagsByIDs(ctx, tx, encodedIDs)
 	case domain.TagBatchSetKind, domain.TagBatchClearKind:
-		// clearKind では req.KindID が 0 なので null を書く。
 		var kindID any
 		if req.KindID != 0 {
 			kindID = req.KindID
@@ -115,7 +102,6 @@ func applyTagBatch(ctx context.Context, tx *sql.Tx, req domain.TagBatchRequest, 
 	return nil
 }
 
-// requireTagKind は id の種類があることを確かめ、無ければ domain.ErrTagKindNotFound を返す。
 func requireTagKind(ctx context.Context, tx *sql.Tx, id int64) error {
 	var found int
 	err := tx.QueryRowContext(ctx, `select 1 from tag_kinds where id = ?`, id).Scan(&found)
@@ -128,10 +114,7 @@ func requireTagKind(ctx context.Context, tx *sql.Tx, id int64) error {
 	return nil
 }
 
-// TagImpact は、ids のうち今あり domain.TagImpactApplies が真のタグの数と、そのどれかが付いた
-// いまライブラリにある動画の本数を返す。動画は手で付けた分とフォルダ名から付いている分の
-// どちらでも 1 本で、id で重複を除いて数える。
-// 何も変えない。
+// TagImpact counts eligible tags and distinct visible videos across both manual and folder-derived sources without writing.
 func (s *TagStore) TagImpact(ctx context.Context, action domain.TagImpactAction, ids []int64) (domain.TagImpact, error) {
 	if !action.Valid() {
 		return domain.TagImpact{}, fmt.Errorf("unknown tag impact action %q", action)
@@ -141,7 +124,7 @@ func (s *TagStore) TagImpact(ctx context.Context, action domain.TagImpactAction,
 		return domain.TagImpact{}, nil
 	}
 
-	// タグの種類と本数を同じ読み取りスナップショットで読む（Summary と同じ）。
+	// Read eligible tags and video counts from one snapshot.
 	tx, err := s.sql.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.TagImpact{}, err
@@ -175,7 +158,6 @@ func (s *TagStore) TagImpact(ctx context.Context, action domain.TagImpactAction,
 	return domain.TagImpact{TagCount: len(counted), VideoCount: videoCount}, nil
 }
 
-// uniqueTagIDs は ids の重複を除き、最初に現れた順に並べて返す。
 func uniqueTagIDs(ids []int64) []int64 {
 	seen := make(map[int64]bool, len(ids))
 	unique := make([]int64, 0, len(ids))
@@ -189,7 +171,6 @@ func uniqueTagIDs(ids []int64) []int64 {
 	return unique
 }
 
-// tagBatchTargets は ids のうち今あるタグの仮かどうかと種類を、id ごとに返す。無い id は入らない。
 func tagBatchTargets(ctx context.Context, q queryExecer, ids []int64) (map[int64]domain.TagBatchTarget, error) {
 	encoded, err := json.Marshal(ids)
 	if err != nil {
@@ -218,8 +199,6 @@ func tagBatchTargets(ctx context.Context, q queryExecer, ids []int64) (map[int64
 	return targets, nil
 }
 
-// deleteTagsByIDs は JSON の配列 encodedIDs のタグを消す。tag_names と video_tags は外部キーの
-// ON DELETE CASCADE で連鎖して消える。
 func deleteTagsByIDs(ctx context.Context, tx *sql.Tx, encodedIDs string) error {
 	if _, err := tx.ExecContext(ctx,
 		`delete from tags where id in (select value from json_each(?))`, encodedIDs,
@@ -229,9 +208,7 @@ func deleteTagsByIDs(ctx context.Context, tx *sql.Tx, encodedIDs string) error {
 	return nil
 }
 
-// rememberRejectedNames は encodedIDs（JSON の id の配列）のタグの元の名前を、名前の自然順の鍵
-// （domain.NaturalSortKey）と現在の版を添えて却下した名前に insert or ignore する。鍵は SQL で作れないので、名前を 1 回で読んで
-// Go で鍵を作り、名前と鍵の組を json_each に 1 つの引数で渡して 1 つの文で書く。
+// Compute natural-sort keys in Go, then insert rejected names in one set-based statement.
 func rememberRejectedNames(ctx context.Context, tx *sql.Tx, encodedIDs string) error {
 	pairs, err := rejectedNamePairs(ctx, tx, encodedIDs)
 	if err != nil {
@@ -256,7 +233,6 @@ func rememberRejectedNames(ctx context.Context, tx *sql.Tx, encodedIDs string) e
 	return nil
 }
 
-// rejectedNamePairs は encodedIDs のタグの元の名前と、その名前の自然順の鍵の組を返す。
 func rejectedNamePairs(ctx context.Context, tx *sql.Tx, encodedIDs string) ([][2]string, error) {
 	rows, err := tx.QueryContext(ctx, `
 		select name from tag_names

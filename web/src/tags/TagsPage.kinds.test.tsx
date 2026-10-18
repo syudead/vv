@@ -22,7 +22,6 @@ setUpTagsPageServer();
 
 type User = ReturnType<typeof userEvent.setup>;
 
-/** openKinds は「Kinds」のタブへ移り、種類の表を返す。 */
 async function openKinds(user: User): Promise<HTMLElement> {
   await user.click(kindsTab());
   const panel = await screen.findByRole("tabpanel", { name: /Kinds/ });
@@ -66,7 +65,6 @@ describe("TagsPage「Kinds」のタブ", () => {
     renderPage({ url: "/tags?tab=kinds" });
     const table = await screen.findByRole("table", { name: "Kinds" });
 
-    // 作成: 名前の位置に入り、フォーカスはその名前へ。
     await user.click(screen.getByRole("button", { name: "New kind" }));
     await user.type(
       screen.getByRole("textbox", { name: "New kind name" }),
@@ -82,10 +80,8 @@ describe("TagsPage「Kinds」のタブ", () => {
     );
     expect(kindsTab().textContent).toBe("Kinds5");
     const studio = server.tagKinds.find((item) => item.name === "Studio")!;
-    // サーバーの側でタグにその種類を付けておく（タグの行の種類の操作は別の単位）。
     server.tags[0]!.kind = { id: studio.id, name: "Studio" };
 
-    // 改名: 行はその場で書き換わり、名前の位置へ移る。
     await user.click(within(kindRow("Studio")).getByRole("button", { name: "Rename" }));
     const input = screen.getByRole("textbox", { name: 'New name for "Studio"' });
     await user.clear(input);
@@ -106,7 +102,6 @@ describe("TagsPage「Kinds」のタブ", () => {
       ),
     );
 
-    // 削除: 確認の窓の文言は tagCount で決まり、204 で行が消え、トーストが出て、次の行へ。
     await waitFor(() =>
       expect(within(kindRow("Anthology")).getByText("1 tag")).toBeDefined(),
     );
@@ -131,10 +126,8 @@ describe("TagsPage「Kinds」のタブ", () => {
         within(kindRow("Character")).getByRole("button", { name: "Rename" }),
       ),
     );
-    // 改名・削除のたびに共有のタグの一覧を取り直す（タグはどれも種類の名前を持つ）。
     await waitFor(() => expect(server.fullGetCalls).toBeGreaterThanOrEqual(2));
 
-    // 「Tags」へ戻ると先頭のページを読み直し、消した種類はタグから消えている。
     const before = server.getCalls;
     await user.click(tagsTab());
     await waitFor(() => expect(server.getCalls).toBe(before + 1));
@@ -275,7 +268,6 @@ describe("TagsPage「Kinds」のタブ", () => {
 
   it("「Kinds」のタブで画面を開いたときも、前に読んだ種類があれば取り直す", async () => {
     install();
-    // 前の画面で読んだ種類の一覧が共有の保持に残っている。
     await getTagKinds();
     server.tags = [
       ...server.tags,
@@ -352,8 +344,7 @@ describe("TagsPage「Kinds」のタブ", () => {
     await waitFor(() => expect(kindDeleteReleases).toHaveLength(1));
 
     await historyBack();
-    // 送信中は「Kinds」のまま待つ。
-    // 窓が開いている間はほかの要素が読み上げから隠れるので、hidden で探す。
+    // Dialogs hide background elements from the accessibility tree.
     expect(
       screen
         .getByRole("tab", { name: /^Kinds/, hidden: true })

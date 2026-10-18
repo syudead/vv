@@ -10,19 +10,16 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 取り込みの ffprobe の出力から domain.MediaInfo を組み立てる部分。映像・トラック・埋め込み・
-// チャプターのまとまりごとに関数を分ける。読めない項目は省くだけで、解析を失敗にしない。
-// 判定と整え方の規則は internal/domain にある。
+// Unreadable optional media fields are omitted instead of failing probing; domain owns
+// normalization rules.
 
-// probeTags は ffprobe の tags である。鍵の大文字・小文字はコンテナで違う（Matroska は
-// 大文字が多い）ので、小文字にそろえて持つ。値が文字列でない鍵は捨てる。
+// Normalize case-varying container tag keys to lowercase and discard nonstring values.
 type probeTags map[string]string
 
-// UnmarshalJSON は tags のオブジェクトを読む。文字列でない値は無視する。
 func (t *probeTags) UnmarshalJSON(data []byte) error {
 	var raw map[string]json.RawMessage
 	if json.Unmarshal(data, &raw) != nil {
-		// tags がオブジェクトでなければ、無いものとして扱う。
+		// Nonobject tags are treated as absent.
 		*t = nil
 		return nil
 	}
@@ -37,17 +34,14 @@ func (t *probeTags) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// get は鍵 key（小文字）の値を返す。無ければ空。
 func (t probeTags) get(key string) string {
 	return t[key]
 }
 
-// probeText は文字列か数かが版で揺れうる値である。文字列はそのまま、数などの値は
-// JSON の字面で持ち、オブジェクトと配列は空にする。型の違いで JSON 全体を読めなく
-// しないためである。
+// Accept strings and scalar JSON representations while dropping objects/arrays, so field type
+// variations do not invalidate the whole response.
 type probeText string
 
-// UnmarshalJSON は値を文字列として読む。
 func (p *probeText) UnmarshalJSON(data []byte) error {
 	var text string
 	if json.Unmarshal(data, &text) == nil {
@@ -63,15 +57,13 @@ func (p *probeText) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// probeChapter は ffprobe の chapters の 1 件のうち、取り出す部分だけを写す。
 type probeChapter struct {
 	StartTime probeText `json:"start_time"`
 	EndTime   probeText `json:"end_time"`
 	Tags      probeTags `json:"tags"`
 }
 
-// parseMediaInfo は ffprobe の出力から MediaInfo を組み立てる。値が 1 つも無いファイルでも
-// nil にはせず、解析を済ませた印として空の MediaInfo を返す。
+// Return an empty non-nil MediaInfo to mark completed probing even when no fields exist.
 func parseMediaInfo(parsed probeOutput, durationMs int64) *domain.MediaInfo {
 	info := &domain.MediaInfo{
 		Video:          parseMediaVideo(parsed.Streams),
@@ -86,7 +78,6 @@ func parseMediaInfo(parsed probeOutput, durationMs int64) *domain.MediaInfo {
 	return info
 }
 
-// parseMediaVideo は最初の非添付の映像 stream の項目を返す。映像が無ければ nil。
 func parseMediaVideo(streams []probeStream) *domain.MediaVideo {
 	for _, stream := range streams {
 		if stream.CodecType != "video" || stream.Disposition.AttachedPicture != 0 {
@@ -120,7 +111,7 @@ func mediaVideo(stream probeStream) *domain.MediaVideo {
 	return video
 }
 
-// videoBitRate は映像 stream の bit_rate を、無ければ Matroska の tags.BPS を返す。
+// Fall back from stream.bit_rate to Matroska tags.BPS.
 func videoBitRate(stream probeStream) int64 {
 	for _, value := range []string{stream.BitRate, stream.Tags.get("bps"), stream.Tags.get("bps-eng")} {
 		if parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64); err == nil && parsed > 0 {
@@ -130,7 +121,6 @@ func videoBitRate(stream probeStream) int64 {
 	return 0
 }
 
-// parseAudioTracks はすべての音声 stream を stream の順に返す。
 func parseAudioTracks(streams []probeStream) []domain.MediaAudioTrack {
 	var tracks []domain.MediaAudioTrack
 	for _, stream := range streams {
@@ -150,7 +140,6 @@ func parseAudioTracks(streams []probeStream) []domain.MediaAudioTrack {
 	return tracks
 }
 
-// parseSubtitleTracks はすべての字幕 stream を stream の順に返す。
 func parseSubtitleTracks(streams []probeStream) []domain.MediaSubtitleTrack {
 	var tracks []domain.MediaSubtitleTrack
 	for _, stream := range streams {
@@ -170,7 +159,6 @@ func parseSubtitleTracks(streams []probeStream) []domain.MediaSubtitleTrack {
 	return tracks
 }
 
-// parseEmbedded は format.tags と添付画像から埋め込みの情報を読む。
 func parseEmbedded(tags probeTags, streams []probeStream) domain.MediaEmbedded {
 	return domain.MediaEmbedded{
 		Title:       domain.FirstMediaText(tags.get("title")),
@@ -200,8 +188,7 @@ func hasAttachedPicture(streams []probeStream) bool {
 	return false
 }
 
-// parseChapters はチャプターの開始と終わりをミリ秒にする。時刻が読めないものは捨てる。
-// 並べ替えと尺に収めるのは domain.NormalizeChapters が行う。
+// Skip unreadable chapter times; domain.NormalizeChapters sorts and bounds them.
 func parseChapters(chapters []probeChapter) []domain.MediaChapter {
 	var out []domain.MediaChapter
 	for _, chapter := range chapters {
@@ -215,9 +202,8 @@ func parseChapters(chapters []probeChapter) []domain.MediaChapter {
 	return out
 }
 
-// secondsToMs は秒の文字列をミリ秒にする。int64 に収まらない時刻は端の値にそろえる。
-// 範囲外の float64 を int64 へ変換した値は実装依存で、負の値になると
-// NormalizeChapters が冒頭のチャプターにしてしまうためである。
+// Clamp before float-to-int conversion to avoid implementation-dependent overflow turning late
+// chapters into beginning chapters.
 func secondsToMs(value string) (int64, bool) {
 	seconds, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
 	if err != nil || math.IsNaN(seconds) || math.IsInf(seconds, 0) {
@@ -225,7 +211,7 @@ func secondsToMs(value string) (int64, bool) {
 	}
 	ms := math.Round(seconds * 1000)
 	switch {
-	case ms >= math.MaxInt64: // float64(math.MaxInt64) は 2^63 に丸まる
+	case ms >= math.MaxInt64: // float64(math.MaxInt64) rounds to 2^63.
 		return math.MaxInt64, true
 	case ms <= math.MinInt64:
 		return math.MinInt64, true

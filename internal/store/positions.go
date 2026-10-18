@@ -8,15 +8,11 @@ import (
 	"slices"
 )
 
-// positionTable は、親ごとに 0 から詰めた位置（position）を持つ項目の表である。プレイリストの
-// 項目とグループの項目が
-// 同じ詰め直しを使う。
 type positionTable struct {
-	// table は項目の表、parent は親を指す列の名前である。どちらも定数で、利用者の入力ではない。
+	// Table and parent-column names are trusted constants, never user input.
 	table  string
 	parent string
-	// noun は誤りの文に使う親の呼び名である。
-	noun string
+	noun   string
 }
 
 var (
@@ -24,9 +20,7 @@ var (
 	groupPositions    = positionTable{table: "group_items", parent: "group_id", noun: "group"}
 )
 
-// renumberPositions は parentIDs の親の項目の位置を、今の並び（位置、同じなら id）のまま 0 から
-// 詰め直す。並びを先に読み切ってから書く。位置を相関副問い合わせで数える 1 文の update は、同じ
-// 文で既に書き換えた行の位置を数えてしまい、位置が重なる。
+// Read the complete order before writing; a correlated UPDATE can count already-renumbered rows and create duplicate positions.
 func renumberPositions(ctx context.Context, tx *sql.Tx, t positionTable, parentIDs []int64) error {
 	for _, id := range parentIDs {
 		order, err := positionOrder(ctx, tx, t, id)
@@ -40,7 +34,6 @@ func renumberPositions(ctx context.Context, tx *sql.Tx, t positionTable, parentI
 	return nil
 }
 
-// positionOrder は親 id の全項目の id を位置の順に返す。
 func positionOrder(ctx context.Context, tx *sql.Tx, t positionTable, id int64) ([]int64, error) {
 	ids, err := queryInt64s(ctx, tx, `select id from `+t.table+` where `+t.parent+` = ? order by position, id`, id)
 	if err != nil {
@@ -49,7 +42,6 @@ func positionOrder(ctx context.Context, tx *sql.Tx, t positionTable, id int64) (
 	return ids, nil
 }
 
-// writePositionOrder は order の項目の位置を、その並びの 0 からの番号にする。
 func writePositionOrder(ctx context.Context, tx *sql.Tx, t positionTable, order []int64) error {
 	for position, itemID := range order {
 		if _, err := tx.ExecContext(ctx, `update `+t.table+` set position = ? where id = ?`, position, itemID); err != nil {
@@ -59,9 +51,7 @@ func writePositionOrder(ctx context.Context, tx *sql.Tx, t positionTable, order 
 	return nil
 }
 
-// deleteRekeyDuplicates は、鍵 from を to へ付け替える前に、1 つの親に鍵 from と to の項目が
-// 両方あるとき位置の大きい方（同じなら id の大きい方）を消す。付け替えの後に同じ親で鍵が
-// 重ならず、前の位置が残る。
+// Delete the later duplicate before rekeying so each parent retains its earliest position.
 func deleteRekeyDuplicates(ctx context.Context, tx *sql.Tx, t positionTable, from, to string) error {
 	if _, err := tx.ExecContext(ctx, `delete from `+t.table+` where content_key in (?1, ?2)
 		and exists (select 1 from `+t.table+` o where o.`+t.parent+` = `+t.table+`.`+t.parent+`
@@ -73,13 +63,10 @@ func deleteRekeyDuplicates(ctx context.Context, tx *sql.Tx, t positionTable, fro
 	return nil
 }
 
-// errPositionItemNotFound は、移す項目か目印の項目が親の項目に無いことを表す。呼び出し側が
-// それぞれの domain の誤りに読み替える。
+// Callers translate missing-position targets into their own domain errors.
 var errPositionItemNotFound = errors.New("item not in its parent")
 
-// moveItemAfter は親 parentID の項目 itemID を、項目 afterItemID のすぐ後ろへ移し（nil なら
-// 先頭）、親を 0 から詰め直す。どちらかの項目が親に
-// 無ければ errPositionItemNotFound。itemID の後ろへ自分を移すのは何も変えず、false を返す。
+// Nil means first; moving after itself returns false without changes.
 func moveItemAfter(ctx context.Context, tx *sql.Tx, t positionTable, parentID, itemID int64, afterItemID *int64) (bool, error) {
 	order, err := positionOrder(ctx, tx, t, parentID)
 	if err != nil {
@@ -98,8 +85,6 @@ func moveItemAfter(ctx context.Context, tx *sql.Tx, t positionTable, parentID, i
 	return true, writePositionOrder(ctx, tx, t, placed)
 }
 
-// placeItemsAfter は親 parentID の項目 itemIDs を、その順のまままとめて項目 afterItemID のすぐ
-// 後ろへ移し（nil なら先頭）、親を 0 から詰め直す。規則は placeAfter のとおりで、誤りなら何も書かない。
 func placeItemsAfter(ctx context.Context, tx *sql.Tx, t positionTable, parentID int64, itemIDs []int64, afterItemID *int64) error {
 	order, err := positionOrder(ctx, tx, t, parentID)
 	if err != nil {
@@ -112,9 +97,7 @@ func placeItemsAfter(ctx context.Context, tx *sql.Tx, t positionTable, parentID 
 	return writePositionOrder(ctx, tx, t, placed)
 }
 
-// placeAfter は並び order から項目 itemIDs を抜き、その順のまままとめて項目 afterItemID の
-// すぐ後ろ（nil なら先頭）へ入れた並びを返す。itemIDs の重複は最初の 1 つだけを数える。どれかの
-// 項目が order に無いか、afterItemID が order に無いか itemIDs の中にあれば errPositionItemNotFound。
+// Deduplicate selected IDs in order; reject missing IDs or insertion after a selected item.
 func placeAfter(order, itemIDs []int64, afterItemID *int64) ([]int64, error) {
 	present := make(map[int64]bool, len(order))
 	for _, id := range order {

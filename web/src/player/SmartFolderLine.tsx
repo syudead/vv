@@ -7,17 +7,13 @@ import { smartFolderPagePath } from "../smartFolders/smartFolderPaths";
 
 type VideoSmartFolder = NonNullable<Video["smartFolder"]>;
 
-/**
- * SmartFolderLine は題名の上に置く、スマートフォルダの名前と何本目かの 1 行である。グループの行（GroupLine）と同じ形で、
- * 印が `FolderSearch` になる。行はフォルダのページへのリンクで、ゲストにも同じリンクを出す。
- * フォルダには手で外す操作が無く、編集はフォルダのページにあるので、行の後に操作は置かない。
- */
+/** Smart folders have no manual removal; editing belongs on the folder page. */
 export default function SmartFolderLine({
   folder,
   backTo,
 }: {
   folder: VideoSmartFolder;
-  /** 動画ページの戻り先。フォルダのページへ `state.from` として引き継ぐ。 */
+  /** Preserve the video's return destination as state.from. */
   backTo: string;
 }) {
   return (

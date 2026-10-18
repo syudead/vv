@@ -161,7 +161,6 @@ describe("ScanProvider", () => {
         });
       }
       currentCalls += 1;
-      // 初回は前回の取り込みを返し、開始後の取り直しは一時的に失敗する。
       if (currentCalls === 1) return Promise.resolve(json(scan(4, "done")));
       return Promise.resolve(json({ code: "internal", message: "失敗" }, 500));
     });
@@ -225,7 +224,7 @@ describe("ScanProvider", () => {
       currentCalls += 1;
       return Promise.resolve(json(scan(3, "done")));
     });
-    // 一覧の画面は開いたときに取り直しを求める（子の effect は ScanProvider より先に走る）。
+    // Child list effects request refresh before ScanProvider's own effect runs.
     function Page() {
       const { refresh } = useScanControls();
       useEffect(() => refresh(), [refresh]);
@@ -245,13 +244,12 @@ describe("ScanProvider", () => {
     expect(currentCalls).toBe(1);
     expect(folderCalls).toBe(1);
 
-    // つなぎ直したときは取り直す。
     await emitServerEvent("open");
     await waitFor(() => expect(currentCalls).toBe(2));
   });
 
   it("StrictMode で effect の後始末が取得を打ち切っても、続く実行で取り直す", async () => {
-    // 本物の fetch と同じく、打ち切られた要求は応答を返さずに失敗する。
+    // Match fetch: aborted requests reject rather than deliver a response.
     fetchMock.mockImplementation(async (input, init) => {
       await Promise.resolve();
       if (init?.signal?.aborted) throw new DOMException("aborted", "AbortError");
@@ -276,7 +274,6 @@ describe("ScanProvider", () => {
     fetchMock.mockImplementation((input, init) => {
       if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
       currentCalls += 1;
-      // 最初の取得は返らない（打ち切られるまで待つ）。
       if (currentCalls === 1) {
         return new Promise((_, reject) => {
           init?.signal?.addEventListener("abort", () =>
@@ -296,7 +293,6 @@ describe("ScanProvider", () => {
         </OwnerAudience>,
       );
       await act(async () => Promise.resolve());
-      // 始めたばかりの取得の途中なら、取り直しはまとめる。
       await userEvent.click(screen.getByRole("button", { name: "更新" }));
       expect(currentCalls).toBe(1);
 
@@ -366,15 +362,12 @@ describe("ScanProvider", () => {
     await emitServerEvent("scan", scan(1, "done", { status: "running", activity }));
     expect(screen.getByText("今の処理: a.mp4")).toBeDefined();
 
-    // 準備の合間に activity が無い scan が届いても、同じ取り込みのあいだは残す。
     await emitServerEvent("scan", scan(1, "done", { status: "running" }));
     expect(screen.getByText("今の処理: a.mp4")).toBeDefined();
 
-    // 終わったら消す。
     await emitServerEvent("scan", scan(1, "done"));
     expect(screen.getByText("今の処理: なし")).toBeDefined();
 
-    // 別の取り込みへ持ち越さない。
     await emitServerEvent("scan", scan(2, "running", { activity }));
     await emitServerEvent("scan", scan(3, "running"));
     expect(screen.getByText("今の処理: なし")).toBeDefined();
@@ -581,7 +574,7 @@ describe("ScanProvider", () => {
     await emitServerEvent("scan", scan(7, "done"));
     expect(screen.getByText("状態: 7")).toBeDefined();
 
-    // 知らせより前に読んだ実行中の状態が、あとから返る。
+    // Deliver an older running snapshot after a newer notification.
     await act(async () => resolveCurrent?.(json(scan(6, "running"))));
 
     expect(screen.getByText("状態: 7")).toBeDefined();
@@ -633,11 +626,9 @@ describe("ScanProvider", () => {
       expect(await screen.findByText("状態: 40")).toBeDefined();
       expect(screen.getByText("自動の完了: なし")).toBeDefined();
 
-      // 走っているところを見ないまま、新しい取り込みが終わった形で届く。
       await emitServerEvent("scan", watch(41, "done", { status: "partial" }));
       expect(screen.getByText("自動の完了: 41")).toBeDefined();
 
-      // 同じ取り込みの更新では、もう一度は完了にしない。
       await emitServerEvent(
         "scan",
         watch(41, "done", {

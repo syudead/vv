@@ -88,12 +88,10 @@ describe("creatingLine", () => {
       "Creating the thumbnail, the seek preview, and the list preview · You can play the video now",
     ],
     [{}, null],
-    // failed だけが残ったら消す。
     [
       { thumbnailState: "failed", seekThumbnailState: "failed", previewState: "failed" },
       null,
     ],
-    // 読み取り前・読み取り失敗では出さない（段階表示・読み取り失敗の表示が出る）。
     [{ probeState: "pending", previewState: "pending" }, null],
     [{ probeState: "failed", previewState: "pending" }, null],
   ] as [Partial<Video>, string | null][])("%j", (overrides, expected) => {

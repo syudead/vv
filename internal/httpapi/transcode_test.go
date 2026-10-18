@@ -18,8 +18,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// fakeTranscoder は media.LiveTranscoder の代わりである。保存済みの解析情報が
-// 渡されなければ、その場の解析結果として probed を返す。
+// Return on-demand probe results only when stored probe metadata was not supplied.
 type fakeTranscoder struct {
 	body            string
 	stream          io.ReadCloser
@@ -36,9 +35,9 @@ type fakeTranscoder struct {
 	starts          int
 	waits           int
 	stops           int
-	// beforeReturn は Start が戻る直前に呼ばれる（期限の間際に戻る変換を模す）。
+	// beforeReturn simulates Start completing near its deadline.
 	beforeReturn func(domain.LiveTranscodeRequest)
-	// actualStartMs は Start が返す実際の開始位置である。
+
 	actualStartMs int64
 }
 
@@ -131,7 +130,7 @@ func TestTranscodeStreamsMP4WithoutRangeHeaders(t *testing.T) {
 	if got := rec.Header().Get("Content-Length"); got != "" {
 		t.Errorf("Content-Length = %q", got)
 	}
-	// シークだけではエンコードを強いない。
+
 	if fake.startMs != 1000 || fake.normalize || fake.waits != 1 {
 		t.Errorf("transcoder = %+v", fake)
 	}
@@ -172,7 +171,7 @@ func TestTranscodeErrorsBeforeBody(t *testing.T) {
 				assertErrorBody(t, tc.name, rec.Code, rec.Body.Bytes(),
 					wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonTranscodeUnavailable})
 			case "invalid start", "invalid attempt":
-				// 画面が送らない値の誤りには reason を付けない。
+				// Errors for values the UI never sends have no reason.
 				assertErrorBody(t, tc.name, rec.Code, rec.Body.Bytes(),
 					wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
 			}
@@ -241,7 +240,7 @@ func TestTranscodeSilentlyStopsWhenRequestIsCanceledBeforeInitialData(t *testing
 	}
 }
 
-// Start が期限の間際に最初のデータを持って戻っても、経路は期限をかけ直さずに配信する。
+// Initial output arriving just before the deadline must stream without restarting the timeout.
 func TestTranscodeServesStreamStartedAtDeadline(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		fake := &fakeTranscoder{body: "fragmented-mp4", beforeReturn: func(request domain.LiveTranscodeRequest) {
@@ -342,7 +341,6 @@ func TestTranscodeReportsHardwareFallback(t *testing.T) {
 	}
 }
 
-// 設定が無い経路は software でエンコードする。
 func TestTranscodeWithoutSettingsRequestsSoftware(t *testing.T) {
 	var got domain.VideoEncoder
 	fake := &fakeTranscoder{body: "fragmented-mp4", beforeReturn: func(request domain.LiveTranscodeRequest) {
@@ -357,7 +355,7 @@ func TestTranscodeWithoutSettingsRequestsSoftware(t *testing.T) {
 	}
 }
 
-// 画質は LiveTranscodeRequest.Quality に載り、開始のログに添えられる。
+// Pass quality through LiveTranscodeRequest and include it in startup logs.
 func TestTranscodePassesQualityToTranscoder(t *testing.T) {
 	fake := &fakeTranscoder{body: "fragmented-mp4"}
 	logs := &syncBuffer{}
@@ -383,7 +381,8 @@ func TestTranscodePassesQualityToTranscoder(t *testing.T) {
 	}
 }
 
-// 列挙に無い値、動画の短辺以上の画質、寸法の無い動画は 400 で、変換を始めない。
+// Reject unsupported quality, values at/above the short side, and unknown dimensions before
+// starting a transcode.
 func TestTranscodeRejectsUnavailableQuality(t *testing.T) {
 	width, height := 1280, 720
 	tests := []struct {

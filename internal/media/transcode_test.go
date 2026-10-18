@@ -109,8 +109,6 @@ func TestTranscodeArgsEncodesUnsafeStreams(t *testing.T) {
 	}
 }
 
-// 映像がコピーできる動画は途中からでもコピーし、実際の開始位置を moov に書かせる引数に
-// する。
 func TestTranscodeArgsCopiesSeek(t *testing.T) {
 	args := strings.Join(transcodeArgs("movie.mkv", 25000, compatibleMetadata(), false), " ")
 	for _, want := range []string{
@@ -123,7 +121,6 @@ func TestTranscodeArgsCopiesSeek(t *testing.T) {
 	}
 }
 
-// 直接再生から切り替えた変換は、途中からでも映像と音声をエンコードする（要件 5）。
 func TestTranscodeArgsNormalizesSeek(t *testing.T) {
 	args := strings.Join(transcodeArgs("movie.mkv", 25000, compatibleMetadata(), true), " ")
 	for _, want := range []string{"-ss 25.000 -i movie.mkv", "-c:v libx264", "-preset superfast", "-c:a aac"} {
@@ -138,8 +135,6 @@ func TestTranscodeArgsNormalizesSeek(t *testing.T) {
 	}
 }
 
-// 映像をエンコードする途中からの変換は、コピーからの切り替えでも、映像がコピーできない
-// 動画でも同じ引数で、今までどおり音声もエンコードする（受け入れ条件 4）。
 func TestTranscodeArgsEncodesSeekLikeBefore(t *testing.T) {
 	fallback := buildTranscodeArgs("movie.mkv", 25000, compatibleMetadata(), false, false, domain.VideoEncoderSoftware, "")
 	args := strings.Join(fallback, " ")
@@ -168,8 +163,6 @@ func TestTranscodeArgsEncodesSeekLikeBefore(t *testing.T) {
 	}
 }
 
-// 映像をコピーして途中から始めるとき、コピーできない音声はエンコードし、キーフレームの
-// 時刻から始める。
 func TestTranscodeArgsCopySeekEncodesUncopyableAudio(t *testing.T) {
 	metadata := compatibleMetadata()
 	metadata.Audio.CodecName = "ac3"
@@ -367,7 +360,7 @@ func TestTranscodeKeyframeIntervalWithFFmpeg(t *testing.T) {
 		t.Run(fmt.Sprintf("%dfps", rate), func(t *testing.T) {
 			directory := t.TempDir()
 			input := filepath.Join(directory, "input.mkv")
-			// 入力のキーフレームは疎にし、出力の間隔がエンコード側で決まることを確かめる。
+			// Sparse source keyframes ensure output spacing comes from the encoder.
 			generate := exec.Command(transcodeCommand,
 				"-hide_banner", "-loglevel", "error", "-y",
 				"-f", "lavfi", "-i", fmt.Sprintf("testsrc=size=320x180:rate=%d:duration=10", rate),
@@ -572,7 +565,7 @@ func TestTranscodeRotated4KStaysWithinEnvelopeWithFFmpeg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 縦長の 4K は上限に収まるのでそのまま流す。回転の印が残っても、表示される比率は保つ。
+	// Portrait 4K fits the limits and must preserve display aspect despite rotation metadata.
 	displayWidth, displayHeight, numerator, denominator := displayGeometry(normalized.Video)
 	inputDAR := float64(2160) / float64(3840)
 	outputDAR := float64(displayWidth) * float64(numerator) / (float64(displayHeight) * float64(denominator))
@@ -692,7 +685,7 @@ func TestTranscodeHelperProcess(t *testing.T) {
 		}
 	}
 	if delay, ok := strings.CutPrefix(mode, "ffmpeg-mp4:"); ok {
-		// 途中からのコピーの出力を模す。映像はこの時刻から、音声は 3 ms 遅れて始まる。
+		// Simulate a copy seek with audio starting three milliseconds after video.
 		delayMs, _ := strconv.ParseUint(delay, 10, 32)
 		_, _ = os.Stdout.Write(testInitSegment(1000, []uint32{uint32(delayMs), uint32(delayMs) + 3}))
 		_, _ = io.WriteString(os.Stdout, "fragment")
@@ -710,8 +703,6 @@ func TestTranscodeHelperProcess(t *testing.T) {
 	}
 }
 
-// 同じ ffprobe の出力から、取り込みの解析が保存する値と要求時の解析が作る値が等しく、
-// 保存（JSON）を経て読み戻した値も同じ ffmpeg の引数を生む（親 Issue #371 受け入れ条件 10）。
 func TestIngestAndRequestProbeShareTranscodeProbe(t *testing.T) {
 	outputs := map[string]string{
 		"MOV with cover art and rotation": `{"streams":[
@@ -761,8 +752,6 @@ func TestIngestAndRequestProbeShareTranscodeProbe(t *testing.T) {
 	}
 }
 
-// 使える映像 stream（非添付で寸法がある）が無い動画では、取り込みの解析は成功しても
-// 変換用の情報を持たない。
 func TestParseProbeOutputOmitsTranscodeWithoutUsableVideo(t *testing.T) {
 	outputs := map[string]string{
 		"attached picture only": `{"streams":[{"index":0,"codec_type":"video","codec_name":"mjpeg","width":600,"height":600,"disposition":{"attached_pic":1}},{"index":1,"codec_type":"audio","codec_name":"aac"}],"format":{"duration":"12.5"}}`,
@@ -785,7 +774,6 @@ func TestParseProbeOutputOmitsTranscodeWithoutUsableVideo(t *testing.T) {
 	}
 }
 
-// Probe は ffprobe の直前に取ったファイルの大きさと更新時刻を Source に載せる。
 func TestProbeRecordsSourceStamp(t *testing.T) {
 	if _, err := exec.LookPath(transcodeCommand); err != nil {
 		t.Skip("ffmpegがありません")
@@ -818,8 +806,8 @@ func TestProbeRecordsSourceStamp(t *testing.T) {
 	}
 }
 
-// scriptedTranscoder は起動したコマンドを数える。ffprobe は probeMode、FFmpeg は
-// ffmpegModes を順に使い（尽きたら最後のもの）、helper process で代わりに動かす。
+// Helper processes record commands and repeat the final scripted FFmpeg mode after the sequence
+// ends.
 type scriptedTranscoder struct {
 	*LiveTranscoder
 	mu          sync.Mutex
@@ -903,14 +891,12 @@ func (s *scriptedTranscoder) started() []string {
 	return slices.Clone(s.commands)
 }
 
-// arguments は起動した FFmpeg の引数を順に返す。
 func (s *scriptedTranscoder) arguments() [][]string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return slices.Clone(s.args)
 }
 
-// videoCodecs は起動した FFmpeg ごとの -c:v の値を返す。
 func (s *scriptedTranscoder) videoCodecs() []string {
 	var codecs []string
 	for _, args := range s.arguments() {
@@ -921,7 +907,6 @@ func (s *scriptedTranscoder) videoCodecs() []string {
 	return codecs
 }
 
-// sourceFile は開いたファイルの代わりに実在するファイルを作り、その印を返す。
 func sourceFile(t *testing.T) (string, domain.FileStamp) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "movie.mkv")
@@ -935,7 +920,6 @@ func sourceFile(t *testing.T) (string, domain.FileStamp) {
 	return path, domain.FileStampOf(info)
 }
 
-// helperProbe は helper process の "probe" が出す ffprobe の出力を解釈した値である。
 func helperProbe() domain.TranscodeProbe {
 	return domain.TranscodeProbe{Video: domain.TranscodeVideo{
 		CodecName: "h264", Profile: "High", PixelFormat: "yuv420p", BitsPerRawSample: 8,
@@ -955,8 +939,6 @@ func finishStarted(t *testing.T, started domain.LiveTranscode) []byte {
 	return first
 }
 
-// 保存済みの解析情報があれば ffprobe を起動しない。先頭からでも途中からでも同じ
-// （親 Issue #371 受け入れ条件 7）。
 func TestLiveTranscoderSkipsProbeWithStoredProbe(t *testing.T) {
 	path, stamp := sourceFile(t)
 	stored := helperProbe()
@@ -980,7 +962,6 @@ func TestLiveTranscoderSkipsProbeWithStoredProbe(t *testing.T) {
 	}
 }
 
-// 解析情報が無ければ ffprobe を 1 回だけ実行し、その結果を返す（受け入れ条件 8）。
 func TestLiveTranscoderProbesWithoutStoredProbe(t *testing.T) {
 	path, stamp := sourceFile(t)
 	scripted := newScriptedTranscoder("ffmpeg")
@@ -999,7 +980,6 @@ func TestLiveTranscoderProbesWithoutStoredProbe(t *testing.T) {
 	}
 }
 
-// 解析のあとにファイルが開いたときと違っていたら、変換はするが結果を保存用に返さない。
 func TestLiveTranscoderDoesNotReturnProbeOfChangedFile(t *testing.T) {
 	path, stamp := sourceFile(t)
 	stamp.ModTimeNs++
@@ -1016,8 +996,6 @@ func TestLiveTranscoderDoesNotReturnProbeOfChangedFile(t *testing.T) {
 	}
 }
 
-// 保存値で始めた変換がコピーでもエンコードでもデータを出さずに終わったら、その場で
-// 解析してコピーから 1 回だけやり直す（Structural Decision 3）。
 func TestLiveTranscoderRetriesWithFreshProbeWhenStoredProbeFails(t *testing.T) {
 	path, stamp := sourceFile(t)
 	stored := helperProbe()
@@ -1042,8 +1020,6 @@ func TestLiveTranscoderRetriesWithFreshProbeWhenStoredProbeFails(t *testing.T) {
 	}
 }
 
-// コピーが最初のデータを出さずに終わったら、同じ解析情報で映像をエンコードし、指定位置から
-// 始める（Edge Case「キーフレームの位置が取れない、または壊れている動画」）。
 func TestLiveTranscoderFallsBackToEncodeWhenCopyFails(t *testing.T) {
 	path, stamp := sourceFile(t)
 	stored := helperProbe()
@@ -1065,8 +1041,6 @@ func TestLiveTranscoderFallsBackToEncodeWhenCopyFails(t *testing.T) {
 	}
 }
 
-// 途中からのコピーの先頭が moov でなければ、壊れた出力として同じ要求の中でエンコードに
-// 切り替える。
 func TestLiveTranscoderFallsBackToEncodeWhenCopyOutputIsNotMP4(t *testing.T) {
 	path, stamp := sourceFile(t)
 	stored := helperProbe()
@@ -1088,8 +1062,6 @@ func TestLiveTranscoderFallsBackToEncodeWhenCopyOutputIsNotMP4(t *testing.T) {
 	}
 }
 
-// 先頭からのコピーは今までの引数のまま（-copyts も delay_moov も付けない）で、実際の
-// 開始位置は 0 である。
 func TestLiveTranscoderCopiesFromStartWithoutRebasing(t *testing.T) {
 	path, stamp := sourceFile(t)
 	stored := helperProbe()
@@ -1109,7 +1081,6 @@ func TestLiveTranscoderCopiesFromStartWithoutRebasing(t *testing.T) {
 	}
 }
 
-// 直接再生から切り替えた変換（Normalize）は、コピーを試さずにエンコードする（要件 5）。
 func TestLiveTranscoderEncodesWhenNormalizing(t *testing.T) {
 	path, stamp := sourceFile(t)
 	stored := helperProbe()
@@ -1126,7 +1097,6 @@ func TestLiveTranscoderEncodesWhenNormalizing(t *testing.T) {
 	}
 }
 
-// やり直しは 1 回だけで、その場の解析で始めた FFmpeg の失敗は切り替えない。
 func TestLiveTranscoderRetriesOnlyOnce(t *testing.T) {
 	path, stamp := sourceFile(t)
 	for _, tc := range []struct {
@@ -1154,7 +1124,6 @@ func TestLiveTranscoderRetriesOnlyOnce(t *testing.T) {
 	}
 }
 
-// 最初のデータを待つ期限切れはやり直さずに失敗にする。期限は切り替え全体で 1 つである。
 func TestLiveTranscoderDoesNotRetryAfterStartupTimeout(t *testing.T) {
 	path, stamp := sourceFile(t)
 	stored := helperProbe()
@@ -1170,7 +1139,6 @@ func TestLiveTranscoderDoesNotRetryAfterStartupTimeout(t *testing.T) {
 	}
 }
 
-// 要求の取り消しで打ち切られた ffprobe は誤りで終わり、結果を返さない。
 func TestLiveTranscoderReturnsNoProbeWhenProbeIsCanceled(t *testing.T) {
 	path, stamp := sourceFile(t)
 	scripted := newScriptedTranscoder("ffmpeg")
@@ -1190,8 +1158,6 @@ func TestLiveTranscoderReturnsNoProbeWhenProbeIsCanceled(t *testing.T) {
 	}
 }
 
-// 途中からのコピーは moov の edit list から実際の開始位置を得て、書き換えた moov を最初に
-// 送る（Structural Decision 1）。
 func TestLiveTranscoderResolvesCopyStartFromEditList(t *testing.T) {
 	path, stamp := sourceFile(t)
 	stored := helperProbe()
@@ -1223,8 +1189,6 @@ func TestLiveTranscoderResolvesCopyStartFromEditList(t *testing.T) {
 	}
 }
 
-// 直前のキーフレームが差の上限より前なら、同じ要求の中でエンコードに切り替えて指定位置から
-// 始める（要件 3）。
 func TestLiveTranscoderEncodesWhenKeyframeIsTooFar(t *testing.T) {
 	path, stamp := sourceFile(t)
 	stored := helperProbe()

@@ -92,7 +92,6 @@ describe("スマートフォルダのカード", () => {
     renderCards();
     await revealCards([1]);
 
-    // 最初の読み出しが届く前に知らせが来て、同じカードをもう一度読む。
     server.cards.set(1, folderCard(1, "猫", { videoCount: 3 }));
     await emitServerEvent("smartFolder", { ids: [1] });
     expect(server.cardRequests).toEqual([[1], [1]]);
@@ -106,7 +105,6 @@ describe("スマートフォルダのカード", () => {
       await screen.findByRole("link", { name: "猫, smart folder of 3 videos" }),
     ).toBeTruthy();
 
-    // 遅れて届いた最初の答えは新しい値を戻さない。
     await act(async () => {
       first?.();
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -256,7 +254,6 @@ describe("スマートフォルダのカード", () => {
       );
     }
 
-    /** answerMarks はハートと「Add to playlist」の書き込みと、プレイリストの一覧の読みに答えさせる。 */
     function answerMarks() {
       server.writeAnswer = (method) =>
         method === "PUT"
@@ -313,7 +310,6 @@ describe("スマートフォルダのカード", () => {
           body: { videoIds: [], groupIds: [], smartFolderIds: [1], favorite: true },
         },
       ]);
-      // 行のハートも同じく送る。
       await user.click(
         screen.getByRole("button", { name: 'Favorite smart folder "犬"' }),
       );
@@ -360,19 +356,17 @@ describe("スマートフォルダのカード", () => {
       );
       await waitFor(() => expect(pressed()).toBe("true"));
 
-      // 読み直した値が押した値と同じ。
       server.cards.set(1, folderCard(1, "猫", { favorite: true }));
       await emitServerEvent("smartFolder", { ids: [1] });
       await waitFor(() => expect(server.cardRequests).toHaveLength(2));
       expect(pressed()).toBe("true");
 
-      // 別のタブが元へ戻した。読んだ値は押す前の値と同じだが、古い塗りは残さない。
+      // A new read restores the original server value; discard the old optimistic override even when values match.
       server.cards.set(1, folderCard(1, "猫", { favorite: false }));
       await emitServerEvent("smartFolder", { ids: [1] });
       await waitFor(() => expect(server.cardRequests).toHaveLength(3));
       await waitFor(() => expect(pressed()).toBe("false"));
 
-      // 次の押下はサーバーの値の逆（true）を送る。
       await user.click(
         screen.getByRole("button", { name: 'Favorite smart folder "猫"' }),
       );

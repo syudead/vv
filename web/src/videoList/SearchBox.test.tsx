@@ -155,17 +155,14 @@ describe("SearchBox の入力", () => {
     expect(limitQueryInput("😀".repeat(MAX_QUERY_LENGTH))).toBe(
       "😀".repeat(MAX_QUERY_LENGTH),
     );
-    // 上限に達した語の先頭や途中に打っても、もとの末尾は消えない。
     const full = "a".repeat(MAX_QUERY_LENGTH);
     expect(limitQueryInput("X" + full, full)).toBe(full);
     expect(limitQueryInput("a".repeat(50) + "X" + "a".repeat(50), full)).toBe(full);
-    // 上限の語の一文字を選び、その文字で終わる語に置き換えても、入る分だけが入る。
     expect(limitQueryInput("ba" + "a".repeat(MAX_QUERY_LENGTH - 1), full, 2)).toBe(
       "b" + "a".repeat(MAX_QUERY_LENGTH - 1),
     );
     expect(limitQueryInput("X" + full, full, 1)).toBe(full);
     expect(limitQueryInput("a".repeat(50) + "X" + "a".repeat(50), full, 51)).toBe(full);
-    // 上限の手前での貼り付けは、入る分だけが入る（絵文字を割らない）。
     const almost = "b".repeat(MAX_QUERY_LENGTH - 2);
     expect(
       limitQueryInput("b" + "😀😀😀" + "b".repeat(MAX_QUERY_LENGTH - 3), almost),
@@ -190,7 +187,7 @@ describe("SearchBox の入力", () => {
     fireEvent.change(input, { target: { value: "京都" } });
 
     const clear = screen.getByRole("button", { name: "Clear search" });
-    // × の mousedown は入力欄のフォーカスを外さない（blur で入力途中の語を確定しない）。
+    // Clear-button mousedown must not blur and commit unfinished input.
     expect(fireEvent.mouseDown(clear)).toBe(false);
     fireEvent.click(clear);
 

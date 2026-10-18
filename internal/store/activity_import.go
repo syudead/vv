@@ -12,17 +12,13 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 取り込みと失敗した走査の記録。1 本の動画の
-// 取り込みは 5 つの段階をまとめて 1 件の import の記録にし、仕事の行（jobs.activity_id）がその記録を指す。
-// 仕事を積む・取り出す・終える取引が、同じ取引でここを呼んで記録を開き、状態をまとめ直す。
+// Each import activity spans all five stages; jobs reference it and update its state in their own transaction.
 
-// pendingJobCondition は待っているか走っている仕事の行（別名 alias）の条件である。
 func pendingJobCondition(alias string) string {
 	return alias + `.state in ('queued', 'running')`
 }
 
-// videoActivitySubject は動画 videoID の記録の対象を、今の内容の鍵と表示名で返す。表示名は上書きの表示名、
-// 無ければパスの順で最初の所在の題名である。
+// Prefer the overridden title, then the first location by path.
 func videoActivitySubject(ctx context.Context, q rowQueryer, videoID int64) (domain.ActivitySubject, error) {
 	subject := domain.ActivitySubject{Kind: domain.ActivitySubjectVideo}
 	err := q.QueryRowContext(ctx, `select v.content_key, coalesce(
@@ -35,10 +31,7 @@ func videoActivitySubject(ctx context.Context, q rowQueryer, videoID int64) (dom
 	return subject, nil
 }
 
-// joinImportActivity は動画 videoID の待っているか走っている仕事を、1 件の running の import の記録に
-// まとめる。そうした記録が無ければ、decider が始めた記録を running/waiting で開く。終わった記録は
-// 生き返らせない（再スキャン・読み取りのやり直し・再起動のあとの仕事は新しい記録になる）。待つか走る仕事が
-// 無ければ何もしない。最後に記録の状態をまとめ直す（settleImportActivity）。
+// Attach pending jobs to one running import activity; create a new entry instead of reviving a finished one.
 func joinImportActivity(
 	ctx context.Context, q activityWriter, c *changes, videoID int64, decider domain.ActivityDecider, now time.Time,
 ) error {
@@ -77,8 +70,7 @@ func joinImportActivity(
 	return settleImportActivity(ctx, q, c, id, now)
 }
 
-// settleJobActivity は仕事 jobID が属する import の記録の状態をまとめ直す。記録を持たない仕事（この機能より
-// 前に積んだもの）では何もしない。
+// Jobs queued before activity tracking have no entry to settle.
 func settleJobActivity(ctx context.Context, q activityWriter, c *changes, jobID int64, now time.Time) error {
 	var id sql.NullInt64
 	err := q.QueryRowContext(ctx, `select activity_id from jobs where id = ?`, jobID).Scan(&id)
@@ -91,9 +83,7 @@ func settleJobActivity(ctx context.Context, q activityWriter, c *changes, jobID 
 	return settleImportActivity(ctx, q, c, id.Int64, now)
 }
 
-// settleImportActivity は running の import の記録 id の状態を、その記録に属する仕事の状態から決め直す
-// （domain.ImportActivityState）。諦めた仕事があれば、段階の順ではなく id の順で最初のものの種類を stage に、
-// その文を detail に書く。running でない記録は変えない。状態が変わらなければ書かない。
+// Only running entries are settled; the first failed job by ID supplies the failure detail.
 func settleImportActivity(ctx context.Context, q activityWriter, c *changes, id int64, now time.Time) error {
 	var current domain.ActivityState
 	var status, reason string
@@ -134,20 +124,15 @@ func settleImportActivity(ctx context.Context, q activityWriter, c *changes, id 
 	return nil
 }
 
-// goneImportCondition は running の import の記録（別名 e）のうち、待つか走る仕事がもう無いものの条件である。
 const goneImportCondition = `e.kind = 'import' and e.status = 'running' and not exists (
 	select 1 from jobs j where j.activity_id = e.id and j.state in ('queued', 'running'))`
 
-// closeGoneImportActivity は import の記録 id を、待つか走る仕事がもう無い running なら done/gone で閉じる。
-// 登録の所在を失った動画の最後の仕事を捨てたときに呼ぶ。閉じたら
-// true を返す。
+// Close a running import as gone when its last pending job loses all registered locations.
 func closeGoneImportActivity(ctx context.Context, q activityWriter, c *changes, id int64, now time.Time) (bool, error) {
 	return closeGoneImports(ctx, q, c, `e.id = ?`, now, id)
 }
 
-// closeDeletedVideoImports は消した動画 deleted の running の import の記録のうち、待つか走る仕事が無くなった
-// ものを done/gone で閉じる。仕事は動画の行と連鎖して消えているので、記録は対象の内容の鍵で引く。動画の行を
-// 消す取引の確定（DB.commit）から呼ぶ。
+// Deleted jobs cascade with their video, so close their activities by content key during commit.
 func closeDeletedVideoImports(ctx context.Context, q activityWriter, c *changes, deleted []domain.DeletedVideo) error {
 	if len(deleted) == 0 {
 		return nil
@@ -165,7 +150,6 @@ func closeDeletedVideoImports(ctx context.Context, q activityWriter, c *changes,
 	return err
 }
 
-// closeGoneImports は条件 where（別名 e）を満たし goneImportCondition に当たる記録を done/gone にする。
 func closeGoneImports(
 	ctx context.Context, q activityWriter, c *changes, where string, now time.Time, args ...any,
 ) (bool, error) {
@@ -185,13 +169,11 @@ func closeGoneImports(
 	return closed > 0, nil
 }
 
-// importFailure は import の記録で諦めた最初の仕事の段階と文である。
 type importFailure struct {
 	kind    domain.JobKind
 	message string
 }
 
-// importActivityJobs は import の記録 id に属する仕事の段階と状態を id の順に返し、諦めた最初の仕事を添える。
 func importActivityJobs(ctx context.Context, q queryExecer, id int64) ([]domain.ImportJobState, importFailure, error) {
 	rows, err := q.QueryContext(ctx, `select kind, state, coalesce(last_error, '') from jobs where activity_id = ?
 		order by id`, id)
@@ -218,8 +200,6 @@ func importActivityJobs(ctx context.Context, q queryExecer, id int64) ([]domain.
 	return jobs, failure, nil
 }
 
-// attachImportProgress は waiting を過ぎた running の import の記録に、今の段階と、その動画の済んだ段階の数を
-// 添える。
 func attachImportProgress(ctx context.Context, q rowsQueryer, entries []domain.ActivityEntry) error {
 	index, encoded := activityEntryIDs(entries, func(entry domain.ActivityEntry) bool {
 		return entry.Kind == domain.ActivityImport && entry.Status == domain.ActivityRunning &&
@@ -228,8 +208,7 @@ func attachImportProgress(ctx context.Context, q rowsQueryer, entries []domain.A
 	if len(index) == 0 {
 		return nil
 	}
-	// 済んだ段階は動画のすべての仕事から数える。やり直しの記録に属するのは積み直した仕事だけで、前に済んだ
-	// 段階の仕事は前の記録を指したまま残る。
+	// Count completed stages across all jobs: retries retain earlier completed jobs on the previous activity.
 	rows, err := q.QueryContext(ctx, `select a.activity_id, j.kind, j.state from jobs j join (
 			select distinct activity_id, video_id from jobs where activity_id in (select value from json_each(?))
 		) a on a.video_id = j.video_id order by j.id`, encoded)
@@ -255,9 +234,7 @@ func attachImportProgress(ctx context.Context, q rowsQueryer, entries []domain.A
 	return nil
 }
 
-// recordScanActivity は走査 id の終わりを記録する。interrupted 以外の理由で failed に終わった走査は、対象を
-// その走査、表示名を始めた主体にした attention/failed の scan の記録を書く。done に終わった走査は、開いている
-// scan の記録をすべて done/superseded で閉じる。起動時に interrupted で閉じた走査は書かない。
+// Record failed scans except startup interruptions; a successful scan supersedes open scan failures.
 func recordScanActivity(
 	ctx context.Context, tx activityWriter, c *changes, id int64, origin domain.ScanOrigin, state domain.ScanState,
 	cause error, decider domain.ActivityDecider, now time.Time,
@@ -282,7 +259,6 @@ func recordScanActivity(
 	return err
 }
 
-// closeScanActivity は開いている scan の記録をすべて done/superseded で閉じる。
 func closeScanActivity(ctx context.Context, tx activityWriter, c *changes, now time.Time) error {
 	res, err := tx.ExecContext(ctx, `update activity_entries set status = ?, reason = null, outcome = ?, updated_at = ?
 		where kind = ? and status <> ?`, string(domain.ActivityDone), string(domain.ActivitySuperseded),

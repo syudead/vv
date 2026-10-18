@@ -81,7 +81,6 @@ func TestPrepareDirsCreatesEveryFolder(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", dir, err)
 		}
-		// 書けるかの確認に使ったファイルを残さない。データの下は子のフォルダだけ。
 		for _, entry := range entries {
 			if !entry.IsDir() {
 				t.Errorf("%s holds %s", dir, entry.Name())
@@ -92,7 +91,7 @@ func TestPrepareDirsCreatesEveryFolder(t *testing.T) {
 
 func TestPrepareDirsNamesTheUnwritableFolder(t *testing.T) {
 	base := t.TempDir()
-	// VVMDM をファイルにすると、その下のフォルダを作れない（root でも同じ）。
+	// A file at VVMDM prevents child-directory creation even as root.
 	blocker := filepath.Join(base, "VVMDM")
 	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
 		t.Fatal(err)
@@ -135,9 +134,8 @@ func TestOpenLogKeepsOnlyThePreviousRun(t *testing.T) {
 	assertContent(t, paths.PreviousLogFile, "second")
 }
 
-// 今回のログを移せなかったときに、前回のログを消してしまわない。移せない場合は
-// 今回のログの場所を中身のあるフォルダにして作る（Windows で別のプロセスが
-// ログを開いたままのときに相当する）。
+// Use a nonempty directory to simulate a current log that cannot be moved, as when another Windows
+// process holds it open.
 func TestOpenLogKeepsThePreviousRunWhenRotationFails(t *testing.T) {
 	paths, err := ResolvePaths(t.TempDir())
 	if err != nil {
@@ -185,17 +183,16 @@ func TestCheckBundle(t *testing.T) {
 		t.Fatalf("extracted folder: %v", err)
 	}
 
-	// エクスプローラーで zip の中の exe を開くと、exe だけが一時フォルダへ展開される。
+	// Opening an executable inside a ZIP extracts only that executable to a temporary directory.
 	fromZip := filepath.Join(temp, "Temp1_VVMDM.zip", "VVMDM.exe")
 	if err := CheckBundle(fromZip, temp, exists); !errors.Is(err, ErrNotExtracted) {
 		t.Fatalf("under temp: %v", err)
 	}
-	// 一時フォルダの判定は大文字と小文字を区別しない。
 	upper := filepath.Join(base, "TEMP", "x", "VVMDM.exe")
 	if err := CheckBundle(upper, temp, func(string) bool { return true }); !errors.Is(err, ErrNotExtracted) {
 		t.Fatalf("under temp with other case: %v", err)
 	}
-	// 名前が一時フォルダで始まるだけの隣のフォルダは対象外。
+	// A sibling sharing the temporary directory's name prefix is not inside it.
 	sibling := filepath.Join(base, "Temporary", "VVMDM.exe")
 	if err := CheckBundle(sibling, temp, func(string) bool { return true }); err != nil {
 		t.Fatalf("sibling of temp: %v", err)
@@ -248,9 +245,6 @@ func TestMessagesNameTheLogExceptForTheUnwritableFolder(t *testing.T) {
 	}
 }
 
-// 二重起動のミューテックスは、同じ利用者・同じデータの置き場（大文字と小文字を
-// 区別しない）で同じ名前になり、利用者かデータの置き場が違えば別の名前になる。
-// global はセッションをまたぎ、local はセッションごとの名前空間に置く。
 func TestInstanceNames(t *testing.T) {
 	const sid = "S-1-5-21-1-2-3-1001"
 	const root = `C:\Users\me\AppData\Local\VVMDM`

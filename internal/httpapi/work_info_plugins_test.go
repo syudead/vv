@@ -18,12 +18,9 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 作品情報プラグインの経路は、本物の認証・保存層と
-// app.WorkInfoPlugins で確かめる。検査だけが偽で、送ったバイト列をマニフェストの JSON として読む。
+// Use real auth, storage, and app.WorkInfoPlugins; the fake validator reads uploaded bytes as manifest JSON.
 
-// manifestRuntime は送られたモジュールをマニフェストの JSON として読む検査である。brokenImportPrefix で
-// 始まるモジュールは、残りをマニフェストとして読めたあと import の検査で断られたものとして、本物の検査と
-// 同じく読めたマニフェストと問題を一緒に返す。
+// manifestRuntime reads module bytes as manifest JSON. A brokenImportPrefix preserves the parsed manifest while reporting import validation failure, matching the real validator.
 type manifestRuntime struct{}
 
 const brokenImportPrefix = "import_unsupported:"
@@ -63,7 +60,6 @@ func newPluginEnv(t *testing.T) *pluginEnv {
 	return &pluginEnv{authEnv: env, owner: env.setup()}
 }
 
-// moduleBody は module 部分を parts の数だけ持つ multipart の本文を作る。
 func moduleBody(t *testing.T, module []byte, parts int) (*bytes.Buffer, string) {
 	t.Helper()
 	var buf bytes.Buffer
@@ -159,8 +155,6 @@ func TestWorkInfoPluginRoutesAddApproveAndReplace(t *testing.T) {
 	}
 }
 
-// 承認済みのプラグインを同じ名前の壊れたモジュールで差し替えると同じ行が invalid になり、承認した
-// バイト列へ戻しても、同じバイト列を送り直しても、承認前に戻る。
 func TestWorkInfoPluginReplacementNeverRestoresTheApproval(t *testing.T) {
 	e := newPluginEnv(t)
 	added := decodePlugin(t, "追加", e.uploadParts([]byte(pluginManifest), 1, e.owner), http.StatusCreated)
@@ -272,7 +266,6 @@ func TestWorkInfoPluginSettingsHideSecretValues(t *testing.T) {
 		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
 }
 
-// 一覧は設定の既定値と選択肢を返し、差し替えで選択肢から外れた保存値を staleValue で示す
 func TestWorkInfoPluginSettingsCarryDefaultOptionsAndStaleValue(t *testing.T) {
 	e := newPluginEnv(t)
 	manifest := func(options string) []byte {
@@ -296,8 +289,6 @@ func TestWorkInfoPluginSettingsCarryDefaultOptionsAndStaleValue(t *testing.T) {
 	}
 }
 
-// どの経路も所有者だけで、セッションの無い要求（ゲスト）はほかの所有者の経路と同じく 401 で断り、
-// 何も書かない。
 func TestWorkInfoPluginRoutesAreOwnerOnly(t *testing.T) {
 	e := newPluginEnv(t)
 	added := decodePlugin(t, "追加", e.uploadParts([]byte(pluginManifest), 1, e.owner), http.StatusCreated)

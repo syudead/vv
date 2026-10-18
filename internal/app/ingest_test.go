@@ -20,7 +20,6 @@ func newTestIngest(store *fakeIngestStore, generator *fakeGenerator) (*Ingest, *
 	}), publisher
 }
 
-// 解析に成功したら結果を反映する。プレビューの仕事は保存側が同じ取引で積む。
 func TestIngestProbeSuccess(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
@@ -35,7 +34,6 @@ func TestIngestProbeSuccess(t *testing.T) {
 	}
 }
 
-// 解析に失敗したら、状態を書かずに失敗を返す（上限の判断は待ち行列が持つ）。
 func TestIngestProbeFailure(t *testing.T) {
 	video := probedVideo(1, "a")
 	for _, tc := range []struct {
@@ -58,7 +56,6 @@ func TestIngestProbeFailure(t *testing.T) {
 	}
 }
 
-// 専有した後に所在や内容が変わっていたら、何も生成せず、結果も反映しない。
 func TestIngestSkipsStaleJobs(t *testing.T) {
 	video := probedVideo(1, "a")
 	for _, kind := range domain.JobKinds {
@@ -80,8 +77,6 @@ func TestIngestSkipsStaleJobs(t *testing.T) {
 	}
 }
 
-// 代表サムネイルのジョブは代表の1枚だけを作り、done を記録する。シーク用
-// サムネイルは作らない。代表の1枚がすでにあれば作り直さない。
 func TestIngestThumbnailSuccess(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -116,8 +111,6 @@ func TestIngestThumbnailSuccess(t *testing.T) {
 	}
 }
 
-// シーク用サムネイルのジョブは、置き場へ書き終えてから done を記録する。
-// 代表サムネイルは作らず、その状態も記録しない。
 func TestIngestSeekThumbnailsSuccess(t *testing.T) {
 	video := probedVideo(1, "a")
 	video.ThumbnailState = domain.ThumbnailStateDone
@@ -144,7 +137,6 @@ func TestIngestSeekThumbnailsSuccess(t *testing.T) {
 	}
 }
 
-// シーク用サムネイルの配置は動画の長さから決め、公開と生成に同じ配置を渡す。
 func TestIngestSeekThumbnailsLayoutFollowsDuration(t *testing.T) {
 	video := probedVideo(1, "a")
 	twoHours := int64(2 * 60 * 60 * 1000)
@@ -164,8 +156,6 @@ func TestIngestSeekThumbnailsLayoutFollowsDuration(t *testing.T) {
 	}
 }
 
-// シーク用サムネイルの失敗は、どちらの状態も書かずに返す（上限の判断と
-// seek_thumbnail_state への記録は待ち行列が持つ）。代表サムネイルの状態には触れない。
 func TestIngestSeekThumbnailsFailure(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -193,7 +183,6 @@ func TestIngestSeekThumbnailsFailure(t *testing.T) {
 	}
 }
 
-// 生成中に動画が消えていたら、書き終えたシーク用サムネイルを残さない。
 func TestIngestSeekThumbnailsRemovesArtifactsOfVanishedVideo(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
@@ -212,7 +201,6 @@ func TestIngestSeekThumbnailsRemovesArtifactsOfVanishedVideo(t *testing.T) {
 	}
 }
 
-// 生成は、置き場が渡した一時置き場のパスへ書く。
 func TestIngestWritesIntoPublishedOutputs(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
@@ -234,7 +222,6 @@ func TestIngestWritesIntoPublishedOutputs(t *testing.T) {
 	}
 }
 
-// 生成中に動画が消えていたら、書き終えたサムネイルを残さない。
 func TestIngestThumbnailRemovesArtifactsOfVanishedVideo(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
@@ -250,7 +237,6 @@ func TestIngestThumbnailRemovesArtifactsOfVanishedVideo(t *testing.T) {
 	}
 }
 
-// プレビューに成功したら完了を記録する。生成中は元の同一性を確かめる。
 func TestIngestPreviewSuccess(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
@@ -265,8 +251,6 @@ func TestIngestPreviewSuccess(t *testing.T) {
 	}
 }
 
-// プレビューの失敗は、状態を書かずに返す。生成中に動画が消えていたら、書き終えた
-// 生成物を消して domain.ErrPreviewStale を返す（やり直してよい）。
 func TestIngestPreviewFailure(t *testing.T) {
 	t.Run("長さが無い", func(t *testing.T) {
 		video := probedVideo(1, "a")
@@ -314,8 +298,6 @@ func TestIngestPreviewFailure(t *testing.T) {
 	})
 }
 
-// 1件の成否が記録されたら、その動画の状態がどの段階で変わったかと、残りの
-// 変化を発行する。どのワーカーを起こすかは購読する側が決める。
 func TestJobFinishedPublishesStageAndProcessing(t *testing.T) {
 	ingest, publisher := newTestIngest(newFakeIngestStore(), &fakeGenerator{})
 
@@ -331,8 +313,6 @@ func TestJobFinishedPublishesStageAndProcessing(t *testing.T) {
 	}
 }
 
-// サムネイルの失敗は、状態を書かずに返す（上限の判断は待ち行列が持つ）。
-// 生成物は、参照する動画が残っている限り消さない。
 func TestIngestThumbnailFailure(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -362,9 +342,7 @@ func TestIngestThumbnailFailure(t *testing.T) {
 	}
 }
 
-// 生成が返した代用を、成功を書く保存側へ渡す。
-// 置き場に完成したシーク用サムネイルがあって生成しなかったときは、置き場が生成時に
-// 残した記録を渡す。記録の無い旧いものは、代用したかが分からないので Unknown を渡す。
+// Pass persisted substitution provenance for reused sprites; older metadata supplies Unknown.
 func TestIngestPassesSubstitutionToStore(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
@@ -382,7 +360,7 @@ func TestIngestPassesSubstitutionToStore(t *testing.T) {
 			wantThumbnail: domain.SubstitutionNone, wantSeek: domain.SubstitutionUnknown,
 		},
 		{
-			// 全編から作って公開した後、完了を記録する前に止まった再実行
+			// Simulate restart after full-decode publication but before completion recording.
 			name:          "全編から作った既存のシーク用サムネイルを採用",
 			generator:     &fakeGenerator{seekPublished: true, publishedSubstitution: domain.SubstitutionUsed},
 			wantThumbnail: domain.SubstitutionNone, wantSeek: domain.SubstitutionUsed,
@@ -409,8 +387,7 @@ func TestIngestPassesSubstitutionToStore(t *testing.T) {
 	}
 }
 
-// holdGeneration は生成の呼び出し held の最初の1回を止める門である。started は
-// 止まったことを、release は先へ進めることを表す。
+// Block only the first matching generation; started signals entry and release resumes it.
 type holdGeneration struct {
 	started map[string]chan struct{}
 	release map[string]chan struct{}
@@ -453,8 +430,6 @@ func waitJob(t *testing.T, done <-chan error) error {
 	}
 }
 
-// 指紋の仕事は、置き場のスプライトの配置情報と全シートを読んで指紋を作り、記録する。
-// 元の動画は読まない。
 func TestIngestFingerprintReadsSpriteAndSavesFingerprint(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
@@ -484,7 +459,6 @@ func TestIngestFingerprintReadsSpriteAndSavesFingerprint(t *testing.T) {
 	}
 }
 
-// スプライトかシートが無ければ、指紋を記録せずに失敗を返す（再試行と上限は待ち行列が持つ）。
 func TestIngestFingerprintFailsWithoutSprite(t *testing.T) {
 	video := probedVideo(1, "a")
 	layout := domain.NewSeekSpriteLayout(600_000)
@@ -508,7 +482,6 @@ func TestIngestFingerprintFailsWithoutSprite(t *testing.T) {
 	}
 }
 
-// 専有した時点から内容や所在が変わっていれば、何も読まずに終える。
 func TestIngestFingerprintSkipsStaleJob(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)

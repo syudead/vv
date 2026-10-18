@@ -20,17 +20,11 @@ import type { PlaybackFailureKind } from "./playbackRecovery";
 import { useOpenFile } from "./VideoFacts";
 import { creatingLine, processingStages, type StageState } from "./processing";
 
-/**
- * プレイヤーの中に出す状態表示（要件 10〜13、ui-design「Overlay layer」）。
- *
- * どれもプレイヤーの領域の中に収める。層の中の文字は、半透明の `bg-overlay` の上に直接
- * 置かず、不透明な `bg-navbar` の面（`rounded-lg`、`shadow-elevated`）に載せる。
- */
+/** Keep status text on an opaque panel within the player. */
 
 const spin = "animate-spin motion-reduce:animate-none";
 const fadeIn = "animate-fade-in motion-reduce:animate-none";
 
-/** Panel はプレイヤーの領域の中央に置く、不透明な面である。 */
 function Panel({
   children,
   className,
@@ -53,11 +47,7 @@ function Panel({
   );
 }
 
-/**
- * Surface は、プレイヤーが無いときの状態表示の入れ物である。内容が 16:9 に収まらない幅では
- * 領域の高さを内容に合わせて伸ばす（16:9 は下限として入れ物の外で保つ）。
- * `lg` 未満では上に余白を多めに取る。
- */
+/** Let content exceed the 16:9 minimum when the player is absent. */
 function Surface({ children }: { children: ReactNode }) {
   return (
     <div
@@ -71,10 +61,7 @@ function Surface({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * Dimmed は映像を暗くして、その中央に面を置く（再生失敗・再生終了）。操作バーはこの層の
- * 上に出たままなので、下にはその分の余白を取り、面が操作バーの下に潜らないようにする。
- */
+/** Reserve space beneath the panel for controls, which remain above the overlay. */
 export function Dimmed({ children }: { children: ReactNode }) {
   return (
     <div
@@ -88,10 +75,6 @@ export function Dimmed({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * LoadingOverlay は読み込み中を文字でも伝える。backdrop が偽なら映像を透かす。
- * label を渡すと「読み込み中」の代わりにその文を出す（通信が切れて読み込み直している間）。
- */
 export function LoadingOverlay({
   backdrop,
   label = t.player.loading,
@@ -101,7 +84,7 @@ export function LoadingOverlay({
 }) {
   return (
     <div
-      // 読み込み中の輪は押せる要素を持たないので、下のプレイヤー（再生バー）へ通す。
+      // The noninteractive loading indicator lets pointer input reach the seek bar.
       className={cn(
         "pointer-events-none flex w-full items-center justify-center",
         backdrop && "bg-navbar",
@@ -118,10 +101,6 @@ export function LoadingOverlay({
   );
 }
 
-/**
- * PlaybackFailure は再生失敗と、失敗した位置からの再試行である。文は失敗の種類
- * （サーバーに届かない・データが読めない・動画を出せない）で分ける。
- */
 export function PlaybackFailure({
   positionMs,
   kind,
@@ -162,7 +141,6 @@ const stageIcons: Record<StageState, ReactNode> = {
   failed: <AlertCircle className="size-4 shrink-0 text-warning" aria-hidden="true" />,
 };
 
-/** ProcessingStages は取り込み中（読み取り前）の段階表示である（要件 12）。 */
 export function ProcessingStages({ video }: { video: Video }) {
   return (
     <Surface>
@@ -207,21 +185,13 @@ export function ProcessingStages({ video }: { video: Video }) {
   );
 }
 
-/**
- * ReadFailure は読み取りに失敗した動画の表示である（要件 13）。
- *
- * `onReprobe` は、やり直しを受け付けたら（202 か 409 `probe_not_failed`）動画を取り直して
- * 解決し、それ以外の失敗では reject する。取り直しで段階表示へ移るまでボタンは押せない。
- */
+/** Resolve reprobe only after accepting 202 or probe_not_failed and reloading the video. Keep the button disabled until the processing state appears. */
 export function ReadFailure({
   video,
   onReprobe,
 }: {
   video: Video;
-  /**
-   * 読み取りのやり直し。省くと（ゲストの画面）、やり直し・ファイルを開く・誤りの文の
-   * 枠を出さない。
-   */
+  /** Omit for guests to hide retry, file actions, and error details. */
   onReprobe?: () => Promise<void>;
 }) {
   return (
@@ -231,8 +201,7 @@ export function ReadFailure({
         <h2 className="text-lg font-semibold text-foreground">
           {t.player.readFailure.title}
         </h2>
-        {/* 自由文の probeError（ffprobe の出力や過去の日本語）は出さず、コードから説明を作る
-            。コードの無い行は一般的な概要になる。 */}
+        {/* Derive descriptions from codes; raw probe errors may contain ffprobe output or legacy localized text. */}
         <p className="text-sm text-muted-foreground">
           {probeErrorText(video.probeErrorCode)}
         </p>
@@ -244,7 +213,6 @@ export function ReadFailure({
   );
 }
 
-/** ReadFailureActions は所有者にだけ出す、読み取り失敗の詳しい中身と操作である。 */
 function ReadFailureActions({
   video,
   onReprobe,
@@ -291,7 +259,7 @@ function ReadFailureActions({
   );
 }
 
-/** MissingVideo は表示中の動画が無いとき（404）の表示である。戻る操作は × に任せる。 */
+/** The header close button handles returning from a missing video. */
 export function MissingVideo() {
   return (
     <Surface>
@@ -308,10 +276,6 @@ export function MissingVideo() {
   );
 }
 
-/**
- * LoadFailure は、最初の取得が 404 以外で失敗したときの表示である。一時的な失敗かも
- * しれないので、取り直す「再試行」を置く。
- */
 export function LoadFailure({
   reason,
   onRetry,
@@ -343,7 +307,6 @@ export function LoadFailure({
   );
 }
 
-/** Unplayable は、読み取れたが再生に必要な情報（長さ・映像）が無い動画の表示である。 */
 export function Unplayable() {
   return (
     <Surface>
@@ -360,7 +323,6 @@ export function Unplayable() {
   );
 }
 
-/** CreatingLine はプレイヤー直下の作成中の 1 行である（要件 11）。 */
 export function CreatingLine({ video }: { video: Video }) {
   const line = creatingLine(video);
   if (line === null) return null;

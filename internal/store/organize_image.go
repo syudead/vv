@@ -1,9 +1,6 @@
 package store
 
-// ドラッグの操作の取り消しの像。
-// 操作は自分の取引の中で、変える行を範囲（表と列の値）ごとに変更の前と後に読む。像はこのファイル
-// だけがバイト列にし、読み戻すのもこのファイルだけである。取り消しは、今の行が後の像と等しい
-// ときだけ範囲の行を前の像に置き換え、等しくなければ domain.ErrUndoConflict で何も書かない。
+// Undo replaces scoped rows only when they match the captured after image; images are encoded and decoded exclusively here.
 
 import (
 	"context"
@@ -18,15 +15,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// imageScopeColumns は像に読んでよい範囲である。表ごとに、範囲を選ぶ列を挙げる。表と列の名前は
-// SQL に埋め込むので、像を読み戻すときもこの表に無い名前は受け付けない。親の表（行を消すと子の
-// 行が外部キーで消える表）を足すときは、範囲の並びで子より前に置く（restoreUndoImage）。利用者
-// データの表（userDataTables）は、束ねるときに新しい鍵へ写す行を content_key で持つ。グループと
-// プレイリストの項目と除外も content_key で持てるので、束ねた新しい鍵を後から指した行は後の像と
-// 違い、取り消しは domain.ErrUndoConflict になる。
+// Whitelist interpolated table/column names and order parent scopes before children; include references that would otherwise cascade silently during undo.
 var imageScopeColumns = buildImageScopeColumns()
 
-// buildImageScopeColumns は imageScopeColumns を作る。
 func buildImageScopeColumns() map[string][]string {
 	columns := map[string][]string{
 		"groups":                   {"id"},
@@ -45,8 +36,7 @@ func buildImageScopeColumns() map[string][]string {
 	return columns
 }
 
-// imageCell は行の 1 つの値である。どれも nil なら NULL。SQLite の 4 つの型をそのまま持ち、
-// 読み戻しで型を取り違えない。
+// Preserve SQLite value types when round-tripping images; all nil fields represent NULL.
 type imageCell struct {
 	Int  *int64   `json:"i,omitempty"`
 	Real *float64 `json:"r,omitempty"`
@@ -54,7 +44,6 @@ type imageCell struct {
 	Blob *[]byte  `json:"b,omitempty"`
 }
 
-// value は cell を SQL の引数にする。
 func (c imageCell) value() any {
 	switch {
 	case c.Int != nil:
@@ -69,7 +58,6 @@ func (c imageCell) value() any {
 	return nil
 }
 
-// newImageCell は SQLite のドライバーが返した値を cell にする。
 func newImageCell(v any) (imageCell, error) {
 	switch v := v.(type) {
 	case nil:
@@ -87,9 +75,7 @@ func newImageCell(v any) (imageCell, error) {
 	return imageCell{}, fmt.Errorf("cannot keep a value of type %T for undo", v)
 }
 
-// imageScope は像の 1 つの範囲で、表 Table の列 Column が Key の行すべてである。Columns は行の
-// 列の名前、Before と After は変更の前と後の行で、どちらも符号にした行の順に並べる（等しいかを
-// 並びに左右されずに比べるため）。
+// Sort encoded rows before comparing images so query order cannot create false conflicts.
 type imageScope struct {
 	Table   string        `json:"table"`
 	Column  string        `json:"column"`
@@ -99,9 +85,7 @@ type imageScope struct {
 	After   [][]imageCell `json:"after,omitempty"`
 }
 
-// undoImage は操作 1 つの像である。Groups は取り消しの後で更新日時を進めて知らせるグループ、
-// Playlists は詰め直して更新日時を進めるプレイリスト、RebuildFolders はフォルダの索引を作り直すか、
-// Videos は domain.VideoBundleChanged で知らせる動画で、どれも操作が同じことをしたものである。
+// Track the same timestamp, compaction, rebuild and notification work performed by the original operation.
 type undoImage struct {
 	Scopes         []imageScope `json:"scopes"`
 	Groups         []int64      `json:"groups,omitempty"`
@@ -110,7 +94,6 @@ type undoImage struct {
 	Videos         []int64      `json:"videos,omitempty"`
 }
 
-// newImageScope は表 table の列 column が key の範囲を作る。imageScopeColumns に無い組は誤りである。
 func newImageScope(table, column string, key any) (imageScope, error) {
 	if !slices.Contains(imageScopeColumns[table], column) {
 		return imageScope{}, fmt.Errorf("cannot keep %s.%s for undo", table, column)
@@ -122,9 +105,7 @@ func newImageScope(table, column string, key any) (imageScope, error) {
 	return imageScope{Table: table, Column: column, Key: cell}, nil
 }
 
-// groupReferenceScopes はグループ id の行と、その id を指す行の範囲を返す。グループの行、その
-// 項目、そのグループを子に持つ項目、お気に入り、プレイリストの項目の順で、親の表が先に来る。取り消しがそのグループを消すか作り直すとき、後から足された
-// 参照は後の像と違うので、外部キーで黙って消えずに domain.ErrUndoConflict になる。
+// Capture parents before dependents, including references added later, so undo reports conflicts instead of cascading away new references.
 func groupReferenceScopes(id int64) ([]imageScope, error) {
 	var scopes []imageScope
 	for _, pair := range [][2]string{
@@ -140,7 +121,6 @@ func groupReferenceScopes(id int64) ([]imageScope, error) {
 	return scopes, nil
 }
 
-// captureBefore は image の各範囲の今の行を前の像として読む。操作が書く前に呼ぶ。
 func (image *undoImage) captureBefore(ctx context.Context, tx *sql.Tx) error {
 	for i := range image.Scopes {
 		columns, rows, err := readImageRows(ctx, tx, image.Scopes[i])
@@ -152,9 +132,7 @@ func (image *undoImage) captureBefore(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
-// captureAfter は image の各範囲の今の行を後の像として読む。操作が書いた後、同じ取引で呼ぶ。
-// 操作が作った行の範囲（作る前には id が分からないので前の像を読まず、前の像は空）は、ここで
-// 列の名前も読む。
+// Capture in the same transaction after writing; newly created scopes also acquire column names here.
 func (image *undoImage) captureAfter(ctx context.Context, tx *sql.Tx) error {
 	for i := range image.Scopes {
 		columns, rows, err := readImageRows(ctx, tx, image.Scopes[i])
@@ -169,7 +147,6 @@ func (image *undoImage) captureAfter(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
-// captureAfterAndEncode は captureAfter で後の像を読み、image をバイト列にする。
 func (image *undoImage) captureAfterAndEncode(ctx context.Context, tx *sql.Tx) ([]byte, error) {
 	if err := image.captureAfter(ctx, tx); err != nil {
 		return nil, err
@@ -177,7 +154,6 @@ func (image *undoImage) captureAfterAndEncode(ctx context.Context, tx *sql.Tx) (
 	return image.encode()
 }
 
-// encode は image をバイト列にする。
 func (image *undoImage) encode() ([]byte, error) {
 	out, err := json.Marshal(image)
 	if err != nil {
@@ -186,8 +162,7 @@ func (image *undoImage) encode() ([]byte, error) {
 	return out, nil
 }
 
-// decodeUndoImage は encode のバイト列を読み戻す。表と列の名前は imageScopeColumns にあるか、
-// 列の名前は識別子の形かを確かめる。
+// Validate decoded scope names against the whitelist and require identifier-shaped column names.
 func decodeUndoImage(data []byte) (undoImage, error) {
 	var image undoImage
 	if err := json.Unmarshal(data, &image); err != nil {
@@ -206,7 +181,6 @@ func decodeUndoImage(data []byte) (undoImage, error) {
 	return image, nil
 }
 
-// isIdentifier は name が英小文字・数字・_ だけで、数字で始まらないかを返す。
 func isIdentifier(name string) bool {
 	if name == "" || (name[0] >= '0' && name[0] <= '9') {
 		return false
@@ -216,7 +190,6 @@ func isIdentifier(name string) bool {
 	}) < 0
 }
 
-// readImageRows は範囲 scope の今の行すべてを、列の名前と、符号にした行の順に並べた値で返す。
 func readImageRows(ctx context.Context, tx *sql.Tx, scope imageScope) ([]string, [][]imageCell, error) {
 	rows, err := tx.QueryContext(ctx, `select * from `+scope.Table+` where `+scope.Column+` = ?`, scope.Key.value())
 	if err != nil {
@@ -244,7 +217,6 @@ func readImageRows(ctx context.Context, tx *sql.Tx, scope imageScope) ([]string,
 	return columns, out, nil
 }
 
-// scanImageRow は rows の今の行の n 個の値を cell にする。
 func scanImageRow(rows *sql.Rows, n int) ([]imageCell, error) {
 	values := make([]any, n)
 	targets := make([]any, n)
@@ -265,7 +237,6 @@ func scanImageRow(rows *sql.Rows, n int) ([]imageCell, error) {
 	return row, nil
 }
 
-// sortImageRows は rows を符号にした行の順に並べる。
 func sortImageRows(rows [][]imageCell) error {
 	type keyedRow struct {
 		key string
@@ -286,12 +257,7 @@ func sortImageRows(rows [][]imageCell) error {
 	return nil
 }
 
-// restoreUndoImage は image の各範囲の今の行が後の像と等しいことを確かめ、範囲の行を前の像に
-// 置き換える（R-1）。等しくない範囲が 1 つでもあれば domain.ErrUndoConflict で、何も書かない
-// （呼び出し側が取引を巻き戻す）。範囲は後ろから消し、前から入れるので、親の表の範囲を先に
-// 置けば、外部キーで消える子の行も前の像から戻る。そのあと操作と同じく、プレイリストを詰め直して
-// 更新日時を進め、フォルダの索引を作り直し、グループの更新日時を進めて、変えたグループと祖先の
-// id を返す。
+// Validate every after image before restoring; delete scopes in reverse order and insert forward so parent-first scopes preserve foreign-key dependents.
 func restoreUndoImage(ctx context.Context, tx *sql.Tx, image undoImage) ([]int64, error) {
 	if err := image.ensureCurrent(ctx, tx); err != nil {
 		return nil, err
@@ -309,8 +275,6 @@ func restoreUndoImage(ctx context.Context, tx *sql.Tx, image undoImage) ([]int64
 	return finishUndo(ctx, tx, image)
 }
 
-// ensureCurrent は image のどの範囲も今の行が後の像と等しいかを確かめ、1 つでも違えば
-// domain.ErrUndoConflict。
 func (image *undoImage) ensureCurrent(ctx context.Context, tx *sql.Tx) error {
 	for _, scope := range image.Scopes {
 		if err := ensureImageUnchanged(ctx, tx, scope); err != nil {
@@ -320,7 +284,6 @@ func (image *undoImage) ensureCurrent(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
-// ensureImageUnchanged は範囲 scope の今の行が後の像と等しいかを確かめ、違えば domain.ErrUndoConflict。
 func ensureImageUnchanged(ctx context.Context, tx *sql.Tx, scope imageScope) error {
 	columns, rows, err := readImageRows(ctx, tx, scope)
 	if err != nil {
@@ -343,8 +306,7 @@ func ensureImageUnchanged(ctx context.Context, tx *sql.Tx, scope imageScope) err
 	return nil
 }
 
-// insertImageRows は範囲 scope の前の像の行を、元の id のまま入れる。範囲が重なって既に入れた行は
-// 置き換える。
+// Restore original IDs and replace rows already restored through overlapping scopes.
 func insertImageRows(ctx context.Context, tx *sql.Tx, scope imageScope) error {
 	if len(scope.Before) == 0 {
 		return nil
@@ -366,8 +328,6 @@ func insertImageRows(ctx context.Context, tx *sql.Tx, scope imageScope) error {
 	return nil
 }
 
-// finishUndo は行を戻した後で、操作と同じくプレイリストを詰め直して更新日時を進め、フォルダの
-// 索引を作り直し、今もあるグループの更新日時を進めて、変えたグループと祖先の id を返す。
 func finishUndo(ctx context.Context, tx *sql.Tx, image undoImage) ([]int64, error) {
 	if err := renumberPlaylists(ctx, tx, image.Playlists); err != nil {
 		return nil, err
@@ -402,12 +362,7 @@ func finishUndo(ctx context.Context, tx *sql.Tx, image undoImage) ([]int64, erro
 	return normalizeIDs(append(changed, touched...)), nil
 }
 
-// groupsImage はグループ ids の行と、それらを指す行の範囲を、親の表を先にして並べた像を作る。グループごとに groups、group_items（group_id と child_id
-// の両方）、group_exclusions、group_favorites、playlist_items（group_id）を、それらを持つ
-// プレイリストの playlist_items を丸ごと、自動グループのフォルダの folder_group_overrides を持つ。
-// 取り消しはグループの行を消して入れ直すので、外部キーで一緒に消える行はどれもこの範囲に入っている。
-// playlist_items を group_id でも持つのは、操作の後でグループを別のプレイリストに入れた行を後の像との
-// 違いとして見つけ、連鎖削除で消す代わりに ErrUndoConflict にするためである。
+// Capture every cascading dependent and whole affected playlists; later group references must cause undo conflicts rather than silent deletion.
 func groupsImage(ctx context.Context, tx *sql.Tx, ids []int64) (undoImage, error) {
 	ids = normalizeIDs(slices.Clone(ids))
 	encoded, err := json.Marshal(ids)
@@ -445,16 +400,12 @@ func groupsImage(ctx context.Context, tx *sql.Tx, ids []int64) (undoImage, error
 	return image, nil
 }
 
-// imageScopeSpec は newImageScope の引数である。
 type imageScopeSpec struct {
 	table  string
 	column string
 	key    any
 }
 
-// finishGroupsImage は後の像を読んだ groupsImage の像に、取り消しの後で行うことを書く。groups は
-// 更新日時を進めて知らせるグループ、Playlists は行が変わったプレイリスト（詰め直して更新日時を
-// 進める）、RebuildFolders はフォルダの例外が変わったか（索引を作り直す）である。
 func (image *undoImage) finishGroupsImage(groups []int64) {
 	image.Groups = normalizeIDs(slices.Clone(groups))
 	for _, scope := range image.Scopes {

@@ -8,10 +8,6 @@ import {
   type ScanPresentationState,
 } from "./scanPresentation";
 
-/**
- * ScanStatusIcon は状態の言葉に添えるアイコンである。
- * 取り込み中は回転する。
- */
 export function ScanStatusIcon({
   state,
   className,
@@ -35,11 +31,8 @@ export function ScanStatusIcon({
 }
 
 /**
- * ScanIssueCounts は問題の本数である。失敗は `AlertTriangle`、要確認は `Info` を添え、
- * 意味色はアイコンだけに付ける。0 の方は出さない。
- *
- * - `mostSevereOnly`: 失敗があれば失敗だけを、無ければ要確認を出す（右下の本体）。
- * - `compact`: 狭い幅で言葉を隠し、アイコンと数字だけにする。言葉は呼び出し側の名前に残す。
+ * mostSevereOnly prefers failures over review-needed counts; compact hides visible labels while
+ * callers retain accessible names.
  */
 export function ScanIssueCounts({
   failed,
@@ -86,11 +79,7 @@ export function ScanIssueCounts({
   );
 }
 
-/**
- * ScanDetail は今の処理、または完了の時刻の1行である。高さを1行に固定し、今の処理が
- * 変わっても、行が空になっても、配置を動かさない。長いファイル名は末尾を省略し、
- * 省略した全体は `title` で読める。
- */
+/** Reserve one line even when activity disappears to prevent layout shifts. */
 export function ScanDetail({
   presentation,
   className,

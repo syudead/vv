@@ -6,27 +6,14 @@ import { newlinePattern } from "../lib/tagName";
 import type { NameRules } from "../ui/NameCommand";
 import { tagNameRules } from "../ui/TagCommand";
 
-/**
- * TagFieldError は、作成・改名の入力の下に出すサーバー側の失敗を運ぶ。
- * `tag_name_taken` はその名前を選んだ利用者への案内で `text-xs text-danger`
- * 、それ以外の失敗は
- * `role="alert"` の `text-sm text-danger`と、大きさと読み上げの扱いが違う。
- */
+/** Name conflicts are inline validation; other failures use alert semantics. */
 export type TagFieldError = { kind: "taken" | "other"; message: UiText };
 
-/** TagFieldContext は競合の説明に使う、送った名前と、その入力が属するタグの元の名前である。 */
 export interface TagFieldContext {
-  /** 送った名前（前後の空白を除いた綴り）。 */
   submitted?: string;
-  /** シノニムの窓のように、入力が既存のタグに属するときのそのタグの元の名前。 */
   ownTagName?: string;
 }
 
-/**
- * takenText は `tag_name_taken` の具体的な説明である。API の `tagName`（競合先の
- * タグの元の名前）と送った名前を合わせる。
- * `tagName` が無い応答は errorText の一般的な文にする。
- */
 function takenText(failure: RequestFailed, context: TagFieldContext): UiText {
   const owner = failure.tagName;
   if (owner === undefined) return errorText(failure);
@@ -42,11 +29,7 @@ function takenText(failure: RequestFailed, context: TagFieldContext): UiText {
   return errorText(failure);
 }
 
-/**
- * tagFieldError は、タグの名前を打つ入力（作成・改名・シノニムの追加）が
- * 共通で使う、失敗の分類である。`tag_name_taken`（既存の名前・シノニムとの
- * 衝突）は理由が分かる `taken`、それ以外は一般の失敗 `other` にする。サーバーの message は出さない。
- */
+/** Classify name conflicts separately and never display raw server messages. */
 export function tagFieldError(
   failure: unknown,
   context: TagFieldContext = {},
@@ -57,10 +40,6 @@ export function tagFieldError(
   return { kind: "other", message: errorText(failure) };
 }
 
-/**
- * kindNameReasons は種類の作成・改名で、名前のせいで受け付けられなかった理由である。
- * 名前の重複（`409 tag_kind_name_taken`）と、タグと同じ名前の規則（`400 tag_name_*`）。
- */
 const kindNameReasons: ReadonlySet<string> = new Set([
   "tag_kind_name_taken",
   "tag_name_empty",
@@ -68,10 +47,6 @@ const kindNameReasons: ReadonlySet<string> = new Set([
   "tag_name_too_long",
 ]);
 
-/**
- * kindFieldError は種類の名前の入力（作成・改名）の失敗の分類である。名前のせいの失敗は
- * 入力の下の `FieldError`（`taken`）にし、入力と文字を残す。それ以外は一般の失敗 `other`。
- */
 export function kindFieldError(failure: unknown): TagFieldError {
   const byName =
     failure instanceof RequestFailed &&
@@ -80,22 +55,7 @@ export function kindFieldError(failure: unknown): TagFieldError {
   return { kind: byName ? "taken" : "other", message: errorText(failure) };
 }
 
-/**
- * useTagNameField は、タグの名前を打つ入力の検証と、改行を含む貼り付け・
- * 落とし込みの遮断を持つ。
- * 管理画面の作成・改名の入力は `ui/TagCommand` の候補の一覧を持たないが、
- * 検証と理由の出し方は同じにする（Issue 271「作成と改名」）。
- *
- * 理由は、貼り付け・落とし込みで直接 `setReason` した分も含め、次に値が
- * 実際に変わるまで残る（`setValue` を呼んだときだけ検証をやり直す）。
- *
- * `onChange` は、値が実際に変わるたび（`setValue` が呼ばれるたび）に呼ぶ。
- * 呼び出し元はこれで、直前の送信の失敗（`tag_name_taken` など）を、入力を
- * 打ち直した時点で消す（Devin の指摘: 失敗の行が編集後も残っていた）。
- *
- * `rules` は名前の規則で、既定はタグの名前の規則。人物・団体の管理画面の作成・改名は
- * 人物・団体の名前の規則（`creditNameRules`）を渡す。
- */
+/** Share name validation and multiline-input rejection across editors. Keep reasons until the value changes, then clear prior submission errors. */
 export function useTagNameField(
   initial = "",
   onChange?: () => void,
@@ -128,7 +88,6 @@ export function useTagNameField(
     }
   }
 
-  /** trySpelling は Enter・「作成」「確定」で呼ぶ。前後の空白を除いた綴りを返す。 */
   function trySpelling(): string | null {
     if (reason !== null) return null;
     const trimmed = value.trim();

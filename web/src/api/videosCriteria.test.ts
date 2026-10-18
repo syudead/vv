@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { listsSmartFolders, type VideosCriteria } from "./videosCriteria";
 
-// ライブラリの一番上にスマートフォルダのカードが並ぶ条件。
-
 describe("listsSmartFolders", () => {
   const base: VideosCriteria = { sort: "titleAsc" };
 

@@ -7,45 +7,27 @@ import { shownVideoIds, type VideosDataAction } from "./videosData";
 import { favoriteMark, withFavoriteSince } from "./favorites";
 import { visibilityMark, withVisibilitySince } from "./visibility";
 
-/** UncertainReason は、一部にしか反映されず確かでなくなった項目の値である。 */
 export type UncertainReason = "visibility" | "favorite";
 
-/** useItemRefresh は useVideos の動画の項目を1件ずつ取り直す。 */
 export function useItemRefresh(
   pageLoading: RefObject<boolean>,
   itemsRef: RefObject<LibraryItem[]>,
   dispatch: Dispatch<VideosDataAction>,
-  // resync は一覧を先頭から読み直す。表示中の項目が畳まれて、代わりに何が出るかを
-  // 画面では決められないときに使う。
+  // Resync from the start when only the server can determine which collapsed items belong in the list.
   resync: () => void,
 ) {
-  // 取り込みの準備が進んだ動画を、一覧を読み直さずに1件ずつ取り直す。読み直すと
-  // スクロール位置や読み込んだページが失われる。取り直しは1件ずつ順に行い、
-  // 知らせが重なっても同じ動画を重ねて取りに行かない。
+  // Refresh videos individually and serially to preserve loaded pages and scroll position.
   const refreshQueue = useRef(new Set<number>());
   const refreshing = useRef<AbortController | null>(null);
-  // idleWaiters は、取り直しとページの取得がすべて終わるのを待つ者である
-  // （一部にしか反映されなかった切り替えの取り直しの決着。下の購読を参照）。
-  // 一覧を離れたときも解く。
+  // Wait for item/page refreshes to settle partial mutations; release waiters on unmount too.
   const idleWaiters = useRef<(() => void)[]>([]);
-  // uncertain は、公開の切り替えが一部にしか反映されず、まだサーバーの状態を
-  // 取り直せていない表示中の動画である。取り直しが一時的に失敗した動画は古い
-  // `public` のまま残るので、ここから外れるまで決着させない（外れると古い一覧が
-  // 控えられ、戻ったときに復元される。Devin の指摘、PR 338）。取り直しが成功する
-  // か、消えたと分かる（404）か、切り替えの後に取ったページで置き換わるか、
-  // 全件に反映された切り替えの結果が届くと外れる。
+  // Uncertain mutation results must remain unresolved through transient failures, preventing stale snapshots.
   //
-  // 値は、その動画を確かでないとした直近の知らせの番号（staleNotices）である。
-  // 知らせの前に始めた取り直し（更新の知らせ等）は切り替える前の `public` を
-  // 読んでいることがあるので、取り直しは始めた時点の番号を覚えておき、それより
-  // 新しい知らせで確かでないとされた動画は外さない（Devin の指摘、PR 338）。
+  // Compare notice generations so a read started before a mutation cannot settle its later uncertainty.
   //
-  // 確かでない理由（公開状態・お気に入り）は別々に持つ。全件に反映された公開の
-  // 切り替えは `public` しか確かにしないので、お気に入りの印が確かでない動画を
-  // 外してはならず、その逆も同じである（Codex の指摘、PR 668）。
+  // Track visibility and favorite uncertainty independently; confirming one cannot settle the other.
   const uncertain = useRef(new Map<number, Map<UncertainReason, number>>());
   const staleNotices = useRef(0);
-  // markUncertain は `id` を `reason` について、番号 `notice` の知らせで確かでないとする。
   const markUncertain = useCallback(
     (id: number, reason: UncertainReason, notice: number) => {
       const reasons = uncertain.current.get(id);
@@ -54,8 +36,7 @@ export function useItemRefresh(
     },
     [],
   );
-  // settleUncertain は、`started`（取り直しを始めた時点の知らせの番号）以後の
-  // 知らせで確かでないとされていない理由を、取り直しで確かになったとして外す。
+  // Settle only reasons whose latest notice predates this refresh.
   const settleUncertain = useCallback((id: number, started: number) => {
     const reasons = uncertain.current.get(id);
     if (reasons === undefined) return;
@@ -64,7 +45,6 @@ export function useItemRefresh(
     }
     if (reasons.size === 0) uncertain.current.delete(id);
   }, []);
-  // settleUncertainReason は、全件に反映された結果が届いた `reason` だけを外す。
   const settleUncertainReason = useCallback(
     (ids: Iterable<number>, reason: UncertainReason) => {
       for (const id of ids) {
@@ -102,13 +82,9 @@ export function useItemRefresh(
             withVisibilitySince(await getVideo(id, controller.signal), mark),
             favoriteSince,
           );
-          // 条件を変えて読み直した後に届いた古い取り直しは、新しい一覧に重ねない。
+          // Do not apply old refresh results after list conditions change.
           if (controller.signal.aborted) return;
-          // 代表でなくなった動画（束ねた・代表を替えた）は、一覧では集まりの代表の
-          // 1 件に畳まれる。代表が既に
-          // 出ていれば、この 1 件を外せば一覧はサーバーと合う。出ていなければ、代表が
-          // この一覧のフォルダ・絞り込みに入るかはサーバーにしか分からないので、
-          // 一覧を先頭から読み直す（代表をそのまま差し込むと、範囲の外の動画が出る）。
+          // Remove a nonrepresentative if its representative is shown; otherwise resync because only the server knows whether that representative matches filters.
           const representativeId = refreshed.versions?.representativeId;
           if (representativeId !== undefined && representativeId !== id) {
             settleUncertain(id, started);
@@ -123,9 +99,8 @@ export function useItemRefresh(
           dispatch({ type: "refresh", videoId: id, video: refreshed });
         } catch (failure) {
           if (isAborted(failure)) return;
-          // 動画が索引から消えていたら、一覧からも外す。一時的な失敗は、その
-          // 1件だけ諦める（次の知らせか取り込みの完了時の読み直しで直る）。
-          // 公開状態が確かでない動画は、失敗しても uncertain に残す。
+          // Remove missing videos; transient failures wait for a later event or scan refresh.
+          // Failed refreshes retain uncertainty.
           if (failure instanceof RequestFailed && failure.status === 404) {
             settleUncertain(id, started);
             dispatch({ type: "remove", videoId: id });

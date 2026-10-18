@@ -29,16 +29,12 @@ function dateLabel(kind: WorkDateKind): UiText {
 export interface PanelProps {
   draft: Draft;
   update: (change: (draft: Draft) => Draft) => void;
-  /** 保存の送信中。入力は読むだけにする。 */
+  /** Keep inputs read-only while saving. */
   saving: boolean;
   problem: FieldProblem | null;
   save: () => void;
 }
 
-/**
- * BasicsPanel は編集画面の `Basics` の欄の中身である。
- * 上から Name、Code と 3 つの日付の 2×2、Description（残りの高さを埋める）、Links、IDs。
- */
 export default function BasicsPanel({
   draft,
   update,
@@ -48,7 +44,6 @@ export default function BasicsPanel({
   namePlaceholder,
   nameRef,
 }: PanelProps & {
-  /** Name が空のときにページが出す題名（ファイル名の題名）。 */
   namePlaceholder: string;
   nameRef: Ref<HTMLInputElement>;
 }) {
@@ -153,7 +148,6 @@ export default function BasicsPanel({
   );
 }
 
-/** LinkRows は Links の行（1 行に URL 1 つと ×）と「Add link」である。 */
 function LinkRows({ rows, onChange, saving, problem, onEnter }: RowsProps<LinkRow>) {
   const e = t.player.detailsEditor;
   const focusAdded = useFocusAdded();

@@ -32,15 +32,10 @@ import {
 const completionNoticeDuration = 8000;
 
 export interface ScanNoticeContextValue extends ScanNoticeSession {
-  /** 右下の表示を閉じた取り込みの id。 */
   dismissedScanId: number | null;
-  /** 開始の途中で閉じ、新しい取り込みの id を待っている。 */
   dismissPending: boolean;
   acknowledgeTerminalScan: () => void;
-  /**
-   * dismissIndicator は今の取り込みの右下の表示を閉じる。その取り込みが終わるまでも、
-   * 終わったあとの結果の通知としても出さない。次の取り込みでは、また出す（issue 830）。
-   */
+  /** Dismiss for the entire scan, including its terminal notification; the next scan may show again. */
   dismissIndicator: () => void;
   setCompletionNoticePaused: (paused: boolean) => void;
 }
@@ -64,9 +59,8 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
   const scanRef = useRef(scan.scan);
   const [dismissedScanId, setDismissedScanId] = useState(readDismissedScanId);
   const dismissedRef = useRef(dismissedScanId);
-  // 開始の途中で閉じたときは、まだ新しい取り込みの id が無い。開始前の id を覚えて待つ。
-  // 開始の応答だけを失っても、取り込みは始まっていて、あとの取得や知らせで見つかることが
-  // ある。そのため開始が終わっても待ち続け、次の開始を始めたときにやめる（settled）。
+  // A pending start has no new scan ID yet; remember the prior ID and wait.
+  // A lost start response may still have started the scan; keep waiting for events or reads until another start begins.
   const [pendingDismiss, setPendingDismiss] = useState<{
     baseline: number | null;
     settled: boolean;
@@ -101,7 +95,7 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     [updateSession],
   );
 
-  // 別のタブで閉じたときも、同じ取り込みは出さない。
+  // Honor dismissal in other tabs too.
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
       if (event.key !== dismissedStorageKey) return;
@@ -124,7 +118,6 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     if (!scan.starting && !pendingDismiss.settled) {
       setPendingDismiss({ ...pendingDismiss, settled: true });
     } else if (scan.starting && pendingDismiss.settled) {
-      // 閉じたあとの開始は失敗し、今は別の開始を始めた。その取り込みは出す。
       setPendingDismiss(null);
     }
   }, [dismiss, pendingDismiss, scan.scan, scan.starting]);
@@ -132,9 +125,9 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const current = scan.scan;
     if (current === null) return;
-    // 自動の取り込みは走っているあいだ追わず、終わりの通知は下の effect が決める。
+    // Running automatic scans stay silent; the terminal effect decides notifications.
     if (current.origin === "watch") return;
-    // 走査が閉じても準備が残るあいだは status が running のままなので、完了を知らせない。
+    // Scanning may finish while preparation keeps status running; do not announce completion yet.
     if (inProgress(current)) {
       const next: ScanNoticeSession = {
         ...session,
@@ -149,7 +142,7 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     }
     if (session.trackingScanId !== current.id) return;
     if (session.acknowledgedTerminalScanId === current.id) return;
-    // 閉じた取り込みは、終わったあとの結果も通知しない。
+    // Dismissal also suppresses terminal notifications.
     if (dismissedRef.current === current.id) return;
     if (
       session.completionNotice?.scanId === current.id &&
@@ -179,8 +172,7 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     updateSession({ ...session, completionNotice });
   }, [scan.scan, session, updateSession]);
 
-  // 手動の取り込みが終わったら、その失敗の一覧を覚える。次の自動の取り込みが、持ち越した
-  // 失敗を新しい失敗と取り違えないための比べる相手になる。
+  // Remember manual-scan failures so later automatic scans do not announce carried-over failures as new.
   const manualFinished = scan.finished;
   useEffect(() => {
     if (manualFinished === null) return;
@@ -197,9 +189,7 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     return () => abort.abort();
   }, [manualFinished]);
 
-  // 自動の取り込みが終わったとき、失敗で終わった（failed）か、新しい失敗を伴って終わった
-  // （partial）ときだけ、右下に結果を出す。新しい失敗かどうかは、前に読んだ一覧に無い
-  // （道筋と種類の）失敗があるかで決める。前に読んだ一覧が無ければ新しいとする。
+  // Notify automatic failure or partial completion only for new path/type failures; without a previous snapshot, treat failures as new.
   const watchFinished = scan.watchFinished;
   useEffect(() => {
     if (watchFinished === null) return;
@@ -224,8 +214,7 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
       });
     };
     if (watchFinished.status === "failed") {
-      // 失敗で終わった取り込みにも、記録した失敗の項目がありうる。次の取り込みが持ち越して
-      // 新しい失敗と取り違えないよう、その一覧も覚える。通知は読み終わりを待たず出す。
+      // Remember failures even from failed scans for later comparison; notify without waiting for that read.
       show();
       readFailureKeys(watchFinished.id, abort.signal)
         .then((keys) => {
@@ -244,7 +233,7 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
         if (isNew) show();
       })
       .catch((failure: unknown) => {
-        // 読めなかったときは、失敗があることを知らせる側に倒す。
+        // On read failure, err toward reporting a possible new failure.
         if (!isAborted(failure)) show();
       });
     return () => abort.abort();

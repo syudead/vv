@@ -14,15 +14,10 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// スマートフォルダの経路を、本物の認証・保存層・
-// 経路をつないで確かめる。中身は library_test.go の libraryFixture で、show と pair が自動グループ、
-// solo がグループに入らない動画である。公開は ep1・ep2・p1・solo。
-
 func smartFolderPath(id int64, suffix string) string {
 	return "/api/smart-folders/" + strconv.FormatInt(id, 10) + suffix
 }
 
-// createSmartFolder は所有者としてスマートフォルダを作り、その要約を返す。
 func (f *libraryFixture) createSmartFolder(t *testing.T, body map[string]any) gen.SmartFolderSummary {
 	t.Helper()
 	rec := f.groupRequest(http.MethodPost, "/api/smart-folders", groupJSON(body), f.owner)
@@ -32,7 +27,6 @@ func (f *libraryFixture) createSmartFolder(t *testing.T, body map[string]any) ge
 	return decode[gen.SmartFolderSummary](t, rec)
 }
 
-// smartFolderTag はタグ name を作って videos に付け、その id を返す。
 func (f *libraryFixture) smartFolderTag(t *testing.T, name string, videos ...string) int64 {
 	t.Helper()
 	ctx := context.Background()
@@ -56,9 +50,6 @@ var (
 	wantSmartFolderCycle   = wantError{status: http.StatusConflict, code: gen.ErrorCodeSmartFolderCycle}
 )
 
-// POST /api/smart-folders: 201 で前後を削った名前の要約。条件か並べ順の違反は 400 invalid_smart_rule、
-// 名前の違反と欠けた本文と null の sort・parentId は 400 invalid_request、無い親は 404 smart_folder_not_found で、どれも何も
-// 作らない。
 func TestCreateSmartFolderStatuses(t *testing.T) {
 	f := newLibraryFixture(t)
 	parent := f.createSmartFolder(t, map[string]any{"name": "  猫  ", "rule": map[string]any{"tags": []int64{f.manual}}})
@@ -102,9 +93,6 @@ func TestCreateSmartFolderStatuses(t *testing.T) {
 	}
 }
 
-// PATCH /api/smart-folders/{id} と DELETE: 入れた項目だけを変え、自分の子孫の下へ移すと 409
-// smart_folder_cycle、無い親は 404 smart_folder_not_found、無いフォルダは 404 not_found で、空の本文と
-// null の name・sort は 400 invalid_request（ほかの項目も変えない）。parentId の null は一番上へ戻す。消すと子孫も消える。
 func TestChangeAndDeleteSmartFolderStatuses(t *testing.T) {
 	f := newLibraryFixture(t)
 	parent := f.createSmartFolder(t, map[string]any{"name": "親", "rule": map[string]any{}})
@@ -162,8 +150,6 @@ func TestChangeAndDeleteSmartFolderStatuses(t *testing.T) {
 	assertErrorBody(t, "2 回目の削除", rec.Code, rec.Body.Bytes(), wantGroupNotFound)
 }
 
-// ゲストはどの書き込みも 401 で、読み取りには settings と favorite と視聴の値が無い。見せる動画の無い
-// フォルダは一覧から外れ、開くと 404 である。
 func TestSmartFolderGuestAccess(t *testing.T) {
 	f := newLibraryFixture(t)
 	shown := f.smartFolderTag(t, "公開", "solo", "ep10")
@@ -200,7 +186,6 @@ func TestSmartFolderGuestAccess(t *testing.T) {
 	}
 }
 
-// 所有者の詳細の settings は条件と並べ順を返し、消したタグを missing に名指す。中身は子フォルダだけになる
 func TestSmartFolderSettingsNameAMissingTag(t *testing.T) {
 	f := newLibraryFixture(t)
 	gone := f.smartFolderTag(t, "消す", "solo")
@@ -232,8 +217,6 @@ func TestSmartFolderSettingsNameAMissingTag(t *testing.T) {
 	}
 }
 
-// 中身は子フォルダを先に、続けてフォルダの並べ順の項目を返し、続きは items の経路で読む。読めない
-// カーソルは 400 invalid_cursor、範囲の外の limit は 400 invalid_request。
 func TestSmartFolderItemsPage(t *testing.T) {
 	f := newLibraryFixture(t)
 	folder := f.createSmartFolder(t, map[string]any{"name": "全部", "rule": map[string]any{}, "sort": "titleAsc"})
@@ -252,7 +235,6 @@ func TestSmartFolderItemsPage(t *testing.T) {
 		}
 		cursor = page.NextCursor
 	}
-	// 題名の順は pair（グループ）・show（グループ）・solo。
 	if !slices.Equal(kinds, []gen.SmartFolderItemKind{gen.SmartFolderItemKindGroup, gen.SmartFolderItemKindGroup, gen.SmartFolderItemKindVideo}) {
 		t.Errorf("項目の種類 = %v", kinds)
 	}
@@ -265,8 +247,6 @@ func TestSmartFolderItemsPage(t *testing.T) {
 	assertErrorBody(t, "範囲の外の limit", rec.Code, rec.Body.Bytes(), wantGroupInvalid)
 }
 
-// GET /api/smart-folders/cards: ids が無いか空か整数でないか 61 件以上なら 400 invalid_request。カードは
-// 求めた順で、ゲストに見せないフォルダと無い id は入らない。
 func TestSmartFolderCardsStatuses(t *testing.T) {
 	f := newLibraryFixture(t)
 	shown := f.smartFolderTag(t, "公開", "solo", "ep10")
@@ -306,8 +286,6 @@ func TestSmartFolderCardsStatuses(t *testing.T) {
 	}
 }
 
-// ライブラリは一番上のフォルダを要約の項目で返し、listLibraryIds は smartFolderIds に入れる。
-// お気に入りとプレイリストはフォルダを受け付ける。
 func TestSmartFoldersInLibraryFavoritesAndPlaylists(t *testing.T) {
 	f := newLibraryFixture(t)
 	folder := f.createSmartFolder(t, map[string]any{"name": "全部", "rule": map[string]any{}})
@@ -352,8 +330,6 @@ func TestSmartFoldersInLibraryFavoritesAndPlaylists(t *testing.T) {
 	}
 }
 
-// 動画の詳細の smartFolder は、フォルダの再生順が動画を持てばその位置と本数を返し、group は入らない。
-// group があれば group が勝つ。
 func TestVideoDetailInASmartFolder(t *testing.T) {
 	f := newVideoGroupFixture(t)
 	tag := f.smartFolderTag(t, "両方", "solo", "p1")
@@ -376,8 +352,6 @@ func TestVideoDetailInASmartFolder(t *testing.T) {
 	}
 }
 
-// PATCH の rule は条件を置き換え、ほかの項目（並べ順）は変えない。所有者の詳細の settings と中身は
-// 新しい条件で読む。
 func TestChangeSmartFolderRuleReplacesTheRule(t *testing.T) {
 	f := newLibraryFixture(t)
 	cat := f.smartFolderTag(t, "猫", "solo")
@@ -398,7 +372,6 @@ func TestChangeSmartFolderRuleReplacesTheRule(t *testing.T) {
 	}
 }
 
-// failingSmartFolders はどの読み書きも予期しない誤りで失敗する保存先である。
 type failingSmartFolders struct{}
 
 var errSmartFolderStore = errors.New("database unavailable")
@@ -427,8 +400,6 @@ func (failingSmartFolders) SmartFolderCards(context.Context, domain.Audience, []
 	return nil, errSmartFolderStore
 }
 
-// 保存先が無いときと、保存先が予期しない誤りを返したときは、どの経路も 500 internal である。本文の
-// 検査を通る要求で確かめる。
 func TestSmartFolderRoutesAnswerInternalErrors(t *testing.T) {
 	wantInternal := wantError{status: http.StatusInternalServerError, code: gen.ErrorCodeInternal}
 	routes := []struct{ method, target, body string }{

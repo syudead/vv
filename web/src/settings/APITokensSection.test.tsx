@@ -43,7 +43,6 @@ function renderSection() {
   );
 }
 
-/** server は保存された一覧を持つ偽のサーバーである。 */
 function server(initial: APIToken[]) {
   let stored = [...initial];
   let nextId = 100;
@@ -144,12 +143,10 @@ describe("APITokensSection", () => {
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Copy token" }),
     );
-    // 発行したトークンは一覧の先頭に入る。
     expect(rows()[0]?.textContent).toContain("scraper");
     const post = fetchMock.mock.calls.find(([, init]) => init?.method === "POST");
     expect(post?.[1]?.body).toBe(JSON.stringify({ name: "  scraper  " }));
 
-    // Esc では閉じない。
     await user.keyboard("{Escape}");
     expect(screen.getByText(SECRET)).toBeDefined();
 

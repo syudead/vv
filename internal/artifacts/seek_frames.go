@@ -11,13 +11,10 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// seekFrameQuality は切り出したコマを JPEG にするときの品質である。
 const seekFrameQuality = 85
 
-// SeekFrames はシーク用プレビューのシートから、動画全体に等間隔に n コマを選び
-// （domain.SpreadFrameIndexes）、1 コマずつの JPEG にして時間の順に返す。置き場か配置情報が
-// 無ければ fs.ErrNotExist を包んだ誤りを返す。自動タグ付けが判定に添える
-// （docs/design-docs/auto-tagging.md）。
+// SeekFrames returns n evenly spaced sprite frames as chronological JPEGs; absent stores or layouts
+// wrap fs.ErrNotExist. Used by automatic tagging; see docs/design-docs/auto-tagging.md.
 func (s *Store) SeekFrames(contentKey string, n int) ([][]byte, error) {
 	reader, err := s.seekFrameReader(contentKey)
 	if err != nil {
@@ -38,10 +35,8 @@ func (s *Store) SeekFrames(contentKey string, n int) ([][]byte, error) {
 	return frames, nil
 }
 
-// SeekFramePairs は 2 つの内容のシーク用プレビューから、組ごとに a のコマ pair.A を左、b のコマ
-// pair.B を右に並べた 1 枚の JPEG を、組の順に返す。b のコマは
-// a のコマの大きさに合わせるので、1 枚は a の 1 コマの 2 倍の幅になる。メディアファイルは読まず、
-// ffmpeg も使わない。置き場か配置情報が無ければ fs.ErrNotExist を包んだ誤りを返す。
+// SeekFramePairs places each A frame left of B, resizing B to A's dimensions, without reading media
+// or invoking ffmpeg; missing stores or layouts wrap fs.ErrNotExist.
 func (s *Store) SeekFramePairs(keyA, keyB string, pairs []domain.FramePair) ([][]byte, error) {
 	a, err := s.seekFrameReader(keyA)
 	if err != nil {
@@ -74,7 +69,7 @@ func (s *Store) SeekFramePairs(keyA, keyB string, pairs []domain.FramePair) ([][
 	return images, nil
 }
 
-// seekFrames は 1 つの内容のシーク用プレビューのコマを読む。読んだシートは覚えて使い回す。
+// Cache decoded sheets within each content read.
 type seekFrames struct {
 	store      *Store
 	contentKey string
@@ -82,7 +77,6 @@ type seekFrames struct {
 	sheets     map[int]image.Image
 }
 
-// seekFrameReader は内容 contentKey のシーク用プレビューの配置情報を読み、コマを読む準備をする。
 func (s *Store) seekFrameReader(contentKey string) (*seekFrames, error) {
 	sprite, err := s.SeekSprite(contentKey)
 	if err != nil {
@@ -91,7 +85,7 @@ func (s *Store) seekFrameReader(contentKey string) (*seekFrames, error) {
 	return &seekFrames{store: s, contentKey: contentKey, sprite: sprite, sheets: map[int]image.Image{}}, nil
 }
 
-// frame はコマ index（動画の先頭から 0 始まり）を切り出した画像を返す。
+// Frame indexes start at zero from the beginning of the video.
 func (r *seekFrames) frame(index int) (image.Image, error) {
 	if index < 0 || index >= r.sprite.FrameCount {
 		return nil, fmt.Errorf("seek preview frame %d is outside the %d frames", index, r.sprite.FrameCount)
@@ -112,7 +106,7 @@ func (r *seekFrames) frame(index int) (image.Image, error) {
 	return cropSeekFrame(img, r.sprite, index%perSheet)
 }
 
-// cropSeekFrame はシートの position 番目（左上から行優先）のコマを切り出す。
+// Positions are row-major from the top left.
 func cropSeekFrame(sheet image.Image, sprite domain.SeekSprite, position int) (image.Image, error) {
 	x := (position % sprite.Columns) * sprite.FrameWidth
 	y := (position / sprite.Columns) * sprite.FrameHeight
@@ -125,7 +119,6 @@ func cropSeekFrame(sheet image.Image, sprite domain.SeekSprite, position int) (i
 	return cropped, nil
 }
 
-// encodeSeekFrame は切り出したコマ（または並べた 1 枚）を JPEG にする。index は誤りの文に入れる番号。
 func encodeSeekFrame(img image.Image, index int) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: seekFrameQuality}); err != nil {

@@ -10,8 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// mediaTree は /media（登録フォルダ）と、接頭辞だけが一致する /media-other、
-// 外側のファイルを作る。
+// Include a prefix-sharing sibling and a fully external file.
 func mediaTree(t *testing.T) (root, inside, other, outside string) {
 	t.Helper()
 	base := t.TempDir()
@@ -65,7 +64,7 @@ func TestMediaFileFollowsSymlinkInsideRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = file.Close() }()
-	// 確かめたパスと開くパスを揃えるため、辿った先で開く。
+	// Open the same resolved path that was validated.
 	if file.Name() != inside {
 		t.Fatalf("opened %q, want resolved %q", file.Name(), inside)
 	}
@@ -117,7 +116,8 @@ func TestMediaFileRejectsDeviceFile(t *testing.T) {
 	if _, err := os.Stat(os.DevNull); err != nil {
 		t.Skip("no device file")
 	}
-	// デバイスファイルを登録フォルダの内側に置けないので、その親を登録フォルダに見立てる。
+	// Treat the device's parent as a registered root because the device cannot be moved into the
+	// fixture.
 	root := filepath.Dir(os.DevNull)
 	if _, err := New().ResolveMediaFile([]string{root}, os.DevNull); !errors.Is(err, domain.ErrMediaFileUnavailable) {
 		t.Fatalf("ResolveMediaFile(%q) error = %v, want ErrMediaFileUnavailable", os.DevNull, err)

@@ -13,10 +13,6 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
-/**
- * ライブラリの選択バー・カード・行からグループを作り、グループに足す。
- */
-
 function video(id: number, extra: Partial<Video> = {}): Video {
   return {
     id,
@@ -86,13 +82,12 @@ interface Server {
   creates: CreateBody[];
   adds: { id: number; body: AddBody }[];
   libraryReads: number;
-  /** 子 → 親。足す先がこのグループの子孫なら 409 group_cycle にする。 */
+  /** Child-to-parent links model descendant-cycle rejection. */
   parents: Map<number, number>;
 }
 
 const fetchMock = vi.fn<typeof fetch>();
 
-/** isInside は child が ancestor 自身かその子孫かを返す。 */
 function isInside(parents: Map<number, number>, child: number, ancestor: number) {
   for (let current: number | undefined = child; current !== undefined;) {
     if (current === ancestor) return true;
@@ -101,7 +96,6 @@ function isInside(parents: Map<number, number>, child: number, ancestor: number)
   return false;
 }
 
-/** createGroupIn は POST /api/groups を受け、メンバーを一覧から外して新しいグループを足す。 */
 function createGroupIn(server: Server, body: CreateBody): Response {
   const memberVideos = new Set(body.videoIds);
   const memberGroups = new Set(body.groupIds);
@@ -119,7 +113,6 @@ function createGroupIn(server: Server, body: CreateBody): Response {
   return json(created, 201);
 }
 
-/** addToGroupIn は POST /api/groups/{id}/items を受ける。輪になる追加は 409 にする。 */
 function addToGroupIn(server: Server, id: number, body: AddBody): Response {
   if (body.groupIds.some((groupId) => isInside(server.parents, id, groupId))) {
     return json({ code: "conflict", reason: "group_cycle", message: "cycle" }, 409);
@@ -242,7 +235,6 @@ describe("ライブラリからグループを作る・足す", () => {
       );
     }
 
-    // 「Add to playlist」の後、「Visibility」の前に「New group」「Add to group」。
     const names = within(selectionBar())
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label"));
@@ -260,7 +252,6 @@ describe("ライブラリからグループを作る・足す", () => {
     const field = within(dialog).getByRole("textbox", { name: "Name" });
     await waitFor(() => expect(document.activeElement).toBe(field));
 
-    // 空の名前は送らない。
     await user.click(within(dialog).getByRole("button", { name: "Create" }));
     expect(within(dialog).getByText("Use a name of 1 to 100 characters.")).toBeDefined();
     expect(server.creates).toEqual([]);
@@ -269,7 +260,6 @@ describe("ライブラリからグループを作る・足す", () => {
     expect(await screen.findByText('Created "Trip"')).toBeDefined();
     expect(server.creates).toEqual([{ name: "Trip", videoIds: [1, 2, 3], groupIds: [] }]);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    // 一覧を読み直し、3 枚の代わりにグループのカードが立つ。
     expect(
       await screen.findByRole("link", { name: /^Trip, group of 3 videos/ }),
     ).toBeDefined();
@@ -327,7 +317,6 @@ describe("ライブラリからグループを作る・足す", () => {
     expect(await screen.findByText('Added to "extras"')).toBeDefined();
     expect(server.adds).toEqual([{ id: 8, body: { videoIds: [], groupIds: [7] } }]);
     expect(screen.queryByRole("listbox", { name: "Groups" })).toBeNull();
-    // 足したものはいちばん上から外れるので、一覧を読み直す。選択は残す。
     await waitFor(() => expect(server.libraryReads).toBeGreaterThan(reads));
     expect(screen.getByText("2 videos selected")).toBeDefined();
   });

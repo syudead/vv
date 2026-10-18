@@ -1,46 +1,29 @@
-// テストごとに描画した DOM を片付ける。
-//
-// @testing-library/jest-dom は入れない。表明は Vitest の expect だけで書く
-// （実行時にも開発時にも依存を増やさないため）。
+// Use Vitest assertions without adding jest-dom dependencies.
 import { cleanup, configure } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 
 import { resetLocale } from "./src/i18n/pseudo";
 
-// findBy* と waitFor の待ちの上限。既定の 1 秒は、CI で coverage を取りながら並べて
-// 走らせると、重いページの最初の描画だけで越えることがある
-// （LibrarySmartFolderCards の findByRole が負荷の下で 1 回落ちた）。待つのは条件が
-// 満たされるまでなので、上限を延ばしても通るテストが遅くなることはない。テスト全体の
-// 上限（5 秒）より短くして、落ちたときに待っていた条件が分かるようにする。
+// Allow slower initial renders under concurrent CI coverage, but stay below the five-second test timeout so failures identify the awaited condition.
 configure({ asyncUtilTimeout: 3000 });
 
 afterEach(() => {
   cleanup();
 
-  // 疑似ロケール（src/i18n/pseudo.ts）へ差し替えた検査のあとは英語に戻す。
   resetLocale();
 
-  // 表示設定（vv.view.v1）は localStorage に残る。jsdom の localStorage は
-  // ファイル内のすべての検査で共有されるので、片付けないと「密度を変えた」
-  // 検査が後続の検査の初期値を書き換え、実行順で結果が変わる。
-  //
-  // DOM を使わない検査（対比の検査は node 環境で CSS をファイルとして読む）
-  // には localStorage が無いので、有無を見てから片付ける。
+  // Clear shared jsdom storage to prevent view preferences leaking across tests; Node-only tests have no localStorage.
   if (typeof localStorage !== "undefined" && typeof localStorage.clear === "function") {
     localStorage.clear();
   }
 });
 
-// Testing Library は各操作のあと setTimeout(..., 0) でマイクロタスクを吐き出し、
-// **偽の時計が動いているときだけ**それを自分で進める。その判定が jest の
-// 名前を見に行くので、Vitest の偽の時計では待ちが永久に明けない
-// （user-event で打鍵する検査が待ち合わせを確かめられなくなる）。
-// 進め方だけを渡して判定を通す。時計そのものは Vitest のままである。
+// Testing Library detects fake timers through jest; expose only Vitest timer advancement so user-event waits can complete.
 Object.assign(globalThis, {
   jest: { advanceTimersByTime: vi.advanceTimersByTime.bind(vi) },
 });
 
-// Radix Slider は ResizeObserver を要る。jsdom には無いので空の実装を置く。
+// Radix Slider requires ResizeObserver, which jsdom lacks.
 if (typeof globalThis.ResizeObserver === "undefined") {
   globalThis.ResizeObserver = class {
     observe() {}
@@ -49,8 +32,7 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   };
 }
 
-// cmdk（ui/command.tsx）は選んだ行を scrollIntoView で見える所へ送る。jsdom には無いので
-// 何もしない実装を置く。
+// cmdk calls scrollIntoView, which jsdom lacks.
 if (
   typeof Element !== "undefined" &&
   typeof Element.prototype.scrollIntoView !== "function"
@@ -58,11 +40,7 @@ if (
   Element.prototype.scrollIntoView = function scrollIntoView() {};
 }
 
-// sonner（ui/Toast）は読み込んだ時点で約 100 規則の <style> を head に足す。jsdom は
-// getComputedStyle のたびに全規則を照合し、Testing Library の getByRole は要素が
-// 隠れているかを祖先ごとに getComputedStyle で調べるので、この 1 枚が役割での検索を
-// 重くする。jsdom は描画しないので、見た目の規則は要らない。テストのファイルが
-// sonner を読み込んだあと、各テストの前に取り除く。
+// Remove Sonner visual styles before each test: jsdom does not render them, but matching their rules slows every role query.
 const sonnerStylePrefix = "[data-sonner-toaster]";
 beforeEach(() => {
   if (typeof document === "undefined") return;

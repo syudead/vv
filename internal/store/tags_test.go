@@ -10,8 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// attachTag は video_tags に直接1行足す。動画へのタグの付け外しは #265 の
-// 範囲なので、この feature のテストは SQL で直接付ける。
+// Insert attachment fixtures directly so tag-definition tests do not depend on attachment operations.
 func attachTag(t *testing.T, db *DB, contentKey string, tagID int64) {
 	t.Helper()
 	if _, err := db.sql.Exec(
@@ -22,7 +21,6 @@ func attachTag(t *testing.T, db *DB, contentKey string, tagID int64) {
 	}
 }
 
-// tagNameRow はタグ名1行の search_key・search_version を読む。
 func tagNameRow(t *testing.T, db *DB, name string) (searchKey string, searchVersion int64) {
 	t.Helper()
 	if err := db.sql.QueryRow(`select search_key, search_version from tag_names where name = ?`, name).
@@ -137,7 +135,6 @@ func TestRenameTagRejectsExistingNameOrSynonym(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 既存の元の名前への改名。
 	_, err = db.Tags().RenameTag(ctx, tag.ID, "アニメ")
 	var conflict *domain.TagNameConflict
 	if !errors.As(err, &conflict) {
@@ -147,7 +144,6 @@ func TestRenameTagRejectsExistingNameOrSynonym(t *testing.T) {
 		t.Errorf("conflict.Tag.ID = %d, want %d", conflict.Tag.ID, other.ID)
 	}
 
-	// 既存のシノニムへの改名。
 	_, err = db.Tags().RenameTag(ctx, tag.ID, "anime-jp")
 	if !errors.As(err, &conflict) {
 		t.Fatalf("RenameTag(既存のシノニム) error = %v, want *domain.TagNameConflict", err)
@@ -156,7 +152,6 @@ func TestRenameTagRejectsExistingNameOrSynonym(t *testing.T) {
 		t.Errorf("conflict.Tag.ID = %d, want %d", conflict.Tag.ID, other.ID)
 	}
 
-	// 自分自身のシノニムへの改名も誤り。
 	if _, err := db.Tags().AddSynonym(ctx, tag.ID, "旅", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +198,6 @@ func TestMergeTagsMovesContentAndSynonyms(t *testing.T) {
 		t.Errorf("merged = %+v, want id=%d name=Y", merged, y.ID)
 	}
 
-	// X が付いていた中身すべてに Y が1つだけ付く。
 	for _, key := range []string{"key-x", "key-both"} {
 		var count int
 		if err := db.sql.QueryRow(`select count(*) from video_tags where content_key = ? and tag_id = ?`, key, y.ID).
@@ -215,7 +209,6 @@ func TestMergeTagsMovesContentAndSynonyms(t *testing.T) {
 		}
 	}
 
-	// X の元の名前とシノニムが Y のシノニムになる。
 	tagsPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
@@ -243,7 +236,6 @@ func TestMergeTagsMovesContentAndSynonyms(t *testing.T) {
 		t.Fatal("統合先 Y が一覧に無い")
 	}
 
-	// X の名前で引くと Y になる。
 	lookup, foundX, err := lookupTagName(ctx, db.sql, "X")
 	if err != nil {
 		t.Fatal(err)
@@ -276,7 +268,6 @@ func TestAddSynonymMergeRequiredAndAccepted(t *testing.T) {
 		attachTag(t, db, key, lower.ID)
 	}
 
-	// 承諾が無い。
 	_, err = db.Tags().AddSynonym(ctx, upper.ID, "anime", nil)
 	var mergeRequired *domain.TagMergeRequired
 	if !errors.As(err, &mergeRequired) {
@@ -286,14 +277,12 @@ func TestAddSynonymMergeRequiredAndAccepted(t *testing.T) {
 		t.Errorf("mergeRequired.Tag.ID = %d, want %d", mergeRequired.Tag.ID, lower.ID)
 	}
 
-	// 違う id の承諾。
 	wrong := upper.ID
 	_, err = db.Tags().AddSynonym(ctx, upper.ID, "anime", &wrong)
 	if !errors.As(err, &mergeRequired) {
 		t.Fatalf("AddSynonym(違う承諾) error = %v, want *domain.TagMergeRequired", err)
 	}
 
-	// ここまで何も変わっていない。
 	tagsBeforePage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
 	if err != nil {
 		t.Fatal(err)
@@ -315,7 +304,6 @@ func TestAddSynonymMergeRequiredAndAccepted(t *testing.T) {
 		}
 	}
 
-	// 正しい承諾。
 	accepted := lower.ID
 	tag, err := db.Tags().AddSynonym(ctx, upper.ID, "anime", &accepted)
 	if err != nil {
@@ -380,7 +368,6 @@ func TestVideoCountExcludesUnregisteredVideosAndMergeReachesThem(t *testing.T) {
 		t.Fatal(err)
 	}
 	attachTag(t, db, "key-registered", x.ID)
-	// いまライブラリに無い動画（video_locations を持たない content_key）への付与。
 	attachTag(t, db, "key-gone", x.ID)
 
 	tagsPage, err := db.Tags().ListTags(ctx, domain.TagListQuery{})
@@ -434,8 +421,7 @@ func TestDeleteTagCascadesToUnregisteredVideoAssignments(t *testing.T) {
 	}
 }
 
-// トリガーで統合の最後の一手（統合元の削除）を失敗させ、何も残らないことを
-// 確かめる（Edge Case「一括操作・統合の途中失敗」）。
+// Fail the final source deletion with a trigger to verify the entire merge rolls back.
 func TestMergeTagsRollsBackEverythingOnMidTransactionFailure(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -516,7 +502,6 @@ func TestSearchKeysAreWrittenOnCreateRenameAndSynonymAndRefreshed(t *testing.T) 
 		t.Errorf("シノニム登録後の search_key/version = %q/%d, want %q/%d", key, version, domain.FoldForMatch("anime-jp"), domain.SearchKeyVersion)
 	}
 
-	// 版を 0 に戻した行が、起動時の作り直しで埋まる。
 	if _, err := db.sql.Exec(`update tag_names set search_key = '', search_version = 0 where name = ?`, "アニメ"); err != nil {
 		t.Fatal(err)
 	}

@@ -15,12 +15,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// mdm plugin run は作品情報プラグインを VVMDM と同じランタイム、同じ制限、同じアドレスの規則で 1 回動かし、
-// VVMDM が残す結果を出す。要求は
-// サーバーと同じ domain の規則（入力の確かめ、実効の設定値）で組み立てる。--set の秘密の値は伏せない。
-// 伏せるのは所有者の画面のためで、値は作者が打ったものだからである。
+// Run with server validation, runtime limits, and address rules; explicit author-supplied secret
+// settings remain visible in CLI output.
 
-// pluginRunArgs は mdm plugin run の引数を読んだものである。
 type pluginRunArgs struct {
 	modulePath string
 	operation  domain.WorkInfoOperation
@@ -29,7 +26,6 @@ type pluginRunArgs struct {
 	proxy      string
 }
 
-// runPluginRun は mdm plugin run <module.wasm> <operation> <input> [--set KEY=VALUE]... [--proxy URL] を実行する。
 func runPluginRun(ctx context.Context, args []string, env accountEnv) *accountFailure {
 	parsed, failure := parsePluginRunArgs(args)
 	if failure != nil {
@@ -70,9 +66,8 @@ func runPluginRun(ctx context.Context, args []string, env accountEnv) *accountFa
 	return writeKeptResult(env.Stdout, req.Operation, result)
 }
 
-// parsePluginRunArgs は位置の 3 つの引数と、--set KEY=VALUE（繰り返せる）、--proxy URL を読む。フラグは
-// 位置の引数の前後どこにも置け、--set=KEY=VALUE と --proxy=URL の形も受け付ける。同じキーの --set は
-// 後のものが勝つ。最初の -- の後はどれも位置の引数で、-- で始まる検索の語もそこに書ける。
+// Options may appear around positional arguments; repeated --set keys use the last value, and --
+// ends option parsing.
 func parsePluginRunArgs(args []string) (pluginRunArgs, *accountFailure) {
 	parsed := pluginRunArgs{values: map[string]string{}}
 	var positional []string
@@ -107,7 +102,6 @@ func parsePluginRunArgs(args []string) (pluginRunArgs, *accountFailure) {
 	return parsed, nil
 }
 
-// setOption は --set か --proxy の値を入れる。
 func (p *pluginRunArgs) setOption(name, value string) *accountFailure {
 	if name == "--proxy" {
 		p.proxy = value
@@ -121,7 +115,7 @@ func (p *pluginRunArgs) setOption(name, value string) *accountFailure {
 	return nil
 }
 
-// pluginRunNetwork は --proxy の URL を PUT /api/settings/plugin-proxy と同じ規則で確かめる。
+// Validate proxy URLs with the same rules as the settings API.
 func pluginRunNetwork(raw string) (domain.WorkInfoRunNetwork, *accountFailure) {
 	proxy, err := domain.ParseWorkInfoPluginProxyURL(raw)
 	if err != nil {
@@ -132,9 +126,8 @@ func pluginRunNetwork(raw string) (domain.WorkInfoRunNetwork, *accountFailure) {
 	return domain.WorkInfoRunNetwork{Proxy: proxy}, nil
 }
 
-// pluginRunRequest はサーバーと同じ規則で実行の要求を組み立てる。操作はマニフェストが宣言したもの、
-// 入力は画面 API と同じ規則、設定は宣言されたキーだけで、値は画面が保存できるもの
-// （domain.CheckWorkInfoPluginValues）に限り、実効値（既定値を含む）を入れる。
+// Build requests with declared operations, API input validation, declared settings, and effective
+// defaults, just like the server.
 func pluginRunRequest(manifest domain.WorkInfoPluginManifest, args pluginRunArgs) (domain.WorkInfoRunRequest, *accountFailure) {
 	req := domain.WorkInfoRunRequest{Operation: args.operation}
 	if !manifest.Supports(args.operation) {
@@ -167,7 +160,6 @@ func pluginRunRequest(manifest domain.WorkInfoPluginManifest, args pluginRunArgs
 	return req, nil
 }
 
-// setRunInput は操作の入力を画面 API と同じ規則で確かめて要求に入れる。
 func setRunInput(req *domain.WorkInfoRunRequest, input string) *accountFailure {
 	switch req.Operation {
 	case domain.WorkInfoSearch:
@@ -178,7 +170,7 @@ func setRunInput(req *domain.WorkInfoRunRequest, input string) *accountFailure {
 		}
 		req.Query = query
 	case domain.WorkInfoFetch:
-		// URL の形の入力も作品 ID としてそのまま渡す（親 Issue #1232 の要件 14・16）。
+		// Pass URL-shaped inputs through as work IDs.
 		id, err := domain.NormalizeWorkInfoSearchQuery(input)
 		if err != nil {
 			return usageFailure("The work's ID must be 1 to %d characters after trimming spaces.",
@@ -208,9 +200,7 @@ func joinOperations(ops []domain.WorkInfoOperation) string {
 	return strings.Join(names, ", ")
 }
 
-// writeRunLog はプラグインの標準エラーを書かれたとおりに出し、切り詰めたならそのことを 1 行で足す。
-// 切り詰めの行や、failed のとき後に続く失敗の行が、改行で終わらない標準エラーにつながらないよう、
-// その前で行を区切る。
+// Preserve plugin stderr and insert a newline before truncation or failure notices if needed.
 func writeRunLog(w io.Writer, log domain.WorkInfoRunLog, failed bool) {
 	_, _ = io.WriteString(w, log.Stderr)
 	if (log.Truncated || failed) && log.Stderr != "" && !strings.HasSuffix(log.Stderr, "\n") {
@@ -221,8 +211,6 @@ func writeRunLog(w io.Writer, log domain.WorkInfoRunLog, failed bool) {
 	}
 }
 
-// runFailureLine は実行の失敗の 1 行である。失敗の種類、ネットワークの 2 つの失敗ではホスト、プラグインが
-// 報告した誤りの文があればそれを並べる。
 func runFailureLine(err *domain.WorkInfoRunError) string {
 	line := "Run failed: " + string(err.Failure)
 	if err.Host != "" {
@@ -234,7 +222,6 @@ func runFailureLine(err *domain.WorkInfoRunError) string {
 	return line
 }
 
-// writeKeptResult は VVMDM が残す結果を、字下げした JSON で標準出力に書く。
 func writeKeptResult(w io.Writer, op domain.WorkInfoOperation, result domain.WorkInfoRunResult) *accountFailure {
 	var body any
 	if op == domain.WorkInfoSearch {
@@ -254,8 +241,7 @@ func writeKeptResult(w io.Writer, op domain.WorkInfoOperation, result domain.Wor
 	return nil
 }
 
-// 残す結果の JSON の形である。名前はプラグインの応答（docs/how-to/work-info-plugins.md の Response）と同じで、
-// 値は VVMDM が上限と規則で整えたあとのものである。値の無い項目は省く。
+// Use plugin response field names with server-normalized values; omit absent fields.
 
 type keptCandidate struct {
 	ID     string `json:"id"`
@@ -302,7 +288,6 @@ func keptCandidates(candidates []domain.WorkInfoCandidate) any {
 	}{out}
 }
 
-// toKeptWorkInfo は取得の結果を、サーバーが取得の結果として持つのと同じ題名と並びにする。
 func toKeptWorkInfo(fetched domain.FetchedWorkInfo) keptWorkInfo {
 	details := domain.OrderFetchedWorkDetails(fetched)
 	out := keptWorkInfo{

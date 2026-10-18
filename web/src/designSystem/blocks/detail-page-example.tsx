@@ -13,10 +13,7 @@ import { DetailPage } from "@/ui/patterns/detail-page";
 import { Badge } from "@/ui/shadcn/badge";
 import { Button } from "@/ui/shadcn/button";
 
-// 詳細ページの型の見本（registry:block detail-page-example）。見出しの帯に戻る操作・場所・
-// 閉じる操作、主領域にメディアの場所と題名・タグ・情報の行、横の情報欄に関連する項目の並びを
-// 置く。写した画面はメディアの場所を自分の中身（プレーヤーなど）に差し替える
-// （web/registry/rules/patterns.md の Detail page）。
+// registry:block detail-page-example. Replace the media slot; see web/registry/rules/patterns.md, Detail page.
 
 export function DetailPageExample() {
   const p = t.designSystem.pattern;

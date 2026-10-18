@@ -1,8 +1,6 @@
 package store
 
-// グループのマージ。
-// ドラッグしたカードを画面の順にたどり、グループはマージ先へマージし、動画はマージ先の末尾へ足す。
-// 動画とグループが混ざった選択も 1 つの取引で、取り消しの像は 1 つである。
+// Mixed video/group selections merge in screen order within one transaction and one undo image.
 
 import (
 	"context"
@@ -15,34 +13,19 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// mergeStep はマージのカード 1 枚である。動画なら key（利用者データの鍵）を、グループなら group を持つ。
 type mergeStep struct {
 	key   string
 	group int64
 }
 
-// mergeOutcome はマージの書き込みの結果である。
 type mergeOutcome struct {
-	// deleted はマージで消したグループ、holders は X の項目を置き換えたか消した親グループ、removedFrom
-	// はそのうち X の項目を消した親グループ、playlists は項目を置き換えたか消したプレイリストである。
+	// Track deleted groups, changed holders, holders losing items, and affected playlists.
 	deleted, holders, removedFrom, playlists []int64
-	// automatic は自動グループを 1 つでも消したかで、そのときはフォルダの索引を作り直す。
+	// Removing any automatic group requires rebuilding the folder index.
 	automatic bool
 }
 
-// Merge はドラッグしたカード items を画面の順にたどり、グループはグループ into へマージし（R-5）、
-// 動画は into の末尾へ足す（既にあれば飛ばす）。グループ X のマージは、X の項目を順に into の末尾へ
-// 足し、X がお気に入りなら into をお気に入りにし、X を持つプレイリストと親グループの項目を
-// domain.PlanGroupMerge のとおり X の位置で into に置き換えるか消して、X を消す。自動グループの X は
-// そのフォルダに ungroup を書く。X の項目を消して空になった親グループは解散する（DissolveGroup と
-// 同じ道筋）。from（0 なら無し）は開いているグループで、あればドラッグしたカードはマージの前に
-// Move の取り外しと同じく from を離れる（要件 9）。from の中の動画の項目は消え、グループの項目は
-// into に置き換えずに消える。自動グループの from からフォルダのメンバーが抜けると除外を書く。
-// 取り消しの像を返す。
-//
-// into・from か、ドラッグしたグループ・動画が無いか、カードが from に無ければ
-// domain.ErrGroupTargetNotFound、ドラッグしたグループが into そのものか into の祖先なら
-// domain.ErrGroupCycle で、どれも何も書かない。
+// Merge preserves card order, transfers group contents and references, and dissolves empty sources; source items leave before holder replacement.
 func (s *OrganizeStore) Merge(ctx context.Context, items []domain.OrganizeRef, into, from int64) ([]byte, error) {
 	var encoded []byte
 	err := writeGroups(ctx, s.db, "merge the groups", func(tx *sql.Tx) ([]int64, error) {
@@ -79,9 +62,7 @@ func (s *OrganizeStore) Merge(ctx context.Context, items []domain.OrganizeRef, i
 	return encoded, nil
 }
 
-// resolveMergeSteps は items を重複なく画面の順のマージのカードにし、ドラッグしたグループの id も
-// 返す。into・グループ・動画が無ければ domain.ErrGroupTargetNotFound、グループが into か into の
-// 祖先なら domain.ErrGroupCycle である。
+// Deduplicate cards in order and reject missing targets or cycles before applying merge steps.
 func resolveMergeSteps(ctx context.Context, tx *sql.Tx, items []domain.OrganizeRef, into int64) ([]mergeStep, []int64, error) {
 	if err := ensureGroupTarget(ctx, tx, into); err != nil {
 		return nil, nil, err
@@ -120,15 +101,12 @@ func resolveMergeSteps(ctx context.Context, tx *sql.Tx, items []domain.OrganizeR
 	return steps, groups, nil
 }
 
-// mergeSource はドラッグしたカードが離れる開いているグループ group（0 なら無し）と、その中の
-// カードの項目の id items（カードの順）である。
+// Zero means no source; item IDs follow card order.
 type mergeSource struct {
 	group int64
 	items []int64
 }
 
-// mergeFromItems は from（0 なら無し）の中の steps の項目の id を steps の順に返す。from が無いか、
-// カードが from に無ければ domain.ErrGroupTargetNotFound。
 func mergeFromItems(ctx context.Context, tx *sql.Tx, from int64, steps []mergeStep) ([]int64, error) {
 	if from == 0 {
 		return nil, nil
@@ -143,8 +121,6 @@ func mergeFromItems(ctx context.Context, tx *sql.Tx, from int64, steps []mergeSt
 	return groupMemberItemIDs(ctx, tx, from, members)
 }
 
-// resolveMergeStep はカード item を mergeStep にする。keys は動画の id ごとの利用者データの鍵、
-// edges は今の入れ子である。
 func resolveMergeStep(ctx context.Context, tx *sql.Tx, item domain.OrganizeRef, into int64, keys map[int64]string, edges []domain.GroupEdge) (mergeStep, error) {
 	switch item.Kind {
 	case domain.OrganizeVideo:
@@ -165,13 +141,7 @@ func resolveMergeStep(ctx context.Context, tx *sql.Tx, item domain.OrganizeRef, 
 	return mergeStep{}, fmt.Errorf("unknown card kind %q", item.Kind)
 }
 
-// mergeImage はマージの取り消しの像の範囲を作る。groups はドラッグしたグループと、あれば開いているグループ from である。消えるかもしれない
-// グループ（groups と、解散が届きうるその祖先すべて）と
-// into は、グループの行、項目、それを指す項目、除外、お気に入り、それを持つプレイリストの全項目と、
-// 自動グループのフォルダの例外を持つ。祖先は親をすべて含むので、親の項目もこの範囲に入る。into の
-// グループの行は更新日時を進めるので、後で into を改名すれば取り消しは domain.ErrUndoConflict に
-// なる。取り消しは into の行も消して入れ直すので、外部キーで消える into を指す行も範囲に入れる。
-// 親の表（groups）の範囲を子の表より前に置く（restoreUndoImage）。
+// Capture potentially dissolved ancestors and all cascading dependents, with parents first; later target edits must invalidate undo.
 func mergeImage(ctx context.Context, tx *sql.Tx, groups []int64, into int64) (undoImage, error) {
 	deletable, err := groupsWithAncestors(ctx, tx, groups)
 	if err != nil {
@@ -207,7 +177,6 @@ func mergeImage(ctx context.Context, tx *sql.Tx, groups []int64, into int64) (un
 	return image, nil
 }
 
-// appendScopeSpecs は表 table の列 column が ids の各値の範囲を specs に足す。
 func appendScopeSpecs(specs []imageScopeSpec, table, column string, ids []int64) []imageScopeSpec {
 	for _, id := range ids {
 		specs = append(specs, imageScopeSpec{table: table, column: column, key: id})
@@ -215,8 +184,6 @@ func appendScopeSpecs(specs []imageScopeSpec, table, column string, ids []int64)
 	return specs
 }
 
-// mergeImageHolders はグループ ids のどれかを持つプレイリストの id と、ids のうち自動グループの
-// フォルダの鍵（folder_group_overrides.path の形）を返す。
 func mergeImageHolders(ctx context.Context, tx *sql.Tx, ids []int64) ([]int64, []string, error) {
 	encoded, err := json.Marshal(ids)
 	if err != nil {
@@ -239,10 +206,7 @@ func mergeImageHolders(ctx context.Context, tx *sql.Tx, ids []int64) ([]int64, [
 	return playlists, folders, nil
 }
 
-// applyMerge はカードを source から外してから steps を順に into へ書き、空になった親を解散し、自動
-// グループを消したならフォルダの索引を作り直し、残るグループの更新日時を進めて、変えたグループと
-// その祖先の id を返す。先に外すので、ドラッグしたグループの親としての source は
-// domain.PlanGroupMerge に渡らず、その項目は into に置き換わらずに消えたままになる。
+// Remove source cards first so their references stay removed rather than being replaced by the merge target.
 func applyMerge(ctx context.Context, tx *sql.Tx, steps []mergeStep, into int64, source mergeSource) ([]int64, error) {
 	var outcome mergeOutcome
 	if err := leaveMergeSource(ctx, tx, source, &outcome); err != nil {
@@ -278,9 +242,6 @@ func applyMerge(ctx context.Context, tx *sql.Tx, steps []mergeStep, into int64, 
 	return changed, nil
 }
 
-// leaveMergeSource は source.group の項目 source.items を removeGroupItem で消して（フォルダ由来の
-// 項目は除外を書く）詰め直し、source.group を outcome の項目を消した親に足す。空になれば finishMerge
-// が解散する。source.group が 0 なら何もしない。
 func leaveMergeSource(ctx context.Context, tx *sql.Tx, source mergeSource, outcome *mergeOutcome) error {
 	if source.group == 0 {
 		return nil
@@ -298,9 +259,7 @@ func leaveMergeSource(ctx context.Context, tx *sql.Tx, source mergeSource, outco
 	return nil
 }
 
-// finishMerge はマージで空になった親を解散し、自動グループを消したならフォルダの索引を作り直し、
-// 今もある into と親の更新日時を進めて、変えたグループとその祖先の id を返す。into はマージ先として
-// 残す（要件 8）ので、空になっても、解散が祖先へ届いても解散しない。
+// Keep the merge target even if empty or reached by ancestor dissolution.
 func finishMerge(ctx context.Context, tx *sql.Tx, into int64, outcome mergeOutcome) ([]int64, error) {
 	changed := slices.Clone(outcome.deleted)
 	present, err := existingGroups(ctx, tx, normalizeIDs(slices.Clone(outcome.removedFrom)))
@@ -338,7 +297,6 @@ func finishMerge(ctx context.Context, tx *sql.Tx, into int64, outcome mergeOutco
 	return normalizeIDs(append(changed, touched...)), nil
 }
 
-// existingGroups はグループ ids のうち、今もあるものの id を返す。
 func existingGroups(ctx context.Context, tx *sql.Tx, ids []int64) ([]int64, error) {
 	var out []int64
 	for _, id := range ids {
@@ -352,9 +310,7 @@ func existingGroups(ctx context.Context, tx *sql.Tx, ids []int64) ([]int64, erro
 	return out, nil
 }
 
-// mergeGroup はグループ x を into へマージし（R-5）、結果を outcome に足す。x の子グループのうち、
-// into そのものか into の祖先になったもの（前のカードのマージで入れ子が変わったとき）は、into に
-// 足さずに捨てる。入れ子に循環は作らない。
+// Earlier merge steps can change nesting; discard newly cyclic child references instead of adding them to the target.
 func mergeGroup(ctx context.Context, tx *sql.Tx, x, into int64, outcome *mergeOutcome) error {
 	group, err := groupSummary(ctx, tx, x)
 	if err != nil {
@@ -377,7 +333,7 @@ func mergeGroup(ctx context.Context, tx *sql.Tx, x, into int64, outcome *mergeOu
 		}
 		outcome.automatic = true
 	}
-	// x の項目・除外・お気に入りは外部キーの on delete cascade で消える。x を指す項目はもう無い。
+	// Items, exclusions and favorites cascade; all references to the source have already been handled.
 	if _, err := tx.ExecContext(ctx, `delete from groups where id = ?`, x); err != nil {
 		return fmt.Errorf("cannot merge the group: %w", err)
 	}
@@ -385,8 +341,6 @@ func mergeGroup(ctx context.Context, tx *sql.Tx, x, into int64, outcome *mergeOu
 	return nil
 }
 
-// appendMergedItems はグループ x の項目を位置の順に into の末尾へ足し（既にあれば飛ばす）、足した
-// 後の入れ子を返す。
 func appendMergedItems(ctx context.Context, tx *sql.Tx, x, into int64) ([]domain.GroupEdge, error) {
 	items, err := readMergedItems(ctx, tx, x)
 	if err != nil {
@@ -415,13 +369,11 @@ func appendMergedItems(ctx context.Context, tx *sql.Tx, x, into int64) ([]domain
 	return edges, nil
 }
 
-// mergedItem はマージで into へ渡すグループの項目 1 つで、動画の鍵か子グループの id のどちらかを持つ。
 type mergedItem struct {
 	key   sql.NullString
 	child sql.NullInt64
 }
 
-// readMergedItems はグループ x の項目を位置の順に読む。
 func readMergedItems(ctx context.Context, tx *sql.Tx, x int64) ([]mergedItem, error) {
 	rows, err := tx.QueryContext(ctx, `select content_key, child_id from group_items where group_id = ? order by position, id`, x)
 	if err != nil {
@@ -442,9 +394,7 @@ func readMergedItems(ctx context.Context, tx *sql.Tx, x int64) ([]mergedItem, er
 	return items, nil
 }
 
-// handOverGroupHolders は x を持つプレイリストと親グループの項目を domain.PlanGroupMerge のとおり
-// x の位置で into に置き換えるか消し、項目を消したものを詰め直して、outcome に足す。edges は今の
-// 入れ子である。
+// Apply the domain holder plan at the source position, then compact holders that lost items.
 func handOverGroupHolders(ctx context.Context, tx *sql.Tx, x, into int64, edges []domain.GroupEdge, outcome *mergeOutcome) error {
 	parents, err := mergeHolders(ctx, tx, `select i.group_id, exists (select 1 from group_items t
 		where t.group_id = i.group_id and t.child_id = ?2) from group_items i where i.child_id = ?1 order by i.group_id`, x, into)
@@ -486,7 +436,6 @@ func handOverGroupHolders(ctx context.Context, tx *sql.Tx, x, into int64, edges 
 	return nil
 }
 
-// mergeHolders は query（?1 が x、?2 が into）が返す id と、それが into を持つかの組を読む。
 func mergeHolders(ctx context.Context, tx *sql.Tx, query string, x, into int64) ([]domain.GroupMergeHolder, error) {
 	rows, err := tx.QueryContext(ctx, query, x, into)
 	if err != nil {

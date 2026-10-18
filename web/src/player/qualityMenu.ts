@@ -4,18 +4,11 @@ import type { TranscodeQuality } from "../api/client";
 import { t } from "../i18n";
 import type { PlaybackQuality } from "../preferences/playbackQuality";
 
-/**
- * 操作バーの画質メニューである。
- *
- * 再生速度と同じ video.js の `MenuButton` の部品にして、箱・余白・開き方・キーボード・
- * Esc の扱いを再生速度とそろえる。部品は選ばれた画質を知らせるだけで、source の差し替えは
- * VideoPlayer.tsx が行う（R-5）。選択肢と今の画質は VideoPlayer.tsx が setQualityMenu で渡す。
- */
+/** Reuse video.js menu behavior; emit quality choices and let VideoPlayer replace the source. */
 
-/** qualityMenuName は video.js に登録する部品の名前である（`controlBarChildren` では qualityMenuButton）。 */
 export const qualityMenuName = "QualityMenuButton";
 
-/** qualitySelectEvent は項目が選ばれたときにプレイヤーへ出すイベントで、第 2 引数に {@link QualitySelection} を渡す。 */
+/** Selection events carry {@link QualitySelection} as the second argument. */
 export const qualitySelectEvent = "vvqualityselect";
 
 export interface QualitySelection {
@@ -23,11 +16,8 @@ export interface QualitySelection {
 }
 
 export interface QualityMenuState {
-  /** 選べる縮めた画質（quality.ts の qualityOptions。大きい順）。 */
   options: readonly TranscodeQuality[];
-  /** 今再生している画質。 */
   current: PlaybackQuality;
-  /** 元の画質の表示の短辺（`1080p`）。寸法の無い動画は undefined。 */
   sourceSize: string | undefined;
 }
 
@@ -76,17 +66,13 @@ type MenuButtonClass = new (
 const MenuItem = videojs.getComponent("MenuItem") as unknown as MenuItemClass;
 const MenuButton = videojs.getComponent("MenuButton") as unknown as MenuButtonClass;
 
-/**
- * 部品の状態。video.js の MenuButton は親の constructor の中で createItems を呼ぶので、
- * 子の class のフィールドはまだ無い。状態は部品ごとにここへ置く。
- */
+/** Store state externally because the parent constructor calls createItems before subclass fields exist. */
 const states = new WeakMap<object, QualityMenuState>();
 
 function stateOf(component: object): QualityMenuState {
   return states.get(component) ?? emptyState;
 }
 
-/** buttonLabel はボタンに出す今の画質の短い文字である。 */
 export function buttonLabel(state: QualityMenuState): string {
   const c = t.player.controls;
   if (state.current !== "original") return c.qualityName(state.current);
@@ -169,8 +155,7 @@ class QualityMenuButton extends MenuButton {
 
   override createMenu() {
     const menu = super.createMenu();
-    // 選べる画質が無い動画は、押せない補足の行を「元の画質」の下に置く（Edge Case 1）。
-    // 部品として足さないので、↑↓ のフォーカスはここに止まらない。
+    // Render unavailable-quality guidance outside the component list so arrow keys skip it.
     if (stateOf(this).options.length === 0) {
       const note = document.createElement("li");
       note.className = "vjs-menu-title vv-quality-note";
@@ -180,11 +165,7 @@ class QualityMenuButton extends MenuButton {
     return menu;
   }
 
-  /**
-   * setQualityState は選択肢と今の画質を反映する。選択肢が同じなら項目の印とボタンの文字だけを
-   * 変え、開いているメニューを作り直さない（項目を押した処理の途中で呼ばれるため）。
-   * video.js の部品はどれも setState を持つので、名前を分ける。
-   */
+  /** Update labels and selection without rebuilding an open menu when options are unchanged; avoid video.js's existing setState name. */
   setQualityState(next: QualityMenuState) {
     const previous = stateOf(this);
     states.set(this, next);
@@ -210,7 +191,6 @@ class QualityMenuButton extends MenuButton {
 
 videojs.registerComponent(qualityMenuName, QualityMenuButton as never);
 
-/** setQualityMenu は、プレイヤーの操作バーの画質メニューに選択肢と今の画質を渡す。 */
 export function setQualityMenu(player: Player, state: QualityMenuState): void {
   const bar = (player as unknown as { getChild?(name: string): unknown }).getChild?.(
     "ControlBar",

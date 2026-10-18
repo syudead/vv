@@ -35,7 +35,6 @@ func TestValidateGroupName(t *testing.T) {
 	}
 }
 
-// 同期の表の各行。
 func TestPlanFolderGroupSync(t *testing.T) {
 	long := strings.Repeat("長", 120)
 	for name, c := range map[string]struct {
@@ -120,15 +119,12 @@ func TestPlanFolderGroupSync(t *testing.T) {
 	}
 }
 
-// 索引の Folders は、規則がグループにしないフォルダも含め、所在のどれかが直下にある動画を
-// ファイル名の自然順で持つ。
 func TestBuildFolderIndexFolders(t *testing.T) {
 	roots := []MediaFolder{{ID: 1, Path: "/m"}}
 	locations := []FolderIndexLocation{
 		{VideoID: 1, Path: "/m/Show/10.mp4"},
 		{VideoID: 2, Path: "/m/Show/2.mp4"},
 		{VideoID: 3, Path: "/m/One/a.mp4"},
-		// 動画 2 は別のフォルダにも所在を持つ。
 		{VideoID: 2, Path: "/m/Zed/b.mp4"},
 		{VideoID: 4, Path: "/m/loose.mp4"},
 	}

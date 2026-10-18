@@ -13,19 +13,17 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// fakeAutoTagQueue は待ち行列を記憶だけで真似る。
 type fakeAutoTagQueue struct {
-	mu         sync.Mutex
-	queued     []string
-	videos     map[string]domain.Video
-	candidates []domain.AutoTagCandidate
-	// candidatesFor は候補を聞かれた内容の鍵である。
+	mu            sync.Mutex
+	queued        []string
+	videos        map[string]domain.Video
+	candidates    []domain.AutoTagCandidate
 	candidatesFor []string
 	finished      map[string]domain.AutoTagSelection
 	failed        map[string]string
 	queuedIDs     []int64
 	modes         []domain.AutoTagQueueMode
-	// queueDeciders は積んだときの、記録の始めたものである。finishDeciders は終えたときの判断したもの。
+	// queueDeciders track initiators; finishDeciders track decision sources.
 	queueDeciders  []domain.ActivityDecider
 	finishDeciders map[string]domain.ActivityDecider
 	done           chan string
@@ -71,7 +69,6 @@ func (q *fakeAutoTagQueue) Claim(context.Context) (domain.AutoTagJob, error) {
 	return domain.AutoTagJob{ContentKey: key}, nil
 }
 
-// Subject は動画を返す。登録フォルダは /media とする。
 func (q *fakeAutoTagQueue) Subject(_ context.Context, key string) (domain.AutoTagVideo, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -135,14 +132,12 @@ func (s *fakeAutoTagSettings) SaveAutoTagSettings(_ context.Context, settings do
 	return nil
 }
 
-// enabledAutoTagSettings は機能を入にした既定の設定である。
 func enabledAutoTagSettings() *fakeAutoTagSettings {
 	settings := domain.DefaultAutoTagSettings()
 	settings.Enabled = true
 	return &fakeAutoTagSettings{settings: settings}
 }
 
-// fakeClassifier は質問の名前ごとに決めた確率を返し、受け取った問い合わせを覚える。
 type fakeClassifier struct {
 	mu       sync.Mutex
 	answers  map[string]float64
@@ -166,7 +161,6 @@ func (c *fakeClassifier) Classify(_ context.Context, req domain.ClassifierReques
 	return out, nil
 }
 
-// fakeImages は代表サムネイルとコマを内容ごとに持つ。無ければ誤りを返す。
 type fakeImages struct {
 	thumbnails map[string][]byte
 	frames     map[string][][]byte
@@ -215,8 +209,7 @@ func waitAutoTagDone(t *testing.T, q *fakeAutoTagQueue) string {
 	}
 }
 
-// 確率が閾値以上のタグを付け、その動画の候補のすべての質問を 1 件の要求にして、サムネイル・
-// コマと題名・ファイル名・フォルダを渡す。分けて送るかは判定モデルのアダプタが決める。
+// Send all candidate questions together; provider adapters own batching.
 func TestAutoTaggerSelectsTags(t *testing.T) {
 	queue := newFakeAutoTagQueue()
 	queue.queued = []string{"k1"}
@@ -249,7 +242,6 @@ func TestAutoTaggerSelectsTags(t *testing.T) {
 	if got := queue.finished["k1"]; !reflect.DeepEqual(got, want) {
 		t.Fatalf("付けたタグ = %v", got)
 	}
-	// 判定モデルに聞いた実行は、終えると判断したものが ai になる。
 	if got := queue.finishDeciders["k1"]; got != domain.ActivityByAI {
 		t.Fatalf("判断したもの = %q", got)
 	}
@@ -271,8 +263,6 @@ func TestAutoTaggerSelectsTags(t *testing.T) {
 	}
 }
 
-// 判定モデルに問い合わせられなければ失敗として理由を残し、次の判定へ進む。サムネイルが
-// 無い動画は文字だけで判定する。
 func TestAutoTaggerRecordsFailuresAndContinues(t *testing.T) {
 	queue := newFakeAutoTagQueue()
 	queue.queued = []string{"k1", "k2"}
@@ -296,7 +286,6 @@ func TestAutoTaggerRecordsFailuresAndContinues(t *testing.T) {
 	}
 }
 
-// 消えた動画とタグの無いライブラリは、問い合わせずに終える。
 func TestAutoTaggerSkipsWithoutSubjectOrCandidates(t *testing.T) {
 	queue := newFakeAutoTagQueue()
 	queue.queued = []string{"gone", "k1"}
@@ -314,14 +303,12 @@ func TestAutoTaggerSkipsWithoutSubjectOrCandidates(t *testing.T) {
 	if _, ok := queue.finished["gone"]; !ok {
 		t.Fatal("消えた動画の判定を終えていない")
 	}
-	// 判定モデルに聞いていない実行は、判断したものを変えない。
+	// No classifier call means no decider change.
 	if got := queue.finishDeciders["k1"]; got != "" {
 		t.Fatalf("聞いていない実行の判断したもの = %q", got)
 	}
 }
 
-// 取り込みのあとの自動の判定は、機能と自動の判定の両方が入のときだけ、まだ判定していない
-// 動画を積む。機能が切なら手動の判定も受け付けない。
 func TestAutoTaggerQueuesOnlyWhenEnabled(t *testing.T) {
 	queue := newFakeAutoTagQueue()
 	settings := &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()}
@@ -358,15 +345,13 @@ func TestAutoTaggerQueuesOnlyWhenEnabled(t *testing.T) {
 	if n, err := tagger.QueueLibrary(ctx, domain.AutoTagScopeMissing); err != nil || n != 3 || queue.modes[2] != domain.AutoTagQueueUnlessDone {
 		t.Fatalf("QueueLibrary = %d, %v, %v", n, err, queue.modes)
 	}
-	// 取り込みが始めた実行は rule、設定や動画ページから始めた実行は owner である。
+	// Ingestion uses rule; settings and video-page requests use owner.
 	wantDeciders := []domain.ActivityDecider{domain.ActivityByRule, domain.ActivityByOwner, domain.ActivityByOwner}
 	if !slices.Equal(queue.queueDeciders, wantDeciders) {
 		t.Fatalf("始めたもの = %v", queue.queueDeciders)
 	}
 }
 
-// 機能が切のあいだは待ち行列から取り出さず、判定モデルに問い合わせない。入にして保存すると
-// 積んであった判定を始める。
 func TestAutoTaggerIdlesWhileOff(t *testing.T) {
 	queue := newFakeAutoTagQueue()
 	queue.queued = []string{"k1"}
@@ -392,7 +377,6 @@ func TestAutoTaggerIdlesWhileOff(t *testing.T) {
 	}
 }
 
-// 機能の設定は確かめてから保存し、規則に合わなければ保存しない。
 func TestAutoTaggerSaveSettings(t *testing.T) {
 	settings := &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()}
 	tagger := NewAutoTagger(AutoTaggerOptions{Queue: newFakeAutoTagQueue(), Settings: settings, Classifier: &fakeClassifier{}})
@@ -411,7 +395,6 @@ func TestAutoTaggerSaveSettings(t *testing.T) {
 	}
 }
 
-// 動画が判定の途中で消えれば、問い合わせずに終える。
 func TestAutoTaggerSkipsWhenCandidatesVanish(t *testing.T) {
 	queue := &vanishingQueue{fakeAutoTagQueue: newFakeAutoTagQueue()}
 	queue.queued = []string{"k1"}
@@ -431,7 +414,6 @@ func (vanishingQueue) Candidates(context.Context, string) ([]domain.AutoTagCandi
 	return nil, domain.ErrNotFound
 }
 
-// 判定の確かめは 1 問を判定させ、答えが返らなければ失敗にする。機能が切でも確かめられる。
 func TestAutoTaggerCheckClassifier(t *testing.T) {
 	settings := &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()}
 	answering := &fakeClassifier{answers: map[string]float64{"check": 0.9}}
@@ -450,7 +432,6 @@ func TestAutoTaggerCheckClassifier(t *testing.T) {
 	}
 }
 
-// fakeAutoTagUndo は取り消した記録とタグを覚える。
 type fakeAutoTagUndo struct{ undone [][2]int64 }
 
 func (f *fakeAutoTagUndo) UndoAutoTag(_ context.Context, entryID, tagID int64) (domain.ActivityEntry, error) {
@@ -458,8 +439,6 @@ func (f *fakeAutoTagUndo) UndoAutoTag(_ context.Context, entryID, tagID int64) (
 	return domain.ActivityEntry{ID: 50, Kind: domain.ActivityUndo, UndoesID: entryID}, nil
 }
 
-// 失敗した実行のやり直しは対象の動画を所有者の求めとして積み直し、機能が切なら ErrAutoTaggingOff を返す。
-// タグの取り消しは記録とタグを保存層の 1 つの取引に渡す。
 func TestAutoTaggerRetriesAndUndoesActivity(t *testing.T) {
 	queue := newFakeAutoTagQueue()
 	settings := &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()}

@@ -34,11 +34,11 @@ describe("ピッカーの規則", () => {
 
   it("大文字小文字はサーバーと同じ Unicode の単純な折り畳みで比べる", () => {
     const all = [playlist(1, "Σ mix"), playlist(2, "\u212Aelvin"), playlist(3, "straße")];
-    // Σ・σ・ς は 1 つの組、Kelvin 記号は K と k の組（toLowerCase では ς が外れる）。
+    // Simple folding joins final sigma with sigma; lowercase alone does not.
     expect(matchNames(all, "ς").map((p) => p.id)).toEqual([1]);
     expect(matchNames(all, "σ").map((p) => p.id)).toEqual([1]);
     expect(matchNames(all, "kel").map((p) => p.id)).toEqual([2]);
-    // ß → SS は 2 文字になる変換なので単純な折り畳みに入らない。ı は I と組にならない。
+    // Simple folding excludes expansions such as sharp-s to SS and the Turkish dotless-I pair.
     expect(matchNames(all, "strasse")).toEqual([]);
     expect(
       matchNames([playlist(4, "\u0131"), playlist(5, "I")], "i").map((p) => p.id),
@@ -48,7 +48,7 @@ describe("ピッカーの規則", () => {
   it("名前の上限は符号位置で 100 まで", () => {
     expect(nameTooLong("a".repeat(100))).toBe(false);
     expect(nameTooLong("a".repeat(101))).toBe(true);
-    // サロゲートペアの絵文字は 1 文字と数える（length では 200）。
+    // Count supplementary emoji as one code point, not two UTF-16 units.
     expect(nameTooLong("😀".repeat(100))).toBe(false);
   });
 });

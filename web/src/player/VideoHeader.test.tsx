@@ -38,7 +38,6 @@ describe("VideoHeader", () => {
       ["2025", "/folders/3/2025"],
       ["京都 旅行", "/folders/3/2025/%E4%BA%AC%E9%83%BD%20%E6%97%85%E8%A1%8C"],
     ]);
-    // 狭い幅では最後の段だけを残し、途中は「…」に畳む（出し分けは CSS）。
     expect(links[0]?.closest("li")?.className.split(" ")).toEqual(
       expect.arrayContaining(["hidden", "md:inline-flex"]),
     );

@@ -8,11 +8,8 @@
 @import "./ui/tokens.css";
 
 /*
- * 見本（/design-system）は部品の hover・キーボードのフォーカス・押下の状態を、触らずに
- * 横に並べて見せる。
- * data-demo-state を付けた要素の中では、その状態のクラスを当てたまま描く。フォーカスの輪は
- * 下の :focus-visible の規則が data-demo-state="focus" の最初の子に描く。画面では
- * data-demo-state を使わない。hover の既定（hover できる端末だけ）はそのまま残す。
+ * Design-system demos force interaction styles through data-demo-state; real screens must not use
+ * it. Preserve hover-capability gating for normal interactions.
  */
 @custom-variant hover {
   @media (hover: hover) {
@@ -63,7 +60,7 @@
   background: var(--color-overlay);
 }
 
-/* video.js の既定の青灰色を使わず、明暗どちらのフレームでも操作を同じ暗い面に載せる。 */
+/* Use the same dark control surface over light and dark video frames. */
 .vv-video-player .video-js .vjs-control-bar {
   color: var(--color-foreground);
   border-top: 1px solid var(--color-input);
@@ -108,11 +105,8 @@
 }
 
 /*
- * 操作バーの並び。
- * 再生バーは操作バーの上に置き、バーの中は 最初に戻る・再生・音量・現在時刻/長さ・
- * 右寄せの空き・チャプター・変換中の表示・画質・字幕・再生速度・PiP・全画面 の順にする。
- * 操作バーはプレイヤーの上に重ねる層（再生失敗・再生終了）より上に出し、押せるままにする。
- * video.js の CSS は index.css より後に読まれるので、.video-js を挟んで詳細度で勝つ。
+ * Keep controls above playback overlays. Include .video-js to override its stylesheet, which loads
+ * after index.css.
  */
 .vv-video-player .video-js .vjs-control-bar {
   z-index: 20;
@@ -152,7 +146,6 @@
   flex: auto;
 }
 
-/* 操作バーへ差し込んだボタン（最初に戻る）を video.js のボタンにそろえる。 */
 .vv-video-player .video-js .vv-bar-button {
   display: flex;
   align-items: center;
@@ -160,10 +153,8 @@
 }
 
 /*
- * 画質のメニュー。
- * 箱・余白・hover は再生速度と同じ .vjs-control・.vjs-button の規則に任せ、文字だけを
- * text-xs（0.75rem / 1rem）と等幅の数字にする。メニューの幅は video.js の既定（10em）の
- * ままにして「Original (1080p)」を 1 行に収め、項目は小文字に変えない。
+ * Keep the default 10em menu width for Original (1080p), preserve case, and use tabular quality
+ * labels.
  */
 .vv-video-player .video-js .vv-quality > .vjs-menu-button,
 .vv-video-player .video-js .vv-quality-value {
@@ -190,7 +181,6 @@
   text-transform: none;
 }
 
-/* 選べる画質が無いときの補足の行。押せず、フォーカスも止まらない。 */
 .vv-video-player .video-js .vv-quality .vjs-menu li.vv-quality-note {
   margin: 0;
   padding: 0.3em 0.5em;
@@ -201,11 +191,7 @@
   white-space: normal;
 }
 
-/*
- * チャプターのメニュー。
- * 項目は `{start} {title}` で、画質の 10em ではタイトルが切れるので 20em にする。項目は左に
- * 寄せて 1 行にし、幅を超えるタイトルは省略記号で切る。メニューの幅は変えない。
- */
+/* Use 20em for chapter titles; ellipsize individual labels without changing menu width. */
 .vv-video-player .video-js .vjs-chapters-button .vjs-menu {
   left: -8em;
   width: 20em;
@@ -235,9 +221,8 @@
 }
 
 /*
- * シークバーのチャプターの印。再生済みの塗りより上、シークの
- * プレビューと取っ手より下に描き、pointer を取らない。バーの高さいっぱいで、hover で
- * バーが太るとともに太る。
+ * Layer chapter ticks above progress fill but below previews and the handle; never intercept
+ * pointer events.
  */
 .vv-video-player .vv-chapter-marks {
   position: absolute;
@@ -254,9 +239,8 @@
 }
 
 /*
- * 字幕は操作バーと重ねない。操作バーが見えている間は、
- * 字幕の下端を操作バー（3em）とその上の再生バー（2em）の上に置く。操作バーが隠れる間
- * （再生中に操作が無い）は video.js の既定どおり下へ戻す。
+ * Lift captions above the visible control and seek bars; restore video.js positioning when
+ * controls hide.
  */
 .vv-video-player .video-js .vjs-text-track-display {
   bottom: 5em;
@@ -267,24 +251,23 @@
   bottom: 1em;
 }
 
-/* 読み込み中は video.js の輪ではなく、プレイヤーの上の層の輪を出す。 */
+/* Use the player's overlay spinner instead of video.js's spinner. */
 .vv-video-player .video-js .vjs-loading-spinner {
   display: none;
 }
 
-/* 最初の読み込みが終わるまで操作バーを出さない（自動で再生を始めるとき）。 */
+/* Hide controls until initial autoplay loading completes. */
 .vv-video-player[data-loading] .video-js .vjs-control-bar {
   visibility: hidden;
 }
 
-/* 操作バーの詰め方は画面ではなくプレイヤーの幅で決める。縦長の動画は広い画面でも枠が狭い。 */
+/* Respond to player width, not viewport width: portrait video can be narrow on wide screens. */
 .vv-video-player {
   container-type: inline-size;
 }
 
-/* 狭い幅では、操作バーのボタンを詰めてプレイヤーの幅に収める。 */
 @container (max-width: 39.99rem) {
-  /* 再生バー（.vjs-progress-control も .vjs-control）は幅いっぱいのままにする。 */
+  /* Keep the progress control full-width despite other compact controls. */
   .vv-video-player
     .video-js
     .vjs-control-bar
@@ -292,10 +275,7 @@
     width: 3em;
   }
 
-  /*
-   * チャプター・変換の表示・字幕がそろっても 360px に収まるよう、ボタンを隠す前に時刻と
-   * 変換の表示の余白を詰める。
-   */
+  /* Reduce spacing before hiding controls so chapters, conversion status and subtitles fit at 360px. */
   .vv-video-player .video-js .vjs-time-control {
     padding-right: 0.125em;
     padding-left: 0.125em;
@@ -314,14 +294,13 @@
     padding-left: 0;
   }
 
-  /* 3em の箱にも 1080p が収まるよう、画質の文字を 10px・字間を詰める。印には畳まない。 */
+  /* Keep 1080p text readable within the 3em quality button instead of replacing it with an icon. */
   .vv-video-player .video-js .vv-quality-value {
     font-size: 0.625rem;
     letter-spacing: -0.025em;
   }
 }
 
-/* タッチの端末では再生・一時停止を下部の操作バーから行う。 */
 @media (pointer: coarse) {
   .vv-video-player .video-js .vjs-big-play-button {
     display: none !important;
@@ -333,7 +312,7 @@
   bottom: var(--spacing-seek-preview-gap);
   z-index: 2;
   display: none;
-  /* 縦長の動画は、高さが横長の 16:9 の 4/3 倍を超えないよう幅を狭める。 */
+  /* Cap portrait height at four-thirds of a 16:9 frame by reducing width. */
   width: min(
     calc(100% - var(--spacing-seek-preview-edge) * 2),
     var(--size-seek-preview),
@@ -354,7 +333,7 @@
   position: relative;
   overflow: hidden;
   width: 100%;
-  /* スプライトの 1 コマの縦横比（配置情報の frameWidth : frameHeight）。取得前は動画の縦横比。 */
+  /* Use sprite frame aspect ratio once metadata arrives, video ratio beforehand. */
   aspect-ratio: var(--vv-seek-frame-aspect, var(--vv-video-aspect, 16 / 9));
   background: var(--color-navbar);
   border: 1px solid var(--color-input);
@@ -362,7 +341,7 @@
   box-shadow: var(--shadow-elevated);
 }
 
-/* 枠を 1 コマの箱とし、シートを背景に敷いて該当のコマだけを見せる（seekPreview.ts）。 */
+/* Crop the sprite sheet to one background frame; see seekPreview.ts. */
 .vv-seek-preview-image {
   display: none;
   width: 100%;
@@ -391,7 +370,6 @@
   transform: translateX(-50%);
 }
 
-/* チャプターのタイトルの行。時刻の上に置き、pill の幅（枠の幅まで）で省略記号で切る。 */
 .vv-seek-preview-title {
   display: block;
   overflow: hidden;
@@ -402,8 +380,7 @@
   display: none;
 }
 
-/* 幅は中身（時刻とチャプターのタイトル）に合わせるが、シークバーの幅と上限を超えない。
-   超える長いタイトルは .vv-seek-preview-title が省略記号で切る。 */
+/* Size to content but cap at the seek bar width; long chapter titles ellipsize. */
 .vv-seek-preview[data-state="unavailable"] {
   bottom: var(--spacing-seek-preview-unavailable-gap);
   width: max-content;
@@ -456,14 +433,13 @@
     background-color: var(--color-primary-soft);
   }
 
-  /* Tailwind v4 はボタンのカーソルを既定のままにする。押せるものは指の形にそろえる。 */
+  /* Tailwind v4 leaves button cursors unchanged; use pointer for interactive controls. */
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]) {
     cursor: pointer;
   }
 
-  /* フォーカスの輪は全部品でこの 1 つ（web/registry/rules/components.md）。見本は
-     data-demo-state="focus" の最初の子に同じ輪を描く。 */
+  /* One shared focus ring; demos apply it to the first child of data-demo-state="focus". */
   :focus-visible,
   [data-demo-state~="focus"] > :first-child {
     outline: 2px solid var(--color-ring);
@@ -485,11 +461,7 @@
   text-wrap: balance;
 }
 
-/*
- * 再生画面の左右の列のように、画面の中で独立してスクロールする領域のスクロールバー。
- * 常に出ると列ごとに線が並んで騒がしいので、細くし、ふだんは透明にして、領域に
- * マウスが乗っているかフォーカスがあるときだけ見せる。スクロール自体はいつでもできる。
- */
+/* Show thin independent-region scrollbars only on hover or focus to avoid persistent parallel lines. */
 @utility scrollbar-on-hover {
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
@@ -501,9 +473,8 @@
 }
 
 /*
- * スクロールはできるがスクロールバーを描かない領域。再生画面の左の列のように、ふだんは
- * はみ出さず、題名の折り返しなどで少しだけはみ出す領域に使う。マウスは動画の上に
- * あることが多く、乗せたときに見せる方式でも線が出続けてしまうためである。
+ * Hide scrollbars for slight overflow near the player; hover-based visibility would remain
+ * distracting while the pointer is over video.
  */
 @utility scrollbar-none {
   scrollbar-width: none;

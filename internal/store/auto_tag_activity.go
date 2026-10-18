@@ -11,12 +11,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 自動タグ付けのアクティビティの記録。待ち行列に積むと
-// running/waiting の記録を開いて行の activity_id に持たせ、取り出すと processing、終えると done にして付けた
-// タグを activity_entry_tags に残し、失敗は attention/failed にする。どれも待ち行列を変える取引の中で書く。タグごとの取り消しは ActivityStore.UndoAutoTag の 1 つの取引である（R-7）。
+// Update auto-tag activity in the queue transaction; retain applied tags for atomic per-tag undo.
 
-// contentLabelExpr は内容の鍵の式 keyExpr の、書いた時点の表示名の式である。表示名があればそれ、無ければ
-// 登録フォルダの下の代表の所在の題名、それも無ければ鍵そのもの。
+// Prefer the override label, then a registered representative location, then the content key.
 func contentLabelExpr(keyExpr string) string {
 	return `coalesce((select nullif(ov.display_name, '') from video_overrides ov where ov.content_key = ` + keyExpr + `),
 		(select l.title from videos lv join video_locations l on l.video_id = lv.id
@@ -24,7 +21,6 @@ func contentLabelExpr(keyExpr string) string {
 		` + keyExpr + `)`
 }
 
-// autoTagActivityEntry は内容 key の auto_tag の記録を running の reason で書く形にする。
 func autoTagActivityEntry(key, label string, reason domain.ActivityReason, decider domain.ActivityDecider) domain.ActivityEntry {
 	return domain.ActivityEntry{
 		Kind:    domain.ActivityAutoTag,
@@ -35,9 +31,7 @@ func autoTagActivityEntry(key, label string, reason domain.ActivityReason, decid
 	}
 }
 
-// claimAutoTagActivity は取り出した内容 key の行が属する記録 activityID を processing にする。記録が無いか
-// running でなければ（起動時に interrupted になったなど）、新しい processing の記録を開いて行に持たせる。
-// 新しい記録の判断したものは前の記録のもので、前の記録が無ければ rule である。
+// Create a new processing activity if the previous entry is no longer running, preserving its decider when available.
 func claimAutoTagActivity(ctx context.Context, tx *sql.Tx, c *changes, key string, activityID int64, now time.Time) error {
 	decider := domain.ActivityByRule
 	if activityID != 0 {
@@ -68,8 +62,7 @@ func claimAutoTagActivity(ctx context.Context, tx *sql.Tx, c *changes, key strin
 	return nil
 }
 
-// closeAutoTagActivity は記録 id を state にし、decider と detail が空でなければそれも書く。done にしたときは結果を
-// 書いた印（decided_mark）も残す。id が 0（この機能より前に積んだ行）なら何もしない。
+// Ignore legacy zero activity IDs; completed entries retain a decision mark for undo.
 func closeAutoTagActivity(
 	ctx context.Context, tx *sql.Tx, c *changes, id int64, state domain.ActivityState, decider domain.ActivityDecider,
 	detail string, now time.Time,
@@ -93,15 +86,12 @@ func closeAutoTagActivity(
 	return nil
 }
 
-// autoTagWrite は判定が実際に書いた video_tags の行 1 つである。
 type autoTagWrite struct {
 	tagID     int64
 	suggested bool
 }
 
-// writeAutoTags は selection のタグ（今もあり、却下されていないもの）を利用者データの鍵 userKey に now で
-// 書き、実際に書いた行を返す。Confirmed は確定した付与として書き、仮に付いていれば確定して時刻を now に
-// する。Tentative は仮に書き、既に付いていれば（手で付けた分も）そのままにする。
+// Confirmed tags promote tentative attachments; tentative tags preserve existing attachments, including owner edits.
 func writeAutoTags(
 	ctx context.Context, tx *sql.Tx, userKey string, selection domain.AutoTagSelection, now time.Time,
 ) ([]autoTagWrite, error) {
@@ -137,8 +127,6 @@ func writeAutoTags(
 	return written, nil
 }
 
-// recordAutoTagActivityTags は記録 entryID に、判定が書いたタグを名前・書いた鍵・確率とともに残し、書いた鍵を
-// その行がある鍵として activity_entry_tag_keys に残す。
 func recordAutoTagActivityTags(
 	ctx context.Context, tx *sql.Tx, entryID int64, userKey string, written []autoTagWrite,
 	probabilities map[int64]float64,
@@ -161,10 +149,7 @@ func recordAutoTagActivityTags(
 	return nil
 }
 
-// copyAutoTagKeys は、利用者データの鍵 from の行を鍵 to へ写したとき（copyUserData）、判定が付けたタグの行が from に
-// あれば to にもあるとして activity_entry_tag_keys に残す。to は新しい集まりの鍵か、集まりの行で置き換えた残る 1 本の
-// 鍵で、写す前には行が無いので、from の行はそのまま to の行になる。取り消しは、この鍵の行だけを判定が書いた行の写し
-// として消す。
+// Track copied auto-tag rows so undo removes only rows derived from that decision.
 func copyAutoTagKeys(ctx context.Context, tx *sql.Tx, from, to string) error {
 	if _, err := tx.ExecContext(ctx, `insert or ignore into activity_entry_tag_keys (entry_id, tag_id, user_key)
 		select k.entry_id, k.tag_id, ?2 from activity_entry_tag_keys k
@@ -175,8 +160,7 @@ func copyAutoTagKeys(ctx context.Context, tx *sql.Tx, from, to string) error {
 	return nil
 }
 
-// dropAutoTagKeys は、利用者データの鍵 key のタグの行をすべて消したとき（replaceUserData）、判定が付けたタグの行も
-// その鍵には無いとして activity_entry_tag_keys から外す。
+// Drop provenance when replacement removes all tag rows for a key.
 func dropAutoTagKeys(ctx context.Context, tx *sql.Tx, key string) error {
 	if _, err := tx.ExecContext(ctx, `delete from activity_entry_tag_keys where user_key = ?`, key); err != nil {
 		return fmt.Errorf("cannot drop the keys of the auto-tagging tags: %w", err)
@@ -184,17 +168,15 @@ func dropAutoTagKeys(ctx context.Context, tx *sql.Tx, key string) error {
 	return nil
 }
 
-// autoTagUndoTarget は取り消す記録と、そのタグの行である。
 type autoTagUndoTarget struct {
 	entry   domain.ActivityEntry
 	tag     domain.ActivityEntryTag
 	userKey string
-	// mark は結果を書いた時点の記録の id の最大値（decided_mark）である。
+	// The highest activity ID when the decision was written.
 	mark int64
 }
 
-// readAutoTagUndoTarget は記録 entryID とそのタグ tagID を取引の中で読み直す。記録か、記録が付けたタグが
-// 無ければ domain.ErrNotFound。
+// Recheck the activity and attached tag in the transaction; missing targets return domain.ErrNotFound.
 func readAutoTagUndoTarget(ctx context.Context, tx *sql.Tx, entryID, tagID int64) (autoTagUndoTarget, error) {
 	var (
 		target                     autoTagUndoTarget
@@ -220,7 +202,7 @@ func readAutoTagUndoTarget(ctx context.Context, tx *sql.Tx, entryID, tagID int64
 	return target, nil
 }
 
-// currentUserKey は内容 contentKey の動画の今の利用者データの鍵を返す。動画が無ければ空。
+// Return an empty key when the video no longer exists.
 func currentUserKey(ctx context.Context, tx *sql.Tx, contentKey string) (string, error) {
 	var key string
 	err := tx.QueryRowContext(ctx, `select `+userKeyExpr("v")+` from videos v
@@ -234,18 +216,14 @@ func currentUserKey(ctx context.Context, tx *sql.Tx, contentKey string) (string,
 	return key, nil
 }
 
-// autoTagRemoval は取り消しが video_tags に対して行ったことである。removed は行を消した鍵、reverted は
-// 今の鍵（無ければ記録した鍵）の行を消したか、rejectAt は除外を書く鍵である。
+// Track removed keys, whether the primary attachment was reverted, and where rejection must be written.
 type autoTagRemoval struct {
 	removed  []string
 	reverted bool
 	rejectAt []string
 }
 
-// autoTagUndoKeys は取り消しが行を消す鍵を返す。primary は対象の動画の今の利用者データの鍵（動画が無ければ記録した
-// 鍵）で、keys は判定が書いた行とその写しが今ある鍵（activity_entry_tag_keys）: 書いた鍵と、束ねる・解くときに
-// 写した先の鍵である。集まりに入ると代表の行は集まりの鍵へ写り、書いた鍵にも隠れて残るので、どちらも消す。primary が
-// keys に無ければ、今の鍵の行は別のメンバーの行（所有者が付けた行など）が勝ったもので、判定の行の写しではない
+// Undo follows tracked copies, including hidden original rows; an untracked primary key belongs to another attachment and is preserved.
 func autoTagUndoKeys(ctx context.Context, tx *sql.Tx, target autoTagUndoTarget) (string, []string, error) {
 	primary, err := currentUserKey(ctx, tx, target.entry.Subject.Key)
 	if err != nil {
@@ -262,10 +240,7 @@ func autoTagUndoKeys(ctx context.Context, tx *sql.Tx, target autoTagUndoTarget) 
 	return primary, keys, nil
 }
 
-// ownerChangedAutoTag は、判定が結果を書いた後に（decided_mark より大きい id で）、所有者が対象の動画のそのタグを
-// 付けた・外した・残した・却下した記録があるかを返す。所有者の記録はタグの id と、操作が触った
-// 内容の鍵（activity_entry_keys。集まりの鍵への操作はその時のメンバー全員）を持つので、改名や代表の変更に
-// 左右されずにタグの id と対象の動画の内容の鍵で探す。
+// Find later owner edits by tag ID, content key and decision mark, independent of renames or representative changes.
 func ownerChangedAutoTag(ctx context.Context, tx *sql.Tx, target autoTagUndoTarget) (bool, error) {
 	kinds := []domain.ActivityKind{domain.ActivityTagAttach, domain.ActivityTagDetach, domain.ActivityTagKeep,
 		domain.ActivityTagReject}
@@ -274,9 +249,7 @@ func ownerChangedAutoTag(ctx context.Context, tx *sql.Tx, target autoTagUndoTarg
 		target.tag.TagID, target.entry.Subject.Key)
 }
 
-// removeAutoTagAttachment は判定が書いた行とその写しを消す。行は keys（autoTagUndoKeys）で探し、提案のタグなら
-// まだ提案のままの行だけを消す。今の鍵 primary の行を消したときが取り消しの完了で、除外は今の鍵と、行を消した鍵に
-// 書く。primary が keys に無ければ今の鍵の行は消さず、取り消しは already_reverted になる。
+// Remove only tracked copies, and only still-tentative rows for suggestions; an unchanged primary attachment yields already_reverted.
 func removeAutoTagAttachment(
 	ctx context.Context, tx *sql.Tx, target autoTagUndoTarget, primary string, keys []string,
 ) (autoTagRemoval, error) {
@@ -304,8 +277,7 @@ func removeAutoTagAttachment(
 	return removal, nil
 }
 
-// revertAutoTag は、所有者がその後にそのタグを変えていなければ判定が書いた行を消し（removeAutoTagAttachment）、
-// 変えていれば何も消さずに除外を今の鍵に書くだけにする。
+// Preserve later owner edits while still recording rejection on the current key.
 func revertAutoTag(ctx context.Context, tx *sql.Tx, target autoTagUndoTarget) (autoTagRemoval, error) {
 	primary, keys, err := autoTagUndoKeys(ctx, tx, target)
 	if err != nil {
@@ -321,11 +293,7 @@ func revertAutoTag(ctx context.Context, tx *sql.Tx, target autoTagUndoTarget) (a
 	return removeAutoTagAttachment(ctx, tx, target, primary, keys)
 }
 
-// UndoAutoTag は auto_tag の記録 entryID が付けたタグ tagID を取り消し、所有者の undo の記録を返す。1 つの取引で、所有者がその後にそのタグを変えて
-// いなければ判定が書いた行を消し（集まりの鍵ならすべてのメンバーから外れる）、どちらの場合も auto_tag_rejections
-// に除外を書いて、undo の記録を書く。所有者がもう変えていれば何も消さず、undo の結果は already_reverted である
-//
-// 記録かタグが無ければ domain.ErrNotFound、取り消しを出さないか取り消し済みなら domain.ErrActivityNotUndoable。
+// UndoAutoTag atomically removes unchanged automatic attachments and records rejection; later owner edits yield already_reverted.
 func (s *ActivityStore) UndoAutoTag(ctx context.Context, entryID, tagID int64) (domain.ActivityEntry, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -371,8 +339,7 @@ func (s *ActivityStore) UndoAutoTag(ctx context.Context, entryID, tagID int64) (
 	if err != nil {
 		return domain.ActivityEntry{}, err
 	}
-	// タグを外した動画はスマートフォルダの一致が変わりうるので、commitWith が確定の前に同じ取引でフォルダの
-	// 知らせも用意する（changesMatches）。
+	// Removing a tag may change smart-folder matches; prepare their notifications in the same transaction.
 	var events []domain.Event
 	if len(affected) > 0 {
 		events = append(events, domain.AutoTagApplied{VideoIDs: affected})
@@ -383,7 +350,6 @@ func (s *ActivityStore) UndoAutoTag(ctx context.Context, entryID, tagID int64) (
 	return s.ActivityEntry(ctx, undoID)
 }
 
-// touchAutoTagUndoneKeys は取り消しで行を消した鍵 keys の編集日時を now に進め、その鍵の今の動画の id を返す。
 func touchAutoTagUndoneKeys(ctx context.Context, tx *sql.Tx, keys []string, now time.Time) ([]int64, error) {
 	if len(keys) == 0 {
 		return nil, nil

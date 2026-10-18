@@ -12,10 +12,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// マージの保存層の
-// テスト。groupRef と videoRef は organize_move_test.go のものを使う。
-
-// merge は items を into へマージし、取り消しの像を返す。
 func merge(t *testing.T, db *DB, into int64, items ...domain.OrganizeRef) []byte {
 	t.Helper()
 	image, err := db.Organize().Merge(context.Background(), items, into, 0)
@@ -32,7 +28,6 @@ func undo(t *testing.T, db *DB, image []byte) {
 	}
 }
 
-// playlistWith はプレイリストを作り、add の動画、次にグループを項目にして、その id を返す。
 func playlistWith(t *testing.T, db *DB, name string, add domain.PlaylistAdd) int64 {
 	t.Helper()
 	ctx := context.Background()
@@ -46,8 +41,6 @@ func playlistWith(t *testing.T, db *DB, name string, add domain.PlaylistAdd) int
 	return playlist.ID
 }
 
-// playlistEntryIDs はプレイリスト id の項目を位置の順に "<項目 id>=v:<鍵>" か "<項目 id>=g:<グループの id>"
-// で返す。
 func playlistEntryIDs(t *testing.T, db *DB, id int64) []string {
 	t.Helper()
 	rows, err := queryStringsForTest(db, `select id || '=' || coalesce('v:' || content_key, 'g:' || group_id)
@@ -67,7 +60,7 @@ func groupFavorite(t *testing.T, db *DB, id int64) bool {
 	return favorite
 }
 
-// mergeSnapshot はマージが書く表を、更新日時（取り消しも進める）を除いて 1 つの文字列にする。
+// Exclude timestamps, which undo deliberately advances.
 func mergeSnapshot(t *testing.T, db *DB) string {
 	t.Helper()
 	var b strings.Builder
@@ -90,9 +83,6 @@ func mergeSnapshot(t *testing.T, db *DB) string {
 	return b.String()
 }
 
-// Y が自分の項目、続いて X の項目の順になり、X は消える（受け入れ条件 4）。お気に入りの X は Y を
-// お気に入りにし、X のプレイリストの項目と親の項目は X の位置のまま Y のものになる。取り消すと X が
-// id・項目・お気に入り・プレイリストの項目・親ごと戻り、Y も元のとおりになる。
 func TestOrganizeMergeHandsOverAndUndoes(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -142,8 +132,6 @@ func TestOrganizeMergeHandsOverAndUndoes(t *testing.T) {
 	}
 }
 
-// 親とプレイリストの計画の各行: すでに Y を持つ親、Y の子孫の親（Y 自身を含む）、両方を持つ
-// プレイリストからは X の項目が消える。X の項目を消して空になった親は解散する。取り消しはそれも戻す。
 func TestOrganizeMergeRemovesWhereTargetIsThere(t *testing.T) {
 	db := migratedDB(t)
 	ya, xa := looseVideo(t, db, "ya"), looseVideo(t, db, "xa")
@@ -172,8 +160,6 @@ func TestOrganizeMergeRemovesWhereTargetIsThere(t *testing.T) {
 	}
 }
 
-// 動画と X をこの順で選んだマージは、1 つの取引で動画、続いて X の項目を足す。取り消しは 1 つの像で
-// 両方を戻す。
 func TestOrganizeMergeMixedSelection(t *testing.T) {
 	db := migratedDB(t)
 	ya, v, xa := looseVideo(t, db, "ya"), looseVideo(t, db, "v"), looseVideo(t, db, "xa")
@@ -193,8 +179,6 @@ func TestOrganizeMergeMixedSelection(t *testing.T) {
 	}
 }
 
-// マージした自動グループの X はそのフォルダに ungroup を書き、作り直しで戻らない。取り消しは X を
-// 同じ id で戻し、ungroup を消す。
 func TestOrganizeMergeAutomaticGroupWritesUngroup(t *testing.T) {
 	db := migratedDB(t)
 	show := fixturePath("/media/Show")
@@ -224,8 +208,6 @@ func TestOrganizeMergeAutomaticGroupWritesUngroup(t *testing.T) {
 	}
 }
 
-// ドラッグしたグループが Y そのものか Y の祖先なら ErrGroupCycle、Y・グループ・動画が無ければ
-// ErrGroupTargetNotFound で、どれも何も書かない。
 func TestOrganizeMergeRefusals(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -257,7 +239,6 @@ func TestOrganizeMergeRefusals(t *testing.T) {
 	}
 }
 
-// マージの後で Y に動画を足すと、取り消しは ErrUndoConflict で何も変えない。
 func TestOrganizeMergeUndoConflicts(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -276,8 +257,6 @@ func TestOrganizeMergeUndoConflicts(t *testing.T) {
 	}
 }
 
-// マージの後で、ドラッグしたグループの祖先ではない Y を改名すると、取り消しは ErrUndoConflict で
-// 何も変えない。
 func TestOrganizeMergeUndoConflictsOnTargetRename(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -296,8 +275,6 @@ func TestOrganizeMergeUndoConflictsOnTargetRename(t *testing.T) {
 	}
 }
 
-// マージ先の Y は、マージで空になっても、空になった子の解散が Y へ届いても残る（要件 8 で消えるのは
-// 落としたグループだけ）。取り消しは元のとおりに戻す。
 func TestOrganizeMergeKeepsAnEmptiedTarget(t *testing.T) {
 	for name, nested := range map[string]bool{"Y が X だけを持つ": false, "Y が X だけを持つ子だけを持つ": true} {
 		t.Run(name, func(t *testing.T) {
@@ -308,7 +285,7 @@ func TestOrganizeMergeKeepsAnEmptiedTarget(t *testing.T) {
 				holder = createGroup(t, db, "P", domain.GroupAdd{GroupIDs: []int64{x}})
 			}
 			y := createGroup(t, db, "Y", domain.GroupAdd{GroupIDs: []int64{holder}})
-			// X を空にする（項目を取り除く操作は空のグループを解散するので、行を直接消す）。
+			// Delete fixture rows directly because normal item removal would dissolve the empty group.
 			if _, err := db.sql.Exec(`delete from group_items where group_id = ?`, x); err != nil {
 				t.Fatal(err)
 			}

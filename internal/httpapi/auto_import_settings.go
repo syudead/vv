@@ -7,7 +7,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// GetAutoImportSettings は自動の取り込みの選択と、フォルダの監視の今の状態を返す
 func (s *server) GetAutoImportSettings(w http.ResponseWriter, _ *http.Request) {
 	if s.autoImport == nil {
 		s.internalError(w, "Auto-import settings are not configured.", nil)
@@ -17,13 +16,13 @@ func (s *server) GetAutoImportSettings(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, toAPIAutoImportSettings(s.autoImport.Status()), s.logger)
 }
 
-// UpdateAutoImportSettings は選択を保存し、監視を張る／外す。走査は始めない。
+// Updating automatic import starts/stops watches but does not start a scan.
 func (s *server) UpdateAutoImportSettings(w http.ResponseWriter, r *http.Request) {
 	if s.autoImport == nil {
 		s.internalError(w, "Auto-import settings are not configured.", nil)
 		return
 	}
-	// enabled は必須なので、無いことを偽と区別して読む。
+	// Distinguish missing required enabled from false.
 	var body struct {
 		Enabled *bool `json:"enabled"`
 	}

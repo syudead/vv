@@ -13,7 +13,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// seekDone はシーク用サムネイルの仕事を専有して完了を記録する。
 func seekDone(t *testing.T, db *DB, videoID int64) {
 	t.Helper()
 	ctx := context.Background()
@@ -38,7 +37,6 @@ func sampleFingerprint() domain.Fingerprint {
 	}}
 }
 
-// storedFingerprint は内容の指紋の行を返す。無ければ ok が偽。
 func storedFingerprint(t *testing.T, db *DB, key string) (domain.Fingerprint, bool) {
 	t.Helper()
 	var version int
@@ -56,8 +54,6 @@ func storedFingerprint(t *testing.T, db *DB, key string) (domain.Fingerprint, bo
 	return fingerprint, true
 }
 
-// シーク用サムネイルの完了を書く取引で指紋の仕事を積み、知らせる。その仕事は走査の
-// 残りの仕事に数え、動画を直近の走査の対象に加える。
 func TestSeekThumbnailDoneQueuesFingerprint(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -86,7 +82,6 @@ func TestSeekThumbnailDoneQueuesFingerprint(t *testing.T) {
 		t.Fatalf("scan_videos = %d, want 1", inScan)
 	}
 
-	// 失敗や作り直しの pending では積まない。
 	other, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/b.mp4"), "b", "key-b", 2048, 0))
 	if err != nil {
 		t.Fatal(err)
@@ -101,7 +96,6 @@ func TestSeekThumbnailDoneQueuesFingerprint(t *testing.T) {
 	}
 }
 
-// 指紋の仕事はシーク用サムネイルが完成するまで取り出さない。
 func TestClaimFingerprintWaitsForSeekThumbnail(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -129,7 +123,6 @@ func TestClaimFingerprintWaitsForSeekThumbnail(t *testing.T) {
 	}
 }
 
-// 指紋は専有した時点の内容と所在が今も同じときだけ置き換え、内容の参照が無くなると消える。
 func TestApplyFingerprintForJob(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -171,8 +164,6 @@ func TestApplyFingerprintForJob(t *testing.T) {
 	}
 }
 
-// 上限まで失敗した指紋の仕事は問題として記録し、次の走査が積み直す。指紋ができれば
-// 積み直さない。
 func TestFailedFingerprintIsRequeuedByNextScan(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -250,14 +241,12 @@ func TestFailedFingerprintIsRequeuedByNextScan(t *testing.T) {
 		t.Fatalf("指紋のある動画の jobs = %v", got)
 	}
 
-	// 旧い版の指紋は無いものとして作り直す。
 	if _, err := db.sql.Exec(`update video_fingerprints set version = ?`, domain.FingerprintVersion-1); err != nil {
 		t.Fatal(err)
 	}
 	if !missing() {
 		t.Fatal("旧い版の指紋が FingerprintMissing にならない")
 	}
-	// 完了した行が残っていても、版を上げたら積み直す。
 	if err := db.Ingest().EnsureJob(ctx, domain.JobFingerprint, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
@@ -266,8 +255,7 @@ func TestFailedFingerprintIsRequeuedByNextScan(t *testing.T) {
 	}
 }
 
-// シーク用サムネイルを作り直すときは、待っている指紋の仕事を捨てる。作り直しの完了で
-// 積み直す。作り直しが上限まで失敗しても、取り出せない仕事が残りに残らない。
+// Discard blocked fingerprint jobs during sprite rebuilds so terminal rebuild failures cannot leave perpetual remaining work.
 func TestRequeueMissingSeekThumbnailsDropsWaitingFingerprint(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -291,8 +279,6 @@ func TestRequeueMissingSeekThumbnailsDropsWaitingFingerprint(t *testing.T) {
 	}
 }
 
-// 00025 は完成したスプライトの登録された動画に指紋の仕事を積み、既存の仕事を残す。Down は
-// 指紋の仕事と表を消し、ほかの仕事を戻す。
 func TestFingerprintMigrationBackfillsAndRollsBack(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {

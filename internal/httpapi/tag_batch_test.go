@@ -12,9 +12,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// まとめての確定・却下・削除と確認の数。
-
-// idsJSON は 1 から n までの id の JSON の配列を返す。
 func idsJSON(n int) string {
 	parts := make([]string, n)
 	for i := range n {
@@ -47,7 +44,6 @@ func TestBatchTagsReturnsThreeArraysInRequestOrder(t *testing.T) {
 	}
 }
 
-// 空の配列は null でなく [] で返す。
 func TestBatchTagsReturnsEmptyArraysNotNull(t *testing.T) {
 	fake := &fakeTags{batchOutcome: domain.TagBatchOutcome{AppliedIDs: []int64{1}}}
 	rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPost, "/api/tags/batch", `{"action":"delete","ids":[1]}`)
@@ -97,7 +93,6 @@ func TestBatchTagsRejectsInvalidRequests(t *testing.T) {
 	}
 }
 
-// 20000 件ちょうどは受け付ける。
 func TestBatchTagsAcceptsMaxIDs(t *testing.T) {
 	fake := &fakeTags{}
 	rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPost, "/api/tags/batch",
@@ -156,7 +151,6 @@ func TestTagImpactRejectsInvalidRequests(t *testing.T) {
 	}
 }
 
-// ゲストはどちらの経路も 401 で、保存層に届かない。
 func TestTagBatchRoutesAreOwnerOnly(t *testing.T) {
 	fake := &fakeTags{}
 	env := newAuthEnv(t, t.TempDir(), Options{Tags: fake})

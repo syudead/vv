@@ -29,10 +29,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/ui/shadcn/tabs";
 
 import { ExampleTopBar } from "./list-page-example";
 
-// 管理表ページの型の見本（registry:block admin-table-page-example）。トップバー（見本では
-// 代わりの帯 ExampleTopBar）に検索、帯にタブ、表にチェックの列と行ごとの操作を置き、
-// 選択中は見出しの行の代わりに一括の操作の選択バーを出す。写した画面は見本のタグを
-// 自分の行に差し替える（web/registry/rules/patterns.md の Admin table page）。
+// registry:block admin-table-page-example. See web/registry/rules/patterns.md, Admin table page.
 
 const videoCounts = [42, 18, 9, 27, 6, 13];
 

@@ -2,7 +2,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の Textarea。Input と同じ地と縁で、高さは中身に合わせて伸びる。
+// Adapted from shadcn/ui Textarea with shared input tokens and content-sized height.
 function Textarea({ className, ...props }: ComponentProps<"textarea">) {
   return (
     <textarea

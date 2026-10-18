@@ -8,19 +8,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// OpenMediaFile は、path が roots のどれかの内側にある通常ファイルを指すときだけ
-// それを開く。閉じるのは呼び出し側である。
-//
-// DB の値をそのまま os.Open に渡すと、将来 DB へ書き込む経路が増えたときに
-// 任意ファイル読み出しになりうる。次の3つをすべて満たすときだけ開く。
-//
-//  1. filepath.Clean 後のパスが登録フォルダの内側にある
-//  2. filepath.EvalSymlinks で辿った先も同じ登録フォルダの内側にある
-//  3. 開いたものが通常ファイルである（ディレクトリ・デバイスファイルを開かない）
-//
-// 確かめたパスと開くパスを揃えるため、辿った先のパスで開く。開けないときは
-// domain.ErrMediaFileUnavailable を包んだ誤りを返し、辿った先が外にあったときは
-// domain.ErrMediaFileOutsideRoot も包む。
+// OpenMediaFile requires both cleaned and resolved paths within the same root, then opens the
+// resolved regular file; the caller closes it. Failures wrap ErrMediaFileUnavailable, additionally
+// wrapping ErrMediaFileOutsideRoot for escaped symlinks.
 func (FS) OpenMediaFile(roots []string, path string) (*os.File, os.FileInfo, error) {
 	resolved, err := resolveInside(roots, path)
 	if err != nil {
@@ -42,8 +32,8 @@ func (FS) OpenMediaFile(roots []string, path string) (*os.File, os.FileInfo, err
 	return file, info, nil
 }
 
-// ResolveMediaFile は、OpenMediaFile と同じ規則で開いてよい path について、
-// symlink を辿った先のパスを返す。開かずに OS の別のプロセスへ渡すときに使う。
+// ResolveMediaFile applies the same access rules as OpenMediaFile but returns a resolved path for
+// another OS process.
 func (FS) ResolveMediaFile(roots []string, path string) (string, error) {
 	resolved, err := resolveInside(roots, path)
 	if err != nil {
@@ -59,8 +49,7 @@ func (FS) ResolveMediaFile(roots []string, path string) (string, error) {
 	return resolved, nil
 }
 
-// resolveInside は path の symlink を辿り、Clean 後のパスと辿った先の両方が
-// 同じ登録フォルダの内側にあるときだけ、辿った先を返す。
+// Both cleaned and resolved paths must stay within the same registered root.
 func resolveInside(roots []string, path string) (string, error) {
 	cleaned := filepath.Clean(path)
 	var escaped bool

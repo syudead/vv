@@ -1,28 +1,8 @@
-// clefrelay は Ollama の判定 API（POST /v1/systemone）を受けて、Cloudflare Workers AI の
-// Clef（@cf/cloudflare/clef・@cf/cloudflare/clef-flash）へ中継する開発用の道具である。
+// clefrelay adapts Ollama judging requests to Workers AI for development without a local Ollama server.
+// Run CLOUDFLARE_ACCOUNT_ID=<id> go run ./scripts/clefrelay, then select http://127.0.0.1:11434 and clef or clef-flash.
 //
-// Ollama を動かせない機械（Claude Code on the web のコンテナなど）で、製品の Ollama の
-// プロバイダ（internal/ollama）をそのまま使って自動タグ付けを試すためのもので、製品には
-// 入れない。使い方:
-//
-//	CLOUDFLARE_ACCOUNT_ID=<id> go run ./scripts/clefrelay   # 127.0.0.1:11434 で待つ
-//
-// VVMDM の設定の Ollama は URL を http://127.0.0.1:11434、模型を clef-flash か clef にする。
-// 「Save and test connection」は中継までしか届かない。Workers AI まで届くかは自動タグ付けの
-// 「Test judging」で確かめる。トークンは CLOUDFLARE_API_TOKEN で渡す（プロキシが付ける
-// 環境では要らない）。
-//
-// Workers AI と Ollama の違いはここで吸収する。
-//
-//   - 接続の確かめ: GET /api/version と GET /api/tags に、Workers AI の Clef の模型を
-//     並べて答える（Workers AI へは問い合わせない）
-//   - URL: 模型ごとに /accounts/{id}/ai/run/@cf/cloudflare/{model}
-//   - 認証: CLOUDFLARE_API_TOKEN があれば Bearer で付ける（無ければ付けない。プロキシが
-//     付ける環境向け）
-//   - 画像: 生の base64 は受け付けず、4 枚までである。5 枚以上なら 1 枚に並べる
-//   - keep_alive: 余分な入力として拒否されるので落とす
-//   - 応答: {"result":{"answers":…},"success":true} を {"answers":…} に、誤りは
-//     {"errors":[{"message":…}]} を {"error":…} に直す
+// Set CLOUDFLARE_API_TOKEN unless the proxy supplies authentication. Connection checks stay local; use "Test judging" to verify Workers AI.
+// The adapter tiles more than four images, drops keep_alive, and converts Workers AI responses and errors to Ollama format.
 package main
 
 import (
@@ -47,24 +27,21 @@ import (
 	"syscall"
 	"time"
 
-	_ "image/png" // テストや手で送る PNG も読めるようにする。
+	_ "image/png" // Decode PNG fixtures and manually submitted images.
 )
 
-// maxImages は Workers AI の Clef が 1 回に受け付ける画像の数である。
+// Workers AI accepts at most four images per request.
 const maxImages = 4
 
-// maxCellWidth は並べた画像の 1 コマの幅の上限である。9 コマで約 1,900×1,100 になり、
-// Workers AI の 1 枚 16 メガピクセル・4 MiB に収まる。
+// Nine cells produce about 1,900 x 1,100 pixels, within the 16-megapixel and 4 MiB limits.
 const maxCellWidth = 640
 
-// requestTimeout は Workers AI への 1 回の問い合わせの上限である。製品の Ollama の
-// プロバイダは 10 分待つが、Workers AI は通常数秒で答える。
+// Workers AI normally responds in seconds, well below the product Ollama timeout.
 const requestTimeout = 2 * time.Minute
 
-// maxBodyBytes は受け取る要求と読む応答の上限である。
+// Limit both request and response bodies.
 const maxBodyBytes = 64 << 20
 
-// tileQuality は並べた画像を JPEG にするときの品質である。
 const tileQuality = 85
 
 type config struct {
@@ -105,7 +82,7 @@ func main() {
 	}
 }
 
-// ollamaRequest は internal/ollama が送る本文である。
+// Request body sent by internal/ollama.
 type ollamaRequest struct {
 	Model     string          `json:"model"`
 	State     json.RawMessage `json:"state"`
@@ -138,11 +115,9 @@ type workersResponse struct {
 	} `json:"errors"`
 }
 
-// relayVersion は GET /api/version に答える版である。製品の接続の確かめは空でない版を
-// Ollama の印とみなす。
+// The product recognizes any nonempty /api/version response as Ollama.
 const relayVersion = "0.0.0-clefrelay"
 
-// models は Workers AI にある Clef の模型である。
 var models = []string{"clef", "clef-flash"}
 
 func newRelay(cfg config, client *http.Client) http.Handler {
@@ -233,8 +208,7 @@ func relay(w http.ResponseWriter, r *http.Request, cfg config, client *http.Clie
 	writeError(w, status, message)
 }
 
-// workersImages は Ollama の生の base64 の画像を Workers AI の形にする。5 枚以上なら、
-// 順に左上から並べた 1 枚にする。最初の数枚だけに間引くと、動画の後半の場面を落とす。
+// Tile more than four images instead of discarding later scenes.
 func workersImages(encoded []string) ([]workersImage, error) {
 	if len(encoded) == 0 {
 		return nil, nil
@@ -261,9 +235,7 @@ func workersImages(encoded []string) ([]workersImage, error) {
 	return []workersImage{{ContentType: "image/jpeg", Base64: base64.StdEncoding.EncodeToString(tiled)}}, nil
 }
 
-// tile は画像を正方形に近い格子に左上から並べ、JPEG にする。1 コマは最初の画像
-// （製品では代表サムネイル）の大きさで、幅は maxCellWidth までに縮める。縦横比の違う
-// 画像は 1 コマの中に収めて余白を黒にする。
+// tile uses a near-square grid with cells based on the first thumbnail, capped at maxCellWidth; differing aspect ratios get black padding.
 func tile(images [][]byte) ([]byte, error) {
 	decoded := make([]image.Image, len(images))
 	for i, b := range images {
@@ -293,8 +265,7 @@ func tile(images [][]byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// drawFit は src を縦横比を保って cell の中央に収めて描く。縮めるときは対応する元の
-// 画素の平均を取る。
+// drawFit preserves aspect ratio and averages source pixels when downsampling.
 func drawFit(dst *image.RGBA, cell image.Rectangle, src image.Image) {
 	sb := src.Bounds()
 	scale := math.Min(float64(cell.Dx())/float64(sb.Dx()), float64(cell.Dy())/float64(sb.Dy()))

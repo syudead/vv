@@ -7,28 +7,23 @@ import (
 	"strings"
 )
 
-// ScanOrigin は走査を始めた主体である。値は scans.origin に対応する
 type ScanOrigin string
 
 const (
-	// ScanOriginManual は利用者の操作、起動時の再開、外部クライアントが始めた走査である。
+	// ScanOriginManual includes startup resumption and external clients.
 	ScanOriginManual ScanOrigin = "manual"
-	// ScanOriginWatch はフォルダの監視が始めた、変わったディレクトリだけを読む走査である。
-	ScanOriginWatch ScanOrigin = "watch"
+	ScanOriginWatch  ScanOrigin = "watch"
 )
 
-// ErrScanSuperseded は、手動の走査やメディアフォルダの変更に取って代わられて、走査が
-// 途中で止まったことを表す。止まった走査は何も消さず、done で閉じる
+// Superseded scans stop without deleting anything and close as done.
 var ErrScanSuperseded = errors.New("the scan was superseded")
 
-// DirtyDirectory は読み直すディレクトリである。Recursive が偽なら直下のファイルだけ、
-// 真ならその下のすべてを読む（作られた・消された・名前を変えられたディレクトリ）。
+// Recursive scans all descendants; otherwise only direct files are read.
 type DirtyDirectory struct {
 	Path      string
 	Recursive bool
 }
 
-// Contains は、ファイルの path が d の読む範囲にあるかを返す。
 func (d DirtyDirectory) Contains(path string) bool {
 	if d.Recursive {
 		return PathWithinRoot(d.Path, path)
@@ -36,13 +31,11 @@ func (d DirtyDirectory) Contains(path string) bool {
 	return SamePath(d.Path, filepath.Dir(path))
 }
 
-// DirtyDirectoriesContain は、ファイルの path が dirs のどれかの読む範囲にあるかを返す。
 func DirtyDirectoriesContain(dirs []DirtyDirectory, path string) bool {
 	return slices.ContainsFunc(dirs, func(d DirtyDirectory) bool { return d.Contains(path) })
 }
 
-// NormalizeDirtyDirectories は dirs のパスを整え、重なりを除いて並べて返す。再帰の項目の
-// 下にある項目と、同じ項目の繰り返しは落とす。
+// NormalizeDirtyDirectories removes duplicates and descendants already covered by recursive entries.
 func NormalizeDirtyDirectories(dirs []DirtyDirectory) []DirtyDirectory {
 	cleaned := make([]DirtyDirectory, 0, len(dirs))
 	for _, d := range dirs {
@@ -51,7 +44,7 @@ func NormalizeDirtyDirectories(dirs []DirtyDirectory) []DirtyDirectory {
 		}
 		cleaned = append(cleaned, DirtyDirectory{Path: filepath.Clean(d.Path), Recursive: d.Recursive})
 	}
-	// 再帰の項目を先に並べると、あとの項目が覆われているかを前から見るだけで決まる。
+	// Recursive entries sort first so coverage checks need only preceding entries.
 	slices.SortFunc(cleaned, func(a, b DirtyDirectory) int {
 		if a.Recursive != b.Recursive {
 			if a.Recursive {

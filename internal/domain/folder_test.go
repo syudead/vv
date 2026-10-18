@@ -10,8 +10,7 @@ import (
 func TestValidateFolderPath(t *testing.T) {
 	valid := []string{"", "A", "A/B/C", "100% #1 日本語", "a b", "..a", "a.."}
 	invalid := []string{"/", "/A", "A/", "A//B", ".", "..", "A/../B", "A/./B", "A\x00B", "\xff"}
-	// 区切りが `\` の OS では、段の中の `\` を許すと OS のパスで `..` が解決されて
-	// 登録フォルダの外を指す。区切りが `/` の OS では `\` はファイル名の一部である。
+	// Backslashes can enable traversal on Windows but are literal filename characters on Unix.
 	if filepath.Separator == '\\' {
 		invalid = append(invalid, `safe\..\outside`, `a\b`)
 	} else {
@@ -191,9 +190,7 @@ func TestLocateVideoFolderUnix(t *testing.T) {
 		{roots[:2], "/media/a/x.mp4", VideoFolder{RootID: 1, Path: ""}, true},
 		{roots[:2], "/media/a/A/B/y.mp4", VideoFolder{RootID: 1, Path: "A/B"}, true},
 		{roots[:2], "/media/b/C/z.mp4", VideoFolder{RootID: 2, Path: "C"}, true},
-		// 名前の前方が一致するだけの兄弟は含まない。
 		{roots[:2], "/media/ab/x.mp4", VideoFolder{}, false},
-		// Unix の `\` はファイル名の一部で、大文字小文字も区別する。
 		{roots[:2], `/media/a/A\B.mp4`, VideoFolder{RootID: 1, Path: ""}, true},
 		{roots[:2], "/MEDIA/a/x.mp4", VideoFolder{}, false},
 		{roots[2:], "/srv/x.mp4", VideoFolder{RootID: 3, Path: "srv"}, true},
@@ -226,8 +223,6 @@ func TestLocateVideoFolderWindows(t *testing.T) {
 	}
 }
 
-// フォルダの鍵（自動グループの origin_folder）から登録フォルダと相対パスを求める。登録フォルダ
-// `/` や `D:\` の鍵は末尾の区切りが落ちていても、その登録フォルダそのものを指す。
 func TestLocateFolderKey(t *testing.T) {
 	cases := []struct {
 		roots   []MediaFolder

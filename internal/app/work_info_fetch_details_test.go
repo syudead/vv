@@ -10,9 +10,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 取得した作品の詳細の取得と反映の受け渡し。照合と併合そのものは internal/store と internal/domain のテストが確かめる。
+// Test fetch/apply wiring; store and domain tests cover matching and merging.
 
-// fakeCreditMatcher は名前ごとに決めた答えを返し、受けた件を記録する。決めていない名前は new である。
+// Record matches and return configured answers; unknown names default to new.
 type fakeCreditMatcher struct {
 	answers map[string]domain.CreditMatch
 	calls   []domain.CreditKind
@@ -68,7 +68,6 @@ func detailedWork() domain.FetchedWorkInfo {
 	}
 }
 
-// 受け入れ: 取得の結果は人物・団体の各件を照合の答えつきで持ち、日付は種類の順、人物は役割の順に並ぶ。
 func TestFetchWorkInfoCarriesDetailsWithMatches(t *testing.T) {
 	e := newFetchEnv()
 	aoi := domain.CreditRef{ID: 11, Name: "Aoi Sora"}
@@ -110,7 +109,6 @@ func TestFetchWorkInfoCarriesDetailsWithMatches(t *testing.T) {
 		t.Fatalf("matcher calls = %v %v; want people in the shown order, then organizations", e.matcher.calls, e.matcher.names)
 	}
 
-	// 照合に失敗すれば結果を持たない。
 	e.matcher.err = errors.New("database is locked")
 	e.runtime.result = domain.WorkInfoRunResult{WorkInfo: detailedWork()}
 	if _, err := e.plugins.FetchWorkInfo(context.Background(), fetchVideo, 1, "W-1"); err == nil {
@@ -118,7 +116,7 @@ func TestFetchWorkInfoCarriesDetailsWithMatches(t *testing.T) {
 	}
 }
 
-// 受け入れ: 題名とタグだけのプラグインの取得は詳細の一覧が空で品番を持たず、照合を読まない。
+// Title/tag-only plugins must not trigger entity matching.
 func TestFetchWorkInfoTitleAndTagsOnlyHasNoDetails(t *testing.T) {
 	e := newFetchEnv()
 	result := e.fetch(t, "Title", "drama")
@@ -131,7 +129,7 @@ func TestFetchWorkInfoTitleAndTagsOnlyHasNoDetails(t *testing.T) {
 	}
 }
 
-// 反映は題名とタグ以外の選んだ項目を比較の行の順に渡し、保存先が飛ばした値を返す。
+// Pass selected detail fields in comparison order and propagate storage skips.
 func TestApplyWorkInfoFetchPassesDetailFieldsAndReportsSkipped(t *testing.T) {
 	e := newFetchEnv()
 	result := e.fetchDetails(t, detailedWork())
@@ -156,7 +154,6 @@ func TestApplyWorkInfoFetchPassesDetailFieldsAndReportsSkipped(t *testing.T) {
 		t.Fatalf("applied = %+v", applied)
 	}
 
-	// 題名とタグだけの反映は作品情報の項目を渡さず、飛ばした値は空の一覧である。
 	e.applier.skipped = nil
 	again := e.fetchDetails(t, detailedWork())
 	applied, err = e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, again.ID,
@@ -166,7 +163,7 @@ func TestApplyWorkInfoFetchPassesDetailFieldsAndReportsSkipped(t *testing.T) {
 	}
 }
 
-// 受け入れ: 結果に値の無い項目を選ぶと ErrWorkInfoApplyInvalid で、何も書かず結果を残す。
+// Invalid field selections preserve the result without writes.
 func TestApplyWorkInfoFetchRefusesADetailWithoutAValue(t *testing.T) {
 	e := newFetchEnv()
 	work := detailedWork()

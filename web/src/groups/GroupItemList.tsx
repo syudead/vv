@@ -8,20 +8,15 @@ import {
   type GroupItemRowProps,
 } from "./GroupItemRow";
 
-/** ListRow は行ごとに決まる値である（項目、番号、開く場所、選択）。 */
 type ListRow = Omit<GroupItemRowProps, "drag" | "remove">;
 
-/** GroupItemEditing は所有者のリスト表示の行の `×` である。 */
 export interface GroupItemEditing {
   removing: ReadonlySet<number>;
   onRemove: (item: GroupItem, items: readonly GroupItem[]) => void;
   removeRef: (itemId: number) => (node: HTMLButtonElement | null) => void;
 }
 
-/**
- * GroupItemList はグループのページのリスト表示である。所有者には行をドラッグの層（GroupDragLayer、呼び出し側が包む）に加え、
- * ハンドルと行の `×` を足す。ゲストには番号つきの行だけを描く。
- */
+/** Owner rows require an enclosing GroupDragLayer; guests have numbered rows only. */
 export function GroupItemList({
   items,
   row,

@@ -16,10 +16,8 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 取得した作品の詳細の取得と反映の経路は、
-// 本物の認証・保存層・app.WorkInfoPlugins で確かめる。プラグインの実行だけが偽で、決めた作品情報を返す。
+// Use real auth, storage, and app.WorkInfoPlugins; only plugin execution is faked.
 
-// fetchedRuntime は fetch に決めた作品情報を返す実行である。検査は使わない。
 type fetchedRuntime struct {
 	manifestRuntime
 	work *domain.FetchedWorkInfo
@@ -86,7 +84,6 @@ func (e *detailsEnv) videoPath() string {
 	return "/api/videos/" + strconv.FormatInt(e.videoID, 10) + "/work-info-fetches"
 }
 
-// fetch は決めた作品情報 work を取得し、応答の本文を返す。
 func (e *detailsEnv) fetch(work domain.FetchedWorkInfo) []byte {
 	e.t.Helper()
 	*e.work = work
@@ -98,7 +95,6 @@ func (e *detailsEnv) fetch(work domain.FetchedWorkInfo) []byte {
 	return rec.Body.Bytes()
 }
 
-// apply は取得の結果 fetchID のうち fields を反映し、応答を返す。
 func (e *detailsEnv) apply(fetchID string, fields ...string) gen.WorkInfoFetchApplied {
 	e.t.Helper()
 	body, err := json.Marshal(map[string][]string{"fields": fields})
@@ -125,8 +121,6 @@ func fetchIDOf(t *testing.T, body []byte) string {
 	return fetch.FetchId
 }
 
-// 受け入れ: 取得の応答の本体は契約どおりで、人物・団体は照合の答えを持ち、日付は種類の順、人物は役割の順に並ぶ。
-// 題名とタグだけの結果は空の一覧を持ち、品番と説明を持たない。
 func TestWorkInfoFetchAnswersTheDetailsWithMatches(t *testing.T) {
 	e := newDetailsEnv(t)
 	aoi, err := e.db.Credits().Create(context.Background(), domain.CreditPerson, domain.CreditInput{
@@ -191,7 +185,6 @@ func TestWorkInfoFetchAnswersTheDetailsWithMatches(t *testing.T) {
 	}
 }
 
-// 受け入れ: code・dates.release・people.performer の反映は 200 で、応答の動画の workInfo がそれらを持つ。
 func TestWorkInfoApplyWritesTheSelectedDetails(t *testing.T) {
 	e := newDetailsEnv(t)
 	fetchID := fetchIDOf(t, e.fetch(domain.FetchedWorkInfo{
@@ -215,7 +208,6 @@ func TestWorkInfoApplyWritesTheSelectedDetails(t *testing.T) {
 	}
 }
 
-// 受け入れ: 形の違う日付を含む反映は 200 で、その日付は skipped に invalid で入り、品番は書かれる。
 func TestWorkInfoApplySkipsAMalformedDate(t *testing.T) {
 	e := newDetailsEnv(t)
 	fetchID := fetchIDOf(t, e.fetch(domain.FetchedWorkInfo{
@@ -233,7 +225,6 @@ func TestWorkInfoApplySkipsAMalformedDate(t *testing.T) {
 	}
 }
 
-// 受け入れ: 2 つの経路はゲストに 401 unauthenticated を返し、動画も結果も変えない。
 func TestWorkInfoDetailRoutesRefuseGuests(t *testing.T) {
 	e := newDetailsEnv(t)
 	fetchID := fetchIDOf(t, e.fetch(domain.FetchedWorkInfo{Code: "ABC-123"}))
@@ -244,7 +235,6 @@ func TestWorkInfoDetailRoutesRefuseGuests(t *testing.T) {
 	} {
 		assertUnauthenticated(t, req.path, e.serve(authRequest{method: http.MethodPost, target: req.path, body: req.body}))
 	}
-	// 断った反映は結果を使わない。
 	if applied := e.apply(fetchID, "code"); applied.Video.WorkInfo == nil || *applied.Video.WorkInfo.Code != "ABC-123" {
 		t.Fatalf("the owner could not apply after a guest was refused: %+v", applied.Video.WorkInfo)
 	}

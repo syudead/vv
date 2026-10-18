@@ -19,8 +19,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// http_send の誤りの値である。http_meta と
-// http_body は知らないハンドルに hostInvalid を返す。
+// Unknown response handles return hostInvalid from http_meta/http_body.
 const (
 	hostInvalid      int32 = -1
 	hostRefused      int32 = -2
@@ -30,21 +29,18 @@ const (
 	hostBodyTooLarge int32 = -6
 )
 
-// defaultUserAgent はプラグインが User-Agent を付けないときに送る値である。プラグインは
-// 利用者が開いた作品のページを 1 回読むだけでクローラーではないので、bot 向けの応答や拒否を
-// 受けないよう、一般的なデスクトップのブラウザ（Windows の Chrome）と同じ形にする。
+// Default to a desktop-browser User-Agent because plugins fetch user-selected pages rather than
+// crawl; callers may override it.
 const defaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
 
-// droppedHeaders はプラグインが付けても送らない要求のヘッダーである。Host と、ホップバイホップの
-// ヘッダー（RFC 9110 の 7.6.1）を落とす。
+// Drop Host and RFC 9110 section 7.6.1 hop-by-hop headers.
 var droppedHeaders = map[string]bool{
 	"Host": true, "Connection": true, "Keep-Alive": true, "Proxy-Connection": true,
 	"Proxy-Authenticate": true, "Proxy-Authorization": true, "Te": true, "Trailer": true,
 	"Transfer-Encoding": true, "Upgrade": true,
 }
 
-// hostModule は vv のホストモジュール（http_send、http_meta、http_body）を組み立てる。
-// どの関数も、実行の ctx が持つ httpSession を使う。
+// Host functions use the execution's context-bound httpSession.
 func hostModule(rt wazero.Runtime) wazero.HostModuleBuilder {
 	i32 := api.ValueTypeI32
 	b := rt.NewHostModuleBuilder(vvModule)
@@ -71,8 +67,7 @@ func hostModule(rt wazero.Runtime) wazero.HostModuleBuilder {
 
 type sessionKey struct{}
 
-// sessionFrom は ctx の httpSession を返す。無ければ（実行の外からの呼び出し）要求を何も
-// 送らない空の httpSession を返す。
+// Calls outside execution get an inert session that sends no requests.
 func sessionFrom(ctx context.Context) *httpSession {
 	if s, ok := ctx.Value(sessionKey{}).(*httpSession); ok {
 		return s
@@ -80,11 +75,10 @@ func sessionFrom(ctx context.Context) *httpSession {
 	return &httpSession{}
 }
 
-// httpSession は 1 回の実行の HTTP の状態である。要求を送るクライアント、送った要求の数、
-// 応答（ハンドルはその添字）、拒んだホストと、最初に届かなかったホストを持つ。
+// Response handles index this session's responses; track blocked and first unreachable hosts.
 type httpSession struct {
 	client *http.Client
-	// proxyHost は実行がプロキシを使うときの、そのホストである。プロキシのない実行では空である。
+	// Empty when no proxy is configured.
 	proxyHost string
 
 	mu          sync.Mutex
@@ -94,13 +88,11 @@ type httpSession struct {
 	unreachable string
 }
 
-// response はプラグインに渡す応答で、meta は http_meta の JSON である。
 type response struct {
 	meta []byte
 	body []byte
 }
 
-// sendRequest は http_send の要求の JSON である。
 type sendRequest struct {
 	Method  string            `json:"method"`
 	URL     string            `json:"url"`
@@ -114,7 +106,7 @@ type metaJSON struct {
 	Headers map[string][]string `json:"headers"`
 }
 
-// send は http_send である。要求を組み立て、上限の中で送り、ハンドルか負の誤りを返す。
+// send returns a response handle or negative host error.
 func (s *httpSession) send(ctx context.Context, mod api.Module, ptr, length uint32) int32 {
 	raw, ok := mod.Memory().Read(ptr, length)
 	if !ok || s.client == nil {
@@ -139,7 +131,6 @@ func (s *httpSession) send(ctx context.Context, mod api.Module, ptr, length uint
 	return int32(len(s.responses) - 1)
 }
 
-// take は要求の数を 1 つ数え、上限を超えていれば false を返す。
 func (s *httpSession) take() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -150,16 +141,15 @@ func (s *httpSession) take() bool {
 	return true
 }
 
-// close はプロキシを使った実行の接続を閉じる。プロキシのない実行のクライアントは実行の間で
-// 共有するので閉じない。
+// Only close per-execution proxy clients; direct clients are shared across executions.
 func (s *httpSession) close() {
 	if s.proxyHost != "" && s.client != nil {
 		s.client.CloseIdleConnections()
 	}
 }
 
-// do は要求を送って本文を読み、応答か負の誤りを返す。拒んだホストと、届かなかったホストを記録する。
-// プロキシを使う実行で 407 が返れば、プロキシの認証に失敗したとして届かなかった要求にする。
+// Record blocked/unreachable hosts; proxy HTTP 407 counts as an unreachable request due to failed
+// proxy authentication.
 func (s *httpSession) do(req *http.Request) (*response, int32) {
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -172,7 +162,7 @@ func (s *httpSession) do(req *http.Request) (*response, int32) {
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, domain.WorkInfoPluginHTTPMaxBodyBytes+1))
 	if err != nil {
-		// resp.Request はリダイレクトの最後の要求で、本文を送ってきたホストを持つ。
+		// After redirects, resp.Request identifies the host that actually supplied the body.
 		return nil, s.failure(resp.Request, err)
 	}
 	if len(body) > domain.WorkInfoPluginHTTPMaxBodyBytes {
@@ -185,7 +175,6 @@ func (s *httpSession) do(req *http.Request) (*response, int32) {
 	return &response{meta: meta, body: body}, 0
 }
 
-// failure は送るか読むかの誤りを http_send の誤りの値にする。
 func (s *httpSession) failure(req *http.Request, err error) int32 {
 	var refused *refusedError
 	switch {
@@ -206,7 +195,7 @@ func (s *httpSession) failure(req *http.Request, err error) int32 {
 	return hostUnreachable
 }
 
-// recordUnreachable は、まだ無ければ host を最初に届かなかったホストとして記録する。
+// Keep only the first unreachable host.
 func (s *httpSession) recordUnreachable(host string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -215,7 +204,7 @@ func (s *httpSession) recordUnreachable(host string) {
 	}
 }
 
-// failedHost は失敗した要求のホストを返す。リダイレクトの先で失敗したときは、その先のホストである。
+// Report the redirect destination when failure occurred there.
 func failedHost(req *http.Request, err error) string {
 	var urlErr *url.Error
 	if errors.As(err, &urlErr) {
@@ -226,8 +215,8 @@ func failedHost(req *http.Request, err error) string {
 	return req.URL.Hostname()
 }
 
-// read は http_meta と http_body である。part の中身を、buf_cap に収まるときだけ書き、常に
-// 全長を返す。知らないハンドルと、書けない場所には -1 を返す。
+// read always returns required length, writes only when capacity suffices, and returns -1 for
+// invalid handles or memory.
 func (s *httpSession) read(mod api.Module, handle int32, ptr, capacity uint32, part func(*response) []byte) int32 {
 	s.mu.Lock()
 	if handle < 0 || int(handle) >= len(s.responses) {
@@ -242,8 +231,6 @@ func (s *httpSession) read(mod api.Module, handle int32, ptr, capacity uint32, p
 	return int32(len(data))
 }
 
-// buildRequest は http_send の要求の JSON を *http.Request にする。method、scheme、URL、
-// base64 の本文のどれかが取り決めに合わなければ false を返す。
 func buildRequest(ctx context.Context, raw []byte) (*http.Request, bool) {
 	var in sendRequest
 	if err := json.Unmarshal(raw, &in); err != nil {
@@ -281,9 +268,8 @@ func buildRequest(ctx context.Context, raw []byte) (*http.Request, bool) {
 	return req, true
 }
 
-// validHeader はヘッダーの名前が RFC 9110 の token で、値に HTAB 以外の制御文字が無いかを
-// 確かめる。net/http はこれに外れるヘッダーの要求を送らずに失敗させるので、そのヘッダーは
-// 落とす（接続の失敗の -3 にしない）。
+// Drop malformed headers instead of letting net/http misclassify them as connection failures;
+// values may contain HTAB but no other control characters.
 func validHeader(name, value string) bool {
 	if name == "" {
 		return false
@@ -301,7 +287,6 @@ func validHeader(name, value string) bool {
 	return true
 }
 
-// isTokenByte は b が RFC 9110 の tchar かを返す。
 func isTokenByte(b byte) bool {
 	switch {
 	case 'a' <= b && b <= 'z', 'A' <= b && b <= 'Z', '0' <= b && b <= '9':

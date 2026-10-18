@@ -1,9 +1,6 @@
 package store
 
-// スマートフォルダの中身の読み出し。中身は
-// 保存せず、読むたびにライブラリの項目の問い合わせ（libraryItemsCTE）を、フォルダと祖先の条件を
-// 1 段ずつ重ねた絞り込み（listSpec.and）で求める。条件は所有者の
-// 事実（タグ・再生の記録・お気に入り・検索の意味）で決め、見せる範囲は見る人のものにする（R-11）。
+// Compute contents on demand from stacked ancestor rules; predicates use owner facts while visibility uses the actual audience.
 
 import (
 	"context"
@@ -16,12 +13,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// SmartFolderContents は見る人（audience）に見せるスマートフォルダ id と、その中身 1 ページを返す。
-// cursor が空なら最初のページで、子フォルダを名前の順に先に置き、続けてライブラリの項目を limit 件
-// 置く。cursor は前のページの NextCursor で、読めなければ domain.ErrInvalidCursor である。
-//
-// フォルダが無いときと、ゲストに見せる動画の無いフォルダは domain.ErrNotFound である。所有者は空のフォルダも読める。経路の条件が無い実体を名指すと、中身は子フォルダだけになる
-// （R-9）。フォルダ・祖先・子フォルダ・中身・登録フォルダを同じ読み取りスナップショットから返す。
+// SmartFolderContents reads one snapshot, prepending child folders on the first page; owners can read empty folders, guests cannot.
 func (s *SmartFolderStore) SmartFolderContents(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int) (domain.SmartFolderPage, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -67,34 +59,23 @@ func (s *SmartFolderStore) SmartFolderContents(ctx context.Context, audience dom
 	return page, nil
 }
 
-// smartFolderPageRequest は中身のページの求めである。cursor は前のページの NextCursor（最初の
-// ページなら空）、limit は件数である。
 type smartFolderPageRequest struct {
 	cursor string
 	limit  int
 }
 
-// smartFolderView はスマートフォルダ 1 つを読んだ結果である。
 type smartFolderView struct {
-	// card はフォルダのカード（再生順と値）である。
-	card domain.LibrarySmartFolder
-	// missing は経路の条件が名指す実体のうち今無いものである。
-	missing []domain.SmartRuleRef
-	// items と nextCursor は求めたページの項目と次のページのカーソルである。
+	card       domain.LibrarySmartFolder
+	missing    []domain.SmartRuleRef
 	items      []domain.LibraryItem
 	nextCursor string
 }
 
-// shown は、フォルダを見る人に見せるかを返す。所有者には常に、ゲストには再生順が空でないときだけ
-// 見せる。
 func (v smartFolderView) shown(audience domain.Audience) bool {
 	return audience.IsOwner() || len(v.card.Members) > 0
 }
 
-// viewSmartFolder はフォルダ folder を、経路の条件 rules（外側の祖先から順、最後が folder の条件）
-// で読む。now は追加日の絞り込みの基準時刻で、1 回の読み出しのどのフォルダにも同じ値を使う。
-// request が nil でなければ、そのページの項目も読む。再生順とページは同じ 1 回の問い合わせから
-// 求める。
+// Use one captured time for every folder and one query for playback order plus the requested page.
 func viewSmartFolder(ctx context.Context, tx *sql.Tx, audience domain.Audience, folder domain.SmartFolder, rules []domain.SmartRule, now int64, request *smartFolderPageRequest) (smartFolderView, error) {
 	var view smartFolderView
 	var err error
@@ -107,7 +88,7 @@ func viewSmartFolder(ctx context.Context, tx *sql.Tx, audience domain.Audience, 
 	}
 	var contents smartFolderContents
 	if len(view.missing) > 0 && request != nil && spec.cursor != "" {
-		// 中身を求めなくても、読めないカーソルは domain.ErrInvalidCursor にする。
+		// Reject malformed cursors even when no contents need loading.
 		if _, _, err := itemOrder(spec.sort).cursorCondition(spec, spec.cursor); err != nil {
 			return smartFolderView{}, err
 		}
@@ -139,10 +120,7 @@ func viewSmartFolder(ctx context.Context, tx *sql.Tx, audience domain.Audience, 
 	return view, nil
 }
 
-// smartFolderSpec は経路の条件 rules（外側の祖先から順）を、ライブラリの項目の問い合わせの絞り込みに
-// する。最後の条件を本体に、祖先の条件を 1 段ずつ and に置く。どの段も見る人の
-// 範囲で読み、検索式は所有者の意味で照合する（R-11）。条件の名指すタグはどれも有ると確かめてから
-// 使う（無ければ中身を求めない）。
+// Stack ancestor filters while retaining viewer scope and owner search semantics; resolve every referenced tag first.
 func smartFolderSpec(audience domain.Audience, rules []domain.SmartRule, sort domain.VideoSort, now int64) listSpec {
 	levels := make([]listSpec, 0, len(rules))
 	for _, rule := range rules {
@@ -158,21 +136,16 @@ func smartFolderSpec(audience domain.Audience, rules []domain.SmartRule, sort do
 	return spec
 }
 
-// smartFolderContents はフォルダの中身を 1 回読んだ結果である。
 type smartFolderContents struct {
-	// playOrder は再生順の動画の id である。
 	playOrder []int64
-	// keys と values は、カーソルより後ろの項目の鍵と並べ替えの値を並べ順に limit+1 件まで持つ。
-	// order と limit はそのページの並べ順と件数である。
+	// Retain up to limit+1 keys and sort values after the cursor to detect continuation.
 	keys   []itemRow
 	values []any
 	order  listOrder
 	limit  int
 }
 
-// readSmartFolderContents は中身 spec の項目を並べ順に 1 回読み、再生順を求める。項目を並べ、
-// グループの項目をそのグループの再生順に置き換え、同じ動画は最初に出たところだけに置く。withPage
-// なら、spec のカーソルより後ろの項目の鍵も spec の件数より 1 件多くまで集める。
+// Expand group items into playback order and deduplicate videos at first occurrence, collecting page keys in the same read.
 func readSmartFolderContents(ctx context.Context, tx *sql.Tx, spec listSpec, withPage bool) (smartFolderContents, error) {
 	contents := smartFolderContents{order: itemOrder(spec.sort), limit: normalizeLimit(spec.limit)}
 	cte, args := libraryItemsCTE(spec)
@@ -213,7 +186,7 @@ func readSmartFolderContents(ctx context.Context, tx *sql.Tx, spec listSpec, wit
 			seen[videoID] = true
 			contents.playOrder = append(contents.playOrder, videoID)
 		}
-		// グループの項目はメンバーの数だけ続けて出る。項目の鍵は最初の行で 1 度だけ数える。
+		// A group spans multiple member rows but counts as one item key.
 		if withPage && afterCursor && key.id != lastID && len(contents.keys) <= contents.limit {
 			contents.keys = append(contents.keys, key)
 			contents.values = append(contents.values, value)
@@ -226,8 +199,7 @@ func readSmartFolderContents(ctx context.Context, tx *sql.Tx, spec listSpec, wit
 	return contents, nil
 }
 
-// playOrderMembers は再生順 ids の動画と、それぞれの再生の記録（無ければ nil、ゲストには全部 nil）を
-// 同じ順に返す。動画の値は loadGroups のメンバーと同じく代表の所在から読む。
+// Read members in playback order with representative locations; guests receive no playback records.
 func playOrderMembers(ctx context.Context, tx *sql.Tx, audience domain.Audience, ids []int64) ([]domain.Video, []*domain.Progress, error) {
 	if len(ids) == 0 {
 		return nil, nil, nil
@@ -272,9 +244,7 @@ func playOrderMembers(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 	return videos, progress, nil
 }
 
-// smartFolderChildren はフォルダ parent の子フォルダを、名前の順（title_key、同じなら id）に要約の
-// 項目にする。子の経路の条件は
-// parentRules に子の条件を足したものである。ゲストには再生順の空の子を出さない。
+// Append each child's rule to the parent rules; hide empty child playback orders from guests.
 func smartFolderChildren(ctx context.Context, tx *sql.Tx, audience domain.Audience, parent int64, parentRules []domain.SmartRule, now int64) ([]domain.LibraryItem, error) {
 	ids, err := queryInt64s(ctx, tx, `select id from smart_folders where parent_id = ? order by title_key, id`, parent)
 	if err != nil {
@@ -297,7 +267,6 @@ func smartFolderChildren(ctx context.Context, tx *sql.Tx, audience domain.Audien
 	return items, nil
 }
 
-// smartFolderTrail はフォルダ id の祖先を、外側から順に名前とともに返す。
 func smartFolderTrail(ctx context.Context, tx *sql.Tx, id int64) ([]domain.GroupRef, error) {
 	rows, err := tx.QueryContext(ctx, `with recursive up (id, depth) as (
 			select parent_id, 1 from smart_folders where id = ? and parent_id is not null
@@ -322,9 +291,6 @@ func smartFolderTrail(ctx context.Context, tx *sql.Tx, id int64) ([]domain.Group
 	return trail, nil
 }
 
-// ownerSmartFolderCard はスマートフォルダ id のカードを、所有者として今の再生順で読む（プレイリストの
-// スマートフォルダの項目、docs/design-docs/catalog-organization.md）。now は追加日の絞り込みの
-// 基準時刻である。
 func ownerSmartFolderCard(ctx context.Context, tx *sql.Tx, id int64, now int64) (domain.LibrarySmartFolder, error) {
 	folder, err := readSmartFolder(ctx, tx, id)
 	if err != nil {
@@ -341,9 +307,7 @@ func ownerSmartFolderCard(ctx context.Context, tx *sql.Tx, id int64, now int64) 
 	return view.card, nil
 }
 
-// smartFolderVideoGroup はスマートフォルダ id を、見る人（audience）に見せる再生順の動画の文脈
-// （domain.VideoGroup の SmartFolder）にする（GET /api/videos/{id} などの smartFolder）。フォルダが無ければ false である。
-// 経路の条件が無い実体を名指すフォルダの再生順は空である。
+// Missing referenced entities yield an empty playback order; a missing folder returns false.
 func smartFolderVideoGroup(ctx context.Context, tx *sql.Tx, audience domain.Audience, id int64) (domain.VideoGroup, bool, error) {
 	folder, err := readSmartFolder(ctx, tx, id)
 	if errors.Is(err, domain.ErrNotFound) {

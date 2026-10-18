@@ -1,9 +1,5 @@
 -- +goose Up
--- 取り込み済みの動画を解析し直し、追加の情報（video_media_info）を埋める仕事
---
---
--- 00025 と同じ手順で jobs を作り直し、kind の検査に 'metadata' を足す。SQLite は CHECK を
--- その場で変えられない。行と試行の履歴はそのまま写す。
+-- SQLite cannot alter CHECK in place; rebuild jobs with metadata support while preserving rows and attempts.
 alter table jobs rename to jobs_old;
 create table jobs (
     id integer primary key,
@@ -28,9 +24,7 @@ create index jobs_state_id_idx on jobs (state, id);
 create unique index jobs_pending_kind_video_idx
     on jobs (kind, video_id) where state in ('queued', 'running');
 
--- 解析が done で、登録したメディアフォルダの下に所在がある動画に解析し直しの仕事を積む。
--- 登録フォルダの下かは 00018 と同じく OS に依らない条件で判定する。待ちか実行中の仕事が
--- 既にある動画は飛ばす。
+-- Queue completed registered videos using OS-independent registration checks, skipping existing unfinished jobs.
 insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
 select 'metadata', id, 'queued', 0, unixepoch(), unixepoch()
 from videos

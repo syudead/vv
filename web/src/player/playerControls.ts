@@ -1,39 +1,21 @@
-/**
- * PlayerControls は、video.js の外（キーボード・映像のタップ・再生終了の層）から
- * プレイヤーを動かす入口である。
- *
- * 位置と速度はどれも video.js の `currentTime`・`playbackRate` を通す。変換して再生する
- * 経路では `liveOffset.ts` の仲立ちがそこに挟まるので、操作は元動画の時間軸（論理上の
- * 再生位置）に対して効く（plan の Structural Decisions 9）。
- */
+/** External controls use video.js time/rate APIs so liveOffset applies operations on the original video's timeline. */
 export interface PlayerControls {
   togglePlay(): void;
   play(): void;
-  /** pause は再生を止める。サムネイルの編集を始めるときに使う。 */
   pause(): void;
-  /** seekTo は論理上の再生位置を seconds 秒の位置にする。 */
   seekTo(seconds: number): void;
-  /** restart は先頭から再生し直す。 */
   restart(): void;
   toggleMute(): void;
   toggleFullscreen(): void;
   isFullscreen(): boolean;
-  /**
-   * toggleSubtitles は字幕のオン・オフを切り替える（`c` キー）。字幕の無い動画では何もしない。
-   */
+  /** Toggle subtitles when available; otherwise do nothing. */
   toggleSubtitles(): void;
-  /** menuOpen は、Esc を自分で扱う吹き出しやメニューが開いているかを返す。 */
   menuOpen(): boolean;
-  /** wake は操作バーを見せ続ける（video.js の user-active にする）。 */
   wake(): void;
-  /**
-   * positionMs は今の論理上の再生位置をミリ秒で返す。再生位置の保存へ伝える値と同じで、
-   * 今の場面を代表サムネイルにする操作が読む。
-   */
+  /** Logical milliseconds, matching the saved progress position used by thumbnail capture. */
   positionMs(): number;
 }
 
-/** ControllablePlayer は、ここで使う video.js の Player の部分である。 */
 export interface ControllablePlayer {
   paused(): boolean;
   play(): Promise<void> | undefined;
@@ -47,11 +29,7 @@ export interface ControllablePlayer {
   userActive(value?: boolean): unknown;
 }
 
-/**
- * controlBarMenuOpen は、video.js の操作バーのメニュー（画質・再生速度・字幕）のどれかが
- * 開いているかを返す。押して開いたメニューには `vjs-lock-showing`、ポイントして開いた
- * メニューのボタンには `vjs-hover` が付く。開いている間の Esc はメニューを閉じるだけにする。
- */
+/** video.js marks clicked menus with vjs-lock-showing and hovered buttons with vjs-hover; these menus own Escape. */
 export function controlBarMenuOpen(root: ParentNode): boolean {
   return (
     root.querySelector(".vjs-menu.vjs-lock-showing") !== null ||

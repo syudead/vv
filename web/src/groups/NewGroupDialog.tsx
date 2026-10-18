@@ -8,13 +8,8 @@ import { useToast } from "../ui/Toast";
 import { useGroupChanged } from "./groupChanges";
 
 /**
- * NewGroupDialog は選択バーの「New group」の窓である。
- * 名前を 1 つ聞き、前後を削った名前と `videoIds`・`groupIds` を `POST /api/groups` で送る。
- * 呼び出し元は開いている間だけ描く。形と名前の規則は NameDialog が持つ。
- *
- * - `201` でトースト「Created "{name}"」を出し、`onCreated` を呼ぶ（呼び出し元が閉じて選択を
- *   外す）。一覧には GroupChangedContext で伝え、一覧が読み直す。
- * - `404 group_target_not_found` は窓の中の `Alert` に出し、閉じたときに一覧を読み直す。
+ * Mount only while open; on success callers close and clear selection. A missing target keeps the
+ * dialog open and triggers a reload when it closes.
  */
 export default function NewGroupDialog({
   videoIds,
@@ -29,7 +24,7 @@ export default function NewGroupDialog({
 }) {
   const toast = useToast();
   const changed = useGroupChanged();
-  // 対象が途中で消えていたら、閉じたときに一覧を読み直す。
+  // Reload on close when a target disappeared during the operation.
   const stale = useRef(false);
 
   return (

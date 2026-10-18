@@ -30,8 +30,7 @@ func PreviewSegments(durationMs int64) [][2]float64 {
 	return segments
 }
 
-// GeneratePreview はホバープレビューの MP4 を output へ書く。置き場所、manifest、
-// 公開は呼び出し側（internal/artifacts）が受け持つ。
+// GeneratePreview writes bytes; callers own layout, manifests, and publication.
 func GeneratePreview(ctx context.Context, videoPath, output string, durationMs int64) error {
 	processCtx, cancel := context.WithTimeout(ctx, previewTimeout)
 	defer cancel()
@@ -44,19 +43,12 @@ func GeneratePreview(ctx context.Context, videoPath, output string, durationMs i
 	return nil
 }
 
-// previewScale は、向きを問わず 640x640 の枠に収める（元より大きくはしない）。
-// 縦長の動画でも横長と同じくらいの大きさに留まる。
+// Fit within 640x640 without upscaling, bounding portrait and landscape output equally.
 const previewScale = "scale='min(640,iw)':'min(640,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2"
 
-// previewArgs は 1 回の ffmpeg の引数を作る。9 秒以下は全体を変換し、9 秒を超える
-// 動画は PreviewSegments の各区間を入力側シーク（-ss/-t）の別入力として読み、concat
-// フィルタで連結する。元動画を末尾までデコードしないので、読む量と保持するフレームは
-// 区間の数と長さで決まり、動画の長さに比例しない。-ss は既定の accurate seek のままにし、区間と映る場面の対応を
-// 保つ（R-3）。フレームの無い区間は concat が飛ばすので、その区間が無いだけの短い
-// 出力になる（R-2）。全部が空だと ffmpeg は映像の無い MP4 を終了コード 0 で書くので、
-// -abort_on empty_output で失敗にし、映像の無いプレビューを公開しない。索引の無い
-// MPEG-TS ではシークがキーフレームに着かず、キーフレームの疎な入力で全区間が空になる
-// ことがある（親 Issue の Edge Cases: 不完全な出力を公開せず、ジョブの失敗として扱う）。
+// Use input-side accurate seeks and concat so work depends on selected segments rather than total
+// video length. Empty segments are skipped, but -abort_on empty_output prevents publishing a
+// video-less MP4 when all seeks miss, including sparse-keyframe MPEG-TS inputs.
 func previewArgs(videoPath, output string, durationMs int64) []string {
 	args := []string{"-nostdin", "-v", "error"}
 	segments := PreviewSegments(durationMs)

@@ -8,10 +8,6 @@ import { Alert, AlertAction, AlertTitle } from "../ui/shadcn/alert";
 import { Button } from "../ui/shadcn/button";
 import { descendantIds } from "./smartRule";
 
-/**
- * useDescendantCount は `id` の子孫（どの深さも）の数を `GET /api/smart-folders` の木から数える。
- * 数え終わるまで `count` は undefined、失敗したら `failure` に理由を持つ。`retry` で数え直す。
- */
 function useDescendantCount(id: number) {
   const [count, setCount] = useState<number | undefined>();
   const [failure, setFailure] = useState<UiText | null>(null);
@@ -34,14 +30,8 @@ function useDescendantCount(id: number) {
 }
 
 /**
- * DeleteSmartFolderDialog はスマートフォルダを消す確認の窓である。説明は動画がライブラリに残ることを言い、
- * 子孫があればその数（どの深さも、`GET /api/smart-folders` の木から数える）を 2 文目に足す。
- * 数え終わるまで「Delete」を押せない — 子孫の警告の無いまま子孫ごと消さないため。数えられ
- * なければ窓の中の `Alert` に理由と「Retry」を出し、数え直せるまで押せないままにする。
- *
- * 開いている間だけ描く。確定で `DELETE /api/smart-folders/{id}` を送り、送っている間は閉じない。
- * `204` は `onDeleted(true)`、`404`（もう無かった）は `onDeleted(false)`（トーストを出さない）。
- * ほかの失敗は窓の中の `Alert` に出し、窓を開いたままにする（GroupConfirmDialog）。
+ * Mount only while open and gate deletion on a successful descendant count. A missing folder calls
+ * onDeleted(false) to suppress the success toast; other failures remain in the dialog.
  */
 export default function DeleteSmartFolderDialog({
   folder,
@@ -50,7 +40,7 @@ export default function DeleteSmartFolderDialog({
 }: {
   folder: { id: number; name: string };
   onClose: () => void;
-  /** 消えた。`announce` が偽なら、もう無かった。 */
+  /** False means already missing, so do not announce deletion. */
   onDeleted: (announce: boolean) => void;
 }) {
   const words = t.smartFolders.deleteDialog;

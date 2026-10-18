@@ -1,10 +1,4 @@
-// generate は api/openapi.yaml から Go と TypeScript の型を、api/external-v1.yaml から
-// 外部連携 API の Go の型を生成し、web/registry.json から shadcn の registry を組み立てる。
-// task generate の実体で、-check を付けると task generate-check になる。
-//
-// 生成と差分確認を1つのコマンドに収めているのは、生成器の呼び出し方を
-// 1か所に保つためである。別々に書くと、片方だけ版や引数を直して
-// 「生成し直すと差分が出る」状態に気付けなくなる。
+// generate builds API bindings and the shadcn registry. The -check mode uses the same generator invocations to detect stale output.
 package main
 
 import (
@@ -21,7 +15,7 @@ import (
 	"github.com/syudead/vv/scripts/devtools"
 )
 
-// generated は版管理に含める生成物である。手編集しない（AGENTS.md）。
+// Tracked generated files must not be edited by hand; see AGENTS.md.
 var generated = []string{
 	"internal/httpapi/gen/api.gen.go",
 	"internal/httpapi/extgen/api.gen.go",
@@ -29,12 +23,10 @@ var generated = []string{
 	registryOut,
 }
 
-// registryOut は shadcn build が書く vv registry の項目である。ディレクトリなので中のファイルごと要約する。
+// Directory of registry items emitted by shadcn build.
 const registryOut = "web/registry/r"
 
-// snapshot は生成物の内容を要約する。存在しないファイルは空の要約にして、
-// 新しい生成物が増えたときも差分として扱えるようにする。ディレクトリは
-// 中のファイルの相対パスと内容をまとめて要約するので、増減も差分になる。
+// snapshot hashes paths and contents, including directory entries, so additions and deletions count as changes; absent files have an empty hash.
 func snapshot(root string, paths []string) (map[string]string, error) {
 	sums := make(map[string]string, len(paths))
 	for _, path := range paths {
@@ -86,7 +78,7 @@ func hashFile(w io.Writer, path string) error {
 	return closeErr
 }
 
-// changed は生成の前後で内容が変わったものを、paths の順で返す。
+// changed preserves the order of paths.
 func changed(before, after map[string]string, paths []string) []string {
 	stale := []string{}
 	for _, path := range paths {
@@ -97,8 +89,7 @@ func changed(before, after map[string]string, paths []string) []string {
 	return stale
 }
 
-// runner は外部コマンドを実行する。テストから差し替えて、失敗したときに
-// 後続の生成器を呼ばないことを確かめる。
+// Replaceable command runner for verifying that generation stops on failure.
 type runner func(dir string, name string, args ...string) error
 
 func generate(root, oapiCodegen, openapiTypescript, shadcn string, run runner) error {
@@ -106,7 +97,7 @@ func generate(root, oapiCodegen, openapiTypescript, shadcn string, run runner) e
 		"-config", "api/oapi-codegen.yaml", "api/openapi.yaml"); err != nil {
 		return err
 	}
-	// 外部連携 API は Go だけを生成する。
+
 	if err := run(root, oapiCodegen,
 		"-config", "api/oapi-codegen-external.yaml", "api/external-v1.yaml"); err != nil {
 		return err
@@ -115,7 +106,7 @@ func generate(root, oapiCodegen, openapiTypescript, shadcn string, run runner) e
 		"api/openapi.yaml", "-o", "web/src/api/gen/openapi.ts"); err != nil {
 		return err
 	}
-	// shadcn build は消えた項目のファイルを残すので、組み立て直す前に出力を空にする。
+	// Clear stale registry entries because shadcn build does not delete removed items.
 	if err := os.RemoveAll(filepath.Join(root, registryOut)); err != nil {
 		return err
 	}
@@ -175,8 +166,7 @@ func main() {
 	os.Exit(1)
 }
 
-// webToolPath は web/package.json の devDependency の実行ファイルを解決する。
-// shadcn は SPA の部品と同じ版で動かしたいので、tools/ ではなく web/ に置いている。
+// Resolve shadcn from web/package.json so its version matches the SPA components.
 func webToolPath(root, name string) (string, error) {
 	if runtime.GOOS == "windows" {
 		name += ".cmd"

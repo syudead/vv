@@ -7,10 +7,8 @@ import (
 	"slices"
 )
 
-// wazero の CompiledModule は関数とメモリの import しか見せず、テーブルも見せない。検査に要る
-// import の種類とテーブルの要素数は、モジュールのバイト列からここで読む。読むのは import
-// セクション（2）とテーブルセクション（4）だけで、他のセクションは飛ばす。最大値を宣言しない
-// テーブルには、コンパイルの前に capTables が最大値を書き足す。
+// Read import/table sections directly because wazero omits table imports and limits; cap tables
+// lacking maxima before compilation.
 
 const (
 	sectionImport = 2
@@ -21,40 +19,36 @@ const (
 
 var errMalformed = errors.New("malformed WebAssembly binary")
 
-// moduleImport は import の 1 つである。
 type moduleImport struct {
 	module string
 	name   string
 	kind   byte
 }
 
-// tableLimits はテーブルの要素数の宣言である。hasMax が false なら最大値の宣言が無い。
-// 位置はテーブルセクションの中身の先頭からのバイト数で、宣言を書き換えるときに使う。
+// Offsets are relative to the table-section payload for rewriting; hasMax distinguishes absent
+// maxima.
 type tableLimits struct {
 	min    uint64
 	hasMax bool
 	max    uint64
 
 	flags byte
-	// start から end までがテーブルの宣言の全体、limitsStart から minEnd までが旗と最小値、
-	// limitsEnd までが要素数の宣言である。
+	// start:end spans the declaration; limitsStart:minEnd spans flags/minimum, followed by optional
+	// maximum through limitsEnd.
 	start, limitsStart, minEnd, limitsEnd, end int
 }
 
-// moduleLayout は検査のためにバイト列から読んだ値である。
 type moduleLayout struct {
 	imports []moduleImport
 	tables  []tableLimits
-	// tableSection はテーブルセクションの位置で、無ければ header が -1 である。
+	// header=-1 means no table section.
 	tableSection sectionSpan
 }
 
-// sectionSpan はモジュールの中のセクションの位置である。header は id のバイト、payload から
-// end までが中身である。
+// header points to the section ID; payload:end contains its body.
 type sectionSpan struct{ header, payload, end int }
 
-// readLayout はモジュールの import とテーブルの宣言を読む。関数でない import に出会ったら、
-// その import までで読むのをやめる（その時点で import_unsupported と決まり、後の形は要らない）。
+// Stop on the first nonfunction import because import_unsupported is already determined.
 func readLayout(b []byte) (moduleLayout, error) {
 	r := &reader{b: b}
 	if len(b) < 8 || string(b[:4]) != "\x00asm" {
@@ -144,8 +138,8 @@ func readTables(r *reader) ([]tableLimits, error) {
 	return tables, nil
 }
 
-// table はテーブルの宣言を 1 つ読む。初期値の式を持つ形（0x40 0x00 で始まる）は、式を
-// 定数の命令だけと見て読み飛ばす。それ以外の命令を含む式は errMalformed にする。
+// Initializer forms beginning 0x40 0x00 accept only constant-expression instructions; other
+// instructions are malformed.
 func (r *reader) table() (tableLimits, error) {
 	start := r.pos
 	first, err := r.byte()
@@ -177,7 +171,7 @@ func (r *reader) table() (tableLimits, error) {
 	return limits, nil
 }
 
-// refType は要素の型の残りを読む。0x63 と 0x64 はヒープの型（s33）が続く。
+// Reference types 0x63 and 0x64 include an s33 heap type.
 func (r *reader) refType(first byte) error {
 	if first == 0x63 || first == 0x64 {
 		_, err := r.uleb(33)
@@ -186,7 +180,7 @@ func (r *reader) refType(first byte) error {
 	return nil
 }
 
-// skipConstExpr は ref.null、ref.func、global.get だけから成る定数の式を end まで読み飛ばす。
+// Accept only ref.null, ref.func, and global.get before end.
 func (r *reader) skipConstExpr() error {
 	for {
 		op, err := r.byte()
@@ -209,7 +203,6 @@ func (r *reader) skipConstExpr() error {
 	}
 }
 
-// reader はモジュールのバイト列を先頭から読む。
 type reader struct {
 	b   []byte
 	pos int
@@ -247,7 +240,6 @@ func (r *reader) u32() (uint32, error) {
 	return uint32(v), err
 }
 
-// uleb は bits ビット以下の符号なし LEB128 を読む。
 func (r *reader) uleb(bits uint) (uint64, error) {
 	var v uint64
 	for shift := uint(0); shift < bits+7; shift += 7 {
@@ -266,7 +258,7 @@ func (r *reader) uleb(bits uint) (uint64, error) {
 	return 0, errMalformed
 }
 
-// limits はテーブルかメモリの要素数の宣言を読む。旗の 0x04 は 64 ビットの数を表す。
+// Flag 0x04 selects 64-bit limits.
 func (r *reader) limits() (tableLimits, error) {
 	limitsStart := r.pos
 	flags, err := r.byte()
@@ -295,14 +287,12 @@ func (r *reader) limits() (tableLimits, error) {
 	return limits, nil
 }
 
-// needsCap はテーブルが最大値を宣言せず、最小値が limit 以下で、vv が最大値を書き足すものかを返す。
-// 最小値が limit を超えるテーブルは書き換えず、検査が table_too_large にする。
+// Do not cap minima already above the limit; inspection reports table_too_large.
 func (t tableLimits) needsCap(limit uint64) bool {
 	return !t.hasMax && t.min <= limit
 }
 
-// elements はテーブルが持ちうる要素数の上限である。宣言した最大値か、最大値を宣言しなければ
-// capTables が書き足す limit を返す。
+// Use the declared maximum or the cap that will be inserted.
 func (t tableLimits) elements(limit uint64) uint64 {
 	if t.hasMax {
 		return t.max
@@ -310,8 +300,7 @@ func (t tableLimits) elements(limit uint64) uint64 {
 	return limit
 }
 
-// capTables は最大値を宣言しないテーブルに最大値 limit を書き足したモジュールのバイト列を返す。
-// 書き足すテーブルが無ければ module をそのまま返す。module は layout を読んだバイト列である。
+// capTables returns module unchanged when no cap is needed; layout must describe these same bytes.
 func capTables(module []byte, layout moduleLayout, limit uint64) []byte {
 	if !slices.ContainsFunc(layout.tables, func(t tableLimits) bool { return t.needsCap(limit) }) {
 		return module

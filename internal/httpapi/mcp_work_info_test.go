@@ -12,8 +12,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// update_video_work_info と list_people はルートと同じ構造の内容を返し、list_people の limit は既定で 100、
-// update_person の null は REST と同じく一覧を空にする。
 func TestMCPWorkInfoTools(t *testing.T) {
 	f := newMCPFixture(t, Options{})
 	session := f.connect(t)

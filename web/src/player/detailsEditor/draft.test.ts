@@ -50,7 +50,7 @@ describe("draft", () => {
         externalIds: [{ source: "imdb", value: "tt1" }],
       },
     });
-    // 空の行は送らないので、urls[0] は 2 行目の入力を指す。
+    // Empty rows are omitted, so urls[0] refers to the second input row.
     expect(targets.get("urls[0]")).toBe(`url-${loaded.urls[0]!.key}`);
     expect(targets.get("dates[0].date")).toBe("date-recorded");
     expect(targets.get("organizations[0].organization.id")).toBe(

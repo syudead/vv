@@ -12,15 +12,6 @@ import {
 } from "./listSnapshot";
 import { nextVideoTagsSequence, recordAppliedVideoTags } from "./videoTagsEvents";
 
-/**
- * 一覧の復元状態。
- *
- * 要点は 2 つある。**鍵が違えば取れない**こと（別の絞り込みの一覧を戻り先に
- * してはならない）と、**直近の 1 件しか持たない**ことである。後者を外すと、
- * 検索語を変えて回っただけで数千件の Video がメモリに残る。
- */
-
-/** item は控えに入れる 1 件を作る。 */
 function item(id: number): Video {
   return {
     id,
@@ -38,7 +29,6 @@ function item(id: number): Video {
   };
 }
 
-/** body は鍵以外の中身を作る。 */
 function body(ids: number[], scrollY = 0) {
   return {
     items: ids.map((id) => videoItem(item(id))),
@@ -68,9 +58,7 @@ describe("ListSnapshot（一覧の復元状態）", () => {
   it("鍵が違えば取れない", () => {
     saveListSnapshot({ query: "ねこ", sort: "titleAsc" }, body([1, 2]));
 
-    // 検索語が違う。別の絞り込みの一覧を戻り先にしてはならない。
     expect(takeListSnapshot({ query: "いぬ", sort: "titleAsc" })).toBeUndefined();
-    // 並び順が違う。並びが違えば同じ項目でも順序が違う。
     expect(takeListSnapshot({ query: "ねこ", sort: "addedDesc" })).toBeUndefined();
   });
 
@@ -126,7 +114,6 @@ describe("ListSnapshot（一覧の復元状態）", () => {
     saveListSnapshot({ query: "", sort: "addedDesc" }, body([1]));
     expect(takeListSnapshot({ query: "" })).toBeDefined();
 
-    // 取り込みが終わって読み直すとき、取り込む前の一覧に戻してはならない。
     clearListSnapshot();
     expect(takeListSnapshot({ query: "" })).toBeUndefined();
   });
@@ -140,18 +127,14 @@ describe("ListSnapshot（一覧の復元状態）", () => {
         (video) => video.id,
       ),
     ).toEqual([3]);
-    // 鍵ごとに溜めない。持つのは直近の 1 件だけである。
     expect(takeListSnapshot({ query: "ねこ" })).toBeUndefined();
   });
 
   it("鍵の正規化が検索語の前後の空白と並び順の既定値を吸収する", () => {
     saveListSnapshot({ query: "  ねこ  ", sort: "addedDesc" }, body([1]));
 
-    // 空白の有無で戻り先を失わない。
     expect(takeListSnapshot({ query: "ねこ", sort: "addedDesc" })).toBeDefined();
-    // `/` と `/?sort=addedDesc` は利用者から見て同じ一覧である。
     expect(takeListSnapshot({ query: "ねこ" })).toBeDefined();
-    // 既定と違う並び順まで吸収してはならない。
     expect(takeListSnapshot({ query: "ねこ", sort: "titleAsc" })).toBeUndefined();
   });
 });
@@ -178,7 +161,6 @@ describe("追加日と長さの絞り込みの控え", () => {
 
     vi.advanceTimersByTime(ADDED_WITHIN_SNAPSHOT_TTL_MS - 1);
     expect(takeListSnapshot({ query: "", addedWithin: 1 })).toBeDefined();
-    // 項目の書き換えで期限は延びない。
     applyProgressToListSnapshot(1, {
       positionMs: 1000,
       completed: false,
@@ -240,7 +222,6 @@ describe("フォルダ画面の控え", () => {
   });
 });
 
-// issue 267: 付け外しの結果は、一覧を取り直さず控えの tags へ反映する。
 describe("付け外しの結果の反映", () => {
   it("recordAppliedVideoTagsのaddで、対象の項目のtagsだけが変わる", () => {
     saveListSnapshot({ query: "" }, body([1, 2]));
@@ -265,11 +246,9 @@ describe("付け外しの結果の反映", () => {
         kind: null,
       },
     ]);
-    // 対象でない項目は変わらない。
     expect(
       itemVideos(restored?.items ?? []).find((video) => video.id === 1)?.tags,
     ).toEqual([]);
-    // tags 以外は変わらない。
     expect(restored?.total).toBe(2);
     expect(restored?.cursor).toBe("cursor-1");
   });
@@ -324,7 +303,6 @@ describe("付け外しの結果の反映", () => {
     expect(
       itemVideos(restored?.items ?? []).find((video) => video.id === 2)?.tags,
     ).toEqual([]);
-    // 対象でない項目にはまだ付いている。
     expect(
       itemVideos(restored?.items ?? []).find((video) => video.id === 1)?.tags,
     ).toEqual([
@@ -340,8 +318,6 @@ describe("付け外しの結果の反映", () => {
   });
 });
 
-// グループの値はメンバーから
-// 数えるので、控えの中では書き換えず、戻ったときに取り直す印を付ける。
 describe("控えの中のグループの項目", () => {
   const groupItem: LibraryItem = {
     kind: "group",

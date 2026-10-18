@@ -8,11 +8,9 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 作品情報と人物・団体の誤りの写し方。画面 API の人物・団体と作品情報の経路、外部連携 API の経路が
-// 同じ workInfoFailureOf を呼び、応答の型（gen.Error・extgen.Error）への書き出しだけをそれぞれが持つ。
+// UI and external APIs share workInfoFailureOf, then serialize into their respective generated error types.
 
-// workInfoFailure は誤り 1 件の API の形である。code と reason は契約の値の文字列で、
-// field と limit は無ければ空と 0。
+// workInfoFailure uses contract code/reason values; empty field and zero limit mean absent.
 type workInfoFailure struct {
 	status  int
 	code    string
@@ -22,7 +20,6 @@ type workInfoFailure struct {
 	message string
 }
 
-// workInfoProblemReasons は domain の規則違反の種類から reason への対応である。
 var workInfoProblemReasons = map[domain.WorkInfoProblem]gen.ErrorReason{
 	domain.WorkInfoControlCharacters: gen.ErrorReasonWorkInfoControlCharacters,
 	domain.WorkInfoTooLong:           gen.ErrorReasonWorkInfoTooLong,
@@ -34,15 +31,12 @@ var workInfoProblemReasons = map[domain.WorkInfoProblem]gen.ErrorReason{
 	domain.WorkInfoEmpty:             gen.ErrorReasonWorkInfoEmpty,
 }
 
-// creditNotFoundReasons は実体の種類から、その実体が無いときの reason への対応である。
 var creditNotFoundReasons = map[domain.CreditKind]gen.ErrorReason{
 	domain.CreditPerson:       gen.ErrorReasonPersonNotFound,
 	domain.CreditOrganization: gen.ErrorReasonOrganizationNotFound,
 }
 
-// workInfoFailureOf は *domain.InvalidWorkInfoError・*domain.CreditNotFoundError・
-// *domain.CreditExternalIDTakenError と domain.ErrCreditParentCycle を API の形にする。どれでもなければ
-// false を返し、呼び手が自分の経路の誤り（対象の実体が無いなど）を写す。
+// workInfoFailureOf maps domain work-info and credit errors; false leaves endpoint-specific errors to the caller.
 func workInfoFailureOf(err error) (workInfoFailure, bool) {
 	var invalid *domain.InvalidWorkInfoError
 	var missing *domain.CreditNotFoundError
@@ -80,7 +74,6 @@ func workInfoFailureOf(err error) (workInfoFailure, bool) {
 	return workInfoFailure{}, false
 }
 
-// writeWorkInfoFailure は画面 API の Error として failure を書き出す。
 func (s *server) writeWorkInfoFailure(w http.ResponseWriter, failure workInfoFailure) {
 	reason := gen.ErrorReason(failure.reason)
 	body := gen.Error{Code: gen.ErrorCode(failure.code), Reason: &reason, Message: failure.message}

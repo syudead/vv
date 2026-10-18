@@ -52,8 +52,7 @@ func TestConvertDetectsCharacterEncodings(t *testing.T) {
 }
 
 func TestConvertTellsShiftJISFromUTF8(t *testing.T) {
-	// E0 A1 A1 は UTF-8 としても妥当（U+0861）だが、字幕の文字体系に入らないので
-	// Shift_JIS として読む。
+	// E0 A1 A1 is valid UTF-8 U+0861 but outside the accepted subtitle scripts, so prefer Shift_JIS.
 	ambiguous := []byte("1\n00:00:01,000 --> 00:00:02,000\n\xE0\xA1\xA1\n")
 	if got, want := convert(t, ambiguous, domain.SubtitleFormatSRT, 0), "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n爍｡\n"; got != want {
 		t.Errorf("ambiguous Shift_JIS: got %q, want %q", got, want)
@@ -62,17 +61,17 @@ func TestConvertTellsShiftJISFromUTF8(t *testing.T) {
 	if got, want := convert(t, korean, domain.SubtitleFormatSRT, 0), "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\n안녕하세요, 세계\n"; got != want {
 		t.Errorf("Korean UTF-8: got %q, want %q", got, want)
 	}
-	// 一覧に無い文字体系でも、Shift_JIS として読めない UTF-8 は UTF-8 のまま読む。
+	// Unsupported scripts still remain UTF-8 when Shift_JIS decoding fails.
 	georgian := []byte("1\n00:00:01,000 --> 00:00:02,000\nგამარჯობა\n")
 	if got, want := convert(t, georgian, domain.SubtitleFormatSRT, 0), "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nგამარჯობა\n"; got != want {
 		t.Errorf("Georgian UTF-8: got %q, want %q", got, want)
 	}
-	// F0 40 は Shift_JIS の復号器が U+FFFD を出す列で、UTF-8 としても妥当でない。
+	// F0 40 produces U+FFFD in Shift_JIS and is invalid UTF-8.
 	broken := []byte("1\n00:00:01,000 --> 00:00:02,000\n\xF0\x40\n")
 	if _, err := NewSubtitleConverter().Convert(broken, domain.SubtitleFormatSRT, 0); !errors.Is(err, domain.ErrSubtitleUnreadable) {
 		t.Errorf("undecodable: err = %v, want ErrSubtitleUnreadable", err)
 	}
-	// 0x80 は Shift_JIS の復号器が U+0080 に通す。
+	// Shift_JIS passes 0x80 through as U+0080.
 	c1 := []byte("1\n00:00:01,000 --> 00:00:02,000\n\x80\n")
 	if _, err := NewSubtitleConverter().Convert(c1, domain.SubtitleFormatSRT, 0); !errors.Is(err, domain.ErrSubtitleUnreadable) {
 		t.Errorf("C1 control: err = %v, want ErrSubtitleUnreadable", err)
@@ -183,7 +182,7 @@ func TestConvertShiftsCuesByOffset(t *testing.T) {
 		t.Errorf("VTT:\n got %q\nwant %q", got, wantVTT)
 	}
 
-	// どの cue も消えるほどずらしても、読めない字幕ではない。
+	// Shifting away every cue does not make the subtitle unreadable.
 	if got := convert(t, []byte(srt), domain.SubtitleFormatSRT, 60_000); got != "WEBVTT\n" {
 		t.Errorf("all cues shifted out: got %q", got)
 	}

@@ -100,20 +100,16 @@ import {
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
 
-// 見本の「Overlays and feedback」と「vv components」の節。部品ごとに、通常・hover・キーボードのフォーカス・押下・
-// 選択・無効のうち持つ状態を並べる。hover・フォーカス・押下は index.css の data-demo-state で、
-// 触らずに見せる（Demo で包む）。
-
 type Preview = "hover" | "focus" | "active";
 
-/** 押下は hover したまま押した形で見せる。 */
+/** Pressed demos also show hover. */
 const demoState: Record<Preview, string> = {
   hover: "hover",
   focus: "focus",
   active: "hover active",
 };
 
-/** 検索の書き方の記号（videoList/SearchSyntaxHelp と同じ。訳さない）。 */
+/** Search syntax tokens are not translated. */
 const searchKeys = ["tag:", "-", '"…"'] as const;
 
 function Code({ children }: { children: string }) {
@@ -139,11 +135,7 @@ function Item({
   );
 }
 
-/**
- * Demo は中の部品を、触らずに 1 つの状態で描く（index.css の data-demo-state）。包みは
- * レイアウトに加わらない（contents）ので、リストや行の直接の子のままに見える。フォーカスの輪は
- * 最初の子に出る。
- */
+/** Use display: contents to preserve direct-child layout; draw focus on the first child. */
 function Demo({ state, children }: { state?: Preview; children: ReactNode }) {
   if (state === undefined) return <>{children}</>;
   return (
@@ -153,7 +145,6 @@ function Demo({ state, children }: { state?: Preview; children: ReactNode }) {
   );
 }
 
-/** State は 1 つの状態の見本に、その状態の名前を添える。 */
 function State({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid justify-items-start gap-1.5">
@@ -646,10 +637,6 @@ function VvComponents() {
   );
 }
 
-/**
- * OverlayComponents は見本の部品の節のうち、重ね表示と通知、vv 固有部品を並べる
- * （Issue 771）。操作と入力の部品は別の単位が同じ節に並べる。
- */
 export default function OverlayComponents() {
   const o = t.designSystem.overlay;
   return (

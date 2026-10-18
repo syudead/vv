@@ -1,11 +1,7 @@
 import type { VirtualItem } from "@tanstack/react-virtual";
 import type { ReactNode } from "react";
 
-/**
- * virtualBodyRows は仮想化した行を表の中に描く。描かない行の高さは、行の間と前後に置く
- * 空の行で保つ（行を absolute で重ねると、表の列の幅がそろわないため）。タグの画面と
- * 人物・団体の画面が使う。`renderRow` は `index` の行を描く。
- */
+/** Use spacer rows instead of absolute positioning so table columns remain aligned. */
 export function virtualBodyRows({
   items,
   scrollStart,
@@ -14,9 +10,7 @@ export function virtualBodyRows({
   renderRow,
 }: {
   items: readonly VirtualItem[];
-  /** 仮想化の `scrollMargin`（一覧の上端の文書の中での位置）。 */
   scrollStart: number;
-  /** 仮想化の `getTotalSize()`。 */
   totalSize: number;
   columnCount: number;
   renderRow: (item: VirtualItem) => ReactNode;
@@ -46,7 +40,7 @@ export function virtualBodyRows({
   return rows;
 }
 
-/** SpacerRow は描かない行の高さを保つ空の行である。読み上げない。 */
+/** Preserve unrendered height without exposing spacers to assistive technology. */
 function SpacerRow({ height, columnCount }: { height: number; columnCount: number }) {
   return (
     <tr aria-hidden="true" style={{ height }}>

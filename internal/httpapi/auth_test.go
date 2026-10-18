@@ -26,15 +26,11 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 認証の境界は、本物の Auth（internal/app）・保存先（internal/store）・Argon2id
-// （internal/password）で確かめる。
-
 const (
 	testUsername = "owner-name"
 	testPassword = "correct horse battery staple"
 )
 
-// appAuthenticator は *app.Auth を Authenticator にする。cmd/mdm の組み立てと同じ写しである。
 type appAuthenticator struct{ auth *app.Auth }
 
 func (a appAuthenticator) Setup(ctx context.Context, username, pass string) (IssuedSession, error) {
@@ -60,10 +56,7 @@ func (a appAuthenticator) State(ctx context.Context, token string) (AuthState, e
 	return AuthState(state), err
 }
 
-// passwordHasher はハッシュ化の代わりに目印を付けるだけの安い実装である。argon2id は
-// 1 回に数十 ms かかり、認証の環境を作るたびに払うと経路のテストの時間の多くを占める。
-// 本物のハッシュ化と照合は internal/password のテストが確かめ、ここでは認証の境界が
-// 照合の結果どおりに通すか止めるかだけを確かめる。
+// Use a cheap fake hash to isolate auth routing; internal/password tests verify real hashing without repeated Argon2id cost here.
 type passwordHasher struct{}
 
 const fakePasswordHashPrefix = "test-hash:"
@@ -73,7 +66,6 @@ func (passwordHasher) Verify(p, encoded string) (bool, error) {
 	return encoded == fakePasswordHashPrefix+p, nil
 }
 
-// syncBuffer は並行に書かれる記録を集める。
 type syncBuffer struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
@@ -91,7 +83,6 @@ func (b *syncBuffer) String() string {
 	return b.buf.String()
 }
 
-// authEnv は本物の認証でつないだ経路である。
 type authEnv struct {
 	t       *testing.T
 	db      *store.DB
@@ -114,21 +105,17 @@ func (e *authEnv) advance(d time.Duration) {
 	e.now = e.now.Add(d)
 }
 
-// newAuthEnv は dataDir のデータベースで経路を組み立てる。opts の Auth・Now・Logger は
-// ここで決める。
 func newAuthEnv(t *testing.T, dataDir string, opts Options) *authEnv {
 	t.Helper()
 	return newAuthEnvWith(t, dataDir, func(*store.DB) Options { return opts })
 }
 
-// newAuthEnvWith は newAuthEnv と同じで、経路の依存を開いたデータベースから作る。
 func newAuthEnvWith(t *testing.T, dataDir string, build func(db *store.DB) Options) *authEnv {
 	t.Helper()
 	return newAuthEnvWrapped(t, dataDir, build, nil)
 }
 
-// newAuthEnvWrapped は newAuthEnvWith と同じで、wrap があれば本物の Authenticator を
-// それで包んで経路に渡す（確かめの途中に割り込む試験に使う）。
+// wrap injects races around real authentication checks.
 func newAuthEnvWrapped(
 	t *testing.T, dataDir string, build func(db *store.DB) Options,
 	wrap func(Authenticator) Authenticator,
@@ -165,8 +152,7 @@ type authRequest struct {
 	https   bool
 	cookies []*http.Cookie
 	header  map[string]string
-	// remote は直接の接続元（RemoteAddr）である。空なら httptest の既定。
-	remote string
+	remote  string
 }
 
 func (e *authEnv) serve(req authRequest) *httptest.ResponseRecorder {
@@ -206,7 +192,6 @@ func credentialsBody(username, pass string) string {
 	return string(body)
 }
 
-// setup は初回設定を行い、返った Cookie を返す。
 func (e *authEnv) setup() *http.Cookie {
 	e.t.Helper()
 	rec := e.serve(authRequest{method: http.MethodPost, target: "/api/auth/setup", body: credentialsBody(testUsername, testPassword)})
@@ -216,7 +201,6 @@ func (e *authEnv) setup() *http.Cookie {
 	return responseCookie(e.t, rec, sessionCookieHTTP)
 }
 
-// login はログインし、返った Cookie を返す。
 func (e *authEnv) login(https bool, cookies ...*http.Cookie) *http.Cookie {
 	e.t.Helper()
 	rec := e.serve(authRequest{
@@ -244,7 +228,6 @@ func responseCookie(t *testing.T, rec *httptest.ResponseRecorder, name string) *
 	return nil
 }
 
-// assertUnauthenticated は未認証の応答であることを確かめる。
 func assertUnauthenticated(t *testing.T, label string, rec *httptest.ResponseRecorder) {
 	t.Helper()
 	if rec.Code != http.StatusUnauthorized {
@@ -285,7 +268,6 @@ func authState(t *testing.T, rec *httptest.ResponseRecorder) string {
 	return body.State
 }
 
-// protectedOperations は openapi.yaml の「誰でも」以外の操作を、具体的な要求にして返す。
 func protectedOperations(t *testing.T) []operation {
 	t.Helper()
 	var ops []operation
@@ -300,7 +282,6 @@ func protectedOperations(t *testing.T) []operation {
 	return ops
 }
 
-// ownerOnlyOperations は openapi.yaml の「所有者だけ」の操作を返す。
 func ownerOnlyOperations(t *testing.T) []operation {
 	t.Helper()
 	var ops []operation
@@ -315,8 +296,7 @@ func ownerOnlyOperations(t *testing.T) []operation {
 	return ops
 }
 
-// ownerOnlyTarget は、所有者として扱われないことを確かめるのに使う「所有者だけ」の経路である。
-// 「ゲストも」の経路は、有効なセッションが無ければゲストとして 200 を返す。
+// Use an owner-only target because guest-capable routes may return 200 without a session.
 const ownerOnlyTarget = "/api/scans/current"
 
 func operationTarget(op operation) string {
@@ -394,7 +374,6 @@ func TestAuthSetupRejectsInvalidValues(t *testing.T) {
 			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,
 			reason: reasonUsernameLength, limit: domain.MaxUsernameLength,
 		}},
-		// 長さが適正な前後の空白・制御文字の違反には username_length を付けない。
 		{credentialsBody(" bob", testPassword), wantError{
 			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,
 		}},
@@ -415,8 +394,6 @@ func TestAuthSetupRejectsInvalidValues(t *testing.T) {
 	}
 }
 
-// 所有者だけの要求は、有効なセッションが無ければ未認証になる。「ゲストも」の要求を
-// ゲストとして処理することは guest_test.go が確かめる。
 func TestAuthWithoutCookieIsUnauthenticated(t *testing.T) {
 	env := newAuthEnv(t, t.TempDir(), Options{Videos: sampleLibrary()})
 	env.setup()
@@ -431,7 +408,6 @@ func TestAuthWithoutCookieIsUnauthenticated(t *testing.T) {
 		assertUnauthenticated(t, target, rec)
 		assertAudience(t, target, rec, "guest")
 	}
-	// 不正な Cookie・該当の無い Cookie も同じ応答になる。
 	for _, cookie := range []*http.Cookie{
 		{Name: sessionCookieHTTP, Value: "not-a-token"},
 		{Name: sessionCookieHTTP, Value: strings.Repeat("A", 43)},
@@ -439,17 +415,14 @@ func TestAuthWithoutCookieIsUnauthenticated(t *testing.T) {
 		rec := env.get(ownerOnlyTarget, cookie)
 		assertUnauthenticated(t, "Cookie "+cookie.Value, rec)
 	}
-	// HTTP の要求は __Host- の Cookie を読まない。
 	valid := env.login(true)
 	rec := env.get(ownerOnlyTarget, &http.Cookie{Name: sessionCookieHTTPS, Value: valid.Value})
 	assertUnauthenticated(t, "HTTP の要求に __Host-vv_session", rec)
 
-	// SPA のビルド成果物は誰にでも配り、X-VV-Audience は付けない。
 	spa := env.get("/videos/1")
 	if spa.Code == http.StatusUnauthorized || spa.Header().Get(audienceHeader) != "" {
 		t.Errorf("SPA の経路: status = %d, %s = %q", spa.Code, audienceHeader, spa.Header().Get(audienceHeader))
 	}
-	// /api/ で始まらない GET・HEAD 以外は「所有者だけ」に倒れる。
 	assertUnauthenticated(t, "POST /videos/1", env.serve(authRequest{method: http.MethodPost, target: "/videos/1", body: "{}"}))
 }
 
@@ -468,7 +441,6 @@ func TestAuthOwnerCookieReachesEveryOperation(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "海辺の散歩") {
 		t.Errorf("一覧: status = %d: %s", rec.Code, rec.Body)
 	}
-	// 誰でもの要求にも、処理した見る人を付ける。
 	assertAudience(t, "稼働確認", env.get("/api/health", cookie), "owner")
 	assertAudience(t, "稼働確認（Cookie なし）", env.get("/api/health"), "guest")
 }
@@ -502,8 +474,7 @@ func TestAuthSessionReturnsRedirectOnlyForOwner(t *testing.T) {
 	}
 }
 
-// logoutBeforeState は、境界の確認と状態の確認の間に別のタブでログアウトされた
-// 場合を再現する。
+// Simulate another tab logging out between boundary and state reads.
 type logoutBeforeState struct{ appAuthenticator }
 
 func (a logoutBeforeState) State(ctx context.Context, token string) (AuthState, error) {
@@ -549,7 +520,6 @@ func TestAuthLoginSetsCookieAndRedirect(t *testing.T) {
 			t.Errorf("Set-Cookie = %q に %q が無い", setCookie, want)
 		}
 	}
-	// Max-Age は期限（90 日後）までの秒である。
 	if cookies := rec.Result().Cookies(); len(cookies) != 1 ||
 		cookies[0].MaxAge > int(domain.SessionLifetime/time.Second) ||
 		cookies[0].MaxAge < int(domain.SessionLifetime/time.Second)-5 {
@@ -776,7 +746,6 @@ func TestAuthLogsOmitSecrets(t *testing.T) {
 	}
 }
 
-// 資格を失った要求の、処理中の /api/events と Range 応答が終わること。
 func TestAuthRevocationEndsInFlightResponses(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -893,7 +862,6 @@ func TestAuthRevocationEndsInFlightResponses(t *testing.T) {
 	}
 }
 
-// 所有者として処理する要求の context は、セッションの期限を締め切りに持つ。
 func TestSessionLedgerUsesSessionExpiryAsDeadline(t *testing.T) {
 	ledger := newSessionLedger(time.Hour, slog.Default())
 	ctx, req, release := ledger.open(context.Background(), httptest.NewRecorder(), "token")
@@ -915,7 +883,6 @@ func TestSessionLedgerUsesSessionExpiryAsDeadline(t *testing.T) {
 	}
 }
 
-// hookedAuthenticator は、有効と確かめた CheckSession の直後に afterCheck を割り込ませる。
 type hookedAuthenticator struct {
 	Authenticator
 	afterCheck func(token string)
@@ -929,9 +896,7 @@ func (h hookedAuthenticator) CheckSession(ctx context.Context, token string) (ti
 	return expiresAt, valid, err
 }
 
-// セッションを有効と確かめてから応答を始めるまでの間にログアウトされた要求は、
-// 所有者として応答しない（Devin の指摘、PR 292）。確かめてから台帳に載せると、
-// ログアウトの打ち切りがこの要求を取りこぼす。
+// Logout between validation and serving must not escape cancellation registration.
 func TestAuthLogoutBetweenSessionCheckAndResponseIsNotServedAsOwner(t *testing.T) {
 	var env *authEnv
 	var cookie *http.Cookie
@@ -960,9 +925,7 @@ func TestAuthLogoutBetweenSessionCheckAndResponseIsNotServedAsOwner(t *testing.T
 	assertUnauthenticated(t, "その後の要求", env.get(ownerOnlyTarget, cookie))
 }
 
-// 「ゲストも」の要求でセッションを確かめている間にログアウトされたら、ゲストとして
-// 最後まで処理する（Devin の指摘、PR 335）。打ち切られた台帳の context を引き継ぐと、
-// 公開の動画を引く問い合わせまで取り消されてしまう。
+// Guest-capable requests must finish with a fresh context after logout during session validation.
 func TestAuthLogoutDuringSessionCheckServesGuestsTooRequestAsGuest(t *testing.T) {
 	var env *authEnv
 	var cookie *http.Cookie
@@ -1011,7 +974,6 @@ func TestAuthLogoutDuringSessionCheckServesGuestsTooRequestAsGuest(t *testing.T)
 	assertAudience(t, target, rec, "guest")
 }
 
-// 台帳に載せてから応答を始めるまでの間の打ち切りは、応答を始めさせない。
 func TestSessionLedgerRevokeBeforeServeRefusesRequest(t *testing.T) {
 	ledger := newSessionLedger(time.Hour, slog.Default())
 	ctx, req, release := ledger.open(context.Background(), httptest.NewRecorder(), "token")

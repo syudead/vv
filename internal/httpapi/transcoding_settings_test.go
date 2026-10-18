@@ -16,7 +16,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// memoryEncoderStore は app.TranscodeSettingsStore の代わりで、保存値をメモリに持つ。
 type memoryEncoderStore struct {
 	mu      sync.Mutex
 	value   string
@@ -48,8 +47,6 @@ func (s *memoryEncoderStore) stored() (string, bool) {
 	return s.value, s.found
 }
 
-// fixedEncoderChecker は方式ごとに決め打ちの確認結果を返す。release が nil でなければ、
-// 閉じるまで確認を終えない（確認中を模す）。
 type fixedEncoderChecker struct {
 	results map[domain.VideoEncoder]domain.EncoderAvailability
 	release chan struct{}
@@ -68,7 +65,6 @@ func (c fixedEncoderChecker) CheckEncoder(ctx context.Context, encoder domain.Vi
 	return domain.EncoderAvailability{Encoder: encoder, State: domain.EncoderUnavailable, Reason: domain.EncoderReasonCheckFailed}
 }
 
-// linuxCheckResults は linux の確認対象のうち NVENC だけが使える結果である。
 func linuxCheckResults() map[domain.VideoEncoder]domain.EncoderAvailability {
 	return map[domain.VideoEncoder]domain.EncoderAvailability{
 		domain.VideoEncoderNVENC: {Encoder: domain.VideoEncoderNVENC, State: domain.EncoderAvailable},
@@ -82,7 +78,6 @@ func linuxCheckResults() map[domain.VideoEncoder]domain.EncoderAvailability {
 	}
 }
 
-// newCheckedTranscodeSettings は linux として確認を終えた本物の app.TranscodeSettings を返す。
 func newCheckedTranscodeSettings(t *testing.T, store *memoryEncoderStore) *app.TranscodeSettings {
 	t.Helper()
 	settings := newTranscodeSettings(t, store, fixedEncoderChecker{results: linuxCheckResults()})
@@ -150,8 +145,6 @@ func unavailableReason(reason gen.EncoderUnavailableReason) *gen.EncoderUnavaila
 
 func fallbackReason(reason gen.EncoderFallbackReason) *gen.EncoderFallbackReason { return &reason }
 
-// linuxCheckedEncoders は linuxCheckResults を確認し終えたときの encoders である。確認の
-// 補足（Detail）は応答に出ない。
 func linuxCheckedEncoders() []gen.EncoderAvailability {
 	return []gen.EncoderAvailability{
 		{Encoder: gen.VideoEncoderNvenc, State: gen.EncoderAvailabilityStateAvailable},
@@ -199,7 +192,6 @@ func TestGetTranscodingSettingsWhileChecking(t *testing.T) {
 		VideoEncoder: gen.VideoEncoderChoiceNvenc, EffectiveEncoder: gen.VideoEncoderSoftware,
 		FallbackReason: fallbackReason(gen.EncoderFallbackReasonChecking), Checking: true, Encoders: encoders,
 	})
-	// 確認中のハードウェアの方式は選べない。
 	rec := putTranscoding(t, handler, `{"videoEncoder":"nvenc"}`)
 	assertErrorBody(t, "確認中の nvenc", rec.Code, rec.Body.Bytes(), wantError{
 		status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonEncoderUnavailable,
@@ -261,7 +253,6 @@ func TestUpdateTranscodingSettingsRejectsWithoutSaving(t *testing.T) {
 		}
 	}
 
-	// Content-Type が JSON でない本文は、経路に届く前に 400 になる。
 	req := httptest.NewRequest(http.MethodPut, "/api/settings/transcoding", strings.NewReader(`{"videoEncoder":"software"}`))
 	req.Header.Set("Content-Type", "text/plain")
 	rec := httptest.NewRecorder()
@@ -293,7 +284,6 @@ func TestTranscodingSettingsWithoutConfigurationIsInternalError(t *testing.T) {
 	}
 }
 
-// ゲストは方式も一覧も見られず、変えられない（親 Issue #370 要件 13）。
 func TestTranscodingSettingsAreOwnerOnly(t *testing.T) {
 	store := &memoryEncoderStore{}
 	env := newAuthEnv(t, t.TempDir(), Options{TranscodeSettings: newCheckedTranscodeSettings(t, store)})

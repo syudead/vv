@@ -15,7 +15,6 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// substitutingGenerator は生成物を書き、代表サムネイルを先頭のコマで代用したと返す。
 type substitutingGenerator struct{}
 
 func (substitutingGenerator) CheckSource(string) error { return nil }
@@ -42,9 +41,8 @@ func (substitutingGenerator) FitThumbnailSource(_ context.Context, image []byte,
 	return image, nil
 }
 
-// 代表サムネイルを先頭のコマで代用しただけの取り込みは done のまま、代用の本数が 1 に
-// なり、問題の一覧にその動画の種類が出る。取り込みの処理が生成の返した値を保存側へ渡し、保存側が成功を書く
-// 取引で問題を入れることを、本物の SQLite で確かめる。
+// Verify the real SQLite success transaction records thumbnail substitution without failing
+// ingestion.
 func TestThumbnailSubstitutionIsReportedAsImportIssue(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()
@@ -84,7 +82,6 @@ func TestThumbnailSubstitutionIsReportedAsImportIssue(t *testing.T) {
 		Artifacts: artifacts.New(Config{DataDir: dataDir}.ThumbnailsDir()),
 		Logger:    slog.New(slog.DiscardHandler),
 	})
-	// 解析が積むプレビューは、生成を通さずに完了にする。
 	for _, kind := range []domain.JobKind{domain.JobProbe, domain.JobThumbnail, domain.JobPreview} {
 		job, err := db.Ingest().ClaimJob(ctx, kind)
 		if err != nil {

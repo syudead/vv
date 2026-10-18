@@ -7,7 +7,6 @@ import (
 	"testing"
 )
 
-// mustWithManifest は WithManifest の結果を返し、誤りならテストを止める。
 func mustWithManifest(tb testing.TB, module []byte, manifest string) []byte {
 	tb.Helper()
 	packed, err := WithManifest(module, []byte(manifest))
@@ -17,7 +16,6 @@ func mustWithManifest(tb testing.TB, module []byte, manifest string) []byte {
 	return packed
 }
 
-// countManifestSections は module の vv.plugin のセクションの数である。
 func countManifestSections(tb testing.TB, module []byte) int {
 	tb.Helper()
 	r := &reader{b: module, pos: 8}

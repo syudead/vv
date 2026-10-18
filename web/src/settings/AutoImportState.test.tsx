@@ -9,7 +9,6 @@ import {
 import AutoImportState from "./AutoImportState";
 import { useAutoImportSettings } from "./useAutoImportSettings";
 
-/** 監視の状態を追う契機で読み、状態の 1 行と問題を出す。 */
 function StateHarness({ reloadToken = 0 }: { reloadToken?: number }) {
   const source = useAutoImportSettings({ reloadToken, followWatch: true });
   return <AutoImportState source={source} />;

@@ -14,11 +14,6 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// 外部連携 API と MCP のまとめての確定・却下・削除と却下した名前
-// を、本物の保存先と Bearer の
-// 境界で確かめる。
-
-// attachTentative は update_video_tags で name を仮のタグとして動画 A に付け、その結果を返す。
 func (f mcpFixture) attachTentative(t *testing.T, session *mcp.ClientSession, name string) extgen.VideoTagsResponse {
 	t.Helper()
 	var out extgen.VideoTagsResponse
@@ -30,17 +25,11 @@ func (f mcpFixture) attachTentative(t *testing.T, session *mcp.ClientSession, na
 	return out
 }
 
-// hasTag は GET /api/v1/tags に元の名前 name のタグがあるかを返す。
 func (f mcpFixture) hasTag(t *testing.T, name string) bool {
 	t.Helper()
 	return slices.ContainsFunc(f.getTags(t, "").Items, func(tag extgen.Tag) bool { return tag.Name == name })
 }
 
-// 仮のタグ・確定したタグ・無い id への batch_tags の reject は、順に appliedIds・notApplicableIds・
-// notFoundIds に返り、確定したタグは変わらない（受け入れ条件 4）。続けて list_rejected_tag_names が
-// 却下した名前を返し、その名前の仮の付与は skippedTags に返ってタグを作らない（受け入れ条件 3）。
-// forget_rejected_tag_name は 1 回目に removed: true、2 回目に false で、次の仮の付与でタグがまた
-// 作られる。
 func TestMCPBatchRejectAndRejectedNames(t *testing.T) {
 	f := newMCPFixture(t, Options{Scans: &fakeScans{}})
 	addTentativeTags(t, f, f.videoA, []string{"仮"})
@@ -76,7 +65,6 @@ func TestMCPBatchRejectAndRejectedNames(t *testing.T) {
 		t.Error("却下した名前のタグが作られた")
 	}
 
-	// 整えてから照合するので、前後の空白は外れて整えた綴りが返る。
 	for i, want := range []bool{true, false} {
 		var forgot extgen.RejectedTagNameForgetResult
 		if callTool(t, session, "forget_rejected_tag_name", map[string]any{"name": " 仮 "}, &forgot) {
@@ -93,7 +81,6 @@ func TestMCPBatchRejectAndRejectedNames(t *testing.T) {
 		t.Error("外した名前のタグが作られない")
 	}
 
-	// 整えられない名前は何も変えずに送った綴りで removed: false。
 	var forgot extgen.RejectedTagNameForgetResult
 	if callTool(t, session, "forget_rejected_tag_name", map[string]any{"name": "\t"}, &forgot) ||
 		forgot.Name != "\t" || forgot.Removed {
@@ -101,8 +88,6 @@ func TestMCPBatchRejectAndRejectedNames(t *testing.T) {
 	}
 }
 
-// batch_tags の confirm のあと list_tags でそのタグが tentative: false になる。仮のタグへの delete は
-// notApplicableIds、確定したタグへの delete はタグを消し、名前を却下した名前に入れない。
 func TestMCPBatchConfirmAndDelete(t *testing.T) {
 	f := newMCPFixture(t, Options{Scans: &fakeScans{}})
 	addTentativeTags(t, f, f.videoA, []string{"確定する", "仮のまま"})
@@ -140,9 +125,6 @@ func TestMCPBatchConfirmAndDelete(t *testing.T) {
 	}
 }
 
-// REST の誤り: action が 3 値の外は 400 invalid_request、ids が空か 20,000 件を超えると
-// too_many_tags と limit。どれも何も変えない。却下した名前の一覧の limit の範囲外、読めないカーソル、
-// name の無い DELETE も 400。
 func TestExternalTagBatchAndRejectedNamesErrors(t *testing.T) {
 	f := newMCPFixture(t, Options{Scans: &fakeScans{}})
 	addTentativeTags(t, f, f.videoA, []string{"仮"})
@@ -181,7 +163,6 @@ func TestExternalTagBatchAndRejectedNamesErrors(t *testing.T) {
 	}
 }
 
-// 却下した名前の一覧は名前の自然順でページに分かれ、nextCursor を辿ると全部を 1 回ずつ読める。
 func TestExternalRejectedTagNamesPages(t *testing.T) {
 	f := newMCPFixture(t, Options{Scans: &fakeScans{}})
 	names := []string{"猫10", "犬", "猫9"}
@@ -221,7 +202,6 @@ func TestExternalRejectedTagNamesPages(t *testing.T) {
 	}
 }
 
-// repeatIDs は id を n 個カンマで繋ぐ。
 func repeatIDs(id int64, n int) string {
 	var b bytes.Buffer
 	for i := range n {

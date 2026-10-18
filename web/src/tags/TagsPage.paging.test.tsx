@@ -19,10 +19,9 @@ import { stubRowHeights } from "../testing/virtualRows";
 setUpTagsPageServer();
 
 describe("TagsPage サーバーのページで読む", () => {
-  /** jsdom には表示域の高さと要素の高さが無いので、試験用の高さ（行 40px、表示域 200px）を置く。 */
+  /** Supply a 40px row height and 200px viewport because jsdom has no layout. */
   let restoreHeights = () => {};
 
-  /** name は並べたときに番号の順になる名前（名前の自然順）。 */
   function name(index: number): string {
     return `Tag ${String(index)}`;
   }
@@ -46,7 +45,6 @@ describe("TagsPage サーバーのページで読む", () => {
     return screen.getByTitle(tagName).closest("[data-tag-id]")!;
   }
 
-  /** scrollTo は文書を top までスクロールしたことにし、仮想化に知らせる。 */
   function scrollTo(top: number) {
     Object.defineProperty(document.documentElement, "scrollHeight", {
       configurable: true,
@@ -58,7 +56,6 @@ describe("TagsPage サーバーのページで読む", () => {
     });
   }
 
-  /** scrollToEnd は読み込んだ行の末尾近くまでスクロールし、続きのきっかけを作る。 */
   async function scrollToEnd(loaded: number) {
     scrollTo(loaded * 60);
     await waitFor(() =>
@@ -94,7 +91,6 @@ describe("TagsPage サーバーのページで読む", () => {
       "sort=name&limit=100",
     ]);
     expect(server.fullGetCalls).toBe(0);
-    // 件数は全部の数で、続きがあっても読み込んだ数（ページの区切り）は出さない。
     expect(count()).toBe("150 tags");
     expect(document.body.textContent).not.toContain("loaded");
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -115,15 +111,13 @@ describe("TagsPage サーバーのページで読む", () => {
     );
 
     await screen.findByTitle("zz action");
-    // 打鍵ごとに引き直すので、途中の語（「ＡＣＴＩＯ」）の応答でも同じ行が並ぶ。最後の語の
-    // 要求が出るまで待つ。
+    // Intermediate queries may return the same rows; wait for the final request.
     await waitFor(() =>
       expect(server.pageRequests.at(-1)?.get("q")).toBe("ＡＣＴＩＯＮ"),
     );
     await waitFor(() => expect(loadedNames()).toEqual(["zz action"]));
     expect(server.pageRequests.at(-1)?.has("cursor")).toBe(false);
     expect(count()).toBe("1 of 151 tags");
-    // 入力は q の上限の 100 文字で止まる。
     const search = screen.getByRole("searchbox", { name: "Search tags" });
     await user.clear(search);
     await user.click(search);
@@ -144,7 +138,6 @@ describe("TagsPage サーバーのページで読む", () => {
     await toggleFilter(user, "Unused only");
     await screen.findByTitle(name(140));
     expect(server.pageRequests.at(-1)?.get("unused")).toBe("true");
-    // 読み込んでいなかったタグも数えた数で、末尾まで読んだので「loaded」は無い。
     expect(count()).toBe("10 of 150 tags");
     expect(loadedNames()).toHaveLength(10);
   });
@@ -153,8 +146,6 @@ describe("TagsPage サーバーのページで読む", () => {
     install();
     renderPage();
     await screen.findByTitle(name(0));
-    // 読み込んだあとで、読み込んだ行の 1 つが別のタブで改名され、境より後ろに並ぶ
-    // ようになった（続きのページにも同じ id が出る）。
     server.tags = server.tags.map((item) =>
       item.id === 6 ? { ...item, name: "Tag 120a" } : item,
     );
@@ -169,7 +160,6 @@ describe("TagsPage サーバーのページで読む", () => {
     await waitFor(() =>
       expect(document.querySelector('[data-index="148"]')).not.toBeNull(),
     );
-    // 150 行のまま（id 6 は二重に出ない）。続きはもう無いので要求しない。
     expect(document.querySelector('[data-index="149"]')).not.toBeNull();
     expect(document.querySelector('[data-index="150"]')).toBeNull();
     expect(screen.queryByTitle("Tag 120a")).toBeNull();
@@ -183,7 +173,6 @@ describe("TagsPage サーバーのページで読む", () => {
     await screen.findByTitle(name(0));
     await user.click(within(rowOf(name(0))).getByRole("checkbox"));
 
-    // 別のタブでタグが増えた。
     server.tags.push(tag({ id: 500, name: "Tag 999" }));
     await scrollToEnd(100);
 
@@ -192,8 +181,6 @@ describe("TagsPage サーバーのページで読む", () => {
         "Tags were added or removed elsewhere, so the rest of this list may be out of date.",
       ),
     ).toBeDefined();
-    // 行と選択は残り、続きは足さず、それ以上要求しない。選んでいる間は見出しの件数の
-    // 代わりにタブの件数を見る。
     expect(tagsTab().textContent).toBe("Tags150");
     expect(
       within(screen.getByRole("region", { name: "Selected tags" })).getByText(
@@ -240,21 +227,18 @@ describe("TagsPage サーバーのページで読む", () => {
     renderPage();
     await screen.findByTitle(name(0));
 
-    // 続き（2 回目の要求）から止める。
     hold.getsFrom = 2;
     await scrollToEnd(100);
     await waitFor(() => expect(heldGetReleases).toHaveLength(1));
     expect(screen.getByRole("status", { name: "Loading more tags…" })).toBeDefined();
 
     await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "Tag 14");
-    // 打鍵ごとに要求が出るので、最後の条件（"Tag 14"）の要求まで止まってから解く。
-    // 途中の条件の要求だけを解くと、"Tag 14" の要求が止まったまま残る。
+    // Wait for the final typed query before releasing requests; otherwise it remains blocked.
     await waitFor(() => expect(server.pageRequests.at(-1)?.get("q")).toBe("Tag 14"));
     await waitFor(() =>
       expect(heldGetReleases).toHaveLength(server.pageRequests.length - 1),
     );
     scrollTo(0);
-    // 新しい条件の応答を先に、古い続きの応答をあとに解く。
     for (const release of heldGetReleases.slice(1)) release();
     heldGetReleases[0]!();
     await waitFor(() =>
@@ -290,7 +274,6 @@ describe("TagsPage サーバーのページで読む", () => {
     expect(within(bar).getByText("100 tags selected")).toBeDefined();
     expect(header.getAttribute("aria-checked")).toBe("true");
 
-    // 続きが届くと読み込んだ行が増え、全部の状態は中間に戻る。
     await scrollToEnd(100);
     expect(
       await screen.findByRole("checkbox", { name: "Select all 150 loaded tags" }),
@@ -367,11 +350,9 @@ describe("TagsPage サーバーのページで読む", () => {
     expect(alert.textContent).toMatch(
       /^Couldn't load tags: .*\. The list below may not match the current search, filters and sort\./,
     );
-    // 前の行と件数を残す。
     expect(screen.getByTitle(name(0))).toBeDefined();
     expect(count()).toBe("150 tags");
 
-    // 箱がある間は、末尾に近づいても前の条件のカーソルで続きを読まない。
     await scrollToEnd(100);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(cursorRequests()).toHaveLength(0);
@@ -388,8 +369,7 @@ describe("TagsPage サーバーのページで読む", () => {
       tag({ id: index + 1, name: name(index), tentative: index % 2 === 0 }),
     );
     install();
-    // 「Tentative only」を URL で効かせて開く。吹き出しから選ぶ操作は他のテストが
-    // 確かめており、ここで重ねると CI の遅い走りで 5 秒の上限に近づく。
+    // Set the filter through the URL; separate tests cover menu interaction, avoiding redundant CI rendering.
     renderPage({ url: "/tags?tentative=1" });
     await waitFor(() => expect(count()).toBe("125 of 250 tags"));
     expect(server.pageRequests.map((params) => params.get("tentative"))).toEqual([
@@ -420,7 +400,6 @@ describe("TagsPage サーバーのページで読む", () => {
     renderPage();
     await screen.findByTitle(name(1));
 
-    // 「Unused only」の先頭のページ（2 回目の要求）から止める。全部のタグが 0 本。
     hold.getsFrom = 2;
     await toggleFilter(user, "Unused only");
     await waitFor(() => expect(heldGetReleases).toHaveLength(1));
@@ -435,7 +414,6 @@ describe("TagsPage サーバーのページで読む", () => {
     await user.click(within(dialog).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(screen.queryByTitle(name(1))).toBeNull());
 
-    // 削除の前に受けた先頭のページ（消したタグを含む）が届く。
     heldGetReleases[0]!();
     await waitFor(() => expect(heldGetReleases).toHaveLength(2));
     expect(server.pageRequests.at(-1)?.get("unused")).toBe("true");
@@ -453,8 +431,7 @@ describe("TagsPage サーバーのページで読む", () => {
       tag({ id: index + 1, name: name(index), tentative: index % 2 === 0 }),
     );
     install();
-    // 「Tentative only」を URL で効かせて開く。吹き出しから選ぶ操作は他のテストが
-    // 確かめており、ここで重ねると CI の遅い走りで 5 秒の上限に届く。
+    // Set the filter through the URL; menu interaction is covered separately.
     renderPage({ url: "/tags?tentative=1" });
     await waitFor(() => expect(count()).toBe("125 of 250 tags"));
     expect(server.pageRequests.map((params) => params.get("tentative"))).toEqual([
@@ -465,14 +442,12 @@ describe("TagsPage サーバーのページで読む", () => {
     await scrollToEnd(100);
     await waitFor(() => expect(heldGetReleases).toHaveLength(1));
 
-    // 末尾まで描いた行のうち、境（Tag 198）の 1 つ前を確定する。先頭へ戻すと
-    // 描く行を全部入れ替えるので、スクロールし直さない。
+    // Mutate near the current pagination boundary to avoid replacing the entire virtual range.
     const confirmed = name(196);
     await user.click(within(rowOf(confirmed)).getByRole("button", { name: "Confirm" }));
     await waitFor(() => expect(screen.queryByTitle(confirmed)).toBeNull());
     expect(count()).toBe("124 of 250 tags");
 
-    // 確定の前に受けた続き（total 125）が届く。
     heldGetReleases[0]!();
     await waitFor(() => expect(heldGetReleases).toHaveLength(2));
     const sent = cursorRequests();
@@ -487,7 +462,6 @@ describe("TagsPage サーバーのページで読む", () => {
 
   it("並び順を変えて読み込んだ範囲の外になった改名中の行を改名しても、件数は増えない", async () => {
     const user = userEvent.setup();
-    // 本数の多い順では Tag 0（0 本）が最後に並び、先頭のページに入らない。
     server.tags = server.tags.map((item, index) => ({
       ...item,
       tentative: false,
@@ -496,14 +470,11 @@ describe("TagsPage サーバーのページで読む", () => {
     install();
     renderPage();
     await screen.findByTitle(name(0));
-    // 件数の行が total を出すよう、全部に合う検索で絞る。
     await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "Tag");
     await waitFor(() => expect(count()).toBe("150 of 150 tags"));
 
     await user.click(within(rowOf(name(0))).getByRole("button", { name: "Rename" }));
     await screen.findByRole("textbox", { name: `New name for "${name(0)}"` });
-    // 並び順を変えた先頭のページの次（改名中の行が末尾にあるので続きを読む）は届かない
-    // ままにし、改名中の行を読み込んでいない間に改名する。
     hold.getsFrom = server.getCalls + 2;
     await user.click(screen.getByRole("button", { name: "Sort by: Name" }));
     await user.click(await screen.findByRole("menuitemradio", { name: "Video count" }));
@@ -532,7 +503,6 @@ describe("TagsPage サーバーのページで読む", () => {
     install();
     renderPage();
     await screen.findByTitle(name(1));
-    // 件数の行が total を出すよう、全部に合う検索で絞る。
     await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "Tag");
     await waitFor(() => expect(count()).toBe("150 of 150 tags"));
     expect(screen.queryByTitle(name(140))).toBeNull();
@@ -576,19 +546,16 @@ describe("TagsPage サーバーのページで読む", () => {
 
   it("読み込んでいない統合先へ統合すると、並び順の位置が範囲の中なら差し込み、共有の保持の取り直しが失敗しても統合元と統合先が残らず消えたりしない（R-12）", async () => {
     const user = userEvent.setup();
-    // 本数の多い順で Tag 0（5 本）が先頭、残りは 1 本で名前の順。Tag 140 は読み込んでいない。
     server.tags = server.tags.map((item, index) => ({
       ...item,
       tentative: false,
       videoCount: index === 0 ? 5 : 1,
     }));
     install();
-    // 共有の保持の購読者がいて、統合のあとの全件の取り直しは失敗する。
     server.failFullGets = true;
     const unsubscribe = subscribeTags(() => undefined);
     try {
-      // 本数の多い順は URL で効かせて開く。並び順のメニューから選ぶ操作は他のテストが
-      // 確かめており、名前の順の行を描いてから描き直すと CI の遅い走りで 5 秒に近づく。
+      // Initialize sorting through the URL; separate tests cover the menu interaction.
       renderPage({ url: "/tags?sort=countDesc" });
       await waitFor(() => expect(loadedNames()[1]).toBe(name(1)));
       expect(server.pageRequests.map((params) => params.get("sort"))).toEqual([
@@ -603,8 +570,7 @@ describe("TagsPage サーバーのページで読む", () => {
         await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
       );
       const dialog = await screen.findByRole("dialog", { name: `Merge "${name(0)}"` });
-      // 統合先の名前は貼り付けて 1 回で引く。打鍵ごとに候補を引き直すことは
-      // MergeTagDialog.test.tsx が確かめる。
+      // Paste once; MergeTagDialog.test.tsx covers per-keystroke searches.
       await user.click(
         within(dialog).getByRole("combobox", { name: "Tag to merge into" }),
       );
@@ -618,7 +584,6 @@ describe("TagsPage サーバーのページで読む", () => {
         await screen.findByText(`Merged "${name(0)}" into "${name(140)}"`),
       ).toBeDefined();
       await waitFor(() => expect(server.fullGetCalls).toBeGreaterThan(0));
-      // 統合先は 6 本で先頭に入り、統合元は消える。件数は 1 つ減る。
       await waitFor(() => expect(loadedNames()[0]).toBe(name(140)));
       expect(screen.queryByTitle(name(0))).toBeNull();
       expect(count()).toBe("149 tags");
@@ -628,7 +593,6 @@ describe("TagsPage サーバーのページで読む", () => {
         ),
       );
 
-      // 続きを末尾まで読んでも、統合先は二重に出ない。
       await scrollToEnd(100);
       await waitFor(() => expect(count()).toBe("149 tags"));
       scrollTo(0);

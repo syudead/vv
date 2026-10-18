@@ -10,13 +10,6 @@ import { TableCell, TableRow } from "../ui/shadcn/table";
 import type { NameRules } from "../ui/NameCommand";
 import { useTagNameField, type TagFieldError } from "./tagNameField";
 
-/**
- * CreateTagRow は「新しいタグ」で表の先頭に差し込む作成の行である。候補の一覧は持たない、名前1つだけの
- * 入力で、検証と理由の出し方は `ui/TagCommand` と同じにする。表の行（`TableRow`）で、
- * 1 つの欄が列をすべてまたぐ。
- *
- * 人物・団体の管理画面も、名前の規則（`rules`）と文言を渡して同じ行を使う。
- */
 export default function CreateTagRow({
   columnCount,
   pending,
@@ -28,17 +21,14 @@ export default function CreateTagRow({
   label = t.tags.create.label,
   placeholder = t.tags.create.placeholder,
 }: {
-  /** 表の列の数。作成の欄はすべての列をまたぐ。 */
   columnCount: number;
   pending: boolean;
   error: TagFieldError | null;
   onCancel: () => void;
   onSubmit: (name: string) => void;
-  /** 値が変わるたびに呼ぶ。呼び出し元はこれで直前の失敗の表示を消す。 */
   onDraftChange?: () => void;
-  /** 名前の規則。省くとタグの名前の規則。 */
+  /** Defaults to tag-name rules. */
   rules?: NameRules;
-  /** 入力の読み上げ名。 */
   label?: UiText;
   placeholder?: UiText;
 }) {
@@ -56,9 +46,7 @@ export default function CreateTagRow({
   }
 
   function cancel() {
-    // 送信中は、その応答が届くまで閉じない（Esc・「キャンセル」の両方。
-    // 閉じたあとに届いた応答が、もう無いこの行や別の行の状態を書き換える
-    // ことを防ぐ。ModalFrame の pending の扱いと同じ）。
+    // Keep pending rows open so late responses cannot update removed or replacement rows.
     if (pending) return;
     onCancel();
   }

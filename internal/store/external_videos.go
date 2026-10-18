@@ -13,20 +13,12 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 外部連携 API の動画の読み出し。見る人は常に所有者で、非公開の動画も返す。どちらの読み出しも、
-// 登録フォルダの下に所在を 1 つ以上持つ動画だけを対象にし、所在も登録フォルダの下の
-// ものだけを返す。変更の追跡はしないので、表と列は足さない。
+// External reads always use owner visibility but return only videos and locations inside registered folders.
 
-// externalCursorSort はカーソルの並び順の欄に入れる名前である。画面の一覧のカーソル
-// （listing.go）と同じ包みを使い、この欄で画面の一覧のカーソルと取り違えないようにする。
+// A distinct cursor sort name prevents reuse of screen-list cursors.
 const externalCursorSort = "external"
 
-// ListExternalVideos は登録フォルダの下に所在を持つ動画を (added_at, id) の昇順で
-// 1 ページ返す。ページングは画面の ListVideos と同じ keyset のカーソルで、途中で動画が
-// 増える・消える・移動しても続きの要求は失敗せず、その時点の続きを返す。解釈できない
-// カーソルは domain.ErrInvalidCursor を包む。
-//
-// ページの動画・所在・タグを同じ読み取りスナップショット（1 取引）から返す。
+// ListExternalVideos pages by ascending (added_at, id), reading videos, locations and tags from one snapshot.
 func (s *LibraryStore) ListExternalVideos(ctx context.Context, q domain.ExternalVideoQuery) (domain.ExternalVideoPage, error) {
 	limit := q.Limit
 	switch {
@@ -45,7 +37,6 @@ func (s *LibraryStore) ListExternalVideos(ctx context.Context, q domain.External
 		query += ` and (videos.added_at, videos.id) > (?, ?)`
 		args = append(args, addedAt, id)
 	}
-	// 次のページがあるかを知るために 1 件多く取る。
 	query += ` order by videos.added_at, videos.id limit ?`
 	args = append(args, limit+1)
 
@@ -79,10 +70,7 @@ func (s *LibraryStore) ListExternalVideos(ctx context.Context, q domain.External
 	return page, nil
 }
 
-// LookupExternalVideo は ref が指す動画を 1 本返す。ID と ContentKey は動画を、Path は
-// 登録フォルダの下の今の所在を、正規化せずバイト列の完全一致で引く。無い、または
-// 登録フォルダの下に所在が無いときは domain.ErrNotFound。ref が ID・ContentKey・Path の
-// ちょうど 1 つを持たないときも domain.ErrNotFound にする（形の検査は入口の仕事）。
+// LookupExternalVideo matches exactly one ID, content key or raw path; missing or unregistered references return domain.ErrNotFound.
 func (s *LibraryStore) LookupExternalVideo(ctx context.Context, ref domain.VideoRef) (domain.ExternalVideo, error) {
 	if !ref.Valid() {
 		return domain.ExternalVideo{}, domain.ErrNotFound
@@ -110,8 +98,6 @@ func (s *LibraryStore) LookupExternalVideo(ctx context.Context, ref domain.Video
 	return videos[0], nil
 }
 
-// resolveVideoRef は ref を、登録フォルダの下に所在を持つ動画の id へ引き当てる。
-// 引けなければ domain.ErrNotFound。
 func resolveVideoRef(ctx context.Context, q rowQueryer, ref domain.VideoRef) (int64, error) {
 	var query string
 	var arg any
@@ -123,8 +109,7 @@ func resolveVideoRef(ctx context.Context, q rowQueryer, ref domain.VideoRef) (in
 		query = `select videos.id from videos where videos.content_key = ? and ` + registeredVideoCondition("videos")
 		arg = ref.ContentKey
 	default:
-		// 所在そのものが登録フォルダの下にあることを求める。外部連携 API は登録外の所在を
-		// 返さないので、一覧に出ないパスでは引けない。
+		// Require the referenced path itself to be registered, matching paths exposed by the external API.
 		query = `select l.video_id from video_locations l where l.path = ? and ` + registeredLocationCondition("l")
 		arg = ref.Path
 	}
@@ -139,8 +124,7 @@ func resolveVideoRef(ctx context.Context, q rowQueryer, ref domain.VideoRef) (in
 	return id, nil
 }
 
-// loadExternalVideos は ids の動画を、属性・登録フォルダの下の所在・タグを揃えて ids の
-// 順に返す。登録フォルダの下に所在の無い動画と、行の無い id は落とす。
+// Preserve requested ID order and drop missing videos or videos without registered locations.
 func loadExternalVideos(ctx context.Context, tx *sql.Tx, ids []int64) ([]domain.ExternalVideo, error) {
 	out := make([]domain.ExternalVideo, 0, len(ids))
 	if len(ids) == 0 {
@@ -162,8 +146,7 @@ func loadExternalVideos(ctx context.Context, tx *sql.Tx, ids []int64) ([]domain.
 
 	userKeys := make([]string, 0, len(byID))
 	for _, video := range byID {
-		// 内容を読めていない動画（空の content_key）はタグを持たない。タグは利用者データの鍵
-		// （Video.UserKey、docs/design-docs/catalog-organization.md）で引く。
+		// Unidentified content has no tags; identified content uses its user-data key.
 		if video.UserKey != "" {
 			userKeys = append(userKeys, video.UserKey)
 		}
@@ -172,7 +155,7 @@ func loadExternalVideos(ctx context.Context, tx *sql.Tx, ids []int64) ([]domain.
 	if err != nil {
 		return nil, err
 	}
-	// 作品情報もタグと同じ鍵で、同じスナップショットから引く。行の無い鍵の動画は WorkInfo が nil のままで、API の層が空の作品情報として書く。
+	// Read work information from the same snapshot and user-data key; missing rows stay nil for the API to render empty.
 	infos, err := workInfoByUserKeys(ctx, tx, userKeys)
 	if err != nil {
 		return nil, err
@@ -195,10 +178,8 @@ func loadExternalVideos(ctx context.Context, tx *sql.Tx, ids []int64) ([]domain.
 	return out, nil
 }
 
-// externalVideoKey は一覧の並びの値である。
 type externalVideoKey struct{ id, addedAt int64 }
 
-// readExternalVideoKeys は一覧の 1 ページ分の (id, added_at) を並びの順に読む。
 func readExternalVideoKeys(ctx context.Context, tx *sql.Tx, query string, args []any) ([]externalVideoKey, error) {
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -219,8 +200,7 @@ func readExternalVideoKeys(ctx context.Context, tx *sql.Tx, query string, args [
 	return keys, nil
 }
 
-// readVideosByIDs は id の JSON 配列 encodedIDs のうち、登録フォルダの下に所在を持つ動画を
-// id で引ける形で返す。代表の所在は登録フォルダの下のもの（所有者の見え方）。
+// Choose representative locations from registered folders with owner visibility.
 func readVideosByIDs(ctx context.Context, tx *sql.Tx, encodedIDs string) (map[int64]domain.Video, error) {
 	rows, err := tx.QueryContext(ctx, `select `+videoColumns(domain.AudienceOwner)+` from videos`+
 		representativeJoin(domain.AudienceOwner)+`
@@ -243,8 +223,6 @@ func readVideosByIDs(ctx context.Context, tx *sql.Tx, encodedIDs string) (map[in
 	return byID, nil
 }
 
-// readRegisteredLocations は id の JSON 配列 encodedIDs の動画の、登録フォルダの下の所在の
-// パスを動画ごとにパスの順で返す。
 func readRegisteredLocations(ctx context.Context, tx *sql.Tx, encodedIDs string) (map[int64][]string, error) {
 	rows, err := tx.QueryContext(ctx, `select l.video_id, l.path from video_locations l
 		where l.video_id in (select value from json_each(?)) and `+registeredLocationCondition("l")+`
@@ -268,15 +246,12 @@ func readRegisteredLocations(ctx context.Context, tx *sql.Tx, encodedIDs string)
 	return locations, nil
 }
 
-// encodeExternalCursor は (added_at, id) を画面の一覧のカーソルと同じ包み
-// （listing.go の encodeCursor・decodeCursor）で不透明な文字列にする。
 func encodeExternalCursor(addedAt, id int64) string {
 	fields := []string{externalCursorSort, "", "0", strconv.FormatInt(id, 10), strconv.FormatInt(addedAt, 10)}
 	return base64.RawURLEncoding.EncodeToString([]byte(strings.Join(fields, cursorSeparator)))
 }
 
-// decodeExternalCursor は encodeExternalCursor の包みを解く。解釈できないもの、画面の
-// 一覧のカーソルは domain.ErrInvalidCursor を包む。
+// Reject malformed cursors and cursors belonging to screen lists.
 func decodeExternalCursor(cursor string) (addedAt, id int64, err error) {
 	c, err := decodeCursor(cursor)
 	if err != nil {

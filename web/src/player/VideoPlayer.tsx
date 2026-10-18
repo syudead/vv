@@ -64,25 +64,12 @@ import {
 } from "./subtitleTracks";
 
 const saveIntervalMs = 5000;
-/**
- * maxPlaybackStepMs は続けて届いた timeupdate の間に進んだとみなす上限である。timeupdate は
- * 再生中おおよそ 0.25 秒ごとに届くので、2 倍速でもこれを超えない。超えた差はシークとみなす。
- */
+/** Treat larger timeupdate jumps as seeks; normal playback updates about every 250ms, even at 2x speed. */
 const maxPlaybackStepMs = 2000;
 
-/** playbackRates は操作バーの再生速度の選択肢である（ui-design「Control bar」）。 */
 export const playbackRates = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
-/**
- * 操作バーの並び（要件 6）。残り時間は出さず、現在時刻/長さを出す。再生バーは
- * index.css で操作バーの上へ出す。「最初に戻る」は再生の前へ、「変換して再生中」は画質・
- * 字幕・再生速度の前へ差し込む。画質は字幕の前、字幕ボタンは再生速度の前に置く。字幕ボタンはトラックが無ければ video.js が
- * 隠し、video.js の `SubsCapsButton` に字幕の名前を言語の表に通さない手直しを加えたもの
- * （subtitleMenu.ts）。チャプターのボタンは右寄せの空きのすぐ後（「変換して再生中」の前）に
- * 置き、チャプターが無ければ video.js が隠す（chapters.ts、docs/design-docs/media-information.md
- * 「Chapters button and menu」）。秒数送りは置かない。前後の動画はプレイヤーの左右の端に置く
- * （NeighborArrows）。
- */
+/** Custom controls extend video.js; see docs/design-docs/media-information.md for chapter behavior. */
 const controlBarChildren = [
   "playToggle",
   "volumePanel",
@@ -99,17 +86,9 @@ const controlBarChildren = [
   "fullscreenToggle",
 ];
 
-/**
- * 操作バーの読み上げ名とポイントしたときの説明。video.js の文言をカタログの英語で置き換える
- * 独自言語で、キーボード操作を持つボタンにはキーを添える（ui-design「Control bar」、
- * docs/design-docs/i18n.md R-9）。video.js は同じ文字を title にも使う。
- *
- * 名前は英語の私用の副タグにする。video.js はこれをプレイヤーの `lang` 属性にも使い、
- * ここに無い文言は主の言語（`en`）の既定に戻る。
- */
+/** Use an English private language subtag for catalog labels and shortcut hints; missing labels fall back to en. */
 export const playerLanguage = "en-x-vv";
 
-/** playerDictionary は video.js の文言からカタログの英語への表である。作るたびにカタログを引く。 */
 export function playerDictionary(): Record<string, string> {
   const c = t.player.controls;
   const s = t.player.subtitles;
@@ -131,19 +110,16 @@ export function playerDictionary(): Record<string, string> {
     "Volume Level": c.volumeLevel,
     "Video Player": c.videoPlayer,
     ", selected": c.menuItemSelected,
-    // 字幕ボタンとメニュー。プレイヤーの言語は英語の地域でないので、video.js は
-    // 「subtitles」の文言を使う。captions の文言も同じ名前にそろえる。
+    // Keep subtitle and caption labels consistent for the private language subtag.
     Subtitles: c.withKey(s.button, "C"),
     Captions: c.withKey(s.button, "C"),
     "subtitles off": s.off,
     "captions off": s.off,
     "captions and subtitles off": s.off,
-    // チャプターのボタンとメニューの題。キーは持たない。
     Chapters: t.player.chapters.button,
   };
 }
 
-/** キーボード操作を持つボタンと、そのキー（aria-keyshortcuts）。 */
 const keyShortcuts: [string, string][] = [
   [".vjs-play-control", "Space"],
   [".vjs-mute-control", "M"],
@@ -151,27 +127,16 @@ const keyShortcuts: [string, string][] = [
   ["button.vjs-subs-caps-button", "C"],
 ];
 
-/** PlayerStatus は、プレイヤーの上に重ねる層を決めるための状態である。 */
 export interface PlayerStatus {
-  /** 読み込み中（再生を求めたのに映像が来ていない）。 */
   loading: boolean;
-  /** 通信が切れて、同じ位置から読み込み直そうとしている。 */
   reconnecting: boolean;
   playing: boolean;
-  /** video.js の user-active（操作バーが見えている）。 */
+  /** video.js user-active state, indicating visible controls. */
   userActive: boolean;
   ended: boolean;
-  /**
-   * 回線の遅さで再生が途切れていると判断した（stallMonitor.ts）。再生は止めない。
-   * 再生の終わりと失敗で下ろす。
-   */
+  /** A stall warning does not pause playback; clear it on end or failure. */
   stalled: boolean;
-  /**
-   * この再生の最初のメタデータを受け、続きからの位置を当て終えた（直接再生はそのシークの
-   * seeked まで、変換は実際の開始位置の報告まで待つ）。論理上の再生位置が
-   * 見ている場面の位置として確定した合図で、今の場面を代表サムネイルにする操作はこれを
-   * 待つ。一度立てたら下ろさない。
-   */
+  /** Latched once resume seeking or live-offset reporting confirms the displayed position. Thumbnail capture must wait for this. */
   positioned: boolean;
 }
 
@@ -187,56 +152,37 @@ export const initialPlayerStatus: PlayerStatus = {
 
 interface Props {
   video: Video;
-  /** 作ったときの 1 回だけ読む。取り直しで変わってもプレイヤーは作り直さない。 */
+  /** Read only at creation; refreshes must not recreate the player. */
   initialPositionMs: number;
-  /** 作ったときの 1 回だけ読む。真なら作ったらすぐに再生を始める。 */
+  /** Read only at creation to decide whether to autoplay. */
   autoplay: boolean;
   onPosition: (positionMs: number) => void;
   onProgress: (positionMs: number, immediate: boolean) => void;
-  /**
-   * 再生が始まった（video.js の play）。視聴履歴の視聴の始まりに使う。回復のための読み込み直しでは呼ばない。
-   */
+  /** Begin watch history on play; recovery reloads do not start a new watch. */
   onPlay?: () => void;
-  /**
-   * 再生できなかった。positionMs は失敗した論理上の位置、kind は見る人に伝える失敗の種類。
-   * 通信が切れたときは読み込み直しを使い切ってから呼ぶ。
-   */
+  /** Report logical position and failure kind only after reconnect retries are exhausted. */
   onError: (positionMs: number, kind: PlaybackFailureKind) => void;
   onControls: (controls: PlayerControls | null) => void;
   onStatus: (status: PlayerStatus) => void;
-  /** 映像の寸法が分かったら、その横÷縦の比率を知らせる（縦長なら 1 未満）。 */
   onAspectRatio?: (ratio: number) => void;
-  /**
-   * 全画面にする要素（プレイヤーと、その上に重ねる層を含む入れ物）。無ければ video.js の
-   * 既定どおりプレイヤーだけを全画面にする。
-   */
+  /** Include overlays in fullscreen; defaults to video.js player-only fullscreen. */
   fullscreenTarget?: () => HTMLElement | null;
-  /**
-   * 動画の隣に置いた字幕の一覧。無い・まだ
-   * 取れていないときは空。一覧が変わったら、プレイヤーを作り直さずにトラックだけ付け直す。
-   */
+  /** Replace tracks when subtitles arrive without recreating the player. */
   subtitles?: readonly SubtitleTrack[];
 }
 
 const noSubtitles: readonly SubtitleTrack[] = [];
 
-/** FullscreenPlayer は、全画面の先を差し替えるために触る video.js の Player の部分である。 */
 interface FullscreenPlayer {
   isFullscreen(value?: boolean): boolean | undefined;
   requestFullscreen(): Promise<void>;
   exitFullscreen(): Promise<void>;
   trigger(event: string): void;
-  /** video.js が document の fullscreenchange で呼ぶ（内部の名前）。 */
+  /** Internal video.js callback for document fullscreenchange. */
   documentFullscreenChange_?: () => void;
 }
 
-/**
- * VideoPlayer は video.js のプレイヤーを 1 つ持つ。
- *
- * 作り直すのは、再生に関わる値（id・`probeState`・`durationMs`・`playable`）が変わった
- * ときだけにする（plan の Structural Decisions 7）。処理中の取り直しで `thumbnailState` などが
- * 変わるたびに作り直すと、再生が途切れる。
- */
+/** Recreate only when playback-relevant fields change; thumbnail and processing refreshes must not interrupt playback. */
 export default function VideoPlayer(props: Props) {
   const { video } = props;
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -248,10 +194,9 @@ export default function VideoPlayer(props: Props) {
   const [restartSlot, setRestartSlot] = useState<HTMLElement | null>(null);
   const [route, setRoute] = useState<PlaybackRoute | null>(null);
   const [quality, setQuality] = useState<PlaybackQuality>("original");
-  /** 最初の読み込みが終わるまで操作バーを隠す（自動で再生を始めるとき）。 */
   const [holdControlBar, setHoldControlBar] = useState(true);
   const [playerReady, setPlayerReady] = useState(false);
-  /** 全画面にしている入れ物。吹き出しはその中に描かないと全画面の間に見えない。 */
+  /** Tooltips must render inside the fullscreen container to remain visible. */
   const [fullscreenFrame, setFullscreenFrame] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -262,8 +207,7 @@ export default function VideoPlayer(props: Props) {
     const host = hostRef.current;
     const current = latest.current;
     const initialPositionMs = current.initialPositionMs;
-    // 覚えている画質は作るときに 1 回だけ読み、この動画に使えなければ元の画質で再生する
-    // （覚えている値は書き換えない。docs/design-docs/playback-quality.md）。
+    // Read saved quality once; unavailable choices fall back without overwriting the preference.
     const initialAttempt = createPlaybackAttempt(
       current.video,
       initialPositionMs,
@@ -272,7 +216,7 @@ export default function VideoPlayer(props: Props) {
     if (host === null || initialAttempt === null) return;
     const source = current.video;
 
-    // 言語はプレイヤーを作るときにカタログから作り直す（テストの疑似ロケールも届く）。
+    // Rebuild catalog labels on creation so test pseudolocales also apply.
     videojs.addLanguage(playerLanguage, playerDictionary());
     registerSubtitlesButton();
     registerChaptersButton();
@@ -287,10 +231,9 @@ export default function VideoPlayer(props: Props) {
       poster: source.thumbnailUrl,
       preload: "metadata",
       language: playerLanguage,
-      // 失敗はプレイヤーの上の層で伝える。video.js 自身の誤りの面は出さない。
+      // The page overlay reports failures; suppress video.js's own error panel.
       errorDisplay: false,
       playbackRates,
-      // 字幕の見た目の設定（文字の大きさ・色）は出さない（親 Issue の UI 品質）。
       textTrackSettings: false,
       controlBar: {
         children: controlBarChildren,
@@ -313,62 +256,37 @@ export default function VideoPlayer(props: Props) {
     let attempt: PlaybackAttempt = initialAttempt;
     let switchingSource = false;
     let resumeApplied = false;
-    // 論理上の位置が見ている場面の位置として確定するまでの待ち（PlayerStatus.positioned）。
-    // metadataAccepted は最初のメタデータを受け入れたこと、resumeSeekPending は直接再生で
-    // 続きからの位置へのシークが終わるのを待っていること、liveOffsetPending は変換の実際の
-    // 開始位置の報告を待っていること（その間の仲立ちは指定位置を返し、映っているのはそれより
-    // 前のキーフレームからの場面である）を表す。
+    // Positioning waits for initial metadata, the direct resume seek, and any live-offset report.
     let metadataAccepted = false;
-    // played はこのプレイヤーで play が届いたこと。開いただけで再生しない動画では、確定した
-    // 位置を知らせない（知らせると離脱時の保存が再生の記録を作る）。
+    // Report positions only after play; otherwise leaving would create a watch record for an unplayed video.
     let played = false;
     let resumeSeekPending = false;
     let liveOffsetPending = false;
-    // 誤りからの回復（playbackRecovery.ts）。recovering は誤りを受けてから、読み込み直しの
-    // メタデータが来るか、失敗・変換への切り替えを決めるまでの間である。その間の見る人の
-    // 再生・一時停止・シークは壊れた source へ渡さず、attempt の意図と位置として覚える。
-    // reconnectCount は続けて読み込み直した回数で、読み込み直したあと再生中に実際に
-    // recoveredAfterMs 進んだら数え直す。playedSinceRecoveryMs はその進んだ長さで、再生中に
-    // 続けて届いた timeupdate の差（maxPlaybackStepMs 以下）だけを足す。シーク・一時停止は
-    // lastTickMs を捨てて数えない。pendingRecovery は読み込み直した要求で、reloadDeadline
-    // までにメタデータが来なければ次の読み込み直しへ進む。recoveryGeneration は誤り・
-    // 読み込み直しのたびに進め、古い確かめや期限の結果を捨てる。
+    // During recovery, retain user intent and position instead of forwarding controls to the broken source.
+    // Reset reconnect attempts only after sustained playback; seeks and pauses do not count.
+    // Reload deadlines handle stalled requests; generations reject stale checks and timeout results.
     let recovering = false;
     let reconnectCount = 0;
     let reconnectTimer: number | undefined;
     let reloadDeadline: number | undefined;
     let pendingRecovery: { generation: number } | null = null;
-    // seekDuringReloadMs は、読み込み直しの要求を出したあとに見る人がシークした位置である。
-    // 変換は仲立ちが実際の開始位置を知らせても attempt の位置が変わるので、見る人のシークと
-    // 分けて持つ。
+    // Track user seeks separately from offset reports, which also change the attempt position.
     let seekDuringReloadMs: number | null = null;
     let playedSinceRecoveryMs: number | null = null;
     let lastTickMs: number | null = null;
     let recoveryGeneration = 0;
-    // 画質の切り替え。pendingSwitch は差し替えた source のメタデータを
-    // 待っている切り替えで、切り替えるたびに置き換える（古い source のメタデータは、新しい
-    // source を位置へシークせず、速度と再生の意図も戻さない）。src は切り替えた source の
-    // URL で、届いたメタデータがその source のものかを確かめる。loaded はその source が
-    // 要素に渡ったことを表す。要素は source を替えると前の source の待っている出来事を
-    // 捨てるので、渡ったあとのメタデータは、変換の未 buffer シークで URL が変わっても
-    // 切り替えた source のものである。rate は切り替える前の再生速度で、読み込み直すと
-    // 要素が既定の速度に戻るので戻す。
+    // Accept switch metadata only for the current source; restore rate because replacing a source resets it.
+    // Once a source reaches the element, stale events are discarded; later unbuffered seeks may change its URL.
     let pendingSwitch: { src: string; loaded: boolean; rate: number } | null = null;
     let probe: AbortController | undefined;
     let slot: HTMLElement | null = null;
     let restart: HTMLElement | null = null;
     let status: PlayerStatus = { ...initialPlayerStatus };
-    // 途切れの判断（stallMonitor.ts）。stallTimer は数えているデータ待ちが
-    // 10 秒続いたかを確かめるタイマーである。
     let stall: StallState = initialStallState;
     let stallTimer: number | undefined;
 
-    // 回復を待つ間の見る人の操作（操作バー・映像のタップ・キー）は、video.js の部品も
-    // playerControls もこのプレイヤーの play・pause・paused・currentTime を通るので、ここで
-    // 受ける。止まっているかは壊れた要素ではなく見る人の意図を返し、再生・一時停止の
-    // ボタンの向きもそれに合わせる（止まった要素は止まっていないと答え続けることがあり、
-    // そのままでは再生を押したつもりが一時停止になる）。再生は意図を覚えてすぐ読み込み直し、
-    // 一時停止は意図だけを覚える。シークは読み込み直す位置として覚え、再生バーにも出す。
+    // During recovery, controls reflect user intent rather than the stalled element's paused state.
+    // Play retries immediately; pause and seek update the saved intent and position.
     const media = player as unknown as {
       play(): Promise<void> | undefined;
       pause(): void;
@@ -380,8 +298,7 @@ export default function VideoPlayer(props: Props) {
     const mediaPaused = media.paused.bind(player);
     const mediaCurrentTime = media.currentTime.bind(player);
     media.play = () => {
-      // 画質の切り替えで読み込んでいる間の再生・一時停止は、切り替えのあとの意図として
-      // 覚える（差し替えた要素の pause は見る人の操作と見分けられないので数えない）。
+      // During quality switches, remember user intent; element pause events cannot identify user actions.
       if (pendingSwitch !== null) attempt = { ...attempt, playIntended: true };
       if (!recovering) return mediaPlay();
       attempt = { ...attempt, playIntended: true };
@@ -404,8 +321,7 @@ export default function VideoPlayer(props: Props) {
     };
     media.paused = () => (recovering ? !attempt.playIntended : mediaPaused());
     media.currentTime = (seconds?: number) => {
-      // 直接再生へ戻す切り替えのメタデータを待つ間のシークは、メタデータのあとで戻す位置
-      // として覚える（0 から読み込む要素へのシークは効かないことがある）。
+      // Defer direct-play seeks until metadata arrives; seeking an element loading from zero may fail.
       if (
         !recovering &&
         pendingSwitch !== null &&
@@ -427,8 +343,7 @@ export default function VideoPlayer(props: Props) {
     setQuality(attempt.quality);
     setHoldControlBar(true);
 
-    // 全画面は、プレイヤーだけでなく上に重ねる層ごと（入れ物ごと）にする。video.js の
-    // 全画面の操作（ボタン・ダブルクリック）も F キーも、この差し替えを通る。
+    // Override fullscreen once for buttons, double-click, and keyboard controls, including overlays.
     const frame = current.fullscreenTarget?.() ?? null;
     let syncFullscreen: (() => void) | undefined;
     if (frame !== null) {
@@ -437,8 +352,7 @@ export default function VideoPlayer(props: Props) {
         const on = document.fullscreenElement === frame;
         if (fs.isFullscreen() !== on) {
           fs.isFullscreen(on);
-          // 接頭辞の無い API では video.js は自分で知らせないので、全画面ボタンの表示を
-          // 切り替えるために知らせる。受けた側がまた呼んでも、状態が同じなので止まる。
+          // Notify video.js for the unprefixed API so its fullscreen button updates; unchanged state prevents recursion.
           fs.trigger("fullscreenchange");
         }
         setFullscreenFrame(on ? frame : null);
@@ -470,10 +384,7 @@ export default function VideoPlayer(props: Props) {
       latest.current.onStatus(status);
     };
     latest.current.onStatus(status);
-    // markPositioned は確定の条件がそろったら positioned を立てる。一度立てたら下ろさない。
-    // 再生が先に始まっていたら、立てるときに確定した位置を onPosition で知らせる。続きからの
-    // 位置がない直接再生はここまで位置を一度も知らせないので、知らせないと最初の保存の位置が
-    // ない。再生していなければ知らせない。play が後から届けば、そこで知らせる。
+    // Latch positioned once ready, then report only after playback starts to avoid false watch records.
     const markPositioned = () => {
       if (metadataAccepted && !resumeSeekPending && !liveOffsetPending) {
         if (!status.positioned && (played || attempt.playIntended)) reportPosition();
@@ -481,7 +392,6 @@ export default function VideoPlayer(props: Props) {
       }
     };
 
-    // feedStall は出来事を途切れの判断へ渡し、データ待ちが始まったら 10 秒のタイマーを掛ける。
     const feedStall = (event: StallEvent) => {
       stall = stallStep(stall, event, Date.now());
       if (stallTimer !== undefined) window.clearTimeout(stallTimer);
@@ -517,13 +427,11 @@ export default function VideoPlayer(props: Props) {
       () => reportPosition(),
     );
     latest.current.onControls(controls);
-    // video.js は映像のタップで操作バーだけを切り替える。タッチ端末では再生を
-    // 切り替える。ポスター画像のタップは video.js 自身が再生を扱う。
+    // On touch devices, tapping video toggles playback; video.js handles poster taps itself.
     player.tech(true).on("tap", () => {
       if (window.matchMedia?.("(pointer: coarse)").matches) controls.togglePlay();
     });
 
-    // 画質メニューへ選択肢と今の画質を渡す（qualityMenu.ts）。
     const renderQualityMenu = () => {
       setQualityMenu(player, {
         options: qualityOptions(source),
@@ -550,8 +458,7 @@ export default function VideoPlayer(props: Props) {
       if (bar !== null) {
         slot = document.createElement("div");
         slot.className = "vv-transcode-indicator flex flex-none items-center px-2";
-        // 字幕ボタンを再生速度の隣に保つため、「変換して再生中」は画質・字幕・再生速度の
-        // うち先頭のものの前に置く。チャプターのボタンはその前に残る。
+        // Keep subtitles beside playback speed by inserting the transcode indicator before the quality controls.
         bar.insertBefore(
           slot,
           bar.querySelector(
@@ -575,11 +482,8 @@ export default function VideoPlayer(props: Props) {
       latest.current.onPosition(position);
       return position;
     };
-    // 変換の source は attempt の画質を持つ。最初の読み込み・直接再生からの切り替え・
-    // 通信の失敗からの読み込み直し（reload）はどれもここを通り、未 buffer のシークは
-    // liveOffset.ts の reloadAt が source の画質を引き継ぐ（要件 7）。
-    // 字幕は再生の時間軸（変換の出力）で cue を選ぶので、変換の offset が決まるたびに
-    // その offset でトラックを付け直し、報告を待つ間は外す。直接再生の offset は 0 のまま。
+    // All transcode starts retain attempt quality; liveOffset reloadAt preserves it for unbuffered seeks.
+    // Subtitle cues use the output timeline; replace tracks for each confirmed offset and remove them while pending.
     const liveSourceAt = (positionMs: number) =>
       liveSource(
         source.id,
@@ -595,7 +499,6 @@ export default function VideoPlayer(props: Props) {
         attempt.quality === "original" ? undefined : attempt.quality,
         (seconds) => {
           subtitles.setOffset(seconds * 1000);
-          // 変換へ移ったので、直接再生のシークの完了はもう待たない。
           resumeSeekPending = false;
           liveOffsetPending = false;
           markPositioned();
@@ -611,9 +514,9 @@ export default function VideoPlayer(props: Props) {
     };
 
     player.on("loadedmetadata", () => {
-      // 回復を待つ間に、止まったと見切った古い要求が遅れて届いても使わない。
+      // Ignore delayed metadata from requests already abandoned during recovery.
       if (recovering && pendingRecovery === null) return;
-      // 画質を切り替えたあとに、差し替える前の source のメタデータが届いても使わない。
+      // Ignore metadata from the source replaced by a quality switch.
       if (
         pendingSwitch !== null &&
         !pendingSwitch.loaded &&
@@ -639,12 +542,11 @@ export default function VideoPlayer(props: Props) {
           player.currentTime(initialPositionMs / 1000);
           latest.current.onPosition(initialPositionMs);
         } else {
-          // ライブ変換はコピーで始めると直前のキーフレームから映る。仲立ちが実際の開始位置に
-          // 合わせた論理時刻を伝える。
+          // Copy-mode transcoding starts at the preceding keyframe; the offset bridge supplies logical time.
           reportPosition();
         }
       }
-      // 直接再生の続きからのシークは seeked で、変換の開始位置は報告で確定する。
+      // Direct positioning waits for seeked; transcode positioning waits for the offset report.
       metadataAccepted = true;
       markPositioned();
     });
@@ -681,9 +583,7 @@ export default function VideoPlayer(props: Props) {
       attempt = { ...attempt, state: "playing", playIntended: true };
       played = true;
       setStatus({ playing: true, ended: false });
-      // play の前のシーク（Replay は先頭へ戻してすぐ play する）は timeupdate より先に
-      // play が届くことがあるので、onPlay の前に今の位置を知らせる。positioned の前の
-      // 位置は確定していないので知らせない。
+      // Replay may emit play before timeupdate; publish the confirmed position before onPlay.
       if (status.positioned) reportPosition();
       latest.current.onPlay?.();
     });
@@ -699,7 +599,6 @@ export default function VideoPlayer(props: Props) {
     player.on("userinactive", () => setStatus({ userActive: false }));
     player.on("pause", () => {
       lastTickMs = null;
-      // 見る人が回復を待つ間に止めた意図は、差し替えた pause が覚えている。
       if (recovering || switchingSource || player.error() !== null) return;
       attempt = { ...attempt, playIntended: false };
       setStatus({ playing: false, loading: false });
@@ -733,20 +632,14 @@ export default function VideoPlayer(props: Props) {
       feedStall("clear");
       setStatus({ playing: false, loading: false, reconnecting: false });
       latest.current.onError(position, kind);
-      // 誤りの印（vjs-error）は操作バーを隠す。失敗はプレイヤーの上の層で伝え、
-      // 操作バーは見えるままにする（ui-design「Overlay layer」）。読み込みの前に
-      // 失敗したときも、操作バーを隠したままにしない。
+      // Clear video.js error state so controls remain available beneath the page's failure overlay.
       player.error(null);
       setHoldControlBar(false);
-      // 変換へ切り替えると video.js は「再生を始めた」印（vjs-has-started）を外し、
-      // 操作バーを出さなくなる。失敗の層の下でも操作バーを押せるように付け直す。
+      // Transcode switches clear vjs-has-started; restore it so controls remain usable on failure.
       player.hasStarted(true);
     };
 
-    // finishRecovery は読み込み直した source のメタデータが来たときに呼ぶ。直接再生は
-    // 論理上の位置（要求の途中に見る人がシークしていればその位置）へ戻す。変換は始めた位置
-    // から始まっているので、要求の途中に見る人がシークしたときだけその位置へシークし直す
-    // （仲立ちが変換を始め直す）。読み込み直しの表示を下ろし、再生する意図があれば続ける。
+    // Restore direct-play position after reload; transcodes need another seek only if the user moved during reload.
     const finishRecovery = () => {
       const seekMs = seekDuringReloadMs;
       clearRecoveryTimers();
@@ -766,8 +659,7 @@ export default function VideoPlayer(props: Props) {
       }
     };
 
-    // reload は切れた位置（待つ間にシークしたならその位置）から今の経路を読み込み直す。
-    // 要求が誤りも出さずに止まったときのため、期限を過ぎたら次の読み込み直しへ進む。
+    // Advance retries at the deadline even when a stalled request emits no error.
     const reload = () => {
       reconnectTimer = undefined;
       if (player.isDisposed()) return;
@@ -798,7 +690,7 @@ export default function VideoPlayer(props: Props) {
       reconnectTimer = window.setTimeout(reload, delay);
     };
 
-    // 端末が回線に戻ったとき・見る人が再生を押したときは、待ちを切り上げてすぐ読み込み直す。
+    // Going online or pressing play bypasses the retry delay.
     function reconnectNow() {
       if (reconnectTimer === undefined) return;
       window.clearTimeout(reconnectTimer);
@@ -815,8 +707,7 @@ export default function VideoPlayer(props: Props) {
         scheduleReconnect(position);
         return;
       }
-      // 直接再生で形式が読めないときだけ、1 回だけ変換へ切り替える。ファイルそのものを
-      // 出せないと分かったとき（allowFallback が偽）は切り替えても再生できない。
+      // Fall back to transcoding once for unsupported direct formats, never for unavailable files.
       const fallback = allowFallback
         ? fallbackToTranscode(attempt, position, attempt.playIntended)
         : null;
@@ -837,9 +728,7 @@ export default function VideoPlayer(props: Props) {
       });
     };
 
-    // mediaSourceIs は、今の要素が読み込んでいる source が src かを返す。video.js は
-    // source の差し替えを少し遅らせて技術層へ渡すので、その間に届いた前の source の
-    // メタデータを見分ける。技術層を引けないときは確かめない。
+    // video.js delays forwarding sources to the tech layer; compare currentSrc to reject old metadata when available.
     const mediaSourceIs = (src: string) => {
       const tech = (
         player as unknown as { tech?(safety: boolean): { el?(): unknown } | undefined }
@@ -852,18 +741,13 @@ export default function VideoPlayer(props: Props) {
       );
     };
 
-    // changeQuality は、プレイヤーを作り直さずに今の論理上の位置から選んだ画質の source へ
-    // 差し替える（要件 4・5・6）。直接再生からの fallback と同じ作りで、
-    // 再生中なら続け、止めていたら止めたままにする。回復を待つ間でも、選んだ画質で
-    // 読み込み直す。
+    // Replace the source at the logical position while preserving playback intent, including during recovery.
     const changeQuality = (quality: PlaybackQuality) => {
       if (player.isDisposed()) return;
-      // 今と同じ画質でも選んだことは覚える。覚えた画質がこの動画に使えず元の画質で再生して
-      // いるとき、「元の画質」を選び直せば覚えた画質を置き換える。
+      // Save explicit choices even when unchanged so selecting original replaces an unavailable preference.
       writePlaybackQuality(quality);
       if (quality === attempt.quality) return;
       if (attempt.state === "failed") {
-        // 失敗の層が出ている。再試行はプレイヤーを作り直し、覚えた画質で始める。
         attempt = { ...attempt, quality };
         setQuality(quality);
         renderQualityMenu();
@@ -907,9 +791,7 @@ export default function VideoPlayer(props: Props) {
       if (selection !== undefined) changeQuality(selection.quality);
     });
 
-    // finishSwitch は切り替えた source のメタデータが来たときに呼ぶ。直接再生は 0 から
-    // 読み込むので論理上の位置へシークし、変換は URL の位置から始まっている。そのあと
-    // 再生の意図を戻す。
+    // Direct sources start at zero and need a seek; transcode URLs already encode the position.
     const finishSwitch = () => {
       const pending = pendingSwitch;
       if (pending === null) return;
@@ -929,9 +811,7 @@ export default function VideoPlayer(props: Props) {
       }
     };
 
-    // 誤りは種類で分ける（playbackRecovery.ts）。通信の失敗は同じ経路で読み込み直し、
-    // 形式・データの失敗は直接再生なら変換へ切り替える。番号だけで決まらない誤りは
-    // サーバーに届くかを確かめてから分ける。
+    // Retry network failures, transcode unsupported formats, and probe reachability for ambiguous errors.
     player.on("error", () => {
       const code = (player.error() as { code?: number } | null)?.code;
       const position = logicalPositionMs();
@@ -940,7 +820,7 @@ export default function VideoPlayer(props: Props) {
       probe?.abort();
       probe = undefined;
       clearRecoveryTimers();
-      // 切り替えた source の失敗は、切り替えた位置から今の誤りの経路で扱う（Edge Case 5）。
+      // Handle switch failures from the selected source's position.
       pendingSwitch = null;
       switchingSource = false;
       attempt = {
@@ -948,8 +828,7 @@ export default function VideoPlayer(props: Props) {
         state: "loading",
         playIntended,
       };
-      // 確かめと読み込み直しの間は、誤りの印（操作バーを隠す）を外し、見る人の操作を
-      // 回復を待つ間の操作として受ける。
+      // Keep controls visible during checks and reloads so recovery can capture user intent.
       recovering = true;
       feedStall("recovering");
       playedSinceRecoveryMs = null;
@@ -972,7 +851,7 @@ export default function VideoPlayer(props: Props) {
           probe = undefined;
           if (result === "unreachable")
             handleFailure("network", attempt.logicalPositionMs);
-          // 直接再生でファイルを出せない（404・500 など）なら、変換へ切り替えずに伝える。
+          // Unavailable direct files cannot be repaired by switching to transcoding.
           else
             handleFailure(
               "source",
@@ -1026,16 +905,14 @@ export default function VideoPlayer(props: Props) {
     };
   }, [video.id, video.probeState, video.durationMs, video.playable]);
 
-  // 字幕の一覧は動画を開いたあとに届く。プレイヤーは作り直さず、トラックだけ付け直す。
+  // Late subtitle responses replace tracks without recreating the player.
   const subtitleList = props.subtitles ?? noSubtitles;
   useEffect(() => {
     subtitlesRef.current?.replace(video.id, subtitleList);
   }, [video.id, subtitleList]);
 
-  // シーク位置サムネイルは、処理中の取り直しで後から URL が来ることもある。プレイヤーは
-  // 作り直さず、再生バーへの取り付けだけをやり直す。URL は同じでも、生成が終わって
-  // seekThumbnailState が変わったら取り付け直し、取得に失敗した配置情報を捨てる。
-  // チャプターのある動画は、URL が無くてもタイトルの行と時刻の pill だけのプレビューを付ける
+  // Reattach previews when generation completes, even with the same URL, to discard failed layout requests.
+  // Chapters provide title/time previews even without thumbnail URLs.
   //
   const seekThumbnailUrl = video.seekThumbnailUrl;
   const seekThumbnailState = video.seekThumbnailState;
@@ -1063,8 +940,7 @@ export default function VideoPlayer(props: Props) {
     );
   }, [chapters, durationMs, playerReady, seekThumbnailUrl, seekThumbnailState]);
 
-  // チャプターは解析の job が終わってから届くこともある。プレイヤーは作り直さず、トラックと
-  // シークバーの印だけを付け直す。
+  // Late chapter metadata replaces tracks and marks without recreating the player.
   useEffect(() => {
     const host = hostRef.current;
     const player = playerRef.current;
@@ -1083,7 +959,6 @@ export default function VideoPlayer(props: Props) {
     };
   }, [chapters, durationMs, playerReady]);
 
-  // 代表サムネイルが後からできたときは、作り直さずに背景の画像だけを差し替える。
   useEffect(() => {
     const player = playerRef.current;
     if (player !== null && !player.isDisposed() && video.thumbnailUrl !== undefined) {
@@ -1126,14 +1001,10 @@ export default function VideoPlayer(props: Props) {
   );
 }
 
-/**
- * usePlayerChapters は動画のチャプターをプレーヤーのチャプターにする。詳細の取り直しで
- * 中身の同じ一覧が届いても、同じ参照を返す（トラックと印を付け直さない）。
- */
+/** Preserve the chapter array reference when refreshed contents are equal to avoid reinstalling tracks and marks. */
 function usePlayerChapters(video: Video): readonly PlayerChapter[] {
   const chapters = video.mediaInfo?.chapters;
   const { durationMs } = video;
-  // 一覧の生成と文字列化は入力の参照が変わったときだけにし、毎回の描画では行わない。
   const key = useMemo(
     () => JSON.stringify(playerChapters(chapters, durationMs)),
     [chapters, durationMs],
@@ -1141,7 +1012,6 @@ function usePlayerChapters(video: Video): readonly PlayerChapter[] {
   return useMemo(() => JSON.parse(key) as PlayerChapter[], [key]);
 }
 
-/** BarButton は操作バーへ差し込むボタンである。video.js のボタンと同じ見た目と大きさにそろえる。 */
 function BarButton({
   label,
   keys,
@@ -1168,13 +1038,7 @@ function BarButton({
   );
 }
 
-/**
- * TranscodeIndicator は操作バーの中の「変換して再生中」である（要件 10）。元の画質以外では
- * 選んだ画質で変換していることと戻し方を伝える。
- *
- * ポイントしたときだけ開くツールチップにはしない。タッチやキーボードの人が理由に
- * 届かなくなるので、押して開く吹き出しにする。
- */
+/** Use a clickable popover so touch and keyboard users can read why transcoding is active. */
 function TranscodeIndicator({
   quality,
   container,
@@ -1190,13 +1054,10 @@ function TranscodeIndicator({
     quality === "original" ? c.transcodingDetail : c.transcodingToDetail(quality);
   return (
     <Popover onOpenChange={onOpenChange}>
-      {/* video.js の `.video-js button` が表示・文字の大きさ・色を上書きするので、! で戻す。
-          操作バーの見た目（special の例外、web/design-exceptions.js）の一部である。 */}
+      {/* Override video.js button styles with !; this is a registered control-bar design exception. */}
       <PopoverTrigger className="inline-flex! items-center gap-1 rounded-sm px-1 text-xs! leading-4! whitespace-nowrap text-muted-foreground! transition-colors! hover:text-foreground!">
         <Info className="size-4 shrink-0" aria-hidden="true" />
-        {/* 縦長の動画や 360px の画面などで枠が狭いときは、印だけを残して操作バーの幅に収める。
-            チャプターと字幕のボタンも並ぶと、文字は 32rem より狭い枠に収まらない
-            。 */}
+        {/* Below 32rem, keep only the icon so chapter and subtitle controls still fit. */}
         <span className="@max-[32rem]:sr-only">{label}</span>
       </PopoverTrigger>
       <PopoverContent container={container} align="end">

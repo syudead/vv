@@ -15,33 +15,21 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 一覧の問い合わせの組み立て。ライブラリ・フォルダ直下・フォルダ配下の3つの一覧を、
-// 次の1つの流れで返す。
-//
-//  1. 範囲と検索式を満たす所在を選ぶ
-//  2. 動画ごとにパスの最小の1件へまとめる（chosen）
-//  3. その所在と動画の属性で、視聴状態と再生可否を絞る
-//  4. 並べて keyset で区切る
+// Choose one matching location per video, then apply item filters and keyset pagination.
 
-// locationScopeKind は所在の範囲の形である。
 type locationScopeKind int
 
 const (
-	// scopeLibrary は登録フォルダの下すべて。
 	scopeLibrary locationScopeKind = iota
-	// scopeDirect はフォルダの直下だけ。
 	scopeDirect
-	// scopeSubtree はフォルダとその配下すべて。
 	scopeSubtree
 )
 
-// locationScope は一覧が対象にする所在の範囲である。どの形でも、見る人に見せて
-// よい所在（visibleLocationCondition）に限る。
+// Every scope is restricted to audience-visible locations.
 type locationScope struct {
 	kind locationScopeKind
-	// dir はフォルダの絶対パス。scopeLibrary では使わない。
-	dir string
-	// audience は見る人。ゲストなら公開の動画の所在だけを範囲にする。
+	// Absolute folder path; unused for the library scope.
+	dir      string
 	audience domain.Audience
 }
 
@@ -49,7 +37,6 @@ func libraryScope(audience domain.Audience) locationScope {
 	return locationScope{kind: scopeLibrary, audience: audience}
 }
 
-// folderScope はフォルダの問い合わせの範囲を返す。空の指定は直下として扱う。
 func folderScope(dir string, scope domain.FolderScope, audience domain.Audience) locationScope {
 	if scope == domain.FolderScopeSubtree {
 		return locationScope{kind: scopeSubtree, dir: dir, audience: audience}
@@ -57,7 +44,6 @@ func folderScope(dir string, scope domain.FolderScope, audience domain.Audience)
 	return locationScope{kind: scopeDirect, dir: dir, audience: audience}
 }
 
-// condition は所在（別名 alias）が範囲にあることを表す条件句と引数を返す。
 func (s locationScope) condition(alias string) (string, []any) {
 	visible := visibleLocationCondition(alias, s.audience)
 	if s.kind == scopeLibrary {
@@ -73,68 +59,39 @@ func (s locationScope) condition(alias string) (string, []any) {
 	return clause, args
 }
 
-// listSpec は一覧1ページの問い合わせの条件である。
 type listSpec struct {
 	scope        locationScope
 	expr         domain.SearchExpr
 	watch        domain.WatchFilter
 	playableOnly bool
-	// tagIDs はすでに存在を確かめたタグの id。呼び出し側
-	// （ListVideos）が resolveTagIDs で存在しない id を落としたうえで
-	// 渡す。
-	tagIDs []int64
-	// favoriteOnly はお気に入りだけにする。
+	// Callers resolve tag IDs before building the spec.
+	tagIDs       []int64
 	favoriteOnly bool
-	// personID と organizationID は、どの役割でもその人物・団体に結び付いた動画だけにする
-	// id である。0 は絞り込まない。
+	// Match credits in any role; zero disables the filter.
 	personID       int64
 	organizationID int64
-	// tagKindID は、この種類のタグを手で付けたかフォルダ名から 1 つでも持つ動画だけにする
-	// 種類の id である。0 は絞り込まない。
+	// Match manual or folder-derived tags of this kind; zero disables the filter.
 	tagKindID int64
-	// addedWithinDays は追加日の絞り込み（日数、0 は絞り込まない）、minDurationSec と
-	// maxDurationSec は長さの範囲（秒、nil はその側を限らない）である
-	//
+	// Zero disables age filtering; nil duration bounds are unbounded.
 	addedWithinDays int
 	minDurationSec  *int
 	maxDurationSec  *int
-	// now は追加日の絞り込みの基準時刻（Unix 秒）である。1回の一覧の読み取りで一度だけ
-	// 決め、件数・ページ・空ページの再集計のどの SQL にも同じ値を渡す。
+	// Capture time once per read so counts and all page queries share the same age boundary.
 	now int64
-	// and は、この絞り込みに重ねて掛ける絞り込みで、スマートフォルダの祖先の条件を 1 段に 1 つ
-	// 持つ。ライブラリの項目の問い合わせ
-	// （libraryItemsCTE）だけが読み、各段の絞り込みの項目（検索式・視聴状態・再生可否・お気に入り・
-	// タグ・人物と団体・追加日と長さ）をそれぞれ掛ける。範囲・並べ順・カーソル・件数と、各段の
-	// and は読まない。
+	// Stack ancestor filters for library items; ignore each level's scope, ordering, pagination and nested and field.
 	and []listSpec
-	// ownerSearch は、ゲストにも検索式を所有者の意味（タグ名と作品情報にも照合する）で掛ける。
-	// スマートフォルダの条件は所有者の事実で決まる。
+	// Smart-folder predicates use owner search semantics even for guests.
 	ownerSearch bool
-	// userKeyColumn は videos の利用者データの鍵を持つ列（例えば videos.user_key）で、空なら
-	// userKeyExpr で求める。スマートフォルダの一致する動画は、鍵を 1 度だけ求めた smart_base を
-	// videos として読むので、その列を使う（smart_folder_matches.go）。
+	// Use the precomputed smart_base user key when supplied, avoiding repeated derivation.
 	userKeyColumn string
-	// smartFolders は一覧の一番上にスマートフォルダの項目として混ぜるフォルダである。ライブラリの
-	// 一覧（ListLibrary）だけが librarySmartFolders で埋める。
-	smartFolders []librarySmartFolder
-	sort         domain.VideoSort
-	seed         int64
-	cursor       string
-	limit        int
+	smartFolders  []librarySmartFolder
+	sort          domain.VideoSort
+	seed          int64
+	cursor        string
+	limit         int
 }
 
-// ListVideos は見る人（audience）に見せるライブラリの一覧1ページを返す。
-// ゲストには公開の動画だけを返し、件数も公開の動画だけを数える。条件（視聴状態・
-// 並べ替え・タグ）をゲストが使えるかは呼び出し側が domain.Audience.CheckVideoQuery
-// で確かめる。
-//
-// ページングは keyset（カーソル）方式である。offset を使うと、取り込みで行が
-// 増減した瞬間に取りこぼしと重複が起きる。並び順の値と id を境界に使うので、
-// 途中で行が動いても続きが安定して取れる。
-//
-// タグの存在確認・件数・ページの行を同じ読み取りスナップショット（s.db.read の
-// 1取引）から返す。別々に読むと、その間の付け外しやタグの削除によって
-// MissingTagIDs・Total・Items が食い違いうる。
+// ListVideos uses keyset pagination and one snapshot for tag existence, counts and rows; callers validate audience filter permissions.
 func (s *LibraryStore) ListVideos(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.VideoPage, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -157,11 +114,8 @@ func (s *LibraryStore) ListVideos(ctx context.Context, audience domain.Audience,
 	return page, nil
 }
 
-// listNow は追加日の絞り込みの基準時刻の元である。試験が時計を止めるために差し替える。
 var listNow = time.Now
 
-// libraryListSpec はライブラリの一覧（GET /api/videos・GET /api/library・GET /api/library/ids）の
-// 問い合わせ q を、存在を確かめたタグの id tagIDs とともに listSpec にする。
 func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int64) listSpec {
 	return listSpec{
 		scope: libraryScope(audience), expr: domain.ParseSearchQuery(q.Query),
@@ -173,9 +127,7 @@ func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int
 	}
 }
 
-// ListFolderVideos はフォルダの動画1ページを返す。範囲は q.Scope で直下か配下
-// すべてかを選ぶ。並び順・カーソルの形・絞り込みは ListVideos と同じで、題名は
-// その範囲にある所在の題名である。ゲストには公開の動画だけを返す。
+// ListFolderVideos uses ListVideos semantics within the requested folder scope, taking titles from matching locations.
 func (s *LibraryStore) ListFolderVideos(ctx context.Context, audience domain.Audience, q domain.FolderVideoQuery) (domain.VideoPage, error) {
 	return s.listVideoPage(ctx, listSpec{
 		scope: folderScope(q.Dir, q.Scope, audience), expr: domain.ParseSearchQuery(q.Query),
@@ -184,44 +136,26 @@ func (s *LibraryStore) ListFolderVideos(ctx context.Context, audience domain.Aud
 	})
 }
 
-// CountVideos はライブラリで検索語に当たる動画の総件数を返す。一覧と同じ所在の
-// まとめ（chosen）を数えるので、1万件規模で数十 ms かかる（一覧の1ページも同程度）。
-// ゲストには公開の動画だけを数える。
 func (s *LibraryStore) CountVideos(ctx context.Context, audience domain.Audience, search string) (int, error) {
 	return s.countVideos(ctx, listSpec{scope: libraryScope(audience), expr: domain.ParseSearchQuery(search)})
 }
 
-// chosenLocationsCTE は、範囲と検索式を満たす所在を動画ごとにパスの最小の1件へ
-// まとめる `chosen(video_id, path)` を返す。
-// 式は所在1行に対して評価するので、語ごとに別の所在で満たした動画は当たらない
-// （要件 9）。ゲストの検索はタグの名前に照合しない（searchExprCondition）。
-//
-// 範囲は見せる動画（集まりに属さない動画と各集まりの実効の代表、shownVideoCondition）の
-// 所在に掛ける。検索式は、集まりに属さない動画では自分の所在に、集まりの代表では同じ集まりの
-// どれかの動画の登録の所在に掛ける。どの
-// バージョンの題名・パスに当たっても代表の1件が出て、chosen.path は範囲にある代表の所在の
-// パスの最小のまま。所在の範囲が見せてよい所在に限るので、見せる動画の判定は所在ごとに
-// 集まりの規則だけを足せばよく、動画ごとの見せてよいかの判定を重ねない。
+// Choose the smallest in-scope representative path; every search term must match one location, including a bundle member's registered location.
 func chosenLocationsCTE(scope locationScope, expr domain.SearchExpr) (string, []any) {
 	return chosenLocationsCTEFor(scope, scope.audience, []domain.SearchExpr{expr})
 }
 
-// chosenLocationsCTEFor は chosenLocationsCTE と同じ chosen を、検索式 exprs のすべてを満たす
-// 所在から作る。検索式は見る人 searchAudience の意味で照合する（スマートフォルダは所有者の意味、
-// docs/design-docs/catalog-organization.md）。範囲と集まりの代表は scope の見る人で決める。
+// Search semantics may use the owner while scope and representative visibility use the actual audience.
 func chosenLocationsCTEFor(scope locationScope, searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
 	selectSQL, args := chosenLocationsSelect(scope, searchAudience, exprs)
 	return `with chosen as (` + selectSQL + `)`, args
 }
 
-// chosenLocationsSelect は chosenLocationsCTEFor の chosen を作る select 文 `(video_id, path)` と
-// その引数を返す。スマートフォルダの一致する動画は、検索式の段をこの文の動画に限る
-// （smartMatchConditions）。
 func chosenLocationsSelect(scope locationScope, searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
 	scopeClause, args := scope.condition("l")
 	clauses := []string{scopeClause, `(sbm.bundle_id is null or sv.id = ` +
 		effectiveRepresentativeExpr("sbm.bundle_id", scope.audience) + `)`}
-	// どの検索式も同じ所在 1 行で満たす。集まりでは、すべての式を 1 つの exists の同じ bl に掛ける。
+	// All expressions must match the same location row, including inside a bundle.
 	var exprClauses, bundleClauses []string
 	var exprArgs, bundleArgs []any
 	for _, expr := range exprs {
@@ -249,8 +183,7 @@ func chosenLocationsSelect(scope locationScope, searchAudience domain.Audience, 
 		group by l.video_id`, args
 }
 
-// watchCondition は視聴状態の絞り込みを、playback_progress（別名 p、left join）
-// に対する条件句にする。定義は domain.ClassifyWatch と同じ。絞り込まないときは空の句を返す。
+// Keep watch-state filtering equivalent to domain.ClassifyWatch.
 func watchCondition(filter domain.WatchFilter) string {
 	switch filter {
 	case domain.WatchUnwatched:
@@ -264,34 +197,24 @@ func watchCondition(filter domain.WatchFilter) string {
 	}
 }
 
-// playableCondition は domain.Video.PlayableInBrowser と同じ条件である。
+// Keep equivalent to domain.Video.PlayableInBrowser.
 const playableCondition = `videos.playable = 1 and videos.probe_state = 'done'`
 
-// listColumns は一覧の項目1件を domain.Video に写す列である。並びは scanVideo と
-// 対応させる。パス・題名・大きさ・更新時刻は chosen の所在のものを使う。
-// パスは後続の単位が Video.folder を組み立てるのに使う。
+// Column order matches scanVideo; location attributes come from chosen, and path supports folder metadata.
 var listColumns = `videos.id, chosen.path, loc.title, loc.size_bytes, loc.mtime,
 	` + fileCreatedAtExpr("loc") + ` as file_created_at, videos.added_at, videos.indexed_at, videos.content_key, ` + userKeyExpr("videos") + ` as user_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
 	` + publicColumn + ` as public, ` + favoriteColumn + ` as favorite, ` + overrideColumns + `, ` + editedAtColumn
 
-// filteredFrom は chosen に動画と再生の記録を結び、絞り込みを掛けた from 句と
-// where 句、その中で使う引数を返す。withLocation が true なら一覧に出す所在を
-// loc として結ぶ。
-//
-// random の並べ替えは選択句の vv_shuffle_key(?, …) の引数を CTE の引数の直後に
-// 置いており、呼び出し側はこの関数が返す引数を SQL の文字列の中でこの句が
-// 現れる位置（CTE の引数のあと、カーソルの引数の前）にそろえて並べる。
+// Bind arguments in SQL order: CTE and optional shuffle seed, then this clause, then cursor arguments.
 func filteredFrom(spec listSpec, withLocation bool) (string, []any) {
 	from := ` from chosen join videos on videos.id = chosen.video_id`
 	if withLocation {
 		from += ` join video_locations loc on loc.path = chosen.path`
 	}
-	// 内容の識別子が空の動画は再生位置を持たない（API の progressFor と同じ扱い）。
-	// 鍵は利用者データの鍵（userKeyExpr、docs/design-docs/catalog-organization.md）。
+	// Unidentified content has no playback position; use the shared user-data key.
 	from += ` left join playback_progress p on p.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''`
-	// お気に入りも同じ鍵に結ぶ。並べ替えの値にも使う。
 	from += ` left join video_favorites fav on fav.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''`
 	var conditions []string
 	if condition := watchCondition(spec.watch); condition != "" {
@@ -300,8 +223,6 @@ func filteredFrom(spec listSpec, withLocation bool) (string, []any) {
 	if spec.favoriteOnly {
 		conditions = append(conditions, `fav.content_key is not null`)
 	}
-	// 再生可否・タグ・人物と団体。タグの存在の確認は呼び出し側
-	// （resolveTagIDs）が済ませているので、ここでは AND を掛けるだけでよい。
 	member, args := memberConditions(spec)
 	conditions = append(conditions, member...)
 	if len(conditions) > 0 {
@@ -310,8 +231,7 @@ func filteredFrom(spec listSpec, withLocation bool) (string, []any) {
 	return from, args
 }
 
-// countVideos は範囲・検索式・絞り込みをすべて適用した総件数を返す（要件 13）。
-// カーソルには関係しない。
+// Count all filtered videos independently of the cursor.
 type queryRower interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
@@ -331,10 +251,7 @@ func (s *LibraryStore) countVideos(ctx context.Context, spec listSpec) (int, err
 	return countVideosWith(ctx, s.db.sql, spec)
 }
 
-// listVideoPage は条件に合う動画1ページと総件数を返す。count とページの行を
-// 同じ読み取りスナップショットから返すため、s.db.read に新しい取引を開いて
-// listVideoPageTx に委ねる。別々の接続で読むと、その間の取り込みによって
-// total と Items が矛盾する。
+// Read counts and page rows from one snapshot so concurrent ingestion cannot make them disagree.
 func (s *LibraryStore) listVideoPage(ctx context.Context, spec listSpec) (domain.VideoPage, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -352,13 +269,11 @@ func (s *LibraryStore) listVideoPage(ctx context.Context, spec listSpec) (domain
 	return page, nil
 }
 
-// listVideoPageTx は tx の中で spec に合う動画1ページと総件数を返す。呼び出し側
-// が取引の開始・commit・rollback を持つ（ListVideos はタグの存在確認と同じ
-// 取引で呼ぶ）。
+// The caller owns the transaction, allowing tag existence and page data to share a snapshot.
 func listVideoPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.VideoPage, error) {
 	limit := normalizeLimit(spec.limit)
 	if !spec.sort.Valid() {
-		// 値の検査は入口（internal/httpapi）が行う。ここに来た未知の値は既定にする。
+		// The HTTP boundary validates values; unknown internal enums fall back to defaults.
 		spec.sort = domain.SortAddedDesc
 	}
 	order := listOrders[spec.sort]
@@ -390,9 +305,7 @@ func listVideoPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.Vid
 		query += ` where ` + cursorClause
 		args = append(args, cursorArgs...)
 	}
-	// 並び順は検索の有無で変えない。関連度（bm25）にすると、instr で調べる語には
-	// 関連度が無いため語の長さで並びが変わり、利用者から見て不可解になる。
-	// 次のページがあるかを知るために1件多く取る。件数を数え直すより安い。
+	// Keep ordering independent of search relevance; fetch one extra row to detect continuation without another count.
 	query += ` order by ` + order.orderBy() + ` limit ?`
 
 	rows, err := tx.QueryContext(ctx, query, append(args, limit+1)...)
@@ -433,8 +346,6 @@ func listVideoPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.Vid
 	return page, nil
 }
 
-// sortValueScanner は一覧の列に続く sort_value を、scanVideo の読み取りに
-// 1列足して受け取る。
 type sortValueScanner struct {
 	rows  *sql.Rows
 	value *any
@@ -444,12 +355,9 @@ func (s sortValueScanner) Scan(dest ...any) error {
 	return s.rows.Scan(append(dest, s.value)...)
 }
 
-// shuffleFunction は domain.ShuffleKey を SQLite から呼ぶ名前である。
 const shuffleFunction = "vv_shuffle_key"
 
-// 登録は以後に開く接続にだけ効き、同じ名前の二重登録は誤りになるので、Open の
-// 中ではなくパッケージの初期化で一度だけ行う。
-// select の中でしか使わず、スキーマには残らない。
+// Register once at package initialization: registration affects future connections and rejects duplicate names.
 func init() {
 	err := sqlite.RegisterDeterministicScalarFunction(shuffleFunction, 2,
 		func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
@@ -468,7 +376,6 @@ func init() {
 	}
 }
 
-// sortValueKind はカーソルに包む並べ替えの値の型である。
 type sortValueKind int
 
 const (
@@ -476,19 +383,14 @@ const (
 	sortText
 )
 
-// listOrder は並び順1つ分の定義である。並び順を
-// 足すときは listOrders に1件足す。
 type listOrder struct {
-	// value は並べ替えの値を作る式。一覧の内側の問い合わせ（videos・loc・p）で
-	// 評価し、sort_value として外側から見る。
+	// Evaluate against inner video/location/progress rows and expose as sort_value outside.
 	value string
 	kind  sortValueKind
-	// desc は値と id をどちらも降順に並べる。
-	desc bool
-	// nullable は値が無い（NULL）ことがある。値の無い動画は向きに関係なく末尾に置く。
+	desc  bool
+	// NULL values sort last in either direction.
 	nullable bool
-	// seeded は value が seed を引数に1つ取る。
-	seeded bool
+	seeded   bool
 }
 
 var listOrders = map[domain.VideoSort]listOrder{
@@ -496,28 +398,23 @@ var listOrders = map[domain.VideoSort]listOrder{
 	domain.SortAddedDesc:    {value: `videos.added_at`, desc: true},
 	domain.SortModifiedAsc:  {value: `loc.mtime`},
 	domain.SortModifiedDesc: {value: `loc.mtime`, desc: true},
-	// 作成日は所在の作成日時、取れなかった所在は更新日時。
-	domain.SortCreatedAsc:  {value: fileCreatedAtExpr("loc")},
-	domain.SortCreatedDesc: {value: fileCreatedAtExpr("loc"), desc: true},
-	// 題名は保存した title_key のバイト順で、自然順になる。
-	domain.SortTitleAsc:     {value: `loc.title_key`, kind: sortText},
-	domain.SortTitleDesc:    {value: `loc.title_key`, kind: sortText, desc: true},
-	domain.SortDurationAsc:  {value: `videos.duration_ms`, nullable: true},
-	domain.SortDurationDesc: {value: `videos.duration_ms`, desc: true, nullable: true},
-	domain.SortSizeAsc:      {value: `loc.size_bytes`},
-	domain.SortSizeDesc:     {value: `loc.size_bytes`, desc: true},
-	// 再生の記録は filteredFrom の left join（p）から取る。記録が無ければ NULL。
-	domain.SortPlayedAsc:  {value: `p.updated_at`, nullable: true},
-	domain.SortPlayedDesc: {value: `p.updated_at`, desc: true, nullable: true},
-	// お気に入りにした日時は filteredFrom の left join（fav）から取る。お気に入りでなければ NULL
-	//
+	// Use location creation time, falling back to modification time.
+	domain.SortCreatedAsc:    {value: fileCreatedAtExpr("loc")},
+	domain.SortCreatedDesc:   {value: fileCreatedAtExpr("loc"), desc: true},
+	domain.SortTitleAsc:      {value: `loc.title_key`, kind: sortText},
+	domain.SortTitleDesc:     {value: `loc.title_key`, kind: sortText, desc: true},
+	domain.SortDurationAsc:   {value: `videos.duration_ms`, nullable: true},
+	domain.SortDurationDesc:  {value: `videos.duration_ms`, desc: true, nullable: true},
+	domain.SortSizeAsc:       {value: `loc.size_bytes`},
+	domain.SortSizeDesc:      {value: `loc.size_bytes`, desc: true},
+	domain.SortPlayedAsc:     {value: `p.updated_at`, nullable: true},
+	domain.SortPlayedDesc:    {value: `p.updated_at`, desc: true, nullable: true},
 	domain.SortFavoritedAsc:  {value: `fav.favorited_at`, nullable: true},
 	domain.SortFavoritedDesc: {value: `fav.favorited_at`, desc: true, nullable: true},
-	// ランダムは seed と id だけで決まる値の昇順で、値が同じなら id の昇順。
+	// Shuffle order depends only on seed and ID, with ID breaking ties.
 	domain.SortRandom: {value: shuffleFunction + `(?, videos.id)`, seeded: true},
 }
 
-// orderBy は外側の問い合わせの order by 句を返す。値が同じ行は id で決着させる。
 func (o listOrder) orderBy() string {
 	direction := ` asc`
 	if o.desc {
@@ -530,9 +427,7 @@ func (o listOrder) orderBy() string {
 	return clause
 }
 
-// after はカーソル（値の有無・値・id）より後ろを取る条件句と引数を返す。値の
-// 無い行は末尾にまとまるので、カーソルが値を持てば値の無い行はすべて後ろ、
-// カーソルが値を持たなければ値の無い行のうち id が後ろのものだけが後ろになる。
+// NULL values follow all non-NULL values; after a NULL cursor only later NULL IDs remain.
 func (o listOrder) after(isNull bool, value any, id int64) (string, []any) {
 	op := ` > `
 	if o.desc {
@@ -548,8 +443,7 @@ func (o listOrder) after(isNull bool, value any, id int64) (string, []any) {
 	return clause, []any{value, id}
 }
 
-// cursorCondition はカーソルより後ろだけを取る条件を返す。別の並び順や別の
-// seed で作ったカーソルは誤りにする。
+// Reject cursors created for another order or seed.
 func (o listOrder) cursorCondition(spec listSpec, cursor string) (string, []any, error) {
 	c, err := decodeCursor(cursor)
 	if err != nil {
@@ -580,7 +474,6 @@ func (o listOrder) cursorCondition(spec listSpec, cursor string) (string, []any,
 	return clause, args, nil
 }
 
-// seedText はカーソルに包む seed である。seed を使わない並び順では空にする。
 func (o listOrder) seedText(spec listSpec) string {
 	if !o.seeded {
 		return ""
@@ -588,8 +481,6 @@ func (o listOrder) seedText(spec listSpec) string {
 	return strconv.FormatInt(spec.seed, 10)
 }
 
-// encodeCursor は「並び順の名前・seed・値の有無・id・値」を不透明な文字列に
-// 包む。クライアントは中身を解釈しない。
 func (o listOrder) encodeCursor(spec listSpec, value any, id int64) (string, error) {
 	nullFlag, text := "0", ""
 	switch v := value.(type) {
@@ -607,14 +498,12 @@ func (o listOrder) encodeCursor(spec listSpec, value any, id int64) (string, err
 	return packCursor(string(spec.sort), o.seedText(spec), nullFlag, strconv.FormatInt(id, 10), text), nil
 }
 
-// packCursor は項目を不透明な文字列に包む。一覧のカーソル（動画・タグ）が共有する
-// 包み方で、区切りを含みうる項目（名前の鍵）は最後に置く。
+// Place fields that can contain separators last.
 func packCursor(fields ...string) string {
 	return base64.RawURLEncoding.EncodeToString([]byte(strings.Join(fields, cursorSeparator)))
 }
 
-// unpackCursor は packCursor の包みを解き、n 個の項目を返す。解釈できないものや
-// 項目の数が合わないものは ErrInvalidCursor。最後の項目は区切りを含んでよい。
+// Require exactly n fields; the final field may contain separators.
 func unpackCursor(cursor string, n int) ([]string, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(cursor)
 	if err != nil {
@@ -627,8 +516,6 @@ func unpackCursor(cursor string, n int) ([]string, error) {
 	return parts, nil
 }
 
-// encodeCursorFields は項目を不透明な文字列に包む。decodeCursor が解く形で、一覧ごとの
-// カーソル（却下した名前など）もこの包み方を使う。
 func encodeCursorFields(c cursorFields) string {
 	nullFlag := "0"
 	if c.isNull {
@@ -637,11 +524,9 @@ func encodeCursorFields(c cursorFields) string {
 	return packCursor(c.sort, c.seed, nullFlag, strconv.FormatInt(c.id, 10), c.value)
 }
 
-// cursorSeparator はカーソルの中で項目を区切る。値（題名の鍵）は最後に置くので、
-// 値に同じ文字が現れても区切りを誤らない。
+// The value is last so embedded separators cannot split it incorrectly.
 const cursorSeparator = "\x1f"
 
-// cursorFields はカーソルから取り出した項目である。
 type cursorFields struct {
 	sort, seed string
 	isNull     bool
@@ -649,7 +534,6 @@ type cursorFields struct {
 	value      string
 }
 
-// decodeCursor は包みを解く。解釈できないものは誤りとして返す。
 func decodeCursor(cursor string) (cursorFields, error) {
 	parts, err := unpackCursor(cursor, 5)
 	if err != nil {
@@ -665,7 +549,6 @@ func decodeCursor(cursor string) (cursorFields, error) {
 	return cursorFields{sort: parts[0], seed: parts[1], isNull: parts[2] == "1", id: id, value: parts[4]}, nil
 }
 
-// normalizeLimit は件数を既定値と上限に丸める。
 func normalizeLimit(limit int) int {
 	switch {
 	case limit <= 0:

@@ -1,8 +1,6 @@
 package main
 
-// Windows 版の zip（VVMDM-<版>-windows-amd64.zip）を組み立てる。task build-windows-app の
-// 実体で、.github/workflows/windows-app.yml も同じ入口を呼ぶ。中身は
-// docs/design-docs/windows-app.md に記す。
+// Build the Windows ZIP for task build-windows-app and CI; see docs/design-docs/windows-app.md.
 
 import (
 	"archive/zip"
@@ -23,12 +21,10 @@ import (
 	"github.com/syudead/vv/scripts/devtools"
 )
 
-// 同梱する FFmpeg。Gyan.dev の Windows 版「essentials」を、GyanD/codexffmpeg の
-// GitHub Releases から取る。版を上げるときは版と SHA-256 を一緒に変える
-// （docs/how-to/dependency-updates.md）。SHA-256 が合わなければビルドは失敗する。
+// Pin Gyan.dev essentials from GyanD/codexffmpeg releases. Update the version and SHA-256 together; see docs/how-to/dependency-updates.md.
 const (
 	ffmpegVersion = "9.0.2"
-	// Gyan.dev が公開する値（https://www.gyan.dev/ffmpeg/builds/packages/<zip の名前>.sha256）。
+	// Published at https://www.gyan.dev/ffmpeg/builds/packages/<archive>.sha256.
 	ffmpegSHA256 = "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba"
 )
 
@@ -36,36 +32,31 @@ const (
 	windowsAppDir  = "dist"
 	ffmpegCacheDir = "dist/cache"
 	winresJSON     = "cmd/mdm/winres/winres.json"
-	// go-winres が書く .syso の接頭辞。cmd/mdm に置いた .syso は、その GOOS/GOARCH の
-	// cmd/mdm の全ビルドに入るので、組み立ての間だけ置いて消す（.gitignore で除く）。
+	// Remove temporary .syso files after packaging: Go includes them in every cmd/mdm build for that platform.
 	winresOutPrefix = "cmd/mdm/rsrc"
 	downloadTimeout = 10 * time.Minute
 )
 
-// ffmpegArchiveName は Gyan.dev の essentials の zip の名前である。
 func ffmpegArchiveName(version string) string {
 	return "ffmpeg-" + version + "-essentials_build.zip"
 }
 
-// ffmpegURL は版の Release に添付された essentials の zip の URL である。
-// Release は版ごとに残るので、固定した版を後から取り直せる（R-12）。
+// Versioned release URLs keep the pinned archive available for later builds.
 func ffmpegURL(version string) string {
 	return "https://github.com/GyanD/codexffmpeg/releases/download/" + version + "/" + ffmpegArchiveName(version)
 }
 
-// windowsAppName は zip と、その中の根のフォルダの名前である（contracts §1）。
 func windowsAppName(version string) string {
 	return "VVMDM-" + version + "-windows-amd64"
 }
 
 var (
 	versionPattern = regexp.MustCompile(`^[0-9A-Za-z][0-9A-Za-z._-]*$`)
-	// winresVersion は go-winres が版の数（a.b.c.d）として埋め込める形である。
+	// Numeric a.b.c.d version required by go-winres.
 	winresVersion = regexp.MustCompile(`^[0-9]+(\.[0-9]+){0,3}$`)
 )
 
-// releaseVersion は zip の <版> を決める。VERSION があればそれ（タグの v を除く）、
-// 無ければ今の commit の sha-<12 桁>（workflow の手動実行と手元のビルド）。
+// releaseVersion uses VERSION without its v prefix, falling back to sha-<12 digits> for local and manual builds.
 func releaseVersion(env, commit string) (string, error) {
 	env = strings.TrimSpace(env)
 	version := strings.TrimPrefix(env, "v")
@@ -82,7 +73,6 @@ func releaseVersion(env, commit string) (string, error) {
 	return version, nil
 }
 
-// sha256File はファイルの SHA-256 を 16 進で返す。
 func sha256File(name string) (string, error) {
 	file, err := os.Open(name)
 	if err != nil {
@@ -96,7 +86,6 @@ func sha256File(name string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-// verifySHA256 は固定した SHA-256 と合うかを確かめる。合わなければ実際の値を添えて誤りにする。
 func verifySHA256(name, want string) error {
 	got, err := sha256File(name)
 	if err != nil {
@@ -108,8 +97,7 @@ func verifySHA256(name, want string) error {
 	return nil
 }
 
-// fetchFFmpeg は essentials の zip を cacheDir に取り、SHA-256 を確かめてからパスを返す。
-// 取ってある zip も毎回確かめ、合わなければ消して失敗する（次の実行で取り直す）。
+// fetchFFmpeg verifies cached archives too; a mismatch removes the cache and fails so the next run can download it again.
 func fetchFFmpeg(client *http.Client, url, cacheDir, name, want string) (string, error) {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return "", err
@@ -129,7 +117,7 @@ func fetchFFmpeg(client *http.Client, url, cacheDir, name, want string) (string,
 	return dest, nil
 }
 
-// download は url を dest へ書く。途中で失敗しても dest に半端なファイルを残さない。
+// download removes partial output on failure.
 func download(client *http.Client, url, dest string) error {
 	fmt.Printf("Downloading %s\n", url)
 	response, err := client.Get(url)
@@ -155,15 +143,14 @@ func download(client *http.Client, url, dest string) error {
 	return os.Rename(temp.Name(), dest)
 }
 
-// ffmpegFiles は essentials の zip の中のパス（根のフォルダを除く）と、同梱する名前である。
+// Paths inside the archive, excluding its root directory, mapped to bundled names.
 var ffmpegFiles = map[string]string{
 	"bin/ffmpeg.exe":  "ffmpeg.exe",
 	"bin/ffprobe.exe": "ffprobe.exe",
 	"LICENSE":         "LICENSE.txt",
 }
 
-// extractFFmpeg は essentials の zip から ffmpegFiles だけを destDir へ取り出す。
-// zip は根に版のフォルダを 1 つ持つ（ffmpeg-<版>-essentials_build/bin/ffmpeg.exe）。
+// extractFFmpeg selects ffmpegFiles from the archive beneath its versioned root directory.
 func extractFFmpeg(archive, destDir string) error {
 	reader, err := zip.OpenReader(archive)
 	if err != nil {
@@ -216,12 +203,12 @@ func extractEntry(entry *zip.File, dest string) error {
 	return out.Close()
 }
 
-// crlf は Windows のメモ帳で読む文を CRLF にする。
+// Use CRLF for Windows Notepad.
 func crlf(text string) string {
 	return strings.ReplaceAll(text, "\n", "\r\n")
 }
 
-// ffmpegReadme は ffmpeg/README.txt で、同梱した FFmpeg の版とソースの入手先を示す。
+// Identify the bundled FFmpeg version and source location.
 func ffmpegReadme(version string) string {
 	return crlf(`FFmpeg ` + version + ` (Gyan.dev "essentials" build for Windows x64)
 
@@ -240,8 +227,7 @@ Source code:
 `)
 }
 
-// appReadme は zip の根の README.txt で、展開して実行すること・SmartScreen の通し方・
-// データの場所・更新の仕方を示す（contracts §1）。詳しくは running-vv.md の Windows app の節。
+// Windows distribution instructions; see the Windows app section of docs/how-to/running-vv.md.
 func appReadme(version string) string {
 	return crlf(`VVMDM ` + version + ` for Windows (x64)
 
@@ -288,8 +274,7 @@ More: https://github.com/syudead/vv/blob/main/docs/how-to/running-vv.md#windows-
 `)
 }
 
-// zipDir は root のフォルダを、その名前を根に持つ zip として out に書く。
-// 途中で失敗しても out に半端な zip を残さない。
+// zipDir preserves the root folder name and removes partial archives on failure.
 func zipDir(root, out string) error {
 	temp, err := os.CreateTemp(filepath.Dir(out), filepath.Base(out)+".*.part")
 	if err != nil {
@@ -345,14 +330,13 @@ func zipDir(root, out string) error {
 	if err := temp.Close(); err != nil {
 		return err
 	}
-	// CreateTemp は 0600 で作るので、配布物として読める権限に戻す。
+	// CreateTemp uses 0600; make the distribution readable.
 	if err := os.Chmod(temp.Name(), 0o644); err != nil {
 		return err
 	}
 	return os.Rename(temp.Name(), out)
 }
 
-// currentCommit は今の commit の SHA を返す。
 func currentCommit(root string) (string, error) {
 	cmd := exec.Command("git", "rev-parse", "HEAD")
 	cmd.Dir = root
@@ -363,7 +347,7 @@ func currentCommit(root string) (string, error) {
 	return string(output), nil
 }
 
-// buildWindowsApp は SPA を組んだあとに呼ばれ、zip のパスを返す。
+// buildWindowsApp runs after the SPA build and returns the ZIP path.
 func buildWindowsApp(root, versionEnv string) (string, error) {
 	commit := ""
 	if strings.TrimSpace(versionEnv) == "" {
@@ -416,7 +400,7 @@ func buildWindowsApp(root, versionEnv string) (string, error) {
 	return out, nil
 }
 
-// buildDesktopExe は go-winres でアイコンと manifest の .syso を作り、VVMDM.exe を組む。
+// buildDesktopExe embeds the icon and manifest with go-winres before compiling VVMDM.exe.
 func buildDesktopExe(root, version, exe string) error {
 	winres, err := devtools.GoToolPath(root, "go-winres")
 	if err != nil {

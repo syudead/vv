@@ -9,8 +9,7 @@ import type { ErrorDetails } from "./en";
 import { t } from "./messages";
 import { asUiText, type UiText } from "./uiText";
 
-// 失敗を画面の英語の文言にする。
-// サーバーの自由文（ffprobe の出力、過去の日本語の理由）は出さない。
+// Never display raw server diagnostics such as ffprobe output or legacy localized errors.
 
 type Entry = UiText | ((details: ErrorDetails) => UiText);
 
@@ -24,14 +23,8 @@ function render(entry: Entry, details: ErrorDetails): UiText {
 }
 
 /**
- * errorText は失敗を画面に出す英語の文言にする。順は次のとおり。
- *
- * 1. 既知の `reason`、なければ既知の `code`: カタログの文（`limit`・`tagName`・`host` を埋め込む）
- * 2. 未知の `code` で `message` がある: サーバーの英語の `message`
- * 3. 本文が JSON でない・空・`message` が無い: `Request failed (HTTP <status>)`
- * 4. fetch 自体の失敗: サーバーに届かなかったことを表す概要（ブラウザの文言は出さない）
- *
- * 操作ごとの文脈（フォルダ名かタグ名か）は呼び出し側の文言が囲む。
+ * Prefer known reason, then code, then an unknown code's server message, then HTTP status. Network
+ * failures use generic copy; callers add operation context.
  */
 export function errorText(error: unknown): UiText {
   if (error instanceof RequestFailed) {
@@ -43,8 +36,7 @@ export function errorText(error: unknown): UiText {
     const entry =
       lookup(t.errors.reason, error.reason) ?? lookup(t.errors.code, error.code);
     if (entry !== undefined) return render(entry, details);
-    // サーバーの message は英語の文である。未知のコードの
-    // フォールバックとしてだけ出す。
+    // Show server messages only as a fallback for unknown codes.
     if (error.code !== "" && error.message !== "") return asUiText(error.message);
     return t.errors.requestFailed(error.status);
   }
@@ -52,19 +44,13 @@ export function errorText(error: unknown): UiText {
   return t.errors.unexpected;
 }
 
-/**
- * probeErrorText は解析の失敗の説明である。`probeError`（自由文）は使わない。コードの
- * 無い行（英語化の前の失敗）は一般的な概要を出す。
- */
+/** Ignore freeform probeError; legacy records without a code get a generic summary. */
 export function probeErrorText(code: ProbeErrorCode | undefined): UiText {
   const entry = lookup(t.errors.probe, code);
   return typeof entry === "string" ? entry : t.errors.probeUnknown;
 }
 
-/**
- * scanErrorText は取り込みの失敗の説明である。`Scan.error`（自由文）は使わず、
- * `errorCode` と `errorPath` から作る。コードの無い行は一般的な概要を出す。
- */
+/** Use errorCode and errorPath, never freeform Scan.error; missing codes get a generic summary. */
 export function scanErrorText(scan: Pick<Scan, "errorCode" | "errorPath">): UiText {
   const code: ScanErrorCode | undefined = scan.errorCode;
   if (code === undefined || !Object.hasOwn(t.errors.scan, code))

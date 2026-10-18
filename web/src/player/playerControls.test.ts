@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createLiveOffsetMiddleware, liveSource } from "./liveOffset";
 
-// 変換の実際の開始位置は、指定位置と同じ値が報告されるものとする。
 vi.mock("../api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/client")>()),
   getTranscodeStart: vi.fn(() => Promise.resolve(30_000)),
@@ -17,10 +16,7 @@ function ranges(values: [number, number][]): TimeRanges {
   };
 }
 
-/**
- * transcodePlayer は、video.js が行うのと同じ順で仲立ち（liveOffset）を通す
- * プレイヤーである。位置と速度の読み書きは、仲立ちを経て技術層（tech）へ届く。
- */
+/** Route position and speed through liveOffset in video.js order before reaching the tech layer. */
 async function transcodePlayer() {
   let techTime = 4;
   let techRate = 1;
@@ -47,7 +43,6 @@ async function transcodePlayer() {
   } as never);
   middleware.setTech(tech);
   middleware.setSource(liveSource(7, 120_000, 30_000), () => undefined);
-  // 報告が届いて offset が決まるまで待つ。
   for (let index = 0; index < 3; index += 1) await Promise.resolve();
 
   const player: ControllablePlayer & { playbackRate(rate?: number): number } = {
@@ -81,7 +76,7 @@ describe("createPlayerControls", () => {
     const { player, tech, middleware } = await transcodePlayer();
     const controls = createPlayerControls(player, () => false);
 
-    // 変換の開始位置 30 秒 + 技術層の 4 秒 = 論理上の 34 秒。
+    // A 30-second transcode offset plus four seconds in the tech layer gives logical time 34.
     expect(player.currentTime()).toBe(34);
     player.playbackRate(1.5);
     controls.seekTo(44);
@@ -93,7 +88,6 @@ describe("createPlayerControls", () => {
       src: expect.stringMatching(/\/transcode\.mp4\?startMs=44000&attempt=/) as unknown,
       vvOffsetSeconds: 44,
     });
-    // 作り直した変換でも、選んだ速度のまま再生を続ける。
     expect(tech.setPlaybackRate).toHaveBeenLastCalledWith(1.5);
   });
 

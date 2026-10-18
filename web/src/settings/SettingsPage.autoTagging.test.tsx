@@ -11,7 +11,6 @@ import {
   renderSettings,
 } from "../testing/settingsPage";
 
-// 「Auto-tagging」のページは Ollama の接続先が保存されるまで押せない
 //
 
 const ollamaURL = "/api/settings/ollama";
@@ -41,7 +40,6 @@ const buttonNames = [
   "Test judging",
 ];
 
-/** controls はページの切り替え、入力、ボタンである（一覧と notice のものは含まない）。 */
 function controls(): HTMLElement[] {
   return [
     ...switchNames.map((name) => screen.getByRole("switch", { name })),
@@ -54,7 +52,6 @@ function notice(): HTMLElement | null {
   return document.querySelector<HTMLElement>("[data-slot='settings-page-notice']");
 }
 
-/** shownValues は切り替えの位置と入力の値である。 */
 function shownValues(): string[] {
   return [
     ...switchNames.map(
@@ -90,7 +87,6 @@ describe("SettingsPage: Auto-tagging page and the Ollama connection", () => {
     for (const control of controls())
       expect(control.getAttribute("aria-disabled")).toBe("true");
     expect(shownValues()).toEqual(["true", "true", "0.8", "0.5"]);
-    // notice は題のすぐあと、節の前にある。
     const body = document.querySelector("[data-slot='settings-page-body']");
     expect(
       (notice() as HTMLElement).compareDocumentPosition(body as Node) &
@@ -108,7 +104,7 @@ describe("SettingsPage: Auto-tagging page and the Ollama connection", () => {
 
     await waitFor(() => expect(server.requested).toContain(autoTaggingURL));
     await waitFor(() => expect(server.requested).toContain(ollamaURL));
-    // 設定は読めても、接続先が保存されたか分かるまでは読み込み中の形のままにする。
+    // Keep loading until connection availability is known, even if settings arrived first.
     await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
     expect(
       screen.getByRole("status", { name: "Loading the auto-tagging settings" }),
@@ -141,7 +137,7 @@ describe("SettingsPage: Auto-tagging page and the Ollama connection", () => {
       await user.click(screen.getByRole("button", { name }));
 
     expect(shownValues()).toEqual(["true", "true", "0.8", "0.5"]);
-    // シェルの読み込み（走査の状態など）は数えず、ページが送る要求だけを見る。
+    // Count only this page's requests, excluding shell providers.
     const sent = server.fetchMock.mock.calls.filter(
       ([input, init]) =>
         (init?.method ?? "GET") !== "GET" ||

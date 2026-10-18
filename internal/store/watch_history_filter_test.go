@@ -9,9 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 視聴履歴の絞り込み・検索・日付。
-
-// setProgress は鍵 key に再生位置を書く。completed なら視聴済み。
 func setProgress(t *testing.T, db *DB, key string, positionMs int64, completed bool) {
 	t.Helper()
 	if _, err := db.Playback().SaveProgress(context.Background(), key,
@@ -20,7 +17,6 @@ func setProgress(t *testing.T, db *DB, key string, positionMs int64, completed b
 	}
 }
 
-// fillTitleKeys は title_key の無い行（insertHistory が入れた行）に起動時の埋め直しを掛ける。
 func fillTitleKeys(t *testing.T, db *DB) {
 	t.Helper()
 	if _, err := db.Playback().RefreshWatchHistoryTitleKeys(context.Background()); err != nil {
@@ -28,7 +24,6 @@ func fillTitleKeys(t *testing.T, db *DB) {
 	}
 }
 
-// queryHistory は query を満たす件を 1 ページ（200 件まで）読み、id を新しい順に返す。
 func queryHistory(t *testing.T, db *DB, query domain.WatchHistoryQuery) []int64 {
 	t.Helper()
 	page, err := db.Playback().ListWatchHistory(context.Background(), domain.AudienceOwner, query, "", 200)
@@ -46,8 +41,6 @@ func searchQuery(text string) domain.WatchHistoryQuery {
 	return domain.WatchHistoryQuery{Search: domain.ParseSearchQuery(text)}
 }
 
-// 視聴済み・途中・未視聴の動画が 1 本ずつと動画の無い件が 1 件あるとき、inProgress は途中の動画の件、
-// watched は視聴済みの動画の件、all は全件を返す。同じ途中の動画の件が 2 件あれば両方出る（R-9）。
 func TestListWatchHistoryFiltersByWatchState(t *testing.T) {
 	db := migratedDB(t)
 	upsertAll(t, db,
@@ -57,7 +50,6 @@ func TestListWatchHistoryFiltersByWatchState(t *testing.T) {
 	)
 	setProgress(t, db, "key-w", 100_000, true)
 	setProgress(t, db, "key-i", 30_000, false)
-	// 動画の無い件は再生位置があっても「すべて」にだけ出る。
 	setProgress(t, db, "key-gone", 30_000, false)
 	watched := insertHistory(t, db, "key-w", "w", 1000)
 	inProgress := insertHistory(t, db, "key-i", "i", 2000)
@@ -81,7 +73,7 @@ func TestListWatchHistoryFiltersByWatchState(t *testing.T) {
 	}
 }
 
-// 束ねた動画のメンバーの件は、そのメンバーの content_key ではなく束の共有の進捗で分類される。
+// Classify bundle members by shared bundle progress, not their individual keys.
 func TestListWatchHistoryFilterUsesBundleProgress(t *testing.T) {
 	db := migratedDB(t)
 	ids := upsertAll(t, db,
@@ -107,8 +99,7 @@ func TestListWatchHistoryFilterUsesBundleProgress(t *testing.T) {
 	}
 }
 
-// 検索は動画のある件をファイルの題名と表示名で、動画の無い件を題名の写しで見つけ、相対パスやタグ名に
-// しか無い語、動画のある件の題名の写しにしか無い語では見つけない。除外と OR はライブラリと同じ（R-10）。
+// Existing videos use current titles and filenames; missing videos use saved titles. Ignore paths, tags and stale titles for existing videos.
 func TestListWatchHistorySearchesTitles(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -154,8 +145,6 @@ func TestListWatchHistorySearchesTitles(t *testing.T) {
 	}
 }
 
-// 検索式は動画の所在 1 つに対して評価する。語ごとに別の所在で満たした動画の件は当たらない
-// （ライブラリの要件 9 と同じ、R-10 の「AND, OR and NOT as in the library」）。
 func TestListWatchHistorySearchUsesOneLocation(t *testing.T) {
 	db := migratedDB(t)
 	upsertAll(t, db,
@@ -178,7 +167,6 @@ func TestListWatchHistorySearchUsesOneLocation(t *testing.T) {
 	}
 }
 
-// フレーズは改行を含む題名を、動画がライブラリにある間も離れた後も見つける（R-10）。
 func TestListWatchHistoryPhraseMatchesTitleWithNewline(t *testing.T) {
 	db := migratedDB(t)
 	id := upsertOne(t, db, listingFile(fixturePath("/media/summer.mp4"), "Summer\nTrip", "key-summer", 1))
@@ -203,7 +191,6 @@ func TestListWatchHistoryPhraseMatchesTitleWithNewline(t *testing.T) {
 	}
 }
 
-// 絞り込みと検索を合わせると、両方が通す件だけが残る。
 func TestListWatchHistoryCombinesFilterAndSearch(t *testing.T) {
 	db := migratedDB(t)
 	upsertAll(t, db,
@@ -224,8 +211,6 @@ func TestListWatchHistoryCombinesFilterAndSearch(t *testing.T) {
 	}
 }
 
-// Before はそれより前の件だけを残し、カーソルはその中を続く。2026-09 は 9 月の件から始まって 8 月に
-// 届き、2026-09-15 はその日から始まる。
 func TestListWatchHistoryBefore(t *testing.T) {
 	db := migratedDB(t)
 	august := insertHistory(t, db, "key-a", "a", time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC).UnixMilli())
@@ -261,7 +246,6 @@ func TestListWatchHistoryBefore(t *testing.T) {
 	}
 }
 
-// 日の一覧は件をその地域の暦の日に置き、新しい順に重複なく返し、絞り込みと検索に従う（R-11）。
 func TestListWatchHistoryDays(t *testing.T) {
 	db := migratedDB(t)
 	upsertAll(t, db,
@@ -307,8 +291,6 @@ func TestListWatchHistoryDays(t *testing.T) {
 	}
 }
 
-// 移行の前に書かれた行は起動時の埋め直しの後に title_key を持ち、新しい件は書いた時点で持つ。
-// 埋め直しは null の行だけを変える。
 func TestWatchHistoryTitleKeys(t *testing.T) {
 	db, provider := migrateTo(t, 34)
 	ctx := context.Background()
@@ -355,7 +337,6 @@ func TestWatchHistoryTitleKeys(t *testing.T) {
 	}
 }
 
-// 埋め直しは searchKeyBatchSize を超える行も全部埋める。
 func TestRefreshWatchHistoryTitleKeysCrossesBatches(t *testing.T) {
 	db, provider := migrateTo(t, 34)
 	ctx := context.Background()

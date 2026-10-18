@@ -56,47 +56,33 @@ import { useProgressSaving } from "./useProgressSaving";
 
 const noSubtitles: readonly SubtitleTrack[] = [];
 
-/** 再生の試み。再試行と「次を再生」は、位置と自動再生を決めてプレイヤーを作り直す。 */
+/** Retry and advance recreate the player with a chosen position and autoplay state. */
 interface Attempt {
   key: number;
   startMs: number | null;
   autoplay: boolean;
 }
 
-/**
- * VideoPage は動画詳細画面（`/videos/:id`）である。
- *
- * 構成要素は見出しの帯（ロゴ・置き場所のパンくず・×）・プレイヤー・題名・タグ・
- * ファイルの情報・関連動画とする（親 Issue 要件 1・3、issue 268、ui-design「Video header」
- * 「Video facts」）。状態と失敗は、プレイヤーの上の 1 つの入れ物に重ねて伝える
- * （plan の Structural Decisions 12）。状態表示と再生終了は同じ入れ物に出す。
- */
 export default function VideoPage() {
   const params = useParams();
-  // 形の正しくない id は 0 に寄せる（NaN は自分自身と等しくならず、比べられない）。
+  // Normalize invalid IDs to zero because NaN cannot compare equal to itself.
   const parsedId = Number(params.id);
   const id = Number.isSafeInteger(parsedId) && parsedId > 0 ? parsedId : 0;
   const location = useLocation();
   const navigate = useNavigate();
   const backTo = backTarget(location.state);
-  // 動画詳細画面の間で移ってきた道筋。最後が直前に見ていた動画である（issue 931）。
   const trail = useMemo(() => videoTrail(location.state), [location.state]);
-  // この画面から別の動画へ移るリンクに載せる状態。
   const linkState = useMemo(() => linkStateFrom(backTo, trail, id), [backTo, trail, id]);
-  // ゲストには所有者のデータ（タグ・ファイルの場所・再生位置）と所有者だけの操作
-  // （読み取りのやり直し・既定アプリで開く）を出さない
+  // Hide owner data and actions from guests.
   //
   const audience = useAudience();
   const owner = audience === "owner";
-  // プレイリストの文脈（`?playlist=&item=`）。所有者だけが読む
   //
   const playlistQuery = parsePlaylistQuery(location.search);
   const itemId = playlistQuery?.itemId ?? 0;
-  // 別の項目へ移ったときも、別の動画へ移ったときと同じに扱う（R-7）。
+  // Changing playlist items also resets playback, even for the same video.
   const pageKey = `${String(id)}:${String(itemId)}`;
-  // 動画を開いたグループ（`?group`）かスマートフォルダ（`?smartFolder`）。読み取りに渡し、行・矢印・
-  // メンバーの並び・予告をその再生順に従わせる。プレイリストの文脈はグループより優先するので、
-  // その間は `?group` を使わない。`?smartFolder` はフォルダの項目の中でも読み取りに渡す
+  // Playlist context overrides group context; smart-folder context still applies within folder items.
   //
   const groupContext = useVideoGroupContext(playlistQuery !== null);
   const { videoTo } = groupContext;
@@ -105,7 +91,6 @@ export default function VideoPage() {
     [groupContext.group, groupContext.smartFolder],
   );
 
-  // 編集画面から戻ったときの控え（保存の応答と、入口へフォーカスを戻すこと）。
   const detailsHandoff = usePageHandoff(id);
   const {
     state: detailState,
@@ -130,9 +115,7 @@ export default function VideoPage() {
     relatedState.id === id ? relatedState : { kind: "loading" as const, id };
   const video = detail.kind === "ready" ? detail.video : undefined;
 
-  // 一覧をスクロールした位置から来ても、プレイヤーを画面の上に出す。別の動画へ移ったときも
-  // 同じ。一覧へ戻ったときの位置の復元は一覧の側（LibraryPage）が行う。広い画面では左右の列が
-  // それぞれスクロールするので、プレイヤーのある左の列（詳細ページの主領域）も先頭へ戻す。
+  // Reset page and main-column scrolling on navigation; LibraryPage restores its own scroll position.
   const frameRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     window.scrollTo(0, 0);
@@ -153,14 +136,12 @@ export default function VideoPage() {
   }));
   const [endedTakesFocus, setEndedTakesFocus] = useState(false);
   const [autoplayPhase, setAutoplayPhase] = useState<AutoplayPhase>("notice");
-  // 途切れの警告を閉じた動画の id。同じ動画の再生の間（失敗からの再試行を含む）は出し直さず、
-  // 別の動画へ移れば忘れる。
+  // Dismissing a stall warning survives retries of this video, but not navigation.
   const [stallDismissedId, setStallDismissedId] = useState<number | null>(null);
-  // 再生を始めて分かった映像の比率。解析の値より確かなので、分かればこちらを使う。
+  // The playback aspect ratio is more reliable than probe metadata.
   const [mediaAspect, setMediaAspect] = useState<number | null>(null);
-  // 全画面はプレイヤーの上の層ごとにする（状態表示・再生終了も全画面で出す）。
+  // Include overlays in the fullscreen container.
   const fullscreenTarget = useCallback(() => frameRef.current, []);
-  // 全画面にしている入れ物。前後の矢印の吹き出しは、その間だけ入れ物の中に描く。
   const [fullscreenFrame, setFullscreenFrame] = useState<HTMLElement | null>(null);
   useEffect(() => {
     const sync = () => {
@@ -173,12 +154,10 @@ export default function VideoPage() {
     return () => document.removeEventListener("fullscreenchange", sync);
   }, []);
 
-  // プレイリストの再生の応答を読み直すたびに増やす（動画の終わり、予告が次の動画の消えたのを
-  // 知ったとき）。usePlaylistContext は読み終えた値を settledKey で返す。
+  // Increment on playlist refresh; settledKey identifies the completed response.
   const [playlistReadKey, setPlaylistReadKey] = useState(0);
 
-  // 別の動画（または同じ動画の別の項目）へ移ったら、前の再生の状態を持ち越さない。
-  // 動画が同じで項目だけ違うときは、その動画を始めから再生し直す（R-7）。
+  // A different item referencing the same video restarts it from the beginning.
   if (pageId !== pageKey) {
     const sameVideo = pageId.split(":")[0] === String(id);
     setPageId(pageKey);
@@ -195,8 +174,7 @@ export default function VideoPage() {
     });
   }
 
-  // 「次を再生」の自動再生は 1 回だけ使う。再読み込みや履歴の戻りで再生を始めない。
-  // 見てきた道筋は残す。
+  // Consume autoplay once so reloads and history navigation do not restart playback.
   useEffect(() => {
     if (!autoplayRequested(location.state)) return;
     void navigate(
@@ -216,9 +194,7 @@ export default function VideoPage() {
     };
   }, [title]);
 
-  // --- 字幕 ---
-  // 動画を開くたびに隣の字幕の一覧を取り直す。
-  // 取れなければ字幕無しとして扱い、再生は止めない。前の動画の一覧は次の動画に渡さない。
+  // Subtitle failures must not interrupt playback or leak a previous video's tracks.
   const [subtitleState, setSubtitleState] = useState<{
     id: number;
     tracks: readonly SubtitleTrack[];
@@ -240,8 +216,7 @@ export default function VideoPage() {
   }, [id]);
   const subtitles = subtitleState.id === id ? subtitleState.tracks : noSubtitles;
 
-  // --- 再生位置の保存と、視聴履歴の視聴の識別子 ---
-  // 識別子を付けた最初の保存は positioned を待ち、ended のあとで識別子を捨てる。
+  // Wait for positioning before the first identified save; release the watch ID after ended.
   const { rememberProgress, savePlayerProgress, markPlayed } = useProgressSaving(
     id,
     owner,
@@ -251,28 +226,22 @@ export default function VideoPage() {
     },
   );
 
-  // --- プレイヤーの状態 ---
   const endedRef = useRef(false);
   const onStatus = useCallback((next: PlayerStatus) => {
-    // 再生終了の層へフォーカスを移すのは、フォーカスがプレイヤーの中にあったときだけにする。
+    // Move focus to the ended overlay only if it was inside the player.
     if (next.ended && !endedRef.current) {
       const frame = frameRef.current;
       setEndedTakesFocus(frame !== null && frame.contains(document.activeElement));
-      // 終わるたびに、グループのメンバーなら予告から始める。
       setAutoplayPhase("notice");
-      // プレイリストの文脈では、予告を出す前に再生の応答を読み直す（R-6）。
+      // Refresh playlist context before showing the autoplay notice.
       setPlaylistReadKey((value) => value + 1);
     }
     endedRef.current = next.ended;
     setStatus(next);
   }, []);
 
-  // 再生の失敗は、見る人が変わった（セッションが失効した）せいかもしれない。`video`
-  // 要素の読み込みの失敗には 401 も X-VV-Audience も付かないので、状態を確かめ、
-  // 変わっていれば失敗の層を出さずにページを1度だけ読み直す。変わっていなければ、今の再生失敗の層を出す。
-  // 同じ route で別の動画へ移るとこの部品は使い回されるので、確かめは動画が変わったときにも
-  // 止め、返ってきたときに始めた動画のままのときだけ結果を使う。前の動画の失敗を次の動画に
-  // 出さないためである。
+  // Media errors omit 401 and audience headers; verify the session before showing a playback failure.
+  // Abort on video changes and ignore stale results because this route reuses its component.
   const sessionCheck = useRef<AbortController | null>(null);
   const currentId = useRef(id);
   currentId.current = id;
@@ -286,8 +255,7 @@ export default function VideoPage() {
       const stale = () => controller.signal.aborted || currentId.current !== checkedId;
       const showFailure = () => {
         setFailure({ positionMs, kind });
-        // 動画がライブラリから消えた（ゲストでは公開でなくなった）せいかもしれない。
-        // 取り直して確かめる。
+        // Refresh to detect removal or a video becoming unavailable to guests.
         void refresh();
       };
       getAuthSession(undefined, controller.signal).then(
@@ -319,11 +287,11 @@ export default function VideoPage() {
     try {
       await reprobeVideo(id);
     } catch (error) {
-      // 409 は、別のタブや連打ですでにやり直しが始まっている。
+      // A 409 means another request already started reprobe.
       if (!(error instanceof RequestFailed && error.code === "probe_not_failed"))
         throw error;
     }
-    // 202 の本文は所在を持たないので、置き換えずに取り直す。
+    // A 202 response lacks location data, so reload instead of replacing the video.
     await refresh();
   }, [id, refresh]);
 
@@ -348,9 +316,7 @@ export default function VideoPage() {
     adoptedSmartFolder: video?.smartFolder?.id,
   });
 
-  // 予告を取り消したら今の再生終了の層を出す。フォーカスが予告の中にあったなら、
-  // 次の層の主な操作（「次を再生」）へ移す。
-  // 次のメンバーが消えたときも同じく、「もう一度見る」だけの層へフォーカスを渡す。
+  // Transfer focus between overlays only when it was inside the dismissed overlay.
   const leaveNotice = (phase: Exclude<AutoplayPhase, "notice">) => {
     const frame = frameRef.current;
     setEndedTakesFocus(frame !== null && frame.contains(document.activeElement));
@@ -358,7 +324,6 @@ export default function VideoPage() {
   };
   const cancelAutoplay = () => leaveNotice("cancelled");
 
-  // --- プレイヤーの上に重ねる層（同時に 1 つだけ） ---
   const shownStatus = statusLayer({
     detail,
     failure,
@@ -382,14 +347,12 @@ export default function VideoPage() {
     onCancel: cancelAutoplay,
     onPlayNext: neighbors.playNext,
     onGroupGone: () => leaveNotice("gone"),
-    // 次の動画が消えていたら、再生の応答を読み直して予告を移す。
     onPlaylistGone: () => setPlaylistReadKey((value) => value + 1),
     videoTo,
     nextTo: groupContext.nextTo,
   });
 
-  // サムネイルの編集画面が開いている間は、この画面のキーを効かせない。Space は欄に入り、
-  // Esc は編集画面のものになる。
+  // Editing owns Space and Escape while its dialog is open.
   const [editingThumbnail, setEditingThumbnail] = useState(false);
 
   useUnplayableSkip({
@@ -401,7 +364,7 @@ export default function VideoPage() {
     linkState,
   });
 
-  // 予告の間の Esc は取り消しにし、画面を閉じない。
+  // Escape cancels the countdown without leaving the page.
   useKeyboardShortcuts(
     showPlayer ? controls : null,
     noticeShown ? cancelAutoplay : close,
@@ -410,14 +373,9 @@ export default function VideoPage() {
 
   const aspect = playerAspectRatio(video, mediaAspect);
   return (
-    // 詳細ページの型（DetailPage）で組む。見出しの帯の下に、左の列（プレイヤー・題名・タグ・
-    // 公開・情報）と右の列（関連動画）を並べる（web/registry/rules/patterns.md の Detail page）。
-    // 広い画面はページを画面の高さに留め、左右の列がそれぞれ中でスクロールする。
     <div className="min-h-dvh bg-background lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden">
       <DetailPage
-        // 広い画面では、プレイヤーが高さか幅の上限で止まって左の列より細いとき、プレイヤーと
-        // 題名・情報をプレイヤーの幅にそろえて列の中央に置く。幅は動画の比率と元の表示幅から
-        // 決まる（大きな画面で小さな動画を引き延ばしすぎない）ので、両方を渡す。
+        // Center player and details at the media width, bounded by aspect ratio and original display size.
         style={videoSizeStyle(aspect, playerNativeWidth(video))}
         contentClassName="lg:max-w-player-width-lg"
         header={<VideoHeader folder={video?.folder} onClose={close} />}
@@ -425,19 +383,13 @@ export default function VideoPage() {
           <div
             ref={frameRef}
             data-player-frame=""
-            // 枠の幅は 16:9 の動画と同じ（それより横長なら動画の比率）で、高さは動画の比率に
-            // 合わせて画面に収まるまで伸ばす。縦長の動画は枠の中央に左右の余白付きで出るので、
-            // 前後の動画へのつまみと操作バーは横長のときと同じ位置・幅のままになる。
-            // 比率はシークのプレビューと枠の大きさの段（player-width・player-height、
-            // src/ui/tokens.css）も使うので、変数として子孫へ渡す。
-            // 広い画面では、題名の 1 行までが左の列に収まる高さを上限にし、横長の動画は列の幅
-            // いっぱいまで広げる。タグと情報の行は列をスクロールして見る。上限で列より細く
-            // なったときは、中身ごと列の中央に置く（DetailPage の contentClassName）。
+            // Keep controls at least 16:9 wide while letterboxing portrait video within the frame.
+            // Descendants use these variables for seek previews and player size tokens.
+            // Reserve room for one title line; tags and facts scroll within the main column.
             style={{ "--vv-video-aspect": String(aspect) } as CSSProperties}
             className="relative isolate mx-auto grid w-full max-w-player-width shrink-0 grid-cols-1 overflow-hidden bg-navbar lg:max-w-player-width-lg lg:rounded-lg [&:fullscreen]:rounded-none"
           >
-            {/* 動画の比率（画面の高さまで）は下限。状態表示が収まらない幅では、内容に合わせて伸びる。
-              全画面では入れ物が画面いっぱいになるので、下限は要らない。 */}
+            {/* Aspect ratio supplies a minimum height outside fullscreen; status content may grow taller. */}
             <div
               aria-hidden="true"
               className="col-start-1 row-start-1 aspect-player max-h-player-height lg:max-h-player-height-lg [:fullscreen>&]:hidden"
@@ -518,7 +470,7 @@ export default function VideoPage() {
           detail={{ refresh, replace, setFavorite }}
           related={{ rename: renameRelated, rethumb: rethumbRelated }}
           handoff={detailsHandoff}
-          // グループの操作（外す・タグ化・解散）の後に、動画と関連動画を `group` なしで読み直す。
+          // Drop group context after membership changes before reloading related results.
           onGroupChanged={() =>
             groupContext.readWithoutGroup(() => {
               void refresh();
@@ -532,10 +484,6 @@ export default function VideoPage() {
   );
 }
 
-/**
- * videoSizeStyle は詳細ページへ渡す動画の比率と元の表示幅の変数である。元の表示幅が
- * 分からなければ比率だけ渡す。
- */
 function videoSizeStyle(aspect: number, nativeWidth: number | undefined): CSSProperties {
   const style: Record<string, string> = { "--vv-video-aspect": String(aspect) };
   if (nativeWidth !== undefined) style["--vv-video-width"] = `${String(nativeWidth)}px`;

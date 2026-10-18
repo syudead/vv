@@ -19,7 +19,7 @@ import {
 import { TableCell, TableRow } from "../ui/shadcn/table";
 import { kindTexts, secondLine } from "./creditRows";
 
-/** CreditRowHandlers は行へ渡す操作である。行の再描画を減らすため、同じ関数を渡し続ける。 */
+/** Keep handler identities stable to avoid rerendering memoized rows. */
 export interface CreditRowHandlers {
   onStartRename: (credit: Credit) => void;
   onCancelRename: (credit: Credit) => void;
@@ -30,18 +30,9 @@ export interface CreditRowHandlers {
   onDraftChange: () => void;
 }
 
-/** creditRowIdAttribute は行が id を持つ属性である（`useVirtualTagRows` の `rowIdAttribute`）。 */
 export const creditRowIdAttribute = "data-credit-id";
 
-/**
- * CreditRow は人物・団体の管理画面の一覧の 1 行である。タグの行（`TagRow`）と同じ形で、
- * チェックの列と仮の目印が無く、2 つ目のボタンが「Edit details」である。名前は
- * `/?person=<id>`（団体は `/?organization=<id>`）へのリンクで、その下に親と別名の 1 行を
- * 置く。改名中は名前の列だけを入力に置き換える。タッチの端末と `sm` 未満では操作を
- * 「Actions」1 つにまとめる（CSS だけで出し分ける）。
- *
- * 一覧は見えている行だけを描くので `React.memo` で包む。呼び出し元は props を安定させる。
- */
+/** Virtualized rows are memoized; callers must stabilize props. */
 export default memo(CreditRow);
 
 function CreditRow({
@@ -63,13 +54,13 @@ function CreditRow({
   onDraftChange,
 }: CreditRowHandlers & {
   kind: CreditKind;
-  /** 一覧の中の位置。仮想化が行を測るときに読む（`data-index`）。 */
+  /** Virtualization reads this position through data-index. */
   index: number;
   measureRef: Ref<HTMLTableRowElement>;
   credit: Credit;
   renaming: boolean;
   pending: boolean;
-  /** ほかの行の作成・改名が送信中で、この行では新しく改名や削除を始められない。 */
+  /** Another row is saving, so this row cannot start renaming or deletion. */
   blockStart: boolean;
   error: TagFieldError | null;
   registerRefs: (id: number, refs: Partial<TagRowRefs>) => void;
@@ -80,10 +71,7 @@ function CreditRow({
 
   return (
     <TableRow ref={measureRef} data-index={index} data-credit-id={credit.id}>
-      {/*
-        名前の列は残りの幅をすべて取り（w-full）、長い名前は省略する（max-w-0 で表の幅を
-        押し広げない）。
-      */}
+      {/* max-w-0 prevents long names from widening the table. */}
       <TableCell className="w-full max-w-0 whitespace-normal">
         {renaming ? (
           <RowNameInput
@@ -101,9 +89,9 @@ function CreditRow({
         ) : (
           <>
             {/*
-              Link は文字の幅に縮むので、`after:` の疑似要素を包み（relative）いっぱいに
-              広げ、名前の列の空白を押しても絞り込んだ一覧が開くようにする（タグの行と同じ）。
-            */}
+             * Expand the link's pseudo-element across the name cell so its whitespace remains
+             * clickable.
+             */}
             <span className="relative flex min-w-0 items-center">
               <Link
                 ref={(node) => registerRefs(credit.id, { nameLink: node })}
@@ -196,7 +184,6 @@ function CreditRow({
   );
 }
 
-/** MenuEnd はメニューの末尾の「Merge into another …」、区切り、「Delete…」である。 */
 function MenuEnd({
   mergeLabel,
   blockStart,

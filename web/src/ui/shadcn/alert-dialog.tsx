@@ -4,8 +4,7 @@ import type * as React from "react";
 import { cn } from "@/lib/cn";
 import { Button } from "@/ui/shadcn/button";
 
-// shadcn/ui の alert-dialog（radix-nova）を vv のトークンで着せたもの。取り消せない操作の確認に
-// 使う（web/registry/rules/components.md「AlertDialog」）。
+// Adapted from shadcn/ui radix-nova; see web/registry/rules/components.md, AlertDialog.
 
 function AlertDialog({
   ...props
@@ -129,9 +128,7 @@ function AlertDialogDescription({
   );
 }
 
-/**
- * 確認と取り消しは上流どおり Button を asChild で被せる。大きさは vv の既定の密度（sm）にする。
- */
+/** Preserve upstream Button asChild composition with the shared sm density. */
 function AlertDialogAction({
   className,
   variant = "default",

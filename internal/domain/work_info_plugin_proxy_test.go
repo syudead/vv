@@ -30,7 +30,7 @@ func TestParseWorkInfoPluginProxyURLEmptyMeansNoProxy(t *testing.T) {
 }
 
 func TestParseWorkInfoPluginProxyURLCountsCharacters(t *testing.T) {
-	// 2048 文字ちょうどで、UTF-8 では 2048 バイトを超える。
+	// Exactly 2,048 code points but more than 2,048 UTF-8 bytes.
 	host := strings.Repeat("ü", WorkInfoPluginProxyURLMaxLen-len("http://.example")) + ".example"
 	if u, err := ParseWorkInfoPluginProxyURL("http://" + host); err != nil || u == nil {
 		t.Fatalf("ParseWorkInfoPluginProxyURL(2048 characters) = %v, %v, want a proxy", u, err)

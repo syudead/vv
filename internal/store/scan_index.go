@@ -1,7 +1,5 @@
 package store
 
-// 走査の結果（ファイルシステムの所在）を索引へ反映する操作。ScanIndexStore が受け持つ。
-
 import (
 	"context"
 	"database/sql"
@@ -13,14 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// UpsertVideo は走査で分かった1件を索引に反映する。
-//
-// 突き合わせは content_key を先に見る。内容が同じ別pathは同じvideoの
-// locationとして追加する。論理videoを重複させないことが要求であり、
-// 再生位置とサムネイルを引き継ぐ前提でもある。
-//
-// 内容が変わったとき（サイズか mtime が変わる）は、解析結果を捨てて
-// probe_state を pending へ戻す。
+// UpsertVideo matches content before path so moves and copies retain identity; changed content resets probe results to pending.
 func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile) (domain.UpsertResult, error) {
 	now := time.Now().Unix()
 	tx, err := s.db.sql.BeginTx(ctx, nil)
@@ -85,7 +76,6 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 	if err != nil {
 		return domain.UpsertResult{}, fmt.Errorf("cannot save the video location (%s): %w", file.Path, err)
 	}
-	// 題名とパスが変わりうるので、照合用の鍵も同じ書き込みの中で作り直す。
 	if err := refreshSearchKeysByPath(ctx, tx, file.Path); err != nil {
 		return domain.UpsertResult{}, err
 	}
@@ -101,8 +91,7 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 	if err := syncRepresentativeContainer(ctx, tx, videoID); err != nil {
 		return domain.UpsertResult{}, err
 	}
-	// 前の中身が別のパスの動画として現れたら、それを前の中身とする後継の記録は取り消す
-	//
+	// Cancel pending succession when the old content reappears elsewhere.
 	if newVideo {
 		if err := cancelSuccessionsFrom(ctx, tx, file.ContentKey); err != nil {
 			return domain.UpsertResult{}, err
@@ -113,7 +102,7 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 		if err := syncRepresentativeContainer(ctx, tx, oldVideoID); err != nil {
 			return domain.UpsertResult{}, err
 		}
-		// 前の行を消すと尺を読めなくなるので、後継の記録に写す尺を先に読む。
+		// Capture the old duration before deleting its video row.
 		var oldDurationMs sql.NullInt64
 		if err := tx.QueryRowContext(ctx, `select duration_ms from videos where id = ?`, oldVideoID).Scan(&oldDurationMs); err != nil {
 			return domain.UpsertResult{}, err
@@ -126,17 +115,15 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 		if err := releaseContentIndex(ctx, tx, released); err != nil {
 			return domain.UpsertResult{}, err
 		}
-		// 同じパスの中身が変わり、前の動画の行が消えたときだけ後継の候補を記録する（手順 1・2）。
+		// Record succession only when replacing same-path content removes the previous video.
 		if newVideo && oldKey != file.ContentKey && len(released) == 1 {
 			if err := recordSuccession(ctx, tx, file.ContentKey, oldKey, oldDurationMs, now); err != nil {
 				return domain.UpsertResult{}, err
 			}
 		}
 	}
-	// 内容が変わって前の動画が消えたら、前の内容の生成物を片付けさせる。
 	var c changes
 	c.videosDeleted(released)
-	// 所在を足すか付け替えると、問題のある動画の代表の所在が変わりうる。
 	if !locationExists || oldVideoID != videoID {
 		changed, err := videosHaveIssues(ctx, tx, videoID, oldVideoID)
 		if err != nil {
@@ -146,7 +133,6 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 			c.issuesChanged()
 		}
 	}
-	// 新しい所在で、登録外の所在しか無かった仕事が着手できるようになりうる。
 	c.remainingChanged()
 	outcome := domain.OutcomeMoved
 	if locationExists {
@@ -170,10 +156,7 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 	return result, nil
 }
 
-// recordLocationImport は、既知の内容を新しいパスで見つけて（移動・改名・完全に同じファイルの複製）
-// 積む仕事が無い取り込みを、done/completed の import の記録として書く。仕事を積むか、待っているか
-// 走っている仕事か欠けた指紋がある動画は、走査が積む仕事の記録（joinImportActivity）に入るので、
-// ここでは書かない。
+// Record location-only imports as completed only when no queued, running or missing stage work needs an import activity.
 func recordLocationImport(
 	ctx context.Context, tx activityWriter, c *changes, result domain.UpsertResult, decider domain.ActivityDecider,
 ) error {
@@ -204,8 +187,7 @@ func recordLocationImport(
 	return err
 }
 
-// DeleteVideos は指定した行を消す。連鎖してジョブも消える。
-// 空の指定で全件消さないよう、何も渡されなければ何もしない。
+// DeleteVideos ignores an empty selection rather than deleting all rows; job rows cascade.
 func (s *ScanIndexStore) DeleteVideos(ctx context.Context, ids []int64) error {
 	if len(ids) == 0 {
 		return nil
@@ -268,7 +250,6 @@ func (s *ScanIndexStore) DeleteVideoLocations(ctx context.Context, ids []int64) 
 			return err
 		}
 	}
-	// 所在を消すと、残った問題のある動画の代表の所在が変わりうる。
 	affectedIDs := make([]int64, 0, len(affected))
 	for videoID := range affected {
 		affectedIDs = append(affectedIDs, videoID)
@@ -286,15 +267,11 @@ func (s *ScanIndexStore) DeleteVideoLocations(ctx context.Context, ids []int64) 
 	if issuesMoved {
 		c.issuesChanged()
 	}
-	// 動画の行が残っても、消した所在の仕事は着手できなくなりうる。
 	c.remainingChanged()
 	return s.db.commit(ctx, tx, &c)
 }
 
-// UpdateLocationCreatedAt は所在 locationID のファイルの作成日時を createdAt にする（秒で持ち、
-// ゼロ値なら null に戻して読み出しを mtime に倒す。docs/design-docs/catalog-organization.md）。
-// 走査が変わっていないファイルの作成日時の違いを見つけたときに呼ぶ。所在の事実を直すだけなので
-// updated_at・version は動かさず、イベントも発行しない。所在が無ければ何もしない。
+// UpdateLocationCreatedAt fixes location facts without edit timestamps, versions or events; zero restores the modification-time fallback.
 func (s *ScanIndexStore) UpdateLocationCreatedAt(ctx context.Context, locationID int64, createdAt time.Time) error {
 	if _, err := s.db.sql.ExecContext(ctx, `update video_locations set file_created_at = ? where id = ?`,
 		nullableUnix(createdAt), locationID); err != nil {
@@ -303,8 +280,6 @@ func (s *ScanIndexStore) UpdateLocationCreatedAt(ctx context.Context, locationID
 	return nil
 }
 
-// IndexedVideosByPath は索引に入っているものをパスで引ける形で返す。
-// 走査はこれと実際のファイルを突き合わせて差分を出す。
 func (s *ScanIndexStore) IndexedVideosByPath(ctx context.Context) (map[string]domain.IndexedVideo, error) {
 	rows, err := s.db.sql.QueryContext(ctx, `select v.id, l.id, l.version, l.path, v.content_key, l.size_bytes, coalesce(l.mtime_ns, l.mtime * 1000000000), l.file_created_at, v.probe_state, v.thumbnail_state, v.seek_thumbnail_state, v.preview_state,
 		`+fingerprintMissingCondition("v")+`

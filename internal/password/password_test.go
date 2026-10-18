@@ -42,9 +42,9 @@ func TestHashAndVerify(t *testing.T) {
 	}
 
 	for _, wrong := range []string{
-		"correct horse Battery stapl",  // 1文字欠け
-		"correct horse Battery stapla", // 1文字違い
-		"correct horse battery staple", // 大文字小文字違い
+		"correct horse Battery stapl",  // One character missing.
+		"correct horse Battery stapla", // One character changed.
+		"correct horse battery staple", // Case mismatch.
 		"CORRECT HORSE BATTERY STAPLE",
 		"",
 	} {

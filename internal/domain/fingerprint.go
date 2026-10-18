@@ -9,52 +9,36 @@ import (
 	"slices"
 )
 
-// 映像の指紋。
-//
-// 指紋はシーク用スプライトの各コマの pHash を並べたものである。internal/media が各コマを
-// 32×32 の輝度に縮め、ここで 2 次元 DCT の低周波からハッシュを作る。2 本の比較は、コマを
-// 番号ではなく時刻で組にする。閾値は再エンコードした試験用の動画で決めた値で、規則や値を
-// 変えるときは FingerprintVersion を上げ、旧い版の指紋とは比べない。
+// Fingerprints compare frame pHashes by timestamp; bump FingerprintVersion when hashing rules or calibrated thresholds change, and never compare different versions.
 
 const (
-	// FingerprintVersion は指紋の規則（ハッシュの作り方と閾値）の版である。
-	FingerprintVersion = 1
-	// FingerprintFrameSize は 1 コマのハッシュを作る輝度の一辺である。
+	FingerprintVersion   = 1
 	FingerprintFrameSize = 32
-	// FingerprintFlatVariance は、これ未満の輝度の分散（0〜255 の値の 2 乗）のコマを
-	// 単色として比較から外す値である。黒画面やフェードはどの動画でも一致してしまう。
-	FingerprintFlatVariance = 16.0
-	// FingerprintMinComparableFrames は、比べられたとみなす組の最小の数である。
+	// Low-variance frames are excluded because black screens and fades match unrelated videos.
+	FingerprintFlatVariance        = 16.0
 	FingerprintMinComparableFrames = 3
-	// FingerprintMatchMaxDistance は、同じ動画かもしれないとみなすハミング距離の
-	// 中央値の上限である（63 ビットのうち）。
+	// FingerprintMatchMaxDistance is the maximum median Hamming distance across 63 bits.
 	FingerprintMatchMaxDistance = 12
 
-	// fingerprintLowFrequency は DCT の係数のうち使う低周波の一辺である。
 	fingerprintLowFrequency = 8
-	// fingerprintFrameBytes は保存の形の 1 コマの大きさ（印 1 バイト + ハッシュ 8 バイト）である。
-	fingerprintFrameBytes = 9
+	fingerprintFrameBytes   = 9
 )
 
-// FrameHash はコマ 1 つのハッシュである。Flat のコマは単色で、比較から外す。
 type FrameHash struct {
 	Hash uint64
 	Flat bool
 }
 
-// Fingerprint は 1 本の動画の指紋である。Frames[i] はスプライトのコマ i で、
-// [i*IntervalMs, (i+1)*IntervalMs) の区間を受け持つ。
+// Frames[i] covers [i*IntervalMs, (i+1)*IntervalMs).
 type Fingerprint struct {
 	Version    int
 	IntervalMs int64
 	Frames     []FrameHash
 }
 
-// ErrInvalidFingerprint は保存の形の指紋が読めないことを表す。
 var ErrInvalidFingerprint = errors.New("the fingerprint data is malformed")
 
-// Encode は Frames を保存の形（1 コマ 9 バイト: 単色なら 1・そうでなければ 0 の印、
-// 続いてハッシュの big endian）にする。版と間隔は別の列に置く。
+// Encode stores each frame as a flat flag byte followed by an eight-byte big-endian hash; version and interval live in separate columns.
 func (f Fingerprint) Encode() []byte {
 	out := make([]byte, 0, len(f.Frames)*fingerprintFrameBytes)
 	for _, frame := range f.Frames {
@@ -68,8 +52,6 @@ func (f Fingerprint) Encode() []byte {
 	return out
 }
 
-// DecodeFingerprint は Encode の形を読む。長さが 9 の倍数でないか、印が 0・1 以外なら
-// ErrInvalidFingerprint を返す。
 func DecodeFingerprint(data []byte, version int, intervalMs int64) (Fingerprint, error) {
 	if len(data)%fingerprintFrameBytes != 0 {
 		return Fingerprint{}, fmt.Errorf("%w: %d bytes", ErrInvalidFingerprint, len(data))
@@ -88,7 +70,7 @@ func DecodeFingerprint(data []byte, version int, intervalMs int64) (Fingerprint,
 	return Fingerprint{Version: version, IntervalMs: intervalMs, Frames: frames}, nil
 }
 
-// fingerprintCos[u][x] は cos((2x+1)uπ/64) で、32 点の DCT-II の低周波 8 個の基底である。
+// fingerprintCos[u][x] is cos((2x+1)uπ/64), the eight low-frequency bases of a 32-point DCT-II.
 var fingerprintCos = func() (table [fingerprintLowFrequency][FingerprintFrameSize]float64) {
 	for u := range fingerprintLowFrequency {
 		for x := range FingerprintFrameSize {
@@ -98,9 +80,7 @@ var fingerprintCos = func() (table [fingerprintLowFrequency][FingerprintFrameSiz
 	return table
 }()
 
-// HashFrame は 32×32 の輝度からコマのハッシュを作る。2 次元 DCT の低周波 8×8 のうち
-// 直流を除く 63 係数を、その中央値より大きければ 1 のビットにする（係数 (u, v) は
-// ビット u*8+v-1）。輝度の分散が FingerprintFlatVariance 未満なら Flat にする。
+// HashFrame thresholds the 63 non-DC coefficients of the low-frequency 8×8 DCT against their median; low-variance frames are marked Flat.
 func HashFrame(luma [FingerprintFrameSize][FingerprintFrameSize]uint8) FrameHash {
 	var sum, sumSquares float64
 	for _, row := range luma {
@@ -114,7 +94,6 @@ func HashFrame(luma [FingerprintFrameSize][FingerprintFrameSize]uint8) FrameHash
 	mean := sum / count
 	variance := sumSquares/count - mean*mean
 
-	// 行ごとに横方向の低周波を求め、続けて縦方向に求める。
 	var rows [FingerprintFrameSize][fingerprintLowFrequency]float64
 	for y := range FingerprintFrameSize {
 		for v := range fingerprintLowFrequency {
@@ -151,17 +130,7 @@ func HashFrame(luma [FingerprintFrameSize][FingerprintFrameSize]uint8) FrameHash
 	return FrameHash{Hash: hash, Flat: variance < FingerprintFlatVariance}
 }
 
-// CompareFingerprints は 2 本の指紋のハミング距離の中央値を返す。版が違う、間隔が
-// 正でない、または比べた組が FingerprintMinComparableFrames 未満なら ok は偽である。
-//
-// コマは時刻で組にする。コマの画像は区間の先頭の場面なので、a のコマ i の先頭
-// （i*a.IntervalMs）に先頭が最も近い b のコマと組にし、先頭どうしが短い方の間隔の半分より
-// 離れていれば組にしない。b のコマ数の外も組にしない。81 秒を超える動画は間隔が
-// ceil(尺 / 81) で、尺が数ミリ秒違うだけで間隔が変わるため、番号では同じ場面を組に
-// できない。間隔の下限が 5 秒から 1 秒になったので、同じ動画でも 1 秒間隔と 5 秒間隔の
-// 指紋がある。区間に含まれるかで組にすると、1 秒間隔のコマ 1〜4 が 5 秒間隔のコマ 0
-// （0 秒の場面）と組になるので、先頭の近さで組にする。どちらかが単色のコマの組は
-// 数えない。組の数が偶数のときは、真ん中の 2 つのうち小さい方を中央値とする。
+// CompareFingerprints pairs nearest frame start times within half the shorter interval, excluding flat frames, invalid versions/intervals, and insufficient pairs; it uses the lower median for even counts.
 func CompareFingerprints(a, b Fingerprint) (distance int, ok bool) {
 	pairs, ok := ComparableFramePairs(a, b)
 	if !ok {
@@ -175,16 +144,12 @@ func CompareFingerprints(a, b Fingerprint) (distance int, ok bool) {
 	return distances[(len(distances)-1)/2], true
 }
 
-// FramePair は時刻で組にした 2 本の指紋のコマの組である。A と B はそれぞれの指紋（シーク用
-// スプライト）のコマの番号、Distance はハッシュのハミング距離。
 type FramePair struct {
 	A, B     int
 	Distance int
 }
 
-// ComparableFramePairs は 2 本の指紋のコマを CompareFingerprints と同じ規則で時刻で組にし、
-// どちらも単色でない組を a のコマの順に返す。版が違う、間隔が正でない、または組が
-// FingerprintMinComparableFrames 未満なら ok は偽である。
+// ComparableFramePairs uses CompareFingerprints timing rules and returns non-flat pairs in a-frame order; incompatible or insufficient fingerprints return false.
 func ComparableFramePairs(a, b Fingerprint) (pairs []FramePair, ok bool) {
 	if a.Version != b.Version || a.IntervalMs <= 0 || b.IntervalMs <= 0 {
 		return nil, false
@@ -209,7 +174,6 @@ func ComparableFramePairs(a, b Fingerprint) (pairs []FramePair, ok bool) {
 	return pairs, true
 }
 
-// FingerprintsMatch は 2 本の指紋が比べられ、距離が FingerprintMatchMaxDistance 以下かを返す。
 func FingerprintsMatch(a, b Fingerprint) bool {
 	distance, ok := CompareFingerprints(a, b)
 	return ok && distance <= FingerprintMatchMaxDistance

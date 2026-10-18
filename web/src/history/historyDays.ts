@@ -1,14 +1,12 @@
 import type { WatchHistoryEntry } from "../api/history";
 import { formatMonthDay, formatWeekday, t, type UiText } from "../i18n";
 
-// 視聴履歴の日ごとのまとまり。
-// 日の境目は見る人のブラウザの時間帯の 0 時。
+// Day boundaries use midnight in the viewer's browser timezone.
 
-/** HistoryDay は 1 日分のまとまりである。`entries` は API の順（新しい順）のまま。 */
+/** Preserve newest-first API order within each day. */
 export interface HistoryDay {
-  /** その日の 0 時（ローカル）。 */
+  /** Local midnight. */
   day: Date;
-  /** まとまりの鍵（`2026-9-27` の形）。 */
   key: string;
   entries: WatchHistoryEntry[];
 }
@@ -22,9 +20,8 @@ function dayKey(date: Date): string {
 }
 
 /**
- * groupByDay は件を `playedAt` のローカルの日でまとめる。まとまりは最初に現れた順、つまり
- * 新しい日が先になり、続きのページの件が同じ日なら開いているまとまりに加わるので、同じ日が
- * 2 度出ない。読めない時刻の件はまとめない。
+ * Merge same-day entries across page boundaries, retaining first-seen day order; skip invalid
+ * timestamps.
  */
 export function groupByDay(entries: readonly WatchHistoryEntry[]): HistoryDay[] {
   const days = new Map<string, HistoryDay>();
@@ -42,15 +39,12 @@ export function groupByDay(entries: readonly WatchHistoryEntry[]): HistoryDay[] 
   return Array.from(days.values());
 }
 
-/** DayLabel は日の見出しの 2 つの部分である（「Today · Oct 10」）。 */
 export interface DayLabel {
-  /** 前半: 「Today」「Yesterday」、ほかは曜日（「Tuesday」）。 */
   name: UiText;
-  /** 後半: 月と日（「Oct 7」）。今年でなければ年も付く。 */
+  /** Include the year only outside the current year. */
   date: UiText;
 }
 
-/** dayLabel はまとまりの見出しである。 */
 export function dayLabel(day: Date, now: Date): DayLabel {
   const today = startOfDay(now);
   const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
@@ -63,7 +57,6 @@ export function dayLabel(day: Date, now: Date): DayLabel {
   return { name, date: formatMonthDay(day, now) };
 }
 
-/** msUntilNextMidnight は `now` から次のローカルの 0 時までのミリ秒である。 */
 export function msUntilNextMidnight(now: Date): number {
   const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   return Math.max(0, next.getTime() - now.getTime());

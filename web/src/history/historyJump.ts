@@ -1,20 +1,15 @@
 import { formatMonth, formatWeekdayDate, t, type UiText } from "../i18n";
 
-// 日付へ移る一覧の項目。
-// API が返す件のある日（ブラウザの時間帯の `YYYY-MM-DD`、新しい順）を、直近 14 日は日、
-// それより前は月にまとめる。
+// Keep the latest 14 calendar days separate; group older dates by month.
 
-/** RECENT_DAYS は日のまま並べる日数（今日を含む）である。 */
+/** Includes today. */
 export const RECENT_DAYS = 14;
 
-/** JumpTarget は移り先の 1 つである。 */
 export interface JumpTarget {
-  /** URL の `date` に書く値（`YYYY-MM-DD` か `YYYY-MM`）。 */
   value: string;
   label: UiText;
 }
 
-/** JumpTargets は区切りで分ける日と月の項目である。どちらも新しい順。 */
 export interface JumpTargets {
   days: JumpTarget[];
   months: JumpTarget[];
@@ -34,10 +29,6 @@ function sameDay(a: Date, b: Date): boolean {
   );
 }
 
-/**
- * jumpTargets は日の一覧を移り先にする。今日から数えて RECENT_DAYS 日の内の日は日の項目、
- * それより前の日はその月の項目に 1 つにまとめる。読めない日は飛ばす。
- */
 export function jumpTargets(days: readonly string[], now: Date): JumpTargets {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
@@ -68,7 +59,6 @@ export function jumpTargets(days: readonly string[], now: Date): JumpTargets {
   return result;
 }
 
-/** firstTarget は一覧の最初の項目（いちばん新しい移り先）の値である。無ければ undefined。 */
 export function firstTarget(targets: JumpTargets): string | undefined {
   return (targets.days[0] ?? targets.months[0])?.value;
 }

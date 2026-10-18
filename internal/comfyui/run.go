@@ -9,7 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	_ "image/jpeg" // 参考画像とコマの大きさを読む。
+	_ "image/jpeg"
 	"image/png"
 	"io"
 	"mime/multipart"
@@ -24,20 +24,18 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// DefaultInstruction は、範囲を塗って指示を空にした実行で送る既定の指示である。持ち主の言語に
-// かかわらずこの英文を一字一句送る。
+// Send this exact English instruction for a painted mask with no user instruction, regardless of
+// locale.
 const DefaultInstruction = "Remove any text, logo or object in the marked area and restore the background behind it so it matches its surroundings."
 
-// requestTimeout は実行の 1 つの要求の上限時間である。
 const requestTimeout = 2 * time.Minute
 
-// maxQueueBytes は GET /queue の応答の上限である。待っているワークフローを丸ごと返す。
+// Queue responses include complete pending workflows.
 const maxQueueBytes = 32 << 20
 
-// maxOutputBytes は出力の画像の上限である。
 const maxOutputBytes = 64 << 20
 
-// vv が埋めるノードの _meta.title である。
+// Node titles filled by the application.
 const (
 	titleFrame     = "vv:frame"
 	titlePrompt    = "vv:prompt"
@@ -46,11 +44,9 @@ const (
 	titleOutput    = "vv:output"
 )
 
-// Start は入力を上げ、vv のワークフローの vv:* の入力だけを書き換えて POST /prompt で送る。
-// 参考画像があれば参考画像ありの版を、なければもう一方を使う。マスクが無ければコマの大きさの
-// 真っ白なマスクを、塗ったマスクで指示が空なら DefaultInstruction を送る。
-// 上げたファイルと出力は ComfyUI から消さない。送る前に、
-// ステップの進み具合を読む WebSocket を同じ client_id で開き始める（Progress）。
+// Start fills only vv:* inputs, selecting the reference-image workflow when needed and supplying a
+// white mask or DefaultInstruction as appropriate. Uploaded inputs and outputs remain on the
+// provider; Progress uses the same client ID.
 func (c *Client) Start(ctx context.Context, conn domain.ComfyUISettings, input domain.ImageEditInput) (domain.ImageEditJob, error) {
 	target, err := c.target(conn)
 	if err != nil {
@@ -122,8 +118,7 @@ func (c *Client) Start(ctx context.Context, conn domain.ComfyUISettings, input d
 	if err != nil {
 		return domain.ImageEditJob{}, err
 	}
-	// 最初の progress を取りこぼさないよう、送る前に WebSocket を開き、提供元に登録されるのを
-	// 上限つきで待つ。
+	// Wait briefly for socket registration before submitting to avoid losing early progress.
 	watch := c.startProgress(ctx, target, clientID)
 	watch.waitReady(ctx)
 	id, err := target.submit(ctx, prompt, clientID)
@@ -135,9 +130,8 @@ func (c *Client) Start(ctx context.Context, conn domain.ComfyUISettings, input d
 	return domain.ImageEditJob{Connection: conn, ID: id, Output: output}, nil
 }
 
-// State は実行の状態を読む。自前の ComfyUI は GET /queue の後に GET /history/{id}、Comfy Cloud は
-// GET /job/{id}/status を読み、provider の実行状態を vv の状態に対応させる。
-// どちらの表にも無い値なら previous を返す。終わった実行の WebSocket は閉じる。
+// State maps provider states, preserves previous for unknown values, and closes progress sockets on
+// completion.
 func (c *Client) State(ctx context.Context, job domain.ImageEditJob, previous domain.ThumbnailEditState) (domain.ThumbnailEditState, *domain.ImageEditError, error) {
 	target, err := c.target(job.Connection)
 	if err != nil {
@@ -150,14 +144,9 @@ func (c *Client) State(ctx context.Context, job domain.ImageEditJob, previous do
 	return state, failure, err
 }
 
-// Cancel は実行を中止する。前に読んだ状態は古いことがあるので、送る要求を選ぶ直前に提供元の
-// 今の状態を読み直す。previous は最後に読んだ状態で、提供元が表に無い値を返したときに使う。
-// 終わった実行（succeeded・failed・cancelled）には何も送らない。Comfy Cloud の POST /interrupt は
-// アカウントの実行中の仕事をすべて止めるので、終わった実行のために送ると別の実行を止めてしまう。
-// 実行中なら自前の ComfyUI に POST /interrupt {"prompt_id":id}、Comfy Cloud に POST /interrupt を
-// 送る。それより前なら POST /queue {"delete":[id]} で消し、読んでから消すまでに実行が
-// 始まっていれば、もう一度読んで実行中なら interrupt を送る。進み具合を
-// 読む WebSocket は中止が済んだときだけ閉じ、失敗すれば実行は続きうるので開いたままにする。
+// Cancel refreshes provider state before choosing queue deletion or interruption, rechecking if a
+// queued job starts meanwhile; never interrupt completed Cloud jobs because Cloud interrupts all
+// active account jobs. Close progress only after successful cancellation.
 func (c *Client) Cancel(ctx context.Context, job domain.ImageEditJob, previous domain.ThumbnailEditState) error {
 	target, err := c.target(job.Connection)
 	if err != nil {
@@ -194,8 +183,8 @@ func (c *Client) cancel(ctx context.Context, target *target, job domain.ImageEdi
 	return nil
 }
 
-// Output は vv:output の最初の画像を GET /view で取る。Comfy Cloud は署名付き URL への転送を
-// 返すので、転送先は X-API-Key を付けずに取る。画像が無ければ no_output の誤りを返す。
+// Output fetches the first vv:output image; follow Cloud's signed redirect without the API key, and
+// report no_output when absent.
 func (c *Client) Output(ctx context.Context, job domain.ImageEditJob) ([]byte, error) {
 	target, err := c.target(job.Connection)
 	if err != nil {
@@ -216,7 +205,6 @@ func (c *Client) Output(ctx context.Context, job domain.ImageEditJob) ([]byte, e
 	return target.view(ctx, "/view?"+query.Encode())
 }
 
-// target は 1 つの接続先への要求の送り先である。
 type target struct {
 	client *Client
 	base   string
@@ -224,7 +212,6 @@ type target struct {
 	cloud  bool
 }
 
-// target は接続先 conn の送り先を作る。
 func (c *Client) target(conn domain.ComfyUISettings) (*target, error) {
 	switch conn.Provider {
 	case domain.ComfyUISelfHosted:
@@ -246,7 +233,6 @@ func (t *target) name() string {
 	return "ComfyUI at " + t.base
 }
 
-// do は要求を送る。つながらなければ unreachable の誤りを返す。
 func (t *target) do(req *http.Request, withKey bool) (*http.Response, error) {
 	if withKey && t.apiKey != "" {
 		req.Header.Set("X-API-Key", t.apiKey)
@@ -261,7 +247,7 @@ func (t *target) do(req *http.Request, withKey bool) (*http.Response, error) {
 	return resp, nil
 }
 
-// statusError は 2xx でない応答 resp を失敗の理由に対応させる。応答の本文は読まない。
+// Map status failures without reading response bodies.
 func (t *target) statusError(route string, resp *http.Response) *domain.ImageEditError {
 	switch {
 	case t.cloud && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden):
@@ -273,7 +259,6 @@ func (t *target) statusError(route string, resp *http.Response) *domain.ImageEdi
 	}
 }
 
-// request は基底 URL からの path への要求を作る。
 func (t *target) request(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
 	req, err := http.NewRequestWithContext(ctx, method, t.base+path, body)
 	if err != nil {
@@ -282,7 +267,6 @@ func (t *target) request(ctx context.Context, method, path string, body io.Reade
 	return req, nil
 }
 
-// getJSON は path を GET し、200 の JSON を最大 limit バイトまで out に読む。
 func (t *target) getJSON(ctx context.Context, path string, limit int64, out any) error {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
@@ -305,7 +289,6 @@ func (t *target) getJSON(ctx context.Context, path string, limit int64, out any)
 	return nil
 }
 
-// postJSON は body を JSON で path へ POST する。out が nil でなければ 200 の応答を読む。
 func (t *target) postJSON(ctx context.Context, path string, body, out any) error {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
@@ -335,8 +318,8 @@ func (t *target) postJSON(ctx context.Context, path string, body, out any) error
 	return nil
 }
 
-// upload は data を POST /upload/image で name の名前、overwrite=true、type=input で上げ、
-// LoadImage に渡す名前（サブフォルダがあれば「サブフォルダ/名前」）を返す。
+// upload returns the LoadImage filename, including any subfolder, after uploading with
+// overwrite=true and type=input.
 func (t *target) upload(ctx context.Context, name string, data []byte) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
@@ -383,9 +366,8 @@ func (t *target) upload(ctx context.Context, name string, data []byte) (string, 
 	return uploaded.Name, nil
 }
 
-// submit は prompt を POST /prompt で送り、prompt_id を返す。clientID は進み具合を読む WebSocket の
-// clientId で、ComfyUI はその実行のメッセージをこの接続へ送る。400 はノードの誤りから
-// workflow_rejected か missing_models に、クレジットを名指す誤りは insufficient_credits にする。
+// submit shares clientID with the progress socket and maps rejection details to workflow_rejected,
+// missing_models, or insufficient_credits.
 func (t *target) submit(ctx context.Context, prompt promptGraph, clientID string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
@@ -420,7 +402,7 @@ func (t *target) submit(ctx context.Context, prompt promptGraph, clientID string
 	return "", t.statusError("/prompt", resp)
 }
 
-// view は path の画像を取る。転送が返れば、転送先を X-API-Key を付けずに 1 度だけ取る。
+// Follow at most one redirect and never forward X-API-Key.
 func (t *target) view(ctx context.Context, path string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
@@ -465,7 +447,6 @@ func (t *target) view(ctx context.Context, path string) ([]byte, error) {
 	return data, nil
 }
 
-// state は実行の状態を接続先に合う経路で読む。
 func (t *target) state(ctx context.Context, job domain.ImageEditJob, previous domain.ThumbnailEditState) (domain.ThumbnailEditState, *domain.ImageEditError, error) {
 	if t.cloud {
 		return t.cloudState(ctx, job, previous)
@@ -473,8 +454,7 @@ func (t *target) state(ctx context.Context, job domain.ImageEditJob, previous do
 	return t.selfHostedState(ctx, job, previous)
 }
 
-// interrupt は実行中の実行 id を止める。自前の ComfyUI は prompt_id で名指し、その実行が
-// 実行中のときだけ止まる。Comfy Cloud は実行を名指せない。
+// Self-hosted interrupt targets prompt_id; Cloud cannot target an individual run.
 func (t *target) interrupt(ctx context.Context, id string) error {
 	var body any = map[string]string{"prompt_id": id}
 	if t.cloud {
@@ -483,7 +463,6 @@ func (t *target) interrupt(ctx context.Context, id string) error {
 	return t.postJSON(ctx, "/interrupt", body, nil)
 }
 
-// selfHostedState は自前の ComfyUI の実行の状態を読む。待ち行列を先に見て、無ければ履歴を見る。
 func (t *target) selfHostedState(ctx context.Context, job domain.ImageEditJob, previous domain.ThumbnailEditState) (domain.ThumbnailEditState, *domain.ImageEditError, error) {
 	var queue struct {
 		Running []json.RawMessage `json:"queue_running"`
@@ -517,7 +496,6 @@ func (t *target) selfHostedState(ctx context.Context, job domain.ImageEditJob, p
 	}
 }
 
-// cloudState は Comfy Cloud の実行の状態を GET /job/{id}/status から読む。
 func (t *target) cloudState(ctx context.Context, job domain.ImageEditJob, previous domain.ThumbnailEditState) (domain.ThumbnailEditState, *domain.ImageEditError, error) {
 	var status struct {
 		Status       string `json:"status"`
@@ -537,14 +515,14 @@ func (t *target) cloudState(ctx context.Context, job domain.ImageEditJob, previo
 			return previous, nil, err
 		}
 		if entry == nil {
-			// 状態が success になってから履歴の項目ができるまでの間は、出力がまだ読めない。
-			// 失敗にせず前の状態を保ち、次の読み取りで確かめる（終わらなければ時間の上限が止める）。
+			// Cloud success may precede history publication; preserve the previous state and retry until
+			// output appears or the session deadline expires.
 			return previous, nil, nil
 		}
 		return succeededOrNoOutput(entry, job.Output)
 	case domain.ThumbnailEditFailed:
 		failure := &domain.ImageEditError{Reason: domain.ImageEditRunFailed, Message: status.ErrorMessage}
-		// 実行の誤りの文は履歴にある。読めなければ状態の応答の文で失敗にする。
+		// Prefer execution errors from history, falling back to the status response.
 		if entry, err := t.history(ctx, job.ID); err == nil && entry != nil {
 			if fromHistory := entry.failure(); fromHistory.Message != "" || fromHistory.Reason != domain.ImageEditRunFailed {
 				failure = fromHistory
@@ -556,7 +534,7 @@ func (t *target) cloudState(ctx context.Context, job domain.ImageEditJob, previo
 	}
 }
 
-// cloudStates は Comfy Cloud の仕事の状態から vv の状態への対応である。succeeded は出力の画像があるときだけで、cloudState が確かめる。
+// cloudState additionally requires an output image before accepting success.
 var cloudStates = map[string]domain.ThumbnailEditState{
 	"submitted":           domain.ThumbnailEditQueued,
 	"preprocessing":       domain.ThumbnailEditQueued,
@@ -579,8 +557,6 @@ var cloudStates = map[string]domain.ThumbnailEditState{
 	"cancelled":           domain.ThumbnailEditCancelled,
 }
 
-// succeededOrNoOutput は成功した実行を、出力の画像があれば succeeded、無ければ no_output の
-// failed にする。
 func succeededOrNoOutput(entry *historyEntry, output string) (domain.ThumbnailEditState, *domain.ImageEditError, error) {
 	if entry != nil {
 		if _, ok := entry.firstImage(output); ok {
@@ -590,8 +566,7 @@ func succeededOrNoOutput(entry *historyEntry, output string) (domain.ThumbnailEd
 	return domain.ThumbnailEditFailed, &domain.ImageEditError{Reason: domain.ImageEditNoOutput}, nil
 }
 
-// queueHas は GET /queue の項目の一覧 items に id があるかを返す。項目は
-// [番号, prompt_id, prompt, extra_data, outputs] の配列である。
+// Queue items are [number, prompt_id, prompt, extra_data, outputs].
 func queueHas(items []json.RawMessage, id string) bool {
 	for _, item := range items {
 		var fields []json.RawMessage
@@ -606,14 +581,12 @@ func queueHas(items []json.RawMessage, id string) bool {
 	return false
 }
 
-// imageRef は出力の画像の 1 つである。
 type imageRef struct {
 	Filename  string `json:"filename"`
 	Subfolder string `json:"subfolder"`
 	Type      string `json:"type"`
 }
 
-// historyEntry は 1 つの実行の履歴である。
 type historyEntry struct {
 	Outputs map[string]struct {
 		Images []imageRef `json:"images"`
@@ -625,8 +598,7 @@ type historyEntry struct {
 	} `json:"status"`
 }
 
-// history は実行 id の履歴を読む。自前の ComfyUI は GET /history/{id}、Comfy Cloud は
-// GET /history_v2/{id} で、どちらも id をキーにした対応を返す。履歴が無ければ nil を返す。
+// Both history endpoints normally return an ID-keyed map; absent entries return nil.
 func (t *target) history(ctx context.Context, id string) (*historyEntry, error) {
 	route := "/history/"
 	if t.cloud {
@@ -638,7 +610,7 @@ func (t *target) history(ctx context.Context, id string) (*historyEntry, error) 
 	}
 	raw, ok := entries[id]
 	if !ok {
-		// 履歴の項目そのものを返す提供元にも合わせる。
+		// Also accept providers returning the entry directly.
 		if _, hasOutputs := entries["outputs"]; !hasOutputs {
 			return nil, nil
 		}
@@ -655,7 +627,6 @@ func (t *target) history(ctx context.Context, id string) (*historyEntry, error) 
 	return &entry, nil
 }
 
-// firstImage は出力のノード output の最初の画像を返す。
 func (e *historyEntry) firstImage(output string) (imageRef, bool) {
 	images := e.Outputs[output].Images
 	if len(images) == 0 || images[0].Filename == "" {
@@ -668,8 +639,6 @@ func (e *historyEntry) firstImage(output string) (imageRef, bool) {
 	return ref, true
 }
 
-// failure は失敗した実行の理由を履歴の execution_error から作る。誤りの種類がクレジットを
-// 名指していれば insufficient_credits、それ以外は run_failed で、実行の誤りの文を渡す。
 func (e *historyEntry) failure() *domain.ImageEditError {
 	for _, message := range e.Status.Messages {
 		var pair []json.RawMessage
@@ -696,12 +665,10 @@ func (e *historyEntry) failure() *domain.ImageEditError {
 	return &domain.ImageEditError{Reason: domain.ImageEditRunFailed}
 }
 
-// mentionsCredits は誤りの種類 kind がクレジットを名指すかを返す。
 func mentionsCredits(kind string) bool {
 	return strings.Contains(strings.ToLower(kind), "credit")
 }
 
-// promptReply は POST /prompt の応答である。
 type promptReply struct {
 	PromptID string `json:"prompt_id"`
 	Error    *struct {
@@ -725,14 +692,11 @@ type promptReply struct {
 	} `json:"node_errors"`
 }
 
-// missingNodePattern は古い ComfyUI が無いノードの型を述べる文である。
+// Older ComfyUI versions describe missing node classes in free text.
 var missingNodePattern = regexp.MustCompile(`node (\S+) does not exist`)
 
-// nodeIDPattern は誤りの details が名指すノードの id である。
 var nodeIDPattern = regexp.MustCompile(`Node ID '#([^']+)'`)
 
-// rejection は 400 の応答を、足りないノードの型かモデルファイルがあれば missing_models に、
-// それ以外は最初のノードの誤りの文を持つ workflow_rejected にする。
 func (r promptReply) rejection(prompt promptGraph) *domain.ImageEditError {
 	var missing []string
 	if r.Error != nil {
@@ -787,7 +751,7 @@ func (r promptReply) rejection(prompt promptGraph) *domain.ImageEditError {
 	return &domain.ImageEditError{Reason: domain.ImageEditWorkflowRejected, Message: first}
 }
 
-// nodeIDLess はノードの id を、数なら数の順に、そうでなければ文字の順に比べる。
+// Compare numeric IDs numerically and other IDs lexically.
 func nodeIDLess(a, b string) bool {
 	if len(a) != len(b) && isDigits(a) && isDigits(b) {
 		return len(a) < len(b)
@@ -799,11 +763,9 @@ func isDigits(s string) bool {
 	return s != "" && strings.Trim(s, "0123456789") == ""
 }
 
-// promptGraph は送るワークフローである。埋め込んだファイルの値を数の書き方まで保つよう、
-// ノードを汎用の対応のまま持つ。
+// Keep generic nodes to preserve embedded workflow values, including number representations.
 type promptGraph map[string]map[string]any
 
-// loadPrompt は埋め込んだワークフロー name を送る形で読む。
 func loadPrompt(name string) (promptGraph, error) {
 	data, err := workflowFiles.ReadFile(name)
 	if err != nil {
@@ -818,7 +780,6 @@ func loadPrompt(name string) (promptGraph, error) {
 	return graph, nil
 }
 
-// nodeID は _meta.title が title のノードの id を返す。
 func (g promptGraph) nodeID(title string) (string, error) {
 	for id, node := range g {
 		meta, _ := node["_meta"].(map[string]any)
@@ -829,7 +790,6 @@ func (g promptGraph) nodeID(title string) (string, error) {
 	return "", fmt.Errorf("the bundled workflow has no node titled %s", title)
 }
 
-// setInput は _meta.title が title のノードの入力 input を value にする。
 func (g promptGraph) setInput(title, input string, value any) error {
 	id, err := g.nodeID(title)
 	if err != nil {
@@ -843,8 +803,7 @@ func (g promptGraph) setInput(title, input string, value any) error {
 	return nil
 }
 
-// setPrompt は vv:prompt のノードの、指示の文を受ける入力を instruction にする。入力の名前は
-// ノードの型で決まる（promptInputs）。
+// The instruction input name depends on the node class.
 func (g promptGraph) setPrompt(instruction string) error {
 	id, err := g.nodeID(titlePrompt)
 	if err != nil {
@@ -857,7 +816,6 @@ func (g promptGraph) setPrompt(instruction string) error {
 	return g.setInput(titlePrompt, input, instruction)
 }
 
-// setLoaderInput は型 class のローダーノードすべての、ファイル名を受ける入力を file にする。
 func (g promptGraph) setLoaderInput(class, file string) error {
 	input := modelLoaders[class]
 	found := false
@@ -878,20 +836,17 @@ func (g promptGraph) setLoaderInput(class, file string) error {
 	return nil
 }
 
-// classType はノード id の型を返す。無ければ空である。
 func (g promptGraph) classType(id string) string {
 	class, _ := g[id]["class_type"].(string)
 	return class
 }
 
-// stringInput はノード id の文字列の入力 input を返す。
 func (g promptGraph) stringInput(id, input string) string {
 	inputs, _ := g[id]["inputs"].(map[string]any)
 	value, _ := inputs[input].(string)
 	return value
 }
 
-// whiteMask はコマ frame と同じ大きさの、不透明な真っ白の PNG を作る。
 func whiteMask(frame []byte) ([]byte, error) {
 	config, _, err := image.DecodeConfig(bytes.NewReader(frame))
 	if err != nil {
@@ -909,7 +864,6 @@ func whiteMask(frame []byte) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-// uploadPrefix は上げるファイルの名前の頭で、vv- と乱数である。
 func uploadPrefix() (string, error) {
 	var random [8]byte
 	if _, err := rand.Read(random[:]); err != nil {
@@ -918,7 +872,7 @@ func uploadPrefix() (string, error) {
 	return "vv-" + hex.EncodeToString(random[:]), nil
 }
 
-// imageExtension は画像 data の形式に合う拡張子を返す。分からなければ .png にする。
+// Unknown image formats default to .png.
 func imageExtension(data []byte) string {
 	switch http.DetectContentType(data) {
 	case "image/jpeg":
@@ -932,7 +886,6 @@ func imageExtension(data []byte) string {
 	}
 }
 
-// routeOf は path から問い合わせの部分を除く。
 func routeOf(path string) string {
 	return strings.SplitN(path, "?", 2)[0]
 }

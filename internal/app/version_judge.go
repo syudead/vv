@@ -11,60 +11,43 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// versionJudgeRetryDelay は、取り出しや設定の読み込み自体が失敗したときに次に試すまでの間隔である。
 const versionJudgeRetryDelay = 5 * time.Second
 
-// errNoVersionAnswer は判定の口が問いに答えなかったことを表す。確率 0 ではなく失敗として扱う
+// An unanswered question is a failure, not zero probability.
 var errNoVersionAnswer = errors.New("the classifier did not answer the question")
 
-// VersionJudgeStore は「同じ動画かもしれない」候補の判定の保存先である。internal/store の
-// *VersionStore が満たす。
 type VersionJudgeStore interface {
-	// ClaimJudgement は取り出せる最も古い候補を判定中にし、両方の指紋と共に返す。無ければ
-	// domain.ErrNoJob。
+	// Claim the oldest eligible pair with both fingerprints, or return ErrNoJob.
 	ClaimJudgement(ctx context.Context) (domain.VersionJudgeJob, error)
-	// ApplyJudgement は判定中の組に結果を反映し、反映したかを返す。
 	ApplyJudgement(ctx context.Context, keys [2]string, result domain.VersionJudgeResult) (bool, error)
-	// RecoverRunningJudgements は判定中のまま残った行を待ちに戻す。
 	RecoverRunningJudgements(ctx context.Context) (int, error)
-	// NextJudgementRetry は failed の組のうち最も早く取り出せる時刻を返す。無ければ found は偽。
 	NextJudgementRetry(ctx context.Context) (at time.Time, found bool, err error)
-	// ResetNoConnectionJudgements は no_connection の組を待ちに戻す。
 	ResetNoConnectionJudgements(ctx context.Context) (int, error)
 }
 
-// VersionJudgeSettingsStore は重複の自動判定の入切と、Ollama の接続先を保存したかを読む。
-// internal/store の *SettingsStore が満たす。
 type VersionJudgeSettingsStore interface {
 	VersionJudgingEnabled(ctx context.Context) (bool, error)
 	SaveVersionJudgingEnabled(ctx context.Context, enabled bool) error
-	// OllamaConnectionSaved は所有者が Ollama の接続先を保存したかを返す。
 	OllamaConnectionSaved(ctx context.Context) (bool, error)
 }
 
-// VersionFrameSource は 2 つの内容のシーク用プレビューのコマを左右に並べた JPEG を読む。
-// internal/artifacts の *Store が満たす。
 type VersionFrameSource interface {
 	SeekFramePairs(keyA, keyB string, pairs []domain.FramePair) ([][]byte, error)
 }
 
-// VersionJudgeOptions は重複の自動判定に必要な依存である。
 type VersionJudgeOptions struct {
-	Store    VersionJudgeStore
-	Settings VersionJudgeSettingsStore
-	// Classifier は判定モデルの口で、どの提供元かは知らない。
+	Store      VersionJudgeStore
+	Settings   VersionJudgeSettingsStore
 	Classifier Classifier
 	Frames     VersionFrameSource
-	// Logger は nil なら slog の既定を使う。
+	// Nil uses slog.Default.
 	Logger *slog.Logger
-	// Now は今の時刻で、nil なら time.Now。
+	// Nil uses time.Now.
 	Now func() time.Time
 }
 
-// VersionJudge は「同じ動画かもしれない」候補を 1 組ずつ判定する（docs/design-docs/duplicate-judging.md）。
-// まず 2 本の指紋をコマごとに比べ、一致すればモデルに聞かずに同じ動画とし、コマの連なりが食い違う
-// ときだけ、その区間のコマを左右に並べて Classifier の口に聞く。結果は保存層が所有者の操作と同じ
-// 行に反映する。設定が入のあいだだけ取り出す。
+// VersionJudge compares fingerprints before asking the classifier about mismatched intervals,
+// processing pairs serially only while enabled; see docs/design-docs/duplicate-judging.md.
 type VersionJudge struct {
 	store      VersionJudgeStore
 	settings   VersionJudgeSettingsStore
@@ -74,16 +57,15 @@ type VersionJudge struct {
 	now        func() time.Time
 	wake       chan struct{}
 
-	// saveMu は設定の保存を 1 つずつにし、判定の結果の反映と入れ違わないようにする。切を保存し
-	// 終えたあとに、判定中だった組を確定しない。
+	// Serialize settings with result application so disabled judging cannot commit an in-flight pair
+	// afterward.
 	saveMu sync.Mutex
-	// requeuePending は、次の判定の前に待ちへ戻す行（requeue）を見直すことを表す。接続の保存と、
-	// 結果を保存できなかった判定で立てる。判定を 1 組ずつ行う Run の中で戻すので、判定中の組と
-	// 入れ違わない。
+	// Requeue inside serial Run after connection saves or failed result writes, avoiding races with
+	// active judgements.
 	requeuePending atomic.Bool
 }
 
-// NewVersionJudge は重複の自動判定を組み立てる。判定は Run で始める。
+// NewVersionJudge starts no work until Run.
 func NewVersionJudge(opts VersionJudgeOptions) *VersionJudge {
 	logger := opts.Logger
 	if logger == nil {
@@ -100,13 +82,12 @@ func NewVersionJudge(opts VersionJudgeOptions) *VersionJudge {
 		frames:     opts.Frames,
 		logger:     logger.With(slog.String("component", "duplicate-judging")),
 		now:        now,
-		// 容量 1 で、起こす知らせを 1 つだけ貯める。
+		// Coalesce wakeups in a one-element buffer.
 		wake: make(chan struct{}, 1),
 	}
 }
 
-// Wake は判定する組が増えたかもしれないことを知らせる。ブロックしない。仕事の終わり
-// （domain.ProcessingChanged）と候補の変化（domain.VersionCandidatesChanged）で呼ぶ。
+// Wake is nonblocking and reacts to processing completion or candidate changes.
 func (j *VersionJudge) Wake() {
 	select {
 	case j.wake <- struct{}{}:
@@ -114,13 +95,11 @@ func (j *VersionJudge) Wake() {
 	}
 }
 
-// Enabled は重複の自動判定が入かを返す。
 func (j *VersionJudge) Enabled(ctx context.Context) (bool, error) {
 	return j.settings.VersionJudgingEnabled(ctx)
 }
 
-// SaveEnabled は重複の自動判定の入切を保存し、判定の処理を起こす。入れたときに待っていた候補を
-// 判定し始める。
+// Saving enablement wakes pending candidates.
 func (j *VersionJudge) SaveEnabled(ctx context.Context, enabled bool) error {
 	j.saveMu.Lock()
 	err := j.settings.SaveVersionJudgingEnabled(ctx, enabled)
@@ -132,17 +111,14 @@ func (j *VersionJudge) SaveEnabled(ctx context.Context, enabled bool) error {
 	return nil
 }
 
-// ConnectionSaved は Ollama の接続先が保存されたことを受け取る。接続が無くて待っていた組
-// （no_connection）を待ちに戻すよう判定の処理に頼んで起こす。戻すのは Run の中で
-// 行うので、保存の要求の取り消しに左右されず、判定中の組が後から no_connection を書いても次の判定の
-// 前に戻り、戻せなければ再び試す。
+// Queue connection recovery in Run so request cancellation and in-flight no_connection writes
+// cannot lose it; failed requeueing retries before later judgements.
 func (j *VersionJudge) ConnectionSaved(context.Context) {
 	j.requeuePending.Store(true)
 	j.Wake()
 }
 
-// Recover は前回の終了で判定中のまま残った行と、接続が保存されていれば no_connection の行を待ちに
-// 戻す。Run より前に呼ぶ。戻せなければ Run が最初の判定の前に再び試す。
+// Recover before Run; failed recovery is retried before the first judgement.
 func (j *VersionJudge) Recover(ctx context.Context) error {
 	if err := j.requeue(ctx); err != nil {
 		j.requeuePending.Store(true)
@@ -151,8 +127,7 @@ func (j *VersionJudge) Recover(ctx context.Context) error {
 	return nil
 }
 
-// requeue は判定中のまま残った行を待ちに戻し、Ollama の接続先が保存されていれば no_connection の行も
-// 待ちに戻す。判定中の組が無いとき（Run の前か、Run の判定と判定のあいだ）だけ呼ぶ。
+// Call requeue only before Run or between judgements, never while a pair is being processed.
 func (j *VersionJudge) requeue(ctx context.Context) error {
 	recovered, err := j.store.RecoverRunningJudgements(ctx)
 	if err != nil {
@@ -175,16 +150,15 @@ func (j *VersionJudge) requeue(ctx context.Context) error {
 	return nil
 }
 
-// Run は ctx が終わるまで候補を 1 組ずつ判定する。起動直後は知らせを待たずに 1 度見る。設定が切の
-// あいだは取り出さず、起こされるまで待つ。取り出せる組が無ければ、起こされるか、次の失敗した組の
-// 再試行の時刻まで待つ。
+// Run checks immediately, processes serially while enabled, and waits for wakeups or the next retry
+// time when no pair is eligible.
 func (j *VersionJudge) Run(ctx context.Context) {
 	for ctx.Err() == nil {
 		j.waitFor(ctx, j.step(ctx))
 	}
 }
 
-// step は 1 組を判定し、次の判定までの待ち方を返す。0 は待たない、負は起こされるまで待つ。
+// Zero delay means continue immediately; negative means wait for a wakeup.
 func (j *VersionJudge) step(ctx context.Context) time.Duration {
 	if j.requeuePending.Swap(false) {
 		if err := j.requeue(ctx); err != nil {
@@ -215,7 +189,7 @@ func (j *VersionJudge) step(ctx context.Context) time.Duration {
 	return 0
 }
 
-// untilNextRetry は次の失敗した組を再び取り出せるまでの時間を返す。無ければ起こされるまで待つ（負）。
+// Return a negative delay when no retry is scheduled.
 func (j *VersionJudge) untilNextRetry(ctx context.Context) time.Duration {
 	at, found, err := j.store.NextJudgementRetry(ctx)
 	if err != nil {
@@ -225,11 +199,10 @@ func (j *VersionJudge) untilNextRetry(ctx context.Context) time.Duration {
 	if !found {
 		return -1
 	}
-	// 秒の単位で保存した時刻を過ぎてから取り出す。
+	// Wait until after the timestamp stored at second precision.
 	return max(at.Sub(j.now()), 0) + time.Second
 }
 
-// waitFor は wait だけ（負なら限りなく）待つ。ctx が終わるか起こされれば待つのをやめる。
 func (j *VersionJudge) waitFor(ctx context.Context, wait time.Duration) {
 	if wait == 0 {
 		return
@@ -247,16 +220,15 @@ func (j *VersionJudge) waitFor(ctx context.Context, wait time.Duration) {
 	}
 }
 
-// logError は停止で途切れたのでなければ誤りを記録する。
+// Do not log shutdown cancellation as an operational error.
 func (j *VersionJudge) logError(ctx context.Context, message string, err error) {
 	if ctx.Err() == nil {
 		j.logger.Error(message, slog.Any("error", err))
 	}
 }
 
-// process は 1 組を判定し、結果を反映して、反映できたかを返す。停止で途切れた判定は反映せず、次の
-// 起動で Recover が待ちに戻す。結果を保存できなければ、組は判定中のまま残るので、次の判定の前に
-// 待ちへ戻す。
+// Leave shutdown-interrupted work for startup recovery; failed result writes trigger requeueing
+// before the next judgement.
 func (j *VersionJudge) process(ctx context.Context, job domain.VersionJudgeJob) bool {
 	rule := domain.JudgeVersionFrames(job.Fingerprints[0], job.Fingerprints[1])
 	result, probability := j.decide(ctx, job, rule)
@@ -283,10 +255,8 @@ func (j *VersionJudge) process(ctx context.Context, job domain.VersionJudgeJob) 
 	return true
 }
 
-// record は設定が入なら判定の結果を反映し、判定のあいだに切られていれば結果を捨てて組を待ちに戻す。
-// 戻した組は、入れ直したときに判定し直す。設定の保存と同じ saveMu の中で読んで反映するので、
-// SaveEnabled(false) が返ったあとに組を束ねたり却下したりしない（親 Issue の要件 7: 切なら
-// すべての候補が候補一覧に残る）。
+// Apply results under the settings lock only while enabled; disabling returns in-flight pairs to
+// pending so no bundling/rejection can commit after SaveEnabled(false) returns.
 func (j *VersionJudge) record(ctx context.Context, keys [2]string, result domain.VersionJudgeResult) error {
 	j.saveMu.Lock()
 	defer j.saveMu.Unlock()
@@ -306,9 +276,8 @@ func (j *VersionJudge) record(ctx context.Context, keys [2]string, result domain
 	return nil
 }
 
-// decide はコマごとの規則の結果から判定の結果を決め、モデルに聞いたときはその確率も返す。コマが
-// 一致すれば同じ、比べられなければ決められない（所有者に残す）。食い違えば、接続が保存されて
-// いなければ聞かずに no_connection、保存されていればその区間のコマを聞く。
+// Matching fingerprints need no classifier; incomparable pairs remain for the owner, while
+// mismatches require saved connection settings or return no_connection.
 func (j *VersionJudge) decide(
 	ctx context.Context, job domain.VersionJudgeJob, rule domain.VersionFrameRule,
 ) (domain.VersionJudgeResult, *float64) {
@@ -335,8 +304,8 @@ func (j *VersionJudge) decide(
 	}, &probability
 }
 
-// ask は 2 つの内容の組ごとのコマを左右に並べた画像と R-3 の問いを判定の口に送り、答えの確率を
-// 返す。ファイル名・フォルダ・長さは送らない。答えが無ければ errNoVersionAnswer。
+// Send only side-by-side frames and the fixed question, excluding filenames, folders, and duration;
+// missing answers return errNoVersionAnswer.
 func (j *VersionJudge) ask(ctx context.Context, keys [2]string, pairs []domain.FramePair) (float64, error) {
 	images, err := j.frames.SeekFramePairs(keys[0], keys[1], pairs)
 	if err != nil {
@@ -356,7 +325,6 @@ func (j *VersionJudge) ask(ctx context.Context, keys [2]string, pairs []domain.F
 	return probability, nil
 }
 
-// failedJudgement は誤りを失敗の結果にする。
 func failedJudgement(err error) domain.VersionJudgeResult {
 	return domain.VersionJudgeResult{Verdict: domain.VersionFailed, Error: failureReason(err)}
 }

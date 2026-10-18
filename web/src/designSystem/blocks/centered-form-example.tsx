@@ -6,9 +6,7 @@ import { Button } from "@/ui/shadcn/button";
 import { Field, FieldLabel } from "@/ui/shadcn/field";
 import { Input } from "@/ui/shadcn/input";
 
-// 中央フォームの型の見本（registry:block centered-form-example）。サインインの形で、
-// 写した画面は欄と送信の処理を差し替える
-// （web/registry/rules/patterns.md の Centered form）。
+// registry:block centered-form-example. See web/registry/rules/patterns.md, Centered form.
 
 export function CenteredFormExample() {
   const p = t.designSystem.pattern;

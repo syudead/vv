@@ -18,7 +18,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// blockingChecker は release が閉じるまで確認を終えない（固まった確認を模す）。
+// Block until release closes to simulate a stalled probe.
 type blockingChecker struct {
 	release chan struct{}
 }
@@ -49,8 +49,6 @@ func (b *lockedBuffer) String() string {
 	return b.buf.String()
 }
 
-// 起動時の確認は背後で走り、終わる前から HTTP が応答する。起動ログには保存値から決めた
-// 方式の行がある（親 Issue #370 要件 5・9）。
 func TestTranscodeSettingsCheckDoesNotDelayHTTP(t *testing.T) {
 	ctx, db, _ := openTestDB(t)
 	if err := db.Settings().SaveTranscodeEncoderChoice(ctx, "nvenc"); err != nil {
@@ -120,7 +118,6 @@ func TestTranscodeSettingsCheckDoesNotDelayHTTP(t *testing.T) {
 		t.Errorf("起動ログの方式の行 = %v: %s", line, logs)
 	}
 
-	// 停止の指示で確認は止まる。
 	stopChecks()
 	select {
 	case <-settingsDone:

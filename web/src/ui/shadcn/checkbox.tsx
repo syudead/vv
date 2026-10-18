@@ -4,8 +4,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/lib/cn";
 
-// shadcn/ui の Checkbox（radix）。上流に無い中間の状態（checked="indeterminate"）も
-// 印（Minus）で描く。規則は web/registry/rules/components.md の Checkbox and Switch。
+// Adapted from shadcn/ui Radix; add a Minus mark for indeterminate state.
 function Checkbox({
   className,
   ...props

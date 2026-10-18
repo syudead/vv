@@ -8,19 +8,12 @@ import (
 	"time"
 )
 
-// killGrace は SIGTERM のあと SIGKILL へ移るまでの猶予である。Go サーバーは
-// 処理中の要求を cmd/mdm の shutdownGrace（10 秒）まで待ってから終わるので、
-// それより短くすると正常な停止の途中で殺すことになる。猶予は
-// アプリ < killGrace < drainTimeout の順に外側ほど長くする。
-// この順序は scripts/dev の試験が守る。
+// Keep app shutdownGrace < killGrace < drainTimeout so requests can finish before SIGKILL and output can drain afterward.
 const killGrace = 15 * time.Second
 
 type processGroup struct{}
 
-// newProcessGroup は開発サーバーを独立したプロセスグループの長にする。
-// どちらのサーバーもさらに子を持つ（go run が起動するバイナリ、npm が起動する
-// vite）ため、グループにしておかないと孫が残る。--strictPort の vite が
-// 残ると、次の task dev が起動できない。
+// Use a separate process group to terminate grandchildren too, including go run binaries and Vite holding its strict port.
 func newProcessGroup(cmd *exec.Cmd) (*processGroup, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	return &processGroup{}, nil
@@ -28,8 +21,7 @@ func newProcessGroup(cmd *exec.Cmd) (*processGroup, error) {
 
 func (*processGroup) attach(*exec.Cmd) error { return nil }
 
-// terminate はグループごと止める。まず SIGTERM を送り、猶予のあとに
-// 残っていれば SIGKILL にする。
+// terminate sends SIGTERM to the group, then SIGKILL after the grace period.
 func (*processGroup) terminate(cmd *exec.Cmd) {
 	if cmd.Process == nil {
 		return

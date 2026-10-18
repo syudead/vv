@@ -1,9 +1,6 @@
 package store
 
-// スマートフォルダの知らせ。
-// 一致が変わりうる書き込みは、確定の前に同じ取引ですべてのフォルダの id を読み、確定後に
-// domain.SmartFoldersChanged を 1 つ発行する。フォルダが 1 つも無ければ何も発行しない。どの
-// フォルダの一致が変わったかは求めない（求めると書き込みごとにすべての条件を前後で評価する、R-2）。
+// Read all folder IDs before commit and publish one event afterward; avoid reevaluating every folder's rules around each write.
 
 import (
 	"context"
@@ -13,7 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// smartFoldersChangedEvents はフォルダの id を、確定後に発行する変化にする。空なら何も返さない。
 func smartFoldersChangedEvents(ids []int64) []domain.Event {
 	if len(ids) == 0 {
 		return nil
@@ -21,7 +17,6 @@ func smartFoldersChangedEvents(ids []int64) []domain.Event {
 	return []domain.Event{domain.SmartFoldersChanged{IDs: normalizeIDs(ids)}}
 }
 
-// allSmartFolderIDs はすべてのスマートフォルダの id を小さい順に読む。
 func allSmartFolderIDs(ctx context.Context, tx *sql.Tx) ([]int64, error) {
 	ids, err := queryInt64s(ctx, tx, `select id from smart_folders order by id`)
 	if err != nil {
@@ -30,8 +25,6 @@ func allSmartFolderIDs(ctx context.Context, tx *sql.Tx) ([]int64, error) {
 	return ids, nil
 }
 
-// changesMatches は、知らせのうちスマートフォルダの一致を変えうるものがあるかを返す。グループの変化、束ねと外し（後継の引き継ぎを含む）、自動タグ付けの
-// 結果、動画の作品情報（人物・団体の付け外し）がそれにあたる。
 func changesMatches(events []domain.Event) bool {
 	for _, event := range events {
 		switch event.(type) {
@@ -42,8 +35,7 @@ func changesMatches(events []domain.Event) bool {
 	return false
 }
 
-// withEveryFolderNotice は events に、すべてのフォルダを名指す知らせを 1 つ足す。すべてを名指すので、
-// events が既に持つスマートフォルダの知らせは除く。フォルダが無ければ events をそのまま返す。
+// Replace partial folder notices with one all-folder notice; preserve events unchanged when no folders exist.
 func withEveryFolderNotice(ctx context.Context, tx *sql.Tx, events []domain.Event) ([]domain.Event, error) {
 	ids, err := allSmartFolderIDs(ctx, tx)
 	if err != nil || len(ids) == 0 {
@@ -58,8 +50,6 @@ func withEveryFolderNotice(ctx context.Context, tx *sql.Tx, events []domain.Even
 	return append(kept, smartFoldersChangedEvents(ids)...), nil
 }
 
-// withMatchNotice は、events に一致を変えうる知らせがあれば（changesMatches）すべてのフォルダを
-// 名指す知らせを足す。
 func withMatchNotice(ctx context.Context, tx *sql.Tx, events []domain.Event) ([]domain.Event, error) {
 	if !changesMatches(events) {
 		return events, nil
@@ -67,8 +57,7 @@ func withMatchNotice(ctx context.Context, tx *sql.Tx, events []domain.Event) ([]
 	return withEveryFolderNotice(ctx, tx, events)
 }
 
-// commitMatchChange は、一致を変えうる書き込みの取引 tx を確定し、確定できたときだけ events と、
-// すべてのフォルダを名指す知らせを発行する。フォルダの id は確定の前に同じ取引で読む。
+// Read folder IDs inside the write transaction and publish only after a successful commit.
 func (db *DB) commitMatchChange(ctx context.Context, tx *sql.Tx, events ...domain.Event) error {
 	events, err := withEveryFolderNotice(ctx, tx, events)
 	if err != nil {
@@ -81,8 +70,7 @@ func (db *DB) commitMatchChange(ctx context.Context, tx *sql.Tx, events ...domai
 	return nil
 }
 
-// commitMatchChangeIf は、matched なら commitMatchChange、そうでなければ commitEvents で取引 tx を
-// 確定する。書いた値によって一致が変わるかが決まる書き込み（視聴状態・表示名・解析の結果）が使う。
+// Only edits whose actual values change matches need an all-folder notice.
 func (db *DB) commitMatchChangeIf(ctx context.Context, tx *sql.Tx, matched bool, events ...domain.Event) error {
 	if matched {
 		return db.commitMatchChange(ctx, tx, events...)
@@ -90,8 +78,7 @@ func (db *DB) commitMatchChangeIf(ctx context.Context, tx *sql.Tx, matched bool,
 	return db.commitEvents(ctx, tx, events...)
 }
 
-// commitEvents は取引 tx を確定し、確定できたときだけ events を発行する。events に一致を変えうる
-// 知らせがあれば、すべてのフォルダを名指す知らせも発行する（withMatchNotice）。
+// Publish only after commit, adding an all-folder notice for match-changing events.
 func (db *DB) commitEvents(ctx context.Context, tx *sql.Tx, events ...domain.Event) error {
 	events, err := withMatchNotice(ctx, tx, events)
 	if err != nil {
@@ -104,8 +91,7 @@ func (db *DB) commitEvents(ctx context.Context, tx *sql.Tx, events ...domain.Eve
 	return nil
 }
 
-// smartFolderEditNotice は、フォルダの編集で名指すフォルダの知らせを返す。ids のフォルダとその
-// 子孫と、parents（親。0 は根で除く）を名指す。子孫は取引 tx の今の行から読むので、消す前に呼ぶ。
+// Read descendants before deletion and include affected parents, excluding the root sentinel.
 func smartFolderEditNotice(ctx context.Context, tx *sql.Tx, ids []int64, parents ...int64) ([]domain.Event, error) {
 	named, err := smartFolderSubtrees(ctx, tx, ids)
 	if err != nil {
@@ -119,7 +105,7 @@ func smartFolderEditNotice(ctx context.Context, tx *sql.Tx, ids []int64, parents
 	return smartFoldersChangedEvents(named), nil
 }
 
-// smartFolderSubtrees は ids のフォルダとその子孫の id を返す。ids のうち今無いフォルダもそのまま返す。
+// Keep requested IDs even if their folders are already absent.
 func smartFolderSubtrees(ctx context.Context, tx *sql.Tx, ids []int64) ([]int64, error) {
 	named := append([]int64(nil), ids...)
 	for _, id := range ids {

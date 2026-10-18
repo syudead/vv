@@ -61,11 +61,9 @@ describe("TagsPage まとめての操作", () => {
     );
     expect(server.batchCalls).toEqual([{ action: "confirm", ids: [1, 2] }]);
     expect(await screen.findByText("Confirmed 2 tags")).toBeDefined();
-    // 確定は読み込んだ行の中で反映し、ページも全件も取り直さない（R-12）。
     expect(server.getCalls).toBe(gets);
     expect(server.fullGetCalls).toBe(0);
     expect(screen.getByText("0 of 4 tags")).toBeDefined();
-    // 確定した行は「Tentative only」から外れ、空になれば「Filter」へ移る。
     await waitFor(() => expect(document.activeElement).toBe(filterButton()));
     await toggleFilter(user, "Tentative only");
     await screen.findByTitle("Alpha");
@@ -85,8 +83,6 @@ describe("TagsPage まとめての操作", () => {
       await screen.findByText("Confirmed 2 tags. 2 were already confirmed."),
     ).toBeDefined();
     expect(within(bar()).getByText("2 tags selected")).toBeDefined();
-    // 残った選択は確定したタグだけなので「Confirm」「Reject…」は出さず、フォーカスは
-    // 「Merge into one tag…」へ。
     expect(within(bar()).queryByRole("button", { name: "Confirm" })).toBeNull();
     expect(within(bar()).queryByRole("button", { name: "Reject…" })).toBeNull();
     await waitFor(() =>
@@ -124,7 +120,6 @@ describe("TagsPage まとめての操作", () => {
     expect(server.batchCalls).toEqual([{ action: "delete", ids: [1, 2, 3, 4] }]);
     expect(screen.queryByTitle("Cat")).toBeNull();
     expect(screen.queryByTitle("Gamma")).toBeNull();
-    // 働かなかった仮のタグは選んだまま。
     expect(within(bar()).getByText("2 tags selected")).toBeDefined();
   });
 
@@ -171,14 +166,12 @@ describe("TagsPage まとめての操作", () => {
     await user.click(within(rowOf("Alpha")).getByRole("checkbox"));
     await user.click(within(rowOf("Beta")).getByRole("checkbox"));
 
-    // 失敗は何も変えず、選択は残る。
     server.failNextBatch = true;
     await user.click(within(bar()).getByRole("button", { name: "Confirm" }));
     expect(await screen.findByText(/Something went wrong/)).toBeDefined();
     expect(within(bar()).getByText("2 tags selected")).toBeDefined();
     expect(within(rowOf("Alpha")).getByText("Tentative")).toBeDefined();
 
-    // 別のタブで Beta が消えていた。
     server.tags = server.tags.filter((item) => item.id !== 2);
     const gets = server.getCalls;
     await user.click(within(bar()).getByRole("button", { name: "Confirm" }));
@@ -208,7 +201,6 @@ describe("TagsPage まとめての操作", () => {
     );
     expect(server.pageRequests.at(-1)?.get("limit")).toBe("100");
     expect(screen.queryByRole("region", { name: "Selected tags" })).toBeNull();
-    // 読み直した行が同じ id を持っていても選び直さない。
     await waitFor(() =>
       expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual([
         "Gamma",
@@ -248,7 +240,6 @@ describe("TagsPage まとめての操作", () => {
     await screen.findByTitle("Alpha");
     expect(screen.getByRole("heading", { name: "Tags" })).toBeDefined();
 
-    // 確定したタグだけを選ぶと「Confirm」「Reject…」は出さない（薄くもしない）。
     await user.click(within(rowOf("Cat")).getByRole("checkbox"));
     expect(within(bar()).getByText("1 tag selected")).toBeDefined();
     expect(
@@ -257,7 +248,6 @@ describe("TagsPage まとめての操作", () => {
         .map((button) => button.getAttribute("aria-label") ?? button.textContent),
     ).toEqual(["Clear selection", "Set kind…", "Merge into one tag…", "Delete…"]);
 
-    // 仮のタグも選ぶと「Confirm」「Reject…」が出る。
     await user.click(within(rowOf("Alpha")).getByRole("checkbox"));
     expect(
       within(bar())
@@ -271,7 +261,6 @@ describe("TagsPage まとめての操作", () => {
       "Reject…",
       "Delete…",
     ]);
-    // 選択バーはデザインシステムの SelectionBar で、ページの下端に貼り付く。
     expect(bar().querySelector('[data-slot="selection-bar"]')).not.toBeNull();
 
     await user.click(within(bar()).getByRole("button", { name: "Clear selection" }));
@@ -287,7 +276,6 @@ describe("TagsPage まとめての操作", () => {
     await screen.findByTitle("Alpha");
 
     await user.click(within(rowOf("Cat")).getByRole("checkbox"));
-    // 表の選択した行（data-state="selected"）は primary-soft の面になる。
     expect(rowOf("Cat").getAttribute("data-state")).toBe("selected");
     expect(rowOf("Cat").className).toContain("data-[state=selected]:bg-primary-soft");
     expect(rowOf("Gamma").getAttribute("data-state")).toBeNull();
@@ -331,7 +319,6 @@ describe("TagsPage まとめての操作", () => {
     const { container } = renderPage();
     await screen.findByTitle("Alpha");
 
-    // Alpha（仮のタグ）を選ぶ。選択の行のボタンは ×・Confirm・Set kind・Merge・Reject の順。
     await user.click(
       container.querySelector<HTMLElement>('[data-tag-id] [role="checkbox"]')!,
     );
@@ -340,7 +327,7 @@ describe("TagsPage まとめての操作", () => {
       within(
         screen
           .getAllByRole("region")
-          // 通知（Sonner）の section も region なので外す。
+          // Exclude Sonner's notification region.
           .find((region) => region.tagName !== "SECTION")!,
       ).getAllByRole("button")[4]!,
     );
@@ -378,7 +365,6 @@ describe("TagsPage まとめての操作の上限", () => {
     server.tags = Array.from({ length: 20002 }, (_, index) =>
       tag({ id: index + 1, name: `T${String(index).padStart(5, "0")}`, tentative: true }),
     );
-    // 続きを何度も読んだあとと同じく、上限を超える行を読み込んだ状態を 1 回の応答で作る。
     server.pageLimitOverride = 20001;
     install();
     renderPage();

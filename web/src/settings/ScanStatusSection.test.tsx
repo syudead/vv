@@ -125,7 +125,6 @@ describe("ScanStatusSection", () => {
     expect(within(headingRow).getByText("2 to check")).toBeDefined();
     const progress = screen.getByRole("progressbar");
     expect(progress.getAttribute("aria-valuetext")).toBe("7 of 10 videos done");
-    // 概要にない数字の欄や時刻の欄を置かない。
     const text = container.textContent ?? "";
     for (const removed of [
       "Processed",

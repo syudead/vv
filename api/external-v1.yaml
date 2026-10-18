@@ -1,28 +1,16 @@
-# vv の外部連携 API v1 の契約。このファイルが外部連携 API の唯一の真実であり、
-# Go（oapi-codegen、api/oapi-codegen-external.yaml）だけをここから生成する。
-# 生成物（internal/httpapi/extgen/）は手編集しない。型を変えるときはこのファイルを直し、
-# task generate を実行すること。画面の API（api/openapi.yaml）とは別の約束である
-#
-#
-# 互換の方針: v1 の中では項目と操作の追加だけを行う。既存の項目の意味・型・必須を変えるときは
-# v2 を足す（docs/how-to/external-api.md）。
+# External API v1 contract; generate Go bindings with task generate, never edit extgen by hand.
+# Keep v1 additive; changes to existing field semantics, types or requirements need v2.
+# See docs/how-to/external-api.md; the UI contract lives in api/openapi.yaml.
 openapi: 3.1.0
 
 info:
   title: vv external API
   version: 1.0.0
-  summary: 外部ツールが API トークンで vv を操作するための API
-  description: |
-    すべての操作は `Authorization: Bearer <token>` で認証する。トークンは設定ページの
-    「API トークン」節で所有者が発行する。トークンが無い・形式が違う・無効・失効済みのときは
-    `401` `unauthenticated` と `WWW-Authenticate: Bearer` を返す。Cookie は読まない。
-
-    見る人は常に所有者で、非公開の動画も返す。同一オリジンの検査はかけない。本文を取る操作は
-    `Content-Type: application/json` を要する。
-
+  summary: "API for external tools to operate vv with API tokens"
+  description: "All operations require `Authorization: Bearer <token>`. Owners issue tokens in the API tokens section of Settings; missing, malformed, invalid or revoked tokens return `401 unauthenticated` with `WWW-Authenticate: Bearer`. Cookies are ignored.\n\nRequests act as the owner, including access to private videos, without same-origin checks. Operations accepting a body require `Content-Type: application/json`."
 servers:
   - url: /api/v1
-    description: アプリケーション自身が配信する
+    description: "Served by the application"
 
 security:
   - bearerAuth: []
@@ -31,21 +19,17 @@ paths:
   /videos:
     get:
       operationId: listVideos
-      summary: 動画の一覧をページを分けて返す
-      description: |
-        登録フォルダの下に所在を 1 つ以上持つ動画を `(addedAt, id)` の昇順で返す。`nextCursor` が
-        空文字列になるまで、前回の `nextCursor` を `cursor` に渡してたどると全件を読める。
-        変更の追跡はしない。新しい動画を知るには一覧を読み直し、持っている動画が消えたことは
-        `lookup` の `404` で知る。
+      summary: "List videos with pagination"
+      description: "Return videos with at least one location under a registered folder, ordered by `(addedAt, id)` ascending. Pass each `nextCursor` as `cursor` until it is empty. Changes are not tracked: reread the list to discover new videos and use a lookup `404` to detect removals."
       parameters:
         - name: cursor
           in: query
-          description: 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。省略すると先頭から
+          description: "Opaque `nextCursor` from the previous response; omit to start at the beginning."
           schema:
             type: string
         - name: limit
           in: query
-          description: 1 ページの件数。範囲外は `400` `invalid_request`
+          description: "Page size; out-of-range values return `400 invalid_request`."
           schema:
             type: integer
             minimum: 1
@@ -53,15 +37,13 @@ paths:
             default: 100
       responses:
         "200":
-          description: 動画の一覧 1 ページ
+          description: "One page of videos"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ExternalVideoPage"
         "400":
-          description: >-
-            limit が範囲外、またはカーソルを解釈できない（`invalid_request`、カーソルは
-            `invalid_cursor`）
+          description: "Out-of-range limit (`invalid_request`) or unreadable cursor (`invalid_request` / `invalid_cursor`)."
           content:
             application/json:
               schema:
@@ -74,11 +56,8 @@ paths:
   /videos/lookup:
     get:
       operationId: lookupVideo
-      summary: 動画を 1 本、id・内容キー・パスのどれかで引く
-      description: |
-        `id`・`contentKey`・`path` のちょうど 1 つを取る。0 個・2 個以上は `400` `invalid_request`。
-        `path` は正規化せず、今の所在の `path` とバイト列で完全一致させる。一覧が返した `path` を
-        そのまま渡せば引ける。
+      summary: "Look up a video by ID, content key or path"
+      description: "Provide exactly one of `id`, `contentKey` or `path`; otherwise return `400 invalid_request`. Paths match current locations byte-for-byte without normalization, so pass the path returned by the list unchanged."
       parameters:
         - name: id
           in: query
@@ -91,18 +70,18 @@ paths:
             type: string
         - name: path
           in: query
-          description: 所在の絶対パス
+          description: "Absolute location path"
           schema:
             type: string
       responses:
         "200":
-          description: 動画
+          description: "Video"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ExternalVideo"
         "400":
-          description: 指定がちょうど 1 つでない（`invalid_request`）
+          description: "Not exactly one reference supplied (`invalid_request`)."
           content:
             application/json:
               schema:
@@ -110,7 +89,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "404":
-          description: 無い、または登録フォルダの下に所在が無い（`not_found` / `video_not_found`）
+          description: "Video absent or without a location under a registered folder (`not_found` / `video_not_found`)."
           content:
             application/json:
               schema:
@@ -121,14 +100,8 @@ paths:
   /video-tags:
     post:
       operationId: updateVideoTags
-      summary: 複数の動画に名前で指定したタグを付ける・外す・置き換える
-      description: |
-        1 つのトランザクションで行う。付け外しの対象は手で付けたタグだけで、祖先のフォルダ名から
-        付くタグは残る（`replace` の後も）。名前はシノニムを含めて引き、`add`・`replace` では無い名前の
-        タグを作る。`remove` ではどのタグにも当たらない名前は何もしない。同じタグに当たる名前は 1 つに
-        まとめる。引けない動画が 1 つでもあれば `404` で何も反映しない。
-        `tentative` が真の `add`・`replace` では、新しく作るタグを仮のタグにし、却下した名前を飛ばして
-        `skippedTags` に返す。
+      summary: "Add, remove or replace named tags on multiple videos"
+      description: "Apply atomically to manual tags, preserving folder-derived tags even on `replace`. Resolve names and synonyms, coalescing references to the same tag; `add` and `replace` create unknown tags, while `remove` ignores unknown names. Any missing video returns `404` without changes. With `tentative: true`, new tags are tentative and rejected names are skipped and returned in `skippedTags`."
       requestBody:
         required: true
         content:
@@ -137,16 +110,13 @@ paths:
               $ref: "#/components/schemas/VideoTagsRequest"
       responses:
         "200":
-          description: 各動画の操作後のタグ（`videos` の順）
+          description: "Resulting tags for each video, in `videos` order."
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/VideoTagsResponse"
         "400":
-          description: >-
-            本文の形が違う・`action` が不正・動画の指定がちょうど 1 つでない（`invalid_request`）、
-            件数の上限（`too_many_videos`・`too_many_tags`、`limit`）、タグ名の誤り
-            （`tag_name_empty`・`tag_name_control_characters`・`tag_name_too_long`、`index` は `tags` の位置）
+          description: "Malformed body, invalid action or invalid video reference (`invalid_request`); count limits (`too_many_videos`, `too_many_tags`, `limit`); invalid tag name (`tag_name_empty`, `tag_name_control_characters`, `tag_name_too_long`, with `index` into `tags`)."
           content:
             application/json:
               schema:
@@ -154,9 +124,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "404":
-          description: >-
-            引けない動画がある（`not_found` / `video_not_found`、`index` は `videos` の位置）。
-            何も反映しない
+          description: "Missing video (`not_found` / `video_not_found`, with `index` into `videos`); no changes."
           content:
             application/json:
               schema:
@@ -167,11 +135,8 @@ paths:
   /video-display-names:
     post:
       operationId: updateVideoDisplayNames
-      summary: 複数の動画の表示名を設定・解除する
-      description: |
-        1 つのトランザクションで行う。`displayName` が `null`、または前後の空白を除いて空なら解除し、
-        ファイル名由来の題名に戻す。表示名は内容（`contentKey`）に結び、同じ内容の全所在に効く。
-        引けない動画や規則に合わない名前が 1 つでもあれば何も反映しない。
+      summary: "Set or clear display names for multiple videos"
+      description: "Apply atomically. A null or whitespace-only `displayName` restores the filename-derived title. Names belong to contentKey and affect every location of that content; any missing video or invalid name prevents all changes."
       requestBody:
         required: true
         content:
@@ -180,16 +145,13 @@ paths:
               $ref: "#/components/schemas/VideoDisplayNamesRequest"
       responses:
         "200":
-          description: 各動画の反映後の題名（`items` の順）
+          description: "Resulting titles in `items` order."
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/VideoDisplayNamesResponse"
         "400":
-          description: >-
-            本文の形が違う・動画の指定がちょうど 1 つでない（`invalid_request`、`index`）、件数の上限
-            （`too_many_videos`、`limit`）、表示名の誤り（`display_name_control_characters`・
-            `display_name_too_long`（`limit`）、`index` は `items` の位置）
+          description: "Malformed body or invalid video reference (`invalid_request`, `index`); item limit (`too_many_videos`, `limit`); invalid display name (`display_name_control_characters`, `display_name_too_long`, `limit`), with `index` into `items`."
           content:
             application/json:
               schema:
@@ -197,9 +159,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "404":
-          description: >-
-            引けない動画がある（`not_found` / `video_not_found`、`index` は `items` の位置）。
-            何も反映しない
+          description: "Missing video (`not_found` / `video_not_found`, with `index` into `items`); no changes."
           content:
             application/json:
               schema:
@@ -210,13 +170,8 @@ paths:
   /video-thumbnails:
     post:
       operationId: updateVideoThumbnails
-      summary: 複数の動画の代表サムネイルの位置を設定・解除する
-      description: |
-        先に全件の引き当てと位置の検証を行い、誤りがあれば何も反映しない。通ったら `items` の順に
-        1 件ずつ、その位置の場面で代表サムネイルを作り直して位置を記録する。`positionMs` が `null` なら
-        解除し、自動の位置で作り直す。途中の 1 件で画像を作れなければ `409`
-        `thumbnail_frame_unavailable` と `index` で止まり、それより前の項目は反映済み、その項目と後は
-        未反映である。
+      summary: "Set or clear thumbnail positions for multiple videos"
+      description: "Resolve all videos and validate positions before changing anything. Then regenerate and save each thumbnail in `items` order; null restores the automatic position. Frame generation failure stops at `409 thumbnail_frame_unavailable` with `index`: earlier items remain applied, while that item and later items remain unchanged."
       requestBody:
         required: true
         content:
@@ -225,16 +180,13 @@ paths:
               $ref: "#/components/schemas/VideoThumbnailsRequest"
       responses:
         "200":
-          description: 各動画の反映後の位置（`items` の順）
+          description: "Resulting positions in `items` order."
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/VideoThumbnailsResponse"
         "400":
-          description: >-
-            本文の形が違う・動画の指定がちょうど 1 つでない（`invalid_request`、`index`）、件数の上限
-            （`too_many_videos`、`limit: 20`）、尺以上か負の位置（`thumbnail_position_out_of_range`、
-            `index`、`limit` はその動画の尺のミリ秒）
+          description: "Malformed body or invalid video reference (`invalid_request`, `index`); more than 20 items (`too_many_videos`, `limit: 20`); negative position or position at/beyond duration (`thumbnail_position_out_of_range`, `index`, with duration in milliseconds as `limit`)."
           content:
             application/json:
               schema:
@@ -242,18 +194,13 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "404":
-          description: >-
-            引けない動画（`video_not_found`）、どの所在も開けない動画（`file_unavailable`）がある。
-            `index` は `items` の位置。何も反映しない
+          description: "Missing video (`video_not_found`) or no readable location (`file_unavailable`), with `index` into `items`; no changes."
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "409":
-          description: >-
-            解析が終わっていない動画がある（`conflict` / `duration_unknown`、何も反映しない）、または
-            途中の 1 件で画像を作れなかった（`conflict` / `thumbnail_frame_unavailable`、`index` より前は
-            反映済み）
+          description: "Unknown duration (`conflict` / `duration_unknown`; no changes) or frame generation failure (`conflict` / `thumbnail_frame_unavailable`; items before `index` remain applied)."
           content:
             application/json:
               schema:
@@ -264,12 +211,8 @@ paths:
   /video-work-info:
     post:
       operationId: updateVideoWorkInfo
-      summary: 複数の動画の作品情報をまるごと置き換える
-      description: |
-        各項目の `workInfo` は保存済みの作品情報をまるごと置き換える。省いた・`null`・前後の空白を除いて
-        空のプロパティは解除で、`{}` はすべてを解除する。人物と団体は id で指す（id は `/people`・
-        `/organizations` の外部 ID での検索か作成で得る）。1 つのトランザクションで行い、誤りが 1 つでも
-        あれば何も反映しない。同じ動画を 2 度指せば後の項目が勝つ。同じ要求を繰り返しても状態は変わらない。
+      summary: "Replace work information for multiple videos"
+      description: "Each `workInfo` replaces the entire saved value; omitted, null or whitespace-only properties clear it, and `{}` clears everything. Reference people and organizations by IDs obtained through external-ID lookup or creation. Apply atomically; any error prevents all changes. Later entries win for repeated videos, and repeating a request is idempotent."
       requestBody:
         required: true
         content:
@@ -278,16 +221,13 @@ paths:
               $ref: "#/components/schemas/VideoWorkInfoRequest"
       responses:
         "200":
-          description: 各動画の反映後の作品情報（`items` の順）
+          description: "Resulting work information in `items` order."
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/VideoWorkInfoResponse"
         "400":
-          description: >-
-            本文の形が違う・動画の指定がちょうど 1 つでない（`invalid_request`、`index`）、件数の上限
-            （`too_many_videos`、`limit`）、項目の規則違反（`work_info_*`、`field` は項目の `workInfo` の中の
-            経路、`limit`、`index` は `items` の位置）。何も反映しない
+          description: "Malformed body or invalid video reference (`invalid_request`, `index`); item limit (`too_many_videos`, `limit`); invalid work information (`work_info_*`, `limit`, `field` within the item workInfo), with `index` into `items`; no changes."
           content:
             application/json:
               schema:
@@ -295,9 +235,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "404":
-          description: >-
-            引けない動画（`video_not_found`）、無い人物・団体を指す項目（`person_not_found`・
-            `organization_not_found`、`field`）がある。`index` は `items` の位置。何も反映しない
+          description: "Missing video (`video_not_found`), person or organization (`person_not_found`, `organization_not_found`, `field`), with `index` into `items`; no changes."
           content:
             application/json:
               schema:
@@ -308,73 +246,59 @@ paths:
   /tags:
     get:
       operationId: listTags
-      summary: タグの一覧を返す
-      description: |
-        画面のタグ管理の `GET /api/tags` と同じ検索・絞り込み・並び順・ページで返す。`q`・`tentative`・
-        `unused` は全部のタグに AND で掛かり、`sort` の順に並べる。`limit` を付けると 1 ページずつ返し、
-        続きがあれば `nextCursor` を入れる。`limit` を省くと条件に合う全件を返し、`nextCursor` は入らない。
+      summary: "List tags"
+      description: "Use the same search, filtering, ordering and pagination as `GET /api/tags`. Combine `q`, `tentative` and `unused` with AND and order by `sort`; `limit` enables pagination and `nextCursor` when more remain. Without `limit`, return all matches without a cursor."
       parameters:
         - name: q
           in: query
-          description: |
-            検索語。全角・半角、大文字・小文字、ひらがな・カタカナなどの表記の揺れを吸収した形
-            （照合形）にして前後の空白を落とし、空でなければ元の名前かシノニムに部分一致する
-            タグだけにする。語の分解はしない
+          description: "Trim and normalize width, case and hiragana/katakana variants, then substring-match the original name or synonyms when nonempty. Do not split into words."
           schema:
             type: string
             maxLength: 100
         - name: tentative
           in: query
-          description: true なら仮のタグだけにする
+          description: "If true, return tentative tags only."
           schema:
             type: boolean
             default: false
         - name: unused
           in: query
-          description: true なら本数 0 のタグだけにする
+          description: "If true, return tags with no videos only."
           schema:
             type: boolean
             default: false
         - name: kind
           in: query
-          description: |
-            種類の id（正の整数）ならその種類のタグだけ、`none` なら種類の無いタグだけにする。
-            無い id は空の一覧。`total` はこれも掛けて数え、`totalAll` は掛けない
-
+          description: "Filter by a positive kind ID or `none` for unclassified tags. Missing IDs return an empty list; this filter affects `total`, not `totalAll`."
           schema:
             type: string
             pattern: "^([1-9][0-9]*|none)$"
         - name: sort
           in: query
-          description: 並び順
+          description: "Sort order"
           schema:
             $ref: "#/components/schemas/TagSort"
         - name: cursor
           in: query
-          description: |
-            前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。同じ `q`・`tentative`・
-            `unused`・`kind`・`sort` で続けて使う。`limit` を省いたときは無視する
+          description: "Opaque cursor from the previous response; reuse with the same `q`, `tentative`, `unused`, `kind` and `sort`. Ignored without `limit`."
           schema:
             type: string
         - name: limit
           in: query
-          description: 1 ページの件数。省くと全件を返し、`nextCursor` は入らない
+          description: "Page size; omit to return all matches without `nextCursor`."
           schema:
             type: integer
             minimum: 1
             maximum: 200
       responses:
         "200":
-          description: タグの一覧
+          description: "Tag list"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TagList"
         "400":
-          description: >-
-            `sort` が 5 値の外、`limit` が 1〜200 の外、`q` が 100 文字を超える、`kind` が正の整数でも
-            `none` でもない（`invalid_request`）、カーソルを解釈できないか別の `sort` で作ったもの
-            （`invalid_request` / `invalid_cursor`）
+          description: "Invalid sort, limit outside 1-200, q over 100 characters or kind other than a positive integer or none (`invalid_request`); unreadable cursor or sort mismatch (`invalid_request` / `invalid_cursor`)."
           content:
             application/json:
               schema:
@@ -387,12 +311,8 @@ paths:
   /tags/merge:
     post:
       operationId: mergeTags
-      summary: 複数のタグを 1 つのタグへ統合する
-      description: |
-        1 つのトランザクションで、統合元それぞれの元の名前とシノニムを統合先のシノニムにし、付与を
-        統合先へ移して統合元を消す。統合先は確定したタグになる。無い統合元は飛ばして `notFoundIds` に
-        返し、統合元がすべて無ければ `tag` は変わらない統合先である。画面の `POST /api/tags/{id}/merge`
-        と同じ保存先の操作を呼ぶ。
+      summary: "Merge tags into one target"
+      description: "Atomically move source assignments, original names and synonyms to the target, then delete sources and confirm the target. Skip missing sources into `notFoundIds`; if all are missing, return the unchanged target. Uses the same store operation as `POST /api/tags/{id}/merge`."
       requestBody:
         required: true
         content:
@@ -401,15 +321,13 @@ paths:
               $ref: "#/components/schemas/TagMergeRequest"
       responses:
         "200":
-          description: 統合後の統合先と、無かった統合元
+          description: "Merged target and missing sources"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TagMergeResponse"
         "400":
-          description: >-
-            本文の形が違う（`invalid_request`）、`sourceIds` が空か 20,000 件を超える（`too_many_tags`、
-            `limit`）、`sourceIds` が `targetId` を含む（`merge_same_tag`、何も変えない）
+          description: "Malformed body (`invalid_request`); empty or over 20,000 sourceIds (`too_many_tags`, `limit`); target included in sourceIds (`merge_same_tag`; no changes)."
           content:
             application/json:
               schema:
@@ -417,7 +335,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "404":
-          description: "`targetId` のタグが無い（`not_found` / `tag_not_found`）。何も変えない"
+          description: "Missing target (`not_found` / `tag_not_found`); no changes."
           content:
             application/json:
               schema:
@@ -428,10 +346,8 @@ paths:
   /tags/rename:
     post:
       operationId: renameTag
-      summary: タグの元の名前を変える
-      description: |
-        名前が変われば仮のタグは確定する。今と同じ名前なら何も変えない。画面の `PATCH /api/tags/{id}` と
-        同じ保存先の操作を呼ぶ。
+      summary: "Rename a tag"
+      description: "A changed name confirms a tentative tag; an unchanged name is a no-op. Uses the same store operation as `PATCH /api/tags/{id}`."
       requestBody:
         required: true
         content:
@@ -440,15 +356,13 @@ paths:
               $ref: "#/components/schemas/TagRenameRequest"
       responses:
         "200":
-          description: 変更後のタグ
+          description: "Updated tag"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Tag"
         "400":
-          description: >-
-            本文の形が違う（`invalid_request`）、名前の規則違反（`tag_name_empty`・
-            `tag_name_control_characters`・`tag_name_too_long`、`limit`）
+          description: "Malformed body (`invalid_request`) or invalid name (`tag_name_empty`, `tag_name_control_characters`, `tag_name_too_long`, `limit`)."
           content:
             application/json:
               schema:
@@ -456,15 +370,13 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "404":
-          description: "`id` のタグが無い（`not_found` / `tag_not_found`）"
+          description: "Missing tag (`not_found` / `tag_not_found`)."
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "409":
-          description: >-
-            名前が別のタグの元の名前かシノニム、または `id` 自身のシノニム（`conflict` / `tag_name_taken`、
-            `tagId`・`tagName`）。何も変えない
+          description: "Name belongs to another tag or synonym, or is this tag's own synonym (`conflict` / `tag_name_taken`, `tagId`, `tagName`); no changes."
           content:
             application/json:
               schema:
@@ -475,13 +387,8 @@ paths:
   /tags/synonyms:
     post:
       operationId: updateTagSynonyms
-      summary: タグのシノニムを足す・外す
-      description: |
-        `add` は名前をシノニムに足し、名前を足したら仮のタグを確定する。既に `id` のシノニムなら何も
-        変えない。名前が別のタグ S の元の名前なら、`mergeTagId` が S のときだけ S を `id` へ統合し、
-        そうでなければ `409 tag_merge_required`（`tagId` は S）で何も変えない。`remove` はシノニムで
-        ない名前なら何も変えずにタグを返す。画面の `POST`・`DELETE /api/tags/{id}/synonyms` と同じ
-        保存先の操作を呼ぶ。
+      summary: "Add or remove a tag synonym"
+      description: "Adding a new synonym confirms a tentative tag; an existing synonym is a no-op. If the name is another tag S's original name, merge S into id only when `mergeTagId` equals S; otherwise return `409 tag_merge_required` with S as `tagId` and no changes. Removing a non-synonym is a no-op. Uses the store operations behind `POST` and `DELETE /api/tags/{id}/synonyms`."
       requestBody:
         required: true
         content:
@@ -490,15 +397,13 @@ paths:
               $ref: "#/components/schemas/TagSynonymsRequest"
       responses:
         "200":
-          description: 変更後のタグ
+          description: "Updated tag"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Tag"
         "400":
-          description: >-
-            本文の形が違う・`action` が 2 値の外（`invalid_request`）、`add` で名前の規則違反
-            （`tag_name_empty`・`tag_name_control_characters`・`tag_name_too_long`、`limit`）
+          description: "Malformed body or invalid action (`invalid_request`); invalid added name (`tag_name_empty`, `tag_name_control_characters`, `tag_name_too_long`, `limit`)."
           content:
             application/json:
               schema:
@@ -506,16 +411,13 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "404":
-          description: "`id` のタグが無い（`not_found` / `tag_not_found`）"
+          description: "Missing tag (`not_found` / `tag_not_found`)."
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "409":
-          description: >-
-            `add` で、名前が `id` 自身の元の名前か別のタグのシノニム（`conflict` / `tag_name_taken`）、
-            または別のタグの元の名前で `mergeTagId` がそのタグでない（`conflict` / `tag_merge_required`）。
-            どちらも `tagId`・`tagName` を返し、何も変えない
+          description: "Added name is the tag's original name or another tag's synonym (`conflict` / `tag_name_taken`), or another tag's original name without matching mergeTagId (`conflict` / `tag_merge_required`). Both return `tagId` and `tagName` without changes."
           content:
             application/json:
               schema:
@@ -526,14 +428,8 @@ paths:
   /tags/batch:
     post:
       operationId: batchTags
-      summary: 複数のタグをまとめて確定・却下・削除し、種類を付け外しする
-      description: |
-        1 つのトランザクションで `ids` のタグに `action` を行う。`confirm`・`reject` は仮のタグに、`delete` は
-        確定したタグに効き、種類の合わないタグは何も変えずに `notApplicableIds`、無い id は `notFoundIds`
-        に返す。却下したタグの元の名前は却下した名前に入り、削除したタグの名前は覚えない。`setKind` は
-        各タグに種類 `kindId` を付け、`clearKind` は各タグの種類を外す。どちらも仮のタグを確定せず、既に
-        その種類（`clearKind` では種類なし）のタグは `notApplicableIds` に返す。1 つのタグなら
-        `ids: [id]` を送る。画面の `POST /api/tags/batch` と同じ保存先の操作を呼ぶ。
+      summary: "Confirm, reject, delete or classify multiple tags"
+      description: "Apply atomically to `ids`. `confirm` and `reject` affect tentative tags; `delete` affects confirmed tags. Return incompatible tags in `notApplicableIds` and missing IDs in `notFoundIds`; rejection remembers the original name, deletion does not. `setKind` assigns kindId and `clearKind` removes it without confirming tentative tags; already-matching tags are not applicable. Send a single-element ids array for one tag. Uses the store operation behind `POST /api/tags/batch`."
       requestBody:
         required: true
         content:
@@ -542,15 +438,13 @@ paths:
               $ref: "#/components/schemas/TagBatchRequest"
       responses:
         "200":
-          description: 処理したタグ・無かったタグ・種類が合わず変えなかったタグ
+          description: "Applied, missing and inapplicable tags"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TagBatchResponse"
         "400":
-          description: >-
-            本文の形が違う・`action` が 5 値の外・`kindId` の無い `setKind`・`kindId` を付けた他の `action`
-            （`invalid_request`）、`ids` が空か 20,000 件を超える（`too_many_tags`、`limit`）
+          description: "Malformed body, invalid action, setKind without kindId or kindId on another action (`invalid_request`); empty or over 20,000 ids (`too_many_tags`, `limit`)."
           content:
             application/json:
               schema:
@@ -558,7 +452,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "404":
-          description: "`setKind` の `kindId` の種類が無い（`not_found` / `tag_kind_not_found`）。何も変えない"
+          description: "Missing setKind target kind (`not_found` / `tag_kind_not_found`); no changes."
           content:
             application/json:
               schema:
@@ -569,19 +463,17 @@ paths:
   /tags/rejected-names:
     get:
       operationId: listRejectedTagNames
-      summary: 却下した名前を一覧する
-      description: |
-        却下した名前を名前の自然順でページに分けて返す。`total` は却下した名前の全部の数で、続きが
-        あれば `nextCursor` を入れる。画面の `GET /api/tags/rejected-names` と同じ保存先の操作を呼ぶ。
+      summary: "List rejected tag names"
+      description: "Return rejected names in natural-name order, with total count and nextCursor when more remain. Uses the store operation behind `GET /api/tags/rejected-names`."
       parameters:
         - name: cursor
           in: query
-          description: 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+          description: "Opaque nextCursor from the previous response."
           schema:
             type: string
         - name: limit
           in: query
-          description: 1 ページの件数
+          description: "Page size"
           schema:
             type: integer
             minimum: 1
@@ -589,15 +481,13 @@ paths:
             default: 100
       responses:
         "200":
-          description: 却下した名前の 1 ページ
+          description: "One page of rejected names"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/RejectedTagNameList"
         "400":
-          description: >-
-            `limit` が 1〜200 の外（`invalid_request`）、カーソルを解釈できない（`invalid_request` /
-            `invalid_cursor`）
+          description: "Limit outside 1-200 (`invalid_request`) or unreadable cursor (`invalid_request` / `invalid_cursor`)."
           content:
             application/json:
               schema:
@@ -608,27 +498,24 @@ paths:
           $ref: "#/components/responses/Internal"
     delete:
       operationId: forgetRejectedTagName
-      summary: 却下した名前を 1 つ外す
-      description: |
-        名前を却下した名前から外し、次に同じ名前を仮のタグとして付けるとタグがまた作られるようにする。
-        名前はタグ名と同じ規則で整えてから照合する。一覧に無い名前や整えられない名前は何も変えずに
-        `removed: false` を返す。画面の `DELETE /api/tags/rejected-names` と同じ保存先の操作を呼ぶ。
+      summary: "Forget a rejected tag name"
+      description: "Forget the normalized name so future tentative assignment may recreate it. Missing or invalid names return `removed: false` without changes; normalization follows tag-name rules. Uses the store operation behind `DELETE /api/tags/rejected-names`."
       parameters:
         - name: name
           in: query
           required: true
-          description: 外す名前
+          description: "Name to forget"
           schema:
             type: string
       responses:
         "200":
-          description: 照合した名前と、外したかどうか
+          description: "Matched name and whether it was removed"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/RejectedTagNameForgetResult"
         "400":
-          description: "`name` が無い（`invalid_request`）"
+          description: "Missing name (`invalid_request`)."
           content:
             application/json:
               schema:
@@ -641,12 +528,11 @@ paths:
   /tag-kinds:
     get:
       operationId: listTagKinds
-      summary: タグの種類をすべて返す
-      description: |
-        すべての種類を id の順に返す。画面の `GET /api/tag-kinds` と同じ保存先の操作を呼ぶ。
+      summary: "List all tag kinds"
+      description: "Return all kinds in ID order using the store operation behind `GET /api/tag-kinds`."
       responses:
         "200":
-          description: すべての種類
+          description: "All tag kinds"
           content:
             application/json:
               schema:
@@ -657,10 +543,8 @@ paths:
           $ref: "#/components/responses/Internal"
     post:
       operationId: createTagKind
-      summary: タグの種類を作る
-      description: |
-        種類を 1 つ作る。名前はタグ名と同じ規則で整え、種類どうしで重ならない。画面の
-        `POST /api/tag-kinds` と同じ保存先の操作を呼ぶ。他の外部連携の書き込みと同じく `200` を返す。
+      summary: "Create a tag kind"
+      description: "Normalize the name using tag-name rules and require uniqueness among kinds. Uses the store operation behind `POST /api/tag-kinds` and returns 200, like other external writes."
       requestBody:
         required: true
         content:
@@ -669,7 +553,7 @@ paths:
               $ref: "#/components/schemas/TagKindCreateRequest"
       responses:
         "200":
-          description: 作った種類
+          description: "Created tag kind"
           content:
             application/json:
               schema:
@@ -686,10 +570,8 @@ paths:
   /tag-kinds/update:
     post:
       operationId: renameTagKind
-      summary: タグの種類の名前を変える
-      description: |
-        `id` の種類の名前を変える。今と同じ名前なら何も変えずに今の種類を返す。画面の
-        `PATCH /api/tag-kinds/{id}` と同じ保存先の操作を呼ぶ。
+      summary: "Rename a tag kind"
+      description: "Rename the kind identified by id; an unchanged name returns it without changes. Uses the store operation behind `PATCH /api/tag-kinds/{id}`."
       requestBody:
         required: true
         content:
@@ -698,7 +580,7 @@ paths:
               $ref: "#/components/schemas/TagKindRenameRequest"
       responses:
         "200":
-          description: 名前を変えた種類
+          description: "Renamed tag kind"
           content:
             application/json:
               schema:
@@ -708,7 +590,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "404":
-          description: "`id` の種類が無い（`not_found` / `tag_kind_not_found`）"
+          description: "Missing kind (`not_found` / `tag_kind_not_found`)."
           content:
             application/json:
               schema:
@@ -721,10 +603,8 @@ paths:
   /tag-kinds/delete:
     post:
       operationId: deleteTagKinds
-      summary: タグの種類を消す
-      description: |
-        `ids` の種類を、画面の `DELETE /api/tag-kinds/{id}` と同じ保存先の操作で 1 つずつ消す。その種類の
-        タグは残り、種類なしになる。無い id は誤りにせず `notFoundIds` に返す。
+      summary: "Delete tag kinds"
+      description: "Delete kinds individually using the store operation behind `DELETE /api/tag-kinds/{id}`. Their tags remain unclassified; missing IDs are returned in notFoundIds without errors."
       requestBody:
         required: true
         content:
@@ -733,13 +613,13 @@ paths:
               $ref: "#/components/schemas/TagKindDeleteRequest"
       responses:
         "200":
-          description: 消した種類と無かった種類
+          description: "Deleted and missing kinds"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/TagKindDeleteResponse"
         "400":
-          description: 本文の形が違う、`ids` が空か 20,000 件を超える（`invalid_request`）。何も変えない
+          description: "Malformed body or empty/over-20,000 ids (`invalid_request`); no changes."
           content:
             application/json:
               schema:
@@ -752,11 +632,8 @@ paths:
   /people:
     get:
       operationId: listPeople
-      summary: 人物の一覧を返す、または外部 ID で人物を 1 件引く
-      description: |
-        画面の `GET /api/people` と同じ検索・並び順・ページで返す。`limit` を省くと条件に合う全件を返す。
-        `source` と `externalId` を組で渡すと、その外部 ID を持つ人物（高々 1 件）だけを `items` に返し、
-        無ければ空の `items` を返す。このとき `q`・`sort`・`cursor`・`limit` は読まない。
+      summary: "List people or look up one by external ID"
+      description: "Use the search, ordering and pagination of `GET /api/people`; omitting limit returns all matches. A source/externalId pair returns at most one matching person in items, or an empty list, and ignores q, sort, cursor and limit."
       parameters:
         - $ref: "#/components/parameters/CreditQuery"
         - $ref: "#/components/parameters/CreditSort"
@@ -766,7 +643,7 @@ paths:
         - $ref: "#/components/parameters/CreditExternalId"
       responses:
         "200":
-          description: 人物の一覧
+          description: "Person list"
           content:
             application/json:
               schema:
@@ -779,11 +656,8 @@ paths:
           $ref: "#/components/responses/Internal"
     post:
       operationId: createPerson
-      summary: 人物を作る
-      description: |
-        画面の `POST /api/people` と同じ保存先の操作を呼ぶ。他の外部連携の書き込みと同じく `200` を返す。
-        作る前に外部 ID で検索し、既にあればその id を使う。人物に `parentId` を送ると `400`
-        `invalid_request`。
+      summary: "Create a person"
+      description: "Uses the store operation behind `POST /api/people` and returns 200. Look up the external ID first and reuse an existing person; sending parentId for a person returns `400 invalid_request`."
       requestBody:
         required: true
         content:
@@ -792,7 +666,7 @@ paths:
               $ref: "#/components/schemas/CreditInput"
       responses:
         "200":
-          description: 作った人物
+          description: "Created person"
           content:
             application/json:
               schema:
@@ -809,10 +683,8 @@ paths:
   /people/update:
     post:
       operationId: updatePerson
-      summary: 人物を書き換える
-      description: |
-        `id` の人物に、本文にあるプロパティだけを重ねる。一覧は丸ごと置き換え、`null` は一覧を空にする。
-        画面の `PATCH /api/people/{id}` と同じ保存先の操作を呼ぶ。
+      summary: "Update a person"
+      description: "Update only supplied properties for id; replace lists entirely and clear lists on null. Uses the store operation behind `PATCH /api/people/{id}`."
       requestBody:
         required: true
         content:
@@ -821,7 +693,7 @@ paths:
               $ref: "#/components/schemas/CreditUpdateRequest"
       responses:
         "200":
-          description: 書き換えた人物
+          description: "Updated person"
           content:
             application/json:
               schema:
@@ -840,11 +712,8 @@ paths:
   /people/merge:
     post:
       operationId: mergePeople
-      summary: 複数の人物を 1 人へ統合する
-      description: |
-        1 つのトランザクションで、統合元の動画への結び付き・名前（別名になる）・外部 ID を統合先へ移し、
-        統合元を消す。無い統合元は飛ばして `notFoundIds` に返す。画面の `POST /api/people/{id}/merge` と
-        同じ保存先の操作を呼ぶ。
+      summary: "Merge people into one target"
+      description: "Atomically move video links, names (as aliases) and external IDs to the target, then delete sources. Return missing sources in notFoundIds; uses the store operation behind `POST /api/people/{id}/merge`."
       requestBody:
         required: true
         content:
@@ -853,7 +722,7 @@ paths:
               $ref: "#/components/schemas/CreditMergeRequest"
       responses:
         "200":
-          description: 統合後の統合先と、無かった統合元
+          description: "Merged target and missing sources"
           content:
             application/json:
               schema:
@@ -870,10 +739,8 @@ paths:
   /people/delete:
     post:
       operationId: deletePeople
-      summary: 人物を消す
-      description: |
-        `ids` の人物を、画面の `DELETE /api/people/{id}` と同じ保存先の操作で 1 人ずつ消す。動画への
-        結び付きも外れる。無い id は誤りにせず `notFoundIds` に返す。
+      summary: "Delete people"
+      description: "Delete people individually with their video links using the store operation behind `DELETE /api/people/{id}`. Return missing IDs in notFoundIds without errors."
       requestBody:
         required: true
         content:
@@ -882,7 +749,7 @@ paths:
               $ref: "#/components/schemas/CreditDeleteRequest"
       responses:
         "200":
-          description: 消した人物と無かった人物
+          description: "Deleted and missing people"
           content:
             application/json:
               schema:
@@ -897,11 +764,8 @@ paths:
   /organizations:
     get:
       operationId: listOrganizations
-      summary: 団体の一覧を返す、または外部 ID で団体を 1 件引く
-      description: |
-        画面の `GET /api/organizations` と同じ検索・並び順・ページで返す。`limit` を省くと条件に合う全件を
-        返す。`source` と `externalId` を組で渡すと、その外部 ID を持つ団体（高々 1 件）だけを `items` に
-        返し、無ければ空の `items` を返す。このとき `q`・`sort`・`cursor`・`limit` は読まない。
+      summary: "List organizations or look up one by external ID"
+      description: "Use the search, ordering and pagination of `GET /api/organizations`; omitting limit returns all matches. A source/externalId pair returns at most one matching organization in items, or an empty list, and ignores q, sort, cursor and limit."
       parameters:
         - $ref: "#/components/parameters/CreditQuery"
         - $ref: "#/components/parameters/CreditSort"
@@ -911,7 +775,7 @@ paths:
         - $ref: "#/components/parameters/CreditExternalId"
       responses:
         "200":
-          description: 団体の一覧
+          description: "Organization list"
           content:
             application/json:
               schema:
@@ -924,10 +788,8 @@ paths:
           $ref: "#/components/responses/Internal"
     post:
       operationId: createOrganization
-      summary: 団体を作る
-      description: |
-        画面の `POST /api/organizations` と同じ保存先の操作を呼ぶ。他の外部連携の書き込みと同じく `200` を
-        返す。作る前に外部 ID で検索し、既にあればその id を使う。
+      summary: "Create an organization"
+      description: "Uses the store operation behind `POST /api/organizations` and returns 200. Look up the external ID first and reuse an existing organization."
       requestBody:
         required: true
         content:
@@ -936,7 +798,7 @@ paths:
               $ref: "#/components/schemas/CreditInput"
       responses:
         "200":
-          description: 作った団体
+          description: "Created organization"
           content:
             application/json:
               schema:
@@ -955,10 +817,8 @@ paths:
   /organizations/update:
     post:
       operationId: updateOrganization
-      summary: 団体を書き換える
-      description: |
-        `id` の団体に、本文にあるプロパティだけを重ねる。一覧は丸ごと置き換え、`null` は一覧を空にし、
-        `parentId` の `null` は親を外す。画面の `PATCH /api/organizations/{id}` と同じ保存先の操作を呼ぶ。
+      summary: "Update an organization"
+      description: "Update only supplied properties for id; replace lists entirely, clear lists on null, and detach the parent on parentId null. Uses the store operation behind `PATCH /api/organizations/{id}`."
       requestBody:
         required: true
         content:
@@ -967,7 +827,7 @@ paths:
               $ref: "#/components/schemas/CreditUpdateRequest"
       responses:
         "200":
-          description: 書き換えた団体
+          description: "Updated organization"
           content:
             application/json:
               schema:
@@ -986,11 +846,8 @@ paths:
   /organizations/merge:
     post:
       operationId: mergeOrganizations
-      summary: 複数の団体を 1 つへ統合する
-      description: |
-        1 つのトランザクションで、統合元の動画への結び付き・名前（別名になる）・外部 ID を統合先へ移し、
-        統合元の子を統合先の下へ付け替えて統合元を消す。無い統合元は飛ばして `notFoundIds` に返す。画面の
-        `POST /api/organizations/{id}/merge` と同じ保存先の操作を呼ぶ。
+      summary: "Merge organizations into one target"
+      description: "Atomically move video links, names (as aliases), external IDs and children to the target, then delete sources. Return missing sources in notFoundIds; uses the store operation behind `POST /api/organizations/{id}/merge`."
       requestBody:
         required: true
         content:
@@ -999,7 +856,7 @@ paths:
               $ref: "#/components/schemas/CreditMergeRequest"
       responses:
         "200":
-          description: 統合後の統合先と、無かった統合元
+          description: "Merged target and missing sources"
           content:
             application/json:
               schema:
@@ -1016,10 +873,8 @@ paths:
   /organizations/delete:
     post:
       operationId: deleteOrganizations
-      summary: 団体を消す
-      description: |
-        `ids` の団体を、画面の `DELETE /api/organizations/{id}` と同じ保存先の操作で 1 つずつ消す。動画への
-        結び付きも外れ、子の団体は根になる。無い id は誤りにせず `notFoundIds` に返す。
+      summary: "Delete organizations"
+      description: "Delete organizations individually with their video links using the store operation behind `DELETE /api/organizations/{id}`; their children become roots. Return missing IDs in notFoundIds without errors."
       requestBody:
         required: true
         content:
@@ -1028,7 +883,7 @@ paths:
               $ref: "#/components/schemas/CreditDeleteRequest"
       responses:
         "200":
-          description: 消した団体と無かった団体
+          description: "Deleted and missing organizations"
           content:
             application/json:
               schema:
@@ -1043,18 +898,17 @@ paths:
   /scans:
     post:
       operationId: startScan
-      summary: スキャンを始める
-      description: |
-        新しく始めたら `201`、実行中のものがあれば新しく始めずにそれを `200` で返す。本文は取らない。
+      summary: "Start a scan"
+      description: "Return 201 for a new scan, or 200 with the already-running scan without starting another. No request body."
       responses:
         "201":
-          description: 新しく始めたスキャン
+          description: "Newly started scan"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ExternalScan"
         "200":
-          description: 実行中だったスキャン
+          description: "Existing running scan"
           content:
             application/json:
               schema:
@@ -1062,7 +916,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "409":
-          description: メディアフォルダが 1 つも登録されていない（`media_folders_not_configured`）
+          description: "No media folders configured (`media_folders_not_configured`)."
           content:
             application/json:
               schema:
@@ -1073,11 +927,11 @@ paths:
   /scans/current:
     get:
       operationId: getCurrentScan
-      summary: 直近のスキャンの状態を返す
-      description: 実行中のものがあればそれを、無ければ最後に終わったものを返す。
+      summary: "Get the latest scan status"
+      description: "Return the running scan, or the last completed scan when none is running."
       responses:
         "200":
-          description: 直近のスキャン
+          description: "Latest scan"
           content:
             application/json:
               schema:
@@ -1085,7 +939,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthenticated"
         "404":
-          description: 一度もスキャンしていない（`not_found` / `no_scan`）
+          description: "No scan has run (`not_found` / `no_scan`)."
           content:
             application/json:
               schema:
@@ -1098,61 +952,57 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: 設定ページで発行した API トークン（`vvt_` で始まる 47 文字）。
+      description: "API token issued in Settings: 47 characters beginning with vvt_."
 
   parameters:
     CreditQuery:
       name: q
       in: query
-      description: |
-        検索語。照合形にして前後の空白を落とし、空でなければ名前か別名に部分一致する実体だけにする
+      description: "Trim and normalize the query, then substring-match names or aliases when nonempty."
       schema:
         type: string
         maxLength: 100
     CreditSort:
       name: sort
       in: query
-      description: 並び順
+      description: "Sort order"
       schema:
         $ref: "#/components/schemas/CreditSort"
     CreditCursor:
       name: cursor
       in: query
-      description: |
-        前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する
+      description: "Previous nextCursor; reuse with the same q and sort. Ignored without limit."
       schema:
         type: string
     CreditLimit:
       name: limit
       in: query
-      description: |
-        1 ページの件数。省くと全件を返し、`nextCursor` は入らない。`source` と `externalId` での検索では読まない
+      description: "Page size; omit to return all matches without nextCursor. Ignored for source/externalId lookup."
       schema:
         type: integer
         minimum: 1
         maximum: 200
-        # 外部 ID での検索は limit を読まないので、整数でない値も検索の前に断らないよう、
-        # サーバーでは文字列のまま受けて一覧のときだけ整数に読む。
+        # Parse limit only for listing; external-ID lookup ignores even nonnumeric values.
         x-go-type: string
     CreditSource:
       name: source
       in: query
-      description: 外部 ID の情報源。`externalId` と組で渡すと、その外部 ID を持つ実体だけを返す
+      description: "External-ID source; pair with externalId to return only the matching entity."
       schema:
         type: string
     CreditExternalId:
       name: externalId
       in: query
-      description: 外部 ID の値。`source` と組で渡す
+      description: "External-ID value; pair with source."
       schema:
         type: string
 
   responses:
     Unauthenticated:
-      description: トークンが無い・形式が違う・無効・失効済み（`unauthenticated`）
+      description: "Missing, malformed, invalid or revoked token (`unauthenticated`)."
       headers:
         WWW-Authenticate:
-          description: 常に `Bearer`
+          description: "Always Bearer"
           schema:
             type: string
       content:
@@ -1160,75 +1010,55 @@ components:
           schema:
             $ref: "#/components/schemas/Error"
     Internal:
-      description: 予期しない失敗（`internal`）
+      description: "Unexpected failure (`internal`)."
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
     CreditListInvalid:
-      description: >-
-        `sort` が 5 値の外、`limit` が 1〜200 の外、`q` が 100 文字を超える、`source` と `externalId` の片方
-        だけ（`invalid_request`）、カーソルを解釈できないか別の `sort` で作ったもの（`invalid_request` /
-        `invalid_cursor`）
+      description: "Invalid sort, limit outside 1-200, q over 100 characters or only one of source/externalId supplied (`invalid_request`); unreadable cursor or sort mismatch (`invalid_request` / `invalid_cursor`)."
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
     CreditInvalid:
-      description: >-
-        本文の形が違う・人物に `parentId` を送った・`name` が `null`（`invalid_request`）、名前・別名・言語・
-        外部 ID・一覧の規則違反（`work_info_*`、`field`、`limit`）、親が自分か子孫の団体
-        （`organization_parent_cycle`）。何も変えない
+      description: "Malformed body, parentId on a person or null name (`invalid_request`); invalid name, alias, language, external ID or list (`work_info_*`, field, limit); parent is self or descendant (`organization_parent_cycle`). No changes."
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
     CreditNotFound:
-      description: >-
-        `id`・`targetId` の実体、または（`field: parentId`）親の団体が無い（`not_found` /
-        `person_not_found`・`organization_not_found`）。何も変えない
+      description: "Missing id/targetId entity or parent organization (field: parentId), with `not_found` / `person_not_found` or `organization_not_found`; no changes."
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
     CreditExternalIdTaken:
-      description: >-
-        送った外部 ID を同じ種類の別の実体が持つ（`conflict` / `external_id_taken`、`field` は
-        `externalIds[i]`）。何も変えない。その実体を指すつもりなら外部 ID で検索してその id を使う
+      description: "Another entity of the same kind owns an external ID (`conflict` / `external_id_taken`, field: externalIds[i]); no changes. Look up that external ID and reuse its entity if intended."
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
     CreditMergeInvalid:
-      description: >-
-        本文の形が違う（`invalid_request`）、`sourceIds` が空か 20,000 件を超える、または統合後の別名・
-        外部 ID が上限を超える（`work_info_too_many`、`field`、`limit`）、`sourceIds` が `targetId` を含む
-        （`merge_same_person`・`merge_same_organization`）、統合元の団体が統合先の祖先
-        （`organization_parent_cycle`）。何も変えない
+      description: "Malformed body (`invalid_request`); empty/over-20,000 sourceIds or merged alias/external-ID limits (`work_info_too_many`, field, limit); target among sources (`merge_same_person`, `merge_same_organization`); source organization is a target ancestor (`organization_parent_cycle`). No changes."
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
     CreditDeleteInvalid:
-      description: >-
-        本文の形が違う（`invalid_request`）、`ids` が空か 20,000 件を超える（`work_info_too_many`、
-        `field: ids`、`limit`）。何も変えない
+      description: "Malformed body (`invalid_request`) or empty/over-20,000 ids (`work_info_too_many`, field: ids, limit); no changes."
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
     TagKindNameInvalid:
-      description: >-
-        本文の形が違う（`invalid_request`）、名前の規則違反（`tag_name_empty`・
-        `tag_name_control_characters`・`tag_name_too_long`、`limit`）。何も変えない
+      description: "Malformed body (`invalid_request`) or invalid name (`tag_name_empty`, `tag_name_control_characters`, `tag_name_too_long`, limit); no changes."
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
     TagKindNameConflict:
-      description: >-
-        別の種類が同じ名前を持つ（`conflict` / `tag_kind_name_taken`、`tagName` はその種類の名前）。
-        何も変えない
+      description: "Another kind has the same name (`conflict` / `tag_kind_name_taken`, tagName); no changes."
       content:
         application/json:
           schema:
@@ -1239,12 +1069,11 @@ components:
       type: object
       required: [code, message]
       additionalProperties: false
-      description: >-
-        誤りの形は画面の API と同じで、index はこの API だけの項目である。
+      description: "Same error shape as the UI API, with the additional index field."
       properties:
         code:
           type: string
-          description: 機械可読なエラー種別。
+          description: "Machine-readable error code."
           enum:
             - unauthenticated
             - invalid_request
@@ -1254,38 +1083,28 @@ components:
             - internal
         message:
           type: string
-          description: 英語の説明。利用者のプログラムは code と reason で分岐する
+          description: "English explanation; clients should branch on code and reason."
         reason:
           $ref: "#/components/schemas/ErrorReason"
         limit:
           type: integer
-          description: reason の上限値。上限を持つ reason のときだけ入る
+          description: "Limit for the reason; present only when that reason has a limit."
         index:
           type: integer
-          description: >-
-            原因になった要素の位置（0 から）。タグ名の誤りでは tags の、表示名・サムネイル・作品情報の
-            操作では items の、それ以外では videos の位置を指す
+          description: "Zero-based position in tags for tag-name errors, items for display-name/thumbnail/work-info operations, or videos otherwise."
         field:
           type: string
-          description: >-
-            reason が指すプロパティの経路。JSON のプロパティ名を . でつなぎ、一覧の位置を [] で書く
-            （people[0].person.id・aliases[2].language・externalIds[1]・parentId）。作品情報の一括操作では
-            その項目の workInfo の中の経路である。work_info_*・person_not_found・organization_not_found・
-            external_id_taken のときだけ入る
+          description: "Property path using JSON names and array indices, such as people[0].person.id, aliases[2].language, externalIds[1] or parentId. For bulk work-info updates, relative to the item workInfo; present only for work_info_*, person_not_found, organization_not_found or external_id_taken."
         tagId:
           type: integer
           format: int64
-          description: >-
-            名前がぶつかったタグの id。`tag_name_taken`・`tag_merge_required` のときだけ入る
-
+          description: "Conflicting tag ID; only for tag_name_taken or tag_merge_required."
         tagName:
           type: string
-          description: >-
-            名前がぶつかったタグの元の名前（翻訳しない）。`tag_name_taken`・`tag_merge_required` の
-            ときだけ入る。`tag_kind_name_taken` では、名前がぶつかった種類の名前が入る
+          description: "Untranslated original name of the conflicting tag for tag_name_taken or tag_merge_required; conflicting kind name for tag_kind_name_taken."
     ErrorReason:
       type: string
-      description: 同じ code の中で状況を区別する下位の理由。
+      description: "Specific reason within an error code."
       enum:
         - invalid_cursor
         - too_many_videos
@@ -1334,30 +1153,30 @@ components:
           type: string
         synonyms:
           type: array
-          description: 名前の自然順
+          description: "Natural-name order."
           items:
             type: string
         videoCount:
           type: integer
-          description: いまライブラリにある動画の本数
+          description: "Number of videos currently in the library."
         tentative:
           type: boolean
-          description: 仮のタグ（自動の付与で新しく作られ、まだ確定していないタグ）
+          description: "Tentative tag created automatically and not yet confirmed."
         createdAt:
           type: string
           format: date-time
-          description: タグを作った時刻。`sort` の `createdDesc`・`createdAsc` はこの値で並べる
+          description: "Creation timestamp used by createdDesc and createdAsc sorting."
         kind:
           anyOf:
             - $ref: "#/components/schemas/TagKindRef"
             - type: "null"
-          description: タグの種類。null は種類の無いタグ
+          description: "Tag kind; null means unclassified."
 
     TagKindRef:
       type: object
       required: [id, name]
       additionalProperties: false
-      description: タグの種類の id と名前
+      description: "Tag kind ID and name."
       properties:
         id:
           type: integer
@@ -1369,7 +1188,7 @@ components:
       type: object
       required: [id, name, tagCount, createdAt]
       additionalProperties: false
-      description: 種類の一覧の 1 件
+      description: "One entry in the kind list."
       properties:
         id:
           type: integer
@@ -1378,11 +1197,11 @@ components:
           type: string
         tagCount:
           type: integer
-          description: この種類のタグの数。仮のタグも数える
+          description: "Number of tags of this kind, including tentative tags."
         createdAt:
           type: string
           format: date-time
-          description: 種類を作った時刻（秒の精度）
+          description: "Kind creation timestamp, with second precision."
 
     TagKindList:
       type: object
@@ -1391,7 +1210,7 @@ components:
       properties:
         items:
           type: array
-          description: すべての種類。id の順
+          description: "All kinds in ID order."
           items:
             $ref: "#/components/schemas/TagKind"
 
@@ -1402,7 +1221,7 @@ components:
       properties:
         name:
           type: string
-          description: 種類の名前。タグ名と同じ規則で整え、種類どうしで重ならない
+          description: "Kind name normalized like a tag name and unique among kinds."
 
     TagKindRenameRequest:
       type: object
@@ -1414,7 +1233,7 @@ components:
           format: int64
         name:
           type: string
-          description: 新しい名前。タグ名と同じ規則で整え、種類どうしで重ならない
+          description: "New name normalized like a tag name and unique among kinds."
 
     TagKindDeleteRequest:
       type: object
@@ -1423,7 +1242,7 @@ components:
       properties:
         ids:
           type: array
-          description: 消す種類の id。1〜20,000 件。範囲外は `invalid_request`
+          description: "Kind IDs to delete: 1-20,000; otherwise invalid_request."
           items:
             type: integer
             format: int64
@@ -1432,18 +1251,17 @@ components:
       type: object
       required: [deletedIds, notFoundIds]
       additionalProperties: false
-      description: >-
-        2 つは重ならず、合わせて重複を除いた `ids` に等しい。どちらも `ids` に現れた順で、無ければ []
+      description: "Disjoint lists whose union is the deduplicated ids, each preserving input order; empty lists are []."
       properties:
         deletedIds:
           type: array
-          description: 消した種類
+          description: "Deleted kinds."
           items:
             type: integer
             format: int64
         notFoundIds:
           type: array
-          description: 無かった種類
+          description: "Missing kinds."
           items:
             type: integer
             format: int64
@@ -1459,23 +1277,19 @@ components:
             $ref: "#/components/schemas/Tag"
         total:
           type: integer
-          description: 条件（`q`・`tentative`・`unused`）に合うタグの数。ページングとは独立に返る
+          description: "Count matching q, tentative and unused, independent of pagination."
         totalAll:
           type: integer
-          description: 全部のタグの数。ページングとは独立に返る
+          description: "Total tag count, independent of pagination."
         nextCursor:
           type: string
-          description: 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る
+          description: "Cursor for the next page; present only when limit is supplied and more results remain."
 
     TagSort:
       type: string
       enum: [name, countDesc, countAsc, createdDesc, createdAsc]
       default: name
-      description: |
-        タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、
-        createdDesc・createdAsc は作った日。値が同じタグは名前の自然順、それも同じなら id
-
-
+      description: "name uses natural-name order; countDesc/countAsc use video counts; createdDesc/createdAsc use creation time. Ties use natural-name order, then ID."
     TagMergeRequest:
       type: object
       required: [targetId, sourceIds]
@@ -1484,11 +1298,10 @@ components:
         targetId:
           type: integer
           format: int64
-          description: 付与・名前・シノニムを受け取るタグ。確定したタグになる
+          description: "Target receiving assignments, names and synonyms; becomes confirmed."
         sourceIds:
           type: array
-          description: >-
-            統合するタグ。送った数で 1〜20,000 件（重複も数に入り、統合は 1 回）。範囲外は `too_many_tags`
+          description: "Source IDs: 1-20,000 submitted entries, counting duplicates but merging once; otherwise too_many_tags."
           items:
             type: integer
             format: int64
@@ -1502,7 +1315,7 @@ components:
           $ref: "#/components/schemas/Tag"
         notFoundIds:
           type: array
-          description: 無かったので飛ばした統合元。無ければ空
+          description: "Missing sources skipped during merge; empty when none."
           items:
             type: integer
             format: int64
@@ -1517,7 +1330,7 @@ components:
           format: int64
         name:
           type: string
-          description: 新しい元の名前。タグ名と同じ規則で整える
+          description: "New original name, normalized using tag-name rules."
 
     TagSynonymsRequest:
       type: object
@@ -1527,21 +1340,18 @@ components:
         id:
           type: integer
           format: int64
-          description: シノニムを変えるタグ
+          description: "Tag whose synonyms change."
         action:
           type: string
-          description: add は足す、remove は外す
+          description: "add attaches; remove detaches."
           enum: [add, remove]
         name:
           type: string
-          description: シノニム。タグ名と同じ規則で整える
+          description: "Synonym normalized using tag-name rules."
         mergeTagId:
           type: integer
           format: int64
-          description: >-
-            `add` だけ: 統合を受け入れるタグの id。`tag_merge_required` の `tagId` を渡す。名前が別のタグの
-            元の名前でなければ無視する
-
+          description: "For add only: ID authorizing a merge, taken from tag_merge_required.tagId. Ignored unless the name is another tag's original name."
     TagBatchRequest:
       type: object
       required: [action, ids]
@@ -1549,20 +1359,16 @@ components:
       properties:
         action:
           type: string
-          description: >-
-            confirm は仮のタグを確定し、reject は仮のタグを却下し（消して元の名前を却下した名前に入れる）、
-            delete は確定したタグを消す。setKind は各タグに種類 kindId を付け、clearKind は各タグの種類を
-            外す（どちらも仮のタグを確定しない）
+          description: "confirm confirms tentative tags; reject removes them and remembers original names; delete removes confirmed tags. setKind assigns kindId and clearKind removes it, without confirming tentative tags."
           enum: [confirm, reject, delete, setKind, clearKind]
         kindId:
           type: integer
           format: int64
           minimum: 1
-          description: "`setKind` で付ける種類。`setKind` だけが持ち、他の `action` に付けると `invalid_request`"
+          description: "Kind assigned by setKind; supplying it for any other action returns invalid_request."
         ids:
           type: array
-          description: >-
-            対象のタグ。送った数で 1〜20,000 件（重複も数に入り、処理は 1 回）。範囲外は `too_many_tags`
+          description: "Target IDs: 1-20,000 submitted entries, counting duplicates but processing once; otherwise too_many_tags."
           items:
             type: integer
             format: int64
@@ -1571,24 +1377,23 @@ components:
       type: object
       required: [appliedIds, notFoundIds, notApplicableIds]
       additionalProperties: false
-      description: >-
-        3 つは重ならず、合わせて重複を除いた `ids` に等しい。どれも `ids` に現れた順で、無ければ空
+      description: "Three disjoint lists whose union is the deduplicated ids, each preserving input order; empty when none."
       properties:
         appliedIds:
           type: array
-          description: 処理したタグ
+          description: "Processed tags."
           items:
             type: integer
             format: int64
         notFoundIds:
           type: array
-          description: 無かったタグ
+          description: "Missing tags."
           items:
             type: integer
             format: int64
         notApplicableIds:
           type: array
-          description: 種類が `action` に合わず、何も変えなかったタグ
+          description: "Tags incompatible with the action, left unchanged."
           items:
             type: integer
             format: int64
@@ -1600,15 +1405,15 @@ components:
       properties:
         items:
           type: array
-          description: 却下した名前（名前の自然順）。無ければ空
+          description: "Rejected names in natural-name order; empty when none."
           items:
             type: string
         total:
           type: integer
-          description: 却下した名前の全部の数
+          description: "Total rejected-name count."
         nextCursor:
           type: string
-          description: 続きを読むカーソル。続きがあるときだけ入る
+          description: "Continuation cursor, present only when more remain."
 
     RejectedTagNameForgetResult:
       type: object
@@ -1617,63 +1422,69 @@ components:
       properties:
         name:
           type: string
-          description: 照合した名前（整えた後の綴り。整えられなければ送った名前）
+          description: "Normalized spelling matched, or the submitted name if normalization failed."
         removed:
           type: boolean
-          description: 却下した名前から外したら true。一覧に無かったら false で、何も変えていない
+          description: "True if removed from rejected names; false and unchanged if absent."
 
     ExternalVideo:
       type: object
       required:
         [
-          id, contentKey, title, fileTitle, displayName, thumbnailPositionMs, durationMs, addedAt, updatedAt,
-          fileCreatedAt, locations, tags, workInfo,
+          id,
+          contentKey,
+          title,
+          fileTitle,
+          displayName,
+          thumbnailPositionMs,
+          durationMs,
+          addedAt,
+          updatedAt,
+          fileCreatedAt,
+          locations,
+          tags,
+          workInfo,
         ]
       additionalProperties: false
-      description: 動画 1 本。見る人は常に所有者で、非公開の動画も返す
+      description: "One video viewed as owner, including private videos."
       properties:
         id:
           type: integer
           format: int64
         contentKey:
           type: string
-          description: 内容から決まる識別子。ファイルが移動しても変わらない
+          description: "Content-derived identifier, stable across file moves."
         title:
           type: string
-          description: 有効な題名。表示名があればそれ、無ければ代表の所在（locations の先頭）の題名
+          description: "Display name when set; otherwise the title of the representative first location."
         fileTitle:
           type: string
-          description: 代表の所在の、拡張子を除いたファイル名
+          description: "Representative location filename without extension."
         displayName:
           type: [string, "null"]
-          description: 表示名。未設定は null
+          description: "Display name, or null when unset."
         thumbnailPositionMs:
           type: [integer, "null"]
           format: int64
-          description: 代表サムネイルの位置（ミリ秒）。未設定は null（自動の位置）
+          description: "Thumbnail position in milliseconds; null selects the automatic position."
         durationMs:
           type: [integer, "null"]
           format: int64
-          description: 長さ（ミリ秒）。解析前は null
+          description: "Duration in milliseconds; null before probing."
         addedAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
-          description: |
-            vv 上で動画の情報（表示名・タグ・公開設定・代表サムネイル・作品情報）を最後に編集した日時。
-            一度も編集していなければ addedAt と同じ。この API の video-tags・display-names・
-            video-work-info も進める
+          description: "Last edit to display name, tags, visibility, thumbnail or work information; equals addedAt before any edit. video-tags, display-names and video-work-info operations advance it too."
         fileCreatedAt:
           type: string
           format: date-time
-          description: |
-            代表の所在（locations の先頭）のファイルの作成日時。ファイルシステムから取れないときは
-            そのファイルの更新日時（mtime）
+          description: "Creation time of the representative first location; falls back to file mtime when unavailable."
         locations:
           type: array
-          description: 登録フォルダの下の今の所在。パスの順で、代表が先頭
+          description: "Current locations under registered folders, ordered by path with the representative first."
           items:
             $ref: "#/components/schemas/ExternalVideoLocation"
         tags:
@@ -1690,10 +1501,10 @@ components:
       properties:
         path:
           type: string
-          description: 絶対パス。ファイルシステムの綴り（NFD を含む）のまま
+          description: "Absolute path in filesystem spelling, including NFD."
         fileName:
           type: string
-          description: path の最後の要素
+          description: "Final path component."
 
     ExternalVideoTag:
       type: object
@@ -1707,13 +1518,13 @@ components:
           type: string
         manual:
           type: boolean
-          description: 手で付けた（この API の付け外しの対象）
+          description: "Manually assigned; mutable through this API."
         fromFolder:
           type: boolean
-          description: 祖先のフォルダ名から付く（この API では外れない）
+          description: "Derived from ancestor folder names; cannot be removed through this API."
         tentative:
           type: boolean
-          description: 仮のタグ（自動の付与で新しく作られ、まだ確定していないタグ）
+          description: "Tentative tag created automatically and not yet confirmed."
 
     ExternalVideoPage:
       type: object
@@ -1726,14 +1537,12 @@ components:
             $ref: "#/components/schemas/ExternalVideo"
         nextCursor:
           type: string
-          description: 次のページの取得に渡す。続きが無ければ空文字列
+          description: "Cursor for the next page; empty string when none remains."
 
     VideoRef:
       type: object
       additionalProperties: false
-      description: >-
-        動画の指定。id・contentKey・path のちょうど 1 つを持つ。path は正規化せず、登録フォルダの下の
-        今の所在の path とバイト列で比べる
+      description: "Exactly one of id, contentKey or path. Paths match current locations under registered folders byte-for-byte without normalization."
       properties:
         id:
           type: integer
@@ -1750,29 +1559,22 @@ components:
       properties:
         videos:
           type: array
-          description: 1〜20000 件。範囲外は `too_many_videos`
+          description: "1-20,000 entries; otherwise too_many_videos."
           items:
             $ref: "#/components/schemas/VideoRef"
         action:
           type: string
-          description: >-
-            add は付ける、remove は外す、replace は手で付けたタグをちょうど tags の集合にする
-            （空なら手で付けたタグをすべて外す）
+          description: "add attaches, remove detaches, and replace makes manual tags exactly the supplied set; an empty set clears all manual tags."
           enum: [add, remove, replace]
         tags:
           type: array
-          description: >-
-            タグの名前（シノニムも可）。100 件まで。add・remove では 1 件以上。範囲外は `too_many_tags`
+          description: "Tag names or synonyms, at most 100; add/remove require at least one. Out-of-range counts return too_many_tags."
           items:
             type: string
         tentative:
           type: boolean
           default: false
-          description: >-
-            真なら add・replace で、どのタグの名前にもシノニムにも当たらない名前を仮のタグとして作る。
-            却下した名前（綴りの完全一致）は作らず付けずに飛ばし、skippedTags に返す。既存のタグに
-            当たる名前はそのタグを付け、その状態を変えない。remove では何も変えない
-
+          description: "For add/replace, create unknown names as tentative tags, skipping exact-spelling rejected names into skippedTags. Existing tags are attached without changing their state; has no effect on remove."
     VideoTagsResponse:
       type: object
       required: [items, skippedTags]
@@ -1780,14 +1582,12 @@ components:
       properties:
         items:
           type: array
-          description: videos の順
+          description: "In videos order."
           items:
             $ref: "#/components/schemas/VideoTagsItem"
         skippedTags:
           type: array
-          description: >-
-            tentative が真の add・replace で、却下した名前に当たって飛ばした名前。整えた形で tags の順に
-            1 回ずつ。無ければ空の配列
+          description: "Rejected names skipped by tentative add/replace, normalized and deduplicated in tags order; [] when none."
           items:
             type: string
 
@@ -1800,7 +1600,7 @@ components:
           $ref: "#/components/schemas/VideoTagsVideo"
         tags:
           type: array
-          description: 操作後のタグ（手で付けた分とフォルダ名から付く分、出所つき）
+          description: "Resulting manual and folder-derived tags, with provenance."
           items:
             $ref: "#/components/schemas/ExternalVideoTag"
 
@@ -1822,7 +1622,7 @@ components:
       properties:
         items:
           type: array
-          description: 1〜20000 件。範囲外は `too_many_videos`
+          description: "1-20,000 entries; otherwise too_many_videos."
           items:
             $ref: "#/components/schemas/VideoDisplayNameChange"
 
@@ -1835,10 +1635,7 @@ components:
           $ref: "#/components/schemas/VideoRef"
         displayName:
           type: [string, "null"]
-          description: >-
-            表示名。null、または前後の空白を除いて空なら解除する。制御文字を含めず、整えた後で
-            200 符号位置まで
-
+          description: "Display name; null or whitespace-only clears it. No control characters; at most 200 code points after normalization."
     VideoDisplayNamesResponse:
       type: object
       required: [items]
@@ -1846,7 +1643,7 @@ components:
       properties:
         items:
           type: array
-          description: items の順
+          description: "In items order."
           items:
             $ref: "#/components/schemas/VideoDisplayNamesItem"
 
@@ -1859,13 +1656,13 @@ components:
           $ref: "#/components/schemas/VideoTagsVideo"
         title:
           type: string
-          description: 反映後の有効な題名
+          description: "Resulting effective title."
         fileTitle:
           type: string
-          description: 代表の所在の、拡張子を除いたファイル名
+          description: "Representative location filename without extension."
         displayName:
           type: [string, "null"]
-          description: 反映後の表示名。解除したら null
+          description: "Resulting display name, or null when cleared."
 
     VideoThumbnailsRequest:
       type: object
@@ -1874,7 +1671,7 @@ components:
       properties:
         items:
           type: array
-          description: 1〜20 件。範囲外は `too_many_videos`
+          description: "1-20 entries; otherwise too_many_videos."
           items:
             $ref: "#/components/schemas/VideoThumbnailChange"
 
@@ -1888,9 +1685,7 @@ components:
         positionMs:
           type: [integer, "null"]
           format: int64
-          description: >-
-            代表サムネイルにする場面の位置（ミリ秒、0 以上で尺未満）。null なら解除し、自動の位置に戻す
-
+          description: "Thumbnail position in milliseconds, nonnegative and below duration; null restores the automatic position."
     VideoThumbnailsResponse:
       type: object
       required: [items]
@@ -1898,7 +1693,7 @@ components:
       properties:
         items:
           type: array
-          description: items の順
+          description: "In items order."
           items:
             $ref: "#/components/schemas/VideoThumbnailsItem"
 
@@ -1912,11 +1707,12 @@ components:
         thumbnailPositionMs:
           type: [integer, "null"]
           format: int64
-          description: 反映後の位置。解除したら null
+          description: "Resulting position, or null when cleared."
 
     ExternalScan:
       type: object
-      required: [id, status, startedAt, finishedAt, videos, settledVideos, errorCode]
+      required:
+        [id, status, startedAt, finishedAt, videos, settledVideos, errorCode]
       additionalProperties: false
       properties:
         id:
@@ -1924,10 +1720,7 @@ components:
           format: int64
         status:
           type: string
-          description: >-
-            取り込みの状態。画面の API の Scan.status と同じ値で、failed は走査そのものの失敗、
-            finding は対象をまだ数え終えていない、running は走査中か済んでいない対象がある、
-            partial は失敗の問題がある、done はそれ以外である
+          description: "Same status as the UI Scan API: failed for traversal failure, finding while counting, running while traversal or pending work remains, partial for item failures, otherwise done."
           enum: [finding, running, done, partial, failed]
         startedAt:
           type: string
@@ -1935,18 +1728,16 @@ components:
         finishedAt:
           type: [string, "null"]
           format: date-time
-          description: 走査が終わった時刻。走査中なら null
+          description: "Traversal completion timestamp; null while traversing."
         videos:
           type: [integer, "null"]
-          description: 対象の動画の本数。finding のあいだは null（本数を数え終えていない）
+          description: "Video count; null during finding before counting finishes."
         settledVideos:
           type: [integer, "null"]
-          description: >-
-            対象のうち残りの仕事が無い本数。finding のあいだは null。数えたあとは
-            0 ≤ settledVideos ≤ videos
+          description: "Videos with no remaining work; null during finding, then between zero and videos inclusive."
         errorCode:
           type: [string, "null"]
-          description: 走査そのものが失敗した理由のコード（status が failed のときだけ入る）
+          description: "Traversal failure code, present only when status is failed."
 
     VideoWorkInfoRequest:
       type: object
@@ -1955,7 +1746,7 @@ components:
       properties:
         items:
           type: array
-          description: 1〜20000 件。範囲外は `too_many_videos`
+          description: "1-20,000 entries; otherwise too_many_videos."
           items:
             $ref: "#/components/schemas/VideoWorkInfoChange"
 
@@ -1976,7 +1767,7 @@ components:
       properties:
         items:
           type: array
-          description: items の順
+          description: "In items order."
           items:
             $ref: "#/components/schemas/VideoWorkInfoItem"
 
@@ -1994,7 +1785,7 @@ components:
       type: object
       required: [id, name]
       additionalProperties: false
-      description: 人物か団体 1 件への参照。name はその実体の今の名前
+      description: "Reference to one person or organization; name is its current name."
       properties:
         id:
           type: integer
@@ -2006,7 +1797,7 @@ components:
       type: object
       required: [id]
       additionalProperties: false
-      description: 書き込みで人物か団体 1 件を指す参照
+      description: "Write reference to one person or organization."
       properties:
         id:
           type: integer
@@ -2016,19 +1807,19 @@ components:
       type: object
       required: [name]
       additionalProperties: false
-      description: 人物か団体の別名 1 件
+      description: "One person or organization alias."
       properties:
         name:
           type: string
         language:
           type: string
-          description: BCP 47 の構文の言語タグ。無ければ省く
+          description: "BCP 47 language tag; omitted when absent."
 
     ExternalId:
       type: object
       required: [source, value]
       additionalProperties: false
-      description: 外部の情報源での識別子 1 件
+      description: "One identifier from an external source."
       properties:
         source:
           type: string
@@ -2038,17 +1829,17 @@ components:
     WorkDateKind:
       type: string
       enum: [release, recorded, published]
-      description: 日付の種類
+      description: "Date kind."
 
     WorkPersonRole:
       type: string
       enum: [performer, director, photographer, streamer]
-      description: 動画での人物の役割
+      description: "Person role in a video."
 
     WorkOrganizationRole:
       type: string
       enum: [maker, label]
-      description: 動画での団体の役割
+      description: "Organization role in a video."
 
     WorkDate:
       type: object
@@ -2059,7 +1850,7 @@ components:
           $ref: "#/components/schemas/WorkDateKind"
         date:
           type: string
-          description: YYYY・YYYY-MM・YYYY-MM-DD（日まであれば暦にある日）
+          description: "YYYY, YYYY-MM or YYYY-MM-DD; a full date must be valid in the calendar."
           examples: ["2024", "2024-02", "2024-02-29"]
 
     WorkPerson:
@@ -2084,41 +1875,40 @@ components:
 
     WorkInfo:
       type: object
-      required: [code, description, dates, people, organizations, urls, externalIds]
+      required:
+        [code, description, dates, people, organizations, urls, externalIds]
       additionalProperties: false
-      description: |
-        動画の作品情報。
-        画面の API と同じ 7 つのプロパティで、この API では未設定の code・description は null、空の一覧は []
+      description: "Video work information with the same seven properties as the UI API; unset code/description are null and empty lists are []."
       properties:
         code:
           type: [string, "null"]
-          description: 品番
+          description: "Product code."
         description:
           type: [string, "null"]
-          description: 説明。改行を含みうる
+          description: "Description, potentially including newlines."
         dates:
           type: array
-          description: 種類の順（release・recorded・published）
+          description: "Kind order: release, recorded, published."
           items:
             $ref: "#/components/schemas/WorkDate"
         people:
           type: array
-          description: 役割の順、同じ役割の中は入力した順。name は人物の今の名前
+          description: "Role order, then input order within each role; name is the person's current name."
           items:
             $ref: "#/components/schemas/WorkPerson"
         organizations:
           type: array
-          description: 役割の順、同じ役割の中は入力した順。name は団体の今の名前
+          description: "Role order, then input order within each role; name is the organization's current name."
           items:
             $ref: "#/components/schemas/WorkOrganization"
         urls:
           type: array
-          description: 入力した順
+          description: "Input order."
           items:
             type: string
         externalIds:
           type: array
-          description: (source, value) の順
+          description: "Ordered by (source, value)."
           items:
             $ref: "#/components/schemas/ExternalId"
 
@@ -2145,9 +1935,7 @@ components:
     WorkInfoInput:
       type: object
       additionalProperties: false
-      description: |
-        作品情報の書き込み 1 件。画面の API の WorkInfoInput と同じ形で、項目の規則も同じ。
-        どのプロパティも省いてよく null も受け付ける。省いたものと null は解除で、全体を置き換える
+      description: "Full replacement using the UI WorkInfoInput shape and validation rules. All properties may be omitted or null; either clears the property."
       properties:
         code:
           type: [string, "null"]
@@ -2178,7 +1966,7 @@ components:
       type: object
       required: [id, name, aliases, externalIds, videoCount, createdAt]
       additionalProperties: false
-      description: 人物 1 件
+      description: "One person."
       properties:
         id:
           type: integer
@@ -2187,17 +1975,17 @@ components:
           type: string
         aliases:
           type: array
-          description: 名前の自然順。無ければ []
+          description: "Natural-name order; [] when empty."
           items:
             $ref: "#/components/schemas/Alias"
         externalIds:
           type: array
-          description: (source, value) の順。無ければ []
+          description: "Ordered by (source, value); [] when empty."
           items:
             $ref: "#/components/schemas/ExternalId"
         videoCount:
           type: integer
-          description: この人物をどれかの役割で結ぶ、表示中の動画の数
+          description: "Visible videos linked to this person in any role."
         createdAt:
           type: string
           format: date-time
@@ -2206,7 +1994,7 @@ components:
       type: object
       required: [id, name, aliases, externalIds, videoCount, createdAt, parent]
       additionalProperties: false
-      description: 団体 1 件。Person と同じ項目に親の団体が加わる
+      description: "One organization; same fields as Person plus its parent."
       properties:
         id:
           type: integer
@@ -2215,17 +2003,17 @@ components:
           type: string
         aliases:
           type: array
-          description: 名前の自然順。無ければ []
+          description: "Natural-name order; [] when empty."
           items:
             $ref: "#/components/schemas/Alias"
         externalIds:
           type: array
-          description: (source, value) の順。無ければ []
+          description: "Ordered by (source, value); [] when empty."
           items:
             $ref: "#/components/schemas/ExternalId"
         videoCount:
           type: integer
-          description: この団体をどれかの役割で結ぶ、表示中の動画の数
+          description: "Visible videos linked to this organization in any role."
         createdAt:
           type: string
           format: date-time
@@ -2233,7 +2021,7 @@ components:
           type: [object, "null"]
           required: [id, name]
           additionalProperties: false
-          description: 親の団体（CreditRef の形）。根の団体では null
+          description: "Parent organization as CreditRef; null for a root."
           properties:
             id:
               type: integer
@@ -2245,7 +2033,7 @@ components:
       type: object
       required: [name]
       additionalProperties: false
-      description: 人物か団体を作るときの本文。parentId は団体だけが使う
+      description: "Person or organization creation body; parentId is organization-only."
       properties:
         name:
           type: string
@@ -2260,20 +2048,18 @@ components:
         parentId:
           type: integer
           format: int64
-          description: 親の団体の id。団体だけで、人物に送ると 400 invalid_request
+          description: "Parent organization ID; sending it for a person returns 400 invalid_request."
 
     CreditUpdateRequest:
       type: object
       required: [id]
       additionalProperties: false
-      description: |
-        人物か団体の書き換えの本文。id のほかはどれも省いてよく、省いたものは今のまま残す。一覧は丸ごと
-        置き換え、null は一覧を空にする。parentId は団体だけが使い、null は親を外す
+      description: "Update body: id is required; omitted properties remain unchanged. Lists are replaced entirely and null clears them; organization-only parentId null removes the parent."
       properties:
         id:
           type: integer
           format: int64
-          description: 書き換える実体
+          description: "Entity to update."
         name:
           type: string
         aliases:
@@ -2287,7 +2073,7 @@ components:
         parentId:
           type: [integer, "null"]
           format: int64
-          description: 親の団体の id。null は親を外す。人物に送ると 400 invalid_request
+          description: "Parent organization ID; null detaches it. Sending this for a person returns 400 invalid_request."
 
     CreditMergeRequest:
       type: object
@@ -2297,10 +2083,10 @@ components:
         targetId:
           type: integer
           format: int64
-          description: 結び付き・名前・外部 ID を受け取る実体
+          description: "Target receiving links, names and external IDs."
         sourceIds:
           type: array
-          description: 統合元の id。1〜20,000 件。範囲外は `work_info_too_many`（field は sourceIds）
+          description: "1-20,000 source IDs; otherwise work_info_too_many with field sourceIds."
           items:
             type: integer
             format: int64
@@ -2312,7 +2098,7 @@ components:
       properties:
         ids:
           type: array
-          description: 消す実体の id。1〜20,000 件。範囲外は `work_info_too_many`（field は ids）
+          description: "1-20,000 IDs to delete; otherwise work_info_too_many with field ids."
           items:
             type: integer
             format: int64
@@ -2321,17 +2107,17 @@ components:
       type: object
       required: [deletedIds, notFoundIds]
       additionalProperties: false
-      description: 2 つは重ならず、どちらも `ids` に現れた順で重複が無い。無ければ []
+      description: "Disjoint deduplicated lists in ids order; [] when empty."
       properties:
         deletedIds:
           type: array
-          description: 消した実体
+          description: "Deleted entities."
           items:
             type: integer
             format: int64
         notFoundIds:
           type: array
-          description: 無かった実体
+          description: "Missing entities."
           items:
             type: integer
             format: int64
@@ -2340,7 +2126,7 @@ components:
       type: object
       required: [items, total, totalAll]
       additionalProperties: false
-      description: 人物の一覧
+      description: "Person list."
       properties:
         items:
           type: array
@@ -2348,19 +2134,19 @@ components:
             $ref: "#/components/schemas/Person"
         total:
           type: integer
-          description: 条件（q、または外部 ID）に合う人物の数。ページングとは独立に返る
+          description: "Person count matching q or external ID, independent of pagination."
         totalAll:
           type: integer
-          description: 全部の人物の数
+          description: "Total person count."
         nextCursor:
           type: string
-          description: 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る
+          description: "Cursor for the next page; present only with limit and remaining results."
 
     OrganizationList:
       type: object
       required: [items, total, totalAll]
       additionalProperties: false
-      description: 団体の一覧
+      description: "Organization list."
       properties:
         items:
           type: array
@@ -2368,13 +2154,13 @@ components:
             $ref: "#/components/schemas/Organization"
         total:
           type: integer
-          description: 条件（q、または外部 ID）に合う団体の数。ページングとは独立に返る
+          description: "Organization count matching q or external ID, independent of pagination."
         totalAll:
           type: integer
-          description: 全部の団体の数
+          description: "Total organization count."
         nextCursor:
           type: string
-          description: 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る
+          description: "Cursor for the next page; present only with limit and remaining results."
 
     PersonMergeResponse:
       type: object
@@ -2385,7 +2171,7 @@ components:
           $ref: "#/components/schemas/Person"
         notFoundIds:
           type: array
-          description: 無かったので飛ばした統合元。無ければ []
+          description: "Missing sources skipped during merge; [] when none."
           items:
             type: integer
             format: int64
@@ -2399,7 +2185,7 @@ components:
           $ref: "#/components/schemas/Organization"
         notFoundIds:
           type: array
-          description: 無かったので飛ばした統合元。無ければ []
+          description: "Missing sources skipped during merge; [] when none."
           items:
             type: integer
             format: int64
@@ -2408,5 +2194,4 @@ components:
       type: string
       enum: [name, countDesc, countAsc, createdDesc, createdAsc]
       default: name
-      description: |
-        人物と団体の一覧の並び順。タグの一覧（TagSort）と同じ 5 つで、値が同じものは名前の自然順、それも同じなら id
+      description: "Same five sort modes as TagSort; ties use natural-name order, then ID."

@@ -14,12 +14,10 @@ import (
 	"github.com/syudead/vv/internal/httpapi"
 )
 
-// stubPinger は保存層への疎通結果を差し替える。
 type stubPinger struct{ err error }
 
 func (s stubPinger) Ping(context.Context) error { return s.err }
 
-// testAssets は SPA の配信に必要な最小の埋め込み相当を返す。
 func testAssets() fstest.MapFS {
 	return fstest.MapFS{
 		"index.html":            {Data: []byte("<!doctype html><title>vv</title>")},
@@ -42,8 +40,7 @@ func newTestRouter(t *testing.T, pinger httpapi.Pinger) http.Handler {
 	})
 }
 
-// ownerAuthenticator はどの要求も所有者として通す。この外部テストは経路の分配と
-// 稼働確認を見るもので、認証の境界は auth_test.go が確かめる。
+// Authentication is stubbed here to isolate routing/health; auth_test.go tests the boundary.
 type ownerAuthenticator struct{}
 
 func (ownerAuthenticator) Setup(context.Context, string, string) (httpapi.IssuedSession, error) {
@@ -78,7 +75,6 @@ func TestHealthReturnsOKWhenStoreIsReachable(t *testing.T) {
 		t.Errorf("Cache-Control = %q, want %q", got, "no-store")
 	}
 
-	// api/openapi.yaml の Health は status と version を required にしている。
 	var body map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("JSON として解釈できない: %v (%s)", err, rec.Body.String())

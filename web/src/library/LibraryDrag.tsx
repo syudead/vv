@@ -32,44 +32,29 @@ import { VideoRow, type VideoCardProps } from "../videoList/VideoCard";
 import { type GroupCardProps, GroupRow } from "./GroupCard";
 import { favoriteTargets, type LibrarySelection } from "./selection";
 
-// ライブラリのドラッグである。所有者の格子と
-// リストを包み、動画だけをグループのカードの上に落とすと、そのグループへ移す。グループを含む
-// カードを落とすと「Put in as a child group」と「Merge」のメニューを開く。動画のカードの
-// 上に落としたときの扱いは画面が決める（`onto`、`onDrop`）。ライブラリは並べ替えないので、
-// カード全体が「上」になる。
+// Library cards have only onto drops, not reorder zones; group-containing drops require a move/merge choice.
 
-/**
- * selectedKeys は選択から持ち上げるカードの鍵を返す。「Favorite」と同じ分け方で、選んだ
- * グループはグループのカード、選んだグループのメンバーでない動画は動画のカードになる。
- */
+/** Lift selected group cards plus videos not already represented by a selected group. */
 export function selectedKeys(selection: LibrarySelection): string[] {
   const { videoIds, groupIds } = favoriteTargets(selection);
   return [...groupIds.map(groupKey), ...videoIds.map(videoKey)];
 }
 
-/** isLibraryGroup は項目がグループかを返す。 */
 function isLibraryGroup(item: LibraryItem | undefined): boolean {
   return item?.kind === "group";
 }
 
-/** libraryGroupOf は項目がグループならそのグループ、でなければ null を返す（落とす先）。 */
 function libraryGroupOf(item: LibraryItem | undefined): LibraryGroup | null {
   return item?.kind === "group" ? item.group : null;
 }
 
-/** refOf は項目を移す操作で指す値である。 */
 function refOf(item: OrganizableItem): OrganizeRef {
   return item.kind === "video"
     ? { kind: "video", id: item.video.id }
     : { kind: "group", id: item.group.id };
 }
 
-/**
- * LibraryDragLayer はライブラリの所有者の格子とリストを包むドラッグの層である。選択した
- * カード（「Favorite」と同じ分け方。選んだグループのメンバーの動画は入らない）を持ち上げると、
- * 選択した読み込み済みのカードがすべて画面の順でいっしょに動く。グループを含むカードを
- * グループに落とすとメニューを開き、選んだ操作で `onMove` か `onMerge` を呼ぶ。
- */
+/** Lift selected loaded cards in display order; group-containing drops offer move or merge. */
 export function LibraryDragLayer({
   items,
   list,
@@ -83,24 +68,19 @@ export function LibraryDragLayer({
   attached,
   children,
 }: {
-  /** 画面に出している項目（画面の順）。 */
   items: readonly LibraryItem[];
   list: boolean;
   selection: LibrarySelection;
-  /** 動画のカードの上に落とせるか（グループのカードはこの層が決める）。 */
   onto: (target: string, lifted: readonly string[]) => OntoAnswer<UiText>;
-  /** 動画のカードの上に落とした。 */
   onDrop: (drop: CardDrop) => void;
-  /** 項目 `moved`（画面の順）をグループ `to` へ移す。 */
   onMove: (moved: readonly OrganizableItem[], to: LibraryGroup) => void;
-  /** 項目 `merged`（画面の順、グループを含む）をグループ `into` へマージする。 */
   onMerge: (merged: readonly OrganizableItem[], into: LibraryGroup) => void;
   onLift: () => void;
   held: HeldDrop | null;
   attached: CardAttachment | null;
   children: ReactNode;
 }) {
-  // スマートフォルダのカードは持ち上げず、上に落とすと拒否する（RefusingDropCard）。
+  // Smart folders are neither draggable nor valid drop targets.
   const organizable = useMemo(() => items.filter(isOrganizable), [items]);
   const { order, byKey, nameOf, preview } = useOrderedItemDrag(
     organizable,
@@ -160,13 +140,11 @@ export function LibraryDragLayer({
   );
 }
 
-/** DraggableVideoRow はライブラリのリスト表示の、持ち上げられる動画の行である。 */
 export function DraggableVideoRow(props: Omit<VideoCardProps, "drag">) {
   const drag = useCardDrag(videoKey(props.video.id));
   return <VideoRow {...props} drag={drag} />;
 }
 
-/** DraggableGroupRow はライブラリのリスト表示の、持ち上げられるグループの行である。 */
 export function DraggableGroupRow(props: Omit<GroupCardProps, "drag">) {
   const drag = useCardDrag(groupKey(props.group.id));
   return <GroupRow {...props} drag={drag} />;
@@ -174,11 +152,7 @@ export function DraggableGroupRow(props: Omit<GroupCardProps, "drag">) {
 
 const noKeys: ReadonlySet<string> = new Set();
 
-/**
- * pruned は `hidden` のうち、もう一覧に無い項目の鍵（見せるときに隠す必要が無い）と、受け入れられた
- * 操作の項目の鍵 `released` を除く。読み直した一覧がまだ持つ項目はサーバーの答えなので見せる
- * （ほかのグループにも入っている動画は、グループへ足した後も一覧に残る）。
- */
+/** Release accepted or absent hidden items; a refreshed server list is authoritative even when moved videos still appear. */
 function pruned(
   hidden: ReadonlySet<string>,
   items: readonly LibraryItem[],
@@ -192,28 +166,17 @@ function pruned(
   return kept.size === hidden.size ? hidden : kept;
 }
 
-/** without は `hidden` から `keys` を除く。 */
 function without(hidden: ReadonlySet<string>, keys: readonly string[]) {
   return new Set(Array.from(hidden).filter((key) => !keys.includes(key)));
 }
 
-/** LibraryOperation はライブラリで落とした項目に送る操作 1 つである。 */
 interface LibraryOperation {
   send: () => Promise<OrganizeResult>;
   done: UiText;
   failed: (reason: string) => UiText;
 }
 
-/**
- * useLibraryMoves はライブラリでグループへ落とした項目を移すかマージする。
- * 落とした項目はすぐ一覧から隠し（マージしたグループのカードも消える）、選択を解き、`move` か
- * `merge` を送る。要求は落とした順に 1 つずつ送るので、
- * 「Undo」の通知はいつも最後に落とした移動のものになる。受け入れられたら「Undo」付きの通知を
- * 出して一覧をその場で読み直し、失敗したら隠した項目を戻して知らせる。画面を離れた後は
- * どちらの通知も出さない。隠した項目は、読み直した一覧から消えたら覚えるのをやめ、受け入れられた
- * 操作の項目は次の一覧で見せる（一覧がまだ持つなら、それがサーバーの答え）。取り消しの後は、
- * まだ答えを待っている移動の項目を除いてすべて見せる。
- */
+/** Hide cards immediately and serialize moves so Undo belongs to the latest drop. Restore failures, trust refreshed membership, and suppress notifications after leaving. */
 export function useLibraryMoves(
   items: readonly LibraryItem[],
   refreshInPlace: () => void,
@@ -222,10 +185,8 @@ export function useLibraryMoves(
   const toast = useToast();
   const [hidden, setHidden] = useState<ReadonlySet<string>>(noKeys);
   const shown = useRef(true);
-  /** 落とした順に移動を送る鎖と、答えを待っている移動の項目の鍵。 */
   const chain = useRef<Promise<void>>(Promise.resolve());
   const pending = useRef(new Set<string>());
-  /** 受け入れられて、次の一覧で見せる項目の鍵。 */
   const released = useRef(new Set<string>());
   useEffect(() => {
     shown.current = true;

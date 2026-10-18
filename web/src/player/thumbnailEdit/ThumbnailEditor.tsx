@@ -66,13 +66,11 @@ import CompareStage from "./CompareStage";
 import { buildMask, type Stroke } from "./mask";
 import PaintStage from "./PaintStage";
 
-/** 実行を見守る間に読む間隔と、それ以外（結果がある間・入力中）に読む間隔（ミリ秒）。 */
 const RUN_POLL_MS = 1000;
 const IDLE_POLL_MS = 60_000;
 
 const PROMPT_MAX = 4000;
 
-/** sessionEnded は要求の失敗がセッションの終わり（404 thumbnail_edit_not_found）かを返す。 */
 function sessionEnded(error: unknown): boolean {
   return (
     error instanceof RequestFailed &&
@@ -81,11 +79,7 @@ function sessionEnded(error: unknown): boolean {
   );
 }
 
-/**
- * providerMessage は実行の開始が `502 provider_failed` で断られたときに、提供元の文を返す。
- * 応答は提供元の文を載せず、失敗したセッションの `error.message` に残すので、セッションを
- * 読み直して取る。
- */
+/** Provider failure messages live on the failed session, not the start response; reload to retrieve them. */
 async function providerMessage(
   editId: string,
   error: unknown,
@@ -100,7 +94,6 @@ async function providerMessage(
   }
 }
 
-/** useNow は `active` の間、毎秒進む今の時刻を返す。 */
 function useNow(active: boolean): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -112,19 +105,13 @@ function useNow(active: boolean): number {
   return now;
 }
 
-/**
- * useSessionPolling はセッションを読み続ける。実行が進んでいる間は毎秒、それ以外は 60 秒ごと
- * に読む。読み取りはページの生存の知らせを兼ね、5 分読まれないセッションはサーバーが終える。操作を送るときは `pause` で読みかけを
- * 捨て、操作の前に送った読み取りの答えで見え方を戻さない。操作が終わったら `resume` で
- * 読み取りを仕掛け直す。操作の答えが見え方を変えなくても（失敗しても）読み続けるため。
- */
+/** Polling doubles as a heartbeat for the five-minute session expiry. Pause around mutations to reject stale reads, then resume even after failure. */
 function useSessionPolling(
   state: EditorState,
   dispatch: (action: Parameters<typeof editorReducer>[1]) => void,
 ): { pause: () => void; resume: () => void } {
   const epoch = useRef(0);
   const controller = useRef<AbortController | null>(null);
-  // 読み取りが届かなかったときに、次の読み取りを仕掛け直すための数。
   const [retry, setRetry] = useState(0);
   const { session, ended } = state;
   const running = isRunning(session.state);
@@ -145,7 +132,6 @@ function useSessionPolling(
             if (isAborted(error) || request.signal.aborted) return;
             if (epoch.current !== sentEpoch) return;
             if (sessionEnded(error)) dispatch({ type: "ended" });
-            // ほかの失敗（一時的に届かない）は、次の読み取りで確かめ直す。
             else setRetry((count) => count + 1);
           },
         );
@@ -165,10 +151,7 @@ function useSessionPolling(
   return { pause, resume };
 }
 
-/**
- * useDiscardOnLeave は、閉じる・適用するより前に編集画面が外れたとき（動画ページを離れた、
- * ブラウザを閉じた）にセッションを捨てる。StrictMode の作り直しでは捨てない。
- */
+/** Discard sessions when leaving before apply/close, excluding StrictMode effect replay. */
 function useDiscardOnLeave(editId: string, settled: { current: boolean }) {
   const pending = useRef<number | null>(null);
   useEffect(() => {
@@ -189,12 +172,6 @@ function useDiscardOnLeave(editId: string, settled: { current: boolean }) {
   }, [editId, settled]);
 }
 
-/**
- * ThumbnailEditor は動画の 1 コマを ComfyUI で編集してサムネイルにする編集画面である。EditorDialog の段にコマと
- * 塗りの層（Compose・Running）か、コマと生成した画像の比較（Compare）を出し、横の欄に指示・
- * 参考画像・実行の状態、足に主な操作を置く。閉じる・捨てる・ページを離れるとセッションを
- * 捨てる。適用したら応答の動画を `onApplied` へ渡す。
- */
 export default function ThumbnailEditor({
   edit,
   onApplied,
@@ -202,7 +179,6 @@ export default function ThumbnailEditor({
 }: {
   edit: ThumbnailEdit;
   onApplied: (video: Video, mark: DetailMark) => void;
-  /** 編集画面を閉じた（セッションは捨てた、適用で終わった）。 */
   onClosed: () => void;
 }) {
   const text = t.player.thumbnailEdit;
@@ -211,7 +187,7 @@ export default function ThumbnailEditor({
   );
   const { session, view, ended } = state;
   const editId = session.id;
-  // 始めた画像の元はセッションの応答だけで決まり、途中で変わらない。
+  // The session response fixes the source image for the lifetime of the editor.
   const words = sourceWords(edit);
   const running = isRunning(session.state);
   const polling = useSessionPolling(state, dispatch);
@@ -299,7 +275,7 @@ export default function ThumbnailEditor({
       const next = await cancelThumbnailEdit(editId);
       dispatch({ type: "read", session: next, at: Date.now() });
     } catch (error) {
-      // 中止を送れなければ実行は進んだままで、次の読み取りが見え方を決める。
+      // If cancellation fails, generation continues and polling determines the next state.
       ended404(error);
     } finally {
       setBusy(null);
@@ -635,7 +611,6 @@ export default function ThumbnailEditor({
   );
 }
 
-/** ToolButton は道具の行と参考画像の、名前をツールチップでも出すアイコンのボタンである。 */
 function ToolButton({
   label,
   size = "icon",
@@ -667,10 +642,6 @@ function ToolButton({
   );
 }
 
-/**
- * RunArea は横の欄の実行の状態である（ui-design「Running」「Failure」「Compare」）。状態の
- * 変わり目を読み上げるよう role="status" の領域にし、失敗は Alert（role="alert"）で出す。
- */
 function RunArea({
   state,
   elapsedMs,

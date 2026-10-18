@@ -1,26 +1,22 @@
 -- +goose Up
--- プレイリスト。作り直せない利用者データで、
--- 項目は動画の利用者データの鍵（集まりのメンバーなら 'bundle:<id>'）かグループのフォルダの鍵
--- （domain.FolderKey）で持ち、videos・folder_groups への外部キーを張らない。生成物の片付け・
--- releaseContentIndex・rebuildFolderIndex・メディアフォルダの削除はどちらの表にも触れない。
+-- Playlists are persistent user data; content/folder keys survive index cleanup and registration changes.
 create table playlists (
     id         integer primary key autoincrement,
     name       text    not null check (length(name) between 1 and 100),
-    -- Unix ミリ秒。
+    -- Unix milliseconds.
     created_at integer not null,
-    -- Unix ミリ秒。名前か項目を最後に変えた時刻。
+    -- Last name or item edit in Unix milliseconds.
     updated_at integer not null
 );
 
 create table playlist_items (
     id          integer primary key autoincrement,
     playlist_id integer not null references playlists (id) on delete cascade,
-    -- どちらか一方だけを持つ。
+    -- Exactly one target is present.
     content_key text,
     folder_key  text,
-    -- プレイリストの中で 0 から詰めた位置（R-3）。
     position    integer not null,
-    -- Unix ミリ秒。
+    -- Unix milliseconds.
     added_at    integer not null,
     check ((content_key is null) <> (folder_key is null)),
     check (content_key is null or content_key <> ''),

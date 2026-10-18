@@ -12,10 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 複数の統合元を受ける統合。
-
-// countingTx は取引に流れた文を数える。mergeTagsInto の文の数と、統合先の tagByID が何回
-// 走ったか（tagByID だけが読む `select created_at from tags where id = ?` の回数）を見る。
+// Count SQL statements and the target-only created_at lookup to detect per-source work or repeated target reads.
 type countingTx struct {
 	tx         *sql.Tx
 	execs      int
@@ -86,7 +83,6 @@ func TestMergeTagsMovesSeveralSourcesAndSkipsMissingOnes(t *testing.T) {
 	if _, err := tags.AddSynonym(ctx, a, "Aの別名", nil); err != nil {
 		t.Fatal(err)
 	}
-	// 統合先を仮のタグにして、統合で確定になることを見る。
 	if _, err := db.sql.Exec(`update tags set tentative = 1 where id = ?`, target); err != nil {
 		t.Fatal(err)
 	}
@@ -162,8 +158,7 @@ func TestMergeTagsWithOnlyMissingSourcesKeepsTarget(t *testing.T) {
 	}
 }
 
-// insertMergeSources は統合元のタグ n 個を直接作り、それぞれ 1 本の付与（content_key は
-// keys 種類を巡回）とシノニム 1 つを持たせる。作った id を返す。
+// Insert sources directly, cycling shared attachment keys and adding one synonym each.
 func insertMergeSources(t *testing.T, db *DB, n, keys int) []int64 {
 	t.Helper()
 	tx, err := db.sql.Begin()
@@ -203,7 +198,6 @@ func insertMergeSources(t *testing.T, db *DB, n, keys int) []int64 {
 	return ids
 }
 
-// mergeCounted は mergeTagsInTx を数える取引で走らせて確定し、結果と数えた値を返す。
 func mergeCounted(t *testing.T, db *DB, targetID int64, sourceIDs []int64) (domain.TagMergeOutcome, *countingTx) {
 	t.Helper()
 	ctx := context.Background()
@@ -228,7 +222,6 @@ func TestMergeTagsUsesFixedStatementsForSeveralSources(t *testing.T) {
 	const sourceCount, keys = 3, 2
 	ctx := context.Background()
 
-	// 統合元 1 個のときの文の数を基準にとる。
 	small := migratedDB(t)
 	smallTarget, err := small.Tags().CreateTag(ctx, "T")
 	if err != nil {

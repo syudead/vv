@@ -2,26 +2,20 @@ package domain
 
 import "fmt"
 
-// 外部連携 API の名前でのタグの一括操作。
-
-// ExternalVideoTagsMaxNames は 1 回のタグの一括操作が受け付けるタグ名の最大件数である。
 const ExternalVideoTagsMaxNames = 100
 
-// VideoTagsAction はタグの一括操作の種類である。どれも手で付けたタグ（video_tags の行）
-// だけを書き換え、祖先のフォルダ名から付くタグは変えない。
+// VideoTagsAction changes only manual video_tags rows, preserving ancestor-folder tags.
 type VideoTagsAction string
 
 const (
-	// VideoTagsAdd は名前のタグを付ける。無い名前はタグを作る。
+	// VideoTagsAdd creates missing tags.
 	VideoTagsAdd VideoTagsAction = "add"
-	// VideoTagsRemove は名前のタグを外す。どのタグにも当たらない名前は何もしない。
+	// VideoTagsRemove ignores unknown names.
 	VideoTagsRemove VideoTagsAction = "remove"
-	// VideoTagsReplace は手で付けたタグをちょうど名前のタグの集合にする。無い名前は
-	// タグを作り、空の集合は手で付けたタグをすべて外す。
+	// VideoTagsReplace creates missing tags; an empty set removes all manual tags.
 	VideoTagsReplace VideoTagsAction = "replace"
 )
 
-// Valid は a が既知の操作であることを返す。
 func (a VideoTagsAction) Valid() bool {
 	switch a {
 	case VideoTagsAdd, VideoTagsRemove, VideoTagsReplace:
@@ -30,25 +24,21 @@ func (a VideoTagsAction) Valid() bool {
 	return false
 }
 
-// VideoTagsOutcome は一括操作の結果である。
 type VideoTagsOutcome struct {
-	// Items は各動画の操作後のタグで、指定した動画の順。
+	// Items preserves requested video order.
 	Items []VideoTagsResult
-	// SkippedNames は仮の作成で却下した名前に当たって飛ばした名前（整えた形、指定の順、
-	// 重複なし）。無ければ空の配列。
+	// SkippedNames contains normalized rejected tentative names, deduplicated in input order.
 	SkippedNames []string
 }
 
-// VideoTagsResult は一括操作の後の動画 1 本のタグである。
 type VideoTagsResult struct {
 	VideoID    int64
 	ContentKey string
-	// Tags は操作後のタグ（手で付けた分とフォルダ名から付く分、出所つき）。
+	// Tags includes manual and folder-derived assignments with provenance.
 	Tags []VideoTag
 }
 
-// VideoRefNotFoundError は一括操作の動画の指定のうち、今ライブラリにある動画へ引けなかった
-// ものの位置（0 から）を運ぶ。errors.Is(err, ErrNotFound) は真になる。
+// VideoRefNotFoundError carries the zero-based input index and matches ErrNotFound.
 type VideoRefNotFoundError struct {
 	Index int
 }
@@ -59,9 +49,7 @@ func (e *VideoRefNotFoundError) Error() string {
 
 func (e *VideoRefNotFoundError) Unwrap() error { return ErrNotFound }
 
-// TagNameAtError は一括操作のタグ名のうち、規則に合わなかったものの位置（0 から）と
-// 理由（*InvalidTagNameError）を運ぶ。errors.Is(err, ErrInvalidTagName) は真になり、
-// errors.As で *InvalidTagNameError も取り出せる。
+// TagNameAtError carries the zero-based input index and wraps InvalidTagNameError.
 type TagNameAtError struct {
 	Index int
 	Err   error

@@ -79,17 +79,10 @@ import {
 
 const skeletonCount = 12;
 
-/** noMissing は欠けた参照の無い（ゲストの）ページの値である。描画ごとに作らない。 */
+/** Keep the guest empty-missing-reference value stable across renders. */
 const noMissing: readonly never[] = [];
 
-/**
- * SmartFolderPage はスマートフォルダ 1 つを開いた画面（`/smart-folders/{id}`）である。上のバーの下に道筋の帯、見出しに
- * フォルダの名前と本数と条件の行と「Play」、本体に子フォルダのカード、続けて条件に合う動画と
- * グループをフォルダの並べ順でライブラリのカードか行で並べる。所有者とゲストの両方が開く。
- *
- * React Router は `:id` だけが変わる移動で同じ部品を使い回すので、画面は経路の id ごとに
- * 作り直す。前のフォルダの名前・項目・選択が、別のフォルダと組み合わさって残らない。
- */
+/** Key by route ID so React Router cannot retain another folder's names, items or selection. */
 export default function SmartFolderPage() {
   const params = useParams();
   const id = parseSmartFolderId(params.id);
@@ -97,11 +90,8 @@ export default function SmartFolderPage() {
 }
 
 /**
- * useFolderSelection はスマートフォルダのページの選択である。ライブラリと同じく動画の id の
- * 集合と、グループとして選んだグループを持つ。子フォルダのカードは
- * 選ばない。読み直した項目に合わせて、並ばなくなった動画（タグが変わって条件から外れた）を
- * 選択から外し（keepMembers、見えない動画に一括の操作が及ばない）、選んだグループを直す
- * （reconcileGroups）。「Select all」はここまでに並んだ動画とグループを選ぶ。
+ * Select only loaded videos and groups; exclude child folders. Remove unmatched videos on refresh
+ * so bulk actions cannot affect hidden members.
  */
 function useFolderSelection(items: readonly LibraryItem[]) {
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
@@ -140,16 +130,15 @@ function useFolderSelection(items: readonly LibraryItem[]) {
 
 type FolderSelection = ReturnType<typeof useFolderSelection>;
 
-/** noItems は読めていない間の項目。描画ごとに作らない。 */
+/** Keep the empty items identity stable across renders. */
 const noItems: readonly LibraryItem[] = [];
 
-/** SmartFolderScreen は経路の id 1 つのスマートフォルダのページである。 */
 function SmartFolderScreen({ id }: { id: number | null }) {
   const location = useLocation();
   const owner = useAudience() === "owner";
   const { state, more, reload, refresh, loadMore, markGone } = useSmartFolderPage(id);
   const data = state.kind === "ready" ? state.data : null;
-  // 祖先の条件は読んだフォルダが変わったとき（読み直し）だけ読み直し、続きのページでは読まない。
+  // Reload ancestor rules only on folder refresh, never when adding a page.
   const ancestors = useAncestorRules(data?.trail ?? noTrail, owner, data?.folder);
   const { menu, editConditions } = useFolderMenu(data, owner, refresh, markGone);
   const preview = usePreviewCoordination();
@@ -168,7 +157,6 @@ function SmartFolderScreen({ id }: { id: number | null }) {
     loadMore,
     resetPreview,
   );
-  // カードのタグを押すと、そのタグで絞ったライブラリを開く（グループのページと同じ）。
   const pressTag = usePressTagToLibrary();
   const { favorites, selectedIds } = useSelectionTargets(selection.selection);
   const { clear } = selection;
@@ -271,12 +259,9 @@ function SmartFolderScreen({ id }: { id: number | null }) {
 }
 
 /**
- * useFolderMenu は所有者の見出しの「More」（SmartFolderMenu）と、空の状態の「Edit conditions…」が
- * 開く窓を持つ。直せたときと子を
- * 作れたときは静かに読み直し（名前・帯・条件の行・本体）、直せたらフォーカスを「More」へ戻す。
- * 消えたら親のページか、親が無ければ
- * ライブラリへ移ってトーストを出す。直す窓が 404 を受けたら無くなった状態にする。ゲストと
- * 条件の届かない応答には何も出さない。
+ * Share dialog state with the empty-state action; refresh after edits and creation, restoring
+ * focus to More. Deletion returns to the parent or library; missing edited folders become not-
+ * found.
  */
 function useFolderMenu(
   data: SmartFolderPageData | null,
@@ -316,14 +301,10 @@ function useFolderMenu(
   return { menu, editConditions };
 }
 
-/** noTrail は読めていない間の祖先。描画ごとに作らない。 */
+/** Keep the empty trail identity stable across renders. */
 const noTrail: SmartFolderPageData["trail"] = [];
 
-/**
- * EmptyBody は動画もグループも無いフォルダの空の印である。子フォルダのカードの後に置く。条件の消えた実体が祖先の条件にあれば、説明にその
- * 祖先の名前を足す。所有者には条件を直す窓を開く「Edit conditions…」を添える。中身があれば
- * 何も描かない。
- */
+/** Missing ancestor references add their ancestor name; show Edit conditions only to owners. */
 function EmptyBody({
   data,
   ancestors,
@@ -331,7 +312,6 @@ function EmptyBody({
 }: {
   data: SmartFolderPageData;
   ancestors: readonly AncestorRule[];
-  /** 所有者だけが受け取る。 */
   onEdit?: () => void;
 }) {
   const missing = data.settings?.missing ?? noMissing;
@@ -367,11 +347,7 @@ function EmptyBody({
   );
 }
 
-/**
- * SmartFolderHeader は道筋の帯と見出しである。
- * 帯はフォルダ画面の Breadcrumbs を共有し、上のバーの下に貼り付く。読めなかったときと
- * 無くなったときは、見せられないものの名前を出さない。
- */
+/** Hide names on failure or not-found, when their contents cannot be shown. */
 function SmartFolderHeader({
   state,
   listUrl,
@@ -383,7 +359,6 @@ function SmartFolderHeader({
   listUrl: string;
   owner: boolean;
   ancestors: readonly AncestorRule[];
-  /** 所有者の「More」（SmartFolderMenu）。 */
   menu: ReactNode;
 }) {
   if (state.kind === "loading") {
@@ -401,7 +376,6 @@ function SmartFolderHeader({
         keepFirst
       />
       <PageHeader
-        // 長い名前は見出しの中で 2 行まで折り返し、全体は title に入れる。
         title={
           <span
             title={folder.name}
@@ -424,7 +398,6 @@ function SmartFolderHeader({
             />
           )
         }
-        // 「Play」は再生順が空でない間だけ出し、所有者の「More」をその後に置く。
         actions={
           <>
             {folder.openVideoId !== undefined && (
@@ -442,7 +415,6 @@ function SmartFolderHeader({
   );
 }
 
-/** ItemsProps は中身の並びの props である。 */
 interface ItemsProps {
   id: number;
   items: readonly LibraryItem[];
@@ -455,11 +427,6 @@ interface ItemsProps {
   onPressTag: (tag: TagRef) => void;
 }
 
-/**
- * FolderItems は中身を応答の順に、格子ならライブラリのカード、リストならライブラリの行で
- * 並べる。子フォルダはそのページ、動画は `?smartFolder` 付きの再生画面、
- * グループはそのグループのページを開く。選択は所有者の動画とグループのカードだけ。
- */
 function FolderItems(props: ItemsProps) {
   const { id, items, view, zoom, listUrl, owner, selection, preview } = props;
   const selectionMode = selection.selection.ids.size > 0;
@@ -519,7 +486,7 @@ function FolderItems(props: ItemsProps) {
     );
   }
   return (
-    // タグの行の幅の見張りは一覧に1つだけ（ライブラリと同じ）。
+    // Share one tag-row width observer across the list.
     <TagRowMeasureProvider>
       <Grid zoom={zoom}>{items.map(cell)}</Grid>
     </TagRowMeasureProvider>
