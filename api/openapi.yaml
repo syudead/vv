@@ -3684,6 +3684,12 @@ paths:
       description: "Returns LibraryGroup, the still-connected portion of trail and the first 100 items in position order. Omits invisible videos and child groups without visible videos; continue with listGroupItems. Group values count descendant videos in depth-first playback order, deduplicated at first occurrence, using public videos only for guests. Missing groups and groups with no visible videos return 404 not_found."
       parameters:
         - $ref: "#/components/parameters/GroupId"
+        - name: query
+          in: query
+          description: "Video search with the same terms, phrases, exclusions, OR and normalization as listVideos. Search all visible descendants; retain child-group cards with matching descendants. Group summaries and playback still describe all visible members."
+          schema:
+            type: string
+            maxLength: 100
         - name: trail
           in: query
           description: "Comma-separated group IDs visited by the UI, outermost first. Response trail retains the connected parent-child chain outward from this group and drops ancestors beyond the first broken link."
@@ -3755,6 +3761,12 @@ paths:
       description: "Continues getGroup items after nextCursor in position order. Invalid cursors return 400 invalid_cursor. Missing or invisible groups return 404 not_found as in getGroup."
       parameters:
         - $ref: "#/components/parameters/GroupId"
+        - name: query
+          in: query
+          description: "Video search with the same terms, phrases, exclusions, OR and normalization as listVideos. Search all visible descendants; retain child-group cards with matching descendants. Group summaries and playback still describe all visible members."
+          schema:
+            type: string
+            maxLength: 100
         - name: cursor
           in: query
           description: "Opaque `nextCursor` from the previous response"

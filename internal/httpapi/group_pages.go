@@ -20,8 +20,12 @@ func (s *server) GetGroup(w http.ResponseWriter, r *http.Request, id gen.GroupId
 	if params.Trail != nil {
 		trail = *params.Trail
 	}
+	query, ok := s.parseSearchQuery(w, params.Query)
+	if !ok {
+		return
+	}
 	audience := audienceFrom(r.Context())
-	page, err := s.library.Group(r.Context(), audience, id, trail)
+	page, err := s.library.Group(r.Context(), audience, id, trail, query)
 	if !s.groupReadOK(w, err) {
 		return
 	}
@@ -59,8 +63,12 @@ func (s *server) ListGroupItems(w http.ResponseWriter, r *http.Request, id gen.G
 	if params.Cursor != nil {
 		cursor = *params.Cursor
 	}
+	query, ok := s.parseSearchQuery(w, params.Query)
+	if !ok {
+		return
+	}
 	audience := audienceFrom(r.Context())
-	page, err := s.library.GroupItems(r.Context(), audience, id, cursor, limit)
+	page, err := s.library.GroupItems(r.Context(), audience, id, cursor, limit, query)
 	if !s.groupReadOK(w, err) {
 		return
 	}

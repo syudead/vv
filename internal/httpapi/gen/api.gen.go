@@ -5328,12 +5328,18 @@ type ListGroupsParams struct {
 
 // GetGroupParams defines parameters for GetGroup.
 type GetGroupParams struct {
+	// Query Video search with the same terms, phrases, exclusions, OR and normalization as listVideos. Search all visible descendants; retain child-group cards with matching descendants. Group summaries and playback still describe all visible members.
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
+
 	// Trail Comma-separated group IDs visited by the UI, outermost first. Response trail retains the connected parent-child chain outward from this group and drops ancestors beyond the first broken link.
 	Trail *[]int64 `form:"trail,omitempty" json:"trail,omitempty"`
 }
 
 // ListGroupItemsParams defines parameters for ListGroupItems.
 type ListGroupItemsParams struct {
+	// Query Video search with the same terms, phrases, exclusions, OR and normalization as listVideos. Search all visible descendants; retain child-group cards with matching descendants. Group summaries and playback still describe all visible members.
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
+
 	// Cursor Opaque `nextCursor` from the previous response
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 
@@ -7209,6 +7215,19 @@ func (siw *ServerInterfaceWrapper) GetGroup(w http.ResponseWriter, r *http.Reque
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetGroupParams
 
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "trail" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", false, false, "trail", r.URL.Query(), &params.Trail, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
@@ -7276,6 +7295,19 @@ func (siw *ServerInterfaceWrapper) ListGroupItems(w http.ResponseWriter, r *http
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListGroupItemsParams
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		}
+		return
+	}
 
 	// ------------- Optional query parameter "cursor" -------------
 

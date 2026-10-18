@@ -9467,6 +9467,8 @@ export interface operations {
     getGroup: {
         parameters: {
             query?: {
+                /** @description Video search with the same terms, phrases, exclusions, OR and normalization as listVideos. Search all visible descendants; retain child-group cards with matching descendants. Group summaries and playback still describe all visible members. */
+                query?: string;
                 /** @description Comma-separated group IDs visited by the UI, outermost first. Response trail retains the connected parent-child chain outward from this group and drops ancestors beyond the first broken link. */
                 trail?: number[];
             };
@@ -9548,6 +9550,8 @@ export interface operations {
     listGroupItems: {
         parameters: {
             query?: {
+                /** @description Video search with the same terms, phrases, exclusions, OR and normalization as listVideos. Search all visible descendants; retain child-group cards with matching descendants. Group summaries and playback still describe all visible members. */
+                query?: string;
                 /** @description Opaque `nextCursor` from the previous response */
                 cursor?: string;
                 /** @description Page size */

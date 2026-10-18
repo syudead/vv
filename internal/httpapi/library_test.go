@@ -442,3 +442,22 @@ func TestGetGroup(t *testing.T) {
 		t.Errorf("ゲストの pair（公開1本）: status = %d, want 200", rec.Code)
 	}
 }
+
+func TestGroupSearchEndpoints(t *testing.T) {
+	f := newLibraryFixture(t)
+	path := f.groupPath(t, "show")
+	detail := decode[gen.GroupDetail](t, f.env.get(path+"?query=ep10", f.owner))
+	if len(detail.Items) != 1 || detail.Items[0].Video == nil || detail.Items[0].Video.Title != "ep10" || detail.Group.VideoCount != 3 {
+		t.Fatalf("filtered group = %+v", detail)
+	}
+	page := decode[gen.GroupItemPage](t, f.env.get(path+"/items?query=ep10&limit=1", f.owner))
+	if len(page.Items) != 1 || page.Items[0].Video == nil || page.Items[0].Video.Title != "ep10" || page.NextCursor != nil {
+		t.Fatalf("filtered items = %+v", page)
+	}
+	for _, endpoint := range []string{path, path + "/items"} {
+		response := f.env.get(endpoint+"?query="+strings.Repeat("a", 101), f.owner)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("long query status = %d", response.Code)
+		}
+	}
+}

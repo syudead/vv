@@ -23,11 +23,12 @@ async function readGroupThrough(
   trail: readonly number[],
   atLeast: number,
   signal: AbortSignal,
+  query: string,
 ): Promise<GroupPageData> {
-  const detail = await readGroupPage(id, trail, signal);
+  const detail = await readGroupPage(id, trail, signal, query);
   const { items, nextCursor } = await readThrough(
     detail,
-    (cursor) => listGroupItems(id, cursor, signal),
+    (cursor) => listGroupItems(id, cursor, signal, undefined, query),
     appendItems,
     atLeast,
   );
@@ -38,7 +39,7 @@ async function readGroupThrough(
  * Keep visible data during background refreshes, except on 404; discard stale responses. Wait for
  * queued moves before reading, and retry if a move was sent during the read.
  */
-export function useGroupPage(id: number | null, trail: readonly number[]) {
+export function useGroupPage(id: number | null, trail: readonly number[], query = "") {
   /** Last server-confirmed order, used for rollback. */
   const confirmed = useRef<readonly GroupItem[]>([]);
   /** Serialize moves in drop order and count sent moves. */
@@ -49,18 +50,23 @@ export function useGroupPage(id: number | null, trail: readonly number[]) {
   /** Retry reads interrupted by moves after the move queue settles. */
   const requery = useRef<() => void>(() => undefined);
   const trailKey = trail.join(",");
+  const lastQuery = useRef(query);
 
   const { state, stateRef, more, read, loadMore, update, markGone, stop } =
     usePagedDetail(id, {
-      read: (groupId: number, atLeast: number, signal: AbortSignal) =>
-        readGroupThrough(
+      read: (groupId: number, atLeast: number, signal: AbortSignal) => {
+        const count = lastQuery.current === query ? atLeast : 0;
+        lastQuery.current = query;
+        return readGroupThrough(
           groupId,
           trailKey === "" ? [] : trailKey.split(",").map(Number),
-          atLeast,
+          count,
           signal,
-        ),
+          query,
+        );
+      },
       more: (groupId: number, cursor: string, signal: AbortSignal) =>
-        listGroupItems(groupId, cursor, signal),
+        listGroupItems(groupId, cursor, signal, undefined, query),
       append: appendItems,
       beforeRead: (quiet: boolean) => {
         const sentBefore = movesSent.current;
@@ -120,7 +126,7 @@ export function useGroupPage(id: number | null, trail: readonly number[]) {
       clearTimeout(videoTimer);
       stop();
     };
-  }, [id, refresh, reload, stateRef, stop]);
+  }, [id, query, refresh, reload, stateRef, stop]);
 
   return {
     state,

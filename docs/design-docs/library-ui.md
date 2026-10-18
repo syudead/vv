@@ -207,6 +207,13 @@ dialog.
 On the library and folder pages, changing the search, a filter, a tag or the
 sort order scrolls the page back to the top, so the new list starts from its
 first card. Returning from the player still restores the saved position.
+Group pages share the search field, debounce, IME handling, syntax help and
+`q` URL state. Changing the query resets pagination and scrolls to the top.
+Search applies the video search expression before paging direct group items;
+child-group cards remain when any visible descendant matches. Group summaries
+and playback describe all visible descendants. During search, drag reordering
+is disabled and Select all selects the loaded matching items, including the
+full membership of selected child-group cards.
 The sidebar has two states (rail, drawer; see
 [Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception)).
 The rail is 68px (`sidebar-rail`) wide and shows each entry's icon above a
@@ -818,6 +825,12 @@ linked to its work information. Matching uses the folded form
 matter. The description, dates, URLs and external IDs are not matched. A guest
 search matches only the title and relative path, so names a guest cannot see
 do not decide which public videos are returned.
+
+The group destination picker filters names and audience visibility in SQLite,
+then reads at most the page limit plus one candidate key. Full group members
+are loaded for the returned page, while the extra key determines continuation.
+Name matching uses Unicode case folding, preserving the picker's substring
+semantics independently of video search syntax.
 
 Only the server knows which videos and groups belong to a folder and match the
 filters, so a page that filtered locally would show a different set from

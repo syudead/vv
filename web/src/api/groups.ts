@@ -31,9 +31,13 @@ export function readGroupPage(
   id: number,
   trail: readonly number[],
   signal?: AbortSignal,
+  searchQuery = "",
 ): Promise<GroupDetail> {
   // Numeric IDs allow literal comma separators: form style with explode false.
-  const query = trail.length === 0 ? "" : `?trail=${trail.map(String).join(",")}`;
+  const params = new URLSearchParams();
+  if (trail.length > 0) params.set("trail", trail.map(String).join(","));
+  if (searchQuery !== "") params.set("query", searchQuery);
+  const query = params.size === 0 ? "" : `?${params.toString()}`;
   return request<GroupDetail>(`${groupPath(id)}${query}`, { signal });
 }
 
@@ -43,8 +47,10 @@ export function listGroupItems(
   cursor: string | undefined,
   signal?: AbortSignal,
   limit?: number,
+  searchQuery = "",
 ): Promise<GroupItemPage> {
   const query = new URLSearchParams();
+  if (searchQuery !== "") query.set("query", searchQuery);
   if (cursor !== undefined) query.set("cursor", cursor);
   if (limit !== undefined) query.set("limit", String(limit));
   const search = query.size === 0 ? "" : `?${query.toString()}`;

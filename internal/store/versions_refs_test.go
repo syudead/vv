@@ -74,7 +74,7 @@ func TestGroupItemsCarryTheVersionsSummary(t *testing.T) {
 	if err := db.sql.QueryRow(`select group_id from group_items where content_key = ?`, ownerVideo(t, db, a).UserKey).Scan(&groupID); err != nil {
 		t.Fatalf("A の入ったグループが無い: %v", err)
 	}
-	page, err := db.Library().Group(ctx, domain.AudienceOwner, groupID, nil)
+	page, err := db.Library().Group(ctx, domain.AudienceOwner, groupID, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}

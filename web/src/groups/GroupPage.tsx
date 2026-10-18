@@ -1,5 +1,6 @@
 import { Folder } from "lucide-react";
 import {
+  type ComponentProps,
   type ReactNode,
   type Ref,
   useCallback,
@@ -7,7 +8,7 @@ import {
   useMemo,
   useState,
 } from "react";
-import { Link, useLocation, useParams } from "react-router";
+import { Link, useLocation, useParams, useSearchParams } from "react-router";
 
 import type { LibraryGroup, TagRef, Video, VideoFolder } from "../api/client";
 import type { GroupItem, GroupRef } from "../api/groups";
@@ -41,6 +42,10 @@ import { ListPage } from "../ui/patterns/list-page";
 import { LoadMoreRow } from "../ui/patterns/load-more-row";
 import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
+import SearchBox from "../videoList/SearchBox";
+import { normalizeQuery, type HistoryMode } from "../videoList/listCriteria";
+import { NoMatches } from "../videoList/states";
+import { useScrollTopOnChange } from "../videoList/useScrollTopOnChange";
 import { Toolbar } from "../ui/patterns/toolbar";
 import { Button } from "../ui/shadcn/button";
 import { crumbKey, CrumbDropTarget, DraggableCard } from "../videoList/cardDrag";
@@ -159,22 +164,28 @@ function useGroupPageDrops({
   return { shownData, dropOnto, nameFieldFor: drops.nameFieldFor };
 }
 
-function useGroupSelection(data: GroupPageData | null) {
+function useGroupSelection(data: GroupPageData | null, searching: boolean) {
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
+  const videoIds = useMemo(() => {
+    if (data === null) return [];
+    return searching
+      ? data.items.flatMap(
+          (item) => item.group?.videoIds ?? (item.video ? [item.video.id] : []),
+        )
+      : data.group.videoIds;
+  }, [data, searching]);
 
   // Reconcile refreshed members while retaining selected videos on unloaded pages.
   useEffect(() => {
     if (data === null) return;
-    setSelection((current) =>
-      reconcileGroupSelection(current, data.group.videoIds, data.items),
-    );
-  }, [data]);
+    setSelection((current) => reconcileGroupSelection(current, videoIds, data.items));
+  }, [data, videoIds]);
 
   // Recompute Select all from current membership so newly added items make it available again.
-  const all = useMemo(
-    () => (data === null ? null : selectAllInGroup(data.group.videoIds, data.items)),
-    [data],
-  );
+  const all = useMemo(() => {
+    if (data === null) return null;
+    return selectAllInGroup(videoIds, data.items);
+  }, [data, videoIds]);
 
   const clear = useCallback(() => setSelection(emptySelection), []);
   const changeVideo = useCallback(
@@ -228,6 +239,23 @@ function useGroupSelection(data: GroupPageData | null) {
 function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[] }) {
   const location = useLocation();
   const owner = useAudience() === "owner";
+  const [params, setParams] = useSearchParams();
+  const query = normalizeQuery(params.get("q") ?? "");
+  const commitQuery = useCallback(
+    (next: string, mode: HistoryMode) => {
+      setParams(
+        (current) => {
+          const updated = new URLSearchParams(current);
+          if (next === "") updated.delete("q");
+          else updated.set("q", next);
+          return updated;
+        },
+        { replace: mode === "replace" },
+      );
+    },
+    [setParams],
+  );
+  useScrollTopOnChange(query);
   const {
     state,
     more,
@@ -239,7 +267,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     moves,
     movesSent,
     markGone,
-  } = useGroupPage(id, trail);
+  } = useGroupPage(id, trail, query);
   const data = state.kind === "ready" ? state.data : null;
   //
   const leave = useLeaveGroup(data?.trail ?? noTrail);
@@ -263,7 +291,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   const preview = usePreviewCoordination();
   const { resetPreview } = preview;
   const { view, zoom, changeView, changeZoom, listRef } = useViewControls(resetPreview);
-  const selection = useGroupSelection(data);
+  const selection = useGroupSelection(data, query !== "");
   const listUrl = `${location.pathname}${location.search}`;
 
   useDocumentTitle(data?.group.name);
@@ -282,6 +310,9 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   const { favorites, selectedIds } = useSelectionTargets(selection.selection);
 
   const { clear } = selection;
+  useEffect(() => {
+    clear();
+  }, [query, clear]);
 
   const { shownData, dropOnto, nameFieldFor } = useGroupPageDrops({
     data,
@@ -374,6 +405,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
         <TopBarPortal>
           <Toolbar
             placement="topBar"
+            search={<SearchBox query={query} onCommit={commitQuery} className="w-full" />}
             view={viewControls(view, changeView, zoom, changeZoom)}
             viewLabel={t.library.view.label}
           />
@@ -402,64 +434,37 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
         )
       }
     >
-      {state.kind === "loading" && (
-        <LoadingState
-          label={t.list.loading}
-          layout={view === "grid" ? "grid" : "table"}
-          size={zoom}
-          count={view === "grid" ? skeletonCount : 6}
-        />
-      )}
-      {state.kind === "failed" && (
-        <ErrorState
-          title={t.groups.detail.loadFailed}
-          retryLabel={t.common.retry}
-          onRetry={reload}
-        />
-      )}
-      {state.kind === "gone" && (
-        <GoneState
-          title={t.groups.detail.gone.title}
-          description={t.groups.detail.gone.description}
-        />
-      )}
-      {shownData !== null && id !== null && shownData.items.length > 0 && (
-        <div ref={listRef}>
-          <GroupItems
-            id={id}
-            data={shownData}
-            view={view}
-            zoom={zoom}
-            listUrl={listUrl}
-            owner={owner}
-            selection={selection}
-            selectionMode={selectionMode}
-            preview={preview.cardProps}
-            onPressTag={pressTag}
-            editing={
-              owner
-                ? {
-                    removing: edits.removing,
-                    onRemove: edits.removeOne,
-                    removeRef: edits.removeRef,
-                  }
-                : undefined
-            }
-            draggable={owner}
-            nameFieldFor={nameFieldFor}
-          />
-        </div>
-      )}
-      {more === "loading" && <LoadMoreRow status="loading" label={t.list.loading} />}
-      {more === "failed" && (
-        <LoadMoreRow
-          status="failed"
-          title={t.player.related.moreFailed}
-          retryLabel={t.common.retry}
-          onRetry={loadMore}
-        />
-      )}
-      <div ref={sentinel} aria-hidden="true" className="h-px" />
+      <GroupBody
+        state={state}
+        more={more}
+        reload={reload}
+        loadMore={loadMore}
+        shownData={shownData}
+        searching={query !== ""}
+        id={id}
+        listRef={listRef}
+        sentinel={sentinel}
+        items={{
+          view,
+          zoom,
+          listUrl,
+          owner,
+          selection,
+          selectionMode,
+          preview: preview.cardProps,
+          onPressTag: pressTag,
+          editing:
+            owner && query === ""
+              ? {
+                  removing: edits.removing,
+                  onRemove: edits.removeOne,
+                  removeRef: edits.removeRef,
+                }
+              : undefined,
+          draggable: owner && query === "",
+          nameFieldFor,
+        }}
+      />
     </ListPage>
   );
 
@@ -467,7 +472,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   //
   return (
     <GroupChangedContext value={groupChanged}>
-      {owner ? (
+      {owner && query === "" ? (
         <GroupDragLayer
           items={shownData?.items ?? noItems}
           list={view === "list"}
@@ -486,6 +491,72 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
         page
       )}
     </GroupChangedContext>
+  );
+}
+
+function GroupBody({
+  state,
+  more,
+  reload,
+  loadMore,
+  shownData,
+  searching,
+  id,
+  listRef,
+  sentinel,
+  items,
+}: {
+  state: ReturnType<typeof useGroupPage>["state"];
+  more: ReturnType<typeof useGroupPage>["more"];
+  reload: () => void;
+  loadMore: () => void;
+  shownData: GroupPageData | null;
+  searching: boolean;
+  id: number | null;
+  listRef: Ref<HTMLDivElement>;
+  sentinel: Ref<HTMLDivElement>;
+  items: Omit<ComponentProps<typeof GroupItems>, "id" | "data">;
+}) {
+  return (
+    <>
+      {state.kind === "loading" && (
+        <LoadingState
+          label={t.list.loading}
+          layout={items.view === "grid" ? "grid" : "table"}
+          size={items.zoom}
+          count={items.view === "grid" ? skeletonCount : 6}
+        />
+      )}
+      {state.kind === "failed" && (
+        <ErrorState
+          title={t.groups.detail.loadFailed}
+          retryLabel={t.common.retry}
+          onRetry={reload}
+        />
+      )}
+      {state.kind === "gone" && (
+        <GoneState
+          title={t.groups.detail.gone.title}
+          description={t.groups.detail.gone.description}
+        />
+      )}
+      {shownData !== null && shownData.items.length === 0 && searching && <NoMatches />}
+      {shownData !== null && id !== null && shownData.items.length > 0 && (
+        <div ref={listRef}>
+          <GroupItems id={id} data={shownData} {...items} />
+        </div>
+      )}
+      {more === "loading" && <LoadMoreRow status="loading" label={t.list.loading} />}
+      {more === "failed" && (
+        <LoadMoreRow
+          status="failed"
+          title={t.player.related.moreFailed}
+          retryLabel={t.common.retry}
+          onRetry={loadMore}
+        />
+      )}
+      <div ref={sentinel} aria-hidden="true" className="h-px" />
+    </>
   );
 }
 

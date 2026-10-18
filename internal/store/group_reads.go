@@ -167,23 +167,23 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 }
 
 // Group returns the first item page and valid parent trail; hidden and missing groups both return domain.ErrNotFound.
-func (s *LibraryStore) Group(ctx context.Context, audience domain.Audience, id int64, trail []int64) (domain.GroupPage, error) {
+func (s *LibraryStore) Group(ctx context.Context, audience domain.Audience, id int64, trail []int64, query string) (domain.GroupPage, error) {
 	return s.readGroupPage(ctx, audience, id, func(tx *sql.Tx, page *domain.GroupPage) error {
 		var err error
 		page.Trail, err = groupTrail(ctx, tx, id, trail)
 		if err != nil {
 			return err
 		}
-		page.Items, page.NextCursor, err = groupItemsPage(ctx, tx, audience, id, "", domain.GroupItemsDefaultLimit)
+		page.Items, page.NextCursor, err = groupItemsPage(ctx, tx, audience, id, "", domain.GroupItemsDefaultLimit, query)
 		return err
 	})
 }
 
 // GroupItems uses the same visibility as Group and rejects malformed cursors.
-func (s *LibraryStore) GroupItems(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int) (domain.GroupPage, error) {
+func (s *LibraryStore) GroupItems(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int, query string) (domain.GroupPage, error) {
 	return s.readGroupPage(ctx, audience, id, func(tx *sql.Tx, page *domain.GroupPage) error {
 		var err error
-		page.Items, page.NextCursor, err = groupItemsPage(ctx, tx, audience, id, cursor, limit)
+		page.Items, page.NextCursor, err = groupItemsPage(ctx, tx, audience, id, cursor, limit, query)
 		return err
 	})
 }
@@ -245,7 +245,7 @@ func groupTrail(ctx context.Context, tx *sql.Tx, id int64, trail []int64) ([]dom
 const groupItemsCursorKind = "group-items"
 
 // Page visible videos and child groups with visible descendants by item position.
-func groupItemsPage(ctx context.Context, tx *sql.Tx, audience domain.Audience, id int64, cursor string, limit int) ([]domain.GroupItem, string, error) {
+func groupItemsPage(ctx context.Context, tx *sql.Tx, audience domain.Audience, id int64, cursor string, limit int, query string) ([]domain.GroupItem, string, error) {
 	after := int64(-1)
 	if cursor != "" {
 		parts, err := unpackCursor(cursor, 2)
@@ -263,14 +263,16 @@ func groupItemsPage(ctx context.Context, tx *sql.Tx, audience domain.Audience, i
 	}
 	limit = min(limit, domain.GroupItemsMaxLimit)
 
-	rows, err := tx.QueryContext(ctx, `with `+groupDescendantsCTE(`select child_id as id from group_items
-			where group_id = ?1 and child_id is not null`, audience)+`
+	cte, matched, args := groupItemSearch(audience, query)
+	args = append(args, id, id, after, limit+1)
+	rows, err := tx.QueryContext(ctx, cte+groupDescendantsCTE(`select child_id as id from group_items
+			where group_id = ? and child_id is not null`, audience)+`
 		select id, position, video_id, child_id from (
 			select gi.id, gi.position, gi.child_id,
 				case when gi.content_key is not null then `+shownVideoForKeyExpr("gi.content_key", audience)+` end as video_id
-			from group_items gi where gi.group_id = ?1 and gi.position > ?2)
-		where video_id is not null or child_id in (select root_id from gdesc)
-		order by position limit ?3`, id, after, limit+1)
+			from group_items gi where gi.group_id = ? and gi.position > ?)
+		where `+matched+`
+		order by position limit ?`, args...)
 	if err != nil {
 		return nil, "", fmt.Errorf("cannot read the group items: %w", err)
 	}
@@ -332,4 +334,14 @@ func groupItemsPage(ctx context.Context, tx *sql.Tx, audience domain.Audience, i
 		items = append(items, item)
 	}
 	return items, next, nil
+}
+
+func groupItemSearch(audience domain.Audience, query string) (string, string, []any) {
+	expr := domain.ParseSearchQuery(query)
+	if expr.Empty() {
+		return `with `, `video_id is not null or child_id in (select root_id from gdesc)`, nil
+	}
+	cte, args := chosenLocationsCTE(libraryScope(audience), expr)
+	return cte + `, `, `video_id in (select video_id from chosen) or child_id in (
+		select root_id from gdesc where video_id in (select video_id from chosen))`, args
 }
