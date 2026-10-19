@@ -183,3 +183,42 @@ func TestForcedSeekStageQueuesNoFollowUpProcess(t *testing.T) {
 		})
 	}
 }
+
+func videoBuilds(t *testing.T, db *DB, videoID int64) domain.ArtifactBuilds {
+	t.Helper()
+	video, err := db.Library().GetVideo(context.Background(), domain.AudienceOwner, videoID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return video.Builds
+}
+
+// completePreview records a preview the way the preview worker does.
+func completePreview(t *testing.T, db *DB) {
+	t.Helper()
+	job := claimKind(t, db, domain.JobPreview)
+	if applied, err := db.Ingest().CompletePreviewForContent(context.Background(), job); err != nil || !applied {
+		t.Fatalf("CompletePreviewForContent = %v, %v", applied, err)
+	}
+}
+
+func TestForcedStageResultCountsTheBuild(t *testing.T) {
+	db := migratedDB(t)
+	videoID := queueNewFile(t, db, "clip", domain.ActivityByRule)
+	for _, kind := range []domain.JobKind{domain.JobProbe, domain.JobThumbnail, domain.JobSeekThumbnail} {
+		runImportStage(t, db, kind)
+	}
+	completePreview(t, db)
+	if got := videoBuilds(t, db, videoID); got != (domain.ArtifactBuilds{}) {
+		t.Fatalf("builds after ordinary results = %+v, want all 0", got)
+	}
+
+	forceJobs(t, db, videoID, domain.JobThumbnail, domain.JobSeekThumbnail, domain.JobPreview)
+	runImportStage(t, db, domain.JobThumbnail)
+	runImportStage(t, db, domain.JobSeekThumbnail)
+	completePreview(t, db)
+	want := domain.ArtifactBuilds{Thumbnail: 1, SeekThumbnail: 1, Preview: 1}
+	if got := videoBuilds(t, db, videoID); got != want {
+		t.Fatalf("builds after forced results = %+v, want %+v", got, want)
+	}
+}

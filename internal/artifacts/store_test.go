@@ -73,7 +73,7 @@ func sheetWriter(t *testing.T, sheets int) func(string) error {
 
 // Tests unrelated to substitution publish without full decoding.
 func publishSeek(s *Store, contentKey string, layout domain.SeekSpriteLayout, write func(string) error) error {
-	_, err := s.PublishSeekThumbnails(contentKey, layout, func(dir string) (bool, error) {
+	_, err := s.PublishSeekThumbnails(contentKey, layout, false, func(dir string) (bool, error) {
 		return false, write(dir)
 	})
 	return err
@@ -183,7 +183,7 @@ func TestPublishesIntoExistingLayout(t *testing.T) {
 	if err := publishSeek(store, key, spriteLayout, sheetWriter(t, 2)); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.PublishPreview(ctx, key, writer([]byte("mp4")), nil); err != nil {
+	if err := store.PublishPreview(ctx, key, false, writer([]byte("mp4")), nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -238,7 +238,7 @@ func TestRejectsKeysOutsideTheStore(t *testing.T) {
 		called := false
 		write := func(string) error { called = true; return nil }
 		if store.PublishThumbnail(bad, func(output, _ string) error { return write(output) }) == nil || publishSeek(store, bad, spriteLayout, write) == nil ||
-			store.PublishPreview(ctx, bad, write, nil) == nil || called {
+			store.PublishPreview(ctx, bad, false, write, nil) == nil || called {
 			t.Errorf("%q: 公開した", bad)
 		}
 	}
@@ -260,7 +260,7 @@ func TestEmptyRootHasNothing(t *testing.T) {
 	for _, err := range []error{
 		store.PublishThumbnail(key, thumbnailWriter([]byte("x"), nil)),
 		publishSeek(store, key, spriteLayout, sheetWriter(t, 2)),
-		store.PublishPreview(context.Background(), key, writer([]byte("x")), nil),
+		store.PublishPreview(context.Background(), key, false, writer([]byte("x")), nil),
 	} {
 		if !errors.Is(err, errNotConfigured) {
 			t.Fatalf("根が無いときの誤り = %v", err)
@@ -342,7 +342,7 @@ func TestPublishPreviewAdoptsOnlyVerifiedAsset(t *testing.T) {
 	store := New(root)
 
 	called := false
-	if err := store.PublishPreview(ctx, key, func(string) error { called = true; return nil }, nil); err != nil {
+	if err := store.PublishPreview(ctx, key, false, func(string) error { called = true; return nil }, nil); err != nil {
 		t.Fatal(err)
 	}
 	if called {
@@ -351,7 +351,7 @@ func TestPublishPreviewAdoptsOnlyVerifiedAsset(t *testing.T) {
 
 	// Corrupt bytes without changing file size.
 	writeFile(t, preview, []byte("preview-mpX"))
-	if err := store.PublishPreview(ctx, key, writer([]byte("regenerated")), nil); err != nil {
+	if err := store.PublishPreview(ctx, key, false, writer([]byte("regenerated")), nil); err != nil {
 		t.Fatal(err)
 	}
 	if data, _ := os.ReadFile(preview); string(data) != "regenerated" {
@@ -426,10 +426,10 @@ func TestPublishFailureLeavesNothing(t *testing.T) {
 			})
 		}},
 		{name: "プレビュー", want: failure, publish: func(s *Store) error {
-			return s.PublishPreview(ctx, key, failing, nil)
+			return s.PublishPreview(ctx, key, false, failing, nil)
 		}},
 		{name: "元が変わったプレビュー", want: domain.ErrPreviewStale, publish: func(s *Store) error {
-			return s.PublishPreview(ctx, key, writer([]byte("mp4")), func(context.Context) (bool, error) { return false, nil })
+			return s.PublishPreview(ctx, key, false, writer([]byte("mp4")), func(context.Context) (bool, error) { return false, nil })
 		}},
 	}
 	for _, tt := range tests {
@@ -490,7 +490,7 @@ func TestPublishSeekThumbnailsKeepsSubstitution(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			store := New(t.TempDir())
 			write := sheetWriter(t, 2)
-			published, err := store.PublishSeekThumbnails(key, spriteLayout, func(dir string) (bool, error) {
+			published, err := store.PublishSeekThumbnails(key, spriteLayout, false, func(dir string) (bool, error) {
 				return tc.fullDecode, write(dir)
 			})
 			if err != nil {
@@ -499,7 +499,7 @@ func TestPublishSeekThumbnailsKeepsSubstitution(t *testing.T) {
 			if published != tc.want {
 				t.Fatalf("公開したときの代用 = %v, want %v", published, tc.want)
 			}
-			adopted, err := store.PublishSeekThumbnails(key, spriteLayout, func(string) (bool, error) {
+			adopted, err := store.PublishSeekThumbnails(key, spriteLayout, false, func(string) (bool, error) {
 				t.Fatal("完成したシーク用プレビューを作り直した")
 				return false, nil
 			})
@@ -528,7 +528,7 @@ func TestPublishSeekThumbnailsKeepsSubstitution(t *testing.T) {
 			t.Fatalf("sprite.json に代用の記録が無い: %s", data)
 		}
 		writeFile(t, manifest, legacy)
-		adopted, err := store.PublishSeekThumbnails(key, spriteLayout, func(string) (bool, error) {
+		adopted, err := store.PublishSeekThumbnails(key, spriteLayout, false, func(string) (bool, error) {
 			t.Fatal("完成したシーク用プレビューを作り直した")
 			return false, nil
 		})
@@ -548,7 +548,7 @@ func TestRemoveTemporaryKeepsPublishedArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	var visible []bool
-	err := store.PublishPreview(context.Background(), key, func(output string) error {
+	err := store.PublishPreview(context.Background(), key, false, func(output string) error {
 		if err := os.WriteFile(output, []byte("mp4"), 0o644); err != nil {
 			return err
 		}
@@ -587,7 +587,7 @@ func TestPublishPreviewSerializesAcrossStores(t *testing.T) {
 	release := make(chan struct{})
 	firstDone := make(chan error, 1)
 	go func() {
-		firstDone <- New(root).PublishPreview(context.Background(), key, writer([]byte("mp4")),
+		firstDone <- New(root).PublishPreview(context.Background(), key, false, writer([]byte("mp4")),
 			func(context.Context) (bool, error) {
 				close(entered)
 				<-release
@@ -602,7 +602,7 @@ func TestPublishPreviewSerializesAcrossStores(t *testing.T) {
 	secondWrote := make(chan struct{}, 1)
 	secondDone := make(chan error, 1)
 	go func() {
-		secondDone <- New(root).PublishPreview(context.Background(), key, func(output string) error {
+		secondDone <- New(root).PublishPreview(context.Background(), key, false, func(output string) error {
 			secondWrote <- struct{}{}
 			return os.WriteFile(output, []byte("mp4"), 0o644)
 		}, nil)

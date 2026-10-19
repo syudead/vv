@@ -34,6 +34,7 @@ import (
 //	<root>/preview/<p>/<s>.mp4          Hover preview
 //	<root>/preview/<p>/<s>.mp4.sha256   Integrity manifest
 //	<root>/preview/.publish.lock        Publication lock
+//	<root>/{seek,preview}/<p>/.*/       Forced rebuilds and their pointers (builds.go)
 //	<root>/.tmp/                        Incomplete output
 const (
 	seekDirName      = "seek"
@@ -94,18 +95,7 @@ func (s *Store) publishTarget(locate func(string) (string, bool), contentKey str
 
 // Shard by two filename characters to avoid tens of thousands of entries in one directory.
 func (s *Store) locate(dir, contentKey, ext string) (string, bool) {
-	if s.root == "" {
-		return "", false
-	}
-	name, ok := fileName(contentKey)
-	if !ok {
-		return "", false
-	}
-	prefix := name
-	if len(prefix) > 2 {
-		prefix = prefix[:2]
-	}
-	return filepath.Join(s.root, dir, prefix, name+ext), true
+	return s.buildPath(dir, contentKey, ext, 0)
 }
 
 func (s *Store) thumbnailPath(contentKey string) (string, bool) {
@@ -116,12 +106,12 @@ func (s *Store) posterPath(contentKey string) (string, bool) {
 	return s.locate(posterDirName, contentKey, thumbnailExt)
 }
 
-func (s *Store) seekDir(contentKey string) (string, bool) {
-	return s.locate(seekDirName, contentKey, "")
+func (s *Store) seekDir(contentKey string, build int) (string, bool) {
+	return s.buildPath(seekDirName, contentKey, "", build)
 }
 
-func (s *Store) previewPaths(contentKey string) (video, manifest string, ok bool) {
-	video, ok = s.locate(previewDirName, contentKey, previewExt)
+func (s *Store) previewPaths(contentKey string, build int) (video, manifest string, ok bool) {
+	video, ok = s.buildPath(previewDirName, contentKey, previewExt, build)
 	return video, video + manifestExt, ok
 }
 
@@ -274,17 +264,23 @@ func copyToFile(path string, source io.Reader) error {
 }
 
 // PublishSeekThumbnails reuses complete sprites or stages sheets and metadata before atomic
-// directory publication, removing incomplete legacy output first. It returns the published/reused
+// directory publication, removing incomplete legacy output first. A forced publish never reuses: it
+// publishes the next build and then switches the pointer to it. It returns the published/reused
 // substitution status (unknown for older metadata); callers serialize publication and deletion.
 func (s *Store) PublishSeekThumbnails(
-	contentKey string, layout domain.SeekSpriteLayout, write func(outputDir string) (fullDecode bool, err error),
+	contentKey string, layout domain.SeekSpriteLayout, force bool,
+	write func(outputDir string) (fullDecode bool, err error),
 ) (domain.Substitution, error) {
 	unknown := domain.SubstitutionUnknown
-	target, err := s.publishTarget(s.seekDir, contentKey)
-	if err != nil {
+	if _, err := s.publishTarget(func(key string) (string, bool) { return s.seekDir(key, 0) }, contentKey); err != nil {
 		return unknown, err
 	}
-	if file, _, err := readSpriteFile(target); err == nil {
+	build := s.currentBuild(seekDirName, contentKey)
+	current, _ := s.seekDir(contentKey, build)
+	target := current
+	if force {
+		target, _ = s.seekDir(contentKey, build+1)
+	} else if file, _, err := readSpriteFile(current); err == nil {
 		return file.substitution(), nil
 	}
 	if err := os.MkdirAll(filepath.Dir(target), dirPerm); err != nil {
@@ -296,52 +292,71 @@ func (s *Store) PublishSeekThumbnails(
 	}
 	defer func() { _ = os.RemoveAll(temporary) }()
 
-	fullDecode, err := write(temporary)
+	file, err := stageSeekSprite(temporary, contentKey, layout, write)
 	if err != nil {
 		return unknown, err
 	}
-	sprite, err := describeSheets(temporary, layout)
-	if err != nil {
-		return unknown, fmt.Errorf("seek thumbnails were not generated (%s): %w", contentKey, err)
-	}
-	file := spriteFileFrom(sprite)
-	file.FullDecode = &fullDecode
-	data, err := json.Marshal(file)
-	if err != nil {
-		return unknown, err
-	}
-	if err := os.WriteFile(filepath.Join(temporary, spriteFileName), append(data, '\n'), 0o644); err != nil {
-		return unknown, fmt.Errorf("cannot write the seek thumbnail manifest: %w", err)
-	}
+	// A leftover is incomplete legacy output, or a forced build interrupted before its pointer switched.
 	if err := os.RemoveAll(target); err != nil {
 		return unknown, fmt.Errorf("cannot delete old seek thumbnails: %w", err)
 	}
 	// The directory rename publishes metadata and sheets together.
 	if err := os.Rename(temporary, target); err != nil {
-		if published, _, readErr := readSpriteFile(target); readErr == nil {
+		if published, _, readErr := readSpriteFile(target); readErr == nil && !force {
 			return published.substitution(), nil
 		}
 		return unknown, fmt.Errorf("cannot publish the seek thumbnails: %w", err)
 	}
+	if force {
+		if err := s.switchBuild(seekDirName, contentKey, build+1); err != nil {
+			_ = removeBuild(target)
+			return unknown, err
+		}
+		// The pointer already names the new build; a failed removal leaves files RemoveContent deletes later.
+		_ = removeBuild(current)
+	}
 	return file.substitution(), nil
 }
 
+// stageSeekSprite has write generate the sheets in dir and adds the metadata that marks them complete.
+func stageSeekSprite(
+	dir, contentKey string, layout domain.SeekSpriteLayout, write func(outputDir string) (bool, error),
+) (spriteFile, error) {
+	fullDecode, err := write(dir)
+	if err != nil {
+		return spriteFile{}, err
+	}
+	sprite, err := describeSheets(dir, layout)
+	if err != nil {
+		return spriteFile{}, fmt.Errorf("seek thumbnails were not generated (%s): %w", contentKey, err)
+	}
+	file := spriteFileFrom(sprite)
+	file.FullDecode = &fullDecode
+	data, err := json.Marshal(file)
+	if err != nil {
+		return spriteFile{}, err
+	}
+	if err := os.WriteFile(filepath.Join(dir, spriteFileName), append(data, '\n'), 0o644); err != nil {
+		return spriteFile{}, fmt.Errorf("cannot write the seek thumbnail manifest: %w", err)
+	}
+	return file, nil
+}
+
 // PublishPreview reuses verified MP4/manifest pairs or stages a new pair; current is checked
-// immediately before publication and false returns domain.ErrPreviewStale.
+// immediately before publication and false returns domain.ErrPreviewStale. A forced publish never
+// reuses: it keeps the published pair until the next build is in place and the pointer names it.
 func (s *Store) PublishPreview(
-	ctx context.Context, contentKey string,
+	ctx context.Context, contentKey string, force bool,
 	write func(output string) error,
 	current func(context.Context) (bool, error),
 ) error {
-	target, err := s.publishTarget(func(key string) (string, bool) {
-		video, _, ok := s.previewPaths(key)
+	if _, err := s.publishTarget(func(key string) (string, bool) {
+		video, _, ok := s.previewPaths(key, 0)
 		return video, ok
-	}, contentKey)
-	if err != nil {
+	}, contentKey); err != nil {
 		return err
 	}
-	manifest := target + manifestExt
-	if err := os.MkdirAll(filepath.Dir(target), dirPerm); err != nil {
+	if err := os.MkdirAll(filepath.Join(s.root, previewDirName), dirPerm); err != nil {
 		return fmt.Errorf("cannot create the preview directory: %w", err)
 	}
 	// All processes sharing the store serialize publication with one lock because the two files cannot
@@ -356,12 +371,39 @@ func (s *Store) PublishPreview(
 	}
 	defer func() { _ = assetLock.Unlock() }()
 
-	if verifyPreview(target, manifest) == nil {
+	build := s.currentBuild(previewDirName, contentKey)
+	published, publishedManifest, _ := s.previewPaths(contentKey, build)
+	next := build
+	if force {
+		next = build + 1
+	} else if verifyPreview(published, publishedManifest) == nil {
 		return nil
 	}
+	target, manifest, _ := s.previewPaths(contentKey, next)
 	_ = os.Remove(target)
 	_ = os.Remove(manifest)
+	if err := os.MkdirAll(filepath.Dir(target), dirPerm); err != nil {
+		return fmt.Errorf("cannot create the preview directory: %w", err)
+	}
+	if err := s.stagePreview(ctx, target, write, current); err != nil {
+		return err
+	}
+	if force {
+		if err := s.switchBuild(previewDirName, contentKey, next); err != nil {
+			_ = removeBuild(target, manifest)
+			return err
+		}
+		// The pointer already names the new build; a failed removal leaves files RemoveContent deletes later.
+		_ = removeBuild(published, publishedManifest)
+	}
+	return nil
+}
 
+// stagePreview has write encode the preview, adds its manifest and renames both to target and its manifest.
+func (s *Store) stagePreview(
+	ctx context.Context, target string, write func(output string) error, current func(context.Context) (bool, error),
+) error {
+	manifest := target + manifestExt
 	temporary, err := s.makeTemporaryDir("preview-*")
 	if err != nil {
 		return err
@@ -435,15 +477,17 @@ func (s *Store) PosterFile(contentKey string) (*os.File, error) {
 // PreviewFile returns the MP4 and manifest SHA-256 after checking file size; missing or
 // inconsistent output wraps fs.ErrNotExist, and the caller must close it.
 func (s *Store) PreviewFile(contentKey string) (*os.File, string, error) {
-	path, manifestPath, ok := s.previewPaths(contentKey)
-	if !ok {
-		return nil, "", errInvalidKey
-	}
 	var digest string
-	file, err := openRegular(path, func(info os.FileInfo) error {
-		manifest, err := checkPreviewComplete(manifestPath, info)
-		digest = manifest.SHA256
-		return err
+	file, err := readResolved(s, previewDirName, contentKey, func(build int) (*os.File, error) {
+		path, manifestPath, ok := s.previewPaths(contentKey, build)
+		if !ok {
+			return nil, errInvalidKey
+		}
+		return openRegular(path, func(info os.FileInfo) error {
+			manifest, err := checkPreviewComplete(manifestPath, info)
+			digest = manifest.SHA256
+			return err
+		})
 	})
 	if err != nil {
 		return nil, "", err
@@ -453,39 +497,51 @@ func (s *Store) PreviewFile(contentKey string) (*os.File, string, error) {
 
 // SeekSprite distinguishes missing layouts (fs.ErrNotExist) from malformed layouts.
 func (s *Store) SeekSprite(contentKey string) (domain.SeekSprite, error) {
-	dir, ok := s.seekDir(contentKey)
-	if !ok {
-		return domain.SeekSprite{}, errInvalidKey
-	}
-	return readSeekSprite(dir)
+	return readResolved(s, seekDirName, contentKey, func(build int) (domain.SeekSprite, error) {
+		dir, ok := s.seekDir(contentKey, build)
+		if !ok {
+			return domain.SeekSprite{}, errInvalidKey
+		}
+		return readSeekSprite(dir)
+	})
 }
 
 // SeekSpriteSheet uses zero-based indexes; callers check bounds using SeekSprite, and missing files
 // wrap fs.ErrNotExist.
 func (s *Store) SeekSpriteSheet(contentKey string, sheet int) ([]byte, error) {
-	dir, ok := s.seekDir(contentKey)
-	if !ok {
-		return nil, errInvalidKey
-	}
 	// Completed sprites from the previous six-sheet layout remain readable.
 	if sheet < 0 || sheet >= 6 {
 		return nil, fmt.Errorf("sheet %d: %w", sheet, fs.ErrNotExist)
 	}
-	return os.ReadFile(filepath.Join(dir, fmt.Sprintf(sheetNameFormat, sheet)))
+	return readResolved(s, seekDirName, contentKey, func(build int) ([]byte, error) {
+		dir, ok := s.seekDir(contentKey, build)
+		if !ok {
+			return nil, errInvalidKey
+		}
+		return os.ReadFile(filepath.Join(dir, fmt.Sprintf(sheetNameFormat, sheet)))
+	})
 }
 
 // PreviewAvailable checks regular-file status, nonempty size, and manifest agreement; full SHA-256
 // verification happens only during publication to avoid reading every preview on each list request.
 func (s *Store) PreviewAvailable(contentKey string) bool {
-	path, manifest, ok := s.previewPaths(contentKey)
-	if !ok {
-		return false
-	}
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return false
-	}
-	_, err = checkPreviewComplete(manifest, info)
+	_, err := readResolved(s, previewDirName, contentKey, func(build int) (struct{}, error) {
+		path, manifest, ok := s.previewPaths(contentKey, build)
+		if !ok {
+			return struct{}{}, errInvalidKey
+		}
+		info, err := os.Stat(path)
+		if err == nil && !info.Mode().IsRegular() {
+			err = errors.New("not a regular file")
+		}
+		if err == nil {
+			_, err = checkPreviewComplete(manifest, info)
+		}
+		if err != nil {
+			return struct{}{}, fmt.Errorf("%w: %w", fs.ErrNotExist, err)
+		}
+		return struct{}{}, nil
+	})
 	return err == nil
 }
 
@@ -509,17 +565,11 @@ func (s *Store) RemoveContent(contentKey string) error {
 			errs = append(errs, fmt.Errorf("cannot delete the poster: %w", err))
 		}
 	}
-	if dir, ok := s.seekDir(contentKey); ok {
-		if err := os.RemoveAll(dir); err != nil {
-			errs = append(errs, fmt.Errorf("cannot delete the seek thumbnails: %w", err))
-		}
+	if err := s.removeAllBuilds(seekDirName, contentKey, ""); err != nil {
+		errs = append(errs, fmt.Errorf("cannot delete the seek thumbnails: %w", err))
 	}
-	if path, manifest, ok := s.previewPaths(contentKey); ok {
-		for _, p := range []string{path, manifest} {
-			if err := removeFile(p); err != nil {
-				errs = append(errs, fmt.Errorf("cannot delete the preview: %w", err))
-			}
-		}
+	if err := s.removeAllBuilds(previewDirName, contentKey, previewExt, previewExt+manifestExt); err != nil {
+		errs = append(errs, fmt.Errorf("cannot delete the preview: %w", err))
 	}
 	return errors.Join(errs...)
 }
