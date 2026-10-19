@@ -48,7 +48,7 @@ func TestVersionJudgementActivityRetriesAndUndoes(t *testing.T) {
 	if err := activity.RetryActivity(ctx, 5); err != nil {
 		t.Fatalf("RetryActivity: %v", err)
 	}
-	undo, err := activity.UndoActivity(ctx, 3, 0)
+	undo, err := activity.UndoActivity(ctx, 3, domain.ActivityUndoTarget{})
 	if err != nil {
 		t.Fatalf("UndoActivity: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestVersionJudgementActivityRetriesAndUndoes(t *testing.T) {
 	if err := activity.RetryActivity(ctx, 5); !errors.Is(err, domain.ErrActivityNotRetryable) || waker.woken != 2 {
 		t.Errorf("断られたやり直し = %v（起こした %d 回）, want ErrActivityNotRetryable で起こさない", err, waker.woken)
 	}
-	if _, err := activity.UndoActivity(ctx, 3, 0); !errors.Is(err, domain.ErrActivityNotRetryable) || waker.woken != 2 {
+	if _, err := activity.UndoActivity(ctx, 3, domain.ActivityUndoTarget{}); !errors.Is(err, domain.ErrActivityNotRetryable) || waker.woken != 2 {
 		t.Errorf("断られた取り消し = %v（起こした %d 回）, want 保存層の誤りで起こさない", err, waker.woken)
 	}
 }

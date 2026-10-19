@@ -3664,7 +3664,7 @@ paths:
     post:
       operationId: undoActivity
       summary: "Undo an automatic decision"
-      description: "Owner-only. Reverts the decision and returns an owner undo record. If the owner already changed state, outcome is already_reverted. Missing activity or a tag not assigned by its auto_tag action returns 404 not_found. Unsupported (including pipeline records), already-undone records/tags return 409 activity_not_undoable."
+      description: "Owner-only. Reverts the decision and returns an owner undo record. If the owner already changed state, outcome is already_reverted. Missing activity, a tag not assigned by its auto_tag action or a link not made by its face_analysis action returns 404 not_found. Unsupported (including pipeline records), already-undone records/tags/links return 409 activity_not_undoable."
       parameters:
         - $ref: "#/components/parameters/ActivityId"
       requestBody:
@@ -9374,6 +9374,7 @@ components:
         - work_info_apply
         - media_folder_remove
         - organize_undo
+        - face_analysis
         - pipeline
         - undo
 
@@ -9589,12 +9590,17 @@ components:
           description: "Tags assigned by auto_tag."
           items:
             $ref: "#/components/schemas/ActivityTag"
+        faceLinks:
+          type: array
+          description: "People a face_analysis record linked to its video as performers."
+          items:
+            $ref: "#/components/schemas/ActivityFaceLink"
         retryRun:
           type: boolean
           description: "Show retry action."
         undoable:
           type: boolean
-          description: "Show undo action; auto_tag requires at least one undoable tag."
+          description: "Show undo action; auto_tag requires at least one undoable tag, face_analysis at least one undoable link."
         undone:
           type: boolean
           description: "Undone by the owner."
@@ -9823,6 +9829,24 @@ components:
           type: boolean
           description: "Undone by the owner."
 
+    ActivityFaceLink:
+      type: object
+      required: [appearanceId, createdPerson, undone]
+      additionalProperties: false
+      properties:
+        appearanceId:
+          type: integer
+          format: int64
+        person:
+          $ref: "#/components/schemas/CreditRef"
+          description: "The linked person as now named; omitted once the person is deleted."
+        createdPerson:
+          type: boolean
+          description: "The analysis created this provisional person."
+        undone:
+          type: boolean
+          description: "Undone by the owner."
+
     ActivityUndoRequest:
       type: object
       additionalProperties: false
@@ -9831,6 +9855,11 @@ components:
           type: integer
           format: int64
           description: "Tag to undo on an auto_tag record; unused for other kinds."
+        appearanceId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: "Link to undo on a face_analysis record; omitted, every link not yet undone. Unused for other kinds."
 
     VideoChanged:
       type: object

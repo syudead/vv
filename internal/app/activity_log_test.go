@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -56,7 +57,13 @@ func activityLogFixture() *fakeActivityLog {
 		Outcome: domain.ActivitySame, Decider: domain.ActivityByAI}
 	tags := domain.ActivityEntry{ID: 4, Kind: domain.ActivityAutoTag, Status: domain.ActivityDone, Decider: domain.ActivityByAI,
 		Tags: []domain.ActivityEntryTag{{TagID: 7}, {TagID: 8, UndoneBy: 9}}}
-	return &fakeActivityLog{entries: map[int64]domain.ActivityEntry{1: failed, 2: done, 3: same, 4: tags}}
+	faces := domain.ActivityEntry{ID: 5, Kind: domain.ActivityFaceAnalysis, Status: domain.ActivityDone,
+		Decider: domain.ActivityByRule, FaceLinks: []domain.ActivityFaceLink{{AppearanceID: 11}, {AppearanceID: 12, UndoneBy: 13}}}
+	facesUndone := domain.ActivityEntry{ID: 6, Kind: domain.ActivityFaceAnalysis, Status: domain.ActivityDone,
+		Decider: domain.ActivityByRule, FaceLinks: []domain.ActivityFaceLink{{AppearanceID: 14, UndoneBy: 15}}}
+	return &fakeActivityLog{entries: map[int64]domain.ActivityEntry{
+		1: failed, 2: done, 3: same, 4: tags, 5: faces, 6: facesUndone,
+	}}
 }
 
 func TestActivityRetryWithoutRetriers(t *testing.T) {
@@ -67,7 +74,7 @@ func TestActivityRetryWithoutRetriers(t *testing.T) {
 	if err := activity.RetryActivity(context.Background(), 99); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("無い記録 = %v, want ErrNotFound", err)
 	}
-	if _, err := activity.UndoActivity(context.Background(), 3, 0); !errors.Is(err, domain.ErrActivityNotUndoable) {
+	if _, err := activity.UndoActivity(context.Background(), 3, domain.ActivityUndoTarget{}); !errors.Is(err, domain.ErrActivityNotUndoable) {
 		t.Errorf("振り分け先の無い version_judgement = %v, want ErrActivityNotUndoable", err)
 	}
 }
@@ -79,7 +86,7 @@ func TestActivityDispatchesByKind(t *testing.T) {
 		Store:    activityLogFixture(),
 		Retriers: map[domain.ActivityKind]ActivityRetrier{domain.ActivityImport: retrier},
 		Undoers: map[domain.ActivityKind]ActivityUndoer{
-			domain.ActivityVersionJudgement: undoer, domain.ActivityAutoTag: undoer,
+			domain.ActivityVersionJudgement: undoer, domain.ActivityAutoTag: undoer, domain.ActivityFaceAnalysis: undoer,
 		},
 	})
 	ctx := context.Background()
@@ -93,22 +100,38 @@ func TestActivityDispatchesByKind(t *testing.T) {
 		t.Errorf("やり直した記録 = %v, want [1]", retrier.retried)
 	}
 
-	if undo, err := activity.UndoActivity(ctx, 3, 0); err != nil || undo.UndoesID != 3 {
+	if undo, err := activity.UndoActivity(ctx, 3, domain.ActivityUndoTarget{}); err != nil || undo.UndoesID != 3 {
 		t.Fatalf("自動の束ねの取り消し = %+v, %v", undo, err)
 	}
-	if _, err := activity.UndoActivity(ctx, 4, 7); err != nil {
+	if _, err := activity.UndoActivity(ctx, 4, domain.ActivityUndoTarget{TagID: 7}); err != nil {
 		t.Fatalf("付けたタグの取り消し: %v", err)
 	}
-	if _, err := activity.UndoActivity(ctx, 4, 8); !errors.Is(err, domain.ErrActivityNotUndoable) {
+	if _, err := activity.UndoActivity(ctx, 4, domain.ActivityUndoTarget{TagID: 8}); !errors.Is(err, domain.ErrActivityNotUndoable) {
 		t.Errorf("取り消し済みのタグ = %v, want ErrActivityNotUndoable", err)
 	}
-	if _, err := activity.UndoActivity(ctx, 4, 5); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := activity.UndoActivity(ctx, 4, domain.ActivityUndoTarget{TagID: 5}); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("付けていないタグ = %v, want ErrNotFound", err)
 	}
-	if _, err := activity.UndoActivity(ctx, 2, 0); !errors.Is(err, domain.ErrActivityNotUndoable) {
+	if _, err := activity.UndoActivity(ctx, 2, domain.ActivityUndoTarget{}); !errors.Is(err, domain.ErrActivityNotUndoable) {
 		t.Errorf("import の取り消し = %v, want ErrActivityNotUndoable", err)
 	}
-	if want := [][2]int64{{3, 0}, {4, 7}}; len(undoer.undone) != 2 || undoer.undone[0] != want[0] || undoer.undone[1] != want[1] {
+	if _, err := activity.UndoActivity(ctx, 5, domain.ActivityUndoTarget{AppearanceID: 11}); err != nil {
+		t.Fatalf("顔の紐付けの取り消し: %v", err)
+	}
+	// A tagId on a face_analysis entry is not an appearance: the request undoes every link.
+	if _, err := activity.UndoActivity(ctx, 5, domain.ActivityUndoTarget{TagID: 11}); err != nil {
+		t.Fatalf("顔の紐付けをすべて取り消す: %v", err)
+	}
+	if _, err := activity.UndoActivity(ctx, 5, domain.ActivityUndoTarget{AppearanceID: 12}); !errors.Is(err, domain.ErrActivityNotUndoable) {
+		t.Errorf("取り消し済みの紐付け = %v, want ErrActivityNotUndoable", err)
+	}
+	if _, err := activity.UndoActivity(ctx, 5, domain.ActivityUndoTarget{AppearanceID: 99}); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("無い紐付け = %v, want ErrNotFound", err)
+	}
+	if _, err := activity.UndoActivity(ctx, 6, domain.ActivityUndoTarget{}); !errors.Is(err, domain.ErrActivityNotUndoable) {
+		t.Errorf("すべて取り消し済みの顔の解析 = %v, want ErrActivityNotUndoable", err)
+	}
+	if want := [][2]int64{{3, 0}, {4, 7}, {5, 11}, {5, 0}}; !slices.Equal(undoer.undone, want) {
 		t.Errorf("取り消した記録 = %v, want %v", undoer.undone, want)
 	}
 }
