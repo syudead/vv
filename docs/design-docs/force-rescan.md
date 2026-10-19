@@ -39,6 +39,9 @@ scan would and keeps the video.
 `POST /api/scans/rescan` supersedes a running watch scan, as `Scan library`
 does, and refuses a running manual scan or force rescan with `409
 scan_in_progress` ([`api/openapi.yaml`](../../api/openapi.yaml), `startRescan`).
+A `folder` or `video` rescan reads only part of the library, so the watcher
+queues the superseded batch again and keeps a lost-events problem
+([folder watching](folder-watching.md)).
 
 ```mermaid
 flowchart LR

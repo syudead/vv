@@ -465,14 +465,18 @@ func (a *AutoImport) disarmIfOff() {
 
 // Reschedule pending directories when scans finish; successful manual scans clear only event losses
 // recorded before their start, preserving later losses for the next manual scan.
-func (a *AutoImport) ScanFinished(origin domain.ScanOrigin, state domain.ScanState) {
+func (a *AutoImport) ScanFinished(notice ScanNotice) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.finishes++
-	if origin == domain.ScanOriginWatch {
+	if notice.Origin == domain.ScanOriginWatch {
+		if notice.Requeue && a.enabled && !a.stopped {
+			a.addDirtyLocked(a.inflight...)
+		}
 		a.inflight = nil
 	}
-	if origin == domain.ScanOriginManual && state == domain.ScanDone &&
+	// A partial rescan does not read the directories whose events were lost.
+	if notice.Origin == domain.ScanOriginManual && !notice.Partial && notice.State == domain.ScanDone &&
 		a.problem != nil && a.problem.Kind == domain.FolderWatchProblemEventsLost &&
 		a.lostGen == a.scanLostGen {
 		a.problem = nil
@@ -486,10 +490,10 @@ func (a *AutoImport) ScanFinished(origin domain.ScanOrigin, state domain.ScanSta
 }
 
 // Record the loss generation at manual-scan start; return quickly because the scan lock is held.
-func (a *AutoImport) ScanStarted(origin domain.ScanOrigin) {
+func (a *AutoImport) ScanStarted(notice ScanNotice) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if origin == domain.ScanOriginManual {
+	if notice.Origin == domain.ScanOriginManual {
 		a.scanLostGen = a.lostGen
 	}
 }

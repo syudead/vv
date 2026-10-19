@@ -67,6 +67,18 @@ type Publisher interface {
 	Publish(events ...domain.Event)
 }
 
+// ScanNotice tells the OnStart and OnFinish callbacks what one scan run covers.
+type ScanNotice struct {
+	Origin domain.ScanOrigin
+	// Partial marks a folder or video force rescan, which does not read the whole library.
+	Partial bool
+	// Requeue marks, on finish, a watch scan that a partial rescan superseded, so its directories
+	// remain unread.
+	Requeue bool
+	// State is the closing state, set on finish only.
+	State domain.ScanState
+}
+
 type ScansOptions struct {
 	Store ScanStore
 	Jobs  JobRecoveryStore
@@ -106,11 +118,13 @@ type Scans struct {
 	running     bool
 	cancelRun   context.CancelCauseFunc
 	runOrigin   domain.ScanOrigin
+	runPartial  bool
+	runRequeue  bool
 	runFinished chan struct{}
 	// Optional callback invoked under the scan lock after closure.
-	onFinish func(origin domain.ScanOrigin, state domain.ScanState)
+	onFinish func(ScanNotice)
 	// Optional callback invoked under the scan lock at startup.
-	onStart func(origin domain.ScanOrigin)
+	onStart func(ScanNotice)
 	// Later starts are canceled immediately after lifecycle shutdown.
 	stopped bool
 	done    sync.WaitGroup
@@ -160,7 +174,7 @@ func (s *Scans) StartScan(ctx context.Context) (domain.Scan, bool, error) {
 func (s *Scans) StartRescan(ctx context.Context, scope domain.RescanScope) (domain.Scan, error) {
 	const attempts = 3
 	for attempt := 1; ; attempt++ {
-		s.SupersedeWatchScan(ctx)
+		s.supersedeWatchScan(ctx, scope.Partial())
 		scan, _, err := s.start(ctx, func(ctx context.Context) (domain.Scan, bool, error) {
 			scan, err := s.store.StartRescan(ctx, scope)
 			return scan, err == nil, err
@@ -189,12 +203,19 @@ func (s *Scans) StartWatchScan(ctx context.Context, dirs []domain.DirtyDirectory
 // SupersedeWatchScan waits for watcher-only cancellation between files, closing done without
 // deleting locations; manual scans remain untouched.
 func (s *Scans) SupersedeWatchScan(ctx context.Context) bool {
+	return s.supersedeWatchScan(ctx, false)
+}
+
+// requeue asks the watch scan's finish notice to return its directories to the watcher, because a
+// partial rescan will not read them.
+func (s *Scans) supersedeWatchScan(ctx context.Context, requeue bool) bool {
 	s.mu.Lock()
 	if !s.running || s.runOrigin != domain.ScanOriginWatch || s.cancelRun == nil {
 		s.mu.Unlock()
 		return false
 	}
 	finished := s.runFinished
+	s.runRequeue = s.runRequeue || requeue
 	s.cancelRun(domain.ErrScanSuperseded)
 	s.mu.Unlock()
 	select {
@@ -233,6 +254,8 @@ func (s *Scans) start(
 	runCtx, cancel := context.WithCancelCause(context.WithoutCancel(ctx))
 	s.cancelRun = cancel
 	s.runOrigin = domain.ScanOriginManual
+	s.runPartial = scan.Rescan != nil && scan.Rescan.Partial()
+	s.runRequeue = false
 	s.runFinished = make(chan struct{})
 	if dirs != nil {
 		s.runOrigin = domain.ScanOriginWatch
@@ -241,7 +264,7 @@ func (s *Scans) start(
 		cancel(nil)
 	}
 	if s.onStart != nil {
-		s.onStart(s.runOrigin)
+		s.onStart(ScanNotice{Origin: s.runOrigin, Partial: s.runPartial})
 	}
 	go s.run(runCtx, scanRun{id: scan.ID, dirs: dirs, rescan: scan.Rescan, decider: decider}, s.runFinished)
 
@@ -348,14 +371,14 @@ func (s *Scans) ReportScanProgress(ctx context.Context, result domain.ScanResult
 
 // Register once before scans start; callbacks run under the scan lock and must return quickly
 // without reacquiring it.
-func (s *Scans) OnFinish(f func(origin domain.ScanOrigin, state domain.ScanState)) {
+func (s *Scans) OnFinish(f func(ScanNotice)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.onFinish = f
 }
 
 // Register once before scans start; callbacks run under the scan lock and must not access scans.
-func (s *Scans) OnStart(f func(origin domain.ScanOrigin)) {
+func (s *Scans) OnStart(f func(ScanNotice)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.onStart = f
@@ -482,7 +505,7 @@ func (s *Scans) run(ctx context.Context, plan scanRun, finished chan struct{}) {
 		// Invoke completion under the scan lock so the next scan's start cannot overtake it; callbacks
 		// must not reacquire that lock.
 		if s.onFinish != nil {
-			s.onFinish(origin, endState)
+			s.onFinish(ScanNotice{Origin: origin, Partial: s.runPartial, Requeue: s.runRequeue, State: endState})
 		}
 		s.mu.Unlock()
 		close(finished)

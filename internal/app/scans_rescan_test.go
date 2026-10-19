@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"sync"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -36,6 +37,15 @@ func TestStartRescanRefusedWhileManualScanRuns(t *testing.T) {
 func TestStartRescanSupersedesWatchScanAndRunsScope(t *testing.T) {
 	scanner := &fakeScanner{release: make(chan struct{}), started: make(chan struct{})}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
+	var mu sync.Mutex
+	var notices []ScanNotice
+	record := func(notice ScanNotice) {
+		mu.Lock()
+		defer mu.Unlock()
+		notices = append(notices, notice)
+	}
+	scans.OnStart(record)
+	scans.OnFinish(record)
 	if _, _, err := scans.StartWatchScan(context.Background(), []domain.DirtyDirectory{{Path: fixturePath("/media/a")}}); err != nil {
 		t.Fatal(err)
 	}
@@ -63,6 +73,18 @@ func TestStartRescanSupersedesWatchScanAndRunsScope(t *testing.T) {
 	}
 	if got := scanner.deciders[len(scanner.deciders)-1]; got != domain.ActivityByOwner {
 		t.Fatalf("強制再スキャンの決め手 = %q, want owner", got)
+	}
+	// The folder rescan does not read the watch batch or the whole library.
+	mu.Lock()
+	defer mu.Unlock()
+	want := []ScanNotice{
+		{Origin: domain.ScanOriginWatch},
+		{Origin: domain.ScanOriginWatch, Requeue: true, State: domain.ScanDone},
+		{Origin: domain.ScanOriginManual, Partial: true},
+		{Origin: domain.ScanOriginManual, Partial: true, State: domain.ScanDone},
+	}
+	if !slices.Equal(notices, want) {
+		t.Fatalf("知らせ = %+v, want %+v", notices, want)
 	}
 }
 
