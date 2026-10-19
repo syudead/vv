@@ -245,6 +245,7 @@ const errorCodes = {
   plugin_failed: "The plugin failed.",
   plugin_timed_out: "The plugin didn't finish in 30 seconds and was stopped.",
   plugin_busy: "Another plugin is running. Try again in a moment.",
+  plugin_kind_mismatch: "This plugin is for the other kind of information.",
   operation_unsupported: "The plugin can't do that.",
   work_info_fetch_stale: "The result is out of date. Fetch it again.",
   activity_not_retryable: "This can no longer be retried",

@@ -27,12 +27,16 @@ type WorkInfoPlugins interface {
 	RevokeWorkInfoPluginApproval(ctx context.Context, id int64) (domain.WorkInfoPluginEntry, error)
 	// SetWorkInfoPluginSettings may return ErrNotFound, ErrWorkInfoPluginUnusable, or ErrWorkInfoPluginSettingInvalid.
 	SetWorkInfoPluginSettings(ctx context.Context, id int64, values map[string]*string) (domain.WorkInfoPluginEntry, error)
+	// SetWorkInfoPluginAutoLookup may return ErrNotFound or ErrWorkInfoPluginKindMismatch.
+	SetWorkInfoPluginAutoLookup(ctx context.Context, id int64, enabled bool) (domain.WorkInfoPluginEntry, error)
 	// DeleteWorkInfoPlugin removes settings too; an absent plugin returns ErrNotFound.
 	DeleteWorkInfoPlugin(ctx context.Context, id int64) error
 	// WorkInfoPluginLastRun returns redacted stderr and whether it was retained; an absent plugin returns ErrNotFound.
 	WorkInfoPluginLastRun(ctx context.Context, id int64) (domain.WorkInfoPluginRun, bool, error)
 	// SearchWorkInfo requires an approved plugin; workInfoRunError maps failures to the API contract.
 	SearchWorkInfo(ctx context.Context, id int64, query string) ([]domain.WorkInfoCandidate, error)
+	// SearchPeople requires an approved person plugin and fails like SearchWorkInfo.
+	SearchPeople(ctx context.Context, id int64, query string) ([]domain.PersonCandidate, error)
 	// FetchWorkInfo caches fetched work information for the video without modifying it; the plugin must be approved.
 	FetchWorkInfo(ctx context.Context, videoID, pluginID int64, id string) (domain.WorkInfoFetchResult, error)
 	// ApplyWorkInfoFetch applies selected fields and may return ErrWorkInfoApplyInvalid, ErrNotFound, or ErrWorkInfoFetchStale.
@@ -191,6 +195,28 @@ func (s *server) SetWorkInfoPluginSettings(w http.ResponseWriter, r *http.Reques
 	s.writeWorkInfoPlugin(w, http.StatusOK, entry)
 }
 
+func (s *server) SetWorkInfoPluginAutoLookup(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
+	var body struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if !s.readJSONBody(w, r, &body) {
+		return
+	}
+	if body.Enabled == nil {
+		s.invalidRequest(w, "enabled is required.")
+		return
+	}
+	if !s.workInfoPluginsConfigured(w) {
+		return
+	}
+	entry, err := s.workInfoPlugins.SetWorkInfoPluginAutoLookup(r.Context(), id, *body.Enabled)
+	if err != nil {
+		s.workInfoPluginError(w, err)
+		return
+	}
+	s.writeWorkInfoPlugin(w, http.StatusOK, entry)
+}
+
 func (s *server) DeleteWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
 	if !s.workInfoPluginsConfigured(w) {
 		return
@@ -248,6 +274,8 @@ func (s *server) workInfoPluginError(w http.ResponseWriter, err error) {
 		s.writeError(w, http.StatusConflict, codePluginUnusable, "The plugin has a problem and cannot be used.")
 	case errors.Is(err, domain.ErrWorkInfoPluginSettingInvalid):
 		s.invalidRequest(w, "Each key must be a setting the plugin declares, with a value of at most 2000 characters.")
+	case errors.Is(err, domain.ErrWorkInfoPluginKindMismatch):
+		s.writePluginKindMismatch(w)
 	default:
 		s.internalError(w, "Could not change the work-info plugin.", err)
 	}
@@ -276,6 +304,9 @@ func toWorkInfoPlugin(entry domain.WorkInfoPluginEntry) gen.WorkInfoPlugin {
 	}
 	plugin := gen.WorkInfoPlugin{
 		Id:          entry.ID,
+		Kind:        gen.WorkInfoPluginKind(entry.Kind),
+		Sources:     entry.Sources,
+		AutoLookup:  entry.AutoLookup,
 		Name:        optionalString(entry.Name),
 		FileName:    entry.FileName,
 		Version:     optionalString(entry.Version),

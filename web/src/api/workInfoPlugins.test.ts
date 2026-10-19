@@ -31,6 +31,9 @@ afterEach(() => {
 
 const plugin: WorkInfoPlugin = {
   id: 4,
+  kind: "work",
+  sources: [],
+  autoLookup: false,
   name: "example.works",
   fileName: "example.wasm",
   operations: ["search", "fetch"],

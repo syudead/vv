@@ -22,6 +22,9 @@ const ranAt = 1_800_000_000;
 
 function plugin(values: Partial<WorkInfoPlugin> & { id: number }): WorkInfoPlugin {
   return {
+    kind: "work",
+    sources: [],
+    autoLookup: false,
     name: "example.works",
     fileName: "example.wasm",
     version: "1.2.0",

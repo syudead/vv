@@ -682,9 +682,9 @@ func isWorkInfoPluginJSONBody(r *http.Request) bool {
 	}
 	switch r.Method {
 	case http.MethodPut:
-		return rest == "approval" || rest == "settings"
+		return rest == "approval" || rest == "settings" || rest == "auto-lookup"
 	case http.MethodPost:
-		return rest == "search"
+		return rest == "search" || rest == "person-search"
 	}
 	return false
 }
@@ -822,6 +822,7 @@ const (
 	codePluginFailed                = gen.ErrorCodePluginFailed
 	codePluginTimedOut              = gen.ErrorCodePluginTimedOut
 	codePluginBusy                  = gen.ErrorCodePluginBusy
+	codePluginKindMismatch          = gen.ErrorCodePluginKindMismatch
 	codeOperationUnsupported        = gen.ErrorCodeOperationUnsupported
 	codeWorkInfoFetchStale          = gen.ErrorCodeWorkInfoFetchStale
 	codeActivityNotRetryable        = gen.ErrorCodeActivityNotRetryable

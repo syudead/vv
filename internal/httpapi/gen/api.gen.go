@@ -501,6 +501,7 @@ const (
 	ErrorCodePluginBusy                  ErrorCode = "plugin_busy"
 	ErrorCodePluginChanged               ErrorCode = "plugin_changed"
 	ErrorCodePluginFailed                ErrorCode = "plugin_failed"
+	ErrorCodePluginKindMismatch          ErrorCode = "plugin_kind_mismatch"
 	ErrorCodePluginNotApproved           ErrorCode = "plugin_not_approved"
 	ErrorCodePluginSettingsMissing       ErrorCode = "plugin_settings_missing"
 	ErrorCodePluginTimedOut              ErrorCode = "plugin_timed_out"
@@ -566,6 +567,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodePluginChanged:
 		return true
 	case ErrorCodePluginFailed:
+		return true
+	case ErrorCodePluginKindMismatch:
 		return true
 	case ErrorCodePluginNotApproved:
 		return true
@@ -2136,6 +2139,24 @@ func (e WorkInfoOperation) Valid() bool {
 	case Fetch:
 		return true
 	case Search:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkInfoPluginKind.
+const (
+	WorkInfoPluginKindPerson WorkInfoPluginKind = "person"
+	WorkInfoPluginKindWork   WorkInfoPluginKind = "work"
+)
+
+// Valid indicates whether the value is a known member of the WorkInfoPluginKind enum.
+func (e WorkInfoPluginKind) Valid() bool {
+	switch e {
+	case WorkInfoPluginKindPerson:
+		return true
+	case WorkInfoPluginKindWork:
 		return true
 	default:
 		return false
@@ -3804,6 +3825,28 @@ type PersonMergeResponse struct {
 	Person Person `json:"person"`
 }
 
+// PersonPluginCandidate One text-only person search candidate; source and id together are the fetch's external ID.
+type PersonPluginCandidate struct {
+	// Detail One-line description distinguishing the candidate.
+	Detail *string `json:"detail,omitempty"`
+
+	// Id External ID within source: 1-200 characters after trimming.
+	Id   string `json:"id"`
+	Name string `json:"name"`
+
+	// Source One of the plugin's sources.
+	Source string `json:"source"`
+
+	// Url HTTP or HTTPS person-page URL, displayed as a link only.
+	Url string `json:"url"`
+}
+
+// PersonPluginSearchResult defines model for PersonPluginSearchResult.
+type PersonPluginSearchResult struct {
+	// Candidates First 50 candidates in plugin order.
+	Candidates []PersonPluginCandidate `json:"candidates"`
+}
+
 // PersonProfile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
 type PersonProfile struct {
 	// Bio 1-5,000 code points; line breaks are kept.
@@ -4271,6 +4314,11 @@ type SeekThumbnailSprite struct {
 
 	// Sheets Versioned sheet URLs in index order.
 	Sheets []string `json:"sheets"`
+}
+
+// SetWorkInfoPluginAutoLookupRequest defines model for SetWorkInfoPluginAutoLookupRequest.
+type SetWorkInfoPluginAutoLookupRequest struct {
+	Enabled bool `json:"enabled"`
 }
 
 // SetWorkInfoPluginSettingsRequest defines model for SetWorkInfoPluginSettingsRequest.
@@ -5428,8 +5476,10 @@ type WorkInfoMatchState string
 // WorkInfoOperation Plugin operation.
 type WorkInfoOperation string
 
-// WorkInfoPlugin One work-info plugin.
+// WorkInfoPlugin One work-info or person plugin.
 type WorkInfoPlugin struct {
+	// AutoLookup Whether work-info fetches may call this person plugin; always false for a work-info plugin.
+	AutoLookup  bool    `json:"autoLookup"`
 	Description *string `json:"description,omitempty"`
 
 	// Digest Module SHA-256 in lowercase hexadecimal; send it back when approving.
@@ -5438,6 +5488,9 @@ type WorkInfoPlugin struct {
 	// FileName Uploaded filename.
 	FileName string `json:"fileName"`
 	Id       int64  `json:"id"`
+
+	// Kind work fetches a video's work information; person searches and fetches people by external ID.
+	Kind WorkInfoPluginKind `json:"kind"`
 
 	// LastRunAt Completion timestamp of the latest run whose output remains, in Unix seconds; absent when none remains.
 	LastRunAt *int64 `json:"lastRunAt,omitempty"`
@@ -5457,6 +5510,9 @@ type WorkInfoPlugin struct {
 	// Settings Settings in declaration order; empty for invalid plugins.
 	Settings []WorkInfoPluginSetting `json:"settings"`
 
+	// Sources A person plugin's accepted external-ID sources in manifest order; empty for a work-info plugin.
+	Sources []string `json:"sources"`
+
 	// State Plugin state.
 	State WorkInfoPluginState `json:"state"`
 
@@ -5464,6 +5520,9 @@ type WorkInfoPlugin struct {
 	UpdatedAt int64   `json:"updatedAt"`
 	Version   *string `json:"version,omitempty"`
 }
+
+// WorkInfoPluginKind work fetches a video's work information; person searches and fetches people by external ID.
+type WorkInfoPluginKind string
 
 // WorkInfoPluginLastRun defines model for WorkInfoPluginLastRun.
 type WorkInfoPluginLastRun struct {
@@ -6466,6 +6525,12 @@ type UploadWorkInfoPluginMultipartRequestBody = UploadWorkInfoPluginRequest
 // ApproveWorkInfoPluginJSONRequestBody defines body for ApproveWorkInfoPlugin for application/json ContentType.
 type ApproveWorkInfoPluginJSONRequestBody = ApproveWorkInfoPluginRequest
 
+// SetWorkInfoPluginAutoLookupJSONRequestBody defines body for SetWorkInfoPluginAutoLookup for application/json ContentType.
+type SetWorkInfoPluginAutoLookupJSONRequestBody = SetWorkInfoPluginAutoLookupRequest
+
+// SearchPeopleWithPluginJSONRequestBody defines body for SearchPeopleWithPlugin for application/json ContentType.
+type SearchPeopleWithPluginJSONRequestBody = WorkInfoSearchRequest
+
 // SearchWorkInfoJSONRequestBody defines body for SearchWorkInfo for application/json ContentType.
 type SearchWorkInfoJSONRequestBody = WorkInfoSearchRequest
 
@@ -6990,9 +7055,15 @@ type ServerInterface interface {
 	// ApproveWorkInfoPlugin Approve the module inspected by the owner
 	// (PUT /api/work-info-plugins/{id}/approval)
 	ApproveWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
+	// SetWorkInfoPluginAutoLookup Turn a person plugin's automatic lookups on or off
+	// (PUT /api/work-info-plugins/{id}/auto-lookup)
+	SetWorkInfoPluginAutoLookup(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
 	// GetWorkInfoPluginLastRun Read stderr from the latest work-info plugin run
 	// (GET /api/work-info-plugins/{id}/last-run)
 	GetWorkInfoPluginLastRun(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
+	// SearchPeopleWithPlugin Search for people with a person plugin
+	// (POST /api/work-info-plugins/{id}/person-search)
+	SearchPeopleWithPlugin(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
 	// SearchWorkInfo Search for works with a work-info plugin
 	// (POST /api/work-info-plugins/{id}/search)
 	SearchWorkInfo(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
@@ -12627,6 +12698,32 @@ func (siw *ServerInterfaceWrapper) ApproveWorkInfoPlugin(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// SetWorkInfoPluginAutoLookup operation middleware
+func (siw *ServerInterfaceWrapper) SetWorkInfoPluginAutoLookup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id WorkInfoPluginId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetWorkInfoPluginAutoLookup(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetWorkInfoPluginLastRun operation middleware
 func (siw *ServerInterfaceWrapper) GetWorkInfoPluginLastRun(w http.ResponseWriter, r *http.Request) {
 
@@ -12644,6 +12741,32 @@ func (siw *ServerInterfaceWrapper) GetWorkInfoPluginLastRun(w http.ResponseWrite
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetWorkInfoPluginLastRun(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SearchPeopleWithPlugin operation middleware
+func (siw *ServerInterfaceWrapper) SearchPeopleWithPlugin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id WorkInfoPluginId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchPeopleWithPlugin(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -12908,6 +13031,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/settings", wrapper.SetWorkInfoPluginSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work-info-plugins/{id}/last-run", wrapper.GetWorkInfoPluginLastRun)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins/{id}/search", wrapper.SearchWorkInfo)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/auto-lookup", wrapper.SetWorkInfoPluginAutoLookup)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins/{id}/person-search", wrapper.SearchPeopleWithPlugin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches", wrapper.FetchWorkInfo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/apply", wrapper.ApplyWorkInfoFetch)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/cover", wrapper.GetWorkInfoFetchCover)

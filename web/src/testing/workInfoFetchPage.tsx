@@ -50,6 +50,9 @@ export const video: Video = {
 
 export const works: WorkInfoPlugin = {
   id: 3,
+  kind: "work",
+  sources: [],
+  autoLookup: false,
   name: "works",
   fileName: "works.wasm",
   operations: ["search", "fetch"],

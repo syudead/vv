@@ -35,11 +35,7 @@ type WorkInfoCreditMatcher interface {
 
 // SearchWorkInfo uses an approved plugin; trimmed queries must contain 1-200 characters or return ErrWorkInfoRunInvalid. Other validation and execution errors follow run.
 func (p *WorkInfoPlugins) SearchWorkInfo(ctx context.Context, id int64, query string) ([]domain.WorkInfoCandidate, error) {
-	normalized, err := domain.NormalizeWorkInfoSearchQuery(query)
-	if err != nil {
-		return nil, err
-	}
-	_, result, err := p.run(ctx, id, domain.WorkInfoRunRequest{Operation: domain.WorkInfoSearch, Query: normalized})
+	result, err := p.search(ctx, id, domain.WorkInfoPluginKindWork, query)
 	if err != nil {
 		return nil, err
 	}
@@ -48,6 +44,31 @@ func (p *WorkInfoPlugins) SearchWorkInfo(ctx context.Context, id int64, query st
 		candidates = []domain.WorkInfoCandidate{}
 	}
 	return candidates, nil
+}
+
+// SearchPeople runs an approved person plugin's search like SearchWorkInfo; a work-info plugin returns
+// ErrWorkInfoPluginKindMismatch.
+func (p *WorkInfoPlugins) SearchPeople(ctx context.Context, id int64, query string) ([]domain.PersonCandidate, error) {
+	result, err := p.search(ctx, id, domain.WorkInfoPluginKindPerson, query)
+	if err != nil {
+		return nil, err
+	}
+	candidates := result.PersonCandidates
+	if candidates == nil {
+		candidates = []domain.PersonCandidate{}
+	}
+	return candidates, nil
+}
+
+func (p *WorkInfoPlugins) search(
+	ctx context.Context, id int64, kind domain.WorkInfoPluginKind, query string,
+) (domain.WorkInfoRunResult, error) {
+	normalized, err := domain.NormalizeWorkInfoSearchQuery(query)
+	if err != nil {
+		return domain.WorkInfoRunResult{}, err
+	}
+	_, result, err := p.run(ctx, id, kind, domain.WorkInfoRunRequest{Operation: domain.WorkInfoSearch, Query: normalized})
+	return result, err
 }
 
 // FetchWorkInfo validates a trimmed 1-200-character ID and video existence before running an approved plugin, then keeps fetched values and entity matches in memory without changing the video. Pass URL-shaped IDs unchanged: only the plugin interprets them; invalid IDs return ErrWorkInfoRunInvalid, missing videos ErrNotFound, and other errors follow run.
@@ -71,7 +92,7 @@ func (p *WorkInfoPlugins) keepFetched(
 	if _, err := p.videos.GetVideo(ctx, domain.AudienceOwner, videoID); err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}
-	plugin, result, err := p.run(ctx, pluginID, req)
+	plugin, result, err := p.run(ctx, pluginID, domain.WorkInfoPluginKindWork, req)
 	if err := p.recordFetch(ctx, videoID, err); err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}
@@ -133,14 +154,18 @@ func (p *WorkInfoPlugins) matchCredits(
 	return p.matcher.Match(ctx, kind, entries)
 }
 
-// Validate existence, approval, operation support and required settings before executing, returning ErrNotFound, ErrWorkInfoPluginNotApproved, ErrWorkInfoOperationUnsupported or WorkInfoSettingsMissingError respectively. Pass only declared settings with values; execution errors are WorkInfoRunError.
+// Validate existence, kind, approval, operation support and required settings before executing, returning ErrNotFound, ErrWorkInfoPluginKindMismatch, ErrWorkInfoPluginNotApproved, ErrWorkInfoOperationUnsupported or WorkInfoSettingsMissingError respectively. Pass only declared settings with values; execution errors are WorkInfoRunError.
 func (p *WorkInfoPlugins) run(
-	ctx context.Context, id int64, req domain.WorkInfoRunRequest,
+	ctx context.Context, id int64, kind domain.WorkInfoPluginKind, req domain.WorkInfoRunRequest,
 ) (domain.WorkInfoPlugin, domain.WorkInfoRunResult, error) {
 	plugin, module, err := p.store.WorkInfoPluginModule(ctx, id)
 	if err != nil {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, err
 	}
+	if plugin.Kind() != kind {
+		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, domain.ErrWorkInfoPluginKindMismatch
+	}
+	req.Kind, req.Sources = kind, plugin.Manifest.Sources
 	if plugin.State() != domain.WorkInfoPluginApproved {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, domain.ErrWorkInfoPluginNotApproved
 	}

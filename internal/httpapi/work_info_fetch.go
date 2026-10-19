@@ -14,20 +14,11 @@ import (
 // Work-info plugin routes are owner-only and excluded from accessRoutes. Keep vv's English error message separate from pluginMessage.
 
 func (s *server) SearchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
-	var body struct {
-		Query *string `json:"query"`
-	}
-	if !s.readJSONBody(w, r, &body) {
+	query, ok := s.readSearchQuery(w, r)
+	if !ok {
 		return
 	}
-	if body.Query == nil {
-		s.invalidRequest(w, "query is required.")
-		return
-	}
-	if !s.workInfoPluginsConfigured(w) {
-		return
-	}
-	candidates, err := s.workInfoPlugins.SearchWorkInfo(r.Context(), id, *body.Query)
+	candidates, err := s.workInfoPlugins.SearchWorkInfo(r.Context(), id, query)
 	if err != nil {
 		s.workInfoRunError(w, err, "The work-info plugin was not found.")
 		return
@@ -38,6 +29,46 @@ func (s *server) SearchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.W
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.WorkInfoSearchResult{Candidates: out}, s.logger)
+}
+
+// SearchPeopleWithPlugin answers a person plugin's search; its errors are SearchWorkInfo's.
+func (s *server) SearchPeopleWithPlugin(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
+	query, ok := s.readSearchQuery(w, r)
+	if !ok {
+		return
+	}
+	candidates, err := s.workInfoPlugins.SearchPeople(r.Context(), id, query)
+	if err != nil {
+		s.workInfoRunError(w, err, "The person plugin was not found.")
+		return
+	}
+	out := make([]gen.PersonPluginCandidate, 0, len(candidates))
+	for _, c := range candidates {
+		out = append(out, gen.PersonPluginCandidate{
+			Source: c.Source, Id: c.ID, Name: c.Name, Url: c.URL, Detail: optionalString(c.Detail),
+		})
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.PersonPluginSearchResult{Candidates: out}, s.logger)
+}
+
+// readSearchQuery reads a required query and checks that the plugins are configured.
+func (s *server) readSearchQuery(w http.ResponseWriter, r *http.Request) (string, bool) {
+	var body struct {
+		Query *string `json:"query"`
+	}
+	if !s.readJSONBody(w, r, &body) {
+		return "", false
+	}
+	if body.Query == nil {
+		s.invalidRequest(w, "query is required.")
+		return "", false
+	}
+	return *body.Query, s.workInfoPluginsConfigured(w)
+}
+
+func (s *server) writePluginKindMismatch(w http.ResponseWriter) {
+	s.writeError(w, http.StatusConflict, codePluginKindMismatch, "The plugin is of the other kind.")
 }
 
 // FetchWorkInfo caches results without changing the video; pass IDs unchanged even when they look like URLs.
@@ -258,6 +289,8 @@ func (s *server) workInfoRunError(w http.ResponseWriter, err error, notFound str
 		s.invalidRequest(w, "The query and the work's id must be 1 to 200 characters after trimming spaces.")
 	case errors.Is(err, domain.ErrNotFound):
 		s.notFound(w, notFound)
+	case errors.Is(err, domain.ErrWorkInfoPluginKindMismatch):
+		s.writePluginKindMismatch(w)
 	case errors.Is(err, domain.ErrWorkInfoPluginNotApproved):
 		s.writeError(w, http.StatusConflict, codePluginNotApproved, "The plugin is not approved.")
 	case errors.Is(err, domain.ErrWorkInfoOperationUnsupported):
