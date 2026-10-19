@@ -190,6 +190,10 @@ type fakeFaceHelpers struct {
 	holdAt  int
 	release chan struct{}
 	err     error
+	// imageFaces is the number of good faces in every face image; holdImage blocks a face image like holdAt.
+	imageFaces int
+	holdImage  bool
+	images     int
 }
 
 func (h *fakeFaceHelpers) helper(r domain.FaceRecognizer) FaceHelper {
@@ -205,6 +209,9 @@ type fakeFaceHelper struct {
 }
 
 func (h *fakeFaceHelper) Detect(ctx context.Context, req faceproto.DetectRequest) (faceproto.Detections, error) {
+	if req.Width != domain.FaceFrameSide {
+		return h.helpers.detectImage(ctx, h.recognizer)
+	}
 	frame := int(req.Pix[0])
 	hs := h.helpers
 	hs.mu.Lock()
@@ -224,13 +231,18 @@ func (h *fakeFaceHelper) Detect(ctx context.Context, req faceproto.DetectRequest
 	if !faceOnScreen(frame) {
 		return faceproto.Detections{}, nil
 	}
-	spec, _ := domain.LookupFaceRecognizer(h.recognizer)
+	return faceproto.Detections{Faces: []faceproto.Detection{scriptedFace(h.recognizer, 500)}}, nil
+}
+
+// scriptedFace is a good face at x whose vector lies along the first axis.
+func scriptedFace(r domain.FaceRecognizer, x float32) faceproto.Detection {
+	spec, _ := domain.LookupFaceRecognizer(r)
 	vector := make([]float32, spec.Dimensions)
 	vector[0] = 1
-	return faceproto.Detections{Faces: []faceproto.Detection{{
-		X: 500, Y: 300, W: 100, H: 100, Score: 0.95, Vector: vector,
-		Landmarks: [10]float32{530, 330, 570, 330, 550, 350, 535, 375, 565, 375},
-	}}}, nil
+	return faceproto.Detection{
+		X: x, Y: 300, W: 100, H: 100, Score: 0.95, Vector: vector,
+		Landmarks: [10]float32{x + 30, 330, x + 70, 330, x + 50, 350, x + 35, 375, x + 65, 375},
+	}
 }
 
 func (h *fakeFaceHelper) Close() error {
@@ -316,6 +328,7 @@ type faceWorkerFixture struct {
 	rec      *FaceRecognizer
 	settings *fakeFaceSettingsState
 	queue    *fakeFaceAnalysisQueue
+	images   *fakeFaceImageStore
 	runtime  *fakeFaceRuntimeState
 	helpers  *fakeFaceHelpers
 	frames   *fakeFaceVideoFrames
@@ -327,13 +340,14 @@ func newFaceWorkerFixture(keys ...string) *faceWorkerFixture {
 	f := &faceWorkerFixture{
 		settings: settings,
 		queue:    &fakeFaceAnalysisQueue{settings: settings, queued: keys},
+		images:   newFakeFaceImageStore(settings),
 		runtime:  &fakeFaceRuntimeState{state: domain.FaceRuntimeReady},
 		helpers:  &fakeFaceHelpers{holdAt: -1, release: make(chan struct{})},
 		frames:   &fakeFaceVideoFrames{},
 		folders:  &fakeMediaFolders{},
 	}
 	f.rec = NewFaceRecognizer(FaceRecognizerOptions{
-		Queue: f.queue, Settings: settings, Runtime: f.runtime, Helper: f.helpers.helper,
+		Queue: f.queue, Images: f.images, Settings: settings, Runtime: f.runtime, Helper: f.helpers.helper,
 		Frames: f.frames.source(), MediaFolders: f.folders, MediaFiles: fakeMediaFiles{},
 	})
 	return f

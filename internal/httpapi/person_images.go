@@ -15,8 +15,9 @@ import (
 // Person images are owner-only; uploads share the thumbnail upload's body budget, limits and detached timeout.
 
 type PersonImages interface {
-	// UploadPersonImage returns ThumbnailUploadTooLargeError for a body over the byte limit and ErrPersonImageInvalid
-	// for any other unacceptable image, writing nothing.
+	// UploadPersonImage returns ThumbnailUploadTooLargeError for a body over the byte limit, ErrPersonImageInvalid
+	// for any other unreadable image and ErrPersonImageNoFace or ErrPersonImageManyFaces for a refused face, writing
+	// nothing.
 	UploadPersonImage(ctx context.Context, id int64, image []byte) (domain.Credit, error)
 	PersonImage(ctx context.Context, id int64) (domain.PersonImage, error)
 	DeletePersonImage(ctx context.Context, id int64) (domain.Credit, error)
@@ -118,6 +119,10 @@ func (s *server) personImageError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrPersonImageInvalid):
 		s.invalidRequestReason(w, reasonPersonImageInvalid,
 			"The image must be a readable PNG, JPEG or still WebP of at most 120 megapixels.")
+	case errors.Is(err, domain.ErrPersonImageNoFace):
+		s.invalidRequestReason(w, reasonPersonImageNoFace, "No usable face was found in the image.")
+	case errors.Is(err, domain.ErrPersonImageManyFaces):
+		s.invalidRequestReason(w, reasonPersonImageManyFaces, "The image shows more than one face.")
 	case errors.Is(err, domain.ErrPersonImageNotFound):
 		s.notFoundReason(w, reasonPersonImageNotFound, "The person has no image.")
 	case errors.Is(err, domain.ErrNotFound):

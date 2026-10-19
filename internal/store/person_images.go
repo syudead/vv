@@ -111,10 +111,26 @@ func (s *CreditStore) changePersonImage(ctx context.Context, id int64, change fu
 	if err != nil {
 		return domain.Credit{}, err
 	}
-	if err := s.db.commitEvents(ctx, tx); err != nil {
+	var events []domain.Event
+	if changed {
+		events = personFaceEvents(domain.Credit{}, credit)
+	}
+	if err := s.db.commitEvents(ctx, tx, events...); err != nil {
 		return domain.Credit{}, fmt.Errorf("cannot change the image of person %d: %w", id, err)
 	}
 	return credit, nil
+}
+
+// personFaceEvents reports a person whose face the write set, replaced or brought, or a provisional person with a
+// face that it named, so the face worker embeds the face and applies the face-image rule.
+func personFaceEvents(before, after domain.Credit) []domain.Event {
+	if after.ImageRevision == 0 {
+		return nil
+	}
+	if after.ImageRevision != before.ImageRevision || before.Provisional && !after.Provisional {
+		return []domain.Event{domain.PersonImageChanged{PersonID: after.ID}}
+	}
+	return nil
 }
 
 func bumpPersonImageRevision(ctx context.Context, tx *sql.Tx, id int64) error {

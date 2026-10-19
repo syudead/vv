@@ -159,7 +159,12 @@ upload share one gate, so they never decode at the same time.
 | -------------------------------------------------------------- | ----------------------------------------- |
 | Body over 64 MiB                                               | `413 person_image_too_large` with `limit` |
 | Not a readable PNG, JPEG or still WebP, or over 120 megapixels | `400 person_image_invalid`                |
+| No usable face, while the face runtime is ready                | `400 person_image_no_face`                |
+| More than one usable face, while the face runtime is ready     | `400 person_image_many_faces`             |
 | No face on `GET`                                               | `404 person_image_not_found`              |
+
+Face recognition checks the face
+([face-recognition.md](face-recognition.md#a-face-image-merges-only-one-provisional-person)).
 
 A face is user data, so it is not a file under the rebuildable thumbnails
 directory, and an 800 px JPEG of about 200 KiB costs little as a blob.

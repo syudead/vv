@@ -71,60 +71,71 @@ type faceMergeCredit struct {
 // moved for undo, in one transaction. A source named since the decision returns domain.ErrPersonNotProvisional, and a
 // missing person domain.ErrNotFound.
 func (s *FaceStore) MergeProvisional(ctx context.Context, sourceID, targetID int64) (domain.Credit, error) {
-	t := creditTablesByKind[domain.CreditPerson]
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.Credit{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	merged, _, err := mergeSources(ctx, tx, t, targetID, []int64{sourceID})
-	if err != nil {
-		return domain.Credit{}, err
-	}
-	if len(merged) == 0 {
-		return domain.Credit{}, domain.ErrNotFound
-	}
-	source, err := creditByID(ctx, tx, t, sourceID)
-	if err != nil {
-		return domain.Credit{}, err
-	}
-	if !source.Provisional {
-		return domain.Credit{}, domain.ErrPersonNotProvisional
-	}
-	before, err := creditByID(ctx, tx, t, targetID)
-	if err != nil {
-		return domain.Credit{}, err
-	}
-	snapshot, err := readFaceMergeSource(ctx, tx, source, targetID)
-	if err != nil {
-		return domain.Credit{}, err
-	}
-	credits, err := readFaceMergeCredits(ctx, tx, sourceID, targetID)
-	if err != nil {
-		return domain.Credit{}, err
-	}
-	if err := mergeCreditsInto(ctx, tx, t, targetID, merged); err != nil {
-		return domain.Credit{}, err
-	}
-	if err := checkMergedCreditLimits(ctx, tx, t, targetID); err != nil {
-		return domain.Credit{}, err
-	}
-	after, err := creditByID(ctx, tx, t, targetID)
-	if err != nil {
-		return domain.Credit{}, err
-	}
-	if snapshot.Target, err = faceMergeTarget(ctx, tx, before, after); err != nil {
-		return domain.Credit{}, err
-	}
 	c := &changes{}
-	if err := recordFaceMerge(ctx, tx, c, sourceID, after, snapshot, credits, time.Now()); err != nil {
+	after, events, err := mergeProvisional(ctx, tx, c, sourceID, targetID)
+	if err != nil {
 		return domain.Credit{}, err
 	}
-	c.matchesChanged()
-	if err := s.db.commit(ctx, tx, c); err != nil {
+	if err := s.db.commitWith(ctx, tx, c, events...); err != nil {
 		return domain.Credit{}, fmt.Errorf("cannot merge person %d into person %d: %w", sourceID, targetID, err)
 	}
 	return after, nil
+}
+
+// mergeProvisional performs MergeProvisional inside tx and returns the target with the events of a face it took.
+func mergeProvisional(ctx context.Context, tx *sql.Tx, c *changes, sourceID, targetID int64) (
+	domain.Credit, []domain.Event, error,
+) {
+	t := creditTablesByKind[domain.CreditPerson]
+	merged, _, err := mergeSources(ctx, tx, t, targetID, []int64{sourceID})
+	if err != nil {
+		return domain.Credit{}, nil, err
+	}
+	if len(merged) == 0 {
+		return domain.Credit{}, nil, domain.ErrNotFound
+	}
+	source, err := creditByID(ctx, tx, t, sourceID)
+	if err != nil {
+		return domain.Credit{}, nil, err
+	}
+	if !source.Provisional {
+		return domain.Credit{}, nil, domain.ErrPersonNotProvisional
+	}
+	before, err := creditByID(ctx, tx, t, targetID)
+	if err != nil {
+		return domain.Credit{}, nil, err
+	}
+	snapshot, err := readFaceMergeSource(ctx, tx, source, targetID)
+	if err != nil {
+		return domain.Credit{}, nil, err
+	}
+	credits, err := readFaceMergeCredits(ctx, tx, sourceID, targetID)
+	if err != nil {
+		return domain.Credit{}, nil, err
+	}
+	if err := mergeCreditsInto(ctx, tx, t, targetID, merged); err != nil {
+		return domain.Credit{}, nil, err
+	}
+	if err := checkMergedCreditLimits(ctx, tx, t, targetID); err != nil {
+		return domain.Credit{}, nil, err
+	}
+	after, err := creditByID(ctx, tx, t, targetID)
+	if err != nil {
+		return domain.Credit{}, nil, err
+	}
+	if snapshot.Target, err = faceMergeTarget(ctx, tx, before, after); err != nil {
+		return domain.Credit{}, nil, err
+	}
+	if err := recordFaceMerge(ctx, tx, c, sourceID, after, snapshot, credits, time.Now()); err != nil {
+		return domain.Credit{}, nil, err
+	}
+	c.matchesChanged()
+	return after, personFaceEvents(before, after), nil
 }
 
 // readFaceMergeSource reads what the merge is about to move from the source, other than credits.
