@@ -54,6 +54,7 @@ function result(overrides: Partial<WorkInfoFetch> = {}): WorkInfoFetch {
     organizations: [],
     urls: [],
     externalIds: [],
+    personLookups: [],
     ...overrides,
   };
 }

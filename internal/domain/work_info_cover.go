@@ -4,9 +4,9 @@ package domain
 
 const (
 	WorkInfoCoverMaxBytes = WorkInfoPluginHTTPMaxBodyBytes
-	// Evict oldest fetch results when retained cover and person image bytes exceed this budget, which fits one cover
-	// and WorkInfoPersonImagesMaxCount images at the size limit.
-	WorkInfoFetchCoverBudget = (1 + WorkInfoPersonImagesMaxCount) * WorkInfoCoverMaxBytes
+	// Evict oldest fetch results when retained cover and person image bytes exceed this budget, which fits one cover,
+	// WorkInfoPersonImagesMaxCount images and PersonLookupsMaxCount lookup images at the size limit.
+	WorkInfoFetchCoverBudget = (1 + WorkInfoPersonImagesMaxCount + PersonLookupsMaxCount) * WorkInfoCoverMaxBytes
 	// WorkInfoPersonImagesMaxCount is how many people's images one fetch keeps, the first in result order.
 	WorkInfoPersonImagesMaxCount               = 7
 	WorkInfoFieldCover           WorkInfoField = "cover"

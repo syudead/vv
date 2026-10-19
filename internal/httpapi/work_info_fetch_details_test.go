@@ -163,6 +163,8 @@ func TestWorkInfoFetchAnswersTheDetailsWithMatches(t *testing.T) {
 			"match": map[string]any{"state": "new"}}},
 		"urls":        []any{"https://example.com/works/1"},
 		"externalIds": []any{map[string]any{"source": "fanza", "value": "abc123"}},
+		// No person plugin is registered.
+		"personLookups": []any{},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("fetch body = %s;\nwant %v", body, want)

@@ -42,22 +42,21 @@ func (s *server) FetchPersonWithPlugin(w http.ResponseWriter, r *http.Request, i
 	default:
 		w.Header().Set("Cache-Control", cacheNoStore)
 		writeJSON(w, http.StatusCreated, gen.PersonPluginFetch{
-			FetchId: fetch.ID, ExpiresAt: fetch.ExpiresAt.Unix(), Person: toAPIPluginPerson(fetch),
+			FetchId: fetch.ID, ExpiresAt: fetch.ExpiresAt.Unix(), Person: toAPIPluginPerson(fetch.Person, fetch.HasImage),
 		}, s.logger)
 	}
 }
 
 // The kept profile already holds only the values that pass validation, as a work-info fetch shows a fetched person's.
-func toAPIPluginPerson(fetch domain.PersonPluginFetchResult) gen.PersonPluginFetchedPerson {
+func toAPIPluginPerson(fetched domain.FetchedPluginPerson, hasImage bool) gen.PersonPluginFetchedPerson {
 	person := gen.PersonPluginFetchedPerson{
-		Name: fetch.Person.Name, Aliases: toAPIAliases(fetch.Person.Aliases),
-		ExternalIds: toAPIExternalIDs(fetch.Person.ExternalIDs),
+		Name: fetched.Name, Aliases: toAPIAliases(fetched.Aliases), ExternalIds: toAPIExternalIDs(fetched.ExternalIDs),
 	}
-	if fetch.HasImage {
+	if hasImage {
 		person.HasImage = new(true)
 	}
-	if !fetch.Person.Profile.Equal(domain.PersonProfile{}) {
-		person.Profile = new(toAPIProfile(fetch.Person.Profile))
+	if !fetched.Profile.Equal(domain.PersonProfile{}) {
+		person.Profile = new(toAPIProfile(fetched.Profile))
 	}
 	return person
 }

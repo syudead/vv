@@ -25,37 +25,51 @@ func (s *CreditStore) ApplyPersonPluginFetch(
 	if err := checkFetchedPlugin(ctx, tx, apply.PluginID, apply.Digest, apply.Generation); err != nil {
 		return domain.PersonPluginApplied{}, err
 	}
-	current, err := creditByID(ctx, tx, t, apply.PersonID)
+	skipped, matched, err := fillPersonFromPlugin(ctx, tx, apply.PersonID, apply.Fetched, apply.Items, time.Now())
 	if err != nil {
-		return domain.PersonPluginApplied{}, err
-	}
-	holders, err := externalIDHolderNames(ctx, tx, t, apply.PersonID, apply.Fetched.ExternalIDs)
-	if err != nil {
-		return domain.PersonPluginApplied{}, err
-	}
-	filled := domain.FillPersonItems(domain.PersonItemFill{
-		Current: current, Fetched: apply.Fetched, Items: apply.Items, Holders: holders, Today: time.Now(),
-	})
-	next := domain.CreditInput{
-		Name: current.Name, Aliases: filled.Aliases, ExternalIDs: filled.ExternalIDs, Profile: filled.Profile,
-	}
-	changes := creditChanges(t, current, next)
-	patch := domain.CreditPatch{ExternalIDs: &next.ExternalIDs}
-	if err := applyCreditChanges(ctx, tx, t, apply.PersonID, next, patch, changes); err != nil {
 		return domain.PersonPluginApplied{}, err
 	}
 	person, err := creditByID(ctx, tx, t, apply.PersonID)
 	if err != nil {
 		return domain.PersonPluginApplied{}, err
 	}
-	if err := s.db.commitMatchChangeIf(ctx, tx, changes.matched()); err != nil {
+	if err := s.db.commitMatchChangeIf(ctx, tx, matched); err != nil {
 		return domain.PersonPluginApplied{}, fmt.Errorf("cannot apply the fetched person: %w", err)
 	}
-	skipped := filled.Skipped
 	if skipped == nil {
 		skipped = []domain.SkippedPersonValue{}
 	}
 	return domain.PersonPluginApplied{Person: person, Skipped: skipped}, nil
+}
+
+// fillPersonFromPlugin writes the selected items of a fetched person to the stored person under FillPersonItems'
+// rules, returning the values left out and whether the person's matching keys changed; a missing person is
+// ErrNotFound. The person page's apply and the work-info apply's lookups share it.
+func fillPersonFromPlugin(
+	ctx context.Context, tx *sql.Tx, personID int64, fetched domain.FetchedPluginPerson,
+	items []domain.PersonPluginItem, today time.Time,
+) ([]domain.SkippedPersonValue, bool, error) {
+	t := creditTablesByKind[domain.CreditPerson]
+	current, err := creditByID(ctx, tx, t, personID)
+	if err != nil {
+		return nil, false, err
+	}
+	holders, err := externalIDHolderNames(ctx, tx, t, personID, fetched.ExternalIDs)
+	if err != nil {
+		return nil, false, err
+	}
+	filled := domain.FillPersonItems(domain.PersonItemFill{
+		Current: current, Fetched: fetched, Items: items, Holders: holders, Today: today,
+	})
+	next := domain.CreditInput{
+		Name: current.Name, Aliases: filled.Aliases, ExternalIDs: filled.ExternalIDs, Profile: filled.Profile,
+	}
+	changes := creditChanges(t, current, next)
+	patch := domain.CreditPatch{ExternalIDs: &next.ExternalIDs}
+	if err := applyCreditChanges(ctx, tx, t, personID, next, patch, changes); err != nil {
+		return nil, false, err
+	}
+	return filled.Skipped, changes.matched(), nil
 }
 
 // externalIDHolderNames maps each normalized ID that an entity other than selfID holds to that entity's name.

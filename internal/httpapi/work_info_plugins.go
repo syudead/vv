@@ -39,13 +39,19 @@ type WorkInfoPlugins interface {
 	SearchPeople(ctx context.Context, id int64, query string) ([]domain.PersonCandidate, error)
 	// FetchWorkInfo caches fetched work information for the video without modifying it; the plugin must be approved.
 	FetchWorkInfo(ctx context.Context, videoID, pluginID int64, id string) (domain.WorkInfoFetchResult, error)
-	// ApplyWorkInfoFetch applies selected fields and may return ErrWorkInfoApplyInvalid, ErrNotFound, or ErrWorkInfoFetchStale.
-	ApplyWorkInfoFetch(ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField, tags []string, coverByPage bool) (domain.WorkInfoApplied, error)
+	// ApplyWorkInfoFetch applies selected fields and lookup items and may return ErrWorkInfoApplyInvalid, ErrNotFound, or
+	// ErrWorkInfoFetchStale.
+	ApplyWorkInfoFetch(ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField, tags []string, coverByPage bool, lookups []domain.PersonLookupSelection) (domain.WorkInfoApplied, error)
 	// WorkInfoFetchCover returns ErrNotFound when no cover is available.
 	WorkInfoFetchCover(videoID int64, fetchID string) (domain.WorkInfoCover, error)
 	// WorkInfoFetchPersonImage returns ErrNotFound for a missing result and ErrPersonImageNotFound when the person at
 	// index has no kept image.
 	WorkInfoFetchPersonImage(videoID int64, fetchID string, index int) (domain.WorkInfoCover, error)
+	// RunPersonLookup may return ErrWorkInfoFetchStale, ErrNotFound, ErrPersonLookupPluginChanged, or the errors
+	// workInfoRunError maps.
+	RunPersonLookup(ctx context.Context, videoID int64, fetchID string, index int) (domain.PersonLookupResult, error)
+	// PersonLookupImage returns ErrNotFound for a missing result or lookup and ErrPersonImageNotFound without an image.
+	PersonLookupImage(videoID int64, fetchID string, index int) (domain.WorkInfoCover, error)
 	// FetchPersonWithPlugin may return ErrPersonNotFound, ErrPersonExternalIDMissing, ErrWorkInfoRunInvalid, or the
 	// errors workInfoRunError maps.
 	FetchPersonWithPlugin(ctx context.Context, personID, pluginID int64, source, id *string) (domain.PersonPluginFetchResult, error)

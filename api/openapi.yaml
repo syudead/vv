@@ -2156,7 +2156,7 @@ paths:
     post:
       operationId: fetchWorkInfo
       summary: "Fetch video work information with a plugin"
-      description: "Owner-only. Runs approved pluginId fetch once with a trimmed 1–200 character id from search or owner input. Even URL-shaped IDs are passed unchanged; VV does not fetch them as URLs. Retains the result in memory for ten minutes and returns 201 without changing the video. Missing/invalid id returns 400 invalid_request. Includes title only if it passes display-name rules. People and organizations carry their fetch-time match. Missing video returns 404 not_found; a person plugin returns 409 plugin_kind_mismatch; undeclared fetch returns 409 operation_unsupported. See Run failures in docs/design-docs/work-info-plugins.md."
+      description: "Owner-only. Runs approved pluginId fetch once with a trimmed 1–200 character id from search or owner input. Even URL-shaped IDs are passed unchanged; VV does not fetch them as URLs. Retains the result in memory for ten minutes and returns 201 without changing the video. Missing/invalid id returns 400 invalid_request. Includes title only if it passes display-name rules. People and organizations carry their fetch-time match. personLookups plans one person plugin lookup per fetched person whose external ID an approved person plugin with autoLookup accepts, for the first 5 distinct lookups; run each with runPersonLookup. Missing video returns 404 not_found; a person plugin returns 409 plugin_kind_mismatch; undeclared fetch returns 409 operation_unsupported. See Run failures in docs/design-docs/work-info-plugins.md."
       parameters:
         - $ref: "#/components/parameters/VideoId"
       requestBody:
@@ -2191,7 +2191,7 @@ paths:
     post:
       operationId: applyWorkInfoFetch
       summary: "Apply selected fetched fields to a video"
-      description: "Owner-only. Atomically saves selected fields: title as display name, tags as tentative assignments, others merged into work information. After commit, cover uses uploaded-image validation/application; failure preserves the thumbnail and reports skipped invalid. With coverByPage, cover is checked like the other fields but not applied. Invalid values, excess entries and ambiguous people/organizations are skipped. A successful result is consumed. Invalid or rejected tag names are reported in skippedTags without assignment. Optional tags selects fetched names and limits skippedTags to that selection. Empty fields, unavailable fields, empty/unknown tag selections or tags without fields containing tags return 400 invalid_request. Missing video or mismatched result video returns 404 not_found. Expired/unknown results or plugin replacement, revocation or deletion after fetch return 409 work_info_fetch_stale. These errors write nothing. Emits a video event after commit."
+      description: "Owner-only. Atomically saves selected fields: title as display name, tags as tentative assignments, others merged into work information. After commit, cover uses uploaded-image validation/application; failure preserves the thumbnail and reports skipped invalid. With coverByPage, cover is checked like the other fields but not applied. Invalid values, excess entries and ambiguous people/organizations are skipped. A successful result is consumed. Invalid or rejected tag names are reported in skippedTags without assignment. Optional tags selects fetched names and limits skippedTags to that selection. personLookups fills the person each lookup's entries link through a selected role, only when that is the person they matched at fetch time or one the apply creates for entries that matched none, before the fetched profiles and images; a lookup whose plugin changed since is skipped as stale and one linking another person as person_changed. Empty fields, unavailable fields, empty/unknown tag selections, tags without fields containing tags, or a lookup item without a result value or without one of its entries' roles in fields return 400 invalid_request. Missing video or mismatched result video returns 404 not_found. Expired/unknown results or plugin replacement, revocation or deletion after fetch return 409 work_info_fetch_stale. These errors write nothing. Emits a video event after commit."
       parameters:
         - $ref: "#/components/parameters/VideoId"
         - $ref: "#/components/parameters/WorkInfoFetchId"
@@ -2258,6 +2258,77 @@ paths:
           in: path
           required: true
           description: "Position in the result's people"
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: "Person image"
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/videos/{id}/work-info-fetches/{fetchId}/person-lookups/{index}:
+    post:
+      operationId: runPersonLookup
+      summary: "Run a planned person lookup of a work-info fetch"
+      description: "Owner-only. Runs planned lookup index's person plugin fetch once and keeps the result with the work-info fetch, which it expires with; a lookup that already has a result answers it without running, and a failed lookup keeps nothing and may be requested again. current is the person every entry of the lookup matched at fetch time as stored now, or null when they matched none or that person is gone. Missing video, a result of another video or an index outside personLookups returns 404 not_found; an expired, unknown or applied result returns 409 work_info_fetch_stale; a person plugin replaced, revoked or deleted since the fetch returns 409 plugin_changed, while turning its automatic lookups off since does not stop the lookup. See Run failures in docs/design-docs/work-info-plugins.md."
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+        - $ref: "#/components/parameters/WorkInfoFetchId"
+        - name: index
+          in: path
+          required: true
+          description: "Position in the fetch result's personLookups"
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        "200":
+          description: "Lookup result"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonPluginResult"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "502":
+          $ref: "#/components/responses/PluginFailed"
+        "503":
+          $ref: "#/components/responses/PluginBusy"
+        "504":
+          $ref: "#/components/responses/PluginTimedOut"
+
+  /api/videos/{id}/work-info-fetches/{fetchId}/person-lookups/{index}/image:
+    get:
+      operationId: getPersonLookupImage
+      summary: "Return a person lookup's image"
+      description: "Owner-only. Returns the image VV fetched for planned lookup index and kept with the result. Missing, expired or mismatched-video results, or an index outside personLookups, return 404 not_found; a lookup without a kept image, or not run yet, returns 404 person_image_not_found. Uses Cache-Control: no-store."
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+        - $ref: "#/components/parameters/WorkInfoFetchId"
+        - name: index
+          in: path
+          required: true
+          description: "Position in the fetch result's personLookups"
           schema:
             type: integer
             minimum: 0
@@ -5980,6 +6051,7 @@ components:
           organizations,
           urls,
           externalIds,
+          personLookups,
         ]
       additionalProperties: false
       description: "Fetch result held in memory."
@@ -6032,6 +6104,40 @@ components:
             $ref: "#/components/schemas/ExternalId"
         cover:
           $ref: "#/components/schemas/WorkInfoFetchedCover"
+        personLookups:
+          type: array
+          description: "Planned person lookups in plan order, at most 5; [] when none."
+          items:
+            $ref: "#/components/schemas/PersonLookup"
+
+    PersonLookup:
+      type: object
+      required: [pluginId, pluginName, source, id]
+      additionalProperties: false
+      description: "A planned person plugin fetch for one or more fetched people that matched the same person."
+      properties:
+        pluginId:
+          type: integer
+          format: int64
+        pluginName:
+          type: string
+        source:
+          type: string
+        id:
+          type: string
+
+    PersonPluginResult:
+      type: object
+      required: [person, current]
+      additionalProperties: false
+      properties:
+        person:
+          $ref: "#/components/schemas/PersonPluginFetchedPerson"
+        current:
+          anyOf:
+            - $ref: "#/components/schemas/Person"
+            - type: "null"
+          description: "The person the lookup's entries matched at fetch time as stored now; null when they matched none or the person is gone."
 
     WorkInfoFetchedCover:
       type: object
@@ -6097,6 +6203,12 @@ components:
         profile:
           $ref: "#/components/schemas/PersonProfile"
           description: "Plugin-provided profile values that pass validation; omitted when none. Applying the person's role fills only the linked person's empty fields."
+        lookup:
+          type: integer
+          description: "Index into personLookups of this person's lookup; absent when it has none."
+        lookupLimited:
+          type: boolean
+          description: "Present and true when a person plugin accepts one of the person's IDs but 5 lookups were already planned."
 
     WorkInfoFetchedOrganization:
       type: object
@@ -6154,6 +6266,26 @@ components:
         coverByPage:
           type: boolean
           description: "With cover in fields, validate and consume the result for the cover but leave the thumbnail to the page, which uploads its own framing of the cover through uploadThumbnailImage after this call succeeds. Ignored without cover in fields."
+        personLookups:
+          type: array
+          description: "Items to apply from lookups that ran, each lookup at most once."
+          items:
+            $ref: "#/components/schemas/PersonLookupSelection"
+
+    PersonLookupSelection:
+      type: object
+      required: [index, items]
+      additionalProperties: false
+      properties:
+        index:
+          type: integer
+          minimum: 0
+          description: "Position in the fetch result's personLookups."
+        items:
+          type: array
+          description: "Nonempty; every item must have a value in the lookup's result."
+          items:
+            $ref: "#/components/schemas/PersonPluginItem"
 
     SkippedTagReason:
       type: string
@@ -6172,8 +6304,8 @@ components:
 
     SkippedWorkInfoReason:
       type: string
-      description: "Apply skip reason: invalid values fail field validation; too_many entries exceed limits after existing entries; ambiguous people/organizations match multiple entities."
-      enum: [invalid, too_many, ambiguous]
+      description: "Apply skip reason: invalid values fail field validation; too_many entries exceed limits after existing entries; ambiguous people/organizations match multiple entities; taken external IDs from a lookup are held by another person; stale lookups ran on a plugin replaced, revoked or deleted since; person_changed lookups' entries now link another person than they matched at fetch time."
+      enum: [invalid, too_many, ambiguous, taken, stale, person_changed]
 
     SkippedWorkInfoValue:
       type: object
@@ -6187,6 +6319,14 @@ components:
           description: "Value shown in the comparison: date, URL, name, source: value, or the first 100 description characters. A profile value is name: property value, such as Hanako: heightCm 1000."
         reason:
           $ref: "#/components/schemas/SkippedWorkInfoReason"
+        lookup:
+          type: integer
+          description: "Index into personLookups when the value came from a lookup; field is then the role of the entry it filled, and value the fetched name for stale and person_changed."
+        item:
+          $ref: "#/components/schemas/PersonPluginItem"
+        holderName:
+          type: string
+          description: "Name of the person holding the external ID; only for taken."
 
     WorkInfoFetchApplied:
       type: object
