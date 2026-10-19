@@ -192,3 +192,32 @@ all keyframes IDR; each measurement checks the content as well as the time:
 On storage with slow random reads, time follows the read count (one for the
 index plus one per keyframe) times the latency. Generation from the index is
 still faster than per-interval extraction there, but keeps one read per frame.
+
+## Forced rebuild
+
+An ordinary sprite or preview job adopts a complete artifact already on disk.
+A forced job (`jobs.force`) generates a new one, and the published artifact
+stays readable until the new one replaces it
+([`internal/artifacts/builds.go`](../../internal/artifacts/builds.go)). A read
+that finds a `done` artifact missing queues it again, and the card loses it, so
+the old one is never deleted first.
+
+```mermaid
+flowchart LR
+  write[Write build n+1 beside build n] --> check{Complete?}
+  check -->|no| keep[Build n stays current]
+  check -->|yes| pointer[Rename the key's pointer to n+1]
+  pointer --> remove[Remove build n]
+```
+
+Build 0 is the original layout and has no pointer, so artifacts that were
+never rebuilt keep their paths. Readers resolve the pointer and still take the
+content key; a read that misses the build it resolved reads the pointer again
+before it reports the artifact missing. `RemoveContent` removes every build and
+the pointer.
+
+The URL version carries the content key, which a rebuild does not change, so
+the transaction that records a forced job's result increments
+`videos.seek_thumbnail_build`, `preview_build` or `thumbnail_build`. A count
+above 0 adds `-b<n>` to the artifact's `v` query, and the screen loads the new
+file. A forced thumbnail needs no pointer: one file is replaced in one rename.

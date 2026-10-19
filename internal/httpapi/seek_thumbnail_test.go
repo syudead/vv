@@ -79,6 +79,28 @@ func TestSeekThumbnailReturnsSpriteDescription(t *testing.T) {
 	}
 }
 
+// A rebuilt sprite carries its build in the video's and the sheets' URLs, so a mounted player loads the new sheets.
+func TestSeekThumbnailURLsCarryTheBuild(t *testing.T) {
+	mediaDir, video, _ := streamFixture(t, "a.mp4", 128)
+	video.Builds.SeekThumbnail = 2
+	handler := newTestServer(t, Options{
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, roots: []string{mediaDir}},
+		Artifacts: &fakeArtifacts{sprite: testSprite()},
+	})
+	version := thumbnailVersion(video.ContentKey) + "-b2"
+
+	detail := decode[gen.Video](t, do(t, handler, http.MethodGet, "/api/videos/1"))
+	if want := "/api/videos/1/seek-thumbnail?v=" + version; detail.SeekThumbnailUrl == nil ||
+		*detail.SeekThumbnailUrl != want {
+		t.Errorf("seekThumbnailUrl = %v, want %q", detail.SeekThumbnailUrl, want)
+	}
+	sprite := decode[gen.SeekThumbnailSprite](t, do(t, handler, http.MethodGet, "/api/videos/1/seek-thumbnail"))
+	want := []string{"/api/videos/1/seek-thumbnail/0?v=" + version, "/api/videos/1/seek-thumbnail/1?v=" + version}
+	if !slices.Equal(sprite.Sheets, want) {
+		t.Errorf("sheets = %v, want %v", sprite.Sheets, want)
+	}
+}
+
 func TestSeekThumbnailSheetReturnsJPEG(t *testing.T) {
 	reader := &fakeArtifacts{sprite: testSprite(), image: []byte{0xff, 0xd8, 0xff, 0xd9}}
 	handler, video := seekThumbnailServer(t, reader)
