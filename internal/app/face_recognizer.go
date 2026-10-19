@@ -95,6 +95,9 @@ type FaceRecognizer struct {
 	// helper is used by the worker goroutine only.
 	helper           FaceHelper
 	helperRecognizer domain.FaceRecognizer
+	// stranded marks a claimed video left running because returning it to the queue failed; the worker returns it
+	// before the next claim, since the owner's runs and retries skip running videos.
+	stranded bool
 }
 
 type faceRun struct {
@@ -242,6 +245,12 @@ func (f *FaceRecognizer) step(ctx context.Context) faceStep {
 	if err != nil {
 		return f.retryUnless(run, "cannot read the face recognition settings", err)
 	}
+	if f.stranded {
+		if _, err := f.queue.RequeueRunning(run); err != nil {
+			return f.retryUnless(run, "cannot return the face analysis to the queue", err)
+		}
+		f.stranded = false
+	}
 	if !settings.Enabled || f.runtime.Status(settings.Recognizer).State != domain.FaceRuntimeReady {
 		return faceIdle
 	}
@@ -258,8 +267,7 @@ func (f *FaceRecognizer) step(ctx context.Context) faceStep {
 		f.requeue(ctx, job)
 		return faceNext
 	}
-	f.process(ctx, run, job)
-	return faceNext
+	return f.process(ctx, run, job)
 }
 
 func (f *FaceRecognizer) retryUnless(run context.Context, message string, err error) faceStep {
@@ -289,11 +297,12 @@ func (f *FaceRecognizer) end() {
 }
 
 // process analyses and stores one claimed video. run ends when the settings change; ctx when the server stops.
-func (f *FaceRecognizer) process(ctx, run context.Context, job domain.FaceJob) {
+// A database error returns the video to the queue and backs off, so a transient error does not strand it running.
+func (f *FaceRecognizer) process(ctx, run context.Context, job domain.FaceJob) faceStep {
 	result, err := f.analyse(run, job)
 	if err == nil {
 		if err = f.queue.Store(run, result); err != nil && !errors.Is(err, domain.ErrFaceGenerationChanged) {
-			err = fmt.Errorf("%w: %w", errFaceStore, err)
+			err = fmt.Errorf("%w: %w", errFaceDatabase, err)
 		}
 	}
 	switch {
@@ -306,25 +315,31 @@ func (f *FaceRecognizer) process(ctx, run context.Context, job domain.FaceJob) {
 		// The runtime is marked failed; the video waits until it is ready again.
 		f.logger.Warn("the face helper did not start", slog.String("content_key", job.ContentKey), slog.Any("error", err))
 		f.requeue(ctx, job)
-	case errors.Is(err, errFaceStore):
-		f.logger.Error("cannot store the face analysis", slog.String("content_key", job.ContentKey), slog.Any("error", err))
+	case errors.Is(err, errFaceDatabase):
+		f.logger.Error("face analysis hit a database error", slog.String("content_key", job.ContentKey), slog.Any("error", err))
+		f.requeue(ctx, job)
+		return faceRetry
 	default:
 		f.logger.Warn("face analysis failed", slog.String("content_key", job.ContentKey), slog.Any("error", err))
 		if err := f.queue.Fail(ctx, job.ContentKey, failureReason(err)); err != nil {
 			f.logger.Error("cannot record the face analysis failure", slog.Any("error", err))
+			f.requeue(ctx, job)
+			return faceRetry
 		}
 	}
+	return faceNext
 }
 
 func (f *FaceRecognizer) requeue(ctx context.Context, job domain.FaceJob) {
 	if _, err := f.queue.RequeueRunning(ctx); err != nil {
+		f.stranded = true
 		f.logger.Error("cannot return the face analysis to the queue", slog.String("content_key", job.ContentKey),
 			slog.Any("error", err))
 	}
 }
 
-// errFaceStore marks a failure to write a finished result, which is the database's, not the video's.
-var errFaceStore = errors.New("cannot store the face analysis")
+// errFaceDatabase marks a failure of the database rather than of the video.
+var errFaceDatabase = errors.New("face analysis database error")
 
 // analyse reads every sampled frame of the video and returns its main people. A video no longer in the library
 // gives an empty result, which removes its queue row.
@@ -339,7 +354,7 @@ func (f *FaceRecognizer) analyse(ctx context.Context, job domain.FaceJob) (domai
 		return result, nil
 	}
 	if err != nil {
-		return result, fmt.Errorf("%w: %w", errFaceStore, err)
+		return result, fmt.Errorf("%w: %w", errFaceDatabase, err)
 	}
 	path, err := f.resolve(ctx, paths)
 	if err != nil {
@@ -365,7 +380,7 @@ func (f *FaceRecognizer) analyse(ctx context.Context, job domain.FaceJob) (domai
 func (f *FaceRecognizer) resolve(ctx context.Context, paths []string) (string, error) {
 	folders, err := f.mediaFolders.ListMediaFolders(ctx)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", errFaceStore, err)
+		return "", fmt.Errorf("%w: %w", errFaceDatabase, err)
 	}
 	roots := make([]string, len(folders))
 	for i, folder := range folders {

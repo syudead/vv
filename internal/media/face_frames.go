@@ -2,7 +2,6 @@ package media
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -21,6 +20,8 @@ var faceFrameFilter = func() string {
 		",scale=" + side + ":" + side + ":force_original_aspect_ratio=decrease,pad=" + side + ":" + side
 }()
 
+const faceFramesStderrLimit = 4 * 1024
+
 // FaceFrameBytes is the size of one frame FaceFrames passes: a domain.FaceFrameSide square of packed BGR.
 const FaceFrameBytes = domain.FaceFrameSide * domain.FaceFrameSide * 3
 
@@ -31,8 +32,9 @@ func FaceFrames(ctx context.Context, videoPath string, each func(pix []byte) err
 	run, cancel := context.WithCancel(ctx)
 	defer cancel()
 	cmd := command(run, thumbnailCommand, faceFrameArgs(videoPath)...)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	// A damaged video can make ffmpeg report an error for every frame.
+	stderr := &tailWriter{limit: faceFramesStderrLimit}
+	cmd.Stderr = stderr
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -53,7 +55,7 @@ func FaceFrames(ctx context.Context, videoPath string, each func(pix []byte) err
 		return err
 	}
 	if waitErr != nil {
-		return fmt.Errorf("%s failed (%s): %s", thumbnailCommand, videoPath, firstLine(stderr.Bytes()))
+		return fmt.Errorf("%s failed (%s): %s", thumbnailCommand, videoPath, firstLine([]byte(stderr.String())))
 	}
 	return readErr
 }

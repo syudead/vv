@@ -3,8 +3,10 @@ package media
 import (
 	"context"
 	"errors"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -72,5 +74,20 @@ func TestFaceFramesStopsWhenTheCallbackFails(t *testing.T) {
 	})
 	if !errors.Is(err, stop) || calls != 1 {
 		t.Fatalf("FaceFrames = %v after %d calls, want the callback's error after one", err, calls)
+	}
+}
+
+// The failed video's activity entry shows ffmpeg's reason, read from its bounded stderr.
+func TestFaceFramesReportsWhyFFmpegFailed(t *testing.T) {
+	t.Parallel()
+	requireFFmpeg(t)
+	path := filepath.Join(t.TempDir(), "broken.mp4")
+	if err := os.WriteFile(path, []byte("not a video"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := FaceFrames(context.Background(), path, func([]byte) error { return nil })
+	if err == nil || !strings.Contains(err.Error(), "moov atom not found") {
+		t.Fatalf("FaceFrames = %v, want ffmpeg's reason", err)
 	}
 }

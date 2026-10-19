@@ -448,6 +448,7 @@ models leave memory while nothing is analysed.
 | The helper exits mid-video, answers with an error or takes over 2 minutes for a frame | The video is `failed` with the message |
 | `ffmpeg` fails, or no location can be opened | The video is `failed` with the message |
 | The video left the library | The empty result removes its row |
+| A database error while reading the video's locations or the media folders, storing the result or recording a failure | The video goes back to `queued` and the worker tries again after 5 seconds; if that also fails, the worker returns it before its next claim |
 | The server stops | The row stays `running`; startup puts it back to `queued` |
 
 | Rejected | Why |

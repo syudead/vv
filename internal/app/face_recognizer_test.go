@@ -54,11 +54,23 @@ type fakeFaceAnalysisQueue struct {
 	requeues int
 	stored   []domain.FaceAnalysis
 	failed   []string
+	// faults fails the named method with its error until the test clears it.
+	faults map[string]error
+}
+
+func (q *fakeFaceAnalysisQueue) setFault(method string, err error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.faults == nil {
+		q.faults = map[string]error{}
+	}
+	q.faults[method] = err
 }
 
 // fakeFaceQueueState is what a test reads of the queue, copied under its lock.
 type fakeFaceQueueState struct {
 	queued           []string
+	running          string
 	claims, requeues int
 	stored           []domain.FaceAnalysis
 	failed           []string
@@ -68,7 +80,7 @@ func (q *fakeFaceAnalysisQueue) state() fakeFaceQueueState {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	return fakeFaceQueueState{
-		queued: slices.Clone(q.queued), claims: q.claims, requeues: q.requeues,
+		queued: slices.Clone(q.queued), running: q.running, claims: q.claims, requeues: q.requeues,
 		stored: slices.Clone(q.stored), failed: slices.Clone(q.failed),
 	}
 }
@@ -101,6 +113,11 @@ func (q *fakeFaceAnalysisQueue) Claim(context.Context) (domain.FaceJob, error) {
 }
 
 func (q *fakeFaceAnalysisQueue) VideoPaths(_ context.Context, key string) ([]string, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if err := q.faults["VideoPaths"]; err != nil {
+		return nil, err
+	}
 	return []string{"/media/" + key + ".mp4"}, nil
 }
 
@@ -110,6 +127,9 @@ func (q *fakeFaceAnalysisQueue) Store(_ context.Context, result domain.FaceAnaly
 	q.settings.mu.Unlock()
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	if err := q.faults["Store"]; err != nil {
+		return err
+	}
 	if result.Generation != generation {
 		return domain.ErrFaceGenerationChanged
 	}
@@ -121,6 +141,9 @@ func (q *fakeFaceAnalysisQueue) Store(_ context.Context, result domain.FaceAnaly
 func (q *fakeFaceAnalysisQueue) Fail(_ context.Context, _ string, reason string) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	if err := q.faults["Fail"]; err != nil {
+		return err
+	}
 	q.failed = append(q.failed, reason)
 	q.running = ""
 	return nil
@@ -129,6 +152,9 @@ func (q *fakeFaceAnalysisQueue) Fail(_ context.Context, _ string, reason string)
 func (q *fakeFaceAnalysisQueue) RequeueRunning(context.Context) (int, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	if err := q.faults["RequeueRunning"]; err != nil {
+		return 0, err
+	}
 	if q.running == "" {
 		return 0, nil
 	}
@@ -257,9 +283,23 @@ func (v *fakeFaceVideoFrames) source() FaceFrameSource {
 	}
 }
 
-type fakeMediaFolders struct{}
+type fakeMediaFolders struct {
+	mu  sync.Mutex
+	err error
+}
 
-func (fakeMediaFolders) ListMediaFolders(context.Context) ([]domain.MediaFolder, error) {
+func (m *fakeMediaFolders) setErr(err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.err = err
+}
+
+func (m *fakeMediaFolders) ListMediaFolders(context.Context) ([]domain.MediaFolder, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.err != nil {
+		return nil, m.err
+	}
 	return []domain.MediaFolder{{Path: "/media"}}, nil
 }
 
@@ -279,6 +319,7 @@ type faceWorkerFixture struct {
 	runtime  *fakeFaceRuntimeState
 	helpers  *fakeFaceHelpers
 	frames   *fakeFaceVideoFrames
+	folders  *fakeMediaFolders
 }
 
 func newFaceWorkerFixture(keys ...string) *faceWorkerFixture {
@@ -289,10 +330,11 @@ func newFaceWorkerFixture(keys ...string) *faceWorkerFixture {
 		runtime:  &fakeFaceRuntimeState{state: domain.FaceRuntimeReady},
 		helpers:  &fakeFaceHelpers{holdAt: -1, release: make(chan struct{})},
 		frames:   &fakeFaceVideoFrames{},
+		folders:  &fakeMediaFolders{},
 	}
 	f.rec = NewFaceRecognizer(FaceRecognizerOptions{
 		Queue: f.queue, Settings: settings, Runtime: f.runtime, Helper: f.helpers.helper,
-		Frames: f.frames.source(), MediaFolders: fakeMediaFolders{}, MediaFiles: fakeMediaFiles{},
+		Frames: f.frames.source(), MediaFolders: f.folders, MediaFiles: fakeMediaFiles{},
 	})
 	return f
 }
@@ -516,4 +558,77 @@ func TestFaceRecognizerRefusesRunsAndRetriesWhileOff(t *testing.T) {
 	if len(f.queue.state().queued) != 0 {
 		t.Fatalf("queued %v while off, want nothing", f.queue.state().queued)
 	}
+}
+
+func TestFaceRecognizerRetriesAVideoAfterADatabaseError(t *testing.T) {
+	dbErr := errors.New("database is locked")
+	for _, tc := range []struct {
+		name string
+		// fault makes the first attempt hit dbErr; clear removes it before the back-off ends.
+		fault, clear func(f *faceWorkerFixture)
+		// failed is true when the retried video ends failed rather than stored.
+		failed bool
+	}{
+		{name: "storing the result",
+			fault: func(f *faceWorkerFixture) { f.queue.setFault("Store", dbErr) },
+			clear: func(f *faceWorkerFixture) { f.queue.setFault("Store", nil) }},
+		{name: "reading the video's locations",
+			fault: func(f *faceWorkerFixture) { f.queue.setFault("VideoPaths", dbErr) },
+			clear: func(f *faceWorkerFixture) { f.queue.setFault("VideoPaths", nil) }},
+		{name: "reading the media folders",
+			fault: func(f *faceWorkerFixture) { f.folders.setErr(dbErr) },
+			clear: func(f *faceWorkerFixture) { f.folders.setErr(nil) }},
+		{name: "recording the video's failure", failed: true,
+			fault: func(f *faceWorkerFixture) {
+				f.helpers.err = errors.New("the face helper exited")
+				f.queue.setFault("Fail", dbErr)
+			},
+			clear: func(f *faceWorkerFixture) { f.queue.setFault("Fail", nil) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				f := newFaceWorkerFixture("key-a")
+				tc.fault(f)
+				f.run(t)
+				synctest.Wait()
+				if got := f.queue.state(); got.claims != 1 || got.requeues != 1 || got.running != "" ||
+					!slices.Equal(got.queued, []string{"key-a"}) || len(got.stored)+len(got.failed) != 0 {
+					t.Fatalf("after the error: %+v; want the video queued again and not retried before the back-off", got)
+				}
+
+				tc.clear(f)
+				time.Sleep(faceRetryDelay)
+				synctest.Wait()
+				wantStored, wantFailed := 1, 0
+				if tc.failed {
+					wantStored, wantFailed = 0, 1
+				}
+				if got := f.queue.state(); got.claims != 2 || len(got.stored) != wantStored || len(got.failed) != wantFailed {
+					t.Fatalf("after the back-off: %+v; want the video claimed again and %d stored, %d failed",
+						got, wantStored, wantFailed)
+				}
+			})
+		})
+	}
+}
+
+func TestFaceRecognizerReturnsAStrandedVideoBeforeTheNextClaim(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFaceWorkerFixture("key-a")
+		f.queue.setFault("Store", errors.New("database is locked"))
+		f.queue.setFault("RequeueRunning", errors.New("database is locked"))
+		f.run(t)
+		synctest.Wait()
+		if got := f.queue.state(); got.running != "key-a" || got.claims != 1 {
+			t.Fatalf("after the errors: %+v; want the video still running", got)
+		}
+
+		f.queue.setFault("Store", nil)
+		f.queue.setFault("RequeueRunning", nil)
+		time.Sleep(faceRetryDelay)
+		synctest.Wait()
+		if got := f.queue.state(); got.requeues != 1 || got.claims != 2 || len(got.stored) != 1 {
+			t.Fatalf("after the back-off: %+v; want the video returned to the queue, claimed again and stored", got)
+		}
+	})
 }

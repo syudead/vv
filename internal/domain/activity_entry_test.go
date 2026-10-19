@@ -76,6 +76,7 @@ func TestActivityRetryOffered(t *testing.T) {
 		{ActivityEntry{Kind: ActivityAutoTag, Status: ActivityAttention, Reason: ActivityNoConnection}, false},
 		{ActivityEntry{Kind: ActivityImport, Status: ActivityDone, Outcome: ActivityCompleted}, false},
 		{ActivityEntry{Kind: ActivityWorkInfoFetch, Status: ActivityAttention, Reason: ActivityFailed}, false},
+		{ActivityEntry{Kind: ActivityFaceAnalysis, Status: ActivityAttention, Reason: ActivityFailed}, true},
 	} {
 		if got := tc.entry.RetryOffered(); got != tc.want {
 			t.Errorf("%+v.RetryOffered() = %v, want %v", tc.entry, got, tc.want)
