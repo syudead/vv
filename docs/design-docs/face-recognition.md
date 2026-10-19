@@ -328,8 +328,25 @@ Writes to people and credits move or drop face rows in their own transaction
 | Write | Face rows |
 | --- | --- |
 | Deleting a person | Their appearances become dropped and lose centroid and crop, keeping only their tracks; the face image, its vector and the candidate pairs go with the person |
-| Merging people | The sources' appearances and candidate pairs move to the target, and a pair that would join the target to itself is deleted; a target that takes a source's face also takes that face's current vector |
+| Merging people | The sources' appearances and candidate pairs move to the target, and a pair that would join the target to itself is deleted; a pair the target already has, in either orientation, keeps the target's row, so each pair of people stays one row; a target that takes a source's face also takes that face's current vector |
 | A work-information write that removes a performer | The video's appearances of that person become dropped |
 
 The kept tracks are what let a re-analysis carry a dropped appearance over, so
 a deleted face is not recreated and a removed link is not made again.
+
+## The owner settles a candidate pair
+
+A pair in `face_candidates` is stored once as `(provisional_id, person_id)`,
+and the people API names it by its two people in either order
+([`face_candidates.go`](../../internal/store/face_candidates.go)).
+`GET /api/people/{id}/face-candidates` lists the open pairs a person takes part
+in as the other person of each, highest similarity first.
+
+| Action | Effect |
+| --- | --- |
+| Confirm | The ordinary merge of the pair's person without a canonical name into the other, in one transaction with the pair lookup; it records no `face_merge` entry, since the owner made it |
+| Dismiss | Sets `dismissed`; a later result that offers the same pair updates only its similarity, so the pair stays hidden |
+
+When both people have a name, or neither has, confirm merges the stored
+provisional side: a name given after the pair was offered does not reverse
+it. Without an open pair, both actions answer `404 face_candidate_not_found`.
