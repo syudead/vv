@@ -2508,6 +2508,7 @@ export const en = {
       media_folder_remove: "Media folder removed",
       organize_undo: "Drag and drop undone",
       face_analysis: "Face analysis",
+      face_merge: "Person merged",
       pipeline: "Import run",
       undo: "Undo",
     } satisfies Record<ActivityKind, string>,
