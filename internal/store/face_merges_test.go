@@ -138,7 +138,8 @@ func TestUndoFaceMergeRestoresTheProvisionalPerson(t *testing.T) {
 			t.Errorf("appearance %d person = %d, want %d", a.id, a.personID, f.provisional)
 		}
 	}
-	if got, want := faceCandidatePairs(t, f.db), [][2]int64{{f.provisional, f.near}}; !slices.Equal(got, want) {
+	// The undone pair stays as a dismissed row, so no rule merges it again.
+	if got, want := faceCandidatePairs(t, f.db), [][2]int64{{f.provisional, f.target}, {f.provisional, f.near}}; !slices.Equal(got, want) {
 		t.Errorf("candidates = %v, want %v", got, want)
 	}
 	folder, err := f.db.SmartFolders().SmartFolder(ctx, f.folderID)

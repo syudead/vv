@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,7 +13,8 @@ import (
 
 // MergeByCast applies the cast rule to the video's work in one transaction, reading its performers, their face
 // links and the dismissed pairs inside it; it reports whether a provisional person was merged as a face_merge. A
-// video no longer in the library returns domain.ErrNotFound.
+// video no longer in the library returns domain.ErrNotFound, and a merge refused for good wraps
+// domain.ErrFaceMergeRefused.
 func (s *FaceStore) MergeByCast(ctx context.Context, videoID int64) (bool, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -27,35 +29,59 @@ func (s *FaceStore) MergeByCast(ctx context.Context, videoID int64) (bool, error
 		return false, domain.ErrNotFound
 	}
 	c := &changes{}
-	merged, err := mergeByCast(ctx, tx, c, keys[0], time.Now())
+	merged, events, err := mergeByCast(ctx, tx, c, keys[0], time.Now())
 	if err != nil || !merged {
 		return false, err
 	}
-	if err := s.db.commit(ctx, tx, c); err != nil {
+	if err := s.db.commitWith(ctx, tx, c, events...); err != nil {
 		return false, fmt.Errorf("cannot merge by the cast of video %d: %w", videoID, err)
 	}
 	return true, nil
 }
 
 // mergeByCast merges the work's only provisional performer linked by face into its only performer without a face,
-// as domain.DecideCastMerge decides; see docs/design-docs/face-recognition.md.
-func mergeByCast(ctx context.Context, tx *sql.Tx, c *changes, userKey string, now time.Time) (bool, error) {
+// as domain.DecideCastMerge decides, and returns the events of a face the target took; see
+// docs/design-docs/face-recognition.md. A merge refused for good is rolled back to before it, so tx stays usable,
+// and wraps domain.ErrFaceMergeRefused.
+func mergeByCast(ctx context.Context, tx *sql.Tx, c *changes, userKey string, now time.Time) (bool, []domain.Event, error) {
 	performers, err := faceCastPerformers(ctx, tx, userKey)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	dismissed, err := dismissedFacePairs(ctx, tx, performers)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	pair, ok := domain.DecideCastMerge(performers, dismissed)
 	if !ok {
-		return false, nil
+		return false, nil, nil
 	}
-	if _, err := mergeProvisional(ctx, tx, c, pair.ProvisionalID, pair.PersonID, now); err != nil {
-		return false, err
+	if _, err := tx.ExecContext(ctx, `savepoint cast_merge`); err != nil {
+		return false, nil, fmt.Errorf("cannot start the cast merge: %w", err)
 	}
-	return true, nil
+	_, events, err := mergeProvisional(ctx, tx, c, pair.ProvisionalID, pair.PersonID, now)
+	if err != nil {
+		if !mergeRefused(err) {
+			return false, nil, err
+		}
+		// The refusal comes before the merge touches c, so only the rows need rolling back.
+		if _, rbErr := tx.ExecContext(ctx, `rollback to cast_merge`); rbErr != nil {
+			return false, nil, fmt.Errorf("cannot roll back the cast merge: %w", rbErr)
+		}
+		return false, nil, fmt.Errorf("%w: person %d into person %d: %w", domain.ErrFaceMergeRefused,
+			pair.ProvisionalID, pair.PersonID, err)
+	}
+	if _, err := tx.ExecContext(ctx, `release cast_merge`); err != nil {
+		return false, nil, fmt.Errorf("cannot finish the cast merge: %w", err)
+	}
+	return true, events, nil
+}
+
+// mergeRefused reports a refusal of mergeProvisional that does not depend on the database being reachable.
+func mergeRefused(err error) bool {
+	var invalid *domain.InvalidWorkInfoError
+	return errors.As(err, &invalid) || errors.Is(err, domain.ErrPersonNotProvisional) ||
+		errors.Is(err, domain.ErrMergeSameCredit)
 }
 
 // faceCastPerformers reads the work's performers; a performer is linked by face when an appearance that is not

@@ -25,6 +25,8 @@ type eventSubscribers struct {
 	WorkInfoChanged func(videoIDs []int64)
 	// Wake on processing or candidate changes; see docs/design-docs/duplicate-judging.md.
 	VersionJudge waker
+	// Has the face worker embed a changed face; see docs/design-docs/face-recognition.md.
+	PersonImageChanged func(domain.PersonImageChanged)
 }
 
 type eventSubscriptions struct {
@@ -92,6 +94,9 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 		stopWorkers = append(stopWorkers,
 			eventbus.On(bus, "duplicate judging after jobs", func(domain.ProcessingChanged) { judge.Wake() }),
 			eventbus.On(bus, "duplicate judging after candidates", func(domain.VersionCandidatesChanged) { judge.Wake() }))
+	}
+	if s.PersonImageChanged != nil {
+		stopWorkers = append(stopWorkers, eventbus.On(bus, "face image embedding", s.PersonImageChanged))
 	}
 	stops.StopWorkers = func() {
 		for _, stop := range stopWorkers {

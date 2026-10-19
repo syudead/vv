@@ -185,8 +185,8 @@ func revertFaceLink(
 	if link.person == 0 {
 		return link.appearanceKept, "", nil
 	}
-	linked, err := personStillLinked(ctx, tx, contentKey, link.person)
-	if err != nil || linked {
+	keep, err := keepsFacePerformer(ctx, tx, contentKey, link)
+	if err != nil || keep {
 		return link.appearanceKept, "", err
 	}
 	key, err := currentUserKey(ctx, tx, contentKey)
@@ -209,6 +209,26 @@ func revertFaceLink(
 		return link.appearanceKept, "", nil
 	}
 	return true, key, nil
+}
+
+// keepsFacePerformer reports whether the undo must keep the performer row of the person the link now points to:
+// another appearance still links the person, or an automatic merge moved the linked person into one that already
+// had the credit, which the link therefore did not add.
+func keepsFacePerformer(ctx context.Context, tx *sql.Tx, contentKey string, link faceLinkTarget) (bool, error) {
+	linked, err := personStillLinked(ctx, tx, contentKey, link.person)
+	if err != nil || linked || link.person == link.linkedPerson {
+		return linked, err
+	}
+	var had bool
+	if err := tx.QueryRowContext(ctx, `select exists (select 1 from activity_entry_person_merges m
+		join activity_entries e on e.id = m.entry_id
+		join activity_entry_merge_credits c on c.entry_id = m.entry_id
+		where m.source_id = ? and m.target_id = ? and e.undone_by is null
+		  and c.user_key = ? and c.role = ? and c.target_had = 1)`,
+		link.linkedPerson, link.person, link.userKey, string(domain.PersonPerformer)).Scan(&had); err != nil {
+		return false, fmt.Errorf("cannot read the merges of person %d: %w", link.linkedPerson, err)
+	}
+	return had, nil
 }
 
 // personStillLinked reports whether an appearance of the video not dropped still links the person, which keeps its

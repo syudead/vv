@@ -386,6 +386,10 @@ const errorReasons = {
   person_image_invalid:
     "The file isn't a PNG, JPEG or still WebP up to 120 megapixels, or it can't be read.",
   person_image_too_large: "The image is too large: up to 64 MB.",
+  person_image_no_face:
+    "No face was found in this image. Choose a photo where the face is clear.",
+  person_image_many_faces:
+    "This image shows more than one face. Choose one with a single face.",
   merge_same_organization: "An organization can't be merged into itself.",
   external_id_taken: "Another entry already has this ID.",
   blocked_address: ({ host }) =>
@@ -3269,6 +3273,7 @@ export const en = {
       scan: "Scan",
       library: "Library",
       "auto-tagging": "Auto-tagging",
+      "face-recognition": "Face recognition",
       connections: "Connections",
       plugins: "Plugins",
       conversion: "Video conversion",
@@ -3466,6 +3471,64 @@ export const en = {
       },
       connectionReadFailed: (reason: string) =>
         `Couldn't read the Ollama connection: ${reason}`,
+    },
+    faceRecognition: {
+      progressHeading: "Progress",
+      off: "Face recognition is off.",
+      offHint:
+        "Turn on “Use face recognition” under Recognition to find people in videos.",
+      queue: (queued: number, running: number, done: number, failed: number) =>
+        `Waiting ${formatNumber(queued)} · Analysing ${formatNumber(running)} · Done ${formatNumber(done)} · Failed ${formatNumber(failed)}`,
+      runMissing: "Analyse videos not yet analysed",
+      runAll: "Analyse all videos again",
+      started: (count: number) =>
+        count === 0
+          ? "There were no videos to analyse"
+          : selectPlural(count, {
+              one: `${formatNumber(count)} video was queued for face analysis`,
+              other: `${formatNumber(count)} videos were queued for face analysis`,
+            }),
+      startFailed: (reason: string) => `Couldn't start face analysis: ${reason}`,
+      lastFailure: "Last failure",
+      heading: "Recognition",
+      description:
+        "Finds the main people of each video by their faces and links them to the video as performers. A face nobody is known for becomes an unnamed person, which you name on its page.",
+      enabled: "Use face recognition",
+      enabledHint:
+        "Off: no video is analysed and nothing is downloaded. On: the face runtime and the chosen recognizer are downloaded once, and each imported video is analysed.",
+      downloading: "Downloading the face runtime and recognizer…",
+      downloadedBytes: (done: string, total: string) => `${done} of ${total}`,
+      ready: "Ready",
+      failedTitle: "Face recognition isn't ready",
+      failedReason: {
+        network: "The download couldn't finish. Check the connection and try again.",
+        hash_mismatch:
+          "A downloaded file didn't match what vv expected. Downloading again replaces it.",
+        disk: "The files couldn't be written to the data folder.",
+        helper_start: "The face runtime couldn't start.",
+      },
+      downloadAgain: "Download again",
+      downloadFailed: (reason: string) => `Couldn't start the download: ${reason}`,
+      unsupportedTitle: "Not available on this platform",
+      unsupportedBody:
+        "vv has no face runtime for this platform, so face recognition can't be turned on here.",
+      recognizer: "Recognizer",
+      recognizerHint:
+        "Both find the same faces; the recognizer decides how faces are compared. Switching analyses every video again. Names you gave and merges you confirmed stay.",
+      recognizerName: { sface_int8: "SFace", arcface_r50: "ArcFace r50" },
+      nonCommercial: "Non-commercial",
+      nonCommercialLicense: "Non-commercial use only",
+      optionLine: (license: string, size: string) => `${license} · ${size}`,
+      switchTitle: (name: string) => `Switch to ${name}?`,
+      switchBody: (name: string, nonCommercial: boolean) =>
+        `Every video is analysed again with ${name}, which takes a while. Names you gave and merges you confirmed stay.` +
+        (nonCommercial ? ` ${name} is licensed for non-commercial use only.` : ""),
+      switchAction: "Switch",
+      saving: "Saving…",
+      saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
+      loading: "Loading the face recognition settings",
+      loadFailed: (reason: string) =>
+        `Couldn't load the face recognition settings: ${reason}`,
     },
     versionJudging: {
       heading: "Duplicate judging",

@@ -170,17 +170,20 @@ func (s *FaceStore) Store(ctx context.Context, result domain.FaceAnalysis) error
 	if err := recordFaceLinks(ctx, tx, activityID, userKey, links); err != nil {
 		return err
 	}
-	if _, err := mergeByCast(ctx, tx, c, userKey, now); err != nil {
+	// A refused cast merge leaves the result to be stored without it, as a later work-information change would.
+	_, events, err := mergeByCast(ctx, tx, c, userKey, now)
+	if err != nil && !errors.Is(err, domain.ErrFaceMergeRefused) {
 		return err
 	}
-	var events []domain.Event
 	if added {
 		if err := touchEditedAtForUserKeys(ctx, tx, []string{userKey}, now); err != nil {
 			return err
 		}
-		if events, err = workInfoChangedEvents(ctx, tx, []string{userKey}); err != nil {
+		changed, err := workInfoChangedEvents(ctx, tx, []string{userKey})
+		if err != nil {
 			return err
 		}
+		events = append(events, changed...)
 	}
 	if err := s.db.commitWith(ctx, tx, c, events...); err != nil {
 		return fmt.Errorf("cannot store the face analysis: %w", err)

@@ -342,7 +342,43 @@ person, that person is merged into them; two or more at `Merge`, and every
 provisional person from `Candidate` up, are candidates
 ([`DecideFaceImageMerge`](../../internal/domain/face_match.go)). A provisional
 person's own face merges nobody, so provisional people never merge into each
-other on their own.
+other on their own. A provisional person whose pair with the named person the
+owner dismissed is neither merged nor counted.
+
+The face worker embeds faces between videos
+([`face_images.go`](../../internal/app/face_images.go)). A face's vector is the
+vector of its only good face, by the quality gate of video faces; a face with
+none or several gets a null vector. `PersonImageChanged`, published after the
+commit that sets, replaces or brings a face by a merge, or names a provisional
+person with a face, wakes the worker for that person; the worker also takes any
+face whose `person_face_vectors` row is missing or of another revision or
+recognizer, so a lost event or a recognizer switch still leads to a vector.
+
+| Step | Rule |
+| --- | --- |
+| Read | The face, its stored vector, the recognizer and `face.generation`, in one read |
+| Embed | Skipped when the stored vector is current, as after a naming; one helper request, at most 2 minutes, on the video's helper |
+| Store | `FaceStore.StoreFaceImageVector`, in one transaction: refuses an older generation with `ErrFaceGenerationChanged`, writes nothing for a face changed since, writes the vector, then applies the rule above and merges as a `face_merge` entry ([An automatic merge can be undone](#an-automatic-merge-can-be-undone)) |
+
+| Event | Effect |
+| --- | --- |
+| The settings change during the embedding, or the vector reaches `Store` after a switch | The face is read again under the new settings |
+| The helper does not start | The face waits until the runtime is ready again |
+| The helper exits, answers with an error or takes over 2 minutes | A null vector, as for a face without a good face; the face is not embedded again until it changes |
+| A database error | The worker tries again after 5 seconds |
+
+While the feature is on and its runtime is `ready`, `PUT /api/people/{id}/image`
+detects the faces of the fitted image before storing it, and refuses an image
+without a good face with `400 person_image_no_face` and one with several with
+`400 person_image_many_faces`. The check starts its own helper, one check at a
+time, so a running video goes on; when the helper cannot answer, the face is
+stored unchecked. Plugin faces are not checked.
+
+| Rejected | Why |
+| --- | --- |
+| Embedding inside the upload request | Plugin and merge faces are stored after their own commits, and the worker's helper may be in a video |
+| Embedding only the faces named by events | An event is lost when the server stops before the worker runs, and a recognizer switch publishes none; the stale rows are read from the database |
+| Sharing the worker's helper with the upload check | The worker stops its helper when idle, and a request from another goroutine would start a process nobody stops |
 
 ## The cast rule merges only one-to-one pairs
 
@@ -365,6 +401,12 @@ a `face_merge` entry.
 | --- | --- |
 | A video's analysis ends | In `FaceStore.Store`'s transaction, after the result is written |
 | A work-information write (`VideoWorkInfoChanged`) | In the face worker, before its next claim, while the feature is on; a database error keeps the unchecked videos for the attempt after 5 seconds |
+
+A merge that the target's limits on aliases or external IDs refuse is rolled
+back to a savepoint and wraps `ErrFaceMergeRefused`. Trying again cannot
+succeed until the people change, so `Store` keeps the result without the merge
+and the worker logs the video and drops its check instead of holding up the
+queue.
 
 | Rejected | Why |
 | --- | --- |
@@ -432,6 +474,22 @@ longer `running` writes nothing either.
 | --- | --- |
 | Queueing every video in the library on a switch | Turning the feature on with a recognizer other than the default would queue the whole library, while the default queues nothing |
 | Keeping the old recognizer's vectors until the videos are analysed again | They cannot be compared with the new ones, and a switch back would mix vectors of two analyses |
+
+## The settings page
+
+**Face recognition** in Settings
+([`FaceRecognitionSection.tsx`](../../web/src/settings/FaceRecognitionSection.tsx))
+shares the Auto-tagging page's `Progress` section and run buttons. It reads
+`GET /api/settings/face-recognition` on opening, every second while the
+runtime is `downloading` and every three seconds while videos are queued or
+running. The download's progress and failure sit under the switch that
+started it, with `Download again` on a failure.
+
+| Decision | Why |
+| --- | --- |
+| A recognizer change while on is confirmed first, and the radio moves only when the `PUT` answers | One press queues every video again; a failed save must leave the saved recognizer shown |
+| The non-commercial license is shown on the option itself | The owner must see it before choosing, not after |
+| `unsupported` is a page notice that keeps every control visible with `aria-disabled` | It is the one condition that locks the whole page, as the Ollama lock does on Auto-tagging |
 
 ## The face worker analyses one video at a time
 
@@ -505,7 +563,10 @@ Each undone link records the owner's `undo` entry in
 `activity_entry_face_links.undone_by`; the entry is `already_reverted` when no
 link changed anything. Undo removes the performer row even when the owner had
 credited that person before the analysis, because a credit's origin is read from
-the appearances linked to it, not from the row.
+the appearances linked to it, not from the row. The exception is a link whose
+person a `face_merge` not undone moved into the person it now points to: when
+that merge recorded the credit with `target_had`, the target had it before the
+merge, so the link did not add it and undo keeps the row.
 
 | Rejected | Why |
 | --- | --- |
@@ -534,6 +595,7 @@ back only what the owner has not changed since.
 | A credit the target already had | Stays on the target; the source gets its own row after the role's others, unless marked |
 | A profile field, the favorite or the face the target took | Taken back only while the target still holds the value the merge gave it |
 | Appearances and candidate pairs | Back to the source; the target's copy of a moved pair goes unless the owner decided it since |
+| The pair of the source and the target | Marked `dismissed` in `face_candidates`, added when it has no row, so neither the cast rule nor the face-image rule merges it again or offers it |
 | A smart folder rule's person | Back to the source while the rule still names the target |
 
 Editing a video's credits writes no activity entry, so the owner's later
@@ -550,6 +612,7 @@ whose target was deleted, or whose source id exists again, records
 | Keep merged sources as hidden rows | Every read of people and credits would have to skip them |
 | Compare the credits at undo | A credit the owner removed and added again looks unchanged |
 | Make the owner's merges undoable too | Only automatic decisions are undone from the activity log, and owner merges write no entry |
+| Leave the undone pair open | The work-information write of the undo, or the next analysis, would apply the same rule and merge the pair again |
 
 ## Face entries on the activity screen
 
