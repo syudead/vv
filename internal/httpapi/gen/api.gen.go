@@ -2728,6 +2728,9 @@ type Alias struct {
 
 // ApplyWorkInfoFetchRequest defines model for ApplyWorkInfoFetchRequest.
 type ApplyWorkInfoFetchRequest struct {
+	// CoverByPage With cover in fields, validate and consume the result for the cover but leave the thumbnail to the page, which uploads its own framing of the cover through uploadThumbnailImage after this call succeeds. Ignored without cover in fields.
+	CoverByPage *bool `json:"coverByPage,omitempty"`
+
 	// Fields Fields to apply; nonempty, and every selected field must have a result value.
 	Fields []WorkInfoField `json:"fields"`
 

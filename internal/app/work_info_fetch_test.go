@@ -353,7 +353,7 @@ func TestApplyWorkInfoFetchWritesSelectedFieldsAndReportsSkippedTags(t *testing.
 	result := e.fetch(t, "Title", "drama", " drama ", "spoiler", "bad\x01name", "comedy")
 
 	applied, err := e.plugins.ApplyWorkInfoFetch(ctx, fetchVideo, result.ID,
-		[]domain.WorkInfoField{domain.WorkInfoFieldTitle, domain.WorkInfoFieldTags}, nil)
+		[]domain.WorkInfoField{domain.WorkInfoFieldTitle, domain.WorkInfoFieldTags}, nil, false)
 	if err != nil {
 		t.Fatalf("ApplyWorkInfoFetch: %v", err)
 	}
@@ -368,7 +368,7 @@ func TestApplyWorkInfoFetchWritesSelectedFieldsAndReportsSkippedTags(t *testing.
 		t.Fatalf("apply = %+v; want the fetch's plugin and digest", e.applier.calls[0])
 	}
 
-	if _, err := e.plugins.ApplyWorkInfoFetch(ctx, fetchVideo, result.ID, []domain.WorkInfoField{domain.WorkInfoFieldTitle}, nil); !errors.Is(err, domain.ErrWorkInfoFetchStale) {
+	if _, err := e.plugins.ApplyWorkInfoFetch(ctx, fetchVideo, result.ID, []domain.WorkInfoField{domain.WorkInfoFieldTitle}, nil, false); !errors.Is(err, domain.ErrWorkInfoFetchStale) {
 		t.Fatalf("second apply: err = %v; want ErrWorkInfoFetchStale", err)
 	}
 }
@@ -377,7 +377,7 @@ func TestApplyWorkInfoFetchTitleOnlyLeavesTags(t *testing.T) {
 	e := newFetchEnv()
 	result := e.fetch(t, "Title", "drama")
 	if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-		[]domain.WorkInfoField{domain.WorkInfoFieldTitle}, nil); err != nil {
+		[]domain.WorkInfoField{domain.WorkInfoFieldTitle}, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if e.applier.calls[0].Tags != nil || len(e.applier.tags[fetchVideo]) != 0 {
@@ -420,7 +420,7 @@ func TestApplyWorkInfoFetchRefusals(t *testing.T) {
 			e := newFetchEnv()
 			result := e.fetch(t, "Title")
 			tc.change(e)
-			_, err := e.plugins.ApplyWorkInfoFetch(context.Background(), tc.video, result.ID, tc.fields, nil)
+			_, err := e.plugins.ApplyWorkInfoFetch(context.Background(), tc.video, result.ID, tc.fields, nil, false)
 			if err == nil || (tc.want != nil && !errors.Is(err, tc.want)) {
 				t.Fatalf("err = %v; want %v", err, tc.want)
 			}
@@ -429,7 +429,7 @@ func TestApplyWorkInfoFetchRefusals(t *testing.T) {
 			}
 			// Retained results remain applicable after correcting the problem.
 			e.applier.err = nil
-			_, err = e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, title, nil)
+			_, err = e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, title, nil, false)
 			if tc.keeps && err != nil {
 				t.Fatalf("the result was not kept: %v", err)
 			}

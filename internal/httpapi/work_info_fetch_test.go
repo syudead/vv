@@ -27,6 +27,7 @@ type scriptedPlugins struct {
 	calls      int
 	fields     []domain.WorkInfoField
 	tags       []string
+	pageCover  bool
 	ids        []string
 	cover      *domain.WorkInfoCover
 	// personImages maps an index to its kept image.
@@ -62,9 +63,9 @@ func (p *scriptedPlugins) WorkInfoFetchCover(int64, string) (domain.WorkInfoCove
 	return *p.cover, nil
 }
 
-func (p *scriptedPlugins) ApplyWorkInfoFetch(_ context.Context, _ int64, _ string, fields []domain.WorkInfoField, tags []string) (domain.WorkInfoApplied, error) {
+func (p *scriptedPlugins) ApplyWorkInfoFetch(_ context.Context, _ int64, _ string, fields []domain.WorkInfoField, tags []string, coverByPage bool) (domain.WorkInfoApplied, error) {
 	p.calls++
-	p.fields, p.tags = fields, tags
+	p.fields, p.tags, p.pageCover = fields, tags, coverByPage
 	return p.applied, p.err
 }
 
@@ -258,6 +259,19 @@ func TestWorkInfoApplyPassesTheSelectedTags(t *testing.T) {
 	e.plugins.err = domain.ErrWorkInfoApplyInvalid
 	status, body = e.post(applyPath, `{"fields":["tags"],"tags":["horror"]}`, e.owner)
 	assertErrorBody(t, "a name the result does not have", status, body, wantError{status: 400, code: gen.ErrorCodeInvalidRequest})
+}
+
+func TestWorkInfoApplyPassesCoverByPage(t *testing.T) {
+	e := newFetchRouteEnv(t)
+	for body, want := range map[string]bool{
+		`{"fields":["cover"],"coverByPage":true}`: true,
+		`{"fields":["cover"]}`:                    false,
+	} {
+		status, got := e.post(applyPath, body, e.owner)
+		if status != http.StatusOK || e.plugins.pageCover != want {
+			t.Fatalf("%s: apply = %d %s, coverByPage %v; want %v", body, status, got, e.plugins.pageCover, want)
+		}
+	}
 }
 
 func TestWorkInfoApplySucceedsWhenTheDetailIsPartlyUnreadable(t *testing.T) {

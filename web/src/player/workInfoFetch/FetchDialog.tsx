@@ -1,13 +1,19 @@
 import { CircleCheck } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
-import { isAborted, RequestFailed, type Video } from "../../api/client";
+import {
+  isAborted,
+  RequestFailed,
+  uploadThumbnailImage,
+  type Video,
+} from "../../api/client";
 import { type DetailMark, detailMark } from "../../api/useVideoDetail";
 import {
   applyWorkInfoFetch,
   fetchWorkInfo,
   searchWorkInfo,
   type WorkInfoCandidate,
+  type WorkInfoFetchApplied,
   type WorkInfoField,
   type WorkInfoPlugin,
 } from "../../api/workInfoPlugins";
@@ -16,7 +22,9 @@ import { FormDialog } from "../../ui/patterns/form-dialog";
 import { Alert, AlertTitle } from "../../ui/shadcn/alert";
 import { Spinner } from "../../ui/shadcn/spinner";
 import { useToast } from "../../ui/Toast";
+import { encodeComposition } from "../thumbnailUpload/composeImage";
 import CompareStep, { type Fetched } from "./CompareStep";
+import { type CoverFraming, useCoverFraming } from "./coverFraming";
 import {
   canFetch,
   type FindBy,
@@ -65,6 +73,31 @@ function busyLabel(label: string): ReactNode {
   );
 }
 
+/** Upload a cover the page framed after the other fields commit; a failure leaves the thumbnail and reports the cover as skipped, as the server does for a cover it fits. */
+async function uploadFramedCover(
+  applied: WorkInfoFetchApplied,
+  cover: CoverFraming & { image: NonNullable<CoverFraming["image"]> },
+  size: string,
+  signal: AbortSignal,
+): Promise<WorkInfoFetchApplied> {
+  try {
+    const composed = await encodeComposition(cover.image, cover.aspect, cover.fit);
+    const video = await uploadThumbnailImage(
+      applied.video.id,
+      new File([composed], "thumbnail.png", { type: "image/png" }),
+      applied.video.contentVersion ?? "",
+      signal,
+    );
+    return { ...applied, video };
+  } catch (error) {
+    if (isAborted(error) || signal.aborted) throw error;
+    return {
+      ...applied,
+      skipped: [...applied.skipped, { field: "cover", value: size, reason: "invalid" }],
+    };
+  }
+}
+
 /** Serialize search/fetch and discard responses after closing. Applying is the only mutation and prevents closing until complete. */
 function useFetchFlow({
   video,
@@ -100,6 +133,10 @@ function useFetchFlow({
   const [applyFailure, setApplyFailure] = useState<unknown>(null);
   const [applying, setApplying] = useState(false);
   const [skipped, setSkipped] = useState<SkippedLine[]>([]);
+  const cover = useCoverFraming(
+    video,
+    step === "compare" ? (fetched?.result ?? null) : null,
+  );
   const controller = useRef<AbortController | null>(null);
   const latestVideo = useRef(video);
   latestVideo.current = video;
@@ -157,14 +194,27 @@ function useFetchFlow({
     setApplying(true);
     setApplyFailure(null);
     const mark = detailMark();
+    // A cover the page decoded is checked and consumed by the apply, then uploaded with the owner's framing.
+    const framed = selection.includes("cover") ? cover.image : null;
     try {
-      const applied = await applyWorkInfoFetch(
+      let applied = await applyWorkInfoFetch(
         video.id,
         fetched.result.fetchId,
         selection,
         selection.includes("tags") ? tags : undefined,
         signal,
+        framed !== null,
       );
+      if (framed !== null && fetched.result.cover !== undefined)
+        applied = await uploadFramedCover(
+          applied,
+          { ...cover, image: framed },
+          t.player.workInfoFetch.coverSize(
+            fetched.result.cover.width,
+            fetched.result.cover.height,
+          ),
+          signal,
+        );
       onApplied(applied.video, mark);
       const lines = skippedLines(applied.skippedTags, applied.skipped);
       if (lines.length === 0) {
@@ -209,6 +259,7 @@ function useFetchFlow({
     applyFailure,
     applying,
     skipped,
+    cover,
     submit,
     choosePlugin: (id: number) => {
       setPluginId(id);
@@ -330,6 +381,7 @@ export default function FetchDialog(props: {
           stale={flow.stale}
           refetching={flow.running !== null}
           failure={flow.applyFailure}
+          cover={flow.cover}
           onToggle={flow.toggle}
           onToggleTag={flow.toggleTag}
           onBack={flow.back}

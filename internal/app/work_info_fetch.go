@@ -172,9 +172,9 @@ func (p *WorkInfoPlugins) runNetwork(ctx context.Context) (domain.WorkInfoRunNet
 	return p.network.RunNetwork(ctx)
 }
 
-// Apply selected fields once, returning the updated video and skipped tags/details; nil tags selects all fetched tags, otherwise use the exact selected names. Missing/expired or changed-plugin results return ErrWorkInfoFetchStale, wrong-video results ErrNotFound, invalid fields/tag selections ErrWorkInfoApplyInvalid, and failed application writes nothing; the store rechecks plugin state transactionally, reporting invalid original names and normalized rejected names in fetched order.
+// Apply selected fields once; coverByPage checks and consumes a selected cover without applying it, for a page that uploads its own framing. Returns the updated video and skipped tags/details; nil tags selects all fetched tags, otherwise use the exact selected names. Missing/expired or changed-plugin results return ErrWorkInfoFetchStale, wrong-video results ErrNotFound, invalid fields/tag selections ErrWorkInfoApplyInvalid, and failed application writes nothing; the store rechecks plugin state transactionally, reporting invalid original names and normalized rejected names in fetched order.
 func (p *WorkInfoPlugins) ApplyWorkInfoFetch(
-	ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField, tags []string,
+	ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField, tags []string, coverByPage bool,
 ) (domain.WorkInfoApplied, error) {
 	if p.applier == nil {
 		return domain.WorkInfoApplied{}, errors.New("work-info fetches are not configured")
@@ -183,7 +183,7 @@ func (p *WorkInfoPlugins) ApplyWorkInfoFetch(
 	if err != nil {
 		return domain.WorkInfoApplied{}, err
 	}
-	applied, err := p.applyFetch(ctx, fetch, fields, tags)
+	applied, err := p.applyFetch(ctx, fetch, fields, tags, coverByPage)
 	if err != nil && !errors.Is(err, domain.ErrWorkInfoFetchStale) && !errors.Is(err, domain.ErrNotFound) {
 		// Restore results after transient writes fail so the owner can retry.
 		p.fetches.restore(fetchID, fetch)
@@ -192,7 +192,7 @@ func (p *WorkInfoPlugins) ApplyWorkInfoFetch(
 }
 
 func (p *WorkInfoPlugins) applyFetch(
-	ctx context.Context, fetch *workInfoFetch, fields []domain.WorkInfoField, tags []string,
+	ctx context.Context, fetch *workInfoFetch, fields []domain.WorkInfoField, tags []string, coverByPage bool,
 ) (domain.WorkInfoApplied, error) {
 	plugin, err := p.store.WorkInfoPlugin(ctx, fetch.pluginID)
 	switch {
@@ -223,7 +223,7 @@ func (p *WorkInfoPlugins) applyFetch(
 	}
 	video := applied.Video
 	var coverSkipped []domain.SkippedWorkInfoValue
-	if slices.Contains(fields, domain.WorkInfoFieldCover) {
+	if slices.Contains(fields, domain.WorkInfoFieldCover) && !coverByPage {
 		// Apply covers only after the transaction revalidates the plugin and commits metadata.
 		video, coverSkipped = p.applyCover(ctx, fetch, video)
 	}
