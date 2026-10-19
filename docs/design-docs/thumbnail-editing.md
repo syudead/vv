@@ -218,16 +218,28 @@ the same gate while it decodes and fits
 ### The page frames the image before it is sent
 
 Picking a file does not upload it. The page decodes the file and draws it on a
-canvas at the video's display aspect, 2048 px on the long side (the image's own
-aspect when the video's is unknown), and the preview shows that canvas in the
-card's thumbnail frame. `Use as thumbnail` uploads the same drawing as a PNG, so
-the thumbnail is what the preview showed
+canvas at the video's display aspect, 2048 px on the long side (the turned
+image's own aspect when the video's is unknown), and the preview shows that
+canvas in the card's thumbnail frame. `Use as thumbnail` uploads the same
+drawing as a PNG, so the thumbnail is what the preview showed
 ([web/src/player/thumbnailUpload/](../../web/src/player/thumbnailUpload/)).
 
-| Fit | Drawing |
+The owner places the image freely: one fit holds its centre's offset from the
+frame's centre, its zoom and a quarter turn, and what fills the frame where the
+image does not.
+
+| Control | Effect |
 | --- | --- |
-| `Whole image` (default) | The whole image, centred; the rest of the frame is black under a blurred copy of the image at half opacity. An image within 1 px of the frame's aspect fills it |
-| `Fill frame` | The image covers the frame at zoom 1× to 4×; the owner moves it, and it never leaves a gap |
+| Drag, arrow keys | Move the image anywhere, until 10% of the frame's side (or the whole image, when smaller) still overlaps the frame. While dragging, an axis within 1.5% of the long side of the frame's centre or of an edge-to-edge alignment snaps to it |
+| `Zoom`, wheel, `+` and `-` | 0.25× to 16× of the size that shows the whole image, about the frame's centre; up to four times the fill zoom for an image too narrow to fill the frame at 16× |
+| `Whole image` (default) | Centred at 1×. An image within 1 px of the frame's aspect fills it |
+| `Fill frame` | Centred at the zoom that just covers the frame |
+| `Turn left`, `Turn right` | A quarter turn; free angles are not offered, as covers and photos rarely need them |
+| `Empty space` | `Blurred image` (default): black under a blurred copy of the image at half opacity; `Black` |
+
+The preview draws the image a second time at a quarter of the resolution on a
+canvas three frames wide and high, faint behind the frame, so the owner sees
+what falls outside it.
 
 Every drawing starts from a black canvas, so the transparent parts of an image
 show black in the preview, as they do in the stored JPEG.
@@ -239,6 +251,8 @@ framing for an edit from the current thumbnail.
 | Rejected | Why |
 | --- | --- |
 | Send the original with a crop rectangle and let ffmpeg compose | The preview and the result would come from two drawings; Go and ffmpeg also ignore a JPEG's EXIF orientation, which the browser applies |
+| Keep the image covering the frame whenever it is zoomed in | A jacket scan's front or a small logo could not be placed where the owner wants |
+| Free rotation angles | Covers and photos rarely need them, and a turned rectangle would need its own cover maths |
 | Store the image at its own aspect and let each frame letterbox it | Cards place the scrub frames and the narrow-video backdrop on the video's aspect  |
 | A margin in the theme's colour | The JPEG has no transparency and the same file serves both themes |
 | The original's resolution on the canvas | Some browsers cap a canvas far below 120 megapixels, and the stored source keeps at most 2048 px anyway |

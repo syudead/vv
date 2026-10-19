@@ -3,9 +3,7 @@ import { useEffect, useState } from "react";
 import type { Video } from "../../api/client";
 import { getWorkInfoFetchCover, type WorkInfoFetch } from "../../api/workInfoPlugins";
 import { loadUploadImage, type UploadImage } from "../thumbnailUpload/composeImage";
-import { type Fit, frameAspect } from "../thumbnailUpload/framing";
-
-const WHOLE_IMAGE: Fit = { mode: "contain" };
+import { type Fit, frameAspect, WHOLE_IMAGE } from "../thumbnailUpload/framing";
 
 /** A fetched cover decoded in the page so the owner frames it as an uploaded image. image is null while it loads or when the page cannot decode it; the server then fits the cover itself. */
 export interface CoverFraming {
