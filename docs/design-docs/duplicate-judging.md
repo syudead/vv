@@ -150,3 +150,44 @@ The claim skips a held pair as it skips an unbundled one, and a content change
 at the same path re-keys both tables and every key the entries hold, finished
 entries included, so an undo after the change still finds the bundle member
 or the tag under the new key.
+
+## Judging again after a force rescan
+
+A forced fingerprint job
+([`internal/store/version_rejudge.go`](../../internal/store/version_rejudge.go))
+lists its key's automatically decided pairs as candidates again, in the
+transaction that stores the fingerprint. A pair is listed when its latest
+`version_judgement` decision is a `done` `same` or `different` entry by `rule`
+or `ai`, not undone, and still in force under the undo rules above: the
+owner has not unbundled, held or decided the pair again since the entry's
+`decided_mark`. An owner's own bundle or dismissal has no automatic entry, so
+it is never listed. With judging off nothing is listed, since there is no
+automatic judgement to redo; an unforced fingerprint lists nothing either.
+
+The listed row carries `rejudge_of`, the id of that entry. The claim takes it
+although the pair is bundled or dismissed, and still skips a pair with a
+`video_version_unbundles` or `video_version_judging_holds` row. The prior
+decision stays in force until the verdict, and the verdict gets a new entry,
+so a bundle never dissolves while the pair waits or the model is unreachable.
+
+| Verdict | Prior `same` (bundled) | Prior `different` (dismissed) |
+| --- | --- | --- |
+| `same` | Nothing changes; the entry takes over the prior's undo keys | The dismissal is deleted, then the pair is bundled; a conflict restores the dismissal and the entry is `undecided` |
+| `different` | The pair is dismissed and the joined side leaves as the undo splits it | Nothing changes |
+| `undecided`, `failed`, `no_connection` | The bundle stays; the entry shows the reason | The dismissal stays; the entry shows the reason |
+
+The row is removed once the verdict is applied, so a `failed` or
+`no_connection` result is not retried; the next force rescan judges the pair
+again. The split for `different` writes no `video_version_unbundles` row. That
+row protects an owner's `Unbundle` from automatic bundling, and the claim
+skips pairs that have it, so writing it here would keep every later force
+rescan from judging the pair; the dismissal already keeps the pair apart.
+When the owner changes the pair after it was listed, the prior is no longer
+in force when the verdict arrives: the row is removed, nothing changes and
+the entry closes as `superseded`. Bundling and succession prune ordinary
+candidates of bundled or dismissed pairs but keep listed rows, which are
+bundled or dismissed by definition. For the same reason, an automatic bundle
+does not close the entry of a listed pair among its members as `superseded`;
+that entry closes with its own verdict. A pair whose two keys are both rescanned
+is listed again by each fingerprint, and the later listing replaces the
+earlier row, so the judgement sees both new fingerprints.

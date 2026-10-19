@@ -49,7 +49,7 @@ func (s *IngestStore) ApplyFingerprintForJob(
 		return false, fmt.Errorf("cannot save the fingerprint (id=%d): %w", job.VideoID, err)
 	}
 	c := &changes{}
-	finder := pairFinder{jobID: job.ID, key: job.ContentKey}
+	finder := pairFinder{jobID: job.ID, key: job.ContentKey, force: job.Force}
 	if err := rebuildVersionCandidates(ctx, tx, c, job.ContentKey, fingerprint, finder); err != nil {
 		return false, err
 	}
@@ -112,6 +112,11 @@ func rebuildVersionCandidates(
 	if err := computeVersionCandidates(ctx, tx, key, fingerprint); err != nil {
 		return err
 	}
+	if finder.force {
+		if err := listRejudgeCandidates(ctx, tx, key); err != nil {
+			return err
+		}
+	}
 	now := time.Now()
 	if err := syncPairActivities(ctx, tx, c, []string{key}, finder, now); err != nil {
 		return err
@@ -162,15 +167,17 @@ func computeVersionCandidates(ctx context.Context, tx *sql.Tx, key string, finge
 	return nil
 }
 
-// Prune after bundling or succession changes membership or dismissal keys.
+// Prune after bundling or succession changes membership or dismissal keys; a re-judged pair is bundled or dismissed
+// by definition, so it stays until its verdict is applied.
 func pruneVersionCandidates(ctx context.Context, tx *sql.Tx) error {
 	if _, err := tx.ExecContext(ctx, `delete from video_version_candidates
-		where exists (select 1 from video_version_dismissals d
-		               where d.key_a = video_version_candidates.key_a and d.key_b = video_version_candidates.key_b)
-		   or exists (select 1 from video_bundle_members ma
-		                join video_bundle_members mb on mb.bundle_id = ma.bundle_id
-		               where ma.content_key = video_version_candidates.key_a
-		                 and mb.content_key = video_version_candidates.key_b)`); err != nil {
+		where rejudge_of is null
+		  and (exists (select 1 from video_version_dismissals d
+		                where d.key_a = video_version_candidates.key_a and d.key_b = video_version_candidates.key_b)
+		    or exists (select 1 from video_bundle_members ma
+		                 join video_bundle_members mb on mb.bundle_id = ma.bundle_id
+		                where ma.content_key = video_version_candidates.key_a
+		                  and mb.content_key = video_version_candidates.key_b))`); err != nil {
 		return fmt.Errorf("cannot prune the version candidates: %w", err)
 	}
 	return nil
@@ -184,11 +191,16 @@ const candidatePairsFrom = `from video_version_candidates c
 
 // Both keys need registered locations; dismissed pairs and pairs in the same bundle are excluded.
 func candidatePairsCondition() string {
-	return registeredVideoCondition("va") + ` and ` + registeredVideoCondition("vb") + `
-	and not exists (select 1 from video_version_dismissals d where d.key_a = c.key_a and d.key_b = c.key_b)
+	return registeredPairCondition() + ` and ` + undecidedPairCondition
+}
+
+func registeredPairCondition() string {
+	return registeredVideoCondition("va") + ` and ` + registeredVideoCondition("vb")
+}
+
+const undecidedPairCondition = `not exists (select 1 from video_version_dismissals d where d.key_a = c.key_a and d.key_b = c.key_b)
 	and not exists (select 1 from video_bundle_members ma join video_bundle_members mb on mb.bundle_id = ma.bundle_id
 	                 where ma.content_key = c.key_a and mb.content_key = c.key_b)`
-}
 
 // Candidates returns newest eligible pairs with owner-visible details and an uncapped total; each pair orders videos by ID.
 func (s *VersionStore) Candidates(ctx context.Context) (domain.VersionCandidatePage, error) {

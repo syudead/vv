@@ -11,6 +11,8 @@ alter table scans add column rescan_path text;
 alter table scans add column rescan_video_id integer;
 -- The force pass queued this video's jobs in this scan; a resumed scan copies the marks to skip those videos.
 alter table scan_videos add column forced integer not null default 0;
+-- The automatic decision (activity entry id) this candidate judges again; such a pair stays claimable while bundled or dismissed.
+alter table video_version_candidates add column rejudge_of integer;
 -- Forced rebuilds of each artifact; artifact URLs carry the count so screens load the rebuilt file.
 alter table videos add column thumbnail_build integer not null default 0;
 alter table videos add column seek_thumbnail_build integer not null default 0;
@@ -20,6 +22,7 @@ alter table videos add column preview_build integer not null default 0;
 alter table videos drop column preview_build;
 alter table videos drop column seek_thumbnail_build;
 alter table videos drop column thumbnail_build;
+alter table video_version_candidates drop column rejudge_of;
 alter table scan_videos drop column forced;
 alter table scans drop column rescan_video_id;
 alter table scans drop column rescan_path;

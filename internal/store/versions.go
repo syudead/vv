@@ -297,7 +297,7 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 		return domain.Video{}, domain.ErrNotBundled
 	}
 	c := &changes{}
-	split, err := splitBundle(ctx, tx, c, bundle, []string{key}, key)
+	split, err := splitBundle(ctx, tx, c, bundle, []string{key}, key, true)
 	if err != nil {
 		return domain.Video{}, err
 	}
@@ -325,9 +325,12 @@ func (s bundleSplit) events() []domain.Event {
 		groupsChangedEvents(s.changedGroups)...)
 }
 
-// Split one side atomically, recording only cross-side pairs; multiple leaving members retain copied bundle data and a singleton remainder inherits the original bundle data.
+// Split one side atomically; multiple leaving members retain copied bundle data and a singleton remainder inherits
+// the original bundle data. holdApart records the cross-side pairs in video_version_unbundles, which keeps automatic
+// judging from bundling them again.
 func splitBundle(
 	ctx context.Context, tx *sql.Tx, c *changes, bundle bundleRef, leaving []string, representative string,
+	holdApart bool,
 ) (bundleSplit, error) {
 	members, err := bundleMemberKeys(ctx, tx, bundle.id)
 	if err != nil {
@@ -343,7 +346,7 @@ func splitBundle(
 	}
 	remaining := slices.DeleteFunc(slices.Clone(members), func(member string) bool { return slices.Contains(leaving, member) })
 	now := time.Now().Unix()
-	if err := detachLeavingMembers(ctx, tx, bundle, leaving, remaining, representative, now); err != nil {
+	if err := detachLeavingMembers(ctx, tx, bundle, leaving, remaining, representative, holdApart, now); err != nil {
 		return bundleSplit{}, err
 	}
 	rekeyedGroups, err := settleRemainingMembers(ctx, tx, bundle, leaving, remaining, now)
@@ -366,12 +369,14 @@ func splitBundle(
 }
 
 func detachLeavingMembers(
-	ctx context.Context, tx *sql.Tx, bundle bundleRef, leaving, remaining []string, representative string, now int64,
+	ctx context.Context, tx *sql.Tx, bundle bundleRef, leaving, remaining []string, representative string,
+	holdApart bool, now int64,
 ) error {
 	for _, key := range leaving {
-		// Do not automatically rebundle members across the split.
-		if err := recordUnbundledPairs(ctx, tx, key, remaining, now); err != nil {
-			return err
+		if holdApart {
+			if err := recordUnbundledPairs(ctx, tx, key, remaining, now); err != nil {
+				return err
+			}
 		}
 		if _, err := tx.ExecContext(ctx, `delete from video_bundle_members where content_key = ?`, key); err != nil {
 			return fmt.Errorf("cannot unbundle the video: %w", err)

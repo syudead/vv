@@ -283,7 +283,7 @@ func assertVideoBundleInvariant(t *testing.T, db *DB) {
 	}
 }
 
-// Candidates cannot contain dismissed pairs or members of the same bundle.
+// Candidates cannot contain dismissed pairs or members of the same bundle, except a pair listed to be judged again.
 func assertVersionCandidateInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
@@ -296,11 +296,21 @@ func assertVersionCandidateInvariant(t *testing.T, db *DB) {
 	if present == 0 {
 		return
 	}
+	// Down-migration tests may already have dropped the column.
+	var rejudgeColumn int
+	if err := db.sql.QueryRow(`select count(*) from pragma_table_info('video_version_candidates')
+		where name = 'rejudge_of'`).Scan(&rejudgeColumn); err != nil {
+		t.Fatalf("候補の不変条件を検査できない（スキーマを確認できない）: %v", err)
+	}
+	firstJudgement := ""
+	if rejudgeColumn > 0 {
+		firstJudgement = "c.rejudge_of is null and "
+	}
 
 	for name, query := range map[string]string{
-		"却下した組の候補": `select count(*) from video_version_candidates c where exists (
+		"却下した組の候補": `select count(*) from video_version_candidates c where ` + firstJudgement + `exists (
 			select 1 from video_version_dismissals d where d.key_a = c.key_a and d.key_b = c.key_b)`,
-		"同じ集まりの 2 本の候補": `select count(*) from video_version_candidates c where exists (
+		"同じ集まりの 2 本の候補": `select count(*) from video_version_candidates c where ` + firstJudgement + `exists (
 			select 1 from video_bundle_members ma join video_bundle_members mb on mb.bundle_id = ma.bundle_id
 			 where ma.content_key = c.key_a and mb.content_key = c.key_b)`,
 	} {
