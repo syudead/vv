@@ -2141,6 +2141,10 @@ export const en = {
       nowThumbnail: "Current thumbnail",
       fetchedCover: (width: number, height: number) =>
         `Fetched cover, ${formatNumber(width)} × ${formatNumber(height)}. Becomes the thumbnail when you apply`,
+      coverSize: (width: number, height: number) =>
+        `${formatNumber(width)} × ${formatNumber(height)}`,
+      adjustCover: "Adjust framing",
+      keepFraming: "Use this framing",
       nothingToAdd: "Nothing to add",
       newMark: "New",
       newHint: "Created when you apply",

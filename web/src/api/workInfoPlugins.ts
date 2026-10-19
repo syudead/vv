@@ -147,6 +147,17 @@ export function workInfoFetchCoverUrl(videoId: number, fetchId: string): string 
   return `${fetchPath(videoId, fetchId)}/cover`;
 }
 
+/** Read the cover bytes so the page can frame them before they become the thumbnail. */
+export async function getWorkInfoFetchCover(
+  videoId: number,
+  fetchId: string,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const response = await apiFetch(workInfoFetchCoverUrl(videoId, fetchId), { signal });
+  if (!response.ok) throw await toRequestFailed(response);
+  return response.blob();
+}
+
 /** The face kept with the fetch for the person at index in the result's people. */
 export function workInfoFetchPersonImageUrl(
   videoId: number,

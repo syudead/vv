@@ -326,6 +326,37 @@ content changed since the fetch, a write error) is skipped as `invalid`: the
 fetch is single-use and already applied, so an error would leave the screen
 unable to tell what was written.
 
+### The page frames the cover as it frames an uploaded image
+
+The comparison decodes the cover in the page and draws it on the video's
+aspect with the uploaded image's fits, `Whole image` by default or
+`Fill frame` with the owner's zoom and position
+([thumbnail-editing.md](thumbnail-editing.md#the-page-frames-the-image-before-it-is-sent)).
+`Adjust framing` opens the same preview; its `Use this framing` keeps the
+fit and uploads nothing. The diagram shows an apply with the cover selected.
+
+```mermaid
+sequenceDiagram
+  participant P as Page
+  participant A as Apply route
+  participant U as Thumbnail upload route
+  P->>A: fields without cover (skipped when cover is the only one)
+  A-->>P: video, skipped values
+  P->>P: draw the cover with the chosen fit as a PNG
+  P->>U: PNG with the applied video's contentVersion
+  U-->>P: video with the new thumbnail
+```
+
+A failed upload adds the cover to the skipped values as `invalid`, the
+server's report for a cover it could not apply. A cover the page cannot
+decode stays an `<img>` without `Adjust framing`, and the apply sends `cover`
+so the server fits it as above.
+
+| Rejected | Why |
+| --- | --- |
+| Send the fit with the apply and let the server compose | The preview and the result would come from two drawings, the reason uploads compose in the page |
+| Apply the cover the server fitted | A centre crop drops the part of a cover the owner wants, such as the front of a jacket scan |
+
 | Rejected | Why |
 | --- | --- |
 | The plugin downloads the image and returns it in its response | The response is limited to 1 MiB, and base64 grows the image by a third |
