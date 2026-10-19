@@ -22,8 +22,8 @@ Sources that already decide things, linked rather than repeated here:
 This feature adds one settings page and changes three existing screens: a
 **Face recognition** page in Settings (requirements 1 to 3, `UI品質` first
 point); **provisional people** on the people grid, the person page, the video
-page's cast and the library filter (requirement 6, `UI品質` second point); the
-person page's **candidates** and **faces in videos** (requirements 10 and 11,
+page's cast, the credits picker and the library filter (requirement 6,
+`UI品質` second point); the person page's **candidates** and **faces in videos** (requirements 10 and 11,
 `UI品質` third point); and **face entries** in the activity log (requirement
 12). Nothing else on these screens changes.
 
@@ -135,9 +135,11 @@ because that person is what the owner opens to check the result.
 | Candidate actions | Same person · Not the same | `outline` `sm`, then `ghost` `sm` |
 | Candidate confirmed, shown person stays | Merged "Unnamed person" | Toast; `credits.mergedInto` when the page moves |
 | Candidate failed | Couldn't merge: {reason} · Couldn't dismiss: {reason} | One line under the row, `text-sm text-destructive` |
+| Credits picker group | Unnamed people | `CreditCommand` group heading in `Performers`, after the name results |
+| Credits picker row, name typed | Add as {name} | The hint line of each `Unnamed people` row while the input has text |
 | Faces group heading | Faces in videos | `h2` in the profile column |
 | Faces row, video gone | Not in the library | `text-muted-foreground`, no link |
-| Faces row, span | 0:12–1:40 | `formatDuration` of both ends; each span is a link |
+| Faces row, span | 0:12–1:40 | `formatDuration` of both ends, each multiplied by 1000 because `spans` are seconds and `formatDuration` takes milliseconds; each span is a link |
 | Faces, more | Show more | `link` `sm` `Button`, as `Show more` on the bio |
 | Activity kind `face_analysis` | Face analysis | `activity.kind` |
 | Activity kind `face_merge` | Person merged | |
@@ -145,7 +147,7 @@ because that person is what the owner opens to check the result.
 | `face_analysis` result, links | Linked Alice, Unnamed person (new) | Comma-separated names; `(new)` after a person the run created; names of undone links are left out |
 | `face_analysis` result, undone | · 1 link undone | Appended when some links are undone; `· All links undone` when every one is |
 | `face_analysis` result, none | No main person found | |
-| `face_merge` result | Merged an unnamed person into Alice | |
+| `face_merge` result | Merged "Unnamed person" into Alice | Names both people: the source by `credits.unnamedPerson`, since a merged source is always provisional, and the target by its name |
 | Card action, one link | Undo | The existing `Undo` |
 | Card action, several links | Undo links… | The `Undo tags…` form: a menu of the people, then `All links` |
 | Card action, person subject | Open person | Icon link `UserRound` to `/people/:id`, in `OpenLinks` |
@@ -170,6 +172,12 @@ already paired.
 | --- | --- | --- |
 | `judge` | `size-12`, `rounded-full` | A person's face in a row where the owner decides whether two people are the same |
 | `scene` | `size-12`, `rounded-md` | A face cut from a video; square, so it reads as a frame of the video and not as a person |
+
+The "Show provisional people on the people screens" unit gives `CreditCommand`
+(`web/src/ui/CreditCommand.tsx`, its registry item and
+[components.md, CreditCommand](../../web/registry/rules/components.md#creditcommand))
+an optional second group with a heading whose rows lead with a
+`PersonFace chip`, before the details editor uses it.
 
 The icons are lucide `Unplug`, `CircleAlert`, `CircleCheck`, `Undo2`,
 `UserRound` and `ScanFace` (the `Face recognition` entry has no icon, as no
@@ -223,19 +231,21 @@ between them.
 
 ```mermaid
 stateDiagram-v2
-  [*] --> Absent: feature off
-  Absent --> Downloading: switch on
+  [*] --> Off: feature off
+  Off --> Downloading: switch on, files absent
+  Off --> Ready: switch on, files kept
   Downloading --> Ready: files verified
   Downloading --> Failed: network, hash, disk, helper
   Failed --> Downloading: Download again
   Ready --> Downloading: recognizer switched
-  Ready --> Absent: switch off, files kept
+  Ready --> Off: switch off
   [*] --> Unsupported: no runtime for this platform
 ```
 
 Turning the feature off keeps the downloaded files, so the row goes back to
 nothing rather than to a removal: the page has no "delete the runtime"
-action, and turning the feature on again shows `Ready` at once.
+action, and turning the feature on again shows `Ready` at once, with no
+download. `Off` is the page drawing nothing, whatever the files' state.
 
 ### States
 
@@ -364,9 +374,20 @@ chip` and link as any person, with `Unnamed person` in `text-muted-foreground`
 as the name; the link's name is `Open Unnamed person`. In the details
 editor's `Credits` panel, the chip reads `Unnamed person` and is removed as any
 chip is; removing it drops the face link (the appearance), as the parent
-Issue's edge case asks. The `CreditCommand` picker offers no provisional
-person, because it searches names and an unnamed person has none; a
-provisional person is named on its page first.
+Issue's edge case asks.
+
+The `CreditCommand` picker of `Performers` lists provisional people in an
+`Unnamed people` group under the name results, typed or not, read from
+`GET /api/people?provisional=true` with the picker's candidate limit and
+without the people already chosen. A row is drawn as on the people grid:
+`PersonFace chip` of the crop, `Unnamed person` in `text-muted-foreground`
+and the video count at the right. Choosing a row with the input empty adds
+the chip `Unnamed person`. Choosing one while a name is typed adds the chip
+with that name, which the rows show beforehand as the hint `Add as {name}`;
+on `Save` the editor sends the name by `PATCH /api/people/{id}` before
+writing the credits, so the provisional person becomes that named person,
+and a failed `PATCH` stops the save with the editor's existing failure line
+and writes nothing. The create row stays last, after the group.
 
 The library's `Filtering by` row shows a person filter on a provisional
 person as the `User` chip with `Unnamed person`; its remove button keeps its
@@ -383,7 +404,7 @@ and the decider the entry carries, drawn as every card draws it.
 | `face_analysis`, running | The video | `Waiting` or `Running` | `Open` |
 | `face_analysis`, done | The video | The linked names, `(new)` after created people, the undone count; or `No main person found` | `Undo` with one link not undone, `Undo links…` with several, nothing when every link is undone; `Open` |
 | `face_analysis`, attention | The video | `Failed: {detail}`, `destructive` tone | `Retry`, `Open` |
-| `face_merge`, done | The merged person's name | `Merged an unnamed person into {name}` | `Undo` until undone; `Open person` |
+| `face_merge`, done | The merged person's name | `Merged "Unnamed person" into {name}` | `Undo` until undone; `Open person` |
 | `undo` of a link | The video | `Undid the link to {name}`, or `Already changed back` | `Open` |
 | `undo` of a merge | The person | `Undid Person merged` | `Open person` |
 
@@ -478,8 +499,10 @@ entry of each kind. "It exists" alone does not satisfy a criterion (Q-4).
     page; on the provisional person's own page it opens the merged person's
     page; `Not the same` removes the row and the pair never returns after a
     reload (requirement 10, `UI品質`, third point).
-11. **Faces in videos**: each row's crop is the same face as the profile's
-    face, its title opens the video, and a span opens the video at that
+11. **Faces in videos**: each row shows its own appearance's crop, cut from
+    that row's video, of the same person as the profile's face (only a
+    provisional person's profile face is its first appearance's crop); its
+    title opens the video, and a span opens the video at that
     time, playing; `Show more` appends rows below the first page.
 12. **Activity**: a `face_analysis` card names every linked person and marks
     new ones; undoing one from the menu strikes it through on the detail
@@ -512,3 +535,5 @@ names are decided.
   the video's title.
 - The `Undo links…` menu items are named by the person, with `Unnamed person`
   for a provisional one.
+- An `Unnamed people` row in the credits picker is named `Unnamed person,
+  {n} videos`, followed by `Add as {name}` while a name is typed.
