@@ -386,6 +386,10 @@ const errorReasons = {
   person_image_invalid:
     "The file isn't a PNG, JPEG or still WebP up to 120 megapixels, or it can't be read.",
   person_image_too_large: "The image is too large: up to 64 MB.",
+  person_image_no_face:
+    "No face was found in this image. Choose a photo where the face is clear.",
+  person_image_many_faces:
+    "This image shows more than one face. Choose one with a single face.",
   merge_same_organization: "An organization can't be merged into itself.",
   external_id_taken: "Another entry already has this ID.",
   blocked_address: ({ host }) =>

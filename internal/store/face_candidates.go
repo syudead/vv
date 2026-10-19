@@ -79,11 +79,11 @@ func (s *CreditStore) ConfirmFaceCandidate(ctx context.Context, personID, otherI
 	if err != nil {
 		return domain.Credit{}, err
 	}
-	outcome, err := mergeCreditsInTx(ctx, tx, t, targetID, []int64{sourceID})
+	outcome, events, err := mergeCreditsInTx(ctx, tx, t, targetID, []int64{sourceID})
 	if err != nil {
 		return domain.Credit{}, err
 	}
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx, events...); err != nil {
 		return domain.Credit{}, fmt.Errorf("cannot merge person %d into person %d: %w", sourceID, targetID, err)
 	}
 	return outcome.Credit, nil

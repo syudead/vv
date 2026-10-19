@@ -215,7 +215,7 @@ func (s *CreditStore) Update(ctx context.Context, kind domain.CreditKind, id int
 		return domain.Credit{}, err
 	}
 	// Smart-folder notices and collection values depend on names and links, not on profiles.
-	if err := s.db.commitMatchChangeIf(ctx, tx, changes.matched()); err != nil {
+	if err := s.db.commitMatchChangeIf(ctx, tx, changes.matched(), personFaceEvents(current, updated)...); err != nil {
 		return domain.Credit{}, fmt.Errorf("cannot update the %s: %w", kind, err)
 	}
 	return updated, nil
@@ -385,35 +385,42 @@ func (s *CreditStore) Merge(ctx context.Context, kind domain.CreditKind, targetI
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	outcome, err := mergeCreditsInTx(ctx, tx, t, targetID, sourceIDs)
+	outcome, events, err := mergeCreditsInTx(ctx, tx, t, targetID, sourceIDs)
 	if err != nil {
 		return domain.CreditMergeOutcome{}, err
 	}
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx, events...); err != nil {
 		return domain.CreditMergeOutcome{}, fmt.Errorf("cannot merge into %s %d: %w", kind, targetID, err)
 	}
 	return outcome, nil
 }
 
-// mergeCreditsInTx performs Merge inside tx and reads the merged target; the caller commits as a match change.
-func mergeCreditsInTx(ctx context.Context, tx *sql.Tx, t creditTables, targetID int64, sourceIDs []int64) (domain.CreditMergeOutcome, error) {
+// mergeCreditsInTx performs Merge inside tx and reads the merged target; the caller commits as a match change with
+// the returned events, which report a face or a name the target took.
+func mergeCreditsInTx(ctx context.Context, tx *sql.Tx, t creditTables, targetID int64, sourceIDs []int64) (
+	domain.CreditMergeOutcome, []domain.Event, error,
+) {
 	merged, notFound, err := mergeSources(ctx, tx, t, targetID, sourceIDs)
 	if err != nil {
-		return domain.CreditMergeOutcome{}, err
+		return domain.CreditMergeOutcome{}, nil, err
+	}
+	before, err := creditByID(ctx, tx, t, targetID)
+	if err != nil {
+		return domain.CreditMergeOutcome{}, nil, err
 	}
 	if len(merged) > 0 {
 		if err := mergeCreditsInto(ctx, tx, t, targetID, merged); err != nil {
-			return domain.CreditMergeOutcome{}, err
+			return domain.CreditMergeOutcome{}, nil, err
 		}
 		if err := checkMergedCreditLimits(ctx, tx, t, targetID); err != nil {
-			return domain.CreditMergeOutcome{}, err
+			return domain.CreditMergeOutcome{}, nil, err
 		}
 	}
 	credit, err := creditByID(ctx, tx, t, targetID)
 	if err != nil {
-		return domain.CreditMergeOutcome{}, err
+		return domain.CreditMergeOutcome{}, nil, err
 	}
-	return domain.CreditMergeOutcome{Credit: credit, NotFoundIDs: notFound}, nil
+	return domain.CreditMergeOutcome{Credit: credit, NotFoundIDs: notFound}, personFaceEvents(before, credit), nil
 }
 
 // Validate the target, self-merges and parent cycles; deduplicate sources in input order and report missing IDs.
