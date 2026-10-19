@@ -218,8 +218,10 @@ type ActivityEntry struct {
 
 	// The following fields are populated by list reads and ignored on writes.
 
-	Tags   []ActivityEntryTag
-	Undoes *ActivityUndone
+	Tags []ActivityEntryTag
+	// FaceLinks are the people a face_analysis entry linked to its video.
+	FaceLinks []ActivityFaceLink
+	Undoes    *ActivityUndone
 	// VideoIDs maps subject keys to currently accessible videos; missing keys map to zero.
 	VideoIDs  [2]int64
 	Candidate bool
@@ -239,6 +241,23 @@ type ActivityEntryTag struct {
 	Suggested   bool
 	Probability float64
 	UndoneBy    int64
+}
+
+// ActivityFaceLink is one person a face_analysis entry linked to its video as a performer.
+type ActivityFaceLink struct {
+	AppearanceID int64
+	// Person is nil once the person is deleted.
+	Person *CreditRef
+	// CreatedPerson is true when the analysis created the provisional person.
+	CreatedPerson bool
+	UndoneBy      int64
+}
+
+// ActivityUndoTarget names the part of an entry to undo: TagID for auto_tag, AppearanceID for face_analysis, where
+// zero undoes every link not yet undone. Other kinds ignore both.
+type ActivityUndoTarget struct {
+	TagID        int64
+	AppearanceID int64
 }
 
 type ActivityUndone struct {
@@ -269,7 +288,8 @@ func (e ActivityEntry) RetryOffered() bool {
 	return slices.Contains(activityRetryKinds, e.Kind)
 }
 
-// UndoOffered accepts automatic same/different judgements not already undone; auto_tag uses TagUndoOffered per tag.
+// UndoOffered accepts automatic same/different judgements not already undone; auto_tag and face_analysis entries
+// need one tag or link that TagUndoOffered or FaceLinkUndoOffered accepts.
 func (e ActivityEntry) UndoOffered() bool {
 	if e.UndoneBy != 0 || !e.Decider.automatic() {
 		return false
@@ -279,6 +299,8 @@ func (e ActivityEntry) UndoOffered() bool {
 		return e.Status == ActivityDone && (e.Outcome == ActivitySame || e.Outcome == ActivityDifferent)
 	case ActivityAutoTag:
 		return slices.ContainsFunc(e.Tags, func(tag ActivityEntryTag) bool { return e.TagUndoOffered(tag) })
+	case ActivityFaceAnalysis:
+		return slices.ContainsFunc(e.FaceLinks, func(link ActivityFaceLink) bool { return e.FaceLinkUndoOffered(link) })
 	default:
 		return false
 	}
@@ -287,6 +309,11 @@ func (e ActivityEntry) UndoOffered() bool {
 // TagUndoOffered accepts automatic tag assignments not already undone.
 func (e ActivityEntry) TagUndoOffered(tag ActivityEntryTag) bool {
 	return e.Kind == ActivityAutoTag && e.Decider.automatic() && tag.UndoneBy == 0
+}
+
+// FaceLinkUndoOffered accepts automatic face links not already undone.
+func (e ActivityEntry) FaceLinkUndoOffered(link ActivityFaceLink) bool {
+	return e.Kind == ActivityFaceAnalysis && e.Decider.automatic() && link.UndoneBy == 0
 }
 
 // Supersedes closes attention entries with the same kind and subject, except version_judgement, which retains one

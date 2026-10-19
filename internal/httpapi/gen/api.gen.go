@@ -80,6 +80,7 @@ const (
 	ActivityKindAutoTag            ActivityKind = "auto_tag"
 	ActivityKindBundle             ActivityKind = "bundle"
 	ActivityKindDismiss            ActivityKind = "dismiss"
+	ActivityKindFaceAnalysis       ActivityKind = "face_analysis"
 	ActivityKindImport             ActivityKind = "import"
 	ActivityKindMakeRepresentative ActivityKind = "make_representative"
 	ActivityKindMediaFolderRemove  ActivityKind = "media_folder_remove"
@@ -105,6 +106,8 @@ func (e ActivityKind) Valid() bool {
 	case ActivityKindBundle:
 		return true
 	case ActivityKindDismiss:
+		return true
+	case ActivityKindFaceAnalysis:
 		return true
 	case ActivityKindImport:
 		return true
@@ -2330,6 +2333,9 @@ type ActivityDetail struct {
 	// Detail Untranslated provider/stage error text, tags changed by owner actions, or number of videos removed by unregistering a media folder.
 	Detail *string `json:"detail,omitempty"`
 
+	// FaceLinks People a face_analysis record linked to its video as performers.
+	FaceLinks *[]ActivityFaceLink `json:"faceLinks,omitempty"`
+
 	// Feature Kind grouping used for feature filters; undo belongs to the feature of the undone record.
 	Feature ActivityFeature `json:"feature"`
 	Id      int64           `json:"id"`
@@ -2382,7 +2388,7 @@ type ActivityDetail struct {
 	// Tags Tags assigned by auto_tag.
 	Tags *[]ActivityTag `json:"tags,omitempty"`
 
-	// Undoable Show undo action; auto_tag requires at least one undoable tag.
+	// Undoable Show undo action; auto_tag requires at least one undoable tag, face_analysis at least one undoable link.
 	Undoable bool `json:"undoable"`
 
 	// Undoes Kind and outcome of the record undone by this undo record, plus the tag for per-tag undo.
@@ -2407,6 +2413,9 @@ type ActivityEntryFields struct {
 
 	// Detail Untranslated provider/stage error text, tags changed by owner actions, or number of videos removed by unregistering a media folder.
 	Detail *string `json:"detail,omitempty"`
+
+	// FaceLinks People a face_analysis record linked to its video as performers.
+	FaceLinks *[]ActivityFaceLink `json:"faceLinks,omitempty"`
 
 	// Feature Kind grouping used for feature filters; undo belongs to the feature of the undone record.
 	Feature ActivityFeature `json:"feature"`
@@ -2448,7 +2457,7 @@ type ActivityEntryFields struct {
 	// Tags Tags assigned by auto_tag.
 	Tags *[]ActivityTag `json:"tags,omitempty"`
 
-	// Undoable Show undo action; auto_tag requires at least one undoable tag.
+	// Undoable Show undo action; auto_tag requires at least one undoable tag, face_analysis at least one undoable link.
 	Undoable bool `json:"undoable"`
 
 	// Undoes Kind and outcome of the record undone by this undo record, plus the tag for per-tag undo.
@@ -2457,6 +2466,20 @@ type ActivityEntryFields struct {
 	// Undone Undone by the owner.
 	Undone    bool      `json:"undone"`
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// ActivityFaceLink defines model for ActivityFaceLink.
+type ActivityFaceLink struct {
+	AppearanceId int64 `json:"appearanceId"`
+
+	// CreatedPerson The analysis created this provisional person.
+	CreatedPerson bool `json:"createdPerson"`
+
+	// Person The linked person as now named; omitted once the person is deleted.
+	Person *CreditRef `json:"person,omitempty"`
+
+	// Undone Undone by the owner.
+	Undone bool `json:"undone"`
 }
 
 // ActivityFeature Kind grouping used for feature filters; undo belongs to the feature of the undone record.
@@ -2489,6 +2512,9 @@ type ActivityListItem struct {
 
 	// Detail Untranslated provider/stage error text, tags changed by owner actions, or number of videos removed by unregistering a media folder.
 	Detail *string `json:"detail,omitempty"`
+
+	// FaceLinks People a face_analysis record linked to its video as performers.
+	FaceLinks *[]ActivityFaceLink `json:"faceLinks,omitempty"`
 
 	// Feature Kind grouping used for feature filters; undo belongs to the feature of the undone record.
 	Feature ActivityFeature `json:"feature"`
@@ -2533,7 +2559,7 @@ type ActivityListItem struct {
 	// Tags Tags assigned by auto_tag.
 	Tags *[]ActivityTag `json:"tags,omitempty"`
 
-	// Undoable Show undo action; auto_tag requires at least one undoable tag.
+	// Undoable Show undo action; auto_tag requires at least one undoable tag, face_analysis at least one undoable link.
 	Undoable bool `json:"undoable"`
 
 	// Undoes Kind and outcome of the record undone by this undo record, plus the tag for per-tag undo.
@@ -2698,6 +2724,9 @@ type ActivityTag struct {
 
 // ActivityUndoRequest defines model for ActivityUndoRequest.
 type ActivityUndoRequest struct {
+	// AppearanceId Link to undo on a face_analysis record; omitted, every link not yet undone. Unused for other kinds.
+	AppearanceId *int64 `json:"appearanceId,omitempty"`
+
 	// TagId Tag to undo on an auto_tag record; unused for other kinds.
 	TagId *int64 `json:"tagId,omitempty"`
 }

@@ -61,6 +61,8 @@ create table activity_entry_face_links (
     person_id      integer not null,
     user_key       text    not null,
     created_person integer not null check (created_person in (0, 1)),
+    -- The owner's undo entry once the link is undone.
+    undone_by      integer,
     primary key (entry_id, appearance_id)
 ) without rowid;
 
