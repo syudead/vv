@@ -275,6 +275,15 @@ func (s *ScanIndexStore) DeleteVideoLocations(ctx context.Context, ids []int64) 
 	return s.db.commit(ctx, tx, &c)
 }
 
+// MarkForced gives the scanner, which holds this role, the scan's forced set; ScanStore owns it.
+func (s *ScanIndexStore) MarkForced(ctx context.Context, scanID, videoID int64) error {
+	return s.db.Scans().MarkForced(ctx, scanID, videoID)
+}
+
+func (s *ScanIndexStore) ForcedVideos(ctx context.Context, scanID int64) ([]int64, error) {
+	return s.db.Scans().ForcedVideos(ctx, scanID)
+}
+
 // UpdateLocationCreatedAt fixes location facts without edit timestamps, versions or events; zero restores the modification-time fallback.
 func (s *ScanIndexStore) UpdateLocationCreatedAt(ctx context.Context, locationID int64, createdAt time.Time) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)

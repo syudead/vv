@@ -51,6 +51,9 @@ type Index interface {
 	DeleteVideoLocations(ctx context.Context, ids []int64) error
 	// A zero creation time clears the stored value to null.
 	UpdateLocationCreatedAt(ctx context.Context, locationID int64, createdAt time.Time) error
+	// MarkForced records that a force rescan queued the video's forced jobs; ForcedVideos lists those videos.
+	MarkForced(ctx context.Context, scanID, videoID int64) error
+	ForcedVideos(ctx context.Context, scanID int64) ([]int64, error)
 }
 
 // Queue all jobs for one video in one call so they share one import activity and decider; nil
@@ -58,6 +61,8 @@ type Index interface {
 type Queue interface {
 	EnqueueJobs(ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind) error
 	EnsureJobs(ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind) error
+	// ForceJobs queues forced jobs that regenerate even when the stage states are done.
+	ForceJobs(ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind) error
 }
 
 // Reporter is optional and hides progress/error persistence from the scanner.
@@ -105,6 +110,8 @@ type Scanner struct {
 
 type scanTarget struct {
 	path string
+	// unchanged marks a force-mode target whose size and mtime matched the index during enumeration.
+	unchanged bool
 }
 
 func New(opts Options) *Scanner {
@@ -138,6 +145,8 @@ type scanPass struct {
 	// Keep locations under directories that vanish mid-scan until the next watcher scan handles their
 	// move/deletion.
 	vanished []domain.DirtyDirectory
+	// Nil outside a force rescan.
+	force *forcePass
 }
 
 // Scan updates only the index, never source files; unchanged size/mtime avoids rehashing, and
@@ -158,40 +167,54 @@ func (s *Scanner) scan(
 	ctx context.Context, dirs []domain.DirtyDirectory, scoped bool, decider domain.ActivityDecider,
 ) (domain.ScanResult, error) {
 	result, err := s.scanOnce(ctx, dirs, scoped, decider)
+	return result, supersededError(ctx, err)
+}
+
+func supersededError(ctx context.Context, err error) error {
 	if err != nil && ctx.Err() != nil && errors.Is(context.Cause(ctx), domain.ErrScanSuperseded) {
-		return result, domain.ErrScanSuperseded
+		return domain.ErrScanSuperseded
 	}
-	return result, err
+	return err
+}
+
+func (s *Scanner) startPass(
+	ctx context.Context, scoped bool, decider domain.ActivityDecider,
+) ([]domain.MediaFolder, *scanPass, error) {
+	folders, err := s.index.ListMediaFolders(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(folders) == 0 {
+		return nil, nil, ErrNoMediaFolders
+	}
+	indexed, err := s.index.IndexedVideosByPath(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	pass := &scanPass{
+		indexed: indexed, seen: map[string]struct{}{}, targets: []scanTarget{}, scoped: scoped, decider: decider,
+	}
+	return folders, pass, nil
 }
 
 func (s *Scanner) scanOnce(
 	ctx context.Context, dirs []domain.DirtyDirectory, scoped bool, decider domain.ActivityDecider,
 ) (domain.ScanResult, error) {
-	folders, err := s.index.ListMediaFolders(ctx)
+	folders, pass, err := s.startPass(ctx, scoped, decider)
 	if err != nil {
 		return domain.ScanResult{}, err
 	}
-	if len(folders) == 0 {
-		return domain.ScanResult{}, ErrNoMediaFolders
-	}
-	indexed, err := s.index.IndexedVideosByPath(ctx)
-	if err != nil {
-		return domain.ScanResult{}, err
+	if !scoped {
+		return s.walkAndFinish(ctx, pass, folders, folders, func(string) bool { return true })
 	}
 
-	pass := &scanPass{
-		indexed: indexed, seen: map[string]struct{}{}, targets: []scanTarget{}, scoped: scoped, decider: decider,
-	}
 	// Ignore unrelated unreadable media folders during scoped scans.
-	scanned := folders
-	if scoped {
-		scanned = nil
-		for _, folder := range folders {
-			if slices.ContainsFunc(dirs, func(d domain.DirtyDirectory) bool {
-				return domain.PathWithinRoot(folder.Path, d.Path)
-			}) {
-				scanned = append(scanned, folder)
-			}
+	var scanned []domain.MediaFolder
+	for _, folder := range folders {
+		if slices.ContainsFunc(dirs, func(d domain.DirtyDirectory) bool {
+			return domain.PathWithinRoot(folder.Path, d.Path)
+		}) {
+			scanned = append(scanned, folder)
 		}
 	}
 
@@ -202,18 +225,6 @@ func (s *Scanner) scanOnce(
 		root := folder.Path
 		if err := checkMediaFolder(root); err != nil {
 			return domain.ScanResult{}, err
-		}
-		if !scoped {
-			err = s.walkDir(root, func(path string, entry fs.DirEntry, err error) error {
-				return s.visit(ctx, pass, root, root, true, path, entry, err)
-			})
-			if err != nil {
-				if ctx.Err() != nil {
-					return domain.ScanResult{}, ctx.Err()
-				}
-				return domain.ScanResult{}, fmt.Errorf("could not finish scanning the media folder (%s): %w", root, err)
-			}
-			continue
 		}
 		for _, dir := range dirs {
 			if !domain.PathWithinRoot(root, dir.Path) {
@@ -228,14 +239,52 @@ func (s *Scanner) scanOnce(
 			}
 		}
 	}
+	return s.finishPass(ctx, pass, folders, scanned, func(path string) bool {
+		return domain.DirtyDirectoriesContain(collected, path) &&
+			!domain.DirtyDirectoriesContain(pass.vanished, path)
+	})
+}
+
+// walkAndFinish walks every scanned folder as a manual scan does, then removes the missing locations inScope
+// accepts.
+func (s *Scanner) walkAndFinish(
+	ctx context.Context, pass *scanPass, folders, scanned []domain.MediaFolder, inScope func(string) bool,
+) (domain.ScanResult, error) {
+	for _, folder := range scanned {
+		root := folder.Path
+		if err := checkMediaFolder(root); err != nil {
+			return domain.ScanResult{}, err
+		}
+		err := s.walkDir(root, func(path string, entry fs.DirEntry, err error) error {
+			return s.visit(ctx, pass, root, root, true, path, entry, err)
+		})
+		if err != nil {
+			if ctx.Err() != nil {
+				return domain.ScanResult{}, ctx.Err()
+			}
+			return domain.ScanResult{}, fmt.Errorf("could not finish scanning the media folder (%s): %w", root, err)
+		}
+	}
+	return s.finishPass(ctx, pass, folders, scanned, inScope)
+}
+
+// ingestPass fixes the progress denominator and ingests the collected targets.
+func (s *Scanner) ingestPass(ctx context.Context, pass *scanPass) (domain.ScanResult, error) {
 	result := pass.result
-	seen := pass.seen
 	result.Total += len(pass.targets)
 	// Enumeration uses indeterminate total=0; processing starts with a fixed denominator.
 	if err := s.report(ctx, result); err != nil {
 		return result, err
 	}
-	if err := s.ingestTargets(ctx, pass, &result); err != nil {
+	err := s.ingestTargets(ctx, pass, &result)
+	return result, err
+}
+
+func (s *Scanner) finishPass(
+	ctx context.Context, pass *scanPass, folders, scanned []domain.MediaFolder, inScope func(string) bool,
+) (domain.ScanResult, error) {
+	result, err := s.ingestPass(ctx, pass)
+	if err != nil {
 		return result, err
 	}
 	if err := s.dropVanished(pass, scanned); err != nil {
@@ -246,14 +295,7 @@ func (s *Scanner) scanOnce(
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
-	inScope := func(string) bool { return true }
-	if scoped {
-		inScope = func(path string) bool {
-			return domain.DirtyDirectoriesContain(collected, path) &&
-				!domain.DirtyDirectoriesContain(pass.vanished, path)
-		}
-	}
-	removed, err := s.removeMissing(ctx, folders, seen, inScope)
+	removed, err := s.removeMissing(ctx, folders, pass.seen, inScope)
 	if err != nil {
 		return result, err
 	}
@@ -269,7 +311,7 @@ func (s *Scanner) ingestTargets(ctx context.Context, pass *scanPass, result *dom
 		}
 		videoID := pass.indexed[target.path].ID
 		s.reportFile(target.path, videoID)
-		if err := s.ingest(ctx, target, result, pass.decider); err != nil {
+		if err := s.ingest(ctx, pass, target, result); err != nil {
 			if ctx.Err() != nil {
 				return err
 			}
@@ -480,9 +522,12 @@ func (s *Scanner) visit(
 		})
 	}
 
-	if existing, ok := pass.indexed[path]; ok &&
-		existing.SizeBytes == info.Size() &&
-		existing.MTime.Equal(info.ModTime()) {
+	if existing, ok := pass.indexed[path]; ok && sameFile(existing, info) {
+		if pass.force != nil {
+			// Force mode reads the content key of an unchanged file again.
+			pass.targets = append(pass.targets, scanTarget{path: path, unchanged: true})
+			return nil
+		}
 		// For unchanged files, update creation time and repair missing pending jobs without reviving
 		// terminal failures.
 		createdErr := s.refreshCreatedAt(ctx, path, info, existing)
@@ -544,42 +589,14 @@ func ensureReadableDirectory(path string) error {
 	return closeErr
 }
 
-func (s *Scanner) ingest(
-	ctx context.Context,
-	target scanTarget,
-	result *domain.ScanResult,
-	decider domain.ActivityDecider,
-) error {
-	info, err := s.stableTargetInfo(target.path)
+func (s *Scanner) ingest(ctx context.Context, pass *scanPass, target scanTarget, result *domain.ScanResult) error {
+	file, info, err := s.readTarget(target.path, pass.decider)
 	if err != nil {
-		return failFile(unreadableKind(err), 0, err)
+		return err
 	}
-
-	key, err := s.contentKey(target.path)
-	if err != nil {
-		return failFile(unreadableKind(err), 0, err)
-	}
-	after, err := s.stableTargetInfo(target.path)
-	if err != nil {
-		return failFile(unreadableKind(err), 0, err)
-	}
-	if !os.SameFile(info, after) || info.Size() != after.Size() || !info.ModTime().Equal(after.ModTime()) {
-		return failFile(domain.IssueChangedDuringImport, 0,
-			fmt.Errorf("the file changed while it was being ingested (%s)", target.path))
-	}
-
-	file := domain.VideoFile{
-		Path:       target.path,
-		Title:      titleOf(target.path),
-		ContentKey: key,
-		SizeBytes:  info.Size(),
-		MTime:      info.ModTime(),
-		Container:  domain.ContainerFromPath(target.path),
-		Decider:    decider,
-	}
-	// Missing creation time is optional and remains zero.
-	if createdAt, ok := s.createdAt(target.path, info); ok {
-		file.FileCreatedAt = createdAt
+	if existing := pass.indexed[target.path]; target.unchanged &&
+		existing.ContentKey == file.ContentKey && sameFile(existing, info) {
+		return s.forceUnchanged(ctx, pass, target.path, info, existing)
 	}
 
 	upserted, err := s.index.UpsertVideo(ctx, file)
@@ -594,14 +611,54 @@ func (s *Scanner) ingest(
 		result.Updated++
 	case domain.OutcomeMoved:
 		result.Moved++
-	case domain.OutcomeUnchanged:
-		return nil
+	}
+	if upserted.Outcome != domain.OutcomeUnchanged {
+		if err := s.enqueue(ctx, upserted, pass.decider); err != nil {
+			return failFile(domain.IssueRegisterFailed, upserted.ID, err)
+		}
+	}
+	return s.force(ctx, pass, upserted.ID)
+}
+
+// readTarget computes the content key between two stable metadata reads, so a file changed while it is read is
+// rejected.
+func (s *Scanner) readTarget(path string, decider domain.ActivityDecider) (domain.VideoFile, fs.FileInfo, error) {
+	info, err := s.stableTargetInfo(path)
+	if err != nil {
+		return domain.VideoFile{}, nil, failFile(unreadableKind(err), 0, err)
 	}
 
-	if err := s.enqueue(ctx, upserted, decider); err != nil {
-		return failFile(domain.IssueRegisterFailed, upserted.ID, err)
+	key, err := s.contentKey(path)
+	if err != nil {
+		return domain.VideoFile{}, nil, failFile(unreadableKind(err), 0, err)
 	}
-	return nil
+	after, err := s.stableTargetInfo(path)
+	if err != nil {
+		return domain.VideoFile{}, nil, failFile(unreadableKind(err), 0, err)
+	}
+	if !os.SameFile(info, after) || info.Size() != after.Size() || !info.ModTime().Equal(after.ModTime()) {
+		return domain.VideoFile{}, nil, failFile(domain.IssueChangedDuringImport, 0,
+			fmt.Errorf("the file changed while it was being ingested (%s)", path))
+	}
+
+	file := domain.VideoFile{
+		Path:       path,
+		Title:      titleOf(path),
+		ContentKey: key,
+		SizeBytes:  info.Size(),
+		MTime:      info.ModTime(),
+		Container:  domain.ContainerFromPath(path),
+		Decider:    decider,
+	}
+	// Missing creation time is optional and remains zero.
+	if createdAt, ok := s.createdAt(path, info); ok {
+		file.FileCreatedAt = createdAt
+	}
+	return file, info, nil
+}
+
+func sameFile(existing domain.IndexedVideo, info fs.FileInfo) bool {
+	return existing.SizeBytes == info.Size() && existing.MTime.Equal(info.ModTime())
 }
 
 // Only disappearance or replacement by a nonregular file proves a mid-import change; permission and
