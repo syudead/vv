@@ -2938,6 +2938,64 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/people/{id}/appearances:
+    get:
+      operationId: listPersonAppearances
+      summary: "List a person's face appearances"
+      description: "Owner-only. The person's appearances that are not dropped, newest video (by added time) first, then by descending appearance ID; appearances whose content key no video has follow every appearance with a video. limit enables pagination with nextCursor; otherwise returns all. Missing person returns 404 person_not_found; an unreadable cursor returns 400 invalid_request with reason invalid_cursor."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - name: cursor
+          in: query
+          description: "Opaque nextCursor from the previous response; ignored without limit"
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: "Page size; omit for all appearances without nextCursor"
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: "Appearances"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaceAppearanceList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/face-appearances/{id}/crop:
+    get:
+      operationId: getFaceAppearanceCrop
+      summary: "Return a face appearance's crop"
+      description: "Owner-only. Returns the appearance's face crop as JPEG with `Cache-Control: private, max-age=86400`, since a crop is never rewritten and a new appearance gets a new ID. A missing appearance, one whose person was deleted, or one without a crop returns 404 not_found."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: "Face appearance ID"
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        "200":
+          description: "Crop"
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/organizations:
     get:
       operationId: listOrganizations
@@ -3579,7 +3637,7 @@ paths:
           explode: true
           schema:
             type: array
-            maxItems: 9
+            maxItems: 10
             items:
               $ref: "#/components/schemas/ActivityFeature"
         - name: decider
@@ -7149,6 +7207,56 @@ components:
           format: double
           description: "The pair's highest face similarity when last computed, from 0 to 1."
 
+    FaceAppearanceList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FaceAppearance"
+        nextCursor:
+          type: string
+          description: "Next-page cursor, included only when limit is supplied and more results remain."
+
+    FaceAppearance:
+      type: object
+      required: [appearanceId, title, spans, hasCrop]
+      additionalProperties: false
+      description: "One main person of one video, linked to the listed person."
+      properties:
+        appearanceId:
+          type: integer
+          format: int64
+        videoId:
+          type: integer
+          format: int64
+          description: "The video with the appearance's content key; absent when no video has it any more."
+        title:
+          type: string
+          description: "The video's title: its override, else its first registered location's title, else the content key."
+        spans:
+          type: array
+          description: "When the person is on screen, in seconds, in order and without overlaps."
+          items:
+            $ref: "#/components/schemas/FaceAppearanceSpan"
+        hasCrop:
+          type: boolean
+          description: "True when getFaceAppearanceCrop has a face to return."
+
+    FaceAppearanceSpan:
+      type: object
+      required: [start, end]
+      additionalProperties: false
+      properties:
+        start:
+          type: number
+          format: double
+        end:
+          type: number
+          format: double
+
     FaceCandidatePerson:
       type: object
       required: [id, name, provisional]
@@ -9435,6 +9543,7 @@ components:
         - versions
         - media_folders
         - organize
+        - face_recognition
       # Explicit names prevent colliding enum values from renaming existing constants.
       x-enum-varnames:
         - ActivityFeatureImport
@@ -9446,6 +9555,7 @@ components:
         - ActivityFeatureVersions
         - ActivityFeatureMediaFolders
         - ActivityFeatureOrganize
+        - ActivityFeatureFaceRecognition
 
     ActivityStatus:
       type: string
@@ -9545,6 +9655,7 @@ components:
           versions,
           media_folders,
           organize,
+          face_recognition,
         ]
       additionalProperties: false
       properties:
@@ -9565,6 +9676,8 @@ components:
         media_folders:
           type: integer
         organize:
+          type: integer
+        face_recognition:
           type: integer
 
     ActivityEntry:
@@ -9720,6 +9833,11 @@ components:
         tagCount:
           type: integer
           description: "auto_tag only: the number of tags the run added."
+        faceLinks:
+          type: array
+          description: "face_analysis only: the people the run linked, as in ActivityEntry."
+          items:
+            $ref: "#/components/schemas/ActivityFaceLink"
         stages:
           type: array
           description: "import only, in ingest order; omitted when the stages were not recorded."
@@ -9807,7 +9925,7 @@ components:
       properties:
         kind:
           type: string
-          enum: [video, pair, scan, folder]
+          enum: [video, pair, scan, folder, person]
         items:
           type: array
           items:
@@ -9825,6 +9943,10 @@ components:
           type: integer
           format: int64
           description: "Current video accessible to the viewer; omitted when unavailable."
+        personId:
+          type: integer
+          format: int64
+          description: "The person of a person subject, which may since have been deleted; omitted for other subjects."
 
     ActivityProgress:
       type: object

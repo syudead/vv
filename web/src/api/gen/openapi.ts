@@ -1904,6 +1904,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/people/{id}/appearances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a person's face appearances
+         * @description Owner-only. The person's appearances that are not dropped, newest video (by added time) first, then by descending appearance ID; appearances whose content key no video has follow every appearance with a video. limit enables pagination with nextCursor; otherwise returns all. Missing person returns 404 person_not_found; an unreadable cursor returns 400 invalid_request with reason invalid_cursor.
+         */
+        get: operations["listPersonAppearances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/face-appearances/{id}/crop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return a face appearance's crop
+         * @description Owner-only. Returns the appearance's face crop as JPEG with `Cache-Control: private, max-age=86400`, since a crop is never rewritten and a new appearance gets a new ID. A missing appearance, one whose person was deleted, or one without a crop returns 404 not_found.
+         */
+        get: operations["getFaceAppearanceCrop"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations": {
         parameters: {
             query?: never;
@@ -4085,6 +4125,33 @@ export interface components {
              */
             similarity: number;
         };
+        FaceAppearanceList: {
+            items: components["schemas"]["FaceAppearance"][];
+            /** @description Next-page cursor, included only when limit is supplied and more results remain. */
+            nextCursor?: string;
+        };
+        /** @description One main person of one video, linked to the listed person. */
+        FaceAppearance: {
+            /** Format: int64 */
+            appearanceId: number;
+            /**
+             * Format: int64
+             * @description The video with the appearance's content key; absent when no video has it any more.
+             */
+            videoId?: number;
+            /** @description The video's title: its override, else its first registered location's title, else the content key. */
+            title: string;
+            /** @description When the person is on screen, in seconds, in order and without overlaps. */
+            spans: components["schemas"]["FaceAppearanceSpan"][];
+            /** @description True when getFaceAppearanceCrop has a face to return. */
+            hasCrop: boolean;
+        };
+        FaceAppearanceSpan: {
+            /** Format: double */
+            start: number;
+            /** Format: double */
+            end: number;
+        };
         /** @description CreditRef of the other person, with its face. */
         FaceCandidatePerson: {
             /** Format: int64 */
@@ -5377,7 +5444,7 @@ export interface components {
          * @description Kind grouping used for feature filters; undo belongs to the feature of the undone record.
          * @enum {string}
          */
-        ActivityFeature: "import" | "scan" | "duplicate_check" | "auto_tagging" | "work_info" | "tags" | "versions" | "media_folders" | "organize";
+        ActivityFeature: "import" | "scan" | "duplicate_check" | "auto_tagging" | "work_info" | "tags" | "versions" | "media_folders" | "organize" | "face_recognition";
         /**
          * @description Record status.
          * @enum {string}
@@ -5427,6 +5494,7 @@ export interface components {
             versions: number;
             media_folders: number;
             organize: number;
+            face_recognition: number;
         };
         /** @description One activity record. */
         ActivityEntry: components["schemas"]["ActivityEntryFields"];
@@ -5506,6 +5574,8 @@ export interface components {
             matched?: boolean;
             /** @description auto_tag only: the number of tags the run added. */
             tagCount?: number;
+            /** @description face_analysis only: the people the run linked, as in ActivityEntry. */
+            faceLinks?: components["schemas"]["ActivityFaceLink"][];
             /** @description import only, in ingest order; omitted when the stages were not recorded. */
             stages?: components["schemas"]["ActivityStageSummary"][];
         };
@@ -5548,7 +5618,7 @@ export interface components {
         /** @description Record targets, one per key: two for pairs and one otherwise. */
         ActivitySubject: {
             /** @enum {string} */
-            kind: "video" | "pair" | "scan" | "folder";
+            kind: "video" | "pair" | "scan" | "folder" | "person";
             items: components["schemas"]["ActivitySubjectItem"][];
         };
         ActivitySubjectItem: {
@@ -5559,6 +5629,11 @@ export interface components {
              * @description Current video accessible to the viewer; omitted when unavailable.
              */
             videoId?: number;
+            /**
+             * Format: int64
+             * @description The person of a person subject, which may since have been deleted; omitted for other subjects.
+             */
+            personId?: number;
         };
         /** @description Current stage and completed-stage count for a running import beyond waiting. */
         ActivityProgress: {
@@ -9209,6 +9284,61 @@ export interface operations {
                 content?: never;
             };
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listPersonAppearances: {
+        parameters: {
+            query?: {
+                /** @description Opaque nextCursor from the previous response; ignored without limit */
+                cursor?: string;
+                /** @description Page size; omit for all appearances without nextCursor */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Appearances */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FaceAppearanceList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getFaceAppearanceCrop: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Face appearance ID */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Crop */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
             404: components["responses"]["NotFound"];
         };
     };

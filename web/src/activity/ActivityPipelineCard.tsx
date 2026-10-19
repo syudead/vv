@@ -1,6 +1,10 @@
 import { Link } from "react-router";
 
-import type { ActivityListItem, ActivityMemberSummary } from "../api/activity";
+import type {
+  ActivityListItem,
+  ActivityMemberSummary,
+  ActivityUndoRequest,
+} from "../api/activity";
 import { t } from "../i18n";
 import { CardListItem, CardListMember } from "../ui/patterns/card-list";
 import { Badge } from "../ui/shadcn/badge";
@@ -21,7 +25,7 @@ interface MemberRowProps {
   now: Date;
   from: string;
   onRetry: (entry: OperationTarget) => Promise<void>;
-  onUndo: (entry: OperationTarget, tagId?: number) => Promise<void>;
+  onUndo: (entry: OperationTarget, part?: ActivityUndoRequest) => Promise<void>;
 }
 
 /** A member's kind and result; its tags and full message are on its detail page. */
@@ -73,7 +77,7 @@ export interface ActivityPipelineCardProps {
   chosen: boolean | undefined;
   onExpandedChange: (expanded: boolean) => void;
   onRetry: (entry: OperationTarget) => Promise<void>;
-  onUndo: (entry: OperationTarget, tagId?: number) => Promise<void>;
+  onUndo: (entry: OperationTarget, part?: ActivityUndoRequest) => Promise<void>;
 }
 
 /** One import run: the run's card, with its tasks as rows inside it. */

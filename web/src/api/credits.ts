@@ -153,8 +153,10 @@ export async function deleteCredit(
 }
 
 /** The face URL; the revision only busts caches, so a changed face is fetched again. */
-export function personImagePath(id: number, revision: number): string {
-  return `/api/people/${String(id)}/image?v=${String(revision)}`;
+/** Without a revision the URL still answers, revalidated by its ETag, for a reference that has none. */
+export function personImagePath(id: number, revision?: number): string {
+  const path = `/api/people/${String(id)}/image`;
+  return revision === undefined ? path : `${path}?v=${String(revision)}`;
 }
 
 /** The person's face URL, or undefined without a face. */

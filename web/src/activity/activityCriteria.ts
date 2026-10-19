@@ -40,6 +40,7 @@ export const runFeatures: readonly ActivityFeature[] = [
   "scan",
   "duplicate_check",
   "auto_tagging",
+  "face_recognition",
 ];
 
 /** Owner actions appear after the menu separator. */

@@ -466,6 +466,25 @@ whose target was deleted, or whose source id exists again, records
 | Compare the credits at undo | A credit the owner removed and added again looks unchanged |
 | Make the owner's merges undoable too | Only automatic decisions are undone from the activity log, and owner merges write no entry |
 
+## Face entries on the activity screen
+
+Both kinds belong to the `face_recognition` feature of the activity filter. A
+`face_merge` entry's subject is the merge target as a `person` subject, whose
+item carries `personId` from the subject key, so the card and the detail page
+open `/people/:id`; its result names the source as `Unnamed person`, since a
+merged source is always provisional. A `face_analysis` entry lists its
+`faceLinks` in the list, in the detail and in an import pipeline's member
+summaries, so a pipeline's member reads the same names as its own card
+(`web/src/activity/activityEntry.ts`).
+
+A card with one link not undone shows `Undo` with that link's `appearanceId`;
+with several, `Undo links…` opens a menu of the people and `All links`, which
+sends no `appearanceId`. The detail page's `People` section lists every link
+with its own undo, and strikes through an undone one. An undo of one named
+link keeps the person's name as its `detail`, read as `Undid the link to
+{name}`; the undo of an unnamed person's link or of every link reads
+`Undid Face analysis`.
+
 ## The owner settles a candidate pair
 
 A pair in `face_candidates` is stored once as `(provisional_id, person_id)`,
@@ -482,3 +501,25 @@ in as the other person of each, highest similarity first.
 When both people have a name, or neither has, confirm merges the stored
 provisional side: a name given after the pair was offered does not reverse
 it. Without an open pair, both actions answer `404 face_candidate_not_found`.
+
+## The person page reads a person's appearances
+
+`GET /api/people/{id}/appearances` lists a person's appearances that are not
+dropped, with the admin lists' `limit` and `cursor`
+([`face_appearance_list.go`](../../internal/store/face_appearance_list.go)).
+They come newest video first by the video's added time, then by descending
+appearance id. An appearance whose content key no video has any more is still
+listed, without `videoId` and after every appearance with a video, so the
+owner sees that the person was found in a file that has left the library.
+Each item's spans are its tracks' times in order, with overlapping tracks
+joined.
+
+`GET /api/face-appearances/{id}/crop` answers the crop with
+`Cache-Control: private, max-age=86400`: a crop is never rewritten, and a
+re-analysis gives a new appearance a new id. A missing appearance and one whose
+person was deleted, which has no crop, both answer `404 not_found`.
+
+| Rejected | Why |
+| --- | --- |
+| Hiding appearances of content no video has | A returning file keeps its links, and the person page would show nothing for a person found only there |
+| Ordering by appearance id alone | A re-analysis keeps old ids, so the order would follow the first analysis, not the library |
