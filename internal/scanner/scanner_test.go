@@ -37,6 +37,30 @@ type fakeIndex struct {
 	reports        []string
 	createdAtCalls []createdAtCall
 	createdAtErr   error
+	// Force mode: forcedBefore is what ForcedVideos returns; calls logs upserts and forced jobs in order.
+	forcedBefore []int64
+	forceJobs    []jobCall
+	marked       []forcedMark
+	calls        []string
+}
+
+type forcedMark struct {
+	scanID, videoID int64
+}
+
+func (f *fakeIndex) ForceScanJobs(
+	_ context.Context, scanID, videoID int64, _ domain.ActivityDecider, kinds ...domain.JobKind,
+) error {
+	f.calls = append(f.calls, fmt.Sprintf("force %d", videoID))
+	for _, kind := range kinds {
+		f.forceJobs = append(f.forceJobs, jobCall{kind: kind, videoID: videoID})
+	}
+	f.marked = append(f.marked, forcedMark{scanID: scanID, videoID: videoID})
+	return nil
+}
+
+func (f *fakeIndex) ForcedVideos(context.Context, int64) ([]int64, error) {
+	return f.forcedBefore, nil
 }
 
 type createdAtCall struct {
@@ -97,6 +121,7 @@ func (f *fakeIndex) IndexedVideosByPath(context.Context) (map[string]domain.Inde
 
 func (f *fakeIndex) UpsertVideo(_ context.Context, file domain.VideoFile) (domain.UpsertResult, error) {
 	f.upserts = append(f.upserts, file)
+	f.calls = append(f.calls, "upsert "+filepath.Base(file.Path))
 
 	for path, row := range f.rows {
 		if row.ContentKey == file.ContentKey {
@@ -464,6 +489,10 @@ func (failingQueue) EnqueueJobs(context.Context, int64, domain.ActivityDecider, 
 }
 
 func (failingQueue) EnsureJobs(context.Context, int64, domain.ActivityDecider, ...domain.JobKind) error {
+	return errors.New("queue unavailable")
+}
+
+func (failingQueue) ForceScanJobs(context.Context, int64, int64, domain.ActivityDecider, ...domain.JobKind) error {
 	return errors.New("queue unavailable")
 }
 

@@ -68,10 +68,13 @@ flowchart LR
   m -->|change on disk| later[Dirty, read after the batch]
 ```
 
-Starting a manual scan, or adding, replacing or deleting a media folder, stops
-a running batch at the next file; it removes nothing and closes `done`. Changes
-that arrive while any scan runs are read after it finishes. A running batch
-does not make the app busy for the desktop close prompt.
+Starting a manual scan or a [force rescan](force-rescan.md), or adding,
+replacing or deleting a media folder, stops a running batch at the next file;
+it removes nothing and closes `done`. A `folder` or `video` force rescan does
+not read the batch's directories, so they return to the dirty set and a later
+batch reads them. Changes that arrive while any scan runs are read after it
+finishes. A running batch does not make the app busy for the
+desktop close prompt.
 
 ## Setting and watch state
 
@@ -89,7 +92,9 @@ every watch, drops the dirty set and stops a running batch.
 A problem is shown, never repaired by a scan.
 It clears when auto-import is turned off and on, when the media folders change,
 or, for lost events, when a manual scan finishes `done` and no further loss was
-reported since that scan started. A loss reported while the scan ran stays
+reported since that scan started. A `library` force rescan counts as that manual
+scan; a `folder` or `video` force rescan does not, because it does not read the
+whole library. A loss reported while the scan ran stays
 visible as `limited`, because the scan may already have read the affected
 directory; the next manual scan clears it.
 

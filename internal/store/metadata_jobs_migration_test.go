@@ -45,11 +45,9 @@ func TestDropMetadataJobsMigrationSettlesLatestScan(t *testing.T) {
 		`insert into scan_issues(scan_id, video_id, path, kind, created_at)
 			values (1, 1, '`+fixturePath("/media/a.mp4")+`', 'metadata_failed', 1)`,
 	)
+	// The queued metadata job is the unfinished work; reading progress here would need the current scans schema.
 	if n := countRows(t, db, `select count(*) from jobs where kind = 'metadata' and state = 'queued'`); n != 1 {
 		t.Fatalf("準備: 00052 が積んだ metadata の仕事 = %d, want 1", n)
-	}
-	if _, progress := currentImport(t, db); progress.Status == domain.ImportDone {
-		t.Fatalf("準備: 00052 のあとの進捗 = %+v, want 完了していない", progress)
 	}
 	revision := countRows(t, db, `select issues_revision from scans where id = 1`)
 

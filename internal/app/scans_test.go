@@ -44,18 +44,37 @@ func (f *fakeScanStore) StartScan(ctx context.Context) (domain.Scan, bool, error
 	return f.ResumeScan(ctx, 0)
 }
 
+// A resumed scan keeps the interrupted scan's rescan scope, as the store does.
 func (f *fakeScanStore) ResumeScan(_ context.Context, from int64) (domain.Scan, bool, error) {
-	return f.begin(from, domain.ScanOriginManual)
+	f.mu.Lock()
+	rescan := f.current.Rescan
+	f.mu.Unlock()
+	if from == 0 {
+		rescan = nil
+	}
+	return f.begin(from, domain.ScanOriginManual, rescan)
+}
+
+// StartRescan refuses any running scan, as the store does.
+func (f *fakeScanStore) StartRescan(_ context.Context, scope domain.RescanScope) (domain.Scan, error) {
+	f.mu.Lock()
+	running := f.hasScan && f.current.State == domain.ScanRunning
+	f.mu.Unlock()
+	if running {
+		return domain.Scan{}, domain.ErrScanRunning
+	}
+	scan, _, err := f.begin(0, domain.ScanOriginManual, &scope)
+	return scan, err
 }
 
 func (f *fakeScanStore) StartWatchScan(_ context.Context, dirs []domain.DirtyDirectory) (domain.Scan, bool, error) {
 	f.mu.Lock()
 	f.watchDirs = append(f.watchDirs, dirs)
 	f.mu.Unlock()
-	return f.begin(0, domain.ScanOriginWatch)
+	return f.begin(0, domain.ScanOriginWatch, nil)
 }
 
-func (f *fakeScanStore) begin(from int64, origin domain.ScanOrigin) (domain.Scan, bool, error) {
+func (f *fakeScanStore) begin(from int64, origin domain.ScanOrigin, rescan *domain.RescanScope) (domain.Scan, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.hasScan && f.current.State == domain.ScanRunning {
@@ -63,7 +82,7 @@ func (f *fakeScanStore) begin(from int64, origin domain.ScanOrigin) (domain.Scan
 	}
 	f.nextID++
 	f.resumedFrom = append(f.resumedFrom, from)
-	f.current = domain.Scan{ID: f.nextID, State: domain.ScanRunning, Origin: origin, StartedAt: time.Now()}
+	f.current = domain.Scan{ID: f.nextID, State: domain.ScanRunning, Origin: origin, StartedAt: time.Now(), Rescan: rescan}
 	f.hasScan = true
 	return f.current, true, nil
 }
@@ -178,7 +197,22 @@ type fakeScanner struct {
 	runs         int
 	deciders     []domain.ActivityDecider
 	scoped       [][]domain.DirtyDirectory
+	rescans      []fakeRescan
 	mu           sync.Mutex
+}
+
+type fakeRescan struct {
+	scanID int64
+	scope  domain.RescanScope
+}
+
+func (f *fakeScanner) Rescan(
+	ctx context.Context, scanID int64, scope domain.RescanScope, decider domain.ActivityDecider,
+) (domain.ScanResult, error) {
+	f.mu.Lock()
+	f.rescans = append(f.rescans, fakeRescan{scanID: scanID, scope: scope})
+	f.mu.Unlock()
+	return f.Scan(ctx, decider)
 }
 
 // Return ErrScanSuperseded when cancellation carries that cause.

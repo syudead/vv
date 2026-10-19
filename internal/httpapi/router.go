@@ -52,6 +52,9 @@ type Playback interface {
 // creation.
 type Scans interface {
 	StartScan(ctx context.Context) (scan domain.Scan, started bool, err error)
+	// StartRescan returns ErrScanRunning while a manual scan or force rescan runs, ErrNoMediaFolders without
+	// folders and ErrNotFound for a missing folder or video.
+	StartRescan(ctx context.Context, scope domain.RescanScope) (domain.Scan, error)
 	CurrentScan(ctx context.Context) (domain.Scan, error)
 	// ListScanIssues returns ErrNotFound before any scan and ErrInvalidCursor for malformed cursors.
 	ListScanIssues(ctx context.Context, cursor string, limit int) (domain.ScanIssuePage, error)
@@ -579,7 +582,7 @@ func requiresOtherJSONBody(r *http.Request) bool {
 
 func requiresPostJSONBody(path string) bool {
 	switch path {
-	case "/api/media-folders", "/api/scans", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/tag-kinds",
+	case "/api/media-folders", "/api/scans", "/api/scans/rescan", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/tag-kinds",
 		"/api/video-tags", "/api/video-tags/summary",
 		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 		"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",

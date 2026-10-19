@@ -130,6 +130,7 @@ export type ErrorCode = ApiError["code"];
 export type ErrorReason = components["schemas"]["ErrorReason"];
 export type ProbeErrorCode = components["schemas"]["ProbeErrorCode"];
 export type ScanErrorCode = components["schemas"]["ScanErrorCode"];
+export type StartRescanRequest = components["schemas"]["StartRescanRequest"];
 
 export interface RequestFailedDetails {
   reason?: string;
@@ -720,6 +721,19 @@ export function startScan(signal?: AbortSignal): Promise<Scan> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),
+    signal,
+  });
+}
+
+/** Rejects with scan_in_progress while a manual scan or force rescan runs; a watch scan is superseded. */
+export function startRescan(
+  rescan: StartRescanRequest,
+  signal?: AbortSignal,
+): Promise<Scan> {
+  return request<Scan>("/api/scans/rescan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(rescan),
     signal,
   });
 }
