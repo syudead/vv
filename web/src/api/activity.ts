@@ -18,6 +18,7 @@ export type ActivityCounts = components["schemas"]["ActivityCounts"];
 export type ActivityFeatureCounts = components["schemas"]["ActivityFeatureCounts"];
 export type ActivityUndoRequest = components["schemas"]["ActivityUndoRequest"];
 export type ActivityTag = components["schemas"]["ActivityTag"];
+export type ActivityFaceLink = components["schemas"]["ActivityFaceLink"];
 export type ActivityDetail = components["schemas"]["ActivityDetail"];
 export type ActivityStageState = components["schemas"]["ActivityStageState"];
 export type ActivityStageRow = components["schemas"]["ActivityStageRow"];
@@ -87,9 +88,14 @@ export async function retryActivity(id: number): Promise<void> {
   if (!response.ok) throw await toRequestFailed(response);
 }
 
-/** Undo one auto-tag assignment using tagId; invalidate list snapshots after success. */
-export async function undoActivity(id: number, tagId?: number): Promise<ActivityEntry> {
-  const body: ActivityUndoRequest = tagId === undefined ? {} : { tagId };
+/**
+ * Undo an entry, or the one tag (`tagId`) or face link (`appearanceId`) the request names;
+ * invalidate list snapshots after success.
+ */
+export async function undoActivity(
+  id: number,
+  body: ActivityUndoRequest = {},
+): Promise<ActivityEntry> {
   const entry = await request<ActivityEntry>(activityPath(id, "undo"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },

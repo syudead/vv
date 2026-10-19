@@ -2471,6 +2471,7 @@ export const en = {
       versions: "Versions",
       media_folders: "Media folders",
       organize: "Drag and drop",
+      face_recognition: "Face recognition",
     } satisfies Record<ActivityFeature, string>,
     deciderValue: {
       ai: "AI",
@@ -2565,6 +2566,19 @@ export const en = {
       gone: "A video left the library",
       undid: (chip: string) => `Undid ${chip}`,
       undidTag: (name: string) => `Undid tag ${name}`,
+      undidLink: (name: string) => `Undid the link to ${name}`,
+      linked: (names: string) => `Linked ${names}`,
+      createdPerson: (name: string) => `${name} (new)`,
+      linksUndone: (count: number) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} link undone`,
+          other: `${formatNumber(count)} links undone`,
+        }),
+      allLinksUndone: "All links undone",
+      noMainPerson: "No main person found",
+      // A merged source is always provisional, so it is named by credits.unnamedPerson.
+      mergedInto: (source: string, target: string) => `Merged "${source}" into ${target}`,
+      personGone: "Deleted person",
       undoneSame: "Same video",
       undoneDifferent: "Different videos",
       alreadyReverted: "Already changed back by you",
@@ -2602,6 +2616,9 @@ export const en = {
       retry: "Retry",
       undo: "Undo",
       undoTags: "Undo tags…",
+      undoLinks: "Undo links…",
+      allLinks: "All links",
+      openPerson: "Open person",
     },
     toast: {
       undone: "Undone. vv won't decide this again on its own",
@@ -2658,6 +2675,7 @@ export const en = {
         tasks: "Tasks",
         stages: "Stages",
         tags: "Tags",
+        people: "People",
         partOf: "Part of",
       },
       fact: {
@@ -2665,6 +2683,7 @@ export const en = {
         process: "Process",
         video: "Video",
         videos: "Videos",
+        person: "Person",
         decider: "Decided by",
         started: "Started",
         updated: "Updated",
@@ -2683,6 +2702,8 @@ export const en = {
       stagesNotRecorded: "Stage details weren't recorded for this import.",
       pairMember: (label: string) => `Duplicate check · with ${label}`,
       undoTag: (name: string) => `Undo tag ${name}`,
+      undoLink: (name: string) => `Undo link to ${name}`,
+      newPerson: "New person",
       pipelineAttention: (kind: string, reason: string) => `${kind}: ${reason}`,
     },
   },

@@ -399,6 +399,25 @@ whose target was deleted, or whose source id exists again, records
 | Compare the credits at undo | A credit the owner removed and added again looks unchanged |
 | Make the owner's merges undoable too | Only automatic decisions are undone from the activity log, and owner merges write no entry |
 
+## Face entries on the activity screen
+
+Both kinds belong to the `face_recognition` feature of the activity filter. A
+`face_merge` entry's subject is the merge target as a `person` subject, whose
+item carries `personId` from the subject key, so the card and the detail page
+open `/people/:id`; its result names the source as `Unnamed person`, since a
+merged source is always provisional. A `face_analysis` entry lists its
+`faceLinks` in the list, in the detail and in an import pipeline's member
+summaries, so a pipeline's member reads the same names as its own card
+(`web/src/activity/activityEntry.ts`).
+
+A card with one link not undone shows `Undo` with that link's `appearanceId`;
+with several, `Undo links…` opens a menu of the people and `All links`, which
+sends no `appearanceId`. The detail page's `People` section lists every link
+with its own undo, and strikes through an undone one. An undo of one named
+link keeps the person's name as its `detail`, read as `Undid the link to
+{name}`; the undo of an unnamed person's link or of every link reads
+`Undid Face analysis`.
+
 ## The owner settles a candidate pair
 
 A pair in `face_candidates` is stored once as `(provisional_id, person_id)`,

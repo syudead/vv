@@ -3522,7 +3522,7 @@ paths:
           explode: true
           schema:
             type: array
-            maxItems: 9
+            maxItems: 10
             items:
               $ref: "#/components/schemas/ActivityFeature"
         - name: decider
@@ -9284,6 +9284,7 @@ components:
         - versions
         - media_folders
         - organize
+        - face_recognition
       # Explicit names prevent colliding enum values from renaming existing constants.
       x-enum-varnames:
         - ActivityFeatureImport
@@ -9295,6 +9296,7 @@ components:
         - ActivityFeatureVersions
         - ActivityFeatureMediaFolders
         - ActivityFeatureOrganize
+        - ActivityFeatureFaceRecognition
 
     ActivityStatus:
       type: string
@@ -9394,6 +9396,7 @@ components:
           versions,
           media_folders,
           organize,
+          face_recognition,
         ]
       additionalProperties: false
       properties:
@@ -9414,6 +9417,8 @@ components:
         media_folders:
           type: integer
         organize:
+          type: integer
+        face_recognition:
           type: integer
 
     ActivityEntry:
@@ -9569,6 +9574,11 @@ components:
         tagCount:
           type: integer
           description: "auto_tag only: the number of tags the run added."
+        faceLinks:
+          type: array
+          description: "face_analysis only: the people the run linked, as in ActivityEntry."
+          items:
+            $ref: "#/components/schemas/ActivityFaceLink"
         stages:
           type: array
           description: "import only, in ingest order; omitted when the stages were not recorded."
@@ -9656,7 +9666,7 @@ components:
       properties:
         kind:
           type: string
-          enum: [video, pair, scan, folder]
+          enum: [video, pair, scan, folder, person]
         items:
           type: array
           items:
@@ -9674,6 +9684,10 @@ components:
           type: integer
           format: int64
           description: "Current video accessible to the viewer; omitted when unavailable."
+        personId:
+          type: integer
+          format: int64
+          description: "The person of a person subject, which may since have been deleted; omitted for other subjects."
 
     ActivityProgress:
       type: object
