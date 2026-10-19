@@ -23,9 +23,9 @@ no older component is left.
   has the focus with the `accent` fill instead.
 - **States**: hover, pressed, selected and disabled come from the component.
   Do not restyle them per screen; disabled is `opacity-50` everywhere.
-  `Button`, `Switch` and `Input` draw `aria-disabled="true"` the same way
-  (`opacity-50`, the `not-allowed` cursor) but keep their focus and their
-  value; the handler still has to ignore the press or the keystroke.
+  `Button`, `Switch`, `Input` and `RadioGroupItem` draw `aria-disabled="true"`
+  the same way (`opacity-50`, the `not-allowed` cursor) but keep their focus
+  and their value; the handler still has to ignore the press or the keystroke.
 - **Size by density**: the library uses `sm` (`h-8`) controls and `icon-sm`
   icon buttons; the video page uses `default` (`h-9`) and `lg` (`h-10`) for its
   main action. Icon-only buttons in one area share one size.

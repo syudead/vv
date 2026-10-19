@@ -14,6 +14,7 @@ export type SettingsSectionId =
   | "version-judging"
   | "setup"
   | "auto-tagging"
+  | "face-recognition"
   | "ollama"
   | "comfyui"
   | "work-info-plugins"
@@ -41,6 +42,7 @@ export const settingsPages: readonly SettingsPageEntry[] = [
     anchors: [],
   },
   { slug: "auto-tagging", sections: ["auto-tagging"], anchors: [] },
+  { slug: "face-recognition", sections: ["face-recognition"], anchors: [] },
   { slug: "connections", sections: ["ollama", "comfyui"], anchors: ["comfyui"] },
   { slug: "plugins", sections: ["work-info-plugins"], anchors: ["work-info-plugins"] },
   { slug: "conversion", sections: ["transcoding"], anchors: [] },

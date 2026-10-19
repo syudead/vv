@@ -168,9 +168,10 @@ header and the sections, `gap-6` from both. Without `notice` nothing is drawn.
   `destructive`, with `Retry` in `AlertAction`, when reading the condition
   failed.
 - When the condition locks the page's controls, keep them in place with their
-  values visible and set `aria-disabled="true"` on each; `Button`, `Switch`
-  and `Input` draw it as disabled. The attribute stops nothing by itself, so
-  each handler returns without changing the value or sending a request.
+  values visible and set `aria-disabled="true"` on each; `Button`, `Switch`,
+  `Input` and `RadioGroupItem` draw it as disabled. The attribute stops nothing
+  by itself, so each handler returns without changing the value or sending a
+  request.
 - Say the reason once, in the notice, not on each row.
 
 ## Record page
