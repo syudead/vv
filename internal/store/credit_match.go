@@ -65,7 +65,9 @@ func matchCredits(ctx context.Context, tx *sql.Tx, t creditTables, entries []dom
 		case 0:
 			matches[i] = domain.CreditMatch{State: domain.CreditMatchNew}
 		case 1:
-			ref := &domain.CreditRef{ID: found[0], Name: names[found[0]]}
+			// Only a person can lack a canonical name, which makes it provisional.
+			name, named := names[found[0]]
+			ref := &domain.CreditRef{ID: found[0], Name: name, Provisional: !named}
 			matches[i] = domain.CreditMatch{State: domain.CreditMatchExisting, Credit: ref}
 		default:
 			matches[i] = domain.CreditMatch{State: domain.CreditMatchAmbiguous}

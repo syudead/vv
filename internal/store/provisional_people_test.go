@@ -155,3 +155,18 @@ func TestWorkInfoMarksAProvisionalPerformer(t *testing.T) {
 		t.Errorf("出演者 = %+v, want %+v", people, want)
 	}
 }
+
+func TestCreditMatchByExternalIDMarksAProvisionalPerson(t *testing.T) {
+	db := migratedDB(t)
+	id := createProvisionalPerson(t, db)
+	ids := []domain.ExternalID{{Source: "db", Value: "7"}}
+	if _, err := db.Credits().Update(context.Background(), domain.CreditPerson, id, domain.CreditPatch{ExternalIDs: &ids}); err != nil {
+		t.Fatal(err)
+	}
+
+	got := matchFetched(t, db, domain.CreditPerson, domain.CreditMatchEntry{Name: "Aoi", ExternalIDs: ids})
+	want := domain.CreditRef{ID: id, Provisional: true}
+	if len(got) != 1 || got[0].State != domain.CreditMatchExisting || got[0].Credit == nil || *got[0].Credit != want {
+		t.Errorf("Match = %+v, want existing %+v", got, want)
+	}
+}
