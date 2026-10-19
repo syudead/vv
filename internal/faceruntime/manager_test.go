@@ -2,6 +2,7 @@ package faceruntime
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"crypto/sha256"
@@ -17,6 +18,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/faceproto"
@@ -84,8 +87,10 @@ func runtimeArchive(t *testing.T) ([]byte, map[string]string) {
 
 // fixture is a catalog served by an httptest server and a launcher that fakes the helper.
 type fixture struct {
-	dir     string
-	server  *fileServer
+	dir    string
+	server *fileServer
+	// files is what server serves, by path; a test adds to it before the first request.
+	files   map[string][]byte
 	catalog Catalog
 	model   []byte
 	// hello is what the fake helper greets with.
@@ -104,7 +109,8 @@ func newFixture(t *testing.T) *fixture {
 		model: model,
 		hello: faceproto.Hello{Version: faceproto.Version, Detector: "yunet_2023mar", Recognizer: "sface_int8", Dim: 128},
 	}
-	f.server = newFileServer(t, map[string][]byte{"/runtime.tar.gz": archive, "/yunet.onnx": detector, "/sface.onnx": model})
+	f.files = map[string][]byte{"/runtime.tar.gz": archive, "/yunet.onnx": detector, "/sface.onnx": model}
+	f.server = newFileServer(t, f.files)
 	f.catalog = Catalog{
 		Version: 1,
 		Platform: &Platform{
@@ -345,4 +351,95 @@ func TestStartupReadsATamperedRuntimeAsFailed(t *testing.T) {
 			}
 		})
 	}
+}
+
+// zipRuntimeArchive is a Windows runtime archive of placeholder files, and the pins of its files.
+func zipRuntimeArchive(t *testing.T) ([]byte, map[string]string) {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	files := map[string]string{}
+	for _, name := range []string{"mdm-face.exe", "onnxruntime.dll", "licenses/onnxruntime.txt"} {
+		body := []byte("content of " + name)
+		files[name] = pinOf("", body).SHA256
+		w, err := zw.Create("face-runtime-windows-amd64/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write(body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes(), files
+}
+
+func TestStartUnpacksAZipRuntimeAndStartsTheWindowsHelper(t *testing.T) {
+	f := newFixture(t)
+	archive, files := zipRuntimeArchive(t)
+	f.files["/runtime.zip"] = archive
+	f.catalog.Platform = &Platform{
+		Name: "windows-amd64", Archive: pinOf(f.server.URL+"/runtime.zip", archive), Files: files,
+	}
+	m := f.manager()
+
+	if err := m.Start(domain.FaceRecognizerSFaceInt8); err != nil {
+		t.Fatal(err)
+	}
+	waitDownload(m)
+
+	if got := m.Status(domain.FaceRecognizerSFaceInt8); got.State != domain.FaceRuntimeReady {
+		t.Fatalf("Status = %+v, want ready", got)
+	}
+	want := []string{
+		"models/sface.onnx", "models/yunet.onnx",
+		"runtime-v1/licenses/onnxruntime.txt", "runtime-v1/mdm-face.exe", "runtime-v1/onnxruntime.dll",
+	}
+	if got := regularFiles(t, f.dir); !slices.Equal(got, want) {
+		t.Fatalf("files = %v, want %v", got, want)
+	}
+	if wantPath := filepath.Join(f.dir, "runtime-v1", "mdm-face.exe"); len(f.commands) != 1 || f.commands[0].Path != wantPath {
+		t.Fatalf("helper commands = %+v, want one starting %s", f.commands, wantPath)
+	}
+}
+
+// memoryClient serves files by path without a network, so a download can run inside a synctest bubble.
+func memoryClient(files map[string][]byte) *http.Client {
+	return &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		body, ok := files[r.URL.Path]
+		if !ok {
+			return &http.Response{StatusCode: http.StatusNotFound, Status: "404 Not Found", Body: http.NoBody}, nil
+		}
+		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(bytes.NewReader(body))}, nil
+	})}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestHelperThatNeverGreetsFailsTheDownloadAfterTheHandshakeTimeout(t *testing.T) {
+	f := newFixture(t)
+	synctest.Test(t, func(t *testing.T) {
+		silent := func(HelperCommand) (Process, error) {
+			return pipeProcess(func(in io.Reader, _ io.Writer) { _, _ = io.Copy(io.Discard, in) }), nil
+		}
+		m := New(Options{Dir: f.dir, Catalog: f.catalog, Client: memoryClient(f.files), Launch: silent})
+		start := time.Now()
+
+		if err := m.Start(domain.FaceRecognizerSFaceInt8); err != nil {
+			t.Fatal(err)
+		}
+		waitDownload(m)
+
+		got := m.Status(domain.FaceRecognizerSFaceInt8)
+		if got.State != domain.FaceRuntimeFailed || got.Reason != domain.FaceRuntimeHelperStart {
+			t.Fatalf("Status = %+v, want failed with helper_start", got)
+		}
+		if elapsed := time.Since(start); elapsed != handshakeTimeout {
+			t.Fatalf("the download ended after %v, want the handshake timeout %v", elapsed, handshakeTimeout)
+		}
+	})
 }

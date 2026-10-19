@@ -42,6 +42,10 @@ type Launcher func(cmd HelperCommand) (Process, error)
 // stopGrace is how long a helper may take to exit after its input closes before it is killed.
 const stopGrace = 2 * time.Second
 
+// handshakeTimeout bounds how long a started helper may take to greet. Loading the largest model on a slow
+// machine takes seconds, so a helper still silent after this is treated as hung.
+const handshakeTimeout = 60 * time.Second
+
 // stderrLimit bounds the helper's standard error kept for an error message.
 const stderrLimit = 4 << 10
 
@@ -219,7 +223,9 @@ func (h *Helper) start(ctx context.Context) (*helperProcess, error) {
 		return nil, fmt.Errorf("%w: %w", ErrHelperStart, err)
 	}
 	p := &helperProcess{Process: proc, out: bufio.NewReaderSize(proc.Out, 1<<16)}
-	hello, err := p.call(ctx, func() (faceproto.Message, error) { return faceproto.Read(p.out) })
+	handshake, cancel := context.WithTimeout(ctx, handshakeTimeout)
+	defer cancel()
+	hello, err := p.call(handshake, func() (faceproto.Message, error) { return faceproto.Read(p.out) })
 	if err == nil {
 		err = h.checkHello(hello)
 	}

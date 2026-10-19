@@ -164,8 +164,9 @@ func (p progressWriter) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-// unpack extracts the archive's root folder root into dir; dir must not exist.
-func unpack(archive, root, dir string) error {
+// unpack extracts the archive's root folder root into dir, reading it as a ZIP when zipped and as a .tar.gz
+// otherwise; dir must not exist.
+func unpack(archive string, zipped bool, root, dir string) error {
 	write := func(name string, mode fs.FileMode, r io.Reader) error {
 		inner, ok := strings.CutPrefix(name, root+"/")
 		if !ok || inner == "" || !filepath.IsLocal(filepath.FromSlash(inner)) {
@@ -176,17 +177,17 @@ func unpack(archive, root, dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	return eachArchiveFile(archive, write)
+	return eachArchiveFile(archive, zipped, write)
 }
 
-// eachArchiveFile passes each regular file of a .zip or .tar.gz archive to extract.
-func eachArchiveFile(archive string, extract extractFunc) error {
+// eachArchiveFile passes each regular file of a ZIP (zipped) or .tar.gz archive to extract.
+func eachArchiveFile(archive string, zipped bool, extract extractFunc) error {
 	file, err := os.Open(archive)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = file.Close() }()
-	if strings.HasSuffix(archive, ".zip") {
+	if zipped {
 		info, err := file.Stat()
 		if err != nil {
 			return err

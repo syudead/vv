@@ -38,6 +38,10 @@ type Platform struct {
 
 func (p Platform) windows() bool { return strings.HasPrefix(p.Name, "windows-") }
 
+// zipped reports whether the archive is a ZIP, by its published asset name; the downloaded file's name says
+// nothing about its format.
+func (p Platform) zipped() bool { return strings.HasSuffix(p.Archive.URL, ".zip") }
+
 // Catalog is everything the runtime can download.
 type Catalog struct {
 	// Version is the N of face-runtime-v<N>, which names the runtime folder.

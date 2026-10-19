@@ -290,7 +290,7 @@ func (m *Manager) fetchItem(ctx context.Context, d *download, it item) error {
 	}
 	staged := filepath.Join(m.tmpDir(), filepath.Base(m.runtimeDir()))
 	root := "face-runtime-" + m.opts.Catalog.Platform.Name
-	if err := unpack(tmp, root, staged); err != nil {
+	if err := unpack(tmp, m.opts.Catalog.Platform.zipped(), root, staged); err != nil {
 		return fail(domain.FaceRuntimeDisk, err)
 	}
 	if verifyRuntime(staged, m.opts.Catalog.Platform.Files) != fileOK {
