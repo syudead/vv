@@ -1,4 +1,7 @@
 import type { FolderRef, FolderScope, VideoSort, WatchFilter } from "./client";
+import type { components } from "./gen/openapi";
+
+type WorkPersonRole = components["schemas"]["WorkPersonRole"];
 
 /** Select individual-video, mixed-library, or folder-video endpoints while sharing pagination. */
 export type VideosSource = "videos" | "library" | FolderRef;
@@ -17,6 +20,8 @@ export interface VideosCriteria {
   tag?: number[];
   /** Do not pass credit filters to folder listings. */
   person?: number;
+  /** Requires person. */
+  personRole?: WorkPersonRole;
   organization?: number;
   tagKind?: number;
   /** Do not pass added/length filters to folder listings. */
@@ -36,6 +41,7 @@ export function criteriaKey(criteria: VideosCriteria): string {
     criteria.scope ?? "direct",
     criteria.tag ?? [],
     criteria.person ?? null,
+    criteria.personRole ?? null,
     criteria.organization ?? null,
     criteria.tagKind ?? null,
     criteria.addedWithin ?? null,

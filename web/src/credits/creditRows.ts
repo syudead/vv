@@ -2,14 +2,13 @@ import { RequestFailed } from "../api/client";
 import {
   type Credit,
   type CreditKind,
-  type CreditSort,
   listCredits,
   type Organization,
 } from "../api/credits";
 import { errorText, t, type UiText } from "../i18n";
 import { foldForMatch } from "../lib/foldForMatch";
 import { readListSortPreferences } from "../preferences/tagListPreferences";
-import { isTagListSort } from "../tags/tagListOrder";
+import { isTagListSort, type TagListSort } from "../tags/tagListOrder";
 import type { ListRowsQuery, PageRows } from "../tags/tagPageRows";
 import type { TagFieldError } from "../tags/tagNameField";
 import type { RowsPage } from "../tags/useTagPage";
@@ -113,21 +112,22 @@ export function fetchCreditPage(kind: CreditKind) {
 
 export interface CreditListCriteria {
   query: string;
-  sort: CreditSort;
+  // The sorts tags share; the people grid adds the age sorts in its own criteria.
+  sort: TagListSort;
 }
 
 export function sortStorageKey(kind: CreditKind): string {
   return kind === "person" ? "vv.people.v1" : "vv.organizations.v1";
 }
 
-export function readCreditSort(kind: CreditKind): CreditSort {
+export function readCreditSort(kind: CreditKind): TagListSort {
   return readListSortPreferences(sortStorageKey(kind)).sort;
 }
 
 /** Use the stored sort when the URL omits it or supplies an invalid value. */
 export function parseCreditListCriteria(
   params: URLSearchParams,
-  preferredSort: CreditSort,
+  preferredSort: TagListSort,
 ): { criteria: CreditListCriteria; hasExplicitSort: boolean } {
   const rawSort = params.get("sort");
   const hasExplicitSort = isTagListSort(rawSort);

@@ -28,13 +28,16 @@ func TestUpdateFavoritesPassesDeduplicatedTargets(t *testing.T) {
 		calls := 0
 		handler := newTestServer(t, Options{Favorites: favoritesFunc(func(_ context.Context, change domain.FavoriteChange) (domain.FavoriteApplied, error) {
 			calls++
-			want := domain.FavoriteChange{VideoIDs: []int64{3, 1}, GroupIDs: []int64{3}, SmartFolderIDs: []int64{4, 2}, Favorite: favorite}
+			want := domain.FavoriteChange{
+				VideoIDs: []int64{3, 1}, GroupIDs: []int64{3}, SmartFolderIDs: []int64{4, 2}, PersonIDs: []int64{5, 6}, Favorite: favorite,
+			}
 			if !reflect.DeepEqual(change, want) {
 				t.Errorf("change = %+v, want %+v", change, want)
 			}
 			return domain.FavoriteApplied{Videos: 2, Groups: 0, SmartFolders: 1}, nil
 		})})
-		body := `{"videoIds":[3,1,3],"groupIds":[3,3],"smartFolderIds":[4,2,4],"favorite":` + strconv.FormatBool(favorite) + `}`
+		body := `{"videoIds":[3,1,3],"groupIds":[3,3],"smartFolderIds":[4,2,4],"personIds":[5,6,5],"favorite":` +
+			strconv.FormatBool(favorite) + `}`
 		rec := jsonRequest(t, handler, http.MethodPut, "/api/favorites", body)
 		if rec.Code != http.StatusOK || calls != 1 {
 			t.Fatalf("status = %d, calls = %d: %s", rec.Code, calls, rec.Body)
@@ -61,6 +64,7 @@ func TestUpdateFavoritesRejectsInvalidRequests(t *testing.T) {
 		`{"videoIds":` + idsJSON(maxVideoTagsIDs+1) + `,"favorite":true}`,
 		`{"videoIds":` + idsJSON(maxVideoTagsIDs) + `,"groupIds":[1],"favorite":true}`,
 		`{"groupIds":` + idsJSON(maxVideoTagsIDs) + `,"smartFolderIds":[1],"favorite":true}`,
+		`{"smartFolderIds":` + idsJSON(maxVideoTagsIDs) + `,"personIds":[1],"favorite":true}`,
 	} {
 		rec := jsonRequest(t, handler, http.MethodPut, "/api/favorites", body)
 		assertErrorBody(t, "target count", rec.Code, rec.Body.Bytes(), wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyVideos, limit: maxVideoTagsIDs})

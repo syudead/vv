@@ -224,3 +224,48 @@ func TestApplyFetchedDetailsPublishesWorkInfoChangedOnlyForDetails(t *testing.T)
 		t.Fatalf("same code again: events = %v; want no VideoWorkInfoChanged", events)
 	}
 }
+
+func TestApplyFetchedDetailsFillsOnlyTheEmptyProfileFieldsOfLinkedPeople(t *testing.T) {
+	db, ids := overrideFixture(t)
+	alpha := ids[fixturePath("/media/alpha.mp4")]
+	existing := createCredit(t, db, domain.CreditPerson, domain.CreditInput{
+		Name: "Aoi", Profile: domain.PersonProfile{BirthDate: "1990-05-17"},
+	})
+	height, tooTall := 160, 1000
+	aoi := fetchedPerformer("Aoi")
+	aoi.Profile = domain.PersonProfile{BirthDate: "1985", HeightCm: &height}
+	mika := fetchedPerformer("Mika")
+	mika.Profile = domain.PersonProfile{Cup: "e", HeightCm: &tooTall}
+	director := domain.FetchedPerson{Role: domain.PersonDirector, Name: "Aoi", Profile: domain.PersonProfile{Cup: "C"}}
+
+	applied := applyDetails(t, db, alpha, domain.FetchedWorkInfo{People: []domain.FetchedPerson{aoi, mika, director}},
+		performerField)
+
+	got := performerIDs(applied.Video.WorkInfo)
+	if len(got) != 2 || got[0] != existing.ID {
+		t.Fatalf("performers = %v; want Aoi, then a new person", got)
+	}
+	if want := []int64{existing.ID, got[1], 0}; !reflect.DeepEqual(applied.PersonIDs, want) {
+		t.Errorf("person IDs = %v, want %v (the director's role was not selected)", applied.PersonIDs, want)
+	}
+	stored, err := db.Credits().Get(context.Background(), domain.CreditPerson, existing.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (domain.PersonProfile{BirthDate: "1990-05-17", HeightCm: &height}); !stored.Profile.Equal(want) {
+		t.Errorf("Aoi's profile = %+v, want the height filled and the birth date kept", stored.Profile)
+	}
+	created, err := db.Credits().Get(context.Background(), domain.CreditPerson, got[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (domain.PersonProfile{Cup: "E"}); !created.Profile.Equal(want) {
+		t.Errorf("Mika's profile = %+v, want the cup alone", created.Profile)
+	}
+	wantSkipped := []domain.SkippedWorkInfoValue{
+		{Field: performerField, Value: "Mika: heightCm 1000", Reason: domain.SkippedWorkInfoInvalid},
+	}
+	if !reflect.DeepEqual(applied.Skipped, wantSkipped) {
+		t.Errorf("skipped = %+v, want %+v", applied.Skipped, wantSkipped)
+	}
+}

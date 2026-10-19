@@ -25,6 +25,7 @@ sample text and data with the screen's own, keeping the structure.
 | Asks the viewer to confirm an action that cannot be undone  | `ConfirmDialog`  | `confirm-dialog`   | `confirm-dialog-example`   |
 | Works on one image that needs the whole window              | `EditorDialog`   | `editor-dialog`    | `editor-dialog-example`    |
 | Fills in many values saved together, on a screen of its own | `FormPage`       | `form-page`        | `form-page-example`        |
+| Shows one subject's profile beside the items it is on       | `ProfilePage`    | `profile-page`     | `profile-page-example`     |
 | Walks through fixed steps one at a time (the first setup)   | `StepsPage`      | `steps-page`       | `steps-page-example`       |
 
 The states of a list or table are shown in `list-states-example`.
@@ -82,6 +83,19 @@ shell's `TopBarPortal` as `toolbar`. The portal draws nothing in the page, so
 the page starts with the header. The body is the only part that changes
 between states: the header and the toolbar stay where they are while the body
 shows loading, empty or an error.
+
+### Face grid
+
+A list of people is a `CardGrid size="face"`: cards at least `card-face` wide,
+so a 360px screen holds three and 1280px with the full sidebar eight or nine.
+A card is one link (`rounded-md`, `p-1`, `hover:shadow-card-hover`) holding a
+`PersonFace` `card`, then the name (`text-sm font-medium`, one line, centred,
+truncated, the full name in `title`) and a meta line (`text-xs`, muted,
+centred). The favorite heart is the only control: a `FavoriteToggle`
+`card` in a `PersonFaceMark` `top-end`, outside the link. Its loading state
+is `LoadingState layout="grid" size="face"`, circles with a line under them.
+Use it only for people; videos, folders and groups keep their card sizes.
+Example block `face-grid-example`.
 
 ## Admin table page
 
@@ -296,8 +310,10 @@ Item `form-page`. `FormPage` is a page of its own, not a dialog, that fills
 the window on `bg-background` for a form of many values saved together. A
 header band `navbar` high, sticky at the top at every width, with a bottom
 border and `bg-background/90 backdrop-blur-md`, holds the `title` (the page's
-`h1`, `text-lg font-semibold`), a muted `detail` after it (`text-sm`,
-truncated, hidden below `sm`) and the `actions` at its right end. Under the
+`h1`, `text-lg font-semibold`; truncated to one line when there is no
+`detail`, as a title that names the edited record), a muted `detail` after it
+(`text-sm`, truncated, hidden below `sm`) and the `actions` at its right end.
+Under the
 band sit the `notice` and then the body, `px-4` (`px-6` from `sm`) and `py-6`.
 
 | Width      | Layout                                                                                                                                                                                                         |
@@ -316,6 +332,31 @@ band sit the `notice` and then the body, `px-4` (`px-6` from `sm`) and `py-6`.
 Library density: `sm` controls. Use it when a form has more than a few fields
 or holds lists of chips, so it would scroll inside a `FormDialog`. Leaving
 with unsaved changes asks first with a `ConfirmDialog`.
+
+## Profile page
+
+Item `profile-page`. `ProfilePage` is a shell page at library density for one
+subject, such as a person, beside the items it is on: a profile column and a
+main column, with `p-3` (`p-4` from `sm`) around them.
+
+| Width      | Layout                                                                                                                                                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| From `lg`  | `grid-cols-profile-page`: the profile column `profile-aside` wide at the left, sticky under the top bar and scrolling inside itself past `profile-aside-max`, `gap-6` from the main column; `face` above `identity` |
+| Below `lg` | The profile column stacks above the main column: `face` at half the width (a third from `md`) beside `identity`, then `details` full width                                                                          |
+
+| Slot       | Put in it                                                                                                                    | Never                                        |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| `face`     | The subject's image (`PersonFace profile`) with its marks, and an error line under it                                        | Text about the subject                       |
+| `identity` | The name as the page's `h1` (`text-xl font-semibold`), a muted second line, then a row of `outline` and `ghost` `sm` actions | A `default` button; nothing outranks viewing |
+| `details`  | Groups under small headings (`h2`, `text-sm font-semibold`), each a `FactList`; links and IDs after them                     | A `PageSection` card                         |
+| `header`   | The main column's `PageHeader` with `headingLevel={2}` and the count                                                         | The subject's name                           |
+| `toolbar`  | One line of filters, such as a `ToggleGroup`; it scrolls sideways instead of wrapping                                        | Search or view controls                      |
+| children   | `CardGrid` then `LoadMoreRow`, or one state block                                                                            | A second header                              |
+| `status`   | One state block in place of both columns, such as the subject no longer existing                                             | Loading; draw `Skeleton`s in the slots       |
+
+Use it when the subject's facts must stay in view while its items scroll.
+`ListPage`'s `aside` is a right-hand column read after the body, and
+`DetailPage` is outside the shell with its media edge to edge.
 
 ## Steps page
 
@@ -352,7 +393,7 @@ must be taken in order and the screen is nothing else; one form is a
 | `PageSection`  | `page-section`  | A titled card (`h2`, `text-lg`); each direct child is one row, divided by a line and padded by the section                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `FormRow`      | `form-row`      | A setting: label and description on the left, one control on the right; stacked below `sm`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `FactList`     | `fact-list`     | Term and value pairs in two columns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `CardGrid`     | `card-grid`     | Cards at least `card-0` to `card-3` wide, stretched to fill the row. Each card occupies one column, including groups and smart folders                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `CardGrid`     | `card-grid`     | Cards at least `card-0` to `card-3` wide, or `card-face` for face cards, stretched to fill the row. Each card occupies one column, including groups and smart folders                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `GroupedList`  | `grouped-list`  | Rows under headings (`h2`, `text-sm font-semibold`, with an optional `detail` after a `·` in `text-xs` muted on the same line) that stick under the top bar while their group scrolls; each row `py-2` on the page background with no card, no line and no horizontal padding, `gap-2` between a heading and its rows, and groups `gap-6` apart                                                                                                                                                                                                                                                                                                                                                                                |
 | `CardList`     | `card-list`     | One-line cards stacked `gap-2` apart, each on `muted` with a `border` line, `rounded-lg`, `px-4`, at least `activity-card` high, in one of four tones (`default`, `primary`, `destructive`, `warning`); an icon, a title truncated first, a `badge` never truncated, a `detail` pushed right and truncated after the title, then a time column at least `activity-time` wide that never wraps and an actions column of fixed width; below `lg` two lines with a short time after the detail. A card with `members` starts with a `ghost` `icon-sm` expand button and, while expanded, shows its member rows inside its border under one `border-t`, inset to the title column, with their actions in the card's actions column |
 | `JumpList`     | `jump-list`     | A `ToggleGroup type="single"` of jump targets in groups divided by `Separator`s; from `lg` a vertical list of full-width, left-aligned `sm` toggles in the muted colour under an `h2` (`text-sm font-semibold`) with an optional `action` after a last divider, and below `lg` one horizontally scrolling line of outlined `sm` chips with the heading for screen readers only and no `action`                                                                                                                                                                                                                                                                                                                                 |
@@ -436,13 +477,13 @@ control }`: inline, the controls stand without a visible name, so each needs
 Every list, table and section shows its data or exactly one of these blocks,
 in the body slot of its skeleton, so the header and the toolbar never move.
 
-| State            | Block                            | Shows                                                                                                                      |
-| ---------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Loading          | `LoadingState` (`loading-state`) | `Skeleton` shapes of the final layout: `grid` cards, `table` rows, `grouped` rows under a heading, `cards` of a `CardList` |
-| Empty            | `EmptyState` (`empty-state`)     | An icon, a title saying why, a description, and the action that fills it when the viewer can take it                       |
-| Error            | `ErrorState` (`error-state`)     | A `destructive` `Alert`: what failed, and `Retry` when retrying can help                                                   |
-| Loading more     | `LoadMoreRow` (`load-more-row`)  | The content, then a `Spinner` row at the end                                                                               |
-| Load more failed | `LoadMoreRow` (`load-more-row`)  | The content kept, then an `Alert` row with `Retry`, which requests the same page again                                     |
+| State            | Block                            | Shows                                                                                                                                                        |
+| ---------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Loading          | `LoadingState` (`loading-state`) | `Skeleton` shapes of the final layout: `grid` cards (face circles with `size="face"`), `table` rows, `grouped` rows under a heading, `cards` of a `CardList` |
+| Empty            | `EmptyState` (`empty-state`)     | An icon, a title saying why, a description, and the action that fills it when the viewer can take it                                                         |
+| Error            | `ErrorState` (`error-state`)     | A `destructive` `Alert`: what failed, and `Retry` when retrying can help                                                                                     |
+| Loading more     | `LoadMoreRow` (`load-more-row`)  | The content, then a `Spinner` row at the end                                                                                                                 |
+| Load more failed | `LoadMoreRow` (`load-more-row`)  | The content kept, then an `Alert` row with `Retry`, which requests the same page again                                                                       |
 
 ```mermaid
 stateDiagram-v2

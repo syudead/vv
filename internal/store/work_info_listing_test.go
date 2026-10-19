@@ -86,3 +86,30 @@ func TestListVideosFiltersByPerson(t *testing.T) {
 		t.Errorf("ListVideos = %v（total %d）, want %v", listed, page.Total, want)
 	}
 }
+
+func TestListVideosFiltersByPersonRole(t *testing.T) {
+	db, ids := itemsFixture(t)
+	hanako, taro := createPerson(t, db, "山田花子"), createPerson(t, db, "佐藤太郎")
+	performerVideo, directorVideo := ids[fixturePath("/media/show/ep1.mp4")], ids[fixturePath("/media/solo.mp4")]
+	// Another person's director credit on the performer video catches person and role matched on different rows.
+	setWorkInfo(t, db, performerVideo, domain.WorkInfo{People: []domain.WorkPerson{
+		performer(hanako.ID), {Role: domain.PersonDirector, Person: domain.CreditRef{ID: taro.ID}},
+	}})
+	setWorkInfo(t, db, directorVideo, domain.WorkInfo{
+		People: []domain.WorkPerson{{Role: domain.PersonDirector, Person: domain.CreditRef{ID: hanako.ID}}},
+	})
+
+	for role, want := range map[domain.PersonRole]int64{
+		domain.PersonPerformer: performerVideo,
+		domain.PersonDirector:  directorVideo,
+	} {
+		page, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner,
+			domain.VideoQuery{Person: hanako.ID, PersonRole: role, Limit: 50})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page.Items) != 1 || page.Items[0].ID != want || page.Total != 1 {
+			t.Errorf("%s: items = %v（total %d）, want [%d]（total 1）", role, page.Items, page.Total, want)
+		}
+	}
+}

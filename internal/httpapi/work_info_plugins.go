@@ -39,6 +39,9 @@ type WorkInfoPlugins interface {
 	ApplyWorkInfoFetch(ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField, tags []string) (domain.WorkInfoApplied, error)
 	// WorkInfoFetchCover returns ErrNotFound when no cover is available.
 	WorkInfoFetchCover(videoID int64, fetchID string) (domain.WorkInfoCover, error)
+	// WorkInfoFetchPersonImage returns ErrNotFound for a missing result and ErrPersonImageNotFound when the person at
+	// index has no kept image.
+	WorkInfoFetchPersonImage(videoID int64, fetchID string, index int) (domain.WorkInfoCover, error)
 }
 
 func (s *server) workInfoPluginsConfigured(w http.ResponseWriter) bool {

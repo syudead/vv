@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "face-grid-example",
+  "title": "Face grid example",
+  "description": "A grid of round face cards, each a face or its placeholder with the name and a meta line, and its loading skeletons.",
+  "files": [
+    {
+      "path": "src/designSystem/blocks/face-grid-example.tsx",
+      "content": "import { t } from \"@/i18n\";\nimport { CardGrid } from \"@/ui/patterns/card-grid\";\nimport { LoadingState } from \"@/ui/patterns/loading-state\";\nimport { PersonFace } from \"@/ui/PersonFace\";\n\n// registry:block face-grid-example. See web/registry/rules/patterns.md, Face grid.\n\nexport function FaceGridExample({ loading = false }: { loading?: boolean }) {\n  const p = t.designSystem.pattern;\n  if (loading) {\n    return <LoadingState label={p.faceGridLoading} layout=\"grid\" size=\"face\" count={4} />;\n  }\n  return (\n    <CardGrid size=\"face\">\n      {p.faceGridPeople.map((person) => (\n        <a\n          key={person.name}\n          href=\"#people-grid\"\n          className=\"flex min-w-0 flex-col items-center gap-2 rounded-md p-1 transition-shadow hover:shadow-card-hover motion-reduce:transition-none\"\n        >\n          <PersonFace name={person.name} shape=\"card\" />\n          <span className=\"flex w-full min-w-0 flex-col items-center text-center\">\n            <span title={person.name} className=\"w-full truncate text-sm font-medium\">\n              {person.name}\n            </span>\n            <span className=\"w-full truncate text-xs text-muted-foreground\">\n              {person.meta}\n            </span>\n          </span>\n        </a>\n      ))}\n    </CardGrid>\n  );\n}\n",
+      "type": "registry:component"
+    }
+  ],
+  "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#face-grid (item vv-rules).",
+  "type": "registry:block"
+}

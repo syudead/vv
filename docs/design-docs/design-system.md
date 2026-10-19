@@ -279,6 +279,7 @@ maintainer approves this tier on the showcase and each screen migrates.
 | `TagCommand`                                                                                              | `ui/Combobox`, the selection bar's former `library/TagCommand`            | vv component; a `Command` with the tag-name rules                                                                                                                                   |
 | `CreditCommand`                                                                                           | —                                                                         | vv component; `TagCommand`'s sibling with the rules for the names of people and organizations, on the same base (`NameCommand`), offering its create row even beside an exact match |
 | `FilterDropdownButton`                                                                                    | —                                                                         | vv component; one toolbar filter that shows its value and opens a `DropdownMenu`, `primary-soft` when not at its default                                                            |
+| `PersonFace`                                                                                              | —                                                                         | vv component; a person's face or the `UserRound` placeholder in one frame, in the `card`, `profile`, `chip` and `compare` shapes                                                    |
 
 The shadcn components live in `web/src/ui/shadcn` under upstream's
 kebab-case names (`dropdown-menu.tsx`), beside the action and input
@@ -307,11 +308,11 @@ a screen never writes them; it only passes content into slots. Which skeleton
 to pick, what goes in each slot and what must not is in
 [patterns.md](../../web/registry/rules/patterns.md) (item `vv-rules`).
 
-| Layer          | What it is                                                                                                                                                                                                                                                              | Registry                     |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `RecordPage`, `DetailPage`, `CenteredForm`, `FormDialog`, `ConfirmDialog`, `EditorDialog`, `FormPage`, `StepsPage`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
-| Sections       | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `CardList`, `DataTable`, `GroupedList`, `JumpList`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps                                                      | `registry:ui`, one item each |
-| States         | `LoadingState`, `EmptyState`, `ErrorState`, `LoadMoreRow`: what the body shows instead of, or after, its data                                                                                                                                                           | `registry:ui`, one item each |
+| Layer          | What it is                                                                                                                                                                                                                                                                             | Registry                     |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `RecordPage`, `DetailPage`, `CenteredForm`, `FormDialog`, `ConfirmDialog`, `EditorDialog`, `FormPage`, `ProfilePage`, `StepsPage`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
+| Sections       | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `CardList`, `DataTable`, `GroupedList`, `JumpList`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps                                                                     | `registry:ui`, one item each |
+| States         | `LoadingState`, `EmptyState`, `ErrorState`, `LoadMoreRow`: what the body shows instead of, or after, its data                                                                                                                                                                          | `registry:ui`, one item each |
 
 Each skeleton also has an example block (`list-page-example` and so on, plus
 `list-states-example`): a working composition of the skeleton, its sections
@@ -400,6 +401,16 @@ the icon, and the parts as rows inside the card's border, with no gap or line
 between them. The border holds one record, so the gap between cards keeps two
 records apart and the parts of one together; parts drawn as cards of their
 own would each read as a record.
+
+`ProfilePage` is a shell page for one subject beside the items it is on, such
+as a person and their videos ([people.md](people.md#the-person-page)): a
+profile column `profile-aside` wide at the left from `lg` (the named utility
+`grid-cols-profile-page`), sticky under the top bar so the face and facts stay
+in view while the items scroll, and the main column with a header, one line
+of filters and the body. Below `lg` the profile column stacks above the items,
+its face beside the name. No skeleton had that shape: `ListPage`'s `aside` is
+a right-hand column for tools read after the body, and `DetailPage` is outside
+the shell with media edge to edge.
 
 `StepsPage` is a page outside the shell for steps taken in a fixed order, one
 at a time, such as the first setup: a header band with the logo and a strip of

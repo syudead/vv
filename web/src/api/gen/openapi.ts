@@ -1442,6 +1442,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/{id}/work-info-fetches/{fetchId}/people/{index}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return a fetched person's image
+         * @description Owner-only. Returns the image VV fetched for the person at index in the result's people, kept with the result like the cover. Missing, expired or mismatched-video results return 404 not_found; an index without a kept image, or outside people, returns 404 person_image_not_found. Uses Cache-Control: no-store.
+         */
+        get: operations["getWorkInfoFetchPersonImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tags": {
         parameters: {
             query?: never;
@@ -1689,7 +1709,7 @@ export interface paths {
         };
         /**
          * List people
-         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches.
+         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people.
          */
         get: operations["listPeople"];
         put?: never;
@@ -1752,6 +1772,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/people/{id}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return a person's face
+         * @description Owner-only. Returns the stored JPEG (at most 800 px on its long side) with `Cache-Control: private, no-cache` and the person's imageRevision as `ETag`; a matching `If-None-Match` returns 304. `v` only changes the URL when the face changes. Missing person returns 404 person_not_found; a person without a face returns 404 person_image_not_found.
+         */
+        get: operations["getPersonImage"];
+        /**
+         * Set a person's face from an uploaded image
+         * @description Owner-only. Accepts multipart `image` (PNG, JPEG or static WebP) under the thumbnail upload's limits: 64 MiB with 1 MiB additional multipart overhead, and 120 million pixels. Fits it to at most 800 px on its long side, stores it as JPEG, replacing any earlier face, and returns Person with a new imageRevision. A body over the byte limit returns 413 person_image_too_large with limit. Unsupported, animated, unreadable or over-pixel images return 400 person_image_invalid. Missing person returns 404 person_not_found. Errors write nothing. After the body arrives, fitting continues despite disconnect, with a five-minute limit.
+         */
+        put: operations["uploadPersonImage"];
+        post?: never;
+        /**
+         * Remove a person's face
+         * @description Owner-only; no body. Removes the face and returns Person without imageRevision; a person without a face is returned unchanged. A later upload gets a revision never used before. Missing person returns 404 person_not_found.
+         */
+        delete: operations["deletePersonImage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations": {
         parameters: {
             query?: never;
@@ -1761,7 +1809,7 @@ export interface paths {
         };
         /**
          * List organizations
-         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches.
+         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite returns 400 invalid_request.
          */
         get: operations["listOrganizations"];
         put?: never;
@@ -1914,7 +1962,7 @@ export interface paths {
         get?: never;
         /**
          * Set or clear favorites on videos and groups
-         * @description Owner-only. Sets favorite on videoIds, groupIds and smartFolderIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events.
+         * @description Owner-only. Sets favorite on videoIds, groupIds, smartFolderIds and personIds. Requires 1–20,000 distinct IDs across the arrays or returns 400 too_many_videos without changes. Missing people, smart folders, groups and videos outside the library are ignored. Unchanged items count, and setting an existing favorite preserves its timestamp. Favoriting a group does not favorite members; group favorites disappear on dissolution. Changes are atomic and emit no events.
          */
         put: operations["updateFavorites"];
         post?: never;
@@ -3065,6 +3113,13 @@ export interface components {
             /** @description Video contentVersion held by the UI when the preview opened. */
             contentVersion: string;
         };
+        UploadPersonImageRequest: {
+            /**
+             * Format: binary
+             * @description Face image: PNG, JPEG or static WebP, at most 64 MiB and 120 million pixels.
+             */
+            image: string;
+        };
         UploadWorkInfoPluginRequest: {
             /**
              * Format: binary
@@ -3258,6 +3313,10 @@ export interface components {
             name: string;
             externalIds: components["schemas"]["ExternalId"][];
             match: components["schemas"]["WorkInfoMatch"];
+            /** @description Present and true when VV kept an image for this person, served by getWorkInfoFetchPersonImage at its index. */
+            hasImage?: boolean;
+            /** @description Plugin-provided profile values that pass validation; omitted when none. Applying the person's role fills only the linked person's empty fields. */
+            profile?: components["schemas"]["PersonProfile"];
         };
         WorkInfoFetchedOrganization: {
             role: components["schemas"]["WorkOrganizationRole"];
@@ -3293,7 +3352,7 @@ export interface components {
         SkippedWorkInfoReason: "invalid" | "too_many" | "ambiguous";
         SkippedWorkInfoValue: {
             field: components["schemas"]["WorkInfoField"];
-            /** @description Value shown in the comparison: date, URL, name, source: value, or the first 100 description characters. */
+            /** @description Value shown in the comparison: date, URL, name, source: value, or the first 100 description characters. A profile value is name: property value, such as Hanako: heightCm 1000. */
             value: string;
             reason: components["schemas"]["SkippedWorkInfoReason"];
         };
@@ -3622,7 +3681,13 @@ export interface components {
         WorkPerson: {
             role: components["schemas"]["WorkPersonRole"];
             person: components["schemas"]["CreditRef"];
+            imageRevision?: components["schemas"]["PersonImageRevision"];
         };
+        /**
+         * Format: int64
+         * @description Present only when the person has a face; changes with every change of the face and is never reused. Load the face from /api/people/{id}/image?v={imageRevision}.
+         */
+        PersonImageRevision: number;
         WorkOrganization: {
             role: components["schemas"]["WorkOrganizationRole"];
             organization: components["schemas"]["CreditRef"];
@@ -3682,10 +3747,86 @@ export interface components {
             aliases: components["schemas"]["Alias"][];
             /** @description Ordered by (source, value). */
             externalIds: components["schemas"]["ExternalId"][];
+            profile: components["schemas"]["PersonProfile"];
+            /** @description Whether the owner marked this person as a favorite. */
+            favorite: boolean;
+            imageRevision?: components["schemas"]["PersonImageRevision"];
             /** @description Visible videos linked to this person in any role. */
             videoCount: number;
             /** Format: date-time */
             createdAt: string;
+        };
+        /** @description A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>. */
+        PersonProfile: {
+            /** @enum {string} */
+            gender?: "female" | "male" | "other";
+            /**
+             * @description YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.
+             * @example 1990
+             * @example 1990-05
+             * @example 1990-05-17
+             */
+            birthDate?: string;
+            /** @description Same format as birthDate; not before it at the precision both share. */
+            deathDate?: string;
+            /** @description 1-200 code points. */
+            birthplace?: string;
+            /** @description 50-300. */
+            heightCm?: number;
+            /** @description 30-300. */
+            bustCm?: number;
+            /** @description 30-300. */
+            waistCm?: number;
+            /** @description 30-300. */
+            hipsCm?: number;
+            /** @description 1-3 Latin letters, stored upper case. */
+            cup?: string;
+            /** @enum {string} */
+            bloodType?: "A" | "B" | "O" | "AB";
+            /** @description 1900-9999. */
+            careerStartYear?: number;
+            /** @description 1900-9999; not before careerStartYear. */
+            careerEndYear?: number;
+            /** @description 1-5,000 code points; line breaks are kept. */
+            bio?: string;
+            /** @description HTTP(S) URLs in order, at most 20 and unique; omitted when empty. */
+            links?: string[];
+        };
+        /** @description Profile update: each property present replaces that field, null or an empty value clears it, and links replaces the list. */
+        PersonProfilePatch: {
+            /** @description female, male or other. */
+            gender?: string | null;
+            /**
+             * @description YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.
+             * @example 1990
+             * @example 1990-05
+             * @example 1990-05-17
+             */
+            birthDate?: string | null;
+            /** @description Same format as birthDate; not before it at the precision both share. */
+            deathDate?: string | null;
+            /** @description 1-200 code points. */
+            birthplace?: string | null;
+            /** @description 50-300. */
+            heightCm?: number | null;
+            /** @description 30-300. */
+            bustCm?: number | null;
+            /** @description 30-300. */
+            waistCm?: number | null;
+            /** @description 30-300. */
+            hipsCm?: number | null;
+            /** @description 1-3 Latin letters, stored upper case. */
+            cup?: string | null;
+            /** @description A, B, O or AB. */
+            bloodType?: string | null;
+            /** @description 1900-9999. */
+            careerStartYear?: number | null;
+            /** @description 1900-9999; not before careerStartYear. */
+            careerEndYear?: number | null;
+            /** @description 1-5,000 code points; line breaks are kept. */
+            bio?: string | null;
+            /** @description HTTP(S) URLs in order, at most 20 and unique; omitted when empty. */
+            links?: string[] | null;
         };
         /** @description One organization, with Person fields plus a parent organization. */
         Organization: {
@@ -3703,7 +3844,7 @@ export interface components {
             /** @description Parent organization; omitted for roots. */
             parent?: components["schemas"]["CreditRef"];
         };
-        /** @description Person or organization creation body; parentId is organization-only. */
+        /** @description Person or organization creation body; parentId is organization-only and profile person-only. */
         CreditInput: {
             name: string;
             aliases?: components["schemas"]["Alias"][];
@@ -3713,6 +3854,8 @@ export interface components {
              * @description Parent organization ID; sending it for a person returns 400 invalid_request.
              */
             parentId?: number;
+            /** @description Person-only profile; sending it for an organization returns 400 invalid_request. */
+            profile?: components["schemas"]["PersonProfile"];
         };
         /** @description Update body: omitted properties remain unchanged, lists are replaced entirely, and null clears a list. Organization-only parentId null detaches the parent. */
         CreditPatch: {
@@ -3724,6 +3867,8 @@ export interface components {
              * @description Parent organization ID; null detaches it. Sending this for a person returns 400 invalid_request.
              */
             parentId?: number | null;
+            /** @description Person-only; sending it for an organization returns 400 invalid_request. A profile that changes nothing writes nothing. */
+            profile?: components["schemas"]["PersonProfilePatch"];
         };
         CreditMergeRequest: {
             /** @description Source IDs: 1-20,000 entries. */
@@ -3732,7 +3877,7 @@ export interface components {
         /** @description Person form of the CreditList contract. */
         PersonList: {
             items: components["schemas"]["Person"][];
-            /** @description Person count matching q, independent of pagination. */
+            /** @description Person count matching q and favorite, independent of pagination. */
             total: number;
             /** @description Total person count. */
             totalAll: number;
@@ -3760,11 +3905,11 @@ export interface components {
             notFoundIds: number[];
         };
         /**
-         * @description Same five sort modes as TagSort; ties use natural-name order, then ID.
+         * @description The five TagSort modes, plus ageAsc (newest birth date first) and ageDesc (oldest first) for people only; organizations answer either with 400 invalid_request. A partial birth date sorts as its first possible day, and people without one come last in both age sorts. Ties use natural-name order, then ID.
          * @default name
          * @enum {string}
          */
-        CreditSort: "name" | "countDesc" | "countAsc" | "createdDesc" | "createdAsc";
+        CreditSort: "name" | "countDesc" | "countAsc" | "createdDesc" | "createdAsc" | "ageAsc" | "ageDesc";
         /** @enum {string} */
         VideoTagsAction: "add" | "remove";
         VideoTagsRequest: {
@@ -3807,6 +3952,8 @@ export interface components {
             groupIds?: number[];
             /** @description Smart-folder IDs whose favorite state changes. */
             smartFolderIds?: number[];
+            /** @description Person IDs whose favorite state changes; missing people are ignored. */
+            personIds?: number[];
             /** @description True adds favorites; false removes them. */
             favorite: boolean;
         };
@@ -5280,7 +5427,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken";
     };
     responses: {
         /** @description Resource not found */
@@ -5321,6 +5468,15 @@ export interface components {
         };
         /** @description Plugin module exceeds limit */
         PluginTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Uploaded person image body exceeds the byte limit (reason person_image_too_large, limit) */
+        PersonImageTooLarge: {
             headers: {
                 [name: string]: unknown;
             };
@@ -5378,6 +5534,8 @@ export interface components {
         VideoId: number;
         /** @description Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
         PersonFilter: number;
+        /** @description Keeps only videos linked to `person` in this role, including total. Requires `person`; without it, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed. */
+        PersonRoleFilter: components["schemas"]["WorkPersonRole"];
         /** @description Organization ID, matching any role; follows person filter semantics */
         OrganizationFilter: number;
         /** @description Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests. */
@@ -5424,6 +5582,8 @@ export interface components {
         CreditCursor: string;
         /** @description Page size; omit for all results without nextCursor */
         CreditLimit: number;
+        /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
+        CreditFavorite: boolean;
         /** @description Registered media-folder ID containing this folder */
         FolderRootId: number;
         /** @description Playlist item ID */
@@ -5617,6 +5777,8 @@ export interface operations {
                 tag?: number[];
                 /** @description Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed. */
                 person?: components["parameters"]["PersonFilter"];
+                /** @description Keeps only videos linked to `person` in this role, including total. Requires `person`; without it, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed. */
+                personRole?: components["parameters"]["PersonRoleFilter"];
                 /** @description Organization ID, matching any role; follows person filter semantics */
                 organization?: components["parameters"]["OrganizationFilter"];
                 /** @description Added within this many days, ANDed with other filters including total. Accepts 1–36500 or returns 400 invalid_request. Available to guests. */
@@ -7931,6 +8093,37 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    getWorkInfoFetchPersonImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Video ID */
+                id: components["parameters"]["VideoId"];
+                /** @description Fetch result ID */
+                fetchId: components["parameters"]["WorkInfoFetchId"];
+                /** @description Position in the result's people */
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Person image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/jpeg": string;
+                    "image/webp": string;
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listTags: {
         parameters: {
             query?: {
@@ -8399,6 +8592,8 @@ export interface operations {
                 cursor?: components["parameters"]["CreditCursor"];
                 /** @description Page size; omit for all results without nextCursor */
                 limit?: components["parameters"]["CreditLimit"];
+                /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
+                favorite?: components["parameters"]["CreditFavorite"];
             };
             header?: never;
             path?: never;
@@ -8554,6 +8749,96 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    getPersonImage: {
+        parameters: {
+            query?: {
+                /** @description imageRevision from Person or WorkPerson; ignored by the server */
+                v?: string;
+            };
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Face */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            /** @description `If-None-Match` matches `ETag` */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    uploadPersonImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["UploadPersonImageRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated person */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PersonImageTooLarge"];
+        };
+    };
+    deletePersonImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Updated person */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listOrganizations: {
         parameters: {
             query?: {
@@ -8565,6 +8850,8 @@ export interface operations {
                 cursor?: components["parameters"]["CreditCursor"];
                 /** @description Page size; omit for all results without nextCursor */
                 limit?: components["parameters"]["CreditLimit"];
+                /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
+                favorite?: components["parameters"]["CreditFavorite"];
             };
             header?: never;
             path?: never;

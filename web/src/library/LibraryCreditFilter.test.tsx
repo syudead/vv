@@ -47,7 +47,7 @@ function json(body: unknown, status = 200): Response {
 
 const info: WorkInfoValue = {
   dates: [],
-  people: [{ role: "performer", person: { id: 1, name: "Alice" } }],
+  people: [],
   organizations: [{ role: "maker", organization: { id: 5, name: "Studio" } }],
   urls: [],
   externalIds: [],
@@ -138,7 +138,8 @@ function install(entities: Entities) {
       );
     }
     if (path === "/api/library") {
-      const filtered = url.searchParams.has("person");
+      const filtered =
+        url.searchParams.has("person") || url.searchParams.has("organization");
       const items = filtered ? [video(1)] : [video(1), video(2), video(3)];
       return Promise.resolve(
         json({ items: items.map((item) => videoItem(item)), total: items.length }),
@@ -186,32 +187,25 @@ describe("人物・団体での絞り込み", () => {
     vi.unstubAllGlobals();
   });
 
-  it("動画ページで出演者を押すと person=<id> のライブラリが開き、要求に載り、名前のチップが出て、Back で動画ページに戻る", async () => {
+  it("動画ページで団体を押すと organization=<id> のライブラリが開き、要求に載り、名前のチップが出て、Back で動画ページに戻る", async () => {
     const user = userEvent.setup();
     renderAt("/videos/7");
 
-    await user.click(screen.getByRole("link", { name: "Show videos with Alice" }));
+    await user.click(screen.getByRole("link", { name: "Show videos with Studio" }));
 
     expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
-    expect(location()).toBe("?person=1");
+    expect(location()).toBe("?organization=5");
     const requests = libraryRequests();
     expect(requests.length).toBeGreaterThan(0);
-    for (const url of requests) expect(url.searchParams.get("person")).toBe("1");
+    for (const url of requests) expect(url.searchParams.get("organization")).toBe("5");
     expect(screen.getByText("Filtering by")).toBeDefined();
     expect(
-      await screen.findByRole("button", { name: "Remove the filter for Alice" }),
+      await screen.findByRole("button", { name: "Remove the filter for Studio" }),
     ).toBeDefined();
     expect(screen.queryByRole("link", { name: "動画 2" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "テストで戻る" }));
     expect(await screen.findByText("再生画面")).toBeDefined();
-  });
-
-  it("団体の名前は organization=<id> のライブラリへのリンクになる", () => {
-    renderAt("/videos/7");
-    expect(
-      screen.getByRole("link", { name: "Show videos with Studio" }).getAttribute("href"),
-    ).toBe("/?organization=5");
   });
 
   it("名前の読みが 404 なら、そのパラメータを外して知らせ、タグともう一方の絞り込みは残す", async () => {

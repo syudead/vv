@@ -41,6 +41,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `empty`                    | Component     | The empty state of a list or section                                         |
 | `empty-state`              | State         | Nothing to show, and the action that fills it                                |
 | `error-state`              | State         | The body failed to load, with Retry                                          |
+| `face-grid-example`        | Block         | Copy to start a grid of people's face cards                                  |
 | `fact-list`                | Section       | Term and value pairs                                                         |
 | `favorite-toggle`          | vv component  | The favorite heart: mark and toggle                                          |
 | `field`                    | Component     | Label, control, description and error of one form field                      |
@@ -64,7 +65,10 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `page-column`              | Pattern       | The reading column settings and record pages share; patterns only            |
 | `page-header`              | Section       | Page title, count and the main action                                        |
 | `page-section`             | Section       | A titled card of rows                                                        |
+| `person-face`              | vv component  | A person's face or its placeholder: card, profile, chip, compare             |
 | `popover`                  | Component     | Options or a short form anchored to a control                                |
+| `profile-page`             | Page skeleton | One subject's profile beside its items, such as a person and their videos    |
+| `profile-page-example`     | Block         | Copy to start a profile page                                                 |
 | `progress`                 | Component     | Progress of a known amount of work                                           |
 | `radio-group`              | Component     | Pick one of a few visible options                                            |
 | `record-page`              | Page skeleton | One record to read inside the shell: an entry's full detail                  |

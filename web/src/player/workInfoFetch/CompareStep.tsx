@@ -1,13 +1,15 @@
 import { ArrowLeft, CircleAlert } from "lucide-react";
-import { type ReactNode, useId } from "react";
+import { type ReactNode, useId, useState } from "react";
 
 import type { Video } from "../../api/client";
 import {
   type WorkInfoFetch,
   workInfoFetchCoverUrl,
   type WorkInfoField,
+  workInfoFetchPersonImageUrl,
   type WorkInfoPlugin,
 } from "../../api/workInfoPlugins";
+import { useLocalToday } from "../../credits/person/useLocalToday";
 import { errorText, t } from "../../i18n";
 import { Alert, AlertAction, AlertTitle } from "../../ui/shadcn/alert";
 import { Button } from "../../ui/shadcn/button";
@@ -22,6 +24,7 @@ import {
   creditKind,
   type DetailChip,
   detailRow,
+  fillValues,
   type ListRow,
   videoWorkInfo,
 } from "./detailRows";
@@ -33,7 +36,7 @@ import {
   selectableTags,
   tagsRowChecked,
 } from "./fetchRules";
-import TagChips, { type ChipItem, chipsOfVideo } from "./TagChips";
+import TagChips, { type ChipItem, chipsOfVideo, FoldButton } from "./TagChips";
 import TagPicker, { type TagPick } from "./TagPicker";
 
 export interface Fetched {
@@ -107,6 +110,7 @@ function chipItems(
   chips: readonly DetailChip[],
   field: WorkInfoField,
   tone: "now" | "fetched",
+  faceSrc?: (index: number) => string,
 ): ChipItem[] {
   const kind = creditKind(field);
   return chips.map((chip) => ({
@@ -116,7 +120,49 @@ function chipItems(
     numeric: field === "externalIds",
     mark: tone === "now" ? undefined : chip.mark,
     hint: tone === "now" ? undefined : chipHint(chip, kind),
+    faceSrc:
+      chip.faceIndex === undefined || faceSrc === undefined
+        ? undefined
+        : faceSrc(chip.faceIndex),
   }));
+}
+
+const FILL_FOLD = 3;
+
+/** One line per fetched person with a profile, folded after three so the chips stay primary. */
+function FillLines({ chips }: { chips: readonly DetailChip[] }) {
+  const text = t.player.workInfoFetch;
+  const today = useLocalToday();
+  const [open, setOpen] = useState(false);
+  const lines = chips.flatMap((chip) =>
+    chip.profile === undefined
+      ? []
+      : [
+          {
+            key: chip.key,
+            line: text.fillsEmpty(chip.name, fillValues(chip.profile, today)),
+          },
+        ],
+  );
+  if (lines.length === 0) return null;
+  const folded = !open && lines.length > FILL_FOLD;
+  const shown = folded ? lines.slice(0, FILL_FOLD) : lines;
+  return (
+    <div className="flex min-w-0 basis-full flex-col items-start text-xs text-muted-foreground">
+      {shown.map(({ key, line }) => (
+        <p key={key} title={line} className="max-w-full truncate">
+          {line}
+        </p>
+      ))}
+      {lines.length > FILL_FOLD && (
+        <FoldButton
+          hidden={lines.length - FILL_FOLD}
+          folded={folded}
+          onToggle={() => setOpen(folded)}
+        />
+      )}
+    </div>
+  );
 }
 
 function ListValue({
@@ -124,21 +170,32 @@ function ListValue({
   row,
   tone,
   noteId,
+  faceSrc,
 }: {
   field: WorkInfoField;
   row: ListRow;
   tone: "now" | "fetched";
   noteId: string;
+  faceSrc: (index: number) => string;
 }) {
   const text = t.player.workInfoFetch;
   if (tone === "now") return <TagChips items={chipItems(row.now, field, "now")} />;
   const nothing = row.state === "nothing";
+  // A row of people already on the video differs only by what it fills, which the fill lines say.
+  const trailing = nothing
+    ? text.nothingToAdd
+    : row.fresh > 0
+      ? text.newCount(row.fresh)
+      : undefined;
   return (
-    <TagChips
-      items={chipItems(row.fetched, field, "fetched")}
-      trailing={nothing ? text.nothingToAdd : text.newCount(row.fresh)}
-      trailingId={nothing ? noteId : undefined}
-    />
+    <>
+      <TagChips
+        items={chipItems(row.fetched, field, "fetched", faceSrc)}
+        trailing={trailing}
+        trailingId={nothing ? noteId : undefined}
+      />
+      <FillLines chips={row.fetched} />
+    </>
   );
 }
 
@@ -200,7 +257,15 @@ function Value({
   if (field === "cover") return <CoverValue video={video} result={result} tone={tone} />;
   const row = detailRow(field, videoWorkInfo(video), result);
   if (row.kind === "list")
-    return <ListValue field={field} row={row} tone={tone} noteId={noteId} />;
+    return (
+      <ListValue
+        field={field}
+        row={row}
+        tone={tone}
+        noteId={noteId}
+        faceSrc={(index) => workInfoFetchPersonImageUrl(video.id, result.fetchId, index)}
+      />
+    );
   return (
     <SingleValue
       field={field}

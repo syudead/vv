@@ -383,6 +383,8 @@ func (e ComfyUIProvider) Valid() bool {
 
 // Defines values for CreditSort.
 const (
+	CreditSortAgeAsc      CreditSort = "ageAsc"
+	CreditSortAgeDesc     CreditSort = "ageDesc"
 	CreditSortCountAsc    CreditSort = "countAsc"
 	CreditSortCountDesc   CreditSort = "countDesc"
 	CreditSortCreatedAsc  CreditSort = "createdAsc"
@@ -393,6 +395,10 @@ const (
 // Valid indicates whether the value is a known member of the CreditSort enum.
 func (e CreditSort) Valid() bool {
 	switch e {
+	case CreditSortAgeAsc:
+		return true
+	case CreditSortAgeDesc:
+		return true
 	case CreditSortCountAsc:
 		return true
 	case CreditSortCountDesc:
@@ -643,6 +649,9 @@ const (
 	ErrorReasonOrganizationParentCycle       ErrorReason = "organization_parent_cycle"
 	ErrorReasonOutputTooLarge                ErrorReason = "output_too_large"
 	ErrorReasonPasswordLength                ErrorReason = "password_length"
+	ErrorReasonPersonImageInvalid            ErrorReason = "person_image_invalid"
+	ErrorReasonPersonImageNotFound           ErrorReason = "person_image_not_found"
+	ErrorReasonPersonImageTooLarge           ErrorReason = "person_image_too_large"
 	ErrorReasonPersonNotFound                ErrorReason = "person_not_found"
 	ErrorReasonProbeInfoMissing              ErrorReason = "probe_info_missing"
 	ErrorReasonRelativeDirectoryPath         ErrorReason = "relative_directory_path"
@@ -684,6 +693,7 @@ const (
 	ErrorReasonWorkInfoInvalidDate           ErrorReason = "work_info_invalid_date"
 	ErrorReasonWorkInfoInvalidLanguage       ErrorReason = "work_info_invalid_language"
 	ErrorReasonWorkInfoInvalidUrl            ErrorReason = "work_info_invalid_url"
+	ErrorReasonWorkInfoOutOfRange            ErrorReason = "work_info_out_of_range"
 	ErrorReasonWorkInfoTooLong               ErrorReason = "work_info_too_long"
 	ErrorReasonWorkInfoTooMany               ErrorReason = "work_info_too_many"
 	ErrorReasonWorkflowRejected              ErrorReason = "workflow_rejected"
@@ -774,6 +784,12 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonPasswordLength:
 		return true
+	case ErrorReasonPersonImageInvalid:
+		return true
+	case ErrorReasonPersonImageNotFound:
+		return true
+	case ErrorReasonPersonImageTooLarge:
+		return true
 	case ErrorReasonPersonNotFound:
 		return true
 	case ErrorReasonProbeInfoMissing:
@@ -855,6 +871,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonWorkInfoInvalidLanguage:
 		return true
 	case ErrorReasonWorkInfoInvalidUrl:
+		return true
+	case ErrorReasonWorkInfoOutOfRange:
 		return true
 	case ErrorReasonWorkInfoTooLong:
 		return true
@@ -1113,6 +1131,51 @@ func (e OrganizeRefKind) Valid() bool {
 	case OrganizeRefKindGroup:
 		return true
 	case OrganizeRefKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PersonProfileBloodType.
+const (
+	A  PersonProfileBloodType = "A"
+	AB PersonProfileBloodType = "AB"
+	B  PersonProfileBloodType = "B"
+	O  PersonProfileBloodType = "O"
+)
+
+// Valid indicates whether the value is a known member of the PersonProfileBloodType enum.
+func (e PersonProfileBloodType) Valid() bool {
+	switch e {
+	case A:
+		return true
+	case AB:
+		return true
+	case B:
+		return true
+	case O:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PersonProfileGender.
+const (
+	Female PersonProfileGender = "female"
+	Male   PersonProfileGender = "male"
+	Other  PersonProfileGender = "other"
+)
+
+// Valid indicates whether the value is a known member of the PersonProfileGender enum.
+func (e PersonProfileGender) Valid() bool {
+	switch e {
+	case Female:
+		return true
+	case Male:
+		return true
+	case Other:
 		return true
 	default:
 		return false
@@ -2838,7 +2901,7 @@ type CreditIdRef struct {
 	Id int64 `json:"id"`
 }
 
-// CreditInput Person or organization creation body; parentId is organization-only.
+// CreditInput Person or organization creation body; parentId is organization-only and profile person-only.
 type CreditInput struct {
 	Aliases     *[]Alias      `json:"aliases,omitempty"`
 	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
@@ -2846,6 +2909,9 @@ type CreditInput struct {
 
 	// ParentId Parent organization ID; sending it for a person returns 400 invalid_request.
 	ParentId *int64 `json:"parentId,omitempty"`
+
+	// Profile Person-only profile; sending it for an organization returns 400 invalid_request.
+	Profile *PersonProfile `json:"profile,omitempty"`
 }
 
 // CreditMergeRequest defines model for CreditMergeRequest.
@@ -2862,6 +2928,9 @@ type CreditPatch struct {
 
 	// ParentId Parent organization ID; null detaches it. Sending this for a person returns 400 invalid_request.
 	ParentId *int64 `json:"parentId,omitempty"`
+
+	// Profile Person-only; sending it for an organization returns 400 invalid_request. A profile that changes nothing writes nothing.
+	Profile *PersonProfilePatch `json:"profile,omitempty"`
 }
 
 // CreditRef Reference to one person or organization; name is its current name.
@@ -2870,7 +2939,7 @@ type CreditRef struct {
 	Name string `json:"name"`
 }
 
-// CreditSort Same five sort modes as TagSort; ties use natural-name order, then ID.
+// CreditSort The five TagSort modes, plus ageAsc (newest birth date first) and ageDesc (oldest first) for people only; organizations answer either with 400 invalid_request. A partial birth date sorts as its first possible day, and people without one come last in both age sorts. Ties use natural-name order, then ID.
 type CreditSort string
 
 // DirectoryEntry defines model for DirectoryEntry.
@@ -2960,6 +3029,9 @@ type FavoritesRequest struct {
 
 	// GroupIds Group IDs whose favorite state changes.
 	GroupIds *[]int64 `json:"groupIds,omitempty"`
+
+	// PersonIds Person IDs whose favorite state changes; missing people are ignored.
+	PersonIds *[]int64 `json:"personIds,omitempty"`
 
 	// SmartFolderIds Smart-folder IDs whose favorite state changes.
 	SmartFolderIds *[]int64 `json:"smartFolderIds,omitempty"`
@@ -3687,12 +3759,24 @@ type Person struct {
 
 	// ExternalIds Ordered by (source, value).
 	ExternalIds []ExternalId `json:"externalIds"`
-	Id          int64        `json:"id"`
-	Name        string       `json:"name"`
+
+	// Favorite Whether the owner marked this person as a favorite.
+	Favorite bool  `json:"favorite"`
+	Id       int64 `json:"id"`
+
+	// ImageRevision Present only when the person has a face; changes with every change of the face and is never reused. Load the face from /api/people/{id}/image?v={imageRevision}.
+	ImageRevision *PersonImageRevision `json:"imageRevision,omitempty"`
+	Name          string               `json:"name"`
+
+	// Profile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
+	Profile PersonProfile `json:"profile"`
 
 	// VideoCount Visible videos linked to this person in any role.
 	VideoCount int `json:"videoCount"`
 }
+
+// PersonImageRevision Present only when the person has a face; changes with every change of the face and is never reused. Load the face from /api/people/{id}/image?v={imageRevision}.
+type PersonImageRevision = int64
 
 // PersonList Person form of the CreditList contract.
 type PersonList struct {
@@ -3701,7 +3785,7 @@ type PersonList struct {
 	// NextCursor Next-page cursor, included only when limit is supplied and more results remain.
 	NextCursor *string `json:"nextCursor,omitempty"`
 
-	// Total Person count matching q, independent of pagination.
+	// Total Person count matching q and favorite, independent of pagination.
 	Total int `json:"total"`
 
 	// TotalAll Total person count.
@@ -3715,6 +3799,102 @@ type PersonMergeResponse struct {
 
 	// Person One person.
 	Person Person `json:"person"`
+}
+
+// PersonProfile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
+type PersonProfile struct {
+	// Bio 1-5,000 code points; line breaks are kept.
+	Bio *string `json:"bio,omitempty"`
+
+	// BirthDate YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.
+	//
+	// Examples: 1990, 1990-05, 1990-05-17
+	BirthDate *string `json:"birthDate,omitempty"`
+
+	// Birthplace 1-200 code points.
+	Birthplace *string                 `json:"birthplace,omitempty"`
+	BloodType  *PersonProfileBloodType `json:"bloodType,omitempty"`
+
+	// BustCm 30-300.
+	BustCm *int `json:"bustCm,omitempty"`
+
+	// CareerEndYear 1900-9999; not before careerStartYear.
+	CareerEndYear *int `json:"careerEndYear,omitempty"`
+
+	// CareerStartYear 1900-9999.
+	CareerStartYear *int `json:"careerStartYear,omitempty"`
+
+	// Cup 1-3 Latin letters, stored upper case.
+	Cup *string `json:"cup,omitempty"`
+
+	// DeathDate Same format as birthDate; not before it at the precision both share.
+	DeathDate *string              `json:"deathDate,omitempty"`
+	Gender    *PersonProfileGender `json:"gender,omitempty"`
+
+	// HeightCm 50-300.
+	HeightCm *int `json:"heightCm,omitempty"`
+
+	// HipsCm 30-300.
+	HipsCm *int `json:"hipsCm,omitempty"`
+
+	// Links HTTP(S) URLs in order, at most 20 and unique; omitted when empty.
+	Links *[]string `json:"links,omitempty"`
+
+	// WaistCm 30-300.
+	WaistCm *int `json:"waistCm,omitempty"`
+}
+
+// PersonProfileBloodType defines model for PersonProfile.BloodType.
+type PersonProfileBloodType string
+
+// PersonProfileGender defines model for PersonProfile.Gender.
+type PersonProfileGender string
+
+// PersonProfilePatch Profile update: each property present replaces that field, null or an empty value clears it, and links replaces the list.
+type PersonProfilePatch struct {
+	// Bio 1-5,000 code points; line breaks are kept.
+	Bio *string `json:"bio,omitempty"`
+
+	// BirthDate YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.
+	//
+	// Examples: 1990, 1990-05, 1990-05-17
+	BirthDate *string `json:"birthDate,omitempty"`
+
+	// Birthplace 1-200 code points.
+	Birthplace *string `json:"birthplace,omitempty"`
+
+	// BloodType A, B, O or AB.
+	BloodType *string `json:"bloodType,omitempty"`
+
+	// BustCm 30-300.
+	BustCm *int `json:"bustCm,omitempty"`
+
+	// CareerEndYear 1900-9999; not before careerStartYear.
+	CareerEndYear *int `json:"careerEndYear,omitempty"`
+
+	// CareerStartYear 1900-9999.
+	CareerStartYear *int `json:"careerStartYear,omitempty"`
+
+	// Cup 1-3 Latin letters, stored upper case.
+	Cup *string `json:"cup,omitempty"`
+
+	// DeathDate Same format as birthDate; not before it at the precision both share.
+	DeathDate *string `json:"deathDate,omitempty"`
+
+	// Gender female, male or other.
+	Gender *string `json:"gender,omitempty"`
+
+	// HeightCm 50-300.
+	HeightCm *int `json:"heightCm,omitempty"`
+
+	// HipsCm 30-300.
+	HipsCm *int `json:"hipsCm,omitempty"`
+
+	// Links HTTP(S) URLs in order, at most 20 and unique; omitted when empty.
+	Links *[]string `json:"links,omitempty"`
+
+	// WaistCm 30-300.
+	WaistCm *int `json:"waistCm,omitempty"`
 }
 
 // Playlist PlaylistSummary fields plus visible items.
@@ -4127,7 +4307,7 @@ type SkippedWorkInfoValue struct {
 	// Reason Apply skip reason: invalid values fail field validation; too_many entries exceed limits after existing entries; ambiguous people/organizations match multiple entities.
 	Reason SkippedWorkInfoReason `json:"reason"`
 
-	// Value Value shown in the comparison: date, URL, name, source: value, or the first 100 description characters.
+	// Value Value shown in the comparison: date, URL, name, source: value, or the first 100 description characters. A profile value is name: property value, such as Hanako: heightCm 1000.
 	Value string `json:"value"`
 }
 
@@ -4630,6 +4810,12 @@ type UpdateTranscodingSettingsRequest struct {
 // UpdateVersionJudgingSettingsRequest defines model for UpdateVersionJudgingSettingsRequest.
 type UpdateVersionJudgingSettingsRequest struct {
 	Enabled bool `json:"enabled"`
+}
+
+// UploadPersonImageRequest defines model for UploadPersonImageRequest.
+type UploadPersonImageRequest struct {
+	// Image Face image: PNG, JPEG or static WebP, at most 64 MiB and 120 million pixels.
+	Image openapi_types.File `json:"image"`
 }
 
 // UploadThumbnailImageRequest defines model for UploadThumbnailImageRequest.
@@ -5191,11 +5377,17 @@ type WorkInfoFetchedOrganization struct {
 
 // WorkInfoFetchedPerson defines model for WorkInfoFetchedPerson.
 type WorkInfoFetchedPerson struct {
-	ExternalIds []ExternalId  `json:"externalIds"`
-	Match       WorkInfoMatch `json:"match"`
+	ExternalIds []ExternalId `json:"externalIds"`
+
+	// HasImage Present and true when VV kept an image for this person, served by getWorkInfoFetchPersonImage at its index.
+	HasImage *bool         `json:"hasImage,omitempty"`
+	Match    WorkInfoMatch `json:"match"`
 
 	// Name Plugin-provided name.
 	Name string `json:"name"`
+
+	// Profile Plugin-provided profile values that pass validation; omitted when none. Applying the person's role fills only the linked person's empty fields.
+	Profile *PersonProfile `json:"profile,omitempty"`
 
 	// Role Person role in a video.
 	Role WorkPersonRole `json:"role"`
@@ -5366,6 +5558,9 @@ type WorkOrganizationRole string
 
 // WorkPerson defines model for WorkPerson.
 type WorkPerson struct {
+	// ImageRevision Present only when the person has a face; changes with every change of the face and is never reused. Load the face from /api/people/{id}/image?v={imageRevision}.
+	ImageRevision *PersonImageRevision `json:"imageRevision,omitempty"`
+
 	// Person Reference to one person or organization; name is its current name.
 	Person CreditRef `json:"person"`
 
@@ -5396,6 +5591,9 @@ type AddedWithinFilter = int
 
 // CreditCursor defines model for CreditCursor.
 type CreditCursor = string
+
+// CreditFavorite defines model for CreditFavorite.
+type CreditFavorite = bool
 
 // CreditLimit defines model for CreditLimit.
 type CreditLimit = int
@@ -5435,6 +5633,9 @@ type PersonFilter = int64
 
 // PersonId defines model for PersonId.
 type PersonId = int64
+
+// PersonRoleFilter Person role in a video.
+type PersonRoleFilter = WorkPersonRole
 
 // PlaylistId defines model for PlaylistId.
 type PlaylistId = int64
@@ -5489,6 +5690,9 @@ type InvalidRequest = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error
+
+// PersonImageTooLarge defines model for PersonImageTooLarge.
+type PersonImageTooLarge = Error
 
 // PluginBusy defines model for PluginBusy.
 type PluginBusy = Error
@@ -5715,6 +5919,9 @@ type ListOrganizationsParams struct {
 
 	// Limit Page size; omit for all results without nextCursor
 	Limit *CreditLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Favorite People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request.
+	Favorite *CreditFavorite `form:"favorite,omitempty" json:"favorite,omitempty"`
 }
 
 // ListPeopleParams defines parameters for ListPeople.
@@ -5730,6 +5937,15 @@ type ListPeopleParams struct {
 
 	// Limit Page size; omit for all results without nextCursor
 	Limit *CreditLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Favorite People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request.
+	Favorite *CreditFavorite `form:"favorite,omitempty" json:"favorite,omitempty"`
+}
+
+// GetPersonImageParams defines parameters for GetPersonImage.
+type GetPersonImageParams struct {
+	// V imageRevision from Person or WorkPerson; ignored by the server
+	V *string `form:"v,omitempty" json:"v,omitempty"`
 }
 
 // ListPlaylistsParams defines parameters for ListPlaylists.
@@ -5895,6 +6111,9 @@ type ListVideosParams struct {
 
 	// Person Positive person ID, matching videos associated in any role and ANDed with other filters including total. Unknown IDs return an empty list without errors or missing-ID reports. Invalid IDs return 400 invalid_request; guests return 400 invalid_request/guest_filter_not_allowed.
 	Person *PersonFilter `form:"person,omitempty" json:"person,omitempty"`
+
+	// PersonRole Keeps only videos linked to `person` in this role, including total. Requires `person`; without it, or with an unknown role, returns 400 invalid_request. Guests return 400 invalid_request/guest_filter_not_allowed.
+	PersonRole *PersonRoleFilter `form:"personRole,omitempty" json:"personRole,omitempty"`
 
 	// Organization Organization ID, matching any role; follows person filter semantics
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
@@ -6117,6 +6336,9 @@ type CreatePersonJSONRequestBody = CreditInput
 
 // UpdatePersonJSONRequestBody defines body for UpdatePerson for application/json ContentType.
 type UpdatePersonJSONRequestBody = CreditPatch
+
+// UploadPersonImageMultipartRequestBody defines body for UploadPersonImage for multipart/form-data ContentType.
+type UploadPersonImageMultipartRequestBody = UploadPersonImageRequest
 
 // MergePeopleJSONRequestBody defines body for MergePeople for application/json ContentType.
 type MergePeopleJSONRequestBody = CreditMergeRequest
@@ -6423,6 +6645,15 @@ type ServerInterface interface {
 	// UpdatePerson Update a person's name, aliases and external IDs
 	// (PATCH /api/people/{id})
 	UpdatePerson(w http.ResponseWriter, r *http.Request, id PersonId)
+	// DeletePersonImage Remove a person's face
+	// (DELETE /api/people/{id}/image)
+	DeletePersonImage(w http.ResponseWriter, r *http.Request, id PersonId)
+	// GetPersonImage Return a person's face
+	// (GET /api/people/{id}/image)
+	GetPersonImage(w http.ResponseWriter, r *http.Request, id PersonId, params GetPersonImageParams)
+	// UploadPersonImage Set a person's face from an uploaded image
+	// (PUT /api/people/{id}/image)
+	UploadPersonImage(w http.ResponseWriter, r *http.Request, id PersonId)
 	// MergePeople Merge sourceIds into person id
 	// (POST /api/people/{id}/merge)
 	MergePeople(w http.ResponseWriter, r *http.Request, id PersonId)
@@ -6726,6 +6957,9 @@ type ServerInterface interface {
 	// GetWorkInfoFetchCover Return the fetched cover image
 	// (GET /api/videos/{id}/work-info-fetches/{fetchId}/cover)
 	GetWorkInfoFetchCover(w http.ResponseWriter, r *http.Request, id VideoId, fetchId WorkInfoFetchId)
+	// GetWorkInfoFetchPersonImage Return a fetched person's image
+	// (GET /api/videos/{id}/work-info-fetches/{fetchId}/people/{index}/image)
+	GetWorkInfoFetchPersonImage(w http.ResponseWriter, r *http.Request, id VideoId, fetchId WorkInfoFetchId, index int)
 	// ClearWatchHistory Clear all watch history
 	// (DELETE /api/watch-history)
 	ClearWatchHistory(w http.ResponseWriter, r *http.Request)
@@ -8384,6 +8618,19 @@ func (siw *ServerInterfaceWrapper) ListOrganizations(w http.ResponseWriter, r *h
 		return
 	}
 
+	// ------------- Optional query parameter "favorite" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "favorite", r.URL.Query(), &params.Favorite, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListOrganizations(w, r, params)
 	}))
@@ -8658,6 +8905,19 @@ func (siw *ServerInterfaceWrapper) ListPeople(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// ------------- Optional query parameter "favorite" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "favorite", r.URL.Query(), &params.Favorite, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListPeople(w, r, params)
 	}))
@@ -8752,6 +9012,100 @@ func (siw *ServerInterfaceWrapper) UpdatePerson(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdatePerson(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeletePersonImage operation middleware
+func (siw *ServerInterfaceWrapper) DeletePersonImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeletePersonImage(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPersonImage operation middleware
+func (siw *ServerInterfaceWrapper) GetPersonImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetPersonImageParams
+
+	// ------------- Optional query parameter "v" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "v", r.URL.Query(), &params.V, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "v"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "v", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPersonImage(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UploadPersonImage operation middleware
+func (siw *ServerInterfaceWrapper) UploadPersonImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UploadPersonImage(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10697,6 +11051,19 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// ------------- Optional query parameter "personRole" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "personRole", r.URL.Query(), &params.PersonRole, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "personRole"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "personRole", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "organization" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "organization", r.URL.Query(), &params.Organization, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
@@ -11910,6 +12277,50 @@ func (siw *ServerInterfaceWrapper) GetWorkInfoFetchCover(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// GetWorkInfoFetchPersonImage operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkInfoFetchPersonImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "fetchId" -------------
+	var fetchId WorkInfoFetchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fetchId", r.PathValue("fetchId"), &fetchId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fetchId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "index" -------------
+	var index int
+
+	err = runtime.BindStyledParameterWithOptions("simple", "index", r.PathValue("index"), &index, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "index", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkInfoFetchPersonImage(w, r, id, fetchId, index)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ClearWatchHistory operation middleware
 func (siw *ServerInterfaceWrapper) ClearWatchHistory(w http.ResponseWriter, r *http.Request) {
 
@@ -12497,6 +12908,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches", wrapper.FetchWorkInfo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/apply", wrapper.ApplyWorkInfoFetch)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/cover", wrapper.GetWorkInfoFetchCover)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/people/{index}/image", wrapper.GetWorkInfoFetchPersonImage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tags", wrapper.ListTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags", wrapper.CreateTag)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tags/{id}", wrapper.DeleteTag)
@@ -12520,6 +12932,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}", wrapper.GetPerson)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/people/{id}", wrapper.UpdatePerson)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/merge", wrapper.MergePeople)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/people/{id}/image", wrapper.DeletePersonImage)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/image", wrapper.GetPersonImage)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/people/{id}/image", wrapper.UploadPersonImage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/organizations", wrapper.ListOrganizations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organizations", wrapper.CreateOrganization)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/organizations/{id}", wrapper.DeleteOrganization)

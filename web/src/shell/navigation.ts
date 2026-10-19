@@ -55,6 +55,7 @@ export function navEntries(): readonly NavEntry[] {
       label: t.shell.nav.people,
       icon: Users,
       to: "/people",
+      matchDescendants: true,
       ownerOnly: true,
     },
     {

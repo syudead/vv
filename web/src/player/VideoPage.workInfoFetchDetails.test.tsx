@@ -171,6 +171,47 @@ describe("VideoPage work-info fetch details", () => {
     expect(chip(dialog, "同名の会社").textContent).toBe("同名の会社, Not linked");
   });
 
+  it("動画にある人物でも顔とプロフィールの空きを埋められれば選べ、取得した顔と埋める値を出す", async () => {
+    server.video = {
+      ...video,
+      workInfo: info({
+        people: [{ role: "performer", person: { id: 9, name: "既存の人" } }],
+      }),
+    };
+    server.fetch.mockImplementation(() =>
+      json(
+        fetchResult({
+          tags: [],
+          people: [
+            {
+              ...performer("既存の人", { state: "existing", id: 9, name: "既存の人" }),
+              hasImage: true,
+              profile: { heightCm: 160, bloodType: "A" },
+            },
+          ],
+        }),
+        201,
+      ),
+    );
+    server.apply.mockImplementation(() => json(appliedResult(video)));
+    const { user, dialog } = await fetchById();
+    expect(
+      dialog.querySelector(
+        'img[src="/api/videos/7/work-info-fetches/F1/people/0/image"]',
+      ),
+    ).not.toBeNull();
+    expect(
+      within(dialog).getByText(
+        "既存の人 — Fills only empty fields: Blood type A · Height 160 cm",
+      ),
+    ).toBeDefined();
+    expect(within(dialog).queryByText("0 new")).toBeNull();
+    const performers = checkbox(dialog, "Performers");
+    expect(performers).toHaveProperty("ariaChecked", "true");
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+    expect(server.apply).toHaveBeenCalledWith({ fields: ["people.performer"] });
+  });
+
   it("値の無い項目は行が無く選べず、反映にも送らない", async () => {
     server.fetch.mockImplementation(() =>
       json(

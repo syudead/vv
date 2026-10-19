@@ -45,17 +45,24 @@ type Credit struct {
 	ExternalIDs []ExternalID
 	// Parent is nil for people and root organizations.
 	Parent *CreditRef
+	// Profile is empty for organizations.
+	Profile PersonProfile
+	// Favorite is false for organizations.
+	Favorite bool
+	// ImageRevision is zero unless the person has a face.
+	ImageRevision int64
 	// VideoCount counts visible video user-data keys linked in any role.
 	VideoCount int
 	CreatedAt  time.Time
 }
 
-// ParentID is used only for organizations.
+// ParentID is used only for organizations and Profile only for people.
 type CreditInput struct {
 	Name        string
 	Aliases     []Alias
 	ExternalIDs []ExternalID
 	ParentID    *int64
+	Profile     PersonProfile
 }
 
 // CreditPatch preserves nil fields and replaces whole lists; pointers to nil lists clear them, while ParentSet controls whether ParentID changes (nil removes the parent).
@@ -65,17 +72,35 @@ type CreditPatch struct {
 	ExternalIDs *[]ExternalID
 	ParentSet   bool
 	ParentID    *int64
+	// Profile is nil when no profile property changes; people only.
+	Profile *PersonProfilePatch
+}
+
+// People also sort by birth date; a partial date sorts as its first possible day and an unknown one comes last.
+const (
+	CreditSortAgeAsc  TagSort = "ageAsc"
+	CreditSortAgeDesc TagSort = "ageDesc"
+)
+
+// ValidCreditSort reports whether kind can be listed in sort; the age sorts apply to people only.
+func ValidCreditSort(kind CreditKind, sort TagSort) bool {
+	if sort == CreditSortAgeAsc || sort == CreditSortAgeDesc {
+		return kind == CreditPerson
+	}
+	return sort.Valid()
 }
 
 type CreditQuery struct {
 	// Q is folded and trimmed by storage, then matched as a substring of canonical names and aliases.
 	Q string
-	// Sort defaults to TagSortName and supports the five tag sort orders.
+	// Sort defaults to TagSortName; ValidCreditSort lists the orders each kind supports.
 	Sort TagSort
 	// Cursor must match the credit kind and sort order or yields ErrInvalidCursor.
 	Cursor string
 	// Limit is 1–MaxTagPageLimit; zero returns all results and ignores Cursor.
 	Limit int
+	// FavoriteOnly keeps only favorite people; storage rejects it for organizations.
+	FavoriteOnly bool
 }
 
 type CreditPage struct {
@@ -124,7 +149,7 @@ func (e *CreditNotFoundError) Error() string {
 
 func (e *CreditNotFoundError) Unwrap() error { return ErrNotFound }
 
-// NormalizeCredit trims without case folding, drops blank aliases and fully blank external IDs, and returns the first InvalidWorkInfoError in name/alias/external-ID order; storage validates parent existence and cycles.
+// NormalizeCredit trims without case folding, drops blank aliases and fully blank external IDs, and returns the first InvalidWorkInfoError in name/alias/external-ID/profile order; storage validates parent existence and cycles.
 func NormalizeCredit(input CreditInput) (CreditInput, error) {
 	name, err := normalizeWorkInfoText("name", input.Name, CreditNameMaxLength, false)
 	if err != nil {
@@ -141,7 +166,11 @@ func NormalizeCredit(input CreditInput) (CreditInput, error) {
 	if err != nil {
 		return CreditInput{}, err
 	}
-	return CreditInput{Name: name, Aliases: aliases, ExternalIDs: externalIDs, ParentID: input.ParentID}, nil
+	profile, err := NormalizePersonProfile(input.Profile, time.Now())
+	if err != nil {
+		return CreditInput{}, err
+	}
+	return CreditInput{Name: name, Aliases: aliases, ExternalIDs: externalIDs, ParentID: input.ParentID, Profile: profile}, nil
 }
 
 func normalizeAliases(name string, aliases []Alias) ([]Alias, error) {

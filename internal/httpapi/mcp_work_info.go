@@ -62,19 +62,24 @@ func (t *mcpTools) registerWorkInfo(server *mcp.Server) {
 }
 
 func (t *mcpTools) registerCreditTools(server *mcp.Server, kind mcpCreditTools, destructive, notDestructive *bool) {
-	parent := ""
+	parent, profile, profileUpdate, ageSorts := "", "", "", ""
 	if kind.one == "organization" {
 		parent = " parentId sets the parent organization."
+	} else {
+		profile = " profile holds gender, birthDate and deathDate (YYYY, YYYY-MM or YYYY-MM-DD), birthplace, heightCm, " +
+			"bustCm, waistCm, hipsCm, cup, bloodType, careerStartYear, careerEndYear, bio and up to 20 links."
+		profileUpdate = profile + " Inside profile, each property given replaces that field and null clears it."
+		ageSorts = ", or ageAsc (youngest first) or ageDesc, with people without a birth date last"
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name: kind.list,
 		Description: "List " + kind.many + " with their aliases, external IDs and video count, one page at a time " +
 			"(GET /api/v1" + kind.path + "). q matches a name or alias ignoring width, case and kana; sort is name, " +
-			"countDesc, countAsc, createdDesc or createdAsc; limit is 1 to 200 and defaults to 100 here. Pass nextCursor " +
+			"countDesc, countAsc, createdDesc or createdAsc" + ageSorts + "; limit is 1 to 200 and defaults to 100 here. Pass nextCursor " +
 			"back as cursor, with the same q and sort, until it is absent. Give source and externalId together instead " +
 			"to look up the one " + kind.one + " holding that external ID: items is empty when there is none. Look up " +
 			"before creating, and use the returned id in update_video_work_info.",
-		InputSchema: creditListInputSchema(kind.list),
+		InputSchema: creditListInputSchema(kind),
 		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true},
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in mcpListCredits) (*mcp.CallToolResult, any, error) {
 		return t.call(ctx, http.MethodGet, kind.path, creditListQuery(in), nil)
@@ -83,7 +88,7 @@ func (t *mcpTools) registerCreditTools(server *mcp.Server, kind mcpCreditTools, 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: kind.create,
 		Description: "Create one " + kind.one + " with a name, aliases and external IDs (POST /api/v1" + kind.path + ")." +
-			parent + " An external ID held by another " + kind.one + " is a conflict with reason external_id_taken; " +
+			parent + profile + " An external ID held by another " + kind.one + " is a conflict with reason external_id_taken; " +
 			"look that " + kind.one + " up by the external ID and use its id instead. Each call creates a new " + kind.one + ".",
 		InputSchema: inputSchemaFor[extgen.CreditInput](kind.create),
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: notDestructive, IdempotentHint: false},
@@ -92,8 +97,8 @@ func (t *mcpTools) registerCreditTools(server *mcp.Server, kind mcpCreditTools, 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: kind.update,
 		Description: "Change the " + kind.one + " named by id (POST /api/v1" + kind.path + "/update). Only the properties given " +
-			"change; a given list replaces the stored one and null empties it." + parent + " Up to 50 aliases and 20 " +
-			"external IDs.",
+			"change; a given list replaces the stored one and null empties it." + parent + profileUpdate +
+			" Up to 50 aliases and 20 external IDs.",
 		InputSchema: inputSchemaFor[extgen.CreditUpdateRequest](kind.update),
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: destructive, IdempotentHint: true},
 	}, t.post(kind.path+"/update"))
@@ -141,8 +146,12 @@ func creditListQuery(in mcpListCredits) url.Values {
 	return query
 }
 
-func creditListInputSchema(tool string) *jsonschema.Schema {
-	return withListInputLimits(inputSchemaFor[mcpListCredits](tool), mcpListCreditsDefaultLimit,
-		string(extgen.CreditSortName), string(extgen.CreditSortCountDesc), string(extgen.CreditSortCountAsc),
-		string(extgen.CreditSortCreatedDesc), string(extgen.CreditSortCreatedAsc))
+// Age sorts are offered for people only, matching the REST API's rejection of them for organizations.
+func creditListInputSchema(kind mcpCreditTools) *jsonschema.Schema {
+	sorts := []any{string(extgen.CreditSortName), string(extgen.CreditSortCountDesc), string(extgen.CreditSortCountAsc),
+		string(extgen.CreditSortCreatedDesc), string(extgen.CreditSortCreatedAsc)}
+	if kind.one == "person" {
+		sorts = append(sorts, string(extgen.CreditSortAgeAsc), string(extgen.CreditSortAgeDesc))
+	}
+	return withListInputLimits(inputSchemaFor[mcpListCredits](kind.list), mcpListCreditsDefaultLimit, sorts...)
 }

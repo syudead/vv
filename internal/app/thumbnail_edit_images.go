@@ -64,13 +64,7 @@ func decodeThumbnailEditImage(data []byte) (image.Image, error) {
 	return decoded, nil
 }
 
-// Shared validation for edit inputs and thumbnail uploads.
-func checkImage(data []byte, maxPixels int64) error {
-	_, err := decodeImage(data, maxPixels)
-	return err
-}
-
-// Check header dimensions before fully decoding PNG, JPEG or WebP; reject truncated or corrupt data. Return errImageTooManyPixels for excess dimensions, otherwise errThumbnailEditImageUnreadable for decoding failures.
+// Shared by edit inputs and uploads: check header dimensions before fully decoding PNG, JPEG or WebP; reject truncated or corrupt data. Return errImageTooManyPixels for excess dimensions, otherwise errThumbnailEditImageUnreadable for decoding failures.
 func decodeImage(data []byte, maxPixels int64) (image.Image, error) {
 	config, format, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || (format != "png" && format != "jpeg" && format != "webp") {

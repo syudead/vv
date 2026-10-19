@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
@@ -77,5 +79,58 @@ func TestMCPWorkInfoTools(t *testing.T) {
 		"workInfo": map[string]any{"people": []any{map[string]any{"role": "performer", "person": map[string]any{"id": 999999}}}},
 	}}}, &failure) || failure.Reason == nil || *failure.Reason != extgen.PersonNotFound || failure.Field == nil || failure.Index == nil {
 		t.Errorf("無い人物の update_video_work_info = %+v", failure)
+	}
+}
+
+func TestMCPListPeopleSortsByAgeOnlyForPeople(t *testing.T) {
+	f := newMCPFixture(t, Options{})
+	session := f.connect(t)
+	ctx := context.Background()
+
+	listed, err := session.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sorts := map[string][]string{}
+	for _, tool := range listed.Tools {
+		raw, err := json.Marshal(tool.InputSchema)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var schema struct {
+			Properties struct {
+				Sort struct {
+					Enum []string `json:"enum"`
+				} `json:"sort"`
+			} `json:"properties"`
+		}
+		if err := json.Unmarshal(raw, &schema); err != nil {
+			t.Fatal(err)
+		}
+		sorts[tool.Name] = schema.Properties.Sort.Enum
+	}
+	base := []string{"name", "countDesc", "countAsc", "createdDesc", "createdAsc"}
+	if want := append(append([]string{}, base...), "ageAsc", "ageDesc"); !reflect.DeepEqual(sorts["list_people"], want) {
+		t.Errorf("list_people の sort の enum = %v, want %v", sorts["list_people"], want)
+	}
+	if !reflect.DeepEqual(sorts["list_organizations"], base) {
+		t.Errorf("list_organizations の sort の enum = %v, want %v", sorts["list_organizations"], base)
+	}
+
+	var undated, dated extgen.Person
+	if callTool(t, session, "create_person", map[string]any{"name": "A"}, &undated) ||
+		callTool(t, session, "create_person", map[string]any{"name": "B", "profile": map[string]any{"birthDate": "1990-01-02"}}, &dated) {
+		t.Fatalf("create_person = %+v, %+v", undated, dated)
+	}
+	for _, sort := range []string{"ageAsc", "ageDesc"} {
+		var page extgen.PersonList
+		if callTool(t, session, "list_people", map[string]any{"sort": sort}, &page) ||
+			len(page.Items) != 2 || page.Items[0].Id != dated.Id || page.Items[1].Id != undated.Id {
+			t.Errorf("list_people sort=%s = %+v", sort, page)
+		}
+	}
+	result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_organizations", Arguments: map[string]any{"sort": "ageAsc"}})
+	if err == nil && !result.IsError {
+		t.Errorf("list_organizations sort=ageAsc が受け付けられた: %+v", result)
 	}
 }

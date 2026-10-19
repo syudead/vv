@@ -24,7 +24,7 @@ func (s *CreditStore) List(ctx context.Context, kind domain.CreditKind, query do
 		sort = domain.TagSortName
 	}
 	order, ok := adminListOrders[sort]
-	if !ok {
+	if !ok || !domain.ValidCreditSort(kind, sort) {
 		return domain.CreditPage{}, fmt.Errorf("unknown %s sort order: %q", kind, sort)
 	}
 	limit := min(max(query.Limit, 0), domain.MaxTagPageLimit)
@@ -47,9 +47,14 @@ func (s *CreditStore) List(ctx context.Context, kind domain.CreditKind, query do
 	if err := tx.QueryRowContext(ctx, t.q(`select count(*) from {entity}`)).Scan(&page.TotalAll); err != nil {
 		return domain.CreditPage{}, fmt.Errorf("cannot count %s entities: %w", kind, err)
 	}
-	listed, listedArgs := listedCreditsCTE(t, strings.TrimSpace(domain.FoldForMatch(query.Q)), 0)
+	if query.FavoriteOnly && t.kind != domain.CreditPerson {
+		return domain.CreditPage{}, fmt.Errorf("the favorite filter applies to people only, not %s", kind)
+	}
+	listed, listedArgs := listedCreditsCTE(t, creditFilter{
+		search: strings.TrimSpace(domain.FoldForMatch(query.Q)), favoriteOnly: query.FavoriteOnly,
+	})
 	statement, args := order.pageStatement(listed, listedArgs, creditListedColumns, cursorClause, cursorArgs, limit)
-	items, keys, total, err := readListedCredits(ctx, tx, t, statement, args)
+	items, rows, total, err := readListedCredits(ctx, tx, t, statement, args)
 	if err != nil {
 		return domain.CreditPage{}, err
 	}
@@ -62,9 +67,7 @@ func (s *CreditStore) List(ctx context.Context, kind domain.CreditKind, query do
 	}
 	if limit > 0 && len(items) > limit {
 		items = items[:limit]
-		last := items[limit-1]
-		page.NextCursor = order.encodeCursor(t.cursorKind, sort,
-			adminListRow{id: last.ID, videoCount: last.VideoCount, createdAt: last.CreatedAt, sortKey: keys[limit-1]})
+		page.NextCursor = order.encodeCursor(t.cursorKind, sort, rows[limit-1])
 	}
 	if err := addCreditDetails(ctx, tx, t, items); err != nil {
 		return domain.CreditPage{}, err
@@ -81,7 +84,7 @@ func creditByID(ctx context.Context, tx *sql.Tx, t creditTables, id int64) (doma
 	if id <= 0 {
 		return domain.Credit{}, domain.ErrNotFound
 	}
-	listed, args := listedCreditsCTE(t, "", id)
+	listed, args := listedCreditsCTE(t, creditFilter{onlyID: id})
 	items, _, _, err := readListedCredits(ctx, tx, t,
 		listed+` select `+creditListedColumns+`, 1 from listed`, args)
 	if err != nil {
@@ -96,23 +99,33 @@ func creditByID(ctx context.Context, tx *sql.Tx, t creditTables, id int64) (doma
 	return items[0], nil
 }
 
-const creditListedColumns = `id, name, created_at, sort_key, video_count, parent_id`
+const creditListedColumns = `id, name, created_at, sort_key, video_count, parent_id, birth_key`
+
+// creditFilter narrows the listed relation; a zero onlyID means every entity.
+type creditFilter struct {
+	search       string
+	onlyID       int64
+	favoriteOnly bool
+}
 
 // Count visible representatives by user-data key so each bundle contributes one video.
-func listedCreditsCTE(t creditTables, search string, onlyID int64) (string, []any) {
+func listedCreditsCTE(t creditTables, filter creditFilter) (string, []any) {
 	var countFilter, where string
 	var countArgs, whereArgs []any
 	var conditions []string
-	if onlyID > 0 {
+	if filter.onlyID > 0 {
 		countFilter = ` and l.{id} = ?`
-		countArgs = []any{onlyID}
+		countArgs = []any{filter.onlyID}
 		conditions = append(conditions, `e.id = ?`)
-		whereArgs = append(whereArgs, onlyID)
+		whereArgs = append(whereArgs, filter.onlyID)
 	}
-	if search != "" {
+	if filter.search != "" {
 		conditions = append(conditions,
 			`exists (select 1 from {names} sn where sn.{id} = e.id and instr(sn.search_key, ?) > 0)`)
-		whereArgs = append(whereArgs, search)
+		whereArgs = append(whereArgs, filter.search)
+	}
+	if filter.favoriteOnly {
+		conditions = append(conditions, `exists (select 1 from person_favorites pf where pf.person_id = e.id)`)
 	}
 	if len(conditions) > 0 {
 		where = ` where ` + strings.Join(conditions, ` and `)
@@ -126,7 +139,8 @@ func listedCreditsCTE(t creditTables, search string, onlyID int64) (string, []an
 			 group by l.{id}
 		), listed as (
 			select e.id as id, n.name as name, e.created_at as created_at, n.sort_key as sort_key,
-			       coalesce(c.video_count, 0) as video_count, ` + t.parentColumn() + ` as parent_id
+			       coalesce(c.video_count, 0) as video_count, ` + t.parentColumn() + ` as parent_id,
+			       ` + t.birthKeyColumn() + ` as birth_key
 			  from {entity} e
 			  join {names} n on n.{id} = e.id and n.canonical = 1
 			  left join credit_counts c on c.credit_id = e.id` + where + `
@@ -134,8 +148,8 @@ func listedCreditsCTE(t creditTables, search string, onlyID int64) (string, []an
 	return t.q(statement), append(countArgs, whereArgs...)
 }
 
-// Parent names are populated later by addCreditDetails.
-func readListedCredits(ctx context.Context, tx *sql.Tx, t creditTables, statement string, args []any) ([]domain.Credit, []string, int, error) {
+// Parent names are populated later by addCreditDetails; the rows carry each item's cursor values.
+func readListedCredits(ctx context.Context, tx *sql.Tx, t creditTables, statement string, args []any) ([]domain.Credit, []adminListRow, int, error) {
 	rows, err := tx.QueryContext(ctx, statement, args...)
 	if err != nil {
 		return nil, nil, 0, fmt.Errorf("cannot read %s entities: %w", t.kind, err)
@@ -143,30 +157,32 @@ func readListedCredits(ctx context.Context, tx *sql.Tx, t creditTables, statemen
 	defer func() { _ = rows.Close() }()
 
 	items := []domain.Credit{}
-	var keys []string
+	var listed []adminListRow
 	total := 0
 	for rows.Next() {
 		credit := domain.Credit{Kind: t.kind, Aliases: []domain.Alias{}, ExternalIDs: []domain.ExternalID{}}
 		var createdAt int64
-		var sortKey string
+		var row adminListRow
 		var parent sql.NullInt64
-		if err := rows.Scan(&credit.ID, &credit.Name, &createdAt, &sortKey, &credit.VideoCount, &parent, &total); err != nil {
+		if err := rows.Scan(&credit.ID, &credit.Name, &createdAt, &row.sortKey, &credit.VideoCount, &parent,
+			&row.birthKey, &total); err != nil {
 			return nil, nil, 0, fmt.Errorf("cannot read %s entities: %w", t.kind, err)
 		}
 		credit.CreatedAt = time.Unix(createdAt, 0)
 		if parent.Valid {
 			credit.Parent = &domain.CreditRef{ID: parent.Int64}
 		}
+		row.id, row.videoCount, row.createdAt = credit.ID, credit.VideoCount, credit.CreatedAt
 		items = append(items, credit)
-		keys = append(keys, sortKey)
+		listed = append(listed, row)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, nil, 0, fmt.Errorf("cannot read %s entities: %w", t.kind, err)
 	}
-	return items, keys, total, nil
+	return items, listed, total, nil
 }
 
-// Batch aliases, external IDs and parent names for the page to avoid N+1 queries.
+// Batch aliases, external IDs, profiles and parent names for the page to avoid N+1 queries.
 func addCreditDetails(ctx context.Context, tx *sql.Tx, t creditTables, items []domain.Credit) error {
 	if len(items) == 0 {
 		return nil
@@ -200,6 +216,11 @@ func addCreditDetails(ctx context.Context, tx *sql.Tx, t creditTables, items []d
 		})
 	if err != nil {
 		return fmt.Errorf("cannot read the external IDs of %s entities: %w", t.kind, err)
+	}
+	if t.kind == domain.CreditPerson {
+		if err := addPersonProfiles(ctx, tx, items, index, string(encoded)); err != nil {
+			return err
+		}
 	}
 	for i := range items {
 		domain.SortAliases(items[i].Aliases)

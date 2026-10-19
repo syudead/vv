@@ -21,6 +21,7 @@ import {
   type SortOption,
 } from "../videoList/SortControls";
 import {
+  isTagListSort,
   tagSortDirection,
   tagSortKind,
   tagSortKinds,
@@ -134,37 +135,55 @@ export default function TagToolbar({
   );
 }
 
-export interface AdminListToolbarProps {
+export interface AdminListToolbarProps<E extends string = never> {
   query: string;
   onQueryCommit: (next: string, mode: HistoryMode) => void;
   searchRef: RefObject<HTMLInputElement | null>;
   searchDisabled: boolean;
   searchLabel: UiText;
   searchPlaceholder: UiText;
-  sort: TagListSort;
-  onSortChange: (sort: TagListSort) => void;
+  sort: TagListSort | E;
+  onSortChange: (sort: TagListSort | E) => void;
+  /** Sorts after the shared ones, each one option without a direction toggle. */
+  extraSorts?: readonly SortOption<E>[];
   sortDisabled: boolean;
   /** Unique radio-group name per screen. */
   compactSortName: string;
   children?: ReactNode;
 }
 
-export function AdminListToolbar({
+export function AdminListToolbar<E extends string = never>({
   query,
   onQueryCommit,
   searchRef,
   searchDisabled,
   searchLabel,
   searchPlaceholder,
-  sort,
+  sort: current,
   onSortChange,
+  extraSorts = [],
   sortDisabled,
   compactSortName,
   children,
-}: AdminListToolbarProps) {
+}: AdminListToolbarProps<E>) {
+  const extra = extraSorts.find((option) => option.value === current);
+  // An extra sort has no direction, as the name order has none.
+  const sort: TagListSort = extra === undefined ? (current as TagListSort) : "name";
   const kind = tagSortKind(sort);
   const direction = tagSortDirection(sort);
-  const options = tagSortOptions();
+  const options: readonly SortOption<TagListSort | E>[] = [
+    ...tagSortOptions(),
+    ...extraSorts,
+  ];
+  const value = extra?.value ?? activeOption(sort);
+  const label = extra?.label ?? t.tags.sort.kinds[kind];
+  // Choosing the active kind again keeps its direction.
+  const choose = (next: TagListSort | E) => {
+    if (next === value) return;
+    if (extra !== undefined || !isTagListSort(next) || tagSortKind(next) !== kind) {
+      onSortChange(next);
+    }
+  };
 
   return (
     <Toolbar
@@ -191,11 +210,9 @@ export function AdminListToolbar({
             <CompactSortView
               name={compactSortName}
               heading={t.tags.sort.heading}
-              value={activeOption(sort)}
+              value={value}
               options={options}
-              onValueChange={(next) => {
-                if (tagSortKind(next) !== kind) onSortChange(next);
-              }}
+              onValueChange={choose}
               disabled={sortDisabled}
             >
               {direction !== undefined && (
@@ -227,14 +244,12 @@ export function AdminListToolbar({
           ),
           control: (
             <SortMenuView
-              label={t.tags.sort.kinds[kind]}
-              currentLabel={t.tags.sort.current(t.tags.sort.kinds[kind])}
+              label={label}
+              currentLabel={t.tags.sort.current(label)}
               heading={t.tags.sort.heading}
-              value={activeOption(sort)}
+              value={value}
               options={options}
-              onValueChange={(next) => {
-                if (tagSortKind(next) !== kind) onSortChange(next);
-              }}
+              onValueChange={choose}
               // Natural name order has no direction toggle.
               toggle={
                 direction === undefined || sort === "name"

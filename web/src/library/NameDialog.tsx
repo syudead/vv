@@ -23,6 +23,7 @@ export default function NameDialog<T>({
   description,
   nameLabel,
   nameRule,
+  validate,
   send,
   onClose,
   onDone,
@@ -32,6 +33,8 @@ export default function NameDialog<T>({
   description?: ReactNode;
   nameLabel: UiText;
   nameRule: UiText;
+  /** Replaces the playlist name rule: why a name is refused, or null; a server refusal then shows its own reason. */
+  validate?: (text: string) => UiText | null;
   send: (name: string) => Promise<T>;
   onClose: () => void;
   onDone: (result: T) => void;
@@ -41,16 +44,18 @@ export default function NameDialog<T>({
   const errorId = useId();
   const input = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
-  const [invalid, setInvalid] = useState(false);
+  const [invalid, setInvalid] = useState<UiText | null>(null);
   const [failure, setFailure] = useState<UiText | null>(null);
   const [pending, setPending] = useState(false);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending) return;
-    const name = playlistName(text);
+    const refusal = validate === undefined ? null : validate(text);
+    const name =
+      validate === undefined ? playlistName(text) : refusal === null ? text.trim() : null;
     if (name === null) {
-      setInvalid(true);
+      setInvalid(refusal ?? nameRule);
       setFailure(null);
       input.current?.focus();
       return;
@@ -65,7 +70,7 @@ export default function NameDialog<T>({
       (error: unknown) => {
         setPending(false);
         if (error instanceof RequestFailed && error.status === 400) {
-          setInvalid(true);
+          setInvalid(validate === undefined ? nameRule : errorText(error));
           input.current?.focus();
           return;
         }
@@ -94,7 +99,7 @@ export default function NameDialog<T>({
       pending={pending}
       initialFocus={input}
     >
-      <Field data-invalid={invalid || undefined}>
+      <Field data-invalid={invalid !== null || undefined}>
         <FieldLabel htmlFor={nameId}>{nameLabel}</FieldLabel>
         <Input
           ref={input}
@@ -104,13 +109,13 @@ export default function NameDialog<T>({
           value={text}
           onChange={(event) => {
             setText(event.target.value);
-            setInvalid(false);
+            setInvalid(null);
           }}
-          aria-invalid={invalid || undefined}
-          aria-describedby={invalid ? errorId : undefined}
+          aria-invalid={invalid !== null || undefined}
+          aria-describedby={invalid !== null ? errorId : undefined}
           className="h-8"
         />
-        {invalid && <FieldError id={errorId}>{nameRule}</FieldError>}
+        {invalid !== null && <FieldError id={errorId}>{invalid}</FieldError>}
       </Field>
       {failure !== null && (
         <Alert variant="destructive">

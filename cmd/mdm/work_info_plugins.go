@@ -14,7 +14,7 @@ import (
 // startup; each execution uses the configured proxy.
 func newWorkInfoPlugins(
 	ctx context.Context, db *store.DB, network app.WorkInfoRunNetworkSource, covers app.WorkInfoCoverApplier,
-	logger *slog.Logger,
+	personImages app.WorkInfoPersonImageFiller, logger *slog.Logger,
 ) (httpapi.WorkInfoPlugins, func()) {
 	runtime, err := wasmplugin.New(ctx, wasmplugin.Options{Logger: logger})
 	if err != nil {
@@ -23,7 +23,7 @@ func newWorkInfoPlugins(
 	}
 	registry := app.NewWorkInfoPlugins(app.WorkInfoPluginsOptions{
 		Store: db.WorkInfoPlugins(), Runtime: runtime, Videos: db.Library(), Applier: db.Overrides(),
-		Matcher: db.Credits(), Network: network, Covers: covers,
+		Matcher: db.Credits(), Network: network, Covers: covers, PersonImages: personImages,
 	})
 	return registry, func() { _ = runtime.Close(context.WithoutCancel(ctx)) }
 }
