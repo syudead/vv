@@ -27,6 +27,9 @@ type Credits interface {
 	FaceCandidates(ctx context.Context, personID int64) ([]domain.FacePair, error)
 	ConfirmFaceCandidate(ctx context.Context, personID, otherID int64) (domain.Credit, error)
 	DismissFaceCandidate(ctx context.Context, personID, otherID int64) error
+	// PersonAppearances returns domain.ErrInvalidCursor for an unreadable cursor; a nonpositive limit returns all.
+	PersonAppearances(ctx context.Context, personID int64, cursor string, limit int) (domain.PersonAppearancePage, error)
+	FaceAppearanceCrop(ctx context.Context, id int64) ([]byte, error)
 }
 
 type creditKindAPI struct {
