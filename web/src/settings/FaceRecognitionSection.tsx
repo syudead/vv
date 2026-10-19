@@ -80,10 +80,10 @@ function RecognitionSection({
     onSettled: source.endSave,
   });
   const switchBusy = toggleSave.saving !== null;
-  // The switch and the radio each send both values, so one waits for the other's save.
-  const recognizer = useRecognizerSave(source, locked || switchBusy);
-  const recognizerBusy = recognizer.saving;
   const download = useDownloadAgain(source, locked);
+  // Each save and the retry answer with the whole settings, so one waits for the others.
+  const recognizer = useRecognizerSave(source, locked || switchBusy || download.retrying);
+  const recognizerBusy = recognizer.saving;
 
   return (
     <PageSection title={text.heading} description={text.description}>
@@ -96,9 +96,12 @@ function RecognitionSection({
           <Switch
             id="face-recognition-enabled"
             checked={toggleSave.saving ?? settings.enabled}
-            aria-disabled={locked || switchBusy || recognizerBusy || undefined}
+            aria-disabled={
+              locked || switchBusy || recognizerBusy || download.retrying || undefined
+            }
             onCheckedChange={() => {
-              if (!locked && !recognizerBusy) void toggleSave.toggle();
+              if (!locked && !recognizerBusy && !download.retrying)
+                void toggleSave.toggle();
             }}
           />
         </FormRow>
@@ -106,8 +109,10 @@ function RecognitionSection({
           <FaceRuntimeLine
             runtime={settings.runtime}
             retrying={download.retrying}
-            locked={locked}
-            onRetry={() => void download.retry()}
+            locked={locked || switchBusy || recognizerBusy}
+            onRetry={() => {
+              if (!switchBusy && !recognizerBusy) void download.retry();
+            }}
           />
         )}
       </div>
@@ -119,7 +124,7 @@ function RecognitionSection({
       <FaceRecognizerChoice
         settings={settings}
         save={recognizer}
-        disabled={locked || switchBusy || recognizer.saving}
+        disabled={locked || switchBusy || recognizer.saving || download.retrying}
       />
       <SaveStatus
         saving={recognizer.saving && recognizer.confirming === null}

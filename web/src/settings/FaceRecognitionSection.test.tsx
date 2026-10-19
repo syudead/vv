@@ -80,6 +80,7 @@ describe("FaceRecognitionSections", () => {
   const fetchMock = vi.fn<typeof fetch>();
   let current: FaceRecognitionSettings;
   let putResponse: (() => Promise<Response>) | null;
+  let downloadResponse: (() => Promise<Response>) | null;
 
   function route(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     const url = String(input);
@@ -90,6 +91,7 @@ describe("FaceRecognitionSections", () => {
     }
     if (url === URL) return Promise.resolve(json(current));
     if (url === "/api/face-recognition/download") {
+      if (downloadResponse !== null) return downloadResponse();
       current = {
         ...current,
         runtime: { state: "downloading", bytesDone: 0, bytesTotal: 184 * MB },
@@ -108,6 +110,7 @@ describe("FaceRecognitionSections", () => {
   beforeEach(() => {
     current = settings();
     putResponse = null;
+    downloadResponse = null;
     toast.mockReset();
     fetchMock.mockReset();
     fetchMock.mockImplementation(route);
@@ -174,6 +177,29 @@ describe("FaceRecognitionSections", () => {
       "/api/face-recognition/download",
     ]);
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps the switch and the recognizer still while Download again runs", async () => {
+    current = settings({ runtime: { state: "failed", reason: "network" } });
+    let answer: (response: Response) => void = () => {};
+    downloadResponse = () =>
+      new Promise((resolve) => {
+        answer = resolve;
+      });
+    render(<Page />);
+
+    const alert = await screen.findByRole("alert");
+    await userEvent.click(within(alert).getByRole("button", { name: "Download again" }));
+    const toggle = screen.getByRole("switch");
+    expect(toggle.getAttribute("aria-disabled")).toBe("true");
+    await userEvent.click(toggle);
+    await userEvent.click(screen.getByRole("radio", { name: /ArcFace/ }));
+
+    expect(requests("PUT")).toEqual([]);
+    await act(async () => {
+      answer(json(settings({ runtime: { state: "ready" } }), 202));
+    });
+    await waitFor(() => expect(toggle.getAttribute("aria-disabled")).toBeNull());
   });
 
   it("hides the run buttons while off and queues a run while on", async () => {
