@@ -275,7 +275,9 @@ type Options struct {
 	Onboarding  Onboarding
 	// Nil FaceRecognition makes the face recognition settings routes fail with 500.
 	FaceRecognition FaceRecognition
-	VersionJudging  VersionJudging
+	// Nil FaceAnalysis makes the face analysis runs route fail with 500.
+	FaceAnalysis   FaceAnalysis
+	VersionJudging VersionJudging
 
 	Ollama OllamaConnection
 
@@ -361,6 +363,7 @@ type server struct {
 	autoImport        AutoImportSettings
 	autoTagging       AutoTagging
 	faceRecognition   FaceRecognition
+	faceAnalysis      FaceAnalysis
 	onboarding        Onboarding
 	versionJudging    VersionJudging
 	ollama            OllamaConnection
@@ -442,6 +445,7 @@ func NewRouter(opts Options) http.Handler {
 		autoImport:             opts.AutoImport,
 		autoTagging:            opts.AutoTagging,
 		faceRecognition:        opts.FaceRecognition,
+		faceAnalysis:           opts.FaceAnalysis,
 		onboarding:             opts.Onboarding,
 		versionJudging:         opts.VersionJudging,
 		ollama:                 opts.Ollama,
@@ -577,7 +581,7 @@ func requiresPostJSONBody(path string) bool {
 		"/api/video-tags", "/api/video-tags/summary",
 		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 		"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
-		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/onboarding/interests", "/api/playlists", "/api/groups", "/api/smart-folders", "/api/collections/delete",
+		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/face-recognition/runs", "/api/onboarding/interests", "/api/playlists", "/api/groups", "/api/smart-folders", "/api/collections/delete",
 		"/api/organize/reorder", "/api/organize/group", "/api/organize/move", "/api/organize/bundle", "/api/organize/merge", "/api/organize/undo",
 		"/api/v1/video-work-info", "/api/v1/people", "/api/v1/people/update", "/api/v1/people/merge",
 		"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",

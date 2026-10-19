@@ -100,6 +100,8 @@ type fixture struct {
 
 	mu       sync.Mutex
 	commands []HelperCommand
+	// readies counts the manager's Ready calls.
+	readies atomic.Int32
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -128,7 +130,10 @@ func newFixture(t *testing.T) *fixture {
 }
 
 func (f *fixture) manager() *Manager {
-	return New(Options{Dir: f.dir, Catalog: f.catalog, Client: f.server.Client(), Launch: f.launch, Threads: 3})
+	return New(Options{
+		Dir: f.dir, Catalog: f.catalog, Client: f.server.Client(), Launch: f.launch, Threads: 3,
+		Ready: func() { f.readies.Add(1) },
+	})
 }
 
 // launch fakes a helper that greets with f.hello and then reads its input until it closes.
@@ -219,6 +224,9 @@ func TestStartEndsReadyWithFilesInPlaceAndStartsTheHelperThroughTheLoader(t *tes
 	if got := m.Status(domain.FaceRecognizerSFaceInt8); got.State != domain.FaceRuntimeReady {
 		t.Fatalf("Status = %+v, want ready", got)
 	}
+	if n := f.readies.Load(); n != 1 {
+		t.Fatalf("Ready called %d times, want once so waiting analyses start", n)
+	}
 	want := []string{
 		"models/sface.onnx", "models/yunet.onnx",
 		"runtime-v1/lib/ld-linux-x86-64.so.2", "runtime-v1/lib/libonnxruntime.so",
@@ -260,6 +268,9 @@ func TestWrongHashEndsFailedAndLeavesNoFile(t *testing.T) {
 	got := m.Status(domain.FaceRecognizerSFaceInt8)
 	if got.State != domain.FaceRuntimeFailed || got.Reason != domain.FaceRuntimeHashMismatch {
 		t.Fatalf("Status = %+v, want failed with hash_mismatch", got)
+	}
+	if n := f.readies.Load(); n != 0 {
+		t.Fatalf("Ready called %d times after a failed download, want 0", n)
 	}
 	if files := regularFiles(t, f.dir); len(files) != 0 {
 		t.Fatalf("files = %v, want none", files)

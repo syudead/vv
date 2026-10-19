@@ -2,8 +2,12 @@ package domain
 
 import "errors"
 
-// ErrFaceGenerationChanged refuses a result computed before the recognizer was switched; nothing of it is stored.
-var ErrFaceGenerationChanged = errors.New("the face recognizer changed while the result was computed")
+var (
+	// ErrFaceGenerationChanged refuses a result computed before the recognizer was switched; nothing of it is stored.
+	ErrFaceGenerationChanged = errors.New("the face recognizer changed while the result was computed")
+	// ErrFaceHelperStart reports a face helper that did not start or greet; the runtime, not the video, is at fault.
+	ErrFaceHelperStart = errors.New("the face helper did not start")
+)
 
 // FaceQueueScope chooses the videos a run queues for face analysis.
 type FaceQueueScope string
@@ -19,9 +23,12 @@ func (s FaceQueueScope) Valid() bool {
 	return s == FaceQueueMissing || s == FaceQueueAll
 }
 
-// FaceJob is a claimed face analysis.
+// FaceJob is a claimed face analysis with the recognizer and face.generation current when it was claimed, read
+// together so a result is never stored under a generation its recognizer does not belong to.
 type FaceJob struct {
 	ContentKey string
+	Recognizer FaceRecognizer
+	Generation int64
 }
 
 // FaceAnalysis is one video's finished analysis, as the face worker hands it to the store.

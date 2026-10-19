@@ -17,7 +17,7 @@ import (
 
 var (
 	// ErrHelperStart reports a helper that did not start or did not greet as expected.
-	ErrHelperStart = errors.New("the face helper did not start")
+	ErrHelperStart = domain.ErrFaceHelperStart
 	// ErrHelperExited reports a helper whose stream broke during a request; the next request starts a new one.
 	ErrHelperExited = errors.New("the face helper exited")
 )

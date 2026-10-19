@@ -35,6 +35,9 @@ type Options struct {
 	Threads int
 	// Nil uses slog.Default.
 	Logger *slog.Logger
+	// Ready, when set, is called after a background download or helper check makes a recognizer ready, so the
+	// face analysis waiting for the runtime starts.
+	Ready func()
 }
 
 // Manager keeps the runtime and model files under Dir: it reads their state at startup, downloads what a
@@ -317,6 +320,13 @@ func (m *Manager) download(ctx context.Context, d *download, missing []item) {
 	if rmErr := os.RemoveAll(m.tmpDir()); rmErr != nil {
 		m.logger.Warn("could not remove the face runtime's temporary files", slog.Any("error", rmErr))
 	}
+	if m.finish(ctx, d, err) && m.opts.Ready != nil {
+		m.opts.Ready()
+	}
+}
+
+// finish records how download d ended and reports whether it made its recognizer ready.
+func (m *Manager) finish(ctx context.Context, d *download, err error) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.run = nil
@@ -324,12 +334,14 @@ func (m *Manager) download(ctx context.Context, d *download, missing []item) {
 	case err == nil:
 		m.probes[d.recognizer] = probe{outcome: probeOK}
 		m.logger.Info("the face runtime is ready", slog.String("recognizer", string(d.recognizer)))
+		return true
 	case ctx.Err() != nil:
 		m.probes[d.recognizer] = probe{outcome: probeNone}
 	default:
 		m.logger.Warn("the face runtime download failed", slog.Any("error", err))
 		m.probes[d.recognizer] = probe{outcome: probeFailed, reason: reasonOf(err)}
 	}
+	return false
 }
 
 func (m *Manager) fetchAll(ctx context.Context, d *download, missing []item) error {

@@ -222,6 +222,23 @@ func (k *FaceTracker) Tracks() []FaceTrack {
 	return out
 }
 
+// BestSightings returns the best good face of every track that may still become part of a main person: the open
+// tracks and the closed tracks long enough to keep with a vector. A caller keeps crops only for these.
+func (k *FaceTracker) BestSightings() []FaceSighting {
+	var out []FaceSighting
+	for _, t := range k.active {
+		if t.GoodFrames > 0 {
+			out = append(out, t.Best)
+		}
+	}
+	for _, t := range k.done {
+		if t.frames >= faceTrackMinLen && t.GoodFrames >= faceMinGoodFrames {
+			out = append(out, t.Best)
+		}
+	}
+	return out
+}
+
 // MainPerson is one cluster of a video's tracks that passed the main-person cutoff.
 type MainPerson struct {
 	Tracks      []FaceTrack

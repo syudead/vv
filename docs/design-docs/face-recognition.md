@@ -392,11 +392,69 @@ result queues a video with no row, and its `face_analysis` entry joins the
 import pipeline as `auto_tag` does
 ([activity.md](activity.md#a-pipeline-groups-one-import-run)).
 
-A recognizer switch increases the `face.generation` setting. `Store` compares
-the generation the analysis started under with the current one in its
-transaction and refuses an older one with `ErrFaceGenerationChanged`, writing
-nothing, so a vector of the old recognizer is never stored beside the new
-ones. A result for a row that is no longer `running` writes nothing either.
+The queue is filled in three more ways, each refused with
+`409 face_recognition_off` while the feature is off.
+
+| Trigger | Queues |
+| --- | --- |
+| `POST /api/face-recognition/runs` with `missing` | Videos without a row or whose analysis failed |
+| `POST /api/face-recognition/runs` with `all` | Every video not running |
+| Retry of a `face_analysis` entry in `attention` | Its video, unless it is running; the new entry joins the old one's pipelines |
+
+A recognizer switch, in the settings' transaction, increases the
+`face.generation` setting, deletes the old recognizer's face-image vectors and
+appearance centroids, and queues again every video whose row is `done` or
+`failed`. Appearances keep their tracks, people and crops, so the next analysis
+carries them over; a video never analysed stays for "Analyse missing". Claiming
+reads the recognizer and the generation in the claim's transaction, so a job
+never pairs one recognizer with another's generation. `Store` compares the
+job's generation with the current one in its transaction and refuses an older
+one with `ErrFaceGenerationChanged`, writing nothing, so a vector of the old
+recognizer is never stored beside the new ones. A result for a row that is no
+longer `running` writes nothing either.
+
+| Rejected | Why |
+| --- | --- |
+| Queueing every video in the library on a switch | Turning the feature on with a recognizer other than the default would queue the whole library, while the default queues nothing |
+| Keeping the old recognizer's vectors until the videos are analysed again | They cannot be compared with the new ones, and a switch back would mix vectors of two analyses |
+
+## The face worker analyses one video at a time
+
+`FaceRecognizer` ([`face_recognizer.go`](../../internal/app/face_recognizer.go))
+claims a video only while the feature is on and the chosen recognizer's
+runtime is `ready`; videos queued before that wait, and the runtime wakes the
+worker when a download or a helper check makes it ready. The worker resolves
+the video's registered location through `internal/mediafs`, as live
+transcoding does, and reads its frames with `ffmpeg`
+([`face_frames.go`](../../internal/media/face_frames.go)).
+
+| Step | Rule |
+| --- | --- |
+| Frames | 2 per second; `ffmpeg` applies the display rotation first, then fits the frame into 1280 × 1280 and pads it with black, so a phone video is neither on its side nor stretched |
+| Faces | One helper request per frame, at most 2 minutes each, the helper's start included |
+| Tracks | The frame's faces go to `FaceTracker` as they arrive; no frame is kept |
+| Crops | A crop of each track's best good face is kept while the track can still count: the face box doubled around its centre, clipped to the frame, never enlarged, fitted as a person's face |
+| Result | `FindMainPeople` over the tracks, each main person with its best face's crop, stored by `FaceStore.Store` |
+
+The worker keeps one helper per recognizer across videos and stops it when
+the queue is empty, the feature is off or the recognizer changes, so the
+models leave memory while nothing is analysed.
+
+| Event | Effect |
+| --- | --- |
+| Turning the feature off or switching the recognizer | The running video is cancelled and goes back to `queued`; the next analysis starts from its first frame |
+| A switch that reaches `Store` before the cancellation | `ErrFaceGenerationChanged`; the video goes back to `queued` |
+| The helper does not start or greet | The runtime is marked `failed` and the video goes back to `queued`, waiting for the owner to download again |
+| The helper exits mid-video, answers with an error or takes over 2 minutes for a frame | The video is `failed` with the message |
+| `ffmpeg` fails, or no location can be opened | The video is `failed` with the message |
+| The video left the library | The empty result removes its row |
+| The server stops | The row stays `running`; startup puts it back to `queued` |
+
+| Rejected | Why |
+| --- | --- |
+| Letting the running video finish when the feature is turned off | The parent Issue asks for that video to be analysed again when the feature returns |
+| Decoding the chosen frames again at the end for the crops | A second pass over the video costs as much as the first |
+| Keeping every frame's crops until the end | A long video has thousands of faces; only each track's best one can become a person's face |
 
 ## Face data follows its person
 

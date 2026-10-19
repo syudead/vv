@@ -54,7 +54,7 @@ The question and the thresholds 0.8 and 0.2 are fixed in
 
 | Rejected | Why |
 | --- | --- |
-| Frames from the media files with ffmpeg | Only a scan reads the media folders' files |
+| Frames from the media files with ffmpeg | Decoding both files costs far more than cutting the frames from the two seek previews, which already hold them at the paired times |
 | A reply without the question's key as probability 0 | It would dismiss a pair the model never judged |
 
 ## The worker runs only while it is on

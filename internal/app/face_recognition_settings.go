@@ -10,7 +10,8 @@ import (
 
 type FaceSettingsStore interface {
 	FaceSettings(ctx context.Context) (domain.FaceSettings, error)
-	// SaveFaceSettings increases face.generation in the same transaction when the recognizer changes.
+	// SaveFaceSettings, when the recognizer changes, increases face.generation, clears the old recognizer's vectors
+	// and queues the analysed videos again, all in the same transaction.
 	SaveFaceSettings(ctx context.Context, settings domain.FaceSettings) error
 }
 
@@ -29,10 +30,18 @@ type FaceRuntime interface {
 	Stop()
 }
 
+// FaceAnalysisControl is told about every saved setting, so turning the feature off or switching the recognizer
+// stops the running analysis.
+type FaceAnalysisControl interface {
+	SettingsChanged(settings domain.FaceSettings)
+}
+
 type FaceRecognitionSettingsOptions struct {
 	Settings FaceSettingsStore
 	Queue    FaceQueueCounter
 	Runtime  FaceRuntime
+	// Nil analyses nothing.
+	Analysis FaceAnalysisControl
 }
 
 // FaceRecognitionSettings saves the face recognition settings and downloads the runtime only while the feature is
@@ -41,12 +50,15 @@ type FaceRecognitionSettings struct {
 	settings FaceSettingsStore
 	queue    FaceQueueCounter
 	runtime  FaceRuntime
+	analysis FaceAnalysisControl
 	// mu orders saves with the runtime calls they make.
 	mu sync.Mutex
 }
 
 func NewFaceRecognitionSettings(opts FaceRecognitionSettingsOptions) *FaceRecognitionSettings {
-	return &FaceRecognitionSettings{settings: opts.Settings, queue: opts.Queue, runtime: opts.Runtime}
+	return &FaceRecognitionSettings{
+		settings: opts.Settings, queue: opts.Queue, runtime: opts.Runtime, analysis: opts.Analysis,
+	}
 }
 
 // Resume restarts at startup a download that was interrupted while the feature was on. A file that fails its hash
@@ -99,6 +111,9 @@ func (f *FaceRecognitionSettings) save(ctx context.Context, settings domain.Face
 	defer f.mu.Unlock()
 	if err := f.settings.SaveFaceSettings(ctx, settings); err != nil {
 		return err
+	}
+	if f.analysis != nil {
+		f.analysis.SettingsChanged(settings)
 	}
 	if !settings.Enabled {
 		f.runtime.Stop()

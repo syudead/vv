@@ -16,6 +16,11 @@ type FaceRecognition interface {
 	RetryDownload(ctx context.Context) (domain.FaceRecognitionStatus, error)
 }
 
+// FaceAnalysis queues library videos for face analysis.
+type FaceAnalysis interface {
+	QueueLibrary(ctx context.Context, scope domain.FaceQueueScope) (int, error)
+}
+
 const faceRecognitionMissing = "Face recognition is not configured."
 
 func (s *server) GetFaceRecognitionSettings(w http.ResponseWriter, r *http.Request) {
@@ -77,6 +82,34 @@ func (s *server) DownloadFaceRuntime(w http.ResponseWriter, r *http.Request) {
 	default:
 		s.writeFaceRecognition(w, http.StatusAccepted, status)
 	}
+}
+
+func (s *server) StartFaceRecognition(w http.ResponseWriter, r *http.Request) {
+	if s.faceAnalysis == nil {
+		s.internalError(w, "Face analysis is not configured.", nil)
+		return
+	}
+	var body struct {
+		Scope *string `json:"scope"`
+	}
+	if !s.readJSONBody(w, r, &body) {
+		return
+	}
+	if body.Scope == nil || !domain.FaceQueueScope(*body.Scope).Valid() {
+		s.invalidRequest(w, "scope must be missing or all.")
+		return
+	}
+	queued, err := s.faceAnalysis.QueueLibrary(r.Context(), domain.FaceQueueScope(*body.Scope))
+	if errors.Is(err, domain.ErrFaceRecognitionOff) {
+		s.conflictReason(w, gen.ErrorReasonFaceRecognitionOff, "Face recognition is turned off.")
+		return
+	}
+	if err != nil {
+		s.internalError(w, "Could not queue videos for face analysis.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusAccepted, gen.FaceRecognitionQueued{Queued: queued}, s.logger)
 }
 
 func (s *server) writeFaceRecognition(w http.ResponseWriter, code int, status domain.FaceRecognitionStatus) {

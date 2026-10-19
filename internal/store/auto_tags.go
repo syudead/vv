@@ -229,7 +229,7 @@ func (s *AutoTagStore) queue(
 
 // Claim takes the oldest queued item or returns domain.ErrNoJob, creating a processing activity if necessary.
 func (s *AutoTagStore) Claim(ctx context.Context) (domain.AutoTagJob, error) {
-	key, err := s.db.claimContent(ctx, autoTagQueue)
+	key, err := s.db.claimContent(ctx, autoTagQueue, nil)
 	if err != nil {
 		return domain.AutoTagJob{}, err
 	}
