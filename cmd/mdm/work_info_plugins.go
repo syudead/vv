@@ -24,6 +24,7 @@ func newWorkInfoPlugins(
 	registry := app.NewWorkInfoPlugins(app.WorkInfoPluginsOptions{
 		Store: db.WorkInfoPlugins(), Runtime: runtime, Videos: db.Library(), Applier: db.Overrides(),
 		Matcher: db.Credits(), Network: network, Covers: covers, PersonImages: personImages,
+		People: db.Credits(),
 	})
 	return registry, func() { _ = runtime.Close(context.WithoutCancel(ctx)) }
 }

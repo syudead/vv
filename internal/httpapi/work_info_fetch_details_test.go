@@ -215,7 +215,7 @@ func TestWorkInfoApplySkipsAMalformedDate(t *testing.T) {
 		Dates: []domain.WorkDate{{Kind: domain.DateRelease, Date: "March 2024"}},
 	}))
 	applied := e.apply(fetchID, "code", "dates.release")
-	want := []gen.SkippedWorkInfoValue{{Field: gen.DatesRelease, Value: "March 2024", Reason: gen.SkippedWorkInfoReasonInvalid}}
+	want := []gen.SkippedWorkInfoValue{{Field: gen.WorkInfoFieldDatesRelease, Value: "March 2024", Reason: gen.SkippedWorkInfoReasonInvalid}}
 	if !reflect.DeepEqual(applied.Skipped, want) {
 		t.Fatalf("skipped = %+v; want %+v", applied.Skipped, want)
 	}

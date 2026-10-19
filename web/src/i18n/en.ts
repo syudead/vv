@@ -248,6 +248,8 @@ const errorCodes = {
   plugin_kind_mismatch: "This plugin is for the other kind of information.",
   operation_unsupported: "The plugin can't do that.",
   work_info_fetch_stale: "The result is out of date. Fetch it again.",
+  person_external_id_missing:
+    "This person has no ID the plugin accepts. Search by name instead.",
   activity_not_retryable: "This can no longer be retried",
   activity_not_undoable: "This can no longer be undone",
   invalid_smart_rule: "A condition is out of range.",

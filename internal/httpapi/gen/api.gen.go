@@ -498,6 +498,7 @@ const (
 	ErrorCodeOpenUnavailable             ErrorCode = "open_unavailable"
 	ErrorCodeOperationUnsupported        ErrorCode = "operation_unsupported"
 	ErrorCodeOverlappingMediaDirectories ErrorCode = "overlapping_media_directories"
+	ErrorCodePersonExternalIdMissing     ErrorCode = "person_external_id_missing"
 	ErrorCodePluginBusy                  ErrorCode = "plugin_busy"
 	ErrorCodePluginChanged               ErrorCode = "plugin_changed"
 	ErrorCodePluginFailed                ErrorCode = "plugin_failed"
@@ -561,6 +562,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeOperationUnsupported:
 		return true
 	case ErrorCodeOverlappingMediaDirectories:
+		return true
+	case ErrorCodePersonExternalIdMissing:
 		return true
 	case ErrorCodePluginBusy:
 		return true
@@ -1140,6 +1143,69 @@ func (e OrganizeRefKind) Valid() bool {
 	}
 }
 
+// Defines values for PersonPluginItem.
+const (
+	PersonPluginItemAliases                PersonPluginItem = "aliases"
+	PersonPluginItemExternalIds            PersonPluginItem = "externalIds"
+	PersonPluginItemImage                  PersonPluginItem = "image"
+	PersonPluginItemProfileBio             PersonPluginItem = "profile.bio"
+	PersonPluginItemProfileBirthDate       PersonPluginItem = "profile.birthDate"
+	PersonPluginItemProfileBirthplace      PersonPluginItem = "profile.birthplace"
+	PersonPluginItemProfileBloodType       PersonPluginItem = "profile.bloodType"
+	PersonPluginItemProfileBustCm          PersonPluginItem = "profile.bustCm"
+	PersonPluginItemProfileCareerEndYear   PersonPluginItem = "profile.careerEndYear"
+	PersonPluginItemProfileCareerStartYear PersonPluginItem = "profile.careerStartYear"
+	PersonPluginItemProfileCup             PersonPluginItem = "profile.cup"
+	PersonPluginItemProfileDeathDate       PersonPluginItem = "profile.deathDate"
+	PersonPluginItemProfileGender          PersonPluginItem = "profile.gender"
+	PersonPluginItemProfileHeightCm        PersonPluginItem = "profile.heightCm"
+	PersonPluginItemProfileHipsCm          PersonPluginItem = "profile.hipsCm"
+	PersonPluginItemProfileLinks           PersonPluginItem = "profile.links"
+	PersonPluginItemProfileWaistCm         PersonPluginItem = "profile.waistCm"
+)
+
+// Valid indicates whether the value is a known member of the PersonPluginItem enum.
+func (e PersonPluginItem) Valid() bool {
+	switch e {
+	case PersonPluginItemAliases:
+		return true
+	case PersonPluginItemExternalIds:
+		return true
+	case PersonPluginItemImage:
+		return true
+	case PersonPluginItemProfileBio:
+		return true
+	case PersonPluginItemProfileBirthDate:
+		return true
+	case PersonPluginItemProfileBirthplace:
+		return true
+	case PersonPluginItemProfileBloodType:
+		return true
+	case PersonPluginItemProfileBustCm:
+		return true
+	case PersonPluginItemProfileCareerEndYear:
+		return true
+	case PersonPluginItemProfileCareerStartYear:
+		return true
+	case PersonPluginItemProfileCup:
+		return true
+	case PersonPluginItemProfileDeathDate:
+		return true
+	case PersonPluginItemProfileGender:
+		return true
+	case PersonPluginItemProfileHeightCm:
+		return true
+	case PersonPluginItemProfileHipsCm:
+		return true
+	case PersonPluginItemProfileLinks:
+		return true
+	case PersonPluginItemProfileWaistCm:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for PersonProfileBloodType.
 const (
 	A  PersonProfileBloodType = "A"
@@ -1410,6 +1476,27 @@ func (e ScanStatus) Valid() bool {
 	case ScanStatusPartial:
 		return true
 	case ScanStatusRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SkippedPersonReason.
+const (
+	SkippedPersonReasonInvalid SkippedPersonReason = "invalid"
+	SkippedPersonReasonTaken   SkippedPersonReason = "taken"
+	SkippedPersonReasonTooMany SkippedPersonReason = "too_many"
+)
+
+// Valid indicates whether the value is a known member of the SkippedPersonReason enum.
+func (e SkippedPersonReason) Valid() bool {
+	switch e {
+	case SkippedPersonReasonInvalid:
+		return true
+	case SkippedPersonReasonTaken:
+		return true
+	case SkippedPersonReasonTooMany:
 		return true
 	default:
 		return false
@@ -2048,58 +2135,58 @@ func (e WorkDateKind) Valid() bool {
 
 // Defines values for WorkInfoField.
 const (
-	Code               WorkInfoField = "code"
-	Cover              WorkInfoField = "cover"
-	DatesPublished     WorkInfoField = "dates.published"
-	DatesRecorded      WorkInfoField = "dates.recorded"
-	DatesRelease       WorkInfoField = "dates.release"
-	Description        WorkInfoField = "description"
-	ExternalIds        WorkInfoField = "externalIds"
-	OrganizationsLabel WorkInfoField = "organizations.label"
-	OrganizationsMaker WorkInfoField = "organizations.maker"
-	PeopleDirector     WorkInfoField = "people.director"
-	PeoplePerformer    WorkInfoField = "people.performer"
-	PeoplePhotographer WorkInfoField = "people.photographer"
-	PeopleStreamer     WorkInfoField = "people.streamer"
-	Tags               WorkInfoField = "tags"
-	Title              WorkInfoField = "title"
-	Urls               WorkInfoField = "urls"
+	WorkInfoFieldCode               WorkInfoField = "code"
+	WorkInfoFieldCover              WorkInfoField = "cover"
+	WorkInfoFieldDatesPublished     WorkInfoField = "dates.published"
+	WorkInfoFieldDatesRecorded      WorkInfoField = "dates.recorded"
+	WorkInfoFieldDatesRelease       WorkInfoField = "dates.release"
+	WorkInfoFieldDescription        WorkInfoField = "description"
+	WorkInfoFieldExternalIds        WorkInfoField = "externalIds"
+	WorkInfoFieldOrganizationsLabel WorkInfoField = "organizations.label"
+	WorkInfoFieldOrganizationsMaker WorkInfoField = "organizations.maker"
+	WorkInfoFieldPeopleDirector     WorkInfoField = "people.director"
+	WorkInfoFieldPeoplePerformer    WorkInfoField = "people.performer"
+	WorkInfoFieldPeoplePhotographer WorkInfoField = "people.photographer"
+	WorkInfoFieldPeopleStreamer     WorkInfoField = "people.streamer"
+	WorkInfoFieldTags               WorkInfoField = "tags"
+	WorkInfoFieldTitle              WorkInfoField = "title"
+	WorkInfoFieldUrls               WorkInfoField = "urls"
 )
 
 // Valid indicates whether the value is a known member of the WorkInfoField enum.
 func (e WorkInfoField) Valid() bool {
 	switch e {
-	case Code:
+	case WorkInfoFieldCode:
 		return true
-	case Cover:
+	case WorkInfoFieldCover:
 		return true
-	case DatesPublished:
+	case WorkInfoFieldDatesPublished:
 		return true
-	case DatesRecorded:
+	case WorkInfoFieldDatesRecorded:
 		return true
-	case DatesRelease:
+	case WorkInfoFieldDatesRelease:
 		return true
-	case Description:
+	case WorkInfoFieldDescription:
 		return true
-	case ExternalIds:
+	case WorkInfoFieldExternalIds:
 		return true
-	case OrganizationsLabel:
+	case WorkInfoFieldOrganizationsLabel:
 		return true
-	case OrganizationsMaker:
+	case WorkInfoFieldOrganizationsMaker:
 		return true
-	case PeopleDirector:
+	case WorkInfoFieldPeopleDirector:
 		return true
-	case PeoplePerformer:
+	case WorkInfoFieldPeoplePerformer:
 		return true
-	case PeoplePhotographer:
+	case WorkInfoFieldPeoplePhotographer:
 		return true
-	case PeopleStreamer:
+	case WorkInfoFieldPeopleStreamer:
 		return true
-	case Tags:
+	case WorkInfoFieldTags:
 		return true
-	case Title:
+	case WorkInfoFieldTitle:
 		return true
-	case Urls:
+	case WorkInfoFieldUrls:
 		return true
 	default:
 		return false
@@ -2745,6 +2832,12 @@ type Alias struct {
 	// Language BCP 47 language tag; omitted when absent.
 	Language *string `json:"language,omitempty"`
 	Name     string  `json:"name"`
+}
+
+// ApplyPersonPluginFetchRequest defines model for ApplyPersonPluginFetchRequest.
+type ApplyPersonPluginFetchRequest struct {
+	// Items Items to apply; nonempty, and every item must have a value in the result.
+	Items []PersonPluginItem `json:"items"`
 }
 
 // ApplyWorkInfoFetchRequest defines model for ApplyWorkInfoFetchRequest.
@@ -3841,6 +3934,56 @@ type PersonPluginCandidate struct {
 	Url string `json:"url"`
 }
 
+// PersonPluginFetch Person fetch result held in memory.
+type PersonPluginFetch struct {
+	// ExpiresAt Result expiration timestamp in Unix seconds.
+	ExpiresAt int64 `json:"expiresAt"`
+
+	// FetchId Result identifier used when applying it.
+	FetchId string `json:"fetchId"`
+
+	// Person A person as the plugin returned it, after VV's limits.
+	Person PersonPluginFetchedPerson `json:"person"`
+}
+
+// PersonPluginFetchApplied defines model for PersonPluginFetchApplied.
+type PersonPluginFetchApplied struct {
+	// Person One person.
+	Person Person `json:"person"`
+
+	// Skipped Skipped values: profile items in property order, then aliases, then external IDs, each in fetched order.
+	Skipped []SkippedPersonValue `json:"skipped"`
+}
+
+// PersonPluginFetchRequest defines model for PersonPluginFetchRequest.
+type PersonPluginFetchRequest struct {
+	// Id A search candidate's id; requires source.
+	Id       *string `json:"id,omitempty"`
+	PluginId int64   `json:"pluginId"`
+
+	// Source A search candidate's source; requires id.
+	Source *string `json:"source,omitempty"`
+}
+
+// PersonPluginFetchedPerson A person as the plugin returned it, after VV's limits.
+type PersonPluginFetchedPerson struct {
+	// Aliases First 50 distinct names; languages are checked by the apply.
+	Aliases []Alias `json:"aliases"`
+
+	// ExternalIds The fetched ID first, then the plugin's other distinct IDs, up to 20.
+	ExternalIds []ExternalId `json:"externalIds"`
+
+	// HasImage Present and true when VV kept an image for this result.
+	HasImage *bool  `json:"hasImage,omitempty"`
+	Name     string `json:"name"`
+
+	// Profile Plugin-provided profile values that pass validation; omitted when none.
+	Profile *PersonProfile `json:"profile,omitempty"`
+}
+
+// PersonPluginItem One applicable part of a fetched person; a profile item is one profile property.
+type PersonPluginItem string
+
 // PersonPluginSearchResult defines model for PersonPluginSearchResult.
 type PersonPluginSearchResult struct {
 	// Candidates First 50 candidates in plugin order.
@@ -4334,6 +4477,24 @@ type SetupRequest struct {
 
 	// Username 1–128 characters, without control characters or surrounding whitespace
 	Username string `json:"username"`
+}
+
+// SkippedPersonReason Apply skip reason: invalid values fail validation; too_many entries exceed the limits after existing entries; taken external IDs are held by another person.
+type SkippedPersonReason string
+
+// SkippedPersonValue defines model for SkippedPersonValue.
+type SkippedPersonValue struct {
+	// HolderName Name of the person holding the external ID; only for taken.
+	HolderName *string `json:"holderName,omitempty"`
+
+	// Item One applicable part of a fetched person; a profile item is one profile property.
+	Item PersonPluginItem `json:"item"`
+
+	// Reason Apply skip reason: invalid values fail validation; too_many entries exceed the limits after existing entries; taken external IDs are held by another person.
+	Reason SkippedPersonReason `json:"reason"`
+
+	// Value Value shown in the comparison: the profile value, the alias, or source: value.
+	Value string `json:"value"`
 }
 
 // SkippedTag defines model for SkippedTag.
@@ -6405,6 +6566,12 @@ type UploadPersonImageMultipartRequestBody = UploadPersonImageRequest
 // MergePeopleJSONRequestBody defines body for MergePeople for application/json ContentType.
 type MergePeopleJSONRequestBody = CreditMergeRequest
 
+// FetchPersonWithPluginJSONRequestBody defines body for FetchPersonWithPlugin for application/json ContentType.
+type FetchPersonWithPluginJSONRequestBody = PersonPluginFetchRequest
+
+// ApplyPersonPluginFetchJSONRequestBody defines body for ApplyPersonPluginFetch for application/json ContentType.
+type ApplyPersonPluginFetchJSONRequestBody = ApplyPersonPluginFetchRequest
+
 // CreatePlaylistJSONRequestBody defines body for CreatePlaylist for application/json ContentType.
 type CreatePlaylistJSONRequestBody = PlaylistName
 
@@ -6725,6 +6892,15 @@ type ServerInterface interface {
 	// MergePeople Merge sourceIds into person id
 	// (POST /api/people/{id}/merge)
 	MergePeople(w http.ResponseWriter, r *http.Request, id PersonId)
+	// FetchPersonWithPlugin Fetch a person's information with a person plugin
+	// (POST /api/people/{id}/plugin-fetches)
+	FetchPersonWithPlugin(w http.ResponseWriter, r *http.Request, id PersonId)
+	// ApplyPersonPluginFetch Apply selected items of a person fetch
+	// (POST /api/people/{id}/plugin-fetches/{fetchId}/apply)
+	ApplyPersonPluginFetch(w http.ResponseWriter, r *http.Request, id PersonId, fetchId WorkInfoFetchId)
+	// GetPersonPluginFetchImage Return a person fetch's image
+	// (GET /api/people/{id}/plugin-fetches/{fetchId}/image)
+	GetPersonPluginFetchImage(w http.ResponseWriter, r *http.Request, id PersonId, fetchId WorkInfoFetchId)
 	// ListPlaylists List playlists by most recently updated
 	// (GET /api/playlists)
 	ListPlaylists(w http.ResponseWriter, r *http.Request, params ListPlaylistsParams)
@@ -9206,6 +9382,102 @@ func (siw *ServerInterfaceWrapper) MergePeople(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.MergePeople(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// FetchPersonWithPlugin operation middleware
+func (siw *ServerInterfaceWrapper) FetchPersonWithPlugin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.FetchPersonWithPlugin(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApplyPersonPluginFetch operation middleware
+func (siw *ServerInterfaceWrapper) ApplyPersonPluginFetch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "fetchId" -------------
+	var fetchId WorkInfoFetchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fetchId", r.PathValue("fetchId"), &fetchId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fetchId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyPersonPluginFetch(w, r, id, fetchId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPersonPluginFetchImage operation middleware
+func (siw *ServerInterfaceWrapper) GetPersonPluginFetchImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "fetchId" -------------
+	var fetchId WorkInfoFetchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fetchId", r.PathValue("fetchId"), &fetchId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fetchId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPersonPluginFetchImage(w, r, id, fetchId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -13063,6 +13335,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/people/{id}/image", wrapper.DeletePersonImage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/image", wrapper.GetPersonImage)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/people/{id}/image", wrapper.UploadPersonImage)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/plugin-fetches", wrapper.FetchPersonWithPlugin)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/plugin-fetches/{fetchId}/image", wrapper.GetPersonPluginFetchImage)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/plugin-fetches/{fetchId}/apply", wrapper.ApplyPersonPluginFetch)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/organizations", wrapper.ListOrganizations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organizations", wrapper.CreateOrganization)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/organizations/{id}", wrapper.DeleteOrganization)
