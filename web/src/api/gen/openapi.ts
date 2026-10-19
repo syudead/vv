@@ -1840,6 +1840,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/people/{id}/plugin-fetches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Fetch a person's information with a person plugin
+         * @description Owner-only. Runs approved person plugin pluginId's fetch once and retains the result in memory for ten minutes without changing the person. source and id come together, from a search candidate, or not at all: then VV sends the person's first stored external ID, in (source, value) order, whose source the plugin declares, and returns 409 person_external_id_missing before running when there is none. Missing person returns 404 person_not_found; missing plugin 404 not_found; a work-info plugin 409 plugin_kind_mismatch; only one of source and id, an undeclared source or an id outside 1–200 characters after trimming 400 invalid_request. See Run failures in docs/design-docs/work-info-plugins.md.
+         */
+        post: operations["fetchPersonWithPlugin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{id}/plugin-fetches/{fetchId}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return a person fetch's image
+         * @description Owner-only. Returns the image VV fetched from the plugin's URL and kept with the result. Missing, expired or another person's results return 404 not_found; a result without an image returns 404 person_image_not_found. Uses Cache-Control: no-store.
+         */
+        get: operations["getPersonPluginFetchImage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{id}/plugin-fetches/{fetchId}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply selected items of a person fetch
+         * @description Owner-only. Atomically fills the person's empty profile fields and appends missing aliases and external IDs, up to 50 and 20; after commit, image becomes the face only when the person has none. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. Empty items or an item without a value in the result return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing.
+         */
+        post: operations["applyPersonPluginFetch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organizations": {
         parameters: {
             query?: never;
@@ -3308,6 +3368,64 @@ export interface components {
         PersonPluginSearchResult: {
             /** @description First 50 candidates in plugin order. */
             candidates: components["schemas"]["PersonPluginCandidate"][];
+        };
+        PersonPluginFetchRequest: {
+            /** Format: int64 */
+            pluginId: number;
+            /** @description A search candidate's source; requires id. */
+            source?: string;
+            /** @description A search candidate's id; requires source. */
+            id?: string;
+        };
+        /** @description A person as the plugin returned it, after VV's limits. */
+        PersonPluginFetchedPerson: {
+            name: string;
+            /** @description First 50 distinct names; languages are checked by the apply. */
+            aliases: components["schemas"]["Alias"][];
+            /** @description The fetched ID first, then the plugin's other distinct IDs, up to 20. */
+            externalIds: components["schemas"]["ExternalId"][];
+            /** @description Plugin-provided profile values that pass validation; omitted when none. */
+            profile?: components["schemas"]["PersonProfile"];
+            /** @description Present and true when VV kept an image for this result. */
+            hasImage?: boolean;
+        };
+        /** @description Person fetch result held in memory. */
+        PersonPluginFetch: {
+            /** @description Result identifier used when applying it. */
+            fetchId: string;
+            /**
+             * Format: int64
+             * @description Result expiration timestamp in Unix seconds.
+             */
+            expiresAt: number;
+            person: components["schemas"]["PersonPluginFetchedPerson"];
+        };
+        /**
+         * @description One applicable part of a fetched person; a profile item is one profile property.
+         * @enum {string}
+         */
+        PersonPluginItem: "image" | "profile.gender" | "profile.birthDate" | "profile.deathDate" | "profile.birthplace" | "profile.heightCm" | "profile.bustCm" | "profile.waistCm" | "profile.hipsCm" | "profile.cup" | "profile.bloodType" | "profile.careerStartYear" | "profile.careerEndYear" | "profile.bio" | "profile.links" | "aliases" | "externalIds";
+        ApplyPersonPluginFetchRequest: {
+            /** @description Items to apply; nonempty, and every item must have a value in the result. */
+            items: components["schemas"]["PersonPluginItem"][];
+        };
+        /**
+         * @description Apply skip reason: invalid values fail validation; too_many entries exceed the limits after existing entries; taken external IDs are held by another person.
+         * @enum {string}
+         */
+        SkippedPersonReason: "invalid" | "too_many" | "taken";
+        SkippedPersonValue: {
+            item: components["schemas"]["PersonPluginItem"];
+            /** @description Value shown in the comparison: the profile value, the alias, or source: value. */
+            value: string;
+            reason: components["schemas"]["SkippedPersonReason"];
+            /** @description Name of the person holding the external ID; only for taken. */
+            holderName?: string;
+        };
+        PersonPluginFetchApplied: {
+            person: components["schemas"]["Person"];
+            /** @description Skipped values: profile items in property order, then aliases, then external IDs, each in fetched order. */
+            skipped: components["schemas"]["SkippedPersonValue"][];
         };
         WorkInfoSearchResult: {
             /** @description First 50 candidates in plugin order. */
@@ -5477,7 +5595,7 @@ export interface components {
              * @description Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "person_external_id_missing" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable";
             /** @description English explanation for API clients and unknown-code fallback; the UI derives text from code and reason. */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -8973,6 +9091,102 @@ export interface operations {
             };
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    fetchPersonWithPlugin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PersonPluginFetchRequest"];
+            };
+        };
+        responses: {
+            /** @description Fetch result */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonPluginFetch"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            502: components["responses"]["PluginFailed"];
+            503: components["responses"]["PluginBusy"];
+            504: components["responses"]["PluginTimedOut"];
+        };
+    };
+    getPersonPluginFetchImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+                /** @description Fetch result ID */
+                fetchId: components["parameters"]["WorkInfoFetchId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Person image */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/jpeg": string;
+                    "image/webp": string;
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    applyPersonPluginFetch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+                /** @description Fetch result ID */
+                fetchId: components["parameters"]["WorkInfoFetchId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyPersonPluginFetchRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated person and skipped values */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonPluginFetchApplied"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listOrganizations: {

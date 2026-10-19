@@ -55,6 +55,8 @@ type WorkInfoPluginsOptions struct {
 	Covers WorkInfoCoverApplier
 	// PersonImages gives linked people without a face their fetched images; nil drops them.
 	PersonImages WorkInfoPersonImageFiller
+	// People serves the person page's fetches; nil leaves them unconfigured.
+	People PersonPluginPeople
 	// Now defaults to time.Now.
 	Now func() time.Time
 }
@@ -75,6 +77,7 @@ type WorkInfoPlugins struct {
 	covers  WorkInfoCoverApplier
 	// personImages may be nil.
 	personImages WorkInfoPersonImageFiller
+	people       PersonPluginPeople
 	now          func() time.Time
 	fetches      *workInfoFetches
 }
@@ -87,8 +90,8 @@ func NewWorkInfoPlugins(opts WorkInfoPluginsOptions) *WorkInfoPlugins {
 	}
 	return &WorkInfoPlugins{
 		store: opts.Store, runtime: opts.Runtime, videos: opts.Videos, applier: opts.Applier, matcher: opts.Matcher,
-		network: opts.Network, covers: opts.Covers, personImages: opts.PersonImages, now: now,
-		fetches: newWorkInfoFetches(),
+		network: opts.Network, covers: opts.Covers, personImages: opts.PersonImages, people: opts.People,
+		now: now, fetches: newWorkInfoFetches(),
 	}
 }
 

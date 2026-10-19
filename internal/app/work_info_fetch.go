@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -154,7 +155,7 @@ func (p *WorkInfoPlugins) matchCredits(
 	return p.matcher.Match(ctx, kind, entries)
 }
 
-// Validate existence, kind, approval, operation support and required settings before executing, returning ErrNotFound, ErrWorkInfoPluginKindMismatch, ErrWorkInfoPluginNotApproved, ErrWorkInfoOperationUnsupported or WorkInfoSettingsMissingError respectively. Pass only declared settings with values; execution errors are WorkInfoRunError.
+// Validate existence, kind, approval, operation support and required settings before executing, returning ErrNotFound, ErrWorkInfoPluginKindMismatch, ErrWorkInfoRunInvalid for an undeclared source, ErrWorkInfoPluginNotApproved, ErrWorkInfoOperationUnsupported or WorkInfoSettingsMissingError respectively. Pass only declared settings with values; execution errors are WorkInfoRunError.
 func (p *WorkInfoPlugins) run(
 	ctx context.Context, id int64, kind domain.WorkInfoPluginKind, req domain.WorkInfoRunRequest,
 ) (domain.WorkInfoPlugin, domain.WorkInfoRunResult, error) {
@@ -164,6 +165,10 @@ func (p *WorkInfoPlugins) run(
 	}
 	if plugin.Kind() != kind {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, domain.ErrWorkInfoPluginKindMismatch
+	}
+	// Recheck the source on the snapshot that runs, since the plugin may have been replaced since the caller chose it.
+	if req.Source != "" && !plugin.Manifest.DeclaresSource(req.Source) {
+		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, domain.ErrWorkInfoRunInvalid
 	}
 	req.Kind, req.Sources = kind, plugin.Manifest.Sources
 	if plugin.State() != domain.WorkInfoPluginApproved {
@@ -375,13 +380,15 @@ func (f *workInfoFetch) validTagSelection(fields []domain.WorkInfoField, tags []
 }
 
 // Index results by ID and expire them on insert or retrieval.
+// People holds person page results apart, under the same lifetime and image budget.
 type workInfoFetches struct {
 	mu      sync.Mutex
 	entries map[string]*workInfoFetch
+	people  map[string]*personPluginFetch
 }
 
 func newWorkInfoFetches() *workInfoFetches {
-	return &workInfoFetches{entries: map[string]*workInfoFetch{}}
+	return &workInfoFetches{entries: map[string]*workInfoFetch{}, people: map[string]*personPluginFetch{}}
 }
 
 // Assign a random 128-bit ID; evict the earliest-expiring image-bearing results when their images exceed WorkInfoFetchCoverBudget.
@@ -395,22 +402,48 @@ func (f *workInfoFetches) add(fetch *workInfoFetch, now time.Time) string {
 	return id
 }
 
-// Caller holds mu; evict earliest-expiring image-bearing results until within budget.
+// Caller holds mu; evict earliest-expiring image-bearing results of either kind until within budget.
 func (f *workInfoFetches) trimCovers() {
 	total := 0
 	for _, entry := range f.entries {
 		total += entry.imageBytes()
 	}
-	for total > domain.WorkInfoFetchCoverBudget {
-		oldest := ""
-		for id, entry := range f.entries {
-			if entry.imageBytes() > 0 && (oldest == "" || entry.expiresAt.Before(f.entries[oldest].expiresAt)) {
-				oldest = id
-			}
-		}
-		total -= f.entries[oldest].imageBytes()
-		delete(f.entries, oldest)
+	for _, entry := range f.people {
+		total += entry.imageBytes()
 	}
+	for total > domain.WorkInfoFetchCoverBudget {
+		var oldest keptImages
+		for _, entry := range f.entries {
+			oldest = earlierImages(oldest, entry)
+		}
+		for _, entry := range f.people {
+			oldest = earlierImages(oldest, entry)
+		}
+		total -= oldest.imageBytes()
+		f.evict(oldest)
+	}
+}
+
+// keptImages is a kept result of either kind as the image budget sees it.
+type keptImages interface {
+	imageBytes() int
+	expiry() time.Time
+}
+
+func (f *workInfoFetch) expiry() time.Time { return f.expiresAt }
+
+// earlierImages returns the earlier-expiring of oldest and entry among those holding images.
+func earlierImages(oldest, entry keptImages) keptImages {
+	if entry.imageBytes() > 0 && (oldest == nil || entry.expiry().Before(oldest.expiry())) {
+		return entry
+	}
+	return oldest
+}
+
+// Caller holds mu.
+func (f *workInfoFetches) evict(entry keptImages) {
+	maps.DeleteFunc(f.entries, func(_ string, kept *workInfoFetch) bool { return keptImages(kept) == entry })
+	maps.DeleteFunc(f.people, func(_ string, kept *personPluginFetch) bool { return keptImages(kept) == entry })
 }
 
 // Return ErrNotFound for missing covers or video mismatches.
@@ -459,9 +492,6 @@ func (f *workInfoFetches) restore(id string, fetch *workInfoFetch) {
 
 // Caller holds mu.
 func (f *workInfoFetches) prune(now time.Time) {
-	for id, fetch := range f.entries {
-		if !now.Before(fetch.expiresAt) {
-			delete(f.entries, id)
-		}
-	}
+	maps.DeleteFunc(f.entries, func(_ string, fetch *workInfoFetch) bool { return !now.Before(fetch.expiresAt) })
+	maps.DeleteFunc(f.people, func(_ string, fetch *personPluginFetch) bool { return !now.Before(fetch.expiresAt) })
 }

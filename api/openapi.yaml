@@ -2887,6 +2887,100 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/people/{id}/plugin-fetches:
+    post:
+      operationId: fetchPersonWithPlugin
+      summary: "Fetch a person's information with a person plugin"
+      description: "Owner-only. Runs approved person plugin pluginId's fetch once and retains the result in memory for ten minutes without changing the person. source and id come together, from a search candidate, or not at all: then VV sends the person's first stored external ID, in (source, value) order, whose source the plugin declares, and returns 409 person_external_id_missing before running when there is none. Missing person returns 404 person_not_found; missing plugin 404 not_found; a work-info plugin 409 plugin_kind_mismatch; only one of source and id, an undeclared source or an id outside 1–200 characters after trimming 400 invalid_request. See Run failures in docs/design-docs/work-info-plugins.md."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PersonPluginFetchRequest"
+      responses:
+        "201":
+          description: "Fetch result"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonPluginFetch"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "502":
+          $ref: "#/components/responses/PluginFailed"
+        "503":
+          $ref: "#/components/responses/PluginBusy"
+        "504":
+          $ref: "#/components/responses/PluginTimedOut"
+
+  /api/people/{id}/plugin-fetches/{fetchId}/image:
+    get:
+      operationId: getPersonPluginFetchImage
+      summary: "Return a person fetch's image"
+      description: "Owner-only. Returns the image VV fetched from the plugin's URL and kept with the result. Missing, expired or another person's results return 404 not_found; a result without an image returns 404 person_image_not_found. Uses Cache-Control: no-store."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - $ref: "#/components/parameters/WorkInfoFetchId"
+      responses:
+        "200":
+          description: "Person image"
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/people/{id}/plugin-fetches/{fetchId}/apply:
+    post:
+      operationId: applyPersonPluginFetch
+      summary: "Apply selected items of a person fetch"
+      description: "Owner-only. Atomically fills the person's empty profile fields and appends missing aliases and external IDs, up to 50 and 20; after commit, image becomes the face only when the person has none. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. Empty items or an item without a value in the result return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - $ref: "#/components/parameters/WorkInfoFetchId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplyPersonPluginFetchRequest"
+      responses:
+        "200":
+          description: "Updated person and skipped values"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonPluginFetchApplied"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/organizations:
     get:
       operationId: listOrganizations
@@ -5726,6 +5820,129 @@ components:
           description: "First 50 candidates in plugin order."
           items:
             $ref: "#/components/schemas/PersonPluginCandidate"
+
+    PersonPluginFetchRequest:
+      type: object
+      required: [pluginId]
+      additionalProperties: false
+      properties:
+        pluginId:
+          type: integer
+          format: int64
+        source:
+          type: string
+          description: "A search candidate's source; requires id."
+        id:
+          type: string
+          description: "A search candidate's id; requires source."
+
+    PersonPluginFetchedPerson:
+      type: object
+      required: [name, aliases, externalIds]
+      additionalProperties: false
+      description: "A person as the plugin returned it, after VV's limits."
+      properties:
+        name:
+          type: string
+        aliases:
+          type: array
+          description: "First 50 distinct names; languages are checked by the apply."
+          items:
+            $ref: "#/components/schemas/Alias"
+        externalIds:
+          type: array
+          description: "The fetched ID first, then the plugin's other distinct IDs, up to 20."
+          items:
+            $ref: "#/components/schemas/ExternalId"
+        profile:
+          $ref: "#/components/schemas/PersonProfile"
+          description: "Plugin-provided profile values that pass validation; omitted when none."
+        hasImage:
+          type: boolean
+          description: "Present and true when VV kept an image for this result."
+
+    PersonPluginFetch:
+      type: object
+      required: [fetchId, expiresAt, person]
+      additionalProperties: false
+      description: "Person fetch result held in memory."
+      properties:
+        fetchId:
+          type: string
+          description: "Result identifier used when applying it."
+        expiresAt:
+          type: integer
+          format: int64
+          description: "Result expiration timestamp in Unix seconds."
+        person:
+          $ref: "#/components/schemas/PersonPluginFetchedPerson"
+
+    PersonPluginItem:
+      type: string
+      description: "One applicable part of a fetched person; a profile item is one profile property."
+      enum:
+        - image
+        - profile.gender
+        - profile.birthDate
+        - profile.deathDate
+        - profile.birthplace
+        - profile.heightCm
+        - profile.bustCm
+        - profile.waistCm
+        - profile.hipsCm
+        - profile.cup
+        - profile.bloodType
+        - profile.careerStartYear
+        - profile.careerEndYear
+        - profile.bio
+        - profile.links
+        - aliases
+        - externalIds
+
+    ApplyPersonPluginFetchRequest:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: "Items to apply; nonempty, and every item must have a value in the result."
+          items:
+            $ref: "#/components/schemas/PersonPluginItem"
+
+    SkippedPersonReason:
+      type: string
+      description: "Apply skip reason: invalid values fail validation; too_many entries exceed the limits after existing entries; taken external IDs are held by another person."
+      enum: [invalid, too_many, taken]
+
+    SkippedPersonValue:
+      type: object
+      required: [item, value, reason]
+      additionalProperties: false
+      properties:
+        item:
+          $ref: "#/components/schemas/PersonPluginItem"
+        value:
+          type: string
+          description: "Value shown in the comparison: the profile value, the alias, or source: value."
+        reason:
+          $ref: "#/components/schemas/SkippedPersonReason"
+        holderName:
+          type: string
+          description: "Name of the person holding the external ID; only for taken."
+
+    PersonPluginFetchApplied:
+      type: object
+      required: [person, skipped]
+      additionalProperties: false
+      properties:
+        person:
+          $ref: "#/components/schemas/Person"
+        skipped:
+          type: array
+          description: "Skipped values: profile items in property order, then aliases, then external IDs, each in fetched order."
+          items:
+            $ref: "#/components/schemas/SkippedPersonValue"
 
     WorkInfoSearchResult:
       type: object
@@ -9774,6 +9991,7 @@ components:
             - plugin_kind_mismatch
             - operation_unsupported
             - work_info_fetch_stale
+            - person_external_id_missing
             - invalid_smart_rule
             - smart_folder_not_found
             - smart_folder_cycle

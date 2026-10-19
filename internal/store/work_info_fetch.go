@@ -33,7 +33,7 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := checkFetchedPlugin(ctx, tx, apply); err != nil {
+	if err := checkFetchedPlugin(ctx, tx, apply.PluginID, apply.Digest, apply.Generation); err != nil {
 		return domain.FetchedWorkInfoApplied{}, err
 	}
 	contentKeys, err := registeredContentKeysForVideoIDs(ctx, tx, []int64{apply.VideoID})
@@ -261,15 +261,15 @@ func appliedWorkInfoEvents(videoID int64, changed []int64) []domain.Event {
 }
 
 // Generation detects replacement or revoke-and-reapprove even when module bytes and digest are unchanged.
-func checkFetchedPlugin(ctx context.Context, tx *sql.Tx, apply domain.FetchedWorkInfoApply) error {
+func checkFetchedPlugin(ctx context.Context, tx *sql.Tx, pluginID int64, digest string, generation int64) error {
 	var (
 		current           string
 		problem, approved sql.NullString
-		generation        int64
+		currentGeneration int64
 	)
 	err := tx.QueryRowContext(ctx,
-		`select digest, problem, approved_digest, generation from work_info_plugins where id = ?`, apply.PluginID,
-	).Scan(&current, &problem, &approved, &generation)
+		`select digest, problem, approved_digest, generation from work_info_plugins where id = ?`, pluginID,
+	).Scan(&current, &problem, &approved, &currentGeneration)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.ErrWorkInfoFetchStale
 	}
@@ -277,7 +277,7 @@ func checkFetchedPlugin(ctx context.Context, tx *sql.Tx, apply domain.FetchedWor
 		return fmt.Errorf("cannot read the work-info plugin: %w", err)
 	}
 	state := domain.WorkInfoPluginStateOf(domain.WorkInfoPluginProblem(problem.String), current, approved.String)
-	if state != domain.WorkInfoPluginApproved || current != apply.Digest || generation != apply.Generation {
+	if state != domain.WorkInfoPluginApproved || current != digest || currentGeneration != generation {
 		return domain.ErrWorkInfoFetchStale
 	}
 	return nil

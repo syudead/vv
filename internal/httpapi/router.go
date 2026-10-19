@@ -750,9 +750,17 @@ func requiresCreditJSONBody(method, path string) bool {
 	case 1:
 		return method == http.MethodPatch
 	case 2:
-		return method == http.MethodPost && segments[1] == "merge"
+		return method == http.MethodPost && (segments[1] == "merge" || isPersonPluginFetch(path, segments))
+	case 4:
+		return method == http.MethodPost && isPersonPluginFetch(path, segments) && segments[2] != "" &&
+			segments[3] == "apply"
 	}
 	return false
+}
+
+// isPersonPluginFetch reports a person's plugin-fetches path; organizations have none.
+func isPersonPluginFetch(path string, segments []string) bool {
+	return strings.HasPrefix(path, "/api/people/") && segments[1] == "plugin-fetches"
 }
 
 // Unknown API paths must return JSON 404, never SPA HTML 200 that obscures routing errors as JSON
@@ -825,6 +833,7 @@ const (
 	codePluginKindMismatch          = gen.ErrorCodePluginKindMismatch
 	codeOperationUnsupported        = gen.ErrorCodeOperationUnsupported
 	codeWorkInfoFetchStale          = gen.ErrorCodeWorkInfoFetchStale
+	codePersonExternalIDMissing     = gen.ErrorCodePersonExternalIdMissing
 	codeActivityNotRetryable        = gen.ErrorCodeActivityNotRetryable
 	codeActivityNotUndoable         = gen.ErrorCodeActivityNotUndoable
 )

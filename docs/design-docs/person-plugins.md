@@ -93,6 +93,58 @@ a person's page, and the API reports it as `false` for a work-info plugin.
 | A manifest setting | Settings are values passed to the plugin, and the plugin would have to declare one |
 | Off by default | The lookup during a work-info fetch is meant to happen without a further step |
 
+## The person page fetches by a stored ID the server picks
+
+`POST /api/people/{id}/plugin-fetches` with only `pluginId` sends the person's
+first stored external ID, in the stored `(source, value)` order, whose source
+the plugin declares, and answers `409 person_external_id_missing` before the
+module runs when there is none. With a search candidate's `source` and `id` it
+fetches that ID. The rule is
+[`PersonFetchID`](../../internal/domain/person_plugin_apply.go), so the page
+offers a name search only after the `409`, and a person with an accepted ID
+never sees candidates.
+
+The result is kept for 10 minutes, bound to the person and to the plugin's
+digest and generation, in the store and under the image budget of work-info
+fetches ([work-info-plugins.md](work-info-plugins.md)). Its image is served
+from `GET /api/people/{id}/plugin-fetches/{fetchId}/image`. The result keeps
+only the profile values valid with each other, the ones the comparison shows,
+so an apply can select only a value the owner saw. The run rechecks the
+source against the plugin it executes and answers `400 invalid_request` when a
+replaced plugin no longer declares it.
+
+| Rejected | Why |
+| --- | --- |
+| The page picks the ID and always sends it | The rule would live in Go and in TypeScript |
+
+## A fetched person applies per item and only fills
+
+`POST /api/people/{id}/plugin-fetches/{fetchId}/apply` takes the items the
+owner selected: `image`, `aliases`, `externalIds` and one `profile.<field>`
+per profile field. The apply rechecks the plugin's approval, digest and
+generation inside its transaction, as a work-info apply does, and answers
+`409 work_info_fetch_stale` without writes when the plugin changed since the
+fetch.
+
+| Item | Rule |
+| --- | --- |
+| A profile field | Fills the field only when it is empty |
+| `image` | Becomes the face, after the commit, only when the person has none |
+| `aliases` | Appends the aliases the person does not have; those over 50 are skipped as `too_many` |
+| `externalIds` | Appends the IDs the person does not have; those over 20 are skipped as `too_many`, and an ID another person holds is skipped as `taken` with that person's name |
+
+A value that would make the person invalid is skipped as `invalid`, and the
+rest applies. A `taken` ID never merges the two people: the owner merges them
+on the people screens when they are one person. The rules are
+[`FillPersonItems`](../../internal/domain/person_plugin_apply.go), which a
+lookup from a work-info fetch applies too, and the write is
+[`ApplyPersonPluginFetch`](../../internal/store/person_plugin_apply.go).
+
+| Rejected | Why |
+| --- | --- |
+| Replace stored values with fetched ones | The owner's edits would be lost to a site's values without a choice per field |
+| Merge the person holding a `taken` ID | A wrong ID on a site would merge two people the owner keeps apart |
+
 ## The settings page lists each kind in its own section
 
 The Plugins settings page reads the one plugin list and shows person plugins
