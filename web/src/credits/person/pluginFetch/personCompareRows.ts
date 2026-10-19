@@ -151,7 +151,9 @@ export function profileValueText(
   return String(value);
 }
 
-function skippedReason(value: SkippedPersonValue): UiText {
+export function skippedPersonReason(
+  value: Pick<SkippedPersonValue, "item" | "reason" | "holderName">,
+): UiText {
   const text = t.credits.personPage.pluginFetch.skipped;
   if (value.reason === "taken") return text.taken(value.holderName ?? "");
   if (value.reason === "too_many")
@@ -166,6 +168,6 @@ export function skippedPersonLines(values: readonly SkippedPersonValue[]): Skipp
     key: `${value.item}\u0000${String(index)}`,
     label: items[value.item],
     value: value.value,
-    reason: skippedReason(value),
+    reason: skippedPersonReason(value),
   }));
 }

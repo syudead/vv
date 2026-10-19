@@ -109,6 +109,8 @@ export const server = {
   search: vi.fn<(body: unknown) => Response>(),
   fetch: vi.fn<(body: unknown) => Response>(),
   apply: vi.fn<(body: unknown) => Response>(),
+  /** Answer planned lookup index; a promise holds the answer back. */
+  lookup: vi.fn<(index: number) => Response | Promise<Response>>(),
   upload: vi.fn<(body: unknown) => Response>(),
   related: { items: [] } as unknown,
   requests: [] as string[],
@@ -163,7 +165,11 @@ export function heading() {
   return screen.getByRole("heading", { level: 1, hidden: true });
 }
 
-function respond(url: string, body: unknown): Response {
+const LOOKUP = /^\/api\/videos\/7\/work-info-fetches\/F1\/person-lookups\/(\d+)$/;
+
+function respond(url: string, body: unknown): Response | Promise<Response> {
+  const lookup = LOOKUP.exec(url);
+  if (lookup !== null) return server.lookup(Number(lookup[1]));
   if (url === "/api/auth/session") return json({ state: "owner" });
   if (url === "/api/work-info-plugins") return json({ plugins: server.plugins });
   if (url === "/api/work-info-plugins/3/search") return server.search(body);
@@ -188,6 +194,7 @@ export function useFetchServer() {
     server.search.mockReset();
     server.fetch.mockReset();
     server.apply.mockReset();
+    server.lookup.mockReset();
     server.upload.mockReset();
     server.fetch.mockImplementation(() =>
       json(fetchResult({ title: "取得した題名", tags: ["既存", "新しい"] }), 201),

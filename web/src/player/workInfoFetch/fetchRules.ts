@@ -7,7 +7,9 @@ import type {
   WorkInfoPlugin,
 } from "../../api/workInfoPlugins";
 import { t, type UiText } from "../../i18n";
+import { skippedPersonReason } from "../../credits/person/pluginFetch/personCompareRows";
 import { creditKind, detailRow, isDateRow, videoWorkInfo } from "./detailRows";
+import { skippedLookupName } from "./lookupRules";
 
 export type RunOperation = "search" | "fetch";
 
@@ -207,9 +209,30 @@ export function skippedReason(value: SkippedWorkInfoValue): UiText {
   return value.field === "urls" ? text.invalidUrl : text.invalidOther;
 }
 
+function lookupReason(value: SkippedWorkInfoValue): UiText {
+  const text = t.credits.personPage.pluginFetch.skipped;
+  if (value.reason === "stale") return text.stale;
+  if (value.reason === "person_changed") return text.personChanged;
+  if (value.item === undefined) return text.invalid;
+  return skippedPersonReason({
+    item: value.item,
+    reason: value.reason === "ambiguous" ? "invalid" : value.reason,
+    holderName: value.holderName,
+  });
+}
+
+/** A lookup's item value is labelled with its person; a whole lookup left out keeps the role, its value naming the person. */
+function skippedLabel(value: SkippedWorkInfoValue, result?: WorkInfoFetch): UiText {
+  const text = t.player.workInfoFetch;
+  const name = result === undefined ? undefined : skippedLookupName(result, value);
+  if (value.item === undefined || name === undefined) return text.fields[value.field];
+  return text.lookupItem(name, t.credits.personPage.pluginFetch.items[value.item]);
+}
+
 export function skippedLines(
   tags: readonly SkippedTag[],
   values: readonly SkippedWorkInfoValue[],
+  result?: WorkInfoFetch,
 ): SkippedLine[] {
   const text = t.player.workInfoFetch;
   return [
@@ -221,9 +244,9 @@ export function skippedLines(
     })),
     ...values.map((value, index) => ({
       key: `${value.field}\u0000${String(index)}`,
-      label: text.fields[value.field],
+      label: skippedLabel(value, result),
       value: value.value,
-      reason: skippedReason(value),
+      reason: value.lookup === undefined ? skippedReason(value) : lookupReason(value),
     })),
   ];
 }

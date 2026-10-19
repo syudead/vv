@@ -31,6 +31,7 @@ import {
   initialQuery,
   initialSelection,
   type RunOperation,
+  rowState,
   runFor,
   selectableTags,
   type SkippedLine,
@@ -38,6 +39,8 @@ import {
   withField,
 } from "./fetchRules";
 import FindStep, { type RunFailure, type Running } from "./FindStep";
+import { cutShort, lookupSelections } from "./lookupRules";
+import { usePersonLookups } from "./usePersonLookups";
 
 const PLUGIN_GONE = new Set(["plugin_not_approved", "not_found"]);
 
@@ -140,6 +143,19 @@ function useFetchFlow({
   const controller = useRef<AbortController | null>(null);
   const latestVideo = useRef(video);
   latestVideo.current = video;
+  const lookups = usePersonLookups(video.id, {
+    // A role row that was already a change keeps the owner's choice.
+    onNewChanges: (fields, result) =>
+      setSelection((current) => [
+        ...current,
+        ...fields.filter(
+          (field) =>
+            !current.includes(field) &&
+            rowState(field, latestVideo.current, result) !== "differs",
+        ),
+      ]),
+    onStale: () => setStale(true),
+  });
 
   useEffect(() => () => controller.current?.abort(), []);
 
@@ -156,6 +172,7 @@ function useFetchFlow({
     setStale(false);
     setApplyFailure(null);
     setStep("compare");
+    lookups.start(result);
   };
 
   const run = async (
@@ -196,6 +213,8 @@ function useFetchFlow({
     const mark = detailMark();
     // A cover the page decoded is checked and consumed by the apply, then uploaded with the owner's framing.
     const framed = selection.includes("cover") ? cover.image : null;
+    // A lookup still running is left out; the apply consumes the fetch, so it can no longer finish.
+    const left = cutShort(fetched.result, lookups.states, selection);
     try {
       let applied = await applyWorkInfoFetch(
         video.id,
@@ -204,7 +223,9 @@ function useFetchFlow({
         selection.includes("tags") ? tags : undefined,
         signal,
         framed !== null,
+        lookupSelections(fetched.result, lookups.states, selection),
       );
+      lookups.stop();
       if (framed !== null && fetched.result.cover !== undefined)
         applied = await uploadFramedCover(
           applied,
@@ -216,9 +237,10 @@ function useFetchFlow({
           signal,
         );
       onApplied(applied.video, mark);
-      const lines = skippedLines(applied.skippedTags, applied.skipped);
+      const lines = skippedLines(applied.skippedTags, applied.skipped, fetched.result);
+      if (left > 0) toast(t.player.workInfoFetch.appliedCutShort(left));
       if (lines.length === 0) {
-        toast(t.player.workInfoFetch.applied);
+        if (left === 0) toast(t.player.workInfoFetch.applied);
         onClose();
         return;
       }
@@ -292,12 +314,19 @@ function useFetchFlow({
       setTags(next);
       setSelection((current) => withField(current, "tags", next.length > 0));
     },
-    back: () => setStep("find"),
+    lookups,
+    back: () => {
+      lookups.stop();
+      setStep("find");
+    },
     fetchAgain: () => {
       if (fetched === null || running !== null) return;
       void run(fetched.plugin, "fetch", fetched.source, fetched.fromSearch);
     },
-    cancel: () => controller.current?.abort(),
+    cancel: () => {
+      controller.current?.abort();
+      lookups.stop();
+    },
   };
 }
 
@@ -382,6 +411,7 @@ export default function FetchDialog(props: {
           refetching={flow.running !== null}
           failure={flow.applyFailure}
           cover={flow.cover}
+          lookups={flow.lookups}
           onToggle={flow.toggle}
           onToggleTag={flow.toggleTag}
           onBack={flow.back}

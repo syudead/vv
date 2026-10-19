@@ -44,8 +44,8 @@ export interface PersonCompareProps {
   selection: readonly PersonPluginItem[];
   /** While the apply runs or the result is stale. */
   locked: boolean;
-  /** Off inside a comparison that already heads its columns. */
-  headings?: boolean;
+  /** In a lookup block: no column headings, since the comparison around it has them, and each row's label above its two cells. */
+  inBlock?: boolean;
   onToggle: (item: PersonPluginItem, on: boolean) => void;
 }
 
@@ -175,9 +175,17 @@ function Row({
   const id = useId();
   const label = text.items[row.item];
   const heading = t.player.workInfoFetch;
+  const narrow = props.inBlock === true;
   return (
-    <div className="grid gap-x-4 gap-y-1 py-2 sm:grid-cols-5">
-      <div className="flex items-center gap-2 self-start">
+    <div
+      className={cn(
+        "grid gap-x-4 gap-y-1 py-2",
+        narrow ? "sm:grid-cols-2" : "sm:grid-cols-5",
+      )}
+    >
+      <div
+        className={cn("flex items-center gap-2 self-start", narrow && "sm:col-span-2")}
+      >
         {selectable ? (
           <>
             <Checkbox
@@ -194,10 +202,10 @@ function Row({
           <span className="text-muted-foreground">{label}</span>
         )}
       </div>
-      <Cell heading={heading.now}>
+      <Cell heading={heading.now} narrow={narrow}>
         <Value item={row.item} props={props} tone="now" />
       </Cell>
-      <Cell heading={heading.fetched}>
+      <Cell heading={heading.fetched} narrow={narrow}>
         <Value item={row.item} props={props} tone="fetched" />
       </Cell>
     </div>
@@ -249,7 +257,7 @@ export default function PersonCompare(props: PersonCompareProps) {
         <p className="text-muted-foreground">{text.nothingNew}</p>
       ) : (
         <div className="flex flex-col">
-          {props.headings !== false && <CompareHeadings />}
+          {props.inBlock !== true && <CompareHeadings />}
           <div className="flex flex-col divide-y divide-border border-y border-border">
             {changes.map((row) => (
               <Row key={row.item} row={row} props={props} selectable />
