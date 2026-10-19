@@ -2359,7 +2359,7 @@ export interface paths {
         put?: never;
         /**
          * Undo an automatic decision
-         * @description Owner-only. Reverts the decision and returns an owner undo record. If the owner already changed state, outcome is already_reverted. Missing activity or a tag not assigned by its auto_tag action returns 404 not_found. Unsupported (including pipeline records), already-undone records/tags return 409 activity_not_undoable.
+         * @description Owner-only. Reverts the decision and returns an owner undo record. If the owner already changed state, outcome is already_reverted. Missing activity, a tag not assigned by its auto_tag action or a link not made by its face_analysis action returns 404 not_found. Unsupported (including pipeline records), already-undone records/tags/links return 409 activity_not_undoable.
          */
         post: operations["undoActivity"];
         delete?: never;
@@ -5266,7 +5266,7 @@ export interface components {
          * @description Activity record kind.
          * @enum {string}
          */
-        ActivityKind: "import" | "scan" | "auto_tag" | "version_judgement" | "work_info_fetch" | "bundle" | "unbundle" | "make_representative" | "dismiss" | "tag_attach" | "tag_detach" | "tag_keep" | "tag_reject" | "work_info_apply" | "media_folder_remove" | "organize_undo" | "pipeline" | "undo";
+        ActivityKind: "import" | "scan" | "auto_tag" | "version_judgement" | "work_info_fetch" | "bundle" | "unbundle" | "make_representative" | "dismiss" | "tag_attach" | "tag_detach" | "tag_keep" | "tag_reject" | "work_info_apply" | "media_folder_remove" | "organize_undo" | "face_analysis" | "pipeline" | "undo";
         /**
          * @description Kind grouping used for feature filters; undo belongs to the feature of the undone record.
          * @enum {string}
@@ -5354,9 +5354,11 @@ export interface components {
             undoes?: components["schemas"]["ActivityUndone"];
             /** @description Tags assigned by auto_tag. */
             tags?: components["schemas"]["ActivityTag"][];
+            /** @description People a face_analysis record linked to its video as performers. */
+            faceLinks?: components["schemas"]["ActivityFaceLink"][];
             /** @description Show retry action. */
             retryRun: boolean;
-            /** @description Show undo action; auto_tag requires at least one undoable tag. */
+            /** @description Show undo action; auto_tag requires at least one undoable tag, face_analysis at least one undoable link. */
             undoable: boolean;
             /** @description Undone by the owner. */
             undone: boolean;
@@ -5476,12 +5478,27 @@ export interface components {
             /** @description Undone by the owner. */
             undone: boolean;
         };
+        ActivityFaceLink: {
+            /** Format: int64 */
+            appearanceId: number;
+            /** @description The linked person as now named; omitted once the person is deleted. */
+            person?: components["schemas"]["CreditRef"];
+            /** @description The analysis created this provisional person. */
+            createdPerson: boolean;
+            /** @description Undone by the owner. */
+            undone: boolean;
+        };
         ActivityUndoRequest: {
             /**
              * Format: int64
              * @description Tag to undo on an auto_tag record; unused for other kinds.
              */
             tagId?: number;
+            /**
+             * Format: int64
+             * @description Link to undo on a face_analysis record; omitted, every link not yet undone. Unused for other kinds.
+             */
+            appearanceId?: number;
         };
         VideoChanged: {
             /**

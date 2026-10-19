@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,11 +14,12 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// fakeActivity answers the activity reads from fixed values and records the requested detail.
+// fakeActivity answers the activity reads from fixed values and records the requested detail and undo targets.
 type fakeActivity struct {
 	page      domain.ActivityPage
 	details   map[int64]domain.ActivityDetail
 	requested []int64
+	undone    []domain.ActivityUndoTarget
 }
 
 func (f *fakeActivity) ListActivity(
@@ -39,7 +41,8 @@ func (f *fakeActivity) RetryActivity(context.Context, int64) error {
 	return domain.ErrActivityNotRetryable
 }
 
-func (f *fakeActivity) UndoActivity(context.Context, int64, int64) (domain.ActivityEntry, error) {
+func (f *fakeActivity) UndoActivity(_ context.Context, _ int64, target domain.ActivityUndoTarget) (domain.ActivityEntry, error) {
+	f.undone = append(f.undone, target)
 	return domain.ActivityEntry{}, domain.ErrActivityNotUndoable
 }
 
@@ -197,4 +200,57 @@ func TestListActivitySummarizesPipelineMembers(t *testing.T) {
 		*second.TagCount != 2 || !second.Undoable || second.Stages != nil {
 		t.Errorf("auto_tag member = %+v, want matched, two tags and undoable", second)
 	}
+}
+
+func TestFaceAnalysisEntryListsItsLinksAndUndoTakesAnAppearance(t *testing.T) {
+	entry := videoEntry(4, domain.ActivityFaceAnalysis, domain.ActivityDone)
+	entry.Feature = domain.ActivityFeatureFaceRecognition
+	entry.FaceLinks = []domain.ActivityFaceLink{
+		{AppearanceID: 11, Person: &domain.CreditRef{ID: 3, Provisional: true}, CreatedPerson: true},
+		{AppearanceID: 12, UndoneBy: 9},
+	}
+	activity := &fakeActivity{details: map[int64]domain.ActivityDetail{4: {ActivityEntry: entry}}}
+
+	var detail gen.ActivityDetail
+	if err := json.Unmarshal(serveActivity(t, activity, "/api/activity/4").Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	// A link without a person is written as person id 0.
+	type link struct {
+		appearance, person   int64
+		provisional, created bool
+		undone               bool
+	}
+	var got []link
+	for _, l := range derefOr(detail.FaceLinks) {
+		row := link{appearance: l.AppearanceId, created: l.CreatedPerson, undone: l.Undone}
+		if l.Person != nil {
+			row.person, row.provisional = l.Person.Id, l.Person.Provisional
+		}
+		got = append(got, row)
+	}
+	if want := []link{{11, 3, true, true, false}, {12, 0, false, false, true}}; !slices.Equal(got, want) {
+		t.Errorf("faceLinks = %+v, want %+v", got, want)
+	}
+
+	handler := newTestServer(t, Options{Activity: activity, Scans: &lockedScans{current: domain.Scan{ID: 1}}})
+	// An explicit 0 is not the omitted id, which undoes every link.
+	var rec *httptest.ResponseRecorder
+	for _, body := range []string{`{"appearanceId":11}`, `{}`, `{"appearanceId":0}`} {
+		req := httptest.NewRequest(http.MethodPost, "/api/activity/4/undo", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+	}
+	assertErrorCode(t, rec, http.StatusBadRequest, codeInvalidRequest)
+	if want := []domain.ActivityUndoTarget{{AppearanceID: 11}, {}}; !slices.Equal(activity.undone, want) {
+		t.Errorf("undo targets = %+v, want %+v", activity.undone, want)
+	}
+}
+
+func derefOr[T any](p *[]T) []T {
+	if p == nil {
+		return nil
+	}
+	return *p
 }
