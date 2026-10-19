@@ -183,3 +183,73 @@ and the work-info comparison reuses the piece for its person lookups.
 | --- | --- |
 | One row per profile field with `Same as now` | Kept values would fill the dialog, and their checkboxes would select nothing the apply writes |
 | A `Measurements` or `Career` row | One checkbox would select several apply items |
+
+## A work-info fetch plans one lookup per person
+
+The fetch result carries `personLookups`, planned by the server: for each
+fetched person, the first of the person's fetched external IDs that an
+approved person plugin with automatic lookups accepts, taking plugins in list
+order (name, then file name). The rule is
+[`PlanPersonLookups`](../../internal/domain/person_lookup.go).
+
+| Case | Plan |
+| --- | --- |
+| Only unaccepted IDs, or only a name | No lookup |
+| Two accepted IDs | One lookup, for the first |
+| Entries with the same plugin and ID that matched the same person, or none | One shared lookup |
+| An entry whose match is ambiguous | No lookup, since the apply links it to no one |
+| A distinct lookup after the first 5 | None; the entry is `lookupLimited` |
+
+Only IDs from the work-info result enter the plan, so an ID a lookup returns
+never starts another lookup. Five lookups at the 30-second run limit already
+keep the page waiting up to 2.5 minutes, one run at a time.
+
+| Rejected | Why |
+| --- | --- |
+| Running the lookups inside the fetch request | One request could last three minutes, and one failure would hold up the whole result |
+| Running them in the background with polling | A page nobody reads would hold the single run slot |
+| Sharing a lookup by plugin and ID alone | Two entries sharing an ID can match two different people, and one comparison could not tell them apart |
+| An owner-set priority between plugins | The Issue asks for no ordering control |
+
+## Lookup results stay with the fetch
+
+`POST /api/videos/{id}/work-info-fetches/{fetchId}/person-lookups/{index}`
+runs one planned lookup and keeps its person and image in the fetch's
+in-memory entry, which they expire with. A second request answers the kept
+result without running; a failed lookup keeps nothing and may be requested
+again. The lookup runs only on the plugin approval, digest and generation the
+plan saw, and answers `409 plugin_changed` otherwise; turning automatic
+lookups off after the fetch does not stop it.
+
+Person page results share the store and its image budget of a cover, 7
+people's images and 5 lookup images at 4 MiB, 52 MiB, so one fetch with every
+image fits and is never evicted by its own lookups.
+
+| Rejected | Why |
+| --- | --- |
+| Keeping the 32 MiB budget | A fetch with a cover and 7 images fills it, so its first lookup image would evict it |
+| A separate budget for person page results | The eviction would need an order between two budgets |
+| Sending the result back with the apply | The apply would trust the client instead of what the plugin returned |
+
+## A lookup applies only through a selected role
+
+`applyWorkInfoFetch` takes `personLookups: [{index, items}]` with the items of
+the person page's apply. A lookup fills the person its entries' role links in
+the same apply, only when that is the person they matched at fetch time, or a
+person the apply creates for entries that matched none; selecting its items
+without one of those roles is `400 invalid_request`. The lookup's profile
+fields and image are used before the work-info ones, in the apply's
+transaction, and its face after the commit
+([`applyPersonLookups`](../../internal/store/person_lookup_apply.go)).
+
+| Skip reason | When |
+| --- | --- |
+| `invalid`, `too_many`, `taken` | As on the person page |
+| `stale` | The lookup's plugin was replaced, revoked or deleted since it ran |
+| `person_changed` | The entry now links another person, such as the target of a merge or a new person after a deletion |
+
+| Rejected | Why |
+| --- | --- |
+| Applying to whoever the entry links at apply time | A face fetched for a person merged away would land on the merge target |
+| A lookup item that links its entry on its own | A role the owner left unselected would gain a person |
+| Work-info profile first | The person plugin is the source the owner chose for people |

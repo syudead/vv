@@ -33,6 +33,8 @@ type scriptedPlugins struct {
 	cover      *domain.WorkInfoCover
 	// personImages maps an index to its kept image.
 	personImages map[int]domain.WorkInfoCover
+	lookups      []domain.PersonLookupSelection
+	lookup       domain.PersonLookupResult
 }
 
 func (p *scriptedPlugins) WorkInfoFetchPersonImage(_ int64, fetchID string, index int) (domain.WorkInfoCover, error) {
@@ -69,9 +71,9 @@ func (p *scriptedPlugins) WorkInfoFetchCover(int64, string) (domain.WorkInfoCove
 	return *p.cover, nil
 }
 
-func (p *scriptedPlugins) ApplyWorkInfoFetch(_ context.Context, _ int64, _ string, fields []domain.WorkInfoField, tags []string, coverByPage bool) (domain.WorkInfoApplied, error) {
+func (p *scriptedPlugins) ApplyWorkInfoFetch(_ context.Context, _ int64, _ string, fields []domain.WorkInfoField, tags []string, coverByPage bool, lookups []domain.PersonLookupSelection) (domain.WorkInfoApplied, error) {
 	p.calls++
-	p.fields, p.tags, p.pageCover = fields, tags, coverByPage
+	p.fields, p.tags, p.pageCover, p.lookups = fields, tags, coverByPage, lookups
 	return p.applied, p.err
 }
 

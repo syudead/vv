@@ -133,6 +133,7 @@ func toAPIWorkInfoFetch(fetch domain.WorkInfoFetchResult) gen.WorkInfoFetch {
 		cover = &gen.WorkInfoFetchedCover{Width: fetch.Cover.Width, Height: fetch.Cover.Height}
 	}
 	return gen.WorkInfoFetch{
+		PersonLookups: toAPIPersonLookups(fetch.Lookups, people),
 		Cover:         cover,
 		FetchId:       fetch.ID,
 		ExpiresAt:     fetch.ExpiresAt.Unix(),
@@ -225,16 +226,23 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 		s.invalidRequest(w, "tags must name at least one of the fetched tags, and only when fields includes tags.")
 		return
 	}
+	lookups, ok := personLookupSelections(body.PersonLookups, present("personLookups"))
+	if !ok {
+		s.invalidRequest(w, "personLookups must be an array when present, "+
+			"and each lookup item must be image, aliases, externalIds or profile.<property>.")
+		return
+	}
 	if !s.workInfoPluginsConfigured(w) {
 		return
 	}
 	applied, err := s.workInfoPlugins.ApplyWorkInfoFetch(
-		r.Context(), id, fetchID, fields, tags, body.CoverByPage != nil && *body.CoverByPage,
+		r.Context(), id, fetchID, fields, tags, body.CoverByPage != nil && *body.CoverByPage, lookups,
 	)
 	switch {
 	case errors.Is(err, domain.ErrWorkInfoApplyInvalid):
 		s.invalidRequest(w, "fields must name at least one field, and each must have a value in the result. "+
-			"tags must name at least one of the fetched tags, and only when fields includes tags.")
+			"tags must name at least one of the fetched tags, and only when fields includes tags. "+
+			"Each lookup must have run, appear once, name items with values and have one of its people's roles in fields.")
 		return
 	case errors.Is(err, domain.ErrNotFound):
 		s.notFound(w, "The video was not found, or the result belongs to another video.")
@@ -258,9 +266,7 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 	}
 	skipped := make([]gen.SkippedWorkInfoValue, 0, len(applied.Skipped))
 	for _, value := range applied.Skipped {
-		skipped = append(skipped, gen.SkippedWorkInfoValue{
-			Field: gen.WorkInfoField(value.Field), Value: value.Value, Reason: gen.SkippedWorkInfoReason(value.Reason),
-		})
+		skipped = append(skipped, toAPISkippedWorkInfoValue(value))
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.WorkInfoFetchApplied{Video: video, SkippedTags: skippedTags, Skipped: skipped}, s.logger)

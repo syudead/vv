@@ -117,15 +117,21 @@ func (p *WorkInfoPlugins) keepFetched(
 	if err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}
+	lookups, err := p.planPersonLookups(ctx, details.People, people)
+	if err != nil {
+		return domain.WorkInfoFetchResult{}, err
+	}
 	fetch := &workInfoFetch{
 		videoID: videoID, pluginID: plugin.ID, digest: plugin.Digest, generation: plugin.Generation,
 		title: title, tags: tags, details: details, personMatches: people, organizationMatches: organizations,
 		cover: fetchedCover(result.CoverImage), expiresAt: p.now().Add(domain.WorkInfoFetchLifetime),
+		lookups: lookups, lookupRuns: make([]*keptLookup, len(lookups.Lookups)),
 	}
 	id := p.fetches.add(fetch, p.now())
 	return domain.WorkInfoFetchResult{
 		ID: id, ExpiresAt: fetch.expiresAt, Title: title, Tags: tags,
 		Details: details, PersonMatches: people, OrganizationMatches: organizations, Cover: fetch.cover,
+		Lookups: lookups,
 	}, nil
 }
 
@@ -202,18 +208,19 @@ func (p *WorkInfoPlugins) runNetwork(ctx context.Context) (domain.WorkInfoRunNet
 	return p.network.RunNetwork(ctx)
 }
 
-// Apply selected fields once; coverByPage checks and consumes a selected cover without applying it, for a page that uploads its own framing. Returns the updated video and skipped tags/details; nil tags selects all fetched tags, otherwise use the exact selected names. Missing/expired or changed-plugin results return ErrWorkInfoFetchStale, wrong-video results ErrNotFound, invalid fields/tag selections ErrWorkInfoApplyInvalid, and failed application writes nothing; the store rechecks plugin state transactionally, reporting invalid original names and normalized rejected names in fetched order.
+// Apply selected fields and lookup items once; coverByPage checks and consumes a selected cover without applying it, for a page that uploads its own framing. Returns the updated video and skipped tags/details; nil tags selects all fetched tags, otherwise use the exact selected names. Missing/expired or changed-plugin results return ErrWorkInfoFetchStale, wrong-video results ErrNotFound, invalid fields/tag selections or lookup items without a result value or a selected role ErrWorkInfoApplyInvalid, and failed application writes nothing; the store rechecks plugin state transactionally, reporting invalid original names and normalized rejected names in fetched order.
 func (p *WorkInfoPlugins) ApplyWorkInfoFetch(
 	ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField, tags []string, coverByPage bool,
+	lookups []domain.PersonLookupSelection,
 ) (domain.WorkInfoApplied, error) {
 	if p.applier == nil {
 		return domain.WorkInfoApplied{}, errors.New("work-info fetches are not configured")
 	}
-	fetch, err := p.fetches.claim(fetchID, videoID, fields, tags, p.now())
+	fetch, err := p.fetches.claim(fetchID, videoID, workInfoSelection{fields: fields, tags: tags, lookups: lookups}, p.now())
 	if err != nil {
 		return domain.WorkInfoApplied{}, err
 	}
-	applied, err := p.applyFetch(ctx, fetch, fields, tags, coverByPage)
+	applied, err := p.applyFetch(ctx, fetch, fields, tags, coverByPage, lookups)
 	if err != nil && !errors.Is(err, domain.ErrWorkInfoFetchStale) && !errors.Is(err, domain.ErrNotFound) {
 		// Restore results after transient writes fail so the owner can retry.
 		p.fetches.restore(fetchID, fetch)
@@ -223,6 +230,7 @@ func (p *WorkInfoPlugins) ApplyWorkInfoFetch(
 
 func (p *WorkInfoPlugins) applyFetch(
 	ctx context.Context, fetch *workInfoFetch, fields []domain.WorkInfoField, tags []string, coverByPage bool,
+	lookups []domain.PersonLookupSelection,
 ) (domain.WorkInfoApplied, error) {
 	plugin, err := p.store.WorkInfoPlugin(ctx, fetch.pluginID)
 	switch {
@@ -236,7 +244,7 @@ func (p *WorkInfoPlugins) applyFetch(
 	}
 	apply := domain.FetchedWorkInfoApply{
 		VideoID: fetch.videoID, PluginID: fetch.pluginID, Digest: fetch.digest, Generation: fetch.generation,
-		Details: fetch.details, DetailFields: detailFields(fields),
+		Details: fetch.details, DetailFields: detailFields(fields), PersonLookups: fetch.lookupApplies(lookups),
 	}
 	if slices.Contains(fields, domain.WorkInfoFieldTitle) {
 		title := fetch.title
@@ -258,7 +266,7 @@ func (p *WorkInfoPlugins) applyFetch(
 		video, coverSkipped = p.applyCover(ctx, fetch, video)
 	}
 	// Like the cover, faces follow the commit so a plugin the transaction found stale stores none.
-	video = p.applyPersonImages(ctx, video, fetch.details.People, applied.PersonIDs)
+	video = p.applyPersonImages(ctx, video, fetch.appliedFaces(lookups, applied))
 	skipped := append(coverSkipped, applied.Skipped...)
 	if skipped == nil {
 		skipped = []domain.SkippedWorkInfoValue{}
@@ -348,6 +356,9 @@ type workInfoFetch struct {
 
 	cover     *domain.WorkInfoCover
 	expiresAt time.Time
+	// lookupRuns aligns with lookups.Lookups: the kept result of a lookup that ran, or nil.
+	lookups    domain.PersonLookupPlan
+	lookupRuns []*keptLookup
 }
 
 // Unknown fields have no value.
@@ -458,10 +469,17 @@ func (f *workInfoFetches) cover(id string, videoID int64, now time.Time) (domain
 	return *fetch.cover, nil
 }
 
+type workInfoSelection struct {
+	fields  []domain.WorkInfoField
+	tags    []string
+	lookups []domain.PersonLookupSelection
+}
+
 // Validate existence/expiry, video and selection before consuming a result once. ErrWorkInfoFetchStale, ErrNotFound and ErrWorkInfoApplyInvalid preserve it unless expired.
 func (f *workInfoFetches) claim(
-	id string, videoID int64, fields []domain.WorkInfoField, tags []string, now time.Time,
+	id string, videoID int64, selection workInfoSelection, now time.Time,
 ) (*workInfoFetch, error) {
+	fields := selection.fields
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.prune(now)
@@ -471,7 +489,7 @@ func (f *workInfoFetches) claim(
 		return nil, domain.ErrWorkInfoFetchStale
 	case fetch.videoID != videoID:
 		return nil, domain.ErrNotFound
-	case len(fields) == 0, !fetch.validTagSelection(fields, tags):
+	case len(fields) == 0, !fetch.validTagSelection(fields, selection.tags), !fetch.validLookups(fields, selection.lookups):
 		return nil, domain.ErrWorkInfoApplyInvalid
 	}
 	for _, field := range fields {

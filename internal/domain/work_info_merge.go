@@ -16,11 +16,15 @@ const (
 
 const SkippedDescriptionMaxRunes = 100
 
-// Value preserves the comparison text, truncating descriptions to SkippedDescriptionMaxRunes.
+// Value preserves the comparison text, truncating descriptions to SkippedDescriptionMaxRunes. Lookup is set for a
+// person lookup's value, with the Item it came from when one item was skipped and HolderName for a taken ID.
 type SkippedWorkInfoValue struct {
-	Field  WorkInfoField
-	Value  string
-	Reason SkippedWorkInfoReason
+	Field      WorkInfoField
+	Value      string
+	Reason     SkippedWorkInfoReason
+	Lookup     *int
+	Item       PersonPluginItem
+	HolderName string
 }
 
 // NewCredit.Links identifies result positions whose IDs storage fills after creating the normalized entity.

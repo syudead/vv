@@ -86,6 +86,7 @@ export function fetchResult(overrides: Partial<WorkInfoFetch> = {}): WorkInfoFet
     organizations: [],
     urls: [],
     externalIds: [],
+    personLookups: [],
     ...overrides,
   };
 }
