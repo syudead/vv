@@ -49,20 +49,24 @@ func pinOf(url string, body []byte) Pin {
 	return Pin{URL: url, SHA256: hex.EncodeToString(sum[:]), Size: int64(len(body))}
 }
 
-// runtimeArchive is a Linux runtime archive whose helper and loader are placeholders; the launcher is faked.
-func runtimeArchive(t *testing.T) []byte {
+// runtimeArchive is a Linux runtime archive whose helper and loader are placeholders, and the pins of its files;
+// the launcher is faked.
+func runtimeArchive(t *testing.T) ([]byte, map[string]string) {
 	t.Helper()
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
+	files := map[string]string{}
 	for name, mode := range map[string]int64{
-		"face-runtime-linux-amd64/mdm-face":                 0o755,
-		"face-runtime-linux-amd64/lib/ld-linux-x86-64.so.2": 0o755,
-		"face-runtime-linux-amd64/lib/libonnxruntime.so":    0o644,
-		"face-runtime-linux-amd64/licenses/onnxruntime.txt": 0o644,
+		"mdm-face":                 0o755,
+		"lib/ld-linux-x86-64.so.2": 0o755,
+		"lib/libonnxruntime.so":    0o644,
+		"licenses/onnxruntime.txt": 0o644,
 	} {
 		body := []byte("content of " + name)
-		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: mode, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
+		files[name] = pinOf("", body).SHA256
+		header := &tar.Header{Name: "face-runtime-linux-amd64/" + name, Mode: mode, Size: int64(len(body)), Typeflag: tar.TypeReg}
+		if err := tw.WriteHeader(header); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := tw.Write(body); err != nil {
@@ -75,7 +79,7 @@ func runtimeArchive(t *testing.T) []byte {
 	if err := gz.Close(); err != nil {
 		t.Fatal(err)
 	}
-	return buf.Bytes()
+	return buf.Bytes(), files
 }
 
 // fixture is a catalog served by an httptest server and a launcher that fakes the helper.
@@ -93,7 +97,7 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	archive := runtimeArchive(t)
+	archive, files := runtimeArchive(t)
 	detector, model := []byte("yunet model"), []byte("sface model")
 	f := &fixture{
 		dir:   filepath.Join(t.TempDir(), "face"),
@@ -102,8 +106,11 @@ func newFixture(t *testing.T) *fixture {
 	}
 	f.server = newFileServer(t, map[string][]byte{"/runtime.tar.gz": archive, "/yunet.onnx": detector, "/sface.onnx": model})
 	f.catalog = Catalog{
-		Version:  1,
-		Platform: &Platform{Name: "linux-amd64", Loader: "ld-linux-x86-64.so.2", Archive: pinOf(f.server.URL+"/runtime.tar.gz", archive)},
+		Version: 1,
+		Platform: &Platform{
+			Name: "linux-amd64", Loader: "ld-linux-x86-64.so.2",
+			Archive: pinOf(f.server.URL+"/runtime.tar.gz", archive), Files: files,
+		},
 		Detector: Model{File: "yunet.onnx", Pin: pinOf(f.server.URL+"/yunet.onnx", detector)},
 		Recognizers: map[domain.FaceRecognizer]Model{
 			domain.FaceRecognizerSFaceInt8: {File: "sface.onnx", Pin: pinOf(f.server.URL+"/sface.onnx", model)},
@@ -206,7 +213,7 @@ func TestStartEndsReadyWithFilesInPlaceAndStartsTheHelperThroughTheLoader(t *tes
 	}
 	want := []string{
 		"models/sface.onnx", "models/yunet.onnx",
-		"runtime-v1/" + manifestName, "runtime-v1/lib/ld-linux-x86-64.so.2", "runtime-v1/lib/libonnxruntime.so",
+		"runtime-v1/lib/ld-linux-x86-64.so.2", "runtime-v1/lib/libonnxruntime.so",
 		"runtime-v1/licenses/onnxruntime.txt", "runtime-v1/mdm-face",
 	}
 	if got := regularFiles(t, f.dir); !slices.Equal(got, want) {
@@ -282,5 +289,60 @@ func TestHelperOfAnotherProtocolVersionFailsTheDownload(t *testing.T) {
 	got := m.Status(domain.FaceRecognizerSFaceInt8)
 	if got.State != domain.FaceRuntimeFailed || got.Reason != domain.FaceRuntimeHelperStart {
 		t.Fatalf("Status = %+v, want failed with helper_start", got)
+	}
+}
+
+func TestRetryAfterHelperStartFailureProbesTheHelperAgain(t *testing.T) {
+	f := newFixture(t)
+	f.hello = faceproto.Hello{Version: faceproto.Version + 1, Recognizer: "sface_int8"}
+	m := f.manager()
+	if err := m.Start(domain.FaceRecognizerSFaceInt8); err != nil {
+		t.Fatal(err)
+	}
+	waitDownload(m)
+	requests := f.server.requests.Load()
+
+	if err := m.Start(domain.FaceRecognizerSFaceInt8); err != nil {
+		t.Fatal(err)
+	}
+	waitDownload(m)
+
+	got := m.Status(domain.FaceRecognizerSFaceInt8)
+	if got.State != domain.FaceRuntimeFailed || got.Reason != domain.FaceRuntimeHelperStart {
+		t.Fatalf("Status after a retry = %+v, want failed with helper_start", got)
+	}
+	if len(f.commands) != 2 {
+		t.Fatalf("helper starts = %d, want 2", len(f.commands))
+	}
+	if n := f.server.requests.Load(); n != requests {
+		t.Fatalf("requests after a retry = %d, want %d", n, requests)
+	}
+}
+
+func TestStartupReadsATamperedRuntimeAsFailed(t *testing.T) {
+	for name, tamper := range map[string]func(rt string) error{
+		"replaced helper": func(rt string) error {
+			return os.WriteFile(filepath.Join(rt, "mdm-face"), []byte("another helper"), 0o755)
+		},
+		"added library": func(rt string) error {
+			return os.WriteFile(filepath.Join(rt, "lib", "libextra.so"), []byte("injected"), 0o644)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			m := f.manager()
+			if err := m.Start(domain.FaceRecognizerSFaceInt8); err != nil {
+				t.Fatal(err)
+			}
+			waitDownload(m)
+			if err := tamper(filepath.Join(f.dir, "runtime-v1")); err != nil {
+				t.Fatal(err)
+			}
+
+			got := f.manager().Status(domain.FaceRecognizerSFaceInt8)
+			if got.State != domain.FaceRuntimeFailed || got.Reason != domain.FaceRuntimeHashMismatch {
+				t.Fatalf("Status = %+v, want failed with hash_mismatch", got)
+			}
+		})
 	}
 }

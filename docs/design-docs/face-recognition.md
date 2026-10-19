@@ -133,13 +133,13 @@ Face repositories, each URL pinned to a commit.
 
 A recognizer needs the runtime, YuNet and its own model. Each file is written
 under `<data>/face/.tmp/` and moved into place only when its hash matches:
-the archive is unpacked into `<data>/face/runtime-v<N>/` with a `.sha256`
-manifest of the archive's hash and each unpacked file's hash, and the models
-go to `<data>/face/models/`. Downloads use the process's proxy environment
+the archive is unpacked into `<data>/face/runtime-v<N>/` and must then hold
+exactly the files whose hashes `mdm` pins for that archive, and the models go
+to `<data>/face/models/`. Downloads use the process's proxy environment
 (`HTTPS_PROXY`), because the plugin proxy is chosen for plugin traffic only.
 
 The download state is not stored. At startup `mdm` hashes the files against
-the pins and the manifest, and `GET /api/settings/face-recognition` reports
+the pins built into it, and `GET /api/settings/face-recognition` reports
 the state of what the chosen recognizer needs; the settings page reads the
 progress from the same resource while downloading.
 
@@ -164,6 +164,7 @@ stateDiagram-v2
 | Turning the feature off | Cancels a running download; the files already verified stay |
 | Startup while on | Resumes a download only when files are missing; a file that differs stays `failed` until the owner downloads again |
 | A download ends | The helper is started once: a `Hello` of another protocol version, or no `Hello`, is `helper_start` |
+| Downloading again after a failure, with no file missing | The helper is started once again instead of the state turning `ready` unchecked |
 | A recognizer switch | Increases `face.generation` in the settings' transaction |
 
 On Linux `mdm` starts `runtime-v<N>/lib/<loader> --library-path
@@ -177,7 +178,8 @@ started again on the next one, and a cancelled request stops it.
 | Rejected | Why |
 | --- | --- |
 | Storing the download state in the settings | It would disagree with the files after a crash or a deleted folder; the hashes are the state |
-| Keeping the runtime archive to verify it at startup | It doubles the disk use; the manifest written while unpacking verifies the unpacked files |
+| Keeping the runtime archive to verify it at startup | It doubles the disk use; the per-file pins built into `mdm` verify the unpacked files |
+| A hash manifest written into the runtime folder | Anyone who can write the folder could replace `mdm-face` and its hash together; the trust root must be the `mdm` binary |
 | Downloading again at startup a file that differs | The owner would not see that a file broke; the settings page shows `failed` and offers the download |
 
 ## From faces to people

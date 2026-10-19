@@ -133,7 +133,7 @@ func (m *Manager) Check() {
 			return
 		}
 		files := map[string]fileState{
-			runtimeKey: verifyRuntime(m.runtimeDir(), m.opts.Catalog.Platform.Archive.SHA256),
+			runtimeKey: verifyRuntime(m.runtimeDir(), m.opts.Catalog.Platform.Files),
 		}
 		models := append([]Model{m.opts.Catalog.Detector}, mapValues(m.opts.Catalog.Recognizers)...)
 		for _, model := range models {
@@ -203,6 +203,9 @@ func (m *Manager) Start(r domain.FaceRecognizer) error {
 		// Another Start won the race; the app serializes its calls, so this one is for the same recognizer.
 		return nil
 	}
+	// A retry after a failure for r probes the helper again even when every file is in place, since a helper_start
+	// failure leaves the files verified.
+	retry := m.failed != nil && m.failed.recognizer == r
 	m.failed = nil
 	var missing []item
 	for _, it := range m.items(r) {
@@ -210,7 +213,7 @@ func (m *Manager) Start(r domain.FaceRecognizer) error {
 			missing = append(missing, it)
 		}
 	}
-	if len(missing) == 0 {
+	if len(missing) == 0 && !retry {
 		return nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -287,8 +290,11 @@ func (m *Manager) fetchItem(ctx context.Context, d *download, it item) error {
 	}
 	staged := filepath.Join(m.tmpDir(), filepath.Base(m.runtimeDir()))
 	root := "face-runtime-" + m.opts.Catalog.Platform.Name
-	if err := unpack(tmp, root, staged, it.pin.SHA256); err != nil {
+	if err := unpack(tmp, root, staged); err != nil {
 		return fail(domain.FaceRuntimeDisk, err)
+	}
+	if verifyRuntime(staged, m.opts.Catalog.Platform.Files) != fileOK {
+		return fail(domain.FaceRuntimeHashMismatch, errors.New("the unpacked runtime does not match its pinned files"))
 	}
 	if err := os.RemoveAll(m.runtimeDir()); err != nil {
 		return fail(domain.FaceRuntimeDisk, err)

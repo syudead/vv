@@ -3,7 +3,6 @@ package faceruntime
 import (
 	"archive/tar"
 	"archive/zip"
-	"bufio"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -30,10 +29,6 @@ const (
 	// fileBad exists but does not match its pin.
 	fileBad
 )
-
-// manifestName lists, inside the runtime folder, the archive hash and each extracted file's hash, so startup can
-// verify the unpacked runtime without keeping the archive.
-const manifestName = ".sha256"
 
 // failure is a download or start error with the reason the settings show.
 type failure struct {
@@ -82,33 +77,32 @@ func verifyModel(name, sha string) fileState {
 	return fileOK
 }
 
-// verifyRuntime checks the unpacked runtime against its manifest, whose first line names the archive's hash.
-func verifyRuntime(dir, archiveSHA string) fileState {
-	file, err := os.Open(filepath.Join(dir, manifestName))
-	if errors.Is(err, fs.ErrNotExist) {
-		if _, statErr := os.Stat(dir); errors.Is(statErr, fs.ErrNotExist) {
-			return fileAbsent
+// verifyRuntime checks that dir holds exactly the pinned files, each with its pinned hash; an added file, a link
+// or a missing file makes it bad, since the helper loads libraries from the folder by name.
+func verifyRuntime(dir string, files map[string]string) fileState {
+	if _, err := os.Lstat(dir); errors.Is(err, fs.ErrNotExist) {
+		return fileAbsent
+	}
+	seen := 0
+	err := filepath.WalkDir(dir, func(name string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
 		}
-		return fileBad
-	}
-	if err != nil {
-		return fileBad
-	}
-	defer func() { _ = file.Close() }()
-	lines := bufio.NewScanner(file)
-	if !lines.Scan() || lines.Text() != "archive "+archiveSHA {
-		return fileBad
-	}
-	for lines.Scan() {
-		sha, rel, ok := strings.Cut(lines.Text(), "  ")
-		if !ok || !filepath.IsLocal(rel) {
-			return fileBad
+		rel, err := filepath.Rel(dir, name)
+		if err != nil {
+			return err
 		}
-		if got, err := hashFile(filepath.Join(dir, filepath.FromSlash(rel))); err != nil || got != sha {
-			return fileBad
+		want, ok := files[filepath.ToSlash(rel)]
+		if !ok || !d.Type().IsRegular() {
+			return fmt.Errorf("%s is not a pinned runtime file", rel)
 		}
-	}
-	if lines.Err() != nil {
+		if got, err := hashFile(name); err != nil || got != want {
+			return fmt.Errorf("%s does not match its pin", rel)
+		}
+		seen++
+		return nil
+	})
+	if err != nil || seen != len(files) {
 		return fileBad
 	}
 	return fileOK
@@ -170,29 +164,19 @@ func (p progressWriter) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-// unpack extracts the archive's root folder root into dir and writes the manifest; dir must not exist.
-func unpack(archive, root, dir, archiveSHA string) error {
-	var manifest strings.Builder
-	manifest.WriteString("archive " + archiveSHA + "\n")
+// unpack extracts the archive's root folder root into dir; dir must not exist.
+func unpack(archive, root, dir string) error {
 	write := func(name string, mode fs.FileMode, r io.Reader) error {
 		inner, ok := strings.CutPrefix(name, root+"/")
 		if !ok || inner == "" || !filepath.IsLocal(filepath.FromSlash(inner)) {
 			return fmt.Errorf("archive entry %q is outside %s", name, root)
 		}
-		sha, err := writeExtracted(filepath.Join(dir, filepath.FromSlash(inner)), mode, r)
-		if err != nil {
-			return err
-		}
-		manifest.WriteString(sha + "  " + inner + "\n")
-		return nil
+		return writeExtracted(filepath.Join(dir, filepath.FromSlash(inner)), mode, r)
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	if err := eachArchiveFile(archive, write); err != nil {
-		return err
-	}
-	return os.WriteFile(filepath.Join(dir, manifestName), []byte(manifest.String()), 0o644)
+	return eachArchiveFile(archive, write)
 }
 
 // eachArchiveFile passes each regular file of a .zip or .tar.gz archive to extract.
@@ -212,9 +196,9 @@ func eachArchiveFile(archive string, extract extractFunc) error {
 	return eachTarFile(file, extract)
 }
 
-func writeExtracted(target string, mode fs.FileMode, r io.Reader) (string, error) {
+func writeExtracted(target string, mode fs.FileMode, r io.Reader) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return "", err
+		return err
 	}
 	perm := fs.FileMode(0o644)
 	if mode&0o111 != 0 {
@@ -222,14 +206,13 @@ func writeExtracted(target string, mode fs.FileMode, r io.Reader) (string, error
 	}
 	out, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, perm)
 	if err != nil {
-		return "", err
+		return err
 	}
-	h := sha256.New()
-	_, err = io.Copy(io.MultiWriter(out, h), r)
+	_, err = io.Copy(out, r)
 	if closeErr := out.Close(); err == nil {
 		err = closeErr
 	}
-	return hex.EncodeToString(h.Sum(nil)), err
+	return err
 }
 
 type extractFunc func(name string, mode fs.FileMode, r io.Reader) error
