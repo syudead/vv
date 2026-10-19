@@ -19,6 +19,20 @@ func (s *IngestStore) EnqueueJob(ctx context.Context, kind domain.JobKind, video
 func (s *IngestStore) EnqueueJobs(
 	ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind,
 ) error {
+	return s.queueJobs(ctx, videoID, decider, false, kinds)
+}
+
+// ForceJobs queues forced jobs in one transaction without changing the stage states: over a queued row it sets its
+// force, over an unforced running row it sets force_requested, and over a forced running row it does nothing.
+func (s *IngestStore) ForceJobs(
+	ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind,
+) error {
+	return s.queueJobs(ctx, videoID, decider, true, kinds)
+}
+
+func (s *IngestStore) queueJobs(
+	ctx context.Context, videoID int64, decider domain.ActivityDecider, force bool, kinds []domain.JobKind,
+) error {
 	if len(kinds) == 0 {
 		return nil
 	}
@@ -33,7 +47,7 @@ func (s *IngestStore) EnqueueJobs(
 	}
 	var c changes
 	for _, kind := range kinds {
-		if err := requeueJob(ctx, tx, &c, kind, videoID, time.Now().Unix(), run); err != nil {
+		if err := queueJob(ctx, tx, &c, kind, videoID, time.Now().Unix(), run, force); err != nil {
 			return err
 		}
 	}
@@ -153,10 +167,10 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 	var kindName string
 	var previousPath sql.NullString
 	// Keep SQL eligibility equivalent to domain.ClaimConditionFor.
-	queuedJobSQL := `select j.id, j.kind, j.video_id, j.attempts, j.location_path from jobs j
+	queuedJobSQL := `select j.id, j.kind, j.video_id, j.attempts, j.force, j.location_path from jobs j
 		where j.state = 'queued' and j.kind = ?` + claimConditionSQL(domain.ClaimConditionFor(kind), "j") + `
 		order by j.id limit 1`
-	err = conn.QueryRowContext(ctx, queuedJobSQL, string(kind)).Scan(&job.ID, &kindName, &job.VideoID, &job.Attempts, &previousPath)
+	err = conn.QueryRowContext(ctx, queuedJobSQL, string(kind)).Scan(&job.ID, &kindName, &job.VideoID, &job.Attempts, &job.Force, &previousPath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Job{}, domain.ErrNoJob
 	}
@@ -322,8 +336,11 @@ func (s *IngestStore) commitJobChange(ctx context.Context, tx *sql.Tx, jobID int
 	return s.commitJobChanges(ctx, tx, &changes{}, jobID)
 }
 
-// commitJobChanges settles the job's activity after the transaction's other changes in c.
+// commitJobChanges hands on a force request and settles the job's activity after the transaction's other changes in c.
 func (s *IngestStore) commitJobChanges(ctx context.Context, tx *sql.Tx, c *changes, jobID int64) error {
+	if err := queueForceRequest(ctx, tx, c, jobID); err != nil {
+		return err
+	}
 	if err := settleJobActivity(ctx, tx, c, jobID, time.Now()); err != nil {
 		return err
 	}
@@ -417,8 +434,8 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 		if err := recordTerminalFailure(ctx, tx, job, cause, now); err != nil {
 			return err
 		}
-		if job.Kind == domain.JobSeekThumbnail {
-			// Follow-up processes also run on a failed seek stage, with the images that remain.
+		if job.Kind == domain.JobSeekThumbnail && !job.Force {
+			// Follow-up processes also run on a failed seek stage, with the images that remain; a forced one queues none.
 			if err := queueAfterSeekStage(ctx, tx, &c, job, time.Now()); err != nil {
 				return err
 			}
@@ -545,7 +562,8 @@ func (s *IngestStore) HasUnfinishedJobs(ctx context.Context) (bool, error) {
 	return found, nil
 }
 
-// RequeueRunningJobs recovers interrupted work at startup and recomputes completion using runtime OS-specific eligibility.
+// RequeueRunningJobs recovers interrupted work at startup and recomputes completion using runtime OS-specific
+// eligibility; a row with a force request comes back forced.
 func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -553,7 +571,8 @@ func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	res, err := tx.ExecContext(ctx,
-		`update jobs set state = 'queued', updated_at = ? where state = 'running'`,
+		`update jobs set state = 'queued', force = max(force, force_requested), force_requested = 0, updated_at = ?
+		where state = 'running'`,
 		time.Now().Unix())
 	if err != nil {
 		return 0, fmt.Errorf("cannot requeue interrupted jobs: %w", err)
