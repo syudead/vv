@@ -63,16 +63,27 @@ describe("VideoPage work-info fetch", () => {
     expect(server.requests).not.toContain("GET /api/work-info-plugins");
   });
 
-  it("承認済みのプラグインが無ければ、所有者にも入口を出さない", async () => {
+  it("承認済みの作品情報プラグインが無ければ、承認済みの人物プラグインだけがあっても入口を出さない", async () => {
     server.plugins = [
       { ...works, state: "unapproved" },
       { ...works, id: 4, state: "invalid" },
+      { ...works, id: 5, name: "people", kind: "person", sources: ["example.people"] },
     ];
     await openPage();
     await waitFor(() => expect(server.requests).toContain("GET /api/work-info-plugins"));
     expect(
       screen.queryByRole("button", { name: "Fetch work info from a plugin" }),
     ).toBeNull();
+  });
+
+  it("取得のダイアログは人物プラグインを並べない", async () => {
+    server.plugins = [
+      works,
+      { ...works, id: 5, name: "people", kind: "person", sources: ["example.people"] },
+    ];
+    const { dialog } = await openDialog();
+    expect(within(dialog).getByText("works")).toBeDefined();
+    expect(within(dialog).queryByText("people")).toBeNull();
   });
 
   it("入口は Edit details の後、サムネイルの操作の前にある", async () => {

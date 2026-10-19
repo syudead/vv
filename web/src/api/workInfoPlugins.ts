@@ -8,6 +8,7 @@ import { afterTagsAppliedByName } from "./tags";
 export type WorkInfoPlugin = components["schemas"]["WorkInfoPlugin"];
 export type WorkInfoPluginSetting = components["schemas"]["WorkInfoPluginSetting"];
 export type WorkInfoPluginState = components["schemas"]["WorkInfoPluginState"];
+export type WorkInfoPluginKind = components["schemas"]["WorkInfoPluginKind"];
 export type WorkInfoPluginProblem = components["schemas"]["WorkInfoPluginProblem"];
 export type WorkInfoPluginList = components["schemas"]["WorkInfoPluginList"];
 export type WorkInfoPluginRun = components["schemas"]["WorkInfoPluginRun"];
@@ -91,6 +92,20 @@ export function setWorkInfoPluginSettings(
     method: "PUT",
     headers: jsonHeaders,
     body: JSON.stringify({ values }),
+    signal,
+  });
+}
+
+/** Only person plugins have the switch; it does not affect fetching from a person page. */
+export function setWorkInfoPluginAutoLookup(
+  id: number,
+  enabled: boolean,
+  signal?: AbortSignal,
+): Promise<WorkInfoPlugin> {
+  return request<WorkInfoPlugin>(`${pluginPath(id)}/auto-lookup`, {
+    method: "PUT",
+    headers: jsonHeaders,
+    body: JSON.stringify({ enabled }),
     signal,
   });
 }

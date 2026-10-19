@@ -1,13 +1,5 @@
-import { CircleAlert, ExternalLink, LoaderCircle, Puzzle, Upload } from "lucide-react";
-import {
-  type ChangeEvent,
-  type ReactNode,
-  type RefObject,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { CircleAlert } from "lucide-react";
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 
 import { RequestFailed } from "../api/client";
 import {
@@ -15,26 +7,28 @@ import {
   deleteWorkInfoPlugin,
   listWorkInfoPlugins,
   revokeWorkInfoPluginApproval,
+  setWorkInfoPluginAutoLookup,
   setWorkInfoPluginSettings,
   uploadWorkInfoPlugin,
   type WorkInfoPlugin,
+  type WorkInfoPluginKind,
 } from "../api/workInfoPlugins";
 import { errorText, t, type UiText } from "../i18n";
 import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
-import { EmptyState } from "../ui/patterns/empty-state";
-import { ErrorState } from "../ui/patterns/error-state";
 import { PageSection } from "../ui/patterns/page-section";
 import { Alert, AlertTitle } from "../ui/shadcn/alert";
-import { Button } from "../ui/shadcn/button";
-import { Input } from "../ui/shadcn/input";
-import { Skeleton } from "../ui/shadcn/skeleton";
 import { useToast } from "../ui/Toast";
-import { WORK_INFO_PLUGINS_GUIDE_URL } from "./docsLinks";
 import { useSectionAnchor } from "./useSectionAnchor";
 import WorkInfoPluginApprovalDialog from "./WorkInfoPluginApprovalDialog";
 import WorkInfoPluginRow, { type RowWork } from "./WorkInfoPluginRow";
 import WorkInfoPluginRunDialog from "./WorkInfoPluginRunDialog";
-import { MAX_PLUGIN_BYTES, pluginName } from "./workInfoPluginRows";
+import { pluginName } from "./workInfoPluginRows";
+import {
+  AddButton,
+  GuideLink,
+  PluginList,
+  sectionText,
+} from "./WorkInfoPluginSectionParts";
 import WorkInfoPluginSettingsDialog from "./WorkInfoPluginSettingsDialog";
 
 const text = () => t.settings.workInfoPlugins;
@@ -53,13 +47,34 @@ interface Editing {
   error: UiText | null;
 }
 
-/** Focus the row's first button, its menu trigger, or Add plugin after rendering. */
-type FocusTarget = number | { menu: number } | "add";
+/** Focus the row's first button, its menu trigger, or a section's Add plugin after rendering. */
+type FocusTarget = number | { menu: number } | { add: WorkInfoPluginKind };
 
-function addedToast(plugin: WorkInfoPlugin, replaced: boolean): UiText {
+const KINDS = ["work", "person"] as const satisfies readonly WorkInfoPluginKind[];
+
+const ANCHORS = {
+  work: "work-info-plugins",
+  person: "person-plugins",
+} as const satisfies Record<WorkInfoPluginKind, string>;
+
+/** The manifest decides the kind, so name the other section when the row lands there. */
+function addedToast(
+  plugin: WorkInfoPlugin,
+  replaced: boolean,
+  section: WorkInfoPluginKind,
+): UiText {
   const name = pluginName(plugin);
   if (plugin.state === "invalid") return text().addedUnusable(name);
+  if (plugin.kind !== section)
+    return replaced
+      ? text().replacedUnder[plugin.kind](name)
+      : text().addedUnder[plugin.kind](name);
   return replaced ? text().replaced(name) : text().added(name);
+}
+
+function withoutKey(record: Record<number, boolean>, id: number) {
+  const { [id]: _removed, ...rest } = record;
+  return rest;
 }
 
 function isChangedMeanwhile(failure: unknown): boolean {
@@ -69,142 +84,33 @@ function isChangedMeanwhile(failure: unknown): boolean {
   );
 }
 
-function GuideLink() {
-  return (
-    <a
-      href={WORK_INFO_PLUGINS_GUIDE_URL}
-      target="_blank"
-      rel="noreferrer"
-      className="inline-flex items-center gap-1 text-primary underline underline-offset-4"
-    >
-      {text().guide}
-      <ExternalLink aria-hidden="true" className="size-3" />
-      <span className="sr-only">{text().opensInNewTab}</span>
-    </a>
-  );
-}
-
-function AddButton({
-  buttonRef,
-  adding,
-  blocked,
-  onFile,
-  onTooLarge,
-}: {
-  buttonRef: RefObject<HTMLButtonElement | null>;
-  adding: boolean;
-  blocked: boolean;
-  onFile: (file: File) => void;
-  onTooLarge: () => void;
-}) {
-  const fileInput = useRef<HTMLInputElement>(null);
-  const unavailable = adding || blocked;
-  const choose = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (file === undefined) return;
-    if (file.size > MAX_PLUGIN_BYTES) onTooLarge();
-    else onFile(file);
-  };
-  return (
-    <>
-      <Button
-        ref={buttonRef}
-        variant="outline"
-        size="sm"
-        aria-disabled={unavailable || undefined}
-        className="aria-disabled:cursor-default aria-disabled:opacity-50"
-        onClick={() => {
-          if (!unavailable) fileInput.current?.click();
-        }}
-      >
-        {adding ? (
-          <LoaderCircle
-            aria-hidden="true"
-            className="animate-spin motion-reduce:animate-none"
-          />
-        ) : (
-          <Upload aria-hidden="true" />
-        )}
-        {adding ? text().adding : text().add}
-      </Button>
-      <Input
-        ref={fileInput}
-        type="file"
-        accept=".wasm"
-        tabIndex={-1}
-        aria-hidden="true"
-        aria-label={text().fileInput}
-        className="hidden"
-        data-testid="work-info-plugin-input"
-        onChange={choose}
-      />
-    </>
-  );
-}
-
-function PluginList({
-  loading,
-  loadError,
-  plugins,
-  onRetry,
-  renderRow,
-}: {
-  loading: boolean;
-  loadError: UiText | null;
-  plugins: WorkInfoPlugin[];
-  onRetry: () => void;
-  renderRow: (plugin: WorkInfoPlugin) => ReactNode;
-}) {
-  if (loading)
-    return (
-      <div role="status" aria-label={text().loading} className="flex flex-col gap-3">
-        <Skeleton className="h-10" />
-        <Skeleton className="h-10" />
-      </div>
-    );
-  if (loadError !== null)
-    return (
-      <ErrorState
-        title={text().loadFailed(loadError)}
-        retryLabel={t.common.retry}
-        onRetry={onRetry}
-      />
-    );
-  if (plugins.length === 0)
-    return (
-      <EmptyState icon={<Puzzle />} title={text().empty} description={text().emptyHint} />
-    );
-  return (
-    <div aria-label={text().list} className="flex flex-col divide-y divide-border">
-      {plugins.map(renderRow)}
-    </div>
-  );
-}
-
+/** The work-info and person sections read one list and share the row, prompt and menu. */
 export default function WorkInfoPluginsSection() {
-  const anchor = useSectionAnchor("work-info-plugins");
-  return (
-    <div ref={anchor} id="work-info-plugins">
-      <WorkInfoPluginsSectionBody />
-    </div>
-  );
-}
-
-function WorkInfoPluginsSectionBody() {
   const toast = useToast();
+  const anchors = {
+    work: useSectionAnchor(ANCHORS.work),
+    person: useSectionAnchor(ANCHORS.person),
+  };
   const [plugins, setPlugins] = useState<WorkInfoPlugin[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<UiText | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [addError, setAddError] = useState<UiText | null>(null);
+  const [adding, setAdding] = useState<WorkInfoPluginKind | null>(null);
+  const [addError, setAddError] = useState<{
+    kind: WorkInfoPluginKind;
+    message: UiText;
+  } | null>(null);
+  const [switching, setSwitching] = useState<Record<number, boolean>>({});
   const [work, setWork] = useState<{ id: number; kind: RowWork } | null>(null);
   const [rowError, setRowError] = useState<{ id: number; message: UiText } | null>(null);
   const [approving, setApproving] = useState<Approving | null>(null);
   const [configuring, setConfiguring] = useState<Editing | null>(null);
   const [deleting, setDeleting] = useState<Editing | null>(null);
   const [reading, setReading] = useState<WorkInfoPlugin | null>(null);
-  const addButton = useRef<HTMLButtonElement>(null);
+  const addButtons: Record<WorkInfoPluginKind, RefObject<HTMLButtonElement | null>> = {
+    work: useRef<HTMLButtonElement>(null),
+    person: useRef<HTMLButtonElement>(null),
+  };
+  const switchesSent = useRef(new Set<number>());
   const rowRefs = useRef(new Map<number, HTMLDivElement>());
   const focusAfterRender = useRef<FocusTarget | null>(null);
   // Track started loads separately from mutations applied to rows.
@@ -252,9 +158,9 @@ function WorkInfoPluginsSectionBody() {
     if (target === null) return;
     focusAfterRender.current = null;
     const timer = window.setTimeout(() => {
-      if (target === "add") addButton.current?.focus();
-      else if (typeof target === "number")
+      if (typeof target === "number")
         rowRefs.current.get(target)?.querySelector<HTMLButtonElement>("button")?.focus();
+      else if ("add" in target) addButtons[target.add].current?.focus();
       else
         rowRefs.current
           .get(target.menu)
@@ -277,8 +183,8 @@ function WorkInfoPluginsSectionBody() {
   const clearRowError = (id: number) =>
     setRowError((current) => (current?.id === id ? null : current));
 
-  const add = async (file: File) => {
-    setAdding(true);
+  const add = async (file: File, section: WorkInfoPluginKind) => {
+    setAdding(section);
     setAddError(null);
     try {
       const { plugin: added, replaced } = await uploadWorkInfoPlugin(file);
@@ -290,12 +196,36 @@ function WorkInfoPluginsSectionBody() {
       );
       clearRowError(added.id);
       focusAfterRender.current = added.id;
-      toast(addedToast(added, replaced));
+      toast(addedToast(added, replaced, section));
       await load({ quiet: true });
     } catch (failure) {
-      setAddError(text().addFailed(errorText(failure)));
+      setAddError({ kind: section, message: text().addFailed(errorText(failure)) });
     } finally {
-      setAdding(false);
+      setAdding(null);
+    }
+  };
+
+  const setAutoLookup = async (target: WorkInfoPlugin, enabled: boolean) => {
+    if (switchesSent.current.has(target.id)) return;
+    switchesSent.current.add(target.id);
+    clearRowError(target.id);
+    setSwitching((current) => ({ ...current, [target.id]: enabled }));
+    try {
+      const saved = await setWorkInfoPluginAutoLookup(target.id, enabled);
+      // Revoke and re-upload stay usable meanwhile, so take only autoLookup from this response.
+      changePlugins((current) =>
+        current.map((plugin) =>
+          plugin.id === saved.id ? { ...plugin, autoLookup: saved.autoLookup } : plugin,
+        ),
+      );
+    } catch (failure) {
+      setRowError({
+        id: target.id,
+        message: text().rowFailed(pluginName(target), errorText(failure)),
+      });
+    } finally {
+      switchesSent.current.delete(target.id);
+      setSwitching((current) => withoutKey(current, target.id));
     }
   };
 
@@ -374,13 +304,15 @@ function WorkInfoPluginsSectionBody() {
     setWork({ id: target.id, kind: "delete" });
     try {
       await deleteWorkInfoPlugin(target.id);
-      // Remove from the latest list because concurrent uploads may have refreshed it; focus the next row or Add plugin.
+      // Remove from the latest list because concurrent uploads may have refreshed it; focus the
+      // next row of the same section or that section's Add plugin.
       changePlugins((current) => {
-        const index = current.findIndex((plugin) => plugin.id === target.id);
-        const remaining = current.filter((plugin) => plugin.id !== target.id);
+        const section = current.filter((plugin) => plugin.kind === target.kind);
+        const index = section.findIndex((plugin) => plugin.id === target.id);
+        const remaining = section.filter((plugin) => plugin.id !== target.id);
         const next = remaining[Math.min(Math.max(index, 0), remaining.length - 1)];
-        focusAfterRender.current = next === undefined ? "add" : next.id;
-        return remaining;
+        focusAfterRender.current = next === undefined ? { add: target.kind } : next.id;
+        return current.filter((plugin) => plugin.id !== target.id);
       });
       setDeleting(null);
       clearRowError(target.id);
@@ -405,6 +337,14 @@ function WorkInfoPluginsSectionBody() {
       key={plugin.id}
       plugin={plugin}
       work={work?.id === plugin.id ? work.kind : null}
+      lookup={
+        plugin.kind === "person" && plugin.state === "approved"
+          ? {
+              saving: switching[plugin.id] ?? null,
+              onChange: (enabled) => void setAutoLookup(plugin, enabled),
+            }
+          : null
+      }
       error={rowError?.id === plugin.id ? rowError.message : null}
       rowRef={(element) => {
         if (element === null) rowRefs.current.delete(plugin.id);
@@ -420,40 +360,53 @@ function WorkInfoPluginsSectionBody() {
     />
   );
 
+  const renderSection = (kind: WorkInfoPluginKind) => {
+    const own = sectionText(kind);
+    return (
+      <div key={kind} ref={anchors[kind]} id={ANCHORS[kind]}>
+        <PageSection
+          title={own.heading}
+          description={
+            <>
+              {own.description} <GuideLink />
+            </>
+          }
+          actions={
+            <AddButton
+              kind={kind}
+              buttonRef={addButtons[kind]}
+              adding={adding === kind}
+              blocked={loading || loadError !== null || adding !== null}
+              onFile={(file) => void add(file, kind)}
+              onTooLarge={() => setAddError({ kind, message: text().tooLarge })}
+            />
+          }
+        >
+          {addError?.kind === kind && (
+            <Alert variant="destructive">
+              <CircleAlert aria-hidden="true" />
+              <AlertTitle>{addError.message}</AlertTitle>
+            </Alert>
+          )}
+          <PluginList
+            kind={kind}
+            loading={loading}
+            loadError={loadError}
+            plugins={plugins.filter((plugin) => plugin.kind === kind)}
+            onRetry={() => {
+              setLoading(true);
+              void load();
+            }}
+            renderRow={renderRow}
+          />
+        </PageSection>
+      </div>
+    );
+  };
+
   return (
-    <PageSection
-      title={text().heading}
-      description={
-        <>
-          {text().description} <GuideLink />
-        </>
-      }
-      actions={
-        <AddButton
-          buttonRef={addButton}
-          adding={adding}
-          blocked={loading || loadError !== null}
-          onFile={(file) => void add(file)}
-          onTooLarge={() => setAddError(text().tooLarge)}
-        />
-      }
-    >
-      {addError !== null && (
-        <Alert variant="destructive">
-          <CircleAlert aria-hidden="true" />
-          <AlertTitle>{addError}</AlertTitle>
-        </Alert>
-      )}
-      <PluginList
-        loading={loading}
-        loadError={loadError}
-        plugins={plugins}
-        onRetry={() => {
-          setLoading(true);
-          void load();
-        }}
-        renderRow={renderRow}
-      />
+    <>
+      {KINDS.map(renderSection)}
       {approving !== null && (
         <WorkInfoPluginApprovalDialog
           plugin={approving.plugin}
@@ -510,6 +463,6 @@ function WorkInfoPluginsSectionBody() {
           )}
         </ConfirmDialog>
       )}
-    </PageSection>
+    </>
   );
 }
