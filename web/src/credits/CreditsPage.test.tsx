@@ -480,7 +480,7 @@ describe("CreditsPage 人物の一覧", () => {
     const dialog = await screen.findByRole("alertdialog", { name: 'Delete "Alice"?' });
     expect(
       within(dialog).getByText(
-        '"Alice" will be removed from 3 videos. This can\'t be undone.',
+        '"Alice" will be removed from 3 videos. This can\'t be undone. Faces found in videos for this person are deleted too.',
       ),
     ).toBeDefined();
     await user.click(within(dialog).getByRole("button", { name: "Delete" }));

@@ -3,8 +3,10 @@ import { Link } from "react-router";
 
 import { type Person, personFaceSrc } from "../../api/credits";
 import { t } from "../../i18n";
+import { cn } from "../../lib/cn";
 import FavoriteToggle from "../../ui/FavoriteToggle";
 import { PersonFace, PersonFaceMark } from "../../ui/PersonFace";
+import { creditDisplayName } from "../displayName";
 import { personCardMeta } from "./peopleCriteria";
 
 const text = t.credits.personPage;
@@ -20,16 +22,24 @@ export const PersonCard = memo(function PersonCard({
   onToggleFavorite: (person: Person) => Promise<unknown>;
 }) {
   const src = personFaceSrc(person);
+  const name = creditDisplayName(person);
   return (
     <article className="group relative flex min-w-0 flex-col">
       <Link
         to={`/people/${String(person.id)}`}
         className="flex min-w-0 flex-col items-center gap-2 rounded-md p-1 transition-shadow hover:shadow-card-hover motion-reduce:transition-none"
       >
-        <PersonFace src={src} name={person.name} shape="card" />
+        <PersonFace src={src} name={name} shape="card" />
         <span className="flex w-full min-w-0 flex-col items-center text-center">
-          <span title={person.name} className="w-full truncate text-sm font-medium">
-            {person.name}
+          {/* An unnamed card differs from a named one by this quieter line alone. */}
+          <span
+            title={name}
+            className={cn(
+              "w-full truncate text-sm",
+              person.provisional ? "text-muted-foreground" : "font-medium",
+            )}
+          >
+            {name}
           </span>
           <span className="w-full truncate text-xs text-muted-foreground">
             {personCardMeta(person, today)}

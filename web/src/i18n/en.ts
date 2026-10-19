@@ -1497,6 +1497,7 @@ export const en = {
       "Organization to merge into",
     ),
     loading: "Loading…",
+    unnamedPerson: "Unnamed person",
     columns: {
       name: "Name",
       videos: "Videos",
@@ -1564,6 +1565,7 @@ export const en = {
           ? `"${name}" isn't on any videos. This can't be undone.`
           : `"${name}" will be removed from ${videos(count)}. This can't be undone.`,
       organizationNote: "Organizations inside it stay and lose their parent.",
+      personNote: "Faces found in videos for this person are deleted too.",
       submit: "Delete",
       submitting: "Deleting…",
     },
@@ -1572,6 +1574,15 @@ export const en = {
       youngestFirst: "Youngest first",
       oldestFirst: "Oldest first",
       noFavorites: "No favorite people yet",
+      nameFilter: {
+        label: "Name",
+        any: "Any",
+        named: "Named",
+        unnamed: "Unnamed",
+      },
+      noUnnamed: "No unnamed people",
+      noUnnamedDescription:
+        "Unnamed people appear here when face recognition finds a face it doesn't know.",
       cardMeta: (age: string | null, count: number) =>
         age === null ? videos(count) : `${age} · ${videos(count)}`,
       newDialog: {
@@ -1587,6 +1598,7 @@ export const en = {
       loadFailed: (reason: string) => `Couldn't load this person: ${reason}`,
       aliases: (list: readonly string[]) => `Also known as ${list.join(" · ")}`,
       edit: "Edit",
+      name: "Name…",
       showInLibrary: "Show in library",
       more: "More actions",
       delete: "Delete",
@@ -2242,6 +2254,12 @@ export const en = {
       remove: (name: string) => `Remove ${name}`,
       newMark: "New",
       newChip: (name: string) => `${name}, new`,
+      unnamedPeople: "Unnamed people",
+      addAs: (name: string) => `Add as ${name}`,
+      unnamedRow: (label: string, count: number, hint: string | null) =>
+        hint === null
+          ? `${label}, ${videos(count)}`
+          : `${label}, ${videos(count)}, ${hint}`,
       link: "Link",
       removeLink: "Remove link",
       addLink: "Add link",

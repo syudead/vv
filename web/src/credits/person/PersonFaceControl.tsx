@@ -30,6 +30,7 @@ import {
 } from "../../ui/shadcn/dropdown-menu";
 import { Input } from "../../ui/shadcn/input";
 import { Spinner } from "../../ui/shadcn/spinner";
+import { creditDisplayName } from "../displayName";
 
 const text = t.credits.personPage;
 
@@ -134,7 +135,7 @@ export default function PersonFaceControl({
       <div className="group relative">
         <PersonFace
           src={src}
-          name={person.name}
+          name={creditDisplayName(person)}
           shape="profile"
           addLabel={text.face.add}
           onAdd={pick}
@@ -208,7 +209,7 @@ export default function PersonFaceControl({
           onOpenChange={(open) => {
             if (!open && !removing) setConfirmRemove(false);
           }}
-          title={text.face.removeTitle(person.name)}
+          title={text.face.removeTitle(creditDisplayName(person))}
           description={text.face.removeText}
           cancelLabel={t.common.cancel}
           actionLabel={

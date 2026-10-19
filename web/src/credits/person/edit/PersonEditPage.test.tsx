@@ -62,7 +62,7 @@ function renderEditor() {
 
 async function opened() {
   renderEditor();
-  return screen.findByRole("textbox", { name: "Name" });
+  return screen.findByRole<HTMLInputElement>("textbox", { name: "Name" });
 }
 
 function where() {
@@ -152,6 +152,39 @@ describe("PersonEditPage", () => {
     await user.click(within(dialog).getByRole("button", { name: "Discard" }));
     expect(await screen.findByText("person page read again")).toBeDefined();
     expect(server.patch).not.toHaveBeenCalled();
+  });
+
+  describe("仮の人物", () => {
+    const unnamed: Person = { ...aoi, name: "", provisional: true, aliases: [] };
+
+    beforeEach(() => {
+      server.person = () => json(unnamed);
+      server.patch.mockImplementation(() =>
+        json({ ...unnamed, name: "Mio", provisional: false }),
+      );
+    });
+
+    it("名前を空のまま placeholder で出し、空のまま Save しても name を送らない", async () => {
+      const name = await opened();
+      expect(name.value).toBe("");
+      expect(name.getAttribute("placeholder")).toBe("Unnamed person");
+      expect(document.activeElement).toBe(name);
+
+      await userEvent.setup().click(screen.getByRole("button", { name: "Save" }));
+
+      expect(await screen.findByText(/^person page/)).toBeDefined();
+      expect(server.patch).not.toHaveBeenCalled();
+    });
+
+    it("入力した名前を PATCH の name で送る", async () => {
+      const name = await opened();
+      const user = userEvent.setup();
+      await user.type(name, "Mio");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      expect(await screen.findByText("person page Mio")).toBeDefined();
+      expect(server.patch.mock.calls[0]![0]).toEqual({ name: "Mio" });
+    });
   });
 
   it("URL で開いて人物がいなければ、人物ページの消えた状態を出す", async () => {

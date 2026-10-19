@@ -9,10 +9,14 @@ import {
   workOrganizationRoles,
   workPersonRoles,
 } from "../../api/workInfo";
+import { creditDisplayName } from "../../credits/displayName";
 
-/** Missing IDs identify new credits; equal newKey values of the same kind create one entity on Save. */
+/**
+ * Missing IDs identify new credits; equal newKey values of the same kind create one entity on
+ * Save. A provisional person's chip has no name; a naming chip carries the name Save gives it.
+ */
 export type Chip =
-  | { key: string; id: number; name: string }
+  | { key: string; id: number; name: string; provisional?: boolean; naming?: boolean }
   | { key: string; newKey: string; name: string };
 
 export interface LinkRow {
@@ -52,6 +56,10 @@ export function isNewChip(chip: Chip): chip is Extract<Chip, { newKey: string }>
   return "newKey" in chip;
 }
 
+export function chipLabel(chip: Chip): string {
+  return isNewChip(chip) ? chip.name : creditDisplayName(chip);
+}
+
 export function draftFromVideo(video: Video): Draft {
   const info = video.workInfo;
   const dates = { release: "", recorded: "", published: "" };
@@ -67,6 +75,7 @@ export function draftFromVideo(video: Video): Draft {
       key: newRowKey("c"),
       id: entry.person.id,
       name: entry.person.name,
+      ...(entry.provisional && { provisional: true }),
     });
   }
   const organizations: Draft["organizations"] = { maker: [], label: [] };
@@ -130,6 +139,36 @@ export function newEntries(draft: Draft): NewEntry[] {
   return entries;
 }
 
+export interface Naming {
+  id: number;
+  name: string;
+}
+
+/** Provisional people to name on Save, once each; the first chip's name wins. */
+export function namings(draft: Draft): Naming[] {
+  const seen = new Set<number>();
+  const entries: Naming[] = [];
+  for (const role of workPersonRoles) {
+    for (const chip of draft.people[role]) {
+      if (isNewChip(chip) || chip.naming !== true || seen.has(chip.id)) continue;
+      seen.add(chip.id);
+      entries.push({ id: chip.id, name: chip.name });
+    }
+  }
+  return entries;
+}
+
+/** Mark a named person's chips as ordinary, so a later save does not send the name again. */
+export function withNamed(draft: Draft, id: number, name: string): Draft {
+  const people = { ...draft.people };
+  for (const role of workPersonRoles) {
+    people[role] = people[role].map((chip) =>
+      !isNewChip(chip) && chip.id === id ? { key: chip.key, id, name } : chip,
+    );
+  }
+  return { ...draft, people };
+}
+
 /** Replace newKey values with created IDs immediately so later saves do not recreate them. */
 export function withCreated(
   draft: Draft,
@@ -155,7 +194,10 @@ export function withCreated(
 }
 
 function comparable(draft: Draft): string {
-  const chip = (c: Chip) => (isNewChip(c) ? `n${c.newKey}` : `p${String(c.id)}`);
+  const chip = (c: Chip) => {
+    if (isNewChip(c)) return `n${c.newKey}`;
+    return c.naming === true ? `p${String(c.id)}=${c.name}` : `p${String(c.id)}`;
+  };
   return JSON.stringify({
     name: draft.name.trim(),
     code: draft.code.trim(),
