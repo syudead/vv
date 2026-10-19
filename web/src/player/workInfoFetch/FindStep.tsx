@@ -45,7 +45,7 @@ export interface Running {
   id?: string;
 }
 
-function PluginField({
+export function PluginField({
   plugins,
   plugin,
   disabled,
@@ -126,7 +126,13 @@ function FindByField({
   );
 }
 
-function FailureAlert({ failure }: { failure: RunFailure }) {
+export function FailureAlert({
+  failure,
+  settingsPath = WORK_INFO_PLUGIN_SETTINGS,
+}: {
+  failure: RunFailure;
+  settingsPath?: string;
+}) {
   const text = t.player.workInfoFetch;
   const { error, plugin } = failure;
   if (error instanceof RequestFailed && error.code === "plugin_settings_missing") {
@@ -139,7 +145,7 @@ function FailureAlert({ failure }: { failure: RunFailure }) {
         </AlertTitle>
         <AlertDescription>
           <Button variant="link" size="sm" className="h-auto px-0 py-0" asChild>
-            <Link to={WORK_INFO_PLUGIN_SETTINGS}>{text.openSettings}</Link>
+            <Link to={settingsPath}>{text.openSettings}</Link>
           </Button>
         </AlertDescription>
       </Alert>
@@ -164,7 +170,15 @@ function FailureAlert({ failure }: { failure: RunFailure }) {
   );
 }
 
-function CandidateText({ candidate }: { candidate: WorkInfoCandidate }) {
+/** A candidate as the list shows it; the key is what choosing it passes back. */
+export interface CandidateView {
+  key: string;
+  title: string;
+  detail?: string;
+  url: string;
+}
+
+function CandidateText({ candidate }: { candidate: CandidateView }) {
   return (
     <>
       <span title={candidate.title} className="line-clamp-2 text-sm text-foreground">
@@ -182,21 +196,21 @@ function CandidateText({ candidate }: { candidate: WorkInfoCandidate }) {
   );
 }
 
-/** Fetch candidates by work ID; search-only plugins expose links without selectable rows. Candidate URLs are navigation only. */
+/** Unchoosable candidates expose links without selectable rows. Candidate URLs are navigation only. */
 function CandidateRow({
   candidate,
   choosable,
-  running,
+  chosen,
+  busy,
   onChoose,
 }: {
-  candidate: WorkInfoCandidate;
+  candidate: CandidateView;
   choosable: boolean;
-  running: Running | null;
-  onChoose: (id: string) => void;
+  chosen: boolean;
+  busy: boolean;
+  onChoose: (key: string) => void;
 }) {
   const text = t.player.workInfoFetch;
-  const chosen = running?.id === candidate.id;
-  const busy = running !== null;
   const layout =
     "h-auto min-w-0 flex-1 flex-col items-start gap-0.5 px-2 py-1.5 text-left";
   return (
@@ -207,7 +221,7 @@ function CandidateRow({
           className={`${layout} font-normal whitespace-normal`}
           aria-disabled={busy || undefined}
           onClick={() => {
-            if (!busy) onChoose(candidate.id);
+            if (!busy) onChoose(candidate.key);
           }}
         >
           <CandidateText candidate={candidate} />
@@ -227,6 +241,44 @@ function CandidateRow({
   );
 }
 
+/** The first 50 candidates under their count; the caller shows the empty state. */
+export function CandidateList({
+  candidates,
+  choosable,
+  chosenKey,
+  busy,
+  onChoose,
+}: {
+  candidates: readonly CandidateView[];
+  choosable: boolean;
+  chosenKey: string | undefined;
+  busy: boolean;
+  onChoose: (key: string) => void;
+}) {
+  const text = t.player.workInfoFetch;
+  const headingId = useId();
+  const shown = candidates.slice(0, MAX_CANDIDATES);
+  return (
+    <section aria-labelledby={headingId} className="flex flex-col gap-1">
+      <h3 id={headingId} className="text-sm text-muted-foreground">
+        {text.matches(shown.length)}
+      </h3>
+      <ul className="flex flex-col divide-y divide-border border-y border-border">
+        {shown.map((candidate) => (
+          <CandidateRow
+            key={candidate.key}
+            candidate={candidate}
+            choosable={choosable}
+            chosen={chosenKey === candidate.key}
+            busy={busy}
+            onChoose={onChoose}
+          />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function Candidates({
   plugin,
   candidates,
@@ -239,33 +291,62 @@ function Candidates({
   onChoose: (id: string) => void;
 }) {
   const text = t.player.workInfoFetch;
-  const headingId = useId();
+  const choosable = plugin !== undefined && canFetch(plugin);
   if (candidates.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        {plugin !== undefined && canFetch(plugin) ? text.noMatchesFetch : text.noMatches}
+        {choosable ? text.noMatchesFetch : text.noMatches}
       </p>
     );
   }
-  const shown = candidates.slice(0, MAX_CANDIDATES);
-  const choosable = plugin !== undefined && canFetch(plugin);
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-1">
-      <h3 id={headingId} className="text-sm text-muted-foreground">
-        {text.matches(shown.length)}
-      </h3>
-      <ul className="flex flex-col divide-y divide-border border-y border-border">
-        {shown.map((candidate) => (
-          <CandidateRow
-            key={candidate.id}
-            candidate={candidate}
-            choosable={choosable}
-            running={running}
-            onChoose={onChoose}
-          />
-        ))}
-      </ul>
-    </section>
+    <CandidateList
+      candidates={candidates.map((candidate) => ({ ...candidate, key: candidate.id }))}
+      choosable={choosable}
+      chosenKey={running?.id}
+      busy={running !== null}
+      onChoose={onChoose}
+    />
+  );
+}
+
+/** A prefilled query, selected on its first focus so typing replaces it without reselecting later. */
+export function QueryField({
+  label,
+  value,
+  busy,
+  inputRef,
+  autoFocus,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  busy: boolean;
+  inputRef?: RefObject<HTMLInputElement | null>;
+  autoFocus?: boolean;
+  onChange: (value: string) => void;
+}) {
+  const id = useId();
+  const selectedOnce = useRef(false);
+  return (
+    <Field>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <Input
+        ref={inputRef}
+        id={id}
+        value={value}
+        autoFocus={autoFocus}
+        readOnly={busy}
+        aria-disabled={busy || undefined}
+        autoComplete="off"
+        onFocus={(event) => {
+          if (selectedOnce.current) return;
+          selectedOnce.current = true;
+          event.currentTarget.select();
+        }}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </Field>
   );
 }
 
@@ -297,9 +378,6 @@ export default function FindStep({
   onChoose: (id: string) => void;
 }) {
   const text = t.player.workInfoFetch;
-  const queryId = useId();
-  // Select the initial title once so typing replaces it without reselecting on later focus.
-  const selectedOnce = useRef(false);
   const busy = running !== null;
   return (
     <>
@@ -312,25 +390,13 @@ export default function FindStep({
       {plugin !== undefined && canChooseFindBy(plugin) && (
         <FindByField by={by} disabled={busy} onBy={onBy} />
       )}
-      <Field>
-        <FieldLabel htmlFor={queryId}>
-          {plugin === undefined ? text.querySearch : queryLabel(plugin, by)}
-        </FieldLabel>
-        <Input
-          ref={queryRef}
-          id={queryId}
-          value={query}
-          readOnly={busy}
-          aria-disabled={busy || undefined}
-          autoComplete="off"
-          onFocus={(event) => {
-            if (selectedOnce.current) return;
-            selectedOnce.current = true;
-            event.currentTarget.select();
-          }}
-          onChange={(event) => onQuery(event.target.value)}
-        />
-      </Field>
+      <QueryField
+        label={plugin === undefined ? text.querySearch : queryLabel(plugin, by)}
+        value={query}
+        busy={busy}
+        inputRef={queryRef}
+        onChange={onQuery}
+      />
       {failure !== null && <FailureAlert failure={failure} />}
       {candidates !== null && (
         <Candidates

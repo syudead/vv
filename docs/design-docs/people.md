@@ -208,6 +208,9 @@ A person plugin fills the person's empty fields from the page: the fetch and
 the apply fill only, append missing aliases and external IDs, and never merge
 the person with the holder of a fetched ID
 ([person-plugins.md](person-plugins.md#a-fetched-person-applies-per-item-and-only-fills)).
+`Fetch info…` after `Edit` opens that fetch, shown only while an approved
+person plugin exists
+([person-plugins.md](person-plugins.md#the-person-page-compares-a-fetched-person-before-applying-it)).
 
 ### The edit page
 

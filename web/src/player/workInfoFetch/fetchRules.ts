@@ -14,13 +14,25 @@ export type RunOperation = "search" | "fetch";
 /** Treat input as search words or an opaque work ID according to plugin capabilities, even when it looks like a URL. */
 export type FindBy = "words" | "id";
 
+function approvedPlugins(
+  plugins: readonly WorkInfoPlugin[],
+  kind: WorkInfoPlugin["kind"],
+): WorkInfoPlugin[] {
+  return plugins.filter((plugin) => plugin.kind === kind && plugin.state === "approved");
+}
+
 /** Person plugins share the list but never fetch work information. */
 export function approvedWorkPlugins(
   plugins: readonly WorkInfoPlugin[],
 ): WorkInfoPlugin[] {
-  return plugins.filter(
-    (plugin) => plugin.kind === "work" && plugin.state === "approved",
-  );
+  return approvedPlugins(plugins, "work");
+}
+
+/** The plugins a person page fetches from. */
+export function approvedPersonPlugins(
+  plugins: readonly WorkInfoPlugin[],
+): WorkInfoPlugin[] {
+  return approvedPlugins(plugins, "person");
 }
 
 function can(plugin: WorkInfoPlugin, operation: RunOperation): boolean {
