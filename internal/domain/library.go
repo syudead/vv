@@ -163,7 +163,9 @@ type Scan struct {
 	ID    int64
 	State ScanState
 	// Origin defaults to manual for rows predating the field.
-	Origin     ScanOrigin
+	Origin ScanOrigin
+	// Rescan is nil for an ordinary scan; a force rescan keeps origin manual.
+	Rescan     *RescanScope
 	StartedAt  time.Time
 	FinishedAt time.Time
 	Total      int

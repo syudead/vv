@@ -13,22 +13,37 @@ import (
 
 // StartScan reuses a running scan and atomically carries unfinished work into each new scan.
 func (s *ScanStore) StartScan(ctx context.Context) (scan domain.Scan, started bool, err error) {
-	return s.startScan(ctx, 0, domain.ScanOriginManual, nil)
+	return s.startScan(ctx, scanStart{origin: domain.ScanOriginManual})
 }
 
 // StartWatchScan carries issues outside the watched directories; manual scans clear previous scan issues.
 func (s *ScanStore) StartWatchScan(ctx context.Context, dirs []domain.DirtyDirectory) (scan domain.Scan, started bool, err error) {
-	return s.startScan(ctx, 0, domain.ScanOriginWatch, dirs)
+	return s.startScan(ctx, scanStart{origin: domain.ScanOriginWatch, dirs: dirs})
 }
 
 // ResumeScan carries stage failures and substitutions so terminal jobs remain visible; scan-discovered issues are rediscovered instead.
+// A resumed force rescan keeps its scope and the marks of the videos it already forced.
 func (s *ScanStore) ResumeScan(ctx context.Context, from int64) (scan domain.Scan, started bool, err error) {
-	return s.startScan(ctx, from, domain.ScanOriginManual, nil)
+	return s.startScan(ctx, scanStart{from: from, origin: domain.ScanOriginManual})
 }
 
-func (s *ScanStore) startScan(
-	ctx context.Context, from int64, origin domain.ScanOrigin, dirs []domain.DirtyDirectory,
-) (scan domain.Scan, started bool, err error) {
+// StartRescan starts a manual scan carrying a force rescan scope, recording the folder's current path.
+// It returns ErrScanRunning instead of reusing a running scan; superseding a watch scan is the caller's job.
+func (s *ScanStore) StartRescan(ctx context.Context, scope domain.RescanScope) (domain.Scan, error) {
+	scan, _, err := s.startScan(ctx, scanStart{origin: domain.ScanOriginManual, rescan: &scope, exclusive: true})
+	return scan, err
+}
+
+type scanStart struct {
+	from   int64
+	origin domain.ScanOrigin
+	dirs   []domain.DirtyDirectory
+	rescan *domain.RescanScope
+	// exclusive refuses a running scan instead of returning it.
+	exclusive bool
+}
+
+func (s *ScanStore) startScan(ctx context.Context, start scanStart) (scan domain.Scan, started bool, err error) {
 	s.db.folderMu.Lock()
 	defer s.db.folderMu.Unlock()
 	var folderCount int
@@ -41,8 +56,14 @@ func (s *ScanStore) startScan(
 	if running, err := s.scanBy(ctx,
 		`select `+scanColumns+` from scans where state = 'running' limit 1`,
 	); err == nil {
+		if start.exclusive {
+			return domain.Scan{}, false, domain.ErrScanRunning
+		}
 		return running, false, nil
 	} else if !errors.Is(err, domain.ErrNotFound) {
+		return domain.Scan{}, false, err
+	}
+	if start.rescan, err = s.rescanToStart(ctx, start); err != nil {
 		return domain.Scan{}, false, err
 	}
 
@@ -51,9 +72,12 @@ func (s *ScanStore) startScan(
 		return domain.Scan{}, false, fmt.Errorf("cannot start the scan: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	kind, folderID, path, videoID := rescanColumns(start.rescan)
 	res, err := tx.ExecContext(ctx,
-		`insert into scans (state, origin, started_at, total, completed, failed) values ('running', ?, ?, 0, 0, 0)`,
-		string(origin), time.Now().Unix())
+		`insert into scans (state, origin, started_at, total, completed, failed,
+			rescan_scope, rescan_folder_id, rescan_path, rescan_video_id)
+		values ('running', ?, ?, 0, 0, 0, ?, ?, ?, ?)`,
+		string(start.origin), time.Now().Unix(), kind, folderID, path, videoID)
 	if err != nil {
 		return domain.Scan{}, false, fmt.Errorf("cannot start the scan: %w", err)
 	}
@@ -64,29 +88,16 @@ func (s *ScanStore) startScan(
 	if err := addScanVideosWithRemainingJobs(ctx, tx); err != nil {
 		return domain.Scan{}, false, err
 	}
-	if from != 0 {
-		if err := carryInterruptedImport(ctx, tx, from, id); err != nil {
+	if start.from != 0 {
+		if err := carryInterruptedImport(ctx, tx, start.from, id); err != nil {
 			return domain.Scan{}, false, err
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `delete from scan_videos where scan_id <> ?`, id); err != nil {
 		return domain.Scan{}, false, fmt.Errorf("cannot clear the previous import's videos: %w", err)
 	}
-	if origin == domain.ScanOriginWatch {
-		if err := carryWatchIssues(ctx, tx, id, dirs); err != nil {
-			return domain.Scan{}, false, err
-		}
-	}
-	cleared, err := tx.ExecContext(ctx, `delete from scan_issues where scan_id <> ?`, id)
-	if err != nil {
-		return domain.Scan{}, false, fmt.Errorf("cannot clear the previous import's issues: %w", err)
-	}
-	if n, err := cleared.RowsAffected(); err != nil {
-		return domain.Scan{}, false, fmt.Errorf("cannot clear the previous import's issues: %w", err)
-	} else if n > 0 {
-		if err := bumpIssuesRevision(ctx, tx); err != nil {
-			return domain.Scan{}, false, err
-		}
+	if err := carryPreviousIssues(ctx, tx, id, start); err != nil {
+		return domain.Scan{}, false, err
 	}
 	var c changes
 	c.remainingChanged()
@@ -99,6 +110,119 @@ func (s *ScanStore) startScan(
 		return domain.Scan{}, false, err
 	}
 	return scan, true, nil
+}
+
+// rescanToStart returns the scope the new scan records: the interrupted scan's on resume, or the
+// requested one with the folder path read under folderMu, so it is the path the scanner walks.
+func (s *ScanStore) rescanToStart(ctx context.Context, start scanStart) (*domain.RescanScope, error) {
+	if start.from != 0 {
+		from, err := s.scanByID(ctx, start.from)
+		if err != nil {
+			return nil, err
+		}
+		return from.Rescan, nil
+	}
+	if start.rescan == nil {
+		return nil, nil
+	}
+	scope := domain.RescanScope{Kind: start.rescan.Kind}
+	switch scope.Kind {
+	case domain.RescanLibrary:
+	case domain.RescanFolder:
+		scope.FolderID = start.rescan.FolderID
+		err := s.db.sql.QueryRowContext(ctx,
+			`select path from media_folders where id = ?`, scope.FolderID).Scan(&scope.Path)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		if err != nil {
+			return nil, fmt.Errorf("cannot read the media folder (id=%d): %w", scope.FolderID, err)
+		}
+	case domain.RescanVideo:
+		scope.VideoID = start.rescan.VideoID
+		var exists bool
+		if err := s.db.sql.QueryRowContext(ctx,
+			`select exists (select 1 from videos where id = ?)`, scope.VideoID).Scan(&exists); err != nil {
+			return nil, fmt.Errorf("cannot read the video (id=%d): %w", scope.VideoID, err)
+		}
+		if !exists {
+			return nil, domain.ErrNotFound
+		}
+	default:
+		return nil, fmt.Errorf("%w: %q", domain.ErrInvalidRescanScope, scope.Kind)
+	}
+	return &scope, nil
+}
+
+func rescanColumns(scope *domain.RescanScope) (kind, folderID, path, videoID any) {
+	if scope == nil {
+		return nil, nil, nil, nil
+	}
+	switch scope.Kind {
+	case domain.RescanFolder:
+		folderID, path = scope.FolderID, scope.Path
+	case domain.RescanVideo:
+		videoID = scope.VideoID
+	case domain.RescanLibrary:
+	}
+	return string(scope.Kind), folderID, path, videoID
+}
+
+// carryPreviousIssues keeps what the new scan will not rediscover and clears the rest: a watch scan
+// keeps issues outside its directories, a force rescan those outside its scope.
+func carryPreviousIssues(ctx context.Context, q queryExecer, id int64, start scanStart) error {
+	if start.origin == domain.ScanOriginWatch {
+		if err := carryWatchIssues(ctx, q, id, start.dirs); err != nil {
+			return err
+		}
+	}
+	if start.rescan != nil {
+		if err := carryRescanIssues(ctx, q, id, *start.rescan); err != nil {
+			return err
+		}
+	}
+	cleared, err := q.ExecContext(ctx, `delete from scan_issues where scan_id <> ?`, id)
+	if err != nil {
+		return fmt.Errorf("cannot clear the previous import's issues: %w", err)
+	}
+	if n, err := cleared.RowsAffected(); err != nil {
+		return fmt.Errorf("cannot clear the previous import's issues: %w", err)
+	} else if n > 0 {
+		return bumpIssuesRevision(ctx, q)
+	}
+	return nil
+}
+
+// MarkForced records that the force pass queued the video's jobs in the scan.
+func (s *ScanStore) MarkForced(ctx context.Context, scanID, videoID int64) error {
+	if _, err := s.db.sql.ExecContext(ctx, `insert into scan_videos (scan_id, video_id, forced)
+		select s.id, v.id, 1 from scans s, videos v where s.id = ? and v.id = ?
+		on conflict (scan_id, video_id) do update set forced = 1`, scanID, videoID); err != nil {
+		return fmt.Errorf("cannot mark the video as forced (scan=%d, video=%d): %w", scanID, videoID, err)
+	}
+	return nil
+}
+
+// ForcedVideos lists, in id order, the videos the scan has already forced.
+func (s *ScanStore) ForcedVideos(ctx context.Context, scanID int64) ([]int64, error) {
+	rows, err := s.db.sql.QueryContext(ctx,
+		`select video_id from scan_videos where scan_id = ? and forced = 1 order by video_id`, scanID)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the forced videos (scan=%d): %w", scanID, err)
+	}
+	defer func() { _ = rows.Close() }()
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("cannot read the forced videos (scan=%d): %w", scanID, err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read the forced videos (scan=%d): %w", scanID, err)
+	}
+	return ids, nil
 }
 
 func (s *ScanStore) UpdateScanProgress(ctx context.Context, id int64, progress domain.ScanProgress) error {
@@ -197,6 +321,7 @@ func (s *ScanStore) FailInterruptedScans(ctx context.Context) (int64, error) {
 
 // Read target and completed counts from current job state rather than cached totals.
 var scanColumns = `id, state, origin, started_at, finished_at, total, completed, failed, error, error_code, error_path, settled_at, issues_revision,
+	rescan_scope, rescan_folder_id, rescan_path, rescan_video_id,
 	(select count(*) from scan_videos sv where sv.scan_id = scans.id),
 	(select count(*) from scan_videos sv where sv.scan_id = scans.id and not exists (
 		select 1 from jobs j where j.video_id = sv.video_id and ` + remainingJobCondition("j") + `))`
@@ -212,11 +337,13 @@ func (s *ScanStore) scanBy(ctx context.Context, query string, args ...any) (doma
 		startedAt, finishedAt sql.NullInt64
 		settledAt             sql.NullInt64
 		reason, code, path    sql.NullString
+		rescan                nullableRescan
 	)
 
 	err := s.db.sql.QueryRowContext(ctx, query, args...).Scan(
 		&scan.ID, &state, &origin, &startedAt, &finishedAt,
 		&scan.Total, &scan.Completed, &scan.Failed, &reason, &code, &path, &settledAt, &scan.IssuesRevision,
+		&rescan.kind, &rescan.folderID, &rescan.path, &rescan.videoID,
 		&scan.Videos, &scan.SettledVideos,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -240,13 +367,28 @@ func (s *ScanStore) scanBy(ctx context.Context, query string, args ...any) (doma
 	scan.Error = reason.String
 	scan.ErrorCode = domain.ScanErrorCode(code.String)
 	scan.ErrorPath = path.String
+	scan.Rescan = rescan.scope()
 	return scan, nil
 }
 
+type nullableRescan struct {
+	kind, path        sql.NullString
+	folderID, videoID sql.NullInt64
+}
+
+func (r nullableRescan) scope() *domain.RescanScope {
+	if !r.kind.Valid {
+		return nil
+	}
+	return &domain.RescanScope{
+		Kind: domain.RescanScopeKind(r.kind.String), FolderID: r.folderID.Int64, Path: r.path.String, VideoID: r.videoID.Int64,
+	}
+}
+
 func carryInterruptedImport(ctx context.Context, q queryExecer, from, to int64) error {
-	if _, err := q.ExecContext(ctx, `insert into scan_videos (scan_id, video_id)
-		select ?, video_id from scan_videos where scan_id = ?
-		on conflict (scan_id, video_id) do nothing`, to, from); err != nil {
+	if _, err := q.ExecContext(ctx, `insert into scan_videos (scan_id, video_id, forced)
+		select ?, video_id, forced from scan_videos where scan_id = ?
+		on conflict (scan_id, video_id) do update set forced = excluded.forced`, to, from); err != nil {
 		return fmt.Errorf("cannot carry the interrupted import's videos: %w", err)
 	}
 	fromScan := []any{}
@@ -266,32 +408,53 @@ func carryInterruptedImport(ctx context.Context, q queryExecer, from, to int64) 
 
 // Carry issues outside watched scope and all stage issues; unchanged files will not rerun terminal jobs to rediscover failures.
 func carryWatchIssues(ctx context.Context, q queryExecer, to int64, dirs []domain.DirtyDirectory) error {
-	keep, err := issuesToCarry(ctx, q, to, dirs)
+	keep, err := issuesToCarry(ctx, q, to, func(_ int64, path, kind string) bool {
+		return !domain.ScanIssueKind(kind).FromScan() || !domain.DirtyDirectoriesContain(dirs, path)
+	})
 	if err != nil {
 		return err
 	}
-	for _, id := range keep {
-		if _, err := q.ExecContext(ctx, `update scan_issues set scan_id = ? where id = ?`, to, id); err != nil {
+	return moveIssues(ctx, q, to, keep)
+}
+
+// Carry every issue outside the rescan scope; a resume has already copied the stage issues inside it.
+func carryRescanIssues(ctx context.Context, q queryExecer, to int64, scope domain.RescanScope) error {
+	keep, err := issuesToCarry(ctx, q, to, func(videoID int64, path, _ string) bool {
+		return scope.CarriesIssue(videoID, path)
+	})
+	if err != nil {
+		return err
+	}
+	return moveIssues(ctx, q, to, keep)
+}
+
+func moveIssues(ctx context.Context, q queryExecer, to int64, ids []int64) error {
+	for _, id := range ids {
+		// A resumed scan may already hold the same issue; the duplicate is cleared with the rest.
+		if _, err := q.ExecContext(ctx, `update or ignore scan_issues set scan_id = ? where id = ?`, to, id); err != nil {
 			return fmt.Errorf("cannot carry the previous import's issues: %w", err)
 		}
 	}
 	return nil
 }
 
-func issuesToCarry(ctx context.Context, q queryExecer, to int64, dirs []domain.DirtyDirectory) ([]int64, error) {
-	rows, err := q.QueryContext(ctx, `select id, path, kind from scan_issues where scan_id <> ?`, to)
+func issuesToCarry(
+	ctx context.Context, q queryExecer, to int64, carries func(videoID int64, path, kind string) bool,
+) ([]int64, error) {
+	rows, err := q.QueryContext(ctx,
+		`select id, coalesce(video_id, 0), path, kind from scan_issues where scan_id <> ?`, to)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the previous import's issues: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	var keep []int64
 	for rows.Next() {
-		var id int64
+		var id, videoID int64
 		var path, kind string
-		if err := rows.Scan(&id, &path, &kind); err != nil {
+		if err := rows.Scan(&id, &videoID, &path, &kind); err != nil {
 			return nil, fmt.Errorf("cannot read the previous import's issues: %w", err)
 		}
-		if !domain.ScanIssueKind(kind).FromScan() || !domain.DirtyDirectoriesContain(dirs, path) {
+		if carries(videoID, path, kind) {
 			keep = append(keep, id)
 		}
 	}
