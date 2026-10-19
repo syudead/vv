@@ -27,6 +27,9 @@ export type WorkInfoMatch = components["schemas"]["WorkInfoMatch"];
 export type WorkInfoMatchState = components["schemas"]["WorkInfoMatchState"];
 export type SkippedWorkInfoValue = components["schemas"]["SkippedWorkInfoValue"];
 export type SkippedWorkInfoReason = components["schemas"]["SkippedWorkInfoReason"];
+export type PersonLookup = components["schemas"]["PersonLookup"];
+export type PersonLookupSelection = components["schemas"]["PersonLookupSelection"];
+export type PersonPluginResult = components["schemas"]["PersonPluginResult"];
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
@@ -186,6 +189,28 @@ function fetchPath(videoId: number, fetchId: string): string {
   return `/api/videos/${String(videoId)}/work-info-fetches/${encodeURIComponent(fetchId)}`;
 }
 
+/** Run planned lookup index once; the server keeps its result with the fetch, so a repeat answers the kept result. */
+export function runPersonLookup(
+  videoId: number,
+  fetchId: string,
+  index: number,
+  signal?: AbortSignal,
+): Promise<PersonPluginResult> {
+  return request<PersonPluginResult>(
+    `${fetchPath(videoId, fetchId)}/person-lookups/${String(index)}`,
+    { method: "POST", signal },
+  );
+}
+
+/** The image kept with lookup index's result. */
+export function personLookupImageUrl(
+  videoId: number,
+  fetchId: string,
+  index: number,
+): string {
+  return `${fetchPath(videoId, fetchId)}/person-lookups/${String(index)}/image`;
+}
+
 /** Apply selected fields/tags once; expired results or changed plugins fail as stale. Return skipped entries and refreshed video metadata. coverByPage leaves a selected cover for the page to upload. */
 export async function applyWorkInfoFetch(
   videoId: number,
@@ -194,10 +219,12 @@ export async function applyWorkInfoFetch(
   tags?: readonly string[],
   signal?: AbortSignal,
   coverByPage = false,
+  personLookups: readonly PersonLookupSelection[] = [],
 ): Promise<WorkInfoFetchApplied> {
   const body: ApplyWorkInfoFetchRequest = { fields: [...fields] };
   if (tags !== undefined) body.tags = [...tags];
   if (coverByPage) body.coverByPage = true;
+  if (personLookups.length > 0) body.personLookups = [...personLookups];
   const applied = await request<WorkInfoFetchApplied>(
     `/api/videos/${String(videoId)}/work-info-fetches/${encodeURIComponent(fetchId)}/apply`,
     { method: "POST", headers: jsonHeaders, body: JSON.stringify(body), signal },

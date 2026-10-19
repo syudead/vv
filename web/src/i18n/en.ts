@@ -1707,6 +1707,8 @@ export const en = {
           tooManyAliases: "over the limit for aliases",
           tooManyIds: "over the limit for external IDs",
           invalid: "too long or contains characters that can't be used",
+          stale: "the plugin changed since the lookup",
+          personChanged: "the person was merged or deleted since the fetch",
         },
       },
     },
@@ -2212,6 +2214,8 @@ export const en = {
       newCount: (count: number) => `${formatNumber(count)} new`,
       fillsEmpty: (name: string, values: readonly string[]) =>
         `${name} — Fills only empty fields: ${values.join(" · ")}`,
+      fillsAfterLookup: (name: string, values: readonly string[]) =>
+        `${name} — Fills what the lookup leaves empty: ${values.join(" · ")}`,
       fillFact: (term: string, value: string) => `${term} ${value}`,
       fillBio: "Bio",
       // m counts selectable tags not already on the video.
@@ -2222,6 +2226,23 @@ export const en = {
       apply: "Apply selected",
       applying: "Applying…",
       applied: "Applied to the video.",
+      appliedCutShort: (count: number) =>
+        selectPlural(count, {
+          one: "Applied; 1 person was still being looked up and was left out.",
+          other: `Applied; ${formatNumber(count)} people were still being looked up and were left out.`,
+        }),
+      lookupSource: (plugin: string) => `From ${plugin}`,
+      lookingUp: "Looking up…",
+      lookupFailed: (name: string, reason: string) =>
+        `Couldn't look up ${name}: ${reason}`,
+      tryAgain: "Try again",
+      lookupChanged:
+        "The plugin changed since the fetch, so this person wasn't looked up.",
+      // Notes sit under the row's chips, so they name the person as the fill lines do.
+      lookupLimited: (name: string) =>
+        `${name} — Not looked up: over the limit of 5 automatic lookups per fetch.`,
+      lookedUpUnder: (name: string, role: string) => `${name} — Looked up under ${role}.`,
+      lookupItem: (name: string, item: string) => `${name} · ${item}`,
       resultTitle: "Applied, but some values were left out",
       skippedLabel: (label: string) => `${label}: `,
       skipped: {
