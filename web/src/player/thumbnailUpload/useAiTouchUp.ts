@@ -39,6 +39,8 @@ export function useAiTouchUp(videoId: number): {
   const [state, setState] = useState<TouchUp>({ status: "idle" });
   const controller = useRef<AbortController | null>(null);
   const editId = useRef<string | null>(null);
+  // The last start request, which a new one waits for so a late start never replaces it.
+  const starts = useRef<Promise<unknown>>(Promise.resolve());
   const result = useRef<UploadImage | null>(null);
 
   useEffect(() => {
@@ -69,7 +71,7 @@ export function useAiTouchUp(videoId: number): {
     const current = new AbortController();
     controller.current = current;
     show({ status: "running", session: null });
-    touchUp(videoId, framing, prompt, current.signal, editId, (session) =>
+    touchUp(videoId, framing, prompt, current.signal, { editId, starts }, (session) =>
       show({ status: "running", session }),
     )
       .then((outcome) => {
@@ -125,13 +127,23 @@ async function touchUp(
   framing: Promise<Blob>,
   prompt: string,
   signal: AbortSignal,
-  editId: { current: string | null },
+  refs: { editId: { current: string | null }; starts: { current: Promise<unknown> } },
   onSession: (session: ThumbnailEdit) => void,
 ): Promise<
   { image: UploadImage } | Extract<TouchUp, { status: "failed" | "cancelled" }>
 > {
-  const started = await startThumbnailEditFromImage(videoId, await framing, signal);
-  editId.current = started.id;
+  const image = await framing;
+  await refs.starts.current.catch(() => undefined);
+  throwIfAborted(signal);
+  // Not aborted with the run: the server may create the session anyway, and only its answer names it for discarding.
+  const start = startThumbnailEditFromImage(videoId, image);
+  refs.starts.current = start;
+  const started = await start;
+  if (signal.aborted) {
+    void discardThumbnailEdit(started.id).catch(() => undefined);
+    throwIfAborted(signal);
+  }
+  refs.editId.current = started.id;
   let session = await runThumbnailEdit(started.id, { prompt }, signal);
   onSession(session);
   while (isRunning(session.state)) {
@@ -150,6 +162,10 @@ async function touchUp(
   if ("refusal" in loaded)
     return { status: "failed", message: text.runFailed(t.errors.reason[loaded.refusal]) };
   return loaded;
+}
+
+function throwIfAborted(signal: AbortSignal): void {
+  if (signal.aborted) throw new DOMException("aborted", "AbortError");
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {

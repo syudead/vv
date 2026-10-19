@@ -79,11 +79,7 @@ describe("useAiTouchUp", () => {
 
     act(() => result.current.run(Promise.resolve(framing), "Remove the text"));
     await flush();
-    expect(client.startThumbnailEditFromImage).toHaveBeenCalledWith(
-      7,
-      framing,
-      expect.any(AbortSignal),
-    );
+    expect(client.startThumbnailEditFromImage).toHaveBeenCalledWith(7, framing);
     expect(client.runThumbnailEdit).toHaveBeenCalledWith(
       "E1",
       { prompt: "Remove the text" },
@@ -155,6 +151,33 @@ describe("useAiTouchUp", () => {
     await flush();
     unmount();
     expect(client.discardThumbnailEdit).toHaveBeenCalledTimes(2);
+  });
+
+  it("始める要求の途中でやめても、届いたセッションを捨て、次の開始はその要求が済むまで待つ", async () => {
+    let answer: (edit: ThumbnailEdit) => void = () => undefined;
+    client.startThumbnailEditFromImage.mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    client.startThumbnailEditFromImage.mockResolvedValueOnce(
+      session("ready", { id: "E2" }),
+    );
+    client.getThumbnailEdit.mockResolvedValue(session("running", { id: "E2" }));
+    const { result } = renderHook(() => useAiTouchUp(7));
+    act(() => result.current.run(Promise.resolve(framing), "x"));
+    await flush();
+    act(() => result.current.cancel());
+    act(() => result.current.run(Promise.resolve(framing), "x"));
+    await flush();
+    expect(client.startThumbnailEditFromImage).toHaveBeenCalledTimes(1);
+
+    answer(session("ready", { id: "E1" }));
+    await flush();
+    expect(client.discardThumbnailEdit).toHaveBeenCalledWith("E1");
+    expect(client.startThumbnailEditFromImage).toHaveBeenCalledTimes(2);
+    expect(client.runThumbnailEdit).toHaveBeenCalledTimes(1);
+    expect(client.runThumbnailEdit.mock.calls[0]?.[0]).toBe("E2");
   });
 
   it("絵を作れない・始められないときは失敗を出し、ComfyUI が無ければ使えない", async () => {
