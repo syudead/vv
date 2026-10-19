@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -202,8 +203,8 @@ describe("ライブラリのスマートフォルダのカード", () => {
       screen.getAllByRole("link", { name: "猫, smart folder of 4 videos" }),
     ).toHaveLength(1);
     expect(folder.closest("article")?.querySelectorAll("a")).toHaveLength(1);
-    // The first hover flushes the put-back effect queued by loading the values, which would undo it.
-    fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 10 });
+    // Let the put-back effect queued by loading the values run, so it cannot undo the hover.
+    await act(() => Promise.resolve());
     fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 10 });
     const preview = screen.getByRole("link", { name: 'Play "Harbour" from "猫"' });
     fireEvent.click(preview);
