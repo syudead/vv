@@ -1,10 +1,17 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 
 import { isAborted, RequestFailed, type Video } from "../../api/client";
-import { createCredit } from "../../api/credits";
+import { createCredit, updateCredit } from "../../api/credits";
 import { setVideoDetails } from "../../api/workInfo";
 import { errorText, t } from "../../i18n";
-import { type Draft, newEntries, toDetailsInput, withCreated } from "./draft";
+import {
+  type Draft,
+  namings,
+  newEntries,
+  toDetailsInput,
+  withCreated,
+  withNamed,
+} from "./draft";
 import type { FieldProblem } from "./fields";
 
 /** field holds a server path that could not be mapped to an input. */
@@ -53,7 +60,7 @@ export function useEditorSave(run: (signal: AbortSignal) => Promise<void>): Edit
   return { saving, failure, problem, save, setFailure, setProblem };
 }
 
-/** Create new credits sequentially and retain their IDs before saving details once. Map field errors to inputs, report partial creation on failure, and abort when leaving. */
+/** Name chosen provisional people, then create new credits sequentially and retain their IDs before saving details once. Map field errors to inputs, report partial creation on failure, and abort when leaving. */
 export function useDetailsSave({
   videoId,
   draftRef,
@@ -73,6 +80,18 @@ export function useDetailsSave({
     const e = t.player.detailsEditor;
     let draft = draftRef.current;
     let created = 0;
+    // Names go before every other write, so a refused name stops the save before the video changes.
+    for (const naming of namings(draft)) {
+      try {
+        await updateCredit("person", naming.id, { name: naming.name }, signal);
+        draft = withNamed(draft, naming.id, naming.name);
+        setDraft(draft);
+      } catch (error) {
+        if (signal.aborted || isAborted(error)) return;
+        setFailure({ text: e.saveFailed(errorText(error)) });
+        return;
+      }
+    }
     for (const entry of newEntries(draft)) {
       try {
         const credit = await createCredit(entry.kind, { name: entry.name }, signal);

@@ -1413,7 +1413,7 @@ export interface paths {
         put?: never;
         /**
          * Apply selected fetched fields to a video
-         * @description Owner-only. Atomically saves selected fields: title as display name, tags as tentative assignments, others merged into work information. After commit, cover uses uploaded-image validation/application; failure preserves the thumbnail and reports skipped invalid. Invalid values, excess entries and ambiguous people/organizations are skipped. A successful result is consumed. Invalid or rejected tag names are reported in skippedTags without assignment. Optional tags selects fetched names and limits skippedTags to that selection. Empty fields, unavailable fields, empty/unknown tag selections or tags without fields containing tags return 400 invalid_request. Missing video or mismatched result video returns 404 not_found. Expired/unknown results or plugin replacement, revocation or deletion after fetch return 409 work_info_fetch_stale. These errors write nothing. Emits a video event after commit.
+         * @description Owner-only. Atomically saves selected fields: title as display name, tags as tentative assignments, others merged into work information. After commit, cover uses uploaded-image validation/application; failure preserves the thumbnail and reports skipped invalid. With coverByPage, cover is checked like the other fields but not applied. Invalid values, excess entries and ambiguous people/organizations are skipped. A successful result is consumed. Invalid or rejected tag names are reported in skippedTags without assignment. Optional tags selects fetched names and limits skippedTags to that selection. Empty fields, unavailable fields, empty/unknown tag selections or tags without fields containing tags return 400 invalid_request. Missing video or mismatched result video returns 404 not_found. Expired/unknown results or plugin replacement, revocation or deletion after fetch return 409 work_info_fetch_stale. These errors write nothing. Emits a video event after commit.
          */
         post: operations["applyWorkInfoFetch"];
         delete?: never;
@@ -1709,7 +1709,7 @@ export interface paths {
         };
         /**
          * List people
-         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people.
+         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people, and provisional keeps only provisional or only named people. Provisional people follow every named person in natural-name order, including as the tie-break of the other sorts.
          */
         get: operations["listPeople"];
         put?: never;
@@ -1809,7 +1809,7 @@ export interface paths {
         };
         /**
          * List organizations
-         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite returns 400 invalid_request.
+         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite and provisional return 400 invalid_request.
          */
         get: operations["listOrganizations"];
         put?: never;
@@ -3335,6 +3335,8 @@ export interface components {
             fields: components["schemas"]["WorkInfoField"][];
             /** @description Fetched tag names to attach when fields includes tags: a nonempty subset of result tags using their exact spelling. Omission attaches all fetched tags; an empty subset, unknown name or presence without tags in fields returns 400. */
             tags?: string[];
+            /** @description With cover in fields, validate and consume the result for the cover but leave the thumbnail to the page, which uploads its own framing of the cover through uploadThumbnailImage after this call succeeds. Ignored without cover in fields. */
+            coverByPage?: boolean;
         };
         /**
          * @description Tag skip reason: rejected names were previously rejected; invalid names fail tag-name validation.
@@ -3636,11 +3638,13 @@ export interface components {
             id?: number;
             name?: string;
         };
-        /** @description Reference to one person or organization; name is its current name. */
+        /** @description Reference to one person or organization; name is its current name, "" for a provisional person. */
         CreditRef: {
             /** Format: int64 */
             id: number;
             name: string;
+            /** @description True for a person without a canonical name, whose name is then ""; always false for an organization. */
+            provisional: boolean;
         };
         /** @description One person or organization alias. */
         Alias: {
@@ -3681,6 +3685,8 @@ export interface components {
         WorkPerson: {
             role: components["schemas"]["WorkPersonRole"];
             person: components["schemas"]["CreditRef"];
+            /** @description Same as person.provisional. */
+            provisional: boolean;
             imageRevision?: components["schemas"]["PersonImageRevision"];
         };
         /**
@@ -3743,6 +3749,8 @@ export interface components {
             /** Format: int64 */
             id: number;
             name: string;
+            /** @description True while the person has no canonical name; name is then "". Setting a name makes the person ordinary. */
+            provisional: boolean;
             /** @description Natural-name order. */
             aliases: components["schemas"]["Alias"][];
             /** @description Ordered by (source, value). */
@@ -3877,7 +3885,7 @@ export interface components {
         /** @description Person form of the CreditList contract. */
         PersonList: {
             items: components["schemas"]["Person"][];
-            /** @description Person count matching q and favorite, independent of pagination. */
+            /** @description Person count matching q, favorite and provisional, independent of pagination. */
             total: number;
             /** @description Total person count. */
             totalAll: number;
@@ -5584,6 +5592,8 @@ export interface components {
         CreditLimit: number;
         /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
         CreditFavorite: boolean;
+        /** @description People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request. */
+        CreditProvisional: boolean;
         /** @description Registered media-folder ID containing this folder */
         FolderRootId: number;
         /** @description Playlist item ID */
@@ -8594,6 +8604,8 @@ export interface operations {
                 limit?: components["parameters"]["CreditLimit"];
                 /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
                 favorite?: components["parameters"]["CreditFavorite"];
+                /** @description People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request. */
+                provisional?: components["parameters"]["CreditProvisional"];
             };
             header?: never;
             path?: never;
@@ -8852,6 +8864,8 @@ export interface operations {
                 limit?: components["parameters"]["CreditLimit"];
                 /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
                 favorite?: components["parameters"]["CreditFavorite"];
+                /** @description People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request. */
+                provisional?: components["parameters"]["CreditProvisional"];
             };
             header?: never;
             path?: never;

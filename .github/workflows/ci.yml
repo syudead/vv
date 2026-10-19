@@ -87,7 +87,7 @@ jobs:
         include:
           # Generation needs shadcn from web/ and openapi-typescript from tools/.
           - group: go lint
-            tasks: fmt-check-go lint-go lint-go-windows-desktop generate-check migrations-check e2e-groups-check build-windows-check
+            tasks: fmt-check-go lint-go lint-go-windows-desktop generate-check migrations-check e2e-groups-check build-windows-check static-binary-check
             web: true
             tools: true
             golangci: true
@@ -143,7 +143,7 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
         with:
           install_args: "task"
 
@@ -283,7 +283,7 @@ jobs:
           cache: npm
           cache-dependency-path: ${{ matrix.web && 'web/package-lock.json' || 'tools/package-lock.json' }}
 
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
         with:
           install_args: "task"
 
@@ -353,7 +353,7 @@ jobs:
           key: go-test-media-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-${{ hashFiles('go.sum', 'tools/go.sum') }}
           restore-keys: go-test-media-${{ runner.os }}-${{ steps.setup-go.outputs.go-version }}-
 
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
         if: needs.changes.outputs.code == 'false'
         with:
           install_args: "task"
@@ -413,7 +413,7 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
         with:
           install_args: "task"
 

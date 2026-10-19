@@ -2,6 +2,7 @@ import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { RequestFailed } from "../api/client";
 import { type CreditKind, getCredit } from "../api/credits";
+import { creditDisplayName } from "../credits/displayName";
 import {
   currentTags,
   refreshTags,
@@ -60,7 +61,7 @@ export function useCreditName(
   useEffect(() => {
     const controller = new AbortController();
     getCredit(kind, id, controller.signal)
-      .then((credit) => setLoaded({ kind, id, name: credit.name }))
+      .then((credit) => setLoaded({ kind, id, name: creditDisplayName(credit) }))
       .catch((failure: unknown) => {
         if (controller.signal.aborted) return;
         if (failure instanceof RequestFailed && failure.status === 404) gone();

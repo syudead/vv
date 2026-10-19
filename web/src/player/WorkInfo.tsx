@@ -11,6 +11,7 @@ import {
   workOrganizationRoles,
   workPersonRoles,
 } from "../api/workInfo";
+import { creditDisplayName } from "../credits/displayName";
 import { personPath } from "../credits/person/personPath";
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
@@ -87,22 +88,30 @@ function OrganizationLink({
 /** The chip face is as tall as the `text-sm` line, so `align-top` keeps the row height. */
 function PersonLink({ entry }: { entry: WorkInfoValue["people"][number] }) {
   const { person, imageRevision } = entry;
+  const name = creditDisplayName(person);
   return (
     <Link
       to={personPath(person.id)}
-      aria-label={t.player.workInfo.openPerson(person.name)}
-      className="inline-flex max-w-full items-center gap-1 align-top text-foreground hover:text-primary"
+      aria-label={t.player.workInfo.openPerson(name)}
+      className="group inline-flex max-w-full items-center gap-1 align-top text-foreground hover:text-primary"
     >
       <PersonFace
         shape="chip"
-        name={person.name}
+        name={name}
         src={
           imageRevision === undefined
             ? undefined
             : personImagePath(person.id, imageRevision)
         }
       />
-      <span className="min-w-0 wrap-anywhere">{person.name}</span>
+      <span
+        className={cn(
+          "min-w-0 wrap-anywhere",
+          person.provisional && "text-muted-foreground group-hover:text-primary",
+        )}
+      >
+        {name}
+      </span>
     </Link>
   );
 }

@@ -84,6 +84,8 @@ type ExternalID struct {
 type CreditRef struct {
 	ID   int64
 	Name string
+	// Provisional marks a person without a canonical name; Name is then empty. Writes ignore it.
+	Provisional bool
 }
 
 // normalizeWorkInfoText rejects controls before trimming and counts code points; empty results are left to callers to clear, drop, or reject.

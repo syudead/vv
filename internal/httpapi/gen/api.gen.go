@@ -2728,6 +2728,9 @@ type Alias struct {
 
 // ApplyWorkInfoFetchRequest defines model for ApplyWorkInfoFetchRequest.
 type ApplyWorkInfoFetchRequest struct {
+	// CoverByPage With cover in fields, validate and consume the result for the cover but leave the thumbnail to the page, which uploads its own framing of the cover through uploadThumbnailImage after this call succeeds. Ignored without cover in fields.
+	CoverByPage *bool `json:"coverByPage,omitempty"`
+
 	// Fields Fields to apply; nonempty, and every selected field must have a result value.
 	Fields []WorkInfoField `json:"fields"`
 
@@ -2933,10 +2936,13 @@ type CreditPatch struct {
 	Profile *PersonProfilePatch `json:"profile,omitempty"`
 }
 
-// CreditRef Reference to one person or organization; name is its current name.
+// CreditRef Reference to one person or organization; name is its current name, "" for a provisional person.
 type CreditRef struct {
 	Id   int64  `json:"id"`
 	Name string `json:"name"`
+
+	// Provisional True for a person without a canonical name, whose name is then ""; always false for an organization.
+	Provisional bool `json:"provisional"`
 }
 
 // CreditSort The five TagSort modes, plus ageAsc (newest birth date first) and ageDesc (oldest first) for people only; organizations answer either with 400 invalid_request. A partial birth date sorts as its first possible day, and people without one come last in both age sorts. Ties use natural-name order, then ID.
@@ -3771,6 +3777,9 @@ type Person struct {
 	// Profile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
 	Profile PersonProfile `json:"profile"`
 
+	// Provisional True while the person has no canonical name; name is then "". Setting a name makes the person ordinary.
+	Provisional bool `json:"provisional"`
+
 	// VideoCount Visible videos linked to this person in any role.
 	VideoCount int `json:"videoCount"`
 }
@@ -3785,7 +3794,7 @@ type PersonList struct {
 	// NextCursor Next-page cursor, included only when limit is supplied and more results remain.
 	NextCursor *string `json:"nextCursor,omitempty"`
 
-	// Total Person count matching q and favorite, independent of pagination.
+	// Total Person count matching q, favorite and provisional, independent of pagination.
 	Total int `json:"total"`
 
 	// TotalAll Total person count.
@@ -5537,7 +5546,7 @@ type WorkInfoSearchResult struct {
 
 // WorkOrganization defines model for WorkOrganization.
 type WorkOrganization struct {
-	// Organization Reference to one person or organization; name is its current name.
+	// Organization Reference to one person or organization; name is its current name, "" for a provisional person.
 	Organization CreditRef `json:"organization"`
 
 	// Role Organization role in a video.
@@ -5561,8 +5570,11 @@ type WorkPerson struct {
 	// ImageRevision Present only when the person has a face; changes with every change of the face and is never reused. Load the face from /api/people/{id}/image?v={imageRevision}.
 	ImageRevision *PersonImageRevision `json:"imageRevision,omitempty"`
 
-	// Person Reference to one person or organization; name is its current name.
+	// Person Reference to one person or organization; name is its current name, "" for a provisional person.
 	Person CreditRef `json:"person"`
+
+	// Provisional Same as person.provisional.
+	Provisional bool `json:"provisional"`
 
 	// Role Person role in a video.
 	Role WorkPersonRole `json:"role"`
@@ -5597,6 +5609,9 @@ type CreditFavorite = bool
 
 // CreditLimit defines model for CreditLimit.
 type CreditLimit = int
+
+// CreditProvisional defines model for CreditProvisional.
+type CreditProvisional = bool
 
 // CreditQuery defines model for CreditQuery.
 type CreditQuery = string
@@ -5922,6 +5937,9 @@ type ListOrganizationsParams struct {
 
 	// Favorite People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request.
 	Favorite *CreditFavorite `form:"favorite,omitempty" json:"favorite,omitempty"`
+
+	// Provisional People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request.
+	Provisional *CreditProvisional `form:"provisional,omitempty" json:"provisional,omitempty"`
 }
 
 // ListPeopleParams defines parameters for ListPeople.
@@ -5940,6 +5958,9 @@ type ListPeopleParams struct {
 
 	// Favorite People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request.
 	Favorite *CreditFavorite `form:"favorite,omitempty" json:"favorite,omitempty"`
+
+	// Provisional People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request.
+	Provisional *CreditProvisional `form:"provisional,omitempty" json:"provisional,omitempty"`
 }
 
 // GetPersonImageParams defines parameters for GetPersonImage.
@@ -8631,6 +8652,19 @@ func (siw *ServerInterfaceWrapper) ListOrganizations(w http.ResponseWriter, r *h
 		return
 	}
 
+	// ------------- Optional query parameter "provisional" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "provisional", r.URL.Query(), &params.Provisional, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "provisional"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provisional", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListOrganizations(w, r, params)
 	}))
@@ -8914,6 +8948,19 @@ func (siw *ServerInterfaceWrapper) ListPeople(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "favorite"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "favorite", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "provisional" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "provisional", r.URL.Query(), &params.Provisional, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "provisional"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provisional", Err: err})
 		}
 		return
 	}

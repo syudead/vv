@@ -37,7 +37,13 @@ vi.mock("./VideoPlayer", () => ({
 const info: WorkInfo = {
   code: "AB-123",
   dates: [{ kind: "release", date: "2024-03-01" }],
-  people: [{ role: "performer", person: { id: 1, name: "Alice" } }],
+  people: [
+    {
+      role: "performer",
+      person: { id: 1, name: "Alice", provisional: false },
+      provisional: false,
+    },
+  ],
   organizations: [],
   urls: [],
   externalIds: [],
@@ -217,7 +223,8 @@ describe("VideoPage work information", () => {
         ...info,
         people: ["A", "B", "C", "D", "E"].map((name, index) => ({
           role: "performer" as const,
-          person: { id: index + 1, name },
+          person: { id: index + 1, name, provisional: false },
+          provisional: false,
         })),
       },
     };
@@ -276,8 +283,16 @@ describe("VideoPage work information", () => {
         code: "XY-9",
         dates: [{ kind: "release", date: "2025" }],
         people: [
-          { role: "performer", person: { id: 2, name: "Bob" } },
-          { role: "performer", person: { id: 3, name: "Carol" } },
+          {
+            role: "performer",
+            person: { id: 2, name: "Bob", provisional: false },
+            provisional: false,
+          },
+          {
+            role: "performer",
+            person: { id: 3, name: "Carol", provisional: false },
+            provisional: false,
+          },
         ],
         organizations: [],
         urls: [],

@@ -16,6 +16,7 @@ import CreditCommand, { type CreditChoice } from "../ui/CreditCommand";
 import { FormDialog } from "../ui/patterns/form-dialog";
 import { Spinner } from "../ui/shadcn/spinner";
 import { kindTexts } from "./creditRows";
+import { creditDisplayName } from "./displayName";
 
 const candidateLimit = 8;
 
@@ -85,7 +86,7 @@ export default function MergeCreditDialog({
         : credit.aliases.find((item) => foldForMatch(item.name).includes(folded))?.name;
     return {
       id: String(credit.id),
-      label: credit.name,
+      label: creditDisplayName(credit),
       hint: alias === undefined ? undefined : t.credits.mergeDialog.aliasHint(alias),
       meta: t.credits.mergeDialog.videoCount(credit.videoCount),
     };
@@ -158,7 +159,7 @@ export default function MergeCreditDialog({
       onOpenChange={(open) => {
         if (!open) handleClose();
       }}
-      title={t.credits.mergeDialog.title(source.name)}
+      title={t.credits.mergeDialog.title(creditDisplayName(source))}
       onSubmit={(event) => {
         event.preventDefault();
         void submit();
@@ -196,9 +197,16 @@ export default function MergeCreditDialog({
       {target !== null && (
         <>
           <p className="text-sm text-muted-foreground">
-            {t.credits.mergeDialog.warning(source.name, source.videoCount, target.name)}
+            {t.credits.mergeDialog.warning(
+              creditDisplayName(source),
+              source.videoCount,
+              creditDisplayName(target),
+            )}
           </p>
-          <MergeSummary source={source.name} target={target.name} />
+          <MergeSummary
+            source={creditDisplayName(source)}
+            target={creditDisplayName(target)}
+          />
         </>
       )}
       {error !== null && <DialogError message={error} />}

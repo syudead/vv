@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -97,8 +96,8 @@ func verifySHA256(name, want string) error {
 	return nil
 }
 
-// fetchFFmpeg verifies cached archives too; a mismatch removes the cache and fails so the next run can download it again.
-func fetchFFmpeg(client *http.Client, url, cacheDir, name, want string) (string, error) {
+// fetchPinned verifies cached archives too; a mismatch removes the cache and fails so the next run can download it again.
+func fetchPinned(client *http.Client, url, cacheDir, name, want string) (string, error) {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return "", err
 	}
@@ -152,38 +151,39 @@ var ffmpegFiles = map[string]string{
 
 // extractFFmpeg selects ffmpegFiles from the archive beneath its versioned root directory.
 func extractFFmpeg(archive, destDir string) error {
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return err
+	}
+	want := map[string]string{}
+	for inner, target := range ffmpegFiles {
+		want[inner] = filepath.Join(destDir, target)
+	}
+	return extractZip(archive, want)
+}
+
+// extractZip copies the wanted entries, named below the archive's root directory, to their targets.
+func extractZip(archive string, want map[string]string) error {
 	reader, err := zip.OpenReader(archive)
 	if err != nil {
 		return fmt.Errorf("%s を開けません: %w", filepath.Base(archive), err)
 	}
 	defer func() { _ = reader.Close() }()
-	if err := os.MkdirAll(destDir, 0o755); err != nil {
-		return err
-	}
 	found := map[string]bool{}
 	for _, entry := range reader.File {
 		_, inner, ok := strings.Cut(entry.Name, "/")
-		if !ok {
-			continue
-		}
-		target, wanted := ffmpegFiles[inner]
-		if !wanted {
+		target, wanted := want[inner]
+		if !ok || !wanted {
 			continue
 		}
 		if found[inner] {
 			return fmt.Errorf("%s に %s が 2 つあります", filepath.Base(archive), inner)
 		}
 		found[inner] = true
-		if err := extractEntry(entry, filepath.Join(destDir, target)); err != nil {
+		if err := extractEntry(entry, target); err != nil {
 			return err
 		}
 	}
-	for inner := range ffmpegFiles {
-		if !found[inner] {
-			return fmt.Errorf("%s に %s がありません", filepath.Base(archive), inner)
-		}
-	}
-	return nil
+	return requireFound(archive, want, found)
 }
 
 func extractEntry(entry *zip.File, dest string) error {
@@ -192,15 +192,7 @@ func extractEntry(entry *zip.File, dest string) error {
 		return err
 	}
 	defer func() { _ = source.Close() }()
-	out, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, source); err != nil {
-		_ = out.Close()
-		return err
-	}
-	return out.Close()
+	return writeFile(dest, source, 0o644)
 }
 
 // Use CRLF for Windows Notepad.
@@ -274,69 +266,6 @@ More: https://github.com/syudead/vv/blob/main/docs/how-to/running-vv.md#windows-
 `)
 }
 
-// zipDir preserves the root folder name and removes partial archives on failure.
-func zipDir(root, out string) error {
-	temp, err := os.CreateTemp(filepath.Dir(out), filepath.Base(out)+".*.part")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = os.Remove(temp.Name()) }()
-	writer := zip.NewWriter(temp)
-	base := filepath.Base(root)
-	walkErr := filepath.WalkDir(root, func(name string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		rel, err := filepath.Rel(root, name)
-		if err != nil {
-			return err
-		}
-		zipName := path.Join(base, filepath.ToSlash(rel))
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		header, err := zip.FileInfoHeader(info)
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() {
-			header.Name = zipName + "/"
-			_, err := writer.CreateHeader(header)
-			return err
-		}
-		header.Name = zipName
-		header.Method = zip.Deflate
-		dest, err := writer.CreateHeader(header)
-		if err != nil {
-			return err
-		}
-		source, err := os.Open(name)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = source.Close() }()
-		_, err = io.Copy(dest, source)
-		return err
-	})
-	if walkErr != nil {
-		_ = temp.Close()
-		return walkErr
-	}
-	if err := writer.Close(); err != nil {
-		_ = temp.Close()
-		return err
-	}
-	if err := temp.Close(); err != nil {
-		return err
-	}
-	// CreateTemp uses 0600; make the distribution readable.
-	if err := os.Chmod(temp.Name(), 0o644); err != nil {
-		return err
-	}
-	return os.Rename(temp.Name(), out)
-}
-
 func currentCommit(root string) (string, error) {
 	cmd := exec.Command("git", "rev-parse", "HEAD")
 	cmd.Dir = root
@@ -362,7 +291,7 @@ func buildWindowsApp(root, versionEnv string) (string, error) {
 	}
 
 	client := &http.Client{Timeout: downloadTimeout}
-	archive, err := fetchFFmpeg(client, ffmpegURL(ffmpegVersion), filepath.Join(root, ffmpegCacheDir),
+	archive, err := fetchPinned(client, ffmpegURL(ffmpegVersion), filepath.Join(root, ffmpegCacheDir),
 		ffmpegArchiveName(ffmpegVersion), ffmpegSHA256)
 	if err != nil {
 		return "", err

@@ -22,6 +22,7 @@ function person(overrides: Partial<Person> = {}): Person {
   return {
     id: 7,
     name: "Aoi",
+    provisional: false,
     aliases: [],
     externalIds: [],
     profile: {},
@@ -236,6 +237,20 @@ describe("PersonPage", () => {
 
     renderPage();
     expect(await screen.findByRole("heading", { name: "Aoi Sora" })).toBeTruthy();
+  });
+
+  it("titles a provisional person Unnamed person and offers Name… in place of Edit", async () => {
+    const user = userEvent.setup();
+    server.person = person({ ...profiled, name: "", provisional: true });
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Unnamed person" })).toBeTruthy();
+    expect(document.title).toContain("Unnamed person");
+    expect(screen.queryByRole("link", { name: "Edit" })).toBeNull();
+    await user.click(screen.getByRole("link", { name: "Name…" }));
+
+    const name = await screen.findByRole<HTMLInputElement>("textbox", { name: "Name" });
+    expect(name.value).toBe("");
   });
 
   it("shows the gone state when the person no longer exists", async () => {

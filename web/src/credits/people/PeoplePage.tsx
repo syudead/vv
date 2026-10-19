@@ -1,4 +1,4 @@
-import { Cake, CakeSlice, Heart, Plus, SearchX, Users } from "lucide-react";
+import { Cake, CakeSlice, Heart, Plus, ScanFace, SearchX, Users } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
@@ -34,10 +34,12 @@ import {
   peopleBody,
   peopleCountText,
   type PeopleCriteria,
+  peopleFilterCount,
   type PeopleRowsQuery,
   readPeopleSort,
   serializePeopleCriteria,
 } from "./peopleCriteria";
+import NameFilterSelect from "./NameFilterSelect";
 import { PersonCard } from "./PersonCard";
 
 const texts = t.credits.person;
@@ -53,6 +55,7 @@ const initialQuery: PeopleRowsQuery & { search: string } = {
   search: "",
   sort: "name",
   favorite: false,
+  named: "any",
 };
 
 function scrollToTop() {
@@ -86,14 +89,20 @@ export default function PeoplePage() {
     (params) => parsePeopleCriteria(params, preferredSort),
     serializePeopleCriteria,
   );
-  const { query: search, sort, favorite } = criteria;
+  const { query: search, sort, favorite, named } = criteria;
   const [creating, setCreating] = useState(false);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const { normalizedQuery, searchRef } = useSearchQuery(search);
   useEffect(() => {
-    void load({ query: normalizedQuery, search: searchRef.current, sort, favorite });
-  }, [normalizedQuery, sort, favorite, load, searchRef]);
+    void load({
+      query: normalizedQuery,
+      search: searchRef.current,
+      sort,
+      favorite,
+      named,
+    });
+  }, [normalizedQuery, sort, favorite, named, load, searchRef]);
 
   // The heart changes only after the server answers; a card stays until the next fetch.
   const toggleFavorite = useCallback(
@@ -121,6 +130,7 @@ export default function PeoplePage() {
     noPreviewReset,
   );
   const noPeople = page === undefined || page.totalAll === 0;
+  const filterCount = peopleFilterCount(criteria);
 
   function change(next: Partial<PeopleCriteria>, mode: HistoryMode = "push") {
     apply(next, mode);
@@ -161,15 +171,19 @@ export default function PeoplePage() {
             compactSortName="person-compact-sort"
           >
             <FilterPopover
-              count={favorite ? 1 : 0}
-              disabled={noPeople && !favorite}
-              canClear={favorite}
-              onClear={() => change({ favorite: false })}
+              count={filterCount}
+              disabled={noPeople && filterCount === 0}
+              canClear={filterCount > 0}
+              onClear={() => change({ favorite: false, named: "any" })}
             >
               <FilterCheckbox
                 checked={favorite}
                 onCheckedChange={(next) => change({ favorite: next })}
                 label={t.list.filter.favoritesOnly}
+              />
+              <NameFilterSelect
+                value={named}
+                onChange={(next) => change({ named: next })}
               />
             </FilterPopover>
           </AdminListToolbar>
@@ -226,6 +240,13 @@ export default function PeoplePage() {
       )}
       {body === "noFavorites" && (
         <EmptyState icon={<Heart aria-hidden="true" />} title={grid.noFavorites} />
+      )}
+      {body === "noUnnamed" && (
+        <EmptyState
+          icon={<ScanFace aria-hidden="true" />}
+          title={grid.noUnnamed}
+          description={grid.noUnnamedDescription}
+        />
       )}
       {body === "cards" && page !== undefined && (
         <>

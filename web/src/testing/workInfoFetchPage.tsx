@@ -105,6 +105,7 @@ export const server = {
   search: vi.fn<(body: unknown) => Response>(),
   fetch: vi.fn<(body: unknown) => Response>(),
   apply: vi.fn<(body: unknown) => Response>(),
+  upload: vi.fn<(body: unknown) => Response>(),
   related: { items: [] } as unknown,
   requests: [] as string[],
 };
@@ -164,6 +165,7 @@ function respond(url: string, body: unknown): Response {
   if (url === "/api/work-info-plugins/3/search") return server.search(body);
   if (url === "/api/videos/7/work-info-fetches") return server.fetch(body);
   if (url === "/api/videos/7/work-info-fetches/F1/apply") return server.apply(body);
+  if (url === "/api/videos/7/thumbnail-image") return server.upload(body);
   if (url === "/api/thumbnail-edits/readiness") return json({ connection: true });
   if (url === "/api/videos/7") return json(server.video);
   if (url === "/api/videos/7/related") return json(server.related);
@@ -182,6 +184,7 @@ export function useFetchServer() {
     server.search.mockReset();
     server.fetch.mockReset();
     server.apply.mockReset();
+    server.upload.mockReset();
     server.fetch.mockImplementation(() =>
       json(fetchResult({ title: "取得した題名", tags: ["既存", "新しい"] }), 201),
     );
@@ -195,7 +198,7 @@ export function useFetchServer() {
       const method = init?.method ?? "GET";
       server.requests.push(`${method} ${url.split("?")[0]!}`);
       const body: unknown =
-        typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+        typeof init?.body === "string" ? JSON.parse(init.body) : init?.body;
       return Promise.resolve(respond(url, body));
     });
     vi.stubGlobal("fetch", fetchMock);

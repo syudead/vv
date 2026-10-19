@@ -1,8 +1,10 @@
 import { type Person, personFaceSrc } from "../../../api/credits";
 import { t } from "../../../i18n";
+import { cn } from "../../../lib/cn";
 import { BackLink } from "../../../player/detailsEditor/EditorAside";
 import { PersonFace } from "../../../ui/PersonFace";
 import { Skeleton } from "../../../ui/shadcn/skeleton";
+import { creditDisplayName } from "../../displayName";
 import { ageRange } from "../personFacts";
 import { useLocalToday } from "../useLocalToday";
 
@@ -33,7 +35,11 @@ export default function PersonEditAside({
         {person === undefined ? (
           <Skeleton className="aspect-portrait w-full rounded-md" />
         ) : (
-          <PersonFace shape="profile" name={person.name} src={personFaceSrc(person)} />
+          <PersonFace
+            shape="profile"
+            name={creditDisplayName(person)}
+            src={personFaceSrc(person)}
+          />
         )}
       </div>
       {person === undefined ? (
@@ -43,7 +49,14 @@ export default function PersonEditAside({
         </>
       ) : (
         <>
-          <p className="font-medium wrap-anywhere">{person.name}</p>
+          <p
+            className={cn(
+              "wrap-anywhere",
+              person.provisional ? "text-muted-foreground" : "font-medium",
+            )}
+          >
+            {creditDisplayName(person)}
+          </p>
           <p className="text-muted-foreground tabular-nums">{meta(person, today)}</p>
         </>
       )}

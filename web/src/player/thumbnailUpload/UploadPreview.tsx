@@ -39,6 +39,8 @@ export default function UploadPreview({
   aspect,
   narrow,
   applying,
+  initialFit = { mode: "contain" },
+  applyLabel,
   onApply,
   onCancel,
 }: {
@@ -47,11 +49,14 @@ export default function UploadPreview({
   aspect: number | null;
   narrow: boolean;
   applying: boolean;
+  initialFit?: Fit;
+  /** Replaces "Use as thumbnail" when applying only keeps the framing. */
+  applyLabel?: string;
   onApply: (fit: Fit) => void;
   onCancel: () => void;
 }) {
   const text = t.player.thumbnailUpload.preview;
-  const [fit, setFit] = useState<Fit>({ mode: "contain" });
+  const [fit, setFit] = useState<Fit>(initialFit);
   // Dialog content mounts later; receive the canvas when it is inserted.
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
   const [backdrop, setBackdrop] = useState<HTMLCanvasElement | null>(null);
@@ -193,7 +198,7 @@ export default function UploadPreview({
             className="animate-spin motion-reduce:animate-none"
           />
         )}
-        {text.apply}
+        {applyLabel ?? text.apply}
       </Button>
       <Button variant="ghost" className="w-full" disabled={applying} onClick={onCancel}>
         {text.cancel}

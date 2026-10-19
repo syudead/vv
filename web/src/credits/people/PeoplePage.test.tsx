@@ -19,6 +19,7 @@ function person(id: number, overrides: Partial<Person> = {}): Person {
   return {
     id,
     name: `Person ${String(id)}`,
+    provisional: false,
     aliases: [],
     externalIds: [],
     profile: {},
@@ -71,10 +72,12 @@ function respond(method: string, url: URL, body: unknown): Response {
   }
   if (url.pathname === "/api/people" && method === "GET") {
     const page = server.pages.get(url.searchParams.get("cursor")) ?? { items: [] };
-    const items =
-      url.searchParams.get("favorite") === "true"
-        ? page.items.filter((item) => item.favorite)
-        : page.items;
+    const provisional = url.searchParams.get("provisional");
+    const items = page.items.filter(
+      (item) =>
+        (url.searchParams.get("favorite") !== "true" || item.favorite) &&
+        (provisional === null || String(item.provisional) === provisional),
+    );
     return jsonResponse({
       ...page,
       items,
@@ -218,6 +221,39 @@ describe("PeoplePage", () => {
 
     expect(await screen.findByText("No favorite people yet")).toBeTruthy();
     expect(listRequests().at(-1)?.get("favorite")).toBe("true");
+  });
+
+  it("names a provisional person's card Unnamed person in place of the empty name", async () => {
+    server.pages.set(null, {
+      items: [person(3, { name: "", provisional: true, videoCount: 2 })],
+    });
+    renderPage();
+
+    const link = await screen.findByRole("link", { name: /Unnamed person/ });
+    expect(link.getAttribute("href")).toBe("/people/3");
+    expect(within(link).getByText("2 videos")).toBeTruthy();
+  });
+
+  it("keeps only unnamed people with the Name filter, says when there are none and clears it", async () => {
+    const user = userEvent.setup();
+    renderPage("/people?named=0");
+
+    expect(await screen.findByText("No unnamed people")).toBeTruthy();
+    expect(listRequests().at(-1)?.get("provisional")).toBe("true");
+
+    await user.click(screen.getByRole("button", { name: "Filter (1 applied)" }));
+    expect(screen.getByRole("combobox", { name: "Name" }).textContent).toBe("Unnamed");
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+
+    await screen.findByRole("link", { name: /Person 1/ });
+    expect(listRequests().at(-1)?.has("provisional")).toBe(false);
+  });
+
+  it("asks for named people only when the URL keeps named=1", async () => {
+    renderPage("/people?named=1");
+
+    await screen.findByRole("link", { name: /Person 1/ });
+    expect(listRequests().at(-1)?.get("provisional")).toBe("false");
   });
 
   it("creates a person from the dialog and opens the new person's page", async () => {

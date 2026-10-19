@@ -36,7 +36,7 @@ type WorkInfoPlugins interface {
 	// FetchWorkInfo caches fetched work information for the video without modifying it; the plugin must be approved.
 	FetchWorkInfo(ctx context.Context, videoID, pluginID int64, id string) (domain.WorkInfoFetchResult, error)
 	// ApplyWorkInfoFetch applies selected fields and may return ErrWorkInfoApplyInvalid, ErrNotFound, or ErrWorkInfoFetchStale.
-	ApplyWorkInfoFetch(ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField, tags []string) (domain.WorkInfoApplied, error)
+	ApplyWorkInfoFetch(ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField, tags []string, coverByPage bool) (domain.WorkInfoApplied, error)
 	// WorkInfoFetchCover returns ErrNotFound when no cover is available.
 	WorkInfoFetchCover(videoID int64, fetchID string) (domain.WorkInfoCover, error)
 	// WorkInfoFetchPersonImage returns ErrNotFound for a missing result and ErrPersonImageNotFound when the person at

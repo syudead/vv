@@ -80,6 +80,33 @@ source's value or stays empty, so a merge always stores a valid profile.
 | Reject the merge with `400`    | A merge cannot be fixed by editing its request, only by editing the people first |
 | Let the owner choose per field | The merge stays one step                                                         |
 
+## A person without a canonical name is provisional
+
+Face recognition finds people before anyone knows their names, so a person may
+have no `people_names` row at all. Such a person is provisional: `Person`,
+`CreditRef` and `WorkPerson` carry `provisional: true` and `name` is `""`, so
+a client that ignores the flag still parses the response. The flag is read
+from the missing canonical row by every person query, never stored, so a
+named provisional person cannot exist. Organizations always have a name and
+read `provisional: false`.
+
+| Operation                       | Effect on a provisional person                                                                                            |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/people?provisional=…` | `true` keeps only provisional people, `false` only named ones; an organization list answers `400 invalid_request`         |
+| Natural-name order              | Provisional people come after every named person, by ID; the other sorts break ties the same way                          |
+| `PATCH` with `name`             | The person becomes an ordinary person in the same write                                                                   |
+| `PATCH` without `name`          | Profile and external-ID changes keep the person provisional; aliases need a name and answer `work_info_empty` on `name`   |
+| Merge into a provisional target | The target takes the canonical name of the first source in `sourceIds` order that has one; the other names become aliases |
+
+The name order keeps one keyset cursor by prefixing each listed sort key with
+`0` for a named person and making it `1` for a provisional one, so the cursor
+needs no null branch.
+
+| Rejected                                       | Why                                                                                                |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| A `provisional` column beside the name         | Two facts that can disagree                                                                        |
+| A stored placeholder name such as `Unknown 12` | It cannot follow the screen's language, it matches name searches, and a merge keeps it as an alias |
+
 ## People sort by age, unknown birth dates last
 
 People lists take two sorts that tags and organizations do not: `ageAsc`
@@ -259,3 +286,28 @@ and each fetched person with a profile adds one muted line `Fills only empty
 fields: …` under the chips, because the apply never replaces a stored value.
 Three lines show at first and the rest fold behind `+N more`, which shows them
 all when expanded, so the chips stay the primary content of the row.
+
+## Provisional people on the screens
+
+A provisional person
+([A person without a canonical name is provisional](#a-person-without-a-canonical-name-is-provisional))
+is drawn as any person, with `Unnamed person` in `muted-foreground` where the
+name goes: the grid card, the person page's `h1` and document title, the video
+page's cast chip, the details editor's chips and the library's person filter
+chip. The quieter name line alone separates an unnamed card from a named one,
+so the faces stay what the eye scans; a badge on every unnamed card was
+rejected for competing with them. The screens map the flag to the words in one
+place, [`displayName.ts`](../../web/src/credits/displayName.ts), so the empty
+`name` never reaches a screen.
+
+The grid's filter adds a `Name` select (`Any`, `Named`, `Unnamed`) that sends
+`provisional=false` or `true` and is kept in the URL as `named=1` or `named=0`.
+A provisional person's page offers `Name…` in place of `Edit`; the edit page
+shows the empty name with the placeholder `Unnamed person`, and `Save` with the
+name still empty sends no `name`, so the person stays provisional.
+
+The `Performers` picker of the details editor lists provisional people under
+`Unnamed people` (`GET /api/people?provisional=true` with the picker's limit).
+Choosing one while a name is typed adds a chip with that name, and `Save`
+sends that name by `PATCH /api/people/{id}` before it creates new people or
+writes the credits, so a refused name stops the save before the video changes.

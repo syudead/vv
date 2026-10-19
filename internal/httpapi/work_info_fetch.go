@@ -198,7 +198,9 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 	if !s.workInfoPluginsConfigured(w) {
 		return
 	}
-	applied, err := s.workInfoPlugins.ApplyWorkInfoFetch(r.Context(), id, fetchID, fields, tags)
+	applied, err := s.workInfoPlugins.ApplyWorkInfoFetch(
+		r.Context(), id, fetchID, fields, tags, body.CoverByPage != nil && *body.CoverByPage,
+	)
 	switch {
 	case errors.Is(err, domain.ErrWorkInfoApplyInvalid):
 		s.invalidRequest(w, "fields must name at least one field, and each must have a value in the result. "+
