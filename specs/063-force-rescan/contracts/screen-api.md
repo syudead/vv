@@ -56,6 +56,11 @@ rescan as they count a manual scan.
 
 ## Client use
 
-`Video.thumbnailUrl`, `seekThumbnailUrl` and the preview URL do not change
-their version for a rebuilt artifact; the ETag changes, and the `video` SSE
-event after each stage makes the screen fetch again.
+`Video.thumbnailUrl`, `seekThumbnailUrl`, the sprite sheet URLs and the
+preview URL gain `-b<n>` in their `v` query once the artifact has been rebuilt
+by a force rescan (`n` is its build count,
+[R-2](../research.md#r-2-force-travels-on-the-job-not-on-the-stage-states)).
+The `video` SSE event after each forced stage makes the screen read the video
+again, and the new URL makes a mounted image, a fetched sprite sheet and the
+hover preview load the rebuilt file; the screen code needs no change. A video
+never rebuilt keeps its current URL.

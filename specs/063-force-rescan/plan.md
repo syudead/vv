@@ -39,7 +39,7 @@ in [contracts/screen-api.md](contracts/screen-api.md). No new dependency.
 | --- | --- |
 | Dependency direction: `internal/app` reaches the store, the scanner and `internal/artifacts` through its interfaces | Pass: the scope and the force flag are `internal/domain` values (`RescanScope`, `Job.Force`); the scanner's `Index` and `Queue` interfaces gain methods |
 | The domain decides, the store enforces | Pass: the one-running-scan index refuses a second start; the force pass's skip rule and the re-judge rule are store transactions |
-| One owner for generated files | Pass: `internal/artifacts` publishes the forced artifact under `.tmp` and replaces it; the force flag only switches off adoption of a complete artifact |
+| One owner for generated files | Pass: `internal/artifacts` writes a forced sprite or preview as the next build and switches its per-key pointer in one rename; readers keep passing the content key (R-2) |
 | User data survives a rebuild | Pass: no owner table is written; applied images, positions, tags and owner bundles are read as the ordinary jobs read them (R-2, R-6) |
 | Only a scan walks the media folders | Pass: every scope is a scan; the `video` scope reads only that video's registered locations |
 | Events after commit | Pass: `ScanChanged`, `JobsQueued` and `VersionCandidatesChanged` come from the store's commit |
@@ -67,11 +67,11 @@ specs/063-force-rescan/
 | Boundary | Change |
 | --- | --- |
 | `internal/domain` | `RescanScope` on `Scan`, `Force` on `Job`, the scope's walk and removal rules (R-3) |
-| `internal/store` | Migration `00071`, rescan start and resume, forced queueing and propagation, no follow-up for forced seek stages, re-judge candidates |
+| `internal/store` | Migration `00071`, rescan start and resume, forced queueing and propagation, no follow-up for forced seek stages, build counts, re-judge candidates |
 | `internal/scanner` | Force mode: scope-limited walk, content key for unchanged files, forced-mark skip (R-4) |
 | `internal/app` | `Scans.StartRescan`, forced generation in `Ingest`, the judge worker's apply for a re-judged pair |
-| `internal/artifacts` | Publish without adopting the complete artifact on disk |
-| `internal/httpapi`, `api/openapi.yaml`, generated clients | `startRescan`, `Scan.rescan` |
+| `internal/artifacts` | Forced publish as the next build behind a per-key pointer; readers resolve the pointer |
+| `internal/httpapi`, `api/openapi.yaml`, generated clients | `startRescan`, `Scan.rescan`, the build in artifact URL versions |
 | `web/src/settings`, `web/src/player`, `web/src/shell` | The three controls, confirmation, blocked reason, scope text (R-7) |
 | `docs/design-docs` | New `force-rescan.md`; `duplicate-judging.md` and `auto-tagging.md` updated |
 
@@ -100,11 +100,13 @@ flowchart LR
 ### Forced jobs: the force flag, its propagation and no follow-up processes
 
 **Scope**: `jobs.force` and `domain.Job.Force` ([data-model.md, jobs](data-model.md#jobs));
-`IngestStore.ForceJobs` queues forced `probe`, `thumbnail` and
-`seek_thumbnail` jobs, replacing finished rows, flagging a `queued` row and
-leaving a `running` one; `ApplyProbeForJob` and `SetSeekThumbnailStateForJob`
-copy the flag to the job they queue; a forced seek stage skips
-`queueAfterSeekStage` ([R-2](research.md#r-2-force-travels-on-the-job-not-on-the-stage-states),
+`jobs.force_requested`; `IngestStore.ForceJobs` queues forced `probe`,
+`thumbnail` and `seek_thumbnail` jobs by the existing-row table of R-2;
+`ApplyProbeForJob` and `SetSeekThumbnailStateForJob` propagate the flag by the
+same table; the transactions that finish, fail or recover a row turn
+`force_requested` into a forced row; a forced seek stage skips
+`queueAfterSeekStage` on its result and on its terminal failure
+([R-2](research.md#r-2-force-travels-on-the-job-not-on-the-stage-states),
 [R-5](research.md#r-5-a-forced-seek-stage-queues-no-follow-up-process)).
 `auto-tagging.md`'s trigger table gains the forced case.
 
@@ -112,10 +114,13 @@ copy the flag to the job they queue; a forced seek stage skips
 
 **Acceptance**: Store tests on SQLite (the boundary is the queue's unique
 index and the propagation transaction): `ForceJobs` over a `done` row yields a
-`queued` forced row, over a `queued` row sets its flag, over a `running` row
-changes nothing; a forced probe result queues a forced `preview`; a forced seek
-result queues a forced `fingerprint` and no `auto_tag_queue` or `face_queue`
-row even when the switches are on. `task check SCOPE=go GO_PACKAGES="./internal/store/..."`
+`queued` forced row, over a `queued` row sets its flag, over a forced
+`running` row changes nothing, over an unforced `running` row sets
+`force_requested`, after which completing that row leaves a `queued` forced
+row and `RequeueRunningJobs` leaves the row `queued` and forced; a forced probe
+result queues a forced `preview`; a forced seek result queues a forced
+`fingerprint`, and neither it nor a forced seek job's terminal failure queues
+an `auto_tag_queue` or `face_queue` row even when the switches are on. `task check SCOPE=go GO_PACKAGES="./internal/store/..."`
 passes.
 
 ### Rescan scan rows: scope, resume and issue carry
@@ -141,9 +146,10 @@ pass.
 ### Scanner force mode for the library, a media folder and a video
 
 **Scope**: `Scanner.Rescan(ctx, scope, decider)`: walks the scope's paths,
-recomputes the content key of an unchanged file, queues forced jobs through
-`Queue.ForceJobs` and marks the video, skips videos already forced in the
-scan, removes missing locations only inside the scope and records the manual
+recomputes the content key of an unchanged file, sends a changed file through
+`UpsertVideo` first, then queues forced jobs for every video it reaches
+through `Queue.ForceJobs` and marks the video, skips videos already forced in
+the scan, removes missing locations only inside the scope and records the manual
 scan's issues for a missing or unreadable file of a `video` scope
 ([R-3](research.md#r-3-what-each-scope-walks-removes-and-carries),
 [R-4](research.md#r-4-an-unchanged-file-in-force-mode)).
@@ -154,7 +160,8 @@ follow-up processes; Rescan scan rows: scope, resume and issue carry.
 **Acceptance**: Scanner tests with the fake `Index` and `Queue` the package
 already uses, on a temporary directory (the walk is the boundary): an
 unchanged file gets `ForceJobs` with the three kinds and `MarkForced`; a file
-whose bytes changed under the same size and mtime takes `UpsertVideo`; a video
+whose bytes changed under the same size and mtime, and a file whose mtime alone
+changed, take `UpsertVideo` and then `ForceJobs` for the returned video; a video
 already in `ForcedVideos` gets neither; a `folder` scope leaves the other
 folder's missing location in place and removes the one inside; a `video`
 scope with a missing file reports `changed_during_import` with the video id and
@@ -166,8 +173,13 @@ calls `DeleteVideoLocations` with nothing.
 **Scope**: `Ingest.Thumbnail` generates for a forced job whose state is
 `done`, republishing an applied image or extracting the chosen position
 again; `ArtifactStore.PublishSeekThumbnails` and `PublishPreview` take the
-force flag and skip adoption of the complete artifact
-([R-2](research.md#r-2-force-travels-on-the-job-not-on-the-stage-states)).
+force flag, skip adoption, write the next build and switch the per-key
+pointer; every reader in `internal/artifacts` resolves the pointer and
+`RemoveContent` removes every build; the stage results of a forced job
+increment `videos.*_build`; `internal/httpapi` appends `-b<n>` to the artifact
+URL versions
+([R-2](research.md#r-2-force-travels-on-the-job-not-on-the-stage-states),
+[contracts/screen-api.md](contracts/screen-api.md#client-use)).
 
 **Dependencies**: Forced jobs: the force flag, its propagation and no
 follow-up processes.
@@ -177,9 +189,15 @@ store: a forced thumbnail job on a `done` video with an applied image calls
 `PublishThumbnail` with the image bytes and never the generator; with a
 position calls `ThumbnailAt` at that position; without either calls
 `Thumbnail`. `internal/artifacts` tests on a temporary directory: a forced
-publish over a complete sprite directory calls `write` and replaces the
-directory, the old sheets readable until the rename; an unforced publish over
-it still adopts without `write`. `task check SCOPE=go GO_PACKAGES="./internal/app/... ./internal/artifacts/..."`
+sprite or preview publish over a complete one calls `write`, and inside
+`write` `SeekSprite`, `SeekSpriteSheet`, `PreviewFile` and `PreviewAvailable`
+still return the old build; after it they return the new build and the old
+build's files are gone; a failing `write` leaves the old build current; an
+unforced publish still adopts without `write`. Store tests on SQLite: a forced
+stage result increments its `*_build`, an unforced one does not. HTTP tests:
+a video with `seek_thumbnail_build` 2 has `-b2` in the sprite and sheet URLs,
+and a video with every build 0 keeps today's URLs.
+`task check SCOPE=go GO_PACKAGES="./internal/app/... ./internal/artifacts/... ./internal/store/... ./internal/httpapi/..."`
 passes.
 
 ### Start a force rescan from the screen API
@@ -222,8 +240,11 @@ are the boundary): a forced fingerprint lists a pair bundled by the judge and
 one dismissed by the judge, not a pair the owner bundled, dismissed or
 re-decided after the judgement, and nothing while judging is off; the
 verdicts of the R-6 table on each prior: `same` on a judged bundle changes no
-membership, `different` on it splits the joined side and dismisses, `same` on
-a judged dismissal removes it and bundles. `task check SCOPE=go GO_PACKAGES="./internal/store/..."`
+membership, `different` on it splits the joined side, dismisses and writes no
+`video_version_unbundles` row, so the next forced fingerprint lists the pair
+again; `same` on a judged dismissal removes it and bundles; `undecided`,
+`failed` and `no_connection` on a judged bundle and on a judged dismissal keep
+the membership and the dismissal. `task check SCOPE=go GO_PACKAGES="./internal/store/..."`
 and `task check-docs` pass.
 
 ### Force rescan controls in Settings and on the video page

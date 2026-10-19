@@ -5,8 +5,8 @@ The rest of the model is unchanged:
 
 ## Migration
 
-`00071_force_rescan.sql` adds columns to `scans`, `scan_videos`, `jobs` and
-`video_version_candidates`; it creates no table.
+`00071_force_rescan.sql` adds columns to `scans`, `scan_videos`, `jobs`,
+`videos` and `video_version_candidates`; it creates no table.
 
 ## `scans`
 
@@ -32,6 +32,15 @@ row as history.
 | Field | Type | Null | Meaning |
 | --- | --- | --- | --- |
 | `force` | integer (0/1) | No, default 0 | Regenerate without adopting what is on disk ([R-2](research.md#r-2-force-travels-on-the-job-not-on-the-stage-states)) |
+| `force_requested` | integer (0/1) | No, default 0 | A force arrived while this unforced row was `running`; finishing the row queues a forced row of its kind |
+
+## `videos`
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `thumbnail_build` | integer | No, default 0 | Forced thumbnail rebuilds; appended to the URL version when above 0 ([R-2](research.md#r-2-force-travels-on-the-job-not-on-the-stage-states)) |
+| `seek_thumbnail_build` | integer | No, default 0 | Forced sprite rebuilds; the URL version, and the build the artifact store's pointer names after the job commits |
+| `preview_build` | integer | No, default 0 | Forced preview rebuilds; same as above |
 
 ## `video_version_candidates`
 
@@ -45,8 +54,10 @@ row as history.
 | --- | --- |
 | A `folder` scope has `rescan_folder_id` and `rescan_path`; a `video` scope has `rescan_video_id`; `library` has neither | `ScanStore.StartRescan` |
 | A resumed scan copies the rescan columns from the interrupted scan and its `scan_videos.forced` marks | `ScanStore.ResumeScan` |
-| `force` is copied to the job a result queues: `probe` to `preview`, `seek_thumbnail` to `fingerprint` | `ApplyProbeForJob`, `SetSeekThumbnailStateForJob` |
-| Queuing a forced job over a `queued` row sets its `force`; a `running` row is left as it is | `IngestStore.ForceJobs` |
+| Queuing a forced job over a `queued` row sets its `force`; over an unforced `running` row sets `force_requested`; a forced `running` row is left as it is. A forced result propagates by the same rule, `probe` to `preview` and `seek_thumbnail` to `fingerprint` | `IngestStore.ForceJobs`, `ApplyProbeForJob`, `SetSeekThumbnailStateForJob` |
+| A finished row with `force_requested` queues a forced row of its kind in the same transaction; a row returned to `queued` with it becomes `force` | The job completion, failure and recovery transactions |
+| A forced job's success increments that artifact's `*_build` | The transaction that records the stage's result |
+| The split for a re-judged `different` writes no `video_version_unbundles` row | `ApplyJudgement` |
 | A candidate with `rejudge_of` is claimable although the pair is bundled or dismissed, and is removed once the new verdict is applied | `ClaimJudgement`, `ApplyJudgement` |
 
 ## What does not change
@@ -54,5 +65,6 @@ row as history.
 | Unchanged | Why |
 | --- | --- |
 | `videos.*_state` | Force lives on the job, so the old thumbnail stays visible (R-2) |
+| The artifact paths of build 0 | A video never force-rescanned keeps its files and URLs; only a rebuild adds the build pointer (R-2) |
 | `thumbnail_images`, `video_overrides.thumbnail_position_ms`, tags, bundles the owner made | User data survives a rebuild ([ARCHITECTURE.md](../../ARCHITECTURE.md#cross-cutting-invariants)); the forced thumbnail job reads the image and the position as the ordinary job does |
 | `auto_tag_queue`, `face_queue` | A forced seek stage queues nothing ([R-5](research.md#r-5-a-forced-seek-stage-queues-no-follow-up-process)) |

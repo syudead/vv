@@ -21,6 +21,7 @@ which the unit tests prove only with fakes.
 | During the rebuild, open the library | Cards of videos not yet rebuilt show their previous thumbnail | 8 |
 | `Force rescan` on one media folder's row, confirm | Only that folder's artifact files change | 2 |
 | Video page, `Force rescan` | Only that video's artifact files change, with no dialog | 3 |
+| Stay on that page until the rescan ends, without reloading | The thumbnail, the seek sprite and the hover preview show the rebuilt files, and the `-b<n>` in `thumbnailUrl` is one higher than before | 1, 8 |
 | On a video whose import issue list shows a failed stage, `Force rescan` | The stage runs again, and its issue disappears when it succeeds | 4 |
 | Compare the chosen-position video and the uploaded-image video | The thumbnail shows the same frame; the uploaded image is unchanged | 5 |
 | Open the owner-bundled pair and the hand-tagged video | Bundle and tag are unchanged; the activity log shows no `auto_tag` entry from the rescan | 6, 7 |

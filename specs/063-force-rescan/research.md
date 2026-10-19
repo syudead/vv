@@ -52,13 +52,43 @@ flowchart LR
 | Forced job | Differs from an ordinary job by |
 | --- | --- |
 | `thumbnail` | Generates when the state is `done`; an applied image is republished, a chosen position is extracted again, otherwise the automatic frame |
-| `seek_thumbnail`, `preview` | `internal/artifacts` does not adopt the complete sprite or preview already on disk; it generates under `.tmp` and replaces the published one |
+| `seek_thumbnail`, `preview` | `internal/artifacts` does not adopt the complete sprite or preview already on disk; it builds the next build beside the published one (below) |
 | `probe`, `fingerprint` | Nothing; they always read the source and always write |
 
-A forced flag on a job queued while an ordinary job of the same kind is
-`queued` sets the flag on that row; a `running` job keeps its own behaviour,
-and its result is accepted (edge case: the same video twice does not run
-twice).
+The queue's unique index allows one `queued` or `running` row per kind and
+video, so forcing a kind depends on the row already there. Queuing from the
+scan and propagation from a result follow the same rules.
+
+| Existing row | Forcing it | Edge case it serves |
+| --- | --- | --- |
+| None, `done` or `failed` | A new `queued` row with `force` | Requirement 4: a failed stage runs again |
+| `queued` | Sets `force` on the row | The same video twice does not run twice |
+| `running`, forced | Nothing | Same |
+| `running`, not forced | Sets `force_requested`; the transaction that finishes the row queues a forced row of that kind, and a row that returns to `queued` (a retry, startup recovery) becomes forced | An ordinary thumbnail job skips a `done` state and an ordinary sprite or preview job adopts the one on disk, so its result is not a rebuild |
+
+A forced sprite or preview is published without a moment in which the old one
+is missing, because a read that finds a `done` artifact missing requeues it
+(`Catalog.present`, `SeekThumbnailState`) and the card loses it (requirement
+8). The forced job writes and verifies build `n+1` beside the published build,
+then replaces a per-key pointer file in one rename, then removes build `n`.
+Readers in `internal/artifacts` resolve the pointer (no file is build 0, the
+current layout), so callers keep passing the content key. A read that misses
+the build it resolved resolves the pointer again before it reports the
+artifact missing.
+
+| Rejected | Why |
+| --- | --- |
+| Delete the old artifact, then generate (today's `PublishPreview`) | The preview is missing for the whole encode |
+| Move the old directory aside, rename the new one in, roll back on failure | A read between the two renames finds the sprite missing and requeues it |
+| Pass a build number to every reader | Fingerprinting, judging, auto-tagging, face analysis and the HTTP handlers read by content key; the pointer keeps the change inside `internal/artifacts` |
+
+The artifact URLs carry the content key as their version, which does not
+change on a rebuild, and a mounted `<img>` or a fetched sprite sheet is not
+requested again for the same URL. `videos.thumbnail_build`,
+`seek_thumbnail_build` and `preview_build` count the forced rebuilds: the
+transaction that records a forced job's success increments its column, the
+URL version gains `-b<n>` when it is above 0, and the `video` SSE event then
+hands the screen a new URL.
 
 **Rationale**: Requirement 8 rules out the state reset, and the job row is the
 one value every stage handler and `internal/artifacts` already receives.
@@ -86,21 +116,26 @@ outside the folder describe files the rescan did not read.
 ## R-4: An unchanged file in force mode
 
 **Decision**: In force mode the scanner recomputes the content key of a file
-whose size and modification time are unchanged (requirement 3) and, when the
-key is unchanged, queues forced `probe`, `thumbnail` and `seek_thumbnail` jobs
-and marks the video `forced` in the scan's set; a changed key takes the
-ordinary changed-content path.
+whose size and modification time are unchanged (requirement 3). A file whose
+size, modification time or key differs takes the ordinary path through
+`UpsertVideo` first, which records the location and queues the stages its
+states need. Then every video the walk reaches, unless already forced in this
+scan, gets forced `probe`, `thumbnail` and `seek_thumbnail` jobs and is marked
+`forced` in the scan's set.
 
 ```mermaid
 flowchart LR
-  file[File in scope] --> same{Size and mtime same?}
+  file[File in scope] --> same{Size, mtime and content key same?}
   same -->|no| ordinary[Ordinary ingest]
-  same -->|yes| key{Content key same?}
-  key -->|no| ordinary
-  key -->|yes| marked{Forced in this scan?}
+  same -->|yes| marked{Forced in this scan?}
+  ordinary --> marked
   marked -->|yes| skip[Skip]
   marked -->|no| force[Queue forced jobs, mark forced]
 ```
+
+`UpsertVideo` queues nothing for a file whose modification time alone changed
+(`touch`) or that moved under the same content key, because the video's stage
+states are `done`; forcing after the ordinary path covers those files too.
 
 The `forced` mark is carried into the scan that resumes an interrupted force
 rescan, so the resumed walk skips the videos the interrupted run already
@@ -113,8 +148,9 @@ queued (edge case: restart continues with the remaining videos).
 
 ## R-5: A forced seek stage queues no follow-up process
 
-**Decision**: The transaction that finishes a forced `seek_thumbnail` job
-queues neither auto-tagging nor face analysis.
+**Decision**: The transaction that finishes a forced `seek_thumbnail` job,
+with a result or with a terminal failure (`FailClaimedJob` also calls
+`queueAfterSeekStage`), queues neither auto-tagging nor face analysis.
 
 | Rejected | Why |
 | --- | --- |
@@ -138,6 +174,12 @@ or dismissed. The prior decision stays in force until the new verdict.
 | `same` | Nothing changes; the new entry closes `done`/`same` | The dismissal is removed as the undo removes it, then the pair is bundled |
 | `different` | The joined side leaves as the undo splits it, then the pair is dismissed | Nothing changes; the new entry closes `done`/`different` |
 | Undecided, failed, no connection | Prior decision kept; the new entry shows the reason for the owner | Same |
+
+The split for a re-judged `different` records no `video_version_unbundles`
+row. That row is the owner's protection from automatic bundling and the claim
+skips pairs that have it, so a row written here would keep the next force
+rescan from judging the pair; the automatic dismissal already keeps the pair
+apart. An owner's `Unbundle` still writes the row.
 
 A pair whose prior decision the owner changed since (the undo's hold rules) is
 not listed. Judging off lists nothing: there is no automatic judgement to
