@@ -34,6 +34,16 @@ type FaceAnalysisQueue interface {
 	RequeueRunning(ctx context.Context) (int, error)
 }
 
+// FaceImageStore keeps the vectors of people's face images and applies the face-image rule.
+type FaceImageStore interface {
+	// FaceImage returns the person's face with its stored vector, or ErrNotFound when the person has none.
+	FaceImage(ctx context.Context, personID int64) (domain.FaceImageJob, error)
+	// StaleFaceImage returns a face without a current vector, or ErrNoJob.
+	StaleFaceImage(ctx context.Context) (domain.FaceImageJob, error)
+	// StoreFaceImageVector refuses a job of an older generation with ErrFaceGenerationChanged and writes nothing.
+	StoreFaceImageVector(ctx context.Context, job domain.FaceImageJob, vector []float32) (domain.FaceImageDecision, error)
+}
+
 // FaceHelper detects the faces of one frame with their vectors; it starts the helper process on first use.
 type FaceHelper interface {
 	Detect(ctx context.Context, req faceproto.DetectRequest) (faceproto.Detections, error)
@@ -63,6 +73,7 @@ type MediaFileResolver interface {
 
 type FaceRecognizerOptions struct {
 	Queue    FaceAnalysisQueue
+	Images   FaceImageStore
 	Settings FaceSettingsReader
 	Runtime  FaceRuntimeState
 	// Helper returns a client of the recognizer's helper.
@@ -79,6 +90,7 @@ type FaceRecognizerOptions struct {
 // docs/design-docs/face-recognition.md.
 type FaceRecognizer struct {
 	queue        FaceAnalysisQueue
+	images       FaceImageStore
 	settings     FaceSettingsReader
 	runtime      FaceRuntimeState
 	newHelper    func(domain.FaceRecognizer) FaceHelper
@@ -91,6 +103,11 @@ type FaceRecognizer struct {
 	mu sync.Mutex
 	// run is the worker's current attempt, from before it reads the settings until the video ends.
 	run *faceRun
+	// pending holds people whose face changed or was named since; the worker applies their face before the next video.
+	pending map[int64]bool
+
+	// checking lets one upload check run a helper at a time.
+	checking sync.Mutex
 
 	// helper is used by the worker goroutine only.
 	helper           FaceHelper
@@ -112,10 +129,10 @@ func NewFaceRecognizer(opts FaceRecognizerOptions) *FaceRecognizer {
 		logger = slog.Default()
 	}
 	return &FaceRecognizer{
-		queue: opts.Queue, settings: opts.Settings, runtime: opts.Runtime, newHelper: opts.Helper,
+		queue: opts.Queue, images: opts.Images, settings: opts.Settings, runtime: opts.Runtime, newHelper: opts.Helper,
 		frames: opts.Frames, mediaFolders: opts.MediaFolders, mediaFiles: opts.MediaFiles,
 		logger: logger.With(slog.String("component", "face-recognition")),
-		wake:   make(chan struct{}, 1),
+		wake:   make(chan struct{}, 1), pending: map[int64]bool{},
 	}
 }
 
@@ -137,6 +154,18 @@ func (f *FaceRecognizer) SettingsChanged(settings domain.FaceSettings) {
 	}
 	f.mu.Unlock()
 	f.Wake()
+}
+
+// PersonImageChanged has the worker embed the person's face, or apply it again after a naming, before the next video.
+func (f *FaceRecognizer) PersonImageChanged(event domain.PersonImageChanged) {
+	f.pend(event.PersonID)
+	f.Wake()
+}
+
+func (f *FaceRecognizer) pend(personID int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.pending[personID] = true
 }
 
 // VideoImagesFinished only wakes the worker: the transaction that finishes the seek stage queued the video.
@@ -254,6 +283,9 @@ func (f *FaceRecognizer) step(ctx context.Context) faceStep {
 	if !settings.Enabled || f.runtime.Status(settings.Recognizer).State != domain.FaceRuntimeReady {
 		return faceIdle
 	}
+	if step, ok := f.embedNext(run, settings); ok {
+		return step
+	}
 	job, err := f.queue.Claim(run)
 	if errors.Is(err, domain.ErrNoJob) {
 		return faceIdle
@@ -363,7 +395,9 @@ func (f *FaceRecognizer) analyse(ctx context.Context, job domain.FaceJob) (domai
 	helper := f.helperFor(job.Recognizer)
 	video := newFaceVideo(spec.Thresholds)
 	err = f.frames(ctx, path, func(pix []byte) error {
-		faces, err := detectFaces(ctx, helper, pix)
+		faces, err := detectFaces(ctx, helper, faceproto.DetectRequest{
+			Width: domain.FaceFrameSide, Height: domain.FaceFrameSide, Pix: pix,
+		})
 		if err != nil {
 			return err
 		}
@@ -397,12 +431,10 @@ func (f *FaceRecognizer) resolve(ctx context.Context, paths []string) (string, e
 	return "", fmt.Errorf("cannot open the video's file: %w", errors.Join(errs...))
 }
 
-func detectFaces(ctx context.Context, helper FaceHelper, pix []byte) ([]domain.FaceDetection, error) {
+func detectFaces(ctx context.Context, helper FaceHelper, req faceproto.DetectRequest) ([]domain.FaceDetection, error) {
 	frameCtx, cancel := context.WithTimeout(ctx, faceDetectTimeout)
 	defer cancel()
-	d, err := helper.Detect(frameCtx, faceproto.DetectRequest{
-		Width: domain.FaceFrameSide, Height: domain.FaceFrameSide, Pix: pix,
-	})
+	d, err := helper.Detect(frameCtx, req)
 	if err != nil {
 		if ctx.Err() == nil && errors.Is(err, context.DeadlineExceeded) {
 			return nil, fmt.Errorf("the face helper did not answer a frame within %s", faceDetectTimeout)

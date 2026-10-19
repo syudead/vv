@@ -277,7 +277,8 @@ func run(opts runOptions) error {
 			autoTagger.VideoImagesFinished(backgroundCtx, videoID)
 			faces.analysis.VideoImagesFinished(backgroundCtx, videoID)
 		},
-		VersionJudge: versionJudge,
+		VersionJudge:       versionJudge,
+		PersonImageChanged: faces.analysis.PersonImageChanged,
 	})
 	checksCtx, stopChecks := context.WithCancel(backgroundCtx)
 	defer stopChecks()
@@ -356,7 +357,7 @@ func run(opts runOptions) error {
 	// Close the plugin runtime after HTTP stops and before the database closes; read proxy settings
 	// per execution so changes apply immediately.
 	pluginProxy := app.NewWorkInfoPluginProxy(settingsStore)
-	personImages := app.NewPersonImages(db.Credits(), ingest)
+	personImages := app.NewPersonImages(db.Credits(), ingest, faces.analysis)
 	workInfoPlugins, closeWorkInfoPlugins := newWorkInfoPlugins(context.Background(), db, pluginProxy, ingest, personImages, logger)
 	defer closeWorkInfoPlugins()
 	handler := httpapi.NewRouter(httpapi.Options{

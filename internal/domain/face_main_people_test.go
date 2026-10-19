@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"math"
 	"testing"
 )
@@ -19,6 +20,31 @@ func goodFace(x, y float64, vec []float32) FaceDetection {
 		Landmarks: [10]float64{x + 20, y + 30, x + 60, y + 30, x + 40, y + 50, x + 25, y + 65, x + 55, y + 65},
 		Score:     0.95,
 		Vector:    vec,
+	}
+}
+
+func TestFaceImageVectorTakesTheOnlyGoodFace(t *testing.T) {
+	a, b := faceAxis(0, 1, 0), faceAxis(2, 3, 0)
+	tiny := goodFace(600, 100, b)
+	tiny.Box.W = 20
+	for _, tc := range []struct {
+		name  string
+		faces []FaceDetection
+		want  []float32
+		err   error
+	}{
+		{"no face", nil, nil, ErrPersonImageNoFace},
+		{"only a small face", []FaceDetection{tiny}, nil, ErrPersonImageNoFace},
+		{"one good face beside a small one", []FaceDetection{goodFace(100, 100, a), tiny}, a, nil},
+		{"two good faces", []FaceDetection{goodFace(100, 100, a), goodFace(600, 100, b)}, nil, ErrPersonImageManyFaces},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := FaceImageVector(tc.faces)
+			if !errors.Is(err, tc.err) || (got == nil) != (tc.want == nil) ||
+				(tc.want != nil && FaceSimilarity(got, tc.want) < 0.999) {
+				t.Fatalf("FaceImageVector = %v, %v; want %v, %v", got, err, tc.want, tc.err)
+			}
+		})
 	}
 }
 

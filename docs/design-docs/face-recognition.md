@@ -342,7 +342,43 @@ person, that person is merged into them; two or more at `Merge`, and every
 provisional person from `Candidate` up, are candidates
 ([`DecideFaceImageMerge`](../../internal/domain/face_match.go)). A provisional
 person's own face merges nobody, so provisional people never merge into each
-other on their own.
+other on their own. A provisional person whose pair with the named person the
+owner dismissed is neither merged nor counted.
+
+The face worker embeds faces between videos
+([`face_images.go`](../../internal/app/face_images.go)). A face's vector is the
+vector of its only good face, by the quality gate of video faces; a face with
+none or several gets a null vector. `PersonImageChanged`, published after the
+commit that sets, replaces or brings a face by a merge, or names a provisional
+person with a face, wakes the worker for that person; the worker also takes any
+face whose `person_face_vectors` row is missing or of another revision or
+recognizer, so a lost event or a recognizer switch still leads to a vector.
+
+| Step | Rule |
+| --- | --- |
+| Read | The face, its stored vector, the recognizer and `face.generation`, in one read |
+| Embed | Skipped when the stored vector is current, as after a naming; one helper request, at most 2 minutes, on the video's helper |
+| Store | `FaceStore.StoreFaceImageVector`, in one transaction: refuses an older generation with `ErrFaceGenerationChanged`, writes nothing for a face changed since, writes the vector, then applies the rule above and merges as a `face_merge` entry ([An automatic merge can be undone](#an-automatic-merge-can-be-undone)) |
+
+| Event | Effect |
+| --- | --- |
+| The settings change during the embedding, or the vector reaches `Store` after a switch | The face is read again under the new settings |
+| The helper does not start | The face waits until the runtime is ready again |
+| The helper exits, answers with an error or takes over 2 minutes | A null vector, as for a face without a good face; the face is not embedded again until it changes |
+| A database error | The worker tries again after 5 seconds |
+
+While the feature is on and its runtime is `ready`, `PUT /api/people/{id}/image`
+detects the faces of the fitted image before storing it, and refuses an image
+without a good face with `400 person_image_no_face` and one with several with
+`400 person_image_many_faces`. The check starts its own helper, one check at a
+time, so a running video goes on; when the helper cannot answer, the face is
+stored unchecked. Plugin faces are not checked.
+
+| Rejected | Why |
+| --- | --- |
+| Embedding inside the upload request | Plugin and merge faces are stored after their own commits, and the worker's helper may be in a video |
+| Embedding only the faces named by events | An event is lost when the server stops before the worker runs, and a recognizer switch publishes none; the stale rows are read from the database |
+| Sharing the worker's helper with the upload check | The worker stops its helper when idle, and a request from another goroutine would start a process nobody stops |
 
 ## The cast rule merges only one-to-one pairs
 

@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"image"
+	"image/png"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,8 +20,8 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// The face worker turns frames into main people and the store matches them to people, so the parent Issue's
-// acceptance 2 and 3 cross both; frames and the helper are fakes scripted per video.
+// The face worker turns frames and faces into vectors and the store matches them to people, so the parent Issue's
+// acceptance 2, 3 and 4 cross both; frames and the helper are fakes scripted per video.
 
 // faceScripts lists, per video file, the sampled frames that show the one face. A and B show it in two tracks of
 // 10 s; C shows it in one track of 1 s.
@@ -52,17 +56,18 @@ func scriptedFaceFrames(_ context.Context, path string, each func([]byte) error)
 	return nil
 }
 
+// scriptedFaceHelper shows the one face in the scripted frames and in every face image.
 type scriptedFaceHelper struct{}
 
 func (scriptedFaceHelper) Detect(_ context.Context, req faceproto.DetectRequest) (faceproto.Detections, error) {
-	if !faceScripts[faceVideos[req.Pix[0]]](int(req.Pix[1])) {
+	if req.Width == domain.FaceFrameSide && !faceScripts[faceVideos[req.Pix[0]]](int(req.Pix[1])) {
 		return faceproto.Detections{}, nil
 	}
 	vector := make([]float32, 128)
 	vector[0] = 1
 	return faceproto.Detections{Faces: []faceproto.Detection{{
-		X: 500, Y: 300, W: 100, H: 100, Score: 0.95, Vector: vector,
-		Landmarks: [10]float32{530, 330, 570, 330, 550, 350, 535, 375, 565, 375},
+		X: 50, Y: 30, W: 100, H: 100, Score: 0.95, Vector: vector,
+		Landmarks: [10]float32{80, 60, 120, 60, 100, 80, 85, 105, 115, 105},
 	}}}, nil
 }
 
@@ -91,7 +96,33 @@ func (q idleFaceQueue) Claim(ctx context.Context) (domain.FaceJob, error) {
 	return job, err
 }
 
-func TestFaceAnalysisLinksOneProvisionalPersonToBothVideosAndIgnoresAShortFace(t *testing.T) {
+// faceAnalysisFixture is the store with the scripted videos queued, and a worker that has analysed them.
+type faceAnalysisFixture struct {
+	db         *store.DB
+	recognizer *app.FaceRecognizer
+	queue      idleFaceQueue
+	images     *storedFaceImages
+}
+
+// storedFaceImages reports each face image vector the worker stored.
+type storedFaceImages struct {
+	*store.FaceStore
+	stored chan int64
+}
+
+func (s *storedFaceImages) StoreFaceImageVector(ctx context.Context, job domain.FaceImageJob, vector []float32) (
+	domain.FaceImageDecision, error,
+) {
+	decision, err := s.FaceStore.StoreFaceImageVector(ctx, job, vector)
+	if err == nil {
+		s.stored <- job.PersonID
+	}
+	return decision, err
+}
+
+// newFaceAnalysisFixture analyses the scripted videos; the worker keeps running until the test ends.
+func newFaceAnalysisFixture(t *testing.T) faceAnalysisFixture {
+	t.Helper()
 	ctx := context.Background()
 	db, err := store.OpenMigratedForTest(t.TempDir())
 	if err != nil {
@@ -118,54 +149,111 @@ func TestFaceAnalysisLinksOneProvisionalPersonToBothVideosAndIgnoresAShortFace(t
 	}); err != nil {
 		t.Fatal(err)
 	}
-	queue := idleFaceQueue{FaceStore: db.Faces(), idle: make(chan struct{}, 1)}
-	recognizer := app.NewFaceRecognizer(app.FaceRecognizerOptions{
-		Queue: queue, Settings: db.Settings(), Runtime: readyFaceRuntime{},
+	f := faceAnalysisFixture{
+		db: db, queue: idleFaceQueue{FaceStore: db.Faces(), idle: make(chan struct{}, 1)},
+		images: &storedFaceImages{FaceStore: db.Faces(), stored: make(chan int64, 16)},
+	}
+	f.recognizer = app.NewFaceRecognizer(app.FaceRecognizerOptions{
+		Queue: f.queue, Images: f.images, Settings: db.Settings(), Runtime: readyFaceRuntime{},
 		Helper: func(domain.FaceRecognizer) app.FaceHelper { return scriptedFaceHelper{} },
 		Frames: scriptedFaceFrames, MediaFolders: db.Settings(), MediaFiles: mediafs.New(),
 	})
-	if n, err := recognizer.QueueLibrary(ctx, domain.FaceQueueMissing); err != nil || n != 3 {
+	if n, err := f.recognizer.QueueLibrary(ctx, domain.FaceQueueMissing); err != nil || n != 3 {
 		t.Fatalf("QueueLibrary = %d, %v; want 3", n, err)
 	}
 	runCtx, stop := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		recognizer.Run(runCtx)
+		f.recognizer.Run(runCtx)
 	}()
-	<-queue.idle
-	stop()
-	<-done
+	t.Cleanup(func() {
+		stop()
+		<-done
+	})
+	<-f.queue.idle
+	return f
+}
 
-	provisional := true
-	page, err := db.Credits().List(ctx, domain.CreditPerson, domain.CreditQuery{Provisional: &provisional})
+func performersOf(t *testing.T, db *store.DB, keys ...string) map[string][]int64 {
+	t.Helper()
+	info, err := db.WorkInfo().ByUserKeys(context.Background(), keys)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page.Items) != 1 {
-		t.Fatalf("provisional people = %+v, want one for the face of A and B", page.Items)
-	}
-	person := page.Items[0].ID
-	info, err := db.WorkInfo().ByUserKeys(ctx, []string{"key-a.mp4", "key-b.mp4", "key-c.mp4"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for key, linked := range map[string]bool{"key-a.mp4": true, "key-b.mp4": true, "key-c.mp4": false} {
-		var performers, want []int64
-		if linked {
-			want = []int64{person}
-		}
+	out := map[string][]int64{}
+	for _, key := range keys {
 		for _, p := range info[key].People {
 			if p.Role == domain.PersonPerformer {
-				performers = append(performers, p.Person.ID)
+				out[key] = append(out[key], p.Person.ID)
 			}
 		}
-		if !slices.Equal(performers, want) {
-			t.Fatalf("performers of %s = %v, want %v", key, performers, want)
-		}
 	}
-	counts, err := db.Faces().Counts(ctx)
+	return out
+}
+
+func provisionalPeople(t *testing.T, db *store.DB) []int64 {
+	t.Helper()
+	provisional := true
+	page, err := db.Credits().List(context.Background(), domain.CreditPerson, domain.CreditQuery{Provisional: &provisional})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ids []int64
+	for _, p := range page.Items {
+		ids = append(ids, p.ID)
+	}
+	return ids
+}
+
+func TestFaceAnalysisLinksOneProvisionalPersonToBothVideosAndIgnoresAShortFace(t *testing.T) {
+	f := newFaceAnalysisFixture(t)
+	people := provisionalPeople(t, f.db)
+	if len(people) != 1 {
+		t.Fatalf("provisional people = %v, want one for the face of A and B", people)
+	}
+	got := performersOf(t, f.db, "key-a.mp4", "key-b.mp4", "key-c.mp4")
+	if want := map[string][]int64{"key-a.mp4": people, "key-b.mp4": people}; !maps.EqualFunc(got, want, slices.Equal) {
+		t.Fatalf("performers = %v, want %v", got, want)
+	}
+	counts, err := f.db.Faces().Counts(context.Background())
 	if err != nil || counts.Done != 3 {
 		t.Fatalf("counts = %+v, %v; want all three videos done", counts, err)
+	}
+}
+
+// Acceptance 4: the owner's photo of a named person merges the provisional person of A and B into them, through the
+// face event and the worker.
+func TestAFaceImageMergesTheProvisionalPersonOfBothVideos(t *testing.T) {
+	ctx := context.Background()
+	f := newFaceAnalysisFixture(t)
+	bus := newTestBus()
+	subscriptions := subscribeEvents(bus, eventSubscribers{PersonImageChanged: f.recognizer.PersonImageChanged})
+	t.Cleanup(subscriptions.StopWorkers)
+	f.db.PublishTo(bus)
+	named, err := f.db.Credits().Create(ctx, domain.CreditPerson, domain.CreditInput{Name: "Named"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var photo bytes.Buffer
+	if err := png.Encode(&photo, image.NewRGBA(image.Rect(0, 0, 300, 200))); err != nil {
+		t.Fatal(err)
+	}
+	uploads := app.NewPersonImages(f.db.Credits(), app.NewIngest(app.IngestOptions{}), f.recognizer)
+	if _, err := uploads.UploadPersonImage(ctx, named.ID, photo.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	for id := range f.images.stored {
+		if id == named.ID {
+			break
+		}
+	}
+
+	if people := provisionalPeople(t, f.db); len(people) != 0 {
+		t.Fatalf("provisional people = %v, want the face's merged", people)
+	}
+	got := performersOf(t, f.db, "key-a.mp4", "key-b.mp4")
+	if want := map[string][]int64{"key-a.mp4": {named.ID}, "key-b.mp4": {named.ID}}; !maps.EqualFunc(got, want, slices.Equal) {
+		t.Fatalf("performers = %v, want the named person in both", got)
 	}
 }
