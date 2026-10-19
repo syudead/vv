@@ -115,6 +115,84 @@ protocol.
 | onnxruntime and Debian packages fetched by `mdm` | `mdm-face` still has to come from vv, and unpacking `.deb` files adds a format the server needs nowhere else |
 | A runtime per vv release | Nightly and development builds would have nothing to download |
 
+## The runtime is downloaded only when the feature is on
+
+`mdm` pins the URL and SHA-256 of each platform's runtime archive and of each
+model in code
+([`internal/faceruntime`](../../internal/faceruntime/catalog.go)), and
+downloads them only when the owner turns face recognition on, or asks to
+download again after a failure. The models come from their upstream Hugging
+Face repositories, each URL pinned to a commit.
+
+| File | Source | Size |
+| --- | --- | --- |
+| Runtime archive | The `face-runtime-v1` release (`linux-amd64`, `linux-arm64`, `windows-amd64`) | 5.9 to 11.6 MB |
+| YuNet 2023mar | `opencv/face_detection_yunet` (MIT) | 0.2 MB |
+| SFace 2021dec int8 | `opencv/face_recognition_sface` (Apache-2.0) | 9.9 MB |
+| ArcFace r50 | `immich-app/buffalo_l`, `recognition/model.onnx` (InsightFace, non-commercial) | 174 MB |
+
+A recognizer needs the runtime, YuNet and its own model. Each file is written
+under `<data>/face/.tmp/`, which a download empties first, and moved into
+place only when its hash matches: the archive is unpacked into
+`<data>/face/runtime-v<N>/` and must then hold exactly the files whose hashes
+`mdm` pins for that archive, with the execute bit on the loader and `mdm-face`
+on Linux, and the models go to `<data>/face/models/`. Downloads use the process's proxy environment
+(`HTTPS_PROXY`), because the plugin proxy is chosen for plugin traffic only.
+
+The download state is not stored. At startup `mdm` hashes the files against
+the pins built into it, and `GET /api/settings/face-recognition` reports
+the state of what the chosen recognizer needs; the settings page reads the
+progress from the same resource while downloading.
+
+A recognizer is `ready` only when its files match their pins and its helper
+has greeted for those files in this process. Files that all match at startup
+count as greeted, so startup starts no helper. `mdm` keeps the last helper
+outcome of each recognizer separately in memory, so choosing another
+recognizer leaves a `failed` one failed, and choosing it again starts its
+helper again.
+
+The diagram shows the states of one recognizer's files.
+
+```mermaid
+stateDiagram-v2
+  [*] --> unsupported: no archive for this platform
+  [*] --> absent: a file missing
+  [*] --> ready: every file matches
+  [*] --> failed: a file differs (hash_mismatch)
+  absent --> downloading: turned on
+  failed --> downloading: download again, turned on, or chosen again
+  downloading --> ready: hashes match and the helper greets
+  downloading --> failed: network, hash_mismatch, disk, helper_start
+  downloading --> absent: turned off
+```
+
+| Event | Effect |
+| --- | --- |
+| Turning the feature on, or switching the recognizer while on | Downloads what the recognizer needs that is missing or differs; a download for the other recognizer is cancelled |
+| Turning the feature off | Cancels a running download; the files already verified stay, and a recognizer whose helper had not greeted is `absent` until the next start probes it |
+| Startup while on | Resumes a download only when files are missing; a file that differs stays `failed` until the owner downloads again |
+| A download ends | The helper is started once: a `Hello` of another protocol version, or no `Hello`, is `helper_start` |
+| Any helper start | The runtime and the recognizer's models are hashed against their pins again first; a helper whose files no longer match is not started and is `hash_mismatch` |
+| Any download start, downloading again included | The files the recognizer needs are hashed again rather than taken from an earlier check, so a file deleted or changed since then is downloaded again |
+| Any start of a recognizer whose helper has not greeted, with no file missing | The helper is started once again instead of the state turning `ready` unchecked: after a failure, a cancelled handshake, or switching back to a recognizer that failed |
+| A recognizer switch | Increases `face.generation` in the settings' transaction |
+
+On Linux `mdm` starts `runtime-v<N>/lib/<loader> --library-path
+runtime-v<N>/lib runtime-v<N>/mdm-face`; on Windows it starts `mdm-face.exe`
+with `CREATE_NO_WINDOW`, through the same command builder as `ffmpeg`. The
+helper gets half of the CPU cores, at least one, for onnxruntime's threads, so
+playback and live transcoding keep the rest. The client starts the helper on
+its first request; a helper whose stream breaks fails that request and is
+started again on the next one, and a cancelled request stops it.
+
+| Rejected | Why |
+| --- | --- |
+| Storing the download state in the settings | It would disagree with the files after a crash or a deleted folder; the hashes are the state |
+| Keeping the runtime archive to verify it at startup | It doubles the disk use; the per-file pins built into `mdm` verify the unpacked files |
+| A hash manifest written into the runtime folder | Anyone who can write the folder could replace `mdm-face` and its hash together; the trust root must be the `mdm` binary |
+| Starting the helper from a file descriptor or an immutable copy of the verified files | A short window between the check and the start remains, but a writer of the data folder as the service user can already change the database and settings |
+| Downloading again at startup a file that differs | The owner would not see that a file broke; the settings page shows `failed` and offers the download |
+
 ## From faces to people
 
 `mdm` turns the helper's faces into people with the rules below, one video at

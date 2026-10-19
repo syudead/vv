@@ -636,6 +636,8 @@ const (
 	ErrorReasonEncoderUnavailable            ErrorReason = "encoder_unavailable"
 	ErrorReasonExternalIdTaken               ErrorReason = "external_id_taken"
 	ErrorReasonFaceCandidateNotFound         ErrorReason = "face_candidate_not_found"
+	ErrorReasonFaceRecognitionOff            ErrorReason = "face_recognition_off"
+	ErrorReasonFaceRecognitionUnsupported    ErrorReason = "face_recognition_unsupported"
 	ErrorReasonFileUnavailable               ErrorReason = "file_unavailable"
 	ErrorReasonFolderNotFound                ErrorReason = "folder_not_found"
 	ErrorReasonGroupCycle                    ErrorReason = "group_cycle"
@@ -746,6 +748,10 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonExternalIdTaken:
 		return true
 	case ErrorReasonFaceCandidateNotFound:
+		return true
+	case ErrorReasonFaceRecognitionOff:
+		return true
+	case ErrorReasonFaceRecognitionUnsupported:
 		return true
 	case ErrorReasonFileUnavailable:
 		return true
@@ -894,6 +900,75 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonWorkInfoTooMany:
 		return true
 	case ErrorReasonWorkflowRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FaceRecognizer.
+const (
+	ArcfaceR50 FaceRecognizer = "arcface_r50"
+	SfaceInt8  FaceRecognizer = "sface_int8"
+)
+
+// Valid indicates whether the value is a known member of the FaceRecognizer enum.
+func (e FaceRecognizer) Valid() bool {
+	switch e {
+	case ArcfaceR50:
+		return true
+	case SfaceInt8:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FaceRuntimeReason.
+const (
+	Disk         FaceRuntimeReason = "disk"
+	HashMismatch FaceRuntimeReason = "hash_mismatch"
+	HelperStart  FaceRuntimeReason = "helper_start"
+	Network      FaceRuntimeReason = "network"
+)
+
+// Valid indicates whether the value is a known member of the FaceRuntimeReason enum.
+func (e FaceRuntimeReason) Valid() bool {
+	switch e {
+	case Disk:
+		return true
+	case HashMismatch:
+		return true
+	case HelperStart:
+		return true
+	case Network:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FaceRuntimeState.
+const (
+	FaceRuntimeStateAbsent      FaceRuntimeState = "absent"
+	FaceRuntimeStateDownloading FaceRuntimeState = "downloading"
+	FaceRuntimeStateFailed      FaceRuntimeState = "failed"
+	FaceRuntimeStateReady       FaceRuntimeState = "ready"
+	FaceRuntimeStateUnsupported FaceRuntimeState = "unsupported"
+)
+
+// Valid indicates whether the value is a known member of the FaceRuntimeState enum.
+func (e FaceRuntimeState) Valid() bool {
+	switch e {
+	case FaceRuntimeStateAbsent:
+		return true
+	case FaceRuntimeStateDownloading:
+		return true
+	case FaceRuntimeStateFailed:
+		return true
+	case FaceRuntimeStateReady:
+		return true
+	case FaceRuntimeStateUnsupported:
 		return true
 	default:
 		return false
@@ -3133,6 +3208,70 @@ type FaceCandidatePerson struct {
 	Provisional bool `json:"provisional"`
 }
 
+// FaceRecognitionCounts Face analysis queue rows (content keys) by state.
+type FaceRecognitionCounts struct {
+	Done    int `json:"done"`
+	Failed  int `json:"failed"`
+	Queued  int `json:"queued"`
+	Running int `json:"running"`
+}
+
+// FaceRecognitionSettings Face recognition settings, the runtime state and the analysis queue counts; see docs/design-docs/face-recognition.md.
+type FaceRecognitionSettings struct {
+	// Counts Face analysis queue rows (content keys) by state.
+	Counts FaceRecognitionCounts `json:"counts"`
+
+	// Enabled Off by default; while off nothing is downloaded and no video is analysed.
+	Enabled bool `json:"enabled"`
+
+	// LastFailure The latest failed analysis's message in English; omitted if none.
+	LastFailure *string `json:"lastFailure,omitempty"`
+
+	// Recognizer Recognizer that turns a face into a vector: sface_int8 (SFace 2021dec int8, the default) or arcface_r50 (InsightFace buffalo_l, non-commercial use only).
+	Recognizer  FaceRecognizer         `json:"recognizer"`
+	Recognizers []FaceRecognizerOption `json:"recognizers"`
+
+	// Runtime The runtime and model files the chosen recognizer needs.
+	Runtime FaceRuntime `json:"runtime"`
+}
+
+// FaceRecognizer Recognizer that turns a face into a vector: sface_int8 (SFace 2021dec int8, the default) or arcface_r50 (InsightFace buffalo_l, non-commercial use only).
+type FaceRecognizer string
+
+// FaceRecognizerOption defines model for FaceRecognizerOption.
+type FaceRecognizerOption struct {
+	// DownloadBytes Size of the recognizer's model.
+	DownloadBytes int64 `json:"downloadBytes"`
+
+	// Id Recognizer that turns a face into a vector: sface_int8 (SFace 2021dec int8, the default) or arcface_r50 (InsightFace buffalo_l, non-commercial use only).
+	Id FaceRecognizer `json:"id"`
+
+	// License SPDX license id, or non-commercial.
+	License       string `json:"license"`
+	NonCommercial bool   `json:"nonCommercial"`
+}
+
+// FaceRuntime The runtime and model files the chosen recognizer needs.
+type FaceRuntime struct {
+	// BytesDone Present while downloading.
+	BytesDone *int64 `json:"bytesDone,omitempty"`
+
+	// BytesTotal Present while downloading.
+	BytesTotal *int64 `json:"bytesTotal,omitempty"`
+
+	// Reason Present when failed.
+	Reason *FaceRuntimeReason `json:"reason,omitempty"`
+
+	// State unsupported: no runtime is published for this platform.
+	State FaceRuntimeState `json:"state"`
+}
+
+// FaceRuntimeReason Present when failed.
+type FaceRuntimeReason string
+
+// FaceRuntimeState unsupported: no runtime is published for this platform.
+type FaceRuntimeState string
+
 // FavoritesRequest defines model for FavoritesRequest.
 type FavoritesRequest struct {
 	// Favorite True adds favorites; false removes them.
@@ -4889,6 +5028,14 @@ type UpdateComfyUISettingsRequest struct {
 	Url *string `json:"url,omitempty"`
 }
 
+// UpdateFaceRecognitionSettingsRequest defines model for UpdateFaceRecognitionSettingsRequest.
+type UpdateFaceRecognitionSettingsRequest struct {
+	Enabled bool `json:"enabled"`
+
+	// Recognizer sface_int8 or arcface_r50; another value returns 400 invalid_request.
+	Recognizer string `json:"recognizer"`
+}
+
 // UpdateMediaFolderRequest defines model for UpdateMediaFolderRequest.
 type UpdateMediaFolderRequest struct {
 	Path    string `json:"path"`
@@ -6505,6 +6652,9 @@ type UpdateAutoTaggingSettingsJSONRequestBody = UpdateAutoTaggingSettingsRequest
 // UpdateComfyUISettingsJSONRequestBody defines body for UpdateComfyUISettings for application/json ContentType.
 type UpdateComfyUISettingsJSONRequestBody = UpdateComfyUISettingsRequest
 
+// UpdateFaceRecognitionSettingsJSONRequestBody defines body for UpdateFaceRecognitionSettings for application/json ContentType.
+type UpdateFaceRecognitionSettingsJSONRequestBody = UpdateFaceRecognitionSettingsRequest
+
 // UpdateNetworkSettingsJSONRequestBody defines body for UpdateNetworkSettings for application/json ContentType.
 type UpdateNetworkSettingsJSONRequestBody = UpdateNetworkSettingsRequest
 
@@ -6660,6 +6810,9 @@ type ServerInterface interface {
 	// GetFaceAppearanceCrop Return a face appearance's crop
 	// (GET /api/face-appearances/{id}/crop)
 	GetFaceAppearanceCrop(w http.ResponseWriter, r *http.Request, id int64)
+	// DownloadFaceRuntime Download the face runtime and the recognizer's model again
+	// (POST /api/face-recognition/download)
+	DownloadFaceRuntime(w http.ResponseWriter, r *http.Request)
 	// UpdateFavorites Set or clear favorites on videos and groups
 	// (PUT /api/favorites)
 	UpdateFavorites(w http.ResponseWriter, r *http.Request)
@@ -6867,6 +7020,12 @@ type ServerInterface interface {
 	// CheckComfyUI Check the saved ComfyUI connection
 	// (POST /api/settings/comfyui/check)
 	CheckComfyUI(w http.ResponseWriter, r *http.Request)
+	// GetFaceRecognitionSettings Return face recognition settings, the runtime state and queue counts
+	// (GET /api/settings/face-recognition)
+	GetFaceRecognitionSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateFaceRecognitionSettings Save face recognition settings
+	// (PUT /api/settings/face-recognition)
+	UpdateFaceRecognitionSettings(w http.ResponseWriter, r *http.Request)
 	// GetNetworkSettings Return LAN access settings and available addresses
 	// (GET /api/settings/network)
 	GetNetworkSettings(w http.ResponseWriter, r *http.Request)
@@ -7584,6 +7743,20 @@ func (siw *ServerInterfaceWrapper) GetFaceAppearanceCrop(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetFaceAppearanceCrop(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadFaceRuntime operation middleware
+func (siw *ServerInterfaceWrapper) DownloadFaceRuntime(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadFaceRuntime(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9949,6 +10122,34 @@ func (siw *ServerInterfaceWrapper) CheckComfyUI(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CheckComfyUI(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFaceRecognitionSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetFaceRecognitionSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFaceRecognitionSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateFaceRecognitionSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateFaceRecognitionSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateFaceRecognitionSettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -13248,6 +13449,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/auto-tagging", wrapper.UpdateAutoTaggingSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/version-judging", wrapper.GetVersionJudgingSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/version-judging", wrapper.UpdateVersionJudgingSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/face-recognition", wrapper.GetFaceRecognitionSettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/face-recognition", wrapper.UpdateFaceRecognitionSettings)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/face-recognition/download", wrapper.DownloadFaceRuntime)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auto-tagging/check", wrapper.CheckAutoTaggingClassifier)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auto-tagging/runs", wrapper.StartAutoTagging)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/api-tokens", wrapper.ListApiTokens)

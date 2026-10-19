@@ -13,3 +13,9 @@ func command(ctx context.Context, name string, args ...string) *exec.Cmd {
 	applyProcessAttributes(cmd)
 	return cmd
 }
+
+// Command builds a child process with this package's OS-specific settings, for other adapters that start
+// helpers, such as the face runtime's.
+func Command(ctx context.Context, name string, args ...string) *exec.Cmd {
+	return command(ctx, name, args...)
+}

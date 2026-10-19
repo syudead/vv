@@ -1805,6 +1805,63 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/settings/face-recognition:
+    get:
+      operationId: getFaceRecognitionSettings
+      summary: "Return face recognition settings, the runtime state and queue counts"
+      description: "Owner-only. The runtime state is read from the files under the data folder and the running download, never stored; while downloading, poll this resource for the progress. See docs/design-docs/face-recognition.md."
+      responses:
+        "200":
+          description: "Current settings, runtime state and queue counts"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaceRecognitionSettings"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      operationId: updateFaceRecognitionSettings
+      summary: "Save face recognition settings"
+      description: "Owner-only. Turning it on starts the download of the runtime and the recognizer's model when they are absent or do not match their hashes; turning it off cancels a running download. A changed recognizer increases face.generation. An unknown recognizer returns 400 invalid_request."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFaceRecognitionSettingsRequest"
+      responses:
+        "200":
+          description: "Saved settings, runtime state and queue counts"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaceRecognitionSettings"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/face-recognition/download:
+    post:
+      operationId: downloadFaceRuntime
+      summary: "Download the face runtime and the recognizer's model again"
+      description: "Owner-only; no body. Downloads what is absent or does not match its hash, after a failure for example, and returns 202 with the settings. While off returns 409 face_recognition_off; where no runtime is published returns 409 face_recognition_unsupported."
+      responses:
+        "202":
+          description: "Download started; settings with the runtime state"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaceRecognitionSettings"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: "Face recognition is off (`face_recognition_off`) or has no runtime for this platform (`face_recognition_unsupported`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/auto-tagging/check:
     post:
       operationId: checkAutoTaggingClassifier
@@ -6083,6 +6140,100 @@ components:
           type: string
           description: "Provider message for node/run errors or missing resources; omitted when absent."
 
+    FaceRecognizer:
+      type: string
+      enum: [sface_int8, arcface_r50]
+      description: "Recognizer that turns a face into a vector: sface_int8 (SFace 2021dec int8, the default) or arcface_r50 (InsightFace buffalo_l, non-commercial use only)."
+
+    FaceRecognitionSettings:
+      type: object
+      required: [enabled, recognizer, recognizers, runtime, counts]
+      additionalProperties: false
+      description: "Face recognition settings, the runtime state and the analysis queue counts; see docs/design-docs/face-recognition.md."
+      properties:
+        enabled:
+          type: boolean
+          description: "Off by default; while off nothing is downloaded and no video is analysed."
+        recognizer:
+          $ref: "#/components/schemas/FaceRecognizer"
+        recognizers:
+          type: array
+          items:
+            $ref: "#/components/schemas/FaceRecognizerOption"
+        runtime:
+          $ref: "#/components/schemas/FaceRuntime"
+        counts:
+          $ref: "#/components/schemas/FaceRecognitionCounts"
+        lastFailure:
+          type: string
+          description: "The latest failed analysis's message in English; omitted if none."
+
+    FaceRecognizerOption:
+      type: object
+      required: [id, downloadBytes, license, nonCommercial]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: "#/components/schemas/FaceRecognizer"
+        downloadBytes:
+          type: integer
+          format: int64
+          description: "Size of the recognizer's model."
+        license:
+          type: string
+          description: "SPDX license id, or non-commercial."
+        nonCommercial:
+          type: boolean
+
+    FaceRuntime:
+      type: object
+      required: [state]
+      additionalProperties: false
+      description: "The runtime and model files the chosen recognizer needs."
+      properties:
+        state:
+          type: string
+          enum: [unsupported, absent, downloading, ready, failed]
+          description: "unsupported: no runtime is published for this platform."
+        bytesDone:
+          type: integer
+          format: int64
+          description: "Present while downloading."
+        bytesTotal:
+          type: integer
+          format: int64
+          description: "Present while downloading."
+        reason:
+          type: string
+          enum: [network, hash_mismatch, disk, helper_start]
+          description: "Present when failed."
+
+    FaceRecognitionCounts:
+      type: object
+      required: [queued, running, done, failed]
+      additionalProperties: false
+      description: "Face analysis queue rows (content keys) by state."
+      properties:
+        queued:
+          type: integer
+        running:
+          type: integer
+        done:
+          type: integer
+        failed:
+          type: integer
+
+    UpdateFaceRecognitionSettingsRequest:
+      type: object
+      required: [enabled, recognizer]
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+        recognizer:
+          type: string
+          description: "sface_int8 or arcface_r50; another value returns 400 invalid_request."
+
     StartAutoTaggingRequest:
       type: object
       required: [scope]
@@ -10053,3 +10204,5 @@ components:
         - tag_kind_not_found
         - tag_kind_name_taken
         - face_candidate_not_found
+        - face_recognition_off
+        - face_recognition_unsupported

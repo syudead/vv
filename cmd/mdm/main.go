@@ -284,6 +284,8 @@ func run(opts runOptions) error {
 	workersDone.Go(func() { app.BackfillKeyframes(backgroundCtx, ingestStore, media.ProbeKeyframes, logger) })
 	workersDone.Go(func() { autoTagger.Run(backgroundCtx) })
 	workersDone.Go(func() { versionJudge.Run(backgroundCtx) })
+	faceRecognition, stopFaceRuntime := startFaceRecognition(backgroundCtx, cfg.DataDir, db, logger)
+	defer stopFaceRuntime()
 	workersDone.Go(func() { thumbnailEdits.Run(backgroundCtx) })
 	// Always stop scans and workers before closing the database, including listener failures and
 	// grace-period expiry. Register this defer after database cleanup so it runs first.
@@ -389,6 +391,7 @@ func run(opts runOptions) error {
 		AutoTagging:       autoTagger,
 		Onboarding:        app.NewOnboarding(db.Onboarding(), autoTagger),
 		VersionJudging:    versionJudge,
+		FaceRecognition:   faceRecognition,
 		Ollama:            ollamaConnection,
 		ComfyUI:           comfyUIConnection,
 		ThumbnailEdits:    thumbnailEdits,

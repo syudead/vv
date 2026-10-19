@@ -314,3 +314,21 @@ func (db *DB) requeueRunning(ctx context.Context, q contentQueue) (int, error) {
 	}
 	return int(affected), nil
 }
+
+// contentCounts counts q's rows by state, with the reason of the latest failure.
+func (db *DB) contentCounts(ctx context.Context, q contentQueue) (domain.QueueCounts, error) {
+	var counts domain.QueueCounts
+	err := db.sql.QueryRowContext(ctx, `
+		select
+			coalesce(sum(state = 'queued'), 0),
+			coalesce(sum(state = 'running'), 0),
+			coalesce(sum(state = 'done'), 0),
+			coalesce(sum(state = 'failed'), 0),
+			coalesce((select `+q.failure+` from `+q.table+` where state = 'failed'
+				order by updated_at desc, content_key limit 1), '')
+		from `+q.table).Scan(&counts.Queued, &counts.Running, &counts.Done, &counts.Failed, &counts.LastError)
+	if err != nil {
+		return domain.QueueCounts{}, fmt.Errorf("cannot count %s jobs: %w", q.what, err)
+	}
+	return counts, nil
+}

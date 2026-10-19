@@ -67,7 +67,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | Domain | `internal/domain` | Value types and pure rules, including the business rules the store enforces | `net/http`, `database/sql`, `os`, `os/exec`, the SQLite driver, any other `internal/*` package |
 | Application | `internal/app` | The use cases (scans, auto-import, ingest, catalog, media folders, encoder choice, authentication, auto-tagging, duplicate judging) | `net/http`, `database/sql`, `os/exec`, the SQLite driver, any adapter |
-| Adapters | `internal/httpapi`, `store`, `media`, `artifacts`, `mediafs`, `opener`, `scanner`, `watcher`, `jobs`, `password`, `ollama`, `comfyui`, `wasmplugin` | Talking to the outside world | Each other and `internal/app` |
+| Adapters | `internal/httpapi`, `store`, `media`, `artifacts`, `mediafs`, `opener`, `scanner`, `watcher`, `jobs`, `password`, `ollama`, `comfyui`, `wasmplugin`, `faceruntime` | Talking to the outside world | Each other and `internal/app` |
 | Beside the adapters | `internal/eventbus`, `internal/desktop` | In-process event delivery; the desktop app's OS side | Imported by `cmd/mdm` only |
 
 `internal/app` reaches storage, `ffmpeg` and generated files only through
@@ -188,6 +188,7 @@ filesystem.
 | `internal/app` (`AutoTagger`) | Asking the classifier port which existing tags fit a video, and its queue | [auto-tagging.md](docs/design-docs/auto-tagging.md) |
 | `internal/app` (`VersionJudge`), `internal/store` (`VersionStore.ClaimJudgement`, `ApplyJudgement`) | Judging possible duplicates from their per-frame fingerprints and, for a differing run, the classifier port; bundling or dismissing the pair as the owner's actions do | [duplicate-judging.md](docs/design-docs/duplicate-judging.md) |
 | `internal/store` (`ActivityStore`), `internal/app` (`Activity`) | The activity log: one entry per run and subject written in the transaction of its change, listed newest first to the owner, with retry and undo dispatched by kind | [activity.md](docs/design-docs/activity.md) |
+| `internal/app` (`FaceRecognitionSettings`), `internal/faceruntime` | Downloading the pinned face runtime and models only while face recognition is on, reading their state from the files at startup, and starting the face helper and talking to it | [face-recognition.md](docs/design-docs/face-recognition.md#the-runtime-is-downloaded-only-when-the-feature-is-on) |
 | `cmd/mdm-face`, `internal/faceinfer`, `internal/faceproto` | The face helper: a second binary, shipped in the face runtime archive, that runs face detection and recognition through onnxruntime, and the protocol `mdm` speaks to it | [face-recognition.md](docs/design-docs/face-recognition.md) |
 | `internal/opener` | Opening a video in the server PC's default app, loopback requests only | [Screen API](api/openapi.yaml) |
 | `internal/password` | Argon2id hashing in PHC strings | [authentication.md](docs/design-docs/authentication.md) |

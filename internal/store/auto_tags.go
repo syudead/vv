@@ -489,20 +489,7 @@ func (s *AutoTagStore) RequeueRunning(ctx context.Context) (int, error) {
 }
 
 func (s *AutoTagStore) Counts(ctx context.Context) (domain.AutoTagCounts, error) {
-	var counts domain.AutoTagCounts
-	err := s.db.sql.QueryRowContext(ctx, `
-		select
-			coalesce(sum(state = 'queued'), 0),
-			coalesce(sum(state = 'running'), 0),
-			coalesce(sum(state = 'done'), 0),
-			coalesce(sum(state = 'failed'), 0),
-			coalesce((select error from auto_tag_queue where state = 'failed'
-				order by updated_at desc, content_key limit 1), '')
-		from auto_tag_queue`).Scan(&counts.Queued, &counts.Running, &counts.Done, &counts.Failed, &counts.LastError)
-	if err != nil {
-		return domain.AutoTagCounts{}, fmt.Errorf("cannot count auto-tagging jobs: %w", err)
-	}
-	return counts, nil
+	return s.db.contentCounts(ctx, autoTagQueue)
 }
 
 // Only videos with a registered location qualify; otherwise return domain.ErrNotFound.

@@ -85,14 +85,7 @@ type AutoTagJob struct {
 	ContentKey string
 }
 
-type AutoTagCounts struct {
-	Queued  int
-	Running int
-	Done    int
-	Failed  int
-	// LastError is the latest failure reason in English, or empty.
-	LastError string
-}
+type AutoTagCounts = QueueCounts
 
 type AutoTagStatus struct {
 	Settings AutoTagSettings
