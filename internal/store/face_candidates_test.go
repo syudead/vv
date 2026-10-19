@@ -18,6 +18,24 @@ func facePairPeople(pairs []domain.FacePair) []int64 {
 	return out
 }
 
+// offerFaceCandidate stores the pair as an analysis result would.
+func offerFaceCandidate(t *testing.T, db *DB, provisionalID, personID int64) {
+	t.Helper()
+	ctx := context.Background()
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := writeFaceCandidates(ctx, tx, provisionalID,
+		[]domain.FaceCandidate{{PersonID: personID, Similarity: 0.5}}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestFaceCandidatesListTheOtherPersonOfEachOpenPair(t *testing.T) {
 	f := newLinkedFixture(t)
 	ctx := context.Background()
@@ -83,17 +101,7 @@ func TestDismissFaceCandidateHidesThePairForGood(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A later result offers the same pair again.
-	tx, err := f.db.sql.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := writeFaceCandidates(ctx, tx, f.provisional,
-		[]domain.FaceCandidate{{PersonID: f.near, Similarity: 0.5}}, time.Now()); err != nil {
-		t.Fatal(err)
-	}
-	if err := tx.Commit(); err != nil {
-		t.Fatal(err)
-	}
+	offerFaceCandidate(t, f.db, f.provisional, f.near)
 
 	pairs, err := f.db.Credits().FaceCandidates(ctx, f.provisional)
 	if err != nil {
@@ -108,4 +116,50 @@ func TestDismissFaceCandidateHidesThePairForGood(t *testing.T) {
 	if _, err := f.db.Credits().ConfirmFaceCandidate(ctx, f.provisional, f.near); !errors.Is(err, domain.ErrFaceCandidateNotFound) {
 		t.Errorf("confirm a dismissed pair: err = %v, want ErrFaceCandidateNotFound", err)
 	}
+}
+
+// A merge can bring one pair of people in both orientations; only one row may remain, or the pair is listed twice.
+func TestMergingKeepsOneCandidateRowPerPairOfPeople(t *testing.T) {
+	t.Run("the target's dismissed pair stays", func(t *testing.T) {
+		f := newLinkedFixture(t)
+		ctx := context.Background()
+		if err := f.db.Credits().DismissFaceCandidate(ctx, f.near, f.provisional); err != nil {
+			t.Fatal(err)
+		}
+		offerFaceCandidate(t, f.db, f.nearer, f.provisional)
+		if _, err := f.db.Credits().Merge(ctx, domain.CreditPerson, f.near, []int64{f.nearer}); err != nil {
+			t.Fatal(err)
+		}
+
+		if got, want := faceCandidatePairs(t, f.db), [][2]int64{{f.provisional, f.near}}; !slices.Equal(got, want) {
+			t.Errorf("candidates = %v, want %v", got, want)
+		}
+		pairs, err := f.db.Credits().FaceCandidates(ctx, f.near)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(pairs) != 0 {
+			t.Errorf("candidates of the target = %+v, want none", pairs)
+		}
+	})
+
+	t.Run("two sources bring one pair", func(t *testing.T) {
+		f := newLinkedFixture(t)
+		ctx := context.Background()
+		offerFaceCandidate(t, f.db, f.nearer, f.provisional)
+		if _, err := f.db.Credits().Merge(ctx, domain.CreditPerson, f.named, []int64{f.near, f.nearer}); err != nil {
+			t.Fatal(err)
+		}
+
+		if got, want := faceCandidatePairs(t, f.db), [][2]int64{{f.provisional, f.named}}; !slices.Equal(got, want) {
+			t.Errorf("candidates = %v, want %v", got, want)
+		}
+		pairs, err := f.db.Credits().FaceCandidates(ctx, f.named)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := facePairPeople(pairs); !slices.Equal(got, []int64{f.provisional}) {
+			t.Errorf("candidates of the target = %v, want the provisional person %d once", got, f.provisional)
+		}
+	})
 }

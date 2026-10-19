@@ -328,7 +328,7 @@ Writes to people and credits move or drop face rows in their own transaction
 | Write | Face rows |
 | --- | --- |
 | Deleting a person | Their appearances become dropped and lose centroid and crop, keeping only their tracks; the face image, its vector and the candidate pairs go with the person |
-| Merging people | The sources' appearances and candidate pairs move to the target, and a pair that would join the target to itself is deleted; a target that takes a source's face also takes that face's current vector |
+| Merging people | The sources' appearances and candidate pairs move to the target, and a pair that would join the target to itself is deleted; a pair the target already has, in either orientation, keeps the target's row, so each pair of people stays one row; a target that takes a source's face also takes that face's current vector |
 | A work-information write that removes a performer | The video's appearances of that person become dropped |
 
 The kept tracks are what let a re-analysis carry a dropped appearance over, so
