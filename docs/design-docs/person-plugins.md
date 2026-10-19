@@ -4,7 +4,8 @@ A person plugin is a work-info plugin module whose manifest says
 `"kind": "person"`; it searches a site for people and fetches one person by an
 external ID. The manifest rules are in
 [`person_plugin.go`](../../internal/domain/person_plugin.go), the run in
-[`run.go`](../../internal/wasmplugin/run.go), and the author's contract in
+[`run.go`](../../internal/wasmplugin/run.go), the registry row in
+[`work_info_plugins.go`](../../internal/store/work_info_plugins.go), and the author's contract in
 [Write a work-info plugin](../how-to/work-info-plugins.md#person-plugins).
 
 The diagram shows how one kind field steers a run of the shared runtime.
@@ -58,3 +59,36 @@ HTTP client, outside the request count, the way it fetches a work's cover
 ([work-info-plugins.md](work-info-plugins.md#vvmdm-fetches-the-cover-and-applies-it-as-an-uploaded-image)).
 A refused address fails the run with `blocked_address`, and an image that
 cannot be fetched is dropped while the rest of the person is kept.
+
+## Person plugins share the work-info plugin registry
+
+A person plugin is a `work_info_plugins` row whose `kind` column is `person`,
+with its `sources` stored as a JSON array; upload, approval, settings, last
+run and deletion stay the same, and the list tells the kinds apart by `kind`.
+The manifest name stays the identity across both kinds, so a module named like
+an existing plugin replaces it whatever its kind and takes the new kind and
+sources. Rows uploaded before person plugins keep `kind` `work`: the migration
+does not inspect stored modules again, so a person module uploaded to an older
+VVMDM runs as a work-info plugin until the owner uploads it again.
+
+A work-info search or fetch with a person plugin, and a person search with a
+work-info plugin, answer `409 plugin_kind_mismatch` before the module runs.
+
+| Rejected | Why |
+| --- | --- |
+| A `person_plugins` table with its own endpoints | It would copy the registry's store, approval, settings and last-run code |
+| Renaming `WorkInfoPlugin*` to `Plugin*` now | It touches every plugin file, the API and the SPA without changing behaviour |
+| Refusing a replacement of another kind | The owner would have to delete the plugin first, and a replacement already revokes approval |
+
+## Automatic lookups are a switch on the plugin row
+
+`auto_lookup` decides whether work-info fetches may call a person plugin. It
+is on for a new person plugin, because approval is already the owner's consent,
+and a same-name replacement keeps it. The owner sets it with
+`PUT /api/work-info-plugins/{id}/auto-lookup`; it does not affect fetching from
+a person's page, and the API reports it as `false` for a work-info plugin.
+
+| Rejected | Why |
+| --- | --- |
+| A manifest setting | Settings are values passed to the plugin, and the plugin would have to declare one |
+| Off by default | The lookup during a work-info fetch is meant to happen without a further step |

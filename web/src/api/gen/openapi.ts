@@ -1263,13 +1263,13 @@ export interface paths {
         };
         /**
          * List work-info plugins
-         * @description Owner-only. Sorts by name then filename, placing unreadable names last. Secret settings return only set, not values. Plugin changes emit no events; settings and video pages refetch the list.
+         * @description Owner-only. Lists work-info and person plugins together, told apart by kind; sorts by name then filename, placing unreadable names last. Secret settings return only set, not values. Plugin changes emit no events; settings and video pages refetch the list.
          */
         get: operations["listWorkInfoPlugins"];
         put?: never;
         /**
          * Add a work-info plugin or replace one with the same name
-         * @description Owner-only. Accepts one multipart module (WebAssembly up to 16 MiB), inspects without execution and saves its filename. A matching manifest name replaces the existing row with 200; otherwise creates with 201. Replacement resets approval and preserves values only for keys declared by the new manifest. Unusable modules are saved with state=invalid and problem. Missing/multiple modules return 400 invalid_request; oversized modules return 413 plugin_too_large with limit, without writing.
+         * @description Owner-only. Accepts one multipart module (WebAssembly up to 16 MiB), inspects without execution and saves its filename. A matching manifest name replaces the existing row with 200, whatever either kind; otherwise creates with 201. Replacement resets approval, takes kind and sources from the new manifest, keeps autoLookup and preserves values only for keys declared by the new manifest. Unusable modules are saved with state=invalid and problem. Missing/multiple modules return 400 invalid_request; oversized modules return 413 plugin_too_large with limit, without writing.
          */
         post: operations["uploadWorkInfoPlugin"];
         delete?: never;
@@ -1373,9 +1373,49 @@ export interface paths {
         put?: never;
         /**
          * Search for works with a work-info plugin
-         * @description Owner-only. Runs an approved plugin's search once and returns candidate ID, page URL, title and optional plain-text description. Trimmed query must be 1–200 characters or returns 400 invalid_request. Undeclared search returns 409 operation_unsupported. See Run failures in docs/design-docs/work-info-plugins.md for execution errors.
+         * @description Owner-only. Runs an approved plugin's search once and returns candidate ID, page URL, title and optional plain-text description. Trimmed query must be 1–200 characters or returns 400 invalid_request. A person plugin returns 409 plugin_kind_mismatch; undeclared search returns 409 operation_unsupported. See Run failures in docs/design-docs/work-info-plugins.md for execution errors.
          */
         post: operations["searchWorkInfo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-info-plugins/{id}/auto-lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Turn a person plugin's automatic lookups on or off
+         * @description Owner-only. Sets autoLookup, which lets work-info fetches call this person plugin; it does not affect fetching from a person's page. Approval and updatedAt are unchanged. A work-info plugin returns 409 plugin_kind_mismatch; a missing plugin returns 404 not_found.
+         */
+        put: operations["setWorkInfoPluginAutoLookup"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-info-plugins/{id}/person-search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search for people with a person plugin
+         * @description Owner-only. Runs an approved person plugin's search once and returns candidates, each an external ID (source and id) with a name, a page URL and an optional plain-text description. Trimmed query must be 1–200 characters or returns 400 invalid_request. A work-info plugin returns 409 plugin_kind_mismatch; the other errors are searchWorkInfo's.
+         */
+        post: operations["searchPeopleWithPlugin"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1393,7 +1433,7 @@ export interface paths {
         put?: never;
         /**
          * Fetch video work information with a plugin
-         * @description Owner-only. Runs approved pluginId fetch once with a trimmed 1–200 character id from search or owner input. Even URL-shaped IDs are passed unchanged; VV does not fetch them as URLs. Retains the result in memory for ten minutes and returns 201 without changing the video. Missing/invalid id returns 400 invalid_request. Includes title only if it passes display-name rules. People and organizations carry their fetch-time match. Missing video returns 404 not_found; undeclared fetch returns 409 operation_unsupported. See Run failures in docs/design-docs/work-info-plugins.md.
+         * @description Owner-only. Runs approved pluginId fetch once with a trimmed 1–200 character id from search or owner input. Even URL-shaped IDs are passed unchanged; VV does not fetch them as URLs. Retains the result in memory for ten minutes and returns 201 without changing the video. Missing/invalid id returns 400 invalid_request. Includes title only if it passes display-name rules. People and organizations carry their fetch-time match. Missing video returns 404 not_found; a person plugin returns 409 plugin_kind_mismatch; undeclared fetch returns 409 operation_unsupported. See Run failures in docs/design-docs/work-info-plugins.md.
          */
         post: operations["fetchWorkInfo"];
         delete?: never;
@@ -3159,10 +3199,20 @@ export interface components {
             /** @description Stored value outside the current choices, included only in that case. set remains true and value matches, but execution receives the default instead. */
             staleValue?: string;
         };
-        /** @description One work-info plugin. */
+        /**
+         * @description work fetches a video's work information; person searches and fetches people by external ID.
+         * @enum {string}
+         */
+        WorkInfoPluginKind: "work" | "person";
+        /** @description One work-info or person plugin. */
         WorkInfoPlugin: {
             /** Format: int64 */
             id: number;
+            kind: components["schemas"]["WorkInfoPluginKind"];
+            /** @description A person plugin's accepted external-ID sources in manifest order; empty for a work-info plugin. */
+            sources: string[];
+            /** @description Whether work-info fetches may call this person plugin; always false for a work-info plugin. */
+            autoLookup: boolean;
             /** @description Manifest name; absent when the manifest could not be read. */
             name?: string;
             /** @description Uploaded filename. */
@@ -3239,6 +3289,25 @@ export interface components {
             title: string;
             /** @description One-line description distinguishing the candidate. */
             detail?: string;
+        };
+        SetWorkInfoPluginAutoLookupRequest: {
+            enabled: boolean;
+        };
+        /** @description One text-only person search candidate; source and id together are the fetch's external ID. */
+        PersonPluginCandidate: {
+            /** @description One of the plugin's sources. */
+            source: string;
+            /** @description External ID within source: 1-200 characters after trimming. */
+            id: string;
+            name: string;
+            /** @description HTTP or HTTPS person-page URL, displayed as a link only. */
+            url: string;
+            /** @description One-line description distinguishing the candidate. */
+            detail?: string;
+        };
+        PersonPluginSearchResult: {
+            /** @description First 50 candidates in plugin order. */
+            candidates: components["schemas"]["PersonPluginCandidate"][];
         };
         WorkInfoSearchResult: {
             /** @description First 50 candidates in plugin order. */
@@ -5408,7 +5477,7 @@ export interface components {
              * @description Machine-readable error code. This schema is authoritative and task generate produces Go constants; add new codes here first.
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "operation_unsupported" | "work_info_fetch_stale" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "plugin_kind_mismatch" | "operation_unsupported" | "work_info_fetch_stale" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable";
             /** @description English explanation for API clients and unknown-code fallback; the UI derives text from code and reason. */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -7988,6 +8057,71 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkInfoSearchResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            502: components["responses"]["PluginFailed"];
+            503: components["responses"]["PluginBusy"];
+            504: components["responses"]["PluginTimedOut"];
+        };
+    };
+    setWorkInfoPluginAutoLookup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Work-info plugin ID */
+                id: components["parameters"]["WorkInfoPluginId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetWorkInfoPluginAutoLookupRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated plugin */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoPlugin"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    searchPeopleWithPlugin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Work-info plugin ID */
+                id: components["parameters"]["WorkInfoPluginId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkInfoSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Search candidates */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonPluginSearchResult"];
                 };
             };
             400: components["responses"]["InvalidRequest"];

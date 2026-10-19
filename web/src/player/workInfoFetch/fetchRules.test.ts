@@ -19,6 +19,9 @@ import {
 function plugin(overrides: Partial<WorkInfoPlugin> = {}): WorkInfoPlugin {
   return {
     id: 1,
+    kind: "work",
+    sources: [],
+    autoLookup: false,
     name: "works",
     fileName: "works.wasm",
     operations: ["search", "fetch"],
