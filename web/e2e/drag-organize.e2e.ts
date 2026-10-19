@@ -241,7 +241,8 @@ async function menuItem(page: Page, target: string, name: string): Promise<Locat
 
 async function openGroupPage(page: Page, query: string, name: string) {
   await page.goto(librarySearch(query));
-  await groupCard(page, name).getByRole("link").first().click();
+  // The cover opens the video under the pointer; the name opens the group page.
+  await groupCard(page, name).locator("h3", { hasText: name }).click();
   await expect(page).toHaveURL(/\/groups\/\d+$/);
   await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
 }
