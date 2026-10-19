@@ -335,6 +335,31 @@ Writes to people and credits move or drop face rows in their own transaction
 The kept tracks are what let a re-analysis carry a dropped appearance over, so
 a deleted face is not recreated and a removed link is not made again.
 
+## An automatic link is undone from the activity log
+
+`FaceStore.UndoFaceLinks` undoes one link of a `face_analysis` entry, or every
+link not yet undone, in one transaction
+([`face_link_undo.go`](../../internal/store/face_link_undo.go)). A link points
+at its appearance, so it follows a merge and a re-analysis that carried the
+appearance over; when a re-analysis deleted the appearance, the link's own
+person is used.
+
+| State of the link | Undo |
+| --- | --- |
+| Appearance not dropped, or gone | Drops the appearance, removes the person's `performer` row at the video's current user key unless another appearance of the video not dropped still links the person, and deletes the provisional person the run created when it is still provisional and credited nowhere |
+| Appearance dropped | Nothing: the owner removed the performer, undid the link or deleted the person since, and a performer added again afterwards stays |
+
+Each undone link records the owner's `undo` entry in
+`activity_entry_face_links.undone_by`; the entry is `already_reverted` when no
+link changed anything. Undo removes the performer row even when the owner had
+credited that person before the analysis, because a credit's origin is read from
+the appearances linked to it, not from the row.
+
+| Rejected | Why |
+| --- | --- |
+| Detecting the owner's change from activity entries, as auto-tag undo does | Credit edits write no activity entry; the dropped mark that every removal writes is the record |
+| Deriving `undone` from the undo entries | An undo entry names no link, and the undo of every link writes one entry for several |
+
 ## An automatic merge can be undone
 
 `FaceStore.MergeProvisional` merges a provisional person into another person

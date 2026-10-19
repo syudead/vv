@@ -28,9 +28,9 @@ type ActivityRetrier interface {
 	RetryActivity(ctx context.Context, entry domain.ActivityEntry) error
 }
 
-// tagID applies only to auto_tag; other kinds use zero.
+// item is the tag ID for auto_tag and the appearance ID for face_analysis, zero for every link; other kinds use zero.
 type ActivityUndoer interface {
-	UndoActivity(ctx context.Context, entry domain.ActivityEntry, tagID int64) (domain.ActivityEntry, error)
+	UndoActivity(ctx context.Context, entry domain.ActivityEntry, item int64) (domain.ActivityEntry, error)
 }
 
 type ActivityOptions struct {
@@ -100,34 +100,53 @@ func (a *Activity) RetryActivity(ctx context.Context, id int64) error {
 	return retrier.RetryActivity(ctx, entry)
 }
 
-// UndoActivity rejects absent records/tags and ineligible or undispatched targets, returning the
+// UndoActivity rejects absent records, tags and links, and ineligible or undispatched targets, returning the
 // owner's undo activity on success.
-func (a *Activity) UndoActivity(ctx context.Context, id, tagID int64) (domain.ActivityEntry, error) {
+func (a *Activity) UndoActivity(
+	ctx context.Context, id int64, target domain.ActivityUndoTarget,
+) (domain.ActivityEntry, error) {
 	entry, err := a.store.ActivityEntry(ctx, id)
 	if err != nil {
 		return domain.ActivityEntry{}, err
 	}
-	if !undoTargetOffered(entry, tagID) {
-		if entry.Kind == domain.ActivityAutoTag && !hasActivityTag(entry, tagID) {
-			return domain.ActivityEntry{}, fmt.Errorf("tag %d of activity entry %d: %w", tagID, id, domain.ErrNotFound)
-		}
-		return domain.ActivityEntry{}, domain.ErrActivityNotUndoable
+	item, err := undoItem(entry, target)
+	if err != nil {
+		return domain.ActivityEntry{}, err
 	}
 	undoer, ok := a.undoers[entry.Kind]
 	if !ok {
 		return domain.ActivityEntry{}, domain.ErrActivityNotUndoable
 	}
-	return undoer.UndoActivity(ctx, entry, tagID)
+	return undoer.UndoActivity(ctx, entry, item)
 }
 
-func undoTargetOffered(entry domain.ActivityEntry, tagID int64) bool {
-	if entry.Kind != domain.ActivityAutoTag {
-		return entry.UndoOffered()
+// undoItem picks the target's field for the entry's kind and checks it is offered: a tag or link the entry does
+// not have is domain.ErrNotFound.
+func undoItem(entry domain.ActivityEntry, target domain.ActivityUndoTarget) (int64, error) {
+	switch {
+	case entry.Kind == domain.ActivityAutoTag:
+		index := slices.IndexFunc(entry.Tags, func(tag domain.ActivityEntryTag) bool { return tag.TagID == target.TagID })
+		if index < 0 {
+			return 0, fmt.Errorf("tag %d of activity entry %d: %w", target.TagID, entry.ID, domain.ErrNotFound)
+		}
+		if !entry.TagUndoOffered(entry.Tags[index]) {
+			return 0, domain.ErrActivityNotUndoable
+		}
+		return target.TagID, nil
+	case entry.Kind == domain.ActivityFaceAnalysis && target.AppearanceID != 0:
+		index := slices.IndexFunc(entry.FaceLinks, func(link domain.ActivityFaceLink) bool {
+			return link.AppearanceID == target.AppearanceID
+		})
+		if index < 0 {
+			return 0, fmt.Errorf("face link %d of activity entry %d: %w", target.AppearanceID, entry.ID, domain.ErrNotFound)
+		}
+		if !entry.FaceLinkUndoOffered(entry.FaceLinks[index]) {
+			return 0, domain.ErrActivityNotUndoable
+		}
+		return target.AppearanceID, nil
+	case !entry.UndoOffered():
+		return 0, domain.ErrActivityNotUndoable
+	default:
+		return 0, nil
 	}
-	index := slices.IndexFunc(entry.Tags, func(tag domain.ActivityEntryTag) bool { return tag.TagID == tagID })
-	return index >= 0 && entry.TagUndoOffered(entry.Tags[index])
-}
-
-func hasActivityTag(entry domain.ActivityEntry, tagID int64) bool {
-	return slices.ContainsFunc(entry.Tags, func(tag domain.ActivityEntryTag) bool { return tag.TagID == tagID })
 }

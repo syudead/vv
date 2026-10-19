@@ -520,6 +520,9 @@ func attachActivityDetails(ctx context.Context, q rowsQueryer, audience domain.A
 	if err := attachActivityTags(ctx, q, entries); err != nil {
 		return err
 	}
+	if err := attachActivityFaceLinks(ctx, q, entries); err != nil {
+		return err
+	}
 	if err := attachImportProgress(ctx, q, entries); err != nil {
 		return err
 	}
