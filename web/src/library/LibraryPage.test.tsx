@@ -174,12 +174,11 @@ describe("LibraryPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("一覧と件数だけを出す", async () => {
+  it("ホームは一覧だけを出し、見出しと件数を出さない", async () => {
     renderLibrary();
     expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
-    const status = screen.getByRole("status", { name: "Search results" });
-    expect(status.textContent).toBe("3 items");
-    expect(status.classList.contains("sr-only")).toBe(false);
+    expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
+    expect(screen.queryByRole("status", { name: "Search results" })).toBeNull();
     expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("25");
   });
 
@@ -190,6 +189,9 @@ describe("LibraryPage", () => {
         "3 items",
       );
     });
+    expect(screen.getByRole("heading", { level: 2 }).textContent).toContain(
+      "Search results",
+    );
     await waitFor(() => {
       const calls = fetchMock.mock.calls.map((call) => String(call[0]));
       expect(calls.some((url) => url.includes("query=abc"))).toBe(true);
@@ -264,9 +266,7 @@ describe("LibraryPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(resolveRetry).toBeDefined());
-    expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe(
-      "Loading…",
-    );
+    expect(screen.getByRole("status", { name: "Loading…" })).toBeDefined();
     expect(screen.queryByText("Something went wrong on the server.")).toBeNull();
 
     await act(async () => {
@@ -286,9 +286,7 @@ describe("LibraryPage", () => {
     });
     const user = userEvent.setup();
     renderLibrary();
-    expect(
-      (await screen.findByRole("status", { name: "Search results" })).textContent,
-    ).toBe("3 items");
+    await screen.findByRole("link", { name: "動画 1" });
 
     await user.type(screen.getByRole("searchbox", { name: "Search videos" }), "broken");
 
@@ -1893,17 +1891,12 @@ describe("LibraryPage", () => {
 
     it("グループはふつうの動画と同じ格子に1枚のカードで混ざり、件数はカードの枚数（受け入れ条件1・2）", async () => {
       installGroupList();
-      renderLibrary();
+      renderLibrary("/?q=s");
       const link = await screen.findByRole("link", { name: ownerLabel });
 
       const cards = document.querySelectorAll("article");
       expect(cards).toHaveLength(3);
       expect(cards[1]?.contains(link)).toBe(true);
-      expect(
-        screen
-          .getAllByRole("heading", { level: 2 })
-          .map((heading) => heading.textContent),
-      ).toEqual(["Library"]);
       expect(screen.queryByRole("link", { name: "ep01" })).toBeNull();
       expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe(
         "3 items",
@@ -2199,7 +2192,7 @@ describe("LibraryPage の英語の画面", () => {
 
   it("件数は 1 件と複数件で単数・複数を分ける", async () => {
     library = () => page([{ kind: "video", video: kyoto }]);
-    const { unmount } = renderPage();
+    const { unmount } = renderPage("/?q=a");
     await screen.findByRole("link", { name: "京都の旅" });
     expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe(
       "1 item",
@@ -2211,7 +2204,7 @@ describe("LibraryPage の英語の画面", () => {
         { kind: "video", video: kyoto },
         { kind: "video", video: publicVideo },
       ]);
-    renderPage();
+    renderPage("/?q=a");
     await screen.findByRole("link", { name: "動画 2" });
     expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe(
       "2 items",
@@ -2322,7 +2315,7 @@ describe("LibraryPage の英語の画面", () => {
 
     library = () => new Promise<Response>(() => undefined);
     const loading = renderPage();
-    await screen.findByText(/Loading/);
+    await screen.findByRole("status", { name: /Loading/ });
     expectCatalogTextOnly(document.body);
     loading.unmount();
 

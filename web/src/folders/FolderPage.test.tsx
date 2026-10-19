@@ -35,6 +35,7 @@ import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import FolderCard from "./FolderCard";
+import RootFolderCard from "./RootFolderCard";
 import FolderPage from "./FolderPage";
 import { folderKey } from "./folderPath";
 
@@ -343,7 +344,7 @@ describe("FolderPage", () => {
     const folder = summary({ name, rootPath });
     const { rerender } = render(
       <MemoryRouter>
-        <FolderCard folder={folder} showPath />
+        <RootFolderCard folder={folder} showPath />
       </MemoryRouter>,
     );
     const card = screen.getByRole("link", {
@@ -356,7 +357,7 @@ describe("FolderPage", () => {
 
     rerender(
       <MemoryRouter>
-        <FolderCard folder={folder} showPath={false} />
+        <RootFolderCard folder={folder} showPath={false} />
       </MemoryRouter>,
     );
     expect(
@@ -448,13 +449,14 @@ describe("FolderPage", () => {
     expect(list.className.split(" ")).not.toContain("wrap-break-word");
   });
 
-  it("プレビューは4件までで、サムネイルが無いフォルダは外形だけを描く", async () => {
+  it("プレビューは4件までで残りは続きの1枚にまとめ、サムネイルが無いフォルダは外形だけを描く", async () => {
     const { container } = renderFolders("/folders/3");
     await screen.findByRole("link", { name: "five, 6 videos, 0 folders" });
     const five = container.querySelector('[data-folder-path="five"]');
     const deeper = container.querySelector('[data-folder-path="only-deeper"]');
     expect(five?.querySelectorAll("[data-folder-preview]").length).toBe(4);
     expect(five?.querySelectorAll("img").length).toBe(4);
+    expect(five?.querySelector("[data-folder-more]")?.textContent).toContain("2");
     expect(deeper?.querySelectorAll("img").length).toBe(0);
     expect(deeper?.textContent).toContain("0 videos");
   });
@@ -463,12 +465,12 @@ describe("FolderPage", () => {
     const folder = summary({
       path: "five",
       name: "five",
-      videoCount: 6,
+      videoCount: 4,
       previews: previews(4),
     });
     const { container } = render(
       <MemoryRouter>
-        <FolderCard folder={folder} showPath={false} />
+        <FolderCard folder={folder} backTo="/folders" />
       </MemoryRouter>,
     );
     const art = container.querySelector<HTMLElement>(
@@ -486,6 +488,8 @@ describe("FolderPage", () => {
     expect(front()?.querySelector("img")?.getAttribute("src")).toBe(
       "/api/videos/1/thumbnail?v=x",
     );
+    // The promoted sheet shows the cover alone, without a play mark or title.
+    expect(front()?.querySelector("svg")).toBeNull();
 
     fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 290 });
     expect(front()?.querySelector("img")?.getAttribute("src")).toBe(
@@ -505,7 +509,7 @@ describe("FolderPage", () => {
     });
     const { container } = render(
       <MemoryRouter>
-        <FolderCard folder={one} showPath={false} />
+        <FolderCard folder={one} backTo="/folders" />
       </MemoryRouter>,
     );
     const art = container.querySelector<HTMLElement>("[data-folder-art]");
@@ -538,7 +542,7 @@ describe("FolderPage", () => {
       });
       const { container } = render(
         <MemoryRouter>
-          <FolderCard folder={folder} showPath={false} />
+          <FolderCard folder={folder} backTo="/folders" />
         </MemoryRouter>,
       );
       const art = container.querySelector<HTMLElement>("[data-folder-art]");
@@ -596,7 +600,7 @@ describe("FolderPage", () => {
       });
       const { container } = render(
         <MemoryRouter>
-          <FolderCard folder={folder} showPath={false} />
+          <FolderCard folder={folder} backTo="/folders" />
         </MemoryRouter>,
       );
       const art = container.querySelector<HTMLElement>("[data-folder-art]");
@@ -638,7 +642,7 @@ describe("FolderPage", () => {
       });
       const { container } = render(
         <MemoryRouter>
-          <FolderCard folder={folder} showPath={false} />
+          <FolderCard folder={folder} backTo="/folders" />
         </MemoryRouter>,
       );
       const art = container.querySelector<HTMLElement>("[data-folder-art]");
@@ -665,7 +669,7 @@ describe("FolderPage", () => {
     });
     const { container, rerender } = render(
       <MemoryRouter>
-        <FolderCard folder={four} showPath={false} />
+        <FolderCard folder={four} backTo="/folders" />
       </MemoryRouter>,
     );
     const art = container.querySelector<HTMLElement>("[data-folder-art]");
@@ -676,7 +680,7 @@ describe("FolderPage", () => {
 
     rerender(
       <MemoryRouter>
-        <FolderCard folder={{ ...four, previews: previews(2) }} showPath={false} />
+        <FolderCard folder={{ ...four, previews: previews(2) }} backTo="/folders" />
       </MemoryRouter>,
     );
     expect(art.querySelector("[data-folder-front]")).toBeNull();

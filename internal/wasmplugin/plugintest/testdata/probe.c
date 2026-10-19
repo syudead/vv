@@ -72,6 +72,9 @@ int main(void) {
         fetch_pages(settings);
     } else if (!strcmp(mode, "cover")) {
         printf("{\"workInfo\":{\"title\":\"cover\",\"cover\":"); quoted(text(settings, "cover")); puts("}}");
+    } else if (!strcmp(mode, "people")) {
+        // The people setting is a JSON array the Go test writes, so image URLs can point at its fixture site.
+        printf("{\"workInfo\":{\"title\":\"people\",\"people\":%s}}\n", text(settings, "people"));
     } else if (!strcmp(mode, "fail")) {
         fputs("reporting an error\n", stderr);
         printf("{\"error\":{\"message\":\"");

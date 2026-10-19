@@ -345,7 +345,8 @@ func run(opts runOptions) error {
 	// Close the plugin runtime after HTTP stops and before the database closes; read proxy settings
 	// per execution so changes apply immediately.
 	pluginProxy := app.NewWorkInfoPluginProxy(settingsStore)
-	workInfoPlugins, closeWorkInfoPlugins := newWorkInfoPlugins(context.Background(), db, pluginProxy, ingest, logger)
+	personImages := app.NewPersonImages(db.Credits(), ingest)
+	workInfoPlugins, closeWorkInfoPlugins := newWorkInfoPlugins(context.Background(), db, pluginProxy, ingest, personImages, logger)
 	defer closeWorkInfoPlugins()
 	handler := httpapi.NewRouter(httpapi.Options{
 		Build:            build,
@@ -390,6 +391,7 @@ func run(opts runOptions) error {
 		ComfyUI:           comfyUIConnection,
 		ThumbnailEdits:    thumbnailEdits,
 		ThumbnailUploads:  ingest,
+		PersonImages:      personImages,
 		WorkInfoPlugins:   workInfoPlugins,
 		TranscodeProbes:   ingestStore,
 		Artifacts:         artifactStore,

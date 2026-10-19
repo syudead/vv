@@ -144,7 +144,20 @@ export function fetchWorkInfo(
 
 /** Fetch covers through the server; browsers never contact the external site directly. */
 export function workInfoFetchCoverUrl(videoId: number, fetchId: string): string {
-  return `/api/videos/${String(videoId)}/work-info-fetches/${encodeURIComponent(fetchId)}/cover`;
+  return `${fetchPath(videoId, fetchId)}/cover`;
+}
+
+/** The face kept with the fetch for the person at index in the result's people. */
+export function workInfoFetchPersonImageUrl(
+  videoId: number,
+  fetchId: string,
+  index: number,
+): string {
+  return `${fetchPath(videoId, fetchId)}/people/${String(index)}/image`;
+}
+
+function fetchPath(videoId: number, fetchId: string): string {
+  return `/api/videos/${String(videoId)}/work-info-fetches/${encodeURIComponent(fetchId)}`;
 }
 
 /** Apply selected fields/tags once; expired results or changed plugins fail as stale. Return skipped entries and refreshed video metadata. */

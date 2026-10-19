@@ -139,11 +139,21 @@ stateDiagram-v2
 
 | Trigger | Queues |
 | --- | --- |
-| Seek preview stage finishes, "Tag new videos automatically" on | Videos with no row |
+| Seek preview stage finishes for good (done, or failed with no retry left), "Tag new videos automatically" on | That video, if it has no row |
 | Settings, "Tag videos not yet tagged" | Videos with no row or a `failed` row |
 | Settings, "Tag all videos again" | Every video not `running` |
 | Video page, "Suggest tags" | That video, unless `running` |
 | Onboarding, picking interests | Every video not `running`, as "Tag all videos again" does |
+
+The import trigger is queued in the same transaction that records the seek
+preview stage's final result, and its `auto_tag` entry joins the pipeline of
+that job's `import` entry
+([activity.md](activity.md#a-pipeline-groups-one-import-run)). The import
+pipeline therefore stays `running` until tagging finishes, and does not wait
+when the trigger queues nothing. The `VideoIngestChanged` subscriber only wakes
+the worker. A retry from the activity log and a claim that reopens an
+interrupted entry join the pipelines of the entry they continue; the other
+triggers are started by the owner and write standalone entries.
 
 Every trigger requires "Use auto-tagging" to be on; while it is off the
 Settings run buttons and the video page button are hidden, and the API refuses

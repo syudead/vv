@@ -4,6 +4,7 @@ import { Link } from "react-router";
 
 import type { TagKind } from "../api/tagKinds";
 import { t } from "../i18n";
+import { isPlainClick } from "../lib/plainClick";
 import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
 import { DataTable } from "../ui/patterns/data-table";
 import { EmptyState } from "../ui/patterns/empty-state";
@@ -131,8 +132,7 @@ function KindRow({
   const register = state.registerRefs;
 
   function open(event: MouseEvent<HTMLAnchorElement>) {
-    // Let the browser handle modified clicks that open another tab.
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (!isPlainClick(event)) return;
     event.preventDefault();
     onOpen(kind);
   }

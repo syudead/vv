@@ -39,6 +39,8 @@ export interface CreditListQuery {
   /** 1..200 results; omit to retrieve every match. */
   limit?: number;
   cursor?: string;
+  /** People only: keep favorites. */
+  favorite?: boolean;
 }
 
 /** Truncate queries to the contract's 100-code-point limit; longer names still match their prefixes. */
@@ -56,10 +58,22 @@ export function listCredits(
   if (query.limit !== undefined) params.set("limit", String(query.limit));
   if (query.cursor !== undefined && query.cursor !== "")
     params.set("cursor", query.cursor);
+  if (query.favorite === true) params.set("favorite", "true");
   const search = params.toString();
   return request<CreditList>(`${basePath(kind)}${search === "" ? "" : `?${search}`}`, {
     signal,
   });
+}
+
+export interface PersonList extends CreditList {
+  items: Person[];
+}
+
+export function listPeople(
+  query: CreditListQuery = {},
+  signal?: AbortSignal,
+): Promise<PersonList> {
+  return listCredits("person", query, signal) as Promise<PersonList>;
 }
 
 export function createCredit(
@@ -132,6 +146,37 @@ export async function deleteCredit(
 ): Promise<void> {
   const response = await apiFetch(itemPath(kind, id), { method: "DELETE", signal });
   if (!response.ok) throw await toRequestFailed(response);
+}
+
+/** The face URL; the revision only busts caches, so a changed face is fetched again. */
+export function personImagePath(id: number, revision: number): string {
+  return `/api/people/${String(id)}/image?v=${String(revision)}`;
+}
+
+/** The person's face URL, or undefined without a face. */
+export function personFaceSrc(person: Person): string | undefined {
+  return person.imageRevision === undefined
+    ? undefined
+    : personImagePath(person.id, person.imageRevision);
+}
+
+/** Let the browser set the multipart boundary; the server fits and stores the image. */
+export function uploadPersonImage(
+  id: number,
+  image: Blob,
+  signal?: AbortSignal,
+): Promise<Person> {
+  const form = new FormData();
+  form.append("image", image, image instanceof File ? image.name : "image");
+  return request<Person>(`${itemPath("person", id)}/image`, {
+    method: "PUT",
+    body: form,
+    signal,
+  });
+}
+
+export function removePersonImage(id: number, signal?: AbortSignal): Promise<Person> {
+  return request<Person>(`${itemPath("person", id)}/image`, { method: "DELETE", signal });
 }
 
 /** Match missing target entities only; field-qualified missing parents are input errors. */

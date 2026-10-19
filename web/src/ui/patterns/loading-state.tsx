@@ -1,13 +1,14 @@
 import { Skeleton } from "@/ui/shadcn/skeleton";
 
-import { CardGrid, type CardSize } from "./card-grid";
+import { CardGrid, type CardGridSize } from "./card-grid";
 
 // Match final content geometry with skeletons instead of a page-covering spinner; see web/registry/rules/patterns.md, States.
 
 export interface LoadingStateProps {
   label: string;
   layout: "grid" | "table" | "grouped" | "cards";
-  size?: CardSize;
+  /** grid only; face draws circles with a line under them. */
+  size?: CardGridSize;
   count?: number;
 }
 
@@ -20,13 +21,20 @@ export function LoadingState({ label, layout, size = 1, count }: LoadingStatePro
     <div data-slot="loading-state" role="status" aria-label={label} aria-busy="true">
       {layout === "grid" ? (
         <CardGrid size={size}>
-          {keys.map((key) => (
-            <div key={key} className="flex flex-col gap-2">
-              <Skeleton className="aspect-video w-full" />
-              <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-3 w-1/2" />
-            </div>
-          ))}
+          {keys.map((key) =>
+            size === "face" ? (
+              <div key={key} className="flex flex-col items-center gap-2 p-1">
+                <Skeleton className="aspect-square w-full rounded-full" />
+                <Skeleton className="h-4 w-3/4" />
+              </div>
+            ) : (
+              <div key={key} className="flex flex-col gap-2">
+                <Skeleton className="aspect-video w-full" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+            ),
+          )}
         </CardGrid>
       ) : layout === "cards" ? (
         <div className="flex flex-col gap-2">

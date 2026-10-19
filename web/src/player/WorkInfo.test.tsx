@@ -32,11 +32,39 @@ describe("WorkInfo", () => {
         .getAllByRole("listitem")
         .map((item) => item.textContent),
     ).toEqual(["Recorded2023-08", "Photographer撮る人"]);
-    expect(
-      within(row)
-        .getByRole("link", { name: "Show videos with 撮る人" })
-        .getAttribute("href"),
-    ).toBe("/?person=4");
     expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+  });
+
+  it("人物は顔と名前で人物ページを開き、顔がなければ代わりの目印、団体はライブラリの絞り込みのまま", () => {
+    render(
+      <MemoryRouter>
+        <WorkInfo
+          info={{
+            ...empty,
+            people: [
+              { role: "performer", person: { id: 4, name: "顔の人" }, imageRevision: 9 },
+              { role: "performer", person: { id: 6, name: "顔なし" } },
+            ],
+            organizations: [{ role: "maker", organization: { id: 5, name: "Studio" } }],
+          }}
+        />
+      </MemoryRouter>,
+    );
+    const withFace = screen.getByRole("link", { name: "Open 顔の人" });
+    expect(withFace.getAttribute("href")).toBe("/people/4");
+    expect(within(withFace).getByRole("img").getAttribute("src")).toBe(
+      "/api/people/4/image?v=9",
+    );
+    expect(withFace.textContent).toBe("顔の人");
+
+    const withoutFace = screen.getByRole("link", { name: "Open 顔なし" });
+    expect(withoutFace.getAttribute("href")).toBe("/people/6");
+    expect(within(withoutFace).queryByRole("img")).toBeNull();
+    expect(withoutFace.querySelector('[data-slot="person-face"]')).not.toBeNull();
+
+    expect(
+      screen.getByRole("link", { name: "Show videos with Studio" }).getAttribute("href"),
+    ).toBe("/?organization=5");
+    expect(screen.queryByRole("link", { name: /Show videos with 顔/ })).toBeNull();
   });
 });

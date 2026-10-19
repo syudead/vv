@@ -83,7 +83,7 @@ export function parentPagePath(trail: readonly GroupRef[]): string {
 
 export function trailCrumbs(trail: readonly GroupRef[], name: string): Crumb[] {
   return [
-    { label: t.library.title, to: LIBRARY_PATH },
+    { label: t.home.title, to: LIBRARY_PATH },
     ...trail.map((group, index) => ({
       label: group.name,
       to: groupPagePath(
@@ -98,7 +98,7 @@ export function trailCrumbs(trail: readonly GroupRef[], name: string): Crumb[] {
 /** Render unresolved URL trail segments as skeleton crumbs. */
 export function loadingCrumbs(trail: readonly number[]): (Crumb | undefined)[] {
   return [
-    { label: t.library.title, to: LIBRARY_PATH },
+    { label: t.home.title, to: LIBRARY_PATH },
     ...trail.map(() => undefined),
     undefined,
   ];

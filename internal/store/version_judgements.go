@@ -408,7 +408,7 @@ func rebuildCandidatesOf(ctx context.Context, tx *sql.Tx, c *changes, key string
 	if err != nil || !found {
 		return err
 	}
-	return rebuildVersionCandidates(ctx, tx, c, key, fingerprint)
+	return rebuildVersionCandidates(ctx, tx, c, key, fingerprint, pairFinder{})
 }
 
 const versionJudgingEnabledKey = "version_judging.enabled"
@@ -438,7 +438,7 @@ func (s *SettingsStore) SaveVersionJudgingEnabled(ctx context.Context, enabled b
 	}
 	c := &changes{}
 	if enabled {
-		if err := syncPairActivities(ctx, tx, c, nil, time.Now()); err != nil {
+		if err := syncPairActivities(ctx, tx, c, nil, pairFinder{}, time.Now()); err != nil {
 			return err
 		}
 	}

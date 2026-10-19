@@ -26,6 +26,7 @@ import {
   serializeActivityCriteria,
 } from "./activityCriteria";
 import { openActions } from "./activityEntry";
+import { ActivityPipelineCard } from "./ActivityPipelineCard";
 import { ActivityToolbar } from "./ActivityToolbar";
 import { useActivityLog } from "./useActivityLog";
 import { useActivityOperations } from "./useActivityOperations";
@@ -66,6 +67,21 @@ function useActivityCriteria(): {
   return { criteria, apply };
 }
 
+/**
+ * A pipeline card follows its state until the owner presses its button; that choice then holds
+ * while the page stays open, through refreshes, filters and status changes.
+ */
+function usePipelineExpansion(): {
+  chosen: ReadonlyMap<number, boolean>;
+  choose: (id: number, open: boolean) => void;
+} {
+  const [chosen, setChosen] = useState<ReadonlyMap<number, boolean>>(() => new Map());
+  const choose = useCallback((id: number, open: boolean) => {
+    setChosen((previous) => new Map(previous).set(id, open));
+  }, []);
+  return { chosen, choose };
+}
+
 /** Global counts ignore filters; running includes queued records. */
 function ActivityFooter({ counts }: { counts: ActivityCounts | null }) {
   if (counts === null) return null;
@@ -98,6 +114,7 @@ export default function ActivityPage() {
   const { criteria, apply } = useActivityCriteria();
   const { state, loadMore, retry, refresh } = useActivityLog(criteria);
   const operations = useActivityOperations(refresh);
+  const expansion = usePipelineExpansion();
   const totals = useActivityTotals();
   const now = useNow();
   const end = useRef<HTMLDivElement>(null);
@@ -156,17 +173,31 @@ export default function ActivityPage() {
       )}
       {items.length > 0 && (
         <CardList label={t.activity.list}>
-          {items.map((entry) => (
-            <ActivityCard
-              key={entry.id}
-              entry={entry}
-              now={now}
-              from={from}
-              actions={openActions(entry)}
-              onRetry={operations.retry}
-              onUndo={operations.undo}
-            />
-          ))}
+          {items.map((entry) =>
+            entry.kind === "pipeline" ? (
+              <ActivityPipelineCard
+                key={entry.id}
+                item={entry}
+                now={now}
+                from={from}
+                actions={openActions(entry)}
+                chosen={expansion.chosen.get(entry.id)}
+                onExpandedChange={(open) => expansion.choose(entry.id, open)}
+                onRetry={operations.retry}
+                onUndo={operations.undo}
+              />
+            ) : (
+              <ActivityCard
+                key={entry.id}
+                entry={entry}
+                now={now}
+                from={from}
+                actions={openActions(entry)}
+                onRetry={operations.retry}
+                onUndo={operations.undo}
+              />
+            ),
+          )}
         </CardList>
       )}
       {state.kind === "ready" && state.more.kind === "loading" && (

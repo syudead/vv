@@ -242,6 +242,19 @@ the label in `text-muted-foreground`.
 Do not use it to change a setting (use `ToggleGroup`) or to move to another
 screen (use links).
 
+### Collapsible
+
+Item `collapsible`. Shows or hides a part of a section in place from one
+button, such as the member rows of an expandable `CardListItem`, which is
+where the showcase draws it. `CollapsibleTrigger` wraps a `Button` through
+`asChild`; an icon-only trigger follows the names rule, and its name and
+tooltip say what pressing it does now (`Show tasks`, `Hide tasks`). The
+hidden part is not rendered, so it holds nothing a reader must find while it
+is closed.
+
+Do not use it to switch between views (use `Tabs`), for a list of settings
+pages (use `SettingsPage`'s `nav`), or for a floating layer (use `Popover`).
+
 ### Sonner
 
 Item `sonner`. Short, passive notices of a finished action ("Added 3 videos to
@@ -404,6 +417,30 @@ list row and `page` in the video page's action group. The heart is filled in
 row. Shown to the owner only.
 
 Do not use the `favorite` colour or a heart for anything else.
+
+### PersonFace
+
+Item `person-face`. A person's face in one of four frames, or the placeholder
+in the same frame, so a row that mixes both keeps one height:
+
+| Shape     | Frame                                       | Where                                   |
+| --------- | ------------------------------------------- | --------------------------------------- |
+| `card`    | Full width, `aspect-square`, `rounded-full` | A card of the people grid               |
+| `profile` | Full width, `aspect-portrait`, `rounded-md` | The person page's profile column        |
+| `chip`    | `size-5`, `rounded-full`, a `text-sm` line  | Next to a name in the video page's cast |
+| `compare` | `size-8`, `rounded-full`                    | A fetched person in a comparison        |
+
+The image is cropped with `object-cover` and `object-face`: centred
+horizontally and a third from the top, where a portrait usually holds the
+face. The placeholder is lucide `UserRound` in `muted-foreground` on
+`bg-muted`, not a letter, since the first character of a Japanese name tells
+the viewer little; it also stands in when the image fails to load. Pass
+`onAdd` and `addLabel` to make the placeholder a button that adds a face.
+Put marks over the frame, such as the favorite heart, as children in a
+`PersonFaceMark` (`top-end` or `bottom-end`).
+
+Do not use it for anything but a person: organizations and videos have no
+face.
 
 ### TentativeMark
 

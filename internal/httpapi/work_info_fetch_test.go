@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,19 @@ type scriptedPlugins struct {
 	tags       []string
 	ids        []string
 	cover      *domain.WorkInfoCover
+	// personImages maps an index to its kept image.
+	personImages map[int]domain.WorkInfoCover
+}
+
+func (p *scriptedPlugins) WorkInfoFetchPersonImage(_ int64, fetchID string, index int) (domain.WorkInfoCover, error) {
+	if fetchID != "abc" {
+		return domain.WorkInfoCover{}, domain.ErrNotFound
+	}
+	image, ok := p.personImages[index]
+	if !ok {
+		return domain.WorkInfoCover{}, domain.ErrPersonImageNotFound
+	}
+	return image, nil
 }
 
 func (p *scriptedPlugins) SearchWorkInfo(context.Context, int64, string) ([]domain.WorkInfoCandidate, error) {
@@ -306,5 +320,47 @@ func TestWorkInfoFetchCoverServesTheImageWithItsType(t *testing.T) {
 	rec = e.serve(authRequest{method: http.MethodGet, target: coverPath})
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("guest cover = %d, want 401", rec.Code)
+	}
+}
+
+func TestWorkInfoFetchPersonImageServesTheKeptImageByIndex(t *testing.T) {
+	e := newFetchRouteEnv(t)
+	height := 160
+	e.plugins.fetch = domain.WorkInfoFetchResult{ID: "abc", Tags: []string{}, Details: domain.FetchedWorkInfo{People: []domain.FetchedPerson{
+		{Role: domain.PersonPerformer, Name: "A"},
+		{Role: domain.PersonPerformer, Name: "B", Image: &domain.WorkInfoCover{Data: []byte("jpeg bytes")},
+			Profile: domain.PersonProfile{HeightCm: &height, BloodType: "unknown"}},
+	}}}
+	status, body := e.post(fetchPath, `{"pluginId":1,"id":"ABC-123"}`, e.owner)
+	var fetch gen.WorkInfoFetch
+	if status != http.StatusCreated || json.Unmarshal(body, &fetch) != nil || len(fetch.People) != 2 {
+		t.Fatalf("fetch = %d %s", status, body)
+	}
+	if fetch.People[0].HasImage != nil || fetch.People[0].Profile != nil {
+		t.Errorf("person A = %+v; want neither an image nor a profile", fetch.People[0])
+	}
+	b := fetch.People[1]
+	if b.HasImage == nil || !*b.HasImage || b.Profile == nil || b.Profile.HeightCm == nil || *b.Profile.HeightCm != 160 ||
+		b.Profile.BloodType != nil {
+		t.Errorf("person B = %+v; want the image flag and the valid height alone", b)
+	}
+
+	e.plugins.personImages = map[int]domain.WorkInfoCover{1: {Data: []byte("jpeg bytes"), ContentType: "image/jpeg"}}
+	path := func(fetchID string, index int) string {
+		return "/api/videos/7/work-info-fetches/" + fetchID + "/people/" + strconv.Itoa(index) + "/image"
+	}
+	rec := e.serve(authRequest{method: http.MethodGet, target: path("abc", 1), cookies: []*http.Cookie{e.owner}})
+	if rec.Code != http.StatusOK || rec.Body.String() != "jpeg bytes" || rec.Header().Get("Content-Type") != "image/jpeg" ||
+		rec.Header().Get("Cache-Control") != cacheNoStore {
+		t.Fatalf("image = %d %q %v", rec.Code, rec.Body.String(), rec.Header())
+	}
+	rec = e.serve(authRequest{method: http.MethodGet, target: path("abc", 0), cookies: []*http.Cookie{e.owner}})
+	assertErrorBody(t, "no image", rec.Code, rec.Body.Bytes(),
+		wantError{status: 404, code: gen.ErrorCodeNotFound, reason: gen.ErrorReasonPersonImageNotFound})
+	rec = e.serve(authRequest{method: http.MethodGet, target: path("gone", 1), cookies: []*http.Cookie{e.owner}})
+	assertErrorBody(t, "expired fetch", rec.Code, rec.Body.Bytes(), wantError{status: 404, code: gen.ErrorCodeNotFound})
+	rec = e.serve(authRequest{method: http.MethodGet, target: path("abc", 1)})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("guest image = %d, want 401", rec.Code)
 	}
 }

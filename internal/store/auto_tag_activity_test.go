@@ -12,12 +12,7 @@ import (
 
 func autoTagEntries(t *testing.T, db *DB) []domain.ActivityEntry {
 	t.Helper()
-	page, err := db.Activity().ListActivity(context.Background(), domain.AudienceOwner,
-		domain.ActivityQuery{Features: []domain.ActivityFeature{domain.ActivityFeatureAutoTagging}}, "", 100)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return page.Items
+	return entriesOfKind(t, db, domain.ActivityAutoTag)
 }
 
 func latestAutoTagEntry(t *testing.T, db *DB) domain.ActivityEntry {

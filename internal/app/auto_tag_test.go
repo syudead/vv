@@ -26,7 +26,9 @@ type fakeAutoTagQueue struct {
 	// queueDeciders track initiators; finishDeciders track decision sources.
 	queueDeciders  []domain.ActivityDecider
 	finishDeciders map[string]domain.ActivityDecider
-	done           chan string
+	// retried holds {videoID, entryID} per RetryVideo call.
+	retried [][2]int64
+	done    chan string
 }
 
 func newFakeAutoTagQueue() *fakeAutoTagQueue {
@@ -48,6 +50,13 @@ func (q *fakeAutoTagQueue) QueueVideos(
 	q.modes = append(q.modes, mode)
 	q.queueDeciders = append(q.queueDeciders, decider)
 	return len(ids), nil
+}
+
+func (q *fakeAutoTagQueue) RetryVideo(_ context.Context, videoID, entryID int64) (int, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.retried = append(q.retried, [2]int64{videoID, entryID})
+	return 1, nil
 }
 
 func (q *fakeAutoTagQueue) QueueLibrary(_ context.Context, mode domain.AutoTagQueueMode, decider domain.ActivityDecider) (int, error) {
@@ -309,17 +318,27 @@ func TestAutoTaggerSkipsWithoutSubjectOrCandidates(t *testing.T) {
 	}
 }
 
+// The seek stage's transaction queues after-import tagging, so the subscriber only wakes the worker.
+func TestAutoTaggerVideoImagesFinishedOnlyWakes(t *testing.T) {
+	queue := newFakeAutoTagQueue()
+	settings := &fakeAutoTagSettings{settings: domain.AutoTagSettings{Enabled: true, AfterImport: true}}
+	tagger := NewAutoTagger(AutoTaggerOptions{Queue: queue, Settings: settings, Classifier: &fakeClassifier{}})
+
+	tagger.VideoImagesFinished(context.Background(), 5)
+	if len(tagger.wake) != 1 {
+		t.Fatal("ワーカーを起こしていない")
+	}
+	if len(queue.queuedIDs) != 0 || len(queue.modes) != 0 {
+		t.Fatalf("キューを呼んだ: %v, %v", queue.queuedIDs, queue.modes)
+	}
+}
+
 func TestAutoTaggerQueuesOnlyWhenEnabled(t *testing.T) {
 	queue := newFakeAutoTagQueue()
 	settings := &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()}
 	tagger := NewAutoTagger(AutoTaggerOptions{Queue: queue, Settings: settings, Classifier: &fakeClassifier{}})
 	ctx := context.Background()
 
-	settings.settings.AfterImport = true
-	tagger.VideoImagesFinished(ctx, 5)
-	if len(queue.queuedIDs) != 0 {
-		t.Fatal("機能が切なのに積んだ")
-	}
 	if _, err := tagger.QueueVideo(ctx, 6); !errors.Is(err, domain.ErrAutoTaggingOff) {
 		t.Fatalf("QueueVideo err = %v", err)
 	}
@@ -327,26 +346,17 @@ func TestAutoTaggerQueuesOnlyWhenEnabled(t *testing.T) {
 		t.Fatalf("QueueLibrary err = %v", err)
 	}
 	settings.settings = domain.AutoTagSettings{Enabled: true, Threshold: 0.8, TentativeThreshold: 0.5}
-	tagger.VideoImagesFinished(ctx, 5)
-	if len(queue.queuedIDs) != 0 {
-		t.Fatal("自動の判定が切なのに積んだ")
-	}
-	settings.settings.AfterImport = true
-	tagger.VideoImagesFinished(ctx, 5)
-	if !slices.Equal(queue.queuedIDs, []int64{5}) || queue.modes[0] != domain.AutoTagQueueIfNew {
-		t.Fatalf("積んだ = %v, %v", queue.queuedIDs, queue.modes)
-	}
-	if queued, err := tagger.QueueVideo(ctx, 6); err != nil || !queued || queue.modes[1] != domain.AutoTagQueueAgain {
+	if queued, err := tagger.QueueVideo(ctx, 6); err != nil || !queued || queue.modes[0] != domain.AutoTagQueueAgain {
 		t.Fatalf("QueueVideo = %v, %v, %v", queued, err, queue.modes)
 	}
 	if _, err := tagger.QueueLibrary(ctx, domain.AutoTagScope("bogus")); err == nil {
 		t.Fatal("未知の範囲を受け付けた")
 	}
-	if n, err := tagger.QueueLibrary(ctx, domain.AutoTagScopeMissing); err != nil || n != 3 || queue.modes[2] != domain.AutoTagQueueUnlessDone {
+	if n, err := tagger.QueueLibrary(ctx, domain.AutoTagScopeMissing); err != nil || n != 3 || queue.modes[1] != domain.AutoTagQueueUnlessDone {
 		t.Fatalf("QueueLibrary = %d, %v, %v", n, err, queue.modes)
 	}
-	// Ingestion uses rule; settings and video-page requests use owner.
-	wantDeciders := []domain.ActivityDecider{domain.ActivityByRule, domain.ActivityByOwner, domain.ActivityByOwner}
+	// Settings and video-page requests use owner.
+	wantDeciders := []domain.ActivityDecider{domain.ActivityByOwner, domain.ActivityByOwner}
 	if !slices.Equal(queue.queueDeciders, wantDeciders) {
 		t.Fatalf("始めたもの = %v", queue.queueDeciders)
 	}
@@ -460,16 +470,16 @@ func TestAutoTaggerRetriesAndUndoesActivity(t *testing.T) {
 	if err := activity.RetryActivity(ctx, 1); !errors.Is(err, domain.ErrAutoTaggingOff) {
 		t.Fatalf("切のやり直し = %v, want ErrAutoTaggingOff", err)
 	}
-	if len(queue.queuedIDs) != 0 {
-		t.Fatalf("切なのに積んだ: %v", queue.queuedIDs)
+	if len(queue.retried) != 0 {
+		t.Fatalf("切なのに積んだ: %v", queue.retried)
 	}
 	settings.settings.Enabled = true
 	if err := activity.RetryActivity(ctx, 1); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(queue.queuedIDs, []int64{6}) || queue.queueDeciders[0] != domain.ActivityByOwner ||
-		queue.modes[0] != domain.AutoTagQueueAgain {
-		t.Fatalf("積んだ = %v, %v, %v", queue.queuedIDs, queue.queueDeciders, queue.modes)
+	// The retry names the retried entry so the store can join its pipelines.
+	if !slices.Equal(queue.retried, [][2]int64{{6, 1}}) {
+		t.Fatalf("やり直し = %v", queue.retried)
 	}
 	if err := activity.RetryActivity(ctx, 2); !errors.Is(err, domain.ErrActivityNotRetryable) {
 		t.Fatalf("動画の無い記録のやり直し = %v", err)

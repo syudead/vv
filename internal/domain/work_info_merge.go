@@ -44,6 +44,9 @@ type WorkInfoMerge struct {
 	NewPeople        []NewCredit
 	NewOrganizations []NewCredit
 	Skipped          []SkippedWorkInfoValue
+	// PersonLinks gives, for each fetched person, the position in Info.People of the link it resolved to, or -1 when
+	// its role was not selected or the entry was skipped.
+	PersonLinks []int
 }
 
 // MergeFetchedWorkInfo ignores absent selected values and title/tags, validating individual values with NormalizeWorkInfo.
@@ -67,6 +70,7 @@ func MergeFetchedWorkInfo(in WorkInfoMergeInput) WorkInfoMerge {
 		m.out.Info.People[i] = WorkPerson{Role: link.role, Person: link.ref}
 	}
 	m.out.NewPeople = people.created
+	m.out.PersonLinks = people.positions
 	m.out.Skipped = append(m.out.Skipped, people.skipped...)
 
 	organizations := mergeCreditRoles(m.selected, creditRoleInput[OrganizationRole]{
@@ -231,11 +235,16 @@ type creditRoleMerge[R ~string] struct {
 	links   []creditLink[R]
 	created []NewCredit
 	skipped []SkippedWorkInfoValue
+	// positions holds each fetched entry's index in links, or -1.
+	positions []int
 }
 
 // mergeCreditRoles skips invalid/ambiguous/over-limit entries and coalesces planned entities sharing external IDs or folded names, merging their IDs across roles.
 func mergeCreditRoles[R ~string](selected func(WorkInfoField) bool, in creditRoleInput[R]) creditRoleMerge[R] {
-	out := creditRoleMerge[R]{links: slices.Clone(in.stored)}
+	out := creditRoleMerge[R]{links: slices.Clone(in.stored), positions: make([]int, len(in.fetched))}
+	for i := range out.positions {
+		out.positions[i] = -1
+	}
 	for _, role := range in.roles {
 		field := in.field(role)
 		if !selected(field) {
@@ -255,7 +264,8 @@ func mergeCreditRoles[R ~string](selected func(WorkInfoField) bool, in creditRol
 			if i < len(in.matches) {
 				match = in.matches[i]
 			}
-			link, reason, keep := out.resolve(entry, match)
+			link, reason, at := out.resolve(entry, match)
+			keep := at < 0
 			switch {
 			case reason != "":
 				out.skipped = append(out.skipped, SkippedWorkInfoValue{Field: field, Value: entry.name, Reason: reason})
@@ -264,29 +274,32 @@ func mergeCreditRoles[R ~string](selected func(WorkInfoField) bool, in creditRol
 			default:
 				out.mergeIDs(field, link)
 				if keep {
+					at = len(out.links)
 					out.add(link)
 					count++
 				}
+				out.positions[i] = at
 			}
 		}
 	}
 	return out
 }
 
-func (m *creditRoleMerge[R]) resolve(entry fetchedCredit[R], match CreditMatch) (creditLink[R], SkippedWorkInfoReason, bool) {
+// resolve returns the link for entry and the index of the same link already in m.links, or -1 when it is new.
+func (m *creditRoleMerge[R]) resolve(entry fetchedCredit[R], match CreditMatch) (creditLink[R], SkippedWorkInfoReason, int) {
 	link := creditLink[R]{role: entry.role, created: -1}
 	switch match.State {
 	case CreditMatchAmbiguous:
-		return link, SkippedWorkInfoAmbiguous, false
+		return link, SkippedWorkInfoAmbiguous, -1
 	case CreditMatchExisting:
 		if match.Credit == nil {
-			return link, SkippedWorkInfoAmbiguous, false
+			return link, SkippedWorkInfoAmbiguous, -1
 		}
 		link.ref = *match.Credit
 	default:
 		input, err := NormalizeCredit(CreditInput{Name: entry.name, ExternalIDs: entry.ids})
 		if err != nil {
-			return link, SkippedWorkInfoInvalid, false
+			return link, SkippedWorkInfoInvalid, -1
 		}
 		link.ref = CreditRef{Name: input.Name}
 		link.created = m.createdIndex(input)
@@ -298,7 +311,7 @@ func (m *creditRoleMerge[R]) resolve(entry fetchedCredit[R], match CreditMatch) 
 			link.created, link.pending = len(m.created), &input
 		}
 	}
-	return link, "", !m.linked(link)
+	return link, "", m.linkedAt(link)
 }
 
 // createdIndex prefers shared external IDs, then folded-name equality, or -1.
@@ -334,8 +347,8 @@ func (m *creditRoleMerge[R]) mergeIDs(field WorkInfoField, link creditLink[R]) {
 	}
 }
 
-func (m *creditRoleMerge[R]) linked(link creditLink[R]) bool {
-	return slices.ContainsFunc(m.links, func(l creditLink[R]) bool {
+func (m *creditRoleMerge[R]) linkedAt(link creditLink[R]) int {
+	return slices.IndexFunc(m.links, func(l creditLink[R]) bool {
 		if l.role != link.role {
 			return false
 		}

@@ -12,9 +12,13 @@ export interface ListRow {
   createdAt: string;
 }
 
-export interface ListRowsQuery {
+/** What paging needs of a list's conditions; local updates also need ListRowsQuery's sort. */
+export interface PagedRowsQuery {
   /** Trimmed foldForMatch query; empty means unfiltered. */
   query: string;
+}
+
+export interface ListRowsQuery extends PagedRowsQuery {
   sort: TagListSort;
 }
 
@@ -127,7 +131,7 @@ export function appendUniqueTags<R extends ListRow>(
 }
 
 /** Both totals include unloaded rows; nextCursor exists only when more remain. */
-export interface PageRows<R extends ListRow, Q extends ListRowsQuery> {
+export interface PageRows<R extends ListRow, Q extends PagedRowsQuery> {
   rows: R[];
   total: number;
   totalAll: number;

@@ -84,6 +84,7 @@ func (p *WorkInfoPlugins) keepFetched(
 	if tags == nil {
 		tags = []string{}
 	}
+	keepPersonImages(result.WorkInfo.People, result.PersonImages)
 	details := domain.OrderFetchedWorkDetails(result.WorkInfo)
 	people, err := p.matchCredits(ctx, domain.CreditPerson, domain.PersonMatchEntries(details.People))
 	if err != nil {
@@ -226,6 +227,8 @@ func (p *WorkInfoPlugins) applyFetch(
 		// Apply covers only after the transaction revalidates the plugin and commits metadata.
 		video, coverSkipped = p.applyCover(ctx, fetch, video)
 	}
+	// Like the cover, faces follow the commit so a plugin the transaction found stale stores none.
+	video = p.applyPersonImages(ctx, video, fetch.details.People, applied.PersonIDs)
 	skipped := append(coverSkipped, applied.Skipped...)
 	if skipped == nil {
 		skipped = []domain.SkippedWorkInfoValue{}
@@ -356,7 +359,7 @@ func newWorkInfoFetches() *workInfoFetches {
 	return &workInfoFetches{entries: map[string]*workInfoFetch{}}
 }
 
-// Assign a random 128-bit ID; evict the earliest-expiring cover-bearing results when total covers exceed WorkInfoFetchCoverBudget.
+// Assign a random 128-bit ID; evict the earliest-expiring image-bearing results when their images exceed WorkInfoFetchCoverBudget.
 func (f *workInfoFetches) add(fetch *workInfoFetch, now time.Time) string {
 	id := rand.Text()
 	f.mu.Lock()
@@ -367,22 +370,20 @@ func (f *workInfoFetches) add(fetch *workInfoFetch, now time.Time) string {
 	return id
 }
 
-// Caller holds mu; evict earliest-expiring cover-bearing results until within budget.
+// Caller holds mu; evict earliest-expiring image-bearing results until within budget.
 func (f *workInfoFetches) trimCovers() {
 	total := 0
 	for _, entry := range f.entries {
-		if entry.cover != nil {
-			total += len(entry.cover.Data)
-		}
+		total += entry.imageBytes()
 	}
 	for total > domain.WorkInfoFetchCoverBudget {
 		oldest := ""
 		for id, entry := range f.entries {
-			if entry.cover != nil && (oldest == "" || entry.expiresAt.Before(f.entries[oldest].expiresAt)) {
+			if entry.imageBytes() > 0 && (oldest == "" || entry.expiresAt.Before(f.entries[oldest].expiresAt)) {
 				oldest = id
 			}
 		}
-		total -= len(f.entries[oldest].cover.Data)
+		total -= f.entries[oldest].imageBytes()
 		delete(f.entries, oldest)
 	}
 }

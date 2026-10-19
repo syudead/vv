@@ -14,6 +14,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ActivityEntry,
   ActivityFeature,
+  ActivityListItem,
+  ActivityMemberSummary,
   ActivityPage as Page,
 } from "../api/activity";
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
@@ -58,7 +60,7 @@ const features: ActivityFeature[] = [
 ];
 
 const server = {
-  entries: [] as ActivityEntry[],
+  entries: [] as ActivityListItem[],
   requests: [] as URLSearchParams[],
   /** Delay the response after taking its snapshot to simulate concurrent changes. */
   gate: null as Promise<void> | null,
@@ -94,7 +96,7 @@ async function operate(path: string, init: RequestInit | undefined): Promise<Res
   );
 }
 
-function matches(item: ActivityEntry, params: URLSearchParams, skip: string): boolean {
+function matches(item: ActivityListItem, params: URLSearchParams, skip: string): boolean {
   const status = params.get("status");
   const chosen = params.getAll("feature");
   const decider = params.get("decider");
@@ -402,6 +404,21 @@ describe("ActivityPage", () => {
     );
   });
 
+  it("opens the entry's detail from the card's title and the video only from Open", async () => {
+    renderPage();
+    await waitFor(() => expect(cards()).toHaveLength(4));
+    const failed = cards().find(
+      (card) => within(card).queryByText("file-2.mp4") !== null,
+    )!;
+    const links = within(failed).getAllByRole("link");
+    expect(
+      links.map((link) => [link.getAttribute("aria-label"), link.getAttribute("href")]),
+    ).toEqual([
+      ["Details of Import for file-2.mp4", "/activity/2"],
+      ["Open", "/videos/2"],
+    ]);
+  });
+
   it("draws only catalog text besides the file names", async () => {
     enablePseudoLocale();
     renderPage();
@@ -602,6 +619,109 @@ describe("ActivityPage retry and undo", () => {
     expect(
       await screen.findByText("Couldn't undo: This can no longer be undone"),
     ).toBeDefined();
+  });
+});
+
+describe("ActivityPage import runs", () => {
+  function task(
+    id: number,
+    extra: Partial<ActivityMemberSummary> = {},
+  ): ActivityMemberSummary {
+    const {
+      candidate: _candidate,
+      createdAt: _created,
+      updatedAt: _updated,
+      ...fields
+    } = entry(10);
+    return { ...fields, id, replaced: false, ...extra };
+  }
+
+  function run(
+    extra: Partial<ActivityListItem>,
+    members: ActivityMemberSummary[],
+  ): ActivityListItem {
+    return { ...entry(10, { kind: "pipeline", outcome: undefined }), members, ...extra };
+  }
+
+  const processing = run({ status: "running", reason: "processing" }, [
+    task(11, {
+      status: "running",
+      reason: "processing",
+      outcome: undefined,
+      progress: { stage: "probe", done: 1, total: 5 },
+    }),
+    task(12, {
+      kind: "auto_tag",
+      status: "running",
+      reason: "waiting",
+      outcome: undefined,
+    }),
+  ]);
+
+  function runCard(): HTMLElement {
+    return screen
+      .getByRole("list", { name: /Activity log/ })
+      .querySelector<HTMLElement>("[data-slot=card-list-item]")!;
+  }
+
+  function toggle(): HTMLElement {
+    return within(runCard()).getByRole("button", { name: /tasks for file-10\.mp4$/ });
+  }
+
+  it("collapses a run without a reload when a notification finishes it", async () => {
+    server.entries = [processing];
+    renderPage();
+    await waitFor(() => expect(toggle().getAttribute("aria-expanded")).toBe("true"));
+    server.entries = [
+      run({ status: "done" }, [task(11), task(12, { kind: "auto_tag", tagCount: 0 })]),
+    ];
+    await emitServerEvent("activity");
+    await waitFor(() => expect(toggle().getAttribute("aria-expanded")).toBe("false"));
+    expect(within(runCard()).getByText("Finished · 2 tasks")).toBeDefined();
+  });
+
+  it("keeps the owner's choice through a notification", async () => {
+    const user = userEvent.setup();
+    server.entries = [processing];
+    renderPage();
+    await waitFor(() => expect(toggle().getAttribute("aria-expanded")).toBe("true"));
+    await user.click(toggle());
+    server.entries = [
+      run({ status: "running", reason: "processing" }, processing.members ?? []),
+      entry(5),
+    ];
+    await emitServerEvent("activity");
+    expect(await screen.findByText("file-5.mp4")).toBeDefined();
+    expect(toggle().getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("lists a run under Needs attention once, with its failed task marked and linked", async () => {
+    server.entries = [
+      run({ status: "attention", reason: "failed" }, [
+        task(11, { matched: false }),
+        task(12, {
+          kind: "auto_tag",
+          status: "attention",
+          reason: "failed",
+          outcome: undefined,
+          retryRun: true,
+          matched: true,
+        }),
+      ]),
+      entry(3),
+    ];
+    renderPage("/activity?status=attention");
+    await waitFor(() => expect(toggle().getAttribute("aria-expanded")).toBe("true"));
+    const list = screen.getByRole("list", { name: /Activity log/ });
+    expect(list.querySelectorAll("[data-slot=card-list-item]")).toHaveLength(1);
+    expect(within(runCard()).getByText("Auto-tagging: Failed")).toBeDefined();
+    const failed = within(runCard())
+      .getByRole("link", { name: "Auto-tagging" })
+      .closest<HTMLElement>("[data-slot=card-list-member]")!;
+    expect(within(failed).getByText("Matches")).toBeDefined();
+    expect(
+      within(failed).getByRole("link", { name: "Auto-tagging" }).getAttribute("href"),
+    ).toBe("/activity/12");
   });
 });
 

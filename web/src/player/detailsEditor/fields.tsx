@@ -1,10 +1,17 @@
 import { Plus, X } from "lucide-react";
-import { type KeyboardEvent, useLayoutEffect, useRef } from "react";
+import {
+  type KeyboardEvent,
+  type Ref,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+} from "react";
 
 import { t, type UiText } from "../../i18n";
 import { isComposingKeyEvent } from "../../lib/ime";
 import { Button } from "../../ui/shadcn/button";
-import { Field, FieldError, FieldTitle } from "../../ui/shadcn/field";
+import { Field, FieldError, FieldLabel, FieldTitle } from "../../ui/shadcn/field";
 import { Input } from "../../ui/shadcn/input";
 import { type IdRow, newRowKey } from "./draft";
 
@@ -47,6 +54,77 @@ export function saveOnEnter(save: () => void) {
     event.preventDefault();
     save();
   };
+}
+
+/**
+ * A full-page editor form's shared effects: report the draft's state to the page, focus the name
+ * on open, and bring the input a save failure names into view. Returns the name input's ref.
+ */
+export function useEditorForm({
+  changed,
+  saving,
+  problem,
+  onChangedChange,
+  onSavingChange,
+}: {
+  changed: boolean;
+  saving: boolean;
+  problem: FieldProblem | null;
+  onChangedChange: (changed: boolean) => void;
+  onSavingChange: (saving: boolean) => void;
+}): RefObject<HTMLInputElement | null> {
+  const nameRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => onChangedChange(changed), [changed, onChangedChange]);
+  useEffect(() => onSavingChange(saving), [saving, onSavingChange]);
+  useEffect(() => {
+    nameRef.current?.focus();
+  }, []);
+  useLayoutEffect(() => {
+    if (problem === null) return;
+    const element = document.getElementById(controlId(problem.control));
+    // jsdom does not implement scrollIntoView.
+    element?.scrollIntoView?.({ block: "nearest" });
+    element?.focus();
+  }, [problem]);
+  return nameRef;
+}
+
+export function NameField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  nameRef,
+  saving,
+  problem,
+  onEnter,
+}: {
+  label: UiText;
+  value: string;
+  onChange: (name: string) => void;
+  placeholder?: string;
+  nameRef: Ref<HTMLInputElement>;
+  saving: boolean;
+  problem: FieldProblem | null;
+  onEnter: ReturnType<typeof saveOnEnter>;
+}) {
+  return (
+    <Field>
+      <FieldLabel htmlFor={controlId("name")}>{label}</FieldLabel>
+      <Input
+        ref={nameRef}
+        id={controlId("name")}
+        value={value}
+        placeholder={placeholder}
+        readOnly={saving}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={onEnter}
+        className="h-8"
+        {...invalidProps(problem, "name")}
+      />
+      <Problem problem={problem} control="name" />
+    </Field>
+  );
 }
 
 export function useFocusAdded() {
