@@ -48,7 +48,9 @@ function json(body: unknown, status = 200): Response {
 const info: WorkInfoValue = {
   dates: [],
   people: [],
-  organizations: [{ role: "maker", organization: { id: 5, name: "Studio" } }],
+  organizations: [
+    { role: "maker", organization: { id: 5, name: "Studio", provisional: false } },
+  ],
   urls: [],
   externalIds: [],
 };

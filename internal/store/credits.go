@@ -245,6 +245,9 @@ func patchedCredit(current domain.Credit, patch domain.CreditPatch) (domain.Cred
 	if patch.Profile != nil {
 		merged.Profile = patch.Profile.Apply(current.Profile)
 	}
+	if current.Provisional && patch.Name == nil {
+		return domain.NormalizeProvisionalCredit(merged)
+	}
 	normalized, err := domain.NormalizeCredit(merged)
 	var invalid *domain.InvalidWorkInfoError
 	if patch.Aliases == nil && errors.As(err, &invalid) && invalid.Problem == domain.WorkInfoDuplicate &&
@@ -364,7 +367,7 @@ func (s *CreditStore) Delete(ctx context.Context, kind domain.CreditKind, id int
 	return nil
 }
 
-// Merge transfers links, aliases, external IDs and children and fills empty profile fields and a missing face atomically; reject self-merges, parent cycles and merged limits.
+// Merge transfers links, aliases, external IDs and children and fills empty profile fields, a missing face and a missing canonical name atomically; reject self-merges, parent cycles and merged limits.
 func (s *CreditStore) Merge(ctx context.Context, kind domain.CreditKind, targetID int64, sourceIDs []int64) (domain.CreditMergeOutcome, error) {
 	t, err := creditTablesFor(kind)
 	if err != nil {
@@ -460,6 +463,12 @@ func mergeCreditsInto(ctx context.Context, tx *sql.Tx, t creditTables, targetID 
 		return err
 	}
 	statements := []struct{ what, statement string }{
+		// A target without a canonical name takes the first named source's, before the rest become aliases.
+		{"name the target", `insert into {names} ({id}, name, canonical, language, search_key, sort_key, search_version)
+			select ?1, n.name, 1, null, n.search_key, n.sort_key, n.search_version
+			  from json_each(?2) s join {names} n on n.{id} = s.value and n.canonical = 1
+			 where not exists (select 1 from {names} where {id} = ?1 and canonical = 1)
+			 order by s.key limit 1`},
 		// Preserve link positions; uniqueness leaves conflicting source rows for the following delete.
 		{"move the links", `update or ignore {links} set {id} = ?1 where {id} in (select value from json_each(?2))`},
 		{"drop the links", `delete from {links} where {id} in (select value from json_each(?2))`},

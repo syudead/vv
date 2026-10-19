@@ -22,6 +22,7 @@ function person(overrides: Partial<Person> = {}): Person {
   return {
     id: 7,
     name: "Aoi",
+    provisional: false,
     aliases: [],
     externalIds: [],
     profile: {},

@@ -21,7 +21,13 @@ describe("WorkInfo", () => {
           info={{
             ...empty,
             dates: [{ kind: "recorded", date: "2023-08" }],
-            people: [{ role: "photographer", person: { id: 4, name: "撮る人" } }],
+            people: [
+              {
+                role: "photographer",
+                person: { id: 4, name: "撮る人", provisional: false },
+                provisional: false,
+              },
+            ],
           }}
         />
       </MemoryRouter>,
@@ -42,10 +48,24 @@ describe("WorkInfo", () => {
           info={{
             ...empty,
             people: [
-              { role: "performer", person: { id: 4, name: "顔の人" }, imageRevision: 9 },
-              { role: "performer", person: { id: 6, name: "顔なし" } },
+              {
+                role: "performer",
+                person: { id: 4, name: "顔の人", provisional: false },
+                provisional: false,
+                imageRevision: 9,
+              },
+              {
+                role: "performer",
+                person: { id: 6, name: "顔なし", provisional: false },
+                provisional: false,
+              },
             ],
-            organizations: [{ role: "maker", organization: { id: 5, name: "Studio" } }],
+            organizations: [
+              {
+                role: "maker",
+                organization: { id: 5, name: "Studio", provisional: false },
+              },
+            ],
           }}
         />
       </MemoryRouter>,

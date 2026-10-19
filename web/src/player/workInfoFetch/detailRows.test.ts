@@ -43,7 +43,13 @@ function list(row: ReturnType<typeof detailRow>): ListRow {
 const stored = info({
   code: "ABC-1",
   dates: [{ kind: "release", date: "2024-01-01" }],
-  people: [{ role: "performer", person: { id: 9, name: "既存の人" } }],
+  people: [
+    {
+      role: "performer",
+      person: { id: 9, name: "既存の人", provisional: false },
+      provisional: false,
+    },
+  ],
   urls: ["https://works.example/w/1"],
   externalIds: [{ source: "works", value: "1" }],
 });
@@ -183,7 +189,12 @@ describe("detailRows", () => {
     const linked = performer("既存の人", { state: "existing", id: 9, name: "既存の人" });
     const faced = info({
       people: [
-        { role: "performer", person: { id: 9, name: "既存の人" }, imageRevision: 3 },
+        {
+          role: "performer",
+          person: { id: 9, name: "既存の人", provisional: false },
+          provisional: false,
+          imageRevision: 3,
+        },
       ],
     });
     const state = (people: WorkInfoFetch["people"], now = stored) =>

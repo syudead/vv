@@ -353,7 +353,7 @@ func mapCredits[T any](credits []domain.Credit, convert func(domain.Credit) T) [
 
 func toExternalPerson(credit domain.Credit) extgen.Person {
 	return extgen.Person{
-		Id: credit.ID, Name: credit.Name, Aliases: toExternalAliases(credit.Aliases),
+		Id: credit.ID, Name: credit.Name, Provisional: credit.Provisional, Aliases: toExternalAliases(credit.Aliases),
 		ExternalIds: toExternalExternalIDs(credit.ExternalIDs), Profile: toExternalProfile(credit.Profile),
 		VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,
 	}
