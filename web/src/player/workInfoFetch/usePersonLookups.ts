@@ -25,6 +25,10 @@ export interface PersonLookupEvents {
   onStale: () => void;
 }
 
+function isStale(error: unknown): boolean {
+  return error instanceof RequestFailed && error.code === "work_info_fetch_stale";
+}
+
 function failedState(error: unknown): LookupState {
   return error instanceof RequestFailed && error.code === "plugin_changed"
     ? { status: "changed" }
@@ -67,8 +71,7 @@ export function usePersonLookups(videoId: number, events: PersonLookupEvents) {
     } catch (error) {
       if (controller.signal.aborted) return;
       update(current, index, failedState(error));
-      if (error instanceof RequestFailed && error.code === "work_info_fetch_stale")
-        latest.current.onStale();
+      if (isStale(error)) latest.current.onStale();
     }
   };
 
@@ -112,6 +115,17 @@ export function usePersonLookups(videoId: number, events: PersonLookupEvents) {
       if (current === null || current.states[index]?.status !== "failed") return;
       update(current, index, { status: "looking" });
       current.queue.push(index);
+      void drain(current);
+    },
+    /** Request again the lookups that answered stale while a failed apply held the fetch, which it restores. */
+    retryStale: () => {
+      const current = session.current;
+      if (current === null) return;
+      current.states.forEach((state, index) => {
+        if (state.status !== "failed" || !isStale(state.error)) return;
+        update(current, index, { status: "looking" });
+        current.queue.push(index);
+      });
       void drain(current);
     },
     toggleItem: (index: number, item: PersonPluginItem, on: boolean) => {

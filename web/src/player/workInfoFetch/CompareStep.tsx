@@ -34,8 +34,8 @@ import {
 } from "./detailRows";
 import {
   comparedFields,
+  comparedRowState,
   pluginLabel,
-  rowState,
   type RowState,
   selectableTags,
   tagsRowChecked,
@@ -58,7 +58,7 @@ export interface Fetched {
   fromSearch: boolean;
 }
 
-/** A Now or Fetched cell; narrow is for a two-column grid, as in a lookup block. */
+/** A Now or Fetched cell; narrow is for a two-column grid, as in a lookup block, which keeps its heading at every width because no column headings sit above it. */
 export function Cell({
   heading,
   narrow = false,
@@ -75,7 +75,9 @@ export function Cell({
         !narrow && "sm:col-span-2",
       )}
     >
-      <span className="text-xs text-muted-foreground sm:hidden">{heading}</span>
+      <span className={cn("text-xs text-muted-foreground", !narrow && "sm:hidden")}>
+        {heading}
+      </span>
       {children}
     </div>
   );
@@ -155,24 +157,27 @@ function chipItems(
 
 const FILL_FOLD = 3;
 
-/** One line per fetched person with a profile, folded after three so the chips stay primary; a person with a lookup has its block instead. */
+/** One line per fetched person with a profile, folded after three so the chips stay primary; a person with a lookup fills what the lookup leaves, even when it fails. */
 function FillLines({
   chips,
-  covered,
+  lookedUp,
 }: {
   chips: readonly DetailChip[];
-  covered: ReadonlySet<string>;
+  lookedUp: ReadonlySet<string>;
 }) {
   const text = t.player.workInfoFetch;
   const today = useLocalToday();
   const [open, setOpen] = useState(false);
   const lines = chips.flatMap((chip) =>
-    chip.profile === undefined || covered.has(chip.key)
+    chip.profile === undefined
       ? []
       : [
           {
             key: chip.key,
-            line: text.fillsEmpty(chip.name, fillValues(chip.profile, today)),
+            line: (lookedUp.has(chip.key) ? text.fillsAfterLookup : text.fillsEmpty)(
+              chip.name,
+              fillValues(chip.profile, today),
+            ),
           },
         ],
   );
@@ -289,7 +294,7 @@ function ListValue({
       />
       <FillLines
         chips={row.fetched}
-        covered={person ? roleLookups(context.result, field).covered : new Set()}
+        lookedUp={person ? roleLookups(context.result, field).lookedUp : new Set()}
       />
       {person && <RoleLookups field={field} context={context} />}
     </>
@@ -439,8 +444,8 @@ function CompareRow({
 }: {
   field: WorkInfoField;
   selected: boolean;
-  /** A lookup of one of the row's people has something to apply. */
-  changedByLookup: boolean;
+  /** Role rows a lookup of one of their people has something to apply for. */
+  changedByLookup: ReadonlySet<WorkInfoField>;
   onToggle: (field: WorkInfoField, on: boolean) => void;
   tagPick: TagPick;
   cover: CoverFraming;
@@ -449,7 +454,7 @@ function CompareRow({
   const text = t.player.workInfoFetch;
   const id = useId();
   const { video, result, locked } = context;
-  const state = changedByLookup ? "differs" : rowState(field, video, result);
+  const state = comparedRowState(field, video, result, changedByLookup);
   const selectable = state === "differs";
   const checked =
     field === "tags"
@@ -629,7 +634,7 @@ export default function CompareStep({
               key={field}
               field={field}
               selected={selection.includes(field)}
-              changedByLookup={changedByLookup.has(field)}
+              changedByLookup={changedByLookup}
               onToggle={onToggle}
               tagPick={tagPick}
               cover={cover}

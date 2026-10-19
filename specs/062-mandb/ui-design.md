@@ -208,6 +208,7 @@ embedded untranslated.
 | Lookup source | From {plugin} | `text-xs text-muted-foreground` on the block's first line, after the name |
 | Looking up | Looking up… | With `Spinner`, in place of the items |
 | Lookup failed | Couldn't look up {name}: {reason} | `text-destructive`, with `Try again` after it |
+| Fill after a lookup | {name} — Fills what the lookup leaves empty: {values} | The fill line of an entry with a lookup, in the place and style of `Fills only empty fields` |
 | Try again | Try again | `link` `sm` `Button` |
 | Plugin changed | The plugin changed since the fetch, so this person wasn't looked up. | `text-muted-foreground`; no `Try again` |
 | Over the limit | Not looked up: over the limit of 5 automatic lookups per fetch. | `text-xs text-muted-foreground` under the chip of a `lookupLimited` entry |
@@ -401,8 +402,9 @@ flowchart LR
 ```
 
 In the person page's dialog the rows are headed by `Now` and `Fetched` from
-`sm` as the video's comparison; in a lookup block the headings are not
-repeated, because the block sits inside a comparison that already has them.
+`sm` as the video's comparison; in a lookup block the column headings are
+not repeated, because the block sits inside the `Fetched` column, and each
+cell keeps its `Now` or `Fetched` label at every width instead.
 
 ### States
 
@@ -419,9 +421,18 @@ After the work-info fetch answers, the comparison opens as today and the
 dialog requests the planned lookups one after another, in plan order
 ([R-3](research.md#r-3-the-video-page-asks-for-each-lookup-after-the-work-info-fetch)).
 Each fetched person with a `lookup` gets a block inside the role row's
-`Fetched` cell, under the chips and in place of that person's
-`Fills only empty fields` line: `basis-full`, `border-l-2 border-border`,
-`pl-3`, `mt-1`, `flex-col gap-1`.
+`Fetched` cell, under the chips and that row's fill lines: `basis-full`,
+`border-l-2 border-border`, `pl-3`, `mt-1`, `flex-col gap-1`.
+
+The apply writes a looked-up person's values in a fixed order
+([R-6](research.md#r-6-a-lookup-is-applied-per-item-only-through-a-selected-role)):
+the lookup's checked items first, then the work-info profile fills the
+fields that are still empty. The work-info profile fills even when the
+lookup is still running at the apply, has failed, or has no checked item. So
+a looked-up person with a work-info profile keeps a fill line, worded
+`{name} — Fills what the lookup leaves empty: {values}` in place of
+`Fills only empty fields`, and the comparison shows every value the apply can
+write for that person.
 
 ```mermaid
 sequenceDiagram
@@ -449,7 +460,8 @@ sequenceDiagram
 | Failed | `Couldn't look up {name}: {reason}` in `text-destructive` with `Try again`, which requests the same lookup again; the rest of the comparison stays as it is (the Issue's edge case) |
 | Plugin changed | The muted line without `Try again` |
 | Shared lookup | Entries sharing one lookup draw one block, under the first entry's chip, with their names on the first line joined by ` · ` ([R-4](research.md#r-4-the-lookup-plan-is-decided-by-the-server-at-fetch-time)); a sharing entry in a later role row, such as a director also in the cast, gets `Looked up under {role}.` under its chip and no second block |
-| Over the limit | A `lookupLimited` entry gets the muted line under its chip and no block (requirement 8) |
+| Work-info fill | A looked-up entry with a work-info profile keeps its fill line, worded `{name} — Fills what the lookup leaves empty: {values}`, in every block state; an entry sharing a lookup from an earlier row keeps it too |
+| Over the limit | A `lookupLimited` entry gets the muted line under its chip and no block (requirement 8); its fill line stays `Fills only empty fields`, since nothing runs before the work-info profile |
 | No lookup | Nothing: a person with only a name or an unaccepted ID shows the chips and fill line as today (acceptance criterion 5) |
 
 A role row counts as a change when a lookup of one of its entries has a
@@ -513,7 +525,7 @@ judged are 360px, 768px and 1280px, as the video's fetch dialog.
 
 | Width | Person plugins section | Person page and dialog | Lookup blocks |
 | --- | --- | --- | --- |
-| 1280px | Two sections `gap-8` apart; each row's first line holds the badge, name, version and the actions at the right end, the switch with its label first among them; the facts line wraps under the description | `Fetch info…` on the identity row's one line with `Edit`, `Show in library` and the menu; the dialog `max-w-2xl` centred, the comparison's three columns side by side, the `w-16` faces in the `Face` row, candidates one per row | Each block indented inside the `Fetched` cell, which is two of five columns; a block's rows use the cell's width with the item label on its own line above `Now` and `Fetched`, side by side |
+| 1280px | Two sections `gap-8` apart; each row's first line holds the badge, name, version and the actions at the right end, the switch with its label first among them; the facts line wraps under the description | `Fetch info…` on the identity row's one line with `Edit`, `Show in library` and the menu; the dialog `max-w-2xl` centred, the comparison's three columns side by side, the `w-16` faces in the `Face` row, candidates one per row | Each block indented inside the `Fetched` cell, which is two of five columns; a block's rows use the cell's width with the item label on its own line above `Now` and `Fetched`, side by side, each cell under its own `text-xs` label |
 | 768px | As 1280px | As 1280px; the dialog fits inside the viewport's side margins; the identity row wraps to two lines beside the face | As 1280px |
 | 360px | The actions move under the row's text, right-aligned, the switch and its label first on that line; the facts line wraps | The identity row wraps under the half-width face, `Fetch info…` on its own line when needed; the dialog spans the screen with the 16px margin; each comparison row stacks with `Now` and `Fetched` each on its own line under its heading; candidates keep `Open page` at the right; no horizontal scroll | The block takes the stacked `Fetched` line's width; its rows stack as the dialog's; the `border-l` line stays at the left; no horizontal scroll |
 

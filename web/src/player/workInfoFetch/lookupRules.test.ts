@@ -7,6 +7,7 @@ import type {
 } from "../../api/workInfoPlugins";
 import { skippedLines } from "./fetchRules";
 import {
+  cutShort,
   type LookupState,
   lookupSelections,
   roleLookups,
@@ -68,6 +69,19 @@ describe("lookupSelections", () => {
   });
 });
 
+describe("cutShort", () => {
+  const fetched = result([
+    entry("performer", "花子", { lookup: 0 }),
+    entry("director", "太郎", { lookup: 1 }),
+  ]);
+  const looking: LookupState[] = [{ status: "looking" }, { status: "looking" }];
+
+  it("まだ選べない役割の行の lookup も数え、持ち主が外した行の lookup は数えない", () => {
+    expect(cutShort(fetched, looking, [], () => false)).toBe(2);
+    expect(cutShort(fetched, looking, ["people.director"], () => true)).toBe(1);
+  });
+});
+
 describe("roleLookups", () => {
   it("lookup を共有する人物は最初の行に 1 つの block を出し、後の行には注記を、上限を超えた人物には上限の注記を出す", () => {
     const fetched = result(
@@ -82,12 +96,12 @@ describe("roleLookups", () => {
     expect(roleLookups(fetched, "people.performer")).toEqual({
       blocks: [{ index: 0, names: ["花子", "はなこ"] }],
       notes: [{ key: "2", name: "次子" }],
-      covered: new Set(["0", "1"]),
+      lookedUp: new Set(["0", "1"]),
     });
     expect(roleLookups(fetched, "people.director")).toEqual({
       blocks: [],
       notes: [{ key: "0", name: "花子", sharedUnder: "people.performer" }],
-      covered: new Set(["0"]),
+      lookedUp: new Set(["0"]),
     });
   });
 });

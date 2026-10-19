@@ -98,7 +98,11 @@ describe("VideoPage work-info fetch person lookups", () => {
               { state: "existing", id: 9, name: "既存の人" },
               { lookup: 0 },
             ),
-            performer("新しい人", { state: "new" }, { lookup: 1 }),
+            performer(
+              "新しい人",
+              { state: "new" },
+              { lookup: 1, profile: { heightCm: 150 } },
+            ),
           ],
           personLookups: [
             { ...idols, id: "1" },
@@ -128,6 +132,12 @@ describe("VideoPage work-info fetch person lookups", () => {
     const failed = within(dialog).getByRole("region", { name: "新しい人" });
     await within(failed).findByText(/^Couldn't look up 新しい人: /);
     expect(server.lookup.mock.calls).toEqual([[0], [1]]);
+    // The work-info profile still fills what the failed lookup left empty.
+    expect(
+      within(dialog).getByText(
+        "新しい人 — Fills what the lookup leaves empty: Height 150 cm",
+      ),
+    ).toBeDefined();
     expect(within(block).getByRole("checkbox", { name: "Face" })).toBeDefined();
     expect(within(block).getByRole("checkbox", { name: "Height" })).toBeDefined();
     expect(within(block).queryByRole("checkbox", { name: "Blood type" })).toBeNull();
@@ -214,7 +224,17 @@ describe("VideoPage work-info fetch person lookups", () => {
     });
   });
 
-  it("lookup が走っている間に反映すると、その人物の項目を送らず、残した人数を知らせる", async () => {
+  it("lookup が走っている間に反映すると、まだ選べない行の人物も含めて残した人数を知らせる", async () => {
+    server.video = {
+      ...video,
+      workInfo: {
+        dates: [],
+        people: [{ role: "performer", person: { id: 9, name: "既存の人" } }],
+        organizations: [],
+        urls: [],
+        externalIds: [],
+      },
+    };
     server.fetch.mockImplementation(() =>
       json(
         fetchResult({
@@ -235,9 +255,52 @@ describe("VideoPage work-info fetch person lookups", () => {
     server.apply.mockImplementation(() => json(appliedResult(video)));
     const { user, dialog } = await fetchById();
     await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
-    expect(server.apply).toHaveBeenCalledWith({ fields: ["title", "people.performer"] });
+    expect(server.apply).toHaveBeenCalledWith({ fields: ["title"] });
     await within(document.body).findByText(
       "Applied; 1 person was still being looked up and was left out.",
+    );
+  });
+
+  it("反映が fetch を押さえている間に lookup が期限切れを返しても、反映が失敗すれば比較は反映できるままで lookup をやり直す", async () => {
+    server.fetch.mockImplementation(() =>
+      json(
+        fetchResult({
+          title: "取得した題名",
+          people: [
+            performer(
+              "既存の人",
+              { state: "existing", id: 9, name: "既存の人" },
+              { lookup: 0 },
+            ),
+          ],
+          personLookups: [{ ...idols, id: "1" }],
+        }),
+        201,
+      ),
+    );
+    const first = held();
+    const applying = held();
+    server.lookup
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => json(found()));
+    server.apply.mockImplementationOnce(() => applying.promise);
+    const { user, dialog } = await fetchById();
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+    first.release(failure(409, { code: "work_info_fetch_stale" }));
+    const block = within(dialog).getByRole("region", { name: "既存の人" });
+    await within(block).findByText(/^Couldn't look up 既存の人: /);
+
+    applying.release(failure(500, { code: "internal_error" }));
+    await within(block).findByRole("checkbox", { name: "Height" });
+    expect(server.lookup.mock.calls).toEqual([[0], [0]]);
+    expect(
+      within(dialog).queryByText(
+        "This result is out of date. Fetch it again to apply it.",
+      ),
+    ).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Apply selected" })).toHaveProperty(
+      "disabled",
+      false,
     );
   });
 });

@@ -108,7 +108,8 @@ export const server = {
   plugins: [works] as WorkInfoPlugin[],
   search: vi.fn<(body: unknown) => Response>(),
   fetch: vi.fn<(body: unknown) => Response>(),
-  apply: vi.fn<(body: unknown) => Response>(),
+  /** A promise holds the apply's answer back. */
+  apply: vi.fn<(body: unknown) => Response | Promise<Response>>(),
   /** Answer planned lookup index; a promise holds the answer back. */
   lookup: vi.fn<(index: number) => Response | Promise<Response>>(),
   upload: vi.fn<(body: unknown) => Response>(),

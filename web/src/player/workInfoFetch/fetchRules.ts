@@ -136,6 +136,16 @@ export function rowState(
   return detailRow(field, videoWorkInfo(video), fetched).state;
 }
 
+/** A row's state in the comparison: a role row a lookup has something for is a change. */
+export function comparedRowState(
+  field: WorkInfoField,
+  video: Video,
+  fetched: WorkInfoFetch,
+  changedByLookup: ReadonlySet<WorkInfoField>,
+): RowState {
+  return changedByLookup.has(field) ? "differs" : rowState(field, video, fetched);
+}
+
 /** Match WorkInfoField order in api/openapi.yaml. */
 export const FIELDS: readonly WorkInfoField[] = [
   "title",

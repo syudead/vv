@@ -2214,6 +2214,8 @@ export const en = {
       newCount: (count: number) => `${formatNumber(count)} new`,
       fillsEmpty: (name: string, values: readonly string[]) =>
         `${name} — Fills only empty fields: ${values.join(" · ")}`,
+      fillsAfterLookup: (name: string, values: readonly string[]) =>
+        `${name} — Fills what the lookup leaves empty: ${values.join(" · ")}`,
       fillFact: (term: string, value: string) => `${term} ${value}`,
       fillBio: "Bio",
       // m counts selectable tags not already on the video.

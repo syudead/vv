@@ -98,15 +98,22 @@ export function lookupSelections(
   );
 }
 
-/** Lookups an apply now would leave out because they are still running. */
+/**
+ * Lookups an apply now would leave out because they are still running: one a checked role row
+ * links, or one whose role row cannot be chosen yet, since its result would select that row.
+ */
 export function cutShort(
   result: WorkInfoFetch,
   states: readonly LookupState[],
   selection: readonly WorkInfoField[],
+  selectable: (field: WorkInfoField) => boolean,
 ): number {
   return states.filter(
     (state, index) =>
-      state.status === "looking" && lookupEnabled(result, index, selection),
+      state.status === "looking" &&
+      lookupFields(result, index).some(
+        (field) => selection.includes(field) || !selectable(field),
+      ),
   ).length;
 }
 
@@ -134,8 +141,8 @@ export interface LookupNote {
 export interface RoleLookups {
   blocks: LookupBlockPlace[];
   notes: LookupNote[];
-  /** Chip keys whose fill line a block or note replaces. */
-  covered: Set<string>;
+  /** Chip keys of entries with a lookup, whose fill line fills only what the lookup leaves empty. */
+  lookedUp: Set<string>;
 }
 
 /**
@@ -149,12 +156,12 @@ export function roleLookups(result: WorkInfoFetch, field: WorkInfoField): RoleLo
     .filter((entry) => roleField(entry.role) === field);
   const blocks: LookupBlockPlace[] = [];
   const notes: LookupNote[] = [];
-  const covered = new Set<string>();
+  const lookedUp = new Set<string>();
   row.forEach((entry, position) => {
     const key = String(position);
     if (entry.lookupLimited === true) notes.push({ key, name: entryName(entry) });
     if (entry.lookup === undefined) return;
-    covered.add(key);
+    lookedUp.add(key);
     const first = entriesOf(result, entry.lookup)[0];
     if (first !== undefined && roleField(first.role) !== field) {
       notes.push({ key, name: entryName(entry), sharedUnder: roleField(first.role) });
@@ -165,7 +172,7 @@ export function roleLookups(result: WorkInfoFetch, field: WorkInfoField): RoleLo
       blocks.push({ index: entry.lookup, names: [entryName(entry)] });
     else if (!block.names.includes(entryName(entry))) block.names.push(entryName(entry));
   });
-  return { blocks, notes, covered };
+  return { blocks, notes, lookedUp };
 }
 
 /** The person a skipped lookup value belongs to, named as its role row's chip. */

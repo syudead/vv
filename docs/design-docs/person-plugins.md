@@ -261,19 +261,31 @@ requests the planned lookups one after another, in plan order, each after the
 previous one answers;
 [`usePersonLookups`](../../web/src/player/workInfoFetch/usePersonLookups.ts)
 keeps that queue, and `Try again` on a failed lookup joins it. Each lookup is
-a block inside its first entry's role row, under the chips and in place of
-that person's `Fills only empty fields` line, and draws `PersonCompare`
-without its column headings. A later role row sharing the lookup, and an
-entry over the limit, get a one-line note instead. The placement and the
-apply's `personLookups` are computed by
+a block inside its first entry's role row, under the chips and fill lines,
+and draws `PersonCompare` without its column headings; each of its cells
+keeps its `Now` or `Fetched` label, since the block sits inside one column. A
+later role row sharing the lookup, and an entry over the limit, get a
+one-line note instead of a block. The placement and the apply's
+`personLookups` are computed by
 [`lookupRules.ts`](../../web/src/player/workInfoFetch/lookupRules.ts).
+
+A looked-up person keeps the fill line of its work-info profile, worded
+`Fills what the lookup leaves empty`, because the apply fills the person's
+still-empty fields from that profile after the lookup's items, and does so
+when the lookup failed or was left out too. An entry over the limit keeps
+`Fills only empty fields`.
 
 A lookup's items are enabled while one of its entries' role rows is checked,
 because they apply only through that role. A role row whose people are all on
 the video becomes selectable, and is checked once, when a lookup of one of
 its entries has something to apply. `Apply selected` does not wait for the
-lookups: a lookup still running is left out, and a toast says how many people
-were. A lookup that answers `plugin_changed` says so without `Try again`.
+lookups: a lookup still running is left out, and a toast counts it when a
+checked role row links it or its role row could not be chosen yet. A lookup
+that answers `plugin_changed` says so without `Try again`. The apply holds
+the fetch while it runs, so a lookup answering `work_info_fetch_stale` then
+does not mark the result stale; when the apply fails without
+`work_info_fetch_stale`, the server has restored the fetch and those lookups
+are requested again.
 
 ```mermaid
 flowchart LR

@@ -27,6 +27,7 @@ import CompareStep, { type Fetched } from "./CompareStep";
 import { type CoverFraming, useCoverFraming } from "./coverFraming";
 import {
   canFetch,
+  comparedRowState,
   type FindBy,
   initialQuery,
   initialSelection,
@@ -39,7 +40,7 @@ import {
   withField,
 } from "./fetchRules";
 import FindStep, { type RunFailure, type Running } from "./FindStep";
-import { cutShort, lookupSelections } from "./lookupRules";
+import { cutShort, lookupChangeFields, lookupSelections } from "./lookupRules";
 import { usePersonLookups } from "./usePersonLookups";
 
 const PLUGIN_GONE = new Set(["plugin_not_approved", "not_found"]);
@@ -143,6 +144,8 @@ function useFetchFlow({
   const controller = useRef<AbortController | null>(null);
   const latestVideo = useRef(video);
   latestVideo.current = video;
+  // The apply holds the fetch while it runs, so a lookup answering stale then waits for its outcome.
+  const applyRunning = useRef(false);
   const lookups = usePersonLookups(video.id, {
     // A role row that was already a change keeps the owner's choice.
     onNewChanges: (fields, result) =>
@@ -154,7 +157,9 @@ function useFetchFlow({
             rowState(field, latestVideo.current, result) !== "differs",
         ),
       ]),
-    onStale: () => setStale(true),
+    onStale: () => {
+      if (!applyRunning.current) setStale(true);
+    },
   });
 
   useEffect(() => () => controller.current?.abort(), []);
@@ -214,7 +219,16 @@ function useFetchFlow({
     // A cover the page decoded is checked and consumed by the apply, then uploaded with the owner's framing.
     const framed = selection.includes("cover") ? cover.image : null;
     // A lookup still running is left out; the apply consumes the fetch, so it can no longer finish.
-    const left = cutShort(fetched.result, lookups.states, selection);
+    const changedByLookup = lookupChangeFields(fetched.result, lookups.states);
+    const left = cutShort(
+      fetched.result,
+      lookups.states,
+      selection,
+      (field) =>
+        comparedRowState(field, latestVideo.current, fetched.result, changedByLookup) ===
+        "differs",
+    );
+    applyRunning.current = true;
     try {
       let applied = await applyWorkInfoFetch(
         video.id,
@@ -250,8 +264,12 @@ function useFetchFlow({
       if (isAborted(error) || signal.aborted) return;
       if (error instanceof RequestFailed && error.code === "work_info_fetch_stale")
         setStale(true);
-      else setApplyFailure(error);
+      else {
+        setApplyFailure(error);
+        lookups.retryStale();
+      }
     } finally {
+      applyRunning.current = false;
       if (!signal.aborted) setApplying(false);
     }
   };
