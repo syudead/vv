@@ -68,7 +68,9 @@ content key), the video's `title`, `spans` (`[{start, end}]` in seconds) and
 ## `GET /api/face-appearances/{id}/crop`
 
 The appearance's face crop as `image/jpeg`, `private, max-age=86400`, since a
-crop never changes once written.
+crop never changes once written: a re-analysis keeps a carried-over
+appearance's crop, and a new appearance gets a new id
+([R-8](../research.md#r-8-face-data-is-keyed-by-content-key-and-survives-a-model-switch-by-its-spans)).
 
 | Status | `code` | When |
 | --- | --- | --- |

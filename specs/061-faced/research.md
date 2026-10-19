@@ -155,28 +155,41 @@ without a canonical one.
 ## R-8: Face data is keyed by content key and survives a model switch by its spans
 
 **Decision**: An appearance (one main person in one video) is stored by
-content key with its tracks (start, end and mean face centre), its centroid,
-its recognizer and the person it is linked to; re-analysis carries an old
-appearance over to the one new appearance that holds more than half of its
-matched track seconds, where a new track matches an old one when their times
-overlap and their centres lie within one face width, and the carried-over row
-keeps its id.
+content key with its tracks (start, end, mean face centre and mean face
+width), its centroid, its crop, its recognizer and the person it is linked
+to; re-analysis carries an old appearance over to the one new appearance that
+holds more than half of its matched track seconds, where a new track matches
+an old one when their times overlap and their centres lie no farther apart
+than the smaller of the two tracks' mean face widths. The carried-over row
+keeps its id, its person, its dropped mark and its crop, and takes the new
+tracks, counts, recognizer and, unless its person was deleted, centroid; only
+a new appearance that nothing
+carries over to is matched by vector.
 
 | Option | Verdict |
 | --- | --- |
-| **Carry over by tracks: time and position, one to one** | Chosen |
+| **Carry over by tracks: time and position, one to one, keeping the person** | Chosen |
 | Time overlap of spans alone | Rejected: two people on screen together overlap each other's spans, so their people could swap |
 | Match the new vectors against the old ones | Rejected: vectors of two recognizers cannot be compared, so a model switch would create a second provisional person for everyone |
-| Keep the old person links without re-matching | Rejected: a re-analysis could not correct a link |
+| Carry the row over but match its new centroid by vector again | Rejected: right after a switch, the other videos' centroids still belong to the old recognizer, and a new match would move links the owner kept or confirmed, which the parent Issue's model-switch edge case keeps |
+| A centre distance of a fixed fraction of the frame | Rejected: a close-up and a wide shot need different distances; the face width scales with the shot |
 
 **Rationale**: The detector is the same for every recognizer
 ([R-3](#r-3-two-recognition-models-one-detector)), so the same video yields
 the same faces at the same times and places; position separates people who
 share the screen. A carry-over is one to one: when two old appearances claim
 the same new one, or none has a majority, nothing is carried over and the new
-appearance is matched by vector as a first analysis is. Keeping the id lets an
-activity entry written before the re-analysis still undo the link
+appearance is matched by vector as a first analysis is. The smaller width
+keeps a small face beside a large one from claiming the large one's track.
+Keeping the id lets an activity entry written before the re-analysis still
+undo the link
 ([R-10](#r-10-an-automatic-link-is-a-performer-credit-and-removing-it-drops-the-appearance)).
+A wrong link is corrected by the owner, by removing the performer or undoing
+the link, which drops the appearance; a re-analysis does not move a
+carried-over link. The crop stays as written, so its URL can be cached
+([contract](contracts/face-recognition-api.md#get-apiface-appearancesidcrop)),
+and a row whose person was deleted gets neither a centroid nor a crop back
+([R-15](#r-15-a-persons-face-data-is-deleted-with-the-person)).
 Content key, not `videos.id`, follows the rebuild invariant in
 [ARCHITECTURE.md](../../ARCHITECTURE.md#cross-cutting-invariants).
 
@@ -222,21 +235,28 @@ provisional one.
 ## R-11: An automatic merge keeps what it moved, so undo can move it back
 
 **Decision**: An automatic merge records the source person's row, profile,
-favorite, appearances, candidates, smart-rule references and each credit it
-moved (and whether the target already had it) with its `face_merge` activity
-entry; undo re-creates the source under its old id and moves back only what
+favorite, appearances, candidates and smart-rule references with its
+`face_merge` activity entry, and each credit it moved (and whether the target
+already had it) in a row of its own; undo re-creates the source under its old id and moves back only what
 the merge moved and the owner has not changed since.
 
 | Option | Verdict |
 | --- | --- |
 | **Snapshot of what moved** | Chosen |
 | Keep merged sources as hidden rows | Rejected: every read of people and credits would have to skip them |
+| Detect the owner's credit edits by comparing the credits at undo | Rejected: a credit the owner removed and added again looks unchanged |
 | Make every merge undoable, the owner's too | Rejected: the parent Issue asks for undo of automatic decisions, and owner merges have no activity entry today |
 
 **Rationale**: SQLite's `AUTOINCREMENT` never reuses an id, so re-inserting
 the old id is safe and old links to `/people/{id}` work again. The owner's
-later changes are read from activity entry ids after the merge, as auto-tag
-undo does, so undo keeps the owner's edits to the target.
+later changes cannot be read from activity entry ids, as auto-tag undo reads
+them: editing a video's credits and editing a person write no activity entry.
+Undo therefore puts back a field of the target only while it still holds the
+value the merge gave it, and moves back a credit only while it is unmarked:
+every work-information write (the details editor, the library selection, the
+plugin apply and `/api/v1`, all through `WorkInfoStore`) marks, in its
+transaction, the recorded credits it removes from the target. A credit the
+owner removes and adds again is therefore the owner's, and stays.
 
 ## R-12: A face image is embedded after it is stored
 

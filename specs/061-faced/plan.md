@@ -197,7 +197,10 @@ tracks is kept and one at 7.5 s or in 1 track is not; link, candidate and new
 provisional at each threshold's boundary; a dropped appearance's person is
 neither linked nor recreated; two people on screen together for the whole
 video keep their own people through a carry-over, and two old appearances
-claiming one new appearance carry nothing over; the face-image rule merges one provisional person above `merge`
+claiming one new appearance carry nothing over; a small face beside a large
+one, closer to it than the large face's width, keeps its own person through a
+carry-over; a carried-over appearance keeps its person even when its new
+centroid is closer to another person; the face-image rule merges one provisional person above `merge`
 and makes candidates for two; the cast rule fires only for one performer and
 one provisional person. The ArcFace values and their measured rates are in
 `face-recognition.md`.
@@ -260,12 +263,12 @@ people in a video and matching them to people
 **Acceptance**: Store tests: a result with two main people, one matching a
 person, adds one provisional person whose face image is that appearance's
 crop and two performer rows, and lists both links on the entry; storing the same video again with a re-numbered result
-keeps the same people and appearance ids; a result recorded under an older
+keeps the same people, appearance ids and crops; a result recorded under an older
 `face.generation` is refused and writes nothing; removing a face-linked performer in the
 details editor drops the appearance; deleting a provisional person deletes its
 face image and its appearances' centroids and crops, keeps their tracks
 dropped, and a re-analysis of the video creates no new person for that face
-(acceptance 7); a merge
+and leaves those appearances without centroid and crop (acceptance 7); a merge
 moves appearances and candidates and deletes a self-pair; the entry joins the
 import pipeline when queued from import.
 
@@ -316,8 +319,9 @@ same link answers `409 activity_not_undoable`.
 
 ### Undoable automatic merge of a provisional person
 
-**Scope**: A merge that records the `face_merge` entry and its snapshot, and
-its undoer, with the `person` subject kind
+**Scope**: A merge that records the `face_merge` entry, its snapshot and its
+credit rows, the mark that `WorkInfoStore` writes set on those rows, and its
+undoer, with the `person` subject kind
 ([R-11](research.md#r-11-an-automatic-merge-keeps-what-it-moved-so-undo-can-move-it-back)).
 
 **Dependencies**: Provisional people in the people API; Store face analysis
@@ -328,7 +332,8 @@ person under its old id with its two performer rows, appearances, candidates
 and smart-rule references (acceptance 5); a performer the target had before
 the merge stays on the target; a name the owner gave the target after the
 merge stays; a credit the owner removed from the target after the merge is
-not restored.
+not restored, and one the owner removed and added again in the details editor
+stays on the target.
 
 ### Merge provisional people when a person gets a face
 
