@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"image"
 	"slices"
 	"sync"
@@ -81,6 +82,8 @@ type fakeFaceImageStore struct {
 	stored   []fakeStoredFaceImage
 	attempts int
 	fault    error
+	// refusal, when set, is returned after each accepted vector, as a merge refused for good is.
+	refusal error
 	// onStore, when set, runs with each accepted vector.
 	onStore func()
 }
@@ -146,7 +149,7 @@ func (s *fakeFaceImageStore) StoreFaceImageVector(_ context.Context, job domain.
 	if s.onStore != nil {
 		s.onStore()
 	}
-	return domain.FaceImageDecision{}, nil
+	return domain.FaceImageDecision{}, s.refusal
 }
 
 func (s *fakeFaceImageStore) add(id int64, data []byte) {
@@ -279,6 +282,23 @@ func TestFaceRecognizerRetriesAFaceAfterADatabaseError(t *testing.T) {
 		synctest.Wait()
 		if stored, _ := f.images.read(); len(stored) != 1 || stored[0].job.PersonID != 7 {
 			t.Fatalf("stored = %+v, want person 7's vector after the back-off", stored)
+		}
+	})
+}
+
+func TestFaceRecognizerDoesNotRetryAMergeRefusedForGood(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFaceWorkerFixture()
+		f.helpers.imageFaces = 1
+		f.images.add(7, faceJPEG(t))
+		f.images.refusal = fmt.Errorf("%w: person 9 into person 7", domain.ErrFaceMergeRefused)
+		f.run(t)
+		synctest.Wait()
+
+		time.Sleep(2 * faceRetryDelay)
+		synctest.Wait()
+		if _, attempts := f.images.read(); attempts != 1 {
+			t.Fatalf("attempts = %d, want 1 with no retry", attempts)
 		}
 	})
 }

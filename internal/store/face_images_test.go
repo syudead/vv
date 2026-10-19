@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -83,6 +84,40 @@ func TestAFaceMergesTheOnlyProvisionalPersonItReaches(t *testing.T) {
 	}
 	if got := storedFaceVectors(t, f.db); got[f.target] != string(domain.FaceRecognizerSFaceInt8) {
 		t.Errorf("vectors = %v, want the target's", got)
+	}
+}
+
+func TestAFaceMergeRefusedForGoodStoresTheVectorWithoutIt(t *testing.T) {
+	f := newMergeFixture(t, false)
+	ctx := context.Background()
+	own := []domain.ExternalID{{Source: "fanza", Value: "provisional"}}
+	if _, err := f.db.Credits().Update(ctx, domain.CreditPerson, f.provisional, domain.CreditPatch{ExternalIDs: &own}); err != nil {
+		t.Fatal(err)
+	}
+	// The target is at the limit, so taking the provisional person's id would exceed it.
+	full := make([]domain.ExternalID, domain.ExternalIDsMaxCount)
+	for i := range full {
+		full[i] = domain.ExternalID{Source: "fanza", Value: "full-" + strconv.Itoa(i)}
+	}
+	if _, err := f.db.Credits().Update(ctx, domain.CreditPerson, f.target, domain.CreditPatch{ExternalIDs: &full}); err != nil {
+		t.Fatal(err)
+	}
+	job := setFace(t, f.db, f.target)
+
+	decision, err := f.db.Faces().StoreFaceImageVector(ctx, job, faceBasis(2))
+	if decision.MergeID != 0 || !errors.Is(err, domain.ErrFaceMergeRefused) {
+		t.Fatalf("StoreFaceImageVector = %+v, %v; want a refusal without a merge", decision, err)
+	}
+	// The stored vector keeps the face from being embedded, and refused, again.
+	if got := storedFaceVectors(t, f.db); got[f.target] != string(domain.FaceRecognizerSFaceInt8) {
+		t.Errorf("vectors = %v, want the target's", got)
+	}
+	if entries := entriesOfKind(t, f.db, domain.ActivityFaceMerge); len(entries) != 0 {
+		t.Errorf("face_merge entries = %+v, want none", entries)
+	}
+	person, err := f.db.Credits().Get(ctx, domain.CreditPerson, f.provisional)
+	if err != nil || !slices.Equal(person.ExternalIDs, own) {
+		t.Errorf("provisional person = %+v, %v; want it kept with its external id", person, err)
 	}
 }
 
