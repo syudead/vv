@@ -65,7 +65,9 @@ func (s *VersionStore) ClaimJudgement(ctx context.Context) (domain.VersionJudgeJ
 }
 
 // Share eligibility across claiming, retry scheduling and activity creation; exclude unbundled and held pairs.
-var judgeablePairs = candidatePairsFrom + candidatePairsCondition() + `
+// A re-judged pair is claimable although it is bundled or dismissed.
+var judgeablePairs = candidatePairsFrom + registeredPairCondition() + `
+	and (c.rejudge_of is not null or (` + undecidedPairCondition + `))
 	and not exists (select 1 from video_version_unbundles u where u.key_a = c.key_a and u.key_b = c.key_b)
 	and not exists (select 1 from video_version_judging_holds h where h.key_a = c.key_a and h.key_b = c.key_b)`
 
@@ -146,10 +148,11 @@ func (s *VersionStore) ApplyJudgement(ctx context.Context, keys [2]string, resul
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var attempts int
-	var activityID sql.NullInt64
-	err = tx.QueryRowContext(ctx, `select attempts, activity_id from video_version_candidates
-		where key_a = ? and key_b = ? and judgement = 'running'`, keys[0], keys[1]).Scan(&attempts, &activityID)
+	claimed := claimedCandidate{keys: keys}
+	var activityID, rejudgeOf sql.NullInt64
+	err = tx.QueryRowContext(ctx, `select attempts, activity_id, rejudge_of from video_version_candidates
+		where key_a = ? and key_b = ? and judgement = 'running'`, keys[0], keys[1]).
+		Scan(&claimed.attempts, &activityID, &rejudgeOf)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -159,22 +162,41 @@ func (s *VersionStore) ApplyJudgement(ctx context.Context, keys [2]string, resul
 	c := &changes{}
 	now := time.Now()
 	// Read the activity before bundling removes its candidate row.
-	entryID, err := pairActivityFor(ctx, tx, c, keys, activityID.Int64,
+	claimed.entryID, err = pairActivityFor(ctx, tx, c, keys, activityID.Int64,
 		domain.VersionJudgementActivityState(domain.VersionJudgementRunning), now)
 	if err != nil {
 		return false, err
 	}
-	applied, err := applyVerdict(ctx, tx, keys, attempts, result)
+	var events []domain.Event
+	if rejudgeOf.Valid {
+		events, err = applyRejudgement(ctx, tx, c, claimed, rejudgeOf.Int64, result, now)
+	} else {
+		events, err = applyFirstJudgement(ctx, tx, c, claimed, result, now)
+	}
 	if err != nil {
 		return false, err
 	}
-	if err := recordJudgementActivity(ctx, tx, c, entryID, keys, result, applied, now); err != nil {
-		return false, err
-	}
-	if err := s.db.commitWith(ctx, tx, c, append(applied.events, domain.VersionCandidatesChanged{})...); err != nil {
+	if err := s.db.commitWith(ctx, tx, c, append(events, domain.VersionCandidatesChanged{})...); err != nil {
 		return false, fmt.Errorf("cannot apply the version judgement: %w", err)
 	}
 	return true, nil
+}
+
+// claimedCandidate is a running candidate and the activity entry that reports its judgement.
+type claimedCandidate struct {
+	keys     [2]string
+	attempts int
+	entryID  int64
+}
+
+func applyFirstJudgement(
+	ctx context.Context, tx *sql.Tx, c *changes, claimed claimedCandidate, result domain.VersionJudgeResult, now time.Time,
+) ([]domain.Event, error) {
+	applied, err := applyVerdict(ctx, tx, claimed.keys, claimed.attempts, result)
+	if err != nil {
+		return nil, err
+	}
+	return applied.events, recordJudgementActivity(ctx, tx, c, claimed.entryID, claimed.keys, result, applied, now)
 }
 
 // Retain joined-side keys and the original representative for undo, plus committed bundle notifications.

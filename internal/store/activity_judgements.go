@@ -147,9 +147,11 @@ func keysJSON(keys []string) (any, error) {
 const keysCondition = `(?1 is null or c.key_a in (select value from json_each(?1)) or c.key_b in (select value from json_each(?1)))`
 
 // pairFinder is the fingerprint job whose result found the pairs; the zero value joins new pair entries to no pipeline.
+// A forced finder also lists the key's automatically decided pairs to be judged again.
 type pairFinder struct {
 	jobID int64
 	key   string
+	force bool
 }
 
 // Reattach orphan candidates to open pair activities; create missing activities only while judging is enabled.
@@ -683,15 +685,8 @@ func recordUndo(
 
 // Remove an automatic dismissal only if no later owner dismissal exists; compare activity IDs with the decision mark.
 func undoJudgedDismissal(ctx context.Context, tx *sql.Tx, c *changes, keys [2]string, mark int64) (bool, error) {
-	var redecided bool
-	if err := tx.QueryRowContext(ctx, `select exists (select 1 from activity_entries
-		where kind = ? and subject_key = ? and subject_key_b = ? and subject_kind = ? and decider = ?
-		and id > ?)`, string(domain.ActivityDismiss), keys[0], keys[1], string(domain.ActivitySubjectPair),
-		string(domain.ActivityByOwner), mark).Scan(&redecided); err != nil {
-		return false, fmt.Errorf("cannot read the owner's dismissal: %w", err)
-	}
-	if redecided {
-		return false, nil
+	if redecided, err := ownerDismissedAfter(ctx, tx, keys, mark); err != nil || redecided {
+		return false, err
 	}
 	result, err := tx.ExecContext(ctx, `delete from video_version_dismissals where key_a = ? and key_b = ?`,
 		keys[0], keys[1])
@@ -715,41 +710,68 @@ func undoJudgedDismissal(ctx context.Context, tx *sql.Tx, c *changes, keys [2]st
 	return true, nil
 }
 
+func ownerDismissedAfter(ctx context.Context, tx *sql.Tx, keys [2]string, mark int64) (bool, error) {
+	var redecided bool
+	if err := tx.QueryRowContext(ctx, `select exists (select 1 from activity_entries
+		where kind = ? and subject_key = ? and subject_key_b = ? and subject_kind = ? and decider = ?
+		and id > ?)`, string(domain.ActivityDismiss), keys[0], keys[1], string(domain.ActivitySubjectPair),
+		string(domain.ActivityByOwner), mark).Scan(&redecided); err != nil {
+		return false, fmt.Errorf("cannot read the owner's dismissal: %w", err)
+	}
+	return redecided, nil
+}
+
 // Undo an automatic bundle only while its keys still share a bundle, restoring the joined side's original representative.
 func undoJudgedBundle(
 	ctx context.Context, tx *sql.Tx, c *changes, keys [2]string, undoKeys string, mark int64,
 ) (bool, []domain.Event, error) {
-	joined, err := domain.DecodeVersionBundleUndoKeys(undoKeys)
+	held, err := judgedBundleHeld(ctx, tx, keys, undoKeys, mark)
+	if err != nil || len(held.leaving) == 0 {
+		return false, nil, err
+	}
+	split, err := splitBundle(ctx, tx, c, held.bundle, held.leaving, held.representative, true)
 	if err != nil {
 		return false, nil, err
+	}
+	return true, split.events(), nil
+}
+
+// judgedHold is what an automatic bundle still holds: the members its undo would split off. No members means the
+// owner has changed the bundle since, or the keys no longer share one.
+type judgedHold struct {
+	bundle         bundleRef
+	leaving        []string
+	representative string
+}
+
+func judgedBundleHeld(ctx context.Context, tx *sql.Tx, keys [2]string, undoKeys string, mark int64) (judgedHold, error) {
+	joined, err := domain.DecodeVersionBundleUndoKeys(undoKeys)
+	if err != nil {
+		return judgedHold{}, err
 	}
 	bundles := [2]bundleRef{}
 	for i, key := range keys {
 		bundle, bundled, err := bundleOf(ctx, tx, key)
 		if err != nil || !bundled {
-			return false, nil, err
+			return judgedHold{}, err
 		}
 		bundles[i] = bundle
 	}
 	if bundles[0].id != bundles[1].id {
-		return false, nil, nil
+		return judgedHold{}, nil
 	}
 	members, err := bundleMemberKeys(ctx, tx, bundles[0].id)
 	if err != nil {
-		return false, nil, err
+		return judgedHold{}, err
 	}
 	leaving, err := leavingMembers(ctx, tx, joined.Members, bundles[0].id, mark)
 	if err != nil {
-		return false, nil, err
+		return judgedHold{}, err
 	}
 	if len(leaving) == 0 || len(leaving) == len(members) {
-		return false, nil, nil
+		return judgedHold{}, nil
 	}
-	split, err := splitBundle(ctx, tx, c, bundles[0], leaving, joined.Representative)
-	if err != nil {
-		return false, nil, err
-	}
-	return true, split.events(), nil
+	return judgedHold{bundle: bundles[0], leaving: leaving, representative: joined.Representative}, nil
 }
 
 // Exclude missing members and keys changed by later owner actions, using the decision mark rather than timestamps.
