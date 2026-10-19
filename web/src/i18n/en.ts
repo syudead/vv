@@ -408,6 +408,7 @@ const errorReasons = {
       ? "A kind with that name already exists."
       : `A kind named "${tagName}" already exists.`,
   face_candidate_not_found: "These two people are no longer offered as a match.",
+  face_appearance_not_found: "This face is no longer linked to this person.",
   face_recognition_off:
     "Face recognition is turned off. Turn it on under Settings, Face recognition.",
   face_recognition_unsupported: "vv has no face runtime for this platform.",
@@ -1697,6 +1698,11 @@ export const en = {
         spanLink: (title: string, start: string) => `${title} from ${start}`,
         loadFailed: (reason: string) => `Couldn't load the faces: ${reason}`,
         loadingMore: "Loading more faces…",
+        notThisPerson: "Not this person",
+        notThisPersonFor: (title: string) => `Not this person in ${title}`,
+        split: "Split into a new unnamed person",
+        openSplit: "Open",
+        splitFailed: (reason: string) => `Couldn't split the face: ${reason}`,
       },
     },
     personEdit: {

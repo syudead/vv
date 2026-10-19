@@ -20,10 +20,11 @@ type appearanceCall struct {
 // faceAppearanceCredits fakes the appearance reads and records their arguments; store tests cover paging and drops.
 type faceAppearanceCredits struct {
 	Credits
-	page  domain.PersonAppearancePage
-	crop  []byte
-	err   error
-	calls []appearanceCall
+	page   domain.PersonAppearancePage
+	crop   []byte
+	person domain.Credit
+	err    error
+	calls  []appearanceCall
 }
 
 func (c *faceAppearanceCredits) PersonAppearances(_ context.Context, personID int64, cursor string, limit int) (domain.PersonAppearancePage, error) {
@@ -34,6 +35,11 @@ func (c *faceAppearanceCredits) PersonAppearances(_ context.Context, personID in
 func (c *faceAppearanceCredits) FaceAppearanceCrop(_ context.Context, id int64) ([]byte, error) {
 	c.calls = append(c.calls, appearanceCall{personID: id})
 	return c.crop, c.err
+}
+
+func (c *faceAppearanceCredits) SplitFaceAppearance(_ context.Context, personID, appearanceID int64) (domain.Credit, error) {
+	c.calls = append(c.calls, appearanceCall{personID: personID, limit: int(appearanceID)})
+	return c.person, c.err
 }
 
 func newFaceAppearanceFixture(t *testing.T, credits *faceAppearanceCredits) *creditFixture {
@@ -83,6 +89,38 @@ func TestListPersonAppearancesAnswersThePage(t *testing.T) {
 	} {
 		credits.err = tc.err
 		rec = f.owned(http.MethodGet, "/api/people/5/appearances?limit=2&cursor=x", "")
+		assertErrorBody(t, tc.err.Error(), rec.Code, rec.Body.Bytes(), tc.want)
+	}
+}
+
+func TestSplitFaceAppearanceAnswersTheNewPerson(t *testing.T) {
+	credits := &faceAppearanceCredits{person: domain.Credit{Kind: domain.CreditPerson, ID: 9, Provisional: true}}
+	f := newFaceAppearanceFixture(t, credits)
+	target := "/api/people/5/appearances/7/split"
+
+	if rec := f.request(http.MethodPost, target, ""); rec.Code != http.StatusUnauthorized || len(credits.calls) != 0 {
+		t.Fatalf("without a session: status = %d, calls = %+v; want 401 and no split", rec.Code, credits.calls)
+	}
+	rec := f.owned(http.MethodPost, target, "")
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if got := decode[gen.Person](t, rec); got.Id != 9 || !got.Provisional {
+		t.Errorf("body = %+v, want the new provisional person 9", got)
+	}
+	if want := []appearanceCall{{personID: 5, limit: 7}}; !reflect.DeepEqual(credits.calls, want) {
+		t.Errorf("store calls = %+v, want person 5 and appearance 7", credits.calls)
+	}
+
+	for _, tc := range []struct {
+		err  error
+		want wantError
+	}{
+		{domain.ErrFaceAppearanceNotFound, wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: gen.ErrorReasonFaceAppearanceNotFound}},
+		{domain.ErrNotFound, wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: gen.ErrorReasonPersonNotFound}},
+	} {
+		credits.err = tc.err
+		rec = f.owned(http.MethodPost, target, "")
 		assertErrorBody(t, tc.err.Error(), rec.Code, rec.Body.Bytes(), tc.want)
 	}
 }

@@ -47,6 +47,8 @@ const server = {
   uploadGate: null as Promise<void> | null,
   candidates: [] as FaceCandidate[],
   appearances: [] as FaceAppearance[],
+  /** Served as the second page of appearances, after the cursor `page-2`. */
+  laterAppearances: [] as FaceAppearance[],
   /** The person a confirm answers with, also served at its own address. */
   mergeTarget: null as Person | null,
 };
@@ -78,7 +80,20 @@ function respond(method: string, url: URL): Response {
     return jsonResponse({ items: server.candidates });
   }
   if (url.pathname === "/api/people/7/appearances") {
-    return jsonResponse({ items: server.appearances });
+    if (url.searchParams.get("cursor") === "page-2") {
+      return jsonResponse({ items: server.laterAppearances });
+    }
+    return jsonResponse({
+      items: server.appearances,
+      nextCursor: server.laterAppearances.length > 0 ? "page-2" : undefined,
+    });
+  }
+  const split = /^\/api\/people\/7\/appearances\/(\d+)\/split$/.exec(url.pathname);
+  if (split !== null && method === "POST") {
+    server.appearances = server.appearances.filter(
+      (item) => item.appearanceId !== Number(split[1]),
+    );
+    return jsonResponse(person({ id: 12, name: "", provisional: true }), 201);
   }
   const pair = /^\/api\/people\/7\/face-candidates\/(\d+)\/(confirm|dismiss)$/.exec(
     url.pathname,
@@ -112,6 +127,7 @@ beforeEach(() => {
   server.uploadGate = null;
   server.candidates = [];
   server.appearances = [];
+  server.laterAppearances = [];
   server.mergeTarget = null;
   vi.stubGlobal(
     "fetch",
@@ -315,6 +331,55 @@ describe("PersonPage", () => {
     expect((await screen.findByTestId("video-screen")).textContent).toBe(
       "/videos/5?t=130 autoplay",
     );
+  });
+
+  it("splits a face into a new person from Faces in videos and removes its row", async () => {
+    const user = userEvent.setup();
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+      { appearanceId: 4, videoId: 6, title: "Mountain", spans: [], hasCrop: true },
+    ];
+    renderPage();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Not this person in Beach day" }),
+    );
+
+    expect(await screen.findByText("Split into a new unnamed person")).toBeTruthy();
+    expect(sent("POST", "/api/people/7/appearances/3/split")).toHaveLength(1);
+    expect(
+      screen.queryByRole("button", { name: "Not this person in Beach day" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Not this person in Mountain" }),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    await waitFor(() => expect(sent("GET", "/api/people/12").length).toBeGreaterThan(0));
+  });
+
+  it("reads the next page of Faces in videos when a split leaves no row shown", async () => {
+    const user = userEvent.setup();
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+    ];
+    server.laterAppearances = [
+      { appearanceId: 4, videoId: 6, title: "Mountain", spans: [], hasCrop: true },
+    ];
+    renderPage();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Not this person in Beach day" }),
+    );
+
+    expect(
+      await screen.findByRole("button", { name: "Not this person in Mountain" }),
+    ).toBeTruthy();
+    expect(
+      sent("GET", "/api/people/7/appearances").filter(
+        (request) => request.url.searchParams.get("cursor") === "page-2",
+      ),
+    ).toHaveLength(1);
   });
 
   function candidate(id: number, name: string): FaceCandidate {

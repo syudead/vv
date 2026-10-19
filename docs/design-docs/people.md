@@ -297,6 +297,13 @@ crop beside the video's title and its spans, each a link that plays the video
 from that time (`?t=`), and `Show more` for the next page. An appearance whose
 video left the library reads `Not in the library` without links.
 
+Each row ends with a small `Not this person` button, for a face the analysis
+linked to the wrong person. It splits the face into a new unnamed person with
+no confirmation, since the split is undone by merging the two people: the row
+leaves the list, a toast reads `Split into a new unnamed person` with an `Open`
+action to the new person's page, and the candidates and videos are read again.
+A pressed row disables only its own button, and a failure shows under the row.
+
 | Rejected | Why |
 | --- | --- |
 | Candidates in the main column | They would split the page's one header and one grid, and sit away from the face they are compared with |

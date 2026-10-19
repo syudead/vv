@@ -3035,6 +3035,26 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/people/{id}/appearances/{appearanceId}/split:
+    post:
+      operationId: splitFaceAppearance
+      summary: "Split a face appearance into a new person"
+      description: "Owner-only; no body. For \"Not this person\": in one transaction creates a provisional person whose face is the appearance's crop, moves the appearance to it, moves the video's performer credit of id to it unless another appearance of id in the same work still links that credit, and dismisses the pair of the two people so no automatic rule or candidate joins them again. Returns the new person. Missing person returns 404 person_not_found; an appearance that is dropped or linked to another person returns 404 face_appearance_not_found."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - $ref: "#/components/parameters/FaceAppearanceId"
+      responses:
+        "201":
+          description: "The new provisional person"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Person"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/face-appearances/{id}/crop:
     get:
       operationId: getFaceAppearanceCrop
@@ -4998,6 +5018,15 @@ components:
       in: path
       required: true
       description: "Person ID"
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    FaceAppearanceId:
+      name: appearanceId
+      in: path
+      required: true
+      description: "ID of the face appearance"
       schema:
         type: integer
         format: int64
@@ -10298,5 +10327,6 @@ components:
         - tag_kind_not_found
         - tag_kind_name_taken
         - face_candidate_not_found
+        - face_appearance_not_found
         - face_recognition_off
         - face_recognition_unsupported

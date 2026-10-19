@@ -6,6 +6,7 @@ import { isCreditGone } from "../../api/credits";
 import {
   type FaceAppearance,
   faceCropPath,
+  isAppearanceGone,
   listPersonAppearances,
 } from "../../api/personFaces";
 import { errorText, t, type UiText } from "../../i18n";
@@ -92,7 +93,31 @@ export function usePersonAppearances(personId: number, onGone: () => void) {
       });
   }, [personId, cursor, fail]);
 
-  return { state, reload, loadMore, loadingMore };
+  // Splitting every shown row leaves no row to show while later pages remain, so read the next one.
+  const emptied =
+    state.kind === "ready" && state.items.length === 0 && cursor !== undefined;
+  useEffect(() => {
+    if (emptied) loadMore();
+  }, [emptied, loadMore]);
+
+  const remove = useCallback((appearanceId: number) => {
+    setState((current) =>
+      current.kind === "ready"
+        ? {
+            ...current,
+            items: current.items.filter((item) => item.appearanceId !== appearanceId),
+          }
+        : current,
+    );
+  }, []);
+
+  return { state, reload, remove, loadMore, loadingMore };
+}
+
+export interface AppearanceActions {
+  /** Splits the face into a new person and updates the page; a rejection is shown under the row. */
+  split: (appearance: FaceAppearance) => Promise<void>;
+  onGone: () => void;
 }
 
 /** The video page at the span's start; the address keeps `t` in seconds across a reload. */
@@ -107,11 +132,16 @@ function spanText(span: Span): string {
 /** `Faces in videos`: a crop beside its video's title and spans, newest video first. */
 export function PersonAppearances({
   appearances,
+  actions,
 }: {
   appearances: ReturnType<typeof usePersonAppearances>;
+  actions: AppearanceActions;
 }) {
   const { state, reload, loadMore, loadingMore } = appearances;
-  if (state.kind === "loading" || (state.kind === "ready" && state.items.length === 0)) {
+  if (
+    state.kind === "loading" ||
+    (state.kind === "ready" && state.items.length === 0 && state.nextCursor === undefined)
+  ) {
     return null;
   }
   return (
@@ -128,7 +158,12 @@ export function PersonAppearances({
         <>
           <ul className="flex flex-col gap-2">
             {state.items.map((item) => (
-              <AppearanceRow key={item.appearanceId} appearance={item} />
+              <AppearanceRow
+                key={item.appearanceId}
+                appearance={item}
+                actions={actions}
+                remove={appearances.remove}
+              />
             ))}
           </ul>
           {state.nextCursor !== undefined && (
@@ -150,13 +185,38 @@ export function PersonAppearances({
   );
 }
 
-function AppearanceRow({ appearance }: { appearance: FaceAppearance }) {
+function AppearanceRow({
+  appearance,
+  actions,
+  remove,
+}: {
+  appearance: FaceAppearance;
+  actions: AppearanceActions;
+  remove: (appearanceId: number) => void;
+}) {
   const location = useLocation();
   const from = `${location.pathname}${location.search}`;
   const { videoId, title, spans } = appearance;
   const first = spans[0];
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<UiText | null>(null);
+
+  async function split() {
+    if (pending) return;
+    setPending(true);
+    setError(null);
+    try {
+      await actions.split(appearance);
+    } catch (failure) {
+      setPending(false);
+      if (isAppearanceGone(failure)) remove(appearance.appearanceId);
+      else if (isCreditGone(failure)) actions.onGone();
+      else setError(text.splitFailed(errorText(failure)));
+    }
+  }
+
   return (
-    <li className="flex items-start gap-2">
+    <li className="flex flex-wrap items-start gap-2">
       <PersonFace
         shape="scene"
         name={title}
@@ -199,7 +259,19 @@ function AppearanceRow({ appearance }: { appearance: FaceAppearance }) {
             ))}
           </p>
         )}
+        {error !== null && <p className="text-xs text-destructive">{error}</p>}
       </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-label={text.notThisPersonFor(title)}
+        aria-disabled={pending || undefined}
+        aria-busy={pending || undefined}
+        onClick={() => void split()}
+      >
+        {pending && <Spinner aria-hidden="true" />}
+        {text.notThisPerson}
+      </Button>
     </li>
   );
 }
