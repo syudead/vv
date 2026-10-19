@@ -148,6 +148,57 @@ func TestPersonLookupRefusesAPluginChangedSinceTheFetch(t *testing.T) {
 	}
 }
 
+func TestPersonLookupKeepsNothingFromAPluginChangedWhileItRuns(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		change func(*lookupEnv)
+	}{
+		{"revoked", func(e *lookupEnv) {
+			e.store.plugins[lookupPlugin].ApprovedDigest = ""
+			e.store.plugins[lookupPlugin].Generation++
+		}},
+		{"deleted", func(e *lookupEnv) { delete(e.store.plugins, lookupPlugin) }},
+	} {
+		e := newLookupEnv()
+		result := e.fetchTwo(t, nil)
+		e.lookupReturns(domain.FetchedPluginPerson{Name: "Hanako"}, pngOf(t, 2, 2), nil)
+		e.runtime.during = func() { tc.change(e) }
+		if _, err := e.plugins.RunPersonLookup(context.Background(), fetchVideo, result.ID, 0); !errors.Is(err, domain.ErrPersonLookupPluginChanged) {
+			t.Fatalf("%s: err = %v; want ErrPersonLookupPluginChanged", tc.name, err)
+		}
+		if _, err := e.plugins.PersonLookupImage(fetchVideo, result.ID, 0); !errors.Is(err, domain.ErrPersonImageNotFound) {
+			t.Fatalf("%s: image err = %v; want nothing kept", tc.name, err)
+		}
+	}
+}
+
+// A lookup image that pushes its own fetch out of the budget answers the fetch as stale instead of a result nobody
+// can apply.
+func TestKeepLookupReportsItsOwnFetchEvicted(t *testing.T) {
+	fetches := newWorkInfoFetches()
+	now := time.Unix(1_800_000_000, 0)
+	full := &domain.WorkInfoCover{Data: make([]byte, domain.WorkInfoCoverMaxBytes)}
+	people := make([]domain.FetchedPerson, domain.WorkInfoPersonImagesMaxCount)
+	for i := range people {
+		people[i].Image = full
+	}
+	lookups := make([]*keptLookup, domain.PersonLookupsMaxCount)
+	for i := range lookups[1:] {
+		lookups[i+1] = &keptLookup{image: full}
+	}
+	id := fetches.add(&workInfoFetch{
+		videoID: fetchVideo, cover: full, details: domain.FetchedWorkInfo{People: people}, lookupRuns: lookups,
+		expiresAt: now.Add(domain.WorkInfoFetchLifetime),
+	}, now)
+	fetches.addPerson(&personPluginFetch{image: full, expiresAt: now.Add(domain.WorkInfoFetchLifetime + 1)}, now)
+	if _, ok := fetches.entries[id]; !ok {
+		t.Fatal("a fetch within the budget was dropped")
+	}
+	if kept, err := fetches.keepLookup(id, 0, &keptLookup{image: full}, now); !errors.Is(err, domain.ErrWorkInfoFetchStale) {
+		t.Fatalf("keepLookup = %+v, %v; want ErrWorkInfoFetchStale", kept, err)
+	}
+}
+
 func TestApplyWorkInfoFetchCarriesLookupItemsAndPutsTheLookupFaceFirst(t *testing.T) {
 	e := newLookupEnv()
 	workFace, lookupFace := pngOf(t, 2, 2), pngOf(t, 3, 3)

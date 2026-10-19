@@ -133,10 +133,15 @@ func TestWorkInfoApplyPassesAndReportsLookups(t *testing.T) {
 		t.Fatalf("skipped = %s", body)
 	}
 	calls := e.plugins.calls
-	status, body = e.post(applyPath, `{"fields":["people.performer"],"personLookups":[{"index":0,"items":["name"]}]}`, e.owner)
-	assertErrorBody(t, "unknown lookup item", status, body, wantError{status: 400, code: gen.ErrorCodeInvalidRequest})
-	if e.plugins.calls != calls {
-		t.Fatal("an unknown lookup item reached the registry")
+	for _, tc := range []struct{ name, body string }{
+		{"unknown lookup item", `{"fields":["people.performer"],"personLookups":[{"index":0,"items":["name"]}]}`},
+		{"null lookups", `{"fields":["people.performer"],"personLookups":null}`},
+	} {
+		status, body = e.post(applyPath, tc.body, e.owner)
+		assertErrorBody(t, tc.name, status, body, wantError{status: 400, code: gen.ErrorCodeInvalidRequest})
+		if e.plugins.calls != calls {
+			t.Fatalf("%s reached the registry", tc.name)
+		}
 	}
 }
 

@@ -75,21 +75,12 @@ func (p *WorkInfoPlugins) RunPersonLookup(
 	return result, nil
 }
 
-// runLookup runs the lookup only on the plugin snapshot the plan saw; turning automatic lookups off since does not
-// stop it.
+// runLookup runs the lookup only on the plugin snapshot the plan saw, checked before the run and again after it since
+// the owner may replace, revoke or delete the plugin while it runs; turning automatic lookups off since does not stop
+// it.
 func (p *WorkInfoPlugins) runLookup(ctx context.Context, lookup domain.PersonLookup) (*keptLookup, error) {
-	unchanged := func(plugin domain.WorkInfoPlugin) bool {
-		return plugin.State() == domain.WorkInfoPluginApproved && plugin.Digest == lookup.Digest &&
-			plugin.Generation == lookup.Generation
-	}
-	plugin, err := p.store.WorkInfoPlugin(ctx, lookup.PluginID)
-	switch {
-	case errors.Is(err, domain.ErrNotFound):
-		return nil, domain.ErrPersonLookupPluginChanged
-	case err != nil:
+	if err := p.checkLookupPlugin(ctx, lookup); err != nil {
 		return nil, err
-	case !unchanged(plugin):
-		return nil, domain.ErrPersonLookupPluginChanged
 	}
 	ran, result, err := p.run(ctx, lookup.PluginID, domain.WorkInfoPluginKindPerson, domain.WorkInfoRunRequest{
 		Operation: domain.WorkInfoFetch, Source: lookup.Source, ID: lookup.ID,
@@ -101,11 +92,34 @@ func (p *WorkInfoPlugins) runLookup(ctx context.Context, lookup domain.PersonLoo
 		return nil, domain.ErrPersonLookupPluginChanged
 	case err != nil:
 		return nil, err
-	case !unchanged(ran):
+	case !lookupPluginUnchanged(ran, lookup):
 		return nil, domain.ErrPersonLookupPluginChanged
+	}
+	if err := p.checkLookupPlugin(ctx, lookup); err != nil {
+		return nil, err
 	}
 	result.Person.Profile = domain.ShownFetchedProfile(result.Person.Profile, p.now())
 	return &keptLookup{person: result.Person, image: fetchedCover(result.PersonImage)}, nil
+}
+
+// checkLookupPlugin returns ErrPersonLookupPluginChanged unless the stored plugin is the approved snapshot the plan
+// saw.
+func (p *WorkInfoPlugins) checkLookupPlugin(ctx context.Context, lookup domain.PersonLookup) error {
+	plugin, err := p.store.WorkInfoPlugin(ctx, lookup.PluginID)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		return domain.ErrPersonLookupPluginChanged
+	case err != nil:
+		return err
+	case !lookupPluginUnchanged(plugin, lookup):
+		return domain.ErrPersonLookupPluginChanged
+	}
+	return nil
+}
+
+func lookupPluginUnchanged(plugin domain.WorkInfoPlugin, lookup domain.PersonLookup) bool {
+	return plugin.State() == domain.WorkInfoPluginApproved && plugin.Digest == lookup.Digest &&
+		plugin.Generation == lookup.Generation
 }
 
 // PersonLookupImage returns ErrNotFound for an unknown or expired fetch, another video's fetch or an index outside
@@ -142,7 +156,8 @@ func (f *workInfoFetches) lookup(
 }
 
 // keepLookup keeps the first result of a lookup, so concurrent runs answer the same one, and returns
-// ErrWorkInfoFetchStale when the fetch was applied, expired or evicted during the run.
+// ErrWorkInfoFetchStale when the fetch was applied, expired or evicted during the run, or when the result's image
+// evicts its own fetch from the budget.
 func (f *workInfoFetches) keepLookup(id string, index int, kept *keptLookup, now time.Time) (*keptLookup, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -154,6 +169,9 @@ func (f *workInfoFetches) keepLookup(id string, index int, kept *keptLookup, now
 	if fetch.lookupRuns[index] == nil {
 		fetch.lookupRuns[index] = kept
 		f.trimCovers()
+		if f.entries[id] != fetch {
+			return nil, domain.ErrWorkInfoFetchStale
+		}
 	}
 	return fetch.lookupRuns[index], nil
 }

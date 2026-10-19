@@ -226,9 +226,10 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 		s.invalidRequest(w, "tags must name at least one of the fetched tags, and only when fields includes tags.")
 		return
 	}
-	lookups, ok := personLookupSelections(body.PersonLookups)
+	lookups, ok := personLookupSelections(body.PersonLookups, present("personLookups"))
 	if !ok {
-		s.invalidRequest(w, "Each lookup item must be image, aliases, externalIds or profile.<property>.")
+		s.invalidRequest(w, "personLookups must be an array when present, "+
+			"and each lookup item must be image, aliases, externalIds or profile.<property>.")
 		return
 	}
 	if !s.workInfoPluginsConfigured(w) {

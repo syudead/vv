@@ -73,10 +73,10 @@ func toAPIPersonLookups(plan domain.PersonLookupPlan, people []gen.WorkInfoFetch
 	return out
 }
 
-// personLookupSelections converts the apply's lookup items, reporting false for an unknown item.
-func personLookupSelections(body *[]gen.PersonLookupSelection) ([]domain.PersonLookupSelection, bool) {
+// personLookupSelections converts the apply's lookup items, reporting false for an explicit null or an unknown item.
+func personLookupSelections(body *[]gen.PersonLookupSelection, present bool) ([]domain.PersonLookupSelection, bool) {
 	if body == nil {
-		return nil, true
+		return nil, !present
 	}
 	out := make([]domain.PersonLookupSelection, 0, len(*body))
 	for _, selection := range *body {

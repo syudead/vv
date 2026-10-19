@@ -53,12 +53,17 @@ type recordingRuntime struct {
 	truncated bool
 	// Log persistence failures do not change execution results.
 	recordErrs []error
+	// during runs inside Run, to change a plugin while it runs.
+	during func()
 }
 
 func (r *recordingRuntime) Run(
 	_ context.Context, digest string, _ []byte, req domain.WorkInfoRunRequest, network domain.WorkInfoRunNetwork,
 	record func(domain.WorkInfoRunLog) error,
 ) (domain.WorkInfoRunResult, domain.WorkInfoRunLog, error) {
+	if r.during != nil {
+		r.during()
+	}
 	r.requests = append(r.requests, req)
 	r.networks = append(r.networks, network)
 	r.digests = append(r.digests, digest)
