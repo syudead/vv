@@ -10,7 +10,7 @@
   "devDependencies": {
     "esbuild": "0.28.2",
     "github-slugger": "2.0.0",
-    "mermaid": "12.1.0",
+    "mermaid": "12.2.0",
     "vitepress": "1.6.4"
   },
   "overrides": {
