@@ -26,7 +26,8 @@ export type TouchUp =
 
 /** A ComfyUI run over the preview's framing: the session lives only for one run and is discarded once its output is read, so the result joins the preview like an uploaded image. */
 export function useAiTouchUp(videoId: number): {
-  ready: boolean;
+  /** null until the readiness answer arrives. */
+  ready: boolean | null;
   state: TouchUp;
   /** framing is the drawing still being encoded; a failure to encode fails the run. */
   run: (framing: Promise<Blob>, prompt: string) => void;
@@ -35,7 +36,7 @@ export function useAiTouchUp(videoId: number): {
   take: () => UploadImage | null;
   dismiss: () => void;
 } {
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState<boolean | null>(null);
   const [state, setState] = useState<TouchUp>({ status: "idle" });
   const controller = useRef<AbortController | null>(null);
   const editId = useRef<string | null>(null);
@@ -47,7 +48,7 @@ export function useAiTouchUp(videoId: number): {
     const readiness = new AbortController();
     getThumbnailEditReadiness(readiness.signal).then(
       (answer) => setReady(answer.connection),
-      () => undefined,
+      () => setReady(false),
     );
     return () => {
       readiness.abort();

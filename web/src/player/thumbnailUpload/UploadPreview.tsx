@@ -17,7 +17,8 @@ import { Button } from "../../ui/shadcn/button";
 import { Slider } from "../../ui/shadcn/slider";
 import { ToggleGroup, ToggleGroupItem } from "../../ui/shadcn/toggle-group";
 import FittedBox from "../thumbnailEdit/FittedBox";
-import AiTouchUpSection from "./AiTouchUpSection";
+import ThumbnailEditor from "../thumbnailEdit/ThumbnailEditor";
+import AiTouchUpSection, { AiSetupHint } from "./AiTouchUpSection";
 import {
   drawComposition,
   drawOverflow,
@@ -38,6 +39,7 @@ import {
   wholeImage,
   zoomTo,
 } from "./framing";
+import { useAdvancedEdit } from "./useAdvancedEdit";
 import { useAiTouchUp } from "./useAiTouchUp";
 
 const KEY_STEP = 0.02;
@@ -119,52 +121,57 @@ export default function UploadPreview({
   );
 
   return (
-    <EditorDialog
-      open
-      onClose={() => {
-        if (!applying) onCancel();
-      }}
-      title={text.title}
-      detail={name}
-      closeLabel={text.close}
-      closeDisabled={applying}
-      initialFocus={applyButton}
-      stage={
-        <PreviewStage
-          image={shown.image}
-          aspect={aspect}
-          size={frameSize(shown.image, aspect, shown.fit.rotation)}
-          fit={shown.fit}
-          narrow={narrow}
-          onFit={update}
-        />
-      }
-      aside={
-        <>
-          <FramingControls
-            image={source}
-            size={size}
-            fit={fit}
-            unknownAspect={aspect === null}
-            disabled={busy}
+    <>
+      <EditorDialog
+        open
+        onClose={() => {
+          if (!applying) onCancel();
+        }}
+        title={text.title}
+        detail={name}
+        closeLabel={text.close}
+        closeDisabled={applying}
+        initialFocus={applyButton}
+        stage={
+          <PreviewStage
+            image={shown.image}
+            aspect={aspect}
+            size={frameSize(shown.image, aspect, shown.fit.rotation)}
+            fit={shown.fit}
+            narrow={narrow}
             onFit={update}
           />
-          {touchUp.ready && (
-            <AiTouchUpSection
-              state={touchUp.state}
-              after={touchUp.after}
-              disabled={applying}
-              onRun={touchUp.run}
-              onCancel={touchUp.cancel}
-              onShowAfter={touchUp.showAfter}
-              onUse={touchUp.use}
-              onDismiss={touchUp.dismiss}
+        }
+        aside={
+          <>
+            <FramingControls
+              image={source}
+              size={size}
+              fit={fit}
+              unknownAspect={aspect === null}
+              disabled={busy}
+              onFit={update}
             />
-          )}
-        </>
-      }
-      footer={footer}
-    />
+            {touchUp.ready === false && <AiSetupHint />}
+            {touchUp.ready === true && (
+              <AiTouchUpSection
+                state={touchUp.state}
+                after={touchUp.after}
+                disabled={applying}
+                advanced={touchUp.advanced}
+                onRun={touchUp.run}
+                onCancel={touchUp.cancel}
+                onShowAfter={touchUp.showAfter}
+                onUse={touchUp.use}
+                onDismiss={touchUp.dismiss}
+              />
+            )}
+          </>
+        }
+        footer={footer}
+      />
+      {touchUp.editor}
+    </>
   );
 }
 
@@ -178,6 +185,12 @@ function usePreviewTouchUp(
 ) {
   const ai = useAiTouchUp(videoId);
   const [replaced, setReplaced] = useState<UploadImage | null>(null);
+  const replace = (next: UploadImage) => {
+    replaced?.bitmap.close();
+    setReplaced(next);
+    setFit((current) => ({ ...WHOLE_IMAGE, backdrop: current.backdrop }));
+  };
+  const advanced = useAdvancedEdit(videoId, replace);
   const [after, setAfter] = useState(true);
   const owned = useRef<UploadImage | null>(null);
   const handed = useRef(false);
@@ -208,11 +221,21 @@ function usePreviewTouchUp(
     showAfter: setAfter,
     use: () => {
       const next = ai.take();
-      if (next === null) return;
-      replaced?.bitmap.close();
-      setReplaced(next);
-      setFit((current) => ({ ...WHOLE_IMAGE, backdrop: current.backdrop }));
+      if (next !== null) replace(next);
     },
+    advanced: {
+      opening: advanced.opening,
+      failure: advanced.failure,
+      onOpen: () => advanced.open(encodeComposition(source, aspect, fit)),
+    },
+    editor: advanced.edit !== null && (
+      <ThumbnailEditor
+        key={advanced.edit.id}
+        edit={advanced.edit}
+        onUseResult={advanced.use}
+        onClosed={advanced.close}
+      />
+    ),
     dismiss: ai.dismiss,
     handOver: () => {
       handed.current = true;

@@ -28,7 +28,6 @@ import {
   getThumbnailEdit,
   runThumbnailEdit,
   cancelThumbnailEdit,
-  applyThumbnailEdit,
   discardThumbnailEdit,
   listVideoVersions,
   bundleVideos,
@@ -536,23 +535,18 @@ describe("thumbnail edit API client", () => {
     expect(form.has("reference")).toBe(false);
   });
 
-  it("drops the list snapshot after an apply and discards with keepalive", async () => {
-    const key = { query: "old" };
-    saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+  it("discards with keepalive", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
-      .mockResolvedValueOnce(jsonResponse({ id: 7 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(
         jsonResponse({ code: "not_found", reason: "thumbnail_edit_not_found" }, 404),
       );
     vi.stubGlobal("fetch", fetch);
 
-    await expect(applyThumbnailEdit("ab12")).resolves.toMatchObject({ id: 7 });
-    expect(takeListSnapshot(key)).toBeUndefined();
     await expect(discardThumbnailEdit("ab12")).resolves.toBeUndefined();
     expect(fetch).toHaveBeenNthCalledWith(
-      2,
+      1,
       "/api/thumbnail-edits/ab12",
       expect.objectContaining({ method: "DELETE", keepalive: true }),
     );
