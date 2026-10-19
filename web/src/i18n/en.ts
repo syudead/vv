@@ -403,6 +403,7 @@ const errorReasons = {
     tagName === undefined
       ? "A kind with that name already exists."
       : `A kind named "${tagName}" already exists.`,
+  face_candidate_not_found: "These two people are no longer offered as a match.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {

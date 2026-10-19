@@ -626,6 +626,7 @@ const (
 	ErrorReasonDurationUnknown               ErrorReason = "duration_unknown"
 	ErrorReasonEncoderUnavailable            ErrorReason = "encoder_unavailable"
 	ErrorReasonExternalIdTaken               ErrorReason = "external_id_taken"
+	ErrorReasonFaceCandidateNotFound         ErrorReason = "face_candidate_not_found"
 	ErrorReasonFileUnavailable               ErrorReason = "file_unavailable"
 	ErrorReasonFolderNotFound                ErrorReason = "folder_not_found"
 	ErrorReasonGroupCycle                    ErrorReason = "group_cycle"
@@ -734,6 +735,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonEncoderUnavailable:
 		return true
 	case ErrorReasonExternalIdTaken:
+		return true
+	case ErrorReasonFaceCandidateNotFound:
 		return true
 	case ErrorReasonFileUnavailable:
 		return true
@@ -3029,6 +3032,32 @@ type ErrorReason string
 type ExternalId struct {
 	Source string `json:"source"`
 	Value  string `json:"value"`
+}
+
+// FaceCandidate One open pair, as the other person of it.
+type FaceCandidate struct {
+	// Person CreditRef of the other person, with its face.
+	Person FaceCandidatePerson `json:"person"`
+
+	// Similarity The pair's highest face similarity when last computed, from 0 to 1.
+	Similarity float64 `json:"similarity"`
+}
+
+// FaceCandidateList defines model for FaceCandidateList.
+type FaceCandidateList struct {
+	Items []FaceCandidate `json:"items"`
+}
+
+// FaceCandidatePerson CreditRef of the other person, with its face.
+type FaceCandidatePerson struct {
+	Id int64 `json:"id"`
+
+	// ImageRevision Present only when the person has a face; changes with every change of the face and is never reused. Load the face from /api/people/{id}/image?v={imageRevision}.
+	ImageRevision *PersonImageRevision `json:"imageRevision,omitempty"`
+	Name          string               `json:"name"`
+
+	// Provisional True for a person without a canonical name, whose name is then "".
+	Provisional bool `json:"provisional"`
 }
 
 // FavoritesRequest defines model for FavoritesRequest.
@@ -5619,6 +5648,9 @@ type CreditProvisional = bool
 // CreditQuery defines model for CreditQuery.
 type CreditQuery = string
 
+// FaceCandidateOtherId defines model for FaceCandidateOtherId.
+type FaceCandidateOtherId = int64
+
 // FolderPath defines model for FolderPath.
 type FolderPath = string
 
@@ -6669,6 +6701,15 @@ type ServerInterface interface {
 	// UpdatePerson Update a person's name, aliases and external IDs
 	// (PATCH /api/people/{id})
 	UpdatePerson(w http.ResponseWriter, r *http.Request, id PersonId)
+	// ListFaceCandidates List a person's face candidates
+	// (GET /api/people/{id}/face-candidates)
+	ListFaceCandidates(w http.ResponseWriter, r *http.Request, id PersonId)
+	// ConfirmFaceCandidate Merge a face candidate pair
+	// (POST /api/people/{id}/face-candidates/{otherId}/confirm)
+	ConfirmFaceCandidate(w http.ResponseWriter, r *http.Request, id PersonId, otherId FaceCandidateOtherId)
+	// DismissFaceCandidate Dismiss a face candidate pair
+	// (POST /api/people/{id}/face-candidates/{otherId}/dismiss)
+	DismissFaceCandidate(w http.ResponseWriter, r *http.Request, id PersonId, otherId FaceCandidateOtherId)
 	// DeletePersonImage Remove a person's face
 	// (DELETE /api/people/{id}/image)
 	DeletePersonImage(w http.ResponseWriter, r *http.Request, id PersonId)
@@ -9062,6 +9103,102 @@ func (siw *ServerInterfaceWrapper) UpdatePerson(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdatePerson(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListFaceCandidates operation middleware
+func (siw *ServerInterfaceWrapper) ListFaceCandidates(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListFaceCandidates(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfirmFaceCandidate operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmFaceCandidate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "otherId" -------------
+	var otherId FaceCandidateOtherId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "otherId", r.PathValue("otherId"), &otherId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "otherId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfirmFaceCandidate(w, r, id, otherId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DismissFaceCandidate operation middleware
+func (siw *ServerInterfaceWrapper) DismissFaceCandidate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "otherId" -------------
+	var otherId FaceCandidateOtherId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "otherId", r.PathValue("otherId"), &otherId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "otherId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DismissFaceCandidate(w, r, id, otherId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -12985,6 +13122,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/people/{id}/image", wrapper.DeletePersonImage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/image", wrapper.GetPersonImage)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/people/{id}/image", wrapper.UploadPersonImage)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/face-candidates", wrapper.ListFaceCandidates)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/face-candidates/{otherId}/confirm", wrapper.ConfirmFaceCandidate)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/face-candidates/{otherId}/dismiss", wrapper.DismissFaceCandidate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/organizations", wrapper.ListOrganizations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organizations", wrapper.CreateOrganization)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/organizations/{id}", wrapper.DeleteOrganization)

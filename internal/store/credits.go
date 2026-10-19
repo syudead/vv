@@ -385,6 +385,18 @@ func (s *CreditStore) Merge(ctx context.Context, kind domain.CreditKind, targetI
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	outcome, err := mergeCreditsInTx(ctx, tx, t, targetID, sourceIDs)
+	if err != nil {
+		return domain.CreditMergeOutcome{}, err
+	}
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
+		return domain.CreditMergeOutcome{}, fmt.Errorf("cannot merge into %s %d: %w", kind, targetID, err)
+	}
+	return outcome, nil
+}
+
+// mergeCreditsInTx performs Merge inside tx and reads the merged target; the caller commits as a match change.
+func mergeCreditsInTx(ctx context.Context, tx *sql.Tx, t creditTables, targetID int64, sourceIDs []int64) (domain.CreditMergeOutcome, error) {
 	merged, notFound, err := mergeSources(ctx, tx, t, targetID, sourceIDs)
 	if err != nil {
 		return domain.CreditMergeOutcome{}, err
@@ -400,9 +412,6 @@ func (s *CreditStore) Merge(ctx context.Context, kind domain.CreditKind, targetI
 	credit, err := creditByID(ctx, tx, t, targetID)
 	if err != nil {
 		return domain.CreditMergeOutcome{}, err
-	}
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
-		return domain.CreditMergeOutcome{}, fmt.Errorf("cannot merge into %s %d: %w", kind, targetID, err)
 	}
 	return domain.CreditMergeOutcome{Credit: credit, NotFoundIDs: notFound}, nil
 }
