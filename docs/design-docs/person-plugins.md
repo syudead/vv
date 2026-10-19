@@ -140,3 +140,18 @@ lookup from a work-info fetch applies too, and the write is
 | --- | --- |
 | Replace stored values with fetched ones | The owner's edits would be lost to a site's values without a choice per field |
 | Merge the person holding a `taken` ID | A wrong ID on a site would merge two people the owner keeps apart |
+
+## The settings page lists each kind in its own section
+
+The Plugins settings page reads the one plugin list and shows person plugins
+in a `Person plugins` section after `Work-info plugins`, with the same row,
+approval prompt and menu. Each section has its own `Add plugin`; the upload
+is one endpoint and the manifest decides the kind, so the toast names the
+other section when the row lands there. The automatic lookup switch is a
+`Switch` on approved person rows only, because a plugin that is not approved
+never runs. The video page's fetch dialog offers work-info plugins only.
+
+| Rejected | Why |
+| --- | --- |
+| A kind badge on rows in one list | The owner would read every row to find the plugins that fetch people |
+| The switch as a row menu item | Its state would be hidden until the menu opens |

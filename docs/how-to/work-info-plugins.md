@@ -440,6 +440,12 @@ mdm plugin run plugin.wasm fetch 1 --source example
 person's name. The output is `{"candidates": [...]}` or `{"person": {...}}`
 after VVMDM's limits, and `mdm plugin pack` prints the kind and the sources.
 
+In VVMDM, a person plugin is listed in the **Person plugins** section of
+**Settings**, under the **Work-info plugins** section. Either section's
+**Add plugin** accepts either kind; the manifest's `kind` decides the section.
+After approval, the plugin's row has an **Automatic lookups** switch, which
+lets a work-info fetch call the plugin for the people it names.
+
 ## Host functions
 
 Module `vv`. Pointers and lengths are `i32` offsets into the plugin's exported

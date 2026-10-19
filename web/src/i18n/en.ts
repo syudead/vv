@@ -19,6 +19,7 @@ type EncoderUnavailableReason = components["schemas"]["EncoderUnavailableReason"
 type ComfyUIProvider = components["schemas"]["ComfyUIProvider"];
 type ComfyUIModel = components["schemas"]["ComfyUIModel"];
 type WorkInfoPluginState = components["schemas"]["WorkInfoPluginState"];
+type WorkInfoPluginKind = components["schemas"]["WorkInfoPluginKind"];
 type WorkInfoPluginProblem = components["schemas"]["WorkInfoPluginProblem"];
 type WorkInfoOperation = components["schemas"]["WorkInfoOperation"];
 type SkippedTagReason = components["schemas"]["SkippedTag"]["reason"];
@@ -3498,6 +3499,18 @@ export const en = {
       added: (name: string) => `Added ${name}. Approve it to use it.`,
       replaced: (name: string) => `Replaced ${name}. Approve it again to use it.`,
       addedUnusable: (name: string) => `Added ${name}, but it can't be used.`,
+      addedUnder: {
+        work: (name: string) =>
+          `Added ${name} under Work-info plugins. Approve it to use it.`,
+        person: (name: string) =>
+          `Added ${name} under Person plugins. Approve it to use it.`,
+      } satisfies Record<WorkInfoPluginKind, (name: string) => string>,
+      replacedUnder: {
+        work: (name: string) =>
+          `Replaced ${name} under Work-info plugins. Approve it again to use it.`,
+        person: (name: string) =>
+          `Replaced ${name} under Person plugins. Approve it again to use it.`,
+      } satisfies Record<WorkInfoPluginKind, (name: string) => string>,
       empty: "No plugins yet",
       emptyHint: "Add a .wasm plugin file to fetch titles and tags on the video page.",
       states: {
@@ -3510,6 +3523,23 @@ export const en = {
         search: "Search",
         fetch: "Fetch by ID",
       } satisfies Record<WorkInfoOperation, string>,
+      person: {
+        heading: "Person plugins",
+        description:
+          "Plugins fetch a person's face and profile from other sites, from the person page and when fetched work information names a person they know. Approve a plugin before it can run.",
+        list: "Added person plugins",
+        loading: "Loading the person plugins",
+        loadFailed: (reason: string) => `Couldn't load the person plugins: ${reason}`,
+        empty: "No person plugins yet",
+        emptyHint: "Add a .wasm person plugin file to fetch faces and profiles.",
+        operations: {
+          search: "Search by name",
+          fetch: "Fetch by ID",
+        } satisfies Record<WorkInfoOperation, string>,
+        accepts: (sources: readonly string[]) => `Accepts IDs from ${sources.join(", ")}`,
+        autoLookup: "Automatic lookups",
+        saving: "Saving…",
+      },
       network: "Reaches internet sites",
       settingSet: (label: string) => `${label} set`,
       settingNotSet: (label: string) => `${label} not set`,
@@ -3542,6 +3572,9 @@ export const en = {
         title: (name: string) => `Approve ${name}?`,
         description:
           "Approved plugins can run when you fetch work information on a video page.",
+        personDescription:
+          "Approved person plugins can run from a person page, and when fetched work information names a person with an ID they accept.",
+        sources: "Accepts IDs from",
         version: "Version",
         file: "File",
         can: "Can",

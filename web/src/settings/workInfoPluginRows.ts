@@ -16,10 +16,12 @@ export function pluginName(plugin: Pick<WorkInfoPlugin, "name" | "fileName">): s
   return plugin.name ?? plugin.fileName;
 }
 
-export function operationTexts(plugin: Pick<WorkInfoPlugin, "operations">): UiText[] {
-  return plugin.operations.map(
-    (operation) => t.settings.workInfoPlugins.operations[operation],
-  );
+export function operationTexts(
+  plugin: Pick<WorkInfoPlugin, "operations" | "kind">,
+): UiText[] {
+  const text = t.settings.workInfoPlugins;
+  const names = plugin.kind === "person" ? text.person.operations : text.operations;
+  return plugin.operations.map((operation) => names[operation]);
 }
 
 function summaryOf(setting: WorkInfoPluginSetting): UiText {
