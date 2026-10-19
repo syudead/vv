@@ -43,13 +43,13 @@ func (a *Assets) Probe(ctx context.Context, path string) (domain.Probe, error) {
 }
 
 // Thumbnail reports whether it substituted the first frame.
-func (a *Assets) Thumbnail(ctx context.Context, path string, durationMs int64, output string) (bool, error) {
-	return Thumbnail(ctx, path, durationMs, output)
+func (a *Assets) Thumbnail(ctx context.Context, path string, durationMs int64, output, poster string) (bool, error) {
+	return Thumbnail(ctx, path, durationMs, output, poster)
 }
 
 // ThumbnailAt never substitutes the first frame.
-func (a *Assets) ThumbnailAt(ctx context.Context, path string, positionMs int64, output string) error {
-	return ThumbnailAt(ctx, path, positionMs, output)
+func (a *Assets) ThumbnailAt(ctx context.Context, path string, positionMs int64, output, poster string) error {
+	return ThumbnailAt(ctx, path, positionMs, output, poster)
 }
 
 // SeekSprite reports whether full decoding was required.

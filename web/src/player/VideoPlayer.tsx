@@ -228,7 +228,7 @@ export default function VideoPlayer(props: Props) {
       controls: true,
       fill: true,
       playsinline: true,
-      poster: source.thumbnailUrl,
+      poster: posterUrl(source.thumbnailUrl),
       preload: "metadata",
       language: playerLanguage,
       // The page overlay reports failures; suppress video.js's own error panel.
@@ -962,7 +962,7 @@ export default function VideoPlayer(props: Props) {
   useEffect(() => {
     const player = playerRef.current;
     if (player !== null && !player.isDisposed() && video.thumbnailUrl !== undefined) {
-      player.poster(video.thumbnailUrl);
+      player.poster(posterUrl(video.thumbnailUrl));
     }
   }, [video.thumbnailUrl]);
 
@@ -1073,4 +1073,12 @@ function directContentType(video: Video): string {
 
 export function canStartPlayback(video: Video): boolean {
   return createPlaybackAttempt(video, 0) !== null;
+}
+
+/** The poster fills the player, so it asks for the stored source rather than the 640 px card image. */
+function posterUrl(thumbnailUrl: string | undefined): string | undefined {
+  if (thumbnailUrl === undefined) return undefined;
+  const url = new URL(thumbnailUrl, window.location.origin);
+  url.searchParams.set("size", "large");
+  return url.origin === window.location.origin ? url.pathname + url.search : url.href;
 }

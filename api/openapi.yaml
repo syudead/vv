@@ -768,6 +768,12 @@ paths:
           description: "Version in the URL returned by list or detail"
           schema:
             type: string
+        - name: size
+          in: query
+          description: "`large` returns the poster published with the thumbnail for display larger than a card, its long side up to 2048 px; without one it returns the 640 px image."
+          schema:
+            type: string
+            enum: [large]
       responses:
         "200":
           description: "Image"

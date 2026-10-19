@@ -6693,6 +6693,8 @@ export interface operations {
             query?: {
                 /** @description Version in the URL returned by list or detail */
                 v?: string;
+                /** @description `large` returns the poster published with the thumbnail for display larger than a card, its long side up to 2048 px; without one it returns the 640 px image. */
+                size?: "large";
             };
             header?: never;
             path: {

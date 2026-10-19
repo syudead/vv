@@ -155,6 +155,8 @@ type TranscodeProbeWriter interface {
 type ArtifactReader interface {
 	// The caller closes the thumbnail file.
 	ThumbnailFile(contentKey string) (*os.File, error)
+	// The caller closes the poster file.
+	PosterFile(contentKey string) (*os.File, error)
 	// PreviewFile returns the stored SHA-256 digest with the file; the caller closes it.
 	PreviewFile(contentKey string) (*os.File, string, error)
 	// Invalid sprite metadata returns an error distinct from fs.ErrNotExist.

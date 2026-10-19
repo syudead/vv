@@ -16,7 +16,7 @@ func TestThumbnailReportsFirstFrameFallback(t *testing.T) {
 
 	// A fake hundred-second duration selects second ten, beyond the two-second source.
 	output := filepath.Join(t.TempDir(), "thumbnail.jpg")
-	firstFrame, err := Thumbnail(context.Background(), videoPath, 100_000, output)
+	firstFrame, err := Thumbnail(context.Background(), videoPath, 100_000, output, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestThumbnailReportsNoFallbackAtOffset(t *testing.T) {
 	videoPath := filepath.Join(t.TempDir(), "normal.mp4")
 	runFFmpeg(t, "-f", "lavfi", "-i", "color=c=white:s=64x64:r=10:d=20", "-c:v", "mpeg4", "-y", videoPath)
 
-	firstFrame, err := Thumbnail(context.Background(), videoPath, 20_000, filepath.Join(t.TempDir(), "thumbnail.jpg"))
+	firstFrame, err := Thumbnail(context.Background(), videoPath, 20_000, filepath.Join(t.TempDir(), "thumbnail.jpg"), "")
 	if err != nil {
 		t.Fatal(err)
 	}

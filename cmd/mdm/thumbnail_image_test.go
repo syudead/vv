@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -34,12 +33,19 @@ type frameGenerator struct {
 	probeOnlyGenerator
 }
 
-func (frameGenerator) Thumbnail(_ context.Context, _ string, _ int64, output string) (bool, error) {
-	return false, os.WriteFile(output, []byte("frame:auto"), 0o600)
+func (frameGenerator) Thumbnail(_ context.Context, _ string, _ int64, output, poster string) (bool, error) {
+	return false, writeFrames(output, poster, "auto")
 }
 
-func (frameGenerator) ThumbnailAt(_ context.Context, _ string, positionMs int64, output string) error {
-	return os.WriteFile(output, fmt.Appendf(nil, "frame:%d", positionMs), 0o600)
+func (frameGenerator) ThumbnailAt(_ context.Context, _ string, positionMs int64, output, poster string) error {
+	return writeFrames(output, poster, strconv.FormatInt(positionMs, 10))
+}
+
+func writeFrames(output, poster, at string) error {
+	if err := os.WriteFile(poster, []byte("poster:"+at), 0o600); err != nil {
+		return err
+	}
+	return os.WriteFile(output, []byte("frame:"+at), 0o600)
 }
 
 func (frameGenerator) FitThumbnailImage(_ context.Context, image []byte, _ float64) ([]byte, error) {
@@ -289,6 +295,32 @@ func TestThumbnailPositionAndRevertReplaceAppliedImage(t *testing.T) {
 	f.decodeVideo(f.serve(http.MethodDelete, f.videoPath("/thumbnail-image"), ""))
 	if got := f.thumbnailBytes(); got != "frame:auto" || f.storedImage() != nil {
 		t.Fatalf("位置の無い取り消しの代表サムネイル = %q", got)
+	}
+}
+
+// The player's large thumbnail follows every kind of change to the thumbnail.
+func TestLargeThumbnailFollowsTheThumbnail(t *testing.T) {
+	f := newThumbnailImageFixture(t)
+	large := func() string {
+		t.Helper()
+		rec := f.serve(http.MethodGet, f.videoPath("/thumbnail?size=large"), "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+		}
+		return rec.Body.String()
+	}
+	if got := large(); got != "poster:auto" {
+		t.Fatalf("取り込み直後 = %q", got)
+	}
+	if _, err := f.ingest.ApplyThumbnailImage(f.ctx, f.videoID, thumbnailImageKey, []byte("edited"), domain.ThumbnailImageUploaded); err != nil {
+		t.Fatal(err)
+	}
+	if got := large(); got != "source:edited" {
+		t.Fatalf("画像の適用のあと = %q", got)
+	}
+	f.decodeVideo(f.serve(http.MethodPut, f.videoPath("/thumbnail-position"), `{"positionMs":12000}`))
+	if got := large(); got != "poster:12000" {
+		t.Fatalf("位置の設定のあと = %q", got)
 	}
 }
 
