@@ -19,7 +19,7 @@ func (s *IngestStore) EnqueueJob(ctx context.Context, kind domain.JobKind, video
 func (s *IngestStore) EnqueueJobs(
 	ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind,
 ) error {
-	return s.queueJobs(ctx, videoID, decider, false, kinds)
+	return s.queueJobs(ctx, videoID, decider, false, kinds, nil)
 }
 
 // ForceJobs queues forced jobs in one transaction without changing the stage states: over a queued row it sets its
@@ -27,11 +27,23 @@ func (s *IngestStore) EnqueueJobs(
 func (s *IngestStore) ForceJobs(
 	ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind,
 ) error {
-	return s.queueJobs(ctx, videoID, decider, true, kinds)
+	return s.queueJobs(ctx, videoID, decider, true, kinds, nil)
 }
 
+// ForceScanJobs queues forced jobs as ForceJobs does and marks the video forced in the force rescan scanID in the
+// same transaction, so a resumed rescan neither forces a queued video again nor skips one whose jobs were lost.
+func (s *IngestStore) ForceScanJobs(
+	ctx context.Context, scanID, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind,
+) error {
+	return s.queueJobs(ctx, videoID, decider, true, kinds, func(tx *sql.Tx) error {
+		return markForced(ctx, tx, scanID, videoID)
+	})
+}
+
+// first, when not nil, runs at the start of the transaction that queues the jobs.
 func (s *IngestStore) queueJobs(
 	ctx context.Context, videoID int64, decider domain.ActivityDecider, force bool, kinds []domain.JobKind,
+	first func(*sql.Tx) error,
 ) error {
 	if len(kinds) == 0 {
 		return nil
@@ -41,6 +53,11 @@ func (s *IngestStore) queueJobs(
 		return fmt.Errorf("cannot start queueing the jobs (%v, video=%d): %w", kinds, videoID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if first != nil {
+		if err := first(tx); err != nil {
+			return err
+		}
+	}
 	run, err := scanRun(ctx, tx, decider)
 	if err != nil {
 		return err

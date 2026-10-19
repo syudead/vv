@@ -51,8 +51,7 @@ type Index interface {
 	DeleteVideoLocations(ctx context.Context, ids []int64) error
 	// A zero creation time clears the stored value to null.
 	UpdateLocationCreatedAt(ctx context.Context, locationID int64, createdAt time.Time) error
-	// MarkForced records that a force rescan queued the video's forced jobs; ForcedVideos lists those videos.
-	MarkForced(ctx context.Context, scanID, videoID int64) error
+	// ForcedVideos lists the videos the force rescan has already forced.
 	ForcedVideos(ctx context.Context, scanID int64) ([]int64, error)
 }
 
@@ -61,8 +60,11 @@ type Index interface {
 type Queue interface {
 	EnqueueJobs(ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind) error
 	EnsureJobs(ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind) error
-	// ForceJobs queues forced jobs that regenerate even when the stage states are done.
-	ForceJobs(ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind) error
+	// ForceScanJobs queues forced jobs that regenerate even when the stage states are done, and marks the video
+	// forced in the force rescan in the same transaction.
+	ForceScanJobs(
+		ctx context.Context, scanID, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind,
+	) error
 }
 
 // Reporter is optional and hides progress/error persistence from the scanner.
@@ -528,11 +530,7 @@ func (s *Scanner) visit(
 			pass.targets = append(pass.targets, scanTarget{path: path, unchanged: true})
 			return nil
 		}
-		// For unchanged files, update creation time and repair missing pending jobs without reviving
-		// terminal failures.
-		createdErr := s.refreshCreatedAt(ctx, path, info, existing)
-		jobsErr := s.ensurePendingJobs(ctx, existing, pass.decider)
-		if err := errors.Join(createdErr, jobsErr); err != nil {
+		if err := s.repairUnchanged(ctx, path, info, existing, pass.decider); err != nil {
 			if ctx.Err() != nil {
 				return err
 			}
@@ -705,6 +703,16 @@ func sameCreatedAt(a, b time.Time) bool {
 		return a.IsZero() == b.IsZero()
 	}
 	return a.Unix() == b.Unix()
+}
+
+// repairUnchanged updates the creation time of an unchanged file and repairs its missing pending jobs without
+// reviving terminal failures.
+func (s *Scanner) repairUnchanged(
+	ctx context.Context, path string, info fs.FileInfo, existing domain.IndexedVideo, decider domain.ActivityDecider,
+) error {
+	createdErr := s.refreshCreatedAt(ctx, path, info, existing)
+	jobsErr := s.ensurePendingJobs(ctx, existing, decider)
+	return errors.Join(createdErr, jobsErr)
 }
 
 func (s *Scanner) ensurePendingJobs(ctx context.Context, video domain.IndexedVideo, decider domain.ActivityDecider) error {

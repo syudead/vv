@@ -195,7 +195,16 @@ func carryPreviousIssues(ctx context.Context, q queryExecer, id int64, start sca
 
 // MarkForced records that the force pass queued the video's jobs in the scan.
 func (s *ScanStore) MarkForced(ctx context.Context, scanID, videoID int64) error {
-	if _, err := s.db.sql.ExecContext(ctx, `insert into scan_videos (scan_id, video_id, forced)
+	return markForced(ctx, s.db.sql, scanID, videoID)
+}
+
+// ForcedVideos lists, in id order, the videos the scan has already forced.
+func (s *ScanStore) ForcedVideos(ctx context.Context, scanID int64) ([]int64, error) {
+	return forcedVideos(ctx, s.db.sql, scanID)
+}
+
+func markForced(ctx context.Context, q queryExecer, scanID, videoID int64) error {
+	if _, err := q.ExecContext(ctx, `insert into scan_videos (scan_id, video_id, forced)
 		select s.id, v.id, 1 from scans s, videos v where s.id = ? and v.id = ?
 		on conflict (scan_id, video_id) do update set forced = 1`, scanID, videoID); err != nil {
 		return fmt.Errorf("cannot mark the video as forced (scan=%d, video=%d): %w", scanID, videoID, err)
@@ -203,9 +212,8 @@ func (s *ScanStore) MarkForced(ctx context.Context, scanID, videoID int64) error
 	return nil
 }
 
-// ForcedVideos lists, in id order, the videos the scan has already forced.
-func (s *ScanStore) ForcedVideos(ctx context.Context, scanID int64) ([]int64, error) {
-	rows, err := s.db.sql.QueryContext(ctx,
+func forcedVideos(ctx context.Context, q rowsQueryer, scanID int64) ([]int64, error) {
+	rows, err := q.QueryContext(ctx,
 		`select video_id from scan_videos where scan_id = ? and forced = 1 order by video_id`, scanID)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the forced videos (scan=%d): %w", scanID, err)

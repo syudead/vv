@@ -55,10 +55,12 @@ func (s *Scanner) rescanOnce(
 		if i < 0 {
 			return domain.ScanResult{}, fmt.Errorf("the media folder of the force rescan is not registered (%s)", scope.Path)
 		}
-		// Walk the path recorded at start, so a resumed rescan reads the same tree.
-		folder := folders[i]
-		folder.Path = scope.Path
-		return s.walkAndFinish(ctx, pass, folders, []domain.MediaFolder{folder}, func(path string) bool {
+		// A resumed rescan reads the tree recorded at start, or stops if the folder now points elsewhere.
+		if folders[i].Path != scope.Path {
+			return domain.ScanResult{}, fmt.Errorf("the media folder of the force rescan moved from %s to %s",
+				scope.Path, folders[i].Path)
+		}
+		return s.walkAndFinish(ctx, pass, folders, folders[i:i+1], func(path string) bool {
 			return domain.PathWithinRoot(scope.Path, path)
 		})
 	case domain.RescanVideo:
@@ -100,26 +102,21 @@ func (s *Scanner) rescanVideo(ctx context.Context, pass *scanPass, videoID int64
 func (s *Scanner) forceUnchanged(
 	ctx context.Context, pass *scanPass, path string, info fs.FileInfo, existing domain.IndexedVideo,
 ) error {
-	if err := s.refreshCreatedAt(ctx, path, info, existing); err != nil {
+	if err := s.repairUnchanged(ctx, path, info, existing, pass.decider); err != nil {
 		return failFile(domain.IssueRegisterFailed, existing.ID, err)
 	}
 	return s.force(ctx, pass, existing.ID)
 }
 
-// force queues the forced jobs of a video once per scan; it does nothing outside force mode.
+// force queues the forced jobs of a video once per scan; it does nothing outside force mode or without a queue.
 func (s *Scanner) force(ctx context.Context, pass *scanPass, videoID int64) error {
-	if pass.force == nil {
+	if pass.force == nil || s.queue == nil {
 		return nil
 	}
 	if _, ok := pass.force.done[videoID]; ok {
 		return nil
 	}
-	if s.queue != nil {
-		if err := s.queue.ForceJobs(ctx, videoID, pass.decider, forceKinds...); err != nil {
-			return failFile(domain.IssueRegisterFailed, videoID, err)
-		}
-	}
-	if err := s.index.MarkForced(ctx, pass.force.scanID, videoID); err != nil {
+	if err := s.queue.ForceScanJobs(ctx, pass.force.scanID, videoID, pass.decider, forceKinds...); err != nil {
 		return failFile(domain.IssueRegisterFailed, videoID, err)
 	}
 	pass.force.done[videoID] = struct{}{}

@@ -66,6 +66,30 @@ func TestRescanForcesAnUnchangedFile(t *testing.T) {
 	}
 }
 
+// A forced probe that fails leaves the preview pending, so the force pass still repairs the missing pending jobs.
+func TestRescanRepairsTheMissingPendingJobsOfAnUnchangedFile(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "content"})
+	path := filepath.Join(root, "a.mp4")
+	index := newFakeIndex()
+	seedIndex(t, index, root)
+	row := index.rows[path]
+	row.ProbeState = domain.ProbeStateDone
+	row.ThumbnailState = domain.ThumbnailStateDone
+	row.SeekThumbnailState = domain.SeekThumbnailDone
+	row.PreviewState = domain.PreviewStatePending
+	index.rows[path] = row
+	index.jobs = nil
+
+	rescan(t, index, domain.RescanScope{Kind: domain.RescanLibrary})
+
+	if want := []jobCall{{kind: domain.JobPreview, videoID: row.ID}}; !slices.Equal(index.jobs, want) {
+		t.Errorf("repaired jobs = %v, want %v", index.jobs, want)
+	}
+	if !slices.Equal(index.forceJobs, forcedKindsFor(row.ID)) {
+		t.Errorf("forced jobs = %v, want %v", index.forceJobs, forcedKindsFor(row.ID))
+	}
+}
+
 func TestRescanUpsertsAChangedFileBeforeForcingIt(t *testing.T) {
 	stamp := time.Unix(1_757_000_000, 0)
 	for _, tc := range []struct {
@@ -142,6 +166,26 @@ func TestRescanFolderRemovesMissingLocationsOnlyInsideTheFolder(t *testing.T) {
 		t.Fatalf("removed = %d, deleted = %v, want only %d", result.Removed, index.deleted, goneInside)
 	}
 	rowFor(t, index, filepath.Join(outside, "gone.mp4"))
+}
+
+// A folder that points elsewhere than the recorded rescan_path stops the rescan instead of walking another tree.
+func TestRescanFolderStopsWhenTheFolderMoved(t *testing.T) {
+	recorded := mediaTree(t, map[string]string{"a.mp4": "a"})
+	current := mediaTree(t, map[string]string{"b.mp4": "b"})
+	index := newFakeIndex()
+	seedIndex(t, index, current)
+
+	_, err := New(Options{Index: index, Queue: index, Reporter: index}).Rescan(
+		context.Background(), rescanID, domain.RescanScope{Kind: domain.RescanFolder, FolderID: 1, Path: recorded},
+		domain.ActivityByOwner,
+	)
+
+	if err == nil {
+		t.Fatal("rescan of a moved folder succeeded, want an error")
+	}
+	if len(index.calls) != 0 || len(index.deleted) != 0 {
+		t.Errorf("calls = %v, deleted = %v, want nothing read, forced or removed", index.calls, index.deleted)
+	}
 }
 
 func TestRescanVideoReportsAMissingLocationAndKeepsIt(t *testing.T) {

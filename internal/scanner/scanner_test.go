@@ -48,17 +48,13 @@ type forcedMark struct {
 	scanID, videoID int64
 }
 
-func (f *fakeIndex) ForceJobs(
-	_ context.Context, videoID int64, _ domain.ActivityDecider, kinds ...domain.JobKind,
+func (f *fakeIndex) ForceScanJobs(
+	_ context.Context, scanID, videoID int64, _ domain.ActivityDecider, kinds ...domain.JobKind,
 ) error {
 	f.calls = append(f.calls, fmt.Sprintf("force %d", videoID))
 	for _, kind := range kinds {
 		f.forceJobs = append(f.forceJobs, jobCall{kind: kind, videoID: videoID})
 	}
-	return nil
-}
-
-func (f *fakeIndex) MarkForced(_ context.Context, scanID, videoID int64) error {
 	f.marked = append(f.marked, forcedMark{scanID: scanID, videoID: videoID})
 	return nil
 }
@@ -496,7 +492,7 @@ func (failingQueue) EnsureJobs(context.Context, int64, domain.ActivityDecider, .
 	return errors.New("queue unavailable")
 }
 
-func (failingQueue) ForceJobs(context.Context, int64, domain.ActivityDecider, ...domain.JobKind) error {
+func (failingQueue) ForceScanJobs(context.Context, int64, int64, domain.ActivityDecider, ...domain.JobKind) error {
 	return errors.New("queue unavailable")
 }
 
