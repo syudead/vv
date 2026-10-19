@@ -927,6 +927,16 @@ export function startThumbnailEditFromImage(
   });
 }
 
+/** The session's starting image, a PNG at frameWidth × frameHeight. */
+export async function getThumbnailEditFrame(
+  editId: string,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const response = await apiFetch(thumbnailEditPath(editId, "/frame"), { signal });
+  if (!response.ok) throw await toRequestFailed(response);
+  return response.blob();
+}
+
 /** The provider's output as it came, before it is fitted to the video. */
 export async function getThumbnailEditResult(
   editId: string,
@@ -990,19 +1000,6 @@ export function cancelThumbnailEdit(
     method: "POST",
     signal,
   });
-}
-
-/** Apply a successful result, end the session, and invalidate list snapshots. */
-export async function applyThumbnailEdit(
-  editId: string,
-  signal?: AbortSignal,
-): Promise<Video> {
-  const video = await request<Video>(thumbnailEditPath(editId, "/apply"), {
-    method: "POST",
-    signal,
-  });
-  clearListSnapshot();
-  return video;
 }
 
 /** Idempotently discard; keepalive allows submission while leaving the page. */

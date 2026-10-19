@@ -1887,9 +1887,6 @@ export const en = {
     },
     //
     thumbnailEdit: {
-      entry: "Edit thumbnail with ComfyUI",
-      setupTitle: "Set up ComfyUI first",
-      setupBody: "Save a ComfyUI connection in Settings.",
       openSettings: "Open Settings",
       startFailed: (reason: string) => `Couldn't start editing the thumbnail: ${reason}`,
       title: "Edit thumbnail",
@@ -1899,6 +1896,8 @@ export const en = {
       currentThumbnail: "Current thumbnail",
       thumbnailFrameAt: (time: string) => `Current thumbnail, frame at ${time}`,
       thumbnailSavedImage: "Current thumbnail, saved image",
+      framingDetail: "Your framing",
+      framing: "Framing",
       close: "Close",
       tools: "Painting tools",
       paint: "Paint",
@@ -1961,7 +1960,8 @@ export const en = {
     },
     //
     thumbnailUpload: {
-      entry: "Upload an image as thumbnail",
+      entry: "Change thumbnail",
+      chooseFile: "Upload an image…",
       refusedType: "Choose a PNG, JPEG or WebP image.",
       refusedSize: "Choose an image up to 64 MB.",
       failed: (reason: string) => `Couldn't upload the image: ${reason}`,
@@ -2004,6 +2004,8 @@ export const en = {
         dismiss: "Discard result",
         resultHint:
           "Using the result replaces the image, so you can frame it or touch it up again.",
+        advanced: "Paint or add a reference…",
+        setup: "Save a ComfyUI connection in Settings to touch up the image here.",
       },
     },
     versions: {

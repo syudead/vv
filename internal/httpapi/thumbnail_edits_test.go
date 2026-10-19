@@ -220,8 +220,9 @@ func TestStartThumbnailEditStatuses(t *testing.T) {
 		t.Helper()
 		assertErrorBody(t, label, rec.Code, rec.Body.Bytes(), want)
 	}
-	check("no connection", f.startEdit("a", `{"source":"frame","positionMs":1000}`, f.owner),
-		wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonThumbnailEditNotReady})
+	if rec := f.startEdit("a", `{"source":"frame","positionMs":1000}`, f.owner); rec.Code != http.StatusCreated {
+		t.Fatalf("start without a connection = %d %s", rec.Code, rec.Body)
+	}
 	f.saveConnection(t)
 
 	check("no source", f.startEdit("a", `{"positionMs":1000}`, f.owner),

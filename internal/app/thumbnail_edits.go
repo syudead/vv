@@ -149,17 +149,10 @@ func NewThumbnailEdits(opts ThumbnailEditsOptions) *ThumbnailEdits {
 	}
 }
 
-// Start snapshots the requested source into a ready session; an image source that does not decode returns ErrThumbnailUploadInvalid and cancels/replaces any prior session for the video. Missing settings return ErrThumbnailEditNotReady, unread content ErrNotFound, invalid/missing positions the CheckThumbnailPosition error, unavailable images ErrThumbnailFrameUnavailable, and an empty path needing frame extraction ErrMediaFileUnavailable.
+// Start snapshots the requested source into a ready session and cancels/replaces any prior session for the video. It needs no ComfyUI connection, so the page can read a frame or the current thumbnail to frame it; runs need one. An image source that does not decode returns ErrThumbnailUploadInvalid, unread content ErrNotFound, invalid/missing positions the CheckThumbnailPosition error, unavailable images ErrThumbnailFrameUnavailable, and an empty path needing frame extraction ErrMediaFileUnavailable.
 func (e *ThumbnailEdits) Start(
 	ctx context.Context, video domain.Video, path string, start domain.ThumbnailEditStart,
 ) (domain.ThumbnailEdit, error) {
-	conn, err := e.settings.ComfyUISettings(ctx)
-	if err != nil {
-		return domain.ThumbnailEdit{}, err
-	}
-	if !conn.Saved() {
-		return domain.ThumbnailEdit{}, domain.ErrThumbnailEditNotReady
-	}
 	if video.ContentKey == "" {
 		return domain.ThumbnailEdit{}, domain.ErrNotFound
 	}

@@ -147,7 +147,7 @@ async function openPage(audience: Audience = "owner") {
 }
 
 function entry() {
-  return screen.getByRole("button", { name: "Upload an image as thumbnail" });
+  return screen.getByRole("button", { name: "Change thumbnail" });
 }
 
 function choose(file: File) {
@@ -227,24 +227,18 @@ describe("VideoPage thumbnail upload", () => {
   it("ゲストには入口も、アップロードした画像の項目も無い", async () => {
     server.video = uploaded;
     await openPage("guest");
-    expect(
-      screen.queryByRole("button", { name: "Upload an image as thumbnail" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Change thumbnail" })).toBeNull();
     expect(screen.queryByTestId("thumbnail-upload-input")).toBeNull();
     expect(within(facts()).queryByRole("img", { name: "Uploaded thumbnail" })).toBeNull();
   });
 
-  it("入口は編集の入口の直後に置き、PNG・JPEG・WebP に限ったピッカーを開く", async () => {
+  it("入口のメニューの「画像をアップロード」は PNG・JPEG・WebP に限ったピッカーを開く", async () => {
     await openPage();
-    const buttons = screen
-      .getAllByRole("button")
-      .map((button) => button.getAttribute("aria-label"));
-    const edit = buttons.indexOf("Edit thumbnail with ComfyUI");
-    expect(buttons[edit + 1]).toBe("Upload an image as thumbnail");
     const input = screen.getByTestId<HTMLInputElement>("thumbnail-upload-input");
     expect(input.accept).toBe("image/png,image/jpeg,image/webp");
     const click = vi.spyOn(input, "click");
-    fireEvent.click(entry());
+    fireEvent.keyDown(entry(), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Upload an image…" }));
     expect(click).toHaveBeenCalledTimes(1);
   });
 

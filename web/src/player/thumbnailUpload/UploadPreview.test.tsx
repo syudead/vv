@@ -1,4 +1,5 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UploadImage } from "./composeImage";
@@ -18,7 +19,7 @@ vi.mock("./composeImage", () => compose);
 
 const touch = vi.hoisted(() => ({
   value: {
-    ready: false,
+    ready: null as boolean | null,
     state: { status: "idle" } as TouchUp,
     run: vi.fn(),
     cancel: vi.fn(),
@@ -43,17 +44,19 @@ function renderPreview(props: Partial<Parameters<typeof UploadPreview>[0]> = {})
   const onApply = vi.fn<(fit: Fit, replaced: UploadImage | null) => void>();
   const onCancel = vi.fn();
   render(
-    <UploadPreview
-      videoId={7}
-      image={image}
-      name="poster.png"
-      aspect={16 / 9}
-      narrow={false}
-      applying={false}
-      onApply={onApply}
-      onCancel={onCancel}
-      {...props}
-    />,
+    <MemoryRouter>
+      <UploadPreview
+        videoId={7}
+        image={image}
+        name="poster.png"
+        aspect={16 / 9}
+        narrow={false}
+        applying={false}
+        onApply={onApply}
+        onCancel={onCancel}
+        {...props}
+      />
+    </MemoryRouter>,
   );
   return { onApply, onCancel };
 }
@@ -72,7 +75,7 @@ describe("UploadPreview", () => {
     compose.drawOverflow.mockReset();
     compose.encodeComposition.mockReset();
     touch.value = {
-      ready: false,
+      ready: null,
       state: { status: "idle" },
       run: vi.fn(),
       cancel: vi.fn(),
@@ -233,9 +236,13 @@ describe("UploadPreview", () => {
     expect(drawImage).toHaveBeenCalledTimes(2);
   });
 
-  it("ComfyUI が無ければ仕上げの欄を出さず、あれば定型は今の構図を描いてその指示で走らせる", () => {
+  it("ComfyUI が無ければ定型の代わりに設定への案内を出し、あれば定型は今の構図を描いてその指示で走らせる", () => {
+    touch.value.ready = false;
     renderPreview();
-    expect(screen.queryByText("Touch up with ComfyUI")).toBeNull();
+    expect(screen.getByRole("link", { name: "Open Settings" }).getAttribute("href")).toBe(
+      "/settings/connections#comfyui",
+    );
+    expect(screen.queryByRole("button", { name: "Remove text" })).toBeNull();
     cleanup();
     touch.value.ready = true;
     const framing = Promise.resolve(new Blob(["png"]));

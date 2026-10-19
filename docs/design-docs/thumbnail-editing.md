@@ -119,10 +119,13 @@ The JSON start refuses `image`, as it carries no image.
 
 ## A run uses the connection it started with
 
-Starting a run reads the saved ComfyUI connection and keeps it in the run, so
+Starting a session needs no connection: the page also starts one only to read
+a frame or the current thumbnail at its full size for the thumbnail preview,
+then discards it. Starting a run reads the saved ComfyUI connection and keeps
+it in the run, so
 reads, cancel and the output fetch go to that provider even when the owner
-changes or removes the connection meanwhile. A run started after the
-connection was removed answers `409 thumbnail_edit_not_ready`. A new run of a
+changes or removes the connection meanwhile. A run without a saved
+connection answers `409 thumbnail_edit_not_ready`. A new run of a
 session cancels the run in progress before it submits.
 
 ## Inputs are checked before anything is uploaded
@@ -265,6 +268,22 @@ framing for an edit from the current thumbnail.
 | A margin in the theme's colour | The JPEG has no transparency and the same file serves both themes |
 | The original's resolution on the canvas | Some browsers cap a canvas far below 120 megapixels, and the stored source keeps at most 2048 px anyway |
 
+### One entry opens the preview from any source
+
+The video page has one `Change thumbnail` entry whose menu offers the frame on
+screen, the current thumbnail and `Upload an image…`; each opens the same
+preview. The frame and the current thumbnail come from a short-lived session
+(`source` `frame` or `thumbnail`): the page reads its `/frame` and discards
+it, so the preview starts from the image a ComfyUI edit would, at up to
+2048 px, and the owner frames it like a picked file. Applying sends the
+drawing through the upload route, so the result is stored with origin
+`uploaded` whatever its source.
+
+| Rejected | Why |
+| --- | --- |
+| Keep a separate ComfyUI entry that applies through `applyThumbnailEdit` | Two screens for one task, and its result skipped the framing |
+| Draw the frame from the player's `<video>` element | A transcoded or HLS stream is not the original's resolution, and a player-less video has no element |
+
 ### The preview touches up its framing with ComfyUI
 
 With a ComfyUI connection saved, the preview's aside offers
@@ -284,6 +303,12 @@ pending, the framing and the apply wait.
 | `Remove blur` | Make the whole image look in focus |
 | `Remove text` | Remove text, captions, logos and watermarks and fill their areas |
 | `Fill the empty space` | Extend the picture over the blurred or black borders a free placement leaves |
+
+`Paint or add a reference…` opens the ComfyUI editor, with its painting and
+reference image, on an `image` session of the current framing. Its
+`Use result` reads the output, discards the session and hands the image back
+to the preview, as `Use result` does for a touch-up; the editor no longer
+applies a thumbnail itself.
 
 The instructions are English whatever the page's language, as the edit models
 follow English best, and live in

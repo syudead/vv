@@ -1,7 +1,8 @@
-import { LoaderCircle, WandSparkles } from "lucide-react";
+import { Brush, LoaderCircle, WandSparkles } from "lucide-react";
 import { useState } from "react";
+import { Link } from "react-router";
 
-import { t } from "../../i18n";
+import { t, type UiText } from "../../i18n";
 import { Button } from "../../ui/shadcn/button";
 import { Progress } from "../../ui/shadcn/progress";
 import { Textarea } from "../../ui/shadcn/textarea";
@@ -12,11 +13,14 @@ import type { TouchUp } from "./useAiTouchUp";
 
 const PROMPT_MAX = 4000;
 
+export const COMFYUI_SETTINGS = "/settings/connections#comfyui";
+
 /** ComfyUI touch-ups of the current framing: fixed instructions or the owner's own, then a before/after choice. */
 export default function AiTouchUpSection({
   state,
   after,
   disabled,
+  advanced,
   onRun,
   onCancel,
   onShowAfter,
@@ -26,6 +30,8 @@ export default function AiTouchUpSection({
   state: TouchUp;
   after: boolean;
   disabled: boolean;
+  /** The ComfyUI editor for painting and reference images, opened on the framing. */
+  advanced: { opening: boolean; failure: UiText | null; onOpen: () => void };
   onRun: (prompt: string) => void;
   onCancel: () => void;
   onShowAfter: (after: boolean) => void;
@@ -99,6 +105,31 @@ export default function AiTouchUpSection({
           >
             {text.runOwn}
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="self-start"
+            disabled={disabled}
+            aria-busy={advanced.opening || undefined}
+            onClick={() => {
+              if (!advanced.opening) advanced.onOpen();
+            }}
+          >
+            {advanced.opening ? (
+              <LoaderCircle
+                aria-hidden="true"
+                className="animate-spin motion-reduce:animate-none"
+              />
+            ) : (
+              <Brush aria-hidden="true" />
+            )}
+            {text.advanced}
+          </Button>
+          {advanced.failure !== null && (
+            <p role="alert" className="text-sm text-destructive">
+              {advanced.failure}
+            </p>
+          )}
           {state.status === "failed" && (
             <p role="alert" className="text-sm text-destructive">
               {state.message}
@@ -150,6 +181,20 @@ function Running({
       )}
       <Button variant="outline" size="sm" className="self-start" onClick={onCancel}>
         {t.player.thumbnailUpload.ai.stop}
+      </Button>
+    </div>
+  );
+}
+
+/** Without a ComfyUI connection the preview frames only; this says where touch-ups come from. */
+export function AiSetupHint() {
+  const text = t.player.thumbnailUpload.ai;
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm font-medium">{text.title}</p>
+      <p className="text-sm text-muted-foreground">{text.setup}</p>
+      <Button variant="link" size="sm" className="self-start px-0" asChild>
+        <Link to={COMFYUI_SETTINGS}>{t.player.thumbnailEdit.openSettings}</Link>
       </Button>
     </div>
   );
