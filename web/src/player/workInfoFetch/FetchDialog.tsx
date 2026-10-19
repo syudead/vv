@@ -43,7 +43,7 @@ const PLUGIN_GONE = new Set(["plugin_not_approved", "not_found"]);
 
 type Step = "find" | "compare" | "result";
 
-function ResultStep({ lines }: { lines: readonly SkippedLine[] }) {
+export function ResultStep({ lines }: { lines: readonly SkippedLine[] }) {
   const text = t.player.workInfoFetch;
   return (
     <>
@@ -64,7 +64,7 @@ function ResultStep({ lines }: { lines: readonly SkippedLine[] }) {
   );
 }
 
-function busyLabel(label: string): ReactNode {
+export function busyLabel(label: string): ReactNode {
   return (
     <>
       <Spinner aria-hidden="true" role={undefined} />
