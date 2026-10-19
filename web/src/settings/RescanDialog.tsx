@@ -29,7 +29,8 @@ export default function RescanDialog({
   const confirm = () => {
     setPending(true);
     setError(null);
-    void rescan(request).then((failure) => {
+    // A start discovered after a lost response closes the dialog as a success would.
+    void rescan(request, onClose).then((failure) => {
       setPending(false);
       if (failure === null) onClose();
       else setError(t.shell.scan.rescanFailed(failure));

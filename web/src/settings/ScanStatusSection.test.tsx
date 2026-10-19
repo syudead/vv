@@ -415,6 +415,40 @@ describe("ScanStatusSection", () => {
         "A scan is running. You can start another when it finishes.",
       );
     });
+
+    it("closes the dialog once a start whose response was lost shows up", async () => {
+      fetchMock.mockImplementation((input, init) => {
+        const url = String(input);
+        if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+        if (url === "/api/scans/rescan" && init?.method === "POST") {
+          return Promise.resolve(json({ code: "internal", message: "lost" }, 500));
+        }
+        if (url.startsWith("/api/scans/current/issues")) {
+          return Promise.resolve(json({ scanId: 1, items: [] }));
+        }
+        return Promise.resolve(
+          json(
+            rescanCalls().length > 0
+              ? scan({ id: 9, state: "running", rescan: { scope: "library" } })
+              : scan({ state: "done" }),
+          ),
+        );
+      });
+      renderSection();
+      const user = userEvent.setup();
+      const control = await screen.findByRole("button", { name: "Force rescan" });
+      await waitFor(() => expect(control.hasAttribute("disabled")).toBe(false));
+
+      await user.click(control);
+      await user.click(
+        within(await screen.findByRole("alertdialog")).getByRole("button", {
+          name: "Force rescan",
+        }),
+      );
+
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+      expect(await screen.findByText("Force rescan of the whole library")).toBeDefined();
+    });
   });
 
   describe("origin watch", () => {

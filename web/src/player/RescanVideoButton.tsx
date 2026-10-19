@@ -32,9 +32,13 @@ export default function RescanVideoButton({
 
   const start = () => {
     if (blocked) return;
+    const started = () => {
+      report(null);
+      toast(f.rescanStarted);
+    };
     report(null);
-    void controls.rescan({ scope: "video", videoId }).then((failure) => {
-      if (failure === null) toast(f.rescanStarted);
+    void controls.rescan({ scope: "video", videoId }, started).then((failure) => {
+      if (failure === null) started();
       else report(t.shell.scan.rescanFailed(failure));
     });
   };

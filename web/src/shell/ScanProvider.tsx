@@ -39,9 +39,13 @@ export interface ScanContextValue {
   start: () => void;
   /**
    * Start a force rescan. Resolves to the failure for the caller to show beside its control, or
-   * null once started; it leaves startError alone.
+   * null once started; it leaves startError alone. When the failure may hide a start whose response
+   * was lost, onRecovered runs once a later read or event shows the new scan.
    */
-  rescan: (request: StartRescanRequest) => Promise<UiText | null>;
+  rescan: (
+    request: StartRescanRequest,
+    onRecovered?: () => void,
+  ) => Promise<UiText | null>;
   refresh: () => void;
   setFolderCount: (count: number) => void;
   /** Exclude scans already finished on initial load so lists do not refresh unexpectedly. */
@@ -94,6 +98,11 @@ export function useScanControlsIfProvided(): ScanControlsValue | null {
   return useContext(ScanControlsContext);
 }
 
+/** A 4xx answer is the server's refusal; anything else may follow a start whose response was lost. */
+function mayHaveStarted(failure: unknown): boolean {
+  return !(failure instanceof RequestFailed && failure.status < 500);
+}
+
 /** Running watcher scans neither display progress nor block manual-start availability. */
 export function isWatchScan(scan: Scan | null): boolean {
   return scan?.origin === "watch";
@@ -139,6 +148,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const requestedScanId = useRef<number | null>(null);
   const observedRunningScanId = useRef<number | null>(null);
   const recoveryBaselineScanId = useRef<number | null | undefined>(undefined);
+  const onRescanRecovered = useRef<(() => void) | null>(null);
   const lastSeenScanId = useRef<number | null | undefined>(undefined);
   // Events can be newer than pending reads; discard a read if an event arrived after it started.
   const scanRevision = useRef(0);
@@ -187,6 +197,9 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     if (recovered) {
       recoveryBaselineScanId.current = undefined;
       setStartError(null);
+      const notify = onRescanRecovered.current;
+      onRescanRecovered.current = null;
+      notify?.();
     }
 
     if (current.state === "running") {
@@ -294,14 +307,23 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     if (owner) loadUnlessLoading();
   }, [loadUnlessLoading, owner]);
 
-  /** A null request starts a manual scan, whose failure stays in startError for Settings. */
+  /**
+   * A null request starts a manual scan, whose failure stays in startError for Settings. A force
+   * rescan skips the folder-count guard so the server's reason reaches the caller instead of a
+   * silent no-op.
+   */
   const begin = useCallback(
-    async (request: StartRescanRequest | null): Promise<UiText | null> => {
-      if (!owner || folderCount === null || folderCount === 0) return null;
+    async (
+      request: StartRescanRequest | null,
+      onRecovered?: () => void,
+    ): Promise<UiText | null> => {
+      if (!owner) return null;
+      if (request === null && (folderCount === null || folderCount === 0)) return null;
       const baselineScanId = scan?.id ?? null;
       setStarting(true);
       setStartError(null);
       recoveryBaselineScanId.current = undefined;
+      onRescanRecovered.current = null;
       // Fast scans may emit events before start returns; never replace newer event state with the response.
       const requestedAt = scanRevision.current;
       let failed: UiText | null = null;
@@ -323,10 +345,13 @@ export function ScanProvider({ children }: { children: ReactNode }) {
           updateFolderCount(0);
         }
         failed = errorText(failure);
+        // A lost response may hide a successful start; clear the error when events or reads discover the scan.
         if (request === null) {
           setStartError(t.shell.scan.startFailed(failed));
-          // A lost response may hide a successful start; clear the error when events or reads discover the scan.
           recoveryBaselineScanId.current = baselineScanId;
+        } else if (mayHaveStarted(failure)) {
+          recoveryBaselineScanId.current = baselineScanId;
+          onRescanRecovered.current = onRecovered ?? null;
         }
       } finally {
         setStarting(false);
@@ -339,7 +364,11 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   );
 
   const start = useCallback(() => void begin(null), [begin]);
-  const rescan = useCallback((request: StartRescanRequest) => begin(request), [begin]);
+  const rescan = useCallback(
+    (request: StartRescanRequest, onRecovered?: () => void) =>
+      begin(request, onRecovered),
+    [begin],
+  );
 
   const error = startError ?? loadError;
 

@@ -380,6 +380,44 @@ describe("VideoFacts force rescan", () => {
       "Couldn't start the force rescan: A scan is in progress. Try again when it finishes.",
     );
   });
+
+  it("clears the error and confirms the start once a start whose response was lost shows up", async () => {
+    let posted = false;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/media-folders") return Promise.resolve(json([{}], 200));
+      if (url === "/api/scans/rescan" && init?.method === "POST") {
+        posted = true;
+        return Promise.resolve(json({ code: "internal", message: "lost" }, 500));
+      }
+      if (url === "/api/scans/current" && posted) {
+        return Promise.resolve(
+          json(
+            {
+              id: 5,
+              origin: "manual",
+              status: "finding",
+              issues: { failed: 0, substituted: 0, revision: 0 },
+              state: "running",
+              rescan: { scope: "video", videoId: 7 },
+            },
+            200,
+          ),
+        );
+      }
+      return Promise.resolve(json({}, 404));
+    });
+    renderOwnerFacts();
+
+    const control = await screen.findByRole("button", {
+      name: "Force rescan this video",
+    });
+    await waitFor(() => expect(control.getAttribute("aria-disabled")).toBeNull());
+    fireEvent.click(control);
+
+    expect(await screen.findByText("Started a force rescan of this video")).toBeDefined();
+    expect(screen.queryByText(/Couldn't start the force rescan/)).toBeNull();
+  });
 });
 
 describe("property helpers", () => {

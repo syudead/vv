@@ -35,6 +35,49 @@ function failureText(presentation: ScanPresentation): UiText {
   return presentation.error ?? t.errors.scanUnknown;
 }
 
+/** Scan library and the library force rescan, which share the blocked reason. */
+function ScanStartActions({ blockedBy }: { blockedBy: string | undefined }) {
+  const scan = useScan();
+  const text = t.settings.scanStatus;
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => setConfirming(true)}
+        disabled={scan.running || !scan.canStart}
+        aria-describedby={blockedBy}
+      >
+        <RotateCcw aria-hidden="true" />
+        {text.forceRescan}
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={scan.start}
+        disabled={scan.running || !scan.canStart}
+        aria-busy={scan.running || undefined}
+        aria-describedby={blockedBy}
+      >
+        <RefreshCw
+          aria-hidden="true"
+          className={cn(scan.running && "animate-spin motion-reduce:animate-none")}
+        />
+        {scan.running ? text.starting : text.start}
+      </Button>
+      {confirming && (
+        <RescanDialog
+          request={{ scope: "library" }}
+          title={text.rescanDialog.title}
+          description={text.rescanDialog.description}
+          onClose={() => setConfirming(false)}
+        />
+      )}
+    </>
+  );
+}
+
 /** This settings section is the sole manual-scan entry point and starts a library force rescan. */
 export default function ScanStatusSection() {
   const anchor = useSectionAnchor("scan-status");
@@ -49,40 +92,12 @@ export default function ScanStatusSection() {
     <PageLinkText sentence={text.needsMediaFolder} page="library" />
   ) : null;
   const blockedBy = startBlockedReason !== null ? "scan-start-blocked" : undefined;
-  const [confirming, setConfirming] = useState(false);
 
   return (
     <div ref={anchor} id="scan-status">
       <PageSection
         title={text.heading}
-        actions={
-          <>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setConfirming(true)}
-              disabled={scan.running || !scan.canStart}
-              aria-describedby={blockedBy}
-            >
-              <RotateCcw aria-hidden="true" />
-              {text.forceRescan}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={scan.start}
-              disabled={scan.running || !scan.canStart}
-              aria-busy={scan.running || undefined}
-              aria-describedby={blockedBy}
-            >
-              <RefreshCw
-                aria-hidden="true"
-                className={cn(scan.running && "animate-spin motion-reduce:animate-none")}
-              />
-              {scan.running ? text.starting : text.start}
-            </Button>
-          </>
-        }
+        actions={<ScanStartActions blockedBy={blockedBy} />}
         description={
           <span className="flex flex-wrap items-center gap-2">
             {stateLabel(presentation) !== null && (
@@ -160,14 +175,6 @@ export default function ScanStatusSection() {
           />
         )}
       </PageSection>
-      {confirming && (
-        <RescanDialog
-          request={{ scope: "library" }}
-          title={text.rescanDialog.title}
-          description={text.rescanDialog.description}
-          onClose={() => setConfirming(false)}
-        />
-      )}
     </div>
   );
 }

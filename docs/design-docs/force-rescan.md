@@ -74,7 +74,12 @@ Every control is unavailable, with the reason, while a manual scan or force
 rescan runs or no media folder exists, as `Scan library` is; a watch scan does
 not block it, because the start supersedes it. A refused start shows its
 reason where the owner acted: inside the dialog, which stays open, or in the
-file facts' error row. While the rescan runs, the `Scan status` section and
+file facts' error row. The client leaves the no-folder check to the server, so
+a folder removed while the dialog is open is refused with its reason rather
+than closing the dialog as if the rescan started. A failure without a 4xx
+answer may hide a start whose response was lost, so when a later read or event
+shows the new scan, the dialog closes or the error row clears as on a start;
+a `409` or `404` never counts as a start. While the rescan runs, the `Scan status` section and
 the bottom-right indicator's summary name its scope.
 
 | Rejected | Why |
