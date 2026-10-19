@@ -240,7 +240,7 @@ is a later extension that keeps 8 seconds for long videos.
 | Track vector | The normalized mean of the good faces; a track with fewer than 2 good faces has none and is not clustered |
 | Clustering | Average linkage over the track vectors, joining while the mean similarity reaches `Cluster` |
 | Cutoff | Good seconds (good faces ÷ 2) at least the bar, the larger of 3 s and 25% of the analysed length. A cluster of 2 or more tracks needs only min(8 s, bar); a cluster of one track needs the bar itself |
-| Merge of split clusters | Clusters that passed the cutoff and whose centroids reach `Candidate` are one person and are joined, repeatedly, most similar first |
+| Merge of split clusters | Clusters that passed the cutoff and whose centroids reach `Link` are one person and are joined, repeatedly, most similar first |
 
 The analysed length is the number of frames the worker sampled divided by the
 sampling rate, not the file's duration, so a video cut short is judged by what
@@ -252,12 +252,13 @@ shot, so in a long video it must reach the full 25%: 10 s of one track in a
 100 s video is not a main person, 25 s is.
 
 Average linkage at `Cluster` can leave one person's tracks in two clusters, for
-example before and after a change of lighting. Two different main people of one
-video are rarely as close as `Candidate`, which is looser and measured on the
-recognizer, so the merge joins them. If the analysis still creates two
-provisional people whose centroids reach `Candidate`, which the merge makes
-unlikely, the store writes them as an open
-`face_candidates` pair, so the person page offers "Same person?".
+example before and after a change of lighting. A cluster centroid averages many
+faces, so it reaches `Link` where the average linkage of single faces stays under
+`Cluster`; the merge joins such clusters automatically. `Candidate` is too loose
+to join people without the owner (it names a stranger for over half of unknown
+faces in the POC), so two provisional people of one analysis whose centroids
+reach only `Candidate` are written as an open `face_candidates` pair, and the
+person page offers "Same person?".
 
 Each track keeps its start, end, mean centre and mean width, and a main person
 keeps its best good face (largest box times score) for its crop.

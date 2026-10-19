@@ -58,7 +58,7 @@ func goodTrack(vec []float32, start, n int) FaceTrack {
 }
 
 func TestFindMainPeopleKeepsEightSecondsInTwoTracks(t *testing.T) {
-	th := FaceThresholds{Cluster: 0.45, Candidate: 0.363}
+	th := FaceThresholds{Cluster: 0.45, Candidate: 0.363, Link: 0.45}
 	// 16 good frames are 8 s at 2 fps; 15 are 7.5 s.
 	for _, tc := range []struct {
 		name   string
@@ -77,7 +77,7 @@ func TestFindMainPeopleKeepsEightSecondsInTwoTracks(t *testing.T) {
 }
 
 func TestFindMainPeopleCutoffFollowsAnalysedLength(t *testing.T) {
-	th := FaceThresholds{Cluster: 0.45, Candidate: 0.363}
+	th := FaceThresholds{Cluster: 0.45, Candidate: 0.363, Link: 0.45}
 	vec := faceAxis(0, 10, 0.2)
 	for _, tc := range []struct {
 		name    string
@@ -100,8 +100,8 @@ func TestFindMainPeopleCutoffFollowsAnalysedLength(t *testing.T) {
 }
 
 func TestFindMainPeopleMergesClustersOfOnePerson(t *testing.T) {
-	th := FaceThresholds{Cluster: 0.9, Candidate: 0.4}
-	// Tilts put the two groups below Cluster of each other (similarity 0.5) but above Candidate.
+	th := FaceThresholds{Cluster: 0.9, Candidate: 0.3, Link: 0.4}
+	// Tilts put the two groups below Cluster of each other (similarity 0.5) but above Link.
 	near := func(tilt float32, axis int) []float32 {
 		v := make([]float32, 128)
 		v[0], v[axis] = 1, tilt
@@ -109,8 +109,8 @@ func TestFindMainPeopleMergesClustersOfOnePerson(t *testing.T) {
 	}
 	a1, a2 := goodTrack(near(1, 1), 0, 10), goodTrack(near(1, 1), 30, 10)
 	b1, b2 := goodTrack(near(1, 2), 60, 10), goodTrack(near(1, 2), 90, 10)
-	if s := FaceSimilarity(a1.vector(), b1.vector()); s >= th.Cluster || s < th.Candidate {
-		t.Fatalf("fixture similarity %v is not between Candidate and Cluster", s)
+	if s := FaceSimilarity(a1.vector(), b1.vector()); s >= th.Cluster || s < th.Link {
+		t.Fatalf("fixture similarity %v is not between Link and Cluster", s)
 	}
 	people := FindMainPeople(th, []FaceTrack{a1, a2, b1, b2}, 120)
 	if len(people) != 1 || len(people[0].Tracks) != 4 || people[0].GoodSeconds != 20 {
@@ -132,7 +132,7 @@ func TestFindMainPeopleSeparatesPeopleBelowClusterThreshold(t *testing.T) {
 	for i := range 2 {
 		tracks = append(tracks, goodTrack(faceAxis(1, 20+i, 0.2), i*20, 10))
 	}
-	people := FindMainPeople(FaceThresholds{Cluster: 0.45, Candidate: 0.363}, tracks, 60)
+	people := FindMainPeople(FaceThresholds{Cluster: 0.45, Candidate: 0.363, Link: 0.45}, tracks, 60)
 	if len(people) != 2 || people[0].GoodSeconds != 10 || people[1].GoodSeconds != 9 {
 		t.Fatalf("people = %+v, want B (10 s) then A (9 s)", people)
 	}

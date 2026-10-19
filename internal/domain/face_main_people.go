@@ -254,7 +254,7 @@ type MainPerson struct {
 
 // FindMainPeople clusters the tracks that have a vector and keeps clusters with enough good face time, longest
 // first. analysedSeconds is the length of the frames actually sampled. Kept clusters whose centroids reach the
-// candidate threshold are one person the clustering split, and are merged.
+// link threshold are one person the clustering split, and are merged; the looser candidate threshold only offers a pair.
 func FindMainPeople(th FaceThresholds, tracks []FaceTrack, analysedSeconds float64) []MainPerson {
 	var kept []FaceTrack
 	var vecs [][]float32
@@ -270,7 +270,7 @@ func FindMainPeople(th FaceThresholds, tracks []FaceTrack, analysedSeconds float
 		}
 	}
 	people := make([]MainPerson, 0, len(clusters))
-	for _, c := range mergeSplitClusters(kept, vecs, clusters, th.Candidate) {
+	for _, c := range mergeSplitClusters(kept, vecs, clusters, th.Link) {
 		people = append(people, mainPerson(kept, vecs, c))
 	}
 	slices.SortStableFunc(people, func(a, b MainPerson) int { return cmp.Compare(b.GoodSeconds, a.GoodSeconds) })
