@@ -19,6 +19,7 @@ function person(id: number, overrides: Partial<Person> = {}): Person {
   return {
     id,
     name: `Person ${String(id)}`,
+    provisional: false,
     aliases: [],
     externalIds: [],
     profile: {},

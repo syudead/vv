@@ -133,8 +133,19 @@ describe("VideoPage work-info fetch details", () => {
     server.video = {
       ...video,
       workInfo: info({
-        people: [{ role: "performer", person: { id: 9, name: "既存の人" } }],
-        organizations: [{ role: "maker", organization: { id: 4, name: "既存の会社" } }],
+        people: [
+          {
+            role: "performer",
+            person: { id: 9, name: "既存の人", provisional: false },
+            provisional: false,
+          },
+        ],
+        organizations: [
+          {
+            role: "maker",
+            organization: { id: 4, name: "既存の会社", provisional: false },
+          },
+        ],
       }),
     };
     server.fetch.mockImplementation(() =>
@@ -175,7 +186,13 @@ describe("VideoPage work-info fetch details", () => {
     server.video = {
       ...video,
       workInfo: info({
-        people: [{ role: "performer", person: { id: 9, name: "既存の人" } }],
+        people: [
+          {
+            role: "performer",
+            person: { id: 9, name: "既存の人", provisional: false },
+            provisional: false,
+          },
+        ],
       }),
     };
     server.fetch.mockImplementation(() =>

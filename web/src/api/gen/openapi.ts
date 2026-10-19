@@ -1709,7 +1709,7 @@ export interface paths {
         };
         /**
          * List people
-         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people.
+         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people, and provisional keeps only provisional or only named people. Provisional people follow every named person in natural-name order, including as the tie-break of the other sorts.
          */
         get: operations["listPeople"];
         put?: never;
@@ -1809,7 +1809,7 @@ export interface paths {
         };
         /**
          * List organizations
-         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite returns 400 invalid_request.
+         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite and provisional return 400 invalid_request.
          */
         get: operations["listOrganizations"];
         put?: never;
@@ -3636,11 +3636,13 @@ export interface components {
             id?: number;
             name?: string;
         };
-        /** @description Reference to one person or organization; name is its current name. */
+        /** @description Reference to one person or organization; name is its current name, "" for a provisional person. */
         CreditRef: {
             /** Format: int64 */
             id: number;
             name: string;
+            /** @description True for a person without a canonical name, whose name is then ""; always false for an organization. */
+            provisional: boolean;
         };
         /** @description One person or organization alias. */
         Alias: {
@@ -3681,6 +3683,8 @@ export interface components {
         WorkPerson: {
             role: components["schemas"]["WorkPersonRole"];
             person: components["schemas"]["CreditRef"];
+            /** @description Same as person.provisional. */
+            provisional: boolean;
             imageRevision?: components["schemas"]["PersonImageRevision"];
         };
         /**
@@ -3743,6 +3747,8 @@ export interface components {
             /** Format: int64 */
             id: number;
             name: string;
+            /** @description True while the person has no canonical name; name is then "". Setting a name makes the person ordinary. */
+            provisional: boolean;
             /** @description Natural-name order. */
             aliases: components["schemas"]["Alias"][];
             /** @description Ordered by (source, value). */
@@ -3877,7 +3883,7 @@ export interface components {
         /** @description Person form of the CreditList contract. */
         PersonList: {
             items: components["schemas"]["Person"][];
-            /** @description Person count matching q and favorite, independent of pagination. */
+            /** @description Person count matching q, favorite and provisional, independent of pagination. */
             total: number;
             /** @description Total person count. */
             totalAll: number;
@@ -5584,6 +5590,8 @@ export interface components {
         CreditLimit: number;
         /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
         CreditFavorite: boolean;
+        /** @description People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request. */
+        CreditProvisional: boolean;
         /** @description Registered media-folder ID containing this folder */
         FolderRootId: number;
         /** @description Playlist item ID */
@@ -8594,6 +8602,8 @@ export interface operations {
                 limit?: components["parameters"]["CreditLimit"];
                 /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
                 favorite?: components["parameters"]["CreditFavorite"];
+                /** @description People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request. */
+                provisional?: components["parameters"]["CreditProvisional"];
             };
             header?: never;
             path?: never;
@@ -8852,6 +8862,8 @@ export interface operations {
                 limit?: components["parameters"]["CreditLimit"];
                 /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
                 favorite?: components["parameters"]["CreditFavorite"];
+                /** @description People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request. */
+                provisional?: components["parameters"]["CreditProvisional"];
             };
             header?: never;
             path?: never;

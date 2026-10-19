@@ -2628,13 +2628,14 @@ paths:
     get:
       operationId: listPeople
       summary: "List people"
-      description: "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people."
+      description: "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people, and provisional keeps only provisional or only named people. Provisional people follow every named person in natural-name order, including as the tie-break of the other sorts."
       parameters:
         - $ref: "#/components/parameters/CreditQuery"
         - $ref: "#/components/parameters/CreditSort"
         - $ref: "#/components/parameters/CreditCursor"
         - $ref: "#/components/parameters/CreditLimit"
         - $ref: "#/components/parameters/CreditFavorite"
+        - $ref: "#/components/parameters/CreditProvisional"
       responses:
         "200":
           description: "People"
@@ -2827,13 +2828,14 @@ paths:
     get:
       operationId: listOrganizations
       summary: "List organizations"
-      description: "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite returns 400 invalid_request."
+      description: "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite and provisional return 400 invalid_request."
       parameters:
         - $ref: "#/components/parameters/CreditQuery"
         - $ref: "#/components/parameters/CreditSort"
         - $ref: "#/components/parameters/CreditCursor"
         - $ref: "#/components/parameters/CreditLimit"
         - $ref: "#/components/parameters/CreditFavorite"
+        - $ref: "#/components/parameters/CreditProvisional"
       responses:
         "200":
           description: "Organizations"
@@ -4807,6 +4809,12 @@ components:
       schema:
         type: boolean
         default: false
+    CreditProvisional:
+      name: provisional
+      in: query
+      description: "People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request."
+      schema:
+        type: boolean
     FolderRootId:
       name: rootId
       in: path
@@ -6410,15 +6418,18 @@ components:
 
     CreditRef:
       type: object
-      required: [id, name]
+      required: [id, name, provisional]
       additionalProperties: false
-      description: "Reference to one person or organization; name is its current name."
+      description: "Reference to one person or organization; name is its current name, \"\" for a provisional person."
       properties:
         id:
           type: integer
           format: int64
         name:
           type: string
+        provisional:
+          type: boolean
+          description: "True for a person without a canonical name, whose name is then \"\"; always false for an organization."
 
     Alias:
       type: object
@@ -6472,13 +6483,16 @@ components:
 
     WorkPerson:
       type: object
-      required: [role, person]
+      required: [role, person, provisional]
       additionalProperties: false
       properties:
         role:
           $ref: "#/components/schemas/WorkPersonRole"
         person:
           $ref: "#/components/schemas/CreditRef"
+        provisional:
+          type: boolean
+          description: "Same as person.provisional."
         imageRevision:
           $ref: "#/components/schemas/PersonImageRevision"
 
@@ -6610,7 +6624,7 @@ components:
 
     Person:
       type: object
-      required: [id, name, aliases, externalIds, profile, favorite, videoCount, createdAt]
+      required: [id, name, provisional, aliases, externalIds, profile, favorite, videoCount, createdAt]
       additionalProperties: false
       description: "One person."
       properties:
@@ -6619,6 +6633,9 @@ components:
           format: int64
         name:
           type: string
+        provisional:
+          type: boolean
+          description: "True while the person has no canonical name; name is then \"\". Setting a name makes the person ordinary."
         aliases:
           type: array
           description: "Natural-name order."
@@ -6847,7 +6864,7 @@ components:
             $ref: "#/components/schemas/Person"
         total:
           type: integer
-          description: "Person count matching q and favorite, independent of pagination."
+          description: "Person count matching q, favorite and provisional, independent of pagination."
         totalAll:
           type: integer
           description: "Total person count."

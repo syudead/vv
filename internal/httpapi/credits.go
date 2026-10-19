@@ -120,14 +120,15 @@ func (s *server) listCredits(w http.ResponseWriter, r *http.Request, api creditK
 	if !s.acceptTagListQuery(w, problem) {
 		return
 	}
-	if params.Favorite != nil && api.kind != domain.CreditPerson {
-		s.invalidRequest(w, "favorite applies to people only.")
+	if (params.Favorite != nil || params.Provisional != nil) && api.kind != domain.CreditPerson {
+		s.invalidRequest(w, "favorite and provisional apply to people only.")
 		return
 	}
 	if !s.creditsConfigured(w) {
 		return
 	}
 	query.FavoriteOnly = params.Favorite != nil && *params.Favorite
+	query.Provisional = params.Provisional
 	page, err := s.credits.List(r.Context(), api.kind, query)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
@@ -405,7 +406,7 @@ func (s *server) writeCreditBody(w http.ResponseWriter, status int, body any) {
 
 func toAPIPerson(credit domain.Credit) gen.Person {
 	return gen.Person{
-		Id: credit.ID, Name: credit.Name, Aliases: toAPIAliases(credit.Aliases),
+		Id: credit.ID, Name: credit.Name, Provisional: credit.Provisional, Aliases: toAPIAliases(credit.Aliases),
 		ExternalIds: toAPIExternalIDs(credit.ExternalIDs), Profile: toAPIProfile(credit.Profile),
 		Favorite: credit.Favorite, ImageRevision: optionalPositive(credit.ImageRevision),
 		VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,

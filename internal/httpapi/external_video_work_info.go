@@ -137,6 +137,7 @@ func toExternalWorkInfo(info *domain.WorkInfo) extgen.WorkInfo {
 	for i, link := range value.People {
 		out.People[i].Role = extgen.WorkPersonRole(link.Role)
 		out.People[i].Person = toExternalCreditRef(link.Person)
+		out.People[i].Provisional = link.Person.Provisional
 	}
 	for i, link := range value.Organizations {
 		out.Organizations[i].Role = extgen.WorkOrganizationRole(link.Role)
@@ -146,5 +147,5 @@ func toExternalWorkInfo(info *domain.WorkInfo) extgen.WorkInfo {
 }
 
 func toExternalCreditRef(ref domain.CreditRef) extgen.CreditRef {
-	return extgen.CreditRef{Id: ref.ID, Name: ref.Name}
+	return extgen.CreditRef{Id: ref.ID, Name: ref.Name, Provisional: ref.Provisional}
 }
