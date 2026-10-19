@@ -48,7 +48,7 @@ func (v *faceVideo) add(pix []byte, faces []domain.FaceDetection) error {
 
 // people returns the main people of the frames added so far, each with its best face's crop.
 func (v *faceVideo) people() []domain.FaceAnalysedPerson {
-	mains := domain.FindMainPeople(v.th, v.tracker.Tracks())
+	mains := domain.FindMainPeople(v.th, v.tracker.Tracks(), float64(v.frame)/domain.FaceSampleFPS)
 	out := make([]domain.FaceAnalysedPerson, len(mains))
 	for i, p := range mains {
 		out[i] = domain.FaceAnalysedPerson{

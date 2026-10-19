@@ -9,13 +9,13 @@ import (
 // Sampling and main-person constants, measured together in the POC; a setting could break their balance unseen.
 const (
 	// FaceSampleFPS is the rate at which frames of a video are analysed.
-	FaceSampleFPS = 2.0
+	FaceSampleFPS = 1.0
 	// FaceFrameSide is the side of the square every sampled frame is fitted into, in pixels.
 	FaceFrameSide = 1280
 
 	faceMinSide     = 48.0 // smaller faces are not embedded or tracked
-	faceTrackGap    = 2    // sampled frames a track may miss before it closes
-	faceTrackMinLen = 3    // shorter tracks are noise
+	faceTrackGap    = 2    // a track closes once it misses this many sampled frames in a row
+	faceTrackMinLen = 2    // shorter tracks are noise
 	faceNearIoU     = 0.05 // boxes overlapping more than this are near for tracking
 
 	// The quality gate for the faces a track's vector and good seconds count.
@@ -24,9 +24,12 @@ const (
 	faceMaxYawOffset  = 0.22 // nose within 0.5±this of the way between the eyes
 	faceMinGoodFrames = 2    // a track needs this many good faces for a vector
 
-	// A cluster of tracks is a main person with this many good seconds in this many tracks.
-	faceMainMinSeconds = 8.0
-	faceMainMinTracks  = 2
+	// A cluster of tracks is a main person with min(faceMainMinSeconds, bar) good seconds, where the bar is
+	// faceMainFraction of the analysed length but at least faceMainFloorSeconds. A cluster of one track must reach
+	// the bar itself, so one brief track in a long video does not count.
+	faceMainMinSeconds   = 8.0
+	faceMainFraction     = 0.25
+	faceMainFloorSeconds = 3.0
 )
 
 // FaceBox is a detected face in the pixels of a FaceFrameSide frame.
@@ -249,8 +252,10 @@ type MainPerson struct {
 	Best FaceSighting
 }
 
-// FindMainPeople clusters the tracks that have a vector and keeps clusters with enough good face time, longest first.
-func FindMainPeople(th FaceThresholds, tracks []FaceTrack) []MainPerson {
+// FindMainPeople clusters the tracks that have a vector and keeps clusters with enough good face time, longest
+// first. analysedSeconds is the length of the frames actually sampled. Kept clusters whose centroids reach the
+// link threshold are one person the clustering split, and are merged; the looser candidate threshold only offers a pair.
+func FindMainPeople(th FaceThresholds, tracks []FaceTrack, analysedSeconds float64) []MainPerson {
 	var kept []FaceTrack
 	var vecs [][]float32
 	for _, t := range tracks {
@@ -258,14 +263,50 @@ func FindMainPeople(th FaceThresholds, tracks []FaceTrack) []MainPerson {
 			kept, vecs = append(kept, t), append(vecs, v)
 		}
 	}
-	var people []MainPerson
+	var clusters [][]int
 	for _, c := range averageLinkage(vecs, th.Cluster) {
-		if p := mainPerson(kept, vecs, c); p.GoodSeconds >= faceMainMinSeconds && len(p.Tracks) >= faceMainMinTracks {
-			people = append(people, p)
+		if isMainPerson(mainPerson(kept, vecs, c), analysedSeconds) {
+			clusters = append(clusters, c)
 		}
+	}
+	people := make([]MainPerson, 0, len(clusters))
+	for _, c := range mergeSplitClusters(kept, vecs, clusters, th.Link) {
+		people = append(people, mainPerson(kept, vecs, c))
 	}
 	slices.SortStableFunc(people, func(a, b MainPerson) int { return cmp.Compare(b.GoodSeconds, a.GoodSeconds) })
 	return people
+}
+
+// isMainPerson applies the length-aware cutoff.
+func isMainPerson(p MainPerson, analysedSeconds float64) bool {
+	bar := math.Max(faceMainFloorSeconds, faceMainFraction*analysedSeconds)
+	if len(p.Tracks) >= 2 {
+		bar = math.Min(bar, faceMainMinSeconds)
+	}
+	return p.GoodSeconds >= bar
+}
+
+// mergeSplitClusters joins the clusters whose centroids are the most similar while any pair reaches minSim.
+func mergeSplitClusters(tracks []FaceTrack, vecs [][]float32, clusters [][]int, minSim float64) [][]int {
+	for {
+		centroids := make([][]float32, len(clusters))
+		for i, c := range clusters {
+			centroids[i] = mainPerson(tracks, vecs, c).Centroid
+		}
+		bi, bj, best := -1, -1, minSim
+		for i := range clusters {
+			for j := i + 1; j < len(clusters); j++ {
+				if s := FaceSimilarity(centroids[i], centroids[j]); s >= best {
+					bi, bj, best = i, j, s
+				}
+			}
+		}
+		if bi < 0 {
+			return clusters
+		}
+		clusters[bi] = append(clusters[bi], clusters[bj]...)
+		clusters = append(clusters[:bj], clusters[bj+1:]...)
+	}
 }
 
 func mainPerson(tracks []FaceTrack, vecs [][]float32, members []int) MainPerson {

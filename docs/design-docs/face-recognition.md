@@ -208,7 +208,7 @@ a time. The diagram shows how one video's faces become links, candidates and mer
 
 ```mermaid
 flowchart LR
-  frames[Faces of 2 fps frames] --> tracker[FaceTracker: tracks]
+  frames[Faces of 1 fps frames] --> tracker[FaceTracker: tracks]
   tracker --> main[FindMainPeople: gate, clustering, cutoff]
   main --> plan[PlanFaceAppearances]
   stored[Stored appearances of the video] --> plan
@@ -222,22 +222,49 @@ flowchart LR
 
 ## Main people are found per video with the POC's constants
 
-A video's main people are clusters of its face tracks with at least 8 seconds
-of good faces in at least 2 tracks
+A video's main people are clusters of its face tracks with enough seconds of
+good faces for the video's analysed length
 ([`face_main_people.go`](../../internal/domain/face_main_people.go)).
 
 The constants were measured together in the face POC on 12 real videos, where
 20 of 22 main people held one person only; they are code, not settings, because
-the quality gate and the cutoff only work as a pair.
+the quality gate and the cutoff only work as a pair. The POC videos were long,
+so the fixed 8 seconds in 2 tracks came from them; the length-aware bar below
+is a later extension that keeps 8 seconds for long videos. The sampling rate
+is a later measurement: on real 15-minute videos at 1080p and 480p, with the
+real runtime, SFace int8 and 2 helper threads on 4 cores, 1 frame per second
+found the same main people as 2 (cosine similarity 0.93 or more between
+matched people, no extra or merged people) in 1.6 to 2.6 times less time.
+The frame side made no difference to speed, because the helper runs YuNet at
+640 px internally, so 1280 px stays for crop quality.
 
 | Step | Rule |
 | --- | --- |
-| Sampling | 2 frames per second, fitted into 1280 × 1280 |
-| Tracking | Faces under 48 px are skipped; a face continues the open track it is most similar to above `Track` when the boxes overlap (IoU over 0.05), or above `TrackFar` when they do not, and the most similar face and track pairs of a frame are joined first; a track closes after 2 missed frames and is kept with 3 or more faces |
+| Sampling | 1 frame per second, fitted into 1280 × 1280 |
+| Tracking | Faces under 48 px are skipped; a face continues the open track it is most similar to above `Track` when the boxes overlap (IoU over 0.05), or above `TrackFar` when they do not, and the most similar face and track pairs of a frame are joined first; a track closes after 2 missed frames (2 s) and is kept with 2 or more faces (2 s) |
 | Quality gate | A good face is 64 px wide or more, scores 0.85 or more, and has its nose within 0.5 ± 0.22 of the way between the eyes |
 | Track vector | The normalized mean of the good faces; a track with fewer than 2 good faces has none and is not clustered |
 | Clustering | Average linkage over the track vectors, joining while the mean similarity reaches `Cluster` |
-| Cutoff | Good seconds (good faces ÷ 2) at least 8, tracks at least 2 |
+| Cutoff | Good seconds (one per good face) at least the bar, the larger of 3 s and 25% of the analysed length. A cluster of 2 or more tracks needs only min(8 s, bar); a cluster of one track needs the bar itself |
+| Merge of split clusters | Clusters that passed the cutoff and whose centroids reach `Link` are one person and are joined, repeatedly, most similar first |
+
+The analysed length is the number of frames the worker sampled divided by the
+sampling rate, not the file's duration, so a video cut short is judged by what
+was seen. The 3 s floor keeps a cameo from counting in a short clip; 25% means
+a person on screen for a quarter of the video is a main person, which is what
+a 15 s clip with one centred face needs (3.75 s), while 8 s still decides in any
+video of 32 s or more. A single track is the only evidence of one continuous
+shot, so in a long video it must reach the full 25%: 10 s of one track in a
+100 s video is not a main person, 25 s is.
+
+Average linkage at `Cluster` can leave one person's tracks in two clusters, for
+example before and after a change of lighting. A cluster centroid averages many
+faces, so it reaches `Link` where the average linkage of single faces stays under
+`Cluster`; the merge joins such clusters automatically. `Candidate` is too loose
+to join people without the owner (it names a stranger for over half of unknown
+faces in the POC), so two provisional people of one analysis whose centroids
+reach only `Candidate` are written as an open `face_candidates` pair, and the
+person page offers "Same person?".
 
 Each track keeps its start, end, mean centre and mean width, and a main person
 keeps its best good face (largest box times score) for its crop.
