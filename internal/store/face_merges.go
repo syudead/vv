@@ -77,7 +77,7 @@ func (s *FaceStore) MergeProvisional(ctx context.Context, sourceID, targetID int
 	}
 	defer func() { _ = tx.Rollback() }()
 	c := &changes{}
-	after, events, err := mergeProvisional(ctx, tx, c, sourceID, targetID)
+	after, events, err := mergeProvisional(ctx, tx, c, sourceID, targetID, time.Now())
 	if err != nil {
 		return domain.Credit{}, err
 	}
@@ -88,7 +88,7 @@ func (s *FaceStore) MergeProvisional(ctx context.Context, sourceID, targetID int
 }
 
 // mergeProvisional performs MergeProvisional inside tx and returns the target with the events of a face it took.
-func mergeProvisional(ctx context.Context, tx *sql.Tx, c *changes, sourceID, targetID int64) (
+func mergeProvisional(ctx context.Context, tx *sql.Tx, c *changes, sourceID, targetID int64, now time.Time) (
 	domain.Credit, []domain.Event, error,
 ) {
 	t := creditTablesByKind[domain.CreditPerson]
@@ -131,7 +131,7 @@ func mergeProvisional(ctx context.Context, tx *sql.Tx, c *changes, sourceID, tar
 	if snapshot.Target, err = faceMergeTarget(ctx, tx, before, after); err != nil {
 		return domain.Credit{}, nil, err
 	}
-	if err := recordFaceMerge(ctx, tx, c, sourceID, after, snapshot, credits, time.Now()); err != nil {
+	if err := recordFaceMerge(ctx, tx, c, sourceID, after, snapshot, credits, now); err != nil {
 		return domain.Credit{}, nil, err
 	}
 	c.matchesChanged()
@@ -358,14 +358,14 @@ func (s *ActivityStore) UndoFaceMerge(ctx context.Context, id int64) (domain.Act
 		return domain.ActivityEntry{}, err
 	}
 	restored := existing[targetID] && !existing[sourceID]
+	now := time.Now()
 	var edited []string
 	if restored {
-		if edited, err = undoFaceMerge(ctx, tx, id, sourceID, targetID, snapshot); err != nil {
+		if edited, err = undoFaceMerge(ctx, tx, id, sourceID, targetID, snapshot, now); err != nil {
 			return domain.ActivityEntry{}, err
 		}
 	}
 	c := &changes{}
-	now := time.Now()
 	undoID, err := recordUndo(ctx, tx, c, entry, restored, now)
 	if err != nil {
 		return domain.ActivityEntry{}, err
@@ -385,7 +385,9 @@ func (s *ActivityStore) UndoFaceMerge(ctx context.Context, id int64) (domain.Act
 }
 
 // undoFaceMerge returns the user keys whose credits it changed.
-func undoFaceMerge(ctx context.Context, tx *sql.Tx, entryID, sourceID, targetID int64, snapshot faceMergeSnapshot) ([]string, error) {
+func undoFaceMerge(ctx context.Context, tx *sql.Tx, entryID, sourceID, targetID int64, snapshot faceMergeSnapshot,
+	now time.Time,
+) ([]string, error) {
 	if err := restoreMergedPerson(ctx, tx, sourceID, snapshot); err != nil {
 		return nil, err
 	}
@@ -393,6 +395,9 @@ func undoFaceMerge(ctx context.Context, tx *sql.Tx, entryID, sourceID, targetID 
 		return nil, err
 	}
 	if err := restoreMergedFaceRows(ctx, tx, sourceID, targetID, snapshot); err != nil {
+		return nil, err
+	}
+	if err := dismissFacePair(ctx, tx, sourceID, targetID, now); err != nil {
 		return nil, err
 	}
 	if err := restoreMergedSmartFolders(ctx, tx, sourceID, targetID, snapshot.SmartFolders); err != nil {
@@ -503,6 +508,24 @@ func restoreMergedFaceRows(ctx context.Context, tx *sql.Tx, sourceID, targetID i
 			pair.ProvisionalID, pair.PersonID, pair.Similarity, boolToInt(pair.Dismissed), pair.CreatedAt); err != nil {
 			return fmt.Errorf("cannot restore a face candidate of person %d: %w", sourceID, err)
 		}
+	}
+	return nil
+}
+
+// dismissFacePair marks the pair dismissed in whichever orientation it is stored, adding it when it has no row, so
+// neither automatic rule merges it again nor offers it.
+func dismissFacePair(ctx context.Context, tx *sql.Tx, sourceID, targetID int64, now time.Time) error {
+	res, err := tx.ExecContext(ctx, `update face_candidates set dismissed = 1
+		where provisional_id = ?1 and person_id = ?2 or provisional_id = ?2 and person_id = ?1`, sourceID, targetID)
+	if err != nil {
+		return fmt.Errorf("cannot dismiss the pair of person %d and person %d: %w", sourceID, targetID, err)
+	}
+	if n, err := res.RowsAffected(); err != nil || n > 0 {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `insert into face_candidates (provisional_id, person_id, similarity, dismissed,
+		created_at) values (?, ?, 0, 1, ?)`, sourceID, targetID, now.UnixMilli()); err != nil {
+		return fmt.Errorf("cannot dismiss the pair of person %d and person %d: %w", sourceID, targetID, err)
 	}
 	return nil
 }

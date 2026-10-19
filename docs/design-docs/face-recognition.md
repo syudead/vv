@@ -392,6 +392,27 @@ The performer has no face to compare with, so the rule relies on the
 one-to-one pairing; in the POC, five candidates from a cast list named 0.5% of
 unknown faces wrongly at 0.363, and one candidate is stricter still.
 
+The rule reads a work's performers, their appearances in every video sharing
+the work, and the dismissed pairs in the transaction that merges
+([`face_cast.go`](../../internal/store/face_cast.go)), and records the merge as
+a `face_merge` entry.
+
+| Trigger | Where the rule runs |
+| --- | --- |
+| A video's analysis ends | In `FaceStore.Store`'s transaction, after the result is written |
+| A work-information write (`VideoWorkInfoChanged`) | In the face worker, before its next claim, while the feature is on; a database error keeps the unchecked videos for the attempt after 5 seconds |
+
+A merge that the target's limits on aliases or external IDs refuse is rolled
+back to a savepoint and wraps `ErrFaceMergeRefused`. Trying again cannot
+succeed until the people change, so `Store` keeps the result without the merge
+and the worker logs the video and drops its check instead of holding up the
+queue.
+
+| Rejected | Why |
+| --- | --- |
+| Running the rule in every work-information write's transaction | The details editor, the library selection, plugin apply and `/api/v1` would each record activity and fail the owner's edit when the merge fails |
+| Checking work-information changes made while the feature is off once it is on again | Nothing records them, and the next analysis of the video applies the rule anyway |
+
 ## One video's result is stored in one transaction
 
 `FaceStore.Store` writes a video's analysis in one transaction
@@ -542,7 +563,10 @@ Each undone link records the owner's `undo` entry in
 `activity_entry_face_links.undone_by`; the entry is `already_reverted` when no
 link changed anything. Undo removes the performer row even when the owner had
 credited that person before the analysis, because a credit's origin is read from
-the appearances linked to it, not from the row.
+the appearances linked to it, not from the row. The exception is a link whose
+person a `face_merge` not undone moved into the person it now points to: when
+that merge recorded the credit with `target_had`, the target had it before the
+merge, so the link did not add it and undo keeps the row.
 
 | Rejected | Why |
 | --- | --- |
@@ -571,6 +595,7 @@ back only what the owner has not changed since.
 | A credit the target already had | Stays on the target; the source gets its own row after the role's others, unless marked |
 | A profile field, the favorite or the face the target took | Taken back only while the target still holds the value the merge gave it |
 | Appearances and candidate pairs | Back to the source; the target's copy of a moved pair goes unless the owner decided it since |
+| The pair of the source and the target | Marked `dismissed` in `face_candidates`, added when it has no row, so neither the cast rule nor the face-image rule merges it again or offers it |
 | A smart folder rule's person | Back to the source while the rule still names the target |
 
 Editing a video's credits writes no activity entry, so the owner's later
@@ -587,6 +612,7 @@ whose target was deleted, or whose source id exists again, records
 | Keep merged sources as hidden rows | Every read of people and credits would have to skip them |
 | Compare the credits at undo | A credit the owner removed and added again looks unchanged |
 | Make the owner's merges undoable too | Only automatic decisions are undone from the activity log, and owner merges write no entry |
+| Leave the undone pair open | The work-information write of the undo, or the next analysis, would apply the same rule and merge the pair again |
 
 ## Face entries on the activity screen
 

@@ -115,8 +115,9 @@ func (s *FaceStore) Counts(ctx context.Context) (domain.QueueCounts, error) {
 }
 
 // Store writes one video's result in one transaction: appearances with carry-over, provisional people with their
-// crop as face, performer rows, candidates, and the completed face_analysis entry with its links. A result computed
-// under an older face.generation returns domain.ErrFaceGenerationChanged; one whose row no longer runs writes nothing.
+// crop as face, performer rows, candidates, the completed face_analysis entry with its links, and the cast rule's
+// face_merge. A result computed under an older face.generation returns domain.ErrFaceGenerationChanged; one whose
+// row no longer runs writes nothing.
 func (s *FaceStore) Store(ctx context.Context, result domain.FaceAnalysis) error {
 	spec, ok := domain.LookupFaceRecognizer(result.Recognizer)
 	if !ok {
@@ -169,14 +170,20 @@ func (s *FaceStore) Store(ctx context.Context, result domain.FaceAnalysis) error
 	if err := recordFaceLinks(ctx, tx, activityID, userKey, links); err != nil {
 		return err
 	}
-	var events []domain.Event
+	// A refused cast merge leaves the result to be stored without it, as a later work-information change would.
+	_, events, err := mergeByCast(ctx, tx, c, userKey, now)
+	if err != nil && !errors.Is(err, domain.ErrFaceMergeRefused) {
+		return err
+	}
 	if added {
 		if err := touchEditedAtForUserKeys(ctx, tx, []string{userKey}, now); err != nil {
 			return err
 		}
-		if events, err = workInfoChangedEvents(ctx, tx, []string{userKey}); err != nil {
+		changed, err := workInfoChangedEvents(ctx, tx, []string{userKey})
+		if err != nil {
 			return err
 		}
+		events = append(events, changed...)
 	}
 	if err := s.db.commitWith(ctx, tx, c, events...); err != nil {
 		return fmt.Errorf("cannot store the face analysis: %w", err)

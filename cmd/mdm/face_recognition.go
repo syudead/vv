@@ -36,7 +36,7 @@ func newFaceRecognition(ctx context.Context, dataDir string, db *store.DB, logge
 		Queue: db.Faces(), Images: db.Faces(), Settings: db.Settings(), Runtime: faceRuntime,
 		Helper:       func(r domain.FaceRecognizer) app.FaceHelper { return faceRuntime.Helper(r) },
 		Frames:       media.FaceFrames,
-		MediaFolders: db.Settings(), MediaFiles: mediafs.New(),
+		MediaFolders: db.Settings(), MediaFiles: mediafs.New(), Cast: db.Faces(),
 		Logger: logger,
 	})
 	settings := app.NewFaceRecognitionSettings(app.FaceRecognitionSettingsOptions{

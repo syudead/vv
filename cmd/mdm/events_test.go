@@ -37,7 +37,13 @@ func TestSubscribeEventsWakesWorkers(t *testing.T) {
 		workers[kind] = wakers[kind]
 	}
 	judge := &countingWaker{}
-	subs := subscribeEvents(bus, eventSubscribers{Workers: workers, VersionJudge: judge})
+	var castChecks atomic.Int32
+	subs := subscribeEvents(bus, eventSubscribers{Workers: workers, VersionJudge: judge,
+		WorkInfoChanged: func(ids []int64) {
+			if slices.Equal(ids, []int64{4}) {
+				castChecks.Add(1)
+			}
+		}})
 
 	bus.Publish(domain.JobsQueued{Kinds: []domain.JobKind{domain.JobProbe, domain.JobPreview}})
 	bus.Publish(domain.ProcessingChanged{})
@@ -47,13 +53,14 @@ func TestSubscribeEventsWakesWorkers(t *testing.T) {
 	bus.Publish(domain.VideoIngestChanged{VideoID: 1})
 	bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobSeekThumbnail})
 	bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobPreview})
+	bus.Publish(domain.VideoWorkInfoChanged{VideoIDs: []int64{4}})
 	want := map[domain.JobKind]int32{
 		domain.JobProbe: 1, domain.JobThumbnail: 1, domain.JobPreview: 1,
 		// Probe, thumbnail, and video deletion each wake the worker.
 		domain.JobSeekThumbnail: 3,
 	}
 	check := func() bool {
-		if judge.woken.Load() != 2 {
+		if judge.woken.Load() != 2 || castChecks.Load() != 1 {
 			return false
 		}
 		for kind, w := range wakers {
@@ -78,6 +85,9 @@ func TestSubscribeEventsWakesWorkers(t *testing.T) {
 	}
 	if got := judge.woken.Load(); got != 2 {
 		t.Errorf("重複の判定の起床 = %d, want 2", got)
+	}
+	if got := castChecks.Load(); got != 1 {
+		t.Errorf("cast rule checks = %d, want 1 for the changed work information", got)
 	}
 }
 

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
+	"slices"
 	"sync"
 	"time"
 
@@ -54,6 +56,12 @@ type FaceHelper interface {
 // square of packed BGR that is reused after each returns.
 type FaceFrameSource func(ctx context.Context, path string, each func(pix []byte) error) error
 
+// FaceCastMerger applies the cast rule to a video's work in one transaction and reports whether it merged; a video
+// no longer in the library returns domain.ErrNotFound.
+type FaceCastMerger interface {
+	MergeByCast(ctx context.Context, videoID int64) (bool, error)
+}
+
 type FaceRuntimeState interface {
 	Status(recognizer domain.FaceRecognizer) domain.FaceRuntimeStatus
 }
@@ -81,6 +89,7 @@ type FaceRecognizerOptions struct {
 	Frames       FaceFrameSource
 	MediaFolders MediaFolderLister
 	MediaFiles   MediaFileResolver
+	Cast         FaceCastMerger
 	// Nil uses slog.Default.
 	Logger *slog.Logger
 }
@@ -97,12 +106,15 @@ type FaceRecognizer struct {
 	frames       FaceFrameSource
 	mediaFolders MediaFolderLister
 	mediaFiles   MediaFileResolver
+	cast         FaceCastMerger
 	logger       *slog.Logger
 	wake         chan struct{}
 
 	mu sync.Mutex
 	// run is the worker's current attempt, from before it reads the settings until the video ends.
 	run *faceRun
+	// castChecks are the videos whose work information changed since the worker last applied the cast rule.
+	castChecks map[int64]struct{}
 	// pending holds people whose face changed or was named since; the worker applies their face before the next video.
 	pending map[int64]bool
 
@@ -130,7 +142,7 @@ func NewFaceRecognizer(opts FaceRecognizerOptions) *FaceRecognizer {
 	}
 	return &FaceRecognizer{
 		queue: opts.Queue, images: opts.Images, settings: opts.Settings, runtime: opts.Runtime, newHelper: opts.Helper,
-		frames: opts.Frames, mediaFolders: opts.MediaFolders, mediaFiles: opts.MediaFiles,
+		frames: opts.Frames, mediaFolders: opts.MediaFolders, mediaFiles: opts.MediaFiles, cast: opts.Cast,
 		logger: logger.With(slog.String("component", "face-recognition")),
 		wake:   make(chan struct{}, 1), pending: map[int64]bool{},
 	}
@@ -170,6 +182,54 @@ func (f *FaceRecognizer) pend(personID int64) {
 
 // VideoImagesFinished only wakes the worker: the transaction that finishes the seek stage queued the video.
 func (f *FaceRecognizer) VideoImagesFinished(context.Context, int64) { f.Wake() }
+
+// WorkInfoChanged has the worker apply the cast rule to the videos while the feature is on; changes made while it is
+// off are not checked later.
+func (f *FaceRecognizer) WorkInfoChanged(videoIDs []int64) {
+	f.addCastChecks(videoIDs)
+	f.Wake()
+}
+
+func (f *FaceRecognizer) addCastChecks(videoIDs []int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.castChecks == nil {
+		f.castChecks = map[int64]struct{}{}
+	}
+	for _, id := range videoIDs {
+		f.castChecks[id] = struct{}{}
+	}
+}
+
+func (f *FaceRecognizer) takeCastChecks() []int64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	ids := slices.Sorted(maps.Keys(f.castChecks))
+	f.castChecks = nil
+	return ids
+}
+
+// mergeByCast applies the cast rule to each video whose work information changed; the videos it could not check
+// for a store error stay for the next attempt, and a merge refused for good is dropped, since retrying it would hold
+// up the queue.
+func (f *FaceRecognizer) mergeByCast(ctx context.Context) error {
+	ids := f.takeCastChecks()
+	for i, id := range ids {
+		merged, err := f.cast.MergeByCast(ctx, id)
+		switch {
+		case errors.Is(err, domain.ErrNotFound):
+		case errors.Is(err, domain.ErrFaceMergeRefused):
+			f.logger.Warn("the cast rule's merge was refused", slog.Int64("video_id", id), slog.Any("error", err))
+		case err != nil:
+			f.addCastChecks(ids[i:])
+			return err
+		case merged:
+			f.logger.Info("merged a provisional person into the only performer without a face",
+				slog.Int64("video_id", id))
+		}
+	}
+	return nil
+}
 
 // Recover must run before Run.
 func (f *FaceRecognizer) Recover(ctx context.Context) error {
@@ -280,7 +340,14 @@ func (f *FaceRecognizer) step(ctx context.Context) faceStep {
 		}
 		f.stranded = false
 	}
-	if !settings.Enabled || f.runtime.Status(settings.Recognizer).State != domain.FaceRuntimeReady {
+	if !settings.Enabled {
+		f.takeCastChecks()
+		return faceIdle
+	}
+	if err := f.mergeByCast(run); err != nil {
+		return f.retryUnless(run, "cannot apply the cast rule", err)
+	}
+	if f.runtime.Status(settings.Recognizer).State != domain.FaceRuntimeReady {
 		return faceIdle
 	}
 	if step, ok := f.embedNext(run, settings); ok {

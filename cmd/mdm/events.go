@@ -21,6 +21,8 @@ type eventSubscribers struct {
 	// Wakes the auto-tagging worker after the seek stage, whose result transaction queued the video;
 	// see docs/design-docs/auto-tagging.md.
 	ImagesFinished func(videoID int64)
+	// Has the face worker apply the cast rule; see docs/design-docs/face-recognition.md.
+	WorkInfoChanged func(videoIDs []int64)
 	// Wake on processing or candidate changes; see docs/design-docs/duplicate-judging.md.
 	VersionJudge waker
 	// Has the face worker embed a changed face; see docs/design-docs/face-recognition.md.
@@ -83,6 +85,10 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 					finished(event.VideoID)
 				}
 			}))
+	}
+	if changed := s.WorkInfoChanged; changed != nil {
+		stopWorkers = append(stopWorkers, eventbus.On(bus, "face cast rule after work information",
+			func(event domain.VideoWorkInfoChanged) { changed(event.VideoIDs) }))
 	}
 	if judge := s.VersionJudge; judge != nil {
 		stopWorkers = append(stopWorkers,

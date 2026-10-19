@@ -277,6 +277,7 @@ func run(opts runOptions) error {
 			autoTagger.VideoImagesFinished(backgroundCtx, videoID)
 			faces.analysis.VideoImagesFinished(backgroundCtx, videoID)
 		},
+		WorkInfoChanged:    faces.analysis.WorkInfoChanged,
 		VersionJudge:       versionJudge,
 		PersonImageChanged: faces.analysis.PersonImageChanged,
 	})

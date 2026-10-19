@@ -646,3 +646,113 @@ func TestFaceRecognizerReturnsAStrandedVideoBeforeTheNextClaim(t *testing.T) {
 		}
 	})
 }
+
+// fakeFaceCast records the videos the cast rule was applied to; while failing is set every call fails with it.
+type fakeFaceCast struct {
+	mu      sync.Mutex
+	checked []int64
+	calls   int
+	failing error
+}
+
+func (c *fakeFaceCast) MergeByCast(_ context.Context, videoID int64) (bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.calls++
+	if c.failing != nil {
+		return false, c.failing
+	}
+	c.checked = append(c.checked, videoID)
+	return true, nil
+}
+
+func (c *fakeFaceCast) fail(err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.failing = err
+}
+
+func (c *fakeFaceCast) seen() []int64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return slices.Clone(c.checked)
+}
+
+func (c *fakeFaceCast) attempts() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.calls
+}
+
+func newFaceCastFixture(keys ...string) (*faceWorkerFixture, *fakeFaceCast) {
+	f := newFaceWorkerFixture(keys...)
+	cast := &fakeFaceCast{}
+	f.rec.cast = cast
+	return f, cast
+}
+
+func TestFaceRecognizerAppliesTheCastRuleToEachChangedVideoAndRetriesAfterADatabaseError(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f, cast := newFaceCastFixture()
+		// The rule needs no helper, so it runs while the runtime downloads.
+		f.runtime.set(domain.FaceRuntimeDownloading)
+		f.run(t)
+		synctest.Wait()
+
+		f.rec.WorkInfoChanged([]int64{2, 1})
+		f.rec.WorkInfoChanged([]int64{1})
+		synctest.Wait()
+		if got := cast.seen(); !slices.Equal(got, []int64{1, 2}) {
+			t.Fatalf("checked %v, want each changed video once", got)
+		}
+
+		cast.fail(errors.New("database is locked"))
+		f.rec.WorkInfoChanged([]int64{3})
+		synctest.Wait()
+		cast.fail(nil)
+		if got := cast.seen(); len(got) != 2 {
+			t.Fatalf("checked %v before the back-off, want no retry yet", got)
+		}
+		time.Sleep(faceRetryDelay)
+		synctest.Wait()
+		if got := cast.seen(); !slices.Equal(got, []int64{1, 2, 3}) {
+			t.Fatalf("checked %v after the back-off, want video 3 checked again", got)
+		}
+	})
+}
+
+func TestFaceRecognizerDropsARefusedCastMergeAndAnalysesTheQueue(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f, cast := newFaceCastFixture("key-a")
+		cast.fail(fmt.Errorf("%w: too many external ids", domain.ErrFaceMergeRefused))
+		f.rec.WorkInfoChanged([]int64{1})
+		f.run(t)
+		synctest.Wait()
+		if got := f.queue.state(); len(got.stored) != 1 || cast.attempts() != 1 {
+			t.Fatalf("stored %d after %d cast attempts, want the video analysed after one attempt", len(got.stored),
+				cast.attempts())
+		}
+
+		time.Sleep(faceRetryDelay)
+		synctest.Wait()
+		if n := cast.attempts(); n != 1 {
+			t.Fatalf("cast attempts after the back-off = %d, want the refused video dropped", n)
+		}
+	})
+}
+
+func TestFaceRecognizerSkipsTheCastRuleWhileOff(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f, cast := newFaceCastFixture()
+		f.change(domain.FaceSettings{Recognizer: domain.FaceRecognizerSFaceInt8})
+		f.run(t)
+		f.rec.WorkInfoChanged([]int64{1})
+		synctest.Wait()
+
+		f.change(domain.FaceSettings{Enabled: true, Recognizer: domain.FaceRecognizerSFaceInt8})
+		synctest.Wait()
+		if got := cast.seen(); len(got) != 0 {
+			t.Fatalf("checked %v, want no video changed while off", got)
+		}
+	})
+}

@@ -145,7 +145,7 @@ func applyFaceImage(ctx context.Context, tx *sql.Tx, c *changes, spec domain.Fac
 	if decision.MergeID == 0 {
 		return decision, nil, nil
 	}
-	_, events, err := mergeProvisional(ctx, tx, c, decision.MergeID, personID)
+	_, events, err := mergeProvisional(ctx, tx, c, decision.MergeID, personID, now)
 	return decision, events, err
 }
 

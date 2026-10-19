@@ -128,6 +128,10 @@ var ErrMergeSameCredit = errors.New("cannot merge an entity into itself")
 // ErrPersonNotProvisional reports an automatic merge whose source has been named since the merge was decided.
 var ErrPersonNotProvisional = errors.New("the person is not provisional")
 
+// ErrFaceMergeRefused wraps a refusal of an automatic merge that trying again cannot change, such as a target whose
+// merged names would exceed their limits.
+var ErrFaceMergeRefused = errors.New("the automatic merge was refused")
+
 // ErrExternalIDTaken wraps CreditExternalIDTakenError and maps to external_id_taken (409).
 var ErrExternalIDTaken = errors.New("external ID is held by another entity")
 
