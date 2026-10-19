@@ -202,3 +202,51 @@ func TestResumeScanContinuesAnInterruptedFolderRescan(t *testing.T) {
 		t.Fatalf("再開後の問題 = %v, want %v", got, want)
 	}
 }
+
+// Only a rescan that walks the whole library may resolve succession; a folder or video rescan cannot tell
+// whether the old content still exists elsewhere.
+func TestFinishedRescanResolvesSuccessionOnlyForTheLibrary(t *testing.T) {
+	cases := []struct {
+		name      string
+		scope     func(db *DB, a int64) domain.RescanScope
+		carriesTo bool
+	}{
+		{
+			name:      "library",
+			scope:     func(*DB, int64) domain.RescanScope { return domain.RescanScope{Kind: domain.RescanLibrary} },
+			carriesTo: true,
+		},
+		{
+			name: "folder",
+			scope: func(db *DB, _ int64) domain.RescanScope {
+				return domain.RescanScope{Kind: domain.RescanFolder, FolderID: mediaFolderID(t, db, fixturePath("/media"))}
+			},
+		},
+		{
+			name: "video",
+			scope: func(_ *DB, a int64) domain.RescanScope {
+				return domain.RescanScope{Kind: domain.RescanVideo, VideoID: a}
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db, a := taggedVideoFixture(t)
+			rescan := startTestRescan(t, db, tc.scope(db, a))
+			b := upsertOne(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-b", 2))
+			probeDuration(t, db, b, 100_000)
+
+			finishTestScan(t, db, rescan.ID, domain.ScanDone)
+			tags := manualTagNames(t, db, ownerVideo(t, db, b).UserKey)
+			if tc.carriesTo {
+				if !slices.Equal(tags, []string{"好き"}) {
+					t.Fatalf("全体の再スキャンが引き継がなかった: %v", tags)
+				}
+				return
+			}
+			if len(tags) != 0 || successionCount(t, db) != 1 {
+				t.Fatalf("部分の再スキャンが後継を判定した: タグ %v, 記録 %d", tags, successionCount(t, db))
+			}
+		})
+	}
+}

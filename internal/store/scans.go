@@ -256,13 +256,18 @@ func (s *ScanStore) FinishScan(
 		string(state), time.Now().Unix(), reason, code, path, id); err != nil {
 		return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
 	}
-	// Only successful manual scans may resolve succession: failed or watched scans may not have visited paths containing old content.
+	// Only successful full manual scans may resolve succession: failed, watched, folder or video scans may not have
+	// visited paths containing old content.
 	var origin string
-	if err := tx.QueryRowContext(ctx, `select origin from scans where id = ?`, id).Scan(&origin); err != nil {
+	var rescanScope sql.NullString
+	if err := tx.QueryRowContext(ctx, `select origin, rescan_scope from scans where id = ?`, id).
+		Scan(&origin, &rescanScope); err != nil {
 		return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
 	}
+	fullScan := domain.ScanOrigin(origin) == domain.ScanOriginManual &&
+		(!rescanScope.Valid || domain.RescanScopeKind(rescanScope.String) == domain.RescanLibrary)
 	var succeeded succession
-	if state == domain.ScanDone && domain.ScanOrigin(origin) == domain.ScanOriginManual {
+	if state == domain.ScanDone && fullScan {
 		if succeeded, err = applyReadySuccessions(ctx, tx); err != nil {
 			return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
 		}
