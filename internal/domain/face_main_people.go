@@ -9,13 +9,13 @@ import (
 // Sampling and main-person constants, measured together in the POC; a setting could break their balance unseen.
 const (
 	// FaceSampleFPS is the rate at which frames of a video are analysed.
-	FaceSampleFPS = 2.0
+	FaceSampleFPS = 1.0
 	// FaceFrameSide is the side of the square every sampled frame is fitted into, in pixels.
 	FaceFrameSide = 1280
 
 	faceMinSide     = 48.0 // smaller faces are not embedded or tracked
-	faceTrackGap    = 2    // sampled frames a track may miss before it closes
-	faceTrackMinLen = 3    // shorter tracks are noise
+	faceTrackGap    = 2    // a track closes once it misses this many sampled frames in a row
+	faceTrackMinLen = 2    // shorter tracks are noise
 	faceNearIoU     = 0.05 // boxes overlapping more than this are near for tracking
 
 	// The quality gate for the faces a track's vector and good seconds count.

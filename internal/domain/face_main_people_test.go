@@ -59,15 +59,15 @@ func goodTrack(vec []float32, start, n int) FaceTrack {
 
 func TestFindMainPeopleKeepsEightSecondsInTwoTracks(t *testing.T) {
 	th := FaceThresholds{Cluster: 0.45, Candidate: 0.363, Link: 0.45}
-	// 16 good frames are 8 s at 2 fps; 15 are 7.5 s.
+	// 8 good frames are 8 s at 1 fps; 7 are 7 s.
 	for _, tc := range []struct {
 		name   string
 		tracks []FaceTrack
 		kept   bool
 	}{
-		{"8 s in 2 tracks", []FaceTrack{goodTrack(faceAxis(0, 10, 0.2), 0, 8), goodTrack(faceAxis(0, 11, 0.2), 20, 8)}, true},
-		{"7.5 s in 2 tracks", []FaceTrack{goodTrack(faceAxis(0, 10, 0.2), 0, 8), goodTrack(faceAxis(0, 11, 0.2), 20, 7)}, false},
-		{"10 s in 1 track", []FaceTrack{goodTrack(faceAxis(0, 10, 0.2), 0, 20)}, false},
+		{"8 s in 2 tracks", []FaceTrack{goodTrack(faceAxis(0, 10, 0.2), 0, 4), goodTrack(faceAxis(0, 11, 0.2), 20, 4)}, true},
+		{"7 s in 2 tracks", []FaceTrack{goodTrack(faceAxis(0, 10, 0.2), 0, 4), goodTrack(faceAxis(0, 11, 0.2), 20, 3)}, false},
+		{"10 s in 1 track", []FaceTrack{goodTrack(faceAxis(0, 10, 0.2), 0, 10)}, false},
 	} {
 		people := FindMainPeople(th, tc.tracks, 60)
 		if got := len(people) == 1; got != tc.kept {
@@ -85,13 +85,13 @@ func TestFindMainPeopleCutoffFollowsAnalysedLength(t *testing.T) {
 		seconds float64
 		kept    bool
 	}{
-		{"one track through a 15 s video", []FaceTrack{goodTrack(vec, 0, 28)}, 15, true},
-		{"one track through a 4 s video", []FaceTrack{goodTrack(vec, 0, 7)}, 4, true},
-		{"1 s cameo in a long video", []FaceTrack{goodTrack(vec, 0, 2)}, 600, false},
-		{"2.5 s is under the floor", []FaceTrack{goodTrack(vec, 0, 5)}, 8, false},
-		{"one 10 s track in a 100 s video", []FaceTrack{goodTrack(vec, 0, 20)}, 100, false},
-		{"one 25 s track in a 100 s video", []FaceTrack{goodTrack(vec, 0, 50)}, 100, true},
-		{"8 s in 2 tracks of a long video", []FaceTrack{goodTrack(vec, 0, 8), goodTrack(faceAxis(0, 11, 0.2), 20, 8)}, 600, true},
+		{"one track through a 15 s video", []FaceTrack{goodTrack(vec, 0, 14)}, 15, true},
+		{"3 s at the floor of a 4 s video", []FaceTrack{goodTrack(vec, 0, 3)}, 4, true},
+		{"2 s cameo in a long video", []FaceTrack{goodTrack(vec, 0, 2)}, 600, false},
+		{"2 s is under the floor", []FaceTrack{goodTrack(vec, 0, 2)}, 8, false},
+		{"one 10 s track in a 100 s video", []FaceTrack{goodTrack(vec, 0, 10)}, 100, false},
+		{"one 25 s track in a 100 s video", []FaceTrack{goodTrack(vec, 0, 25)}, 100, true},
+		{"8 s in 2 tracks of a long video", []FaceTrack{goodTrack(vec, 0, 4), goodTrack(faceAxis(0, 11, 0.2), 20, 4)}, 600, true},
 	} {
 		if got := len(FindMainPeople(th, tc.tracks, tc.seconds)) == 1; got != tc.kept {
 			t.Errorf("%s: kept = %v, want %v", tc.name, got, tc.kept)
@@ -107,8 +107,8 @@ func TestFindMainPeopleMergesClustersOfOnePerson(t *testing.T) {
 		v[0], v[axis] = 1, tilt
 		return NormalizeFaceVector(v)
 	}
-	a1, a2 := goodTrack(near(1, 1), 0, 10), goodTrack(near(1, 1), 30, 10)
-	b1, b2 := goodTrack(near(1, 2), 60, 10), goodTrack(near(1, 2), 90, 10)
+	a1, a2 := goodTrack(near(1, 1), 0, 5), goodTrack(near(1, 1), 30, 5)
+	b1, b2 := goodTrack(near(1, 2), 60, 5), goodTrack(near(1, 2), 90, 5)
 	if s := FaceSimilarity(a1.vector(), b1.vector()); s >= th.Cluster || s < th.Link {
 		t.Fatalf("fixture similarity %v is not between Link and Cluster", s)
 	}
@@ -117,20 +117,20 @@ func TestFindMainPeopleMergesClustersOfOnePerson(t *testing.T) {
 		t.Fatalf("people = %+v, want one person of 4 tracks and 20 s", people)
 	}
 	// Distant people stay apart even though both pass the cutoff.
-	c1, c2 := goodTrack(faceAxis(5, 6, 0.1), 0, 10), goodTrack(faceAxis(5, 7, 0.1), 30, 10)
+	c1, c2 := goodTrack(faceAxis(5, 6, 0.1), 0, 5), goodTrack(faceAxis(5, 7, 0.1), 30, 5)
 	if got := FindMainPeople(th, []FaceTrack{a1, a2, c1, c2}, 120); len(got) != 2 {
 		t.Fatalf("%d people, want 2 for orthogonal faces", len(got))
 	}
 }
 
 func TestFindMainPeopleSeparatesPeopleBelowClusterThreshold(t *testing.T) {
-	// Person A: 3 tracks of 6 good frames (9 s); person B: 2 tracks of 10 (10 s), orthogonal to A.
+	// Person A: 3 tracks of 3 good frames (9 s); person B: 2 tracks of 5 (10 s), orthogonal to A.
 	var tracks []FaceTrack
 	for i := range 3 {
-		tracks = append(tracks, goodTrack(faceAxis(0, 10+i, 0.2), i*10, 6))
+		tracks = append(tracks, goodTrack(faceAxis(0, 10+i, 0.2), i*10, 3))
 	}
 	for i := range 2 {
-		tracks = append(tracks, goodTrack(faceAxis(1, 20+i, 0.2), i*20, 10))
+		tracks = append(tracks, goodTrack(faceAxis(1, 20+i, 0.2), i*20, 5))
 	}
 	people := FindMainPeople(FaceThresholds{Cluster: 0.45, Candidate: 0.363, Link: 0.45}, tracks, 60)
 	if len(people) != 2 || people[0].GoodSeconds != 10 || people[1].GoodSeconds != 9 {
@@ -188,10 +188,10 @@ func TestFaceTrackerFollowsTwoFacesAndClosesAfterGap(t *testing.T) {
 	for range 2 {
 		k.Add(nil)
 	}
-	// A returns after more than the allowed gap, and a 40 px face is never tracked.
+	// A returns after more than the allowed gap for the shortest track kept, and a 40 px face is never tracked.
 	tiny := goodFace(900, 100, b)
 	tiny.Box.W = 40
-	for range 3 {
+	for range 2 {
 		k.Add([]FaceDetection{goodFace(100, 100, a), tiny})
 	}
 	tracks := k.Tracks()
@@ -199,9 +199,9 @@ func TestFaceTrackerFollowsTwoFacesAndClosesAfterGap(t *testing.T) {
 		t.Fatalf("got %d tracks, want A, B and A again", len(tracks))
 	}
 	want := []FaceSpan{
-		{Start: 0, End: 1.5, X: 140.0 / FaceFrameSide, Y: 140.0 / FaceFrameSide, W: 80.0 / FaceFrameSide},
-		{Start: 0, End: 1.5, X: 640.0 / FaceFrameSide, Y: 140.0 / FaceFrameSide, W: 80.0 / FaceFrameSide},
-		{Start: 3, End: 4, X: 140.0 / FaceFrameSide, Y: 140.0 / FaceFrameSide, W: 80.0 / FaceFrameSide},
+		{Start: 0, End: 3, X: 140.0 / FaceFrameSide, Y: 140.0 / FaceFrameSide, W: 80.0 / FaceFrameSide},
+		{Start: 0, End: 3, X: 640.0 / FaceFrameSide, Y: 140.0 / FaceFrameSide, W: 80.0 / FaceFrameSide},
+		{Start: 6, End: 7, X: 140.0 / FaceFrameSide, Y: 140.0 / FaceFrameSide, W: 80.0 / FaceFrameSide},
 	}
 	for i, w := range want {
 		if tracks[i].FaceSpan != w {
@@ -222,8 +222,8 @@ func TestFaceTrackerGivesContestedTrackToMostSimilarFace(t *testing.T) {
 		"second listed first": {goodFace(100, 100, second), goodFace(600, 100, first)},
 	}
 	want := []FaceSpan{
-		{Start: 0, End: 1.5, X: 140.0 / FaceFrameSide, Y: 140.0 / FaceFrameSide, W: 80.0 / FaceFrameSide},
-		{Start: 0, End: 1.5, X: 640.0 / FaceFrameSide, Y: 140.0 / FaceFrameSide, W: 80.0 / FaceFrameSide},
+		{Start: 0, End: 3, X: 140.0 / FaceFrameSide, Y: 140.0 / FaceFrameSide, W: 80.0 / FaceFrameSide},
+		{Start: 0, End: 3, X: 640.0 / FaceFrameSide, Y: 140.0 / FaceFrameSide, W: 80.0 / FaceFrameSide},
 	}
 	for name, frame := range orders {
 		t.Run(name, func(t *testing.T) {

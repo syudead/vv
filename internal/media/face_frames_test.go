@@ -12,7 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// rotatedFaceVideo writes a 1 s, 2 fps video stored as 320 x 160 with its left half white and a 90-degree display
+// rotatedFaceVideo writes a 2 s, 2 fps video stored as 320 x 160 with its left half white and a 90-degree display
 // rotation, so it plays as 160 x 320 with the white half at the bottom.
 func rotatedFaceVideo(t *testing.T) string {
 	t.Helper()
@@ -20,7 +20,7 @@ func rotatedFaceVideo(t *testing.T) string {
 	stored, path := filepath.Join(dir, "stored.mp4"), filepath.Join(dir, "rotated.mp4")
 	// The rotation is added by remuxing; on an encoded input ffmpeg would turn the pixels instead.
 	for _, args := range [][]string{
-		{"-f", "lavfi", "-i", "color=black:s=320x160:r=2:d=1,drawbox=x=0:y=0:w=160:h=160:color=white:t=fill",
+		{"-f", "lavfi", "-i", "color=black:s=320x160:r=2:d=2,drawbox=x=0:y=0:w=160:h=160:color=white:t=fill",
 			"-c:v", "mpeg4", stored},
 		{"-display_rotation", "90", "-i", stored, "-c", "copy", path},
 	} {
@@ -57,7 +57,7 @@ func TestFaceFramesAreUprightAndFittedIntoTheSquare(t *testing.T) {
 		t.Fatal(err)
 	}
 	if frames != 2 {
-		t.Fatalf("frames = %d, want 2 for 1 s at 2 fps", frames)
+		t.Fatalf("frames = %d, want 2 for 2 s at %v fps", frames, domain.FaceSampleFPS)
 	}
 }
 
