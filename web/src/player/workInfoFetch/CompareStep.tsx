@@ -1,5 +1,5 @@
-import { ArrowLeft, CircleAlert } from "lucide-react";
-import { type ReactNode, useId, useState } from "react";
+import { ArrowLeft, CircleAlert, Crop } from "lucide-react";
+import { type ReactNode, useId, useLayoutEffect, useState } from "react";
 
 import type { Video } from "../../api/client";
 import {
@@ -11,6 +11,7 @@ import {
 } from "../../api/workInfoPlugins";
 import { useLocalToday } from "../../credits/person/useLocalToday";
 import { errorText, t } from "../../i18n";
+import { isNarrowVideo } from "../../lib/format";
 import { Alert, AlertAction, AlertTitle } from "../../ui/shadcn/alert";
 import { Button } from "../../ui/shadcn/button";
 import { Checkbox } from "../../ui/shadcn/checkbox";
@@ -18,7 +19,10 @@ import { Label } from "../../ui/shadcn/label";
 import { Spinner } from "../../ui/shadcn/spinner";
 import { cn } from "../../lib/cn";
 import { VideoThumbnail, VideoThumbnailImage } from "../../ui/VideoThumbnail";
+import { drawComposition } from "../thumbnailUpload/composeImage";
+import UploadPreview from "../thumbnailUpload/UploadPreview";
 import { Description } from "../WorkInfo";
+import type { CoverFraming } from "./coverFraming";
 import {
   chipHint,
   creditKind,
@@ -199,14 +203,52 @@ function ListValue({
   );
 }
 
+/** The cover drawn as the thumbnail it becomes, with the framing the owner chose. */
+function FramedCover({
+  cover,
+  label,
+  locked,
+}: {
+  cover: CoverFraming & { image: NonNullable<CoverFraming["image"]> };
+  label: string;
+  locked: boolean;
+}) {
+  const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
+  const { image, aspect, fit } = cover;
+  useLayoutEffect(() => {
+    if (canvas !== null) drawComposition(canvas, image, aspect, fit);
+  }, [canvas, image, aspect, fit]);
+  return (
+    <div className="flex w-full max-w-xs flex-col items-start gap-2">
+      <VideoThumbnail>
+        <canvas
+          ref={setCanvas}
+          role="img"
+          aria-label={label}
+          title={label}
+          className="relative size-full object-contain"
+        />
+      </VideoThumbnail>
+      <Button variant="outline" size="sm" disabled={locked} onClick={cover.adjust}>
+        <Crop aria-hidden="true" />
+        {t.player.workInfoFetch.adjustCover}
+      </Button>
+    </div>
+  );
+}
+
 function CoverValue({
   video,
   result,
   tone,
+  cover,
+  locked,
 }: {
   video: Video;
   result: WorkInfoFetch;
   tone: "now" | "fetched";
+  cover: CoverFraming;
+  locked: boolean;
 }) {
   const text = t.player.workInfoFetch;
   const src =
@@ -216,6 +258,10 @@ function CoverValue({
     tone === "fetched" && result.cover !== undefined
       ? text.fetchedCover(result.cover.width, result.cover.height)
       : text.nowThumbnail;
+  if (tone === "fetched" && cover.image !== null)
+    return (
+      <FramedCover cover={{ ...cover, image: cover.image }} label={alt} locked={locked} />
+    );
   return (
     <VideoThumbnail className={cn("max-w-xs", tone === "now" && "opacity-70")}>
       <VideoThumbnailImage src={src} alt={alt} title={alt} />
@@ -230,6 +276,7 @@ function Value({
   tone,
   noteId,
   tagPick,
+  cover,
 }: {
   field: WorkInfoField;
   video: Video;
@@ -237,6 +284,7 @@ function Value({
   tone: "now" | "fetched";
   noteId: string;
   tagPick: TagPick;
+  cover: CoverFraming;
 }) {
   const state = rowState(field, video, result);
   if (tone === "fetched" && (state === "missing" || state === "same"))
@@ -254,7 +302,16 @@ function Value({
     ) : (
       <TagPicker video={video} result={result} pick={tagPick} />
     );
-  if (field === "cover") return <CoverValue video={video} result={result} tone={tone} />;
+  if (field === "cover")
+    return (
+      <CoverValue
+        video={video}
+        result={result}
+        tone={tone}
+        cover={cover}
+        locked={tagPick.locked}
+      />
+    );
   const row = detailRow(field, videoWorkInfo(video), result);
   if (row.kind === "list")
     return (
@@ -283,6 +340,7 @@ function CompareRow({
   locked,
   onToggle,
   tagPick,
+  cover,
 }: {
   field: WorkInfoField;
   video: Video;
@@ -291,6 +349,7 @@ function CompareRow({
   locked: boolean;
   onToggle: (field: WorkInfoField, on: boolean) => void;
   tagPick: TagPick;
+  cover: CoverFraming;
 }) {
   const text = t.player.workInfoFetch;
   const id = useId();
@@ -322,6 +381,7 @@ function CompareRow({
           tone="now"
           noteId={`${id}-note`}
           tagPick={tagPick}
+          cover={cover}
         />
       </Cell>
       <Cell heading={text.fetched}>
@@ -332,6 +392,7 @@ function CompareRow({
           tone="fetched"
           noteId={`${id}-note`}
           tagPick={tagPick}
+          cover={cover}
         />
       </Cell>
     </div>
@@ -347,6 +408,7 @@ export default function CompareStep({
   stale,
   refetching,
   failure,
+  cover,
   onToggle,
   onToggleTag,
   onBack,
@@ -360,6 +422,7 @@ export default function CompareStep({
   stale: boolean;
   refetching: boolean;
   failure: unknown;
+  cover: CoverFraming;
   onToggle: (field: WorkInfoField, on: boolean) => void;
   onToggleTag: (name: string, on: boolean) => void;
   onBack: () => void;
@@ -432,10 +495,24 @@ export default function CompareStep({
               locked={locked || stale}
               onToggle={onToggle}
               tagPick={tagPick}
+              cover={cover}
             />
           ))}
         </div>
       </div>
+      {cover.adjusting && cover.image !== null && (
+        <UploadPreview
+          image={cover.image}
+          name={pluginLabel(fetched.plugin)}
+          aspect={cover.aspect}
+          narrow={isNarrowVideo(video)}
+          applying={false}
+          initialFit={cover.fit}
+          applyLabel={text.keepFraming}
+          onApply={cover.keep}
+          onCancel={cover.close}
+        />
+      )}
     </div>
   );
 }

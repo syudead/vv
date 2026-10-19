@@ -1413,7 +1413,7 @@ export interface paths {
         put?: never;
         /**
          * Apply selected fetched fields to a video
-         * @description Owner-only. Atomically saves selected fields: title as display name, tags as tentative assignments, others merged into work information. After commit, cover uses uploaded-image validation/application; failure preserves the thumbnail and reports skipped invalid. Invalid values, excess entries and ambiguous people/organizations are skipped. A successful result is consumed. Invalid or rejected tag names are reported in skippedTags without assignment. Optional tags selects fetched names and limits skippedTags to that selection. Empty fields, unavailable fields, empty/unknown tag selections or tags without fields containing tags return 400 invalid_request. Missing video or mismatched result video returns 404 not_found. Expired/unknown results or plugin replacement, revocation or deletion after fetch return 409 work_info_fetch_stale. These errors write nothing. Emits a video event after commit.
+         * @description Owner-only. Atomically saves selected fields: title as display name, tags as tentative assignments, others merged into work information. After commit, cover uses uploaded-image validation/application; failure preserves the thumbnail and reports skipped invalid. With coverByPage, cover is checked like the other fields but not applied. Invalid values, excess entries and ambiguous people/organizations are skipped. A successful result is consumed. Invalid or rejected tag names are reported in skippedTags without assignment. Optional tags selects fetched names and limits skippedTags to that selection. Empty fields, unavailable fields, empty/unknown tag selections or tags without fields containing tags return 400 invalid_request. Missing video or mismatched result video returns 404 not_found. Expired/unknown results or plugin replacement, revocation or deletion after fetch return 409 work_info_fetch_stale. These errors write nothing. Emits a video event after commit.
          */
         post: operations["applyWorkInfoFetch"];
         delete?: never;
@@ -3335,6 +3335,8 @@ export interface components {
             fields: components["schemas"]["WorkInfoField"][];
             /** @description Fetched tag names to attach when fields includes tags: a nonempty subset of result tags using their exact spelling. Omission attaches all fetched tags; an empty subset, unknown name or presence without tags in fields returns 400. */
             tags?: string[];
+            /** @description With cover in fields, validate and consume the result for the cover but leave the thumbnail to the page, which uploads its own framing of the cover through uploadThumbnailImage after this call succeeds. Ignored without cover in fields. */
+            coverByPage?: boolean;
         };
         /**
          * @description Tag skip reason: rejected names were previously rejected; invalid names fail tag-name validation.

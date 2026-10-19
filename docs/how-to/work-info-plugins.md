@@ -357,9 +357,9 @@ not linked.
 After a `fetch` that returns `cover`, VVMDM sends one `GET` to that URL
 through the same client and address rule as the plugin's requests, within the
 run's 30 seconds. The request does not count toward the plugin's 16. The
-owner sees the image beside the current thumbnail and can apply it as the
-video's thumbnail, which VVMDM checks and fits the way it does an uploaded
-image.
+owner sees the image beside the current thumbnail, can frame it the way
+they frame an uploaded image, and can apply it as the video's thumbnail, which
+VVMDM checks the way it does an uploaded image.
 
 | The image | Result |
 | --- | --- |

@@ -97,7 +97,7 @@ func TestApplyStoresAFetchedFaceOnlyForAPersonWithoutOne(t *testing.T) {
 	e.applier.workInfo = &domain.WorkInfo{People: []domain.WorkPerson{performer(1, 2), performer(2, 0), performer(3, 0)}}
 
 	applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-		[]domain.WorkInfoField{domain.PersonField(domain.PersonPerformer)}, nil)
+		[]domain.WorkInfoField{domain.PersonField(domain.PersonPerformer)}, nil, false)
 	if err != nil || len(applied.Skipped) != 0 {
 		t.Fatalf("apply = %+v, %v; want success with nothing skipped", applied, err)
 	}
