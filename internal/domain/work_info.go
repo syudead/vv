@@ -33,6 +33,8 @@ const (
 	WorkInfoInvalidLanguage
 	WorkInfoDuplicate
 	WorkInfoEmpty
+	// OutOfRange covers numbers outside their range, values outside their set, future dates and an end before its start.
+	WorkInfoOutOfRange
 )
 
 // Field uses JSON paths with original input indices, including dropped entries; Limit applies only to TooLong/TooMany.
@@ -60,6 +62,8 @@ func (e *InvalidWorkInfoError) Error() string {
 		return fmt.Sprintf("%s is a duplicate", e.Field)
 	case WorkInfoEmpty:
 		return fmt.Sprintf("%s is empty", e.Field)
+	case WorkInfoOutOfRange:
+		return fmt.Sprintf("%s is out of range", e.Field)
 	default:
 		return ErrInvalidWorkInfo.Error()
 	}
@@ -197,6 +201,8 @@ type WorkDate struct {
 type WorkPerson struct {
 	Role   PersonRole
 	Person CreditRef
+	// ImageRevision is zero unless the person has a face; writes ignore it.
+	ImageRevision int64
 }
 
 // Writes use Organization.ID only.
@@ -419,12 +425,16 @@ func normalizeWorkRefs[R ~string](list, entity string, roles []R, refs []workRef
 
 // URLs must be absolute HTTP(S) with a host; drop blanks, reject duplicates, enforce retained count, and preserve input order.
 func normalizeWorkURLs(urls []string) ([]string, error) {
-	limits := WorkInfoLimits
+	return normalizeURLList("urls", urls, WorkInfoLimits.URLsMaxCount)
+}
+
+// normalizeURLList reports entries as field[i] and the retained count against field.
+func normalizeURLList(field string, urls []string, maxCount int) ([]string, error) {
 	out := make([]string, 0, len(urls))
 	seen := make(map[string]bool, len(urls))
 	for i, raw := range urls {
-		field := fmt.Sprintf("urls[%d]", i)
-		value, err := normalizeWorkInfoText(field, raw, limits.URLMaxLength, false)
+		at := fmt.Sprintf("%s[%d]", field, i)
+		value, err := normalizeWorkInfoText(at, raw, WorkInfoLimits.URLMaxLength, false)
 		if err != nil {
 			return nil, err
 		}
@@ -432,16 +442,16 @@ func normalizeWorkURLs(urls []string) ([]string, error) {
 			continue
 		}
 		if !isWorkURL(value) {
-			return nil, invalidWorkInfo(field, WorkInfoInvalidURL, 0)
+			return nil, invalidWorkInfo(at, WorkInfoInvalidURL, 0)
 		}
 		if seen[value] {
-			return nil, invalidWorkInfo(field, WorkInfoDuplicate, 0)
+			return nil, invalidWorkInfo(at, WorkInfoDuplicate, 0)
 		}
 		seen[value] = true
 		out = append(out, value)
 	}
-	if len(out) > limits.URLsMaxCount {
-		return nil, invalidWorkInfo("urls", WorkInfoTooMany, limits.URLsMaxCount)
+	if len(out) > maxCount {
+		return nil, invalidWorkInfo(field, WorkInfoTooMany, maxCount)
 	}
 	return out, nil
 }

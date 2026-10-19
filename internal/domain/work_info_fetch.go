@@ -230,6 +230,8 @@ type FetchedWorkInfoApplied struct {
 	Video        Video
 	RejectedTags []string
 	Skipped      []SkippedWorkInfoValue
+	// PersonIDs aligns with Details.People: the person each entry was linked to, or 0.
+	PersonIDs []int64
 }
 
 type WorkInfoApplied struct {

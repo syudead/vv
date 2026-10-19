@@ -85,6 +85,8 @@ type listSpec struct {
 	// Match credits in any role; zero disables the filter.
 	personID       int64
 	organizationID int64
+	// personRole narrows personID to one role; empty matches any role.
+	personRole domain.PersonRole
 	// Match manual or folder-derived tags of this kind; zero disables the filter.
 	tagKindID int64
 	// Zero disables age filtering; nil duration bounds are unbounded.
@@ -137,7 +139,7 @@ func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int
 	return listSpec{
 		scope: libraryScope(audience), expr: domain.ParseSearchQuery(q.Query),
 		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
-		personID: q.Person, organizationID: q.Organization, tagKindID: q.TagKindID,
+		personID: q.Person, personRole: q.PersonRole, organizationID: q.Organization, tagKindID: q.TagKindID,
 		addedWithinDays: q.AddedWithinDays, minDurationSec: q.MinDurationSec, maxDurationSec: q.MaxDurationSec,
 		now:  listNow().Unix(),
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,

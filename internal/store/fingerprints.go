@@ -49,7 +49,8 @@ func (s *IngestStore) ApplyFingerprintForJob(
 		return false, fmt.Errorf("cannot save the fingerprint (id=%d): %w", job.VideoID, err)
 	}
 	c := &changes{}
-	if err := rebuildVersionCandidates(ctx, tx, c, job.ContentKey, fingerprint); err != nil {
+	finder := pairFinder{jobID: job.ID, key: job.ContentKey}
+	if err := rebuildVersionCandidates(ctx, tx, c, job.ContentKey, fingerprint, finder); err != nil {
 		return false, err
 	}
 	if err := clearFailedIssue(ctx, tx, domain.JobFingerprint, job.VideoID); err != nil {
@@ -105,12 +106,14 @@ func decodeFingerprintArgs(hashes, interval driver.Value) (domain.Fingerprint, b
 }
 
 // Rebuild candidates using matching durations and fingerprints, excluding dismissed or bundled pairs; reconnect activities and close superseded pairs.
-func rebuildVersionCandidates(ctx context.Context, tx *sql.Tx, c *changes, key string, fingerprint domain.Fingerprint) error {
+func rebuildVersionCandidates(
+	ctx context.Context, tx *sql.Tx, c *changes, key string, fingerprint domain.Fingerprint, finder pairFinder,
+) error {
 	if err := computeVersionCandidates(ctx, tx, key, fingerprint); err != nil {
 		return err
 	}
 	now := time.Now()
-	if err := syncPairActivities(ctx, tx, c, []string{key}, now); err != nil {
+	if err := syncPairActivities(ctx, tx, c, []string{key}, finder, now); err != nil {
 		return err
 	}
 	return closeDroppedPairActivities(ctx, tx, c, key, now)

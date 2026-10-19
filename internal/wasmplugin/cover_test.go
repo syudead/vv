@@ -61,8 +61,8 @@ func TestCoverImageSendsNothingForAURLItCannotRequest(t *testing.T) {
 	rt := newNetTestRuntime(t, site)
 	session := rt.run.net.session(domain.WorkInfoRunNetwork{})
 	for _, raw := range []string{"", "http://[::1", "http://site.test/%zz"} {
-		if got := session.coverImage(context.Background(), raw); got != nil {
-			t.Fatalf("coverImage(%q) = %q, want nil", raw, got)
+		if got := session.image(context.Background(), raw); got != nil {
+			t.Fatalf("image(%q) = %q, want nil", raw, got)
 		}
 	}
 	site.mu.Lock()

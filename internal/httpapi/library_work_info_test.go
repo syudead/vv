@@ -91,6 +91,19 @@ func TestListVideosFiltersByPerson(t *testing.T) {
 	}
 }
 
+func TestListVideosFiltersByPersonRole(t *testing.T) {
+	f, person, _ := creditFilterFixture(t)
+
+	rec := f.env.get("/api/videos?personRole=director&person="+person, f.owner)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	videos := decode[gen.VideoPage](t, rec)
+	if len(videos.Items) != 1 || videos.Items[0].Id != f.ids["solo"] || videos.Total != 1 {
+		t.Errorf("items = %v・total %d, want [solo]・total 1", videos.Items, videos.Total)
+	}
+}
+
 func TestCreditFiltersRejectInvalidValuesAndGuests(t *testing.T) {
 	f, person, organization := creditFilterFixture(t)
 	invalid := wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}
@@ -100,6 +113,10 @@ func TestCreditFiltersRejectInvalidValuesAndGuests(t *testing.T) {
 			assertErrorBody(t, path+"?"+query, rec.Code, rec.Body.Bytes(), invalid)
 		}
 	}
+	for _, query := range []string{"personRole=director", "personRole=cast&person=" + person} {
+		rec := f.env.get("/api/videos?"+query, f.owner)
+		assertErrorBody(t, "/api/videos?"+query, rec.Code, rec.Body.Bytes(), invalid)
+	}
 	guest := wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonGuestFilterNotAllowed}
 	for _, path := range []string{"/api/videos", "/api/library"} {
 		for _, query := range []string{"person=" + person, "organization=" + organization} {
@@ -107,4 +124,6 @@ func TestCreditFiltersRejectInvalidValuesAndGuests(t *testing.T) {
 			assertErrorBody(t, "ゲストの "+path+"?"+query, rec.Code, rec.Body.Bytes(), guest)
 		}
 	}
+	rec := f.env.get("/api/videos?personRole=director&person=" + person)
+	assertErrorBody(t, "ゲストの personRole", rec.Code, rec.Body.Bytes(), guest)
 }

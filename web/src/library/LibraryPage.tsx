@@ -817,23 +817,29 @@ export default function LibraryPage() {
           )
         }
       >
-        <section aria-label={t.library.title} className="flex min-w-0 flex-col gap-3">
-          <PageHeader
-            title={t.library.title}
-            headingLevel={2}
-            actions={saveSmartFolderAction(owner, conditioned, smartFolderFilter, sort)}
-            count={
-              initialLoadFailed ? undefined : (
-                <span
-                  role="status"
-                  aria-label={t.library.resultsLabel}
-                  aria-live="polite"
-                >
-                  {resultStatus}
-                </span>
-              )
-            }
-          />
+        <section
+          aria-label={conditioned ? t.library.resultsLabel : undefined}
+          className="flex min-w-0 flex-col gap-3"
+        >
+          {/* Home itself needs no heading or count; only filtered results get them. */}
+          {conditioned && (
+            <PageHeader
+              title={t.library.resultsLabel}
+              headingLevel={2}
+              actions={saveSmartFolderAction(owner, conditioned, smartFolderFilter, sort)}
+              count={
+                initialLoadFailed ? undefined : (
+                  <span
+                    role="status"
+                    aria-label={t.library.resultsLabel}
+                    aria-live="polite"
+                  >
+                    {resultStatus}
+                  </span>
+                )
+              }
+            />
+          )}
           {hasFilterChips(tagIds, credits) && (
             <ActiveTagFilters
               tagIds={tagIds}

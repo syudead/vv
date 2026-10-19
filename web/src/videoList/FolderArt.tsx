@@ -1,4 +1,4 @@
-import { EllipsisVertical, Play } from "lucide-react";
+import { EllipsisVertical } from "lucide-react";
 import {
   type PointerEvent,
   useCallback,
@@ -270,12 +270,6 @@ export default function FolderArt({
                     onPreviewStart?.(preview.videoId);
                   }}
                 />
-              )}
-              {isFront && preview !== null && onFrontChange !== undefined && (
-                <span className="absolute bottom-1 left-1 flex max-w-full items-center gap-1 rounded-sm bg-overlay px-1.5 py-0.5 text-2xs text-foreground">
-                  <Play className="size-3 shrink-0" />
-                  {preview.title && <span className="truncate">{preview.title}</span>}
-                </span>
               )}
             </div>
           );

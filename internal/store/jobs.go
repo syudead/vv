@@ -27,9 +27,13 @@ func (s *IngestStore) EnqueueJobs(
 		return fmt.Errorf("cannot start queueing the jobs (%v, video=%d): %w", kinds, videoID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	run, err := scanRun(ctx, tx, decider)
+	if err != nil {
+		return err
+	}
 	var c changes
 	for _, kind := range kinds {
-		if err := requeueJob(ctx, tx, &c, kind, videoID, time.Now().Unix(), decider); err != nil {
+		if err := requeueJob(ctx, tx, &c, kind, videoID, time.Now().Unix(), run); err != nil {
 			return err
 		}
 	}
@@ -76,7 +80,11 @@ func (s *IngestStore) EnsureJobs(
 	}
 	var c changes
 	if len(queued) > 0 {
-		if err := joinImportActivity(ctx, tx, &c, videoID, decider, time.Now()); err != nil {
+		run, err := scanRun(ctx, tx, decider)
+		if err != nil {
+			return err
+		}
+		if err := joinImportActivity(ctx, tx, &c, videoID, run, time.Now()); err != nil {
 			return err
 		}
 		if err := addScanVideos(ctx, tx, videoID); err != nil {
@@ -211,7 +219,7 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 	}
 	// Interrupted or legacy jobs start a new rule-owned processing activity.
 	var c changes
-	if err := joinImportActivity(ctx, conn, &c, job.VideoID, domain.ActivityByRule, time.Now()); err != nil {
+	if err := joinImportActivity(ctx, conn, &c, job.VideoID, ruleRun(), time.Now()); err != nil {
 		return domain.Job{}, err
 	}
 
@@ -311,12 +319,16 @@ func (s *IngestStore) CompleteClaimedJob(ctx context.Context, job domain.Job) er
 
 // Settle import activity and recompute remaining work in the job-state transaction.
 func (s *IngestStore) commitJobChange(ctx context.Context, tx *sql.Tx, jobID int64) error {
-	var c changes
-	if err := settleJobActivity(ctx, tx, &c, jobID, time.Now()); err != nil {
+	return s.commitJobChanges(ctx, tx, &changes{}, jobID)
+}
+
+// commitJobChanges settles the job's activity after the transaction's other changes in c.
+func (s *IngestStore) commitJobChanges(ctx context.Context, tx *sql.Tx, c *changes, jobID int64) error {
+	if err := settleJobActivity(ctx, tx, c, jobID, time.Now()); err != nil {
 		return err
 	}
 	c.remainingChanged()
-	return s.db.commit(ctx, tx, &c)
+	return s.db.commit(ctx, tx, c)
 }
 
 // CompleteJob skips claim-identity validation for callers without a claim, such as test setup.
@@ -400,12 +412,19 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 		return fmt.Errorf("cannot record a failure on the running job (id=%d, affected=%d)", job.ID, affected)
 	}
 
+	var c changes
 	if state == domain.JobFailed {
 		if err := recordTerminalFailure(ctx, tx, job, cause, now); err != nil {
 			return err
 		}
+		if job.Kind == domain.JobSeekThumbnail {
+			// Auto-tagging also runs on a failed seek stage, with the images that remain.
+			if err := queueAfterImportAutoTag(ctx, tx, &c, job, time.Now()); err != nil {
+				return err
+			}
+		}
 	}
-	if err := s.commitJobChange(ctx, tx, job.ID); err != nil {
+	if err := s.commitJobChanges(ctx, tx, &c, job.ID); err != nil {
 		return fmt.Errorf("cannot commit the job failure (id=%d): %w", job.ID, err)
 	}
 	return nil

@@ -59,7 +59,7 @@ export default function FolderContents({
           ) : (
             <CardGrid size={zoom}>
               {childFolders.map((child) => (
-                <FolderCard key={child.path} folder={child} showPath={false} />
+                <FolderCard key={child.path} folder={child} backTo={backTo} />
               ))}
             </CardGrid>
           )}

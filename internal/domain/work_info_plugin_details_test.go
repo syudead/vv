@@ -37,8 +37,8 @@ func TestParseWorkInfoResponseReadsEveryWorkDetailInOrder(t *testing.T) {
 		Description: "line 1\nline 2",
 		Dates:       []WorkDate{{DateRecorded, "2024-02"}, {DateRelease, "2024-03-01"}},
 		People: []FetchedPerson{
-			{PersonPerformer, "Hanako", []ExternalID{{"site", "p1"}}},
-			{PersonDirector, "Taro", nil},
+			{Role: PersonPerformer, Name: "Hanako", ExternalIDs: []ExternalID{{"site", "p1"}}},
+			{Role: PersonDirector, Name: "Taro"},
 		},
 		Organizations: []FetchedOrganization{
 			{OrganizationMaker, "Studio", nil},
@@ -67,7 +67,7 @@ func TestParseWorkInfoResponseDropsUnknownAndEmptyEntries(t *testing.T) {
 	want := FetchedWorkInfo{
 		Tags:   []string{},
 		Dates:  []WorkDate{{DateRelease, "2024-03-01"}},
-		People: []FetchedPerson{{PersonPerformer, "C", nil}},
+		People: []FetchedPerson{{Role: PersonPerformer, Name: "C"}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("fetched = %+v\nwant      %+v", got, want)
@@ -171,7 +171,7 @@ func TestParseWorkInfoResponseIgnoresWorkDetailsOfAnotherShape(t *testing.T) {
 	want := FetchedWorkInfo{
 		Title:       "T",
 		Tags:        []string{},
-		People:      []FetchedPerson{{PersonPerformer, "C", nil}},
+		People:      []FetchedPerson{{Role: PersonPerformer, Name: "C"}},
 		ExternalIDs: []ExternalID{{"s", "1"}},
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -192,5 +192,24 @@ func TestParseWorkInfoResponseKeepsOnlyAWebCoverURL(t *testing.T) {
 		if err != nil || got.WorkInfo.CoverURL != want || got.WorkInfo.Title != "T" {
 			t.Fatalf("cover %.40s = %q, %v; want %q", raw, got.WorkInfo.CoverURL, err, want)
 		}
+	}
+}
+
+func TestParseWorkInfoResponseDropsAMalformedProfilePropertyAlone(t *testing.T) {
+	got := parseFetched(t, `{"people": [
+		{"role": "performer", "name": "A", "image": " https://e.test/a.jpg ", "profile": {
+			"heightCm": "160", "bustCm": 88, "waistCm": 58.5, "birthDate": 19900101, "birthplace": " Tokyo ",
+			"cup": "e", "bio": null, "links": ["https://e.test/a", 3, " "]}},
+		{"role": "performer", "name": "B", "image": "/b.jpg", "profile": "tall"}
+	]}`)
+	bust := 88
+	want := []FetchedPerson{
+		{Role: PersonPerformer, Name: "A", ImageURL: "https://e.test/a.jpg", Profile: PersonProfile{
+			BustCm: &bust, Birthplace: "Tokyo", Cup: "e", Links: []string{"https://e.test/a"},
+		}},
+		{Role: PersonPerformer, Name: "B"},
+	}
+	if !reflect.DeepEqual(got.People, want) {
+		t.Fatalf("people = %+v\nwant     %+v", got.People, want)
 	}
 }

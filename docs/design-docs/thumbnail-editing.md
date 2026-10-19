@@ -211,6 +211,10 @@ gate; its input is the provider's output, already bounded by the edit's
 checks. The lock orders an upload with a position change and a generated
 image's apply, and the one confirmed last stays.
 
+A person's face upload uses the same body budget, limits and check, and holds
+the same gate while it decodes and fits
+([people.md](people.md#a-face-is-one-fitted-jpeg-in-sqlite)).
+
 ### The page frames the image before it is sent
 
 Picking a file does not upload it. The page decodes the file and draws it on a

@@ -4,6 +4,8 @@ import { Slot } from "radix-ui";
 
 import { cn } from "@/lib/cn";
 
+import { PageColumn, PageColumnBody } from "./page-column";
+
 // Use CSS to switch list/page visibility at sm; avoid useIsMobile. See web/registry/rules/patterns.md, Settings page.
 
 export interface SettingsPageProps {
@@ -23,23 +25,11 @@ export function SettingsPage({
   view = "page",
   notice,
 }: SettingsPageProps) {
-  const body = (
-    <>
-      {notice !== undefined && <div data-slot="settings-page-notice">{notice}</div>}
-      <div data-slot="settings-page-body" className="flex flex-col gap-8">
-        {children}
-      </div>
-    </>
-  );
   if (nav === undefined) {
     return (
-      <div
-        data-slot="settings-page"
-        className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-3 sm:p-4"
-      >
-        {header}
-        {body}
-      </div>
+      <PageColumn slot="settings-page" header={header} notice={notice}>
+        {children}
+      </PageColumn>
     );
   }
   const listView = view === "list";
@@ -66,7 +56,9 @@ export function SettingsPage({
         )}
       >
         {header}
-        {body}
+        <PageColumnBody slot="settings-page" notice={notice}>
+          {children}
+        </PageColumnBody>
       </div>
     </div>
   );

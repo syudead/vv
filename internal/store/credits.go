@@ -62,6 +62,14 @@ func (t creditTables) parentColumn() string {
 	return `null`
 }
 
+// Only people have a birth date to sort by.
+func (t creditTables) birthKeyColumn() string {
+	if t.kind == domain.CreditPerson {
+		return `e.birth_key`
+	}
+	return `null`
+}
+
 // Get returns domain.ErrNotFound for a missing entity.
 func (s *CreditStore) Get(ctx context.Context, kind domain.CreditKind, id int64) (domain.Credit, error) {
 	t, err := creditTablesFor(kind)
@@ -167,6 +175,11 @@ func insertCredit(ctx context.Context, tx *sql.Tx, t creditTables, input domain.
 	if err := writeCreditExternalIDs(ctx, tx, t, id, input.ExternalIDs); err != nil {
 		return 0, err
 	}
+	if t.kind == domain.CreditPerson && !input.Profile.Equal(domain.PersonProfile{}) {
+		if err := writePersonProfile(ctx, tx, id, input.Profile); err != nil {
+			return 0, err
+		}
+	}
 	return id, nil
 }
 
@@ -201,7 +214,8 @@ func (s *CreditStore) Update(ctx context.Context, kind domain.CreditKind, id int
 	if err != nil {
 		return domain.Credit{}, err
 	}
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
+	// Smart-folder notices and collection values depend on names and links, not on profiles.
+	if err := s.db.commitMatchChangeIf(ctx, tx, changes.matched()); err != nil {
 		return domain.Credit{}, fmt.Errorf("cannot update the %s: %w", kind, err)
 	}
 	return updated, nil
@@ -209,7 +223,9 @@ func (s *CreditStore) Update(ctx context.Context, kind domain.CreditKind, id int
 
 // When aliases are unchanged, a duplicate can only come from the new name; report it against the submitted name field.
 func patchedCredit(current domain.Credit, patch domain.CreditPatch) (domain.CreditInput, error) {
-	merged := domain.CreditInput{Name: current.Name, Aliases: current.Aliases, ExternalIDs: current.ExternalIDs}
+	merged := domain.CreditInput{
+		Name: current.Name, Aliases: current.Aliases, ExternalIDs: current.ExternalIDs, Profile: current.Profile,
+	}
 	if current.Parent != nil {
 		parent := current.Parent.ID
 		merged.ParentID = &parent
@@ -226,6 +242,9 @@ func patchedCredit(current domain.Credit, patch domain.CreditPatch) (domain.Cred
 	if patch.ParentSet {
 		merged.ParentID = patch.ParentID
 	}
+	if patch.Profile != nil {
+		merged.Profile = patch.Profile.Apply(current.Profile)
+	}
 	normalized, err := domain.NormalizeCredit(merged)
 	var invalid *domain.InvalidWorkInfoError
 	if patch.Aliases == nil && errors.As(err, &invalid) && invalid.Problem == domain.WorkInfoDuplicate &&
@@ -236,10 +255,13 @@ func patchedCredit(current domain.Credit, patch domain.CreditPatch) (domain.Cred
 }
 
 type creditChangeSet struct {
-	names, externalIDs, parent bool
+	names, externalIDs, parent, profile bool
 }
 
-func (c creditChangeSet) any() bool { return c.names || c.externalIDs || c.parent }
+func (c creditChangeSet) any() bool { return c.matched() || c.profile }
+
+// matched reports changes that can alter smart-folder matches.
+func (c creditChangeSet) matched() bool { return c.names || c.externalIDs || c.parent }
 
 // Compare aliases and external IDs in read order; people have no parent to compare.
 func creditChanges(t creditTables, current domain.Credit, next domain.CreditInput) creditChangeSet {
@@ -261,6 +283,7 @@ func creditChanges(t creditTables, current domain.Credit, next domain.CreditInpu
 		}
 		changes.parent = currentParent != nextParent
 	}
+	changes.profile = t.kind == domain.CreditPerson && !current.Profile.Equal(next.Profile)
 	return changes
 }
 
@@ -300,6 +323,9 @@ func applyCreditChanges(ctx context.Context, tx *sql.Tx, t creditTables, id int6
 			return err
 		}
 	}
+	if changes.profile {
+		return writePersonProfile(ctx, tx, id, next.Profile)
+	}
 	return nil
 }
 
@@ -338,7 +364,7 @@ func (s *CreditStore) Delete(ctx context.Context, kind domain.CreditKind, id int
 	return nil
 }
 
-// Merge transfers links, aliases, external IDs and children atomically; reject self-merges, parent cycles and merged limits.
+// Merge transfers links, aliases, external IDs and children and fills empty profile fields and a missing face atomically; reject self-merges, parent cycles and merged limits.
 func (s *CreditStore) Merge(ctx context.Context, kind domain.CreditKind, targetID int64, sourceIDs []int64) (domain.CreditMergeOutcome, error) {
 	t, err := creditTablesFor(kind)
 	if err != nil {
@@ -413,6 +439,21 @@ func mergeCreditsInto(ctx context.Context, tx *sql.Tx, t creditTables, targetID 
 	encoded, err := json.Marshal(sourceIDs)
 	if err != nil {
 		return fmt.Errorf("cannot build %s ids: %w", t.kind, err)
+	}
+	if t.kind == domain.CreditPerson {
+		if err := fillMergedPersonProfile(ctx, tx, targetID, sourceIDs); err != nil {
+			return err
+		}
+		if err := fillMergedPersonImage(ctx, tx, targetID, sourceIDs); err != nil {
+			return err
+		}
+		// A target that is not yet a favorite takes the earliest source favorite time; the sources' rows cascade below.
+		if _, err := tx.ExecContext(ctx, `insert or ignore into person_favorites (person_id, favorited_at)
+			select ?1, min(favorited_at) from person_favorites
+			 where person_id in (select value from json_each(?2)) having count(*) > 0`,
+			targetID, string(encoded)); err != nil {
+			return fmt.Errorf("cannot keep the favorite of person %d: %w", targetID, err)
+		}
 	}
 	affected, err := creditLinkLists(ctx, tx, t, sourceIDs)
 	if err != nil {

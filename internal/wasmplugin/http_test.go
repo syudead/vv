@@ -46,6 +46,12 @@ func newTestSite(t *testing.T) *testSite {
 		w.Header().Set("X-Site", "yes")
 		_, _ = w.Write([]byte("hello"))
 	})
+	mux.HandleFunc("/face/{n}", func(w http.ResponseWriter, r *http.Request) {
+		s.mu.Lock()
+		s.hosts = append(s.hosts, r.Host)
+		s.mu.Unlock()
+		_, _ = w.Write([]byte("face " + r.PathValue("n")))
+	})
 	mux.HandleFunc("/to-lan", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "http://192.168.1.20/page", http.StatusFound)
 	})

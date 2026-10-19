@@ -8,10 +8,10 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// Fetch covers once with the execution HTTP client, outside the request-count limit; unavailable,
-// oversized, or non-2xx responses omit the cover. Blocked addresses still fail execution; see
+// Fetch the cover and people's images with the execution HTTP client, outside the request-count limit;
+// unavailable, oversized, or non-2xx responses omit the image. Blocked addresses still fail execution; see
 // docs/design-docs/work-info-plugins.md.
-func (s *httpSession) coverImage(ctx context.Context, rawURL string) []byte {
+func (s *httpSession) image(ctx context.Context, rawURL string) []byte {
 	if s.client == nil || rawURL == "" {
 		return nil
 	}
@@ -41,4 +41,25 @@ func (s *httpSession) coverImage(ctx context.Context, rawURL string) []byte {
 		return nil
 	}
 	return body
+}
+
+// personImages fetches the first WorkInfoPersonImagesMaxCount image URLs in result order, one after another within
+// ctx, and returns nil when no person has one.
+func (s *httpSession) personImages(ctx context.Context, people []domain.FetchedPerson) [][]byte {
+	var out [][]byte
+	fetched := 0
+	for i, person := range people {
+		if person.ImageURL == "" {
+			continue
+		}
+		if fetched == domain.WorkInfoPersonImagesMaxCount {
+			break
+		}
+		fetched++
+		if out == nil {
+			out = make([][]byte, len(people))
+		}
+		out[i] = s.image(ctx, person.ImageURL)
+	}
+	return out
 }

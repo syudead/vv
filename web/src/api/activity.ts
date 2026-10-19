@@ -4,6 +4,9 @@ import { clearListSnapshot } from "./listSnapshot";
 
 export type ActivityPage = components["schemas"]["ActivityPage"];
 export type ActivityEntry = components["schemas"]["ActivityEntry"];
+export type ActivityListItem = components["schemas"]["ActivityListItem"];
+export type ActivityMemberSummary = components["schemas"]["ActivityMemberSummary"];
+export type ActivityProgress = components["schemas"]["ActivityProgress"];
 export type ActivityKind = components["schemas"]["ActivityKind"];
 export type ActivityFeature = components["schemas"]["ActivityFeature"];
 export type ActivityStatus = components["schemas"]["ActivityStatus"];
@@ -15,6 +18,11 @@ export type ActivityCounts = components["schemas"]["ActivityCounts"];
 export type ActivityFeatureCounts = components["schemas"]["ActivityFeatureCounts"];
 export type ActivityUndoRequest = components["schemas"]["ActivityUndoRequest"];
 export type ActivityTag = components["schemas"]["ActivityTag"];
+export type ActivityDetail = components["schemas"]["ActivityDetail"];
+export type ActivityStageState = components["schemas"]["ActivityStageState"];
+export type ActivityStageRow = components["schemas"]["ActivityStageRow"];
+export type ActivityPipelineRef = components["schemas"]["ActivityPipelineRef"];
+export type ActivitySubjectItem = components["schemas"]["ActivitySubjectItem"];
 
 export const ACTIVITY_PAGE_SIZE = 50;
 
@@ -62,6 +70,11 @@ export function listActivity({
   return request<ActivityPage>(`/api/activity?${activityQuery(params).toString()}`, {
     signal,
   });
+}
+
+/** Read one entry of any kind with its full detail; a missing entry rejects with status 404. */
+export function getActivity(id: number, signal?: AbortSignal): Promise<ActivityDetail> {
+  return request<ActivityDetail>(`/api/activity/${String(id)}`, { signal });
 }
 
 function activityPath(id: number, action: "retry" | "undo"): string {

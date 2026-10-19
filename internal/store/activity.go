@@ -62,13 +62,13 @@ func recordActivity(ctx context.Context, tx activityWriter, c *changes, entry do
 	at := now.UnixMilli()
 	result, err := tx.ExecContext(ctx, `insert into activity_entries (kind, feature, subject_kind, subject_key,
 		subject_key_b, subject_label, subject_label_b, status, reason, outcome, detail, stage, undoes_id, decider,
-		probability, undo_keys, undone_by, created_at, updated_at)
-		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		probability, undo_keys, undone_by, scan_id, created_at, updated_at)
+		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		string(entry.Kind), string(entry.Feature), string(entry.Subject.Kind), entry.Subject.Key,
 		nullString(entry.Subject.KeyB), entry.Subject.Label, nullString(entry.Subject.LabelB),
 		string(entry.Status), nullString(string(entry.Reason)), nullString(string(entry.Outcome)),
 		nullString(entry.Detail), nullString(string(entry.Stage)), nullID(entry.UndoesID), string(entry.Decider),
-		entry.Probability, nullString(entry.UndoKeys), nullID(entry.UndoneBy), at, at)
+		entry.Probability, nullString(entry.UndoKeys), nullID(entry.UndoneBy), nullID(entry.ScanID), at, at)
 	if err != nil {
 		return 0, fmt.Errorf("cannot record the activity: %w", err)
 	}
@@ -82,6 +82,19 @@ func recordActivity(ctx context.Context, tx activityWriter, c *changes, entry do
 	}
 	c.activityChanged()
 	return id, nil
+}
+
+// recordContinuedActivity records an entry that continues earlier ones, such as a retry from the activity log or a
+// claim that reopens an interrupted run. It joins every pipeline of the entries it continues instead of opening one,
+// so the continuation stays inside the run it belongs to.
+func recordContinuedActivity(
+	ctx context.Context, tx activityWriter, c *changes, entry domain.ActivityEntry, continued []int64, now time.Time,
+) (int64, error) {
+	id, err := recordActivity(ctx, tx, c, entry, now)
+	if err != nil {
+		return 0, err
+	}
+	return id, joinPipelines(ctx, tx, id, continued, now)
 }
 
 func activityFeatureOf(ctx context.Context, tx activityWriter, entry domain.ActivityEntry) (domain.ActivityFeature, error) {
@@ -126,6 +139,10 @@ func supersedeActivity(ctx context.Context, tx activityWriter, entry domain.Acti
 	}
 	_ = rows.Close()
 	for _, id := range closing {
+		if _, err := tx.ExecContext(ctx, `update activity_entries set superseded_by = ? where id = ?`,
+			entry.ID, id); err != nil {
+			return fmt.Errorf("cannot record the superseding activity (id=%d): %w", id, err)
+		}
 		if err := writeActivityState(ctx, tx, id,
 			domain.ActivityState{Status: domain.ActivityDone, Outcome: domain.ActivitySuperseded}, at); err != nil {
 			return err
@@ -159,7 +176,15 @@ func setActivityState(ctx context.Context, tx activityWriter, c *changes, id int
 	return nil
 }
 
+// writeActivityState updates a member's state and re-rolls its pipelines in the same transaction.
 func writeActivityState(ctx context.Context, tx activityWriter, id int64, state domain.ActivityState, at int64) error {
+	if err := storeActivityState(ctx, tx, id, state, at); err != nil {
+		return err
+	}
+	return rollUpPipelines(ctx, tx, []int64{id}, at)
+}
+
+func storeActivityState(ctx context.Context, tx activityWriter, id int64, state domain.ActivityState, at int64) error {
 	_, err := tx.ExecContext(ctx, `update activity_entries set status = ?, reason = ?, outcome = ?, updated_at = ?
 		where id = ?`, string(state.Status), nullString(string(state.Reason)), nullString(string(state.Outcome)), at, id)
 	if err != nil {
@@ -168,36 +193,82 @@ func writeActivityState(ctx context.Context, tx activityWriter, id int64, state 
 	return nil
 }
 
-// RecoverInterruptedActivity marks processing entries interrupted before workers start; waiting entries remain untouched.
+// collectActivityIDs reads the ids an update's returning clause yields.
+func collectActivityIDs(rows *sql.Rows, err error) ([]int64, error) {
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// RecoverInterruptedActivity marks processing entries interrupted before workers start; waiting entries remain
+// untouched, and pipelines and stage rows follow their members.
 func (s *ActivityStore) RecoverInterruptedActivity(ctx context.Context) (int, error) {
-	result, err := s.db.sql.ExecContext(ctx, `update activity_entries set status = ?, reason = ?, updated_at = ?
-		where status = ? and reason = ?`,
-		string(domain.ActivityAttention), string(domain.ActivityInterrupted), time.Now().UnixMilli(),
-		string(domain.ActivityRunning), string(domain.ActivityProcessing))
+	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("cannot recover the interrupted activity: %w", err)
 	}
-	affected, err := result.RowsAffected()
+	defer func() { _ = tx.Rollback() }()
+	at := time.Now().UnixMilli()
+	ids, err := collectActivityIDs(tx.QueryContext(ctx, `update activity_entries set status = ?, reason = ?,
+		updated_at = ? where status = ? and reason = ? and kind <> ? returning id`,
+		string(domain.ActivityAttention), string(domain.ActivityInterrupted), at,
+		string(domain.ActivityRunning), string(domain.ActivityProcessing), string(domain.ActivityPipeline)))
 	if err != nil {
 		return 0, fmt.Errorf("cannot recover the interrupted activity: %w", err)
 	}
-	if affected > 0 {
+	if err := resetInterruptedStages(ctx, tx, ids, at); err != nil {
+		return 0, err
+	}
+	if err := rollUpPipelines(ctx, tx, ids, at); err != nil {
+		return 0, err
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("cannot recover the interrupted activity: %w", err)
+	}
+	if len(ids) > 0 {
 		s.db.publishEvents(domain.ActivityChanged{})
 	}
-	return int(affected), nil
+	return len(ids), nil
+}
+
+// resetInterruptedStages returns an interrupted import's processing stage to waiting, as its job is queued again, so
+// the detail shows it as not run instead of in progress.
+func resetInterruptedStages(ctx context.Context, tx *sql.Tx, ids []int64, at int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	encoded, _ := json.Marshal(ids) // A slice of integers always encodes.
+	if _, err := tx.ExecContext(ctx, `update activity_entry_stages set state = ?, updated_at = ?
+		where entry_id in (select value from json_each(?)) and state = ?`,
+		string(domain.ActivityStageWaiting), at, string(encoded), string(domain.ActivityStageProcessing)); err != nil {
+		return fmt.Errorf("cannot reset the interrupted import stages: %w", err)
+	}
+	return nil
 }
 
 // A pair is a visible candidate only when it satisfies the same predicate as the candidate list.
 var activityColumns = `e.id, e.kind, e.feature, e.subject_kind, e.subject_key, coalesce(e.subject_key_b, ''),
 	e.subject_label, coalesce(e.subject_label_b, ''), e.status, coalesce(e.reason, ''), coalesce(e.outcome, ''),
 	coalesce(e.detail, ''), coalesce(e.stage, ''), coalesce(e.undoes_id, 0), e.decider, e.probability,
-	coalesce(e.undo_keys, ''), coalesce(e.undone_by, 0), e.created_at, e.updated_at,
+	coalesce(e.undo_keys, ''), coalesce(e.undone_by, 0), coalesce(e.scan_id, 0), e.created_at, e.updated_at,
 	c.key_a is not null and exists (select 1 ` + candidatePairsFrom + `c.key_a = e.subject_key
 		and c.key_b = e.subject_key_b and ` + candidatePairsCondition() + `),
 	coalesce(c.judgement, ''), c.retry_at, u.kind, u.outcome,
 	(select t.tag_name from activity_entry_tags t where t.entry_id = e.undoes_id and t.undone_by = e.id limit 1)`
 
-const activityFrom = ` from activity_entries e
+const activityFrom = ` from activity_entries e` + activityJoins
+
+const activityJoins = `
 	left join video_version_candidates c on e.subject_kind = 'pair' and c.key_a = e.subject_key
 		and c.key_b = e.subject_key_b
 	left join activity_entries u on u.id = e.undoes_id`
@@ -215,7 +286,8 @@ func scanActivityEntry(row rowScanner) (domain.ActivityEntry, error) {
 	)
 	err := row.Scan(&entry.ID, &kind, &feature, &subjectKind, &entry.Subject.Key, &entry.Subject.KeyB,
 		&entry.Subject.Label, &entry.Subject.LabelB, &status, &reason, &outcome, &entry.Detail, &stage,
-		&entry.UndoesID, &decider, &probability, &entry.UndoKeys, &entry.UndoneBy, &createdAt, &updatedAt,
+		&entry.UndoesID, &decider, &probability, &entry.UndoKeys, &entry.UndoneBy, &entry.ScanID, &createdAt,
+		&updatedAt,
 		&entry.Candidate, &judgement, &retryAt, &undoneKind, &undoneOutcome, &undoneTagName)
 	if err != nil {
 		return domain.ActivityEntry{}, err
@@ -248,22 +320,11 @@ func scanActivityEntry(row rowScanner) (domain.ActivityEntry, error) {
 
 // ActivityEntry returns an owner-visible entry or domain.ErrNotFound.
 func (s *ActivityStore) ActivityEntry(ctx context.Context, id int64) (domain.ActivityEntry, error) {
-	entry, err := scanActivityEntry(s.db.sql.QueryRowContext(ctx,
-		`select `+activityColumns+activityFrom+` where e.id = ?`, id))
-	if errors.Is(err, sql.ErrNoRows) {
-		return domain.ActivityEntry{}, fmt.Errorf("activity entry %d: %w", id, domain.ErrNotFound)
-	}
-	if err != nil {
-		return domain.ActivityEntry{}, fmt.Errorf("cannot read the activity entry (id=%d): %w", id, err)
-	}
-	entries := []domain.ActivityEntry{entry}
-	if err := attachActivityDetails(ctx, s.db.sql, domain.AudienceOwner, entries); err != nil {
-		return domain.ActivityEntry{}, err
-	}
-	return entries[0], nil
+	return readActivityEntry(ctx, s.db.sql, id)
 }
 
-// ListActivity uses descending IDs and a snapshot shared with its counts; counts omit their own facet filter.
+// ListActivity pages top-level entries by descending ID, each pipeline with its members, in a snapshot shared with its
+// counts; counts omit their own facet filter.
 func (s *ActivityStore) ListActivity(
 	ctx context.Context, audience domain.Audience, query domain.ActivityQuery, cursor string, limit int,
 ) (domain.ActivityPage, error) {
@@ -289,6 +350,9 @@ func (s *ActivityStore) ListActivity(
 	if err := attachActivityDetails(ctx, tx, audience, page.Items); err != nil {
 		return domain.ActivityPage{}, err
 	}
+	if err := attachPipelineMembers(ctx, tx, audience, page.Items, activityMemberMatch(query)); err != nil {
+		return domain.ActivityPage{}, err
+	}
 	if page.Counts, err = activityCounts(ctx, tx, query); err != nil {
 		return domain.ActivityPage{}, err
 	}
@@ -298,32 +362,52 @@ func (s *ActivityStore) ListActivity(
 	return page, nil
 }
 
-// Disable status or feature filtering when counting that facet.
+// activityFilter selects the top-level entries, pipelines and entries of no pipeline, that match the query. A pipeline
+// matches the entry filters when it or any one member satisfies all of them; status applies to the top-level entry
+// only. Disable status or feature filtering when counting that facet.
 func activityFilter(query domain.ActivityQuery, withStatus, withFeatures bool) ([]string, []any) {
-	var conditions []string
-	var args []any
+	conditions := []string{`(e.kind = ? or not exists (select 1 from activity_pipeline_members pm where pm.entry_id = e.id))`}
+	args := []any{string(domain.ActivityPipeline)}
 	if withStatus && query.Status != "" {
 		conditions = append(conditions, `e.status = ?`)
 		args = append(args, string(query.Status))
 	}
+	own, ownArgs := activityEntryFilter(query, "e", withFeatures)
+	if len(own) == 0 {
+		return conditions, args
+	}
+	member, memberArgs := activityEntryFilter(query, "m", withFeatures)
+	conditions = append(conditions, `(`+strings.Join(own, ` and `)+` or (e.kind = ? and exists (select 1 `+
+		pipelineMembersFrom+` where pm.pipeline_id = e.id and `+strings.Join(member, ` and `)+`)))`)
+	args = append(append(append(args, ownArgs...), string(domain.ActivityPipeline)), memberArgs...)
+	return conditions, args
+}
+
+// pipelineMembersFrom joins a pipeline's membership rows (pm) to the member entries (m).
+const pipelineMembersFrom = `from activity_pipeline_members pm join activity_entries m on m.id = pm.entry_id`
+
+// activityEntryFilter is the query's per-entry filters, except status, on the entry aliased alias.
+func activityEntryFilter(query domain.ActivityQuery, alias string, withFeatures bool) ([]string, []any) {
+	var conditions []string
+	var args []any
 	if withFeatures && len(query.Features) > 0 {
 		encoded, _ := json.Marshal(query.Features)
-		conditions = append(conditions, `e.feature in (select value from json_each(?))`)
+		conditions = append(conditions, alias+`.feature in (select value from json_each(?))`)
 		args = append(args, string(encoded))
 	}
 	if query.Decider != "" {
-		conditions = append(conditions, `e.decider = ?`)
+		conditions = append(conditions, alias+`.decider = ?`)
 		args = append(args, string(query.Decider))
 	}
 	if !query.Since.IsZero() {
-		conditions = append(conditions, `e.created_at >= ?`)
+		conditions = append(conditions, alias+`.created_at >= ?`)
 		args = append(args, query.Since.UnixMilli())
 	}
 	if query.Search != "" {
 		// Search only subject labels; other filters bound the scan without a text index.
 		needle := strings.ToLower(query.Search)
-		conditions = append(conditions, `(instr(`+foldCaseFunction+`(e.subject_label), ?) > 0 or instr(`+
-			foldCaseFunction+`(e.subject_label_b), ?) > 0)`)
+		conditions = append(conditions, `(instr(`+foldCaseFunction+`(`+alias+`.subject_label), ?) > 0 or instr(`+
+			foldCaseFunction+`(`+alias+`.subject_label_b), ?) > 0)`)
 		args = append(args, needle, needle)
 	}
 	return conditions, args
@@ -366,7 +450,8 @@ func activityItems(
 func activityCounts(ctx context.Context, tx *sql.Tx, query domain.ActivityQuery) (domain.ActivityCounts, error) {
 	conditions, args := activityFilter(query, false, true)
 	var counts domain.ActivityCounts
-	err := groupedCounts(ctx, tx, `e.status`, conditions, args, func(status string, count int) {
+	err := groupedCounts(ctx, tx, `select e.status, count(*) from activity_entries e`+whereClause(conditions)+
+		` group by e.status`, args, func(status string, count int) {
 		switch domain.ActivityStatus(status) {
 		case domain.ActivityRunning:
 			counts.Running = count
@@ -379,24 +464,37 @@ func activityCounts(ctx context.Context, tx *sql.Tx, query domain.ActivityQuery)
 	return counts, err
 }
 
-// Feature counts include zero-valued features and ignore the feature filter.
+// Feature counts include zero-valued features and ignore the feature filter. A top-level entry counts under its own
+// feature when it matches, and a pipeline also under the feature of each matching member, once per feature: the count
+// under a feature is the number of entries the list shows with only that feature selected.
 func activityFeatureCounts(ctx context.Context, tx *sql.Tx, query domain.ActivityQuery) (map[domain.ActivityFeature]int, error) {
-	conditions, args := activityFilter(query, true, false)
+	top, topArgs := activityFilter(domain.ActivityQuery{Status: query.Status}, true, false)
+	own, ownArgs := activityEntryFilter(query, "e", false)
+	member, memberArgs := activityEntryFilter(query, "m", false)
+	pipeline := []string{`e.kind = ?`}
+	pipelineArgs := []any{string(domain.ActivityPipeline)}
+	if query.Status != "" {
+		pipeline = append(pipeline, `e.status = ?`)
+		pipelineArgs = append(pipelineArgs, string(query.Status))
+	}
+	args := append(append(append(topArgs, ownArgs...), pipelineArgs...), memberArgs...)
 	counts := make(map[domain.ActivityFeature]int, len(domain.ActivityFeatures))
 	for _, feature := range domain.ActivityFeatures {
 		counts[feature] = 0
 	}
-	err := groupedCounts(ctx, tx, `e.feature`, conditions, args, func(feature string, count int) {
+	err := groupedCounts(ctx, tx, `select feature, count(distinct id) from (
+		select e.id, e.feature from activity_entries e`+whereClause(append(top, own...))+`
+		union all
+		select e.id, m.feature from activity_entries e join activity_pipeline_members pm on pm.pipeline_id = e.id
+			join activity_entries m on m.id = pm.entry_id`+whereClause(append(pipeline, member...))+`
+	) group by feature`, args, func(feature string, count int) {
 		counts[domain.ActivityFeature(feature)] = count
 	})
 	return counts, err
 }
 
-func groupedCounts(
-	ctx context.Context, tx *sql.Tx, column string, conditions []string, args []any, add func(string, int),
-) error {
-	rows, err := tx.QueryContext(ctx, `select `+column+`, count(*) from activity_entries e`+whereClause(conditions)+
-		` group by `+column, args...)
+func groupedCounts(ctx context.Context, tx *sql.Tx, query string, args []any, add func(string, int)) error {
+	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("cannot count the activity: %w", err)
 	}

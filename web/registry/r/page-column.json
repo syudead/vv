@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "page-column",
+  "title": "PageColumn",
+  "description": "The reading column SettingsPage and RecordPage share: header, optional notice, sections. Used by patterns only.",
+  "files": [
+    {
+      "path": "src/ui/patterns/page-column.tsx",
+      "content": "import type { ReactNode } from \"react\";\n\n// The reading column SettingsPage and RecordPage share; see web/registry/rules/patterns.md, Record page.\n\nexport interface PageColumnBodyProps {\n  /** Prefix of the data-slot names, the skeleton's own slot. */\n  slot: string;\n  notice?: ReactNode;\n  children: ReactNode;\n}\n\n/** The optional notice, then the sections `gap-8` apart. */\nexport function PageColumnBody({ slot, notice, children }: PageColumnBodyProps) {\n  return (\n    <>\n      {notice !== undefined && <div data-slot={`${slot}-notice`}>{notice}</div>}\n      <div data-slot={`${slot}-body`} className=\"flex flex-col gap-8\">\n        {children}\n      </div>\n    </>\n  );\n}\n\nexport interface PageColumnProps extends PageColumnBodyProps {\n  header: ReactNode;\n}\n\n/** One column at most `max-w-3xl`, centered: the header, the notice and the sections. */\nexport function PageColumn({ slot, header, notice, children }: PageColumnProps) {\n  return (\n    <div\n      data-slot={slot}\n      className=\"mx-auto flex w-full max-w-3xl flex-col gap-6 p-3 sm:p-4\"\n    >\n      {header}\n      <PageColumnBody slot={slot} notice={notice}>\n        {children}\n      </PageColumnBody>\n    </div>\n  );\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/patterns.md#record-page (item vv-rules).",
+  "type": "registry:ui"
+}

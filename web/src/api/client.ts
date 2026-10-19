@@ -300,6 +300,8 @@ export interface ListVideosParams
 /** Match linked people or organizations in any role. */
 export interface CreditFilterParams {
   person?: number;
+  /** Owner-only; keeps videos where person has this role and requires person. */
+  personRole?: components["schemas"]["WorkPersonRole"];
   organization?: number;
   /** Match any manual or folder-derived tag of this kind. */
   tagKind?: number;
@@ -307,6 +309,7 @@ export interface CreditFilterParams {
 
 function setCreditFilter(query: URLSearchParams, params: CreditFilterParams): void {
   if (params.person !== undefined) query.set("person", String(params.person));
+  if (params.personRole !== undefined) query.set("personRole", params.personRole);
   if (params.organization !== undefined) {
     query.set("organization", String(params.organization));
   }

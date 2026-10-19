@@ -12,14 +12,7 @@ import (
 
 func pairEntries(t *testing.T, db *DB) []domain.ActivityEntry {
 	t.Helper()
-	page := listActivity(t, db, domain.ActivityQuery{Features: []domain.ActivityFeature{domain.ActivityFeatureDuplicateCheck}}, "", 100)
-	var entries []domain.ActivityEntry
-	for _, entry := range page.Items {
-		if entry.Kind == domain.ActivityVersionJudgement {
-			entries = append(entries, entry)
-		}
-	}
-	return entries
+	return entriesOfKind(t, db, domain.ActivityVersionJudgement)
 }
 
 func onlyPairEntry(t *testing.T, db *DB) domain.ActivityEntry {

@@ -35,7 +35,7 @@ func updateActivity(ctx context.Context, tx *sql.Tx, c *changes, id int64, updat
 		return fmt.Errorf("cannot update the activity entry (id=%d): %w", id, err)
 	}
 	c.activityChanged()
-	return nil
+	return rollUpPipelines(ctx, tx, []int64{id}, now.UnixMilli())
 }
 
 func decideActivity(ctx context.Context, tx *sql.Tx, c *changes, id int64, update activityUpdate, now time.Time) error {
@@ -146,8 +146,16 @@ func keysJSON(keys []string) (any, error) {
 
 const keysCondition = `(?1 is null or c.key_a in (select value from json_each(?1)) or c.key_b in (select value from json_each(?1)))`
 
+// pairFinder is the fingerprint job whose result found the pairs; the zero value joins new pair entries to no pipeline.
+type pairFinder struct {
+	jobID int64
+	key   string
+}
+
 // Reattach orphan candidates to open pair activities; create missing activities only while judging is enabled.
-func syncPairActivities(ctx context.Context, tx *sql.Tx, c *changes, keys []string, now time.Time) error {
+func syncPairActivities(
+	ctx context.Context, tx *sql.Tx, c *changes, keys []string, finder pairFinder, now time.Time,
+) error {
 	filter, err := keysJSON(keys)
 	if err != nil {
 		return err
@@ -171,7 +179,7 @@ func syncPairActivities(ctx context.Context, tx *sql.Tx, c *changes, keys []stri
 		return err
 	}
 	for _, pair := range pairs {
-		if err := syncPairActivity(ctx, tx, c, pair, judgeable[pair], enabled, now); err != nil {
+		if err := syncPairActivity(ctx, tx, c, pair, judgeable[pair], enabled, finder, now); err != nil {
 			return err
 		}
 	}
@@ -179,7 +187,8 @@ func syncPairActivities(ctx context.Context, tx *sql.Tx, c *changes, keys []stri
 }
 
 func syncPairActivity(
-	ctx context.Context, tx *sql.Tx, c *changes, pair [2]string, judgeable, enabled bool, now time.Time,
+	ctx context.Context, tx *sql.Tx, c *changes, pair [2]string, judgeable, enabled bool, finder pairFinder,
+	now time.Time,
 ) error {
 	id, err := openPairActivityID(ctx, tx, pair)
 	if err != nil {
@@ -195,11 +204,41 @@ func syncPairActivity(
 		}
 		return nil
 	case judgeable && enabled:
-		_, err := pairActivityFor(ctx, tx, c, pair, 0, waitingUpdate.state, now)
-		return err
+		id, err := pairActivityFor(ctx, tx, c, pair, 0, waitingUpdate.state, now)
+		if err != nil {
+			return err
+		}
+		return joinFoundPairPipelines(ctx, tx, finder, pair, id, now)
 	default:
 		return nil
 	}
+}
+
+// joinFoundPairPipelines adds a new pair entry to the finder's import pipelines, and to the other video's newest
+// pipeline while it is unfinished or was opened by the same scan, so an earlier, separate import stays closed.
+func joinFoundPairPipelines(
+	ctx context.Context, tx *sql.Tx, finder pairFinder, pair [2]string, entryID int64, now time.Time,
+) error {
+	if finder.jobID == 0 {
+		return nil
+	}
+	other := pair[0]
+	if other == finder.key {
+		other = pair[1]
+	}
+	if _, err := tx.ExecContext(ctx, `insert into activity_pipeline_members (pipeline_id, entry_id, joined_at)
+		select p.id, ?1, ?2 from activity_entries p
+		where p.id = (select max(id) from activity_entries where kind = ?3 and subject_key = ?4)
+		  and (p.status <> ?5 or p.scan_id in (select t.scan_id from jobs j
+		         join activity_pipeline_members m on m.entry_id = j.activity_id
+		         join activity_entries t on t.id = m.pipeline_id
+		        where j.id = ?6 and t.scan_id is not null))
+		on conflict (pipeline_id, entry_id) do nothing`,
+		entryID, now.UnixMilli(), string(domain.ActivityPipeline), other, string(domain.ActivityDone),
+		finder.jobID); err != nil {
+		return fmt.Errorf("cannot join the other video's pipeline (entry=%d): %w", entryID, err)
+	}
+	return joinJobPipelines(ctx, tx, finder.jobID, entryID, now)
 }
 
 func queryKeyPairs(ctx context.Context, tx *sql.Tx, query string, args ...any) ([][2]string, error) {
@@ -263,19 +302,18 @@ func closeActivities(
 	base := len(args)
 	args = append(args, string(outcome), string(decider), now.UnixMilli(), string(domain.ActivityVersionJudgement),
 		string(domain.ActivityDone))
-	result, err := tx.ExecContext(ctx, fmt.Sprintf(`update activity_entries
+	closed, err := collectActivityIDs(tx.QueryContext(ctx, fmt.Sprintf(`update activity_entries
 		set status = ?%[5]d, reason = null, outcome = ?%[1]d, decider = coalesce(nullif(?%[2]d, ''), decider),
 		    updated_at = ?%[3]d
-		where kind = ?%[4]d and status <> ?%[5]d and `, base+1, base+2, base+3, base+4, base+5)+condition, args...)
+		where kind = ?%[4]d and status <> ?%[5]d and `, base+1, base+2, base+3, base+4, base+5)+condition+
+		` returning id`, args...))
 	if err != nil {
 		return fmt.Errorf("cannot close the pair activity entries: %w", err)
 	}
-	if affected, err := result.RowsAffected(); err != nil {
-		return fmt.Errorf("cannot close the pair activity entries: %w", err)
-	} else if affected > 0 {
+	if len(closed) > 0 {
 		c.activityChanged()
 	}
-	return nil
+	return rollUpPipelines(ctx, tx, closed, now.UnixMilli())
 }
 
 // Return activities to waiting when recovery or connection changes reset their candidates.
@@ -300,7 +338,7 @@ func returnPairActivitiesToWaiting(
 	} else if affected > 0 {
 		c.activityChanged()
 	}
-	return nil
+	return rollUpPipelines(ctx, tx, ids, now.UnixMilli())
 }
 
 // Move active and completed activity keys with inherited user data so later undo finds the replacement rows.
@@ -585,12 +623,9 @@ func (s *ActivityStore) UndoVersionJudgement(ctx context.Context, id int64) (dom
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	entry, err := scanActivityEntry(tx.QueryRowContext(ctx, `select `+activityColumns+activityFrom+` where e.id = ?`, id))
-	if errors.Is(err, sql.ErrNoRows) {
-		return domain.ActivityEntry{}, fmt.Errorf("activity entry %d: %w", id, domain.ErrNotFound)
-	}
+	entry, err := scanOneActivityEntry(ctx, tx, id)
 	if err != nil {
-		return domain.ActivityEntry{}, fmt.Errorf("cannot read the activity entry (id=%d): %w", id, err)
+		return domain.ActivityEntry{}, err
 	}
 	if entry.Kind != domain.ActivityVersionJudgement || !entry.UndoOffered() {
 		return domain.ActivityEntry{}, domain.ErrActivityNotUndoable

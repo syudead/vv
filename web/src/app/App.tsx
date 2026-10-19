@@ -12,6 +12,7 @@ import ScanProgressIndicator from "../shell/ScanProgressIndicator";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
+import { isPersonEditPath } from "../lib/personEditPath";
 import { isVideoEditPath } from "../lib/videoEditPath";
 import { OnboardingGate } from "../onboarding/OnboardingGate";
 import { ONBOARDING_PATH } from "../onboarding/onboardingRoute";
@@ -23,7 +24,18 @@ const SettingsPage = await deferredRoute(
   "/settings",
 );
 const TagsPage = await deferredRoute(() => import("../tags/TagsPage"), "/tags");
-const PeoplePage = await deferredRoute(() => import("../credits/PeoplePage"), "/people");
+const PeoplePage = await deferredRoute(
+  () => import("../credits/people/PeoplePage"),
+  (pathname) => matchesExactPath(pathname, "/people"),
+);
+const PersonPage = await deferredRoute(
+  () => import("../credits/person/PersonPage"),
+  (pathname) => matchesBelowPath(pathname, "/people") && !isPersonEditPath(pathname),
+);
+const PersonEditPage = await deferredRoute(
+  () => import("../credits/person/edit/PersonEditPage"),
+  isPersonEditPath,
+);
 const OrganizationsPage = await deferredRoute(
   () => import("../credits/OrganizationsPage"),
   "/organizations",
@@ -51,7 +63,11 @@ const DuplicatesPage = await deferredRoute(
 );
 const ActivityPage = await deferredRoute(
   () => import("../activity/ActivityPage"),
-  "/activity",
+  (pathname) => matchesExactPath(pathname, "/activity"),
+);
+const ActivityDetailPage = await deferredRoute(
+  () => import("../activity/ActivityDetailPage"),
+  (pathname) => matchesBelowPath(pathname, "/activity"),
 );
 const VideoDetailsEditor = await deferredRoute(
   () => import("../player/detailsEditor/VideoDetailsEditor"),
@@ -127,6 +143,14 @@ function AppRoutes() {
             }
           />
           <Route
+            path="/people/:id"
+            element={
+              <AppShell>
+                <PersonPage />
+              </AppShell>
+            }
+          />
+          <Route
             path="/organizations"
             element={
               <AppShell>
@@ -190,9 +214,18 @@ function AppRoutes() {
               </AppShell>
             }
           />
+          <Route
+            path="/activity/:id"
+            element={
+              <AppShell>
+                <ActivityDetailPage />
+              </AppShell>
+            }
+          />
           <Route path={ONBOARDING_PATH} element={<OnboardingPage />} />
           <Route path="/videos/:id" element={<VideoPage />} />
           <Route path="/videos/:id/edit" element={<VideoDetailsEditor />} />
+          <Route path="/people/:id/edit" element={<PersonEditPage />} />
           {DesignSystemPage && (
             <Route
               path="/design-system"

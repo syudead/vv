@@ -46,7 +46,7 @@ export function destinationOfCrumb(
 
 function crumbName(index: number | null, trail: readonly GroupRef[], name: string) {
   if (index === null) return "";
-  if (index === 0) return t.library.title;
+  if (index === 0) return t.home.title;
   return trail[index - 1]?.name ?? name;
 }
 
