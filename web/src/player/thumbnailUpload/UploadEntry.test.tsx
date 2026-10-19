@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Video } from "../../api/client";
+import { WHOLE_IMAGE } from "./framing";
 import { useThumbnailUpload } from "./UploadEntry";
 
 // Cover upload failures and navigation; VideoPage.thumbnailUpload.test.tsx covers successful application.
@@ -143,9 +144,9 @@ describe("useThumbnailUpload", () => {
     const { result, report } = setup();
     act(() => result.current.choose(png()));
     await waitFor(() => expect(result.current.preview).not.toBeNull());
-    act(() => result.current.apply({ mode: "contain" }));
+    act(() => result.current.apply(WHOLE_IMAGE));
     expect(result.current.applying).toBe(true);
-    act(() => result.current.apply({ mode: "contain" }));
+    act(() => result.current.apply(WHOLE_IMAGE));
     act(() => result.current.cancel());
     await waitFor(() => expect(result.current.preview).toBeNull());
     expect(result.current.applying).toBe(false);
@@ -158,7 +159,7 @@ describe("useThumbnailUpload", () => {
 
   it("プレビューが無いときの適用とやめるは何もしない", () => {
     const { result } = setup();
-    act(() => result.current.apply({ mode: "contain" }));
+    act(() => result.current.apply(WHOLE_IMAGE));
     act(() => result.current.cancel());
     expect(compose.encodeComposition).not.toHaveBeenCalled();
   });
@@ -169,7 +170,7 @@ describe("useThumbnailUpload", () => {
     const { result, onChanged } = setup({ ...video, contentVersion: undefined });
     act(() => result.current.choose(png()));
     await waitFor(() => expect(result.current.preview).not.toBeNull());
-    act(() => result.current.apply({ mode: "contain" }));
+    act(() => result.current.apply(WHOLE_IMAGE));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(client.uploadThumbnailImage).toHaveBeenCalledWith(7, expect.any(File), "");
   });

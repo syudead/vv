@@ -640,9 +640,11 @@ refuses another type or a file over 64 MB on the failure line before sending
 anything, and spins while it reads the picked file and while it sends. A
 readable file opens `Preview thumbnail`, an `EditorDialog` whose stage shows
 the image in the card's 16:9 thumbnail frame exactly as it will be stored:
-`Whole image` (the default) or `Fill frame`, which adds `Zoom` and lets the
-owner drag the image, or move it with the arrow keys and zoom with `+` and
-`-`. `Use as thumbnail` closes it and sends; `Cancel`, `×` and Esc send
+the owner drags the image anywhere (or moves it with the arrow keys), zooms it
+with `Zoom`, the wheel, `+` and `-`, turns it a quarter at a time, picks what
+fills the empty space, and returns to `Whole image` or `Fill frame` with one
+button, while the part outside the frame shows faintly around it.
+`Use as thumbnail` closes it and sends; `Cancel`, `×` and Esc send
 nothing
 ([thumbnail editing](thumbnail-editing.md#the-page-frames-the-image-before-it-is-sent)).
 While an uploaded image is the thumbnail,
