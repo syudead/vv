@@ -132,10 +132,11 @@ Face repositories, each URL pinned to a commit.
 | ArcFace r50 | `immich-app/buffalo_l`, `recognition/model.onnx` (InsightFace, non-commercial) | 174 MB |
 
 A recognizer needs the runtime, YuNet and its own model. Each file is written
-under `<data>/face/.tmp/` and moved into place only when its hash matches:
-the archive is unpacked into `<data>/face/runtime-v<N>/` and must then hold
-exactly the files whose hashes `mdm` pins for that archive, and the models go
-to `<data>/face/models/`. Downloads use the process's proxy environment
+under `<data>/face/.tmp/`, which a download empties first, and moved into
+place only when its hash matches: the archive is unpacked into
+`<data>/face/runtime-v<N>/` and must then hold exactly the files whose hashes
+`mdm` pins for that archive, with the execute bit on the loader and `mdm-face`
+on Linux, and the models go to `<data>/face/models/`. Downloads use the process's proxy environment
 (`HTTPS_PROXY`), because the plugin proxy is chosen for plugin traffic only.
 
 The download state is not stored. At startup `mdm` hashes the files against
@@ -161,9 +162,10 @@ stateDiagram-v2
 | Event | Effect |
 | --- | --- |
 | Turning the feature on, or switching the recognizer while on | Downloads what the recognizer needs that is missing or differs; a download for the other recognizer is cancelled |
-| Turning the feature off | Cancels a running download; the files already verified stay |
+| Turning the feature off | Cancels a running download; the files already verified stay, and a recognizer whose helper had not greeted is `absent` until the next start probes it |
 | Startup while on | Resumes a download only when files are missing; a file that differs stays `failed` until the owner downloads again |
 | A download ends | The helper is started once: a `Hello` of another protocol version, or no `Hello`, is `helper_start` |
+| Any helper start | The runtime is hashed against its pins again first; a runtime that no longer matches is not started and is `hash_mismatch` |
 | Downloading again after a failure, with no file missing | The helper is started once again instead of the state turning `ready` unchecked |
 | A recognizer switch | Increases `face.generation` in the settings' transaction |
 
@@ -180,6 +182,7 @@ started again on the next one, and a cancelled request stops it.
 | Storing the download state in the settings | It would disagree with the files after a crash or a deleted folder; the hashes are the state |
 | Keeping the runtime archive to verify it at startup | It doubles the disk use; the per-file pins built into `mdm` verify the unpacked files |
 | A hash manifest written into the runtime folder | Anyone who can write the folder could replace `mdm-face` and its hash together; the trust root must be the `mdm` binary |
+| Starting the helper from a file descriptor or an immutable copy of the verified files | A short window between the check and the start remains, but a writer of the data folder as the service user can already change the database and settings |
 | Downloading again at startup a file that differs | The owner would not see that a file broke; the settings page shows `failed` and offers the download |
 
 ## From faces to people

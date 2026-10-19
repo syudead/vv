@@ -38,6 +38,15 @@ type Platform struct {
 
 func (p Platform) windows() bool { return strings.HasPrefix(p.Name, "windows-") }
 
+// executables lists the runtime files that need an execute bit: on Linux the loader, which is started, and
+// mdm-face, the program it runs. Windows has no execute bit.
+func (p Platform) executables() []string {
+	if p.windows() {
+		return nil
+	}
+	return []string{"lib/" + p.Loader, "mdm-face"}
+}
+
 // zipped reports whether the archive is a ZIP, by its published asset name; the downloaded file's name says
 // nothing about its format.
 func (p Platform) zipped() bool { return strings.HasSuffix(p.Archive.URL, ".zip") }

@@ -112,6 +112,8 @@ type Helper struct {
 	command    HelperCommand
 	launch     Launcher
 	recognizer domain.FaceRecognizer
+	// verify, when set, checks the helper's files before each launch.
+	verify func() error
 	// startFailed is told about every failed start, so a stale runtime marks the download state failed.
 	startFailed func(error)
 
@@ -218,6 +220,11 @@ func (h *Helper) running(ctx context.Context) (*helperProcess, error) {
 }
 
 func (h *Helper) start(ctx context.Context) (*helperProcess, error) {
+	if h.verify != nil {
+		if err := h.verify(); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrHelperStart, err)
+		}
+	}
 	proc, err := h.launch(h.command)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrHelperStart, err)

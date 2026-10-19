@@ -48,6 +48,9 @@ type Manager struct {
 	run   *download
 	// failed is the last download's or start's failure, for the recognizer it was for.
 	failed *recognizerFailure
+	// unprobed holds the recognizers whose download was cancelled before the helper greeted; their files alone do
+	// not make them ready.
+	unprobed map[domain.FaceRecognizer]bool
 }
 
 type download struct {
@@ -87,7 +90,10 @@ func New(opts Options) *Manager {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Manager{opts: opts, logger: logger.With(slog.String("component", "face-runtime"))}
+	return &Manager{
+		opts: opts, logger: logger.With(slog.String("component", "face-runtime")),
+		unprobed: map[domain.FaceRecognizer]bool{},
+	}
 }
 
 // Supported reports whether a runtime is published for this platform.
@@ -132,9 +138,7 @@ func (m *Manager) Check() {
 		if !m.Supported() {
 			return
 		}
-		files := map[string]fileState{
-			runtimeKey: verifyRuntime(m.runtimeDir(), m.opts.Catalog.Platform.Files),
-		}
+		files := map[string]fileState{runtimeKey: m.verifyRuntime(m.runtimeDir())}
 		models := append([]Model{m.opts.Catalog.Detector}, mapValues(m.opts.Catalog.Recognizers)...)
 		for _, model := range models {
 			files[model.File] = verifyModel(filepath.Join(m.modelsDir(), model.File), model.SHA256)
@@ -143,6 +147,25 @@ func (m *Manager) Check() {
 		m.files = files
 		m.mu.Unlock()
 	})
+}
+
+func (m *Manager) verifyRuntime(dir string) fileState {
+	p := m.opts.Catalog.Platform
+	return verifyRuntime(dir, p.Files, p.executables())
+}
+
+// verifyBeforeStart hashes the runtime again right before a helper starts, so files changed after the startup
+// check are not run. A runtime that no longer matches is marked, so downloading again replaces it.
+func (m *Manager) verifyBeforeStart() error {
+	m.Check()
+	state := m.verifyRuntime(m.runtimeDir())
+	if state == fileOK {
+		return nil
+	}
+	m.mu.Lock()
+	m.files[runtimeKey] = state
+	m.mu.Unlock()
+	return fail(domain.FaceRuntimeHashMismatch, errors.New("the runtime no longer matches its pinned files"))
 }
 
 func mapValues(models map[domain.FaceRecognizer]Model) []Model {
@@ -178,6 +201,9 @@ func (m *Manager) Status(r domain.FaceRecognizer) domain.FaceRuntimeStatus {
 			state.State = domain.FaceRuntimeAbsent
 		}
 	}
+	if m.unprobed[r] {
+		state.State = domain.FaceRuntimeAbsent
+	}
 	return state
 }
 
@@ -203,9 +229,9 @@ func (m *Manager) Start(r domain.FaceRecognizer) error {
 		// Another Start won the race; the app serializes its calls, so this one is for the same recognizer.
 		return nil
 	}
-	// A retry after a failure for r probes the helper again even when every file is in place, since a helper_start
-	// failure leaves the files verified.
-	retry := m.failed != nil && m.failed.recognizer == r
+	// A retry after a failure for r, or a download cancelled before the helper greeted, probes the helper again even
+	// when every file is in place, since neither leaves a file unverified.
+	retry := (m.failed != nil && m.failed.recognizer == r) || m.unprobed[r]
 	m.failed = nil
 	var missing []item
 	for _, it := range m.items(r) {
@@ -252,16 +278,22 @@ func (m *Manager) download(ctx context.Context, d *download, missing []item) {
 	defer m.mu.Unlock()
 	m.run = nil
 	switch {
+	case err == nil:
+		delete(m.unprobed, d.recognizer)
+		m.logger.Info("the face runtime is ready", slog.String("recognizer", string(d.recognizer)))
 	case ctx.Err() != nil:
-	case err != nil:
+		m.unprobed[d.recognizer] = true
+	default:
 		m.logger.Warn("the face runtime download failed", slog.Any("error", err))
 		m.failed = &recognizerFailure{recognizer: d.recognizer, reason: reasonOf(err)}
-	default:
-		m.logger.Info("the face runtime is ready", slog.String("recognizer", string(d.recognizer)))
 	}
 }
 
 func (m *Manager) fetchAll(ctx context.Context, d *download, missing []item) error {
+	// A process that ended mid-download leaves .tmp behind, and unpacking refuses to overwrite a file.
+	if err := os.RemoveAll(m.tmpDir()); err != nil {
+		return fail(domain.FaceRuntimeDisk, err)
+	}
 	if err := os.MkdirAll(m.tmpDir(), 0o755); err != nil {
 		return fail(domain.FaceRuntimeDisk, err)
 	}
@@ -293,7 +325,7 @@ func (m *Manager) fetchItem(ctx context.Context, d *download, it item) error {
 	if err := unpack(tmp, m.opts.Catalog.Platform.zipped(), root, staged); err != nil {
 		return fail(domain.FaceRuntimeDisk, err)
 	}
-	if verifyRuntime(staged, m.opts.Catalog.Platform.Files) != fileOK {
+	if m.verifyRuntime(staged) != fileOK {
 		return fail(domain.FaceRuntimeHashMismatch, errors.New("the unpacked runtime does not match its pinned files"))
 	}
 	if err := os.RemoveAll(m.runtimeDir()); err != nil {
@@ -313,7 +345,7 @@ func diskErr(err error) error {
 func (m *Manager) probe(ctx context.Context, r domain.FaceRecognizer) error {
 	h := m.newHelper(r, nil)
 	if err := h.Start(ctx); err != nil {
-		return fail(domain.FaceRuntimeHelperStart, err)
+		return fail(startReason(err), err)
 	}
 	if err := h.Close(); err != nil {
 		m.logger.Warn("the face helper did not stop cleanly", slog.Any("error", err))
@@ -327,12 +359,24 @@ func (m *Manager) Helper(r domain.FaceRecognizer) *Helper {
 		m.logger.Warn("the face helper did not start", slog.Any("error", err))
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		m.failed = &recognizerFailure{recognizer: r, reason: domain.FaceRuntimeHelperStart}
+		m.failed = &recognizerFailure{recognizer: r, reason: startReason(err)}
 	})
 }
 
+// startReason is hash_mismatch for a runtime that failed its check before the start, and helper_start otherwise.
+func startReason(err error) domain.FaceRuntimeFailure {
+	var f *failure
+	if errors.As(err, &f) {
+		return f.reason
+	}
+	return domain.FaceRuntimeHelperStart
+}
+
 func (m *Manager) newHelper(r domain.FaceRecognizer, startFailed func(error)) *Helper {
-	return &Helper{command: m.helperCommand(r), launch: m.opts.Launch, recognizer: r, startFailed: startFailed}
+	return &Helper{
+		command: m.helperCommand(r), launch: m.opts.Launch, recognizer: r,
+		verify: m.verifyBeforeStart, startFailed: startFailed,
+	}
 }
 
 // helperCommand starts mdm-face through the bundled loader on Linux, so it runs under the runtime's glibc on any

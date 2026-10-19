@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -442,4 +443,161 @@ func TestHelperThatNeverGreetsFailsTheDownloadAfterTheHandshakeTimeout(t *testin
 			t.Fatalf("the download ended after %v, want the handshake timeout %v", elapsed, handshakeTimeout)
 		}
 	})
+}
+
+func TestStartReplacesStagingLeftByAnInterruptedUnpack(t *testing.T) {
+	f := newFixture(t)
+	stale := filepath.Join(f.dir, ".tmp", "runtime-v1", "mdm-face")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, []byte("half written"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	m := f.manager()
+
+	if err := m.Start(domain.FaceRecognizerSFaceInt8); err != nil {
+		t.Fatal(err)
+	}
+	waitDownload(m)
+
+	if got := m.Status(domain.FaceRecognizerSFaceInt8); got.State != domain.FaceRuntimeReady {
+		t.Fatalf("Status = %+v, want ready", got)
+	}
+}
+
+func TestDownloadCancelledDuringTheHandshakeIsProbedOnTheNextStart(t *testing.T) {
+	f := newFixture(t)
+	launched := make(chan struct{})
+	var launches atomic.Int64
+	launch := func(cmd HelperCommand) (Process, error) {
+		if launches.Add(1) == 1 {
+			close(launched)
+			return pipeProcess(func(in io.Reader, _ io.Writer) { _, _ = io.Copy(io.Discard, in) }), nil
+		}
+		return f.launch(cmd)
+	}
+	m := New(Options{Dir: f.dir, Catalog: f.catalog, Client: f.server.Client(), Launch: launch})
+	if err := m.Start(domain.FaceRecognizerSFaceInt8); err != nil {
+		t.Fatal(err)
+	}
+	<-launched
+
+	m.Stop()
+
+	if got := m.Status(domain.FaceRecognizerSFaceInt8); got.State != domain.FaceRuntimeAbsent {
+		t.Fatalf("Status after a cancelled handshake = %+v, want absent", got)
+	}
+	requests := f.server.requests.Load()
+	if err := m.Start(domain.FaceRecognizerSFaceInt8); err != nil {
+		t.Fatal(err)
+	}
+	waitDownload(m)
+	if got := m.Status(domain.FaceRecognizerSFaceInt8); got.State != domain.FaceRuntimeReady {
+		t.Fatalf("Status after the next start = %+v, want ready", got)
+	}
+	if n := launches.Load(); n != 2 {
+		t.Fatalf("helper starts = %d, want 2", n)
+	}
+	if n := f.server.requests.Load(); n != requests {
+		t.Fatalf("requests after the next start = %d, want %d", n, requests)
+	}
+}
+
+func TestRuntimeWithoutExecuteBitsIsFailedAndUnpackedAgain(t *testing.T) {
+	f := newFixture(t)
+	m := f.manager()
+	if err := m.Start(domain.FaceRecognizerSFaceInt8); err != nil {
+		t.Fatal(err)
+	}
+	waitDownload(m)
+	rt := filepath.Join(f.dir, "runtime-v1")
+	executables := []string{filepath.Join(rt, "mdm-face"), filepath.Join(rt, "lib", "ld-linux-x86-64.so.2")}
+	for _, name := range executables {
+		if err := os.Chmod(name, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	restarted := f.manager()
+	got := restarted.Status(domain.FaceRecognizerSFaceInt8)
+	if got.State != domain.FaceRuntimeFailed || got.Reason != domain.FaceRuntimeHashMismatch {
+		t.Fatalf("Status = %+v, want failed with hash_mismatch", got)
+	}
+	if err := restarted.Start(domain.FaceRecognizerSFaceInt8); err != nil {
+		t.Fatal(err)
+	}
+	waitDownload(restarted)
+
+	if got := restarted.Status(domain.FaceRecognizerSFaceInt8); got.State != domain.FaceRuntimeReady {
+		t.Fatalf("Status after downloading again = %+v, want ready", got)
+	}
+	for _, name := range executables {
+		if info, err := os.Stat(name); err != nil || info.Mode().Perm()&0o100 == 0 {
+			t.Fatalf("%s = %v, %v; want an executable file", name, info, err)
+		}
+	}
+}
+
+// replaceHelper swaps mdm-face after the manager verified the runtime, as another writer of the data folder could.
+func replaceHelper(t *testing.T, f *fixture) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(f.dir, "runtime-v1", "mdm-face"), []byte("another helper"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestProbeOfARuntimeChangedAfterItsCheckFailsWithoutStartingAndDownloadingAgainReplacesIt(t *testing.T) {
+	f := newFixture(t)
+	f.hello = faceproto.Hello{Version: faceproto.Version + 1, Recognizer: "sface_int8"}
+	m := f.manager()
+	if err := m.Start(domain.FaceRecognizerSFaceInt8); err != nil {
+		t.Fatal(err)
+	}
+	waitDownload(m)
+	replaceHelper(t, f)
+	f.hello = faceproto.Hello{Version: faceproto.Version, Recognizer: "sface_int8"}
+
+	if err := m.Start(domain.FaceRecognizerSFaceInt8); err != nil {
+		t.Fatal(err)
+	}
+	waitDownload(m)
+
+	got := m.Status(domain.FaceRecognizerSFaceInt8)
+	if got.State != domain.FaceRuntimeFailed || got.Reason != domain.FaceRuntimeHashMismatch {
+		t.Fatalf("Status = %+v, want failed with hash_mismatch", got)
+	}
+	if len(f.commands) != 1 {
+		t.Fatalf("helper starts = %d, want only the first download's", len(f.commands))
+	}
+	if err := m.Start(domain.FaceRecognizerSFaceInt8); err != nil {
+		t.Fatal(err)
+	}
+	waitDownload(m)
+	if got := m.Status(domain.FaceRecognizerSFaceInt8); got.State != domain.FaceRuntimeReady {
+		t.Fatalf("Status after downloading again = %+v, want ready", got)
+	}
+}
+
+func TestAnalysisHelperOfARuntimeChangedAfterItsCheckDoesNotStart(t *testing.T) {
+	f := newFixture(t)
+	m := f.manager()
+	if err := m.Start(domain.FaceRecognizerSFaceInt8); err != nil {
+		t.Fatal(err)
+	}
+	waitDownload(m)
+	replaceHelper(t, f)
+
+	err := m.Helper(domain.FaceRecognizerSFaceInt8).Start(context.Background())
+
+	if !errors.Is(err, ErrHelperStart) {
+		t.Fatalf("Start error = %v, want ErrHelperStart", err)
+	}
+	if len(f.commands) != 1 {
+		t.Fatalf("helper starts = %d, want only the download's probe", len(f.commands))
+	}
+	got := m.Status(domain.FaceRecognizerSFaceInt8)
+	if got.State != domain.FaceRuntimeFailed || got.Reason != domain.FaceRuntimeHashMismatch {
+		t.Fatalf("Status = %+v, want failed with hash_mismatch", got)
+	}
 }

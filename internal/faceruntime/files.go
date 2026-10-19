@@ -15,6 +15,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/syudead/vv/internal/domain"
@@ -77,9 +78,10 @@ func verifyModel(name, sha string) fileState {
 	return fileOK
 }
 
-// verifyRuntime checks that dir holds exactly the pinned files, each with its pinned hash; an added file, a link
-// or a missing file makes it bad, since the helper loads libraries from the folder by name.
-func verifyRuntime(dir string, files map[string]string) fileState {
+// verifyRuntime checks that dir holds exactly the pinned files, each with its pinned hash, and that each of
+// executables has an execute bit; an added file, a link or a missing file makes it bad, since the helper loads
+// libraries from the folder by name. A missing execute bit makes it bad, so downloading again unpacks it anew.
+func verifyRuntime(dir string, files map[string]string, executables []string) fileState {
 	if _, err := os.Lstat(dir); errors.Is(err, fs.ErrNotExist) {
 		return fileAbsent
 	}
@@ -98,6 +100,11 @@ func verifyRuntime(dir string, files map[string]string) fileState {
 		}
 		if got, err := hashFile(name); err != nil || got != want {
 			return fmt.Errorf("%s does not match its pin", rel)
+		}
+		if slices.Contains(executables, filepath.ToSlash(rel)) {
+			if info, err := d.Info(); err != nil || info.Mode().Perm()&0o111 == 0 {
+				return fmt.Errorf("%s is not executable", rel)
+			}
 		}
 		seen++
 		return nil
