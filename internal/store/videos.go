@@ -22,7 +22,10 @@ const videoColumnsTemplate = `videos.id, rep.path as path, rep.title as title, r
 	videos.added_at, videos.indexed_at, videos.content_key, {userKey} as user_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
-	{public} as public, {favorite} as favorite, ` + overrideColumns + `, ` + editedAtColumn
+	{public} as public, {favorite} as favorite, ` + overrideColumns + `, ` + editedAtColumn + `, ` + buildColumns
+
+// Column order matches scanVideo.
+const buildColumns = `videos.thumbnail_build, videos.seek_thumbnail_build, videos.preview_build`
 
 // Windows recognizes both slash styles; other systems treat backslash as filename data, shared by listing and search-key rules.
 func registrationSeparators() []rune {
@@ -241,7 +244,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 		&video.ContentKey, &video.UserKey, &durationMs, &width, &height, &displayAspectRatio, &container, &videoCodec, &audioCodec,
 		&playable, &unplayableReason, &probeState, &probeError, &probeErrorCode, &thumbnailState, &seekThumbnailState, &previewState,
 		&public, &favorite, &displayName, &thumbnailPositionMs, &thumbnailRevision, &thumbnailImageRevision,
-		&thumbnailImageOrigin, &editedAt,
+		&thumbnailImageOrigin, &editedAt, &video.Builds.Thumbnail, &video.Builds.SeekThumbnail, &video.Builds.Preview,
 	)
 	if err != nil {
 		return domain.Video{}, err

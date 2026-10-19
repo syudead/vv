@@ -338,6 +338,8 @@ type fakeGenerator struct {
 	outputs               []string
 	seekLayouts           []domain.SeekSpriteLayout
 	publishedLayouts      []domain.SeekSpriteLayout
+	// The force flag of each seek sprite and preview publish.
+	publishForces []bool
 
 	sprites           map[string]domain.SeekSprite
 	sheets            map[string][][]byte
@@ -507,11 +509,12 @@ func (f *fakeGenerator) stashCalls() []string {
 }
 
 func (f *fakeGenerator) PublishSeekThumbnails(
-	contentKey string, layout domain.SeekSpriteLayout, write func(string) (bool, error),
+	contentKey string, layout domain.SeekSpriteLayout, force bool, write func(string) (bool, error),
 ) (domain.Substitution, error) {
 	f.mu.Lock()
 	f.publishedLayouts = append(f.publishedLayouts, layout)
-	adopted := f.seekPublished
+	f.publishForces = append(f.publishForces, force)
+	adopted := f.seekPublished && !force
 	f.mu.Unlock()
 	if adopted {
 		return f.publishedSubstitution, nil
@@ -524,8 +527,11 @@ func (f *fakeGenerator) PublishSeekThumbnails(
 }
 
 func (f *fakeGenerator) PublishPreview(
-	ctx context.Context, contentKey string, write func(string) error, current func(context.Context) (bool, error),
+	ctx context.Context, contentKey string, force bool, write func(string) error, current func(context.Context) (bool, error),
 ) error {
+	f.mu.Lock()
+	f.publishForces = append(f.publishForces, force)
+	f.mu.Unlock()
 	if err := write("tmp/preview/" + contentKey); err != nil {
 		return err
 	}

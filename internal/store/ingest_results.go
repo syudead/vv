@@ -200,7 +200,7 @@ func (s *IngestStore) setStageStateForJob(
 		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	res, err := tx.ExecContext(ctx, `update videos set `+column+` = ?, indexed_at = ?
+	res, err := tx.ExecContext(ctx, `update videos set `+column+` = ?, indexed_at = ?`+buildIncrement(kind, job, succeeded)+`
 		where id = ? and content_key = ? and exists (
 			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
 		and location_generation = ?`,
@@ -240,6 +240,22 @@ func (s *IngestStore) setStageStateForJob(
 		return false, err
 	}
 	return true, nil
+}
+
+// buildColumnsByKind names the column that counts a kind's forced rebuilds; probe and fingerprint publish no artifact URL.
+var buildColumnsByKind = map[domain.JobKind]string{
+	domain.JobThumbnail:     "thumbnail_build",
+	domain.JobSeekThumbnail: "seek_thumbnail_build",
+	domain.JobPreview:       "preview_build",
+}
+
+// buildIncrement is the SET clause that counts a forced job's successful rebuild, so artifact URLs change with it.
+func buildIncrement(kind domain.JobKind, job domain.Job, succeeded bool) string {
+	column, ok := buildColumnsByKind[kind]
+	if !ok || !succeeded || !job.Force {
+		return ""
+	}
+	return `, ` + column + ` = ` + column + ` + 1`
 }
 
 // SetSeekThumbnailStateForJob checks the claimed identity and queues fingerprints on completion, including rebuilt
@@ -283,7 +299,8 @@ func (s *IngestStore) CompletePreviewForContent(ctx context.Context, job domain.
 	}
 	defer func() { _ = tx.Rollback() }()
 	now := time.Now().Unix()
-	res, err := tx.ExecContext(ctx, `update videos set preview_state = 'done', indexed_at = ?
+	res, err := tx.ExecContext(ctx, `update videos set preview_state = 'done', indexed_at = ?`+
+		buildIncrement(domain.JobPreview, job, true)+`
 		where id = ? and content_key = ?`, now, job.VideoID, job.ContentKey)
 	if err != nil {
 		return false, err

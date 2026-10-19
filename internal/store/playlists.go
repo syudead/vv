@@ -129,7 +129,8 @@ func playlistCoverVideoExpr(alias string) string {
 func playlistCovers(ctx context.Context, tx *sql.Tx, id int64) ([]domain.FolderPreview, error) {
 	rows, err := tx.QueryContext(ctx, `select v.id, v.content_key, v.preview_state,
 			(select ov.thumbnail_position_ms from video_overrides ov where ov.content_key = v.content_key and v.content_key <> ''),
-			(select ov.thumbnail_revision from video_overrides ov where ov.content_key = v.content_key and v.content_key <> '')
+			(select ov.thumbnail_revision from video_overrides ov where ov.content_key = v.content_key and v.content_key <> ''),
+			v.thumbnail_build, v.seek_thumbnail_build, v.preview_build
 		from playlist_items i join videos v on v.id = `+playlistCoverVideoExpr("i")+`
 		where i.playlist_id = ? and v.thumbnail_state = ?
 		order by i.position, i.id limit ?`,
@@ -143,7 +144,8 @@ func playlistCovers(ctx context.Context, tx *sql.Tx, id int64) ([]domain.FolderP
 		var cover domain.FolderPreview
 		var preview string
 		var position, revision sql.NullInt64
-		if err := rows.Scan(&cover.VideoID, &cover.ContentKey, &preview, &position, &revision); err != nil {
+		if err := rows.Scan(&cover.VideoID, &cover.ContentKey, &preview, &position, &revision,
+			&cover.Builds.Thumbnail, &cover.Builds.SeekThumbnail, &cover.Builds.Preview); err != nil {
 			return nil, fmt.Errorf("cannot read the playlist covers: %w", err)
 		}
 		cover.PreviewState = domain.PreviewState(preview)

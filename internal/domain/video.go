@@ -174,6 +174,15 @@ type Video struct {
 	// A nonzero ThumbnailImageRevision replaces the position revision in thumbnail URLs.
 	ThumbnailImageRevision int64
 	ThumbnailImageOrigin   ThumbnailImageOrigin
+	// Builds count forced rebuilds of each artifact and version its URLs only; zero means never rebuilt.
+	Builds ArtifactBuilds
+}
+
+// ArtifactBuilds counts the forced rebuilds of a video's thumbnail, seek sprite and hover preview.
+type ArtifactBuilds struct {
+	Thumbnail     int64
+	SeekThumbnail int64
+	Preview       int64
 }
 
 // PlayableInBrowser requires completed probing even when Playable is set.

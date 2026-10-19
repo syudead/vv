@@ -60,13 +60,14 @@ type ArtifactStore interface {
 	PublishThumbnail(contentKey string, write func(output, poster string) error) error
 	// restore removes the replacement when no prior thumbnail existed; discard drops only the backup.
 	StashThumbnail(contentKey string) (restore func() error, discard func(), err error)
-	// Reuse complete sprites without write, replacing incomplete legacy directories during
-	// publication; return persisted substitution provenance or SubstitutionUnknown for old metadata.
-	PublishSeekThumbnails(contentKey string, layout domain.SeekSpriteLayout,
+	// Reuse complete sprites without write unless forced, replacing incomplete legacy directories during
+	// publication; return persisted substitution provenance or SubstitutionUnknown for old metadata. A forced
+	// publish keeps the published sprite readable until the new one replaces it.
+	PublishSeekThumbnails(contentKey string, layout domain.SeekSpriteLayout, force bool,
 		write func(outputDir string) (fullDecode bool, err error)) (domain.Substitution, error)
-	// Reuse complete previews; current=false immediately before publication returns ErrPreviewStale
-	// without publishing.
-	PublishPreview(ctx context.Context, contentKey string, write func(output string) error,
+	// Reuse complete previews unless forced; current=false immediately before publication returns
+	// ErrPreviewStale without publishing. A forced publish keeps the published preview readable until replaced.
+	PublishPreview(ctx context.Context, contentKey string, force bool, write func(output string) error,
 		current func(context.Context) (bool, error)) error
 	SeekSprite(contentKey string) (domain.SeekSprite, error)
 	// Sheet indexes start at zero.
@@ -234,45 +235,50 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 			return false, err
 		}
 		// Exhausted failure is recorded with the job transaction; a missing selected frame must not
-		// delete the video.
-		if video.ThumbnailState != domain.ThumbnailStateDone {
-			// Record first-frame substitution atomically with success; explicit positions never substitute.
-			substitution := domain.SubstitutionUnknown
-			image, err := i.store.ThumbnailImage(ctx, job.ContentKey)
-			if err != nil {
-				return false, err
-			}
-			source, err := i.store.ThumbnailImageSource(ctx, job.ContentKey)
-			if err != nil {
-				return false, err
-			}
-			if image == nil && sourceErr != nil {
-				// The applied image was reverted while waiting; unreadable media cannot supply its replacement
-				// frame.
-				return false, sourceErr
-			}
-			if err := i.files.PublishThumbnail(job.ContentKey, func(output, poster string) error {
-				if image != nil {
-					substitution = domain.SubstitutionNone
-					return writeThumbnailImages(output, image, poster, source)
-				}
-				if video.ThumbnailPositionMs != nil {
-					substitution = domain.SubstitutionNone
-					return i.generator.ThumbnailAt(ctx, job.LocationPath, *video.ThumbnailPositionMs, output, poster)
-				}
-				firstFrame, err := i.generator.Thumbnail(ctx, job.LocationPath, durationOf(video), output, poster)
-				substitution = domain.SubstitutionOf(firstFrame)
-				return err
-			}); err != nil {
-				return false, err
-			}
-			if _, err := i.store.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone, substitution); err != nil {
+		// delete the video. A forced job rebuilds a done thumbnail, replacing the file in one rename.
+		if video.ThumbnailState != domain.ThumbnailStateDone || job.Force {
+			if err := i.publishJobThumbnail(ctx, job, video, sourceErr); err != nil {
 				return false, err
 			}
 		}
 		// Recheck references after generation because scans may delete the video concurrently.
 		return true, nil
 	})
+}
+
+// publishJobThumbnail publishes the applied image, else the chosen position, else the automatic frame, and records
+// done with the first-frame substitution; explicit positions never substitute.
+func (i *Ingest) publishJobThumbnail(ctx context.Context, job domain.Job, video domain.Video, sourceErr error) error {
+	substitution := domain.SubstitutionUnknown
+	image, err := i.store.ThumbnailImage(ctx, job.ContentKey)
+	if err != nil {
+		return err
+	}
+	source, err := i.store.ThumbnailImageSource(ctx, job.ContentKey)
+	if err != nil {
+		return err
+	}
+	if image == nil && sourceErr != nil {
+		// The applied image was reverted while waiting; unreadable media cannot supply its replacement frame.
+		return sourceErr
+	}
+	if err := i.files.PublishThumbnail(job.ContentKey, func(output, poster string) error {
+		if image != nil {
+			substitution = domain.SubstitutionNone
+			return writeThumbnailImages(output, image, poster, source)
+		}
+		if video.ThumbnailPositionMs != nil {
+			substitution = domain.SubstitutionNone
+			return i.generator.ThumbnailAt(ctx, job.LocationPath, *video.ThumbnailPositionMs, output, poster)
+		}
+		firstFrame, err := i.generator.Thumbnail(ctx, job.LocationPath, durationOf(video), output, poster)
+		substitution = domain.SubstitutionOf(firstFrame)
+		return err
+	}); err != nil {
+		return err
+	}
+	_, err = i.store.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone, substitution)
+	return err
 }
 
 // SetThumbnailPosition validates duration/bounds and publishes under the generation lock, with nil
@@ -523,7 +529,7 @@ func (i *Ingest) SeekThumbnails(ctx context.Context, job domain.Job) error {
 	return i.artifacts.generate(ctx, job.ContentKey, artifactSeekThumbnails, func() (bool, error) {
 		// Reuse persisted substitution provenance after restart or across duplicate content; unknown
 		// legacy provenance must not alter existing issue rows.
-		substitution, err := i.files.PublishSeekThumbnails(job.ContentKey, layout, func(outputDir string) (bool, error) {
+		substitution, err := i.files.PublishSeekThumbnails(job.ContentKey, layout, job.Force, func(outputDir string) (bool, error) {
 			return i.generator.SeekSprite(ctx, job.LocationPath, outputDir, layout)
 		})
 		if err != nil {
@@ -563,7 +569,7 @@ func (i *Ingest) Preview(ctx context.Context, job domain.Job) error {
 	durationMs := *video.DurationMs
 	// Serialize generation and completion with deletion, allowing other artifact kinds concurrently.
 	return i.artifacts.generate(ctx, job.ContentKey, artifactPreview, func() (bool, error) {
-		if err := i.files.PublishPreview(ctx, job.ContentKey, func(output string) error {
+		if err := i.files.PublishPreview(ctx, job.ContentKey, job.Force, func(output string) error {
 			return i.generator.Preview(ctx, job.LocationPath, output, durationMs)
 		}, validateContent); err != nil {
 			return false, err
