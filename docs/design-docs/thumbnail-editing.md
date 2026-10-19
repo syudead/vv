@@ -230,8 +230,8 @@ image does not.
 
 | Control | Effect |
 | --- | --- |
-| Drag, arrow keys | Move the image anywhere, until only part of it stays in the frame. While dragging, an axis within 1.5% of the long side of the frame's centre or of an edge-to-edge alignment snaps to it |
-| `Zoom`, wheel, `+` and `-` | 0.25× to 16× of the size that shows the whole image, about the frame's centre |
+| Drag, arrow keys | Move the image anywhere, until 10% of the frame's side (or the whole image, when smaller) still overlaps the frame. While dragging, an axis within 1.5% of the long side of the frame's centre or of an edge-to-edge alignment snaps to it |
+| `Zoom`, wheel, `+` and `-` | 0.25× to 16× of the size that shows the whole image, about the frame's centre; up to four times the fill zoom for an image too narrow to fill the frame at 16× |
 | `Whole image` (default) | Centred at 1×. An image within 1 px of the frame's aspect fills it |
 | `Fill frame` | Centred at the zoom that just covers the frame |
 | `Turn left`, `Turn right` | A quarter turn; free angles are not offered, as covers and photos rarely need them |

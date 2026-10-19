@@ -6,6 +6,7 @@ import {
   fillFrame,
   frameAspect,
   frameSize,
+  maxZoom,
   panBy,
   placeImage,
   rotateBy,
@@ -98,8 +99,13 @@ describe("panBy", () => {
     expect(moved.x).toBeCloseTo(0.1);
     expect(moved.y).toBeCloseTo(-0.1);
     const far = panBy(portrait, wide, WHOLE_IMAGE, 1e6, 1e6);
-    expect(far.x).toBeCloseTo(0.5 + 576 / 2048 / 2);
-    expect(far.y).toBeCloseTo(1);
+    // At least 10% of the frame's side, 204.8px across and 115.2px down, stays in the frame.
+    expect(far.x).toBeCloseTo(0.5 + (288 - 204.8) / 2048);
+    expect(far.y).toBeCloseTo(0.5 + (576 - 115.2) / 1152);
+    const tiny = { width: 10, height: 20 };
+    const small = panBy(tiny, wide, { ...WHOLE_IMAGE, zoom: 0.25 }, 1e6, 0);
+    const placed = placeImage(tiny, wide, small);
+    expect(placed.x + placed.width).toBeCloseTo(2048);
   });
 });
 
@@ -125,6 +131,17 @@ describe("zoomTo と rotateBy", () => {
     });
     expect(zoomTo(WHOLE_IMAGE, 100).zoom).toBe(16);
     expect(zoomTo(WHOLE_IMAGE, 0.01).zoom).toBe(0.25);
+  });
+
+  it("極端に細い画像は 16 倍を越えても枠を埋め、その 4 倍まで拡大できる", () => {
+    const sliver = { width: 100, height: 2000 };
+    const filled = fillFrame(sliver, wide, WHOLE_IMAGE);
+    expect(coversFrame(sliver, wide, filled)).toBe(true);
+    expect(filled.zoom).toBeGreaterThan(16);
+    const limit = maxZoom(sliver, wide, 0);
+    expect(limit).toBeCloseTo(filled.zoom * 4);
+    expect(zoomTo(filled, 1e6, limit).zoom).toBeCloseTo(limit);
+    expect(maxZoom(portrait, wide, 0)).toBe(16);
   });
 
   it("回転は 4 分の 1 ずつで一周する", () => {

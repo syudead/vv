@@ -21,7 +21,7 @@ import {
   type Fit,
   fillFrame,
   frameSize,
-  MAX_ZOOM,
+  maxZoom,
   MIN_ZOOM,
   panBy,
   rotateBy,
@@ -186,12 +186,20 @@ function PreviewStage({
     } else if (event.key === "+" || event.key === "=" || event.key === "-") {
       event.preventDefault();
       const factor = event.key === "-" ? 1 / ZOOM_STEP : ZOOM_STEP;
-      onFit((current) => zoomTo(current, current.zoom * factor));
+      onFit((current) =>
+        zoomTo(current, current.zoom * factor, maxZoom(image, size, current.rotation)),
+      );
     }
   };
 
   const onWheel = (event: WheelEvent<HTMLCanvasElement>) => {
-    onFit((current) => zoomTo(current, current.zoom * Math.exp(-event.deltaY * 0.002)));
+    onFit((current) =>
+      zoomTo(
+        current,
+        current.zoom * Math.exp(-event.deltaY * 0.002),
+        maxZoom(image, size, current.rotation),
+      ),
+    );
   };
 
   return (
@@ -280,12 +288,14 @@ function FramingControls({
         <Slider
           aria-label={text.zoom}
           min={Math.log2(MIN_ZOOM)}
-          max={Math.log2(MAX_ZOOM)}
+          max={Math.log2(maxZoom(image, size, fit.rotation))}
           step={0.01}
           value={[Math.log2(fit.zoom)]}
           disabled={disabled}
           onValueChange={([value]) =>
-            onFit((current) => zoomTo(current, 2 ** (value ?? 0)))
+            onFit((current) =>
+              zoomTo(current, 2 ** (value ?? 0), maxZoom(image, size, current.rotation)),
+            )
           }
         />
       </div>

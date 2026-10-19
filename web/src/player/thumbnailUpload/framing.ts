@@ -7,6 +7,9 @@ export const MIN_ZOOM = 0.25;
 
 export const MAX_ZOOM = 16;
 
+/** Dragging stops while this share of the frame's side, or the whole image when it is smaller, still overlaps the frame. */
+const KEEP_VISIBLE = 0.1;
+
 export type Backdrop = "blur" | "black";
 
 export type QuarterTurn = 0 | 90 | 180 | 270;
@@ -90,7 +93,7 @@ export function fillZoom(image: Size, canvas: Size, rotation: QuarterTurn): numb
 /** The turned image's rectangle on the canvas. A side within 1px of the frame's snaps to it so no seam shows. */
 export function placeImage(image: Size, canvas: Size, fit: Fit): Rect {
   const shown = turned(image, fit.rotation);
-  const scale = wholeScale(shown, canvas) * clampZoom(fit.zoom);
+  const scale = wholeScale(shown, canvas) * Math.max(MIN_ZOOM, fit.zoom);
   const width = snap(shown.width * scale, canvas.width);
   const height = snap(shown.height * scale, canvas.height);
   return {
@@ -117,11 +120,13 @@ export function coversFrame(image: Size, canvas: Size, fit: Fit): boolean {
   );
 }
 
-/** Move by output-image pixels; the image's centre stays where some of it remains in the frame. */
+/** Move by output-image pixels; the image stops while part of it still overlaps the frame. */
 export function panBy(image: Size, canvas: Size, fit: Fit, dx: number, dy: number): Fit {
   const placed = placeImage(image, canvas, fit);
-  const limitX = 0.5 + placed.width / canvas.width / 2;
-  const limitY = 0.5 + placed.height / canvas.height / 2;
+  const limit = (length: number, frame: number) =>
+    0.5 + (length / 2 - Math.min(length, frame * KEEP_VISIBLE)) / frame;
+  const limitX = limit(placed.width, canvas.width);
+  const limitY = limit(placed.height, canvas.height);
   return {
     ...fit,
     x: clamp(fit.x + dx / canvas.width, -limitX, limitX),
@@ -148,9 +153,9 @@ export function snapToFrame(image: Size, canvas: Size, fit: Fit, threshold: numb
 }
 
 /** Zoom about the frame's centre, so the part of the image there stays there. */
-export function zoomTo(fit: Fit, zoom: number): Fit {
-  const next = clampZoom(zoom);
-  const ratio = next / clampZoom(fit.zoom);
+export function zoomTo(fit: Fit, zoom: number, max = MAX_ZOOM): Fit {
+  const next = clamp(zoom, MIN_ZOOM, max);
+  const ratio = next / Math.max(MIN_ZOOM, fit.zoom);
   return { ...fit, zoom: next, x: fit.x * ratio, y: fit.y * ratio };
 }
 
@@ -159,15 +164,21 @@ export function wholeImage(fit: Fit): Fit {
 }
 
 export function fillFrame(image: Size, canvas: Size, fit: Fit): Fit {
-  return { ...fit, x: 0, y: 0, zoom: clampZoom(fillZoom(image, canvas, fit.rotation)) };
+  return {
+    ...fit,
+    x: 0,
+    y: 0,
+    zoom: Math.max(MIN_ZOOM, fillZoom(image, canvas, fit.rotation)),
+  };
 }
 
 export function rotateBy(fit: Fit, turn: 90 | -90): Fit {
   return { ...fit, rotation: ((fit.rotation + turn + 360) % 360) as QuarterTurn };
 }
 
-function clampZoom(zoom: number): number {
-  return clamp(zoom, MIN_ZOOM, MAX_ZOOM);
+/** A very narrow image needs more than MAX_ZOOM to fill the frame; allow four times its fill. */
+export function maxZoom(image: Size, canvas: Size, rotation: QuarterTurn): number {
+  return Math.max(MAX_ZOOM, fillZoom(image, canvas, rotation) * 4);
 }
 
 function clamp(value: number, min: number, max: number): number {
