@@ -275,6 +275,11 @@ func (s *ScanIndexStore) DeleteVideoLocations(ctx context.Context, ids []int64) 
 	return s.db.commit(ctx, tx, &c)
 }
 
+// ForcedVideos lists, in id order, the videos the force rescan has already forced, so a resumed walk skips them.
+func (s *ScanIndexStore) ForcedVideos(ctx context.Context, scanID int64) ([]int64, error) {
+	return forcedVideos(ctx, s.db.sql, scanID)
+}
+
 // UpdateLocationCreatedAt fixes location facts without edit timestamps, versions or events; zero restores the modification-time fallback.
 func (s *ScanIndexStore) UpdateLocationCreatedAt(ctx context.Context, locationID int64, createdAt time.Time) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
