@@ -80,6 +80,7 @@ const (
 	ActivityKindAutoTag            ActivityKind = "auto_tag"
 	ActivityKindBundle             ActivityKind = "bundle"
 	ActivityKindDismiss            ActivityKind = "dismiss"
+	ActivityKindFaceMerge          ActivityKind = "face_merge"
 	ActivityKindImport             ActivityKind = "import"
 	ActivityKindMakeRepresentative ActivityKind = "make_representative"
 	ActivityKindMediaFolderRemove  ActivityKind = "media_folder_remove"
@@ -105,6 +106,8 @@ func (e ActivityKind) Valid() bool {
 	case ActivityKindBundle:
 		return true
 	case ActivityKindDismiss:
+		return true
+	case ActivityKindFaceMerge:
 		return true
 	case ActivityKindImport:
 		return true

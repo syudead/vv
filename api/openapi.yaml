@@ -9160,6 +9160,7 @@ components:
         - work_info_apply
         - media_folder_remove
         - organize_undo
+        - face_merge
         - pipeline
         - undo
 

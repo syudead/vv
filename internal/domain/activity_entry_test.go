@@ -96,6 +96,9 @@ func TestActivityUndoOffered(t *testing.T) {
 		Tags: []ActivityEntryTag{{TagID: 1, UndoneBy: 4}, {TagID: 2}}}
 	allUndone := tags
 	allUndone.Tags = []ActivityEntryTag{{TagID: 1, UndoneBy: 4}}
+	merge := ActivityEntry{Kind: ActivityFaceMerge, Status: ActivityDone, Outcome: ActivityCompleted, Decider: ActivityByRule}
+	mergeUndone := merge
+	mergeUndone.UndoneBy = 7
 	for name, tc := range map[string]struct {
 		entry ActivityEntry
 		want  bool
@@ -107,6 +110,8 @@ func TestActivityUndoOffered(t *testing.T) {
 		"owner operation":  {owner, false},
 		"tag left":         {tags, true},
 		"every tag undone": {allUndone, false},
+		"automatic merge":  {merge, true},
+		"merge undone":     {mergeUndone, false},
 	} {
 		if got := tc.entry.UndoOffered(); got != tc.want {
 			t.Errorf("%s: UndoOffered() = %v, want %v", name, got, tc.want)

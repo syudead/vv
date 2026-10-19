@@ -2506,6 +2506,7 @@ export const en = {
       work_info_apply: "Work info applied",
       media_folder_remove: "Media folder removed",
       organize_undo: "Drag and drop undone",
+      face_merge: "Person merged",
       pipeline: "Import run",
       undo: "Undo",
     } satisfies Record<ActivityKind, string>,

@@ -260,6 +260,7 @@ func run(opts runOptions) error {
 		Undoers: map[domain.ActivityKind]app.ActivityUndoer{
 			domain.ActivityAutoTag:          autoTagger,
 			domain.ActivityVersionJudgement: versionJudgementActivity,
+			domain.ActivityFaceMerge:        app.NewFaceMergeActivity(db.Activity()),
 		},
 	})
 	subscriptions := subscribeEvents(bus, eventSubscribers{

@@ -125,6 +125,9 @@ var ErrCreditParentCycle = errors.New("the parent organization would form a cycl
 
 var ErrMergeSameCredit = errors.New("cannot merge an entity into itself")
 
+// ErrPersonNotProvisional reports an automatic merge whose source has been named since the merge was decided.
+var ErrPersonNotProvisional = errors.New("the person is not provisional")
+
 // ErrExternalIDTaken wraps CreditExternalIDTakenError and maps to external_id_taken (409).
 var ErrExternalIDTaken = errors.New("external ID is held by another entity")
 

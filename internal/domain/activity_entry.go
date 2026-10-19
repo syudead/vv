@@ -34,6 +34,8 @@ const (
 	ActivityOrganizeUndo       ActivityKind = "organize_undo"
 	// ActivityFaceAnalysis records one video's face analysis and the people it linked to the video.
 	ActivityFaceAnalysis ActivityKind = "face_analysis"
+	// ActivityFaceMerge records an automatic merge of a provisional person into another person.
+	ActivityFaceMerge ActivityKind = "face_merge"
 	// ActivityPipeline groups one video's import run with the follow-up processes that run started.
 	ActivityPipeline ActivityKind = "pipeline"
 	// ActivityUndo inherits the feature of the entry it reverses.
@@ -82,6 +84,7 @@ var activityKindFeatures = map[ActivityKind]ActivityFeature{
 	ActivityMediaFolderRemove:  ActivityFeatureMediaFolders,
 	ActivityOrganizeUndo:       ActivityFeatureOrganize,
 	ActivityFaceAnalysis:       ActivityFeatureFaceRecognition,
+	ActivityFaceMerge:          ActivityFeatureFaceRecognition,
 }
 
 // Feature returns false for undo entries, whose feature comes from the reversed entry.
@@ -269,7 +272,8 @@ func (e ActivityEntry) RetryOffered() bool {
 	return slices.Contains(activityRetryKinds, e.Kind)
 }
 
-// UndoOffered accepts automatic same/different judgements not already undone; auto_tag uses TagUndoOffered per tag.
+// UndoOffered accepts automatic same/different judgements and completed automatic merges not already undone; auto_tag
+// uses TagUndoOffered per tag.
 func (e ActivityEntry) UndoOffered() bool {
 	if e.UndoneBy != 0 || !e.Decider.automatic() {
 		return false
@@ -279,6 +283,8 @@ func (e ActivityEntry) UndoOffered() bool {
 		return e.Status == ActivityDone && (e.Outcome == ActivitySame || e.Outcome == ActivityDifferent)
 	case ActivityAutoTag:
 		return slices.ContainsFunc(e.Tags, func(tag ActivityEntryTag) bool { return e.TagUndoOffered(tag) })
+	case ActivityFaceMerge:
+		return e.Status == ActivityDone && e.Outcome == ActivityCompleted
 	default:
 		return false
 	}

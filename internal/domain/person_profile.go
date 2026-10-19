@@ -131,6 +131,27 @@ func FillPersonProfile(target PersonProfile, sources []PersonProfile, today time
 	return out
 }
 
+// RevertFilledProfile clears each field a merge filled, from before to filled, while current still holds the filled
+// value, so an undo keeps every field the owner changed since.
+func RevertFilledProfile(current, before, filled PersonProfile) PersonProfile {
+	out := current
+	for _, field := range PersonProfileFields {
+		copyField := personProfileCopies[field]
+		if profileFieldEqual(before, filled, copyField) || !profileFieldEqual(current, filled, copyField) {
+			continue
+		}
+		copyField(&out, before)
+	}
+	return out
+}
+
+func profileFieldEqual(a, b PersonProfile, copyField func(*PersonProfile, PersonProfile)) bool {
+	var onlyA, onlyB PersonProfile
+	copyField(&onlyA, a)
+	copyField(&onlyB, b)
+	return onlyA.Equal(onlyB)
+}
+
 type profileFill int
 
 const (

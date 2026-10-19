@@ -330,6 +330,46 @@ Writes to people and credits move or drop face rows in their own transaction
 | Deleting a person | Their appearances become dropped and lose centroid and crop, keeping only their tracks; the face image, its vector and the candidate pairs go with the person |
 | Merging people | The sources' appearances and candidate pairs move to the target, and a pair that would join the target to itself is deleted; a target that takes a source's face also takes that face's current vector |
 | A work-information write that removes a performer | The video's appearances of that person become dropped |
+| A work-information write that removes a credit from a merge target | The credit's row of each `face_merge` not yet undone is marked `owner_changed` |
 
 The kept tracks are what let a re-analysis carry a dropped appearance over, so
 a deleted face is not recreated and a removed link is not made again.
+
+## An automatic merge can be undone
+
+`FaceStore.MergeProvisional` merges a provisional person into another person
+as an ordinary merge and records a `face_merge` entry in the same transaction
+([`face_merges.go`](../../internal/store/face_merges.go)). The entry's subject
+is the target person, and it keeps what the merge moved.
+
+| Record | Contents |
+| --- | --- |
+| `activity_entry_person_merges` | The source and target ids, and a JSON snapshot: the source's row, profile, favorite, face and vector, appearance ids, candidate pairs and the smart folders whose rule named it; the target's profile before and after, and the favorite and face revision the merge gave it |
+| `activity_entry_merge_credits` | Each credit the source had, by user key and role, with `target_had` when the target already had it |
+
+Undo re-creates the source under its old id, which SQLite's `AUTOINCREMENT`
+never hands out again, so links to the person page work again. It then moves
+back only what the owner has not changed since.
+
+| What the merge moved | Undo |
+| --- | --- |
+| A credit the target did not have | Moves back to the source in place, unless marked `owner_changed` |
+| A credit the target already had | Stays on the target; the source gets its own row after the role's others, unless marked |
+| A profile field, the favorite or the face the target took | Taken back only while the target still holds the value the merge gave it |
+| Appearances and candidate pairs | Back to the source; the target's copy of a moved pair goes unless the owner decided it since |
+| A smart folder rule's person | Back to the source while the rule still names the target |
+
+Editing a video's credits writes no activity entry, so the owner's later
+changes cannot be read from entry ids as auto-tag undo reads them. Instead every
+work-information write (the details editor, the library selection, plugin
+apply and `/api/v1`) marks, in its transaction, the recorded credits it removes
+from the target, so a credit the owner removed and added again is the owner's
+and stays. A name the owner gives the target is never touched. Undo of an entry
+whose target was deleted, or whose source id exists again, records
+`already_reverted` and changes nothing.
+
+| Rejected | Why |
+| --- | --- |
+| Keep merged sources as hidden rows | Every read of people and credits would have to skip them |
+| Compare the credits at undo | A credit the owner removed and added again looks unchanged |
+| Make the owner's merges undoable too | Only automatic decisions are undone from the activity log, and owner merges write no entry |
