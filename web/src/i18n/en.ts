@@ -391,6 +391,10 @@ const errorReasons = {
   person_image_invalid:
     "The file isn't a PNG, JPEG or still WebP up to 120 megapixels, or it can't be read.",
   person_image_too_large: "The image is too large: up to 64 MB.",
+  person_image_no_face:
+    "No face was found in this image. Choose a photo where the face is clear.",
+  person_image_many_faces:
+    "This image shows more than one face. Choose one with a single face.",
   merge_same_organization: "An organization can't be merged into itself.",
   external_id_taken: "Another entry already has this ID.",
   blocked_address: ({ host }) =>
@@ -408,6 +412,11 @@ const errorReasons = {
     tagName === undefined
       ? "A kind with that name already exists."
       : `A kind named "${tagName}" already exists.`,
+  face_candidate_not_found: "These two people are no longer offered as a match.",
+  face_appearance_not_found: "This face is no longer linked to this person.",
+  face_recognition_off:
+    "Face recognition is turned off. Turn it on under Settings, Face recognition.",
+  face_recognition_unsupported: "vv has no face runtime for this platform.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
@@ -1502,6 +1511,7 @@ export const en = {
       "Organization to merge into",
     ),
     loading: "Loading…",
+    unnamedPerson: "Unnamed person",
     columns: {
       name: "Name",
       videos: "Videos",
@@ -1569,6 +1579,7 @@ export const en = {
           ? `"${name}" isn't on any videos. This can't be undone.`
           : `"${name}" will be removed from ${videos(count)}. This can't be undone.`,
       organizationNote: "Organizations inside it stay and lose their parent.",
+      personNote: "Faces found in videos for this person are deleted too.",
       submit: "Delete",
       submitting: "Deleting…",
     },
@@ -1577,6 +1588,15 @@ export const en = {
       youngestFirst: "Youngest first",
       oldestFirst: "Oldest first",
       noFavorites: "No favorite people yet",
+      nameFilter: {
+        label: "Name",
+        any: "Any",
+        named: "Named",
+        unnamed: "Unnamed",
+      },
+      noUnnamed: "No unnamed people",
+      noUnnamedDescription:
+        "Unnamed people appear here when face recognition finds a face it doesn't know.",
       cardMeta: (age: string | null, count: number) =>
         age === null ? videos(count) : `${age} · ${videos(count)}`,
       newDialog: {
@@ -1592,6 +1612,7 @@ export const en = {
       loadFailed: (reason: string) => `Couldn't load this person: ${reason}`,
       aliases: (list: readonly string[]) => `Also known as ${list.join(" · ")}`,
       edit: "Edit",
+      name: "Name…",
       showInLibrary: "Show in library",
       more: "More actions",
       delete: "Delete",
@@ -1663,6 +1684,31 @@ export const en = {
       gone: "This person no longer exists",
       backToPeople: "Back to people",
       mergedInto: (name: string) => `Merged into "${name}"`,
+      candidates: {
+        heading: "Same person?",
+        open: (name: string) => `Open ${name}`,
+        similarity: (value: number) =>
+          `${formatNumber(Math.round(value * 100))}% similar`,
+        confirm: "Same person",
+        confirmFor: (name: string) => `Same person as ${name}`,
+        dismiss: "Not the same",
+        dismissFor: (name: string) => `Not the same as ${name}`,
+        merged: (name: string) => `Merged "${name}"`,
+        confirmFailed: (reason: string) => `Couldn't merge: ${reason}`,
+        dismissFailed: (reason: string) => `Couldn't dismiss: ${reason}`,
+      },
+      faces: {
+        heading: "Faces in videos",
+        notInLibrary: "Not in the library",
+        spanLink: (title: string, start: string) => `${title} from ${start}`,
+        loadFailed: (reason: string) => `Couldn't load the faces: ${reason}`,
+        loadingMore: "Loading more faces…",
+        notThisPerson: "Not this person",
+        notThisPersonFor: (title: string) => `Not this person in ${title}`,
+        split: "Split into a new unnamed person",
+        openSplit: "Open",
+        splitFailed: (reason: string) => `Couldn't split the face: ${reason}`,
+      },
       pluginFetch: {
         entry: "Fetch info…",
         title: (name: string) => `Fetch info for ${name}`,
@@ -2349,6 +2395,12 @@ export const en = {
       remove: (name: string) => `Remove ${name}`,
       newMark: "New",
       newChip: (name: string) => `${name}, new`,
+      unnamedPeople: "Unnamed people",
+      addAs: (name: string) => `Add as ${name}`,
+      unnamedRow: (label: string, count: number, hint: string | null) =>
+        hint === null
+          ? `${label}, ${videos(count)}`
+          : `${label}, ${videos(count)}, ${hint}`,
       link: "Link",
       removeLink: "Remove link",
       addLink: "Add link",
@@ -2555,6 +2607,7 @@ export const en = {
       versions: "Versions",
       media_folders: "Media folders",
       organize: "Drag and drop",
+      face_recognition: "Face recognition",
     } satisfies Record<ActivityFeature, string>,
     deciderValue: {
       ai: "AI",
@@ -2591,6 +2644,8 @@ export const en = {
       work_info_apply: "Work info applied",
       media_folder_remove: "Media folder removed",
       organize_undo: "Drag and drop undone",
+      face_analysis: "Face analysis",
+      face_merge: "Person merged",
       pipeline: "Import run",
       undo: "Undo",
     } satisfies Record<ActivityKind, string>,
@@ -2647,6 +2702,19 @@ export const en = {
       gone: "A video left the library",
       undid: (chip: string) => `Undid ${chip}`,
       undidTag: (name: string) => `Undid tag ${name}`,
+      undidLink: (name: string) => `Undid the link to ${name}`,
+      linked: (names: string) => `Linked ${names}`,
+      createdPerson: (name: string) => `${name} (new)`,
+      linksUndone: (count: number) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} link undone`,
+          other: `${formatNumber(count)} links undone`,
+        }),
+      allLinksUndone: "All links undone",
+      noMainPerson: "No main person found",
+      // A merged source is always provisional, so it is named by credits.unnamedPerson.
+      mergedInto: (source: string, target: string) => `Merged "${source}" into ${target}`,
+      personGone: "Deleted person",
       undoneSame: "Same video",
       undoneDifferent: "Different videos",
       alreadyReverted: "Already changed back by you",
@@ -2684,6 +2752,9 @@ export const en = {
       retry: "Retry",
       undo: "Undo",
       undoTags: "Undo tags…",
+      undoLinks: "Undo links…",
+      allLinks: "All links",
+      openPerson: "Open person",
     },
     toast: {
       undone: "Undone. vv won't decide this again on its own",
@@ -2740,6 +2811,7 @@ export const en = {
         tasks: "Tasks",
         stages: "Stages",
         tags: "Tags",
+        people: "People",
         partOf: "Part of",
       },
       fact: {
@@ -2747,6 +2819,7 @@ export const en = {
         process: "Process",
         video: "Video",
         videos: "Videos",
+        person: "Person",
         decider: "Decided by",
         started: "Started",
         updated: "Updated",
@@ -2765,6 +2838,8 @@ export const en = {
       stagesNotRecorded: "Stage details weren't recorded for this import.",
       pairMember: (label: string) => `Duplicate check · with ${label}`,
       undoTag: (name: string) => `Undo tag ${name}`,
+      undoLink: (name: string) => `Undo link to ${name}`,
+      newPerson: "New person",
       pipelineAttention: (kind: string, reason: string) => `${kind}: ${reason}`,
     },
   },
@@ -3307,6 +3382,7 @@ export const en = {
       scan: "Scan",
       library: "Library",
       "auto-tagging": "Auto-tagging",
+      "face-recognition": "Face recognition",
       connections: "Connections",
       plugins: "Plugins",
       conversion: "Video conversion",
@@ -3504,6 +3580,64 @@ export const en = {
       },
       connectionReadFailed: (reason: string) =>
         `Couldn't read the Ollama connection: ${reason}`,
+    },
+    faceRecognition: {
+      progressHeading: "Progress",
+      off: "Face recognition is off.",
+      offHint:
+        "Turn on “Use face recognition” under Recognition to find people in videos.",
+      queue: (queued: number, running: number, done: number, failed: number) =>
+        `Waiting ${formatNumber(queued)} · Analysing ${formatNumber(running)} · Done ${formatNumber(done)} · Failed ${formatNumber(failed)}`,
+      runMissing: "Analyse videos not yet analysed",
+      runAll: "Analyse all videos again",
+      started: (count: number) =>
+        count === 0
+          ? "There were no videos to analyse"
+          : selectPlural(count, {
+              one: `${formatNumber(count)} video was queued for face analysis`,
+              other: `${formatNumber(count)} videos were queued for face analysis`,
+            }),
+      startFailed: (reason: string) => `Couldn't start face analysis: ${reason}`,
+      lastFailure: "Last failure",
+      heading: "Recognition",
+      description:
+        "Finds the main people of each video by their faces and links them to the video as performers. A face nobody is known for becomes an unnamed person, which you name on its page.",
+      enabled: "Use face recognition",
+      enabledHint:
+        "Off: no video is analysed and nothing is downloaded. On: the face runtime and the chosen recognizer are downloaded once, and each imported video is analysed.",
+      downloading: "Downloading the face runtime and recognizer…",
+      downloadedBytes: (done: string, total: string) => `${done} of ${total}`,
+      ready: "Ready",
+      failedTitle: "Face recognition isn't ready",
+      failedReason: {
+        network: "The download couldn't finish. Check the connection and try again.",
+        hash_mismatch:
+          "A downloaded file didn't match what vv expected. Downloading again replaces it.",
+        disk: "The files couldn't be written to the data folder.",
+        helper_start: "The face runtime couldn't start.",
+      },
+      downloadAgain: "Download again",
+      downloadFailed: (reason: string) => `Couldn't start the download: ${reason}`,
+      unsupportedTitle: "Not available on this platform",
+      unsupportedBody:
+        "vv has no face runtime for this platform, so face recognition can't be turned on here.",
+      recognizer: "Recognizer",
+      recognizerHint:
+        "Both find the same faces; the recognizer decides how faces are compared. Switching analyses every video again. Names you gave and merges you confirmed stay.",
+      recognizerName: { sface_int8: "SFace", arcface_r50: "ArcFace r50" },
+      nonCommercial: "Non-commercial",
+      nonCommercialLicense: "Non-commercial use only",
+      optionLine: (license: string, size: string) => `${license} · ${size}`,
+      switchTitle: (name: string) => `Switch to ${name}?`,
+      switchBody: (name: string, nonCommercial: boolean) =>
+        `Every video is analysed again with ${name}, which takes a while. Names you gave and merges you confirmed stay.` +
+        (nonCommercial ? ` ${name} is licensed for non-commercial use only.` : ""),
+      switchAction: "Switch",
+      saving: "Saving…",
+      saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
+      loading: "Loading the face recognition settings",
+      loadFailed: (reason: string) =>
+        `Couldn't load the face recognition settings: ${reason}`,
     },
     versionJudging: {
       heading: "Duplicate judging",

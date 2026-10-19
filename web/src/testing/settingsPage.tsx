@@ -63,6 +63,14 @@ function sectionResponses(): Record<string, () => Response> {
         tentativeThreshold: 0.5,
         queue: { queued: 0, running: 0, done: 0, failed: 0 },
       }),
+    "/api/settings/face-recognition": () =>
+      json({
+        enabled: false,
+        recognizer: "sface_int8",
+        recognizers: [],
+        runtime: { state: "absent" },
+        counts: { queued: 0, running: 0, done: 0, failed: 0 },
+      }),
     "/api/settings/version-judging": () => json({ enabled: false }),
     "/api/settings/comfyui": () => json({ apiKeySet: false, model: "flux2_klein_4b" }),
     "/api/work-info-plugins": () => json({ plugins: [] }),

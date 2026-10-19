@@ -15,7 +15,13 @@ import type { UiText } from "@/i18n";
 import { cn } from "@/lib/cn";
 import { isComposingKeyEvent } from "@/lib/ime";
 import { newlinePattern } from "@/lib/tagName";
-import { Command, CommandInput, CommandItem, CommandList } from "./shadcn/command";
+import {
+  Command,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "./shadcn/command";
 
 export interface NameChoice {
   id: string;
@@ -25,6 +31,16 @@ export interface NameChoice {
   meta?: ReactNode;
   /** Defaults to the accessible name derived from row content. */
   ariaLabel?: string;
+  /** Drawn before the label, such as a person's face. */
+  leading?: ReactNode;
+  /** Draws the label in muted-foreground, as a person without a name of their own. */
+  quiet?: boolean;
+}
+
+/** Rows under a heading after the ungrouped choices; the create row stays where the layout puts it. */
+export interface NameChoiceGroup {
+  heading: UiText;
+  choices: readonly NameChoice[];
 }
 
 export interface NameRules {
@@ -58,6 +74,7 @@ export default function NameCommand({
   value,
   onValueChange,
   choices,
+  group,
   exactChoice,
   onSelect,
   createLabel = null,
@@ -83,6 +100,8 @@ export default function NameCommand({
   value: string;
   onValueChange: (value: string) => void;
   choices: readonly NameChoice[];
+  /** A second, headed group of rows; empty or omitted draws no heading. */
+  group?: NameChoiceGroup;
   exactChoice: NameChoice | null;
   onSelect: (choice: NameChoice) => void;
   /** Creation requires a non-null label and no exactChoice. */
@@ -175,41 +194,30 @@ export default function NameCommand({
     onBeforeInput,
   };
 
-  if (layout === "popover") {
-    return (
-      <PopoverNameCommand
-        label={label}
-        choices={choices}
-        onSelect={onSelect}
-        createLabel={showCreate ? createLabel : null}
-        onCreate={() => onCreate?.(trimmed)}
-        commitSpelling={commitSpelling}
-        icon={icon}
-        busy={busy || searching}
-        blocked={blocked}
-        inputRef={inputRef}
-        inputProps={inputProps}
-        valueKey={value}
-        reasonText={reasonText}
-      />
-    );
-  }
+  const shownGroup = group !== undefined && group.choices.length > 0 ? group : undefined;
+
+  const shared: SharedProps = {
+    label,
+    choices,
+    group: shownGroup,
+    onSelect,
+    createLabel: showCreate ? createLabel : null,
+    onCreate: () => onCreate?.(trimmed),
+    commitSpelling,
+    icon,
+    busy: busy || searching,
+    blocked,
+    inputRef,
+    inputProps,
+    valueKey: value,
+    reasonText,
+  };
+
+  if (layout === "popover") return <PopoverNameCommand {...shared} />;
   return (
     <ListNameCommand
-      label={label}
+      {...shared}
       inline={layout === "inline"}
-      choices={choices}
-      onSelect={onSelect}
-      createLabel={showCreate ? createLabel : null}
-      onCreate={() => onCreate?.(trimmed)}
-      commitSpelling={commitSpelling}
-      icon={icon}
-      busy={busy || searching}
-      blocked={blocked}
-      inputRef={inputRef}
-      inputProps={inputProps}
-      valueKey={value}
-      reasonText={reasonText}
       onEscape={onEscape}
       frameClassName={frameClassName}
       chosenId={chosenId}
@@ -233,6 +241,7 @@ interface InputProps {
 interface SharedProps {
   label: UiText;
   choices: readonly NameChoice[];
+  group: NameChoiceGroup | undefined;
   onSelect: (choice: NameChoice) => void;
   createLabel: ReactNode | null;
   onCreate: () => void;
@@ -254,14 +263,32 @@ function ChoiceContent({
   choice: NameChoice;
   chosen?: boolean;
 }) {
+  const text = (
+    <span className="flex min-w-0 flex-col">
+      <span
+        className={cn(
+          "truncate",
+          chosen && "font-medium",
+          choice.quiet === true && "text-muted-foreground",
+        )}
+      >
+        {choice.label}
+      </span>
+      {choice.hint !== undefined && (
+        <span className="truncate text-xs text-muted-foreground">{choice.hint}</span>
+      )}
+    </span>
+  );
   return (
     <>
-      <span className="flex min-w-0 flex-col">
-        <span className={cn("truncate", chosen && "font-medium")}>{choice.label}</span>
-        {choice.hint !== undefined && (
-          <span className="truncate text-xs text-muted-foreground">{choice.hint}</span>
-        )}
-      </span>
+      {choice.leading === undefined ? (
+        text
+      ) : (
+        <span className="flex min-w-0 items-center gap-2">
+          {choice.leading}
+          {text}
+        </span>
+      )}
       {choice.meta !== undefined && (
         <span
           className={cn(
@@ -283,6 +310,7 @@ function ChoiceContent({
 function PopoverNameCommand({
   label,
   choices,
+  group,
   onSelect,
   createLabel,
   onCreate,
@@ -328,7 +356,7 @@ function PopoverNameCommand({
       className="bg-transparent"
     >
       <CommandInput ref={inputRef} icon={icon} {...inputProps} />
-      {(createLabel !== null || choices.length > 0) && (
+      {(createLabel !== null || choices.length > 0 || group !== undefined) && (
         <CommandList label={label}>
           {createLabel !== null && (
             <CommandItem value={createValue} disabled={blocked} onSelect={onCreate}>
@@ -336,17 +364,25 @@ function PopoverNameCommand({
             </CommandItem>
           )}
           {choices.map((choice) => (
-            <CommandItem
+            <PopoverChoice
               key={choice.id}
-              value={choice.id}
-              disabled={blocked}
-              aria-label={choice.ariaLabel}
-              onSelect={() => onSelect(choice)}
-              className="justify-between"
-            >
-              <ChoiceContent choice={choice} />
-            </CommandItem>
+              choice={choice}
+              blocked={blocked}
+              onSelect={onSelect}
+            />
           ))}
+          {group !== undefined && (
+            <CommandGroup heading={group.heading} className="p-0">
+              {group.choices.map((choice) => (
+                <PopoverChoice
+                  key={choice.id}
+                  choice={choice}
+                  blocked={blocked}
+                  onSelect={onSelect}
+                />
+              ))}
+            </CommandGroup>
+          )}
         </CommandList>
       )}
       {busy && (
@@ -360,6 +396,28 @@ function PopoverNameCommand({
   );
 }
 
+function PopoverChoice({
+  choice,
+  blocked,
+  onSelect,
+}: {
+  choice: NameChoice;
+  blocked: boolean;
+  onSelect: (choice: NameChoice) => void;
+}) {
+  return (
+    <CommandItem
+      value={choice.id}
+      disabled={blocked}
+      aria-label={choice.ariaLabel}
+      onSelect={() => onSelect(choice)}
+      className="justify-between"
+    >
+      <ChoiceContent choice={choice} />
+    </CommandItem>
+  );
+}
+
 /**
  * Override cmdk through asChild to control selection and expanded state; cmdk otherwise selects
  * the first row and forces the input open.
@@ -368,6 +426,7 @@ function ListNameCommand({
   label,
   inline,
   choices,
+  group,
   onSelect,
   createLabel,
   onCreate,
@@ -399,7 +458,11 @@ function ListNameCommand({
   const [activeIndex, setActiveIndex] = useState(-1);
   const listRef = useRef<HTMLDivElement | null>(null);
 
-  const rows: Row[] = choices.map((choice) => ({ value: choice.id, choice }));
+  const grouped = group?.choices ?? [];
+  const rows: Row[] = [...choices, ...grouped].map((choice) => ({
+    value: choice.id,
+    choice,
+  }));
   if (createLabel !== null) rows.push({ value: createValue, choice: null });
   const rowCount = rows.length;
 
@@ -483,7 +546,7 @@ function ListNameCommand({
     }
   }
 
-  const items = rows.map((row, index) => {
+  const rendered = rows.map((row, index) => {
     const chosen = row.choice !== null && row.choice.id === chosenId;
     const isActive = index === active;
     return (
@@ -532,7 +595,13 @@ function ListNameCommand({
           : "absolute top-full z-50 mt-1 max-h-combobox-list w-combobox-list rounded-md bg-popover py-1 shadow-elevated"
       }
     >
-      {items}
+      {rendered.slice(0, choices.length)}
+      {group !== undefined && (
+        <CommandGroup heading={group.heading} className="p-0">
+          {rendered.slice(choices.length, choices.length + grouped.length)}
+        </CommandGroup>
+      )}
+      {rendered.slice(choices.length + grouped.length)}
     </CommandList>
   );
 

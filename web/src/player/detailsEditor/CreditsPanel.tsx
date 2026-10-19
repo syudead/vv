@@ -9,6 +9,7 @@ import {
   workPersonRoles,
 } from "../../api/workInfo";
 import { t, type UiText } from "../../i18n";
+import { cn } from "../../lib/cn";
 import { Badge } from "../../ui/shadcn/badge";
 import { Button } from "../../ui/shadcn/button";
 import { FieldLegend, FieldSet, FieldTitle } from "../../ui/shadcn/field";
@@ -16,6 +17,7 @@ import type { PanelProps } from "./BasicsPanel";
 import CreditPicker, { type UnsavedName } from "./CreditPicker";
 import {
   type Chip,
+  chipLabel,
   chipsOf,
   type Draft,
   isNewChip,
@@ -120,37 +122,18 @@ function RoleRow({
           className="flex min-w-0 flex-wrap items-center gap-1.5"
         >
           {chips.map((chip) => (
-            <li key={chip.key} className="max-w-full min-w-0">
-              <Badge
-                variant="secondary"
-                title={chip.name}
-                className="h-auto min-h-6 max-w-full justify-start gap-0 pr-0 font-normal whitespace-normal"
-              >
-                <span className="min-w-0 wrap-anywhere">{chip.name}</span>
-                {isNewChip(chip) && (
-                  <span className="ml-1.5 shrink-0 text-xs text-muted-foreground">
-                    {t.player.detailsEditor.newMark}
-                  </span>
-                )}
-                <span aria-hidden="true" className="ml-1.5 h-4 w-px shrink-0 bg-input" />
-                <Button
-                  id={controlId(`chip-${chip.key}`)}
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t.player.detailsEditor.remove(chip.name)}
-                  aria-disabled={saving || undefined}
-                  onClick={() => remove(chip)}
-                  className="size-6 rounded-l-none rounded-r-sm [&_svg]:size-3"
-                  {...invalidProps(problem, `chip-${chip.key}`)}
-                >
-                  <X aria-hidden="true" />
-                </Button>
-              </Badge>
-            </li>
+            <CreditChip
+              key={chip.key}
+              chip={chip}
+              saving={saving}
+              problem={problem}
+              onRemove={() => remove(chip)}
+            />
           ))}
           <li className="max-w-full min-w-0">
             <CreditPicker
               kind={role.kind}
+              offerUnnamed={role.kind === "person" && role.role === "performer"}
               label={add}
               chips={chips}
               unsaved={unsavedOf(draft, role.kind)}
@@ -168,5 +151,51 @@ function RoleRow({
         ))}
       </div>
     </Fragment>
+  );
+}
+
+function CreditChip({
+  chip,
+  saving,
+  problem,
+  onRemove,
+}: {
+  chip: Chip;
+  saving: boolean;
+  problem: PanelProps["problem"];
+  onRemove: () => void;
+}) {
+  const label = chipLabel(chip);
+  const unnamed = !isNewChip(chip) && chip.provisional === true;
+  return (
+    <li className="max-w-full min-w-0">
+      <Badge
+        variant="secondary"
+        title={label}
+        className="h-auto min-h-6 max-w-full justify-start gap-0 pr-0 font-normal whitespace-normal"
+      >
+        <span className={cn("min-w-0 wrap-anywhere", unnamed && "text-muted-foreground")}>
+          {label}
+        </span>
+        {isNewChip(chip) && (
+          <span className="ml-1.5 shrink-0 text-xs text-muted-foreground">
+            {t.player.detailsEditor.newMark}
+          </span>
+        )}
+        <span aria-hidden="true" className="ml-1.5 h-4 w-px shrink-0 bg-input" />
+        <Button
+          id={controlId(`chip-${chip.key}`)}
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t.player.detailsEditor.remove(label)}
+          aria-disabled={saving || undefined}
+          onClick={onRemove}
+          className="size-6 rounded-l-none rounded-r-sm [&_svg]:size-3"
+          {...invalidProps(problem, `chip-${chip.key}`)}
+        >
+          <X aria-hidden="true" />
+        </Button>
+      </Badge>
+    </li>
   );
 }

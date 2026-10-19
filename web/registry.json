@@ -252,7 +252,7 @@
       "name": "person-face",
       "type": "registry:ui",
       "title": "PersonFace",
-      "description": "vv component: a person's face, or the UserRound placeholder in the same frame, in four shapes (card, profile, chip, compare); PersonFaceMark places a mark in a corner.",
+      "description": "vv component: a person's face, or the UserRound placeholder in the same frame, in six shapes (card, profile, chip, compare, judge, scene); PersonFaceMark places a mark in a corner.",
       "docs": "Usage rules: web/registry/rules/components.md#personface (item vv-rules).",
       "files": [
         {

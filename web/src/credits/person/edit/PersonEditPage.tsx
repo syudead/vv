@@ -16,6 +16,7 @@ import { FormPage } from "../../../ui/patterns/form-page";
 import { Field, FieldTitle } from "../../../ui/shadcn/field";
 import { Skeleton } from "../../../ui/shadcn/skeleton";
 import { useDocumentTitle } from "../../../videoList/pageHooks";
+import { creditDisplayName } from "../../displayName";
 import PersonGone from "../PersonGone";
 import { handPerson, useHandedPerson } from "../personHandoff";
 import { personPath } from "../personPath";
@@ -48,7 +49,9 @@ function PersonEditor({ id }: { id: number | null }) {
     },
   });
   const person = state.kind === "ready" ? state.person : undefined;
-  useDocumentTitle(person === undefined ? undefined : text.title(person.name));
+  useDocumentTitle(
+    person === undefined ? undefined : text.title(creditDisplayName(person)),
+  );
 
   if (person !== undefined) {
     return (
@@ -71,7 +74,7 @@ function PersonEditor({ id }: { id: number | null }) {
             if (!open) leaving.keepEditing();
           }}
           title={text.discardTitle}
-          description={text.discardText(person.name)}
+          description={text.discardText(creditDisplayName(person))}
           actionLabel={t.player.detailsEditor.discard}
           cancelLabel={t.player.detailsEditor.keepEditing}
           onConfirm={() => leaving.leave()}
@@ -195,7 +198,7 @@ function PersonForm({
 
   return (
     <FormPage
-      title={text.title(person.name)}
+      title={text.title(creditDisplayName(person))}
       actions={
         <EditorBand
           saving={saving}
@@ -214,7 +217,13 @@ function PersonForm({
         {
           key: "names",
           legend: text.namesAndLinks,
-          content: <NamesPanel {...panel} nameRef={nameRef} />,
+          content: (
+            <NamesPanel
+              {...panel}
+              nameRef={nameRef}
+              namePlaceholder={person.provisional ? t.credits.unnamedPerson : undefined}
+            />
+          ),
         },
       ]}
     />

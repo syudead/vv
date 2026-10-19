@@ -38,7 +38,10 @@ type Alias struct {
 type Credit struct {
 	Kind CreditKind
 	ID   int64
+	// Name is empty exactly when the credit is provisional.
 	Name string
+	// Provisional is true exactly when a person has no canonical name; organizations always have one.
+	Provisional bool
 	// Aliases use natural name order, breaking ties by the original string.
 	Aliases []Alias
 	// ExternalIDs are ordered by (source, value).
@@ -101,6 +104,8 @@ type CreditQuery struct {
 	Limit int
 	// FavoriteOnly keeps only favorite people; storage rejects it for organizations.
 	FavoriteOnly bool
+	// Provisional, when set, keeps only provisional (true) or named (false) people; storage rejects it for organizations.
+	Provisional *bool
 }
 
 type CreditPage struct {
@@ -119,6 +124,13 @@ type CreditMergeOutcome struct {
 var ErrCreditParentCycle = errors.New("the parent organization would form a cycle")
 
 var ErrMergeSameCredit = errors.New("cannot merge an entity into itself")
+
+// ErrPersonNotProvisional reports an automatic merge whose source has been named since the merge was decided.
+var ErrPersonNotProvisional = errors.New("the person is not provisional")
+
+// ErrFaceMergeRefused wraps a refusal of an automatic merge that trying again cannot change, such as a target whose
+// merged names would exceed their limits.
+var ErrFaceMergeRefused = errors.New("the automatic merge was refused")
 
 // ErrExternalIDTaken wraps CreditExternalIDTakenError and maps to external_id_taken (409).
 var ErrExternalIDTaken = errors.New("external ID is held by another entity")
@@ -158,6 +170,22 @@ func NormalizeCredit(input CreditInput) (CreditInput, error) {
 	if name == "" {
 		return CreditInput{}, invalidWorkInfo("name", WorkInfoEmpty, 0)
 	}
+	return normalizeCreditFields(name, input)
+}
+
+// NormalizeProvisionalCredit normalizes a person that stays without a canonical name; an alias needs a name, so any alias is reported as an empty name.
+func NormalizeProvisionalCredit(input CreditInput) (CreditInput, error) {
+	normalized, err := normalizeCreditFields("", input)
+	if err != nil {
+		return CreditInput{}, err
+	}
+	if len(normalized.Aliases) > 0 {
+		return CreditInput{}, invalidWorkInfo("name", WorkInfoEmpty, 0)
+	}
+	return normalized, nil
+}
+
+func normalizeCreditFields(name string, input CreditInput) (CreditInput, error) {
 	aliases, err := normalizeAliases(name, input.Aliases)
 	if err != nil {
 		return CreditInput{}, err

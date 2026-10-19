@@ -1840,6 +1840,92 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/settings/face-recognition:
+    get:
+      operationId: getFaceRecognitionSettings
+      summary: "Return face recognition settings, the runtime state and queue counts"
+      description: "Owner-only. The runtime state is read from the files under the data folder and the running download, never stored; while downloading, poll this resource for the progress. See docs/design-docs/face-recognition.md."
+      responses:
+        "200":
+          description: "Current settings, runtime state and queue counts"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaceRecognitionSettings"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    put:
+      operationId: updateFaceRecognitionSettings
+      summary: "Save face recognition settings"
+      description: "Owner-only. Turning it on starts the download of the runtime and the recognizer's model when they are absent or do not match their hashes; turning it off cancels a running download. A changed recognizer increases face.generation, deletes the old recognizer's vectors and queues again every video whose analysis is done or failed; a video never analysed waits for runs with missing. An unknown recognizer returns 400 invalid_request."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFaceRecognitionSettingsRequest"
+      responses:
+        "200":
+          description: "Saved settings, runtime state and queue counts"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaceRecognitionSettings"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/face-recognition/download:
+    post:
+      operationId: downloadFaceRuntime
+      summary: "Download the face runtime and the recognizer's model again"
+      description: "Owner-only; no body. Downloads what is absent or does not match its hash, after a failure for example, and returns 202 with the settings. While off returns 409 face_recognition_off; where no runtime is published returns 409 face_recognition_unsupported."
+      responses:
+        "202":
+          description: "Download started; settings with the runtime state"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaceRecognitionSettings"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: "Face recognition is off (`face_recognition_off`) or has no runtime for this platform (`face_recognition_unsupported`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/face-recognition/runs:
+    post:
+      operationId: startFaceRecognition
+      summary: "Queue library videos for face analysis"
+      description: "Owner-only. missing queues videos never analysed or whose analysis failed; all queues every video not being analysed. Returns the queued count. Videos queued while the runtime is not ready wait for it. While off returns 409 face_recognition_off. See docs/design-docs/face-recognition.md."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartFaceRecognitionRequest"
+      responses:
+        "202":
+          description: "Queued count"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaceRecognitionQueued"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: "Face recognition is off (`face_recognition_off`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/auto-tagging/check:
     post:
       operationId: checkAutoTaggingClassifier
@@ -2798,13 +2884,14 @@ paths:
     get:
       operationId: listPeople
       summary: "List people"
-      description: "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people."
+      description: "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people, and provisional keeps only provisional or only named people. Provisional people follow every named person in natural-name order, including as the tie-break of the other sorts."
       parameters:
         - $ref: "#/components/parameters/CreditQuery"
         - $ref: "#/components/parameters/CreditSort"
         - $ref: "#/components/parameters/CreditCursor"
         - $ref: "#/components/parameters/CreditLimit"
         - $ref: "#/components/parameters/CreditFavorite"
+        - $ref: "#/components/parameters/CreditProvisional"
       responses:
         "200":
           description: "People"
@@ -2951,7 +3038,7 @@ paths:
     put:
       operationId: uploadPersonImage
       summary: "Set a person's face from an uploaded image"
-      description: "Owner-only. Accepts multipart `image` (PNG, JPEG or static WebP) under the thumbnail upload's limits: 64 MiB with 1 MiB additional multipart overhead, and 120 million pixels. Fits it to at most 800 px on its long side, stores it as JPEG, replacing any earlier face, and returns Person with a new imageRevision. A body over the byte limit returns 413 person_image_too_large with limit. Unsupported, animated, unreadable or over-pixel images return 400 person_image_invalid. Missing person returns 404 person_not_found. Errors write nothing. After the body arrives, fitting continues despite disconnect, with a five-minute limit."
+      description: "Owner-only. Accepts multipart `image` (PNG, JPEG or static WebP) under the thumbnail upload's limits: 64 MiB with 1 MiB additional multipart overhead, and 120 million pixels. Fits it to at most 800 px on its long side, stores it as JPEG, replacing any earlier face, and returns Person with a new imageRevision. A body over the byte limit returns 413 person_image_too_large with limit. Unsupported, animated, unreadable or over-pixel images return 400 person_image_invalid. While face recognition is on and its runtime is ready, an image without a usable face returns 400 person_image_no_face and one with several returns 400 person_image_many_faces; without the runtime the face is not checked. Missing person returns 404 person_not_found. Errors write nothing. After the body arrives, fitting continues despite disconnect, with a five-minute limit."
       parameters:
         - $ref: "#/components/parameters/PersonId"
       requestBody:
@@ -2990,6 +3077,141 @@ paths:
                 $ref: "#/components/schemas/Person"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/people/{id}/face-candidates:
+    get:
+      operationId: listFaceCandidates
+      summary: "List a person's face candidates"
+      description: "Owner-only. Open (not dismissed) face candidate pairs the person takes part in, highest similarity first, each as the other person. Missing person returns 404 person_not_found."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      responses:
+        "200":
+          description: "Open pairs"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaceCandidateList"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/people/{id}/face-candidates/{otherId}/confirm:
+    post:
+      operationId: confirmFaceCandidate
+      summary: "Merge a face candidate pair"
+      description: "Owner-only; no body. Merges the provisional person of the open pair of id and otherId, in either order, into the other one through the ordinary merge and returns the merged person. Records no face_merge activity. No open pair of these two people returns 404 face_candidate_not_found; merge limits fail as mergePeople does."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - $ref: "#/components/parameters/FaceCandidateOtherId"
+      responses:
+        "200":
+          description: "Merged person"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Person"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/people/{id}/face-candidates/{otherId}/dismiss:
+    post:
+      operationId: dismissFaceCandidate
+      summary: "Dismiss a face candidate pair"
+      description: "Owner-only; no body. Marks the open pair of id and otherId, in either order, dismissed; a later analysis or face image never offers it again. No open pair of these two people returns 404 face_candidate_not_found."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - $ref: "#/components/parameters/FaceCandidateOtherId"
+      responses:
+        "204":
+          description: "Dismissed"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/people/{id}/appearances:
+    get:
+      operationId: listPersonAppearances
+      summary: "List a person's face appearances"
+      description: "Owner-only. The person's appearances that are not dropped, newest video (by added time) first, then by descending appearance ID; appearances whose content key no video has follow every appearance with a video. limit enables pagination with nextCursor; otherwise returns all. Missing person returns 404 person_not_found; an unreadable cursor returns 400 invalid_request with reason invalid_cursor."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - name: cursor
+          in: query
+          description: "Opaque nextCursor from the previous response; ignored without limit"
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: "Page size; omit for all appearances without nextCursor"
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        "200":
+          description: "Appearances"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaceAppearanceList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/people/{id}/appearances/{appearanceId}/split:
+    post:
+      operationId: splitFaceAppearance
+      summary: "Split a face appearance into a new person"
+      description: "Owner-only; no body. For \"Not this person\": in one transaction creates a provisional person whose face is the appearance's crop, moves the appearance to it, moves the video's performer credit of id to it unless another appearance of id in the same work still links that credit, and dismisses the pair of the two people so no automatic rule or candidate joins them again. Returns the new person. Missing person returns 404 person_not_found; an appearance that is dropped or linked to another person returns 404 face_appearance_not_found."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - $ref: "#/components/parameters/FaceAppearanceId"
+      responses:
+        "201":
+          description: "The new provisional person"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Person"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/face-appearances/{id}/crop:
+    get:
+      operationId: getFaceAppearanceCrop
+      summary: "Return a face appearance's crop"
+      description: "Owner-only. Returns the appearance's face crop as JPEG with `Cache-Control: private, max-age=86400`, since a crop is never rewritten and a new appearance gets a new ID. A missing appearance, one whose person was deleted, or one without a crop returns 404 not_found."
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: "Face appearance ID"
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        "200":
+          description: "Crop"
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -3091,13 +3313,14 @@ paths:
     get:
       operationId: listOrganizations
       summary: "List organizations"
-      description: "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite returns 400 invalid_request."
+      description: "Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite and provisional return 400 invalid_request."
       parameters:
         - $ref: "#/components/parameters/CreditQuery"
         - $ref: "#/components/parameters/CreditSort"
         - $ref: "#/components/parameters/CreditCursor"
         - $ref: "#/components/parameters/CreditLimit"
         - $ref: "#/components/parameters/CreditFavorite"
+        - $ref: "#/components/parameters/CreditProvisional"
       responses:
         "200":
           description: "Organizations"
@@ -3727,7 +3950,7 @@ paths:
           explode: true
           schema:
             type: array
-            maxItems: 9
+            maxItems: 10
             items:
               $ref: "#/components/schemas/ActivityFeature"
         - name: decider
@@ -3794,7 +4017,7 @@ paths:
     post:
       operationId: retryActivity
       summary: "Retry an activity operation"
-      description: "Owner-only. Starts a retry with 202, creating a new record and closing this one; version_judgement instead keeps its record and returns to running. import requeues failed stages; scan starts a manual scan of all folders. Missing record returns 404 not_found; unavailable retry, a pipeline record or missing subject returns 409 activity_not_retryable; active scans return scan_in_progress; disabled auto-tagging returns auto_tagging_off."
+      description: "Owner-only. Starts a retry with 202, creating a new record and closing this one; version_judgement instead keeps its record and returns to running. import requeues failed stages; scan starts a manual scan of all folders. Missing record returns 404 not_found; unavailable retry, a pipeline record or missing subject returns 409 activity_not_retryable; active scans return scan_in_progress; disabled auto-tagging returns auto_tagging_off; face_analysis queues the video again, and disabled face recognition returns face_recognition_off."
       parameters:
         - $ref: "#/components/parameters/ActivityId"
       responses:
@@ -3811,7 +4034,7 @@ paths:
     post:
       operationId: undoActivity
       summary: "Undo an automatic decision"
-      description: "Owner-only. Reverts the decision and returns an owner undo record. If the owner already changed state, outcome is already_reverted. Missing activity or a tag not assigned by its auto_tag action returns 404 not_found. Unsupported (including pipeline records), already-undone records/tags return 409 activity_not_undoable."
+      description: "Owner-only. Reverts the decision and returns an owner undo record. If the owner already changed state, outcome is already_reverted. Undoing a face_merge also dismisses the face candidate pair of its two people. Missing activity, a tag not assigned by its auto_tag action or a link not made by its face_analysis action returns 404 not_found. Unsupported (including pipeline records), already-undone records/tags/links return 409 activity_not_undoable."
       parameters:
         - $ref: "#/components/parameters/ActivityId"
       requestBody:
@@ -5028,6 +5251,24 @@ components:
         type: integer
         format: int64
         minimum: 1
+    FaceAppearanceId:
+      name: appearanceId
+      in: path
+      required: true
+      description: "ID of the face appearance"
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    FaceCandidateOtherId:
+      name: otherId
+      in: path
+      required: true
+      description: "ID of the other person of the pair"
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
     OrganizationId:
       name: id
       in: path
@@ -5071,6 +5312,12 @@ components:
       schema:
         type: boolean
         default: false
+    CreditProvisional:
+      name: provisional
+      in: query
+      description: "People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request."
+      schema:
+        type: boolean
     FolderRootId:
       name: rootId
       in: path
@@ -6472,6 +6719,100 @@ components:
           type: string
           description: "Provider message for node/run errors or missing resources; omitted when absent."
 
+    FaceRecognizer:
+      type: string
+      enum: [sface_int8, arcface_r50]
+      description: "Recognizer that turns a face into a vector: sface_int8 (SFace 2021dec int8, the default) or arcface_r50 (InsightFace buffalo_l, non-commercial use only)."
+
+    FaceRecognitionSettings:
+      type: object
+      required: [enabled, recognizer, recognizers, runtime, counts]
+      additionalProperties: false
+      description: "Face recognition settings, the runtime state and the analysis queue counts; see docs/design-docs/face-recognition.md."
+      properties:
+        enabled:
+          type: boolean
+          description: "Off by default; while off nothing is downloaded and no video is analysed."
+        recognizer:
+          $ref: "#/components/schemas/FaceRecognizer"
+        recognizers:
+          type: array
+          items:
+            $ref: "#/components/schemas/FaceRecognizerOption"
+        runtime:
+          $ref: "#/components/schemas/FaceRuntime"
+        counts:
+          $ref: "#/components/schemas/FaceRecognitionCounts"
+        lastFailure:
+          type: string
+          description: "The latest failed analysis's message in English; omitted if none."
+
+    FaceRecognizerOption:
+      type: object
+      required: [id, downloadBytes, license, nonCommercial]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: "#/components/schemas/FaceRecognizer"
+        downloadBytes:
+          type: integer
+          format: int64
+          description: "Size of the recognizer's model."
+        license:
+          type: string
+          description: "SPDX license id, or non-commercial."
+        nonCommercial:
+          type: boolean
+
+    FaceRuntime:
+      type: object
+      required: [state]
+      additionalProperties: false
+      description: "The runtime and model files the chosen recognizer needs."
+      properties:
+        state:
+          type: string
+          enum: [unsupported, absent, downloading, ready, failed]
+          description: "unsupported: no runtime is published for this platform."
+        bytesDone:
+          type: integer
+          format: int64
+          description: "Present while downloading."
+        bytesTotal:
+          type: integer
+          format: int64
+          description: "Present while downloading."
+        reason:
+          type: string
+          enum: [network, hash_mismatch, disk, helper_start]
+          description: "Present when failed."
+
+    FaceRecognitionCounts:
+      type: object
+      required: [queued, running, done, failed]
+      additionalProperties: false
+      description: "Face analysis queue rows (content keys) by state."
+      properties:
+        queued:
+          type: integer
+        running:
+          type: integer
+        done:
+          type: integer
+        failed:
+          type: integer
+
+    UpdateFaceRecognitionSettingsRequest:
+      type: object
+      required: [enabled, recognizer]
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+        recognizer:
+          type: string
+          description: "sface_int8 or arcface_r50; another value returns 400 invalid_request."
+
     StartAutoTaggingRequest:
       type: object
       required: [scope]
@@ -6544,6 +6885,24 @@ components:
         queued:
           type: integer
           description: 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0
+
+    StartFaceRecognitionRequest:
+      type: object
+      required: [scope]
+      additionalProperties: false
+      properties:
+        scope:
+          type: string
+          enum: [missing, all]
+
+    FaceRecognitionQueued:
+      type: object
+      required: [queued]
+      additionalProperties: false
+      properties:
+        queued:
+          type: integer
+          description: "Number of queued videos."
 
     AutoTaggingQueued:
       type: object
@@ -6934,15 +7293,18 @@ components:
 
     CreditRef:
       type: object
-      required: [id, name]
+      required: [id, name, provisional]
       additionalProperties: false
-      description: "Reference to one person or organization; name is its current name."
+      description: "Reference to one person or organization; name is its current name, \"\" for a provisional person."
       properties:
         id:
           type: integer
           format: int64
         name:
           type: string
+        provisional:
+          type: boolean
+          description: "True for a person without a canonical name, whose name is then \"\"; always false for an organization."
 
     Alias:
       type: object
@@ -6996,13 +7358,16 @@ components:
 
     WorkPerson:
       type: object
-      required: [role, person]
+      required: [role, person, provisional]
       additionalProperties: false
       properties:
         role:
           $ref: "#/components/schemas/WorkPersonRole"
         person:
           $ref: "#/components/schemas/CreditRef"
+        provisional:
+          type: boolean
+          description: "Same as person.provisional."
         imageRevision:
           $ref: "#/components/schemas/PersonImageRevision"
 
@@ -7134,7 +7499,7 @@ components:
 
     Person:
       type: object
-      required: [id, name, aliases, externalIds, profile, favorite, videoCount, createdAt]
+      required: [id, name, provisional, aliases, externalIds, profile, favorite, videoCount, createdAt]
       additionalProperties: false
       description: "One person."
       properties:
@@ -7143,6 +7508,9 @@ components:
           format: int64
         name:
           type: string
+        provisional:
+          type: boolean
+          description: "True while the person has no canonical name; name is then \"\". Setting a name makes the person ordinary."
         aliases:
           type: array
           description: "Natural-name order."
@@ -7371,7 +7739,7 @@ components:
             $ref: "#/components/schemas/Person"
         total:
           type: integer
-          description: "Person count matching q and favorite, independent of pagination."
+          description: "Person count matching q, favorite and provisional, independent of pagination."
         totalAll:
           type: integer
           description: "Total person count."
@@ -7412,6 +7780,96 @@ components:
           items:
             type: integer
             format: int64
+
+    FaceCandidateList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FaceCandidate"
+
+    FaceCandidate:
+      type: object
+      required: [person, similarity]
+      additionalProperties: false
+      description: "One open pair, as the other person of it."
+      properties:
+        person:
+          $ref: "#/components/schemas/FaceCandidatePerson"
+        similarity:
+          type: number
+          format: double
+          description: "The pair's highest face similarity when last computed, from 0 to 1."
+
+    FaceAppearanceList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FaceAppearance"
+        nextCursor:
+          type: string
+          description: "Next-page cursor, included only when limit is supplied and more results remain."
+
+    FaceAppearance:
+      type: object
+      required: [appearanceId, title, spans, hasCrop]
+      additionalProperties: false
+      description: "One main person of one video, linked to the listed person."
+      properties:
+        appearanceId:
+          type: integer
+          format: int64
+        videoId:
+          type: integer
+          format: int64
+          description: "The video with the appearance's content key; absent when no video has it any more."
+        title:
+          type: string
+          description: "The video's title: its override, else its first registered location's title, else the content key."
+        spans:
+          type: array
+          description: "When the person is on screen, in seconds, in order and without overlaps."
+          items:
+            $ref: "#/components/schemas/FaceAppearanceSpan"
+        hasCrop:
+          type: boolean
+          description: "True when getFaceAppearanceCrop has a face to return."
+
+    FaceAppearanceSpan:
+      type: object
+      required: [start, end]
+      additionalProperties: false
+      properties:
+        start:
+          type: number
+          format: double
+        end:
+          type: number
+          format: double
+
+    FaceCandidatePerson:
+      type: object
+      required: [id, name, provisional]
+      additionalProperties: false
+      description: "CreditRef of the other person, with its face."
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        provisional:
+          type: boolean
+          description: "True for a person without a canonical name, whose name is then \"\"."
+        imageRevision:
+          $ref: "#/components/schemas/PersonImageRevision"
 
     OrganizationMergeResponse:
       type: object
@@ -9664,6 +10122,8 @@ components:
         - work_info_apply
         - media_folder_remove
         - organize_undo
+        - face_analysis
+        - face_merge
         - pipeline
         - undo
 
@@ -9680,6 +10140,7 @@ components:
         - versions
         - media_folders
         - organize
+        - face_recognition
       # Explicit names prevent colliding enum values from renaming existing constants.
       x-enum-varnames:
         - ActivityFeatureImport
@@ -9691,6 +10152,7 @@ components:
         - ActivityFeatureVersions
         - ActivityFeatureMediaFolders
         - ActivityFeatureOrganize
+        - ActivityFeatureFaceRecognition
 
     ActivityStatus:
       type: string
@@ -9790,6 +10252,7 @@ components:
           versions,
           media_folders,
           organize,
+          face_recognition,
         ]
       additionalProperties: false
       properties:
@@ -9810,6 +10273,8 @@ components:
         media_folders:
           type: integer
         organize:
+          type: integer
+        face_recognition:
           type: integer
 
     ActivityEntry:
@@ -9879,12 +10344,17 @@ components:
           description: "Tags assigned by auto_tag."
           items:
             $ref: "#/components/schemas/ActivityTag"
+        faceLinks:
+          type: array
+          description: "People a face_analysis record linked to its video as performers."
+          items:
+            $ref: "#/components/schemas/ActivityFaceLink"
         retryRun:
           type: boolean
           description: "Show retry action."
         undoable:
           type: boolean
-          description: "Show undo action; auto_tag requires at least one undoable tag."
+          description: "Show undo action; auto_tag requires at least one undoable tag, face_analysis at least one undoable link."
         undone:
           type: boolean
           description: "Undone by the owner."
@@ -9960,6 +10430,11 @@ components:
         tagCount:
           type: integer
           description: "auto_tag only: the number of tags the run added."
+        faceLinks:
+          type: array
+          description: "face_analysis only: the people the run linked, as in ActivityEntry."
+          items:
+            $ref: "#/components/schemas/ActivityFaceLink"
         stages:
           type: array
           description: "import only, in ingest order; omitted when the stages were not recorded."
@@ -10047,7 +10522,7 @@ components:
       properties:
         kind:
           type: string
-          enum: [video, pair, scan, folder]
+          enum: [video, pair, scan, folder, person]
         items:
           type: array
           items:
@@ -10065,6 +10540,10 @@ components:
           type: integer
           format: int64
           description: "Current video accessible to the viewer; omitted when unavailable."
+        personId:
+          type: integer
+          format: int64
+          description: "The person of a person subject, which may since have been deleted; omitted for other subjects."
 
     ActivityProgress:
       type: object
@@ -10113,6 +10592,24 @@ components:
           type: boolean
           description: "Undone by the owner."
 
+    ActivityFaceLink:
+      type: object
+      required: [appearanceId, createdPerson, undone]
+      additionalProperties: false
+      properties:
+        appearanceId:
+          type: integer
+          format: int64
+        person:
+          $ref: "#/components/schemas/CreditRef"
+          description: "The linked person as now named; omitted once the person is deleted."
+        createdPerson:
+          type: boolean
+          description: "The analysis created this provisional person."
+        undone:
+          type: boolean
+          description: "Undone by the owner."
+
     ActivityUndoRequest:
       type: object
       additionalProperties: false
@@ -10121,6 +10618,11 @@ components:
           type: integer
           format: int64
           description: "Tag to undo on an auto_tag record; unused for other kinds."
+        appearanceId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: "Link to undo on a face_analysis record; omitted, every link not yet undone. Unused for other kinds."
 
     VideoChanged:
       type: object
@@ -10292,6 +10794,8 @@ components:
         - person_image_not_found
         - person_image_invalid
         - person_image_too_large
+        - person_image_no_face
+        - person_image_many_faces
         - merge_same_organization
         - external_id_taken
         - blocked_address
@@ -10300,3 +10804,7 @@ components:
         - output_too_large
         - tag_kind_not_found
         - tag_kind_name_taken
+        - face_candidate_not_found
+        - face_appearance_not_found
+        - face_recognition_off
+        - face_recognition_unsupported

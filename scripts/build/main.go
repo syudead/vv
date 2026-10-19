@@ -40,11 +40,21 @@ func cleanDist(root string) error {
 
 func main() {
 	windowsApp := flag.Bool("windows-app", false, "build the Windows app zip into dist/")
+	faceRuntime := flag.String("face-runtime", "", "build the face runtime archive for a platform (linux-amd64, linux-arm64, windows-amd64) into dist/")
+	faceSmoke := flag.String("face-runtime-smoke", "", "run the helper of a built Linux face runtime archive in Alpine on the fixture photo")
+	static := flag.Bool("check-static", false, "fail when the Linux mdm has an INTERP header")
 	flag.Parse()
 
 	root, err := devtools.RepositoryRoot()
 	if err != nil {
 		devtools.Fail(err)
+	}
+	// These builds do not embed the SPA.
+	if *faceRuntime != "" || *faceSmoke != "" || *static {
+		if err := runWithoutSPA(root, *faceRuntime, *faceSmoke, *static); err != nil {
+			devtools.Fail(err)
+		}
+		return
 	}
 	if err := cleanDist(root); err != nil {
 		devtools.Fail(err)
@@ -76,4 +86,23 @@ func main() {
 	}
 
 	fmt.Printf("Built %s (version=%s)\n", outputPath, version)
+}
+
+func runWithoutSPA(root, faceRuntime, faceSmoke string, static bool) error {
+	switch {
+	case static:
+		return checkStatic(root)
+	case faceSmoke != "":
+		return smokeFaceRuntime(root, faceSmoke)
+	}
+	out, err := buildFaceRuntime(root, faceRuntime)
+	if err != nil {
+		return err
+	}
+	sum, err := sha256File(out)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Built %s (sha256 %s)\n", out, sum)
+	return nil
 }

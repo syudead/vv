@@ -1190,6 +1190,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/face-recognition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return face recognition settings, the runtime state and queue counts
+         * @description Owner-only. The runtime state is read from the files under the data folder and the running download, never stored; while downloading, poll this resource for the progress. See docs/design-docs/face-recognition.md.
+         */
+        get: operations["getFaceRecognitionSettings"];
+        /**
+         * Save face recognition settings
+         * @description Owner-only. Turning it on starts the download of the runtime and the recognizer's model when they are absent or do not match their hashes; turning it off cancels a running download. A changed recognizer increases face.generation, deletes the old recognizer's vectors and queues again every video whose analysis is done or failed; a video never analysed waits for runs with missing. An unknown recognizer returns 400 invalid_request.
+         */
+        put: operations["updateFaceRecognitionSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/face-recognition/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Download the face runtime and the recognizer's model again
+         * @description Owner-only; no body. Downloads what is absent or does not match its hash, after a failure for example, and returns 202 with the settings. While off returns 409 face_recognition_off; where no runtime is published returns 409 face_recognition_unsupported.
+         */
+        post: operations["downloadFaceRuntime"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/face-recognition/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue library videos for face analysis
+         * @description Owner-only. missing queues videos never analysed or whose analysis failed; all queues every video not being analysed. Returns the queued count. Videos queued while the runtime is not ready wait for it. While off returns 409 face_recognition_off. See docs/design-docs/face-recognition.md.
+         */
+        post: operations["startFaceRecognition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auto-tagging/check": {
         parameters: {
             query?: never;
@@ -1809,7 +1873,7 @@ export interface paths {
         };
         /**
          * List people
-         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people.
+         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite=true keeps only favorite people, and provisional keeps only provisional or only named people. Provisional people follow every named person in natural-name order, including as the tie-break of the other sorts.
          */
         get: operations["listPeople"];
         put?: never;
@@ -1886,7 +1950,7 @@ export interface paths {
         get: operations["getPersonImage"];
         /**
          * Set a person's face from an uploaded image
-         * @description Owner-only. Accepts multipart `image` (PNG, JPEG or static WebP) under the thumbnail upload's limits: 64 MiB with 1 MiB additional multipart overhead, and 120 million pixels. Fits it to at most 800 px on its long side, stores it as JPEG, replacing any earlier face, and returns Person with a new imageRevision. A body over the byte limit returns 413 person_image_too_large with limit. Unsupported, animated, unreadable or over-pixel images return 400 person_image_invalid. Missing person returns 404 person_not_found. Errors write nothing. After the body arrives, fitting continues despite disconnect, with a five-minute limit.
+         * @description Owner-only. Accepts multipart `image` (PNG, JPEG or static WebP) under the thumbnail upload's limits: 64 MiB with 1 MiB additional multipart overhead, and 120 million pixels. Fits it to at most 800 px on its long side, stores it as JPEG, replacing any earlier face, and returns Person with a new imageRevision. A body over the byte limit returns 413 person_image_too_large with limit. Unsupported, animated, unreadable or over-pixel images return 400 person_image_invalid. While face recognition is on and its runtime is ready, an image without a usable face returns 400 person_image_no_face and one with several returns 400 person_image_many_faces; without the runtime the face is not checked. Missing person returns 404 person_not_found. Errors write nothing. After the body arrives, fitting continues despite disconnect, with a five-minute limit.
          */
         put: operations["uploadPersonImage"];
         post?: never;
@@ -1895,6 +1959,126 @@ export interface paths {
          * @description Owner-only; no body. Removes the face and returns Person without imageRevision; a person without a face is returned unchanged. A later upload gets a revision never used before. Missing person returns 404 person_not_found.
          */
         delete: operations["deletePersonImage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{id}/face-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a person's face candidates
+         * @description Owner-only. Open (not dismissed) face candidate pairs the person takes part in, highest similarity first, each as the other person. Missing person returns 404 person_not_found.
+         */
+        get: operations["listFaceCandidates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{id}/face-candidates/{otherId}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge a face candidate pair
+         * @description Owner-only; no body. Merges the provisional person of the open pair of id and otherId, in either order, into the other one through the ordinary merge and returns the merged person. Records no face_merge activity. No open pair of these two people returns 404 face_candidate_not_found; merge limits fail as mergePeople does.
+         */
+        post: operations["confirmFaceCandidate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{id}/face-candidates/{otherId}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss a face candidate pair
+         * @description Owner-only; no body. Marks the open pair of id and otherId, in either order, dismissed; a later analysis or face image never offers it again. No open pair of these two people returns 404 face_candidate_not_found.
+         */
+        post: operations["dismissFaceCandidate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{id}/appearances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a person's face appearances
+         * @description Owner-only. The person's appearances that are not dropped, newest video (by added time) first, then by descending appearance ID; appearances whose content key no video has follow every appearance with a video. limit enables pagination with nextCursor; otherwise returns all. Missing person returns 404 person_not_found; an unreadable cursor returns 400 invalid_request with reason invalid_cursor.
+         */
+        get: operations["listPersonAppearances"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{id}/appearances/{appearanceId}/split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Split a face appearance into a new person
+         * @description Owner-only; no body. For "Not this person": in one transaction creates a provisional person whose face is the appearance's crop, moves the appearance to it, moves the video's performer credit of id to it unless another appearance of id in the same work still links that credit, and dismisses the pair of the two people so no automatic rule or candidate joins them again. Returns the new person. Missing person returns 404 person_not_found; an appearance that is dropped or linked to another person returns 404 face_appearance_not_found.
+         */
+        post: operations["splitFaceAppearance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/face-appearances/{id}/crop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Return a face appearance's crop
+         * @description Owner-only. Returns the appearance's face crop as JPEG with `Cache-Control: private, max-age=86400`, since a crop is never rewritten and a new appearance gets a new ID. A missing appearance, one whose person was deleted, or one without a crop returns 404 not_found.
+         */
+        get: operations["getFaceAppearanceCrop"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1969,7 +2153,7 @@ export interface paths {
         };
         /**
          * List organizations
-         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite returns 400 invalid_request.
+         * @description Owner-only. q substring-matches names and aliases, ordered by sort. limit enables pagination with nextCursor; otherwise returns all matches. favorite and provisional return 400 invalid_request.
          */
         get: operations["listOrganizations"];
         put?: never;
@@ -2439,7 +2623,7 @@ export interface paths {
         put?: never;
         /**
          * Retry an activity operation
-         * @description Owner-only. Starts a retry with 202, creating a new record and closing this one; version_judgement instead keeps its record and returns to running. import requeues failed stages; scan starts a manual scan of all folders. Missing record returns 404 not_found; unavailable retry, a pipeline record or missing subject returns 409 activity_not_retryable; active scans return scan_in_progress; disabled auto-tagging returns auto_tagging_off.
+         * @description Owner-only. Starts a retry with 202, creating a new record and closing this one; version_judgement instead keeps its record and returns to running. import requeues failed stages; scan starts a manual scan of all folders. Missing record returns 404 not_found; unavailable retry, a pipeline record or missing subject returns 409 activity_not_retryable; active scans return scan_in_progress; disabled auto-tagging returns auto_tagging_off; face_analysis queues the video again, and disabled face recognition returns face_recognition_off.
          */
         post: operations["retryActivity"];
         delete?: never;
@@ -2459,7 +2643,7 @@ export interface paths {
         put?: never;
         /**
          * Undo an automatic decision
-         * @description Owner-only. Reverts the decision and returns an owner undo record. If the owner already changed state, outcome is already_reverted. Missing activity or a tag not assigned by its auto_tag action returns 404 not_found. Unsupported (including pipeline records), already-undone records/tags return 409 activity_not_undoable.
+         * @description Owner-only. Reverts the decision and returns an owner undo record. If the owner already changed state, outcome is already_reverted. Undoing a face_merge also dismisses the face candidate pair of its two people. Missing activity, a tag not assigned by its auto_tag action or a link not made by its face_analysis action returns 404 not_found. Unsupported (including pipeline records), already-undone records/tags/links return 409 activity_not_undoable.
          */
         post: operations["undoActivity"];
         delete?: never;
@@ -3700,6 +3884,68 @@ export interface components {
             /** @description Provider message for node/run errors or missing resources; omitted when absent. */
             message?: string;
         };
+        /**
+         * @description Recognizer that turns a face into a vector: sface_int8 (SFace 2021dec int8, the default) or arcface_r50 (InsightFace buffalo_l, non-commercial use only).
+         * @enum {string}
+         */
+        FaceRecognizer: "sface_int8" | "arcface_r50";
+        /** @description Face recognition settings, the runtime state and the analysis queue counts; see docs/design-docs/face-recognition.md. */
+        FaceRecognitionSettings: {
+            /** @description Off by default; while off nothing is downloaded and no video is analysed. */
+            enabled: boolean;
+            recognizer: components["schemas"]["FaceRecognizer"];
+            recognizers: components["schemas"]["FaceRecognizerOption"][];
+            runtime: components["schemas"]["FaceRuntime"];
+            counts: components["schemas"]["FaceRecognitionCounts"];
+            /** @description The latest failed analysis's message in English; omitted if none. */
+            lastFailure?: string;
+        };
+        FaceRecognizerOption: {
+            id: components["schemas"]["FaceRecognizer"];
+            /**
+             * Format: int64
+             * @description Size of the recognizer's model.
+             */
+            downloadBytes: number;
+            /** @description SPDX license id, or non-commercial. */
+            license: string;
+            nonCommercial: boolean;
+        };
+        /** @description The runtime and model files the chosen recognizer needs. */
+        FaceRuntime: {
+            /**
+             * @description unsupported: no runtime is published for this platform.
+             * @enum {string}
+             */
+            state: "unsupported" | "absent" | "downloading" | "ready" | "failed";
+            /**
+             * Format: int64
+             * @description Present while downloading.
+             */
+            bytesDone?: number;
+            /**
+             * Format: int64
+             * @description Present while downloading.
+             */
+            bytesTotal?: number;
+            /**
+             * @description Present when failed.
+             * @enum {string}
+             */
+            reason?: "network" | "hash_mismatch" | "disk" | "helper_start";
+        };
+        /** @description Face analysis queue rows (content keys) by state. */
+        FaceRecognitionCounts: {
+            queued: number;
+            running: number;
+            done: number;
+            failed: number;
+        };
+        UpdateFaceRecognitionSettingsRequest: {
+            enabled: boolean;
+            /** @description sface_int8 or arcface_r50; another value returns 400 invalid_request. */
+            recognizer: string;
+        };
         StartAutoTaggingRequest: {
             /** @enum {string} */
             scope: "missing" | "all";
@@ -3731,6 +3977,14 @@ export interface components {
             /** @description New smart folders; excludes interests whose matching root folder already existed. */
             folders: components["schemas"]["SmartFolderSummary"][];
             /** @description 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0 */
+            queued: number;
+        };
+        StartFaceRecognitionRequest: {
+            /** @enum {string} */
+            scope: "missing" | "all";
+        };
+        FaceRecognitionQueued: {
+            /** @description Number of queued videos. */
             queued: number;
         };
         AutoTaggingQueued: {
@@ -3924,11 +4178,13 @@ export interface components {
             id?: number;
             name?: string;
         };
-        /** @description Reference to one person or organization; name is its current name. */
+        /** @description Reference to one person or organization; name is its current name, "" for a provisional person. */
         CreditRef: {
             /** Format: int64 */
             id: number;
             name: string;
+            /** @description True for a person without a canonical name, whose name is then ""; always false for an organization. */
+            provisional: boolean;
         };
         /** @description One person or organization alias. */
         Alias: {
@@ -3969,6 +4225,8 @@ export interface components {
         WorkPerson: {
             role: components["schemas"]["WorkPersonRole"];
             person: components["schemas"]["CreditRef"];
+            /** @description Same as person.provisional. */
+            provisional: boolean;
             imageRevision?: components["schemas"]["PersonImageRevision"];
         };
         /**
@@ -4031,6 +4289,8 @@ export interface components {
             /** Format: int64 */
             id: number;
             name: string;
+            /** @description True while the person has no canonical name; name is then "". Setting a name makes the person ordinary. */
+            provisional: boolean;
             /** @description Natural-name order. */
             aliases: components["schemas"]["Alias"][];
             /** @description Ordered by (source, value). */
@@ -4165,7 +4425,7 @@ export interface components {
         /** @description Person form of the CreditList contract. */
         PersonList: {
             items: components["schemas"]["Person"][];
-            /** @description Person count matching q and favorite, independent of pagination. */
+            /** @description Person count matching q, favorite and provisional, independent of pagination. */
             total: number;
             /** @description Total person count. */
             totalAll: number;
@@ -4186,6 +4446,54 @@ export interface components {
             person: components["schemas"]["Person"];
             /** @description Sources that no longer exist. */
             notFoundIds: number[];
+        };
+        FaceCandidateList: {
+            items: components["schemas"]["FaceCandidate"][];
+        };
+        /** @description One open pair, as the other person of it. */
+        FaceCandidate: {
+            person: components["schemas"]["FaceCandidatePerson"];
+            /**
+             * Format: double
+             * @description The pair's highest face similarity when last computed, from 0 to 1.
+             */
+            similarity: number;
+        };
+        FaceAppearanceList: {
+            items: components["schemas"]["FaceAppearance"][];
+            /** @description Next-page cursor, included only when limit is supplied and more results remain. */
+            nextCursor?: string;
+        };
+        /** @description One main person of one video, linked to the listed person. */
+        FaceAppearance: {
+            /** Format: int64 */
+            appearanceId: number;
+            /**
+             * Format: int64
+             * @description The video with the appearance's content key; absent when no video has it any more.
+             */
+            videoId?: number;
+            /** @description The video's title: its override, else its first registered location's title, else the content key. */
+            title: string;
+            /** @description When the person is on screen, in seconds, in order and without overlaps. */
+            spans: components["schemas"]["FaceAppearanceSpan"][];
+            /** @description True when getFaceAppearanceCrop has a face to return. */
+            hasCrop: boolean;
+        };
+        FaceAppearanceSpan: {
+            /** Format: double */
+            start: number;
+            /** Format: double */
+            end: number;
+        };
+        /** @description CreditRef of the other person, with its face. */
+        FaceCandidatePerson: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** @description True for a person without a canonical name, whose name is then "". */
+            provisional: boolean;
+            imageRevision?: components["schemas"]["PersonImageRevision"];
         };
         OrganizationMergeResponse: {
             organization: components["schemas"]["Organization"];
@@ -5465,12 +5773,12 @@ export interface components {
          * @description Activity record kind.
          * @enum {string}
          */
-        ActivityKind: "import" | "scan" | "auto_tag" | "version_judgement" | "work_info_fetch" | "bundle" | "unbundle" | "make_representative" | "dismiss" | "tag_attach" | "tag_detach" | "tag_keep" | "tag_reject" | "work_info_apply" | "media_folder_remove" | "organize_undo" | "pipeline" | "undo";
+        ActivityKind: "import" | "scan" | "auto_tag" | "version_judgement" | "work_info_fetch" | "bundle" | "unbundle" | "make_representative" | "dismiss" | "tag_attach" | "tag_detach" | "tag_keep" | "tag_reject" | "work_info_apply" | "media_folder_remove" | "organize_undo" | "face_analysis" | "face_merge" | "pipeline" | "undo";
         /**
          * @description Kind grouping used for feature filters; undo belongs to the feature of the undone record.
          * @enum {string}
          */
-        ActivityFeature: "import" | "scan" | "duplicate_check" | "auto_tagging" | "work_info" | "tags" | "versions" | "media_folders" | "organize";
+        ActivityFeature: "import" | "scan" | "duplicate_check" | "auto_tagging" | "work_info" | "tags" | "versions" | "media_folders" | "organize" | "face_recognition";
         /**
          * @description Record status.
          * @enum {string}
@@ -5520,6 +5828,7 @@ export interface components {
             versions: number;
             media_folders: number;
             organize: number;
+            face_recognition: number;
         };
         /** @description One activity record. */
         ActivityEntry: components["schemas"]["ActivityEntryFields"];
@@ -5553,9 +5862,11 @@ export interface components {
             undoes?: components["schemas"]["ActivityUndone"];
             /** @description Tags assigned by auto_tag. */
             tags?: components["schemas"]["ActivityTag"][];
+            /** @description People a face_analysis record linked to its video as performers. */
+            faceLinks?: components["schemas"]["ActivityFaceLink"][];
             /** @description Show retry action. */
             retryRun: boolean;
-            /** @description Show undo action; auto_tag requires at least one undoable tag. */
+            /** @description Show undo action; auto_tag requires at least one undoable tag, face_analysis at least one undoable link. */
             undoable: boolean;
             /** @description Undone by the owner. */
             undone: boolean;
@@ -5597,6 +5908,8 @@ export interface components {
             matched?: boolean;
             /** @description auto_tag only: the number of tags the run added. */
             tagCount?: number;
+            /** @description face_analysis only: the people the run linked, as in ActivityEntry. */
+            faceLinks?: components["schemas"]["ActivityFaceLink"][];
             /** @description import only, in ingest order; omitted when the stages were not recorded. */
             stages?: components["schemas"]["ActivityStageSummary"][];
         };
@@ -5639,7 +5952,7 @@ export interface components {
         /** @description Record targets, one per key: two for pairs and one otherwise. */
         ActivitySubject: {
             /** @enum {string} */
-            kind: "video" | "pair" | "scan" | "folder";
+            kind: "video" | "pair" | "scan" | "folder" | "person";
             items: components["schemas"]["ActivitySubjectItem"][];
         };
         ActivitySubjectItem: {
@@ -5650,6 +5963,11 @@ export interface components {
              * @description Current video accessible to the viewer; omitted when unavailable.
              */
             videoId?: number;
+            /**
+             * Format: int64
+             * @description The person of a person subject, which may since have been deleted; omitted for other subjects.
+             */
+            personId?: number;
         };
         /** @description Current stage and completed-stage count for a running import beyond waiting. */
         ActivityProgress: {
@@ -5675,12 +5993,27 @@ export interface components {
             /** @description Undone by the owner. */
             undone: boolean;
         };
+        ActivityFaceLink: {
+            /** Format: int64 */
+            appearanceId: number;
+            /** @description The linked person as now named; omitted once the person is deleted. */
+            person?: components["schemas"]["CreditRef"];
+            /** @description The analysis created this provisional person. */
+            createdPerson: boolean;
+            /** @description Undone by the owner. */
+            undone: boolean;
+        };
         ActivityUndoRequest: {
             /**
              * Format: int64
              * @description Tag to undo on an auto_tag record; unused for other kinds.
              */
             tagId?: number;
+            /**
+             * Format: int64
+             * @description Link to undo on a face_analysis record; omitted, every link not yet undone. Unused for other kinds.
+             */
+            appearanceId?: number;
         };
         VideoChanged: {
             /**
@@ -5715,7 +6048,7 @@ export interface components {
          * @description Specific reason within an error code, included only for cases listed in the contract. This schema is authoritative; task generate produces Go constants.
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "work_info_out_of_range" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "person_image_not_found" | "person_image_invalid" | "person_image_too_large" | "person_image_no_face" | "person_image_many_faces" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken" | "face_candidate_not_found" | "face_appearance_not_found" | "face_recognition_off" | "face_recognition_unsupported";
     };
     responses: {
         /** @description Resource not found */
@@ -5860,6 +6193,10 @@ export interface components {
         TagKindId: number;
         /** @description Person ID */
         PersonId: number;
+        /** @description ID of the face appearance */
+        FaceAppearanceId: number;
+        /** @description ID of the other person of the pair */
+        FaceCandidateOtherId: number;
         /** @description Organization ID */
         OrganizationId: number;
         /** @description Normalized, trimmed query; nonempty queries substring-match names or aliases */
@@ -5872,6 +6209,8 @@ export interface components {
         CreditLimit: number;
         /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
         CreditFavorite: boolean;
+        /** @description People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request. */
+        CreditProvisional: boolean;
         /** @description Registered media-folder ID containing this folder */
         FolderRootId: number;
         /** @description Playlist item ID */
@@ -7966,6 +8305,118 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    getFaceRecognitionSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current settings, runtime state and queue counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FaceRecognitionSettings"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    updateFaceRecognitionSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateFaceRecognitionSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved settings, runtime state and queue counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FaceRecognitionSettings"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    downloadFaceRuntime: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Download started; settings with the runtime state */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FaceRecognitionSettings"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            /** @description Face recognition is off (`face_recognition_off`) or has no runtime for this platform (`face_recognition_unsupported`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    startFaceRecognition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartFaceRecognitionRequest"];
+            };
+        };
+        responses: {
+            /** @description Queued count */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FaceRecognitionQueued"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            /** @description Face recognition is off (`face_recognition_off`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     checkAutoTaggingClassifier: {
         parameters: {
             query?: never;
@@ -9044,6 +9495,8 @@ export interface operations {
                 limit?: components["parameters"]["CreditLimit"];
                 /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
                 favorite?: components["parameters"]["CreditFavorite"];
+                /** @description People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request. */
+                provisional?: components["parameters"]["CreditProvisional"];
             };
             header?: never;
             path?: never;
@@ -9289,6 +9742,166 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    listFaceCandidates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Open pairs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FaceCandidateList"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    confirmFaceCandidate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+                /** @description ID of the other person of the pair */
+                otherId: components["parameters"]["FaceCandidateOtherId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Merged person */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    dismissFaceCandidate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+                /** @description ID of the other person of the pair */
+                otherId: components["parameters"]["FaceCandidateOtherId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Dismissed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listPersonAppearances: {
+        parameters: {
+            query?: {
+                /** @description Opaque nextCursor from the previous response; ignored without limit */
+                cursor?: string;
+                /** @description Page size; omit for all appearances without nextCursor */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Appearances */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FaceAppearanceList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    splitFaceAppearance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Person ID */
+                id: components["parameters"]["PersonId"];
+                /** @description ID of the face appearance */
+                appearanceId: components["parameters"]["FaceAppearanceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new provisional person */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getFaceAppearanceCrop: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Face appearance ID */
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Crop */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
     fetchPersonWithPlugin: {
         parameters: {
             query?: never;
@@ -9398,6 +10011,8 @@ export interface operations {
                 limit?: components["parameters"]["CreditLimit"];
                 /** @description People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request. */
                 favorite?: components["parameters"]["CreditFavorite"];
+                /** @description People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request. */
+                provisional?: components["parameters"]["CreditProvisional"];
             };
             header?: never;
             path?: never;

@@ -103,6 +103,7 @@ VVMDM keeps everything for the signed-in Windows user under
 | --- | --- |
 | `data\mdm.db` (with `-wal` and `-shm`) | The database, the same as `MDM_DATA_DIR/mdm.db` |
 | `data\thumbnails\` | Generated thumbnails |
+| `data\face\` | The face runtime and models, only after face recognition was turned on ([Face recognition downloads](#face-recognition-downloads)) |
 | `webview2\` | The window's browser data, including the sign-in cookie |
 | `logs\vvmdm.log`, `logs\vvmdm.1.log` | JSON logs of this run and the previous run |
 
@@ -333,6 +334,27 @@ A conversion the encoder cannot start, for example because the GPU is busy,
 uses software. The startup log shows each test's result
 (`transcode video encoder checks finished`), and a failed test is logged with
 the end of FFmpeg's error output.
+
+## Face recognition downloads
+
+VVMDM downloads nothing for face recognition until the owner turns it on
+under Settings, Face recognition. Turning it on downloads, once, the face
+runtime for the server's platform and the chosen recognizer's model into
+`MDM_DATA_DIR/face/`, from these hosts:
+
+| Host | File |
+| --- | --- |
+| `github.com`, `release-assets.githubusercontent.com` | The face runtime archive of the [`face-runtime-v1`](https://github.com/syudead/vv/releases/tag/face-runtime-v1) release, about 6 to 12 MB |
+| `huggingface.co` and its download CDN (`*.hf.co`) | YuNet (0.2 MB), and SFace (10 MB) or ArcFace r50 (174 MB) |
+
+The downloads use the proxy in `HTTPS_PROXY` (and `NO_PROXY`) of VVMDM's
+environment, not the plugin proxy. A file whose SHA-256 differs from the one
+built into VVMDM is discarded and the settings page shows the failure; `Download
+again` there retries. Deleting `MDM_DATA_DIR/face/` while VVMDM is stopped
+removes the downloads; turning the feature on downloads them again. The
+runtime exists for Linux on `amd64` and `arm64` and for Windows on `amd64`;
+on any other platform face recognition is unavailable. See
+[face-recognition.md](../design-docs/face-recognition.md#the-runtime-is-downloaded-only-when-the-feature-is-on).
 
 ## Data and recovery
 

@@ -20,7 +20,12 @@ export default function NamesPanel({
   problem,
   save,
   nameRef,
-}: PersonPanelProps & { nameRef: Ref<HTMLInputElement> }) {
+  namePlaceholder,
+}: PersonPanelProps & {
+  nameRef: Ref<HTMLInputElement>;
+  /** Shown while the name is empty; a provisional person saves without one. */
+  namePlaceholder?: string;
+}) {
   const onEnter = saveOnEnter(save);
   const rows = { saving, problem, onEnter };
   return (
@@ -28,6 +33,7 @@ export default function NamesPanel({
       <NameField
         label={text.name}
         value={draft.name}
+        placeholder={namePlaceholder}
         onChange={(name) => update((current) => ({ ...current, name }))}
         nameRef={nameRef}
         {...rows}

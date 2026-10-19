@@ -149,11 +149,35 @@ func TestListActivityReturnsThePage(t *testing.T) {
 	}
 }
 
+func TestListActivityFiltersFaceRecognitionAndNamesThePerson(t *testing.T) {
+	e := newActivityEnv(t)
+	e.record(t, failedImport())
+	merge := e.record(t, domain.ActivityEntry{
+		Kind:    domain.ActivityFaceMerge,
+		Subject: domain.ActivitySubject{Kind: domain.ActivitySubjectPerson, Key: "42", Label: "Alice"},
+		Status:  domain.ActivityDone, Outcome: domain.ActivityCompleted, Decider: domain.ActivityByRule,
+	})
+
+	rec := e.serve(http.MethodGet, "/api/activity?feature=face_recognition", "")
+	var page gen.ActivityPage
+	if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if len(page.Items) != 1 || page.Items[0].Id != merge || page.Features.FaceRecognition != 1 || page.Features.Import != 1 {
+		t.Fatalf("page = %+v", page)
+	}
+	subject := page.Items[0].Subject
+	if subject.Kind != gen.ActivitySubjectKindPerson || len(subject.Items) != 1 || subject.Items[0].Label != "Alice" ||
+		subject.Items[0].PersonId == nil || *subject.Items[0].PersonId != 42 || subject.Items[0].VideoId != nil {
+		t.Errorf("subject = %+v", subject)
+	}
+}
+
 func TestListActivityRejectsInvalidFilters(t *testing.T) {
 	e := newActivityEnv(t)
 	for _, query := range []string{
 		"status=failed", "feature=undo", "decider=model", "since=yesterday", "limit=0", "limit=101", "q=",
-		"q=" + strings.Repeat("a", 201), strings.Repeat("feature=import&", 9) + "feature=scan",
+		"q=" + strings.Repeat("a", 201), strings.Repeat("feature=import&", 10) + "feature=scan",
 	} {
 		rec := e.serve(http.MethodGet, "/api/activity?"+query, "")
 		assertErrorBody(t, query, rec.Code, rec.Body.Bytes(), wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
@@ -195,25 +219,39 @@ func TestRetryAndUndoAnswerConflictForEveryKind(t *testing.T) {
 	assertErrorBody(t, "undo missing", rec.Code, rec.Body.Bytes(), wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound})
 }
 
-func TestRetryAutoTagWhileOffAnswersAutoTaggingOff(t *testing.T) {
-	e := newActivityEnv(t)
-	tagger := app.NewAutoTagger(app.AutoTaggerOptions{Queue: e.db.AutoTags(), Settings: e.db.Settings(), Undo: e.db.Activity()})
-	activity := app.NewActivity(app.ActivityOptions{
-		Store:    e.db.Activity(),
-		Retriers: map[domain.ActivityKind]app.ActivityRetrier{domain.ActivityAutoTag: tagger},
-		Undoers:  map[domain.ActivityKind]app.ActivityUndoer{domain.ActivityAutoTag: tagger},
-	})
-	handler := newTestServer(t, Options{Activity: activity, Events: e.events, Scans: &lockedScans{current: domain.Scan{ID: 1}}})
-	failed := failedImport()
-	failed.Kind, failed.Stage = domain.ActivityAutoTag, ""
-	id := e.record(t, failed)
+// Both features start off, so retrying their failed entry answers 409 with the feature's reason.
+func TestRetryWhileTheFeatureIsOffAnswersItsReason(t *testing.T) {
+	for _, tc := range []struct {
+		kind    domain.ActivityKind
+		retrier func(db *store.DB) app.ActivityRetrier
+		reason  gen.ErrorReason
+	}{
+		{domain.ActivityAutoTag, func(db *store.DB) app.ActivityRetrier {
+			return app.NewAutoTagger(app.AutoTaggerOptions{Queue: db.AutoTags(), Settings: db.Settings(), Undo: db.Activity()})
+		}, gen.ErrorReasonAutoTaggingOff},
+		{domain.ActivityFaceAnalysis, func(db *store.DB) app.ActivityRetrier {
+			return app.NewFaceRecognizer(app.FaceRecognizerOptions{Queue: db.Faces(), Settings: db.Settings()})
+		}, gen.ErrorReasonFaceRecognitionOff},
+	} {
+		t.Run(string(tc.kind), func(t *testing.T) {
+			e := newActivityEnv(t)
+			activity := app.NewActivity(app.ActivityOptions{
+				Store:    e.db.Activity(),
+				Retriers: map[domain.ActivityKind]app.ActivityRetrier{tc.kind: tc.retrier(e.db)},
+			})
+			handler := newTestServer(t, Options{Activity: activity, Events: e.events, Scans: &lockedScans{current: domain.Scan{ID: 1}}})
+			failed := failedImport()
+			failed.Kind, failed.Stage = tc.kind, ""
+			id := e.record(t, failed)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/activity/"+itoa(id)+"/retry", nil)
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	assertErrorBody(t, "retry while off", rec.Code, rec.Body.Bytes(), wantError{
-		status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonAutoTaggingOff,
-	})
+			req := httptest.NewRequest(http.MethodPost, "/api/activity/"+itoa(id)+"/retry", nil)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			assertErrorBody(t, "retry while off", rec.Code, rec.Body.Bytes(), wantError{
+				status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: tc.reason,
+			})
+		})
+	}
 }
 
 func TestStreamEventsSendsActivityToOwners(t *testing.T) {
@@ -254,6 +292,30 @@ func TestActivityRoutesRefuseGuests(t *testing.T) {
 		{method: http.MethodPost, target: "/api/activity/1/undo", body: `{"tagId":1}`},
 	} {
 		assertUnauthenticated(t, req.method+" "+req.target, env.serve(req))
+	}
+}
+
+func TestMemberSummaryKeepsFaceLinks(t *testing.T) {
+	member := domain.ActivityMember{ActivityEntry: domain.ActivityEntry{
+		ID: 3, Kind: domain.ActivityFaceAnalysis, Feature: domain.ActivityFeatureFaceRecognition,
+		Subject: domain.ActivitySubject{Kind: domain.ActivitySubjectVideo, Key: "key-a", Label: "a.mp4"},
+		Status:  domain.ActivityDone, Outcome: domain.ActivityCompleted, Decider: domain.ActivityByRule,
+		FaceLinks: []domain.ActivityFaceLink{
+			{AppearanceID: 7, Person: &domain.CreditRef{ID: 1, Provisional: true}, CreatedPerson: true},
+		},
+	}}
+
+	summary, err := toAPIActivityMemberSummary(member)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.FaceLinks == nil || len(*summary.FaceLinks) != 1 {
+		t.Fatalf("faceLinks = %+v", summary.FaceLinks)
+	}
+	link := (*summary.FaceLinks)[0]
+	if link.AppearanceId != 7 || link.Person == nil || *link.Person != (gen.CreditRef{Id: 1, Provisional: true}) ||
+		!link.CreatedPerson || link.Undone || !summary.Undoable {
+		t.Errorf("link = %+v, undoable = %v", link, summary.Undoable)
 	}
 }
 

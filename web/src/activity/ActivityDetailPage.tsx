@@ -24,6 +24,7 @@ import {
 import {
   type DetailOperations,
   PartOfSection,
+  PeopleSection,
   StagesSection,
   TagsSection,
   TasksSection,
@@ -33,6 +34,7 @@ import {
   entryResult,
   statusMark,
   subjectParts,
+  subjectPerson,
   subjectText,
 } from "./activityEntry";
 import { useActivityDetail } from "./useActivityDetail";
@@ -136,6 +138,42 @@ function Videos({ entry, here }: { entry: ActivityDetail; here: string }) {
   );
 }
 
+function PersonFact({ entry, here }: { entry: ActivityDetail; here: string }) {
+  const [part] = subjectParts(entry);
+  const label = part?.label ?? "";
+  return part?.personId === undefined ? (
+    <span>{label}</span>
+  ) : (
+    <Link
+      to={`/people/${String(part.personId)}`}
+      state={{ from: here }}
+      className="hover:underline"
+    >
+      {label}
+    </Link>
+  );
+}
+
+/** The header's Open: the video of a video subject, or the person of a person subject. */
+function headerOpen(entry: ActivityDetail, here: string): ReactNode {
+  const video = headerVideo(entry);
+  const person = subjectPerson(entry);
+  const target =
+    video !== undefined
+      ? { to: `/videos/${String(video)}`, label: t.activity.action.open }
+      : person !== undefined
+        ? { to: `/people/${String(person)}`, label: t.activity.action.openPerson }
+        : undefined;
+  if (target === undefined) return undefined;
+  return (
+    <Button asChild variant="outline" size="sm">
+      <Link to={target.to} state={{ from: here }}>
+        {target.label}
+      </Link>
+    </Button>
+  );
+}
+
 function ResultFact({ entry, ops }: { entry: ActivityDetail; ops: DetailOperations }) {
   const key = `undo-${String(entry.id)}`;
   return (
@@ -186,6 +224,12 @@ function summaryFacts(
       term: kind === "pair" ? f.videos : f.video,
       value: <Videos entry={entry} here={here} />,
     });
+  if (kind === "person")
+    facts.push({
+      id: "person",
+      term: f.person,
+      value: <PersonFact entry={entry} here={here} />,
+    });
   facts.push(
     { id: "decider", term: f.decider, value: deciderText(entry) },
     { id: "started", term: f.started, value: formatDateTime(entry.createdAt) },
@@ -225,21 +269,12 @@ function Loaded({
 }) {
   const now = new Date();
   const notice = detailNotice(entry, now);
-  const video = headerVideo(entry);
   return (
     <RecordPage
       back={back}
       title={subjectText(entry)}
       description={t.activity.kind[entry.kind]}
-      actions={
-        video === undefined ? undefined : (
-          <Button asChild variant="outline" size="sm">
-            <Link to={`/videos/${String(video)}`} state={{ from: here }}>
-              {t.activity.action.open}
-            </Link>
-          </Button>
-        )
-      }
+      actions={headerOpen(entry, here)}
       notice={
         notice === null ? undefined : <Notice notice={notice} entry={entry} ops={ops} />
       }
@@ -250,6 +285,7 @@ function Loaded({
       <TasksSection entry={entry} ops={ops} now={now} listFrom={listFrom} />
       <StagesSection entry={entry} />
       <TagsSection entry={entry} ops={ops} />
+      <PeopleSection entry={entry} ops={ops} here={here} />
       <PartOfSection entry={entry} listFrom={listFrom} />
     </RecordPage>
   );

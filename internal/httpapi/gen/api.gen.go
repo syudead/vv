@@ -38,15 +38,16 @@ func (e ActivityDecider) Valid() bool {
 
 // Defines values for ActivityFeature.
 const (
-	ActivityFeatureAutoTagging    ActivityFeature = "auto_tagging"
-	ActivityFeatureDuplicateCheck ActivityFeature = "duplicate_check"
-	ActivityFeatureImport         ActivityFeature = "import"
-	ActivityFeatureMediaFolders   ActivityFeature = "media_folders"
-	ActivityFeatureOrganize       ActivityFeature = "organize"
-	ActivityFeatureScan           ActivityFeature = "scan"
-	ActivityFeatureTags           ActivityFeature = "tags"
-	ActivityFeatureVersions       ActivityFeature = "versions"
-	ActivityFeatureWorkInfo       ActivityFeature = "work_info"
+	ActivityFeatureAutoTagging     ActivityFeature = "auto_tagging"
+	ActivityFeatureDuplicateCheck  ActivityFeature = "duplicate_check"
+	ActivityFeatureFaceRecognition ActivityFeature = "face_recognition"
+	ActivityFeatureImport          ActivityFeature = "import"
+	ActivityFeatureMediaFolders    ActivityFeature = "media_folders"
+	ActivityFeatureOrganize        ActivityFeature = "organize"
+	ActivityFeatureScan            ActivityFeature = "scan"
+	ActivityFeatureTags            ActivityFeature = "tags"
+	ActivityFeatureVersions        ActivityFeature = "versions"
+	ActivityFeatureWorkInfo        ActivityFeature = "work_info"
 )
 
 // Valid indicates whether the value is a known member of the ActivityFeature enum.
@@ -55,6 +56,8 @@ func (e ActivityFeature) Valid() bool {
 	case ActivityFeatureAutoTagging:
 		return true
 	case ActivityFeatureDuplicateCheck:
+		return true
+	case ActivityFeatureFaceRecognition:
 		return true
 	case ActivityFeatureImport:
 		return true
@@ -80,6 +83,8 @@ const (
 	ActivityKindAutoTag            ActivityKind = "auto_tag"
 	ActivityKindBundle             ActivityKind = "bundle"
 	ActivityKindDismiss            ActivityKind = "dismiss"
+	ActivityKindFaceAnalysis       ActivityKind = "face_analysis"
+	ActivityKindFaceMerge          ActivityKind = "face_merge"
 	ActivityKindImport             ActivityKind = "import"
 	ActivityKindMakeRepresentative ActivityKind = "make_representative"
 	ActivityKindMediaFolderRemove  ActivityKind = "media_folder_remove"
@@ -105,6 +110,10 @@ func (e ActivityKind) Valid() bool {
 	case ActivityKindBundle:
 		return true
 	case ActivityKindDismiss:
+		return true
+	case ActivityKindFaceAnalysis:
+		return true
+	case ActivityKindFaceMerge:
 		return true
 	case ActivityKindImport:
 		return true
@@ -286,6 +295,7 @@ func (e ActivityStatus) Valid() bool {
 const (
 	ActivitySubjectKindFolder ActivitySubjectKind = "folder"
 	ActivitySubjectKindPair   ActivitySubjectKind = "pair"
+	ActivitySubjectKindPerson ActivitySubjectKind = "person"
 	ActivitySubjectKindScan   ActivitySubjectKind = "scan"
 	ActivitySubjectKindVideo  ActivitySubjectKind = "video"
 )
@@ -296,6 +306,8 @@ func (e ActivitySubjectKind) Valid() bool {
 	case ActivitySubjectKindFolder:
 		return true
 	case ActivitySubjectKindPair:
+		return true
+	case ActivitySubjectKindPerson:
 		return true
 	case ActivitySubjectKindScan:
 		return true
@@ -629,6 +641,10 @@ const (
 	ErrorReasonDurationUnknown               ErrorReason = "duration_unknown"
 	ErrorReasonEncoderUnavailable            ErrorReason = "encoder_unavailable"
 	ErrorReasonExternalIdTaken               ErrorReason = "external_id_taken"
+	ErrorReasonFaceAppearanceNotFound        ErrorReason = "face_appearance_not_found"
+	ErrorReasonFaceCandidateNotFound         ErrorReason = "face_candidate_not_found"
+	ErrorReasonFaceRecognitionOff            ErrorReason = "face_recognition_off"
+	ErrorReasonFaceRecognitionUnsupported    ErrorReason = "face_recognition_unsupported"
 	ErrorReasonFileUnavailable               ErrorReason = "file_unavailable"
 	ErrorReasonFolderNotFound                ErrorReason = "folder_not_found"
 	ErrorReasonGroupCycle                    ErrorReason = "group_cycle"
@@ -656,6 +672,8 @@ const (
 	ErrorReasonOutputTooLarge                ErrorReason = "output_too_large"
 	ErrorReasonPasswordLength                ErrorReason = "password_length"
 	ErrorReasonPersonImageInvalid            ErrorReason = "person_image_invalid"
+	ErrorReasonPersonImageManyFaces          ErrorReason = "person_image_many_faces"
+	ErrorReasonPersonImageNoFace             ErrorReason = "person_image_no_face"
 	ErrorReasonPersonImageNotFound           ErrorReason = "person_image_not_found"
 	ErrorReasonPersonImageTooLarge           ErrorReason = "person_image_too_large"
 	ErrorReasonPersonNotFound                ErrorReason = "person_not_found"
@@ -738,6 +756,14 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonExternalIdTaken:
 		return true
+	case ErrorReasonFaceAppearanceNotFound:
+		return true
+	case ErrorReasonFaceCandidateNotFound:
+		return true
+	case ErrorReasonFaceRecognitionOff:
+		return true
+	case ErrorReasonFaceRecognitionUnsupported:
+		return true
 	case ErrorReasonFileUnavailable:
 		return true
 	case ErrorReasonFolderNotFound:
@@ -791,6 +817,10 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonPasswordLength:
 		return true
 	case ErrorReasonPersonImageInvalid:
+		return true
+	case ErrorReasonPersonImageManyFaces:
+		return true
+	case ErrorReasonPersonImageNoFace:
 		return true
 	case ErrorReasonPersonImageNotFound:
 		return true
@@ -885,6 +915,75 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonWorkInfoTooMany:
 		return true
 	case ErrorReasonWorkflowRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FaceRecognizer.
+const (
+	ArcfaceR50 FaceRecognizer = "arcface_r50"
+	SfaceInt8  FaceRecognizer = "sface_int8"
+)
+
+// Valid indicates whether the value is a known member of the FaceRecognizer enum.
+func (e FaceRecognizer) Valid() bool {
+	switch e {
+	case ArcfaceR50:
+		return true
+	case SfaceInt8:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FaceRuntimeReason.
+const (
+	Disk         FaceRuntimeReason = "disk"
+	HashMismatch FaceRuntimeReason = "hash_mismatch"
+	HelperStart  FaceRuntimeReason = "helper_start"
+	Network      FaceRuntimeReason = "network"
+)
+
+// Valid indicates whether the value is a known member of the FaceRuntimeReason enum.
+func (e FaceRuntimeReason) Valid() bool {
+	switch e {
+	case Disk:
+		return true
+	case HashMismatch:
+		return true
+	case HelperStart:
+		return true
+	case Network:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FaceRuntimeState.
+const (
+	FaceRuntimeStateAbsent      FaceRuntimeState = "absent"
+	FaceRuntimeStateDownloading FaceRuntimeState = "downloading"
+	FaceRuntimeStateFailed      FaceRuntimeState = "failed"
+	FaceRuntimeStateReady       FaceRuntimeState = "ready"
+	FaceRuntimeStateUnsupported FaceRuntimeState = "unsupported"
+)
+
+// Valid indicates whether the value is a known member of the FaceRuntimeState enum.
+func (e FaceRuntimeState) Valid() bool {
+	switch e {
+	case FaceRuntimeStateAbsent:
+		return true
+	case FaceRuntimeStateDownloading:
+		return true
+	case FaceRuntimeStateFailed:
+		return true
+	case FaceRuntimeStateReady:
+		return true
+	case FaceRuntimeStateUnsupported:
 		return true
 	default:
 		return false
@@ -1629,6 +1728,24 @@ func (e StartAutoTaggingRequestScope) Valid() bool {
 	case StartAutoTaggingRequestScopeAll:
 		return true
 	case StartAutoTaggingRequestScopeMissing:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for StartFaceRecognitionRequestScope.
+const (
+	StartFaceRecognitionRequestScopeAll     StartFaceRecognitionRequestScope = "all"
+	StartFaceRecognitionRequestScopeMissing StartFaceRecognitionRequestScope = "missing"
+)
+
+// Valid indicates whether the value is a known member of the StartFaceRecognitionRequestScope enum.
+func (e StartFaceRecognitionRequestScope) Valid() bool {
+	switch e {
+	case StartFaceRecognitionRequestScopeAll:
+		return true
+	case StartFaceRecognitionRequestScopeMissing:
 		return true
 	default:
 		return false
@@ -2465,6 +2582,9 @@ type ActivityDetail struct {
 	// Detail Untranslated provider/stage error text, tags changed by owner actions, or number of videos removed by unregistering a media folder.
 	Detail *string `json:"detail,omitempty"`
 
+	// FaceLinks People a face_analysis record linked to its video as performers.
+	FaceLinks *[]ActivityFaceLink `json:"faceLinks,omitempty"`
+
 	// Feature Kind grouping used for feature filters; undo belongs to the feature of the undone record.
 	Feature ActivityFeature `json:"feature"`
 	Id      int64           `json:"id"`
@@ -2517,7 +2637,7 @@ type ActivityDetail struct {
 	// Tags Tags assigned by auto_tag.
 	Tags *[]ActivityTag `json:"tags,omitempty"`
 
-	// Undoable Show undo action; auto_tag requires at least one undoable tag.
+	// Undoable Show undo action; auto_tag requires at least one undoable tag, face_analysis at least one undoable link.
 	Undoable bool `json:"undoable"`
 
 	// Undoes Kind and outcome of the record undone by this undo record, plus the tag for per-tag undo.
@@ -2542,6 +2662,9 @@ type ActivityEntryFields struct {
 
 	// Detail Untranslated provider/stage error text, tags changed by owner actions, or number of videos removed by unregistering a media folder.
 	Detail *string `json:"detail,omitempty"`
+
+	// FaceLinks People a face_analysis record linked to its video as performers.
+	FaceLinks *[]ActivityFaceLink `json:"faceLinks,omitempty"`
 
 	// Feature Kind grouping used for feature filters; undo belongs to the feature of the undone record.
 	Feature ActivityFeature `json:"feature"`
@@ -2583,7 +2706,7 @@ type ActivityEntryFields struct {
 	// Tags Tags assigned by auto_tag.
 	Tags *[]ActivityTag `json:"tags,omitempty"`
 
-	// Undoable Show undo action; auto_tag requires at least one undoable tag.
+	// Undoable Show undo action; auto_tag requires at least one undoable tag, face_analysis at least one undoable link.
 	Undoable bool `json:"undoable"`
 
 	// Undoes Kind and outcome of the record undone by this undo record, plus the tag for per-tag undo.
@@ -2594,20 +2717,35 @@ type ActivityEntryFields struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// ActivityFaceLink defines model for ActivityFaceLink.
+type ActivityFaceLink struct {
+	AppearanceId int64 `json:"appearanceId"`
+
+	// CreatedPerson The analysis created this provisional person.
+	CreatedPerson bool `json:"createdPerson"`
+
+	// Person The linked person as now named; omitted once the person is deleted.
+	Person *CreditRef `json:"person,omitempty"`
+
+	// Undone Undone by the owner.
+	Undone bool `json:"undone"`
+}
+
 // ActivityFeature Kind grouping used for feature filters; undo belongs to the feature of the undone record.
 type ActivityFeature string
 
 // ActivityFeatureCounts Counts for all features among top-level records matching every filter except feature; a pipeline counts once under each feature that it or a matching member has.
 type ActivityFeatureCounts struct {
-	AutoTagging    int `json:"auto_tagging"`
-	DuplicateCheck int `json:"duplicate_check"`
-	Import         int `json:"import"`
-	MediaFolders   int `json:"media_folders"`
-	Organize       int `json:"organize"`
-	Scan           int `json:"scan"`
-	Tags           int `json:"tags"`
-	Versions       int `json:"versions"`
-	WorkInfo       int `json:"work_info"`
+	AutoTagging     int `json:"auto_tagging"`
+	DuplicateCheck  int `json:"duplicate_check"`
+	FaceRecognition int `json:"face_recognition"`
+	Import          int `json:"import"`
+	MediaFolders    int `json:"media_folders"`
+	Organize        int `json:"organize"`
+	Scan            int `json:"scan"`
+	Tags            int `json:"tags"`
+	Versions        int `json:"versions"`
+	WorkInfo        int `json:"work_info"`
 }
 
 // ActivityKind Activity record kind.
@@ -2624,6 +2762,9 @@ type ActivityListItem struct {
 
 	// Detail Untranslated provider/stage error text, tags changed by owner actions, or number of videos removed by unregistering a media folder.
 	Detail *string `json:"detail,omitempty"`
+
+	// FaceLinks People a face_analysis record linked to its video as performers.
+	FaceLinks *[]ActivityFaceLink `json:"faceLinks,omitempty"`
 
 	// Feature Kind grouping used for feature filters; undo belongs to the feature of the undone record.
 	Feature ActivityFeature `json:"feature"`
@@ -2668,7 +2809,7 @@ type ActivityListItem struct {
 	// Tags Tags assigned by auto_tag.
 	Tags *[]ActivityTag `json:"tags,omitempty"`
 
-	// Undoable Show undo action; auto_tag requires at least one undoable tag.
+	// Undoable Show undo action; auto_tag requires at least one undoable tag, face_analysis at least one undoable link.
 	Undoable bool `json:"undoable"`
 
 	// Undoes Kind and outcome of the record undone by this undo record, plus the tag for per-tag undo.
@@ -2683,6 +2824,9 @@ type ActivityListItem struct {
 type ActivityMemberSummary struct {
 	// Decider Actor responsible for the recorded decision, otherwise the actor that started processing.
 	Decider ActivityDecider `json:"decider"`
+
+	// FaceLinks face_analysis only: the people the run linked, as in ActivityEntry.
+	FaceLinks *[]ActivityFaceLink `json:"faceLinks,omitempty"`
 
 	// Feature Kind grouping used for feature filters; undo belongs to the feature of the undone record.
 	Feature ActivityFeature `json:"feature"`
@@ -2812,6 +2956,9 @@ type ActivitySubjectItem struct {
 	// Label Display-name snapshot at recording time, as untranslated user data.
 	Label string `json:"label"`
 
+	// PersonId The person of a person subject, which may since have been deleted; omitted for other subjects.
+	PersonId *int64 `json:"personId,omitempty"`
+
 	// VideoId Current video accessible to the viewer; omitted when unavailable.
 	VideoId *int64 `json:"videoId,omitempty"`
 }
@@ -2833,6 +2980,9 @@ type ActivityTag struct {
 
 // ActivityUndoRequest defines model for ActivityUndoRequest.
 type ActivityUndoRequest struct {
+	// AppearanceId Link to undo on a face_analysis record; omitted, every link not yet undone. Unused for other kinds.
+	AppearanceId *int64 `json:"appearanceId,omitempty"`
+
 	// TagId Tag to undo on an auto_tag record; unused for other kinds.
 	TagId *int64 `json:"tagId,omitempty"`
 }
@@ -3080,10 +3230,13 @@ type CreditPatch struct {
 	Profile *PersonProfilePatch `json:"profile,omitempty"`
 }
 
-// CreditRef Reference to one person or organization; name is its current name.
+// CreditRef Reference to one person or organization; name is its current name, "" for a provisional person.
 type CreditRef struct {
 	Id   int64  `json:"id"`
 	Name string `json:"name"`
+
+	// Provisional True for a person without a canonical name, whose name is then ""; always false for an organization.
+	Provisional bool `json:"provisional"`
 }
 
 // CreditSort The five TagSort modes, plus ageAsc (newest birth date first) and ageDesc (oldest first) for people only; organizations answer either with 400 invalid_request. A partial birth date sorts as its first possible day, and people without one come last in both age sorts. Ties use natural-name order, then ID.
@@ -3168,6 +3321,133 @@ type ExternalId struct {
 	Source string `json:"source"`
 	Value  string `json:"value"`
 }
+
+// FaceAppearance One main person of one video, linked to the listed person.
+type FaceAppearance struct {
+	AppearanceId int64 `json:"appearanceId"`
+
+	// HasCrop True when getFaceAppearanceCrop has a face to return.
+	HasCrop bool `json:"hasCrop"`
+
+	// Spans When the person is on screen, in seconds, in order and without overlaps.
+	Spans []FaceAppearanceSpan `json:"spans"`
+
+	// Title The video's title: its override, else its first registered location's title, else the content key.
+	Title string `json:"title"`
+
+	// VideoId The video with the appearance's content key; absent when no video has it any more.
+	VideoId *int64 `json:"videoId,omitempty"`
+}
+
+// FaceAppearanceList defines model for FaceAppearanceList.
+type FaceAppearanceList struct {
+	Items []FaceAppearance `json:"items"`
+
+	// NextCursor Next-page cursor, included only when limit is supplied and more results remain.
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
+// FaceAppearanceSpan defines model for FaceAppearanceSpan.
+type FaceAppearanceSpan struct {
+	End   float64 `json:"end"`
+	Start float64 `json:"start"`
+}
+
+// FaceCandidate One open pair, as the other person of it.
+type FaceCandidate struct {
+	// Person CreditRef of the other person, with its face.
+	Person FaceCandidatePerson `json:"person"`
+
+	// Similarity The pair's highest face similarity when last computed, from 0 to 1.
+	Similarity float64 `json:"similarity"`
+}
+
+// FaceCandidateList defines model for FaceCandidateList.
+type FaceCandidateList struct {
+	Items []FaceCandidate `json:"items"`
+}
+
+// FaceCandidatePerson CreditRef of the other person, with its face.
+type FaceCandidatePerson struct {
+	Id int64 `json:"id"`
+
+	// ImageRevision Present only when the person has a face; changes with every change of the face and is never reused. Load the face from /api/people/{id}/image?v={imageRevision}.
+	ImageRevision *PersonImageRevision `json:"imageRevision,omitempty"`
+	Name          string               `json:"name"`
+
+	// Provisional True for a person without a canonical name, whose name is then "".
+	Provisional bool `json:"provisional"`
+}
+
+// FaceRecognitionCounts Face analysis queue rows (content keys) by state.
+type FaceRecognitionCounts struct {
+	Done    int `json:"done"`
+	Failed  int `json:"failed"`
+	Queued  int `json:"queued"`
+	Running int `json:"running"`
+}
+
+// FaceRecognitionQueued defines model for FaceRecognitionQueued.
+type FaceRecognitionQueued struct {
+	// Queued Number of queued videos.
+	Queued int `json:"queued"`
+}
+
+// FaceRecognitionSettings Face recognition settings, the runtime state and the analysis queue counts; see docs/design-docs/face-recognition.md.
+type FaceRecognitionSettings struct {
+	// Counts Face analysis queue rows (content keys) by state.
+	Counts FaceRecognitionCounts `json:"counts"`
+
+	// Enabled Off by default; while off nothing is downloaded and no video is analysed.
+	Enabled bool `json:"enabled"`
+
+	// LastFailure The latest failed analysis's message in English; omitted if none.
+	LastFailure *string `json:"lastFailure,omitempty"`
+
+	// Recognizer Recognizer that turns a face into a vector: sface_int8 (SFace 2021dec int8, the default) or arcface_r50 (InsightFace buffalo_l, non-commercial use only).
+	Recognizer  FaceRecognizer         `json:"recognizer"`
+	Recognizers []FaceRecognizerOption `json:"recognizers"`
+
+	// Runtime The runtime and model files the chosen recognizer needs.
+	Runtime FaceRuntime `json:"runtime"`
+}
+
+// FaceRecognizer Recognizer that turns a face into a vector: sface_int8 (SFace 2021dec int8, the default) or arcface_r50 (InsightFace buffalo_l, non-commercial use only).
+type FaceRecognizer string
+
+// FaceRecognizerOption defines model for FaceRecognizerOption.
+type FaceRecognizerOption struct {
+	// DownloadBytes Size of the recognizer's model.
+	DownloadBytes int64 `json:"downloadBytes"`
+
+	// Id Recognizer that turns a face into a vector: sface_int8 (SFace 2021dec int8, the default) or arcface_r50 (InsightFace buffalo_l, non-commercial use only).
+	Id FaceRecognizer `json:"id"`
+
+	// License SPDX license id, or non-commercial.
+	License       string `json:"license"`
+	NonCommercial bool   `json:"nonCommercial"`
+}
+
+// FaceRuntime The runtime and model files the chosen recognizer needs.
+type FaceRuntime struct {
+	// BytesDone Present while downloading.
+	BytesDone *int64 `json:"bytesDone,omitempty"`
+
+	// BytesTotal Present while downloading.
+	BytesTotal *int64 `json:"bytesTotal,omitempty"`
+
+	// Reason Present when failed.
+	Reason *FaceRuntimeReason `json:"reason,omitempty"`
+
+	// State unsupported: no runtime is published for this platform.
+	State FaceRuntimeState `json:"state"`
+}
+
+// FaceRuntimeReason Present when failed.
+type FaceRuntimeReason string
+
+// FaceRuntimeState unsupported: no runtime is published for this platform.
+type FaceRuntimeState string
 
 // FavoritesRequest defines model for FavoritesRequest.
 type FavoritesRequest struct {
@@ -3918,6 +4198,9 @@ type Person struct {
 	// Profile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
 	Profile PersonProfile `json:"profile"`
 
+	// Provisional True while the person has no canonical name; name is then "". Setting a name makes the person ordinary.
+	Provisional bool `json:"provisional"`
+
 	// VideoCount Visible videos linked to this person in any role.
 	VideoCount int `json:"videoCount"`
 }
@@ -3932,7 +4215,7 @@ type PersonList struct {
 	// NextCursor Next-page cursor, included only when limit is supplied and more results remain.
 	NextCursor *string `json:"nextCursor,omitempty"`
 
-	// Total Person count matching q and favorite, independent of pagination.
+	// Total Person count matching q, favorite and provisional, independent of pagination.
 	Total int `json:"total"`
 
 	// TotalAll Total person count.
@@ -4757,6 +5040,14 @@ type StartAutoTaggingRequest struct {
 // StartAutoTaggingRequestScope defines model for StartAutoTaggingRequest.Scope.
 type StartAutoTaggingRequestScope string
 
+// StartFaceRecognitionRequest defines model for StartFaceRecognitionRequest.
+type StartFaceRecognitionRequest struct {
+	Scope StartFaceRecognitionRequestScope `json:"scope"`
+}
+
+// StartFaceRecognitionRequestScope defines model for StartFaceRecognitionRequest.Scope.
+type StartFaceRecognitionRequestScope string
+
 // StartThumbnailEditFromImageRequest defines model for StartThumbnailEditFromImageRequest.
 type StartThumbnailEditFromImageRequest struct {
 	// Image Starting image: PNG, JPEG or WebP, at most 20 MiB and 8192 × 8192 pixels.
@@ -5056,6 +5347,14 @@ type UpdateComfyUISettingsRequest struct {
 
 	// Url Required for self_hosted: HTTP or HTTPS base URL.
 	Url *string `json:"url,omitempty"`
+}
+
+// UpdateFaceRecognitionSettingsRequest defines model for UpdateFaceRecognitionSettingsRequest.
+type UpdateFaceRecognitionSettingsRequest struct {
+	Enabled bool `json:"enabled"`
+
+	// Recognizer sface_int8 or arcface_r50; another value returns 400 invalid_request.
+	Recognizer string `json:"recognizer"`
 }
 
 // UpdateMediaFolderRequest defines model for UpdateMediaFolderRequest.
@@ -5840,7 +6139,7 @@ type WorkInfoSearchResult struct {
 
 // WorkOrganization defines model for WorkOrganization.
 type WorkOrganization struct {
-	// Organization Reference to one person or organization; name is its current name.
+	// Organization Reference to one person or organization; name is its current name, "" for a provisional person.
 	Organization CreditRef `json:"organization"`
 
 	// Role Organization role in a video.
@@ -5864,8 +6163,11 @@ type WorkPerson struct {
 	// ImageRevision Present only when the person has a face; changes with every change of the face and is never reused. Load the face from /api/people/{id}/image?v={imageRevision}.
 	ImageRevision *PersonImageRevision `json:"imageRevision,omitempty"`
 
-	// Person Reference to one person or organization; name is its current name.
+	// Person Reference to one person or organization; name is its current name, "" for a provisional person.
 	Person CreditRef `json:"person"`
+
+	// Provisional Same as person.provisional.
+	Provisional bool `json:"provisional"`
 
 	// Role Person role in a video.
 	Role WorkPersonRole `json:"role"`
@@ -5901,8 +6203,17 @@ type CreditFavorite = bool
 // CreditLimit defines model for CreditLimit.
 type CreditLimit = int
 
+// CreditProvisional defines model for CreditProvisional.
+type CreditProvisional = bool
+
 // CreditQuery defines model for CreditQuery.
 type CreditQuery = string
+
+// FaceAppearanceId defines model for FaceAppearanceId.
+type FaceAppearanceId = int64
+
+// FaceCandidateOtherId defines model for FaceCandidateOtherId.
+type FaceCandidateOtherId = int64
 
 // FolderPath defines model for FolderPath.
 type FolderPath = string
@@ -6225,6 +6536,9 @@ type ListOrganizationsParams struct {
 
 	// Favorite People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request.
 	Favorite *CreditFavorite `form:"favorite,omitempty" json:"favorite,omitempty"`
+
+	// Provisional People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request.
+	Provisional *CreditProvisional `form:"provisional,omitempty" json:"provisional,omitempty"`
 }
 
 // ListPeopleParams defines parameters for ListPeople.
@@ -6243,6 +6557,18 @@ type ListPeopleParams struct {
 
 	// Favorite People only: true keeps favorite people, combined with q by AND, and total counts them. Any value on an organization list returns 400 invalid_request.
 	Favorite *CreditFavorite `form:"favorite,omitempty" json:"favorite,omitempty"`
+
+	// Provisional People only: true keeps provisional people (no canonical name), false keeps named people; omit for both. Combined with q and favorite by AND, and total counts the matches. Any value on an organization list returns 400 invalid_request.
+	Provisional *CreditProvisional `form:"provisional,omitempty" json:"provisional,omitempty"`
+}
+
+// ListPersonAppearancesParams defines parameters for ListPersonAppearances.
+type ListPersonAppearancesParams struct {
+	// Cursor Opaque nextCursor from the previous response; ignored without limit
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Page size; omit for all appearances without nextCursor
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetPersonImageParams defines parameters for GetPersonImage.
@@ -6580,6 +6906,9 @@ type StartAutoTaggingJSONRequestBody = StartAutoTaggingRequest
 // DeleteCollectionsJSONRequestBody defines body for DeleteCollections for application/json ContentType.
 type DeleteCollectionsJSONRequestBody = CollectionsDeleteRequest
 
+// StartFaceRecognitionJSONRequestBody defines body for StartFaceRecognition for application/json ContentType.
+type StartFaceRecognitionJSONRequestBody = StartFaceRecognitionRequest
+
 // UpdateFavoritesJSONRequestBody defines body for UpdateFavorites for application/json ContentType.
 type UpdateFavoritesJSONRequestBody = FavoritesRequest
 
@@ -6681,6 +7010,9 @@ type UpdateAutoTaggingSettingsJSONRequestBody = UpdateAutoTaggingSettingsRequest
 
 // UpdateComfyUISettingsJSONRequestBody defines body for UpdateComfyUISettings for application/json ContentType.
 type UpdateComfyUISettingsJSONRequestBody = UpdateComfyUISettingsRequest
+
+// UpdateFaceRecognitionSettingsJSONRequestBody defines body for UpdateFaceRecognitionSettings for application/json ContentType.
+type UpdateFaceRecognitionSettingsJSONRequestBody = UpdateFaceRecognitionSettingsRequest
 
 // UpdateNetworkSettingsJSONRequestBody defines body for UpdateNetworkSettings for application/json ContentType.
 type UpdateNetworkSettingsJSONRequestBody = UpdateNetworkSettingsRequest
@@ -6843,6 +7175,15 @@ type ServerInterface interface {
 	// StreamEvents Stream import and video changes through Server-Sent Events
 	// (GET /api/events)
 	StreamEvents(w http.ResponseWriter, r *http.Request)
+	// GetFaceAppearanceCrop Return a face appearance's crop
+	// (GET /api/face-appearances/{id}/crop)
+	GetFaceAppearanceCrop(w http.ResponseWriter, r *http.Request, id int64)
+	// DownloadFaceRuntime Download the face runtime and the recognizer's model again
+	// (POST /api/face-recognition/download)
+	DownloadFaceRuntime(w http.ResponseWriter, r *http.Request)
+	// StartFaceRecognition Queue library videos for face analysis
+	// (POST /api/face-recognition/runs)
+	StartFaceRecognition(w http.ResponseWriter, r *http.Request)
 	// UpdateFavorites Set or clear favorites on videos and groups
 	// (PUT /api/favorites)
 	UpdateFavorites(w http.ResponseWriter, r *http.Request)
@@ -6969,6 +7310,21 @@ type ServerInterface interface {
 	// UpdatePerson Update a person's name, aliases and external IDs
 	// (PATCH /api/people/{id})
 	UpdatePerson(w http.ResponseWriter, r *http.Request, id PersonId)
+	// ListPersonAppearances List a person's face appearances
+	// (GET /api/people/{id}/appearances)
+	ListPersonAppearances(w http.ResponseWriter, r *http.Request, id PersonId, params ListPersonAppearancesParams)
+	// SplitFaceAppearance Split a face appearance into a new person
+	// (POST /api/people/{id}/appearances/{appearanceId}/split)
+	SplitFaceAppearance(w http.ResponseWriter, r *http.Request, id PersonId, appearanceId FaceAppearanceId)
+	// ListFaceCandidates List a person's face candidates
+	// (GET /api/people/{id}/face-candidates)
+	ListFaceCandidates(w http.ResponseWriter, r *http.Request, id PersonId)
+	// ConfirmFaceCandidate Merge a face candidate pair
+	// (POST /api/people/{id}/face-candidates/{otherId}/confirm)
+	ConfirmFaceCandidate(w http.ResponseWriter, r *http.Request, id PersonId, otherId FaceCandidateOtherId)
+	// DismissFaceCandidate Dismiss a face candidate pair
+	// (POST /api/people/{id}/face-candidates/{otherId}/dismiss)
+	DismissFaceCandidate(w http.ResponseWriter, r *http.Request, id PersonId, otherId FaceCandidateOtherId)
 	// DeletePersonImage Remove a person's face
 	// (DELETE /api/people/{id}/image)
 	DeletePersonImage(w http.ResponseWriter, r *http.Request, id PersonId)
@@ -7047,6 +7403,12 @@ type ServerInterface interface {
 	// CheckComfyUI Check the saved ComfyUI connection
 	// (POST /api/settings/comfyui/check)
 	CheckComfyUI(w http.ResponseWriter, r *http.Request)
+	// GetFaceRecognitionSettings Return face recognition settings, the runtime state and queue counts
+	// (GET /api/settings/face-recognition)
+	GetFaceRecognitionSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateFaceRecognitionSettings Save face recognition settings
+	// (PUT /api/settings/face-recognition)
+	UpdateFaceRecognitionSettings(w http.ResponseWriter, r *http.Request)
 	// GetNetworkSettings Return LAN access settings and available addresses
 	// (GET /api/settings/network)
 	GetNetworkSettings(w http.ResponseWriter, r *http.Request)
@@ -7753,6 +8115,60 @@ func (siw *ServerInterfaceWrapper) StreamEvents(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.StreamEvents(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFaceAppearanceCrop operation middleware
+func (siw *ServerInterfaceWrapper) GetFaceAppearanceCrop(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFaceAppearanceCrop(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DownloadFaceRuntime operation middleware
+func (siw *ServerInterfaceWrapper) DownloadFaceRuntime(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DownloadFaceRuntime(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartFaceRecognition operation middleware
+func (siw *ServerInterfaceWrapper) StartFaceRecognition(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartFaceRecognition(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8979,6 +9395,19 @@ func (siw *ServerInterfaceWrapper) ListOrganizations(w http.ResponseWriter, r *h
 		return
 	}
 
+	// ------------- Optional query parameter "provisional" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "provisional", r.URL.Query(), &params.Provisional, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "provisional"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provisional", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListOrganizations(w, r, params)
 	}))
@@ -9266,6 +9695,19 @@ func (siw *ServerInterfaceWrapper) ListPeople(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// ------------- Optional query parameter "provisional" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "provisional", r.URL.Query(), &params.Provisional, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "provisional"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "provisional", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListPeople(w, r, params)
 	}))
@@ -9360,6 +9802,192 @@ func (siw *ServerInterfaceWrapper) UpdatePerson(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdatePerson(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPersonAppearances operation middleware
+func (siw *ServerInterfaceWrapper) ListPersonAppearances(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPersonAppearancesParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPersonAppearances(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SplitFaceAppearance operation middleware
+func (siw *ServerInterfaceWrapper) SplitFaceAppearance(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "appearanceId" -------------
+	var appearanceId FaceAppearanceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "appearanceId", r.PathValue("appearanceId"), &appearanceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appearanceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SplitFaceAppearance(w, r, id, appearanceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListFaceCandidates operation middleware
+func (siw *ServerInterfaceWrapper) ListFaceCandidates(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListFaceCandidates(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfirmFaceCandidate operation middleware
+func (siw *ServerInterfaceWrapper) ConfirmFaceCandidate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "otherId" -------------
+	var otherId FaceCandidateOtherId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "otherId", r.PathValue("otherId"), &otherId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "otherId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfirmFaceCandidate(w, r, id, otherId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DismissFaceCandidate operation middleware
+func (siw *ServerInterfaceWrapper) DismissFaceCandidate(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "otherId" -------------
+	var otherId FaceCandidateOtherId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "otherId", r.PathValue("otherId"), &otherId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "otherId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DismissFaceCandidate(w, r, id, otherId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10037,6 +10665,34 @@ func (siw *ServerInterfaceWrapper) CheckComfyUI(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CheckComfyUI(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFaceRecognitionSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetFaceRecognitionSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFaceRecognitionSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateFaceRecognitionSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateFaceRecognitionSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateFaceRecognitionSettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -13516,6 +14172,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/auto-tagging", wrapper.UpdateAutoTaggingSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/version-judging", wrapper.GetVersionJudgingSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/version-judging", wrapper.UpdateVersionJudgingSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/face-recognition", wrapper.GetFaceRecognitionSettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/face-recognition", wrapper.UpdateFaceRecognitionSettings)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/face-recognition/download", wrapper.DownloadFaceRuntime)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/face-recognition/runs", wrapper.StartFaceRecognition)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auto-tagging/check", wrapper.CheckAutoTaggingClassifier)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auto-tagging/runs", wrapper.StartAutoTagging)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/api-tokens", wrapper.ListApiTokens)
@@ -13563,6 +14223,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/people/{id}/image", wrapper.DeletePersonImage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/image", wrapper.GetPersonImage)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/people/{id}/image", wrapper.UploadPersonImage)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/face-candidates", wrapper.ListFaceCandidates)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/face-candidates/{otherId}/confirm", wrapper.ConfirmFaceCandidate)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/face-candidates/{otherId}/dismiss", wrapper.DismissFaceCandidate)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/appearances", wrapper.ListPersonAppearances)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/appearances/{appearanceId}/split", wrapper.SplitFaceAppearance)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/face-appearances/{id}/crop", wrapper.GetFaceAppearanceCrop)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/plugin-fetches", wrapper.FetchPersonWithPlugin)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/plugin-fetches/{fetchId}/image", wrapper.GetPersonPluginFetchImage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/plugin-fetches/{fetchId}/apply", wrapper.ApplyPersonPluginFetch)

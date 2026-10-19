@@ -2,6 +2,12 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
 import { type Credit, deleteCredit, isCreditGone, type Person } from "../../api/credits";
+import {
+  confirmFaceCandidate,
+  type FaceAppearance,
+  type FaceCandidatePerson,
+  splitFaceAppearance,
+} from "../../api/personFaces";
 import { errorText, t, type UiText } from "../../i18n";
 import { ErrorState } from "../../ui/patterns/error-state";
 import { LoadingState } from "../../ui/patterns/loading-state";
@@ -11,7 +17,10 @@ import { Skeleton } from "../../ui/shadcn/skeleton";
 import { useToast } from "../../ui/Toast";
 import { useDocumentTitle } from "../../videoList/pageHooks";
 import DeleteCreditDialog from "../DeleteCreditDialog";
+import { creditDisplayName } from "../displayName";
 import MergeCreditDialog from "../MergeCreditDialog";
+import { PersonAppearances, usePersonAppearances } from "./PersonAppearances";
+import { PersonCandidates, useFaceCandidates } from "./PersonCandidates";
 import PersonFaceControl from "./PersonFaceControl";
 import { personPath } from "./personPath";
 import PersonGone from "./PersonGone";
@@ -40,7 +49,7 @@ export default function PersonPage() {
 function PersonScreen({ id }: { id: number | null }) {
   const { state, reload, replace, markGone } = usePerson(id, useHandedPerson(id));
   const person = state.kind === "ready" ? state.person : undefined;
-  useDocumentTitle(person?.name);
+  useDocumentTitle(person === undefined ? undefined : creditDisplayName(person));
 
   if (state.kind === "gone") {
     return (
@@ -109,11 +118,46 @@ function PersonShown({
   const [deleting, setDeleting] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<UiText | null>(null);
+  const candidates = useFaceCandidates(person.id, markGone);
+  const appearances = usePersonAppearances(person.id, markGone);
 
   function merged(target: Credit) {
     setMerging(false);
-    toast(text.mergedInto(target.name));
+    toast(text.mergedInto(creditDisplayName(target)));
     void navigate(personPath(target.id));
+  }
+
+  /** The shown person was merged away when it is not the target; otherwise it gained the other's videos. */
+  async function confirmCandidate(other: FaceCandidatePerson) {
+    const target = await confirmFaceCandidate(person.id, other.id);
+    if (target.id !== person.id) {
+      merged(target);
+      return;
+    }
+    replace(target);
+    candidates.remove(other.id);
+    // The target may have gained the source's pairs and appearances.
+    candidates.reload();
+    appearances.reload();
+    videos.reload();
+    toast(text.candidates.merged(creditDisplayName(other)));
+  }
+
+  /** The face leaves this person's list; the video's credit and the person's candidates may have changed. */
+  async function splitAppearance(appearance: FaceAppearance) {
+    const created = await splitFaceAppearance(person.id, appearance.appearanceId);
+    appearances.remove(appearance.appearanceId);
+    candidates.reload();
+    videos.reload();
+    toast(text.faces.split, {
+      action: {
+        label: text.faces.openSplit,
+        run: () => {
+          void navigate(personPath(created.id));
+          return Promise.resolve();
+        },
+      },
+    });
   }
 
   async function performDelete() {
@@ -121,7 +165,7 @@ function PersonShown({
     setDeletePending(true);
     try {
       await deleteCredit("person", person.id);
-      toast(t.credits.deleted(person.name));
+      toast(t.credits.deleted(creditDisplayName(person)));
       void navigate("/people");
     } catch (failure) {
       if (isCreditGone(failure)) {
@@ -150,7 +194,29 @@ function PersonShown({
           }}
         />
       }
-      details={<PersonDetails person={person} today={today} />}
+      details={
+        <PersonDetails
+          person={person}
+          today={today}
+          candidates={
+            <PersonCandidates
+              personId={person.id}
+              items={candidates.items}
+              actions={{
+                confirm: confirmCandidate,
+                remove: candidates.remove,
+                onGone: markGone,
+              }}
+            />
+          }
+          faces={
+            <PersonAppearances
+              appearances={appearances}
+              actions={{ split: splitAppearance, onGone: markGone }}
+            />
+          }
+        />
+      }
       header={<PersonVideosHeader videos={videos} />}
       toolbar={<RoleFilter role={role} onChange={setRole} />}
     >

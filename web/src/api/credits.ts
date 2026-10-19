@@ -41,6 +41,8 @@ export interface CreditListQuery {
   cursor?: string;
   /** People only: keep favorites. */
   favorite?: boolean;
+  /** People only: true keeps provisional people, false named ones; omit for both. */
+  provisional?: boolean;
 }
 
 /** Truncate queries to the contract's 100-code-point limit; longer names still match their prefixes. */
@@ -59,6 +61,8 @@ export function listCredits(
   if (query.cursor !== undefined && query.cursor !== "")
     params.set("cursor", query.cursor);
   if (query.favorite === true) params.set("favorite", "true");
+  if (query.provisional !== undefined)
+    params.set("provisional", String(query.provisional));
   const search = params.toString();
   return request<CreditList>(`${basePath(kind)}${search === "" ? "" : `?${search}`}`, {
     signal,
@@ -149,8 +153,10 @@ export async function deleteCredit(
 }
 
 /** The face URL; the revision only busts caches, so a changed face is fetched again. */
-export function personImagePath(id: number, revision: number): string {
-  return `/api/people/${String(id)}/image?v=${String(revision)}`;
+/** Without a revision the URL still answers, revalidated by its ETag, for a reference that has none. */
+export function personImagePath(id: number, revision?: number): string {
+  const path = `/api/people/${String(id)}/image`;
+  return revision === undefined ? path : `${path}?v=${String(revision)}`;
 }
 
 /** The person's face URL, or undefined without a face. */

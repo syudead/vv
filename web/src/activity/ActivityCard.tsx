@@ -9,14 +9,23 @@ import {
   Settings,
   Undo2,
   User,
+  UserRound,
   type LucideIcon,
 } from "lucide-react";
-import { type ComponentProps, Fragment, useState } from "react";
+import { type ComponentProps, Fragment, type ReactNode, useState } from "react";
 import { Link } from "react-router";
 
-import type { ActivityEntry, ActivityProgress, ActivityTag } from "../api/activity";
+import type {
+  ActivityEntry,
+  ActivityFaceLink,
+  ActivityProgress,
+  ActivityTag,
+  ActivityUndoRequest,
+} from "../api/activity";
+import { personImagePath } from "../api/credits";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
+import { PersonFace } from "../ui/PersonFace";
 import { CardListItem } from "../ui/patterns/card-list";
 import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
@@ -24,6 +33,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/shadcn/dropdown-menu";
 import { Progress } from "../ui/shadcn/progress";
@@ -36,6 +46,7 @@ import {
   entryOperations,
   entryResult,
   entryTime,
+  faceLinkName,
   type OpenAction,
   type ResultTone,
   statusMark,
@@ -64,6 +75,7 @@ const actionIcon: Record<OpenAction["id"], LucideIcon> = {
   duplicates: ExternalLink,
   workInfo: FileText,
   settings: Settings,
+  person: UserRound,
 };
 
 export interface MarkIconProps {
@@ -256,6 +268,54 @@ export function OperationButton({
   );
 }
 
+/** A face link's person as a `PersonFace chip`; a deleted person shows the placeholder. */
+export function FaceLinkFace({ link }: { link: ActivityFaceLink }) {
+  return (
+    <PersonFace
+      shape="chip"
+      name={faceLinkName(link)}
+      src={link.person === undefined ? undefined : personImagePath(link.person.id)}
+    />
+  );
+}
+
+/** `Unnamed person` and a deleted person read quieter than a name. */
+export function FaceLinkName({ link }: { link: ActivityFaceLink }) {
+  return (
+    <span
+      className={cn(
+        "min-w-0 truncate",
+        link.person?.provisional !== false && "text-muted-foreground",
+      )}
+    >
+      {faceLinkName(link)}
+    </span>
+  );
+}
+
+interface UndoMenuProps {
+  label: string;
+  pending: boolean;
+  disabled: boolean;
+  children: ReactNode;
+}
+
+function UndoMenu({ label, pending, disabled, children }: UndoMenuProps) {
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild disabled={disabled}>
+            <OperationButton label={label} icon={Undo2} pending={pending} />
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="end">{children}</DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function UndoTagsMenu({
   tags,
   pending,
@@ -267,31 +327,51 @@ function UndoTagsMenu({
   disabled: boolean;
   onUndo: (tagId: number) => void;
 }) {
-  const label = t.activity.action.undoTags;
   return (
-    <DropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger asChild disabled={disabled}>
-            <OperationButton label={label} icon={Undo2} pending={pending} />
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent>{label}</TooltipContent>
-      </Tooltip>
-      <DropdownMenuContent align="end">
-        {tags.map((tag) => (
-          <DropdownMenuItem key={tag.id} onSelect={() => onUndo(tag.id)}>
-            <span className="min-w-0 truncate">{tag.name}</span>
-            {tag.suggested && (
-              <span className="text-muted-foreground">{t.activity.result.suggested}</span>
-            )}
-            <span className="ml-auto text-muted-foreground tabular-nums">
-              {t.activity.percent(tag.probability)}
-            </span>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <UndoMenu label={t.activity.action.undoTags} pending={pending} disabled={disabled}>
+      {tags.map((tag) => (
+        <DropdownMenuItem key={tag.id} onSelect={() => onUndo(tag.id)}>
+          <span className="min-w-0 truncate">{tag.name}</span>
+          {tag.suggested && (
+            <span className="text-muted-foreground">{t.activity.result.suggested}</span>
+          )}
+          <span className="ml-auto text-muted-foreground tabular-nums">
+            {t.activity.percent(tag.probability)}
+          </span>
+        </DropdownMenuItem>
+      ))}
+    </UndoMenu>
+  );
+}
+
+/** One item per link not yet undone, then `All links`, which undoes every one of them. */
+function UndoLinksMenu({
+  links,
+  pending,
+  disabled,
+  onUndo,
+}: {
+  links: ActivityFaceLink[];
+  pending: boolean;
+  disabled: boolean;
+  onUndo: (part: ActivityUndoRequest) => void;
+}) {
+  return (
+    <UndoMenu label={t.activity.action.undoLinks} pending={pending} disabled={disabled}>
+      {links.map((link) => (
+        <DropdownMenuItem
+          key={link.appearanceId}
+          onSelect={() => onUndo({ appearanceId: link.appearanceId })}
+        >
+          <FaceLinkFace link={link} />
+          <FaceLinkName link={link} />
+        </DropdownMenuItem>
+      ))}
+      <DropdownMenuSeparator />
+      <DropdownMenuItem onSelect={() => onUndo({})}>
+        {t.activity.action.allLinks}
+      </DropdownMenuItem>
+    </UndoMenu>
   );
 }
 
@@ -300,13 +380,14 @@ export interface ActionsProps {
   actions: OpenAction[];
   from: string;
   onRetry: (entry: OperationTarget) => Promise<void>;
-  onUndo: (entry: OperationTarget, tagId?: number) => Promise<void>;
+  onUndo: (entry: OperationTarget, part?: ActivityUndoRequest) => Promise<void>;
 }
 
 /** Keep actions disabled until the refreshed card arrives to prevent duplicate requests. */
 export function Actions({ entry, actions, from, onRetry, onUndo }: ActionsProps) {
   const [pending, setPending] = useState<Pending>(null);
   const operations = entryOperations(entry);
+  const [onlyLink, ...otherLinks] = operations.undoLinks;
   const busy = pending !== null;
   const run = (which: Exclude<Pending, null>, send: () => Promise<void>) => {
     setPending(which);
@@ -342,7 +423,20 @@ export function Actions({ entry, actions, from, onRetry, onUndo }: ActionsProps)
           tags={operations.undoTags}
           pending={pending === "undo"}
           disabled={busy}
-          onUndo={(tagId) => run("undo", () => onUndo(entry, tagId))}
+          onUndo={(tagId) => run("undo", () => onUndo(entry, { tagId }))}
+        />
+      )}
+      {onlyLink !== undefined &&
+        otherLinks.length === 0 &&
+        simple("undo", t.activity.action.undo, Undo2, () =>
+          onUndo(entry, { appearanceId: onlyLink.appearanceId }),
+        )}
+      {otherLinks.length > 0 && (
+        <UndoLinksMenu
+          links={operations.undoLinks}
+          pending={pending === "undo"}
+          disabled={busy}
+          onUndo={(part) => run("undo", () => onUndo(entry, part))}
         />
       )}
       <OpenLinks actions={actions} busy={busy} from={from} />
@@ -358,8 +452,8 @@ export interface ActivityCardProps {
   actions: OpenAction[];
   /** The caller reports failures; this promise never rejects. */
   onRetry: (entry: OperationTarget) => Promise<void>;
-  /** For auto_tag, pass the tag to undo; the caller reports failures. */
-  onUndo: (entry: OperationTarget, tagId?: number) => Promise<void>;
+  /** For auto_tag and face_analysis, pass the tag or link to undo; the caller reports failures. */
+  onUndo: (entry: OperationTarget, part?: ActivityUndoRequest) => Promise<void>;
 }
 
 export function ActivityCard({

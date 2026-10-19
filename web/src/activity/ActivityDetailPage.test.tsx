@@ -180,6 +180,47 @@ describe("ActivityDetailPage", () => {
     await waitFor(() => expect(server.posts).toEqual(["/api/activity/12/retry"]));
   });
 
+  it("strikes through an undone face link, keeps its New person note and offers undo for the others", async () => {
+    server.entries.set(
+      20,
+      record(20, {
+        kind: "face_analysis",
+        feature: "face_recognition",
+        undoable: true,
+        faceLinks: [
+          {
+            appearanceId: 11,
+            person: { id: 5, name: "Alice", provisional: false },
+            createdPerson: true,
+            undone: true,
+          },
+          {
+            appearanceId: 12,
+            person: { id: 6, name: "", provisional: true },
+            createdPerson: true,
+            undone: false,
+          },
+        ],
+      }),
+    );
+    renderDetail(20);
+    const people = await screen.findByRole("region", { name: "People" });
+    const undone = within(people).getByText("Alice");
+    expect(undone.className).toContain("line-through");
+    expect(within(people).queryByRole("link", { name: "Alice" })).toBeNull();
+    expect(
+      within(people).queryByRole("button", { name: "Undo link to Alice" }),
+    ).toBeNull();
+    expect(
+      within(people).getByRole("link", { name: "Unnamed person" }).getAttribute("href"),
+    ).toBe("/people/6");
+    // Undo removes the link, not the fact that the run created the person.
+    expect(within(people).getAllByText("New person")).toHaveLength(2);
+    expect(
+      within(people).getByRole("button", { name: "Undo link to Unnamed person" }),
+    ).toBeDefined();
+  });
+
   it("says the entry doesn't exist when the server has no such id", async () => {
     renderDetail(99);
     expect(await screen.findByText("This activity entry doesn't exist")).toBeDefined();

@@ -2,10 +2,18 @@ import { Plus } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { isAborted } from "../../api/client";
-import { type Credit, type CreditKind, listCredits } from "../../api/credits";
+import {
+  type Credit,
+  type CreditKind,
+  listCredits,
+  listPeople,
+  type Person,
+  personFaceSrc,
+} from "../../api/credits";
 import { errorText, t, type UiText } from "../../i18n";
 import { foldForMatch } from "../../lib/foldForMatch";
 import CreditCommand, { type CreditChoice } from "../../ui/CreditCommand";
+import { PersonFace } from "../../ui/PersonFace";
 import { type Chip, isNewChip, newRowKey } from "./draft";
 
 const candidateLimit = 8;
@@ -37,6 +45,7 @@ function aliasHint(credit: Credit, folded: string): string | undefined {
 /** Show eight candidates, but resolve exact matches without a limit before creating on Enter. Keep prior rows while loading and abort obsolete requests. */
 export default function CreditPicker({
   kind,
+  offerUnnamed = false,
   label,
   chips,
   unsaved,
@@ -44,6 +53,8 @@ export default function CreditPicker({
   onAdd,
 }: {
   kind: CreditKind;
+  /** Lists provisional people in an Unnamed people group under the name results. */
+  offerUnnamed?: boolean;
   label: UiText;
   chips: readonly Chip[];
   unsaved: readonly UnsavedName[];
@@ -92,6 +103,10 @@ export default function CreditPicker({
   }, [kind, trimmed]);
 
   const chosenIds = new Set(chips.flatMap((chip) => (isNewChip(chip) ? [] : [chip.id])));
+  const unnamed = useUnnamedPeople(offerUnnamed, chips.length, setFailure);
+  const unnamedShown = unnamed
+    .filter((person) => !chosenIds.has(person.id))
+    .slice(0, candidateLimit);
   const chosenNew = new Set(
     chips.flatMap((chip) => (isNewChip(chip) ? [chip.newKey] : [])),
   );
@@ -150,6 +165,17 @@ export default function CreditPicker({
   }
 
   function pick(choice: CreditChoice) {
+    if (choice.id.startsWith(unnamedPrefix)) {
+      const id = Number(choice.id.slice(unnamedPrefix.length));
+      if (chosenIds.has(id)) return;
+      // A typed name becomes this person's name on Save.
+      add(
+        trimmed === ""
+          ? { key: newRowKey("c"), id, name: "", provisional: true }
+          : { key: newRowKey("c"), id, name: trimmed, naming: true },
+      );
+      return;
+    }
     if (choice.id.startsWith("new:")) {
       add({ key: newRowKey("c"), newKey: choice.id.slice(4), name: choice.label });
       return;
@@ -219,6 +245,14 @@ export default function CreditPicker({
         value={value}
         onValueChange={setValue}
         choices={choices}
+        group={
+          offerUnnamed
+            ? {
+                heading: t.player.detailsEditor.unnamedPeople,
+                choices: unnamedShown.map((person) => unnamedChoice(person, trimmed)),
+              }
+            : undefined
+        }
         exactChoice={null}
         onSelect={pick}
         createLabel={createLabel}
@@ -240,6 +274,53 @@ export default function CreditPicker({
       )}
     </div>
   );
+}
+
+const unnamedPrefix = "unnamed:";
+
+function unnamedChoice(person: Person, typed: string): CreditChoice {
+  const e = t.player.detailsEditor;
+  const label = t.credits.unnamedPerson;
+  const hint = typed === "" ? null : e.addAs(typed);
+  return {
+    id: `${unnamedPrefix}${String(person.id)}`,
+    label,
+    quiet: true,
+    leading: <PersonFace shape="chip" name={label} src={personFaceSrc(person)} />,
+    hint: hint ?? undefined,
+    meta: e.videoCount(person.videoCount),
+    ariaLabel: e.unnamedRow(label, person.videoCount, hint),
+  };
+}
+
+/**
+ * Provisional people for the picker, read again when the chips change so the shown rows can
+ * still fill the candidate limit after the chosen ones are left out.
+ */
+function useUnnamedPeople(
+  enabled: boolean,
+  chipCount: number,
+  onFailure: (failure: UiText) => void,
+): Person[] {
+  const [people, setPeople] = useState<Person[]>([]);
+  useEffect(() => {
+    if (!enabled) return;
+    const controller = new AbortController();
+    listPeople(
+      { provisional: true, limit: candidateLimit + chipCount },
+      controller.signal,
+    ).then(
+      (page) => {
+        if (!controller.signal.aborted) setPeople(page.items);
+      },
+      (error: unknown) => {
+        if (controller.signal.aborted || isAborted(error)) return;
+        onFailure(searchFailed("person", error));
+      },
+    );
+    return () => controller.abort();
+  }, [enabled, chipCount, onFailure]);
+  return people;
 }
 
 function searchFailed(kind: CreditKind, error: unknown): UiText {

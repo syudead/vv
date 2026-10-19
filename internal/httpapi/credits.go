@@ -24,6 +24,14 @@ type Credits interface {
 	Update(ctx context.Context, kind domain.CreditKind, id int64, patch domain.CreditPatch) (domain.Credit, error)
 	Merge(ctx context.Context, kind domain.CreditKind, targetID int64, sourceIDs []int64) (domain.CreditMergeOutcome, error)
 	Delete(ctx context.Context, kind domain.CreditKind, id int64) error
+	FaceCandidates(ctx context.Context, personID int64) ([]domain.FacePair, error)
+	ConfirmFaceCandidate(ctx context.Context, personID, otherID int64) (domain.Credit, error)
+	DismissFaceCandidate(ctx context.Context, personID, otherID int64) error
+	// PersonAppearances returns domain.ErrInvalidCursor for an unreadable cursor; a nonpositive limit returns all.
+	PersonAppearances(ctx context.Context, personID int64, cursor string, limit int) (domain.PersonAppearancePage, error)
+	FaceAppearanceCrop(ctx context.Context, id int64) ([]byte, error)
+	// SplitFaceAppearance returns domain.ErrFaceAppearanceNotFound when the person has no such appearance.
+	SplitFaceAppearance(ctx context.Context, personID, appearanceID int64) (domain.Credit, error)
 }
 
 type creditKindAPI struct {
@@ -120,14 +128,15 @@ func (s *server) listCredits(w http.ResponseWriter, r *http.Request, api creditK
 	if !s.acceptTagListQuery(w, problem) {
 		return
 	}
-	if params.Favorite != nil && api.kind != domain.CreditPerson {
-		s.invalidRequest(w, "favorite applies to people only.")
+	if (params.Favorite != nil || params.Provisional != nil) && api.kind != domain.CreditPerson {
+		s.invalidRequest(w, "favorite and provisional apply to people only.")
 		return
 	}
 	if !s.creditsConfigured(w) {
 		return
 	}
 	query.FavoriteOnly = params.Favorite != nil && *params.Favorite
+	query.Provisional = params.Provisional
 	page, err := s.credits.List(r.Context(), api.kind, query)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
@@ -405,7 +414,7 @@ func (s *server) writeCreditBody(w http.ResponseWriter, status int, body any) {
 
 func toAPIPerson(credit domain.Credit) gen.Person {
 	return gen.Person{
-		Id: credit.ID, Name: credit.Name, Aliases: toAPIAliases(credit.Aliases),
+		Id: credit.ID, Name: credit.Name, Provisional: credit.Provisional, Aliases: toAPIAliases(credit.Aliases),
 		ExternalIds: toAPIExternalIDs(credit.ExternalIDs), Profile: toAPIProfile(credit.Profile),
 		Favorite: credit.Favorite, ImageRevision: optionalPositive(credit.ImageRevision),
 		VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,

@@ -1,0 +1,163 @@
+package store
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"image"
+	"image/jpeg"
+	"slices"
+	"testing"
+
+	"github.com/syudead/vv/internal/domain"
+)
+
+func jpegCrop(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, image.NewGray(image.Rect(0, 0, 4, 3)), nil); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// newSplitFixture is the linked fixture with a decodable crop on its first appearance, linked to the named person.
+func newSplitFixture(t *testing.T) (linkedFixture, []byte) {
+	t.Helper()
+	f := newLinkedFixture(t)
+	crop := jpegCrop(t)
+	if _, err := f.db.sql.Exec(`update face_appearances set crop = ? where id = ?`, crop, faceAppearances(t, f.db)[0].id); err != nil {
+		t.Fatal(err)
+	}
+	return f, crop
+}
+
+func performersOf(t *testing.T, f faceFixture) []int64 {
+	t.Helper()
+	info, _ := workInfoOf(t, f.db, f.videoID)
+	return performerIDs(&info)
+}
+
+func personVectorCount(t *testing.T, db *DB, personID int64) int {
+	t.Helper()
+	tx, err := db.sql.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	vectors, err := facePersonVectors(context.Background(), tx, domain.FaceRecognizerSFaceInt8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, v := range vectors {
+		if v.PersonID == personID {
+			n++
+		}
+	}
+	return n
+}
+
+func TestSplitFaceAppearanceMakesAProvisionalPersonOfTheFace(t *testing.T) {
+	f, crop := newSplitFixture(t)
+	ctx := context.Background()
+	moved := faceAppearances(t, f.db)[0]
+	if got := performersOf(t, f.faceFixture); !slices.Equal(got, []int64{f.named, f.provisional}) {
+		t.Fatalf("performers before = %v, want named then provisional", got)
+	}
+	vectorsBefore := personVectorCount(t, f.db, f.named)
+
+	created, err := f.db.Credits().SplitFaceAppearance(ctx, f.named, moved.id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created.Provisional || created.ID == f.named || created.ImageRevision == 0 {
+		t.Fatalf("created = %+v, want a new provisional person with a face", created)
+	}
+	var face []byte
+	var width, height int
+	if err := f.db.sql.QueryRow(`select image, width, height from person_images where person_id = ?`, created.ID).
+		Scan(&face, &width, &height); err != nil || !bytes.Equal(face, crop) || width != 4 || height != 3 {
+		t.Errorf("face = %d bytes %dx%d, %v; want the appearance's crop at 4x3", len(face), width, height, err)
+	}
+	after := faceAppearances(t, f.db)[0]
+	if after.personID != created.ID || !bytes.Equal(after.centroid, moved.centroid) || after.dropped {
+		t.Errorf("appearance = %+v, want it moved to the new person with its centroid", after)
+	}
+	if got := performersOf(t, f.faceFixture); !slices.Equal(got, []int64{created.ID, f.provisional}) {
+		t.Errorf("performers = %v, want the new person in the old person's place", got)
+	}
+	if pairs, err := f.db.Credits().FaceCandidates(ctx, created.ID); err != nil || len(pairs) != 0 {
+		t.Errorf("candidates of the new person = %+v, %v; want none", pairs, err)
+	}
+	var dismissed int
+	if err := f.db.sql.QueryRow(`select count(*) from face_candidates where dismissed = 1
+		and (provisional_id = ?1 and person_id = ?2 or provisional_id = ?2 and person_id = ?1)`,
+		created.ID, f.named).Scan(&dismissed); err != nil || dismissed != 1 {
+		t.Errorf("dismissed pairs of the two people = %d, %v; want 1", dismissed, err)
+	}
+	if got := personVectorCount(t, f.db, f.named); got != vectorsBefore-1 {
+		t.Errorf("vectors of the old person = %d, want %d without the moved centroid", got, vectorsBefore-1)
+	}
+
+	// A re-analysis keeps the appearance with the new person.
+	f.analyse(t, facePerson(0.25, 1, faceBasis(0), "x"), facePerson(0.75, 1, faceBasis(2), "y"))
+	if got := faceAppearances(t, f.db)[0]; got.id != moved.id || got.personID != created.ID {
+		t.Errorf("appearance after re-analysis = %+v, want it kept on person %d", got, created.ID)
+	}
+}
+
+func TestSplitFaceAppearanceKeepsTheCreditAnotherAppearanceStillLinks(t *testing.T) {
+	f := newFaceFixture(t)
+	ctx := context.Background()
+	named := createPerson(t, f.db, "Named").ID
+	setFaceVector(t, f.db, named, faceBasis(0))
+	crop := string(jpegCrop(t))
+	f.analyse(t, facePerson(0.25, 0, faceBasis(0), crop), facePerson(0.75, 0, faceBasis(0), crop))
+	appearances := faceAppearances(t, f.db)
+	if len(appearances) != 2 || appearances[0].personID != named || appearances[1].personID != named {
+		t.Fatalf("appearances = %+v, want both linked to the named person", appearances)
+	}
+
+	created, err := f.db.Credits().SplitFaceAppearance(ctx, named, appearances[1].id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := performersOf(t, f); !slices.Equal(got, []int64{named, created.ID}) {
+		t.Errorf("performers = %v, want the named person kept and the new person added", got)
+	}
+}
+
+func TestSplitFaceAppearancePublishesTheNewFaceWithoutACreditChange(t *testing.T) {
+	f, _ := newSplitFixture(t)
+	recorder := &committedFaceRecorder{t: t, db: f.db}
+	f.db.PublishTo(recorder)
+	if _, err := f.db.sql.Exec(`delete from video_work_people where role = 'performer'`); err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := f.db.Credits().SplitFaceAppearance(context.Background(), f.named, faceAppearances(t, f.db)[0].id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := recorder.take(); !slices.Equal(got, []int64{created.ID}) {
+		t.Errorf("face events = %v, want [%d] for the new person", got, created.ID)
+	}
+}
+
+func TestSplitFaceAppearanceRefusesAnAppearanceOfAnotherPerson(t *testing.T) {
+	f, _ := newSplitFixture(t)
+	ctx := context.Background()
+	appearances := faceAppearances(t, f.db)
+	people := personCount(t, f.db)
+
+	if _, err := f.db.Credits().SplitFaceAppearance(ctx, f.named, appearances[1].id); !errors.Is(err, domain.ErrFaceAppearanceNotFound) {
+		t.Errorf("another person's appearance: err = %v, want ErrFaceAppearanceNotFound", err)
+	}
+	if _, err := f.db.Credits().SplitFaceAppearance(ctx, f.named+1000, appearances[0].id); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("missing person: err = %v, want ErrNotFound", err)
+	}
+	if personCount(t, f.db) != people || faceAppearances(t, f.db)[1].personID != f.provisional {
+		t.Error("a refused split changed people or appearances")
+	}
+}

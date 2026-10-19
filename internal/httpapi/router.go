@@ -273,8 +273,12 @@ type Options struct {
 
 	AutoImport AutoImportSettings
 
-	AutoTagging    AutoTagging
-	Onboarding     Onboarding
+	AutoTagging AutoTagging
+	Onboarding  Onboarding
+	// Nil FaceRecognition makes the face recognition settings routes fail with 500.
+	FaceRecognition FaceRecognition
+	// Nil FaceAnalysis makes the face analysis runs route fail with 500.
+	FaceAnalysis   FaceAnalysis
 	VersionJudging VersionJudging
 
 	Ollama OllamaConnection
@@ -360,6 +364,8 @@ type server struct {
 	pluginProxy       PluginProxySettings
 	autoImport        AutoImportSettings
 	autoTagging       AutoTagging
+	faceRecognition   FaceRecognition
+	faceAnalysis      FaceAnalysis
 	onboarding        Onboarding
 	versionJudging    VersionJudging
 	ollama            OllamaConnection
@@ -440,6 +446,8 @@ func NewRouter(opts Options) http.Handler {
 		pluginProxy:            opts.PluginProxy,
 		autoImport:             opts.AutoImport,
 		autoTagging:            opts.AutoTagging,
+		faceRecognition:        opts.FaceRecognition,
+		faceAnalysis:           opts.FaceAnalysis,
 		onboarding:             opts.Onboarding,
 		versionJudging:         opts.VersionJudging,
 		ollama:                 opts.Ollama,
@@ -575,7 +583,7 @@ func requiresPostJSONBody(path string) bool {
 		"/api/video-tags", "/api/video-tags/summary",
 		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 		"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
-		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/onboarding/interests", "/api/playlists", "/api/groups", "/api/smart-folders", "/api/collections/delete",
+		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/face-recognition/runs", "/api/onboarding/interests", "/api/playlists", "/api/groups", "/api/smart-folders", "/api/collections/delete",
 		"/api/organize/reorder", "/api/organize/group", "/api/organize/move", "/api/organize/bundle", "/api/organize/merge", "/api/organize/undo",
 		"/api/v1/video-work-info", "/api/v1/people", "/api/v1/people/update", "/api/v1/people/merge",
 		"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",
@@ -614,17 +622,18 @@ func requiresPostJSONBody(path string) bool {
 }
 
 var putJSONBodyPaths = map[string]bool{
-	"/api/video-visibility":         true,
-	"/api/favorites":                true,
-	"/api/settings/transcoding":     true,
-	"/api/settings/network":         true,
-	"/api/settings/plugin-proxy":    true,
-	"/api/settings/auto-import":     true,
-	"/api/settings/auto-tagging":    true,
-	"/api/settings/ollama":          true,
-	"/api/settings/comfyui":         true,
-	"/api/settings/version-judging": true,
-	"/api/onboarding":               true,
+	"/api/video-visibility":          true,
+	"/api/favorites":                 true,
+	"/api/settings/transcoding":      true,
+	"/api/settings/network":          true,
+	"/api/settings/plugin-proxy":     true,
+	"/api/settings/auto-import":      true,
+	"/api/settings/auto-tagging":     true,
+	"/api/settings/face-recognition": true,
+	"/api/settings/ollama":           true,
+	"/api/settings/comfyui":          true,
+	"/api/settings/version-judging":  true,
+	"/api/onboarding":                true,
 }
 
 func requiresPutJSONBody(path string) bool {
@@ -898,6 +907,8 @@ const (
 	reasonThumbnailUploadInvalid        = gen.ErrorReasonThumbnailUploadInvalid
 	reasonPersonImageNotFound           = gen.ErrorReasonPersonImageNotFound
 	reasonPersonImageInvalid            = gen.ErrorReasonPersonImageInvalid
+	reasonPersonImageNoFace             = gen.ErrorReasonPersonImageNoFace
+	reasonPersonImageManyFaces          = gen.ErrorReasonPersonImageManyFaces
 	reasonPersonImageTooLarge           = gen.ErrorReasonPersonImageTooLarge
 	reasonUndoConflict                  = gen.ErrorReasonUndoConflict
 	reasonUndoExpired                   = gen.ErrorReasonUndoExpired

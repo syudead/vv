@@ -216,7 +216,6 @@ func queueableStates(mode domain.AutoTagQueueMode) (string, error) {
 	}
 }
 
-// Queue rows and their activities share a transaction; publish ActivityChanged after commit.
 func (s *AutoTagStore) queue(
 	ctx context.Context, selectKeys string, args []any, mode domain.AutoTagQueueMode, decider domain.ActivityDecider,
 	continued []int64,
@@ -225,136 +224,14 @@ func (s *AutoTagStore) queue(
 	if err != nil {
 		return 0, err
 	}
-	tx, err := s.db.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	subjects, err := queueableAutoTagSubjects(ctx, tx, `select k.content_key, `+contentLabelExpr("k.content_key")+`
-		from (select distinct content_key from (`+selectKeys+`)) k
-		where coalesce((select q.state from auto_tag_queue q where q.content_key = k.content_key), '') in (`+states+`)
-		order by k.content_key`, args)
-	if err != nil {
-		return 0, err
-	}
-	now := time.Now()
-	c := &changes{}
-	for _, subject := range subjects {
-		if _, err := queueAutoTagSubject(ctx, tx, c, subject, decider, continued, now); err != nil {
-			return 0, err
-		}
-	}
-	if err := s.db.commit(ctx, tx, c); err != nil {
-		return 0, fmt.Errorf("cannot queue videos for auto-tagging: %w", err)
-	}
-	return len(subjects), nil
-}
-
-// queueAutoTagSubject writes the queue row and its waiting entry; an entry that continues others joins their pipelines.
-func queueAutoTagSubject(
-	ctx context.Context, tx *sql.Tx, c *changes, subject domain.ActivitySubject, decider domain.ActivityDecider,
-	continued []int64, now time.Time,
-) (int64, error) {
-	entry := autoTagActivityEntry(subject.Key, subject.Label, domain.ActivityWaiting, decider)
-	var (
-		id  int64
-		err error
-	)
-	if len(continued) > 0 {
-		id, err = recordContinuedActivity(ctx, tx, c, entry, continued, now)
-	} else {
-		id, err = recordActivity(ctx, tx, c, entry, now)
-	}
-	if err != nil {
-		return 0, err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		insert into auto_tag_queue (content_key, state, error, queued_at, updated_at, activity_id)
-		values (?, 'queued', '', ?, ?, ?)
-		on conflict (content_key) do update set state = 'queued', error = '', queued_at = excluded.queued_at,
-			updated_at = excluded.updated_at, activity_id = excluded.activity_id`,
-		subject.Key, now.UnixMilli(), now.UnixMilli(), id); err != nil {
-		return 0, fmt.Errorf("cannot queue videos for auto-tagging: %w", err)
-	}
-	return id, nil
-}
-
-// queueAfterImportAutoTag is the seek stage's follow-up process: the transaction that finishes the stage for good
-// queues a video with no queue row while after-import tagging is on, and the entry joins the pipelines of the job's
-// import entry. Otherwise it writes nothing, so no pipeline waits for tagging.
-func queueAfterImportAutoTag(ctx context.Context, tx *sql.Tx, c *changes, job domain.Job, now time.Time) error {
-	for _, key := range []string{autoTagFeatureKey, autoTagAfterImportKey} {
-		if on, err := readBoolSetting(ctx, tx, key); err != nil || !on {
-			return err
-		}
-	}
-	subjects, err := queueableAutoTagSubjects(ctx, tx, `select v.content_key, `+contentLabelExpr("v.content_key")+`
-		from videos v where v.id = ? and v.content_key = ? and v.content_key <> '' and v.location_generation = ?
-		and v.seek_thumbnail_state in ('done', 'failed') and `+registeredVideoCondition("v")+`
-		and not exists (select 1 from auto_tag_queue q where q.content_key = v.content_key)`,
-		[]any{job.VideoID, job.ContentKey, job.LocationGeneration})
-	if err != nil {
-		return err
-	}
-	for _, subject := range subjects {
-		id, err := queueAutoTagSubject(ctx, tx, c, subject, domain.ActivityByRule, nil, now)
-		if err != nil {
-			return err
-		}
-		if err := joinJobPipelines(ctx, tx, job.ID, id, now); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func queueableAutoTagSubjects(ctx context.Context, tx *sql.Tx, query string, args []any) ([]domain.ActivitySubject, error) {
-	rows, err := tx.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read the videos to queue for auto-tagging: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	var subjects []domain.ActivitySubject
-	for rows.Next() {
-		subject := domain.ActivitySubject{Kind: domain.ActivitySubjectVideo}
-		if err := rows.Scan(&subject.Key, &subject.Label); err != nil {
-			return nil, fmt.Errorf("cannot read the videos to queue for auto-tagging: %w", err)
-		}
-		subjects = append(subjects, subject)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("cannot read the videos to queue for auto-tagging: %w", err)
-	}
-	return subjects, nil
+	return s.db.queueContent(ctx, autoTagQueue, selectKeys, args, states, decider, continued)
 }
 
 // Claim takes the oldest queued item or returns domain.ErrNoJob, creating a processing activity if necessary.
 func (s *AutoTagStore) Claim(ctx context.Context) (domain.AutoTagJob, error) {
-	tx, err := s.db.sql.BeginTx(ctx, nil)
+	key, err := s.db.claimContent(ctx, autoTagQueue, nil)
 	if err != nil {
 		return domain.AutoTagJob{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	now := time.Now()
-	var key string
-	var activityID int64
-	err = tx.QueryRowContext(ctx, `
-		update auto_tag_queue set state = 'running', updated_at = ?
-		where content_key = (select content_key from auto_tag_queue where state = 'queued'
-			order by queued_at, content_key limit 1)
-		returning content_key, coalesce(activity_id, 0)`, now.UnixMilli()).Scan(&key, &activityID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return domain.AutoTagJob{}, domain.ErrNoJob
-	}
-	if err != nil {
-		return domain.AutoTagJob{}, fmt.Errorf("cannot claim an auto-tagging job: %w", err)
-	}
-	c := &changes{}
-	if err := claimAutoTagActivity(ctx, tx, c, key, activityID, now); err != nil {
-		return domain.AutoTagJob{}, err
-	}
-	if err := s.db.commit(ctx, tx, c); err != nil {
-		return domain.AutoTagJob{}, fmt.Errorf("cannot claim an auto-tagging job: %w", err)
 	}
 	return domain.AutoTagJob{ContentKey: key}, nil
 }
@@ -443,15 +320,9 @@ func (s *AutoTagStore) Finish(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var state string
-	var activityID int64
-	err = tx.QueryRowContext(ctx, `select state, coalesce(activity_id, 0) from auto_tag_queue where content_key = ?`,
-		contentKey).Scan(&state, &activityID)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && state != "running") {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("cannot read the auto-tagging job: %w", err)
+	activityID, running, err := runningContent(ctx, tx, autoTagQueue, contentKey)
+	if err != nil || !running {
+		return err
 	}
 	now := time.Now()
 	c := &changes{}
@@ -462,7 +333,7 @@ func (s *AutoTagStore) Finish(
 		if _, err := tx.ExecContext(ctx, `delete from auto_tag_queue where content_key = ?`, contentKey); err != nil {
 			return fmt.Errorf("cannot remove the auto-tagging job: %w", err)
 		}
-		if err := closeAutoTagActivity(ctx, tx, c, activityID, completed, "", "", now); err != nil {
+		if err := closeQueueActivity(ctx, tx, c, activityID, completed, "", "", now); err != nil {
 			return err
 		}
 		return s.db.commit(ctx, tx, c)
@@ -492,7 +363,7 @@ func (s *AutoTagStore) Finish(
 		where content_key = ?`, now.UnixMilli(), contentKey); err != nil {
 		return fmt.Errorf("cannot finish the auto-tagging job: %w", err)
 	}
-	if err := closeAutoTagActivity(ctx, tx, c, activityID, completed, decider, "", now); err != nil {
+	if err := closeQueueActivity(ctx, tx, c, activityID, completed, decider, "", now); err != nil {
 		return err
 	}
 	if activityID != 0 {
@@ -609,62 +480,16 @@ func (s *AutoTagStore) settleTentative(ctx context.Context, videoID, tagID int64
 
 // Fail ignores items no longer running and records the failure with their activity atomically.
 func (s *AutoTagStore) Fail(ctx context.Context, contentKey, reason string) error {
-	tx, err := s.db.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	now := time.Now()
-	var activityID int64
-	err = tx.QueryRowContext(ctx, `update auto_tag_queue set state = 'failed', error = ?, updated_at = ?
-		where content_key = ? and state = 'running' returning coalesce(activity_id, 0)`,
-		reason, now.UnixMilli(), contentKey).Scan(&activityID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("cannot record the auto-tagging failure: %w", err)
-	}
-	c := &changes{}
-	if err := closeAutoTagActivity(ctx, tx, c, activityID,
-		domain.ActivityState{Status: domain.ActivityAttention, Reason: domain.ActivityFailed}, "", reason, now); err != nil {
-		return err
-	}
-	if err := s.db.commit(ctx, tx, c); err != nil {
-		return fmt.Errorf("cannot record the auto-tagging failure: %w", err)
-	}
-	return nil
+	return s.db.failContent(ctx, autoTagQueue, contentKey, reason)
 }
 
 // RequeueRunning recovers interrupted items before judging starts at startup.
 func (s *AutoTagStore) RequeueRunning(ctx context.Context) (int, error) {
-	result, err := s.db.sql.ExecContext(ctx, `update auto_tag_queue set state = 'queued', updated_at = ?
-		where state = 'running'`, time.Now().UnixMilli())
-	if err != nil {
-		return 0, fmt.Errorf("cannot requeue interrupted auto-tagging jobs: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("cannot requeue interrupted auto-tagging jobs: %w", err)
-	}
-	return int(affected), nil
+	return s.db.requeueRunning(ctx, autoTagQueue)
 }
 
 func (s *AutoTagStore) Counts(ctx context.Context) (domain.AutoTagCounts, error) {
-	var counts domain.AutoTagCounts
-	err := s.db.sql.QueryRowContext(ctx, `
-		select
-			coalesce(sum(state = 'queued'), 0),
-			coalesce(sum(state = 'running'), 0),
-			coalesce(sum(state = 'done'), 0),
-			coalesce(sum(state = 'failed'), 0),
-			coalesce((select error from auto_tag_queue where state = 'failed'
-				order by updated_at desc, content_key limit 1), '')
-		from auto_tag_queue`).Scan(&counts.Queued, &counts.Running, &counts.Done, &counts.Failed, &counts.LastError)
-	if err != nil {
-		return domain.AutoTagCounts{}, fmt.Errorf("cannot count auto-tagging jobs: %w", err)
-	}
-	return counts, nil
+	return s.db.contentCounts(ctx, autoTagQueue)
 }
 
 // Only videos with a registered location qualify; otherwise return domain.ErrNotFound.

@@ -87,7 +87,7 @@ jobs:
         include:
           # Generation needs shadcn from web/ and openapi-typescript from tools/.
           - group: go lint
-            tasks: fmt-check-go lint-go lint-go-windows-desktop generate-check migrations-check e2e-groups-check build-windows-check
+            tasks: fmt-check-go lint-go lint-go-windows-desktop generate-check migrations-check e2e-groups-check build-windows-check static-binary-check
             web: true
             tools: true
             golangci: true

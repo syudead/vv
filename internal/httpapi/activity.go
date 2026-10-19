@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -23,8 +24,9 @@ type Activity interface {
 	// ActivityDetail returns domain.ErrNotFound for a missing entry.
 	ActivityDetail(ctx context.Context, id int64) (domain.ActivityDetail, error)
 	RetryActivity(ctx context.Context, id int64) error
-	// UndoActivity returns ErrNotFound for missing entries/unassigned tags and ErrActivityNotUndoable when undo is unavailable.
-	UndoActivity(ctx context.Context, id, tagID int64) (domain.ActivityEntry, error)
+	// UndoActivity returns ErrNotFound for missing entries, unassigned tags and unmade links, and ErrActivityNotUndoable
+	// when undo is unavailable.
+	UndoActivity(ctx context.Context, id int64, target domain.ActivityUndoTarget) (domain.ActivityEntry, error)
 }
 
 // Keep page limits aligned with api/openapi.yaml.
@@ -97,9 +99,9 @@ func (s *server) parseActivityQuery(w http.ResponseWriter, params gen.ListActivi
 		}
 	}
 	if params.Feature != nil {
-		// The generator does not enforce OpenAPI maxItems, currently nine features.
+		// The generator does not enforce OpenAPI maxItems, currently ten features.
 		if len(*params.Feature) > len(domain.ActivityFeatures) {
-			s.invalidRequest(w, "feature can be repeated at most 9 times.")
+			s.invalidRequest(w, "feature can be repeated at most 10 times.")
 			return domain.ActivityQuery{}, false
 		}
 		for _, value := range *params.Feature {
@@ -171,7 +173,8 @@ func isActivityUndoPost(r *http.Request) bool {
 	return found && undo && id != "" && !strings.Contains(id, "/")
 }
 
-// UndoActivity requires tagId for auto_tag entries; other kinds accept an empty object.
+// UndoActivity requires tagId for auto_tag entries and takes an optional appearanceId for face_analysis entries;
+// other kinds accept an empty object.
 func (s *server) UndoActivity(w http.ResponseWriter, r *http.Request, id gen.ActivityId) {
 	var body gen.ActivityUndoRequest
 	if !s.readJSONBody(w, r, &body) {
@@ -181,11 +184,18 @@ func (s *server) UndoActivity(w http.ResponseWriter, r *http.Request, id gen.Act
 		s.internalError(w, "Activity storage is not configured.", nil)
 		return
 	}
-	var tagID int64
+	var target domain.ActivityUndoTarget
 	if body.TagId != nil {
-		tagID = *body.TagId
+		target.TagID = *body.TagId
 	}
-	undo, err := s.activity.UndoActivity(r.Context(), id, tagID)
+	if body.AppearanceId != nil {
+		if *body.AppearanceId < 1 {
+			s.invalidRequest(w, "appearanceId must be a positive integer.")
+			return
+		}
+		target.AppearanceID = *body.AppearanceId
+	}
+	undo, err := s.activity.UndoActivity(r.Context(), id, target)
 	if err != nil {
 		s.writeActivityError(w, err, "Could not undo the activity entry.")
 		return
@@ -206,6 +216,8 @@ func (s *server) writeActivityError(w http.ResponseWriter, err error, message st
 		s.writeError(w, http.StatusConflict, codeScanInProgress, "A scan is in progress.")
 	case errors.Is(err, domain.ErrAutoTaggingOff):
 		s.conflictReason(w, gen.ErrorReasonAutoTaggingOff, "Auto-tagging is turned off.")
+	case errors.Is(err, domain.ErrFaceRecognitionOff):
+		s.conflictReason(w, gen.ErrorReasonFaceRecognitionOff, "Face recognition is turned off.")
 	default:
 		s.internalError(w, message, err)
 	}
@@ -213,15 +225,16 @@ func (s *server) writeActivityError(w http.ResponseWriter, err error, message st
 
 func toAPIActivityFeatureCounts(counts map[domain.ActivityFeature]int) gen.ActivityFeatureCounts {
 	return gen.ActivityFeatureCounts{
-		Import:         counts[domain.ActivityFeatureImport],
-		Scan:           counts[domain.ActivityFeatureScan],
-		DuplicateCheck: counts[domain.ActivityFeatureDuplicateCheck],
-		AutoTagging:    counts[domain.ActivityFeatureAutoTagging],
-		WorkInfo:       counts[domain.ActivityFeatureWorkInfo],
-		Tags:           counts[domain.ActivityFeatureTags],
-		Versions:       counts[domain.ActivityFeatureVersions],
-		MediaFolders:   counts[domain.ActivityFeatureMediaFolders],
-		Organize:       counts[domain.ActivityFeatureOrganize],
+		Import:          counts[domain.ActivityFeatureImport],
+		Scan:            counts[domain.ActivityFeatureScan],
+		DuplicateCheck:  counts[domain.ActivityFeatureDuplicateCheck],
+		AutoTagging:     counts[domain.ActivityFeatureAutoTagging],
+		WorkInfo:        counts[domain.ActivityFeatureWorkInfo],
+		Tags:            counts[domain.ActivityFeatureTags],
+		Versions:        counts[domain.ActivityFeatureVersions],
+		MediaFolders:    counts[domain.ActivityFeatureMediaFolders],
+		Organize:        counts[domain.ActivityFeatureOrganize],
+		FaceRecognition: counts[domain.ActivityFeatureFaceRecognition],
 	}
 }
 
@@ -285,7 +298,24 @@ func toAPIActivityEntry(entry domain.ActivityEntry) gen.ActivityEntry {
 		}
 		out.Tags = &tags
 	}
+	if entry.Kind == domain.ActivityFaceAnalysis {
+		out.FaceLinks = toAPIActivityFaceLinks(entry.FaceLinks)
+	}
 	return out
+}
+
+func toAPIActivityFaceLinks(links []domain.ActivityFaceLink) *[]gen.ActivityFaceLink {
+	out := make([]gen.ActivityFaceLink, 0, len(links))
+	for _, link := range links {
+		item := gen.ActivityFaceLink{
+			AppearanceId: link.AppearanceID, CreatedPerson: link.CreatedPerson, Undone: link.UndoneBy != 0,
+		}
+		if link.Person != nil {
+			item.Person = &gen.CreditRef{Id: link.Person.ID, Name: link.Person.Name, Provisional: link.Person.Provisional}
+		}
+		out = append(out, item)
+	}
+	return &out
 }
 
 // Pairs produce two subject items; videoId appears only for currently accessible videos.
@@ -300,6 +330,11 @@ func toAPIActivitySubject(entry domain.ActivityEntry) gen.ActivitySubject {
 		return out
 	}
 	subject.Items = []gen.ActivitySubjectItem{item(entry.Subject.Label, entry.VideoIDs[0])}
+	if entry.Subject.Kind == domain.ActivitySubjectPerson {
+		if id, err := strconv.ParseInt(entry.Subject.Key, 10, 64); err == nil {
+			subject.Items[0].PersonId = &id
+		}
+	}
 	if entry.Subject.Kind == domain.ActivitySubjectPair {
 		subject.Items = append(subject.Items, item(entry.Subject.LabelB, entry.VideoIDs[1]))
 	}
@@ -337,7 +372,8 @@ func toAPIActivityListItem(entry domain.ActivityEntry) (gen.ActivityListItem, er
 	return item, nil
 }
 
-// A member summary leaves out detail and tags; an auto_tag member counts its tags instead.
+// A member summary leaves out detail and tags; an auto_tag member counts its tags instead, and a face_analysis member
+// keeps its links through the JSON copy.
 func toAPIActivityMemberSummary(member domain.ActivityMember) (gen.ActivityMemberSummary, error) {
 	summary, err := fromActivityEntry[gen.ActivityMemberSummary](toAPIActivityEntry(member.ActivityEntry))
 	if err != nil {

@@ -16,6 +16,7 @@ import APITokensSection from "./APITokensSection";
 import { AutoImportStateSection, AutoImportSwitchSection } from "./AutoImportSection";
 import AutoTaggingSection from "./AutoTaggingSection";
 import ComfyUISection from "./ComfyUISection";
+import { FaceRecognitionSections, faceRecognitionNotice } from "./FaceRecognitionSection";
 import SetupSection from "./SetupSection";
 import MediaFoldersSection from "./MediaFoldersSection";
 import NetworkSection from "./NetworkSection";
@@ -30,11 +31,13 @@ import {
   type SettingsSectionId,
 } from "./settingsPages";
 import TranscodingSection from "./TranscodingSection";
+import { useFaceRecognitionSettings } from "./useFaceRecognitionSettings";
 import { useOllamaConnection } from "./useOllamaConnection";
 import VersionJudgingSection from "./VersionJudgingSection";
 import WorkInfoPluginsSection from "./WorkInfoPluginsSection";
 
-const sectionComponents: Record<SettingsSectionId, ComponentType> = {
+/** null: the page's own view draws the section, since its state also feeds the page notice. */
+const sectionComponents: Record<SettingsSectionId, ComponentType | null> = {
   "scan-status": ScanStatusSection,
   "auto-import-state": AutoImportStateSection,
   "media-folders": MediaFoldersSection,
@@ -42,6 +45,7 @@ const sectionComponents: Record<SettingsSectionId, ComponentType> = {
   "version-judging": VersionJudgingSection,
   setup: SetupSection,
   "auto-tagging": AutoTaggingSection,
+  "face-recognition": null,
   ollama: OllamaSection,
   comfyui: ComfyUISection,
   "work-info-plugins": WorkInfoPluginsSection,
@@ -70,7 +74,7 @@ interface PageViewProps {
 function PageSections({ page }: { page: SettingsPageEntry }) {
   return page.sections.map((section) => {
     const Section = sectionComponents[section];
-    return <Section key={section} />;
+    return Section === null ? null : <Section key={section} />;
   });
 }
 
@@ -130,9 +134,18 @@ function AutoTaggingPageView(props: PageViewProps) {
   );
 }
 
+function FaceRecognitionPageView(props: PageViewProps) {
+  const source = useFaceRecognitionSettings();
+  return (
+    <SettingsPageView {...props} notice={faceRecognitionNotice(source.settings)}>
+      <FaceRecognitionSections source={source} />
+    </SettingsPageView>
+  );
+}
+
 const pageViews: Partial<
   Record<SettingsPageEntry["slug"], ComponentType<PageViewProps>>
-> = { "auto-tagging": AutoTaggingPageView };
+> = { "auto-tagging": AutoTaggingPageView, "face-recognition": FaceRecognitionPageView };
 
 /**
  * Mount only the current page, keyed by route, so navigation discards unsaved drafts and isolates

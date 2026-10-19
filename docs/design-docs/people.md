@@ -80,6 +80,33 @@ source's value or stays empty, so a merge always stores a valid profile.
 | Reject the merge with `400`    | A merge cannot be fixed by editing its request, only by editing the people first |
 | Let the owner choose per field | The merge stays one step                                                         |
 
+## A person without a canonical name is provisional
+
+Face recognition finds people before anyone knows their names, so a person may
+have no `people_names` row at all. Such a person is provisional: `Person`,
+`CreditRef` and `WorkPerson` carry `provisional: true` and `name` is `""`, so
+a client that ignores the flag still parses the response. The flag is read
+from the missing canonical row by every person query, never stored, so a
+named provisional person cannot exist. Organizations always have a name and
+read `provisional: false`.
+
+| Operation                       | Effect on a provisional person                                                                                            |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/people?provisional=…` | `true` keeps only provisional people, `false` only named ones; an organization list answers `400 invalid_request`         |
+| Natural-name order              | Provisional people come after every named person, by ID; the other sorts break ties the same way                          |
+| `PATCH` with `name`             | The person becomes an ordinary person in the same write                                                                   |
+| `PATCH` without `name`          | Profile and external-ID changes keep the person provisional; aliases need a name and answer `work_info_empty` on `name`   |
+| Merge into a provisional target | The target takes the canonical name of the first source in `sourceIds` order that has one; the other names become aliases |
+
+The name order keeps one keyset cursor by prefixing each listed sort key with
+`0` for a named person and making it `1` for a provisional one, so the cursor
+needs no null branch.
+
+| Rejected                                       | Why                                                                                                |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| A `provisional` column beside the name         | Two facts that can disagree                                                                        |
+| A stored placeholder name such as `Unknown 12` | It cannot follow the screen's language, it matches name searches, and a merge keeps it as an alias |
+
 ## People sort by age, unknown birth dates last
 
 People lists take two sorts that tags and organizations do not: `ageAsc`
@@ -132,7 +159,12 @@ upload share one gate, so they never decode at the same time.
 | -------------------------------------------------------------- | ----------------------------------------- |
 | Body over 64 MiB                                               | `413 person_image_too_large` with `limit` |
 | Not a readable PNG, JPEG or still WebP, or over 120 megapixels | `400 person_image_invalid`                |
+| No usable face, while the face runtime is ready                | `400 person_image_no_face`                |
+| More than one usable face, while the face runtime is ready     | `400 person_image_many_faces`             |
 | No face on `GET`                                               | `404 person_image_not_found`              |
+
+Face recognition checks the face
+([face-recognition.md](face-recognition.md#a-face-image-merges-only-one-provisional-person)).
 
 A face is user data, so it is not a file under the rebuildable thumbnails
 directory, and an 800 px JPEG of about 200 KiB costs little as a blob.
@@ -160,7 +192,9 @@ never answers `304` to the removed face's `ETag`.
 | Data URLs in list responses           | A page of 100 people would carry 100 faces           |
 
 A merge keeps the target's face; a target without one takes the face of the
-first source in `sourceIds` order that has one.
+first source in `sourceIds` order that has one. Deleting or merging a person
+also deletes or moves their face recognition data
+([face-recognition.md](face-recognition.md#face-data-follows-its-person)).
 
 ## The people grid
 
@@ -252,6 +286,38 @@ when both are equal.
 | `age` in the response       | Stale after midnight in a cached response        |
 | No age at partial precision | A year alone still narrows the age to two values |
 
+### Candidates and faces in videos
+
+A person's face-recognition results sit in the profile column under the face,
+not in the main column: the owner judges a candidate by comparing two faces,
+and the profile face is the large one, while the main column stays the videos.
+`Same person?` comes first in the column, drawn only while
+`GET /api/people/{id}/face-candidates` returns a pair, one row per pair with
+the other person's `PersonFace judge`, name and similarity, and `Same person`
+and `Not the same` under them. A confirm from a provisional person's own page
+opens the merged person's page, since the shown person no longer exists; one
+that keeps the page reads the candidates and the faces again and reloads the
+videos. A pressed row disables only its own buttons.
+
+`Faces in videos` follows the profile groups, drawn only while
+`GET /api/people/{id}/appearances` returns an appearance: a `PersonFace scene`
+crop beside the video's title and its spans, each a link that plays the video
+from that time (`?t=`), and `Show more` for the next page. An appearance whose
+video left the library reads `Not in the library` without links.
+
+Each row ends with a small `Not this person` button, for a face the analysis
+linked to the wrong person. It splits the face into a new unnamed person with
+no confirmation, since the split is undone by merging the two people: the row
+leaves the list, a toast reads `Split into a new unnamed person` with an `Open`
+action to the new person's page, and the candidates and videos are read again.
+A pressed row disables only its own button, and a failure shows under the row.
+
+| Rejected | Why |
+| --- | --- |
+| Candidates in the main column | They would split the page's one header and one grid, and sit away from the face they are compared with |
+| A strip of crops alone | Reaching a scene would take a second press, and a crop does not say which video |
+| Confirming on another screen | The owner settles a pair where both faces are in view |
+
 ## Faces elsewhere on the screens
 
 On the video page, each person in the work details row is a `PersonFace chip`
@@ -267,3 +333,28 @@ and each fetched person with a profile adds one muted line `Fills only empty
 fields: …` under the chips, because the apply never replaces a stored value.
 Three lines show at first and the rest fold behind `+N more`, which shows them
 all when expanded, so the chips stay the primary content of the row.
+
+## Provisional people on the screens
+
+A provisional person
+([A person without a canonical name is provisional](#a-person-without-a-canonical-name-is-provisional))
+is drawn as any person, with `Unnamed person` in `muted-foreground` where the
+name goes: the grid card, the person page's `h1` and document title, the video
+page's cast chip, the details editor's chips and the library's person filter
+chip. The quieter name line alone separates an unnamed card from a named one,
+so the faces stay what the eye scans; a badge on every unnamed card was
+rejected for competing with them. The screens map the flag to the words in one
+place, [`displayName.ts`](../../web/src/credits/displayName.ts), so the empty
+`name` never reaches a screen.
+
+The grid's filter adds a `Name` select (`Any`, `Named`, `Unnamed`) that sends
+`provisional=false` or `true` and is kept in the URL as `named=1` or `named=0`.
+A provisional person's page offers `Name…` in place of `Edit`; the edit page
+shows the empty name with the placeholder `Unnamed person`, and `Save` with the
+name still empty sends no `name`, so the person stays provisional.
+
+The `Performers` picker of the details editor lists provisional people under
+`Unnamed people` (`GET /api/people?provisional=true` with the picker's limit).
+Choosing one while a name is typed adds a chip with that name, and `Save`
+sends that name by `PATCH /api/people/{id}` before it creates new people or
+writes the credits, so a refused name stops the save before the video changes.

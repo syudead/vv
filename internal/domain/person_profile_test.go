@@ -101,6 +101,18 @@ func TestPersonProfilePatchReplacesOnlyItsFields(t *testing.T) {
 	}
 }
 
+func TestRevertFilledProfileKeepsFieldsChangedSinceTheFill(t *testing.T) {
+	before := PersonProfile{Gender: "female"}
+	filled := PersonProfile{Gender: "female", HeightCm: ptr(160), Bio: "filled", Links: []string{"https://example.com"}}
+	// The owner changed the bio after the fill; height and links still hold the filled values.
+	current := filled
+	current.Bio = "owner"
+	got := RevertFilledProfile(current, before, filled)
+	if want := (PersonProfile{Gender: "female", Bio: "owner"}); !got.Equal(want) {
+		t.Errorf("RevertFilledProfile = %+v, want %+v", got, want)
+	}
+}
+
 func TestFillFetchedPersonProfileFillsOnlyEmptyFieldsAndReportsInvalidValues(t *testing.T) {
 	target := PersonProfile{BirthDate: "1990-01-02", HipsCm: ptr(86)}
 	fetched := FetchedPerson{Role: PersonDirector, Name: "A", Profile: PersonProfile{

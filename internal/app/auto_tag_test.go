@@ -485,11 +485,11 @@ func TestAutoTaggerRetriesAndUndoesActivity(t *testing.T) {
 		t.Fatalf("動画の無い記録のやり直し = %v", err)
 	}
 
-	got, err := activity.UndoActivity(ctx, 3, 7)
+	got, err := activity.UndoActivity(ctx, 3, domain.ActivityUndoTarget{TagID: 7})
 	if err != nil || got.UndoesID != 3 || !slices.Equal(undo.undone, [][2]int64{{3, 7}}) {
 		t.Fatalf("取り消し = %+v, %v, %v", got, err, undo.undone)
 	}
-	if _, err := activity.UndoActivity(ctx, 3, 8); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := activity.UndoActivity(ctx, 3, domain.ActivityUndoTarget{TagID: 8}); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("付けていないタグの取り消し = %v", err)
 	}
 }

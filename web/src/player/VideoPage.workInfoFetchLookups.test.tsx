@@ -52,6 +52,7 @@ function stored(overrides: Partial<Person> = {}): Person {
   return {
     id: 9,
     name: "既存の人",
+    provisional: false,
     aliases: [],
     externalIds: [],
     profile: { bloodType: "A" },
@@ -163,8 +164,16 @@ describe("VideoPage work-info fetch person lookups", () => {
       workInfo: {
         dates: [],
         people: [
-          { role: "performer", person: { id: 9, name: "既存の人" } },
-          { role: "performer", person: { id: 10, name: "別の人" } },
+          {
+            role: "performer",
+            person: { id: 9, name: "既存の人", provisional: false },
+            provisional: false,
+          },
+          {
+            role: "performer",
+            person: { id: 10, name: "別の人", provisional: false },
+            provisional: false,
+          },
         ],
         organizations: [],
         urls: [],
@@ -229,7 +238,13 @@ describe("VideoPage work-info fetch person lookups", () => {
       ...video,
       workInfo: {
         dates: [],
-        people: [{ role: "performer", person: { id: 9, name: "既存の人" } }],
+        people: [
+          {
+            role: "performer",
+            person: { id: 9, name: "既存の人", provisional: false },
+            provisional: false,
+          },
+        ],
         organizations: [],
         urls: [],
         externalIds: [],

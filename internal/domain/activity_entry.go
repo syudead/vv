@@ -32,6 +32,10 @@ const (
 	ActivityWorkInfoApply      ActivityKind = "work_info_apply"
 	ActivityMediaFolderRemove  ActivityKind = "media_folder_remove"
 	ActivityOrganizeUndo       ActivityKind = "organize_undo"
+	// ActivityFaceAnalysis records one video's face analysis and the people it linked to the video.
+	ActivityFaceAnalysis ActivityKind = "face_analysis"
+	// ActivityFaceMerge records an automatic merge of a provisional person into another person.
+	ActivityFaceMerge ActivityKind = "face_merge"
 	// ActivityPipeline groups one video's import run with the follow-up processes that run started.
 	ActivityPipeline ActivityKind = "pipeline"
 	// ActivityUndo inherits the feature of the entry it reverses.
@@ -41,22 +45,23 @@ const (
 type ActivityFeature string
 
 const (
-	ActivityFeatureImport         ActivityFeature = "import"
-	ActivityFeatureScan           ActivityFeature = "scan"
-	ActivityFeatureDuplicateCheck ActivityFeature = "duplicate_check"
-	ActivityFeatureAutoTagging    ActivityFeature = "auto_tagging"
-	ActivityFeatureWorkInfo       ActivityFeature = "work_info"
-	ActivityFeatureTags           ActivityFeature = "tags"
-	ActivityFeatureVersions       ActivityFeature = "versions"
-	ActivityFeatureMediaFolders   ActivityFeature = "media_folders"
-	ActivityFeatureOrganize       ActivityFeature = "organize"
+	ActivityFeatureImport          ActivityFeature = "import"
+	ActivityFeatureScan            ActivityFeature = "scan"
+	ActivityFeatureDuplicateCheck  ActivityFeature = "duplicate_check"
+	ActivityFeatureAutoTagging     ActivityFeature = "auto_tagging"
+	ActivityFeatureWorkInfo        ActivityFeature = "work_info"
+	ActivityFeatureTags            ActivityFeature = "tags"
+	ActivityFeatureVersions        ActivityFeature = "versions"
+	ActivityFeatureMediaFolders    ActivityFeature = "media_folders"
+	ActivityFeatureOrganize        ActivityFeature = "organize"
+	ActivityFeatureFaceRecognition ActivityFeature = "face_recognition"
 )
 
 // ActivityFeatures follows the UI filter order.
 var ActivityFeatures = []ActivityFeature{
 	ActivityFeatureImport, ActivityFeatureScan, ActivityFeatureDuplicateCheck, ActivityFeatureAutoTagging,
 	ActivityFeatureWorkInfo, ActivityFeatureTags, ActivityFeatureVersions, ActivityFeatureMediaFolders,
-	ActivityFeatureOrganize,
+	ActivityFeatureOrganize, ActivityFeatureFaceRecognition,
 }
 
 var activityKindFeatures = map[ActivityKind]ActivityFeature{
@@ -77,6 +82,8 @@ var activityKindFeatures = map[ActivityKind]ActivityFeature{
 	ActivityDismiss:            ActivityFeatureVersions,
 	ActivityMediaFolderRemove:  ActivityFeatureMediaFolders,
 	ActivityOrganizeUndo:       ActivityFeatureOrganize,
+	ActivityFaceAnalysis:       ActivityFeatureFaceRecognition,
+	ActivityFaceMerge:          ActivityFeatureFaceRecognition,
 }
 
 // Feature returns false for undo entries, whose feature comes from the reversed entry.
@@ -100,6 +107,8 @@ const (
 	ActivitySubjectPair   ActivitySubjectKind = "pair"
 	ActivitySubjectScan   ActivitySubjectKind = "scan"
 	ActivitySubjectFolder ActivitySubjectKind = "folder"
+	// ActivitySubjectPerson's key is a person id and its label the person's name, empty for a provisional person.
+	ActivitySubjectPerson ActivitySubjectKind = "person"
 )
 
 type ActivityStatus string
@@ -211,8 +220,10 @@ type ActivityEntry struct {
 
 	// The following fields are populated by list reads and ignored on writes.
 
-	Tags   []ActivityEntryTag
-	Undoes *ActivityUndone
+	Tags []ActivityEntryTag
+	// FaceLinks are the people a face_analysis entry linked to its video.
+	FaceLinks []ActivityFaceLink
+	Undoes    *ActivityUndone
 	// VideoIDs maps subject keys to currently accessible videos; missing keys map to zero.
 	VideoIDs  [2]int64
 	Candidate bool
@@ -234,6 +245,23 @@ type ActivityEntryTag struct {
 	UndoneBy    int64
 }
 
+// ActivityFaceLink is one person a face_analysis entry linked to its video as a performer.
+type ActivityFaceLink struct {
+	AppearanceID int64
+	// Person is nil once the person is deleted.
+	Person *CreditRef
+	// CreatedPerson is true when the analysis created the provisional person.
+	CreatedPerson bool
+	UndoneBy      int64
+}
+
+// ActivityUndoTarget names the part of an entry to undo: TagID for auto_tag, AppearanceID for face_analysis, where
+// zero undoes every link not yet undone. Other kinds ignore both.
+type ActivityUndoTarget struct {
+	TagID        int64
+	AppearanceID int64
+}
+
 type ActivityUndone struct {
 	Kind    ActivityKind
 	Outcome ActivityOutcome
@@ -252,9 +280,12 @@ func (d ActivityDecider) automatic() bool {
 	return d == ActivityByRule || d == ActivityByAI
 }
 
-var activityRetryKinds = []ActivityKind{ActivityImport, ActivityScan, ActivityAutoTag, ActivityVersionJudgement}
+var activityRetryKinds = []ActivityKind{
+	ActivityImport, ActivityScan, ActivityAutoTag, ActivityVersionJudgement, ActivityFaceAnalysis,
+}
 
-// RetryOffered accepts failed or interrupted import, scan, auto_tag, and version_judgement entries requiring attention.
+// RetryOffered accepts failed or interrupted import, scan, auto_tag, version_judgement and face_analysis entries
+// requiring attention.
 func (e ActivityEntry) RetryOffered() bool {
 	if e.Status != ActivityAttention || (e.Reason != ActivityFailed && e.Reason != ActivityInterrupted) {
 		return false
@@ -262,7 +293,8 @@ func (e ActivityEntry) RetryOffered() bool {
 	return slices.Contains(activityRetryKinds, e.Kind)
 }
 
-// UndoOffered accepts automatic same/different judgements not already undone; auto_tag uses TagUndoOffered per tag.
+// UndoOffered accepts automatic same/different judgements and completed automatic merges not already undone; auto_tag
+// and face_analysis entries need one tag or link that TagUndoOffered or FaceLinkUndoOffered accepts.
 func (e ActivityEntry) UndoOffered() bool {
 	if e.UndoneBy != 0 || !e.Decider.automatic() {
 		return false
@@ -272,6 +304,10 @@ func (e ActivityEntry) UndoOffered() bool {
 		return e.Status == ActivityDone && (e.Outcome == ActivitySame || e.Outcome == ActivityDifferent)
 	case ActivityAutoTag:
 		return slices.ContainsFunc(e.Tags, func(tag ActivityEntryTag) bool { return e.TagUndoOffered(tag) })
+	case ActivityFaceAnalysis:
+		return slices.ContainsFunc(e.FaceLinks, func(link ActivityFaceLink) bool { return e.FaceLinkUndoOffered(link) })
+	case ActivityFaceMerge:
+		return e.Status == ActivityDone && e.Outcome == ActivityCompleted
 	default:
 		return false
 	}
@@ -280,6 +316,11 @@ func (e ActivityEntry) UndoOffered() bool {
 // TagUndoOffered accepts automatic tag assignments not already undone.
 func (e ActivityEntry) TagUndoOffered(tag ActivityEntryTag) bool {
 	return e.Kind == ActivityAutoTag && e.Decider.automatic() && tag.UndoneBy == 0
+}
+
+// FaceLinkUndoOffered accepts automatic face links not already undone.
+func (e ActivityEntry) FaceLinkUndoOffered(link ActivityFaceLink) bool {
+	return e.Kind == ActivityFaceAnalysis && e.Decider.automatic() && link.UndoneBy == 0
 }
 
 // Supersedes closes attention entries with the same kind and subject, except version_judgement, which retains one

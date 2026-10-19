@@ -3,6 +3,7 @@ import { t, type UiText } from "../i18n";
 import { DialogError } from "../tags/DialogError";
 import { ConfirmDialog } from "../ui/patterns/confirm-dialog";
 import { Spinner } from "../ui/shadcn/spinner";
+import { creditDisplayName } from "./displayName";
 
 /** Keep the confirmation dialog open while submitting. */
 export default function DeleteCreditDialog({
@@ -20,22 +21,23 @@ export default function DeleteCreditDialog({
   onClose: () => void;
   onDelete: () => void;
 }) {
-  const text = t.credits.deleteDialog.text(credit.name, credit.videoCount);
+  const name = creditDisplayName(credit);
+  const text = t.credits.deleteDialog.text(name, credit.videoCount);
+  const note =
+    kind === "organization"
+      ? t.credits.deleteDialog.organizationNote
+      : t.credits.deleteDialog.personNote;
   return (
     <ConfirmDialog
       open
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title={t.credits.deleteDialog.title(credit.name)}
+      title={t.credits.deleteDialog.title(name)}
       description={
-        kind === "organization" ? (
-          <>
-            {text} {t.credits.deleteDialog.organizationNote}
-          </>
-        ) : (
-          text
-        )
+        <>
+          {text} {note}
+        </>
       }
       cancelLabel={t.common.cancel}
       actionLabel={

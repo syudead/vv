@@ -269,8 +269,11 @@ func toAPIWorkInfo(info *domain.WorkInfo) *gen.WorkInfo {
 	}
 	for _, person := range info.People {
 		out.People = append(out.People, gen.WorkPerson{
-			Role: gen.WorkPersonRole(person.Role), Person: gen.CreditRef{Id: person.Person.ID, Name: person.Person.Name},
-			ImageRevision: optionalPositive(person.ImageRevision),
+			Role: gen.WorkPersonRole(person.Role),
+			Person: gen.CreditRef{
+				Id: person.Person.ID, Name: person.Person.Name, Provisional: person.Person.Provisional,
+			},
+			Provisional: person.Person.Provisional, ImageRevision: optionalPositive(person.ImageRevision),
 		})
 	}
 	for _, organization := range info.Organizations {

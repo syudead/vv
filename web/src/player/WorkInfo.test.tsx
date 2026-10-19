@@ -21,7 +21,13 @@ describe("WorkInfo", () => {
           info={{
             ...empty,
             dates: [{ kind: "recorded", date: "2023-08" }],
-            people: [{ role: "photographer", person: { id: 4, name: "撮る人" } }],
+            people: [
+              {
+                role: "photographer",
+                person: { id: 4, name: "撮る人", provisional: false },
+                provisional: false,
+              },
+            ],
           }}
         />
       </MemoryRouter>,
@@ -42,10 +48,24 @@ describe("WorkInfo", () => {
           info={{
             ...empty,
             people: [
-              { role: "performer", person: { id: 4, name: "顔の人" }, imageRevision: 9 },
-              { role: "performer", person: { id: 6, name: "顔なし" } },
+              {
+                role: "performer",
+                person: { id: 4, name: "顔の人", provisional: false },
+                provisional: false,
+                imageRevision: 9,
+              },
+              {
+                role: "performer",
+                person: { id: 6, name: "顔なし", provisional: false },
+                provisional: false,
+              },
             ],
-            organizations: [{ role: "maker", organization: { id: 5, name: "Studio" } }],
+            organizations: [
+              {
+                role: "maker",
+                organization: { id: 5, name: "Studio", provisional: false },
+              },
+            ],
           }}
         />
       </MemoryRouter>,
@@ -66,5 +86,29 @@ describe("WorkInfo", () => {
       screen.getByRole("link", { name: "Show videos with Studio" }).getAttribute("href"),
     ).toBe("/?organization=5");
     expect(screen.queryByRole("link", { name: /Show videos with 顔/ })).toBeNull();
+  });
+
+  it("仮の人物は空の名前ではなく Unnamed person の顔と名前で人物ページを開く", () => {
+    render(
+      <MemoryRouter>
+        <WorkInfo
+          info={{
+            ...empty,
+            people: [
+              {
+                role: "performer",
+                person: { id: 8, name: "", provisional: true },
+                provisional: true,
+                imageRevision: 2,
+              },
+            ],
+          }}
+        />
+      </MemoryRouter>,
+    );
+    const link = screen.getByRole("link", { name: "Open Unnamed person" });
+    expect(link.getAttribute("href")).toBe("/people/8");
+    expect(within(link).getByRole("img").getAttribute("alt")).toBe("Unnamed person");
+    expect(link.textContent).toBe("Unnamed person");
   });
 });

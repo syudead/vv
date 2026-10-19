@@ -256,7 +256,8 @@ func checkCreditRefs(ctx context.Context, tx *sql.Tx, infos []domain.WorkInfo) (
 	return -1, nil
 }
 
-// Write only changed keys in input order; the caller advances edit times.
+// Write only changed keys in input order, dropping the face appearances of removed performers and marking the
+// removed credits of automatic merges; the caller advances edit times.
 func applyWorkInfo(ctx context.Context, tx *sql.Tx, keys []string, final map[string]domain.WorkInfo) ([]string, error) {
 	before, err := workInfoByUserKeys(ctx, tx, keys)
 	if err != nil {
@@ -266,6 +267,12 @@ func applyWorkInfo(ctx context.Context, tx *sql.Tx, keys []string, final map[str
 	for _, key := range keys {
 		if before[key].Equal(final[key]) {
 			continue
+		}
+		if err := dropRemovedPerformerFaces(ctx, tx, key, before[key], final[key]); err != nil {
+			return nil, err
+		}
+		if err := markOwnerChangedMergeCredits(ctx, tx, key, before[key], final[key]); err != nil {
+			return nil, err
 		}
 		if err := replaceWorkInfo(ctx, tx, key, final[key]); err != nil {
 			return nil, err
@@ -527,21 +534,21 @@ func workInfoReads(entry func(string) *domain.WorkInfo) []workInfoRead {
 	}
 }
 
-// creditLinkRead also reads each person's image revision; organizations read 0.
+// creditLinkRead also reads each person's image revision; organizations read 0. A person without a canonical name reads as provisional.
 func creditLinkRead(t creditTables, add func(key, role string, ref domain.CreditRef, revision int64)) workInfoRead {
 	revision := `0`
 	if t.kind == domain.CreditPerson {
 		revision = personImageRevision("l.person_id")
 	}
 	return workInfoRead{
-		query: t.q(`select l.content_key, l.role, l.{id}, n.name, ` + revision + ` from {links} l
-			join {names} n on n.{id} = l.{id} and n.canonical = 1
+		query: t.q(`select l.content_key, l.role, l.{id}, coalesce(n.name, ''), n.{id} is null, ` + revision + ` from {links} l
+			left join {names} n on n.{id} = l.{id} and n.canonical = 1
 			where l.content_key in (select value from json_each(?)) order by l.content_key, l.position`),
 		scan: func(rows *sql.Rows) error {
 			var key, role string
 			var ref domain.CreditRef
 			var revision int64
-			if err := rows.Scan(&key, &role, &ref.ID, &ref.Name, &revision); err != nil {
+			if err := rows.Scan(&key, &role, &ref.ID, &ref.Name, &ref.Provisional, &revision); err != nil {
 				return err
 			}
 			add(key, role, ref, revision)

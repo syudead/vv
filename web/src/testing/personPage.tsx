@@ -1,10 +1,11 @@
 /** A fake server for the person page; each test file sets the state its flow needs. */
 import { render } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, vi } from "vitest";
 
 import type { Person } from "../api/credits";
 import { installFakeEventSource } from "../api/fakeEventSource";
+import type { FaceAppearance, FaceCandidate } from "../api/personFaces";
 import type {
   PersonPluginCandidate,
   PersonPluginFetchedPerson,
@@ -28,6 +29,7 @@ export function person(overrides: Partial<Person> = {}): Person {
   return {
     id: 7,
     name: "Aoi",
+    provisional: false,
     aliases: [],
     externalIds: [],
     profile: {},
@@ -70,6 +72,12 @@ export const server = {
   /** The person the apply answers with, and the values it leaves out. */
   applied: null as Person | null,
   skipped: [] as SkippedPersonValue[],
+  faceCandidates: [] as FaceCandidate[],
+  appearances: [] as FaceAppearance[],
+  /** Served as the second page of appearances, after the cursor `page-2`. */
+  laterAppearances: [] as FaceAppearance[],
+  /** The person a confirm answers with, also served at its own address. */
+  mergeTarget: null as Person | null,
 };
 
 export function sentBody(request: Sent | undefined): unknown {
@@ -113,6 +121,43 @@ function pluginRoute(method: string, url: URL, body: unknown): Response | null {
   return null;
 }
 
+function faceRoute(method: string, url: URL): Response | null {
+  if (url.pathname === "/api/people/7/face-candidates") {
+    return jsonResponse({ items: server.faceCandidates });
+  }
+  if (url.pathname === "/api/people/7/appearances") {
+    if (url.searchParams.get("cursor") === "page-2") {
+      return jsonResponse({ items: server.laterAppearances });
+    }
+    return jsonResponse({
+      items: server.appearances,
+      nextCursor: server.laterAppearances.length > 0 ? "page-2" : undefined,
+    });
+  }
+  const split = /^\/api\/people\/7\/appearances\/(\d+)\/split$/.exec(url.pathname);
+  if (split !== null && method === "POST") {
+    server.appearances = server.appearances.filter(
+      (item) => item.appearanceId !== Number(split[1]),
+    );
+    return jsonResponse(person({ id: 12, name: "", provisional: true }), 201);
+  }
+  const pair = /^\/api\/people\/7\/face-candidates\/(\d+)\/(confirm|dismiss)$/.exec(
+    url.pathname,
+  );
+  if (pair !== null && method === "POST") {
+    server.faceCandidates = server.faceCandidates.filter(
+      (item) => item.person.id !== Number(pair[1]),
+    );
+    if (pair[2] === "dismiss") return new Response(null, { status: 204 });
+    return jsonResponse(server.mergeTarget);
+  }
+  const target = server.mergeTarget;
+  if (target !== null && url.pathname === `/api/people/${String(target.id)}`) {
+    return jsonResponse(target);
+  }
+  return null;
+}
+
 function respond(method: string, url: URL, body: unknown): Response {
   if (url.pathname === "/api/videos") {
     return jsonResponse({ items: [video(1)], total: 1 });
@@ -128,6 +173,8 @@ function respond(method: string, url: URL, body: unknown): Response {
     server.person = { ...server.person, imageRevision: 3 };
     return jsonResponse(server.person);
   }
+  const face = faceRoute(method, url);
+  if (face !== null) return face;
   if (url.pathname === "/api/favorites" && method === "PUT") {
     server.person = { ...server.person, favorite: true };
     return jsonResponse({ appliedVideos: 0, appliedGroups: 0, appliedSmartFolders: 0 });
@@ -150,6 +197,10 @@ export function installPersonServer() {
     server.fetched = { name: "Aoi", aliases: [], externalIds: [] };
     server.applied = null;
     server.skipped = [];
+    server.faceCandidates = [];
+    server.appearances = [];
+    server.laterAppearances = [];
+    server.mergeTarget = null;
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>((input, init) => {
@@ -171,6 +222,16 @@ export function installPersonServer() {
   });
 }
 
+function VideoScreen() {
+  const location = useLocation();
+  const autoplay = (location.state as { autoplay?: boolean } | null)?.autoplay === true;
+  return (
+    <p data-testid="video-screen">
+      {`${location.pathname}${location.search}${autoplay ? " autoplay" : ""}`}
+    </p>
+  );
+}
+
 export function renderPage() {
   return render(
     <TooltipProvider>
@@ -179,6 +240,7 @@ export function renderPage() {
           <Routes>
             <Route path="/people/:id" element={<PersonPage />} />
             <Route path="/people/:id/edit" element={<PersonEditPage />} />
+            <Route path="/videos/:id" element={<VideoScreen />} />
           </Routes>
         </MemoryRouter>
       </ToastProvider>

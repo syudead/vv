@@ -12,6 +12,7 @@ import type {
   WorkInfoField,
   WorkInfoMatch,
 } from "../../api/workInfoPlugins";
+import { creditDisplayName } from "../../credits/displayName";
 import { personFactGroups } from "../../credits/person/personFacts";
 import { t } from "../../i18n";
 import { foldForMatch } from "../../lib/foldForMatch";
@@ -170,7 +171,11 @@ function matchChip(
   if (match.state === "ambiguous") return { key, name: entry.name, mark: "notLinked" };
   if (match.state === "new") return { key, name: entry.name, mark: "new" };
   if (match.id === undefined) return { key, name: entry.name };
-  const name = match.name ?? entry.name;
+  // A matched person without a canonical name is provisional; the match carries its name as "".
+  const name =
+    match.name === undefined
+      ? entry.name
+      : creditDisplayName({ name: match.name, provisional: match.name === "" });
   return {
     key,
     name,
@@ -257,7 +262,7 @@ function freshCredits(
 }
 
 function creditRow(
-  stored: readonly { id: number; name: string; faced?: boolean }[],
+  stored: readonly { id: number; name: string; provisional?: boolean; faced?: boolean }[],
   fetched: readonly FetchedCredit[],
 ): ListRow {
   const linked = new Set(stored.map((credit) => credit.id));
@@ -268,7 +273,7 @@ function creditRow(
     creditChip(entry, linked, faced, String(index)),
   );
   return listRow(
-    stored.map((credit) => ({ key: String(credit.id), name: credit.name })),
+    stored.map((credit) => ({ key: String(credit.id), name: creditDisplayName(credit) })),
     chips,
     freshCredits(fetched, chips),
   );

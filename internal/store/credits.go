@@ -215,7 +215,7 @@ func (s *CreditStore) Update(ctx context.Context, kind domain.CreditKind, id int
 		return domain.Credit{}, err
 	}
 	// Smart-folder notices and collection values depend on names and links, not on profiles.
-	if err := s.db.commitMatchChangeIf(ctx, tx, changes.matched()); err != nil {
+	if err := s.db.commitMatchChangeIf(ctx, tx, changes.matched(), personFaceEvents(current, updated)...); err != nil {
 		return domain.Credit{}, fmt.Errorf("cannot update the %s: %w", kind, err)
 	}
 	return updated, nil
@@ -244,6 +244,9 @@ func patchedCredit(current domain.Credit, patch domain.CreditPatch) (domain.Cred
 	}
 	if patch.Profile != nil {
 		merged.Profile = patch.Profile.Apply(current.Profile)
+	}
+	if current.Provisional && patch.Name == nil {
+		return domain.NormalizeProvisionalCredit(merged)
 	}
 	normalized, err := domain.NormalizeCredit(merged)
 	var invalid *domain.InvalidWorkInfoError
@@ -329,7 +332,8 @@ func applyCreditChanges(ctx context.Context, tx *sql.Tx, t creditTables, id int6
 	return nil
 }
 
-// Delete cascades names, IDs and links, clears child parents, and compacts affected link positions.
+// Delete cascades names, IDs and links, clears child parents, compacts affected link positions, and deletes a
+// person's face data.
 func (s *CreditStore) Delete(ctx context.Context, kind domain.CreditKind, id int64) error {
 	t, err := creditTablesFor(kind)
 	if err != nil {
@@ -352,6 +356,11 @@ func (s *CreditStore) Delete(ctx context.Context, kind domain.CreditKind, id int
 	if err != nil {
 		return err
 	}
+	if t.kind == domain.CreditPerson {
+		if err := deletePersonFaceData(ctx, tx, id); err != nil {
+			return err
+		}
+	}
 	if _, err := tx.ExecContext(ctx, t.q(`delete from {entity} where id = ?`), id); err != nil {
 		return fmt.Errorf("cannot delete %s %d: %w", kind, id, err)
 	}
@@ -364,7 +373,7 @@ func (s *CreditStore) Delete(ctx context.Context, kind domain.CreditKind, id int
 	return nil
 }
 
-// Merge transfers links, aliases, external IDs and children and fills empty profile fields and a missing face atomically; reject self-merges, parent cycles and merged limits.
+// Merge transfers links, aliases, external IDs, children and face data and fills empty profile fields, a missing face and a missing canonical name atomically; reject self-merges, parent cycles and merged limits.
 func (s *CreditStore) Merge(ctx context.Context, kind domain.CreditKind, targetID int64, sourceIDs []int64) (domain.CreditMergeOutcome, error) {
 	t, err := creditTablesFor(kind)
 	if err != nil {
@@ -376,26 +385,42 @@ func (s *CreditStore) Merge(ctx context.Context, kind domain.CreditKind, targetI
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	merged, notFound, err := mergeSources(ctx, tx, t, targetID, sourceIDs)
+	outcome, events, err := mergeCreditsInTx(ctx, tx, t, targetID, sourceIDs)
 	if err != nil {
 		return domain.CreditMergeOutcome{}, err
 	}
+	if err := s.db.commitMatchChange(ctx, tx, events...); err != nil {
+		return domain.CreditMergeOutcome{}, fmt.Errorf("cannot merge into %s %d: %w", kind, targetID, err)
+	}
+	return outcome, nil
+}
+
+// mergeCreditsInTx performs Merge inside tx and reads the merged target; the caller commits as a match change with
+// the returned events, which report a face or a name the target took.
+func mergeCreditsInTx(ctx context.Context, tx *sql.Tx, t creditTables, targetID int64, sourceIDs []int64) (
+	domain.CreditMergeOutcome, []domain.Event, error,
+) {
+	merged, notFound, err := mergeSources(ctx, tx, t, targetID, sourceIDs)
+	if err != nil {
+		return domain.CreditMergeOutcome{}, nil, err
+	}
+	before, err := creditByID(ctx, tx, t, targetID)
+	if err != nil {
+		return domain.CreditMergeOutcome{}, nil, err
+	}
 	if len(merged) > 0 {
 		if err := mergeCreditsInto(ctx, tx, t, targetID, merged); err != nil {
-			return domain.CreditMergeOutcome{}, err
+			return domain.CreditMergeOutcome{}, nil, err
 		}
 		if err := checkMergedCreditLimits(ctx, tx, t, targetID); err != nil {
-			return domain.CreditMergeOutcome{}, err
+			return domain.CreditMergeOutcome{}, nil, err
 		}
 	}
 	credit, err := creditByID(ctx, tx, t, targetID)
 	if err != nil {
-		return domain.CreditMergeOutcome{}, err
+		return domain.CreditMergeOutcome{}, nil, err
 	}
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
-		return domain.CreditMergeOutcome{}, fmt.Errorf("cannot merge into %s %d: %w", kind, targetID, err)
-	}
-	return domain.CreditMergeOutcome{Credit: credit, NotFoundIDs: notFound}, nil
+	return domain.CreditMergeOutcome{Credit: credit, NotFoundIDs: notFound}, personFaceEvents(before, credit), nil
 }
 
 // Validate the target, self-merges and parent cycles; deduplicate sources in input order and report missing IDs.
@@ -444,7 +469,16 @@ func mergeCreditsInto(ctx context.Context, tx *sql.Tx, t creditTables, targetID 
 		if err := fillMergedPersonProfile(ctx, tx, targetID, sourceIDs); err != nil {
 			return err
 		}
-		if err := fillMergedPersonImage(ctx, tx, targetID, sourceIDs); err != nil {
+		faceFrom, err := fillMergedPersonImage(ctx, tx, targetID, sourceIDs)
+		if err != nil {
+			return err
+		}
+		if faceFrom != 0 {
+			if err := moveFaceVector(ctx, tx, targetID, faceFrom); err != nil {
+				return err
+			}
+		}
+		if err := mergePersonFaceData(ctx, tx, targetID, string(encoded)); err != nil {
 			return err
 		}
 		// A target that is not yet a favorite takes the earliest source favorite time; the sources' rows cascade below.
@@ -460,6 +494,12 @@ func mergeCreditsInto(ctx context.Context, tx *sql.Tx, t creditTables, targetID 
 		return err
 	}
 	statements := []struct{ what, statement string }{
+		// A target without a canonical name takes the first named source's, before the rest become aliases.
+		{"name the target", `insert into {names} ({id}, name, canonical, language, search_key, sort_key, search_version)
+			select ?1, n.name, 1, null, n.search_key, n.sort_key, n.search_version
+			  from json_each(?2) s join {names} n on n.{id} = s.value and n.canonical = 1
+			 where not exists (select 1 from {names} where {id} = ?1 and canonical = 1)
+			 order by s.key limit 1`},
 		// Preserve link positions; uniqueness leaves conflicting source rows for the following delete.
 		{"move the links", `update or ignore {links} set {id} = ?1 where {id} in (select value from json_each(?2))`},
 		{"drop the links", `delete from {links} where {id} in (select value from json_each(?2))`},

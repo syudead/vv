@@ -23,9 +23,9 @@ no older component is left.
   has the focus with the `accent` fill instead.
 - **States**: hover, pressed, selected and disabled come from the component.
   Do not restyle them per screen; disabled is `opacity-50` everywhere.
-  `Button`, `Switch` and `Input` draw `aria-disabled="true"` the same way
-  (`opacity-50`, the `not-allowed` cursor) but keep their focus and their
-  value; the handler still has to ignore the press or the keystroke.
+  `Button`, `Switch`, `Input` and `RadioGroupItem` draw `aria-disabled="true"`
+  the same way (`opacity-50`, the `not-allowed` cursor) but keep their focus
+  and their value; the handler still has to ignore the press or the keystroke.
 - **Size by density**: the library uses `sm` (`h-8`) controls and `icon-sm`
   icon buttons; the video page uses `default` (`h-9`) and `lg` (`h-10`) for its
   main action. Icon-only buttons in one area share one size.
@@ -420,15 +420,17 @@ Do not use the `favorite` colour or a heart for anything else.
 
 ### PersonFace
 
-Item `person-face`. A person's face in one of four frames, or the placeholder
+Item `person-face`. A person's face in one of six frames, or the placeholder
 in the same frame, so a row that mixes both keeps one height:
 
-| Shape     | Frame                                       | Where                                   |
-| --------- | ------------------------------------------- | --------------------------------------- |
-| `card`    | Full width, `aspect-square`, `rounded-full` | A card of the people grid               |
-| `profile` | Full width, `aspect-portrait`, `rounded-md` | The person page's profile column        |
-| `chip`    | `size-5`, `rounded-full`, a `text-sm` line  | Next to a name in the video page's cast |
-| `compare` | `size-8`, `rounded-full`                    | A fetched person in a comparison        |
+| Shape     | Frame                                       | Where                                                                     |
+| --------- | ------------------------------------------- | ------------------------------------------------------------------------- |
+| `card`    | Full width, `aspect-square`, `rounded-full` | A card of the people grid                                                 |
+| `profile` | Full width, `aspect-portrait`, `rounded-md` | The person page's profile column                                          |
+| `chip`    | `size-5`, `rounded-full`, a `text-sm` line  | Next to a name in the video page's cast                                   |
+| `compare` | `size-8`, `rounded-full`                    | A fetched person in a comparison                                          |
+| `judge`   | `size-12`, `rounded-full`                   | A person in a row where the owner decides whether two people are the same |
+| `scene`   | `size-12`, `rounded-md`                     | A face cut from a video; square, so it reads as a frame of the video      |
 
 The image is cropped with `object-cover` and `object-face`: centred
 horizontally and a third from the top, where a portrait usually holds the
@@ -522,6 +524,13 @@ with a line break refused with its reason. Both are one base component,
 even when a candidate matches the spelling exactly, so a namesake can be
 created as a separate entry, and the caller decides what Enter without arrow
 keys picks (`onCommitSpelling`).
+
+`CreditCommand` alone takes an optional second group (`group`): rows under a
+heading, after the name results and before the create row in the list below
+the input. A row may lead with a `PersonFace chip` (`leading`) and draw its
+label in `muted-foreground` (`quiet`), as the `Unnamed people` group of the
+`Performers` picker does for people without a name. A group with no rows draws
+no heading.
 
 Do not use either for values other than tag names and the names of people and
 organizations.
