@@ -20,17 +20,27 @@ func deletePersonFaceData(ctx context.Context, tx *sql.Tx, personID int64) error
 	return nil
 }
 
-// mergePersonFaceData moves the sources' appearances and candidate pairs to the target and deletes the pairs that
-// would join the target to itself; it must run before the sources are deleted. encodedSources is a JSON id array.
+// mergePersonFaceData moves the sources' appearances and candidate pairs to the target, keeping one row per pair of
+// people in either orientation, and deletes the pairs that would join the target to itself; it must run before the
+// sources are deleted. encodedSources is a JSON id array.
 func mergePersonFaceData(ctx context.Context, tx *sql.Tx, targetID int64, encodedSources string) error {
 	statements := []struct{ what, statement string }{
 		{"move the face appearances", `update face_appearances set person_id = ?1
 			where person_id in (select value from json_each(?2))`},
-		// A pair the target already has keeps the target's row; the source's goes with the source.
+		// A pair the target already has, in either orientation, keeps the target's row; the source's goes with the
+		// source.
+		{"drop the face candidates", `delete from face_candidates
+			where (provisional_id in (select value from json_each(?2)) and exists (select 1 from face_candidates r
+				where r.provisional_id = face_candidates.person_id and r.person_id = ?1))
+			   or (person_id in (select value from json_each(?2)) and exists (select 1 from face_candidates r
+				where r.provisional_id = ?1 and r.person_id = face_candidates.provisional_id))`},
 		{"move the face candidates", `update or ignore face_candidates set provisional_id = ?1
 			where provisional_id in (select value from json_each(?2))`},
 		{"move the face candidates", `update or ignore face_candidates set person_id = ?1
 			where person_id in (select value from json_each(?2))`},
+		// Two sources may bring one pair in opposite orientations.
+		{"drop the face candidates", `delete from face_candidates where provisional_id = ?1 and exists (
+			select 1 from face_candidates r where r.provisional_id = face_candidates.person_id and r.person_id = ?1)`},
 		{"drop the face candidates", `delete from face_candidates where provisional_id = person_id`},
 	}
 	for _, s := range statements {

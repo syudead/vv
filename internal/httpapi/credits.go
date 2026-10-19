@@ -24,6 +24,9 @@ type Credits interface {
 	Update(ctx context.Context, kind domain.CreditKind, id int64, patch domain.CreditPatch) (domain.Credit, error)
 	Merge(ctx context.Context, kind domain.CreditKind, targetID int64, sourceIDs []int64) (domain.CreditMergeOutcome, error)
 	Delete(ctx context.Context, kind domain.CreditKind, id int64) error
+	FaceCandidates(ctx context.Context, personID int64) ([]domain.FacePair, error)
+	ConfirmFaceCandidate(ctx context.Context, personID, otherID int64) (domain.Credit, error)
+	DismissFaceCandidate(ctx context.Context, personID, otherID int64) error
 }
 
 type creditKindAPI struct {

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"cmp"
+	"errors"
 	"slices"
 )
 
@@ -233,4 +234,15 @@ func DecideCastMerge(performers []FaceCastPerformer, dismissed map[FacePersonPai
 		return FacePersonPair{}, false
 	}
 	return pair, true
+}
+
+// ErrFaceCandidateNotFound reports that two people have no open (not dismissed) candidate pair.
+var ErrFaceCandidateNotFound = errors.New("no open face candidate pair of these people")
+
+// FacePair is an open candidate pair seen from one of its people: the other person and their similarity.
+type FacePair struct {
+	Person CreditRef
+	// ImageRevision is zero unless the other person has a face.
+	ImageRevision int64
+	Similarity    float64
 }
