@@ -278,6 +278,31 @@ when both are equal.
 | `age` in the response       | Stale after midnight in a cached response        |
 | No age at partial precision | A year alone still narrows the age to two values |
 
+### Candidates and faces in videos
+
+A person's face-recognition results sit in the profile column under the face,
+not in the main column: the owner judges a candidate by comparing two faces,
+and the profile face is the large one, while the main column stays the videos.
+`Same person?` comes first in the column, drawn only while
+`GET /api/people/{id}/face-candidates` returns a pair, one row per pair with
+the other person's `PersonFace judge`, name and similarity, and `Same person`
+and `Not the same` under them. A confirm from a provisional person's own page
+opens the merged person's page, since the shown person no longer exists; one
+that keeps the page reads the candidates and the faces again and reloads the
+videos. A pressed row disables only its own buttons.
+
+`Faces in videos` follows the profile groups, drawn only while
+`GET /api/people/{id}/appearances` returns an appearance: a `PersonFace scene`
+crop beside the video's title and its spans, each a link that plays the video
+from that time (`?t=`), and `Show more` for the next page. An appearance whose
+video left the library reads `Not in the library` without links.
+
+| Rejected | Why |
+| --- | --- |
+| Candidates in the main column | They would split the page's one header and one grid, and sit away from the face they are compared with |
+| A strip of crops alone | Reaching a scene would take a second press, and a crop does not say which video |
+| Confirming on another screen | The owner settles a pair where both faces are in view |
+
 ## Faces elsewhere on the screens
 
 On the video page, each person in the work details row is a `PersonFace chip`

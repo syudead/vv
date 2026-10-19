@@ -1184,7 +1184,7 @@ export interface paths {
         get: operations["getFaceRecognitionSettings"];
         /**
          * Save face recognition settings
-         * @description Owner-only. Turning it on starts the download of the runtime and the recognizer's model when they are absent or do not match their hashes; turning it off cancels a running download. A changed recognizer increases face.generation. An unknown recognizer returns 400 invalid_request.
+         * @description Owner-only. Turning it on starts the download of the runtime and the recognizer's model when they are absent or do not match their hashes; turning it off cancels a running download. A changed recognizer increases face.generation, deletes the old recognizer's vectors and queues again every video whose analysis is done or failed; a video never analysed waits for runs with missing. An unknown recognizer returns 400 invalid_request.
          */
         put: operations["updateFaceRecognitionSettings"];
         post?: never;
@@ -2463,7 +2463,7 @@ export interface paths {
         put?: never;
         /**
          * Undo an automatic decision
-         * @description Owner-only. Reverts the decision and returns an owner undo record. If the owner already changed state, outcome is already_reverted. Missing activity, a tag not assigned by its auto_tag action or a link not made by its face_analysis action returns 404 not_found. Unsupported (including pipeline records), already-undone records/tags/links return 409 activity_not_undoable.
+         * @description Owner-only. Reverts the decision and returns an owner undo record. If the owner already changed state, outcome is already_reverted. Undoing a face_merge also dismisses the face candidate pair of its two people. Missing activity, a tag not assigned by its auto_tag action or a link not made by its face_analysis action returns 404 not_found. Unsupported (including pipeline records), already-undone records/tags/links return 409 activity_not_undoable.
          */
         post: operations["undoActivity"];
         delete?: never;

@@ -87,6 +87,14 @@ The frame path aligns without rounding to bytes, as the measured proof of
 concept did: on LFW the Go SFace int8 pipeline reached 99.82% accuracy against
 OpenCV's 99.86% with SFace fp32.
 
+SFace is the default because its license allows commercial use; ArcFace's
+model is licensed for non-commercial research only, which the settings page
+shows on the option.
+
+| Rejected | Why |
+| --- | --- |
+| SFace fp32 | 0.04 points of LFW accuracy for four times the download (37 MB) |
+
 ## The face runtime archive
 
 CI builds one archive per platform from
@@ -301,6 +309,11 @@ its person) is not a vector of its person. The face POC found one actor across
 films with different hair; an averaged vector per person would blur those
 looks.
 
+| Rejected | Why |
+| --- | --- |
+| One averaged vector per person | It blurs a person's different looks |
+| A nearest-neighbour index | 10,000 vectors of 512 values are 20 MB, and a full scan in memory takes milliseconds |
+
 ## A re-analysis carries appearances over by track time and position
 
 A re-analysed video keeps each stored appearance by passing it to the one new
@@ -358,7 +371,7 @@ recognizer, so a lost event or a recognizer switch still leads to a vector.
 | --- | --- |
 | Read | The face, its stored vector, the recognizer and `face.generation`, in one read |
 | Embed | Skipped when the stored vector is current, as after a naming; one helper request, at most 2 minutes, on the video's helper |
-| Store | `FaceStore.StoreFaceImageVector`, in one transaction: refuses an older generation with `ErrFaceGenerationChanged`, writes nothing for a face changed since, writes the vector, then applies the rule above and merges as a `face_merge` entry ([An automatic merge can be undone](#an-automatic-merge-can-be-undone)) |
+| Store | `FaceStore.StoreFaceImageVector`, in one transaction: refuses an older generation with `ErrFaceGenerationChanged`, writes nothing for a face changed since, writes the vector, then applies the rule above and merges as a `face_merge` entry ([An automatic merge can be undone](#an-automatic-merge-can-be-undone)); a merge refused for good is rolled back alone ([below](#an-automatic-merge-refused-for-good-is-left-out)) |
 
 | Event | Effect |
 | --- | --- |
@@ -366,6 +379,7 @@ recognizer, so a lost event or a recognizer switch still leads to a vector.
 | The helper does not start | The face waits until the runtime is ready again |
 | The helper exits, answers with an error or takes over 2 minutes | A null vector, as for a face without a good face; the face is not embedded again until it changes |
 | A database error | The worker tries again after 5 seconds |
+| The merge is refused for good | The vector and candidates are stored without the merge, and the worker logs the person and goes on |
 
 While the feature is on and its runtime is `ready`, `PUT /api/people/{id}/image`
 detects the faces of the fitted image before storing it, and refuses an image
@@ -379,6 +393,7 @@ stored unchecked. Plugin faces are not checked.
 | Embedding inside the upload request | Plugin and merge faces are stored after their own commits, and the worker's helper may be in a video |
 | Embedding only the faces named by events | An event is lost when the server stops before the worker runs, and a recognizer switch publishes none; the stale rows are read from the database |
 | Sharing the worker's helper with the upload check | The worker stops its helper when idle, and a request from another goroutine would start a process nobody stops |
+| Checking plugin faces on upload too | Only the owner's upload is checked; a plugin face without one good face gets a null vector and merges nobody |
 
 ## The cast rule merges only one-to-one pairs
 
@@ -402,16 +417,40 @@ a `face_merge` entry.
 | A video's analysis ends | In `FaceStore.Store`'s transaction, after the result is written |
 | A work-information write (`VideoWorkInfoChanged`) | In the face worker, before its next claim, while the feature is on; a database error keeps the unchecked videos for the attempt after 5 seconds |
 
-A merge that the target's limits on aliases or external IDs refuse is rolled
-back to a savepoint and wraps `ErrFaceMergeRefused`. Trying again cannot
-succeed until the people change, so `Store` keeps the result without the merge
-and the worker logs the video and drops its check instead of holding up the
-queue.
+A merge refused for good is left out as the
+[next section](#an-automatic-merge-refused-for-good-is-left-out) describes:
+`Store` keeps the result without the merge, and the worker logs the video and
+drops its check.
 
 | Rejected | Why |
 | --- | --- |
 | Running the rule in every work-information write's transaction | The details editor, the library selection, plugin apply and `/api/v1` would each record activity and fail the owner's edit when the merge fails |
 | Checking work-information changes made while the feature is off once it is on again | Nothing records them, and the next analysis of the video applies the rule anyway |
+
+## An automatic merge refused for good is left out
+
+Both automatic rules merge through one helper,
+`mergeProvisionalOrRefuse` ([`face_cast.go`](../../internal/store/face_cast.go)),
+which runs the ordinary merge under a savepoint. A refusal that trying again
+cannot change (the target's limits on aliases or external IDs, a source that is
+no longer provisional, or the two being one credit) is rolled back to that
+savepoint and wraps `ErrFaceMergeRefused`, so the rest of the transaction is
+kept.
+
+| Rule | What is kept | Worker |
+| --- | --- | --- |
+| Cast rule at the end of an analysis | The analysis result | — |
+| Cast rule after a work-information change | Nothing to keep | Logs the video and drops its check |
+| Face-image rule | The face's vector and its candidates | Logs the person and takes the next face |
+
+The face's vector is stored even without the merge, because a face without a
+current vector is read again as stale and would be embedded and refused again
+every 5 seconds.
+
+| Rejected | Why |
+| --- | --- |
+| Trying a refused merge again after 5 seconds | It cannot succeed until the owner changes the people, and every attempt holds up the queue |
+| Offering a refused pair as a candidate | Confirming it is the ordinary merge, which the same limits refuse |
 
 ## One video's result is stored in one transaction
 
@@ -437,6 +476,10 @@ has any more keeps its rows, and a returning file keeps its links.
 | --- | --- |
 | Matching in the worker, then writing | A person deleted or merged between the read and the write would be linked |
 | Keeping crops only on appearances | The people grid, the cast chips and the candidates show `person_images`, so a provisional person would show no face |
+| A 112 × 112 aligned crop as the face | It is the model's input, cut tight to the eyes and mouth: too small and too tight for a portrait |
+| A face-link table beside credits | The person page, the filters and smart folders read credits only; every reader would have to change |
+| A `source` column on `video_work_people` | The details editor and the plugin apply replace the rows, so every edit would lose it |
+| A table of rejected person and video pairs | A deleted person leaves no id to reject, and a pair would not follow a re-analysis as tracks do |
 
 ## The face queue mirrors the auto-tagging queue
 
@@ -472,8 +515,11 @@ longer `running` writes nothing either.
 
 | Rejected | Why |
 | --- | --- |
+| A job kind in `jobs` | Import progress counts jobs, and an optional analysis at about 0.27 times the video length would hold the import open |
 | Queueing every video in the library on a switch | Turning the feature on with a recognizer other than the default would queue the whole library, while the default queues nothing |
 | Keeping the old recognizer's vectors until the videos are analysed again | They cannot be compared with the new ones, and a switch back would mix vectors of two analyses |
+| Cancelling the worker and waiting for it before a switch, instead of the generation | An embedding an event queues after the wait would still write the old recognizer's vector |
+| A lock held for a whole analysis | An analysis takes minutes, and the settings request would wait for it |
 
 ## The settings page
 
@@ -490,6 +536,8 @@ started it, with `Download again` on a failure.
 | A recognizer change while on is confirmed first, and the radio moves only when the `PUT` answers | One press queues every video again; a failed save must leave the saved recognizer shown |
 | The non-commercial license is shown on the option itself | The owner must see it before choosing, not after |
 | `unsupported` is a page notice that keeps every control visible with `aria-disabled` | It is the one condition that locks the whole page, as the Ollama lock does on Auto-tagging |
+| The recognizer is a radio group, not a select | Two options read once, and a select would hide the license until opened |
+| Progress is polled from the settings resource, not sent as an SSE event | One screen watches a download that happens once, and Auto-tagging polls its counts the same way |
 
 ## The face worker analyses one video at a time
 
@@ -544,6 +592,11 @@ Writes to people and credits move or drop face rows in their own transaction
 
 The kept tracks are what let a re-analysis carry a dropped appearance over, so
 a deleted face is not recreated and a removed link is not made again.
+
+| Rejected | Why |
+| --- | --- |
+| Deleting a deleted person's appearances too | The next analysis would find the same face and create the person again |
+| An operation that deletes all face data | The owner deletes people, and the next analysis would compute the vectors again anyway |
 
 ## An automatic link is undone from the activity log
 
@@ -650,6 +703,10 @@ When both people have a name, or neither has, confirm merges the stored
 provisional side: a name given after the pair was offered does not reverse
 it. Without an open pair, both actions answer `404 face_candidate_not_found`.
 
+| Rejected | Why |
+| --- | --- |
+| Pairs of appearances | The person page offers people, and one person's many appearances would repeat one choice |
+
 ## The person page reads a person's appearances
 
 `GET /api/people/{id}/appearances` lists a person's appearances that are not
@@ -671,3 +728,13 @@ person was deleted, which has no crop, both answer `404 not_found`.
 | --- | --- |
 | Hiding appearances of content no video has | A returning file keeps its links, and the person page would show nothing for a person found only there |
 | Ordering by appearance id alone | A re-analysis keeps old ids, so the order would follow the first analysis, not the library |
+
+## Tests that cross the worker and the store live in `cmd/mdm`
+
+The analysis of two videos of one person into one provisional person, a short
+face that makes nobody, and a face image that merges the provisional person of
+both videos cross the face worker and the store. `depguard` keeps
+`internal/app` tests from importing `internal/store`, so these run in
+[`cmd/mdm/face_analysis_test.go`](../../cmd/mdm/face_analysis_test.go) with the
+real store, the event bus wiring and the worker, and with frames and the helper
+faked per video. The rules each step applies are tested in their own package.
