@@ -1398,6 +1398,27 @@ func (e ProbeErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for RescanScope.
+const (
+	RescanScopeFolder  RescanScope = "folder"
+	RescanScopeLibrary RescanScope = "library"
+	RescanScopeVideo   RescanScope = "video"
+)
+
+// Valid indicates whether the value is a known member of the RescanScope enum.
+func (e RescanScope) Valid() bool {
+	switch e {
+	case RescanScopeFolder:
+		return true
+	case RescanScopeLibrary:
+		return true
+	case RescanScopeVideo:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ScanOrigin.
 const (
 	Manual ScanOrigin = "manual"
@@ -4636,6 +4657,9 @@ type RenameTagRequest struct {
 	Name string `json:"name"`
 }
 
+// RescanScope What a force rescan reads again: every media folder, one media folder or one video.
+type RescanScope string
+
 // RootFolderListing defines model for RootFolderListing.
 type RootFolderListing struct {
 	// Folders Registered media folders in natural-name order.
@@ -4674,6 +4698,9 @@ type Scan struct {
 
 	// Origin Import initiator; watch means a folder-watcher import limited to changed folders.
 	Origin ScanOrigin `json:"origin"`
+
+	// Rescan Scope of a force rescan; omitted for any other scan. A force rescan keeps origin manual.
+	Rescan *ScanRescan `json:"rescan,omitempty"`
 
 	// SettledAt Timestamp when all target videos settled; returned only for done or partial status.
 	SettledAt *time.Time `json:"settledAt,omitempty"`
@@ -4760,6 +4787,26 @@ type ScanIssuePage struct {
 
 	// ScanId Import identifier for this list; the UI refreshes if it differs from Scan.id.
 	ScanId int64 `json:"scanId"`
+}
+
+// ScanRescan Scope of a force rescan; omitted for any other scan. A force rescan keeps origin manual.
+type ScanRescan struct {
+	// Folder The media folder of a folder scope, with its path when the rescan started.
+	Folder *ScanRescanFolder `json:"folder,omitempty"`
+
+	// Scope What a force rescan reads again: every media folder, one media folder or one video.
+	Scope RescanScope `json:"scope"`
+
+	// VideoId The video of a video scope.
+	VideoId *int64 `json:"videoId,omitempty"`
+}
+
+// ScanRescanFolder The media folder of a folder scope, with its path when the rescan started.
+type ScanRescanFolder struct {
+	Id int64 `json:"id"`
+
+	// Path Absolute media-folder path as untranslated user data.
+	Path string `json:"path"`
 }
 
 // ScanStatus User-visible import status, first matching rule: failed for traversal failure; finding while counting; running while traversal or pending work remains; partial for failed issues; otherwise done.
@@ -5047,6 +5094,18 @@ type StartFaceRecognitionRequest struct {
 
 // StartFaceRecognitionRequestScope defines model for StartFaceRecognitionRequest.Scope.
 type StartFaceRecognitionRequestScope string
+
+// StartRescanRequest defines model for StartRescanRequest.
+type StartRescanRequest struct {
+	// FolderId Required with scope folder and refused otherwise: a media folder's id.
+	FolderId *int64 `json:"folderId,omitempty"`
+
+	// Scope What a force rescan reads again: every media folder, one media folder or one video.
+	Scope RescanScope `json:"scope"`
+
+	// VideoId Required with scope video and refused otherwise: a video's id.
+	VideoId *int64 `json:"videoId,omitempty"`
+}
 
 // StartThumbnailEditFromImageRequest defines model for StartThumbnailEditFromImageRequest.
 type StartThumbnailEditFromImageRequest struct {
@@ -7002,6 +7061,9 @@ type MovePlaylistItemJSONRequestBody = PlaylistItemMove
 // StartScanJSONRequestBody defines body for StartScan for application/json ContentType.
 type StartScanJSONRequestBody = StartScanJSONBody
 
+// StartRescanJSONRequestBody defines body for StartRescan for application/json ContentType.
+type StartRescanJSONRequestBody = StartRescanRequest
+
 // UpdateAutoImportSettingsJSONRequestBody defines body for UpdateAutoImportSettings for application/json ContentType.
 type UpdateAutoImportSettingsJSONRequestBody = UpdateAutoImportSettingsRequest
 
@@ -7382,6 +7444,9 @@ type ServerInterface interface {
 	// ListCurrentScanIssues List latest import issues
 	// (GET /api/scans/current/issues)
 	ListCurrentScanIssues(w http.ResponseWriter, r *http.Request, params ListCurrentScanIssuesParams)
+	// StartRescan Start a force rescan
+	// (POST /api/scans/rescan)
+	StartRescan(w http.ResponseWriter, r *http.Request)
 	// GetAutoImportSettings Return auto-import settings and folder-watch state
 	// (GET /api/settings/auto-import)
 	GetAutoImportSettings(w http.ResponseWriter, r *http.Request)
@@ -10567,6 +10632,20 @@ func (siw *ServerInterfaceWrapper) ListCurrentScanIssues(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListCurrentScanIssues(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartRescan operation middleware
+func (siw *ServerInterfaceWrapper) StartRescan(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartRescan(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -14138,6 +14217,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/make-representative", wrapper.MakeRepresentativeVersion)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/unbundle", wrapper.UnbundleVideo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/scans", wrapper.StartScan)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/scans/rescan", wrapper.StartRescan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/media-folders", wrapper.ListMediaFolders)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/media-folders", wrapper.CreateMediaFolder)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.DeleteMediaFolder)

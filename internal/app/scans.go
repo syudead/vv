@@ -18,6 +18,9 @@ type ScanStore interface {
 	ResumeScan(ctx context.Context, from int64) (scan domain.Scan, started bool, err error)
 	// Watch scans retain prior issues outside their scope.
 	StartWatchScan(ctx context.Context, dirs []domain.DirtyDirectory) (scan domain.Scan, started bool, err error)
+	// StartRescan returns ErrScanRunning instead of the running scan, ErrNoMediaFolders without folders and
+	// ErrNotFound for a missing folder or video of the scope.
+	StartRescan(ctx context.Context, scope domain.RescanScope) (domain.Scan, error)
 	CurrentScan(ctx context.Context) (domain.Scan, error)
 	UpdateScanProgress(ctx context.Context, id int64, progress domain.ScanProgress) error
 	// FinishScan persists ScanFailure code/location and the initiating decider for failed scans.
@@ -45,6 +48,8 @@ type Scanner interface {
 	Scan(ctx context.Context, decider domain.ActivityDecider) (domain.ScanResult, error)
 	// Superseded scoped scans delete nothing and return ErrScanSuperseded.
 	ScanScoped(ctx context.Context, dirs []domain.DirtyDirectory) (domain.ScanResult, error)
+	// Rescan is the manual scan in force mode over scope, recorded in scan scanID.
+	Rescan(ctx context.Context, scanID int64, scope domain.RescanScope, decider domain.ActivityDecider) (domain.ScanResult, error)
 }
 
 type ScanReporter interface {
@@ -150,6 +155,29 @@ func (s *Scans) StartScan(ctx context.Context) (domain.Scan, bool, error) {
 	}
 }
 
+// StartRescan starts a force rescan of scope for the owner, superseding a watch scan as StartScan does. A running
+// manual scan or force rescan makes it return ErrScanRunning.
+func (s *Scans) StartRescan(ctx context.Context, scope domain.RescanScope) (domain.Scan, error) {
+	const attempts = 3
+	for attempt := 1; ; attempt++ {
+		s.SupersedeWatchScan(ctx)
+		scan, _, err := s.start(ctx, func(ctx context.Context) (domain.Scan, bool, error) {
+			scan, err := s.store.StartRescan(ctx, scope)
+			return scan, err == nil, err
+		}, nil, domain.ActivityByOwner)
+		// A watch scan that started between the supersession and the start is superseded again.
+		if !errors.Is(err, domain.ErrScanRunning) || !s.watchScanRunning() || attempt >= attempts {
+			return scan, err
+		}
+	}
+}
+
+func (s *Scans) watchScanRunning() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.running && s.runOrigin == domain.ScanOriginWatch
+}
+
 // StartWatchScan returns any existing scan without starting another and limits new work to dirs.
 func (s *Scans) StartWatchScan(ctx context.Context, dirs []domain.DirtyDirectory) (domain.Scan, bool, error) {
 	dirs = domain.NormalizeDirtyDirectories(dirs)
@@ -215,7 +243,7 @@ func (s *Scans) start(
 	if s.onStart != nil {
 		s.onStart(s.runOrigin)
 	}
-	go s.run(runCtx, scan.ID, s.runFinished, dirs, decider)
+	go s.run(runCtx, scanRun{id: scan.ID, dirs: dirs, rescan: scan.Rescan, decider: decider}, s.runFinished)
 
 	s.scanChanged()
 	scan, err = s.withImport(ctx, scan)
@@ -429,12 +457,20 @@ func (s *Scans) stopRuns() {
 	}
 }
 
-func (s *Scans) run(
-	ctx context.Context, scanID int64, finished chan struct{}, dirs *[]domain.DirtyDirectory, decider domain.ActivityDecider,
-) {
+// scanRun is what one scan goroutine runs: a watch scan has dirs, a force rescan (started or resumed) has rescan,
+// and a manual scan has neither.
+type scanRun struct {
+	id      int64
+	dirs    *[]domain.DirtyDirectory
+	rescan  *domain.RescanScope
+	decider domain.ActivityDecider
+}
+
+func (s *Scans) run(ctx context.Context, plan scanRun, finished chan struct{}) {
 	defer s.done.Done()
+	scanID, decider := plan.id, plan.decider
 	origin := domain.ScanOriginManual
-	if dirs != nil {
+	if plan.dirs != nil {
 		origin = domain.ScanOriginWatch
 	}
 	endState := domain.ScanFailed
@@ -452,20 +488,7 @@ func (s *Scans) run(
 		close(finished)
 	}()
 
-	result, scanErr := func() (result domain.ScanResult, err error) {
-		defer func() {
-			if recovered := recover(); recovered != nil {
-				err = fmt.Errorf("scan panicked: %v", recovered)
-			}
-		}()
-		if s.scanner == nil {
-			return domain.ScanResult{}, errors.New("scanner is not configured")
-		}
-		if dirs != nil {
-			return s.scanner.ScanScoped(ctx, *dirs)
-		}
-		return s.scanner.Scan(ctx, decider)
-	}()
+	result, scanErr := s.runScanner(ctx, plan)
 	// Always clear current registration activity, including interrupted scans.
 	s.activity.end(scanActivityKey)
 
@@ -512,6 +535,24 @@ func (s *Scans) run(
 		endState = state
 	}
 	s.scanChanged()
+}
+
+func (s *Scans) runScanner(ctx context.Context, plan scanRun) (result domain.ScanResult, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("scan panicked: %v", recovered)
+		}
+	}()
+	switch {
+	case s.scanner == nil:
+		return domain.ScanResult{}, errors.New("scanner is not configured")
+	case plan.dirs != nil:
+		return s.scanner.ScanScoped(ctx, *plan.dirs)
+	case plan.rescan != nil:
+		return s.scanner.Rescan(ctx, plan.id, *plan.rescan, plan.decider)
+	default:
+		return s.scanner.Scan(ctx, plan.decider)
+	}
 }
 
 // Rebuild failures are logged without failing scans; storage marks the index stale for later retry,

@@ -68,10 +68,11 @@ flowchart LR
   m -->|change on disk| later[Dirty, read after the batch]
 ```
 
-Starting a manual scan, or adding, replacing or deleting a media folder, stops
-a running batch at the next file; it removes nothing and closes `done`. Changes
-that arrive while any scan runs are read after it finishes. A running batch
-does not make the app busy for the desktop close prompt.
+Starting a manual scan or a [force rescan](force-rescan.md), or adding,
+replacing or deleting a media folder, stops a running batch at the next file;
+it removes nothing and closes `done`. Changes that arrive while any scan runs
+are read after it finishes. A running batch does not make the app busy for the
+desktop close prompt.
 
 ## Setting and watch state
 

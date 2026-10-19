@@ -51,3 +51,4 @@ reference documents; retain lasting decisions here before deleting them.
 - [People: profiles and faces](people.md)
 - [Face recognition](face-recognition.md)
 - [Import progress and recovery](import-pipeline.md)
+- [Force rescan](force-rescan.md)
