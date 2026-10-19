@@ -202,11 +202,10 @@ describe("ライブラリのスマートフォルダのカード", () => {
       screen.getAllByRole("link", { name: "猫, smart folder of 4 videos" }),
     ).toHaveLength(1);
     expect(folder.closest("article")?.querySelectorAll("a")).toHaveLength(1);
-    // Loading the values queues an effect that puts the sheet back, so hover until it has run.
-    const preview = await waitFor(() => {
-      fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 10 });
-      return screen.getByRole("link", { name: 'Play "Harbour" from "猫"' });
-    });
+    // The first hover flushes the put-back effect queued by loading the values, which would undo it.
+    fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 10 });
+    fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 10 });
+    const preview = screen.getByRole("link", { name: 'Play "Harbour" from "猫"' });
     fireEvent.click(preview);
     expect(
       await screen.findByText(
