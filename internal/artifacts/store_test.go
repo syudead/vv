@@ -800,3 +800,35 @@ func TestStashThumbnailRestoresPreviousImage(t *testing.T) {
 		t.Fatalf("写しが一時置き場に残った: %v, %v", entries, err)
 	}
 }
+
+// A poster belongs to the thumbnail it was extracted for, and goes with it.
+func TestPosterGoesWithItsThumbnail(t *testing.T) {
+	store := New(t.TempDir())
+	publishPoster := func() {
+		t.Helper()
+		if err := store.PublishPoster(key, writer([]byte("poster"))); err != nil {
+			t.Fatal(err)
+		}
+		file, err := store.PosterFile(key)
+		if err != nil || !store.PosterAvailable(key) {
+			t.Fatalf("PosterFile = %v, available = %v", err, store.PosterAvailable(key))
+		}
+		_ = file.Close()
+	}
+
+	publishPoster()
+	if err := store.PublishThumbnail(key, writer([]byte("new"))); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.PosterFile(key); !errors.Is(err, fs.ErrNotExist) || store.PosterAvailable(key) {
+		t.Fatalf("新しいサムネイルの後の PosterFile = %v", err)
+	}
+
+	publishPoster()
+	if err := store.RemoveContent(key); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.PosterFile(key); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("削除の後の PosterFile = %v", err)
+	}
+}

@@ -55,6 +55,9 @@ type ArtifactRemover interface {
 type ArtifactStore interface {
 	ArtifactRemover
 	PublishThumbnail(contentKey string, write func(output string) error) error
+	// PublishPoster runs under the thumbnail generation lock; PublishThumbnail drops the poster.
+	PublishPoster(contentKey string, write func(output string) error) error
+	PosterAvailable(contentKey string) bool
 	// restore removes the replacement when no prior thumbnail existed; discard drops only the backup.
 	StashThumbnail(contentKey string) (restore func() error, discard func(), err error)
 	// Reuse complete sprites without write, replacing incomplete legacy directories during
@@ -93,6 +96,8 @@ type IngestOptions struct {
 	Store     IngestStore
 	Generator Generator
 	Artifacts ArtifactStore
+	// Nil leaves the poster to the 640 px thumbnail.
+	Posters PosterFrames
 	// Nil disables events.
 	Publisher Publisher
 	// Nil uses slog.Default.
@@ -105,6 +110,7 @@ type Ingest struct {
 	store     IngestStore
 	generator Generator
 	files     ArtifactStore
+	posters   PosterFrames
 	publisher Publisher
 	artifacts *artifacts
 	// Serialize uploaded-image decoding across both validation and fitting passes; see
@@ -122,6 +128,7 @@ func NewIngest(opts IngestOptions) *Ingest {
 		store:       opts.Store,
 		generator:   opts.Generator,
 		files:       opts.Artifacts,
+		posters:     opts.Posters,
 		publisher:   opts.Publisher,
 		artifacts:   newArtifacts(opts.Store, opts.Artifacts, logger),
 		uploads:     newUploadGate(),

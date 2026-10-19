@@ -155,6 +155,8 @@ type TranscodeProbeWriter interface {
 type ArtifactReader interface {
 	// The caller closes the thumbnail file.
 	ThumbnailFile(contentKey string) (*os.File, error)
+	// The caller closes the poster file.
+	PosterFile(contentKey string) (*os.File, error)
 	// PreviewFile returns the stored SHA-256 digest with the file; the caller closes it.
 	PreviewFile(contentKey string) (*os.File, string, error)
 	// Invalid sprite metadata returns an error distinct from fs.ErrNotExist.
@@ -244,8 +246,9 @@ type Options struct {
 	Overrides OverrideStore
 
 	ThumbnailPicker ThumbnailPicker
-	// Nil ThumbnailSources serves the 640 px thumbnail for size=large.
+	// Nil ThumbnailSources and Posters serve the 640 px thumbnail for size=large.
 	ThumbnailSources ThumbnailSources
+	Posters          Posters
 
 	Versions VersionStore
 
@@ -346,6 +349,7 @@ type server struct {
 	overrides        OverrideStore
 	thumbnails       ThumbnailPicker
 	thumbnailSources ThumbnailSources
+	posters          Posters
 	versions         VersionStore
 	folders          Folders
 	folderGroups     FolderGroups
@@ -427,6 +431,7 @@ func NewRouter(opts Options) http.Handler {
 		overrides:              opts.Overrides,
 		thumbnails:             opts.ThumbnailPicker,
 		thumbnailSources:       opts.ThumbnailSources,
+		posters:                opts.Posters,
 		versions:               opts.Versions,
 		folders:                opts.Folders,
 		folderGroups:           opts.FolderGroups,

@@ -28,6 +28,7 @@ import (
 // root is the store root, s the sanitized key, and p its first two characters.
 //
 //	<root>/<p>/<s>.jpg                 Library thumbnail
+//	<root>/poster/<p>/<s>.jpg          Player poster, extracted on demand
 //	<root>/seek/<p>/<s>/<n>.jpg         Three-digit sprite sheet
 //	<root>/seek/<p>/<s>/sprite.json     Layout and completion marker
 //	<root>/preview/<p>/<s>.mp4          Hover preview
@@ -36,6 +37,7 @@ import (
 //	<root>/.tmp/                        Incomplete output
 const (
 	seekDirName      = "seek"
+	posterDirName    = "poster"
 	previewDirName   = "preview"
 	temporaryDirName = ".tmp"
 	publishLockName  = ".publish.lock"
@@ -110,6 +112,10 @@ func (s *Store) thumbnailPath(contentKey string) (string, bool) {
 	return s.locate("", contentKey, thumbnailExt)
 }
 
+func (s *Store) posterPath(contentKey string) (string, bool) {
+	return s.locate(posterDirName, contentKey, thumbnailExt)
+}
+
 func (s *Store) seekDir(contentKey string) (string, bool) {
 	return s.locate(seekDirName, contentKey, "")
 }
@@ -149,9 +155,26 @@ func (s *Store) RemoveTemporary() error {
 }
 
 // PublishThumbnail gives write a temporary path and replaces the target only after validating
-// nonempty output.
+// nonempty output. It drops the poster, which was extracted for the replaced thumbnail.
 func (s *Store) PublishThumbnail(contentKey string, write func(output string) error) error {
-	target, err := s.publishTarget(s.thumbnailPath, contentKey)
+	if err := s.publishJPEG(s.thumbnailPath, contentKey, write); err != nil {
+		return err
+	}
+	if path, ok := s.posterPath(contentKey); ok {
+		if err := removeFile(path); err != nil {
+			return fmt.Errorf("cannot delete the poster: %w", err)
+		}
+	}
+	return nil
+}
+
+// PublishPoster is serialized with PublishThumbnail by the caller, so it never outlives the thumbnail it shows.
+func (s *Store) PublishPoster(contentKey string, write func(output string) error) error {
+	return s.publishJPEG(s.posterPath, contentKey, write)
+}
+
+func (s *Store) publishJPEG(locate func(string) (string, bool), contentKey string, write func(output string) error) error {
+	target, err := s.publishTarget(locate, contentKey)
 	if err != nil {
 		return err
 	}
@@ -381,6 +404,24 @@ func (s *Store) ThumbnailFile(contentKey string) (*os.File, error) {
 	return openRegular(path, nil)
 }
 
+// PosterFile wraps fs.ErrNotExist when no poster has been extracted; the caller must close it.
+func (s *Store) PosterFile(contentKey string) (*os.File, error) {
+	path, ok := s.posterPath(contentKey)
+	if !ok {
+		return nil, errInvalidKey
+	}
+	return openRegular(path, nil)
+}
+
+func (s *Store) PosterAvailable(contentKey string) bool {
+	path, ok := s.posterPath(contentKey)
+	if !ok {
+		return false
+	}
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular() && info.Size() > 0
+}
+
 // PreviewFile returns the MP4 and manifest SHA-256 after checking file size; missing or
 // inconsistent output wraps fs.ErrNotExist, and the caller must close it.
 func (s *Store) PreviewFile(contentKey string) (*os.File, string, error) {
@@ -451,6 +492,11 @@ func (s *Store) RemoveContent(contentKey string) error {
 	if path, ok := s.thumbnailPath(contentKey); ok {
 		if err := removeFile(path); err != nil {
 			errs = append(errs, fmt.Errorf("cannot delete the thumbnail: %w", err))
+		}
+	}
+	if path, ok := s.posterPath(contentKey); ok {
+		if err := removeFile(path); err != nil {
+			errs = append(errs, fmt.Errorf("cannot delete the poster: %w", err))
 		}
 	}
 	if dir, ok := s.seekDir(contentKey); ok {

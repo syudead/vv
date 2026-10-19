@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -263,5 +264,49 @@ func TestLargeThumbnailWithoutSourceServesTheThumbnail(t *testing.T) {
 	rec := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail?v=abcdef012345&size=large")
 	if rec.Code != http.StatusOK || rec.Body.String() != string(file) {
 		t.Fatalf("status = %d, body = %x, want the 640 px file", rec.Code, rec.Body.Bytes())
+	}
+}
+
+// fakePosters writes the poster where fakeArtifacts reads it, as the ingest publishes it.
+type fakePosters struct {
+	artifacts  *fakeArtifacts
+	contentKey string
+	path       string
+	calls      []string
+}
+
+func (f *fakePosters) Poster(_ context.Context, _ int64, _, path string) error {
+	f.calls = append(f.calls, path)
+	if err := os.WriteFile(f.path, []byte{0xff, 0xd8, 0xff, 0xdb, 0x08, 0x00}, 0o600); err != nil {
+		return err
+	}
+	f.artifacts.posters = map[string]string{f.contentKey: f.path}
+	return nil
+}
+
+func TestLargeThumbnailExtractsThePosterOnce(t *testing.T) {
+	artifacts, video := thumbnailFixture(t)
+	root := t.TempDir()
+	video.Path = filepath.Join(root, "a.mp4")
+	if err := os.WriteFile(video.Path, []byte("video"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	posters := &fakePosters{
+		artifacts: artifacts, contentKey: video.ContentKey, path: filepath.Join(t.TempDir(), "poster.jpg"),
+	}
+	handler := newTestServer(t, Options{
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: video}, roots: []string{root}},
+		Artifacts: artifacts,
+		Posters:   posters,
+	})
+
+	for range 2 {
+		rec := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail?v=abcdef012345&size=large")
+		if rec.Code != http.StatusOK || rec.Body.String() != "\xff\xd8\xff\xdb\x08\x00" {
+			t.Fatalf("status = %d, body = %x, want the poster", rec.Code, rec.Body.Bytes())
+		}
+	}
+	if want, _ := filepath.EvalSymlinks(video.Path); !slices.Equal(posters.calls, []string{want}) {
+		t.Fatalf("Poster calls = %v, want one with the resolved path %q", posters.calls, want)
 	}
 }

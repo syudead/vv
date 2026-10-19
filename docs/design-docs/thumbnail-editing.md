@@ -165,11 +165,26 @@ An apply writes one `thumbnail_images` row in the transaction that sets
 A position change and a revert delete the whole row. The thumbnail job
 republishes `image` and never reads `source`.
 
-Cards show the 640 px `image`, but the player's poster fills a much wider
+## The player's poster is larger than the card
+
+Cards show the 640 px thumbnail, but the player's poster fills a much wider
 frame, so the page asks for it with `size=large`.
-`GET /api/videos/{id}/thumbnail?size=large` answers `source` when the row has
-one, and the 640 px thumbnail file otherwise: a thumbnail extracted from the
-video and a row written before migration `00041` keep only 640 px.
+`GET /api/videos/{id}/thumbnail?size=large` answers, in order:
+
+| Thumbnail | Answer |
+| --- | --- |
+| An applied image with `source` | `source` |
+| A frame | The poster file, extracted on the first request |
+| An applied image written before migration `00041`, or a poster that cannot be extracted | The 640 px thumbnail file |
+
+The poster is the thumbnail's frame (the chosen position, or the automatic
+frame with its first-frame fallback) as a JPEG at the edit frame's bounds: its
+long side at most 2048 px, never enlarged. It is extracted on request rather
+than with the thumbnail, so the thumbnails that already exist get one without
+being regenerated. Extraction holds the thumbnail generation lock, and
+publishing a thumbnail deletes the poster in that lock, so a poster never shows
+a frame its thumbnail has replaced. Deleting the content removes the poster
+with the other artifacts.
 
 ## Uploaded images
 

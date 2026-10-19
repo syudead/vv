@@ -6226,7 +6226,7 @@ type GetVideoThumbnailParams struct {
 	// V Version in the URL returned by list or detail
 	V *string `form:"v,omitempty" json:"v,omitempty"`
 
-	// Size `large` returns the stored source of an applied image (long side up to 2048 px) for display larger than a card; a thumbnail without one returns the 640 px image.
+	// Size `large` returns an image for display larger than a card, its long side up to 2048 px: the stored source of an applied image, or the thumbnail's frame extracted on the first request. When neither is available it returns the 640 px image.
 	Size *GetVideoThumbnailParamsSize `form:"size,omitempty" json:"size,omitempty"`
 }
 

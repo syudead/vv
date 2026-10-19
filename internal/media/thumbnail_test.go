@@ -97,6 +97,15 @@ func TestThumbnailArgs(t *testing.T) {
 	}
 }
 
+func TestPosterArgsKeepTheEditFrameBounds(t *testing.T) {
+	got := strings.Join(posterArgs("/media/a.mp4", 10, "/data/poster/ab/ab.jpg"), " ")
+	for _, want := range []string{"-ss 10.000 -i /media/a.mp4", "-vf " + frameScale, "-q:v 3"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("引数に %q が無い: %v", want, got)
+		}
+	}
+}
+
 func indexOf(values []string, want string) int {
 	for i, value := range values {
 		if value == want {

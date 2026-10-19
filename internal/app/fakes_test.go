@@ -318,8 +318,10 @@ type fakeGenerator struct {
 	// A nonempty thumbnailDir supplies real output paths; otherwise use unwritable fixture paths.
 	thumbnailDir string
 	published    map[string][]byte
-	firstFrame   bool
-	fullDecode   bool
+	// Content keys with a published poster.
+	posters    map[string]bool
+	firstFrame bool
+	fullDecode bool
 	// Complete seek artifacts bypass generation.
 	seekPublished         bool
 	publishedSubstitution domain.Substitution
@@ -514,6 +516,39 @@ func (f *fakeGenerator) PublishPreview(
 }
 
 // Separate artifact reads because SeekSprite conflicts with the generator method name.
+func (f *fakeGenerator) Poster(_ context.Context, _ string, _ int64, _ string) error {
+	f.record("poster")
+	return f.thumbnailErr
+}
+
+func (f *fakeGenerator) PosterAt(_ context.Context, _ string, positionMs int64, _ string) error {
+	f.record("poster-at")
+	f.mu.Lock()
+	f.positions = append(f.positions, positionMs)
+	f.mu.Unlock()
+	return f.thumbnailAtErr
+}
+
+func (f *fakeGenerator) PublishPoster(contentKey string, write func(string) error) error {
+	if err := write("tmp/poster/" + contentKey); err != nil {
+		return err
+	}
+	f.record("publish-poster")
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.posters == nil {
+		f.posters = map[string]bool{}
+	}
+	f.posters[contentKey] = true
+	return nil
+}
+
+func (f *fakeGenerator) PosterAvailable(contentKey string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.posters[contentKey]
+}
+
 type fakeArtifactStore struct {
 	*fakeGenerator
 }
