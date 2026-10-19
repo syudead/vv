@@ -44,6 +44,14 @@ whose images share the 52 MiB budget ([R-5](research.md#r-5-lookup-results-live-
 
 ## What does not change
 
+Rows uploaded before this feature keep `kind` `work` and `sources` `NULL`; the
+migration does not inspect stored modules again. A person module uploaded to an
+older VVMDM is therefore listed as a work-info plugin and its runs fail with
+`plugin_failed` until the owner uploads it again. Re-inspecting every stored
+module at migration was rejected: a SQL migration cannot run `Inspect`, a
+startup backfill adds a step for every owner, and person plugins do not exist
+before this feature ships (the Issue's `対象外`).
+
 `work_info_plugin_settings` and `work_info_plugin_runs` serve both kinds; a
 person plugin's last run is kept like a work-info plugin's. Applied values
 stay on the person when the plugin is deleted or revoked (`Edge Cases`),

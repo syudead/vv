@@ -92,15 +92,17 @@ so the page cannot ask for one outside the plan.
 **Decision**: For each fetched person, VVMDM walks the person's fetched
 external IDs in order and picks the first approved person plugin with
 automatic lookups on, in list order (name, then file name), that accepts the
-ID's source; entries that pick the same plugin and ID share one lookup, and
-only the first 5 distinct lookups in result order run.
+ID's source; entries that pick the same plugin and ID and matched the same
+person at fetch time (or both matched none) share one lookup, and only the
+first 5 distinct lookups in result order run. An entry whose match is
+ambiguous gets no lookup, because the apply links it to no one.
 
 ```mermaid
 flowchart LR
   person[Fetched person] --> ids{An external ID an enabled plugin accepts?}
   ids -->|no| none[No lookup]
   ids -->|yes| pick[First ID, first plugin by name]
-  pick --> dup{Same plugin and ID planned?}
+  pick --> dup{Same plugin, ID and match planned?}
   dup -->|yes| share[Share that lookup]
   dup -->|no| cap{Fewer than 5 planned?}
   cap -->|yes| plan[Planned]
@@ -112,9 +114,14 @@ flowchart LR
 | **First matching ID, plugins in list order** | Chosen: one plugin per person (requirement 9) with no new setting |
 | An owner-set priority between plugins | Rejected: adds an ordering control the Issue does not ask for |
 | Also use the matched person's stored external IDs | Rejected: the match is a display snapshot the apply redoes, and requirement 6 names the IDs in the result |
+| Share a lookup by plugin and ID alone | Rejected: two entries sharing one ID can match two different people through their other IDs, and one comparison and one selection could then not tell them apart |
 | A limit of 7, as for people's images | Rejected: 5 lookups at the 30 s run limit already keep the page waiting up to 2.5 minutes |
 
-**Rationale**: Only external IDs from the work-info result enter the plan, so
+**Rationale**: Because a lookup's entries all matched one person, a lookup
+has one current value to compare with and one selection of items. New entries
+that share an ID become one entity in the apply already
+([work-info-plugins.md](../../docs/design-docs/work-info-plugins.md#the-apply-merges-the-selected-fields-in-one-transaction)).
+Only external IDs from the work-info result enter the plan, so
 an ID a person plugin returns never triggers another lookup (requirement 7),
 and a person known only by name gets none (`対象外`). A person with two
 accepted IDs gets one lookup (`Edge Cases`). The plan carries, per entry, the

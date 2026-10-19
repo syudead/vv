@@ -37,8 +37,9 @@ request does not change.
 
 `image` and `profile` follow the rules of a person in a work-info result
 ([People's images and profiles](../../../docs/how-to/work-info-plugins.md#peoples-images-and-profiles)).
-VVMDM keeps the first 50 aliases and the first 20 distinct external IDs, and
-adds the `(source, id)` of the request to `externalIds` when it is missing.
+VVMDM keeps the first 50 aliases. It puts the request's `(source, id)` first
+in `externalIds`, then keeps the plugin's distinct IDs after it up to 20 in
+all, so the ID a person was found by always survives the limit.
 VVMDM fetches the one `image` after the run, through the cover's path.
 
 ## `mdm plugin run`

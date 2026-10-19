@@ -127,7 +127,8 @@ adds the person plugin contract to the how-to guide.
 `fetch`, and `work` with `sources` each give `manifest_invalid` naming the
 field; a person response keeps 50 aliases and 20 IDs, adds the request's ID
 when missing, and a candidate with an undeclared source fails with
-`plugin_failed`. One `internal/wasmplugin` run of a `plugintest` fixture
+`plugin_failed`; 20 plugin IDs without the request's ID keep the request's ID
+first and 19 of the others. One `internal/wasmplugin` run of a `plugintest` fixture
 returns a parsed person with its image fetched through the plugin client (the
 real runtime is the boundary under test). `cmd/mdm` tests: `run ... fetch 1
 --source s` prints `{"person": ...}`, and `--source` on a work-info plugin
@@ -228,7 +229,9 @@ by the person's ID or a name search
 **Acceptance**: Domain table tests of the plan: a person with only an
 unaccepted ID or only a name gets no lookup (`受け入れ条件` 5); two accepted
 IDs give one lookup; two plugins on one source pick the first by name; a
-disabled plugin is skipped (`受け入れ条件` 6); the sixth distinct lookup is
+disabled plugin is skipped (`受け入れ条件` 6); two entries sharing an ID but
+matched to different people get two lookups, and an ambiguous entry none; the
+sixth distinct lookup is
 `lookupLimited`; IDs in a lookup's result add nothing to the plan
 (`受け入れ条件` 7). App tests with a fake runtime: a failed lookup leaves the
 fetch and its other lookups usable and reports the failure; a repeated lookup

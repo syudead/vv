@@ -41,7 +41,9 @@ Runs planned lookup `index` once and keeps its result with the fetch.
 **Response**: `200` with `PersonPluginResult`: `person` (the fetched name,
 aliases, external IDs, profile, `hasImage`) and `current` (the matched
 person's aliases, external IDs, profile and `imageRevision`, or `null` when no
-existing person matched). A second request for a lookup that has a result
+existing person matched). Every entry of a lookup matched that same person
+([R-4](../research.md#r-4-the-lookup-plan-is-decided-by-the-server-at-fetch-time)),
+so one `current` and one item selection per lookup cover them all. A second request for a lookup that has a result
 answers the kept result without running; a failed lookup keeps nothing and may
 be requested again.
 
