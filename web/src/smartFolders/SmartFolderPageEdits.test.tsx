@@ -73,7 +73,7 @@ describe("見出しの More（所有者）", () => {
       { method: "PATCH", path: "/api/smart-folders/1", body: { name: "タグ: ねこ" } },
     ]);
     expect(server.reads.get(1)).toBe(2);
-    expect(document.title).toBe("タグ: ねこ");
+    await waitFor(() => expect(document.title).toBe("タグ: ねこ"));
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole("button", { name: "More" })),
     );

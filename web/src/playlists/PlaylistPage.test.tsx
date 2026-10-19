@@ -296,7 +296,7 @@ describe("PlaylistPage", () => {
     await screen.findByRole("table", { name: "Items" });
 
     expect(screen.getByRole("heading", { level: 1, name: "Morning" })).toBeDefined();
-    expect(document.title).toBe("Morning");
+    await waitFor(() => expect(document.title).toBe("Morning"));
     expect(screen.getByText("3 items · 12:00")).toBeDefined();
     expect(rowNames()).toEqual([
       "Play from Video 11",
@@ -518,7 +518,7 @@ describe("PlaylistPage", () => {
       await screen.findByRole("heading", { level: 1, name: "Evening" }),
     ).toBeDefined();
     expect(server.renames).toEqual([{ name: "Evening" }]);
-    expect(document.title).toBe("Evening");
+    await waitFor(() => expect(document.title).toBe("Evening"));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
