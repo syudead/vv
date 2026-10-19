@@ -130,3 +130,22 @@ func TestUndoingAFaceLinkTwiceIsRefused(t *testing.T) {
 		t.Errorf("undo of a link the entry did not make = %v, want ErrNotFound", err)
 	}
 }
+
+func TestUndoingAFaceLinkKeepsThePerformerWhileAnotherAppearanceLinksThePerson(t *testing.T) {
+	f := linkedFixture{faceFixture: newFaceFixture(t)}
+	f.named = createPerson(t, f.db, "Named").ID
+	setFaceVector(t, f.db, f.named, faceBasis(0))
+	// Two main people match the same person, so one performer row stands for both links.
+	f.analyse(t, facePerson(0.25, 0, faceBasis(0), "crop-1"), facePerson(0.75, 0, faceBasis(0), "crop-2"))
+	appearances := faceAppearances(t, f.db)
+
+	f.undoFaceLink(t, appearances[0].id)
+	if got := linkedPeople(t, f.db, f.key, "performer"); !slices.Equal(got, []int64{f.named}) {
+		t.Errorf("performers after undoing one link = %v, want [%d]: the other appearance still links it", got, f.named)
+	}
+
+	f.undoFaceLink(t, appearances[1].id)
+	if got := linkedPeople(t, f.db, f.key, "performer"); len(got) != 0 {
+		t.Errorf("performers after undoing both links = %v, want none", got)
+	}
+}

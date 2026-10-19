@@ -345,7 +345,7 @@ person is used.
 
 | State of the link | Undo |
 | --- | --- |
-| Appearance not dropped, or gone | Drops the appearance, removes the person's `performer` row at the video's current user key, and deletes the provisional person the run created when it is still provisional and credited nowhere |
+| Appearance not dropped, or gone | Drops the appearance, removes the person's `performer` row at the video's current user key unless another appearance of the video not dropped still links the person, and deletes the provisional person the run created when it is still provisional and credited nowhere |
 | Appearance dropped | Nothing: the owner removed the performer, undid the link or deleted the person since, and a performer added again afterwards stays |
 
 Each undone link records the owner's `undo` entry in

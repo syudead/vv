@@ -188,6 +188,10 @@ func (s *server) UndoActivity(w http.ResponseWriter, r *http.Request, id gen.Act
 		target.TagID = *body.TagId
 	}
 	if body.AppearanceId != nil {
+		if *body.AppearanceId < 1 {
+			s.invalidRequest(w, "appearanceId must be a positive integer.")
+			return
+		}
 		target.AppearanceID = *body.AppearanceId
 	}
 	undo, err := s.activity.UndoActivity(r.Context(), id, target)

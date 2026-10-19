@@ -9750,6 +9750,7 @@ components:
         appearanceId:
           type: integer
           format: int64
+          minimum: 1
           description: "Link to undo on a face_analysis record; omitted, every link not yet undone. Unused for other kinds."
 
     VideoChanged:

@@ -166,9 +166,10 @@ func faceLinksToUndo(
 	return entry, pending, nil
 }
 
-// revertFaceLink drops the appearance and removes the performer row at the video's current user key, then deletes
-// the provisional person the run created when nothing else credits it. A dropped appearance means the owner removed
-// the performer, undid the link or deleted the person since, so the link is left as it is. It returns whether it
+// revertFaceLink drops the appearance and removes the performer row at the video's current user key, unless another
+// appearance of the video still links the person, then deletes the provisional person the run created when nothing
+// else credits it. A dropped appearance means the owner removed the performer, undid the link or deleted the person
+// since, so the link is left as it is. It returns whether it
 // changed anything and the user key whose credits it changed.
 func revertFaceLink(
 	ctx context.Context, tx *sql.Tx, c *changes, contentKey string, link faceLinkTarget,
@@ -183,6 +184,10 @@ func revertFaceLink(
 	}
 	if link.person == 0 {
 		return link.appearanceKept, "", nil
+	}
+	linked, err := personStillLinked(ctx, tx, contentKey, link.person)
+	if err != nil || linked {
+		return link.appearanceKept, "", err
 	}
 	key, err := currentUserKey(ctx, tx, contentKey)
 	if err != nil {
@@ -204,6 +209,17 @@ func revertFaceLink(
 		return link.appearanceKept, "", nil
 	}
 	return true, key, nil
+}
+
+// personStillLinked reports whether an appearance of the video not dropped still links the person, which keeps its
+// performer row: a credit's origin is the appearances linked to it.
+func personStillLinked(ctx context.Context, tx *sql.Tx, contentKey string, personID int64) (bool, error) {
+	var linked bool
+	if err := tx.QueryRowContext(ctx, `select exists (select 1 from face_appearances
+		where content_key = ? and person_id = ? and dropped = 0)`, contentKey, personID).Scan(&linked); err != nil {
+		return false, fmt.Errorf("cannot read the face appearances of person %d: %w", personID, err)
+	}
+	return linked, nil
 }
 
 func removeFacePerformer(ctx context.Context, tx *sql.Tx, userKey string, personID int64) (bool, error) {

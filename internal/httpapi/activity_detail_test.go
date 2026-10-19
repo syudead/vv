@@ -234,11 +234,15 @@ func TestFaceAnalysisEntryListsItsLinksAndUndoTakesAnAppearance(t *testing.T) {
 	}
 
 	handler := newTestServer(t, Options{Activity: activity, Scans: &lockedScans{current: domain.Scan{ID: 1}}})
-	for _, body := range []string{`{"appearanceId":11}`, `{}`} {
+	// An explicit 0 is not the omitted id, which undoes every link.
+	var rec *httptest.ResponseRecorder
+	for _, body := range []string{`{"appearanceId":11}`, `{}`, `{"appearanceId":0}`} {
 		req := httptest.NewRequest(http.MethodPost, "/api/activity/4/undo", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
-		handler.ServeHTTP(httptest.NewRecorder(), req)
+		rec = httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
 	}
+	assertErrorCode(t, rec, http.StatusBadRequest, codeInvalidRequest)
 	if want := []domain.ActivityUndoTarget{{AppearanceID: 11}, {}}; !slices.Equal(activity.undone, want) {
 		t.Errorf("undo targets = %+v, want %+v", activity.undone, want)
 	}
