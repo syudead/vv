@@ -52,7 +52,6 @@ func (s *server) SearchPeopleWithPlugin(w http.ResponseWriter, r *http.Request, 
 	writeJSON(w, http.StatusOK, gen.PersonPluginSearchResult{Candidates: out}, s.logger)
 }
 
-// readSearchQuery reads a required query and checks that the plugins are configured.
 func (s *server) readSearchQuery(w http.ResponseWriter, r *http.Request) (string, bool) {
 	var body struct {
 		Query *string `json:"query"`

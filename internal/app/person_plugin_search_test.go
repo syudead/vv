@@ -9,7 +9,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// usePersonPlugin makes plugin 1 an approved person plugin with two sources.
 func (e *fetchEnv) usePersonPlugin() {
 	e.store.plugins[1].Manifest.Kind = domain.WorkInfoPluginKindPerson
 	e.store.plugins[1].Manifest.Sources = []string{"site", "wiki"}
