@@ -54,8 +54,8 @@ One main person in one video
 | `tracks` | text | No | JSON `[[start, end, x, y], …]`: seconds, and the mean face centre as a fraction of the frame, one per track |
 | `good_seconds` | real | No | Seconds of good faces |
 | `track_count` | integer | No | Tracks in the cluster |
-| `centroid` | blob | Yes | The normalized cluster centroid as little-endian `float32`; null after "Delete face data" |
-| `crop` | blob | Yes | A 112 × 112 JPEG of the best good face; null after "Delete face data" |
+| `centroid` | blob | Yes | The normalized cluster centroid as little-endian `float32`; null once its person is deleted |
+| `crop` | blob | Yes | A JPEG of the best good face, the face box doubled around its centre ([R-18](research.md#r-18-a-provisional-persons-face-is-the-best-crop-of-its-first-appearance)); null once its person is deleted |
 
 **Relationships**: Index on `(content_key)` and on `(person_id)`. A
 re-analysis replaces a content key's rows in one transaction; a row carried
@@ -110,7 +110,7 @@ label is its name or empty when provisional).
 | --- | --- | --- |
 | `face.enabled` | `true`, `false` | Absent, read as `false` |
 | `face.recognizer` | `sface_int8`, `arcface_r50` | Absent, read as `sface_int8` |
-| `face.generation` | Integer, increased by "Delete face data" and a recognizer switch ([R-17](research.md#r-17-a-generation-number-fences-results-computed-before-a-deletion)) | Absent, read as `0` |
+| `face.generation` | Integer, increased by a recognizer switch ([R-17](research.md#r-17-a-generation-number-fences-results-computed-before-a-recognizer-switch)) | Absent, read as `0` |
 
 The download state is not stored: at startup, `mdm` reads it from the files
 under `<data>/face/` and their hashes.
@@ -124,7 +124,8 @@ under `<data>/face/` and their hashes.
 | A result or vector computed under an older `face.generation` is not written | `FaceStore`, in the result's transaction |
 | A dropped appearance is never linked and its centroid is not a vector of its person | Store reads of person vectors; the domain matching rule |
 | Removing a face-linked performer from a video drops that video's appearances of the person | `WorkInfoStore` writes, in the same transaction |
-| Deleting a person drops their appearances | `CreditStore.Delete`, in the same transaction |
+| Deleting a person drops their appearances and clears their centroids and crops ([R-15](research.md#r-15-a-persons-face-data-is-deleted-with-the-person)) | `CreditStore.Delete`, in the same transaction |
+| A provisional person created by analysis gets its first appearance's crop as its face | `FaceStore`, in the result's transaction |
 | A merge moves the source's appearances, vector and candidate pairs to the target, and deletes pairs that would join the target to itself | `CreditStore.Merge` |
 
 ## State transitions

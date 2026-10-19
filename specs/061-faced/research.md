@@ -241,9 +241,11 @@ undo does, so undo keeps the owner's edits to the target.
 ## R-12: A face image is embedded after it is stored
 
 **Decision**: Storing or replacing a face publishes `PersonImageChanged`
-after commit; the face worker embeds it between videos, and when exactly one
-provisional person reaches `merge`, merges it automatically, otherwise it
-records candidates. A manual upload while the runtime is ready checks the image
+after commit, and naming a provisional person does the same for its face; the
+face worker embeds the face between videos, and when the person is named and
+exactly one provisional person reaches `merge`, merges it automatically,
+otherwise it records candidates. A provisional person's own face starts no
+merge, so provisional people never merge into each other on their own. A manual upload while the runtime is ready checks the image
 first and is refused when it has no good face or more than one.
 
 | Option | Verdict |
@@ -276,17 +278,23 @@ source's pairs to the target and drops pairs that would point at one person.
 | **Pairs of people** | Chosen |
 | Pairs of appearances | Rejected: the person page offers people, and one person's many appearances would repeat one choice |
 
-## R-15: Deleting face data removes vectors and face crops only
+## R-15: A person's face data is deleted with the person
 
-**Decision**: "Delete face data" removes every vector, face crop and open
-candidate, and marks every video unanalysed; it keeps people, credits,
-appearances' tracks, their person links and dropped marks, and dismissed pairs.
+**Decision**: Deleting a person deletes, in the same transaction, the face
+image, its vector, and the centroids and crops of the person's appearances;
+the appearances keep only their tracks with the dropped mark, so a later
+analysis does not create the same face again. There is no separate "Delete
+face data" operation.
 
-**Rationale**: Vectors and crops are the biometric data; tracks and links say
-which person appears where, which is the link the parent Issue keeps.
-Without vectors nothing matches until the next analysis, which carries people
-over by track ([R-8](#r-8-face-data-is-keyed-by-content-key-and-survives-a-model-switch-by-its-spans)),
-so deleting does not turn every person into a new provisional one.
+| Option | Verdict |
+| --- | --- |
+| **Face data goes with its person** | Chosen |
+| An operation that deletes all face data | Rejected: the maintainer removed it from the parent Issue; on a self-hosted library the owner deletes people, and the next analysis would compute the vectors again anyway |
+| Delete the appearances too | Rejected: the next analysis would find the same face and create the deleted provisional person again |
+
+**Rationale**: Tracks hold times and positions, not a face, and are what lets
+re-analysis recognize a dropped appearance
+([R-8](#r-8-face-data-is-keyed-by-content-key-and-survives-a-model-switch-by-its-spans)).
 
 ## R-16: Download progress is read from the settings resource
 
@@ -299,20 +307,40 @@ reason), and the settings section reads it every second while downloading.
 | **Polling the settings resource** | Chosen |
 | A new SSE event | Rejected: one screen watches a download that happens once; the auto-tagging section already polls its counts the same way |
 
-## R-17: A generation number fences results computed before a deletion
+## R-17: A generation number fences results computed before a recognizer switch
 
-**Decision**: The settings row `face.generation` increases on "Delete face
-data" and on a recognizer switch, in their transaction; every analysis and
-embedding records the generation it started under, and the store refuses to
-write a result whose generation is no longer current. Both operations also
-cancel the running analysis.
+**Decision**: The settings row `face.generation` increases on a recognizer
+switch, in its transaction; every analysis and embedding records the
+generation it started under, and the store refuses to write a result whose
+generation is no longer current. The switch also cancels the running
+analysis.
 
 | Option | Verdict |
 | --- | --- |
 | **Generation checked in the result's transaction** | Chosen |
-| Cancel the worker and wait for it before deleting | Rejected: an embedding queued by an event after the wait would still write; the wait alone does not close the race |
-| A lock held for the whole analysis | Rejected: an analysis takes minutes, and the delete request would wait for it |
+| Cancel the worker and wait for it before switching | Rejected: an embedding queued by an event after the wait would still write; the wait alone does not close the race |
+| A lock held for the whole analysis | Rejected: an analysis takes minutes, and the settings request would wait for it |
 
 **Rationale**: The check sits in the same transaction as the write, so a
-result computed from frames read before the deletion can never be stored
-after the `204`, whatever the timing.
+vector of the old recognizer can never be stored after the switch, where it
+would be compared with vectors it cannot be compared with. A deleted person
+needs no generation: the result's transaction re-reads the people it links.
+
+## R-18: A provisional person's face is the best crop of its first appearance
+
+**Decision**: Each appearance keeps a crop of its best good face, the face
+box doubled around its centre and cut from the 1280 × 1280 frame without
+enlarging; a provisional person created by analysis gets that crop as its
+face image, stored as an ordinary face in `person_images`.
+
+| Option | Verdict |
+| --- | --- |
+| **The crop becomes the person's face** | Chosen |
+| Keep crops only on the appearances | Rejected: the people grid, the cast chips and the candidates show a person's face image, so a provisional person would show no face where the owner judges it |
+| A 112 × 112 aligned crop | Rejected: it is the model's input, cut tight to the eyes and mouth; too small and too tight for a person's portrait |
+
+**Rationale**: The owner judges a provisional person and a candidate by
+looking at the face, and the screens already show `person_images`
+([people.md](../../docs/design-docs/people.md#a-face-is-one-fitted-jpeg-in-sqlite)).
+A merge into a person without a face then brings the crop along, as every
+merge brings a face.

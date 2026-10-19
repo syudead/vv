@@ -25,8 +25,8 @@ Returns the settings, the runtime state and the queue counts
 
 Saves `enabled` and `recognizer`. Turning it on starts the download of the
 runtime and the recognizer's model when they are absent; turning it off
-cancels a running analysis. A changed recognizer clears the vectors and
-crops of the old one and queues every video
+cancels a running analysis. A changed recognizer clears the vectors of
+the old one, increases `face.generation` and queues every video
 ([R-8](../research.md#r-8-face-data-is-keyed-by-content-key-and-survives-a-model-switch-by-its-spans)).
 
 | Status | `code` | When |
@@ -54,12 +54,6 @@ while the runtime is not `ready` wait for it.
 | --- | --- | --- |
 | 409 | `face_recognition_off` | The feature is off |
 
-## `DELETE /api/face-recognition/data`
-
-Deletes the face data
-([R-15](../research.md#r-15-deleting-face-data-removes-vectors-and-face-crops-only));
-`204`. Allowed while the feature is off.
-
 ## `GET /api/people/{id}/appearances`
 
 The person's appearances, newest video first, paged by the admin lists'
@@ -78,7 +72,7 @@ crop never changes once written.
 
 | Status | `code` | When |
 | --- | --- | --- |
-| 404 | `not_found` | No such appearance, or its crop was deleted |
+| 404 | `not_found` | No such appearance, or its person was deleted |
 
 ## `GET /api/people/{id}/face-candidates`
 
@@ -113,6 +107,7 @@ it again.
 | `Person`, `CreditRef`, `WorkPerson` | Required `provisional: boolean`; `name` is `""` when it is true ([R-7](../research.md#r-7-a-provisional-person-is-a-person-without-a-canonical-name)) |
 | `GET /api/people` | Query `provisional=true|false`; `400 invalid_request` on an organization list; name sorts put provisional people last |
 | `PATCH /api/people/{id}` | A `name` on a provisional person makes it an ordinary person |
+| `DELETE /api/people/{id}` | Also deletes the person's face data ([R-15](../research.md#r-15-a-persons-face-data-is-deleted-with-the-person)) |
 | `PUT /api/people/{id}/image` | `400 person_image_no_face` and `400 person_image_many_faces`, only while the runtime is `ready` ([R-12](../research.md#r-12-a-face-image-is-embedded-after-it-is-stored)) |
 | `ActivityEntry` | Kinds `face_analysis` and `face_merge`, feature `face_recognition`, subject kind `person`; a `face_analysis` entry lists `faceLinks` (`appearanceId`, `person`, `createdPerson`, `undone`) |
 | `ActivityUndoRequest` | Optional `appearanceId` undoes one link of a `face_analysis` entry, as `tagId` does for `auto_tag`; without it, every link not yet undone |

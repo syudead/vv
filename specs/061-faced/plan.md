@@ -40,7 +40,7 @@ its measurements are in that PR's body.
 | Already built | Requirement 7 (a person's face image, uploaded or from a plugin) shipped with #1398 ([people.md](../../docs/design-docs/people.md#a-face-is-one-fitted-jpeg-in-sqlite)); this feature adds only the face check on upload |
 | Measured constraint | A `purego` build of `mdm` does not start in the `alpine:3.24` image (`exec … no such file or directory`), while the helper started through Debian's glibc loader does |
 
-Every unknown is resolved in [research.md](research.md) (R-1..R-17).
+Every unknown is resolved in [research.md](research.md) (R-1..R-18).
 
 ## Constitution Check
 
@@ -68,7 +68,7 @@ Checked against [ARCHITECTURE.md](../../ARCHITECTURE.md),
 ```text
 specs/061-faced/
 ├── plan.md
-├── research.md          # R-1..R-17
+├── research.md          # R-1..R-18
 ├── data-model.md        # face tables, activity tables, settings rows
 ├── quickstart.md        # checks with the real runtime
 └── contracts/
@@ -136,11 +136,9 @@ flowchart LR
   analyse --> castMerge[Merge into only performer]
   undoMerge --> castMerge
   store --> cand[Candidates API]
-  analyse --> del[Delete face data]
   store --> appear[Appearances API]
   runtime --> settingsUI[Settings page]
   analyse --> settingsUI
-  del --> settingsUI
   prov --> provUI[Provisional people screens]
   cand --> personUI[Person page faces]
   appear --> personUI
@@ -247,7 +245,10 @@ answers `400 invalid_request` to `provisional` on organizations.
 
 **Scope**: The migration ([data-model.md](data-model.md#migration)), the
 `FaceStore` role: the queue, storing one video's result in one transaction
-(appearances with carry-over, provisional people, performer rows, candidates,
+(appearances with carry-over and crops, provisional people with the crop as
+their face
+([R-18](research.md#r-18-a-provisional-persons-face-is-the-best-crop-of-its-first-appearance)),
+performer rows, candidates,
 the `face_analysis` entry with its links, joining the import pipeline), and
 the face rows that `CreditStore.Merge`, `CreditStore.Delete` and
 `WorkInfoStore` writes move or drop
@@ -257,11 +258,14 @@ the face rows that `CreditStore.Merge`, `CreditStore.Delete` and
 people in a video and matching them to people
 
 **Acceptance**: Store tests: a result with two main people, one matching a
-person, adds one provisional person and two performer rows and lists both
-links on the entry; storing the same video again with a re-numbered result
+person, adds one provisional person whose face image is that appearance's
+crop and two performer rows, and lists both links on the entry; storing the same video again with a re-numbered result
 keeps the same people and appearance ids; a result recorded under an older
 `face.generation` is refused and writes nothing; removing a face-linked performer in the
-details editor drops the appearance; deleting a person drops theirs; a merge
+details editor drops the appearance; deleting a provisional person deletes its
+face image and its appearances' centroids and crops, keeps their tracks
+dropped, and a re-analysis of the video creates no new person for that face
+(acceptance 7); a merge
 moves appearances and candidates and deletes a self-pair; the entry joins the
 import pipeline when queued from import.
 
@@ -273,7 +277,7 @@ seek preview stage's final result, `POST /api/face-recognition/runs`, retry
 from the activity log, cancelling on turning off, recovery at startup, and
 re-queuing every video and increasing `face.generation` on a recognizer
 switch
-([R-17](research.md#r-17-a-generation-number-fences-results-computed-before-a-deletion),
+([R-17](research.md#r-17-a-generation-number-fences-results-computed-before-a-recognizer-switch),
 [R-9](research.md#r-9-face-analysis-has-its-own-queue-and-turning-it-off-stops-the-running-video)).
 Rewrites the file-reading invariant in `ARCHITECTURE.md`
 ([Complexity Tracking](#complexity-tracking)).
@@ -286,8 +290,9 @@ results and link people to videos
 scripted vectors: two videos of the same face create one provisional person
 linked to both (acceptance 2); a face in one 1 s track creates nobody
 (acceptance 3); turning off mid-video leaves the row `queued` and a later run
-analyses it from the first frame; `runs` answers `409 face_recognition_off`
-while off. A media test runs `ffmpeg` on a short generated rotated video and
+analyses it from the first frame; switching the recognizer while the fake
+helper is held mid-video stores neither that result nor a pending embedding;
+`runs` answers `409 face_recognition_off` while off. A media test runs `ffmpeg` on a short generated rotated video and
 gets upright 1280 × 1280 frames (the POC's rotation defect).
 
 ### Undo automatic face links from the activity log
@@ -328,7 +333,7 @@ not restored.
 ### Merge provisional people when a person gets a face
 
 **Scope**: `PersonImageChanged` after a face is set, replaced or brought by a
-merge; embedding in the face worker; the automatic merge or candidates; the
+merge, and after a provisional person is named; embedding in the face worker; the automatic merge or candidates; the
 upload refusal for no face or several faces while the runtime is ready
 ([R-12](research.md#r-12-a-face-image-is-embedded-after-it-is-stored)).
 
@@ -338,7 +343,8 @@ of a provisional person
 **Acceptance**: App tests with the fake helper: a face close to one
 provisional person merges it, and both of its videos then list the person as
 performer (acceptance 4); two provisional people above `merge` give two
-candidates and no merge; an upload with no face answers
+candidates and no merge; the crop given to a new provisional person merges
+nobody; an upload with no face answers
 `400 person_image_no_face` and stores nothing; with the runtime absent the
 same upload is stored. A store test shows the event is published after commit
 only.
@@ -369,22 +375,6 @@ into the other one whichever id is in the path; dismiss hides the pair, and a
 later result with the same pair does not reopen it; an unknown pair answers
 `404 face_candidate_not_found`.
 
-### Delete all face data
-
-**Scope**: `DELETE /api/face-recognition/data`, which increases
-`face.generation` and cancels the running analysis
-([R-15](research.md#r-15-deleting-face-data-removes-vectors-and-face-crops-only),
-[R-17](research.md#r-17-a-generation-number-fences-results-computed-before-a-deletion)).
-
-**Dependencies**: Analyse imported videos for faces
-
-**Acceptance**: Store test: afterwards no centroid, crop, vector or open
-candidate remains, every queue row is unanalysed, and people, performer rows,
-tracks, dropped marks and dismissed pairs are unchanged (acceptance 7). App
-test with a fake helper held mid-video: the delete returns, the helper is
-released, and neither the analysis result nor a pending face embedding is
-stored afterwards.
-
 ### Person appearances in the people API
 
 **Scope**: `GET /api/people/{id}/appearances` and
@@ -394,7 +384,8 @@ stored afterwards.
 **Dependencies**: Store face analysis results and link people to videos
 
 **Acceptance**: HTTP tests: a person's appearances page across the cursor
-without dropped ones; a deleted crop answers `404 not_found`; a guest gets
+without dropped ones; the crop of a deleted person's appearance answers
+`404 not_found`; a guest gets
 `403`.
 
 ### Face recognition settings page
@@ -402,11 +393,10 @@ without dropped ones; a deleted crop answers `404 not_found`; a guest gets
 **Scope**: The settings page for the feature, built as the auto-tagging
 section is: the switch, the recognizer choice with the non-commercial notice,
 the download progress, failure reason and retry, the queue counts with
-"Analyse missing" and "Analyse all", and "Delete face data" with a
-confirmation, as `ui-design.md` lays it out.
+"Analyse missing" and "Analyse all", as `ui-design.md` lays it out.
 
 **Dependencies**: Download and start the face runtime; Analyse imported
-videos for faces; Delete all face data
+videos for faces
 
 **Acceptance**: Component tests: choosing ArcFace r50 shows the
 non-commercial notice (acceptance 6); a `downloading` response shows the
