@@ -8,6 +8,7 @@ import { PersonDetails } from "./PersonProfile";
 const bioPerson: Person = {
   id: 7,
   name: "Aoi",
+  provisional: false,
   aliases: [],
   externalIds: [],
   profile: { bio: "A long biography." },

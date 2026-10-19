@@ -471,10 +471,13 @@ type CreditMergeRequest struct {
 	TargetId int64 `json:"targetId"`
 }
 
-// CreditRef Reference to one person or organization; name is its current name.
+// CreditRef Reference to one person or organization; name is its current name, "" for a provisional person.
 type CreditRef struct {
 	Id   int64  `json:"id"`
 	Name string `json:"name"`
+
+	// Provisional True for a person without a canonical name, whose name is then ""; always false for an organization.
+	Provisional bool `json:"provisional"`
 }
 
 // CreditSort The five TagSort modes, plus ageAsc (newest birth date first) and ageDesc (oldest first) for people only; organizations answer either with 400 invalid_request. A partial birth date sorts as its first possible day, and people without one come last in both age sorts. Ties use natural-name order, then ID.
@@ -683,6 +686,9 @@ type Person struct {
 
 	// Profile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
 	Profile PersonProfile `json:"profile"`
+
+	// Provisional True while the person has no canonical name; name is then "". Setting a name makes the person ordinary.
+	Provisional bool `json:"provisional"`
 
 	// VideoCount Visible videos linked to this person in any role.
 	VideoCount int `json:"videoCount"`
@@ -1175,7 +1181,7 @@ type WorkInfoInput struct {
 
 // WorkOrganization defines model for WorkOrganization.
 type WorkOrganization struct {
-	// Organization Reference to one person or organization; name is its current name.
+	// Organization Reference to one person or organization; name is its current name, "" for a provisional person.
 	Organization CreditRef `json:"organization"`
 
 	// Role Organization role in a video.
@@ -1196,8 +1202,11 @@ type WorkOrganizationRole string
 
 // WorkPerson defines model for WorkPerson.
 type WorkPerson struct {
-	// Person Reference to one person or organization; name is its current name.
+	// Person Reference to one person or organization; name is its current name, "" for a provisional person.
 	Person CreditRef `json:"person"`
+
+	// Provisional Same as person.provisional.
+	Provisional bool `json:"provisional"`
 
 	// Role Person role in a video.
 	Role WorkPersonRole `json:"role"`

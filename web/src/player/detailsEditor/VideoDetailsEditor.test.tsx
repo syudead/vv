@@ -31,7 +31,13 @@ const video: Video = {
   tags: [],
   workInfo: {
     dates: [],
-    people: [{ role: "performer", person: { id: 1, name: "Alice" } }],
+    people: [
+      {
+        role: "performer",
+        person: { id: 1, name: "Alice", provisional: false },
+        provisional: false,
+      },
+    ],
     organizations: [],
     urls: [],
     externalIds: [],

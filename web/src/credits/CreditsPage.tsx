@@ -231,7 +231,8 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
   /** Mirror server reparenting after rename, delete or merge; undefined removes the parent. */
   function reparentLoaded(fromId: number, to?: Credit) {
     if (kind !== "organization") return;
-    const parent = to === undefined ? undefined : { id: to.id, name: to.name };
+    const parent =
+      to === undefined ? undefined : { id: to.id, name: to.name, provisional: false };
     applyLocal((current) => {
       if (current === undefined) return current;
       const rows = reparentRows(current.rows, fromId, parent);

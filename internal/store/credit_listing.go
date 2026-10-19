@@ -47,11 +47,12 @@ func (s *CreditStore) List(ctx context.Context, kind domain.CreditKind, query do
 	if err := tx.QueryRowContext(ctx, t.q(`select count(*) from {entity}`)).Scan(&page.TotalAll); err != nil {
 		return domain.CreditPage{}, fmt.Errorf("cannot count %s entities: %w", kind, err)
 	}
-	if query.FavoriteOnly && t.kind != domain.CreditPerson {
-		return domain.CreditPage{}, fmt.Errorf("the favorite filter applies to people only, not %s", kind)
+	if (query.FavoriteOnly || query.Provisional != nil) && t.kind != domain.CreditPerson {
+		return domain.CreditPage{}, fmt.Errorf("the favorite and provisional filters apply to people only, not %s", kind)
 	}
 	listed, listedArgs := listedCreditsCTE(t, creditFilter{
 		search: strings.TrimSpace(domain.FoldForMatch(query.Q)), favoriteOnly: query.FavoriteOnly,
+		provisional: query.Provisional,
 	})
 	statement, args := order.pageStatement(listed, listedArgs, creditListedColumns, cursorClause, cursorArgs, limit)
 	items, rows, total, err := readListedCredits(ctx, tx, t, statement, args)
@@ -99,14 +100,19 @@ func creditByID(ctx context.Context, tx *sql.Tx, t creditTables, id int64) (doma
 	return items[0], nil
 }
 
-const creditListedColumns = `id, name, created_at, sort_key, video_count, parent_id, birth_key`
+const creditListedColumns = `id, name, provisional, created_at, sort_key, video_count, parent_id, birth_key`
 
 // creditFilter narrows the listed relation; a zero onlyID means every entity.
 type creditFilter struct {
 	search       string
 	onlyID       int64
 	favoriteOnly bool
+	// provisional, when set, keeps only people with (false) or without (true) a canonical name.
+	provisional *bool
 }
+
+// A prefix puts people without a canonical name after every named one in any name order, ties by ID.
+const creditSortKey = `case when n.{id} is null then '1' else '0' || n.sort_key end`
 
 // Count visible representatives by user-data key so each bundle contributes one video.
 func listedCreditsCTE(t creditTables, filter creditFilter) (string, []any) {
@@ -127,6 +133,10 @@ func listedCreditsCTE(t creditTables, filter creditFilter) (string, []any) {
 	if filter.favoriteOnly {
 		conditions = append(conditions, `exists (select 1 from person_favorites pf where pf.person_id = e.id)`)
 	}
+	if filter.provisional != nil {
+		conditions = append(conditions, `(n.{id} is null) = ?`)
+		whereArgs = append(whereArgs, boolToInt(*filter.provisional))
+	}
 	if len(conditions) > 0 {
 		where = ` where ` + strings.Join(conditions, ` and `)
 	}
@@ -138,11 +148,12 @@ func listedCreditsCTE(t creditTables, filter creditFilter) (string, []any) {
 		shownVideoCondition("v", domain.AudienceOwner) + countFilter + `
 			 group by l.{id}
 		), listed as (
-			select e.id as id, n.name as name, e.created_at as created_at, n.sort_key as sort_key,
+			select e.id as id, coalesce(n.name, '') as name, n.{id} is null as provisional,
+			       e.created_at as created_at, ` + creditSortKey + ` as sort_key,
 			       coalesce(c.video_count, 0) as video_count, ` + t.parentColumn() + ` as parent_id,
 			       ` + t.birthKeyColumn() + ` as birth_key
 			  from {entity} e
-			  join {names} n on n.{id} = e.id and n.canonical = 1
+			  left join {names} n on n.{id} = e.id and n.canonical = 1
 			  left join credit_counts c on c.credit_id = e.id` + where + `
 		)`
 	return t.q(statement), append(countArgs, whereArgs...)
@@ -164,7 +175,7 @@ func readListedCredits(ctx context.Context, tx *sql.Tx, t creditTables, statemen
 		var createdAt int64
 		var row adminListRow
 		var parent sql.NullInt64
-		if err := rows.Scan(&credit.ID, &credit.Name, &createdAt, &row.sortKey, &credit.VideoCount, &parent,
+		if err := rows.Scan(&credit.ID, &credit.Name, &credit.Provisional, &createdAt, &row.sortKey, &credit.VideoCount, &parent,
 			&row.birthKey, &total); err != nil {
 			return nil, nil, 0, fmt.Errorf("cannot read %s entities: %w", t.kind, err)
 		}

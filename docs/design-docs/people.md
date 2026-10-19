@@ -80,6 +80,33 @@ source's value or stays empty, so a merge always stores a valid profile.
 | Reject the merge with `400`    | A merge cannot be fixed by editing its request, only by editing the people first |
 | Let the owner choose per field | The merge stays one step                                                         |
 
+## A person without a canonical name is provisional
+
+Face recognition finds people before anyone knows their names, so a person may
+have no `people_names` row at all. Such a person is provisional: `Person`,
+`CreditRef` and `WorkPerson` carry `provisional: true` and `name` is `""`, so
+a client that ignores the flag still parses the response. The flag is read
+from the missing canonical row by every person query, never stored, so a
+named provisional person cannot exist. Organizations always have a name and
+read `provisional: false`.
+
+| Operation                         | Effect on a provisional person                                                                                           |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/people?provisional=…`   | `true` keeps only provisional people, `false` only named ones; an organization list answers `400 invalid_request`        |
+| Natural-name order                | Provisional people come after every named person, by ID; the other sorts break ties the same way                         |
+| `PATCH` with `name`               | The person becomes an ordinary person in the same write                                                                  |
+| `PATCH` without `name`            | Profile and external-ID changes keep the person provisional; aliases need a name and answer `work_info_empty` on `name`  |
+| Merge into a provisional target   | The target takes the canonical name of the first source in `sourceIds` order that has one; the other names become aliases |
+
+The name order keeps one keyset cursor by prefixing each listed sort key with
+`0` for a named person and making it `1` for a provisional one, so the cursor
+needs no null branch.
+
+| Rejected                                   | Why                                                                                         |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| A `provisional` column beside the name     | Two facts that can disagree                                                                 |
+| A stored placeholder name such as `Unknown 12` | It cannot follow the screen's language, it matches name searches, and a merge keeps it as an alias |
+
 ## People sort by age, unknown birth dates last
 
 People lists take two sorts that tags and organizations do not: `ageAsc`

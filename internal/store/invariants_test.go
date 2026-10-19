@@ -601,10 +601,15 @@ func assertCreditInvariant(t *testing.T, db *DB) {
 
 	var checks []string
 	for _, tables := range creditTablesByKind {
+		// A provisional person has no names at all; every other credit has exactly one canonical name.
+		minCanonical := `1`
+		if tables.kind == domain.CreditPerson {
+			minCanonical = `(case when count(n.name) = 0 and not exists (select 1 from {names} a where a.{id} = e.id) then 0 else 1 end)`
+		}
 		checks = append(checks, tables.q(`
 			select '{entity} ' || e.id || ' の正規の名前の行が ' || count(n.name) || ' 行'
 			  from {entity} e left join {names} n on n.{id} = e.id and n.canonical = 1
-			 group by e.id having count(n.name) <> 1`),
+			 group by e.id having count(n.name) not between `+minCanonical+` and 1`),
 			tables.q(`select '{names} の正規の行 ' || {id} || ' に language がある' from {names}
 			 where canonical = 1 and language is not null`),
 			tables.q(`select '{entity} ' || {id} || ' の別名が ' || count(*) || ' 件' from {names}

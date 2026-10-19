@@ -308,6 +308,17 @@ func TestListPeoplePages(t *testing.T) {
 		assertFieldError(t, "団体の "+sort, f.env.get("/api/organizations?sort="+sort, f.owner),
 			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}, "")
 	}
+	for _, value := range []string{"true", "false"} {
+		assertFieldError(t, "団体の provisional="+value, f.env.get("/api/organizations?provisional="+value, f.owner),
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}, "")
+	}
+	// Every person here is named, so the filter reaches storage when true leaves none and false keeps all.
+	if page := f.personList(t, "/api/people?provisional=true"); len(page.Items) != 0 || page.Total != 0 {
+		t.Errorf("provisional=true の一覧 = %+v", page)
+	}
+	if page := f.personList(t, "/api/people?provisional=false"); page.Total != 3 || page.Items[0].Provisional {
+		t.Errorf("provisional=false の一覧 = %+v", page)
+	}
 }
 
 func TestCreditsOwnerOnly(t *testing.T) {

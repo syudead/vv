@@ -20,6 +20,7 @@ function json(body: unknown, status = 200): Response {
 const aoi: Person = {
   id: 7,
   name: "Aoi",
+  provisional: false,
   aliases: [{ name: "あおい", language: "ja" }],
   externalIds: [{ source: "fanza", value: "123" }],
   profile: { birthDate: "1990-05-01", birthplace: "Tokyo", cup: "C", heightCm: 158 },
