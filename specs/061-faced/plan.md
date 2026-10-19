@@ -40,7 +40,7 @@ its measurements are in that PR's body.
 | Already built | Requirement 7 (a person's face image, uploaded or from a plugin) shipped with #1398 ([people.md](../../docs/design-docs/people.md#a-face-is-one-fitted-jpeg-in-sqlite)); this feature adds only the face check on upload |
 | Measured constraint | A `purego` build of `mdm` does not start in the `alpine:3.24` image (`exec … no such file or directory`), while the helper started through Debian's glibc loader does |
 
-Every unknown is resolved in [research.md](research.md) (R-1..R-16).
+Every unknown is resolved in [research.md](research.md) (R-1..R-17).
 
 ## Constitution Check
 
@@ -68,7 +68,7 @@ Checked against [ARCHITECTURE.md](../../ARCHITECTURE.md),
 ```text
 specs/061-faced/
 ├── plan.md
-├── research.md          # R-1..R-16
+├── research.md          # R-1..R-17
 ├── data-model.md        # face tables, activity tables, settings rows
 ├── quickstart.md        # checks with the real runtime
 └── contracts/
@@ -136,7 +136,7 @@ flowchart LR
   analyse --> castMerge[Merge into only performer]
   undoMerge --> castMerge
   store --> cand[Candidates API]
-  store --> del[Delete face data]
+  analyse --> del[Delete face data]
   store --> appear[Appearances API]
   runtime --> settingsUI[Settings page]
   analyse --> settingsUI
@@ -197,8 +197,9 @@ one-to-one cast rule
 **Acceptance**: Unit tests with hand-made vectors: a person present 8 s in 2
 tracks is kept and one at 7.5 s or in 1 track is not; link, candidate and new
 provisional at each threshold's boundary; a dropped appearance's person is
-neither linked nor recreated; carry-over at an overlap of exactly half and
-just under; the face-image rule merges one provisional person above `merge`
+neither linked nor recreated; two people on screen together for the whole
+video keep their own people through a carry-over, and two old appearances
+claiming one new appearance carry nothing over; the face-image rule merges one provisional person above `merge`
 and makes candidates for two; the cast rule fires only for one performer and
 one provisional person. The ArcFace values and their measured rates are in
 `face-recognition.md`.
@@ -258,7 +259,8 @@ people in a video and matching them to people
 **Acceptance**: Store tests: a result with two main people, one matching a
 person, adds one provisional person and two performer rows and lists both
 links on the entry; storing the same video again with a re-numbered result
-keeps the same people by span; removing a face-linked performer in the
+keeps the same people and appearance ids; a result recorded under an older
+`face.generation` is refused and writes nothing; removing a face-linked performer in the
 details editor drops the appearance; deleting a person drops theirs; a merge
 moves appearances and candidates and deletes a self-pair; the entry joins the
 import pipeline when queued from import.
@@ -269,8 +271,10 @@ import pipeline when queued from import.
 claiming, calling the helper, the domain rules, storing; queuing from the
 seek preview stage's final result, `POST /api/face-recognition/runs`, retry
 from the activity log, cancelling on turning off, recovery at startup, and
-re-queuing every video on a recognizer switch
-([R-9](research.md#r-9-face-analysis-has-its-own-queue-and-turning-it-off-stops-the-running-video)).
+re-queuing every video and increasing `face.generation` on a recognizer
+switch
+([R-17](research.md#r-17-a-generation-number-fences-results-computed-before-a-deletion),
+[R-9](research.md#r-9-face-analysis-has-its-own-queue-and-turning-it-off-stops-the-running-video)).
 Rewrites the file-reading invariant in `ARCHITECTURE.md`
 ([Complexity Tracking](#complexity-tracking)).
 
@@ -301,8 +305,9 @@ Updates `activity.md`.
 **Acceptance**: Store tests: undoing one of two links removes only that
 performer and drops its appearance; a re-analysis afterwards does not link
 it; undoing a link whose performer the owner removed and added again since
-answers `already_reverted` and keeps the row; a second undo of the same link
-answers `409 activity_not_undoable`.
+answers `already_reverted` and keeps the row; undoing a link after the video
+was analysed again drops the carried-over appearance; a second undo of the
+same link answers `409 activity_not_undoable`.
 
 ### Undoable automatic merge of a provisional person
 
@@ -366,14 +371,19 @@ later result with the same pair does not reopen it; an unknown pair answers
 
 ### Delete all face data
 
-**Scope**: `DELETE /api/face-recognition/data`
-([R-15](research.md#r-15-deleting-face-data-removes-vectors-and-face-crops-only)).
+**Scope**: `DELETE /api/face-recognition/data`, which increases
+`face.generation` and cancels the running analysis
+([R-15](research.md#r-15-deleting-face-data-removes-vectors-and-face-crops-only),
+[R-17](research.md#r-17-a-generation-number-fences-results-computed-before-a-deletion)).
 
-**Dependencies**: Store face analysis results and link people to videos
+**Dependencies**: Analyse imported videos for faces
 
 **Acceptance**: Store test: afterwards no centroid, crop, vector or open
 candidate remains, every queue row is unanalysed, and people, performer rows,
-spans, dropped marks and dismissed pairs are unchanged (acceptance 7).
+tracks, dropped marks and dismissed pairs are unchanged (acceptance 7). App
+test with a fake helper held mid-video: the delete returns, the helper is
+released, and neither the analysis result nor a pending face embedding is
+stored afterwards.
 
 ### Person appearances in the people API
 

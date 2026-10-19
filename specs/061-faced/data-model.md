@@ -51,15 +51,15 @@ One main person in one video
 | `recognizer` | text | No | The recognizer that produced `centroid` |
 | `person_id` | integer | Yes | The linked person; `on delete set null` |
 | `dropped` | integer | No | 1 when the owner removed or undid the link, or deleted the person ([R-10](research.md#r-10-an-automatic-link-is-a-performer-credit-and-removing-it-drops-the-appearance)) |
-| `spans` | text | No | JSON `[[start, end], …]` in seconds, one per track |
+| `tracks` | text | No | JSON `[[start, end, x, y], …]`: seconds, and the mean face centre as a fraction of the frame, one per track |
 | `good_seconds` | real | No | Seconds of good faces |
 | `track_count` | integer | No | Tracks in the cluster |
 | `centroid` | blob | Yes | The normalized cluster centroid as little-endian `float32`; null after "Delete face data" |
 | `crop` | blob | Yes | A 112 × 112 JPEG of the best good face; null after "Delete face data" |
 
 **Relationships**: Index on `(content_key)` and on `(person_id)`. A
-re-analysis replaces a content key's rows in one transaction after carrying
-`person_id` and `dropped` over by span
+re-analysis replaces a content key's rows in one transaction; a row carried
+over keeps its `id`, `person_id` and `dropped`, and the others are deleted
 ([R-8](research.md#r-8-face-data-is-keyed-by-content-key-and-survives-a-model-switch-by-its-spans)).
 Rows of a content key no video has any more are kept, so the person page still
 lists nothing for them and a returning file keeps its links.
@@ -97,7 +97,7 @@ is computed again by the face worker.
 
 | Table | Fields | Meaning |
 | --- | --- | --- |
-| `activity_entry_face_links` | `entry_id`, `appearance_id`, `person_id`, `user_key`, `created_person` | Each link a `face_analysis` entry made, for undo one person at a time; `created_person` is 1 when the run created the provisional person |
+| `activity_entry_face_links` | `entry_id`, `appearance_id`, `person_id`, `user_key`, `created_person` | Each link a `face_analysis` entry made, for undo one person at a time; `created_person` is 1 when the run created the provisional person. No foreign key to `face_appearances`: a re-analysis keeps a carried-over id, and undo of a link whose appearance is gone still removes the performer row |
 | `activity_entry_person_merges` | `entry_id` (primary key), `source_id`, `target_id`, `snapshot` | A `face_merge` entry's snapshot of what it moved, as JSON ([R-11](research.md#r-11-an-automatic-merge-keeps-what-it-moved-so-undo-can-move-it-back)) |
 
 New activity values: kinds `face_analysis` and `face_merge`, feature
@@ -110,6 +110,7 @@ label is its name or empty when provisional).
 | --- | --- | --- |
 | `face.enabled` | `true`, `false` | Absent, read as `false` |
 | `face.recognizer` | `sface_int8`, `arcface_r50` | Absent, read as `sface_int8` |
+| `face.generation` | Integer, increased by "Delete face data" and a recognizer switch ([R-17](research.md#r-17-a-generation-number-fences-results-computed-before-a-deletion)) | Absent, read as `0` |
 
 The download state is not stored: at startup, `mdm` reads it from the files
 under `<data>/face/` and their hashes.
@@ -120,6 +121,7 @@ under `<data>/face/` and their hashes.
 | --- | --- |
 | A person is provisional exactly when it has no canonical name | `internal/domain`, read by the store's person queries |
 | A merge into a provisional target takes the first named source's canonical name | `CreditStore.Merge` |
+| A result or vector computed under an older `face.generation` is not written | `FaceStore`, in the result's transaction |
 | A dropped appearance is never linked and its centroid is not a vector of its person | Store reads of person vectors; the domain matching rule |
 | Removing a face-linked performer from a video drops that video's appearances of the person | `WorkInfoStore` writes, in the same transaction |
 | Deleting a person drops their appearances | `CreditStore.Delete`, in the same transaction |

@@ -155,20 +155,29 @@ without a canonical one.
 ## R-8: Face data is keyed by content key and survives a model switch by its spans
 
 **Decision**: An appearance (one main person in one video) is stored by
-content key with its spans, its centroid, its recognizer and the person it is
-linked to; re-analysis carries each old appearance's person over to the new
-appearance whose spans overlap it most, when the overlap is at least half of
-the shorter one.
+content key with its tracks (start, end and mean face centre), its centroid,
+its recognizer and the person it is linked to; re-analysis carries an old
+appearance over to the one new appearance that holds more than half of its
+matched track seconds, where a new track matches an old one when their times
+overlap and their centres lie within one face width, and the carried-over row
+keeps its id.
 
 | Option | Verdict |
 | --- | --- |
-| **Carry over by span overlap** | Chosen |
+| **Carry over by tracks: time and position, one to one** | Chosen |
+| Time overlap of spans alone | Rejected: two people on screen together overlap each other's spans, so their people could swap |
 | Match the new vectors against the old ones | Rejected: vectors of two recognizers cannot be compared, so a model switch would create a second provisional person for everyone |
 | Keep the old person links without re-matching | Rejected: a re-analysis could not correct a link |
 
-**Rationale**: The same video yields the same tracks at the same times
-whatever the recognizer, so time is the one key both analyses share. Content
-key, not `videos.id`, follows the rebuild invariant in
+**Rationale**: The detector is the same for every recognizer
+([R-3](#r-3-two-recognition-models-one-detector)), so the same video yields
+the same faces at the same times and places; position separates people who
+share the screen. A carry-over is one to one: when two old appearances claim
+the same new one, or none has a majority, nothing is carried over and the new
+appearance is matched by vector as a first analysis is. Keeping the id lets an
+activity entry written before the re-analysis still undo the link
+([R-10](#r-10-an-automatic-link-is-a-performer-credit-and-removing-it-drops-the-appearance)).
+Content key, not `videos.id`, follows the rebuild invariant in
 [ARCHITECTURE.md](../../ARCHITECTURE.md#cross-cutting-invariants).
 
 ## R-9: Face analysis has its own queue, and turning it off stops the running video
@@ -201,7 +210,7 @@ appearance is never linked again or counted among the person's vectors.
 | **Performer row, dropped appearance** | Chosen |
 | A separate face-link table beside credits | Rejected: the person page, the filters and smart folders read credits only; a second table would need every reader to change |
 | A `source` column on `video_work_people` | Rejected: the details editor and the plugin apply replace the rows, so the source would be lost on every edit |
-| A table of rejected person and video pairs | Rejected: a deleted person leaves no id to reject, and the pair would not follow a re-analysis the way spans do |
+| A table of rejected person and video pairs | Rejected: a deleted person leaves no id to reject, and the pair would not follow a re-analysis the way tracks do |
 
 **Rationale**: Whether a credit came from a face is answered by the
 appearances linked to it, not by the credit row. Re-analysis carries the
@@ -271,12 +280,12 @@ source's pairs to the target and drops pairs that would point at one person.
 
 **Decision**: "Delete face data" removes every vector, face crop and open
 candidate, and marks every video unanalysed; it keeps people, credits,
-appearances' spans, their person links and dropped marks, and dismissed pairs.
+appearances' tracks, their person links and dropped marks, and dismissed pairs.
 
-**Rationale**: Vectors and crops are the biometric data; spans and links say
+**Rationale**: Vectors and crops are the biometric data; tracks and links say
 which person appears where, which is the link the parent Issue keeps.
 Without vectors nothing matches until the next analysis, which carries people
-over by span ([R-8](#r-8-face-data-is-keyed-by-content-key-and-survives-a-model-switch-by-its-spans)),
+over by track ([R-8](#r-8-face-data-is-keyed-by-content-key-and-survives-a-model-switch-by-its-spans)),
 so deleting does not turn every person into a new provisional one.
 
 ## R-16: Download progress is read from the settings resource
@@ -289,3 +298,21 @@ reason), and the settings section reads it every second while downloading.
 | --- | --- |
 | **Polling the settings resource** | Chosen |
 | A new SSE event | Rejected: one screen watches a download that happens once; the auto-tagging section already polls its counts the same way |
+
+## R-17: A generation number fences results computed before a deletion
+
+**Decision**: The settings row `face.generation` increases on "Delete face
+data" and on a recognizer switch, in their transaction; every analysis and
+embedding records the generation it started under, and the store refuses to
+write a result whose generation is no longer current. Both operations also
+cancel the running analysis.
+
+| Option | Verdict |
+| --- | --- |
+| **Generation checked in the result's transaction** | Chosen |
+| Cancel the worker and wait for it before deleting | Rejected: an embedding queued by an event after the wait would still write; the wait alone does not close the race |
+| A lock held for the whole analysis | Rejected: an analysis takes minutes, and the delete request would wait for it |
+
+**Rationale**: The check sits in the same transaction as the write, so a
+result computed from frames read before the deletion can never be stored
+after the `204`, whatever the timing.
