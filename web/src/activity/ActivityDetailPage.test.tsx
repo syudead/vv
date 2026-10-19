@@ -156,7 +156,7 @@ describe("ActivityDetailPage", () => {
     expect(screen.getByRole("link", { name: "Open" }).getAttribute("href")).toBe(
       "/videos/7",
     );
-    expect(document.title).toBe("clip.mp4 · Activity");
+    await waitFor(() => expect(document.title).toBe("clip.mp4 · Activity"));
   });
 
   it("rereads the entry on an activity notification", async () => {
