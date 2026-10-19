@@ -164,36 +164,49 @@ func (k *FaceTracker) Add(faces []FaceDetection) {
 		}
 	}
 	k.active = open
-	used := map[*FaceTrack]bool{}
+	var kept []FaceDetection
 	for _, d := range faces {
-		if d.Box.W < faceMinSide || len(d.Vector) == 0 {
-			continue
+		if d.Box.W >= faceMinSide && len(d.Vector) > 0 {
+			kept = append(kept, d)
 		}
-		t := k.bestTrack(used, d)
+	}
+	tracks := k.assign(kept)
+	for i, d := range kept {
+		t := tracks[i]
 		if t == nil {
 			t = &FaceTrack{}
 			k.active = append(k.active, t)
 		}
-		used[t] = true
 		t.add(k.frame, d)
 	}
 	k.frame++
 }
 
-func (k *FaceTracker) bestTrack(used map[*FaceTrack]bool, d FaceDetection) *FaceTrack {
-	var best *FaceTrack
-	bestSim := 0.0
-	for _, t := range k.active {
-		if used[t] {
-			continue
-		}
-		sim := FaceSimilarity(d.Vector, t.last.Vector)
-		near := d.Box.iou(t.last.Box) > faceNearIoU
-		if sim > k.th.Track && (near || sim > k.th.TrackFar) && sim > bestSim {
-			best, bestSim = t, sim
+// assign gives each face the open track it continues, or nil; the most similar pairs go first, so the detector's face order does not decide a contested track.
+func (k *FaceTracker) assign(faces []FaceDetection) []*FaceTrack {
+	type pair struct {
+		face, track int
+		sim         float64
+	}
+	var pairs []pair
+	for fi, d := range faces {
+		for ti, t := range k.active {
+			sim := FaceSimilarity(d.Vector, t.last.Vector)
+			near := d.Box.iou(t.last.Box) > faceNearIoU
+			if sim > k.th.Track && (near || sim > k.th.TrackFar) {
+				pairs = append(pairs, pair{fi, ti, sim})
+			}
 		}
 	}
-	return best
+	slices.SortStableFunc(pairs, func(a, b pair) int { return cmp.Compare(b.sim, a.sim) })
+	out := make([]*FaceTrack, len(faces))
+	taken := make([]bool, len(k.active))
+	for _, p := range pairs {
+		if out[p.face] == nil && !taken[p.track] {
+			out[p.face], taken[p.track] = k.active[p.track], true
+		}
+	}
+	return out
 }
 
 // Tracks returns the tracks long enough to keep, in the order they started.

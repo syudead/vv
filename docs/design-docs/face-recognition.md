@@ -147,7 +147,7 @@ the quality gate and the cutoff only work as a pair.
 | Step | Rule |
 | --- | --- |
 | Sampling | 2 frames per second, fitted into 1280 × 1280 |
-| Tracking | Faces under 48 px are skipped; a face continues the open track it is most similar to above `Track` when the boxes overlap (IoU over 0.05), or above `TrackFar` when they do not; a track closes after 2 missed frames and is kept with 3 or more faces |
+| Tracking | Faces under 48 px are skipped; a face continues the open track it is most similar to above `Track` when the boxes overlap (IoU over 0.05), or above `TrackFar` when they do not, and the most similar face and track pairs of a frame are joined first; a track closes after 2 missed frames and is kept with 3 or more faces |
 | Quality gate | A good face is 64 px wide or more, scores 0.85 or more, and has its nose within 0.5 ± 0.22 of the way between the eyes |
 | Track vector | The normalized mean of the good faces; a track with fewer than 2 good faces has none and is not clustered |
 | Clustering | Average linkage over the track vectors, joining while the mean similarity reaches `Cluster` |

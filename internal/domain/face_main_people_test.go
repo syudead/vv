@@ -136,3 +136,38 @@ func TestFaceTrackerFollowsTwoFacesAndClosesAfterGap(t *testing.T) {
 		}
 	}
 }
+
+func TestFaceTrackerGivesContestedTrackToMostSimilarFace(t *testing.T) {
+	a, b := faceAxis(0, 1, 0), faceAxis(2, 3, 0)
+	// first is 0.7 to A and 0.65 to B; second is 0.9 to A and unlike B, so only A to second and B to first continues both.
+	first := make([]float32, 128)
+	first[0], first[2], first[4] = 0.7, 0.65, float32(math.Sqrt(1-0.49-0.4225))
+	second := make([]float32, 128)
+	second[0], second[5] = 0.9, float32(math.Sqrt(1-0.81))
+	orders := map[string][]FaceDetection{
+		"first listed first":  {goodFace(600, 100, first), goodFace(100, 100, second)},
+		"second listed first": {goodFace(100, 100, second), goodFace(600, 100, first)},
+	}
+	want := []FaceSpan{
+		{Start: 0, End: 1.5, X: 140.0 / FaceFrameSide, Y: 140.0 / FaceFrameSide, W: 80.0 / FaceFrameSide},
+		{Start: 0, End: 1.5, X: 640.0 / FaceFrameSide, Y: 140.0 / FaceFrameSide, W: 80.0 / FaceFrameSide},
+	}
+	for name, frame := range orders {
+		t.Run(name, func(t *testing.T) {
+			k := NewFaceTracker(FaceThresholds{Track: 0.45, TrackFar: 0.6})
+			for range 3 {
+				k.Add([]FaceDetection{goodFace(100, 100, a), goodFace(600, 100, b)})
+			}
+			k.Add(frame)
+			tracks := k.Tracks()
+			if len(tracks) != len(want) {
+				t.Fatalf("got %d tracks, want A and B continued", len(tracks))
+			}
+			for i, w := range want {
+				if tracks[i].FaceSpan != w {
+					t.Errorf("track %d = %+v, want %+v", i, tracks[i].FaceSpan, w)
+				}
+			}
+		})
+	}
+}
