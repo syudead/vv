@@ -1,8 +1,7 @@
 import { CircleAlert, CircleCheck, LoaderCircle } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  type AutoTaggingScope,
   type AutoTaggingSettings,
   checkAutoTaggingClassifier,
   getAutoTaggingSettings,
@@ -11,17 +10,20 @@ import {
   updateAutoTaggingSettings,
 } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
-import { ErrorState } from "../ui/patterns/error-state";
 import { FormRow } from "../ui/patterns/form-row";
 import { PageSection } from "../ui/patterns/page-section";
-import { Alert, AlertDescription, AlertTitle } from "../ui/shadcn/alert";
+import { Alert, AlertTitle } from "../ui/shadcn/alert";
 import { Button } from "../ui/shadcn/button";
 import { Input } from "../ui/shadcn/input";
-import { Skeleton } from "../ui/shadcn/skeleton";
 import { Switch } from "../ui/shadcn/switch";
 import { useToast } from "../ui/Toast";
 
 import { PageLinkText } from "./PageLink";
+import {
+  RunProgressSection,
+  RunSectionsLoading,
+  useRunStart,
+} from "./RunProgressSection";
 
 const pollMs = 3000;
 
@@ -53,104 +55,6 @@ type CheckState =
   | { kind: "checking" }
   | { kind: "ok" }
   | { kind: "failed"; message: UiText };
-
-function ProgressSection({
-  settings,
-  starting,
-  locked,
-  onStart,
-}: {
-  settings: AutoTaggingSettings;
-  starting: AutoTaggingScope | null;
-  locked?: boolean;
-  onStart: (scope: AutoTaggingScope) => void;
-}) {
-  const text = t.settings.autoTagging;
-  const queue = settings.queue;
-  if (!settings.enabled)
-    return (
-      <PageSection title={text.progressHeading} description={text.off}>
-        <p>{text.offHint}</p>
-      </PageSection>
-    );
-  return (
-    <PageSection
-      title={text.progressHeading}
-      description={
-        <span role="status">
-          {text.queue(queue.queued, queue.running, queue.done, queue.failed)}
-        </span>
-      }
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => onStart("missing")}
-          aria-disabled={locked || starting !== null || undefined}
-        >
-          {text.runMissing}
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => onStart("all")}
-          aria-disabled={locked || starting !== null || undefined}
-        >
-          {text.runAll}
-        </Button>
-      </div>
-      {queue.lastError !== undefined && (
-        <div>
-          <Alert variant="warning" role="note">
-            <CircleAlert aria-hidden="true" />
-            <AlertTitle>{text.lastError}</AlertTitle>
-            <AlertDescription>
-              <p className="break-all">{queue.lastError}</p>
-            </AlertDescription>
-          </Alert>
-        </div>
-      )}
-    </PageSection>
-  );
-}
-
-function SectionsLoading({
-  description,
-  loadError,
-  onRetry,
-}: {
-  description: ReactNode;
-  loadError: UiText | null;
-  onRetry: () => void;
-}) {
-  const text = t.settings.autoTagging;
-  return (
-    <>
-      {loadError === null && (
-        <PageSection title={text.progressHeading}>
-          <Skeleton className="h-8" />
-        </PageSection>
-      )}
-      <PageSection title={text.heading} description={description}>
-        {loadError !== null ? (
-          <div>
-            <ErrorState
-              title={text.loadFailed(loadError)}
-              retryLabel={t.common.retry}
-              onRetry={onRetry}
-            />
-          </div>
-        ) : (
-          <div role="status" aria-label={text.loading} className="flex flex-col gap-3">
-            <Skeleton className="h-9" />
-            <Skeleton className="h-9" />
-          </div>
-        )}
-      </PageSection>
-    </>
-  );
-}
 
 function ClassifierFeedback({
   check,
@@ -219,7 +123,6 @@ export default function AutoTaggingSection({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<UiText | null>(null);
   const [check, setCheck] = useState<CheckState>({ kind: "idle" });
-  const [starting, setStarting] = useState<AutoTaggingScope | null>(null);
   const controller = useRef<AbortController | null>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -252,6 +155,14 @@ export default function AutoTaggingSection({
     const timer = window.setInterval(() => void load(), pollMs);
     return () => window.clearInterval(timer);
   }, [active, load]);
+
+  const { starting, run } = useRunStart({
+    start: startAutoTagging,
+    started: text.started,
+    startFailed: text.startFailed,
+    reload: load,
+    locked,
+  });
 
   const threshold = draft === null ? null : parseThreshold(draft.threshold);
   const tentativeThreshold =
@@ -307,20 +218,6 @@ export default function AutoTaggingSection({
     }
   };
 
-  const start = async (scope: AutoTaggingScope) => {
-    if (locked || starting !== null) return;
-    setStarting(scope);
-    try {
-      const queued = await startAutoTagging(scope);
-      toast(text.started(queued));
-      await load();
-    } catch (failure) {
-      toast(text.startFailed(errorText(failure)));
-    } finally {
-      setStarting(null);
-    }
-  };
-
   const update = (change: Partial<Draft>) => {
     if (locked) return;
     setDraft((current) => (current === null ? current : { ...current, ...change }));
@@ -331,20 +228,26 @@ export default function AutoTaggingSection({
 
   if (pending || draft === null || settings === null)
     return (
-      <SectionsLoading
+      <RunSectionsLoading
+        progressHeading={text.progressHeading}
+        heading={text.heading}
         description={description}
-        loadError={loadError}
+        loadingLabel={text.loading}
+        loadError={loadError === null ? null : text.loadFailed(loadError)}
         onRetry={() => void load()}
       />
     );
 
   return (
     <>
-      <ProgressSection
-        settings={settings}
+      <RunProgressSection
+        text={{ ...text, lastFailure: text.lastError }}
+        enabled={settings.enabled}
+        counts={settings.queue}
+        lastFailure={settings.queue.lastError}
         starting={starting}
         locked={locked}
-        onStart={(scope) => void start(scope)}
+        onStart={(scope) => void run(scope)}
       />
       <PageSection title={text.heading} description={description}>
         <FormRow

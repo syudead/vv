@@ -454,6 +454,22 @@ longer `running` writes nothing either.
 | Queueing every video in the library on a switch | Turning the feature on with a recognizer other than the default would queue the whole library, while the default queues nothing |
 | Keeping the old recognizer's vectors until the videos are analysed again | They cannot be compared with the new ones, and a switch back would mix vectors of two analyses |
 
+## The settings page
+
+**Face recognition** in Settings
+([`FaceRecognitionSection.tsx`](../../web/src/settings/FaceRecognitionSection.tsx))
+shares the Auto-tagging page's `Progress` section and run buttons. It reads
+`GET /api/settings/face-recognition` on opening, every second while the
+runtime is `downloading` and every three seconds while videos are queued or
+running. The download's progress and failure sit under the switch that
+started it, with `Download again` on a failure.
+
+| Decision | Why |
+| --- | --- |
+| A recognizer change while on is confirmed first, and the radio moves only when the `PUT` answers | One press queues every video again; a failed save must leave the saved recognizer shown |
+| The non-commercial license is shown on the option itself | The owner must see it before choosing, not after |
+| `unsupported` is a page notice that keeps every control visible with `aria-disabled` | It is the one condition that locks the whole page, as the Ollama lock does on Auto-tagging |
+
 ## The face worker analyses one video at a time
 
 `FaceRecognizer` ([`face_recognizer.go`](../../internal/app/face_recognizer.go))

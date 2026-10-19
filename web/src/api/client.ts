@@ -98,6 +98,10 @@ export type AutoTaggingScope = components["schemas"]["StartAutoTaggingRequest"][
 export type UpdateAutoTaggingSettings =
   components["schemas"]["UpdateAutoTaggingSettingsRequest"];
 export type FolderWatch = components["schemas"]["FolderWatch"];
+export type FaceRecognitionSettings = components["schemas"]["FaceRecognitionSettings"];
+export type FaceRecognizer = components["schemas"]["FaceRecognizer"];
+export type FaceRecognitionScope =
+  components["schemas"]["StartFaceRecognitionRequest"]["scope"];
 export type VideoEncoderChoice = components["schemas"]["VideoEncoderChoice"];
 export type VideoEncoder = components["schemas"]["VideoEncoder"];
 export type EncoderAvailability = components["schemas"]["EncoderAvailability"];
@@ -996,20 +1000,62 @@ export function checkAutoTaggingClassifier(signal?: AbortSignal): Promise<CheckR
   return request<CheckResult>("/api/auto-tagging/check", { method: "POST", signal });
 }
 
-export async function startAutoTagging(
+/** Queue a feature's analysis run and return the queued count. */
+async function queueRun(
+  path: string,
+  scope: "missing" | "all",
+  signal?: AbortSignal,
+): Promise<number> {
+  const result = await request<{ queued: number }>(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scope }),
+    signal,
+  });
+  return result.queued;
+}
+
+export function startAutoTagging(
   scope: AutoTaggingScope,
   signal?: AbortSignal,
 ): Promise<number> {
-  const result = await request<components["schemas"]["AutoTaggingQueued"]>(
-    "/api/auto-tagging/runs",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scope }),
-      signal,
-    },
-  );
-  return result.queued;
+  return queueRun("/api/auto-tagging/runs", scope, signal);
+}
+
+export function getFaceRecognitionSettings(
+  signal?: AbortSignal,
+): Promise<FaceRecognitionSettings> {
+  return request<FaceRecognitionSettings>("/api/settings/face-recognition", { signal });
+}
+
+/** Turning on starts the download; a changed recognizer queues every video again. */
+export function updateFaceRecognitionSettings(
+  settings: { enabled: boolean; recognizer: FaceRecognizer },
+  signal?: AbortSignal,
+): Promise<FaceRecognitionSettings> {
+  return request<FaceRecognitionSettings>("/api/settings/face-recognition", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+    signal,
+  });
+}
+
+/** Start the download again after a failure; answers with the settings body. */
+export function downloadFaceRuntime(
+  signal?: AbortSignal,
+): Promise<FaceRecognitionSettings> {
+  return request<FaceRecognitionSettings>("/api/face-recognition/download", {
+    method: "POST",
+    signal,
+  });
+}
+
+export function startFaceRecognition(
+  scope: FaceRecognitionScope,
+  signal?: AbortSignal,
+): Promise<number> {
+  return queueRun("/api/face-recognition/runs", scope, signal);
 }
 
 /** Return false if this video is already queued or running. */
