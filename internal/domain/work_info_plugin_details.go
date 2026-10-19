@@ -7,10 +7,15 @@ import (
 
 // Trim and drop empty/unknown detail entries before enforcing limits; malformed fields are ignored under contract 1, while semantic validation is deferred to apply.
 
+// ImageURL and Profile keep the plugin's values without the apply's validation; Image is the header-checked face
+// VVMDM fetched from ImageURL.
 type FetchedPerson struct {
 	Role        PersonRole
 	Name        string
 	ExternalIDs []ExternalID
+	ImageURL    string
+	Profile     PersonProfile
+	Image       *WorkInfoCover
 }
 
 type FetchedOrganization struct {
@@ -40,6 +45,8 @@ type fetchedCreditJSON struct {
 	Role        string          `json:"role"`
 	Name        string          `json:"name"`
 	ExternalIDs json.RawMessage `json:"externalIds"`
+	Image       json.RawMessage `json:"image"`
+	Profile     json.RawMessage `json:"profile"`
 }
 
 type fetchedExternalIDJSON struct {
@@ -53,16 +60,20 @@ func parseWorkDetails(raw workDetailsJSON, out *FetchedWorkInfo) {
 	out.Description = lenientString(raw.Description)
 	out.Dates = parseFetchedDates(lenientList[fetchedDateJSON](raw.Dates))
 	out.People = parseFetchedCredits(lenientList[fetchedCreditJSON](raw.People), PersonRoles,
-		limits.PeoplePerRoleMaxCount, func(role PersonRole, name string, ids []ExternalID) FetchedPerson {
-			return FetchedPerson{Role: role, Name: name, ExternalIDs: ids}
+		limits.PeoplePerRoleMaxCount, func(role PersonRole, name string, ids []ExternalID, raw fetchedCreditJSON) FetchedPerson {
+			return FetchedPerson{
+				Role: role, Name: name, ExternalIDs: ids,
+				ImageURL: fetchedImageURL(lenientString(raw.Image)), Profile: parseFetchedProfile(raw.Profile),
+			}
 		})
+	// Organizations take neither an image nor a profile.
 	out.Organizations = parseFetchedCredits(lenientList[fetchedCreditJSON](raw.Organizations), OrganizationRoles,
-		limits.OrganizationsPerRoleMaxCount, func(role OrganizationRole, name string, ids []ExternalID) FetchedOrganization {
+		limits.OrganizationsPerRoleMaxCount, func(role OrganizationRole, name string, ids []ExternalID, _ fetchedCreditJSON) FetchedOrganization {
 			return FetchedOrganization{Role: role, Name: name, ExternalIDs: ids}
 		})
 	out.URLs = parseFetchedURLs(lenientList[string](raw.URLs), limits.URLsMaxCount)
 	out.ExternalIDs = parseFetchedExternalIDs(raw.ExternalIDs)
-	out.CoverURL = workInfoCoverURL(lenientString(raw.Cover))
+	out.CoverURL = fetchedImageURL(lenientString(raw.Cover))
 }
 
 // Missing/nonstring values become empty strings.
@@ -107,7 +118,7 @@ func parseFetchedDates(raw []fetchedDateJSON) []WorkDate {
 
 // Deduplicate credits per role by name and external-ID set, ignoring external-ID order, then enforce per-role limits.
 func parseFetchedCredits[R ~string, C any](
-	raw []fetchedCreditJSON, roles []R, limit int, build func(R, string, []ExternalID) C,
+	raw []fetchedCreditJSON, roles []R, limit int, build func(R, string, []ExternalID, fetchedCreditJSON) C,
 ) []C {
 	type key struct {
 		role R
@@ -134,7 +145,7 @@ func parseFetchedCredits[R ~string, C any](
 		}
 		seen[k] = true
 		counts[role]++
-		out = append(out, build(role, name, ids))
+		out = append(out, build(role, name, ids, c))
 	}
 	return out
 }

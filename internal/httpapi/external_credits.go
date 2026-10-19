@@ -103,12 +103,11 @@ func (e *externalServer) listCredits(w http.ResponseWriter, r *http.Request, api
 	if !e.acceptListQuery(w, problem) {
 		return
 	}
-	query, problem := buildTagListQuery(params.Q, nil, nil, sortParam(params.Sort), params.Cursor, limit)
+	query, problem := buildCreditListQuery(api.kind, params.Q, sortParam(params.Sort), params.Cursor, limit)
 	if !e.acceptListQuery(w, problem) || !e.creditsConfigured(w) {
 		return
 	}
-	page, err := e.s.credits.List(r.Context(), api.kind,
-		domain.CreditQuery{Q: query.Search, Sort: query.Sort, Cursor: query.Cursor, Limit: query.Limit})
+	page, err := e.s.credits.List(r.Context(), api.kind, query)
 	if errors.Is(err, domain.ErrInvalidCursor) {
 		reason := extgen.InvalidCursor
 		e.invalidRequest(w, &reason, "Cannot read the cursor. Read the list again from the start with the same q and sort.")
@@ -168,18 +167,15 @@ func (e *externalServer) createCredit(w http.ResponseWriter, r *http.Request, ap
 	if !ok || !e.requireProperties(w, fields, "name") {
 		return
 	}
-	// People reject parentId even when null.
-	if fields.has("parentId") && api.kind != domain.CreditOrganization {
-		e.invalidRequest(w, nil, "parentId applies to organizations only.")
+	input, message, ok := creditInputOf(body, fields.has, api.kind)
+	if !ok {
+		e.invalidRequest(w, nil, message)
 		return
 	}
 	if !e.creditsConfigured(w) {
 		return
 	}
-	credit, err := e.s.credits.Create(r.Context(), api.kind, domain.CreditInput{
-		Name: body.Name, Aliases: fromAPIAliases(body.Aliases), ExternalIDs: fromAPIExternalIDs(body.ExternalIds),
-		ParentID: body.ParentId,
-	})
+	credit, err := e.s.credits.Create(r.Context(), api.kind, input)
 	if err != nil {
 		e.writeCreditError(w, api, err)
 		return
@@ -198,7 +194,7 @@ func (e *externalServer) updateCredit(w http.ResponseWriter, r *http.Request, ap
 	if !ok || !e.requireProperties(w, fields, "id") {
 		return
 	}
-	patch, message, ok := creditPatchOf(body.CreditPatch, fields.has, api.kind)
+	patch, message, ok := creditPatchOf(body.CreditPatch, fields, api.kind)
 	if !ok {
 		e.invalidRequest(w, nil, message)
 		return
@@ -358,7 +354,8 @@ func mapCredits[T any](credits []domain.Credit, convert func(domain.Credit) T) [
 func toExternalPerson(credit domain.Credit) extgen.Person {
 	return extgen.Person{
 		Id: credit.ID, Name: credit.Name, Aliases: toExternalAliases(credit.Aliases),
-		ExternalIds: toExternalExternalIDs(credit.ExternalIDs), VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,
+		ExternalIds: toExternalExternalIDs(credit.ExternalIDs), Profile: toExternalProfile(credit.Profile),
+		VideoCount: credit.VideoCount, CreatedAt: credit.CreatedAt,
 	}
 }
 

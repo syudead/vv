@@ -67,6 +67,10 @@ func TestMergeAppendsPerformersAndURLsWithoutRepeats(t *testing.T) {
 	if !reflect.DeepEqual(got.Info.People, wantPeople) {
 		t.Errorf("people = %+v, want %+v", got.Info.People, wantPeople)
 	}
+	// An entry already linked points at its link; one in an unselected role points nowhere.
+	if want := []int{0, 1, 1, -1}; !reflect.DeepEqual(got.PersonLinks, want) {
+		t.Errorf("person links = %v, want %v", got.PersonLinks, want)
+	}
 	if want := []string{"https://example.com/a", "https://example.com/b"}; !reflect.DeepEqual(got.Info.URLs, want) {
 		t.Errorf("urls = %v, want %v", got.Info.URLs, want)
 	}
@@ -165,6 +169,9 @@ func TestMergeChecksNewEntitiesBeforeKeepingThem(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.Info.People, wantPeople) {
 		t.Errorf("people = %+v, want %+v", got.Info.People, wantPeople)
+	}
+	if want := []int{-1, -1, 0, -1, 1}; !reflect.DeepEqual(got.PersonLinks, want) {
+		t.Errorf("person links = %v, want %v", got.PersonLinks, want)
 	}
 }
 

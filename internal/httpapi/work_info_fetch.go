@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -72,11 +73,19 @@ func toAPIWorkInfoFetch(fetch domain.WorkInfoFetchResult) gen.WorkInfoFetch {
 		dates = append(dates, gen.WorkInfoFetchedDate{Kind: gen.WorkDateKind(d.Kind), Date: d.Date})
 	}
 	people := make([]gen.WorkInfoFetchedPerson, 0, len(details.People))
+	today := time.Now()
 	for i, p := range details.People {
-		people = append(people, gen.WorkInfoFetchedPerson{
+		person := gen.WorkInfoFetchedPerson{
 			Role: gen.WorkPersonRole(p.Role), Name: p.Name, ExternalIds: toAPIExternalIDs(p.ExternalIDs),
 			Match: toAPIWorkInfoMatch(fetch.PersonMatches, i),
-		})
+		}
+		if p.Image != nil {
+			person.HasImage = new(true)
+		}
+		if profile := domain.ShownFetchedProfile(p.Profile, today); !profile.Equal(domain.PersonProfile{}) {
+			person.Profile = new(toAPIProfile(profile))
+		}
+		people = append(people, person)
 	}
 	organizations := make([]gen.WorkInfoFetchedOrganization, 0, len(details.Organizations))
 	for i, o := range details.Organizations {
@@ -131,12 +140,35 @@ func (s *server) GetWorkInfoFetchCover(w http.ResponseWriter, _ *http.Request, i
 		s.notFound(w, "The fetched result has no cover, or it belongs to another video.")
 		return
 	}
-	w.Header().Set("Content-Type", cover.ContentType)
+	writeFetchedImage(w, cover)
+}
+
+// GetWorkInfoFetchPersonImage serves the image vv kept for the fetched person at index, like the cover.
+func (s *server) GetWorkInfoFetchPersonImage(
+	w http.ResponseWriter, _ *http.Request, id gen.VideoId, fetchID gen.WorkInfoFetchId, index int,
+) {
+	if !s.workInfoPluginsConfigured(w) {
+		return
+	}
+	image, err := s.workInfoPlugins.WorkInfoFetchPersonImage(id, fetchID, index)
+	switch {
+	case errors.Is(err, domain.ErrPersonImageNotFound):
+		s.notFoundReason(w, reasonPersonImageNotFound, "The fetched person has no image.")
+	case err != nil:
+		s.notFound(w, "The fetched result was not found, or it belongs to another video.")
+	default:
+		writeFetchedImage(w, image)
+	}
+}
+
+// writeFetchedImage serves bytes fetched and header-checked by vv, with the content type vv determined.
+func writeFetchedImage(w http.ResponseWriter, image domain.WorkInfoCover) {
+	w.Header().Set("Content-Type", image.ContentType)
 	w.Header().Set("Cache-Control", cacheNoStore)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(cover.Data)
+	_, _ = w.Write(image.Data)
 }
 
 // ApplyWorkInfoFetch applies selected fields; tags restrict imported tags to the selected names.

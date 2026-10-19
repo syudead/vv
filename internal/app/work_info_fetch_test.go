@@ -84,8 +84,11 @@ type fakeFetchApplier struct {
 	tags     map[int64][]string
 	rejected []string
 	skipped  []domain.SkippedWorkInfoValue
-	err      error
-	calls    []domain.FetchedWorkInfoApply
+	// personIDs is returned as the people the apply linked, and workInfo as the applied video's work information.
+	personIDs []int64
+	workInfo  *domain.WorkInfo
+	err       error
+	calls     []domain.FetchedWorkInfoApply
 
 	fetches []recordedFetch
 }
@@ -121,8 +124,8 @@ func (a *fakeFetchApplier) ApplyFetchedWorkInfo(ctx context.Context, apply domai
 		}
 		a.tags[apply.VideoID] = append(a.tags[apply.VideoID], name)
 	}
-	video := domain.Video{ID: apply.VideoID, DisplayName: a.titles[apply.VideoID]}
-	return domain.FetchedWorkInfoApplied{Video: video, RejectedTags: rejected, Skipped: a.skipped}, nil
+	video := domain.Video{ID: apply.VideoID, DisplayName: a.titles[apply.VideoID], WorkInfo: a.workInfo}
+	return domain.FetchedWorkInfoApplied{Video: video, RejectedTags: rejected, Skipped: a.skipped, PersonIDs: a.personIDs}, nil
 }
 
 const (

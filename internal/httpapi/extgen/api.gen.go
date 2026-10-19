@@ -16,6 +16,8 @@ import (
 
 // Defines values for CreditSort.
 const (
+	CreditSortAgeAsc      CreditSort = "ageAsc"
+	CreditSortAgeDesc     CreditSort = "ageDesc"
 	CreditSortCountAsc    CreditSort = "countAsc"
 	CreditSortCountDesc   CreditSort = "countDesc"
 	CreditSortCreatedAsc  CreditSort = "createdAsc"
@@ -26,6 +28,10 @@ const (
 // Valid indicates whether the value is a known member of the CreditSort enum.
 func (e CreditSort) Valid() bool {
 	switch e {
+	case CreditSortAgeAsc:
+		return true
+	case CreditSortAgeDesc:
+		return true
 	case CreditSortCountAsc:
 		return true
 	case CreditSortCountDesc:
@@ -105,6 +111,7 @@ const (
 	WorkInfoInvalidDate          ErrorReason = "work_info_invalid_date"
 	WorkInfoInvalidLanguage      ErrorReason = "work_info_invalid_language"
 	WorkInfoInvalidUrl           ErrorReason = "work_info_invalid_url"
+	WorkInfoOutOfRange           ErrorReason = "work_info_out_of_range"
 	WorkInfoTooLong              ErrorReason = "work_info_too_long"
 	WorkInfoTooMany              ErrorReason = "work_info_too_many"
 )
@@ -176,6 +183,8 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case WorkInfoInvalidUrl:
 		return true
+	case WorkInfoOutOfRange:
+		return true
 	case WorkInfoTooLong:
 		return true
 	case WorkInfoTooMany:
@@ -206,6 +215,51 @@ func (e ExternalScanStatus) Valid() bool {
 	case Partial:
 		return true
 	case Running:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PersonProfileBloodType.
+const (
+	A  PersonProfileBloodType = "A"
+	AB PersonProfileBloodType = "AB"
+	B  PersonProfileBloodType = "B"
+	O  PersonProfileBloodType = "O"
+)
+
+// Valid indicates whether the value is a known member of the PersonProfileBloodType enum.
+func (e PersonProfileBloodType) Valid() bool {
+	switch e {
+	case A:
+		return true
+	case AB:
+		return true
+	case B:
+		return true
+	case O:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for PersonProfileGender.
+const (
+	Female PersonProfileGender = "female"
+	Male   PersonProfileGender = "male"
+	Other  PersonProfileGender = "other"
+)
+
+// Valid indicates whether the value is a known member of the PersonProfileGender enum.
+func (e PersonProfileGender) Valid() bool {
+	switch e {
+	case Female:
+		return true
+	case Male:
+		return true
+	case Other:
 		return true
 	default:
 		return false
@@ -395,7 +449,7 @@ type CreditIdRef struct {
 	Id int64 `json:"id"`
 }
 
-// CreditInput Person or organization creation body; parentId is organization-only.
+// CreditInput Person or organization creation body; parentId is organization-only and profile person-only.
 type CreditInput struct {
 	Aliases     *[]Alias      `json:"aliases,omitempty"`
 	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
@@ -403,6 +457,9 @@ type CreditInput struct {
 
 	// ParentId Parent organization ID; sending it for a person returns 400 invalid_request.
 	ParentId *int64 `json:"parentId,omitempty"`
+
+	// Profile Person-only profile; sending it for an organization returns 400 invalid_request.
+	Profile *PersonProfile `json:"profile,omitempty"`
 }
 
 // CreditMergeRequest defines model for CreditMergeRequest.
@@ -420,7 +477,7 @@ type CreditRef struct {
 	Name string `json:"name"`
 }
 
-// CreditSort Same five sort modes as TagSort; ties use natural-name order, then ID.
+// CreditSort The five TagSort modes, plus ageAsc (newest birth date first) and ageDesc (oldest first) for people only; organizations answer either with 400 invalid_request. A partial birth date sorts as its first possible day, and people without one come last in both age sorts. Ties use natural-name order, then ID.
 type CreditSort string
 
 // CreditUpdateRequest Update body: id is required; omitted properties remain unchanged. Lists are replaced entirely and null clears them; organization-only parentId null removes the parent.
@@ -434,6 +491,9 @@ type CreditUpdateRequest struct {
 
 	// ParentId Parent organization ID; null detaches it. Sending this for a person returns 400 invalid_request.
 	ParentId *int64 `json:"parentId,omitempty"`
+
+	// Profile Person-only; sending it for an organization returns 400 invalid_request. A profile that changes nothing writes nothing.
+	Profile *PersonProfilePatch `json:"profile,omitempty"`
 }
 
 // Error Same error shape as the UI API, with the additional index field.
@@ -621,6 +681,9 @@ type Person struct {
 	Id          int64        `json:"id"`
 	Name        string       `json:"name"`
 
+	// Profile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
+	Profile PersonProfile `json:"profile"`
+
 	// VideoCount Visible videos linked to this person in any role.
 	VideoCount int `json:"videoCount"`
 }
@@ -646,6 +709,102 @@ type PersonMergeResponse struct {
 
 	// Person One person.
 	Person Person `json:"person"`
+}
+
+// PersonProfile A person's profile; each property is omitted when unknown. Values out of range or format return 400 with a work_info_* reason and field profile.<name>.
+type PersonProfile struct {
+	// Bio 1-5,000 code points; line breaks are kept.
+	Bio *string `json:"bio,omitempty"`
+
+	// BirthDate YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.
+	//
+	// Examples: 1990, 1990-05, 1990-05-17
+	BirthDate *string `json:"birthDate,omitempty"`
+
+	// Birthplace 1-200 code points.
+	Birthplace *string                 `json:"birthplace,omitempty"`
+	BloodType  *PersonProfileBloodType `json:"bloodType,omitempty"`
+
+	// BustCm 30-300.
+	BustCm *int `json:"bustCm,omitempty"`
+
+	// CareerEndYear 1900-9999; not before careerStartYear.
+	CareerEndYear *int `json:"careerEndYear,omitempty"`
+
+	// CareerStartYear 1900-9999.
+	CareerStartYear *int `json:"careerStartYear,omitempty"`
+
+	// Cup 1-3 Latin letters, stored upper case.
+	Cup *string `json:"cup,omitempty"`
+
+	// DeathDate Same format as birthDate; not before it at the precision both share.
+	DeathDate *string              `json:"deathDate,omitempty"`
+	Gender    *PersonProfileGender `json:"gender,omitempty"`
+
+	// HeightCm 50-300.
+	HeightCm *int `json:"heightCm,omitempty"`
+
+	// HipsCm 30-300.
+	HipsCm *int `json:"hipsCm,omitempty"`
+
+	// Links HTTP(S) URLs in order, at most 20 and unique; omitted when empty.
+	Links *[]string `json:"links,omitempty"`
+
+	// WaistCm 30-300.
+	WaistCm *int `json:"waistCm,omitempty"`
+}
+
+// PersonProfileBloodType defines model for PersonProfile.BloodType.
+type PersonProfileBloodType string
+
+// PersonProfileGender defines model for PersonProfile.Gender.
+type PersonProfileGender string
+
+// PersonProfilePatch Profile update: each property present replaces that field, null or an empty value clears it, and links replaces the list.
+type PersonProfilePatch struct {
+	// Bio 1-5,000 code points; line breaks are kept.
+	Bio *string `json:"bio,omitempty"`
+
+	// BirthDate YYYY, YYYY-MM or YYYY-MM-DD, not after today in UTC.
+	//
+	// Examples: 1990, 1990-05, 1990-05-17
+	BirthDate *string `json:"birthDate,omitempty"`
+
+	// Birthplace 1-200 code points.
+	Birthplace *string `json:"birthplace,omitempty"`
+
+	// BloodType A, B, O or AB.
+	BloodType *string `json:"bloodType,omitempty"`
+
+	// BustCm 30-300.
+	BustCm *int `json:"bustCm,omitempty"`
+
+	// CareerEndYear 1900-9999; not before careerStartYear.
+	CareerEndYear *int `json:"careerEndYear,omitempty"`
+
+	// CareerStartYear 1900-9999.
+	CareerStartYear *int `json:"careerStartYear,omitempty"`
+
+	// Cup 1-3 Latin letters, stored upper case.
+	Cup *string `json:"cup,omitempty"`
+
+	// DeathDate Same format as birthDate; not before it at the precision both share.
+	DeathDate *string `json:"deathDate,omitempty"`
+
+	// Gender female, male or other.
+	Gender *string `json:"gender,omitempty"`
+
+	// HeightCm 50-300.
+	HeightCm *int `json:"heightCm,omitempty"`
+
+	// HipsCm 30-300.
+	HipsCm *int `json:"hipsCm,omitempty"`
+
+	// Links HTTP(S) URLs in order, at most 20 and unique; omitted when empty.
+	Links *[]string `json:"links,omitempty"`
+
+	// WaistCm 30-300.
+	WaistCm *int `json:"waistCm,omitempty"`
 }
 
 // RejectedTagNameForgetResult defines model for RejectedTagNameForgetResult.

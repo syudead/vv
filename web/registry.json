@@ -235,6 +235,20 @@
       "dependencies": ["lucide-react"]
     },
     {
+      "name": "person-face",
+      "type": "registry:ui",
+      "title": "PersonFace",
+      "description": "vv component: a person's face, or the UserRound placeholder in the same frame, in four shapes (card, profile, chip, compare); PersonFaceMark places a mark in a corner.",
+      "docs": "Usage rules: web/registry/rules/components.md#personface (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/PersonFace.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["lucide-react"]
+    },
+    {
       "name": "field",
       "type": "registry:ui",
       "title": "Field",
@@ -850,7 +864,7 @@
       "name": "card-grid",
       "type": "registry:ui",
       "title": "CardGrid",
-      "description": "Section: cards at least card-0 to card-3 wide, stretched so both edges line up with the toolbar.",
+      "description": "Section: cards at least card-0 to card-3 wide, or card-face for face cards, stretched so both edges line up with the toolbar.",
       "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
       "files": [
         {
@@ -928,7 +942,7 @@
       "name": "loading-state",
       "type": "registry:ui",
       "title": "LoadingState",
-      "description": "State: Skeleton shapes of the final grid, table, grouped list or cards in the body slot. Uses skeleton.",
+      "description": "State: Skeleton shapes of the final grid (face circles with size face), table, grouped list or cards in the body slot. Uses skeleton.",
       "docs": "Usage rules: web/registry/rules/patterns.md#states (item vv-rules).",
       "files": [
         {
@@ -1153,6 +1167,45 @@
       "files": [
         {
           "path": "src/designSystem/blocks/form-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "profile-page",
+      "type": "registry:ui",
+      "title": "ProfilePage",
+      "description": "Page skeleton for one subject's profile beside its items: a profile column (face, identity, details) sticky at the left from lg, and a main column with a header, one line of filters and the body.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#profile-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/profile-page.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "profile-page-example",
+      "type": "registry:block",
+      "title": "Profile page example",
+      "description": "A working profile page: a person's face, name, actions and facts beside a filtered grid of video cards.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#profile-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/profile-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "face-grid-example",
+      "type": "registry:block",
+      "title": "Face grid example",
+      "description": "A grid of round face cards, each a face or its placeholder with the name and a meta line, and its loading skeletons.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#face-grid (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/face-grid-example.tsx",
           "type": "registry:component"
         }
       ]

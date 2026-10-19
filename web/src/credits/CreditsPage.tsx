@@ -10,7 +10,6 @@ import {
   updateCredit,
 } from "../api/credits";
 import { errorText, t, type UiText } from "../i18n";
-import { foldForMatch } from "../lib/foldForMatch";
 import { writeListSortPreferences } from "../preferences/tagListPreferences";
 import TopBarPortal from "../shell/TopBarPortal";
 import CreateTagRow from "../tags/CreateTagRow";
@@ -28,7 +27,7 @@ import {
 } from "../tags/tagPageRows";
 import { AdminListToolbar } from "../tags/TagToolbar";
 import { useAdminTableBand, useListScrollMargin } from "../tags/useAdminTableBand";
-import { usePagedRows } from "../tags/useTagPage";
+import { usePagedRows, useSearchQuery } from "../tags/useTagPage";
 import { ROW_OVERSCAN, useVirtualTagRows } from "../tags/useVirtualTagRows";
 import { virtualBodyRows } from "../tags/virtualBodyRows";
 import { creditNameRules } from "../ui/CreditCommand";
@@ -130,14 +129,10 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
   }
 
   // Normalize queries to ignore whitespace-only filters and avoid reloading equivalent queries.
-  const normalizedQuery = foldForMatch(search).trim();
-  const searchRef = useRef(search);
-  useLayoutEffect(() => {
-    searchRef.current = search;
-  });
+  const { normalizedQuery, searchRef } = useSearchQuery(search);
   useEffect(() => {
     void load({ query: normalizedQuery, search: searchRef.current, sort });
-  }, [normalizedQuery, sort, load]);
+  }, [normalizedQuery, sort, load, searchRef]);
 
   function shown(credit: Credit): boolean {
     const query = pageRef.current?.query;

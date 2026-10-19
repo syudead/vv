@@ -405,6 +405,30 @@ row. Shown to the owner only.
 
 Do not use the `favorite` colour or a heart for anything else.
 
+### PersonFace
+
+Item `person-face`. A person's face in one of four frames, or the placeholder
+in the same frame, so a row that mixes both keeps one height:
+
+| Shape     | Frame                                       | Where                                   |
+| --------- | ------------------------------------------- | --------------------------------------- |
+| `card`    | Full width, `aspect-square`, `rounded-full` | A card of the people grid               |
+| `profile` | Full width, `aspect-portrait`, `rounded-md` | The person page's profile column        |
+| `chip`    | `size-5`, `rounded-full`, a `text-sm` line  | Next to a name in the video page's cast |
+| `compare` | `size-8`, `rounded-full`                    | A fetched person in a comparison        |
+
+The image is cropped with `object-cover` and `object-face`: centred
+horizontally and a third from the top, where a portrait usually holds the
+face. The placeholder is lucide `UserRound` in `muted-foreground` on
+`bg-muted`, not a letter, since the first character of a Japanese name tells
+the viewer little; it also stands in when the image fails to load. Pass
+`onAdd` and `addLabel` to make the placeholder a button that adds a face.
+Put marks over the frame, such as the favorite heart, as children in a
+`PersonFaceMark` (`top-end` or `bottom-end`).
+
+Do not use it for anything but a person: organizations and videos have no
+face.
+
 ### TentativeMark
 
 Item `tentative-mark`. The dashed circle after a tentative tag's name, in a
