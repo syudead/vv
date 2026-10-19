@@ -81,6 +81,7 @@ const (
 	ActivityKindBundle             ActivityKind = "bundle"
 	ActivityKindDismiss            ActivityKind = "dismiss"
 	ActivityKindFaceAnalysis       ActivityKind = "face_analysis"
+	ActivityKindFaceMerge          ActivityKind = "face_merge"
 	ActivityKindImport             ActivityKind = "import"
 	ActivityKindMakeRepresentative ActivityKind = "make_representative"
 	ActivityKindMediaFolderRemove  ActivityKind = "media_folder_remove"
@@ -108,6 +109,8 @@ func (e ActivityKind) Valid() bool {
 	case ActivityKindDismiss:
 		return true
 	case ActivityKindFaceAnalysis:
+		return true
+	case ActivityKindFaceMerge:
 		return true
 	case ActivityKindImport:
 		return true

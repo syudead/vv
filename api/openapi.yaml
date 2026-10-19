@@ -9267,6 +9267,7 @@ components:
         - media_folder_remove
         - organize_undo
         - face_analysis
+        - face_merge
         - pipeline
         - undo
 

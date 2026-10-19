@@ -261,6 +261,7 @@ func run(opts runOptions) error {
 			domain.ActivityAutoTag:          autoTagger,
 			domain.ActivityVersionJudgement: versionJudgementActivity,
 			domain.ActivityFaceAnalysis:     app.NewFaceLinkUndoer(db.Faces()),
+			domain.ActivityFaceMerge:        app.NewFaceMergeActivity(db.Activity()),
 		},
 	})
 	subscriptions := subscribeEvents(bus, eventSubscribers{

@@ -256,8 +256,8 @@ func checkCreditRefs(ctx context.Context, tx *sql.Tx, infos []domain.WorkInfo) (
 	return -1, nil
 }
 
-// Write only changed keys in input order, dropping the face appearances of removed performers; the caller advances
-// edit times.
+// Write only changed keys in input order, dropping the face appearances of removed performers and marking the
+// removed credits of automatic merges; the caller advances edit times.
 func applyWorkInfo(ctx context.Context, tx *sql.Tx, keys []string, final map[string]domain.WorkInfo) ([]string, error) {
 	before, err := workInfoByUserKeys(ctx, tx, keys)
 	if err != nil {
@@ -269,6 +269,9 @@ func applyWorkInfo(ctx context.Context, tx *sql.Tx, keys []string, final map[str
 			continue
 		}
 		if err := dropRemovedPerformerFaces(ctx, tx, key, before[key], final[key]); err != nil {
+			return nil, err
+		}
+		if err := markOwnerChangedMergeCredits(ctx, tx, key, before[key], final[key]); err != nil {
 			return nil, err
 		}
 		if err := replaceWorkInfo(ctx, tx, key, final[key]); err != nil {

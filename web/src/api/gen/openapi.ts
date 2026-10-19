@@ -5266,7 +5266,7 @@ export interface components {
          * @description Activity record kind.
          * @enum {string}
          */
-        ActivityKind: "import" | "scan" | "auto_tag" | "version_judgement" | "work_info_fetch" | "bundle" | "unbundle" | "make_representative" | "dismiss" | "tag_attach" | "tag_detach" | "tag_keep" | "tag_reject" | "work_info_apply" | "media_folder_remove" | "organize_undo" | "face_analysis" | "pipeline" | "undo";
+        ActivityKind: "import" | "scan" | "auto_tag" | "version_judgement" | "work_info_fetch" | "bundle" | "unbundle" | "make_representative" | "dismiss" | "tag_attach" | "tag_detach" | "tag_keep" | "tag_reject" | "work_info_apply" | "media_folder_remove" | "organize_undo" | "face_analysis" | "face_merge" | "pipeline" | "undo";
         /**
          * @description Kind grouping used for feature filters; undo belongs to the feature of the undone record.
          * @enum {string}
