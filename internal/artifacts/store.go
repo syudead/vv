@@ -28,6 +28,7 @@ import (
 // root is the store root, s the sanitized key, and p its first two characters.
 //
 //	<root>/<p>/<s>.jpg                 Library thumbnail
+//	<root>/poster/<p>/<s>.jpg          Player poster, published with the thumbnail
 //	<root>/seek/<p>/<s>/<n>.jpg         Three-digit sprite sheet
 //	<root>/seek/<p>/<s>/sprite.json     Layout and completion marker
 //	<root>/preview/<p>/<s>.mp4          Hover preview
@@ -36,6 +37,7 @@ import (
 //	<root>/.tmp/                        Incomplete output
 const (
 	seekDirName      = "seek"
+	posterDirName    = "poster"
 	previewDirName   = "preview"
 	temporaryDirName = ".tmp"
 	publishLockName  = ".publish.lock"
@@ -110,6 +112,10 @@ func (s *Store) thumbnailPath(contentKey string) (string, bool) {
 	return s.locate("", contentKey, thumbnailExt)
 }
 
+func (s *Store) posterPath(contentKey string) (string, bool) {
+	return s.locate(posterDirName, contentKey, thumbnailExt)
+}
+
 func (s *Store) seekDir(contentKey string) (string, bool) {
 	return s.locate(seekDirName, contentKey, "")
 }
@@ -148,10 +154,15 @@ func (s *Store) RemoveTemporary() error {
 	return nil
 }
 
-// PublishThumbnail gives write a temporary path and replaces the target only after validating
-// nonempty output.
-func (s *Store) PublishThumbnail(contentKey string, write func(output string) error) error {
+// PublishThumbnail gives write temporary paths and replaces the thumbnail only after validating
+// nonempty output. The poster is optional: without one, the previous poster is removed so it never
+// outlives the thumbnail it showed.
+func (s *Store) PublishThumbnail(contentKey string, write func(output, poster string) error) error {
 	target, err := s.publishTarget(s.thumbnailPath, contentKey)
+	if err != nil {
+		return err
+	}
+	posterTarget, err := s.publishTarget(s.posterPath, contentKey)
 	if err != nil {
 		return err
 	}
@@ -162,62 +173,92 @@ func (s *Store) PublishThumbnail(contentKey string, write func(output string) er
 	defer func() { _ = os.RemoveAll(temporary) }()
 
 	output := filepath.Join(temporary, "thumbnail"+thumbnailExt)
-	if err := write(output); err != nil {
+	poster := filepath.Join(temporary, "poster"+thumbnailExt)
+	if err := write(output, poster); err != nil {
 		return err
 	}
-	if info, err := os.Stat(output); err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+	if !nonEmptyFile(output) {
 		return fmt.Errorf("thumbnail was not generated (%s)", contentKey)
 	}
-	if err := os.MkdirAll(filepath.Dir(target), dirPerm); err != nil {
-		return fmt.Errorf("cannot create the thumbnail directory (%s): %w", filepath.Dir(target), err)
+	if nonEmptyFile(poster) {
+		if err := moveInto(poster, posterTarget); err != nil {
+			return fmt.Errorf("cannot publish the poster: %w", err)
+		}
+	} else if err := removeFile(posterTarget); err != nil {
+		return fmt.Errorf("cannot delete the poster: %w", err)
 	}
-	if err := os.Rename(output, target); err != nil {
+	if err := moveInto(output, target); err != nil {
 		return fmt.Errorf("cannot publish the thumbnail: %w", err)
 	}
 	return nil
 }
 
-// StashThumbnail supports rollback if persistence fails after publication; restore removes the new
-// image when no old one existed. Call restore or discard at least once, and serialize
-// publication/deletion in the caller.
+func nonEmptyFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular() && info.Size() > 0
+}
+
+func moveInto(source, target string) error {
+	if err := os.MkdirAll(filepath.Dir(target), dirPerm); err != nil {
+		return err
+	}
+	return os.Rename(source, target)
+}
+
+// StashThumbnail supports rollback if persistence fails after publication; restore puts back the
+// previous thumbnail and poster, removing a replacement where none existed. Call restore or discard
+// at least once, and serialize publication/deletion in the caller.
 func (s *Store) StashThumbnail(contentKey string) (restore func() error, discard func(), err error) {
-	target, err := s.publishTarget(s.thumbnailPath, contentKey)
+	thumbnail, err := s.publishTarget(s.thumbnailPath, contentKey)
 	if err != nil {
 		return nil, nil, err
 	}
-	source, err := os.Open(target)
-	if errors.Is(err, fs.ErrNotExist) {
-		restore = func() error {
-			if err := os.Remove(target); err != nil && !errors.Is(err, fs.ErrNotExist) {
-				return fmt.Errorf("cannot withdraw the thumbnail (%s): %w", contentKey, err)
-			}
-			return nil
-		}
-		return restore, func() {}, nil
-	}
+	poster, err := s.publishTarget(s.posterPath, contentKey)
 	if err != nil {
-		return nil, nil, fmt.Errorf("cannot read the current thumbnail (%s): %w", contentKey, err)
+		return nil, nil, err
 	}
-	defer func() { _ = source.Close() }()
-
 	temporary, err := s.makeTemporaryDir("thumbnail-stash-*")
 	if err != nil {
 		return nil, nil, err
 	}
 	discard = func() { _ = os.RemoveAll(temporary) }
-	backup := filepath.Join(temporary, "thumbnail"+thumbnailExt)
-	if err := copyToFile(backup, source); err != nil {
-		discard()
-		return nil, nil, fmt.Errorf("cannot keep the current thumbnail (%s): %w", contentKey, err)
+	var restores []func() error
+	for _, file := range []struct{ name, target string }{{"thumbnail", thumbnail}, {"poster", poster}} {
+		put, err := stashFile(file.target, filepath.Join(temporary, file.name+thumbnailExt))
+		if err != nil {
+			discard()
+			return nil, nil, fmt.Errorf("cannot keep the current %s (%s): %w", file.name, contentKey, err)
+		}
+		restores = append(restores, put)
 	}
 	restore = func() error {
 		defer discard()
-		if err := os.Rename(backup, target); err != nil {
-			return fmt.Errorf("cannot restore the previous thumbnail (%s): %w", contentKey, err)
+		var errs []error
+		for _, put := range restores {
+			if err := put(); err != nil {
+				errs = append(errs, fmt.Errorf("cannot restore the previous thumbnail (%s): %w", contentKey, err))
+			}
 		}
-		return nil
+		return errors.Join(errs...)
 	}
 	return restore, discard, nil
+}
+
+// stashFile copies target to backup; the returned function puts it back, or removes target when
+// there was nothing to copy.
+func stashFile(target, backup string) (func() error, error) {
+	source, err := os.Open(target)
+	if errors.Is(err, fs.ErrNotExist) {
+		return func() error { return removeFile(target) }, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = source.Close() }()
+	if err := copyToFile(backup, source); err != nil {
+		return nil, err
+	}
+	return func() error { return moveInto(backup, target) }, nil
 }
 
 func copyToFile(path string, source io.Reader) error {
@@ -381,6 +422,16 @@ func (s *Store) ThumbnailFile(contentKey string) (*os.File, error) {
 	return openRegular(path, nil)
 }
 
+// PosterFile wraps fs.ErrNotExist when the thumbnail was published without a poster; the caller
+// must close it.
+func (s *Store) PosterFile(contentKey string) (*os.File, error) {
+	path, ok := s.posterPath(contentKey)
+	if !ok {
+		return nil, errInvalidKey
+	}
+	return openRegular(path, nil)
+}
+
 // PreviewFile returns the MP4 and manifest SHA-256 after checking file size; missing or
 // inconsistent output wraps fs.ErrNotExist, and the caller must close it.
 func (s *Store) PreviewFile(contentKey string) (*os.File, string, error) {
@@ -451,6 +502,11 @@ func (s *Store) RemoveContent(contentKey string) error {
 	if path, ok := s.thumbnailPath(contentKey); ok {
 		if err := removeFile(path); err != nil {
 			errs = append(errs, fmt.Errorf("cannot delete the thumbnail: %w", err))
+		}
+	}
+	if path, ok := s.posterPath(contentKey); ok {
+		if err := removeFile(path); err != nil {
+			errs = append(errs, fmt.Errorf("cannot delete the poster: %w", err))
 		}
 	}
 	if dir, ok := s.seekDir(contentKey); ok {

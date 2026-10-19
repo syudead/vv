@@ -87,10 +87,10 @@ func (probeOnlyGenerator) CheckSource(string) error { return nil }
 func (probeOnlyGenerator) Probe(context.Context, string) (domain.Probe, error) {
 	return domain.Probe{DurationMs: 60_000, VideoCodec: "h264", AudioCodec: "aac"}, nil
 }
-func (probeOnlyGenerator) Thumbnail(context.Context, string, int64, string) (bool, error) {
+func (probeOnlyGenerator) Thumbnail(context.Context, string, int64, string, string) (bool, error) {
 	return false, nil
 }
-func (probeOnlyGenerator) ThumbnailAt(context.Context, string, int64, string) error {
+func (probeOnlyGenerator) ThumbnailAt(context.Context, string, int64, string, string) error {
 	return nil
 }
 func (probeOnlyGenerator) SpriteFingerprint(domain.SeekSprite, [][]byte) (domain.Fingerprint, error) {

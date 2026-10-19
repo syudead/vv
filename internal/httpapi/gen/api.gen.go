@@ -2271,6 +2271,21 @@ func (e WorkPersonRole) Valid() bool {
 	}
 }
 
+// Defines values for GetVideoThumbnailParamsSize.
+const (
+	Large GetVideoThumbnailParamsSize = "large"
+)
+
+// Valid indicates whether the value is a known member of the GetVideoThumbnailParamsSize enum.
+func (e GetVideoThumbnailParamsSize) Valid() bool {
+	switch e {
+	case Large:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TranscodeVideoParamsQuality.
 const (
 	N1080p TranscodeVideoParamsQuality = "1080p"
@@ -6210,7 +6225,13 @@ type GetVideoSubtitleParams struct {
 type GetVideoThumbnailParams struct {
 	// V Version in the URL returned by list or detail
 	V *string `form:"v,omitempty" json:"v,omitempty"`
+
+	// Size `large` returns the poster published with the thumbnail for display larger than a card, its long side up to 2048 px; without one it returns the 640 px image.
+	Size *GetVideoThumbnailParamsSize `form:"size,omitempty" json:"size,omitempty"`
 }
+
+// GetVideoThumbnailParamsSize defines parameters for GetVideoThumbnail.
+type GetVideoThumbnailParamsSize string
 
 // GetTranscodeStartParams defines parameters for GetTranscodeStart.
 type GetTranscodeStartParams struct {
@@ -11892,6 +11913,19 @@ func (siw *ServerInterfaceWrapper) GetVideoThumbnail(w http.ResponseWriter, r *h
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "v"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "v", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "size", r.URL.Query(), &params.Size, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
 		}
 		return
 	}

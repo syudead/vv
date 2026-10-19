@@ -165,6 +165,26 @@ An apply writes one `thumbnail_images` row in the transaction that sets
 A position change and a revert delete the whole row. The thumbnail job
 republishes `image` and never reads `source`.
 
+## The player's poster is larger than the card
+
+Cards show the 640 px thumbnail, but the player's poster fills a much wider
+frame, so the page asks for it with `size=large`.
+`GET /api/videos/{id}/thumbnail?size=large` answers the poster file, or the
+640 px thumbnail when there is none. Every publication of the thumbnail
+writes the poster with it, in the same generation lock and stash:
+
+| Thumbnail | Poster |
+| --- | --- |
+| A frame (automatic or chosen), at import, a position change or a revert | The same frame from the same ffmpeg decode, its long side at most 2048 px and never enlarged |
+| An applied image, when applied or republished by the thumbnail job | The stored `source` |
+| An applied image whose row predates migration `00041` | None |
+
+A publication without a poster removes the previous one, and a restore after a
+failed recording puts the previous poster back, so a poster never outlives the
+thumbnail it showed. Thumbnails generated before posters existed have none
+until they are generated again. The poster is served from its file, so a
+request never holds an image in memory.
+
 ## Uploaded images
 
 `POST /api/videos/{id}/thumbnail-image` makes an image from the owner's device
