@@ -160,6 +160,30 @@ never runs. The video page's fetch dialog offers work-info plugins only.
 | A kind badge on rows in one list | The owner would read every row to find the plugins that fetch people |
 | The switch as a row menu item | Its state would be hidden until the menu opens |
 
+## The person page compares a fetched person before applying it
+
+`Fetch info…` on the person page opens a dialog with the steps of the video's
+fetch dialog: plugin, candidates when needed, comparison, result. Its first
+`Fetch` sends only `pluginId`, and the dialog shows the `Name` field,
+prefilled with the person's name, only after the server answers
+`409 person_external_id_missing`; a chosen candidate's `source` and `id` are
+then sent with the fetch. The response of the apply replaces the page's person
+in memory, so the page shows the filled fields without reading it again.
+
+The comparison, [`PersonCompare`](../../web/src/credits/person/pluginFetch/PersonCompare.tsx),
+draws a selectable row only for an item the apply would write: an empty
+profile field the result fills, a face for a person without one, and aliases
+or external IDs the person does not have. A fetched value the person already
+has sits behind one `Kept as now (N)` fold, without a checkbox, because the
+apply keeps the stored value. The rows are computed by
+[`compareRows`](../../web/src/credits/person/pluginFetch/personCompareRows.ts),
+and the work-info comparison reuses the piece for its person lookups.
+
+| Rejected | Why |
+| --- | --- |
+| One row per profile field with `Same as now` | Kept values would fill the dialog, and their checkboxes would select nothing the apply writes |
+| A `Measurements` or `Career` row | One checkbox would select several apply items |
+
 ## A work-info fetch plans one lookup per person
 
 The fetch result carries `personLookups`, planned by the server: for each

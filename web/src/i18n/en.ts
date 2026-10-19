@@ -23,6 +23,7 @@ type WorkInfoPluginKind = components["schemas"]["WorkInfoPluginKind"];
 type WorkInfoPluginProblem = components["schemas"]["WorkInfoPluginProblem"];
 type WorkInfoOperation = components["schemas"]["WorkInfoOperation"];
 type SkippedTagReason = components["schemas"]["SkippedTag"]["reason"];
+type PersonPluginItem = components["schemas"]["PersonPluginItem"];
 type WorkInfoField = components["schemas"]["WorkInfoField"];
 type ActivityKind = components["schemas"]["ActivityKind"];
 type ActivityFeature = components["schemas"]["ActivityFeature"];
@@ -1662,6 +1663,52 @@ export const en = {
       gone: "This person no longer exists",
       backToPeople: "Back to people",
       mergedInto: (name: string) => `Merged into "${name}"`,
+      pluginFetch: {
+        entry: "Fetch info…",
+        title: (name: string) => `Fetch info for ${name}`,
+        noAcceptedId: (plugin: string) =>
+          `${plugin} has no ID for this person yet. Search by name instead.`,
+        name: "Name",
+        noMatches: "No matches. Try other words.",
+        candidateId: (source: string, id: string) => `${source} ${id}`,
+        candidateDetail: (detail: string, sourceId: string) => `${detail} · ${sourceId}`,
+        source: (plugin: string, source: string, id: string) =>
+          `From ${plugin} · ${source} ${id}`,
+        applied: (name: string) => `Applied to ${name}.`,
+        gone: "This person no longer exists.",
+        items: {
+          image: "Face",
+          "profile.birthDate": "Born",
+          "profile.deathDate": "Died",
+          "profile.gender": "Gender",
+          "profile.birthplace": "Birthplace",
+          "profile.heightCm": "Height",
+          "profile.bustCm": "Bust",
+          "profile.waistCm": "Waist",
+          "profile.hipsCm": "Hips",
+          "profile.cup": "Cup",
+          "profile.bloodType": "Blood type",
+          "profile.careerStartYear": "Career start",
+          "profile.careerEndYear": "Career end",
+          "profile.bio": "Bio",
+          "profile.links": "Links",
+          aliases: "Aliases",
+          externalIds: "External IDs",
+        } satisfies Record<PersonPluginItem, string>,
+        empty: "Empty",
+        noFace: "No face",
+        onPerson: "On the person",
+        kept: (count: number) => `Kept as now (${formatNumber(count)})`,
+        hideKept: "Hide kept values",
+        keptNote: "Already set; applying keeps the current value.",
+        nothingNew: "Nothing new for this person.",
+        skipped: {
+          taken: (name: string) => `already linked to ${name}`,
+          tooManyAliases: "over the limit for aliases",
+          tooManyIds: "over the limit for external IDs",
+          invalid: "too long or contains characters that can't be used",
+        },
+      },
     },
     personEdit: {
       title: (name: string) => `Edit "${name}"`,

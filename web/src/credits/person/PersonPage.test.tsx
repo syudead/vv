@@ -1,127 +1,16 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import type { Person } from "../../api/credits";
-import { installFakeEventSource } from "../../api/fakeEventSource";
-import { video } from "../../testing/groupPage";
-import { ToastProvider } from "../../ui/Toast";
-import { TooltipProvider } from "../../ui/shadcn/tooltip";
-import PersonPage from "./PersonPage";
-import PersonEditPage from "./edit/PersonEditPage";
+import {
+  person,
+  renderPage,
+  sent,
+  server,
+  installPersonServer,
+} from "../../testing/personPage";
 
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
-function person(overrides: Partial<Person> = {}): Person {
-  return {
-    id: 7,
-    name: "Aoi",
-    aliases: [],
-    externalIds: [],
-    profile: {},
-    favorite: false,
-    videoCount: 1,
-    createdAt: "2026-01-01T00:00:00Z",
-    ...overrides,
-  };
-}
-
-interface Sent {
-  method: string;
-  url: URL;
-  body: BodyInit | null | undefined;
-}
-
-const server = {
-  person: null as Person | null,
-  sent: [] as Sent[],
-  /** When set, the face upload answers only once this settles. */
-  uploadGate: null as Promise<void> | null,
-};
-
-async function respondLater(method: string, url: URL): Promise<Response> {
-  if (url.pathname === "/api/people/7/image" && method === "PUT" && server.uploadGate) {
-    // Answer with the person as it was when the upload was sent.
-    const saved = { ...server.person, imageRevision: 3 } as Person;
-    await server.uploadGate;
-    return jsonResponse(saved);
-  }
-  return respond(method, url);
-}
-
-function respond(method: string, url: URL): Response {
-  if (url.pathname === "/api/videos") {
-    return jsonResponse({ items: [video(1)], total: 1 });
-  }
-  if (server.person === null) {
-    return jsonResponse({ code: "not_found", reason: "person_not_found" }, 404);
-  }
-  if (url.pathname === "/api/people/7" && method === "GET")
-    return jsonResponse(server.person);
-  if (url.pathname === "/api/people/7/image" && method === "PUT") {
-    server.person = { ...server.person, imageRevision: 3 };
-    return jsonResponse(server.person);
-  }
-  if (url.pathname === "/api/favorites" && method === "PUT") {
-    server.person = { ...server.person, favorite: true };
-    return jsonResponse({ appliedVideos: 0, appliedGroups: 0, appliedSmartFolders: 0 });
-  }
-  return jsonResponse({ code: "not_found" }, 404);
-}
-
-class IdleIntersectionObserver {
-  observe() {}
-  disconnect() {}
-}
-
-beforeEach(() => {
-  server.person = person();
-  server.sent = [];
-  server.uploadGate = null;
-  vi.stubGlobal(
-    "fetch",
-    vi.fn<typeof fetch>((input, init) => {
-      const url = new URL(String(input), "http://localhost");
-      const method = init?.method ?? "GET";
-      server.sent.push({ method, url, body: init?.body });
-      return respondLater(method, url);
-    }),
-  );
-  vi.stubGlobal("IntersectionObserver", IdleIntersectionObserver);
-  installFakeEventSource();
-});
-
-afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
-});
-
-function renderPage() {
-  return render(
-    <TooltipProvider>
-      <ToastProvider>
-        <MemoryRouter initialEntries={["/people/7"]}>
-          <Routes>
-            <Route path="/people/:id" element={<PersonPage />} />
-            <Route path="/people/:id/edit" element={<PersonEditPage />} />
-          </Routes>
-        </MemoryRouter>
-      </ToastProvider>
-    </TooltipProvider>,
-  );
-}
-
-function sent(method: string, pathname: string): Sent[] {
-  return server.sent.filter(
-    (request) => request.method === method && request.url.pathname === pathname,
-  );
-}
+installPersonServer();
 
 describe("PersonPage", () => {
   it("shows the uploaded face in place of the placeholder", async () => {

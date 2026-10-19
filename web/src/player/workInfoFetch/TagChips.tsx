@@ -16,7 +16,10 @@ export interface ChipItem {
   key?: string;
   name: string;
   tentative?: boolean;
-  mark?: ChipMark;
+  /** onPerson marks a fetched alias or ID the person already has. */
+  mark?: ChipMark | "onPerson";
+  /** A current value, quieter than the fetched ones. */
+  muted?: boolean;
   hint?: string;
   full?: string;
   numeric?: boolean;
@@ -28,13 +31,20 @@ export function chipsOfVideo(tags: readonly VideoTag[]): ChipItem[] {
   return tags.map((tag) => ({ name: tag.name, tentative: tag.tentative }));
 }
 
-function MarkText({ mark }: { mark: ChipMark | undefined }) {
+function onText(mark: ChipItem["mark"]): string | undefined {
+  if (mark === "onVideo") return t.player.workInfoFetch.onVideo;
+  if (mark === "onPerson") return t.credits.personPage.pluginFetch.onPerson;
+  return undefined;
+}
+
+function MarkText({ mark }: { mark: ChipItem["mark"] }) {
   const text = t.player.workInfoFetch;
-  if (mark === "onVideo")
+  const on = onText(mark);
+  if (on !== undefined)
     return (
       <>
         <Check aria-hidden="true" />
-        <span className="sr-only">{`, ${text.onVideo}`}</span>
+        <span className="sr-only">{`, ${on}`}</span>
       </>
     );
   if (mark === undefined) return null;
@@ -49,8 +59,9 @@ function MarkText({ mark }: { mark: ChipMark | undefined }) {
 
 export function Chip({ item }: { item: ChipItem }) {
   const text = t.player.workInfoFetch;
-  const muted = item.mark === "onVideo" || item.mark === "notLinked";
-  const hint = item.hint ?? (item.mark === "onVideo" ? text.onVideo : undefined);
+  const on = onText(item.mark);
+  const muted = item.muted === true || on !== undefined || item.mark === "notLinked";
+  const hint = item.hint ?? on;
   // Existing video values are confirmed, without tentative markers.
   const tentative = item.tentative === true && item.mark !== "onVideo";
   const badge = (

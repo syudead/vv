@@ -50,7 +50,7 @@ export interface Fetched {
   fromSearch: boolean;
 }
 
-function Cell({ heading, children }: { heading: string; children: ReactNode }) {
+export function Cell({ heading, children }: { heading: string; children: ReactNode }) {
   return (
     <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 sm:col-span-2">
       <span className="text-xs text-muted-foreground sm:hidden">{heading}</span>
@@ -399,6 +399,63 @@ function CompareRow({
   );
 }
 
+/** Now and Fetched over the five-column rows from sm; narrower rows head each cell instead. */
+export function CompareHeadings() {
+  const text = t.player.workInfoFetch;
+  return (
+    <div className="hidden gap-x-4 pb-1 text-xs text-muted-foreground sm:grid sm:grid-cols-5">
+      <span />
+      <span className="col-span-2">{text.now}</span>
+      <span className="col-span-2">{text.fetched}</span>
+    </div>
+  );
+}
+
+/** The stale result's Fetch again, or the last apply's failure, above a comparison. */
+export function CompareNotices({
+  stale,
+  refetching,
+  failure,
+  onFetchAgain,
+}: {
+  stale: boolean;
+  refetching: boolean;
+  failure: unknown;
+  onFetchAgain: () => void;
+}) {
+  const text = t.player.workInfoFetch;
+  return (
+    <>
+      {stale && (
+        <Alert variant="destructive">
+          <CircleAlert aria-hidden="true" />
+          <AlertTitle>{text.stale}</AlertTitle>
+          <AlertAction>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-disabled={refetching || undefined}
+              aria-busy={refetching || undefined}
+              onClick={() => {
+                if (!refetching) onFetchAgain();
+              }}
+            >
+              {refetching && <Spinner aria-hidden="true" role={undefined} />}
+              {text.fetchAgain}
+            </Button>
+          </AlertAction>
+        </Alert>
+      )}
+      {!stale && failure !== null && (
+        <Alert variant="destructive">
+          <CircleAlert aria-hidden="true" />
+          <AlertTitle>{text.applyFailed(errorText(failure))}</AlertTitle>
+        </Alert>
+      )}
+    </>
+  );
+}
+
 export default function CompareStep({
   video,
   fetched,
@@ -452,38 +509,14 @@ export default function CompareStep({
           {text.back}
         </Button>
       )}
-      {stale && (
-        <Alert variant="destructive">
-          <CircleAlert aria-hidden="true" />
-          <AlertTitle>{text.stale}</AlertTitle>
-          <AlertAction>
-            <Button
-              variant="outline"
-              size="sm"
-              aria-disabled={refetching || undefined}
-              aria-busy={refetching || undefined}
-              onClick={() => {
-                if (!refetching) onFetchAgain();
-              }}
-            >
-              {refetching && <Spinner aria-hidden="true" role={undefined} />}
-              {text.fetchAgain}
-            </Button>
-          </AlertAction>
-        </Alert>
-      )}
-      {!stale && failure !== null && (
-        <Alert variant="destructive">
-          <CircleAlert aria-hidden="true" />
-          <AlertTitle>{text.applyFailed(errorText(failure))}</AlertTitle>
-        </Alert>
-      )}
+      <CompareNotices
+        stale={stale}
+        refetching={refetching}
+        failure={failure}
+        onFetchAgain={onFetchAgain}
+      />
       <div className="flex flex-col text-sm">
-        <div className="hidden gap-x-4 pb-1 text-xs text-muted-foreground sm:grid sm:grid-cols-5">
-          <span />
-          <span className="col-span-2">{text.now}</span>
-          <span className="col-span-2">{text.fetched}</span>
-        </div>
+        <CompareHeadings />
         <div className="flex flex-col divide-y divide-border border-y border-border">
           {comparedFields(video, fetched.result).map((field) => (
             <CompareRow
