@@ -48,4 +48,5 @@ reference documents; retain lasting decisions here before deleting them.
 - [Authentication and visibility](authentication.md)
 - [Catalog organization and persistent identity](catalog-organization.md)
 - [People: profiles and faces](people.md)
+- [Face recognition](face-recognition.md)
 - [Import progress and recovery](import-pipeline.md)

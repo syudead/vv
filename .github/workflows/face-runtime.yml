@@ -1,0 +1,103 @@
+# Build the face runtime archives on changes to the helper, and publish them from a face-runtime-v<N> tag.
+# See docs/design-docs/face-recognition.md.
+name: Face runtime
+
+on:
+  pull_request:
+    paths:
+      - cmd/mdm-face/**
+      - internal/faceinfer/**
+      - internal/faceproto/**
+      - scripts/build/**
+      - go.mod
+      - go.sum
+      - .github/workflows/face-runtime.yml
+  push:
+    tags: ["face-runtime-v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: face-runtime-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-amd64
+            runner: ubuntu-latest
+          # Run the arm64 helper natively; the smoke test starts it in the arm64 Alpine image.
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+          - platform: windows-amd64
+            runner: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      # Cache the pinned onnxruntime archive and models; their hashes are verified on every use.
+      - name: 固定したダウンロードを復元する
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dist/cache
+          key: face-runtime-${{ matrix.platform }}-${{ hashFiles('scripts/build/face_runtime.go', 'scripts/build/face_runtime_smoke.go') }}
+
+      - name: アーカイブを組む
+        run: go run ./scripts/build -face-runtime ${{ matrix.platform }}
+
+      # Start the helper through the bundled loader in the image vv ships, on one photo.
+      - name: Alpine で補助プロセスを動かす
+        if: startsWith(matrix.platform, 'linux-')
+        run: go run ./scripts/build -face-runtime-smoke ${{ matrix.platform }}
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: face-runtime-${{ matrix.platform }}
+          path: |
+            dist/face-runtime-${{ matrix.platform }}.tar.gz
+            dist/face-runtime-${{ matrix.platform }}.zip
+          if-no-files-found: error
+          compression-level: 0
+
+  release:
+    name: Publish release
+    needs: build
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: face-runtime-*
+          merge-multiple: true
+
+      # mdm pins each archive's SHA-256; SHA256SUMS lists them for that change. The latest release
+      # stays vv's own.
+      - name: GitHub Release に公開する
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          sha256sum face-runtime-* > SHA256SUMS
+          cat SHA256SUMS
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" face-runtime-* SHA256SUMS --clobber
+          else
+            gh release create "$TAG" face-runtime-* SHA256SUMS --verify-tag --latest=false \
+              --title "Face runtime ${TAG#face-runtime-}" \
+              --notes "顔認識の補助プロセスと onnxruntime の実行環境です。vv のサーバーが顔認識を有効にしたときに取得します。手で入れる必要はありません。"
+          fi

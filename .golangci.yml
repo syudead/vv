@@ -39,6 +39,23 @@ linters:
       allow-time-local: true
     depguard:
       rules:
+        # purego makes a binary ask for glibc's loader, and mdm must start on Alpine; only the face helper may load native code.
+        only-the-face-helper-loads-native-code:
+          files:
+            - $all
+            - "!**/cmd/mdm-face/*.go"
+            - "!**/internal/faceinfer/*.go"
+          deny:
+            - pkg: github.com/ebitengine/purego
+              desc: >-
+                purego を import できるのは cmd/mdm-face と internal/faceinfer だけである。
+                purego を含むバイナリは glibc の動的ローダーを要求し、Alpine の Docker イメージで
+                mdm が起動しなくなる（docs/design-docs/face-recognition.md）。
+            - pkg: github.com/syudead/vv/internal/faceinfer
+              desc: >-
+                internal/faceinfer を import できるのは cmd/mdm-face だけである。推論は補助プロセスで
+                行い、mdm は internal/faceproto で補助プロセスと話す（docs/design-docs/face-recognition.md）。
+
         # Domain is the dependency leaf: no external I/O or sibling internal packages. Violations report the deny description below.
         domain-is-the-end-of-the-dependency-chain:
           files:

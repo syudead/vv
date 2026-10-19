@@ -70,7 +70,7 @@ func TestFetchFFmpegVerifiesAndCaches(t *testing.T) {
 	cache := filepath.Join(t.TempDir(), "cache")
 
 	for range 2 {
-		got, err := fetchFFmpeg(server.Client(), server.URL, cache, "ffmpeg.zip", digest(body))
+		got, err := fetchPinned(server.Client(), server.URL, cache, "ffmpeg.zip", digest(body))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -88,7 +88,7 @@ func TestFetchFFmpegFailsOnMismatch(t *testing.T) {
 	server, _ := serve(t, []byte("tampered"))
 	cache := t.TempDir()
 
-	_, err := fetchFFmpeg(server.Client(), server.URL, cache, "ffmpeg.zip", digest([]byte("essentials")))
+	_, err := fetchPinned(server.Client(), server.URL, cache, "ffmpeg.zip", digest([]byte("essentials")))
 	if err == nil || !strings.Contains(err.Error(), "SHA-256") {
 		t.Fatalf("err = %v, want SHA-256 mismatch", err)
 	}
@@ -105,7 +105,7 @@ func TestFetchFFmpegRechecksTheCache(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := fetchFFmpeg(server.Client(), server.URL, cache, "ffmpeg.zip", digest([]byte("essentials"))); err == nil {
+	if _, err := fetchPinned(server.Client(), server.URL, cache, "ffmpeg.zip", digest([]byte("essentials"))); err == nil {
 		t.Fatal("合わない取り置きで通った")
 	}
 	if *calls != 0 {
@@ -118,7 +118,7 @@ func TestFetchFFmpegFailsOnHTTPError(t *testing.T) {
 	t.Cleanup(server.Close)
 	cache := t.TempDir()
 
-	if _, err := fetchFFmpeg(server.Client(), server.URL, cache, "ffmpeg.zip", digest(nil)); err == nil {
+	if _, err := fetchPinned(server.Client(), server.URL, cache, "ffmpeg.zip", digest(nil)); err == nil {
 		t.Fatal("404 で通った")
 	}
 	entries, _ := os.ReadDir(cache)
