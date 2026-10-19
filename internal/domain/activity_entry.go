@@ -32,6 +32,8 @@ const (
 	ActivityWorkInfoApply      ActivityKind = "work_info_apply"
 	ActivityMediaFolderRemove  ActivityKind = "media_folder_remove"
 	ActivityOrganizeUndo       ActivityKind = "organize_undo"
+	// ActivityFaceAnalysis records one video's face analysis and the people it linked to the video.
+	ActivityFaceAnalysis ActivityKind = "face_analysis"
 	// ActivityPipeline groups one video's import run with the follow-up processes that run started.
 	ActivityPipeline ActivityKind = "pipeline"
 	// ActivityUndo inherits the feature of the entry it reverses.
@@ -50,6 +52,8 @@ const (
 	ActivityFeatureVersions       ActivityFeature = "versions"
 	ActivityFeatureMediaFolders   ActivityFeature = "media_folders"
 	ActivityFeatureOrganize       ActivityFeature = "organize"
+	// ActivityFeatureFaceRecognition is left out of ActivityFeatures until the API's feature filter lists it.
+	ActivityFeatureFaceRecognition ActivityFeature = "face_recognition"
 )
 
 // ActivityFeatures follows the UI filter order.
@@ -77,6 +81,7 @@ var activityKindFeatures = map[ActivityKind]ActivityFeature{
 	ActivityDismiss:            ActivityFeatureVersions,
 	ActivityMediaFolderRemove:  ActivityFeatureMediaFolders,
 	ActivityOrganizeUndo:       ActivityFeatureOrganize,
+	ActivityFaceAnalysis:       ActivityFeatureFaceRecognition,
 }
 
 // Feature returns false for undo entries, whose feature comes from the reversed entry.
@@ -100,6 +105,8 @@ const (
 	ActivitySubjectPair   ActivitySubjectKind = "pair"
 	ActivitySubjectScan   ActivitySubjectKind = "scan"
 	ActivitySubjectFolder ActivitySubjectKind = "folder"
+	// ActivitySubjectPerson's key is a person id and its label the person's name, empty for a provisional person.
+	ActivitySubjectPerson ActivitySubjectKind = "person"
 )
 
 type ActivityStatus string

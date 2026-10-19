@@ -231,7 +231,7 @@ func (s *IngestStore) setStageStateForJob(
 		c.jobsQueued(next...)
 	}
 	if kind == domain.JobSeekThumbnail {
-		if err := queueAfterImportAutoTag(ctx, tx, &c, job, time.Now()); err != nil {
+		if err := queueAfterSeekStage(ctx, tx, &c, job, time.Now()); err != nil {
 			return false, err
 		}
 	}

@@ -418,8 +418,8 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 			return err
 		}
 		if job.Kind == domain.JobSeekThumbnail {
-			// Auto-tagging also runs on a failed seek stage, with the images that remain.
-			if err := queueAfterImportAutoTag(ctx, tx, &c, job, time.Now()); err != nil {
+			// Follow-up processes also run on a failed seek stage, with the images that remain.
+			if err := queueAfterSeekStage(ctx, tx, &c, job, time.Now()); err != nil {
 				return err
 			}
 		}

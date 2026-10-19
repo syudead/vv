@@ -124,15 +124,15 @@ func bumpPersonImageRevision(ctx context.Context, tx *sql.Tx, id int64) error {
 	return nil
 }
 
-// fillMergedPersonImage gives a target without a face the first face in sourceIDs order; it must run before the
-// sources are deleted.
-func fillMergedPersonImage(ctx context.Context, tx *sql.Tx, targetID int64, sourceIDs []int64) error {
+// fillMergedPersonImage gives a target without a face the first face in sourceIDs order and returns that source, or
+// 0 when the target kept its face or no source had one; it must run before the sources are deleted.
+func fillMergedPersonImage(ctx context.Context, tx *sql.Tx, targetID int64, sourceIDs []int64) (int64, error) {
 	withFace, err := peopleWithImages(ctx, tx, append([]int64{targetID}, sourceIDs...))
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if withFace[targetID] {
-		return nil
+		return 0, nil
 	}
 	for _, sourceID := range sourceIDs {
 		if !withFace[sourceID] {
@@ -141,11 +141,11 @@ func fillMergedPersonImage(ctx context.Context, tx *sql.Tx, targetID int64, sour
 		if _, err := tx.ExecContext(ctx, `insert into person_images (person_id, image, width, height, updated_at)
 			 select ?, image, width, height, ? from person_images where person_id = ?`,
 			targetID, time.Now().Unix(), sourceID); err != nil {
-			return fmt.Errorf("cannot move the image to person %d: %w", targetID, err)
+			return 0, fmt.Errorf("cannot move the image to person %d: %w", targetID, err)
 		}
-		return bumpPersonImageRevision(ctx, tx, targetID)
+		return sourceID, bumpPersonImageRevision(ctx, tx, targetID)
 	}
-	return nil
+	return 0, nil
 }
 
 func peopleWithImages(ctx context.Context, tx *sql.Tx, ids []int64) (map[int64]bool, error) {
