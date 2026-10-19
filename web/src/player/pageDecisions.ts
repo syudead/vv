@@ -15,6 +15,13 @@ export function autoplayRequested(state: unknown): boolean {
   return (state as { autoplay?: unknown } | null)?.autoplay === true;
 }
 
+/** The `t` query's start in milliseconds, or null without a usable one; `t` is in seconds. */
+export function startFromSearch(search: string): number | null {
+  const value = new URLSearchParams(search).get("t");
+  if (value === null || !/^\d+(\.\d+)?$/.test(value)) return null;
+  return Math.round(Number(value) * 1000);
+}
+
 /** Versions share progress; restart if the saved position exceeds this version's duration. */
 export function resumePosition(video: Video): number {
   const progress = video.progress;

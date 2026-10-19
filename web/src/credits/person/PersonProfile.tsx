@@ -1,5 +1,5 @@
 import { Ellipsis, ExternalLink, Merge, Trash2 } from "lucide-react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import type { Person } from "../../api/credits";
@@ -138,12 +138,23 @@ function hostOf(url: string): string {
   }
 }
 
-/** Fact groups with values, then links and external IDs. */
-export function PersonDetails({ person, today }: { person: Person; today: Date }) {
+/** Candidates, fact groups with values, faces in videos, then links and external IDs. */
+export function PersonDetails({
+  person,
+  today,
+  candidates,
+  faces,
+}: {
+  person: Person;
+  today: Date;
+  candidates?: ReactNode;
+  faces?: ReactNode;
+}) {
   const groups = personFactGroups(person.profile, today);
   const links = person.profile.links ?? [];
   return (
     <>
+      {candidates}
       {groups.length === 0 ? (
         <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           {text.noProfile}
@@ -160,6 +171,7 @@ export function PersonDetails({ person, today }: { person: Person; today: Date }
           </section>
         ))
       )}
+      {faces}
       {links.length > 0 && (
         <ul aria-label={text.links} className="flex flex-col gap-1 text-sm">
           {links.map((url) => (
