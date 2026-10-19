@@ -3076,6 +3076,37 @@ type ExternalId struct {
 	Value  string `json:"value"`
 }
 
+// FaceAppearance One main person of one video, linked to the listed person.
+type FaceAppearance struct {
+	AppearanceId int64 `json:"appearanceId"`
+
+	// HasCrop True when getFaceAppearanceCrop has a face to return.
+	HasCrop bool `json:"hasCrop"`
+
+	// Spans When the person is on screen, in seconds, in order and without overlaps.
+	Spans []FaceAppearanceSpan `json:"spans"`
+
+	// Title The video's title: its override, else its first registered location's title, else the content key.
+	Title string `json:"title"`
+
+	// VideoId The video with the appearance's content key; absent when no video has it any more.
+	VideoId *int64 `json:"videoId,omitempty"`
+}
+
+// FaceAppearanceList defines model for FaceAppearanceList.
+type FaceAppearanceList struct {
+	Items []FaceAppearance `json:"items"`
+
+	// NextCursor Next-page cursor, included only when limit is supplied and more results remain.
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
+// FaceAppearanceSpan defines model for FaceAppearanceSpan.
+type FaceAppearanceSpan struct {
+	End   float64 `json:"end"`
+	Start float64 `json:"start"`
+}
+
 // FaceCandidate One open pair, as the other person of it.
 type FaceCandidate struct {
 	// Person CreditRef of the other person, with its face.
@@ -6040,6 +6071,15 @@ type ListPeopleParams struct {
 	Provisional *CreditProvisional `form:"provisional,omitempty" json:"provisional,omitempty"`
 }
 
+// ListPersonAppearancesParams defines parameters for ListPersonAppearances.
+type ListPersonAppearancesParams struct {
+	// Cursor Opaque nextCursor from the previous response; ignored without limit
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Page size; omit for all appearances without nextCursor
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // GetPersonImageParams defines parameters for GetPersonImage.
 type GetPersonImageParams struct {
 	// V imageRevision from Person or WorkPerson; ignored by the server
@@ -6617,6 +6657,9 @@ type ServerInterface interface {
 	// StreamEvents Stream import and video changes through Server-Sent Events
 	// (GET /api/events)
 	StreamEvents(w http.ResponseWriter, r *http.Request)
+	// GetFaceAppearanceCrop Return a face appearance's crop
+	// (GET /api/face-appearances/{id}/crop)
+	GetFaceAppearanceCrop(w http.ResponseWriter, r *http.Request, id int64)
 	// UpdateFavorites Set or clear favorites on videos and groups
 	// (PUT /api/favorites)
 	UpdateFavorites(w http.ResponseWriter, r *http.Request)
@@ -6743,6 +6786,9 @@ type ServerInterface interface {
 	// UpdatePerson Update a person's name, aliases and external IDs
 	// (PATCH /api/people/{id})
 	UpdatePerson(w http.ResponseWriter, r *http.Request, id PersonId)
+	// ListPersonAppearances List a person's face appearances
+	// (GET /api/people/{id}/appearances)
+	ListPersonAppearances(w http.ResponseWriter, r *http.Request, id PersonId, params ListPersonAppearancesParams)
 	// ListFaceCandidates List a person's face candidates
 	// (GET /api/people/{id}/face-candidates)
 	ListFaceCandidates(w http.ResponseWriter, r *http.Request, id PersonId)
@@ -7512,6 +7558,32 @@ func (siw *ServerInterfaceWrapper) StreamEvents(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.StreamEvents(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFaceAppearanceCrop operation middleware
+func (siw *ServerInterfaceWrapper) GetFaceAppearanceCrop(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id int64
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFaceAppearanceCrop(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9145,6 +9217,61 @@ func (siw *ServerInterfaceWrapper) UpdatePerson(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdatePerson(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPersonAppearances operation middleware
+func (siw *ServerInterfaceWrapper) ListPersonAppearances(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPersonAppearancesParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPersonAppearances(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -13167,6 +13294,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/face-candidates", wrapper.ListFaceCandidates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/face-candidates/{otherId}/confirm", wrapper.ConfirmFaceCandidate)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/face-candidates/{otherId}/dismiss", wrapper.DismissFaceCandidate)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/appearances", wrapper.ListPersonAppearances)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/face-appearances/{id}/crop", wrapper.GetFaceAppearanceCrop)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/organizations", wrapper.ListOrganizations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organizations", wrapper.CreateOrganization)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/organizations/{id}", wrapper.DeleteOrganization)

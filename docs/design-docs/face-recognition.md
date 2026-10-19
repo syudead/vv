@@ -434,3 +434,25 @@ in as the other person of each, highest similarity first.
 When both people have a name, or neither has, confirm merges the stored
 provisional side: a name given after the pair was offered does not reverse
 it. Without an open pair, both actions answer `404 face_candidate_not_found`.
+
+## The person page reads a person's appearances
+
+`GET /api/people/{id}/appearances` lists a person's appearances that are not
+dropped, with the admin lists' `limit` and `cursor`
+([`face_appearance_list.go`](../../internal/store/face_appearance_list.go)).
+They come newest video first by the video's added time, then by descending
+appearance id. An appearance whose content key no video has any more is still
+listed, without `videoId` and after every appearance with a video, so the
+owner sees that the person was found in a file that has left the library.
+Each item's spans are its tracks' times in order, with overlapping tracks
+joined.
+
+`GET /api/face-appearances/{id}/crop` answers the crop with
+`Cache-Control: private, max-age=86400`: a crop is never rewritten, and a
+re-analysis gives a new appearance a new id. A missing appearance and one whose
+person was deleted, which has no crop, both answer `404 not_found`.
+
+| Rejected | Why |
+| --- | --- |
+| Hiding appearances of content no video has | A returning file keeps its links, and the person page would show nothing for a person found only there |
+| Ordering by appearance id alone | A re-analysis keeps old ids, so the order would follow the first analysis, not the library |
