@@ -881,6 +881,37 @@ describe("WorkInfoPluginsSection", () => {
     expect(toggle.getAttribute("aria-checked")).toBe("false");
   });
 
+  it("自動の呼び出しの応答が取り消しの後に届いても、行を承認済みに戻さない", async () => {
+    const fake = server([person({ id: 2, state: "approved" })]);
+    // Answer the switch with the pre-revocation row, delivered after the revocation.
+    let release: () => void = () => {};
+    fetchMock.mockImplementation((input, init) => {
+      if (init?.method === "PUT" && String(input).endsWith("/auto-lookup")) {
+        const stale = fake.handler(input, init);
+        return new Promise((resolve) => {
+          release = () => resolve(stale);
+        });
+      }
+      return fake.handler(input, init);
+    });
+    const user = userEvent.setup();
+    renderSection();
+    const row = await waitFor(() => rowOf("example.people", "Added person plugins"));
+
+    await user.click(within(row).getByRole("switch", { name: "Automatic lookups" }));
+    await user.click(
+      within(row).getByRole("button", { name: "More actions for example.people" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Revoke approval" }));
+    await waitFor(() => expect(within(row).getByText("Not approved")).toBeDefined());
+    release();
+
+    await waitFor(() => expect(within(row).queryByText("Saving…")).toBeNull());
+    expect(within(row).getByText("Not approved")).toBeDefined();
+    expect(within(row).queryByText("Approved")).toBeNull();
+    expect(within(row).queryByRole("switch")).toBeNull();
+  });
+
   it("画面の文言はカタログか利用者のデータだけである", async () => {
     enablePseudoLocale();
     fetchMock.mockImplementation(

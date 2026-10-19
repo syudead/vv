@@ -211,7 +211,13 @@ export default function WorkInfoPluginsSection() {
     clearRowError(target.id);
     setSwitching((current) => ({ ...current, [target.id]: enabled }));
     try {
-      replacePlugin(await setWorkInfoPluginAutoLookup(target.id, enabled));
+      const saved = await setWorkInfoPluginAutoLookup(target.id, enabled);
+      // Revoke and re-upload stay usable meanwhile, so take only autoLookup from this response.
+      changePlugins((current) =>
+        current.map((plugin) =>
+          plugin.id === saved.id ? { ...plugin, autoLookup: saved.autoLookup } : plugin,
+        ),
+      );
     } catch (failure) {
       setRowError({
         id: target.id,
