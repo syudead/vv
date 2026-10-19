@@ -35,6 +35,7 @@ function context(
     canStart: true,
     noMediaFolders: false,
     start: () => undefined,
+    rescan: () => Promise.resolve(null),
     refresh: () => undefined,
     setFolderCount: () => undefined,
     finished: null,
@@ -139,6 +140,7 @@ describe("presentScan", () => {
         "issues",
         "progressText",
         "refreshing",
+        "rescan",
         "scan",
         "state",
         "statusText",
@@ -146,6 +148,23 @@ describe("presentScan", () => {
         "watch",
       ].sort(),
     );
+  });
+
+  it.each([
+    [{ scope: "library" } as const, "Force rescan of the whole library"],
+    [
+      { scope: "folder", folder: { id: 2, path: "/media/two" } } as const,
+      "Force rescan of /media/two",
+    ],
+    [{ scope: "video", videoId: 7 } as const, "Force rescan of one video"],
+  ])("names the scope of a running force rescan %o", (rescan, expected) => {
+    expect(presentScan(context(makeScan("running", { rescan }))).rescan).toBe(expected);
+  });
+
+  it("does not name the scope once the force rescan ends or for other scans", () => {
+    const rescan = { scope: "library" } as const;
+    expect(presentScan(context(makeScan("done", { rescan }))).rescan).toBeNull();
+    expect(presentScan(context(makeScan("running"))).rescan).toBeNull();
   });
 
   it("keeps the last scan visible while a refresh is failing", () => {

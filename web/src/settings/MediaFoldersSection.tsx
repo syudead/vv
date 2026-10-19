@@ -4,6 +4,7 @@ import {
   FolderPlus,
   LoaderCircle,
   Pencil,
+  RotateCcw,
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -36,6 +37,7 @@ import { Button } from "../ui/shadcn/button";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { useToast } from "../ui/Toast";
 import FolderPicker from "./FolderPicker";
+import RescanDialog from "./RescanDialog";
 
 type Pending = { id: number | "new"; kind: "add" | "change" | "delete" } | null;
 
@@ -110,6 +112,7 @@ export default function MediaFoldersSection() {
   const [loadError, setLoadError] = useState<UiText | null>(null);
   const [picker, setPicker] = useState<MediaFolder | "add" | null>(null);
   const [deleting, setDeleting] = useState<MediaFolder | null>(null);
+  const [rescanning, setRescanning] = useState<MediaFolder | null>(null);
   const [pending, setPending] = useState<Pending>(null);
   const [operationError, setOperationError] = useState<UiText | null>(null);
   const [rowError, setRowError] = useState<{ id: number; message: UiText } | null>(null);
@@ -262,8 +265,8 @@ export default function MediaFoldersSection() {
         }
       >
         {mutationsDisabled && (
-          <p role="status" className="text-warning">
-            {text.lockedWhileScanning}
+          <p id="media-folders-locked" role="status" className="text-warning">
+            {text.rowsLockedWhileScanning}
           </p>
         )}
         {loadError !== null && (
@@ -338,6 +341,19 @@ export default function MediaFoldersSection() {
                     <Button
                       variant="ghost"
                       size="sm"
+                      aria-label={text.forceRescan}
+                      aria-describedby={
+                        mutationsDisabled ? "media-folders-locked" : undefined
+                      }
+                      onClick={() => setRescanning(folder)}
+                      disabled={rowPending || mutationsDisabled}
+                    >
+                      <RotateCcw />
+                      {text.forceRescanShort}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       aria-label={text.remove}
                       onClick={() => {
                         setOperationError(null);
@@ -382,6 +398,19 @@ export default function MediaFoldersSection() {
           }}
           onDelete={() => void removeFolder()}
         />
+      )}
+      {rescanning !== null && (
+        <RescanDialog
+          request={{ scope: "folder", folderId: rescanning.id }}
+          title={text.rescanDialog.title}
+          description={text.rescanDialog.description}
+          onClose={() => setRescanning(null)}
+        >
+          <div className="min-w-0 rounded-md bg-muted p-3">
+            <p className="text-xs text-muted-foreground">{text.rescanDialog.target}</p>
+            <code className="block text-sm break-all">{rescanning.path}</code>
+          </div>
+        </RescanDialog>
       )}
     </>
   );

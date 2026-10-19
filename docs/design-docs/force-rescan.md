@@ -58,6 +58,30 @@ returning a scan of another scope would tell the owner a rescan started that
 did not. Every `Scan` response and SSE `scan` event of a force rescan carries
 `rescan` with its scope, so the screen can name it.
 
+## Where the owner starts it
+
+Each scope has one control where its target is already on screen. The library
+and folder scopes ask first because they reread many videos; the video scope
+rereads one and starts at once.
+
+| Scope | Control | Confirmation |
+| --- | --- | --- |
+| `library` | `Force rescan` beside `Scan library` in Settings, `Scan status` ([`ScanStatusSection.tsx`](../../web/src/settings/ScanStatusSection.tsx)) | Dialog saying every video is read again and it takes long |
+| `folder` | `Force rescan` on the folder's row in Settings, `Media folders` ([`MediaFoldersSection.tsx`](../../web/src/settings/MediaFoldersSection.tsx)) | The same dialog, naming the folder |
+| `video` | The icon action after `Open file` and `Copy path` in the video page's file facts ([`RescanVideoButton.tsx`](../../web/src/player/RescanVideoButton.tsx)) | None |
+
+Every control is unavailable, with the reason, while a manual scan or force
+rescan runs or no media folder exists, as `Scan library` is; a watch scan does
+not block it, because the start supersedes it. A refused start shows its
+reason where the owner acted: inside the dialog, which stays open, or in the
+file facts' error row. While the rescan runs, the `Scan status` section and
+the bottom-right indicator's summary name its scope.
+
+| Rejected | Why |
+| --- | --- |
+| A control on the folder page | The folder page shows folder groups; media folders are managed in Settings |
+| One dialog with a scope picker | Each entry point already names its scope; a picker adds a step |
+
 ## Force travels on the job
 
 The force pass queues `probe`, `thumbnail` and `seek_thumbnail` jobs with

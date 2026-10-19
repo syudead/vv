@@ -210,6 +210,11 @@ export default function ScanProgressIndicator() {
                 className="text-sm"
               />
             </div>
+            {presentation.rescan !== null && (
+              <p className="text-sm text-muted-foreground break-words">
+                {presentation.rescan}
+              </p>
+            )}
             <ScanProgressBar presentation={presentation} />
             {presentation.progressText !== null && (
               <p className="text-sm tabular-nums">{presentation.progressText}</p>

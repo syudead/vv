@@ -1,8 +1,13 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Video } from "../api/client";
+import { MemoryRouter } from "react-router";
+
+import type { Scan, Video } from "../api/client";
 import { formatDateTime } from "../i18n";
+import { ScanProvider } from "../shell/ScanProvider";
+import { OwnerAudience } from "../testing/audience";
+import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import { formatCodec, technicalSummary } from "./properties";
 import VideoFacts from "./VideoFacts";
@@ -268,6 +273,112 @@ describe("VideoFacts", () => {
       expect(listText("File details")).toContain("Edited Sep 27, 2026");
       expect(listText("File details")).toContain("Created Jul 3, 2026");
     });
+  });
+});
+
+describe("VideoFacts force rescan", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+  beforeEach(() => vi.stubGlobal("fetch", fetchMock));
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    fetchMock.mockReset();
+  });
+
+  function serve(current: Scan | null, rescan = () => json({}, 202)) {
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/media-folders") return Promise.resolve(json([{}], 200));
+      if (url === "/api/scans/current") {
+        return Promise.resolve(current === null ? json({}, 404) : json(current, 200));
+      }
+      if (url === "/api/scans/rescan" && init?.method === "POST") {
+        return Promise.resolve(rescan());
+      }
+      return Promise.resolve(json({}, 404));
+    });
+  }
+
+  function renderOwnerFacts() {
+    return render(
+      <MemoryRouter>
+        <TooltipProvider>
+          <ToastProvider>
+            <OwnerAudience>
+              <ScanProvider>
+                <VideoFacts video={video} owner />
+              </ScanProvider>
+            </OwnerAudience>
+          </ToastProvider>
+        </TooltipProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  const rescanCalls = () =>
+    fetchMock.mock.calls.filter(([input]) => String(input) === "/api/scans/rescan");
+
+  it("sends the video scope without a confirmation", async () => {
+    serve(null, () =>
+      json(
+        {
+          id: 5,
+          origin: "manual",
+          status: "finding",
+          issues: { failed: 0, substituted: 0, revision: 0 },
+          state: "running",
+          rescan: { scope: "video", videoId: 7 },
+        },
+        202,
+      ),
+    );
+    renderOwnerFacts();
+
+    const control = await screen.findByRole("button", {
+      name: "Force rescan this video",
+    });
+    await waitFor(() => expect(control.getAttribute("aria-disabled")).toBeNull());
+    fireEvent.click(control);
+
+    await waitFor(() => expect(rescanCalls()).toHaveLength(1));
+    expect(rescanCalls()[0]?.[1]?.body).toBe(
+      JSON.stringify({ scope: "video", videoId: 7 }),
+    );
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("is unavailable with the reason while a manual scan runs and sends nothing", async () => {
+    serve({
+      id: 3,
+      origin: "manual",
+      status: "running",
+      issues: { failed: 0, substituted: 0, revision: 0 },
+      state: "running",
+    });
+    renderOwnerFacts();
+
+    const control = await screen.findByRole("button", {
+      name: "Force rescan this video. A scan is running. You can start another when it finishes.",
+    });
+    expect(control.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(control);
+    expect(rescanCalls()).toHaveLength(0);
+  });
+
+  it("shows a refused start in the facts' error row", async () => {
+    serve(null, () =>
+      json({ code: "scan_in_progress", message: "A scan is in progress." }, 409),
+    );
+    renderOwnerFacts();
+
+    const control = await screen.findByRole("button", {
+      name: "Force rescan this video",
+    });
+    await waitFor(() => expect(control.getAttribute("aria-disabled")).toBeNull());
+    fireEvent.click(control);
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Couldn't start the force rescan: A scan is in progress. Try again when it finishes.",
+    );
   });
 });
 
