@@ -44,6 +44,22 @@ func (s *server) ListPersonAppearances(w http.ResponseWriter, r *http.Request, i
 	s.writeCreditBody(w, http.StatusOK, body)
 }
 
+func (s *server) SplitFaceAppearance(w http.ResponseWriter, r *http.Request, id gen.PersonId, appearanceID gen.FaceAppearanceId) {
+	if !s.creditsConfigured(w) {
+		return
+	}
+	person, err := s.credits.SplitFaceAppearance(r.Context(), id, appearanceID)
+	if errors.Is(err, domain.ErrFaceAppearanceNotFound) {
+		s.notFoundReason(w, gen.ErrorReasonFaceAppearanceNotFound, "The person has no such face appearance.")
+		return
+	}
+	if err != nil {
+		s.writeCreditError(w, peopleAPI, err)
+		return
+	}
+	s.writeCreditBody(w, http.StatusCreated, toAPIPerson(person))
+}
+
 func (s *server) GetFaceAppearanceCrop(w http.ResponseWriter, r *http.Request, id int64) {
 	if !s.creditsConfigured(w) {
 		return

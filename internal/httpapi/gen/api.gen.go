@@ -635,6 +635,7 @@ const (
 	ErrorReasonDurationUnknown               ErrorReason = "duration_unknown"
 	ErrorReasonEncoderUnavailable            ErrorReason = "encoder_unavailable"
 	ErrorReasonExternalIdTaken               ErrorReason = "external_id_taken"
+	ErrorReasonFaceAppearanceNotFound        ErrorReason = "face_appearance_not_found"
 	ErrorReasonFaceCandidateNotFound         ErrorReason = "face_candidate_not_found"
 	ErrorReasonFaceRecognitionOff            ErrorReason = "face_recognition_off"
 	ErrorReasonFaceRecognitionUnsupported    ErrorReason = "face_recognition_unsupported"
@@ -748,6 +749,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonEncoderUnavailable:
 		return true
 	case ErrorReasonExternalIdTaken:
+		return true
+	case ErrorReasonFaceAppearanceNotFound:
 		return true
 	case ErrorReasonFaceCandidateNotFound:
 		return true
@@ -5930,6 +5933,9 @@ type CreditProvisional = bool
 // CreditQuery defines model for CreditQuery.
 type CreditQuery = string
 
+// FaceAppearanceId defines model for FaceAppearanceId.
+type FaceAppearanceId = int64
+
 // FaceCandidateOtherId defines model for FaceCandidateOtherId.
 type FaceCandidateOtherId = int64
 
@@ -7019,6 +7025,9 @@ type ServerInterface interface {
 	// ListPersonAppearances List a person's face appearances
 	// (GET /api/people/{id}/appearances)
 	ListPersonAppearances(w http.ResponseWriter, r *http.Request, id PersonId, params ListPersonAppearancesParams)
+	// SplitFaceAppearance Split a face appearance into a new person
+	// (POST /api/people/{id}/appearances/{appearanceId}/split)
+	SplitFaceAppearance(w http.ResponseWriter, r *http.Request, id PersonId, appearanceId FaceAppearanceId)
 	// ListFaceCandidates List a person's face candidates
 	// (GET /api/people/{id}/face-candidates)
 	ListFaceCandidates(w http.ResponseWriter, r *http.Request, id PersonId)
@@ -9539,6 +9548,41 @@ func (siw *ServerInterfaceWrapper) ListPersonAppearances(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListPersonAppearances(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SplitFaceAppearance operation middleware
+func (siw *ServerInterfaceWrapper) SplitFaceAppearance(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "appearanceId" -------------
+	var appearanceId FaceAppearanceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "appearanceId", r.PathValue("appearanceId"), &appearanceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appearanceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SplitFaceAppearance(w, r, id, appearanceId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -13634,6 +13678,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/face-candidates/{otherId}/confirm", wrapper.ConfirmFaceCandidate)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/face-candidates/{otherId}/dismiss", wrapper.DismissFaceCandidate)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}/appearances", wrapper.ListPersonAppearances)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/appearances/{appearanceId}/split", wrapper.SplitFaceAppearance)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/face-appearances/{id}/crop", wrapper.GetFaceAppearanceCrop)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/organizations", wrapper.ListOrganizations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organizations", wrapper.CreateOrganization)

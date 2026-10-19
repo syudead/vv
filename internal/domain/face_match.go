@@ -239,6 +239,9 @@ func DecideCastMerge(performers []FaceCastPerformer, dismissed map[FacePersonPai
 // ErrFaceCandidateNotFound reports that two people have no open (not dismissed) candidate pair.
 var ErrFaceCandidateNotFound = errors.New("no open face candidate pair of these people")
 
+// ErrFaceAppearanceNotFound reports that the person has no appearance with the id that is still linked to them.
+var ErrFaceAppearanceNotFound = errors.New("no face appearance of this person")
+
 // FacePair is an open candidate pair seen from one of its people: the other person and their similarity.
 type FacePair struct {
 	Person CreditRef

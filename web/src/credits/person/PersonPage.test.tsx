@@ -80,6 +80,13 @@ function respond(method: string, url: URL): Response {
   if (url.pathname === "/api/people/7/appearances") {
     return jsonResponse({ items: server.appearances });
   }
+  const split = /^\/api\/people\/7\/appearances\/(\d+)\/split$/.exec(url.pathname);
+  if (split !== null && method === "POST") {
+    server.appearances = server.appearances.filter(
+      (item) => item.appearanceId !== Number(split[1]),
+    );
+    return jsonResponse(person({ id: 12, name: "", provisional: true }), 201);
+  }
   const pair = /^\/api\/people\/7\/face-candidates\/(\d+)\/(confirm|dismiss)$/.exec(
     url.pathname,
   );
@@ -315,6 +322,31 @@ describe("PersonPage", () => {
     expect((await screen.findByTestId("video-screen")).textContent).toBe(
       "/videos/5?t=130 autoplay",
     );
+  });
+
+  it("splits a face into a new person from Faces in videos and removes its row", async () => {
+    const user = userEvent.setup();
+    server.appearances = [
+      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
+      { appearanceId: 4, videoId: 6, title: "Mountain", spans: [], hasCrop: true },
+    ];
+    renderPage();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Not this person in Beach day" }),
+    );
+
+    expect(await screen.findByText("Split into a new unnamed person")).toBeTruthy();
+    expect(sent("POST", "/api/people/7/appearances/3/split")).toHaveLength(1);
+    expect(
+      screen.queryByRole("button", { name: "Not this person in Beach day" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Not this person in Mountain" }),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    await waitFor(() => expect(sent("GET", "/api/people/12").length).toBeGreaterThan(0));
   });
 
   function candidate(id: number, name: string): FaceCandidate {

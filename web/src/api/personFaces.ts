@@ -46,6 +46,22 @@ export function isCandidateGone(error: unknown): boolean {
   );
 }
 
+/** Split the appearance into a new provisional person; returns that person. */
+export function splitFaceAppearance(id: number, appearanceId: number): Promise<Person> {
+  return request<Person>(`${personPath(id)}/appearances/${String(appearanceId)}/split`, {
+    method: "POST",
+  });
+}
+
+/** True when the appearance is no longer linked to the person, so its row has nothing left to split. */
+export function isAppearanceGone(error: unknown): boolean {
+  return (
+    error instanceof RequestFailed &&
+    error.status === 404 &&
+    error.reason === "face_appearance_not_found"
+  );
+}
+
 export function listPersonAppearances(
   id: number,
   query: { limit: number; cursor?: string },

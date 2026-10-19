@@ -729,6 +729,34 @@ person was deleted, which has no crop, both answer `404 not_found`.
 | Hiding appearances of content no video has | A returning file keeps its links, and the person page would show nothing for a person found only there |
 | Ordering by appearance id alone | A re-analysis keeps old ids, so the order would follow the first analysis, not the library |
 
+## The owner splits a wrongly linked face into its own person
+
+Undoing a `face_analysis` link only drops the appearance, so a face linked to
+the wrong person could not become a person of its own.
+`POST /api/people/{id}/appearances/{appearanceId}/split` does it
+([`face_split.go`](../../internal/store/face_split.go)) in one transaction and
+answers `201` with the new person:
+
+| Step | Effect |
+| --- | --- |
+| New person | A provisional person whose face is the appearance's crop, made by the same `createFacePerson` the analysis uses; the face-image job embeds it later like any face |
+| Appearance | `person_id` moves to the new person; a centroid belongs to one appearance, so the old person's vectors stop counting it and the new person's start |
+| Credit | The video's performer row of the old person becomes the new person's, in the same position; it stays with the old person, and the new person is appended, when another appearance of the old person in a video of the same work still links it |
+| Pair | The pair of the two people is marked `dismissed`, added when it has no row, so neither the cast rule nor the face-image rule merges them again and no candidate offers it |
+
+A re-analysis carries the appearance over by its tracks and keeps its
+`person_id`, so it stays with the new person. A later video whose face matches
+the moved centroid links to the new person, not the old one, because of this
+appearance. A person without that appearance, an appearance that is dropped and
+one of another person answer `404`: `person_not_found` and
+`face_appearance_not_found`. The split writes no activity entry; it is the
+owner's own decision, like confirming a candidate.
+
+| Rejected | Why |
+| --- | --- |
+| Removing the old person's credit whenever the appearance moves | Another appearance in the same work may still be that person, and the credit would vanish with it |
+| Copying the centroid into the new person's face-image vector | A centroid is not the vector of the crop; the face-image job computes the right one |
+
 ## Tests that cross the worker and the store live in `cmd/mdm`
 
 The analysis of two videos of one person into one provisional person, a short

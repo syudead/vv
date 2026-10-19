@@ -2,7 +2,12 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
 import { type Credit, deleteCredit, isCreditGone, type Person } from "../../api/credits";
-import { confirmFaceCandidate, type FaceCandidatePerson } from "../../api/personFaces";
+import {
+  confirmFaceCandidate,
+  type FaceAppearance,
+  type FaceCandidatePerson,
+  splitFaceAppearance,
+} from "../../api/personFaces";
 import { errorText, t, type UiText } from "../../i18n";
 import { ErrorState } from "../../ui/patterns/error-state";
 import { LoadingState } from "../../ui/patterns/loading-state";
@@ -137,6 +142,23 @@ function PersonShown({
     toast(text.candidates.merged(creditDisplayName(other)));
   }
 
+  /** The face leaves this person's list; the video's credit and the person's candidates may have changed. */
+  async function splitAppearance(appearance: FaceAppearance) {
+    const created = await splitFaceAppearance(person.id, appearance.appearanceId);
+    appearances.remove(appearance.appearanceId);
+    candidates.reload();
+    videos.reload();
+    toast(text.faces.split, {
+      action: {
+        label: text.faces.openSplit,
+        run: () => {
+          void navigate(personPath(created.id));
+          return Promise.resolve();
+        },
+      },
+    });
+  }
+
   async function performDelete() {
     setDeleteError(null);
     setDeletePending(true);
@@ -183,7 +205,12 @@ function PersonShown({
               }}
             />
           }
-          faces={<PersonAppearances appearances={appearances} />}
+          faces={
+            <PersonAppearances
+              appearances={appearances}
+              actions={{ split: splitAppearance, onGone: markGone }}
+            />
+          }
         />
       }
       header={<PersonVideosHeader videos={videos} />}
