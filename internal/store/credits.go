@@ -332,7 +332,8 @@ func applyCreditChanges(ctx context.Context, tx *sql.Tx, t creditTables, id int6
 	return nil
 }
 
-// Delete cascades names, IDs and links, clears child parents, and compacts affected link positions.
+// Delete cascades names, IDs and links, clears child parents, compacts affected link positions, and deletes a
+// person's face data.
 func (s *CreditStore) Delete(ctx context.Context, kind domain.CreditKind, id int64) error {
 	t, err := creditTablesFor(kind)
 	if err != nil {
@@ -355,6 +356,11 @@ func (s *CreditStore) Delete(ctx context.Context, kind domain.CreditKind, id int
 	if err != nil {
 		return err
 	}
+	if t.kind == domain.CreditPerson {
+		if err := deletePersonFaceData(ctx, tx, id); err != nil {
+			return err
+		}
+	}
 	if _, err := tx.ExecContext(ctx, t.q(`delete from {entity} where id = ?`), id); err != nil {
 		return fmt.Errorf("cannot delete %s %d: %w", kind, id, err)
 	}
@@ -367,7 +373,7 @@ func (s *CreditStore) Delete(ctx context.Context, kind domain.CreditKind, id int
 	return nil
 }
 
-// Merge transfers links, aliases, external IDs and children and fills empty profile fields, a missing face and a missing canonical name atomically; reject self-merges, parent cycles and merged limits.
+// Merge transfers links, aliases, external IDs, children and face data and fills empty profile fields, a missing face and a missing canonical name atomically; reject self-merges, parent cycles and merged limits.
 func (s *CreditStore) Merge(ctx context.Context, kind domain.CreditKind, targetID int64, sourceIDs []int64) (domain.CreditMergeOutcome, error) {
 	t, err := creditTablesFor(kind)
 	if err != nil {
@@ -447,7 +453,16 @@ func mergeCreditsInto(ctx context.Context, tx *sql.Tx, t creditTables, targetID 
 		if err := fillMergedPersonProfile(ctx, tx, targetID, sourceIDs); err != nil {
 			return err
 		}
-		if err := fillMergedPersonImage(ctx, tx, targetID, sourceIDs); err != nil {
+		faceFrom, err := fillMergedPersonImage(ctx, tx, targetID, sourceIDs)
+		if err != nil {
+			return err
+		}
+		if faceFrom != 0 {
+			if err := moveFaceVector(ctx, tx, targetID, faceFrom); err != nil {
+				return err
+			}
+		}
+		if err := mergePersonFaceData(ctx, tx, targetID, string(encoded)); err != nil {
 			return err
 		}
 		// A target that is not yet a favorite takes the earliest source favorite time; the sources' rows cascade below.

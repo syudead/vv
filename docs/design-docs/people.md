@@ -187,7 +187,9 @@ never answers `304` to the removed face's `ETag`.
 | Data URLs in list responses           | A page of 100 people would carry 100 faces           |
 
 A merge keeps the target's face; a target without one takes the face of the
-first source in `sourceIds` order that has one.
+first source in `sourceIds` order that has one. Deleting or merging a person
+also deletes or moves their face recognition data
+([face-recognition.md](face-recognition.md#face-data-follows-its-person)).
 
 ## The people grid
 

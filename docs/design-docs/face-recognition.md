@@ -277,3 +277,59 @@ dismissed the pair
 The performer has no face to compare with, so the rule relies on the
 one-to-one pairing; in the POC, five candidates from a cast list named 0.5% of
 unknown faces wrongly at 0.363, and one candidate is stricter still.
+
+## One video's result is stored in one transaction
+
+`FaceStore.Store` writes a video's analysis in one transaction
+([`faces.go`](../../internal/store/faces.go)): it re-reads the stored
+appearances and every person's vectors, applies `PlanFaceAppearances`, and
+writes what the plan decides. Reading the people inside the transaction means a
+person deleted during the analysis is never linked.
+
+| Plan for a main person | What is written |
+| --- | --- |
+| Carried over | The row keeps its id, person, dropped mark and crop, and takes the new tracks, counts, recognizer and centroid; a row whose person was deleted keeps a null centroid |
+| Linked to a person | A new appearance and a `performer` row at the video's user key |
+| New | A provisional person (a `people` row without names) whose face is the crop, its candidate pairs, a new appearance and a `performer` row |
+
+A stored appearance nothing is carried over to is deleted. The completed
+`face_analysis` entry lists each link it made in
+`activity_entry_face_links`, with `created_person` set when the run created the
+person. Appearances are keyed by content key, so a content key that no video
+has any more keeps its rows, and a returning file keeps its links.
+
+| Rejected | Why |
+| --- | --- |
+| Matching in the worker, then writing | A person deleted or merged between the read and the write would be linked |
+| Keeping crops only on appearances | The people grid, the cast chips and the candidates show `person_images`, so a provisional person would show no face |
+
+## The face queue mirrors the auto-tagging queue
+
+`face_queue` holds one row per content key in the states `queued`, `running`,
+`done` and `failed`, and shares its queueing, claiming, failure and recovery
+code with `auto_tag_queue`
+([`content_queue.go`](../../internal/store/content_queue.go)). While
+`face.enabled` is `true`, the transaction that records the seek stage's final
+result queues a video with no row, and its `face_analysis` entry joins the
+import pipeline as `auto_tag` does
+([activity.md](activity.md#a-pipeline-groups-one-import-run)).
+
+A recognizer switch increases the `face.generation` setting. `Store` compares
+the generation the analysis started under with the current one in its
+transaction and refuses an older one with `ErrFaceGenerationChanged`, writing
+nothing, so a vector of the old recognizer is never stored beside the new
+ones. A result for a row that is no longer `running` writes nothing either.
+
+## Face data follows its person
+
+Writes to people and credits move or drop face rows in their own transaction
+([`face_people.go`](../../internal/store/face_people.go)).
+
+| Write | Face rows |
+| --- | --- |
+| Deleting a person | Their appearances become dropped and lose centroid and crop, keeping only their tracks; the face image, its vector and the candidate pairs go with the person |
+| Merging people | The sources' appearances and candidate pairs move to the target, and a pair that would join the target to itself is deleted; a target that takes a source's face also takes that face's current vector |
+| A work-information write that removes a performer | The video's appearances of that person become dropped |
+
+The kept tracks are what let a re-analysis carry a dropped appearance over, so
+a deleted face is not recreated and a removed link is not made again.

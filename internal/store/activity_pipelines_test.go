@@ -187,7 +187,7 @@ func recordFollowUp(t *testing.T, db *DB, jobID int64, key string) int64 {
 	defer func() { _ = tx.Rollback() }()
 	var c changes
 	now := time.Now()
-	id, err := recordActivity(ctx, tx, &c, autoTagActivityEntry(key, key, domain.ActivityWaiting, domain.ActivityByRule), now)
+	id, err := recordActivity(ctx, tx, &c, autoTagQueue.entry(key, key, domain.ActivityWaiting, domain.ActivityByRule), now)
 	if err != nil {
 		t.Fatal(err)
 	}

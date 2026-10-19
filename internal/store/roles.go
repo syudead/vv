@@ -55,6 +55,10 @@ type PlaylistStore struct{ sql, read *sql.DB }
 // AutoTagStore owns the judgement queue and atomic tag application; SettingsStore owns its settings.
 type AutoTagStore struct{ db *DB }
 
+// FaceStore owns the face analysis queue and stores each video's result, with its people, links and activity, in
+// one transaction; SettingsStore owns its settings.
+type FaceStore struct{ db *DB }
+
 // OverrideStore writes display overrides and fetched work information atomically with dependent search keys and tags.
 type OverrideStore struct{ db *DB }
 
@@ -105,6 +109,7 @@ func (db *DB) Playlists() *PlaylistStore       { return &PlaylistStore{sql: db.s
 func (db *DB) FolderGroups() *FolderGroupStore { return &FolderGroupStore{db: db} }
 func (db *DB) Overrides() *OverrideStore       { return &OverrideStore{db: db} }
 func (db *DB) AutoTags() *AutoTagStore         { return &AutoTagStore{db: db} }
+func (db *DB) Faces() *FaceStore               { return &FaceStore{db: db} }
 func (db *DB) Versions() *VersionStore         { return &VersionStore{db: db} }
 func (db *DB) Groups() *GroupStore             { return &GroupStore{db: db} }
 func (db *DB) Organize() *OrganizeStore        { return &OrganizeStore{db: db} }
