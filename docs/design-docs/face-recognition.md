@@ -356,6 +356,21 @@ The performer has no face to compare with, so the rule relies on the
 one-to-one pairing; in the POC, five candidates from a cast list named 0.5% of
 unknown faces wrongly at 0.363, and one candidate is stricter still.
 
+The rule reads a work's performers, their appearances in every video sharing
+the work, and the dismissed pairs in the transaction that merges
+([`face_cast.go`](../../internal/store/face_cast.go)), and records the merge as
+a `face_merge` entry.
+
+| Trigger | Where the rule runs |
+| --- | --- |
+| A video's analysis ends | In `FaceStore.Store`'s transaction, after the result is written |
+| A work-information write (`VideoWorkInfoChanged`) | In the face worker, before its next claim, while the feature is on; a database error keeps the unchecked videos for the attempt after 5 seconds |
+
+| Rejected | Why |
+| --- | --- |
+| Running the rule in every work-information write's transaction | The details editor, the library selection, plugin apply and `/api/v1` would each record activity and fail the owner's edit when the merge fails |
+| Checking work-information changes made while the feature is off once it is on again | Nothing records them, and the next analysis of the video applies the rule anyway |
+
 ## One video's result is stored in one transaction
 
 `FaceStore.Store` writes a video's analysis in one transaction

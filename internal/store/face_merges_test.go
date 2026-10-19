@@ -33,11 +33,6 @@ func newMergeFixture(t *testing.T, targetOnA bool) mergeFixture {
 	f.target = createPerson(t, db, "Target").ID
 	f.near = createPerson(t, db, "Near").ID
 	setFaceVector(t, db, f.near, faceNear(2, 3, 0.4))
-	if targetOnA {
-		if _, err := db.WorkInfo().Set(ctx, f.videoA, domain.WorkInfo{People: []domain.WorkPerson{performer(f.target)}}); err != nil {
-			t.Fatal(err)
-		}
-	}
 	if n, err := db.Faces().QueueLibrary(ctx, domain.FaceQueueAll, domain.ActivityByOwner); err != nil || n != 2 {
 		t.Fatalf("QueueLibrary = %d, %v", n, err)
 	}
@@ -55,6 +50,13 @@ func newMergeFixture(t *testing.T, targetOnA bool) mergeFixture {
 		}
 	}
 	f.provisional = faceAppearances(t, db)[0].personID
+	if targetOnA {
+		// Added after the analysis, which would otherwise merge the provisional person by the cast rule.
+		info := domain.WorkInfo{People: []domain.WorkPerson{performer(f.target), performer(f.provisional)}}
+		if _, err := db.WorkInfo().Set(ctx, f.videoA, info); err != nil {
+			t.Fatal(err)
+		}
+	}
 	height := domain.PersonProfilePatch{Fields: []domain.PersonProfileField{domain.ProfileHeightCm},
 		Values: domain.PersonProfile{HeightCm: intPtr(160)}}
 	if _, err := db.Credits().Update(ctx, domain.CreditPerson, f.provisional, domain.CreditPatch{Profile: &height}); err != nil {
