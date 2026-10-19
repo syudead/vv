@@ -197,13 +197,22 @@ func (s *ortSession) run(input []float32, shape []int64) ([]tensor, error) {
 	if err != nil {
 		return nil, err
 	}
+	return readOutputs(outs, s.r.readTensor, func(v uintptr) { purego.SyscallN(s.r.fn(fnReleaseValue), v) })
+}
+
+// readOutputs copies every output and releases all of them, including those after a failed read,
+// because the helper keeps serving requests after an error.
+func readOutputs(outs []uintptr, read func(uintptr) (tensor, error), release func(uintptr)) ([]tensor, error) {
 	result := make([]tensor, len(outs))
+	var firstErr error
 	for i, v := range outs {
-		result[i], err = s.r.readTensor(v)
-		purego.SyscallN(s.r.fn(fnReleaseValue), v)
-		if err != nil {
-			return nil, err
+		if firstErr == nil {
+			result[i], firstErr = read(v)
 		}
+		release(v)
+	}
+	if firstErr != nil {
+		return nil, firstErr
 	}
 	return result, nil
 }

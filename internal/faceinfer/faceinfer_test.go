@@ -1,9 +1,31 @@
 package faceinfer
 
 import (
+	"errors"
 	"math"
+	"slices"
 	"testing"
 )
+
+func TestReadOutputsReleasesEveryOutputWhenAReadFails(t *testing.T) {
+	var read, released []uintptr
+	_, err := readOutputs([]uintptr{1, 2, 3}, func(v uintptr) (tensor, error) {
+		read = append(read, v)
+		if v == 2 {
+			return tensor{}, errors.New("bad tensor")
+		}
+		return tensor{}, nil
+	}, func(v uintptr) { released = append(released, v) })
+	if err == nil || err.Error() != "bad tensor" {
+		t.Fatalf("err = %v, want bad tensor", err)
+	}
+	if !slices.Equal(read, []uintptr{1, 2}) {
+		t.Errorf("read %v, want [1 2]", read)
+	}
+	if !slices.Equal(released, []uintptr{1, 2, 3}) {
+		t.Errorf("released %v, want [1 2 3]", released)
+	}
+}
 
 func near(t *testing.T, name string, got, want float64) {
 	t.Helper()
