@@ -146,7 +146,7 @@ func (m WorkInfoPluginManifest) Supports(op WorkInfoOperation) bool {
 
 // Unknown manifest fields are ignored.
 type manifestJSON struct {
-	Kind        *WorkInfoPluginKind `json:"kind"`
+	Kind        WorkInfoPluginKind  `json:"kind"`
 	Sources     []string            `json:"sources"`
 	Name        string              `json:"name"`
 	Version     string              `json:"version"`
@@ -219,8 +219,9 @@ func CheckWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, *WorkInfo
 		Settings:    settings,
 		Sources:     raw.Sources,
 	}
-	if raw.Kind != nil {
-		m.Kind = *raw.Kind
+	// A present kind, null included, must name a kind; only an absent one defaults to work.
+	if _, hasKind := top["kind"]; hasKind {
+		m.Kind = raw.Kind
 	}
 	if rejection := checkManifest(m); rejection != nil {
 		return WorkInfoPluginManifest{}, rejection

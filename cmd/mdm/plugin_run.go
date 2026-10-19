@@ -263,7 +263,7 @@ func writeKeptResult(w io.Writer, req domain.WorkInfoRunRequest, result domain.W
 	case person:
 		body = struct {
 			Person keptPerson `json:"person"`
-		}{toKeptPerson(result.Person)}
+		}{toKeptPerson(result)}
 	default:
 		body = struct {
 			WorkInfo keptWorkInfo `json:"workInfo"`

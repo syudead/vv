@@ -27,6 +27,7 @@ func TestCheckWorkInfoPluginManifestKind(t *testing.T) {
 		{"person with only fetch", `"kind":"person","operations":["fetch"],"sources":["a"]}`, "operations"},
 		{"work with sources", `"operations":["fetch"],"sources":["a"]}`, "sources"},
 		{"unknown kind", `"kind":"studio","operations":["fetch"]}`, "kind"},
+		{"null kind", `"kind":null,"operations":["fetch"]}`, "kind"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

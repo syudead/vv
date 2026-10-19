@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/wasmplugin"
 )
 
@@ -52,6 +54,38 @@ func TestPluginRunRefusesASourceTheRunCannotTake(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			module := runModulePath(t, tc.manifest)
 			wantRun(t, runPluginCommand(t, wasmplugin.Options{}, append([]string{module}, tc.args...)...), exitAccountUsage, "source")
+		})
+	}
+}
+
+func TestPluginRunPrintsAPersonImageOnlyWhenFetched(t *testing.T) {
+	req := domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, Kind: domain.WorkInfoPluginKindPerson}
+	const url = "https://site.test/p.jpg"
+	cases := []struct {
+		name  string
+		image []byte
+		want  string
+	}{
+		{"fetched", []byte{0xff}, url},
+		{"not fetched", nil, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := domain.WorkInfoRunResult{
+				Person: domain.FetchedPluginPerson{Name: "n", ImageURL: url}, PersonImage: tc.image,
+			}
+			var out bytes.Buffer
+			if failure := writeKeptResult(&out, req, result); failure != nil {
+				t.Fatalf("writeKeptResult: %v", failure)
+			}
+			var body struct {
+				Person struct {
+					Image string `json:"image"`
+				} `json:"person"`
+			}
+			if err := json.Unmarshal(out.Bytes(), &body); err != nil || body.Person.Image != tc.want {
+				t.Fatalf("stdout = %s, %v; want image %q", out.String(), err, tc.want)
+			}
 		})
 	}
 }
