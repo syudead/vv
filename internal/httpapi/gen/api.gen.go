@@ -38,15 +38,16 @@ func (e ActivityDecider) Valid() bool {
 
 // Defines values for ActivityFeature.
 const (
-	ActivityFeatureAutoTagging    ActivityFeature = "auto_tagging"
-	ActivityFeatureDuplicateCheck ActivityFeature = "duplicate_check"
-	ActivityFeatureImport         ActivityFeature = "import"
-	ActivityFeatureMediaFolders   ActivityFeature = "media_folders"
-	ActivityFeatureOrganize       ActivityFeature = "organize"
-	ActivityFeatureScan           ActivityFeature = "scan"
-	ActivityFeatureTags           ActivityFeature = "tags"
-	ActivityFeatureVersions       ActivityFeature = "versions"
-	ActivityFeatureWorkInfo       ActivityFeature = "work_info"
+	ActivityFeatureAutoTagging     ActivityFeature = "auto_tagging"
+	ActivityFeatureDuplicateCheck  ActivityFeature = "duplicate_check"
+	ActivityFeatureFaceRecognition ActivityFeature = "face_recognition"
+	ActivityFeatureImport          ActivityFeature = "import"
+	ActivityFeatureMediaFolders    ActivityFeature = "media_folders"
+	ActivityFeatureOrganize        ActivityFeature = "organize"
+	ActivityFeatureScan            ActivityFeature = "scan"
+	ActivityFeatureTags            ActivityFeature = "tags"
+	ActivityFeatureVersions        ActivityFeature = "versions"
+	ActivityFeatureWorkInfo        ActivityFeature = "work_info"
 )
 
 // Valid indicates whether the value is a known member of the ActivityFeature enum.
@@ -55,6 +56,8 @@ func (e ActivityFeature) Valid() bool {
 	case ActivityFeatureAutoTagging:
 		return true
 	case ActivityFeatureDuplicateCheck:
+		return true
+	case ActivityFeatureFaceRecognition:
 		return true
 	case ActivityFeatureImport:
 		return true
@@ -292,6 +295,7 @@ func (e ActivityStatus) Valid() bool {
 const (
 	ActivitySubjectKindFolder ActivitySubjectKind = "folder"
 	ActivitySubjectKindPair   ActivitySubjectKind = "pair"
+	ActivitySubjectKindPerson ActivitySubjectKind = "person"
 	ActivitySubjectKindScan   ActivitySubjectKind = "scan"
 	ActivitySubjectKindVideo  ActivitySubjectKind = "video"
 )
@@ -302,6 +306,8 @@ func (e ActivitySubjectKind) Valid() bool {
 	case ActivitySubjectKindFolder:
 		return true
 	case ActivitySubjectKindPair:
+		return true
+	case ActivitySubjectKindPerson:
 		return true
 	case ActivitySubjectKindScan:
 		return true
@@ -2493,15 +2499,16 @@ type ActivityFeature string
 
 // ActivityFeatureCounts Counts for all features among top-level records matching every filter except feature; a pipeline counts once under each feature that it or a matching member has.
 type ActivityFeatureCounts struct {
-	AutoTagging    int `json:"auto_tagging"`
-	DuplicateCheck int `json:"duplicate_check"`
-	Import         int `json:"import"`
-	MediaFolders   int `json:"media_folders"`
-	Organize       int `json:"organize"`
-	Scan           int `json:"scan"`
-	Tags           int `json:"tags"`
-	Versions       int `json:"versions"`
-	WorkInfo       int `json:"work_info"`
+	AutoTagging     int `json:"auto_tagging"`
+	DuplicateCheck  int `json:"duplicate_check"`
+	FaceRecognition int `json:"face_recognition"`
+	Import          int `json:"import"`
+	MediaFolders    int `json:"media_folders"`
+	Organize        int `json:"organize"`
+	Scan            int `json:"scan"`
+	Tags            int `json:"tags"`
+	Versions        int `json:"versions"`
+	WorkInfo        int `json:"work_info"`
 }
 
 // ActivityKind Activity record kind.
@@ -2580,6 +2587,9 @@ type ActivityListItem struct {
 type ActivityMemberSummary struct {
 	// Decider Actor responsible for the recorded decision, otherwise the actor that started processing.
 	Decider ActivityDecider `json:"decider"`
+
+	// FaceLinks face_analysis only: the people the run linked, as in ActivityEntry.
+	FaceLinks *[]ActivityFaceLink `json:"faceLinks,omitempty"`
 
 	// Feature Kind grouping used for feature filters; undo belongs to the feature of the undone record.
 	Feature ActivityFeature `json:"feature"`
@@ -2708,6 +2718,9 @@ type ActivitySubjectKind string
 type ActivitySubjectItem struct {
 	// Label Display-name snapshot at recording time, as untranslated user data.
 	Label string `json:"label"`
+
+	// PersonId The person of a person subject, which may since have been deleted; omitted for other subjects.
+	PersonId *int64 `json:"personId,omitempty"`
 
 	// VideoId Current video accessible to the viewer; omitted when unavailable.
 	VideoId *int64 `json:"videoId,omitempty"`

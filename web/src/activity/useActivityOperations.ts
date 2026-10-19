@@ -1,6 +1,11 @@
 import { useCallback } from "react";
 
-import { type ActivityEntry, retryActivity, undoActivity } from "../api/activity";
+import {
+  type ActivityEntry,
+  type ActivityUndoRequest,
+  retryActivity,
+  undoActivity,
+} from "../api/activity";
 import { errorText, t } from "../i18n";
 import { useToast } from "../ui/Toast";
 
@@ -9,7 +14,7 @@ export type OperationTarget = Pick<ActivityEntry, "id">;
 
 export interface ActivityOperations {
   retry: (entry: OperationTarget) => Promise<void>;
-  undo: (entry: OperationTarget, tagId?: number) => Promise<void>;
+  undo: (entry: OperationTarget, part?: ActivityUndoRequest) => Promise<void>;
 }
 
 /**
@@ -33,9 +38,9 @@ export function useActivityOperations(refresh: () => Promise<void>): ActivityOpe
   );
 
   const undo = useCallback(
-    async (entry: OperationTarget, tagId?: number) => {
+    async (entry: OperationTarget, part?: ActivityUndoRequest) => {
       try {
-        const written = await undoActivity(entry.id, tagId);
+        const written = await undoActivity(entry.id, part);
         toast(
           written.outcome === "already_reverted"
             ? t.activity.toast.alreadyReverted

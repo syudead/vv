@@ -16,14 +16,22 @@ import { Link } from "react-router";
 import type {
   ActivityDetail,
   ActivityEntry,
+  ActivityFaceLink,
   ActivityPipelineRef,
   ActivityTag,
+  ActivityUndoRequest,
 } from "../api/activity";
 import { formatDateTime, t } from "../i18n";
 import { cn } from "../lib/cn";
 import { PageSection } from "../ui/patterns/page-section";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
-import { MarkIcon, OperationButton, ResultText, StatusIcon } from "./ActivityCard";
+import {
+  FaceLinkFace,
+  MarkIcon,
+  OperationButton,
+  ResultText,
+  StatusIcon,
+} from "./ActivityCard";
 import {
   memberResult,
   memberTitle,
@@ -31,14 +39,14 @@ import {
   stageLines,
   type StageView,
 } from "./activityDetail";
-import { entryOperations, subjectText } from "./activityEntry";
+import { entryOperations, faceLinkName, subjectText } from "./activityEntry";
 
 /** One operation runs at a time on the page; every Retry and Undo waits for its refetch. */
 export interface DetailOperations {
   pending: string | null;
   run: (key: string, send: () => Promise<void>) => void;
   retry: (entry: ActivityEntry) => Promise<void>;
-  undo: (entry: ActivityEntry, tagId?: number) => Promise<void>;
+  undo: (entry: ActivityEntry, part?: ActivityUndoRequest) => Promise<void>;
 }
 
 interface IconOperationProps {
@@ -251,7 +259,7 @@ function TagRow({
             opKey={`tag-${String(tag.id)}`}
             label={t.activity.detail.undoTag(tag.name)}
             icon={Undo2}
-            send={() => ops.undo(entry, tag.id)}
+            send={() => ops.undo(entry, { tagId: tag.id })}
           />
         ) : undefined
       }
@@ -286,6 +294,71 @@ export function TagsSection({
           tag={tag}
           undoable={undoable.has(tag.id)}
           ops={ops}
+        />
+      ))}
+    </PageSection>
+  );
+}
+
+function FaceLinkTitle({ link, here }: { link: ActivityFaceLink; here: string }) {
+  const name = faceLinkName(link);
+  const quiet = link.person?.provisional !== false;
+  return (
+    <span>
+      {link.undone ? (
+        <span className="text-muted-foreground line-through">{name}</span>
+      ) : link.person === undefined ? (
+        <span className="text-muted-foreground">{name}</span>
+      ) : (
+        <Link
+          to={`/people/${String(link.person.id)}`}
+          state={{ from: here }}
+          className={cn("hover:underline", quiet && "text-muted-foreground")}
+        >
+          {name}
+        </Link>
+      )}
+      {link.createdPerson && (
+        <span className="text-muted-foreground"> {t.activity.detail.newPerson}</span>
+      )}
+    </span>
+  );
+}
+
+/** A face analysis's links, as the tags of an auto-tagging run: each undone on its own. */
+export function PeopleSection({
+  entry,
+  ops,
+  here,
+}: {
+  entry: ActivityDetail;
+  ops: DetailOperations;
+  /** Return URL for the person pages opened from a row. */
+  here: string;
+}) {
+  const links = entry.faceLinks ?? [];
+  if (entry.kind !== "face_analysis" || links.length === 0) return null;
+  const undoable = new Set(
+    entryOperations(entry).undoLinks.map((link) => link.appearanceId),
+  );
+  return (
+    <PageSection title={t.activity.detail.section.people}>
+      {links.map((link) => (
+        <DetailRow
+          key={link.appearanceId}
+          icon={<FaceLinkFace link={link} />}
+          title={<FaceLinkTitle link={link} here={here} />}
+          actions={
+            undoable.has(link.appearanceId) ? (
+              <IconOperation
+                ops={ops}
+                opKey={`link-${String(link.appearanceId)}`}
+                label={t.activity.detail.undoLink(faceLinkName(link))}
+                icon={Undo2}
+                send={() => ops.undo(entry, { appearanceId: link.appearanceId })}
+              />
+            ) : undefined
+          }
         />
       ))}
     </PageSection>

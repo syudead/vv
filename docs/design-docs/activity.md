@@ -258,7 +258,7 @@ request with no filter (`web/src/api/useActivityTotals.ts`), so `running`
 there includes queued entries. The filters live in the page URL (`status`, `feature`, `decider`,
 `period`, `q`); `period` is turned into `since` when the first page or a
 refetch starts, and the next pages keep that `since`.
-A card's `Retry`, `Undo` and `Undo tags…` send their request without a
+A card's `Retry`, `Undo`, `Undo tags…` and `Undo links…` send their request without a
 confirmation (`web/src/activity/useActivityOperations.ts`) and, on success,
 start the same refetch without waiting for the notification. A failure leaves
 the card as it was and shows a toast.

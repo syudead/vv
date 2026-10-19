@@ -45,16 +45,15 @@ const (
 type ActivityFeature string
 
 const (
-	ActivityFeatureImport         ActivityFeature = "import"
-	ActivityFeatureScan           ActivityFeature = "scan"
-	ActivityFeatureDuplicateCheck ActivityFeature = "duplicate_check"
-	ActivityFeatureAutoTagging    ActivityFeature = "auto_tagging"
-	ActivityFeatureWorkInfo       ActivityFeature = "work_info"
-	ActivityFeatureTags           ActivityFeature = "tags"
-	ActivityFeatureVersions       ActivityFeature = "versions"
-	ActivityFeatureMediaFolders   ActivityFeature = "media_folders"
-	ActivityFeatureOrganize       ActivityFeature = "organize"
-	// ActivityFeatureFaceRecognition is left out of ActivityFeatures until the API's feature filter lists it.
+	ActivityFeatureImport          ActivityFeature = "import"
+	ActivityFeatureScan            ActivityFeature = "scan"
+	ActivityFeatureDuplicateCheck  ActivityFeature = "duplicate_check"
+	ActivityFeatureAutoTagging     ActivityFeature = "auto_tagging"
+	ActivityFeatureWorkInfo        ActivityFeature = "work_info"
+	ActivityFeatureTags            ActivityFeature = "tags"
+	ActivityFeatureVersions        ActivityFeature = "versions"
+	ActivityFeatureMediaFolders    ActivityFeature = "media_folders"
+	ActivityFeatureOrganize        ActivityFeature = "organize"
 	ActivityFeatureFaceRecognition ActivityFeature = "face_recognition"
 )
 
@@ -62,7 +61,7 @@ const (
 var ActivityFeatures = []ActivityFeature{
 	ActivityFeatureImport, ActivityFeatureScan, ActivityFeatureDuplicateCheck, ActivityFeatureAutoTagging,
 	ActivityFeatureWorkInfo, ActivityFeatureTags, ActivityFeatureVersions, ActivityFeatureMediaFolders,
-	ActivityFeatureOrganize,
+	ActivityFeatureOrganize, ActivityFeatureFaceRecognition,
 }
 
 var activityKindFeatures = map[ActivityKind]ActivityFeature{
