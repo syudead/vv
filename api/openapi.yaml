@@ -2824,6 +2824,63 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/people/{id}/face-candidates:
+    get:
+      operationId: listFaceCandidates
+      summary: "List a person's face candidates"
+      description: "Owner-only. Open (not dismissed) face candidate pairs the person takes part in, highest similarity first, each as the other person. Missing person returns 404 person_not_found."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      responses:
+        "200":
+          description: "Open pairs"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaceCandidateList"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/people/{id}/face-candidates/{otherId}/confirm:
+    post:
+      operationId: confirmFaceCandidate
+      summary: "Merge a face candidate pair"
+      description: "Owner-only; no body. Merges the provisional person of the open pair of id and otherId, in either order, into the other one through the ordinary merge and returns the merged person. Records no face_merge activity. No open pair of these two people returns 404 face_candidate_not_found; merge limits fail as mergePeople does."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - $ref: "#/components/parameters/FaceCandidateOtherId"
+      responses:
+        "200":
+          description: "Merged person"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Person"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/people/{id}/face-candidates/{otherId}/dismiss:
+    post:
+      operationId: dismissFaceCandidate
+      summary: "Dismiss a face candidate pair"
+      description: "Owner-only; no body. Marks the open pair of id and otherId, in either order, dismissed; a later analysis or face image never offers it again. No open pair of these two people returns 404 face_candidate_not_found."
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+        - $ref: "#/components/parameters/FaceCandidateOtherId"
+      responses:
+        "204":
+          description: "Dismissed"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/organizations:
     get:
       operationId: listOrganizations
@@ -4762,6 +4819,15 @@ components:
       in: path
       required: true
       description: "Person ID"
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    FaceCandidateOtherId:
+      name: otherId
+      in: path
+      required: true
+      description: "ID of the other person of the pair"
       schema:
         type: integer
         format: int64
@@ -6908,6 +6974,46 @@ components:
           items:
             type: integer
             format: int64
+
+    FaceCandidateList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FaceCandidate"
+
+    FaceCandidate:
+      type: object
+      required: [person, similarity]
+      additionalProperties: false
+      description: "One open pair, as the other person of it."
+      properties:
+        person:
+          $ref: "#/components/schemas/FaceCandidatePerson"
+        similarity:
+          type: number
+          format: double
+          description: "The pair's highest face similarity when last computed, from 0 to 1."
+
+    FaceCandidatePerson:
+      type: object
+      required: [id, name, provisional]
+      additionalProperties: false
+      description: "CreditRef of the other person, with its face."
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        provisional:
+          type: boolean
+          description: "True for a person without a canonical name, whose name is then \"\"."
+        imageRevision:
+          $ref: "#/components/schemas/PersonImageRevision"
 
     OrganizationMergeResponse:
       type: object
@@ -9794,3 +9900,4 @@ components:
         - output_too_large
         - tag_kind_not_found
         - tag_kind_name_taken
+        - face_candidate_not_found
