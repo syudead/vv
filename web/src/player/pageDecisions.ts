@@ -19,7 +19,9 @@ export function autoplayRequested(state: unknown): boolean {
 export function startFromSearch(search: string): number | null {
   const value = new URLSearchParams(search).get("t");
   if (value === null || !/^\d+(\.\d+)?$/.test(value)) return null;
-  return Math.round(Number(value) * 1000);
+  // A long digit string overflows to Infinity, which the player rejects.
+  const ms = Math.round(Number(value) * 1000);
+  return Number.isFinite(ms) ? ms : null;
 }
 
 /** Versions share progress; restart if the saved position exceeds this version's duration. */

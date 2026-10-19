@@ -46,6 +46,7 @@ describe("startFromSearch", () => {
     expect(startFromSearch("")).toBeNull();
     expect(startFromSearch("?t=-3")).toBeNull();
     expect(startFromSearch("?t=abc")).toBeNull();
+    expect(startFromSearch(`?t=${"9".repeat(400)}`)).toBeNull();
   });
 });
 
