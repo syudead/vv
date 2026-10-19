@@ -22,12 +22,8 @@ func (s *CreditStore) FaceCandidates(ctx context.Context, personID int64) ([]dom
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	var exists int
-	if err := tx.QueryRowContext(ctx, `select 1 from people where id = ?`, personID).Scan(&exists); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, domain.ErrNotFound
-		}
-		return nil, fmt.Errorf("cannot read person %d: %w", personID, err)
+	if err := requirePerson(ctx, tx, personID); err != nil {
+		return nil, err
 	}
 	rows, err := tx.QueryContext(ctx, `select o.id, coalesce(n.name, ''), n.person_id is null,
 		`+personImageRevision("o.id")+`, c.similarity
@@ -52,6 +48,18 @@ func (s *CreditStore) FaceCandidates(ctx context.Context, personID int64) ([]dom
 		return nil, fmt.Errorf("cannot read the face candidates of person %d: %w", personID, err)
 	}
 	return out, nil
+}
+
+// requirePerson returns domain.ErrNotFound when no person has the id.
+func requirePerson(ctx context.Context, q rowQueryer, personID int64) error {
+	var exists int
+	if err := q.QueryRowContext(ctx, `select 1 from people where id = ?`, personID).Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return domain.ErrNotFound
+		}
+		return fmt.Errorf("cannot read person %d: %w", personID, err)
+	}
+	return nil
 }
 
 // ConfirmFaceCandidate merges the provisional person of the open pair of the two people into the other through the
