@@ -107,7 +107,11 @@ never sees candidates.
 The result is kept for 10 minutes, bound to the person and to the plugin's
 digest and generation, in the store and under the image budget of work-info
 fetches ([work-info-plugins.md](work-info-plugins.md)). Its image is served
-from `GET /api/people/{id}/plugin-fetches/{fetchId}/image`.
+from `GET /api/people/{id}/plugin-fetches/{fetchId}/image`. The result keeps
+only the profile values valid with each other, the ones the comparison shows,
+so an apply can select only a value the owner saw. The run rechecks the
+source against the plugin it executes and answers `400 invalid_request` when a
+replaced plugin no longer declares it.
 
 | Rejected | Why |
 | --- | --- |

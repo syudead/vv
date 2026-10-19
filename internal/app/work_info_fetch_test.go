@@ -18,6 +18,8 @@ import (
 type runPluginStore struct {
 	fakePluginStore
 	plugins map[int64]*domain.WorkInfoPlugin
+	// beforeModule runs before the module read, to replace a plugin between a caller's read and the run.
+	beforeModule func()
 }
 
 func (s *runPluginStore) WorkInfoPlugin(_ context.Context, id int64) (domain.WorkInfoPlugin, error) {
@@ -29,6 +31,9 @@ func (s *runPluginStore) WorkInfoPlugin(_ context.Context, id int64) (domain.Wor
 }
 
 func (s *runPluginStore) WorkInfoPluginModule(ctx context.Context, id int64) (domain.WorkInfoPlugin, []byte, error) {
+	if s.beforeModule != nil {
+		s.beforeModule()
+	}
 	plugin, err := s.WorkInfoPlugin(ctx, id)
 	if err != nil {
 		return domain.WorkInfoPlugin{}, nil, err

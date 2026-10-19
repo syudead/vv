@@ -3,7 +3,6 @@ package httpapi
 import (
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -48,7 +47,7 @@ func (s *server) FetchPersonWithPlugin(w http.ResponseWriter, r *http.Request, i
 	}
 }
 
-// Show only profile values that pass validation, as a work-info fetch shows a fetched person's.
+// The kept profile already holds only the values that pass validation, as a work-info fetch shows a fetched person's.
 func toAPIPluginPerson(fetch domain.PersonPluginFetchResult) gen.PersonPluginFetchedPerson {
 	person := gen.PersonPluginFetchedPerson{
 		Name: fetch.Person.Name, Aliases: toAPIAliases(fetch.Person.Aliases),
@@ -57,8 +56,8 @@ func toAPIPluginPerson(fetch domain.PersonPluginFetchResult) gen.PersonPluginFet
 	if fetch.HasImage {
 		person.HasImage = new(true)
 	}
-	if profile := domain.ShownFetchedProfile(fetch.Person.Profile, time.Now()); !profile.Equal(domain.PersonProfile{}) {
-		person.Profile = new(toAPIProfile(profile))
+	if !fetch.Person.Profile.Equal(domain.PersonProfile{}) {
+		person.Profile = new(toAPIProfile(fetch.Person.Profile))
 	}
 	return person
 }

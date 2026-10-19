@@ -77,6 +77,8 @@ func (p *WorkInfoPlugins) FetchPersonWithPlugin(
 	if err != nil {
 		return domain.PersonPluginFetchResult{}, err
 	}
+	// Keep the profile the comparison shows, so an apply can select and fill only the values the owner saw.
+	result.Person.Profile = domain.ShownFetchedProfile(result.Person.Profile, p.now())
 	fetch := &personPluginFetch{
 		personID: personID, pluginID: ran.ID, digest: ran.Digest, generation: ran.Generation,
 		person: result.Person, image: fetchedCover(result.PersonImage), expiresAt: p.now().Add(domain.WorkInfoFetchLifetime),

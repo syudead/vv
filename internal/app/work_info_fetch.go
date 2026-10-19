@@ -155,7 +155,7 @@ func (p *WorkInfoPlugins) matchCredits(
 	return p.matcher.Match(ctx, kind, entries)
 }
 
-// Validate existence, kind, approval, operation support and required settings before executing, returning ErrNotFound, ErrWorkInfoPluginKindMismatch, ErrWorkInfoPluginNotApproved, ErrWorkInfoOperationUnsupported or WorkInfoSettingsMissingError respectively. Pass only declared settings with values; execution errors are WorkInfoRunError.
+// Validate existence, kind, approval, operation support and required settings before executing, returning ErrNotFound, ErrWorkInfoPluginKindMismatch, ErrWorkInfoRunInvalid for an undeclared source, ErrWorkInfoPluginNotApproved, ErrWorkInfoOperationUnsupported or WorkInfoSettingsMissingError respectively. Pass only declared settings with values; execution errors are WorkInfoRunError.
 func (p *WorkInfoPlugins) run(
 	ctx context.Context, id int64, kind domain.WorkInfoPluginKind, req domain.WorkInfoRunRequest,
 ) (domain.WorkInfoPlugin, domain.WorkInfoRunResult, error) {
@@ -165,6 +165,10 @@ func (p *WorkInfoPlugins) run(
 	}
 	if plugin.Kind() != kind {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, domain.ErrWorkInfoPluginKindMismatch
+	}
+	// Recheck the source on the snapshot that runs, since the plugin may have been replaced since the caller chose it.
+	if req.Source != "" && !plugin.Manifest.DeclaresSource(req.Source) {
+		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, domain.ErrWorkInfoRunInvalid
 	}
 	req.Kind, req.Sources = kind, plugin.Manifest.Sources
 	if plugin.State() != domain.WorkInfoPluginApproved {

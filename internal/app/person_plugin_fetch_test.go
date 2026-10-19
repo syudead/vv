@@ -141,6 +141,42 @@ func TestFetchPersonWithPluginRefusesBeforeTheRun(t *testing.T) {
 	}
 }
 
+func TestFetchPersonWithPluginRefusesASourceTheReplacedPluginDropped(t *testing.T) {
+	e := newPersonFetchEnv()
+	e.store.beforeModule = func() { e.store.plugins[1].Manifest.Sources = []string{"site"} }
+
+	_, err := e.plugins.FetchPersonWithPlugin(context.Background(), fetchPerson, 1, nil, nil)
+	if !errors.Is(err, domain.ErrWorkInfoRunInvalid) {
+		t.Fatalf("err = %v; want ErrWorkInfoRunInvalid for the wiki ID the replaced plugin no longer declares", err)
+	}
+	if len(e.runtime.requests) != 0 {
+		t.Fatal("the module ran with an undeclared source")
+	}
+}
+
+func TestApplyPersonPluginFetchRefusesAProfileValueTheResultHid(t *testing.T) {
+	e := newPersonFetchEnv()
+	e.runtime.result = domain.WorkInfoRunResult{Person: domain.FetchedPluginPerson{
+		Name: "Hanako", Profile: domain.PersonProfile{BirthDate: "2000", DeathDate: "1990"},
+	}}
+	result, err := e.plugins.FetchPersonWithPlugin(context.Background(), fetchPerson, 1, nil, nil)
+	if err != nil {
+		t.Fatalf("FetchPersonWithPlugin: %v", err)
+	}
+	if result.Person.Profile.BirthDate != "2000" || result.Person.Profile.DeathDate != "" {
+		t.Fatalf("profile = %+v; want the birth date shown and the death date before it hidden", result.Person.Profile)
+	}
+
+	_, err = e.plugins.ApplyPersonPluginFetch(context.Background(), fetchPerson, result.ID,
+		[]domain.PersonPluginItem{domain.PersonProfileItem(domain.ProfileDeathDate)})
+	if !errors.Is(err, domain.ErrWorkInfoApplyInvalid) {
+		t.Fatalf("err = %v; want ErrWorkInfoApplyInvalid for a value the result did not show", err)
+	}
+	if len(e.people.applies) != 0 {
+		t.Fatal("a hidden value reached the store")
+	}
+}
+
 func TestApplyPersonPluginFetchIsStaleAfterThePluginIsReplaced(t *testing.T) {
 	e := newPersonFetchEnv()
 	result := e.fetch(t, nil)
