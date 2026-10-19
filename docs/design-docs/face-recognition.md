@@ -144,6 +144,13 @@ the pins built into it, and `GET /api/settings/face-recognition` reports
 the state of what the chosen recognizer needs; the settings page reads the
 progress from the same resource while downloading.
 
+A recognizer is `ready` only when its files match their pins and its helper
+has greeted for those files in this process. Files that all match at startup
+count as greeted, so startup starts no helper. `mdm` keeps the last helper
+outcome of each recognizer separately in memory, so choosing another
+recognizer leaves a `failed` one failed, and choosing it again starts its
+helper again.
+
 The diagram shows the states of one recognizer's files.
 
 ```mermaid
@@ -153,7 +160,7 @@ stateDiagram-v2
   [*] --> ready: every file matches
   [*] --> failed: a file differs (hash_mismatch)
   absent --> downloading: turned on
-  failed --> downloading: download again, or turned on
+  failed --> downloading: download again, turned on, or chosen again
   downloading --> ready: hashes match and the helper greets
   downloading --> failed: network, hash_mismatch, disk, helper_start
   downloading --> absent: turned off
@@ -167,7 +174,7 @@ stateDiagram-v2
 | A download ends | The helper is started once: a `Hello` of another protocol version, or no `Hello`, is `helper_start` |
 | Any helper start | The runtime and the recognizer's models are hashed against their pins again first; a helper whose files no longer match is not started and is `hash_mismatch` |
 | Any download start, downloading again included | The files the recognizer needs are hashed again rather than taken from an earlier check, so a file deleted or changed since then is downloaded again |
-| Downloading again after a failure, with no file missing | The helper is started once again instead of the state turning `ready` unchecked |
+| Any start of a recognizer whose helper has not greeted, with no file missing | The helper is started once again instead of the state turning `ready` unchecked: after a failure, a cancelled handshake, or switching back to a recognizer that failed |
 | A recognizer switch | Increases `face.generation` in the settings' transaction |
 
 On Linux `mdm` starts `runtime-v<N>/lib/<loader> --library-path

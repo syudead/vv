@@ -48,11 +48,8 @@ type Manager struct {
 	// files holds the verified state of each item by its key.
 	files map[string]fileState
 	run   *download
-	// failed is the last download's or start's failure, for the recognizer it was for.
-	failed *recognizerFailure
-	// unprobed holds the recognizers whose download was cancelled before the helper greeted; their files alone do
-	// not make them ready.
-	unprobed map[domain.FaceRecognizer]bool
+	// probes holds each recognizer's helper outcome in this process; one recognizer's never changes another's.
+	probes map[domain.FaceRecognizer]probe
 }
 
 type download struct {
@@ -63,10 +60,24 @@ type download struct {
 	total      int64
 }
 
-type recognizerFailure struct {
-	recognizer domain.FaceRecognizer
-	reason     domain.FaceRuntimeFailure
+// probe is what this process knows of one recognizer's helper. A recognizer is ready only when its files match
+// their pins and its probe is probeOK.
+type probe struct {
+	outcome probeOutcome
+	// reason is set when outcome is probeFailed.
+	reason domain.FaceRuntimeFailure
 }
+
+type probeOutcome int
+
+const (
+	// probeNone needs a helper start before the files make the recognizer ready, as after a cancelled download.
+	probeNone probeOutcome = iota
+	// probeOK is a helper that greeted for the files on disk, or files that all matched at startup.
+	probeOK
+	// probeFailed is the last download's or helper start's failure.
+	probeFailed
+)
 
 // item is one thing a recognizer needs: the runtime archive or a model.
 type item struct {
@@ -94,7 +105,7 @@ func New(opts Options) *Manager {
 	}
 	return &Manager{
 		opts: opts, logger: logger.With(slog.String("component", "face-runtime")),
-		unprobed: map[domain.FaceRecognizer]bool{},
+		probes: map[domain.FaceRecognizer]probe{},
 	}
 }
 
@@ -134,7 +145,8 @@ func (m *Manager) items(r domain.FaceRecognizer) []item {
 	return out
 }
 
-// Check verifies every file the catalog knows by its hash, once; it reads but never creates files.
+// Check verifies every file the catalog knows by its hash, once; it reads but never creates files. A recognizer
+// whose files all match at startup counts as probed, so startup does not start a helper.
 func (m *Manager) Check() {
 	m.check.Do(func() {
 		if !m.Supported() {
@@ -146,8 +158,13 @@ func (m *Manager) Check() {
 			files[model.File] = verifyModel(filepath.Join(m.modelsDir(), model.File), model.SHA256)
 		}
 		m.mu.Lock()
+		defer m.mu.Unlock()
 		m.files = files
-		m.mu.Unlock()
+		for r := range m.opts.Catalog.Recognizers {
+			if m.filesMatch(r) {
+				m.probes[r] = probe{outcome: probeOK}
+			}
+		}
 	})
 }
 
@@ -189,6 +206,16 @@ func (m *Manager) verifyBeforeStart(r domain.FaceRecognizer) error {
 	return nil
 }
 
+// filesMatch reports whether every file recognizer r needs matched its pin when last read. The caller holds mu.
+func (m *Manager) filesMatch(r domain.FaceRecognizer) bool {
+	for _, it := range m.items(r) {
+		if m.files[it.key] != fileOK {
+			return false
+		}
+	}
+	return true
+}
+
 func mapValues(models map[domain.FaceRecognizer]Model) []Model {
 	out := make([]Model, 0, len(models))
 	for _, model := range models {
@@ -210,27 +237,24 @@ func (m *Manager) Status(r domain.FaceRecognizer) domain.FaceRuntimeStatus {
 			State: domain.FaceRuntimeDownloading, BytesDone: m.run.done.Load(), BytesTotal: m.run.total,
 		}
 	}
-	if m.failed != nil && m.failed.recognizer == r {
-		return domain.FaceRuntimeStatus{State: domain.FaceRuntimeFailed, Reason: m.failed.reason}
+	p := m.probes[r]
+	if p.outcome == probeFailed {
+		return domain.FaceRuntimeStatus{State: domain.FaceRuntimeFailed, Reason: p.reason}
 	}
-	state := domain.FaceRuntimeStatus{State: domain.FaceRuntimeReady}
 	for _, it := range m.items(r) {
-		switch m.files[it.key] {
-		case fileBad:
+		if m.files[it.key] == fileBad {
 			return domain.FaceRuntimeStatus{State: domain.FaceRuntimeFailed, Reason: domain.FaceRuntimeHashMismatch}
-		case fileAbsent:
-			state.State = domain.FaceRuntimeAbsent
 		}
 	}
-	if m.unprobed[r] {
-		state.State = domain.FaceRuntimeAbsent
+	if !m.filesMatch(r) || p.outcome != probeOK {
+		return domain.FaceRuntimeStatus{State: domain.FaceRuntimeAbsent}
 	}
-	return state
+	return domain.FaceRuntimeStatus{State: domain.FaceRuntimeReady}
 }
 
 // Start downloads in the background whatever recognizer r needs that is absent or does not match its hash on
-// disk, then starts the helper once to check its handshake. A download for another recognizer is cancelled first;
-// one for r keeps running.
+// disk, then starts the helper once to check its handshake; with every file in place it still starts the helper
+// when r has no successful probe. A download for another recognizer is cancelled first; one for r keeps running.
 func (m *Manager) Start(r domain.FaceRecognizer) error {
 	if !m.Supported() {
 		return domain.ErrFaceRecognitionUnsupported
@@ -252,17 +276,13 @@ func (m *Manager) Start(r domain.FaceRecognizer) error {
 		// Another Start won the race; the app serializes its calls, so this one is for the same recognizer.
 		return nil
 	}
-	// A retry after a failure for r, or a download cancelled before the helper greeted, probes the helper again even
-	// when every file is in place, since neither leaves a file unverified.
-	retry := (m.failed != nil && m.failed.recognizer == r) || m.unprobed[r]
-	m.failed = nil
 	var missing []item
 	for _, it := range m.items(r) {
 		if states[it.key] != fileOK {
 			missing = append(missing, it)
 		}
 	}
-	if len(missing) == 0 && !retry {
+	if len(missing) == 0 && m.probes[r].outcome == probeOK {
 		return nil
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -302,13 +322,13 @@ func (m *Manager) download(ctx context.Context, d *download, missing []item) {
 	m.run = nil
 	switch {
 	case err == nil:
-		delete(m.unprobed, d.recognizer)
+		m.probes[d.recognizer] = probe{outcome: probeOK}
 		m.logger.Info("the face runtime is ready", slog.String("recognizer", string(d.recognizer)))
 	case ctx.Err() != nil:
-		m.unprobed[d.recognizer] = true
+		m.probes[d.recognizer] = probe{outcome: probeNone}
 	default:
 		m.logger.Warn("the face runtime download failed", slog.Any("error", err))
-		m.failed = &recognizerFailure{recognizer: d.recognizer, reason: reasonOf(err)}
+		m.probes[d.recognizer] = probe{outcome: probeFailed, reason: reasonOf(err)}
 	}
 }
 
@@ -382,7 +402,7 @@ func (m *Manager) Helper(r domain.FaceRecognizer) *Helper {
 		m.logger.Warn("the face helper did not start", slog.Any("error", err))
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		m.failed = &recognizerFailure{recognizer: r, reason: startReason(err)}
+		m.probes[r] = probe{outcome: probeFailed, reason: startReason(err)}
 	})
 }
 

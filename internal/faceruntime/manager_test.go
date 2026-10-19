@@ -505,6 +505,46 @@ func TestDownloadCancelledDuringTheHandshakeIsProbedOnTheNextStart(t *testing.T)
 	}
 }
 
+func TestSwitchingBackToARecognizerWhoseHelperFailedProbesItAgain(t *testing.T) {
+	f := newFixture(t)
+	arcface := []byte("arcface model")
+	f.files["/arcface.onnx"] = arcface
+	f.catalog.Recognizers[domain.FaceRecognizerArcFaceR50] = Model{
+		File: "arcface.onnx", Pin: pinOf(f.server.URL+"/arcface.onnx", arcface),
+	}
+	// The fake helper greets as SFace only, so ArcFace's probe fails like a model that cannot load.
+	m := f.manager()
+	for _, r := range []domain.FaceRecognizer{domain.FaceRecognizerArcFaceR50, domain.FaceRecognizerSFaceInt8} {
+		if err := m.Start(r); err != nil {
+			t.Fatal(err)
+		}
+		waitDownload(m)
+	}
+	if got := m.Status(domain.FaceRecognizerSFaceInt8); got.State != domain.FaceRuntimeReady {
+		t.Fatalf("SFace Status = %+v, want ready", got)
+	}
+	if got := m.Status(domain.FaceRecognizerArcFaceR50); got.State != domain.FaceRuntimeFailed {
+		t.Fatalf("ArcFace Status after choosing SFace = %+v, want failed", got)
+	}
+	requests := f.server.requests.Load()
+
+	if err := m.Start(domain.FaceRecognizerArcFaceR50); err != nil {
+		t.Fatal(err)
+	}
+	waitDownload(m)
+
+	got := m.Status(domain.FaceRecognizerArcFaceR50)
+	if got.State != domain.FaceRuntimeFailed || got.Reason != domain.FaceRuntimeHelperStart {
+		t.Fatalf("ArcFace Status after switching back = %+v, want failed with helper_start", got)
+	}
+	if len(f.commands) != 3 || !slices.Contains(f.commands[2].Args, "arcface_r50") {
+		t.Fatalf("helper starts = %+v, want a third one for ArcFace", f.commands)
+	}
+	if n := f.server.requests.Load(); n != requests {
+		t.Fatalf("requests after switching back = %d, want %d", n, requests)
+	}
+}
+
 func TestRuntimeWithoutExecuteBitsIsFailedAndUnpackedAgain(t *testing.T) {
 	f := newFixture(t)
 	m := f.manager()
