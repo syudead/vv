@@ -35,6 +35,7 @@ reference documents; retain lasting decisions here before deleting them.
 - [Activity log](activity.md)
 - [Thumbnail editing sessions](thumbnail-editing.md)
 - [Work-info plugins: sandbox, limits and network](work-info-plugins.md)
+- [Person plugins: the contract](person-plugins.md)
 - [vv design system](design-system.md)
 - [Library UI: visual rules and list layout](library-ui.md)
 - [Related videos and the previous and next video](related-videos.md)
