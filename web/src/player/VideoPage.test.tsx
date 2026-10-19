@@ -2574,7 +2574,7 @@ describe("VideoPage", () => {
       expect(screen.getByTitle(`File name: ${fileTitle}`).textContent).toBe(
         `File name ${fileTitle}`,
       );
-      expect(document.title).toBe("夏の旅行 · VVMDM");
+      await waitFor(() => expect(document.title).toBe("夏の旅行 · VVMDM"));
       expect(screen.queryByTestId("screen")).toBeNull();
 
       await user.click(screen.getByRole("button", { name: "Edit name" }));

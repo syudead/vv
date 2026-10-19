@@ -1,14 +1,33 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UploadImage } from "./composeImage";
 import { type Fit, WHOLE_IMAGE } from "./framing";
+import type { TouchUp } from "./useAiTouchUp";
+import { PRESETS } from "../thumbnailEdit/presets";
 import UploadPreview from "./UploadPreview";
 
 // jsdom cannot render canvas; verify the composition passed to the drawing boundary.
 
-const compose = vi.hoisted(() => ({ drawComposition: vi.fn(), drawOverflow: vi.fn() }));
+const compose = vi.hoisted(() => ({
+  drawComposition: vi.fn(),
+  drawOverflow: vi.fn(),
+  encodeComposition: vi.fn(),
+}));
 vi.mock("./composeImage", () => compose);
+
+const touch = vi.hoisted(() => ({
+  value: {
+    ready: null as boolean | null,
+    state: { status: "idle" } as TouchUp,
+    run: vi.fn(),
+    cancel: vi.fn(),
+    take: vi.fn(),
+    dismiss: vi.fn(),
+  },
+}));
+vi.mock("./useAiTouchUp", () => ({ useAiTouchUp: () => touch.value }));
 
 const image = {
   bitmap: { close: vi.fn() },
@@ -22,19 +41,22 @@ function lastFit(): Fit {
 }
 
 function renderPreview(props: Partial<Parameters<typeof UploadPreview>[0]> = {}) {
-  const onApply = vi.fn<(fit: Fit) => void>();
+  const onApply = vi.fn<(fit: Fit, replaced: UploadImage | null) => void>();
   const onCancel = vi.fn();
   render(
-    <UploadPreview
-      image={image}
-      name="poster.png"
-      aspect={16 / 9}
-      narrow={false}
-      applying={false}
-      onApply={onApply}
-      onCancel={onCancel}
-      {...props}
-    />,
+    <MemoryRouter>
+      <UploadPreview
+        videoId={7}
+        image={image}
+        name="poster.png"
+        aspect={16 / 9}
+        narrow={false}
+        applying={false}
+        onApply={onApply}
+        onCancel={onCancel}
+        {...props}
+      />
+    </MemoryRouter>,
   );
   return { onApply, onCancel };
 }
@@ -51,6 +73,15 @@ describe("UploadPreview", () => {
   beforeEach(() => {
     compose.drawComposition.mockReset();
     compose.drawOverflow.mockReset();
+    compose.encodeComposition.mockReset();
+    touch.value = {
+      ready: null,
+      state: { status: "idle" },
+      run: vi.fn(),
+      cancel: vi.fn(),
+      take: vi.fn(),
+      dismiss: vi.fn(),
+    };
     // The 1024x576 preview is half the 2048x1152 output size.
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
       x: 0,
@@ -149,7 +180,7 @@ describe("UploadPreview", () => {
     });
     fireEvent.keyDown(stage(), { key: "+" });
     fireEvent.click(screen.getByRole("button", { name: "Use as thumbnail" }));
-    expect(onApply).toHaveBeenCalledWith({ ...WHOLE_IMAGE, x: 0.25, zoom: 1.25 });
+    expect(onApply).toHaveBeenCalledWith({ ...WHOLE_IMAGE, x: 0.25, zoom: 1.25 }, null);
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
@@ -203,5 +234,70 @@ describe("UploadPreview", () => {
     expect(drawImage).toHaveBeenCalledWith(expect.any(HTMLCanvasElement), 0, 0, 144, 256);
     act(() => press("Fill frame"));
     expect(drawImage).toHaveBeenCalledTimes(2);
+  });
+
+  it("ComfyUI が無ければ定型の代わりに設定への案内を出し、あれば定型は今の構図を描いてその指示で走らせる", () => {
+    touch.value.ready = false;
+    renderPreview();
+    expect(screen.getByRole("link", { name: "Open Settings" }).getAttribute("href")).toBe(
+      "/settings/connections#comfyui",
+    );
+    expect(screen.queryByRole("button", { name: "Remove text" })).toBeNull();
+    cleanup();
+    touch.value.ready = true;
+    const framing = Promise.resolve(new Blob(["png"]));
+    compose.encodeComposition.mockReturnValue(framing);
+    renderPreview({ initialFit: { ...WHOLE_IMAGE, x: 0.1 } });
+    press("Remove text");
+    expect(compose.encodeComposition).toHaveBeenCalledWith(image, 16 / 9, {
+      ...WHOLE_IMAGE,
+      x: 0.1,
+    });
+    expect(touch.value.run).toHaveBeenCalledWith(framing, PRESETS[2]?.prompt);
+  });
+
+  it("結果は前後を切り替えて見比べ、使うと画像を置き換えて全体表示に戻し、適用で一緒に渡す", () => {
+    const result = {
+      bitmap: { close: vi.fn() },
+      width: 2048,
+      height: 1152,
+    } as unknown as UploadImage;
+    touch.value.ready = true;
+    touch.value.state = { status: "result", image: result };
+    touch.value.take.mockImplementation(() => {
+      touch.value.state = { status: "idle" };
+      return result;
+    });
+    const { onApply } = renderPreview({
+      initialFit: { ...WHOLE_IMAGE, x: 0.3, backdrop: "black" },
+    });
+    expect(compose.drawComposition.mock.lastCall?.[1]).toBe(result);
+    expect(lastFit()).toEqual({ ...WHOLE_IMAGE, backdrop: "black" });
+    expect(
+      screen
+        .getByRole("button", { name: "Use as thumbnail" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("radio", { name: "Before" }));
+    expect(compose.drawComposition.mock.lastCall?.[1]).toBe(image);
+    expect(lastFit().x).toBe(0.3);
+
+    press("Use result");
+    expect(compose.drawComposition.mock.lastCall?.[1]).toBe(result);
+    fireEvent.click(screen.getByRole("button", { name: "Use as thumbnail" }));
+    expect(onApply).toHaveBeenCalledWith({ ...WHOLE_IMAGE, backdrop: "black" }, result);
+    expect(result.bitmap.close as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+  });
+
+  it("走っている間は進み具合とやめるを出し、構図も適用も止める", () => {
+    touch.value.ready = true;
+    touch.value.state = { status: "running", session: null };
+    renderPreview();
+    expect(screen.getByRole("status").textContent).toContain("Sending the image");
+    press("Stop");
+    expect(touch.value.cancel).toHaveBeenCalled();
+    expect(
+      (screen.getByRole("button", { name: "Fill frame" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 });

@@ -144,9 +144,9 @@ describe("useThumbnailUpload", () => {
     const { result, report } = setup();
     act(() => result.current.choose(png()));
     await waitFor(() => expect(result.current.preview).not.toBeNull());
-    act(() => result.current.apply(WHOLE_IMAGE));
+    act(() => result.current.apply(WHOLE_IMAGE, null));
     expect(result.current.applying).toBe(true);
-    act(() => result.current.apply(WHOLE_IMAGE));
+    act(() => result.current.apply(WHOLE_IMAGE, null));
     act(() => result.current.cancel());
     await waitFor(() => expect(result.current.preview).toBeNull());
     expect(result.current.applying).toBe(false);
@@ -157,9 +157,28 @@ describe("useThumbnailUpload", () => {
     expect(client.uploadThumbnailImage).not.toHaveBeenCalled();
   });
 
+  it("仕上げた画像に置き換えて適用すると、それを描いて送り、元の画像と一緒に閉じる", async () => {
+    compose.encodeComposition.mockResolvedValueOnce(new Blob(["png"]));
+    client.uploadThumbnailImage.mockResolvedValueOnce({ ...video });
+    const { result, onChanged } = setup();
+    act(() => result.current.choose(png()));
+    await waitFor(() => expect(result.current.preview).not.toBeNull());
+    const touched = { bitmap: { close: vi.fn() }, width: 16, height: 9 };
+    act(() =>
+      result.current.apply(
+        WHOLE_IMAGE,
+        touched as unknown as Parameters<typeof result.current.apply>[1],
+      ),
+    );
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(compose.encodeComposition).toHaveBeenCalledWith(touched, 16 / 9, WHOLE_IMAGE);
+    expect(touched.bitmap.close).toHaveBeenCalled();
+    expect(bitmap.close).toHaveBeenCalled();
+  });
+
   it("プレビューが無いときの適用とやめるは何もしない", () => {
     const { result } = setup();
-    act(() => result.current.apply(WHOLE_IMAGE));
+    act(() => result.current.apply(WHOLE_IMAGE, null));
     act(() => result.current.cancel());
     expect(compose.encodeComposition).not.toHaveBeenCalled();
   });
@@ -170,7 +189,7 @@ describe("useThumbnailUpload", () => {
     const { result, onChanged } = setup({ ...video, contentVersion: undefined });
     act(() => result.current.choose(png()));
     await waitFor(() => expect(result.current.preview).not.toBeNull());
-    act(() => result.current.apply(WHOLE_IMAGE));
+    act(() => result.current.apply(WHOLE_IMAGE, null));
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(client.uploadThumbnailImage).toHaveBeenCalledWith(7, expect.any(File), "");
   });

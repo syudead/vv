@@ -38,7 +38,7 @@ func (s *server) StartThumbnailEdit(w http.ResponseWriter, r *http.Request, id g
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	if !body.Source.Valid() {
+	if !body.Source.Valid() || body.Source == gen.ThumbnailEditSourceImage {
 		s.invalidRequest(w, "source must be frame or thumbnail.")
 		return
 	}
@@ -81,6 +81,57 @@ func (s *server) StartThumbnailEdit(w http.ResponseWriter, r *http.Request, id g
 		return
 	}
 	s.writeThumbnailEdit(w, http.StatusCreated, edit)
+}
+
+// StartThumbnailEditFromImage starts a session from an image the page drew; it needs no readable media file.
+func (s *server) StartThumbnailEditFromImage(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
+	if s.thumbnailEdits == nil {
+		s.internalError(w, "Thumbnail editing is not configured.", nil)
+		return
+	}
+	video, ok := s.lookupVideo(w, r, id)
+	if !ok {
+		return
+	}
+	image, ok := s.readThumbnailEditImage(w, r)
+	if !ok {
+		return
+	}
+	start := domain.ThumbnailEditStart{Source: domain.ThumbnailEditFromImage, Image: image}
+	edit, err := s.thumbnailEdits.Start(r.Context(), video, "", start)
+	switch {
+	case errors.Is(err, domain.ErrThumbnailUploadInvalid):
+		s.thumbnailUploadError(w, err)
+	case err != nil:
+		s.thumbnailEditFailure(w, err)
+	default:
+		s.writeThumbnailEdit(w, http.StatusCreated, edit)
+	}
+}
+
+func (s *server) readThumbnailEditImage(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	tooLarge := func() {
+		s.thumbnailUploadError(w, &domain.ThumbnailUploadTooLargeError{Limit: domain.ThumbnailEditMaxReferenceBytes})
+	}
+	var image []byte
+	ok := s.readMultipart(w, r, domain.ThumbnailEditMaxReferenceBytes+1<<20, tooLarge, func(name string, part *multipart.Part) bool {
+		if name != "image" {
+			s.invalidRequest(w, "Only image may be sent.")
+			return false
+		}
+		data, ok := readPart(part, domain.ThumbnailEditMaxReferenceBytes)
+		if !ok {
+			tooLarge()
+			return false
+		}
+		image = data
+		return true
+	})
+	if ok && image == nil {
+		s.invalidRequest(w, "image is required.")
+		return nil, false
+	}
+	return image, ok
 }
 
 // A missing frame position is rejected like an out-of-range position.

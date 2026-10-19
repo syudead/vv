@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -40,7 +40,7 @@ describe("スマートフォルダのページ", () => {
     expect(screen.getAllByRole("link", { name: "Cat 1" })[0]?.getAttribute("href")).toBe(
       "/videos/10?smartFolder=1",
     );
-    expect(document.title).toBe("タグ: 猫");
+    await waitFor(() => expect(document.title).toBe("タグ: 猫"));
   });
 
   it("子を開くと帯が伸びて親の名前が出て、親の条件の行が親のページへつながる", async () => {
