@@ -217,3 +217,39 @@ func TestRejudgedSplitIsListedByTheNextForcedFingerprint(t *testing.T) {
 		t.Errorf("rejudge_of = %d, want the split's entry %d", got, split.ID)
 	}
 }
+
+// Confirming one re-judged bundle pair must not close the activity of another pair of the bundle still waiting to be
+// judged again, or the forced pipeline finishes before that pair's verdict.
+func TestConfirmedRejudgeKeepsTheBundlesOtherRejudgeOpen(t *testing.T) {
+	ctx := context.Background()
+	db, ids := judgementFixture(t)
+	enableJudging(t, db, true)
+	judgedPrior(t, db, domain.ActivitySame)
+	applyFingerprint(t, db, ids["c"], fingerprintA)
+	job, err := db.Versions().ClaimJudgement(ctx)
+	if err != nil {
+		t.Fatalf("ClaimJudgement: %v", err)
+	}
+	applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionSame, Decider: domain.ActivityByAI})
+	// The pair judged second shares one key with a/b; forcing that key lists both automatic bundles again.
+	shared := map[string]int64{"key-a": ids["a"], "key-b": ids["b"]}[job.Keys[0]]
+	forceFingerprint(t, db, shared)
+	if rows := candidateRows(t, db); rows != 2 {
+		t.Fatalf("candidate rows = %d, want both bundle pairs listed again", rows)
+	}
+
+	first, err := db.Versions().ClaimJudgement(ctx)
+	if err != nil {
+		t.Fatalf("ClaimJudgement: %v", err)
+	}
+	applyJudgement(t, db, first.Keys, domain.VersionJudgeResult{Verdict: domain.VersionSame, Decider: domain.ActivityByAI})
+
+	var status string
+	if err := db.sql.QueryRow(`select e.status from video_version_candidates c
+		join activity_entries e on e.id = c.activity_id`).Scan(&status); err != nil {
+		t.Fatalf("the other pair's candidate and activity: %v", err)
+	}
+	if status == string(domain.ActivityDone) {
+		t.Errorf("the other pair's activity = %s, want it open until its own verdict", status)
+	}
+}

@@ -186,6 +186,8 @@ When the owner changes the pair after it was listed, the prior is no longer
 in force when the verdict arrives: the row is removed, nothing changes and
 the entry closes as `superseded`. Bundling and succession prune ordinary
 candidates of bundled or dismissed pairs but keep listed rows, which are
-bundled or dismissed by definition. A pair whose two keys are both rescanned
+bundled or dismissed by definition. For the same reason, an automatic bundle
+does not close the entry of a listed pair among its members as `superseded`;
+that entry closes with its own verdict. A pair whose two keys are both rescanned
 is listed again by each fingerprint, and the later listing replaces the
 earlier row, so the judgement sees both new fingerprints.

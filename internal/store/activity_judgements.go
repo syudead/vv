@@ -264,8 +264,25 @@ func closePairActivities(
 	if err != nil {
 		return err
 	}
-	return closeActivities(ctx, tx, c, `subject_key in (select value from json_each(?1))
-		and subject_key_b in (select value from json_each(?1)) and id <> ?2`, outcome, decider, now, encoded, except)
+	return closeActivities(ctx, tx, c, membersPairCondition, outcome, decider, now, encoded, except)
+}
+
+const membersPairCondition = `subject_key in (select value from json_each(?1))
+		and subject_key_b in (select value from json_each(?1)) and id <> ?2`
+
+// An automatic bundle supersedes its members' pair activities except those still listed to be judged again, which
+// close with their own verdict.
+func closeBundledPairActivities(
+	ctx context.Context, tx *sql.Tx, c *changes, members []string, except int64, now time.Time,
+) error {
+	encoded, err := keysJSON(members)
+	if err != nil {
+		return err
+	}
+	return closeActivities(ctx, tx, c, membersPairCondition+`
+		and not exists (select 1 from video_version_candidates vc where vc.key_a = activity_entries.subject_key
+		                  and vc.key_b = activity_entries.subject_key_b and vc.rejudge_of is not null)`,
+		domain.ActivitySuperseded, "", now, encoded, except)
 }
 
 // A missing video remains in the library while succession is pending; its activity follows the replacement key if accepted.
@@ -487,7 +504,7 @@ func recordJudgementActivity(
 ) error {
 	switch {
 	case applied.bundled:
-		if err := closePairActivities(ctx, tx, c, applied.members, domain.ActivitySuperseded, "", id, now); err != nil {
+		if err := closeBundledPairActivities(ctx, tx, c, applied.members, id, now); err != nil {
 			return err
 		}
 		return decideActivity(ctx, tx, c, id, activityUpdate{
