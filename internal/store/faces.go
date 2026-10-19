@@ -245,6 +245,7 @@ func writeFaceAppearances(
 	plans := domain.PlanFaceAppearances(spec.Thresholds, stored, people, vectors)
 	kept := map[int64]bool{}
 	var links []faceLink
+	var created []domain.FacePersonVector
 	added := false
 	for i, plan := range plans {
 		person := result.People[i]
@@ -260,7 +261,17 @@ func writeFaceAppearances(
 			return nil, false, err
 		}
 		links = append(links, link)
+		if link.created {
+			created = append(created, domain.FacePersonVector{PersonID: link.personID, Vector: person.Centroid})
+		}
 		added = added || performerAdded
+	}
+	// People made by this one analysis are not in vectors, so the match could not offer them to each other.
+	for _, pair := range domain.SiblingFacePairs(spec.Thresholds, created) {
+		candidate := []domain.FaceCandidate{{PersonID: pair.PersonID, Similarity: pair.Similarity}}
+		if err := writeFaceCandidates(ctx, tx, pair.ProvisionalID, candidate, now); err != nil {
+			return nil, false, err
+		}
 	}
 	for _, old := range stored {
 		if kept[old.ID] {

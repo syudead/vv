@@ -58,7 +58,7 @@ func goodTrack(vec []float32, start, n int) FaceTrack {
 }
 
 func TestFindMainPeopleKeepsEightSecondsInTwoTracks(t *testing.T) {
-	th := FaceThresholds{Cluster: 0.45}
+	th := FaceThresholds{Cluster: 0.45, Candidate: 0.363}
 	// 16 good frames are 8 s at 2 fps; 15 are 7.5 s.
 	for _, tc := range []struct {
 		name   string
@@ -69,10 +69,57 @@ func TestFindMainPeopleKeepsEightSecondsInTwoTracks(t *testing.T) {
 		{"7.5 s in 2 tracks", []FaceTrack{goodTrack(faceAxis(0, 10, 0.2), 0, 8), goodTrack(faceAxis(0, 11, 0.2), 20, 7)}, false},
 		{"10 s in 1 track", []FaceTrack{goodTrack(faceAxis(0, 10, 0.2), 0, 20)}, false},
 	} {
-		people := FindMainPeople(th, tc.tracks)
+		people := FindMainPeople(th, tc.tracks, 60)
 		if got := len(people) == 1; got != tc.kept {
 			t.Errorf("%s: kept = %v (%d people), want %v", tc.name, got, len(people), tc.kept)
 		}
+	}
+}
+
+func TestFindMainPeopleCutoffFollowsAnalysedLength(t *testing.T) {
+	th := FaceThresholds{Cluster: 0.45, Candidate: 0.363}
+	vec := faceAxis(0, 10, 0.2)
+	for _, tc := range []struct {
+		name    string
+		tracks  []FaceTrack
+		seconds float64
+		kept    bool
+	}{
+		{"one track through a 15 s video", []FaceTrack{goodTrack(vec, 0, 28)}, 15, true},
+		{"one track through a 4 s video", []FaceTrack{goodTrack(vec, 0, 7)}, 4, true},
+		{"1 s cameo in a long video", []FaceTrack{goodTrack(vec, 0, 2)}, 600, false},
+		{"2.5 s is under the floor", []FaceTrack{goodTrack(vec, 0, 5)}, 8, false},
+		{"one 10 s track in a 100 s video", []FaceTrack{goodTrack(vec, 0, 20)}, 100, false},
+		{"one 25 s track in a 100 s video", []FaceTrack{goodTrack(vec, 0, 50)}, 100, true},
+		{"8 s in 2 tracks of a long video", []FaceTrack{goodTrack(vec, 0, 8), goodTrack(faceAxis(0, 11, 0.2), 20, 8)}, 600, true},
+	} {
+		if got := len(FindMainPeople(th, tc.tracks, tc.seconds)) == 1; got != tc.kept {
+			t.Errorf("%s: kept = %v, want %v", tc.name, got, tc.kept)
+		}
+	}
+}
+
+func TestFindMainPeopleMergesClustersOfOnePerson(t *testing.T) {
+	th := FaceThresholds{Cluster: 0.9, Candidate: 0.4}
+	// Tilts put the two groups below Cluster of each other (similarity 0.5) but above Candidate.
+	near := func(tilt float32, axis int) []float32 {
+		v := make([]float32, 128)
+		v[0], v[axis] = 1, tilt
+		return NormalizeFaceVector(v)
+	}
+	a1, a2 := goodTrack(near(1, 1), 0, 10), goodTrack(near(1, 1), 30, 10)
+	b1, b2 := goodTrack(near(1, 2), 60, 10), goodTrack(near(1, 2), 90, 10)
+	if s := FaceSimilarity(a1.vector(), b1.vector()); s >= th.Cluster || s < th.Candidate {
+		t.Fatalf("fixture similarity %v is not between Candidate and Cluster", s)
+	}
+	people := FindMainPeople(th, []FaceTrack{a1, a2, b1, b2}, 120)
+	if len(people) != 1 || len(people[0].Tracks) != 4 || people[0].GoodSeconds != 20 {
+		t.Fatalf("people = %+v, want one person of 4 tracks and 20 s", people)
+	}
+	// Distant people stay apart even though both pass the cutoff.
+	c1, c2 := goodTrack(faceAxis(5, 6, 0.1), 0, 10), goodTrack(faceAxis(5, 7, 0.1), 30, 10)
+	if got := FindMainPeople(th, []FaceTrack{a1, a2, c1, c2}, 120); len(got) != 2 {
+		t.Fatalf("%d people, want 2 for orthogonal faces", len(got))
 	}
 }
 
@@ -85,7 +132,7 @@ func TestFindMainPeopleSeparatesPeopleBelowClusterThreshold(t *testing.T) {
 	for i := range 2 {
 		tracks = append(tracks, goodTrack(faceAxis(1, 20+i, 0.2), i*20, 10))
 	}
-	people := FindMainPeople(FaceThresholds{Cluster: 0.45}, tracks)
+	people := FindMainPeople(FaceThresholds{Cluster: 0.45, Candidate: 0.363}, tracks, 60)
 	if len(people) != 2 || people[0].GoodSeconds != 10 || people[1].GoodSeconds != 9 {
 		t.Fatalf("people = %+v, want B (10 s) then A (9 s)", people)
 	}

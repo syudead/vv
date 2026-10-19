@@ -49,6 +49,26 @@ func MatchFace(th FaceThresholds, v []float32, vectors []FacePersonVector) FaceM
 	return FaceMatch{Kind: FaceMatchNew, Candidates: atLeast(best, th.Candidate)}
 }
 
+// FaceSiblingPair is two provisional people created by one analysis whose faces may be one person.
+type FaceSiblingPair struct {
+	ProvisionalID, PersonID int64
+	Similarity              float64
+}
+
+// SiblingFacePairs returns the pairs of the people whose vectors reach Candidate; the later person in the input
+// is offered with the earlier one.
+func SiblingFacePairs(th FaceThresholds, people []FacePersonVector) []FaceSiblingPair {
+	var out []FaceSiblingPair
+	for i, a := range people {
+		for _, b := range people[:i] {
+			if s := FaceSimilarity(a.Vector, b.Vector); s >= th.Candidate {
+				out = append(out, FaceSiblingPair{ProvisionalID: a.PersonID, PersonID: b.PersonID, Similarity: s})
+			}
+		}
+	}
+	return out
+}
+
 // bestFaceSimilarities returns each person's highest similarity to v, most similar first, ignoring dropped vectors.
 func bestFaceSimilarities(v []float32, vectors []FacePersonVector) []FaceCandidate {
 	byPerson := map[int64]float64{}
