@@ -413,6 +413,7 @@ function FramingControls({
           variant="outline"
           size="default"
           aria-labelledby="thumbnail-upload-backdrop"
+          className="w-full"
           value={fit.backdrop}
           disabled={disabled}
           onValueChange={(value) => {

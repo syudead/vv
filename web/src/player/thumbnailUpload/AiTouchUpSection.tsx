@@ -45,6 +45,7 @@ export default function AiTouchUpSection({
             variant="outline"
             size="default"
             aria-label={text.compare}
+            className="w-full"
             value={after ? "after" : "before"}
             onValueChange={(value) => {
               if (value !== "") onShowAfter(value === "after");
