@@ -25,13 +25,13 @@ One migration, numbered after the last one on `main` when the unit lands
 
 ## In-memory results
 
-Both expire after `WorkInfoFetchLifetime` (10 minutes) and count their images
-toward the 52 MiB budget ([R-5](research.md#r-5-lookup-results-live-with-the-fetch-and-the-image-budget-grows-to-52-mib)).
+Both expire after `WorkInfoFetchLifetime` (10 minutes) and sit in one store
+whose images share the 52 MiB budget ([R-5](research.md#r-5-lookup-results-live-with-the-fetch-and-the-image-budget-grows-to-52-mib)).
 
 | Entity | Held in | Fields |
 | --- | --- | --- |
-| Lookup | The work-info fetch entry | Plugin ID, digest and generation; `(source, id)`; the indexes of the fetched people sharing it; the result (person and image) once run |
-| Person fetch | A map beside the work-info fetches | Person ID, plugin ID, digest and generation, the fetched person and image |
+| Lookup | The work-info fetch entry | Plugin ID, digest and generation; `(source, id)`; the indexes of the fetched people sharing it and the person ID each matched at fetch time (0 for none); the result (person and image) once run |
+| Person fetch | Its own entry in the same store | Person ID, plugin ID, digest and generation, the fetched person and image |
 
 ## Rules
 

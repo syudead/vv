@@ -34,7 +34,7 @@ parsing, the in-memory results and the apply grow.
 | Storage | Three columns on `work_info_plugins` ([data-model.md](data-model.md)) |
 | Memory | Kept images grow from 32 MiB to 52 MiB ([R-5](research.md#r-5-lookup-results-live-with-the-fetch-and-the-image-budget-grows-to-52-mib)) |
 | Time | A comparison with 5 lookups can wait up to 2.5 minutes for the last person, one run at a time ([R-3](research.md#r-3-the-video-page-asks-for-each-lookup-after-the-work-info-fetch)) |
-| Not changed | The external API (`/api/v1`) and MCP: the Issue asks for screens only |
+| Not changed | The external API (`/api/v1`) and MCP; exposing person plugins there was rejected because every requirement names the settings, person and video screens, and each new route would need its own token scope |
 | Migration number | `00069` is taken on `feature/face-recognition`; the storage unit takes the next number free on `main` when it lands |
 
 Every unknown is resolved in [research.md](research.md) (R-1..R-8). The `ui`
@@ -51,10 +51,7 @@ Checked against [ARCHITECTURE.md](../../ARCHITECTURE.md),
 | --- | --- |
 | Dependency direction | Pass. Manifest, plan and fill rules in `internal/domain`; use cases in `internal/app` behind its existing ports; parsing and image fetching in `internal/wasmplugin` |
 | Store roles | Pass. Plugin columns stay in `WorkInfoPluginStore`; the person apply joins `CreditStore`'s write through package-private helpers in one transaction, as the work-info apply does |
-| Events after commit | Pass. A person apply publishes what a person `PATCH` publishes, after commit; faces are stored after the commit, as today |
-| Generated code | Pass. `api/openapi.yaml` changes and `task generate` regenerates |
-| Complexity ≤ 25, no copied code | Pass by construction: one registry ([R-1](research.md#r-1-person-plugins-share-the-work-info-plugin-registry)), the work-info fill rules shared by both applies ([R-6](research.md#r-6-a-lookup-is-applied-per-item-only-through-a-selected-role)), and the person-comparison piece shared by the person page and the video comparison |
-| Documentation with behaviour | Pass. A new `docs/design-docs/person-plugins.md`, linked from the index, plus the how-to contract |
+| Complexity ≤ 25, no copied code | Pass by construction: one registry ([R-1](research.md#r-1-person-plugins-share-the-work-info-plugin-registry)), the work-info fill rules shared by both applies ([R-6](research.md#r-6-a-lookup-is-applied-per-item-only-through-a-selected-role)), and the person-comparison piece shared by the person page and the video comparison; the lookup items enter `ApplyFetchedWorkInfo` through a helper of their own, so that function stays within 25 |
 
 ## Project Structure
 
@@ -140,8 +137,9 @@ exits 2.
 
 **Scope**: The [migration](data-model.md#migration) and columns,
 `WorkInfoPlugin`'s `kind`, `sources` and `autoLookup`,
-`PUT /api/work-info-plugins/{id}/auto-lookup`, person candidates from
-`searchWorkInfo`, and `fetchWorkInfo` refusing a person plugin
+`PUT /api/work-info-plugins/{id}/auto-lookup`,
+`POST /api/work-info-plugins/{id}/person-search`, and `searchWorkInfo` and
+`fetchWorkInfo` refusing a person plugin
 ([person-plugins-api.md](contracts/person-plugins-api.md#changes-to-existing-operations),
 [R-1](research.md#r-1-person-plugins-share-the-work-info-plugin-registry),
 [R-8](research.md#r-8-automatic-lookups-are-a-per-plugin-switch-on-the-row)).
@@ -151,9 +149,10 @@ exits 2.
 **Acceptance**: Store tests on SQLite: an upload stores `kind` and `sources`;
 a same-name replacement keeps `auto_lookup` off and takes the new kind. HTTP
 tests: the list carries the three fields; `auto-lookup` on a work-info plugin
-answers `409 plugin_kind_mismatch`; `fetchWorkInfo` with a person plugin
-answers `409 plugin_kind_mismatch`; a person plugin's search returns `source`
-and `name`.
+answers `409 plugin_kind_mismatch`; `searchWorkInfo` and `fetchWorkInfo` with
+a person plugin answer `409 plugin_kind_mismatch`; `person-search` returns
+candidates with `source` and `name`, and a work-info plugin there answers
+`409 plugin_kind_mismatch`.
 
 ### Settings screen lists person plugins apart, with their sources and automatic lookup switch
 
@@ -218,8 +217,8 @@ the person page and the dialog at the widths in `ui-design.md`.
 
 **Scope**: The lookup plan in the fetch result
 ([R-4](research.md#r-4-the-lookup-plan-is-decided-by-the-server-at-fetch-time)),
-the lookup and lookup image routes, results kept with the fetch and the 52 MiB
-budget ([R-5](research.md#r-5-lookup-results-live-with-the-fetch-and-the-image-budget-grows-to-52-mib)),
+the lookup and lookup image routes, results kept with the fetch and the shared
+52 MiB budget ([R-5](research.md#r-5-lookup-results-live-with-the-fetch-and-the-image-budget-grows-to-52-mib)),
 and `personLookups` in the apply, inside its transaction, with faces after the
 commit ([R-6](research.md#r-6-a-lookup-is-applied-per-item-only-through-a-selected-role)).
 
@@ -233,11 +232,15 @@ disabled plugin is skipped (`受け入れ条件` 6); the sixth distinct lookup i
 `lookupLimited`; IDs in a lookup's result add nothing to the plan
 (`受け入れ条件` 7). App tests with a fake runtime: a failed lookup leaves the
 fetch and its other lookups usable and reports the failure; a repeated lookup
-request does not run again; one fetch with a cover, 7 images and 5 lookup
-images stays kept. Store test on SQLite: a selected lookup fills the linked
+request does not run again, and a failed one runs again when requested; a
+plugin replaced after the fetch makes the lookup answer `plugin_changed`; one
+fetch with a cover, 7 images and 5 lookup images stays kept, and a person page
+result added beyond the budget evicts the earliest-expiring entry. Store test on SQLite: a selected lookup fills the linked
 person's empty fields and face (`受け入れ条件` 4), a lookup item without its
-role is `invalid_request`, a person merged away before the apply skips its
-lookup and the rest applies.
+role is `invalid_request`; a person merged away or deleted before the apply
+skips its lookup as `person_changed`, writes nothing to the merge target or a
+new person, and the rest applies; a lookup whose plugin was revoked since is
+skipped as `stale`.
 
 ### Work-info comparison shows and applies person lookups under each person
 

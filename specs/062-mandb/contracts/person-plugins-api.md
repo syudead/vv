@@ -13,9 +13,9 @@ Run failures answer as the existing plugin routes do (`502 plugin_failed`,
 | Operation | Change |
 | --- | --- |
 | `WorkInfoPlugin` schema | Adds `kind` (`work` or `person`), `sources` (empty for `work`) and `autoLookup` (always `false` for `work`) |
-| `searchWorkInfo` | For a person plugin, each candidate carries `source` and `name` instead of `title` |
+| `searchWorkInfo` | A person plugin answers `409 plugin_kind_mismatch` |
 | `fetchWorkInfo` | A person plugin answers `409 plugin_kind_mismatch`; the result adds `personLookups` (below) and, per fetched person, `lookup` (the index into `personLookups`, or absent) and `lookupLimited` (`true` when an accepted ID was over the limit of 5) |
-| `applyWorkInfoFetch` | The request adds `personLookups: [{index, items}]`; the response's `skipped` may carry the reason `taken` |
+| `applyWorkInfoFetch` | The request adds `personLookups: [{index, items}]`; the response's `skipped` may carry the reasons `taken`, `stale` and `person_changed` |
 
 `personLookups[i]` in the fetch result is `{pluginId, pluginName, source, id}`
 in plan order ([R-4](../research.md#r-4-the-lookup-plan-is-decided-by-the-server-at-fetch-time)).
@@ -24,8 +24,15 @@ An apply item is `image`, `aliases`, `externalIds` or `profile.<field>`.
 Selecting an item whose lookup has no result, or whose entries' role is not in
 `fields`, answers `400 invalid_request`
 ([R-6](../research.md#r-6-a-lookup-is-applied-per-item-only-through-a-selected-role)).
-A lookup whose plugin was replaced, revoked or deleted since it ran is skipped
-with reason `invalid`, and the rest applies.
+The skip reasons are in
+[R-6](../research.md#r-6-a-lookup-is-applied-per-item-only-through-a-selected-role).
+
+## `POST /api/work-info-plugins/{id}/person-search`
+
+Runs a person plugin's search once with `{"query": "..."}` (1 to 200
+characters after trimming) and returns `{candidates: [{source, id, name, url,
+detail?}]}`. A work-info plugin answers `409 plugin_kind_mismatch`; the other
+errors are `searchWorkInfo`'s.
 
 ## `POST /api/videos/{id}/work-info-fetches/{fetchId}/person-lookups/{index}`
 
@@ -35,14 +42,15 @@ Runs planned lookup `index` once and keeps its result with the fetch.
 aliases, external IDs, profile, `hasImage`) and `current` (the matched
 person's aliases, external IDs, profile and `imageRevision`, or `null` when no
 existing person matched). A second request for a lookup that has a result
-answers the kept result without running.
+answers the kept result without running; a failed lookup keeps nothing and may
+be requested again.
 
 | Status | `code` | When |
 | --- | --- | --- |
 | `404` | `not_found` | Unknown video, or a fetch of another video |
 | `404` | `not_found` | `index` outside `personLookups` |
 | `409` | `work_info_fetch_stale` | The fetch expired or was applied |
-| `409` | `plugin_not_approved` | The person plugin was revoked or deleted since the fetch |
+| `409` | `plugin_changed` | The person plugin was replaced, revoked or deleted since the fetch |
 
 ## `GET /api/videos/{id}/work-info-fetches/{fetchId}/person-lookups/{index}/image`
 
