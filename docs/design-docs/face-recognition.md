@@ -517,7 +517,8 @@ code with `auto_tag_queue`
 `face.enabled` is `true`, the transaction that records the seek stage's final
 result queues a video with no row, and its `face_analysis` entry joins the
 import pipeline as `auto_tag` does
-([activity.md](activity.md#a-pipeline-groups-one-import-run)).
+([activity.md](activity.md#a-pipeline-groups-one-import-run)). A forced seek
+job, queued by a force rescan, queues nothing.
 
 The queue is filled in three more ways, each refused with
 `409 face_recognition_off` while the feature is off.

@@ -113,7 +113,7 @@ func (s *IngestStore) ApplyProbeForJob(
 		return false, err
 	}
 	var c changes
-	if err := requeueJob(ctx, tx, &c, domain.JobPreview, job.VideoID, now.Unix(), ruleRun()); err != nil {
+	if err := queueJob(ctx, tx, &c, domain.JobPreview, job.VideoID, now.Unix(), ruleRun(), job.Force); err != nil {
 		return false, err
 	}
 	// If probing finishes after the scan, resolve same-path succession here.
@@ -224,13 +224,14 @@ func (s *IngestStore) setStageStateForJob(
 	var c changes
 	if succeeded && len(next) > 0 {
 		for _, following := range next {
-			if err := requeueJob(ctx, tx, &c, following, job.VideoID, time.Now().Unix(), ruleRun()); err != nil {
+			if err := queueJob(ctx, tx, &c, following, job.VideoID, time.Now().Unix(), ruleRun(), job.Force); err != nil {
 				return false, err
 			}
 		}
 		c.jobsQueued(next...)
 	}
-	if kind == domain.JobSeekThumbnail {
+	// A forced seek stage belongs to a rescan, which re-runs the import stages only (docs/design-docs/auto-tagging.md).
+	if kind == domain.JobSeekThumbnail && !job.Force {
 		if err := queueAfterSeekStage(ctx, tx, &c, job, time.Now()); err != nil {
 			return false, err
 		}
@@ -307,6 +308,9 @@ func (s *IngestStore) CompletePreviewForContent(ctx context.Context, job domain.
 		return false, err
 	}
 	var c changes
+	if err := queueForceRequest(ctx, tx, &c, job.ID); err != nil {
+		return false, err
+	}
 	if err := settleJobActivity(ctx, tx, &c, job.ID, time.Now()); err != nil {
 		return false, err
 	}
@@ -428,20 +432,74 @@ func (s *IngestStore) RequeueMissingSeekThumbnails(ctx context.Context, id int64
 func requeueJob(
 	ctx context.Context, tx *sql.Tx, c *changes, kind domain.JobKind, id, now int64, run importRun,
 ) error {
+	return queueJob(ctx, tx, c, kind, id, now, run, false)
+}
+
+// queueJob replaces finished rows of the kind; force follows the existing-row rules of insertQueuedJob.
+func queueJob(
+	ctx context.Context, tx *sql.Tx, c *changes, kind domain.JobKind, id, now int64, run importRun, force bool,
+) error {
 	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and state in ('done', 'failed')`,
 		string(kind), id); err != nil {
 		return fmt.Errorf("cannot clean up old jobs (%s, video=%d): %w", kind, id, err)
 	}
-	if _, err := tx.ExecContext(ctx, `insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
-		values (?, ?, 'queued', 0, ?, ?)
-		on conflict (kind, video_id) where state in ('queued', 'running') do nothing`,
-		string(kind), id, now, now); err != nil {
+	return insertQueuedJob(ctx, tx, c, kind, id, now, run, force)
+}
+
+// A forced insert over a queued row sets its force, and over an unforced running row sets force_requested, because
+// the unique index allows one queued or running row per kind and video.
+const (
+	keepPendingJob  = `do nothing`
+	forcePendingJob = `do update set
+		force = case when state = 'queued' then 1 else force end,
+		force_requested = case when state = 'running' and force = 0 then 1 else force_requested end`
+)
+
+func insertQueuedJob(
+	ctx context.Context, tx *sql.Tx, c *changes, kind domain.JobKind, id, now int64, run importRun, force bool,
+) error {
+	onPending := keepPendingJob
+	if force {
+		onPending = forcePendingJob
+	}
+	if _, err := tx.ExecContext(ctx, `insert into jobs (kind, video_id, state, attempts, force, created_at, updated_at)
+		values (?, ?, 'queued', 0, ?, ?, ?)
+		on conflict (kind, video_id) where state in ('queued', 'running') `+onPending,
+		string(kind), id, boolToInt(force), now, now); err != nil {
 		return fmt.Errorf("cannot queue the job (%s, video=%d): %w", kind, id, err)
 	}
 	if err := joinImportActivity(ctx, tx, c, id, run, time.Now()); err != nil {
 		return err
 	}
 	return addScanVideos(ctx, tx, id)
+}
+
+// queueForceRequest runs after a row's state change in the same transaction: a row back in queued takes the request
+// as its force, and a finished row queues a forced row of its kind beside it, so the row's activity still settles.
+func queueForceRequest(ctx context.Context, tx *sql.Tx, c *changes, jobID int64) error {
+	var kind, state string
+	var videoID int64
+	err := tx.QueryRowContext(ctx, `select kind, video_id, state from jobs
+		where id = ? and force_requested = 1 and state <> 'running'`, jobID).
+		Scan(&kind, &videoID, &state)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("cannot read the job's force request (id=%d): %w", jobID, err)
+	}
+	if _, err := tx.ExecContext(ctx, `update jobs set force_requested = 0,
+		force = case when state = 'queued' then 1 else force end where id = ?`, jobID); err != nil {
+		return fmt.Errorf("cannot take the job's force request (id=%d): %w", jobID, err)
+	}
+	if state == string(domain.JobQueued) {
+		return nil
+	}
+	if err := insertQueuedJob(ctx, tx, c, domain.JobKind(kind), videoID, time.Now().Unix(), ruleRun(), true); err != nil {
+		return err
+	}
+	c.jobsQueued(domain.JobKind(kind))
+	return nil
 }
 
 // RetryProbe requires a failed probe and atomically resets unfinished stages; probe completion queues preview work.
