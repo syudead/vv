@@ -165,7 +165,8 @@ stateDiagram-v2
 | Turning the feature off | Cancels a running download; the files already verified stay, and a recognizer whose helper had not greeted is `absent` until the next start probes it |
 | Startup while on | Resumes a download only when files are missing; a file that differs stays `failed` until the owner downloads again |
 | A download ends | The helper is started once: a `Hello` of another protocol version, or no `Hello`, is `helper_start` |
-| Any helper start | The runtime is hashed against its pins again first; a runtime that no longer matches is not started and is `hash_mismatch` |
+| Any helper start | The runtime and the recognizer's models are hashed against their pins again first; a helper whose files no longer match is not started and is `hash_mismatch` |
+| Any download start, downloading again included | The files the recognizer needs are hashed again rather than taken from an earlier check, so a file deleted or changed since then is downloaded again |
 | Downloading again after a failure, with no file missing | The helper is started once again instead of the state turning `ready` unchecked |
 | A recognizer switch | Increases `face.generation` in the settings' transaction |
 

@@ -3,7 +3,9 @@ package faceruntime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -154,18 +156,37 @@ func (m *Manager) verifyRuntime(dir string) fileState {
 	return verifyRuntime(dir, p.Files, p.executables())
 }
 
-// verifyBeforeStart hashes the runtime again right before a helper starts, so files changed after the startup
-// check are not run. A runtime that no longer matches is marked, so downloading again replaces it.
-func (m *Manager) verifyBeforeStart() error {
-	m.Check()
-	state := m.verifyRuntime(m.runtimeDir())
-	if state == fileOK {
-		return nil
+// verifyItem reads one item's state from its files and pinned hashes.
+func (m *Manager) verifyItem(it item) fileState {
+	if it.model == "" {
+		return m.verifyRuntime(m.runtimeDir())
+	}
+	return verifyModel(filepath.Join(m.modelsDir(), it.model), it.pin.SHA256)
+}
+
+// verifyItems reads the state of every item recognizer r needs from the files on disk, so a file deleted or
+// changed after an earlier check is never trusted, and records it for Status. The caller has run Check.
+func (m *Manager) verifyItems(r domain.FaceRecognizer) map[string]fileState {
+	states := map[string]fileState{}
+	for _, it := range m.items(r) {
+		states[it.key] = m.verifyItem(it)
 	}
 	m.mu.Lock()
-	m.files[runtimeKey] = state
+	maps.Copy(m.files, states)
 	m.mu.Unlock()
-	return fail(domain.FaceRuntimeHashMismatch, errors.New("the runtime no longer matches its pinned files"))
+	return states
+}
+
+// verifyBeforeStart hashes the runtime and the models of recognizer r again right before a helper starts, so files
+// changed after an earlier check are not run. What no longer matches is recorded, so downloading again replaces it.
+func (m *Manager) verifyBeforeStart(r domain.FaceRecognizer) error {
+	m.Check()
+	for key, state := range m.verifyItems(r) {
+		if state != fileOK {
+			return fail(domain.FaceRuntimeHashMismatch, fmt.Errorf("%s no longer matches its pinned files", key))
+		}
+	}
+	return nil
 }
 
 func mapValues(models map[domain.FaceRecognizer]Model) []Model {
@@ -207,9 +228,9 @@ func (m *Manager) Status(r domain.FaceRecognizer) domain.FaceRuntimeStatus {
 	return state
 }
 
-// Start downloads in the background whatever recognizer r needs that is absent or does not match its hash, then
-// starts the helper once to check its handshake. A download for another recognizer is cancelled first; one for r
-// keeps running.
+// Start downloads in the background whatever recognizer r needs that is absent or does not match its hash on
+// disk, then starts the helper once to check its handshake. A download for another recognizer is cancelled first;
+// one for r keeps running.
 func (m *Manager) Start(r domain.FaceRecognizer) error {
 	if !m.Supported() {
 		return domain.ErrFaceRecognitionUnsupported
@@ -222,6 +243,8 @@ func (m *Manager) Start(r domain.FaceRecognizer) error {
 	}
 	m.mu.Unlock()
 	m.Stop()
+	// Every Start, a retry included, reads the files again instead of trusting an earlier check.
+	states := m.verifyItems(r)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -235,7 +258,7 @@ func (m *Manager) Start(r domain.FaceRecognizer) error {
 	m.failed = nil
 	var missing []item
 	for _, it := range m.items(r) {
-		if m.files[it.key] != fileOK {
+		if states[it.key] != fileOK {
 			missing = append(missing, it)
 		}
 	}
@@ -375,7 +398,7 @@ func startReason(err error) domain.FaceRuntimeFailure {
 func (m *Manager) newHelper(r domain.FaceRecognizer, startFailed func(error)) *Helper {
 	return &Helper{
 		command: m.helperCommand(r), launch: m.opts.Launch, recognizer: r,
-		verify: m.verifyBeforeStart, startFailed: startFailed,
+		verify: func() error { return m.verifyBeforeStart(r) }, startFailed: startFailed,
 	}
 }
 

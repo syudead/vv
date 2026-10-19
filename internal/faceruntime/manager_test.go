@@ -19,6 +19,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/iotest"
 	"testing/synctest"
 	"time"
 
@@ -547,7 +548,7 @@ func replaceHelper(t *testing.T, f *fixture) {
 	}
 }
 
-func TestProbeOfARuntimeChangedAfterItsCheckFailsWithoutStartingAndDownloadingAgainReplacesIt(t *testing.T) {
+func TestRetryOfARuntimeChangedAfterItsCheckDownloadsItAgainBeforeTheProbe(t *testing.T) {
 	f := newFixture(t)
 	f.hello = faceproto.Hello{Version: faceproto.Version + 1, Recognizer: "sface_int8"}
 	m := f.manager()
@@ -557,47 +558,99 @@ func TestProbeOfARuntimeChangedAfterItsCheckFailsWithoutStartingAndDownloadingAg
 	waitDownload(m)
 	replaceHelper(t, f)
 	f.hello = faceproto.Hello{Version: faceproto.Version, Recognizer: "sface_int8"}
+	requests := f.server.requests.Load()
 
 	if err := m.Start(domain.FaceRecognizerSFaceInt8); err != nil {
 		t.Fatal(err)
 	}
 	waitDownload(m)
 
-	got := m.Status(domain.FaceRecognizerSFaceInt8)
-	if got.State != domain.FaceRuntimeFailed || got.Reason != domain.FaceRuntimeHashMismatch {
-		t.Fatalf("Status = %+v, want failed with hash_mismatch", got)
-	}
-	if len(f.commands) != 1 {
-		t.Fatalf("helper starts = %d, want only the first download's", len(f.commands))
-	}
-	if err := m.Start(domain.FaceRecognizerSFaceInt8); err != nil {
-		t.Fatal(err)
-	}
-	waitDownload(m)
 	if got := m.Status(domain.FaceRecognizerSFaceInt8); got.State != domain.FaceRuntimeReady {
-		t.Fatalf("Status after downloading again = %+v, want ready", got)
+		t.Fatalf("Status after the retry = %+v, want ready", got)
+	}
+	if n := f.server.requests.Load(); n != requests+1 {
+		t.Fatalf("requests = %d, want %d for the runtime alone", n, requests+1)
+	}
+	if len(f.commands) != 2 {
+		t.Fatalf("helper starts = %d, want the first download's and the retry's", len(f.commands))
 	}
 }
 
-func TestAnalysisHelperOfARuntimeChangedAfterItsCheckDoesNotStart(t *testing.T) {
+func TestAnalysisHelperOfFilesChangedAfterTheirCheckDoesNotStart(t *testing.T) {
+	for name, change := range map[string]func(t *testing.T, f *fixture){
+		"runtime": replaceHelper,
+		"model": func(t *testing.T, f *fixture) {
+			t.Helper()
+			if err := os.Remove(filepath.Join(f.dir, "models", "yunet.onnx")); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			m := f.manager()
+			if err := m.Start(domain.FaceRecognizerSFaceInt8); err != nil {
+				t.Fatal(err)
+			}
+			waitDownload(m)
+			change(t, f)
+
+			err := m.Helper(domain.FaceRecognizerSFaceInt8).Start(context.Background())
+
+			if !errors.Is(err, ErrHelperStart) {
+				t.Fatalf("Start error = %v, want ErrHelperStart", err)
+			}
+			if len(f.commands) != 1 {
+				t.Fatalf("helper starts = %d, want only the download's probe", len(f.commands))
+			}
+			got := m.Status(domain.FaceRecognizerSFaceInt8)
+			if got.State != domain.FaceRuntimeFailed || got.Reason != domain.FaceRuntimeHashMismatch {
+				t.Fatalf("Status = %+v, want failed with hash_mismatch", got)
+			}
+		})
+	}
+}
+
+func TestStartDownloadsAgainAModelChangedAfterItsCheck(t *testing.T) {
 	f := newFixture(t)
 	m := f.manager()
 	if err := m.Start(domain.FaceRecognizerSFaceInt8); err != nil {
 		t.Fatal(err)
 	}
 	waitDownload(m)
-	replaceHelper(t, f)
-
-	err := m.Helper(domain.FaceRecognizerSFaceInt8).Start(context.Background())
-
-	if !errors.Is(err, ErrHelperStart) {
-		t.Fatalf("Start error = %v, want ErrHelperStart", err)
+	model := filepath.Join(f.dir, "models", "sface.onnx")
+	if err := os.WriteFile(model, f.model[:3], 0o644); err != nil {
+		t.Fatal(err)
 	}
-	if len(f.commands) != 1 {
-		t.Fatalf("helper starts = %d, want only the download's probe", len(f.commands))
+	requests := f.server.requests.Load()
+
+	if err := m.Start(domain.FaceRecognizerSFaceInt8); err != nil {
+		t.Fatal(err)
 	}
-	got := m.Status(domain.FaceRecognizerSFaceInt8)
-	if got.State != domain.FaceRuntimeFailed || got.Reason != domain.FaceRuntimeHashMismatch {
-		t.Fatalf("Status = %+v, want failed with hash_mismatch", got)
+	waitDownload(m)
+
+	if got := m.Status(domain.FaceRecognizerSFaceInt8); got.State != domain.FaceRuntimeReady {
+		t.Fatalf("Status = %+v, want ready", got)
+	}
+	if got, err := os.ReadFile(model); err != nil || !bytes.Equal(got, f.model) {
+		t.Fatalf("model = %q, %v; want %q", got, err, f.model)
+	}
+	if n := f.server.requests.Load(); n != requests+1 {
+		t.Fatalf("requests = %d, want %d for the model alone", n, requests+1)
+	}
+}
+
+func TestFetchReportsABodyThatBreaksMidStreamAsANetworkFailure(t *testing.T) {
+	body := []byte("model bytes")
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		broken := io.MultiReader(bytes.NewReader(body[:4]), iotest.ErrReader(errors.New("connection reset by peer")))
+		return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(broken)}, nil
+	})}
+
+	err := fetch(context.Background(), client, pinOf("http://example.test/model", body),
+		filepath.Join(t.TempDir(), "model"), func(int64) {})
+
+	if got := reasonOf(err); err == nil || got != domain.FaceRuntimeNetwork {
+		t.Fatalf("fetch error = %v with reason %q, want %q", err, got, domain.FaceRuntimeNetwork)
 	}
 }

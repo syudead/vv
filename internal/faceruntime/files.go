@@ -139,7 +139,8 @@ func fetch(ctx context.Context, client *http.Client, pin Pin, target string, pro
 	_, copyErr := io.Copy(io.MultiWriter(diskWriter{file}, h, progressWriter(progress)), io.LimitReader(resp.Body, pin.Size+1))
 	closeErr := file.Close()
 	if copyErr != nil {
-		if reasonOf(copyErr) == domain.FaceRuntimeDisk {
+		// Only diskWriter classifies its errors; any other copy error is a read of the response body.
+		if f := (*failure)(nil); errors.As(copyErr, &f) {
 			return copyErr
 		}
 		return fail(domain.FaceRuntimeNetwork, copyErr)
