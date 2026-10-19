@@ -1,9 +1,10 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Person } from "../../api/credits";
+import type { FaceAppearance, FaceCandidate } from "../../api/personFaces";
 import { installFakeEventSource } from "../../api/fakeEventSource";
 import { video } from "../../testing/groupPage";
 import { ToastProvider } from "../../ui/Toast";
@@ -44,6 +45,10 @@ const server = {
   sent: [] as Sent[],
   /** When set, the face upload answers only once this settles. */
   uploadGate: null as Promise<void> | null,
+  candidates: [] as FaceCandidate[],
+  appearances: [] as FaceAppearance[],
+  /** The person a confirm answers with, also served at its own address. */
+  mergeTarget: null as Person | null,
 };
 
 async function respondLater(method: string, url: URL): Promise<Response> {
@@ -69,6 +74,26 @@ function respond(method: string, url: URL): Response {
     server.person = { ...server.person, imageRevision: 3 };
     return jsonResponse(server.person);
   }
+  if (url.pathname === "/api/people/7/face-candidates") {
+    return jsonResponse({ items: server.candidates });
+  }
+  if (url.pathname === "/api/people/7/appearances") {
+    return jsonResponse({ items: server.appearances });
+  }
+  const pair = /^\/api\/people\/7\/face-candidates\/(\d+)\/(confirm|dismiss)$/.exec(
+    url.pathname,
+  );
+  if (pair !== null && method === "POST") {
+    server.candidates = server.candidates.filter(
+      (item) => item.person.id !== Number(pair[1]),
+    );
+    if (pair[2] === "dismiss") return new Response(null, { status: 204 });
+    return jsonResponse(server.mergeTarget);
+  }
+  const target = server.mergeTarget;
+  if (target !== null && url.pathname === `/api/people/${String(target.id)}`) {
+    return jsonResponse(target);
+  }
   if (url.pathname === "/api/favorites" && method === "PUT") {
     server.person = { ...server.person, favorite: true };
     return jsonResponse({ appliedVideos: 0, appliedGroups: 0, appliedSmartFolders: 0 });
@@ -85,6 +110,9 @@ beforeEach(() => {
   server.person = person();
   server.sent = [];
   server.uploadGate = null;
+  server.candidates = [];
+  server.appearances = [];
+  server.mergeTarget = null;
   vi.stubGlobal(
     "fetch",
     vi.fn<typeof fetch>((input, init) => {
@@ -103,6 +131,16 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function VideoScreen() {
+  const location = useLocation();
+  const autoplay = (location.state as { autoplay?: boolean } | null)?.autoplay === true;
+  return (
+    <p data-testid="video-screen">
+      {`${location.pathname}${location.search}${autoplay ? " autoplay" : ""}`}
+    </p>
+  );
+}
+
 function renderPage() {
   return render(
     <TooltipProvider>
@@ -111,6 +149,7 @@ function renderPage() {
           <Routes>
             <Route path="/people/:id" element={<PersonPage />} />
             <Route path="/people/:id/edit" element={<PersonEditPage />} />
+            <Route path="/videos/:id" element={<VideoScreen />} />
           </Routes>
         </MemoryRouter>
       </ToastProvider>
@@ -251,6 +290,87 @@ describe("PersonPage", () => {
 
     const name = await screen.findByRole<HTMLInputElement>("textbox", { name: "Name" });
     expect(name.value).toBe("");
+  });
+
+  it("opens the video at a span's start, playing, from Faces in videos", async () => {
+    const user = userEvent.setup();
+    server.appearances = [
+      {
+        appearanceId: 3,
+        videoId: 5,
+        title: "Beach day",
+        spans: [
+          { start: 12.4, end: 100 },
+          { start: 130, end: 150 },
+        ],
+        hasCrop: true,
+      },
+    ];
+    renderPage();
+
+    const crop = await screen.findByRole("img", { name: "Beach day" });
+    expect(crop.getAttribute("src")).toBe("/api/face-appearances/3/crop");
+    await user.click(screen.getByRole("link", { name: "Beach day from 2:10" }));
+
+    expect((await screen.findByTestId("video-screen")).textContent).toBe(
+      "/videos/5?t=130 autoplay",
+    );
+  });
+
+  function candidate(id: number, name: string): FaceCandidate {
+    return { person: { id, name, provisional: name === "" }, similarity: 0.72 };
+  }
+
+  it("moves to the merged person's page when the shown person was merged away", async () => {
+    const user = userEvent.setup();
+    server.person = person({ name: "", provisional: true });
+    server.candidates = [candidate(9, "Alice")];
+    server.mergeTarget = person({ id: 9, name: "Alice" });
+    renderPage();
+
+    expect(await screen.findByText("72% similar")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Same person as Alice" }));
+
+    expect(await screen.findByRole("heading", { name: "Alice", level: 1 })).toBeTruthy();
+    expect(screen.getByText('Merged into "Alice"')).toBeTruthy();
+    expect(sent("POST", "/api/people/7/face-candidates/9/confirm")).toHaveLength(1);
+  });
+
+  it("keeps the page and reads the videos again when the shown person gains the other", async () => {
+    const user = userEvent.setup();
+    server.candidates = [candidate(9, "")];
+    server.mergeTarget = person({ videoCount: 2 });
+    renderPage();
+    await screen.findByRole("link", { name: /Video 1/ });
+    const videoReads = sent("GET", "/api/videos").length;
+
+    await user.click(
+      await screen.findByRole("button", { name: "Same person as Unnamed person" }),
+    );
+
+    expect(await screen.findByText('Merged "Unnamed person"')).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Aoi", level: 1 })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Same person?" })).toBeNull();
+    await waitFor(() =>
+      expect(sent("GET", "/api/videos").length).toBeGreaterThan(videoReads),
+    );
+  });
+
+  it("removes a dismissed candidate without leaving the page", async () => {
+    const user = userEvent.setup();
+    server.candidates = [candidate(9, "Alice"), candidate(10, "Mio")];
+    renderPage();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Not the same as Alice" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("link", { name: "Open Alice" })).toBeNull(),
+    );
+    expect(screen.getByRole("link", { name: "Open Mio" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Aoi", level: 1 })).toBeTruthy();
+    expect(sent("POST", "/api/people/7/face-candidates/9/dismiss")).toHaveLength(1);
   });
 
   it("shows the gone state when the person no longer exists", async () => {

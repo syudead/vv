@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { Video } from "../api/client";
-import { autoplayRequested, backTarget, resumePosition } from "./pageDecisions";
+import {
+  autoplayRequested,
+  backTarget,
+  resumePosition,
+  startFromSearch,
+} from "./pageDecisions";
 
 function withProgress(progress: Video["progress"]): Video {
   return { progress } as Video;
@@ -31,6 +36,17 @@ describe("autoplayRequested", () => {
     expect(autoplayRequested({ autoplay: "true" })).toBe(false);
     expect(autoplayRequested({})).toBe(false);
     expect(autoplayRequested(null)).toBe(false);
+  });
+});
+
+describe("startFromSearch", () => {
+  it("t の秒をミリ秒で返し、無い・読めない t は null にする", () => {
+    expect(startFromSearch("?t=130")).toBe(130_000);
+    expect(startFromSearch("?group=1&t=12.5")).toBe(12_500);
+    expect(startFromSearch("")).toBeNull();
+    expect(startFromSearch("?t=-3")).toBeNull();
+    expect(startFromSearch("?t=abc")).toBeNull();
+    expect(startFromSearch(`?t=${"9".repeat(400)}`)).toBeNull();
   });
 });
 

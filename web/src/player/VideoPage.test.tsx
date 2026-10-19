@@ -610,6 +610,23 @@ describe("VideoPage", () => {
       expect(player().initialPositionMs).toBe(0);
     });
 
+    it("アドレスの t があれば、保存した位置ではなくその秒から自動で再生を始める", async () => {
+      server.videos.set(7, [
+        {
+          ...video,
+          progress: {
+            positionMs: 65_000,
+            completed: false,
+            updatedAt: "2026-09-02T00:00:00Z",
+          },
+        },
+      ]);
+      renderPage("7?t=130", "/people/3", "owner", true);
+      await ready();
+      expect(player().autoplay).toBe(true);
+      expect(player().initialPositionMs).toBe(130_000);
+    });
+
     it("前後の矢印は操作バーと同じ時期に見せ、前後が無い側は出さない", async () => {
       server.videos.set(3, [{ ...related(3, "前の動画"), location: video.location }]);
       server.related.set(7, { items: [] });

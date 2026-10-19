@@ -1671,6 +1671,26 @@ export const en = {
       gone: "This person no longer exists",
       backToPeople: "Back to people",
       mergedInto: (name: string) => `Merged into "${name}"`,
+      candidates: {
+        heading: "Same person?",
+        open: (name: string) => `Open ${name}`,
+        similarity: (value: number) =>
+          `${formatNumber(Math.round(value * 100))}% similar`,
+        confirm: "Same person",
+        confirmFor: (name: string) => `Same person as ${name}`,
+        dismiss: "Not the same",
+        dismissFor: (name: string) => `Not the same as ${name}`,
+        merged: (name: string) => `Merged "${name}"`,
+        confirmFailed: (reason: string) => `Couldn't merge: ${reason}`,
+        dismissFailed: (reason: string) => `Couldn't dismiss: ${reason}`,
+      },
+      faces: {
+        heading: "Faces in videos",
+        notInLibrary: "Not in the library",
+        spanLink: (title: string, start: string) => `${title} from ${start}`,
+        loadFailed: (reason: string) => `Couldn't load the faces: ${reason}`,
+        loadingMore: "Loading more faces…",
+      },
     },
     personEdit: {
       title: (name: string) => `Edit "${name}"`,

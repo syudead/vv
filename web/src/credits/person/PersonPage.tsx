@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
 import { type Credit, deleteCredit, isCreditGone, type Person } from "../../api/credits";
+import { confirmFaceCandidate, type FaceCandidatePerson } from "../../api/personFaces";
 import { errorText, t, type UiText } from "../../i18n";
 import { ErrorState } from "../../ui/patterns/error-state";
 import { LoadingState } from "../../ui/patterns/loading-state";
@@ -13,6 +14,8 @@ import { useDocumentTitle } from "../../videoList/pageHooks";
 import DeleteCreditDialog from "../DeleteCreditDialog";
 import { creditDisplayName } from "../displayName";
 import MergeCreditDialog from "../MergeCreditDialog";
+import { PersonAppearances, usePersonAppearances } from "./PersonAppearances";
+import { PersonCandidates, useFaceCandidates } from "./PersonCandidates";
 import PersonFaceControl from "./PersonFaceControl";
 import { personPath } from "./personPath";
 import PersonGone from "./PersonGone";
@@ -109,11 +112,29 @@ function PersonShown({
   const [deleting, setDeleting] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<UiText | null>(null);
+  const candidates = useFaceCandidates(person.id, markGone);
+  const appearances = usePersonAppearances(person.id, markGone);
 
   function merged(target: Credit) {
     setMerging(false);
     toast(text.mergedInto(creditDisplayName(target)));
     void navigate(personPath(target.id));
+  }
+
+  /** The shown person was merged away when it is not the target; otherwise it gained the other's videos. */
+  async function confirmCandidate(other: FaceCandidatePerson) {
+    const target = await confirmFaceCandidate(person.id, other.id);
+    if (target.id !== person.id) {
+      merged(target);
+      return;
+    }
+    replace(target);
+    candidates.remove(other.id);
+    // The target may have gained the source's pairs and appearances.
+    candidates.reload();
+    appearances.reload();
+    videos.reload();
+    toast(text.candidates.merged(creditDisplayName(other)));
   }
 
   async function performDelete() {
@@ -147,7 +168,24 @@ function PersonShown({
           }}
         />
       }
-      details={<PersonDetails person={person} today={today} />}
+      details={
+        <PersonDetails
+          person={person}
+          today={today}
+          candidates={
+            <PersonCandidates
+              personId={person.id}
+              items={candidates.items}
+              actions={{
+                confirm: confirmCandidate,
+                remove: candidates.remove,
+                onGone: markGone,
+              }}
+            />
+          }
+          faces={<PersonAppearances appearances={appearances} />}
+        />
+      }
       header={<PersonVideosHeader videos={videos} />}
       toolbar={<RoleFilter role={role} onChange={setRole} />}
     >
