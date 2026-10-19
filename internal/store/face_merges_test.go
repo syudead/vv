@@ -158,6 +158,27 @@ func TestUndoFaceMergeRestoresTheProvisionalPerson(t *testing.T) {
 	}
 }
 
+// A person whose face was removed keeps its revision counter through merge and undo, so the next face gets a new ETag.
+func TestUndoFaceMergeKeepsTheImageRevisionOfAPersonWithoutAFace(t *testing.T) {
+	f := newMergeFixture(t, false)
+	ctx := context.Background()
+	if _, err := f.db.Credits().DeletePersonImage(ctx, f.provisional); err != nil {
+		t.Fatal(err)
+	}
+	var used int64
+	if err := f.db.sql.QueryRowContext(ctx, `select image_revision from people where id = ?`, f.provisional).
+		Scan(&used); err != nil {
+		t.Fatal(err)
+	}
+
+	f.undo(t, f.merge(t))
+
+	person, err := f.db.Credits().SetPersonImage(ctx, f.provisional, domain.PersonImage{JPEG: f.face, Width: 1, Height: 1})
+	if err != nil || person.ImageRevision <= used {
+		t.Errorf("revision of the next face = %d, %v; want above %d", person.ImageRevision, err, used)
+	}
+}
+
 func TestUndoFaceMergeKeepsTheOwnersLaterEdits(t *testing.T) {
 	f := newMergeFixture(t, false)
 	ctx := context.Background()

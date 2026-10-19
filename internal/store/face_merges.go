@@ -129,11 +129,12 @@ func (s *FaceStore) MergeProvisional(ctx context.Context, sourceID, targetID int
 
 // readFaceMergeSource reads what the merge is about to move from the source, other than credits.
 func readFaceMergeSource(ctx context.Context, tx *sql.Tx, source domain.Credit, targetID int64) (faceMergeSnapshot, error) {
-	snapshot := faceMergeSnapshot{ImageRevision: source.ImageRevision, Profile: source.Profile}
+	snapshot := faceMergeSnapshot{Profile: source.Profile}
 	var favoritedAt sql.NullInt64
-	if err := tx.QueryRowContext(ctx, `select p.created_at, f.favorited_at from people p
+	// The raw revision, not the domain one that reads 0 without a face, so the restored person never repeats one.
+	if err := tx.QueryRowContext(ctx, `select p.created_at, p.image_revision, f.favorited_at from people p
 		left join person_favorites f on f.person_id = p.id where p.id = ?`, source.ID).
-		Scan(&snapshot.CreatedAt, &favoritedAt); err != nil {
+		Scan(&snapshot.CreatedAt, &snapshot.ImageRevision, &favoritedAt); err != nil {
 		return faceMergeSnapshot{}, fmt.Errorf("cannot read person %d: %w", source.ID, err)
 	}
 	if favoritedAt.Valid {
