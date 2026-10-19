@@ -2,6 +2,7 @@ import { Expand, LoaderCircle, RotateCcw, RotateCw, Shrink } from "lucide-react"
 import {
   type KeyboardEvent,
   type PointerEvent,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -16,7 +17,13 @@ import { Button } from "../../ui/shadcn/button";
 import { Slider } from "../../ui/shadcn/slider";
 import { ToggleGroup, ToggleGroupItem } from "../../ui/shadcn/toggle-group";
 import FittedBox from "../thumbnailEdit/FittedBox";
-import { drawComposition, drawOverflow, type UploadImage } from "./composeImage";
+import AiTouchUpSection from "./AiTouchUpSection";
+import {
+  drawComposition,
+  drawOverflow,
+  encodeComposition,
+  type UploadImage,
+} from "./composeImage";
 import {
   type Fit,
   fillFrame,
@@ -31,6 +38,7 @@ import {
   wholeImage,
   zoomTo,
 } from "./framing";
+import { useAiTouchUp } from "./useAiTouchUp";
 
 const KEY_STEP = 0.02;
 
@@ -46,8 +54,9 @@ const VIDEO_THUMBNAIL_ASPECT = 16 / 9;
 
 type SetFit = (update: (current: Fit) => Fit) => void;
 
-/** Use the same composition as the upload inside the card's 16:9 frame; the image moves, zooms and turns freely, and what falls outside the frame shows faintly around it. */
+/** Use the same composition as the upload inside the card's 16:9 frame; the image moves, zooms and turns freely, and what falls outside the frame shows faintly around it. With ComfyUI set up, a touch-up result can replace the image before it is applied. */
 export default function UploadPreview({
+  videoId,
   image,
   name,
   aspect,
@@ -58,6 +67,7 @@ export default function UploadPreview({
   onApply,
   onCancel,
 }: {
+  videoId: number;
   image: UploadImage;
   name: string;
   aspect: number | null;
@@ -66,16 +76,21 @@ export default function UploadPreview({
   initialFit?: Fit;
   /** Replaces "Use as thumbnail" when applying only keeps the framing. */
   applyLabel?: string;
-  onApply: (fit: Fit) => void;
+  /** replaced is a touch-up result now standing for image; the caller takes over its bitmap. */
+  onApply: (fit: Fit, replaced: UploadImage | null) => void;
   onCancel: () => void;
 }) {
   const text = t.player.thumbnailUpload.preview;
   const [fit, setFit] = useState<Fit>(initialFit);
   const applyButton = useRef<HTMLButtonElement | null>(null);
-  const size = frameSize(image, aspect, fit.rotation);
+  const touchUp = usePreviewTouchUp(videoId, image, aspect, fit, setFit);
+  const busy = applying || touchUp.busy;
+  const source = touchUp.source;
+  const size = frameSize(source, aspect, fit.rotation);
   const update: SetFit = (change) => {
-    if (!applying) setFit(change);
+    if (!busy) setFit(change);
   };
+  const shown = touchUp.shown ?? { image: source, fit };
 
   const footer = (
     <>
@@ -83,10 +98,10 @@ export default function UploadPreview({
         ref={applyButton}
         size="lg"
         className="w-full"
-        aria-disabled={applying || undefined}
+        aria-disabled={busy || undefined}
         aria-busy={applying || undefined}
         onClick={() => {
-          if (!applying) onApply(fit);
+          if (!busy) onApply(fit, touchUp.handOver());
         }}
       >
         {applying && (
@@ -116,27 +131,94 @@ export default function UploadPreview({
       initialFocus={applyButton}
       stage={
         <PreviewStage
-          image={image}
+          image={shown.image}
           aspect={aspect}
-          size={size}
-          fit={fit}
+          size={frameSize(shown.image, aspect, shown.fit.rotation)}
+          fit={shown.fit}
           narrow={narrow}
           onFit={update}
         />
       }
       aside={
-        <FramingControls
-          image={image}
-          size={size}
-          fit={fit}
-          unknownAspect={aspect === null}
-          disabled={applying}
-          onFit={update}
-        />
+        <>
+          <FramingControls
+            image={source}
+            size={size}
+            fit={fit}
+            unknownAspect={aspect === null}
+            disabled={busy}
+            onFit={update}
+          />
+          {touchUp.ready && (
+            <AiTouchUpSection
+              state={touchUp.state}
+              after={touchUp.after}
+              disabled={applying}
+              onRun={touchUp.run}
+              onCancel={touchUp.cancel}
+              onShowAfter={touchUp.showAfter}
+              onUse={touchUp.use}
+              onDismiss={touchUp.dismiss}
+            />
+          )}
+        </>
       }
       footer={footer}
     />
   );
+}
+
+/** While a run or an unused result is pending, the framing and the apply wait; a used result becomes the image, framed whole. */
+function usePreviewTouchUp(
+  videoId: number,
+  image: UploadImage,
+  aspect: number | null,
+  fit: Fit,
+  setFit: (update: (current: Fit) => Fit) => void,
+) {
+  const ai = useAiTouchUp(videoId);
+  const [replaced, setReplaced] = useState<UploadImage | null>(null);
+  const [after, setAfter] = useState(true);
+  const owned = useRef<UploadImage | null>(null);
+  const handed = useRef(false);
+  owned.current = replaced;
+  useEffect(
+    () => () => {
+      if (!handed.current) owned.current?.bitmap.close();
+    },
+    [],
+  );
+  const source = replaced ?? image;
+  const pending = ai.state.status === "result" ? ai.state.image : null;
+  return {
+    ready: ai.ready,
+    state: ai.state,
+    source,
+    busy: ai.state.status === "running" || pending !== null,
+    after,
+    shown:
+      pending !== null && after
+        ? { image: pending, fit: { ...WHOLE_IMAGE, backdrop: fit.backdrop } }
+        : null,
+    run: (prompt: string) => {
+      setAfter(true);
+      ai.run(encodeComposition(source, aspect, fit), prompt);
+    },
+    cancel: ai.cancel,
+    showAfter: setAfter,
+    use: () => {
+      const next = ai.take();
+      if (next === null) return;
+      replaced?.bitmap.close();
+      setReplaced(next);
+      setFit((current) => ({ ...WHOLE_IMAGE, backdrop: current.backdrop }));
+    },
+    dismiss: ai.dismiss,
+    handOver: () => {
+      handed.current = true;
+      return replaced;
+    },
+  };
 }
 
 function PreviewStage({
@@ -331,6 +413,7 @@ function FramingControls({
           variant="outline"
           size="default"
           aria-labelledby="thumbnail-upload-backdrop"
+          className="w-full"
           value={fit.backdrop}
           disabled={disabled}
           onValueChange={(value) => {

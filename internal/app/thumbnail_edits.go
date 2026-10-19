@@ -149,7 +149,7 @@ func NewThumbnailEdits(opts ThumbnailEditsOptions) *ThumbnailEdits {
 	}
 }
 
-// Start snapshots the requested source into a ready session and cancels/replaces any prior session for the video. Missing settings return ErrThumbnailEditNotReady, unread content ErrNotFound, invalid/missing positions the CheckThumbnailPosition error, unavailable images ErrThumbnailFrameUnavailable, and an empty path needing frame extraction ErrMediaFileUnavailable.
+// Start snapshots the requested source into a ready session; an image source that does not decode returns ErrThumbnailUploadInvalid and cancels/replaces any prior session for the video. Missing settings return ErrThumbnailEditNotReady, unread content ErrNotFound, invalid/missing positions the CheckThumbnailPosition error, unavailable images ErrThumbnailFrameUnavailable, and an empty path needing frame extraction ErrMediaFileUnavailable.
 func (e *ThumbnailEdits) Start(
 	ctx context.Context, video domain.Video, path string, start domain.ThumbnailEditStart,
 ) (domain.ThumbnailEdit, error) {
@@ -200,6 +200,12 @@ func (e *ThumbnailEdits) startImage(
 		return e.frameAt(ctx, path, *start.PositionMs)
 	case domain.ThumbnailEditFromThumbnail:
 		return e.currentThumbnail(ctx, video, path)
+	case domain.ThumbnailEditFromImage:
+		frame, err := thumbnailEditFrameFromImage(start.Image)
+		if err != nil {
+			return thumbnailEditImage{}, errors.Join(domain.ErrThumbnailUploadInvalid, err)
+		}
+		return thumbnailEditImage{frame: frame}, nil
 	default:
 		return thumbnailEditImage{}, fmt.Errorf("unknown thumbnail edit source %q", start.Source)
 	}

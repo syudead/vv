@@ -14,6 +14,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import type { PlayerControls } from "./playerControls";
 import type { PlayerStatus } from "./VideoPlayer";
+import { PRESETS } from "./thumbnailEdit/presets";
 import VideoPage from "./VideoPage";
 
 interface PlayerProps {
@@ -504,6 +505,19 @@ describe("VideoPage thumbnail edit", () => {
     );
     expect(server.revert).toHaveBeenCalledTimes(1);
     expect(server.requests).not.toContain("DELETE /api/thumbnail-edits/e1");
+  });
+
+  it("定型を押すと指示欄にその文が入り、その指示で実行する", async () => {
+    const dialog = await openEditor();
+    server.run.mockReturnValueOnce(
+      json({ ...session, state: "queued", elapsedMs: 0 }, 202),
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove text" }));
+    const instructions = within(dialog).getByRole("textbox", { name: "Instructions" });
+    expect((instructions as HTMLTextAreaElement).value).toBe(PRESETS[2]?.prompt);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+    await waitFor(() => expect(server.run).toHaveBeenCalled());
+    expect(server.run.mock.calls[0]?.[0].get("prompt")).toBe(PRESETS[2]?.prompt);
   });
 
   it("実行が失敗したら理由の文と提供元の文を出し、入力を残して Compose に戻る", async () => {

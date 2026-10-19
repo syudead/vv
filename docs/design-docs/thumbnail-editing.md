@@ -109,6 +109,14 @@ together in one query, not from the video the request read first, so an upload,
 position change or revert that commits meanwhile yields the thumbnail before or
 after it, never a mix of the two.
 
+A third source, `image`, starts from an image the page sends to
+`POST /api/videos/{id}/thumbnail-edits/image`: a PNG, JPEG or WebP of at most
+20 MiB and 8192 × 8192 pixels, such as the framing of a thumbnail preview. It
+needs no readable media file and has no `positionMs`; an unreadable image
+answers `400 thumbnail_upload_invalid` and an oversized one
+`400 thumbnail_upload_too_large`, and neither ends the video's current session.
+The JSON start refuses `image`, as it carries no image.
+
 ## A run uses the connection it started with
 
 Starting a run reads the saved ComfyUI connection and keeps it in the run, so
@@ -256,6 +264,36 @@ framing for an edit from the current thumbnail.
 | Store the image at its own aspect and let each frame letterbox it | Cards place the scrub frames and the narrow-video backdrop on the video's aspect  |
 | A margin in the theme's colour | The JPEG has no transparency and the same file serves both themes |
 | The original's resolution on the canvas | Some browsers cap a canvas far below 120 megapixels, and the stored source keeps at most 2048 px anyway |
+
+### The preview touches up its framing with ComfyUI
+
+With a ComfyUI connection saved, the preview's aside offers
+`Touch up with ComfyUI`: four fixed instructions and the owner's own. A run
+draws the current framing as a PNG, starts an `image` session from it, runs the
+instruction, reads the session every second, and reads the output once the run
+succeeds; the session is then discarded, as it is on `Stop` and when the
+preview closes. The output is decoded like a picked file and shown in the
+stage with `Before` and `After`; `Use result` makes it the preview's image,
+framed whole, so it can be framed or touched up again, and the preview's
+apply sends it as it would the picked file. While a run or an unused result is
+pending, the framing and the apply wait.
+
+| Instruction | Asks the model to |
+| --- | --- |
+| `Enhance quality` | Remove noise and compression artifacts and sharpen detail, keeping the content |
+| `Remove blur` | Make the whole image look in focus |
+| `Remove text` | Remove text, captions, logos and watermarks and fill their areas |
+| `Fill the empty space` | Extend the picture over the blurred or black borders a free placement leaves |
+
+The instructions are English whatever the page's language, as the edit models
+follow English best, and live in
+[`presets.ts`](../../web/src/player/thumbnailEdit/presets.ts); the ComfyUI
+editor offers the same ones under its instructions field.
+
+| Rejected | Why |
+| --- | --- |
+| Apply the session's result through `applyThumbnailEdit` | It would skip the framing and the cover path, whose apply uploads the drawing; the preview's own apply covers both |
+| A dedicated upscaling workflow for `Enhance quality` | The stored thumbnail is 640 px from a 2048 px drawing, so repairing detail matters more than adding pixels, and the configured edit workflow already does that |
 
 The server never sees the original, so the page refuses it before the preview
 for the server's reasons: a file whose header is not a PNG, JPEG or WebP one,

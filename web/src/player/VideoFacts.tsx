@@ -420,6 +420,7 @@ export default function VideoFacts({
             )}
             {upload.preview !== null && (
               <UploadPreview
+                videoId={video.id}
                 image={upload.preview.image}
                 name={upload.preview.name}
                 aspect={upload.preview.aspect}

@@ -1951,6 +1951,13 @@ export const en = {
       keepEditing: "Keep editing",
       generatedThumbnail: "Generated thumbnail",
       useFrameInstead: "Use the frame instead",
+      presetsLabel: "Common edits",
+      presets: {
+        enhance: "Enhance quality",
+        unblur: "Remove blur",
+        removeText: "Remove text",
+        fillEmpty: "Fill the empty space",
+      },
     },
     //
     thumbnailUpload: {
@@ -1980,6 +1987,23 @@ export const en = {
         stage: "Thumbnail preview. Drag or use the arrow keys to move the image.",
         apply: "Use as thumbnail",
         cancel: "Cancel",
+      },
+      ai: {
+        title: "Touch up with ComfyUI",
+        own: "Your own instruction",
+        ownPlaceholder: "Or describe the change, for example: make it brighter",
+        runOwn: "Run",
+        hint: "Runs on the image as framed now. The result shows here before you use it.",
+        starting: "Sending the image",
+        stop: "Stop",
+        cancelled: "Cancelled. The image is unchanged.",
+        compare: "Before or after",
+        before: "Before",
+        after: "After",
+        use: "Use result",
+        dismiss: "Discard result",
+        resultHint:
+          "Using the result replaces the image, so you can frame it or touch it up again.",
       },
     },
     versions: {
