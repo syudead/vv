@@ -57,6 +57,7 @@ const features: ActivityFeature[] = [
   "versions",
   "media_folders",
   "organize",
+  "face_recognition",
 ];
 
 const server = {
@@ -586,6 +587,79 @@ describe("ActivityPage retry and undo", () => {
     expect(
       await screen.findByText("Undone. vv won't decide this again on its own"),
     ).toBeDefined();
+  });
+
+  it("undoes one person of a face analysis by that link's appearance", async () => {
+    server.entries = [
+      entry(6, {
+        kind: "face_analysis",
+        feature: "face_recognition",
+        undoable: true,
+        faceLinks: [
+          {
+            appearanceId: 11,
+            person: { id: 5, name: "Alice", provisional: false },
+            createdPerson: false,
+            undone: false,
+          },
+          {
+            appearanceId: 12,
+            person: { id: 6, name: "", provisional: true },
+            createdPerson: true,
+            undone: false,
+          },
+          {
+            appearanceId: 13,
+            person: { id: 7, name: "Bob", provisional: false },
+            createdPerson: false,
+            undone: true,
+          },
+        ],
+      }),
+    ];
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(cards()).toHaveLength(1));
+    const analysed = card("file-6.mp4");
+    expect(
+      within(analysed).getByText("Linked Alice, Unnamed person (new) · 1 link undone"),
+    ).toBeDefined();
+    await user.click(within(analysed).getByRole("button", { name: "Undo links…" }));
+    const items = await screen.findAllByRole("menuitem");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Alice",
+      "Unnamed person",
+      "All links",
+    ]);
+    await user.click(items[1]!);
+    await waitFor(() =>
+      expect(server.operations).toEqual([
+        { path: "/api/activity/6/undo", body: { appearanceId: 12 } },
+      ]),
+    );
+  });
+
+  it("names both people of a face merge and opens the merged person", async () => {
+    server.entries = [
+      entry(6, {
+        kind: "face_merge",
+        feature: "face_recognition",
+        undoable: true,
+        subject: { kind: "person", items: [{ label: "Alice", personId: 5 }] },
+      }),
+    ];
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(cards()).toHaveLength(1));
+    const merged = card("Alice");
+    expect(within(merged).getByText('Merged "Unnamed person" into Alice')).toBeDefined();
+    expect(
+      within(merged).getByRole("link", { name: "Open person" }).getAttribute("href"),
+    ).toBe("/people/5");
+    await user.click(within(merged).getByRole("button", { name: "Undo" }));
+    await waitFor(() =>
+      expect(server.operations).toEqual([{ path: "/api/activity/6/undo", body: {} }]),
+    );
   });
 
   it("says so when the owner had already changed the decision back", async () => {

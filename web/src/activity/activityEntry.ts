@@ -1,4 +1,5 @@
-import type { ActivityEntry, ActivityTag } from "../api/activity";
+import type { ActivityEntry, ActivityFaceLink, ActivityTag } from "../api/activity";
+import { creditDisplayName } from "../credits/displayName";
 import { formatDateTime, formatMonthDay, formatTime, t, type UiText } from "../i18n";
 import { videoEditPath } from "../lib/videoEditPath";
 
@@ -34,10 +35,11 @@ export function statusMark(entry: EntryFields): StatusMark {
   }
 }
 
-/** Subjects with a video link to playback. */
+/** Subjects with a video link to playback, or the person of a person subject. */
 export interface SubjectPart {
   label: string;
   videoId?: number;
+  personId?: number;
 }
 
 export function subjectParts(entry: Pick<ActivityEntry, "subject">): SubjectPart[] {
@@ -49,6 +51,12 @@ export function subjectParts(entry: Pick<ActivityEntry, "subject">): SubjectPart
         : t.activity.subject.manualScan;
     return [{ label }];
   }
+  if (kind === "person")
+    // A provisional person's label is empty.
+    return items.map((item) => ({
+      label: item.label === "" ? t.credits.unnamedPerson : item.label,
+      ...(item.personId === undefined ? {} : { personId: item.personId }),
+    }));
   return items.map((item) =>
     item.videoId === undefined
       ? { label: item.label }
@@ -147,6 +155,42 @@ function autoTagResult(entry: EntryFields): ResultPart[] {
   ]);
 }
 
+/** The name a face link shows; a deleted person has none left. */
+export function faceLinkName(link: ActivityFaceLink): string {
+  return link.person === undefined
+    ? t.activity.result.personGone
+    : creditDisplayName(link.person);
+}
+
+function linkedNames(links: ActivityFaceLink[]): string {
+  return links
+    .map((link) => {
+      const name = faceLinkName(link);
+      return link.createdPerson ? t.activity.result.createdPerson(name) : name;
+    })
+    .join(", ");
+}
+
+/** Names of the links still in place, then how many were undone. */
+function faceAnalysisResult(entry: EntryFields): ResultPart[] {
+  const links = entry.faceLinks ?? [];
+  if (links.length === 0) return [text(t.activity.result.noMainPerson)];
+  const kept = links.filter((link) => !link.undone);
+  if (kept.length === 0) return [text(t.activity.result.allLinksUndone)];
+  const parts = [text(t.activity.result.linked(linkedNames(kept)))];
+  const undone = links.length - kept.length;
+  if (undone > 0)
+    parts.push(text(t.activity.separator), text(t.activity.result.linksUndone(undone)));
+  return parts;
+}
+
+function faceMergeResult(entry: EntryFields): ResultPart[] {
+  const [target] = subjectParts(entry);
+  return [
+    text(t.activity.result.mergedInto(t.credits.unnamedPerson, target?.label ?? "")),
+  ];
+}
+
 function undoResult(entry: EntryFields): ResultPart[] {
   const undoes = entry.undoes;
   if (entry.outcome === "already_reverted")
@@ -154,6 +198,13 @@ function undoResult(entry: EntryFields): ResultPart[] {
   if (undoes === undefined) return [text(t.activity.result.byYouAlone)];
   if (undoes.tagName !== undefined)
     return [text(t.activity.result.undidTag(undoes.tagName))];
+  // Undoing one named link keeps the name in detail; an unnamed person's link and all links keep none.
+  if (
+    undoes.kind === "face_analysis" &&
+    entry.detail !== undefined &&
+    entry.detail !== ""
+  )
+    return [text(t.activity.result.undidLink(entry.detail))];
   const undid = text(t.activity.result.undid(t.activity.kind[undoes.kind]));
   if (undoes.outcome === "same")
     return [undid, text(t.activity.separator), text(t.activity.result.undoneSame)];
@@ -175,6 +226,10 @@ function completedResult(entry: EntryFields): ResultPart[] {
   switch (entry.kind) {
     case "auto_tag":
       return autoTagResult(entry);
+    case "face_analysis":
+      return faceAnalysisResult(entry);
+    case "face_merge":
+      return faceMergeResult(entry);
     case "undo":
       return undoResult(entry);
     case "tag_attach":
@@ -239,7 +294,7 @@ export function entryResult(entry: EntryFields, now: Date): EntryResult {
 }
 
 export interface OpenAction {
-  id: "settings" | "workInfo" | "duplicates" | "open";
+  id: "settings" | "workInfo" | "duplicates" | "open" | "person";
   label: UiText;
   to: string;
 }
@@ -248,9 +303,22 @@ function firstVideo(entry: ActivityEntry): number | undefined {
   return entry.subject.items.find((item) => item.videoId !== undefined)?.videoId;
 }
 
+/** The person of a person subject, for `Open person`. */
+export function subjectPerson(entry: Pick<ActivityEntry, "subject">): number | undefined {
+  if (entry.subject.kind !== "person") return undefined;
+  return entry.subject.items[0]?.personId;
+}
+
 /** Hide Open and Work info when the subject has no video. */
 export function openActions(entry: ActivityEntry): OpenAction[] {
   const actions: OpenAction[] = [];
+  const personId = subjectPerson(entry);
+  if (personId !== undefined)
+    actions.push({
+      id: "person",
+      label: t.activity.action.openPerson,
+      to: `/people/${String(personId)}`,
+    });
   const videoId = firstVideo(entry);
   if (entry.reason === "no_connection")
     actions.push({ id: "settings", label: t.activity.action.settings, to: "/settings" });
@@ -277,20 +345,27 @@ export function openActions(entry: ActivityEntry): OpenAction[] {
 
 export interface EntryOperations {
   retry: boolean;
-  /** Undo excludes auto_tag. */
+  /** Undo excludes auto_tag and face_analysis, which undo one part at a time. */
   undo: boolean;
   /** Omit the button when no undoable tags remain. */
   undoTags: ActivityTag[];
+  /** The face links not yet undone; one shows `Undo`, several the `Undo links…` menu. */
+  undoLinks: ActivityFaceLink[];
 }
 
-/** Auto-tag entries undo remaining tags individually. */
+/** Auto-tag and face-analysis entries undo their remaining tags or links individually. */
 export function entryOperations(entry: EntryFields): EntryOperations {
   const autoTag = entry.kind === "auto_tag";
+  const faceAnalysis = entry.kind === "face_analysis";
   return {
     retry: entry.retryRun,
-    undo: entry.undoable && !autoTag,
+    undo: entry.undoable && !autoTag && !faceAnalysis,
     undoTags:
       autoTag && entry.undoable ? (entry.tags ?? []).filter((tag) => !tag.undone) : [],
+    undoLinks:
+      faceAnalysis && entry.undoable
+        ? (entry.faceLinks ?? []).filter((link) => !link.undone)
+        : [],
   };
 }
 

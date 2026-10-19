@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -98,9 +99,9 @@ func (s *server) parseActivityQuery(w http.ResponseWriter, params gen.ListActivi
 		}
 	}
 	if params.Feature != nil {
-		// The generator does not enforce OpenAPI maxItems, currently nine features.
+		// The generator does not enforce OpenAPI maxItems, currently ten features.
 		if len(*params.Feature) > len(domain.ActivityFeatures) {
-			s.invalidRequest(w, "feature can be repeated at most 9 times.")
+			s.invalidRequest(w, "feature can be repeated at most 10 times.")
 			return domain.ActivityQuery{}, false
 		}
 		for _, value := range *params.Feature {
@@ -222,15 +223,16 @@ func (s *server) writeActivityError(w http.ResponseWriter, err error, message st
 
 func toAPIActivityFeatureCounts(counts map[domain.ActivityFeature]int) gen.ActivityFeatureCounts {
 	return gen.ActivityFeatureCounts{
-		Import:         counts[domain.ActivityFeatureImport],
-		Scan:           counts[domain.ActivityFeatureScan],
-		DuplicateCheck: counts[domain.ActivityFeatureDuplicateCheck],
-		AutoTagging:    counts[domain.ActivityFeatureAutoTagging],
-		WorkInfo:       counts[domain.ActivityFeatureWorkInfo],
-		Tags:           counts[domain.ActivityFeatureTags],
-		Versions:       counts[domain.ActivityFeatureVersions],
-		MediaFolders:   counts[domain.ActivityFeatureMediaFolders],
-		Organize:       counts[domain.ActivityFeatureOrganize],
+		Import:          counts[domain.ActivityFeatureImport],
+		Scan:            counts[domain.ActivityFeatureScan],
+		DuplicateCheck:  counts[domain.ActivityFeatureDuplicateCheck],
+		AutoTagging:     counts[domain.ActivityFeatureAutoTagging],
+		WorkInfo:        counts[domain.ActivityFeatureWorkInfo],
+		Tags:            counts[domain.ActivityFeatureTags],
+		Versions:        counts[domain.ActivityFeatureVersions],
+		MediaFolders:    counts[domain.ActivityFeatureMediaFolders],
+		Organize:        counts[domain.ActivityFeatureOrganize],
+		FaceRecognition: counts[domain.ActivityFeatureFaceRecognition],
 	}
 }
 
@@ -326,6 +328,11 @@ func toAPIActivitySubject(entry domain.ActivityEntry) gen.ActivitySubject {
 		return out
 	}
 	subject.Items = []gen.ActivitySubjectItem{item(entry.Subject.Label, entry.VideoIDs[0])}
+	if entry.Subject.Kind == domain.ActivitySubjectPerson {
+		if id, err := strconv.ParseInt(entry.Subject.Key, 10, 64); err == nil {
+			subject.Items[0].PersonId = &id
+		}
+	}
 	if entry.Subject.Kind == domain.ActivitySubjectPair {
 		subject.Items = append(subject.Items, item(entry.Subject.LabelB, entry.VideoIDs[1]))
 	}
@@ -363,7 +370,8 @@ func toAPIActivityListItem(entry domain.ActivityEntry) (gen.ActivityListItem, er
 	return item, nil
 }
 
-// A member summary leaves out detail and tags; an auto_tag member counts its tags instead.
+// A member summary leaves out detail and tags; an auto_tag member counts its tags instead, and a face_analysis member
+// keeps its links through the JSON copy.
 func toAPIActivityMemberSummary(member domain.ActivityMember) (gen.ActivityMemberSummary, error) {
 	summary, err := fromActivityEntry[gen.ActivityMemberSummary](toAPIActivityEntry(member.ActivityEntry))
 	if err != nil {
