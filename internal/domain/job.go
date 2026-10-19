@@ -33,6 +33,8 @@ type Job struct {
 	LastLocation bool
 	// Attempts includes this claim.
 	Attempts int
+	// Force regenerates the artifact whatever the stage state is, and its seek stage queues no follow-up process.
+	Force bool
 }
 
 // JobKinds defines stage order and worker creation; omitted kinds are never processed.

@@ -140,6 +140,7 @@ stateDiagram-v2
 | Trigger | Queues |
 | --- | --- |
 | Seek preview stage finishes for good (done, or failed with no retry left), "Tag new videos automatically" on | That video, if it has no row |
+| Seek preview stage of a forced job (a force rescan) finishes for good | Nothing, so a rescan does not tag a video imported before auto-tagging was on |
 | Settings, "Tag videos not yet tagged" | Videos with no row or a `failed` row |
 | Settings, "Tag all videos again" | Every video not `running` |
 | Video page, "Suggest tags" | That video, unless `running` |
