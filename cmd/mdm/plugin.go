@@ -199,7 +199,10 @@ func writePackedManifest(w io.Writer, modulePath string, m domain.WorkInfoPlugin
 	if m.Description != "" {
 		lines = append(lines, m.Description)
 	}
-	lines = append(lines, "Does: "+strings.Join(ops, " · "))
+	lines = append(lines, "Kind: "+string(m.Kind), "Does: "+strings.Join(ops, " · "))
+	if m.Kind == domain.WorkInfoPluginKindPerson {
+		lines = append(lines, "Sources: "+strings.Join(m.Sources, ", "))
+	}
 	if len(m.Settings) == 0 {
 		lines = append(lines, "Settings: none")
 	} else {

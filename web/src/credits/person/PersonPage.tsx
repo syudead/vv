@@ -24,6 +24,7 @@ import { PersonCandidates, useFaceCandidates } from "./PersonCandidates";
 import PersonFaceControl from "./PersonFaceControl";
 import { personPath } from "./personPath";
 import PersonGone from "./PersonGone";
+import PersonFetchEntry from "./pluginFetch/PersonFetchEntry";
 import { useHandedPerson } from "./personHandoff";
 import { PersonDetails, PersonIdentity } from "./PersonProfile";
 import {
@@ -183,6 +184,9 @@ function PersonShown({
       identity={
         <PersonIdentity
           person={person}
+          fetchEntry={
+            <PersonFetchEntry person={person} onApplied={replace} onGone={markGone} />
+          }
           onMerge={() => setMerging(true)}
           onDelete={() => {
             setDeleteError(null);

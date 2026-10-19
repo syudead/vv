@@ -143,6 +143,8 @@ type WorkInfoFetchResult struct {
 	PersonMatches       []CreditMatch
 	OrganizationMatches []CreditMatch
 	Cover               *WorkInfoCover
+	// Lookups is the person plugin lookups planned for Details.People.
+	Lookups PersonLookupPlan
 }
 
 // OrderFetchedWorkDetails returns a copy ordered by date kind and credit role, preserving within-kind/role order and excluding title/tags.
@@ -223,6 +225,8 @@ type FetchedWorkInfoApply struct {
 	Details FetchedWorkInfo
 	// Empty DetailFields preserves work info.
 	DetailFields []WorkInfoField
+	// PersonLookups are the run lookups with selected items; each needs one of its entries' roles in DetailFields.
+	PersonLookups []FetchedPersonLookupApply
 }
 
 // RejectedTags is deduplicated in Tags order; Skipped reports omitted detail values.
@@ -232,6 +236,8 @@ type FetchedWorkInfoApplied struct {
 	Skipped      []SkippedWorkInfoValue
 	// PersonIDs aligns with Details.People: the person each entry was linked to, or 0.
 	PersonIDs []int64
+	// LookupPersonIDs aligns with PersonLookups: the person the lookup filled, or 0 when it was skipped.
+	LookupPersonIDs []int64
 }
 
 type WorkInfoApplied struct {

@@ -19,9 +19,11 @@ type EncoderUnavailableReason = components["schemas"]["EncoderUnavailableReason"
 type ComfyUIProvider = components["schemas"]["ComfyUIProvider"];
 type ComfyUIModel = components["schemas"]["ComfyUIModel"];
 type WorkInfoPluginState = components["schemas"]["WorkInfoPluginState"];
+type WorkInfoPluginKind = components["schemas"]["WorkInfoPluginKind"];
 type WorkInfoPluginProblem = components["schemas"]["WorkInfoPluginProblem"];
 type WorkInfoOperation = components["schemas"]["WorkInfoOperation"];
 type SkippedTagReason = components["schemas"]["SkippedTag"]["reason"];
+type PersonPluginItem = components["schemas"]["PersonPluginItem"];
 type WorkInfoField = components["schemas"]["WorkInfoField"];
 type ActivityKind = components["schemas"]["ActivityKind"];
 type ActivityFeature = components["schemas"]["ActivityFeature"];
@@ -245,8 +247,11 @@ const errorCodes = {
   plugin_failed: "The plugin failed.",
   plugin_timed_out: "The plugin didn't finish in 30 seconds and was stopped.",
   plugin_busy: "Another plugin is running. Try again in a moment.",
+  plugin_kind_mismatch: "This plugin is for the other kind of information.",
   operation_unsupported: "The plugin can't do that.",
   work_info_fetch_stale: "The result is out of date. Fetch it again.",
+  person_external_id_missing:
+    "This person has no ID the plugin accepts. Search by name instead.",
   activity_not_retryable: "This can no longer be retried",
   activity_not_undoable: "This can no longer be undone",
   invalid_smart_rule: "A condition is out of range.",
@@ -1704,6 +1709,54 @@ export const en = {
         openSplit: "Open",
         splitFailed: (reason: string) => `Couldn't split the face: ${reason}`,
       },
+      pluginFetch: {
+        entry: "Fetch info…",
+        title: (name: string) => `Fetch info for ${name}`,
+        noAcceptedId: (plugin: string) =>
+          `${plugin} has no ID for this person yet. Search by name instead.`,
+        name: "Name",
+        noMatches: "No matches. Try other words.",
+        candidateId: (source: string, id: string) => `${source} ${id}`,
+        candidateDetail: (detail: string, sourceId: string) => `${detail} · ${sourceId}`,
+        source: (plugin: string, source: string, id: string) =>
+          `From ${plugin} · ${source} ${id}`,
+        applied: (name: string) => `Applied to ${name}.`,
+        gone: "This person no longer exists.",
+        items: {
+          image: "Face",
+          "profile.birthDate": "Born",
+          "profile.deathDate": "Died",
+          "profile.gender": "Gender",
+          "profile.birthplace": "Birthplace",
+          "profile.heightCm": "Height",
+          "profile.bustCm": "Bust",
+          "profile.waistCm": "Waist",
+          "profile.hipsCm": "Hips",
+          "profile.cup": "Cup",
+          "profile.bloodType": "Blood type",
+          "profile.careerStartYear": "Career start",
+          "profile.careerEndYear": "Career end",
+          "profile.bio": "Bio",
+          "profile.links": "Links",
+          aliases: "Aliases",
+          externalIds: "External IDs",
+        } satisfies Record<PersonPluginItem, string>,
+        empty: "Empty",
+        noFace: "No face",
+        onPerson: "On the person",
+        kept: (count: number) => `Kept as now (${formatNumber(count)})`,
+        hideKept: "Hide kept values",
+        keptNote: "Already set; applying keeps the current value.",
+        nothingNew: "Nothing new for this person.",
+        skipped: {
+          taken: (name: string) => `already linked to ${name}`,
+          tooManyAliases: "over the limit for aliases",
+          tooManyIds: "over the limit for external IDs",
+          invalid: "too long or contains characters that can't be used",
+          stale: "the plugin changed since the lookup",
+          personChanged: "the person was merged or deleted since the fetch",
+        },
+      },
     },
     personEdit: {
       title: (name: string) => `Edit "${name}"`,
@@ -2238,6 +2291,8 @@ export const en = {
       newCount: (count: number) => `${formatNumber(count)} new`,
       fillsEmpty: (name: string, values: readonly string[]) =>
         `${name} — Fills only empty fields: ${values.join(" · ")}`,
+      fillsAfterLookup: (name: string, values: readonly string[]) =>
+        `${name} — Fills what the lookup leaves empty: ${values.join(" · ")}`,
       fillFact: (term: string, value: string) => `${term} ${value}`,
       fillBio: "Bio",
       // m counts selectable tags not already on the video.
@@ -2248,6 +2303,23 @@ export const en = {
       apply: "Apply selected",
       applying: "Applying…",
       applied: "Applied to the video.",
+      appliedCutShort: (count: number) =>
+        selectPlural(count, {
+          one: "Applied; 1 person was still being looked up and was left out.",
+          other: `Applied; ${formatNumber(count)} people were still being looked up and were left out.`,
+        }),
+      lookupSource: (plugin: string) => `From ${plugin}`,
+      lookingUp: "Looking up…",
+      lookupFailed: (name: string, reason: string) =>
+        `Couldn't look up ${name}: ${reason}`,
+      tryAgain: "Try again",
+      lookupChanged:
+        "The plugin changed since the fetch, so this person wasn't looked up.",
+      // Notes sit under the row's chips, so they name the person as the fill lines do.
+      lookupLimited: (name: string) =>
+        `${name} — Not looked up: over the limit of 5 automatic lookups per fetch.`,
+      lookedUpUnder: (name: string, role: string) => `${name} — Looked up under ${role}.`,
+      lookupItem: (name: string, item: string) => `${name} · ${item}`,
       resultTitle: "Applied, but some values were left out",
       skippedLabel: (label: string) => `${label}: `,
       skipped: {
@@ -3660,6 +3732,18 @@ export const en = {
       added: (name: string) => `Added ${name}. Approve it to use it.`,
       replaced: (name: string) => `Replaced ${name}. Approve it again to use it.`,
       addedUnusable: (name: string) => `Added ${name}, but it can't be used.`,
+      addedUnder: {
+        work: (name: string) =>
+          `Added ${name} under Work-info plugins. Approve it to use it.`,
+        person: (name: string) =>
+          `Added ${name} under Person plugins. Approve it to use it.`,
+      } satisfies Record<WorkInfoPluginKind, (name: string) => string>,
+      replacedUnder: {
+        work: (name: string) =>
+          `Replaced ${name} under Work-info plugins. Approve it again to use it.`,
+        person: (name: string) =>
+          `Replaced ${name} under Person plugins. Approve it again to use it.`,
+      } satisfies Record<WorkInfoPluginKind, (name: string) => string>,
       empty: "No plugins yet",
       emptyHint: "Add a .wasm plugin file to fetch titles and tags on the video page.",
       states: {
@@ -3672,6 +3756,23 @@ export const en = {
         search: "Search",
         fetch: "Fetch by ID",
       } satisfies Record<WorkInfoOperation, string>,
+      person: {
+        heading: "Person plugins",
+        description:
+          "Plugins fetch a person's face and profile from other sites, from the person page and when fetched work information names a person they know. Approve a plugin before it can run.",
+        list: "Added person plugins",
+        loading: "Loading the person plugins",
+        loadFailed: (reason: string) => `Couldn't load the person plugins: ${reason}`,
+        empty: "No person plugins yet",
+        emptyHint: "Add a .wasm person plugin file to fetch faces and profiles.",
+        operations: {
+          search: "Search by name",
+          fetch: "Fetch by ID",
+        } satisfies Record<WorkInfoOperation, string>,
+        accepts: (sources: readonly string[]) => `Accepts IDs from ${sources.join(", ")}`,
+        autoLookup: "Automatic lookups",
+        saving: "Saving…",
+      },
       network: "Reaches internet sites",
       settingSet: (label: string) => `${label} set`,
       settingNotSet: (label: string) => `${label} not set`,
@@ -3704,6 +3805,9 @@ export const en = {
         title: (name: string) => `Approve ${name}?`,
         description:
           "Approved plugins can run when you fetch work information on a video page.",
+        personDescription:
+          "Approved person plugins can run from a person page, and when fetched work information names a person with an ID they accept.",
+        sources: "Accepts IDs from",
         version: "Version",
         file: "File",
         can: "Can",

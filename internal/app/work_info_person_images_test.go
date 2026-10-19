@@ -97,7 +97,7 @@ func TestApplyStoresAFetchedFaceOnlyForAPersonWithoutOne(t *testing.T) {
 	e.applier.workInfo = &domain.WorkInfo{People: []domain.WorkPerson{performer(1, 2), performer(2, 0), performer(3, 0)}}
 
 	applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-		[]domain.WorkInfoField{domain.PersonField(domain.PersonPerformer)}, nil, false)
+		[]domain.WorkInfoField{domain.PersonField(domain.PersonPerformer)}, nil, false, nil)
 	if err != nil || len(applied.Skipped) != 0 {
 		t.Fatalf("apply = %+v, %v; want success with nothing skipped", applied, err)
 	}
@@ -114,8 +114,9 @@ func TestApplyStoresAFetchedFaceOnlyForAPersonWithoutOne(t *testing.T) {
 	}
 }
 
-// One fetch holding a cover and seven people's images at the size limit fills the budget, and the next evicts it.
-func TestFetchedPersonImagesCountTowardTheBudgetWithTheCover(t *testing.T) {
+// One fetch holding a cover, seven people's images and five lookup images at the size limit fills the budget, and a
+// person page result added next evicts it.
+func TestFetchedImagesCountTowardTheBudgetWithTheCoverAndLookups(t *testing.T) {
 	fetches := newWorkInfoFetches()
 	now := time.Unix(1_800_000_000, 0)
 	full := &domain.WorkInfoCover{Data: make([]byte, domain.WorkInfoCoverMaxBytes)}
@@ -123,14 +124,18 @@ func TestFetchedPersonImagesCountTowardTheBudgetWithTheCover(t *testing.T) {
 	for i := range people {
 		people[i].Image = full
 	}
+	lookups := make([]*keptLookup, domain.PersonLookupsMaxCount)
+	for i := range lookups {
+		lookups[i] = &keptLookup{image: full}
+	}
 	first := fetches.add(&workInfoFetch{
-		videoID: fetchVideo, cover: full, details: domain.FetchedWorkInfo{People: people},
+		videoID: fetchVideo, cover: full, details: domain.FetchedWorkInfo{People: people}, lookupRuns: lookups,
 		expiresAt: now.Add(domain.WorkInfoFetchLifetime),
 	}, now)
 	if _, ok := fetches.entries[first]; !ok {
 		t.Fatal("a fetch within the budget was dropped")
 	}
-	fetches.add(&workInfoFetch{videoID: fetchVideo, cover: full, expiresAt: now.Add(domain.WorkInfoFetchLifetime + 1)}, now)
+	fetches.addPerson(&personPluginFetch{image: full, expiresAt: now.Add(domain.WorkInfoFetchLifetime + 1)}, now)
 	if _, ok := fetches.entries[first]; ok {
 		t.Fatal("the fetch that expires first was kept over the budget")
 	}

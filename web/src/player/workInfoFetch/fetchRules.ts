@@ -7,15 +7,34 @@ import type {
   WorkInfoPlugin,
 } from "../../api/workInfoPlugins";
 import { t, type UiText } from "../../i18n";
+import { skippedPersonReason } from "../../credits/person/pluginFetch/personCompareRows";
 import { creditKind, detailRow, isDateRow, videoWorkInfo } from "./detailRows";
+import { skippedLookupName } from "./lookupRules";
 
 export type RunOperation = "search" | "fetch";
 
 /** Treat input as search words or an opaque work ID according to plugin capabilities, even when it looks like a URL. */
 export type FindBy = "words" | "id";
 
-export function approvedPlugins(plugins: readonly WorkInfoPlugin[]): WorkInfoPlugin[] {
-  return plugins.filter((plugin) => plugin.state === "approved");
+function approvedPlugins(
+  plugins: readonly WorkInfoPlugin[],
+  kind: WorkInfoPlugin["kind"],
+): WorkInfoPlugin[] {
+  return plugins.filter((plugin) => plugin.kind === kind && plugin.state === "approved");
+}
+
+/** Person plugins share the list but never fetch work information. */
+export function approvedWorkPlugins(
+  plugins: readonly WorkInfoPlugin[],
+): WorkInfoPlugin[] {
+  return approvedPlugins(plugins, "work");
+}
+
+/** The plugins a person page fetches from. */
+export function approvedPersonPlugins(
+  plugins: readonly WorkInfoPlugin[],
+): WorkInfoPlugin[] {
+  return approvedPlugins(plugins, "person");
 }
 
 function can(plugin: WorkInfoPlugin, operation: RunOperation): boolean {
@@ -117,6 +136,16 @@ export function rowState(
   return detailRow(field, videoWorkInfo(video), fetched).state;
 }
 
+/** A row's state in the comparison: a role row a lookup has something for is a change. */
+export function comparedRowState(
+  field: WorkInfoField,
+  video: Video,
+  fetched: WorkInfoFetch,
+  changedByLookup: ReadonlySet<WorkInfoField>,
+): RowState {
+  return changedByLookup.has(field) ? "differs" : rowState(field, video, fetched);
+}
+
 /** Match WorkInfoField order in api/openapi.yaml. */
 export const FIELDS: readonly WorkInfoField[] = [
   "title",
@@ -190,9 +219,30 @@ export function skippedReason(value: SkippedWorkInfoValue): UiText {
   return value.field === "urls" ? text.invalidUrl : text.invalidOther;
 }
 
+function lookupReason(value: SkippedWorkInfoValue): UiText {
+  const text = t.credits.personPage.pluginFetch.skipped;
+  if (value.reason === "stale") return text.stale;
+  if (value.reason === "person_changed") return text.personChanged;
+  if (value.item === undefined) return text.invalid;
+  return skippedPersonReason({
+    item: value.item,
+    reason: value.reason === "ambiguous" ? "invalid" : value.reason,
+    holderName: value.holderName,
+  });
+}
+
+/** A lookup's item value is labelled with its person; a whole lookup left out keeps the role, its value naming the person. */
+function skippedLabel(value: SkippedWorkInfoValue, result?: WorkInfoFetch): UiText {
+  const text = t.player.workInfoFetch;
+  const name = result === undefined ? undefined : skippedLookupName(result, value);
+  if (value.item === undefined || name === undefined) return text.fields[value.field];
+  return text.lookupItem(name, t.credits.personPage.pluginFetch.items[value.item]);
+}
+
 export function skippedLines(
   tags: readonly SkippedTag[],
   values: readonly SkippedWorkInfoValue[],
+  result?: WorkInfoFetch,
 ): SkippedLine[] {
   const text = t.player.workInfoFetch;
   return [
@@ -204,9 +254,9 @@ export function skippedLines(
     })),
     ...values.map((value, index) => ({
       key: `${value.field}\u0000${String(index)}`,
-      label: text.fields[value.field],
+      label: skippedLabel(value, result),
       value: value.value,
-      reason: skippedReason(value),
+      reason: value.lookup === undefined ? skippedReason(value) : lookupReason(value),
     })),
   ];
 }

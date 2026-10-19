@@ -25,6 +25,20 @@ function facts(plugin: WorkInfoPlugin): Fact[] {
     },
     { id: "can", term: text.can, value: operationTexts(plugin).join(" · ") },
   );
+  if (plugin.kind === "person" && plugin.sources.length > 0)
+    list.push({
+      id: "sources",
+      term: text.sources,
+      value: (
+        <span className="flex flex-wrap gap-1">
+          {plugin.sources.map((source) => (
+            <Badge key={source} variant="secondary">
+              {source}
+            </Badge>
+          ))}
+        </span>
+      ),
+    });
   if (plugin.description !== undefined)
     list.push({
       id: "description",
@@ -86,7 +100,7 @@ export default function WorkInfoPluginApprovalDialog({
   return (
     <WorkInfoPluginDialog
       title={text.title(pluginName(plugin))}
-      description={text.description}
+      description={plugin.kind === "person" ? text.personDescription : text.description}
       submitLabel={text.submit}
       pending={pending}
       submitDisabled={changed}

@@ -90,7 +90,7 @@ func TestApplyCoverMakesItTheThumbnailAfterTheWorkInfo(t *testing.T) {
 	image := pngOf(t, 4, 3)
 	result := e.fetchCover(t, image)
 	applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-		[]domain.WorkInfoField{domain.WorkInfoFieldCover, domain.WorkInfoFieldTitle}, nil, false)
+		[]domain.WorkInfoField{domain.WorkInfoFieldCover, domain.WorkInfoFieldTitle}, nil, false, nil)
 	if err != nil || len(applied.Skipped) != 0 {
 		t.Fatalf("apply = %+v, %v", applied, err)
 	}
@@ -109,7 +109,7 @@ func TestApplyCoverIsNotAppliedWhenTheWorkInfoIsRefused(t *testing.T) {
 		result := e.fetchCover(t, pngOf(t, 2, 2))
 		e.applier.err = failure
 		if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-			[]domain.WorkInfoField{domain.WorkInfoFieldCover}, nil, false); !errors.Is(err, failure) || len(covers.images) != 0 {
+			[]domain.WorkInfoField{domain.WorkInfoFieldCover}, nil, false, nil); !errors.Is(err, failure) || len(covers.images) != 0 {
 			t.Fatalf("%v: err = %v, %d covers applied; want the failure and no cover", failure, err, len(covers.images))
 		}
 	}
@@ -122,7 +122,7 @@ func TestApplyCoverThatCannotBeUsedIsSkippedAfterTheRestIsApplied(t *testing.T) 
 		covers.err = failure
 		result := e.fetchCover(t, pngOf(t, 2, 2))
 		applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-			[]domain.WorkInfoField{domain.WorkInfoFieldCover, domain.WorkInfoFieldTitle}, nil, false)
+			[]domain.WorkInfoField{domain.WorkInfoFieldCover, domain.WorkInfoFieldTitle}, nil, false, nil)
 		want := domain.SkippedWorkInfoValue{
 			Field: domain.WorkInfoFieldCover, Value: "https://example.com/cover.png", Reason: domain.SkippedWorkInfoInvalid,
 		}
@@ -137,16 +137,16 @@ func TestApplyCoverByPageChecksTheResultWithoutApplyingTheCover(t *testing.T) {
 	e, covers := newCoverEnv()
 	result := e.fetchCover(t, pngOf(t, 2, 2))
 	cover := []domain.WorkInfoField{domain.WorkInfoFieldCover}
-	applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, cover, nil, true)
+	applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, cover, nil, true, nil)
 	if err != nil || len(applied.Skipped) != 0 || len(covers.images) != 0 || len(e.applier.calls) != 1 {
 		t.Fatalf("apply = %+v, %v, %d covers, %d commits; want one commit and no cover", applied, err, len(covers.images), len(e.applier.calls))
 	}
-	if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, cover, nil, true); !errors.Is(err, domain.ErrWorkInfoFetchStale) {
+	if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, cover, nil, true, nil); !errors.Is(err, domain.ErrWorkInfoFetchStale) {
 		t.Fatalf("second apply: err = %v; want the result consumed", err)
 	}
 	stale := e.fetchCover(t, pngOf(t, 2, 2))
 	e.applier.err = domain.ErrWorkInfoFetchStale
-	if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, stale.ID, cover, nil, true); !errors.Is(err, domain.ErrWorkInfoFetchStale) {
+	if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, stale.ID, cover, nil, true, nil); !errors.Is(err, domain.ErrWorkInfoFetchStale) {
 		t.Fatalf("revoked plugin: err = %v; want ErrWorkInfoFetchStale", err)
 	}
 }
@@ -155,7 +155,7 @@ func TestApplyCoverIsRefusedWithoutACover(t *testing.T) {
 	e, _ := newCoverEnv()
 	result := e.fetchCover(t, nil)
 	if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-		[]domain.WorkInfoField{domain.WorkInfoFieldCover}, nil, false); !errors.Is(err, domain.ErrWorkInfoApplyInvalid) {
+		[]domain.WorkInfoField{domain.WorkInfoFieldCover}, nil, false, nil); !errors.Is(err, domain.ErrWorkInfoApplyInvalid) {
 		t.Fatalf("err = %v; want ErrWorkInfoApplyInvalid", err)
 	}
 }
@@ -193,7 +193,7 @@ func TestApplyCoverIsSkippedWhenTheVideoOrTheApplierIsMissing(t *testing.T) {
 		result := e.fetchCover(t, pngOf(t, 2, 2))
 		change(e)
 		applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-			[]domain.WorkInfoField{domain.WorkInfoFieldCover, domain.WorkInfoFieldTitle}, nil, false)
+			[]domain.WorkInfoField{domain.WorkInfoFieldCover, domain.WorkInfoFieldTitle}, nil, false, nil)
 		if err != nil || len(applied.Skipped) != 1 || applied.Skipped[0].Field != domain.WorkInfoFieldCover ||
 			len(covers.images) != 0 || e.applier.titles[fetchVideo] != "Title" {
 			t.Fatalf("%s: apply = %+v, %v; want the cover skipped and the title written", name, applied, err)

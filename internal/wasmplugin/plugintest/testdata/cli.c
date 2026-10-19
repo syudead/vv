@@ -11,11 +11,20 @@ int main(void) {
             puts("{\"error\":{\"message\":\"failed on purpose\"}}");
             return 0;
         }
-        printf("{\"candidates\":[{\"id\":\"site.test/works/1\",\"url\":\"https://site.test/works/1\",\"title\":");
-        quoted(query); puts("}]}");
+        // source and name make the candidate a person plugin's too; a work-info plugin ignores them.
+        printf("{\"candidates\":[{\"id\":\"site.test/works/1\",\"url\":\"https://site.test/works/1\",\"source\":\"s\",\"title\":");
+        quoted(query); printf(",\"name\":"); quoted(query); puts("}]}");
         return 0;
     }
     const char *id = text(req, "id");
+    const char *source = text(req, "source");
+    if (*source) {
+        // Only a person plugin's fetch carries a source.
+        printf("{\"person\":{\"name\":"); quoted(id);
+        printf(",\"externalIds\":[{\"source\":\"other\",\"value\":\"x\"},{\"source\":");
+        quoted(source); printf(",\"value\":"); quoted(id); puts("}]}}");
+        return 0;
+    }
     char url[1024], send[2048];
     int n = snprintf(url, sizeof(url), "http://%s", id);
     require(n >= 0 && (unsigned)n < sizeof(url));

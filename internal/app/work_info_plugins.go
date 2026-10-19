@@ -30,6 +30,8 @@ type WorkInfoPluginStore interface {
 	RevokeWorkInfoPlugin(ctx context.Context, id int64, now time.Time) (domain.WorkInfoPlugin, error)
 	// SetWorkInfoPluginValues revalidates transactionally like approval; unknown keys or oversized values additionally return ErrWorkInfoPluginSettingInvalid.
 	SetWorkInfoPluginValues(ctx context.Context, id int64, values map[string]*string, now time.Time) (domain.WorkInfoPlugin, error)
+	// SetWorkInfoPluginAutoLookup returns ErrNotFound when absent and ErrWorkInfoPluginKindMismatch for a work-info plugin.
+	SetWorkInfoPluginAutoLookup(ctx context.Context, id int64, enabled bool) (domain.WorkInfoPlugin, error)
 	// DeleteWorkInfoPlugin removes the plugin and settings, or returns ErrNotFound.
 	DeleteWorkInfoPlugin(ctx context.Context, id int64) error
 	// SaveWorkInfoPluginRun replaces the latest log only if the row exists and its generation matches run.Generation.
@@ -53,6 +55,8 @@ type WorkInfoPluginsOptions struct {
 	Covers WorkInfoCoverApplier
 	// PersonImages gives linked people without a face their fetched images; nil drops them.
 	PersonImages WorkInfoPersonImageFiller
+	// People serves the person page's fetches; nil leaves them unconfigured.
+	People PersonPluginPeople
 	// Now defaults to time.Now.
 	Now func() time.Time
 }
@@ -73,6 +77,7 @@ type WorkInfoPlugins struct {
 	covers  WorkInfoCoverApplier
 	// personImages may be nil.
 	personImages WorkInfoPersonImageFiller
+	people       PersonPluginPeople
 	now          func() time.Time
 	fetches      *workInfoFetches
 }
@@ -85,8 +90,8 @@ func NewWorkInfoPlugins(opts WorkInfoPluginsOptions) *WorkInfoPlugins {
 	}
 	return &WorkInfoPlugins{
 		store: opts.Store, runtime: opts.Runtime, videos: opts.Videos, applier: opts.Applier, matcher: opts.Matcher,
-		network: opts.Network, covers: opts.Covers, personImages: opts.PersonImages, now: now,
-		fetches: newWorkInfoFetches(),
+		network: opts.Network, covers: opts.Covers, personImages: opts.PersonImages, people: opts.People,
+		now: now, fetches: newWorkInfoFetches(),
 	}
 }
 
@@ -166,6 +171,14 @@ func (p *WorkInfoPlugins) SetWorkInfoPluginSettings(
 		return domain.WorkInfoPluginEntry{}, err
 	}
 	return entryOf(p.store.SetWorkInfoPluginValues(ctx, id, values, p.now()))
+}
+
+// SetWorkInfoPluginAutoLookup lets work-info fetches call a person plugin, or stops them; the person page is unaffected.
+// A missing plugin returns ErrNotFound and a work-info plugin ErrWorkInfoPluginKindMismatch.
+func (p *WorkInfoPlugins) SetWorkInfoPluginAutoLookup(
+	ctx context.Context, id int64, enabled bool,
+) (domain.WorkInfoPluginEntry, error) {
+	return entryOf(p.store.SetWorkInfoPluginAutoLookup(ctx, id, enabled))
 }
 
 // DeleteWorkInfoPlugin removes the plugin and settings, or returns ErrNotFound.

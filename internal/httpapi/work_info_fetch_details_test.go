@@ -163,6 +163,8 @@ func TestWorkInfoFetchAnswersTheDetailsWithMatches(t *testing.T) {
 			"match": map[string]any{"state": "new"}}},
 		"urls":        []any{"https://example.com/works/1"},
 		"externalIds": []any{map[string]any{"source": "fanza", "value": "abc123"}},
+		// No person plugin is registered.
+		"personLookups": []any{},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("fetch body = %s;\nwant %v", body, want)
@@ -215,7 +217,7 @@ func TestWorkInfoApplySkipsAMalformedDate(t *testing.T) {
 		Dates: []domain.WorkDate{{Kind: domain.DateRelease, Date: "March 2024"}},
 	}))
 	applied := e.apply(fetchID, "code", "dates.release")
-	want := []gen.SkippedWorkInfoValue{{Field: gen.DatesRelease, Value: "March 2024", Reason: gen.SkippedWorkInfoReasonInvalid}}
+	want := []gen.SkippedWorkInfoValue{{Field: gen.WorkInfoFieldDatesRelease, Value: "March 2024", Reason: gen.SkippedWorkInfoReasonInvalid}}
 	if !reflect.DeepEqual(applied.Skipped, want) {
 		t.Fatalf("skipped = %+v; want %+v", applied.Skipped, want)
 	}

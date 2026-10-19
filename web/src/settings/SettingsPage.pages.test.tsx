@@ -35,7 +35,7 @@ const pages: [string, string, string[]][] = [
   ["/settings/auto-tagging", "Auto-tagging", ["Progress", "Classifier"]],
   ["/settings/face-recognition", "Face recognition", ["Progress", "Recognition"]],
   ["/settings/connections", "Connections", ["Ollama", "ComfyUI"]],
-  ["/settings/plugins", "Plugins", ["Work-info plugins"]],
+  ["/settings/plugins", "Plugins", ["Work-info plugins", "Person plugins"]],
   ["/settings/conversion", "Video conversion", ["Encoder"]],
   ["/settings/network", "Network", ["Local network"]],
   ["/settings/api", "API", ["API tokens"]],

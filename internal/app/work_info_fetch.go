@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -35,11 +36,7 @@ type WorkInfoCreditMatcher interface {
 
 // SearchWorkInfo uses an approved plugin; trimmed queries must contain 1-200 characters or return ErrWorkInfoRunInvalid. Other validation and execution errors follow run.
 func (p *WorkInfoPlugins) SearchWorkInfo(ctx context.Context, id int64, query string) ([]domain.WorkInfoCandidate, error) {
-	normalized, err := domain.NormalizeWorkInfoSearchQuery(query)
-	if err != nil {
-		return nil, err
-	}
-	_, result, err := p.run(ctx, id, domain.WorkInfoRunRequest{Operation: domain.WorkInfoSearch, Query: normalized})
+	result, err := p.search(ctx, id, domain.WorkInfoPluginKindWork, query)
 	if err != nil {
 		return nil, err
 	}
@@ -48,6 +45,31 @@ func (p *WorkInfoPlugins) SearchWorkInfo(ctx context.Context, id int64, query st
 		candidates = []domain.WorkInfoCandidate{}
 	}
 	return candidates, nil
+}
+
+// SearchPeople runs an approved person plugin's search like SearchWorkInfo; a work-info plugin returns
+// ErrWorkInfoPluginKindMismatch.
+func (p *WorkInfoPlugins) SearchPeople(ctx context.Context, id int64, query string) ([]domain.PersonCandidate, error) {
+	result, err := p.search(ctx, id, domain.WorkInfoPluginKindPerson, query)
+	if err != nil {
+		return nil, err
+	}
+	candidates := result.PersonCandidates
+	if candidates == nil {
+		candidates = []domain.PersonCandidate{}
+	}
+	return candidates, nil
+}
+
+func (p *WorkInfoPlugins) search(
+	ctx context.Context, id int64, kind domain.WorkInfoPluginKind, query string,
+) (domain.WorkInfoRunResult, error) {
+	normalized, err := domain.NormalizeWorkInfoSearchQuery(query)
+	if err != nil {
+		return domain.WorkInfoRunResult{}, err
+	}
+	_, result, err := p.run(ctx, id, kind, domain.WorkInfoRunRequest{Operation: domain.WorkInfoSearch, Query: normalized})
+	return result, err
 }
 
 // FetchWorkInfo validates a trimmed 1-200-character ID and video existence before running an approved plugin, then keeps fetched values and entity matches in memory without changing the video. Pass URL-shaped IDs unchanged: only the plugin interprets them; invalid IDs return ErrWorkInfoRunInvalid, missing videos ErrNotFound, and other errors follow run.
@@ -71,7 +93,7 @@ func (p *WorkInfoPlugins) keepFetched(
 	if _, err := p.videos.GetVideo(ctx, domain.AudienceOwner, videoID); err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}
-	plugin, result, err := p.run(ctx, pluginID, req)
+	plugin, result, err := p.run(ctx, pluginID, domain.WorkInfoPluginKindWork, req)
 	if err := p.recordFetch(ctx, videoID, err); err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}
@@ -95,15 +117,21 @@ func (p *WorkInfoPlugins) keepFetched(
 	if err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}
+	lookups, err := p.planPersonLookups(ctx, details.People, people)
+	if err != nil {
+		return domain.WorkInfoFetchResult{}, err
+	}
 	fetch := &workInfoFetch{
 		videoID: videoID, pluginID: plugin.ID, digest: plugin.Digest, generation: plugin.Generation,
 		title: title, tags: tags, details: details, personMatches: people, organizationMatches: organizations,
 		cover: fetchedCover(result.CoverImage), expiresAt: p.now().Add(domain.WorkInfoFetchLifetime),
+		lookups: lookups, lookupRuns: make([]*keptLookup, len(lookups.Lookups)),
 	}
 	id := p.fetches.add(fetch, p.now())
 	return domain.WorkInfoFetchResult{
 		ID: id, ExpiresAt: fetch.expiresAt, Title: title, Tags: tags,
 		Details: details, PersonMatches: people, OrganizationMatches: organizations, Cover: fetch.cover,
+		Lookups: lookups,
 	}, nil
 }
 
@@ -133,14 +161,22 @@ func (p *WorkInfoPlugins) matchCredits(
 	return p.matcher.Match(ctx, kind, entries)
 }
 
-// Validate existence, approval, operation support and required settings before executing, returning ErrNotFound, ErrWorkInfoPluginNotApproved, ErrWorkInfoOperationUnsupported or WorkInfoSettingsMissingError respectively. Pass only declared settings with values; execution errors are WorkInfoRunError.
+// Validate existence, kind, approval, operation support and required settings before executing, returning ErrNotFound, ErrWorkInfoPluginKindMismatch, ErrWorkInfoRunInvalid for an undeclared source, ErrWorkInfoPluginNotApproved, ErrWorkInfoOperationUnsupported or WorkInfoSettingsMissingError respectively. Pass only declared settings with values; execution errors are WorkInfoRunError.
 func (p *WorkInfoPlugins) run(
-	ctx context.Context, id int64, req domain.WorkInfoRunRequest,
+	ctx context.Context, id int64, kind domain.WorkInfoPluginKind, req domain.WorkInfoRunRequest,
 ) (domain.WorkInfoPlugin, domain.WorkInfoRunResult, error) {
 	plugin, module, err := p.store.WorkInfoPluginModule(ctx, id)
 	if err != nil {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, err
 	}
+	if plugin.Kind() != kind {
+		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, domain.ErrWorkInfoPluginKindMismatch
+	}
+	// Recheck the source on the snapshot that runs, since the plugin may have been replaced since the caller chose it.
+	if req.Source != "" && !plugin.Manifest.DeclaresSource(req.Source) {
+		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, domain.ErrWorkInfoRunInvalid
+	}
+	req.Kind, req.Sources = kind, plugin.Manifest.Sources
 	if plugin.State() != domain.WorkInfoPluginApproved {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, domain.ErrWorkInfoPluginNotApproved
 	}
@@ -172,18 +208,19 @@ func (p *WorkInfoPlugins) runNetwork(ctx context.Context) (domain.WorkInfoRunNet
 	return p.network.RunNetwork(ctx)
 }
 
-// Apply selected fields once; coverByPage checks and consumes a selected cover without applying it, for a page that uploads its own framing. Returns the updated video and skipped tags/details; nil tags selects all fetched tags, otherwise use the exact selected names. Missing/expired or changed-plugin results return ErrWorkInfoFetchStale, wrong-video results ErrNotFound, invalid fields/tag selections ErrWorkInfoApplyInvalid, and failed application writes nothing; the store rechecks plugin state transactionally, reporting invalid original names and normalized rejected names in fetched order.
+// Apply selected fields and lookup items once; coverByPage checks and consumes a selected cover without applying it, for a page that uploads its own framing. Returns the updated video and skipped tags/details; nil tags selects all fetched tags, otherwise use the exact selected names. Missing/expired or changed-plugin results return ErrWorkInfoFetchStale, wrong-video results ErrNotFound, invalid fields/tag selections or lookup items without a result value or a selected role ErrWorkInfoApplyInvalid, and failed application writes nothing; the store rechecks plugin state transactionally, reporting invalid original names and normalized rejected names in fetched order.
 func (p *WorkInfoPlugins) ApplyWorkInfoFetch(
 	ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField, tags []string, coverByPage bool,
+	lookups []domain.PersonLookupSelection,
 ) (domain.WorkInfoApplied, error) {
 	if p.applier == nil {
 		return domain.WorkInfoApplied{}, errors.New("work-info fetches are not configured")
 	}
-	fetch, err := p.fetches.claim(fetchID, videoID, fields, tags, p.now())
+	fetch, err := p.fetches.claim(fetchID, videoID, workInfoSelection{fields: fields, tags: tags, lookups: lookups}, p.now())
 	if err != nil {
 		return domain.WorkInfoApplied{}, err
 	}
-	applied, err := p.applyFetch(ctx, fetch, fields, tags, coverByPage)
+	applied, err := p.applyFetch(ctx, fetch, fields, tags, coverByPage, lookups)
 	if err != nil && !errors.Is(err, domain.ErrWorkInfoFetchStale) && !errors.Is(err, domain.ErrNotFound) {
 		// Restore results after transient writes fail so the owner can retry.
 		p.fetches.restore(fetchID, fetch)
@@ -193,6 +230,7 @@ func (p *WorkInfoPlugins) ApplyWorkInfoFetch(
 
 func (p *WorkInfoPlugins) applyFetch(
 	ctx context.Context, fetch *workInfoFetch, fields []domain.WorkInfoField, tags []string, coverByPage bool,
+	lookups []domain.PersonLookupSelection,
 ) (domain.WorkInfoApplied, error) {
 	plugin, err := p.store.WorkInfoPlugin(ctx, fetch.pluginID)
 	switch {
@@ -206,7 +244,7 @@ func (p *WorkInfoPlugins) applyFetch(
 	}
 	apply := domain.FetchedWorkInfoApply{
 		VideoID: fetch.videoID, PluginID: fetch.pluginID, Digest: fetch.digest, Generation: fetch.generation,
-		Details: fetch.details, DetailFields: detailFields(fields),
+		Details: fetch.details, DetailFields: detailFields(fields), PersonLookups: fetch.lookupApplies(lookups),
 	}
 	if slices.Contains(fields, domain.WorkInfoFieldTitle) {
 		title := fetch.title
@@ -228,7 +266,7 @@ func (p *WorkInfoPlugins) applyFetch(
 		video, coverSkipped = p.applyCover(ctx, fetch, video)
 	}
 	// Like the cover, faces follow the commit so a plugin the transaction found stale stores none.
-	video = p.applyPersonImages(ctx, video, fetch.details.People, applied.PersonIDs)
+	video = p.applyPersonImages(ctx, video, fetch.appliedFaces(lookups, applied))
 	skipped := append(coverSkipped, applied.Skipped...)
 	if skipped == nil {
 		skipped = []domain.SkippedWorkInfoValue{}
@@ -318,6 +356,9 @@ type workInfoFetch struct {
 
 	cover     *domain.WorkInfoCover
 	expiresAt time.Time
+	// lookupRuns aligns with lookups.Lookups: the kept result of a lookup that ran, or nil.
+	lookups    domain.PersonLookupPlan
+	lookupRuns []*keptLookup
 }
 
 // Unknown fields have no value.
@@ -350,13 +391,15 @@ func (f *workInfoFetch) validTagSelection(fields []domain.WorkInfoField, tags []
 }
 
 // Index results by ID and expire them on insert or retrieval.
+// People holds person page results apart, under the same lifetime and image budget.
 type workInfoFetches struct {
 	mu      sync.Mutex
 	entries map[string]*workInfoFetch
+	people  map[string]*personPluginFetch
 }
 
 func newWorkInfoFetches() *workInfoFetches {
-	return &workInfoFetches{entries: map[string]*workInfoFetch{}}
+	return &workInfoFetches{entries: map[string]*workInfoFetch{}, people: map[string]*personPluginFetch{}}
 }
 
 // Assign a random 128-bit ID; evict the earliest-expiring image-bearing results when their images exceed WorkInfoFetchCoverBudget.
@@ -370,22 +413,48 @@ func (f *workInfoFetches) add(fetch *workInfoFetch, now time.Time) string {
 	return id
 }
 
-// Caller holds mu; evict earliest-expiring image-bearing results until within budget.
+// Caller holds mu; evict earliest-expiring image-bearing results of either kind until within budget.
 func (f *workInfoFetches) trimCovers() {
 	total := 0
 	for _, entry := range f.entries {
 		total += entry.imageBytes()
 	}
-	for total > domain.WorkInfoFetchCoverBudget {
-		oldest := ""
-		for id, entry := range f.entries {
-			if entry.imageBytes() > 0 && (oldest == "" || entry.expiresAt.Before(f.entries[oldest].expiresAt)) {
-				oldest = id
-			}
-		}
-		total -= f.entries[oldest].imageBytes()
-		delete(f.entries, oldest)
+	for _, entry := range f.people {
+		total += entry.imageBytes()
 	}
+	for total > domain.WorkInfoFetchCoverBudget {
+		var oldest keptImages
+		for _, entry := range f.entries {
+			oldest = earlierImages(oldest, entry)
+		}
+		for _, entry := range f.people {
+			oldest = earlierImages(oldest, entry)
+		}
+		total -= oldest.imageBytes()
+		f.evict(oldest)
+	}
+}
+
+// keptImages is a kept result of either kind as the image budget sees it.
+type keptImages interface {
+	imageBytes() int
+	expiry() time.Time
+}
+
+func (f *workInfoFetch) expiry() time.Time { return f.expiresAt }
+
+// earlierImages returns the earlier-expiring of oldest and entry among those holding images.
+func earlierImages(oldest, entry keptImages) keptImages {
+	if entry.imageBytes() > 0 && (oldest == nil || entry.expiry().Before(oldest.expiry())) {
+		return entry
+	}
+	return oldest
+}
+
+// Caller holds mu.
+func (f *workInfoFetches) evict(entry keptImages) {
+	maps.DeleteFunc(f.entries, func(_ string, kept *workInfoFetch) bool { return keptImages(kept) == entry })
+	maps.DeleteFunc(f.people, func(_ string, kept *personPluginFetch) bool { return keptImages(kept) == entry })
 }
 
 // Return ErrNotFound for missing covers or video mismatches.
@@ -400,10 +469,17 @@ func (f *workInfoFetches) cover(id string, videoID int64, now time.Time) (domain
 	return *fetch.cover, nil
 }
 
+type workInfoSelection struct {
+	fields  []domain.WorkInfoField
+	tags    []string
+	lookups []domain.PersonLookupSelection
+}
+
 // Validate existence/expiry, video and selection before consuming a result once. ErrWorkInfoFetchStale, ErrNotFound and ErrWorkInfoApplyInvalid preserve it unless expired.
 func (f *workInfoFetches) claim(
-	id string, videoID int64, fields []domain.WorkInfoField, tags []string, now time.Time,
+	id string, videoID int64, selection workInfoSelection, now time.Time,
 ) (*workInfoFetch, error) {
+	fields := selection.fields
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.prune(now)
@@ -413,7 +489,7 @@ func (f *workInfoFetches) claim(
 		return nil, domain.ErrWorkInfoFetchStale
 	case fetch.videoID != videoID:
 		return nil, domain.ErrNotFound
-	case len(fields) == 0, !fetch.validTagSelection(fields, tags):
+	case len(fields) == 0, !fetch.validTagSelection(fields, selection.tags), !fetch.validLookups(fields, selection.lookups):
 		return nil, domain.ErrWorkInfoApplyInvalid
 	}
 	for _, field := range fields {
@@ -434,9 +510,6 @@ func (f *workInfoFetches) restore(id string, fetch *workInfoFetch) {
 
 // Caller holds mu.
 func (f *workInfoFetches) prune(now time.Time) {
-	for id, fetch := range f.entries {
-		if !now.Before(fetch.expiresAt) {
-			delete(f.entries, id)
-		}
-	}
+	maps.DeleteFunc(f.entries, func(_ string, fetch *workInfoFetch) bool { return !now.Before(fetch.expiresAt) })
+	maps.DeleteFunc(f.people, func(_ string, fetch *personPluginFetch) bool { return !now.Before(fetch.expiresAt) })
 }

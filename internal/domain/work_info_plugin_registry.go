@@ -13,6 +13,8 @@ var (
 	ErrWorkInfoPluginChanged        = errors.New("the work-info plugin was replaced after it was listed")
 	ErrWorkInfoPluginUnusable       = errors.New("the work-info plugin has a problem and cannot be used")
 	ErrWorkInfoPluginSettingInvalid = errors.New("the work-info plugin setting is not declared or its value is too long")
+	// ErrWorkInfoPluginKindMismatch reports a work-info operation on a person plugin, or the reverse.
+	ErrWorkInfoPluginKindMismatch = errors.New("the plugin is of the other kind")
 )
 
 // Invalid uploads do not persist Module and treat Operations/Settings as unreadable.
@@ -41,6 +43,8 @@ type WorkInfoPlugin struct {
 	Values     map[string]string
 	// LastRunAt is the last retained run's completion time, or zero.
 	LastRunAt time.Time
+	// AutoLookup lets work-info fetches call a person plugin; it is stored for every row but means nothing for work.
+	AutoLookup bool
 }
 
 func (p WorkInfoPlugin) State() WorkInfoPluginState {
@@ -71,6 +75,11 @@ type WorkInfoPluginEntry struct {
 	UpdatedAt   time.Time
 	// LastRunAt is the last retained run's completion time, or zero.
 	LastRunAt time.Time
+	Kind      WorkInfoPluginKind
+	// Sources is empty for a work-info plugin.
+	Sources []string
+	// AutoLookup is always false for a work-info plugin.
+	AutoLookup bool
 }
 
 // Entry preserves declaration order and removes secret values.
@@ -91,6 +100,11 @@ func (p WorkInfoPlugin) Entry() WorkInfoPluginEntry {
 	if operations == nil {
 		operations = []WorkInfoOperation{}
 	}
+	kind := p.Kind()
+	sources := []string{}
+	if kind == WorkInfoPluginKindPerson && p.Manifest.Sources != nil {
+		sources = p.Manifest.Sources
+	}
 	return WorkInfoPluginEntry{
 		ID:          p.ID,
 		Name:        p.Manifest.Name,
@@ -104,7 +118,18 @@ func (p WorkInfoPlugin) Entry() WorkInfoPluginEntry {
 		Settings:    settings,
 		UpdatedAt:   p.UpdatedAt,
 		LastRunAt:   p.LastRunAt,
+		Kind:        kind,
+		Sources:     sources,
+		AutoLookup:  kind == WorkInfoPluginKindPerson && p.AutoLookup,
 	}
+}
+
+// Kind reads an unset manifest kind as work, as for a row saved before person plugins.
+func (p WorkInfoPlugin) Kind() WorkInfoPluginKind {
+	if p.Manifest.Kind == "" {
+		return WorkInfoPluginKindWork
+	}
+	return p.Manifest.Kind
 }
 
 // CheckWorkInfoPluginValues requires declared keys and bounded valid UTF-8 values; nil deletes a saved value.

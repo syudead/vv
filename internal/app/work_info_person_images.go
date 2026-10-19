@@ -48,7 +48,7 @@ func (f *workInfoFetches) personImage(id string, videoID int64, index int, now t
 	return *fetch.details.People[index].Image, nil
 }
 
-// imageBytes counts the cover and people's images toward WorkInfoFetchCoverBudget.
+// imageBytes counts the cover, people's images and lookup images toward WorkInfoFetchCoverBudget.
 func (f *workInfoFetch) imageBytes() int {
 	total := 0
 	if f.cover != nil {
@@ -59,24 +59,52 @@ func (f *workInfoFetch) imageBytes() int {
 			total += len(person.Image.Data)
 		}
 	}
+	for _, run := range f.lookupRuns {
+		if run != nil && run.image != nil {
+			total += len(run.image.Data)
+		}
+	}
 	return total
 }
 
-// applyPersonImages runs after the apply commits, for the people the apply linked, and returns video with the
-// revisions of the faces it stored; a failure drops that image without failing the apply, which is already written.
-func (p *WorkInfoPlugins) applyPersonImages(
-	ctx context.Context, video domain.Video, people []domain.FetchedPerson, personIDs []int64,
-) domain.Video {
+// personFace is a kept image the apply offers to a linked person without a face.
+type personFace struct {
+	personID int64
+	image    *domain.WorkInfoCover
+}
+
+// appliedFaces lists the selected lookup images before the work-info people's images, so a person both name gets
+// the lookup's face.
+func (f *workInfoFetch) appliedFaces(
+	lookups []domain.PersonLookupSelection, applied domain.FetchedWorkInfoApplied,
+) []personFace {
+	var faces []personFace
+	for i, selection := range lookups {
+		if i < len(applied.LookupPersonIDs) && slices.Contains(selection.Items, domain.PersonItemImage) {
+			faces = append(faces, personFace{personID: applied.LookupPersonIDs[i], image: f.lookupRuns[selection.Index].image})
+		}
+	}
+	for i, id := range applied.PersonIDs {
+		if i < len(f.details.People) {
+			faces = append(faces, personFace{personID: id, image: f.details.People[i].Image})
+		}
+	}
+	return faces
+}
+
+// applyPersonImages runs after the apply commits, in faces order, and returns video with the revisions of the faces
+// it stored; a failure drops that image without failing the apply, which is already written.
+func (p *WorkInfoPlugins) applyPersonImages(ctx context.Context, video domain.Video, faces []personFace) domain.Video {
 	if p.personImages == nil {
 		return video
 	}
 	revisions := map[int64]int64{}
-	for i, id := range personIDs {
-		if id == 0 || i >= len(people) || people[i].Image == nil {
+	for _, face := range faces {
+		if face.personID == 0 || face.image == nil {
 			continue
 		}
-		if revision, err := p.personImages.FillPersonImage(ctx, id, people[i].Image.Data); err == nil && revision != 0 {
-			revisions[id] = revision
+		if revision, err := p.personImages.FillPersonImage(ctx, face.personID, face.image.Data); err == nil && revision != 0 {
+			revisions[face.personID] = revision
 		}
 	}
 	return withPersonImageRevisions(video, revisions)

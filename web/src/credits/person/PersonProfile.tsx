@@ -45,10 +45,13 @@ function EditLink({ person, label = text.edit }: { person: Person; label?: UiTex
 /** The name, aliases and actions; nothing on the page outranks viewing, so no default button. */
 export function PersonIdentity({
   person,
+  fetchEntry,
   onMerge,
   onDelete,
 }: {
   person: Person;
+  /** Fetch info…, after Edit; absent while no approved person plugin exists. */
+  fetchEntry?: ReactNode;
   onMerge: () => void;
   onDelete: () => void;
 }) {
@@ -72,6 +75,7 @@ export function PersonIdentity({
         <Button asChild variant="outline" size="sm">
           <EditLink person={person} label={person.provisional ? text.name : text.edit} />
         </Button>
+        {fetchEntry}
         <Button asChild variant="ghost" size="sm">
           <Link to={libraryFilterPath("person", person.id)}>{text.showInLibrary}</Link>
         </Button>
@@ -99,7 +103,7 @@ export function PersonIdentity({
 }
 
 /** Six lines, then Show more only when the text is longer than that. */
-function Bio({ bio }: { bio: string }) {
+export function Bio({ bio }: { bio: string }) {
   const ref = useRef<HTMLParagraphElement>(null);
   const [open, setOpen] = useState(false);
   const [overflows, setOverflows] = useState(false);
@@ -138,6 +142,28 @@ function hostOf(url: string): string {
   }
 }
 
+/** One host per line, each opening its page in a new tab. */
+export function LinkList({ links }: { links: readonly string[] }) {
+  return (
+    <ul aria-label={text.links} className="flex min-w-0 flex-col gap-1 text-sm">
+      {links.map((url) => (
+        <li key={url} className="min-w-0">
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex max-w-full items-center gap-1 text-primary hover:underline"
+          >
+            <span className="truncate">{hostOf(url)}</span>
+            <ExternalLink aria-hidden="true" className="size-3 shrink-0" />
+            <span className="sr-only">{text.opensInNewTab}</span>
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** Candidates, fact groups with values, faces in videos, then links and external IDs. */
 export function PersonDetails({
   person,
@@ -172,24 +198,7 @@ export function PersonDetails({
         ))
       )}
       {faces}
-      {links.length > 0 && (
-        <ul aria-label={text.links} className="flex flex-col gap-1 text-sm">
-          {links.map((url) => (
-            <li key={url} className="min-w-0">
-              <a
-                href={url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex max-w-full items-center gap-1 text-primary hover:underline"
-              >
-                <span className="truncate">{hostOf(url)}</span>
-                <ExternalLink aria-hidden="true" className="size-3 shrink-0" />
-                <span className="sr-only">{text.opensInNewTab}</span>
-              </a>
-            </li>
-          ))}
-        </ul>
-      )}
+      {links.length > 0 && <LinkList links={links} />}
       {person.externalIds.length > 0 && (
         <ul
           aria-label={text.externalIds}
