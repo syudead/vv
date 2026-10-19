@@ -54,6 +54,8 @@ func (s *CreditStore) SplitFaceAppearance(ctx context.Context, personID, appeara
 	if err != nil {
 		return domain.Credit{}, err
 	}
+	// The new face is published even when no credit changed, such as for a video gone from the library.
+	events = append(events, personFaceEvents(domain.Credit{}, created)...)
 	c := &changes{}
 	c.matchesChanged()
 	if err := s.db.commitWith(ctx, tx, c, events...); err != nil {
@@ -62,7 +64,7 @@ func (s *CreditStore) SplitFaceAppearance(ctx context.Context, personID, appeara
 	return created, nil
 }
 
-// splitCreditEvents moves the performer credit and returns the events of the work it changed.
+// splitCreditEvents moves the performer credit and returns the events of the work it changed, if any.
 func splitCreditEvents(ctx context.Context, tx *sql.Tx, contentKey string, oldID, newID int64, now time.Time) ([]domain.Event, error) {
 	edited, err := moveFacePerformer(ctx, tx, contentKey, oldID, newID)
 	if err != nil || edited == "" {

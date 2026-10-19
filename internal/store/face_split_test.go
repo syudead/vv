@@ -128,6 +128,23 @@ func TestSplitFaceAppearanceKeepsTheCreditAnotherAppearanceStillLinks(t *testing
 	}
 }
 
+func TestSplitFaceAppearancePublishesTheNewFaceWithoutACreditChange(t *testing.T) {
+	f, _ := newSplitFixture(t)
+	recorder := &committedFaceRecorder{t: t, db: f.db}
+	f.db.PublishTo(recorder)
+	if _, err := f.db.sql.Exec(`delete from video_work_people where role = 'performer'`); err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := f.db.Credits().SplitFaceAppearance(context.Background(), f.named, faceAppearances(t, f.db)[0].id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := recorder.take(); !slices.Equal(got, []int64{created.ID}) {
+		t.Errorf("face events = %v, want [%d] for the new person", got, created.ID)
+	}
+}
+
 func TestSplitFaceAppearanceRefusesAnAppearanceOfAnotherPerson(t *testing.T) {
 	f, _ := newSplitFixture(t)
 	ctx := context.Background()

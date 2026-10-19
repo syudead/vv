@@ -93,6 +93,13 @@ export function usePersonAppearances(personId: number, onGone: () => void) {
       });
   }, [personId, cursor, fail]);
 
+  // Splitting every shown row leaves no row to show while later pages remain, so read the next one.
+  const emptied =
+    state.kind === "ready" && state.items.length === 0 && cursor !== undefined;
+  useEffect(() => {
+    if (emptied) loadMore();
+  }, [emptied, loadMore]);
+
   const remove = useCallback((appearanceId: number) => {
     setState((current) =>
       current.kind === "ready"
@@ -131,7 +138,10 @@ export function PersonAppearances({
   actions: AppearanceActions;
 }) {
   const { state, reload, loadMore, loadingMore } = appearances;
-  if (state.kind === "loading" || (state.kind === "ready" && state.items.length === 0)) {
+  if (
+    state.kind === "loading" ||
+    (state.kind === "ready" && state.items.length === 0 && state.nextCursor === undefined)
+  ) {
     return null;
   }
   return (
