@@ -32,6 +32,7 @@ import {
   backTarget,
   linkStateFrom,
   resumePosition,
+  startFromSearch,
   videoTrail,
 } from "./pageDecisions";
 import type { PlaybackFailureKind } from "./playbackRecovery";
@@ -129,9 +130,11 @@ export default function VideoPage() {
     positionMs: number;
     kind: PlaybackFailureKind;
   } | null>(null);
+  // A `t` in the address, as a face span links, wins over the saved position, also on reload.
+  const linkedStartMs = startFromSearch(location.search);
   const [attempt, setAttempt] = useState<Attempt>(() => ({
     key: 0,
-    startMs: null,
+    startMs: linkedStartMs,
     autoplay: autoplayRequested(location.state),
   }));
   const [endedTakesFocus, setEndedTakesFocus] = useState(false);
@@ -169,7 +172,7 @@ export default function VideoPage() {
     setMediaAspect(null);
     setAttempt({
       key: 0,
-      startMs: sameVideo ? 0 : null,
+      startMs: linkedStartMs ?? (sameVideo ? 0 : null),
       autoplay: autoplayRequested(location.state),
     });
   }

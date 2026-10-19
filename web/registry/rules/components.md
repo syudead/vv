@@ -420,15 +420,17 @@ Do not use the `favorite` colour or a heart for anything else.
 
 ### PersonFace
 
-Item `person-face`. A person's face in one of four frames, or the placeholder
+Item `person-face`. A person's face in one of six frames, or the placeholder
 in the same frame, so a row that mixes both keeps one height:
 
-| Shape     | Frame                                       | Where                                   |
-| --------- | ------------------------------------------- | --------------------------------------- |
-| `card`    | Full width, `aspect-square`, `rounded-full` | A card of the people grid               |
-| `profile` | Full width, `aspect-portrait`, `rounded-md` | The person page's profile column        |
-| `chip`    | `size-5`, `rounded-full`, a `text-sm` line  | Next to a name in the video page's cast |
-| `compare` | `size-8`, `rounded-full`                    | A fetched person in a comparison        |
+| Shape     | Frame                                       | Where                                                                     |
+| --------- | ------------------------------------------- | ------------------------------------------------------------------------- |
+| `card`    | Full width, `aspect-square`, `rounded-full` | A card of the people grid                                                 |
+| `profile` | Full width, `aspect-portrait`, `rounded-md` | The person page's profile column                                          |
+| `chip`    | `size-5`, `rounded-full`, a `text-sm` line  | Next to a name in the video page's cast                                   |
+| `compare` | `size-8`, `rounded-full`                    | A fetched person in a comparison                                          |
+| `judge`   | `size-12`, `rounded-full`                   | A person in a row where the owner decides whether two people are the same |
+| `scene`   | `size-12`, `rounded-md`                     | A face cut from a video; square, so it reads as a frame of the video      |
 
 The image is cropped with `object-cover` and `object-face`: centred
 horizontally and a third from the top, where a portrait usually holds the
