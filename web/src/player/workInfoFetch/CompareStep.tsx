@@ -502,6 +502,7 @@ export default function CompareStep({
       </div>
       {cover.adjusting && cover.image !== null && (
         <UploadPreview
+          videoId={video.id}
           image={cover.image}
           name={pluginLabel(fetched.plugin)}
           aspect={cover.aspect}

@@ -643,7 +643,9 @@ the image in the card's 16:9 thumbnail frame exactly as it will be stored:
 the owner drags the image anywhere (or moves it with the arrow keys), zooms it
 with `Zoom`, the wheel, `+` and `-`, turns it a quarter at a time, picks what
 fills the empty space, and returns to `Whole image` or `Fill frame` with one
-button, while the part outside the frame shows faintly around it.
+button, while the part outside the frame shows faintly around it. With ComfyUI set up, `Touch up with ComfyUI` runs one of four fixed
+instructions or the owner's own on the framing, shows `Before` and `After`,
+and `Use result` makes the result the image.
 `Use as thumbnail` closes it and sends; `Cancel`, `×` and Esc send
 nothing
 ([thumbnail editing](thumbnail-editing.md#the-page-frames-the-image-before-it-is-sent)).

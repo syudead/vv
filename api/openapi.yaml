@@ -1077,6 +1077,35 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/videos/{id}/thumbnail-edits/image:
+    post:
+      operationId: startThumbnailEditFromImage
+      summary: "Start thumbnail editing from an image the page sends"
+      description: "Owner-only. Starts a session whose starting image is the sent PNG, JPEG or WebP of at most 20 MiB and 8192 × 8192 pixels, such as the framing a thumbnail preview drew; it needs no readable media file, and source is image. Otherwise behaves like startThumbnailEdit: a ready session with 201 that replaces any prior session for the video. An oversized image returns 400 thumbnail_upload_too_large with limit; an unreadable one 400 thumbnail_upload_invalid. Missing ComfyUI configuration returns 409 thumbnail_edit_not_ready."
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/StartThumbnailEditFromImageRequest"
+      responses:
+        "201":
+          description: "Started session"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThumbnailEdit"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/videos/{id}/versions:
     get:
       operationId: listVideoVersions
@@ -5357,8 +5386,18 @@ components:
 
     ThumbnailEditSource:
       type: string
-      enum: [frame, thumbnail]
-      description: "Editing source: frame uses the selected video frame; thumbnail uses the current thumbnail."
+      enum: [frame, thumbnail, image]
+      description: "Editing source: frame uses the selected video frame; thumbnail uses the current thumbnail; image uses an image sent to startThumbnailEditFromImage and is refused by startThumbnailEdit."
+
+    StartThumbnailEditFromImageRequest:
+      type: object
+      additionalProperties: false
+      required: [image]
+      properties:
+        image:
+          type: string
+          format: binary
+          description: "Starting image: PNG, JPEG or WebP, at most 20 MiB and 8192 × 8192 pixels."
     RunThumbnailEditRequest:
       type: object
       additionalProperties: false

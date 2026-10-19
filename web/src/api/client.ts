@@ -912,6 +912,31 @@ export function startThumbnailEdit(
   });
 }
 
+/** Start from an image the page drew, such as a preview's framing; the session needs no media file. */
+export function startThumbnailEditFromImage(
+  videoId: number,
+  image: Blob,
+  signal?: AbortSignal,
+): Promise<ThumbnailEdit> {
+  const form = new FormData();
+  form.append("image", image, "framing.png");
+  return request<ThumbnailEdit>(`/api/videos/${String(videoId)}/thumbnail-edits/image`, {
+    method: "POST",
+    body: form,
+    signal,
+  });
+}
+
+/** The provider's output as it came, before it is fitted to the video. */
+export async function getThumbnailEditResult(
+  editId: string,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const response = await apiFetch(thumbnailEditPath(editId, "/result"), { signal });
+  if (!response.ok) throw await toRequestFailed(response);
+  return response.blob();
+}
+
 function thumbnailEditPath(editId: string, suffix = ""): string {
   return `/api/thumbnail-edits/${encodeURIComponent(editId)}${suffix}`;
 }

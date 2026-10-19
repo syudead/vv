@@ -65,6 +65,7 @@ import {
 import CompareStage from "./CompareStage";
 import { buildMask, type Stroke } from "./mask";
 import PaintStage from "./PaintStage";
+import { PRESETS } from "./presets";
 
 const RUN_POLL_MS = 1000;
 const IDLE_POLL_MS = 60_000;
@@ -428,6 +429,19 @@ export default function ThumbnailEditor({
           disabled={inputsLocked}
           onChange={(event) => setPrompt(event.target.value)}
         />
+        <div role="group" aria-label={text.presetsLabel} className="flex flex-wrap gap-2">
+          {PRESETS.map((preset) => (
+            <Button
+              key={preset.id}
+              variant="outline"
+              size="sm"
+              disabled={inputsLocked}
+              onClick={() => setPrompt(preset.prompt)}
+            >
+              {text.presets[preset.id]}
+            </Button>
+          ))}
+        </div>
         <FieldDescription>{text.instructionsHint}</FieldDescription>
       </Field>
       <Field>

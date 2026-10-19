@@ -35,7 +35,7 @@ export function useThumbnailUpload(
   applying: boolean;
   preview: UploadPreviewState | null;
   choose: (file: File) => void;
-  apply: (fit: Fit) => void;
+  apply: (fit: Fit, replaced: UploadImage | null) => void;
   cancel: () => void;
 } {
   const [sending, setSending] = useState(false);
@@ -117,17 +117,20 @@ export function useThumbnailUpload(
     busy.current = false;
   };
 
-  const apply = (fit: Fit) => {
+  /** replaced, a touch-up result standing for the picked image, is closed with it. */
+  const apply = (fit: Fit, replaced: UploadImage | null) => {
     if (preview === null || applying) return;
     const current = preview;
     setApplying(true);
-    encodeComposition(current.image, current.aspect, fit)
+    encodeComposition(replaced ?? current.image, current.aspect, fit)
       .then((composed) => {
+        replaced?.bitmap.close();
         if (!live.current) return;
         close(current);
         send(new File([composed], "thumbnail.png", { type: "image/png" }), current);
       })
       .catch(() => {
+        replaced?.bitmap.close();
         if (!live.current) return;
         close(current);
         busy.current = false;

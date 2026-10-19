@@ -628,6 +628,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/{id}/thumbnail-edits/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start thumbnail editing from an image the page sends
+         * @description Owner-only. Starts a session whose starting image is the sent PNG, JPEG or WebP of at most 20 MiB and 8192 × 8192 pixels, such as the framing a thumbnail preview drew; it needs no readable media file, and source is image. Otherwise behaves like startThumbnailEdit: a ready session with 201 that replaces any prior session for the video. An oversized image returns 400 thumbnail_upload_too_large with limit; an unreadable one 400 thumbnail_upload_invalid. Missing ComfyUI configuration returns 409 thumbnail_edit_not_ready.
+         */
+        post: operations["startThumbnailEditFromImage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/videos/{id}/versions": {
         parameters: {
             query?: never;
@@ -3086,10 +3106,17 @@ export interface components {
             positionMs?: number;
         };
         /**
-         * @description Editing source: frame uses the selected video frame; thumbnail uses the current thumbnail.
+         * @description Editing source: frame uses the selected video frame; thumbnail uses the current thumbnail; image uses an image sent to startThumbnailEditFromImage and is refused by startThumbnailEdit.
          * @enum {string}
          */
-        ThumbnailEditSource: "frame" | "thumbnail";
+        ThumbnailEditSource: "frame" | "thumbnail" | "image";
+        StartThumbnailEditFromImageRequest: {
+            /**
+             * Format: binary
+             * @description Starting image: PNG, JPEG or WebP, at most 20 MiB and 8192 × 8192 pixels.
+             */
+            image: string;
+        };
         RunThumbnailEditRequest: {
             /** @description Owner's instruction; when omitted with a painted mask, use vv's default instruction. */
             prompt?: string;
@@ -6697,6 +6724,37 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["StartThumbnailEditRequest"];
+            };
+        };
+        responses: {
+            /** @description Started session */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThumbnailEdit"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    startThumbnailEditFromImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Video ID */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["StartThumbnailEditFromImageRequest"];
             };
         };
         responses: {
