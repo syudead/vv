@@ -244,6 +244,8 @@ type Options struct {
 	Overrides OverrideStore
 
 	ThumbnailPicker ThumbnailPicker
+	// Nil ThumbnailSources serves the 640 px thumbnail for size=large.
+	ThumbnailSources ThumbnailSources
 
 	Versions VersionStore
 
@@ -343,6 +345,7 @@ type server struct {
 	activity         Activity
 	overrides        OverrideStore
 	thumbnails       ThumbnailPicker
+	thumbnailSources ThumbnailSources
 	versions         VersionStore
 	folders          Folders
 	folderGroups     FolderGroups
@@ -423,6 +426,7 @@ func NewRouter(opts Options) http.Handler {
 		activity:               opts.Activity,
 		overrides:              opts.Overrides,
 		thumbnails:             opts.ThumbnailPicker,
+		thumbnailSources:       opts.ThumbnailSources,
 		versions:               opts.Versions,
 		folders:                opts.Folders,
 		folderGroups:           opts.FolderGroups,

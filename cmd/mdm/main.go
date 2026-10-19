@@ -366,6 +366,7 @@ func run(opts runOptions) error {
 		WatchHistory:     playbackStore,
 		Activity:         activity,
 		Overrides:        db.Overrides(),
+		ThumbnailSources: db.Overrides(),
 		Versions:         db.Versions(),
 		// Thumbnail position changes share ingestion's generation lock.
 		ThumbnailPicker: ingest,

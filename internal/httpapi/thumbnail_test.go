@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -212,5 +213,55 @@ func TestThumbnailURLVersionIncludesRevision(t *testing.T) {
 				t.Fatalf("thumbnailURL = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+type fakeThumbnailSources map[string][]byte
+
+func (f fakeThumbnailSources) ThumbnailImageSource(_ context.Context, contentKey string) ([]byte, error) {
+	return f[contentKey], nil
+}
+
+func TestLargeThumbnailServesTheStoredSource(t *testing.T) {
+	artifacts, video := thumbnailFixture(t)
+	source := []byte{0xff, 0xd8, 0xff, 0xdb, 0x20, 0x48}
+	handler := newTestServer(t, Options{
+		Videos:           &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+		Artifacts:        artifacts,
+		ThumbnailSources: fakeThumbnailSources{video.ContentKey: source},
+	})
+
+	rec := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail?v=abcdef012345&size=large")
+	if rec.Code != http.StatusOK || rec.Body.String() != string(source) {
+		t.Fatalf("status = %d, body = %x, want the source", rec.Code, rec.Body.Bytes())
+	}
+	if got := rec.Header().Get("Content-Type"); got != "image/jpeg" {
+		t.Errorf("Content-Type = %q, want image/jpeg", got)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != cacheRevalidate {
+		t.Errorf("Cache-Control = %q, want %q", got, cacheRevalidate)
+	}
+
+	card := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail?v=abcdef012345")
+	if card.Body.String() == string(source) {
+		t.Error("the card thumbnail served the source")
+	}
+}
+
+func TestLargeThumbnailWithoutSourceServesTheThumbnail(t *testing.T) {
+	artifacts, video := thumbnailFixture(t)
+	handler := newTestServer(t, Options{
+		Videos:           &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+		Artifacts:        artifacts,
+		ThumbnailSources: fakeThumbnailSources{},
+	})
+	file, err := os.ReadFile(artifacts.thumbnails[video.ContentKey])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail?v=abcdef012345&size=large")
+	if rec.Code != http.StatusOK || rec.Body.String() != string(file) {
+		t.Fatalf("status = %d, body = %x, want the 640 px file", rec.Code, rec.Body.Bytes())
 	}
 }

@@ -165,6 +165,12 @@ An apply writes one `thumbnail_images` row in the transaction that sets
 A position change and a revert delete the whole row. The thumbnail job
 republishes `image` and never reads `source`.
 
+Cards show the 640 px `image`, but the player's poster fills a much wider
+frame, so the page asks for it with `size=large`.
+`GET /api/videos/{id}/thumbnail?size=large` answers `source` when the row has
+one, and the 640 px thumbnail file otherwise: a thumbnail extracted from the
+video and a row written before migration `00041` keep only 640 px.
+
 ## Uploaded images
 
 `POST /api/videos/{id}/thumbnail-image` makes an image from the owner's device
