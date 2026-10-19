@@ -115,6 +115,71 @@ protocol.
 | onnxruntime and Debian packages fetched by `mdm` | `mdm-face` still has to come from vv, and unpacking `.deb` files adds a format the server needs nowhere else |
 | A runtime per vv release | Nightly and development builds would have nothing to download |
 
+## The runtime is downloaded only when the feature is on
+
+`mdm` pins the URL and SHA-256 of each platform's runtime archive and of each
+model in code
+([`internal/faceruntime`](../../internal/faceruntime/catalog.go)), and
+downloads them only when the owner turns face recognition on, or asks to
+download again after a failure. The models come from their upstream Hugging
+Face repositories, each URL pinned to a commit.
+
+| File | Source | Size |
+| --- | --- | --- |
+| Runtime archive | The `face-runtime-v1` release (`linux-amd64`, `linux-arm64`, `windows-amd64`) | 5.9 to 11.6 MB |
+| YuNet 2023mar | `opencv/face_detection_yunet` (MIT) | 0.2 MB |
+| SFace 2021dec int8 | `opencv/face_recognition_sface` (Apache-2.0) | 9.9 MB |
+| ArcFace r50 | `immich-app/buffalo_l`, `recognition/model.onnx` (InsightFace, non-commercial) | 174 MB |
+
+A recognizer needs the runtime, YuNet and its own model. Each file is written
+under `<data>/face/.tmp/` and moved into place only when its hash matches:
+the archive is unpacked into `<data>/face/runtime-v<N>/` with a `.sha256`
+manifest of the archive's hash and each unpacked file's hash, and the models
+go to `<data>/face/models/`. Downloads use the process's proxy environment
+(`HTTPS_PROXY`), because the plugin proxy is chosen for plugin traffic only.
+
+The download state is not stored. At startup `mdm` hashes the files against
+the pins and the manifest, and `GET /api/settings/face-recognition` reports
+the state of what the chosen recognizer needs; the settings page reads the
+progress from the same resource while downloading.
+
+The diagram shows the states of one recognizer's files.
+
+```mermaid
+stateDiagram-v2
+  [*] --> unsupported: no archive for this platform
+  [*] --> absent: a file missing
+  [*] --> ready: every file matches
+  [*] --> failed: a file differs (hash_mismatch)
+  absent --> downloading: turned on
+  failed --> downloading: download again, or turned on
+  downloading --> ready: hashes match and the helper greets
+  downloading --> failed: network, hash_mismatch, disk, helper_start
+  downloading --> absent: turned off
+```
+
+| Event | Effect |
+| --- | --- |
+| Turning the feature on, or switching the recognizer while on | Downloads what the recognizer needs that is missing or differs; a download for the other recognizer is cancelled |
+| Turning the feature off | Cancels a running download; the files already verified stay |
+| Startup while on | Resumes a download only when files are missing; a file that differs stays `failed` until the owner downloads again |
+| A download ends | The helper is started once: a `Hello` of another protocol version, or no `Hello`, is `helper_start` |
+| A recognizer switch | Increases `face.generation` in the settings' transaction |
+
+On Linux `mdm` starts `runtime-v<N>/lib/<loader> --library-path
+runtime-v<N>/lib runtime-v<N>/mdm-face`; on Windows it starts `mdm-face.exe`
+with `CREATE_NO_WINDOW`, through the same command builder as `ffmpeg`. The
+helper gets half of the CPU cores, at least one, for onnxruntime's threads, so
+playback and live transcoding keep the rest. The client starts the helper on
+its first request; a helper whose stream breaks fails that request and is
+started again on the next one, and a cancelled request stops it.
+
+| Rejected | Why |
+| --- | --- |
+| Storing the download state in the settings | It would disagree with the files after a crash or a deleted folder; the hashes are the state |
+| Keeping the runtime archive to verify it at startup | It doubles the disk use; the manifest written while unpacking verifies the unpacked files |
+| Downloading again at startup a file that differs | The owner would not see that a file broke; the settings page shows `failed` and offers the download |
+
 ## From faces to people
 
 `mdm` turns the helper's faces into people with the rules below, one video at

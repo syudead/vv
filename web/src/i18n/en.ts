@@ -404,6 +404,9 @@ const errorReasons = {
       ? "A kind with that name already exists."
       : `A kind named "${tagName}" already exists.`,
   face_candidate_not_found: "These two people are no longer offered as a match.",
+  face_recognition_off:
+    "Face recognition is turned off. Turn it on under Settings, Face recognition.",
+  face_recognition_unsupported: "vv has no face runtime for this platform.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {

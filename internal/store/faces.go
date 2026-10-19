@@ -64,6 +64,11 @@ func (s *FaceStore) RequeueRunning(ctx context.Context) (int, error) {
 	return s.db.requeueRunning(ctx, faceQueue)
 }
 
+// Counts counts the face queue's rows by state, with the reason of the latest failure.
+func (s *FaceStore) Counts(ctx context.Context) (domain.QueueCounts, error) {
+	return s.db.contentCounts(ctx, faceQueue)
+}
+
 // Store writes one video's result in one transaction: appearances with carry-over, provisional people with their
 // crop as face, performer rows, candidates, and the completed face_analysis entry with its links. A result computed
 // under an older face.generation returns domain.ErrFaceGenerationChanged; one whose row no longer runs writes nothing.

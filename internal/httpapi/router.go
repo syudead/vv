@@ -271,9 +271,11 @@ type Options struct {
 
 	AutoImport AutoImportSettings
 
-	AutoTagging    AutoTagging
-	Onboarding     Onboarding
-	VersionJudging VersionJudging
+	AutoTagging AutoTagging
+	Onboarding  Onboarding
+	// Nil FaceRecognition makes the face recognition settings routes fail with 500.
+	FaceRecognition FaceRecognition
+	VersionJudging  VersionJudging
 
 	Ollama OllamaConnection
 
@@ -358,6 +360,7 @@ type server struct {
 	pluginProxy       PluginProxySettings
 	autoImport        AutoImportSettings
 	autoTagging       AutoTagging
+	faceRecognition   FaceRecognition
 	onboarding        Onboarding
 	versionJudging    VersionJudging
 	ollama            OllamaConnection
@@ -438,6 +441,7 @@ func NewRouter(opts Options) http.Handler {
 		pluginProxy:            opts.PluginProxy,
 		autoImport:             opts.AutoImport,
 		autoTagging:            opts.AutoTagging,
+		faceRecognition:        opts.FaceRecognition,
 		onboarding:             opts.Onboarding,
 		versionJudging:         opts.VersionJudging,
 		ollama:                 opts.Ollama,
@@ -612,17 +616,18 @@ func requiresPostJSONBody(path string) bool {
 }
 
 var putJSONBodyPaths = map[string]bool{
-	"/api/video-visibility":         true,
-	"/api/favorites":                true,
-	"/api/settings/transcoding":     true,
-	"/api/settings/network":         true,
-	"/api/settings/plugin-proxy":    true,
-	"/api/settings/auto-import":     true,
-	"/api/settings/auto-tagging":    true,
-	"/api/settings/ollama":          true,
-	"/api/settings/comfyui":         true,
-	"/api/settings/version-judging": true,
-	"/api/onboarding":               true,
+	"/api/video-visibility":          true,
+	"/api/favorites":                 true,
+	"/api/settings/transcoding":      true,
+	"/api/settings/network":          true,
+	"/api/settings/plugin-proxy":     true,
+	"/api/settings/auto-import":      true,
+	"/api/settings/auto-tagging":     true,
+	"/api/settings/face-recognition": true,
+	"/api/settings/ollama":           true,
+	"/api/settings/comfyui":          true,
+	"/api/settings/version-judging":  true,
+	"/api/onboarding":                true,
 }
 
 func requiresPutJSONBody(path string) bool {

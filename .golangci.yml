@@ -89,82 +89,87 @@ linters:
             - pkg: github.com/syudead/vv/internal/httpapi
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/store
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/media
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/artifacts
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/opener
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/mediafs
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/scanner
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/jobs
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/app
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/eventbus
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/password
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/desktop
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/watcher
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/ollama
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/comfyui
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/wasmplugin
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime} →
+                internal/domain の一方向だけである（ARCHITECTURE.md）。
+            - pkg: github.com/syudead/vv/internal/faceruntime
+              desc: >-
+                internal/domain から他の internal パッケージを import してはならない。
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password,desktop,watcher,ollama,comfyui,wasmplugin,faceruntime} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
 
         # Application use cases depend on declared interfaces, not I/O adapters, so tests need no SQLite, FFmpeg or HTTP server.
@@ -267,6 +272,11 @@ linters:
                 internal/app から internal/wasmplugin を import してはならない。作品情報プラグインの
                 検査と実行（wazero）はアダプタの仕事で、機能は app.WorkInfoPluginRuntime の口だけを使う。
                 実装は cmd/mdm が渡す（docs/design-docs/work-info-plugins.md）。
+            - pkg: github.com/syudead/vv/internal/faceruntime
+              desc: >-
+                internal/app から internal/faceruntime を import してはならない。顔のランタイムの取得と
+                補助プロセスの起動はアダプタの仕事で、機能は app.FaceRuntime の口だけを使う。
+                実装は cmd/mdm が渡す（docs/design-docs/face-recognition.md）。
 
         # Sibling packages communicate through consumer-owned interfaces wired in cmd/mdm. Exclude external test packages; trailing $ permits child packages such as httpapi/gen.
         internal-siblings-do-not-import-each-other:
@@ -286,6 +296,7 @@ linters:
             - "**/internal/ollama/*.go"
             - "**/internal/comfyui/*.go"
             - "**/internal/wasmplugin/*.go"
+            - "**/internal/faceruntime/*.go"
             - "!$test"
           deny:
             - pkg: github.com/syudead/vv/internal/app$
@@ -364,6 +375,11 @@ linters:
                 使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
                 （ARCHITECTURE.md "Intended dependency direction"）。
             - pkg: github.com/syudead/vv/internal/wasmplugin$
+              desc: >-
+                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
+                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
+                （ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: github.com/syudead/vv/internal/faceruntime$
               desc: >-
                 internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
                 使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
