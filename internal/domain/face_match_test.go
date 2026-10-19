@@ -160,3 +160,16 @@ func TestFaceRecognizerTable(t *testing.T) {
 		t.Error("an unknown recognizer is valid")
 	}
 }
+
+func TestSiblingFacePairsReachCandidateInOrder(t *testing.T) {
+	people := []FacePersonVector{
+		{PersonID: 1, Vector: faceAxis(0, 1, 0)},
+		{PersonID: 2, Vector: atCosine(0.5)},
+		{PersonID: 3, Vector: faceAxis(7, 8, 0)},
+	}
+	got := SiblingFacePairs(testFaceThresholds, people)
+	want := []FaceSiblingPair{{ProvisionalID: 2, PersonID: 1, Similarity: 0.5}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("pairs = %+v, want %+v", got, want)
+	}
+}

@@ -235,6 +235,24 @@ func TestStoreFaceAnalysisLinksPeopleAndCreatesAProvisionalPerson(t *testing.T) 
 	}
 }
 
+func TestStoreFaceAnalysisOffersTwoNewPeopleOfOneVideoToEachOther(t *testing.T) {
+	// SFace's candidate threshold is 0.363: 0.6 reaches it, an orthogonal vector does not.
+	f := newFaceFixture(t)
+	f.analyse(t,
+		facePerson(0.25, 0, faceBasis(0), "crop-a"),
+		facePerson(0.5, 0, faceNear(0, 1, 0.6), "crop-b"),
+		facePerson(0.75, 0, faceBasis(5), "crop-c"))
+
+	appearances := faceAppearances(t, f.db)
+	if len(appearances) != 3 {
+		t.Fatalf("appearances = %+v, want 3", appearances)
+	}
+	a, b := appearances[0].personID, appearances[1].personID
+	if got, want := faceCandidatePairs(t, f.db), [][2]int64{{b, a}}; !slices.Equal(got, want) {
+		t.Errorf("candidates = %v, want only the close pair %v", got, want)
+	}
+}
+
 func TestStoreFaceAnalysisAgainKeepsPeopleIDsAndCrops(t *testing.T) {
 	f := newLinkedFixture(t)
 	before := faceAppearances(t, f.db)

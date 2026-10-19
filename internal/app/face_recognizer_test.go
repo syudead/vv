@@ -15,11 +15,11 @@ import (
 	"github.com/syudead/vv/internal/faceproto"
 )
 
-// faceFrames is the number of sampled frames each fake video has: a face in frames 0–19 and 23–42 forms two tracks
-// with 20 good seconds, one main person.
-const faceFrames = 43
+// faceFrames is the number of sampled frames each fake video has: a face in frames 0–9 and 13–22 forms two tracks
+// with 20 good seconds at 1 fps, one main person.
+const faceFrames = 23
 
-func faceOnScreen(frame int) bool { return frame < 20 || frame >= 23 }
+func faceOnScreen(frame int) bool { return frame < 10 || frame >= 13 }
 
 // fakeFaceSettingsState mirrors the store: a recognizer switch increases the generation.
 type fakeFaceSettingsState struct {
