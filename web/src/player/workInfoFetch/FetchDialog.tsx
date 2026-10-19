@@ -194,21 +194,17 @@ function useFetchFlow({
     setApplying(true);
     setApplyFailure(null);
     const mark = detailMark();
+    // A cover the page decoded is checked and consumed by the apply, then uploaded with the owner's framing.
     const framed = selection.includes("cover") ? cover.image : null;
-    // The server fits a cover the page could not decode; a framed one is uploaded after the rest.
-    const fields =
-      framed === null ? selection : selection.filter((field) => field !== "cover");
     try {
-      let applied: WorkInfoFetchApplied =
-        fields.length === 0
-          ? { video: latestVideo.current, skippedTags: [], skipped: [] }
-          : await applyWorkInfoFetch(
-              video.id,
-              fetched.result.fetchId,
-              fields,
-              fields.includes("tags") ? tags : undefined,
-              signal,
-            );
+      let applied = await applyWorkInfoFetch(
+        video.id,
+        fetched.result.fetchId,
+        selection,
+        selection.includes("tags") ? tags : undefined,
+        signal,
+        framed !== null,
+      );
       if (framed !== null && fetched.result.cover !== undefined)
         applied = await uploadFramedCover(
           applied,

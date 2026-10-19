@@ -340,13 +340,18 @@ sequenceDiagram
   participant P as Page
   participant A as Apply route
   participant U as Thumbnail upload route
-  P->>A: fields without cover (skipped when cover is the only one)
+  P->>A: fields with cover, coverByPage
+  A->>A: claim the result, recheck the plugin, commit the rest
   A-->>P: video, skipped values
   P->>P: draw the cover with the chosen fit as a PNG
   P->>U: PNG with the applied video's contentVersion
   U-->>P: video with the new thumbnail
 ```
 
+`coverByPage` makes the apply check and consume the result for the cover as
+for any field, so an expired result or a plugin replaced or revoked since the
+fetch still answers `work_info_fetch_stale` and the page uploads nothing; the
+server only leaves the thumbnail to the page.
 A failed upload adds the cover to the skipped values as `invalid`, the
 server's report for a cover it could not apply. A cover the page cannot
 decode stays an `<img>` without `Adjust framing`, and the apply sends `cover`

@@ -171,16 +171,18 @@ function fetchPath(videoId: number, fetchId: string): string {
   return `/api/videos/${String(videoId)}/work-info-fetches/${encodeURIComponent(fetchId)}`;
 }
 
-/** Apply selected fields/tags once; expired results or changed plugins fail as stale. Return skipped entries and refreshed video metadata. */
+/** Apply selected fields/tags once; expired results or changed plugins fail as stale. Return skipped entries and refreshed video metadata. coverByPage leaves a selected cover for the page to upload. */
 export async function applyWorkInfoFetch(
   videoId: number,
   fetchId: string,
   fields: readonly WorkInfoField[],
   tags?: readonly string[],
   signal?: AbortSignal,
+  coverByPage = false,
 ): Promise<WorkInfoFetchApplied> {
   const body: ApplyWorkInfoFetchRequest = { fields: [...fields] };
   if (tags !== undefined) body.tags = [...tags];
+  if (coverByPage) body.coverByPage = true;
   const applied = await request<WorkInfoFetchApplied>(
     `/api/videos/${String(videoId)}/work-info-fetches/${encodeURIComponent(fetchId)}/apply`,
     { method: "POST", headers: jsonHeaders, body: JSON.stringify(body), signal },
