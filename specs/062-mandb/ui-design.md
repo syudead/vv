@@ -173,7 +173,7 @@ embedded untranslated.
 | Applying | Applying… | |
 | Applied | Applied to {name}. | Toast; the dialog closes |
 | Result title | Applied, but some values were left out | `success` `Alert`, footer `Done` |
-| Gone | This person no longer exists. | Toast when the apply answers `person_not_found`; the dialog closes and the page shows its gone state |
+| Gone | This person no longer exists. | Toast when the fetch or the apply answers `person_not_found`; the dialog closes and the page shows its gone state |
 | Fetch failed | Couldn't fetch: {reason} | `destructive` `Alert` in the find step |
 | Search failed | Couldn't search: {reason} | |
 | Apply failed | Couldn't apply: {reason} | |
@@ -185,14 +185,14 @@ embedded untranslated.
 | --- | --- | --- |
 | Column headings | Now · Fetched | As the video's comparison |
 | Face row | Face | |
-| Profile rows | Born · Died · Gender · Birthplace · Height · Measurements · Cup · Blood type · Career · Bio · Links | The person page's fact terms (`credits.personPage.facts`), one row per fetched value |
+| Profile rows | Born · Died · Gender · Birthplace · Height · Bust · Waist · Hips · Cup · Blood type · Career start · Career end · Bio · Links | One row per profile field, so one row is one apply item `profile.<field>`; the person page's fact terms (`credits.personPage.facts`) where its fact is one field, and `Bust`, `Waist`, `Hips`, `Career start` and `Career end` for the fields its `Measurements` and `Career` facts join |
 | Aliases row | Aliases | |
 | IDs row | External IDs | |
 | Empty now | Empty | `text-muted-foreground` in the `Now` cell of a field with no value |
 | No face now | No face | In the `Now` cell of the face row, beside the placeholder |
 | Already on the person | On the person | Tooltip and screen-reader text of a muted chip with lucide `Check`; an alias or ID already stored |
 | New count | {n} new | After the chips, as the video's |
-| Kept fold | Kept as now ({n}) / Hide kept values | A `FoldButton`; `{n}` counts fetched values the person already has |
+| Kept fold | Kept as now ({n}) / Hide kept values | The `Collapsible`'s trigger; `{n}` counts fetched values the person already has |
 | Kept note | Already set; applying keeps the current value. | `text-xs text-muted-foreground` above the kept rows while open |
 | Skipped, taken | already linked to {name} | The reason line in the result step, after `{source} {id}` |
 | Skipped, too many | over the limit for aliases / over the limit for external IDs | |
@@ -204,6 +204,7 @@ embedded untranslated.
 
 | Place | Text | Notes |
 | --- | --- | --- |
+| Shared elsewhere | Looked up under {role}. | `text-xs text-muted-foreground` under the chip of an entry whose shared lookup's block sits in an earlier role row |
 | Lookup source | From {plugin} | `text-xs text-muted-foreground` on the block's first line, after the name |
 | Looking up | Looking up… | With `Spinner`, in place of the items |
 | Lookup failed | Couldn't look up {name}: {reason} | `text-destructive`, with `Try again` after it |
@@ -217,7 +218,9 @@ embedded untranslated.
 
 Nothing is added. The sections, the row, the `Switch`, the `FormDialog`
 `wide`, the `Checkbox`, `PersonFace` in its `profile` and `compare` shapes
-and the `FoldButton` of the comparison already exist. No colour token is
+and `Collapsible` already exist. The comparison's own `FoldButton` is not
+reused for the kept values, because its text is fixed to `+N more` and
+`Show fewer`. No colour token is
 added and nothing is added to `pairs` in `web/src/theme/tokens.test.ts`:
 the quiet lines use `text-muted-foreground`, failures `text-destructive`,
 and the lookup block's edge the `border` token. The icons are lucide
@@ -322,7 +325,7 @@ no second read, and the toast names the person.
 | `200`, nothing skipped | The dialog closes, the toast `Applied to {name}.` shows, the focus returns to `Fetch info…` |
 | `200`, values skipped | The page's person is replaced as above; the dialog moves to the result step |
 | `work_info_fetch_stale` | The `Stale` `Alert` above the comparison with `Fetch again`, which runs the same plugin and ID; `Apply selected` is disabled |
-| `person_not_found` | The dialog closes with the toast `This person no longer exists.` and the page shows its gone state (the Issue's edge case) |
+| `person_not_found`, from `Fetch`, a chosen candidate or the apply | The dialog closes with the toast `This person no longer exists.` and the page shows its gone state (the Issue's edge case), since the person was deleted or merged after the page loaded |
 | A run failure | A `destructive` `Alert` in the find step, `Couldn't fetch: {reason}` or `Couldn't search: {reason}`, with the plugin's message under it, as the video's; `plugin_settings_missing` is the `warning` form with `Open Settings` to `/settings/plugins#person-plugins` |
 | Another apply failure | `Couldn't apply: {reason}` above the comparison; the selection is kept |
 
@@ -335,6 +338,7 @@ stateDiagram-v2
   Fetching --> Compare: 201
   Fetching --> Search: 409 missing ID
   Fetching --> Find: failed
+  Fetching --> [*]: person_not_found
   Search --> Searching: Search
   Searching --> Candidates: candidates
   Searching --> NoMatches: none
@@ -342,7 +346,7 @@ stateDiagram-v2
   Candidates --> Fetching: choose
   Compare --> Applying: Apply selected
   Applying --> Result: skipped values
-  Applying --> [*]: applied
+  Applying --> [*]: applied or person_not_found
   Applying --> Compare: stale or failed
   Result --> [*]: Done
 ```
@@ -372,15 +376,16 @@ when the piece opens.
 | Row | `Now` | `Fetched` |
 | --- | --- | --- |
 | `Face` (the person has no face and the result has an image) | The `PersonFace profile` placeholder in a `w-16` frame, `No face` beside it in the muted colour | The fetched image in the same `w-16` frame, from the result's image route |
-| A profile fact (the field is empty and the result has a value) | `Empty` in the muted colour | The value as the person page writes it, `text-foreground`, dates with the computed age |
+| A profile field (the field is empty and the result has a value) | `Empty` in the muted colour | The value as the person page writes it, `text-foreground`, dates with the computed age, each size in `centimetres` and each career year alone |
 | `Bio` | `Empty` | The text, six lines then `Show more`, as the person page |
 | `Links` | `Empty` | One host per line with `ExternalLink`, as the person page |
 | `Aliases` (the result has an alias not stored) | The stored aliases as muted `secondary` chips | The fetched aliases as `secondary` chips; one already stored is the muted chip with lucide `Check` and `On the person`; then `{n} new` |
 | `External IDs` (the result has an ID not stored) | The stored IDs as muted chips, `tabular-nums` | The fetched IDs likewise, the request's ID first; stored ones muted with `Check` |
 
 Rows for a fetched value the person already has are not drawn in the list.
-They sit behind `Kept as now ({n})`, a `FoldButton` after the last row, which
-opens them in place under the note `Already set; applying keeps the current
+They sit behind `Kept as now ({n})`, a `Collapsible` after the last row whose
+`CollapsibleTrigger` is a `link` `sm` `Button` in the comparison fold's muted
+style, and which opens them in place under the note `Already set; applying keeps the current
 value.`: the same grid, both columns filled, the checkbox absent. A face the
 person already has is a kept row too. A fetched value the result does not
 carry draws no row at all. When no row changes anything, the piece is the one
@@ -443,22 +448,28 @@ sequenceDiagram
 | Result | The [person comparison](#person-comparison) without the column headings, its `Now` from the lookup's `current` (every cell `Empty` or `No face` for a person the apply creates) |
 | Failed | `Couldn't look up {name}: {reason}` in `text-destructive` with `Try again`, which requests the same lookup again; the rest of the comparison stays as it is (the Issue's edge case) |
 | Plugin changed | The muted line without `Try again` |
-| Shared lookup | Two entries sharing one lookup draw one block, under the first entry's chip, with both names on the first line joined by ` · ` ([R-4](research.md#r-4-the-lookup-plan-is-decided-by-the-server-at-fetch-time)) |
+| Shared lookup | Entries sharing one lookup draw one block, under the first entry's chip, with their names on the first line joined by ` · ` ([R-4](research.md#r-4-the-lookup-plan-is-decided-by-the-server-at-fetch-time)); a sharing entry in a later role row, such as a director also in the cast, gets `Looked up under {role}.` under its chip and no second block |
 | Over the limit | A `lookupLimited` entry gets the muted line under its chip and no block (requirement 8) |
 | No lookup | Nothing: a person with only a name or an unaccepted ID shows the chips and fill line as today (acceptance criterion 5) |
 
-A role row with a lookup whose result has a selectable item counts as a
-change: its checkbox is selectable and selected when the comparison opens,
-even when every fetched person is already on the video. Unchecking the row
-disables the block's checkboxes and greys them, because a lookup item applies
-only through its role ([R-6](research.md#r-6-a-lookup-is-applied-per-item-only-through-a-selected-role));
-checking it again restores the items' own selection. The apply sends, per
-lookup, the items checked at that moment, and leaves out a lookup whose
-block is still looking up or has failed.
+A role row counts as a change when a lookup of one of its entries has a
+result with a selectable item, even when every fetched person is already on
+the video. Results arrive after the comparison opens, so such a row is
+unselectable while its lookups run and becomes selectable and selected when
+the first such result arrives; a row that was a change already keeps the
+owner's choice.
+
+A lookup's items are enabled while at least one of its entries' role rows is
+checked, because a lookup item applies only through a role that links its
+person ([R-6](research.md#r-6-a-lookup-is-applied-per-item-only-through-a-selected-role)).
+While none is, the block's checkboxes are disabled and greyed; checking a row
+again restores the items' own selection. The apply sends, per lookup, the
+items checked at that moment, and leaves out a lookup whose block is still
+looking up, has failed, or has no checked role row.
 
 ```mermaid
 flowchart LR
-  row{Role row checked?} -->|no| off[Block items disabled, not sent]
+  row{Any of its entries' role rows checked?} -->|no| off[Block items disabled, not sent]
   row -->|yes| item{Item checked?}
   item -->|yes| sent[Sent in personLookups]
   item -->|no| skip[Not sent]
@@ -482,8 +493,8 @@ stateDiagram-v2
   Looking --> Failed: run failure
   Looking --> Changed: plugin_changed
   Failed --> Looking: Try again
-  Shown --> Disabled: role row unchecked
-  Disabled --> Shown: role row checked
+  Shown --> Disabled: every entry's role row unchecked
+  Disabled --> Shown: a role row checked
 ```
 
 | State | What the block shows |
@@ -493,7 +504,7 @@ stateDiagram-v2
 | Nothing new | The first line and `Nothing new for this person.` |
 | Failed | The failure line and `Try again` |
 | Changed | The plugin-changed line |
-| Disabled | The rows with every checkbox disabled, while the role row is unchecked, the apply runs or the result is stale |
+| Disabled | The rows with every checkbox disabled, while none of its entries' role rows is checked, the apply runs or the result is stale |
 
 ## Responsive behaviour
 
@@ -551,7 +562,9 @@ Judged by looking at the running screen in vv's one dark scheme
    `No matches` and the person is unchanged. Applying a comparison fills only
    the rows that were drawn with checkboxes, and the kept values stay
    (acceptance criterion 8). A work-info fetch whose person has an accepted
-   ID shows the block with `Looking up…` and then its rows; applying fills
+   ID shows the block with `Looking up…` and then its rows, and a role row
+   whose people are all on the video becomes checked as the rows appear;
+   applying fills
    that person's empty fields and face (acceptance criterion 4); a person
    with only a name or an unaccepted ID has no block (acceptance criterion
    5); a plugin with the switch off produces no block but still fetches from
@@ -569,7 +582,9 @@ Judged by looking at the running screen in vv's one dark scheme
    with `Same as now` filling the dialog; a lookup drawn as a top-level
    comparison row or in a second dialog; `Apply selected` disabled until the
    last lookup answers; a block whose plugin name is as large as the person's
-   name; an unchecked role row whose block items still send.
+   name; a block whose items still send while none of its entries' role rows
+   is checked, or stay disabled while one is; a `Measurements` or `Career`
+   row that selects several fields with one checkbox.
 
 ## Accessibility
 
@@ -581,5 +596,6 @@ names are decided.
 - Each comparison checkbox is labelled by its row's term; in a lookup block
   the group is a labelled region named by the person's name, so a row reads
   as `Face, {name}`.
-- The `Kept as now` fold is a button with `aria-expanded`; `Looking up…` and
+- The `Kept as now` fold is a `CollapsibleTrigger`, which carries
+  `aria-expanded`; `Looking up…` and
   `Saving…` use `role="status"`, a failed lookup `role="alert"`.
