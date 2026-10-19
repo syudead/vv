@@ -1214,6 +1214,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/face-recognition/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Queue library videos for face analysis
+         * @description Owner-only. missing queues videos never analysed or whose analysis failed; all queues every video not being analysed. Returns the queued count. Videos queued while the runtime is not ready wait for it. While off returns 409 face_recognition_off. See docs/design-docs/face-recognition.md.
+         */
+        post: operations["startFaceRecognition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auto-tagging/check": {
         parameters: {
             query?: never;
@@ -2423,7 +2443,7 @@ export interface paths {
         put?: never;
         /**
          * Retry an activity operation
-         * @description Owner-only. Starts a retry with 202, creating a new record and closing this one; version_judgement instead keeps its record and returns to running. import requeues failed stages; scan starts a manual scan of all folders. Missing record returns 404 not_found; unavailable retry, a pipeline record or missing subject returns 409 activity_not_retryable; active scans return scan_in_progress; disabled auto-tagging returns auto_tagging_off.
+         * @description Owner-only. Starts a retry with 202, creating a new record and closing this one; version_judgement instead keeps its record and returns to running. import requeues failed stages; scan starts a manual scan of all folders. Missing record returns 404 not_found; unavailable retry, a pipeline record or missing subject returns 409 activity_not_retryable; active scans return scan_in_progress; disabled auto-tagging returns auto_tagging_off; face_analysis queues the video again, and disabled face recognition returns face_recognition_off.
          */
         post: operations["retryActivity"];
         delete?: never;
@@ -3651,6 +3671,14 @@ export interface components {
             /** @description New smart folders; excludes interests whose matching root folder already existed. */
             folders: components["schemas"]["SmartFolderSummary"][];
             /** @description 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0 */
+            queued: number;
+        };
+        StartFaceRecognitionRequest: {
+            /** @enum {string} */
+            scope: "missing" | "all";
+        };
+        FaceRecognitionQueued: {
+            /** @description Number of queued videos. */
             queued: number;
         };
         AutoTaggingQueued: {
@@ -8003,6 +8031,41 @@ export interface operations {
             };
             403: components["responses"]["Forbidden"];
             /** @description Face recognition is off (`face_recognition_off`) or has no runtime for this platform (`face_recognition_unsupported`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    startFaceRecognition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StartFaceRecognitionRequest"];
+            };
+        };
+        responses: {
+            /** @description Queued count */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FaceRecognitionQueued"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            /** @description Face recognition is off (`face_recognition_off`) */
             409: {
                 headers: {
                     [name: string]: unknown;

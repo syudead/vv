@@ -232,6 +232,10 @@ func run(opts runOptions) error {
 	if err := autoTagger.Recover(backgroundCtx); err != nil {
 		logger.Warn("could not requeue interrupted auto-tagging jobs", slog.Any("error", err))
 	}
+	faces := newFaceRecognition(backgroundCtx, cfg.DataDir, db, logger)
+	if err := faces.analysis.Recover(backgroundCtx); err != nil {
+		logger.Warn("could not requeue interrupted face analyses", slog.Any("error", err))
+	}
 	// Recover activity before workers start; recovery needs only storage, not retry/cancel
 	// dispatchers.
 	recoverActivity(backgroundCtx, app.NewActivity(app.ActivityOptions{Store: db.Activity()}), logger)
@@ -256,6 +260,7 @@ func run(opts runOptions) error {
 			domain.ActivityImport:           app.NewImportRetrier(ingestStore),
 			domain.ActivityScan:             scans,
 			domain.ActivityVersionJudgement: versionJudgementActivity,
+			domain.ActivityFaceAnalysis:     faces.analysis,
 		},
 		Undoers: map[domain.ActivityKind]app.ActivityUndoer{
 			domain.ActivityAutoTag:          autoTagger,
@@ -270,6 +275,7 @@ func run(opts runOptions) error {
 		ReleaseArtifacts: ingest.ReleaseArtifacts,
 		ImagesFinished: func(videoID int64) {
 			autoTagger.VideoImagesFinished(backgroundCtx, videoID)
+			faces.analysis.VideoImagesFinished(backgroundCtx, videoID)
 		},
 		VersionJudge: versionJudge,
 	})
@@ -284,7 +290,8 @@ func run(opts runOptions) error {
 	workersDone.Go(func() { app.BackfillKeyframes(backgroundCtx, ingestStore, media.ProbeKeyframes, logger) })
 	workersDone.Go(func() { autoTagger.Run(backgroundCtx) })
 	workersDone.Go(func() { versionJudge.Run(backgroundCtx) })
-	faceRecognition, stopFaceRuntime := startFaceRecognition(backgroundCtx, cfg.DataDir, db, logger)
+	workersDone.Go(func() { faces.analysis.Run(backgroundCtx) })
+	stopFaceRuntime := faces.start(backgroundCtx, logger)
 	defer stopFaceRuntime()
 	workersDone.Go(func() { thumbnailEdits.Run(backgroundCtx) })
 	// Always stop scans and workers before closing the database, including listener failures and
@@ -391,7 +398,8 @@ func run(opts runOptions) error {
 		AutoTagging:       autoTagger,
 		Onboarding:        app.NewOnboarding(db.Onboarding(), autoTagger),
 		VersionJudging:    versionJudge,
-		FaceRecognition:   faceRecognition,
+		FaceRecognition:   faces.settings,
+		FaceAnalysis:      faces.analysis,
 		Ollama:            ollamaConnection,
 		ComfyUI:           comfyUIConnection,
 		ThumbnailEdits:    thumbnailEdits,

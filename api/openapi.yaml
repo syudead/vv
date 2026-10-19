@@ -1862,6 +1862,35 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/face-recognition/runs:
+    post:
+      operationId: startFaceRecognition
+      summary: "Queue library videos for face analysis"
+      description: "Owner-only. missing queues videos never analysed or whose analysis failed; all queues every video not being analysed. Returns the queued count. Videos queued while the runtime is not ready wait for it. While off returns 409 face_recognition_off. See docs/design-docs/face-recognition.md."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartFaceRecognitionRequest"
+      responses:
+        "202":
+          description: "Queued count"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FaceRecognitionQueued"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: "Face recognition is off (`face_recognition_off`)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/auto-tagging/check:
     post:
       operationId: checkAutoTaggingClassifier
@@ -3704,7 +3733,7 @@ paths:
     post:
       operationId: retryActivity
       summary: "Retry an activity operation"
-      description: "Owner-only. Starts a retry with 202, creating a new record and closing this one; version_judgement instead keeps its record and returns to running. import requeues failed stages; scan starts a manual scan of all folders. Missing record returns 404 not_found; unavailable retry, a pipeline record or missing subject returns 409 activity_not_retryable; active scans return scan_in_progress; disabled auto-tagging returns auto_tagging_off."
+      description: "Owner-only. Starts a retry with 202, creating a new record and closing this one; version_judgement instead keeps its record and returns to running. import requeues failed stages; scan starts a manual scan of all folders. Missing record returns 404 not_found; unavailable retry, a pipeline record or missing subject returns 409 activity_not_retryable; active scans return scan_in_progress; disabled auto-tagging returns auto_tagging_off; face_analysis queues the video again, and disabled face recognition returns face_recognition_off."
       parameters:
         - $ref: "#/components/parameters/ActivityId"
       responses:
@@ -6306,6 +6335,24 @@ components:
         queued:
           type: integer
           description: 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0
+
+    StartFaceRecognitionRequest:
+      type: object
+      required: [scope]
+      additionalProperties: false
+      properties:
+        scope:
+          type: string
+          enum: [missing, all]
+
+    FaceRecognitionQueued:
+      type: object
+      required: [queued]
+      additionalProperties: false
+      properties:
+        queued:
+          type: integer
+          description: "Number of queued videos."
 
     AutoTaggingQueued:
       type: object

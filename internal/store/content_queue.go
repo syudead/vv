@@ -63,6 +63,22 @@ func (db *DB) queueContent(
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	c := &changes{}
+	n, err := queueContentTx(ctx, tx, c, q, selectKeys, args, states, decider, continued)
+	if err != nil {
+		return 0, err
+	}
+	if err := db.commit(ctx, tx, c); err != nil {
+		return 0, fmt.Errorf("cannot queue videos for %s: %w", q.what, err)
+	}
+	return n, nil
+}
+
+// queueContentTx is queueContent inside the caller's transaction.
+func queueContentTx(
+	ctx context.Context, tx *sql.Tx, c *changes, q contentQueue, selectKeys string, args []any, states string,
+	decider domain.ActivityDecider, continued []int64,
+) (int, error) {
 	subjects, err := queueableSubjects(ctx, tx, `select k.content_key, `+contentLabelExpr("k.content_key")+`
 		from (select distinct content_key from (`+selectKeys+`)) k
 		where coalesce((select q.state from `+q.table+` q where q.content_key = k.content_key), '') in (`+states+`)
@@ -71,14 +87,10 @@ func (db *DB) queueContent(
 		return 0, err
 	}
 	now := time.Now()
-	c := &changes{}
 	for _, subject := range subjects {
 		if _, err := queueContentSubject(ctx, tx, c, q, subject, decider, continued, now); err != nil {
 			return 0, err
 		}
-	}
-	if err := db.commit(ctx, tx, c); err != nil {
-		return 0, fmt.Errorf("cannot queue videos for %s: %w", q.what, err)
 	}
 	return len(subjects), nil
 }
@@ -167,8 +179,9 @@ func queueableSubjects(ctx context.Context, tx *sql.Tx, query string, args []any
 	return subjects, nil
 }
 
-// claimContent takes the next queued row or returns domain.ErrNoJob, creating a processing activity if necessary.
-func (db *DB) claimContent(ctx context.Context, q contentQueue) (string, error) {
+// claimContent takes the next queued row or returns domain.ErrNoJob, creating a processing activity if necessary;
+// read, when set, runs in the claim's transaction.
+func (db *DB) claimContent(ctx context.Context, q contentQueue, read func(tx *sql.Tx) error) (string, error) {
 	tx, err := db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return "", err
@@ -187,6 +200,11 @@ func (db *DB) claimContent(ctx context.Context, q contentQueue) (string, error) 
 	}
 	if err != nil {
 		return "", fmt.Errorf("cannot claim a %s job: %w", q.what, err)
+	}
+	if read != nil {
+		if err := read(tx); err != nil {
+			return "", err
+		}
 	}
 	c := &changes{}
 	if err := claimQueueActivity(ctx, tx, c, q, key, activityID, now); err != nil {

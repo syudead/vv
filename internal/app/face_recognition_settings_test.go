@@ -101,3 +101,26 @@ func TestResumeLeavesAFailedRuntimeFailed(t *testing.T) {
 		t.Fatalf("starts = %v, want none", rt.starts)
 	}
 }
+
+type fakeFaceAnalysisControl struct{ changes []domain.FaceSettings }
+
+func (c *fakeFaceAnalysisControl) SettingsChanged(s domain.FaceSettings) {
+	c.changes = append(c.changes, s)
+}
+
+// Turning the feature off reaches the analysis, which stops the running video.
+func TestSavingFaceSettingsOffTellsTheAnalysis(t *testing.T) {
+	control := &fakeFaceAnalysisControl{}
+	f := NewFaceRecognitionSettings(FaceRecognitionSettingsOptions{
+		Settings: &fakeFaceSettings{value: domain.FaceSettings{Enabled: true, Recognizer: domain.FaceRecognizerSFaceInt8}},
+		Queue:    fakeFaceQueue{}, Runtime: &fakeFaceRuntime{}, Analysis: control,
+	})
+
+	off := domain.FaceSettings{Recognizer: domain.FaceRecognizerSFaceInt8}
+	if _, err := f.SaveSettings(context.Background(), off); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(control.changes, []domain.FaceSettings{off}) {
+		t.Fatalf("analysis told %+v, want the saved settings %+v once", control.changes, off)
+	}
+}

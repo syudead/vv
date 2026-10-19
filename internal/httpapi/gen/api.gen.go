@@ -1626,6 +1626,24 @@ func (e StartAutoTaggingRequestScope) Valid() bool {
 	}
 }
 
+// Defines values for StartFaceRecognitionRequestScope.
+const (
+	StartFaceRecognitionRequestScopeAll     StartFaceRecognitionRequestScope = "all"
+	StartFaceRecognitionRequestScopeMissing StartFaceRecognitionRequestScope = "missing"
+)
+
+// Valid indicates whether the value is a known member of the StartFaceRecognitionRequestScope enum.
+func (e StartFaceRecognitionRequestScope) Valid() bool {
+	switch e {
+	case StartFaceRecognitionRequestScopeAll:
+		return true
+	case StartFaceRecognitionRequestScopeMissing:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SubtitleTrackFormat.
 const (
 	Srt SubtitleTrackFormat = "srt"
@@ -3216,6 +3234,12 @@ type FaceRecognitionCounts struct {
 	Running int `json:"running"`
 }
 
+// FaceRecognitionQueued defines model for FaceRecognitionQueued.
+type FaceRecognitionQueued struct {
+	// Queued Number of queued videos.
+	Queued int `json:"queued"`
+}
+
 // FaceRecognitionSettings Face recognition settings, the runtime state and the analysis queue counts; see docs/design-docs/face-recognition.md.
 type FaceRecognitionSettings struct {
 	// Counts Face analysis queue rows (content keys) by state.
@@ -4732,6 +4756,14 @@ type StartAutoTaggingRequest struct {
 
 // StartAutoTaggingRequestScope defines model for StartAutoTaggingRequest.Scope.
 type StartAutoTaggingRequestScope string
+
+// StartFaceRecognitionRequest defines model for StartFaceRecognitionRequest.
+type StartFaceRecognitionRequest struct {
+	Scope StartFaceRecognitionRequestScope `json:"scope"`
+}
+
+// StartFaceRecognitionRequestScope defines model for StartFaceRecognitionRequest.Scope.
+type StartFaceRecognitionRequestScope string
 
 // StartThumbnailEditRequest defines model for StartThumbnailEditRequest.
 type StartThumbnailEditRequest struct {
@@ -6556,6 +6588,9 @@ type StartAutoTaggingJSONRequestBody = StartAutoTaggingRequest
 // DeleteCollectionsJSONRequestBody defines body for DeleteCollections for application/json ContentType.
 type DeleteCollectionsJSONRequestBody = CollectionsDeleteRequest
 
+// StartFaceRecognitionJSONRequestBody defines body for StartFaceRecognition for application/json ContentType.
+type StartFaceRecognitionJSONRequestBody = StartFaceRecognitionRequest
+
 // UpdateFavoritesJSONRequestBody defines body for UpdateFavorites for application/json ContentType.
 type UpdateFavoritesJSONRequestBody = FavoritesRequest
 
@@ -6813,6 +6848,9 @@ type ServerInterface interface {
 	// DownloadFaceRuntime Download the face runtime and the recognizer's model again
 	// (POST /api/face-recognition/download)
 	DownloadFaceRuntime(w http.ResponseWriter, r *http.Request)
+	// StartFaceRecognition Queue library videos for face analysis
+	// (POST /api/face-recognition/runs)
+	StartFaceRecognition(w http.ResponseWriter, r *http.Request)
 	// UpdateFavorites Set or clear favorites on videos and groups
 	// (PUT /api/favorites)
 	UpdateFavorites(w http.ResponseWriter, r *http.Request)
@@ -7757,6 +7795,20 @@ func (siw *ServerInterfaceWrapper) DownloadFaceRuntime(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DownloadFaceRuntime(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartFaceRecognition operation middleware
+func (siw *ServerInterfaceWrapper) StartFaceRecognition(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartFaceRecognition(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -13452,6 +13504,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/face-recognition", wrapper.GetFaceRecognitionSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/face-recognition", wrapper.UpdateFaceRecognitionSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/face-recognition/download", wrapper.DownloadFaceRuntime)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/face-recognition/runs", wrapper.StartFaceRecognition)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auto-tagging/check", wrapper.CheckAutoTaggingClassifier)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auto-tagging/runs", wrapper.StartAutoTagging)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/api-tokens", wrapper.ListApiTokens)

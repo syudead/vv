@@ -280,9 +280,12 @@ func (d ActivityDecider) automatic() bool {
 	return d == ActivityByRule || d == ActivityByAI
 }
 
-var activityRetryKinds = []ActivityKind{ActivityImport, ActivityScan, ActivityAutoTag, ActivityVersionJudgement}
+var activityRetryKinds = []ActivityKind{
+	ActivityImport, ActivityScan, ActivityAutoTag, ActivityVersionJudgement, ActivityFaceAnalysis,
+}
 
-// RetryOffered accepts failed or interrupted import, scan, auto_tag, and version_judgement entries requiring attention.
+// RetryOffered accepts failed or interrupted import, scan, auto_tag, version_judgement and face_analysis entries
+// requiring attention.
 func (e ActivityEntry) RetryOffered() bool {
 	if e.Status != ActivityAttention || (e.Reason != ActivityFailed && e.Reason != ActivityInterrupted) {
 		return false

@@ -72,6 +72,11 @@ func fitPersonImage(data []byte) (domain.PersonImage, error) {
 	case err != nil:
 		return domain.PersonImage{}, domain.ErrPersonImageInvalid
 	}
+	return encodePersonImage(decoded)
+}
+
+// encodePersonImage fits img into PersonImageMaxSide and encodes it as a stored face's JPEG.
+func encodePersonImage(decoded image.Image) (domain.PersonImage, error) {
 	bounds := decoded.Bounds()
 	width, height := fitWithin(bounds.Dx(), bounds.Dy(), domain.PersonImageMaxSide)
 	canvas := image.NewRGBA(image.Rect(0, 0, width, height))

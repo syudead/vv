@@ -45,13 +45,58 @@ func (s *FaceStore) QueueLibrary(ctx context.Context, scope domain.FaceQueueScop
 		where v.content_key <> '' and `+registeredVideoCondition("v"), nil, states, decider, nil)
 }
 
-// Claim takes the next queued video or returns domain.ErrNoJob, creating a processing activity if necessary.
+// RetryVideo queues the content again for the owner's retry of entryID, unless it is running; the new entry joins
+// every pipeline of the retried entry.
+func (s *FaceStore) RetryVideo(ctx context.Context, contentKey string, entryID int64) (int, error) {
+	return s.db.queueContent(ctx, faceQueue, `select v.content_key from videos v
+		where v.content_key = ? and v.content_key <> '' and `+registeredVideoCondition("v"), []any{contentKey},
+		`'', 'done', 'failed'`, domain.ActivityByOwner, []int64{entryID})
+}
+
+// Claim takes the next queued video or returns domain.ErrNoJob, creating a processing activity if necessary. The
+// job carries the recognizer and face.generation read in the claim's transaction.
 func (s *FaceStore) Claim(ctx context.Context) (domain.FaceJob, error) {
-	key, err := s.db.claimContent(ctx, faceQueue)
+	var job domain.FaceJob
+	key, err := s.db.claimContent(ctx, faceQueue, func(tx *sql.Tx) error {
+		var err error
+		if job.Recognizer, err = faceRecognizer(ctx, tx); err != nil {
+			return err
+		}
+		job.Generation, err = faceGeneration(ctx, tx)
+		return err
+	})
 	if err != nil {
 		return domain.FaceJob{}, err
 	}
-	return domain.FaceJob{ContentKey: key}, nil
+	job.ContentKey = key
+	return job, nil
+}
+
+// VideoPaths returns the registered locations of the video with the content key, or domain.ErrNotFound when the
+// library no longer has it.
+func (s *FaceStore) VideoPaths(ctx context.Context, contentKey string) ([]string, error) {
+	rows, err := s.db.sql.QueryContext(ctx, `select l.path from videos v join video_locations l on l.video_id = v.id
+		where v.content_key = ? and v.content_key <> '' and `+registeredLocationCondition("l")+` order by l.path`,
+		contentKey)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the locations of the video: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var paths []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return nil, fmt.Errorf("cannot read the locations of the video: %w", err)
+		}
+		paths = append(paths, path)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read the locations of the video: %w", err)
+	}
+	if len(paths) == 0 {
+		return nil, domain.ErrNotFound
+	}
+	return paths, nil
 }
 
 // Fail ignores videos no longer running and records the failure with their activity atomically.
