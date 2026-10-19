@@ -313,10 +313,12 @@ the plugin's site. VVMDM sets the type from the format it read and sends
 `nosniff` and a sandboxing `Content-Security-Policy`, so the response is only
 ever an image.
 
-Each cover is held in memory with its fetch. Together the held covers and
-people's images stay within 32 MiB, eight images at the 4 MiB limit: a new
-fetch over that budget drops the fetches with images that expire first, and
-applying one of them answers `work_info_fetch_stale`.
+Each cover is held in memory with its fetch. Together the held covers,
+people's images and person plugin results' images stay within 52 MiB, thirteen
+images at the 4 MiB limit: a result over that budget drops the results with
+images that expire first, whatever their kind, and applying one of them answers
+`work_info_fetch_stale`
+([person-plugins.md](person-plugins.md#lookup-results-stay-with-the-fetch)).
 
 The apply makes the cover the thumbnail after the work-information
 transaction commits, so a plugin replaced or revoked since the fetch, which
@@ -384,9 +386,9 @@ stored profile, so a fetched profile counts even when the person's fields are
 already filled; applying it then changes nothing, because the apply writes
 only empty fields.
 
-The limit of 7 keeps one fetch within the 32 MiB budget: the cover and seven
-images at 4 MiB make 32 MiB, and an eighth would let a single result exceed
-the budget and be evicted as soon as it is kept.
+The limit of 7 keeps one fetch within the budget: the cover, seven images and
+five lookup images at 4 MiB make 52 MiB, and an eighth would let a single
+result exceed the budget and be evicted by its own lookups.
 
 After the apply commits, `applyPersonImages` in
 [`work_info_person_images.go`](../../internal/app/work_info_person_images.go)

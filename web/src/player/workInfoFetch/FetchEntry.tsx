@@ -7,11 +7,16 @@ import { listWorkInfoPlugins, type WorkInfoPlugin } from "../../api/workInfoPlug
 import { t } from "../../i18n";
 import ActionButton from "../ActionButton";
 import type { ThumbnailCapture } from "../VideoFacts";
-import { approvedPlugins } from "./fetchRules";
+import { approvedWorkPlugins } from "./fetchRules";
 import FetchDialog from "./FetchDialog";
 
-/** Show approved plugins only; abort obsolete reads and hide the entry until an initial list is available. */
-function useApprovedPlugins(): {
+/**
+ * The plugins `select` keeps from the list; abort obsolete reads and hide the entry until an
+ * initial list is available. `select` must be stable.
+ */
+export function useApprovedPlugins(
+  select: (plugins: readonly WorkInfoPlugin[]) => WorkInfoPlugin[],
+): {
   plugins: WorkInfoPlugin[];
   reload: () => Promise<void>;
 } {
@@ -24,11 +29,11 @@ function useApprovedPlugins(): {
     latest.current = controller;
     try {
       const list = await listWorkInfoPlugins(controller.signal);
-      if (!controller.signal.aborted) setPlugins(approvedPlugins(list));
+      if (!controller.signal.aborted) setPlugins(select(list));
     } catch {
       // Keep the last successful list silently when refresh fails.
     }
-  }, []);
+  }, [select]);
 
   useEffect(() => {
     void reload();
@@ -50,7 +55,7 @@ export default function FetchEntry({
   /** Suspend video-page shortcuts while the dialog is open. */
   onDialogChange?: (open: boolean) => void;
 }) {
-  const { plugins, reload } = useApprovedPlugins();
+  const { plugins, reload } = useApprovedPlugins(approvedWorkPlugins);
   const [open, setOpen] = useState(false);
   const dialogChange = useRef(onDialogChange);
   dialogChange.current = onDialogChange;

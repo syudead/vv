@@ -34,14 +34,22 @@ import {
 } from "./detailRows";
 import {
   comparedFields,
+  comparedRowState,
   pluginLabel,
-  rowState,
   type RowState,
   selectableTags,
   tagsRowChecked,
 } from "./fetchRules";
+import LookupBlock from "./LookupBlock";
+import {
+  hasRoleLookups,
+  lookupChangeFields,
+  lookupEnabled,
+  roleLookups,
+} from "./lookupRules";
 import TagChips, { type ChipItem, chipsOfVideo, FoldButton } from "./TagChips";
 import TagPicker, { type TagPick } from "./TagPicker";
+import type { PersonLookups } from "./usePersonLookups";
 
 export interface Fetched {
   result: WorkInfoFetch;
@@ -50,10 +58,26 @@ export interface Fetched {
   fromSearch: boolean;
 }
 
-function Cell({ heading, children }: { heading: string; children: ReactNode }) {
+/** A Now or Fetched cell; narrow is for a two-column grid, as in a lookup block, which keeps its heading at every width because no column headings sit above it. */
+export function Cell({
+  heading,
+  narrow = false,
+  children,
+}: {
+  heading: string;
+  narrow?: boolean;
+  children: ReactNode;
+}) {
   return (
-    <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 sm:col-span-2">
-      <span className="text-xs text-muted-foreground sm:hidden">{heading}</span>
+    <div
+      className={cn(
+        "flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1",
+        !narrow && "sm:col-span-2",
+      )}
+    >
+      <span className={cn("text-xs text-muted-foreground", !narrow && "sm:hidden")}>
+        {heading}
+      </span>
       {children}
     </div>
   );
@@ -133,8 +157,14 @@ function chipItems(
 
 const FILL_FOLD = 3;
 
-/** One line per fetched person with a profile, folded after three so the chips stay primary. */
-function FillLines({ chips }: { chips: readonly DetailChip[] }) {
+/** One line per fetched person with a profile, folded after three so the chips stay primary; a person with a lookup fills what the lookup leaves, even when it fails. */
+function FillLines({
+  chips,
+  lookedUp,
+}: {
+  chips: readonly DetailChip[];
+  lookedUp: ReadonlySet<string>;
+}) {
   const text = t.player.workInfoFetch;
   const today = useLocalToday();
   const [open, setOpen] = useState(false);
@@ -144,7 +174,10 @@ function FillLines({ chips }: { chips: readonly DetailChip[] }) {
       : [
           {
             key: chip.key,
-            line: text.fillsEmpty(chip.name, fillValues(chip.profile, today)),
+            line: (lookedUp.has(chip.key) ? text.fillsAfterLookup : text.fillsEmpty)(
+              chip.name,
+              fillValues(chip.profile, today),
+            ),
           },
         ],
   );
@@ -169,22 +202,83 @@ function FillLines({ chips }: { chips: readonly DetailChip[] }) {
   );
 }
 
+/** The context a role row's lookup blocks need. */
+export interface LookupContext {
+  video: Video;
+  result: WorkInfoFetch;
+  lookups: PersonLookups;
+  selection: readonly WorkInfoField[];
+  locked: boolean;
+}
+
+/** Under a role row's chips: notes for people looked up elsewhere or over the limit, then the blocks. */
+function RoleLookups({
+  field,
+  context,
+}: {
+  field: WorkInfoField;
+  context: LookupContext;
+}) {
+  const text = t.player.workInfoFetch;
+  const { result, lookups } = context;
+  const { blocks, notes } = roleLookups(result, field);
+  return (
+    <>
+      {notes.map((note) => (
+        <p
+          key={note.key}
+          className="max-w-full basis-full text-xs break-words text-muted-foreground"
+        >
+          {note.sharedUnder === undefined
+            ? text.lookupLimited(note.name)
+            : text.lookedUpUnder(note.name, text.fields[note.sharedUnder])}
+        </p>
+      ))}
+      {blocks.map((block) => {
+        const lookup = result.personLookups[block.index];
+        const state = lookups.states[block.index];
+        if (lookup === undefined || state === undefined) return null;
+        return (
+          <LookupBlock
+            key={block.index}
+            videoId={context.video.id}
+            fetchId={result.fetchId}
+            index={block.index}
+            lookup={lookup}
+            names={block.names}
+            state={state}
+            enabled={lookupEnabled(result, block.index, context.selection)}
+            locked={context.locked}
+            onToggleItem={lookups.toggleItem}
+            onRetry={lookups.retry}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 function ListValue({
   field,
   row,
+  state,
   tone,
   noteId,
   faceSrc,
+  context,
 }: {
   field: WorkInfoField;
   row: ListRow;
+  state: RowState;
   tone: "now" | "fetched";
   noteId: string;
   faceSrc: (index: number) => string;
+  context: LookupContext;
 }) {
   const text = t.player.workInfoFetch;
   if (tone === "now") return <TagChips items={chipItems(row.now, field, "now")} />;
-  const nothing = row.state === "nothing";
+  const nothing = state === "nothing";
+  const person = creditKind(field) === "person";
   // A row of people already on the video differs only by what it fills, which the fill lines say.
   const trailing = nothing
     ? text.nothingToAdd
@@ -198,7 +292,11 @@ function ListValue({
         trailing={trailing}
         trailingId={nothing ? noteId : undefined}
       />
-      <FillLines chips={row.fetched} />
+      <FillLines
+        chips={row.fetched}
+        lookedUp={person ? roleLookups(context.result, field).lookedUp : new Set()}
+      />
+      {person && <RoleLookups field={field} context={context} />}
     </>
   );
 }
@@ -271,24 +369,25 @@ function CoverValue({
 
 function Value({
   field,
-  video,
-  result,
+  state,
   tone,
   noteId,
   tagPick,
   cover,
+  context,
 }: {
   field: WorkInfoField;
-  video: Video;
-  result: WorkInfoFetch;
+  state: RowState;
   tone: "now" | "fetched";
   noteId: string;
   tagPick: TagPick;
   cover: CoverFraming;
+  context: LookupContext;
 }) {
-  const state = rowState(field, video, result);
-  if (tone === "fetched" && (state === "missing" || state === "same"))
-    return <StateNote state={state} noteId={noteId} />;
+  const { video, result } = context;
+  const hidden =
+    state === "missing" || (state === "same" && !hasRoleLookups(result, field));
+  if (tone === "fetched" && hidden) return <StateNote state={state} noteId={noteId} />;
   if (field === "title")
     return (
       <TitleValue
@@ -318,9 +417,11 @@ function Value({
       <ListValue
         field={field}
         row={row}
+        state={state}
         tone={tone}
         noteId={noteId}
         faceSrc={(index) => workInfoFetchPersonImageUrl(video.id, result.fetchId, index)}
+        context={context}
       />
     );
   return (
@@ -334,26 +435,26 @@ function Value({
 
 function CompareRow({
   field,
-  video,
-  result,
   selected,
-  locked,
+  changedByLookup,
   onToggle,
   tagPick,
   cover,
+  context,
 }: {
   field: WorkInfoField;
-  video: Video;
-  result: WorkInfoFetch;
   selected: boolean;
-  locked: boolean;
+  /** Role rows a lookup of one of their people has something to apply for. */
+  changedByLookup: ReadonlySet<WorkInfoField>;
   onToggle: (field: WorkInfoField, on: boolean) => void;
   tagPick: TagPick;
   cover: CoverFraming;
+  context: LookupContext;
 }) {
   const text = t.player.workInfoFetch;
   const id = useId();
-  const state = rowState(field, video, result);
+  const { video, result, locked } = context;
+  const state = comparedRowState(field, video, result, changedByLookup);
   const selectable = state === "differs";
   const checked =
     field === "tags"
@@ -376,82 +477,56 @@ function CompareRow({
       <Cell heading={text.now}>
         <Value
           field={field}
-          video={video}
-          result={result}
+          state={state}
           tone="now"
           noteId={`${id}-note`}
           tagPick={tagPick}
           cover={cover}
+          context={context}
         />
       </Cell>
       <Cell heading={text.fetched}>
         <Value
           field={field}
-          video={video}
-          result={result}
+          state={state}
           tone="fetched"
           noteId={`${id}-note`}
           tagPick={tagPick}
           cover={cover}
+          context={context}
         />
       </Cell>
     </div>
   );
 }
 
-export default function CompareStep({
-  video,
-  fetched,
-  selection,
-  tags,
-  locked,
+/** Now and Fetched over the five-column rows from sm; narrower rows head each cell instead. */
+export function CompareHeadings() {
+  const text = t.player.workInfoFetch;
+  return (
+    <div className="hidden gap-x-4 pb-1 text-xs text-muted-foreground sm:grid sm:grid-cols-5">
+      <span />
+      <span className="col-span-2">{text.now}</span>
+      <span className="col-span-2">{text.fetched}</span>
+    </div>
+  );
+}
+
+/** The stale result's Fetch again, or the last apply's failure, above a comparison. */
+export function CompareNotices({
   stale,
   refetching,
   failure,
-  cover,
-  onToggle,
-  onToggleTag,
-  onBack,
   onFetchAgain,
 }: {
-  video: Video;
-  fetched: Fetched;
-  selection: readonly WorkInfoField[];
-  tags: readonly string[];
-  locked: boolean;
   stale: boolean;
   refetching: boolean;
   failure: unknown;
-  cover: CoverFraming;
-  onToggle: (field: WorkInfoField, on: boolean) => void;
-  onToggleTag: (name: string, on: boolean) => void;
-  onBack: () => void;
   onFetchAgain: () => void;
 }) {
   const text = t.player.workInfoFetch;
-  const tagPick: TagPick = {
-    selected: tags,
-    locked: locked || stale,
-    onToggle: onToggleTag,
-  };
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-sm break-words text-muted-foreground">
-        {text.source(pluginLabel(fetched.plugin))}
-        {text.sourceId(fetched.source)}
-      </p>
-      {fetched.fromSearch && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="self-start"
-          disabled={locked || refetching}
-          onClick={onBack}
-        >
-          <ArrowLeft aria-hidden="true" />
-          {text.back}
-        </Button>
-      )}
+    <>
       {stale && (
         <Alert variant="destructive">
           <CircleAlert aria-hidden="true" />
@@ -478,24 +553,92 @@ export default function CompareStep({
           <AlertTitle>{text.applyFailed(errorText(failure))}</AlertTitle>
         </Alert>
       )}
+    </>
+  );
+}
+
+export default function CompareStep({
+  video,
+  fetched,
+  selection,
+  tags,
+  locked,
+  stale,
+  refetching,
+  failure,
+  cover,
+  lookups,
+  onToggle,
+  onToggleTag,
+  onBack,
+  onFetchAgain,
+}: {
+  video: Video;
+  fetched: Fetched;
+  selection: readonly WorkInfoField[];
+  tags: readonly string[];
+  locked: boolean;
+  stale: boolean;
+  refetching: boolean;
+  failure: unknown;
+  cover: CoverFraming;
+  lookups: PersonLookups;
+  onToggle: (field: WorkInfoField, on: boolean) => void;
+  onToggleTag: (name: string, on: boolean) => void;
+  onBack: () => void;
+  onFetchAgain: () => void;
+}) {
+  const text = t.player.workInfoFetch;
+  const tagPick: TagPick = {
+    selected: tags,
+    locked: locked || stale,
+    onToggle: onToggleTag,
+  };
+  const context: LookupContext = {
+    video,
+    result: fetched.result,
+    lookups,
+    selection,
+    locked: locked || stale,
+  };
+  const changedByLookup = lookupChangeFields(fetched.result, lookups.states);
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm break-words text-muted-foreground">
+        {text.source(pluginLabel(fetched.plugin))}
+        {text.sourceId(fetched.source)}
+      </p>
+      {fetched.fromSearch && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="self-start"
+          disabled={locked || refetching}
+          onClick={onBack}
+        >
+          <ArrowLeft aria-hidden="true" />
+          {text.back}
+        </Button>
+      )}
+      <CompareNotices
+        stale={stale}
+        refetching={refetching}
+        failure={failure}
+        onFetchAgain={onFetchAgain}
+      />
       <div className="flex flex-col text-sm">
-        <div className="hidden gap-x-4 pb-1 text-xs text-muted-foreground sm:grid sm:grid-cols-5">
-          <span />
-          <span className="col-span-2">{text.now}</span>
-          <span className="col-span-2">{text.fetched}</span>
-        </div>
+        <CompareHeadings />
         <div className="flex flex-col divide-y divide-border border-y border-border">
           {comparedFields(video, fetched.result).map((field) => (
             <CompareRow
               key={field}
               field={field}
-              video={video}
-              result={fetched.result}
               selected={selection.includes(field)}
-              locked={locked || stale}
+              changedByLookup={changedByLookup}
               onToggle={onToggle}
               tagPick={tagPick}
               cover={cover}
+              context={context}
             />
           ))}
         </div>

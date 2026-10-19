@@ -22,6 +22,7 @@ type scriptedPlugins struct {
 	WorkInfoPlugins
 	err        error
 	candidates []domain.WorkInfoCandidate
+	people     []domain.PersonCandidate
 	fetch      domain.WorkInfoFetchResult
 	applied    domain.WorkInfoApplied
 	calls      int
@@ -32,6 +33,8 @@ type scriptedPlugins struct {
 	cover      *domain.WorkInfoCover
 	// personImages maps an index to its kept image.
 	personImages map[int]domain.WorkInfoCover
+	lookups      []domain.PersonLookupSelection
+	lookup       domain.PersonLookupResult
 }
 
 func (p *scriptedPlugins) WorkInfoFetchPersonImage(_ int64, fetchID string, index int) (domain.WorkInfoCover, error) {
@@ -50,6 +53,11 @@ func (p *scriptedPlugins) SearchWorkInfo(context.Context, int64, string) ([]doma
 	return p.candidates, p.err
 }
 
+func (p *scriptedPlugins) SearchPeople(context.Context, int64, string) ([]domain.PersonCandidate, error) {
+	p.calls++
+	return p.people, p.err
+}
+
 func (p *scriptedPlugins) FetchWorkInfo(_ context.Context, _, _ int64, id string) (domain.WorkInfoFetchResult, error) {
 	p.calls++
 	p.ids = append(p.ids, id)
@@ -63,9 +71,9 @@ func (p *scriptedPlugins) WorkInfoFetchCover(int64, string) (domain.WorkInfoCove
 	return *p.cover, nil
 }
 
-func (p *scriptedPlugins) ApplyWorkInfoFetch(_ context.Context, _ int64, _ string, fields []domain.WorkInfoField, tags []string, coverByPage bool) (domain.WorkInfoApplied, error) {
+func (p *scriptedPlugins) ApplyWorkInfoFetch(_ context.Context, _ int64, _ string, fields []domain.WorkInfoField, tags []string, coverByPage bool, lookups []domain.PersonLookupSelection) (domain.WorkInfoApplied, error) {
 	p.calls++
-	p.fields, p.tags, p.pageCover = fields, tags, coverByPage
+	p.fields, p.tags, p.pageCover, p.lookups = fields, tags, coverByPage, lookups
 	return p.applied, p.err
 }
 
@@ -89,9 +97,10 @@ func (e *fetchRouteEnv) post(target, body string, cookies ...*http.Cookie) (int,
 }
 
 const (
-	searchPath = "/api/work-info-plugins/1/search"
-	fetchPath  = "/api/videos/7/work-info-fetches"
-	applyPath  = "/api/videos/7/work-info-fetches/abc/apply"
+	searchPath       = "/api/work-info-plugins/1/search"
+	personSearchPath = "/api/work-info-plugins/1/person-search"
+	fetchPath        = "/api/videos/7/work-info-fetches"
+	applyPath        = "/api/videos/7/work-info-fetches/abc/apply"
 )
 
 func decodeErrorBody(t *testing.T, body []byte) gen.Error {
@@ -113,6 +122,7 @@ func TestWorkInfoRunFailuresFollowTheContract(t *testing.T) {
 	}{
 		{"no plugin", domain.ErrNotFound, wantError{status: 404, code: gen.ErrorCodeNotFound}, nil},
 		{"not approved", domain.ErrWorkInfoPluginNotApproved, wantError{status: 409, code: gen.ErrorCodePluginNotApproved}, nil},
+		{"other kind", domain.ErrWorkInfoPluginKindMismatch, wantError{status: 409, code: gen.ErrorCodePluginKindMismatch}, nil},
 		{"unsupported", domain.ErrWorkInfoOperationUnsupported, wantError{status: 409, code: gen.ErrorCodeOperationUnsupported}, nil},
 		{"invalid", domain.ErrWorkInfoRunInvalid, wantError{status: 400, code: gen.ErrorCodeInvalidRequest}, nil},
 		{"settings missing", &domain.WorkInfoSettingsMissingError{Keys: []string{"apiKey", "region"}},
@@ -143,6 +153,7 @@ func TestWorkInfoRunFailuresFollowTheContract(t *testing.T) {
 		e.plugins.err = tc.err
 		for _, route := range []struct{ path, body string }{
 			{searchPath, `{"query":"work"}`},
+			{personSearchPath, `{"query":"person"}`},
 			{fetchPath, `{"pluginId":1,"id":"ABC-123"}`},
 		} {
 			label := tc.name + " " + route.path
@@ -194,6 +205,30 @@ func TestWorkInfoSearchAndFetchAnswer(t *testing.T) {
 	}
 	if e.plugins.calls != calls {
 		t.Fatal("an incomplete request reached the registry")
+	}
+}
+
+func TestPersonSearchAnswersCandidates(t *testing.T) {
+	e := newFetchRouteEnv(t)
+	e.plugins.people = []domain.PersonCandidate{
+		{Source: "wiki", ID: "p-1", Name: "One", URL: "https://e.test/p/1", Detail: "actor"},
+		{Source: "site", ID: "p-2", Name: "Two", URL: "https://e.test/p/2"},
+	}
+	status, body := e.post(personSearchPath, `{"query":"o"}`, e.owner)
+	var got gen.PersonPluginSearchResult
+	if status != http.StatusOK || json.Unmarshal(body, &got) != nil || len(got.Candidates) != 2 {
+		t.Fatalf("person search = %d %s", status, body)
+	}
+	want := gen.PersonPluginCandidate{Source: "wiki", Id: "p-1", Name: "One", Url: "https://e.test/p/1", Detail: new("actor")}
+	if c := got.Candidates[0]; c.Source != want.Source || c.Id != want.Id || c.Name != want.Name || c.Url != want.Url ||
+		c.Detail == nil || *c.Detail != *want.Detail || got.Candidates[1].Detail != nil {
+		t.Fatalf("candidates = %s", body)
+	}
+	calls := e.plugins.calls
+	status, body = e.post(personSearchPath, `{}`, e.owner)
+	assertErrorBody(t, "no query", status, body, wantError{status: 400, code: gen.ErrorCodeInvalidRequest})
+	if e.plugins.calls != calls {
+		t.Fatal("a request without a query reached the registry")
 	}
 }
 

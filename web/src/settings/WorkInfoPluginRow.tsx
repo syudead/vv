@@ -6,7 +6,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
 } from "lucide-react";
-import { Fragment, type ReactNode, type Ref } from "react";
+import { Fragment, type ReactNode, type Ref, useId } from "react";
 
 import type { WorkInfoPlugin, WorkInfoPluginState } from "../api/workInfoPlugins";
 import { formatDateTime, formatRelative, t, type UiText } from "../i18n";
@@ -14,6 +14,8 @@ import { RowMoreMenu } from "../tags/TagRow";
 import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
 import { DropdownMenuItem } from "../ui/shadcn/dropdown-menu";
+import { Field, FieldLabel } from "../ui/shadcn/field";
+import { Switch } from "../ui/shadcn/switch";
 import {
   missingRequired,
   operationTexts,
@@ -24,6 +26,12 @@ import {
 } from "./workInfoPluginRows";
 
 export type RowWork = "revoke" | "delete";
+
+/** saving is the value being sent, or null when the switch is idle. */
+export interface RowLookup {
+  saving: boolean | null;
+  onChange: (enabled: boolean) => void;
+}
 
 const badgeVariant = {
   approved: "success",
@@ -43,6 +51,8 @@ function FactsLine({ plugin }: { plugin: WorkInfoPlugin }) {
   const operations = operationTexts(plugin);
   if (operations.length > 0)
     parts.push({ id: "operations", node: operations.join(" · ") });
+  if (plugin.kind === "person" && plugin.sources.length > 0)
+    parts.push({ id: "sources", node: text.person.accepts(plugin.sources) });
   if (plugin.network)
     parts.push({
       id: "network",
@@ -87,7 +97,7 @@ function WarningLine({ children }: { children: ReactNode }) {
   );
 }
 
-function RowText({ plugin }: { plugin: WorkInfoPlugin }) {
+function RowText({ plugin, nameId }: { plugin: WorkInfoPlugin; nameId: string }) {
   const text = t.settings.workInfoPlugins;
   const missing = missingRequired(plugin);
   const stale = staleSettings(plugin);
@@ -100,9 +110,13 @@ function RowText({ plugin }: { plugin: WorkInfoPlugin }) {
           {text.states[plugin.state]}
         </Badge>
         {plugin.name === undefined ? (
-          <span className="min-w-0 font-mono break-all">{plugin.fileName}</span>
+          <span id={nameId} className="min-w-0 font-mono break-all">
+            {plugin.fileName}
+          </span>
         ) : (
-          <span className="min-w-0 font-medium break-words">{plugin.name}</span>
+          <span id={nameId} className="min-w-0 font-medium break-words">
+            {plugin.name}
+          </span>
         )}
         {plugin.version !== undefined && (
           <span className="text-muted-foreground tabular-nums">
@@ -132,9 +146,48 @@ function RowText({ plugin }: { plugin: WorkInfoPlugin }) {
   );
 }
 
+/** Described by the plugin's name so it reads as "Automatic lookups, {name}". */
+function AutoLookupSwitch({
+  plugin,
+  lookup,
+  nameId,
+}: {
+  plugin: WorkInfoPlugin;
+  lookup: RowLookup;
+  nameId: string;
+}) {
+  const text = t.settings.workInfoPlugins.person;
+  const id = useId();
+  const saving = lookup.saving !== null;
+  return (
+    <>
+      {saving && (
+        <span role="status" className="text-xs text-muted-foreground">
+          {text.saving}
+        </span>
+      )}
+      <Field orientation="horizontal" className="w-auto">
+        <Switch
+          id={id}
+          checked={lookup.saving ?? plugin.autoLookup}
+          aria-describedby={nameId}
+          aria-disabled={saving || undefined}
+          onCheckedChange={(checked) => {
+            if (!saving) lookup.onChange(checked);
+          }}
+        />
+        <FieldLabel htmlFor={id} className="text-sm font-normal">
+          {text.autoLookup}
+        </FieldLabel>
+      </Field>
+    </>
+  );
+}
+
 export default function WorkInfoPluginRow({
   plugin,
   work,
+  lookup,
   error,
   rowRef,
   onApprove,
@@ -145,6 +198,8 @@ export default function WorkInfoPluginRow({
 }: {
   plugin: WorkInfoPlugin;
   work: RowWork | null;
+  /** Present only for an approved person plugin. */
+  lookup: RowLookup | null;
   error: UiText | null;
   rowRef: Ref<HTMLDivElement>;
   onApprove: () => void;
@@ -157,18 +212,22 @@ export default function WorkInfoPluginRow({
   const name = pluginName(plugin);
   const busy = work !== null;
   const showSettings = plugin.state !== "invalid" && plugin.settings.length > 0;
+  const nameId = useId();
   return (
     <div
       ref={rowRef}
       data-plugin-id={plugin.id}
       className="flex min-w-0 flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:flex-wrap sm:items-start"
     >
-      <RowText plugin={plugin} />
+      <RowText plugin={plugin} nameId={nameId} />
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
         {work !== null && (
           <span role="status" className="text-xs text-muted-foreground">
             {work === "revoke" ? text.revoking : text.deleting}
           </span>
+        )}
+        {lookup !== null && (
+          <AutoLookupSwitch plugin={plugin} lookup={lookup} nameId={nameId} />
         )}
         {plugin.state === "unapproved" && (
           <Button size="sm" onClick={onApprove} disabled={busy}>

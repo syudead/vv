@@ -230,6 +230,8 @@ before the other fields.
 | Field | Type | Required | Rule |
 | --- | --- | --- | --- |
 | `contract` | integer | Yes | `1` |
+| `kind` | string | No | `work` (the default) or `person`; a person plugin follows [Person plugins](#person-plugins) |
+| `sources` | string array | With `"kind": "person"` | See [Person plugins](#person-plugins); not allowed for `work` |
 | `name` | string | Yes | 1 to 64 characters of `a-z`, `0-9`, `-`, `.`; the plugin's identity, so a module with the same name replaces it |
 | `version` | string | Yes | 1 to 32 characters, shown to the owner |
 | `description` | string | No | At most 500 characters |
@@ -393,6 +395,56 @@ stored is never replaced. A value that breaks a profile rule, such as a
 `heightCm` of 1000 or a `bloodType` of `C`, is not applied, and VVMDM reports
 it as skipped. The fetched image becomes the person's face only when the person
 has none.
+
+## Person plugins
+
+A person plugin (`"kind": "person"`) searches a site for people and fetches a
+person's names, external IDs, face and profile; why it shares this contract is
+in [person-plugins.md](../design-docs/person-plugins.md). The module format,
+[host functions](#host-functions), [settings](#setting-fields),
+[limits](#limits) and [address rule](#addresses) are the same as for a
+work-info plugin.
+
+| Manifest field | Rule for a person plugin |
+| --- | --- |
+| `operations` | Exactly `search` and `fetch` |
+| `sources` | 1 to 10 distinct external-ID sources, each 1 to 50 characters without surrounding spaces, as the people API's `source`; the owner sees them before approving |
+
+| Request | Body |
+| --- | --- |
+| `search` | `{"contract": 1, "operation": "search", "query": "<the person's name, 1 to 200 characters>", "settings": {...}}` |
+| `fetch` | `{"contract": 1, "operation": "fetch", "source": "<one of sources>", "id": "<1 to 200 characters>", "settings": {...}}` |
+
+| Response | Body |
+| --- | --- |
+| `search` result | `{"candidates": [{"source": "...", "id": "...", "name": "...", "url": "...", "detail": "..."}]}`: `source` (one of `sources`), `id`, `name` and `url` required, `detail` optional; VVMDM keeps the first 50, and a kept candidate with another `source` fails the run with `plugin_failed` |
+| `fetch` result | `{"person": {"name": "...", "aliases": [{"name": "...", "language": "ja"}], "externalIds": [{"source": "...", "value": "..."}], "image": "https://...", "profile": {...}}}`: `name` required, the rest optional |
+| Failure | As for a work-info plugin |
+
+VVMDM keeps the first 50 aliases with a name, each name once. It puts the
+request's `source` and `id` first in `externalIds` and keeps the plugin's
+other distinct IDs after it, up to 20 in all, so the ID a person was fetched
+by always survives the limit. `image` and `profile` follow
+[People's images and profiles](#peoples-images-and-profiles), and VVMDM
+fetches the one `image` after the run the way it fetches the
+[cover](#cover-image).
+
+Run a person plugin's fetch with its source:
+
+```bash
+mdm plugin run plugin.wasm fetch 1 --source example
+```
+
+`--source` is required for a person plugin's fetch and must be one of
+`sources`; any other run refuses it with exit code 2. `search` takes the
+person's name. The output is `{"candidates": [...]}` or `{"person": {...}}`
+after VVMDM's limits, and `mdm plugin pack` prints the kind and the sources.
+
+In VVMDM, a person plugin is listed in the **Person plugins** section of
+**Settings**, under the **Work-info plugins** section. Either section's
+**Add plugin** accepts either kind; the manifest's `kind` decides the section.
+After approval, the plugin's row has an **Automatic lookups** switch, which
+lets a work-info fetch call the plugin for the people it names.
 
 ## Host functions
 

@@ -167,7 +167,11 @@ func parseFetchedURLs(raw []string, limit int) []string {
 
 // Drop partially blank external IDs and retain unique pairs up to the limit.
 func parseFetchedExternalIDs(raw json.RawMessage) []ExternalID {
-	var out []ExternalID
+	return appendFetchedExternalIDs(nil, raw)
+}
+
+// appendFetchedExternalIDs appends raw's IDs that out lacks until out holds ExternalIDsMaxCount.
+func appendFetchedExternalIDs(out []ExternalID, raw json.RawMessage) []ExternalID {
 	for _, e := range lenientList[fetchedExternalIDJSON](raw) {
 		id := ExternalID{Source: trimWorkInfoText(e.Source), Value: trimWorkInfoText(e.Value)}
 		if id.Source == "" || id.Value == "" || slices.Contains(out, id) {

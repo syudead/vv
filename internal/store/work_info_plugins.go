@@ -16,7 +16,7 @@ import (
 
 // Metadata reads omit module bytes and include the optional latest-run completion time.
 const workInfoPluginColumns = `id, name, file_name, version, description, contract, operations, settings,
-	digest, problem, approved_digest, added_at, updated_at, generation,
+	digest, problem, approved_digest, added_at, updated_at, generation, kind, sources, auto_lookup,
 	(select ran_at from work_info_plugin_runs where plugin_id = work_info_plugins.id)`
 
 // ListWorkInfoPlugins sorts by name then filename, placing unreadable names last.
@@ -75,7 +75,8 @@ func (s *WorkInfoPluginStore) WorkInfoPluginModule(ctx context.Context, id int64
 	return plugin, module, nil
 }
 
-// SaveWorkInfoPlugin replaces same-name uploads and always revokes approval, retaining only declared settings unless the new manifest is unreadable.
+// SaveWorkInfoPlugin replaces same-name uploads and always revokes approval, retaining only declared settings unless the
+// new manifest is unreadable; a replacement takes the new kind and sources and keeps auto_lookup.
 func (s *WorkInfoPluginStore) SaveWorkInfoPlugin(
 	ctx context.Context, upload domain.WorkInfoPluginUpload, now time.Time,
 ) (domain.WorkInfoPlugin, bool, error) {
@@ -117,6 +118,8 @@ type uploadColumns struct {
 	version, description sql.NullString
 	contract             sql.NullInt64
 	operations, settings sql.NullString
+	kind                 domain.WorkInfoPluginKind
+	sources              sql.NullString
 	module               []byte
 	problem              sql.NullString
 	declared             []string
@@ -129,9 +132,17 @@ func workInfoPluginUploadColumns(upload domain.WorkInfoPluginUpload) (uploadColu
 		name:        nullString(m.Name),
 		version:     nullString(m.Version),
 		description: nullString(m.Description),
+		kind:        domain.WorkInfoPluginKindWork,
 	}
 	if m.Contract != 0 {
 		cols.contract = sql.NullInt64{Int64: int64(m.Contract), Valid: true}
+	}
+	if m.Kind == domain.WorkInfoPluginKindPerson {
+		encoded, err := json.Marshal(m.Sources)
+		if err != nil {
+			return uploadColumns{}, fmt.Errorf("cannot encode the person plugin sources: %w", err)
+		}
+		cols.kind, cols.sources = m.Kind, sql.NullString{String: string(encoded), Valid: true}
 	}
 	if upload.Problem != "" {
 		cols.problem = nullString(string(upload.Problem))
@@ -186,10 +197,10 @@ func insertWorkInfoPlugin(
 ) (int64, error) {
 	result, err := tx.ExecContext(ctx, `insert into work_info_plugins
 		(name, file_name, version, description, contract, operations, settings, module, digest, problem,
-		 approved_digest, added_at, updated_at)
-		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, null, ?, ?)`,
+		 approved_digest, added_at, updated_at, kind, sources)
+		values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, null, ?, ?, ?, ?)`,
 		cols.name, upload.FileName, cols.version, cols.description, cols.contract, cols.operations,
-		cols.settings, cols.module, upload.Digest, cols.problem, now.Unix(), now.Unix())
+		cols.settings, cols.module, upload.Digest, cols.problem, now.Unix(), now.Unix(), cols.kind, cols.sources)
 	if err != nil {
 		return 0, fmt.Errorf("cannot add the work-info plugin: %w", err)
 	}
@@ -201,10 +212,11 @@ func replaceWorkInfoPlugin(
 ) error {
 	if _, err := tx.ExecContext(ctx, `update work_info_plugins set
 		file_name = ?, version = ?, description = ?, contract = ?, operations = ?, settings = ?, module = ?,
-		digest = ?, problem = ?, approved_digest = null, updated_at = ?, generation = generation + 1
+		digest = ?, problem = ?, approved_digest = null, updated_at = ?, generation = generation + 1,
+		kind = ?, sources = ?
 		where id = ?`,
 		upload.FileName, cols.version, cols.description, cols.contract, cols.operations, cols.settings,
-		cols.module, upload.Digest, cols.problem, now.Unix(), id); err != nil {
+		cols.module, upload.Digest, cols.problem, now.Unix(), cols.kind, cols.sources, id); err != nil {
 		return fmt.Errorf("cannot replace the work-info plugin: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `delete from work_info_plugin_runs where plugin_id = ?`, id); err != nil {
@@ -307,6 +319,19 @@ func (s *WorkInfoPluginStore) changeWorkInfoPlugin(
 	return changed, nil
 }
 
+// SetWorkInfoPluginAutoLookup changes only auto_lookup, refusing a work-info plugin with ErrWorkInfoPluginKindMismatch.
+func (s *WorkInfoPluginStore) SetWorkInfoPluginAutoLookup(
+	ctx context.Context, id int64, enabled bool,
+) (domain.WorkInfoPlugin, error) {
+	return s.changeWorkInfoPlugin(ctx, id, func(tx *sql.Tx, plugin domain.WorkInfoPlugin) error {
+		if plugin.Kind() != domain.WorkInfoPluginKindPerson {
+			return domain.ErrWorkInfoPluginKindMismatch
+		}
+		_, err := tx.ExecContext(ctx, `update work_info_plugins set auto_lookup = ? where id = ?`, enabled, id)
+		return err
+	})
+}
+
 // DeleteWorkInfoPlugin cascades settings and rejects a missing plugin.
 func (s *WorkInfoPluginStore) DeleteWorkInfoPlugin(ctx context.Context, id int64) error {
 	result, err := s.sql.ExecContext(ctx, `delete from work_info_plugins where id = ?`, id)
@@ -382,12 +407,14 @@ func scanWorkInfoPlugin(row rowScanner) (domain.WorkInfoPlugin, error) {
 	var (
 		plugin                                           domain.WorkInfoPlugin
 		name, version, description, operations, settings sql.NullString
-		problem, approved                                sql.NullString
+		problem, approved, sources                       sql.NullString
 		contract, lastRunAt                              sql.NullInt64
 		addedAt, updatedAt                               int64
+		kind                                             string
 	)
 	err := row.Scan(&plugin.ID, &name, &plugin.FileName, &version, &description, &contract, &operations,
-		&settings, &plugin.Digest, &problem, &approved, &addedAt, &updatedAt, &plugin.Generation, &lastRunAt)
+		&settings, &plugin.Digest, &problem, &approved, &addedAt, &updatedAt, &plugin.Generation,
+		&kind, &sources, &plugin.AutoLookup, &lastRunAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.WorkInfoPlugin{}, err
 	}
@@ -399,6 +426,12 @@ func scanWorkInfoPlugin(row rowScanner) (domain.WorkInfoPlugin, error) {
 		Name:        name.String,
 		Version:     version.String,
 		Description: description.String,
+		Kind:        domain.WorkInfoPluginKind(kind),
+	}
+	if sources.Valid {
+		if err := json.Unmarshal([]byte(sources.String), &plugin.Manifest.Sources); err != nil {
+			return domain.WorkInfoPlugin{}, fmt.Errorf("cannot read the person plugin sources: %w", err)
+		}
 	}
 	if operations.String != "" {
 		for op := range strings.SplitSeq(operations.String, ",") {

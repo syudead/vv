@@ -113,6 +113,11 @@ func (s *fakePluginStore) SetWorkInfoPluginValues(_ context.Context, _ int64, va
 	return *s.plugin, nil
 }
 
+// SetWorkInfoPluginAutoLookup is a pass-through in the app; store tests cover its rule.
+func (s *fakePluginStore) SetWorkInfoPluginAutoLookup(context.Context, int64, bool) (domain.WorkInfoPlugin, error) {
+	return domain.WorkInfoPlugin{}, errors.New("not used")
+}
+
 func (s *fakePluginStore) DeleteWorkInfoPlugin(ctx context.Context, id int64) error {
 	s.writes++
 	if _, err := s.WorkInfoPlugin(ctx, id); err != nil {

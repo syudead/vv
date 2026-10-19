@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Video } from "../../api/client";
 import type { WorkInfoFetch, WorkInfoPlugin } from "../../api/workInfoPlugins";
 import {
-  approvedPlugins,
+  approvedWorkPlugins,
   canChooseFindBy,
   initialQuery,
   initialSelection,
@@ -19,6 +19,9 @@ import {
 function plugin(overrides: Partial<WorkInfoPlugin> = {}): WorkInfoPlugin {
   return {
     id: 1,
+    kind: "work",
+    sources: [],
+    autoLookup: false,
     name: "works",
     fileName: "works.wasm",
     operations: ["search", "fetch"],
@@ -51,19 +54,21 @@ function result(overrides: Partial<WorkInfoFetch> = {}): WorkInfoFetch {
     organizations: [],
     urls: [],
     externalIds: [],
+    personLookups: [],
     ...overrides,
   };
 }
 
 describe("fetchRules", () => {
-  it("承認済みのプラグインだけを一覧の順のまま返す", () => {
+  it("承認済みの作品情報プラグインだけを一覧の順のまま返す", () => {
     const list = [
       plugin({ id: 1, state: "unapproved" }),
       plugin({ id: 2 }),
       plugin({ id: 3, state: "invalid" }),
+      plugin({ id: 5, kind: "person", sources: ["example.people"] }),
       plugin({ id: 4 }),
     ];
-    expect(approvedPlugins(list).map((item) => item.id)).toEqual([2, 4]);
+    expect(approvedWorkPlugins(list).map((item) => item.id)).toEqual([2, 4]);
   });
 
   it("語は検索し、ID を選んだときと検索できないプラグインでは作品の ID として取得する", () => {

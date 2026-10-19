@@ -53,9 +53,13 @@ func (r *Runtime) Run(
 	output, stderr, started, err := r.run.run(ctx, deadline, digest, module, input, session)
 	var result domain.WorkInfoRunResult
 	if err == nil {
-		result, err = domain.ParseWorkInfoResponse(req.Operation, output)
+		result, err = domain.ParseRunResponse(req, output)
 	}
-	if err == nil && req.Operation == domain.WorkInfoFetch {
+	switch {
+	case err != nil || req.Operation != domain.WorkInfoFetch:
+	case req.Kind == domain.WorkInfoPluginKindPerson:
+		result.PersonImage = session.image(deadline, result.Person.ImageURL)
+	default:
 		result.CoverImage = session.image(deadline, result.WorkInfo.CoverURL)
 		result.PersonImages = session.personImages(deadline, result.WorkInfo.People)
 	}
