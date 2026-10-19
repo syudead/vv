@@ -2,14 +2,16 @@ package httpapi
 
 import (
 	"net/http"
+	"os"
 	"time"
 
+	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
 // Unready thumbnails return 404 so the client displays an empty frame.
 func (s *server) GetVideoThumbnail(
-	w http.ResponseWriter, r *http.Request, id gen.VideoId, _ gen.GetVideoThumbnailParams,
+	w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetVideoThumbnailParams,
 ) {
 	video, ok := s.lookupVideo(w, r, id)
 	if !ok {
@@ -21,12 +23,31 @@ func (s *server) GetVideoThumbnail(
 		return
 	}
 
+	if params.Size != nil && *params.Size == gen.Large && s.serveLargeThumbnail(w, r, video) {
+		return
+	}
+
 	file, err := s.artifacts.ThumbnailFile(video.ContentKey)
 	if err != nil {
 		// Done state does not guarantee a surviving file; use the same 404 as ungenerated thumbnails.
 		s.notFound(w, "The thumbnail has not been generated yet.")
 		return
 	}
+	s.serveJPEGFile(w, r, file)
+}
+
+// serveLargeThumbnail reports false when the thumbnail was published without a poster, so the
+// caller falls back to the 640 px file.
+func (s *server) serveLargeThumbnail(w http.ResponseWriter, r *http.Request, video domain.Video) bool {
+	file, err := s.artifacts.PosterFile(video.ContentKey)
+	if err != nil {
+		return false
+	}
+	s.serveJPEGFile(w, r, file)
+	return true
+}
+
+func (s *server) serveJPEGFile(w http.ResponseWriter, r *http.Request, file *os.File) {
 	defer func() { _ = file.Close() }()
 
 	info, err := file.Stat()

@@ -10,6 +10,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import type { PlayerControls } from "./playerControls";
 import type { PlayerStatus } from "./VideoPlayer";
+import { type Fit, WHOLE_IMAGE } from "./thumbnailUpload/framing";
 import VideoPage from "./VideoPage";
 
 //
@@ -27,6 +28,7 @@ const playerMock = vi.hoisted(() => ({
 const compose = vi.hoisted(() => ({
   loadUploadImage: vi.fn(),
   drawComposition: vi.fn(),
+  drawOverflow: vi.fn(),
   encodeComposition: vi.fn(),
 }));
 
@@ -145,7 +147,7 @@ async function openPage(audience: Audience = "owner") {
 }
 
 function entry() {
-  return screen.getByRole("button", { name: "Upload an image as thumbnail" });
+  return screen.getByRole("button", { name: "Change thumbnail" });
 }
 
 function choose(file: File) {
@@ -225,24 +227,18 @@ describe("VideoPage thumbnail upload", () => {
   it("ゲストには入口も、アップロードした画像の項目も無い", async () => {
     server.video = uploaded;
     await openPage("guest");
-    expect(
-      screen.queryByRole("button", { name: "Upload an image as thumbnail" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Change thumbnail" })).toBeNull();
     expect(screen.queryByTestId("thumbnail-upload-input")).toBeNull();
     expect(within(facts()).queryByRole("img", { name: "Uploaded thumbnail" })).toBeNull();
   });
 
-  it("入口は編集の入口の直後に置き、PNG・JPEG・WebP に限ったピッカーを開く", async () => {
+  it("入口のメニューの「画像をアップロード」は PNG・JPEG・WebP に限ったピッカーを開く", async () => {
     await openPage();
-    const buttons = screen
-      .getAllByRole("button")
-      .map((button) => button.getAttribute("aria-label"));
-    const edit = buttons.indexOf("Edit thumbnail with ComfyUI");
-    expect(buttons[edit + 1]).toBe("Upload an image as thumbnail");
     const input = screen.getByTestId<HTMLInputElement>("thumbnail-upload-input");
     expect(input.accept).toBe("image/png,image/jpeg,image/webp");
     const click = vi.spyOn(input, "click");
-    fireEvent.click(entry());
+    fireEvent.keyDown(entry(), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Upload an image…" }));
     expect(click).toHaveBeenCalledTimes(1);
   });
 
@@ -268,14 +264,11 @@ describe("VideoPage thumbnail upload", () => {
     choose(png());
     const dialog = await screen.findByRole("dialog", { name: "Preview thumbnail" });
     expect(within(dialog).getByText("photo.png")).toBeDefined();
-    const whole = within(dialog).getByRole("radio", { name: "Whole image" });
-    expect(whole.getAttribute("aria-checked")).toBe("true");
-    expect(within(dialog).queryByRole("slider", { name: "Zoom" })).toBeNull();
     expect(compose.drawComposition).toHaveBeenLastCalledWith(
       expect.any(HTMLCanvasElement),
       expect.objectContaining({ width: 1000, height: 2000 }),
       16 / 9,
-      { mode: "contain" },
+      WHOLE_IMAGE,
     );
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -300,23 +293,24 @@ describe("VideoPage thumbnail upload", () => {
     expect(posts()).toHaveLength(0);
   });
 
-  it("枠いっぱいに広げて拡大してから適用すると、その形で描いた画像を送る", async () => {
+  it("枠を埋めて拡大し動かしてから適用すると、その形で描いた画像を送る", async () => {
     server.upload.mockReturnValueOnce(json(uploaded));
     await openPage();
     choose(png());
     const dialog = await screen.findByRole("dialog", { name: "Preview thumbnail" });
-    fireEvent.click(within(dialog).getByRole("radio", { name: "Fill frame" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Fill frame" }));
     const stage = within(dialog).getByRole("img", { name: /Drag or use the arrow keys/ });
     fireEvent.keyDown(stage, { key: "+" });
     fireEvent.keyDown(stage, { key: "ArrowDown" });
-    expect(within(dialog).getByRole("slider", { name: "Zoom" })).toBeDefined();
     fireEvent.click(within(dialog).getByRole("button", { name: "Use as thumbnail" }));
 
     await waitFor(() => expect(posts()).toHaveLength(1));
     const [, aspect, fit] = compose.encodeComposition.mock.calls[0] ?? [];
     expect(aspect).toBe(16 / 9);
-    expect(fit).toMatchObject({ mode: "cover", zoom: 1.25, panX: 0 });
-    expect((fit as { panY: number }).panY).toBeLessThan(0);
+    // A 1000 x 2000 image fills a 16:9 frame at 2048 / 576 of its whole size.
+    expect(fit).toMatchObject({ x: 0, rotation: 0, backdrop: "blur" });
+    expect((fit as Fit).zoom).toBeCloseTo((2048 / 576) * 1.25);
+    expect((fit as Fit).y).toBeGreaterThan(0);
   });
 
   it("送信中は入口が回り、キャプチャと入口を押せず、応答の動画で項目がアップロードした画像になる", async () => {
@@ -342,7 +336,7 @@ describe("VideoPage thumbnail upload", () => {
     expect((sent as File).name).toBe("thumbnail.png");
     expect((sent as File).type).toBe("image/png");
     expect(form?.get("contentVersion")).toBe("r1");
-    expect(compose.encodeComposition.mock.calls[0]?.[2]).toEqual({ mode: "contain" });
+    expect(compose.encodeComposition.mock.calls[0]?.[2]).toEqual(WHOLE_IMAGE);
 
     const input = screen.getByTestId<HTMLInputElement>("thumbnail-upload-input");
     const click = vi.spyOn(input, "click");

@@ -18,17 +18,15 @@ import {
 } from "react";
 
 import {
-  applyThumbnailEdit,
   cancelThumbnailEdit,
   discardThumbnailEdit,
+  getThumbnailEditResult,
   getThumbnailEdit,
   isAborted,
   RequestFailed,
   runThumbnailEdit,
   type ThumbnailEdit,
-  type Video,
 } from "../../api/client";
-import { detailMark, type DetailMark } from "../../api/useVideoDetail";
 import { errorText, t, type UiText } from "../../i18n";
 import { formatDuration } from "../../lib/format";
 import { ConfirmDialog } from "../../ui/patterns/confirm-dialog";
@@ -65,6 +63,7 @@ import {
 import CompareStage from "./CompareStage";
 import { buildMask, type Stroke } from "./mask";
 import PaintStage from "./PaintStage";
+import { PRESETS } from "./presets";
 
 const RUN_POLL_MS = 1000;
 const IDLE_POLL_MS = 60_000;
@@ -172,13 +171,14 @@ function useDiscardOnLeave(editId: string, settled: { current: boolean }) {
   }, [editId, settled]);
 }
 
+/** The result goes back to the caller, which frames it before it becomes the thumbnail. */
 export default function ThumbnailEditor({
   edit,
-  onApplied,
+  onUseResult,
   onClosed,
 }: {
   edit: ThumbnailEdit;
-  onApplied: (video: Video, mark: DetailMark) => void;
+  onUseResult: (result: Blob) => void;
   onClosed: () => void;
 }) {
   const text = t.player.thumbnailEdit;
@@ -288,11 +288,11 @@ export default function ThumbnailEditor({
     polling.pause();
     setBusy("apply");
     setApplyFailure(null);
-    const mark = detailMark();
     try {
-      const video = await applyThumbnailEdit(editId);
+      const result = await getThumbnailEditResult(editId);
       settled.current = true;
-      onApplied(video, mark);
+      void discardThumbnailEdit(editId).catch(() => undefined);
+      onUseResult(result);
       onClosed();
     } catch (error) {
       setApplyFailure(text.applyFailed(errorText(error)));
@@ -428,6 +428,19 @@ export default function ThumbnailEditor({
           disabled={inputsLocked}
           onChange={(event) => setPrompt(event.target.value)}
         />
+        <div role="group" aria-label={text.presetsLabel} className="flex flex-wrap gap-2">
+          {PRESETS.map((preset) => (
+            <Button
+              key={preset.id}
+              variant="outline"
+              size="sm"
+              disabled={inputsLocked}
+              onClick={() => setPrompt(preset.prompt)}
+            >
+              {text.presets[preset.id]}
+            </Button>
+          ))}
+        </div>
         <FieldDescription>{text.instructionsHint}</FieldDescription>
       </Field>
       <Field>
@@ -526,7 +539,7 @@ export default function ThumbnailEditor({
               className="animate-spin motion-reduce:animate-none"
             />
           )}
-          {busy === "apply" ? text.applying : text.apply}
+          {busy === "apply" ? text.applying : t.player.thumbnailUpload.ai.use}
         </Button>
         <div className="flex gap-2">
           <Button

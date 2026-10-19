@@ -331,8 +331,7 @@ unable to tell what was written.
 ### The page frames the cover as it frames an uploaded image
 
 The comparison decodes the cover in the page and draws it on the video's
-aspect with the uploaded image's fits, `Whole image` by default or
-`Fill frame` with the owner's zoom and position
+aspect with the uploaded image's free placement, `Whole image` by default
 ([thumbnail-editing.md](thumbnail-editing.md#the-page-frames-the-image-before-it-is-sent)).
 `Adjust framing` opens the same preview; its `Use this framing` keeps the
 fit and uploads nothing. The diagram shows an apply with the cover selected.

@@ -1,17 +1,34 @@
-import { ImageUp, LoaderCircle } from "lucide-react";
+import { FileImage, Film, ImageUp, LoaderCircle } from "lucide-react";
 import { type ChangeEvent, useEffect, useRef, useState } from "react";
 
 import {
+  discardThumbnailEdit,
+  getThumbnailEditFrame,
   isAborted,
   RequestFailed,
+  startThumbnailEdit,
+  type ThumbnailEditStart,
   uploadThumbnailImage,
   type Video,
 } from "../../api/client";
 import { detailMark, type DetailMark } from "../../api/useVideoDetail";
 import { errorText, t, type UiText } from "../../i18n";
+import { formatDuration } from "../../lib/format";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../../ui/shadcn/dropdown-menu";
 import { Input } from "../../ui/shadcn/input";
 import ActionButton from "../ActionButton";
-import { encodeComposition, loadUploadImage, type UploadImage } from "./composeImage";
+import type { ThumbnailCapture } from "../VideoFacts";
+import {
+  encodeComposition,
+  type LoadResult,
+  loadUploadImage,
+  type UploadImage,
+} from "./composeImage";
 import { type Fit, frameAspect } from "./framing";
 import { UPLOAD_TYPES, uploadRefusal } from "./uploadRules";
 
@@ -35,7 +52,8 @@ export function useThumbnailUpload(
   applying: boolean;
   preview: UploadPreviewState | null;
   choose: (file: File) => void;
-  apply: (fit: Fit) => void;
+  chooseSource: (start: ThumbnailEditStart, name: string) => void;
+  apply: (fit: Fit, replaced: UploadImage | null) => void;
   cancel: () => void;
 } {
   const [sending, setSending] = useState(false);
@@ -68,13 +86,12 @@ export function useThumbnailUpload(
 
   const text = t.player.thumbnailUpload;
 
-  const choose = (file: File) => {
-    if (busy.current) return;
-    const refusal = uploadRefusal(file);
-    if (refusal !== null) {
-      report(refusal === "type" ? text.refusedType : text.refusedSize);
-      return;
-    }
+  /** Decode in the background and open the preview unless the page or the video changed meanwhile. */
+  const open = (
+    name: string,
+    load: Promise<LoadResult>,
+    failed: (error: unknown) => void,
+  ) => {
     busy.current = true;
     report(null);
     setPreparing(true);
@@ -83,7 +100,7 @@ export function useThumbnailUpload(
       aspect: frameAspect(video),
       contentVersion: video.contentVersion ?? "",
     };
-    loadUploadImage(file)
+    load
       .then((loaded) => {
         if (!live.current || videoId.current !== opened.id) {
           if ("image" in loaded) loaded.image.bitmap.close();
@@ -95,15 +112,36 @@ export function useThumbnailUpload(
           busy.current = false;
           return;
         }
-        setPreview({ image: loaded.image, name: file.name, ...opened });
+        setPreview({ image: loaded.image, name, ...opened });
       })
-      .catch(() => {
-        if (live.current) report(text.failed(t.errors.reason.thumbnail_upload_invalid));
+      .catch((error: unknown) => {
+        if (live.current && !isAborted(error)) failed(error);
         busy.current = false;
       })
       .finally(() => {
         if (live.current) setPreparing(false);
       });
+  };
+
+  const choose = (file: File) => {
+    if (busy.current) return;
+    const refusal = uploadRefusal(file);
+    if (refusal !== null) {
+      report(refusal === "type" ? text.refusedType : text.refusedSize);
+      return;
+    }
+    open(file.name, loadUploadImage(file), () =>
+      report(text.failed(t.errors.reason.thumbnail_upload_invalid)),
+    );
+  };
+
+  /** A frame or the current thumbnail, read through a short-lived edit session at its full size. */
+  const chooseSource = (start: ThumbnailEditStart, name: string) => {
+    if (busy.current) return;
+    open(name, loadSource(video.id, start), (error) => {
+      report(t.player.thumbnailEdit.startFailed(errorText(error)));
+      if (staleAfter(error)) onStale?.();
+    });
   };
 
   const close = (current: UploadPreviewState) => {
@@ -117,17 +155,20 @@ export function useThumbnailUpload(
     busy.current = false;
   };
 
-  const apply = (fit: Fit) => {
+  /** replaced, a touch-up result standing for the picked image, is closed with it. */
+  const apply = (fit: Fit, replaced: UploadImage | null) => {
     if (preview === null || applying) return;
     const current = preview;
     setApplying(true);
-    encodeComposition(current.image, current.aspect, fit)
+    encodeComposition(replaced ?? current.image, current.aspect, fit)
       .then((composed) => {
+        replaced?.bitmap.close();
         if (!live.current) return;
         close(current);
         send(new File([composed], "thumbnail.png", { type: "image/png" }), current);
       })
       .catch(() => {
+        replaced?.bitmap.close();
         if (!live.current) return;
         close(current);
         busy.current = false;
@@ -158,7 +199,19 @@ export function useThumbnailUpload(
       });
   };
 
-  return { sending, preparing, applying, preview, choose, apply, cancel };
+  return { sending, preparing, applying, preview, choose, chooseSource, apply, cancel };
+}
+
+async function loadSource(
+  videoId: number,
+  start: ThumbnailEditStart,
+): Promise<LoadResult> {
+  const session = await startThumbnailEdit(videoId, start);
+  try {
+    return await loadUploadImage(await getThumbnailEditFrame(session.id));
+  } finally {
+    void discardThumbnailEdit(session.id).catch(() => undefined);
+  }
 }
 
 function staleAfter(error: unknown): boolean {
@@ -166,17 +219,27 @@ function staleAfter(error: unknown): boolean {
   return error.status === 404 || error.reason === "content_changed";
 }
 
-/** Reset the file input after selection so the same file can be chosen again. Locked actions retain focus but never open the picker. */
-export default function UploadEntry({
+/** One entry for every way to change the thumbnail: the frame on screen, the current thumbnail or an image file, each opening the preview. The frame's position is read when the menu opens. Locked actions retain focus but never open the menu. */
+export default function ThumbnailEntry({
   sending,
   locked,
+  capture,
+  thumbnailUrl,
   onFile,
+  onSource,
 }: {
   sending: boolean;
   locked: boolean;
+  capture?: ThumbnailCapture;
+  thumbnailUrl: string | undefined;
   onFile: (file: File) => void;
+  onSource: (start: ThumbnailEditStart, name: string) => void;
 }) {
+  const text = t.player.thumbnailUpload;
+  const edit = t.player.thumbnailEdit;
   const fileInput = useRef<HTMLInputElement | null>(null);
+  const [positionMs, setPositionMs] = useState<number | null>(null);
+  const [open, setOpen] = useState(false);
   const disabled = sending || locked;
 
   const choose = (event: ChangeEvent<HTMLInputElement>) => {
@@ -187,23 +250,70 @@ export default function UploadEntry({
 
   return (
     <>
-      <ActionButton
-        label={t.player.thumbnailUpload.entry}
-        aria-disabled={disabled || undefined}
-        onClick={() => {
-          if (!disabled) fileInput.current?.click();
+      <DropdownMenu
+        open={open && !disabled}
+        onOpenChange={(next) => {
+          if (next) setPositionMs(framePosition(capture));
+          setOpen(next);
         }}
-        className="aria-disabled:cursor-default"
       >
-        {sending ? (
-          <LoaderCircle
-            aria-hidden="true"
-            className="animate-spin motion-reduce:animate-none"
-          />
-        ) : (
-          <ImageUp aria-hidden="true" />
-        )}
-      </ActionButton>
+        <DropdownMenuTrigger asChild>
+          <ActionButton
+            label={text.entry}
+            aria-disabled={disabled || undefined}
+            aria-busy={sending || undefined}
+            className="aria-disabled:cursor-default data-[state=open]:bg-accent"
+          >
+            {sending ? (
+              <LoaderCircle
+                aria-hidden="true"
+                className="animate-spin motion-reduce:animate-none"
+              />
+            ) : (
+              <ImageUp aria-hidden="true" />
+            )}
+          </ActionButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            disabled={positionMs === null}
+            onSelect={() => {
+              if (positionMs === null) return;
+              setOpen(false);
+              capture?.pause();
+              const name = edit.frameAt(formatDuration(positionMs));
+              onSource({ source: "frame", positionMs }, name);
+            }}
+          >
+            <Film aria-hidden="true" />
+            {positionMs === null ? (
+              edit.frameOnScreen
+            ) : (
+              <span className="tabular-nums">
+                {edit.frameAt(formatDuration(positionMs))}
+              </span>
+            )}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              setOpen(false);
+              onSource({ source: "thumbnail" }, edit.currentThumbnail);
+            }}
+          >
+            <ThumbnailImage url={thumbnailUrl} />
+            {edit.currentThumbnail}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onSelect={() => {
+              setOpen(false);
+              fileInput.current?.click();
+            }}
+          >
+            <FileImage aria-hidden="true" />
+            {text.chooseFile}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <Input
         ref={fileInput}
         type="file"
@@ -215,5 +325,29 @@ export default function UploadEntry({
         onChange={choose}
       />
     </>
+  );
+}
+
+function framePosition(capture: ThumbnailCapture | undefined): number | null {
+  if (capture === undefined || !capture.enabled) return null;
+  const raw = capture.positionMs();
+  if (raw === null || !Number.isFinite(raw)) return null;
+  return Math.max(0, Math.round(raw));
+}
+
+/** Use empty alt because the menu item supplies the name; preserve an empty box while loading. */
+function ThumbnailImage({ url }: { url: string | undefined }) {
+  const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
+  return (
+    <span className="aspect-video h-6 shrink-0 overflow-hidden rounded-sm bg-card">
+      {url !== undefined && url !== brokenUrl && (
+        <img
+          src={url}
+          alt=""
+          onError={() => setBrokenUrl(url)}
+          className="size-full object-cover"
+        />
+      )}
+    </span>
   );
 }

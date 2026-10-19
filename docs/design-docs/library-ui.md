@@ -628,26 +628,31 @@ lines shows `Show more`. A video without work information shows the rows as
 before, and the row adds no prompt to fill it in.
 
 The actions are favorite, `Add to playlist`, `Add to group`, `Edit details`,
-`Use current frame as thumbnail`,
-`Edit thumbnail with ComfyUI`, `Upload an image as thumbnail`, `Open file` and
-`Copy path`: icon-only ghost buttons with tooltips. The ComfyUI entry opens the
-thumbnail editor, an `EditorDialog` over the page, and is dimmed with a set-up
-popover until a ComfyUI connection is saved; while its generated image is the
-thumbnail, the thumbnail item shows that image with `Use the frame instead`.
-The upload entry is the owner's even when the player is not shown, and does not
-depend on ComfyUI. It opens the browser's file picker for PNG, JPEG and WebP,
-refuses another type or a file over 64 MB on the failure line before sending
-anything, and spins while it reads the picked file and while it sends. A
-readable file opens `Preview thumbnail`, an `EditorDialog` whose stage shows
+`Use current frame as thumbnail`, `Change thumbnail`, `Open file` and
+`Copy path`: icon-only ghost buttons with tooltips. `Change thumbnail` is the
+owner's even when the player is not shown and does not depend on ComfyUI; its
+menu offers the frame on screen (only while a frame is shown), the current
+thumbnail with a small copy of it, and `Upload an image…`, which opens the
+browser's file picker for PNG, JPEG and WebP and refuses another type or a
+file over 64 MB on the failure line before sending anything. The entry spins
+while it reads the chosen source and while it sends. A
+readable source opens `Preview thumbnail`, an `EditorDialog` whose stage shows
 the image in the card's 16:9 thumbnail frame exactly as it will be stored:
-`Whole image` (the default) or `Fill frame`, which adds `Zoom` and lets the
-owner drag the image, or move it with the arrow keys and zoom with `+` and
-`-`. `Use as thumbnail` closes it and sends; `Cancel`, `×` and Esc send
+the owner drags the image anywhere (or moves it with the arrow keys), zooms it
+with `Zoom`, the wheel, `+` and `-`, turns it a quarter at a time, picks what
+fills the empty space, and returns to `Whole image` or `Fill frame` with one
+button, while the part outside the frame shows faintly around it. With ComfyUI set up, `Touch up with ComfyUI` runs one of four fixed
+instructions or the owner's own on the framing, shows `Before` and `After`,
+and `Use result` makes the result the image; `Paint or add a reference…`
+opens the ComfyUI editor on the framing and its result comes back the same
+way. Without ComfyUI the section says to save a connection, with
+`Open Settings`.
+`Use as thumbnail` closes it and sends; `Cancel`, `×` and Esc send
 nothing
 ([thumbnail editing](thumbnail-editing.md#the-page-frames-the-image-before-it-is-sent)).
 While an uploaded image is the thumbnail,
 the thumbnail item shows it with an `ImageUp` icon, the label
-`Uploaded thumbnail` and the same `Use the frame instead`. One thumbnail
+`Uploaded thumbnail` and `Use the frame instead`. One thumbnail
 action sends at a time: while the capture, a `×` or the upload sends, the
 others are `aria-disabled`. Dates show the date only;
 the time is in the `title` attribute and in a popover opened by pressing the

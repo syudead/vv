@@ -93,7 +93,7 @@ describe("VideoPage work-info fetch", () => {
     expect(
       details.compareDocumentPosition(fetchEntry) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    const edit = screen.getByRole("button", { name: "Edit thumbnail with ComfyUI" });
+    const edit = screen.getByRole("button", { name: "Change thumbnail" });
     expect(
       fetchEntry.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();

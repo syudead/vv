@@ -42,7 +42,7 @@ describe("GroupPage", () => {
       "Episode 2",
     ]);
     expect(crumbs()).toEqual(["Home", "Season"]);
-    expect(document.title).toBe("Season");
+    await waitFor(() => expect(document.title).toBe("Season"));
   });
 
   it("子グループを開くと帯が 1 段伸び、帯のリンクで上へ戻れる", async () => {
@@ -446,7 +446,7 @@ describe("GroupPage", () => {
       { method: "PATCH", path: "/api/groups/5", body: { name: "Bonus clips" } },
     ]);
     expect(crumbs()).toEqual(["Home", "Season", "Bonus clips"]);
-    expect(document.title).toBe("Bonus clips");
+    await waitFor(() => expect(document.title).toBe("Bonus clips"));
     await waitFor(() =>
       expect(document.activeElement).toBe(screen.getByRole("button", { name: "More" })),
     );

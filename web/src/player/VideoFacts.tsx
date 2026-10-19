@@ -39,7 +39,6 @@ import { useToast } from "../ui/Toast";
 import ActionButton from "./ActionButton";
 import { factTrigger } from "./factTrigger";
 import { technicalSummary } from "./properties";
-import EditEntry from "./thumbnailEdit/EditEntry";
 import UploadEntry, { useThumbnailUpload } from "./thumbnailUpload/UploadEntry";
 import UploadPreview from "./thumbnailUpload/UploadPreview";
 import DetailsEntry, { type DetailsEntryProps } from "./detailsEditor/DetailsEntry";
@@ -311,6 +310,15 @@ export default function VideoFacts({
   const thumbnail = useThumbnailPosition(video.id, setFailure, onChanged, onStale);
   const upload = useThumbnailUpload(video, setFailure, onChanged, onStale);
   const uploadBusy = upload.sending || upload.preparing;
+  const previewOpen = upload.preview !== null;
+  const editingChange = useRef(onEditingChange);
+  editingChange.current = onEditingChange;
+  // Page shortcuts wait while the preview is open.
+  useEffect(() => {
+    if (!previewOpen) return;
+    editingChange.current?.(true);
+    return () => editingChange.current?.(false);
+  }, [previewOpen]);
   const toast = useToast();
   const location = video.location;
   const duration = formatDuration(video.durationMs);
@@ -399,27 +407,20 @@ export default function VideoFacts({
                 onCapture={(positionMs) => thumbnail.send(positionMs)}
               />
             )}
-            {/* Thumbnail editing remains available without a player. */}
-            {owner && (
-              <EditEntry
-                videoId={video.id}
-                capture={capture}
-                thumbnailUrl={video.thumbnailUrl}
-                report={setFailure}
-                onApplied={(applied, mark) => onChanged?.(applied, mark)}
-                onStale={onStale}
-                onEditingChange={onEditingChange}
-              />
-            )}
+            {/* Changing the thumbnail remains available without a player. */}
             {owner && (
               <UploadEntry
                 sending={uploadBusy}
                 locked={thumbnail.sending !== null}
+                capture={capture}
+                thumbnailUrl={video.thumbnailUrl}
                 onFile={upload.choose}
+                onSource={upload.chooseSource}
               />
             )}
             {upload.preview !== null && (
               <UploadPreview
+                videoId={video.id}
                 image={upload.preview.image}
                 name={upload.preview.name}
                 aspect={upload.preview.aspect}

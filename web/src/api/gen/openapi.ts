@@ -619,9 +619,29 @@ export interface paths {
         put?: never;
         /**
          * Start thumbnail editing from a frame or the current thumbnail
-         * @description Owner-only. For source=frame, extracts positionMs as PNG with the video's long edge capped at 2048 px. For source=thumbnail, uses the original applied image (long edge at most 2048 px), otherwise the explicit thumbnail frame or the automatic job position, falling back to the first frame. Returns a ready session with 201; it retains its starting image. Cancels any prior ComfyUI run for this video before closing its session. Missing/out-of-range frame position returns 400 thumbnail_position_out_of_range; other position/location errors follow the thumbnail-position endpoint. Missing ComfyUI configuration returns 409 thumbnail_edit_not_ready; unavailable frame or saved image returns 409 thumbnail_frame_unavailable. Sessions are memory-only and emit no events.
+         * @description Owner-only. For source=frame, extracts positionMs as PNG with the video's long edge capped at 2048 px. For source=thumbnail, uses the original applied image (long edge at most 2048 px), otherwise the explicit thumbnail frame or the automatic job position, falling back to the first frame. Returns a ready session with 201; it retains its starting image. Cancels any prior ComfyUI run for this video before closing its session. Missing/out-of-range frame position returns 400 thumbnail_position_out_of_range; other position/location errors follow the thumbnail-position endpoint. Needs no ComfyUI configuration, so the page can read the starting image to frame it; runs return 409 thumbnail_edit_not_ready without one. Unavailable frame or saved image returns 409 thumbnail_frame_unavailable. Sessions are memory-only and emit no events.
          */
         post: operations["startThumbnailEdit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/thumbnail-edits/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start thumbnail editing from an image the page sends
+         * @description Owner-only. Starts a session whose starting image is the sent PNG, JPEG or WebP of at most 20 MiB and 8192 × 8192 pixels, such as the framing a thumbnail preview drew; it needs no readable media file, and source is image. Otherwise behaves like startThumbnailEdit: a ready session with 201 that replaces any prior session for the video. An oversized image returns 400 thumbnail_upload_too_large with limit; an unreadable one 400 thumbnail_upload_invalid. Runs need a ComfyUI configuration.
+         */
+        post: operations["startThumbnailEditFromImage"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3226,10 +3246,17 @@ export interface components {
             positionMs?: number;
         };
         /**
-         * @description Editing source: frame uses the selected video frame; thumbnail uses the current thumbnail.
+         * @description Editing source: frame uses the selected video frame; thumbnail uses the current thumbnail; image uses an image sent to startThumbnailEditFromImage and is refused by startThumbnailEdit.
          * @enum {string}
          */
-        ThumbnailEditSource: "frame" | "thumbnail";
+        ThumbnailEditSource: "frame" | "thumbnail" | "image";
+        StartThumbnailEditFromImageRequest: {
+            /**
+             * Format: binary
+             * @description Starting image: PNG, JPEG or WebP, at most 20 MiB and 8192 × 8192 pixels.
+             */
+            image: string;
+        };
         RunThumbnailEditRequest: {
             /** @description Owner's instruction; when omitted with a painted mask, use vv's default instruction. */
             prompt?: string;
@@ -6608,6 +6635,8 @@ export interface operations {
             query?: {
                 /** @description Version in the URL returned by list or detail */
                 v?: string;
+                /** @description `large` returns the poster published with the thumbnail for display larger than a card, its long side up to 2048 px; without one it returns the 640 px image. */
+                size?: "large";
             };
             header?: never;
             path: {
@@ -6956,6 +6985,37 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["StartThumbnailEditRequest"];
+            };
+        };
+        responses: {
+            /** @description Started session */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThumbnailEdit"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    startThumbnailEditFromImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Video ID */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["StartThumbnailEditFromImageRequest"];
             };
         };
         responses: {

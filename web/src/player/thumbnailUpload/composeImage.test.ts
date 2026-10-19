@@ -2,10 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   drawComposition,
+  drawOverflow,
   encodeComposition,
   loadUploadImage,
   type UploadImage,
 } from "./composeImage";
+import { type Fit, fillFrame, WHOLE_IMAGE } from "./framing";
 
 // jsdom lacks canvas and decoding; fake the 2D context and createImageBitmap.
 
@@ -115,6 +117,10 @@ function fakeContext(withFilter = true) {
         `draw alpha=${String(context.globalAlpha)} filter=${context.filter ?? "-"}`,
       ),
     ),
+    clearRect: vi.fn(() => calls.push("clear")),
+    scale: vi.fn(),
+    translate: vi.fn(),
+    rotate: vi.fn(),
     save: vi.fn(),
     restore: vi.fn(() => {
       context.globalAlpha = 1;
@@ -127,6 +133,10 @@ function fakeContext(withFilter = true) {
     imageSmoothingQuality: string;
     fillRect: ReturnType<typeof vi.fn>;
     drawImage: ReturnType<typeof vi.fn>;
+    clearRect: ReturnType<typeof vi.fn>;
+    scale: ReturnType<typeof vi.fn>;
+    translate: ReturnType<typeof vi.fn>;
+    rotate: ReturnType<typeof vi.fn>;
     save: ReturnType<typeof vi.fn>;
     restore: ReturnType<typeof vi.fn>;
     filter?: string;
@@ -145,11 +155,13 @@ function canvasWith(context: unknown): HTMLCanvasElement {
 
 const portrait: UploadImage = { bitmap: bitmap(1000, 2000), width: 1000, height: 2000 };
 
+const wide = { width: 2048, height: 1152 };
+
 describe("drawComposition", () => {
   it("動画の比率の大きさにし、黒で塗ってから、余白にぼかした画像、手前に画像を描く", () => {
     const { context, calls } = fakeContext();
     const canvas = canvasWith(context);
-    drawComposition(canvas, portrait, 16 / 9, { mode: "contain" });
+    drawComposition(canvas, portrait, 16 / 9, WHOLE_IMAGE);
     expect([canvas.width, canvas.height]).toEqual([2048, 1152]);
     expect(calls).toEqual([
       "fill black",
@@ -165,31 +177,75 @@ describe("drawComposition", () => {
     );
   });
 
-  it("枠いっぱいに広げると余白が無く、黒で塗ってから画像だけを描く", () => {
+  it("枠を覆うと余白が無く、黒で塗ってから画像だけを描く", () => {
+    const { context, calls } = fakeContext();
+    drawComposition(
+      canvasWith(context),
+      portrait,
+      16 / 9,
+      fillFrame(portrait, wide, WHOLE_IMAGE),
+    );
+    expect(calls).toEqual(["fill black", "draw alpha=1 filter=none"]);
+    const [, x, y, width, height] = context.drawImage.mock.lastCall as [
+      unknown,
+      number,
+      number,
+      number,
+      number,
+    ];
+    expect([x, y, width, height].map(Math.round)).toEqual([0, -1472, 2048, 4096]);
+  });
+
+  it("余白を黒にすると、ぼかした画像を描かない", () => {
     const { context, calls } = fakeContext();
     drawComposition(canvasWith(context), portrait, 16 / 9, {
-      mode: "cover",
-      zoom: 1,
-      panX: 0,
-      panY: 1,
+      ...WHOLE_IMAGE,
+      backdrop: "black",
     });
     expect(calls).toEqual(["fill black", "draw alpha=1 filter=none"]);
+  });
+
+  it("回すと置いた枠の中心で回し、元の向きの大きさで描く", () => {
+    const { context } = fakeContext();
+    const fit: Fit = { ...WHOLE_IMAGE, rotation: 90, backdrop: "black" };
+    drawComposition(canvasWith(context), portrait, 16 / 9, fit);
+    expect(context.translate).toHaveBeenLastCalledWith(1024, 576);
+    expect(context.rotate).toHaveBeenLastCalledWith(Math.PI / 2);
     expect(context.drawImage).toHaveBeenLastCalledWith(
       portrait.bitmap,
-      0,
-      1152 - 4096,
+      -512,
+      -1024,
+      1024,
       2048,
-      4096,
     );
   });
 
   it("ぼかしを描けない文脈では余白は黒だけで、文脈が無ければ何もしない", () => {
     const { context, calls } = fakeContext(false);
-    drawComposition(canvasWith(context), portrait, 16 / 9, { mode: "contain" });
+    drawComposition(canvasWith(context), portrait, 16 / 9, WHOLE_IMAGE);
     expect(calls).toEqual(["fill black", "draw alpha=1 filter=-"]);
     expect(() =>
-      drawComposition(canvasWith(null), portrait, 16 / 9, { mode: "contain" }),
+      drawComposition(canvasWith(null), portrait, 16 / 9, WHOLE_IMAGE),
     ).not.toThrow();
+  });
+});
+
+describe("drawOverflow", () => {
+  it("枠を真ん中に置いた 3 倍の広さに、縮めて画像だけを描く", () => {
+    const { context, calls } = fakeContext();
+    const canvas = canvasWith(context);
+    drawOverflow(canvas, portrait, 16 / 9, WHOLE_IMAGE, 0.25);
+    expect([canvas.width, canvas.height]).toEqual([1536, 864]);
+    expect(calls).toEqual(["clear", "draw alpha=1 filter=none"]);
+    expect(context.scale).toHaveBeenCalledWith(0.25, 0.25);
+    expect(context.translate).toHaveBeenCalledWith(2048, 1152);
+    expect(context.drawImage).toHaveBeenLastCalledWith(
+      portrait.bitmap,
+      736,
+      0,
+      576,
+      1152,
+    );
   });
 });
 
@@ -209,9 +265,7 @@ describe("encodeComposition", () => {
       .mockImplementationOnce((done) => done(png))
       .mockImplementationOnce((done) => done(null));
 
-    await expect(encodeComposition(portrait, 16 / 9, { mode: "contain" })).resolves.toBe(
-      png,
-    );
+    await expect(encodeComposition(portrait, 16 / 9, WHOLE_IMAGE)).resolves.toBe(png);
     expect(toBlob).toHaveBeenLastCalledWith(expect.any(Function), "image/png");
     expect(context.drawImage).toHaveBeenLastCalledWith(
       portrait.bitmap,
@@ -220,8 +274,6 @@ describe("encodeComposition", () => {
       576,
       1152,
     );
-    await expect(
-      encodeComposition(portrait, 16 / 9, { mode: "contain" }),
-    ).rejects.toThrow();
+    await expect(encodeComposition(portrait, 16 / 9, WHOLE_IMAGE)).rejects.toThrow();
   });
 });

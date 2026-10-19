@@ -13,11 +13,13 @@ import {
   video,
 } from "../testing/workInfoFetchPage";
 import type { PlayerControls } from "./playerControls";
+import { WHOLE_IMAGE } from "./thumbnailUpload/framing";
 
 // jsdom lacks canvas rendering and image decoding; replace those boundaries.
 const compose = vi.hoisted(() => ({
   loadUploadImage: vi.fn(),
   drawComposition: vi.fn(),
+  drawOverflow: vi.fn(),
   encodeComposition: vi.fn(),
 }));
 
@@ -111,7 +113,8 @@ describe("VideoPage work-info fetch cover", () => {
       await within(dialog).findByRole("button", { name: "Adjust framing" }),
     );
     const preview = await screen.findByRole("dialog", { name: "Preview thumbnail" });
-    await user.click(within(preview).getByRole("radio", { name: "Fill frame" }));
+    await user.click(within(preview).getByRole("button", { name: "Turn right" }));
+    await user.click(within(preview).getByRole("radio", { name: "Black" }));
     await user.click(within(preview).getByRole("button", { name: "Use this framing" }));
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: "Preview thumbnail" })).toBeNull(),
@@ -124,10 +127,9 @@ describe("VideoPage work-info fetch cover", () => {
       coverByPage: true,
     });
     expect(compose.encodeComposition).toHaveBeenCalledWith(cover, 1920 / 1080, {
-      mode: "cover",
-      zoom: 1,
-      panX: 0,
-      panY: 0,
+      ...WHOLE_IMAGE,
+      rotation: 90,
+      backdrop: "black",
     });
     const form = server.upload.mock.calls[0]![0] as FormData;
     expect(form.get("contentVersion")).toBe("v1");

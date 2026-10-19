@@ -162,7 +162,7 @@ describe("VideoDetailsEditor", () => {
     const aside = screen.getByRole("complementary", { name: "Video" });
     expect(within(aside).getByText("テスト動画.mp4")).toBeDefined();
     expect(within(aside).getByText("4:02 · 1000 B · 1920×1080")).toBeDefined();
-    expect(document.title).toBe("Edit details · テスト動画");
+    await waitFor(() => expect(document.title).toBe("Edit details · テスト動画"));
   });
 
   it("動画が無ければ消えた状態を出し、Save を押せない", async () => {

@@ -177,3 +177,32 @@ func TestThumbnailEditKeepsItsImageAfterRevert(t *testing.T) {
 		t.Fatalf("extracted at %v after the revert", got)
 	}
 }
+
+// An image the page sends becomes the session's frame without a media file; an unreadable one starts nothing.
+func TestThumbnailEditStartFromImage(t *testing.T) {
+	f := newEditsFixture(t)
+	ctx := context.Background()
+	sent := testPNG(t, 6, 5)
+	edit, err := f.edits.Start(ctx, editVideo(1), "", domain.ThumbnailEditStart{
+		Source: domain.ThumbnailEditFromImage, Image: sent,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSource(t, edit, domain.ThumbnailEditFromImage, nil)
+	frame, err := f.edits.Frame(ctx, edit.ID)
+	config, decodeErr := png.DecodeConfig(bytes.NewReader(frame))
+	if err != nil || decodeErr != nil || config.Width != 6 || config.Height != 5 {
+		t.Fatalf("frame = %+v, %v, %v", config, err, decodeErr)
+	}
+
+	_, err = f.edits.Start(ctx, editVideo(1), "", domain.ThumbnailEditStart{
+		Source: domain.ThumbnailEditFromImage, Image: []byte("not an image"),
+	})
+	if !errors.Is(err, domain.ErrThumbnailUploadInvalid) {
+		t.Fatalf("unreadable image: %v", err)
+	}
+	if _, err := f.edits.Get(ctx, edit.ID); err != nil {
+		t.Fatalf("a refused start ended the session: %v", err)
+	}
+}

@@ -214,3 +214,44 @@ func TestThumbnailURLVersionIncludesRevision(t *testing.T) {
 		})
 	}
 }
+
+func TestLargeThumbnailServesThePoster(t *testing.T) {
+	artifacts, video := thumbnailFixture(t)
+	poster := filepath.Join(t.TempDir(), "poster.jpg")
+	if err := os.WriteFile(poster, []byte{0xff, 0xd8, 0xff, 0xdb, 0x20, 0x48}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	artifacts.posters = map[string]string{video.ContentKey: poster}
+	handler := newTestServer(t, Options{
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+		Artifacts: artifacts,
+	})
+
+	rec := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail?v=abcdef012345&size=large")
+	if rec.Code != http.StatusOK || rec.Body.String() != "\xff\xd8\xff\xdb\x20\x48" {
+		t.Fatalf("status = %d, body = %x, want the poster", rec.Code, rec.Body.Bytes())
+	}
+	if got := rec.Header().Get("Cache-Control"); got != cacheRevalidate || rec.Header().Get("ETag") == "" {
+		t.Errorf("Cache-Control = %q, ETag = %q", got, rec.Header().Get("ETag"))
+	}
+	if card := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail?v=abcdef012345"); card.Body.String() == rec.Body.String() {
+		t.Error("the card thumbnail served the poster")
+	}
+}
+
+func TestLargeThumbnailWithoutPosterServesTheThumbnail(t *testing.T) {
+	artifacts, video := thumbnailFixture(t)
+	handler := newTestServer(t, Options{
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+		Artifacts: artifacts,
+	})
+	file, err := os.ReadFile(artifacts.thumbnails[video.ContentKey])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail?v=abcdef012345&size=large")
+	if rec.Code != http.StatusOK || rec.Body.String() != string(file) {
+		t.Fatalf("status = %d, body = %x, want the 640 px file", rec.Code, rec.Body.Bytes())
+	}
+}

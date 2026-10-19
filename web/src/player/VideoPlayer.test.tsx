@@ -733,7 +733,7 @@ describe("VideoPlayer", () => {
     );
     expect(mock.instances).toHaveLength(1);
     expect(mock.instances[0]?.disposed).toBe(false);
-    expect(mock.instances[0]?.posterValue).toBe("/api/videos/7/thumbnail?v=1");
+    expect(mock.instances[0]?.posterValue).toBe("/api/videos/7/thumbnail?v=1&size=large");
   });
 
   it("読み取りが終わって再生できるようになったら作り直す", async () => {

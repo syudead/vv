@@ -1767,6 +1767,7 @@ func (e ThumbnailEditFailure) Valid() bool {
 // Defines values for ThumbnailEditSource.
 const (
 	ThumbnailEditSourceFrame     ThumbnailEditSource = "frame"
+	ThumbnailEditSourceImage     ThumbnailEditSource = "image"
 	ThumbnailEditSourceThumbnail ThumbnailEditSource = "thumbnail"
 )
 
@@ -1774,6 +1775,8 @@ const (
 func (e ThumbnailEditSource) Valid() bool {
 	switch e {
 	case ThumbnailEditSourceFrame:
+		return true
+	case ThumbnailEditSourceImage:
 		return true
 	case ThumbnailEditSourceThumbnail:
 		return true
@@ -2379,6 +2382,21 @@ func (e WorkPersonRole) Valid() bool {
 	case Photographer:
 		return true
 	case Streamer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetVideoThumbnailParamsSize.
+const (
+	Large GetVideoThumbnailParamsSize = "large"
+)
+
+// Valid indicates whether the value is a known member of the GetVideoThumbnailParamsSize enum.
+func (e GetVideoThumbnailParamsSize) Valid() bool {
+	switch e {
+	case Large:
 		return true
 	default:
 		return false
@@ -4739,12 +4757,18 @@ type StartAutoTaggingRequest struct {
 // StartAutoTaggingRequestScope defines model for StartAutoTaggingRequest.Scope.
 type StartAutoTaggingRequestScope string
 
+// StartThumbnailEditFromImageRequest defines model for StartThumbnailEditFromImageRequest.
+type StartThumbnailEditFromImageRequest struct {
+	// Image Starting image: PNG, JPEG or WebP, at most 20 MiB and 8192 × 8192 pixels.
+	Image openapi_types.File `json:"image"`
+}
+
 // StartThumbnailEditRequest defines model for StartThumbnailEditRequest.
 type StartThumbnailEditRequest struct {
 	// PositionMs Required only for frame: frame position in milliseconds, nonnegative and below duration. Ignored for thumbnail.
 	PositionMs *int64 `json:"positionMs,omitempty"`
 
-	// Source Editing source: frame uses the selected video frame; thumbnail uses the current thumbnail.
+	// Source Editing source: frame uses the selected video frame; thumbnail uses the current thumbnail; image uses an image sent to startThumbnailEditFromImage and is refused by startThumbnailEdit.
 	Source ThumbnailEditSource `json:"source"`
 }
 
@@ -4934,7 +4958,7 @@ type ThumbnailEdit struct {
 	// ResultUrl Output image at GET /api/thumbnail-edits/{editId}/result; succeeded only.
 	ResultUrl *string `json:"resultUrl,omitempty"`
 
-	// Source Editing source: frame uses the selected video frame; thumbnail uses the current thumbnail.
+	// Source Editing source: frame uses the selected video frame; thumbnail uses the current thumbnail; image uses an image sent to startThumbnailEditFromImage and is refused by startThumbnailEdit.
 	Source ThumbnailEditSource `json:"source"`
 
 	// State Editing session state.
@@ -4966,7 +4990,7 @@ type ThumbnailEditReadiness struct {
 	Connection bool `json:"connection"`
 }
 
-// ThumbnailEditSource Editing source: frame uses the selected video frame; thumbnail uses the current thumbnail.
+// ThumbnailEditSource Editing source: frame uses the selected video frame; thumbnail uses the current thumbnail; image uses an image sent to startThumbnailEditFromImage and is refused by startThumbnailEdit.
 type ThumbnailEditSource string
 
 // ThumbnailEditState Editing session state.
@@ -6477,7 +6501,13 @@ type GetVideoSubtitleParams struct {
 type GetVideoThumbnailParams struct {
 	// V Version in the URL returned by list or detail
 	V *string `form:"v,omitempty" json:"v,omitempty"`
+
+	// Size `large` returns the poster published with the thumbnail for display larger than a card, its long side up to 2048 px; without one it returns the 640 px image.
+	Size *GetVideoThumbnailParamsSize `form:"size,omitempty" json:"size,omitempty"`
 }
+
+// GetVideoThumbnailParamsSize defines parameters for GetVideoThumbnail.
+type GetVideoThumbnailParamsSize string
 
 // GetTranscodeStartParams defines parameters for GetTranscodeStart.
 type GetTranscodeStartParams struct {
@@ -6726,6 +6756,9 @@ type PutVideoProgressJSONRequestBody = ProgressUpdate
 
 // StartThumbnailEditJSONRequestBody defines body for StartThumbnailEdit for application/json ContentType.
 type StartThumbnailEditJSONRequestBody = StartThumbnailEditRequest
+
+// StartThumbnailEditFromImageMultipartRequestBody defines body for StartThumbnailEditFromImage for multipart/form-data ContentType.
+type StartThumbnailEditFromImageMultipartRequestBody = StartThumbnailEditFromImageRequest
 
 // UploadThumbnailImageMultipartRequestBody defines body for UploadThumbnailImage for multipart/form-data ContentType.
 type UploadThumbnailImageMultipartRequestBody = UploadThumbnailImageRequest
@@ -7224,6 +7257,9 @@ type ServerInterface interface {
 	// StartThumbnailEdit Start thumbnail editing from a frame or the current thumbnail
 	// (POST /api/videos/{id}/thumbnail-edits)
 	StartThumbnailEdit(w http.ResponseWriter, r *http.Request, id VideoId)
+	// StartThumbnailEditFromImage Start thumbnail editing from an image the page sends
+	// (POST /api/videos/{id}/thumbnail-edits/image)
+	StartThumbnailEditFromImage(w http.ResponseWriter, r *http.Request, id VideoId)
 	// RevertThumbnailImage Remove an applied thumbnail image
 	// (DELETE /api/videos/{id}/thumbnail-image)
 	RevertThumbnailImage(w http.ResponseWriter, r *http.Request, id VideoId)
@@ -12286,6 +12322,19 @@ func (siw *ServerInterfaceWrapper) GetVideoThumbnail(w http.ResponseWriter, r *h
 		return
 	}
 
+	// ------------- Optional query parameter "size" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "size", r.URL.Query(), &params.Size, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "size"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "size", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetVideoThumbnail(w, r, id, params)
 	}))
@@ -12314,6 +12363,32 @@ func (siw *ServerInterfaceWrapper) StartThumbnailEdit(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.StartThumbnailEdit(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartThumbnailEditFromImage operation middleware
+func (siw *ServerInterfaceWrapper) StartThumbnailEditFromImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartThumbnailEditFromImage(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -13402,6 +13477,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/videos/{id}/thumbnail-image", wrapper.RevertThumbnailImage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-image", wrapper.UploadThumbnailImage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-edits", wrapper.StartThumbnailEdit)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-edits/image", wrapper.StartThumbnailEditFromImage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/versions", wrapper.ListVideoVersions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/make-representative", wrapper.MakeRepresentativeVersion)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/unbundle", wrapper.UnbundleVideo)

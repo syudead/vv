@@ -768,6 +768,12 @@ paths:
           description: "Version in the URL returned by list or detail"
           schema:
             type: string
+        - name: size
+          in: query
+          description: "`large` returns the poster published with the thumbnail for display larger than a card, its long side up to 2048 px; without one it returns the 640 px image."
+          schema:
+            type: string
+            enum: [large]
       responses:
         "200":
           description: "Image"
@@ -1052,7 +1058,7 @@ paths:
     post:
       operationId: startThumbnailEdit
       summary: "Start thumbnail editing from a frame or the current thumbnail"
-      description: "Owner-only. For source=frame, extracts positionMs as PNG with the video's long edge capped at 2048 px. For source=thumbnail, uses the original applied image (long edge at most 2048 px), otherwise the explicit thumbnail frame or the automatic job position, falling back to the first frame. Returns a ready session with 201; it retains its starting image. Cancels any prior ComfyUI run for this video before closing its session. Missing/out-of-range frame position returns 400 thumbnail_position_out_of_range; other position/location errors follow the thumbnail-position endpoint. Missing ComfyUI configuration returns 409 thumbnail_edit_not_ready; unavailable frame or saved image returns 409 thumbnail_frame_unavailable. Sessions are memory-only and emit no events."
+      description: "Owner-only. For source=frame, extracts positionMs as PNG with the video's long edge capped at 2048 px. For source=thumbnail, uses the original applied image (long edge at most 2048 px), otherwise the explicit thumbnail frame or the automatic job position, falling back to the first frame. Returns a ready session with 201; it retains its starting image. Cancels any prior ComfyUI run for this video before closing its session. Missing/out-of-range frame position returns 400 thumbnail_position_out_of_range; other position/location errors follow the thumbnail-position endpoint. Needs no ComfyUI configuration, so the page can read the starting image to frame it; runs return 409 thumbnail_edit_not_ready without one. Unavailable frame or saved image returns 409 thumbnail_frame_unavailable. Sessions are memory-only and emit no events."
       parameters:
         - $ref: "#/components/parameters/VideoId"
       requestBody:
@@ -1061,6 +1067,35 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/StartThumbnailEditRequest"
+      responses:
+        "201":
+          description: "Started session"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ThumbnailEdit"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/videos/{id}/thumbnail-edits/image:
+    post:
+      operationId: startThumbnailEditFromImage
+      summary: "Start thumbnail editing from an image the page sends"
+      description: "Owner-only. Starts a session whose starting image is the sent PNG, JPEG or WebP of at most 20 MiB and 8192 × 8192 pixels, such as the framing a thumbnail preview drew; it needs no readable media file, and source is image. Otherwise behaves like startThumbnailEdit: a ready session with 201 that replaces any prior session for the video. An oversized image returns 400 thumbnail_upload_too_large with limit; an unreadable one 400 thumbnail_upload_invalid. Runs need a ComfyUI configuration."
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/StartThumbnailEditFromImageRequest"
       responses:
         "201":
           description: "Started session"
@@ -5586,8 +5621,18 @@ components:
 
     ThumbnailEditSource:
       type: string
-      enum: [frame, thumbnail]
-      description: "Editing source: frame uses the selected video frame; thumbnail uses the current thumbnail."
+      enum: [frame, thumbnail, image]
+      description: "Editing source: frame uses the selected video frame; thumbnail uses the current thumbnail; image uses an image sent to startThumbnailEditFromImage and is refused by startThumbnailEdit."
+
+    StartThumbnailEditFromImageRequest:
+      type: object
+      additionalProperties: false
+      required: [image]
+      properties:
+        image:
+          type: string
+          format: binary
+          description: "Starting image: PNG, JPEG or WebP, at most 20 MiB and 8192 × 8192 pixels."
     RunThumbnailEditRequest:
       type: object
       additionalProperties: false

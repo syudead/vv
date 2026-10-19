@@ -1019,9 +1019,22 @@ func TestThumbnailEditStartRejects(t *testing.T) {
 	if _, err := f.edits.Start(ctx, editVideo(1), "/a", frameStart(0)); !errors.Is(err, domain.ErrThumbnailFrameUnavailable) {
 		t.Errorf("no frame: %v", err)
 	}
+}
+
+// Reading a frame to frame it needs no connection; only a run does.
+func TestThumbnailEditStartsWithoutAConnectionButDoesNotRun(t *testing.T) {
+	f := newEditsFixture(t)
 	f.settings.settings = domain.ComfyUISettings{}
-	if _, err := f.edits.Start(ctx, editVideo(1), "/a", frameStart(0)); !errors.Is(err, domain.ErrThumbnailEditNotReady) {
-		t.Errorf("no connection: %v", err)
+	ctx := context.Background()
+	edit, err := f.edits.Start(ctx, editVideo(1), "/a", frameStart(0))
+	if err != nil {
+		t.Fatalf("Start without a connection: %v", err)
+	}
+	if _, err := f.edits.Frame(ctx, edit.ID); err != nil {
+		t.Fatalf("Frame: %v", err)
+	}
+	if _, err := f.edits.StartRun(ctx, edit.ID, domain.ThumbnailEditRunInput{}); !errors.Is(err, domain.ErrThumbnailEditNotReady) {
+		t.Fatalf("StartRun without a connection: %v", err)
 	}
 }
 

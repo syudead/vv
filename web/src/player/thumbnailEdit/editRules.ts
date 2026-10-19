@@ -29,6 +29,12 @@ export function sourceWords(
 ): SourceWords {
   const text = t.player.thumbnailEdit;
   const time = edit.positionMs === undefined ? null : formatDuration(edit.positionMs);
+  if (edit.source === "image")
+    return {
+      detail: text.framingDetail,
+      paintingHint: text.paintingHintImage,
+      sourceLabel: text.framing,
+    };
   if (edit.source === "thumbnail")
     return {
       detail: time === null ? text.thumbnailSavedImage : text.thumbnailFrameAt(time),

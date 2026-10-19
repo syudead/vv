@@ -24,6 +24,7 @@ import (
 // values/arguments are controllable.
 type fakeArtifacts struct {
 	thumbnails map[string]string
+	posters    map[string]string
 	previews   map[string]string
 
 	sprite     *domain.SeekSprite
@@ -36,6 +37,10 @@ type fakeArtifacts struct {
 
 func (f *fakeArtifacts) ThumbnailFile(contentKey string) (*os.File, error) {
 	return openFake(f.thumbnails, contentKey)
+}
+
+func (f *fakeArtifacts) PosterFile(contentKey string) (*os.File, error) {
+	return openFake(f.posters, contentKey)
 }
 
 func (f *fakeArtifacts) PreviewFile(contentKey string) (*os.File, string, error) {

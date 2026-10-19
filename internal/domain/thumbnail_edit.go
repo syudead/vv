@@ -36,16 +36,18 @@ type ThumbnailEditSource string
 const (
 	ThumbnailEditFromFrame     ThumbnailEditSource = "frame"
 	ThumbnailEditFromThumbnail ThumbnailEditSource = "thumbnail"
+	ThumbnailEditFromImage     ThumbnailEditSource = "image"
 )
 
 func (s ThumbnailEditSource) Valid() bool {
 	return s == ThumbnailEditFromFrame || s == ThumbnailEditFromThumbnail
 }
 
-// PositionMs applies only to ThumbnailEditFromFrame.
+// PositionMs applies only to ThumbnailEditFromFrame, Image only to ThumbnailEditFromImage.
 type ThumbnailEditStart struct {
 	Source     ThumbnailEditSource
 	PositionMs *int64
+	Image      []byte
 }
 
 type ThumbnailEditRunInput struct {

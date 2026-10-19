@@ -21,10 +21,10 @@ func (substitutingGenerator) CheckSource(string) error { return nil }
 func (substitutingGenerator) Probe(context.Context, string) (domain.Probe, error) {
 	return domain.Probe{DurationMs: 60_000, VideoCodec: "h264", AudioCodec: "aac"}, nil
 }
-func (substitutingGenerator) Thumbnail(_ context.Context, _ string, _ int64, output string) (bool, error) {
+func (substitutingGenerator) Thumbnail(_ context.Context, _ string, _ int64, output, _ string) (bool, error) {
 	return true, os.WriteFile(output, []byte("jpeg"), 0o600)
 }
-func (substitutingGenerator) ThumbnailAt(_ context.Context, _ string, _ int64, output string) error {
+func (substitutingGenerator) ThumbnailAt(_ context.Context, _ string, _ int64, output, _ string) error {
 	return os.WriteFile(output, []byte("jpeg"), 0o600)
 }
 func (substitutingGenerator) SpriteFingerprint(domain.SeekSprite, [][]byte) (domain.Fingerprint, error) {

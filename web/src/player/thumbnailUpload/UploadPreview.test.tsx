@@ -1,14 +1,33 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UploadImage } from "./composeImage";
-import type { Fit } from "./framing";
+import { type Fit, WHOLE_IMAGE } from "./framing";
+import type { TouchUp } from "./useAiTouchUp";
+import { PRESETS } from "../thumbnailEdit/presets";
 import UploadPreview from "./UploadPreview";
 
 // jsdom cannot render canvas; verify the composition passed to the drawing boundary.
 
-const compose = vi.hoisted(() => ({ drawComposition: vi.fn() }));
+const compose = vi.hoisted(() => ({
+  drawComposition: vi.fn(),
+  drawOverflow: vi.fn(),
+  encodeComposition: vi.fn(),
+}));
 vi.mock("./composeImage", () => compose);
+
+const touch = vi.hoisted(() => ({
+  value: {
+    ready: null as boolean | null,
+    state: { status: "idle" } as TouchUp,
+    run: vi.fn(),
+    cancel: vi.fn(),
+    take: vi.fn(),
+    dismiss: vi.fn(),
+  },
+}));
+vi.mock("./useAiTouchUp", () => ({ useAiTouchUp: () => touch.value }));
 
 const image = {
   bitmap: { close: vi.fn() },
@@ -22,19 +41,22 @@ function lastFit(): Fit {
 }
 
 function renderPreview(props: Partial<Parameters<typeof UploadPreview>[0]> = {}) {
-  const onApply = vi.fn<(fit: Fit) => void>();
+  const onApply = vi.fn<(fit: Fit, replaced: UploadImage | null) => void>();
   const onCancel = vi.fn();
   render(
-    <UploadPreview
-      image={image}
-      name="poster.png"
-      aspect={16 / 9}
-      narrow={false}
-      applying={false}
-      onApply={onApply}
-      onCancel={onCancel}
-      {...props}
-    />,
+    <MemoryRouter>
+      <UploadPreview
+        videoId={7}
+        image={image}
+        name="poster.png"
+        aspect={16 / 9}
+        narrow={false}
+        applying={false}
+        onApply={onApply}
+        onCancel={onCancel}
+        {...props}
+      />
+    </MemoryRouter>,
   );
   return { onApply, onCancel };
 }
@@ -43,13 +65,23 @@ function stage() {
   return screen.getByRole("img", { name: /Thumbnail preview/ });
 }
 
-function fillFrame() {
-  fireEvent.click(screen.getByRole("radio", { name: "Fill frame" }));
+function press(name: string) {
+  fireEvent.click(screen.getByRole("button", { name }));
 }
 
 describe("UploadPreview", () => {
   beforeEach(() => {
     compose.drawComposition.mockReset();
+    compose.drawOverflow.mockReset();
+    compose.encodeComposition.mockReset();
+    touch.value = {
+      ready: null,
+      state: { status: "idle" },
+      run: vi.fn(),
+      cancel: vi.fn(),
+      take: vi.fn(),
+      dismiss: vi.fn(),
+    };
     // The 1024x576 preview is half the 2048x1152 output size.
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
       x: 0,
@@ -69,76 +101,86 @@ describe("UploadPreview", () => {
     vi.restoreAllMocks();
   });
 
-  it("既定は全体を収め、段は動かせず、拡大のつまみも無い", () => {
+  it("既定は全体を収め、枠の外にはみ出す分を縮めて別に描く", () => {
     renderPreview();
-    expect(lastFit()).toEqual({ mode: "contain" });
-    expect(stage().getAttribute("tabindex")).toBe("-1");
-    expect(screen.queryByRole("slider", { name: "Zoom" })).toBeNull();
+    expect(lastFit()).toEqual(WHOLE_IMAGE);
+    expect(stage().getAttribute("tabindex")).toBe("0");
+    expect(compose.drawOverflow).toHaveBeenLastCalledWith(
+      expect.any(HTMLCanvasElement),
+      image,
+      16 / 9,
+      WHOLE_IMAGE,
+      0.25,
+    );
     expect(
       screen.getByText(
-        "The whole image shows. The rest of the frame is filled with a blurred copy.",
+        "Drag the image anywhere. Its edges and centre snap to the frame's.",
       ),
     ).toBeDefined();
-    fireEvent.keyDown(stage(), { key: "ArrowDown" });
-    fireEvent.wheel(stage(), { deltaY: -500 });
-    expect(lastFit()).toEqual({ mode: "contain" });
   });
 
-  it("枠いっぱいに広げると、引いた分だけ画像が動き、離すと止まる", () => {
+  it("引くとどの向きにも動き、中央の近くでは中央に吸い付き、離すと止まる", () => {
     renderPreview();
-    fillFrame();
-    expect(lastFit()).toEqual({ mode: "cover", zoom: 1, panX: 0, panY: 0 });
-    expect(stage().getAttribute("tabindex")).toBe("0");
-
     fireEvent.pointerDown(stage(), { pointerId: 1, clientX: 500, clientY: 300 });
-    // A 100px display drag therefore moves 200 output pixels.
-    fireEvent.pointerMove(stage(), { pointerId: 1, clientX: 500, clientY: 400 });
-    expect(lastFit()).toMatchObject({ panX: 0 });
-    const moved = lastFit() as Extract<Fit, { mode: "cover" }>;
-    expect(moved.panY).toBeCloseTo(-200 / 1472);
+    // A 100px display drag moves 200 output pixels, 0.1 of the 2048px frame.
+    fireEvent.pointerMove(stage(), { pointerId: 1, clientX: 400, clientY: 400 });
+    expect(lastFit().x).toBeCloseTo(-0.1);
+    expect(lastFit().y).toBeCloseTo(200 / 1152);
+    fireEvent.pointerMove(stage(), { pointerId: 1, clientX: 495, clientY: 300 });
+    expect(lastFit()).toMatchObject({ x: 0, y: 0 });
+    const moved = lastFit();
 
     fireEvent.pointerMove(stage(), { pointerId: 2, clientX: 500, clientY: 0 });
     fireEvent.pointerUp(stage(), { pointerId: 1 });
-    fireEvent.pointerMove(stage(), { pointerId: 1, clientX: 500, clientY: 0 });
+    fireEvent.pointerMove(stage(), { pointerId: 1, clientX: 0, clientY: 0 });
     fireEvent.pointerDown(stage(), { pointerId: 3, clientX: 0, clientY: 0 });
     fireEvent.pointerCancel(stage(), { pointerId: 3 });
     fireEvent.pointerMove(stage(), { pointerId: 3, clientX: 0, clientY: 500 });
     expect(lastFit()).toEqual(moved);
   });
 
-  it("キー・ホイール・つまみで拡大率と位置を変え、全体を収めるに戻すと初めの形になる", () => {
+  it("キー・ホイール・つまみで位置と拡大率を変え、倍率を百分率で出す", () => {
     renderPreview();
-    fillFrame();
     fireEvent.keyDown(stage(), { key: "=" });
     fireEvent.keyDown(stage(), { key: "+" });
-    expect(lastFit()).toMatchObject({ zoom: 1.5 });
+    expect(lastFit().zoom).toBeCloseTo(1.5625);
+    expect(screen.getByText("156%")).toBeDefined();
     fireEvent.keyDown(stage(), { key: "-" });
-    expect(lastFit()).toMatchObject({ zoom: 1.25 });
+    expect(lastFit().zoom).toBeCloseTo(1.25);
     fireEvent.keyDown(stage(), { key: "ArrowRight" });
-    expect((lastFit() as { panX: number }).panX).toBeLessThan(0);
-    fireEvent.keyDown(stage(), { key: "ArrowLeft" });
+    expect(lastFit().x).toBeGreaterThan(0);
     fireEvent.keyDown(stage(), { key: "ArrowUp" });
-    expect((lastFit() as { panY: number }).panY).toBeGreaterThan(0);
+    expect(lastFit().y).toBeLessThan(0);
     fireEvent.keyDown(stage(), { key: "a" });
 
     fireEvent.wheel(stage(), { deltaY: -100_000 });
-    expect(lastFit()).toMatchObject({ zoom: 4 });
-    const slider = screen.getByRole("slider", { name: "Zoom" });
-    fireEvent.keyDown(slider, { key: "Home" });
-    expect(lastFit()).toMatchObject({ zoom: 1 });
+    expect(lastFit().zoom).toBe(16);
+    fireEvent.keyDown(screen.getByRole("slider", { name: "Zoom" }), { key: "Home" });
+    expect(lastFit().zoom).toBe(0.25);
+  });
 
-    fireEvent.click(screen.getByRole("radio", { name: "Whole image" }));
-    expect(lastFit()).toEqual({ mode: "contain" });
-    fillFrame();
-    expect(lastFit()).toEqual({ mode: "cover", zoom: 1, panX: 0, panY: 0 });
+  it("全体・枠を埋める・回転・余白の色を操作でき、全体に戻すと回転と余白は残る", () => {
+    renderPreview();
+    press("Fill frame");
+    expect(lastFit().zoom).toBeCloseTo(2048 / 576);
+    press("Turn right");
+    expect(lastFit().rotation).toBe(90);
+    press("Turn left");
+    press("Turn left");
+    expect(lastFit().rotation).toBe(270);
+    fireEvent.click(screen.getByRole("radio", { name: "Black" }));
+    expect(lastFit().backdrop).toBe("black");
+    press("Whole image");
+    expect(lastFit()).toEqual({ ...WHOLE_IMAGE, rotation: 270, backdrop: "black" });
   });
 
   it("適用は今の形を渡し、やめる・Esc は onCancel を呼ぶ", () => {
-    const { onApply, onCancel } = renderPreview();
-    fillFrame();
+    const { onApply, onCancel } = renderPreview({
+      initialFit: { ...WHOLE_IMAGE, x: 0.2 },
+    });
     fireEvent.keyDown(stage(), { key: "+" });
     fireEvent.click(screen.getByRole("button", { name: "Use as thumbnail" }));
-    expect(onApply).toHaveBeenCalledWith({ mode: "cover", zoom: 1.25, panX: 0, panY: 0 });
+    expect(onApply).toHaveBeenCalledWith({ ...WHOLE_IMAGE, x: 0.25, zoom: 1.25 }, null);
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
@@ -147,6 +189,13 @@ describe("UploadPreview", () => {
 
   it("送る絵を作っている間は、適用も、やめるも、段の操作も効かない", () => {
     const { onApply, onCancel } = renderPreview({ applying: true });
+    fireEvent.keyDown(stage(), { key: "+" });
+    fireEvent.pointerDown(stage(), { pointerId: 1, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(stage(), { pointerId: 1, clientX: 300, clientY: 0 });
+    expect(lastFit()).toEqual(WHOLE_IMAGE);
+    expect(
+      (screen.getByRole("button", { name: "Turn left" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
     const apply = screen.getByRole("button", { name: "Use as thumbnail" });
     expect(apply.getAttribute("aria-busy")).toBe("true");
     fireEvent.click(apply);
@@ -158,13 +207,12 @@ describe("UploadPreview", () => {
     ).toBe(true);
   });
 
-  it("動画の比率が分からなければ、枠いっぱいに広げるは選べず、そのわけを出す", () => {
+  it("動画の比率が分からなければ、枠は画像の形になると知らせる", () => {
     renderPreview({ aspect: null });
     expect(
-      (screen.getByRole("radio", { name: "Fill frame" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
-    expect(
-      screen.getByText("The video's size is unknown, so the image keeps its own shape."),
+      screen.getByText(
+        "The video's size is unknown, so the frame keeps the image's shape.",
+      ),
     ).toBeDefined();
     expect(compose.drawComposition.mock.calls.at(-1)?.[2]).toBeNull();
   });
@@ -184,7 +232,72 @@ describe("UploadPreview", () => {
       .querySelector("canvas[aria-hidden='true']");
     expect(backdrop).not.toBeNull();
     expect(drawImage).toHaveBeenCalledWith(expect.any(HTMLCanvasElement), 0, 0, 144, 256);
-    act(() => fillFrame());
+    act(() => press("Fill frame"));
     expect(drawImage).toHaveBeenCalledTimes(2);
+  });
+
+  it("ComfyUI が無ければ定型の代わりに設定への案内を出し、あれば定型は今の構図を描いてその指示で走らせる", () => {
+    touch.value.ready = false;
+    renderPreview();
+    expect(screen.getByRole("link", { name: "Open Settings" }).getAttribute("href")).toBe(
+      "/settings/connections#comfyui",
+    );
+    expect(screen.queryByRole("button", { name: "Remove text" })).toBeNull();
+    cleanup();
+    touch.value.ready = true;
+    const framing = Promise.resolve(new Blob(["png"]));
+    compose.encodeComposition.mockReturnValue(framing);
+    renderPreview({ initialFit: { ...WHOLE_IMAGE, x: 0.1 } });
+    press("Remove text");
+    expect(compose.encodeComposition).toHaveBeenCalledWith(image, 16 / 9, {
+      ...WHOLE_IMAGE,
+      x: 0.1,
+    });
+    expect(touch.value.run).toHaveBeenCalledWith(framing, PRESETS[2]?.prompt);
+  });
+
+  it("結果は前後を切り替えて見比べ、使うと画像を置き換えて全体表示に戻し、適用で一緒に渡す", () => {
+    const result = {
+      bitmap: { close: vi.fn() },
+      width: 2048,
+      height: 1152,
+    } as unknown as UploadImage;
+    touch.value.ready = true;
+    touch.value.state = { status: "result", image: result };
+    touch.value.take.mockImplementation(() => {
+      touch.value.state = { status: "idle" };
+      return result;
+    });
+    const { onApply } = renderPreview({
+      initialFit: { ...WHOLE_IMAGE, x: 0.3, backdrop: "black" },
+    });
+    expect(compose.drawComposition.mock.lastCall?.[1]).toBe(result);
+    expect(lastFit()).toEqual({ ...WHOLE_IMAGE, backdrop: "black" });
+    expect(
+      screen
+        .getByRole("button", { name: "Use as thumbnail" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
+    fireEvent.click(screen.getByRole("radio", { name: "Before" }));
+    expect(compose.drawComposition.mock.lastCall?.[1]).toBe(image);
+    expect(lastFit().x).toBe(0.3);
+
+    press("Use result");
+    expect(compose.drawComposition.mock.lastCall?.[1]).toBe(result);
+    fireEvent.click(screen.getByRole("button", { name: "Use as thumbnail" }));
+    expect(onApply).toHaveBeenCalledWith({ ...WHOLE_IMAGE, backdrop: "black" }, result);
+    expect(result.bitmap.close as ReturnType<typeof vi.fn>).not.toHaveBeenCalled();
+  });
+
+  it("走っている間は進み具合とやめるを出し、構図も適用も止める", () => {
+    touch.value.ready = true;
+    touch.value.state = { status: "running", session: null };
+    renderPreview();
+    expect(screen.getByRole("status").textContent).toContain("Sending the image");
+    press("Stop");
+    expect(touch.value.cancel).toHaveBeenCalled();
+    expect(
+      (screen.getByRole("button", { name: "Fill frame" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 });
