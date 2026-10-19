@@ -70,7 +70,8 @@ func (s *FaceStore) readFaceImageJob(ctx context.Context, condition string, args
 
 // StoreFaceImageVector stores the vector of the job's face, nil when it had no single good face, and applies the
 // face-image rule in the same transaction: the only provisional person at Merge is merged into a named person as a
-// face_merge, and the others from Candidate up are offered. A job of an older face.generation returns
+// face_merge, and the others from Candidate up are offered. A merge refused for good is left out: the rest is stored
+// and the error wraps domain.ErrFaceMergeRefused. A job of an older face.generation returns
 // domain.ErrFaceGenerationChanged; one whose face changed or went since writes nothing.
 func (s *FaceStore) StoreFaceImageVector(ctx context.Context, job domain.FaceImageJob, vector []float32) (
 	domain.FaceImageDecision, error,
@@ -111,11 +112,17 @@ func (s *FaceStore) StoreFaceImageVector(ctx context.Context, job domain.FaceIma
 	}
 	c := &changes{}
 	decision, events, err := applyFaceImage(ctx, tx, c, spec, job.PersonID, vector)
-	if err != nil {
+	refused := errors.Is(err, domain.ErrFaceMergeRefused)
+	if err != nil && !refused {
 		return domain.FaceImageDecision{}, err
 	}
 	if err := s.db.commitWith(ctx, tx, c, events...); err != nil {
 		return domain.FaceImageDecision{}, fmt.Errorf("cannot store the face vector of person %d: %w", job.PersonID, err)
+	}
+	if refused {
+		// Without the vector the face would stay stale and be embedded again, and the merge refused again.
+		decision.MergeID = 0
+		return decision, err
 	}
 	return decision, nil
 }
@@ -145,7 +152,7 @@ func applyFaceImage(ctx context.Context, tx *sql.Tx, c *changes, spec domain.Fac
 	if decision.MergeID == 0 {
 		return decision, nil, nil
 	}
-	_, events, err := mergeProvisional(ctx, tx, c, decision.MergeID, personID, now)
+	events, err := mergeProvisionalOrRefuse(ctx, tx, c, decision.MergeID, personID, now)
 	return decision, events, err
 }
 

@@ -72,7 +72,8 @@ func (f *FaceRecognizer) popPending() (int64, bool) {
 }
 
 // embed computes the face's vector unless one is stored, and stores it with the face-image rule's decision. A face
-// whose attempt was cancelled, fenced, or hit a helper start or database error stays pending.
+// whose attempt was cancelled, fenced, or hit a helper start or database error stays pending; a merge refused for good
+// is not tried again, since retrying cannot change it.
 func (f *FaceRecognizer) embed(run context.Context, job domain.FaceImageJob) faceStep {
 	vector, err := job.Vector, error(nil)
 	if !job.Embedded {
@@ -88,6 +89,10 @@ func (f *FaceRecognizer) embed(run context.Context, job domain.FaceImageJob) fac
 			f.logger.Info("merged a provisional person by face", slog.Int64("person", job.PersonID),
 				slog.Int64("provisional", decision.MergeID))
 		}
+		return faceNext
+	case errors.Is(err, domain.ErrFaceMergeRefused):
+		f.logger.Warn("the face-image rule's merge was refused", slog.Int64("person", job.PersonID),
+			slog.Any("error", err))
 		return faceNext
 	case run.Err() != nil, errors.Is(err, domain.ErrFaceGenerationChanged), errors.Is(err, domain.ErrFaceHelperStart):
 		// Read again under the new settings, or once the runtime is ready again.

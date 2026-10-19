@@ -56,25 +56,37 @@ func mergeByCast(ctx context.Context, tx *sql.Tx, c *changes, userKey string, no
 	if !ok {
 		return false, nil, nil
 	}
-	if _, err := tx.ExecContext(ctx, `savepoint cast_merge`); err != nil {
-		return false, nil, fmt.Errorf("cannot start the cast merge: %w", err)
-	}
-	_, events, err := mergeProvisional(ctx, tx, c, pair.ProvisionalID, pair.PersonID, now)
+	events, err := mergeProvisionalOrRefuse(ctx, tx, c, pair.ProvisionalID, pair.PersonID, now)
 	if err != nil {
-		if !mergeRefused(err) {
-			return false, nil, err
-		}
-		// The refusal comes before the merge touches c, so only the rows need rolling back.
-		if _, rbErr := tx.ExecContext(ctx, `rollback to cast_merge`); rbErr != nil {
-			return false, nil, fmt.Errorf("cannot roll back the cast merge: %w", rbErr)
-		}
-		return false, nil, fmt.Errorf("%w: person %d into person %d: %w", domain.ErrFaceMergeRefused,
-			pair.ProvisionalID, pair.PersonID, err)
-	}
-	if _, err := tx.ExecContext(ctx, `release cast_merge`); err != nil {
-		return false, nil, fmt.Errorf("cannot finish the cast merge: %w", err)
+		return false, nil, err
 	}
 	return true, events, nil
+}
+
+// mergeProvisionalOrRefuse runs mergeProvisional for an automatic merge. A merge refused for good is rolled back to
+// before it, so tx stays usable, and wraps domain.ErrFaceMergeRefused.
+func mergeProvisionalOrRefuse(ctx context.Context, tx *sql.Tx, c *changes, provisionalID, personID int64,
+	now time.Time,
+) ([]domain.Event, error) {
+	if _, err := tx.ExecContext(ctx, `savepoint face_merge`); err != nil {
+		return nil, fmt.Errorf("cannot start the automatic merge: %w", err)
+	}
+	_, events, err := mergeProvisional(ctx, tx, c, provisionalID, personID, now)
+	if err != nil {
+		if !mergeRefused(err) {
+			return nil, err
+		}
+		// The refusal comes before the merge touches c, so only the rows need rolling back.
+		if _, rbErr := tx.ExecContext(ctx, `rollback to face_merge`); rbErr != nil {
+			return nil, fmt.Errorf("cannot roll back the automatic merge: %w", rbErr)
+		}
+		return nil, fmt.Errorf("%w: person %d into person %d: %w", domain.ErrFaceMergeRefused, provisionalID, personID,
+			err)
+	}
+	if _, err := tx.ExecContext(ctx, `release face_merge`); err != nil {
+		return nil, fmt.Errorf("cannot finish the automatic merge: %w", err)
+	}
+	return events, nil
 }
 
 // mergeRefused reports a refusal of mergeProvisional that does not depend on the database being reachable.
