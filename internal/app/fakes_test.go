@@ -60,6 +60,7 @@ type fakeIngestStore struct {
 	setPositionErr error
 	// Injected apply/revert errors leave stored images unchanged.
 	images        map[string][]byte
+	sources       map[string][]byte
 	applyImageErr error
 	// Position changes and reset remove these source/provenance rows together with images.
 	rows           map[string]domain.AppliedThumbnailImage
@@ -286,6 +287,12 @@ func (f *fakeIngestStore) ThumbnailImage(_ context.Context, contentKey string) (
 	return append([]byte(nil), image...), nil
 }
 
+func (f *fakeIngestStore) ThumbnailImageSource(_ context.Context, contentKey string) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]byte(nil), f.sources[contentKey]...), nil
+}
+
 func (f *fakeIngestStore) CompletePreviewForContent(_ context.Context, job domain.Job) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -318,10 +325,12 @@ type fakeGenerator struct {
 	// A nonempty thumbnailDir supplies real output paths; otherwise use unwritable fixture paths.
 	thumbnailDir string
 	published    map[string][]byte
-	// Content keys with a published poster.
-	posters    map[string]bool
-	firstFrame bool
-	fullDecode bool
+	// Published posters by content key; absent when the publish wrote none.
+	posters map[string][]byte
+	// Poster paths passed to Thumbnail and ThumbnailAt.
+	posterOutputs []string
+	firstFrame    bool
+	fullDecode    bool
 	// Complete seek artifacts bypass generation.
 	seekPublished         bool
 	publishedSubstitution domain.Substitution
@@ -348,6 +357,12 @@ func (f *fakeGenerator) record(call string) {
 	f.calls = append(f.calls, call)
 }
 
+func (f *fakeGenerator) recordPoster(poster string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.posterOutputs = append(f.posterOutputs, poster)
+}
+
 func (f *fakeGenerator) recordOutput(output string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -370,16 +385,18 @@ func (f *fakeGenerator) Probe(context.Context, string) (domain.Probe, error) {
 	return f.probe, f.probeErr
 }
 
-func (f *fakeGenerator) Thumbnail(_ context.Context, _ string, _ int64, output string) (bool, error) {
+func (f *fakeGenerator) Thumbnail(_ context.Context, _ string, _ int64, output, poster string) (bool, error) {
 	f.record("thumbnail")
 	f.recordOutput(output)
+	f.recordPoster(poster)
 	f.pass("thumbnail")
 	return f.firstFrame, f.thumbnailErr
 }
 
-func (f *fakeGenerator) ThumbnailAt(_ context.Context, _ string, positionMs int64, output string) error {
+func (f *fakeGenerator) ThumbnailAt(_ context.Context, _ string, positionMs int64, output, poster string) error {
 	f.record("thumbnail-at")
 	f.recordOutput(output)
+	f.recordPoster(poster)
 	f.mu.Lock()
 	f.positions = append(f.positions, positionMs)
 	f.mu.Unlock()
@@ -404,12 +421,13 @@ func (f *fakeGenerator) Preview(_ context.Context, _, output string, _ int64) er
 	return f.previewErr
 }
 
-func (f *fakeGenerator) PublishThumbnail(contentKey string, write func(string) error) error {
-	output := "tmp/thumbnail/" + contentKey
+func (f *fakeGenerator) PublishThumbnail(contentKey string, write func(string, string) error) error {
+	output, poster := "tmp/thumbnail/"+contentKey, "tmp/poster/"+contentKey
 	if f.thumbnailDir != "" {
 		output = filepath.Join(f.thumbnailDir, contentKey+".jpg")
+		poster = filepath.Join(f.thumbnailDir, contentKey+".poster.jpg")
 	}
-	if err := write(output); err != nil {
+	if err := write(output, poster); err != nil {
 		return err
 	}
 	if f.publishErr != nil {
@@ -421,11 +439,20 @@ func (f *fakeGenerator) PublishThumbnail(contentKey string, write func(string) e
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
+		posterData, err := os.ReadFile(poster)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
 		f.mu.Lock()
 		if f.published == nil {
-			f.published = map[string][]byte{}
+			f.published, f.posters = map[string][]byte{}, map[string][]byte{}
 		}
 		f.published[contentKey] = data
+		if posterData == nil {
+			delete(f.posters, contentKey)
+		} else {
+			f.posters[contentKey] = posterData
+		}
 		f.mu.Unlock()
 	}
 	if f.recordPublish {
@@ -516,39 +543,6 @@ func (f *fakeGenerator) PublishPreview(
 }
 
 // Separate artifact reads because SeekSprite conflicts with the generator method name.
-func (f *fakeGenerator) Poster(_ context.Context, _ string, _ int64, _ string) error {
-	f.record("poster")
-	return f.thumbnailErr
-}
-
-func (f *fakeGenerator) PosterAt(_ context.Context, _ string, positionMs int64, _ string) error {
-	f.record("poster-at")
-	f.mu.Lock()
-	f.positions = append(f.positions, positionMs)
-	f.mu.Unlock()
-	return f.thumbnailAtErr
-}
-
-func (f *fakeGenerator) PublishPoster(contentKey string, write func(string) error) error {
-	if err := write("tmp/poster/" + contentKey); err != nil {
-		return err
-	}
-	f.record("publish-poster")
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.posters == nil {
-		f.posters = map[string]bool{}
-	}
-	f.posters[contentKey] = true
-	return nil
-}
-
-func (f *fakeGenerator) PosterAvailable(contentKey string) bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.posters[contentKey]
-}
-
 type fakeArtifactStore struct {
 	*fakeGenerator
 }

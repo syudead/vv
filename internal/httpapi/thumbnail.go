@@ -1,11 +1,6 @@
 package httpapi
 
 import (
-	"bytes"
-	"context"
-	"errors"
-	"io/fs"
-	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -13,19 +8,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
-
-// ThumbnailSources reads the larger source kept with an applied thumbnail image.
-type ThumbnailSources interface {
-	// ThumbnailImageSource returns nil when no applied image or no source is stored.
-	ThumbnailImageSource(ctx context.Context, contentKey string) ([]byte, error)
-}
-
-// Posters extracts the player's poster from the video for a thumbnail that is a frame.
-type Posters interface {
-	// Poster receives the resolved source path and original location for ownership rechecks; it returns
-	// ErrThumbnailFrameUnavailable for an applied image.
-	Poster(ctx context.Context, videoID int64, location, path string) error
-}
 
 // Unready thumbnails return 404 so the client displays an empty frame.
 func (s *server) GetVideoThumbnail(
@@ -54,53 +36,15 @@ func (s *server) GetVideoThumbnail(
 	s.serveJPEGFile(w, r, file)
 }
 
-// serveLargeThumbnail reports false when there is nothing larger to serve, so the caller falls back
-// to the 640 px file: an applied image serves its stored source, and a frame its poster, extracted
-// on first request.
+// serveLargeThumbnail reports false when the thumbnail was published without a poster, so the
+// caller falls back to the 640 px file.
 func (s *server) serveLargeThumbnail(w http.ResponseWriter, r *http.Request, video domain.Video) bool {
-	if s.thumbnailSources != nil {
-		source, err := s.thumbnailSources.ThumbnailImageSource(r.Context(), video.ContentKey)
-		if err != nil {
-			s.logger.Warn("cannot read the thumbnail source", slog.Any("error", err))
-			return false
-		}
-		if len(source) > 0 {
-			setRevalidate(w, bytesETag(source))
-			w.Header().Set("Content-Type", "image/jpeg")
-			http.ServeContent(w, r, "thumbnail.jpg", time.Time{}, bytes.NewReader(source))
-			return true
-		}
-	}
 	file, err := s.artifacts.PosterFile(video.ContentKey)
-	if errors.Is(err, fs.ErrNotExist) && s.extractPoster(r, video) {
-		file, err = s.artifacts.PosterFile(video.ContentKey)
-	}
 	if err != nil {
 		return false
 	}
 	s.serveJPEGFile(w, r, file)
 	return true
-}
-
-func (s *server) extractPoster(r *http.Request, video domain.Video) bool {
-	if s.posters == nil || s.files == nil {
-		return false
-	}
-	location, path, ok := s.resolveMediaFile(r, video)
-	if !ok {
-		return false
-	}
-	err := s.posters.Poster(r.Context(), video.ID, location, path)
-	switch {
-	case err == nil:
-		return true
-	case errors.Is(err, domain.ErrThumbnailFrameUnavailable), errors.Is(err, domain.ErrMediaFileUnavailable),
-		errors.Is(err, domain.ErrContentChanged), errors.Is(err, domain.ErrNotFound),
-		errors.Is(err, context.Canceled):
-	default:
-		s.logger.Warn("cannot extract the poster", slog.Int64("video", video.ID), slog.Any("error", err))
-	}
-	return false
 }
 
 func (s *server) serveJPEGFile(w http.ResponseWriter, r *http.Request, file *os.File) {

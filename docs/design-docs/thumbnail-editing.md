@@ -169,22 +169,21 @@ republishes `image` and never reads `source`.
 
 Cards show the 640 px thumbnail, but the player's poster fills a much wider
 frame, so the page asks for it with `size=large`.
-`GET /api/videos/{id}/thumbnail?size=large` answers, in order:
+`GET /api/videos/{id}/thumbnail?size=large` answers the poster file, or the
+640 px thumbnail when there is none. Every publication of the thumbnail
+writes the poster with it, in the same generation lock and stash:
 
-| Thumbnail | Answer |
+| Thumbnail | Poster |
 | --- | --- |
-| An applied image with `source` | `source` |
-| A frame | The poster file, extracted on the first request |
-| An applied image written before migration `00041`, or a poster that cannot be extracted | The 640 px thumbnail file |
+| A frame (automatic or chosen), at import, a position change or a revert | The same frame from the same ffmpeg decode, its long side at most 2048 px and never enlarged |
+| An applied image, when applied or republished by the thumbnail job | The stored `source` |
+| An applied image whose row predates migration `00041` | None |
 
-The poster is the thumbnail's frame (the chosen position, or the automatic
-frame with its first-frame fallback) as a JPEG at the edit frame's bounds: its
-long side at most 2048 px, never enlarged. It is extracted on request rather
-than with the thumbnail, so the thumbnails that already exist get one without
-being regenerated. Extraction holds the thumbnail generation lock, and
-publishing a thumbnail deletes the poster in that lock, so a poster never shows
-a frame its thumbnail has replaced. Deleting the content removes the poster
-with the other artifacts.
+A publication without a poster removes the previous one, and a restore after a
+failed recording puts the previous poster back, so a poster never outlives the
+thumbnail it showed. Thumbnails generated before posters existed have none
+until they are generated again. The poster is served from its file, so a
+request never holds an image in memory.
 
 ## Uploaded images
 

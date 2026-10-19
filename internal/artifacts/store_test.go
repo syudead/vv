@@ -87,6 +87,18 @@ func writer(data []byte) func(string) error {
 	return func(output string) error { return os.WriteFile(output, data, 0o644) }
 }
 
+// thumbnailWriter writes the thumbnail and, when poster is not nil, the poster.
+func thumbnailWriter(data, poster []byte) func(output, posterOutput string) error {
+	return func(output, posterOutput string) error {
+		if poster != nil {
+			if err := os.WriteFile(posterOutput, poster, 0o644); err != nil {
+				return err
+			}
+		}
+		return os.WriteFile(output, data, 0o644)
+	}
+}
+
 func exists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
@@ -165,7 +177,7 @@ func TestPublishesIntoExistingLayout(t *testing.T) {
 	store := New(root)
 	ctx := context.Background()
 
-	if err := store.PublishThumbnail(key, writer([]byte("jpeg"))); err != nil {
+	if err := store.PublishThumbnail(key, thumbnailWriter([]byte("jpeg"), nil)); err != nil {
 		t.Fatal(err)
 	}
 	if err := publishSeek(store, key, spriteLayout, sheetWriter(t, 2)); err != nil {
@@ -225,7 +237,7 @@ func TestRejectsKeysOutsideTheStore(t *testing.T) {
 		}
 		called := false
 		write := func(string) error { called = true; return nil }
-		if store.PublishThumbnail(bad, write) == nil || publishSeek(store, bad, spriteLayout, write) == nil ||
+		if store.PublishThumbnail(bad, func(output, _ string) error { return write(output) }) == nil || publishSeek(store, bad, spriteLayout, write) == nil ||
 			store.PublishPreview(ctx, bad, write, nil) == nil || called {
 			t.Errorf("%q: 公開した", bad)
 		}
@@ -246,7 +258,7 @@ func TestEmptyRootHasNothing(t *testing.T) {
 		t.Fatalf("誤り = %v", err)
 	}
 	for _, err := range []error{
-		store.PublishThumbnail(key, writer([]byte("x"))),
+		store.PublishThumbnail(key, thumbnailWriter([]byte("x"), nil)),
 		publishSeek(store, key, spriteLayout, sheetWriter(t, 2)),
 		store.PublishPreview(context.Background(), key, writer([]byte("x")), nil),
 	} {
@@ -362,8 +374,10 @@ func TestPublishFailureLeavesNothing(t *testing.T) {
 		publish func(*Store) error
 		want    error
 	}{
-		{name: "サムネイル", want: failure, publish: func(s *Store) error { return s.PublishThumbnail(key, failing) }},
-		{name: "空のサムネイル", publish: func(s *Store) error { return s.PublishThumbnail(key, writer(nil)) }},
+		{name: "サムネイル", want: failure, publish: func(s *Store) error {
+			return s.PublishThumbnail(key, func(output, _ string) error { return failing(output) })
+		}},
+		{name: "空のサムネイル", publish: func(s *Store) error { return s.PublishThumbnail(key, thumbnailWriter(nil, nil)) }},
 		{name: "シーク", want: failure, publish: func(s *Store) error {
 			return publishSeek(s, key, spriteLayout, func(dir string) error {
 				return failing(filepath.Join(dir, "000.jpg"))
@@ -454,7 +468,7 @@ func TestPublishReusesCompletedSeekThumbnails(t *testing.T) {
 
 	thumbnail, _, _, _, _ := existingLayout(root)
 	writeFile(t, thumbnail, []byte("old"))
-	if err := store.PublishThumbnail(key, writer([]byte("new"))); err != nil {
+	if err := store.PublishThumbnail(key, thumbnailWriter([]byte("new"), nil)); err != nil {
 		t.Fatal(err)
 	}
 	if data, _ := os.ReadFile(thumbnail); string(data) != "new" {
@@ -530,7 +544,7 @@ func TestPublishSeekThumbnailsKeepsSubstitution(t *testing.T) {
 func TestRemoveTemporaryKeepsPublishedArtifacts(t *testing.T) {
 	root := t.TempDir()
 	store := New(root)
-	if err := store.PublishThumbnail("kept:1", writer([]byte("x"))); err != nil {
+	if err := store.PublishThumbnail("kept:1", thumbnailWriter([]byte("x"), nil)); err != nil {
 		t.Fatal(err)
 	}
 	var visible []bool
@@ -758,7 +772,7 @@ func TestStashThumbnailRestoresPreviousImage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.PublishThumbnail(key, writer([]byte("first"))); err != nil {
+	if err := store.PublishThumbnail(key, thumbnailWriter([]byte("first"), nil)); err != nil {
 		t.Fatal(err)
 	}
 	if err := restore(); err != nil {
@@ -768,14 +782,14 @@ func TestStashThumbnailRestoresPreviousImage(t *testing.T) {
 		t.Fatal("前の画像が無いのに、置き換えた画像が残った")
 	}
 
-	if err := store.PublishThumbnail(key, writer([]byte("old"))); err != nil {
+	if err := store.PublishThumbnail(key, thumbnailWriter([]byte("old"), nil)); err != nil {
 		t.Fatal(err)
 	}
 	restore, _, err = store.StashThumbnail(key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.PublishThumbnail(key, writer([]byte("new"))); err != nil {
+	if err := store.PublishThumbnail(key, thumbnailWriter([]byte("new"), nil)); err != nil {
 		t.Fatal(err)
 	}
 	if err := restore(); err != nil {
@@ -789,7 +803,7 @@ func TestStashThumbnailRestoresPreviousImage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.PublishThumbnail(key, writer([]byte("kept"))); err != nil {
+	if err := store.PublishThumbnail(key, thumbnailWriter([]byte("kept"), nil)); err != nil {
 		t.Fatal(err)
 	}
 	discard()
@@ -801,34 +815,55 @@ func TestStashThumbnailRestoresPreviousImage(t *testing.T) {
 	}
 }
 
-// A poster belongs to the thumbnail it was extracted for, and goes with it.
+// A poster is published, restored and removed with its thumbnail, and never outlives it.
 func TestPosterGoesWithItsThumbnail(t *testing.T) {
 	store := New(t.TempDir())
-	publishPoster := func() {
+	poster := func() string {
 		t.Helper()
-		if err := store.PublishPoster(key, writer([]byte("poster"))); err != nil {
+		file, err := store.PosterFile(key)
+		if errors.Is(err, fs.ErrNotExist) {
+			return ""
+		}
+		if err != nil {
 			t.Fatal(err)
 		}
-		file, err := store.PosterFile(key)
-		if err != nil || !store.PosterAvailable(key) {
-			t.Fatalf("PosterFile = %v, available = %v", err, store.PosterAvailable(key))
+		defer func() { _ = file.Close() }()
+		data, err := io.ReadAll(file)
+		if err != nil {
+			t.Fatal(err)
 		}
-		_ = file.Close()
+		return string(data)
+	}
+	publish := func(data, posterData []byte) {
+		t.Helper()
+		if err := store.PublishThumbnail(key, thumbnailWriter(data, posterData)); err != nil {
+			t.Fatal(err)
+		}
 	}
 
-	publishPoster()
-	if err := store.PublishThumbnail(key, writer([]byte("new"))); err != nil {
+	publish([]byte("old"), []byte("old poster"))
+	if got := poster(); got != "old poster" {
+		t.Fatalf("poster = %q, want old poster", got)
+	}
+	restore, _, err := store.StashThumbnail(key)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.PosterFile(key); !errors.Is(err, fs.ErrNotExist) || store.PosterAvailable(key) {
-		t.Fatalf("新しいサムネイルの後の PosterFile = %v", err)
+	publish([]byte("new"), nil)
+	if got := poster(); got != "" {
+		t.Fatalf("poster のないサムネイルの後の poster = %q", got)
+	}
+	if err := restore(); err != nil {
+		t.Fatal(err)
+	}
+	if got := poster(); got != "old poster" {
+		t.Fatalf("戻した poster = %q, want old poster", got)
 	}
 
-	publishPoster()
 	if err := store.RemoveContent(key); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.PosterFile(key); !errors.Is(err, fs.ErrNotExist) {
-		t.Fatalf("削除の後の PosterFile = %v", err)
+	if got := poster(); got != "" {
+		t.Fatalf("削除の後の poster = %q", got)
 	}
 }

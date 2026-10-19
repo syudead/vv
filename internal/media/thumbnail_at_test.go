@@ -17,13 +17,15 @@ func TestThumbnailAtWritesFrameAtPosition(t *testing.T) {
 
 	for _, positionMs := range []int64{3_000, 22_000} {
 		output := filepath.Join(dir, "thumb.jpg")
-		if err := ThumbnailAt(context.Background(), videoPath, positionMs, output); err != nil {
+		poster := filepath.Join(dir, "poster.jpg")
+		if err := ThumbnailAt(context.Background(), videoPath, positionMs, output, poster); err != nil {
 			t.Fatalf("ThumbnailAt(%d) = %v", positionMs, err)
 		}
-		got := jpegSeconds(t, output)
 		want := float64(positionMs) / 1000
-		if got < want-0.6 || got > want+0.6 {
-			t.Errorf("ThumbnailAt(%d) の場面は %.2f 秒（%.0f 秒のはず）", positionMs, got, want)
+		for _, path := range []string{output, poster} {
+			if got := jpegSeconds(t, path); got < want-0.6 || got > want+0.6 {
+				t.Errorf("ThumbnailAt(%d) の %s の場面は %.2f 秒（%.0f 秒のはず）", positionMs, filepath.Base(path), got, want)
+			}
 		}
 	}
 }
@@ -35,11 +37,14 @@ func TestThumbnailAtFailsWithoutFrameAtPosition(t *testing.T) {
 	runFFmpeg(t, "-f", "lavfi", "-i", timeGraySource("64x64", "3"), "-c:v", "mpeg4", "-q:v", "2", "-y", videoPath)
 
 	output := filepath.Join(dir, "thumb.jpg")
-	if err := ThumbnailAt(context.Background(), videoPath, 10_000, output); err == nil {
+	poster := filepath.Join(dir, "poster.jpg")
+	if err := ThumbnailAt(context.Background(), videoPath, 10_000, output, poster); err == nil {
 		t.Fatal("尺の外の位置で ThumbnailAt が成功した")
 	}
-	if _, err := os.Stat(output); !os.IsNotExist(err) {
-		t.Fatalf("失敗したのに画像が残っている: %v", err)
+	for _, path := range []string{output, poster} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("失敗したのに %s が残っている: %v", filepath.Base(path), err)
+		}
 	}
 }
 

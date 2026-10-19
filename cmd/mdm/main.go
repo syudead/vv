@@ -187,10 +187,8 @@ func run(opts runOptions) error {
 	if err := artifactStore.RemoveTemporary(); err != nil {
 		logger.Warn("could not delete unfinished artifacts", slog.Any("error", err))
 	}
-	assets := media.NewAssets()
 	ingest := app.NewIngest(app.IngestOptions{
-		Store: ingestStore, Generator: assets, Artifacts: artifactStore, Posters: assets,
-		Publisher: bus, Logger: logger,
+		Store: ingestStore, Generator: media.NewAssets(), Artifacts: artifactStore, Publisher: bus, Logger: logger,
 	})
 	// Workers wake after committed queue changes instead of polling.
 	workers := make([]*jobs.Worker, 0, len(domain.JobKinds))
@@ -368,8 +366,6 @@ func run(opts runOptions) error {
 		WatchHistory:     playbackStore,
 		Activity:         activity,
 		Overrides:        db.Overrides(),
-		ThumbnailSources: db.Overrides(),
-		Posters:          ingest,
 		Versions:         db.Versions(),
 		// Thumbnail position changes share ingestion's generation lock.
 		ThumbnailPicker: ingest,

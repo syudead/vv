@@ -16,8 +16,7 @@ import (
 func newTestIngest(store *fakeIngestStore, generator *fakeGenerator) (*Ingest, *fakePublisher) {
 	publisher := &fakePublisher{}
 	return NewIngest(IngestOptions{
-		Store: store, Generator: generator, Artifacts: fakeArtifactStore{generator}, Posters: generator,
-		Publisher: publisher, Logger: discardLogger(),
+		Store: store, Generator: generator, Artifacts: fakeArtifactStore{generator}, Publisher: publisher, Logger: discardLogger(),
 	}), publisher
 }
 

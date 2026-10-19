@@ -41,6 +41,8 @@ type IngestStore interface {
 	RevertThumbnailImage(ctx context.Context, videoID int64) (domain.Video, error)
 	// Nil means no applied image.
 	ThumbnailImage(ctx context.Context, contentKey string) ([]byte, error)
+	// Nil means no applied image or one applied before sources were stored.
+	ThumbnailImageSource(ctx context.Context, contentKey string) ([]byte, error)
 }
 
 type ContentIndex interface {
@@ -54,10 +56,8 @@ type ArtifactRemover interface {
 // ArtifactStore owns paths and atomic publication; app supplies generation callbacks.
 type ArtifactStore interface {
 	ArtifactRemover
-	PublishThumbnail(contentKey string, write func(output string) error) error
-	// PublishPoster runs under the thumbnail generation lock; PublishThumbnail drops the poster.
-	PublishPoster(contentKey string, write func(output string) error) error
-	PosterAvailable(contentKey string) bool
+	// write leaves poster empty when it has no larger image; the store then removes the old poster.
+	PublishThumbnail(contentKey string, write func(output, poster string) error) error
 	// restore removes the replacement when no prior thumbnail existed; discard drops only the backup.
 	StashThumbnail(contentKey string) (restore func() error, discard func(), err error)
 	// Reuse complete sprites without write, replacing incomplete legacy directories during
@@ -76,10 +76,11 @@ type ArtifactStore interface {
 type Generator interface {
 	CheckSource(path string) error
 	Probe(ctx context.Context, path string) (domain.Probe, error)
-	// Thumbnail reports first-frame substitution.
-	Thumbnail(ctx context.Context, path string, durationMs int64, output string) (firstFrame bool, err error)
+	// Thumbnail reports first-frame substitution; poster receives the same frame at up to
+	// domain.ThumbnailFrameMaxSide.
+	Thumbnail(ctx context.Context, path string, durationMs int64, output, poster string) (firstFrame bool, err error)
 	// ThumbnailAt never substitutes the first frame.
-	ThumbnailAt(ctx context.Context, path string, positionMs int64, output string) error
+	ThumbnailAt(ctx context.Context, path string, positionMs int64, output, poster string) error
 	// SeekSprite reports fallback to full decoding after segment extraction fails.
 	SeekSprite(ctx context.Context, path, outputDir string, layout domain.SeekSpriteLayout) (fullDecode bool, err error)
 	Preview(ctx context.Context, path, output string, durationMs int64) error
@@ -96,8 +97,6 @@ type IngestOptions struct {
 	Store     IngestStore
 	Generator Generator
 	Artifacts ArtifactStore
-	// Nil leaves the poster to the 640 px thumbnail.
-	Posters PosterFrames
 	// Nil disables events.
 	Publisher Publisher
 	// Nil uses slog.Default.
@@ -110,7 +109,6 @@ type Ingest struct {
 	store     IngestStore
 	generator Generator
 	files     ArtifactStore
-	posters   PosterFrames
 	publisher Publisher
 	artifacts *artifacts
 	// Serialize uploaded-image decoding across both validation and fitting passes; see
@@ -128,7 +126,6 @@ func NewIngest(opts IngestOptions) *Ingest {
 		store:       opts.Store,
 		generator:   opts.Generator,
 		files:       opts.Artifacts,
-		posters:     opts.Posters,
 		publisher:   opts.Publisher,
 		artifacts:   newArtifacts(opts.Store, opts.Artifacts, logger),
 		uploads:     newUploadGate(),
@@ -245,21 +242,25 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 			if err != nil {
 				return false, err
 			}
+			source, err := i.store.ThumbnailImageSource(ctx, job.ContentKey)
+			if err != nil {
+				return false, err
+			}
 			if image == nil && sourceErr != nil {
 				// The applied image was reverted while waiting; unreadable media cannot supply its replacement
 				// frame.
 				return false, sourceErr
 			}
-			if err := i.files.PublishThumbnail(job.ContentKey, func(output string) error {
+			if err := i.files.PublishThumbnail(job.ContentKey, func(output, poster string) error {
 				if image != nil {
 					substitution = domain.SubstitutionNone
-					return writeThumbnailImage(output, image)
+					return writeThumbnailImages(output, image, poster, source)
 				}
 				if video.ThumbnailPositionMs != nil {
 					substitution = domain.SubstitutionNone
-					return i.generator.ThumbnailAt(ctx, job.LocationPath, *video.ThumbnailPositionMs, output)
+					return i.generator.ThumbnailAt(ctx, job.LocationPath, *video.ThumbnailPositionMs, output, poster)
 				}
-				firstFrame, err := i.generator.Thumbnail(ctx, job.LocationPath, durationOf(video), output)
+				firstFrame, err := i.generator.Thumbnail(ctx, job.LocationPath, durationOf(video), output, poster)
 				substitution = domain.SubstitutionOf(firstFrame)
 				return err
 			}); err != nil {
@@ -345,11 +346,11 @@ func (i *Ingest) replaceThumbnailWithFrame(
 			return false, err
 		}
 		var generateErr, sourceErr error
-		if err := i.files.PublishThumbnail(video.ContentKey, func(output string) error {
+		if err := i.files.PublishThumbnail(video.ContentKey, func(output, poster string) error {
 			if positionMs != nil {
-				generateErr = i.generator.ThumbnailAt(ctx, path, *positionMs, output)
+				generateErr = i.generator.ThumbnailAt(ctx, path, *positionMs, output, poster)
 			} else {
-				_, generateErr = i.generator.Thumbnail(ctx, path, durationOf(video), output)
+				_, generateErr = i.generator.Thumbnail(ctx, path, durationOf(video), output, poster)
 			}
 			if generateErr != nil {
 				return generateErr
@@ -415,8 +416,8 @@ func (i *Ingest) ApplyThumbnailImage(
 		if err != nil {
 			return false, err
 		}
-		if err := i.files.PublishThumbnail(contentKey, func(output string) error {
-			return writeThumbnailImage(output, applied.Image)
+		if err := i.files.PublishThumbnail(contentKey, func(output, poster string) error {
+			return writeThumbnailImages(output, applied.Image, poster, applied.Source)
 		}); err != nil {
 			discard()
 			return false, err
@@ -458,9 +459,16 @@ func (i *Ingest) fitThumbnailImage(
 	return domain.AppliedThumbnailImage{Image: fitted, Source: source, Origin: origin}, nil
 }
 
-func writeThumbnailImage(output string, image []byte) error {
+// The stored source becomes the poster; a row applied before sources were stored has none.
+func writeThumbnailImages(output string, image []byte, poster string, source []byte) error {
 	if err := os.WriteFile(output, image, 0o644); err != nil {
 		return fmt.Errorf("cannot write the thumbnail image: %w", err)
+	}
+	if len(source) == 0 {
+		return nil
+	}
+	if err := os.WriteFile(poster, source, 0o644); err != nil {
+		return fmt.Errorf("cannot write the thumbnail poster: %w", err)
 	}
 	return nil
 }

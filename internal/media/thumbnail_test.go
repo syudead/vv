@@ -72,7 +72,7 @@ func TestThumbnailOffsetStaysInsideDuration(t *testing.T) {
 }
 
 func TestThumbnailArgs(t *testing.T) {
-	got := thumbnailArgs("/media/a.mp4", 10, "/data/thumbnails/ab/ab.jpg")
+	got := thumbnailArgs("/media/a.mp4", 10, "/data/thumbnails/ab/ab.jpg", "")
 
 	ssIndex := indexOf(got, "-ss")
 	iIndex := indexOf(got, "-i")
@@ -97,9 +97,15 @@ func TestThumbnailArgs(t *testing.T) {
 	}
 }
 
-func TestPosterArgsKeepTheEditFrameBounds(t *testing.T) {
-	got := strings.Join(posterArgs("/media/a.mp4", 10, "/data/poster/ab/ab.jpg"), " ")
-	for _, want := range []string{"-ss 10.000 -i /media/a.mp4", "-vf " + frameScale, "-q:v 3"} {
+// The poster comes from the thumbnail's decode, at the edit frame's bounds.
+func TestThumbnailArgsWithPoster(t *testing.T) {
+	got := strings.Join(thumbnailArgs("/media/a.mp4", 10, "/data/ab/ab.jpg", "/data/poster/ab/ab.jpg"), " ")
+	for _, want := range []string{
+		"-ss 10.000 -i /media/a.mp4",
+		"-filter_complex [0:v:0]split=2[t][p];[t]" + thumbnailScale + "[thumbnail];[p]" + frameScale + "[poster]",
+		"-map [thumbnail] -frames:v 1 -q:v 4 -y /data/ab/ab.jpg",
+		"-map [poster] -frames:v 1 -q:v 3 -y /data/poster/ab/ab.jpg",
+	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("引数に %q が無い: %v", want, got)
 		}

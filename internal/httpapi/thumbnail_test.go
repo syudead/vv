@@ -1,12 +1,10 @@
 package httpapi
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"slices"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -217,44 +215,35 @@ func TestThumbnailURLVersionIncludesRevision(t *testing.T) {
 	}
 }
 
-type fakeThumbnailSources map[string][]byte
-
-func (f fakeThumbnailSources) ThumbnailImageSource(_ context.Context, contentKey string) ([]byte, error) {
-	return f[contentKey], nil
-}
-
-func TestLargeThumbnailServesTheStoredSource(t *testing.T) {
+func TestLargeThumbnailServesThePoster(t *testing.T) {
 	artifacts, video := thumbnailFixture(t)
-	source := []byte{0xff, 0xd8, 0xff, 0xdb, 0x20, 0x48}
+	poster := filepath.Join(t.TempDir(), "poster.jpg")
+	if err := os.WriteFile(poster, []byte{0xff, 0xd8, 0xff, 0xdb, 0x20, 0x48}, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	artifacts.posters = map[string]string{video.ContentKey: poster}
 	handler := newTestServer(t, Options{
-		Videos:           &fakeLibrary{videos: map[int64]domain.Video{1: video}},
-		Artifacts:        artifacts,
-		ThumbnailSources: fakeThumbnailSources{video.ContentKey: source},
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+		Artifacts: artifacts,
 	})
 
 	rec := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail?v=abcdef012345&size=large")
-	if rec.Code != http.StatusOK || rec.Body.String() != string(source) {
-		t.Fatalf("status = %d, body = %x, want the source", rec.Code, rec.Body.Bytes())
+	if rec.Code != http.StatusOK || rec.Body.String() != "\xff\xd8\xff\xdb\x20\x48" {
+		t.Fatalf("status = %d, body = %x, want the poster", rec.Code, rec.Body.Bytes())
 	}
-	if got := rec.Header().Get("Content-Type"); got != "image/jpeg" {
-		t.Errorf("Content-Type = %q, want image/jpeg", got)
+	if got := rec.Header().Get("Cache-Control"); got != cacheRevalidate || rec.Header().Get("ETag") == "" {
+		t.Errorf("Cache-Control = %q, ETag = %q", got, rec.Header().Get("ETag"))
 	}
-	if got := rec.Header().Get("Cache-Control"); got != cacheRevalidate {
-		t.Errorf("Cache-Control = %q, want %q", got, cacheRevalidate)
-	}
-
-	card := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail?v=abcdef012345")
-	if card.Body.String() == string(source) {
-		t.Error("the card thumbnail served the source")
+	if card := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail?v=abcdef012345"); card.Body.String() == rec.Body.String() {
+		t.Error("the card thumbnail served the poster")
 	}
 }
 
-func TestLargeThumbnailWithoutSourceServesTheThumbnail(t *testing.T) {
+func TestLargeThumbnailWithoutPosterServesTheThumbnail(t *testing.T) {
 	artifacts, video := thumbnailFixture(t)
 	handler := newTestServer(t, Options{
-		Videos:           &fakeLibrary{videos: map[int64]domain.Video{1: video}},
-		Artifacts:        artifacts,
-		ThumbnailSources: fakeThumbnailSources{},
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+		Artifacts: artifacts,
 	})
 	file, err := os.ReadFile(artifacts.thumbnails[video.ContentKey])
 	if err != nil {
@@ -264,49 +253,5 @@ func TestLargeThumbnailWithoutSourceServesTheThumbnail(t *testing.T) {
 	rec := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail?v=abcdef012345&size=large")
 	if rec.Code != http.StatusOK || rec.Body.String() != string(file) {
 		t.Fatalf("status = %d, body = %x, want the 640 px file", rec.Code, rec.Body.Bytes())
-	}
-}
-
-// fakePosters writes the poster where fakeArtifacts reads it, as the ingest publishes it.
-type fakePosters struct {
-	artifacts  *fakeArtifacts
-	contentKey string
-	path       string
-	calls      []string
-}
-
-func (f *fakePosters) Poster(_ context.Context, _ int64, _, path string) error {
-	f.calls = append(f.calls, path)
-	if err := os.WriteFile(f.path, []byte{0xff, 0xd8, 0xff, 0xdb, 0x08, 0x00}, 0o600); err != nil {
-		return err
-	}
-	f.artifacts.posters = map[string]string{f.contentKey: f.path}
-	return nil
-}
-
-func TestLargeThumbnailExtractsThePosterOnce(t *testing.T) {
-	artifacts, video := thumbnailFixture(t)
-	root := t.TempDir()
-	video.Path = filepath.Join(root, "a.mp4")
-	if err := os.WriteFile(video.Path, []byte("video"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	posters := &fakePosters{
-		artifacts: artifacts, contentKey: video.ContentKey, path: filepath.Join(t.TempDir(), "poster.jpg"),
-	}
-	handler := newTestServer(t, Options{
-		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: video}, roots: []string{root}},
-		Artifacts: artifacts,
-		Posters:   posters,
-	})
-
-	for range 2 {
-		rec := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail?v=abcdef012345&size=large")
-		if rec.Code != http.StatusOK || rec.Body.String() != "\xff\xd8\xff\xdb\x08\x00" {
-			t.Fatalf("status = %d, body = %x, want the poster", rec.Code, rec.Body.Bytes())
-		}
-	}
-	if want, _ := filepath.EvalSymlinks(video.Path); !slices.Equal(posters.calls, []string{want}) {
-		t.Fatalf("Poster calls = %v, want one with the resolved path %q", posters.calls, want)
 	}
 }

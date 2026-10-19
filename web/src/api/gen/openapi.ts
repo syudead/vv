@@ -6376,7 +6376,7 @@ export interface operations {
             query?: {
                 /** @description Version in the URL returned by list or detail */
                 v?: string;
-                /** @description `large` returns an image for display larger than a card, its long side up to 2048 px: the stored source of an applied image, or the thumbnail's frame extracted on the first request. When neither is available it returns the 640 px image. */
+                /** @description `large` returns the poster published with the thumbnail for display larger than a card, its long side up to 2048 px; without one it returns the 640 px image. */
                 size?: "large";
             };
             header?: never;
