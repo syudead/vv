@@ -284,7 +284,7 @@ func TestAutoImportWaitsForQuietThenScansOnlyDirtyDirectories(t *testing.T) {
 	}
 
 	origin := rig.scans.end()
-	rig.auto.ScanFinished(origin, domain.ScanDone)
+	rig.auto.ScanFinished(ScanNotice{Origin: origin, State: domain.ScanDone})
 	rig.clock.Advance(time.Minute)
 	if got := rig.scans.started(); len(got) != 1 {
 		t.Fatalf("変更が無いのに走査が増えた: %v", got)
@@ -306,7 +306,7 @@ func TestAutoImportKeepsUnsettledDirectoryDirtyUntilSettled(t *testing.T) {
 		t.Fatalf("始めた走査 = %v, want 止まった done だけ", got)
 	}
 	origin := rig.scans.end()
-	rig.auto.ScanFinished(origin, domain.ScanDone)
+	rig.auto.ScanFinished(ScanNotice{Origin: origin, State: domain.ScanDone})
 
 	// Ten seconds have not elapsed, so the directory remains pending.
 	rig.clock.Advance(5 * time.Second)
@@ -336,7 +336,7 @@ func TestAutoImportImportsChangesMadeDuringManualScanAfterIt(t *testing.T) {
 	}
 
 	origin := rig.scans.end()
-	rig.auto.ScanFinished(origin, domain.ScanDone)
+	rig.auto.ScanFinished(ScanNotice{Origin: origin, State: domain.ScanDone})
 	rig.clock.Advance(2 * time.Second)
 	got := rig.scans.started()
 	if len(got) != 1 || !slices.Equal(got[0], []domain.DirtyDirectory{dirtyDir("/media/a", false)}) {
@@ -483,23 +483,23 @@ func TestAutoImportStatus(t *testing.T) {
 			status.Problem.Kind != domain.FolderWatchProblemEventsLost {
 			t.Fatalf("状態 = %+v, want limited の events_lost", status)
 		}
-		rig.auto.ScanStarted(domain.ScanOriginManual)
-		rig.auto.ScanFinished(domain.ScanOriginWatch, domain.ScanDone)
+		rig.auto.ScanStarted(ScanNotice{Origin: domain.ScanOriginManual})
+		rig.auto.ScanFinished(ScanNotice{Origin: domain.ScanOriginWatch, State: domain.ScanDone})
 		if status := rig.auto.Status(); status.State != domain.FolderWatchLimited {
 			t.Fatalf("監視の走査が閉じて問題が解けた: %+v", status)
 		}
-		rig.auto.ScanFinished(domain.ScanOriginManual, domain.ScanFailed)
+		rig.auto.ScanFinished(ScanNotice{Origin: domain.ScanOriginManual, State: domain.ScanFailed})
 		if status := rig.auto.Status(); status.State != domain.FolderWatchLimited {
 			t.Fatalf("失敗した手動の走査で問題が解けた: %+v", status)
 		}
-		rig.auto.ScanFinished(domain.ScanOriginManual, domain.ScanDone)
+		rig.auto.ScanFinished(ScanNotice{Origin: domain.ScanOriginManual, State: domain.ScanDone})
 		if status := rig.auto.Status(); status.State != domain.FolderWatchActive || status.Problem != nil {
 			t.Fatalf("状態 = %+v, want active", status)
 		}
 
 		rig.auto.WatchProblem(domain.FolderWatchProblem{Kind: domain.FolderWatchProblemLimit, Path: fixturePath("/media/x")})
-		rig.auto.ScanStarted(domain.ScanOriginManual)
-		rig.auto.ScanFinished(domain.ScanOriginManual, domain.ScanDone)
+		rig.auto.ScanStarted(ScanNotice{Origin: domain.ScanOriginManual})
+		rig.auto.ScanFinished(ScanNotice{Origin: domain.ScanOriginManual, State: domain.ScanDone})
 		if status := rig.auto.Status(); status.State != domain.FolderWatchLimited ||
 			status.Problem == nil || status.Problem.Path != fixturePath("/media/x") {
 			t.Fatalf("watch_limit は手動の走査では解けない: %+v", status)
@@ -528,18 +528,55 @@ func TestAutoImportKeepsEventsLostReportedDuringManualScan(t *testing.T) {
 	rig := newAutoImportRig(t, true, fixturePath("/media"))
 	rig.waitState(t, domain.FolderWatchActive)
 
-	rig.auto.ScanStarted(domain.ScanOriginManual)
+	rig.auto.ScanStarted(ScanNotice{Origin: domain.ScanOriginManual})
 	rig.auto.WatchProblem(domain.FolderWatchProblem{Kind: domain.FolderWatchProblemEventsLost})
-	rig.auto.ScanFinished(domain.ScanOriginManual, domain.ScanDone)
+	rig.auto.ScanFinished(ScanNotice{Origin: domain.ScanOriginManual, State: domain.ScanDone})
 	if status := rig.auto.Status(); status.State != domain.FolderWatchLimited || status.Problem == nil ||
 		status.Problem.Kind != domain.FolderWatchProblemEventsLost {
 		t.Fatalf("走査の間の取りこぼしが解けた: %+v", status)
 	}
 
-	rig.auto.ScanStarted(domain.ScanOriginManual)
-	rig.auto.ScanFinished(domain.ScanOriginManual, domain.ScanDone)
+	rig.auto.ScanStarted(ScanNotice{Origin: domain.ScanOriginManual})
+	rig.auto.ScanFinished(ScanNotice{Origin: domain.ScanOriginManual, State: domain.ScanDone})
 	if status := rig.auto.Status(); status.State != domain.FolderWatchActive || status.Problem != nil {
 		t.Fatalf("次の手動の走査で解けない: %+v", status)
+	}
+}
+
+// A folder or video rescan does not read the directories whose events were lost.
+func TestAutoImportKeepsEventsLostAfterPartialRescan(t *testing.T) {
+	rig := newAutoImportRig(t, true, fixturePath("/media"))
+	rig.waitState(t, domain.FolderWatchActive)
+
+	rig.auto.WatchProblem(domain.FolderWatchProblem{Kind: domain.FolderWatchProblemEventsLost})
+	// A failed full scan that started after the loss must not let the rescan clear it.
+	rig.auto.ScanStarted(ScanNotice{Origin: domain.ScanOriginManual})
+	rig.auto.ScanFinished(ScanNotice{Origin: domain.ScanOriginManual, State: domain.ScanFailed})
+	rig.auto.ScanStarted(ScanNotice{Origin: domain.ScanOriginManual, Partial: true})
+	rig.auto.ScanFinished(ScanNotice{Origin: domain.ScanOriginManual, Partial: true, State: domain.ScanDone})
+	if status := rig.auto.Status(); status.State != domain.FolderWatchLimited || status.Problem == nil ||
+		status.Problem.Kind != domain.FolderWatchProblemEventsLost {
+		t.Fatalf("範囲の狭い再スキャンで取りこぼしが解けた: %+v", status)
+	}
+}
+
+// A partial rescan does not read the batch it superseded, so a later watch scan must.
+func TestAutoImportRequeuesBatchSupersededByPartialRescan(t *testing.T) {
+	rig := newAutoImportRig(t, true, fixturePath("/media"))
+	rig.waitState(t, domain.FolderWatchActive)
+
+	rig.auto.Changed(dirtyDir("/media/a", false))
+	rig.clock.Advance(2 * time.Second)
+	if got := rig.scans.started(); len(got) != 1 {
+		t.Fatalf("始めた走査 = %v, want 1 回", got)
+	}
+	origin := rig.scans.end()
+	rig.auto.ScanFinished(ScanNotice{Origin: origin, Requeue: true, State: domain.ScanDone})
+
+	rig.clock.Advance(2 * time.Second)
+	got := rig.scans.started()
+	if len(got) != 2 || !slices.Equal(got[1], []domain.DirtyDirectory{dirtyDir("/media/a", false)}) {
+		t.Fatalf("始めた走査 = %v, want 2 回目が置き換えられた a", got)
 	}
 }
 

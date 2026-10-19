@@ -34,3 +34,9 @@ func (s RescanScope) CarriesIssue(videoID int64, path string) bool {
 		return false
 	}
 }
+
+// Partial reports whether the scope reads less than the whole library, so its scan cannot stand in
+// for a full scan.
+func (s RescanScope) Partial() bool {
+	return s.Kind == RescanFolder || s.Kind == RescanVideo
+}

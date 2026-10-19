@@ -34,6 +34,66 @@ func (s *server) StartScan(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, toAPIScan(scan), s.logger)
 }
 
+// StartRescan refuses a running manual scan or force rescan instead of returning it, unlike StartScan.
+func (s *server) StartRescan(w http.ResponseWriter, r *http.Request) {
+	var body gen.StartRescanRequest
+	if !s.readJSONBody(w, r, &body) {
+		return
+	}
+	scope, ok := rescanScopeOf(body)
+	if !ok {
+		s.invalidRequest(w, "scope must be library, folder with folderId, or video with videoId.")
+		return
+	}
+	if s.scans == nil {
+		s.internalError(w, "Scanning is not configured.", nil)
+		return
+	}
+
+	scan, err := s.scans.StartRescan(r.Context(), scope)
+	switch {
+	case errors.Is(err, domain.ErrNoMediaFolders):
+		s.writeError(w, http.StatusConflict, codeMediaFoldersNotConfigured, "Add a media folder first.")
+		return
+	case errors.Is(err, domain.ErrScanRunning):
+		s.writeError(w, http.StatusConflict, codeScanInProgress, "A scan is in progress.")
+		return
+	case errors.Is(err, domain.ErrNotFound) && scope.Kind == domain.RescanVideo:
+		s.notFound(w, "Video not found.")
+		return
+	case errors.Is(err, domain.ErrNotFound):
+		s.notFound(w, "Media folder not found.")
+		return
+	case err != nil:
+		s.internalError(w, "Could not start the force rescan.", err)
+		return
+	}
+
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusAccepted, toAPIScan(scan), s.logger)
+}
+
+// rescanScopeOf accepts exactly the target its scope names: folderId for folder, videoId for video, neither for
+// library.
+func rescanScopeOf(body gen.StartRescanRequest) (domain.RescanScope, bool) {
+	switch body.Scope {
+	case gen.RescanScopeLibrary:
+		return domain.RescanScope{Kind: domain.RescanLibrary}, body.FolderId == nil && body.VideoId == nil
+	case gen.RescanScopeFolder:
+		if body.FolderId == nil || body.VideoId != nil {
+			return domain.RescanScope{}, false
+		}
+		return domain.RescanScope{Kind: domain.RescanFolder, FolderID: *body.FolderId}, true
+	case gen.RescanScopeVideo:
+		if body.VideoId == nil || body.FolderId != nil {
+			return domain.RescanScope{}, false
+		}
+		return domain.RescanScope{Kind: domain.RescanVideo, VideoID: *body.VideoId}, true
+	default:
+		return domain.RescanScope{}, false
+	}
+}
+
 func (s *server) GetCurrentScan(w http.ResponseWriter, r *http.Request) {
 	if s.scans == nil {
 		s.internalError(w, "Scanning is not configured.", nil)
@@ -143,6 +203,9 @@ func toAPIScan(scan domain.Scan) gen.Scan {
 	if scan.Activity.Active() {
 		out.Activity = toAPIScanActivity(scan.Activity)
 	}
+	if scan.Rescan != nil {
+		out.Rescan = toAPIScanRescan(*scan.Rescan)
+	}
 	if scan.Error != "" {
 		reason := scan.Error
 		out.Error = &reason
@@ -155,6 +218,19 @@ func toAPIScan(scan domain.Scan) gen.Scan {
 			path := scan.ErrorPath
 			out.ErrorPath = &path
 		}
+	}
+	return out
+}
+
+func toAPIScanRescan(scope domain.RescanScope) *gen.ScanRescan {
+	out := &gen.ScanRescan{Scope: gen.RescanScope(scope.Kind)}
+	switch scope.Kind {
+	case domain.RescanFolder:
+		out.Folder = &gen.ScanRescanFolder{Id: scope.FolderID, Path: scope.Path}
+	case domain.RescanVideo:
+		videoID := scope.VideoID
+		out.VideoId = &videoID
+	case domain.RescanLibrary:
 	}
 	return out
 }

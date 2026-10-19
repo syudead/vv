@@ -168,8 +168,20 @@ type fakeScans struct {
 	started    int
 	startErr   error
 	currentErr error
+	rescanErr  error
+	rescans    []domain.RescanScope
 
 	issues []domain.ScanIssue
+}
+
+func (f *fakeScans) StartRescan(_ context.Context, scope domain.RescanScope) (domain.Scan, error) {
+	f.rescans = append(f.rescans, scope)
+	if f.rescanErr != nil {
+		return domain.Scan{}, f.rescanErr
+	}
+	f.current = domain.Scan{ID: f.current.ID + 1, State: domain.ScanRunning, Origin: domain.ScanOriginManual, Rescan: &scope}
+	f.hasScan = true
+	return f.current, nil
 }
 
 func (f *fakeScans) ListScanIssues(_ context.Context, cursor string, limit int) (domain.ScanIssuePage, error) {
