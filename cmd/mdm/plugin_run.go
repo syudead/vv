@@ -24,6 +24,9 @@ type pluginRunArgs struct {
 	input      string
 	values     map[string]string
 	proxy      string
+	// hasSource tells --source with an empty value apart from no --source.
+	source    string
+	hasSource bool
 }
 
 func runPluginRun(ctx context.Context, args []string, env accountEnv) *accountFailure {
@@ -63,7 +66,7 @@ func runPluginRun(ctx context.Context, args []string, env accountEnv) *accountFa
 	case err != nil:
 		return operationFailure("Cannot run the plugin: %v", err)
 	}
-	return writeKeptResult(env.Stdout, req.Operation, result)
+	return writeKeptResult(env.Stdout, req, result)
 }
 
 // Options may appear around positional arguments; repeated --set keys use the last value, and --
@@ -77,7 +80,7 @@ func parsePluginRunArgs(args []string) (pluginRunArgs, *accountFailure) {
 			break
 		}
 		name, value, hasValue := strings.Cut(args[i], "=")
-		if name != "--set" && name != "--proxy" {
+		if name != "--set" && name != "--proxy" && name != "--source" {
 			if strings.HasPrefix(args[i], "--") {
 				return parsed, usageFailure("Unknown option: %s", args[i])
 			}
@@ -103,8 +106,12 @@ func parsePluginRunArgs(args []string) (pluginRunArgs, *accountFailure) {
 }
 
 func (p *pluginRunArgs) setOption(name, value string) *accountFailure {
-	if name == "--proxy" {
+	switch name {
+	case "--proxy":
 		p.proxy = value
+		return nil
+	case "--source":
+		p.source, p.hasSource = value, true
 		return nil
 	}
 	key, setting, ok := strings.Cut(value, "=")
@@ -129,12 +136,15 @@ func pluginRunNetwork(raw string) (domain.WorkInfoRunNetwork, *accountFailure) {
 // Build requests with declared operations, API input validation, declared settings, and effective
 // defaults, just like the server.
 func pluginRunRequest(manifest domain.WorkInfoPluginManifest, args pluginRunArgs) (domain.WorkInfoRunRequest, *accountFailure) {
-	req := domain.WorkInfoRunRequest{Operation: args.operation}
+	req := manifest.RunRequest(args.operation)
 	if !manifest.Supports(args.operation) {
 		return req, usageFailure("The plugin does not declare the operation %q; its manifest declares %s.",
 			args.operation, joinOperations(manifest.Operations))
 	}
 	if failure := setRunInput(&req, args.input); failure != nil {
+		return req, failure
+	}
+	if failure := setRunSource(&req, manifest, args); failure != nil {
 		return req, failure
 	}
 	for _, key := range slices.Sorted(maps.Keys(args.values)) {
@@ -173,13 +183,33 @@ func setRunInput(req *domain.WorkInfoRunRequest, input string) *accountFailure {
 		// Pass URL-shaped inputs through as work IDs.
 		id, err := domain.NormalizeWorkInfoSearchQuery(input)
 		if err != nil {
-			return usageFailure("The work's ID must be 1 to %d characters after trimming spaces.",
-				domain.WorkInfoSearchQueryMaxRunes)
+			owner := "work"
+			if req.Kind == domain.WorkInfoPluginKindPerson {
+				owner = "person"
+			}
+			return usageFailure("The %s's ID must be 1 to %d characters after trimming spaces.",
+				owner, domain.WorkInfoSearchQueryMaxRunes)
 		}
 		req.ID = id
 	default:
 		return usageFailure("This VVMDM cannot build the input of the operation %q.", req.Operation)
 	}
+	return nil
+}
+
+// A person plugin's fetch needs a declared --source; any other run refuses one.
+func setRunSource(req *domain.WorkInfoRunRequest, manifest domain.WorkInfoPluginManifest, args pluginRunArgs) *accountFailure {
+	needed := manifest.Kind == domain.WorkInfoPluginKindPerson && req.Operation == domain.WorkInfoFetch
+	switch {
+	case !needed && args.hasSource:
+		return usageFailure("--source applies only to a person plugin's fetch.")
+	case !needed:
+		return nil
+	case !args.hasSource || !manifest.DeclaresSource(args.source):
+		return usageFailure("A person plugin's fetch needs --source with one of its sources: %s.",
+			strings.Join(manifest.Sources, ", "))
+	}
+	req.Source = args.source
 	return nil
 }
 
@@ -222,11 +252,19 @@ func runFailureLine(err *domain.WorkInfoRunError) string {
 	return line
 }
 
-func writeKeptResult(w io.Writer, op domain.WorkInfoOperation, result domain.WorkInfoRunResult) *accountFailure {
+func writeKeptResult(w io.Writer, req domain.WorkInfoRunRequest, result domain.WorkInfoRunResult) *accountFailure {
+	person := req.Kind == domain.WorkInfoPluginKindPerson
 	var body any
-	if op == domain.WorkInfoSearch {
+	switch {
+	case req.Operation == domain.WorkInfoSearch && person:
+		body = keptPersonCandidates(result.PersonCandidates)
+	case req.Operation == domain.WorkInfoSearch:
 		body = keptCandidates(result.Candidates)
-	} else {
+	case person:
+		body = struct {
+			Person keptPerson `json:"person"`
+		}{toKeptPerson(result.Person)}
+	default:
 		body = struct {
 			WorkInfo keptWorkInfo `json:"workInfo"`
 		}{toKeptWorkInfo(result.WorkInfo)}

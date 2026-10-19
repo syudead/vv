@@ -128,12 +128,16 @@ func optionalJSON(raw json.RawMessage, dst any) (present, ok bool) {
 }
 
 type WorkInfoPluginManifest struct {
-	Contract    int
+	Contract int
+	// Kind is WorkInfoPluginKindWork when the manifest has none.
+	Kind        WorkInfoPluginKind
 	Name        string
 	Version     string
 	Description string
 	Operations  []WorkInfoOperation
 	Settings    []WorkInfoPluginSetting
+	// Sources lists a person plugin's external-ID sources in manifest order; nil for a work-info plugin.
+	Sources []string
 }
 
 func (m WorkInfoPluginManifest) Supports(op WorkInfoOperation) bool {
@@ -142,6 +146,8 @@ func (m WorkInfoPluginManifest) Supports(op WorkInfoOperation) bool {
 
 // Unknown manifest fields are ignored.
 type manifestJSON struct {
+	Kind        *WorkInfoPluginKind `json:"kind"`
+	Sources     []string            `json:"sources"`
 	Name        string              `json:"name"`
 	Version     string              `json:"version"`
 	Description string              `json:"description"`
@@ -205,13 +211,22 @@ func CheckWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, *WorkInfo
 	}
 	m := WorkInfoPluginManifest{
 		Contract:    contract,
+		Kind:        WorkInfoPluginKindWork,
 		Name:        raw.Name,
 		Version:     raw.Version,
 		Description: raw.Description,
 		Operations:  raw.Operations,
 		Settings:    settings,
+		Sources:     raw.Sources,
+	}
+	if raw.Kind != nil {
+		m.Kind = *raw.Kind
 	}
 	if rejection := checkManifest(m); rejection != nil {
+		return WorkInfoPluginManifest{}, rejection
+	}
+	_, hasSources := top["sources"]
+	if rejection := checkPluginKind(m, hasSources); rejection != nil {
 		return WorkInfoPluginManifest{}, rejection
 	}
 	return m, nil
@@ -404,6 +419,17 @@ type WorkInfoRunRequest struct {
 	// ID is opaque; the plugin embeds it into source URLs.
 	ID       string
 	Settings map[string]string
+	// Kind selects how the response is read; the zero value reads a work-info response.
+	Kind WorkInfoPluginKind
+	// Source is a person plugin fetch's external-ID source, one of Sources; it is sent only for that fetch.
+	Source string
+	// Sources is a person plugin's declared sources, which its search candidates must use; it is never sent.
+	Sources []string
+}
+
+// RunRequest starts a request for op that carries the manifest's kind and sources.
+func (m WorkInfoPluginManifest) RunRequest(op WorkInfoOperation) WorkInfoRunRequest {
+	return WorkInfoRunRequest{Operation: op, Kind: m.Kind, Sources: m.Sources}
 }
 
 func (r WorkInfoRunRequest) MarshalJSON() ([]byte, error) {
@@ -415,14 +441,18 @@ func (r WorkInfoRunRequest) MarshalJSON() ([]byte, error) {
 		Contract  int               `json:"contract"`
 		Operation WorkInfoOperation `json:"operation"`
 		Query     string            `json:"query,omitempty"`
+		Source    string            `json:"source,omitempty"`
 		ID        string            `json:"id,omitempty"`
 		Settings  map[string]string `json:"settings"`
-	}{WorkInfoPluginContract, r.Operation, "", "", settings}
+	}{WorkInfoPluginContract, r.Operation, "", "", "", settings}
 	switch r.Operation {
 	case WorkInfoSearch:
 		body.Query = r.Query
 	case WorkInfoFetch:
 		body.ID = r.ID
+		if r.Kind == WorkInfoPluginKindPerson {
+			body.Source = r.Source
+		}
 	}
 	return json.Marshal(body)
 }
@@ -456,6 +486,11 @@ type WorkInfoRunResult struct {
 	CoverImage []byte
 	// PersonImages aligns with WorkInfo.People and holds unvalidated response data, nil for a person without one.
 	PersonImages [][]byte
+	// PersonCandidates and Person hold a person plugin's search and fetch results.
+	PersonCandidates []PersonCandidate
+	Person           FetchedPluginPerson
+	// PersonImage is the unvalidated image fetched from Person.ImageURL, nil when absent or fetching fails.
+	PersonImage []byte
 }
 
 type WorkInfoRunFailure string
@@ -502,21 +537,39 @@ type responseJSON struct {
 		Tags  []string `json:"tags"`
 		workDetailsJSON
 	} `json:"workInfo"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error"`
+	Error *runErrorJSON `json:"error"`
+}
+
+type runErrorJSON struct {
+	Message string `json:"message"`
+}
+
+// ParseRunResponse reads a work-info or person plugin's response, as req.Kind says.
+func ParseRunResponse(req WorkInfoRunRequest, output []byte) (WorkInfoRunResult, error) {
+	if req.Kind == WorkInfoPluginKindPerson {
+		return parsePersonPluginResponse(req, output)
+	}
+	return ParseWorkInfoResponse(req.Operation, output)
+}
+
+// decodeRunResponse decodes a JSON object response into raw and turns a reported error into plugin_failed.
+func decodeRunResponse(output []byte, raw any, reported func() *runErrorJSON) error {
+	if err := json.Unmarshal(output, raw); err != nil || !isJSONObject(output) {
+		return &WorkInfoRunError{Failure: WorkInfoRunFailed}
+	}
+	if e := reported(); e != nil {
+		return &WorkInfoRunError{
+			Failure:       WorkInfoRunFailed,
+			PluginMessage: truncateRunes(e.Message, WorkInfoPluginMessageMaxRunes),
+		}
+	}
+	return nil
 }
 
 func ParseWorkInfoResponse(op WorkInfoOperation, output []byte) (WorkInfoRunResult, error) {
 	var raw responseJSON
-	if err := json.Unmarshal(output, &raw); err != nil || !isJSONObject(output) {
-		return WorkInfoRunResult{}, &WorkInfoRunError{Failure: WorkInfoRunFailed}
-	}
-	if raw.Error != nil {
-		return WorkInfoRunResult{}, &WorkInfoRunError{
-			Failure:       WorkInfoRunFailed,
-			PluginMessage: truncateRunes(raw.Error.Message, WorkInfoPluginMessageMaxRunes),
-		}
+	if err := decodeRunResponse(output, &raw, func() *runErrorJSON { return raw.Error }); err != nil {
+		return WorkInfoRunResult{}, err
 	}
 	switch {
 	case op == WorkInfoSearch && raw.Candidates != nil:
