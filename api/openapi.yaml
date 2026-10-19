@@ -3449,7 +3449,7 @@ paths:
     get:
       operationId: listActivity
       summary: "List activity records, newest first"
-      description: "Owner-only. Returns import, auto-tagging, duplicate judgement, work-info fetch, failed scan and owner tag/bundle actions in descending ID order. Filters are ANDed before pagination. counts applies every filter except status; features applies every filter except feature. Unknown status/feature/decider, unreadable cursor/since or out-of-range q/limit returns 400 invalid_request (invalid_cursor reason for unreadable cursors)."
+      description: "Owner-only. Returns top-level records in descending ID order: import pipelines and records that belong to no pipeline. A pipeline's members are not listed on their own; they appear in its members, and a member of two pipelines appears under both. Filters are ANDed before pagination. status matches the top-level record's own status; feature, decider, since and q match a pipeline when the pipeline or any one of its members satisfies all of them. counts applies every filter except status; features applies every filter except feature and counts a pipeline once under each feature that it or a matching member has. Unknown status/feature/decider, unreadable cursor/since or out-of-range q/limit returns 400 invalid_request (invalid_cursor reason for unreadable cursors)."
       parameters:
         - name: status
           in: query
@@ -3507,11 +3507,30 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
 
+  /api/activity/{id}:
+    get:
+      operationId: getActivity
+      summary: "Read one activity record with its details"
+      description: "Owner-only. Returns a record of any kind with what the list leaves out: a pipeline's members, a member's pipelines and an import's stage rows. Missing record returns 404 not_found."
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "200":
+          description: "Activity record and its details"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityDetail"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/activity/{id}/retry:
     post:
       operationId: retryActivity
       summary: "Retry an activity operation"
-      description: "Owner-only. Starts a retry with 202, creating a new record and closing this one; version_judgement instead keeps its record and returns to running. import requeues failed stages; scan starts a manual scan of all folders. Missing record returns 404 not_found; unavailable retry or missing subject returns 409 activity_not_retryable; active scans return scan_in_progress; disabled auto-tagging returns auto_tagging_off."
+      description: "Owner-only. Starts a retry with 202, creating a new record and closing this one; version_judgement instead keeps its record and returns to running. import requeues failed stages; scan starts a manual scan of all folders. Missing record returns 404 not_found; unavailable retry, a pipeline record or missing subject returns 409 activity_not_retryable; active scans return scan_in_progress; disabled auto-tagging returns auto_tagging_off."
       parameters:
         - $ref: "#/components/parameters/ActivityId"
       responses:
@@ -3528,7 +3547,7 @@ paths:
     post:
       operationId: undoActivity
       summary: "Undo an automatic decision"
-      description: "Owner-only. Reverts the decision and returns an owner undo record. If the owner already changed state, outcome is already_reverted. Missing activity or a tag not assigned by its auto_tag action returns 404 not_found. Unsupported, already-undone records/tags return 409 activity_not_undoable."
+      description: "Owner-only. Reverts the decision and returns an owner undo record. If the owner already changed state, outcome is already_reverted. Missing activity or a tag not assigned by its auto_tag action returns 404 not_found. Unsupported (including pipeline records), already-undone records/tags return 409 activity_not_undoable."
       parameters:
         - $ref: "#/components/parameters/ActivityId"
       requestBody:
@@ -9121,6 +9140,7 @@ components:
         - work_info_apply
         - media_folder_remove
         - organize_undo
+        - pipeline
         - undo
 
     ActivityFeature:
@@ -9210,7 +9230,7 @@ components:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/ActivityEntry"
+            $ref: "#/components/schemas/ActivityListItem"
         nextCursor:
           type: string
           description: "Included only when more results remain."
@@ -9221,7 +9241,7 @@ components:
 
     ActivityCounts:
       type: object
-      description: "Counts by status for records matching every filter except status."
+      description: "Counts by status for top-level records matching every filter except status."
       required: [running, attention, done]
       additionalProperties: false
       properties:
@@ -9234,7 +9254,7 @@ components:
 
     ActivityFeatureCounts:
       type: object
-      description: "Counts for all features among records matching every filter except feature."
+      description: "Counts for all features among top-level records matching every filter except feature; a pipeline counts once under each feature that it or a matching member has."
       required:
         [
           import,
@@ -9269,8 +9289,14 @@ components:
           type: integer
 
     ActivityEntry:
-      type: object
       description: "One activity record."
+      allOf:
+        - $ref: "#/components/schemas/ActivityEntryFields"
+      unevaluatedProperties: false
+
+    ActivityEntryFields:
+      type: object
+      description: "The fields of one activity record, left open so ActivityEntry, ActivityListItem and ActivityDetail close them after adding their own."
       required:
         [
           id,
@@ -9286,7 +9312,6 @@ components:
           createdAt,
           updatedAt,
         ]
-      additionalProperties: false
       properties:
         id:
           type: integer
@@ -9339,12 +9364,156 @@ components:
         undone:
           type: boolean
           description: "Undone by the owner."
+        replaced:
+          type: boolean
+          description: "Set only on a pipeline's members in ActivityDetail: a retried or reopened member kept for history."
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
+
+    ActivityListItem:
+      description: "One top-level record of the list."
+      unevaluatedProperties: false
+      allOf:
+        - $ref: "#/components/schemas/ActivityEntryFields"
+        - type: object
+          properties:
+            members:
+              type: array
+              description: "Pipeline only: member summaries in join order, replaced members included."
+              items:
+                $ref: "#/components/schemas/ActivityMemberSummary"
+
+    ActivityMemberSummary:
+      type: object
+      description: "A pipeline member as the list shows it, without detail and tags."
+      required:
+        [id, kind, feature, status, decider, subject, retryRun, undoable, undone, replaced]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        kind:
+          $ref: "#/components/schemas/ActivityKind"
+        feature:
+          $ref: "#/components/schemas/ActivityFeature"
+        subject:
+          $ref: "#/components/schemas/ActivitySubject"
+        status:
+          $ref: "#/components/schemas/ActivityStatus"
+        reason:
+          $ref: "#/components/schemas/ActivityReason"
+        outcome:
+          $ref: "#/components/schemas/ActivityOutcome"
+        decider:
+          $ref: "#/components/schemas/ActivityDecider"
+        probability:
+          type: number
+          format: double
+        stage:
+          $ref: "#/components/schemas/ActivityStage"
+        progress:
+          $ref: "#/components/schemas/ActivityProgress"
+        retryAt:
+          type: string
+          format: date-time
+        retryRun:
+          type: boolean
+        undoable:
+          type: boolean
+        undone:
+          type: boolean
+        replaced:
+          type: boolean
+          description: "A retried or reopened member kept for history."
+        matched:
+          type: boolean
+          description: "Omitted without filters. With status only, whether the member has that status; with feature, decider, since or q, whether it satisfies all of those given (status is not applied)."
+        tagCount:
+          type: integer
+          description: "auto_tag only: the number of tags the run added."
+        stages:
+          type: array
+          description: "import only, in ingest order; omitted when the stages were not recorded."
+          items:
+            $ref: "#/components/schemas/ActivityStageSummary"
+
+    ActivityStageSummary:
+      type: object
+      required: [stage, state]
+      additionalProperties: false
+      properties:
+        stage:
+          $ref: "#/components/schemas/ActivityStage"
+        state:
+          $ref: "#/components/schemas/ActivityStageState"
+
+    ActivityStageState:
+      type: string
+      description: "State of one ingest stage of an import; gone when the video was deleted or lost every location first."
+      enum: [waiting, processing, done, failed, gone]
+
+    ActivityStageRow:
+      type: object
+      required: [stage, state, updatedAt]
+      additionalProperties: false
+      properties:
+        stage:
+          $ref: "#/components/schemas/ActivityStage"
+        state:
+          $ref: "#/components/schemas/ActivityStageState"
+        detail:
+          type: string
+          description: "The stage's last error message, untranslated."
+        updatedAt:
+          type: string
+          format: date-time
+
+    ActivityPipelineRef:
+      type: object
+      required: [id, subject, status, createdAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        subject:
+          $ref: "#/components/schemas/ActivitySubject"
+        status:
+          $ref: "#/components/schemas/ActivityStatus"
+        createdAt:
+          type: string
+          format: date-time
+
+    ActivityDetail:
+      description: "One activity record with its full detail and probabilities, plus what the list leaves out."
+      unevaluatedProperties: false
+      allOf:
+        - $ref: "#/components/schemas/ActivityEntryFields"
+        - type: object
+          properties:
+            members:
+              type: array
+              description: "Pipeline only: its members in join order, replaced members included."
+              items:
+                $ref: "#/components/schemas/ActivityEntry"
+            pipelines:
+              type: array
+              description: "A member only: the pipelines it belongs to, newest first."
+              items:
+                $ref: "#/components/schemas/ActivityPipelineRef"
+            stages:
+              type: array
+              description: "import with recorded stages: one row per stage the run held, in ingest order."
+              items:
+                $ref: "#/components/schemas/ActivityStageRow"
+            stagesRecorded:
+              type: boolean
+              description: "import only: false for a record written before stages were recorded."
 
     ActivitySubject:
       type: object

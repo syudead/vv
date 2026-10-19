@@ -14,6 +14,7 @@ import { GroupedListExample } from "./blocks/grouped-list-example";
 import { ProfilePageExample } from "./blocks/profile-page-example";
 import { ListPageExample } from "./blocks/list-page-example";
 import { type ListState, ListStatesExample } from "./blocks/list-states-example";
+import { RecordPageExample } from "./blocks/record-page-example";
 import { SettingsPageExample } from "./blocks/settings-page-example";
 import { StepsPageExample } from "./blocks/steps-page-example";
 
@@ -130,6 +131,20 @@ export default function Patterns() {
         ]}
       >
         <SettingsPageExample />
+      </Pattern>
+      <Pattern
+        id="record-page"
+        name={p.names.recordPage}
+        items={[
+          "record-page",
+          "page-column",
+          "page-section",
+          "fact-list",
+          "alert",
+          "record-page-example",
+        ]}
+      >
+        <RecordPageExample />
       </Pattern>
       <Pattern
         id="detail-page"

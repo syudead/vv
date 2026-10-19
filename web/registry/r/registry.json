@@ -152,6 +152,20 @@
       ]
     },
     {
+      "name": "collapsible",
+      "type": "registry:ui",
+      "title": "Collapsible",
+      "description": "Shows or hides a part of a section from a button, such as the rows inside an expandable card.",
+      "docs": "Usage rules: web/registry/rules/components.md#collapsible (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/shadcn/collapsible.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["radix-ui"]
+    },
+    {
       "name": "combobox",
       "type": "registry:ui",
       "title": "Combobox",
@@ -665,6 +679,19 @@
       ]
     },
     {
+      "name": "page-column",
+      "type": "registry:ui",
+      "title": "PageColumn",
+      "description": "The reading column SettingsPage and RecordPage share: header, optional notice, sections. Used by patterns only.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#record-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/page-column.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "list-page",
       "type": "registry:ui",
       "title": "ListPage",
@@ -703,6 +730,19 @@
         }
       ],
       "dependencies": ["radix-ui"]
+    },
+    {
+      "name": "record-page",
+      "type": "registry:ui",
+      "title": "RecordPage",
+      "description": "Page skeleton: one record to read inside the shell, with a back link, a title that wraps in full, an optional notice and its parts in sections.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#record-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/record-page.tsx",
+          "type": "registry:ui"
+        }
+      ]
     },
     {
       "name": "detail-page",
@@ -890,7 +930,7 @@
       "name": "card-list",
       "type": "registry:ui",
       "title": "CardList",
-      "description": "Section: a stack of one-line bordered cards on muted, gap-2 apart, in four tones, with fixed columns at the end for the time and the actions; two lines below lg.",
+      "description": "Section: a stack of one-line bordered cards on muted, gap-2 apart, in four tones, with fixed columns at the end for the time and the actions; two lines below lg. A card with members has an expand button and shows its member rows inside its border. Uses collapsible, button and tooltip.",
       "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
       "files": [
         {
@@ -1076,6 +1116,19 @@
       "files": [
         {
           "path": "src/designSystem/blocks/settings-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "record-page-example",
+      "type": "registry:block",
+      "title": "Record page example",
+      "description": "A working activity entry: back link, a long wrapping title, a failure notice with its full message and Retry, a fact list and a list of stages.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#record-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/record-page-example.tsx",
           "type": "registry:component"
         }
       ]

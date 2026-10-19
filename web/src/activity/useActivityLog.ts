@@ -15,6 +15,7 @@ import {
   activityConditions,
   activityCriteriaKey,
 } from "./activityCriteria";
+import { useWaiters } from "./useWaiters";
 
 export type MoreState = { kind: "idle" } | { kind: "loading" } | { kind: "failed" };
 
@@ -111,12 +112,7 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
   // Allow readFirst to call refresh, which is defined later.
   const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
   // Callers waiting for all refreshes to settle.
-  const waiters = useRef<(() => void)[]>([]);
-  const settle = useCallback(() => {
-    const waiting = waiters.current;
-    waiters.current = [];
-    for (const resolve of waiting) resolve();
-  }, []);
+  const { wait, settle } = useWaiters();
 
   const readFirst = useCallback(() => {
     const { gen, signal } = begin();
@@ -144,9 +140,7 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
 
   const refresh = useCallback((): Promise<void> => {
     if (stateRef.current.kind === "failed") return Promise.resolve();
-    const done = new Promise<void>((resolve) => {
-      waiters.current.push(resolve);
-    });
+    const done = wait();
     if (stateRef.current.kind === "loading" || refreshing.current) {
       again.current = true;
       return done;
@@ -189,7 +183,7 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
       },
     );
     return done;
-  }, [begin, readPage, settle, show]);
+  }, [begin, readPage, settle, show, wait]);
 
   useEffect(() => {
     refreshRef.current = refresh;

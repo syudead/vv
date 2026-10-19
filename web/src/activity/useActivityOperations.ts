@@ -4,9 +4,12 @@ import { type ActivityEntry, retryActivity, undoActivity } from "../api/activity
 import { errorText, t } from "../i18n";
 import { useToast } from "../ui/Toast";
 
+/** A list entry or a pipeline member's summary; an operation needs only its id. */
+export type OperationTarget = Pick<ActivityEntry, "id">;
+
 export interface ActivityOperations {
-  retry: (entry: ActivityEntry) => Promise<void>;
-  undo: (entry: ActivityEntry, tagId?: number) => Promise<void>;
+  retry: (entry: OperationTarget) => Promise<void>;
+  undo: (entry: OperationTarget, tagId?: number) => Promise<void>;
 }
 
 /**
@@ -17,7 +20,7 @@ export function useActivityOperations(refresh: () => Promise<void>): ActivityOpe
   const toast = useToast();
 
   const retry = useCallback(
-    async (entry: ActivityEntry) => {
+    async (entry: OperationTarget) => {
       try {
         await retryActivity(entry.id);
       } catch (error) {
@@ -30,7 +33,7 @@ export function useActivityOperations(refresh: () => Promise<void>): ActivityOpe
   );
 
   const undo = useCallback(
-    async (entry: ActivityEntry, tagId?: number) => {
+    async (entry: OperationTarget, tagId?: number) => {
       try {
         const written = await undoActivity(entry.id, tagId);
         toast(

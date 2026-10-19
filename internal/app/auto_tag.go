@@ -30,6 +30,8 @@ type AutoTagQueue interface {
 	// Open an auto_tag activity for each queued video using its decider.
 	QueueVideos(ctx context.Context, videoIDs []int64, mode domain.AutoTagQueueMode, decider domain.ActivityDecider) (int, error)
 	QueueLibrary(ctx context.Context, mode domain.AutoTagQueueMode, decider domain.ActivityDecider) (int, error)
+	// Queue the video again for the owner's retry of entryID, joining that entry's pipelines.
+	RetryVideo(ctx context.Context, videoID, entryID int64) (int, error)
 	// Claim the oldest queued classification or return ErrNoJob.
 	Claim(ctx context.Context) (domain.AutoTagJob, error)
 	// Subject returns the video and its representative location's registered folder, or ErrNotFound.
@@ -225,8 +227,14 @@ func (a *AutoTagger) RetryActivity(ctx context.Context, entry domain.ActivityEnt
 	if videoID == 0 {
 		return domain.ErrActivityNotRetryable
 	}
-	_, err := a.QueueVideo(ctx, videoID)
-	return err
+	queued, err := a.queue.RetryVideo(ctx, videoID, entry.ID)
+	if err != nil {
+		return err
+	}
+	if queued > 0 {
+		a.Wake()
+	}
+	return nil
 }
 
 // UndoActivity returns the owner's undo record; absent undo support returns ErrActivityNotUndoable.
@@ -237,25 +245,10 @@ func (a *AutoTagger) UndoActivity(ctx context.Context, entry domain.ActivityEntr
 	return a.undo.UndoAutoTag(ctx, entry.ID, tagID)
 }
 
-// Seek completion, successful or failed, follows thumbnail completion; enabled post-import tagging
-// queues previously unclassified videos with whatever images are available.
-func (a *AutoTagger) VideoImagesFinished(ctx context.Context, videoID int64) {
-	settings, err := a.settings.AutoTagSettings(ctx)
-	if err != nil {
-		a.logger.Warn("cannot read the auto-tagging settings", slog.Any("error", err))
-		return
-	}
-	if !settings.Enabled || !settings.AfterImport {
-		return
-	}
-	queued, err := a.queue.QueueVideos(ctx, []int64{videoID}, domain.AutoTagQueueIfNew, domain.ActivityByRule)
-	if err != nil {
-		a.logger.Warn("cannot queue a video for auto-tagging", slog.Int64("video_id", videoID), slog.Any("error", err))
-		return
-	}
-	if queued > 0 {
-		a.Wake()
-	}
+// VideoImagesFinished only wakes the worker: the transaction that finishes the seek stage has already queued the
+// video when after-import tagging is on, so the import pipeline never looks done before tagging joins it.
+func (a *AutoTagger) VideoImagesFinished(context.Context, int64) {
+	a.Wake()
 }
 
 // Recover must run before Run.

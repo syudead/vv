@@ -592,8 +592,13 @@ export const en = {
         groupedList: "Grouped list",
         stepsPage: "Steps page",
         cardList: "Card list",
+        recordPage: "Record page",
         listState: (state: string) => `List page: ${state}`,
       },
+      recordTitle:
+        "Kyoto Arashiyama, morning walk through the bamboo grove and along the Hozu river, recorded on a long holiday weekend.mp4",
+      recordMessage:
+        "ffmpeg exited with status 1\n[mov,mp4] moov atom not found; the file may be truncated or still being copied into the media folder",
       states: {
         loading: "Loading",
         empty: "Empty",
@@ -2479,6 +2484,7 @@ export const en = {
       work_info_apply: "Work info applied",
       media_folder_remove: "Media folder removed",
       organize_undo: "Drag and drop undone",
+      pipeline: "Import run",
       undo: "Undo",
     } satisfies Record<ActivityKind, string>,
     subject: {
@@ -2517,6 +2523,11 @@ export const en = {
       tagRemoved: (name: string) => `− ${name}`,
       suggested: "(suggested)",
       noTags: "No tags added",
+      tagsAdded: (count: number) =>
+        selectPlural(count, {
+          one: `Added ${formatNumber(count)} tag`,
+          other: `Added ${formatNumber(count)} tags`,
+        }),
       byYou: "by you",
       byYouAlone: "By you",
       folderRemoved: (count: number) =>
@@ -2587,6 +2598,67 @@ export const en = {
     noMatch: {
       title: "Nothing matches these filters",
       description: "No entries match these filters.",
+    },
+    detailLink: (kind: string, subject: string) => `Details of ${kind} for ${subject}`,
+    pipeline: {
+      processing: (kind: string, done: number, total: number) =>
+        selectPlural(total, {
+          one: `${kind} in progress · ${formatNumber(done)} of ${formatNumber(total)} task done`,
+          other: `${kind} in progress · ${formatNumber(done)} of ${formatNumber(total)} tasks done`,
+        }),
+      waiting: (done: number, total: number) =>
+        selectPlural(total, {
+          one: `Waiting · ${formatNumber(done)} of ${formatNumber(total)} task done`,
+          other: `Waiting · ${formatNumber(done)} of ${formatNumber(total)} tasks done`,
+        }),
+      finished: (total: number) =>
+        selectPlural(total, {
+          one: `Finished · ${formatNumber(total)} task`,
+          other: `Finished · ${formatNumber(total)} tasks`,
+        }),
+      matches: "Matches",
+      showTasks: "Show tasks",
+      hideTasks: "Hide tasks",
+      showTasksFor: (subject: string) => `Show tasks for ${subject}`,
+      hideTasksFor: (subject: string) => `Hide tasks for ${subject}`,
+    },
+    detail: {
+      documentTitle: (subject: string) => `${subject} · Activity`,
+      loading: "Loading this activity entry",
+      notFound: "This activity entry doesn't exist",
+      backToList: "Back to Activity",
+      loadFailed: "Couldn't load this activity entry",
+      section: {
+        summary: "Summary",
+        tasks: "Tasks",
+        stages: "Stages",
+        tags: "Tags",
+        partOf: "Part of",
+      },
+      fact: {
+        status: "Status",
+        process: "Process",
+        video: "Video",
+        videos: "Videos",
+        decider: "Decided by",
+        started: "Started",
+        updated: "Updated",
+        result: "Result",
+      },
+      deciderAi: (percent: string) => `AI ${percent}`,
+      stageState: {
+        waiting: "Waiting",
+        processing: "In progress",
+        done: "Done",
+        failed: "Failed",
+        gone: "Left the library",
+        notRun: "Not run",
+        absent: "Not part of this run",
+      },
+      stagesNotRecorded: "Stage details weren't recorded for this import.",
+      pairMember: (label: string) => `Duplicate check · with ${label}`,
+      undoTag: (name: string) => `Undo tag ${name}`,
+      pipelineAttention: (kind: string, reason: string) => `${kind}: ${reason}`,
     },
   },
   playlists: {

@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"unicode/utf8"
@@ -18,6 +20,8 @@ type Activity interface {
 	ListActivity(
 		ctx context.Context, audience domain.Audience, query domain.ActivityQuery, cursor string, limit int,
 	) (domain.ActivityPage, error)
+	// ActivityDetail returns domain.ErrNotFound for a missing entry.
+	ActivityDetail(ctx context.Context, id int64) (domain.ActivityDetail, error)
 	RetryActivity(ctx context.Context, id int64) error
 	// UndoActivity returns ErrNotFound for missing entries/unassigned tags and ErrActivityNotUndoable when undo is unavailable.
 	UndoActivity(ctx context.Context, id, tagID int64) (domain.ActivityEntry, error)
@@ -61,14 +65,19 @@ func (s *server) ListActivity(w http.ResponseWriter, r *http.Request, params gen
 	}
 
 	out := gen.ActivityPage{
-		Items: make([]gen.ActivityEntry, 0, len(page.Items)),
+		Items: make([]gen.ActivityListItem, 0, len(page.Items)),
 		Counts: gen.ActivityCounts{
 			Running: page.Counts.Running, Attention: page.Counts.Attention, Done: page.Counts.Done,
 		},
 		Features: toAPIActivityFeatureCounts(page.Features),
 	}
 	for _, entry := range page.Items {
-		out.Items = append(out.Items, toAPIActivityEntry(entry))
+		item, err := toAPIActivityListItem(entry)
+		if err != nil {
+			s.internalError(w, "Could not load the activity.", err)
+			return
+		}
+		out.Items = append(out.Items, item)
 	}
 	if page.NextCursor != "" {
 		next := page.NextCursor
@@ -119,6 +128,25 @@ func (s *server) parseActivityQuery(w http.ResponseWriter, params gen.ListActivi
 		query.Search = *params.Q
 	}
 	return query, true
+}
+
+func (s *server) GetActivity(w http.ResponseWriter, r *http.Request, id gen.ActivityId) {
+	if s.activity == nil {
+		s.internalError(w, "Activity storage is not configured.", nil)
+		return
+	}
+	detail, err := s.activity.ActivityDetail(r.Context(), id)
+	if err != nil {
+		s.writeActivityError(w, err, "Could not load the activity entry.")
+		return
+	}
+	out, err := toAPIActivityDetail(detail)
+	if err != nil {
+		s.internalError(w, "Could not load the activity entry.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, out, s.logger)
 }
 
 func (s *server) RetryActivity(w http.ResponseWriter, r *http.Request, id gen.ActivityId) {
@@ -276,4 +304,104 @@ func toAPIActivitySubject(entry domain.ActivityEntry) gen.ActivitySubject {
 		subject.Items = append(subject.Items, item(entry.Subject.LabelB, entry.VideoIDs[1]))
 	}
 	return subject
+}
+
+// fromActivityEntry fills a generated type that extends ActivityEntry or takes a subset of its properties, so the
+// field mapping stays in toAPIActivityEntry.
+func fromActivityEntry[T any](entry gen.ActivityEntry) (T, error) {
+	var out T
+	body, err := json.Marshal(entry)
+	if err == nil {
+		err = json.Unmarshal(body, &out)
+	}
+	if err != nil {
+		return out, fmt.Errorf("cannot convert the activity entry %d: %w", entry.Id, err)
+	}
+	return out, nil
+}
+
+func toAPIActivityListItem(entry domain.ActivityEntry) (gen.ActivityListItem, error) {
+	item, err := fromActivityEntry[gen.ActivityListItem](toAPIActivityEntry(entry))
+	if err != nil || entry.Kind != domain.ActivityPipeline {
+		return item, err
+	}
+	members := make([]gen.ActivityMemberSummary, 0, len(entry.Members))
+	for _, member := range entry.Members {
+		summary, err := toAPIActivityMemberSummary(member)
+		if err != nil {
+			return item, err
+		}
+		members = append(members, summary)
+	}
+	item.Members = &members
+	return item, nil
+}
+
+// A member summary leaves out detail and tags; an auto_tag member counts its tags instead.
+func toAPIActivityMemberSummary(member domain.ActivityMember) (gen.ActivityMemberSummary, error) {
+	summary, err := fromActivityEntry[gen.ActivityMemberSummary](toAPIActivityEntry(member.ActivityEntry))
+	if err != nil {
+		return summary, err
+	}
+	summary.Replaced, summary.Matched = member.Replaced, member.Matched
+	if member.Kind == domain.ActivityAutoTag {
+		count := len(member.Tags)
+		summary.TagCount = &count
+	}
+	if member.StagesRecorded() {
+		stages := make([]gen.ActivityStageSummary, 0, len(member.Stages))
+		for _, stage := range member.Stages {
+			stages = append(stages, gen.ActivityStageSummary{
+				Stage: gen.ActivityStage(stage.Stage), State: gen.ActivityStageState(stage.State),
+			})
+		}
+		summary.Stages = &stages
+	}
+	return summary, nil
+}
+
+func toAPIActivityDetail(detail domain.ActivityDetail) (gen.ActivityDetail, error) {
+	out, err := fromActivityEntry[gen.ActivityDetail](toAPIActivityEntry(detail.ActivityEntry))
+	if err != nil {
+		return out, err
+	}
+	if detail.Kind == domain.ActivityPipeline {
+		members := make([]gen.ActivityEntry, 0, len(detail.Members))
+		for _, member := range detail.Members {
+			entry := toAPIActivityEntry(member.ActivityEntry)
+			replaced := member.Replaced
+			entry.Replaced = &replaced
+			members = append(members, entry)
+		}
+		out.Members = &members
+	}
+	if len(detail.Pipelines) > 0 {
+		pipelines := make([]gen.ActivityPipelineRef, 0, len(detail.Pipelines))
+		for _, pipeline := range detail.Pipelines {
+			pipelines = append(pipelines, gen.ActivityPipelineRef{
+				Id: pipeline.ID, Subject: toAPIActivitySubject(pipeline), Status: gen.ActivityStatus(pipeline.Status),
+				CreatedAt: pipeline.CreatedAt,
+			})
+		}
+		out.Pipelines = &pipelines
+	}
+	if detail.Kind == domain.ActivityImport {
+		recorded := detail.StagesRecorded()
+		out.StagesRecorded = &recorded
+	}
+	if detail.StagesRecorded() {
+		stages := make([]gen.ActivityStageRow, 0, len(detail.Stages))
+		for _, stage := range detail.Stages {
+			row := gen.ActivityStageRow{
+				Stage: gen.ActivityStage(stage.Stage), State: gen.ActivityStageState(stage.State), UpdatedAt: stage.UpdatedAt,
+			}
+			if stage.Detail != "" {
+				message := stage.Detail
+				row.Detail = &message
+			}
+			stages = append(stages, row)
+		}
+		out.Stages = &stages
+	}
+	return out, nil
 }

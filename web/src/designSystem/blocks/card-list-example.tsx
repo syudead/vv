@@ -7,7 +7,14 @@ import {
 } from "lucide-react";
 
 import { t } from "@/i18n";
-import { CardList, CardListItem, type CardListTone } from "@/ui/patterns/card-list";
+import { useState } from "react";
+
+import {
+  CardList,
+  CardListItem,
+  CardListMember,
+  type CardListTone,
+} from "@/ui/patterns/card-list";
 import { ListPage } from "@/ui/patterns/list-page";
 import { PageHeader } from "@/ui/patterns/page-header";
 import { Badge } from "@/ui/shadcn/badge";
@@ -18,6 +25,71 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/shadcn/tooltip";
 import { sampleVideos } from "./list-page-example";
 
 // registry:block card-list-example. Replace card content while retaining the shared spacing, surfaces and columns.
+
+/** A card with members: one run whose parts are rows inside its border. */
+function PipelineCardExample({ title }: { title: string }) {
+  const a = t.activity;
+  const [expanded, setExpanded] = useState(true);
+  return (
+    <CardListItem
+      tone="primary"
+      icon={
+        <LoaderCircle
+          role="img"
+          aria-label={a.statusIcon.running}
+          className="size-5 animate-spin text-primary"
+        />
+      }
+      title={title}
+      badge={<Badge variant="secondary">{a.kind.pipeline}</Badge>}
+      detail={
+        <span className="min-w-0 truncate">
+          {a.pipeline.processing(a.kind.auto_tag, 1, 2)}
+        </span>
+      }
+      time={a.time.justNow}
+      timeShort={a.time.shortNow}
+      expanded={expanded}
+      onExpandedChange={setExpanded}
+      toggleLabel={
+        expanded
+          ? { tooltip: a.pipeline.hideTasks, name: a.pipeline.hideTasksFor(title) }
+          : { tooltip: a.pipeline.showTasks, name: a.pipeline.showTasksFor(title) }
+      }
+      members={
+        <>
+          <CardListMember
+            icon={
+              <CircleCheck
+                role="img"
+                aria-label={a.statusIcon.done}
+                className="size-4 text-success"
+              />
+            }
+            title={a.kind.import}
+            detail={<span className="min-w-0 truncate">{a.result.done}</span>}
+          />
+          <CardListMember
+            icon={
+              <LoaderCircle
+                role="img"
+                aria-label={a.statusIcon.running}
+                className="size-4 animate-spin text-primary"
+              />
+            }
+            title={a.kind.auto_tag}
+            detail={
+              <>
+                <Badge variant="soft">{a.pipeline.matches}</Badge>
+                <span className="min-w-0 truncate">{a.result.running}</span>
+              </>
+            }
+          />
+        </>
+      }
+    />
+  );
+}
 
 export function CardListExample() {
   const a = t.activity;
@@ -138,6 +210,7 @@ export function CardListExample() {
   return (
     <ListPage header={<PageHeader title={a.title} />}>
       <CardList label={a.list}>
+        <PipelineCardExample title={first?.title ?? ""} />
         {rows.map((row) => (
           <CardListItem
             key={row.key}

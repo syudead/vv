@@ -242,6 +242,19 @@ the label in `text-muted-foreground`.
 Do not use it to change a setting (use `ToggleGroup`) or to move to another
 screen (use links).
 
+### Collapsible
+
+Item `collapsible`. Shows or hides a part of a section in place from one
+button, such as the member rows of an expandable `CardListItem`, which is
+where the showcase draws it. `CollapsibleTrigger` wraps a `Button` through
+`asChild`; an icon-only trigger follows the names rule, and its name and
+tooltip say what pressing it does now (`Show tasks`, `Hide tasks`). The
+hidden part is not rendered, so it holds nothing a reader must find while it
+is closed.
+
+Do not use it to switch between views (use `Tabs`), for a list of settings
+pages (use `SettingsPage`'s `nav`), or for a floating layer (use `Popover`).
+
 ### Sonner
 
 Item `sonner`. Short, passive notices of a finished action ("Added 3 videos to

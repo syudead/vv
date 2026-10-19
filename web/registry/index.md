@@ -24,6 +24,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `centered-form`            | Page skeleton | A screen that is only one form: sign-in, setup                               |
 | `centered-form-example`    | Block         | Copy to start a centered form                                                |
 | `checkbox`                 | Component     | On or off inside a form, a filter or a selection                             |
+| `collapsible`              | Component     | Show or hide part of a section from a button, as an expandable card's rows   |
 | `combobox`                 | Component     | Pick one of many by typing; a `command` in a popover                         |
 | `command`                  | Component     | A list narrowed by typing; the inside of a combobox                          |
 | `confirm-dialog`           | Page skeleton | Confirm an action that cannot be undone                                      |
@@ -61,6 +62,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `list-states-example`      | Block         | The list body in every state                                                 |
 | `load-more-row`            | State         | The next page loading, or failed with Retry                                  |
 | `loading-state`            | State         | Skeleton shapes of the final layout: grid, table, grouped list or cards      |
+| `page-column`              | Pattern       | The reading column settings and record pages share; patterns only            |
 | `page-header`              | Section       | Page title, count and the main action                                        |
 | `page-section`             | Section       | A titled card of rows                                                        |
 | `person-face`              | vv component  | A person's face or its placeholder: card, profile, chip, compare             |
@@ -69,6 +71,8 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `profile-page-example`     | Block         | Copy to start a profile page                                                 |
 | `progress`                 | Component     | Progress of a known amount of work                                           |
 | `radio-group`              | Component     | Pick one of a few visible options                                            |
+| `record-page`              | Page skeleton | One record to read inside the shell: an entry's full detail                  |
+| `record-page-example`      | Block         | Copy to start a record page                                                  |
 | `scrub-preview`            | vv component  | The card scrub inside a thumbnail                                            |
 | `select`                   | Component     | Pick one value from a fixed list in a dropdown                               |
 | `selection-bar`            | Section       | Count and bulk actions while items are selected                              |
