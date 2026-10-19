@@ -30,7 +30,7 @@ export const tagNameRules: NameRules = {
 export default function TagCommand(
   props: Omit<
     ComponentProps<typeof NameCommand>,
-    "rules" | "offerCreateWithExact" | "onCommitSpelling"
+    "rules" | "offerCreateWithExact" | "onCommitSpelling" | "group"
   >,
 ) {
   return <NameCommand rules={tagNameRules} {...props} />;

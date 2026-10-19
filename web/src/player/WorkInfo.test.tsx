@@ -87,4 +87,28 @@ describe("WorkInfo", () => {
     ).toBe("/?organization=5");
     expect(screen.queryByRole("link", { name: /Show videos with 顔/ })).toBeNull();
   });
+
+  it("仮の人物は空の名前ではなく Unnamed person の顔と名前で人物ページを開く", () => {
+    render(
+      <MemoryRouter>
+        <WorkInfo
+          info={{
+            ...empty,
+            people: [
+              {
+                role: "performer",
+                person: { id: 8, name: "", provisional: true },
+                provisional: true,
+                imageRevision: 2,
+              },
+            ],
+          }}
+        />
+      </MemoryRouter>,
+    );
+    const link = screen.getByRole("link", { name: "Open Unnamed person" });
+    expect(link.getAttribute("href")).toBe("/people/8");
+    expect(within(link).getByRole("img").getAttribute("alt")).toBe("Unnamed person");
+    expect(link.textContent).toBe("Unnamed person");
+  });
 });

@@ -11,6 +11,7 @@ import { Skeleton } from "../../ui/shadcn/skeleton";
 import { useToast } from "../../ui/Toast";
 import { useDocumentTitle } from "../../videoList/pageHooks";
 import DeleteCreditDialog from "../DeleteCreditDialog";
+import { creditDisplayName } from "../displayName";
 import MergeCreditDialog from "../MergeCreditDialog";
 import PersonFaceControl from "./PersonFaceControl";
 import { personPath } from "./personPath";
@@ -39,7 +40,7 @@ export default function PersonPage() {
 function PersonScreen({ id }: { id: number | null }) {
   const { state, reload, replace, markGone } = usePerson(id, useHandedPerson(id));
   const person = state.kind === "ready" ? state.person : undefined;
-  useDocumentTitle(person?.name);
+  useDocumentTitle(person === undefined ? undefined : creditDisplayName(person));
 
   if (state.kind === "gone") {
     return (
@@ -111,7 +112,7 @@ function PersonShown({
 
   function merged(target: Credit) {
     setMerging(false);
-    toast(text.mergedInto(target.name));
+    toast(text.mergedInto(creditDisplayName(target)));
     void navigate(personPath(target.id));
   }
 
@@ -120,7 +121,7 @@ function PersonShown({
     setDeletePending(true);
     try {
       await deleteCredit("person", person.id);
-      toast(t.credits.deleted(person.name));
+      toast(t.credits.deleted(creditDisplayName(person)));
       void navigate("/people");
     } catch (failure) {
       if (isCreditGone(failure)) {

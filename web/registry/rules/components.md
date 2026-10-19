@@ -523,5 +523,12 @@ even when a candidate matches the spelling exactly, so a namesake can be
 created as a separate entry, and the caller decides what Enter without arrow
 keys picks (`onCommitSpelling`).
 
+`CreditCommand` alone takes an optional second group (`group`): rows under a
+heading, after the name results and before the create row in the list below
+the input. A row may lead with a `PersonFace chip` (`leading`) and draw its
+label in `muted-foreground` (`quiet`), as the `Unnamed people` group of the
+`Performers` picker does for people without a name. A group with no rows draws
+no heading.
+
 Do not use either for values other than tag names and the names of people and
 organizations.

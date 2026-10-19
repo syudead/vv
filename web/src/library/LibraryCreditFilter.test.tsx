@@ -290,6 +290,31 @@ describe("人物・団体での絞り込み", () => {
     ).toBeDefined();
   });
 
+  it("仮の人物の絞り込みは、空の名前ではなく Unnamed person の User チップで出す", async () => {
+    const base = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input, init) => {
+      if (new URL(String(input), "http://localhost").pathname === "/api/people/1") {
+        return Promise.resolve(
+          json({
+            id: 1,
+            name: "",
+            provisional: true,
+            aliases: [],
+            externalIds: [],
+            videoCount: 1,
+          }),
+        );
+      }
+      return base?.(input, init) ?? Promise.reject(new Error("no mock"));
+    });
+    renderAt("/?person=1");
+
+    const chip = await screen.findByRole("button", {
+      name: "Remove the filter for Unnamed person",
+    });
+    expect(chip.textContent).toBe("Unnamed person");
+  });
+
   it("チップを押すとそのパラメータだけが外れ、フォーカスは次のチップ、最後なら検索欄へ移る", async () => {
     const user = userEvent.setup();
     renderAt("/?tag=2&person=1&organization=5");

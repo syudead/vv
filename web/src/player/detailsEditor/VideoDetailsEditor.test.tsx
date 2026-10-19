@@ -69,6 +69,7 @@ const server = {
   people: vi.fn<(url: URL) => Response>(),
   details: vi.fn<(body: unknown) => Response>(),
   createPerson: vi.fn<(body: unknown) => Response>(),
+  namePerson: vi.fn<(url: string, body: unknown) => Response>(),
 };
 
 function Where() {
@@ -127,6 +128,7 @@ describe("VideoDetailsEditor", () => {
     server.details.mockReset();
     server.details.mockImplementation(() => json(video));
     server.createPerson.mockReset();
+    server.namePerson.mockReset();
     installFakeEventSource();
     forgetAudience(null);
     fetchMock.mockReset();
@@ -144,6 +146,8 @@ describe("VideoDetailsEditor", () => {
         return Promise.resolve(server.people(new URL(url, "http://localhost")));
       if (url === "/api/people" && method === "POST")
         return Promise.resolve(server.createPerson(body));
+      if (url.startsWith("/api/people/") && method === "PATCH")
+        return Promise.resolve(server.namePerson(url, body));
       if (url === "/api/videos/7/details") return Promise.resolve(server.details(body));
       return Promise.resolve(json({}));
     });
@@ -275,6 +279,105 @@ describe("VideoDetailsEditor", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(server.details).toHaveBeenCalledTimes(2));
     expect(server.createPerson).toHaveBeenCalledTimes(1);
+  });
+
+  describe("仮の人物", () => {
+    const unnamed = { ...person(6, ""), provisional: true, videoCount: 3 };
+
+    beforeEach(() => {
+      server.people.mockImplementation((url) =>
+        url.searchParams.get("provisional") === "true"
+          ? json({ items: [unnamed], total: 1, totalAll: 5 })
+          : json({ items: [], total: 0, totalAll: 5 }),
+      );
+    });
+
+    it("Performers の候補に Unnamed people を出し、空のまま選ぶと Unnamed person のチップで保存する", async () => {
+      await opened();
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("combobox", { name: "Add a performer" }));
+      const row = await screen.findByRole("option", {
+        name: "Unnamed person, 3 videos",
+      });
+      expect(screen.getByRole("group", { name: "Unnamed people" })).toBeDefined();
+      const url = server.people.mock.calls
+        .map(([sent]) => sent)
+        .find((sent) => sent.searchParams.get("provisional") === "true");
+      expect(url?.searchParams.get("limit")).toBe("9");
+      await user.click(row);
+
+      expect(
+        await screen.findByRole("button", { name: "Remove Unnamed person" }),
+      ).toBeDefined();
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(server.details).toHaveBeenCalledTimes(1));
+      expect(server.namePerson).not.toHaveBeenCalled();
+      expect(server.details.mock.calls[0]![0]).toMatchObject({
+        workInfo: {
+          people: [
+            { role: "performer", person: { id: 1 } },
+            { role: "performer", person: { id: 6 } },
+          ],
+        },
+      });
+    });
+
+    it("名前を入力して選ぶとその名前のチップになり、Save はクレジットより先に名前を送る", async () => {
+      server.namePerson.mockImplementation(() => json({ ...unnamed, name: "Mio" }));
+      await opened();
+      const user = userEvent.setup();
+      await user.type(screen.getByRole("combobox", { name: "Add a performer" }), "Mio");
+      await user.click(
+        await screen.findByRole("option", {
+          name: "Unnamed person, 3 videos, Add as Mio",
+        }),
+      );
+
+      expect(await screen.findByRole("button", { name: "Remove Mio" })).toBeDefined();
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(server.details).toHaveBeenCalledTimes(1));
+      expect(server.namePerson.mock.calls[0]).toEqual(["/api/people/6", { name: "Mio" }]);
+      expect(server.namePerson.mock.invocationCallOrder[0]).toBeLessThan(
+        server.details.mock.invocationCallOrder[0]!,
+      );
+    });
+
+    it("名前の PATCH が失敗したら失敗の行を出し、クレジットを書かない", async () => {
+      server.namePerson.mockImplementation(() =>
+        json({ code: "internal", message: "boom" }, 500),
+      );
+      await opened();
+      const user = userEvent.setup();
+      await user.type(screen.getByRole("combobox", { name: "Add a performer" }), "Mio");
+      await user.click(
+        await screen.findByRole("option", {
+          name: "Unnamed person, 3 videos, Add as Mio",
+        }),
+      );
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      expect(await screen.findByText(/^Couldn't save the details:/)).toBeDefined();
+      expect(server.details).not.toHaveBeenCalled();
+    });
+
+    it("動画に付いた仮の人物のチップは Unnamed person と読む", async () => {
+      server.video = () =>
+        json({
+          ...video,
+          workInfo: {
+            ...video.workInfo!,
+            people: [
+              {
+                role: "performer",
+                person: { id: 6, name: "", provisional: true },
+                provisional: true,
+              },
+            ],
+          },
+        });
+      await opened();
+      expect(screen.getByRole("button", { name: "Remove Unnamed person" })).toBeDefined();
+    });
   });
 
   it("入力の無い経路の誤りは、失敗の行に経路と一緒に出す", async () => {

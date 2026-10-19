@@ -20,7 +20,8 @@ export const creditNameRules: NameRules = {
 /**
  * Allow creation even with an exact spelling match because distinct people may share names. The
  * caller resolves unselected Enter through onCommitSpelling, including exact matches outside
- * loaded candidates.
+ * loaded candidates. `group` adds headed rows after the name results; see
+ * web/registry/rules/components.md, CreditCommand.
  */
 export default function CreditCommand(
   props: Omit<ComponentProps<typeof NameCommand>, "rules" | "offerCreateWithExact">,

@@ -3,7 +3,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import type { Person } from "../../api/credits";
-import { t } from "../../i18n";
+import { t, type UiText } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { personEditPath } from "../../lib/personEditPath";
 import { isPlainClick } from "../../lib/plainClick";
@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "../../ui/shadcn/dropdown-menu";
 import { kindTexts } from "../creditRows";
+import { creditDisplayName } from "../displayName";
 import { personFactGroups } from "./personFacts";
 import { handPerson } from "./personHandoff";
 
@@ -27,7 +28,7 @@ const text = t.credits.personPage;
  * Opens the edit page with this person, which returns along the history when it is left. A click
  * that opens another tab hands nothing, so this tab's next visit to the person reads it again.
  */
-function EditLink({ person }: { person: Person }) {
+function EditLink({ person, label = text.edit }: { person: Person; label?: UiText }) {
   return (
     <Link
       to={personEditPath(person.id)}
@@ -36,7 +37,7 @@ function EditLink({ person }: { person: Person }) {
         if (isPlainClick(event)) handPerson(person);
       }}
     >
-      {text.edit}
+      {label}
     </Link>
   );
 }
@@ -53,15 +54,23 @@ export function PersonIdentity({
 }) {
   return (
     <>
-      <h1 className="line-clamp-3 text-xl font-semibold break-words">{person.name}</h1>
-      {person.aliases.length > 0 && (
+      <h1
+        className={cn(
+          "line-clamp-3 text-xl font-semibold break-words",
+          person.provisional && "text-muted-foreground",
+        )}
+      >
+        {creditDisplayName(person)}
+      </h1>
+      {!person.provisional && person.aliases.length > 0 && (
         <p className="text-sm break-words text-muted-foreground">
           {text.aliases(person.aliases.map((alias) => alias.name))}
         </p>
       )}
       <div className="flex flex-wrap items-center gap-2">
+        {/* The edit page focuses the name input, so Name… is Edit for a person without one. */}
         <Button asChild variant="outline" size="sm">
-          <EditLink person={person} />
+          <EditLink person={person} label={person.provisional ? text.name : text.edit} />
         </Button>
         <Button asChild variant="ghost" size="sm">
           <Link to={libraryFilterPath("person", person.id)}>{text.showInLibrary}</Link>

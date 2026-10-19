@@ -99,6 +99,21 @@ describe("detailRows", () => {
     expect(row.state).toBe("differs");
   });
 
+  it("名前の無い仮の人物は、今の値でも照合先でも Unnamed person と出す", () => {
+    const unnamed = { id: 6, name: "", provisional: true };
+    const row = list(
+      detailRow(
+        "people.performer",
+        info({ people: [{ role: "performer", person: unnamed, provisional: true }] }),
+        result({ people: [performer("ゆい", { state: "existing", id: 6, name: "" })] }),
+      ),
+    );
+    expect(row.now.map((chip) => chip.name)).toEqual(["Unnamed person"]);
+    expect(row.fetched.map((chip) => [chip.name, chip.mark, chip.fetchedAs])).toEqual([
+      ["Unnamed person", "onVideo", "ゆい"],
+    ]);
+  });
+
   it("反映で同じ実体にまとまる件は、新規に 1 つと数える", () => {
     const withIds = (name: string, value: string) => ({
       ...performer(name, { state: "new" }),
