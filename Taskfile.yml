@@ -148,6 +148,7 @@ tasks:
       - task: e2e-groups-check
       - task: lint-go-windows-desktop
       - task: build-windows-check
+      - task: static-binary-check
       - task: build-check-web
 
   check-docs:
@@ -313,6 +314,11 @@ tasks:
     cmds:
       - go build ./...
       - go build -tags desktop -ldflags "-H=windowsgui" -o {{if eq OS "windows"}}NUL{{else}}/dev/null{{end}} ./cmd/mdm
+
+  static-binary-check:
+    desc: Check that the Linux mdm has no INTERP header, so it starts in the Alpine image.
+    cmds:
+      - go run ./scripts/build -check-static
 
   # Resolve the pinned linter from tools/go.mod for both run and fmt.
   golangci:

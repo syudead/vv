@@ -188,6 +188,7 @@ filesystem.
 | `internal/app` (`AutoTagger`) | Asking the classifier port which existing tags fit a video, and its queue | [auto-tagging.md](docs/design-docs/auto-tagging.md) |
 | `internal/app` (`VersionJudge`), `internal/store` (`VersionStore.ClaimJudgement`, `ApplyJudgement`) | Judging possible duplicates from their per-frame fingerprints and, for a differing run, the classifier port; bundling or dismissing the pair as the owner's actions do | [duplicate-judging.md](docs/design-docs/duplicate-judging.md) |
 | `internal/store` (`ActivityStore`), `internal/app` (`Activity`) | The activity log: one entry per run and subject written in the transaction of its change, listed newest first to the owner, with retry and undo dispatched by kind | [activity.md](docs/design-docs/activity.md) |
+| `cmd/mdm-face`, `internal/faceinfer`, `internal/faceproto` | The face helper: a second binary, shipped in the face runtime archive, that runs face detection and recognition through onnxruntime, and the protocol `mdm` speaks to it | [face-recognition.md](docs/design-docs/face-recognition.md) |
 | `internal/opener` | Opening a video in the server PC's default app, loopback requests only | [Screen API](api/openapi.yaml) |
 | `internal/password` | Argon2id hashing in PHC strings | [authentication.md](docs/design-docs/authentication.md) |
 | `internal/app` (`Auth`) | Setup, login throttling, sessions and API tokens | [authentication.md](docs/design-docs/authentication.md), [external-api.md](docs/how-to/external-api.md) |
