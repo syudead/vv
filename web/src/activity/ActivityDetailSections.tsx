@@ -303,11 +303,11 @@ export function TagsSection({
 function FaceLinkTitle({ link, here }: { link: ActivityFaceLink; here: string }) {
   const name = faceLinkName(link);
   const quiet = link.person?.provisional !== false;
-  if (link.undone)
-    return <span className="text-muted-foreground line-through">{name}</span>;
   return (
     <span>
-      {link.person === undefined ? (
+      {link.undone ? (
+        <span className="text-muted-foreground line-through">{name}</span>
+      ) : link.person === undefined ? (
         <span className="text-muted-foreground">{name}</span>
       ) : (
         <Link

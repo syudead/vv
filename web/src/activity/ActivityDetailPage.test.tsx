@@ -180,7 +180,7 @@ describe("ActivityDetailPage", () => {
     await waitFor(() => expect(server.posts).toEqual(["/api/activity/12/retry"]));
   });
 
-  it("strikes through an undone face link and offers undo for the others", async () => {
+  it("strikes through an undone face link, keeps its New person note and offers undo for the others", async () => {
     server.entries.set(
       20,
       record(20, {
@@ -191,7 +191,7 @@ describe("ActivityDetailPage", () => {
           {
             appearanceId: 11,
             person: { id: 5, name: "Alice", provisional: false },
-            createdPerson: false,
+            createdPerson: true,
             undone: true,
           },
           {
@@ -214,7 +214,8 @@ describe("ActivityDetailPage", () => {
     expect(
       within(people).getByRole("link", { name: "Unnamed person" }).getAttribute("href"),
     ).toBe("/people/6");
-    expect(within(people).getByText("New person")).toBeDefined();
+    // Undo removes the link, not the fact that the run created the person.
+    expect(within(people).getAllByText("New person")).toHaveLength(2);
     expect(
       within(people).getByRole("button", { name: "Undo link to Unnamed person" }),
     ).toBeDefined();
