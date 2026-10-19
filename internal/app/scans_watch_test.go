@@ -56,16 +56,12 @@ func TestStartScanSupersedesRunningWatchScan(t *testing.T) {
 func TestOnFinishReportsOriginAndState(t *testing.T) {
 	scanner := &fakeScanner{result: domain.ScanResult{Total: 1, Processed: 1}}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
-	type finish struct {
-		origin domain.ScanOrigin
-		state  domain.ScanState
-	}
 	var mu sync.Mutex
-	var got []finish
-	scans.OnFinish(func(origin domain.ScanOrigin, state domain.ScanState) {
+	var got []ScanNotice
+	scans.OnFinish(func(notice ScanNotice) {
 		mu.Lock()
 		defer mu.Unlock()
-		got = append(got, finish{origin, state})
+		got = append(got, notice)
 	})
 
 	if _, _, err := scans.StartWatchScan(context.Background(), []domain.DirtyDirectory{{Path: fixturePath("/media/a")}}); err != nil {
@@ -81,7 +77,7 @@ func TestOnFinishReportsOriginAndState(t *testing.T) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	want := []finish{{domain.ScanOriginWatch, domain.ScanDone}, {domain.ScanOriginManual, domain.ScanDone}}
+	want := []ScanNotice{{Origin: domain.ScanOriginWatch, State: domain.ScanDone}, {Origin: domain.ScanOriginManual, State: domain.ScanDone}}
 	if !slices.Equal(got, want) {
 		t.Fatalf("知らせ = %v, want %v", got, want)
 	}
@@ -92,10 +88,10 @@ func TestOnStartReportsOrigin(t *testing.T) {
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
 	var mu sync.Mutex
 	var got []domain.ScanOrigin
-	scans.OnStart(func(origin domain.ScanOrigin) {
+	scans.OnStart(func(notice ScanNotice) {
 		mu.Lock()
 		defer mu.Unlock()
-		got = append(got, origin)
+		got = append(got, notice.Origin)
 	})
 
 	if _, _, err := scans.StartWatchScan(context.Background(), []domain.DirtyDirectory{{Path: fixturePath("/media/a")}}); err != nil {
@@ -123,14 +119,14 @@ func TestOnFinishRunsBeforeNextScanStarts(t *testing.T) {
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
 	var mu sync.Mutex
 	var events []string
-	scans.OnStart(func(origin domain.ScanOrigin) {
+	scans.OnStart(func(ScanNotice) {
 		mu.Lock()
 		defer mu.Unlock()
 		events = append(events, "start")
 	})
 	nextStarted := make(chan struct{})
 	var once sync.Once
-	scans.OnFinish(func(origin domain.ScanOrigin, state domain.ScanState) {
+	scans.OnFinish(func(ScanNotice) {
 		once.Do(func() {
 			go func() {
 				defer close(nextStarted)

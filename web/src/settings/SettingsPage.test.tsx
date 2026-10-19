@@ -476,6 +476,105 @@ describe("SettingsPage: media folders", () => {
     );
   });
 
+  describe("force rescan", () => {
+    function serve(rescan: () => Response) {
+      const folders = [folder(1, "/media/one"), folder(2, "/media/two")];
+      server.fetchMock.mockImplementation((input, init) => {
+        const url = String(input);
+        if (url === "/api/scans/current") return Promise.resolve(json({}, 404));
+        if (url === "/api/media-folders") return Promise.resolve(json(folders));
+        if (url === "/api/scans/rescan" && init?.method === "POST") {
+          return Promise.resolve(rescan());
+        }
+        throw new Error(`unexpected request: ${url}`);
+      });
+    }
+
+    async function confirmSecondFolder() {
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByText("/media/two");
+      await user.click(
+        screen.getAllByRole("button", { name: "Force rescan folder" })[1]!,
+      );
+      const dialog = await screen.findByRole("alertdialog", {
+        name: "Force rescan this folder?",
+      });
+      expect(within(dialog).getByText("/media/two")).toBeDefined();
+      await user.click(within(dialog).getByRole("button", { name: "Force rescan" }));
+      return dialog;
+    }
+
+    it("sends the folder scope with the row's folder id", async () => {
+      serve(() =>
+        json(
+          {
+            id: 4,
+            origin: "manual",
+            status: "finding",
+            issues: { failed: 0, substituted: 0, revision: 0 },
+            state: "running",
+            rescan: { scope: "folder", folder: { id: 2, path: "/media/two" } },
+          },
+          202,
+        ),
+      );
+
+      await confirmSecondFolder();
+
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+      const call = server.fetchMock.mock.calls.find(
+        ([input]) => String(input) === "/api/scans/rescan",
+      );
+      expect(call?.[1]?.body).toBe(JSON.stringify({ scope: "folder", folderId: 2 }));
+    });
+
+    it("blocks the row control with the reason while a manual scan runs", async () => {
+      server.fetchMock.mockImplementation((input) => {
+        const url = String(input);
+        if (url === "/api/media-folders") {
+          return Promise.resolve(json([folder(1, "/media/one")]));
+        }
+        if (url.startsWith("/api/scans/current/issues")) {
+          return Promise.resolve(json({ scanId: 3, items: [] }));
+        }
+        if (url === "/api/scans/current") {
+          return Promise.resolve(
+            json({
+              id: 3,
+              origin: "manual",
+              status: "running",
+              issues: { failed: 0, substituted: 0, revision: 0 },
+              state: "running",
+            }),
+          );
+        }
+        throw new Error(`unexpected request: ${url}`);
+      });
+      renderPage();
+
+      const control = await screen.findByRole("button", { name: "Force rescan folder" });
+      await waitFor(() => expect(control.hasAttribute("disabled")).toBe(true));
+      const reason = document.getElementById(control.getAttribute("aria-describedby")!);
+      expect(reason?.textContent).toBe(
+        "You can't change or force rescan media folders while a scan is running",
+      );
+    });
+
+    it("shows scan_in_progress inside the confirmation and keeps it open", async () => {
+      serve(() =>
+        json({ code: "scan_in_progress", message: "A scan is in progress." }, 409),
+      );
+
+      const dialog = await confirmSecondFolder();
+
+      expect((await within(dialog).findByRole("alert")).textContent).toBe(
+        "Couldn't start the force rescan: A scan is in progress. Try again when it finishes.",
+      );
+      expect(screen.getByRole("alertdialog")).toBe(dialog);
+    });
+  });
+
   describe("疑似ロケール", () => {
     const paths = ["/srv/media", "/very/long/日本語/動画保管場所", "/other", "/", "srv"];
 

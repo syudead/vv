@@ -105,6 +105,33 @@ func TestRequeueRunningJobsTurnsAForceRequestIntoForce(t *testing.T) {
 	assertForceRows(t, db, domain.JobProbe, videoID, queuedForced)
 }
 
+// The forced jobs and the scan's forced mark commit together, so a resumed rescan skips exactly the queued videos.
+func TestForceScanJobsMarksTheVideoInTheSameTransaction(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	videoID := queueNewFile(t, db, "clip", domain.ActivityByRule)
+	runImportStage(t, db, domain.JobProbe)
+	scan := startTestRescan(t, db, domain.RescanScope{Kind: domain.RescanLibrary})
+
+	err := db.Ingest().ForceScanJobs(ctx, scan.ID, videoID, domain.ActivityByOwner,
+		domain.JobProbe, domain.JobKind("unknown"))
+	if err == nil {
+		t.Fatal("ForceScanJobs with an unknown kind succeeded, want an error")
+	}
+	assertForceRows(t, db, domain.JobProbe, videoID, forceRow{state: domain.JobDone})
+	if forced, err := db.ScanIndex().ForcedVideos(ctx, scan.ID); err != nil || len(forced) != 0 {
+		t.Fatalf("ForcedVideos after the failure = %v, err %v, want none", forced, err)
+	}
+
+	if err := db.Ingest().ForceScanJobs(ctx, scan.ID, videoID, domain.ActivityByOwner, domain.JobProbe); err != nil {
+		t.Fatal(err)
+	}
+	assertForceRows(t, db, domain.JobProbe, videoID, queuedForced)
+	if forced, err := db.ScanIndex().ForcedVideos(ctx, scan.ID); err != nil || !slices.Equal(forced, []int64{videoID}) {
+		t.Fatalf("ForcedVideos = %v, err %v, want [%d]", forced, err, videoID)
+	}
+}
+
 func TestProbeResultPassesItsForceToThePreview(t *testing.T) {
 	db := migratedDB(t)
 	forced := queueNewFile(t, db, "forced", domain.ActivityByRule)

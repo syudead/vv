@@ -416,6 +416,10 @@ func (f *lockedScans) StartScan(ctx context.Context) (domain.Scan, bool, error) 
 	return scan, false, err
 }
 
+func (f *lockedScans) StartRescan(context.Context, domain.RescanScope) (domain.Scan, error) {
+	return domain.Scan{}, domain.ErrScanRunning
+}
+
 func (f *lockedScans) CurrentScan(context.Context) (domain.Scan, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

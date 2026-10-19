@@ -32,6 +32,24 @@ export interface ScanPresentation {
   refreshing: boolean;
   /** Automatic scans remain invisible until completion; starting denotes a manual scan. */
   watch: boolean;
+  /** The scope of a force rescan while it is in progress. */
+  rescan: UiText | null;
+}
+
+function rescanScope(scan: Scan): UiText | null {
+  const text = t.shell.scan.rescanScope;
+  switch (scan.rescan?.scope) {
+    case "library":
+      return text.library;
+    case "folder":
+      return scan.rescan.folder === undefined
+        ? text.folder
+        : text.namedFolder(scan.rescan.folder.path);
+    case "video":
+      return text.video;
+    default:
+      return null;
+  }
 }
 
 export function inProgressState(state: ScanPresentationState): boolean {
@@ -98,6 +116,7 @@ function presentWatchScan(
     error: loadError,
     refreshing: loadError !== null,
     watch: true,
+    rescan: null,
   };
 }
 
@@ -120,6 +139,7 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
       error: value.error,
       refreshing: false,
       watch: false,
+      rescan: null,
     };
   }
 
@@ -136,6 +156,7 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
       error: value.error,
       refreshing: loadError !== null,
       watch: false,
+      rescan: null,
     };
   }
 
@@ -174,6 +195,7 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
     error: value.error,
     refreshing: loadError !== null,
     watch: false,
+    rescan: inProgressState(state) ? rescanScope(scan) : null,
   };
 }
 

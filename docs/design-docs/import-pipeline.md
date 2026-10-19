@@ -26,8 +26,10 @@ video finishes prevents the denominator from shrinking as work completes.
 
 A new scan replaces the previous scan's set, carrying forward videos with
 unfinished jobs. A manual scan starts a fresh issue list; an automatic scan
-retains problems outside the directories it rereads. Resuming an interrupted
-scan also carries its video set and preparation issues. Import finishes when
+retains problems outside the directories it rereads, and a force rescan of one
+media folder or one video retains those outside its scope. Resuming an
+interrupted scan also carries its video set and preparation issues, and a
+resumed force rescan keeps its scope. Import finishes when
 discovery is closed and the set has no remaining preparation jobs.
 
 ## Recovery and reporting
