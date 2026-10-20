@@ -269,7 +269,9 @@ person page offers "Same person?".
 Each track keeps its start, end, mean centre and mean width, and a main person
 keeps its best good face for its crop: a face whose box lies inside the picture
 before any face cut by the picture's edge, then the largest box times score. The
-picture is the frame without the black padding and black bars around it. A
+picture is the part of the frame that any frame of the video so far lit, so the
+black padding and black bars stay outside it while a dark scene does not shrink
+it once a brighter frame was seen. A
 close-up cut by the edge has the largest box, so ranking by size alone made such
 faces the faces of people.
 
@@ -299,7 +301,7 @@ ArcFace values give the same error rates as SFace on LFW (13,233 images of
 5,749 people), measured with the POC's protocol on vectors from the same
 detection and alignment:
 
-- **Late linking** (`Candidate`, `Link`, `Merge`): 70% of the people with two
+- **Late linking** (`Candidate`, `Join`, `Link`, `Merge`): 70% of the people with two
   or more images are registered with one random image each; every other image
   is named by its most similar registered person when the similarity reaches
   the threshold. A correct naming is a registered person's image given their
@@ -314,8 +316,8 @@ of a draw and the 87,307,271 pairs of different people:
 | Threshold | SFace int8: value, rate | ArcFace r50: value, rate |
 | --- | --- | --- |
 | `Candidate` | 0.363: 98.3% correct, 61.6% false | 0.205: 99.8% correct, 61.3% false |
-| `Link` | 0.45: 96.0% correct, 3.43% false | 0.288: 99.7% correct, 3.42% false |
-| `Merge` | 0.55: 83.9% correct, 0.17% false | 0.545: 90.4% correct, 0.17% false |
+| `Join`, the first `Link` | 0.45: 96.0% correct, 3.43% false | 0.288: 99.7% correct, 3.42% false |
+| `Link`, `Merge` | 0.55: 83.9% correct, 0.17% false | 0.545: 90.4% correct, 0.17% false |
 | `Track`, `Cluster` | 0.45: 4,482 pairs (0.0051%) | 0.288: 4,442 pairs |
 | `TrackFar` | 0.6: 88 pairs (0.0001%) | 0.614: 87 pairs |
 

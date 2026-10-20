@@ -16,6 +16,8 @@ type faceVideo struct {
 	tracker *domain.FaceTracker
 	frame   int
 	crops   map[domain.FaceSighting]domain.PersonImage
+	// lit is every part of the frame that a frame so far lit; padding and black bars never are.
+	lit image.Rectangle
 }
 
 func newFaceVideo(th domain.FaceThresholds) *faceVideo {
@@ -24,7 +26,11 @@ func newFaceVideo(th domain.FaceThresholds) *faceVideo {
 
 // add takes the faces of the next frame; pix is that frame, a domain.FaceFrameSide square of packed BGR.
 func (v *faceVideo) add(pix []byte, faces []domain.FaceDetection) error {
-	picture := pictureBounds(pix)
+	v.lit = v.lit.Union(litBounds(pix))
+	picture := v.lit
+	if picture.Empty() {
+		picture = image.Rect(0, 0, domain.FaceFrameSide, domain.FaceFrameSide)
+	}
 	faces = slices.Clone(faces)
 	for i := range faces {
 		faces[i].Cut = !boxRect(faces[i].Box).In(picture)
@@ -67,9 +73,10 @@ func (v *faceVideo) people() []domain.FaceAnalysedPerson {
 // faceBlackLevel is the brightest sample of a row or column still counted as padding or a black bar.
 const faceBlackLevel = 16
 
-// pictureBounds is the frame without the black padding ffmpeg adds and the black bars a video carries, so a
-// face cut by the picture's edge is known; a frame that is black throughout is all picture.
-func pictureBounds(pix []byte) image.Rectangle {
+// litBounds is the smallest rectangle holding every sample of the frame brighter than faceBlackLevel; empty
+// for a frame that is black throughout. One dark frame can be smaller than its picture, so a video takes the
+// union over its frames.
+func litBounds(pix []byte) image.Rectangle {
 	const side = domain.FaceFrameSide
 	black := func(x0, y0, x1, y1 int) bool {
 		for y := y0; y < y1; y++ {
@@ -86,7 +93,7 @@ func pictureBounds(pix []byte) image.Rectangle {
 		r.Min.Y++
 	}
 	if r.Empty() {
-		return image.Rect(0, 0, side, side)
+		return image.Rectangle{}
 	}
 	for black(0, r.Max.Y-1, side, r.Max.Y) {
 		r.Max.Y--

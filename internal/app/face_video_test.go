@@ -29,12 +29,26 @@ func frameFace(x, y, side float64, vec []float32) domain.FaceDetection {
 	}
 }
 
-func TestPictureBoundsLeavesOutBlackPadding(t *testing.T) {
-	if got, want := pictureBounds(letterboxedFrame(100, 720)), image.Rect(0, 100, domain.FaceFrameSide, 720); got != want {
+func TestLitBoundsLeavesOutBlackPadding(t *testing.T) {
+	if got, want := litBounds(letterboxedFrame(100, 720)), image.Rect(0, 100, domain.FaceFrameSide, 720); got != want {
 		t.Fatalf("bounds = %v, want %v", got, want)
 	}
-	if got, want := pictureBounds(letterboxedFrame(0, 0)), image.Rect(0, 0, domain.FaceFrameSide, domain.FaceFrameSide); got != want {
-		t.Fatalf("bounds of a black frame = %v, want the whole frame %v", got, want)
+	if got := litBounds(letterboxedFrame(0, 0)); !got.Empty() {
+		t.Fatalf("bounds of a black frame = %v, want empty", got)
+	}
+}
+
+// A dark frame lit only in its middle keeps the picture an earlier frame lit, so a face near the picture's
+// edge in that frame is not taken as cut.
+func TestFaceVideoKeepsThePictureOfEarlierFrames(t *testing.T) {
+	v := newFaceVideo(domain.FaceThresholds{Track: 0.45, TrackFar: 0.6})
+	for _, pix := range [][]byte{letterboxedFrame(0, 720), letterboxedFrame(300, 400)} {
+		if err := v.add(pix, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if want := image.Rect(0, 0, domain.FaceFrameSide, 720); v.lit != want {
+		t.Fatalf("picture = %v, want %v", v.lit, want)
 	}
 }
 
