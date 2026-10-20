@@ -29,6 +29,7 @@ import {
 } from "../ui/VideoThumbnail";
 import { RefusingDropCard } from "../videoList/cardDrag";
 import { useCollectionLink } from "../videoList/useCollectionLink";
+import type { PreviewCoordinator } from "../videoList/usePreviewCoordination";
 import { useSmartFolderCardValue } from "./cardValues";
 import { smartFolderPagePath, videoInSmartFolderPath } from "./smartFolderPaths";
 
@@ -44,10 +45,7 @@ export interface SmartFolderCardProps {
   selectionMode?: boolean;
   /** Omitted where smart folders cannot be selected, such as for guests. */
   onSelect?: (folderId: number, selected: boolean) => void;
-  activePreviewId?: number | null;
-  previewResetEpoch?: number;
-  onPreviewStart?: (id: number) => void;
-  onPreviewReset?: () => void;
+  previewCoordinator?: PreviewCoordinator;
   tagsRow?: (tags: readonly VideoTag[], folderId: number) => ReactNode;
   /** Inside an owner drag layer, this card neither lifts nor accepts drops. */
   refusesDrop?: boolean;
@@ -174,7 +172,7 @@ export const SmartFolderCard = memo(function SmartFolderCard(
       <Link
         {...linkProps}
         onClick={(event) => {
-          props.onPreviewReset?.();
+          props.previewCoordinator?.reset();
           if (selectionMode && onSelect !== undefined) {
             event.preventDefault();
             onSelect(folder.id, !selected);
@@ -188,9 +186,7 @@ export const SmartFolderCard = memo(function SmartFolderCard(
           onFrontChange={onFrontChange}
           selected={selected}
           selectionMode={selectionMode}
-          activePreviewId={props.activePreviewId}
-          previewResetEpoch={props.previewResetEpoch}
-          onPreviewStart={props.onPreviewStart}
+          previewCoordinator={props.previewCoordinator}
           ratio={facts.ratio}
           face={
             <>
