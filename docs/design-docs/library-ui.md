@@ -471,7 +471,9 @@ Selection is library- and owner-only. Its check shows on hover or focus in the
 grid (always where hover is impossible), always faintly in list view, and on
 every item during selection. A group's check selects that group; the selection
 bar below decides whether an operation sends the group or its selected videos.
-A smart folder's check selects the folder as one item.
+A smart folder's check selects the folder as one item. With Shift held, a check
+or a selection-mode click gives every item from the previously changed one to
+this one, in display order, the same state.
 
 ### Selection bar
 
@@ -484,7 +486,8 @@ fit.
 Its items, in order, are clear, `N selected`, `Add tag`, `Remove tag`,
 `Favorite`, `Add to playlist`, `New group`, `Add to group`, `Visibility`,
 `Bundle as versions` (2 or more videos), and, after a separator, `Delete…`.
-There is no `Select all`: selection covers only the cards the viewer checks.
+There is no `Select all`: selection covers only the cards the viewer checks,
+directly or as a Shift range.
 The actions sit at the right end; those that do not fit move to the right end
 of the next line.
 

@@ -23,7 +23,13 @@ import {
   takeListSnapshot,
 } from "../api/listSnapshot";
 import type { CreditKind } from "../api/credits";
-import { itemKey, itemVideo } from "../api/libraryItems";
+import {
+  groupKey,
+  itemKey,
+  itemVideo,
+  smartFolderKey,
+  videoKey,
+} from "../api/libraryItems";
 import { refreshTags, revalidateTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
@@ -119,6 +125,7 @@ import { useAddedLengthControls } from "./useAddedLengthControls";
 import { useEscapeClearsSelection } from "./useEscapeClearsSelection";
 import { useFolderTagRow } from "./useCardTagRows";
 import { type ApplyTagKind, useLibraryTagKinds } from "./useLibraryTagKinds";
+import { useRangeSelection } from "./useRangeSelection";
 import {
   addTagId,
   clearConditions as clearTagConditions,
@@ -346,26 +353,55 @@ export default function LibraryPage() {
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
   const selectedIds = selection.ids;
   // Removing any member also removes the group's selected identity.
-  const changeSelection = useCallback((id: number, selected: boolean) => {
-    setSelection((current) => setVideo(current, id, selected));
-  }, []);
+  const { select: selectRange, point: pointRange } = useRangeSelection(
+    items,
+    setSelection,
+  );
+  const changeSelection = useCallback(
+    (id: number, selected: boolean) =>
+      selectRange(videoKey(id), selected, (current) => setVideo(current, id, selected)),
+    [selectRange],
+  );
   // Functional updates preserve stable chip callbacks without capturing the current selection.
-  const toggleSelection = useCallback((id: number) => {
-    setSelection((current) => toggleVideo(current, id));
-  }, []);
-  const changeGroupSelection = useCallback((group: LibraryGroup, selected: boolean) => {
-    setSelection((current) => setGroup(current, selectedGroupOf(group), selected));
-  }, []);
-  const toggleGroupSelection = useCallback((group: LibraryGroup) => {
-    setSelection((current) => toggleGroup(current, selectedGroupOf(group)));
-  }, []);
-  const changeSmartFolderSelection = useCallback((id: number, selected: boolean) => {
-    setSelection((current) => setSmartFolder(current, id, selected));
-  }, []);
-  const toggleSmartFolderSelection = useCallback((id: number) => {
-    setSelection((current) => toggleSmartFolder(current, id));
-  }, []);
-  const clearSelection = useCallback(() => setSelection(emptySelection), []);
+  const toggleSelection = useCallback(
+    (id: number) => {
+      pointRange(videoKey(id));
+      setSelection((current) => toggleVideo(current, id));
+    },
+    [pointRange],
+  );
+  const changeGroupSelection = useCallback(
+    (group: LibraryGroup, selected: boolean) =>
+      selectRange(groupKey(group.id), selected, (current) =>
+        setGroup(current, selectedGroupOf(group), selected),
+      ),
+    [selectRange],
+  );
+  const toggleGroupSelection = useCallback(
+    (group: LibraryGroup) => {
+      pointRange(groupKey(group.id));
+      setSelection((current) => toggleGroup(current, selectedGroupOf(group)));
+    },
+    [pointRange],
+  );
+  const changeSmartFolderSelection = useCallback(
+    (id: number, selected: boolean) =>
+      selectRange(smartFolderKey(id), selected, (current) =>
+        setSmartFolder(current, id, selected),
+      ),
+    [selectRange],
+  );
+  const toggleSmartFolderSelection = useCallback(
+    (id: number) => {
+      pointRange(smartFolderKey(id));
+      setSelection((current) => toggleSmartFolder(current, id));
+    },
+    [pointRange],
+  );
+  const clearSelection = useCallback(() => {
+    pointRange(null);
+    setSelection(emptySelection);
+  }, [pointRange]);
 
   const moves = useLibraryMoves(items, refreshInPlace, clearSelection);
   const undo = useUndoToast(refreshInPlace);

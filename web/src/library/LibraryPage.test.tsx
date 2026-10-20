@@ -1508,6 +1508,26 @@ describe("LibraryPage", () => {
       expect(within(tagList).getByText("旅行")).toBeDefined();
     });
 
+    it("Shift を押してチェックすると、前にチェックした動画との間を同じ状態にする", async () => {
+      installSelectionAwareList({});
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("link", { name: "動画 1" });
+      const check = (n: number) =>
+        screen.getByRole("checkbox", { name: `Select "動画 ${String(n)}"` });
+
+      await user.click(check(1));
+      await user.keyboard("{Shift>}");
+      await user.click(check(3));
+      expect(screen.getByText("3 videos selected")).toBeDefined();
+      expect(check(2).getAttribute("aria-checked")).toBe("true");
+
+      await user.click(check(2));
+      await user.keyboard("{/Shift}");
+      expect(screen.getByText("1 video selected")).toBeDefined();
+      expect(check(1).getAttribute("aria-checked")).toBe("true");
+    });
+
     it("Esc で選択バーのポップオーバーだけを閉じ、選択は残る（キーボード確認 手順2）", async () => {
       installSelectionAwareList({ tags: [{ id: 1, name: "旅行" }] });
       const user = userEvent.setup();
