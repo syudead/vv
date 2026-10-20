@@ -65,6 +65,7 @@ func (v *faceVideo) people() []domain.FaceAnalysedPerson {
 	for i, p := range mains {
 		out[i] = domain.FaceAnalysedPerson{
 			Spans: p.Spans(), GoodSeconds: p.GoodSeconds, Centroid: p.Centroid, Crop: v.crops[p.Best],
+			FaceVector: p.FaceVector,
 		}
 	}
 	return out

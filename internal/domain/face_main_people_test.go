@@ -147,6 +147,22 @@ func TestMainPersonCropPrefersAWholeFaceToALargerCutOne(t *testing.T) {
 	}
 }
 
+// A person keeps the frontal face over a larger turned one, with that face's own vector as their face's vector.
+func TestMainPersonFaceIsTheFrontalFaceWithItsVector(t *testing.T) {
+	frontal, turned := faceAxis(0, 1, 0.1), faceAxis(0, 2, 0.1)
+	side := goodFace(100, 100, turned)
+	side.Box.W, side.Box.H = 100, 100
+	side.Landmarks[4] = side.Landmarks[0] + 0.7*(side.Landmarks[2]-side.Landmarks[0])
+	var tr FaceTrack
+	tr.add(0, side)
+	tr.add(1, goodFace(100, 100, frontal))
+	tr.add(2, side)
+	people := FindMainPeople(FaceThresholds{Cluster: 0.45, Join: 0.45}, []FaceTrack{tr}, 10)
+	if len(people) != 1 || people[0].Best.Frame != 1 || FaceSimilarity(people[0].FaceVector, frontal) < 0.999 {
+		t.Fatalf("people = %+v, want the frontal face of frame 1 and its vector", people)
+	}
+}
+
 func TestFindMainPeopleSeparatesPeopleBelowClusterThreshold(t *testing.T) {
 	// Person A: 3 tracks of 3 good frames (9 s); person B: 2 tracks of 5 (10 s), orthogonal to A.
 	var tracks []FaceTrack

@@ -6,12 +6,10 @@ import (
 	"slices"
 )
 
-// FacePersonVector is one vector of a person: an appearance's centroid or the vector of their face image.
+// FacePersonVector is the vector of a person's face image, the one face a person is matched by.
 type FacePersonVector struct {
 	PersonID int64
 	Vector   []float32
-	// Dropped marks an appearance whose link the owner removed; it is not a vector of its person.
-	Dropped bool
 }
 
 // FaceCandidate is a person close enough to offer to the owner, but not to link or merge.
@@ -39,11 +37,12 @@ type FaceMatch struct {
 	Candidates []FaceCandidate
 }
 
-// MatchFace links v to the most similar person at or above Link, or creates a provisional person offered
-// with every person at or above Candidate. A person's similarity is the highest over their vectors.
+// MatchFace links v to the most similar person at or above Link when they lead the next person by Margin, or
+// creates a provisional person offered with every person at or above Candidate.
 func MatchFace(th FaceThresholds, v []float32, vectors []FacePersonVector) FaceMatch {
 	best := bestFaceSimilarities(v, vectors)
-	if len(best) > 0 && best[0].Similarity >= th.Link {
+	if len(best) > 0 && best[0].Similarity >= th.Link &&
+		(len(best) == 1 || best[0].Similarity-best[1].Similarity >= th.Margin) {
 		return FaceMatch{Kind: FaceMatchLink, PersonID: best[0].PersonID, Similarity: best[0].Similarity}
 	}
 	return FaceMatch{Kind: FaceMatchNew, Candidates: atLeast(best, th.Candidate)}
@@ -69,11 +68,11 @@ func SiblingFacePairs(th FaceThresholds, people []FacePersonVector) []FaceSiblin
 	return out
 }
 
-// bestFaceSimilarities returns each person's highest similarity to v, most similar first, ignoring dropped vectors.
+// bestFaceSimilarities returns each person's highest similarity to v, most similar first.
 func bestFaceSimilarities(v []float32, vectors []FacePersonVector) []FaceCandidate {
 	byPerson := map[int64]float64{}
 	for _, pv := range vectors {
-		if pv.Dropped || pv.PersonID == 0 || len(pv.Vector) != len(v) {
+		if pv.PersonID == 0 || len(pv.Vector) != len(v) {
 			continue
 		}
 		s := FaceSimilarity(v, pv.Vector)

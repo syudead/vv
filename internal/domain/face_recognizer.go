@@ -30,6 +30,8 @@ type FaceThresholds struct {
 	Candidate float64
 	// Link and above links a main person to a person of the library without the owner.
 	Link float64
+	// Margin is how far the most similar person must lead the next one for a link; a closer pair is the owner's call.
+	Margin float64
 	// Merge and above merges a provisional person into a named person whose face image matches.
 	Merge float64
 }
@@ -48,12 +50,12 @@ var faceRecognizers = []FaceRecognizerSpec{
 	{
 		Recognizer: FaceRecognizerSFaceInt8,
 		Dimensions: 128,
-		Thresholds: FaceThresholds{Track: 0.45, TrackFar: 0.6, Cluster: 0.45, Join: 0.45, Candidate: 0.363, Link: 0.55, Merge: 0.55},
+		Thresholds: FaceThresholds{Track: 0.45, TrackFar: 0.6, Cluster: 0.45, Join: 0.45, Candidate: 0.363, Link: 0.55, Margin: 0.1, Merge: 0.55},
 	},
 	{
 		Recognizer: FaceRecognizerArcFaceR50,
 		Dimensions: 512,
-		Thresholds: FaceThresholds{Track: 0.288, TrackFar: 0.614, Cluster: 0.288, Join: 0.288, Candidate: 0.205, Link: 0.545, Merge: 0.545},
+		Thresholds: FaceThresholds{Track: 0.288, TrackFar: 0.614, Cluster: 0.288, Join: 0.288, Candidate: 0.205, Link: 0.545, Margin: 0.1, Merge: 0.545},
 	},
 }
 

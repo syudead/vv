@@ -96,8 +96,8 @@ func TestSplitFaceAppearanceMakesAProvisionalPersonOfTheFace(t *testing.T) {
 		created.ID, f.named).Scan(&dismissed); err != nil || dismissed != 1 {
 		t.Errorf("dismissed pairs of the two people = %d, %v; want 1", dismissed, err)
 	}
-	if got := personVectorCount(t, f.db, f.named); got != vectorsBefore-1 {
-		t.Errorf("vectors of the old person = %d, want %d without the moved centroid", got, vectorsBefore-1)
+	if got := personVectorCount(t, f.db, f.named); got != vectorsBefore {
+		t.Errorf("vectors of the old person = %d, want %d: their face stays the one they are matched by", got, vectorsBefore)
 	}
 
 	// A re-analysis keeps the appearance with the new person.

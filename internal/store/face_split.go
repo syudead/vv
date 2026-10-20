@@ -38,8 +38,6 @@ func (s *CreditStore) SplitFaceAppearance(ctx context.Context, personID, appeara
 	if err != nil {
 		return domain.Credit{}, err
 	}
-	// The appearance keeps its centroid, which counts for its new person only, so the old person's vector no
-	// longer includes it.
 	if _, err := tx.ExecContext(ctx, `update face_appearances set person_id = ? where id = ?`, newID, appearanceID); err != nil {
 		return domain.Credit{}, fmt.Errorf("cannot move face appearance %d: %w", appearanceID, err)
 	}

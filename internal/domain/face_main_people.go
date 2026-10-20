@@ -68,6 +68,11 @@ func (d FaceDetection) good() bool {
 	return d.Box.W >= faceGoodSide && d.Score >= faceGoodScore && math.Abs(d.yawRatio()-0.5) <= faceMaxYawOffset
 }
 
+// frontality is 1 for a face turned to the camera and falls to 0 as the nose reaches an eye.
+func (d FaceDetection) frontality() float64 {
+	return max(0, 1-2*math.Abs(d.yawRatio()-0.5))
+}
+
 // yawRatio is where the nose sits between the eyes horizontally: 0.5 for a frontal face.
 func (d FaceDetection) yawRatio() float64 {
 	span := d.Landmarks[2] - d.Landmarks[0]
@@ -96,8 +101,8 @@ type FaceTrack struct {
 	FaceSpan
 	// GoodFrames counts the faces that pass the quality gate.
 	GoodFrames int
-	// Best is the good face for a crop: one inside the picture before any cut by its edge, then the largest box
-	// times score; zero when none is good.
+	// Best is the good face for a crop and a person's face: one inside the picture before any cut by its edge, then
+	// the largest box times score times frontality; zero when none is good.
 	Best FaceSighting
 
 	frames    int
@@ -106,6 +111,7 @@ type FaceTrack struct {
 	sumW      float64
 	goodSum   []float64
 	best      faceRank
+	bestVec   []float32
 	last      FaceDetection
 	lastFrame int
 }
@@ -130,8 +136,8 @@ func (t *FaceTrack) add(frame int, d FaceDetection) {
 	for i, x := range d.Vector {
 		t.goodSum[i] += float64(x)
 	}
-	if r := (faceRank{whole: !d.Cut, value: d.Box.W * d.Box.H * d.Score}); r.beats(t.best) {
-		t.Best, t.best = FaceSighting{Frame: frame, Box: d.Box}, r
+	if r := (faceRank{whole: !d.Cut, value: d.Box.W * d.Box.H * d.Score * d.frontality()}); r.beats(t.best) {
+		t.Best, t.best, t.bestVec = FaceSighting{Frame: frame, Box: d.Box}, r, d.Vector
 	}
 }
 
@@ -266,6 +272,8 @@ type MainPerson struct {
 	Centroid []float32
 	// Best is the best good face of the cluster's tracks, for its crop.
 	Best FaceSighting
+	// FaceVector is the normalized vector of Best, which a person made from this one keeps as their face.
+	FaceVector []float32
 }
 
 // FindMainPeople clusters the tracks that have a vector and keeps clusters with enough good face time, longest
@@ -337,7 +345,7 @@ func mainPerson(tracks []FaceTrack, vecs [][]float32, members []int) MainPerson 
 			sum[k] += x
 		}
 		if t.best.beats(best) {
-			p.Best, best = t.Best, t.best
+			p.Best, best, p.FaceVector = t.Best, t.best, NormalizeFaceVector(t.bestVec)
 		}
 	}
 	slices.SortStableFunc(p.Tracks, func(a, b FaceTrack) int { return cmp.Compare(a.Start, b.Start) })

@@ -34,7 +34,7 @@ func facePerson(x float64, shift float64, centroid []float32, crop string) domai
 			{Start: 0 + shift, End: 10 + shift, X: x, Y: 0.5, W: 0.1},
 			{Start: 20 + shift, End: 30 + shift, X: x, Y: 0.5, W: 0.1},
 		},
-		GoodSeconds: 12, Centroid: centroid,
+		GoodSeconds: 12, Centroid: centroid, FaceVector: centroid,
 		Crop: domain.PersonImage{JPEG: []byte(crop), Width: 2, Height: 2},
 	}
 }
@@ -232,6 +232,32 @@ func TestStoreFaceAnalysisLinksPeopleAndCreatesAProvisionalPerson(t *testing.T) 
 	}
 	if got := faceLinksOf(t, f.db, entry.ID); !slices.Equal(got, want) {
 		t.Errorf("links = %+v, want %+v", got, want)
+	}
+}
+
+// A person is matched by their face's vector alone: the new person keeps the vector of their crop's face, and the
+// centroid of an appearance linked to them, here one made to stand for a stranger, matches nobody.
+func TestStoreFaceAnalysisMatchesAPersonByTheirFaceOnly(t *testing.T) {
+	f := newFaceFixture(t)
+	first := facePerson(0.25, 0, faceBasis(0), "crop-a")
+	first.FaceVector = faceNear(0, 1, 0.9)
+	f.analyse(t, first)
+	person := faceAppearances(t, f.db)[0].personID
+	var stored []byte
+	if err := f.db.sql.QueryRow(`select vector from person_face_vectors v join people p on p.id = v.person_id
+		where v.person_id = ? and v.image_revision = p.image_revision and v.recognizer = 'sface_int8'`, person).
+		Scan(&stored); err != nil || domain.FaceSimilarity(decodeFaceVector(stored), first.FaceVector) < 0.999 {
+		t.Fatalf("face vector of the new person = %v, %v; want the crop's face vector", decodeFaceVector(stored), err)
+	}
+	if _, err := f.db.sql.Exec(`update face_appearances set centroid = ? where person_id = ?`,
+		encodeFaceVector(faceBasis(5)), person); err != nil {
+		t.Fatal(err)
+	}
+
+	f.analyse(t, facePerson(0.25, 0, faceBasis(0), "crop-a"), facePerson(0.75, 0, faceBasis(5), "crop-stranger"))
+	appearances := faceAppearances(t, f.db)
+	if len(appearances) != 2 || appearances[0].personID != person || appearances[1].personID == person {
+		t.Fatalf("appearances = %+v, want the stranger as a new person beside person %d", appearances, person)
 	}
 }
 

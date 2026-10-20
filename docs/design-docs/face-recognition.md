@@ -267,8 +267,10 @@ reach only `Candidate` are written as an open `face_candidates` pair, and the
 person page offers "Same person?".
 
 Each track keeps its start, end, mean centre and mean width, and a main person
-keeps its best good face for its crop: a face whose box lies inside the picture
-before any face cut by the picture's edge, then the largest box times score. The
+keeps its best good face for its crop and its face vector: a face whose box lies
+inside the picture before any face cut by the picture's edge, then the largest
+box times score times frontality, which is 1 for a face turned to the camera and
+falls to 0 as the nose reaches an eye. The
 picture is the part of the frame that any frame of the video so far lit, so the
 black padding and black bars stay outside it while a dark scene does not shrink
 it once a brighter frame was seen. A
@@ -294,6 +296,7 @@ them.
 | `Join` | Join split clusters of one video | 0.45 | 0.288 |
 | `Candidate` | Offer a pair to the owner | 0.363 | 0.205 |
 | `Link` | Link a main person to a person | 0.55 | 0.545 |
+| `Margin` | Lead of the most similar person over the next for a link | 0.1 | 0.1 |
 | `Merge` | Merge a provisional person on a face image | 0.55 | 0.545 |
 
 The SFace values are the upstream same-person threshold and the POC's. The
@@ -327,38 +330,43 @@ offers a pair and never links.
 
 `Link` takes the value of `Merge`, the 0.17% false rate, because a link is made
 without the owner as a merge is. At the first values (0.45 and 0.288, the 3.4%
-rate), the maintainer's library had most new people linked to strangers: video
-faces are smaller and blurrier than LFW's, and each wrong link adds the
-stranger's centroid to the person, so the next face finds them more easily. A face between
-`Candidate` and `Link` becomes a provisional person offered with the near
-people, which the owner confirms with "Same person?". `Join` keeps the first
-value, because it compares the clusters of one video, where few people compete.
+rate), the maintainer's library had most new people linked to strangers; video
+faces are smaller and blurrier than LFW's. A face between `Candidate` and `Link`
+becomes a provisional person offered with the near people, which the owner
+confirms with "Same person?". `Join` keeps the first value, because it compares
+the clusters of one video, where few people compete. `Margin` is not measured:
+two people within 0.1 of each other above `Link` are a look-alike or one person
+stored twice, and either is the owner's call.
 
 | Rejected | Why |
 | --- | --- |
 | `Link` at the 3.4% false rate | Most new people were linked to strangers in the maintainer's library, and every wrong link widened its person |
 
-## A main person is matched against every vector of a person
+## A person is matched by their face alone
 
-A person's vectors are the centroids of their appearances and the vector of
-their face image, and a main person's similarity to them is the highest cosine
-among those
-([`MatchFace`](../../internal/domain/face_match.go)).
+Each person has one vector, that of their face image, and a main person's
+centroid is compared with it
+([`MatchFace`](../../internal/domain/face_match.go),
+[`facePersonVectors`](../../internal/store/faces.go)).
 
-| Highest similarity | Result |
+| Similarity | Result |
 | --- | --- |
-| `Link` or more | Linked to the most similar person |
-| `Candidate` up to `Link` | A new provisional person, offered with each such person as a candidate |
+| `Link` or more, leading the next person by `Margin` | Linked to the most similar person |
+| `Link` or more without that lead, or `Candidate` up to `Link` | A new provisional person, offered with each person from `Candidate` up as a candidate |
 | Below `Candidate` | A new provisional person |
 
-An appearance the owner dropped (by removing or undoing its link, or deleting
-its person) is not a vector of its person. The face POC found one actor across
-films with different hair; an averaged vector per person would blur those
-looks.
+A person made by an analysis gets the crop of their best face as their face
+image and the vector of that face, taken from its frame, as its vector, in the
+transaction that creates them; the face worker finds the vector current and
+does not embed the crop again. The face changes only when the owner replaces
+it, or a merge gives a target without a face the source's, and the vector
+follows the face. Links never change it.
 
 | Rejected | Why |
 | --- | --- |
-| One averaged vector per person | It blurs a person's different looks |
+| Every appearance's centroid as a vector of its person | A person seen in many videos had as many chances to match a stranger, and each wrong link widened the person, so a few people took every new face |
+| One averaged vector per person | Each link would move it, and a wrong link would pull it towards the stranger |
+| Embedding the crop of a new person in the face worker | The JPEG crop gives a vector other than its frame's, and the next video could not match the person until the worker ran |
 | A nearest-neighbour index | 10,000 vectors of 512 values are 20 MB, and a full scan in memory takes milliseconds |
 
 ## A re-analysis carries appearances over by track time and position
@@ -511,7 +519,7 @@ person deleted during the analysis is never linked.
 | --- | --- |
 | Carried over | The row keeps its id, person, dropped mark and crop, and takes the new tracks, counts, recognizer and centroid; a row whose person was deleted keeps a null centroid |
 | Linked to a person | A new appearance and a `performer` row at the video's user key |
-| New | A provisional person (a `people` row without names) whose face is the crop, its candidate pairs, a new appearance and a `performer` row |
+| New | A provisional person (a `people` row without names) whose face is the crop with its face's vector, its candidate pairs, a new appearance and a `performer` row |
 
 A stored appearance nothing is carried over to is deleted. The completed
 `face_analysis` entry lists each link it made in
@@ -787,14 +795,13 @@ answers `201` with the new person:
 | Step | Effect |
 | --- | --- |
 | New person | A provisional person whose face is the appearance's crop, made by the same `createFacePerson` the analysis uses; the face-image job embeds it later like any face |
-| Appearance | `person_id` moves to the new person; a centroid belongs to one appearance, so the old person's vectors stop counting it and the new person's start |
+| Appearance | `person_id` moves to the new person; neither person's face vector changes, since a centroid is not one |
 | Credit | The video's performer row of the old person becomes the new person's, in the same position; it stays with the old person, and the new person is appended, when another appearance of the old person in a video of the same work still links it |
 | Pair | The pair of the two people is marked `dismissed`, added when it has no row, so neither the cast rule nor the face-image rule merges them again and no candidate offers it |
 
 A re-analysis carries the appearance over by its tracks and keeps its
-`person_id`, so it stays with the new person. A later video whose face matches
-the moved centroid links to the new person, not the old one, because of this
-appearance. A person without that appearance, an appearance that is dropped and
+`person_id`, so it stays with the new person. A later video matches the new
+person by their face, the crop, once the face worker embeds it. A person without that appearance, an appearance that is dropped and
 one of another person answer `404`: `person_not_found` and
 `face_appearance_not_found`. The split writes no activity entry; it is the
 owner's own decision, like confirming a candidate.
