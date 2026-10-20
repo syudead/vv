@@ -1,9 +1,9 @@
 import {
   type Dispatch,
+  type RefObject,
   type SetStateAction,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
 } from "react";
 
@@ -15,7 +15,8 @@ import { itemsBetween, type LibrarySelection, setItems } from "./selection";
  * one the same state. Shift is read when the press starts, so card callbacks keep their signature.
  */
 export function useRangeSelection(
-  items: readonly LibraryItem[],
+  /** The items as displayed, including pending moves, so a range never reaches hidden items. */
+  displayed: RefObject<readonly LibraryItem[]>,
   setSelection: Dispatch<SetStateAction<LibrarySelection>>,
 ) {
   const shift = useRef(false);
@@ -31,10 +32,6 @@ export function useRangeSelection(
     };
   }, []);
 
-  const latest = useRef(items);
-  useLayoutEffect(() => {
-    latest.current = items;
-  });
   const anchor = useRef<string | null>(null);
 
   const select = useCallback(
@@ -46,12 +43,14 @@ export function useRangeSelection(
       const from = anchor.current;
       anchor.current = key;
       const range =
-        shift.current && from !== null ? itemsBetween(latest.current, from, key) : null;
+        shift.current && from !== null
+          ? itemsBetween(displayed.current, from, key)
+          : null;
       setSelection((current) =>
         range === null ? single(current) : setItems(current, range, selected),
       );
     },
-    [setSelection],
+    [displayed, setSelection],
   );
   const point = useCallback((key: string | null) => {
     anchor.current = key;

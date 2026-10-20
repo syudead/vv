@@ -1396,10 +1396,14 @@ describe("LibraryPage", () => {
     function installSelectionAwareList(options: {
       tags?: { id: number; name: string }[];
       total?: number;
+      /** Videos that start with the first tag. */
+      tagged?: number[];
     }) {
       const tags = options.tags ?? [];
       const total = options.total ?? 3;
-      const attached = new Map<number, Set<number>>();
+      const attached = new Map<number, Set<number>>(
+        (options.tagged ?? []).map((id) => [id, new Set([tags[0]?.id ?? 0])]),
+      );
       fetchMock.mockImplementation((input, init) => {
         const url = new URL(String(input), "http://localhost");
         const method = init?.method ?? "GET";
@@ -1527,6 +1531,22 @@ describe("LibraryPage", () => {
       await user.keyboard("{/Shift}");
       expect(screen.getByText("1 video selected")).toBeDefined();
       expect(check(1).getAttribute("aria-checked")).toBe("true");
+    });
+
+    it("選択中に Shift を押してタグ行を押しても、前に変えた項目との間を同じ状態にする", async () => {
+      installSelectionAwareList({ tags: [{ id: 1, name: "旅行" }], tagged: [1] });
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("checkbox", { name: 'Select "動画 3"' }));
+      const card = screen.getByText("動画 1").closest("article");
+      if (card === null) throw new Error("card not found");
+      const tagList = within(card).getByRole("list", { name: "Tags" });
+      await user.keyboard("{Shift>}");
+      await user.click(within(tagList).getByText("旅行"));
+      await user.keyboard("{/Shift}");
+      expect(screen.getByText("3 videos selected")).toBeDefined();
     });
 
     it("カードの間から引いた四角に重なるカードを選び、Esc で引く前の選択に戻す", async () => {

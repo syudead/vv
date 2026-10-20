@@ -114,9 +114,6 @@ import {
   setGroup,
   setSmartFolder,
   setVideo,
-  toggleGroup,
-  toggleSmartFolder,
-  toggleVideo,
 } from "./selection";
 import SelectionBar from "./SelectionBar";
 import TagKindSelect from "./TagKindSelect";
@@ -359,22 +356,22 @@ export default function LibraryPage() {
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
   const selectedIds = selection.ids;
   // Removing any member also removes the group's selected identity.
+  const displayed = useRef<readonly LibraryItem[]>(items);
   const { select: selectRange, point: pointRange } = useRangeSelection(
-    items,
+    displayed,
     setSelection,
   );
+  // Toggles read the rendered selection, so a Shift toggle can extend a range like a check.
+  const selectionNow = useRef(selection);
+  selectionNow.current = selection;
   const changeSelection = useCallback(
     (id: number, selected: boolean) =>
       selectRange(videoKey(id), selected, (current) => setVideo(current, id, selected)),
     [selectRange],
   );
-  // Functional updates preserve stable chip callbacks without capturing the current selection.
   const toggleSelection = useCallback(
-    (id: number) => {
-      pointRange(videoKey(id));
-      setSelection((current) => toggleVideo(current, id));
-    },
-    [pointRange],
+    (id: number) => changeSelection(id, !selectionNow.current.ids.has(id)),
+    [changeSelection],
   );
   const changeGroupSelection = useCallback(
     (group: LibraryGroup, selected: boolean) =>
@@ -384,11 +381,9 @@ export default function LibraryPage() {
     [selectRange],
   );
   const toggleGroupSelection = useCallback(
-    (group: LibraryGroup) => {
-      pointRange(groupKey(group.id));
-      setSelection((current) => toggleGroup(current, selectedGroupOf(group)));
-    },
-    [pointRange],
+    (group: LibraryGroup) =>
+      changeGroupSelection(group, !isGroupSelected(selectionNow.current, group.id)),
+    [changeGroupSelection],
   );
   const changeSmartFolderSelection = useCallback(
     (id: number, selected: boolean) =>
@@ -398,11 +393,9 @@ export default function LibraryPage() {
     [selectRange],
   );
   const toggleSmartFolderSelection = useCallback(
-    (id: number) => {
-      pointRange(smartFolderKey(id));
-      setSelection((current) => toggleSmartFolder(current, id));
-    },
-    [pointRange],
+    (id: number) =>
+      changeSmartFolderSelection(id, !selectionNow.current.smartFolders.has(id)),
+    [changeSmartFolderSelection],
   );
   const clearSelection = useCallback(() => {
     pointRange(null);
@@ -423,6 +416,9 @@ export default function LibraryPage() {
     undo,
   });
   const shown = drops.shown;
+  useLayoutEffect(() => {
+    displayed.current = shown;
+  });
 
   // Removing an active filter tag in bulk clears selection and reloads matches, but retains the valid filter itself.
   const onTagRemoved = useCallback(
@@ -553,7 +549,7 @@ export default function LibraryPage() {
     container: results,
     box: marqueeBox,
     enabled: drawsBoxes(owner, view, loading),
-    items,
+    items: shown,
     selection,
     setSelection,
   });
