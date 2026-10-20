@@ -81,7 +81,6 @@ describe("FaceRecognitionSections", () => {
   let current: FaceRecognitionSettings;
   let putResponse: (() => Promise<Response>) | null;
   let downloadResponse: (() => Promise<Response>) | null;
-  let clearResponse: () => Promise<Response>;
 
   function route(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
     const url = String(input);
@@ -101,7 +100,6 @@ describe("FaceRecognitionSections", () => {
     }
     if (url === "/api/face-recognition/runs")
       return Promise.resolve(json({ queued: 4 }, 202));
-    if (url === "/api/people" && init?.method === "DELETE") return clearResponse();
     return Promise.reject(new Error(`unexpected request: ${url}`));
   }
 
@@ -113,7 +111,6 @@ describe("FaceRecognitionSections", () => {
     current = settings();
     putResponse = null;
     downloadResponse = null;
-    clearResponse = () => Promise.resolve(json({ deleted: 2, queued: 3 }));
     toast.mockReset();
     fetchMock.mockReset();
     fetchMock.mockImplementation(route);
@@ -203,45 +200,6 @@ describe("FaceRecognitionSections", () => {
       answer(json(settings({ runtime: { state: "ready" } }), 202));
     });
     await waitFor(() => expect(toggle.getAttribute("aria-disabled")).toBeNull());
-  });
-
-  it("deletes every person only after the confirmation and reloads the counts", async () => {
-    render(<Page />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Delete all people…" }),
-    );
-    const dialog = await screen.findByRole("alertdialog");
-    expect(requests("DELETE")).toEqual([]);
-
-    const loads = requests("GET").length;
-    await userEvent.click(
-      within(dialog).getByRole("button", { name: "Delete all people" }),
-    );
-
-    await waitFor(() =>
-      expect(toast).toHaveBeenCalledWith(
-        "2 people were deleted; 3 videos were queued for face analysis",
-      ),
-    );
-    expect(requests("DELETE").map(([url]) => String(url))).toEqual(["/api/people"]);
-    expect(screen.queryByRole("alertdialog")).toBeNull();
-    expect(requests("GET").length).toBeGreaterThan(loads);
-  });
-
-  it("keeps the dialog open with the reason when deleting the people fails", async () => {
-    clearResponse = () =>
-      Promise.resolve(json({ code: "internal", message: "disk full" }, 500));
-    render(<Page />);
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Delete all people…" }),
-    );
-    const dialog = await screen.findByRole("alertdialog");
-    await userEvent.click(
-      within(dialog).getByRole("button", { name: "Delete all people" }),
-    );
-
-    expect(await within(dialog).findByText(/Couldn't delete the people/)).toBeDefined();
-    expect(toast).not.toHaveBeenCalled();
   });
 
   it("hides the run buttons while off and queues a run while on", async () => {

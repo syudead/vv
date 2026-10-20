@@ -20,7 +20,8 @@ export type SettingsSectionId =
   | "work-info-plugins"
   | "transcoding"
   | "network"
-  | "api-tokens";
+  | "api-tokens"
+  | "clear-people";
 
 export interface SettingsPageEntry {
   slug: SettingsPageSlug;
@@ -48,6 +49,7 @@ export const settingsPages: readonly SettingsPageEntry[] = [
   { slug: "conversion", sections: ["transcoding"], anchors: [] },
   { slug: "network", sections: ["network"], anchors: [] },
   { slug: "api", sections: ["api-tokens"], anchors: [] },
+  { slug: "danger-zone", sections: ["clear-people"], anchors: [] },
 ];
 
 export const defaultSettingsPage: SettingsPageSlug = "scan";

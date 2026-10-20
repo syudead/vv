@@ -69,6 +69,7 @@ describe("settingsPages", () => {
       "conversion",
       "network",
       "api",
+      "danger-zone",
     ]);
     expect(Object.keys(t.settings.pages)).toEqual(settingsPages.map((page) => page.slug));
     const sections = settingsPages.flatMap((page) => page.sections);

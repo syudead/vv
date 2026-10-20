@@ -9,12 +9,9 @@ import { PageSection } from "../ui/patterns/page-section";
 import { Button } from "../ui/shadcn/button";
 import { useToast } from "../ui/Toast";
 
-/**
- * Deletes every person and all face data after a confirmation; it needs no face runtime, so the unsupported lock
- * leaves it usable. onCleared reloads the page's counts, since the clear queues the analysed videos again.
- */
-export function ClearPeopleSection({ onCleared }: { onCleared: () => Promise<void> }) {
-  const text = t.settings.faceRecognition.clearPeople;
+/** Deletes every person and all face data after a confirmation, from the Danger zone page. */
+export default function ClearPeopleSection() {
+  const text = t.settings.dangerZone.clearPeople;
   const toast = useToast();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -24,11 +21,10 @@ export function ClearPeopleSection({ onCleared }: { onCleared: () => Promise<voi
     setPending(true);
     setError(null);
     clearPeople().then(
-      async (cleared) => {
+      (cleared) => {
         setPending(false);
         setOpen(false);
         toast(text.done(cleared.deleted, cleared.queued));
-        await onCleared();
       },
       (failure: unknown) => {
         setPending(false);

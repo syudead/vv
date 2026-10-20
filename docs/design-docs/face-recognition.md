@@ -663,8 +663,11 @@ a deleted face is not recreated and a removed link is not made again.
 `DELETE /api/people` deletes every person, named or provisional, and every
 face appearance in one transaction
 ([`FaceStore.ClearPeople`](../../internal/store/face_clear.go)), and the face
-analysis then starts from nothing. **Delete all people…** on the Face
-recognition page asks first.
+analysis then starts from nothing. **Delete all people…** on the Settings
+**Danger zone** page
+([`ClearPeopleSection.tsx`](../../web/src/settings/ClearPeopleSection.tsx))
+asks first; the page holds the operations that cannot be undone, so none of
+them sits beside an everyday setting.
 
 | Step | Effect |
 | --- | --- |
@@ -676,11 +679,12 @@ recognition page asks first.
 Smart folders whose rule names a person then match nothing, as after any
 person's delete. Activity entries stay: a link or merge whose person is gone
 undoes nothing, as after any delete. The operation works with the feature off
-and without a runtime, so the `unsupported` lock leaves it usable.
+and without a runtime.
 
 | Rejected | Why |
 | --- | --- |
 | Deleting people one by one through the ordinary delete | It marks each appearance dropped, so no later analysis would make those people again |
+| A section of the Face recognition page | It deletes every person and their credits, far beyond face recognition, beside the switches the owner changes every day |
 | Deleting face data only and keeping the people | The people's faces and credits would no longer match any appearance, and the next analysis would make a second copy of each |
 
 ## An automatic link is undone from the activity log
