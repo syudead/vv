@@ -1,44 +1,39 @@
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { ScanFace } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router";
 
+import { getFaceRecognitionSettings } from "../../api/client";
 import { type Credit, deleteCredit, isCreditGone, type Person } from "../../api/credits";
-import {
-  confirmFaceCandidate,
-  type FaceAppearance,
-  type FaceCandidatePerson,
-  splitFaceAppearance,
-} from "../../api/personFaces";
 import { errorText, t, type UiText } from "../../i18n";
 import { ErrorState } from "../../ui/patterns/error-state";
 import { LoadingState } from "../../ui/patterns/loading-state";
-import { PageHeader } from "../../ui/patterns/page-header";
 import { ProfilePage } from "../../ui/patterns/profile-page";
+import { Badge } from "../../ui/shadcn/badge";
+import { Button } from "../../ui/shadcn/button";
 import { Skeleton } from "../../ui/shadcn/skeleton";
 import { useToast } from "../../ui/Toast";
-import { useDocumentTitle } from "../../videoList/pageHooks";
 import DeleteCreditDialog from "../DeleteCreditDialog";
 import { creditDisplayName } from "../displayName";
 import MergeCreditDialog from "../MergeCreditDialog";
-import { PersonAppearances, usePersonAppearances } from "./PersonAppearances";
-import { PersonCandidates, useFaceCandidates } from "./PersonCandidates";
+import { useFaceCandidates } from "./PersonCandidates";
 import PersonFaceControl from "./PersonFaceControl";
-import { personPath } from "./personPath";
+import { personFacesPath, personPath } from "./personPath";
 import PersonGone from "./PersonGone";
 import PersonFetchEntry from "./pluginFetch/PersonFetchEntry";
-import { useHandedPerson } from "./personHandoff";
-import { PersonDetails, PersonIdentity } from "./PersonProfile";
+import { personFactsCard, PersonIdentity } from "./PersonProfile";
 import {
+  PersonShelves,
   PersonVideosBody,
   PersonVideosHeader,
   RoleFilter,
   usePersonVideos,
 } from "./PersonVideos";
 import { useLocalToday } from "./useLocalToday";
-import { parsePersonId, usePerson } from "./usePerson";
+import { parsePersonId, useRoutedPerson } from "./usePerson";
 
 const text = t.credits.personPage;
 
-/** `/people/:id`: the person's face and profile beside their videos. */
+/** `/people/:id`: the person's face and profile above their videos, one shelf per role. */
 export default function PersonPage() {
   const { id } = useParams();
   const personId = parsePersonId(id);
@@ -47,9 +42,10 @@ export default function PersonPage() {
 }
 
 function PersonScreen({ id }: { id: number | null }) {
-  const { state, reload, replace, markGone } = usePerson(id, useHandedPerson(id));
-  const person = state.kind === "ready" ? state.person : undefined;
-  useDocumentTitle(person === undefined ? undefined : creditDisplayName(person));
+  const { state, person, reload, replace, markGone } = useRoutedPerson(
+    id,
+    creditDisplayName,
+  );
 
   if (state.kind === "gone") {
     return (
@@ -57,7 +53,6 @@ function PersonScreen({ id }: { id: number | null }) {
         profileLabel={text.profile}
         face={null}
         identity={null}
-        header={null}
         status={<PersonGone />}
       >
         {null}
@@ -74,7 +69,6 @@ function PersonScreen({ id }: { id: number | null }) {
           ) : null
         }
         identity={state.kind === "loading" ? <IdentitySkeleton /> : null}
-        header={<PageHeader title={text.videos} headingLevel={2} />}
       >
         {state.kind === "failed" ? (
           <ErrorState
@@ -96,8 +90,48 @@ function IdentitySkeleton() {
     <>
       <Skeleton className="h-6 w-3/4" />
       <Skeleton className="h-4 w-1/2" />
-      <Skeleton className="h-8 w-full" />
+      <Skeleton className="h-10 w-full" />
     </>
+  );
+}
+
+/** Whether face recognition is on; off, unknown or unreadable all hide its entry. */
+function useFaceRecognitionOn(): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    getFaceRecognitionSettings(controller.signal).then(
+      (settings) => {
+        if (!controller.signal.aborted) setOn(settings.enabled);
+      },
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, []);
+  return on;
+}
+
+/** The way to the person's face recognition, shown only while it is on. */
+function FacesEntry({ personId, onGone }: { personId: number; onGone: () => void }) {
+  return useFaceRecognitionOn() ? (
+    <FacesLink personId={personId} onGone={onGone} />
+  ) : null;
+}
+
+/** Faces, with the pairs waiting for a decision. */
+function FacesLink({ personId, onGone }: { personId: number; onGone: () => void }) {
+  const toReview = useFaceCandidates(personId, onGone).items.length;
+  return (
+    <Button asChild variant="secondary" size="sm">
+      <Link
+        to={personFacesPath(personId)}
+        aria-label={text.facesPage.entryLabel(toReview)}
+      >
+        <ScanFace aria-hidden="true" />
+        {text.facesPage.entry}
+        {toReview > 0 && <Badge>{text.facesPage.toReview(toReview)}</Badge>}
+      </Link>
+    </Button>
   );
 }
 
@@ -118,46 +152,11 @@ function PersonShown({
   const [deleting, setDeleting] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<UiText | null>(null);
-  const candidates = useFaceCandidates(person.id, markGone);
-  const appearances = usePersonAppearances(person.id, markGone);
 
   function merged(target: Credit) {
     setMerging(false);
     toast(text.mergedInto(creditDisplayName(target)));
     void navigate(personPath(target.id));
-  }
-
-  /** The shown person was merged away when it is not the target; otherwise it gained the other's videos. */
-  async function confirmCandidate(other: FaceCandidatePerson) {
-    const target = await confirmFaceCandidate(person.id, other.id);
-    if (target.id !== person.id) {
-      merged(target);
-      return;
-    }
-    replace(target);
-    candidates.remove(other.id);
-    // The target may have gained the source's pairs and appearances.
-    candidates.reload();
-    appearances.reload();
-    videos.reload();
-    toast(text.candidates.merged(creditDisplayName(other)));
-  }
-
-  /** The face leaves this person's list; the video's credit and the person's candidates may have changed. */
-  async function splitAppearance(appearance: FaceAppearance) {
-    const created = await splitFaceAppearance(person.id, appearance.appearanceId);
-    appearances.remove(appearance.appearanceId);
-    candidates.reload();
-    videos.reload();
-    toast(text.faces.split, {
-      action: {
-        label: text.faces.openSplit,
-        run: () => {
-          void navigate(personPath(created.id));
-          return Promise.resolve();
-        },
-      },
-    });
   }
 
   async function performDelete() {
@@ -184,9 +183,11 @@ function PersonShown({
       identity={
         <PersonIdentity
           person={person}
+          today={today}
           fetchEntry={
             <PersonFetchEntry person={person} onApplied={replace} onGone={markGone} />
           }
+          facesEntry={<FacesEntry personId={person.id} onGone={markGone} />}
           onMerge={() => setMerging(true)}
           onDelete={() => {
             setDeleteError(null);
@@ -194,33 +195,19 @@ function PersonShown({
           }}
         />
       }
-      details={
-        <PersonDetails
-          person={person}
-          today={today}
-          candidates={
-            <PersonCandidates
-              personId={person.id}
-              items={candidates.items}
-              actions={{
-                confirm: confirmCandidate,
-                remove: candidates.remove,
-                onGone: markGone,
-              }}
-            />
-          }
-          faces={
-            <PersonAppearances
-              appearances={appearances}
-              actions={{ split: splitAppearance, onGone: markGone }}
-            />
-          }
-        />
-      }
-      header={<PersonVideosHeader videos={videos} />}
-      toolbar={<RoleFilter role={role} onChange={setRole} />}
+      facts={personFactsCard(person, today)}
     >
-      <PersonVideosBody videos={videos} role={role} />
+      {role === null ? (
+        <PersonShelves personId={person.id} all={videos} onSeeAll={setRole} />
+      ) : (
+        <section aria-label={text.videos} className="flex min-w-0 flex-col gap-3">
+          <PersonVideosHeader videos={videos} />
+          <div className="flex overflow-x-auto">
+            <RoleFilter role={role} onChange={setRole} />
+          </div>
+          <PersonVideosBody videos={videos} role={role} />
+        </section>
+      )}
       {merging && (
         <MergeCreditDialog
           kind="person"

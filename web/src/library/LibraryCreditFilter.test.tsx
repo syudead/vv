@@ -290,7 +290,7 @@ describe("人物・団体での絞り込み", () => {
     ).toBeDefined();
   });
 
-  it("仮の人物の絞り込みは、空の名前ではなく Unnamed person の User チップで出す", async () => {
+  it("仮の人物の絞り込みは、空の名前ではなく Unnamed person のチップで顔と出す", async () => {
     const base = fetchMock.getMockImplementation();
     fetchMock.mockImplementation((input, init) => {
       if (new URL(String(input), "http://localhost").pathname === "/api/people/1") {
@@ -302,6 +302,7 @@ describe("人物・団体での絞り込み", () => {
             aliases: [],
             externalIds: [],
             videoCount: 1,
+            imageRevision: 3,
           }),
         );
       }
@@ -313,6 +314,9 @@ describe("人物・団体での絞り込み", () => {
       name: "Remove the filter for Unnamed person",
     });
     expect(chip.textContent).toBe("Unnamed person");
+    expect(chip.querySelector("img")?.getAttribute("src")).toBe(
+      "/api/people/1/image?v=3",
+    );
   });
 
   it("チップを押すとそのパラメータだけが外れ、フォーカスは次のチップ、最後なら検索欄へ移る", async () => {

@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { isAborted } from "../../api/client";
 import { getCredit, isCreditGone, type Person } from "../../api/credits";
 import { errorText, type UiText } from "../../i18n";
+import { useDocumentTitle } from "../../videoList/pageHooks";
+import { useHandedPerson } from "./personHandoff";
 
 export type PersonState =
   | { kind: "loading" }
@@ -69,4 +71,12 @@ export function usePerson(id: number | null, handed?: Person) {
   }, []);
 
   return { state, reload, replace, markGone };
+}
+
+/** The routed person, handed over or read, titling the document while it is shown. */
+export function useRoutedPerson(id: number | null, title: (person: Person) => string) {
+  const result = usePerson(id, useHandedPerson(id));
+  const person = result.state.kind === "ready" ? result.state.person : undefined;
+  useDocumentTitle(person === undefined ? undefined : title(person));
+  return { ...result, person };
 }

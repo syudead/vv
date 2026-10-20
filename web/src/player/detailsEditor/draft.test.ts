@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import type { Video } from "../../api/client";
-import { draftChanged, draftFromVideo, newRowKey, toDetailsInput } from "./draft";
+import {
+  draftChanged,
+  draftFromVideo,
+  newRowKey,
+  toDetailsInput,
+  withNamed,
+} from "./draft";
 
 const video = {
   id: 7,
@@ -31,6 +37,15 @@ describe("draft", () => {
     };
     expect(draftChanged(draft, loaded)).toBe(false);
     expect(draftChanged({ ...draft, code: "AB-2" }, loaded)).toBe(true);
+  });
+
+  it("名前を付けた人物のチップは顔を保ったまま普通の人物になる", () => {
+    const loaded = draftFromVideo(video);
+    const naming = { key: "c1", id: 6, name: "Mio", naming: true, imageRevision: 5 };
+    const draft = { ...loaded, people: { ...loaded.people, performer: [naming] } };
+    expect(withNamed(draft, 6, "Mio").people.performer).toEqual([
+      { key: "c1", id: 6, name: "Mio", imageRevision: 5 },
+    ]);
   });
 
   it("送った一覧の位置で、誤りの経路から入力を引ける", () => {

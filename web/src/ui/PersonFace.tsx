@@ -5,12 +5,15 @@ import { cn } from "@/lib/cn";
 
 // See web/registry/rules/components.md, PersonFace.
 
-export type PersonFaceShape = "card" | "profile" | "chip" | "compare" | "judge" | "scene";
+export type PersonFaceShape =
+  "card" | "profile" | "chip" | "token" | "option" | "compare" | "judge" | "scene";
 
 const frames: Record<PersonFaceShape, string> = {
   card: "aspect-square w-full rounded-full",
   profile: "aspect-portrait w-full rounded-md",
   chip: "size-5 rounded-full",
+  token: "size-6 rounded-full",
+  option: "size-8 rounded-full",
   compare: "size-8 rounded-full",
   judge: "size-12 rounded-full",
   scene: "size-12 rounded-md",
@@ -20,6 +23,8 @@ const icons: Record<PersonFaceShape, string> = {
   card: "size-1/3",
   profile: "size-1/3",
   chip: "size-3",
+  token: "size-3.5",
+  option: "size-4",
   compare: "size-4",
   judge: "size-5",
   scene: "size-5",

@@ -46,7 +46,8 @@ function install() {
       return Promise.resolve(json({ items: items ?? [] }));
     }
     if (path === "/api/people") return peopleAnswer(url.searchParams.get("q") ?? "");
-    if (path === "/api/people/3") return Promise.resolve(json(credit(3, "Alice")));
+    if (path === "/api/people/3")
+      return Promise.resolve(json({ ...credit(3, "Alice"), imageRevision: 2 }));
     if (path === "/api/organizations/5") {
       return Promise.resolve(json({ code: "not_found", message: "gone" }, 404));
     }
@@ -223,18 +224,27 @@ describe("ConditionsFields", () => {
   });
 
   describe("Person と Organization", () => {
-    it("候補から人物を選ぶとチップにし、× で外す", async () => {
-      peopleAnswer = (q) =>
-        Promise.resolve(json({ items: q === "Ali" ? [credit(3, "Alice")] : [] }));
+    it("候補から人物を顔つきで選ぶとチップにし、× で外す", async () => {
+      const alice = { ...credit(3, "Alice"), imageRevision: 2 };
+      peopleAnswer = (q) => Promise.resolve(json({ items: q === "Ali" ? [alice] : [] }));
       const user = userEvent.setup();
       renderFields({});
 
       await user.type(screen.getByRole("combobox", { name: "Person" }), "Ali");
-      await user.click(await screen.findByRole("option", { name: /Alice/ }));
-      expect(lastRule()?.person).toBe(3);
-      await user.click(
-        await screen.findByRole("button", { name: "Remove the person Alice" }),
+      const option = await screen.findByRole("option", { name: /Alice/ });
+      expect(option.querySelector("img")?.getAttribute("src")).toBe(
+        "/api/people/3/image?v=2",
       );
+      await user.click(option);
+      expect(lastRule()?.person).toBe(3);
+      const remove = await screen.findByRole("button", {
+        name: "Remove the person Alice",
+      });
+      await screen.findByText("Alice");
+      expect(remove.parentElement?.querySelector("img")?.getAttribute("src")).toBe(
+        "/api/people/3/image?v=2",
+      );
+      await user.click(remove);
       expect(lastRule()?.person).toBeUndefined();
     });
 

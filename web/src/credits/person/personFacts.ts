@@ -94,7 +94,8 @@ function lifeFacts(profile: PersonProfile, today: Date): PersonFact[] {
   return facts;
 }
 
-function profileFacts(profile: PersonProfile, today: Date): PersonFact[] {
+/** The dates, gender, birthplace and blood type, as the profile card lists them. */
+export function profileFacts(profile: PersonProfile, today: Date): PersonFact[] {
   const text = t.credits.personPage;
   const facts = lifeFacts(profile, today);
   if (profile.gender !== undefined) {
@@ -173,4 +174,60 @@ export function personFactGroups(profile: PersonProfile, today: Date): PersonFac
     },
   ];
   return groups.filter((group) => group.facts.length > 0 || group.bio !== undefined);
+}
+
+/** A key number of the person, drawn large with its meaning under it. */
+export interface PersonFigure {
+  id: "age" | "height" | "measurements" | "career";
+  value: string;
+  label: string;
+}
+
+function measurementFigure(profile: PersonProfile): PersonFigure | null {
+  const text = t.credits.personPage;
+  const sizes = [profile.bustCm, profile.waistCm, profile.hipsCm];
+  if (sizes.every((size) => size === undefined)) {
+    return profile.cup === undefined
+      ? null
+      : { id: "measurements", value: profile.cup, label: text.facts.cup };
+  }
+  return {
+    id: "measurements",
+    value: text.measurementsShort(
+      sizes.map((size) => (size === undefined ? text.missingMeasurement : String(size))),
+    ),
+    label:
+      profile.cup === undefined
+        ? text.figures.measurements
+        : text.figures.measurementsWithCup(profile.cup),
+  };
+}
+
+/** Age, height, measurements and career, each only when the profile has it. */
+export function personFigures(profile: PersonProfile, today: Date): PersonFigure[] {
+  const text = t.credits.personPage;
+  const figures: PersonFigure[] = [];
+  const { birthDate, deathDate } = profile;
+  const range = birthDate === undefined ? null : ageRange(birthDate, deathDate, today);
+  if (range !== null) {
+    figures.push({
+      id: "age",
+      value: text.ageRange(range.low, range.high),
+      label: deathDate === undefined ? text.figures.age : text.figures.ageAtDeath,
+    });
+  }
+  if (profile.heightCm !== undefined) {
+    figures.push({
+      id: "height",
+      value: text.centimetres(profile.heightCm),
+      label: text.facts.height,
+    });
+  }
+  const measurements = measurementFigure(profile);
+  if (measurements !== null) figures.push(measurements);
+  const career = careerValue(profile.careerStartYear, profile.careerEndYear);
+  if (career !== null) {
+    figures.push({ id: "career", value: career, label: text.facts.career });
+  }
+  return figures;
 }

@@ -13,6 +13,7 @@ import type {
 } from "../api/personPluginFetches";
 import type { WorkInfoPlugin } from "../api/workInfoPlugins";
 import PersonEditPage from "../credits/person/edit/PersonEditPage";
+import PersonFacesPage from "../credits/person/PersonFacesPage";
 import PersonPage from "../credits/person/PersonPage";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
@@ -77,6 +78,8 @@ export const server = {
   laterAppearances: [] as FaceAppearance[],
   /** The person a confirm answers with, also served at its own address. */
   mergeTarget: null as Person | null,
+  /** Whether face recognition is on, as the settings report it. */
+  faceRecognition: true,
 };
 
 export function sentBody(request: Sent | undefined): unknown {
@@ -159,7 +162,14 @@ function faceRoute(method: string, url: URL): Response | null {
 
 function respond(method: string, url: URL, body: unknown): Response {
   if (url.pathname === "/api/videos") {
-    return jsonResponse({ items: [video(1)], total: 1 });
+    // The person performs in Video 1 and has no other role.
+    const role = url.searchParams.get("personRole");
+    return role === null || role === "performer"
+      ? jsonResponse({ items: [video(1)], total: 1 })
+      : jsonResponse({ items: [], total: 0 });
+  }
+  if (url.pathname === "/api/settings/face-recognition") {
+    return jsonResponse({ enabled: server.faceRecognition });
   }
   const plugin = pluginRoute(method, url, body);
   if (plugin !== null) return plugin;
@@ -200,6 +210,7 @@ export function installPersonServer() {
     server.appearances = [];
     server.laterAppearances = [];
     server.mergeTarget = null;
+    server.faceRecognition = true;
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>((input, init) => {
@@ -239,6 +250,7 @@ export function renderPage(path = "/people/7") {
           <Routes>
             <Route path="/people/:id" element={<PersonPage />} />
             <Route path="/people/:id/edit" element={<PersonEditPage />} />
+            <Route path="/people/:id/faces" element={<PersonFacesPage />} />
             <Route path="/videos/:id" element={<VideoScreen />} />
           </Routes>
         </MemoryRouter>

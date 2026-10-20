@@ -217,6 +217,38 @@ describe("VideoDetailsEditor", () => {
     expect(url.searchParams.get("q")).toBe("bob");
   });
 
+  it("人物の候補と選んだチップに顔を出し、動画に付いた人物のチップにも出す", async () => {
+    server.video = () =>
+      json({
+        ...video,
+        workInfo: {
+          ...video.workInfo!,
+          people: [{ ...video.workInfo!.people[0]!, imageRevision: 2 }],
+        },
+      });
+    server.people.mockImplementation(() =>
+      json({
+        items: [{ ...person(9, "Beth"), imageRevision: 4 }],
+        total: 1,
+        totalAll: 1,
+      }),
+    );
+    await opened();
+    const faceIn = (control: HTMLElement) =>
+      control.closest("li, [role=option]")?.querySelector("img")?.getAttribute("src");
+    expect(faceIn(screen.getByRole("button", { name: "Remove Alice" }))).toBe(
+      "/api/people/1/image?v=2",
+    );
+    const user = userEvent.setup();
+    await user.type(screen.getByRole("combobox", { name: "Add a performer" }), "Be");
+    const option = await screen.findByRole("option", { name: /^Beth/ });
+    expect(faceIn(option)).toBe("/api/people/9/image?v=4");
+    await user.click(option);
+    expect(faceIn(await screen.findByRole("button", { name: "Remove Beth" }))).toBe(
+      "/api/people/9/image?v=4",
+    );
+  });
+
   it("8 件の外に完全一致がありうる Enter は limit なしで読み直し、一致があれば選ぶ", async () => {
     server.people.mockImplementation((url) =>
       url.searchParams.get("limit") === null

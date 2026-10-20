@@ -223,14 +223,31 @@ dialog and opens the new person's page. Organizations keep the table.
 ## The person page
 
 `/people/:id` shows one person in a `ProfilePage`
-([design-system.md](design-system.md#page-patterns)): the face, the name,
-aliases, the filled profile groups, links and external IDs in a column at the
-left, and the person's videos beside it, so the videos start at the top while
-the face and facts stay in view. The page reads the person with
+([design-system.md](design-system.md#page-patterns)): a profile spread across
+the page, then the person's videos. The spread holds the face; the name and
+aliases; the key figures (age, height, measurements with the cup, career) as
+large numbers; the bio; the actions; and a card at the end with the remaining
+facts (dates, gender, birthplace, blood type), links and external IDs. From
+`lg` that card stops at the face's height and scrolls inside, so a person with
+many links does not push the videos down. The actions are `secondary` buttons
+with icons (`Edit`, `Fetch info…`, `Show in library`, `Faces`), with merging
+and deleting in the `More` menu. The person is seen before their videos, as in
+other media libraries' person pages.
+
+The videos follow as one `Shelf` per role the person has videos in, in the
+roles' order, each a row of cards that scrolls sideways with its count and
+`See all`. `See all` replaces the shelves with that role's full grid and the
+role filter, whose `All` returns to the shelves. The page reads the person with
 `GET /api/people/{id}` and the videos with `GET /api/videos?person={id}`, in
-the library's default order; the role filter adds `personRole`, so totals and
-paging stay the server's ([library-ui.md](library-ui.md)). The page is
-owner-only, as the rest of `/people`.
+the library's default order; each shelf and the grid add `personRole`, so
+totals and paging stay the server's ([library-ui.md](library-ui.md)). A role
+without videos draws no shelf, and a person without videos shows one empty
+state. The page is owner-only, as the rest of `/people`.
+
+| Rejected                                   | Why                                                                                     |
+| ------------------------------------------ | --------------------------------------------------------------------------------------- |
+| A sticky profile column beside the videos  | The facts were squeezed under a large face and scrolled out of view inside their column |
+| One grid with a role filter as the default | It hides that a person both performs and directs until each role is pressed             |
 
 The face, its upload and removal, the favorite heart, merging and deleting
 happen on the page. Each request that answers `404 person_not_found` turns the
@@ -288,35 +305,43 @@ when both are equal.
 
 ### Candidates and faces in videos
 
-A person's face-recognition results sit in the profile column under the face,
-not in the main column: the owner judges a candidate by comparing two faces,
-and the profile face is the large one, while the main column stays the videos.
-`Same person?` comes first in the column, drawn only while
-`GET /api/people/{id}/face-candidates` returns a pair, one row per pair with
-the other person's `PersonFace judge`, name and similarity, and `Same person`
-and `Not the same` under them. A confirm from a provisional person's own page
-opens the merged person's page, since the shown person no longer exists; one
-that keeps the page reads the candidates and the faces again and reloads the
-videos. A pressed row disables only its own buttons.
+A person's face-recognition results have their own page,
+`/people/:id/faces`, a `RecordPage` with `Back to {name}`, titled `Faces` with
+the person's name under it. On the person page they were long lists that
+pushed the profile and the videos aside, while they are work the owner does
+now and then. The person page keeps only a `Faces` action after
+`Show in library`, which counts the pairs waiting for a decision
+(`Faces, 2 to review`) from `GET /api/people/{id}/face-candidates`. The action
+shows only while `GET /api/settings/face-recognition` reports face recognition
+on; while it is off, or the settings cannot be read, the page neither shows it
+nor reads the candidates.
 
-`Faces in videos` follows the profile groups, drawn only while
-`GET /api/people/{id}/appearances` returns an appearance: a `PersonFace scene`
-crop beside the video's title and its spans, each a link that plays the video
-from that time (`?t=`), and `Show more` for the next page. An appearance whose
-video left the library reads `Not in the library` without links.
+`Same person?` comes first on the faces page, drawn only while that request
+returns a pair, one row per pair with the other person's `PersonFace judge`,
+name and similarity, and `Same person` and `Not the same` under them. A
+confirm from a provisional person's own page opens the merged person's faces
+page, since the shown person no longer exists; one that keeps the page reads
+the candidates and the faces again. A pressed row disables only its own
+buttons.
+
+`Faces in videos` follows, from `GET /api/people/{id}/appearances`: a
+`PersonFace scene` crop beside the video's title and its spans, each a link
+that plays the video from that time (`?t=`), and `Show more` for the next
+page; with none it says so. An appearance whose video left the library reads
+`Not in the library` without links.
 
 Each row ends with a small `Not this person` button, for a face the analysis
 linked to the wrong person. It splits the face into a new unnamed person with
 no confirmation, since the split is undone by merging the two people: the row
 leaves the list, a toast reads `Split into a new unnamed person` with an `Open`
-action to the new person's page, and the candidates and videos are read again.
+action to the new person's page, and the candidates are read again.
 A pressed row disables only its own button, and a failure shows under the row.
 
-| Rejected | Why |
-| --- | --- |
-| Candidates in the main column | They would split the page's one header and one grid, and sit away from the face they are compared with |
-| A strip of crops alone | Reaching a scene would take a second press, and a crop does not say which video |
-| Confirming on another screen | The owner settles a pair where both faces are in view |
+| Rejected                                | Why                                                                               |
+| --------------------------------------- | --------------------------------------------------------------------------------- |
+| Candidates and faces on the person page | They crowded out the profile and the videos, which the page is for                |
+| A strip of crops alone                  | Reaching a scene would take a second press, and a crop does not say which video   |
+| Confirming in the people list           | A pair is judged with both faces and the similarity in view, one person at a time |
 
 ## Faces elsewhere on the screens
 
@@ -325,6 +350,15 @@ and the name inside one link to `/people/:id`, named `Open {name}`, so the
 cast opens the person page instead of the filtered library; the chip sits on
 the name's line and keeps the row's height. Organizations keep their text links
 to the filtered library, and the fold after three names is unchanged.
+
+Wherever a person is chosen, the face comes with the name: a picker's
+candidate rows lead with `PersonFace option` (the video details editor, the
+merge dialog and a smart folder's `Person` condition), and a chosen person's
+chip or filter leads with `PersonFace token` (the details editor's credit chips,
+the smart folder condition and the library's active person filter). A person
+without a face shows the placeholder in the same frame, so the rows keep one
+height. The chip carries the person's `imageRevision` from the candidate or the
+video's `WorkPerson`, so a face picked in the editor shows before the save.
 
 In the comparison of a work-info fetch
 ([work-info-plugins.md](work-info-plugins.md#peoples-images-are-fetched-like-the-cover-and-become-faces-after-the-commit)),

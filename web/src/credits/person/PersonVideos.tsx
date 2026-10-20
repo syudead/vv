@@ -11,6 +11,8 @@ import { ErrorState } from "../../ui/patterns/error-state";
 import { LoadMoreRow } from "../../ui/patterns/load-more-row";
 import { LoadingState } from "../../ui/patterns/loading-state";
 import { PageHeader } from "../../ui/patterns/page-header";
+import { Shelf, ShelfItem } from "../../ui/patterns/shelf";
+import { Button } from "../../ui/shadcn/button";
 import { ToggleGroup, ToggleGroupItem } from "../../ui/shadcn/toggle-group";
 import { DEFAULT_SORT } from "../../videoList/listCriteria";
 import { useLoadMoreSentinel } from "../../videoList/pageHooks";
@@ -25,6 +27,9 @@ const text = t.credits.personPage;
 function isRole(value: string): value is Role {
   return (roles as readonly string[]).includes(value);
 }
+
+/** The cards a shelf shows before See all. */
+const shelfSize = 12;
 
 /** The person's videos in the library's default order, narrowed to one role on the server. */
 export function usePersonVideos(personId: number) {
@@ -145,5 +150,92 @@ export function PersonVideosBody({
       )}
       <div ref={sentinel} aria-hidden="true" className="h-px" />
     </>
+  );
+}
+
+/**
+ * One shelf per role the person has videos in, in the roles' order. `all` is the person's videos in
+ * any role: its states stand for the shelves, and with none the empty state shows instead.
+ */
+export function PersonShelves({
+  personId,
+  all,
+  onSeeAll,
+}: {
+  personId: number;
+  all: VideosState;
+  onSeeAll: (role: Role) => void;
+}) {
+  if (all.loading) {
+    return <LoadingState label={text.loading} layout="grid" size={0} count={6} />;
+  }
+  if (all.error !== null && all.items.length === 0) {
+    return (
+      <ErrorState
+        title={text.videosFailed(all.error)}
+        retryLabel={t.common.retry}
+        onRetry={all.reload}
+      />
+    );
+  }
+  if (all.items.length === 0) {
+    return <EmptyState icon={<Film aria-hidden="true" />} title={text.noVideos} />;
+  }
+  return (
+    <>
+      {roles.map((role) => (
+        <RoleShelf key={role} personId={personId} role={role} onSeeAll={onSeeAll} />
+      ))}
+    </>
+  );
+}
+
+/** A role without videos, or whose read failed, draws nothing; the other shelves still show. */
+function RoleShelf({
+  personId,
+  role,
+  onSeeAll,
+}: {
+  personId: number;
+  role: Role;
+  onSeeAll: (role: Role) => void;
+}) {
+  const location = useLocation();
+  const backTo = `${location.pathname}${location.search}`;
+  const criteria = useMemo(
+    () => ({ sort: DEFAULT_SORT, person: personId, personRole: role }),
+    [personId, role],
+  );
+  const videos = useVideos(criteria, undefined, "videos");
+  if (videos.loading || videos.items.length === 0) return null;
+  const name = text.roles[role];
+  return (
+    <Shelf
+      title={name}
+      count={t.credits.row.videoCount(videos.total)}
+      action={
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={text.seeAllAs(name)}
+          onClick={() => onSeeAll(role)}
+        >
+          {text.seeAll}
+        </Button>
+      }
+    >
+      {videos.items.slice(0, shelfSize).map((item) =>
+        item.kind === "video" ? (
+          <ShelfItem key={item.video.id}>
+            <VideoCard
+              video={item.video}
+              backTo={backTo}
+              selected={false}
+              selectionMode={false}
+            />
+          </ShelfItem>
+        ) : null,
+      )}
+    </Shelf>
   );
 }

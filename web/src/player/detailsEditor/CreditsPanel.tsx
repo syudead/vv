@@ -8,6 +8,7 @@ import {
   workOrganizationRoles,
   workPersonRoles,
 } from "../../api/workInfo";
+import { creditFace } from "../../credits/creditFace";
 import { t, type UiText } from "../../i18n";
 import { cn } from "../../lib/cn";
 import { Badge } from "../../ui/shadcn/badge";
@@ -127,6 +128,7 @@ function RoleRow({
           {chips.map((chip) => (
             <CreditChip
               key={chip.key}
+              kind={role.kind}
               chip={chip}
               saving={saving}
               problem={problem}
@@ -158,11 +160,13 @@ function RoleRow({
 }
 
 function CreditChip({
+  kind,
   chip,
   saving,
   problem,
   onRemove,
 }: {
+  kind: CreditKind;
   chip: Chip;
   saving: boolean;
   problem: PanelProps["problem"];
@@ -175,8 +179,16 @@ function CreditChip({
       <Badge
         variant="secondary"
         title={label}
-        className="h-auto min-h-6 max-w-full justify-start gap-0 pr-0 font-normal whitespace-normal"
+        className={cn(
+          "h-auto min-h-6 max-w-full justify-start gap-0 pr-0 font-normal whitespace-normal",
+          kind === "person" && "pl-0",
+        )}
       >
+        {kind === "person" && (
+          <span className="mr-1.5 flex shrink-0">
+            {creditFace(kind, isNewChip(chip) ? undefined : chip, "token")}
+          </span>
+        )}
         <span className={cn("min-w-0 wrap-anywhere", unnamed && "text-muted-foreground")}>
           {label}
         </span>
