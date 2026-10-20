@@ -179,19 +179,18 @@ func TestParseWorkInfoResponseIgnoresWorkDetailsOfAnotherShape(t *testing.T) {
 	}
 }
 
-func TestParseWorkInfoResponseKeepsOnlyAWebCoverURL(t *testing.T) {
-	for raw, want := range map[string]string{
-		`"https://example.com/cover.jpg"`: "https://example.com/cover.jpg",
-		`"  http://example.com/c.png  "`:  "http://example.com/c.png",
-		`"ftp://example.com/cover.jpg"`:   "",
-		`"/cover.jpg"`:                    "",
-		`{"url":"https://example.com/c"}`: "",
-		`"https://example.com/` + strings.Repeat("a", WorkInfoCoverURLMaxRunes) + `"`: "",
-	} {
-		got, err := ParseWorkInfoResponse(WorkInfoFetch, []byte(`{"workInfo":{"title":"T","cover":`+raw+`}}`))
-		if err != nil || got.WorkInfo.CoverURL != want || got.WorkInfo.Title != "T" {
-			t.Fatalf("cover %.40s = %q, %v; want %q", raw, got.WorkInfo.CoverURL, err, want)
-		}
+func TestParseWorkInfoResponseKeepsTheFirstDistinctWebCoverURLs(t *testing.T) {
+	long := `"https://example.com/` + strings.Repeat("a", WorkInfoCoverURLMaxRunes) + `"`
+	got, err := ParseWorkInfoResponse(WorkInfoFetch, []byte(`{"workInfo":{"title":"T","covers":[
+		"https://e.test/0.jpg", "ftp://e.test/x.jpg", "/x.jpg", {"url":"https://e.test/x"}, `+long+`,
+		"  https://e.test/1.jpg  ", "https://e.test/0.jpg",
+		"https://e.test/2.jpg", "https://e.test/3.jpg", "https://e.test/4.jpg", "https://e.test/5.jpg"]}}`))
+	want := []string{
+		"https://e.test/0.jpg", "https://e.test/1.jpg", "https://e.test/2.jpg", "https://e.test/3.jpg",
+		"https://e.test/4.jpg",
+	}
+	if err != nil || !reflect.DeepEqual(got.WorkInfo.CoverURLs, want) || got.WorkInfo.Title != "T" {
+		t.Fatalf("covers = %q, %v; want %q", got.WorkInfo.CoverURLs, err, want)
 	}
 }
 

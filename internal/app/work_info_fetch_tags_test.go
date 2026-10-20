@@ -14,8 +14,7 @@ var titleAndTags = []domain.WorkInfoField{domain.WorkInfoFieldTitle, domain.Work
 func TestApplyWorkInfoFetchAttachesOnlyTheSelectedTags(t *testing.T) {
 	e := newFetchEnv()
 	result := e.fetch(t, "Title", "drama", "comedy", "action")
-	applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, titleAndTags,
-		[]string{"action", "drama"}, false, nil)
+	applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, domain.WorkInfoSelection{Fields: titleAndTags, Tags: []string{"action", "drama"}}, false)
 	if err != nil {
 		t.Fatalf("ApplyWorkInfoFetch: %v", err)
 	}
@@ -32,8 +31,7 @@ func TestApplyWorkInfoFetchReportsOnlySelectedSkippedTags(t *testing.T) {
 	e := newFetchEnv()
 	e.applier.rejected = []string{"spoiler", "gore"}
 	result := e.fetch(t, "Title", "drama", "spoiler", "gore", "bad\x01name", "worse\x01name")
-	applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, titleAndTags,
-		[]string{"drama", "gore", "worse\x01name"}, false, nil)
+	applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, domain.WorkInfoSelection{Fields: titleAndTags, Tags: []string{"drama", "gore", "worse\x01name"}}, false)
 	if err != nil {
 		t.Fatalf("ApplyWorkInfoFetch: %v", err)
 	}
@@ -61,14 +59,14 @@ func TestApplyWorkInfoFetchRefusesABadTagSelection(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newFetchEnv()
 			result := e.fetch(t, "Title", "drama", "comedy")
-			_, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, tc.fields, tc.tags, false, nil)
+			_, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, domain.WorkInfoSelection{Fields: tc.fields, Tags: tc.tags}, false)
 			if !errors.Is(err, domain.ErrWorkInfoApplyInvalid) {
 				t.Fatalf("err = %v; want ErrWorkInfoApplyInvalid", err)
 			}
 			if len(e.applier.calls) != 0 {
 				t.Fatal("a refused apply reached the store")
 			}
-			if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, titleAndTags, nil, false, nil); err != nil {
+			if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, domain.WorkInfoSelection{Fields: titleAndTags}, false); err != nil {
 				t.Fatalf("the result was not kept: %v", err)
 			}
 			if got := e.applier.tags[fetchVideo]; !slices.Equal(got, []string{"drama", "comedy"}) {

@@ -23,13 +23,19 @@ interface Framing {
   adjusting: boolean;
 }
 
+/** index is the chosen cover's position, or null while no cover is chosen. */
 export function useCoverFraming(
   video: Video,
   result: WorkInfoFetch | null,
+  index: number | null,
 ): CoverFraming {
   const videoId = video.id;
-  const fetchId = result?.cover === undefined ? null : result.fetchId;
-  const key = fetchId === null ? null : `${String(videoId)}\u0000${fetchId}`;
+  const fetchId =
+    result === null || index === null || index >= result.covers.length
+      ? null
+      : result.fetchId;
+  const key =
+    fetchId === null ? null : `${String(videoId)}\u0000${fetchId}\u0000${String(index)}`;
   const [loaded, setLoaded] = useState<{ key: string; image: UploadImage } | null>(null);
   // The image to close when the result changes: the decoded cover or a touch-up that replaced it.
   const held = useRef<UploadImage | null>(null);
@@ -40,10 +46,10 @@ export function useCoverFraming(
   });
 
   useEffect(() => {
-    if (fetchId === null) return;
-    const loadedKey = `${String(videoId)}\u0000${fetchId}`;
+    if (fetchId === null || index === null) return;
+    const loadedKey = `${String(videoId)}\u0000${fetchId}\u0000${String(index)}`;
     const controller = new AbortController();
-    getWorkInfoFetchCover(videoId, fetchId, controller.signal)
+    getWorkInfoFetchCover(videoId, fetchId, index, controller.signal)
       .then(loadUploadImage)
       .then((decoded) => {
         if (!("image" in decoded)) return;
@@ -60,10 +66,10 @@ export function useCoverFraming(
       held.current?.bitmap.close();
       held.current = null;
     };
-  }, [videoId, fetchId]);
+  }, [videoId, fetchId, index]);
 
   const image = loaded !== null && loaded.key === key ? loaded.image : null;
-  // A new result starts again from the whole image.
+  // A new result or another cover starts again from the whole image.
   const current: Framing =
     framing.key === key ? framing : { key, fit: WHOLE_IMAGE, adjusting: false };
   return {

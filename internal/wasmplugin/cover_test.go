@@ -2,26 +2,37 @@ package wasmplugin
 
 import (
 	"context"
+	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
-func runCover(t *testing.T, rt *Runtime, cover string) (domain.WorkInfoRunResult, error) {
+// runCovers has the probe return the cover URLs. The probe's people mode writes its setting raw after "people":, so
+// the setting closes an empty people list and adds the covers member.
+func runCovers(t *testing.T, rt *Runtime, covers ...string) (domain.WorkInfoRunResult, error) {
 	t.Helper()
-	req := fetchMode("cover")
-	req.Settings = map[string]string{"cover": cover}
+	encoded, err := json.Marshal(covers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := fetchMode("people")
+	req.Settings = map[string]string{"people": `[], "covers": ` + string(encoded)}
 	got, _, err := rt.Run(context.Background(), probeDigest, probeModule(t), req, domain.WorkInfoRunNetwork{}, nil)
 	return got, err
 }
 
-func TestCoverIsFetchedThroughVVAfterTheRun(t *testing.T) {
+func TestCoversAreFetchedThroughVVAfterTheRun(t *testing.T) {
 	site := newTestSite(t)
 	rt := newNetTestRuntime(t, site)
 
-	got, err := runCover(t, rt, "http://site.test/page")
-	if err != nil || got.WorkInfo.CoverURL != "http://site.test/page" || string(got.CoverImage) != "hello" {
-		t.Fatalf("Run(cover) = %q (url %q), %v; want the page body as the cover", got.CoverImage, got.WorkInfo.CoverURL, err)
+	got, err := runCovers(t, rt, "http://site.test/missing", "http://site.test/page")
+	wantURLs := []string{"http://site.test/missing", "http://site.test/page"}
+	if err != nil || !slices.Equal(got.WorkInfo.CoverURLs, wantURLs) || len(got.CoverImages) != 2 ||
+		got.CoverImages[0] != nil || string(got.CoverImages[1]) != "hello" {
+		t.Fatalf("Run(covers) = %q (urls %q), %v; want no first cover and the page body second",
+			got.CoverImages, got.WorkInfo.CoverURLs, err)
 	}
 	site.mu.Lock()
 	defer site.mu.Unlock()
@@ -30,17 +41,15 @@ func TestCoverIsFetchedThroughVVAfterTheRun(t *testing.T) {
 	}
 }
 
-func TestCoverThatCannotBeFetchedIsDropped(t *testing.T) {
+func TestCoversThatCannotBeFetchedAreNil(t *testing.T) {
 	site := newTestSite(t)
 	rt := newNetTestRuntime(t, site)
-	for _, cover := range []string{
-		"http://site.test/missing", "http://site.test/big", "http://site.test/broken", "http://missing.test/x",
-		"ftp://site.test/x",
-	} {
-		got, err := runCover(t, rt, cover)
-		if err != nil || got.CoverImage != nil || got.WorkInfo.Title != "cover" {
-			t.Fatalf("Run(cover %s) = %q, %v; want the work info without a cover", cover, got.CoverImage, err)
-		}
+	failing := []string{"http://site.test/missing", "http://site.test/big", "http://site.test/broken", "http://missing.test/x"}
+	got, err := runCovers(t, rt, append(failing, "ftp://site.test/x")...)
+	if err != nil || !slices.Equal(got.WorkInfo.CoverURLs, failing) || len(got.CoverImages) != len(failing) ||
+		slices.ContainsFunc(got.CoverImages, func(image []byte) bool { return image != nil }) {
+		t.Fatalf("Run(covers) = %q (urls %q), %v; want a nil image for each kept URL", got.CoverImages,
+			got.WorkInfo.CoverURLs, err)
 	}
 }
 
@@ -48,7 +57,7 @@ func TestCoverOnARefusedAddressFailsTheRun(t *testing.T) {
 	site := newTestSite(t)
 	rt := newNetTestRuntime(t, site)
 	for _, cover := range []string{"http://lan.test/cover.png", "http://site.test/to-lan"} {
-		_, err := runCover(t, rt, cover)
+		_, err := runCovers(t, rt, cover)
 		wantFailure(t, err, domain.WorkInfoRunBlockedAddress)
 		if runErrorOf(err).Host != "lan.test" && runErrorOf(err).Host != "192.168.1.20" {
 			t.Fatalf("host = %q, want the refused host", runErrorOf(err).Host)

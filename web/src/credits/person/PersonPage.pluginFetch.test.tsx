@@ -51,6 +51,14 @@ describe("PersonPage fetch info", () => {
     });
   });
 
+  it("opens Fetch info when the page is opened with ?fetch=1", async () => {
+    renderPage("/people/7?fetch=1");
+
+    expect(
+      await screen.findByRole("dialog", { name: "Fetch info for Aoi" }),
+    ).toBeTruthy();
+  });
+
   it("searches by the person's name and fetches the chosen candidate's ID", async () => {
     server.candidates = [
       { source: "fanza", id: "x9", name: "Aoi Sora", url: "https://example.com/x9" },

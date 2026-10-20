@@ -95,19 +95,15 @@ func (e *detailsEnv) fetch(work domain.FetchedWorkInfo) []byte {
 	return rec.Body.Bytes()
 }
 
-func (e *detailsEnv) apply(fetchID string, fields ...string) gen.WorkInfoFetchApplied {
+func (e *detailsEnv) apply(fetchID, body string) gen.WorkInfoFetchApplied {
 	e.t.Helper()
-	body, err := json.Marshal(map[string][]string{"fields": fields})
-	if err != nil {
-		e.t.Fatal(err)
-	}
 	rec := e.serve(authRequest{
-		method: http.MethodPost, target: e.videoPath() + "/" + fetchID + "/apply", body: string(body),
+		method: http.MethodPost, target: e.videoPath() + "/" + fetchID + "/apply", body: body,
 		cookies: []*http.Cookie{e.owner},
 	})
 	var applied gen.WorkInfoFetchApplied
 	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &applied) != nil {
-		e.t.Fatalf("apply %v = %d %s", fields, rec.Code, rec.Body)
+		e.t.Fatalf("apply %s = %d %s", body, rec.Code, rec.Body)
 	}
 	return applied
 }
@@ -163,8 +159,7 @@ func TestWorkInfoFetchAnswersTheDetailsWithMatches(t *testing.T) {
 			"match": map[string]any{"state": "new"}}},
 		"urls":        []any{"https://example.com/works/1"},
 		"externalIds": []any{map[string]any{"source": "fanza", "value": "abc123"}},
-		// No person plugin is registered.
-		"personLookups": []any{},
+		"covers":      []any{},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("fetch body = %s;\nwant %v", body, want)
@@ -194,7 +189,7 @@ func TestWorkInfoApplyWritesTheSelectedDetails(t *testing.T) {
 		Dates:  []domain.WorkDate{{Kind: domain.DateRelease, Date: "2024-03-01"}},
 		People: []domain.FetchedPerson{{Role: domain.PersonPerformer, Name: "Mika"}},
 	}))
-	applied := e.apply(fetchID, "code", "dates.release", "people.performer")
+	applied := e.apply(fetchID, `{"fields":["code","dates.release"],"people":[0]}`)
 	info := applied.Video.WorkInfo
 	if info == nil || info.Code == nil || *info.Code != "ABC-123" || info.Description != nil {
 		t.Fatalf("workInfo = %+v; want the code and no description", info)
@@ -202,8 +197,9 @@ func TestWorkInfoApplyWritesTheSelectedDetails(t *testing.T) {
 	if want := []gen.WorkDate{{Kind: gen.Release, Date: "2024-03-01"}}; !reflect.DeepEqual(info.Dates, want) {
 		t.Fatalf("dates = %+v; want %+v", info.Dates, want)
 	}
-	if len(info.People) != 1 || info.People[0].Role != gen.Performer || info.People[0].Person.Name != "Mika" {
-		t.Fatalf("people = %+v; want the new performer Mika", info.People)
+	if len(info.People) != 1 || info.People[0].Role != gen.Performer || info.People[0].Person.Name != "Mika" ||
+		len(applied.LinkedPeople) != 1 || applied.LinkedPeople[0] != info.People[0].Person.Id {
+		t.Fatalf("people = %+v, linked %v; want the new performer Mika linked", info.People, applied.LinkedPeople)
 	}
 	if applied.Skipped == nil || len(applied.Skipped) != 0 || applied.SkippedTags == nil {
 		t.Fatalf("skipped = %+v %+v; want empty lists", applied.Skipped, applied.SkippedTags)
@@ -216,7 +212,7 @@ func TestWorkInfoApplySkipsAMalformedDate(t *testing.T) {
 		Code:  "ABC-123",
 		Dates: []domain.WorkDate{{Kind: domain.DateRelease, Date: "March 2024"}},
 	}))
-	applied := e.apply(fetchID, "code", "dates.release")
+	applied := e.apply(fetchID, `{"fields":["code","dates.release"]}`)
 	want := []gen.SkippedWorkInfoValue{{Field: gen.WorkInfoFieldDatesRelease, Value: "March 2024", Reason: gen.SkippedWorkInfoReasonInvalid}}
 	if !reflect.DeepEqual(applied.Skipped, want) {
 		t.Fatalf("skipped = %+v; want %+v", applied.Skipped, want)
@@ -237,7 +233,7 @@ func TestWorkInfoDetailRoutesRefuseGuests(t *testing.T) {
 	} {
 		assertUnauthenticated(t, req.path, e.serve(authRequest{method: http.MethodPost, target: req.path, body: req.body}))
 	}
-	if applied := e.apply(fetchID, "code"); applied.Video.WorkInfo == nil || *applied.Video.WorkInfo.Code != "ABC-123" {
+	if applied := e.apply(fetchID, `{"fields":["code"]}`); applied.Video.WorkInfo == nil || *applied.Video.WorkInfo.Code != "ABC-123" {
 		t.Fatalf("the owner could not apply after a guest was refused: %+v", applied.Video.WorkInfo)
 	}
 }

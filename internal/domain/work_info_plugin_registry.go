@@ -43,8 +43,6 @@ type WorkInfoPlugin struct {
 	Values     map[string]string
 	// LastRunAt is the last retained run's completion time, or zero.
 	LastRunAt time.Time
-	// AutoLookup lets work-info fetches call a person plugin; it is stored for every row but means nothing for work.
-	AutoLookup bool
 }
 
 func (p WorkInfoPlugin) State() WorkInfoPluginState {
@@ -78,8 +76,6 @@ type WorkInfoPluginEntry struct {
 	Kind      WorkInfoPluginKind
 	// Sources is empty for a work-info plugin.
 	Sources []string
-	// AutoLookup is always false for a work-info plugin.
-	AutoLookup bool
 }
 
 // Entry preserves declaration order and removes secret values.
@@ -120,7 +116,6 @@ func (p WorkInfoPlugin) Entry() WorkInfoPluginEntry {
 		LastRunAt:   p.LastRunAt,
 		Kind:        kind,
 		Sources:     sources,
-		AutoLookup:  kind == WorkInfoPluginKindPerson && p.AutoLookup,
 	}
 }
 

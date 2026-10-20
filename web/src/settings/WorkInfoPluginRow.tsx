@@ -14,8 +14,6 @@ import { RowMoreMenu } from "../tags/TagRow";
 import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
 import { DropdownMenuItem } from "../ui/shadcn/dropdown-menu";
-import { Field, FieldLabel } from "../ui/shadcn/field";
-import { Switch } from "../ui/shadcn/switch";
 import {
   missingRequired,
   operationTexts,
@@ -26,12 +24,6 @@ import {
 } from "./workInfoPluginRows";
 
 export type RowWork = "revoke" | "delete";
-
-/** saving is the value being sent, or null when the switch is idle. */
-export interface RowLookup {
-  saving: boolean | null;
-  onChange: (enabled: boolean) => void;
-}
 
 const badgeVariant = {
   approved: "success",
@@ -146,48 +138,9 @@ function RowText({ plugin, nameId }: { plugin: WorkInfoPlugin; nameId: string })
   );
 }
 
-/** Described by the plugin's name so it reads as "Automatic lookups, {name}". */
-function AutoLookupSwitch({
-  plugin,
-  lookup,
-  nameId,
-}: {
-  plugin: WorkInfoPlugin;
-  lookup: RowLookup;
-  nameId: string;
-}) {
-  const text = t.settings.workInfoPlugins.person;
-  const id = useId();
-  const saving = lookup.saving !== null;
-  return (
-    <>
-      {saving && (
-        <span role="status" className="text-xs text-muted-foreground">
-          {text.saving}
-        </span>
-      )}
-      <Field orientation="horizontal" className="w-auto">
-        <Switch
-          id={id}
-          checked={lookup.saving ?? plugin.autoLookup}
-          aria-describedby={nameId}
-          aria-disabled={saving || undefined}
-          onCheckedChange={(checked) => {
-            if (!saving) lookup.onChange(checked);
-          }}
-        />
-        <FieldLabel htmlFor={id} className="text-sm font-normal">
-          {text.autoLookup}
-        </FieldLabel>
-      </Field>
-    </>
-  );
-}
-
 export default function WorkInfoPluginRow({
   plugin,
   work,
-  lookup,
   error,
   rowRef,
   onApprove,
@@ -198,8 +151,6 @@ export default function WorkInfoPluginRow({
 }: {
   plugin: WorkInfoPlugin;
   work: RowWork | null;
-  /** Present only for an approved person plugin. */
-  lookup: RowLookup | null;
   error: UiText | null;
   rowRef: Ref<HTMLDivElement>;
   onApprove: () => void;
@@ -225,9 +176,6 @@ export default function WorkInfoPluginRow({
           <span role="status" className="text-xs text-muted-foreground">
             {work === "revoke" ? text.revoking : text.deleting}
           </span>
-        )}
-        {lookup !== null && (
-          <AutoLookupSwitch plugin={plugin} lookup={lookup} nameId={nameId} />
         )}
         {plugin.state === "unapproved" && (
           <Button size="sm" onClick={onApprove} disabled={busy}>

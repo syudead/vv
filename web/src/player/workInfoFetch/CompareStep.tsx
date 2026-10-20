@@ -1,27 +1,36 @@
 import { ArrowLeft, CircleAlert, Crop } from "lucide-react";
-import { type ReactNode, useId, useLayoutEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 
 import type { Video } from "../../api/client";
+import type { ExternalId } from "../../api/credits";
 import {
   type WorkInfoFetch,
   workInfoFetchCoverUrl,
-  type WorkInfoField,
   workInfoFetchPersonImageUrl,
   type WorkInfoPlugin,
 } from "../../api/workInfoPlugins";
 import { useLocalToday } from "../../credits/person/useLocalToday";
 import { errorText, t } from "../../i18n";
+import { cn } from "../../lib/cn";
 import { isNarrowVideo } from "../../lib/format";
 import { Alert, AlertAction, AlertTitle } from "../../ui/shadcn/alert";
 import { Button } from "../../ui/shadcn/button";
-import { Checkbox } from "../../ui/shadcn/checkbox";
-import { Label } from "../../ui/shadcn/label";
 import { Spinner } from "../../ui/shadcn/spinner";
-import { cn } from "../../lib/cn";
+import { PersonFace } from "../../ui/PersonFace";
 import { VideoThumbnail, VideoThumbnailImage } from "../../ui/VideoThumbnail";
 import { drawComposition } from "../thumbnailUpload/composeImage";
 import UploadPreview from "../thumbnailUpload/UploadPreview";
-import { Description } from "../WorkInfo";
+import { Description, withoutScheme } from "../WorkInfo";
+import {
+  ChangeSections,
+  CompareSection,
+  ImageChoice,
+  KeptFold,
+  PairRow,
+  RowLabel,
+  ValueRow,
+  ValueToggle,
+} from "./compareParts";
 import type { CoverFraming } from "./coverFraming";
 import {
   chipHint,
@@ -29,27 +38,23 @@ import {
   type DetailChip,
   detailRow,
   fillValues,
-  type ListRow,
   videoWorkInfo,
 } from "./detailRows";
+import { pluginLabel, selectableTags } from "./fetchRules";
+import { Chip } from "./TagChips";
+import TagPicker from "./TagPicker";
 import {
-  comparedFields,
-  comparedRowState,
-  pluginLabel,
-  type RowState,
-  selectableTags,
-  tagsRowChecked,
-} from "./fetchRules";
-import LookupBlock from "./LookupBlock";
-import {
-  hasRoleLookups,
-  lookupChangeFields,
-  lookupEnabled,
-  roleLookups,
-} from "./lookupRules";
-import TagChips, { type ChipItem, chipsOfVideo, FoldButton } from "./TagChips";
-import TagPicker, { type TagPick } from "./TagPicker";
-import type { PersonLookups } from "./usePersonLookups";
+  choosable,
+  freshIds,
+  freshUrls,
+  ROLE_FIELDS,
+  type RoleField,
+  roleRow,
+  type WholeField,
+  type WholeRow,
+  wholeRows,
+  type WorkSelection,
+} from "./workSelection";
 
 export interface Fetched {
   result: WorkInfoFetch;
@@ -58,458 +63,14 @@ export interface Fetched {
   fromSearch: boolean;
 }
 
-/** A Now or Fetched cell; narrow is for a two-column grid, as in a lookup block, which keeps its heading at every width because no column headings sit above it. */
-export function Cell({
-  heading,
-  narrow = false,
-  children,
-}: {
-  heading: string;
-  narrow?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1",
-        !narrow && "sm:col-span-2",
-      )}
-    >
-      <span className={cn("text-xs text-muted-foreground", !narrow && "sm:hidden")}>
-        {heading}
-      </span>
-      {children}
-    </div>
-  );
-}
+const text = t.player.workInfoFetch;
 
-function TitleValue({ title, tone }: { title: string; tone: "now" | "fetched" }) {
-  return (
-    <span
-      title={title}
-      className={
-        tone === "now"
-          ? "line-clamp-2 min-w-0 break-words text-muted-foreground"
-          : "line-clamp-2 min-w-0 break-words text-foreground"
-      }
-    >
-      {title}
-    </span>
-  );
-}
-
-function StateNote({ state, noteId }: { state: RowState; noteId: string }) {
-  const text = t.player.workInfoFetch;
-  return (
-    <span id={noteId} className="text-muted-foreground">
-      {state === "missing" ? text.notInResult : text.sameAsNow}
-    </span>
-  );
-}
-
-function SingleValue({
-  field,
-  value,
-  tone,
-}: {
-  field: WorkInfoField;
-  value: string | undefined;
-  tone: "now" | "fetched";
-}) {
-  if (value === undefined) return null;
-  if (field === "description")
-    // Key by value so Fetch again collapses a changed description.
-    return (
-      <Description key={value} text={value} tone={tone === "now" ? "muted" : "default"} />
-    );
-  return (
-    <span
-      className={cn(
-        "min-w-0 tabular-nums wrap-anywhere",
-        tone === "now" ? "text-muted-foreground" : "text-foreground",
-      )}
-    >
-      {value}
-    </span>
-  );
-}
-
-function chipItems(
-  chips: readonly DetailChip[],
-  field: WorkInfoField,
-  tone: "now" | "fetched",
-  faceSrc?: (index: number) => string,
-): ChipItem[] {
-  const kind = creditKind(field);
-  return chips.map((chip) => ({
-    key: chip.key,
-    name: chip.name,
-    full: chip.full,
-    numeric: field === "externalIds",
-    mark: tone === "now" ? undefined : chip.mark,
-    hint: tone === "now" ? undefined : chipHint(chip, kind),
-    faceSrc:
-      chip.faceIndex === undefined || faceSrc === undefined
-        ? undefined
-        : faceSrc(chip.faceIndex),
-  }));
-}
-
-const FILL_FOLD = 3;
-
-/** One line per fetched person with a profile, folded after three so the chips stay primary; a person with a lookup fills what the lookup leaves, even when it fails. */
-function FillLines({
-  chips,
-  lookedUp,
-}: {
-  chips: readonly DetailChip[];
-  lookedUp: ReadonlySet<string>;
-}) {
-  const text = t.player.workInfoFetch;
-  const today = useLocalToday();
-  const [open, setOpen] = useState(false);
-  const lines = chips.flatMap((chip) =>
-    chip.profile === undefined
-      ? []
-      : [
-          {
-            key: chip.key,
-            line: (lookedUp.has(chip.key) ? text.fillsAfterLookup : text.fillsEmpty)(
-              chip.name,
-              fillValues(chip.profile, today),
-            ),
-          },
-        ],
-  );
-  if (lines.length === 0) return null;
-  const folded = !open && lines.length > FILL_FOLD;
-  const shown = folded ? lines.slice(0, FILL_FOLD) : lines;
-  return (
-    <div className="flex min-w-0 basis-full flex-col items-start text-xs text-muted-foreground">
-      {shown.map(({ key, line }) => (
-        <p key={key} title={line} className="max-w-full truncate">
-          {line}
-        </p>
-      ))}
-      {lines.length > FILL_FOLD && (
-        <FoldButton
-          hidden={lines.length - FILL_FOLD}
-          folded={folded}
-          onToggle={() => setOpen(folded)}
-        />
-      )}
-    </div>
-  );
-}
-
-/** The context a role row's lookup blocks need. */
-export interface LookupContext {
+interface CompareProps {
   video: Video;
   result: WorkInfoFetch;
-  lookups: PersonLookups;
-  selection: readonly WorkInfoField[];
+  selection: WorkSelection;
   locked: boolean;
-}
-
-/** Under a role row's chips: notes for people looked up elsewhere or over the limit, then the blocks. */
-function RoleLookups({
-  field,
-  context,
-}: {
-  field: WorkInfoField;
-  context: LookupContext;
-}) {
-  const text = t.player.workInfoFetch;
-  const { result, lookups } = context;
-  const { blocks, notes } = roleLookups(result, field);
-  return (
-    <>
-      {notes.map((note) => (
-        <p
-          key={note.key}
-          className="max-w-full basis-full text-xs break-words text-muted-foreground"
-        >
-          {note.sharedUnder === undefined
-            ? text.lookupLimited(note.name)
-            : text.lookedUpUnder(note.name, text.fields[note.sharedUnder])}
-        </p>
-      ))}
-      {blocks.map((block) => {
-        const lookup = result.personLookups[block.index];
-        const state = lookups.states[block.index];
-        if (lookup === undefined || state === undefined) return null;
-        return (
-          <LookupBlock
-            key={block.index}
-            videoId={context.video.id}
-            fetchId={result.fetchId}
-            index={block.index}
-            lookup={lookup}
-            names={block.names}
-            state={state}
-            enabled={lookupEnabled(result, block.index, context.selection)}
-            locked={context.locked}
-            onChangeSelection={lookups.changeSelection}
-            onRetry={lookups.retry}
-          />
-        );
-      })}
-    </>
-  );
-}
-
-function ListValue({
-  field,
-  row,
-  state,
-  tone,
-  noteId,
-  faceSrc,
-  context,
-}: {
-  field: WorkInfoField;
-  row: ListRow;
-  state: RowState;
-  tone: "now" | "fetched";
-  noteId: string;
-  faceSrc: (index: number) => string;
-  context: LookupContext;
-}) {
-  const text = t.player.workInfoFetch;
-  if (tone === "now") return <TagChips items={chipItems(row.now, field, "now")} />;
-  const nothing = state === "nothing";
-  const person = creditKind(field) === "person";
-  // A row of people already on the video differs only by what it fills, which the fill lines say.
-  const trailing = nothing
-    ? text.nothingToAdd
-    : row.fresh > 0
-      ? text.newCount(row.fresh)
-      : undefined;
-  return (
-    <>
-      <TagChips
-        items={chipItems(row.fetched, field, "fetched", faceSrc)}
-        trailing={trailing}
-        trailingId={nothing ? noteId : undefined}
-      />
-      <FillLines
-        chips={row.fetched}
-        lookedUp={person ? roleLookups(context.result, field).lookedUp : new Set()}
-      />
-      {person && <RoleLookups field={field} context={context} />}
-    </>
-  );
-}
-
-/** The cover drawn as the thumbnail it becomes, with the framing the owner chose. */
-function FramedCover({
-  cover,
-  label,
-  locked,
-}: {
-  cover: CoverFraming & { image: NonNullable<CoverFraming["image"]> };
-  label: string;
-  locked: boolean;
-}) {
-  const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
-  const { image, aspect, fit } = cover;
-  useLayoutEffect(() => {
-    if (canvas !== null) drawComposition(canvas, image, aspect, fit);
-  }, [canvas, image, aspect, fit]);
-  return (
-    <div className="flex w-full max-w-xs flex-col items-start gap-2">
-      <VideoThumbnail>
-        <canvas
-          ref={setCanvas}
-          role="img"
-          aria-label={label}
-          title={label}
-          className="relative size-full object-contain"
-        />
-      </VideoThumbnail>
-      <Button variant="outline" size="sm" disabled={locked} onClick={cover.adjust}>
-        <Crop aria-hidden="true" />
-        {t.player.workInfoFetch.adjustCover}
-      </Button>
-    </div>
-  );
-}
-
-function CoverValue({
-  video,
-  result,
-  tone,
-  cover,
-  locked,
-}: {
-  video: Video;
-  result: WorkInfoFetch;
-  tone: "now" | "fetched";
-  cover: CoverFraming;
-  locked: boolean;
-}) {
-  const text = t.player.workInfoFetch;
-  const src =
-    tone === "now" ? video.thumbnailUrl : workInfoFetchCoverUrl(video.id, result.fetchId);
-  if (src === undefined) return null;
-  const alt =
-    tone === "fetched" && result.cover !== undefined
-      ? text.fetchedCover(result.cover.width, result.cover.height)
-      : text.nowThumbnail;
-  if (tone === "fetched" && cover.image !== null)
-    return (
-      <FramedCover cover={{ ...cover, image: cover.image }} label={alt} locked={locked} />
-    );
-  return (
-    <VideoThumbnail className={cn("max-w-xs", tone === "now" && "opacity-70")}>
-      <VideoThumbnailImage src={src} alt={alt} title={alt} />
-    </VideoThumbnail>
-  );
-}
-
-function Value({
-  field,
-  state,
-  tone,
-  noteId,
-  tagPick,
-  cover,
-  context,
-}: {
-  field: WorkInfoField;
-  state: RowState;
-  tone: "now" | "fetched";
-  noteId: string;
-  tagPick: TagPick;
-  cover: CoverFraming;
-  context: LookupContext;
-}) {
-  const { video, result } = context;
-  const hidden =
-    state === "missing" || (state === "same" && !hasRoleLookups(result, field));
-  if (tone === "fetched" && hidden) return <StateNote state={state} noteId={noteId} />;
-  if (field === "title")
-    return (
-      <TitleValue
-        title={tone === "now" ? video.title : (result.title ?? "")}
-        tone={tone}
-      />
-    );
-  if (field === "tags")
-    return tone === "now" ? (
-      <TagChips items={chipsOfVideo(video.tags)} />
-    ) : (
-      <TagPicker video={video} result={result} pick={tagPick} />
-    );
-  if (field === "cover")
-    return (
-      <CoverValue
-        video={video}
-        result={result}
-        tone={tone}
-        cover={cover}
-        locked={tagPick.locked}
-      />
-    );
-  const row = detailRow(field, videoWorkInfo(video), result);
-  if (row.kind === "list")
-    return (
-      <ListValue
-        field={field}
-        row={row}
-        state={state}
-        tone={tone}
-        noteId={noteId}
-        faceSrc={(index) => workInfoFetchPersonImageUrl(video.id, result.fetchId, index)}
-        context={context}
-      />
-    );
-  return (
-    <SingleValue
-      field={field}
-      value={tone === "now" ? row.now : row.fetched}
-      tone={tone}
-    />
-  );
-}
-
-function CompareRow({
-  field,
-  selected,
-  changedByLookup,
-  onToggle,
-  tagPick,
-  cover,
-  context,
-}: {
-  field: WorkInfoField;
-  selected: boolean;
-  /** Role rows a lookup of one of their people has something to apply for. */
-  changedByLookup: ReadonlySet<WorkInfoField>;
-  onToggle: (field: WorkInfoField, on: boolean) => void;
-  tagPick: TagPick;
-  cover: CoverFraming;
-  context: LookupContext;
-}) {
-  const text = t.player.workInfoFetch;
-  const id = useId();
-  const { video, result, locked } = context;
-  const state = comparedRowState(field, video, result, changedByLookup);
-  const selectable = state === "differs";
-  const checked =
-    field === "tags"
-      ? tagsRowChecked(selectableTags(video, result), tagPick.selected)
-      : selected;
-  return (
-    <div className="grid gap-x-4 gap-y-1 py-2 sm:grid-cols-5">
-      <div className="flex items-center gap-2 self-start">
-        <Checkbox
-          id={`${id}-check`}
-          checked={selectable && checked}
-          disabled={!selectable || locked}
-          aria-describedby={selectable ? undefined : `${id}-note`}
-          onCheckedChange={(checked) => onToggle(field, checked === true)}
-        />
-        <Label htmlFor={`${id}-check`} className="font-normal text-muted-foreground">
-          {text.fields[field]}
-        </Label>
-      </div>
-      <Cell heading={text.now}>
-        <Value
-          field={field}
-          state={state}
-          tone="now"
-          noteId={`${id}-note`}
-          tagPick={tagPick}
-          cover={cover}
-          context={context}
-        />
-      </Cell>
-      <Cell heading={text.fetched}>
-        <Value
-          field={field}
-          state={state}
-          tone="fetched"
-          noteId={`${id}-note`}
-          tagPick={tagPick}
-          cover={cover}
-          context={context}
-        />
-      </Cell>
-    </div>
-  );
-}
-
-/** Now and Fetched over the five-column rows from sm; narrower rows head each cell instead. */
-export function CompareHeadings() {
-  const text = t.player.workInfoFetch;
-  return (
-    <div className="hidden gap-x-4 pb-1 text-xs text-muted-foreground sm:grid sm:grid-cols-5">
-      <span />
-      <span className="col-span-2">{text.now}</span>
-      <span className="col-span-2">{text.fetched}</span>
-    </div>
-  );
+  onChange: (selection: WorkSelection) => void;
 }
 
 /** The stale result's Fetch again, or the last apply's failure, above a comparison. */
@@ -524,7 +85,6 @@ export function CompareNotices({
   failure: unknown;
   onFetchAgain: () => void;
 }) {
-  const text = t.player.workInfoFetch;
   return (
     <>
       {stale && (
@@ -557,92 +117,553 @@ export function CompareNotices({
   );
 }
 
+function WholeValue({
+  field,
+  props,
+  tone,
+  struck = false,
+}: {
+  field: WholeField;
+  props: CompareProps;
+  tone: "now" | "fetched";
+  struck?: boolean;
+}) {
+  const { video, result } = props;
+  const value =
+    field === "title"
+      ? tone === "now"
+        ? video.title
+        : result.title
+      : (() => {
+          const row = detailRow(field, videoWorkInfo(video), result);
+          return row.kind === "single"
+            ? tone === "now"
+              ? row.now
+              : row.fetched
+            : undefined;
+        })();
+  if (value === undefined || value === "") return null;
+  const quiet = cn(tone === "now" && "text-muted-foreground", struck && "line-through");
+  if (field === "description")
+    // Key by value so Fetch again collapses a changed description.
+    return (
+      <div className={quiet}>
+        <Description
+          key={value}
+          text={value}
+          tone={tone === "now" ? "muted" : "default"}
+        />
+      </div>
+    );
+  return (
+    <span
+      title={field === "title" ? value : undefined}
+      className={cn(
+        "min-w-0 tabular-nums wrap-anywhere",
+        field === "title" && "line-clamp-2",
+        quiet,
+      )}
+    >
+      {value}
+    </span>
+  );
+}
+
+function withField(
+  selection: WorkSelection,
+  field: WholeField,
+  on: boolean,
+): WorkSelection {
+  const rest = selection.fields.filter((value) => value !== field);
+  return { ...selection, fields: on ? [...rest, field] : rest };
+}
+
+function WholeLabel({
+  row,
+  props,
+  selectable,
+}: {
+  row: WholeRow;
+  props: CompareProps;
+  selectable: boolean;
+}) {
+  return (
+    <RowLabel
+      label={text.fields[row.field]}
+      checked={selectable ? props.selection.fields.includes(row.field) : undefined}
+      locked={props.locked}
+      onChange={(on) => props.onChange(withField(props.selection, row.field, on))}
+    />
+  );
+}
+
+function WholePair({
+  row,
+  props,
+  selectable,
+}: {
+  row: WholeRow;
+  props: CompareProps;
+  selectable: boolean;
+}) {
+  const struck = selectable && props.selection.fields.includes(row.field);
+  return (
+    <PairRow
+      label={<WholeLabel row={row} props={props} selectable={selectable} />}
+      now={<WholeValue field={row.field} props={props} tone="now" struck={struck} />}
+      fetched={<WholeValue field={row.field} props={props} tone="fetched" />}
+      indented={selectable}
+    />
+  );
+}
+
+function wholeSection(
+  props: CompareProps,
+  rows: readonly WholeRow[],
+): { all: boolean; onAll: (on: boolean) => void } {
+  return {
+    all: rows.every((row) => props.selection.fields.includes(row.field)),
+    onAll: (on) =>
+      props.onChange(
+        rows.reduce((next, row) => withField(next, row.field, on), props.selection),
+      ),
+  };
+}
+
+/** The cover drawn as the thumbnail it becomes, with the framing the owner chose. */
+function FramedCover({
+  cover,
+  label,
+  locked,
+}: {
+  cover: CoverFraming & { image: NonNullable<CoverFraming["image"]> };
+  label: string;
+  locked: boolean;
+}) {
+  const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
+  const { image, aspect, fit } = cover;
+  useLayoutEffect(() => {
+    if (canvas !== null) drawComposition(canvas, image, aspect, fit);
+  }, [canvas, image, aspect, fit]);
+  return (
+    <div className="flex w-full max-w-xs flex-col items-start gap-2">
+      <VideoThumbnail>
+        <canvas
+          ref={setCanvas}
+          role="img"
+          aria-label={label}
+          title={label}
+          className="relative size-full object-contain"
+        />
+      </VideoThumbnail>
+      <Button variant="outline" size="sm" disabled={locked} onClick={cover.adjust}>
+        <Crop aria-hidden="true" />
+        {text.adjustCover}
+      </Button>
+    </div>
+  );
+}
+
+/** The thumbnail is one of the fetched covers or the video's own, then framed when a cover is chosen. */
+function CoverPicker({ props, cover }: { props: CompareProps; cover: CoverFraming }) {
+  const { video, result, selection } = props;
+  const chosen = selection.cover === null ? undefined : result.covers[selection.cover];
+  return (
+    <div className="flex flex-col gap-2">
+      <ImageChoice
+        title={text.fields.cover}
+        wide
+        value={selection.cover === null ? "keep" : String(selection.cover)}
+        locked={props.locked}
+        onChange={(value) =>
+          props.onChange({ ...selection, cover: value === "keep" ? null : Number(value) })
+        }
+        options={[
+          {
+            value: "keep",
+            label: text.keepThumbnail,
+            image: (
+              <VideoThumbnail>
+                {video.thumbnailUrl !== undefined && (
+                  <VideoThumbnailImage src={video.thumbnailUrl} alt={text.nowThumbnail} />
+                )}
+              </VideoThumbnail>
+            ),
+          },
+          ...result.covers.map((size, index) => ({
+            value: String(index),
+            label: text.coverOption(index + 1),
+            image: (
+              <VideoThumbnail>
+                <VideoThumbnailImage
+                  src={workInfoFetchCoverUrl(video.id, result.fetchId, index)}
+                  alt={text.fetchedCover(size.width, size.height)}
+                />
+              </VideoThumbnail>
+            ),
+          })),
+        ]}
+      />
+      {chosen !== undefined && cover.image !== null && (
+        <FramedCover
+          cover={{ ...cover, image: cover.image }}
+          label={text.fetchedCover(chosen.width, chosen.height)}
+          locked={props.locked}
+        />
+      )}
+    </div>
+  );
+}
+
+function TagsSection({ props }: { props: CompareProps }) {
+  const { video, result, selection } = props;
+  const selectable = selectableTags(video, result);
+  if (selectable.length === 0) return null;
+  return (
+    <CompareSection
+      title={text.fields.tags}
+      count={selectable.length}
+      all={selectable.every((name) => selection.tags.includes(name))}
+      locked={props.locked}
+      onAll={(on) => props.onChange({ ...selection, tags: on ? selectable : [] })}
+    >
+      <div className="py-2">
+        <TagPicker
+          video={video}
+          result={result}
+          pick={{
+            selected: selection.tags,
+            locked: props.locked,
+            onToggle: (name, on) =>
+              props.onChange({
+                ...selection,
+                tags: on
+                  ? [...new Set([...selection.tags, name])]
+                  : selection.tags.filter((item) => item !== name),
+              }),
+          }}
+        />
+      </div>
+    </CompareSection>
+  );
+}
+
+type CreditList = "people" | "organizations";
+
+function creditList(field: RoleField): CreditList {
+  return field.startsWith("people.") ? "people" : "organizations";
+}
+
+function withAt(selection: WorkSelection, list: CreditList, at: number, on: boolean) {
+  const rest = selection[list].filter((value) => value !== at);
+  return { ...selection, [list]: on ? [...rest, at] : rest };
+}
+
+/** A role's fetched entries: a toggle for each the owner may choose, and the rest named quietly. */
+function RoleRow({ field, props }: { field: RoleField; props: CompareProps }) {
+  const today = useLocalToday();
+  const { video, result, selection } = props;
+  const row = roleRow(field, video, result);
+  const list = creditList(field);
+  const kind = creditKind(field);
+  const chips = row.fetched.filter(choosable);
+  const onVideo = row.fetched.filter(
+    (chip) => chip.mark === "onVideo" && !choosable(chip),
+  ).length;
+  const notLinked = row.fetched.filter((chip) => chip.mark === "notLinked");
+  if (chips.length === 0 && notLinked.length === 0) return null;
+  const fills = chips.filter((chip) => chip.profile !== undefined);
+  return (
+    <ValueRow label={<span>{text.fields[field]}</span>}>
+      <div className="flex min-w-0 flex-col gap-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
+          {chips.map((chip) => (
+            <CreditToggle
+              key={chip.key}
+              chip={chip}
+              hint={chip.fills === true ? text.fillsHint : chipHint(chip, kind)}
+              pressed={chip.at !== undefined && selection[list].includes(chip.at)}
+              props={props}
+              onPressedChange={(on) => {
+                if (chip.at !== undefined)
+                  props.onChange(withAt(selection, list, chip.at, on));
+              }}
+            />
+          ))}
+          {notLinked.map((chip) => (
+            <Chip
+              key={chip.key}
+              item={{ name: chip.name, mark: "notLinked", hint: chipHint(chip, kind) }}
+            />
+          ))}
+          {onVideo > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {text.onVideoCount(onVideo)}
+            </span>
+          )}
+        </div>
+        {fills.map((chip) => (
+          <p key={chip.key} className="text-xs break-words text-muted-foreground">
+            {text.fillsEmpty(chip.name, fillValues(chip.profile ?? {}, today))}
+          </p>
+        ))}
+      </div>
+    </ValueRow>
+  );
+}
+
+function CreditToggle({
+  chip,
+  hint,
+  pressed,
+  props,
+  onPressedChange,
+}: {
+  chip: DetailChip;
+  hint: string | undefined;
+  pressed: boolean;
+  props: CompareProps;
+  onPressedChange: (on: boolean) => void;
+}) {
+  const label = chip.mark === "new" ? `${chip.name} · ${text.newMark}` : chip.name;
+  return (
+    <ValueToggle
+      label={label}
+      hint={hint}
+      pressed={pressed}
+      disabled={props.locked}
+      onPressedChange={onPressedChange}
+      leading={
+        chip.faceIndex === undefined ? undefined : (
+          <PersonFace
+            shape="chip"
+            name=""
+            src={workInfoFetchPersonImageUrl(
+              props.video.id,
+              props.result.fetchId,
+              chip.faceIndex,
+            )}
+          />
+        )
+      }
+    />
+  );
+}
+
+function choosableAts(props: CompareProps, list: CreditList): number[] {
+  return ROLE_FIELDS.filter((field) => creditList(field) === list).flatMap((field) =>
+    roleRow(field, props.video, props.result)
+      .fetched.filter(choosable)
+      .flatMap((chip) => (chip.at === undefined ? [] : [chip.at])),
+  );
+}
+
+function CreditsSection({ props }: { props: CompareProps }) {
+  const people = choosableAts(props, "people");
+  const organizations = choosableAts(props, "organizations");
+  const fields = ROLE_FIELDS.filter(
+    (field) => roleRow(field, props.video, props.result).fetched.length > 0,
+  );
+  const shown = fields.some((field) =>
+    roleRow(field, props.video, props.result).fetched.some(
+      (chip) => choosable(chip) || chip.mark === "notLinked",
+    ),
+  );
+  if (!shown) return null;
+  const { selection } = props;
+  return (
+    <CompareSection
+      title={text.credits}
+      count={people.length + organizations.length}
+      all={
+        people.every((at) => selection.people.includes(at)) &&
+        organizations.every((at) => selection.organizations.includes(at))
+      }
+      locked={props.locked}
+      onAll={(on) =>
+        props.onChange({
+          ...selection,
+          people: on ? people : [],
+          organizations: on ? organizations : [],
+        })
+      }
+    >
+      {fields.map((field) => (
+        <RoleRow key={field} field={field} props={props} />
+      ))}
+    </CompareSection>
+  );
+}
+
+function idKey(id: ExternalId): string {
+  return `${id.source}\u0000${id.value}`;
+}
+
+function ListsSection({ props }: { props: CompareProps }) {
+  const { video, result, selection } = props;
+  const urls = freshUrls(video, result);
+  const ids = freshIds(video, result);
+  if (urls.length + ids.length === 0) return null;
+  const chosenIds = new Set(selection.externalIds.map(idKey));
+  return (
+    <CompareSection
+      title={t.common.addsToLists}
+      count={urls.length + ids.length}
+      all={
+        urls.every((url) => selection.urls.includes(url)) &&
+        ids.every((id) => chosenIds.has(idKey(id)))
+      }
+      locked={props.locked}
+      onAll={(on) =>
+        props.onChange({ ...selection, urls: on ? urls : [], externalIds: on ? ids : [] })
+      }
+    >
+      {urls.length > 0 && (
+        <ValueRow label={<span>{text.fields.urls}</span>}>
+          <div className="flex min-w-0 flex-wrap items-center gap-1">
+            {urls.map((url) => (
+              <ValueToggle
+                key={url}
+                label={withoutScheme(url)}
+                hint={url}
+                pressed={selection.urls.includes(url)}
+                disabled={props.locked}
+                onPressedChange={(on) =>
+                  props.onChange({
+                    ...selection,
+                    urls: on
+                      ? [...selection.urls, url]
+                      : selection.urls.filter((item) => item !== url),
+                  })
+                }
+              />
+            ))}
+          </div>
+        </ValueRow>
+      )}
+      {ids.length > 0 && (
+        <ValueRow label={<span>{text.fields.externalIds}</span>}>
+          <div className="flex min-w-0 flex-wrap items-center gap-1">
+            {ids.map((id) => (
+              <ValueToggle
+                key={idKey(id)}
+                label={t.player.workInfo.externalId(id.source, id.value)}
+                pressed={chosenIds.has(idKey(id))}
+                disabled={props.locked}
+                onPressedChange={(on) =>
+                  props.onChange({
+                    ...selection,
+                    externalIds: on
+                      ? [...selection.externalIds, id]
+                      : selection.externalIds.filter((item) => idKey(item) !== idKey(id)),
+                  })
+                }
+              />
+            ))}
+          </div>
+        </ValueRow>
+      )}
+    </CompareSection>
+  );
+}
+
+/**
+ * A fetched work beside the video it would fill: the cover as a choice, the whole fields that fill
+ * empty values or replace stored ones, the tags, the people and organizations and the lists one
+ * by one, and the equal values folded.
+ */
+function Comparison({ props, cover }: { props: CompareProps; cover: CoverFraming }) {
+  const rows = wholeRows(props.video, props.result);
+  const fills = rows.filter((row) => row.kind === "fill");
+  const replaces = rows.filter((row) => row.kind === "replace");
+  const same = rows.filter((row) => row.kind === "same");
+  return (
+    <div className="flex flex-col gap-4 text-sm">
+      {props.result.covers.length > 0 && <CoverPicker props={props} cover={cover} />}
+      <ChangeSections
+        fills={fills}
+        replaces={replaces}
+        locked={props.locked}
+        keyOf={(row) => row.field}
+        section={(part) => wholeSection(props, part)}
+        fill={(row) => (
+          <ValueRow label={<WholeLabel row={row} props={props} selectable />}>
+            <WholeValue field={row.field} props={props} tone="fetched" />
+          </ValueRow>
+        )}
+        replace={(row) => <WholePair row={row} props={props} selectable />}
+      />
+      <TagsSection props={props} />
+      <CreditsSection props={props} />
+      <ListsSection props={props} />
+      {same.length > 0 && (
+        <KeptFold count={same.length} note={text.sameNote}>
+          {same.map((row) => (
+            <WholePair key={row.field} row={row} props={props} selectable={false} />
+          ))}
+        </KeptFold>
+      )}
+    </div>
+  );
+}
+
 export default function CompareStep({
   video,
   fetched,
   selection,
-  tags,
   locked,
   stale,
   refetching,
   failure,
   cover,
-  lookups,
-  onToggle,
-  onToggleTag,
+  onChange,
   onBack,
   onFetchAgain,
 }: {
   video: Video;
   fetched: Fetched;
-  selection: readonly WorkInfoField[];
-  tags: readonly string[];
+  selection: WorkSelection;
   locked: boolean;
   stale: boolean;
   refetching: boolean;
   failure: unknown;
   cover: CoverFraming;
-  lookups: PersonLookups;
-  onToggle: (field: WorkInfoField, on: boolean) => void;
-  onToggleTag: (name: string, on: boolean) => void;
+  onChange: (selection: WorkSelection) => void;
   onBack: () => void;
   onFetchAgain: () => void;
 }) {
-  const text = t.player.workInfoFetch;
-  const tagPick: TagPick = {
-    selected: tags,
-    locked: locked || stale,
-    onToggle: onToggleTag,
-  };
-  const context: LookupContext = {
-    video,
-    result: fetched.result,
-    lookups,
-    selection,
-    locked: locked || stale,
-  };
-  const changedByLookup = lookupChangeFields(fetched.result, lookups.states);
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm break-words text-muted-foreground">
         {text.source(pluginLabel(fetched.plugin))}
         {text.sourceId(fetched.source)}
       </p>
-      {fetched.fromSearch && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className="self-start"
-          disabled={locked || refetching}
-          onClick={onBack}
-        >
-          <ArrowLeft aria-hidden="true" />
-          {text.back}
-        </Button>
-      )}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="self-start"
+        disabled={locked || refetching}
+        onClick={onBack}
+      >
+        <ArrowLeft aria-hidden="true" />
+        {fetched.fromSearch ? text.back : text.backToFind}
+      </Button>
       <CompareNotices
         stale={stale}
         refetching={refetching}
         failure={failure}
         onFetchAgain={onFetchAgain}
       />
-      <div className="flex flex-col text-sm">
-        <CompareHeadings />
-        <div className="flex flex-col divide-y divide-border border-y border-border">
-          {comparedFields(video, fetched.result).map((field) => (
-            <CompareRow
-              key={field}
-              field={field}
-              selected={selection.includes(field)}
-              changedByLookup={changedByLookup}
-              onToggle={onToggle}
-              tagPick={tagPick}
-              cover={cover}
-              context={context}
-            />
-          ))}
-        </div>
-      </div>
+      <Comparison
+        props={{
+          video,
+          result: fetched.result,
+          selection,
+          locked: locked || stale,
+          onChange,
+        }}
+        cover={cover}
+      />
       {cover.adjusting && cover.image !== null && (
         <UploadPreview
           videoId={video.id}

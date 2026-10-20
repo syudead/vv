@@ -50,20 +50,15 @@ func (f *workInfoFetches) personImage(id string, videoID int64, index int, now t
 	return *fetch.details.People[index].Image, nil
 }
 
-// imageBytes counts the cover, people's images and lookup images toward WorkInfoFetchCoverBudget.
+// imageBytes counts the covers and people's images toward WorkInfoFetchCoverBudget.
 func (f *workInfoFetch) imageBytes() int {
 	total := 0
-	if f.cover != nil {
-		total += len(f.cover.Data)
+	for _, cover := range f.covers {
+		total += len(cover.Data)
 	}
 	for _, person := range f.details.People {
 		if person.Image != nil {
 			total += len(person.Image.Data)
-		}
-	}
-	for _, run := range f.lookupRuns {
-		if run != nil && run.image != nil {
-			total += len(run.image.Data)
 		}
 	}
 	return total
@@ -75,20 +70,13 @@ type personFace struct {
 	image    *domain.WorkInfoCover
 }
 
-// appliedFaces lists the selected lookup images before the work-info people's images, so a person both name gets
-// the lookup's face.
-func (f *workInfoFetch) appliedFaces(
-	lookups []domain.PersonLookupSelection, applied domain.FetchedWorkInfoApplied,
-) []personFace {
+// appliedFaces pairs each linked person with the image fetched for its entry; applied.PersonIDs aligns with the
+// applied details' people.
+func appliedFaces(details domain.FetchedWorkInfo, applied domain.FetchedWorkInfoApplied) []personFace {
 	var faces []personFace
-	for i, selection := range lookups {
-		if i < len(applied.LookupPersonIDs) && slices.Contains(selection.Items, domain.PersonItemImage) {
-			faces = append(faces, personFace{personID: applied.LookupPersonIDs[i], image: f.lookupRuns[selection.Index].image})
-		}
-	}
 	for i, id := range applied.PersonIDs {
-		if i < len(f.details.People) {
-			faces = append(faces, personFace{personID: id, image: f.details.People[i].Image})
+		if i < len(details.People) {
+			faces = append(faces, personFace{personID: id, image: details.People[i].Image})
 		}
 	}
 	return faces

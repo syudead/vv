@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -26,15 +27,12 @@ type scriptedPlugins struct {
 	fetch      domain.WorkInfoFetchResult
 	applied    domain.WorkInfoApplied
 	calls      int
-	fields     []domain.WorkInfoField
-	tags       []string
+	selection  domain.WorkInfoSelection
 	pageCover  bool
 	ids        []string
-	cover      *domain.WorkInfoCover
-	// personImages maps an index to its kept image.
+	// covers and personImages map an index to its kept image.
+	covers       map[int]domain.WorkInfoCover
 	personImages map[int]domain.WorkInfoCover
-	lookups      []domain.PersonLookupSelection
-	lookup       domain.PersonLookupResult
 }
 
 func (p *scriptedPlugins) WorkInfoFetchPersonImage(_ int64, fetchID string, index int) (domain.WorkInfoCover, error) {
@@ -64,16 +62,19 @@ func (p *scriptedPlugins) FetchWorkInfo(_ context.Context, _, _ int64, id string
 	return p.fetch, p.err
 }
 
-func (p *scriptedPlugins) WorkInfoFetchCover(int64, string) (domain.WorkInfoCover, error) {
-	if p.cover == nil {
+func (p *scriptedPlugins) WorkInfoFetchCover(_ int64, fetchID string, index int) (domain.WorkInfoCover, error) {
+	cover, ok := p.covers[index]
+	if fetchID != "abc" || !ok {
 		return domain.WorkInfoCover{}, domain.ErrNotFound
 	}
-	return *p.cover, nil
+	return cover, nil
 }
 
-func (p *scriptedPlugins) ApplyWorkInfoFetch(_ context.Context, _ int64, _ string, fields []domain.WorkInfoField, tags []string, coverByPage bool, lookups []domain.PersonLookupSelection) (domain.WorkInfoApplied, error) {
+func (p *scriptedPlugins) ApplyWorkInfoFetch(
+	_ context.Context, _ int64, _ string, selection domain.WorkInfoSelection, coverByPage bool,
+) (domain.WorkInfoApplied, error) {
 	p.calls++
-	p.fields, p.tags, p.pageCover, p.lookups = fields, tags, coverByPage, lookups
+	p.selection, p.pageCover = selection, coverByPage
 	return p.applied, p.err
 }
 
@@ -241,15 +242,19 @@ func TestWorkInfoApplyAnswers(t *testing.T) {
 	status, body := e.post(applyPath, `{"fields":["title","tags"]}`, e.owner)
 	var applied gen.WorkInfoFetchApplied
 	if status != http.StatusOK || json.Unmarshal(body, &applied) != nil || applied.Video.Id != 7 || applied.Video.Title != "Fetched" ||
-		len(applied.SkippedTags) != 2 || applied.SkippedTags[1].Reason != gen.SkippedTagReasonInvalid {
-		t.Fatalf("apply = %d %s", status, body)
+		len(applied.SkippedTags) != 2 || applied.SkippedTags[1].Reason != gen.SkippedTagReasonInvalid ||
+		applied.LinkedPeople == nil || len(applied.LinkedPeople) != 0 {
+		t.Fatalf("apply = %d %s; want linkedPeople []", status, body)
 	}
-	if !slices.Equal(e.plugins.fields, []domain.WorkInfoField{domain.WorkInfoFieldTitle, domain.WorkInfoFieldTags}) {
-		t.Fatalf("fields = %v", e.plugins.fields)
+	// Omitted lists choose nothing and an omitted coverIndex no cover.
+	got := e.plugins.selection
+	if !slices.Equal(got.Fields, []domain.WorkInfoField{domain.WorkInfoFieldTitle, domain.WorkInfoFieldTags}) ||
+		got.Tags != nil || got.CoverIndex != -1 || len(got.People)+len(got.Organizations)+len(got.URLs)+len(got.ExternalIDs) != 0 {
+		t.Fatalf("selection = %+v; want the two fields alone", got)
 	}
 
 	calls := e.plugins.calls
-	for _, body := range []string{`{"fields":[]}`, `{}`, `{"fields":["dates"]}`, `{"fields":["people.actor"]}`} {
+	for _, body := range []string{`{"fields":["dates"]}`, `{"fields":["people.actor"]}`} {
 		status, got := e.post(applyPath, body, e.owner)
 		assertErrorBody(t, body, status, got, wantError{status: 400, code: gen.ErrorCodeInvalidRequest})
 	}
@@ -273,12 +278,12 @@ func TestWorkInfoApplyAnswers(t *testing.T) {
 func TestWorkInfoApplyPassesTheSelectedTags(t *testing.T) {
 	e := newFetchRouteEnv(t)
 	status, body := e.post(applyPath, `{"fields":["tags"],"tags":["drama","comedy"]}`, e.owner)
-	if status != http.StatusOK || !slices.Equal(e.plugins.tags, []string{"drama", "comedy"}) {
-		t.Fatalf("apply = %d %s, tags %v", status, body, e.plugins.tags)
+	if status != http.StatusOK || !slices.Equal(e.plugins.selection.Tags, []string{"drama", "comedy"}) {
+		t.Fatalf("apply = %d %s, tags %v", status, body, e.plugins.selection.Tags)
 	}
 	status, body = e.post(applyPath, `{"fields":["title","tags"]}`, e.owner)
-	if status != http.StatusOK || e.plugins.tags != nil {
-		t.Fatalf("apply without tags = %d %s, tags %v; want nil", status, body, e.plugins.tags)
+	if status != http.StatusOK || e.plugins.selection.Tags != nil {
+		t.Fatalf("apply without tags = %d %s, tags %v; want nil", status, body, e.plugins.selection.Tags)
 	}
 
 	calls := e.plugins.calls
@@ -306,6 +311,25 @@ func TestWorkInfoApplyPassesCoverByPage(t *testing.T) {
 		if status != http.StatusOK || e.plugins.pageCover != want {
 			t.Fatalf("%s: apply = %d %s, coverByPage %v; want %v", body, status, got, e.plugins.pageCover, want)
 		}
+	}
+}
+
+func TestWorkInfoApplyPassesTheChosenEntriesAndValues(t *testing.T) {
+	e := newFetchRouteEnv(t)
+	e.plugins.applied = domain.WorkInfoApplied{Video: domain.Video{ID: 7}, LinkedPeople: []int64{4, 2}}
+	status, body := e.post(applyPath, `{"fields":["cover","code"],"coverIndex":2,"people":[3,0],"organizations":[1],
+		"urls":["https://e.test/w"],"externalIds":[{"source":"s","value":"1"}]}`, e.owner)
+	var applied gen.WorkInfoFetchApplied
+	if status != http.StatusOK || json.Unmarshal(body, &applied) != nil || !slices.Equal(applied.LinkedPeople, []int64{4, 2}) {
+		t.Fatalf("apply = %d %s; want the linked people", status, body)
+	}
+	want := domain.WorkInfoSelection{
+		Fields: []domain.WorkInfoField{domain.WorkInfoFieldCover, domain.WorkInfoFieldCode}, CoverIndex: 2,
+		People: []int{3, 0}, Organizations: []int{1}, URLs: []string{"https://e.test/w"},
+		ExternalIDs: []domain.ExternalID{{Source: "s", Value: "1"}},
+	}
+	if !reflect.DeepEqual(e.plugins.selection, want) {
+		t.Fatalf("selection = %+v; want %+v", e.plugins.selection, want)
 	}
 }
 
@@ -347,20 +371,21 @@ func TestWorkInfoFetchRoutesAreOwnerOnly(t *testing.T) {
 func TestWorkInfoFetchCoverServesTheImageWithItsType(t *testing.T) {
 	e := newFetchRouteEnv(t)
 	e.plugins.fetch = domain.WorkInfoFetchResult{
-		ID: "abc", Tags: []string{}, Cover: &domain.WorkInfoCover{Width: 3, Height: 2},
+		ID: "abc", Tags: []string{}, Covers: []domain.WorkInfoCover{{Width: 3, Height: 2}, {Width: 5, Height: 4}},
 	}
 	status, body := e.post(fetchPath, `{"pluginId":1,"id":"ABC-123"}`, e.owner)
 	var fetch gen.WorkInfoFetch
-	if status != http.StatusCreated || json.Unmarshal(body, &fetch) != nil || fetch.Cover == nil ||
-		fetch.Cover.Width != 3 || fetch.Cover.Height != 2 {
-		t.Fatalf("fetch = %d %s; want the cover's size", status, body)
+	want := []gen.WorkInfoFetchedCover{{Width: 3, Height: 2}, {Width: 5, Height: 4}}
+	if status != http.StatusCreated || json.Unmarshal(body, &fetch) != nil || !slices.Equal(fetch.Covers, want) {
+		t.Fatalf("fetch = %d %s; want the covers' sizes in order", status, body)
 	}
 
-	coverPath := "/api/videos/7/work-info-fetches/abc/cover"
-	rec := e.serve(authRequest{method: http.MethodGet, target: coverPath, cookies: []*http.Cookie{e.owner}})
-	assertErrorBody(t, "no cover", rec.Code, rec.Body.Bytes(), wantError{status: 404, code: gen.ErrorCodeNotFound})
+	e.plugins.covers = map[int]domain.WorkInfoCover{1: {Data: []byte("png bytes"), ContentType: "image/png"}}
+	coverPath := "/api/videos/7/work-info-fetches/abc/covers/1"
+	rec := e.serve(authRequest{method: http.MethodGet, target: "/api/videos/7/work-info-fetches/abc/covers/0",
+		cookies: []*http.Cookie{e.owner}})
+	assertErrorBody(t, "no cover at 0", rec.Code, rec.Body.Bytes(), wantError{status: 404, code: gen.ErrorCodeNotFound})
 
-	e.plugins.cover = &domain.WorkInfoCover{Data: []byte("png bytes"), ContentType: "image/png"}
 	rec = e.serve(authRequest{method: http.MethodGet, target: coverPath, cookies: []*http.Cookie{e.owner}})
 	if rec.Code != http.StatusOK || rec.Body.String() != "png bytes" || rec.Header().Get("Content-Type") != "image/png" ||
 		rec.Header().Get("X-Content-Type-Options") != "nosniff" || rec.Header().Get("Cache-Control") != cacheNoStore {

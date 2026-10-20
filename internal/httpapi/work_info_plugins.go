@@ -27,8 +27,6 @@ type WorkInfoPlugins interface {
 	RevokeWorkInfoPluginApproval(ctx context.Context, id int64) (domain.WorkInfoPluginEntry, error)
 	// SetWorkInfoPluginSettings may return ErrNotFound, ErrWorkInfoPluginUnusable, or ErrWorkInfoPluginSettingInvalid.
 	SetWorkInfoPluginSettings(ctx context.Context, id int64, values map[string]*string) (domain.WorkInfoPluginEntry, error)
-	// SetWorkInfoPluginAutoLookup may return ErrNotFound or ErrWorkInfoPluginKindMismatch.
-	SetWorkInfoPluginAutoLookup(ctx context.Context, id int64, enabled bool) (domain.WorkInfoPluginEntry, error)
 	// DeleteWorkInfoPlugin removes settings too; an absent plugin returns ErrNotFound.
 	DeleteWorkInfoPlugin(ctx context.Context, id int64) error
 	// WorkInfoPluginLastRun returns redacted stderr and whether it was retained; an absent plugin returns ErrNotFound.
@@ -39,19 +37,14 @@ type WorkInfoPlugins interface {
 	SearchPeople(ctx context.Context, id int64, query string) ([]domain.PersonCandidate, error)
 	// FetchWorkInfo caches fetched work information for the video without modifying it; the plugin must be approved.
 	FetchWorkInfo(ctx context.Context, videoID, pluginID int64, id string) (domain.WorkInfoFetchResult, error)
-	// ApplyWorkInfoFetch applies selected fields and lookup items and may return ErrWorkInfoApplyInvalid, ErrNotFound, or
+	// ApplyWorkInfoFetch applies a selection and may return ErrWorkInfoApplyInvalid, ErrNotFound, or
 	// ErrWorkInfoFetchStale.
-	ApplyWorkInfoFetch(ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField, tags []string, coverByPage bool, lookups []domain.PersonLookupSelection) (domain.WorkInfoApplied, error)
-	// WorkInfoFetchCover returns ErrNotFound when no cover is available.
-	WorkInfoFetchCover(videoID int64, fetchID string) (domain.WorkInfoCover, error)
+	ApplyWorkInfoFetch(ctx context.Context, videoID int64, fetchID string, selection domain.WorkInfoSelection, coverByPage bool) (domain.WorkInfoApplied, error)
+	// WorkInfoFetchCover returns ErrNotFound when the result has no cover at index.
+	WorkInfoFetchCover(videoID int64, fetchID string, index int) (domain.WorkInfoCover, error)
 	// WorkInfoFetchPersonImage returns ErrNotFound for a missing result and ErrPersonImageNotFound when the person at
 	// index has no kept image.
 	WorkInfoFetchPersonImage(videoID int64, fetchID string, index int) (domain.WorkInfoCover, error)
-	// RunPersonLookup may return ErrWorkInfoFetchStale, ErrNotFound, ErrPersonLookupPluginChanged, or the errors
-	// workInfoRunError maps.
-	RunPersonLookup(ctx context.Context, videoID int64, fetchID string, index int) (domain.PersonLookupResult, error)
-	// PersonLookupImage returns ErrNotFound for a missing result or lookup and ErrPersonImageNotFound without an image.
-	PersonLookupImage(videoID int64, fetchID string, index int) (domain.WorkInfoCover, error)
 	// FetchPersonWithPlugin may return ErrPersonNotFound, ErrPersonExternalIDMissing, ErrWorkInfoRunInvalid, or the
 	// errors workInfoRunError maps.
 	FetchPersonWithPlugin(ctx context.Context, personID, pluginID int64, source, id *string) (domain.PersonPluginFetchResult, error)
@@ -210,28 +203,6 @@ func (s *server) SetWorkInfoPluginSettings(w http.ResponseWriter, r *http.Reques
 	s.writeWorkInfoPlugin(w, http.StatusOK, entry)
 }
 
-func (s *server) SetWorkInfoPluginAutoLookup(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
-	var body struct {
-		Enabled *bool `json:"enabled"`
-	}
-	if !s.readJSONBody(w, r, &body) {
-		return
-	}
-	if body.Enabled == nil {
-		s.invalidRequest(w, "enabled is required.")
-		return
-	}
-	if !s.workInfoPluginsConfigured(w) {
-		return
-	}
-	entry, err := s.workInfoPlugins.SetWorkInfoPluginAutoLookup(r.Context(), id, *body.Enabled)
-	if err != nil {
-		s.workInfoPluginError(w, err)
-		return
-	}
-	s.writeWorkInfoPlugin(w, http.StatusOK, entry)
-}
-
 func (s *server) DeleteWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
 	if !s.workInfoPluginsConfigured(w) {
 		return
@@ -321,7 +292,6 @@ func toWorkInfoPlugin(entry domain.WorkInfoPluginEntry) gen.WorkInfoPlugin {
 		Id:          entry.ID,
 		Kind:        gen.WorkInfoPluginKind(entry.Kind),
 		Sources:     entry.Sources,
-		AutoLookup:  entry.AutoLookup,
 		Name:        optionalString(entry.Name),
 		FileName:    entry.FileName,
 		Version:     optionalString(entry.Version),

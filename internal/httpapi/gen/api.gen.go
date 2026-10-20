@@ -1643,12 +1643,9 @@ func (e SkippedTagReason) Valid() bool {
 
 // Defines values for SkippedWorkInfoReason.
 const (
-	SkippedWorkInfoReasonAmbiguous     SkippedWorkInfoReason = "ambiguous"
-	SkippedWorkInfoReasonInvalid       SkippedWorkInfoReason = "invalid"
-	SkippedWorkInfoReasonPersonChanged SkippedWorkInfoReason = "person_changed"
-	SkippedWorkInfoReasonStale         SkippedWorkInfoReason = "stale"
-	SkippedWorkInfoReasonTaken         SkippedWorkInfoReason = "taken"
-	SkippedWorkInfoReasonTooMany       SkippedWorkInfoReason = "too_many"
+	SkippedWorkInfoReasonAmbiguous SkippedWorkInfoReason = "ambiguous"
+	SkippedWorkInfoReasonInvalid   SkippedWorkInfoReason = "invalid"
+	SkippedWorkInfoReasonTooMany   SkippedWorkInfoReason = "too_many"
 )
 
 // Valid indicates whether the value is a known member of the SkippedWorkInfoReason enum.
@@ -1657,12 +1654,6 @@ func (e SkippedWorkInfoReason) Valid() bool {
 	case SkippedWorkInfoReasonAmbiguous:
 		return true
 	case SkippedWorkInfoReasonInvalid:
-		return true
-	case SkippedWorkInfoReasonPersonChanged:
-		return true
-	case SkippedWorkInfoReasonStale:
-		return true
-	case SkippedWorkInfoReasonTaken:
 		return true
 	case SkippedWorkInfoReasonTooMany:
 		return true
@@ -3052,14 +3043,26 @@ type ApplyWorkInfoFetchRequest struct {
 	// CoverByPage With cover in fields, validate and consume the result for the cover but leave the thumbnail to the page, which uploads its own framing of the cover through uploadThumbnailImage after this call succeeds. Ignored without cover in fields.
 	CoverByPage *bool `json:"coverByPage,omitempty"`
 
-	// Fields Fields to apply; nonempty, and every selected field must have a result value.
+	// CoverIndex The cover that cover applies, a position in the result's covers; required with cover.
+	CoverIndex *int `json:"coverIndex,omitempty"`
+
+	// ExternalIds Fetched external IDs to append.
+	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
+
+	// Fields Whole fields to apply: title, tags, code, description, dates and cover, each with a result value. People and organization roles, urls and externalIds are chosen value by value below.
 	Fields []WorkInfoField `json:"fields"`
 
-	// PersonLookups Items to apply from lookups that ran, each lookup at most once.
-	PersonLookups *[]PersonLookupSelection `json:"personLookups,omitempty"`
+	// Organizations Positions in the result's organizations to link in their roles, each once.
+	Organizations *[]int `json:"organizations,omitempty"`
+
+	// People Positions in the result's people to link in their roles, each once.
+	People *[]int `json:"people,omitempty"`
 
 	// Tags Fetched tag names to attach when fields includes tags: a nonempty subset of result tags using their exact spelling. Omission attaches all fetched tags; an empty subset, unknown name or presence without tags in fields returns 400.
 	Tags *[]string `json:"tags,omitempty"`
+
+	// Urls Fetched URLs to append.
+	Urls *[]string `json:"urls,omitempty"`
 }
 
 // ApproveWorkInfoPluginRequest defines model for ApproveWorkInfoPluginRequest.
@@ -4261,32 +4264,6 @@ type PersonList struct {
 	TotalAll int `json:"totalAll"`
 }
 
-// PersonLookup A planned person plugin fetch for one or more fetched people that matched the same person.
-type PersonLookup struct {
-	Id         string `json:"id"`
-	PluginId   int64  `json:"pluginId"`
-	PluginName string `json:"pluginName"`
-	Source     string `json:"source"`
-}
-
-// PersonLookupSelection defines model for PersonLookupSelection.
-type PersonLookupSelection struct {
-	// Aliases Names to append as aliases, each the fetched name or one of the fetched aliases.
-	Aliases *[]string `json:"aliases,omitempty"`
-
-	// ExternalIds Fetched external IDs to append.
-	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
-
-	// Index Position in the fetch result's personLookups.
-	Index int `json:"index"`
-
-	// Items Profile fields other than links, and image, each with a value in the lookup's result; aliases, external IDs and links are chosen one by one below.
-	Items []PersonPluginItem `json:"items"`
-
-	// Links Fetched profile links to append.
-	Links *[]string `json:"links,omitempty"`
-}
-
 // PersonMergeResponse defines model for PersonMergeResponse.
 type PersonMergeResponse struct {
 	// NotFoundIds Sources that no longer exist.
@@ -4351,7 +4328,7 @@ type PersonPluginFetchedPerson struct {
 	// ExternalIds The fetched ID first, then the plugin's other distinct IDs, up to 20.
 	ExternalIds []ExternalId `json:"externalIds"`
 
-	// ImageCount How many images VV kept, in the plugin's order; a person page fetch serves them by index, and a lookup keeps at most its first.
+	// ImageCount How many images VV kept, in the plugin's order; served by index.
 	ImageCount *int   `json:"imageCount,omitempty"`
 	Name       string `json:"name"`
 
@@ -4361,15 +4338,6 @@ type PersonPluginFetchedPerson struct {
 
 // PersonPluginItem One applicable part of a fetched person; a profile item is one profile property.
 type PersonPluginItem string
-
-// PersonPluginResult defines model for PersonPluginResult.
-type PersonPluginResult struct {
-	// Current The person the lookup's entries matched at fetch time as stored now; null when they matched none or the person is gone.
-	Current *Person `json:"current"`
-
-	// Person A person as the plugin returned it, after VV's limits.
-	Person PersonPluginFetchedPerson `json:"person"`
-}
 
 // PersonPluginSearchResult defines model for PersonPluginSearchResult.
 type PersonPluginSearchResult struct {
@@ -4872,11 +4840,6 @@ type SeekThumbnailSprite struct {
 	Sheets []string `json:"sheets"`
 }
 
-// SetWorkInfoPluginAutoLookupRequest defines model for SetWorkInfoPluginAutoLookupRequest.
-type SetWorkInfoPluginAutoLookupRequest struct {
-	Enabled bool `json:"enabled"`
-}
-
 // SetWorkInfoPluginSettingsRequest defines model for SetWorkInfoPluginSettingsRequest.
 type SetWorkInfoPluginSettingsRequest struct {
 	// Values Map of keys to new values; null deletes a value, omitted keys remain unchanged.
@@ -4921,7 +4884,7 @@ type SkippedTag struct {
 // SkippedTagReason Tag skip reason: rejected names were previously rejected; invalid names fail tag-name validation.
 type SkippedTagReason string
 
-// SkippedWorkInfoReason Apply skip reason: invalid values fail field validation; too_many entries exceed limits after existing entries; ambiguous people/organizations match multiple entities; taken external IDs from a lookup are held by another person; stale lookups ran on a plugin replaced, revoked or deleted since; person_changed lookups' entries now link another person than they matched at fetch time.
+// SkippedWorkInfoReason Apply skip reason: invalid values fail field validation; too_many entries exceed limits after existing entries; ambiguous people/organizations match multiple entities.
 type SkippedWorkInfoReason string
 
 // SkippedWorkInfoValue defines model for SkippedWorkInfoValue.
@@ -4929,16 +4892,7 @@ type SkippedWorkInfoValue struct {
 	// Field Fetched fields applicable to the video, in comparison-row order.
 	Field WorkInfoField `json:"field"`
 
-	// HolderName Name of the person holding the external ID; only for taken.
-	HolderName *string `json:"holderName,omitempty"`
-
-	// Item One applicable part of a fetched person; a profile item is one profile property.
-	Item *PersonPluginItem `json:"item,omitempty"`
-
-	// Lookup Index into personLookups when the value came from a lookup; field is then the role of the entry it filled, and value the fetched name for stale and person_changed.
-	Lookup *int `json:"lookup,omitempty"`
-
-	// Reason Apply skip reason: invalid values fail field validation; too_many entries exceed limits after existing entries; ambiguous people/organizations match multiple entities; taken external IDs from a lookup are held by another person; stale lookups ran on a plugin replaced, revoked or deleted since; person_changed lookups' entries now link another person than they matched at fetch time.
+	// Reason Apply skip reason: invalid values fail field validation; too_many entries exceed limits after existing entries; ambiguous people/organizations match multiple entities.
 	Reason SkippedWorkInfoReason `json:"reason"`
 
 	// Value Value shown in the comparison: date, URL, name, source: value, or the first 100 description characters. A profile value is name: property value, such as Hanako: heightCm 1000.
@@ -5961,8 +5915,8 @@ type WorkInfoFetch struct {
 	// Code Trimmed product code; absent if omitted by the plugin. Invalid values remain in the result but are skipped when applying.
 	Code *string `json:"code,omitempty"`
 
-	// Cover Fetched cover dimensions; absent if omitted, unavailable or not PNG, JPEG or static WebP. Read the image through getWorkInfoFetchCover.
-	Cover *WorkInfoFetchedCover `json:"cover,omitempty"`
+	// Covers Readable fetched covers in the plugin's order, at most 5; read each through getWorkInfoFetchCover at its index. [] when none.
+	Covers []WorkInfoFetchedCover `json:"covers"`
 
 	// Dates Kind order: release, recorded, published; [] when empty.
 	Dates []WorkInfoFetchedDate `json:"dates"`
@@ -5985,9 +5939,6 @@ type WorkInfoFetch struct {
 	// People Role order, then fetched order within each role; [] when empty.
 	People []WorkInfoFetchedPerson `json:"people"`
 
-	// PersonLookups Planned person lookups in plan order, at most 5; [] when none.
-	PersonLookups []PersonLookup `json:"personLookups"`
-
 	// Tags Fetched tag names; may be empty.
 	Tags []string `json:"tags"`
 
@@ -6000,6 +5951,9 @@ type WorkInfoFetch struct {
 
 // WorkInfoFetchApplied defines model for WorkInfoFetchApplied.
 type WorkInfoFetchApplied struct {
+	// LinkedPeople Distinct ids of the people the chosen entries were linked to, in fetched order; [] when none.
+	LinkedPeople []int64 `json:"linkedPeople"`
+
 	// Skipped Skipped values for selected fields other than title and tags, in field order then fetched order.
 	Skipped []SkippedWorkInfoValue `json:"skipped"`
 
@@ -6019,7 +5973,7 @@ type WorkInfoFetchRequest struct {
 	PluginId int64 `json:"pluginId"`
 }
 
-// WorkInfoFetchedCover Fetched cover dimensions; absent if omitted, unavailable or not PNG, JPEG or static WebP. Read the image through getWorkInfoFetchCover.
+// WorkInfoFetchedCover A fetched cover's dimensions; covers omitted, unavailable or not PNG, JPEG or static WebP are left out.
 type WorkInfoFetchedCover struct {
 	Height int `json:"height"`
 	Width  int `json:"width"`
@@ -6051,14 +6005,8 @@ type WorkInfoFetchedPerson struct {
 	ExternalIds []ExternalId `json:"externalIds"`
 
 	// HasImage Present and true when VV kept an image for this person, served by getWorkInfoFetchPersonImage at its index.
-	HasImage *bool `json:"hasImage,omitempty"`
-
-	// Lookup Index into personLookups of this person's lookup; absent when it has none.
-	Lookup *int `json:"lookup,omitempty"`
-
-	// LookupLimited Present and true when a person plugin accepts one of the person's IDs but 5 lookups were already planned.
-	LookupLimited *bool         `json:"lookupLimited,omitempty"`
-	Match         WorkInfoMatch `json:"match"`
+	HasImage *bool         `json:"hasImage,omitempty"`
+	Match    WorkInfoMatch `json:"match"`
 
 	// Name Plugin-provided name.
 	Name string `json:"name"`
@@ -6104,8 +6052,6 @@ type WorkInfoOperation string
 
 // WorkInfoPlugin One work-info or person plugin.
 type WorkInfoPlugin struct {
-	// AutoLookup Whether work-info fetches may call this person plugin; always false for a work-info plugin.
-	AutoLookup  bool    `json:"autoLookup"`
 	Description *string `json:"description,omitempty"`
 
 	// Digest Module SHA-256 in lowercase hexadecimal; send it back when approving.
@@ -7202,9 +7148,6 @@ type UploadWorkInfoPluginMultipartRequestBody = UploadWorkInfoPluginRequest
 // ApproveWorkInfoPluginJSONRequestBody defines body for ApproveWorkInfoPlugin for application/json ContentType.
 type ApproveWorkInfoPluginJSONRequestBody = ApproveWorkInfoPluginRequest
 
-// SetWorkInfoPluginAutoLookupJSONRequestBody defines body for SetWorkInfoPluginAutoLookup for application/json ContentType.
-type SetWorkInfoPluginAutoLookupJSONRequestBody = SetWorkInfoPluginAutoLookupRequest
-
 // SearchPeopleWithPluginJSONRequestBody defines body for SearchPeopleWithPlugin for application/json ContentType.
 type SearchPeopleWithPluginJSONRequestBody = WorkInfoSearchRequest
 
@@ -7747,18 +7690,12 @@ type ServerInterface interface {
 	// ApplyWorkInfoFetch Apply selected fetched fields to a video
 	// (POST /api/videos/{id}/work-info-fetches/{fetchId}/apply)
 	ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id VideoId, fetchId WorkInfoFetchId)
-	// GetWorkInfoFetchCover Return the fetched cover image
-	// (GET /api/videos/{id}/work-info-fetches/{fetchId}/cover)
-	GetWorkInfoFetchCover(w http.ResponseWriter, r *http.Request, id VideoId, fetchId WorkInfoFetchId)
+	// GetWorkInfoFetchCover Return one of the fetched cover images
+	// (GET /api/videos/{id}/work-info-fetches/{fetchId}/covers/{index})
+	GetWorkInfoFetchCover(w http.ResponseWriter, r *http.Request, id VideoId, fetchId WorkInfoFetchId, index int)
 	// GetWorkInfoFetchPersonImage Return a fetched person's image
 	// (GET /api/videos/{id}/work-info-fetches/{fetchId}/people/{index}/image)
 	GetWorkInfoFetchPersonImage(w http.ResponseWriter, r *http.Request, id VideoId, fetchId WorkInfoFetchId, index int)
-	// RunPersonLookup Run a planned person lookup of a work-info fetch
-	// (POST /api/videos/{id}/work-info-fetches/{fetchId}/person-lookups/{index})
-	RunPersonLookup(w http.ResponseWriter, r *http.Request, id VideoId, fetchId WorkInfoFetchId, index int)
-	// GetPersonLookupImage Return a person lookup's image
-	// (GET /api/videos/{id}/work-info-fetches/{fetchId}/person-lookups/{index}/image)
-	GetPersonLookupImage(w http.ResponseWriter, r *http.Request, id VideoId, fetchId WorkInfoFetchId, index int)
 	// ClearWatchHistory Clear all watch history
 	// (DELETE /api/watch-history)
 	ClearWatchHistory(w http.ResponseWriter, r *http.Request)
@@ -7786,9 +7723,6 @@ type ServerInterface interface {
 	// ApproveWorkInfoPlugin Approve the module inspected by the owner
 	// (PUT /api/work-info-plugins/{id}/approval)
 	ApproveWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
-	// SetWorkInfoPluginAutoLookup Turn a person plugin's automatic lookups on or off
-	// (PUT /api/work-info-plugins/{id}/auto-lookup)
-	SetWorkInfoPluginAutoLookup(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
 	// GetWorkInfoPluginLastRun Read stderr from the latest work-info plugin run
 	// (GET /api/work-info-plugins/{id}/last-run)
 	GetWorkInfoPluginLastRun(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
@@ -13537,8 +13471,17 @@ func (siw *ServerInterfaceWrapper) GetWorkInfoFetchCover(w http.ResponseWriter, 
 		return
 	}
 
+	// ------------- Path parameter "index" -------------
+	var index int
+
+	err = runtime.BindStyledParameterWithOptions("simple", "index", r.PathValue("index"), &index, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "index", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetWorkInfoFetchCover(w, r, id, fetchId)
+		siw.Handler.GetWorkInfoFetchCover(w, r, id, fetchId, index)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -13583,94 +13526,6 @@ func (siw *ServerInterfaceWrapper) GetWorkInfoFetchPersonImage(w http.ResponseWr
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetWorkInfoFetchPersonImage(w, r, id, fetchId, index)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// RunPersonLookup operation middleware
-func (siw *ServerInterfaceWrapper) RunPersonLookup(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "id" -------------
-	var id VideoId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "fetchId" -------------
-	var fetchId WorkInfoFetchId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "fetchId", r.PathValue("fetchId"), &fetchId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fetchId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "index" -------------
-	var index int
-
-	err = runtime.BindStyledParameterWithOptions("simple", "index", r.PathValue("index"), &index, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "index", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.RunPersonLookup(w, r, id, fetchId, index)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetPersonLookupImage operation middleware
-func (siw *ServerInterfaceWrapper) GetPersonLookupImage(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "id" -------------
-	var id VideoId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "fetchId" -------------
-	var fetchId WorkInfoFetchId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "fetchId", r.PathValue("fetchId"), &fetchId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fetchId", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "index" -------------
-	var index int
-
-	err = runtime.BindStyledParameterWithOptions("simple", "index", r.PathValue("index"), &index, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "index", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetPersonLookupImage(w, r, id, fetchId, index)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -13974,32 +13829,6 @@ func (siw *ServerInterfaceWrapper) ApproveWorkInfoPlugin(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ApproveWorkInfoPlugin(w, r, id)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// SetWorkInfoPluginAutoLookup operation middleware
-func (siw *ServerInterfaceWrapper) SetWorkInfoPluginAutoLookup(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "id" -------------
-	var id WorkInfoPluginId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SetWorkInfoPluginAutoLookup(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -14322,14 +14151,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/settings", wrapper.SetWorkInfoPluginSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work-info-plugins/{id}/last-run", wrapper.GetWorkInfoPluginLastRun)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins/{id}/search", wrapper.SearchWorkInfo)
-	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/auto-lookup", wrapper.SetWorkInfoPluginAutoLookup)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins/{id}/person-search", wrapper.SearchPeopleWithPlugin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches", wrapper.FetchWorkInfo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/apply", wrapper.ApplyWorkInfoFetch)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/cover", wrapper.GetWorkInfoFetchCover)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/covers/{index}", wrapper.GetWorkInfoFetchCover)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/people/{index}/image", wrapper.GetWorkInfoFetchPersonImage)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/person-lookups/{index}", wrapper.RunPersonLookup)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/person-lookups/{index}/image", wrapper.GetPersonLookupImage)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tags", wrapper.ListTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags", wrapper.CreateTag)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tags/{id}", wrapper.DeleteTag)

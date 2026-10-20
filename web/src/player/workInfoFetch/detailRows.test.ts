@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { Video } from "../../api/client";
 import type { WorkInfo } from "../../api/workInfo";
 import type { WorkInfoFetch, WorkInfoMatch } from "../../api/workInfoPlugins";
 import { chipHint, creditKind, detailRow, fillValues, type ListRow } from "./detailRows";
-import { comparedFields, initialSelection, skippedLines } from "./fetchRules";
+import { skippedLines } from "./fetchRules";
 
 function info(overrides: Partial<WorkInfo> = {}): WorkInfo {
   return {
@@ -27,7 +26,7 @@ function result(overrides: Partial<WorkInfoFetch> = {}): WorkInfoFetch {
     organizations: [],
     urls: [],
     externalIds: [],
-    personLookups: [],
+    covers: [],
     ...overrides,
   };
 }
@@ -287,36 +286,6 @@ describe("detailRows", () => {
 });
 
 describe("fetchRules for work details", () => {
-  const video = {
-    id: 7,
-    title: "今の題名",
-    tags: [],
-    workInfo: stored,
-  } as unknown as Video;
-
-  it("題名とタグはいつも出し、作品の詳細は値のある行だけを契約の順に出す", () => {
-    const fetched = result({
-      title: "今の題名",
-      urls: ["https://works.example/w/2"],
-      code: "ABC-2",
-      organizations: [
-        { role: "maker", name: "会社", externalIds: [], match: { state: "new" } },
-      ],
-    });
-    expect(comparedFields(video, fetched)).toEqual([
-      "title",
-      "tags",
-      "code",
-      "organizations.maker",
-      "urls",
-    ]);
-    expect(initialSelection(video, fetched)).toEqual([
-      "code",
-      "organizations.maker",
-      "urls",
-    ]);
-  });
-
   it("結果の段の行は、タグ（却下したものが先）の後に飛ばした値を応答の順で、理由を項目で分けて並べる", () => {
     const lines = skippedLines(
       [

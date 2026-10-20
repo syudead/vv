@@ -58,9 +58,9 @@ func (r *Runtime) Run(
 	switch {
 	case err != nil || req.Operation != domain.WorkInfoFetch:
 	case req.Kind == domain.WorkInfoPluginKindPerson:
-		result.PersonPluginImages = session.images(deadline, result.Person.ImageURLs, req.ImageLimit)
+		result.PersonPluginImages = session.images(deadline, result.Person.ImageURLs)
 	default:
-		result.CoverImage = session.image(deadline, result.WorkInfo.CoverURL)
+		result.CoverImages = session.images(deadline, result.WorkInfo.CoverURLs)
 		result.PersonImages = session.personImages(deadline, result.WorkInfo.People)
 	}
 	err = session.outcome(err)

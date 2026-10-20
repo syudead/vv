@@ -33,7 +33,7 @@ type workDetailsJSON struct {
 	Organizations json.RawMessage `json:"organizations"`
 	URLs          json.RawMessage `json:"urls"`
 	ExternalIDs   json.RawMessage `json:"externalIds"`
-	Cover         json.RawMessage `json:"cover"`
+	Covers        json.RawMessage `json:"covers"`
 }
 
 type fetchedDateJSON struct {
@@ -73,7 +73,7 @@ func parseWorkDetails(raw workDetailsJSON, out *FetchedWorkInfo) {
 		})
 	out.URLs = parseFetchedURLs(lenientList[string](raw.URLs), limits.URLsMaxCount)
 	out.ExternalIDs = parseFetchedExternalIDs(raw.ExternalIDs)
-	out.CoverURL = fetchedImageURL(lenientString(raw.Cover))
+	out.CoverURLs = parseFetchedImageURLs(raw.Covers, WorkInfoCoversMaxCount)
 }
 
 // Missing/nonstring values become empty strings.

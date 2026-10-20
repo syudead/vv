@@ -453,6 +453,14 @@ export const en = {
     retry: "Retry",
     cancel: "Cancel",
     back: "Back",
+    selectAll: "Select all",
+    clearAll: "Clear",
+    sameCount: (count: number) => `Same as now (${formatNumber(count)})`,
+    hideSame: "Hide values that stay",
+    fillsEmpty: "Fills empty fields",
+    differsFromNow: "Differs from now",
+    replacesNote: "Checked rows replace the current value.",
+    addsToLists: "Adds to lists",
     breadcrumbs: "Breadcrumbs",
     more: "More",
     loading: "Loading",
@@ -1743,9 +1751,6 @@ export const en = {
         } satisfies Record<PersonPluginItem, string>,
         empty: "Empty",
         onPerson: "On the person",
-        kept: (count: number) => `Kept as now (${formatNumber(count)})`,
-        hideKept: "Hide kept values",
-        keptNote: "Already set; applying keeps the current value.",
         sameNote: "Already the same as the fetched value.",
         searchByName: "Search by name",
         otherNames: "Also search for",
@@ -1755,22 +1760,14 @@ export const en = {
         noFace: "No face",
         noNewFace: "No change",
         image: (n: number) => `Image ${formatNumber(n)}`,
-        fills: "Fills empty fields",
-        replaces: "Differs from now",
-        replacesNote: "Checked rows replace the current value.",
-        adds: "Adds to lists",
         alreadyOnPerson: (count: number) =>
           `${formatNumber(count)} already on the person`,
-        selectAll: "Select all",
-        clearAll: "Clear",
         nothingNew: "Nothing new for this person.",
         skipped: {
           taken: (name: string) => `already linked to ${name}`,
           tooManyAliases: "over the limit for aliases",
           tooManyIds: "over the limit for external IDs",
           invalid: "too long or contains characters that can't be used",
-          stale: "the plugin changed since the lookup",
-          personChanged: "the person was merged or deleted since the fetch",
         },
       },
     },
@@ -2267,6 +2264,7 @@ export const en = {
       source: (plugin: string) => `From ${plugin} · `,
       sourceId: (id: string) => `ID ${id}`,
       back: "Back to the matches",
+      backToFind: "Back",
       now: "Now",
       fetched: "Fetched",
       fields: {
@@ -2294,6 +2292,16 @@ export const en = {
       coverSize: (width: number, height: number) =>
         `${formatNumber(width)} × ${formatNumber(height)}`,
       adjustCover: "Adjust framing",
+      keepThumbnail: "Keep current",
+      coverOption: (n: number) => `Cover ${formatNumber(n)}`,
+      credits: "People and organizations",
+      sameNote: "Already the same as the fetched value.",
+      onVideoCount: (count: number) => `${formatNumber(count)} already on the video`,
+      fillsHint: "On the video; applying fills the person's empty fields",
+      linkedTitle: "People linked to the video",
+      linkedNote:
+        "Fetch info on a person's page to fill the person from a person plugin.",
+      fetchPersonInfo: (name: string) => `Fetch info for ${name}`,
       keepFraming: "Use this framing",
       nothingToAdd: "Nothing to add",
       newMark: "New",
@@ -2311,8 +2319,6 @@ export const en = {
       newCount: (count: number) => `${formatNumber(count)} new`,
       fillsEmpty: (name: string, values: readonly string[]) =>
         `${name} — Fills only empty fields: ${values.join(" · ")}`,
-      fillsAfterLookup: (name: string, values: readonly string[]) =>
-        `${name} — Fills what the lookup leaves empty: ${values.join(" · ")}`,
       fillFact: (term: string, value: string) => `${term} ${value}`,
       fillBio: "Bio",
       // m counts selectable tags not already on the video.
@@ -2323,23 +2329,6 @@ export const en = {
       apply: "Apply selected",
       applying: "Applying…",
       applied: "Applied to the video.",
-      appliedCutShort: (count: number) =>
-        selectPlural(count, {
-          one: "Applied; 1 person was still being looked up and was left out.",
-          other: `Applied; ${formatNumber(count)} people were still being looked up and were left out.`,
-        }),
-      lookupSource: (plugin: string) => `From ${plugin}`,
-      lookingUp: "Looking up…",
-      lookupFailed: (name: string, reason: string) =>
-        `Couldn't look up ${name}: ${reason}`,
-      tryAgain: "Try again",
-      lookupChanged:
-        "The plugin changed since the fetch, so this person wasn't looked up.",
-      // Notes sit under the row's chips, so they name the person as the fill lines do.
-      lookupLimited: (name: string) =>
-        `${name} — Not looked up: over the limit of 5 automatic lookups per fetch.`,
-      lookedUpUnder: (name: string, role: string) => `${name} — Looked up under ${role}.`,
-      lookupItem: (name: string, item: string) => `${name} · ${item}`,
       resultTitle: "Applied, but some values were left out",
       skippedLabel: (label: string) => `${label}: `,
       skipped: {
@@ -3830,8 +3819,6 @@ export const en = {
           fetch: "Fetch by ID",
         } satisfies Record<WorkInfoOperation, string>,
         accepts: (sources: readonly string[]) => `Accepts IDs from ${sources.join(", ")}`,
-        autoLookup: "Automatic lookups",
-        saving: "Saving…",
       },
       network: "Reaches internet sites",
       settingSet: (label: string) => `${label} set`,

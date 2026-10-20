@@ -68,14 +68,17 @@ function checkbox(dialog: HTMLElement, name: string) {
   return within(dialog).getByRole("checkbox", { name });
 }
 
+function toggle(dialog: HTMLElement, name: RegExp) {
+  return within(dialog).getByRole("button", { name });
+}
+
 describe("VideoPage work-info fetch details", () => {
   useFetchServer();
 
-  it("題名とタグだけの結果は今までどおり 2 行で比べる", async () => {
+  it("題名とタグだけの結果は題名の行とタグの選択だけを出す", async () => {
     const { dialog } = await fetchById();
-    expect(within(dialog).getAllByRole("checkbox")).toHaveLength(3);
+    expect(within(dialog).getAllByRole("checkbox")).toHaveLength(2);
     expect(checkbox(dialog, "Title")).toHaveProperty("ariaChecked", "true");
-    expect(checkbox(dialog, "Tags")).toHaveProperty("ariaChecked", "true");
     expect(within(dialog).queryByText("Code")).toBeNull();
   });
 
@@ -106,7 +109,7 @@ describe("VideoPage work-info fetch details", () => {
     scrollHeight.mockRestore();
   });
 
-  it("new の人物は New の印で、ambiguous の人物は Not linked の印で出し、新規の数に数えない", async () => {
+  it("new の人物は New の印の押した切り替えで、ambiguous の人物は Not linked の印だけで出す", async () => {
     server.fetch.mockImplementation(() =>
       json(
         fetchResult({
@@ -121,25 +124,64 @@ describe("VideoPage work-info fetch details", () => {
       ),
     );
     const { dialog } = await fetchById();
-    const performers = checkbox(dialog, "Performers");
-    expect(performers).toHaveProperty("ariaChecked", "true");
-    expect(chip(dialog, "新しい人").textContent).toBe("新しい人, New");
+    expect(toggle(dialog, /^新しい人 · New/)).toHaveProperty("ariaPressed", "true");
+    expect(toggle(dialog, /^既存の人, Fetched as "べつめい"/)).toHaveProperty(
+      "ariaPressed",
+      "true",
+    );
+    expect(within(dialog).queryByRole("button", { name: /同名の人/ })).toBeNull();
     expect(chip(dialog, "同名の人").textContent).toBe("同名の人, Not linked");
-    expect(chip(dialog, "既存の人").textContent).toBe("既存の人");
-    expect(within(dialog).getByText("2 new")).toBeDefined();
   });
 
-  it("その役割にすでに結び付いている人物だけなら Same as now で、結び付かない件が残れば Nothing to add で選べない", async () => {
+  it("出演者の切り替えを 1 つ外すと、残りの位置だけを送る", async () => {
+    server.fetch.mockImplementation(() =>
+      json(
+        fetchResult({
+          people: [
+            performer("一人目", { state: "new" }),
+            performer("二人目", { state: "new" }),
+            performer("三人目", { state: "new" }),
+          ],
+        }),
+        201,
+      ),
+    );
+    server.apply.mockImplementation(() => json(appliedResult(video)));
+    const { user, dialog } = await fetchById();
+    await user.click(toggle(dialog, /^二人目/));
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+    expect(server.apply).toHaveBeenCalledWith({ fields: [], people: [0, 2] });
+  });
+
+  it("リンクと ID の切り替えを外すと、その値を送らない", async () => {
+    server.fetch.mockImplementation(() =>
+      json(
+        fetchResult({
+          urls: ["https://a.example/1", "https://b.example/2"],
+          externalIds: [
+            { source: "x", value: "1" },
+            { source: "x", value: "2" },
+          ],
+        }),
+        201,
+      ),
+    );
+    server.apply.mockImplementation(() => json(appliedResult(video)));
+    const { user, dialog } = await fetchById();
+    await user.click(toggle(dialog, /^b\.example\/2/));
+    await user.click(toggle(dialog, /^x: 2/));
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+    expect(server.apply).toHaveBeenCalledWith({
+      fields: [],
+      urls: ["https://a.example/1"],
+      externalIds: [{ source: "x", value: "1" }],
+    });
+  });
+
+  it("動画にあって埋めるものの無い人物は数だけを出し、結び付かない件は Not linked で選べない", async () => {
     server.video = {
       ...video,
       workInfo: info({
-        people: [
-          {
-            role: "performer",
-            person: { id: 9, name: "既存の人", provisional: false },
-            provisional: false,
-          },
-        ],
         organizations: [
           {
             role: "maker",
@@ -151,8 +193,6 @@ describe("VideoPage work-info fetch details", () => {
     server.fetch.mockImplementation(() =>
       json(
         fetchResult({
-          title: "テスト動画",
-          people: [performer("既存の人", { state: "existing", id: 9, name: "既存の人" })],
           organizations: [
             {
               role: "maker",
@@ -172,14 +212,14 @@ describe("VideoPage work-info fetch details", () => {
       ),
     );
     const { dialog } = await fetchById();
-    const performers = checkbox(dialog, "Performers");
-    expect(performers).toHaveProperty("disabled", true);
-    expect(performers).toHaveProperty("ariaChecked", "false");
-    expect(within(dialog).getAllByText("Same as now").length).toBeGreaterThan(0);
-    const makers = checkbox(dialog, "Makers");
-    expect(makers).toHaveProperty("disabled", true);
-    expect(within(dialog).getByText("Nothing to add")).toBeDefined();
+    expect(within(dialog).getByText("Makers")).toBeDefined();
+    expect(within(dialog).getByText("1 already on the video")).toBeDefined();
     expect(chip(dialog, "同名の会社").textContent).toBe("同名の会社, Not linked");
+    expect(within(dialog).queryByRole("button", { pressed: true })).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Apply selected" })).toHaveProperty(
+      "disabled",
+      true,
+    );
   });
 
   it("動画にある人物でも顔とプロフィールの空きを埋められれば選べ、取得した顔と埋める値を出す", async () => {
@@ -222,11 +262,11 @@ describe("VideoPage work-info fetch details", () => {
         "既存の人 — Fills only empty fields: Blood type A · Height 160 cm",
       ),
     ).toBeDefined();
-    expect(within(dialog).queryByText("0 new")).toBeNull();
-    const performers = checkbox(dialog, "Performers");
-    expect(performers).toHaveProperty("ariaChecked", "true");
+    expect(
+      toggle(dialog, /^既存の人, On the video; applying fills the person's empty fields/),
+    ).toHaveProperty("ariaPressed", "true");
     await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
-    expect(server.apply).toHaveBeenCalledWith({ fields: ["people.performer"] });
+    expect(server.apply).toHaveBeenCalledWith({ fields: [], people: [0] });
   });
 
   it("値の無い項目は行が無く選べず、反映にも送らない", async () => {
@@ -238,7 +278,7 @@ describe("VideoPage work-info fetch details", () => {
     );
     server.apply.mockImplementation(() => json(appliedResult(video)));
     const { user, dialog } = await fetchById();
-    expect(checkbox(dialog, "Title")).toHaveProperty("disabled", true);
+    expect(within(dialog).queryByRole("checkbox", { name: "Title" })).toBeNull();
     expect(within(dialog).queryByRole("checkbox", { name: "Code" })).toBeNull();
     expect(within(dialog).queryByRole("checkbox", { name: "Recorded" })).toBeNull();
     expect(checkbox(dialog, "Released")).toHaveProperty("ariaChecked", "true");

@@ -151,20 +151,21 @@ describe("VideoPage work-info fetch", () => {
     );
   });
 
-  it("値の無い項目と今と同じ項目は選べず、その理由を出す", async () => {
-    server.fetch.mockImplementation(() => json(fetchResult({ tags: ["既存"] }), 201));
-    const { dialog } = await fetchById();
-    const title = within(dialog).getByRole("checkbox", { name: "Title" });
-    const tags = within(dialog).getByRole("checkbox", { name: "Tags" });
-    expect(title).toHaveProperty("disabled", true);
-    expect(title).toHaveProperty("ariaChecked", "false");
-    expect(tags).toHaveProperty("disabled", true);
-    expect(within(dialog).getByText("Not in the result")).toBeDefined();
-    expect(within(dialog).getByText("Same as now")).toBeDefined();
+  it("今と同じ題名は Same as now に畳み、選ぶものが無ければ Apply selected は押せない", async () => {
+    server.fetch.mockImplementation(() =>
+      json(fetchResult({ title: "テスト動画", tags: ["既存"] }), 201),
+    );
+    const { user, dialog } = await fetchById();
+    expect(within(dialog).queryByRole("checkbox")).toBeNull();
     expect(within(dialog).getByRole("button", { name: "Apply selected" })).toHaveProperty(
       "disabled",
       true,
     );
+    await user.click(within(dialog).getByRole("button", { name: "Same as now (1)" }));
+    expect(
+      within(dialog).getByText("Already the same as the fetched value."),
+    ).toBeDefined();
+    expect(within(dialog).getByText("Title")).toBeDefined();
   });
 
   it("プラグインの失敗は理由とプラグインの文を出し、動画を変えない", async () => {
@@ -257,6 +258,34 @@ describe("VideoPage work-info fetch", () => {
     expect(within(dialog).queryByRole("button", { name: "Cancel" })).toBeNull();
     await user.click(within(dialog).getByRole("button", { name: "Done" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("人物を結び付けたら閉じずに結果の段を出し、その人物ページの Fetch info へつなぐ", async () => {
+    const linked: Video = {
+      ...video,
+      workInfo: {
+        ...coded,
+        people: [
+          {
+            role: "performer",
+            person: { id: 9, name: "結んだ人", provisional: false },
+            provisional: false,
+          },
+        ],
+      },
+    };
+    server.apply.mockImplementation(() =>
+      json(appliedResult(linked, { linkedPeople: [9] })),
+    );
+    const { user, dialog } = await fetchById();
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+    await within(dialog).findByText("People linked to the video");
+    expect(within(dialog).getByText("Applied to the video.")).toBeDefined();
+    expect(
+      within(dialog)
+        .getByRole("link", { name: "Fetch info for 結んだ人" })
+        .getAttribute("href"),
+    ).toBe("/people/9?fetch=1");
   });
 
   it("承認を外されたプラグインの失敗では一覧を読み直し、残りが無ければ閉じた後に入口が消える", async () => {

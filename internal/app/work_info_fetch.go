@@ -117,21 +117,16 @@ func (p *WorkInfoPlugins) keepFetched(
 	if err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}
-	lookups, err := p.planPersonLookups(ctx, details.People, people)
-	if err != nil {
-		return domain.WorkInfoFetchResult{}, err
-	}
 	fetch := &workInfoFetch{
 		videoID: videoID, pluginID: plugin.ID, digest: plugin.Digest, generation: plugin.Generation,
 		title: title, tags: tags, details: details, personMatches: people, organizationMatches: organizations,
-		cover: fetchedCover(result.CoverImage), expiresAt: p.now().Add(domain.WorkInfoFetchLifetime),
-		lookups: lookups, lookupRuns: make([]*keptLookup, len(lookups.Lookups)),
+		expiresAt: p.now().Add(domain.WorkInfoFetchLifetime),
 	}
+	fetch.covers, fetch.coverURLs = keptCovers(result.WorkInfo.CoverURLs, result.CoverImages)
 	id := p.fetches.add(fetch, p.now())
 	return domain.WorkInfoFetchResult{
 		ID: id, ExpiresAt: fetch.expiresAt, Title: title, Tags: tags,
-		Details: details, PersonMatches: people, OrganizationMatches: organizations, Cover: fetch.cover,
-		Lookups: lookups,
+		Details: details, PersonMatches: people, OrganizationMatches: organizations, Covers: fetch.covers,
 	}, nil
 }
 
@@ -208,19 +203,22 @@ func (p *WorkInfoPlugins) runNetwork(ctx context.Context) (domain.WorkInfoRunNet
 	return p.network.RunNetwork(ctx)
 }
 
-// Apply selected fields and lookup items once; coverByPage checks and consumes a selected cover without applying it, for a page that uploads its own framing. Returns the updated video and skipped tags/details; nil tags selects all fetched tags, otherwise use the exact selected names. Missing/expired or changed-plugin results return ErrWorkInfoFetchStale, wrong-video results ErrNotFound, invalid fields/tag selections or lookup items without a result value or a selected role ErrWorkInfoApplyInvalid, and failed application writes nothing; the store rechecks plugin state transactionally, reporting invalid original names and normalized rejected names in fetched order.
+// ApplyWorkInfoFetch applies a selection of a result once; coverByPage checks and consumes a selected cover without
+// applying it, for a page that uploads its own framing. Missing/expired or changed-plugin results return
+// ErrWorkInfoFetchStale, wrong-video results ErrNotFound, and a selection the result cannot give
+// ErrWorkInfoApplyInvalid; failed application writes nothing. The store rechecks the plugin in its transaction and
+// reports invalid original tag names and normalized rejected names in fetched order.
 func (p *WorkInfoPlugins) ApplyWorkInfoFetch(
-	ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField, tags []string, coverByPage bool,
-	lookups []domain.PersonLookupSelection,
+	ctx context.Context, videoID int64, fetchID string, selection domain.WorkInfoSelection, coverByPage bool,
 ) (domain.WorkInfoApplied, error) {
 	if p.applier == nil {
 		return domain.WorkInfoApplied{}, errors.New("work-info fetches are not configured")
 	}
-	fetch, err := p.fetches.claim(fetchID, videoID, workInfoSelection{fields: fields, tags: tags, lookups: lookups}, p.now())
+	fetch, chosen, err := p.fetches.claim(fetchID, videoID, selection, p.now())
 	if err != nil {
 		return domain.WorkInfoApplied{}, err
 	}
-	applied, err := p.applyFetch(ctx, fetch, fields, tags, coverByPage, lookups)
+	applied, err := p.applyFetch(ctx, fetch, chosen, coverByPage)
 	if err != nil && !errors.Is(err, domain.ErrWorkInfoFetchStale) && !errors.Is(err, domain.ErrNotFound) {
 		// Restore results after transient writes fail so the owner can retry.
 		p.fetches.restore(fetchID, fetch)
@@ -228,9 +226,15 @@ func (p *WorkInfoPlugins) ApplyWorkInfoFetch(
 	return applied, err
 }
 
+// chosenWork is a valid selection with the fetched details narrowed to it.
+type chosenWork struct {
+	selection    domain.WorkInfoSelection
+	details      domain.FetchedWorkInfo
+	detailFields []domain.WorkInfoField
+}
+
 func (p *WorkInfoPlugins) applyFetch(
-	ctx context.Context, fetch *workInfoFetch, fields []domain.WorkInfoField, tags []string, coverByPage bool,
-	lookups []domain.PersonLookupSelection,
+	ctx context.Context, fetch *workInfoFetch, chosen chosenWork, coverByPage bool,
 ) (domain.WorkInfoApplied, error) {
 	plugin, err := p.store.WorkInfoPlugin(ctx, fetch.pluginID)
 	switch {
@@ -242,15 +246,16 @@ func (p *WorkInfoPlugins) applyFetch(
 		plugin.Generation != fetch.generation:
 		return domain.WorkInfoApplied{}, domain.ErrWorkInfoFetchStale
 	}
+	fields := chosen.selection.Fields
 	apply := domain.FetchedWorkInfoApply{
 		VideoID: fetch.videoID, PluginID: fetch.pluginID, Digest: fetch.digest, Generation: fetch.generation,
-		Details: fetch.details, DetailFields: detailFields(fields), PersonLookups: fetch.lookupApplies(lookups),
+		Details: chosen.details, DetailFields: chosen.detailFields,
 	}
 	if slices.Contains(fields, domain.WorkInfoFieldTitle) {
 		title := fetch.title
 		apply.Title = &title
 	}
-	names := selectedTagNames(fetch.tags, tags)
+	names := selectedTagNames(fetch.tags, chosen.selection.Tags)
 	var invalid map[string]bool
 	if slices.Contains(fields, domain.WorkInfoFieldTags) {
 		apply.Tags, invalid = splitTagNames(names)
@@ -263,29 +268,24 @@ func (p *WorkInfoPlugins) applyFetch(
 	var coverSkipped []domain.SkippedWorkInfoValue
 	if slices.Contains(fields, domain.WorkInfoFieldCover) && !coverByPage {
 		// Apply covers only after the transaction revalidates the plugin and commits metadata.
-		video, coverSkipped = p.applyCover(ctx, fetch, video)
+		video, coverSkipped = p.applyCover(ctx, fetch, chosen.selection.CoverIndex, video)
 	}
 	// Like the cover, faces follow the commit so a plugin the transaction found stale stores none.
-	video = p.applyPersonImages(ctx, video, fetch.appliedFaces(lookups, applied))
+	video = p.applyPersonImages(ctx, video, appliedFaces(chosen.details, applied))
 	skipped := append(coverSkipped, applied.Skipped...)
 	if skipped == nil {
 		skipped = []domain.SkippedWorkInfoValue{}
 	}
-	return domain.WorkInfoApplied{
-		Video: video, SkippedTags: skippedTags(names, invalid, applied.RejectedTags), Skipped: skipped,
-	}, nil
-}
-
-// Return distinct detail fields in WorkInfoFields order, excluding title, tags and cover.
-func detailFields(fields []domain.WorkInfoField) []domain.WorkInfoField {
-	var out []domain.WorkInfoField
-	for _, field := range domain.WorkInfoFields {
-		if field != domain.WorkInfoFieldTitle && field != domain.WorkInfoFieldTags &&
-			field != domain.WorkInfoFieldCover && slices.Contains(fields, field) {
-			out = append(out, field)
+	var linked []int64
+	for _, id := range applied.PersonIDs {
+		if id != 0 && !slices.Contains(linked, id) {
+			linked = append(linked, id)
 		}
 	}
-	return out
+	return domain.WorkInfoApplied{
+		Video: video, SkippedTags: skippedTags(names, invalid, applied.RejectedTags), Skipped: skipped,
+		LinkedPeople: linked,
+	}, nil
 }
 
 // Preserve fetched order; nil selected returns all fetched names.
@@ -354,11 +354,10 @@ type workInfoFetch struct {
 	personMatches       []domain.CreditMatch
 	organizationMatches []domain.CreditMatch
 
-	cover     *domain.WorkInfoCover
+	covers []domain.WorkInfoCover
+	// coverURLs aligns with covers, for a skipped cover's text.
+	coverURLs []string
 	expiresAt time.Time
-	// lookupRuns aligns with lookups.Lookups: the kept result of a lookup that ran, or nil.
-	lookups    domain.PersonLookupPlan
-	lookupRuns []*keptLookup
 }
 
 // Unknown fields have no value.
@@ -369,7 +368,7 @@ func (f *workInfoFetch) hasValue(field domain.WorkInfoField) bool {
 	case domain.WorkInfoFieldTags:
 		return len(f.tags) > 0
 	case domain.WorkInfoFieldCover:
-		return f.cover != nil
+		return len(f.covers) > 0
 	}
 	return f.details.HasDetail(field)
 }
@@ -457,48 +456,50 @@ func (f *workInfoFetches) evict(entry keptImages) {
 	maps.DeleteFunc(f.people, func(_ string, kept *personPluginFetch) bool { return keptImages(kept) == entry })
 }
 
-// Return ErrNotFound for missing covers or video mismatches.
-func (f *workInfoFetches) cover(id string, videoID int64, now time.Time) (domain.WorkInfoCover, error) {
+// Return ErrNotFound for a cover index outside the result, missing results or video mismatches.
+func (f *workInfoFetches) cover(id string, videoID int64, index int, now time.Time) (domain.WorkInfoCover, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.prune(now)
 	fetch, ok := f.entries[id]
-	if !ok || fetch.videoID != videoID || fetch.cover == nil {
+	if !ok || fetch.videoID != videoID || index < 0 || index >= len(fetch.covers) {
 		return domain.WorkInfoCover{}, domain.ErrNotFound
 	}
-	return *fetch.cover, nil
+	return fetch.covers[index], nil
 }
 
-type workInfoSelection struct {
-	fields  []domain.WorkInfoField
-	tags    []string
-	lookups []domain.PersonLookupSelection
+// choose checks a selection against the result and narrows its details; false for an empty selection, a whole field
+// without a value, a tag or cover the result lacks, or an entry or value Select refuses.
+func (f *workInfoFetch) choose(selection domain.WorkInfoSelection) (chosenWork, bool) {
+	details, fields, ok := f.details.Select(selection)
+	cover := slices.Contains(selection.Fields, domain.WorkInfoFieldCover)
+	valid := ok && f.validTagSelection(selection.Fields, selection.Tags) &&
+		(!cover || selection.CoverIndex >= 0 && selection.CoverIndex < len(f.covers)) &&
+		!slices.ContainsFunc(selection.Fields, func(field domain.WorkInfoField) bool { return !f.hasValue(field) }) &&
+		(len(selection.Fields) > 0 || len(fields) > 0)
+	return chosenWork{selection: selection, details: details, detailFields: fields}, valid
 }
 
 // Validate existence/expiry, video and selection before consuming a result once. ErrWorkInfoFetchStale, ErrNotFound and ErrWorkInfoApplyInvalid preserve it unless expired.
 func (f *workInfoFetches) claim(
-	id string, videoID int64, selection workInfoSelection, now time.Time,
-) (*workInfoFetch, error) {
-	fields := selection.fields
+	id string, videoID int64, selection domain.WorkInfoSelection, now time.Time,
+) (*workInfoFetch, chosenWork, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.prune(now)
 	fetch, ok := f.entries[id]
-	switch {
-	case !ok:
-		return nil, domain.ErrWorkInfoFetchStale
-	case fetch.videoID != videoID:
-		return nil, domain.ErrNotFound
-	case len(fields) == 0, !fetch.validTagSelection(fields, selection.tags), !fetch.validLookups(fields, selection.lookups):
-		return nil, domain.ErrWorkInfoApplyInvalid
+	if !ok {
+		return nil, chosenWork{}, domain.ErrWorkInfoFetchStale
 	}
-	for _, field := range fields {
-		if !fetch.hasValue(field) {
-			return nil, domain.ErrWorkInfoApplyInvalid
-		}
+	if fetch.videoID != videoID {
+		return nil, chosenWork{}, domain.ErrNotFound
+	}
+	chosen, valid := fetch.choose(selection)
+	if !valid {
+		return nil, chosenWork{}, domain.ErrWorkInfoApplyInvalid
 	}
 	delete(f.entries, id)
-	return fetch, nil
+	return fetch, chosen, nil
 }
 
 // Restore a claimed result; expiry is enforced on the next insert or retrieval.

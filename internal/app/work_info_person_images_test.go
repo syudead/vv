@@ -94,7 +94,8 @@ func TestApplyStoresAFetchedFaceOnlyForAPersonWithoutOne(t *testing.T) {
 	e.plugins.personImages = &PersonImages{store: faces, uploads: newUploadGate()}
 	// Person 3's image passes the header check but cannot be decoded.
 	broken := pngOf(t, 2, 2)[:40]
-	result := fetchPeople(t, e, pngOf(t, 2, 2), pngOf(t, 5, 4), broken, pngOf(t, 2, 2))
+	// The first entry is left out, so the linked people align with the chosen entries alone.
+	result := fetchPeople(t, e, pngOf(t, 9, 9), pngOf(t, 2, 2), pngOf(t, 5, 4), broken, pngOf(t, 2, 2))
 	e.applier.personIDs = []int64{1, 2, 3, 0}
 	performer := func(id, revision int64) domain.WorkPerson {
 		return domain.WorkPerson{Role: domain.PersonPerformer, Person: domain.CreditRef{ID: id}, ImageRevision: revision}
@@ -102,9 +103,12 @@ func TestApplyStoresAFetchedFaceOnlyForAPersonWithoutOne(t *testing.T) {
 	e.applier.workInfo = &domain.WorkInfo{People: []domain.WorkPerson{performer(1, 2), performer(2, 0), performer(3, 0)}}
 
 	applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-		[]domain.WorkInfoField{domain.PersonField(domain.PersonPerformer)}, nil, false, nil)
-	if err != nil || len(applied.Skipped) != 0 {
-		t.Fatalf("apply = %+v, %v; want success with nothing skipped", applied, err)
+		domain.WorkInfoSelection{People: []int{1, 2, 3, 4}}, false)
+	if err != nil || len(applied.Skipped) != 0 || !slices.Equal(applied.LinkedPeople, []int64{1, 2, 3}) {
+		t.Fatalf("apply = %+v, %v; want people 1 to 3 linked with nothing skipped", applied, err)
+	}
+	if got := e.applier.calls[0].Details.People; len(got) != 4 || got[0].Name != "B" {
+		t.Fatalf("applied people = %+v; want the four chosen entries", got)
 	}
 	if len(faces.added) != 1 || faces.added[0] != 2 || !bytes.Equal(faces.faces[1], []byte("own face")) {
 		t.Fatalf("added faces for %v, person 1 has %q; want person 2 alone", faces.added, faces.faces[1])
@@ -135,9 +139,9 @@ func TestReplacePersonImageStoresOverAFace(t *testing.T) {
 	}
 }
 
-// One fetch holding a cover, seven people's images and five lookup images at the size limit fills the budget, and a
-// person page result added next evicts it.
-func TestFetchedImagesCountTowardTheBudgetWithTheCoverAndLookups(t *testing.T) {
+// One fetch holding every cover and people's image it may keep at the size limit fills the budget, and a person page
+// result added next evicts it.
+func TestFetchedImagesCountTowardTheBudgetWithTheCovers(t *testing.T) {
 	fetches := newWorkInfoFetches()
 	now := time.Unix(1_800_000_000, 0)
 	full := &domain.WorkInfoCover{Data: make([]byte, domain.WorkInfoCoverMaxBytes)}
@@ -145,12 +149,12 @@ func TestFetchedImagesCountTowardTheBudgetWithTheCoverAndLookups(t *testing.T) {
 	for i := range people {
 		people[i].Image = full
 	}
-	lookups := make([]*keptLookup, domain.PersonLookupsMaxCount)
-	for i := range lookups {
-		lookups[i] = &keptLookup{image: full}
+	covers := make([]domain.WorkInfoCover, domain.WorkInfoCoversMaxCount)
+	for i := range covers {
+		covers[i] = *full
 	}
 	first := fetches.add(&workInfoFetch{
-		videoID: fetchVideo, cover: full, details: domain.FetchedWorkInfo{People: people}, lookupRuns: lookups,
+		videoID: fetchVideo, covers: covers, details: domain.FetchedWorkInfo{People: people},
 		expiresAt: now.Add(domain.WorkInfoFetchLifetime),
 	}, now)
 	if _, ok := fetches.entries[first]; !ok {

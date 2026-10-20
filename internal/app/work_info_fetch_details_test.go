@@ -129,67 +129,80 @@ func TestFetchWorkInfoTitleAndTagsOnlyHasNoDetails(t *testing.T) {
 	}
 }
 
-// Pass selected detail fields in comparison order and propagate storage skips.
-func TestApplyWorkInfoFetchPassesDetailFieldsAndReportsSkipped(t *testing.T) {
+// Pass the details narrowed to the selection with their fields in comparison order, and propagate storage skips.
+func TestApplyWorkInfoFetchPassesTheChosenDetailsAndReportsSkipped(t *testing.T) {
 	e := newFetchEnv()
 	result := e.fetchDetails(t, detailedWork())
 	e.applier.skipped = []domain.SkippedWorkInfoValue{
 		{Field: domain.DateField(domain.DateRelease), Value: "2024-03-01", Reason: domain.SkippedWorkInfoInvalid},
 	}
-	performer := domain.PersonField(domain.PersonPerformer)
+	// Both chosen entries are linked to one person.
+	e.applier.personIDs = []int64{9, 9}
 	release := domain.DateField(domain.DateRelease)
-	applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-		[]domain.WorkInfoField{performer, domain.WorkInfoFieldTitle, release, domain.WorkInfoFieldCode}, nil, false, nil)
+	applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, domain.WorkInfoSelection{
+		Fields: []domain.WorkInfoField{domain.WorkInfoFieldTitle, release, domain.WorkInfoFieldCode},
+		People: []int{2, 0}, URLs: result.Details.URLs,
+	}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	call := e.applier.calls[0]
-	if want := []domain.WorkInfoField{domain.WorkInfoFieldCode, release, performer}; !slices.Equal(call.DetailFields, want) {
+	want := []domain.WorkInfoField{
+		domain.WorkInfoFieldCode, release, domain.PersonField(domain.PersonPerformer), domain.WorkInfoFieldURLs,
+	}
+	if !slices.Equal(call.DetailFields, want) {
 		t.Fatalf("detail fields = %v; want %v", call.DetailFields, want)
 	}
-	if !reflect.DeepEqual(call.Details, result.Details) || call.Title == nil || call.Tags != nil {
-		t.Fatalf("apply = %+v; want the fetched details and the title", call)
+	chosen := result.Details
+	chosen.People = []domain.FetchedPerson{chosen.People[0], chosen.People[2]}
+	chosen.Organizations, chosen.ExternalIDs = nil, nil
+	if !reflect.DeepEqual(call.Details, chosen) || call.Title == nil || call.Tags != nil {
+		t.Fatalf("apply = %+v; want the chosen details and the title", call)
 	}
-	if !reflect.DeepEqual(applied.Skipped, e.applier.skipped) || applied.SkippedTags == nil {
-		t.Fatalf("applied = %+v", applied)
+	if !reflect.DeepEqual(applied.Skipped, e.applier.skipped) || applied.SkippedTags == nil ||
+		!slices.Equal(applied.LinkedPeople, []int64{9}) {
+		t.Fatalf("applied = %+v; want the store's skips and person 9 linked once", applied)
 	}
 
-	e.applier.skipped = nil
+	e.applier.skipped, e.applier.personIDs = nil, nil
 	again := e.fetchDetails(t, detailedWork())
 	applied, err = e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, again.ID,
-		[]domain.WorkInfoField{domain.WorkInfoFieldTags}, nil, false, nil)
-	if err != nil || e.applier.calls[1].DetailFields != nil || applied.Skipped == nil || len(applied.Skipped) != 0 {
+		domain.WorkInfoSelection{Fields: []domain.WorkInfoField{domain.WorkInfoFieldTags}}, false)
+	if err != nil || e.applier.calls[1].DetailFields != nil || applied.Skipped == nil || len(applied.Skipped) != 0 ||
+		applied.LinkedPeople != nil {
 		t.Fatalf("tags-only apply = %+v, %v (detail fields %v)", applied, err, e.applier.calls[1].DetailFields)
 	}
 }
 
-// Invalid field selections preserve the result without writes.
-func TestApplyWorkInfoFetchRefusesADetailWithoutAValue(t *testing.T) {
+// Selections the result cannot give preserve it without writes.
+func TestApplyWorkInfoFetchRefusesASelectionTheResultCannotGive(t *testing.T) {
 	e := newFetchEnv()
 	work := detailedWork()
 	work.Dates = []domain.WorkDate{{Kind: domain.DateRecorded, Date: "2024"}}
 	result := e.fetchDetails(t, work)
-	for _, field := range []domain.WorkInfoField{
-		domain.DateField(domain.DateRelease),
-		domain.PersonField(domain.PersonStreamer),
-		domain.OrganizationField(domain.OrganizationLabel),
-		"dates.unknown",
+	code := []domain.WorkInfoField{domain.WorkInfoFieldCode}
+	for name, selection := range map[string]domain.WorkInfoSelection{
+		"a date without a value":  {Fields: append(code, domain.DateField(domain.DateRelease))},
+		"an unknown field":        {Fields: append(code, "dates.unknown")},
+		"a role as a whole field": {Fields: append(code, domain.PersonField(domain.PersonPerformer))},
+		"a person past the end":   {Fields: code, People: []int{len(work.People)}},
+		"an organization twice":   {Fields: code, Organizations: []int{0, 0}},
+		"a URL not fetched":       {Fields: code, URLs: []string{"https://example.com/other"}},
 	} {
-		_, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-			[]domain.WorkInfoField{domain.WorkInfoFieldCode, field}, nil, false, nil)
-		if !errors.Is(err, domain.ErrWorkInfoApplyInvalid) {
-			t.Fatalf("%s: err = %v; want ErrWorkInfoApplyInvalid", field, err)
+		if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, selection, false); !errors.Is(err, domain.ErrWorkInfoApplyInvalid) {
+			t.Fatalf("%s: err = %v; want ErrWorkInfoApplyInvalid", name, err)
 		}
 	}
 	if len(e.applier.calls) != 0 {
 		t.Fatal("a refused apply reached the store")
 	}
-	every := []domain.WorkInfoField{
-		domain.WorkInfoFieldCode, domain.WorkInfoFieldDescription, domain.DateField(domain.DateRecorded),
-		domain.PersonField(domain.PersonPerformer), domain.PersonField(domain.PersonDirector),
-		domain.OrganizationField(domain.OrganizationMaker), domain.WorkInfoFieldURLs, domain.WorkInfoFieldExternalIDs,
+	every := domain.WorkInfoSelection{
+		Fields: []domain.WorkInfoField{
+			domain.WorkInfoFieldCode, domain.WorkInfoFieldDescription, domain.DateField(domain.DateRecorded),
+		},
+		People: []int{0, 1, 2, 3}, Organizations: []int{0}, URLs: work.URLs, ExternalIDs: work.ExternalIDs,
 	}
-	if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, every, nil, false, nil); err != nil {
+	if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, every, false); err != nil {
 		t.Fatalf("the kept result could not be applied: %v", err)
 	}
 }

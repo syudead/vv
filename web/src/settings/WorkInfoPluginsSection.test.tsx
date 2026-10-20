@@ -23,7 +23,6 @@ function plugin(values: Partial<WorkInfoPlugin> & { id: number }): WorkInfoPlugi
   return {
     kind: "work",
     sources: [],
-    autoLookup: false,
     name: "example.works",
     fileName: "example.wasm",
     version: "1.2.0",
@@ -57,7 +56,6 @@ function person(values: Partial<WorkInfoPlugin> & { id: number }): WorkInfoPlugi
   return plugin({
     kind: "person",
     sources: ["example.people", "other.people"],
-    autoLookup: true,
     name: "example.people",
     fileName: "people.wasm",
     description: "Fetches faces from example.people",
@@ -110,14 +108,9 @@ function server(initial: WorkInfoPlugin[], override: Override = () => undefined)
       return Promise.resolve(json({ plugins: stored }));
     if (url === "/api/work-info-plugins" && method === "POST")
       return Promise.resolve(upload(init?.body as FormData));
-    const match =
-      /^\/api\/work-info-plugins\/(\d+)(\/approval|\/settings|\/auto-lookup)?$/.exec(url);
+    const match = /^\/api\/work-info-plugins\/(\d+)(\/approval|\/settings)?$/.exec(url);
     if (match === null) throw new Error(`unexpected request: ${method} ${url}`);
     const id = Number(match[1]);
-    if (match[2] === "/auto-lookup") {
-      const { enabled } = body as { enabled: boolean };
-      return Promise.resolve(json(replace(id, { autoLookup: enabled })));
-    }
     if (match[2] === "/approval")
       return Promise.resolve(
         json(replace(id, { state: method === "PUT" ? "approved" : "unapproved" })),
@@ -834,82 +827,6 @@ describe("WorkInfoPluginsSection", () => {
         (badge) => badge.textContent,
       ),
     ).toEqual(["example.people", "other.people"]);
-  });
-
-  it("自動の呼び出しの切り替えは承認済みの行だけにあり、切ると enabled: false を送って返った状態を出す", async () => {
-    let fail = false;
-    const fake = server(
-      [person({ id: 2, state: "approved" }), person({ id: 3, name: "draft.people" })],
-      (method, url) =>
-        fail && method === "PUT" && url.endsWith("/auto-lookup")
-          ? json({ code: "internal_error", message: "boom" }, 500)
-          : undefined,
-    );
-    fetchMock.mockImplementation(fake.handler);
-    const user = userEvent.setup();
-    renderSection();
-
-    const draft = await waitFor(() => rowOf("draft.people", "Added person plugins"));
-    expect(within(draft).queryByRole("switch")).toBeNull();
-    const row = rowOf("example.people", "Added person plugins");
-    const toggle = within(row).getByRole("switch", { name: "Automatic lookups" });
-    expect(toggle.getAttribute("aria-checked")).toBe("true");
-    expect(toggle.getAttribute("aria-describedby")).not.toBeNull();
-    expect(
-      document.getElementById(toggle.getAttribute("aria-describedby") ?? "")?.textContent,
-    ).toBe("example.people");
-
-    await user.click(toggle);
-
-    await waitFor(() => expect(toggle.getAttribute("aria-checked")).toBe("false"));
-    expect(
-      fake.requests.filter((request) => request.url.endsWith("/auto-lookup")),
-    ).toEqual([
-      {
-        method: "PUT",
-        url: "/api/work-info-plugins/2/auto-lookup",
-        body: { enabled: false },
-      },
-    ]);
-    expect(fake.stored().find((item) => item.id === 2)?.autoLookup).toBe(false);
-
-    fail = true;
-    await user.click(toggle);
-    expect(
-      await within(row).findByText(/^Couldn't change example.people:/),
-    ).toBeDefined();
-    expect(toggle.getAttribute("aria-checked")).toBe("false");
-  });
-
-  it("自動の呼び出しの応答が取り消しの後に届いても、行を承認済みに戻さない", async () => {
-    const fake = server([person({ id: 2, state: "approved" })]);
-    // Answer the switch with the pre-revocation row, delivered after the revocation.
-    let release: () => void = () => {};
-    fetchMock.mockImplementation((input, init) => {
-      if (init?.method === "PUT" && String(input).endsWith("/auto-lookup")) {
-        const stale = fake.handler(input, init);
-        return new Promise((resolve) => {
-          release = () => resolve(stale);
-        });
-      }
-      return fake.handler(input, init);
-    });
-    const user = userEvent.setup();
-    renderSection();
-    const row = await waitFor(() => rowOf("example.people", "Added person plugins"));
-
-    await user.click(within(row).getByRole("switch", { name: "Automatic lookups" }));
-    await user.click(
-      within(row).getByRole("button", { name: "More actions for example.people" }),
-    );
-    await user.click(await screen.findByRole("menuitem", { name: "Revoke approval" }));
-    await waitFor(() => expect(within(row).getByText("Not approved")).toBeDefined());
-    release();
-
-    await waitFor(() => expect(within(row).queryByText("Saving…")).toBeNull());
-    expect(within(row).getByText("Not approved")).toBeDefined();
-    expect(within(row).queryByText("Approved")).toBeNull();
-    expect(within(row).queryByRole("switch")).toBeNull();
   });
 
   it("画面の文言はカタログか利用者のデータだけである", async () => {

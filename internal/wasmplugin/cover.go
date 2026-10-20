@@ -43,13 +43,9 @@ func (s *httpSession) image(ctx context.Context, rawURL string) []byte {
 	return body
 }
 
-// images fetches urls one after another within ctx, up to limit or PersonPluginImagesMaxCount when limit is zero, and
-// returns nil without URLs.
-func (s *httpSession) images(ctx context.Context, urls []string, limit int) [][]byte {
-	if limit <= 0 || limit > domain.PersonPluginImagesMaxCount {
-		limit = domain.PersonPluginImagesMaxCount
-	}
-	urls = urls[:min(len(urls), limit)]
+// images fetches urls, already capped by the result's parsing, one after another within ctx, and returns nil without
+// URLs.
+func (s *httpSession) images(ctx context.Context, urls []string) [][]byte {
 	if len(urls) == 0 {
 		return nil
 	}

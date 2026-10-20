@@ -95,11 +95,10 @@ type fakeFetchApplier struct {
 	rejected []string
 	skipped  []domain.SkippedWorkInfoValue
 	// personIDs is returned as the people the apply linked, and workInfo as the applied video's work information.
-	personIDs       []int64
-	lookupPersonIDs []int64
-	workInfo        *domain.WorkInfo
-	err             error
-	calls           []domain.FetchedWorkInfoApply
+	personIDs []int64
+	workInfo  *domain.WorkInfo
+	err       error
+	calls     []domain.FetchedWorkInfoApply
 
 	fetches []recordedFetch
 }
@@ -136,8 +135,7 @@ func (a *fakeFetchApplier) ApplyFetchedWorkInfo(ctx context.Context, apply domai
 		a.tags[apply.VideoID] = append(a.tags[apply.VideoID], name)
 	}
 	video := domain.Video{ID: apply.VideoID, DisplayName: a.titles[apply.VideoID], WorkInfo: a.workInfo}
-	return domain.FetchedWorkInfoApplied{Video: video, RejectedTags: rejected, Skipped: a.skipped, PersonIDs: a.personIDs,
-		LookupPersonIDs: a.lookupPersonIDs}, nil
+	return domain.FetchedWorkInfoApplied{Video: video, RejectedTags: rejected, Skipped: a.skipped, PersonIDs: a.personIDs}, nil
 }
 
 const (
@@ -365,7 +363,7 @@ func TestApplyWorkInfoFetchWritesSelectedFieldsAndReportsSkippedTags(t *testing.
 	result := e.fetch(t, "Title", "drama", " drama ", "spoiler", "bad\x01name", "comedy")
 
 	applied, err := e.plugins.ApplyWorkInfoFetch(ctx, fetchVideo, result.ID,
-		[]domain.WorkInfoField{domain.WorkInfoFieldTitle, domain.WorkInfoFieldTags}, nil, false, nil)
+		domain.WorkInfoSelection{Fields: []domain.WorkInfoField{domain.WorkInfoFieldTitle, domain.WorkInfoFieldTags}}, false)
 	if err != nil {
 		t.Fatalf("ApplyWorkInfoFetch: %v", err)
 	}
@@ -380,7 +378,7 @@ func TestApplyWorkInfoFetchWritesSelectedFieldsAndReportsSkippedTags(t *testing.
 		t.Fatalf("apply = %+v; want the fetch's plugin and digest", e.applier.calls[0])
 	}
 
-	if _, err := e.plugins.ApplyWorkInfoFetch(ctx, fetchVideo, result.ID, []domain.WorkInfoField{domain.WorkInfoFieldTitle}, nil, false, nil); !errors.Is(err, domain.ErrWorkInfoFetchStale) {
+	if _, err := e.plugins.ApplyWorkInfoFetch(ctx, fetchVideo, result.ID, domain.WorkInfoSelection{Fields: []domain.WorkInfoField{domain.WorkInfoFieldTitle}}, false); !errors.Is(err, domain.ErrWorkInfoFetchStale) {
 		t.Fatalf("second apply: err = %v; want ErrWorkInfoFetchStale", err)
 	}
 }
@@ -389,7 +387,7 @@ func TestApplyWorkInfoFetchTitleOnlyLeavesTags(t *testing.T) {
 	e := newFetchEnv()
 	result := e.fetch(t, "Title", "drama")
 	if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-		[]domain.WorkInfoField{domain.WorkInfoFieldTitle}, nil, false, nil); err != nil {
+		domain.WorkInfoSelection{Fields: []domain.WorkInfoField{domain.WorkInfoFieldTitle}}, false); err != nil {
 		t.Fatal(err)
 	}
 	if e.applier.calls[0].Tags != nil || len(e.applier.tags[fetchVideo]) != 0 {
@@ -432,7 +430,7 @@ func TestApplyWorkInfoFetchRefusals(t *testing.T) {
 			e := newFetchEnv()
 			result := e.fetch(t, "Title")
 			tc.change(e)
-			_, err := e.plugins.ApplyWorkInfoFetch(context.Background(), tc.video, result.ID, tc.fields, nil, false, nil)
+			_, err := e.plugins.ApplyWorkInfoFetch(context.Background(), tc.video, result.ID, domain.WorkInfoSelection{Fields: tc.fields}, false)
 			if err == nil || (tc.want != nil && !errors.Is(err, tc.want)) {
 				t.Fatalf("err = %v; want %v", err, tc.want)
 			}
@@ -441,7 +439,7 @@ func TestApplyWorkInfoFetchRefusals(t *testing.T) {
 			}
 			// Retained results remain applicable after correcting the problem.
 			e.applier.err = nil
-			_, err = e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, title, nil, false, nil)
+			_, err = e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, domain.WorkInfoSelection{Fields: title}, false)
 			if tc.keeps && err != nil {
 				t.Fatalf("the result was not kept: %v", err)
 			}

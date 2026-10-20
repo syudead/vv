@@ -59,18 +59,14 @@ several photos of one person and the owner picks the face. After a successful
 fetch, VVMDM fetches the first 10 distinct valid URLs one after another with
 the run's HTTP client, outside the request count, the way it fetches a work's
 cover
-([work-info-plugins.md](work-info-plugins.md#vvmdm-fetches-the-cover-and-applies-it-as-an-uploaded-image)).
+([work-info-plugins.md](work-info-plugins.md#vvmdm-fetches-the-covers-and-applies-one-as-an-uploaded-image)).
 A refused address fails the run with `blocked_address`, and an image that
 cannot be fetched is dropped while the rest of the person is kept. Ten images
 at the 4 MiB limit fit the fetch budget below on their own.
 
-A lookup from a work-info fetch fetches only the first image, since it fills
-the face of a person who has none and its images share one fetch's budget.
-
 | Rejected | Why |
 | --- | --- |
 | Keeping `image` beside `images` | The maintainer asked for no compatibility with older modules, and two fields would need a rule for which wins |
-| Fetching every image of a lookup | Five lookups of 10 images would not fit one fetch's budget |
 
 ## Person plugins share the work-info plugin registry
 
@@ -91,19 +87,6 @@ work-info plugin, answer `409 plugin_kind_mismatch` before the module runs.
 | A `person_plugins` table with its own endpoints | It would copy the registry's store, approval, settings and last-run code |
 | Renaming `WorkInfoPlugin*` to `Plugin*` now | It touches every plugin file, the API and the SPA without changing behaviour |
 | Refusing a replacement of another kind | The owner would have to delete the plugin first, and a replacement already revokes approval |
-
-## Automatic lookups are a switch on the plugin row
-
-`auto_lookup` decides whether work-info fetches may call a person plugin. It
-is on for a new person plugin, because approval is already the owner's consent,
-and a same-name replacement keeps it. The owner sets it with
-`PUT /api/work-info-plugins/{id}/auto-lookup`; it does not affect fetching from
-a person's page, and the API reports it as `false` for a work-info plugin.
-
-| Rejected | Why |
-| --- | --- |
-| A manifest setting | Settings are values passed to the plugin, and the plugin would have to declare one |
-| Off by default | The lookup during a work-info fetch is meant to happen without a further step |
 
 ## The person page fetches by a stored ID the server picks
 
@@ -156,9 +139,8 @@ fetch.
 A value that would make the person invalid is skipped as `invalid`, and the
 rest applies. A `taken` ID never merges the two people: the owner merges them
 on the people screens when they are one person. The rules are
-[`FillPersonItems`](../../internal/domain/person_plugin_apply.go), which a
-lookup from a work-info fetch applies too, but only filling empty profile
-fields and a missing face; the write is
+[`FillPersonItems`](../../internal/domain/person_plugin_apply.go), and the
+write is
 [`ApplyPersonPluginFetch`](../../internal/store/person_plugin_apply.go).
 
 A replacement is the owner's choice per item: the comparison leaves every row
@@ -168,7 +150,6 @@ a row the owner checked.
 | Rejected | Why |
 | --- | --- |
 | Fill only, never replace | The owner could not correct a wrong or outdated value from the site without retyping it |
-| Replacing in work-info lookups too | Their rows sit inside a video's comparison, where a checked role row would replace a person's values without a look at each |
 | Replacing aliases, external IDs and links | A list replaced by a site's would drop names, IDs and links the owner added |
 | One checkbox per list | A site's list often holds one wrong alias or link, and the owner could only take or leave all of them |
 | Merge the person holding a `taken` ID | A wrong ID on a site would merge two people the owner keeps apart |
@@ -179,14 +160,12 @@ The Plugins settings page reads the one plugin list and shows person plugins
 in a `Person plugins` section after `Work-info plugins`, with the same row,
 approval prompt and menu. Each section has its own `Add plugin`; the upload
 is one endpoint and the manifest decides the kind, so the toast names the
-other section when the row lands there. The automatic lookup switch is a
-`Switch` on approved person rows only, because a plugin that is not approved
-never runs. The video page's fetch dialog offers work-info plugins only.
+other section when the row lands there. The video page's fetch dialog offers
+work-info plugins only.
 
 | Rejected | Why |
 | --- | --- |
 | A kind badge on rows in one list | The owner would read every row to find the plugins that fetch people |
-| The switch as a row menu item | Its state would be hidden until the menu opens |
 
 ## The person page compares a fetched person before applying it
 
@@ -212,18 +191,20 @@ is in the order the owner decides:
 | `Fills empty fields` | The fetched value of each empty profile field, and aliases or external IDs the person does not have | Checked |
 | `Differs from now` | A stored profile value, struck through when checked, an arrow and the fetched one | Unchecked |
 | `Adds to lists` | Aliases, the fetched name among them, external IDs and links the person does not have, each a toggle, and a count of those the person has | Pressed |
-| `Kept as now (N)` | Values equal to the stored ones, folded, without checkboxes | Folded |
+| `Same as now (N)` | Values equal to the stored ones, folded, without checkboxes | Folded |
 
 `Fills empty fields`, `Differs from now` and `Adds to lists` each have
 `Select all` or `Clear` when they hold more than one choice. Each row is one apply item, with its label in
 a fixed column so values line up down the dialog; below `sm` a row stacks its
 label over its values, which keep the now, arrow and fetched order on one line.
 The rows are computed by
-[`compareRows`](../../web/src/credits/person/pluginFetch/personCompareRows.ts).
-The work-info comparison reuses the piece for its person lookups without
-replacement: the face is offered only to a person without one, every stored
-value is kept, and a person the apply creates is not offered the fetched name,
-which the work's entry names already.
+[`compareRows`](../../web/src/credits/person/pluginFetch/personCompareRows.ts),
+and the parts are the video's comparison's
+([`compareParts`](../../web/src/player/workInfoFetch/compareParts.tsx)), so
+both dialogs read the same.
+
+A page opened at `/people/{id}?fetch=1`, as a video's fetch result links its
+linked people, opens `Fetch info…` once and drops the parameter.
 
 | Rejected | Why |
 | --- | --- |
@@ -233,123 +214,15 @@ which the work's entry names already.
 | Replacement rows checked like filling rows | One `Apply selected` would overwrite the owner's edits with every differing site value |
 | A `Measurements` or `Career` row | One checkbox would select several apply items |
 
-## A work-info fetch plans one lookup per person
+## Work-info fetches do not look people up
 
-The fetch result carries `personLookups`, planned by the server: for each
-fetched person, the first of the person's fetched external IDs that an
-approved person plugin with automatic lookups accepts, taking plugins in list
-order (name, then file name). The rule is
-[`PlanPersonLookups`](../../internal/domain/person_lookup.go).
-
-| Case | Plan |
-| --- | --- |
-| Only unaccepted IDs, or only a name | No lookup |
-| Two accepted IDs | One lookup, for the first |
-| Entries with the same plugin and ID that matched the same person, or none | One shared lookup |
-| An entry whose match is ambiguous | No lookup, since the apply links it to no one |
-| A distinct lookup after the first 5 | None; the entry is `lookupLimited` |
-
-Only IDs from the work-info result enter the plan, so an ID a lookup returns
-never starts another lookup. Five lookups at the 30-second run limit already
-keep the page waiting up to 2.5 minutes, one run at a time.
+A work-info fetch links its people and fills their empty profile fields and
+missing faces from the work's own values, and the person page fetches each
+person from a person plugin. The fetch result lists the people the apply
+linked, each a link to its page's `Fetch info…`; a person a fetch created
+carries the work's external IDs, so that fetch goes by ID without a search.
 
 | Rejected | Why |
 | --- | --- |
-| Running the lookups inside the fetch request | One request could last three minutes, and one failure would hold up the whole result |
-| Running them in the background with polling | A page nobody reads would hold the single run slot |
-| Sharing a lookup by plugin and ID alone | Two entries sharing an ID can match two different people, and one comparison could not tell them apart |
-| An owner-set priority between plugins | The Issue asks for no ordering control |
-
-## Lookup results stay with the fetch
-
-`POST /api/videos/{id}/work-info-fetches/{fetchId}/person-lookups/{index}`
-runs one planned lookup and keeps its person and image in the fetch's
-in-memory entry, which they expire with. A second request answers the kept
-result without running; a failed lookup keeps nothing and may be requested
-again. The lookup runs only on the plugin approval, digest and generation the
-plan saw, and answers `409 plugin_changed` otherwise; turning automatic
-lookups off after the fetch does not stop it.
-
-Person page results share the store and its image budget of a cover, 7
-people's images and 5 lookup images at 4 MiB, 52 MiB, so one fetch with every
-image fits and is never evicted by its own lookups.
-
-| Rejected | Why |
-| --- | --- |
-| Keeping the 32 MiB budget | A fetch with a cover and 7 images fills it, so its first lookup image would evict it |
-| A separate budget for person page results | The eviction would need an order between two budgets |
-| Sending the result back with the apply | The apply would trust the client instead of what the plugin returned |
-
-## A lookup applies only through a selected role
-
-`applyWorkInfoFetch` takes `personLookups: [{index, items, aliases, externalIds, links}]` with the selection of
-the person page's apply. A lookup fills the person its entries' role links in
-the same apply, only when that is the person they matched at fetch time, or a
-person the apply creates for entries that matched none; selecting its items
-without one of those roles is `400 invalid_request`. The lookup's profile
-fields and image are used before the work-info ones, in the apply's
-transaction, and its face after the commit
-([`applyPersonLookups`](../../internal/store/person_lookup_apply.go)).
-
-| Skip reason | When |
-| --- | --- |
-| `invalid`, `too_many`, `taken` | As on the person page |
-| `stale` | The lookup's plugin was replaced, revoked or deleted since it ran |
-| `person_changed` | The entry now links another person, such as the target of a merge or a new person after a deletion |
-
-| Rejected | Why |
-| --- | --- |
-| Applying to whoever the entry links at apply time | A face fetched for a person merged away would land on the merge target |
-| A lookup item that links its entry on its own | A role the owner left unselected would gain a person |
-| Work-info profile first | The person plugin is the source the owner chose for people |
-
-## The work-info comparison shows each lookup under its person
-
-When the work-info fetch answers, the video page's comparison opens and
-requests the planned lookups one after another, in plan order, each after the
-previous one answers;
-[`usePersonLookups`](../../web/src/player/workInfoFetch/usePersonLookups.ts)
-keeps that queue, and `Try again` on a failed lookup joins it. Each lookup is
-a block inside its first entry's role row, under the chips and fill lines,
-and draws `PersonCompare` without its column headings; each of its cells
-keeps its `Now` or `Fetched` label, since the block sits inside one column. A
-later role row sharing the lookup, and an entry over the limit, get a
-one-line note instead of a block. The placement and the apply's
-`personLookups` are computed by
-[`lookupRules.ts`](../../web/src/player/workInfoFetch/lookupRules.ts).
-
-A looked-up person keeps the fill line of its work-info profile, worded
-`Fills what the lookup leaves empty`, because the apply fills the person's
-still-empty fields from that profile after the lookup's items, and does so
-when the lookup failed or was left out too. An entry over the limit keeps
-`Fills only empty fields`.
-
-A lookup's items are enabled while one of its entries' role rows is checked,
-because they apply only through that role. A role row whose people are all on
-the video becomes selectable, and is checked once, when a lookup of one of
-its entries has something to apply. `Apply selected` does not wait for the
-lookups: a lookup still running is left out, and a toast counts it when a
-checked role row links it or its role row could not be chosen yet. A lookup
-that answers `plugin_changed` says so without `Try again`. The apply holds
-the fetch while it runs, so a lookup answering `work_info_fetch_stale` then
-does not mark the result stale; when the apply fails without
-`work_info_fetch_stale`, the server has restored the fetch and those lookups
-are requested again.
-
-```mermaid
-flowchart LR
-  fetch[Fetch answers] --> open[Comparison opens]
-  open --> next[Request the next lookup]
-  next -->|result| rows[Block shows its rows]
-  next -->|failure| retry[Reason and Try again]
-  rows --> next
-  retry --> next
-  open --> apply[Apply selected]
-  apply --> body[Checked items of shown lookups with a checked role]
-```
-
-| Rejected | Why |
-| --- | --- |
-| Requesting every lookup at once | The runtime runs one module at a time, so the rest would answer `plugin_busy` |
-| Disabling `Apply selected` until the last lookup answers | Five lookups can take 2.5 minutes, and the work information is ready after one run |
-| A top-level comparison row per person | A performer's birth date would sit beside the video's title |
+| Looking the people up during the work-info fetch, then showing each result inside the video's comparison | Five lookups took up to 2.5 minutes one at a time, the comparison changed while the owner read it, and a person's rows nested in a role row were hard to read and to choose |
+| An automatic lookup switch on person plugins | Without lookups nothing reads it |
