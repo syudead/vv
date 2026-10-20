@@ -70,7 +70,7 @@ key falls back to a virtual value.
 | Played, favorited, random, tags, people, tag kind, added within | Unchanged, they read the user key or `videos.id` |
 | Duration range | Excluded, as a video of unknown duration is |
 | Playable only | Excluded |
-| Search | `instr` on `virtual_videos.search_key` for every term |
+| Search | Each term matches `instr` on `virtual_videos.search_key`, or, for the owner, the tag, work code, person and organization condition file videos already use |
 
 **Rationale**: Search on virtual rows uses substring matching instead of a
 second FTS table: a trigram match and `instr` return the same rows, and the
@@ -183,8 +183,9 @@ video, so the owner can open its page from the playlist.
 
 ## R-10: Virtual videos stay out of version bundles
 
-**Decision**: Bundle, make-representative and duplicate-judging operations
-reject a virtual video with `409 virtual_video`.
+**Decision**: Every operation that bundles, unbundles, makes a representative
+or dismisses a version pair, including `POST /api/organize/bundle`, rejects a
+virtual video with `409 virtual_video`.
 
 **Rationale**: A bundle chooses a representative file to play, and a virtual
 video has no fingerprints, so it is never a duplicate candidate; merging

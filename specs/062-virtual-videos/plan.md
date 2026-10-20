@@ -119,7 +119,7 @@ Updates `catalog-organization.md`, `running-vv.md` and `ARCHITECTURE.md`.
 
 **Acceptance**: Store tests against SQLite (the contract is SQL) show: a
 created virtual video is listed and found by a title term for the owner, for a
-guest only when public, and never in a folder read; it remains after a manual
+guest only when public, and by a tag name for the owner only, and never in a folder read; it remains after a manual
 scan removes missing locations, and its projected row is recreated after the
 row is deleted and startup runs; each sort places it by the values in R-3;
 deleting it removes its tags, favorite, public flag, playlist items and work
@@ -131,7 +131,7 @@ added or changed exceeds complexity 25.
 **Scope**: `Video.virtual` and the field values, `POST /api/virtual-videos`,
 `DELETE /api/videos/{id}`, `contentVersion` on details and display-name saves,
 guest `workInfo` subset, `kind` on `GET /api/videos`, and `409 virtual_video`
-on bundle operations ([contracts/screen-api.md](contracts/screen-api.md),
+on every version-bundle operation, `POST /api/organize/bundle` included ([contracts/screen-api.md](contracts/screen-api.md),
 [R-5](research.md#r-5-guests-read-description-and-links),
 [R-6](research.md#r-6-optimistic-check-by-contentversion),
 [R-10](research.md#r-10-virtual-videos-stay-out-of-version-bundles)). New error

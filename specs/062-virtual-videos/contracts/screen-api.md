@@ -104,6 +104,7 @@ screen and the player show that nothing can be played when it is `0`
 
 ## Version-bundle operations
 
-`POST /api/video-bundles`, `make-representative` and `unbundle` answer
-`409 virtual_video` when any video in the request is virtual
+`POST /api/video-bundles`, `POST /api/organize/bundle`,
+`POST /api/version-candidates/dismiss`, `make-representative` and `unbundle`
+answer `409 virtual_video` when any video in the request is virtual
 ([research R-10](../research.md#r-10-virtual-videos-stay-out-of-version-bundles)).
