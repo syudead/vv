@@ -2,7 +2,8 @@
 
 A force rescan reads the library, one media folder or one video again and
 rebuilds the metadata, thumbnail, seek sprite, hover preview and fingerprint of
-every video it reaches, even when the file is unchanged
+every video it reaches, even when the file is unchanged, then judges its
+duplicates and runs auto-tagging and face analysis on it again
 ([`internal/app/scans.go`](../../internal/app/scans.go),
 [`internal/scanner/rescan.go`](../../internal/scanner/rescan.go)).
 
@@ -16,6 +17,7 @@ flowchart LR
   pass --> jobs[Forced jobs]
   jobs --> stages[Import stages]
   stages --> judge[Duplicate judging]
+  stages --> follow[Auto-tagging and face analysis]
 ```
 
 ## A force rescan is a manual scan with a scope
@@ -113,9 +115,23 @@ up afterwards keeps the edit's `done` state.
 | Reset the stage states to `pending` | The screen sends a thumbnail URL only for a `done` state, so every card would lose its thumbnail during the rescan |
 | Queue jobs without a scan row for the `video` scope | A missing file would need a second way to be reported, and a running manual scan would not refuse it |
 
-A forced `seek_thumbnail` stage queues neither auto-tagging nor face analysis:
-the owner re-runs tagging with `Tag all videos again`
-([auto-tagging](auto-tagging.md)).
+## Tagging and face analysis run again
+
+The transaction that records a forced `seek_thumbnail` job's final result,
+done or given up, queues the video for auto-tagging while `Use auto-tagging`
+is on and for face analysis while `face.enabled` is on, even when an earlier
+run finished. It queues them as `Tag all videos again` and the face `all` run
+do: a running or already queued row is not moved, and a rejected tag is never
+asked about again ([auto-tagging](auto-tagging.md),
+[face recognition](face-recognition.md#the-face-queue-mirrors-the-auto-tagging-queue)).
+Each entry is the owner's, because the owner started the rescan, and joins the
+pipeline of the forced job's `import` entry, as after an import
+([activity](activity.md#a-pipeline-groups-one-import-run)).
+
+| Rejected | Why |
+| --- | --- |
+| Queue nothing and leave tagging to `Tag all videos again` | A rescan after an app update would leave tags and faces judged on the old artifacts until the owner ran each again |
+| Require `Tag new videos automatically` too | That switch decides what happens after an import the owner did not ask for; the rescan is the owner's request |
 
 ## An unchanged file is read again
 

@@ -1207,7 +1207,7 @@ paths:
     post:
       operationId: startRescan
       summary: "Start a force rescan"
-      description: "Owner-only. Starts a manual scan in force mode over the library, one media folder or one video: every video in the scope is read again and its probe, thumbnail, seek thumbnail, preview and fingerprint are rebuilt even when the file is unchanged. A running watch scan is superseded first. A running manual scan or force rescan returns 409 scan_in_progress, no media folder returns 409 media_folders_not_configured, a missing folder or video returns 404 not_found, and an unknown scope or a target that does not match it returns 400 invalid_request. Responds immediately while the rescan runs in the background."
+      description: "Owner-only. Starts a manual scan in force mode over the library, one media folder or one video: every video in the scope is read again and its probe, thumbnail, seek thumbnail, preview and fingerprint are rebuilt even when the file is unchanged, and auto-tagging and face analysis run on it again while each feature is on. A running watch scan is superseded first. A running manual scan or force rescan returns 409 scan_in_progress, no media folder returns 409 media_folders_not_configured, a missing folder or video returns 404 not_found, and an unknown scope or a target that does not match it returns 400 invalid_request. Responds immediately while the rescan runs in the background."
       requestBody:
         required: true
         content:

@@ -230,8 +230,7 @@ func (s *IngestStore) setStageStateForJob(
 		}
 		c.jobsQueued(next...)
 	}
-	// A forced seek stage belongs to a rescan, which re-runs the import stages only (docs/design-docs/auto-tagging.md).
-	if kind == domain.JobSeekThumbnail && !job.Force {
+	if kind == domain.JobSeekThumbnail {
 		if err := queueAfterSeekStage(ctx, tx, &c, job, time.Now()); err != nil {
 			return false, err
 		}

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"slices"
 	"testing"
@@ -144,41 +145,95 @@ func TestProbeResultPassesItsForceToThePreview(t *testing.T) {
 	assertForceRows(t, db, domain.JobPreview, ordinary, forceRow{state: domain.JobQueued})
 }
 
-func TestForcedSeekStageQueuesNoFollowUpProcess(t *testing.T) {
-	for _, seekFails := range []bool{false, true} {
-		name := "seek-done"
-		if seekFails {
-			name = "seek-failed"
+// finishFollowUps records both follow-up processes of the content as done, as after an earlier import.
+func finishFollowUps(t *testing.T, db *DB, contentKey string) {
+	t.Helper()
+	for _, statement := range []string{
+		`insert into auto_tag_queue (content_key, state, error, queued_at, updated_at) values (?, 'done', '', 0, 0)
+			on conflict (content_key) do update set state = 'done', activity_id = null`,
+		`insert into face_queue (content_key, state, updated_at) values (?, 'done', 0)
+			on conflict (content_key) do update set state = 'done', activity_id = null`,
+	} {
+		if _, err := db.sql.Exec(statement, contentKey); err != nil {
+			t.Fatal(err)
 		}
-		t.Run(name, func(t *testing.T) {
+	}
+}
+
+// A forced seek stage, from a force rescan, queues auto-tagging and face analysis again over a done row whenever
+// each feature is on, "Tag new videos automatically" or not, joins the forced import's pipeline and keeps the
+// owner's tags and rejections.
+func TestForcedSeekStageQueuesFollowUpsAgain(t *testing.T) {
+	cases := []struct {
+		name      string
+		seekFails bool
+		on        bool
+	}{
+		{name: "seek done", on: true},
+		{name: "seek failed", seekFails: true, on: true},
+		{name: "features off"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
 			db := migratedDB(t)
 			ctx := context.Background()
-			saveAutoTagSwitches(t, db, true, true)
+			saveAutoTagSwitches(t, db, tc.on, false)
 			if err := db.Settings().SaveFaceSettings(ctx, domain.FaceSettings{
-				Enabled: true, Recognizer: domain.FaceRecognizerArcFaceR50,
+				Enabled: tc.on, Recognizer: domain.FaceRecognizerArcFaceR50,
 			}); err != nil {
 				t.Fatal(err)
 			}
-			videoID := queueNewFile(t, db, name, domain.ActivityByRule)
-			for _, kind := range []domain.JobKind{domain.JobProbe, domain.JobThumbnail, domain.JobPreview} {
-				runImportStage(t, db, kind)
+			videoID := importThroughSeek(t, db, "clip", false)
+			runImportStage(t, db, domain.JobFingerprint)
+			const key = "key-clip"
+			finishFollowUps(t, db, key)
+			owner := createTestTag(t, db, "owner")
+			rejected := createTestTag(t, db, "rejected")
+			if _, err := db.Tags().ApplyVideoTags(ctx, []domain.VideoRef{{ID: videoID}}, domain.VideoTagsAdd,
+				[]string{"owner"}, false); err != nil {
+				t.Fatal(err)
 			}
+			if _, err := db.sql.Exec(`insert into auto_tag_rejections (content_key, tag_id, rejected_at) values (?, ?, 0)`,
+				key, rejected.ID); err != nil {
+				t.Fatal(err)
+			}
+
 			forceJobs(t, db, videoID, domain.JobSeekThumbnail)
-			if seekFails {
+			if tc.seekFails {
 				giveUpStage(t, db, domain.JobSeekThumbnail, errors.New("ffmpeg failed"))
 			} else {
 				runImportStage(t, db, domain.JobSeekThumbnail)
 				assertForceRows(t, db, domain.JobFingerprint, videoID, queuedForced)
 			}
 
+			pipeline := onlyPipeline(t, db, importEntries(t, db)[0].ID)
 			for _, table := range []string{"auto_tag_queue", "face_queue"} {
-				var count int
-				if err := db.sql.QueryRow(`select count(*) from ` + table).Scan(&count); err != nil {
+				var state string
+				var activityID sql.NullInt64
+				if err := db.sql.QueryRow(`select state, activity_id from `+table+` where content_key = ?`, key).
+					Scan(&state, &activityID); err != nil {
 					t.Fatal(err)
 				}
-				if count != 0 {
-					t.Errorf("%s rows = %d, want none after a forced seek stage", table, count)
+				if !tc.on {
+					if state != "done" || activityID.Valid {
+						t.Errorf("%s row = %s, entry %v; want done and untouched while the feature is off",
+							table, state, activityID)
+					}
+					continue
 				}
+				entry := activityEntry(t, db, activityID.Int64)
+				if state != "queued" || entryState(entry) != activityWaiting || entry.Decider != domain.ActivityByOwner {
+					t.Errorf("%s row = %s, entry %+v; want queued with a waiting entry by the owner", table, state, entry)
+				}
+				if got := onlyPipeline(t, db, entry.ID); got.ID != pipeline.ID {
+					t.Errorf("%s pipeline = %d, want the forced import's pipeline %d", table, got.ID, pipeline.ID)
+				}
+			}
+			var kept int
+			if err := db.sql.QueryRow(`select (select count(*) from video_tags where content_key = ?1 and tag_id = ?2)
+				+ (select count(*) from auto_tag_rejections where content_key = ?1 and tag_id = ?3)`,
+				key, owner.ID, rejected.ID).Scan(&kept); err != nil || kept != 2 {
+				t.Errorf("owner tag and rejection kept = %d, %v; want both", kept, err)
 			}
 		})
 	}
