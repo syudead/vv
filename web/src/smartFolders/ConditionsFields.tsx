@@ -1,12 +1,4 @@
-import {
-  Building2,
-  Plus,
-  Shapes,
-  Tag as TagIcon,
-  TriangleAlert,
-  User,
-  X,
-} from "lucide-react";
+import { Building2, Plus, Shapes, Tag as TagIcon, TriangleAlert, X } from "lucide-react";
 import { type ReactNode, useEffect, useId, useState } from "react";
 
 import { isAborted } from "../api/client";
@@ -19,10 +11,11 @@ import {
   subscribeTagKinds,
   type TagKind,
 } from "../api/tagKinds";
+import { creditFace } from "../credits/creditFace";
 import { t, type UiText } from "../i18n";
 import { foldForMatch } from "../lib/foldForMatch";
 import { AddedSelect, LengthSelect } from "../library/AddedLengthSelects";
-import { useCreditName, useTagNames } from "../library/filterNames";
+import { useCreditRef, useTagNames } from "../library/filterNames";
 import { buildAddOptions } from "../library/tagChoices";
 import TagKindSelect from "../library/TagKindSelect";
 import { Badge } from "../ui/shadcn/badge";
@@ -376,7 +369,8 @@ function CreditChip({
   onRemove: () => void;
 }) {
   const [gone, setGone] = useState(false);
-  const name = useCreditName(kind, id, () => setGone(true));
+  const credit = useCreditRef(kind, id, () => setGone(true));
+  const name = credit?.name;
   const deleted = missing || gone;
   const removeLabel =
     deleted || name === undefined
@@ -387,7 +381,11 @@ function CreditChip({
   return (
     <ConditionChip
       icon={
-        kind === "person" ? <User aria-hidden="true" /> : <Building2 aria-hidden="true" />
+        kind === "person" ? (
+          creditFace(kind, credit, "token")
+        ) : (
+          <Building2 aria-hidden="true" />
+        )
       }
       name={name}
       deleted={deleted ? t.smartFolders.condition.deleted(kind) : undefined}
@@ -436,6 +434,7 @@ function CreditConditionPicker({
   const choices: CreditChoice[] = items.map((credit) => ({
     id: String(credit.id),
     label: credit.name,
+    leading: creditFace(kind, credit, "option"),
   }));
   const folded = foldForMatch(trimmed);
   const exact = items.find((credit) => foldForMatch(credit.name) === folded);

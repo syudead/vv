@@ -16,7 +16,15 @@ import { creditDisplayName } from "../../credits/displayName";
  * Save. A provisional person's chip has no name; a naming chip carries the name Save gives it.
  */
 export type Chip =
-  | { key: string; id: number; name: string; provisional?: boolean; naming?: boolean }
+  | {
+      key: string;
+      id: number;
+      name: string;
+      provisional?: boolean;
+      naming?: boolean;
+      /** The person's face revision, so the chip shows the face; absent without one. */
+      imageRevision?: number;
+    }
   | { key: string; newKey: string; name: string };
 
 export interface LinkRow {
@@ -76,6 +84,7 @@ export function draftFromVideo(video: Video): Draft {
       id: entry.person.id,
       name: entry.person.name,
       ...(entry.provisional && { provisional: true }),
+      ...(entry.imageRevision !== undefined && { imageRevision: entry.imageRevision }),
     });
   }
   const organizations: Draft["organizations"] = { maker: [], label: [] };
@@ -163,7 +172,16 @@ export function withNamed(draft: Draft, id: number, name: string): Draft {
   const people = { ...draft.people };
   for (const role of workPersonRoles) {
     people[role] = people[role].map((chip) =>
-      !isNewChip(chip) && chip.id === id ? { key: chip.key, id, name } : chip,
+      !isNewChip(chip) && chip.id === id
+        ? {
+            key: chip.key,
+            id,
+            name,
+            ...(chip.imageRevision !== undefined && {
+              imageRevision: chip.imageRevision,
+            }),
+          }
+        : chip,
     );
   }
   return { ...draft, people };

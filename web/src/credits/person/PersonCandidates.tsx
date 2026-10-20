@@ -55,7 +55,7 @@ export interface CandidateActions {
   onGone: () => void;
 }
 
-/** `Same person?`: one row per pair, decided in place. */
+/** `Same person?`: one row per pair, decided in place, as the rows of the caller's section. */
 export function PersonCandidates({
   personId,
   items,
@@ -65,22 +65,14 @@ export function PersonCandidates({
   items: readonly FaceCandidate[];
   actions: CandidateActions;
 }) {
-  if (items.length === 0) return null;
-  return (
-    <section className="flex flex-col gap-2 text-sm">
-      <h2 className="text-sm font-semibold">{text.heading}</h2>
-      <ul className="flex flex-col gap-2">
-        {items.map((item) => (
-          <CandidateRow
-            key={item.person.id}
-            personId={personId}
-            candidate={item}
-            actions={actions}
-          />
-        ))}
-      </ul>
-    </section>
-  );
+  return items.map((item) => (
+    <CandidateRow
+      key={item.person.id}
+      personId={personId}
+      candidate={item}
+      actions={actions}
+    />
+  ));
 }
 
 type Pending = "confirm" | "dismiss" | null;
@@ -137,7 +129,7 @@ function CandidateRow({
     },
   ] as const;
   return (
-    <li className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2">
       <div className="flex items-center gap-2">
         <PersonFace
           shape="judge"
@@ -181,6 +173,6 @@ function CandidateRow({
         ))}
       </div>
       {error !== null && <p className="text-sm text-destructive">{error}</p>}
-    </li>
+    </div>
   );
 }

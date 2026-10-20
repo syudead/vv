@@ -1,11 +1,9 @@
 import { t } from "@/i18n";
-import { CardGrid } from "@/ui/patterns/card-grid";
 import { FactList } from "@/ui/patterns/fact-list";
-import { PageHeader } from "@/ui/patterns/page-header";
 import { ProfilePage } from "@/ui/patterns/profile-page";
+import { Shelf, ShelfItem } from "@/ui/patterns/shelf";
 import { PersonFace } from "@/ui/PersonFace";
 import { Button } from "@/ui/shadcn/button";
-import { ToggleGroup, ToggleGroupItem } from "@/ui/shadcn/toggle-group";
 
 // registry:block profile-page-example. See web/registry/rules/patterns.md, Profile page.
 
@@ -23,8 +21,21 @@ export function ProfilePageExample() {
       face={<PersonFace name={p.profilePageName} shape="profile" />}
       identity={
         <>
-          <h1 className="line-clamp-3 text-xl font-semibold">{p.profilePageName}</h1>
-          <p className="text-sm text-muted-foreground">{p.profilePageAliases}</p>
+          <div className="flex flex-col gap-1">
+            <h1 className="line-clamp-3 text-xl font-semibold">{p.profilePageName}</h1>
+            <p className="text-sm text-muted-foreground">{p.profilePageAliases}</p>
+          </div>
+          <dl className="flex flex-wrap gap-x-8 gap-y-3">
+            {[
+              { term: p.profilePageAge, value: p.profilePageAgeValue },
+              { term: p.profilePageHeight, value: p.profilePageHeightValue },
+            ].map((figure) => (
+              <div key={figure.term} className="flex flex-col-reverse gap-0.5">
+                <dt className="text-xs text-muted-foreground">{figure.term}</dt>
+                <dd className="text-lg font-semibold tabular-nums">{figure.value}</dd>
+              </div>
+            ))}
+          </dl>
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm">
               {p.profilePageEdit}
@@ -32,53 +43,30 @@ export function ProfilePageExample() {
           </div>
         </>
       }
-      details={
-        <section className="flex flex-col gap-2 text-sm">
-          <h2 className="text-sm font-semibold">{p.profilePageGroup}</h2>
-          <FactList
-            facts={[
-              { id: "born", term: p.profilePageBorn, value: p.profilePageBornValue },
-              {
-                id: "height",
-                term: p.profilePageHeight,
-                value: p.profilePageHeightValue,
-              },
-            ]}
-          />
-        </section>
-      }
-      header={
-        <PageHeader
-          title={p.profilePageVideos}
-          headingLevel={2}
-          count={p.profilePageCount}
+      facts={
+        <FactList
+          facts={[{ id: "born", term: p.profilePageBorn, value: p.profilePageBornValue }]}
         />
       }
-      toolbar={
-        <ToggleGroup
-          type="single"
-          variant="outline"
-          size="sm"
-          aria-label={p.profilePageRoles}
-          defaultValue="all"
-        >
-          <ToggleGroupItem value="all" className="flex-none px-3">
-            {p.profilePageAll}
-          </ToggleGroupItem>
-          <ToggleGroupItem value="director" className="flex-none px-3">
-            {p.profilePageDirector}
-          </ToggleGroupItem>
-        </ToggleGroup>
-      }
     >
-      <CardGrid size={0}>
+      <Shelf
+        title={p.profilePagePerformer}
+        count={p.profilePageCount}
+        action={
+          <Button variant="ghost" size="sm">
+            {p.profilePageSeeAll}
+          </Button>
+        }
+      >
         {titles.map((title) => (
-          <div key={title} className="flex flex-col gap-2">
-            <span className="aspect-video w-full rounded-md bg-card" />
-            <span className="truncate text-sm font-medium">{title}</span>
-          </div>
+          <ShelfItem key={title}>
+            <div className="flex flex-col gap-2">
+              <span className="aspect-video w-full rounded-md bg-card" />
+              <span className="truncate text-sm font-medium">{title}</span>
+            </div>
+          </ShelfItem>
         ))}
-      </CardGrid>
+      </Shelf>
     </ProfilePage>
   );
 }

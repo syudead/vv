@@ -1,13 +1,14 @@
-import { Building2, Shapes, Tag as TagIcon, User, X } from "lucide-react";
+import { Building2, Shapes, Tag as TagIcon, X } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 
 import type { CreditKind } from "../api/credits";
 import { compareNatural } from "../api/tagOrder";
+import { creditFace } from "../credits/creditFace";
 import { t } from "../i18n";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { Toggle } from "../ui/shadcn/toggle";
 import { type CreditFilter, creditKinds } from "./creditCriteria";
-import { useCreditName, useTagNames } from "./filterNames";
+import { useCreditRef, useTagNames } from "./filterNames";
 
 export interface ActiveTagFiltersProps {
   tagIds: readonly number[];
@@ -86,13 +87,13 @@ function CreditChip({
   id: number;
   onGone: (kind: CreditKind) => void;
 }) {
-  const name = useCreditName(kind, id, onGone);
+  const credit = useCreditRef(kind, id, onGone);
   const person = kind === "person";
   return (
     <FilterChip
       {...rest}
-      icon={person ? <User aria-hidden="true" /> : <Building2 aria-hidden="true" />}
-      name={name}
+      icon={person ? creditFace(kind, credit, "token") : <Building2 aria-hidden="true" />}
+      name={credit?.name}
       unnamedLabel={
         person
           ? t.library.activeTags.removePerson

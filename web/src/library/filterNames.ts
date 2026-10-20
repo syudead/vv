@@ -50,23 +50,47 @@ export function useTagNames(tagIds: readonly number[]): Map<number, Tag> {
   return new Map((allTags ?? []).map((tag) => [tag.id, tag]));
 }
 
+/** A credit's display name and face revision, as filter chips show it. */
+export interface ShownCredit {
+  id: number;
+  name: string;
+  imageRevision?: number;
+}
+
 /** Return undefined while loading; only a 404 calls onGone, while other failures keep the skeleton. */
-export function useCreditName(
+export function useCreditRef(
   kind: CreditKind,
   id: number,
   onGone: (kind: CreditKind) => void,
-): string | undefined {
-  const [loaded, setLoaded] = useState<{ kind: CreditKind; id: number; name: string }>();
+): ShownCredit | undefined {
+  const [loaded, setLoaded] = useState<{ kind: CreditKind; ref: ShownCredit }>();
   const gone = useEffectEvent(() => onGone(kind));
   useEffect(() => {
     const controller = new AbortController();
     getCredit(kind, id, controller.signal)
-      .then((credit) => setLoaded({ kind, id, name: creditDisplayName(credit) }))
+      .then((credit) =>
+        setLoaded({
+          kind,
+          ref: {
+            id,
+            name: creditDisplayName(credit),
+            ...("imageRevision" in credit && { imageRevision: credit.imageRevision }),
+          },
+        }),
+      )
       .catch((failure: unknown) => {
         if (controller.signal.aborted) return;
         if (failure instanceof RequestFailed && failure.status === 404) gone();
       });
     return () => controller.abort();
   }, [kind, id]);
-  return loaded?.kind === kind && loaded.id === id ? loaded.name : undefined;
+  return loaded?.kind === kind && loaded.ref.id === id ? loaded.ref : undefined;
+}
+
+export function useCreditName(
+  kind: CreditKind,
+  id: number,
+  onGone: (kind: CreditKind) => void,
+): string | undefined {
+  return useCreditRef(kind, id, onGone)?.name;
 }

@@ -160,7 +160,10 @@ export function personImagePath(id: number, revision?: number): string {
 }
 
 /** The person's face URL, or undefined without a face. */
-export function personFaceSrc(person: Person): string | undefined {
+export function personFaceSrc(person: {
+  id: number;
+  imageRevision?: number;
+}): string | undefined {
   return person.imageRevision === undefined
     ? undefined
     : personImagePath(person.id, person.imageRevision);

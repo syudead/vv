@@ -12,6 +12,7 @@ import ScanProgressIndicator from "../shell/ScanProgressIndicator";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
+import { isPersonFacesPath } from "../credits/person/personPath";
 import { isPersonEditPath } from "../lib/personEditPath";
 import { isVideoEditPath } from "../lib/videoEditPath";
 import { OnboardingGate } from "../onboarding/OnboardingGate";
@@ -30,7 +31,14 @@ const PeoplePage = await deferredRoute(
 );
 const PersonPage = await deferredRoute(
   () => import("../credits/person/PersonPage"),
-  (pathname) => matchesBelowPath(pathname, "/people") && !isPersonEditPath(pathname),
+  (pathname) =>
+    matchesBelowPath(pathname, "/people") &&
+    !isPersonEditPath(pathname) &&
+    !isPersonFacesPath(pathname),
+);
+const PersonFacesPage = await deferredRoute(
+  () => import("../credits/person/PersonFacesPage"),
+  isPersonFacesPath,
 );
 const PersonEditPage = await deferredRoute(
   () => import("../credits/person/edit/PersonEditPage"),
@@ -147,6 +155,14 @@ function AppRoutes() {
             element={
               <AppShell>
                 <PersonPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/people/:id/faces"
+            element={
+              <AppShell>
+                <PersonFacesPage />
               </AppShell>
             }
           />

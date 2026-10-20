@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "shelf",
+  "title": "Shelf",
+  "description": "Section: a heading with a count and See all over one row of card-0 cards that scrolls sideways.",
+  "files": [
+    {
+      "path": "src/ui/patterns/shelf.tsx",
+      "content": "import type { ReactNode } from \"react\";\n\nimport { PageHeader } from \"./page-header\";\n\n// One row of cards under a heading that scrolls sideways; see web/registry/rules/patterns.md, Sections.\n\nexport interface ShelfProps {\n  /** The heading (`h2`). */\n  title: ReactNode;\n  /** The number of items, after the heading. */\n  count?: ReactNode;\n  /** One `ghost` `sm` action that shows every item, such as `See all`. */\n  action?: ReactNode;\n  /** `ShelfItem`s, or one state block. */\n  children: ReactNode;\n}\n\nexport function Shelf({ title, count, action, children }: ShelfProps) {\n  return (\n    <section data-slot=\"shelf\" className=\"flex min-w-0 flex-col gap-3\">\n      <PageHeader title={title} headingLevel={2} count={count} actions={action} />\n      <ul className=\"-mx-1 flex snap-x gap-3 overflow-x-auto px-1 pb-2\">{children}</ul>\n    </section>\n  );\n}\n\n/** One card in a shelf, `card-0` wide. */\nexport function ShelfItem({ children }: { children: ReactNode }) {\n  return <li className=\"w-card-0 shrink-0 snap-start\">{children}</li>;\n}\n",
+      "type": "registry:ui"
+    }
+  ],
+  "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+  "type": "registry:ui"
+}

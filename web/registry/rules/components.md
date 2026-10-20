@@ -420,7 +420,7 @@ Do not use the `favorite` colour or a heart for anything else.
 
 ### PersonFace
 
-Item `person-face`. A person's face in one of six frames, or the placeholder
+Item `person-face`. A person's face in one of eight frames, or the placeholder
 in the same frame, so a row that mixes both keeps one height:
 
 | Shape     | Frame                                       | Where                                                                     |
@@ -428,6 +428,8 @@ in the same frame, so a row that mixes both keeps one height:
 | `card`    | Full width, `aspect-square`, `rounded-full` | A card of the people grid                                                 |
 | `profile` | Full width, `aspect-portrait`, `rounded-md` | The person page's profile column                                          |
 | `chip`    | `size-5`, `rounded-full`, a `text-sm` line  | Next to a name in the video page's cast                                   |
+| `token`   | `size-6`, `rounded-full`                    | At the start of a chosen person's chip or filter, before the name         |
+| `option`  | `size-8`, `rounded-full`                    | At the start of a person's row in a picker's candidate list               |
 | `compare` | `size-8`, `rounded-full`                    | A fetched person in a comparison                                          |
 | `judge`   | `size-12`, `rounded-full`                   | A person in a row where the owner decides whether two people are the same |
 | `scene`   | `size-12`, `rounded-md`                     | A face cut from a video; square, so it reads as a frame of the video      |
@@ -527,9 +529,11 @@ keys picks (`onCommitSpelling`).
 
 `CreditCommand` alone takes an optional second group (`group`): rows under a
 heading, after the name results and before the create row in the list below
-the input. A row may lead with a `PersonFace chip` (`leading`) and draw its
+the input. A row may lead with a `PersonFace option` (`leading`) and draw its
 label in `muted-foreground` (`quiet`), as the `Unnamed people` group of the
-`Performers` picker does for people without a name. A group with no rows draws
+`Performers` picker does for people without a name. Every person row of a
+picker leads with its `PersonFace option`, so a person is chosen by face as
+well as by name. A group with no rows draws
 no heading.
 
 Do not use either for values other than tag names and the names of people and

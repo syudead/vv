@@ -41,7 +41,7 @@ export default function PersonFetchEntry({
   return (
     <>
       {plugins.length > 0 && (
-        <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+        <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
           <UserRoundSearch aria-hidden="true" />
           {t.credits.personPage.pluginFetch.entry}
         </Button>
