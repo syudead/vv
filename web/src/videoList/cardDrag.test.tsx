@@ -1,50 +1,40 @@
-import type { UseDraggableArguments } from "@dnd-kit/core";
 import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { t } from "../i18n";
 import { CardDragLayer, DraggableCard } from "./cardDrag";
 
-const registered = vi.hoisted(() => [] as string[]);
-
-// Each DraggableCard render registers its card once, so the ids show which cards rendered.
-vi.mock("@dnd-kit/core", async (importOriginal) => {
-  const core = await importOriginal<typeof import("@dnd-kit/core")>();
-  return {
-    ...core,
-    useDraggable: (args: UseDraggableArguments) => {
-      registered.push(String(args.id));
-      return core.useDraggable(args);
-    },
-  };
-});
-
-function list(keys: readonly string[]) {
-  return (
-    <CardDragLayer
-      order={keys}
-      liftedFor={(key) => [key]}
-      reorder={false}
-      nameOf={(key) => key}
-      preview={(key) => key}
-      onDrop={vi.fn()}
-      instructions={t.organize.instructions}
-    >
-      {keys.map((key) => (
-        <DraggableCard key={key} id={key}>
-          <span>{key}</span>
-        </DraggableCard>
-      ))}
-    </CardDragLayer>
-  );
+/** Not memoized, so it renders whenever its DraggableCard renders with a new element. */
+function Face({ label, onRender }: { label: string; onRender: (label: string) => void }) {
+  onRender(label);
+  return <span>{label}</span>;
 }
 
 describe("DraggableCard", () => {
-  it("renders only the added card when the list grows", () => {
+  it("skips loaded cards that receive equal fresh card elements", () => {
+    const renders = new Set<string>();
+    const count = (label: string) => renders.add(label);
+    const list = (keys: readonly string[]) => (
+      <CardDragLayer
+        order={keys}
+        liftedFor={(key) => [key]}
+        reorder={false}
+        nameOf={(key) => key}
+        preview={(key) => key}
+        onDrop={vi.fn()}
+        instructions={t.organize.instructions}
+      >
+        {keys.map((key) => (
+          <DraggableCard key={key} id={key}>
+            <Face label={key} onRender={count} />
+          </DraggableCard>
+        ))}
+      </CardDragLayer>
+    );
     const { rerender } = render(list(["a", "b"]));
-    registered.length = 0;
+    renders.clear();
 
     rerender(list(["a", "b", "c"]));
-    expect(new Set(registered)).toEqual(new Set(["c"]));
+    expect(renders).toEqual(new Set(["c"]));
   });
 });

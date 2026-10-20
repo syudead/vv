@@ -7,6 +7,7 @@ import {
   DndContext,
   type DragEndEvent,
   DragOverlay,
+  type DraggableSyntheticListeners,
   type DragStartEvent,
   type DroppableContainer,
   KeyboardSensor,
@@ -14,7 +15,6 @@ import {
   PointerSensor,
   type PointerSensorOptions,
   type PointerSensorProps,
-  pointerWithin,
   TouchSensor,
   type TouchSensorOptions,
   type UniqueIdentifier,
@@ -41,9 +41,11 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
 
@@ -60,6 +62,7 @@ import {
   signFor,
   zoneOf,
 } from "./cardDragRules";
+import { createGridCards, createKeyedStore } from "./gridDrag";
 import { keyboardSensorOptions, touchSensorOptions, verticalOnly } from "./reorder";
 
 // Owner-only drag layer; screens own server mutations. Cards support pointer drops, while list handles also support keyboard reordering.
@@ -117,6 +120,18 @@ interface CrumbData {
   refused: boolean;
 }
 
+function containsPoint(
+  rect: Pick<ClientRect, "top" | "left" | "bottom" | "right">,
+  point: { x: number; y: number },
+): boolean {
+  return (
+    point.x >= rect.left &&
+    point.x <= rect.right &&
+    point.y >= rect.top &&
+    point.y <= rect.bottom
+  );
+}
+
 /**
  * Measure current breadcrumb bounds; sticky positioning invalidates lift-time bounds plus scroll
  * offsets.
@@ -130,13 +145,7 @@ function crumbAt(
     const node = container.node.current;
     if (!isCrumb(container.id) || node === null) continue;
     const box = node.getBoundingClientRect();
-    const within =
-      box.width > 0 &&
-      pointer.x >= box.left &&
-      pointer.x <= box.right &&
-      pointer.y >= box.top &&
-      pointer.y <= box.bottom;
-    if (!within) continue;
+    if (box.width <= 0 || !containsPoint(box, pointer)) continue;
     const data = container.data.current as CrumbData | undefined;
     const rect = {
       top: box.top,
@@ -179,6 +188,92 @@ const LayerContext = createContext<LayerValue>({
   held: null,
   attached: null,
 });
+
+/** The layer's one dnd-kit draggable; grid cards point it at themselves when pressed. */
+const gridSourceId = "grid\0source";
+
+type GridMarks = Pick<CardDragBinding, "lifted" | "sign" | "axis" | "attachment">;
+type GridPress = ReactPointerEvent<HTMLElement> | ReactTouchEvent<HTMLElement>;
+
+function gridMarks(key: string, layer: LayerValue): GridMarks {
+  const marks = layerMarks(key, layer);
+  // The axis matters only where a sign shows, so other cards ignore axis changes.
+  return marks.sign === null ? { ...marks, axis: "x" } : marks;
+}
+
+function sameMarks(previous: GridMarks, next: GridMarks): boolean {
+  return (
+    previous.lifted === next.lifted &&
+    previous.sign === next.sign &&
+    previous.axis === next.axis &&
+    previous.attachment === next.attachment
+  );
+}
+
+function createGrid(initial: LayerValue) {
+  let source: {
+    listeners: DraggableSyntheticListeners;
+    setNode: (node: HTMLElement | null) => void;
+  } | null = null;
+  let pressed: string | null = null;
+  let dragging = false;
+  return {
+    cards: createGridCards(),
+    marks: createKeyedStore(initial, gridMarks, sameMarks),
+    bind: (
+      listeners: DraggableSyntheticListeners,
+      setNode: (node: HTMLElement | null) => void,
+    ) => {
+      source = { listeners, setNode };
+    },
+    press: (
+      key: string,
+      eventName: "onPointerDown" | "onTouchStart",
+      event: GridPress,
+    ) => {
+      if (dragging || source === null) return;
+      pressed = key;
+      source.setNode(event.currentTarget);
+      const listener = source.listeners?.[eventName] as
+        ((event: GridPress) => void) | undefined;
+      listener?.(event);
+    },
+    pressedKey: () => pressed,
+    setDragging: (next: boolean) => {
+      dragging = next;
+    },
+  };
+}
+
+type Grid = ReturnType<typeof createGrid>;
+
+const GridContext = createContext<Grid | null>(null);
+
+function useGrid(): Grid {
+  const grid = useContext(GridContext);
+  if (grid === null) throw new Error("Grid cards must render inside CardDragLayer");
+  return grid;
+}
+
+function GridDragSource({ grid }: { grid: Grid }) {
+  const { listeners, setNodeRef } = useDraggable({ id: gridSourceId });
+  useLayoutEffect(() => grid.bind(listeners, setNodeRef), [grid, listeners, setNodeRef]);
+  return null;
+}
+
+/** Card rects move with any scroll during a drag, so measure them again on the next hit test. */
+function useRemeasureOnScroll(grid: Grid, active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    const { invalidate } = grid.cards;
+    window.addEventListener("scroll", invalidate, { capture: true, passive: true });
+    window.addEventListener("resize", invalidate);
+    return () => {
+      window.removeEventListener("scroll", invalidate, { capture: true });
+      window.removeEventListener("resize", invalidate);
+    };
+  }, [active, grid]);
+}
 
 const controlSelector =
   'button, input, label, select, textarea, [role="checkbox"], [role="menuitem"], [data-preview-checkbox]';
@@ -330,6 +425,17 @@ function plainCardRects(
     });
   }
   return plain;
+}
+
+function pointerOn(
+  pointer: { x: number; y: number } | null,
+  rects: ReadonlyMap<UniqueIdentifier, ClientRect>,
+): Collision[] {
+  if (pointer === null) return [];
+  for (const [id, rect] of rects) {
+    if (containsPoint(rect, pointer)) return [{ id, data: { value: 0 } }];
+  }
+  return [];
 }
 
 /** Exclude lifted cards so the adjacent gap can target the next stationary card. */
@@ -509,43 +615,60 @@ export function CardDragLayer(props: CardDragLayerProps) {
     latest.current = props;
   });
 
-  const show = useCallback((next: DragState | null) => {
-    current.current = next;
-    if (next !== null) announced.current = next;
-    setDrag(next);
-  }, []);
+  const [grid] = useState(() => createGrid({ drag: null, held, attached }));
 
-  const detect = useCallback<CollisionDetection>((args) => {
-    const cards = args.droppableContainers.filter((each) => !isCrumb(each.id));
-    if (current.current?.mode === "handle") {
-      return closestCenter({ ...args, droppableContainers: cards });
-    }
-    const crumb = crumbAt(args.pointerCoordinates, args.droppableContainers);
-    if (crumb !== null) {
-      probe.current = crumb;
-      return [{ id: crumb.key, data: { value: 0 } }];
-    }
-    const cardRects = plainCardRects(args.droppableRects);
-    const found = probeAt(
-      args.pointerCoordinates,
-      pointerWithin({ ...args, droppableContainers: cards, droppableRects: cardRects }),
-      cardRects,
-      current.current?.liftedSet ?? new Set(),
-    );
-    probe.current = found.probe;
-    return found.collisions;
-  }, []);
+  const show = useCallback(
+    (next: DragState | null) => {
+      current.current = next;
+      grid.setDragging(next !== null);
+      if (next !== null) announced.current = next;
+      setDrag(next);
+    },
+    [grid],
+  );
+
+  const detect = useCallback<CollisionDetection>(
+    (args) => {
+      const cards = args.droppableContainers.filter((each) => !isCrumb(each.id));
+      if (current.current?.mode === "handle") {
+        return closestCenter({ ...args, droppableContainers: cards });
+      }
+      const crumb = crumbAt(args.pointerCoordinates, args.droppableContainers);
+      if (crumb !== null) {
+        probe.current = crumb;
+        return [{ id: crumb.key, data: { value: 0 } }];
+      }
+      // List rows register with dnd-kit; grid cards keep their own rects.
+      const cardRects = new Map<UniqueIdentifier, ClientRect>([
+        ...plainCardRects(args.droppableRects),
+        ...grid.cards.rects(),
+      ]);
+      const found = probeAt(
+        args.pointerCoordinates,
+        pointerOn(args.pointerCoordinates, cardRects),
+        cardRects,
+        current.current?.liftedSet ?? new Set(),
+      );
+      probe.current = found.probe;
+      return found.collisions;
+    },
+    [grid],
+  );
 
   const start = useCallback(
     (event: DragStartEvent) => {
-      const key = String(event.active.id);
+      const key =
+        event.active.id === gridSourceId
+          ? (grid.pressedKey() ?? gridSourceId)
+          : String(event.active.id);
+      grid.cards.invalidate();
       const mode = modeOf(event.activatorEvent);
       const lifted = mode === "handle" ? [key] : latest.current.liftedFor(key);
       probe.current = null;
       show({ key, lifted, liftedSet: new Set(lifted), mode, sign: null, axis: "x" });
       latest.current.onLift?.();
     },
-    [show],
+    [grid, show],
   );
 
   const move = useCallback(() => {
@@ -581,8 +704,10 @@ export function CardDragLayer(props: CardDragLayerProps) {
   const cancel = useCallback(() => show(null), [show]);
   const announcements = useAnnouncements(latest, announced, probe);
   useEscapeMarked(drag !== null);
+  useRemeasureOnScroll(grid, drag !== null);
 
   const value = useMemo(() => ({ drag, held, attached }), [attached, drag, held]);
+  useLayoutEffect(() => grid.marks.set(value), [grid, value]);
   const handleMode = drag?.mode === "handle";
   const refused = drag?.sign?.kind === "refused";
 
@@ -606,8 +731,11 @@ export function CardDragLayer(props: CardDragLayerProps) {
         items={order as UniqueIdentifier[]}
         strategy={handleMode ? verticalListSortingStrategy : noShift}
       >
-        <LayerContext value={value}>{children}</LayerContext>
+        <LayerContext value={value}>
+          <GridContext value={grid}>{children}</GridContext>
+        </LayerContext>
       </SortableContext>
+      <GridDragSource grid={grid} />
       {/* Portal the preview to body above the sidebar and top bar. */}
       {createPortal(
         <DragOverlay
@@ -691,22 +819,26 @@ export function useCardDrag(key: string): CardDragBinding {
 }
 
 /**
- * Grid cards never shift or use a handle, so they register without useSortable, whose items
- * context re-renders every card whenever the list grows.
+ * Grid cards never shift or use a handle, and they do not use dnd-kit hooks, which re-render
+ * every card on each drag-state change; each card renders only when its own marks change.
  */
 function useGridCardDrag(key: string) {
-  const marks = layerMarks(key, useContext(LayerContext));
-  const { setNodeRef: setDragNode, listeners } = useDraggable({ id: key });
-  const { setNodeRef: setDropNode } = useDroppable({ id: key });
+  const grid = useGrid();
+  const marks = useSyncExternalStore(grid.marks.subscribe, () => grid.marks.select(key));
   const ref = useCallback(
-    (node: HTMLElement | null) => {
-      setDragNode(node);
-      setDropNode(node);
-    },
-    [setDragNode, setDropNode],
+    (node: HTMLElement | null) => grid.cards.register(key, node),
+    [grid, key],
   );
-  const cardListeners = useMemo(() => withoutKeyDown(listeners), [listeners]);
-  return { ref, listeners: cardListeners, ...marks };
+  const listeners = useMemo(
+    () => ({
+      onPointerDown: (event: ReactPointerEvent<HTMLElement>) =>
+        grid.press(key, "onPointerDown", event),
+      onTouchStart: (event: ReactTouchEvent<HTMLElement>) =>
+        grid.press(key, "onTouchStart", event),
+    }),
+    [grid, key],
+  );
+  return { ref, listeners, ...marks };
 }
 
 /** Prefer active drag marks over retained marks. */
@@ -844,9 +976,13 @@ function sameElement(previous: ReactNode, next: ReactNode): boolean {
 
 /** Non-draggable cards still register as targets so onto can explicitly return refused. */
 export function RefusingDropCard({ id, children }: { id: string; children: ReactNode }) {
-  const { setNodeRef } = useDroppable({ id });
+  const grid = useGrid();
+  const ref = useCallback(
+    (node: HTMLElement | null) => grid.cards.register(id, node),
+    [grid, id],
+  );
   return (
-    <div ref={setNodeRef} className="relative grid min-w-0 rounded-md">
+    <div ref={ref} className="relative grid min-w-0 rounded-md">
       {children}
     </div>
   );
