@@ -22,6 +22,7 @@ import {
 } from "../ui/VideoThumbnail";
 import { groupPagePath, videoInGroupPath } from "../groups/groupPaths";
 import { type CardDragBinding, dragRowProps, RowDropMarks } from "../videoList/cardDrag";
+import { useCardActions } from "../videoList/cardActions";
 import FolderArt from "../videoList/FolderArt";
 import type { PreviewCoordinator } from "../videoList/usePreviewCoordination";
 import { useCollectionLink } from "../videoList/useCollectionLink";
@@ -287,9 +288,12 @@ function GroupCardFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
   const owner = useAudience() === "owner";
   const tagsRowNode = tagsRow?.(group);
   const showTagsRow = tagsRow !== undefined && groupHasTags(group);
+  const actions = useCardActions();
 
   return (
     <article
+      onPointerEnter={actions.approach}
+      onFocus={actions.approach}
       data-group-id={group.id}
       data-group-root={group.folder?.rootId}
       data-group-path={group.folder?.path}
@@ -339,11 +343,14 @@ function GroupCardFor<G extends LibraryGroup>(props: GroupCardProps<G>) {
         )}
       </Link>
       {nameField}
-      {owner && (
-        //
+      {owner && (actions.ready || group.favorite === true) && (
         <VideoThumbnailMark className="z-30">
-          {!favoriteOnly && <GroupAddToGroup group={group} variant="card" />}
-          {!favoriteOnly && <GroupAddToPlaylist group={group} variant="card" />}
+          {actions.ready && !favoriteOnly && (
+            <GroupAddToGroup group={group} variant="card" />
+          )}
+          {actions.ready && !favoriteOnly && (
+            <GroupAddToPlaylist group={group} variant="card" />
+          )}
           <GroupFavorite group={group} variant="card" />
         </VideoThumbnailMark>
       )}

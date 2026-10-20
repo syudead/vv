@@ -39,6 +39,7 @@ import {
   VideoThumbnailNotice,
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
+import { useCardActions } from "./cardActions";
 import { type CardDragBinding, dragRowProps, RowDropMarks } from "./cardDrag";
 import { cardLinkState } from "./cardLink";
 import { CardMedia, useCardPreview } from "./cardPreview";
@@ -131,6 +132,30 @@ function VideoAddToGroup({ video, variant }: { video: Video; variant: "card" | "
       label={t.list.card.addToGroup(video.title)}
       videoIds={[video.id]}
     />
+  );
+}
+
+/** Until the card is approached only a favorite heart, which shows at rest, is created. */
+function CardActions({
+  video,
+  ready,
+  favoriteOnly,
+  onPointerEnter,
+}: {
+  video: Video;
+  ready: boolean;
+  favoriteOnly: boolean;
+  onPointerEnter: () => void;
+}) {
+  if (!ready && video.favorite !== true) return null;
+  const all = ready && !favoriteOnly;
+  return (
+    // Stop previews on entry and never start them from these actions.
+    <VideoThumbnailMark data-preview-checkbox="true" onPointerEnter={onPointerEnter}>
+      {all && <VideoAddToGroup video={video} variant="card" />}
+      {all && <VideoAddToPlaylist video={video} variant="card" />}
+      <VideoFavorite video={video} variant="card" />
+    </VideoThumbnailMark>
   );
 }
 
@@ -278,13 +303,23 @@ function VideoCard(props: VideoCardProps) {
   });
   //
   const scrubPosition = scrub.position;
+  const actions = useCardActions();
+  const { approach } = actions;
+  const enter = useCallback(
+    (event: PointerEvent<HTMLElement>) => {
+      approach();
+      startPreview(event);
+    },
+    [approach, startPreview],
+  );
 
   return (
     <article
       ref={setArticle}
       data-video-id={video.id}
-      onPointerEnter={startPreview}
+      onPointerEnter={enter}
       onPointerLeave={release}
+      onFocus={approach}
       className={cn(
         "group relative flex min-w-0 flex-col gap-2",
         selectionMode && "select-none",
@@ -400,12 +435,12 @@ function VideoCard(props: VideoCardProps) {
       </Link>
       {/* Keep mark actions outside the link in checkbox, link, marks, tags DOM order. */}
       {owner && (
-        // Stop previews on entry and never start them from these actions.
-        <VideoThumbnailMark data-preview-checkbox="true" onPointerEnter={release}>
-          {!favoriteOnly && <VideoAddToGroup video={video} variant="card" />}
-          {!favoriteOnly && <VideoAddToPlaylist video={video} variant="card" />}
-          <VideoFavorite video={video} variant="card" />
-        </VideoThumbnailMark>
+        <CardActions
+          video={video}
+          ready={actions.ready}
+          favoriteOnly={favoriteOnly}
+          onPointerEnter={release}
+        />
       )}
       {showTagsRow && <div className="flex min-w-0 flex-col gap-1">{tagsRowNode}</div>}
     </article>

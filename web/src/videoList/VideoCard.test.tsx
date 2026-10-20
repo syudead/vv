@@ -967,3 +967,73 @@ describe("VideoCard のスクラブの帯", () => {
     expect(timeBox().textContent).toBe("1:00");
   });
 });
+
+describe("VideoCard の操作ボタン", () => {
+  beforeEach(() => {
+    // A device with hover, where the actions show only on approach.
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: false, media: query }));
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  function renderOwner(item: Video) {
+    return render(
+      <MemoryRouter>
+        <AudienceProvider audience="owner">
+          <VideoCard video={item} backTo="/" selected={false} selectionMode={false} />
+        </AudienceProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it("ポインターが乗るか中にフォーカスが来るまで作らず、来たら作る", () => {
+    renderOwner(video());
+    const playlist = () =>
+      screen.queryByRole("button", { name: 'Add "動画 1" to a playlist' });
+    expect(playlist()).toBeNull();
+    expect(screen.queryByRole("button", { name: 'Favorite "動画 1"' })).toBeNull();
+
+    fireEvent.pointerEnter(screen.getByRole("article"));
+    expect(playlist()).not.toBeNull();
+
+    cleanup();
+    renderOwner(video());
+    fireEvent.focus(screen.getByRole("link", { name: "動画 1" }));
+    expect(playlist()).not.toBeNull();
+  });
+
+  it("開いた後に hover のない端末へ変わったら、触れていないカードにも作る", () => {
+    let matches = false;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      get matches() {
+        return matches;
+      },
+      media: query,
+      addEventListener: (_: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_: string, listener: () => void) =>
+        listeners.delete(listener),
+    }));
+    renderOwner(video());
+    expect(
+      screen.queryByRole("button", { name: 'Add "動画 1" to a playlist' }),
+    ).toBeNull();
+
+    matches = true;
+    act(() => {
+      for (const listener of listeners) listener();
+    });
+    expect(
+      screen.getByRole("button", { name: 'Add "動画 1" to a playlist' }),
+    ).toBeDefined();
+  });
+
+  it("お気に入りのハートは触れる前から出す", () => {
+    renderOwner(video({ favorite: true }));
+    expect(screen.getByRole("button", { name: 'Favorite "動画 1"' })).toBeDefined();
+    expect(screen.queryByRole("button", { name: 'Add "動画 1" to a group' })).toBeNull();
+  });
+});
