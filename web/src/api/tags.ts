@@ -201,6 +201,27 @@ function dropHeldTags(): void {
   droppedGeneration = generation;
 }
 
+/** Publish a bulk edit's tag changes to snapshots and lists; a tag created by name also invalidates snapshots. */
+export function afterBulkTagEdit(
+  videoIds: readonly number[],
+  {
+    added,
+    removed,
+    created,
+  }: { added: readonly TagRef[]; removed: readonly TagRef[]; created: boolean },
+  sequence: number,
+): void {
+  for (const tag of added) recordAppliedVideoTags(videoIds, tag, "add", sequence);
+  for (const tag of removed) recordAppliedVideoTags(videoIds, tag, "remove", sequence);
+  if (created) afterTagCreated();
+  else if (added.length + removed.length > 0) refreshTagCounts();
+}
+
+/** Rethrow a request error after refreshing the tag cache when it names a stale tag. */
+export function rethrowStaleTagError(error: unknown): never {
+  return refreshOnStaleTagError(error);
+}
+
 /** Refresh counts without invalidating video snapshots; ignore background refresh failures. */
 function refreshTagCounts(): void {
   refreshTags().catch(() => undefined);

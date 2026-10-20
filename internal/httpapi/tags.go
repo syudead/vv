@@ -526,20 +526,28 @@ func (s *server) writeTagNameTaken(w http.ResponseWriter, submittedName string, 
 }
 
 func (s *server) invalidTagName(w http.ResponseWriter, err error, prefix string) {
+	s.writeErrorBody(w, http.StatusBadRequest, tagNameErrorBody(err, prefix))
+}
+
+func tagNameErrorBody(err error, prefix string) gen.Error {
+	body := gen.Error{Code: codeInvalidRequest, Message: prefix + "The tag name cannot be used."}
 	var invalid *domain.InvalidTagNameError
 	if !errors.As(err, &invalid) {
-		s.invalidRequest(w, prefix+"The tag name cannot be used.")
-		return
+		return body
 	}
+	var reason gen.ErrorReason
 	switch invalid.Problem {
 	case domain.TagNameEmpty:
-		s.invalidRequestReason(w, reasonTagNameEmpty, prefix+"Enter a tag name.")
+		reason, body.Message = reasonTagNameEmpty, prefix+"Enter a tag name."
 	case domain.TagNameControlCharacters:
-		s.invalidRequestReason(w, reasonTagNameControlCharacters, prefix+"Tag names cannot contain control characters.")
+		reason, body.Message = reasonTagNameControlCharacters, prefix+"Tag names cannot contain control characters."
 	case domain.TagNameTooLong:
-		s.invalidRequestLimit(w, reasonTagNameTooLong, domain.TagNameMaxLength,
-			prefix+"Tag names must be at most "+strconv.Itoa(domain.TagNameMaxLength)+" characters.")
+		limit := domain.TagNameMaxLength
+		reason, body.Limit = reasonTagNameTooLong, &limit
+		body.Message = prefix + "Tag names must be at most " + strconv.Itoa(limit) + " characters."
 	default:
-		s.invalidRequest(w, prefix+"The tag name cannot be used.")
+		return body
 	}
+	body.Reason = &reason
+	return body
 }

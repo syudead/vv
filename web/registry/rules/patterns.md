@@ -334,6 +334,12 @@ Library density: `sm` controls. Use it when a form has more than a few fields
 or holds lists of chips, so it would scroll inside a `FormDialog`. Leaving
 with unsaved changes asks first with a `ConfirmDialog`.
 
+`FormPageDialog` shows the same page as a modal over the current screen, for a
+form whose screen must stay as it is under it, such as the bulk editor over a
+list and its selection. Esc and `Cancel` call `onClose`, the focus returns to
+the element that had it, and the aside may hold the targets with a control to
+leave each out, since they are what the form edits.
+
 ## Profile page
 
 Item `profile-page`. `ProfilePage` is a shell page at library density for one

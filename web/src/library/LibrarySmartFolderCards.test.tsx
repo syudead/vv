@@ -16,6 +16,7 @@ import { clearListSnapshot } from "../api/listSnapshot";
 import { __resetTagsForTest } from "../api/tags";
 import { AudienceProvider } from "../auth/audience";
 import { ScanProvider } from "../shell/ScanProvider";
+import { addTagInBulkEditor, editSummary } from "../testing/bulkEdit";
 import { folderCard, video } from "../testing/smartFolderPage";
 import { group, Probe } from "../testing/groupPage";
 import { ToastProvider } from "../ui/Toast";
@@ -25,7 +26,8 @@ import LibraryPage from "./LibraryPage";
 const fetchMock = vi.fn<typeof fetch>();
 let cardRequests: string[] = [];
 let favoriteBodies: unknown[] = [];
-let tagBodies: unknown[] = [];
+let editSummaryBodies: unknown[] = [];
+let editBodies: unknown[] = [];
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -54,13 +56,14 @@ function install(items: LibraryItem[]) {
         json({ appliedVideos: 0, appliedGroups: 0, appliedSmartFolders: 1 }),
       );
     }
-    if (url.pathname === "/api/video-tags") {
-      tagBodies.push(JSON.parse(String(init?.body)));
+    if (url.pathname === "/api/video-edits/summary") {
+      editSummaryBodies.push(JSON.parse(String(init?.body)));
+      return Promise.resolve(json(editSummary(4)));
+    }
+    if (url.pathname === "/api/video-edits") {
+      editBodies.push(JSON.parse(String(init?.body)));
       return Promise.resolve(
-        json({
-          tag: { id: 5, name: "犬", tentative: false, kind: null },
-          applied: 4,
-        }),
+        json({ applied: 4, tags: [{ id: 5, name: "犬", tentative: false, kind: null }] }),
       );
     }
     if (url.pathname === "/api/smart-folders/cards") {
@@ -161,7 +164,8 @@ beforeEach(() => {
   localStorage.clear();
   cardRequests = [];
   favoriteBodies = [];
-  tagBodies = [];
+  editSummaryBodies = [];
+  editBodies = [];
   vi.stubGlobal("fetch", fetchMock);
   vi.stubGlobal("IntersectionObserver", RevealingObserver);
 });
@@ -316,15 +320,12 @@ describe("ライブラリのスマートフォルダのカード", () => {
     await user.click(
       within(card).getByRole("checkbox", { name: 'Select the smart folder "猫"' }),
     );
-    const bar = screen.getByRole("region", { name: "Selection actions" });
-    await user.click(within(bar).getByRole("button", { name: "Add tag" }));
-    await user.type(await screen.findByRole("combobox", { name: "Add tag" }), "犬");
-    await screen.findByRole("option", { name: /^Create/ });
-    await user.keyboard("{Enter}");
+    await addTagInBulkEditor(user, "犬");
 
-    expect(await screen.findByText('Added "犬" to 4 videos')).toBeTruthy();
-    expect(tagBodies).toEqual([
-      { videoIds: [], smartFolderIds: [9], action: "add", tag: { name: "犬" } },
+    expect(await screen.findByText("Updated 4 videos")).toBeTruthy();
+    expect(editSummaryBodies).toEqual([{ videoIds: [], smartFolderIds: [9] }]);
+    expect(editBodies).toEqual([
+      { videoIds: [], smartFolderIds: [9], tags: { add: [{ name: "犬" }] } },
     ]);
     await waitFor(() => expect(cardRequests).toEqual(["9", "9"]));
   });

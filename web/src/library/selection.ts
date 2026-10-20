@@ -228,3 +228,96 @@ export function favoriteTargets(selection: LibrarySelection): {
   const videoIds = Array.from(selection.ids).filter((id) => !members.has(id));
   return { videoIds, groupIds, smartFolderIds: Array.from(selection.smartFolders) };
 }
+
+/** One selected card as the bulk editor's stage shows it; a group stands for its member videos. */
+export interface SelectionTarget {
+  key: string;
+  kind: "video" | "group" | "smartFolder";
+  id: number;
+  label: string;
+  thumbnailUrl?: string;
+  /** The videos the target sends; empty for a smart folder, whose members the server resolves. */
+  videoIds: readonly number[];
+}
+
+/** The parts of a page's item that the stage reads; library, group and smart-folder items all fit. */
+export interface TargetItem {
+  kind: string;
+  video?: { id: number; title: string; thumbnailUrl?: string };
+  group?: { id: number; name: string; previews?: readonly { thumbnailUrl: string }[] };
+  smartFolder?: {
+    id: number;
+    name: string;
+    previews?: readonly { thumbnailUrl: string }[];
+  };
+}
+
+/**
+ * The selection as stage targets in display order: standalone videos, selected groups and smart
+ * folders. A selected video that no loaded item names is appended so it is never sent unseen.
+ */
+export function selectionTargets(
+  selection: LibrarySelection,
+  items: readonly TargetItem[],
+  unknownLabel: (id: number) => string,
+): SelectionTarget[] {
+  const { videoIds, groupIds } = favoriteTargets(selection);
+  const standalone = new Set(videoIds);
+  const out: SelectionTarget[] = [];
+  const seen = new Set<string>();
+  const push = (target: SelectionTarget) => {
+    if (seen.has(target.key)) return;
+    seen.add(target.key);
+    out.push(target);
+  };
+  for (const item of items) {
+    const { video, group, smartFolder } = item;
+    if (video !== undefined && standalone.has(video.id)) {
+      push({
+        key: `v${String(video.id)}`,
+        kind: "video",
+        id: video.id,
+        label: video.title,
+        thumbnailUrl: video.thumbnailUrl,
+        videoIds: [video.id],
+      });
+    } else if (group !== undefined && selection.groups.has(group.id)) {
+      push({
+        key: `g${String(group.id)}`,
+        kind: "group",
+        id: group.id,
+        label: group.name,
+        thumbnailUrl: group.previews?.[0]?.thumbnailUrl,
+        videoIds: selection.groups.get(group.id)?.videoIds ?? [],
+      });
+    } else if (smartFolder !== undefined && selection.smartFolders.has(smartFolder.id)) {
+      push({
+        key: `s${String(smartFolder.id)}`,
+        kind: "smartFolder",
+        id: smartFolder.id,
+        label: smartFolder.name,
+        thumbnailUrl: smartFolder.previews?.[0]?.thumbnailUrl,
+        videoIds: [],
+      });
+    }
+  }
+  for (const id of videoIds) {
+    push({
+      key: `v${String(id)}`,
+      kind: "video",
+      id,
+      label: unknownLabel(id),
+      videoIds: [id],
+    });
+  }
+  for (const id of groupIds) {
+    push({
+      key: `g${String(id)}`,
+      kind: "group",
+      id,
+      label: unknownLabel(id),
+      videoIds: selection.groups.get(id)?.videoIds ?? [],
+    });
+  }
+  return out;
+}

@@ -1061,6 +1061,81 @@ export const en = {
       addToPlaylist: (name: string) => `Add smart folder "${name}" to a playlist`,
       select: (name: string) => `Select the smart folder "${name}"`,
     },
+    bulkEdit: {
+      title: "Edit videos",
+      detail: (count: number) => `${videos(count)}`,
+      counting: "Counting…",
+      loading: "Loading the values of the selected videos…",
+      tagsAndPeople: "Tags and people",
+      organizationsDatesVisibility: "Organizations, dates and visibility",
+      filter: (field: string) => `Filter ${field.toLowerCase()}`,
+      showAll: (count: number) => `Show all ${formatNumber(count)}`,
+      showFewer: "Show fewer",
+      summaryFailed: (reason: string) => `Couldn't read the selected videos: ${reason}`,
+      allExcluded: "Every video is left out. Press one on the left to edit it.",
+      targets: "Videos to edit",
+      stageHint: "Press a video to leave it out of the edit.",
+      includeAll: (count: number) =>
+        selectPlural(count, {
+          one: "Put back 1 video",
+          other: `Put back ${formatNumber(count)} videos`,
+        }),
+      tileLabel: (label: string, included: boolean) =>
+        included ? `${label}, edited` : `${label}, left out`,
+      groupMark: (count: number) => videos(count),
+      smartFolderMark: "Smart folder",
+      excluded: "Left out",
+      howTo:
+        "Each value shows how many selected videos have it. Press it to add it to every video, press again to remove it from every video, and once more to leave it as it is.",
+      tags: "Tags",
+      addTag: "Add a tag",
+      chipKeep: "unchanged",
+      chipAdd: "will be added to every video",
+      chipRemove: "will be removed from every video",
+      chipLabel: (label: string, count: number, total: number, state: string) =>
+        `${label}, on ${formatNumber(count)} of ${videos(total)}, ${state}`,
+      ratio: (count: number, total: number) =>
+        `${formatNumber(count)}/${formatNumber(total)}`,
+      toAll: (total: number) => `→ ${formatNumber(total)}`,
+      newMark: "New",
+      unpick: (label: string) => `Don't add ${label}`,
+      dateLabel: (kind: "release" | "recorded" | "published") =>
+        kind === "release" ? "Released" : kind === "recorded" ? "Recorded" : "Published",
+      dateMode: (label: string) => `How to change ${label}`,
+      dateNone: "No video has one",
+      dateShared: (date: string, count: number, total: number) =>
+        count === total
+          ? `${date} on every video`
+          : `${date} on ${formatNumber(count)} of ${videos(total)}`,
+      dateMixed: (count: number, total: number) =>
+        `Different dates on ${formatNumber(count)} of ${videos(total)}`,
+      keep: "Keep",
+      setDate: "Set",
+      clear: "Clear",
+      visibility: "Visibility",
+      publicNow: (count: number, total: number) =>
+        `${formatNumber(count)} of ${videos(total)} public`,
+      public: "Public",
+      private: "Private",
+      changes: "Changes",
+      noChanges: "Nothing will change yet.",
+      changeAdd: (field: string, label: string, count: number) =>
+        `${field}: add ${label} to ${videos(count)}`,
+      changeRemove: (field: string, label: string, count: number) =>
+        `${field}: remove ${label} from ${videos(count)}`,
+      changeSet: (field: string, date: string, count: number) =>
+        `${field}: set ${date} on ${videos(count)}`,
+      changeClear: (field: string, count: number) =>
+        `${field}: clear on ${videos(count)}`,
+      changePublic: (count: number) => `Visibility: make ${videos(count)} public`,
+      changePrivate: (count: number) => `Visibility: make ${videos(count)} private`,
+      apply: (count: number) => `Apply to ${videos(count)}`,
+      applying: "Applying…",
+      applied: (count: number) => `Updated ${videos(count)}`,
+      failed: (reason: string) => `Couldn't apply the changes: ${reason}`,
+      discardTitle: "Discard these changes?",
+      discardText: "The changes in the editor aren't applied yet.",
+    },
     selection: {
       region: "Selection actions",
       count: (count: number) => `${videos(count)} selected`,
@@ -1088,6 +1163,8 @@ export const en = {
       loading: "Loading…",
       summaryFailed: "Couldn't load the tags",
       nothingToRemove: "The selected videos have no tags that can be removed",
+      edit: "Edit",
+      unknownTarget: (id: number) => `#${formatNumber(id)}`,
       favorite: "Favorite",
       addFavorites: "Add to favorites",
       removeFavorites: "Remove from favorites",

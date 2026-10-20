@@ -50,10 +50,22 @@ func (s *VisibilityStore) SetVideosPublic(ctx context.Context, videoIDs []int64,
 	if err != nil {
 		return nil, err
 	}
-	now := time.Now()
+	if _, err := setPublicForUserKeys(ctx, tx, userKeys, public, time.Now()); err != nil {
+		return nil, err
+	}
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
+		return nil, fmt.Errorf("cannot update the public flag: %w", err)
+	}
+	return keys, nil
+}
+
+// Write the flag for each shared user key and advance edit time, including every bundle member, only for the
+// keys whose visibility changed; the caller commits with a match change.
+func setPublicForUserKeys(ctx context.Context, tx *sql.Tx, userKeys []string, public bool, now time.Time) ([]string, error) {
 	changed := make([]string, 0, len(userKeys))
 	for _, key := range userKeys {
 		var result sql.Result
+		var err error
 		if public {
 			result, err = tx.ExecContext(ctx,
 				`insert or ignore into public_videos (content_key, published_at) values (?, ?)`, key, now.Unix())
@@ -71,12 +83,5 @@ func (s *VisibilityStore) SetVideosPublic(ctx context.Context, videoIDs []int64,
 			changed = append(changed, key)
 		}
 	}
-	// Advance edit time only for changed visibility keys, including every bundle member.
-	if err := touchEditedAtForUserKeys(ctx, tx, changed, now); err != nil {
-		return nil, err
-	}
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
-		return nil, fmt.Errorf("cannot update the public flag: %w", err)
-	}
-	return keys, nil
+	return changed, touchEditedAtForUserKeys(ctx, tx, changed, now)
 }

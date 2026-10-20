@@ -362,7 +362,7 @@ Video card behaviour:
 | Tag pressed in the library | Filters by the tag |
 | Tag pressed on a folder page or a group page | Opens `/?tag=<id>` |
 | Tags that do not fit the row | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full  |
-| Tag from a folder name only | Same size, no fill, dashed border, Folder marker; no × on the video page; not offered by `Remove tag`  |
+| Tag from a folder name only | Same size, no fill, dashed border, Folder marker; no × on the video page; cannot be removed by bulk `Edit` |
 | Hover preview | One at a time on any screen |
 | Zoom changed | Returns to the card that was at the top |
 
@@ -490,8 +490,8 @@ so they read on devices without hover; the design-system bar
 (`SelectionBar`, at most `max-w-4xl`) wraps to a second line when they do not
 fit.
 
-Its items, in order, are clear, `N selected`, `Add tag`, `Remove tag`,
-`Favorite`, `Add to playlist`, `New group`, `Add to group`, `Visibility`,
+Its items, in order, are clear, `N selected`, `Edit`,
+`Favorite`, `Add to playlist`, `New group`, `Add to group`,
 `Bundle as versions` (2 or more videos), and, after a separator, `Delete…`.
 There is no `Select all`: selection covers only the cards the viewer checks,
 directly, as a Shift range or inside a drawn box.
@@ -515,11 +515,13 @@ and the group and smart-folder pages reload. A failure stays in the dialog,
 so the selection is kept. The group page and the smart-folder page offer the
 same action for their child groups and child smart folders.
 
+`Edit` opens the bulk editor for the tags, people, organizations, dates and
+visibility of the selection ([bulk-editing.md](bulk-editing.md)).
+
 While smart folders are selected, the count names them separately
 (`3 videos and 1 smart folder selected`). `Favorite` and `Add to playlist`
-send each folder as one item (`smartFolderIds`). `Add tag`, `Remove tag`
-(its candidates included) and `Visibility` act on the folders' member videos,
-as they do on a selected group's: the client sends the folder IDs, and the
+send each folder as one item (`smartFolderIds`). `Edit` acts on the
+folders' member videos, as it does on a selected group's: the client sends the folder IDs, and the
 server resolves each folder's current members at request time with the owner's
 view of the smart folder page, its rule plus every ancestor rule and groups
 expanded to their videos. A folder whose rule refers to a missing entity has

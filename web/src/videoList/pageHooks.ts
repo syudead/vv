@@ -2,8 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import type { TagRef } from "../api/client";
+import { t } from "../i18n";
 import { libraryFilterPath } from "../library/libraryPath";
-import { favoriteTargets, type LibrarySelection } from "../library/selection";
+import {
+  favoriteTargets,
+  type LibrarySelection,
+  selectionTargets,
+  type TargetItem,
+} from "../library/selection";
 import { TAG_PARAM } from "../library/tagCriteria";
 
 import {
@@ -108,8 +114,17 @@ export function usePressTagToLibrary() {
   );
 }
 
-export function useSelectionTargets(selection: LibrarySelection) {
+export function useSelectionTargets(
+  selection: LibrarySelection,
+  items: readonly TargetItem[] = noTargetItems,
+) {
   const favorites = useMemo(() => favoriteTargets(selection), [selection]);
   const selectedIds = useMemo(() => Array.from(selection.ids), [selection.ids]);
-  return { favorites, selectedIds };
+  const editTargets = useMemo(
+    () => selectionTargets(selection, items, t.library.selection.unknownTarget),
+    [selection, items],
+  );
+  return { favorites, selectedIds, editTargets };
 }
+
+const noTargetItems: readonly TargetItem[] = [];

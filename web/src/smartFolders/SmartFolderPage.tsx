@@ -185,7 +185,10 @@ function SmartFolderScreen({ id }: { id: number | null }) {
     resetPreview,
   );
   const pressTag = usePressTagToLibrary();
-  const { favorites, selectedIds } = useSelectionTargets(selection.selection);
+  const { favorites, selectedIds, editTargets } = useSelectionTargets(
+    selection.selection,
+    data?.items ?? noItems,
+  );
   const { clear } = selection;
   useEffect(() => clear(), [controls.key, clear]);
   const afterBulk = useCallback(() => {
@@ -221,6 +224,7 @@ function SmartFolderScreen({ id }: { id: number | null }) {
           data !== null && (
             <SelectionBar
               count={selection.selection.ids.size}
+              targets={editTargets}
               selectedIds={selectedIds}
               favoriteVideoIds={favorites.videoIds}
               favoriteGroupIds={favorites.groupIds}

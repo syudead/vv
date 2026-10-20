@@ -826,7 +826,7 @@
       "name": "form-page",
       "type": "registry:ui",
       "title": "FormPage",
-      "description": "Page skeleton for many values saved together on a screen of its own: sticky header band with the actions, a notice line, an aside column and two panels that scroll on their own from lg. Uses field.",
+      "description": "Page skeleton for many values saved together on a screen of its own: sticky header band with the actions, a notice line, an aside column and two panels that scroll on their own from lg. FormPageDialog shows it as a modal over the current screen. Uses field and dialog.",
       "docs": "Usage rules: web/registry/rules/patterns.md#form-page (item vv-rules).",
       "files": [
         {
