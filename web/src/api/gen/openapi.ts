@@ -1265,7 +1265,7 @@ export interface paths {
         put?: never;
         /**
          * Queue library videos for face analysis
-         * @description Owner-only. missing queues videos never analysed or whose analysis failed; all queues every video not being analysed. Returns the queued count. Videos queued while the runtime is not ready wait for it. While off returns 409 face_recognition_off. See docs/design-docs/face-recognition.md.
+         * @description Owner-only. missing, the only scope, queues videos never analysed or whose analysis failed; an analysed video is analysed again only by a recognizer switch. Returns the queued count. Videos queued while the runtime is not ready wait for it. While off returns 409 face_recognition_off. See docs/design-docs/face-recognition.md.
          */
         post: operations["startFaceRecognition"];
         delete?: never;
@@ -4001,7 +4001,7 @@ export interface components {
         };
         StartFaceRecognitionRequest: {
             /** @enum {string} */
-            scope: "missing" | "all";
+            scope: "missing";
         };
         FaceRecognitionQueued: {
             /** @description Number of queued videos. */

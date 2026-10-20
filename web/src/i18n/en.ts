@@ -3611,7 +3611,6 @@ export const en = {
       queue: (queued: number, running: number, done: number, failed: number) =>
         `Waiting ${formatNumber(queued)} · Analysing ${formatNumber(running)} · Done ${formatNumber(done)} · Failed ${formatNumber(failed)}`,
       runMissing: "Analyse videos not yet analysed",
-      runAll: "Analyse all videos again",
       started: (count: number) =>
         count === 0
           ? "There were no videos to analyse"

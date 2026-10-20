@@ -144,7 +144,7 @@ export function FaceRecognitionSections({ source }: { source: FaceRecognitionSou
   const { settings, loadError, load } = source;
   const locked = settings?.runtime.state === "unsupported";
   const { starting, run } = useRunStart({
-    start: startFaceRecognition,
+    start: () => startFaceRecognition("missing"),
     started: text.started,
     startFailed: text.startFailed,
     reload: load,

@@ -28,8 +28,6 @@ func faceQueueStates(scope domain.FaceQueueScope) (string, error) {
 	switch scope {
 	case domain.FaceQueueMissing:
 		return `'', 'failed'`, nil
-	case domain.FaceQueueAll:
-		return queueAgainStates, nil
 	default:
 		return "", fmt.Errorf("unknown face analysis scope %q", scope)
 	}

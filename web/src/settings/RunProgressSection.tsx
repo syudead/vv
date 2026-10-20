@@ -18,7 +18,8 @@ export interface RunProgressText {
   off: UiText;
   offHint: UiText;
   runMissing: UiText;
-  runAll: UiText;
+  /** Absent for a feature whose analysed videos are never queued again by the owner. */
+  runAll?: UiText;
   lastFailure: UiText;
 }
 
@@ -73,14 +74,16 @@ export function RunProgressSection({
         >
           {text.runMissing}
         </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => onStart("all")}
-          aria-disabled={disabled}
-        >
-          {text.runAll}
-        </Button>
+        {text.runAll !== undefined && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onStart("all")}
+            aria-disabled={disabled}
+          >
+            {text.runAll}
+          </Button>
+        )}
       </div>
       {lastFailure !== undefined && (
         <div>

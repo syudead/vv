@@ -68,13 +68,25 @@ func (f faceFixture) analyse(t *testing.T, people ...domain.FaceAnalysedPerson) 
 func (f faceFixture) claim(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
-	if n, err := f.db.Faces().QueueLibrary(ctx, domain.FaceQueueAll, domain.ActivityByOwner); err != nil || n != 1 {
-		t.Fatalf("QueueLibrary = %d, %v", n, err)
+	if n := queueAllFaces(t, f.db); n != 1 {
+		t.Fatalf("queued %d videos, want 1", n)
 	}
 	job, err := f.db.Faces().Claim(ctx)
 	if err != nil || job.ContentKey != f.key {
 		t.Fatalf("Claim = %+v, %v", job, err)
 	}
+}
+
+// queueAllFaces queues every registered video for face analysis again, as a recognizer switch does, and returns how
+// many it queued; the owner can only queue the missing ones.
+func queueAllFaces(t *testing.T, db *DB) int {
+	t.Helper()
+	n, err := db.queueContent(context.Background(), faceQueue, `select v.content_key from videos v
+		where v.content_key <> '' and `+registeredVideoCondition("v"), nil, queueAgainStates, domain.ActivityByOwner, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return n
 }
 
 // setFaceVector gives the person a current face-image vector.

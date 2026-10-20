@@ -552,13 +552,12 @@ job, queued by a force rescan, queues its video as `all` does, unless it is
 running, with an owner's entry that joins the same pipeline
 ([force rescan](force-rescan.md#tagging-and-face-analysis-run-again)).
 
-The queue is filled in three more ways, each refused with
+The queue is filled in two more ways, each refused with
 `409 face_recognition_off` while the feature is off.
 
 | Trigger | Queues |
 | --- | --- |
 | `POST /api/face-recognition/runs` with `missing` | Videos without a row or whose analysis failed |
-| `POST /api/face-recognition/runs` with `all` | Every video not running |
 | Retry of a `face_analysis` entry in `attention` | Its video, unless it is running; the new entry joins the old one's pipelines |
 
 A recognizer switch, in the settings' transaction, increases the
@@ -575,6 +574,7 @@ longer `running` writes nothing either.
 
 | Rejected | Why |
 | --- | --- |
+| A run that queues every analysed video again (`all`) | A re-analysis carries each appearance over to the same person, so it spent hours to find the same people |
 | A job kind in `jobs` | Import progress counts jobs, and an optional analysis at about 0.27 times the video length would hold the import open |
 | Queueing every video in the library on a switch | Turning the feature on with a recognizer other than the default would queue the whole library, while the default queues nothing |
 | Keeping the old recognizer's vectors until the videos are analysed again | They cannot be compared with the new ones, and a switch back would mix vectors of two analyses |
@@ -585,7 +585,8 @@ longer `running` writes nothing either.
 
 **Face recognition** in Settings
 ([`FaceRecognitionSection.tsx`](../../web/src/settings/FaceRecognitionSection.tsx))
-shares the Auto-tagging page's `Progress` section and run buttons. It reads
+shares the Auto-tagging page's `Progress` section, with only its "Analyse videos
+not yet analysed" button. It reads
 `GET /api/settings/face-recognition` on opening, every second while the
 runtime is `downloading` and every three seconds while videos are queued or
 running. The download's progress and failure sit under the switch that

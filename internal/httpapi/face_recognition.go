@@ -96,7 +96,7 @@ func (s *server) StartFaceRecognition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.Scope == nil || !domain.FaceQueueScope(*body.Scope).Valid() {
-		s.invalidRequest(w, "scope must be missing or all.")
+		s.invalidRequest(w, "scope must be missing.")
 		return
 	}
 	queued, err := s.faceAnalysis.QueueLibrary(r.Context(), domain.FaceQueueScope(*body.Scope))

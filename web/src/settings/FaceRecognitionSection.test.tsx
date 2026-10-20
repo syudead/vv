@@ -219,6 +219,7 @@ describe("FaceRecognitionSections", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: "Analyse videos not yet analysed" }),
     );
+    expect(screen.queryByRole("button", { name: /again/ })).toBeNull();
     await waitFor(() =>
       expect(toast).toHaveBeenCalledWith("4 videos were queued for face analysis"),
     );

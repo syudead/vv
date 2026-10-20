@@ -1757,15 +1757,12 @@ func (e StartAutoTaggingRequestScope) Valid() bool {
 
 // Defines values for StartFaceRecognitionRequestScope.
 const (
-	StartFaceRecognitionRequestScopeAll     StartFaceRecognitionRequestScope = "all"
 	StartFaceRecognitionRequestScopeMissing StartFaceRecognitionRequestScope = "missing"
 )
 
 // Valid indicates whether the value is a known member of the StartFaceRecognitionRequestScope enum.
 func (e StartFaceRecognitionRequestScope) Valid() bool {
 	switch e {
-	case StartFaceRecognitionRequestScopeAll:
-		return true
 	case StartFaceRecognitionRequestScopeMissing:
 		return true
 	default:
