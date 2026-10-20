@@ -5,7 +5,6 @@ import {
   type PointerEvent,
   type ReactNode,
   useCallback,
-  useEffect,
   useId,
   useRef,
 } from "react";
@@ -43,6 +42,7 @@ import {
 import { type CardDragBinding, dragRowProps, RowDropMarks } from "./cardDrag";
 import { cardLinkState } from "./cardLink";
 import { CardMedia, useCardPreview } from "./cardPreview";
+import { type PreviewCoordinator, usePreviewChanges } from "./usePreviewCoordination";
 import { shownVersionsCount, VersionsMark } from "./VersionsMark";
 
 export interface VideoCardProps {
@@ -55,10 +55,7 @@ export interface VideoCardProps {
   selectionMode: boolean;
   /** Omit in views without selection, such as folders. */
   onSelect?: (id: number, selected: boolean) => void;
-  activePreviewId?: number | null;
-  previewResetEpoch?: number;
-  onPreviewStart?: (id: number) => void;
-  onPreviewReset?: () => void;
+  previewCoordinator?: PreviewCoordinator;
   /**
    * Truncate label at the start; title retains the complete location, including root absolute path
    * for top-level searches.
@@ -189,14 +186,12 @@ function SelectCheck({
 function useCardScrub({
   video,
   selectionMode,
-  activePreviewId,
-  previewResetEpoch,
+  previewCoordinator,
   preview,
 }: {
   video: Video;
   selectionMode: boolean;
-  activePreviewId?: number | null;
-  previewResetEpoch?: number;
+  previewCoordinator?: PreviewCoordinator;
   preview: ReturnType<typeof useCardPreview>;
 }) {
   const { releasePreview, suspendPreview, resumePreview } = preview;
@@ -236,17 +231,13 @@ function useCardScrub({
     leaveCard();
   }, [leaveCard, releasePreview]);
 
-  const observed = useRef({ previewResetEpoch, activePreviewId });
-  useEffect(() => {
-    const previous = observed.current;
-    observed.current = { previewResetEpoch, activePreviewId };
+  usePreviewChanges(previewCoordinator, (current, previous) => {
     const otherStarted =
-      previous.activePreviewId !== activePreviewId &&
-      activePreviewId !== undefined &&
-      activePreviewId !== null &&
-      activePreviewId !== video.id;
-    if (previous.previewResetEpoch !== previewResetEpoch || otherStarted) leaveCard();
-  }, [activePreviewId, leaveCard, previewResetEpoch, video.id]);
+      previous.activeId !== current.activeId &&
+      current.activeId !== null &&
+      current.activeId !== video.id;
+    if (previous.epoch !== current.epoch || otherStarted) leaveCard();
+  });
 
   const band: ScrubPreview = {
     ...scrub,
@@ -263,10 +254,7 @@ function VideoCard(props: VideoCardProps) {
     selected,
     selectionMode,
     onSelect,
-    activePreviewId,
-    previewResetEpoch,
-    onPreviewStart,
-    onPreviewReset,
+    previewCoordinator,
     location,
     tagsRow,
     autoplay,
@@ -280,19 +268,12 @@ function VideoCard(props: VideoCardProps) {
   const versionsId = useId();
   const owner = useAudience() === "owner";
   const showTagsRow = tagsRow !== undefined && video.tags.length > 0;
-  const preview = useCardPreview({
-    video,
-    selectionMode,
-    activePreviewId,
-    previewResetEpoch,
-    onPreviewStart,
-  });
+  const preview = useCardPreview({ video, selectionMode, previewCoordinator });
   const { startPreview } = preview;
   const { scrub, release, setArticle } = useCardScrub({
     video,
     selectionMode,
-    activePreviewId,
-    previewResetEpoch,
+    previewCoordinator,
     preview,
   });
   //
@@ -331,7 +312,7 @@ function VideoCard(props: VideoCardProps) {
         //
         aria-describedby={versions === null ? undefined : versionsId}
         onClick={(event) => {
-          onPreviewReset?.();
+          previewCoordinator?.reset();
           if (selectionMode && onSelect !== undefined) {
             event.preventDefault();
             onSelect(video.id, !selected);

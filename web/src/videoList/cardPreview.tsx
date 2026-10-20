@@ -14,14 +14,17 @@ import { cn } from "../lib/cn";
 import { isNarrowVideo, unplayableText } from "../lib/format";
 import { ScrubFrame, type ScrubFrameData } from "../ui/ScrubPreview";
 import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
+import {
+  type PreviewCoordinator,
+  usePreviewActive,
+  usePreviewChanges,
+} from "./usePreviewCoordination";
 
 /** Coordinate one preview after 400ms across video cards and FolderArt. */
 export interface CardPreviewOptions {
   video: Video;
   selectionMode: boolean;
-  activePreviewId?: number | null;
-  previewResetEpoch?: number;
-  onPreviewStart?: (id: number) => void;
+  previewCoordinator?: PreviewCoordinator;
 }
 
 export interface CardPreview {
@@ -41,22 +44,18 @@ export interface CardPreview {
 export function useCardPreview({
   video,
   selectionMode,
-  activePreviewId,
-  previewResetEpoch = 0,
-  onPreviewStart,
+  previewCoordinator,
 }: CardPreviewOptions): CardPreview {
   const eligible =
     unplayableText(video) === null &&
     video.previewState === "done" &&
     video.previewUrl !== undefined;
-  const coordinated = activePreviewId !== undefined && onPreviewStart !== undefined;
-  const previewActive = !coordinated || activePreviewId === video.id;
+  const previewActive = usePreviewActive(previewCoordinator, video.id);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const lifecycle = useRef(0);
   const suspended = useRef(false);
   const waiting = useRef(false);
-  const observedResetEpoch = useRef(previewResetEpoch);
   const [attempting, setAttempting] = useState(false);
   const [playing, setPlaying] = useState(false);
   const showingPreview = playing && previewActive;
@@ -93,10 +92,14 @@ export function useCardPreview({
   }, []);
 
   useEffect(() => {
-    const resetChanged = observedResetEpoch.current !== previewResetEpoch;
-    observedResetEpoch.current = previewResetEpoch;
-    if (resetChanged || selectionMode || activePreviewId !== video.id) releasePreview();
-  }, [activePreviewId, previewResetEpoch, releasePreview, selectionMode, video.id]);
+    if (selectionMode || previewCoordinator?.state().activeId !== video.id) {
+      releasePreview();
+    }
+  }, [previewCoordinator, releasePreview, selectionMode, video.id]);
+  usePreviewChanges(previewCoordinator, (current, previous) => {
+    if (current.epoch !== previous.epoch || current.activeId !== video.id)
+      releasePreview();
+  });
 
   // Layout cleanup runs before React detaches videoRef, so navigation/unmount
   // can still pause the element and release its resource.
@@ -130,10 +133,10 @@ export function useCardPreview({
     if (timer.current !== null) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       timer.current = null;
-      onPreviewStart?.(video.id);
+      previewCoordinator?.start(video.id);
       setAttempting(true);
     }, 400);
-  }, [onPreviewStart, video.id]);
+  }, [previewCoordinator, video.id]);
 
   const startPreview = useCallback(
     (event: PointerEvent<HTMLElement>) => {

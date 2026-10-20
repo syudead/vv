@@ -51,7 +51,7 @@ export default function FolderSearchResults({
               <FolderVideoGrid
                 videos={videos}
                 zoom={zoom}
-                onLift={preview.onPreviewReset}
+                onLift={preview.previewCoordinator.reset}
                 card={(video) => (
                   <VideoCard
                     key={video.id}
