@@ -1,10 +1,25 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
+
+let shared: { create: typeof window.matchMedia; query: MediaQueryList } | null = null;
+
+/** One query for every card, made again only if matchMedia itself is replaced. */
+function withoutHover(): MediaQueryList | null {
+  if (typeof window.matchMedia !== "function") return null;
+  if (shared?.create !== window.matchMedia) {
+    shared = { create: window.matchMedia, query: window.matchMedia("(hover: none)") };
+  }
+  return shared.query;
+}
+
+function followHover(listener: () => void) {
+  const query = withoutHover();
+  query?.addEventListener?.("change", listener);
+  return () => query?.removeEventListener?.("change", listener);
+}
 
 /** Devices without hover show card actions at rest, so they never wait for an approach. */
 function shownAtRest(): boolean {
-  return (
-    typeof window.matchMedia !== "function" || window.matchMedia("(hover: none)").matches
-  );
+  return withoutHover()?.matches ?? true;
 }
 
 /**
@@ -13,7 +28,9 @@ function shownAtRest(): boolean {
  * each appended page stall. A favorite heart, which shows at rest, renders regardless.
  */
 export function useCardActions() {
-  const [ready, setReady] = useState(shownAtRest);
-  const approach = useCallback(() => setReady(true), []);
-  return { ready, approach };
+  // A convertible can lose hover after the page opens, when actions must show at rest.
+  const atRest = useSyncExternalStore(followHover, shownAtRest);
+  const [approached, setApproached] = useState(false);
+  const approach = useCallback(() => setApproached(true), []);
+  return { ready: atRest || approached, approach };
 }

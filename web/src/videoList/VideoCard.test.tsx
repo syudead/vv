@@ -1005,6 +1005,32 @@ describe("VideoCard の操作ボタン", () => {
     expect(playlist()).not.toBeNull();
   });
 
+  it("開いた後に hover のない端末へ変わったら、触れていないカードにも作る", () => {
+    let matches = false;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      get matches() {
+        return matches;
+      },
+      media: query,
+      addEventListener: (_: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_: string, listener: () => void) =>
+        listeners.delete(listener),
+    }));
+    renderOwner(video());
+    expect(
+      screen.queryByRole("button", { name: 'Add "動画 1" to a playlist' }),
+    ).toBeNull();
+
+    matches = true;
+    act(() => {
+      for (const listener of listeners) listener();
+    });
+    expect(
+      screen.getByRole("button", { name: 'Add "動画 1" to a playlist' }),
+    ).toBeDefined();
+  });
+
   it("お気に入りのハートは触れる前から出す", () => {
     renderOwner(video({ favorite: true }));
     expect(screen.getByRole("button", { name: 'Favorite "動画 1"' })).toBeDefined();
