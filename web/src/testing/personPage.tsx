@@ -78,6 +78,8 @@ export const server = {
   laterAppearances: [] as FaceAppearance[],
   /** The person a confirm answers with, also served at its own address. */
   mergeTarget: null as Person | null,
+  /** Whether face recognition is on, as the settings report it. */
+  faceRecognition: true,
 };
 
 export function sentBody(request: Sent | undefined): unknown {
@@ -166,6 +168,9 @@ function respond(method: string, url: URL, body: unknown): Response {
       ? jsonResponse({ items: [video(1)], total: 1 })
       : jsonResponse({ items: [], total: 0 });
   }
+  if (url.pathname === "/api/settings/face-recognition") {
+    return jsonResponse({ enabled: server.faceRecognition });
+  }
   const plugin = pluginRoute(method, url, body);
   if (plugin !== null) return plugin;
   if (server.person === null) {
@@ -205,6 +210,7 @@ export function installPersonServer() {
     server.appearances = [];
     server.laterAppearances = [];
     server.mergeTarget = null;
+    server.faceRecognition = true;
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>((input, init) => {

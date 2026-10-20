@@ -172,6 +172,21 @@ describe("PersonPage", () => {
     expect(await screen.findByText("72% similar")).toBeTruthy();
   });
 
+  it("hides Faces while face recognition is off", async () => {
+    server.faceRecognition = false;
+    server.faceCandidates = [
+      { person: { id: 9, name: "Alice", provisional: false }, similarity: 0.72 },
+    ];
+    renderPage();
+    await screen.findByRole("link", { name: /Video 1/ });
+
+    await waitFor(() =>
+      expect(sent("GET", "/api/settings/face-recognition")).toHaveLength(1),
+    );
+    expect(screen.queryByRole("link", { name: /^Faces/ })).toBeNull();
+    expect(sent("GET", "/api/people/7/face-candidates")).toHaveLength(0);
+  });
+
   it("shows the gone state when the person no longer exists", async () => {
     server.person = null;
     renderPage();

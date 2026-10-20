@@ -311,7 +311,10 @@ the person's name under it. On the person page they were long lists that
 pushed the profile and the videos aside, while they are work the owner does
 now and then. The person page keeps only a `Faces` action after
 `Show in library`, which counts the pairs waiting for a decision
-(`Faces, 2 to review`) from `GET /api/people/{id}/face-candidates`.
+(`Faces, 2 to review`) from `GET /api/people/{id}/face-candidates`. The action
+shows only while `GET /api/settings/face-recognition` reports face recognition
+on; while it is off, or the settings cannot be read, the page neither shows it
+nor reads the candidates.
 
 `Same person?` comes first on the faces page, drawn only while that request
 returns a pair, one row per pair with the other person's `PersonFace judge`,

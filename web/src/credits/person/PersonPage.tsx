@@ -1,7 +1,8 @@
 import { ScanFace } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 
+import { getFaceRecognitionSettings } from "../../api/client";
 import { type Credit, deleteCredit, isCreditGone, type Person } from "../../api/credits";
 import { errorText, t, type UiText } from "../../i18n";
 import { ErrorState } from "../../ui/patterns/error-state";
@@ -94,8 +95,32 @@ function IdentitySkeleton() {
   );
 }
 
-/** The way to the person's face recognition, with the pairs waiting for a decision. */
-function FacesEntry({ personId, toReview }: { personId: number; toReview: number }) {
+/** Whether face recognition is on; off, unknown or unreadable all hide its entry. */
+function useFaceRecognitionOn(): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    getFaceRecognitionSettings(controller.signal).then(
+      (settings) => {
+        if (!controller.signal.aborted) setOn(settings.enabled);
+      },
+      () => undefined,
+    );
+    return () => controller.abort();
+  }, []);
+  return on;
+}
+
+/** The way to the person's face recognition, shown only while it is on. */
+function FacesEntry({ personId, onGone }: { personId: number; onGone: () => void }) {
+  return useFaceRecognitionOn() ? (
+    <FacesLink personId={personId} onGone={onGone} />
+  ) : null;
+}
+
+/** Faces, with the pairs waiting for a decision. */
+function FacesLink({ personId, onGone }: { personId: number; onGone: () => void }) {
+  const toReview = useFaceCandidates(personId, onGone).items.length;
   return (
     <Button asChild variant="secondary" size="sm">
       <Link
@@ -127,7 +152,6 @@ function PersonShown({
   const [deleting, setDeleting] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<UiText | null>(null);
-  const candidates = useFaceCandidates(person.id, markGone);
 
   function merged(target: Credit) {
     setMerging(false);
@@ -163,9 +187,7 @@ function PersonShown({
           fetchEntry={
             <PersonFetchEntry person={person} onApplied={replace} onGone={markGone} />
           }
-          facesEntry={
-            <FacesEntry personId={person.id} toReview={candidates.items.length} />
-          }
+          facesEntry={<FacesEntry personId={person.id} onGone={markGone} />}
           onMerge={() => setMerging(true)}
           onDelete={() => {
             setDeleteError(null);
