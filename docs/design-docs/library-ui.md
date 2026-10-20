@@ -363,7 +363,7 @@ Video card behaviour:
 | Tag pressed on a folder page or a group page | Opens `/?tag=<id>` |
 | Tags that do not fit the row | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full  |
 | Tag from a folder name only | Same size, no fill, dashed border, Folder marker; no × on the video page; not offered by `Remove tag`  |
-| Hover preview | One at a time on any screen; cards subscribe to a shared [coordinator](../../web/src/videoList/usePreviewCoordination.ts), so starting, replacing or resetting a preview re-renders only the cards whose own preview changes, not every loaded card |
+| Hover preview | One at a time on any screen |
 | Zoom changed | Returns to the card that was at the top |
 
 Folder, group and smart folder cards show the name on up to two lines with the
