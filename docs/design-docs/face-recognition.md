@@ -548,17 +548,16 @@ code with `auto_tag_queue`
 result queues a video with no row, and its `face_analysis` entry joins the
 import pipeline as `auto_tag` does
 ([activity.md](activity.md#a-pipeline-groups-one-import-run)). A forced seek
-job, queued by a force rescan, queues its video as `all` does, unless it is
-running, with an owner's entry that joins the same pipeline
+job, queued by a force rescan, queues its video whether it has no row or is
+`done` or `failed`, and leaves a `queued` or `running` row, with an owner's entry that joins the same pipeline
 ([force rescan](force-rescan.md#tagging-and-face-analysis-run-again)).
 
-The queue is filled in three more ways, each refused with
+The queue is filled in two more ways, each refused with
 `409 face_recognition_off` while the feature is off.
 
 | Trigger | Queues |
 | --- | --- |
 | `POST /api/face-recognition/runs` with `missing` | Videos without a row or whose analysis failed |
-| `POST /api/face-recognition/runs` with `all` | Every video not running |
 | Retry of a `face_analysis` entry in `attention` | Its video, unless it is running; the new entry joins the old one's pipelines |
 
 A recognizer switch, in the settings' transaction, increases the
@@ -575,6 +574,7 @@ longer `running` writes nothing either.
 
 | Rejected | Why |
 | --- | --- |
+| A run that queues every analysed video again (`all`) | A re-analysis carries each appearance over to the same person, so it spent hours to find the same people |
 | A job kind in `jobs` | Import progress counts jobs, and an optional analysis at about 0.27 times the video length would hold the import open |
 | Queueing every video in the library on a switch | Turning the feature on with a recognizer other than the default would queue the whole library, while the default queues nothing |
 | Keeping the old recognizer's vectors until the videos are analysed again | They cannot be compared with the new ones, and a switch back would mix vectors of two analyses |
@@ -585,7 +585,8 @@ longer `running` writes nothing either.
 
 **Face recognition** in Settings
 ([`FaceRecognitionSection.tsx`](../../web/src/settings/FaceRecognitionSection.tsx))
-shares the Auto-tagging page's `Progress` section and run buttons. It reads
+shares the Auto-tagging page's `Progress` section, with only its "Analyse videos
+not yet analysed" button. It reads
 `GET /api/settings/face-recognition` on opening, every second while the
 runtime is `downloading` and every three seconds while videos are queued or
 running. The download's progress and failure sit under the switch that
@@ -656,7 +657,35 @@ a deleted face is not recreated and a removed link is not made again.
 | Rejected | Why |
 | --- | --- |
 | Deleting a deleted person's appearances too | The next analysis would find the same face and create the person again |
-| An operation that deletes all face data | The owner deletes people, and the next analysis would compute the vectors again anyway |
+
+## Deleting every person starts the people over
+
+`DELETE /api/people` deletes every person, named or provisional, and every
+face appearance in one transaction
+([`FaceStore.ClearPeople`](../../internal/store/face_clear.go)), and the face
+analysis then starts from nothing. **Delete all people…** on the Settings
+**Danger zone** page
+([`ClearPeopleSection.tsx`](../../web/src/settings/ClearPeopleSection.tsx))
+asks first; the page holds the operations that cannot be undone, so none of
+them sits beside an everyday setting.
+
+| Step | Effect |
+| --- | --- |
+| `face.generation` | Increases, so an analysis or face embedding that started before writes nothing and its video is analysed again |
+| Face appearances | Deleted, not marked dropped as a single person's delete marks them; a dropped row would be carried over by the next analysis and its face never linked again |
+| People | Deleted with their names, external IDs, credits on videos, profiles, favorites, faces, face vectors and candidate pairs |
+| `face_queue` | `done` and `failed` rows go, so every video counts as not analysed; while the feature is on every video is queued, with an owner's `face_analysis` entry |
+
+Smart folders whose rule names a person then match nothing, as after any
+person's delete. Activity entries stay: a link or merge whose person is gone
+undoes nothing, as after any delete. The operation works with the feature off
+and without a runtime.
+
+| Rejected | Why |
+| --- | --- |
+| Deleting people one by one through the ordinary delete | It marks each appearance dropped, so no later analysis would make those people again |
+| A section of the Face recognition page | It deletes every person and their credits, far beyond face recognition, beside the switches the owner changes every day |
+| Deleting face data only and keeping the people | The people's faces and credits would no longer match any appearance, and the next analysis would make a second copy of each |
 
 ## An automatic link is undone from the activity log
 

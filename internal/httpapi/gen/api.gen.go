@@ -1757,15 +1757,12 @@ func (e StartAutoTaggingRequestScope) Valid() bool {
 
 // Defines values for StartFaceRecognitionRequestScope.
 const (
-	StartFaceRecognitionRequestScopeAll     StartFaceRecognitionRequestScope = "all"
 	StartFaceRecognitionRequestScopeMissing StartFaceRecognitionRequestScope = "missing"
 )
 
 // Valid indicates whether the value is a known member of the StartFaceRecognitionRequestScope enum.
 func (e StartFaceRecognitionRequestScope) Valid() bool {
 	switch e {
-	case StartFaceRecognitionRequestScopeAll:
-		return true
 	case StartFaceRecognitionRequestScopeMissing:
 		return true
 	default:
@@ -4209,6 +4206,15 @@ type OrganizeResult struct {
 type OrganizeUndo struct {
 	// Token undoToken from the operation response.
 	Token string `json:"token"`
+}
+
+// PeopleCleared defines model for PeopleCleared.
+type PeopleCleared struct {
+	// Deleted People deleted
+	Deleted int `json:"deleted"`
+
+	// Queued Videos queued for face analysis
+	Queued int `json:"queued"`
 }
 
 // Person One person.
@@ -7378,6 +7384,9 @@ type ServerInterface interface {
 	// OrganizeUndo Undo a drag operation
 	// (POST /api/organize/undo)
 	OrganizeUndo(w http.ResponseWriter, r *http.Request)
+	// ClearPeople Delete every person and all face data
+	// (DELETE /api/people)
+	ClearPeople(w http.ResponseWriter, r *http.Request)
 	// ListPeople List people
 	// (GET /api/people)
 	ListPeople(w http.ResponseWriter, r *http.Request, params ListPeopleParams)
@@ -9698,6 +9707,20 @@ func (siw *ServerInterfaceWrapper) OrganizeUndo(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.OrganizeUndo(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ClearPeople operation middleware
+func (siw *ServerInterfaceWrapper) ClearPeople(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ClearPeople(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -14324,6 +14347,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tag-kinds", wrapper.CreateTagKind)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tag-kinds/{id}", wrapper.DeleteTagKind)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/tag-kinds/{id}", wrapper.RenameTagKind)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/people", wrapper.ClearPeople)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people", wrapper.ListPeople)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people", wrapper.CreatePerson)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/people/{id}", wrapper.DeletePerson)

@@ -13,14 +13,13 @@ var (
 type FaceQueueScope string
 
 const (
-	// FaceQueueMissing queues videos never analysed or whose analysis failed.
+	// FaceQueueMissing queues videos never analysed or whose analysis failed; it is the only scope, since an analysed
+	// video carries its appearances over and would find the same people again.
 	FaceQueueMissing FaceQueueScope = "missing"
-	// FaceQueueAll queues every video again; a running analysis keeps running.
-	FaceQueueAll FaceQueueScope = "all"
 )
 
 func (s FaceQueueScope) Valid() bool {
-	return s == FaceQueueMissing || s == FaceQueueAll
+	return s == FaceQueueMissing
 }
 
 // FaceJob is a claimed face analysis with the recognizer and face.generation current when it was claimed, read
@@ -29,6 +28,12 @@ type FaceJob struct {
 	ContentKey string
 	Recognizer FaceRecognizer
 	Generation int64
+}
+
+// PeopleCleared is what deleting every person did: the people deleted and the videos queued for face analysis.
+type PeopleCleared struct {
+	People int
+	Queued int
 }
 
 // FaceAnalysis is one video's finished analysis, as the face worker hands it to the store.

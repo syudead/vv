@@ -87,7 +87,8 @@ func TestFaceRecognitionIsOwnerOnly(t *testing.T) {
 	for _, req := range []authRequest{
 		{method: http.MethodPut, target: "/api/settings/face-recognition", body: `{"enabled":true,"recognizer":"sface_int8"}`},
 		{method: http.MethodPost, target: "/api/face-recognition/download"},
-		{method: http.MethodPost, target: "/api/face-recognition/runs", body: `{"scope":"all"}`},
+		{method: http.MethodPost, target: "/api/face-recognition/runs", body: `{"scope":"missing"}`},
+		{method: http.MethodDelete, target: "/api/people"},
 	} {
 		assertUnauthenticated(t, req.method+" "+req.target, env.serve(req))
 	}
@@ -104,14 +105,25 @@ func TestFaceRecognitionRunsAreRefusedWhileOff(t *testing.T) {
 		*body.Reason != gen.ErrorReasonFaceRecognitionOff {
 		t.Fatalf("runs while off: status = %d: %s", off.Code, off.Body)
 	}
-	if res := send(http.MethodPost, "/api/face-recognition/runs", `{"scope":"some"}`); res.Code != http.StatusBadRequest {
-		t.Fatalf("unknown scope: status = %d", res.Code)
+	// all is gone: an analysed video is analysed again only by a recognizer switch.
+	for _, scope := range []string{"some", "all"} {
+		if res := send(http.MethodPost, "/api/face-recognition/runs", `{"scope":"`+scope+`"}`); res.Code != http.StatusBadRequest {
+			t.Fatalf("scope %s: status = %d", scope, res.Code)
+		}
 	}
 	if res := send(http.MethodPut, "/api/settings/face-recognition", `{"enabled":true,"recognizer":"sface_int8"}`); res.Code != http.StatusOK {
 		t.Fatalf("turning on: status = %d", res.Code)
 	}
-	on := send(http.MethodPost, "/api/face-recognition/runs", `{"scope":"all"}`)
+	on := send(http.MethodPost, "/api/face-recognition/runs", `{"scope":"missing"}`)
 	if got := decode[gen.FaceRecognitionQueued](t, on); on.Code != http.StatusAccepted || got.Queued != 0 {
 		t.Fatalf("runs while on: status = %d, body = %+v", on.Code, got)
+	}
+}
+
+func TestClearPeopleAnswersWhatItDeletedAndQueued(t *testing.T) {
+	env, owner := newFaceRecognitionEnv(t, &faceRuntimeStub{})
+	res := env.serve(authRequest{method: http.MethodDelete, target: "/api/people", cookies: []*http.Cookie{owner}})
+	if got := decode[gen.PeopleCleared](t, res); res.Code != http.StatusOK || got != (gen.PeopleCleared{}) {
+		t.Fatalf("clear of an empty library: status = %d, body = %+v", res.Code, got)
 	}
 }

@@ -1265,7 +1265,7 @@ export interface paths {
         put?: never;
         /**
          * Queue library videos for face analysis
-         * @description Owner-only. missing queues videos never analysed or whose analysis failed; all queues every video not being analysed. Returns the queued count. Videos queued while the runtime is not ready wait for it. While off returns 409 face_recognition_off. See docs/design-docs/face-recognition.md.
+         * @description Owner-only. missing, the only scope, queues videos never analysed or whose analysis failed; an analysed video is analysed again only by a recognizer switch. Returns the queued count. Videos queued while the runtime is not ready wait for it. While off returns 409 face_recognition_off. See docs/design-docs/face-recognition.md.
          */
         post: operations["startFaceRecognition"];
         delete?: never;
@@ -1902,7 +1902,11 @@ export interface paths {
          * @description Owner-only. Invalid fields return 400 with work_info_* reason and field. An external ID owned by another person returns 409 external_id_taken with field externalIds[i]. parentId is forbidden (400 invalid_request).
          */
         post: operations["createPerson"];
-        delete?: never;
+        /**
+         * Delete every person and all face data
+         * @description Owner-only. Deletes every person, with their names, credits on videos, faces and profiles, and every face appearance and candidate, in one transaction. Videos already analysed for faces are left to be analysed again, and while face recognition is on every video is queued. Smart folders whose rule names a person then match nothing. See docs/design-docs/face-recognition.md.
+         */
+        delete: operations["clearPeople"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4015,7 +4019,13 @@ export interface components {
         };
         StartFaceRecognitionRequest: {
             /** @enum {string} */
-            scope: "missing" | "all";
+            scope: "missing";
+        };
+        PeopleCleared: {
+            /** @description People deleted */
+            deleted: number;
+            /** @description Videos queued for face analysis */
+            queued: number;
         };
         FaceRecognitionQueued: {
             /** @description Number of queued videos. */
@@ -9648,6 +9658,27 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    clearPeople: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What was deleted and queued */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PeopleCleared"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
         };
     };
     getPerson: {

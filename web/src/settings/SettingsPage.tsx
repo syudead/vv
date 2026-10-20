@@ -15,6 +15,7 @@ import { Button } from "../ui/shadcn/button";
 import APITokensSection from "./APITokensSection";
 import { AutoImportStateSection, AutoImportSwitchSection } from "./AutoImportSection";
 import AutoTaggingSection from "./AutoTaggingSection";
+import ClearPeopleSection from "./ClearPeopleSection";
 import ComfyUISection from "./ComfyUISection";
 import { FaceRecognitionSections, faceRecognitionNotice } from "./FaceRecognitionSection";
 import SetupSection from "./SetupSection";
@@ -52,6 +53,7 @@ const sectionComponents: Record<SettingsSectionId, ComponentType | null> = {
   transcoding: TranscodingSection,
   network: NetworkSection,
   "api-tokens": APITokensSection,
+  "clear-people": ClearPeopleSection,
 };
 
 function PageList({ current }: { current: SettingsPageEntry }) {

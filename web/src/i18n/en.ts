@@ -3415,6 +3415,32 @@ export const en = {
       conversion: "Video conversion",
       network: "Network",
       api: "API",
+      "danger-zone": "Danger zone",
+    },
+    dangerZone: {
+      clearPeople: {
+        heading: "Delete all people",
+        description:
+          "Start the people of the library over: every person and every face found goes, and videos count as not yet analysed.",
+        open: "Delete all people…",
+        title: "Delete all people?",
+        body: "Every person, named or not, is deleted with their faces, profiles and credits on videos, and every face found in videos goes too. Smart folders that name a person then show nothing. While face recognition is on, every video is analysed again; while it is off, turn it on and choose “Analyse videos not yet analysed”. This cannot be undone.",
+        submit: "Delete all people",
+        submitting: "Deleting…",
+        done: (deleted: number, queued: number) =>
+          `${selectPlural(deleted, {
+            one: `${formatNumber(deleted)} person was deleted`,
+            other: `${formatNumber(deleted)} people were deleted`,
+          })}${
+            queued === 0
+              ? ""
+              : selectPlural(queued, {
+                  one: `; ${formatNumber(queued)} video was queued for face analysis`,
+                  other: `; ${formatNumber(queued)} videos were queued for face analysis`,
+                })
+          }`,
+        failed: (reason: string) => `Couldn't delete the people: ${reason}`,
+      },
     },
     scanStatus: {
       heading: "Scan status",
@@ -3624,7 +3650,6 @@ export const en = {
       queue: (queued: number, running: number, done: number, failed: number) =>
         `Waiting ${formatNumber(queued)} · Analysing ${formatNumber(running)} · Done ${formatNumber(done)} · Failed ${formatNumber(failed)}`,
       runMissing: "Analyse videos not yet analysed",
-      runAll: "Analyse all videos again",
       started: (count: number) =>
         count === 0
           ? "There were no videos to analyse"

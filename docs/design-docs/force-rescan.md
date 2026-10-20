@@ -120,8 +120,8 @@ up afterwards keeps the edit's `done` state.
 The transaction that records a forced `seek_thumbnail` job's final result,
 done or given up, queues the video for auto-tagging while `Use auto-tagging`
 is on and for face analysis while `face.enabled` is on, even when an earlier
-run finished. It queues them as `Tag all videos again` and the face `all` run
-do: a running or already queued row is not moved, and a rejected tag is never
+run finished. A video with no row, or one `done` or `failed`, is queued, as
+`Tag all videos again` does; a running or already queued row is not moved, and a rejected tag is never
 asked about again ([auto-tagging](auto-tagging.md),
 [face recognition](face-recognition.md#the-face-queue-mirrors-the-auto-tagging-queue)).
 Each entry is the owner's, because the owner started the rescan, and joins the

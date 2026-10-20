@@ -39,6 +39,7 @@ const pages: [string, string, string[]][] = [
   ["/settings/conversion", "Video conversion", ["Encoder"]],
   ["/settings/network", "Network", ["Local network"]],
   ["/settings/api", "API", ["API tokens"]],
+  ["/settings/danger-zone", "Danger zone", ["Delete all people"]],
 ];
 
 describe("SettingsPage: pages", () => {

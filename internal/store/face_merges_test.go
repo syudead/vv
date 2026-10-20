@@ -33,7 +33,7 @@ func newMergeFixture(t *testing.T, targetOnA bool) mergeFixture {
 	f.target = createPerson(t, db, "Target").ID
 	f.near = createPerson(t, db, "Near").ID
 	setFaceVector(t, db, f.near, faceNear(2, 3, 0.4))
-	if n, err := db.Faces().QueueLibrary(ctx, domain.FaceQueueAll, domain.ActivityByOwner); err != nil || n != 2 {
+	if n, err := db.Faces().QueueLibrary(ctx, domain.FaceQueueMissing, domain.ActivityByOwner); err != nil || n != 2 {
 		t.Fatalf("QueueLibrary = %d, %v", n, err)
 	}
 	// The first video creates the provisional person; the second links the same face to it.

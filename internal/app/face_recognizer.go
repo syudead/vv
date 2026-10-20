@@ -26,6 +26,8 @@ type FaceAnalysisQueue interface {
 	QueueLibrary(ctx context.Context, scope domain.FaceQueueScope, decider domain.ActivityDecider) (int, error)
 	// RetryVideo queues the content again for the owner's retry of entryID, unless it is running.
 	RetryVideo(ctx context.Context, contentKey string, entryID int64) (int, error)
+	// ClearPeople deletes every person and face appearance and leaves every video to be analysed again.
+	ClearPeople(ctx context.Context) (domain.PeopleCleared, error)
 	// Claim takes the next queued video with the recognizer and generation current at the claim, or ErrNoJob.
 	Claim(ctx context.Context) (domain.FaceJob, error)
 	// VideoPaths returns the registered locations of the content, or ErrNotFound when the library lost it.
@@ -271,6 +273,16 @@ func (f *FaceRecognizer) QueueLibrary(ctx context.Context, scope domain.FaceQueu
 		f.Wake()
 	}
 	return queued, nil
+}
+
+// ClearPeople deletes every person and all face data, whether the feature is on or off, and wakes the worker for the
+// videos it queued.
+func (f *FaceRecognizer) ClearPeople(ctx context.Context) (domain.PeopleCleared, error) {
+	cleared, err := f.queue.ClearPeople(ctx)
+	if err == nil && cleared.Queued > 0 {
+		f.Wake()
+	}
+	return cleared, err
 }
 
 // RetryActivity queues the entry's video again as the owner's run; a video no longer in the library, or one

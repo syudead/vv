@@ -1932,7 +1932,7 @@ paths:
     post:
       operationId: startFaceRecognition
       summary: "Queue library videos for face analysis"
-      description: "Owner-only. missing queues videos never analysed or whose analysis failed; all queues every video not being analysed. Returns the queued count. Videos queued while the runtime is not ready wait for it. While off returns 409 face_recognition_off. See docs/design-docs/face-recognition.md."
+      description: "Owner-only. missing, the only scope, queues videos never analysed or whose analysis failed; an analysed video is analysed again only by a recognizer switch. Returns the queued count. Videos queued while the runtime is not ready wait for it. While off returns 409 face_recognition_off. See docs/design-docs/face-recognition.md."
       requestBody:
         required: true
         content:
@@ -2957,6 +2957,19 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: clearPeople
+      summary: "Delete every person and all face data"
+      description: "Owner-only. Deletes every person, with their names, credits on videos, faces and profiles, and every face appearance and candidate, in one transaction. Videos already analysed for faces are left to be analysed again, and while face recognition is on every video is queued. Smart folders whose rule names a person then match nothing. See docs/design-docs/face-recognition.md."
+      responses:
+        "200":
+          description: "What was deleted and queued"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PeopleCleared"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /api/people/{id}:
     get:
@@ -6966,7 +6979,19 @@ components:
       properties:
         scope:
           type: string
-          enum: [missing, all]
+          enum: [missing]
+
+    PeopleCleared:
+      type: object
+      required: [deleted, queued]
+      additionalProperties: false
+      properties:
+        deleted:
+          type: integer
+          description: "People deleted"
+        queued:
+          type: integer
+          description: "Videos queued for face analysis"
 
     FaceRecognitionQueued:
       type: object

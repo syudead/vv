@@ -1087,6 +1087,16 @@ export function downloadFaceRuntime(
   });
 }
 
+/** Delete every person and all face data; answers what it deleted and how many videos it queued. */
+export function clearPeople(
+  signal?: AbortSignal,
+): Promise<components["schemas"]["PeopleCleared"]> {
+  return request<components["schemas"]["PeopleCleared"]>("/api/people", {
+    method: "DELETE",
+    signal,
+  });
+}
+
 export function startFaceRecognition(
   scope: FaceRecognitionScope,
   signal?: AbortSignal,
