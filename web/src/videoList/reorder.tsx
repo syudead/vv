@@ -19,11 +19,17 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 
 export const verticalOnly: Modifier = ({ transform }) => ({ ...transform, x: 0 });
 
+// Module constants: dnd-kit rebuilds sensors when option objects change, and new sensors
+// re-render every draggable item.
+const pointerOptions = { activationConstraint: { distance: 4 } };
+export const touchSensorOptions = { activationConstraint: { delay: 200, tolerance: 8 } };
+export const keyboardSensorOptions = { coordinateGetter: sortableKeyboardCoordinates };
+
 export function useReorderSensors() {
   return useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(PointerSensor, pointerOptions),
+    useSensor(TouchSensor, touchSensorOptions),
+    useSensor(KeyboardSensor, keyboardSensorOptions),
   );
 }
 
