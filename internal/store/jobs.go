@@ -472,14 +472,17 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 	identityArgs := []any{job.VideoID, job.ContentKey, job.LocationGeneration,
 		job.LocationID, job.VideoID, job.LocationVersion, job.LocationPath}
 
+	// A forced job replaces a done or failed state too, so a failed rebuild is not shown as the old success.
+	forced := boolToInt(job.Force)
+
 	var updated sql.Result
 	switch job.Kind {
 	case domain.JobProbe:
 		// Only replace pending state so a later completion-recording failure cannot overwrite a saved probe result.
 		res, err := tx.ExecContext(ctx, `update videos set probe_state = 'failed', probe_error = ?, probe_error_code = ?,
 			playable = 0, indexed_at = ?
-			where probe_state = 'pending' and `+identity,
-			append([]any{cause.Error(), string(domain.ProbeErrorCodeOf(cause)), now}, identityArgs...)...)
+			where (probe_state = 'pending' or ? = 1) and `+identity,
+			append([]any{cause.Error(), string(domain.ProbeErrorCodeOf(cause)), now, forced}, identityArgs...)...)
 		if err != nil {
 			return fmt.Errorf("cannot record the final probe failure (job=%d): %w", job.ID, err)
 		}
@@ -487,8 +490,8 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 	case domain.JobThumbnail:
 		// A seek-preview failure must not replace a completed representative thumbnail's state.
 		res, err := tx.ExecContext(ctx, `update videos set thumbnail_state = 'failed', indexed_at = ?
-			where thumbnail_state <> 'done' and `+identity,
-			append([]any{now}, identityArgs...)...)
+			where (thumbnail_state <> 'done' or ? = 1) and `+identity,
+			append([]any{now, forced}, identityArgs...)...)
 		if err != nil {
 			return fmt.Errorf("cannot record the final thumbnail failure (job=%d): %w", job.ID, err)
 		}
@@ -496,8 +499,8 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 	case domain.JobSeekThumbnail:
 		// The representative thumbnail is a separate job; change only seek-thumbnail state.
 		res, err := tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'failed', indexed_at = ?
-			where seek_thumbnail_state <> 'done' and `+identity,
-			append([]any{now}, identityArgs...)...)
+			where (seek_thumbnail_state <> 'done' or ? = 1) and `+identity,
+			append([]any{now, forced}, identityArgs...)...)
 		if err != nil {
 			return fmt.Errorf("cannot record the final seek thumbnail failure (job=%d): %w", job.ID, err)
 		}

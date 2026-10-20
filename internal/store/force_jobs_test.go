@@ -186,11 +186,7 @@ func TestForcedSeekStageQueuesNoFollowUpProcess(t *testing.T) {
 
 func videoBuilds(t *testing.T, db *DB, videoID int64) domain.ArtifactBuilds {
 	t.Helper()
-	video, err := db.Library().GetVideo(context.Background(), domain.AudienceOwner, videoID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return video.Builds
+	return getOwnerVideo(t, db, videoID).Builds
 }
 
 // completePreview records a preview the way the preview worker does.
@@ -221,4 +217,61 @@ func TestForcedStageResultCountsTheBuild(t *testing.T) {
 	if got := videoBuilds(t, db, videoID); got != want {
 		t.Fatalf("builds after forced results = %+v, want %+v", got, want)
 	}
+}
+
+// A forced stage that gives up records the stage failed over a done state, so a failed rebuild does not read as
+// success; an unforced job that gives up keeps the done state.
+func TestForcedStageFailureReplacesTheDoneState(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		kind  domain.JobKind
+		force bool
+		state func(domain.Video) string
+		want  string
+	}{
+		{"forced probe", domain.JobProbe, true, func(v domain.Video) string { return string(v.ProbeState) }, "failed"},
+		{"forced thumbnail", domain.JobThumbnail, true, func(v domain.Video) string { return string(v.ThumbnailState) }, "failed"},
+		{"forced seek", domain.JobSeekThumbnail, true, func(v domain.Video) string { return string(v.SeekThumbnailState) }, "failed"},
+		{"unforced thumbnail", domain.JobThumbnail, false, func(v domain.Video) string { return string(v.ThumbnailState) }, "done"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := migratedDB(t)
+			ctx := context.Background()
+			videoID := queueNewFile(t, db, "clip", domain.ActivityByRule)
+			for _, kind := range []domain.JobKind{domain.JobProbe, domain.JobThumbnail, domain.JobSeekThumbnail} {
+				runImportStage(t, db, kind)
+			}
+			queue := db.Ingest().EnqueueJobs
+			if tc.force {
+				queue = db.Ingest().ForceJobs
+			}
+			if err := queue(ctx, videoID, domain.ActivityByOwner, tc.kind); err != nil {
+				t.Fatal(err)
+			}
+
+			giveUpStage(t, db, tc.kind, errors.New("ffmpeg failed"))
+
+			if got := tc.state(getOwnerVideo(t, db, videoID)); got != tc.want {
+				t.Fatalf("%s state = %s, want %s", tc.kind, got, tc.want)
+			}
+			if !tc.force {
+				return
+			}
+			// The next force rescan runs the failed stage again, and its success clears the failure.
+			forceJobs(t, db, videoID, tc.kind)
+			runImportStage(t, db, tc.kind)
+			if got := tc.state(getOwnerVideo(t, db, videoID)); got != "done" {
+				t.Errorf("%s state after a forced success = %s, want done", tc.kind, got)
+			}
+		})
+	}
+}
+
+func getOwnerVideo(t *testing.T, db *DB, videoID int64) domain.Video {
+	t.Helper()
+	video, err := db.Library().GetVideo(context.Background(), domain.AudienceOwner, videoID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return video
 }

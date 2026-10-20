@@ -154,6 +154,7 @@ func TestRescanFolderRemovesMissingLocationsOnlyInsideTheFolder(t *testing.T) {
 	index := newFakeIndex()
 	seedIndex(t, index, inside, outside)
 	goneInside := rowFor(t, index, filepath.Join(inside, "gone.mp4")).LocationID
+	keptInside := rowFor(t, index, filepath.Join(inside, "a.mp4")).ID
 	for _, path := range []string{filepath.Join(inside, "gone.mp4"), filepath.Join(outside, "gone.mp4")} {
 		if err := os.Remove(path); err != nil {
 			t.Fatal(err)
@@ -166,6 +167,22 @@ func TestRescanFolderRemovesMissingLocationsOnlyInsideTheFolder(t *testing.T) {
 		t.Fatalf("removed = %d, deleted = %v, want only %d", result.Removed, index.deleted, goneInside)
 	}
 	rowFor(t, index, filepath.Join(outside, "gone.mp4"))
+	if !slices.Equal(index.forceJobs, forcedKindsFor(keptInside)) {
+		t.Errorf("forced jobs = %v, want only the folder's video %d", index.forceJobs, keptInside)
+	}
+}
+
+func TestRescanVideoForcesOnlyThatVideo(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "a", "b.mp4": "b"})
+	index := newFakeIndex()
+	seedIndex(t, index, root)
+	id := rowFor(t, index, filepath.Join(root, "b.mp4")).ID
+
+	rescan(t, index, domain.RescanScope{Kind: domain.RescanVideo, VideoID: id})
+
+	if !slices.Equal(index.forceJobs, forcedKindsFor(id)) {
+		t.Errorf("forced jobs = %v, want only video %d", index.forceJobs, id)
+	}
 }
 
 // A folder that points elsewhere than the recorded rescan_path stops the rescan instead of walking another tree.

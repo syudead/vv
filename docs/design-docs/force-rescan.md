@@ -96,6 +96,14 @@ A forced job regenerates whatever the video's stage state is, and the stage
 states stay as they are until the job records its result, so the screen keeps
 the old thumbnail and preview while the new ones are built.
 
+A forced `thumbnail` republishes the owner's applied image, extracts the chosen
+position again, or else takes the automatic frame
+([thumbnail editing](thumbnail-editing.md)). A forced sprite or preview is
+built beside the published one ([forced rebuild](seek-sprite-generation.md#forced-rebuild)).
+A forced job that gives up records its stage `failed` even over a `done`
+state, with the import issue an ordinary failure records, so a failed rebuild
+is not shown as the old success; an unforced job keeps a `done` state.
+
 | Rejected | Why |
 | --- | --- |
 | Reset the stage states to `pending` | The screen sends a thumbnail URL only for a `done` state, so every card would lose its thumbnail during the rescan |
