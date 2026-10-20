@@ -39,8 +39,13 @@ func (s *faceStore) AddPersonImage(_ context.Context, id int64, image domain.Per
 	return 5, nil
 }
 
-func (s *faceStore) SetPersonImage(context.Context, int64, domain.PersonImage) (domain.Credit, error) {
-	return domain.Credit{}, errors.New("not used")
+// SetPersonImage stores a face over any other at revision 7.
+func (s *faceStore) SetPersonImage(_ context.Context, id int64, image domain.PersonImage) (domain.Credit, error) {
+	if !s.known[id] {
+		return domain.Credit{}, domain.ErrNotFound
+	}
+	s.faces[id] = image.JPEG
+	return domain.Credit{ID: id, ImageRevision: 7}, nil
 }
 
 func (s *faceStore) DeletePersonImage(context.Context, int64) (domain.Credit, error) {
@@ -111,6 +116,22 @@ func TestApplyStoresAFetchedFaceOnlyForAPersonWithoutOne(t *testing.T) {
 	config, err := jpeg.DecodeConfig(bytes.NewReader(faces.faces[2]))
 	if err != nil || config.Width != 5 || config.Height != 4 {
 		t.Fatalf("person 2's face = %+v, %v; want the 5x4 image as JPEG", config, err)
+	}
+}
+
+func TestReplacePersonImageStoresOverAFace(t *testing.T) {
+	faces := &faceStore{known: map[int64]bool{1: true}, faces: map[int64][]byte{1: []byte("own face")}}
+	images := &PersonImages{store: faces, uploads: newUploadGate()}
+
+	revision, err := images.ReplacePersonImage(context.Background(), 1, pngOf(t, 5, 4))
+	if err != nil || revision != 7 {
+		t.Fatalf("ReplacePersonImage = %d, %v; want revision 7", revision, err)
+	}
+	if config, err := jpeg.DecodeConfig(bytes.NewReader(faces.faces[1])); err != nil || config.Width != 5 {
+		t.Fatalf("person 1's face = %+v, %v; want the fetched image over the stored face", config, err)
+	}
+	if revision, err := images.ReplacePersonImage(context.Background(), 2, pngOf(t, 2, 2)); err != nil || revision != 0 {
+		t.Fatalf("missing person: ReplacePersonImage = %d, %v; want 0 without an error", revision, err)
 	}
 }
 
