@@ -67,6 +67,12 @@ function recordUncertain(videoIds: readonly number[], sequence: number): void {
   release();
 }
 
+/** A bulk edit cannot tell which explicit videos changed visibility; refresh them instead of overlaying a value. */
+export function markVisibilityUncertain(videoIds: readonly number[]): void {
+  sent += 1;
+  recordUncertain(Array.from(new Set(videoIds)), sent);
+}
+
 /** List subscribers return a promise settling after refresh or unmount; snapshots remain blocked until then. */
 export function subscribeVideoVisibilityStale(listener: StaleListener): () => void {
   staleListeners.add(listener);

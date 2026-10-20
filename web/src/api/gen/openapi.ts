@@ -2240,7 +2240,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/video-credits": {
+    "/api/video-edits/summary": {
         parameters: {
             query?: never;
             header?: never;
@@ -2250,10 +2250,30 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Add, remove or replace credits on selected videos
-         * @description Owner-only. Applies edits in order to the work information of videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags; videos sharing a user-data key change together. Each edit changes one person or organization role and leaves the other roles and work-info fields as they are: add appends the IDs a video lacks after its existing credits, remove drops them, and replace sets the role to exactly ids ([] clears it). All changes are atomic: an invalid edit returns 400 with `field` at edits[i], a missing credit returns 404 person_not_found or organization_not_found at edits[i].ids[j], and a role that would exceed its limit on any video returns 400 work_info_too_many at edits[i].ids, each writing nothing. After a change commits, emits a video event for every video sharing a changed key.
+         * Summarize the editable values of selected videos
+         * @description Owner-only. Summarizes videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, for the bulk editor. total counts the resolved videos in the library, counting videos that share a user-data key once; every other count is out of total, so count < total means only some videos have the value. tags is updateVideoTags' summary; people and organizations are in role order, then natural name order; dates lists each kind at least one video has.
          */
-        post: operations["editVideoCredits"];
+        post: operations["summarizeVideoEdits"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/video-edits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply one bulk edit to selected videos
+         * @description Owner-only. Applies every present part to videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, in one transaction; videos sharing a user-data key change together. tags.add attaches by ID or by name (resolving synonyms and creating a missing tag), tags.remove detaches manual attachments by ID; credits follows VideoCreditEdit; dates sets each listed kind, null clearing it; public sets visibility and ends guest streams of videos made private. Other values stay as they are. A request without any change returns 400 invalid_request. Errors write nothing: a missing tag returns 404 tag_not_found, a missing credit 404 person_not_found or organization_not_found, and an invalid value 400 with `field` at its location in the request, such as credits[0].ids[1] or dates[0].date. Emits the same events and activity as the single-part endpoints.
+         */
+        post: operations["applyVideoEdits"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4615,27 +4635,73 @@ export interface components {
              */
             afterItemId: number | null;
         };
-        VideoCreditsRequest: {
+        VideoEditRequest: {
             /** @description Video IDs to change. May be empty when smartFolderIds is not. */
             videoIds: number[];
             /** @description Smart-folder IDs resolved at request time to their current member videos (the saved rule plus every ancestor rule, groups expanded to their videos) and added to videoIds. Missing folders are ignored. */
             smartFolderIds?: number[];
-            /** @description 1–6 edits, at most one per role. */
-            edits: components["schemas"]["VideoCreditEdit"][];
+            tags?: components["schemas"]["VideoTagEdit"];
+            /** @description At most one edit per role. */
+            credits?: components["schemas"]["VideoCreditEdit"][];
+            /** @description At most one entry per kind. */
+            dates?: components["schemas"]["VideoDateEdit"][];
+            /** @description True makes the videos public, false private; omit to keep each video's visibility. */
+            public?: boolean;
         };
+        VideoTagEdit: {
+            /** @description Up to 100 tags to attach; a tag named twice, or by a name and its ID, is attached once. */
+            add?: components["schemas"]["TagInput"][];
+            /** @description Up to 100 distinct tag IDs whose manual attachments are removed; a tag also in add returns 400 work_info_duplicate. */
+            remove?: number[];
+        };
+        VideoDateEdit: {
+            kind: components["schemas"]["WorkDateKind"];
+            /** @description YYYY, YYYY-MM or YYYY-MM-DD as in WorkDate; null clears the kind. */
+            date: string | null;
+        };
+        VideoEditResponse: {
+            /** @description Number of resolved videos currently in the library that any part changed. */
+            applied: number;
+            /** @description The tags of tags.add as resolved, in request order without repeats. */
+            tags: components["schemas"]["TagRef"][];
+        };
+        VideoEditSummary: {
+            total: number;
+            /** @description Videos out of total that are public. */
+            public: number;
+            tags: components["schemas"]["VideoTagsSummaryItem"][];
+            people: components["schemas"]["VideoEditPersonCount"][];
+            organizations: components["schemas"]["VideoEditOrganizationCount"][];
+            /** @description Kind order: release, recorded, published. */
+            dates: components["schemas"]["VideoEditDateCount"][];
+        };
+        VideoEditPersonCount: {
+            role: components["schemas"]["WorkPersonRole"];
+            person: components["schemas"]["CreditRef"];
+            count: number;
+            imageRevision?: components["schemas"]["PersonImageRevision"];
+        };
+        VideoEditOrganizationCount: {
+            role: components["schemas"]["WorkOrganizationRole"];
+            organization: components["schemas"]["CreditRef"];
+            count: number;
+        };
+        VideoEditDateCount: {
+            kind: components["schemas"]["WorkDateKind"];
+            /** @description Videos out of total with a date of this kind. */
+            count: number;
+            /** @description Present only when all count videos share one date. */
+            date?: string;
+        };
+        /** @description Changes one role on every target: remove drops the IDs, then add appends the IDs a video lacks after its own credits of the role. Together they hold at least one ID, each ID once. */
         VideoCreditEdit: {
             /** @enum {string} */
             kind: "person" | "organization";
             /** @description A WorkPersonRole for person, a WorkOrganizationRole for organization; another value returns 400 work_info_out_of_range. */
             role: string;
-            /** @enum {string} */
-            action: "add" | "remove" | "replace";
-            /** @description Distinct person or organization IDs, at most the role's limit (100 people, 20 organizations); add and remove need at least one. */
-            ids: number[];
-        };
-        VideoCreditsResponse: {
-            /** @description Number of resolved videos currently in the library whose work information changed. */
-            applied: number;
+            /** @description At most the role's limit (100 people, 20 organizations); a role that would exceed it on any video returns 400 work_info_too_many at credits[i].add. */
+            add?: number[];
+            remove?: number[];
         };
         VideoVisibilityResponse: {
             /** @description Number of resolved videos (videoIds plus smart-folder members) currently in the library, including videos already in the requested state. */
@@ -10250,7 +10316,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
         };
     };
-    editVideoCredits: {
+    summarizeVideoEdits: {
         parameters: {
             query?: never;
             header?: never;
@@ -10259,7 +10325,33 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["VideoCreditsRequest"];
+                "application/json": components["schemas"]["VideoTagsSummaryRequest"];
+            };
+        };
+        responses: {
+            /** @description Summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoEditSummary"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    applyVideoEdits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoEditRequest"];
             };
         };
         responses: {
@@ -10269,12 +10361,12 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["VideoCreditsResponse"];
+                    "application/json": components["schemas"]["VideoEditResponse"];
                 };
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
-            /** @description A credit in edits no longer exists (person_not_found or organization_not_found) */
+            /** @description A tag or credit no longer exists (tag_not_found, person_not_found or organization_not_found) */
             404: {
                 headers: {
                     [name: string]: unknown;

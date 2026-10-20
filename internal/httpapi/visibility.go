@@ -44,21 +44,35 @@ func (s *server) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Serialize commit through revocation so a concurrent republication cannot start guest streams that an earlier private transition would then terminate.
-	s.guests.lockSwitching()
-	defer s.guests.switching.Unlock()
-	keys, err := s.visibility.SetVideosPublic(r.Context(), videoIDs, public)
+	keys, err := s.switchVisibility(r.Context(), public, func(ctx context.Context) ([]string, error) {
+		return s.visibility.SetVideosPublic(ctx, videoIDs, public)
+	})
 	if err != nil {
 		s.internalError(w, "Could not change the visibility.", err)
 		return
+	}
+
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, gen.VideoVisibilityResponse{Applied: len(keys)}, s.logger)
+}
+
+// switchVisibility runs commit, which returns the content keys of the changed videos, and ends their guest
+// responses after a private commit. It serializes commit through revocation so a concurrent republication cannot
+// start guest streams that an earlier private transition would then terminate.
+func (s *server) switchVisibility(
+	ctx context.Context, public bool, commit func(context.Context) ([]string, error),
+) ([]string, error) {
+	s.guests.lockSwitching()
+	defer s.guests.switching.Unlock()
+	keys, err := commit(ctx)
+	if err != nil {
+		return nil, err
 	}
 	// Revoke after commit; revoking earlier would let new guest requests observe the old public state and keep streaming.
 	if !public {
 		s.guests.revoke(keys)
 	}
-
-	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.VideoVisibilityResponse{Applied: len(keys)}, s.logger)
+	return keys, nil
 }
 
 // lookupServedVideo tracks guest media requests by content key and returns a cancellable request plus release callback. Owner requests are never tracked or revoked.

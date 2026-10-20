@@ -24,6 +24,12 @@ import { formatBytes, formatDuration } from "../lib/format";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
+import {
+  addTagInBulkEditor,
+  editSummary,
+  openBulkEditor,
+  removeTagInBulkEditor,
+} from "../testing/bulkEdit";
 import { layoutCards, mouse } from "../testing/cardDrag";
 import LibraryPage from "./LibraryPage";
 
@@ -1419,43 +1425,29 @@ describe("LibraryPage", () => {
             json({ items: tags.map((tag) => ({ ...tag, synonyms: [], videoCount: 1 })) }),
           );
         }
-        if (url.pathname === "/api/video-tags" && method === "POST") {
+        if (url.pathname === "/api/video-edits" && method === "POST") {
           const body = JSON.parse(String(init?.body)) as {
             videoIds: number[];
-            action: "add" | "remove";
-            tag: { id: number } | { name: string };
+            tags: { add?: { id: number }[] };
           };
-          const requestedTag = body.tag;
-          const found =
-            "id" in requestedTag ? tags.find((t) => t.id === requestedTag.id) : undefined;
-          const resolvedTag = found ?? {
-            id: 999,
-            name: "id" in requestedTag ? "?" : requestedTag.name,
-          };
+          const added = (body.tags.add ?? []).map(
+            ({ id }) => tags.find((tag) => tag.id === id) ?? { id, name: "?" },
+          );
           for (const videoId of body.videoIds) {
             const set = attached.get(videoId) ?? new Set<number>();
-            if (body.action === "add") set.add(resolvedTag.id);
-            else set.delete(resolvedTag.id);
+            for (const tag of added) set.add(tag.id);
             attached.set(videoId, set);
           }
           return Promise.resolve(
-            json({ tag: resolvedTag, applied: body.videoIds.length }),
+            json({
+              applied: body.videoIds.length,
+              tags: added.map((tag) => ({ ...tag, tentative: false, kind: null })),
+            }),
           );
         }
-        if (url.pathname === "/api/video-tags/summary" && method === "POST") {
+        if (url.pathname === "/api/video-edits/summary" && method === "POST") {
           const body = JSON.parse(String(init?.body)) as { videoIds: number[] };
-          const counts = new Map<number, number>();
-          for (const videoId of body.videoIds) {
-            for (const tagId of attached.get(videoId) ?? []) {
-              counts.set(tagId, (counts.get(tagId) ?? 0) + 1);
-            }
-          }
-          const items = [...counts.entries()].map(([tagId, count]) => ({
-            tag: { id: tagId, name: tags.find((t) => t.id === tagId)?.name ?? "?" },
-            count,
-            manualCount: count,
-          }));
-          return Promise.resolve(json({ total: body.videoIds.length, items }));
+          return Promise.resolve(json(editSummary(body.videoIds.length)));
         }
         if (url.pathname === "/api/library") {
           return Promise.resolve(
@@ -1498,14 +1490,12 @@ describe("LibraryPage", () => {
 
       await user.click(screen.getByRole("checkbox", { name: 'Select "動画 1"' }));
       await user.click(screen.getByRole("checkbox", { name: 'Select "動画 2"' }));
-      await user.click(screen.getByRole("button", { name: "Add tag" }));
-      const input = await screen.findByRole("combobox", { name: "Add tag" });
-      await user.type(input, "旅行");
-      await screen.findByRole("option", { name: /旅行/ });
-      await user.keyboard("{Enter}");
+      await addTagInBulkEditor(user, "旅行");
 
-      expect(await screen.findByText('Added "旅行" to 2 videos')).toBeDefined();
+      expect(await screen.findByText("Updated 2 videos")).toBeDefined();
       expect(screen.getByText("2 videos selected")).toBeDefined();
+      // The loaded card shows the tag without another page request.
+      expect(listRequests(fetchMock)).toHaveLength(1);
       // Count visible chips only, excluding hidden overflow-measurement duplicates.
       const card = screen.getByText("動画 1").closest("article");
       expect(card).not.toBeNull();
@@ -1573,21 +1563,18 @@ describe("LibraryPage", () => {
       expect(screen.getByText("2 videos selected")).toBeDefined();
     });
 
-    it("Esc で選択バーのポップオーバーだけを閉じ、選択は残る（キーボード確認 手順2）", async () => {
+    it("Esc で一括編集だけを閉じ、選択は残る（キーボード確認 手順2）", async () => {
       installSelectionAwareList({ tags: [{ id: 1, name: "旅行" }] });
       const user = userEvent.setup();
       renderLibrary();
       await screen.findByRole("link", { name: "動画 1" });
 
       await user.click(screen.getByRole("checkbox", { name: 'Select "動画 1"' }));
-      await user.click(screen.getByRole("button", { name: "Remove tag" }));
-      await screen.findByText("The selected videos have no tags that can be removed");
+      await openBulkEditor(user);
 
       await user.keyboard("{Escape}");
       await waitFor(() =>
-        expect(
-          screen.queryByText("The selected videos have no tags that can be removed"),
-        ).toBeNull(),
+        expect(screen.queryByRole("dialog", { name: "Edit videos" })).toBeNull(),
       );
       expect(screen.getByText("1 video selected")).toBeDefined();
     });
@@ -1603,6 +1590,7 @@ describe("LibraryPage", () => {
         kind: null,
       };
       const attached = new Map<number, Set<number>>([[1, new Set([1])]]);
+      const removals: number[][] = [];
       fetchMock.mockImplementation((input, init) => {
         const url = new URL(String(input), "http://localhost");
         const method = init?.method ?? "GET";
@@ -1620,27 +1608,25 @@ describe("LibraryPage", () => {
             }),
           );
         }
-        if (url.pathname === "/api/video-tags" && method === "POST") {
+        if (url.pathname === "/api/video-edits" && method === "POST") {
           const body = JSON.parse(String(init?.body)) as {
             videoIds: number[];
-            action: "add" | "remove";
+            tags: { remove?: number[] };
           };
-          for (const videoId of body.videoIds) {
-            const set = attached.get(videoId) ?? new Set<number>();
-            if (body.action === "add") set.add(1);
-            else set.delete(1);
-            attached.set(videoId, set);
-          }
-          return Promise.resolve(json({ tag, applied: body.videoIds.length }));
+          removals.push(body.tags.remove ?? []);
+          for (const videoId of body.videoIds) attached.get(videoId)?.delete(1);
+          return Promise.resolve(json({ applied: body.videoIds.length, tags: [] }));
         }
-        if (url.pathname === "/api/video-tags/summary" && method === "POST") {
+        if (url.pathname === "/api/video-edits/summary" && method === "POST") {
           const body = JSON.parse(String(init?.body)) as { videoIds: number[] };
           const count = body.videoIds.filter((id) => attached.get(id)?.has(1)).length;
           return Promise.resolve(
-            json({
-              total: body.videoIds.length,
-              items: count > 0 ? [{ tag, count, manualCount: count }] : [],
-            }),
+            json(
+              editSummary(
+                body.videoIds.length,
+                count > 0 ? [{ tag, count, manualCount: count }] : [],
+              ),
+            ),
           );
         }
         if (url.pathname === "/api/library") {
@@ -1668,10 +1654,9 @@ describe("LibraryPage", () => {
       await user.click(screen.getByRole("checkbox", { name: 'Select "動画 1"' }));
       expect(screen.getByText("1 video selected")).toBeDefined();
 
-      await user.click(screen.getByRole("button", { name: "Remove tag" }));
-      const removeOption = await screen.findByRole("option", { name: /旅行/ });
-      await user.click(removeOption);
-      expect(await screen.findByText('Removed "旅行" from 1 video')).toBeDefined();
+      await removeTagInBulkEditor(user, "旅行");
+      expect(await screen.findByText("Updated 1 video")).toBeDefined();
+      expect(removals).toEqual([[1]]);
 
       await waitFor(() =>
         expect(screen.queryByText(/^\d[\d,]* videos? selected$/)).toBeNull(),
@@ -1938,14 +1923,19 @@ describe("LibraryPage", () => {
         if (url.pathname === "/api/groups/7") {
           return Promise.resolve(json({ group: server.group, trail: [], items: [] }));
         }
-        if (url.pathname === "/api/video-tags" && method === "POST") {
+        if (url.pathname === "/api/video-edits" && method === "POST") {
           const body = JSON.parse(String(init?.body)) as { videoIds: number[] };
           server.tagRequests.push({ videoIds: body.videoIds });
-          return Promise.resolve(json({ tag, applied: body.videoIds.length }));
+          return Promise.resolve(
+            json({
+              applied: body.videoIds.length,
+              tags: [{ ...tag, tentative: false, kind: null }],
+            }),
+          );
         }
-        if (url.pathname === "/api/video-tags/summary" && method === "POST") {
+        if (url.pathname === "/api/video-edits/summary" && method === "POST") {
           const body = JSON.parse(String(init?.body)) as { videoIds: number[] };
-          return Promise.resolve(json({ total: body.videoIds.length, items: [] }));
+          return Promise.resolve(json(editSummary(body.videoIds.length)));
         }
         throw new Error(`unexpected request: ${url.toString()}`);
       });
@@ -2054,13 +2044,9 @@ describe("LibraryPage", () => {
           ?.hasAttribute("data-selected"),
       ).toBe(true);
 
-      await user.click(screen.getByRole("button", { name: "Add tag" }));
-      const input = await screen.findByRole("combobox", { name: "Add tag" });
-      await user.type(input, "旅行");
-      await screen.findByRole("option", { name: /旅行/ });
-      await user.keyboard("{Enter}");
+      await addTagInBulkEditor(user, "旅行");
 
-      expect(await screen.findByText('Added "旅行" to 12 videos')).toBeDefined();
+      expect(await screen.findByText("Updated 12 videos")).toBeDefined();
       expect(server.tagRequests).toHaveLength(1);
       expect([...(server.tagRequests[0]?.videoIds ?? [])].sort((a, b) => a - b)).toEqual(
         memberIds,

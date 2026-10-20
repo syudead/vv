@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-func personEdit(role PersonRole, action CreditEditAction, ids ...int64) CreditEdit {
-	return CreditEdit{Kind: CreditPerson, Role: string(role), Action: action, IDs: ids}
+func personEdit(role PersonRole, add []int64, remove ...int64) CreditEdit {
+	return CreditEdit{Kind: CreditPerson, Role: string(role), Add: add, Remove: remove}
 }
 
 func TestApplyCreditEditsChangesOnlyTheEditedRole(t *testing.T) {
@@ -28,7 +28,7 @@ func TestApplyCreditEditsChangesOnlyTheEditedRole(t *testing.T) {
 	}{
 		{
 			name:  "add appends only missing IDs after the existing ones",
-			edits: []CreditEdit{personEdit(PersonPerformer, CreditEditAdd, 2, 3)},
+			edits: []CreditEdit{personEdit(PersonPerformer, []int64{2, 3})},
 			people: []WorkPerson{
 				{Role: PersonPerformer, Person: CreditRef{ID: 1}}, {Role: PersonPerformer, Person: CreditRef{ID: 2}},
 				{Role: PersonPerformer, Person: CreditRef{ID: 3}}, {Role: PersonDirector, Person: CreditRef{ID: 9}},
@@ -36,18 +36,19 @@ func TestApplyCreditEditsChangesOnlyTheEditedRole(t *testing.T) {
 			organizations: info.Organizations,
 		},
 		{
-			name:  "remove keeps the same person in another role",
-			edits: []CreditEdit{personEdit(PersonPerformer, CreditEditRemove, 1, 9)},
+			name:  "remove runs before add and keeps the same person in another role",
+			edits: []CreditEdit{personEdit(PersonPerformer, []int64{4}, 1, 9)},
 			people: []WorkPerson{
-				{Role: PersonPerformer, Person: CreditRef{ID: 2}}, {Role: PersonDirector, Person: CreditRef{ID: 9}},
+				{Role: PersonPerformer, Person: CreditRef{ID: 2}}, {Role: PersonPerformer, Person: CreditRef{ID: 4}},
+				{Role: PersonDirector, Person: CreditRef{ID: 9}},
 			},
 			organizations: info.Organizations,
 		},
 		{
-			name: "replace with no IDs clears the role, and a new role takes its read position",
+			name: "a new role takes its read position",
 			edits: []CreditEdit{
-				personEdit(PersonPerformer, CreditEditReplace),
-				{Kind: CreditOrganization, Role: string(OrganizationLabel), Action: CreditEditReplace, IDs: []int64{6}},
+				personEdit(PersonPerformer, nil, 1, 2),
+				{Kind: CreditOrganization, Role: string(OrganizationLabel), Add: []int64{6}},
 			},
 			people: []WorkPerson{{Role: PersonDirector, Person: CreditRef{ID: 9}}},
 			organizations: []WorkOrganization{
@@ -79,13 +80,13 @@ func TestApplyCreditEditsRefusesARoleOverItsLimit(t *testing.T) {
 		info.Organizations = append(info.Organizations, WorkOrganization{Role: OrganizationMaker, Organization: CreditRef{ID: int64(i + 1)}})
 	}
 	edits := []CreditEdit{
-		personEdit(PersonPerformer, CreditEditAdd, 1),
-		{Kind: CreditOrganization, Role: string(OrganizationMaker), Action: CreditEditAdd, IDs: []int64{1000}},
+		personEdit(PersonPerformer, []int64{1}),
+		{Kind: CreditOrganization, Role: string(OrganizationMaker), Add: []int64{1000}},
 	}
 	_, err := ApplyCreditEdits(info, edits)
 	var invalid *InvalidWorkInfoError
-	if !errors.As(err, &invalid) || invalid.Field != "edits[1].ids" || invalid.Problem != WorkInfoTooMany || invalid.Limit != limit {
-		t.Fatalf("err = %v, want too many at edits[1].ids with limit %d", err, limit)
+	if !errors.As(err, &invalid) || invalid.Field != "credits[1].add" || invalid.Problem != WorkInfoTooMany || invalid.Limit != limit {
+		t.Fatalf("err = %v, want too many at credits[1].add with limit %d", err, limit)
 	}
 }
 
@@ -96,14 +97,13 @@ func TestValidateCreditEditsNamesTheFailingField(t *testing.T) {
 		field   string
 		problem WorkInfoProblem
 	}{
-		{"no edits", nil, "edits", WorkInfoEmpty},
-		{"role of the other kind", []CreditEdit{{Kind: CreditPerson, Role: "maker", Action: CreditEditAdd, IDs: []int64{1}}},
-			"edits[0].role", WorkInfoOutOfRange},
-		{"unknown action", []CreditEdit{personEdit(PersonPerformer, "set", 1)}, "edits[0].action", WorkInfoOutOfRange},
-		{"same role twice", []CreditEdit{personEdit(PersonPerformer, CreditEditAdd, 1), personEdit(PersonPerformer, CreditEditRemove, 2)},
-			"edits[1].role", WorkInfoDuplicate},
-		{"add without IDs", []CreditEdit{personEdit(PersonPerformer, CreditEditAdd)}, "edits[0].ids", WorkInfoEmpty},
-		{"duplicate ID", []CreditEdit{personEdit(PersonPerformer, CreditEditAdd, 1, 1)}, "edits[0].ids[1]", WorkInfoDuplicate},
+		{"role of the other kind", []CreditEdit{{Kind: CreditPerson, Role: "maker", Add: []int64{1}}},
+			"credits[0].role", WorkInfoOutOfRange},
+		{"same role twice", []CreditEdit{personEdit(PersonPerformer, []int64{1}), personEdit(PersonPerformer, nil, 2)},
+			"credits[1].role", WorkInfoDuplicate},
+		{"no IDs", []CreditEdit{personEdit(PersonPerformer, nil)}, "credits[0]", WorkInfoEmpty},
+		{"duplicate ID in add", []CreditEdit{personEdit(PersonPerformer, []int64{1, 1})}, "credits[0].add[1]", WorkInfoDuplicate},
+		{"ID in add and remove", []CreditEdit{personEdit(PersonPerformer, []int64{1}, 2, 1)}, "credits[0].remove[1]", WorkInfoDuplicate},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -114,7 +114,7 @@ func TestValidateCreditEditsNamesTheFailingField(t *testing.T) {
 			}
 		})
 	}
-	if err := ValidateCreditEdits([]CreditEdit{personEdit(PersonPerformer, CreditEditReplace)}); err != nil {
-		t.Errorf("replace without IDs: err = %v, want nil", err)
+	if err := ValidateCreditEdits([]CreditEdit{personEdit(PersonPerformer, nil, 1)}); err != nil {
+		t.Errorf("remove only: err = %v, want nil", err)
 	}
 }

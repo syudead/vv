@@ -2067,27 +2067,6 @@ func (e VideoUnplayableReason) Valid() bool {
 	}
 }
 
-// Defines values for VideoCreditEditAction.
-const (
-	VideoCreditEditActionAdd     VideoCreditEditAction = "add"
-	VideoCreditEditActionRemove  VideoCreditEditAction = "remove"
-	VideoCreditEditActionReplace VideoCreditEditAction = "replace"
-)
-
-// Valid indicates whether the value is a known member of the VideoCreditEditAction enum.
-func (e VideoCreditEditAction) Valid() bool {
-	switch e {
-	case VideoCreditEditActionAdd:
-		return true
-	case VideoCreditEditActionRemove:
-		return true
-	case VideoCreditEditActionReplace:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for VideoCreditEditKind.
 const (
 	VideoCreditEditKindOrganization VideoCreditEditKind = "organization"
@@ -2228,16 +2207,16 @@ func (e VideoSort) Valid() bool {
 
 // Defines values for VideoTagsAction.
 const (
-	VideoTagsActionAdd    VideoTagsAction = "add"
-	VideoTagsActionRemove VideoTagsAction = "remove"
+	Add    VideoTagsAction = "add"
+	Remove VideoTagsAction = "remove"
 )
 
 // Valid indicates whether the value is a known member of the VideoTagsAction enum.
 func (e VideoTagsAction) Valid() bool {
 	switch e {
-	case VideoTagsActionAdd:
+	case Add:
 		return true
-	case VideoTagsActionRemove:
+	case Remove:
 		return true
 	default:
 		return false
@@ -5667,40 +5646,27 @@ type VideoChanged struct {
 	Id int64 `json:"id"`
 }
 
-// VideoCreditEdit defines model for VideoCreditEdit.
+// VideoCreditEdit Changes one role on every target: remove drops the IDs, then add appends the IDs a video lacks after its own credits of the role. Together they hold at least one ID, each ID once.
 type VideoCreditEdit struct {
-	Action VideoCreditEditAction `json:"action"`
-
-	// Ids Distinct person or organization IDs, at most the role's limit (100 people, 20 organizations); add and remove need at least one.
-	Ids  []int64             `json:"ids"`
-	Kind VideoCreditEditKind `json:"kind"`
+	// Add At most the role's limit (100 people, 20 organizations); a role that would exceed it on any video returns 400 work_info_too_many at credits[i].add.
+	Add    *[]int64            `json:"add,omitempty"`
+	Kind   VideoCreditEditKind `json:"kind"`
+	Remove *[]int64            `json:"remove,omitempty"`
 
 	// Role A WorkPersonRole for person, a WorkOrganizationRole for organization; another value returns 400 work_info_out_of_range.
 	Role string `json:"role"`
 }
 
-// VideoCreditEditAction defines model for VideoCreditEdit.Action.
-type VideoCreditEditAction string
-
 // VideoCreditEditKind defines model for VideoCreditEdit.Kind.
 type VideoCreditEditKind string
 
-// VideoCreditsRequest defines model for VideoCreditsRequest.
-type VideoCreditsRequest struct {
-	// Edits 1–6 edits, at most one per role.
-	Edits []VideoCreditEdit `json:"edits"`
+// VideoDateEdit defines model for VideoDateEdit.
+type VideoDateEdit struct {
+	// Date YYYY, YYYY-MM or YYYY-MM-DD as in WorkDate; null clears the kind.
+	Date *string `json:"date"`
 
-	// SmartFolderIds Smart-folder IDs resolved at request time to their current member videos (the saved rule plus every ancestor rule, groups expanded to their videos) and added to videoIds. Missing folders are ignored.
-	SmartFolderIds *[]int64 `json:"smartFolderIds,omitempty"`
-
-	// VideoIds Video IDs to change. May be empty when smartFolderIds is not.
-	VideoIds []int64 `json:"videoIds"`
-}
-
-// VideoCreditsResponse defines model for VideoCreditsResponse.
-type VideoCreditsResponse struct {
-	// Applied Number of resolved videos currently in the library whose work information changed.
-	Applied int `json:"applied"`
+	// Kind Date kind.
+	Kind WorkDateKind `json:"kind"`
 }
 
 // VideoDetailsInput Fullscreen editor save body; both fields are required.
@@ -5710,6 +5676,84 @@ type VideoDetailsInput struct {
 
 	// WorkInfo Full work-info replacement with the seven WorkInfo properties; each may be omitted or null, either of which clears it.
 	WorkInfo WorkInfoInput `json:"workInfo"`
+}
+
+// VideoEditDateCount defines model for VideoEditDateCount.
+type VideoEditDateCount struct {
+	// Count Videos out of total with a date of this kind.
+	Count int `json:"count"`
+
+	// Date Present only when all count videos share one date.
+	Date *string `json:"date,omitempty"`
+
+	// Kind Date kind.
+	Kind WorkDateKind `json:"kind"`
+}
+
+// VideoEditOrganizationCount defines model for VideoEditOrganizationCount.
+type VideoEditOrganizationCount struct {
+	Count int `json:"count"`
+
+	// Organization Reference to one person or organization; name is its current name, "" for a provisional person.
+	Organization CreditRef `json:"organization"`
+
+	// Role Organization role in a video.
+	Role WorkOrganizationRole `json:"role"`
+}
+
+// VideoEditPersonCount defines model for VideoEditPersonCount.
+type VideoEditPersonCount struct {
+	Count int `json:"count"`
+
+	// ImageRevision Present only when the person has a face; changes with every change of the face and is never reused. Load the face from /api/people/{id}/image?v={imageRevision}.
+	ImageRevision *PersonImageRevision `json:"imageRevision,omitempty"`
+
+	// Person Reference to one person or organization; name is its current name, "" for a provisional person.
+	Person CreditRef `json:"person"`
+
+	// Role Person role in a video.
+	Role WorkPersonRole `json:"role"`
+}
+
+// VideoEditRequest defines model for VideoEditRequest.
+type VideoEditRequest struct {
+	// Credits At most one edit per role.
+	Credits *[]VideoCreditEdit `json:"credits,omitempty"`
+
+	// Dates At most one entry per kind.
+	Dates *[]VideoDateEdit `json:"dates,omitempty"`
+
+	// Public True makes the videos public, false private; omit to keep each video's visibility.
+	Public *bool `json:"public,omitempty"`
+
+	// SmartFolderIds Smart-folder IDs resolved at request time to their current member videos (the saved rule plus every ancestor rule, groups expanded to their videos) and added to videoIds. Missing folders are ignored.
+	SmartFolderIds *[]int64      `json:"smartFolderIds,omitempty"`
+	Tags           *VideoTagEdit `json:"tags,omitempty"`
+
+	// VideoIds Video IDs to change. May be empty when smartFolderIds is not.
+	VideoIds []int64 `json:"videoIds"`
+}
+
+// VideoEditResponse defines model for VideoEditResponse.
+type VideoEditResponse struct {
+	// Applied Number of resolved videos currently in the library that any part changed.
+	Applied int `json:"applied"`
+
+	// Tags The tags of tags.add as resolved, in request order without repeats.
+	Tags []TagRef `json:"tags"`
+}
+
+// VideoEditSummary defines model for VideoEditSummary.
+type VideoEditSummary struct {
+	// Dates Kind order: release, recorded, published.
+	Dates         []VideoEditDateCount         `json:"dates"`
+	Organizations []VideoEditOrganizationCount `json:"organizations"`
+	People        []VideoEditPersonCount       `json:"people"`
+
+	// Public Videos out of total that are public.
+	Public int                    `json:"public"`
+	Tags   []VideoTagsSummaryItem `json:"tags"`
+	Total  int                    `json:"total"`
 }
 
 // VideoEncoder Effective live-transcode encoder
@@ -5807,6 +5851,15 @@ type VideoTag struct {
 
 	// Unconfirmed Unconfirmed assignment suggested by the intermediate auto-tagging confidence band; returned only when true and not also folder-derived. See docs/design-docs/auto-tagging.md.
 	Unconfirmed *bool `json:"unconfirmed,omitempty"`
+}
+
+// VideoTagEdit defines model for VideoTagEdit.
+type VideoTagEdit struct {
+	// Add Up to 100 tags to attach; a tag named twice, or by a name and its ID, is attached once.
+	Add *[]TagInput `json:"add,omitempty"`
+
+	// Remove Up to 100 distinct tag IDs whose manual attachments are removed; a tag also in add returns 400 work_info_duplicate.
+	Remove *[]int64 `json:"remove,omitempty"`
 }
 
 // VideoTagsAction defines model for VideoTagsAction.
@@ -7178,8 +7231,11 @@ type DismissVersionCandidateJSONRequestBody = VersionCandidateDismissRequest
 // BundleVideosJSONRequestBody defines body for BundleVideos for application/json ContentType.
 type BundleVideosJSONRequestBody = VideoBundleRequest
 
-// EditVideoCreditsJSONRequestBody defines body for EditVideoCredits for application/json ContentType.
-type EditVideoCreditsJSONRequestBody = VideoCreditsRequest
+// ApplyVideoEditsJSONRequestBody defines body for ApplyVideoEdits for application/json ContentType.
+type ApplyVideoEditsJSONRequestBody = VideoEditRequest
+
+// SummarizeVideoEditsJSONRequestBody defines body for SummarizeVideoEdits for application/json ContentType.
+type SummarizeVideoEditsJSONRequestBody = VideoTagsSummaryRequest
 
 // UpdateVideoTagsJSONRequestBody defines body for UpdateVideoTags for application/json ContentType.
 type UpdateVideoTagsJSONRequestBody = VideoTagsRequest
@@ -7663,9 +7719,12 @@ type ServerInterface interface {
 	// BundleVideos Bundle videos as versions of the same video
 	// (POST /api/video-bundles)
 	BundleVideos(w http.ResponseWriter, r *http.Request)
-	// EditVideoCredits Add, remove or replace credits on selected videos
-	// (POST /api/video-credits)
-	EditVideoCredits(w http.ResponseWriter, r *http.Request)
+	// ApplyVideoEdits Apply one bulk edit to selected videos
+	// (POST /api/video-edits)
+	ApplyVideoEdits(w http.ResponseWriter, r *http.Request)
+	// SummarizeVideoEdits Summarize the editable values of selected videos
+	// (POST /api/video-edits/summary)
+	SummarizeVideoEdits(w http.ResponseWriter, r *http.Request)
 	// UpdateVideoTags Add or remove a video tag
 	// (POST /api/video-tags)
 	UpdateVideoTags(w http.ResponseWriter, r *http.Request)
@@ -12117,11 +12176,25 @@ func (siw *ServerInterfaceWrapper) BundleVideos(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
-// EditVideoCredits operation middleware
-func (siw *ServerInterfaceWrapper) EditVideoCredits(w http.ResponseWriter, r *http.Request) {
+// ApplyVideoEdits operation middleware
+func (siw *ServerInterfaceWrapper) ApplyVideoEdits(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.EditVideoCredits(w, r)
+		siw.Handler.ApplyVideoEdits(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SummarizeVideoEdits operation middleware
+func (siw *ServerInterfaceWrapper) SummarizeVideoEdits(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SummarizeVideoEdits(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -14296,7 +14369,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags", wrapper.UpdateVideoTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags/summary", wrapper.SummarizeVideoTags)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/video-visibility", wrapper.UpdateVideoVisibility)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-credits", wrapper.EditVideoCredits)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-edits/summary", wrapper.SummarizeVideoEdits)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-edits", wrapper.ApplyVideoEdits)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/collections/delete", wrapper.DeleteCollections)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/favorites", wrapper.UpdateFavorites)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/playlists", wrapper.ListPlaylists)

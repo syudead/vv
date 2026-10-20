@@ -157,7 +157,7 @@ function RoleRow({
   );
 }
 
-export function CreditChip({
+function CreditChip({
   chip,
   saving,
   problem,

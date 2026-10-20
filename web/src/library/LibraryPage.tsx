@@ -106,6 +106,7 @@ import LibraryToolbar from "./LibraryToolbar";
 import {
   emptySelection,
   favoriteTargets,
+  selectionTargets,
   type LibrarySelection,
   reconcileGroups,
   selectedCount,
@@ -616,6 +617,10 @@ export default function LibraryPage() {
 
   const selectedIdsArray = useMemo(() => Array.from(selectedIds), [selectedIds]);
   const favoriteSelection = useMemo(() => favoriteTargets(selection), [selection]);
+  const editTargets = useMemo(
+    () => selectionTargets(selection, items, t.library.selection.unknownTarget),
+    [selection, items],
+  );
 
   const empty = !loading && error === null && items.length === 0;
   const initialLoadFailed = !loading && error !== null && items.length === 0;
@@ -844,6 +849,7 @@ export default function LibraryPage() {
           owner && (
             <SelectionBar
               count={selectedIds.size}
+              targets={editTargets}
               selectedIds={selectedIdsArray}
               favoriteVideoIds={favoriteSelection.videoIds}
               favoriteGroupIds={favoriteSelection.groupIds}

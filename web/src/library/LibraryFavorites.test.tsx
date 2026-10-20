@@ -13,6 +13,7 @@ import { type Audience, AudienceProvider } from "../auth/audience";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
+import { addTagInBulkEditor, editSummary } from "../testing/bulkEdit";
 import LibraryPage from "./LibraryPage";
 
 function video(id: number, extra: Partial<Video> = {}): Video {
@@ -83,8 +84,8 @@ interface Server {
   favoriteRequests: FavoritesBody[];
   libraryRequests: number;
   appliedGroups?: number;
-  visibilityRequests: number[][];
-  tagRequests: number[][];
+  editSummaryRequests: number[][];
+  editRequests: number[][];
   detailRequests: number[];
 }
 
@@ -100,8 +101,8 @@ function install(items: LibraryItem[], group?: LibraryGroup): Server {
     group,
     favoriteRequests: [],
     libraryRequests: 0,
-    visibilityRequests: [],
-    tagRequests: [],
+    editSummaryRequests: [],
+    editRequests: [],
     detailRequests: [],
   };
   fetchMock.mockImplementation((input, init) => {
@@ -121,16 +122,19 @@ function install(items: LibraryItem[], group?: LibraryGroup): Server {
         }),
       );
     }
-    if (url.pathname === "/api/video-visibility" && method === "PUT") {
+    if (url.pathname === "/api/video-edits/summary" && method === "POST") {
       const body = JSON.parse(String(init?.body)) as { videoIds: number[] };
-      server.visibilityRequests.push(body.videoIds);
-      return Promise.resolve(json({ applied: body.videoIds.length }));
+      server.editSummaryRequests.push(body.videoIds);
+      return Promise.resolve(json(editSummary(body.videoIds.length)));
     }
-    if (url.pathname === "/api/video-tags" && method === "POST") {
+    if (url.pathname === "/api/video-edits" && method === "POST") {
       const body = JSON.parse(String(init?.body)) as { videoIds: number[] };
-      server.tagRequests.push(body.videoIds);
+      server.editRequests.push(body.videoIds);
       return Promise.resolve(
-        json({ tag: { id: 1, name: "旅行" }, applied: body.videoIds.length }),
+        json({
+          applied: body.videoIds.length,
+          tags: [{ id: 1, name: "旅行", tentative: false, kind: null }],
+        }),
       );
     }
     const detail = /^\/api\/videos\/(\d+)$/.exec(url.pathname);
@@ -662,10 +666,16 @@ describe("選択バーの一括のお気に入り", () => {
     const names = within(bar)
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label"));
-    expect(names.indexOf("Edit credits")).toBe(names.indexOf("Remove tag") + 1);
-    expect(names.indexOf("Favorite")).toBe(names.indexOf("Edit credits") + 1);
-    // 「New group」「Add to group」。
-    expect(names.indexOf("Visibility")).toBe(names.indexOf("Favorite") + 4);
+    expect(
+      names.slice(names.indexOf("Edit"), names.indexOf("Bundle as versions") + 1),
+    ).toEqual([
+      "Edit",
+      "Favorite",
+      "Add to playlist",
+      "New group",
+      "Add to group",
+      "Bundle as versions",
+    ]);
 
     await favoriteSelection(user);
     expect(await screen.findByText("Added 3 items to favorites")).toBeDefined();
@@ -779,7 +789,7 @@ describe("選択バーの一括のお気に入り", () => {
     );
   });
 
-  it("メンバーが 20,000 本を超えるグループ 1 つは、タグ・公開は押せず、お気に入りは groupIds 1 つとして押せる", async () => {
+  it("メンバーが 20,000 本を超えるグループ 1 つは、一括編集は押せず、お気に入りは groupIds 1 つとして押せる", async () => {
     const huge = Array.from({ length: 20_001 }, (_, index) => 100_000 + index);
     const group = seriesGroup({ videoIds: huge, videoCount: huge.length });
     const server = install([{ kind: "group", group }], group);
@@ -789,11 +799,9 @@ describe("選択バーの一括のお気に入り", () => {
       await screen.findByRole("checkbox", { name: 'Select the group "series"' }),
     );
     expect(screen.getByText("20,001 videos selected")).toBeDefined();
-    for (const name of ["Add tag", "Remove tag", "Visibility"]) {
-      expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(
-        true,
-      );
-    }
+    expect(
+      (screen.getByRole("button", { name: "Edit" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
     const favorite = screen.getByRole("button", {
       name: "Favorite",
     }) as HTMLButtonElement;
@@ -806,7 +814,7 @@ describe("選択バーの一括のお気に入り", () => {
     ]);
   });
 
-  it("送る数が 20,000 を超えると、タグ・公開と同じ理由で押せない", async () => {
+  it("送る数が 20,000 を超えると、一括編集と同じ理由で押せない", async () => {
     const huge = Array.from({ length: 20_001 }, (_, index) => 100_000 + index);
     const group = seriesGroup({ videoIds: huge, videoCount: huge.length });
     install(
@@ -835,7 +843,7 @@ describe("選択バーの一括のお気に入り", () => {
     );
   });
 
-  it("タグ・公開・束ねる操作は今までどおりメンバーを含む動画の id を送る", async () => {
+  it("一括編集と束ねる操作は今までどおりメンバーを含む動画の id を送る", async () => {
     const group = seriesGroup();
     const server = install(
       [
@@ -850,18 +858,10 @@ describe("選択バーの一括のお気に入り", () => {
     await user.click(screen.getByRole("checkbox", { name: 'Select the group "series"' }));
     const expected = [1, 101, 102, 103];
 
-    await user.click(screen.getByRole("button", { name: "Visibility" }));
-    await user.click(await screen.findByRole("menuitem", { name: "Make public" }));
-    expect(await screen.findByText("Made 4 videos public")).toBeDefined();
-    expect(server.visibilityRequests).toEqual([expected]);
-
-    await user.click(screen.getByRole("button", { name: "Add tag" }));
-    const input = await screen.findByRole("combobox", { name: "Add tag" });
-    await user.type(input, "旅行");
-    await screen.findByRole("option", { name: /旅行/ });
-    await user.keyboard("{Enter}");
-    expect(await screen.findByText('Added "旅行" to 4 videos')).toBeDefined();
-    expect(server.tagRequests).toEqual([expected]);
+    await addTagInBulkEditor(user, "旅行");
+    expect(await screen.findByText("Updated 4 videos")).toBeDefined();
+    expect(server.editSummaryRequests).toEqual([expected]);
+    expect(server.editRequests).toEqual([expected]);
 
     await user.click(screen.getByRole("button", { name: "Bundle as versions" }));
     await screen.findByRole("dialog");

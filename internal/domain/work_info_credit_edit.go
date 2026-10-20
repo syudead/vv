@@ -5,70 +5,81 @@ import (
 	"slices"
 )
 
-// CreditEditAction is how a bulk edit changes one role's credits on every selected video.
-type CreditEditAction string
-
-const (
-	CreditEditAdd    CreditEditAction = "add"
-	CreditEditRemove CreditEditAction = "remove"
-	// CreditEditReplace sets the role to exactly IDs; an empty list clears the role.
-	CreditEditReplace CreditEditAction = "replace"
-)
-
-func (a CreditEditAction) Valid() bool {
-	switch a {
-	case CreditEditAdd, CreditEditRemove, CreditEditReplace:
-		return true
-	}
-	return false
-}
-
-// CreditEdit changes one role; Role is a PersonRole for people and an OrganizationRole for organizations.
+// CreditEdit changes one role on every selected video: Remove drops its IDs, then Add appends the IDs a video
+// lacks after its own credits of the role. Role is a PersonRole for people and an OrganizationRole for organizations.
 type CreditEdit struct {
 	Kind   CreditKind
 	Role   string
-	Action CreditEditAction
-	IDs    []int64
+	Add    []int64
+	Remove []int64
 }
 
 // CreditEditsMaxCount allows one edit per person and organization role.
 var CreditEditsMaxCount = len(PersonRoles) + len(OrganizationRoles)
 
-// ValidateCreditEdits checks the request shape before any video is read; errors name edits[i] fields.
+// ValidateCreditEdits checks the request shape before any video is read; errors name credits[i] fields.
 func ValidateCreditEdits(edits []CreditEdit) error {
-	if len(edits) == 0 {
-		return invalidWorkInfo("edits", WorkInfoEmpty, 0)
-	}
 	if len(edits) > CreditEditsMaxCount {
-		return invalidWorkInfo("edits", WorkInfoTooMany, CreditEditsMaxCount)
+		return invalidWorkInfo("credits", WorkInfoTooMany, CreditEditsMaxCount)
 	}
 	seenRoles := make(map[string]bool, len(edits))
 	for i, edit := range edits {
-		field := fmt.Sprintf("edits[%d]", i)
+		field := fmt.Sprintf("credits[%d]", i)
 		limit, ok := creditRoleLimit(edit.Kind, edit.Role)
 		if !ok {
 			return invalidWorkInfo(field+".role", WorkInfoOutOfRange, 0)
-		}
-		if !edit.Action.Valid() {
-			return invalidWorkInfo(field+".action", WorkInfoOutOfRange, 0)
 		}
 		roleKey := string(edit.Kind) + ":" + edit.Role
 		if seenRoles[roleKey] {
 			return invalidWorkInfo(field+".role", WorkInfoDuplicate, 0)
 		}
 		seenRoles[roleKey] = true
-		if len(edit.IDs) == 0 && edit.Action != CreditEditReplace {
-			return invalidWorkInfo(field+".ids", WorkInfoEmpty, 0)
+		if len(edit.Add)+len(edit.Remove) == 0 {
+			return invalidWorkInfo(field, WorkInfoEmpty, 0)
 		}
-		if len(edit.IDs) > limit {
-			return invalidWorkInfo(field+".ids", WorkInfoTooMany, limit)
+		if len(edit.Add) > limit {
+			return invalidWorkInfo(field+".add", WorkInfoTooMany, limit)
 		}
-		seenIDs := make(map[int64]bool, len(edit.IDs))
-		for j, id := range edit.IDs {
-			if seenIDs[id] {
-				return invalidWorkInfo(fmt.Sprintf("%s.ids[%d]", field, j), WorkInfoDuplicate, 0)
+		if err := checkCreditEditIDs(field, edit); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Each ID appears once across add and remove; the later occurrence is reported.
+func checkCreditEditIDs(field string, edit CreditEdit) error {
+	seen := make(map[int64]bool, len(edit.Add)+len(edit.Remove))
+	for _, list := range creditEditLists(edit) {
+		for j, id := range list.ids {
+			if seen[id] {
+				return invalidWorkInfo(fmt.Sprintf("%s.%s[%d]", field, list.name, j), WorkInfoDuplicate, 0)
 			}
-			seenIDs[id] = true
+			seen[id] = true
+		}
+	}
+	return nil
+}
+
+// creditEditList names one ID list of a CreditEdit for field paths.
+type creditEditList struct {
+	name string
+	ids  []int64
+}
+
+func creditEditLists(edit CreditEdit) []creditEditList {
+	return []creditEditList{{"add", edit.Add}, {"remove", edit.Remove}}
+}
+
+// EachCreditEditID visits every ID of edits in request order with its field path, such as credits[0].add[1].
+func EachCreditEditID(edits []CreditEdit, visit func(kind CreditKind, id int64, field string) error) error {
+	for i, edit := range edits {
+		for _, list := range creditEditLists(edit) {
+			for j, id := range list.ids {
+				if err := visit(edit.Kind, id, fmt.Sprintf("credits[%d].%s[%d]", i, list.name, j)); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	return nil
@@ -85,7 +96,7 @@ func creditRoleLimit(kind CreditKind, role string) (int, bool) {
 }
 
 // ApplyCreditEdits applies validated edits in order to one video's work information, leaving other roles and
-// fields as they are. Added credits follow the role's existing ones; a role over its limit fails at edits[i].ids.
+// fields as they are. Added credits follow the role's existing ones; a role over its limit fails at credits[i].add.
 func ApplyCreditEdits(info WorkInfo, edits []CreditEdit) (WorkInfo, error) {
 	people := make(map[PersonRole][]int64, len(PersonRoles))
 	for _, p := range info.People {
@@ -106,7 +117,7 @@ func ApplyCreditEdits(info WorkInfo, edits []CreditEdit) (WorkInfo, error) {
 			organizations[OrganizationRole(edit.Role)] = ids
 		}
 		if len(ids) > limit {
-			return WorkInfo{}, invalidWorkInfo(fmt.Sprintf("edits[%d].ids", i), WorkInfoTooMany, limit)
+			return WorkInfo{}, invalidWorkInfo(fmt.Sprintf("credits[%d].add", i), WorkInfoTooMany, limit)
 		}
 	}
 	out := info
@@ -126,18 +137,11 @@ func ApplyCreditEdits(info WorkInfo, edits []CreditEdit) (WorkInfo, error) {
 }
 
 func editCreditIDs(current []int64, edit CreditEdit) []int64 {
-	switch edit.Action {
-	case CreditEditAdd:
-		out := slices.Clone(current)
-		for _, id := range edit.IDs {
-			if !slices.Contains(out, id) {
-				out = append(out, id)
-			}
+	out := slices.DeleteFunc(slices.Clone(current), func(id int64) bool { return slices.Contains(edit.Remove, id) })
+	for _, id := range edit.Add {
+		if !slices.Contains(out, id) {
+			out = append(out, id)
 		}
-		return out
-	case CreditEditRemove:
-		return slices.DeleteFunc(slices.Clone(current), func(id int64) bool { return slices.Contains(edit.IDs, id) })
-	default:
-		return slices.Clone(edit.IDs)
 	}
+	return out
 }

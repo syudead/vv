@@ -235,6 +235,8 @@ type Options struct {
 	MediaInfo MediaInfoReader
 
 	Visibility Visibility
+	// Nil VideoEdits makes the bulk edit routes fail with 500.
+	VideoEdits VideoEdits
 
 	Favorites Favorites
 
@@ -344,6 +346,7 @@ type server struct {
 	workInfo     WorkInfo
 	mediaInfo    MediaInfoReader
 	visibility   Visibility
+	videoEdits   VideoEdits
 	favorites    Favorites
 	playlists    Playlists
 
@@ -427,6 +430,7 @@ func NewRouter(opts Options) http.Handler {
 		workInfo:               opts.WorkInfo,
 		mediaInfo:              opts.MediaInfo,
 		visibility:             opts.Visibility,
+		videoEdits:             opts.VideoEdits,
 		favorites:              opts.Favorites,
 		playlists:              opts.Playlists,
 		playlistPlayback:       opts.PlaylistPlayback,
@@ -583,7 +587,7 @@ func requiresOtherJSONBody(r *http.Request) bool {
 func requiresPostJSONBody(path string) bool {
 	switch path {
 	case "/api/media-folders", "/api/scans", "/api/scans/rescan", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/tag-kinds",
-		"/api/video-tags", "/api/video-tags/summary", "/api/video-credits",
+		"/api/video-tags", "/api/video-tags/summary", "/api/video-edits", "/api/video-edits/summary",
 		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 		"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
 		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/face-recognition/runs", "/api/onboarding/interests", "/api/playlists", "/api/groups", "/api/smart-folders", "/api/collections/delete",

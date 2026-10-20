@@ -3467,30 +3467,53 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
 
-  /api/video-credits:
+  /api/video-edits/summary:
     post:
-      operationId: editVideoCredits
-      summary: "Add, remove or replace credits on selected videos"
-      description: "Owner-only. Applies edits in order to the work information of videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags; videos sharing a user-data key change together. Each edit changes one person or organization role and leaves the other roles and work-info fields as they are: add appends the IDs a video lacks after its existing credits, remove drops them, and replace sets the role to exactly ids ([] clears it). All changes are atomic: an invalid edit returns 400 with `field` at edits[i], a missing credit returns 404 person_not_found or organization_not_found at edits[i].ids[j], and a role that would exceed its limit on any video returns 400 work_info_too_many at edits[i].ids, each writing nothing. After a change commits, emits a video event for every video sharing a changed key."
+      operationId: summarizeVideoEdits
+      summary: "Summarize the editable values of selected videos"
+      description: "Owner-only. Summarizes videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, for the bulk editor. total counts the resolved videos in the library, counting videos that share a user-data key once; every other count is out of total, so count < total means only some videos have the value. tags is updateVideoTags' summary; people and organizations are in role order, then natural name order; dates lists each kind at least one video has."
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/VideoCreditsRequest"
+              $ref: "#/components/schemas/VideoTagsSummaryRequest"
+      responses:
+        "200":
+          description: "Summary"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoEditSummary"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/video-edits:
+    post:
+      operationId: applyVideoEdits
+      summary: "Apply one bulk edit to selected videos"
+      description: "Owner-only. Applies every present part to videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags, in one transaction; videos sharing a user-data key change together. tags.add attaches by ID or by name (resolving synonyms and creating a missing tag), tags.remove detaches manual attachments by ID; credits follows VideoCreditEdit; dates sets each listed kind, null clearing it; public sets visibility and ends guest streams of videos made private. Other values stay as they are. A request without any change returns 400 invalid_request. Errors write nothing: a missing tag returns 404 tag_not_found, a missing credit 404 person_not_found or organization_not_found, and an invalid value 400 with `field` at its location in the request, such as credits[0].ids[1] or dates[0].date. Emits the same events and activity as the single-part endpoints."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VideoEditRequest"
       responses:
         "200":
           description: "Applied result"
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/VideoCreditsResponse"
+                $ref: "#/components/schemas/VideoEditResponse"
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
-          description: "A credit in edits no longer exists (person_not_found or organization_not_found)"
+          description: "A tag or credit no longer exists (tag_not_found, person_not_found or organization_not_found)"
           content:
             application/json:
               schema:
@@ -8152,9 +8175,9 @@ components:
           format: int64
           description: "Move immediately after this item; null moves to the start."
 
-    VideoCreditsRequest:
+    VideoEditRequest:
       type: object
-      required: [videoIds, edits]
+      required: [videoIds]
       additionalProperties: false
       properties:
         videoIds:
@@ -8171,18 +8194,140 @@ components:
           items:
             type: integer
             format: int64
-        edits:
+        tags:
+          $ref: "#/components/schemas/VideoTagEdit"
+        credits:
           type: array
-          description: "1–6 edits, at most one per role."
-          minItems: 1
+          description: "At most one edit per role."
           maxItems: 6
           items:
             $ref: "#/components/schemas/VideoCreditEdit"
+        dates:
+          type: array
+          description: "At most one entry per kind."
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/VideoDateEdit"
+        public:
+          type: boolean
+          description: "True makes the videos public, false private; omit to keep each video's visibility."
+
+    VideoTagEdit:
+      type: object
+      additionalProperties: false
+      properties:
+        add:
+          type: array
+          description: "Up to 100 tags to attach; a tag named twice, or by a name and its ID, is attached once."
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/TagInput"
+        remove:
+          type: array
+          description: "Up to 100 distinct tag IDs whose manual attachments are removed; a tag also in add returns 400 work_info_duplicate."
+          maxItems: 100
+          items:
+            type: integer
+            format: int64
+
+    VideoDateEdit:
+      type: object
+      required: [kind, date]
+      additionalProperties: false
+      properties:
+        kind:
+          $ref: "#/components/schemas/WorkDateKind"
+        date:
+          type: [string, "null"]
+          description: "YYYY, YYYY-MM or YYYY-MM-DD as in WorkDate; null clears the kind."
+
+    VideoEditResponse:
+      type: object
+      required: [applied, tags]
+      additionalProperties: false
+      properties:
+        applied:
+          type: integer
+          description: "Number of resolved videos currently in the library that any part changed."
+        tags:
+          type: array
+          description: "The tags of tags.add as resolved, in request order without repeats."
+          items:
+            $ref: "#/components/schemas/TagRef"
+
+    VideoEditSummary:
+      type: object
+      required: [total, public, tags, people, organizations, dates]
+      additionalProperties: false
+      properties:
+        total:
+          type: integer
+        public:
+          type: integer
+          description: "Videos out of total that are public."
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/VideoTagsSummaryItem"
+        people:
+          type: array
+          items:
+            $ref: "#/components/schemas/VideoEditPersonCount"
+        organizations:
+          type: array
+          items:
+            $ref: "#/components/schemas/VideoEditOrganizationCount"
+        dates:
+          type: array
+          description: "Kind order: release, recorded, published."
+          items:
+            $ref: "#/components/schemas/VideoEditDateCount"
+
+    VideoEditPersonCount:
+      type: object
+      required: [role, person, count]
+      additionalProperties: false
+      properties:
+        role:
+          $ref: "#/components/schemas/WorkPersonRole"
+        person:
+          $ref: "#/components/schemas/CreditRef"
+        count:
+          type: integer
+        imageRevision:
+          $ref: "#/components/schemas/PersonImageRevision"
+
+    VideoEditOrganizationCount:
+      type: object
+      required: [role, organization, count]
+      additionalProperties: false
+      properties:
+        role:
+          $ref: "#/components/schemas/WorkOrganizationRole"
+        organization:
+          $ref: "#/components/schemas/CreditRef"
+        count:
+          type: integer
+
+    VideoEditDateCount:
+      type: object
+      required: [kind, count]
+      additionalProperties: false
+      properties:
+        kind:
+          $ref: "#/components/schemas/WorkDateKind"
+        count:
+          type: integer
+          description: "Videos out of total with a date of this kind."
+        date:
+          type: string
+          description: "Present only when all count videos share one date."
 
     VideoCreditEdit:
       type: object
-      required: [kind, role, action, ids]
+      required: [kind, role]
       additionalProperties: false
+      description: "Changes one role on every target: remove drops the IDs, then add appends the IDs a video lacks after its own credits of the role. Together they hold at least one ID, each ID once."
       properties:
         kind:
           type: string
@@ -8190,24 +8335,17 @@ components:
         role:
           type: string
           description: "A WorkPersonRole for person, a WorkOrganizationRole for organization; another value returns 400 work_info_out_of_range."
-        action:
-          type: string
-          enum: [add, remove, replace]
-        ids:
+        add:
           type: array
-          description: "Distinct person or organization IDs, at most the role's limit (100 people, 20 organizations); add and remove need at least one."
+          description: "At most the role's limit (100 people, 20 organizations); a role that would exceed it on any video returns 400 work_info_too_many at credits[i].add."
           items:
             type: integer
             format: int64
-
-    VideoCreditsResponse:
-      type: object
-      required: [applied]
-      additionalProperties: false
-      properties:
-        applied:
-          type: integer
-          description: "Number of resolved videos currently in the library whose work information changed."
+        remove:
+          type: array
+          items:
+            type: integer
+            format: int64
 
     VideoVisibilityResponse:
       type: object

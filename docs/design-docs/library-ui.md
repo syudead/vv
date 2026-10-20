@@ -362,7 +362,7 @@ Video card behaviour:
 | Tag pressed in the library | Filters by the tag |
 | Tag pressed on a folder page or a group page | Opens `/?tag=<id>` |
 | Tags that do not fit the row | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full  |
-| Tag from a folder name only | Same size, no fill, dashed border, Folder marker; no × on the video page; not offered by `Remove tag`  |
+| Tag from a folder name only | Same size, no fill, dashed border, Folder marker; no × on the video page; cannot be removed by bulk `Edit` |
 | Hover preview | One at a time on any screen |
 | Zoom changed | Returns to the card that was at the top |
 
@@ -490,8 +490,8 @@ so they read on devices without hover; the design-system bar
 (`SelectionBar`, at most `max-w-4xl`) wraps to a second line when they do not
 fit.
 
-Its items, in order, are clear, `N selected`, `Add tag`, `Remove tag`,
-`Edit credits`, `Favorite`, `Add to playlist`, `New group`, `Add to group`, `Visibility`,
+Its items, in order, are clear, `N selected`, `Edit`,
+`Favorite`, `Add to playlist`, `New group`, `Add to group`,
 `Bundle as versions` (2 or more videos), and, after a separator, `Delete…`.
 There is no `Select all`: selection covers only the cards the viewer checks,
 directly, as a Shift range or inside a drawn box.
@@ -515,30 +515,13 @@ and the group and smart-folder pages reload. A failure stays in the dialog,
 so the selection is kept. The group page and the smart-folder page offer the
 same action for their child groups and child smart folders.
 
-`Edit credits` opens a dialog with one row per person role (performers,
-directors, photographers, streamers) and organization role (makers, labels).
-Each row has a mode, `Add`, `Remove` or `Replace`, and the credit picker of the
-details editor; a name that matches nobody is created on `Apply`, once per kind
-even when two roles use it or `Apply` is retried after a failure. With smart
-folders selected, the description says that every video now in them changes
-too, since the client does not know their members. The dialog sends only the rows that name credits,
-and a `Replace` row without credits, which clears that role. One request
-(`POST /api/video-credits`) applies every row to each selected video's work
-information in one transaction, leaving the other roles and fields as they
-are: `Add` appends the credits a video lacks after its own, `Remove` drops
-them, and `Replace` sets the role to exactly the chosen credits. A role that
-would pass its limit on any video, or a credit deleted meanwhile, fails the
-whole request, and the dialog keeps its rows and shows the reason. The toast
-counts the videos whose work information changed. The action shares the tag
-actions' 20,000-video limit and reaches smart folders' members the same way.
-Codes, dates, descriptions and links are per video and stay with the details
-editor.
+`Edit` opens the bulk editor for the tags, people, organizations, dates and
+visibility of the selection ([bulk-editing.md](bulk-editing.md)).
 
 While smart folders are selected, the count names them separately
 (`3 videos and 1 smart folder selected`). `Favorite` and `Add to playlist`
-send each folder as one item (`smartFolderIds`). `Add tag`, `Remove tag`
-(its candidates included), `Edit credits` and `Visibility` act on the folders'
-member videos, as they do on a selected group's: the client sends the folder IDs, and the
+send each folder as one item (`smartFolderIds`). `Edit` acts on the
+folders' member videos, as it does on a selected group's: the client sends the folder IDs, and the
 server resolves each folder's current members at request time with the owner's
 view of the smart folder page, its rule plus every ancestor rule and groups
 expanded to their videos. A folder whose rule refers to a missing entity has

@@ -1,14 +1,5 @@
-import {
-  FolderMinus,
-  FolderPlus,
-  Group,
-  Layers,
-  ListPlus,
-  Minus,
-  Plus,
-  Users,
-} from "lucide-react";
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { FolderMinus, FolderPlus, Group, Layers, ListPlus, Pencil } from "lucide-react";
+import { type ReactNode, useEffect, useId, useState } from "react";
 
 import { maxBundleSelection, type VideoVersions } from "../api/client";
 import { maxVideoTagsSelection } from "../api/tags";
@@ -19,19 +10,17 @@ import PlaylistPicker from "../playlists/PlaylistPicker";
 import { SelectionBar as SelectionBarSection } from "../ui/patterns/selection-bar";
 import { Popover, PopoverTrigger } from "../ui/shadcn/popover";
 import BundleDialog from "../versions/BundleDialog";
-import AddTagPopover from "./AddTagPopover";
+import BulkEditor from "./bulkEdit/BulkEditor";
 import DeleteCollectionsAction from "./DeleteCollectionsAction";
-import EditCreditsDialog from "./EditCreditsDialog";
 import FavoriteMenu from "./FavoriteMenu";
-import RemoveTagPopover from "./RemoveTagPopover";
 import {
   DisabledReason,
   disabledProps,
   SelectionAction,
   WithTooltip,
 } from "./SelectionAction";
+import type { SelectionTarget } from "./selection";
 import { overLimitMessage } from "./selectionErrors";
-import VisibilityMenu from "./VisibilityMenu";
 
 function PickerAction({
   icon,
@@ -69,6 +58,8 @@ function PickerAction({
 export interface SelectionBarProps {
   /** Selected videos, counting each member of a selected group. */
   count: number;
+  /** The selected cards in display order, for the bulk editor's stage. */
+  targets: readonly SelectionTarget[];
   selectedIds: readonly number[];
   /** Send standalone video IDs plus selected group IDs; limits apply to that combined request count. */
   favoriteVideoIds: readonly number[];
@@ -79,7 +70,7 @@ export interface SelectionBarProps {
    */
   smartFolderIds?: readonly number[];
   onClear: () => void;
-  /** Removing an active filter tag lets callers clear selection and reload matching rows. */
+  /** A bulk edit removed this tag; an active filter on it lets callers clear selection and reload matching rows. */
   onTagRemoved: (tagId: number) => void;
   onBundled: (versions: VideoVersions) => void;
   /** After selected groups were dissolved and smart folders deleted; callers clear the selection and reload. */
@@ -152,6 +143,7 @@ function countText(count: number, smartFolderCount: number): UiText {
 
 export default function SelectionBar({
   count,
+  targets,
   selectedIds,
   favoriteVideoIds,
   favoriteGroupIds,
@@ -162,13 +154,10 @@ export default function SelectionBar({
   onCollectionsDeleted,
   removeFromGroup,
 }: SelectionBarProps) {
-  const [addOpen, setAddOpen] = useState(false);
-  const [removeOpen, setRemoveOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [playlistOpen, setPlaylistOpen] = useState(false);
   const [groupOpen, setGroupOpen] = useState(false);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
-  const [creditsOpen, setCreditsOpen] = useState(false);
-  const addTriggerRef = useRef<HTMLButtonElement | null>(null);
   const total = count + smartFolderIds.length;
   const reasons = selectionReasons({
     count,
@@ -190,12 +179,10 @@ export default function SelectionBar({
   // SelectionBar survives returning null; close popovers at zero so reselecting cannot reopen them unexpectedly.
   useEffect(() => {
     if (total === 0) {
-      setAddOpen(false);
-      setRemoveOpen(false);
+      setEditOpen(false);
       setPlaylistOpen(false);
       setGroupOpen(false);
       setNewGroupOpen(false);
-      setCreditsOpen(false);
       setBundleOpen(false);
     }
   }, [total]);
@@ -205,10 +192,7 @@ export default function SelectionBar({
   const favoriteBlocked = reasons.favorite !== undefined;
   const groupBlocked = reasons.group !== undefined;
   useEffect(() => {
-    if (tagBlocked) {
-      setAddOpen(false);
-      setRemoveOpen(false);
-    }
+    if (tagBlocked) setEditOpen(false);
   }, [tagBlocked]);
   useEffect(() => {
     if (favoriteBlocked) setPlaylistOpen(false);
@@ -227,60 +211,22 @@ export default function SelectionBar({
         clearLabel={t.library.selection.clear}
         onClear={onClear}
       >
-        <Popover open={addOpen} onOpenChange={setAddOpen}>
-          <WithTooltip label={t.library.selection.addTag}>
-            <PopoverTrigger asChild>
-              <SelectionAction
-                ref={addTriggerRef}
-                icon={<Plus aria-hidden="true" />}
-                label={t.library.selection.addTag}
-                {...disabledProps(reasons.tag, tagReasonId)}
-              />
-            </PopoverTrigger>
-          </WithTooltip>
-          <AddTagPopover
-            open={addOpen}
-            onOpenChange={setAddOpen}
-            selectedIds={selectedIds}
-            smartFolderIds={smartFolderIds}
-            onDone={() => addTriggerRef.current?.focus()}
-          />
-        </Popover>
-
-        <Popover open={removeOpen} onOpenChange={setRemoveOpen}>
-          <WithTooltip label={t.library.selection.removeTag}>
-            <PopoverTrigger asChild>
-              <SelectionAction
-                icon={<Minus aria-hidden="true" />}
-                label={t.library.selection.removeTag}
-                {...disabledProps(reasons.tag, tagReasonId)}
-              />
-            </PopoverTrigger>
-          </WithTooltip>
-          <RemoveTagPopover
-            open={removeOpen}
-            onOpenChange={setRemoveOpen}
-            selectedIds={selectedIds}
-            smartFolderIds={smartFolderIds}
-            onRemoved={onTagRemoved}
-          />
-        </Popover>
-        <DisabledReason id={tagReasonId} reason={reasons.tag} />
-
-        <WithTooltip label={t.library.selection.editCredits}>
+        <WithTooltip label={reasons.tag ?? t.library.selection.edit}>
           <SelectionAction
-            icon={<Users aria-hidden="true" />}
-            label={t.library.selection.editCredits}
+            icon={<Pencil aria-hidden="true" />}
+            label={t.library.selection.edit}
             {...disabledProps(reasons.tag, tagReasonId)}
-            onClick={() => setCreditsOpen(true)}
+            onClick={() => setEditOpen(true)}
           />
         </WithTooltip>
-        {creditsOpen && (
-          <EditCreditsDialog
-            count={count}
-            selectedIds={selectedIds}
-            smartFolderIds={smartFolderIds}
-            onClose={() => setCreditsOpen(false)}
+        <DisabledReason id={tagReasonId} reason={reasons.tag} />
+        {editOpen && (
+          <BulkEditor
+            targets={targets}
+            onClose={() => setEditOpen(false)}
+            onApplied={(removed) => {
+              for (const tagId of removed) onTagRemoved(tagId);
+            }}
           />
         )}
 
@@ -353,13 +299,6 @@ export default function SelectionBar({
         <DisabledReason id={groupReasonId} reason={reasons.group} />
 
         {removeFromGroup !== undefined && <RemoveFromGroupAction {...removeFromGroup} />}
-
-        <VisibilityMenu
-          selectedIds={selectedIds}
-          smartFolderIds={smartFolderIds}
-          disabledReason={reasons.tag}
-          reasonId={tagReasonId}
-        />
 
         {canBundle && (
           <WithTooltip label={t.library.selection.bundle}>

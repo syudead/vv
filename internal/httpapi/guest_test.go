@@ -61,6 +61,7 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 			Playback:       db.Playback(),
 			Tags:           db.Tags(),
 			Visibility:     db.Visibility(),
+			VideoEdits:     db.VideoEdits(),
 			Favorites:      db.Favorites(),
 			WatchHistory:   db.Playback(),
 			Overrides:      db.Overrides(),
