@@ -113,6 +113,9 @@ export default function PeoplePage() {
   const [naming, setNaming] = useState<Person | null>(null);
   const [zoom, setZoom] = useState(readPeopleZoom);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  /** The person just named: their Name… button is gone, so focus moves to their card's link. */
+  const namedId = useRef<number | null>(null);
 
   useEffect(() => {
     if (skipLoad(snapshotKey)) return;
@@ -155,6 +158,15 @@ export default function PeoplePage() {
     },
     [applyLocal],
   );
+
+  useEffect(() => {
+    const id = namedId.current;
+    if (id === null) return;
+    namedId.current = null;
+    gridRef.current
+      ?.querySelector<HTMLElement>(`a[href="/people/${String(id)}"]`)
+      ?.focus();
+  }, [page]);
 
   const body = peopleBody(page, loadError, firstPending);
   const stale = isStalePeople(page, loadError);
@@ -304,7 +316,7 @@ export default function PeoplePage() {
       )}
       {body === "cards" && page !== undefined && (
         <>
-          <div onClick={saveSnapshot}>
+          <div ref={gridRef} onClick={saveSnapshot}>
             <CardGrid size={faceSizes[zoom]}>
               {page.rows.map((person) => (
                 <PersonCard
@@ -336,6 +348,7 @@ export default function PeoplePage() {
           send={(name) => updateCredit("person", naming.id, { name })}
           onClose={() => setNaming(null)}
           onDone={(updated) => {
+            namedId.current = updated.id;
             replaceRow(updated as Person);
             setNaming(null);
           }}

@@ -50,4 +50,24 @@ describe("takePeopleSnapshot", () => {
     await apiFetch("/api/people/1", { method: "PATCH" });
     expect(takePeopleSnapshot(key)).toBeUndefined();
   });
+
+  it("drops a grid saved while a write was in flight once the write settles", async () => {
+    let settle = () => {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(
+        () =>
+          new Promise<Response>((resolve) => {
+            settle = () => resolve(new Response("{}"));
+          }),
+      ),
+    );
+    const write = apiFetch("/api/favorites", { method: "PUT" });
+    savePeopleSnapshot({ page, search: "", scrollY: 0 });
+
+    settle();
+    await write;
+
+    expect(takePeopleSnapshot(key)).toBeUndefined();
+  });
 });

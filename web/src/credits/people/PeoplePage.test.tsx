@@ -284,8 +284,10 @@ describe("PeoplePage", () => {
     await user.click(screen.getByRole("button", { name: "Name…" }));
     await user.type(screen.getByRole("textbox", { name: "Name" }), "Mio{Enter}");
 
-    expect(await screen.findByRole("link", { name: /Mio/ })).toBeTruthy();
+    const named = await screen.findByRole("link", { name: /Mio/ });
     expect(screen.queryByRole("button", { name: "Name…" })).toBeNull();
+    // The Name… button is gone, so keyboard focus lands on the card's link instead of the body.
+    await waitFor(() => expect(document.activeElement).toBe(named));
     const patch = server.sent.find((request) => request.method === "PATCH");
     expect(patch?.url.pathname).toBe("/api/people/3");
     expect(patch?.body).toEqual({ name: "Mio" });

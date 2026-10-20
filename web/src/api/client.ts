@@ -232,8 +232,15 @@ export function apiWriteCount(): number {
 /** On owner-to-guest responses, reload once and never resolve, preventing guest data from reaching an owner view. Auth routes bypass this wrapper. */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const method = init?.method?.toUpperCase() ?? "GET";
-  if (method !== "GET" && method !== "HEAD") writes += 1;
-  const response = await sendRequest(path, init);
+  const write = method !== "GET" && method !== "HEAD";
+  if (write) writes += 1;
+  let response: Response;
+  try {
+    response = await sendRequest(path, init);
+  } finally {
+    // Count the write again when it settles, so a list kept while it was in flight is dropped too.
+    if (write) writes += 1;
+  }
   if (viewerChanged(response)) {
     reloadForViewerChange();
     return new Promise<Response>(() => undefined);
