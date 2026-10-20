@@ -130,8 +130,8 @@ func (p *WorkInfoPlugins) PersonPluginFetchImage(personID int64, fetchID string)
 	return *fetch.image, nil
 }
 
-// ApplyPersonPluginFetch applies the selected items of a kept result once and gives the person the image after the
-// commit when it has no face. An unknown, expired or other person's result, or a plugin changed since the fetch,
+// ApplyPersonPluginFetch applies the selected items of a kept result once and makes the image the person's face after
+// the commit, replacing any. An unknown, expired or other person's result, or a plugin changed since the fetch,
 // returns ErrWorkInfoFetchStale; no items or an item without a value ErrWorkInfoApplyInvalid; a person deleted or
 // merged away ErrPersonNotFound.
 func (p *WorkInfoPlugins) ApplyPersonPluginFetch(
@@ -160,7 +160,7 @@ func (p *WorkInfoPlugins) ApplyPersonPluginFetch(
 	}
 	if slices.Contains(items, domain.PersonItemImage) && p.personImages != nil {
 		// Like the work-info faces, the image follows the commit; a failure drops it without failing the apply.
-		if revision, err := p.personImages.FillPersonImage(ctx, personID, fetch.image.Data); err == nil && revision != 0 {
+		if revision, err := p.personImages.ReplacePersonImage(ctx, personID, fetch.image.Data); err == nil && revision != 0 {
 			applied.Person.ImageRevision = revision
 		}
 	}

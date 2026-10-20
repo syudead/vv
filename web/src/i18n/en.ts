@@ -1747,6 +1747,9 @@ export const en = {
         kept: (count: number) => `Kept as now (${formatNumber(count)})`,
         hideKept: "Hide kept values",
         keptNote: "Already set; applying keeps the current value.",
+        sameNote: "Already the same as the fetched value.",
+        replaces: "Replaces current",
+        searchByName: "Search by name",
         nothingNew: "Nothing new for this person.",
         skipped: {
           taken: (name: string) => `already linked to ${name}`,

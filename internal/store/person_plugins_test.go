@@ -92,6 +92,25 @@ func TestApplyPersonPluginFetchSkipsAnIDAnotherPersonHolds(t *testing.T) {
 	}
 }
 
+func TestApplyPersonPluginFetchReplacesAStoredProfileField(t *testing.T) {
+	db := migratedDB(t)
+	plugin := approvedPersonPlugin(t, db)
+	target := createCredit(t, db, domain.CreditPerson,
+		domain.CreditInput{Name: "Target", Profile: domain.PersonProfile{Birthplace: "Osaka"}})
+
+	applied, err := db.Credits().ApplyPersonPluginFetch(context.Background(), domain.PersonPluginApply{
+		PersonID: target.ID, PluginID: plugin.ID, Digest: plugin.Digest, Generation: plugin.Generation,
+		Fetched: domain.FetchedPluginPerson{Name: "Target", Profile: domain.PersonProfile{Birthplace: "Tokyo"}},
+		Items:   []domain.PersonPluginItem{domain.PersonProfileItem(domain.ProfileBirthplace)},
+	})
+	if err != nil {
+		t.Fatalf("ApplyPersonPluginFetch: %v", err)
+	}
+	if applied.Person.Profile.Birthplace != "Tokyo" {
+		t.Fatalf("birthplace = %q; want the fetched value over the stored one", applied.Person.Profile.Birthplace)
+	}
+}
+
 func TestApplyPersonPluginFetchWritesNothingForAChangedPlugin(t *testing.T) {
 	ctx := context.Background()
 	db := migratedDB(t)

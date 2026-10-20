@@ -12,11 +12,13 @@ import (
 // People's images are kept with a fetch like the cover and become faces after the apply commits; see
 // docs/design-docs/work-info-plugins.md.
 
-// WorkInfoPersonImageFiller gives a person without a face a fetched image; implemented by PersonImages.
+// WorkInfoPersonImageFiller gives a person a fetched image as the face; implemented by PersonImages.
 type WorkInfoPersonImageFiller interface {
 	// FillPersonImage stores data as the face of a person who has none and returns its revision, or 0 when it stored
 	// nothing. An image that cannot be fitted, a person who has a face or no longer exists is not an error.
 	FillPersonImage(ctx context.Context, id int64, data []byte) (int64, error)
+	// ReplacePersonImage stores data as the person's face whether or not one is set, under FillPersonImage's results.
+	ReplacePersonImage(ctx context.Context, id int64, data []byte) (int64, error)
 }
 
 // keepPersonImages attaches each header-checked image to the person it was fetched for; images aligns with people.
@@ -148,4 +150,20 @@ func (p *PersonImages) FillPersonImage(ctx context.Context, id int64, data []byt
 		return 0, nil
 	}
 	return revision, err
+}
+
+// ReplacePersonImage fits data and stores it over the person's face, if any.
+func (p *PersonImages) ReplacePersonImage(ctx context.Context, id int64, data []byte) (int64, error) {
+	fitted, err := p.fit(ctx, data)
+	switch {
+	case ctx.Err() != nil:
+		return 0, ctx.Err()
+	case err != nil:
+		return 0, nil
+	}
+	person, err := p.store.SetPersonImage(ctx, id, fitted)
+	if errors.Is(err, domain.ErrNotFound) {
+		return 0, nil
+	}
+	return person.ImageRevision, err
 }

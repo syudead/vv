@@ -66,13 +66,15 @@ export function usePersonFetchFlow({
   const toast = useToast();
   const [pluginId, setPluginId] = useState(plugins[0]?.id);
   const plugin = plugins.find((item) => item.id === pluginId) ?? plugins[0];
-  // The server answers person_external_id_missing before the page offers a name search.
+  // The page offers a name search on request, or after the server answers person_external_id_missing.
   const [byName, setByName] = useState(false);
+  const [missingId, setMissingId] = useState(false);
   const [query, setQuery] = useState(person.name);
   const [candidates, setCandidates] = useState<PersonPluginCandidate[] | null>(null);
   if (plugin?.id !== pluginId) {
     setPluginId(plugin?.id);
     setByName(false);
+    setMissingId(false);
     setCandidates(null);
   }
   const [running, setRunning] = useState<PersonRunning | null>(null);
@@ -134,7 +136,7 @@ export function usePersonFetchFlow({
       const result = await fetchPersonWithPlugin(person.id, target.id, candidate, signal);
       if (signal.aborted) return;
       setFetched({ result, plugin: target, candidate });
-      setSelection(initialItems(compareRows(latestPerson.current, result.person)));
+      setSelection(initialItems(compareRows(latestPerson.current, result.person, true)));
       setStale(false);
       setApplyFailure(null);
       setStep("compare");
@@ -142,6 +144,7 @@ export function usePersonFetchFlow({
       if (isAborted(error) || signal.aborted) return;
       if (candidate === undefined && isMissingId(error)) {
         setByName(true);
+        setMissingId(true);
         setStep("find");
         return;
       }
@@ -203,6 +206,7 @@ export function usePersonFetchFlow({
   return {
     plugin,
     byName,
+    missingId,
     query,
     candidates,
     running,
@@ -218,8 +222,15 @@ export function usePersonFetchFlow({
     choosePlugin: (id: number) => {
       setPluginId(id);
       setByName(false);
+      setMissingId(false);
       setCandidates(null);
       setFailure(null);
+    },
+    searchByName: () => {
+      if (running !== null || applying) return;
+      setByName(true);
+      setFailure(null);
+      setStep("find");
     },
     changeQuery: setQuery,
     choose: (candidate: CandidateId) => {

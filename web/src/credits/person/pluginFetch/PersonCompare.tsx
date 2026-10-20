@@ -44,6 +44,8 @@ export interface PersonCompareProps {
   selection: readonly PersonPluginItem[];
   /** While the apply runs or the result is stale. */
   locked: boolean;
+  /** Offer stored values for replacement, as the person page's apply writes over them. */
+  replace?: boolean;
   /** In a lookup block: no column headings, since the comparison around it has them, and each row's label above its two cells. */
   inBlock?: boolean;
   onToggle: (item: PersonPluginItem, on: boolean) => void;
@@ -196,6 +198,7 @@ function Row({
             />
             <Label htmlFor={id} className="font-normal text-muted-foreground">
               {label}
+              {row.replaces === true && <span className="text-xs">{text.replaces}</span>}
             </Label>
           </>
         ) : (
@@ -232,7 +235,9 @@ function KeptRows({
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent className="flex flex-col gap-1">
-        <p className="text-xs text-muted-foreground">{text.keptNote}</p>
+        <p className="text-xs text-muted-foreground">
+          {props.replace === true ? text.sameNote : text.keptNote}
+        </p>
         <div className="flex flex-col divide-y divide-border border-y border-border">
           {rows.map((row) => (
             <Row key={row.item} row={row} props={props} selectable={false} />
@@ -245,10 +250,10 @@ function KeptRows({
 
 /**
  * A fetched person beside the person it would fill: one selectable row per item the apply would
- * write, and the values the person already has folded, since the apply never replaces them.
+ * write, and the values the apply would keep folded.
  */
 export default function PersonCompare(props: PersonCompareProps) {
-  const rows = compareRows(props.current, props.fetched);
+  const rows = compareRows(props.current, props.fetched, props.replace === true);
   const changes = rows.filter((row) => row.changes);
   const kept = rows.filter((row) => !row.changes);
   return (

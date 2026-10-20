@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// A person plugin's result applies per item and only fills or appends; the rules are shared by the person page and
-// the work-info lookups (docs/design-docs/person-plugins.md).
+// A person plugin's result applies per item: profile fields fill, or replace on the person page, and lists append; the
+// rules are shared by the person page and the work-info lookups (docs/design-docs/person-plugins.md).
 
 // ErrPersonExternalIDMissing reports a person without a stored external ID that the person plugin accepts.
 var ErrPersonExternalIDMissing = errors.New("the person has no external ID the plugin accepts")
@@ -84,6 +84,8 @@ type PersonItemFill struct {
 	Items   []PersonPluginItem
 	Holders map[ExternalID]string
 	Today   time.Time
+	// Replace writes a selected profile field that already holds another value; otherwise only empty fields fill.
+	Replace bool
 }
 
 // PersonItemFilled is the person's next aliases, external IDs and profile, with the values left out in item order.
@@ -94,7 +96,7 @@ type PersonItemFilled struct {
 	Skipped     []SkippedPersonValue
 }
 
-// FillPersonItems fills empty profile fields and appends missing aliases and external IDs within their limits; a
+// FillPersonItems fills empty profile fields, or replaces them under Replace, and appends missing aliases and external IDs within their limits; a
 // value that breaks a rule is skipped as invalid, and an ID another person holds as taken.
 func FillPersonItems(in PersonItemFill) PersonItemFilled {
 	out := PersonItemFilled{
@@ -102,11 +104,15 @@ func FillPersonItems(in PersonItemFill) PersonItemFilled {
 		Profile: in.Current.Profile,
 	}
 	selected := func(item PersonPluginItem) bool { return slices.Contains(in.Items, item) }
+	write := fillProfileField
+	if in.Replace {
+		write = replaceProfileField
+	}
 	for _, field := range PersonProfileFields {
 		if !selected(PersonProfileItem(field)) {
 			continue
 		}
-		next, fill := fillProfileField(out.Profile, in.Fetched.Profile, field, in.Today)
+		next, fill := write(out.Profile, in.Fetched.Profile, field, in.Today)
 		switch fill {
 		case profileFilled:
 			out.Profile = next

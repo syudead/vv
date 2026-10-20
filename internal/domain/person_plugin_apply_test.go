@@ -33,6 +33,33 @@ func TestFillPersonItemsFillsOnlyEmptyProfileFields(t *testing.T) {
 	}
 }
 
+func TestFillPersonItemsReplacesSelectedProfileFields(t *testing.T) {
+	stored, fetchedHeight, invalidBust, storedBust := 160, 170, 1000, 80
+	current := Credit{Name: "Hanako", Profile: PersonProfile{
+		BirthDate: "1990", HeightCm: &stored, BustCm: &storedBust, Birthplace: "Osaka",
+	}}
+	fetched := FetchedPluginPerson{Name: "Hanako", Profile: PersonProfile{
+		BirthDate: "1985", HeightCm: &fetchedHeight, BustCm: &invalidBust, Birthplace: "Tokyo",
+	}}
+	items := []PersonPluginItem{
+		PersonProfileItem(ProfileHeightCm), PersonProfileItem(ProfileBustCm), PersonProfileItem(ProfileBirthplace),
+	}
+
+	got := FillPersonItems(PersonItemFill{
+		Current: current, Fetched: fetched, Items: items, Today: personFillToday, Replace: true,
+	})
+
+	if got.Profile.BirthDate != "1990" || *got.Profile.HeightCm != 170 || *got.Profile.BustCm != 80 ||
+		got.Profile.Birthplace != "Tokyo" {
+		t.Fatalf("profile = %+v; want the selected fields replaced, the unselected and the invalid one kept",
+			got.Profile)
+	}
+	want := []SkippedPersonValue{{Item: PersonProfileItem(ProfileBustCm), Value: "1000", Reason: SkippedWorkInfoInvalid}}
+	if !slices.Equal(got.Skipped, want) {
+		t.Fatalf("skipped = %+v; want %+v", got.Skipped, want)
+	}
+}
+
 func TestFillPersonItemsAppliesOnlySelectedItems(t *testing.T) {
 	fetched := FetchedPluginPerson{
 		Name: "Hanako", Aliases: []Alias{{Name: "Hana"}}, ExternalIDs: []ExternalID{{Source: "wiki", Value: "1"}},

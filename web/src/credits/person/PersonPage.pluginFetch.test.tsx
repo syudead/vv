@@ -114,6 +114,51 @@ describe("PersonPage fetch info", () => {
     expect(screen.getByText("Blood type")).toBeTruthy();
   });
 
+  it("replaces a stored value only when its row is checked", async () => {
+    server.person = person({ ...stored, profile: { birthplace: "Tokyo" } });
+    server.fetched = {
+      name: "Aoi",
+      aliases: [],
+      externalIds: [],
+      profile: { birthplace: "Osaka", bloodType: "A" },
+    };
+    server.applied = person({
+      ...stored,
+      profile: { birthplace: "Osaka", bloodType: "A" },
+    });
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+    await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
+
+    const birthplace = await within(dialog).findByRole("checkbox", {
+      name: /Birthplace/,
+    });
+    expect(birthplace.getAttribute("aria-checked")).toBe("false");
+    await user.click(birthplace);
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+
+    expect(await screen.findByText("Applied to Aoi.")).toBeTruthy();
+    expect(sentBody(sent("POST", "/api/people/7/plugin-fetches/f1/apply")[0])).toEqual({
+      items: ["profile.bloodType", "profile.birthplace"],
+    });
+  });
+
+  it("searches by name for a person with a stored ID, without fetching first", async () => {
+    server.person = person(stored);
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+
+    await user.click(within(dialog).getByRole("button", { name: "Search by name" }));
+    await user.click(within(dialog).getByRole("button", { name: "Search" }));
+
+    expect(await within(dialog).findByText("No matches. Try other words.")).toBeTruthy();
+    expect(within(dialog).queryByText(/has no ID for this person/)).toBeNull();
+    expect(sent("POST", "/api/people/7/plugin-fetches")).toHaveLength(0);
+    expect(sentBody(sent("POST", "/api/work-info-plugins/5/person-search")[0])).toEqual({
+      query: "Aoi",
+    });
+  });
+
   it("lists the values the apply left out", async () => {
     server.person = person(stored);
     server.fetched = {

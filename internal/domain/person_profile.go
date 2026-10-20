@@ -167,6 +167,22 @@ func fillProfileField(target, source PersonProfile, field PersonProfileField, to
 	if !profileFieldEmpty(target, copyField) || profileFieldEmpty(source, copyField) {
 		return target, profileFillNone
 	}
+	return copyProfileField(target, source, copyField, today)
+}
+
+// replaceProfileField copies field from source when it is set there and differs in target, with fillProfileField's
+// results.
+func replaceProfileField(target, source PersonProfile, field PersonProfileField, today time.Time) (PersonProfile, profileFill) {
+	copyField := personProfileCopies[field]
+	if profileFieldEmpty(source, copyField) || profileFieldEqual(target, source, copyField) {
+		return target, profileFillNone
+	}
+	return copyProfileField(target, source, copyField, today)
+}
+
+func copyProfileField(
+	target, source PersonProfile, copyField func(*PersonProfile, PersonProfile), today time.Time,
+) (PersonProfile, profileFill) {
 	candidate := target
 	copyField(&candidate, source)
 	normalized, err := NormalizePersonProfile(candidate, today)
