@@ -454,8 +454,8 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 		if err := recordTerminalFailure(ctx, tx, job, cause, now, forced); err != nil {
 			return err
 		}
-		if job.Kind == domain.JobSeekThumbnail && !job.Force {
-			// Follow-up processes also run on a failed seek stage, with the images that remain; a forced one queues none.
+		if job.Kind == domain.JobSeekThumbnail {
+			// Follow-up processes also run on a failed seek stage, with the images that remain.
 			if err := queueAfterSeekStage(ctx, tx, &c, job, time.Now()); err != nil {
 				return err
 			}

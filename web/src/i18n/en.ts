@@ -3415,7 +3415,7 @@ export const en = {
       rescanDialog: {
         title: "Force rescan the whole library?",
         description:
-          "Every video is read again and its thumbnails, preview and duplicate check are rebuilt, even when the file hasn't changed. This can take a long time.",
+          "Every video is read again and its thumbnails, preview and duplicate check are rebuilt, even when the file hasn't changed. Auto-tagging and face analysis run again when they're on. This can take a long time.",
         submit: "Force rescan",
         starting: "Starting…",
       },
@@ -3929,7 +3929,7 @@ export const en = {
       rescanDialog: {
         title: "Force rescan this folder?",
         description:
-          "Every video in this folder is read again and its thumbnails, preview and duplicate check are rebuilt, even when the file hasn't changed. This can take a long time.",
+          "Every video in this folder is read again and its thumbnails, preview and duplicate check are rebuilt, even when the file hasn't changed. Auto-tagging and face analysis run again when they're on. This can take a long time.",
         target: "Folder",
       },
     },

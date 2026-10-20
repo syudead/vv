@@ -119,13 +119,25 @@ func queueContentSubject(
 	return id, nil
 }
 
+// queueAgainStates queues a video again unless it is running or already queued.
+const queueAgainStates = `'', 'done', 'failed'`
+
+// afterSeek selects which videos a follow-up process of the seek stage queues and the decider of their entries.
+type afterSeek struct {
+	// switches are the settings that must all be on.
+	switches []string
+	// states are the queue states queued again; an empty state represents a missing row.
+	states  string
+	decider domain.ActivityDecider
+}
+
 // queueAfterImport is a follow-up process of the seek stage: the transaction that finishes the stage for good queues
-// a video with no queue row while every setting in switches is on, and the entry joins the pipelines of the job's
-// import entry. Otherwise it writes nothing, so no pipeline waits for the process.
+// the video while every setting in rule.switches is on and its queue state is in rule.states, and the entry joins the
+// pipelines of the job's import entry. Otherwise it writes nothing, so no pipeline waits for the process.
 func queueAfterImport(
-	ctx context.Context, tx *sql.Tx, c *changes, q contentQueue, switches []string, job domain.Job, now time.Time,
+	ctx context.Context, tx *sql.Tx, c *changes, q contentQueue, rule afterSeek, job domain.Job, now time.Time,
 ) error {
-	for _, key := range switches {
+	for _, key := range rule.switches {
 		if on, err := readBoolSetting(ctx, tx, key); err != nil || !on {
 			return err
 		}
@@ -133,13 +145,13 @@ func queueAfterImport(
 	subjects, err := queueableSubjects(ctx, tx, `select v.content_key, `+contentLabelExpr("v.content_key")+`
 		from videos v where v.id = ? and v.content_key = ? and v.content_key <> '' and v.location_generation = ?
 		and v.seek_thumbnail_state in ('done', 'failed') and `+registeredVideoCondition("v")+`
-		and not exists (select 1 from `+q.table+` q where q.content_key = v.content_key)`,
+		and coalesce((select q.state from `+q.table+` q where q.content_key = v.content_key), '') in (`+rule.states+`)`,
 		[]any{job.VideoID, job.ContentKey, job.LocationGeneration})
 	if err != nil {
 		return err
 	}
 	for _, subject := range subjects {
-		id, err := queueContentSubject(ctx, tx, c, q, subject, domain.ActivityByRule, nil, now)
+		id, err := queueContentSubject(ctx, tx, c, q, subject, rule.decider, nil, now)
 		if err != nil {
 			return err
 		}
@@ -150,13 +162,23 @@ func queueAfterImport(
 	return nil
 }
 
-// queueAfterSeekStage queues every follow-up process of a seek stage that finished for good, succeeded or failed.
+// queueAfterSeekStage queues every follow-up process of a seek stage that finished for good, succeeded or failed. An
+// import queues a video never queued while automatic judging is on; a forced job, from a force rescan the owner
+// started, queues the video again unless it is running, as "Tag all videos again" and the face all run do
+// (docs/design-docs/force-rescan.md).
 func queueAfterSeekStage(ctx context.Context, tx *sql.Tx, c *changes, job domain.Job, now time.Time) error {
-	if err := queueAfterImport(ctx, tx, c, autoTagQueue, []string{autoTagFeatureKey, autoTagAfterImportKey}, job,
-		now); err != nil {
+	tagging := afterSeek{switches: []string{autoTagFeatureKey, autoTagAfterImportKey}, states: `''`,
+		decider: domain.ActivityByRule}
+	faces := afterSeek{switches: []string{faceEnabledKey}, states: `''`, decider: domain.ActivityByRule}
+	if job.Force {
+		tagging = afterSeek{switches: []string{autoTagFeatureKey}, states: queueAgainStates,
+			decider: domain.ActivityByOwner}
+		faces.states, faces.decider = queueAgainStates, domain.ActivityByOwner
+	}
+	if err := queueAfterImport(ctx, tx, c, autoTagQueue, tagging, job, now); err != nil {
 		return err
 	}
-	return queueAfterImport(ctx, tx, c, faceQueue, []string{faceEnabledKey}, job, now)
+	return queueAfterImport(ctx, tx, c, faceQueue, faces, job, now)
 }
 
 func queueableSubjects(ctx context.Context, tx *sql.Tx, query string, args []any) ([]domain.ActivitySubject, error) {
