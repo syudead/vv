@@ -2,79 +2,81 @@ import { describe, expect, it } from "vitest";
 
 import {
   compareRows,
-  faceChoices,
-  initialImage,
-  initialItems,
+  initialSelection,
   type PersonCompareCurrent,
+  selectionBody,
 } from "./personCompareRows";
 
 const current: PersonCompareCurrent = {
   name: "Aoi",
   aliases: [{ name: "Sora" }],
   externalIds: [{ source: "fanza", value: "a1" }],
-  profile: { heightCm: 160 },
+  profile: { heightCm: 160, links: ["https://a.test"] },
   imageRevision: 2,
 };
 
 const fetched = {
-  name: "Aoi",
-  // The person's own name counts as an alias already on the person.
-  aliases: [{ name: "Aoi" }, { name: "Sora" }],
+  name: "Aoi Sora",
+  aliases: [{ name: "Aoi" }, { name: "Sora" }, { name: "Aoichan" }],
   externalIds: [
     { source: "fanza", value: "a1" },
     { source: "fanza", value: "b2" },
   ],
-  profile: { heightCm: 158, cup: "C" },
+  profile: { heightCm: 158, cup: "C", links: ["https://a.test", "https://b.test"] },
   imageCount: 3,
 };
 
 describe("compareRows", () => {
-  it("fills what is missing, keeps what the person has, and draws no row for absent values", () => {
-    const rows = compareRows(current, fetched);
-
-    expect(rows).toEqual([
+  it("fills what is missing, keeps what the person has, and leaves lists and links out", () => {
+    expect(compareRows(current, fetched)).toEqual([
       { item: "profile.heightCm", kind: "kept" },
       { item: "profile.cup", kind: "fill" },
-      { item: "aliases", kind: "kept" },
-      { item: "externalIds", kind: "fill" },
     ]);
-    expect(initialItems(rows)).toEqual(["profile.cup", "externalIds"]);
   });
 
-  it("offers a different stored value for replacement, unselected, and keeps an equal one", () => {
-    const rows = compareRows(current, fetched, true);
+  it("offers a different stored value for replacement and keeps an equal one", () => {
     const same = compareRows(
       current,
       { name: "Aoi", aliases: [], externalIds: [], profile: { heightCm: 160 } },
       true,
     );
 
-    expect(rows.slice(0, 2)).toEqual([
-      { item: "profile.heightCm", kind: "replace" },
-      { item: "profile.cup", kind: "fill" },
-    ]);
-    expect(initialItems(rows)).toEqual(["profile.cup", "externalIds"]);
+    expect(compareRows(current, fetched, true)[0]).toEqual({
+      item: "profile.heightCm",
+      kind: "replace",
+    });
     expect(same).toEqual([{ item: "profile.heightCm", kind: "kept" }]);
   });
 });
 
-describe("face choices", () => {
-  it("offers every image to replace a face but none to fill one the person has", () => {
-    expect([
-      faceChoices(current, fetched, true),
-      initialImage(current, fetched, true),
-    ]).toEqual([3, null]);
-    expect([faceChoices(current, fetched), initialImage(current, fetched)]).toEqual([
-      0,
-      null,
+describe("initialSelection", () => {
+  it("selects filling fields and every value the lists would add, but no replacement or stored face", () => {
+    const selection = initialSelection(current, fetched, true);
+
+    // The fetched name is an alias choice; names and IDs the person has are not.
+    expect(selection).toEqual({
+      items: ["profile.cup"],
+      image: null,
+      aliases: ["Aoi Sora", "Aoichan"],
+      externalIds: [{ source: "fanza", value: "b2" }],
+      links: ["https://b.test"],
+    });
+    expect(selectionBody({ ...selection, image: 2 }).items).toEqual([
+      "profile.cup",
+      "image",
     ]);
   });
 
-  it("starts a person without a face on the first image", () => {
-    const faceless = { ...current, imageRevision: undefined };
+  it("starts a person without a face on the first image, and a created person without the fetched name", () => {
+    const created = { aliases: [], externalIds: [], profile: {} };
 
-    expect([faceChoices(faceless, fetched), initialImage(faceless, fetched)]).toEqual([
-      3, 0,
-    ]);
+    const selection = initialSelection(created, fetched);
+
+    expect(selection.image).toBe(0);
+    expect(selection.aliases).toEqual(["Aoi", "Sora", "Aoichan"]);
+  });
+
+  it("offers no image to fill a face the person has", () => {
+    expect(initialSelection(current, fetched).image).toBeNull();
   });
 });

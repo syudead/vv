@@ -1748,6 +1748,8 @@ export const en = {
         keptNote: "Already set; applying keeps the current value.",
         sameNote: "Already the same as the fetched value.",
         searchByName: "Search by name",
+        otherNames: "Also search for",
+        back: "Back",
         face: "Face",
         keepFace: "Keep current",
         noFace: "No face",
@@ -1756,6 +1758,9 @@ export const en = {
         fills: "Fills empty fields",
         replaces: "Differs from now",
         replacesNote: "Checked rows replace the current value.",
+        adds: "Adds to lists",
+        alreadyOnPerson: (count: number) =>
+          `${formatNumber(count)} already on the person`,
         selectAll: "Select all",
         clearAll: "Clear",
         nothingNew: "Nothing new for this person.",

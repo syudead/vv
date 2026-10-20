@@ -133,9 +133,14 @@ replaced plugin no longer declares it.
 
 ## A fetched person applies per item, and a profile value may replace
 
-`POST /api/people/{id}/plugin-fetches/{fetchId}/apply` takes the items the
-owner selected: `image`, `aliases`, `externalIds` and one `profile.<field>`
-per profile field. The apply rechecks the plugin's approval, digest and
+`POST /api/people/{id}/plugin-fetches/{fetchId}/apply` takes what the owner
+selected: `items`, with `image` and one `profile.<field>` per profile field
+other than links, and the lists `aliases`, `externalIds` and `links`, each
+value one the result carries. An alias may be the fetched name, since a site
+often lists the person under a name the owner does not have yet. The rule is
+[`Select`](../../internal/domain/person_plugin_apply.go), and a selection
+naming a list as an item, or a value the result lacks, is
+`400 invalid_request`. The apply rechecks the plugin's approval, digest and
 generation inside its transaction, as a work-info apply does, and answers
 `409 work_info_fetch_stale` without writes when the plugin changed since the
 fetch.
@@ -144,8 +149,9 @@ fetch.
 | --- | --- |
 | A profile field | Writes the fetched value, replacing a stored one |
 | `image` | The image at the request's `imageIndex` becomes the face after the commit, replacing a stored one |
-| `aliases` | Appends the aliases the person does not have; those over 50 are skipped as `too_many` |
-| `externalIds` | Appends the IDs the person does not have; those over 20 are skipped as `too_many`, and an ID another person holds is skipped as `taken` with that person's name |
+| `aliases` | Appends the chosen aliases the person does not have; those over 50 are skipped as `too_many` |
+| `externalIds` | Appends the chosen IDs the person does not have; those over 20 are skipped as `too_many`, and an ID another person holds is skipped as `taken` with that person's name |
+| `links` | Appends the chosen links the person does not have; those over 20 are skipped as `too_many` |
 
 A value that would make the person invalid is skipped as `invalid`, and the
 rest applies. A `taken` ID never merges the two people: the owner merges them
@@ -163,7 +169,8 @@ a row the owner checked.
 | --- | --- |
 | Fill only, never replace | The owner could not correct a wrong or outdated value from the site without retyping it |
 | Replacing in work-info lookups too | Their rows sit inside a video's comparison, where a checked role row would replace a person's values without a look at each |
-| Replacing aliases and external IDs | A list replaced by a site's would drop names and IDs the owner added |
+| Replacing aliases, external IDs and links | A list replaced by a site's would drop names, IDs and links the owner added |
+| One checkbox per list | A site's list often holds one wrong alias or link, and the owner could only take or leave all of them |
 | Merge the person holding a `taken` ID | A wrong ID on a site would merge two people the owner keeps apart |
 
 ## The settings page lists each kind in its own section
@@ -189,7 +196,11 @@ fetch dialog: plugin, candidates when needed, comparison, result. Its first
 with the person's name, after the server answers
 `409 person_external_id_missing`, or when the owner presses `Search by name`,
 which the plugin step and a comparison fetched by a stored ID offer; a chosen
-candidate's `source` and `id` are then sent with the fetch. The response of the apply replaces the page's person
+candidate's `source` and `id` are then sent with the fetch. Under the field,
+the person's name and aliases each search at a press, since a site may list the
+person under any of them. Every comparison has `Back` to the plugin step, and
+to the matches after a name search, so another plugin or candidate is one step
+away. The response of the apply replaces the page's person
 in memory, so the page shows the filled fields without reading it again.
 
 The comparison, [`PersonCompare`](../../web/src/credits/person/pluginFetch/PersonCompare.tsx),
@@ -200,17 +211,19 @@ is in the order the owner decides:
 | `Face` | The person's face, or `No change` without one, then each fetched image, as one radio group | On the stored face; on the first image for a person without one |
 | `Fills empty fields` | The fetched value of each empty profile field, and aliases or external IDs the person does not have | Checked |
 | `Differs from now` | A stored profile value, struck through when checked, an arrow and the fetched one | Unchecked |
+| `Adds to lists` | Aliases, the fetched name among them, external IDs and links the person does not have, each a toggle, and a count of those the person has | Pressed |
 | `Kept as now (N)` | Values equal to the stored ones, folded, without checkboxes | Folded |
 
-`Fills empty fields` and `Differs from now` each have `Select all` or `Clear`
-when they hold more than one row. Each row is one apply item, with its label in
+`Fills empty fields`, `Differs from now` and `Adds to lists` each have
+`Select all` or `Clear` when they hold more than one choice. Each row is one apply item, with its label in
 a fixed column so values line up down the dialog; below `sm` a row stacks its
 label over its values, which keep the now, arrow and fetched order on one line.
 The rows are computed by
 [`compareRows`](../../web/src/credits/person/pluginFetch/personCompareRows.ts).
 The work-info comparison reuses the piece for its person lookups without
-replacement: the face is offered only to a person without one, and every
-stored value is kept.
+replacement: the face is offered only to a person without one, every stored
+value is kept, and a person the apply creates is not offered the fetched name,
+which the work's entry names already.
 
 | Rejected | Why |
 | --- | --- |
@@ -269,7 +282,7 @@ image fits and is never evicted by its own lookups.
 
 ## A lookup applies only through a selected role
 
-`applyWorkInfoFetch` takes `personLookups: [{index, items}]` with the items of
+`applyWorkInfoFetch` takes `personLookups: [{index, items, aliases, externalIds, links}]` with the selection of
 the person page's apply. A lookup fills the person its entries' role links in
 the same apply, only when that is the person they matched at fetch time, or a
 person the apply creates for entries that matched none; selecting its items

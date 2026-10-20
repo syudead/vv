@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { RequestFailed } from "../../api/client";
-import type { PersonPluginItem } from "../../api/personPluginFetches";
+import type { PersonSelection } from "../../credits/person/pluginFetch/personCompareRows";
 import {
   runPersonLookup,
   type WorkInfoFetch,
@@ -128,14 +128,11 @@ export function usePersonLookups(videoId: number, events: PersonLookupEvents) {
       });
       void drain(current);
     },
-    toggleItem: (index: number, item: PersonPluginItem, on: boolean) => {
+    changeSelection: (index: number, selection: PersonSelection) => {
       const current = session.current;
       const state = current?.states[index];
       if (current === null || state?.status !== "shown") return;
-      const items = on
-        ? [...new Set([...state.items, item])]
-        : state.items.filter((value) => value !== item);
-      update(current, index, { ...state, items });
+      update(current, index, { ...state, selection });
     },
   };
 }

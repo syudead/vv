@@ -109,7 +109,10 @@ describe("PersonPage fetch info", () => {
 
     expect(await screen.findByText("Applied to Aoi.")).toBeTruthy();
     expect(sentBody(sent("POST", "/api/people/7/plugin-fetches/f1/apply")[0])).toEqual({
-      items: ["profile.bloodType", "aliases"],
+      items: ["profile.bloodType"],
+      aliases: ["Sora"],
+      externalIds: [],
+      links: [],
     });
     expect(screen.getByText("Blood type")).toBeTruthy();
   });
@@ -140,6 +143,9 @@ describe("PersonPage fetch info", () => {
     expect(await screen.findByText("Applied to Aoi.")).toBeTruthy();
     expect(sentBody(sent("POST", "/api/people/7/plugin-fetches/f1/apply")[0])).toEqual({
       items: ["profile.bloodType", "profile.birthplace"],
+      aliases: [],
+      externalIds: [],
+      links: [],
     });
   });
 
@@ -161,6 +167,9 @@ describe("PersonPage fetch info", () => {
     expect(await screen.findByText("Applied to Aoi.")).toBeTruthy();
     expect(sentBody(sent("POST", "/api/people/7/plugin-fetches/f1/apply")[0])).toEqual({
       items: ["profile.birthplace", "profile.cup"],
+      aliases: [],
+      externalIds: [],
+      links: [],
     });
   });
 
@@ -182,6 +191,9 @@ describe("PersonPage fetch info", () => {
     expect(await screen.findByText("Applied to Aoi.")).toBeTruthy();
     expect(sentBody(sent("POST", "/api/people/7/plugin-fetches/f1/apply")[0])).toEqual({
       items: ["image"],
+      aliases: [],
+      externalIds: [],
+      links: [],
       imageIndex: 1,
     });
   });
@@ -199,6 +211,59 @@ describe("PersonPage fetch info", () => {
     expect(sent("POST", "/api/people/7/plugin-fetches")).toHaveLength(0);
     expect(sentBody(sent("POST", "/api/work-info-plugins/5/person-search")[0])).toEqual({
       query: "Aoi",
+    });
+  });
+
+  it("adds only the aliases, IDs and links left pressed", async () => {
+    server.person = person({ ...stored, profile: { links: ["https://a.test"] } });
+    server.fetched = {
+      name: "Aoi Sora",
+      aliases: [{ name: "Sora" }],
+      externalIds: [
+        { source: "fanza", value: "a1" },
+        { source: "fanza", value: "b2" },
+      ],
+      profile: { links: ["https://a.test", "https://b.test"] },
+    };
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+    await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
+
+    // The fetched name is offered as an alias; values the person has are not choices.
+    const fetchedName = await within(dialog).findByRole("button", { name: "Aoi Sora" });
+    expect(fetchedName.getAttribute("aria-pressed")).toBe("true");
+    expect(within(dialog).queryByRole("button", { name: "fanza a1" })).toBeNull();
+    await user.click(fetchedName);
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+
+    expect(await screen.findByText("Applied to Aoi.")).toBeTruthy();
+    expect(sentBody(sent("POST", "/api/people/7/plugin-fetches/f1/apply")[0])).toEqual({
+      items: [],
+      aliases: ["Sora"],
+      externalIds: [{ source: "fanza", value: "b2" }],
+      links: ["https://b.test"],
+    });
+  });
+
+  it("goes back from a comparison to search by another of the person's names", async () => {
+    server.person = person({ ...stored, aliases: [{ name: "Sora" }] });
+    server.fetched = { name: "Aoi", aliases: [], externalIds: [], profile: { cup: "C" } };
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+    await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
+    await within(dialog).findByRole("checkbox", { name: "Cup" });
+
+    await user.click(within(dialog).getByRole("button", { name: "Back" }));
+    await user.click(within(dialog).getByRole("button", { name: "Search by name" }));
+    await user.click(within(dialog).getByRole("button", { name: "Sora" }));
+
+    expect(await within(dialog).findByText("No matches. Try other words.")).toBeTruthy();
+    expect(within(dialog).getByRole("textbox", { name: "Name" })).toHaveProperty(
+      "value",
+      "Sora",
+    );
+    expect(sentBody(sent("POST", "/api/work-info-plugins/5/person-search")[0])).toEqual({
+      query: "Sora",
     });
   });
 

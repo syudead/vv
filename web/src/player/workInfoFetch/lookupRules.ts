@@ -1,4 +1,3 @@
-import type { PersonPluginItem } from "../../api/personPluginFetches";
 import type {
   PersonLookupSelection,
   PersonPluginResult,
@@ -8,21 +7,22 @@ import type {
   WorkInfoField,
 } from "../../api/workInfoPlugins";
 import {
-  compareRows,
-  initialImage,
-  initialItems,
+  initialSelection,
   type PersonCompareCurrent,
+  type PersonSelection,
+  selectionBody,
+  selectionEmpty,
 } from "../../credits/person/pluginFetch/personCompareRows";
 
-/** A planned lookup's progress; a shown result carries the items the owner keeps checked. */
+/** A planned lookup's progress; a shown result carries what the owner keeps selected. */
 export type LookupState =
   | { status: "looking" }
   | {
       status: "shown";
       result: PersonPluginResult;
-      /** The result has an item the apply would write. */
+      /** The result has something the apply would write. */
       changes: boolean;
-      items: PersonPluginItem[];
+      selection: PersonSelection;
     }
   | { status: "failed"; error: unknown }
   | { status: "changed" };
@@ -63,11 +63,9 @@ export function lookupCurrent(result: PersonPluginResult): PersonCompareCurrent 
 }
 
 export function shownLookup(result: PersonPluginResult): LookupState {
-  const current = lookupCurrent(result);
   // A lookup keeps one image, and it fills only a person without a face.
-  const items = initialItems(compareRows(current, result.person));
-  if (initialImage(current, result.person) !== null) items.push("image");
-  return { status: "shown", result, changes: items.length > 0, items };
+  const selection = initialSelection(lookupCurrent(result), result.person);
+  return { status: "shown", result, changes: !selectionEmpty(selection), selection };
 }
 
 function hasChanges(state: LookupState): boolean {
@@ -87,7 +85,7 @@ export function lookupChangeFields(
   return fields;
 }
 
-/** The apply's personLookups: checked items of shown lookups that a checked role row links. */
+/** The apply's personLookups: the selections of shown lookups that a checked role row links. */
 export function lookupSelections(
   result: WorkInfoFetch,
   states: readonly LookupState[],
@@ -95,9 +93,9 @@ export function lookupSelections(
 ): PersonLookupSelection[] {
   return states.flatMap((state, index) =>
     state.status === "shown" &&
-    state.items.length > 0 &&
+    !selectionEmpty(state.selection) &&
     lookupEnabled(result, index, selection)
-      ? [{ index, items: [...state.items] }]
+      ? [{ index, ...selectionBody(state.selection) }]
       : [],
   );
 }

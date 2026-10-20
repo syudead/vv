@@ -232,7 +232,15 @@ describe("VideoPage work-info fetch person lookups", () => {
     await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
     expect(server.apply).toHaveBeenCalledWith({
       fields: ["people.performer"],
-      personLookups: [{ index: 0, items: ["profile.heightCm"] }],
+      personLookups: [
+        {
+          index: 0,
+          items: ["profile.heightCm"],
+          aliases: [],
+          externalIds: [],
+          links: [],
+        },
+      ],
     });
   });
 
