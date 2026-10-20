@@ -60,6 +60,23 @@ func TestFillPersonItemsReplacesSelectedProfileFields(t *testing.T) {
 	}
 }
 
+func TestFillPersonItemsReplacesDependentFieldsTogether(t *testing.T) {
+	storedStart, storedEnd, fetchedStart, fetchedEnd := 1990, 2000, 2010, 2020
+	current := Credit{Name: "Hanako", Profile: PersonProfile{CareerStartYear: &storedStart, CareerEndYear: &storedEnd}}
+	fetched := FetchedPluginPerson{Name: "Hanako", Profile: PersonProfile{
+		CareerStartYear: &fetchedStart, CareerEndYear: &fetchedEnd,
+	}}
+
+	got := FillPersonItems(PersonItemFill{
+		Current: current, Fetched: fetched, Today: personFillToday, Replace: true,
+		Items: []PersonPluginItem{PersonProfileItem(ProfileCareerStartYear), PersonProfileItem(ProfileCareerEndYear)},
+	})
+
+	if *got.Profile.CareerStartYear != 2010 || *got.Profile.CareerEndYear != 2020 || len(got.Skipped) != 0 {
+		t.Fatalf("profile = %+v, skipped %+v; want both career years replaced", got.Profile, got.Skipped)
+	}
+}
+
 func TestFillPersonItemsAppliesOnlySelectedItems(t *testing.T) {
 	fetched := FetchedPluginPerson{
 		Name: "Hanako", Aliases: []Alias{{Name: "Hana"}}, ExternalIDs: []ExternalID{{Source: "wiki", Value: "1"}},

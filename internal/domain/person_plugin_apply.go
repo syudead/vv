@@ -104,22 +104,7 @@ func FillPersonItems(in PersonItemFill) PersonItemFilled {
 		Profile: in.Current.Profile,
 	}
 	selected := func(item PersonPluginItem) bool { return slices.Contains(in.Items, item) }
-	write := fillProfileField
-	if in.Replace {
-		write = replaceProfileField
-	}
-	for _, field := range PersonProfileFields {
-		if !selected(PersonProfileItem(field)) {
-			continue
-		}
-		next, fill := write(out.Profile, in.Fetched.Profile, field, in.Today)
-		switch fill {
-		case profileFilled:
-			out.Profile = next
-		case profileFillInvalid:
-			out.skip(PersonProfileItem(field), profileFieldText(in.Fetched.Profile, field), SkippedWorkInfoInvalid, "")
-		}
-	}
+	out.writeProfile(in, selected)
 	if selected(PersonItemAliases) {
 		out.appendAliases(in.Current.Name, in.Fetched.Aliases)
 	}
@@ -127,6 +112,31 @@ func FillPersonItems(in PersonItemFill) PersonItemFilled {
 		out.appendExternalIDs(in.Fetched.ExternalIDs, in.Holders)
 	}
 	return out
+}
+
+// writeProfile writes the selected profile fields; replaced fields are checked together first, then one at a time
+// against the stored values when the set is invalid, so only the fields that break a rule are skipped.
+func (f *PersonItemFilled) writeProfile(in PersonItemFill, selected func(PersonPluginItem) bool) {
+	fields := slices.DeleteFunc(slices.Clone(PersonProfileFields), func(field PersonProfileField) bool {
+		return !selected(PersonProfileItem(field))
+	})
+	write := fillProfileField
+	if in.Replace {
+		if next, ok := replaceProfileFields(f.Profile, in.Fetched.Profile, fields, in.Today); ok {
+			f.Profile = next
+			return
+		}
+		write = replaceProfileField
+	}
+	for _, field := range fields {
+		next, fill := write(f.Profile, in.Fetched.Profile, field, in.Today)
+		switch fill {
+		case profileFilled:
+			f.Profile = next
+		case profileFillInvalid:
+			f.skip(PersonProfileItem(field), profileFieldText(in.Fetched.Profile, field), SkippedWorkInfoInvalid, "")
+		}
+	}
 }
 
 func (f *PersonItemFilled) skip(item PersonPluginItem, value string, reason SkippedWorkInfoReason, holder string) {
