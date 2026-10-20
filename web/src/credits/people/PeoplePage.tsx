@@ -2,7 +2,7 @@ import { Cake, CakeSlice, Heart, Plus, ScanFace, SearchX, Users } from "lucide-r
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
-import { createCredit, type Person } from "../../api/credits";
+import { createCredit, type Person, updateCredit } from "../../api/credits";
 import { updateFavorites } from "../../api/favorites";
 import { t } from "../../i18n";
 import { creditNameReason } from "../../lib/creditName";
@@ -19,7 +19,6 @@ import { ListPage } from "../../ui/patterns/list-page";
 import { LoadingState } from "../../ui/patterns/loading-state";
 import { PageHeader } from "../../ui/patterns/page-header";
 import { Button } from "../../ui/shadcn/button";
-import { FilterCheckbox, FilterPopover } from "../../videoList/FilterMenu";
 import type { HistoryMode } from "../../videoList/listCriteria";
 import { useLoadMoreSentinel } from "../../videoList/pageHooks";
 import type { SortOption } from "../../videoList/SortControls";
@@ -34,12 +33,16 @@ import {
   peopleBody,
   peopleCountText,
   type PeopleCriteria,
-  peopleFilterCount,
   type PeopleRowsQuery,
   readPeopleSort,
   serializePeopleCriteria,
 } from "./peopleCriteria";
-import NameFilterSelect from "./NameFilterSelect";
+import PeopleFilters from "./PeopleFilters";
+import {
+  peopleSnapshotKey,
+  savePeopleSnapshot,
+  usePeopleSnapshot,
+} from "./peopleSnapshot";
 import { PersonCard } from "./PersonCard";
 
 const texts = t.credits.person;
@@ -72,6 +75,20 @@ const noPreviewReset = () => undefined;
 export default function PeoplePage() {
   const navigate = useNavigate();
   const today = useLocalToday();
+  const [preferredSort] = useState(readPeopleSort);
+  const { criteria, apply } = useUrlCriteria(
+    (params) => parsePeopleCriteria(params, preferredSort),
+    serializePeopleCriteria,
+  );
+  const { query: search, sort, favorite, named } = criteria;
+  const { normalizedQuery, searchRef } = useSearchQuery(search);
+  const snapshotKey = peopleSnapshotKey({
+    query: normalizedQuery,
+    sort,
+    favorite,
+    named,
+  });
+  const { restored, skipLoad } = usePeopleSnapshot(snapshotKey);
   const {
     page,
     loadError,
@@ -83,18 +100,18 @@ export default function PeoplePage() {
     loadMore,
     retryMore,
     applyLocal,
-  } = usePagedRows<Person, PeopleRowsQuery>(fetchPeoplePage, initialQuery, scrollToTop);
-  const [preferredSort] = useState(readPeopleSort);
-  const { criteria, apply } = useUrlCriteria(
-    (params) => parsePeopleCriteria(params, preferredSort),
-    serializePeopleCriteria,
+  } = usePagedRows<Person, PeopleRowsQuery>(
+    fetchPeoplePage,
+    initialQuery,
+    scrollToTop,
+    restored,
   );
-  const { query: search, sort, favorite, named } = criteria;
   const [creating, setCreating] = useState(false);
+  const [naming, setNaming] = useState<Person | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
-  const { normalizedQuery, searchRef } = useSearchQuery(search);
   useEffect(() => {
+    if (skipLoad(snapshotKey)) return;
     void load({
       query: normalizedQuery,
       search: searchRef.current,
@@ -102,7 +119,7 @@ export default function PeoplePage() {
       favorite,
       named,
     });
-  }, [normalizedQuery, sort, favorite, named, load, searchRef]);
+  }, [normalizedQuery, sort, favorite, named, load, searchRef, skipLoad, snapshotKey]);
 
   // The heart changes only after the server answers; a card stays until the next fetch.
   const toggleFavorite = useCallback(
@@ -122,6 +139,19 @@ export default function PeoplePage() {
     [applyLocal],
   );
 
+  const replaceRow = useCallback(
+    (person: Person) => {
+      applyLocal(
+        (current) =>
+          current && {
+            ...current,
+            rows: current.rows.map((row) => (row.id === person.id ? person : row)),
+          },
+      );
+    },
+    [applyLocal],
+  );
+
   const body = peopleBody(page, loadError, firstPending);
   const stale = isStalePeople(page, loadError);
   const sentinel = useLoadMoreSentinel(
@@ -130,7 +160,12 @@ export default function PeoplePage() {
     noPreviewReset,
   );
   const noPeople = page === undefined || page.totalAll === 0;
-  const filterCount = peopleFilterCount(criteria);
+
+  // Opening a person keeps the grid, so Back returns to the same rows and scroll position.
+  function saveSnapshot() {
+    if (page === undefined || stale || firstPending) return;
+    savePeopleSnapshot({ page, search: appliedSearch, scrollY: window.scrollY });
+  }
 
   function change(next: Partial<PeopleCriteria>, mode: HistoryMode = "push") {
     apply(next, mode);
@@ -169,25 +204,17 @@ export default function PeoplePage() {
             extraSorts={ageSorts}
             sortDisabled={noPeople}
             compactSortName="person-compact-sort"
-          >
-            <FilterPopover
-              count={filterCount}
-              disabled={noPeople && filterCount === 0}
-              canClear={filterCount > 0}
-              onClear={() => change({ favorite: false, named: "any" })}
-            >
-              <FilterCheckbox
-                checked={favorite}
-                onCheckedChange={(next) => change({ favorite: next })}
-                label={t.list.filter.favoritesOnly}
-              />
-              <NameFilterSelect
-                value={named}
-                onChange={(next) => change({ named: next })}
-              />
-            </FilterPopover>
-          </AdminListToolbar>
+          />
         </TopBarPortal>
+      }
+      band={
+        <PeopleFilters
+          named={named}
+          favorite={favorite}
+          disabled={page !== undefined && page.totalAll === 0}
+          onNamedChange={(next) => change({ named: next })}
+          onFavoriteChange={(next) => change({ favorite: next })}
+        />
       }
       header={
         <PageHeader
@@ -250,16 +277,19 @@ export default function PeoplePage() {
       )}
       {body === "cards" && page !== undefined && (
         <>
-          <CardGrid size="face">
-            {page.rows.map((person) => (
-              <PersonCard
-                key={person.id}
-                person={person}
-                today={today}
-                onToggleFavorite={toggleFavorite}
-              />
-            ))}
-          </CardGrid>
+          <div onClick={saveSnapshot}>
+            <CardGrid size="face">
+              {page.rows.map((person) => (
+                <PersonCard
+                  key={person.id}
+                  person={person}
+                  today={today}
+                  onToggleFavorite={toggleFavorite}
+                  onName={setNaming}
+                />
+              ))}
+            </CardGrid>
+          </div>
           <CreditListTail
             kind="person"
             tail={stale ? moreIdle : more}
@@ -268,6 +298,20 @@ export default function PeoplePage() {
           />
           <div ref={sentinel} aria-hidden="true" className="h-px" />
         </>
+      )}
+      {naming !== null && (
+        <NameDialog
+          words={grid.nameDialog}
+          nameLabel={t.credits.create.label}
+          nameRule={t.creditName.required}
+          validate={validateName}
+          send={(name) => updateCredit("person", naming.id, { name })}
+          onClose={() => setNaming(null)}
+          onDone={(updated) => {
+            replaceRow(updated as Person);
+            setNaming(null);
+          }}
+        />
       )}
       {creating && (
         <NameDialog

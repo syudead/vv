@@ -86,14 +86,16 @@ export function usePagedRows<R extends ListRow, Q extends PagedRowsQuery>(
   fetchPage: FetchRowsPage<R, Q>,
   initialQuery: Q & { search: string },
   onFirstPage: () => void,
+  /** A page kept from an earlier visit; the caller skips the first load while its conditions hold. */
+  restored?: { page: PageRows<R, Q>; search: string },
 ) {
   const fetchPageRef = useRef(fetchPage);
-  const [page, setPage] = useState<PageRows<R, Q> | undefined>(undefined);
+  const [page, setPage] = useState<PageRows<R, Q> | undefined>(restored?.page);
   const [loadError, setLoadError] = useState<UiText | null>(null);
   const [firstPending, setFirstPending] = useState(false);
   const [more, setMore] = useState<MoreState>(moreIdle);
   /** Empty states must describe received results, not a newly typed query still awaiting its first page. */
-  const [appliedSearch, setAppliedSearch] = useState("");
+  const [appliedSearch, setAppliedSearch] = useState(restored?.search ?? "");
 
   const pageRef = useRef<PageRows<R, Q> | undefined>(page);
   const moreRef = useRef<MoreState>(more);
@@ -114,7 +116,11 @@ export function usePagedRows<R extends ListRow, Q extends PagedRowsQuery>(
   const mutationRef = useRef(0);
   const firstAbortRef = useRef<AbortController | null>(null);
   const moreAbortRef = useRef<AbortController | null>(null);
-  const queryRef = useRef<Q & { search: string }>(initialQuery);
+  const queryRef = useRef<Q & { search: string }>(
+    restored === undefined
+      ? initialQuery
+      : { ...restored.page.query, search: restored.search },
+  );
 
   /** Supersede requests while retaining existing rows/counts; failures become stale-list notices when data exists. */
   const reload = useCallback((): Promise<void> => {

@@ -222,8 +222,17 @@ function viewerChanged(response: Response): boolean {
   return response.status === 401 || response.headers.get("X-VV-Audience") === "guest";
 }
 
+let writes = 0;
+
+/** Counts write requests sent through apiFetch, so a kept list can tell it may be out of date. */
+export function apiWriteCount(): number {
+  return writes;
+}
+
 /** On owner-to-guest responses, reload once and never resolve, preventing guest data from reaching an owner view. Auth routes bypass this wrapper. */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const method = init?.method?.toUpperCase() ?? "GET";
+  if (method !== "GET" && method !== "HEAD") writes += 1;
   const response = await sendRequest(path, init);
   if (viewerChanged(response)) {
     reloadForViewerChange();

@@ -1,12 +1,13 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Person } from "../../api/credits";
 import { ToastProvider } from "../../ui/Toast";
 import { TooltipProvider } from "../../ui/shadcn/tooltip";
 import PeoplePage from "./PeoplePage";
+import { clearPeopleSnapshot } from "./peopleSnapshot";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -85,6 +86,10 @@ function respond(method: string, url: URL, body: unknown): Response {
       totalAll: server.totalAll,
     });
   }
+  if (url.pathname.startsWith("/api/people/") && method === "PATCH") {
+    const id = Number(url.pathname.split("/").at(-1));
+    return jsonResponse(person(id, { name: (body as { name: string }).name }));
+  }
   if (url.pathname === "/api/people" && method === "POST") {
     return jsonResponse(person(50, { name: (body as { name: string }).name }), 201);
   }
@@ -93,6 +98,7 @@ function respond(method: string, url: URL, body: unknown): Response {
 
 beforeEach(() => {
   window.localStorage.clear();
+  clearPeopleSnapshot();
   server.pages = new Map([[null, { items: [person(1), person(2)] }]]);
   server.totalAll = 2;
   server.sent = [];
@@ -118,6 +124,18 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function PersonStub() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <p>Person page</p>
+      <button type="button" onClick={() => void navigate(-1)}>
+        Back
+      </button>
+    </>
+  );
+}
+
 function renderPage(url = "/people") {
   render(
     <TooltipProvider>
@@ -125,7 +143,7 @@ function renderPage(url = "/people") {
         <MemoryRouter initialEntries={[url]}>
           <Routes>
             <Route path="/people" element={<PeoplePage />} />
-            <Route path="/people/:id" element={<p>Person page</p>} />
+            <Route path="/people/:id" element={<PersonStub />} />
           </Routes>
         </MemoryRouter>
       </ToastProvider>
@@ -216,13 +234,6 @@ describe("PeoplePage", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
-  it("keeps only favorites with the filter and says when there are none", async () => {
-    renderPage("/people?favorite=true");
-
-    expect(await screen.findByText("No favorite people yet")).toBeTruthy();
-    expect(listRequests().at(-1)?.get("favorite")).toBe("true");
-  });
-
   it("names a provisional person's card Unnamed person in place of the empty name", async () => {
     server.pages.set(null, {
       items: [person(3, { name: "", provisional: true, videoCount: 2 })],
@@ -234,19 +245,67 @@ describe("PeoplePage", () => {
     expect(within(link).getByText("2 videos")).toBeTruthy();
   });
 
-  it("keeps only unnamed people with the Name filter, says when there are none and clears it", async () => {
+  it("shows the applied Name filter above the grid and drops it with All", async () => {
     const user = userEvent.setup();
     renderPage("/people?named=0");
 
     expect(await screen.findByText("No unnamed people")).toBeTruthy();
     expect(listRequests().at(-1)?.get("provisional")).toBe("true");
+    const names = screen.getByRole("radiogroup", { name: "Name" });
+    expect(
+      within(names).getByRole("radio", { name: "Unnamed" }).getAttribute("aria-checked"),
+    ).toBe("true");
 
-    await user.click(screen.getByRole("button", { name: "Filter (1 applied)" }));
-    expect(screen.getByRole("combobox", { name: "Name" }).textContent).toBe("Unnamed");
-    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    await user.click(within(names).getByRole("radio", { name: "All" }));
 
     await screen.findByRole("link", { name: /Person 1/ });
     expect(listRequests().at(-1)?.has("provisional")).toBe(false);
+  });
+
+  it("keeps only favorites with the Favorites toggle and says when there are none", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole("link", { name: /Person 1/ });
+
+    await user.click(screen.getByRole("button", { name: "Favorites" }));
+
+    expect(await screen.findByText("No favorite people yet")).toBeTruthy();
+    expect(listRequests().at(-1)?.get("favorite")).toBe("true");
+  });
+
+  it("names an unnamed person from the card and shows the name in place", async () => {
+    const user = userEvent.setup();
+    server.pages.set(null, { items: [person(3, { name: "", provisional: true })] });
+    renderPage();
+    await screen.findByRole("link", { name: /Unnamed person/ });
+
+    await user.click(screen.getByRole("button", { name: "Name…" }));
+    await user.type(screen.getByRole("textbox", { name: "Name" }), "Mio{Enter}");
+
+    expect(await screen.findByRole("link", { name: /Mio/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Name…" })).toBeNull();
+    const patch = server.sent.find((request) => request.method === "PATCH");
+    expect(patch?.url.pathname).toBe("/api/people/3");
+    expect(patch?.body).toEqual({ name: "Mio" });
+    expect(listRequests()).toHaveLength(1);
+  });
+
+  it("returns from a person page to the loaded pages without asking again", async () => {
+    const user = userEvent.setup();
+    server.pages.set(null, { items: [person(1)], nextCursor: "c1" });
+    server.pages.set("c1", { items: [person(2)] });
+    renderPage();
+    await screen.findByRole("link", { name: /Person 1/ });
+    await waitFor(() => expect(observing).toBe(true));
+    act(() => reveal());
+    await screen.findByRole("link", { name: /Person 2/ });
+
+    await user.click(screen.getByRole("link", { name: /Person 2/ }));
+    await user.click(await screen.findByRole("button", { name: "Back" }));
+
+    expect(await screen.findByRole("link", { name: /Person 2/ })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Person 1/ })).toBeTruthy();
+    expect(listRequests()).toHaveLength(2);
   });
 
   it("asks for named people only when the URL keeps named=1", async () => {

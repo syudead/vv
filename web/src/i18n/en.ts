@@ -1590,9 +1590,17 @@ export const en = {
       noFavorites: "No favorite people yet",
       nameFilter: {
         label: "Name",
-        any: "Any",
+        any: "All",
         named: "Named",
         unnamed: "Unnamed",
+      },
+      favorites: "Favorites",
+      nameButton: "Name…",
+      nameDialog: {
+        title: "Name this person",
+        submit: "Save",
+        submitting: "Saving…",
+        failed: (reason: string) => `Couldn't name the person: ${reason}`,
       },
       noUnnamed: "No unnamed people",
       noUnnamedDescription:

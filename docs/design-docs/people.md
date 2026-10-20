@@ -203,8 +203,23 @@ also deletes or moves their face recognition data
 because people are found by face. A card is one link to the person page with
 the face, the name and `34 · 12 videos`, the age computed as on the person
 page ([Ages are computed in the browser](#ages-are-computed-in-the-browser)),
-and the favorite heart outside the link. Renaming, merging and deleting moved
-to the person page, so a card has no other control.
+and the favorite heart outside the link. An unnamed card adds `Name…` under
+the link, which asks for the name in a dialog, sends it by
+`PATCH /api/people/{id}` and shows it on the card in place, because face
+recognition leaves many unnamed people and opening each page to name it cost
+three screens a person. Renaming a named person, merging and deleting stay on
+the person page.
+
+The `Name` filter (`All`, `Named`, `Unnamed`) and a `Favorites` toggle sit in
+the page's band above the grid rather than in a filter menu, so the applied
+filters read at a glance and switching between named and unnamed people is
+one click.
+
+Opening a person keeps the grid's loaded rows and scroll position in memory,
+and `Back` restores them without a request while the search, sort and filters
+are the same. Any write request sent since then (`apiWriteCount`) drops the
+kept grid, since it may have renamed, merged or removed a person, and the grid
+loads from the first page.
 
 The grid reads `GET /api/people` 100 at a time with the shared paging of the
 admin lists ([library-ui.md](library-ui.md)), and asks for the next page when
@@ -213,12 +228,14 @@ including `ageAsc` and `ageDesc`, are sent to the server and kept in the URL;
 the sort is also remembered per browser. `New person` asks for the name in a
 dialog and opens the new person's page. Organizations keep the table.
 
-| Rejected                             | Why                                                                        |
-| ------------------------------------ | -------------------------------------------------------------------------- |
-| Cards inside `AdminTablePage`        | The design system keeps cards out of that skeleton                         |
-| A virtualized grid                   | Library card grids are not virtualized, and the list pages 100 at a time   |
-| Row actions on a card                | A card is one link; the person page holds the actions with room to confirm |
-| Portrait, square or horizontal cards | A round face shows more people per row and reads as a person, not a video  |
+| Rejected                             | Why                                                                                                                                                      |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cards inside `AdminTablePage`        | The design system keeps cards out of that skeleton                                                                                                       |
+| A virtualized grid                   | Library card grids are not virtualized, and the list pages 100 at a time                                                                                 |
+| Row actions on a card                | A card is one link; the person page holds the actions with room to confirm. `Name…` on an unnamed card is the one exception, as it needs no confirmation |
+| The filters in a filter menu         | The applied filters were hidden, and unnamed people took two clicks to reach                                                                             |
+| Reloading the grid on `Back`         | A person far down the grid sent the viewer back to the top                                                                                               |
+| Portrait, square or horizontal cards | A round face shows more people per row and reads as a person, not a video                                                                                |
 
 ## The person page
 
@@ -315,8 +332,8 @@ A pressed row disables only its own button, and a failure shows under the row.
 | Rejected | Why |
 | --- | --- |
 | Candidates in the main column | They would split the page's one header and one grid, and sit away from the face they are compared with |
-| A strip of crops alone | Reaching a scene would take a second press, and a crop does not say which video |
-| Confirming on another screen | The owner settles a pair where both faces are in view |
+| A strip of crops alone        | Reaching a scene would take a second press, and a crop does not say which video                        |
+| Confirming on another screen  | The owner settles a pair where both faces are in view                                                  |
 
 ## Faces elsewhere on the screens
 
@@ -347,7 +364,7 @@ rejected for competing with them. The screens map the flag to the words in one
 place, [`displayName.ts`](../../web/src/credits/displayName.ts), so the empty
 `name` never reaches a screen.
 
-The grid's filter adds a `Name` select (`Any`, `Named`, `Unnamed`) that sends
+The grid's `Name` filter (`All`, `Named`, `Unnamed`) sends
 `provisional=false` or `true` and is kept in the URL as `named=1` or `named=0`.
 A provisional person's page offers `Name…` in place of `Edit`; the edit page
 shows the empty name with the placeholder `Unnamed person`, and `Save` with the

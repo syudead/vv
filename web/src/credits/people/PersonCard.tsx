@@ -1,3 +1,4 @@
+import { PencilLine } from "lucide-react";
 import { memo } from "react";
 import { Link } from "react-router";
 
@@ -6,20 +7,26 @@ import { t } from "../../i18n";
 import { cn } from "../../lib/cn";
 import FavoriteToggle from "../../ui/FavoriteToggle";
 import { PersonFace, PersonFaceMark } from "../../ui/PersonFace";
+import { Button } from "../../ui/shadcn/button";
 import { creditDisplayName } from "../displayName";
 import { personCardMeta } from "./peopleCriteria";
 
 const text = t.credits.personPage;
 
-/** One link to the person page; the heart sits over the face but outside the link. */
+/**
+ * One link to the person page; the heart sits over the face and an unnamed person's `Name…` under
+ * it, both outside the link.
+ */
 export const PersonCard = memo(function PersonCard({
   person,
   today,
   onToggleFavorite,
+  onName,
 }: {
   person: Person;
   today: Date;
   onToggleFavorite: (person: Person) => Promise<unknown>;
+  onName: (person: Person) => void;
 }) {
   const src = personFaceSrc(person);
   const name = creditDisplayName(person);
@@ -46,6 +53,17 @@ export const PersonCard = memo(function PersonCard({
           </span>
         </span>
       </Link>
+      {person.provisional && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="self-center text-xs"
+          onClick={() => onName(person)}
+        >
+          <PencilLine aria-hidden="true" />
+          {t.credits.peopleGrid.nameButton}
+        </Button>
+      )}
       <PersonFaceMark corner="top-end">
         <FavoriteToggle
           favorite={person.favorite}

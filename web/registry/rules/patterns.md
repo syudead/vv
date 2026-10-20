@@ -91,8 +91,11 @@ so a 360px screen holds three and 1280px with the full sidebar eight or nine.
 A card is one link (`rounded-md`, `p-1`, `hover:shadow-card-hover`) holding a
 `PersonFace` `card`, then the name (`text-sm font-medium`, one line, centred,
 truncated, the full name in `title`) and a meta line (`text-xs`, muted,
-centred). The favorite heart is the only control: a `FavoriteToggle`
-`card` in a `PersonFaceMark` `top-end`, outside the link. Its loading state
+centred). The favorite heart is the card's control: a `FavoriteToggle`
+`card` in a `PersonFaceMark` `top-end`, outside the link; an unnamed person's
+card adds a ghost `sm` `Name…` button under the link. The page's `band` holds
+the filters that narrow the grid, an outline `ToggleGroup` and `Toggle`, so
+they stay in view. Its loading state
 is `LoadingState layout="grid" size="face"`, circles with a line under them.
 Use it only for people; videos, folders and groups keep their card sizes.
 Example block `face-grid-example`.
