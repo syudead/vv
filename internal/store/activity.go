@@ -264,7 +264,15 @@ var activityColumns = `e.id, e.kind, e.feature, e.subject_kind, e.subject_key, c
 	c.key_a is not null and exists (select 1 ` + candidatePairsFrom + `c.key_a = e.subject_key
 		and c.key_b = e.subject_key_b and ` + candidatePairsCondition() + `),
 	coalesce(c.judgement, ''), c.retry_at, u.kind, u.outcome,
-	(select t.tag_name from activity_entry_tags t where t.entry_id = e.undoes_id and t.undone_by = e.id limit 1)`
+	(select t.tag_name from activity_entry_tags t where t.entry_id = e.undoes_id and t.undone_by = e.id limit 1),
+	` + replacedDecisionColumn
+
+// replacedDecisionColumn is true for a version_judgement decision after which the pair got another same or different
+// decision, such as a force rescan's verdict that keeps it; the later entry carries the undo.
+var replacedDecisionColumn = `e.kind = '` + string(domain.ActivityVersionJudgement) + `' and exists (
+		select 1 from activity_entries r where r.kind = e.kind and r.subject_key = e.subject_key
+		   and r.subject_key_b = e.subject_key_b and r.id > e.id and r.status = '` + string(domain.ActivityDone) + `'
+		   and r.outcome in ('` + string(domain.ActivitySame) + `', '` + string(domain.ActivityDifferent) + `'))`
 
 const activityFrom = ` from activity_entries e` + activityJoins
 
@@ -288,7 +296,7 @@ func scanActivityEntry(row rowScanner) (domain.ActivityEntry, error) {
 		&entry.Subject.Label, &entry.Subject.LabelB, &status, &reason, &outcome, &entry.Detail, &stage,
 		&entry.UndoesID, &decider, &probability, &entry.UndoKeys, &entry.UndoneBy, &entry.ScanID, &createdAt,
 		&updatedAt,
-		&entry.Candidate, &judgement, &retryAt, &undoneKind, &undoneOutcome, &undoneTagName)
+		&entry.Candidate, &judgement, &retryAt, &undoneKind, &undoneOutcome, &undoneTagName, &entry.Replaced)
 	if err != nil {
 		return domain.ActivityEntry{}, err
 	}

@@ -227,6 +227,9 @@ type ActivityEntry struct {
 	// VideoIDs maps subject keys to currently accessible videos; missing keys map to zero.
 	VideoIDs  [2]int64
 	Candidate bool
+	// Replaced marks a version_judgement decision followed by a later same or different decision of its pair, which
+	// offers the undo instead.
+	Replaced bool
 	// RetryAt is the next retry time for a failed version_judgement.
 	RetryAt time.Time
 	// Progress describes a running import after the waiting stage.
@@ -301,7 +304,7 @@ func (e ActivityEntry) UndoOffered() bool {
 	}
 	switch e.Kind {
 	case ActivityVersionJudgement:
-		return e.Status == ActivityDone && (e.Outcome == ActivitySame || e.Outcome == ActivityDifferent)
+		return e.Status == ActivityDone && (e.Outcome == ActivitySame || e.Outcome == ActivityDifferent) && !e.Replaced
 	case ActivityAutoTag:
 		return slices.ContainsFunc(e.Tags, func(tag ActivityEntryTag) bool { return e.TagUndoOffered(tag) })
 	case ActivityFaceAnalysis:

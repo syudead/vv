@@ -50,7 +50,7 @@ func (s *IngestStore) ApplyFingerprintForJob(
 	}
 	c := &changes{}
 	finder := pairFinder{jobID: job.ID, key: job.ContentKey, force: job.Force}
-	if err := rebuildVersionCandidates(ctx, tx, c, job.ContentKey, fingerprint, finder); err != nil {
+	if err := rebuildVersionCandidates(ctx, tx, c, job.ContentKey, fingerprint, finder, false); err != nil {
 		return false, err
 	}
 	if err := clearFailedIssue(ctx, tx, domain.JobFingerprint, job.VideoID); err != nil {
@@ -106,10 +106,13 @@ func decodeFingerprintArgs(hashes, interval driver.Value) (domain.Fingerprint, b
 }
 
 // Rebuild candidates using matching durations and fingerprints, excluding dismissed or bundled pairs; reconnect activities and close superseded pairs.
+// keepListed keeps the key's rows listed for judging again whose pair is still bundled or dismissed, for a rebuild
+// after a membership change rather than a new fingerprint.
 func rebuildVersionCandidates(
 	ctx context.Context, tx *sql.Tx, c *changes, key string, fingerprint domain.Fingerprint, finder pairFinder,
+	keepListed bool,
 ) error {
-	if err := computeVersionCandidates(ctx, tx, key, fingerprint); err != nil {
+	if err := computeVersionCandidates(ctx, tx, key, fingerprint, keepListed); err != nil {
 		return err
 	}
 	if finder.force {
@@ -124,9 +127,15 @@ func rebuildVersionCandidates(
 	return closeDroppedPairActivities(ctx, tx, c, key, now)
 }
 
-func computeVersionCandidates(ctx context.Context, tx *sql.Tx, key string, fingerprint domain.Fingerprint) error {
-	if _, err := tx.ExecContext(ctx,
-		`delete from video_version_candidates where key_a = ? or key_b = ?`, key, key); err != nil {
+func computeVersionCandidates(
+	ctx context.Context, tx *sql.Tx, key string, fingerprint domain.Fingerprint, keepListed bool,
+) error {
+	clear := `delete from video_version_candidates as c where (c.key_a = ?1 or c.key_b = ?1)`
+	if keepListed {
+		// A listed pair that is neither bundled nor dismissed any more is listed again as an ordinary candidate.
+		clear += ` and (c.rejudge_of is null or (` + undecidedPairCondition + `))`
+	}
+	if _, err := tx.ExecContext(ctx, clear, key); err != nil {
 		return fmt.Errorf("cannot clear the version candidates: %w", err)
 	}
 	if fingerprint.Version != domain.FingerprintVersion {

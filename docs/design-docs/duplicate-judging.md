@@ -186,8 +186,17 @@ When the owner changes the pair after it was listed, the prior is no longer
 in force when the verdict arrives: the row is removed, nothing changes and
 the entry closes as `superseded`. Bundling and succession prune ordinary
 candidates of bundled or dismissed pairs but keep listed rows, which are
-bundled or dismissed by definition. For the same reason, an automatic bundle
+bundled or dismissed by definition. A split rebuilds the leaving keys'
+candidates the same way: a listed row stays while its pair is still bundled or
+dismissed, and one whose pair the split separated returns as an ordinary
+candidate. For the same reason, an automatic bundle
 does not close the entry of a listed pair among its members as `superseded`;
 that entry closes with its own verdict. A pair whose two keys are both rescanned
 is listed again by each fingerprint, and the later listing replaces the
 earlier row, so the judgement sees both new fingerprints.
+
+A `same` or `different` verdict replaces the prior entry: only the latest
+`same` or `different` entry of a pair offers the undo
+([`internal/store/activity.go`](../../internal/store/activity.go)). Otherwise
+undoing the prior would split or un-dismiss a pair that the new verdict
+confirmed, leaving the new entry's undo `already_reverted`.
