@@ -87,13 +87,10 @@ func (s *server) ApplyPersonPluginFetch(
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	items := make([]domain.PersonPluginItem, 0, len(body.Items))
-	for _, item := range body.Items {
-		if !item.Valid() {
-			s.invalidRequest(w, "Each item must be image, aliases, externalIds or profile.<property>.")
-			return
-		}
-		items = append(items, domain.PersonPluginItem(item))
+	selection, ok := toPersonPluginSelection(body.Items, body.Aliases, body.ExternalIds, body.Links)
+	if !ok {
+		s.invalidRequest(w, "Each item must be image or profile.<property>.")
+		return
 	}
 	if !s.workInfoPluginsConfigured(w) {
 		return
@@ -102,11 +99,11 @@ func (s *server) ApplyPersonPluginFetch(
 	if body.ImageIndex != nil {
 		imageIndex = *body.ImageIndex
 	}
-	applied, err := s.workInfoPlugins.ApplyPersonPluginFetch(r.Context(), id, fetchID, items, imageIndex)
+	applied, err := s.workInfoPlugins.ApplyPersonPluginFetch(r.Context(), id, fetchID, selection, imageIndex)
 	switch {
 	case errors.Is(err, domain.ErrWorkInfoApplyInvalid):
-		s.invalidRequest(w, "items must name at least one item, each must have a value in the result, "+
-			"and image needs the imageIndex of a kept image.")
+		s.invalidRequest(w, "Select at least one value the result carries; aliases, external IDs and links go in "+
+			"their own lists, and image needs the imageIndex of a kept image.")
 		return
 	case errors.Is(err, domain.ErrPersonNotFound):
 		s.notFoundReason(w, gen.ErrorReasonPersonNotFound, "The person was deleted or merged into another.")

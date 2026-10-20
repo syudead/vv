@@ -59,6 +59,86 @@ func (p FetchedPluginPerson) HasItem(item PersonPluginItem) bool {
 	return ok && !profileFieldEmpty(p.Profile, personProfileCopies[field])
 }
 
+// PersonPluginSelection is what an apply takes from a fetched person: profile fields and the image as Items, and the
+// aliases, external IDs and links it appends one by one.
+type PersonPluginSelection struct {
+	Items       []PersonPluginItem
+	Aliases     []string
+	ExternalIDs []ExternalID
+	Links       []string
+}
+
+// AliasChoices are the names an apply may add as aliases: the fetched name first, then the fetched aliases, each name
+// once.
+func (p FetchedPluginPerson) AliasChoices() []Alias {
+	var out []Alias
+	if p.Name != "" {
+		out = append(out, Alias{Name: p.Name})
+	}
+	for _, alias := range p.Aliases {
+		if !slices.ContainsFunc(out, func(a Alias) bool { return a.Name == alias.Name }) {
+			out = append(out, alias)
+		}
+	}
+	return out
+}
+
+// Select narrows p to the selected aliases, external IDs and links, in p's order, and returns the items an apply
+// writes. It reports false for a list item among Items, an item or value p does not carry, the image without hasImage,
+// or an empty selection.
+func (p FetchedPluginPerson) Select(sel PersonPluginSelection, hasImage bool) (FetchedPluginPerson, []PersonPluginItem, bool) {
+	if slices.ContainsFunc(sel.Items, isListItem) {
+		return FetchedPluginPerson{}, nil, false
+	}
+	aliases, okAliases := pick(p.AliasChoices(), sel.Aliases, func(a Alias) string { return a.Name })
+	ids, okIDs := pick(p.ExternalIDs, sel.ExternalIDs, func(id ExternalID) ExternalID { return id })
+	links, okLinks := pick(p.Profile.Links, sel.Links, func(link string) string { return link })
+	if !okAliases || !okIDs || !okLinks {
+		return FetchedPluginPerson{}, nil, false
+	}
+	out := p
+	out.Aliases, out.ExternalIDs, out.Profile.Links = aliases, ids, links
+	items := slices.Clone(sel.Items)
+	for _, list := range []struct {
+		item  PersonPluginItem
+		count int
+	}{{PersonProfileItem(ProfileLinks), len(links)}, {PersonItemAliases, len(aliases)}, {PersonItemExternalIDs, len(ids)}} {
+		if list.count > 0 {
+			items = append(items, list.item)
+		}
+	}
+	valid := !slices.ContainsFunc(items, func(item PersonPluginItem) bool {
+		return item == PersonItemImage && !hasImage || item != PersonItemImage && !out.HasItem(item)
+	})
+	return out, items, valid && len(items) > 0
+}
+
+func isListItem(item PersonPluginItem) bool {
+	return item == PersonItemAliases || item == PersonItemExternalIDs || item == PersonProfileItem(ProfileLinks)
+}
+
+// pick keeps the values of all whose key is selected, in all's order, and reports false when a selected key is not
+// among them.
+func pick[T any, K comparable](all []T, selected []K, key func(T) K) ([]T, bool) {
+	var out []T
+	for _, value := range all {
+		if slices.Contains(selected, key(value)) {
+			out = append(out, value)
+		}
+	}
+	return out, len(out) == len(dedupe(selected))
+}
+
+func dedupe[K comparable](values []K) []K {
+	var out []K
+	for _, value := range values {
+		if !slices.Contains(out, value) {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
 // PersonFetchID picks the first stored ID, in stored (source, value) order, whose source the plugin declares.
 func PersonFetchID(stored []ExternalID, sources []string) (ExternalID, bool) {
 	at := slices.IndexFunc(stored, func(id ExternalID) bool { return slices.Contains(sources, id.Source) })
@@ -105,6 +185,9 @@ func FillPersonItems(in PersonItemFill) PersonItemFilled {
 	}
 	selected := func(item PersonPluginItem) bool { return slices.Contains(in.Items, item) }
 	out.writeProfile(in, selected)
+	if selected(PersonProfileItem(ProfileLinks)) {
+		out.appendLinks(in.Fetched.Profile.Links)
+	}
 	if selected(PersonItemAliases) {
 		out.appendAliases(in.Current.Name, in.Fetched.Aliases)
 	}
@@ -117,8 +200,9 @@ func FillPersonItems(in PersonItemFill) PersonItemFilled {
 // writeProfile writes the selected profile fields; replaced fields are checked together first, then one at a time
 // against the stored values when the set is invalid, so only the fields that break a rule are skipped.
 func (f *PersonItemFilled) writeProfile(in PersonItemFill, selected func(PersonPluginItem) bool) {
+	// Links append like aliases, so they never replace.
 	fields := slices.DeleteFunc(slices.Clone(PersonProfileFields), func(field PersonProfileField) bool {
-		return !selected(PersonProfileItem(field))
+		return field == ProfileLinks || !selected(PersonProfileItem(field))
 	})
 	write := fillProfileField
 	if in.Replace {
@@ -157,6 +241,20 @@ func (f *PersonItemFilled) appendAliases(name string, fetched []Alias) {
 			f.skip(PersonItemAliases, alias.Name, SkippedWorkInfoTooMany, "")
 		default:
 			f.Aliases = append(f.Aliases, normalized[0])
+		}
+	}
+}
+
+// A fetched link is already valid, since the kept profile holds only values that pass the rules.
+func (f *PersonItemFilled) appendLinks(fetched []string) {
+	item := PersonProfileItem(ProfileLinks)
+	for _, link := range fetched {
+		switch {
+		case slices.Contains(f.Profile.Links, link):
+		case len(f.Profile.Links) >= PersonLinksMaxCount:
+			f.skip(item, link, SkippedWorkInfoTooMany, "")
+		default:
+			f.Profile.Links = append(slices.Clone(f.Profile.Links), link)
 		}
 	}
 }

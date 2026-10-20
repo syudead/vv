@@ -18,11 +18,8 @@ type keptLookup struct {
 	image  *domain.WorkInfoCover
 }
 
-func (k *keptLookup) hasItem(item domain.PersonPluginItem) bool {
-	if item == domain.PersonItemImage {
-		return k.image != nil
-	}
-	return k.person.HasItem(item)
+func (k *keptLookup) selected(selection domain.PersonPluginSelection) (domain.FetchedPluginPerson, []domain.PersonPluginItem, bool) {
+	return k.person.Select(selection, k.image != nil)
 }
 
 func (p *WorkInfoPlugins) planPersonLookups(
@@ -186,8 +183,7 @@ func (f *workInfoFetches) keepLookup(id string, index int, kept *keptLookup, now
 func (f *workInfoFetch) validLookups(fields []domain.WorkInfoField, lookups []domain.PersonLookupSelection) bool {
 	seen := map[int]bool{}
 	for _, selection := range lookups {
-		if selection.Index < 0 || selection.Index >= len(f.lookupRuns) || seen[selection.Index] ||
-			len(selection.Items) == 0 {
+		if selection.Index < 0 || selection.Index >= len(f.lookupRuns) || seen[selection.Index] {
 			return false
 		}
 		seen[selection.Index] = true
@@ -198,10 +194,8 @@ func (f *workInfoFetch) validLookups(fields []domain.WorkInfoField, lookups []do
 		if kept == nil || !roleSelected {
 			return false
 		}
-		for _, item := range selection.Items {
-			if !kept.hasItem(item) {
-				return false
-			}
+		if _, _, ok := kept.selected(selection.PersonPluginSelection); !ok {
+			return false
 		}
 	}
 	return true
@@ -211,10 +205,11 @@ func (f *workInfoFetch) lookupApplies(lookups []domain.PersonLookupSelection) []
 	out := make([]domain.FetchedPersonLookupApply, 0, len(lookups))
 	for _, selection := range lookups {
 		lookup := f.lookups.Lookups[selection.Index]
+		// validLookups has checked the selection.
+		fetched, items, _ := f.lookupRuns[selection.Index].selected(selection.PersonPluginSelection)
 		out = append(out, domain.FetchedPersonLookupApply{
 			Index: selection.Index, PluginID: lookup.PluginID, Digest: lookup.Digest, Generation: lookup.Generation,
-			Entries: lookup.Entries, MatchedID: lookup.MatchedID, Fetched: f.lookupRuns[selection.Index].person,
-			Items: selection.Items,
+			Entries: lookup.Entries, MatchedID: lookup.MatchedID, Fetched: fetched, Items: items,
 		})
 	}
 	return out

@@ -60,7 +60,7 @@ type WorkInfoPlugins interface {
 	PersonPluginFetchImage(personID int64, fetchID string, index int) (domain.WorkInfoCover, error)
 	// ApplyPersonPluginFetch may return ErrWorkInfoApplyInvalid, ErrPersonNotFound, or ErrWorkInfoFetchStale; a negative
 	// imageIndex names no image.
-	ApplyPersonPluginFetch(ctx context.Context, personID int64, fetchID string, items []domain.PersonPluginItem, imageIndex int) (domain.PersonPluginApplied, error)
+	ApplyPersonPluginFetch(ctx context.Context, personID int64, fetchID string, selection domain.PersonPluginSelection, imageIndex int) (domain.PersonPluginApplied, error)
 }
 
 func (s *server) workInfoPluginsConfigured(w http.ResponseWriter) bool {

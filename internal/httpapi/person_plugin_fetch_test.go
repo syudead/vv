@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"slices"
+	"reflect"
 	"testing"
 	"time"
 
@@ -22,7 +22,7 @@ type scriptedPersonFetches struct {
 	image      *domain.WorkInfoCover
 	calls      int
 	source, id *string
-	items      []domain.PersonPluginItem
+	selection  domain.PersonPluginSelection
 	imageIndex int
 }
 
@@ -46,10 +46,10 @@ func (p *scriptedPersonFetches) PersonPluginFetchImage(_ int64, fetchID string, 
 }
 
 func (p *scriptedPersonFetches) ApplyPersonPluginFetch(
-	_ context.Context, _ int64, _ string, items []domain.PersonPluginItem, imageIndex int,
+	_ context.Context, _ int64, _ string, selection domain.PersonPluginSelection, imageIndex int,
 ) (domain.PersonPluginApplied, error) {
 	p.calls++
-	p.items, p.imageIndex = items, imageIndex
+	p.selection, p.imageIndex = selection, imageIndex
 	return p.applied, p.err
 }
 
@@ -149,7 +149,8 @@ func TestApplyPersonPluginFetchAnswersThePersonOrItsError(t *testing.T) {
 			Item: domain.PersonItemExternalIDs, Value: "wiki: w-1", Reason: domain.SkippedWorkInfoTaken, HolderName: "Taro",
 		}},
 	}
-	status, body := post(`{"items":["image","profile.heightCm","externalIds"],"imageIndex":1}`)
+	status, body := post(`{"items":["image","profile.heightCm"],"imageIndex":1,"aliases":["Hana"],` +
+		`"externalIds":[{"source":"wiki","value":"w-1"}],"links":["https://e.test/h"]}`)
 	var applied gen.PersonPluginFetchApplied
 	if status != http.StatusOK || json.Unmarshal(body, &applied) != nil || applied.Person.Id != 3 ||
 		applied.Person.ImageRevision == nil || len(applied.Skipped) != 1 {
@@ -159,11 +160,16 @@ func TestApplyPersonPluginFetchAnswersThePersonOrItsError(t *testing.T) {
 		got.HolderName == nil || *got.HolderName != "Taro" {
 		t.Fatalf("skipped = %+v; want the taken ID with its holder", got)
 	}
-	want := []domain.PersonPluginItem{domain.PersonItemImage, domain.PersonProfileItem(domain.ProfileHeightCm), domain.PersonItemExternalIDs}
-	if !slices.Equal(plugins.items, want) || plugins.imageIndex != 1 {
-		t.Fatalf("items = %v, image %d; want %v and image 1", plugins.items, plugins.imageIndex, want)
+	want := domain.PersonPluginSelection{
+		Items:       []domain.PersonPluginItem{domain.PersonItemImage, domain.PersonProfileItem(domain.ProfileHeightCm)},
+		Aliases:     []string{"Hana"},
+		ExternalIDs: []domain.ExternalID{{Source: "wiki", Value: "w-1"}},
+		Links:       []string{"https://e.test/h"},
 	}
-	if post(`{"items":["aliases"]}`); plugins.imageIndex != -1 {
+	if !reflect.DeepEqual(plugins.selection, want) || plugins.imageIndex != 1 {
+		t.Fatalf("selection = %+v, image %d; want %+v and image 1", plugins.selection, plugins.imageIndex, want)
+	}
+	if post(`{"items":["profile.cup"]}`); plugins.imageIndex != -1 {
 		t.Fatalf("image index without one = %d; want -1, no image", plugins.imageIndex)
 	}
 
@@ -178,7 +184,7 @@ func TestApplyPersonPluginFetchAnswersThePersonOrItsError(t *testing.T) {
 		{"plugin replaced", domain.ErrWorkInfoFetchStale, wantError{status: 409, code: gen.ErrorCodeWorkInfoFetchStale}},
 	} {
 		plugins.err = tc.err
-		status, body := post(`{"items":["aliases"]}`)
+		status, body := post(`{"items":[],"aliases":["Hana"]}`)
 		assertErrorBody(t, tc.name, status, body, tc.want)
 	}
 	calls := plugins.calls

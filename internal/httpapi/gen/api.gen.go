@@ -3034,11 +3034,20 @@ type Alias struct {
 
 // ApplyPersonPluginFetchRequest defines model for ApplyPersonPluginFetchRequest.
 type ApplyPersonPluginFetchRequest struct {
+	// Aliases Names to append as aliases, each the fetched name or one of the fetched aliases.
+	Aliases *[]string `json:"aliases,omitempty"`
+
+	// ExternalIds Fetched external IDs to append.
+	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
+
 	// ImageIndex The kept image that image applies; required with image.
 	ImageIndex *int `json:"imageIndex,omitempty"`
 
-	// Items Items to apply; nonempty, and every item must have a value in the result.
+	// Items Profile fields other than links, and image, each with a value in the result; aliases, external IDs and links are chosen one by one below.
 	Items []PersonPluginItem `json:"items"`
+
+	// Links Fetched profile links to append.
+	Links *[]string `json:"links,omitempty"`
 }
 
 // ApplyWorkInfoFetchRequest defines model for ApplyWorkInfoFetchRequest.
@@ -4256,11 +4265,20 @@ type PersonLookup struct {
 
 // PersonLookupSelection defines model for PersonLookupSelection.
 type PersonLookupSelection struct {
+	// Aliases Names to append as aliases, each the fetched name or one of the fetched aliases.
+	Aliases *[]string `json:"aliases,omitempty"`
+
+	// ExternalIds Fetched external IDs to append.
+	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
+
 	// Index Position in the fetch result's personLookups.
 	Index int `json:"index"`
 
-	// Items Nonempty; every item must have a value in the lookup's result.
+	// Items Profile fields other than links, and image, each with a value in the lookup's result; aliases, external IDs and links are chosen one by one below.
 	Items []PersonPluginItem `json:"items"`
+
+	// Links Fetched profile links to append.
+	Links *[]string `json:"links,omitempty"`
 }
 
 // PersonMergeResponse defines model for PersonMergeResponse.

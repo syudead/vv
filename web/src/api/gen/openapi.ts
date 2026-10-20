@@ -2155,7 +2155,7 @@ export interface paths {
         put?: never;
         /**
          * Apply selected items of a person fetch
-         * @description Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends missing aliases and external IDs, up to 50 and 20; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. Empty items, an item without a value in the result, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing.
+         * @description Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends the chosen aliases, external IDs and links the person lacks, up to 50, 20 and 20; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. An empty selection, aliases, externalIds or profile.links in items, an item or value the result lacks, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing.
          */
         post: operations["applyPersonPluginFetch"];
         delete?: never;
@@ -3677,10 +3677,16 @@ export interface components {
          */
         PersonPluginItem: "image" | "profile.gender" | "profile.birthDate" | "profile.deathDate" | "profile.birthplace" | "profile.heightCm" | "profile.bustCm" | "profile.waistCm" | "profile.hipsCm" | "profile.cup" | "profile.bloodType" | "profile.careerStartYear" | "profile.careerEndYear" | "profile.bio" | "profile.links" | "aliases" | "externalIds";
         ApplyPersonPluginFetchRequest: {
-            /** @description Items to apply; nonempty, and every item must have a value in the result. */
+            /** @description Profile fields other than links, and image, each with a value in the result; aliases, external IDs and links are chosen one by one below. */
             items: components["schemas"]["PersonPluginItem"][];
             /** @description The kept image that image applies; required with image. */
             imageIndex?: number;
+            /** @description Names to append as aliases, each the fetched name or one of the fetched aliases. */
+            aliases?: string[];
+            /** @description Fetched external IDs to append. */
+            externalIds?: components["schemas"]["ExternalId"][];
+            /** @description Fetched profile links to append. */
+            links?: string[];
         };
         /**
          * @description Apply skip reason: invalid values fail validation; too_many entries exceed the limits after existing entries; taken external IDs are held by another person.
@@ -3822,8 +3828,14 @@ export interface components {
         PersonLookupSelection: {
             /** @description Position in the fetch result's personLookups. */
             index: number;
-            /** @description Nonempty; every item must have a value in the lookup's result. */
+            /** @description Profile fields other than links, and image, each with a value in the lookup's result; aliases, external IDs and links are chosen one by one below. */
             items: components["schemas"]["PersonPluginItem"][];
+            /** @description Names to append as aliases, each the fetched name or one of the fetched aliases. */
+            aliases?: string[];
+            /** @description Fetched external IDs to append. */
+            externalIds?: components["schemas"]["ExternalId"][];
+            /** @description Fetched profile links to append. */
+            links?: string[];
         };
         /**
          * @description Tag skip reason: rejected names were previously rejected; invalid names fail tag-name validation.

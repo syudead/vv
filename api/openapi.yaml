@@ -3321,7 +3321,7 @@ paths:
     post:
       operationId: applyPersonPluginFetch
       summary: "Apply selected items of a person fetch"
-      description: "Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends missing aliases and external IDs, up to 50 and 20; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. Empty items, an item without a value in the result, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing."
+      description: "Owner-only. Atomically writes the selected profile fields, replacing stored values, and appends the chosen aliases, external IDs and links the person lacks, up to 50, 20 and 20; after commit, the image at imageIndex replaces the person's face. Invalid values, entries over the limits and external IDs another person holds are skipped, and no people are merged. A successful result is consumed. An empty selection, aliases, externalIds or profile.links in items, an item or value the result lacks, or image without an imageIndex among the kept images return 400 invalid_request. A person deleted or merged away returns 404 person_not_found. Expired, unknown or another person's results, or plugin replacement, revocation or deletion after the fetch, return 409 work_info_fetch_stale. These errors write nothing."
       parameters:
         - $ref: "#/components/parameters/PersonId"
         - $ref: "#/components/parameters/WorkInfoFetchId"
@@ -6308,13 +6308,28 @@ components:
       properties:
         items:
           type: array
-          description: "Items to apply; nonempty, and every item must have a value in the result."
+          description: "Profile fields other than links, and image, each with a value in the result; aliases, external IDs and links are chosen one by one below."
           items:
             $ref: "#/components/schemas/PersonPluginItem"
         imageIndex:
           type: integer
           minimum: 0
           description: "The kept image that image applies; required with image."
+        aliases:
+          type: array
+          description: "Names to append as aliases, each the fetched name or one of the fetched aliases."
+          items:
+            type: string
+        externalIds:
+          type: array
+          description: "Fetched external IDs to append."
+          items:
+            $ref: "#/components/schemas/ExternalId"
+        links:
+          type: array
+          description: "Fetched profile links to append."
+          items:
+            type: string
 
     SkippedPersonReason:
       type: string
@@ -6618,9 +6633,24 @@ components:
           description: "Position in the fetch result's personLookups."
         items:
           type: array
-          description: "Nonempty; every item must have a value in the lookup's result."
+          description: "Profile fields other than links, and image, each with a value in the lookup's result; aliases, external IDs and links are chosen one by one below."
           items:
             $ref: "#/components/schemas/PersonPluginItem"
+        aliases:
+          type: array
+          description: "Names to append as aliases, each the fetched name or one of the fetched aliases."
+          items:
+            type: string
+        externalIds:
+          type: array
+          description: "Fetched external IDs to append."
+          items:
+            $ref: "#/components/schemas/ExternalId"
+        links:
+          type: array
+          description: "Fetched profile links to append."
+          items:
+            type: string
 
     SkippedTagReason:
       type: string

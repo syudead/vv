@@ -80,14 +80,33 @@ func personLookupSelections(body *[]gen.PersonLookupSelection, present bool) ([]
 	}
 	out := make([]domain.PersonLookupSelection, 0, len(*body))
 	for _, selection := range *body {
-		items := make([]domain.PersonPluginItem, 0, len(selection.Items))
-		for _, item := range selection.Items {
-			if !item.Valid() {
-				return nil, false
-			}
-			items = append(items, domain.PersonPluginItem(item))
+		chosen, ok := toPersonPluginSelection(selection.Items, selection.Aliases, selection.ExternalIds, selection.Links)
+		if !ok {
+			return nil, false
 		}
-		out = append(out, domain.PersonLookupSelection{Index: selection.Index, Items: items})
+		out = append(out, domain.PersonLookupSelection{Index: selection.Index, PersonPluginSelection: chosen})
+	}
+	return out, true
+}
+
+// toPersonPluginSelection reports false for an unknown item; whether the values are in the result is the apply's.
+func toPersonPluginSelection(
+	items []gen.PersonPluginItem, aliases *[]string, ids *[]gen.ExternalId, links *[]string,
+) (domain.PersonPluginSelection, bool) {
+	out := domain.PersonPluginSelection{
+		Items: make([]domain.PersonPluginItem, 0, len(items)), ExternalIDs: fromAPIExternalIDs(ids),
+	}
+	for _, item := range items {
+		if !item.Valid() {
+			return domain.PersonPluginSelection{}, false
+		}
+		out.Items = append(out.Items, domain.PersonPluginItem(item))
+	}
+	if aliases != nil {
+		out.Aliases = *aliases
+	}
+	if links != nil {
+		out.Links = *links
 	}
 	return out, true
 }

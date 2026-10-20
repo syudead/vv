@@ -211,15 +211,21 @@ func TestApplyWorkInfoFetchCarriesLookupItemsAndPutsTheLookupFaceFirst(t *testin
 	}
 	performers := []domain.WorkInfoField{domain.PersonField(domain.PersonPerformer)}
 	birthplace := domain.PersonProfileItem(domain.ProfileBirthplace)
-	selected := []domain.PersonLookupSelection{{Index: 0, Items: []domain.PersonPluginItem{domain.PersonItemImage, birthplace}}}
+	selected := []domain.PersonLookupSelection{{Index: 0, PersonPluginSelection: domain.PersonPluginSelection{
+		Items: []domain.PersonPluginItem{domain.PersonItemImage, birthplace},
+	}}}
 	for _, tc := range []struct {
 		name    string
 		fields  []domain.WorkInfoField
 		lookups []domain.PersonLookupSelection
 	}{
 		{"without the role", []domain.WorkInfoField{domain.PersonField(domain.PersonDirector)}, selected},
-		{"a lookup that did not run", performers, []domain.PersonLookupSelection{{Index: 1, Items: []domain.PersonPluginItem{birthplace}}}},
-		{"an item without a value", performers, []domain.PersonLookupSelection{{Index: 0, Items: []domain.PersonPluginItem{domain.PersonItemAliases}}}},
+		{"a lookup that did not run", performers, []domain.PersonLookupSelection{{Index: 1, PersonPluginSelection: domain.PersonPluginSelection{
+			Items: []domain.PersonPluginItem{birthplace},
+		}}}},
+		{"a value the lookup lacks", performers, []domain.PersonLookupSelection{{Index: 0, PersonPluginSelection: domain.PersonPluginSelection{
+			Aliases: []string{"Not fetched"},
+		}}}},
 	} {
 		if _, err := e.plugins.ApplyWorkInfoFetch(ctx, fetchVideo, result.ID, tc.fields, nil, false, tc.lookups); !errors.Is(err, domain.ErrWorkInfoApplyInvalid) {
 			t.Fatalf("%s: err = %v; want ErrWorkInfoApplyInvalid", tc.name, err)

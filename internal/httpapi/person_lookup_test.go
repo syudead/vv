@@ -114,16 +114,16 @@ func TestWorkInfoApplyPassesAndReportsLookups(t *testing.T) {
 		Lookup: &lookup, Item: domain.PersonItemExternalIDs, HolderName: "Other",
 	}}}
 	status, body := e.post(applyPath,
-		`{"fields":["people.performer"],"personLookups":[{"index":0,"items":["image","profile.birthDate"]}]}`, e.owner)
+		`{"fields":["people.performer"],"personLookups":[{"index":0,"items":["image","profile.birthDate"],"aliases":["Hana"]}]}`, e.owner)
 	var applied gen.WorkInfoFetchApplied
 	if status != http.StatusOK || json.Unmarshal(body, &applied) != nil {
 		t.Fatalf("apply = %d %s", status, body)
 	}
-	want := []domain.PersonLookupSelection{{Index: 0, Items: []domain.PersonPluginItem{
+	want := []domain.PersonLookupSelection{{Index: 0, PersonPluginSelection: domain.PersonPluginSelection{Items: []domain.PersonPluginItem{
 		domain.PersonItemImage, domain.PersonProfileItem(domain.ProfileBirthDate),
-	}}}
+	}}}}
 	if len(e.plugins.lookups) != 1 || e.plugins.lookups[0].Index != 0 ||
-		!slices.Equal(e.plugins.lookups[0].Items, want[0].Items) {
+		!slices.Equal(e.plugins.lookups[0].Items, want[0].Items) || !slices.Equal(e.plugins.lookups[0].Aliases, []string{"Hana"}) {
 		t.Fatalf("lookups = %+v; want %+v", e.plugins.lookups, want)
 	}
 	skipped := applied.Skipped[0]
