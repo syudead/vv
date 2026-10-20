@@ -914,6 +914,19 @@
       ]
     },
     {
+      "name": "shelf",
+      "type": "registry:ui",
+      "title": "Shelf",
+      "description": "Section: a heading with a count and See all over one row of card-0 cards that scrolls sideways.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/shelf.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "grouped-list",
       "type": "registry:ui",
       "title": "GroupedList",
@@ -1228,7 +1241,7 @@
       "name": "profile-page",
       "type": "registry:ui",
       "title": "ProfilePage",
-      "description": "Page skeleton for one subject's profile beside its items: a profile column (face, identity, details) sticky at the left from lg, and a main column with a header, one line of filters and the body.",
+      "description": "Page skeleton for one subject above its items: a profile spread (face, identity with key figures, and a facts card at the end from lg), then the items, usually as shelves.",
       "docs": "Usage rules: web/registry/rules/patterns.md#profile-page (item vv-rules).",
       "files": [
         {
@@ -1241,7 +1254,7 @@
       "name": "profile-page-example",
       "type": "registry:block",
       "title": "Profile page example",
-      "description": "A working profile page: a person's face, name, actions and facts beside a filtered grid of video cards.",
+      "description": "A working profile page: a person's face, name, key figures, actions and facts above a shelf of video cards.",
       "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#profile-page (item vv-rules).",
       "files": [
         {

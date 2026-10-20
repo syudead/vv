@@ -19,7 +19,7 @@ import {
 } from "../../ui/shadcn/dropdown-menu";
 import { kindTexts } from "../creditRows";
 import { creditDisplayName } from "../displayName";
-import { personFactGroups } from "./personFacts";
+import { type PersonFigure, personFigures, profileFacts } from "./personFacts";
 import { handPerson } from "./personHandoff";
 
 const text = t.credits.personPage;
@@ -42,34 +42,62 @@ function EditLink({ person, label = text.edit }: { person: Person; label?: UiTex
   );
 }
 
-/** The name, aliases and actions; nothing on the page outranks viewing, so no default button. */
+/** One key number above its meaning, the numbers in a row that wraps. */
+function Figures({ figures }: { figures: readonly PersonFigure[] }) {
+  if (figures.length === 0) return null;
+  return (
+    <dl className="flex flex-wrap gap-x-8 gap-y-3">
+      {figures.map((figure) => (
+        <div key={figure.id} className="flex flex-col-reverse gap-0.5">
+          <dt className="text-xs text-muted-foreground">{figure.label}</dt>
+          <dd className="text-lg font-semibold tabular-nums">{figure.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/**
+ * The name, aliases, key figures, bio and actions; nothing on the page outranks viewing, so no
+ * default button.
+ */
 export function PersonIdentity({
   person,
+  today,
   fetchEntry,
+  facesEntry,
   onMerge,
   onDelete,
 }: {
   person: Person;
+  today: Date;
   /** Fetch info…, after Edit; absent while no approved person plugin exists. */
   fetchEntry?: ReactNode;
+  /** The way to the person's face recognition, after Show in library. */
+  facesEntry?: ReactNode;
   onMerge: () => void;
   onDelete: () => void;
 }) {
+  const bio = person.profile.bio;
   return (
     <>
-      <h1
-        className={cn(
-          "line-clamp-3 text-xl font-semibold break-words",
-          person.provisional && "text-muted-foreground",
+      <div className="flex flex-col gap-1">
+        <h1
+          className={cn(
+            "line-clamp-3 text-xl font-semibold break-words",
+            person.provisional && "text-muted-foreground",
+          )}
+        >
+          {creditDisplayName(person)}
+        </h1>
+        {!person.provisional && person.aliases.length > 0 && (
+          <p className="text-sm break-words text-muted-foreground">
+            {text.aliases(person.aliases.map((alias) => alias.name))}
+          </p>
         )}
-      >
-        {creditDisplayName(person)}
-      </h1>
-      {!person.provisional && person.aliases.length > 0 && (
-        <p className="text-sm break-words text-muted-foreground">
-          {text.aliases(person.aliases.map((alias) => alias.name))}
-        </p>
-      )}
+      </div>
+      <Figures figures={personFigures(person.profile, today)} />
+      {bio !== undefined && <Bio bio={bio} />}
       <div className="flex flex-wrap items-center gap-2">
         {/* The edit page focuses the name input, so Name… is Edit for a person without one. */}
         <Button asChild variant="outline" size="sm">
@@ -79,6 +107,7 @@ export function PersonIdentity({
         <Button asChild variant="ghost" size="sm">
           <Link to={libraryFilterPath("person", person.id)}>{text.showInLibrary}</Link>
         </Button>
+        {facesEntry}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon-sm" aria-label={text.more}>
@@ -164,40 +193,37 @@ export function LinkList({ links }: { links: readonly string[] }) {
   );
 }
 
-/** Candidates, fact groups with values, faces in videos, then links and external IDs. */
-export function PersonDetails({
-  person,
-  today,
-  candidates,
-  faces,
-}: {
-  person: Person;
-  today: Date;
-  candidates?: ReactNode;
-  faces?: ReactNode;
-}) {
-  const groups = personFactGroups(person.profile, today);
+/**
+ * The profile card: the remaining facts, then links and external IDs; undefined when the spread
+ * already shows everything the person has.
+ */
+export function personFactsCard(person: Person, today: Date): ReactNode {
+  const facts = profileFacts(person.profile, today);
   const links = person.profile.links ?? [];
+  const empty =
+    facts.length === 0 &&
+    links.length === 0 &&
+    person.externalIds.length === 0 &&
+    personFigures(person.profile, today).length === 0 &&
+    person.profile.bio === undefined;
+  if (
+    !empty &&
+    facts.length === 0 &&
+    links.length === 0 &&
+    person.externalIds.length === 0
+  )
+    return undefined;
   return (
     <>
-      {candidates}
-      {groups.length === 0 ? (
-        <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+      {empty && (
+        <p className="flex flex-wrap items-center gap-2 text-muted-foreground">
           {text.noProfile}
           <Button asChild variant="link" size="sm">
             <EditLink person={person} />
           </Button>
         </p>
-      ) : (
-        groups.map((group) => (
-          <section key={group.id} className="flex flex-col gap-2 text-sm">
-            <h2 className="text-sm font-semibold">{group.heading}</h2>
-            {group.facts.length > 0 && <FactList facts={group.facts} />}
-            {group.bio !== undefined && <Bio bio={group.bio} />}
-          </section>
-        ))
       )}
-      {faces}
+      {facts.length > 0 && <FactList facts={facts} />}
       {links.length > 0 && <LinkList links={links} />}
       {person.externalIds.length > 0 && (
         <ul

@@ -142,9 +142,9 @@
   /* Narrow-screen editor stage occupies roughly 45% of viewport height. */
   --spacing-editor-stage: 45dvh;
   --spacing-form-page-aside: 16.25rem;
-  /* Profile column of ProfilePage from lg; leaves three card-0 columns beside it at 1280px. */
-  --spacing-profile-aside: 18rem;
-  --spacing-profile-aside-max: calc(100dvh - 3.25rem - 2rem);
+  /* ProfilePage's face from sm, and its facts card at the row's end from lg. */
+  --spacing-profile-face: 15rem;
+  --spacing-profile-facts: 18rem;
   /* Cap sticky list-aside height beneath the top bar and scroll overflow internally. */
   --spacing-list-aside: 11rem;
   --spacing-list-aside-max: calc(100dvh - 3.25rem - 2rem);
@@ -316,11 +316,6 @@
 /* Crop a face centred horizontally and a third from the top, where a portrait usually holds it. */
 @utility object-face {
   object-position: 50% 33%;
-}
-
-/* Named grid utility for ProfilePage: the profile column and the main column. */
-@utility grid-cols-profile-page {
-  grid-template-columns: var(--spacing-profile-aside) minmax(0, 1fr);
 }
 
 /* Named grid utility for settings navigation and its flexible body. */

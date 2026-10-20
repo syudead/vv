@@ -1,22 +1,19 @@
 import type { ReactNode } from "react";
 
-// One subject's profile beside its items; see web/registry/rules/patterns.md, Profile page.
+// One subject's profile spread above its items; see web/registry/rules/patterns.md, Profile page.
 
 export interface ProfilePageProps {
-  /** Names the profile column for screen readers. */
+  /** Names the profile spread for screen readers. */
   profileLabel: string;
-  /** The subject's image, beside the identity below lg and above it from lg. */
+  /** The subject's image: above the identity below sm, beside it from sm. */
   face: ReactNode;
-  /** The name (the page's h1), its second line and the actions row. */
+  /** The name (the page's h1), its second line, the key figures, the text and the actions row. */
   identity: ReactNode;
-  /** Facts, text and links under the face and identity. */
-  details?: ReactNode;
-  /** The main column's PageHeader (headingLevel 2). */
-  header: ReactNode;
-  /** One line of filters; it scrolls sideways instead of wrapping. */
-  toolbar?: ReactNode;
-  /** Replaces both columns, such as when the subject no longer exists. */
+  /** The remaining facts, links and IDs, on a card at the spread's end from lg and under it below. */
+  facts?: ReactNode;
+  /** Replaces the whole page, such as when the subject no longer exists. */
   status?: ReactNode;
+  /** The subject's items: `Shelf`s, or one header and grid. */
   children: ReactNode;
 }
 
@@ -24,38 +21,38 @@ export function ProfilePage({
   profileLabel,
   face,
   identity,
-  details,
-  header,
-  toolbar,
+  facts,
   status,
   children,
 }: ProfilePageProps) {
   return (
-    <div data-slot="profile-page" className="flex min-h-full flex-col gap-3 p-3 sm:p-4">
+    <div data-slot="profile-page" className="flex min-h-full flex-col gap-8 p-3 sm:p-4">
       {status ?? (
-        <div className="flex flex-col gap-6 lg:grid lg:grid-cols-profile-page lg:items-start">
-          <aside
+        <>
+          <section
             data-slot="profile-page-profile"
             aria-label={profileLabel}
-            // Pad the scrolling column so focus rings inside it are not clipped.
-            className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-navbar lg:-mx-1 lg:max-h-profile-aside-max lg:overflow-y-auto lg:px-1"
+            className="flex flex-col gap-6 lg:flex-row lg:items-start"
           >
-            <div className="flex items-start gap-4 lg:flex-col lg:items-stretch">
-              <div className="w-1/2 shrink-0 md:w-1/3 lg:w-full">{face}</div>
-              <div className="flex min-w-0 flex-1 flex-col gap-2">{identity}</div>
+            <div className="flex min-w-0 flex-1 flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
+              <div className="w-1/2 shrink-0 self-center sm:w-profile-face sm:self-start">
+                {face}
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-4">{identity}</div>
             </div>
-            {details}
-          </aside>
-          <div data-slot="profile-page-main" className="flex min-w-0 flex-col gap-3">
-            {header}
-            {toolbar !== undefined && (
-              <div data-slot="profile-page-toolbar" className="flex overflow-x-auto">
-                {toolbar}
+            {facts !== undefined && (
+              <div
+                data-slot="profile-page-facts"
+                className="flex min-w-0 flex-col gap-4 rounded-lg bg-muted p-4 text-sm lg:w-profile-facts lg:shrink-0"
+              >
+                {facts}
               </div>
             )}
+          </section>
+          <div data-slot="profile-page-main" className="flex min-w-0 flex-col gap-8">
             {children}
           </div>
-        </div>
+        </>
       )}
     </div>
   );

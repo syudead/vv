@@ -9,7 +9,6 @@ import {
   server,
   installPersonServer,
 } from "../../testing/personPage";
-import type { FaceCandidate } from "../../api/personFaces";
 
 installPersonServer();
 
@@ -81,11 +80,23 @@ describe("PersonPage", () => {
     expect(screen.getByText("2000-05-02 (age 26)")).toBeTruthy();
   });
 
-  it("asks for the videos in the pressed role", async () => {
+  it("shows a shelf only for the roles with videos, and See all opens that role's grid", async () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByRole("link", { name: /Video 1/ });
+    const roles = sent("GET", "/api/videos").map((request) =>
+      request.url.searchParams.get("personRole"),
+    );
+    expect(roles).toEqual(
+      expect.arrayContaining([null, "performer", "director", "photographer", "streamer"]),
+    );
+    expect(screen.getByRole("heading", { name: "Performer", level: 2 })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Director", level: 2 })).toBeNull();
 
+    await user.click(screen.getByRole("button", { name: "See all videos as Performer" }));
+    expect(
+      screen.getByRole("radio", { name: "Performer" }).getAttribute("aria-checked"),
+    ).toBe("true");
     await user.click(screen.getByRole("radio", { name: "Director" }));
 
     await waitFor(() => {
@@ -93,6 +104,10 @@ describe("PersonPage", () => {
       expect(last?.url.searchParams.get("person")).toBe("7");
       expect(last?.url.searchParams.get("personRole")).toBe("director");
     });
+    await user.click(screen.getByRole("radio", { name: "All" }));
+    expect(
+      await screen.findByRole("heading", { name: "Performer", level: 2 }),
+    ).toBeTruthy();
   });
 
   // A profile leaves one Edit link; an empty profile offers a second one.
@@ -126,6 +141,8 @@ describe("PersonPage", () => {
 
     renderPage();
     expect(await screen.findByRole("heading", { name: "Aoi Sora" })).toBeTruthy();
+    // Let the shelves mount before the test's server goes away.
+    await screen.findByRole("link", { name: /Video 1/ });
   });
 
   it("titles a provisional person Unnamed person and offers Name… in place of Edit", async () => {
@@ -142,134 +159,17 @@ describe("PersonPage", () => {
     expect(name.value).toBe("");
   });
 
-  it("opens the video at a span's start, playing, from Faces in videos", async () => {
+  it("leads to the faces page from Faces, counting the pairs to review", async () => {
     const user = userEvent.setup();
-    server.appearances = [
-      {
-        appearanceId: 3,
-        videoId: 5,
-        title: "Beach day",
-        spans: [
-          { start: 12.4, end: 100 },
-          { start: 130, end: 150 },
-        ],
-        hasCrop: true,
-      },
+    server.faceCandidates = [
+      { person: { id: 9, name: "Alice", provisional: false }, similarity: 0.72 },
     ];
     renderPage();
 
-    const crop = await screen.findByRole("img", { name: "Beach day" });
-    expect(crop.getAttribute("src")).toBe("/api/face-appearances/3/crop");
-    await user.click(screen.getByRole("link", { name: "Beach day from 2:10" }));
+    await user.click(await screen.findByRole("link", { name: "Faces, 1 to review" }));
 
-    expect((await screen.findByTestId("video-screen")).textContent).toBe(
-      "/videos/5?t=130 autoplay",
-    );
-  });
-
-  it("splits a face into a new person from Faces in videos and removes its row", async () => {
-    const user = userEvent.setup();
-    server.appearances = [
-      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
-      { appearanceId: 4, videoId: 6, title: "Mountain", spans: [], hasCrop: true },
-    ];
-    renderPage();
-
-    await user.click(
-      await screen.findByRole("button", { name: "Not this person in Beach day" }),
-    );
-
-    expect(await screen.findByText("Split into a new unnamed person")).toBeTruthy();
-    expect(sent("POST", "/api/people/7/appearances/3/split")).toHaveLength(1);
-    expect(
-      screen.queryByRole("button", { name: "Not this person in Beach day" }),
-    ).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Not this person in Mountain" }),
-    ).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Open" }));
-    await waitFor(() => expect(sent("GET", "/api/people/12").length).toBeGreaterThan(0));
-  });
-
-  it("reads the next page of Faces in videos when a split leaves no row shown", async () => {
-    const user = userEvent.setup();
-    server.appearances = [
-      { appearanceId: 3, videoId: 5, title: "Beach day", spans: [], hasCrop: true },
-    ];
-    server.laterAppearances = [
-      { appearanceId: 4, videoId: 6, title: "Mountain", spans: [], hasCrop: true },
-    ];
-    renderPage();
-
-    await user.click(
-      await screen.findByRole("button", { name: "Not this person in Beach day" }),
-    );
-
-    expect(
-      await screen.findByRole("button", { name: "Not this person in Mountain" }),
-    ).toBeTruthy();
-    expect(
-      sent("GET", "/api/people/7/appearances").filter(
-        (request) => request.url.searchParams.get("cursor") === "page-2",
-      ),
-    ).toHaveLength(1);
-  });
-
-  function candidate(id: number, name: string): FaceCandidate {
-    return { person: { id, name, provisional: name === "" }, similarity: 0.72 };
-  }
-
-  it("moves to the merged person's page when the shown person was merged away", async () => {
-    const user = userEvent.setup();
-    server.person = person({ name: "", provisional: true });
-    server.faceCandidates = [candidate(9, "Alice")];
-    server.mergeTarget = person({ id: 9, name: "Alice" });
-    renderPage();
-
+    expect(await screen.findByRole("heading", { name: "Faces", level: 1 })).toBeTruthy();
     expect(await screen.findByText("72% similar")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Same person as Alice" }));
-
-    expect(await screen.findByRole("heading", { name: "Alice", level: 1 })).toBeTruthy();
-    expect(screen.getByText('Merged into "Alice"')).toBeTruthy();
-    expect(sent("POST", "/api/people/7/face-candidates/9/confirm")).toHaveLength(1);
-  });
-
-  it("keeps the page and reads the videos again when the shown person gains the other", async () => {
-    const user = userEvent.setup();
-    server.faceCandidates = [candidate(9, "")];
-    server.mergeTarget = person({ videoCount: 2 });
-    renderPage();
-    await screen.findByRole("link", { name: /Video 1/ });
-    const videoReads = sent("GET", "/api/videos").length;
-
-    await user.click(
-      await screen.findByRole("button", { name: "Same person as Unnamed person" }),
-    );
-
-    expect(await screen.findByText('Merged "Unnamed person"')).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Aoi", level: 1 })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Same person?" })).toBeNull();
-    await waitFor(() =>
-      expect(sent("GET", "/api/videos").length).toBeGreaterThan(videoReads),
-    );
-  });
-
-  it("removes a dismissed candidate without leaving the page", async () => {
-    const user = userEvent.setup();
-    server.faceCandidates = [candidate(9, "Alice"), candidate(10, "Mio")];
-    renderPage();
-
-    await user.click(
-      await screen.findByRole("button", { name: "Not the same as Alice" }),
-    );
-
-    await waitFor(() =>
-      expect(screen.queryByRole("link", { name: "Open Alice" })).toBeNull(),
-    );
-    expect(screen.getByRole("link", { name: "Open Mio" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Aoi", level: 1 })).toBeTruthy();
-    expect(sent("POST", "/api/people/7/face-candidates/9/dismiss")).toHaveLength(1);
   });
 
   it("shows the gone state when the person no longer exists", async () => {

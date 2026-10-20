@@ -129,7 +129,10 @@ function spanText(span: Span): string {
   return `${formatDuration(span.start * 1000)}–${formatDuration(span.end * 1000)}`;
 }
 
-/** `Faces in videos`: a crop beside its video's title and spans, newest video first. */
+/**
+ * `Faces in videos`: a crop beside its video's title and spans, newest video first, as the rows of
+ * the caller's section.
+ */
 export function PersonAppearances({
   appearances,
   actions,
@@ -138,50 +141,46 @@ export function PersonAppearances({
   actions: AppearanceActions;
 }) {
   const { state, reload, loadMore, loadingMore } = appearances;
-  if (
-    state.kind === "loading" ||
-    (state.kind === "ready" && state.items.length === 0 && state.nextCursor === undefined)
-  ) {
-    return null;
+  if (state.kind === "loading") {
+    return <p className="text-muted-foreground">{text.loading}</p>;
+  }
+  if (state.kind === "failed") {
+    return (
+      <p className="flex flex-wrap items-center gap-2 text-muted-foreground">
+        {text.loadFailed(state.reason)}
+        <Button variant="link" size="sm" onClick={reload}>
+          {t.common.retry}
+        </Button>
+      </p>
+    );
+  }
+  if (state.items.length === 0 && state.nextCursor === undefined) {
+    return <p className="text-muted-foreground">{text.none}</p>;
   }
   return (
-    <section className="flex flex-col gap-2 text-sm">
-      <h2 className="text-sm font-semibold">{text.heading}</h2>
-      {state.kind === "failed" ? (
-        <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          {text.loadFailed(state.reason)}
-          <Button variant="link" size="sm" onClick={reload}>
-            {t.common.retry}
+    <>
+      {state.items.map((item) => (
+        <AppearanceRow
+          key={item.appearanceId}
+          appearance={item}
+          actions={actions}
+          remove={appearances.remove}
+        />
+      ))}
+      {state.nextCursor !== undefined && (
+        <div className="flex items-center gap-2">
+          <Button
+            variant="link"
+            size="sm"
+            aria-busy={loadingMore || undefined}
+            onClick={loadMore}
+          >
+            {loadingMore && <Spinner aria-hidden="true" />}
+            {t.credits.personPage.showMore}
           </Button>
-        </p>
-      ) : (
-        <>
-          <ul className="flex flex-col gap-2">
-            {state.items.map((item) => (
-              <AppearanceRow
-                key={item.appearanceId}
-                appearance={item}
-                actions={actions}
-                remove={appearances.remove}
-              />
-            ))}
-          </ul>
-          {state.nextCursor !== undefined && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="link"
-                size="sm"
-                aria-busy={loadingMore || undefined}
-                onClick={loadMore}
-              >
-                {loadingMore && <Spinner aria-hidden="true" />}
-                {t.credits.personPage.showMore}
-              </Button>
-            </div>
-          )}
-        </>
+        </div>
       )}
-    </section>
+    </>
   );
 }
 
@@ -216,7 +215,7 @@ function AppearanceRow({
   }
 
   return (
-    <li className="flex flex-wrap items-start gap-2">
+    <div className="flex flex-wrap items-start gap-2">
       <PersonFace
         shape="scene"
         name={title}
@@ -272,6 +271,6 @@ function AppearanceRow({
         {pending && <Spinner aria-hidden="true" />}
         {text.notThisPerson}
       </Button>
-    </li>
+    </div>
   );
 }
