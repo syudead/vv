@@ -312,11 +312,11 @@ leaves the list, a toast reads `Split into a new unnamed person` with an `Open`
 action to the new person's page, and the candidates and videos are read again.
 A pressed row disables only its own button, and a failure shows under the row.
 
-| Rejected | Why |
-| --- | --- |
+| Rejected                      | Why                                                                                                    |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------ |
 | Candidates in the main column | They would split the page's one header and one grid, and sit away from the face they are compared with |
-| A strip of crops alone | Reaching a scene would take a second press, and a crop does not say which video |
-| Confirming on another screen | The owner settles a pair where both faces are in view |
+| A strip of crops alone        | Reaching a scene would take a second press, and a crop does not say which video                        |
+| Confirming on another screen  | The owner settles a pair where both faces are in view                                                  |
 
 ## Faces elsewhere on the screens
 
@@ -325,6 +325,15 @@ and the name inside one link to `/people/:id`, named `Open {name}`, so the
 cast opens the person page instead of the filtered library; the chip sits on
 the name's line and keeps the row's height. Organizations keep their text links
 to the filtered library, and the fold after three names is unchanged.
+
+Wherever a person is chosen, the face comes with the name: a picker's
+candidate rows lead with `PersonFace option` (the video details editor, the
+merge dialog and a smart folder's `Person` condition), and a chosen person's
+chip or filter leads with `PersonFace token` (the details editor's credit chips,
+the smart folder condition and the library's active person filter). A person
+without a face shows the placeholder in the same frame, so the rows keep one
+height. The chip carries the person's `imageRevision` from the candidate or the
+video's `WorkPerson`, so a face picked in the editor shows before the save.
 
 In the comparison of a work-info fetch
 ([work-info-plugins.md](work-info-plugins.md#peoples-images-are-fetched-like-the-cover-and-become-faces-after-the-commit)),

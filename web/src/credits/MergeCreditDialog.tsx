@@ -13,6 +13,7 @@ import { foldForMatch } from "../lib/foldForMatch";
 import { DialogError } from "../tags/DialogError";
 import { MergeSummary, MergeTargetField } from "../tags/MergeParts";
 import CreditCommand, { type CreditChoice } from "../ui/CreditCommand";
+import { creditFace } from "./creditFace";
 import { FormDialog } from "../ui/patterns/form-dialog";
 import { Spinner } from "../ui/shadcn/spinner";
 import { kindTexts } from "./creditRows";
@@ -87,6 +88,7 @@ export default function MergeCreditDialog({
     return {
       id: String(credit.id),
       label: creditDisplayName(credit),
+      leading: creditFace(kind, credit, "option"),
       hint: alias === undefined ? undefined : t.credits.mergeDialog.aliasHint(alias),
       meta: t.credits.mergeDialog.videoCount(credit.videoCount),
     };

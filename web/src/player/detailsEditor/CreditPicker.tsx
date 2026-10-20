@@ -8,12 +8,11 @@ import {
   listCredits,
   listPeople,
   type Person,
-  personFaceSrc,
 } from "../../api/credits";
+import { creditFace } from "../../credits/creditFace";
 import { errorText, t, type UiText } from "../../i18n";
 import { foldForMatch } from "../../lib/foldForMatch";
 import CreditCommand, { type CreditChoice } from "../../ui/CreditCommand";
-import { PersonFace } from "../../ui/PersonFace";
 import { type Chip, isNewChip, newRowKey } from "./draft";
 
 const candidateLimit = 8;
@@ -135,6 +134,7 @@ export default function CreditPicker({
       return {
         id: String(credit.id),
         label: credit.name,
+        leading: creditFace(kind, credit, "option"),
         hint: alias === undefined ? undefined : t.player.detailsEditor.alias(alias),
         meta: t.player.detailsEditor.videoCount(credit.videoCount),
       };
@@ -161,18 +161,19 @@ export default function CreditPicker({
       setValue("");
       return;
     }
-    add({ key: newRowKey("c"), id: credit.id, name: credit.name });
+    add({ key: newRowKey("c"), id: credit.id, name: credit.name, ...faceOf(credit) });
   }
 
   function pick(choice: CreditChoice) {
     if (choice.id.startsWith(unnamedPrefix)) {
       const id = Number(choice.id.slice(unnamedPrefix.length));
       if (chosenIds.has(id)) return;
+      const face = faceOf(unnamedShown.find((person) => person.id === id));
       // A typed name becomes this person's name on Save.
       add(
         trimmed === ""
-          ? { key: newRowKey("c"), id, name: "", provisional: true }
-          : { key: newRowKey("c"), id, name: trimmed, naming: true },
+          ? { key: newRowKey("c"), id, name: "", provisional: true, ...face }
+          : { key: newRowKey("c"), id, name: trimmed, naming: true, ...face },
       );
       return;
     }
@@ -278,6 +279,15 @@ export default function CreditPicker({
 
 const unnamedPrefix = "unnamed:";
 
+/** Carries a chosen person's face revision onto the chip; organizations have none. */
+function faceOf(credit: Credit | undefined): { imageRevision?: number } {
+  return credit !== undefined &&
+    "imageRevision" in credit &&
+    credit.imageRevision !== undefined
+    ? { imageRevision: credit.imageRevision }
+    : {};
+}
+
 function unnamedChoice(person: Person, typed: string): CreditChoice {
   const e = t.player.detailsEditor;
   const label = t.credits.unnamedPerson;
@@ -286,7 +296,7 @@ function unnamedChoice(person: Person, typed: string): CreditChoice {
     id: `${unnamedPrefix}${String(person.id)}`,
     label,
     quiet: true,
-    leading: <PersonFace shape="chip" name={label} src={personFaceSrc(person)} />,
+    leading: creditFace("person", person, "option"),
     hint: hint ?? undefined,
     meta: e.videoCount(person.videoCount),
     ariaLabel: e.unnamedRow(label, person.videoCount, hint),
