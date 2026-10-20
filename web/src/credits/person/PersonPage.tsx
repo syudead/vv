@@ -19,9 +19,9 @@ import PersonFaceControl from "./PersonFaceControl";
 import { personFacesPath, personPath } from "./personPath";
 import PersonGone from "./PersonGone";
 import PersonFetchEntry from "./pluginFetch/PersonFetchEntry";
-import { PersonActions, PersonDetails, PersonIdentity } from "./PersonProfile";
+import { personFactsCard, PersonIdentity } from "./PersonProfile";
 import {
-  PersonRoleSections,
+  PersonShelves,
   PersonVideosBody,
   PersonVideosHeader,
   RoleFilter,
@@ -32,7 +32,7 @@ import { parsePersonId, useRoutedPerson } from "./usePerson";
 
 const text = t.credits.personPage;
 
-/** `/people/:id`: the person's face and profile above their videos, one section per role. */
+/** `/people/:id`: the person's face and profile above their videos, one shelf per role. */
 export default function PersonPage() {
   const { id } = useParams();
   const personId = parsePersonId(id);
@@ -156,10 +156,10 @@ function PersonShown({
     <ProfilePage
       profileLabel={text.profile}
       face={<PersonFaceControl person={person} onChanged={replace} onGone={markGone} />}
-      identity={<PersonIdentity person={person} />}
-      actions={
-        <PersonActions
+      identity={
+        <PersonIdentity
           person={person}
+          today={today}
           fetchEntry={
             <PersonFetchEntry person={person} onApplied={replace} onGone={markGone} />
           }
@@ -173,10 +173,10 @@ function PersonShown({
           }}
         />
       }
-      details={<PersonDetails person={person} today={today} />}
+      facts={personFactsCard(person, today)}
     >
       {role === null ? (
-        <PersonRoleSections personId={person.id} all={videos} onSeeAll={setRole} />
+        <PersonShelves personId={person.id} all={videos} onSeeAll={setRole} />
       ) : (
         <section aria-label={text.videos} className="flex min-w-0 flex-col gap-3">
           <PersonVideosHeader videos={videos} />

@@ -67,7 +67,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `page-section`             | Section       | A titled card of rows                                                        |
 | `person-face`              | vv component  | A person's face or its placeholder: card, profile, chip, compare             |
 | `popover`                  | Component     | Options or a short form anchored to a control                                |
-| `profile-page`             | Page skeleton | One subject's profile above its items, such as a person and their videos     |
+| `profile-page`             | Page skeleton | One subject's profile spread above its items, such as a person and videos    |
 | `profile-page-example`     | Block         | Copy to start a profile page                                                 |
 | `progress`                 | Component     | Progress of a known amount of work                                           |
 | `radio-group`              | Component     | Pick one of a few visible options                                            |
@@ -80,6 +80,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `settings-page`            | Page skeleton | Settings, one value per row, with an optional list of pages                  |
 | `settings-page-example`    | Block         | Copy to start a settings page                                                |
 | `sheet`                    | Component     | Edge panel; only the sidebar's narrow-width drawer                           |
+| `shelf`                    | Section       | One sideways-scrolling row of cards under a heading with See all             |
 | `sidebar`                  | Component     | The app's main navigation                                                    |
 | `skeleton`                 | Component     | Shapes of the final layout while loading                                     |
 | `slider`                   | Component     | A value on a range, such as the card size                                    |

@@ -14,6 +14,7 @@ import { cn } from "../../lib/cn";
 import { personEditPath } from "../../lib/personEditPath";
 import { isPlainClick } from "../../lib/plainClick";
 import { libraryFilterPath } from "../../library/libraryPath";
+import { FactList } from "../../ui/patterns/fact-list";
 import { Button } from "../../ui/shadcn/button";
 import {
   DropdownMenu,
@@ -24,12 +25,7 @@ import {
 } from "../../ui/shadcn/dropdown-menu";
 import { kindTexts } from "../creditRows";
 import { creditDisplayName } from "../displayName";
-import {
-  type PersonFact,
-  type PersonFigure,
-  personFigures,
-  profileFacts,
-} from "./personFacts";
+import { type PersonFigure, personFigures, profileFacts } from "./personFacts";
 import { handPerson } from "./personHandoff";
 
 const text = t.credits.personPage;
@@ -57,84 +53,9 @@ function EditLink({
   );
 }
 
-/** The name as the page's h1, then the aliases. */
-export function PersonIdentity({ person }: { person: Person }) {
-  return (
-    <>
-      <h1
-        className={cn(
-          "line-clamp-3 text-xl font-semibold break-words",
-          person.provisional && "text-muted-foreground",
-        )}
-      >
-        {creditDisplayName(person)}
-      </h1>
-      {!person.provisional && person.aliases.length > 0 && (
-        <p className="text-sm break-words text-muted-foreground">
-          {text.aliases(person.aliases.map((alias) => alias.name))}
-        </p>
-      )}
-    </>
-  );
-}
-
-/** The page's actions, all `secondary` with an icon; nothing outranks viewing, so no default. */
-export function PersonActions({
-  person,
-  fetchEntry,
-  facesEntry,
-  onMerge,
-  onDelete,
-}: {
-  person: Person;
-  /** Fetch info…, after Edit; absent while no approved person plugin exists. */
-  fetchEntry?: ReactNode;
-  /** The way to the person's face recognition, after Show in library. */
-  facesEntry?: ReactNode;
-  onMerge: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <>
-      {/* The edit page focuses the name input, so Name… is Edit for a person without one. */}
-      <Button asChild variant="secondary" size="sm">
-        <EditLink person={person}>
-          <Pencil aria-hidden="true" />
-          {person.provisional ? text.name : text.edit}
-        </EditLink>
-      </Button>
-      {fetchEntry}
-      <Button asChild variant="secondary" size="sm">
-        <Link to={libraryFilterPath("person", person.id)}>
-          <LibraryBig aria-hidden="true" />
-          {text.showInLibrary}
-        </Link>
-      </Button>
-      {facesEntry}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-sm" aria-label={text.more}>
-            <Ellipsis aria-hidden="true" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onSelect={onMerge}>
-            <Merge aria-hidden="true" />
-            {kindTexts("person").mergeInto}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onSelect={onDelete}>
-            <Trash2 aria-hidden="true" />
-            {text.delete}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </>
-  );
-}
-
-/** Key numbers above their meaning, in a row that wraps. */
+/** One key number above its meaning, the numbers in a row that wraps. */
 function Figures({ figures }: { figures: readonly PersonFigure[] }) {
+  if (figures.length === 0) return null;
   return (
     <dl className="flex flex-wrap gap-x-8 gap-y-3">
       {figures.map((figure) => (
@@ -147,17 +68,83 @@ function Figures({ figures }: { figures: readonly PersonFigure[] }) {
   );
 }
 
-/** The other facts in columns, each value under its term, so a long value wraps in its cell. */
-function Facts({ facts }: { facts: readonly PersonFact[] }) {
+/**
+ * The name, aliases, key figures, bio and actions; the actions are `secondary` with an icon, since
+ * nothing on the page outranks viewing.
+ */
+export function PersonIdentity({
+  person,
+  today,
+  fetchEntry,
+  facesEntry,
+  onMerge,
+  onDelete,
+}: {
+  person: Person;
+  today: Date;
+  /** Fetch info…, after Edit; absent while no approved person plugin exists. */
+  fetchEntry?: ReactNode;
+  /** The way to the person's face recognition, after Show in library. */
+  facesEntry?: ReactNode;
+  onMerge: () => void;
+  onDelete: () => void;
+}) {
+  const bio = person.profile.bio;
   return (
-    <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm md:grid-cols-3 xl:grid-cols-4">
-      {facts.map((fact) => (
-        <div key={fact.id} className="flex min-w-0 flex-col-reverse gap-0.5">
-          <dt className="text-xs text-muted-foreground">{fact.term}</dt>
-          <dd className="wrap-anywhere">{fact.value}</dd>
-        </div>
-      ))}
-    </dl>
+    <>
+      <div className="flex flex-col gap-1">
+        <h1
+          className={cn(
+            "line-clamp-3 text-xl font-semibold break-words",
+            person.provisional && "text-muted-foreground",
+          )}
+        >
+          {creditDisplayName(person)}
+        </h1>
+        {!person.provisional && person.aliases.length > 0 && (
+          <p className="text-sm break-words text-muted-foreground">
+            {text.aliases(person.aliases.map((alias) => alias.name))}
+          </p>
+        )}
+      </div>
+      <Figures figures={personFigures(person.profile, today)} />
+      {bio !== undefined && <Bio bio={bio} />}
+      <div className="flex flex-wrap items-center gap-2">
+        {/* The edit page focuses the name input, so Name… is Edit for a person without one. */}
+        <Button asChild variant="secondary" size="sm">
+          <EditLink person={person}>
+            <Pencil aria-hidden="true" />
+            {person.provisional ? text.name : text.edit}
+          </EditLink>
+        </Button>
+        {fetchEntry}
+        <Button asChild variant="secondary" size="sm">
+          <Link to={libraryFilterPath("person", person.id)}>
+            <LibraryBig aria-hidden="true" />
+            {text.showInLibrary}
+          </Link>
+        </Button>
+        {facesEntry}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon-sm" aria-label={text.more}>
+              <Ellipsis aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={onMerge}>
+              <Merge aria-hidden="true" />
+              {kindTexts("person").mergeInto}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onSelect={onDelete}>
+              <Trash2 aria-hidden="true" />
+              {text.delete}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </>
   );
 }
 
@@ -201,10 +188,10 @@ function hostOf(url: string): string {
   }
 }
 
-/** One host per link in a line that wraps, each opening its page in a new tab. */
+/** One host per line, each opening its page in a new tab. */
 export function LinkList({ links }: { links: readonly string[] }) {
   return (
-    <ul aria-label={text.links} className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+    <ul aria-label={text.links} className="flex min-w-0 flex-col gap-1 text-sm">
       {links.map((url) => (
         <li key={url} className="min-w-0">
           <a
@@ -223,46 +210,50 @@ export function LinkList({ links }: { links: readonly string[] }) {
   );
 }
 
-/** Under the name: key figures, the other facts, links and IDs, then the bio. */
-export function PersonDetails({ person, today }: { person: Person; today: Date }) {
-  const figures = personFigures(person.profile, today);
+/**
+ * The profile card: the remaining facts, then links and external IDs; undefined when the spread
+ * already shows everything the person has.
+ */
+export function personFactsCard(person: Person, today: Date): ReactNode {
   const facts = profileFacts(person.profile, today);
   const links = person.profile.links ?? [];
-  const bio = person.profile.bio;
   const empty =
-    figures.length === 0 &&
     facts.length === 0 &&
     links.length === 0 &&
     person.externalIds.length === 0 &&
-    bio === undefined;
-  if (empty) {
-    return (
-      <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-        {text.noProfile}
-        <Button asChild variant="link" size="sm">
-          <EditLink person={person}>{text.edit}</EditLink>
-        </Button>
-      </p>
-    );
-  }
+    personFigures(person.profile, today).length === 0 &&
+    person.profile.bio === undefined;
+  if (
+    !empty &&
+    facts.length === 0 &&
+    links.length === 0 &&
+    person.externalIds.length === 0
+  )
+    return undefined;
   return (
     <>
-      {figures.length > 0 && <Figures figures={figures} />}
-      {facts.length > 0 && <Facts facts={facts} />}
+      {empty && (
+        <p className="flex flex-wrap items-center gap-2 text-muted-foreground">
+          {text.noProfile}
+          <Button asChild variant="link" size="sm">
+            <EditLink person={person}>{text.edit}</EditLink>
+          </Button>
+        </p>
+      )}
+      {facts.length > 0 && <FactList facts={facts} />}
       {links.length > 0 && <LinkList links={links} />}
       {person.externalIds.length > 0 && (
         <ul
           aria-label={text.externalIds}
-          className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"
+          className="flex flex-col gap-1 text-xs break-words text-muted-foreground"
         >
           {person.externalIds.map((id) => (
-            <li key={`${id.source}\0${id.value}`} className="min-w-0 wrap-anywhere">
+            <li key={`${id.source}\0${id.value}`}>
               {text.externalId(id.source, id.value)}
             </li>
           ))}
         </ul>
       )}
-      {bio !== undefined && <Bio bio={bio} />}
     </>
   );
 }

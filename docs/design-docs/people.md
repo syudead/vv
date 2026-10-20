@@ -223,25 +223,26 @@ dialog and opens the new person's page. Organizations keep the table.
 ## The person page
 
 `/people/:id` shows one person in a `ProfilePage`
-([design-system.md](design-system.md#page-patterns)): the face at the left and
-beside it the name and aliases, the actions, the key figures (age, height,
-measurements with the cup, career) as large numbers, the other facts (dates,
-gender, birthplace, blood type) in columns, links and external IDs in lines
-that wrap, and the bio. The person is seen before their videos, as in other
-media libraries' person pages. The actions are `secondary` buttons with icons
-(`Edit`, `Fetch info…`, `Show in library`, `Faces`), with merging and deleting
-in the `More` menu.
+([design-system.md](design-system.md#page-patterns)): a profile spread across
+the page, then the person's videos. The spread holds the face; the name and
+aliases; the key figures (age, height, measurements with the cup, career) as
+large numbers; the bio; the actions; and a card at the end with the remaining
+facts (dates, gender, birthplace, blood type), links and external IDs. From
+`lg` that card stops at the face's height and scrolls inside, so a person with
+many links does not push the videos down. The actions are `secondary` buttons
+with icons (`Edit`, `Fetch info…`, `Show in library`, `Faces`), with merging
+and deleting in the `More` menu. The person is seen before their videos, as in
+other media libraries' person pages.
 
-The videos follow in one section per role the person has videos in, in the
-roles' order, each a header with the count over a grid of its first ten
-videos, and `See all` when there are more. `See all` replaces the sections
-with that role's full grid and the role filter, whose `All` returns to the
-sections. The page reads the person with `GET /api/people/{id}` and the videos
-with `GET /api/videos?person={id}`, in the library's default order; each
-section and the grid add `personRole`, so totals and paging stay the server's
-([library-ui.md](library-ui.md)). A role without videos draws no section, and
-a person without videos shows one empty state. The page is owner-only, as the
-rest of `/people`.
+The videos follow as one `Shelf` per role the person has videos in, in the
+roles' order, each a row of cards that scrolls sideways with its count and
+`See all`. `See all` replaces the shelves with that role's full grid and the
+role filter, whose `All` returns to the shelves. The page reads the person with
+`GET /api/people/{id}` and the videos with `GET /api/videos?person={id}`, in
+the library's default order; each shelf and the grid add `personRole`, so
+totals and paging stay the server's ([library-ui.md](library-ui.md)). A role
+without videos draws no shelf, and a person without videos shows one empty
+state. The page is owner-only, as the rest of `/people`.
 
 | Rejected                                   | Why                                                                                     |
 | ------------------------------------------ | --------------------------------------------------------------------------------------- |

@@ -11,6 +11,7 @@ import { ErrorState } from "../../ui/patterns/error-state";
 import { LoadMoreRow } from "../../ui/patterns/load-more-row";
 import { LoadingState } from "../../ui/patterns/loading-state";
 import { PageHeader } from "../../ui/patterns/page-header";
+import { Shelf, ShelfItem } from "../../ui/patterns/shelf";
 import { Button } from "../../ui/shadcn/button";
 import { ToggleGroup, ToggleGroupItem } from "../../ui/shadcn/toggle-group";
 import { DEFAULT_SORT } from "../../videoList/listCriteria";
@@ -27,8 +28,8 @@ function isRole(value: string): value is Role {
   return (roles as readonly string[]).includes(value);
 }
 
-/** The cards a role's section shows before See all: two rows at common widths. */
-const sectionSize = 10;
+/** The cards a shelf shows before See all. */
+const shelfSize = 12;
 
 /** The person's videos in the library's default order, narrowed to one role on the server. */
 export function usePersonVideos(personId: number) {
@@ -153,10 +154,10 @@ export function PersonVideosBody({
 }
 
 /**
- * One section per role the person has videos in, in the roles' order. `all` is the person's videos
- * in any role: its states stand for the sections, and with none the empty state shows instead.
+ * One shelf per role the person has videos in, in the roles' order. `all` is the person's videos in
+ * any role: its states stand for the shelves, and with none the empty state shows instead.
  */
-export function PersonRoleSections({
+export function PersonShelves({
   personId,
   all,
   onSeeAll,
@@ -183,14 +184,14 @@ export function PersonRoleSections({
   return (
     <>
       {roles.map((role) => (
-        <RoleSection key={role} personId={personId} role={role} onSeeAll={onSeeAll} />
+        <RoleShelf key={role} personId={personId} role={role} onSeeAll={onSeeAll} />
       ))}
     </>
   );
 }
 
-/** A role without videos, or whose read failed, draws nothing; the other sections still show. */
-function RoleSection({
+/** A role without videos, or whose read failed, draws nothing; the other shelves still show. */
+function RoleShelf({
   personId,
   role,
   onSeeAll,
@@ -209,39 +210,32 @@ function RoleSection({
   if (videos.loading || videos.items.length === 0) return null;
   const name = text.roles[role];
   return (
-    <section aria-label={name} className="flex min-w-0 flex-col gap-3">
-      <PageHeader
-        title={name}
-        headingLevel={2}
-        count={t.credits.row.videoCount(videos.total)}
-        actions={
-          videos.total > sectionSize ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-label={text.seeAllAs(name)}
-              onClick={() => onSeeAll(role)}
-            >
-              {text.seeAll}
-            </Button>
-          ) : undefined
-        }
-      />
-      <CardGrid size={0}>
-        {videos.items
-          .slice(0, sectionSize)
-          .map((item) =>
-            item.kind === "video" ? (
-              <VideoCard
-                key={item.video.id}
-                video={item.video}
-                backTo={backTo}
-                selected={false}
-                selectionMode={false}
-              />
-            ) : null,
-          )}
-      </CardGrid>
-    </section>
+    <Shelf
+      title={name}
+      count={t.credits.row.videoCount(videos.total)}
+      action={
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={text.seeAllAs(name)}
+          onClick={() => onSeeAll(role)}
+        >
+          {text.seeAll}
+        </Button>
+      }
+    >
+      {videos.items.slice(0, shelfSize).map((item) =>
+        item.kind === "video" ? (
+          <ShelfItem key={item.video.id}>
+            <VideoCard
+              video={item.video}
+              backTo={backTo}
+              selected={false}
+              selectionMode={false}
+            />
+          </ShelfItem>
+        ) : null,
+      )}
+    </Shelf>
   );
 }
