@@ -296,7 +296,6 @@ them.
 | `Join` | Join split clusters of one video | 0.45 | 0.288 |
 | `Candidate` | Offer a pair to the owner | 0.363 | 0.205 |
 | `Link` | Link a main person to a person | 0.55 | 0.545 |
-| `Margin` | Lead of the most similar person over the next for a link | 0.1 | 0.1 |
 | `Merge` | Merge a provisional person on a face image | 0.55 | 0.545 |
 
 The SFace values are the upstream same-person threshold and the POC's. The
@@ -334,9 +333,7 @@ rate), the maintainer's library had most new people linked to strangers; video
 faces are smaller and blurrier than LFW's. A face between `Candidate` and `Link`
 becomes a provisional person offered with the near people, which the owner
 confirms with "Same person?". `Join` keeps the first value, because it compares
-the clusters of one video, where few people compete. `Margin` is not measured:
-two people within 0.1 of each other above `Link` are a look-alike or one person
-stored twice, and either is the owner's call.
+the clusters of one video, where few people compete.
 
 | Rejected | Why |
 | --- | --- |
@@ -351,8 +348,8 @@ centroid is compared with it
 
 | Similarity | Result |
 | --- | --- |
-| `Link` or more, leading the next person by `Margin` | Linked to the most similar person |
-| `Link` or more without that lead, or `Candidate` up to `Link` | A new provisional person, offered with each person from `Candidate` up as a candidate |
+| `Link` or more | Linked to the most similar person, and each other person at `Link` or more is offered with that person as a candidate |
+| `Candidate` up to `Link` | A new provisional person, offered with each such person as a candidate |
 | Below `Candidate` | A new provisional person |
 
 A person made by an analysis gets the crop of their best face as their face
@@ -362,8 +359,13 @@ does not embed the crop again. The face changes only when the owner replaces
 it, or a merge gives a target without a face the source's, and the vector
 follows the face. Links never change it.
 
+Two people at `Link` or more are nearly always one person stored twice, as when
+an earlier video of them stayed under `Link` and made a provisional person:
+strangers reach `Link` for 0.17% of faces.
+
 | Rejected | Why |
 | --- | --- |
+| Linking only when the most similar person leads the next by a margin | One person stored twice never leads, so every video of them made one more provisional person |
 | Every appearance's centroid as a vector of its person | A person seen in many videos had as many chances to match a stranger, and each wrong link widened the person, so a few people took every new face |
 | One averaged vector per person | Each link would move it, and a wrong link would pull it towards the stranger |
 | Embedding the crop of a new person in the face worker | The JPEG crop gives a vector other than its frame's, and the next video could not match the person until the worker ran |

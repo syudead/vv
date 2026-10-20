@@ -33,17 +33,18 @@ type FaceMatch struct {
 	Kind       FaceMatchKind
 	PersonID   int64
 	Similarity float64
-	// Candidates lie between the candidate and link thresholds, most similar first; empty for a link.
+	// Candidates are, for a new person, every person at or above Candidate; for a link, the other people at or above
+	// Link, who are likely the linked person stored twice. Most similar first.
 	Candidates []FaceCandidate
 }
 
-// MatchFace links v to the most similar person at or above Link when they lead the next person by Margin, or
-// creates a provisional person offered with every person at or above Candidate.
+// MatchFace links v to the most similar person at or above Link, offering the others at or above Link as that
+// person's candidates, or creates a provisional person offered with every person at or above Candidate.
 func MatchFace(th FaceThresholds, v []float32, vectors []FacePersonVector) FaceMatch {
 	best := bestFaceSimilarities(v, vectors)
-	if len(best) > 0 && best[0].Similarity >= th.Link &&
-		(len(best) == 1 || best[0].Similarity-best[1].Similarity >= th.Margin) {
-		return FaceMatch{Kind: FaceMatchLink, PersonID: best[0].PersonID, Similarity: best[0].Similarity}
+	if len(best) > 0 && best[0].Similarity >= th.Link {
+		return FaceMatch{Kind: FaceMatchLink, PersonID: best[0].PersonID, Similarity: best[0].Similarity,
+			Candidates: atLeast(best[1:], th.Link)}
 	}
 	return FaceMatch{Kind: FaceMatchNew, Candidates: atLeast(best, th.Candidate)}
 }

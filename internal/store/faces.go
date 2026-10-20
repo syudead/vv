@@ -353,8 +353,8 @@ func carryFaceAppearance(
 	return nil
 }
 
-// linkFaceAppearance stores a new appearance linked to its matched person, or to a new provisional person whose
-// face is the crop, and makes that person a performer of the video.
+// linkFaceAppearance stores a new appearance linked to its matched person, offered with the other people as close,
+// or to a new provisional person whose face is the crop, and makes that person a performer of the video.
 func linkFaceAppearance(
 	ctx context.Context, tx *sql.Tx, result domain.FaceAnalysis, p domain.FaceAnalysedPerson, match domain.FaceMatch,
 	userKey string, now time.Time,
@@ -371,6 +371,14 @@ func linkFaceAppearance(
 		}
 		if err := writeFaceCandidates(ctx, tx, id, match.Candidates, now); err != nil {
 			return faceLink{}, false, err
+		}
+	}
+	if match.Kind == domain.FaceMatchLink {
+		// Another person this close is most likely the linked one stored twice; the owner joins them.
+		for _, c := range match.Candidates {
+			if err := offerFacePair(ctx, tx, c.PersonID, match.PersonID, c.Similarity, now); err != nil {
+				return faceLink{}, false, err
+			}
 		}
 	}
 	tracks, err := encodeFaceTracks(p.Spans)

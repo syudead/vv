@@ -261,6 +261,23 @@ func TestStoreFaceAnalysisMatchesAPersonByTheirFaceOnly(t *testing.T) {
 	}
 }
 
+// A face that reaches Link with two people links to the closer one and offers the two as one person stored twice,
+// so the next video of that face does not make a third.
+func TestStoreFaceAnalysisLinksTheCloserOfTwoPeopleAndOffersThem(t *testing.T) {
+	f := newFaceFixture(t)
+	closer, other := createPerson(t, f.db, "Closer").ID, createPerson(t, f.db, "Other").ID
+	setFaceVector(t, f.db, closer, faceNear(0, 1, 0.8))
+	setFaceVector(t, f.db, other, faceNear(0, 2, 0.75))
+	f.analyse(t, facePerson(0.25, 0, faceBasis(0), "crop"))
+
+	if got := faceAppearances(t, f.db); len(got) != 1 || got[0].personID != closer {
+		t.Fatalf("appearances = %+v, want one linked to person %d", got, closer)
+	}
+	if got, want := faceCandidatePairs(t, f.db), [][2]int64{{other, closer}}; !slices.Equal(got, want) {
+		t.Errorf("candidates = %v, want %v", got, want)
+	}
+}
+
 func TestStoreFaceAnalysisOffersTwoNewPeopleOfOneVideoToEachOther(t *testing.T) {
 	// SFace's candidate threshold is 0.363: 0.6 reaches it, an orthogonal vector does not.
 	f := newFaceFixture(t)
