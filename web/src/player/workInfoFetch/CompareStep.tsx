@@ -436,7 +436,7 @@ function CreditToggle({
       leading={
         chip.faceIndex === undefined ? undefined : (
           <PersonFace
-            shape="token"
+            shape="compare"
             name=""
             src={workInfoFetchPersonImageUrl(
               props.video.id,
