@@ -92,7 +92,7 @@ export default function FolderContents({
                 <FolderVideoGrid
                   videos={videos}
                   zoom={zoom}
-                  onLift={preview.onPreviewReset}
+                  onLift={preview.previewCoordinator.reset}
                   card={(video) => (
                     <VideoCard
                       key={video.id}
