@@ -237,6 +237,8 @@ func TestForcedStageFailureReplacesTheDoneState(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			db := migratedDB(t)
 			ctx := context.Background()
+			// Import issues belong to a scan.
+			startTestScan(t, db)
 			videoID := queueNewFile(t, db, "clip", domain.ActivityByRule)
 			for _, kind := range []domain.JobKind{domain.JobProbe, domain.JobThumbnail, domain.JobSeekThumbnail} {
 				runImportStage(t, db, kind)
@@ -248,22 +250,83 @@ func TestForcedStageFailureReplacesTheDoneState(t *testing.T) {
 			if err := queue(ctx, videoID, domain.ActivityByOwner, tc.kind); err != nil {
 				t.Fatal(err)
 			}
+			issue, _ := domain.FailedIssueKind(tc.kind)
 
 			giveUpStage(t, db, tc.kind, errors.New("ffmpeg failed"))
 
 			if got := tc.state(getOwnerVideo(t, db, videoID)); got != tc.want {
 				t.Fatalf("%s state = %s, want %s", tc.kind, got, tc.want)
 			}
+			var wantIssues []domain.ScanIssueKind
+			if tc.force {
+				wantIssues = []domain.ScanIssueKind{issue}
+			}
+			assertVideoIssues(t, db, videoID, wantIssues...)
 			if !tc.force {
 				return
 			}
-			// The next force rescan runs the failed stage again, and its success clears the failure.
+			// The next force rescan runs the failed stage again, and its success clears the failure and its issue.
 			forceJobs(t, db, videoID, tc.kind)
 			runImportStage(t, db, tc.kind)
 			if got := tc.state(getOwnerVideo(t, db, videoID)); got != "done" {
 				t.Errorf("%s state after a forced success = %s, want done", tc.kind, got)
 			}
+			assertVideoIssues(t, db, videoID)
 		})
+	}
+}
+
+// An owner's thumbnail edit after a forced thumbnail job's claim is the newer result, so that job giving up keeps the
+// edit's done state and records no issue.
+func TestForcedThumbnailFailureKeepsAnOwnerEditSinceTheClaim(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	startTestScan(t, db)
+	videoID := queueNewFile(t, db, "clip", domain.ActivityByRule)
+	for _, kind := range []domain.JobKind{domain.JobProbe, domain.JobThumbnail, domain.JobSeekThumbnail} {
+		runImportStage(t, db, kind)
+	}
+	forceJobs(t, db, videoID, domain.JobThumbnail)
+	for attempt := 1; attempt <= domain.MaxJobAttempts; attempt++ {
+		job := claimKind(t, db, domain.JobThumbnail)
+		if attempt == domain.MaxJobAttempts {
+			position := int64(5_000)
+			if _, err := db.Overrides().SetThumbnailPosition(ctx, videoID, &position); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := db.Ingest().FailClaimedJob(ctx, job, errors.New("ffmpeg failed")); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if got := getOwnerVideo(t, db, videoID).ThumbnailState; got != domain.ThumbnailStateDone {
+		t.Errorf("thumbnail state = %s, want done after the owner's edit", got)
+	}
+	assertVideoIssues(t, db, videoID)
+}
+
+// assertVideoIssues compares the video's import issue kinds, in kind order.
+func assertVideoIssues(t *testing.T, db *DB, videoID int64, want ...domain.ScanIssueKind) {
+	t.Helper()
+	rows, err := db.sql.Query(`select kind from scan_issues where video_id = ? order by kind`, videoID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	var got []domain.ScanIssueKind
+	for rows.Next() {
+		var kind domain.ScanIssueKind
+		if err := rows.Scan(&kind); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, kind)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("issues = %v, want %v", got, want)
 	}
 }
 

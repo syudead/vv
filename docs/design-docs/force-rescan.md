@@ -102,7 +102,11 @@ position again, or else takes the automatic frame
 built beside the published one ([forced rebuild](seek-sprite-generation.md#forced-rebuild)).
 A forced job that gives up records its stage `failed` even over a `done`
 state, with the import issue an ordinary failure records, so a failed rebuild
-is not shown as the old success; an unforced job keeps a `done` state.
+is not shown as the old success; an unforced job keeps a `done` state. The
+video's `seekThumbnailState` stays `failed` while the kept sprite still serves
+the seek preview. An owner's thumbnail edit while a forced `thumbnail` job runs
+clears that job's force, because the edit is the newer result: the job giving
+up afterwards keeps the edit's `done` state.
 
 | Rejected | Why |
 | --- | --- |

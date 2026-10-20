@@ -315,6 +315,13 @@ func markThumbnailDoneForContent(ctx context.Context, tx *sql.Tx, key string, no
 	); err != nil {
 		return false, fmt.Errorf("cannot record the thumbnail state: %w", err)
 	}
+	// The owner's thumbnail satisfies a running forced rebuild, so that job giving up later keeps this done state.
+	if _, err := tx.ExecContext(ctx, `update jobs set force = 0
+		where kind = ? and state = 'running' and force = 1 and video_id in (select id from videos where content_key = ?)`,
+		string(domain.JobThumbnail), key,
+	); err != nil {
+		return false, fmt.Errorf("cannot settle the forced thumbnail job: %w", err)
+	}
 	cleared := false
 	for _, id := range ids {
 		removed, err := removeScanIssues(ctx, tx, id, domain.IssueThumbnailFirstFrame, domain.IssueThumbnailFailed)

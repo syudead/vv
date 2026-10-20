@@ -411,8 +411,11 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// The row's force, not the claimed one: an owner's thumbnail edit since the claim clears it to keep that done state.
 	var attempts int
-	err = tx.QueryRowContext(ctx, `select attempts from jobs where id = ? and state = 'running'`, job.ID).Scan(&attempts)
+	var forced bool
+	err = tx.QueryRowContext(ctx, `select attempts, force from jobs where id = ? and state = 'running'`, job.ID).
+		Scan(&attempts, &forced)
 	if errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("cannot record a failure on the running job (id=%d, affected=0)", job.ID)
 	}
@@ -448,7 +451,7 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 
 	var c changes
 	if state == domain.JobFailed {
-		if err := recordTerminalFailure(ctx, tx, job, cause, now); err != nil {
+		if err := recordTerminalFailure(ctx, tx, job, cause, now, forced); err != nil {
 			return err
 		}
 		if job.Kind == domain.JobSeekThumbnail && !job.Force {
@@ -464,8 +467,9 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 	return nil
 }
 
-// Record terminal failure atomically with job completion so a failed video always has a finished stage job; require the claimed identity to match.
-func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, cause error, now int64) error {
+// Record terminal failure atomically with job completion so a failed video always has a finished stage job; require the
+// claimed identity to match. replaceDone records a forced rebuild's failure over a done state.
+func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, cause error, now int64, replaceDone bool) error {
 	const identity = `id = ? and content_key = ? and location_generation = ? and exists (
 			select 1 from video_locations where id = ? and video_id = ? and version = ? and path = ?
 		)`
@@ -473,7 +477,7 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 		job.LocationID, job.VideoID, job.LocationVersion, job.LocationPath}
 
 	// A forced job replaces a done or failed state too, so a failed rebuild is not shown as the old success.
-	forced := boolToInt(job.Force)
+	forced := boolToInt(replaceDone)
 
 	var updated sql.Result
 	switch job.Kind {
