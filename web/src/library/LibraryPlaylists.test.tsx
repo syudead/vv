@@ -220,7 +220,9 @@ describe("ライブラリからプレイリストに足す", () => {
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label"));
     expect(names.indexOf("Add to playlist")).toBe(names.indexOf("Favorite") + 1);
-    expect(names.indexOf("Visibility")).toBe(names.indexOf("Add to playlist") + 3);
+    expect(names.indexOf("Bundle as versions")).toBe(
+      names.indexOf("Add to playlist") + 3,
+    );
 
     await user.click(within(bar).getByRole("button", { name: "Add to playlist" }));
     await choose(user);

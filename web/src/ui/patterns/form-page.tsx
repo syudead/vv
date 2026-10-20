@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { type ReactNode, type RefObject, useRef } from "react";
 
 import { cn } from "@/lib/cn";
+import { Dialog, DialogContent, DialogTitle } from "@/ui/shadcn/dialog";
 import { FieldLegend, FieldSet } from "@/ui/shadcn/field";
 
 // Full-page batch editing with independent wide-screen columns; see web/registry/rules/patterns.md, Form page.
@@ -73,7 +74,7 @@ export function FormPage({
             {aside !== undefined && (
               <aside
                 aria-label={asideLabel}
-                className="flex min-w-0 flex-col gap-3 text-sm"
+                className="flex min-w-0 flex-col gap-3 text-sm lg:-mx-1 lg:min-h-0 lg:overflow-y-auto lg:px-1"
               >
                 {aside}
               </aside>
@@ -99,5 +100,68 @@ export function FormPage({
         )}
       </div>
     </div>
+  );
+}
+
+export interface FormPageDialogProps extends FormPageProps {
+  open: boolean;
+  /** Esc requests closing; the caller sets open=false once it accepts, or first asks to discard. */
+  onClose: () => void;
+  /** Defaults to the first focusable element. */
+  initialFocus?: RefObject<HTMLElement | null>;
+}
+
+/**
+ * A FormPage over the current screen, for a form that must keep the screen under it (its selection
+ * and scroll position); see web/registry/rules/patterns.md, Form page.
+ */
+export function FormPageDialog({
+  open,
+  onClose,
+  initialFocus,
+  title,
+  ...page
+}: FormPageDialogProps) {
+  // Restore the previously focused trigger on close.
+  const previousFocus = useRef<HTMLElement | null>(null);
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <DialogContent
+        data-slot="form-page-dialog"
+        showCloseButton={false}
+        aria-describedby={undefined}
+        className="inset-0 m-0 block max-h-none max-w-none translate-y-0 overflow-y-auto overscroll-contain rounded-none bg-background p-0 text-foreground shadow-none"
+        onEscapeKeyDown={(event) => {
+          // IME cancellation Escape must not close the dialog.
+          if (event.isComposing || event.keyCode === 229) event.preventDefault();
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          if (previousFocus.current?.isConnected === true) previousFocus.current.focus();
+        }}
+        onOpenAutoFocus={(event) => {
+          previousFocus.current =
+            document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          const target = initialFocus?.current;
+          if (target === null || target === undefined) return;
+          event.preventDefault();
+          target.focus();
+        }}
+      >
+        <FormPage
+          {...page}
+          title={
+            <DialogTitle asChild>
+              <span>{title}</span>
+            </DialogTitle>
+          }
+        />
+      </DialogContent>
+    </Dialog>
   );
 }

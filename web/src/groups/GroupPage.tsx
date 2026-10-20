@@ -277,7 +277,10 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   const pressTag = usePressTagToLibrary();
 
   const selectionMode = selection.selection.ids.size > 0;
-  const { favorites, selectedIds } = useSelectionTargets(selection.selection);
+  const { favorites, selectedIds, editTargets } = useSelectionTargets(
+    selection.selection,
+    data?.items,
+  );
 
   const { clear } = selection;
   useEffect(() => {
@@ -387,6 +390,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
         data !== null && (
           <SelectionBar
             count={selection.selection.ids.size}
+            targets={editTargets}
             selectedIds={selectedIds}
             favoriteVideoIds={favorites.videoIds}
             favoriteGroupIds={favorites.groupIds}

@@ -28,7 +28,7 @@ import {
 } from "./draft";
 import { controlId, invalidProps, Problem } from "./fields";
 
-function personRole(role: WorkPersonRole): { label: UiText; add: UiText } {
+export function personRole(role: WorkPersonRole): { label: UiText; add: UiText } {
   const e = t.player.detailsEditor;
   if (role === "performer") return { label: e.performers, add: e.addPerformer };
   if (role === "director") return { label: e.directors, add: e.addDirector };
@@ -36,7 +36,10 @@ function personRole(role: WorkPersonRole): { label: UiText; add: UiText } {
   return { label: e.streamers, add: e.addStreamer };
 }
 
-function organizationRole(role: WorkOrganizationRole): { label: UiText; add: UiText } {
+export function organizationRole(role: WorkOrganizationRole): {
+  label: UiText;
+  add: UiText;
+} {
   const e = t.player.detailsEditor;
   return role === "maker"
     ? { label: e.makers, add: e.addMaker }

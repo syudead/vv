@@ -38,6 +38,7 @@ reference documents; retain lasting decisions here before deleting them.
 - [Person plugins: the contract](person-plugins.md)
 - [vv design system](design-system.md)
 - [Library UI: visual rules and list layout](library-ui.md)
+- [Bulk editing: the editor over a selection](bulk-editing.md)
 - [Related videos and the previous and next video](related-videos.md)
 - [Home library and setup](home.md)
 - [Screen text and formatting (i18n)](i18n.md)

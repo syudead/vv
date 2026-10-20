@@ -28,13 +28,24 @@ func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSum
 		return summary, nil
 	}
 
+	if summary.Items, err = tagSummaryItems(ctx, tx, videoIDs); err != nil {
+		return domain.TagSummary{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.TagSummary{}, fmt.Errorf("cannot read tag summaries: %w", err)
+	}
+	return summary, nil
+}
+
+// Count tags of the selected registered videos by user key in the caller's snapshot, in natural-name order.
+func tagSummaryItems(ctx context.Context, q queryExecer, videoIDs []int64) ([]domain.TagSummaryItem, error) {
 	encodedIDs, err := json.Marshal(videoIDs)
 	if err != nil {
-		return domain.TagSummary{}, fmt.Errorf("cannot build video ids: %w", err)
+		return nil, fmt.Errorf("cannot build video ids: %w", err)
 	}
 
 	// Deduplicate content keys across matching folder names and synonyms; manualCount includes manual attachments only.
-	rows, err := tx.QueryContext(ctx, `
+	rows, err := q.QueryContext(ctx, `
 		with selected(video_id, content_key) as (
 			select v.id, `+userKeyExpr("v")+` from videos v
 			 where v.id in (select value from json_each(?)) and v.content_key <> '' and `+
@@ -55,29 +66,27 @@ func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSum
 		 group by t.tag_id`, string(encodedIDs),
 	)
 	if err != nil {
-		return domain.TagSummary{}, fmt.Errorf("cannot read tag summaries: %w", err)
+		return nil, fmt.Errorf("cannot read tag summaries: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
+	items := []domain.TagSummaryItem{}
 	for rows.Next() {
 		var item domain.TagSummaryItem
 		var kind scannedTagKind
 		if err := rows.Scan(append([]any{&item.Tag.ID, &item.Tag.Name, &item.Tag.Tentative, &item.Count, &item.ManualCount},
 			kind.targets()...)...); err != nil {
-			return domain.TagSummary{}, fmt.Errorf("cannot read tag summaries: %w", err)
+			return nil, fmt.Errorf("cannot read tag summaries: %w", err)
 		}
 		item.Tag.Kind = kind.ref()
-		summary.Items = append(summary.Items, item)
+		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return domain.TagSummary{}, fmt.Errorf("cannot read tag summaries: %w", err)
+		return nil, fmt.Errorf("cannot read tag summaries: %w", err)
 	}
 	if err := rows.Close(); err != nil {
-		return domain.TagSummary{}, fmt.Errorf("cannot read tag summaries: %w", err)
+		return nil, fmt.Errorf("cannot read tag summaries: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return domain.TagSummary{}, fmt.Errorf("cannot read tag summaries: %w", err)
-	}
-	domain.SortTagSummaryItems(summary.Items)
-	return summary, nil
+	domain.SortTagSummaryItems(items)
+	return items, nil
 }

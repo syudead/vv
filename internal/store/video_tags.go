@@ -68,15 +68,19 @@ func (s *TagStore) DetachTag(ctx context.Context, videoIDs []int64, tagID int64)
 		return domain.TagRef{}, 0, err
 	}
 
+	keys, err := userKeysForVideoIDs(ctx, tx, videoIDs)
+	if err != nil {
+		return domain.TagRef{}, 0, err
+	}
 	now := time.Now()
-	applied, changed, err := detachTagFromVideoIDs(ctx, tx, videoIDs, tagID, now)
+	changed, err := detachTagFromUserKeys(ctx, tx, keys, tagID, now)
 	if err != nil {
 		return domain.TagRef{}, 0, err
 	}
 	if err := s.commitTagChanges(ctx, tx, domain.ActivityTagDetach, changed, tagID, now); err != nil {
 		return domain.TagRef{}, 0, fmt.Errorf("cannot remove the tag: %w", err)
 	}
-	return ref, applied, nil
+	return ref, len(keys), nil
 }
 
 // Write owner activity and edit times only for changed shared user keys, then commit atomically.
@@ -100,11 +104,18 @@ func (s *TagStore) commitTagChanges(
 	ctx context.Context, tx *sql.Tx, kind domain.ActivityKind, changed []string, tagID int64, now time.Time,
 ) error {
 	c := &changes{}
-	if err := recordOwnerVideoActivity(ctx, tx, c, kind, ownerTagChanges(changed, tagID), now); err != nil {
+	if err := recordTagChange(ctx, tx, c, kind, changed, tagID, now); err != nil {
 		return err
 	}
-	c.matchesChanged()
 	return s.db.commit(ctx, tx, c)
+}
+
+// Record owner activity for the keys one tag change affected; tag changes can change smart-folder matches.
+func recordTagChange(
+	ctx context.Context, tx *sql.Tx, c *changes, kind domain.ActivityKind, changed []string, tagID int64, now time.Time,
+) error {
+	c.matchesChanged()
+	return recordOwnerVideoActivity(ctx, tx, c, kind, ownerTagChanges(changed, tagID), now)
 }
 
 // Manual attachment promotes tentative suggestions and advances edit times for all affected bundle members.
@@ -128,29 +139,22 @@ func attachTagToUserKeys(ctx context.Context, tx *sql.Tx, keys []string, tagID i
 	return changed, touchEditedAtForUserKeys(ctx, tx, changed, now)
 }
 
-func detachTagFromVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagID int64, now time.Time) (int, []string, error) {
-	keys, err := userKeysForVideoIDs(ctx, tx, videoIDs)
-	if err != nil {
-		return 0, nil, err
-	}
+func detachTagFromUserKeys(ctx context.Context, tx *sql.Tx, keys []string, tagID int64, now time.Time) ([]string, error) {
 	changed := make([]string, 0, len(keys))
 	for _, key := range keys {
 		result, err := tx.ExecContext(ctx,
 			`delete from video_tags where content_key = ? and tag_id = ?`, key, tagID,
 		)
 		if err != nil {
-			return 0, nil, fmt.Errorf("cannot remove the tag (tag=%d): %w", tagID, err)
+			return nil, fmt.Errorf("cannot remove the tag (tag=%d): %w", tagID, err)
 		}
 		if affected, err := result.RowsAffected(); err != nil {
-			return 0, nil, fmt.Errorf("cannot remove the tag (tag=%d): %w", tagID, err)
+			return nil, fmt.Errorf("cannot remove the tag (tag=%d): %w", tagID, err)
 		} else if affected > 0 {
 			changed = append(changed, key)
 		}
 	}
-	if err := touchEditedAtForUserKeys(ctx, tx, changed, now); err != nil {
-		return 0, nil, err
-	}
-	return len(keys), changed, nil
+	return changed, touchEditedAtForUserKeys(ctx, tx, changed, now)
 }
 
 // TagsByContentKeys uses user-data keys and unions manual/folder sources, retaining both source flags and omitting untagged keys.

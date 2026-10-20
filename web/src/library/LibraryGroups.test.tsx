@@ -258,7 +258,7 @@ describe("ライブラリからグループを作る・足す", () => {
       "Add to playlist",
       "New group",
       "Add to group",
-      "Visibility",
+      "Bundle as versions",
     ]);
 
     await user.click(within(selectionBar()).getByRole("button", { name: "New group" }));

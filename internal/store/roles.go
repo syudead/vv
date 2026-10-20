@@ -87,6 +87,10 @@ type CreditStore struct {
 // WorkInfoStore writes work details and display names in one transaction through private helpers, publishing changes after commit.
 type WorkInfoStore struct{ db *DB }
 
+// VideoEditStore applies one bulk edit across tags, work information and visibility in one transaction through
+// those roles' private helpers, publishing their combined changes after commit.
+type VideoEditStore struct{ db *DB }
+
 // WorkInfoPluginStore revalidates approvals and settings inside write transactions; it emits no domain events.
 type WorkInfoPluginStore struct{ sql, read *sql.DB }
 
@@ -118,6 +122,7 @@ func (db *DB) Onboarding() *OnboardingStore    { return &OnboardingStore{db: db}
 func (db *DB) Collections() *CollectionStore   { return &CollectionStore{db: db} }
 func (db *DB) Credits() *CreditStore           { return &CreditStore{sql: db.sql, read: db.read, db: db} }
 func (db *DB) WorkInfo() *WorkInfoStore        { return &WorkInfoStore{db: db} }
+func (db *DB) VideoEdits() *VideoEditStore     { return &VideoEditStore{db: db} }
 func (db *DB) WorkInfoPlugins() *WorkInfoPluginStore {
 	return &WorkInfoPluginStore{sql: db.sql, read: db.read}
 }
