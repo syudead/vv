@@ -80,34 +80,20 @@ describe("PersonPage", () => {
     expect(screen.getByText("2000-05-02 (age 26)")).toBeTruthy();
   });
 
-  it("shows a shelf only for the roles with videos, and See all opens that role's grid", async () => {
-    const user = userEvent.setup();
+  it("shows a shelf with every video for each role the person has videos in", async () => {
+    server.videoCount = 11;
     renderPage();
-    await screen.findByRole("link", { name: /Video 1/ });
+    await screen.findByRole("heading", { name: "Performer", level: 2 });
+
     const roles = sent("GET", "/api/videos").map((request) =>
       request.url.searchParams.get("personRole"),
     );
     expect(roles).toEqual(
       expect.arrayContaining([null, "performer", "director", "photographer", "streamer"]),
     );
-    expect(screen.getByRole("heading", { name: "Performer", level: 2 })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Director", level: 2 })).toBeNull();
-
-    await user.click(screen.getByRole("button", { name: "See all videos as Performer" }));
-    expect(
-      screen.getByRole("radio", { name: "Performer" }).getAttribute("aria-checked"),
-    ).toBe("true");
-    await user.click(screen.getByRole("radio", { name: "Director" }));
-
-    await waitFor(() => {
-      const last = sent("GET", "/api/videos").at(-1);
-      expect(last?.url.searchParams.get("person")).toBe("7");
-      expect(last?.url.searchParams.get("personRole")).toBe("director");
-    });
-    await user.click(screen.getByRole("radio", { name: "All" }));
-    expect(
-      await screen.findByRole("heading", { name: "Performer", level: 2 }),
-    ).toBeTruthy();
+    expect(await screen.findByRole("link", { name: /Video 11/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /See all/ })).toBeNull();
   });
 
   // A profile leaves one Edit link; an empty profile offers a second one.

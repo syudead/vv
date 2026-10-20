@@ -917,7 +917,7 @@
       "name": "shelf",
       "type": "registry:ui",
       "title": "Shelf",
-      "description": "Section: a heading with a count and See all over one row of card-0 cards that scrolls sideways.",
+      "description": "Section: a heading with a count over a wrapping grid of every card of one kind.",
       "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
       "files": [
         {

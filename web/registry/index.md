@@ -80,7 +80,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `settings-page`            | Page skeleton | Settings, one value per row, with an optional list of pages                  |
 | `settings-page-example`    | Block         | Copy to start a settings page                                                |
 | `sheet`                    | Component     | Edge panel; only the sidebar's narrow-width drawer                           |
-| `shelf`                    | Section       | One sideways-scrolling row of cards under a heading with See all             |
+| `shelf`                    | Section       | Every card of one kind, wrapping, under a heading with its count             |
 | `sidebar`                  | Component     | The app's main navigation                                                    |
 | `skeleton`                 | Component     | Shapes of the final layout while loading                                     |
 | `slider`                   | Component     | A value on a range, such as the card size                                    |

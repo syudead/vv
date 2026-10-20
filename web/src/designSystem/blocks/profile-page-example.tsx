@@ -1,7 +1,8 @@
 import { t } from "@/i18n";
 import { FactList } from "@/ui/patterns/fact-list";
 import { ProfilePage } from "@/ui/patterns/profile-page";
-import { Shelf, ShelfItem } from "@/ui/patterns/shelf";
+import { CardGrid } from "@/ui/patterns/card-grid";
+import { Shelf } from "@/ui/patterns/shelf";
 import { PersonFace } from "@/ui/PersonFace";
 import { Button } from "@/ui/shadcn/button";
 
@@ -49,23 +50,15 @@ export function ProfilePageExample() {
         />
       }
     >
-      <Shelf
-        title={p.profilePagePerformer}
-        count={p.profilePageCount}
-        action={
-          <Button variant="ghost" size="sm">
-            {p.profilePageSeeAll}
-          </Button>
-        }
-      >
-        {titles.map((title) => (
-          <ShelfItem key={title}>
-            <div className="flex flex-col gap-2">
+      <Shelf title={p.profilePagePerformer} count={p.profilePageCount}>
+        <CardGrid size={0}>
+          {titles.map((title) => (
+            <div key={title} className="flex flex-col gap-2">
               <span className="aspect-video w-full rounded-md bg-card" />
               <span className="truncate text-sm font-medium">{title}</span>
             </div>
-          </ShelfItem>
-        ))}
+          ))}
+        </CardGrid>
       </Shelf>
     </ProfilePage>
   );
