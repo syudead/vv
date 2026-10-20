@@ -2067,6 +2067,45 @@ func (e VideoUnplayableReason) Valid() bool {
 	}
 }
 
+// Defines values for VideoCreditEditAction.
+const (
+	VideoCreditEditActionAdd     VideoCreditEditAction = "add"
+	VideoCreditEditActionRemove  VideoCreditEditAction = "remove"
+	VideoCreditEditActionReplace VideoCreditEditAction = "replace"
+)
+
+// Valid indicates whether the value is a known member of the VideoCreditEditAction enum.
+func (e VideoCreditEditAction) Valid() bool {
+	switch e {
+	case VideoCreditEditActionAdd:
+		return true
+	case VideoCreditEditActionRemove:
+		return true
+	case VideoCreditEditActionReplace:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VideoCreditEditKind.
+const (
+	VideoCreditEditKindOrganization VideoCreditEditKind = "organization"
+	VideoCreditEditKindPerson       VideoCreditEditKind = "person"
+)
+
+// Valid indicates whether the value is a known member of the VideoCreditEditKind enum.
+func (e VideoCreditEditKind) Valid() bool {
+	switch e {
+	case VideoCreditEditKindOrganization:
+		return true
+	case VideoCreditEditKindPerson:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for VideoEncoder.
 const (
 	VideoEncoderNvenc        VideoEncoder = "nvenc"
@@ -2189,16 +2228,16 @@ func (e VideoSort) Valid() bool {
 
 // Defines values for VideoTagsAction.
 const (
-	Add    VideoTagsAction = "add"
-	Remove VideoTagsAction = "remove"
+	VideoTagsActionAdd    VideoTagsAction = "add"
+	VideoTagsActionRemove VideoTagsAction = "remove"
 )
 
 // Valid indicates whether the value is a known member of the VideoTagsAction enum.
 func (e VideoTagsAction) Valid() bool {
 	switch e {
-	case Add:
+	case VideoTagsActionAdd:
 		return true
-	case Remove:
+	case VideoTagsActionRemove:
 		return true
 	default:
 		return false
@@ -5628,6 +5667,42 @@ type VideoChanged struct {
 	Id int64 `json:"id"`
 }
 
+// VideoCreditEdit defines model for VideoCreditEdit.
+type VideoCreditEdit struct {
+	Action VideoCreditEditAction `json:"action"`
+
+	// Ids Distinct person or organization IDs, at most the role's limit (100 people, 20 organizations); add and remove need at least one.
+	Ids  []int64             `json:"ids"`
+	Kind VideoCreditEditKind `json:"kind"`
+
+	// Role A WorkPersonRole for person, a WorkOrganizationRole for organization; another value returns 400 work_info_out_of_range.
+	Role string `json:"role"`
+}
+
+// VideoCreditEditAction defines model for VideoCreditEdit.Action.
+type VideoCreditEditAction string
+
+// VideoCreditEditKind defines model for VideoCreditEdit.Kind.
+type VideoCreditEditKind string
+
+// VideoCreditsRequest defines model for VideoCreditsRequest.
+type VideoCreditsRequest struct {
+	// Edits 1–6 edits, at most one per role.
+	Edits []VideoCreditEdit `json:"edits"`
+
+	// SmartFolderIds Smart-folder IDs resolved at request time to their current member videos (the saved rule plus every ancestor rule, groups expanded to their videos) and added to videoIds. Missing folders are ignored.
+	SmartFolderIds *[]int64 `json:"smartFolderIds,omitempty"`
+
+	// VideoIds Video IDs to change. May be empty when smartFolderIds is not.
+	VideoIds []int64 `json:"videoIds"`
+}
+
+// VideoCreditsResponse defines model for VideoCreditsResponse.
+type VideoCreditsResponse struct {
+	// Applied Number of resolved videos currently in the library whose work information changed.
+	Applied int `json:"applied"`
+}
+
 // VideoDetailsInput Fullscreen editor save body; both fields are required.
 type VideoDetailsInput struct {
 	// DisplayName New display name; whitespace-only after trimming clears it.
@@ -7103,6 +7178,9 @@ type DismissVersionCandidateJSONRequestBody = VersionCandidateDismissRequest
 // BundleVideosJSONRequestBody defines body for BundleVideos for application/json ContentType.
 type BundleVideosJSONRequestBody = VideoBundleRequest
 
+// EditVideoCreditsJSONRequestBody defines body for EditVideoCredits for application/json ContentType.
+type EditVideoCreditsJSONRequestBody = VideoCreditsRequest
+
 // UpdateVideoTagsJSONRequestBody defines body for UpdateVideoTags for application/json ContentType.
 type UpdateVideoTagsJSONRequestBody = VideoTagsRequest
 
@@ -7585,6 +7663,9 @@ type ServerInterface interface {
 	// BundleVideos Bundle videos as versions of the same video
 	// (POST /api/video-bundles)
 	BundleVideos(w http.ResponseWriter, r *http.Request)
+	// EditVideoCredits Add, remove or replace credits on selected videos
+	// (POST /api/video-credits)
+	EditVideoCredits(w http.ResponseWriter, r *http.Request)
 	// UpdateVideoTags Add or remove a video tag
 	// (POST /api/video-tags)
 	UpdateVideoTags(w http.ResponseWriter, r *http.Request)
@@ -12036,6 +12117,20 @@ func (siw *ServerInterfaceWrapper) BundleVideos(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// EditVideoCredits operation middleware
+func (siw *ServerInterfaceWrapper) EditVideoCredits(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EditVideoCredits(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // UpdateVideoTags operation middleware
 func (siw *ServerInterfaceWrapper) UpdateVideoTags(w http.ResponseWriter, r *http.Request) {
 
@@ -14201,6 +14296,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags", wrapper.UpdateVideoTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags/summary", wrapper.SummarizeVideoTags)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/video-visibility", wrapper.UpdateVideoVisibility)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-credits", wrapper.EditVideoCredits)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/collections/delete", wrapper.DeleteCollections)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/favorites", wrapper.UpdateFavorites)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/playlists", wrapper.ListPlaylists)

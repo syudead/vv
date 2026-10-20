@@ -267,6 +267,13 @@ describe("SelectionBar", () => {
     expect(addButton.disabled).toBe(true);
     expect(removeButton.disabled).toBe(true);
     expect(visibilityButton.disabled).toBe(true);
+    const creditsButton = screen.getByRole("button", {
+      name: "Edit credits",
+    }) as HTMLButtonElement;
+    expect(creditsButton.disabled).toBe(true);
+    expect(creditsButton.getAttribute("aria-describedby")).toBe(
+      addButton.getAttribute("aria-describedby"),
+    );
     expect(visibilityButton.title).toBe("Select between 1 and 20,000 videos.");
     expect(visibilityButton.getAttribute("aria-describedby")).toBe(
       addButton.getAttribute("aria-describedby"),
@@ -279,6 +286,14 @@ describe("SelectionBar", () => {
     expect(document.getElementById(addDescribedBy!)?.textContent).toBe(
       "Select between 1 and 20,000 videos.",
     );
+  });
+
+  it("「Edit credits」で作品情報の一括編集の窓を開き、選択中の本数を示す", async () => {
+    install();
+    renderBar();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Edit credits" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit credits" });
+    expect(within(dialog).getByText(/^Changes apply to 3 videos\./)).toBeDefined();
   });
 
   it("選択が20,000件ちょうどなら、タグの一括操作はdisabledにならない", () => {

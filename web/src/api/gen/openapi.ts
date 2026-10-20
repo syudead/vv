@@ -2240,6 +2240,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/video-credits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add, remove or replace credits on selected videos
+         * @description Owner-only. Applies edits in order to the work information of videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags; videos sharing a user-data key change together. Each edit changes one person or organization role and leaves the other roles and work-info fields as they are: add appends the IDs a video lacks after its existing credits, remove drops them, and replace sets the role to exactly ids ([] clears it). All changes are atomic: an invalid edit returns 400 with `field` at edits[i], a missing credit returns 404 person_not_found or organization_not_found at edits[i].ids[j], and a role that would exceed its limit on any video returns 400 work_info_too_many at edits[i].ids, each writing nothing. After a change commits, emits a video event for every video sharing a changed key.
+         */
+        post: operations["editVideoCredits"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/collections/delete": {
         parameters: {
             query?: never;
@@ -4594,6 +4614,28 @@ export interface components {
              * @description Move immediately after this item; null moves to the start.
              */
             afterItemId: number | null;
+        };
+        VideoCreditsRequest: {
+            /** @description Video IDs to change. May be empty when smartFolderIds is not. */
+            videoIds: number[];
+            /** @description Smart-folder IDs resolved at request time to their current member videos (the saved rule plus every ancestor rule, groups expanded to their videos) and added to videoIds. Missing folders are ignored. */
+            smartFolderIds?: number[];
+            /** @description 1–6 edits, at most one per role. */
+            edits: components["schemas"]["VideoCreditEdit"][];
+        };
+        VideoCreditEdit: {
+            /** @enum {string} */
+            kind: "person" | "organization";
+            /** @description A WorkPersonRole for person, a WorkOrganizationRole for organization; another value returns 400 work_info_out_of_range. */
+            role: string;
+            /** @enum {string} */
+            action: "add" | "remove" | "replace";
+            /** @description Distinct person or organization IDs, at most the role's limit (100 people, 20 organizations); add and remove need at least one. */
+            ids: number[];
+        };
+        VideoCreditsResponse: {
+            /** @description Number of resolved videos currently in the library whose work information changed. */
+            applied: number;
         };
         VideoVisibilityResponse: {
             /** @description Number of resolved videos (videoIds plus smart-folder members) currently in the library, including videos already in the requested state. */
@@ -10206,6 +10248,41 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
+        };
+    };
+    editVideoCredits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoCreditsRequest"];
+            };
+        };
+        responses: {
+            /** @description Applied result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoCreditsResponse"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            /** @description A credit in edits no longer exists (person_not_found or organization_not_found) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     deleteCollections: {

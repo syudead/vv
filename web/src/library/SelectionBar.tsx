@@ -6,6 +6,7 @@ import {
   ListPlus,
   Minus,
   Plus,
+  Users,
 } from "lucide-react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 
@@ -20,6 +21,7 @@ import { Popover, PopoverTrigger } from "../ui/shadcn/popover";
 import BundleDialog from "../versions/BundleDialog";
 import AddTagPopover from "./AddTagPopover";
 import DeleteCollectionsAction from "./DeleteCollectionsAction";
+import EditCreditsDialog from "./EditCreditsDialog";
 import FavoriteMenu from "./FavoriteMenu";
 import RemoveTagPopover from "./RemoveTagPopover";
 import {
@@ -165,6 +167,7 @@ export default function SelectionBar({
   const [playlistOpen, setPlaylistOpen] = useState(false);
   const [groupOpen, setGroupOpen] = useState(false);
   const [newGroupOpen, setNewGroupOpen] = useState(false);
+  const [creditsOpen, setCreditsOpen] = useState(false);
   const addTriggerRef = useRef<HTMLButtonElement | null>(null);
   const total = count + smartFolderIds.length;
   const reasons = selectionReasons({
@@ -192,6 +195,7 @@ export default function SelectionBar({
       setPlaylistOpen(false);
       setGroupOpen(false);
       setNewGroupOpen(false);
+      setCreditsOpen(false);
       setBundleOpen(false);
     }
   }, [total]);
@@ -262,6 +266,23 @@ export default function SelectionBar({
           />
         </Popover>
         <DisabledReason id={tagReasonId} reason={reasons.tag} />
+
+        <WithTooltip label={t.library.selection.editCredits}>
+          <SelectionAction
+            icon={<Users aria-hidden="true" />}
+            label={t.library.selection.editCredits}
+            {...disabledProps(reasons.tag, tagReasonId)}
+            onClick={() => setCreditsOpen(true)}
+          />
+        </WithTooltip>
+        {creditsOpen && (
+          <EditCreditsDialog
+            count={count}
+            selectedIds={selectedIds}
+            smartFolderIds={smartFolderIds}
+            onClose={() => setCreditsOpen(false)}
+          />
+        )}
 
         <FavoriteMenu
           videoIds={favoriteVideoIds}

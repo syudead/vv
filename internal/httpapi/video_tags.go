@@ -42,13 +42,13 @@ func (s *server) UpdateVideoTags(w http.ResponseWriter, r *http.Request) {
 		err     error
 	)
 	switch body.Action {
-	case gen.Add:
+	case gen.VideoTagsActionAdd:
 		if tagID != nil {
 			ref, applied, err = s.tags.AttachTagByID(r.Context(), videoIDs, *tagID)
 		} else {
 			ref, applied, err = s.tags.AttachTagByName(r.Context(), videoIDs, *tagName)
 		}
-	case gen.Remove:
+	case gen.VideoTagsActionRemove:
 		// Removal accepts IDs only because the UI already knows the existing tag ID.
 		if tagID == nil {
 			s.invalidRequest(w, "Removing a tag requires tag.id.")

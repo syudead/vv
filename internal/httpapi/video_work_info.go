@@ -20,6 +20,8 @@ type WorkInfo interface {
 	SetMany(ctx context.Context, changes []domain.WorkInfoChange) ([]domain.Video, error)
 	// SetDetails saves display name and work information atomically.
 	SetDetails(ctx context.Context, videoID int64, displayName string, info domain.WorkInfo) (domain.Video, error)
+	// EditCredits applies role edits to the listed videos atomically and counts the videos that changed.
+	EditCredits(ctx context.Context, videoIDs []int64, edits []domain.CreditEdit) (int, error)
 	// ByUserKeys omits keys that do not exist.
 	ByUserKeys(ctx context.Context, userKeys []string) (map[string]domain.WorkInfo, error)
 }

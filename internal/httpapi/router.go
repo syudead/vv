@@ -583,7 +583,7 @@ func requiresOtherJSONBody(r *http.Request) bool {
 func requiresPostJSONBody(path string) bool {
 	switch path {
 	case "/api/media-folders", "/api/scans", "/api/scans/rescan", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/tag-kinds",
-		"/api/video-tags", "/api/video-tags/summary",
+		"/api/video-tags", "/api/video-tags/summary", "/api/video-credits",
 		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 		"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
 		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/face-recognition/runs", "/api/onboarding/interests", "/api/playlists", "/api/groups", "/api/smart-folders", "/api/collections/delete",

@@ -3467,6 +3467,35 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
 
+  /api/video-credits:
+    post:
+      operationId: editVideoCredits
+      summary: "Add, remove or replace credits on selected videos"
+      description: "Owner-only. Applies edits in order to the work information of videoIds plus the current member videos of smartFolderIds, under the same 1–20,000 distinct-video limit as updateVideoTags; videos sharing a user-data key change together. Each edit changes one person or organization role and leaves the other roles and work-info fields as they are: add appends the IDs a video lacks after its existing credits, remove drops them, and replace sets the role to exactly ids ([] clears it). All changes are atomic: an invalid edit returns 400 with `field` at edits[i], a missing credit returns 404 person_not_found or organization_not_found at edits[i].ids[j], and a role that would exceed its limit on any video returns 400 work_info_too_many at edits[i].ids, each writing nothing. After a change commits, emits a video event for every video sharing a changed key."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VideoCreditsRequest"
+      responses:
+        "200":
+          description: "Applied result"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoCreditsResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: "A credit in edits no longer exists (person_not_found or organization_not_found)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/collections/delete:
     post:
       operationId: deleteCollections
@@ -8122,6 +8151,63 @@ components:
           type: [integer, "null"]
           format: int64
           description: "Move immediately after this item; null moves to the start."
+
+    VideoCreditsRequest:
+      type: object
+      required: [videoIds, edits]
+      additionalProperties: false
+      properties:
+        videoIds:
+          type: array
+          description: "Video IDs to change. May be empty when smartFolderIds is not."
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+        smartFolderIds:
+          type: array
+          description: "Smart-folder IDs resolved at request time to their current member videos (the saved rule plus every ancestor rule, groups expanded to their videos) and added to videoIds. Missing folders are ignored."
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+        edits:
+          type: array
+          description: "1–6 edits, at most one per role."
+          minItems: 1
+          maxItems: 6
+          items:
+            $ref: "#/components/schemas/VideoCreditEdit"
+
+    VideoCreditEdit:
+      type: object
+      required: [kind, role, action, ids]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum: [person, organization]
+        role:
+          type: string
+          description: "A WorkPersonRole for person, a WorkOrganizationRole for organization; another value returns 400 work_info_out_of_range."
+        action:
+          type: string
+          enum: [add, remove, replace]
+        ids:
+          type: array
+          description: "Distinct person or organization IDs, at most the role's limit (100 people, 20 organizations); add and remove need at least one."
+          items:
+            type: integer
+            format: int64
+
+    VideoCreditsResponse:
+      type: object
+      required: [applied]
+      additionalProperties: false
+      properties:
+        applied:
+          type: integer
+          description: "Number of resolved videos currently in the library whose work information changed."
 
     VideoVisibilityResponse:
       type: object

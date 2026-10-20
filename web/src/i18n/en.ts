@@ -1089,6 +1089,22 @@ export const en = {
       loading: "Loading…",
       summaryFailed: "Couldn't load the tags",
       nothingToRemove: "The selected videos have no tags that can be removed",
+      editCredits: "Edit credits",
+      creditsDialog: {
+        title: "Edit credits",
+        description: (count: number) =>
+          `Changes apply to ${videos(count)}. Roles without people or organizations stay as they are.`,
+        modeLabel: (role: string) => `How to change ${role}`,
+        add: "Add",
+        remove: "Remove",
+        replace: "Replace",
+        clears: (role: string) =>
+          `Clears the ${role.toLowerCase()} on every selected video`,
+        submit: "Apply",
+        nothingToApply: "Choose people or organizations, or Replace to clear a role",
+        failed: (reason: string) => `Couldn't edit the credits: ${reason}`,
+      },
+      creditsEdited: (count: number) => `Updated the credits of ${videos(count)}`,
       favorite: "Favorite",
       addFavorites: "Add to favorites",
       removeFavorites: "Remove from favorites",

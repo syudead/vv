@@ -662,7 +662,8 @@ describe("選択バーの一括のお気に入り", () => {
     const names = within(bar)
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label"));
-    expect(names.indexOf("Favorite")).toBe(names.indexOf("Remove tag") + 1);
+    expect(names.indexOf("Edit credits")).toBe(names.indexOf("Remove tag") + 1);
+    expect(names.indexOf("Favorite")).toBe(names.indexOf("Edit credits") + 1);
     // 「New group」「Add to group」。
     expect(names.indexOf("Visibility")).toBe(names.indexOf("Favorite") + 4);
 
