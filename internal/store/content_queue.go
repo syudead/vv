@@ -164,7 +164,7 @@ func queueAfterImport(
 
 // queueAfterSeekStage queues every follow-up process of a seek stage that finished for good, succeeded or failed. An
 // import queues a video never queued while automatic judging is on; a forced job, from a force rescan the owner
-// started, queues the video again unless it is running, as "Tag all videos again" and the face all run do
+// started, queues the video again unless it is queued or running, as "Tag all videos again" does
 // (docs/design-docs/force-rescan.md).
 func queueAfterSeekStage(ctx context.Context, tx *sql.Tx, c *changes, job domain.Job, now time.Time) error {
 	tagging := afterSeek{switches: []string{autoTagFeatureKey, autoTagAfterImportKey}, states: `''`,

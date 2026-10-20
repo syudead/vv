@@ -3614,10 +3614,10 @@ export const en = {
       clearPeople: {
         heading: "People",
         description:
-          "Start the people of the library over: every person and every face found goes, and videos are analysed again.",
+          "Start the people of the library over: every person and every face found goes, and videos count as not yet analysed.",
         open: "Delete all people…",
         title: "Delete all people?",
-        body: "Every person, named or not, is deleted with their faces, profiles and credits on videos, and every face found in videos goes too. Smart folders that name a person then show nothing. Videos already analysed are analysed again. This cannot be undone.",
+        body: "Every person, named or not, is deleted with their faces, profiles and credits on videos, and every face found in videos goes too. Smart folders that name a person then show nothing. While face recognition is on, every video is analysed again; while it is off, turn it on and choose “Analyse videos not yet analysed”. This cannot be undone.",
         submit: "Delete all people",
         submitting: "Deleting…",
         done: (deleted: number, queued: number) =>

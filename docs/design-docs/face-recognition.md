@@ -548,8 +548,8 @@ code with `auto_tag_queue`
 result queues a video with no row, and its `face_analysis` entry joins the
 import pipeline as `auto_tag` does
 ([activity.md](activity.md#a-pipeline-groups-one-import-run)). A forced seek
-job, queued by a force rescan, queues its video as `all` does, unless it is
-running, with an owner's entry that joins the same pipeline
+job, queued by a force rescan, queues its video whether it has no row or is
+`done` or `failed`, and leaves a `queued` or `running` row, with an owner's entry that joins the same pipeline
 ([force rescan](force-rescan.md#tagging-and-face-analysis-run-again)).
 
 The queue is filled in two more ways, each refused with
