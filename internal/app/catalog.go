@@ -96,9 +96,13 @@ func (c *Catalog) present(ctx context.Context, video domain.Video) domain.VideoV
 	return domain.VideoView{Video: video}
 }
 
-// SeekThumbnailState prefers existing artifacts; missing done artifacts appear pending even if
-// repair enqueueing fails, with transactional deduplication across readers.
+// SeekThumbnailState prefers existing artifacts over a pending state, but a failed rebuild stays failed beside the
+// sprite it kept; missing done artifacts appear pending even if repair enqueueing fails, with transactional
+// deduplication across readers.
 func (c *Catalog) SeekThumbnailState(ctx context.Context, video domain.Video) (domain.SeekThumbnailState, error) {
+	if video.SeekThumbnailState == domain.SeekThumbnailFailed {
+		return domain.SeekThumbnailFailed, nil
+	}
 	if c.files.SeekThumbnailsAvailable(video.ContentKey) {
 		return domain.SeekThumbnailDone, nil
 	}
