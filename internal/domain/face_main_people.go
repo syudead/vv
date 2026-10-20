@@ -59,11 +59,18 @@ type FaceDetection struct {
 	Score     float64
 	// Vector is the recognizer's normalized vector; faces smaller than the minimum side need none.
 	Vector []float32
+	// Cut marks a face whose box reaches past the edge of the picture, so a crop of it shows part of a face.
+	Cut bool
 }
 
 // good reports whether the face is large, confident and frontal enough to count.
 func (d FaceDetection) good() bool {
 	return d.Box.W >= faceGoodSide && d.Score >= faceGoodScore && math.Abs(d.yawRatio()-0.5) <= faceMaxYawOffset
+}
+
+// frontality is 1 for a face turned to the camera and falls to 0 as the nose reaches an eye.
+func (d FaceDetection) frontality() float64 {
+	return max(0, 1-2*math.Abs(d.yawRatio()-0.5))
 }
 
 // yawRatio is where the nose sits between the eyes horizontally: 0.5 for a frontal face.
@@ -94,7 +101,8 @@ type FaceTrack struct {
 	FaceSpan
 	// GoodFrames counts the faces that pass the quality gate.
 	GoodFrames int
-	// Best is the good face with the largest box times score, for a crop; zero when none is good.
+	// Best is the good face for a crop and a person's face: one inside the picture before any cut by its edge, then
+	// the largest box times score times frontality; zero when none is good.
 	Best FaceSighting
 
 	frames    int
@@ -102,7 +110,8 @@ type FaceTrack struct {
 	sumY      float64
 	sumW      float64
 	goodSum   []float64
-	bestValue float64
+	best      faceRank
+	bestVec   []float32
 	last      FaceDetection
 	lastFrame int
 }
@@ -127,9 +136,22 @@ func (t *FaceTrack) add(frame int, d FaceDetection) {
 	for i, x := range d.Vector {
 		t.goodSum[i] += float64(x)
 	}
-	if v := d.Box.W * d.Box.H * d.Score; v > t.bestValue {
-		t.Best, t.bestValue = FaceSighting{Frame: frame, Box: d.Box}, v
+	if r := (faceRank{whole: !d.Cut, value: d.Box.W * d.Box.H * d.Score * d.frontality()}); r.beats(t.best) {
+		t.Best, t.best, t.bestVec = FaceSighting{Frame: frame, Box: d.Box}, r, d.Vector
 	}
+}
+
+// faceRank orders the good faces for a crop; the zero value loses to any face.
+type faceRank struct {
+	whole bool
+	value float64
+}
+
+func (r faceRank) beats(o faceRank) bool {
+	if r.whole != o.whole {
+		return r.whole
+	}
+	return r.value > o.value
 }
 
 // vector is the normalized mean of the good faces, or nil when too few are good.
@@ -250,11 +272,13 @@ type MainPerson struct {
 	Centroid []float32
 	// Best is the best good face of the cluster's tracks, for its crop.
 	Best FaceSighting
+	// FaceVector is the normalized vector of Best, which a person made from this one keeps as their face.
+	FaceVector []float32
 }
 
 // FindMainPeople clusters the tracks that have a vector and keeps clusters with enough good face time, longest
 // first. analysedSeconds is the length of the frames actually sampled. Kept clusters whose centroids reach the
-// link threshold are one person the clustering split, and are merged; the looser candidate threshold only offers a pair.
+// join threshold are one person the clustering split, and are merged; the looser candidate threshold only offers a pair.
 func FindMainPeople(th FaceThresholds, tracks []FaceTrack, analysedSeconds float64) []MainPerson {
 	var kept []FaceTrack
 	var vecs [][]float32
@@ -270,7 +294,7 @@ func FindMainPeople(th FaceThresholds, tracks []FaceTrack, analysedSeconds float
 		}
 	}
 	people := make([]MainPerson, 0, len(clusters))
-	for _, c := range mergeSplitClusters(kept, vecs, clusters, th.Link) {
+	for _, c := range mergeSplitClusters(kept, vecs, clusters, th.Join) {
 		people = append(people, mainPerson(kept, vecs, c))
 	}
 	slices.SortStableFunc(people, func(a, b MainPerson) int { return cmp.Compare(b.GoodSeconds, a.GoodSeconds) })
@@ -312,7 +336,7 @@ func mergeSplitClusters(tracks []FaceTrack, vecs [][]float32, clusters [][]int, 
 func mainPerson(tracks []FaceTrack, vecs [][]float32, members []int) MainPerson {
 	p := MainPerson{}
 	sum := make([]float32, len(vecs[members[0]]))
-	bestValue := 0.0
+	var best faceRank
 	for _, i := range members {
 		t := tracks[i]
 		p.Tracks = append(p.Tracks, t)
@@ -320,8 +344,8 @@ func mainPerson(tracks []FaceTrack, vecs [][]float32, members []int) MainPerson 
 		for k, x := range vecs[i] {
 			sum[k] += x
 		}
-		if t.bestValue > bestValue {
-			p.Best, bestValue = t.Best, t.bestValue
+		if t.best.beats(best) {
+			p.Best, best, p.FaceVector = t.Best, t.best, NormalizeFaceVector(t.bestVec)
 		}
 	}
 	slices.SortStableFunc(p.Tracks, func(a, b FaceTrack) int { return cmp.Compare(a.Start, b.Start) })

@@ -58,7 +58,7 @@ func goodTrack(vec []float32, start, n int) FaceTrack {
 }
 
 func TestFindMainPeopleKeepsEightSecondsInTwoTracks(t *testing.T) {
-	th := FaceThresholds{Cluster: 0.45, Candidate: 0.363, Link: 0.45}
+	th := FaceThresholds{Cluster: 0.45, Candidate: 0.363, Join: 0.45}
 	// 8 good frames are 8 s at 1 fps; 7 are 7 s.
 	for _, tc := range []struct {
 		name   string
@@ -77,7 +77,7 @@ func TestFindMainPeopleKeepsEightSecondsInTwoTracks(t *testing.T) {
 }
 
 func TestFindMainPeopleCutoffFollowsAnalysedLength(t *testing.T) {
-	th := FaceThresholds{Cluster: 0.45, Candidate: 0.363, Link: 0.45}
+	th := FaceThresholds{Cluster: 0.45, Candidate: 0.363, Join: 0.45}
 	vec := faceAxis(0, 10, 0.2)
 	for _, tc := range []struct {
 		name    string
@@ -100,8 +100,8 @@ func TestFindMainPeopleCutoffFollowsAnalysedLength(t *testing.T) {
 }
 
 func TestFindMainPeopleMergesClustersOfOnePerson(t *testing.T) {
-	th := FaceThresholds{Cluster: 0.9, Candidate: 0.3, Link: 0.4}
-	// Tilts put the two groups below Cluster of each other (similarity 0.5) but above Link.
+	th := FaceThresholds{Cluster: 0.9, Candidate: 0.3, Join: 0.4}
+	// Tilts put the two groups below Cluster of each other (similarity 0.5) but above Join.
 	near := func(tilt float32, axis int) []float32 {
 		v := make([]float32, 128)
 		v[0], v[axis] = 1, tilt
@@ -109,8 +109,8 @@ func TestFindMainPeopleMergesClustersOfOnePerson(t *testing.T) {
 	}
 	a1, a2 := goodTrack(near(1, 1), 0, 5), goodTrack(near(1, 1), 30, 5)
 	b1, b2 := goodTrack(near(1, 2), 60, 5), goodTrack(near(1, 2), 90, 5)
-	if s := FaceSimilarity(a1.vector(), b1.vector()); s >= th.Cluster || s < th.Link {
-		t.Fatalf("fixture similarity %v is not between Link and Cluster", s)
+	if s := FaceSimilarity(a1.vector(), b1.vector()); s >= th.Cluster || s < th.Join {
+		t.Fatalf("fixture similarity %v is not between Join and Cluster", s)
 	}
 	people := FindMainPeople(th, []FaceTrack{a1, a2, b1, b2}, 120)
 	if len(people) != 1 || len(people[0].Tracks) != 4 || people[0].GoodSeconds != 20 {
@@ -123,6 +123,46 @@ func TestFindMainPeopleMergesClustersOfOnePerson(t *testing.T) {
 	}
 }
 
+func TestMainPersonCropPrefersAWholeFaceToALargerCutOne(t *testing.T) {
+	v := faceAxis(0, 1, 0)
+	cut := func(side float64) FaceDetection {
+		d := goodFace(100, 100, v)
+		d.Box.W, d.Box.H, d.Cut = side, side, true
+		return d
+	}
+	var mixed, allCut FaceTrack
+	mixed.add(0, cut(300))
+	mixed.add(1, goodFace(100, 100, v))
+	mixed.add(2, cut(300))
+	for i := range 3 {
+		allCut.add(10+i, cut(400))
+	}
+	people := FindMainPeople(FaceThresholds{Cluster: 0.45, Join: 0.45}, []FaceTrack{mixed, allCut}, 20)
+	want := FaceSighting{Frame: 1, Box: FaceBox{X: 100, Y: 100, W: 80, H: 80}}
+	if len(people) != 1 || people[0].Best != want {
+		t.Fatalf("people = %+v, want one person whose best face is %+v", people, want)
+	}
+	if allCut.Best.Frame != 10 {
+		t.Fatalf("a track of cut faces keeps best %+v, want its largest face", allCut.Best)
+	}
+}
+
+// A person keeps the frontal face over a larger turned one, with that face's own vector as their face's vector.
+func TestMainPersonFaceIsTheFrontalFaceWithItsVector(t *testing.T) {
+	frontal, turned := faceAxis(0, 1, 0.1), faceAxis(0, 2, 0.1)
+	side := goodFace(100, 100, turned)
+	side.Box.W, side.Box.H = 100, 100
+	side.Landmarks[4] = side.Landmarks[0] + 0.7*(side.Landmarks[2]-side.Landmarks[0])
+	var tr FaceTrack
+	tr.add(0, side)
+	tr.add(1, goodFace(100, 100, frontal))
+	tr.add(2, side)
+	people := FindMainPeople(FaceThresholds{Cluster: 0.45, Join: 0.45}, []FaceTrack{tr}, 10)
+	if len(people) != 1 || people[0].Best.Frame != 1 || FaceSimilarity(people[0].FaceVector, frontal) < 0.999 {
+		t.Fatalf("people = %+v, want the frontal face of frame 1 and its vector", people)
+	}
+}
+
 func TestFindMainPeopleSeparatesPeopleBelowClusterThreshold(t *testing.T) {
 	// Person A: 3 tracks of 3 good frames (9 s); person B: 2 tracks of 5 (10 s), orthogonal to A.
 	var tracks []FaceTrack
@@ -132,7 +172,7 @@ func TestFindMainPeopleSeparatesPeopleBelowClusterThreshold(t *testing.T) {
 	for i := range 2 {
 		tracks = append(tracks, goodTrack(faceAxis(1, 20+i, 0.2), i*20, 5))
 	}
-	people := FindMainPeople(FaceThresholds{Cluster: 0.45, Candidate: 0.363, Link: 0.45}, tracks, 60)
+	people := FindMainPeople(FaceThresholds{Cluster: 0.45, Candidate: 0.363, Join: 0.45}, tracks, 60)
 	if len(people) != 2 || people[0].GoodSeconds != 10 || people[1].GoodSeconds != 9 {
 		t.Fatalf("people = %+v, want B (10 s) then A (9 s)", people)
 	}

@@ -47,6 +47,8 @@ type FaceAnalysedPerson struct {
 	Centroid    []float32
 	// Crop is the best good face, the face box doubled around its centre, fitted as a person's face image.
 	Crop PersonImage
+	// FaceVector is the vector of the crop's face, stored as the face's vector of a person created from it.
+	FaceVector []float32
 }
 
 // MainPerson returns the person in the shape the appearance rules take; only its spans and centroid are set.

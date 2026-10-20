@@ -309,13 +309,11 @@ func storedFaceAppearances(ctx context.Context, tx *sql.Tx, contentKey string) (
 	return out, nil
 }
 
-// facePersonVectors reads every vector of the recognizer that belongs to a person: the centroids of appearances
-// not dropped, and the vectors of current face images.
+// facePersonVectors reads each person's one vector of the recognizer, that of their current face image. Appearance
+// centroids are left out, so a person seen in many videos is not matched more often, and a wrong link does not widen
+// the person it was made to.
 func facePersonVectors(ctx context.Context, tx *sql.Tx, recognizer domain.FaceRecognizer) ([]domain.FacePersonVector, error) {
 	rows, err := tx.QueryContext(ctx, `
-		select person_id, centroid from face_appearances
-		 where person_id is not null and dropped = 0 and centroid is not null and recognizer = ?1
-		union all
 		select v.person_id, v.vector from person_face_vectors v join people p on p.id = v.person_id
 		 where v.vector is not null and v.recognizer = ?1 and v.image_revision = p.image_revision`,
 		string(recognizer))
@@ -368,6 +366,9 @@ func linkFaceAppearance(
 			return faceLink{}, false, err
 		}
 		link.personID, link.created = id, true
+		if err := storeCreatedFaceVector(ctx, tx, id, result.Recognizer, p); err != nil {
+			return faceLink{}, false, err
+		}
 		if err := writeFaceCandidates(ctx, tx, id, match.Candidates, now); err != nil {
 			return faceLink{}, false, err
 		}
@@ -408,6 +409,22 @@ func createFacePerson(ctx context.Context, tx *sql.Tx, crop domain.PersonImage, 
 		return 0, fmt.Errorf("cannot store the face of person %d: %w", id, err)
 	}
 	return id, bumpPersonImageRevision(ctx, tx, id)
+}
+
+// storeCreatedFaceVector stores the vector of the crop's face as the new person's face vector, so the face worker
+// does not embed the crop again and the next video already matches the person.
+func storeCreatedFaceVector(
+	ctx context.Context, tx *sql.Tx, personID int64, recognizer domain.FaceRecognizer, p domain.FaceAnalysedPerson,
+) error {
+	if len(p.Crop.JPEG) == 0 || len(p.FaceVector) == 0 {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, `insert into person_face_vectors (person_id, image_revision, recognizer, vector)
+		select id, image_revision, ?, ? from people where id = ?`,
+		string(recognizer), encodeFaceVector(p.FaceVector), personID); err != nil {
+		return fmt.Errorf("cannot store the face vector of person %d: %w", personID, err)
+	}
+	return nil
 }
 
 // writeFaceCandidates offers the provisional person with each candidate; a pair the owner dismissed stays dismissed.

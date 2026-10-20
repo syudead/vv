@@ -7,7 +7,7 @@ import (
 )
 
 // Thresholds that float32 vectors reach exactly, so each boundary is tested at its value.
-var testFaceThresholds = FaceThresholds{Candidate: 0.5, Link: 0.75, Merge: 0.875}
+var testFaceThresholds = FaceThresholds{Candidate: 0.5, Link: 0.75, Margin: 0.125, Merge: 0.875}
 
 // atCosine is a unit vector whose cosine with faceAxis(0, 1, 0) is exactly s.
 func atCosine(s float32) []float32 {
@@ -31,10 +31,10 @@ func TestMatchFaceAtEachThreshold(t *testing.T) {
 			FaceMatch{Kind: FaceMatchNew, Candidates: []FaceCandidate{{PersonID: 1, Similarity: 0.5}}}},
 		{"below candidate", []FacePersonVector{{PersonID: 1, Vector: atCosine(0.4375)}},
 			FaceMatch{Kind: FaceMatchNew}},
-		{"best of a person's vectors", []FacePersonVector{{PersonID: 1, Vector: atCosine(0.25)}, {PersonID: 1, Vector: atCosine(0.8125)}, {PersonID: 2, Vector: atCosine(0.75)}},
-			FaceMatch{Kind: FaceMatchLink, PersonID: 1, Similarity: 0.8125}},
-		{"dropped appearance", []FacePersonVector{{PersonID: 1, Vector: atCosine(1), Dropped: true}, {PersonID: 1, Vector: atCosine(0.5)}},
-			FaceMatch{Kind: FaceMatchNew, Candidates: []FaceCandidate{{PersonID: 1, Similarity: 0.5}}}},
+		{"leading the next person by the margin", []FacePersonVector{{PersonID: 1, Vector: atCosine(0.875)}, {PersonID: 2, Vector: atCosine(0.75)}},
+			FaceMatch{Kind: FaceMatchLink, PersonID: 1, Similarity: 0.875}},
+		{"less than the margin ahead", []FacePersonVector{{PersonID: 1, Vector: atCosine(0.8125)}, {PersonID: 2, Vector: atCosine(0.75)}},
+			FaceMatch{Kind: FaceMatchNew, Candidates: []FaceCandidate{{PersonID: 1, Similarity: 0.8125}, {PersonID: 2, Similarity: 0.75}}}},
 	} {
 		if got := MatchFace(testFaceThresholds, probe, tc.vectors); !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("%s: got %+v, want %+v", tc.name, got, tc.want)
@@ -152,8 +152,8 @@ func TestFaceRecognizerTable(t *testing.T) {
 	for _, r := range []FaceRecognizer{FaceRecognizerSFaceInt8, FaceRecognizerArcFaceR50} {
 		spec, ok := LookupFaceRecognizer(r)
 		th := spec.Thresholds
-		if !ok || th.Candidate >= th.Link || th.Link >= th.Merge {
-			t.Errorf("%s: %+v, %v; want candidate < link < merge", r, spec, ok)
+		if !ok || th.Candidate >= th.Link || th.Link != th.Merge || th.Join > th.Link {
+			t.Errorf("%s: %+v, %v; want candidate < link = merge and join <= link", r, spec, ok)
 		}
 	}
 	if FaceRecognizer("sface").Valid() {
