@@ -143,6 +143,27 @@ describe("PersonPage fetch info", () => {
     });
   });
 
+  it("selects every replacement at once with Select all", async () => {
+    server.person = person({ ...stored, profile: { birthplace: "Tokyo", cup: "C" } });
+    server.fetched = {
+      name: "Aoi",
+      aliases: [],
+      externalIds: [],
+      profile: { birthplace: "Osaka", cup: "D" },
+    };
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+    await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
+
+    await user.click(await within(dialog).findByRole("button", { name: "Select all" }));
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+
+    expect(await screen.findByText("Applied to Aoi.")).toBeTruthy();
+    expect(sentBody(sent("POST", "/api/people/7/plugin-fetches/f1/apply")[0])).toEqual({
+      items: ["profile.birthplace", "profile.cup"],
+    });
+  });
+
   it("keeps the stored face until the owner picks one of the fetched images", async () => {
     server.person = person({ ...stored, imageRevision: 2 });
     server.fetched = { name: "Aoi", aliases: [], externalIds: [], imageCount: 2 };
