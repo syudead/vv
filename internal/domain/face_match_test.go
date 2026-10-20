@@ -152,8 +152,8 @@ func TestFaceRecognizerTable(t *testing.T) {
 	for _, r := range []FaceRecognizer{FaceRecognizerSFaceInt8, FaceRecognizerArcFaceR50} {
 		spec, ok := LookupFaceRecognizer(r)
 		th := spec.Thresholds
-		if !ok || th.Candidate >= th.Link || th.Link >= th.Merge {
-			t.Errorf("%s: %+v, %v; want candidate < link < merge", r, spec, ok)
+		if !ok || th.Candidate >= th.Link || th.Link != th.Merge || th.Join > th.Link {
+			t.Errorf("%s: %+v, %v; want candidate < link = merge and join <= link", r, spec, ok)
 		}
 	}
 	if FaceRecognizer("sface").Valid() {

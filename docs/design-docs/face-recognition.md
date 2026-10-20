@@ -246,7 +246,7 @@ The frame side made no difference to speed, because the helper runs YuNet at
 | Track vector | The normalized mean of the good faces; a track with fewer than 2 good faces has none and is not clustered |
 | Clustering | Average linkage over the track vectors, joining while the mean similarity reaches `Cluster` |
 | Cutoff | Good seconds (one per good face) at least the bar, the larger of 3 s and 25% of the analysed length. A cluster of 2 or more tracks needs only min(8 s, bar); a cluster of one track needs the bar itself |
-| Merge of split clusters | Clusters that passed the cutoff and whose centroids reach `Link` are one person and are joined, repeatedly, most similar first |
+| Merge of split clusters | Clusters that passed the cutoff and whose centroids reach `Join` are one person and are joined, repeatedly, most similar first |
 
 The analysed length is the number of frames the worker sampled divided by the
 sampling rate, not the file's duration, so a video cut short is judged by what
@@ -259,7 +259,7 @@ shot, so in a long video it must reach the full 25%: 10 s of one track in a
 
 Average linkage at `Cluster` can leave one person's tracks in two clusters, for
 example before and after a change of lighting. A cluster centroid averages many
-faces, so it reaches `Link` where the average linkage of single faces stays under
+faces, so it reaches `Join` where the average linkage of single faces stays under
 `Cluster`; the merge joins such clusters automatically. `Candidate` is too loose
 to join people without the owner (it names a stranger for over half of unknown
 faces in the POC), so two provisional people of one analysis whose centroids
@@ -267,7 +267,11 @@ reach only `Candidate` are written as an open `face_candidates` pair, and the
 person page offers "Same person?".
 
 Each track keeps its start, end, mean centre and mean width, and a main person
-keeps its best good face (largest box times score) for its crop.
+keeps its best good face for its crop: a face whose box lies inside the picture
+before any face cut by the picture's edge, then the largest box times score. The
+picture is the frame without the black padding and black bars around it. A
+close-up cut by the edge has the largest box, so ranking by size alone made such
+faces the faces of people.
 
 | Rejected | Why |
 | --- | --- |
@@ -285,8 +289,9 @@ them.
 | `Track` | Continue a track, boxes overlapping | 0.45 | 0.288 |
 | `TrackFar` | Continue a track, boxes apart | 0.6 | 0.614 |
 | `Cluster` | Join clusters of tracks | 0.45 | 0.288 |
+| `Join` | Join split clusters of one video | 0.45 | 0.288 |
 | `Candidate` | Offer a pair to the owner | 0.363 | 0.205 |
-| `Link` | Link a main person to a person | 0.45 | 0.288 |
+| `Link` | Link a main person to a person | 0.55 | 0.545 |
 | `Merge` | Merge a provisional person on a face image | 0.55 | 0.545 |
 
 The SFace values are the upstream same-person threshold and the POC's. The
@@ -317,6 +322,19 @@ of a draw and the 87,307,271 pairs of different people:
 At equal false rates ArcFace names more people correctly, most of all at
 `Merge`. An unregistered image named at `Candidate` is why that threshold only
 offers a pair and never links.
+
+`Link` takes the value of `Merge`, the 0.17% false rate, because a link is made
+without the owner as a merge is. At the first values (0.45 and 0.288, the 3.4%
+rate), the maintainer's library had most new people linked to strangers: video
+faces are smaller and blurrier than LFW's, and each wrong link adds the
+stranger's centroid to the person, so the next face finds them more easily. A face between
+`Candidate` and `Link` becomes a provisional person offered with the near
+people, which the owner confirms with "Same person?". `Join` keeps the first
+value, because it compares the clusters of one video, where few people compete.
+
+| Rejected | Why |
+| --- | --- |
+| `Link` at the 3.4% false rate | Most new people were linked to strangers in the maintainer's library, and every wrong link widened its person |
 
 ## A main person is matched against every vector of a person
 
@@ -581,7 +599,7 @@ transcoding does, and reads its frames with `ffmpeg`
 | Frames | 2 per second; `ffmpeg` applies the display rotation first, then fits the frame into 1280 × 1280 and pads it with black, so a phone video is neither on its side nor stretched |
 | Faces | One helper request per frame, at most 2 minutes each, the helper's start included |
 | Tracks | The frame's faces go to `FaceTracker` as they arrive; no frame is kept |
-| Crops | A crop of each track's best good face is kept while the track can still count: the face box doubled around its centre, clipped to the frame, never enlarged, fitted as a person's face |
+| Crops | A crop of each track's best good face is kept while the track can still count: the face box doubled around its centre, moved inside the picture where it reaches past its edge and cut only where it is larger than the picture, never enlarged, fitted as a person's face |
 | Result | `FindMainPeople` over the tracks, each main person with its best face's crop, stored by `FaceStore.Store` |
 
 The worker keeps one helper per recognizer across videos and stops it when

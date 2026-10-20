@@ -3,6 +3,7 @@ package app
 import (
 	"image"
 	"math"
+	"slices"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/faceproto"
@@ -23,6 +24,11 @@ func newFaceVideo(th domain.FaceThresholds) *faceVideo {
 
 // add takes the faces of the next frame; pix is that frame, a domain.FaceFrameSide square of packed BGR.
 func (v *faceVideo) add(pix []byte, faces []domain.FaceDetection) error {
+	picture := pictureBounds(pix)
+	faces = slices.Clone(faces)
+	for i := range faces {
+		faces[i].Cut = !boxRect(faces[i].Box).In(picture)
+	}
 	v.tracker.Add(faces)
 	keep := map[domain.FaceSighting]bool{}
 	for _, s := range v.tracker.BestSightings() {
@@ -30,7 +36,7 @@ func (v *faceVideo) add(pix []byte, faces []domain.FaceDetection) error {
 		if _, ok := v.crops[s]; ok || s.Frame != v.frame {
 			continue
 		}
-		crop, err := cropFace(pix, s.Box)
+		crop, err := cropFace(pix, picture, s.Box)
 		if err != nil {
 			return err
 		}
@@ -58,12 +64,61 @@ func (v *faceVideo) people() []domain.FaceAnalysedPerson {
 	return out
 }
 
-// cropFace cuts the face box doubled around its centre from the frame, clipped to the frame and never enlarged.
-func cropFace(pix []byte, box domain.FaceBox) (domain.PersonImage, error) {
+// faceBlackLevel is the brightest sample of a row or column still counted as padding or a black bar.
+const faceBlackLevel = 16
+
+// pictureBounds is the frame without the black padding ffmpeg adds and the black bars a video carries, so a
+// face cut by the picture's edge is known; a frame that is black throughout is all picture.
+func pictureBounds(pix []byte) image.Rectangle {
 	const side = domain.FaceFrameSide
-	cx, cy := box.X+box.W/2, box.Y+box.H/2
-	clip := func(v float64) int { return int(math.Round(math.Max(0, math.Min(side, v)))) }
-	r := image.Rect(clip(cx-box.W), clip(cy-box.H), clip(cx+box.W), clip(cy+box.H))
+	black := func(x0, y0, x1, y1 int) bool {
+		for y := y0; y < y1; y++ {
+			for _, b := range pix[(y*side+x0)*3 : (y*side+x1)*3] {
+				if b > faceBlackLevel {
+					return false
+				}
+			}
+		}
+		return true
+	}
+	r := image.Rect(0, 0, side, side)
+	for r.Min.Y < r.Max.Y && black(0, r.Min.Y, side, r.Min.Y+1) {
+		r.Min.Y++
+	}
+	if r.Empty() {
+		return image.Rect(0, 0, side, side)
+	}
+	for black(0, r.Max.Y-1, side, r.Max.Y) {
+		r.Max.Y--
+	}
+	for black(r.Min.X, r.Min.Y, r.Min.X+1, r.Max.Y) {
+		r.Min.X++
+	}
+	for black(r.Max.X-1, r.Min.Y, r.Max.X, r.Max.Y) {
+		r.Max.X--
+	}
+	return r
+}
+
+// boxRect is the smallest pixel rectangle holding the box.
+func boxRect(b domain.FaceBox) image.Rectangle {
+	return image.Rect(int(math.Floor(b.X)), int(math.Floor(b.Y)), int(math.Ceil(b.X+b.W)), int(math.Ceil(b.Y+b.H)))
+}
+
+// cropFace cuts the face box doubled around its centre from the picture, never enlarged. A window that reaches
+// past the picture's edge is moved back inside it rather than cut, so a face near the edge stays whole, and is
+// cut only where it is larger than the picture.
+func cropFace(pix []byte, picture image.Rectangle, box domain.FaceBox) (domain.PersonImage, error) {
+	const side = domain.FaceFrameSide
+	place := func(centre, half float64, lo, hi int) (int, int) {
+		size := min(int(math.Round(2*half)), hi-lo)
+		start := int(math.Round(centre - half))
+		start = max(lo, min(start, hi-size))
+		return start, start + size
+	}
+	x0, x1 := place(box.X+box.W/2, box.W, picture.Min.X, picture.Max.X)
+	y0, y1 := place(box.Y+box.H/2, box.H, picture.Min.Y, picture.Max.Y)
+	r := image.Rect(x0, y0, x1, y1)
 	if r.Empty() {
 		return domain.PersonImage{}, nil
 	}
