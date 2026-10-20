@@ -18,13 +18,13 @@ import {
   TouchSensor,
   type TouchSensorOptions,
   type UniqueIdentifier,
+  useDraggable,
   useDroppable,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
 import {
   SortableContext,
-  sortableKeyboardCoordinates,
   type SortingStrategy,
   useSortable,
   verticalListSortingStrategy,
@@ -33,6 +33,8 @@ import { Ban } from "lucide-react";
 import {
   createContext,
   type CSSProperties,
+  isValidElement,
+  memo,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type TouchEvent as ReactTouchEvent,
@@ -58,7 +60,7 @@ import {
   signFor,
   zoneOf,
 } from "./cardDragRules";
-import { verticalOnly } from "./reorder";
+import { keyboardSensorOptions, touchSensorOptions, verticalOnly } from "./reorder";
 
 // Owner-only drag layer; screens own server mutations. Cards support pointer drops, while list handles also support keyboard reordering.
 //
@@ -251,8 +253,8 @@ class CardTouchSensor extends TouchSensor {
 function useCardSensors() {
   return useSensors(
     useSensor(CardPointerSensor),
-    useSensor(CardTouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(CardTouchSensor, touchSensorOptions),
+    useSensor(KeyboardSensor, keyboardSensorOptions),
   );
 }
 
@@ -306,6 +308,29 @@ function modeOf(event: Event): Mode {
 
 /** Half of gap-3's 12px gap keeps a card within reach everywhere in the gap. */
 const gapReach = 12;
+
+/**
+ * Copy card rects once per detection; dnd-kit's rects recompute scroll offsets on every edge read,
+ * which dominated pointer moves over long lists.
+ */
+function plainCardRects(
+  rects: ReadonlyMap<UniqueIdentifier, ClientRect>,
+): Map<UniqueIdentifier, ClientRect> {
+  const plain = new Map<UniqueIdentifier, ClientRect>();
+  for (const [id, rect] of rects) {
+    if (isCrumb(id)) continue;
+    const { top, left, width, height } = rect;
+    plain.set(id, {
+      top,
+      left,
+      width,
+      height,
+      bottom: top + height,
+      right: left + width,
+    });
+  }
+  return plain;
+}
 
 /** Exclude lifted cards so the adjacent gap can target the next stationary card. */
 function probeAt(
@@ -500,12 +525,10 @@ export function CardDragLayer(props: CardDragLayerProps) {
       probe.current = crumb;
       return [{ id: crumb.key, data: { value: 0 } }];
     }
-    const cardRects = new Map(
-      Array.from(args.droppableRects).filter(([id]) => !isCrumb(id)),
-    );
+    const cardRects = plainCardRects(args.droppableRects);
     const found = probeAt(
       args.pointerCoordinates,
-      pointerWithin({ ...args, droppableContainers: cards }),
+      pointerWithin({ ...args, droppableContainers: cards, droppableRects: cardRects }),
       cardRects,
       current.current?.liftedSet ?? new Set(),
     );
@@ -616,9 +639,30 @@ export interface CardDragBinding {
   attachment: ReactNode;
 }
 
+/** Marks one card or row shows for the current or retained drag. */
+function layerMarks(key: string, { drag, held, attached }: LayerValue) {
+  return {
+    lifted:
+      drag === null
+        ? held?.lifted.includes(key) === true
+        : drag.mode !== "handle" && drag.liftedSet.has(key),
+    sign: signOf(key, drag, held),
+    axis: drag?.axis ?? "x",
+    attachment: attached?.key === key ? attached.node : null,
+  };
+}
+
+/** Keyboard dragging starts only from handles, never from a whole card or row. */
+function withoutKeyDown(listeners: Record<string, unknown> | undefined) {
+  const all: Record<string, unknown> = { ...listeners };
+  delete all.onKeyDown;
+  return all;
+}
+
 /** Must run within CardDragLayer. */
 export function useCardDrag(key: string): CardDragBinding {
-  const { drag, held, attached } = useContext(LayerContext);
+  const layer = useContext(LayerContext);
+  const { drag } = layer;
   const {
     attributes,
     listeners,
@@ -629,11 +673,7 @@ export function useCardDrag(key: string): CardDragBinding {
     isDragging,
   } = useSortable({ id: key });
   const handleMode = drag?.mode === "handle";
-  const cardListeners = useMemo(() => {
-    const all: Record<string, unknown> = { ...listeners };
-    delete all.onKeyDown;
-    return all;
-  }, [listeners]);
+  const cardListeners = useMemo(() => withoutKeyDown(listeners), [listeners]);
   return {
     ref: setNodeRef,
     listeners: cardListeners,
@@ -645,15 +685,28 @@ export function useCardDrag(key: string): CardDragBinding {
       !handleMode || transform === null
         ? undefined
         : { transform: `translate3d(0, ${String(transform.y)}px, 0)`, transition },
-    lifted:
-      drag === null
-        ? held?.lifted.includes(key) === true
-        : !handleMode && drag.liftedSet.has(key),
     sorting: handleMode && isDragging,
-    sign: signOf(key, drag, held),
-    axis: drag?.axis ?? "x",
-    attachment: attached?.key === key ? attached.node : null,
+    ...layerMarks(key, layer),
   };
+}
+
+/**
+ * Grid cards never shift or use a handle, so they register without useSortable, whose items
+ * context re-renders every card whenever the list grows.
+ */
+function useGridCardDrag(key: string) {
+  const marks = layerMarks(key, useContext(LayerContext));
+  const { setNodeRef: setDragNode, listeners } = useDraggable({ id: key });
+  const { setNodeRef: setDropNode } = useDroppable({ id: key });
+  const ref = useCallback(
+    (node: HTMLElement | null) => {
+      setDragNode(node);
+      setDropNode(node);
+    },
+    [setDragNode, setDropNode],
+  );
+  const cardListeners = useMemo(() => withoutKeyDown(listeners), [listeners]);
+  return { ref, listeners: cardListeners, ...marks };
 }
 
 /** Prefer active drag marks over retained marks. */
@@ -741,8 +794,14 @@ export function RowDropMarks({ drag }: { drag: CardDragBinding | undefined }) {
 }
 
 /** Stretch the inner article to the grid cell height. */
-export function DraggableCard({ id, children }: { id: string; children: ReactNode }) {
-  const drag = useCardDrag(id);
+export const DraggableCard = memo(function DraggableCard({
+  id,
+  children,
+}: {
+  id: string;
+  children: ReactNode;
+}) {
+  const drag = useGridCardDrag(id);
   return (
     <div
       ref={drag.ref}
@@ -757,6 +816,29 @@ export function DraggableCard({ id, children }: { id: string; children: ReactNod
       <CardDropMark sign={drag.sign} axis={drag.axis} />
       {drag.attachment}
     </div>
+  );
+}, sameCard);
+
+/**
+ * Lists pass a fresh card element on every render; compare it as memo would compare the card
+ * itself, so growing a list does not re-run every card's drag hooks.
+ */
+function sameCard(
+  previous: { id: string; children: ReactNode },
+  next: { id: string; children: ReactNode },
+): boolean {
+  return previous.id === next.id && sameElement(previous.children, next.children);
+}
+
+function sameElement(previous: ReactNode, next: ReactNode): boolean {
+  if (!isValidElement(previous) || !isValidElement(next)) return previous === next;
+  if (previous.type !== next.type || previous.key !== next.key) return false;
+  const before = previous.props as Record<string, unknown>;
+  const after = next.props as Record<string, unknown>;
+  const keys = Object.keys(before);
+  return (
+    keys.length === Object.keys(after).length &&
+    keys.every((key) => Object.is(before[key], after[key]))
   );
 }
 
